@@ -1,5 +1,6 @@
 module test.claim.srv3_unobservable_probe_refuses_witness
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // A TRANSPORT THAT CANNOT PROBE MUST NOT ANSWER "ABSENT".
@@ -22,17 +23,17 @@ data unprobeable_transport: gunbc.host_effect.HostEffectTransport = gunbc.host_e
 
 fn predicate_is_unobserved(p: gunbc.host_effect_realize.Srv3HostPredicate) -> Bool {
   match p {
-    Srv3PredicateUnobserved { reason: _ } => true
-    Srv3PredicateHolds => false
-    Srv3PredicateFails => false
+    gunbc.host_effect_realize.Srv3PredicateUnobserved { reason: _ } => true
+    gunbc.host_effect_realize.Srv3PredicateHolds => false
+    gunbc.host_effect_realize.Srv3PredicateFails => false
   }
 }
 
 fn predicate_is_fails(p: gunbc.host_effect_realize.Srv3HostPredicate) -> Bool {
   match p {
-    Srv3PredicateFails => true
-    Srv3PredicateHolds => false
-    Srv3PredicateUnobserved { reason: _ } => false
+    gunbc.host_effect_realize.Srv3PredicateFails => true
+    gunbc.host_effect_realize.Srv3PredicateHolds => false
+    gunbc.host_effect_realize.Srv3PredicateUnobserved { reason: _ } => false
   }
 }
 
@@ -74,9 +75,9 @@ data refused_outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome = gunbc.typed_a
 
 fn predicate_is_holds(p: gunbc.host_effect_realize.Srv3HostPredicate) -> Bool {
   match p {
-    Srv3PredicateHolds => true
-    Srv3PredicateFails => false
-    Srv3PredicateUnobserved { reason: _ } => false
+    gunbc.host_effect_realize.Srv3PredicateHolds => true
+    gunbc.host_effect_realize.Srv3PredicateFails => false
+    gunbc.host_effect_realize.Srv3PredicateUnobserved { reason: _ } => false
   }
 }
 

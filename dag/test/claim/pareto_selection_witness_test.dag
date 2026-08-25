@@ -1,5 +1,6 @@
 module test.claim.pareto_selection_witness
 
+
 // SYNTHETIC FIXTURES ONLY. The spine is domain-blind, so its witness plants exact entries
 // and asserts exact standings - including the refusal arms a real corpus may not exercise
 // on the day the wall matters. Identity is a DeclarationRef pointing at the fixture row
@@ -38,7 +39,7 @@ data entry_cheap_strong: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
     std.pareto.AxisReading { axis: axis_cost_id, value_micro: 100 },
     std.pareto.AxisReading { axis: axis_power_id, value_micro: 500 },
   ],
-  missing_inputs: test.claim.pareto_selection_witness.no_missing,
+  missing_inputs: no_missing,
 }
 
 data entry_dear_weak: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
@@ -48,7 +49,7 @@ data entry_dear_weak: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
     std.pareto.AxisReading { axis: axis_cost_id, value_micro: 200 },
     std.pareto.AxisReading { axis: axis_power_id, value_micro: 400 },
   ],
-  missing_inputs: test.claim.pareto_selection_witness.no_missing,
+  missing_inputs: no_missing,
 }
 
 // The dominated twin: SAME display label as entry_cheap_strong, DIFFERENT identity, worse
@@ -61,7 +62,7 @@ data entry_twin_dominated: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
     std.pareto.AxisReading { axis: axis_cost_id, value_micro: 300 },
     std.pareto.AxisReading { axis: axis_power_id, value_micro: 300 },
   ],
-  missing_inputs: test.claim.pareto_selection_witness.no_missing,
+  missing_inputs: no_missing,
 }
 
 data entry_dear_strong: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
@@ -71,7 +72,7 @@ data entry_dear_strong: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
     std.pareto.AxisReading { axis: axis_cost_id, value_micro: 200 },
     std.pareto.AxisReading { axis: axis_power_id, value_micro: 600 },
   ],
-  missing_inputs: test.claim.pareto_selection_witness.no_missing,
+  missing_inputs: no_missing,
 }
 
 data entry_quote_pending: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
@@ -90,7 +91,7 @@ data entry_reading_hole: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
   readings: [
     std.pareto.AxisReading { axis: axis_cost_id, value_micro: 50 },
   ],
-  missing_inputs: test.claim.pareto_selection_witness.no_missing,
+  missing_inputs: no_missing,
 }
 
 // Two readings on ONE axis identity - the duplicate the pair must refuse rather than take
@@ -103,7 +104,7 @@ data entry_double_reading: std.pareto.ParetoEntry = std.pareto.ParetoEntry {
     std.pareto.AxisReading { axis: axis_cost_id, value_micro: 999 },
     std.pareto.AxisReading { axis: axis_power_id, value_micro: 700 },
   ],
-  missing_inputs: test.claim.pareto_selection_witness.no_missing,
+  missing_inputs: no_missing,
 }
 
 // The CLEAN field for the domination and trade-off controls; the holed field adds the
@@ -153,10 +154,10 @@ data spine_sensitivities: List<std.types.NonEmptyStr> = ["a planted sensitivity 
 
 fn dominators_of(s: std.pareto.ParetoStanding) -> List<std.pareto.Domination> {
   match s {
-    DominatedBy { dominators } => dominators,
-    ProvisionallyNonDominated { sensitivities } => no_dominations,
-    IncomparablePendingEvidence { missing } => no_dominations,
-    SelectionRefused { cause } => no_dominations,
+    std.pareto.DominatedBy { dominators } => dominators,
+    std.pareto.ProvisionallyNonDominated { sensitivities } => no_dominations,
+    std.pareto.IncomparablePendingEvidence { missing } => no_dominations,
+    std.pareto.SelectionRefused { cause } => no_dominations,
   }
 }
 
@@ -174,28 +175,28 @@ fn winning_axis_count_of(s: std.pareto.ParetoStanding, dominator: std.decl_ref.D
 
 fn standing_is_incomparable(s: std.pareto.ParetoStanding) -> Bool {
   match s {
-    IncomparablePendingEvidence { missing } => true,
-    ProvisionallyNonDominated { sensitivities } => false,
-    DominatedBy { dominators } => false,
-    SelectionRefused { cause } => false,
+    std.pareto.IncomparablePendingEvidence { missing } => true,
+    std.pareto.ProvisionallyNonDominated { sensitivities } => false,
+    std.pareto.DominatedBy { dominators } => false,
+    std.pareto.SelectionRefused { cause } => false,
   }
 }
 
 fn standing_is_refused(s: std.pareto.ParetoStanding) -> Bool {
   match s {
-    SelectionRefused { cause } => true,
-    IncomparablePendingEvidence { missing } => false,
-    ProvisionallyNonDominated { sensitivities } => false,
-    DominatedBy { dominators } => false,
+    std.pareto.SelectionRefused { cause } => true,
+    std.pareto.IncomparablePendingEvidence { missing } => false,
+    std.pareto.ProvisionallyNonDominated { sensitivities } => false,
+    std.pareto.DominatedBy { dominators } => false,
   }
 }
 
 fn witness_not_dominated(s: std.pareto.ParetoStanding) -> Bool {
   match s {
-    DominatedBy { dominators } => false,
-    ProvisionallyNonDominated { sensitivities } => true,
-    IncomparablePendingEvidence { missing } => false,
-    SelectionRefused { cause } => false,
+    std.pareto.DominatedBy { dominators } => false,
+    std.pareto.ProvisionallyNonDominated { sensitivities } => true,
+    std.pareto.IncomparablePendingEvidence { missing } => false,
+    std.pareto.SelectionRefused { cause } => false,
   }
 }
 
@@ -221,10 +222,10 @@ test fn witness_tradeoff_pair_both_survive() -> Bool {
   let cheap = std.pareto.entry_standing(subject: entry_cheap_strong, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   let strong = std.pareto.entry_standing(subject: entry_dear_strong, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
   let cheap_carries_sensitivities = match cheap {
-    ProvisionallyNonDominated { sensitivities } => count(sensitivities) > 0,
-    DominatedBy { dominators } => false,
-    IncomparablePendingEvidence { missing } => false,
-    SelectionRefused { cause } => false,
+    std.pareto.ProvisionallyNonDominated { sensitivities } => count(sensitivities) > 0,
+    std.pareto.DominatedBy { dominators } => false,
+    std.pareto.IncomparablePendingEvidence { missing } => false,
+    std.pareto.SelectionRefused { cause } => false,
   }
   witness_not_dominated(s: cheap) && witness_not_dominated(s: strong)
     && cheap_carries_sensitivities
@@ -252,15 +253,15 @@ test fn witness_missing_inputs_neither_dominate_nor_die() -> Bool {
 test fn witness_absent_reading_refuses_the_pair() -> Bool {
   let pair = std.pareto.compare_pair(a: entry_cheap_strong, b: entry_reading_hole, axes: both_axes)
   let pair_refuses = match pair {
-    PairRefused { cause } => true,
-    PairDominates { winning_axes } => false,
-    PairNoDominance => false,
+    std.pareto.PairRefused { cause } => true,
+    std.pareto.PairDominates { winning_axes } => false,
+    std.pareto.PairNoDominance => false,
   }
   let standing_surfaces_it = standing_is_incomparable(s: std.pareto.entry_standing(subject: entry_reading_hole, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
   let hole_never_dominates = match std.pareto.compare_pair(a: entry_reading_hole, b: entry_dear_weak, axes: both_axes) {
-    PairRefused { cause } => true,
-    PairDominates { winning_axes } => false,
-    PairNoDominance => false,
+    std.pareto.PairRefused { cause } => true,
+    std.pareto.PairDominates { winning_axes } => false,
+    std.pareto.PairNoDominance => false,
   }
   let hole_poisons_the_field = standing_is_incomparable(s: std.pareto.entry_standing(subject: entry_cheap_strong, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
   let hole_poisons_from_the_front = standing_is_incomparable(s: std.pareto.entry_standing(subject: entry_dear_weak, field: holed_field_hole_first, axes: both_axes, sensitivities: spine_sensitivities))
@@ -281,9 +282,9 @@ test fn witness_axis_orientation_is_consulted() -> Bool {
 // readings, and a refusal would be a fixture defect the claim above catches.
 fn standing_dominates(a: std.pareto.ParetoEntry, b: std.pareto.ParetoEntry, axes: List<std.pareto.SelectionAxis>) -> Bool {
   match std.pareto.compare_pair(a: a, b: b, axes: axes) {
-    PairDominates { winning_axes } => true,
-    PairNoDominance => false,
-    PairRefused { cause } => false,
+    std.pareto.PairDominates { winning_axes } => true,
+    std.pareto.PairNoDominance => false,
+    std.pareto.PairRefused { cause } => false,
   }
 }
 
@@ -326,9 +327,9 @@ test fn witness_duplicate_candidate_identity_refuses() -> Bool {
 // spine must not pick.
 test fn witness_duplicate_reading_refuses_the_pair() -> Bool {
   match std.pareto.compare_pair(a: entry_double_reading, b: entry_dear_weak, axes: both_axes) {
-    PairRefused { cause } => true,
-    PairDominates { winning_axes } => false,
-    PairNoDominance => false,
+    std.pareto.PairRefused { cause } => true,
+    std.pareto.PairDominates { winning_axes } => false,
+    std.pareto.PairNoDominance => false,
   }
 }
 

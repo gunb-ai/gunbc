@@ -2,31 +2,31 @@ module v2.test.emit.semantic_decl_emit_substrings_test
 
 
 fn sdr_empty_conj() -> v2.std.node.Node {
-  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: [], occurrence_id: v2.std.node.SyntheticOccurrence }
 }
 
 fn sdr_variant_edge(name: v2.std.node.Symbol) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: v2.test.emit.semantic_decl_emit_substrings_test.sdr_empty_conj() }
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: sdr_empty_conj() }
 }
 
 fn semantic_bool_coproduct() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Disj },
-    children: [ v2.test.emit.semantic_decl_emit_substrings_test.sdr_variant_edge(name: ^True), v2.test.emit.semantic_decl_emit_substrings_test.sdr_variant_edge(name: ^False) ],
-    occurrence_id: SyntheticOccurrence
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Disj },
+    children: [ sdr_variant_edge(name: ^True), sdr_variant_edge(name: ^False) ],
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 data golden: String = concat(extdeps.languages.rust.emit.rust_enum_derives_copy, "\nenum Bool { True, False }")
 
-test fn emit_eq_golden() -> v2.std.logic.Bool {
-  match emit_semantic_type_decl(
-    name: ^v2.std.logic.Bool,
+test fn emit_eq_golden() -> Bool {
+  match v2.compiler.emit_semantic_decl.emit_semantic_type_decl(
+    name: ^Bool,
     params: std.algebra.Empty,
-    node: v2.test.emit.semantic_decl_emit_substrings_test.semantic_bool_coproduct(),
-    target: rust_target_model()
+    node: semantic_bool_coproduct(),
+    target: v2.extdeps.languages.rust.rust_target_model()
   ) {
-    Accepted { value: m, diagnostics: _ } => m.carried == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: m, diagnostics: _ } => m.carried == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

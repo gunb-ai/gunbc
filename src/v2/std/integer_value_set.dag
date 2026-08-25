@@ -9,26 +9,26 @@ fn integer_value_set_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn integer_unbounded_value_set_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^integer_value_set_field_kind },
         target: integer_value_set_atom(id: ^integer_value_set_kind_unbounded)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn integer_interval_value_set_node(interval: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^integer_value_set_field_kind },
@@ -39,15 +39,15 @@ fn integer_interval_value_set_node(interval: v2.std.node.Node) -> v2.std.node.No
         target: interval
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn integer_value_set_decode_diagnostic(reason: v2.std.node.Symbol, source_carrier: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: node_locus(node: source_carrier),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: source_carrier),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -81,11 +81,11 @@ fn integer_value_set_from_node(value_set: v2.std.node.Node) -> v2.std.diagnostic
         source_carrier: value_set
       )
   } else {
-    match find_named_child(root: value_set, name: ^integer_value_set_field_kind) {
-      Accepted { value: found_kind, diagnostics: kind_ds } =>
+    match v2.std.node_query.find_named_child(root: value_set, name: ^integer_value_set_field_kind) {
+      v2.std.diagnostic.Accepted { value: found_kind, diagnostics: kind_ds } =>
         if found_kind == integer_value_set_atom(id: ^integer_value_set_kind_unbounded) {
           if count(value_set.children) == 1 {
-            match find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
+            match v2.std.node_query.find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
               v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
                 integer_value_set_decode_rejected(
                   reason: ^integer_value_set_unbounded_carries_interval_field,
@@ -102,7 +102,7 @@ fn integer_value_set_from_node(value_set: v2.std.node.Node) -> v2.std.diagnostic
           }
         } else if found_kind == integer_value_set_atom(id: ^integer_value_set_kind_interval) {
           if count(value_set.children) == 2 {
-            match find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
+            match v2.std.node_query.find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
               v2.std.diagnostic.Accepted { value: interval, diagnostics: interval_ds } =>
                 if v2.std.integer.integer_interval_spec_node_contains(container: interval, contained: interval) {
                   v2.std.diagnostic.Accepted {
@@ -162,9 +162,9 @@ fn integer_value_set_contains_decoded(container: IntegerValueSet, contained: Int
 
 fn integer_value_set_contains(container: v2.std.node.Node, contained: v2.std.node.Node) -> Bool {
   match integer_value_set_from_node(value_set: container) {
-    Accepted { value: decoded_container, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: decoded_container, diagnostics: _ } =>
       match integer_value_set_from_node(value_set: contained) {
-        Accepted { value: decoded_contained, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: decoded_contained, diagnostics: _ } =>
           integer_value_set_contains_decoded(
             container: decoded_container,
             contained: decoded_contained

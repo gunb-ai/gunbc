@@ -42,11 +42,11 @@ fn dcc_fixture_only_compile_args(tmp: String) -> List<String> {
 }
 
 fn dcc_gunbc_ready(root: String) -> Bool {
-  witness_bin_ready(root: root, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  tools.host_prelude.witness_bin_ready(root: root, bin: tools.host_prelude.witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
 }
 
 fn dcc_gunbc_path(root: String) -> String {
-  witness_bin_release_path(root: root, bin_name: "gunbc")
+  tools.host_prelude.witness_bin_release_path(root: root, bin_name: "gunbc")
 }
 
 fn run_clean_tree_compile_typed() -> Bool {
@@ -54,7 +54,7 @@ fn run_clean_tree_compile_typed() -> Bool {
   if dcc_gunbc_ready(root: root.path) {
     let out = shell.Mktemp.Dir()
     if out.success {
-      let compile = gunbc.WitnessBin.Run(
+      let compile = WitnessBin.Run(
         workdir: root.path,
         bin_path: dcc_gunbc_path(root: root.path),
         args: dcc_clean_tree_compile_args(out_dir: out.path)
@@ -95,11 +95,11 @@ fn dcc_perturb_compile_with_args(
     content: source
   )
   let root = git.Inspect.Toplevel()
-  let compile = gunbc.WitnessBin.Run(
+  let compile = WitnessBin.Run(
     workdir: root.path,
     bin_path: dcc_gunbc_path(root: root.path),
     args: compile_args,
-    expect: if expect_success { ExpectSuccess } else { ExpectFailure }
+    expect: if expect_success { gunbc.output_policy.ExpectSuccess } else { gunbc.output_policy.ExpectFailure }
   )
   let cleaned = shell.Remove.RecursiveForce(path: tmp_path)
   wrote.success && cleaned.success && (compile.success == expect_success)

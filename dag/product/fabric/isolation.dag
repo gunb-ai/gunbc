@@ -1,5 +1,6 @@
 module product.fabric.isolation
 
+
 // WHAT A TENANT IS PROMISED ABOUT WHO ELSE CAN SEE ITS RUN.
 //
 // This is the fabric CORE's half of isolation, and the split is the point: the core states the

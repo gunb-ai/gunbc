@@ -52,9 +52,9 @@ type SparkServingBootProvenance
 fn spark_serving_active_enter_probe_argv() -> List<String> {
   concat(
     ["systemctl", "--user"],
-    skip(systemctl_show_property_argv(
-      unit: spark_serving_unit_name as std.types.NonEmptyStr,
-      property: extdeps.systemd.systemd.ActiveEnterTimestampMonotonic,
+    skip(extdeps.systemd.systemctl.systemctl_show_property_argv(
+      unit: gunbc.spark.serving_unit_identity.spark_serving_unit_name as std.types.NonEmptyStr,
+      property: extdeps.systemd.ActiveEnterTimestampMonotonic,
     ), n: 1),
   )
 }
@@ -68,9 +68,9 @@ fn spark_serving_active_enter_probe_argv() -> List<String> {
 fn spark_serving_default_target_enter_probe_argv() -> List<String> {
   concat(
     ["systemctl", "--user"],
-    skip(systemctl_show_property_argv(
-      unit: spark_serving_default_target_name as NonEmptyStr,
-      property: ActiveEnterTimestampMonotonic,
+    skip(extdeps.systemd.systemctl.systemctl_show_property_argv(
+      unit: spark_serving_default_target_name as std.types.NonEmptyStr,
+      property: extdeps.systemd.ActiveEnterTimestampMonotonic,
     ), n: 1),
   )
 }
@@ -127,7 +127,7 @@ fn spark_serving_classify_boot_provenance(
         "default.target ActiveEnterTimestampMonotonic probe failed exit=",
         to_string(default_target_enter.exit_code),
         " stderr=", default_target_enter.stderr,
-      ], "") as NonEmptyStr,
+      ], "") as std.types.NonEmptyStr,
     }
   } else if uptime.success == false {
     BootProvenanceUnobserved {
@@ -159,25 +159,25 @@ fn spark_serving_classify_boot_provenance(
                 cause: join(["/proc/uptime is not parseable: ", std.algebra.trim(s: uptime.stdout)], "") as std.types.NonEmptyStr,
               }
             Present { value: up } =>
-              match checked_int_magnitude(a: entered_us) {
-                CheckedNatOverflow { cause: _ } =>
+              match std.checked_arithmetic.checked_int_magnitude(a: entered_us) {
+                std.checked_arithmetic.CheckedNatOverflow { cause: _ } =>
                   BootProvenanceUnobserved {
                     cause: "ActiveEnterTimestampMonotonic is not representable as a microsecond count" as std.types.NonEmptyStr,
                   }
-                CheckedNatReady { value: entered_nat } => {
-                  let entered = microsecond(count: entered_nat)
+                std.checked_arithmetic.CheckedNatReady { value: entered_nat } => {
+                  let entered = std.measure.microsecond(count: entered_nat)
                   match parse_int(s: std.algebra.trim(s: default_target_enter.stdout)) {
                     Absent =>
                       BootProvenanceUnobserved {
                         cause: join([
                           "default.target ActiveEnterTimestampMonotonic is not a monotonic microsecond count: ",
                           std.algebra.trim(s: default_target_enter.stdout),
-                        ], "") as NonEmptyStr,
+                        ], "") as std.types.NonEmptyStr,
                       }
                     Present { value: target_us } =>
                       if target_us == 0 {
                         BootProvenanceUnobserved {
-                          cause: "default.target reports no active-enter, so the startup transaction has no observed end to compare against" as NonEmptyStr,
+                          cause: "default.target reports no active-enter, so the startup transaction has no observed end to compare against" as std.types.NonEmptyStr,
                         }
                       } else if entered_nat <= target_us {
                         UnitStartedByManagerAtBoot { active_enter_monotonic: entered, uptime: up }
@@ -209,9 +209,9 @@ fn spark_serving_uptime_microseconds(stdout: String) -> std.measure.Microsecond?
               if n < 0 {
                 none
               } else {
-                match checked_int_magnitude(a: n * 1000000) {
-                  CheckedNatOverflow { cause: _ } => none
-                  CheckedNatReady { value: scaled } => Present { value: microsecond(count: scaled) }
+                match std.checked_arithmetic.checked_int_magnitude(a: n * 1000000) {
+                  std.checked_arithmetic.CheckedNatOverflow { cause: _ } => none
+                  std.checked_arithmetic.CheckedNatReady { value: scaled } => Present { value: std.measure.microsecond(count: scaled) }
                 }
               }
           }
@@ -259,14 +259,14 @@ fn spark_serving_boot_provenance_wire(p: SparkServingBootProvenance) -> String {
   match p {
     UnitStartedByManagerAtBoot { active_enter_monotonic: e, uptime: u } =>
       join([
-        "boot-provenance=started-by-manager-at-boot active_enter_us=", to_string(microsecond_count(e)),
-        " uptime_us=", to_string(microsecond_count(u)),
+        "boot-provenance=started-by-manager-at-boot active_enter_us=", to_string(std.measure.microsecond_count(e)),
+        " uptime_us=", to_string(std.measure.microsecond_count(u)),
         " -- the unit entered active no later than default.target, so it came up WITH the manager startup transaction",
       ], "")
     UnitStartedAfterBoot { active_enter_monotonic: e, uptime: u } =>
       join([
-        "boot-provenance=started-after-boot active_enter_us=", to_string(microsecond_count(e)),
-        " uptime_us=", to_string(microsecond_count(u)),
+        "boot-provenance=started-after-boot active_enter_us=", to_string(std.measure.microsecond_count(e)),
+        " uptime_us=", to_string(std.measure.microsecond_count(u)),
         " -- the unit entered active AFTER default.target did, so it was not part of the manager startup transaction",
       ], "")
     UnitNotActiveAtAll => "boot-provenance=unit-not-active"

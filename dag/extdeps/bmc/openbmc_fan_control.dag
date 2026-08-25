@@ -1,5 +1,7 @@
 module extdeps.bmc.openbmc_fan_control
 
+
+
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: extdeps.uri.Https,
@@ -292,7 +294,7 @@ fn openbmc_execute(
   operation: extdeps.bmc.openbmc_operation.OpenBmcOperation,
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
   let result = match operation {
-    OpenBmcReadFile { path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcReadFile { path } =>
       openbmc.PasswordSshTransport.ReadFile(
         host: session.host,
         username: session.username,
@@ -300,7 +302,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         path: path,
       )
-    OpenBmcResolvePath { path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcResolvePath { path } =>
       openbmc.PasswordSshTransport.ResolvePath(
         host: session.host,
         username: session.username,
@@ -308,7 +310,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         path: path,
       )
-    OpenBmcParentDirectory { path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcParentDirectory { path } =>
       openbmc.PasswordSshTransport.ParentDirectory(
         host: session.host,
         username: session.username,
@@ -316,7 +318,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         path: path,
       )
-    OpenBmcSystemdIsActive { service } =>
+    extdeps.bmc.openbmc_operation.OpenBmcSystemdIsActive { service } =>
       openbmc.PasswordSshTransport.SystemdIsActive(
         host: session.host,
         username: session.username,
@@ -324,7 +326,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         service: service,
       )
-    OpenBmcSystemdRestart { service } =>
+    extdeps.bmc.openbmc_operation.OpenBmcSystemdRestart { service } =>
       openbmc.PasswordSshTransport.SystemdRestart(
         host: session.host,
         username: session.username,
@@ -332,7 +334,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         service: service,
       )
-    OpenBmcZoneFailsafe { zone_path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcZoneFailsafe { zone_path } =>
       openbmc.PasswordSshTransport.ZoneFailsafe(
         host: session.host,
         username: session.username,
@@ -340,7 +342,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         zone_path: zone_path,
       )
-    OpenBmcSensorServices { sensor_path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcSensorServices { sensor_path } =>
       openbmc.PasswordSshTransport.SensorServices(
         host: session.host,
         username: session.username,
@@ -348,7 +350,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         sensor_path: sensor_path,
       )
-    OpenBmcSensorValue { service, sensor_path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcSensorValue { service, sensor_path } =>
       openbmc.PasswordSshTransport.SensorValue(
         host: session.host,
         username: session.username,
@@ -357,9 +359,9 @@ fn openbmc_execute(
         service: service,
         sensor_path: sensor_path,
       )
-    OpenBmcSensorThreshold { service, sensor_path, threshold } =>
+    extdeps.bmc.openbmc_operation.OpenBmcSensorThreshold { service, sensor_path, threshold } =>
       match threshold {
-        OpenBmcWarningLow =>
+        extdeps.bmc.openbmc_operation.OpenBmcWarningLow =>
           openbmc.PasswordSshTransport.SensorWarningLow(
         host: session.host,
         username: session.username,
@@ -368,7 +370,7 @@ fn openbmc_execute(
         service: service,
         sensor_path: sensor_path,
       )
-        OpenBmcCriticalLow =>
+        extdeps.bmc.openbmc_operation.OpenBmcCriticalLow =>
           openbmc.PasswordSshTransport.SensorCriticalLow(
         host: session.host,
         username: session.username,
@@ -378,9 +380,9 @@ fn openbmc_execute(
         sensor_path: sensor_path,
       )
       }
-    OpenBmcFanConfigScalar { config_path, query } =>
+    extdeps.bmc.openbmc_operation.OpenBmcFanConfigScalar { config_path, query } =>
       match query {
-        OpenBmcStepwiseCount =>
+        extdeps.bmc.openbmc_operation.OpenBmcStepwiseCount =>
           openbmc.PasswordSshTransport.FanStepwiseCount(
         host: session.host,
         username: session.username,
@@ -388,7 +390,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         config_path: config_path,
       )
-        OpenBmcMinimumDuty =>
+        extdeps.bmc.openbmc_operation.OpenBmcMinimumDuty =>
           openbmc.PasswordSshTransport.FanMinimumDuty(
         host: session.host,
         username: session.username,
@@ -396,7 +398,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         config_path: config_path,
       )
-        OpenBmcZoneFailsafeDuty =>
+        extdeps.bmc.openbmc_operation.OpenBmcZoneFailsafeDuty =>
           openbmc.PasswordSshTransport.FanZoneFailsafeDuty(
         host: session.host,
         username: session.username,
@@ -404,7 +406,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         config_path: config_path,
       )
-        OpenBmcSensorFailsafeDuty =>
+        extdeps.bmc.openbmc_operation.OpenBmcSensorFailsafeDuty =>
           openbmc.PasswordSshTransport.FanSensorFailsafeDuty(
         host: session.host,
         username: session.username,
@@ -412,7 +414,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         config_path: config_path,
       )
-        OpenBmcPositiveHysteresis =>
+        extdeps.bmc.openbmc_operation.OpenBmcPositiveHysteresis =>
           openbmc.PasswordSshTransport.FanPositiveHysteresis(
         host: session.host,
         username: session.username,
@@ -420,7 +422,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         config_path: config_path,
       )
-        OpenBmcNegativeHysteresis =>
+        extdeps.bmc.openbmc_operation.OpenBmcNegativeHysteresis =>
           openbmc.PasswordSshTransport.FanNegativeHysteresis(
         host: session.host,
         username: session.username,
@@ -428,7 +430,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         config_path: config_path,
       )
-        OpenBmcReadingCount =>
+        extdeps.bmc.openbmc_operation.OpenBmcReadingCount =>
           openbmc.PasswordSshTransport.FanReadingCount(
         host: session.host,
         username: session.username,
@@ -436,7 +438,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         config_path: config_path,
       )
-        OpenBmcOutputCount =>
+        extdeps.bmc.openbmc_operation.OpenBmcOutputCount =>
           openbmc.PasswordSshTransport.FanOutputCount(
         host: session.host,
         username: session.username,
@@ -444,7 +446,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         config_path: config_path,
       )
-        OpenBmcReadingAt { index } =>
+        extdeps.bmc.openbmc_operation.OpenBmcReadingAt { index } =>
           openbmc.PasswordSshTransport.FanReadingAt(
         host: session.host,
         username: session.username,
@@ -453,7 +455,7 @@ fn openbmc_execute(
         config_path: config_path,
         index: index,
       )
-        OpenBmcOutputAt { index } =>
+        extdeps.bmc.openbmc_operation.OpenBmcOutputAt { index } =>
           openbmc.PasswordSshTransport.FanOutputAt(
         host: session.host,
         username: session.username,
@@ -462,7 +464,7 @@ fn openbmc_execute(
         config_path: config_path,
         index: index,
       )
-        OpenBmcFanControllerCount =>
+        extdeps.bmc.openbmc_operation.OpenBmcFanControllerCount =>
           openbmc.PasswordSshTransport.FanControllerCount(
         host: session.host,
         username: session.username,
@@ -470,7 +472,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         config_path: config_path,
       )
-        OpenBmcFanControllerNameAt { index } =>
+        extdeps.bmc.openbmc_operation.OpenBmcFanControllerNameAt { index } =>
           openbmc.PasswordSshTransport.FanControllerNameAt(
         host: session.host,
         username: session.username,
@@ -479,7 +481,7 @@ fn openbmc_execute(
         config_path: config_path,
         index: index,
       )
-        OpenBmcFanInputCountAt { fan_index } =>
+        extdeps.bmc.openbmc_operation.OpenBmcFanInputCountAt { fan_index } =>
           openbmc.PasswordSshTransport.FanInputCountAt(
         host: session.host,
         username: session.username,
@@ -488,7 +490,7 @@ fn openbmc_execute(
         config_path: config_path,
         fan_index: fan_index,
       )
-        OpenBmcFanInputAt { fan_index, input_index } =>
+        extdeps.bmc.openbmc_operation.OpenBmcFanInputAt { fan_index, input_index } =>
           openbmc.PasswordSshTransport.FanInputAt(
         host: session.host,
         username: session.username,
@@ -499,7 +501,7 @@ fn openbmc_execute(
         input_index: input_index,
       )
       }
-    OpenBmcFanConfigValidate { config_path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcFanConfigValidate { config_path } =>
       openbmc.PasswordSshTransport.FanConfigValidate(
         host: session.host,
         username: session.username,
@@ -507,7 +509,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         config_path: config_path,
       )
-    OpenBmcFanConfigVerify { config_path, desired } =>
+    extdeps.bmc.openbmc_operation.OpenBmcFanConfigVerify { config_path, desired } =>
       openbmc.PasswordSshTransport.FanConfigVerify(
         host: session.host,
         username: session.username,
@@ -516,7 +518,7 @@ fn openbmc_execute(
         config_path: config_path,
         desired_json: openbmc_fan_config_desired_json(desired: desired),
       )
-    OpenBmcPathIsWritable { path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcPathIsWritable { path } =>
       openbmc.PasswordSshTransport.PathIsWritable(
         host: session.host,
         username: session.username,
@@ -524,7 +526,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         path: path,
       )
-    OpenBmcPathExists { path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcPathExists { path } =>
       openbmc.PasswordSshTransport.PathExists(
         host: session.host,
         username: session.username,
@@ -532,7 +534,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         path: path,
       )
-    OpenBmcPathIsNonemptyFile { path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcPathIsNonemptyFile { path } =>
       openbmc.PasswordSshTransport.PathIsNonemptyFile(
         host: session.host,
         username: session.username,
@@ -540,7 +542,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         path: path,
       )
-    OpenBmcDiskUsageKib { path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcDiskUsageKib { path } =>
       openbmc.PasswordSshTransport.DiskUsageKib(
         host: session.host,
         username: session.username,
@@ -548,7 +550,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         path: path,
       )
-    OpenBmcFileSha256 { path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcFileSha256 { path } =>
       openbmc.PasswordSshTransport.FileSha256(
         host: session.host,
         username: session.username,
@@ -556,14 +558,14 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         path: path,
       )
-    OpenBmcUtcTimestamp =>
+    extdeps.bmc.openbmc_operation.OpenBmcUtcTimestamp =>
       openbmc.PasswordSshTransport.UtcTimestamp(
         host: session.host,
         username: session.username,
         password: session.password,
         known_hosts_path: session.known_hosts_path,
       )
-    OpenBmcMakeDirectory { path, parents } =>
+    extdeps.bmc.openbmc_operation.OpenBmcMakeDirectory { path, parents } =>
       if parents {
         openbmc.PasswordSshTransport.MakeDirectoryParents(
         host: session.host,
@@ -581,7 +583,7 @@ fn openbmc_execute(
         path: path,
       )
       }
-    OpenBmcRemoveDirectory { path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcRemoveDirectory { path } =>
       openbmc.PasswordSshTransport.RemoveDirectory(
         host: session.host,
         username: session.username,
@@ -589,7 +591,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         path: path,
       )
-    OpenBmcRemoveFile { path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcRemoveFile { path } =>
       openbmc.PasswordSshTransport.RemoveFile(
         host: session.host,
         username: session.username,
@@ -597,7 +599,7 @@ fn openbmc_execute(
         known_hosts_path: session.known_hosts_path,
         path: path,
       )
-    OpenBmcCopyFilePreservingMetadata { source_path, destination_path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcCopyFilePreservingMetadata { source_path, destination_path } =>
       openbmc.PasswordSshTransport.CopyFilePreservingMetadata(
         host: session.host,
         username: session.username,
@@ -606,7 +608,7 @@ fn openbmc_execute(
         source_path: source_path,
         destination_path: destination_path,
       )
-    OpenBmcRenameReplace { source_path, destination_path } =>
+    extdeps.bmc.openbmc_operation.OpenBmcRenameReplace { source_path, destination_path } =>
       openbmc.PasswordSshTransport.RenameReplace(
         host: session.host,
         username: session.username,
@@ -615,14 +617,14 @@ fn openbmc_execute(
         source_path: source_path,
         destination_path: destination_path,
       )
-    OpenBmcSynchronizeFilesystems =>
+    extdeps.bmc.openbmc_operation.OpenBmcSynchronizeFilesystems =>
       openbmc.PasswordSshTransport.SynchronizeFilesystems(
         host: session.host,
         username: session.username,
         password: session.password,
         known_hosts_path: session.known_hosts_path,
       )
-    OpenBmcWaitSeconds { duration } =>
+    extdeps.bmc.openbmc_operation.OpenBmcWaitSeconds { duration } =>
       openbmc.PasswordSshTransport.WaitSeconds(
         host: session.host,
         username: session.username,
@@ -795,9 +797,9 @@ fn openbmc_sensor_integer_projection(content: String) -> OpenBmcSensorValueResul
     output_encoding: extdeps.tools.jq.JqRawOutput,
     exit_policy: extdeps.tools.jq.JqProgramExit,
   }) {
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       OpenBmcSensorValueRefused { reason: "sensor value projection could not be lowered to a jq invocation" }
-    Accepted { value: plan, diagnostics: _ } => {
+    v2.std.diagnostic.Accepted { value: plan, diagnostics: _ } => {
       let observed = extdeps.tools.jq.jq_execute_admitted_plan(plan: plan)
       openbmc_sensor_integer_projection_result(
         outcome: extdeps.tools.jq.jq_classify_observation(plan: plan, observation: observed),
@@ -815,10 +817,10 @@ fn openbmc_sensor_integer_projection_result(
   outcome: extdeps.tools.jq.JqOutcome,
 ) -> OpenBmcSensorValueResult {
   match outcome {
-    JqExecutionRefused { exit_code: _, stderr: stderr } =>
+    extdeps.tools.jq.JqExecutionRefused { exit_code: _, stderr: stderr } =>
       OpenBmcSensorValueRefused { reason: stderr }
-    JqOutputAbsent => OpenBmcSensorValueAbsent
-    JqOutputPresent { text: text } =>
+    extdeps.tools.jq.JqOutputAbsent => OpenBmcSensorValueAbsent
+    extdeps.tools.jq.JqOutputPresent { text: text } =>
       match parse_int(s: std.algebra.trim(text)) {
         Absent =>
           OpenBmcSensorValueRefused {
@@ -1139,7 +1141,7 @@ fn openbmc_file_sha256(
         if hex.length() != 64 {
           OpenBmcDigestRefused { reason: "OpenBMC SHA-256 response is not 64 hexadecimal digits" }
         } else {
-          OpenBmcDigestObserved { digest: sha256_digest(hex: hex) }
+          OpenBmcDigestObserved { digest: extdeps.crypto.hash.sha256_digest(hex: hex) }
         }
     }
   }

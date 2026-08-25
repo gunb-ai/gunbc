@@ -177,7 +177,7 @@ fn sample_unit_label(rows: List<extdeps.ci_runner.types.RunnerShapeRow>) -> Samp
 }
 
 fn first_label(rows: List<extdeps.ci_runner.types.RunnerShapeRow>) -> std.types.NonEmptyStr {
-  fold(rows, init: "none" as std.types.NonEmptyStr, f: (acc, r) => if acc == "none" { r.label as std.types.NonEmptyStr } else { acc })
+  fold(rows, init: "none" as std.types.NonEmptyStr, f: (acc, r) => if acc == "none" { r.label } else { acc })
 }
 
 fn first_ratio(rows: List<extdeps.ci_runner.types.RunnerShapeRow>) -> std.nat.Nat {

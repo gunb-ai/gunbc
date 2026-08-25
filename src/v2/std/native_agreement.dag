@@ -15,24 +15,24 @@ fn octet_display(octet: Int) -> String {
   } else if octet == 1 {
     "1"
   } else {
-    integer_nat_to_decimal_string(value: octet)
+    v2.std.integer.integer_nat_to_decimal_string(value: octet)
   }
 }
 
 fn runtime_value_discriminant_octet(value: v2.std.runtime.RuntimeValue) -> v2.std.optional.Optional<Int> {
   match value {
-    RuntimePrimitive {
-      value: RuntimePrimitiveValue { bytes: bytes, primitive_type: _ }
+    v2.std.runtime.RuntimePrimitive {
+      value: v2.std.runtime.RuntimePrimitiveValue { bytes: bytes, primitive_type: _ }
     } =>
-      list_at_optional(xs: bytes, index: 1)
+      v2.std.collection.list_at_optional(xs: bytes, index: 1)
     _ => v2.std.optional.Absent
   }
 }
 
 fn runtime_value_octet_label(value: v2.std.runtime.RuntimeValue) -> String {
   match runtime_value_discriminant_octet(value: value) {
-    Present { value: octet } => octet_display(octet: octet)
-    Absent => "?"
+    v2.std.optional.Present { value: octet } => octet_display(octet: octet)
+    v2.std.optional.Absent => "?"
   }
 }
 
@@ -50,11 +50,11 @@ fn format_native_agreement_divergence(d: NativeAgreementDivergence) -> String {
 }
 
 fn first_native_agreement_divergence(
-  divergences: std.algebra.FreeMonoid<NativeAgreementDivergence>
+  divergences: List<NativeAgreementDivergence>
 ) -> v2.std.optional.Optional<NativeAgreementDivergence> {
   match divergences {
-    Empty => v2.std.optional.Absent
-    Cons { head: d, tail: _ } => v2.std.optional.Present { value: d }
+    v2.std.algebra.Empty => v2.std.optional.Absent
+    std.algebra.Cons { head: d, tail: _ } => v2.std.optional.Present { value: d }
   }
 }
 
@@ -62,7 +62,7 @@ fn native_agreement_failure_receipt(
   divergences: List<NativeAgreementDivergence>
 ) -> String {
   match first_native_agreement_divergence(divergences: divergences) {
-    Present { value: d } => format_native_agreement_divergence(d: d)
-    Absent => ""
+    v2.std.optional.Present { value: d } => format_native_agreement_divergence(d: d)
+    v2.std.optional.Absent => ""
   }
 }

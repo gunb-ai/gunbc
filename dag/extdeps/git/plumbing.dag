@@ -282,7 +282,7 @@ service git.Plumbing {
 // THE EMPTY-STRING OLD VALUE IS A TRANSPORT ENCODING, AND IT LIVES ONLY IN THE ARGV ABOVE.
 // git's `update-ref <ref> <new> <old>` treats an EMPTY old value as "this ref must not
 // exist"; it is git's wire spelling of a precondition, not a semantic value a caller could
-// hold. A caller-facing `expected_old: Optional<extdeps.git.object_store.GitObjectId>` would conflate four states
+// hold. A caller-facing `expected_old: Optional<GitObjectId>` would conflate four states
 // with different remedies -- create-only, update unconditionally, the caller did not supply
 // the fact, and the caller does not know the current value -- which is the state-space
 // conflation DESIGN section 5 names. So the three transitions are three named arms and the
@@ -345,7 +345,7 @@ fn git_exact_ref_mutation_precondition(mutation: GitExactRefMutation) -> GitRefO
   }
 }
 
-fn git_ref_observation_eq(left: GitRefObservation, right: GitRefObservation) -> std.types.Bool {
+fn git_ref_observation_eq(left: GitRefObservation, right: GitRefObservation) -> Bool {
   match left {
     GitRefObserved { oid } =>
       match right {
@@ -433,7 +433,7 @@ fn git_ref_mutation_outcome_observed(
   }
 }
 
-fn git_ref_mutation_applied(outcome: GitRefMutationOutcome) -> std.types.Bool {
+fn git_ref_mutation_applied(outcome: GitRefMutationOutcome) -> Bool {
   match outcome {
     GitRefMutationApplied { mutation } => true
     GitRefMutationPreconditionNotHeld { mutation, observed } => false

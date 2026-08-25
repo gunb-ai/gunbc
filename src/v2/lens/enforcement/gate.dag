@@ -11,7 +11,7 @@ type QuestionZeroVerdict {
   audit_residue_counted: LegVerdict
 }
 
-fn question_zero_verdict_holds(v: QuestionZeroVerdict) -> v2.std.logic.Bool {
+fn question_zero_verdict_holds(v: QuestionZeroVerdict) -> Bool {
   leg_holds(l: v.unenrolled)
     && leg_holds(l: v.unjustified)
     && leg_holds(l: v.redundant_claim)
@@ -27,27 +27,27 @@ fn lens_closure_question_zero_verdict(
   QuestionZeroVerdict {
     intent_id: intent.id,
     unenrolled: leg_of(
-      ok: lens_module_gate_unenrolled_count_from_facts(facts: facts, bound_module_paths: bound_module_paths) == 0,
+      ok: v2.lens.enforcement.lens_module_gate.lens_module_gate_unenrolled_count_from_facts(facts: facts, bound_module_paths: bound_module_paths) == 0,
       reason: "candidate lens module is not enrolled and not on the consolidated roster"
     ),
     unjustified: leg_of(
-      ok: lens_module_gate_unjustified_count_from_facts(facts: facts, surfaces: surfaces) == 0,
+      ok: v2.lens.enforcement.lens_module_gate.lens_module_gate_unjustified_count_from_facts(facts: facts, surfaces: surfaces) == 0,
       reason: "candidate lens module lacks a lens invariant surface admission row"
     ),
     redundant_claim: leg_of(
-      ok: lens_module_gate_redundant_blocking_count_from_surfaces(surfaces: surfaces) == 0,
+      ok: v2.lens.enforcement.lens_module_gate.lens_module_gate_redundant_blocking_count_from_surfaces(surfaces: surfaces) == 0,
       reason: "lens module claims a genuinely-new invariant but shares verdict-authority and remedy with an enrolled peer"
     ),
     audit_residue_counted: leg_of(
-      ok: lens_module_gate_audit_residue_count_from_surfaces(surfaces: surfaces) > 0
-        || lens_module_gate_redundant_blocking_count_from_surfaces(surfaces: surfaces) == 0,
+      ok: v2.lens.enforcement.lens_module_gate.lens_module_gate_audit_residue_count_from_surfaces(surfaces: surfaces) > 0
+        || v2.lens.enforcement.lens_module_gate.lens_module_gate_redundant_blocking_count_from_surfaces(surfaces: surfaces) == 0,
       reason: "undecidable meaning-residue must be counted on the audit roster, never silently absorbed"
     )
   }
 }
 
-fn lens_closure_question_zero_holds() -> v2.std.logic.Bool {
-  lens_module_gate_blocking_holds()
+fn lens_closure_question_zero_holds() -> Bool {
+  v2.lens.enforcement.lens_module_gate.lens_module_gate_blocking_holds()
 }
 
 type IntentVerdict {
@@ -64,82 +64,82 @@ type ReceiptLookup = ReceiptFound { value: v2.lens.enforcement.contract.Enrollme
 
 type ContractLookup = ContractFound { value: v2.lens.enforcement.contract.LensContract } | ContractAbsent
 
-fn leg_holds(l: LegVerdict) -> v2.std.logic.Bool {
+fn leg_holds(l: LegVerdict) -> Bool {
   match l {
     LegHolds => true
     LegFails { reason } => false
   }
 }
 
-fn leg_fails(l: LegVerdict) -> v2.std.logic.Bool {
+fn leg_fails(l: LegVerdict) -> Bool {
   !leg_holds(l: l)
 }
 
-fn leg_of(ok: v2.std.logic.Bool, reason: String) -> LegVerdict {
+fn leg_of(ok: Bool, reason: String) -> LegVerdict {
   if ok { LegHolds } else { LegFails { reason: reason } }
 }
 
-fn contract_answers(c: v2.lens.enforcement.contract.LensContract, p: v2.lens.enforcement.standing_intent.IntentProperty) -> v2.std.logic.Bool {
+fn contract_answers(c: v2.lens.enforcement.contract.LensContract, p: v2.lens.enforcement.standing_intent.IntentProperty) -> Bool {
   match p {
-    LensFamily { lens } => lens_id_v0_eq(left: c.entry.lens_id, right: lens)
-    LensHygieneLiveness => false
-    LensHygieneSelfApply => false
-    LensClosureQuestionZero => false
-    ModelAnemia => false
-    SingleAuthorityConsolidation => false
+    v2.lens.enforcement.standing_intent.LensFamily { lens } => v2.lens.registry.lens_id_v0_eq(left: c.entry.lens_id, right: lens)
+    v2.lens.enforcement.standing_intent.LensHygieneLiveness => false
+    v2.lens.enforcement.standing_intent.LensHygieneSelfApply => false
+    v2.lens.enforcement.standing_intent.LensClosureQuestionZero => false
+    v2.lens.enforcement.standing_intent.ModelAnemia => false
+    v2.lens.enforcement.standing_intent.SingleAuthorityConsolidation => false
   }
 }
 
-fn receipt_matches(r: v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt, cid: v2.lens.registry.LensIdV0) -> v2.std.logic.Bool {
-  lens_id_v0_eq(left: r.contract_id, right: cid)
+fn receipt_matches(r: v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt, cid: v2.lens.registry.LensIdV0) -> Bool {
+  v2.lens.registry.lens_id_v0_eq(left: r.contract_id, right: cid)
 }
 
 fn find_receipt(cid: v2.lens.registry.LensIdV0, receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>) -> ReceiptLookup {
-  match list_head(xs: filter(xs: receipts, predicate: fn(r) { receipt_matches(r: r, cid: cid) })) {
-    HeadFound { value: r } => ReceiptFound { value: r }
-    HeadAbsent => ReceiptAbsent
+  match v2.std.algebra.list_head(xs: v2.std.algebra.filter(xs: receipts, predicate: fn(r) { receipt_matches(r: r, cid: cid) })) {
+    v2.std.algebra.HeadFound { value: r } => ReceiptFound { value: r }
+    v2.std.algebra.HeadAbsent => ReceiptAbsent
   }
 }
 
-fn narrowing_allowed(reason: v2.lens.enforcement.vocab.NarrowingReason, allowed: List<v2.lens.enforcement.vocab.NarrowingReason>) -> v2.std.logic.Bool {
-  any(xs: allowed, predicate: fn(a) { narrowing_reason_same_variant(a: a, b: reason) })
+fn narrowing_allowed(reason: v2.lens.enforcement.vocab.NarrowingReason, allowed: List<v2.lens.enforcement.vocab.NarrowingReason>) -> Bool {
+  v2.std.algebra.any(xs: allowed, predicate: fn(a) { v2.lens.enforcement.vocab.narrowing_reason_same_variant(a: a, b: reason) })
 }
 
 fn scope_leg(intent: v2.lens.enforcement.standing_intent.StandingIntent, s: v2.lens.enforcement.vocab.ScopeSatisfaction) -> LegVerdict {
   match s {
-    ScopeCovers => LegHolds
-    ScopeMissing => LegFails { reason: "scope missing: undeclared reach gap" }
-    ScopeNarrowed { missing, reason } =>
+    v2.lens.enforcement.vocab.ScopeCovers => LegHolds
+    v2.lens.enforcement.vocab.ScopeMissing => LegFails { reason: "scope missing: undeclared reach gap" }
+    v2.lens.enforcement.vocab.ScopeNarrowed { missing, reason } =>
       if narrowing_allowed(reason: reason, allowed: intent.allowed_narrowing) {
         LegHolds
       } else {
         match intent.default_mode {
-          Blocking => LegFails { reason: "blocking intent narrowed by a reason not on the allow-list" }
-          AuditOnly => LegHolds
-          Advisory => LegHolds
+          v2.lens.enforcement.vocab.Blocking => LegFails { reason: "blocking intent narrowed by a reason not on the allow-list" }
+          v2.lens.enforcement.vocab.AuditOnly => LegHolds
+          v2.lens.enforcement.vocab.Advisory => LegHolds
         }
       }
   }
 }
 
-fn self_ok(required: v2.std.logic.Bool, s: v2.lens.enforcement.vocab.SelfApplicationStatus) -> v2.std.logic.Bool {
-  if required { self_application_ok(s: s) } else { true }
+fn self_ok(required: Bool, s: v2.lens.enforcement.vocab.SelfApplicationStatus) -> Bool {
+  if required { v2.lens.enforcement.vocab.self_application_ok(s: s) } else { true }
 }
 
-fn discovered_covers_required(required_subjects: v2.lens.enforcement.vocab.SubjectRoster, discovered: v2.lens.enforcement.vocab.SubjectRoster) -> v2.std.logic.Bool {
-  subject_roster_covers(claimed: discovered, desired: required_subjects)
+fn discovered_covers_required(required_subjects: v2.lens.enforcement.vocab.SubjectRoster, discovered: v2.lens.enforcement.vocab.SubjectRoster) -> Bool {
+  v2.lens.enforcement.vocab.subject_roster_covers(claimed: discovered, desired: required_subjects)
 }
 
 fn find_answering_contract(intent: v2.lens.enforcement.standing_intent.StandingIntent, contracts: List<v2.lens.enforcement.contract.LensContract>) -> ContractLookup {
-  match list_head(xs: filter(xs: contracts, predicate: fn(c) { contract_answers(c: c, p: intent.property) })) {
-    HeadFound { value: c } => ContractFound { value: c }
-    HeadAbsent => ContractAbsent
+  match v2.std.algebra.list_head(xs: v2.std.algebra.filter(xs: contracts, predicate: fn(c) { contract_answers(c: c, p: intent.property) })) {
+    v2.std.algebra.HeadFound { value: c } => ContractFound { value: c }
+    v2.std.algebra.HeadAbsent => ContractAbsent
   }
 }
 
 fn claimed_mode_leg(c: v2.lens.enforcement.contract.LensContract, intent: v2.lens.enforcement.standing_intent.StandingIntent) -> LegVerdict {
   leg_of(
-    ok: enforcement_mode_satisfies(actual: c.mode, required: intent.default_mode),
+    ok: v2.lens.enforcement.vocab.enforcement_mode_satisfies(actual: c.mode, required: intent.default_mode),
     reason: "answering contract's mode does not satisfy the intent's required mode"
   )
 }
@@ -170,15 +170,15 @@ fn intent_family_verdict(intent: v2.lens.enforcement.standing_intent.StandingInt
         claimed: claimed_mode_leg(c: c, intent: intent),
         scope_covered: scope_leg(intent: intent, s: r.scope_satisfaction),
         subjects_covered: leg_of(ok: discovered_covers_required(required_subjects: intent.required_subjects, discovered: r.discovered_subject_names), reason: "discovered subjects do not cover required_subjects (the decl_facts / v1-reach gap, e.g. build_type_env)"),
-        live_consumer: leg_of(ok: consumer_satisfies(actual: r.consumer_enrolled, required: intent.required_consumer), reason: "enrolled consumer does not satisfy the required consumer"),
-        red_control: leg_of(ok: red_control_passed(s: r.red_control_status), reason: "red control did not pass by execution"),
+        live_consumer: leg_of(ok: v2.lens.enforcement.vocab.consumer_satisfies(actual: r.consumer_enrolled, required: intent.required_consumer), reason: "enrolled consumer does not satisfy the required consumer"),
+        red_control: leg_of(ok: v2.lens.enforcement.vocab.red_control_passed(s: r.red_control_status), reason: "red control did not pass by execution"),
         self_application: leg_of(ok: self_ok(required: intent.self_application_required, s: r.self_application_status), reason: "lens does not self-apply and carries no exemption")
       }
     }
   }
 }
 
-fn intent_verdict_holds(v: IntentVerdict) -> v2.std.logic.Bool {
+fn intent_verdict_holds(v: IntentVerdict) -> Bool {
   leg_holds(l: v.claimed)
     && leg_holds(l: v.scope_covered)
     && leg_holds(l: v.subjects_covered)
@@ -187,45 +187,45 @@ fn intent_verdict_holds(v: IntentVerdict) -> v2.std.logic.Bool {
     && leg_holds(l: v.self_application)
 }
 
-fn intent_family_holds(intent: v2.lens.enforcement.standing_intent.StandingIntent, contracts: List<v2.lens.enforcement.contract.LensContract>, receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>) -> v2.std.logic.Bool {
+fn intent_family_holds(intent: v2.lens.enforcement.standing_intent.StandingIntent, contracts: List<v2.lens.enforcement.contract.LensContract>, receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>) -> Bool {
   intent_verdict_holds(v: intent_family_verdict(intent: intent, contracts: contracts, receipts: receipts))
 }
 
-fn contract_internally_consistent(c: v2.lens.enforcement.contract.LensContract, receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>) -> v2.std.logic.Bool {
+fn contract_internally_consistent(c: v2.lens.enforcement.contract.LensContract, receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>) -> Bool {
   match c.mode {
-    Blocking => match find_receipt(cid: c.entry.lens_id, receipts: receipts) {
-      ReceiptFound { value: r } => consumer_is_live(k: r.consumer_enrolled)
+    v2.lens.enforcement.vocab.Blocking => match find_receipt(cid: c.entry.lens_id, receipts: receipts) {
+      ReceiptFound { value: r } => v2.lens.enforcement.vocab.consumer_is_live(k: r.consumer_enrolled)
       ReceiptAbsent => false
     }
-    AuditOnly => true
-    Advisory => true
+    v2.lens.enforcement.vocab.AuditOnly => true
+    v2.lens.enforcement.vocab.Advisory => true
   }
 }
 
-fn blocking_consumers_enrolled(contracts: List<v2.lens.enforcement.contract.LensContract>, receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>) -> v2.std.logic.Bool {
-  for_all(xs: contracts, predicate: fn(c) { contract_internally_consistent(c: c, receipts: receipts) })
+fn blocking_consumers_enrolled(contracts: List<v2.lens.enforcement.contract.LensContract>, receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>) -> Bool {
+  v2.std.algebra.for_all(xs: contracts, predicate: fn(c) { contract_internally_consistent(c: c, receipts: receipts) })
 }
 
-fn receipt_self_ok(r: v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt) -> v2.std.logic.Bool {
-  self_application_ok(s: r.self_application_status)
+fn receipt_self_ok(r: v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt) -> Bool {
+  v2.lens.enforcement.vocab.self_application_ok(s: r.self_application_status)
 }
 
-fn lenses_self_apply_or_exempt_holds(receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>) -> v2.std.logic.Bool {
-  for_all(xs: receipts, predicate: fn(r) { receipt_self_ok(r: r) })
+fn lenses_self_apply_or_exempt_holds(receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>) -> Bool {
+  v2.std.algebra.for_all(xs: receipts, predicate: fn(r) { receipt_self_ok(r: r) })
 }
 
-fn non_empty_string(s: String) -> v2.std.logic.Bool {
+fn non_empty_string(s: String) -> Bool {
   !(s == "")
 }
 
-fn intent_admissible(i: v2.lens.enforcement.standing_intent.StandingIntent) -> v2.std.logic.Bool {
+fn intent_admissible(i: v2.lens.enforcement.standing_intent.StandingIntent) -> Bool {
   i.recurring
     && i.receiptable
     && non_empty_string(s: i.displaced_cost)
     && non_empty_string(s: i.mechanism_class)
-    && non_empty(xs: i.desired_scope.roots)
+    && v2.std.algebra.non_empty(xs: i.desired_scope.roots)
 }
 
-fn all_intents_admissible(intents: List<v2.lens.enforcement.standing_intent.StandingIntent>) -> v2.std.logic.Bool {
-  for_all(xs: intents, predicate: fn(i) { intent_admissible(i: i) })
+fn all_intents_admissible(intents: List<v2.lens.enforcement.standing_intent.StandingIntent>) -> Bool {
+  v2.std.algebra.for_all(xs: intents, predicate: fn(i) { intent_admissible(i: i) })
 }

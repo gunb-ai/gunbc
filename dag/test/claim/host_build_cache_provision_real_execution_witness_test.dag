@@ -1,5 +1,6 @@
 module test.claim.host_build_cache_provision_real_execution
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data real_execution_home_doc: String = "Wet execution witness for EnsureBuildCacheInstance fail-closed behaviour: it runs a real bash body against a real fake-sccache on disk. read-back — the modeled binary answers non-zero, so the reconcile must be NotConverged, never Converged/ExitSuccess; the fake lives at an explicit OFF-PATH path passed as the read-back body's `binary` argument, so this witness exercises the read-back arm on the binary this lane provisioned. The earlier PATH-shadow shell witnesses were withdrawn 2026-07-24 (review 42343): the PATH-shadow judgement is proven at the MODEL grain (host_build_cache_provision_design_witness_test.design_witness_path_shadow_refuses_fail_closed) and its live observation is staged on the typed-argv dissolve-on (#5828), not emitted as hand-shell. Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — shell.Mktemp.Dir / Filesystem.Write / shell.Exec.Run have no mock_response. Transport scripts mint through the counted retained_runtime bridge (shell-to-dag section 5.E construction wall, #7184), never the deleted free-minter."
@@ -13,7 +14,7 @@ fn write_fake_sccache(dir_path: String, exit_code: String) -> Bool {
   let chmod = shell.Exec.Run(
     script: gunbc.retained_shell_script.retained_runtime(
       body: concat("chmod +x ", path),
-      reason: "build-cache provision witness chmod +x fake sccache stub" as std.types.NonEmptyStr,
+      reason: "build-cache provision witness chmod +x fake sccache stub" as NonEmptyStr,
     ),
     expect: gunbc.output_policy.ExpectSuccess,
   )
@@ -25,7 +26,7 @@ fn run_body(prelude: String, body: String) -> gunbc.host_effect_realize.ShellExe
   let result = shell.Exec.Run(
     script: gunbc.retained_shell_script.retained_runtime(
       body: gunbc.shell_bash_runner.shell_exec_via_bash(body: full),
-      reason: "build-cache provision witness body under fake failing sccache" as std.types.NonEmptyStr,
+      reason: "build-cache provision witness body under fake failing sccache" as NonEmptyStr,
     ),
     expect: gunbc.output_policy.OutcomeIsData,
   )
@@ -53,10 +54,10 @@ test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
     && string_contains(s: observed.stdout, pattern: "read_back=FAILED")
     && cleaned.success
     && match reconciled {
-      NotConverged { reason: why, applied: _ } =>
+      std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
         string_contains(s: why, pattern: "fail-closed")
           && string_contains(s: why, pattern: "EnsureBuildCacheInstance")
-      Converged { evidence: _, applied: _ } => false
+      std.realization_reconcile.Converged { evidence: _, applied: _ } => false
     }
 }
 

@@ -34,7 +34,7 @@ fn confinement_axis_is_prefix_grain(axis: ConfinementSurfaceAxis) -> Bool {
 data confinement_census_repository: gunbc.repository_census_observation.RepositoryIdentity = "gunbc" as gunbc.repository_census_observation.RepositoryIdentity
 
 fn confinement_census_decl(name: String) -> std.decl_ref.DeclarationRef {
-  decl_ref(module_path: "gunbc.realization_vocab_confinement_census", decl_name: name)
+  std.decl_ref.decl_ref(module_path: "gunbc.realization_vocab_confinement_census", decl_name: name)
 }
 
 data confinement_census_population: gunbc.repository_census_observation.RepositoryPopulation = gunbc.repository_census_observation.RepositoryPopulation {
@@ -57,7 +57,7 @@ fn confinement_census_invocation(
   gunbc.repository_census_observation.CensusMethodRunIdentity {
     classifier: confinement_census_decl(name: procedure),
     classifier_revision: revision,
-    invocation_identity: content_hash_atom(value: invocation as std.types.NonEmptyStr),
+    invocation_identity: std.content_hash.content_hash_atom(value: invocation as std.types.NonEmptyStr),
   }
 }
 
@@ -87,9 +87,9 @@ fn confinement_surface_declared_keys() -> List<gunbc.repository_census_observati
 }
 
 fn confinement_surface_row(key: String, axis: ConfinementSurfaceAxis) -> gunbc.repository_census_observation.CensusObservedRow {
-  census_observed_row(
+  gunbc.repository_census_observation.census_observed_row(
     subject: key as gunbc.repository_census_observation.CensusSubjectKey,
-    fact: content_hash_atom(value: confinement_axis_tag(axis: axis)),
+    fact: std.content_hash.content_hash_atom(value: confinement_axis_tag(axis: axis)),
   )
 }
 
@@ -106,7 +106,7 @@ fn confinement_surface_axis_of_declared_key() -> List<gunbc.repository_census_ob
 }
 
 fn confinement_surface_observation(revision: gunbc.guarantee_measurement.MeasurementRevision) -> gunbc.repository_census_observation.RepositoryCensusObservation {
-  repository_census_observation(
+  gunbc.repository_census_observation.repository_census_observation(
     population: confinement_census_population,
     observed_at_revision: revision,
     method_run: confinement_census_run(
@@ -118,7 +118,7 @@ fn confinement_surface_observation(revision: gunbc.guarantee_measurement.Measure
 }
 
 fn confinement_surface_denominator(revision: gunbc.guarantee_measurement.MeasurementRevision) -> gunbc.repository_census_coverage.CensusDenominatorObservation {
-  census_denominator_observation(
+  gunbc.repository_census_coverage.census_denominator_observation(
     population: confinement_census_population,
     observed_at_revision: revision,
     enumeration_run: confinement_census_run(
@@ -130,7 +130,7 @@ fn confinement_surface_denominator(revision: gunbc.guarantee_measurement.Measure
 }
 
 fn confinement_surface_coverage(revision: gunbc.guarantee_measurement.MeasurementRevision) -> gunbc.repository_census_coverage.CensusCoverageOutcome {
-  census_establish_coverage(
+  gunbc.repository_census_coverage.census_establish_coverage(
     denominator: confinement_surface_denominator(revision: revision),
     observation: confinement_surface_observation(revision: revision),
   )
@@ -153,7 +153,7 @@ fn confinement_control_observation(
   invocation: String,
   revision: gunbc.guarantee_measurement.MeasurementRevision,
 ) -> gunbc.repository_census_observation.RepositoryCensusObservation {
-  repository_census_observation(
+  gunbc.repository_census_observation.repository_census_observation(
     population: confinement_census_population,
     observed_at_revision: revision,
     method_run: confinement_census_invocation(
@@ -172,7 +172,7 @@ fn confinement_control_outcome(
   invocation: String,
   revision: gunbc.guarantee_measurement.MeasurementRevision,
 ) -> gunbc.repository_census_coverage.CensusCoverageOutcome {
-  census_establish_coverage(
+  gunbc.repository_census_coverage.census_establish_coverage(
     denominator: confinement_surface_denominator(revision: revision),
     observation: confinement_control_observation(
       rows: rows,
@@ -208,7 +208,7 @@ fn confinement_control_pair(revision: gunbc.guarantee_measurement.MeasurementRev
 fn confinement_conformance_outcome(
   revision: gunbc.guarantee_measurement.MeasurementRevision,
 ) -> gunbc.repository_census_coverage.CensusConformanceOutcome {
-  census_method_conformance_receipt(
+  gunbc.repository_census_coverage.census_method_conformance_receipt(
     pair: confinement_control_pair(revision: revision),
     method_run: confinement_census_run(
       procedure: "confinement_surface_axis_of_declared_key",
@@ -220,10 +220,10 @@ fn confinement_conformance_outcome(
 fn confinement_capability_receipt(
   revision: gunbc.guarantee_measurement.MeasurementRevision,
 ) -> gunbc.repository_census_coverage.CensusMethodCapabilityReceipt? {
-  census_method_capability_receipt(
+  gunbc.repository_census_coverage.census_method_capability_receipt(
     observation: confinement_surface_observation(revision: revision),
     capability: confinement_census_capability,
-    conformance: census_conformance_receipt_of(
+    conformance: gunbc.repository_census_coverage.census_conformance_receipt_of(
       outcome: confinement_conformance_outcome(revision: revision),
     ),
   )
@@ -242,13 +242,13 @@ type ConfinementSurfaceCeiling
 fn confinement_surface_ceiling(revision: gunbc.guarantee_measurement.MeasurementRevision) -> ConfinementSurfaceCeiling {
   match confinement_capability_receipt(revision: revision) {
     Present { value: receipt } =>
-      match census_inference_ceiling(
+      match gunbc.repository_census_coverage.census_inference_ceiling(
         capability_receipt: receipt,
         coverage: confinement_surface_coverage(revision: revision),
       ) {
-        CensusCeilingDerived { ceiling: ceiling } =>
+        gunbc.repository_census_coverage.CensusCeilingDerived { ceiling: ceiling } =>
           ConfinementCeilingDerived { ceiling: ceiling }
-        CensusCeilingRefusedRunMismatch {
+        gunbc.repository_census_coverage.CensusCeilingRefusedRunMismatch {
           coverage_classification_run_identity: coverage_run,
           capability_method_run_identity: method_run,
         } =>
@@ -279,7 +279,7 @@ fn confinement_surface_population_claim(
         observation: confinement_surface_observation(revision: revision),
         ceiling: ceiling,
       }
-      if census_ceiling_supports_semantic_subject_claim(ceiling: ceiling) {
+      if gunbc.repository_census_coverage.census_ceiling_supports_semantic_subject_claim(ceiling: ceiling) {
         Present { value: claim }
       } else {
         none
@@ -296,19 +296,19 @@ fn confinement_surface_population_claim(
 fn confinement_surface_declared_key_count(
   claim: ConfinementSurfacePopulationObserved,
 ) -> Int {
-  repository_census_row_count(observation: claim.observation)
+  gunbc.repository_census_observation.repository_census_row_count(observation: claim.observation)
 }
 
 fn confinement_surface_claimed_keys(
   claim: ConfinementSurfacePopulationObserved,
 ) -> List<gunbc.repository_census_observation.CensusSubjectKey> {
-  repository_census_subject_keys(observation: claim.observation)
+  gunbc.repository_census_observation.repository_census_subject_keys(observation: claim.observation)
 }
 
 fn confinement_surface_supports_undeclared_key_absence(
   claim: ConfinementSurfacePopulationObserved,
 ) -> Bool {
-  census_ceiling_supports_semantic_absence(ceiling: claim.ceiling)
+  gunbc.repository_census_coverage.census_ceiling_supports_semantic_absence(ceiling: claim.ceiling)
 }
 
 fn confinement_surface_prefix_grain_keys() -> List<gunbc.repository_census_observation.CensusSubjectKey> {

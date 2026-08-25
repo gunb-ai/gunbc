@@ -1,7 +1,7 @@
 module test.claim.machine_shape_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data rtx5090_domain: std.machine_shape.DomainId = "rtx5090" as std.machine_shape.DomainId
 data rtx5090_register_level: std.machine_shape.LevelId = "sm-register-file" as std.machine_shape.LevelId
@@ -10,7 +10,7 @@ data rtx5090_device_level: std.machine_shape.LevelId = "device-dram" as std.mach
 
 data dangling_domain: std.machine_shape.DomainId = "missing-domain" as std.machine_shape.DomainId
 
-data rtx5090_pcie_link: extdeps.storage.types.PcieLink = extdeps.storage.types.PcieLink { generation: Gen4, lane_count: 16 }
+data rtx5090_pcie_link: extdeps.storage.types.PcieLink = extdeps.storage.types.PcieLink { generation: extdeps.storage.types.Gen4, lane_count: 16 }
 
 data m5_domain: std.machine_shape.DomainId = "apple-m5-gpu" as std.machine_shape.DomainId
 data m5_register_level: std.machine_shape.LevelId = "sm-register-file" as std.machine_shape.LevelId
@@ -21,29 +21,29 @@ data rtx5090_sm_shared_bytes: std.nat.Nat = 102400
 data rtx5090_sm_register_bytes: std.nat.Nat = 262144
 
 fn shape_from_rtx5090_catalog() -> std.machine_shape.MachineShape {
-  match gpu_shape_from_catalog(input: extdeps.gpu.machine_shape.FromGpuModelCatalog {
+  match extdeps.gpu.machine_shape.gpu_shape_from_catalog(input: extdeps.gpu.machine_shape.FromGpuModelCatalog {
     domain: rtx5090_domain,
     register_level: rtx5090_register_level,
     shared_level: rtx5090_shared_level,
     device_level: rtx5090_device_level,
     row: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog,
   }) {
-    MachineShapeOk { shape: s } => s
-    MachineShapeRefused { cause: _ } => std.machine_shape.MachineShape { domains: [], edges: [] }
+    std.machine_shape.MachineShapeOk { shape: s } => s
+    std.machine_shape.MachineShapeRefused { cause: _ } => std.machine_shape.MachineShape { domains: [], edges: [] }
   }
 }
 
 test fn catalog_derivation_matches_row() -> Bool {
   let shape = shape_from_rtx5090_catalog()
   let memory = shape.domains.first().memory
-  let device = memory.skip(n: list_length(items: memory) - 1).first()
-  match machine_shape_domain_lane_count(shape: shape) {
+  let device = memory.skip(n: std.types.list_length(items: memory) - 1).first()
+  match std.machine_shape.machine_shape_domain_lane_count(shape: shape) {
     Present { value: lanes } =>
-      hardware_thread_count_value(t: lanes) == 21760
-        && byte_size_count(b: device.capacity) == byte_size_count(b: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog.memory.capacity)
+      std.measure.hardware_thread_count_value(t: lanes) == 21760
+        && std.measure.byte_size_count(b: device.capacity) == std.measure.byte_size_count(b: nvidia_rtx_5090_catalog.memory.capacity)
         && match device.bandwidth {
           Present { value: bw } =>
-            bandwidth_count(b: bw) == bandwidth_count(b: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog.memory_bandwidth)
+            std.measure.bandwidth_count(b: bw) == std.measure.bandwidth_count(b: nvidia_rtx_5090_catalog.memory_bandwidth)
           Absent => false
         }
     Absent => false
@@ -51,39 +51,39 @@ test fn catalog_derivation_matches_row() -> Bool {
 }
 
 test fn minimal_grant_is_single_domain() -> Bool {
-  machine_shape_is_single_domain(shape: shape_from_rtx5090_catalog())
+  std.machine_shape.machine_shape_is_single_domain(shape: shape_from_rtx5090_catalog())
 }
 
 fn shape_from_m5_catalog() -> std.machine_shape.MachineShape {
-  match gpu_shape_from_catalog(input: extdeps.gpu.machine_shape.FromGpuModelCatalog {
+  match extdeps.gpu.machine_shape.gpu_shape_from_catalog(input: extdeps.gpu.machine_shape.FromGpuModelCatalog {
     domain: m5_domain,
     register_level: m5_register_level,
     shared_level: m5_shared_level,
     device_level: m5_device_level,
     row: extdeps.gpu.apple.apple_m5_gpu_catalog,
   }) {
-    MachineShapeOk { shape: s } => s
-    MachineShapeRefused { cause: _ } => std.machine_shape.MachineShape { domains: [], edges: [] }
+    std.machine_shape.MachineShapeOk { shape: s } => s
+    std.machine_shape.MachineShapeRefused { cause: _ } => std.machine_shape.MachineShape { domains: [], edges: [] }
   }
 }
 
 test fn gpu_sm_cache_levels_integrated_when_cited() -> Bool {
   let memory = shape_from_rtx5090_catalog().domains.first().memory
-  list_length(items: memory) == 3
-    && byte_size_count(b: memory.first().capacity) == rtx5090_sm_register_bytes
-    && byte_size_count(b: memory.skip(n: 1).first().capacity) == rtx5090_sm_shared_bytes
+  std.types.list_length(items: memory) == 3
+    && std.measure.byte_size_count(b: memory.first().capacity) == rtx5090_sm_register_bytes
+    && std.measure.byte_size_count(b: memory.skip(n: 1).first().capacity) == rtx5090_sm_shared_bytes
 }
 
 test fn gpu_sm_cache_absent_when_ungranted() -> Bool {
-  list_length(items: shape_from_m5_catalog().domains.first().memory) == 1
+  std.types.list_length(items: shape_from_m5_catalog().domains.first().memory) == 1
 }
 
 test fn energy_derived_not_stored() -> Bool {
-  joule_count(j: energy_from_power_and_time(power: watt(count: 100), time: second(count: 5))) == 500
+  std.measure.joule_count(j: std.measure.energy_from_power_and_time(power: std.measure.watt(count: 100), time: std.measure.second(count: 5))) == 500
 }
 
 test fn pcie_interconnect_link_derives_bandwidth() -> Bool {
-  bandwidth_count(b: pcie_interconnect_link(link: rtx5090_pcie_link).bandwidth) == bandwidth_count(b: pcie_link_bandwidth(link: rtx5090_pcie_link))
+  std.measure.bandwidth_count(b: extdeps.storage.types.pcie_interconnect_link(link: rtx5090_pcie_link).bandwidth) == std.measure.bandwidth_count(b: extdeps.storage.types.pcie_link_bandwidth(link: rtx5090_pcie_link))
 }
 
 test fn red_dangling_domain_refuses() -> Bool {
@@ -94,14 +94,14 @@ test fn red_dangling_domain_refuses() -> Bool {
       std.machine_shape.LinkEdge {
         from: rtx5090_domain
         to: dangling_domain
-        link: pcie_interconnect_link(link: rtx5090_pcie_link)
+        link: extdeps.storage.types.pcie_interconnect_link(link: rtx5090_pcie_link)
       }
     ]
   }
-  match machine_shape_validate(shape: bad) {
-    MachineShapeRefused { cause: UnknownDomain { id: id } } => id == dangling_domain
-    MachineShapeRefused { cause: UnknownLevel { owner: _, level: _ } } => false
-    MachineShapeOk { shape: _ } => false
+  match std.machine_shape.machine_shape_validate(shape: bad) {
+    std.machine_shape.MachineShapeRefused { cause: std.machine_shape.UnknownDomain { id: id } } => id == dangling_domain
+    std.machine_shape.MachineShapeRefused { cause: std.machine_shape.UnknownLevel { owner: _, level: _ } } => false
+    std.machine_shape.MachineShapeOk { shape: _ } => false
   }
 }
 
@@ -117,11 +117,11 @@ test fn red_dangling_level_refuses() -> Bool {
       }
     ]
   }
-  match machine_shape_validate(shape: bad) {
-    MachineShapeRefused { cause: UnknownLevel { owner: o, level: l } } =>
+  match std.machine_shape.machine_shape_validate(shape: bad) {
+    std.machine_shape.MachineShapeRefused { cause: std.machine_shape.UnknownLevel { owner: o, level: l } } =>
       o == rtx5090_domain && l == bad_level
-    MachineShapeRefused { cause: UnknownDomain { id: _ } } => false
-    MachineShapeOk { shape: _ } => false
+    std.machine_shape.MachineShapeRefused { cause: std.machine_shape.UnknownDomain { id: _ } } => false
+    std.machine_shape.MachineShapeOk { shape: _ } => false
   }
 }
 

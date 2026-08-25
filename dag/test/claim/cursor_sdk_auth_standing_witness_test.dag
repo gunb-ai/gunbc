@@ -2,83 +2,83 @@ module test.claim.cursor_sdk_auth_standing_witness_test
 
 
 test fn auth_probe_authenticated_on_finished_result() -> Bool {
-  match cursor_sdk_auth_probe_from_run_result(
+  match gunbc.cursor_sdk_auth_probe.cursor_sdk_auth_probe_from_run_result(
     raw: "{\"status\":\"finished\",\"result\":\"ok\"}",
   ) {
-    CursorSdkAuthProbeAuthenticated => true
+    gunbc.cursor_sdk_auth_probe.CursorSdkAuthProbeAuthenticated => true
     _ => false
   }
 }
 
 test fn auth_probe_rejects_authentication_error() -> Bool {
-  match cursor_sdk_auth_probe_from_run_result(
+  match gunbc.cursor_sdk_auth_probe.cursor_sdk_auth_probe_from_run_result(
     raw: "{\"status\":\"error\",\"error\":{\"message\":\"bad key\",\"code\":\"authentication_error\"}}",
   ) {
-    CursorSdkAuthProbeCredentialsRejected { code: CursorSdkAuthenticationError } => true
+    gunbc.cursor_sdk_auth_probe.CursorSdkAuthProbeCredentialsRejected { code: extdeps.llm.cursor_sdk_errors.CursorSdkAuthenticationError } => true
     _ => false
   }
 }
 
 test fn auth_probe_rate_limit_is_auth_neutral_not_credential_rejection() -> Bool {
-  match cursor_sdk_auth_probe_from_run_result(
+  match gunbc.cursor_sdk_auth_probe.cursor_sdk_auth_probe_from_run_result(
     raw: "{\"status\":\"error\",\"error\":{\"message\":\"slow down\",\"code\":\"rate_limit_error\"}}",
   ) {
-    CursorSdkAuthProbeTerminalNonAuthenticationError { code: CursorSdkRateLimitError } => true
-    CursorSdkAuthProbeCredentialsRejected { code: _ } => false
+    gunbc.cursor_sdk_auth_probe.CursorSdkAuthProbeTerminalNonAuthenticationError { code: extdeps.llm.cursor_sdk_errors.CursorSdkRateLimitError } => true
+    gunbc.cursor_sdk_auth_probe.CursorSdkAuthProbeCredentialsRejected { code: _ } => false
     _ => false
   }
 }
 
 test fn provider_standing_rate_limit_keeps_authentication_not_absent() -> Bool {
-  let standing = cursor_sdk_local_provider_standing_from_auth_probe(
-    probe: cursor_sdk_auth_probe_from_run_result(
+  let standing = gunbc.cursor_sdk_provider_standing.cursor_sdk_local_provider_standing_from_auth_probe(
+    probe: gunbc.cursor_sdk_auth_probe.cursor_sdk_auth_probe_from_run_result(
       raw: "{\"status\":\"error\",\"error\":{\"message\":\"slow down\",\"code\":\"rate_limit_error\"}}",
     ),
   )
-  standing.authentication == AuthenticationAuthenticated
-    && standing.authentication != AuthenticationCredentialsAbsent
+  standing.authentication == gunbc.provider_standing.AuthenticationAuthenticated
+    && standing.authentication != gunbc.provider_standing.AuthenticationCredentialsAbsent
 }
 
 test fn provider_standing_unrecognised_error_code_stays_unobserved() -> Bool {
-  let standing = cursor_sdk_local_provider_standing_from_auth_probe(
-    probe: cursor_sdk_auth_probe_from_run_result(
+  let standing = gunbc.cursor_sdk_provider_standing.cursor_sdk_local_provider_standing_from_auth_probe(
+    probe: gunbc.cursor_sdk_auth_probe.cursor_sdk_auth_probe_from_run_result(
       raw: "{\"status\":\"error\",\"error\":{\"message\":\"bad\",\"code\":\"token_revoked\"}}",
     ),
   )
   match standing.authentication {
-    AuthenticationStandingUnobserved { reason } =>
+    gunbc.provider_standing.AuthenticationStandingUnobserved { reason } =>
       string_contains(s: reason as String, pattern: "unrecognised terminal error code: token_revoked")
-    AuthenticationAuthenticated => false
-    AuthenticationCredentialsAbsent => false
+    gunbc.provider_standing.AuthenticationAuthenticated => false
+    gunbc.provider_standing.AuthenticationCredentialsAbsent => false
     _ => false
   }
 }
 
 test fn provider_standing_derives_authentication_from_probe() -> Bool {
-  let standing = cursor_sdk_local_provider_standing_from_auth_probe(
-    probe: cursor_sdk_auth_probe_from_run_result(
+  let standing = gunbc.cursor_sdk_provider_standing.cursor_sdk_local_provider_standing_from_auth_probe(
+    probe: gunbc.cursor_sdk_auth_probe.cursor_sdk_auth_probe_from_run_result(
       raw: "{\"status\":\"finished\",\"result\":\"ok\"}",
     ),
   )
-  standing.authentication == AuthenticationAuthenticated
+  standing.authentication == gunbc.provider_standing.AuthenticationAuthenticated
 }
 
 test fn provider_standing_rejects_credentials_on_auth_error() -> Bool {
-  let standing = cursor_sdk_local_provider_standing_from_auth_probe(
-    probe: cursor_sdk_auth_probe_from_run_result(
+  let standing = gunbc.cursor_sdk_provider_standing.cursor_sdk_local_provider_standing_from_auth_probe(
+    probe: gunbc.cursor_sdk_auth_probe.cursor_sdk_auth_probe_from_run_result(
       raw: "{\"status\":\"error\",\"error\":{\"message\":\"bad key\",\"code\":\"authentication_error\"}}",
     ),
   )
-  standing.authentication == AuthenticationCredentialsAbsent
+  standing.authentication == gunbc.provider_standing.AuthenticationCredentialsAbsent
 }
 
 test fn provider_standing_usage_is_capability_gap() -> Bool {
-  let standing = cursor_sdk_local_provider_standing_from_auth_probe(
+  let standing = gunbc.cursor_sdk_provider_standing.cursor_sdk_local_provider_standing_from_auth_probe(
     probe: gunbc.cursor_sdk_auth_probe.CursorSdkAuthProbeUnclassified {
       reason: "fixture" as std.types.NonEmptyStr,
     },
   )
-  cursor_sdk_local_provider_standing_has_usage_capability_gap(standing: standing)
+  gunbc.cursor_sdk_provider_standing.cursor_sdk_local_provider_standing_has_usage_capability_gap(standing: standing)
 }
 
 test fn cursor_sdk_auth_standing_witness_keystone_holds() -> Bool {

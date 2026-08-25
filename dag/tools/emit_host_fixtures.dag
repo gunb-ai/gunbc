@@ -18,5 +18,5 @@ process.stdout.write(__gunbc_b);
 
 data ts_host_fixture_source: String = "{ts_host_fixture_prefix}{ts_host_fixture_harness_suffix}"
 
-data stdout_byte_count: std.measure.ByteSize = byte_size(5)
-data ts_signed_i32_le_byte_count: std.measure.ByteSize = byte_size(4)
+data stdout_byte_count: std.measure.ByteSize = std.measure.byte_size(5)
+data ts_signed_i32_le_byte_count: std.measure.ByteSize = std.measure.byte_size(4)

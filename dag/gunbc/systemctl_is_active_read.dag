@@ -1,8 +1,6 @@
 module gunbc.systemctl_is_active_read
 
-data systemctl_is_active_path: String = "dag/extdeps/systemd/systemctl.dag"
-data systemctl_is_active_service: String = "systemd.Systemctl"
-data systemctl_is_active_operation: String = "IsActive"
+
 
 type UnitIsActiveCapture =
     UnitIsActiveCaptured { state: std.types.NonEmptyStr, active: Bool }
@@ -22,7 +20,7 @@ fn unit_is_active_capture_from_result(state: String, active: Bool) -> UnitIsActi
 // belongs in the realization layer, and gunbc.host_operation_exec now owns it once for every seam.
 // What remains is this file's real content: the decoder that turns one observation into a typed capture.
 fn systemctl_is_active_read(transport: gunbc.host_effect.HostEffectTransport, unit: std.types.NonEmptyStr) -> UnitIsActiveCapture {
-  match gunbc.host_operation_exec(transport: transport, operation: gunbc.host_operation_exec.SystemctlIsActive { unit: unit }) {
+  match gunbc.host_operation_exec.host_operation_exec(transport: transport, operation: gunbc.host_operation_exec.SystemctlIsActive { unit: unit }) {
     gunbc.host_operation_exec.HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
       unit_is_active_capture_from_result(state: out, active: ok)
     gunbc.host_operation_exec.HostOperationRefused { operation: _, reason: why } =>
@@ -38,8 +36,8 @@ fn systemctl_is_active_read(transport: gunbc.host_effect.HostEffectTransport, un
 // the read does not use, and it is what would red if that derivation named the wrong operation.
 fn systemctl_is_active_operation_argv_matches_authority(unit: std.types.NonEmptyStr) -> Bool {
   let authority = ["systemctl", "is-active", unit as String]
-  match host_operation_materialize_argv(operation: SystemctlIsActive { unit: unit }) {
-    ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
-    ArgvMaterializationRefused { at: _, cause: _ } => false
+  match gunbc.host_operation_exec.host_operation_materialize_argv(operation: gunbc.host_operation_exec.SystemctlIsActive { unit: unit }) {
+    v2.std.operation_argv.ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
+    v2.std.operation_argv.ArgvMaterializationRefused { at: _, cause: _ } => false
   }
 }

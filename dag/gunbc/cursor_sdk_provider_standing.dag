@@ -13,14 +13,14 @@ fn cursor_sdk_authentication_standing_from_probe(
   probe: gunbc.cursor_sdk_auth_probe.CursorSdkAuthProbeResult,
 ) -> gunbc.provider_standing.ProviderAuthenticationStanding {
   match probe {
-    CursorSdkAuthProbeAuthenticated => AuthenticationAuthenticated
-    CursorSdkAuthProbeCredentialsRejected { code: _ } => AuthenticationCredentialsAbsent
-    CursorSdkAuthProbeTerminalNonAuthenticationError { code: code } =>
-      if cursor_sdk_error_code_is_enumerated_non_authentication_failure(code: code) {
-        AuthenticationAuthenticated
+    gunbc.cursor_sdk_auth_probe.CursorSdkAuthProbeAuthenticated => gunbc.provider_standing.AuthenticationAuthenticated
+    gunbc.cursor_sdk_auth_probe.CursorSdkAuthProbeCredentialsRejected { code: _ } => gunbc.provider_standing.AuthenticationCredentialsAbsent
+    gunbc.cursor_sdk_auth_probe.CursorSdkAuthProbeTerminalNonAuthenticationError { code: code } =>
+      if extdeps.llm.cursor_sdk_errors.cursor_sdk_error_code_is_enumerated_non_authentication_failure(code: code) {
+        gunbc.provider_standing.AuthenticationAuthenticated
       } else {
         match code {
-          CursorSdkErrorCodeOther { raw: raw } =>
+          extdeps.llm.cursor_sdk_errors.CursorSdkErrorCodeOther { raw: raw } =>
             gunbc.provider_standing.AuthenticationStandingUnobserved {
               reason: concat(
                 "unrecognised terminal error code: ",
@@ -33,7 +33,7 @@ fn cursor_sdk_authentication_standing_from_probe(
             }
         }
       }
-    CursorSdkAuthProbeUnclassified { reason } =>
+    gunbc.cursor_sdk_auth_probe.CursorSdkAuthProbeUnclassified { reason } =>
       gunbc.provider_standing.AuthenticationStandingUnobserved { reason: reason }
   }
 }
@@ -56,7 +56,7 @@ fn cursor_sdk_local_provider_standing_from_auth_probe(
       reason: cursor_sdk_entitlement_unobserved_reason,
     },
     limits: [cursor_sdk_local_limit_observation()],
-    turn: TurnNotStarted,
+    turn: gunbc.provider_standing.TurnNotStarted,
     tool_environment: gunbc.provider_standing.ToolEnvironmentStandingUnobserved {
       reason: cursor_sdk_tool_environment_unobserved_reason,
     },
@@ -74,7 +74,7 @@ fn cursor_sdk_local_provider_standing_has_usage_capability_gap(
         true
       } else {
         match row {
-          LimitCapabilityGapUnobservable { reason: reason } =>
+          gunbc.provider_standing.LimitCapabilityGapUnobservable { reason: reason } =>
             reason == extdeps.llm.cursor_sdk_facts.cursor_sdk_local_limit_standing_reason
           _ => false
         }

@@ -3,35 +3,35 @@ module extdeps.entropy
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "man7.org/linux/man-pages/man4/random.4.html"
   }
 }
 
 data entropy_transport_linux_gnu_only: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.os",
     decl_name: "cited_operating_system_surface",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data entropy_count_bytes_unit_debt: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.measure",
     decl_name: "ByteSize",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data entropy_password_count_chars_unit_debt: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.measure",
     decl_name: "Measure",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

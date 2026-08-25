@@ -1,5 +1,6 @@
 module test.claim.deploy_workflow_retirement_witness
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // EXECUTING EVIDENCE FOR A DELETION, which is a thing the corpus otherwise has no way to

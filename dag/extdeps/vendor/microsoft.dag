@@ -4,7 +4,7 @@ module extdeps.vendor.microsoft
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=MSFT"
   }
 }
@@ -14,11 +14,11 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.vendor.microsoft",
       decl_name: "microsoft",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.vendor.microsoft.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
-data microsoft: Vendor<extdeps.securities.Securities> = Vendor { legal_name: "Microsoft Corporation" }
+data microsoft: extdeps.vendor.Vendor<extdeps.securities.Securities> = extdeps.vendor.Vendor { legal_name: "Microsoft Corporation" }

@@ -1,10 +1,10 @@
 module v2.test.meta_exec_confinement.scanner.planted_leak
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
-test fn scanner_planted_meta_exec_leak_detected_holds() -> v2.std.logic.Bool {
-  meta_exec_leak_count_live(scan_roots: [
+test fn scanner_planted_meta_exec_leak_detected_holds() -> Bool {
+  v2.lens.meta_exec_confinement.meta_exec_leak_count_live(scan_roots: [
     "src/v2/test/fixture/meta_exec_confinement_scan"
   ]) >= 1
 }

@@ -1,5 +1,6 @@
 module gunbc.seed_growth_admission
 
+
 data seed_growth_admission_note: String = "ITEM-GRAIN admission authority for hand-authored Rust growth (Lane swift-lynx-164). TARGET: compare every newly authored or modified hand Rust item in a change against SeedGrowthJustification.hand_authored_declarations and refuse on the difference (gunbc.seed_growth.seed_growth_note completeness join). PATH-GRAIN census (sibling proud-owl-773 PR #7894) answers which files lack disposition; THIS MODULE answers which ITEMS within files lack justification. NOT IN SCOPE: deleting existing Rust. NOT IN SCOPE: netting deletions against additions. G0 HOST: GONE. scripts/rust_item_census.py was SCAFFOLD-MARKED (seed_growth_g0_census_host_scaffold) and was DELETED from the tree by gunbc#9132, which bankrupted the measurement corpus and left no .sh or .py anywhere outside .githooks. This row cited it in the present tense until 2026-08-24; a reader planning against that sentence would have looked for a producer that does not exist, which is the positional-citation decay DESIGN 3 names, arriving here as a path rather than a line. TWO FURTHER ROWS IN THIS SAME FILE asserted the script was the current host -- seed_growth_g0_census_host_scaffold_note and seed_growth_admission_g0_population_note -- and they ARE repaired in this change, because a module that answers two ways about one fact is the DESIGN §3 violation this correction exists to remove, and leaving them would have made this file its own counter-example (caught by review 55623; an earlier revision of this sentence listed only the sibling modules and omitted the local pair, which is how the contradiction survived the first pass). Five SIBLING modules still carry the same dead citation (gunbc.bare_reference_scanner_admission, gunbc.cli_run_hand_rust_area_ledger, gunbc.rust_item_identity and two witness tests); those are NOT repaired here, and that is the residue gunbc#9132 declared it was leaving rather than a gap this change opened. Item extraction has no host at all until rust_item_host_observation lands, so the G0 interim path is not merely scaffolded now -- it is absent. ENROLLED TODAY: seed_growth_roster_well_formed_gate_holds — roster well-formedness only (non-empty closed roster, well-formed rows, no duplicate DeclarationRef keys). NOT ENROLLED: seed_growth_join_declarations as admission — diff candidates absent until rust_item_host_observation; seed_growth_admission_join_scaffold marks that boundary."
 
 type SeedGrowthAdmissionVerdict
@@ -54,13 +55,13 @@ data seed_growth_admission_g0_population_note: String = "G0 CENSUS HOST: NONE. s
 fn seed_growth_justification_roster() -> List<gunbc.seed_growth.SeedGrowthJustification> {
   [
     gunbc.anonymous_record_resolution_seed_growth.anonymous_record_resolution_seed_growth_justification,
-    floor_non_verdict_seed_growth_justification,
+    gunbc.floor_non_verdict_enrollment.floor_non_verdict_seed_growth_justification,
     gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification,
     gunbc.roadmap_authority.observation_scoped_run_seed_growth_justification(),
     gunbc.whole_corpus_compile_admission.whole_corpus_compile_seed_growth_justification,
-    bare_reference_scanner_seed_growth_justification,
-    witness_runtime_cause_seed_growth_justification,
-    parse_refusal_location_seed_growth_justification
+    gunbc.bare_reference_scanner_admission.bare_reference_scanner_seed_growth_justification,
+    gunbc.witness_runtime_cause_seed_growth.witness_runtime_cause_seed_growth_justification,
+    gunbc.parse_refusal_location_seed_growth.parse_refusal_location_seed_growth_justification
   ]
 }
 
@@ -112,7 +113,7 @@ fn seed_growth_find_stale(
 ) -> List<String> {
   v2.std.algebra.filter(
     xs: roster,
-    predicate: fn(r) { !declaration_ref_in_list(target: r, refs: candidates) }
+    predicate: fn(r) { !std.decl_ref.declaration_ref_in_list(target: r, refs: candidates) }
   )
     |> map(r => std.decl_ref.declaration_ref_display_key(ref: r))
 }
@@ -123,7 +124,7 @@ fn seed_growth_join_declarations(
   let roster = seed_growth_roster_all_declarations()
   let unjustified = v2.std.algebra.filter(
     xs: candidates,
-    predicate: fn(r) { !declaration_ref_in_list(target: r, refs: roster) }
+    predicate: fn(r) { !std.decl_ref.declaration_ref_in_list(target: r, refs: roster) }
   )
   if v2.std.algebra.length(xs: unjustified) > 0 {
     SeedGrowthAdmissionRefused {

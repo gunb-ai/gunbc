@@ -36,7 +36,7 @@ fn projected_principal(projection: PrincipalProjection) -> GunbcPrincipal {
       subject: claims.subject,
     } }
     PosixProjection { observation: observation } => PosixPrincipal { principal: PosixProjectedPrincipal {
-      effective_name: effective_posix_principal_name(observation: observation),
+      effective_name: extdeps.access.posix_effective_principal.effective_posix_principal_name(observation: observation),
     } }
   }
 }

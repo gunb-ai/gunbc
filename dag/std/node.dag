@@ -7,28 +7,28 @@ data compiler_inductive_fields: List<std.induction.InductiveField> = [
     type_name: "Node",
     variant_name: "",
     field_name: "children",
-    shape: ListRecursion,
+    shape: std.induction.ListRecursion,
     element_type: "Node"
   },
   std.induction.InductiveField {
     type_name: "Node",
     variant_name: "",
     field_name: "params",
-    shape: ListRecursion,
+    shape: std.induction.ListRecursion,
     element_type: "Node"
   },
   std.induction.InductiveField {
     type_name: "Node",
     variant_name: "",
     field_name: "uses",
-    shape: ListRecursion,
+    shape: std.induction.ListRecursion,
     element_type: "Node"
   },
   std.induction.InductiveField {
     type_name: "Node",
     variant_name: "",
     field_name: "properties",
-    shape: ListRecursion,
+    shape: std.induction.ListRecursion,
     element_type: "Node"
   },
 
@@ -36,21 +36,21 @@ data compiler_inductive_fields: List<std.induction.InductiveField> = [
     type_name: "Node",
     variant_name: "",
     field_name: "body",
-    shape: OptionalRecursion,
+    shape: std.induction.OptionalRecursion,
     element_type: "Node"
   },
   std.induction.InductiveField {
     type_name: "Node",
     variant_name: "",
     field_name: "transport",
-    shape: OptionalRecursion,
+    shape: std.induction.OptionalRecursion,
     element_type: "Node"
   },
   std.induction.InductiveField {
     type_name: "Node",
     variant_name: "",
     field_name: "type_annotation",
-    shape: OptionalRecursion,
+    shape: std.induction.OptionalRecursion,
     element_type: "Node"
   },
 
@@ -58,7 +58,7 @@ data compiler_inductive_fields: List<std.induction.InductiveField> = [
     type_name: "Node",
     variant_name: "",
     field_name: "inferred",
-    shape: OptionalRecursion,
+    shape: std.induction.OptionalRecursion,
     element_type: "InferredNode"
   },
 
@@ -66,7 +66,7 @@ data compiler_inductive_fields: List<std.induction.InductiveField> = [
     type_name: "InferredNode",
     variant_name: "Resolved",
     field_name: "node",
-    shape: DirectRecursion,
+    shape: std.induction.DirectRecursion,
     element_type: "Node"
   },
 
@@ -74,7 +74,7 @@ data compiler_inductive_fields: List<std.induction.InductiveField> = [
     type_name: "MatchPattern",
     variant_name: "VariantPattern",
     field_name: "field_bindings",
-    shape: ListRecursion,
+    shape: std.induction.ListRecursion,
     element_type: "Node"
   },
 
@@ -82,14 +82,14 @@ data compiler_inductive_fields: List<std.induction.InductiveField> = [
     type_name: "MethodSemantics",
     variant_name: "AlgebraMethodSemantics",
     field_name: "method_def",
-    shape: DirectRecursion,
+    shape: std.induction.DirectRecursion,
     element_type: "Node"
   },
   std.induction.InductiveField {
     type_name: "MethodSemantics",
     variant_name: "AlgebraMethodSemantics",
     field_name: "fold_accumulator_type",
-    shape: OptionalRecursion,
+    shape: std.induction.OptionalRecursion,
     element_type: "Node"
   },
 
@@ -97,7 +97,7 @@ data compiler_inductive_fields: List<std.induction.InductiveField> = [
     type_name: "MethodSemantics",
     variant_name: "ServiceMethodSemantics",
     field_name: "op_params",
-    shape: ListRecursion,
+    shape: std.induction.ListRecursion,
     element_type: "Node"
   },
 

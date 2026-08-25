@@ -1,47 +1,47 @@
 module test.claim.void_element
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn br_node() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "br", attributes: [], children: [] }
+  std.markup.Element { tag: "br", attributes: [], children: [] }
 }
 
 fn meta_node() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "meta",
-    attributes: [ attr(name: "charset", value: "utf-8" ) ],
+    attributes: [ std.markup.attr(name: "charset", value: "utf-8" ) ],
     children: [],
   }
 }
 
 fn div_node() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "div", attributes: [], children: [ std.markup.FragmentText { content: "content" } ] }
+  std.markup.Element { tag: "div", attributes: [], children: [ std.markup.FragmentText { content: "content" } ] }
 }
 
 test fn witness_html_br_omits_close() -> Bool {
-  serialize_html_source(node: br_node()) == "<br>"
+  extdeps.languages.html.serialize_html_source(node: br_node()) == "<br>"
 }
 
 test fn witness_html_meta_omits_close() -> Bool {
-  serialize_html_source(node: meta_node()) == "<meta charset=\"utf-8\">"
+  extdeps.languages.html.serialize_html_source(node: meta_node()) == "<meta charset=\"utf-8\">"
 }
 
 test fn witness_html_div_still_closes() -> Bool {
-  serialize_html_source(node: div_node()) == "<div>content</div>"
+  extdeps.languages.html.serialize_html_source(node: div_node()) == "<div>content</div>"
 }
 
 test fn witness_jsx_br_self_closes() -> Bool {
-  serialize_jsx_component(fn_name: "F", node: br_node()) ==
+  extdeps.languages.react_jsx.serialize_jsx_component(fn_name: "F", node: br_node()) ==
     "export function F(): JSX.Element { return <br />; }"
 }
 
 test fn witness_jsx_div_still_closes() -> Bool {
-  serialize_jsx_component(fn_name: "F", node: div_node()) ==
+  extdeps.languages.react_jsx.serialize_jsx_component(fn_name: "F", node: div_node()) ==
     "export function F(): JSX.Element { return <div>content</div>; }"
 }
 
 test fn witness_html_br_differs_from_jsx_br() -> Bool {
-  !(serialize_html_source(node: br_node()) == serialize_jsx_component(fn_name: "F", node: br_node()))
+  !(extdeps.languages.html.serialize_html_source(node: br_node()) == extdeps.languages.react_jsx.serialize_jsx_component(fn_name: "F", node: br_node()))
 }
 

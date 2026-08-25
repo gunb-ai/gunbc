@@ -3,14 +3,14 @@ module extdeps.languages.ecmascript.subject
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "tc39.es/ecma262/"
   }
 }
 
 data ecmascript_language_further_authority_1: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.ecma-international.org/publications-and-standards/standards/ecma-262/"
   }
 }
@@ -27,10 +27,10 @@ data ecmascript_language_model_scope: extdeps.external_authority.ExternalModelSc
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.languages.ecmascript.subject",
       decl_name: "ecmascript_language",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.languages.ecmascript.subject.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [ecmascript_language_further_authority_1]
 }
 

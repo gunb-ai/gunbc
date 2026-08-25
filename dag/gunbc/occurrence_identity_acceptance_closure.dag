@@ -23,37 +23,37 @@ data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedD
     id: "rebuilt-reference-identity-preservation",
     required_receipt: occurrence_identity_acceptance_law_rebuilt_reference.required_receipt,
     owner: "namespace-reference-derived-closure",
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_rebuilt_reference_identity_preservation_executes_holds per PR, and the rebuilt-reference production RED executes through the sidecar-consuming canonical binding boundary; delete this row in the same PR."),
+    dissolution: std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_rebuilt_reference_identity_preservation_executes_holds per PR, and the rebuilt-reference production RED executes through the sidecar-consuming canonical binding boundary; delete this row in the same PR."),
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "one-occurrence-collector-dedupe",
     required_receipt: occurrence_identity_acceptance_law_collector_dedupe.required_receipt,
     owner: "namespace-reference-derived-closure",
-    dissolution: unbound_dissolution(description: "NEXT-RUNG TRIGGER: a production occurrence-aware discovery collector must expose a seam where one exact authored OccurrenceId can be observed twice before candidate supply. merge_occurrence_transports is not that seam: it concatenates complete authored transports and duplicate authored rows must refuse. P1 candidate supply is not that seam: duplicate supplied identities must refuse. The structural producer's one-pass bucket over validated declarations is not that seam either. DISSOLVE-ON: once a design-required production collector exposes repeated observation, its exact-identity dedupe RED executes through the sidecar consumer and this row deletes in the same PR."),
+    dissolution: std.dissolution.unbound_dissolution(description: "NEXT-RUNG TRIGGER: a production occurrence-aware discovery collector must expose a seam where one exact authored OccurrenceId can be observed twice before candidate supply. merge_occurrence_transports is not that seam: it concatenates complete authored transports and duplicate authored rows must refuse. P1 candidate supply is not that seam: duplicate supplied identities must refuse. The structural producer's one-pass bucket over validated declarations is not that seam either. DISSOLVE-ON: once a design-required production collector exposes repeated observation, its exact-identity dedupe RED executes through the sidecar consumer and this row deletes in the same PR."),
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "structurally-equal-distinct-occurrences",
     required_receipt: occurrence_identity_acceptance_law_distinct_occurrences.required_receipt,
     owner: "namespace-reference-derived-closure",
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_structurally_equal_distinct_occurrences_execute_holds per PR, and the distinct-authored-occurrences RED executes against the sidecar consumer; delete this row in the same PR."),
+    dissolution: std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_structurally_equal_distinct_occurrences_execute_holds per PR, and the distinct-authored-occurrences RED executes against the sidecar consumer; delete this row in the same PR."),
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "pattern-declaration-reachability",
     required_receipt: occurrence_identity_acceptance_law_pattern_reachability.required_receipt,
     owner: "namespace-reference-derived-closure",
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_pattern_declaration_reachability_executes_holds per PR, and the pattern-declaration reachability RED executes through the production occurrence collector; delete this row in the same PR."),
+    dissolution: std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_pattern_declaration_reachability_executes_holds per PR, and the pattern-declaration reachability RED executes through the production occurrence collector; delete this row in the same PR."),
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "inferred-target-anchor-identity",
     required_receipt: "An inferred target projection remains anchored to the exact authored occurrence instead of a rebuilt shell Node, spelling, or SourceSpan.",
     owner: "namespace-canonical-binding",
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: the inferred-target anchor RED executes through the production sidecar consumer; delete this row in the same PR."),
+    dissolution: std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: the inferred-target anchor RED executes through the production sidecar consumer; delete this row in the same PR."),
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "same-spelling-parser-declaration-isolation",
     required_receipt: occurrence_identity_acceptance_law_parser_isolation.required_receipt,
     owner: "namespace-reference-derived-closure",
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_same_spelling_parser_declaration_isolation_executes_holds per PR, and the full same-spelling parser-to-binding RED matrix executes at the canonical binding boundary; delete this row in the same PR."),
+    dissolution: std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_same_spelling_parser_declaration_isolation_executes_holds per PR, and the full same-spelling parser-to-binding RED matrix executes at the canonical binding boundary; delete this row in the same PR."),
   },
 ]
 
@@ -69,7 +69,7 @@ data occurrence_identity_receipt_enrollment_debts: List<OccurrenceIdentityReceip
     ],
     owner: "witness-scheduling-source-root-surface",
     cause: "The four DAG receipts and the generated Rust rebuild assertion are green by execution and discriminating under planted defects, but none is executed per PR on main. The DAG receipts require the scoped dag and src/v1 parser-transport batch whose parser_transport_witness_entries roster is not yet on main. The Rust test crate containing pipeline_occurrence_sidecar_serde_round_trip is cargo-checked but its tests are not executed.",
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main and executes the four DAG functions per PR, and pipeline_occurrence_sidecar_serde_round_trip executes per PR or its rebuild assertion migrates into an enrolled witness; prove both enrollment surfaces and narrow or delete this row in the same PR."),
+    dissolution: std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main and executes the four DAG functions per PR, and pipeline_occurrence_sidecar_serde_round_trip executes per PR or its rebuild assertion migrates into an enrolled witness; prove both enrollment surfaces and narrow or delete this row in the same PR."),
   },
 ]
 
@@ -113,14 +113,14 @@ data occurrence_identity_closing_check_note: String = "Validation/workflow carri
 fn occurrence_identity_law_id_known(
   law_id: String
 ) -> Bool {
-  occurrence_identity_acceptance_laws |> any(law => law.id == law_id)
+  std.occurrence_identity.occurrence_identity_acceptance_laws |> any(law => law.id == law_id)
 }
 
 fn occurrence_identity_law_exact(
   law_id: String,
   required_receipt: String
 ) -> Bool {
-  occurrence_identity_acceptance_laws
+  std.occurrence_identity.occurrence_identity_acceptance_laws
     |> any(law => law.id == law_id && law.required_receipt == required_receipt)
 }
 
@@ -145,9 +145,9 @@ fn occurrence_identity_closing_refusals(
   receipts: List<OccurrenceIdentityExecutingReceipt>,
   deferrals: List<OccurrenceIdentityAdmittedDeferral>
 ) -> List<OccurrenceIdentityClosingRefusal> {
-  let duplicate_laws = occurrence_identity_acceptance_laws
+  let duplicate_laws = std.occurrence_identity.occurrence_identity_acceptance_laws
     |> flat_map(law =>
-      if (occurrence_identity_acceptance_laws
+      if (std.occurrence_identity.occurrence_identity_acceptance_laws
         |> filter(other => other.id == law.id)
         |> count) > 1 {
         [DuplicateAcceptanceLaw { law_id: law.id }]
@@ -163,7 +163,7 @@ fn occurrence_identity_closing_refusals(
         [UnknownReceiptLaw { law_id: receipt.law_id }]
       }
     )
-  let duplicate_receipts = occurrence_identity_acceptance_laws
+  let duplicate_receipts = std.occurrence_identity.occurrence_identity_acceptance_laws
     |> flat_map(law =>
       if (receipts |> filter(receipt => receipt.law_id == law.id) |> count) > 1 {
         [DuplicateReceiptLaw { law_id: law.id }]
@@ -199,7 +199,7 @@ fn occurrence_identity_closing_refusals(
         [UnknownDeferralLaw { law_id: deferral.law_id }]
       }
     )
-  let duplicate_deferrals = occurrence_identity_acceptance_laws
+  let duplicate_deferrals = std.occurrence_identity.occurrence_identity_acceptance_laws
     |> flat_map(law =>
       if (deferrals |> filter(deferral => deferral.law_id == law.id) |> count) > 1 {
         [DuplicateDeferralLaw { law_id: law.id }]
@@ -219,7 +219,7 @@ fn occurrence_identity_closing_refusals(
         []
       }
     )
-  let overlaps = occurrence_identity_acceptance_laws
+  let overlaps = std.occurrence_identity.occurrence_identity_acceptance_laws
     |> flat_map(law =>
       if (receipts |> any(receipt => receipt.law_id == law.id)) &&
         (deferrals |> any(deferral => deferral.law_id == law.id)) {
@@ -266,7 +266,7 @@ fn occurrence_identity_closing_verdict(
   if (refusals |> count) > 0 {
     OccurrenceIdentityClosingRefused { refusals: refusals }
   } else {
-    let missing_law_ids = occurrence_identity_acceptance_laws
+    let missing_law_ids = std.occurrence_identity.occurrence_identity_acceptance_laws
       |> filter(law =>
         !(receipts |> any(receipt => receipt.law_id == law.id)) &&
         !(deferrals |> any(deferral => deferral.law_id == law.id))
@@ -276,7 +276,7 @@ fn occurrence_identity_closing_verdict(
       OccurrenceIdentityClosingOpen { missing_law_ids: missing_law_ids }
     } else {
       OccurrenceIdentityClosingCovered {
-        deferred_law_ids: occurrence_identity_acceptance_laws
+        deferred_law_ids: std.occurrence_identity.occurrence_identity_acceptance_laws
           |> filter(law => deferrals |> any(deferral => deferral.law_id == law.id))
           |> map(law => law.id),
       }

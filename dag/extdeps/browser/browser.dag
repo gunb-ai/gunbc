@@ -4,7 +4,7 @@ data extdeps_browser_non_precedent_disposition: String = "NON-PRECEDENT — DO N
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "playwright.dev/docs/api/class-browsercontext"
   }
 }

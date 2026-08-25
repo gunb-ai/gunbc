@@ -1,7 +1,7 @@
 module test.claim.v1_interpreter_primitive_roster_acceptance
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data closing_contract_note: String = "THE CLOSING CHECK FOR v1-interpreter-primitive-roster, DELIBERATELY STRUCTURAL RATHER THAN POPULATION-PINNED. The node's bar is that the interpreter's dispatch surface is ENUMERABLE and that its roster cannot silently disagree with the dispatch -- not that the surface currently has any particular size. So every clause below is a property that survives the roster legitimately growing: which named dispatch sites contribute rows, that duplicate row keys refuse, that shadows are exactly the known set by NAME, that every declared row carries its own dissolution trigger, that an arm carrying no semantic primitive identity stays representable, and that an unrecognised form label refuses rather than defaulting.\n\nREPRESENTABILITY IS ASSERTED STRUCTURALLY, NOT AS JOIN PROGRESS. An earlier cut of this file discharged the roster-can-carry-an-unjoined-arm clause with primitive_d0_derived_rows_missing_identity_count() > 0, which is a measurement of how far the semantic identity join has got, not a property of the roster. It would have gone RED exactly when that join succeeded for every derived row -- legitimate downstream progress reddening an upstream node's acceptance check, which is the same defect class #7615 removed from the census witnesses, relocated onto join state (caught in review 46974). The structural fact is that InterpreterPrimitiveDispatchArm carries an interpreter-local arm identity and no semantic-primitive-identity field at all, so EVERY row is an arm with no semantic identity; the clause therefore constructs one and shows the roster's own operations are total over it, and separately that no live row carries an empty interpreter-local identity.\n\nWHY NO COUNTS. #7615 deleted the five witnesses that pinned live-population counts (7 dispatch sites, 183 derived rows, 2 declared, 174 arm identities, 161 spellings) because DESIGN.md 5 rules a measurement copied from the same current tree is not an oracle, and those five had already behaved exactly as that rule predicts -- redding main twice as pure change detectors (#7575 landed one derived arm short, #7614 repaired, #7615 removed the class). Binding this node's completion to a count would re-introduce the same defect at the acceptance layer, where it would be worse: a node whose closing check reds on legitimate growth teaches everyone to edit the number.\n\nWHAT MAKES THIS ABLE TO FAIL. Each clause names a live structure rather than a constant, so removing the map-grounding dispatch site, dropping a declared row's trigger, admitting an unknown form label, or letting a second arm identity shadow a spelling all red it. The discriminating REDs for the detectors themselves (planted duplicate, planted shadow) and their positive controls (a real alias pair, one spelling at two distinct sites) stay in test.claim.v1_interpreter_primitive_surface_witness_test, which executes alongside this file; this contract asserts the live surface satisfies what those detectors decide."
 
@@ -12,8 +12,8 @@ fn planted_row(identity: String, spelling: String, symbol: String) -> gunbc.v1_i
     authored_spelling: spelling,
     realization_module: "planted",
     dispatch_symbol: symbol,
-    dispatch_emit_site: EvalBuiltinInnerSite,
-    enumeration: AuthoredInRoster,
+    dispatch_emit_site: gunbc.v1_interpreter_primitive_surface.EvalBuiltinInnerSite,
+    enumeration: gunbc.v1_interpreter_primitive_surface.AuthoredInRoster,
   }
 }
 
@@ -25,54 +25,54 @@ fn known_dispatch_sites_contribute_rows() -> Bool {
     "try_v2_std_collection_map_primitive_grounding",
     "try_parse_table_memo_dispatch",
   ]
-  symbols |> all(s => v1_interpreter_authored_roster_arms() |> any(r => r.dispatch_symbol == s))
+  symbols |> all(s => gunbc.v1_interpreter_primitive_surface.v1_interpreter_authored_roster_arms() |> any(r => r.dispatch_symbol == s))
 }
 
 fn duplicate_row_keys_refuse() -> Bool {
-  count(duplicate_row_keys(rows: v1_interpreter_primitive_arms())) == 0
-    && count(duplicate_row_keys(rows: [
-        test.claim.v1_interpreter_primitive_roster_acceptance.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
-        test.claim.v1_interpreter_primitive_roster_acceptance.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+  count(gunbc.v1_interpreter_primitive_surface.duplicate_row_keys(rows: gunbc.v1_interpreter_primitive_surface.v1_interpreter_primitive_arms())) == 0
+    && count(gunbc.v1_interpreter_primitive_surface.duplicate_row_keys(rows: [
+        planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+        planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
       ])) == 1
 }
 
 fn shadows_are_exactly_the_known_named_set() -> Bool {
-  let free = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == gunbc.v1_interpreter_primitive_surface.FreeCall))
-  let method = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == gunbc.v1_interpreter_primitive_surface.MethodCall))
+  let free = gunbc.v1_interpreter_primitive_surface.shadowed_spellings(rows: gunbc.v1_interpreter_primitive_surface.v1_interpreter_primitive_arms() |> filter(r => r.form == gunbc.v1_interpreter_primitive_surface.FreeCall))
+  let method = gunbc.v1_interpreter_primitive_surface.shadowed_spellings(rows: gunbc.v1_interpreter_primitive_surface.v1_interpreter_primitive_arms() |> filter(r => r.form == gunbc.v1_interpreter_primitive_surface.MethodCall))
   count(free) == 0
     && count(method) == 1
     && (method |> all(x => x == "lookup"))
-    && !form_has_no_shadowed_spelling(rows: [
-        test.claim.v1_interpreter_primitive_roster_acceptance.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
-        test.claim.v1_interpreter_primitive_roster_acceptance.planted_row(identity: "planted.beta", spelling: "alpha", symbol: "planted_dispatch"),
+    && !gunbc.v1_interpreter_primitive_surface.form_has_no_shadowed_spelling(rows: [
+        planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+        planted_row(identity: "planted.beta", spelling: "alpha", symbol: "planted_dispatch"),
       ])
 }
 
 fn declared_rows_carry_exact_triggers() -> Bool {
   let expected = ["eval_method_call", "eval_service_call"]
-  let actual = v1_interpreter_declared_arms() |> map(r => r.dispatch_symbol)
+  let actual = gunbc.v1_interpreter_primitive_surface.v1_interpreter_declared_arms() |> map(r => r.dispatch_symbol)
   count(actual |> filter(s => !expected |> any(e => e == s))) == 0
     && count(expected |> filter(e => !actual |> any(s => s == e))) == 0
-    && v1_interpreter_declared_arms()
-         |> all(r => arm_declares_dissolution_trigger(arm: r))
+    && gunbc.v1_interpreter_primitive_surface.v1_interpreter_declared_arms()
+         |> all(r => gunbc.v1_interpreter_primitive_surface.arm_declares_dissolution_trigger(arm: r))
 }
 
 fn arms_without_semantic_identity_stay_representable() -> Bool {
-  let unjoined = test.claim.v1_interpreter_primitive_roster_acceptance.planted_row(
+  let unjoined = planted_row(
     identity: "unjoined.arm",
     spelling: "unjoined_spelling",
     symbol: "unjoined_dispatch",
   )
   unjoined.arm.identity == "unjoined.arm"
-    && count(duplicate_row_keys(rows: [unjoined])) == 0
-    && form_has_no_shadowed_spelling(rows: [unjoined])
-    && (v1_interpreter_primitive_arms() |> all(r => r.arm.identity != ""))
+    && count(gunbc.v1_interpreter_primitive_surface.duplicate_row_keys(rows: [unjoined])) == 0
+    && gunbc.v1_interpreter_primitive_surface.form_has_no_shadowed_spelling(rows: [unjoined])
+    && (gunbc.v1_interpreter_primitive_surface.v1_interpreter_primitive_arms() |> all(r => r.arm.identity != ""))
 }
 
 fn unrecognised_form_refuses_rather_than_defaulting() -> Bool {
-  count(v1_interpreter_unknown_form_arms()) == 0
-    && form_is_unknown(form: decode_dispatch_form(label: "NotAFormLabel"))
-    && !form_is_unknown(form: decode_dispatch_form(label: "FreeCall"))
+  count(gunbc.v1_interpreter_primitive_surface.v1_interpreter_unknown_form_arms()) == 0
+    && gunbc.v1_interpreter_primitive_surface.form_is_unknown(form: gunbc.v1_interpreter_primitive_surface.decode_dispatch_form(label: "NotAFormLabel"))
+    && !gunbc.v1_interpreter_primitive_surface.form_is_unknown(form: gunbc.v1_interpreter_primitive_surface.decode_dispatch_form(label: "FreeCall"))
 }
 
 test fn v1_interpreter_primitive_roster_acceptance_contract_holds() -> Bool {

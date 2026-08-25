@@ -12,16 +12,16 @@ fn hermetic_envelope() -> std.effect_grant.Envelope {
     frame: hermetic_frame,
     grants: [
       std.effect_grant.Grant {
-        verb: Read,
+        verb: std.effect_grant.Read,
         root: std.effect_axes.region_substrate_closure_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConstruction
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConstruction
       },
       std.effect_grant.Grant {
-        verb: Write,
+        verb: std.effect_grant.Write,
         root: std.effect_axes.region_frame_scratch_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConstruction
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConstruction
       },
     ]
   }
@@ -32,16 +32,16 @@ fn wet_envelope() -> std.effect_grant.Envelope {
     frame: wet_frame,
     grants: [
       std.effect_grant.Grant {
-        verb: Read,
+        verb: std.effect_grant.Read,
         root: std.effect_axes.region_repo_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConvention
       },
       std.effect_grant.Grant {
-        verb: Write,
+        verb: std.effect_grant.Write,
         root: std.effect_axes.region_repo_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConvention
       },
     ]
   }
@@ -52,16 +52,16 @@ fn record_envelope() -> std.effect_grant.Envelope {
     frame: record_frame,
     grants: [
       std.effect_grant.Grant {
-        verb: Read,
+        verb: std.effect_grant.Read,
         root: std.effect_axes.region_repo_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConvention
       },
       std.effect_grant.Grant {
-        verb: Write,
+        verb: std.effect_grant.Write,
         root: std.effect_axes.region_repo_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConvention
       },
     ]
   }
@@ -69,8 +69,8 @@ fn record_envelope() -> std.effect_grant.Envelope {
 
 fn derive_live_tree_disposition(env: std.effect_grant.Envelope) -> v2.std.live_tree.LiveTreeDisposition {
   if std.effect_axes.envelope_live_tree_intersects(env: env) {
-    ReadsLiveTree
+    v2.std.live_tree.ReadsLiveTree
   } else {
-    SubstrateInputsOnly
+    v2.std.live_tree.SubstrateInputsOnly
   }
 }

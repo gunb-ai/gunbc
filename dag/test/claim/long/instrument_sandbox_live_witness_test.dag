@@ -1,20 +1,20 @@
 module test.claim.long.instrument_sandbox_live_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data instrument_sandbox_live_long_note: String = "THE LIVE HALF OF THE INSTRUMENT SANDBOX WITNESS, re-homed off per-PR discovery (fast-lane BudgetExceeded, run 30986055960, 5074ms thread-CPU against the 5000ms budget). WHERE THE COST IS: post_7822_attribution_note below, which is the ONLY attribution in this file. This note used to carry one of its own — the render and live_program_view_result named as the dominant term, a 263ms-inputs / 5132ms-derivation split, and n=25 declared nodes — and every part of that is retracted: the cost location was wrong, and the node count was never right. It is deleted rather than disclaimed, because a superseded attribution sitting in the first note a reader reaches steers the next worker at the wrong file however many corrections sit below it, and two live cost stories in one carrier is the dual representation DESIGN section 3 forbids. WHAT SPLIT AND WHY, which is structural and does not move with the measurements: every claim here renders the served page or reads the live program view, and the mechanism claims — the derived salience role, the emission/admission join, the refused-role controls, the theme-block position check — measured 0-2ms each and are NOT here. They stay per-PR in the parent file, because the 2026-08-04 admission ruling says a live-population subject decomposes into small discriminating mechanism fixtures per PR plus the irreducible live half on a cadence, and the mechanism half is never the part that moves. HONEST COST CLASSIFICATION, because the precedent rows on this lane each declare theirs: this row is enrolled with its cost declared and measured, not relabelled as irreducible — see deferral_floor_note for what would have to get cheaper and whose lane owns it. WHAT WAS NOT DONE, named because the diagnostic that produced this split names it: the file was not moved to remove it from discovery and left unexecuted, and the keystone was not split into two per-PR test fns to draw two budgets — total cost would be unchanged and that is the relocation evasion wearing a different hat. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/long/instrument_sandbox_live_witness_test.dag --function instrument_sandbox_live_keystone_holds. Dissolve-on: carried once, on this witness's row in gunbc.ci_layer_roots falsifier_substrate_long_lane_rows — the original condition here (restructure the derivation onto keyed lookup) was MET by #7822 and did not dissolve the row, so a second copy of it would now be doubly wrong."
 
 fn fixture_request(path: String) -> extdeps.http.server.ServeHttpRequest {
-  extdeps.http.server.ServeHttpRequest { method: GET, path: path, body: "" }
+  extdeps.http.server.ServeHttpRequest { method: extdeps.http.server.GET, path: path, body: "" }
 }
 
 fn served() -> extdeps.http.server.ServeHttpResponse {
-  roadmap_serve_invoke_for_instance(
-    instance: srv2_preview_dashboard_instance(),
-    handler: InstrumentSandboxPageHandler,
+  gunbc.roadmap_serve.roadmap_serve_invoke_for_instance(
+    instance: gunbc.roadmap_dashboard_instance.srv2_preview_dashboard_instance(),
+    handler: gunbc.roadmap_serve.InstrumentSandboxPageHandler,
     params: [],
-    request: test.claim.long.instrument_sandbox_live_witness.fixture_request(path: "/sandbox/instrument"),
+    request: fixture_request(path: "/sandbox/instrument"),
     release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   )
 }
@@ -26,12 +26,12 @@ fn last_segment(s: String, marker: String) -> String {
 data study_not_instrument_note: String = "The page must not describe itself as the operable instrument, and the header must not carry controls it cannot operate. The dead-control claim is checked against the MARKUP, not the whole document: the register stylesheet is inlined in a style element and legitimately contains .theme-toggle and .sound-toggle rules, so searching the raw body for those words finds the CSS and reds on a page that has no such buttons. The first version of this claim did exactly that and was wrong for a reason worth keeping — a negative substring assertion over a document that embeds its own stylesheet is testing the stylesheet."
 
 fn body_markup(r: extdeps.http.server.ServeHttpResponse) -> String {
-  test.claim.long.instrument_sandbox_live_witness.last_segment(s: r.body, marker: "</style>")
+  last_segment(s: r.body, marker: "</style>")
 }
 
 fn witness_the_instrument_path_serves_html(r: extdeps.http.server.ServeHttpResponse) -> Bool {
   r.status == 200
-    && media_type_wire_label(m: r.content_type) == "text/html; charset=utf-8"
+    && extdeps.http.server.media_type_wire_label(m: r.content_type) == "text/html; charset=utf-8"
     && string_contains(s: r.body, pattern: "gunbc — instrument study")
     && string_contains(s: r.body, pattern: "lang=\"en\"")
     && string_contains(s: r.body, pattern: "width=device-width")
@@ -50,11 +50,11 @@ data deferral_floor_note: String = "WHAT THIS MEANS FOR THE DEFERRAL, stated bec
 data live_world_note: String = "The page reads the world V0 derives, live. If the projection refuses, the page renders the located causes rather than a smaller program. This is the claim the whole split exists to preserve: it is the one that cannot be proven on a planted fixture, because its subject is the real declared roadmap."
 
 fn witness_the_page_reads_the_live_derived_program_view() -> Bool {
-  match live_program_view_result() {
-    LiveViewDerived { view } =>
-      count(view.finish_lines) == count(v1_exit_finish_lines())
+  match gunbc.roadmap_instrument_sandbox.live_program_view_result() {
+    gunbc.roadmap_instrument_sandbox.LiveViewDerived { view } =>
+      count(view.finish_lines) == count(gunbc.v1_deletion_plan.v1_exit_finish_lines())
         && count(view.fronts) > 0
-    LiveViewRefused { causes } => false
+    gunbc.roadmap_instrument_sandbox.LiveViewRefused { causes } => false
   }
 }
 

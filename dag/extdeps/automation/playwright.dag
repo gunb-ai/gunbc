@@ -3,14 +3,14 @@ module extdeps.automation.playwright
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/microsoft/playwright/tree/26a9e470a7b3c7822084b09fb7f13902c5f37b51"
   }
 }
 
 data playwright_browser_provisioning_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "playwright.dev/docs/browsers"
   }
 }
@@ -25,11 +25,11 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.automation.playwright",
       decl_name: "playwright",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.automation.playwright.extdeps_external_authority_anchor,
-  further_citations: [extdeps.automation.playwright.playwright_browser_provisioning_authority]
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [playwright_browser_provisioning_authority]
 }
 
 type PlaywrightVersion = std.types.NonEmptyStr where brand("PlaywrightVersion")

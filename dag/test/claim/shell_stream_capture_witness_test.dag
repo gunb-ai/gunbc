@@ -1,30 +1,30 @@
 module test.claim.shell_stream_capture
 
 
-data witness_seed_stdout_complete_max_bytes_fixture: std.measure.ByteSize = byte_size(count: 8388608)
+data witness_seed_stdout_complete_max_bytes_fixture: std.measure.ByteSize = std.measure.byte_size(count: 8388608)
 
-data witness_seed_stderr_tail_bytes_fixture: std.measure.ByteSize = byte_size(count: 16384)
+data witness_seed_stderr_tail_bytes_fixture: std.measure.ByteSize = std.measure.byte_size(count: 16384)
 
 data witness_seed_limit_authority_note: String = "Fixture limits mirror v1_interpreter bounded_shell_host_drain DEFAULT_SHELL_* — enforced in Rust only; this witness exercises predicate shape, not a second constant authority."
 
 test fn stderr_tail_within_bound_holds_for_incident_scale() -> Bool {
-  seed_host_stderr_tail_within_bound(
-    total_bytes: byte_size(count: 59522411),
-    retained_bytes: byte_size(count: 16384),
+  std.shell_stream_capture.seed_host_stderr_tail_within_bound(
+    total_bytes: std.measure.byte_size(count: 59522411),
+    retained_bytes: std.measure.byte_size(count: 16384),
     tail_limit: witness_seed_stderr_tail_bytes_fixture,
   )
 }
 
 test fn stdout_complete_within_bound_holds_when_fits() -> Bool {
-  seed_host_stdout_complete_within_bound(
-    total_bytes: byte_size(count: 30770),
+  std.shell_stream_capture.seed_host_stdout_complete_within_bound(
+    total_bytes: std.measure.byte_size(count: 30770),
     limit: witness_seed_stdout_complete_max_bytes_fixture,
   )
 }
 
 test fn stdout_overflow_would_refuse_red_control() -> Bool {
-  seed_host_stdout_overflow_would_refuse(
-    total_bytes: byte_size(count: 9000000),
+  std.shell_stream_capture.seed_host_stdout_overflow_would_refuse(
+    total_bytes: std.measure.byte_size(count: 9000000),
     limit: witness_seed_stdout_complete_max_bytes_fixture,
   )
 }

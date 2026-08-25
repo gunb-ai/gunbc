@@ -45,7 +45,7 @@ fn residue_row(
   rationale: std.types.NonEmptyStr,
 ) -> LifecycleResidueRow {
   LifecycleResidueRow {
-    ref: decl_ref(module_path: module_path, decl_name: decl_name),
+    ref: std.decl_ref.decl_ref(module_path: module_path, decl_name: decl_name),
     class: class,
     rationale: rationale,
   }
@@ -57,16 +57,16 @@ fn residue_row(
 // and inventing one would re-open the forgeable-firing path this PR closed.
 fn historical_receipt_rows() -> List<LifecycleResidueRow> {
   [
-    gunbc.dissolution_migration_census.residue_row(module_path: "std.witness_admission", decl_name: "witness_admission_predicate_dissolution_note", class: HistoricalReceipt, rationale: "records that two predicates dissolved per review 39760; the successor is live"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "gunbc.ci_spec", decl_name: "ci_documentation_only_floor_shortcut_retired_note", class: HistoricalReceipt, rationale: "records the 2026-07-21 removal of the documentation_only_skip shortcut and why"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "gunbc.ci_floor_measurement", decl_name: "gunbc_ci_width_constants_retired_note", class: HistoricalReceipt, rationale: "records the operator ruling that retired the hand-edited width constants"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "gunbc.design.archetype", decl_name: "dashboard_boundary_demand_dissolved_note", class: HistoricalReceipt, rationale: "records BoundaryRole leaving the dashboard demand and where refusal color routes now"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "v2.test.claim.execution.loop_round_trip", decl_name: "loop_descent_fabrication_dissolved_note", class: HistoricalReceipt, rationale: "records the deleted hand-fabricated TerminationProof and the body-lowering path that replaced it"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lowering_interim_scaffold_dissolved_note", class: HistoricalReceipt, rationale: "records the interim hand-walker scaffolds already folded into body_producer_forward"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "v2.std.witness_execution_routing", decl_name: "witness_execution_disposition_predicate_dissolution_note", class: HistoricalReceipt, rationale: "records three predicates dissolved per review 41625"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "v2.std.algebra", decl_name: "copied_port_fact_registry_dissolution_note", class: HistoricalReceipt, rationale: "records the deleted hand-stamped copied_port_fact rows and the derivation that replaced them"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "test.claim.roadmap_belt_actuate", decl_name: "codex_preflight_ok_dissolution_note", class: HistoricalReceipt, rationale: "records the codex_preflight_ok helper's removal per review 44110"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "test.claim.peak_resident_measured", decl_name: "peak_resident_platform_precondition_retired_note", class: HistoricalReceipt, rationale: "records a precondition retired by its own trigger after one commit"),
+    residue_row(module_path: "std.witness_admission", decl_name: "witness_admission_predicate_dissolution_note", class: HistoricalReceipt, rationale: "records that two predicates dissolved per review 39760; the successor is live"),
+    residue_row(module_path: "gunbc.ci_spec", decl_name: "ci_documentation_only_floor_shortcut_retired_note", class: HistoricalReceipt, rationale: "records the 2026-07-21 removal of the documentation_only_skip shortcut and why"),
+    residue_row(module_path: "gunbc.ci_floor_measurement", decl_name: "gunbc_ci_width_constants_retired_note", class: HistoricalReceipt, rationale: "records the operator ruling that retired the hand-edited width constants"),
+    residue_row(module_path: "gunbc.design.archetype", decl_name: "dashboard_boundary_demand_dissolved_note", class: HistoricalReceipt, rationale: "records BoundaryRole leaving the dashboard demand and where refusal color routes now"),
+    residue_row(module_path: "v2.test.claim.execution.loop_round_trip", decl_name: "loop_descent_fabrication_dissolved_note", class: HistoricalReceipt, rationale: "records the deleted hand-fabricated TerminationProof and the body-lowering path that replaced it"),
+    residue_row(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lowering_interim_scaffold_dissolved_note", class: HistoricalReceipt, rationale: "records the interim hand-walker scaffolds already folded into body_producer_forward"),
+    residue_row(module_path: "v2.std.witness_execution_routing", decl_name: "witness_execution_disposition_predicate_dissolution_note", class: HistoricalReceipt, rationale: "records three predicates dissolved per review 41625"),
+    residue_row(module_path: "v2.std.algebra", decl_name: "copied_port_fact_registry_dissolution_note", class: HistoricalReceipt, rationale: "records the deleted hand-stamped copied_port_fact rows and the derivation that replaced them"),
+    residue_row(module_path: "test.claim.roadmap_belt_actuate", decl_name: "codex_preflight_ok_dissolution_note", class: HistoricalReceipt, rationale: "records the codex_preflight_ok helper's removal per review 44110"),
+    residue_row(module_path: "test.claim.peak_resident_measured", decl_name: "peak_resident_platform_precondition_retired_note", class: HistoricalReceipt, rationale: "records a precondition retired by its own trigger after one commit"),
   ]
 }
 
@@ -76,9 +76,9 @@ fn historical_receipt_rows() -> List<LifecycleResidueRow> {
 // would point at a declaration that never appears.
 fn dissolves_by_greening_rows() -> List<LifecycleResidueRow> {
   [
-    gunbc.dissolution_migration_census.residue_row(module_path: "test.claim.legacy_test_behavior_disposition_acceptance", decl_name: "legacy_test_behavior_acceptance_dissolution_note", class: DissolvesByGreening, rationale: "greens when the last discovered legacy behavior receives an admitted disposition"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "test.claim.observation_raw_print_retirement_acceptance", decl_name: "acceptance_dissolution_note", class: DissolvesByGreening, rationale: "greens when the frontier reaches zero; its expect-red row becomes wrong at the same moment"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "gunbc.namespace_reference_derived_closure_contract", decl_name: "namespace_reference_derived_closure_contract_dissolution_note", class: DissolvesByGreening, rationale: "greens as each of six clauses becomes executable; the contract text is unchanged by that"),
+    residue_row(module_path: "test.claim.legacy_test_behavior_disposition_acceptance", decl_name: "legacy_test_behavior_acceptance_dissolution_note", class: DissolvesByGreening, rationale: "greens when the last discovered legacy behavior receives an admitted disposition"),
+    residue_row(module_path: "test.claim.observation_raw_print_retirement_acceptance", decl_name: "acceptance_dissolution_note", class: DissolvesByGreening, rationale: "greens when the frontier reaches zero; its expect-red row becomes wrong at the same moment"),
+    residue_row(module_path: "gunbc.namespace_reference_derived_closure_contract", decl_name: "namespace_reference_derived_closure_contract_dissolution_note", class: DissolvesByGreening, rationale: "greens as each of six clauses becomes executable; the contract text is unchanged by that"),
   ]
 }
 
@@ -87,16 +87,16 @@ fn dissolves_by_greening_rows() -> List<LifecycleResidueRow> {
 // pattern and would be mis-migrated by a name-driven sweep.
 fn refusal_or_reason_rows() -> List<LifecycleResidueRow> {
   [
-    gunbc.dissolution_migration_census.residue_row(module_path: "gunbc.live_deploy.emit", decl_name: "live_deploy_systemd_retirement_emit_refused_poison", class: RefusalOrReasonCarrier, rationale: "a located poison marker deliberately not valid deploy shell, so the drift gate reds"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "gunbc.stage0_rust_lifecycle_totality", decl_name: "lifecycle_totality_retirement_trigger_underived_reason", class: RefusalOrReasonCarrier, rationale: "the reason a disposition path set cannot be derived, carried beside the refusal"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "gunbc.roadmap_authority", decl_name: "observation_raw_print_retirement_contract_note", class: RefusalOrReasonCarrier, rationale: "names the discriminating binding a sibling contract deliberately withholds"),
+    residue_row(module_path: "gunbc.live_deploy.emit", decl_name: "live_deploy_systemd_retirement_emit_refused_poison", class: RefusalOrReasonCarrier, rationale: "a located poison marker deliberately not valid deploy shell, so the drift gate reds"),
+    residue_row(module_path: "gunbc.stage0_rust_lifecycle_totality", decl_name: "lifecycle_totality_retirement_trigger_underived_reason", class: RefusalOrReasonCarrier, rationale: "the reason a disposition path set cannot be derived, carried beside the refusal"),
+    residue_row(module_path: "gunbc.roadmap_authority", decl_name: "observation_raw_print_retirement_contract_note", class: RefusalOrReasonCarrier, rationale: "names the discriminating binding a sibling contract deliberately withholds"),
   ]
 }
 
 // The name pattern matched; the declaration is not a lifecycle carrier at all.
 fn not_a_lifecycle_carrier_rows() -> List<LifecycleResidueRow> {
   [
-    gunbc.dissolution_migration_census.residue_row(module_path: "test.claim.generated_artifact_merge_driver_real_execution", decl_name: "witness_retired_take_ours_driver_value", class: NotALifecycleCarrier, rationale: "the literal git config value \"true\" for a retired merge driver, not a condition"),
+    residue_row(module_path: "test.claim.generated_artifact_merge_driver_real_execution", decl_name: "witness_retired_take_ours_driver_value", class: NotALifecycleCarrier, rationale: "the literal git config value \"true\" for a retired merge driver, not a condition"),
   ]
 }
 
@@ -107,22 +107,22 @@ fn not_a_lifecycle_carrier_rows() -> List<LifecycleResidueRow> {
 // row names its successor so the extraction is checkable, not asserted.
 fn narrative_only_rows() -> List<LifecycleResidueRow> {
   [
-    gunbc.dissolution_migration_census.residue_row(module_path: "test.claim.long.reference_closure_equivalence", decl_name: "conformance_import_envelope_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to conformance_import_envelope_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "v2.lens.cost.copied_port_citations", decl_name: "copied_port_citation_frontier_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to copied_port_citation_frontier_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "v2.lens.enforcement.lens_module_gate", decl_name: "lens_module_gate_surface_table_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to lens_module_gate_surface_table_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "std.occurrence_binding_candidates", decl_name: "module_path_file_row_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to module_path_file_row_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "v2.lens.reference_deps", decl_name: "reference_deps_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to reference_deps_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "v2.lens.module_graph", decl_name: "reference_derived_edge_source_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to reference_derived_edge_source_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "gunbc.repository_census_coverage", decl_name: "repository_census_keyed_roster_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to repository_census_keyed_roster_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "extdeps.transports.rest", decl_name: "rest_auth_scheme_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to rest_auth_scheme_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "extdeps.transports.rest", decl_name: "rest_target_form_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to rest_target_form_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "gunbc.runner_lifecycle_realize", decl_name: "runner_lifecycle_realize_scaffold_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to runner_lifecycle_realize_scaffold_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "v2.std.compilers.semantic_decl_emission", decl_name: "target_semantic_decl_shape_predicate_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to target_semantic_decl_shape_predicate_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_int_bool_octet_channel_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to target_value_expr_int_bool_octet_channel_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_int_literal_predicate_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to target_value_expr_int_literal_predicate_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "v2.lens.vacuity", decl_name: "vacuity_operand_provenance_independent_oracle_predicate_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to vacuity_operand_provenance_independent_oracle_predicate_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "v2.lens.vacuity", decl_name: "vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_dissolve_on"),
-    gunbc.dissolution_migration_census.residue_row(module_path: "test.claim.v1_complexity_capability_census", decl_name: "w_retirement_is_owed_until_replacement_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to w_retirement_is_owed_until_replacement_dissolve_on"),
+    residue_row(module_path: "test.claim.long.reference_closure_equivalence", decl_name: "conformance_import_envelope_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to conformance_import_envelope_dissolve_on"),
+    residue_row(module_path: "v2.lens.cost.copied_port_citations", decl_name: "copied_port_citation_frontier_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to copied_port_citation_frontier_dissolve_on"),
+    residue_row(module_path: "v2.lens.enforcement.lens_module_gate", decl_name: "lens_module_gate_surface_table_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to lens_module_gate_surface_table_dissolve_on"),
+    residue_row(module_path: "std.occurrence_binding_candidates", decl_name: "module_path_file_row_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to module_path_file_row_dissolve_on"),
+    residue_row(module_path: "v2.lens.reference_deps", decl_name: "reference_deps_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to reference_deps_dissolve_on"),
+    residue_row(module_path: "v2.lens.module_graph", decl_name: "reference_derived_edge_source_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to reference_derived_edge_source_dissolve_on"),
+    residue_row(module_path: "gunbc.repository_census_coverage", decl_name: "repository_census_keyed_roster_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to repository_census_keyed_roster_dissolve_on"),
+    residue_row(module_path: "extdeps.transports.rest", decl_name: "rest_auth_scheme_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to rest_auth_scheme_dissolve_on"),
+    residue_row(module_path: "extdeps.transports.rest", decl_name: "rest_target_form_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to rest_target_form_dissolve_on"),
+    residue_row(module_path: "gunbc.runner_lifecycle_realize", decl_name: "runner_lifecycle_realize_scaffold_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to runner_lifecycle_realize_scaffold_dissolve_on"),
+    residue_row(module_path: "v2.std.compilers.semantic_decl_emission", decl_name: "target_semantic_decl_shape_predicate_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to target_semantic_decl_shape_predicate_dissolve_on"),
+    residue_row(module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_int_bool_octet_channel_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to target_value_expr_int_bool_octet_channel_dissolve_on"),
+    residue_row(module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_int_literal_predicate_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to target_value_expr_int_literal_predicate_dissolve_on"),
+    residue_row(module_path: "v2.lens.vacuity", decl_name: "vacuity_operand_provenance_independent_oracle_predicate_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to vacuity_operand_provenance_independent_oracle_predicate_dissolve_on"),
+    residue_row(module_path: "v2.lens.vacuity", decl_name: "vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_dissolve_on"),
+    residue_row(module_path: "test.claim.v1_complexity_capability_census", decl_name: "w_retirement_is_owed_until_replacement_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to w_retirement_is_owed_until_replacement_dissolve_on"),
   ]
 }
 
@@ -138,7 +138,7 @@ fn concat_lists(a: List<LifecycleResidueRow>, b: List<LifecycleResidueRow>) -> L
 }
 
 fn residue_row_key(row: LifecycleResidueRow) -> String {
-  declaration_ref_display_key(ref: row.ref)
+  std.decl_ref.declaration_ref_display_key(ref: row.ref)
 }
 
 // The classification coproduct HAS NO ACTIVE-CONDITION VARIANT. That is where

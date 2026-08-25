@@ -1,7 +1,7 @@
 module test.claim.altra_platform_and_mt_mitchell_authority_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // --- Each platform module joins the subject module that owns its identity ---
 
@@ -12,97 +12,97 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // what it should always have been, and it now also acts as the control that
 // keeps those records evaluable.
 test fn w_platform_facts_hang_off_the_subject_declarations() -> Bool {
-  altra_platform_hw_design_subject == altra_platform_hw_design_specification
-    && mt_mitchell_platform_subject == mt_mitchell_reference_platform
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_hw_design_subject == extdeps.cpu.ampere_altra_platform_hw_design.subject.altra_platform_hw_design_specification
+    && extdeps.ocp.mt_mitchell.platform.mt_mitchell_platform_subject == extdeps.ocp.mt_mitchell.subject.mt_mitchell_reference_platform
 }
 
 // --- Ampere Altra Platform Hardware Design Specification, revision 1.00 ---
 
 test fn w_altra_platform_facts_are_not_claimed_current() -> Bool {
-  !platform_facts_are_from_the_latest_revision()
+  !extdeps.cpu.ampere_altra_platform_hw_design.platform.platform_facts_are_from_the_latest_revision()
 }
 
 test fn w_altra_two_dimms_per_channel_reaches_package_ceiling() -> Bool {
-  dimm_slots_per_socket(topology: OneDimmPerChannel) == 8
-    && dimm_slots_per_socket(topology: TwoDimmsPerChannel) == 16
-    && altra_platform_max_dimm_slots_per_socket() == altra_max_dimms_per_socket
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.dimm_slots_per_socket(topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel) == 8
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.dimm_slots_per_socket(topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel) == 16
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_max_dimm_slots_per_socket() == extdeps.cpu.ampere_altra_package.altra_max_dimms_per_socket
 }
 
 test fn w_altra_one_dimm_per_channel_uses_the_far_slot() -> Bool {
-  one_dimm_per_channel_populated_slot() == DimmSlot0
-    && dimm_slot_farther_from_cpu() == DimmSlot0
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.one_dimm_per_channel_populated_slot() == extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmSlot0
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.dimm_slot_farther_from_cpu() == extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmSlot0
 }
 
 test fn w_altra_root_complex_structure_derives_the_lane_total() -> Bool {
-  root_complex_count_of_type(kind: RootComplexTypeA) == 4
-    && root_complex_count_of_type(kind: RootComplexTypeB) == 4
-    && altra_root_complex_count() == 8
-    && altra_derived_lane_total() == 128
-    && altra_derived_lane_total() == altra_declared_lane_total()
-    && altra_declared_lane_total() == altra_pcie_gen4_lane_count
-    && altra_pcie_controller_count == 48
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.root_complex_count_of_type(kind: extdeps.cpu.ampere_altra_platform_hw_design.platform.RootComplexTypeA) == 4
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.root_complex_count_of_type(kind: extdeps.cpu.ampere_altra_platform_hw_design.platform.RootComplexTypeB) == 4
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_root_complex_count() == 8
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_derived_lane_total() == 128
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_derived_lane_total() == extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_declared_lane_total()
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_declared_lane_total() == extdeps.cpu.ampere_altra_package.altra_pcie_gen4_lane_count
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_pcie_controller_count == 48
 }
 
 test fn w_altra_lane_groupings_partition_their_root_complex() -> Bool {
-  type_a_grouping_lane_total(grouping: TypeAOneX16) == 16
-    && type_a_grouping_lane_total(grouping: TypeATwoX8) == 16
-    && type_a_grouping_lane_total(grouping: TypeAOneX8AndTwoX4) == 16
-    && type_a_grouping_lane_total(grouping: TypeAFourX4) == 16
-    && type_b_half_grouping_lane_total(grouping: TypeBOneX8) == 8
-    && type_b_half_grouping_lane_total(grouping: TypeBTwoX4) == 8
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.type_a_grouping_lane_total(grouping: extdeps.cpu.ampere_altra_platform_hw_design.platform.TypeAOneX16) == 16
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.type_a_grouping_lane_total(grouping: extdeps.cpu.ampere_altra_platform_hw_design.platform.TypeATwoX8) == 16
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.type_a_grouping_lane_total(grouping: extdeps.cpu.ampere_altra_platform_hw_design.platform.TypeAOneX8AndTwoX4) == 16
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.type_a_grouping_lane_total(grouping: extdeps.cpu.ampere_altra_platform_hw_design.platform.TypeAFourX4) == 16
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.type_b_half_grouping_lane_total(grouping: extdeps.cpu.ampere_altra_platform_hw_design.platform.TypeBOneX8) == 8
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.type_b_half_grouping_lane_total(grouping: extdeps.cpu.ampere_altra_platform_hw_design.platform.TypeBTwoX4) == 8
 }
 
 test fn w_altra_ccix_capability_belongs_to_type_a_only() -> Bool {
-  root_complex_supports_ccix(kind: RootComplexTypeA)
-    && !root_complex_supports_ccix(kind: RootComplexTypeB)
-    && altra_two_socket_ccix_port_count == 2
-    && altra_two_socket_ccix_lane_width == 16
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.root_complex_supports_ccix(kind: extdeps.cpu.ampere_altra_platform_hw_design.platform.RootComplexTypeA)
+    && !extdeps.cpu.ampere_altra_platform_hw_design.platform.root_complex_supports_ccix(kind: extdeps.cpu.ampere_altra_platform_hw_design.platform.RootComplexTypeB)
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_two_socket_ccix_port_count == 2
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_two_socket_ccix_lane_width == 16
 }
 
 test fn w_altra_refclk_requirement_splits_by_input() -> Bool {
-  refclk_always_required(input: RefclkSrns)
-    && !refclk_always_required(input: RefclkSris)
-    && hertz_count(h: altra_refclk_frequency) == 100000000
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.refclk_always_required(input: extdeps.cpu.ampere_altra_platform_hw_design.platform.RefclkSrns)
+    && !extdeps.cpu.ampere_altra_platform_hw_design.platform.refclk_always_required(input: extdeps.cpu.ampere_altra_platform_hw_design.platform.RefclkSris)
+    && std.measure.hertz_count(h: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_refclk_frequency) == 100000000
 }
 
 test fn w_altra_pcie_reset_is_cpld_decoded_without_per_controller_perst() -> Bool {
-  !altra_has_dedicated_perst_per_controller()
-    && !altra_has_native_hot_plug_controller()
+  !extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_has_dedicated_perst_per_controller()
+    && !extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_has_native_hot_plug_controller()
     && altra_pcie_reset_scheme.gpio_output_max == 6
 }
 
 test fn w_altra_package_array_geometry_is_exact_and_joins_the_package_authority() -> Bool {
-  micrometer_count(m: altra_package_outline_width) == micrometer_count(m: altra_package_body_width)
-    && micrometer_count(m: altra_package_outline_depth) == micrometer_count(m: altra_package_body_height)
-    && micrometer_count(m: altra_package_outline_width) == 77080
-    && micrometer_count(m: altra_package_outline_depth) == 67000
-    && micrometer_count(m: altra_pad_pitch_dx) == micrometer_count(m: altra_package_pad_pitch_dx)
-    && micrometer_count(m: altra_pad_pitch_dy) == micrometer_count(m: altra_package_pad_pitch_dy)
-    && micrometer_count(m: altra_pad_pitch_dx) == 870
-    && micrometer_count(m: altra_pad_pitch_dy) == 500
-    && altra_pad_count == 4926
-    && altra_platform_declared_pad_count() == altra_package_declared_contact_count()
+  std.measure.micrometer_count(m: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_package_outline_width) == std.measure.micrometer_count(m: extdeps.cpu.ampere_altra_package.altra_package_body_width)
+    && std.measure.micrometer_count(m: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_package_outline_depth) == std.measure.micrometer_count(m: extdeps.cpu.ampere_altra_package.altra_package_body_height)
+    && std.measure.micrometer_count(m: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_package_outline_width) == 77080
+    && std.measure.micrometer_count(m: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_package_outline_depth) == 67000
+    && std.measure.micrometer_count(m: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_pad_pitch_dx) == std.measure.micrometer_count(m: extdeps.cpu.ampere_altra_package.altra_package_pad_pitch_dx)
+    && std.measure.micrometer_count(m: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_pad_pitch_dy) == std.measure.micrometer_count(m: extdeps.cpu.ampere_altra_package.altra_package_pad_pitch_dy)
+    && std.measure.micrometer_count(m: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_pad_pitch_dx) == 870
+    && std.measure.micrometer_count(m: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_pad_pitch_dy) == 500
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_pad_count == 4926
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_declared_pad_count() == extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_package_declared_contact_count()
 }
 
 test fn w_altra_pad_grid_bounds_but_does_not_equal_the_population() -> Bool {
-  altra_pad_column_count == 84
-    && altra_pad_row_count == 126
-    && altra_pad_grid_position_count() == 10584
-    && pad_grid_exceeds_pad_population()
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_pad_column_count == 84
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_pad_row_count == 126
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_pad_grid_position_count() == 10584
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.pad_grid_exceeds_pad_population()
 }
 
 // The negatives, modelled so the next reader does not re-read the document to
 // learn the answer is not in it.
 test fn w_altra_attachment_facts_absent_or_drawn_are_classified_not_missing() -> Bool {
-  altra_platform_keepout_availability == AbsentFromDocument
-    && altra_platform_coordinate_origin_availability == AbsentFromDocument
-    && altra_platform_ddr_routing_rule_availability == AbsentFromDocument
-    && altra_platform_orientation_datum_availability == extdeps.cpu.ampere_altra_platform_hw_design.platform.StatedOnlyInsideFigure { figure: "Figure 3" }
-    && !pad_array_is_positionable_from_running_text()
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_keepout_availability == extdeps.cpu.ampere_altra_platform_hw_design.platform.AbsentFromDocument
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_coordinate_origin_availability == extdeps.cpu.ampere_altra_platform_hw_design.platform.AbsentFromDocument
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_ddr_routing_rule_availability == extdeps.cpu.ampere_altra_platform_hw_design.platform.AbsentFromDocument
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_orientation_datum_availability == extdeps.cpu.ampere_altra_platform_hw_design.platform.StatedOnlyInsideFigure { figure: "Figure 3" }
+    && !extdeps.cpu.ampere_altra_platform_hw_design.platform.pad_array_is_positionable_from_running_text()
 }
 
 test fn w_altra_bibliography_names_no_package_mechanical_document() -> Bool {
-  !bibliography_lists_a_package_mechanical_document()
+  !extdeps.cpu.ampere_altra_platform_hw_design.platform.bibliography_lists_a_package_mechanical_document()
 }
 
 // AND THE BIBLIOGRAPHY'S SILENCE IS NOT THE DOCUMENT'S. Asserted as one claim because the pairing
@@ -110,16 +110,16 @@ test fn w_altra_bibliography_names_no_package_mechanical_document() -> Bool {
 // anyway. Reading the first conjunct alone — which is what the repository did until 2026-08-15 —
 // answers "nothing further to chase" over a roster that structurally cannot mention it.
 test fn w_running_text_names_a_layout_document_the_bibliography_omits() -> Bool {
-  !bibliography_lists_a_package_mechanical_document()
-    && names_a_board_layout_document()
+  !extdeps.cpu.ampere_altra_platform_hw_design.platform.bibliography_lists_a_package_mechanical_document()
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.names_a_board_layout_document()
 }
 
 // THE GATE IS THE ANSWER, not the absence of the document. Both halves asserted together so the
 // state stays distinguishable from "no such document exists": the layout authority is named AND
 // it is unreachable, which is a third condition from either of the two this lane previously held.
 test fn w_the_named_board_layout_document_is_access_gated() -> Bool {
-  names_a_board_layout_document()
-    && !board_layout_document_is_reachable()
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.names_a_board_layout_document()
+    && !extdeps.cpu.ampere_altra_platform_hw_design.platform.board_layout_document_is_reachable()
 }
 
 // A DISCRIMINATING CONTROL ON THE REACH FOLD, because a reachability answer that is false for
@@ -130,14 +130,14 @@ test fn w_a_public_layout_document_would_read_as_reachable() -> Bool {
     extdeps.cpu.ampere_altra_platform_hw_design.platform.PlatformReferencedDocument {
       title: "Altra PCB Layout Guidelines",
       cited_by_section: "planted control, not a document this repository holds",
-      reach: ReferencedDocumentPublic,
+      reach: extdeps.cpu.ampere_altra_platform_hw_design.platform.ReferencedDocumentPublic,
     },
   ]
   any(planted, d =>
-    referenced_document_is_board_layout(d: d)
+    extdeps.cpu.ampere_altra_platform_hw_design.platform.referenced_document_is_board_layout(d: d)
       && match d.reach {
-        ReferencedDocumentPublic => true
-        ReferencedDocumentAccessGated { gate: _ } => false
+        extdeps.cpu.ampere_altra_platform_hw_design.platform.ReferencedDocumentPublic => true
+        extdeps.cpu.ampere_altra_platform_hw_design.platform.ReferencedDocumentAccessGated { gate: _ } => false
       })
 }
 
@@ -145,7 +145,7 @@ test fn w_a_public_layout_document_would_read_as_reachable() -> Bool {
 
 test fn w_mt_mitchell_revision_table_ends_at_the_modelled_revision() -> Bool {
   let latest = mt_mitchell_revision_table.last()
-  list_length(items: mt_mitchell_revision_table) == 3
+  std.types.list_length(items: extdeps.ocp.mt_mitchell.platform.mt_mitchell_revision_table) == 3
     && latest.revision == "0.80"
     && latest.publication_date.year == 2022
     && latest.publication_date.month == 9
@@ -154,67 +154,67 @@ test fn w_mt_mitchell_revision_table_ends_at_the_modelled_revision() -> Bool {
 }
 
 test fn w_mt_mitchell_architecture_options_divide_into_whole_dimms_per_channel() -> Bool {
-  list_length(items: mt_mitchell_architecture_options) == 3
-    && all(mt_mitchell_architecture_options, o => architecture_slot_count_divides_channels(option: o))
-    && architecture_dimms_per_channel(option: mt_mitchell_two_socket_eight_channel) == 2
-    && architecture_dimms_per_channel(option: mt_mitchell_two_socket_twelve_channel) == 1
-    && architecture_dimms_per_channel(option: mt_mitchell_one_socket_twelve_channel) == 2
-    && architecture_channel_total(option: mt_mitchell_two_socket_eight_channel) == 16
-    && architecture_channel_total(option: mt_mitchell_one_socket_twelve_channel) == 12
+  std.types.list_length(items: extdeps.ocp.mt_mitchell.platform.mt_mitchell_architecture_options) == 3
+    && all(extdeps.ocp.mt_mitchell.platform.mt_mitchell_architecture_options, o => extdeps.ocp.mt_mitchell.platform.architecture_slot_count_divides_channels(option: o))
+    && extdeps.ocp.mt_mitchell.platform.architecture_dimms_per_channel(option: extdeps.ocp.mt_mitchell.platform.mt_mitchell_two_socket_eight_channel) == 2
+    && extdeps.ocp.mt_mitchell.platform.architecture_dimms_per_channel(option: extdeps.ocp.mt_mitchell.platform.mt_mitchell_two_socket_twelve_channel) == 1
+    && extdeps.ocp.mt_mitchell.platform.architecture_dimms_per_channel(option: extdeps.ocp.mt_mitchell.platform.mt_mitchell_one_socket_twelve_channel) == 2
+    && extdeps.ocp.mt_mitchell.platform.architecture_channel_total(option: extdeps.ocp.mt_mitchell.platform.mt_mitchell_two_socket_eight_channel) == 16
+    && extdeps.ocp.mt_mitchell.platform.architecture_channel_total(option: extdeps.ocp.mt_mitchell.platform.mt_mitchell_one_socket_twelve_channel) == 12
 }
 
 test fn w_mt_mitchell_mcio_population_cross_foots() -> Bool {
-  mt_mitchell_derived_mcio_connector_total() == mt_mitchell_mcio_connector_total
-    && mt_mitchell_mcio_connector_total == 13
+  extdeps.ocp.mt_mitchell.platform.mt_mitchell_derived_mcio_connector_total() == extdeps.ocp.mt_mitchell.platform.mt_mitchell_mcio_connector_total
+    && extdeps.ocp.mt_mitchell.platform.mt_mitchell_mcio_connector_total == 13
 }
 
 test fn w_mt_mitchell_ocp_nic_modes_separate_width_from_host_count() -> Bool {
-  mt_mitchell_ocp_nic_connector_count == 2
-    && ocp_nic_unstrapped_host_mode() == SingleHostX8
-    && ocp_nic_host_mode_lane_count(mode: SingleHostX8) == 8
-    && ocp_nic_host_mode_lane_count(mode: SingleHostX16) == 16
-    && ocp_nic_host_mode_lane_count(mode: MultiHostX16) == 16
-    && !ocp_nic_host_mode_is_multi_host(mode: SingleHostX16)
-    && ocp_nic_host_mode_is_multi_host(mode: MultiHostX16)
+  extdeps.ocp.mt_mitchell.platform.mt_mitchell_ocp_nic_connector_count == 2
+    && extdeps.ocp.mt_mitchell.platform.ocp_nic_unstrapped_host_mode() == extdeps.ocp.mt_mitchell.platform.SingleHostX8
+    && extdeps.ocp.mt_mitchell.platform.ocp_nic_host_mode_lane_count(mode: extdeps.ocp.mt_mitchell.platform.SingleHostX8) == 8
+    && extdeps.ocp.mt_mitchell.platform.ocp_nic_host_mode_lane_count(mode: extdeps.ocp.mt_mitchell.platform.SingleHostX16) == 16
+    && extdeps.ocp.mt_mitchell.platform.ocp_nic_host_mode_lane_count(mode: extdeps.ocp.mt_mitchell.platform.MultiHostX16) == 16
+    && !extdeps.ocp.mt_mitchell.platform.ocp_nic_host_mode_is_multi_host(mode: extdeps.ocp.mt_mitchell.platform.SingleHostX16)
+    && extdeps.ocp.mt_mitchell.platform.ocp_nic_host_mode_is_multi_host(mode: extdeps.ocp.mt_mitchell.platform.MultiHostX16)
 }
 
 test fn w_mt_mitchell_inter_processor_links_split_evenly_across_sockets() -> Bool {
-  let ports = mt_mitchell_inter_processor_link_ports
-  list_length(items: ports) == 4
-    && list_length(items: ports |> filter(p => inter_processor_link_socket(port: p) == 0)) == 2
-    && list_length(items: ports |> filter(p => inter_processor_link_socket(port: p) == 1)) == 2
+  let ports = extdeps.ocp.mt_mitchell.platform.mt_mitchell_inter_processor_link_ports
+  std.types.list_length(items: ports) == 4
+    && std.types.list_length(items: ports |> filter(p => extdeps.ocp.mt_mitchell.platform.inter_processor_link_socket(port: p) == 0)) == 2
+    && std.types.list_length(items: ports |> filter(p => extdeps.ocp.mt_mitchell.platform.inter_processor_link_socket(port: p) == 1)) == 2
 }
 
 test fn w_mt_mitchell_board_dimensions_are_exact_in_micrometres() -> Bool {
-  micrometer_count(m: mt_mitchell_board_width) == 424900
-    && micrometer_count(m: mt_mitchell_board_depth) == 422900
-    && rack_unit_count(u: mt_mitchell_chassis_height) == 2
+  std.measure.micrometer_count(m: extdeps.ocp.mt_mitchell.platform.mt_mitchell_board_width) == 424900
+    && std.measure.micrometer_count(m: extdeps.ocp.mt_mitchell.platform.mt_mitchell_board_depth) == 422900
+    && std.measure.rack_unit_count(u: extdeps.ocp.mt_mitchell.platform.mt_mitchell_chassis_height) == 2
 }
 
 // --- Carriage derives from public availability, and only from that ---
 
 test fn w_both_public_documents_are_carriable_by_different_kinds_of_status() -> Bool {
-  altra_platform_hw_design_publication_status == extdeps.publication.PubliclyPublishedWithRestrictiveMarking { marking: "Ampere Computing Proprietary" }
-    && mt_mitchell_publication_status == extdeps.publication.PubliclyPublishedUnderOpenLicense { license: "Open Web Foundation Modified Final Specification Agreement (OWFa 1.0)" }
-    && carriage_permits_facts(carriage: upstream_fact_carriage(status: altra_platform_hw_design_publication_status))
-    && carriage_permits_facts(carriage: upstream_fact_carriage(status: mt_mitchell_publication_status))
-    && altra_platform_hw_design_publication_status != mt_mitchell_publication_status
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_hw_design_publication_status == extdeps.publication.PubliclyPublishedWithRestrictiveMarking { marking: "Ampere Computing Proprietary" }
+    && extdeps.ocp.mt_mitchell.platform.mt_mitchell_publication_status == extdeps.publication.PubliclyPublishedUnderOpenLicense { license: "Open Web Foundation Modified Final Specification Agreement (OWFa 1.0)" }
+    && gunbc.upstream_document_carriage.carriage_permits_facts(carriage: gunbc.upstream_document_carriage.upstream_fact_carriage(status: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_hw_design_publication_status))
+    && gunbc.upstream_document_carriage.carriage_permits_facts(carriage: gunbc.upstream_document_carriage.upstream_fact_carriage(status: extdeps.ocp.mt_mitchell.platform.mt_mitchell_publication_status))
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_hw_design_publication_status != extdeps.ocp.mt_mitchell.platform.mt_mitchell_publication_status
 }
 
 test fn w_the_restrictive_marking_is_recorded_and_decides_nothing() -> Bool {
-  let marking = publication_status_restrictive_marking(status: altra_platform_hw_design_publication_status)
-  let open_licence_marking = publication_status_restrictive_marking(status: mt_mitchell_publication_status)
+  let marking = extdeps.publication.publication_status_restrictive_marking(status: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_hw_design_publication_status)
+  let open_licence_marking = extdeps.publication.publication_status_restrictive_marking(status: extdeps.ocp.mt_mitchell.platform.mt_mitchell_publication_status)
   (marking == Present { value: "Ampere Computing Proprietary" })
     && (open_licence_marking == Absent)
-    && publication_status_is_publicly_published(status: altra_platform_hw_design_publication_status)
+    && extdeps.publication.publication_status_is_publicly_published(status: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_hw_design_publication_status)
 }
 
 // --- The separation itself ---
 
 test fn w_the_two_specifications_target_different_memory_generations() -> Bool {
-  dram_generation_eq(a: altra_platform_memory_generation, b: dram_generation_ddr4)
-    && dram_generation_eq(a: mt_mitchell_memory_generation, b: dram_generation_ddr5)
-    && !dram_generation_eq(a: altra_platform_memory_generation, b: mt_mitchell_memory_generation)
+  extdeps.memory.types.dram_generation_eq(a: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_memory_generation, b: extdeps.memory.types.dram_generation_ddr4)
+    && extdeps.memory.types.dram_generation_eq(a: extdeps.ocp.mt_mitchell.platform.mt_mitchell_memory_generation, b: extdeps.memory.types.dram_generation_ddr5)
+    && !extdeps.memory.types.dram_generation_eq(a: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_memory_generation, b: extdeps.ocp.mt_mitchell.platform.mt_mitchell_memory_generation)
 }
 
 // --- RED controls: each goes red if the modelled fact stops discriminating ---
@@ -225,28 +225,28 @@ test fn w_red_fabricated_architecture_option_fails_the_channel_join() -> Bool {
     ddr_channels_per_socket: 12,
     dimm_slot_total: 30,
   }
-  !architecture_slot_count_divides_channels(option: fabricated)
+  !extdeps.ocp.mt_mitchell.platform.architecture_slot_count_divides_channels(option: fabricated)
 }
 
 test fn w_red_a_grouping_that_lost_lanes_would_not_sum_to_its_root_complex() -> Bool {
-  type_a_grouping_lane_total(grouping: TypeATwoX8) != 8
-    && type_b_half_grouping_lane_total(grouping: TypeBTwoX4) != 16
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.type_a_grouping_lane_total(grouping: extdeps.cpu.ampere_altra_platform_hw_design.platform.TypeATwoX8) != 8
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.type_b_half_grouping_lane_total(grouping: extdeps.cpu.ampere_altra_platform_hw_design.platform.TypeBTwoX4) != 16
 }
 
 test fn w_red_access_gated_collateral_is_barred_on_the_same_axis() -> Bool {
-  let status = ampere_customer_connect_collateral_status
-  !publication_status_is_publicly_published(status: status)
-    && !carriage_permits_facts(carriage: upstream_fact_carriage(status: status))
-    && (upstream_fact_carriage(status: status) == gunbc.upstream_document_carriage.FactsBarredDocumentNotPublic { gate: "Ampere Customer Connect, NDA registration required" })
-    && (upstream_fact_carriage(status: extdeps.publication.PubliclyPublishedWithRestrictiveMarking { marking: "any marking at all" }) == FactsMayBeCarried)
+  let status = gunbc.upstream_document_carriage.ampere_customer_connect_collateral_status
+  !extdeps.publication.publication_status_is_publicly_published(status: status)
+    && !gunbc.upstream_document_carriage.carriage_permits_facts(carriage: gunbc.upstream_document_carriage.upstream_fact_carriage(status: status))
+    && (gunbc.upstream_document_carriage.upstream_fact_carriage(status: status) == gunbc.upstream_document_carriage.FactsBarredDocumentNotPublic { gate: "Ampere Customer Connect, NDA registration required" })
+    && (gunbc.upstream_document_carriage.upstream_fact_carriage(status: extdeps.publication.PubliclyPublishedWithRestrictiveMarking { marking: "any marking at all" }) == gunbc.upstream_document_carriage.FactsMayBeCarried)
 }
 
 test fn w_red_a_mechanical_title_would_be_detected_in_the_bibliography() -> Bool {
-  bibliography_entry_is_package_mechanical(title: "Altra Package Mechanical Drawing")
-    && bibliography_entry_is_package_mechanical(title: "Altra Socket Land Pattern")
-    && !bibliography_entry_is_package_mechanical(title: "Altra Software Overview")
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.bibliography_entry_is_package_mechanical(title: "Altra Package Mechanical Drawing")
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.bibliography_entry_is_package_mechanical(title: "Altra Socket Land Pattern")
+    && !extdeps.cpu.ampere_altra_platform_hw_design.platform.bibliography_entry_is_package_mechanical(title: "Altra Software Overview")
 }
 
 test fn w_red_the_package_ceiling_is_not_the_one_dimm_per_channel_population() -> Bool {
-  dimm_slots_per_socket(topology: OneDimmPerChannel) != altra_max_dimms_per_socket
+  extdeps.cpu.ampere_altra_platform_hw_design.platform.dimm_slots_per_socket(topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel) != extdeps.cpu.ampere_altra_package.altra_max_dimms_per_socket
 }

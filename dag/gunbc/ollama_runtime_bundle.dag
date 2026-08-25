@@ -9,8 +9,8 @@ data ollama_runtime_bundle_note: String = "Release-bundled Ollama runtime closur
 // decompressed, which is the codec.
 fn ollama_runtime_archive_codec_key(codec: extdeps.archive.format.ArchiveCompressionCodec) -> String {
   match codec {
-    Gzip => "gzip"
-    Zstd => "zstd"
+    extdeps.archive.format.Gzip => "gzip"
+    extdeps.archive.format.Zstd => "zstd"
   }
 }
 
@@ -37,8 +37,8 @@ fn ollama_runtime_archive_codec_key(codec: extdeps.archive.format.ArchiveCompres
 fn ollama_runtime_materialization_seed(rel: extdeps.ollama.binary_release.OllamaBinaryRelease) -> std.types.NonEmptyStr {
   join([
     "ollama-runtime-materialization|version=", rel.version as String,
-    "|arch=", ollama_linux_arch_key(architecture: rel.architecture),
-    "|variant=", ollama_linux_asset_variant_closure_key(variant: rel.variant),
+    "|arch=", extdeps.ollama.binary_release.ollama_linux_arch_key(architecture: rel.architecture),
+    "|variant=", extdeps.ollama.binary_release.ollama_linux_asset_variant_closure_key(variant: rel.variant),
     "|codec=", ollama_runtime_archive_codec_key(codec: rel.archive_format.codec),
     "|exe=", rel.executable_relative_path as String,
     "|digest=", rel.digest.hex as String,
@@ -46,11 +46,11 @@ fn ollama_runtime_materialization_seed(rel: extdeps.ollama.binary_release.Ollama
 }
 
 fn ollama_runtime_materialization_identity(rel: extdeps.ollama.binary_release.OllamaBinaryRelease) -> std.content_hash.Fnv1a64Structural {
-  content_hash_atom(value: ollama_runtime_materialization_seed(rel: rel))
+  std.content_hash.content_hash_atom(value: ollama_runtime_materialization_seed(rel: rel))
 }
 
 fn ollama_runtime_materialization_identity_for_required_release() -> std.content_hash.Fnv1a64Structural {
-  ollama_runtime_materialization_identity(rel: ollama_required_release)
+  ollama_runtime_materialization_identity(rel: extdeps.ollama.binary_release.ollama_required_release)
 }
 
 data ollama_runtime_observation_identity_note: String = "Maps observed /api/version plus the cited release-asset digest (from install-provenance receipt readback, never desired-state re-derivation) to exactly one catalog row. Version wire alone is ambiguous across generic-cuda and jetpack builds at v0.32.9 — never collapse to ollama_required_release without the asset digest."
@@ -59,10 +59,10 @@ fn ollama_runtime_materialization_identity_for_observed_release(
   version: String,
   asset_digest_hex: String,
 ) -> std.content_hash.Fnv1a64Structural? {
-  match ollama_binary_release_for_observed_asset_digest(digest_hex: asset_digest_hex) {
+  match extdeps.ollama.binary_release.ollama_binary_release_for_observed_asset_digest(digest_hex: asset_digest_hex) {
     Absent => none
     Present { value: rel } =>
-      if ollama_reported_version_matches_release(version: version, rel: rel) {
+      if extdeps.ollama.binary_release.ollama_reported_version_matches_release(version: version, rel: rel) {
         Present { value: ollama_runtime_materialization_identity(rel: rel) }
       } else {
         none
@@ -192,7 +192,7 @@ fn runtime_materialization_state_digest(
       Present { value: id.digest as std.types.NonEmptyStr }
     RuntimeMaterializationIncomplete { identity: id, first_defect: d, further_defects: rest } =>
       Present {
-        value: content_hash_atom(
+        value: std.content_hash.content_hash_atom(
           value: join([
             "ollama-runtime-materialization-incomplete|identity=", id.digest as String,
             "|defects=",
@@ -309,7 +309,7 @@ fn model_store_state_digest(observation: ModelStoreObservation) -> std.types.Non
     ModelStoreComplete { manifest_identity: id, blob_closure_count: _ } => Present { value: id }
     ModelStoreCorrupt { manifest_identity: id, first_corrupt_blob: b } =>
       Present {
-        value: content_hash_atom(
+        value: std.content_hash.content_hash_atom(
           value: join([
             "ollama-model-store-corrupt|manifest=", id as String,
             "|corrupt=", b as String,
@@ -322,7 +322,7 @@ fn model_store_state_digest(observation: ModelStoreObservation) -> std.types.Non
       further_missing_blobs: rest,
     } =>
       Present {
-        value: content_hash_atom(
+        value: std.content_hash.content_hash_atom(
           value: join([
             "ollama-model-store-incomplete|manifest=", id as String,
             "|missing=",

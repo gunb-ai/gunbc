@@ -4,7 +4,7 @@ module extdeps.github.gists
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/rest/gists/gists"
   }
 }
@@ -29,7 +29,7 @@ type Gist {
 
 service github.Gist {
   config {
-    endpoint: default_api_base
+    endpoint: extdeps.github.github.default_api_base
     auth: Bearer
     auth_input: auth_token
 
@@ -59,10 +59,10 @@ service github.Gist {
     }
     response {
       201 => Gist
-      401 => GitHubErrorShape
-      403 => GitHubErrorShape
-      422 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      403 => extdeps.github.errors.GitHubErrorShape
+      422 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 }

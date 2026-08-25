@@ -15,7 +15,7 @@ data real_roster_placement_requirement: gunbc.cargo_execution_placement.CargoSub
     required_by: std.decl_ref.DeclarationRef {
       module_path: "tools.interpreter_dispatch_bijection_real_roster_transport",
       decl_name: "run_interpreter_dispatch_bijection_real_roster_red",
-      field: WholeDeclaration,
+      field: std.decl_ref.WholeDeclaration,
     },
   }
 
@@ -41,7 +41,7 @@ fn real_roster_test_extra_args(exact_test_name: String) -> List<String> {
 // here is a typed refusal carrying what was observed.
 // WHAT IS OBSERVED, AND WHAT IS NOT — stated because the gap is load-bearing.
 //
-// Only EXISTENCE is observed. `shell.PosixCommandV.Check` also declares `path: std.types.FilePath?`, and
+// Only EXISTENCE is observed. `shell.PosixCommandV.Check` also declares `path: FilePath?`, and
 // that field is NOT consumed here on purpose: under wet execution it comes back as a bare
 // stdout String rather than an Optional, so matching Present/Absent raises a non-exhaustive
 // pattern match on the path itself. That is the Value::Null / Optional realization straddle
@@ -64,8 +64,9 @@ fn real_roster_test_extra_args(exact_test_name: String) -> List<String> {
 // Optional, this reads the observed absolute path, hands it to decide_cargo_placement, and
 // the locality claim becomes established rather than assumed.
 fn real_roster_cargo_decision() -> gunbc.cargo_execution_placement.CargoPlacementDecision {
-  let observed = shell.PosixCommandV.Check(command: "cargo")  if observed.exists {
-    decide_cargo_placement(
+  let observed = shell.PosixCommandV.Check(command: "cargo")
+  if observed.exists {
+    gunbc.cargo_execution_placement.decide_cargo_placement(
       requirement: real_roster_placement_requirement,
       placement: gunbc.cargo_execution_placement.LocalRunner { cargo_path: "cargo" }
     )
@@ -88,7 +89,7 @@ fn real_roster_cargo_test_run(root: std.types.FilePath, cargo_bin: std.types.Non
     extra_args: real_roster_test_extra_args(exact_test_name: exact_test_name),
   )
   if run.success {
-    CargoInvocationPassed
+    gunbc.cargo_execution_placement.CargoInvocationPassed
   } else {
     gunbc.cargo_execution_placement.CargoInvocationFailed { exit_code: run.exit_code, cause: run.stderr }
   }
@@ -117,11 +118,11 @@ fn real_roster_cargo_run(cargo_bin: String) -> gunbc.cargo_execution_placement.C
 
 fn run_interpreter_dispatch_bijection_real_roster_outcome() -> gunbc.cargo_execution_placement.CargoInvocationOutcome {
   match real_roster_cargo_decision() {
-    PlacementRefused { cause: c } => gunbc.cargo_execution_placement.CargoInvocationNotAttempted { refusal: c }
-    PlacementAdmitted { cargo_path: cargo_bin } => real_roster_cargo_run(cargo_bin: cargo_bin)
+    gunbc.cargo_execution_placement.PlacementRefused { cause: c } => gunbc.cargo_execution_placement.CargoInvocationNotAttempted { refusal: c }
+    gunbc.cargo_execution_placement.PlacementAdmitted { cargo_path: cargo_bin } => real_roster_cargo_run(cargo_bin: cargo_bin)
   }
 }
 
 fn run_interpreter_dispatch_bijection_real_roster_red() -> Bool {
-  cargo_outcome_holds(o: run_interpreter_dispatch_bijection_real_roster_outcome())
+  gunbc.cargo_execution_placement.cargo_outcome_holds(o: run_interpreter_dispatch_bijection_real_roster_outcome())
 }

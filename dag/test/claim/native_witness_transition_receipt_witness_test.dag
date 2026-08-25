@@ -15,7 +15,7 @@ fn planted_receipt(
     landed_pull_request: 1,
     landed_merge_commit: merge_commit,
     evaluated_head: evaluated_head,
-    executed_evidence: decl_ref(
+    executed_evidence: std.decl_ref.decl_ref(
       module_path: "test.claim.native_witness_transition_receipt_witness",
       decl_name: "planted_receipt",
     ),
@@ -24,8 +24,8 @@ fn planted_receipt(
 
 fn standing_is_before_landing(standing: gunbc.native_witness_transition_receipt.TransitionEvidenceStanding) -> Bool {
   match standing {
-    EvidenceExecutedBeforeLanding { evaluated_head: _, landed_merge_commit: _ } => true
-    EvidenceExecutedAtLandedCommit => false
+    gunbc.native_witness_transition_receipt.EvidenceExecutedBeforeLanding { evaluated_head: _, landed_merge_commit: _ } => true
+    gunbc.native_witness_transition_receipt.EvidenceExecutedAtLandedCommit => false
   }
 }
 
@@ -35,21 +35,21 @@ fn standing_names_both_commits(
   expected_merge: String,
 ) -> Bool {
   match standing {
-    EvidenceExecutedBeforeLanding { evaluated_head, landed_merge_commit } =>
+    gunbc.native_witness_transition_receipt.EvidenceExecutedBeforeLanding { evaluated_head, landed_merge_commit } =>
       evaluated_head == expected_head && landed_merge_commit == expected_merge
-    EvidenceExecutedAtLandedCommit => false
+    gunbc.native_witness_transition_receipt.EvidenceExecutedAtLandedCommit => false
   }
 }
 
 fn declared_nodes_carrying_identity(identity: String) -> Int {
-  declared_roadmap_nodes()
+  gunbc.roadmap_authority.declared_roadmap_nodes()
     |> filter(n => (n.identity as String) == identity)
     |> count
 }
 
 test fn native_at_small_scale_evidence_stands_as_executed_before_landing() -> Bool {
-  let receipt = native_at_small_scale_transition_receipt()
-  let standing = transition_evidence_standing(receipt: receipt)
+  let receipt = gunbc.native_witness_transition_receipt.native_at_small_scale_transition_receipt()
+  let standing = gunbc.native_witness_transition_receipt.transition_evidence_standing(receipt: receipt)
   return standing_is_before_landing(standing: standing)
     && standing_names_both_commits(
       standing: standing,
@@ -65,12 +65,12 @@ test fn evidence_executed_at_the_landed_commit_is_the_other_standing() -> Bool {
     evaluated_head: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
   )
   return !standing_is_before_landing(
-    standing: transition_evidence_standing(receipt: receipt),
+    standing: gunbc.native_witness_transition_receipt.transition_evidence_standing(receipt: receipt),
   )
 }
 
 test fn receipt_subject_joins_exactly_one_declared_roadmap_node() -> Bool {
-  let receipt = native_at_small_scale_transition_receipt()
+  let receipt = gunbc.native_witness_transition_receipt.native_at_small_scale_transition_receipt()
   return declared_nodes_carrying_identity(identity: receipt.node as String) == 1
 }
 
@@ -98,13 +98,13 @@ fn receipt_citing(
     landed_pull_request: 1,
     landed_merge_commit: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
     evaluated_head: "2f9e780e6d2130680c4d9fb49739bf0c6cc7c746",
-    executed_evidence: decl_ref(module_path: module_path, decl_name: decl_name),
+    executed_evidence: std.decl_ref.decl_ref(module_path: module_path, decl_name: decl_name),
   }
 }
 
 test fn cited_evidence_declaration_names_the_imported_symbol() -> Bool {
   return citation_names_the_imported_evidence_symbol(
-    receipt: native_at_small_scale_transition_receipt(),
+    receipt: gunbc.native_witness_transition_receipt.native_at_small_scale_transition_receipt(),
   )
 }
 

@@ -10,14 +10,14 @@ type LensVerdict
   | Unrealized { diagnostic: v2.std.diagnostic.Diagnostic }
 
 fn lens_verdict_module_file(module_name: String) -> v2.std.node.Symbol {
-  symbol_intern_lexeme(lexeme: module_name)
+  v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: module_name)
 }
 
 fn lens_verdict_module_diagnostic(reason: v2.std.node.Symbol, module_name: String) -> v2.std.diagnostic.Diagnostic {
-  textual_whole_file_diagnostic(
+  v2.std.diagnostic.textual_whole_file_diagnostic(
     reason: reason,
     module_file: lens_verdict_module_file(module_name: module_name),
-    correction: v2.std.diagnostic.Unavailable { reason: CorrectionNotModeled }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.CorrectionNotModeled }
   )
 }
 
@@ -41,8 +41,8 @@ fn lens_verdict_module_not_applicable(reason: v2.std.node.Symbol, module_name: S
 
 fn lens_verdict_diagnostic_locus_module(d: v2.std.diagnostic.Diagnostic) -> String {
   match d.at {
-    Textual { file: module_file, extent: _ } => symbol_lexeme(sym: module_file)
-    NodeLocus { anchor: _ } => ""
-    PortLocus { anchor: _ } => ""
+    v2.std.diagnostic.Textual { file: module_file, extent: _ } => v2.std.compilers.lexing.symbol_lexeme(sym: module_file)
+    v2.std.diagnostic.NodeLocus { anchor: _ } => ""
+    v2.std.diagnostic.PortLocus { anchor: _ } => ""
   }
 }

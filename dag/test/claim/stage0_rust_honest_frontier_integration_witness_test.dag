@@ -2,46 +2,46 @@ module test.claim.stage0_rust_honest_frontier_integration_witness
 
 
 test fn honest_frontier_integration_note_cites_hand_queue_drain() -> Bool {
-  string_contains(s: stage0_rust_honest_frontier_integration_note, pattern: "v1-hand-queue-drain")
-    && string_contains(s: stage0_rust_honest_frontier_integration_note, pattern: "identity join")
+  string_contains(s: gunbc.stage0_rust_honest_frontier_integration.stage0_rust_honest_frontier_integration_note, pattern: "v1-hand-queue-drain")
+    && string_contains(s: gunbc.stage0_rust_honest_frontier_integration.stage0_rust_honest_frontier_integration_note, pattern: "identity join")
 }
 
 test fn honest_frontier_integration_joins_c1_and_c2() -> Bool {
-  let hand_paths = derived_hand_maintained_disposition_repo_paths()
+  let hand_paths = gunbc.stage0_rust_source_lifecycle_scaffold.derived_hand_maintained_disposition_repo_paths()
   let main_path = "src/v1/stage0/src/main.rs"
   let cli_run_path = "src/v1/stage0/src/cli_run.rs"
-  match honest_frontier_integration_receipt(
-    observation: lifecycle_totality_witness_observation(extra_paths: hand_paths)
+  match gunbc.stage0_rust_honest_frontier_integration.honest_frontier_integration_receipt(
+    observation: gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_witness_observation(extra_paths: hand_paths)
   ) {
-    HonestFrontierIntegrationDerived {
+    gunbc.stage0_rust_honest_frontier_integration.HonestFrontierIntegrationDerived {
       lifecycle: _,
       reachability: _,
       hand_maintained_product_reachable_paths: product_paths,
       hand_maintained_reachability_refused_paths: refused_paths
     } =>
       product_paths == [main_path]
-        && path_in_list(path: cli_run_path, paths: refused_paths)
-        && !path_in_list(path: main_path, paths: refused_paths)
-        && !path_in_list(path: cli_run_path, paths: product_paths)
+        && gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: cli_run_path, paths: refused_paths)
+        && !gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: main_path, paths: refused_paths)
+        && !gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: cli_run_path, paths: product_paths)
     _ => false
   }
 }
 
 test fn honest_frontier_integration_refusal_does_not_project_empty_hand_paths() -> Bool {
-  match honest_frontier_integration_receipt(
+  match gunbc.stage0_rust_honest_frontier_integration.honest_frontier_integration_receipt(
     observation: gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: "",
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
-      tracked_rust_repo_paths: derived_hand_maintained_stage0_repo_paths(),
+      tracked_rust_repo_paths: gunbc.stage0_rust_source_lifecycle_scaffold.derived_hand_maintained_stage0_repo_paths(),
       prior_tracked_rust_repo_paths: [],
       cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
-      emit_population_evidence: EmitPopulationConfirmed {
+      emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
         emitted_stage0_repo_paths: []
       }
     }
   ) {
-    HonestFrontierIntegrationRefused { detail: detail } => detail != ""
-    HonestFrontierIntegrationDerived {
+    gunbc.stage0_rust_honest_frontier_integration.HonestFrontierIntegrationRefused { detail: detail } => detail != ""
+    gunbc.stage0_rust_honest_frontier_integration.HonestFrontierIntegrationDerived {
       hand_maintained_product_reachable_paths: _,
       hand_maintained_reachability_refused_paths: _,
       lifecycle: _,
@@ -51,24 +51,24 @@ test fn honest_frontier_integration_refusal_does_not_project_empty_hand_paths() 
 }
 
 test fn honest_frontier_integration_separates_discovery_from_decision() -> Bool {
-  let observation = lifecycle_totality_witness_observation(extra_paths: ["orphan.rs"])
-  honest_frontier_discovery_complete(observation: observation)
-    && !honest_frontier_decision_complete(observation: observation)
+  let observation = gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_witness_observation(extra_paths: ["orphan.rs"])
+  gunbc.stage0_rust_honest_frontier_integration.honest_frontier_discovery_complete(observation: observation)
+    && !gunbc.stage0_rust_honest_frontier_integration.honest_frontier_decision_complete(observation: observation)
 }
 
 test fn honest_frontier_integration_excludes_generated_layout_member_from_hand_population() -> Bool {
-  let hand_paths = derived_hand_maintained_stage0_repo_paths()
-  match honest_frontier_integration_receipt(
-    observation: lifecycle_totality_witness_observation(extra_paths: hand_paths)
+  let hand_paths = gunbc.stage0_rust_source_lifecycle_scaffold.derived_hand_maintained_stage0_repo_paths()
+  match gunbc.stage0_rust_honest_frontier_integration.honest_frontier_integration_receipt(
+    observation: gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_witness_observation(extra_paths: hand_paths)
   ) {
-    HonestFrontierIntegrationDerived {
+    gunbc.stage0_rust_honest_frontier_integration.HonestFrontierIntegrationDerived {
       lifecycle: _,
       reachability: _,
       hand_maintained_product_reachable_paths: product_paths,
       hand_maintained_reachability_refused_paths: refused_paths
     } =>
-      !path_in_list(path: v1_interpreter_dispatch_generated_repo_path, paths: product_paths)
-        && !path_in_list(path: v1_interpreter_dispatch_generated_repo_path, paths: refused_paths)
+      !gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: gunbc.stage0_rust_source_lifecycle_scaffold.v1_interpreter_dispatch_generated_repo_path, paths: product_paths)
+        && !gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: gunbc.stage0_rust_source_lifecycle_scaffold.v1_interpreter_dispatch_generated_repo_path, paths: refused_paths)
     _ => false
   }
 }

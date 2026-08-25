@@ -1,16 +1,16 @@
 module v2.test.long.source_bridged_pipeline_bridge_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data source_bridged_pipeline_bridge_long_note: String = "Full tokenize→parse→normalize→resolve bridge exceeds the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note)."
 
-test fn source_bridged_pipeline_bridge_resolves_add_source() -> v2.std.logic.Bool {
-  match source_bridged_resolved_root(
-    source_text: ingested_add_module_source,
+test fn source_bridged_pipeline_bridge_resolves_add_source() -> Bool {
+  match v2.test.complexity_gate.source_bridged_pipeline_bridge.source_bridged_resolved_root(
+    source_text: v2.compiler.ingested_fixture_arrows.ingested_add_module_source,
     file: ^source_bridged_pipeline_bridge_test_file
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

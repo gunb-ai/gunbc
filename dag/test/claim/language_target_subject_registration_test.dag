@@ -5,29 +5,29 @@ data subject_registration_witness_note: String = "D0's executed evidence: the ~2
 
 fn registration_citation_count(r: std.language_target_identity.LanguageTargetRegistration) -> Int {
   match r.grounding {
-    ExternalGrounding { scope: s } => external_model_scope_citations(scope: s) |> count
-    ProjectGrounding { authority: _ } => 1
+    std.language_target_identity.ExternalGrounding { scope: s } => extdeps.external_authority.external_model_scope_citations(scope: s) |> count
+    std.language_target_identity.ProjectGrounding { authority: _ } => 1
   }
 }
 
 test fn every_external_grounding_carries_at_least_one_citation() -> Bool {
-  fold(registered_language_targets, init: true, f: fn(acc, r) {
+  fold(gunbc.language_target_registry.registered_language_targets, init: true, f: fn(acc, r) {
     acc && registration_citation_count(r: r) > 0
   })
 }
 
 // The construction wall restated as an executable property. registration_subject reads the subject OUT of the grounding, so there is no second field that could disagree with it; this asserts the projection is total over every registered row — every registration yields a subject whose module path is nonempty — which is the observable consequence of the subject having exactly one source.
 test fn every_registration_derives_a_nonempty_subject() -> Bool {
-  fold(registered_language_targets, init: true, f: fn(acc, r) {
-    acc && registration_subject(registration: r).module_path != ""
+  fold(gunbc.language_target_registry.registered_language_targets, init: true, f: fn(acc, r) {
+    acc && std.language_target_identity.registration_subject(registration: r).module_path != ""
   })
 }
 
 test fn no_subject_is_registered_twice() -> Bool {
-  fold(registered_language_targets, init: true, f: fn(acc, r) {
-    let subj = registration_subject(registration: r)
-    let occurrences = fold(registered_language_targets, init: 0, f: fn(a, other) {
-      if declaration_ref_eq(a: registration_subject(registration: other), b: subj) { a + 1 } else { a }
+  fold(gunbc.language_target_registry.registered_language_targets, init: true, f: fn(acc, r) {
+    let subj = std.language_target_identity.registration_subject(registration: r)
+    let occurrences = fold(gunbc.language_target_registry.registered_language_targets, init: 0, f: fn(a, other) {
+      if std.decl_ref.declaration_ref_eq(a: std.language_target_identity.registration_subject(registration: other), b: subj) { a + 1 } else { a }
     })
     acc && occurrences == 1
   })
@@ -65,34 +65,34 @@ data expected_subject_carrier_paths: List<String> = [
 
 test fn every_subject_carrier_is_enrolled_in_the_scope_roster() -> Bool {
   all(expected_subject_carrier_paths, p =>
-    scope_frontier_strings_contain(xs: scope_carrier_paths, s: p))
+    gunbc.extdeps_scope_frontier.scope_frontier_strings_contain(xs: gunbc.extdeps_scope_frontier.scope_carrier_paths, s: p))
 }
 
 data disposition_coverage_note: String = "Every arm of TargetDisposition is inhabited by a real registered target, so no arm is dead code: Active (the P0/P1 targets under way), GovernedByContract (Rust, whose status this registry REFERENCES from the self-host frontier rather than recomputing), DecisionPending (ECMAScript and C++, the two targets DESIGN lists as open operator decisions), MaintenanceOnly (the structured media), and Parked (everything with a stated reason and no work in progress). An unexercised coproduct arm is untested code."
 
 fn disposition_arm_present(pick: fn(std.language_target_identity.LanguageTargetRegistration) -> Bool) -> Bool {
-  fold(registered_language_targets, init: false, f: fn(acc, r) { acc || pick(r) })
+  fold(gunbc.language_target_registry.registered_language_targets, init: false, f: fn(acc, r) { acc || pick(r) })
 }
 
 test fn every_disposition_arm_is_inhabited() -> Bool {
-  disposition_arm_present(pick: fn(r) { match r.disposition { TargetActive => true, TargetParked { reason: _ } => false, TargetDecisionPending { decision_id: _ } => false, TargetMaintenanceOnly => false, TargetGovernedByContracts { contract_ids: _ } => false } })
-    && disposition_arm_present(pick: fn(r) { match r.disposition { TargetParked { reason: _ } => true, TargetActive => false, TargetDecisionPending { decision_id: _ } => false, TargetMaintenanceOnly => false, TargetGovernedByContracts { contract_ids: _ } => false } })
-    && disposition_arm_present(pick: fn(r) { match r.disposition { TargetDecisionPending { decision_id: _ } => true, TargetActive => false, TargetParked { reason: _ } => false, TargetMaintenanceOnly => false, TargetGovernedByContracts { contract_ids: _ } => false } })
-    && disposition_arm_present(pick: fn(r) { match r.disposition { TargetMaintenanceOnly => true, TargetActive => false, TargetParked { reason: _ } => false, TargetDecisionPending { decision_id: _ } => false, TargetGovernedByContracts { contract_ids: _ } => false } })
-    && disposition_arm_present(pick: fn(r) { match r.disposition { TargetGovernedByContracts { contract_ids: _ } => true, TargetActive => false, TargetParked { reason: _ } => false, TargetDecisionPending { decision_id: _ } => false, TargetMaintenanceOnly => false } })
+  disposition_arm_present(pick: fn(r) { match r.disposition { std.language_target_identity.TargetActive => true, std.language_target_identity.TargetParked { reason: _ } => false, std.language_target_identity.TargetDecisionPending { decision_id: _ } => false, std.language_target_identity.TargetMaintenanceOnly => false, std.language_target_identity.TargetGovernedByContracts { contract_ids: _ } => false } })
+    && disposition_arm_present(pick: fn(r) { match r.disposition { std.language_target_identity.TargetParked { reason: _ } => true, std.language_target_identity.TargetActive => false, std.language_target_identity.TargetDecisionPending { decision_id: _ } => false, std.language_target_identity.TargetMaintenanceOnly => false, std.language_target_identity.TargetGovernedByContracts { contract_ids: _ } => false } })
+    && disposition_arm_present(pick: fn(r) { match r.disposition { std.language_target_identity.TargetDecisionPending { decision_id: _ } => true, std.language_target_identity.TargetActive => false, std.language_target_identity.TargetParked { reason: _ } => false, std.language_target_identity.TargetMaintenanceOnly => false, std.language_target_identity.TargetGovernedByContracts { contract_ids: _ } => false } })
+    && disposition_arm_present(pick: fn(r) { match r.disposition { std.language_target_identity.TargetMaintenanceOnly => true, std.language_target_identity.TargetActive => false, std.language_target_identity.TargetParked { reason: _ } => false, std.language_target_identity.TargetDecisionPending { decision_id: _ } => false, std.language_target_identity.TargetGovernedByContracts { contract_ids: _ } => false } })
+    && disposition_arm_present(pick: fn(r) { match r.disposition { std.language_target_identity.TargetGovernedByContracts { contract_ids: _ } => true, std.language_target_identity.TargetActive => false, std.language_target_identity.TargetParked { reason: _ } => false, std.language_target_identity.TargetDecisionPending { decision_id: _ } => false, std.language_target_identity.TargetMaintenanceOnly => false } })
 }
 
 // Two independently governed documents may ground ONE subject — external_model_scope_law permits several citations per subject and forbids several subjects per module. Verilog is the specimen: IEEE 1364-2005 is the Verilog standard this repository's surface actually models, and that same IEEE page records it as superseded by the SystemVerilog standard, so both are carried. Collapsing them would either hide the supersession or silently claim SystemVerilog support.
 test fn a_subject_may_carry_more_than_one_citation() -> Bool {
-  fold(registered_language_targets, init: false, f: fn(acc, r) {
+  fold(gunbc.language_target_registry.registered_language_targets, init: false, f: fn(acc, r) {
     acc || registration_citation_count(r: r) > 1
   })
 }
 
 // THE EXECUTABLE HALF OF VERIFY-OR-REFUSE. Three targets whose upstream authorities could not be read are absent from the registry and present in the findings with their causes. The two assertions are deliberately opposed: absence alone could mean nobody tried, and a finding alone could sit beside a registration that quietly exists anyway. Together they say the target is unregistered AND the reason is recorded, which is the state a plausible-but-unverified locator would have destroyed.
 fn no_registration_mentions(module_fragment: String) -> Bool {
-  fold(registered_language_targets, init: true, f: fn(acc, r) {
-    acc && !string_contains(s: registration_subject(registration: r).module_path, pattern: module_fragment)
+  fold(gunbc.language_target_registry.registered_language_targets, init: true, f: fn(acc, r) {
+    acc && !string_contains(s: std.language_target_identity.registration_subject(registration: r).module_path, pattern: module_fragment)
   })
 }
 
@@ -103,32 +103,32 @@ test fn unverified_upstreams_are_absent_from_the_registry() -> Bool {
 }
 
 test fn unverified_upstreams_are_recorded_as_typed_findings() -> Bool {
-  unregistered_target_finding_count() > 0
-    && fold(unregistered_target_findings, init: true, f: fn(acc, f) {
+  gunbc.language_target_registry.unregistered_target_finding_count() > 0
+    && fold(gunbc.language_target_registry.unregistered_target_findings, init: true, f: fn(acc, f) {
          acc && match f.cause {
-           UpstreamAuthorityUnreadable { attempted_locator: l, observed: o } => l != "" && o != ""
-           SurfaceFusesIndependentSubjects { surface_module: m, fused_subjects: fs } => m != "" && fs != ""
+           gunbc.language_target_registry.UpstreamAuthorityUnreadable { attempted_locator: l, observed: o } => l != "" && o != ""
+           gunbc.language_target_registry.SurfaceFusesIndependentSubjects { surface_module: m, fused_subjects: fs } => m != "" && fs != ""
          }
        })
 }
 
 // Each projection hangs off a subject that is actually registered, checked here on named rows rather than only in aggregate: ngspice and CommonMark are the two subjects whose DISPLAY NAME deliberately differs from the folder and the colloquial target name, because the honest upstream is the implementation (ngspice, not 'SPICE') and the specified dialect (CommonMark, not 'Markdown'). If a projection's subject ever drifted from its registration, these are the rows where a name-based reader would notice last.
 fn registered_subject_refs() -> List<std.decl_ref.DeclarationRef> {
-  fold(registered_language_targets, init: [], f: fn(acc, r) {
-    concat(acc, [registration_subject(registration: r)])
+  fold(gunbc.language_target_registry.registered_language_targets, init: [], f: fn(acc, r) {
+    concat(acc, [std.language_target_identity.registration_subject(registration: r)])
   })
 }
 
 fn subject_is_registered(target: std.decl_ref.DeclarationRef) -> Bool {
   fold(registered_subject_refs(), init: false, f: fn(acc, s) {
-    acc || declaration_ref_eq(a: s, b: target)
+    acc || std.decl_ref.declaration_ref_eq(a: s, b: target)
   })
 }
 
 test fn named_projections_hang_off_registered_subjects() -> Bool {
-  subject_is_registered(target: rust_language_subject_ref)
-    && subject_is_registered(target: spice_netlist_language_subject_ref)
-    && subject_is_registered(target: commonmark_format_subject_ref)
+  subject_is_registered(target: gunbc.language_target_registry.rust_language_subject_ref)
+    && subject_is_registered(target: gunbc.language_target_registry.spice_netlist_language_subject_ref)
+    && subject_is_registered(target: gunbc.language_target_registry.commonmark_format_subject_ref)
 }
 
 data red_control_note: String = "RED CONTROLS — each asserts that a WRONG state is genuinely detected, so the green assertions above are discriminating rather than vacuous. A synthetic registration whose grounding has zero citations is unwritable by construction (first_citation is a required scalar), so the reachable wrong states are the ones checked here: a subject ref that no registration claims must NOT be reported as present, and a finding cause must not read as satisfied when its fields are empty."
@@ -137,7 +137,7 @@ test fn red_unregistered_subject_ref_is_not_reported_as_present() -> Bool {
   let bogus = std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.nonexistent.subject",
     decl_name: "nonexistent_language",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
   !subject_is_registered(target: bogus)
 }
@@ -145,15 +145,15 @@ test fn red_unregistered_subject_ref_is_not_reported_as_present() -> Bool {
 test fn red_empty_cause_fields_are_detected() -> Bool {
   let empty_cause = gunbc.language_target_registry.UpstreamAuthorityUnreadable { attempted_locator: "", observed: "" }
   !match empty_cause {
-    UpstreamAuthorityUnreadable { attempted_locator: l, observed: o } => l != "" && o != ""
-    SurfaceFusesIndependentSubjects { surface_module: m, fused_subjects: fs } => m != "" && fs != ""
+    gunbc.language_target_registry.UpstreamAuthorityUnreadable { attempted_locator: l, observed: o } => l != "" && o != ""
+    gunbc.language_target_registry.SurfaceFusesIndependentSubjects { surface_module: m, fused_subjects: fs } => m != "" && fs != ""
   }
 }
 
 // The filed legacy-label findings are asserted NON-EMPTY and fully populated, so a row cannot be filed as a hollow placeholder. This is deliberately a weak assertion about strong content: the findings describe a defect in a prose table this change does not touch, so there is nothing here to prove green by execution — what the assertion prevents is a row that names a label while saying nothing about which subjects it fuses or why that matters, which is how a filed finding quietly becomes a checkbox.
 test fn filed_legacy_label_findings_are_populated() -> Bool {
-  (legacy_frontier_label_findings |> count) > 0
-    && fold(legacy_frontier_label_findings, init: true, f: fn(acc, r) {
+  (gunbc.language_target_registry.legacy_frontier_label_findings |> count) > 0
+    && fold(gunbc.language_target_registry.legacy_frontier_label_findings, init: true, f: fn(acc, r) {
          acc && r.legacy_label != "" && r.distinct_subjects_under_it != "" && r.consequence != ""
        })
 }
@@ -161,14 +161,14 @@ test fn filed_legacy_label_findings_are_populated() -> Bool {
 data runtime_binding_split_note: String = "The SPICE split, asserted as a PROPERTY rather than as two names. The medium and the runtime must be DISTINCT subjects, the binding must relate exactly those two, and — the discriminating part — the runtime must NOT be registered as a language target. If someone re-registers ngspice as a target, the last assertion reds; that is the regression this witness exists to catch, because re-fusing them would look harmless row by row."
 
 test fn spice_medium_and_ngspice_runtime_are_distinct_subjects() -> Bool {
-  !declaration_ref_eq(a: spice_netlist_language_subject_ref, b: ngspice_simulator_subject_ref)
-    && subject_is_registered(target: spice_netlist_language_subject_ref)
-    && !subject_is_registered(target: ngspice_simulator_subject_ref)
+  !std.decl_ref.declaration_ref_eq(a: gunbc.language_target_registry.spice_netlist_language_subject_ref, b: gunbc.language_target_registry.ngspice_simulator_subject_ref)
+    && subject_is_registered(target: gunbc.language_target_registry.spice_netlist_language_subject_ref)
+    && !subject_is_registered(target: gunbc.language_target_registry.ngspice_simulator_subject_ref)
 }
 
 test fn the_runtime_binding_relates_the_medium_to_its_runtime() -> Bool {
-  fold(target_runtime_bindings, init: false, f: fn(acc, b) {
-    acc || (declaration_ref_eq(a: b.target, b: spice_netlist_language_subject_ref)
-      && declaration_ref_eq(a: b.runtime, b: ngspice_simulator_subject_ref))
+  fold(gunbc.language_target_registry.target_runtime_bindings, init: false, f: fn(acc, b) {
+    acc || (std.decl_ref.declaration_ref_eq(a: b.target, b: gunbc.language_target_registry.spice_netlist_language_subject_ref)
+      && std.decl_ref.declaration_ref_eq(a: b.runtime, b: gunbc.language_target_registry.ngspice_simulator_subject_ref))
   })
 }

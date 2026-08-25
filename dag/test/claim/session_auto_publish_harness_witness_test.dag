@@ -13,121 +13,121 @@ data write_digest_a: std.content_hash.Fnv1a64Structural = std.content_hash.Fnv1a
 data write_digest_b: std.content_hash.Fnv1a64Structural = std.content_hash.Fnv1a64Structural { digest: "2222222222222222" }
 
 test fn local_autosave_advances_local_checkpoint_only() -> Bool {
-  let state = after_local_autosave(
-    state: after_user_intent_publish(
-      state: empty_session_publish_state(),
+  let state = gunbc.session_auto_publish.after_local_autosave(
+    state: gunbc.session_auto_publish.after_user_intent_publish(
+      state: gunbc.session_auto_publish.empty_session_publish_state(),
       published_head: head_a,
       at: stamp_one,
     ),
     local_commit: head_b,
   )
-  match local_checkpoint_commit(state: state) {
-    Present { value: commit } => commit == head_b
-    Absent => false
+  match gunbc.session_auto_publish.local_checkpoint_commit(state: state) {
+    v2.std.optional.Present { value: commit } => commit == head_b
+    v2.std.optional.Absent => false
   }
-    && match remote_branch_head(state: state) {
-      Present { value: head } => head == head_a
-      Absent => false
+    && match gunbc.session_auto_publish.remote_branch_head(state: state) {
+      v2.std.optional.Present { value: head } => head == head_a
+      v2.std.optional.Absent => false
     }
-    && match worker_notification_head(state: state) {
-      Present { value: head } => head == head_a
-      Absent => false
+    && match gunbc.session_auto_publish.worker_notification_head(state: state) {
+      v2.std.optional.Present { value: head } => head == head_a
+      v2.std.optional.Absent => false
     }
 }
 
 test fn explicit_publish_push_advances_remote_branch_only() -> Bool {
-  let state = after_explicit_publish_push(
-    state: after_local_autosave(
-      state: empty_session_publish_state(),
+  let state = gunbc.session_auto_publish.after_explicit_publish_push(
+    state: gunbc.session_auto_publish.after_local_autosave(
+      state: gunbc.session_auto_publish.empty_session_publish_state(),
       local_commit: head_a,
     ),
     remote_head: head_b,
   )
-  match local_checkpoint_commit(state: state) {
-    Present { value: commit } => commit == head_a
-    Absent => false
+  match gunbc.session_auto_publish.local_checkpoint_commit(state: state) {
+    v2.std.optional.Present { value: commit } => commit == head_a
+    v2.std.optional.Absent => false
   }
-    && match remote_branch_head(state: state) {
-      Present { value: head } => head == head_b
-      Absent => false
+    && match gunbc.session_auto_publish.remote_branch_head(state: state) {
+      v2.std.optional.Present { value: head } => head == head_b
+      v2.std.optional.Absent => false
     }
-    && match worker_notification_head(state: state) {
-      Absent => true
-      Present { value: _ } => false
+    && match gunbc.session_auto_publish.worker_notification_head(state: state) {
+      v2.std.optional.Absent => true
+      v2.std.optional.Present { value: _ } => false
     }
 }
 
 test fn user_intent_stamps_remote_branch_and_worker() -> Bool {
-  let state = after_user_intent_publish(
-    state: after_local_autosave(
-      state: empty_session_publish_state(),
+  let state = gunbc.session_auto_publish.after_user_intent_publish(
+    state: gunbc.session_auto_publish.after_local_autosave(
+      state: gunbc.session_auto_publish.empty_session_publish_state(),
       local_commit: head_a,
     ),
     published_head: head_b,
     at: stamp_two,
   )
-  match remote_branch_head(state: state) {
-    Present { value: head } => head == head_b
-    Absent => false
+  match gunbc.session_auto_publish.remote_branch_head(state: state) {
+    v2.std.optional.Present { value: head } => head == head_b
+    v2.std.optional.Absent => false
   }
-    && match worker_notification_head(state: state) {
-      Present { value: head } => head == head_b
-      Absent => false
+    && match gunbc.session_auto_publish.worker_notification_head(state: state) {
+      v2.std.optional.Present { value: head } => head == head_b
+      v2.std.optional.Absent => false
     }
     && match state.worker {
-      WorkerNotificationStamped { notified_head: _, notified_at: at } => at == stamp_two
-      WorkerNotificationAbsent => false
+      gunbc.session_auto_publish.WorkerNotificationStamped { notified_head: _, notified_at: at } => at == stamp_two
+      gunbc.session_auto_publish.WorkerNotificationAbsent => false
     }
 }
 
 test fn drift_reminder_advances_worker_notification_only() -> Bool {
-  let state = after_drift_reminder_delivered(
-    state: after_user_intent_publish(
-      state: empty_session_publish_state(),
+  let state = gunbc.session_auto_publish.after_drift_reminder_delivered(
+    state: gunbc.session_auto_publish.after_user_intent_publish(
+      state: gunbc.session_auto_publish.empty_session_publish_state(),
       published_head: head_a,
       at: stamp_one,
     ),
     current_head: head_c,
     at: stamp_two,
   )
-  match remote_branch_head(state: state) {
-    Present { value: head } => head == head_a
-    Absent => false
+  match gunbc.session_auto_publish.remote_branch_head(state: state) {
+    v2.std.optional.Present { value: head } => head == head_a
+    v2.std.optional.Absent => false
   }
-    && match worker_notification_head(state: state) {
-      Present { value: head } => head == head_c
-      Absent => false
+    && match gunbc.session_auto_publish.worker_notification_head(state: state) {
+      v2.std.optional.Present { value: head } => head == head_c
+      v2.std.optional.Absent => false
     }
     && match state.worker {
-      WorkerNotificationStamped { notified_head: _, notified_at: at } => at == stamp_two
-      WorkerNotificationAbsent => false
+      gunbc.session_auto_publish.WorkerNotificationStamped { notified_head: _, notified_at: at } => at == stamp_two
+      gunbc.session_auto_publish.WorkerNotificationAbsent => false
     }
 }
 
 test fn silent_poll_advances_no_axis() -> Bool {
-  let before = after_user_intent_publish(
-    state: empty_session_publish_state(),
+  let before = gunbc.session_auto_publish.after_user_intent_publish(
+    state: gunbc.session_auto_publish.empty_session_publish_state(),
     published_head: head_a,
     at: stamp_one,
   )
-  let after = observe_without_publishing(state: before)
-  local_checkpoint_commit(state: before) == local_checkpoint_commit(state: after)
-    && remote_branch_head(state: before) == remote_branch_head(state: after)
-    && worker_notification_head(state: before) == worker_notification_head(state: after)
+  let after = gunbc.session_auto_publish.observe_without_publishing(state: before)
+  gunbc.session_auto_publish.local_checkpoint_commit(state: before) == gunbc.session_auto_publish.local_checkpoint_commit(state: after)
+    && gunbc.session_auto_publish.remote_branch_head(state: before) == gunbc.session_auto_publish.remote_branch_head(state: after)
+    && gunbc.session_auto_publish.worker_notification_head(state: before) == gunbc.session_auto_publish.worker_notification_head(state: after)
 }
 
 test fn drift_poll_requires_worker_notification() -> Bool {
-  !drift_poll_may_run(state: empty_session_publish_state())
-    && drift_poll_may_run(
-      state: after_user_intent_publish(
-        state: empty_session_publish_state(),
+  !gunbc.session_auto_publish.drift_poll_may_run(state: gunbc.session_auto_publish.empty_session_publish_state())
+    && gunbc.session_auto_publish.drift_poll_may_run(
+      state: gunbc.session_auto_publish.after_user_intent_publish(
+        state: gunbc.session_auto_publish.empty_session_publish_state(),
         published_head: head_a,
         at: stamp_one,
       ),
     )
-    && !drift_poll_may_run(
-      state: after_explicit_publish_push(
-        state: empty_session_publish_state(),
+    && !gunbc.session_auto_publish.drift_poll_may_run(
+      state: gunbc.session_auto_publish.after_explicit_publish_push(
+        state: gunbc.session_auto_publish.empty_session_publish_state(),
         remote_head: head_a,
       ),
     )
@@ -136,34 +136,34 @@ test fn drift_poll_requires_worker_notification() -> Bool {
 data conflation_red_note: String = "When poll wrongly treats a push as RemoteBranchPublication while WorkerNotification stays behind, the old pr_publish_head || pr_publish_notified_head fallback returns the remote head. Drift must use worker_notification_baseline instead, or unrelated mainline commits enter the worker notice."
 
 test fn conflated_baseline_differs_from_worker_when_remote_advanced_without_notification() -> Bool {
-  let state = after_explicit_publish_push(
-    state: after_user_intent_publish(
-      state: empty_session_publish_state(),
+  let state = gunbc.session_auto_publish.after_explicit_publish_push(
+    state: gunbc.session_auto_publish.after_user_intent_publish(
+      state: gunbc.session_auto_publish.empty_session_publish_state(),
       published_head: head_a,
       at: stamp_one,
     ),
     remote_head: head_b,
   )
-  match worker_notification_baseline(state: state) {
-    Present { value: worker } =>
-      match conflated_checkpoint_baseline(state: state) {
-        Present { value: conflated } =>
+  match gunbc.session_auto_publish.worker_notification_baseline(state: state) {
+    v2.std.optional.Present { value: worker } =>
+      match gunbc.session_auto_publish.conflated_checkpoint_baseline(state: state) {
+        v2.std.optional.Present { value: conflated } =>
           worker == head_a && conflated == head_b && worker != conflated
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
 test fn drift_diff_start_uses_worker_not_conflated_baseline() -> Bool {
   let notified = head_a
-  resolve_drift_diff_start(
+  gunbc.session_auto_publish.resolve_drift_diff_start(
     notified_baseline: notified,
     current_head: head_c,
     merge_base_with_origin: v2.std.optional.Present { value: head_main },
     baseline_is_ancestor_of_merge_base: true,
   ) == head_main
-    && resolve_drift_diff_start(
+    && gunbc.session_auto_publish.resolve_drift_diff_start(
       notified_baseline: notified,
       current_head: head_c,
       merge_base_with_origin: v2.std.optional.Absent,
@@ -172,152 +172,152 @@ test fn drift_diff_start_uses_worker_not_conflated_baseline() -> Bool {
 }
 
 test fn red_conflated_baseline_would_start_drift_at_remote_head() -> Bool {
-  let state = after_explicit_publish_push(
-    state: after_user_intent_publish(
-      state: empty_session_publish_state(),
+  let state = gunbc.session_auto_publish.after_explicit_publish_push(
+    state: gunbc.session_auto_publish.after_user_intent_publish(
+      state: gunbc.session_auto_publish.empty_session_publish_state(),
       published_head: head_a,
       at: stamp_one,
     ),
     remote_head: head_b,
   )
-  match worker_notification_baseline(state: state) {
-    Present { value: worker } =>
-      match conflated_checkpoint_baseline(state: state) {
-        Present { value: conflated } =>
-          resolve_drift_diff_start(
+  match gunbc.session_auto_publish.worker_notification_baseline(state: state) {
+    v2.std.optional.Present { value: worker } =>
+      match gunbc.session_auto_publish.conflated_checkpoint_baseline(state: state) {
+        v2.std.optional.Present { value: conflated } =>
+          gunbc.session_auto_publish.resolve_drift_diff_start(
             notified_baseline: worker,
             current_head: head_c,
             merge_base_with_origin: v2.std.optional.Absent,
             baseline_is_ancestor_of_merge_base: false,
           ) != conflated
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
 test fn scratch_probe_permits_local_checkpoint_only() -> Bool {
-  publication_is_permitted(
-    disposition: adjudicate_local_checkpoint(context: PublicationContextScratchProbe),
+  gunbc.session_auto_publish.publication_is_permitted(
+    disposition: gunbc.session_auto_publish.adjudicate_local_checkpoint(context: gunbc.session_auto_publish.PublicationContextScratchProbe),
   )
-    && !publication_is_permitted(
-      disposition: adjudicate_remote_publication(
-        context: PublicationContextScratchProbe,
-        operation: RemotePushBranch,
+    && !gunbc.session_auto_publish.publication_is_permitted(
+      disposition: gunbc.session_auto_publish.adjudicate_remote_publication(
+        context: gunbc.session_auto_publish.PublicationContextScratchProbe,
+        operation: gunbc.session_auto_publish.RemotePushBranch,
       ),
     )
-    && !publication_is_permitted(
-      disposition: adjudicate_remote_publication(
-        context: PublicationContextScratchProbe,
-        operation: RemoteCreatePullRequest,
+    && !gunbc.session_auto_publish.publication_is_permitted(
+      disposition: gunbc.session_auto_publish.adjudicate_remote_publication(
+        context: gunbc.session_auto_publish.PublicationContextScratchProbe,
+        operation: gunbc.session_auto_publish.RemoteCreatePullRequest,
       ),
     )
 }
 
 test fn autosave_permits_local_checkpoint_only() -> Bool {
-  publication_is_permitted(
-    disposition: adjudicate_local_checkpoint(context: PublicationContextDashboardAutosave),
+  gunbc.session_auto_publish.publication_is_permitted(
+    disposition: gunbc.session_auto_publish.adjudicate_local_checkpoint(context: gunbc.session_auto_publish.PublicationContextDashboardAutosave),
   )
-    && !publication_is_permitted(
-      disposition: adjudicate_remote_publication(
-        context: PublicationContextDashboardAutosave,
-        operation: RemotePushBranch,
+    && !gunbc.session_auto_publish.publication_is_permitted(
+      disposition: gunbc.session_auto_publish.adjudicate_remote_publication(
+        context: gunbc.session_auto_publish.PublicationContextDashboardAutosave,
+        operation: gunbc.session_auto_publish.RemotePushBranch,
       ),
     )
 }
 
 test fn healer_refuses_author_branch_mutation() -> Bool {
-  match adjudicate_remote_publication(
+  match gunbc.session_auto_publish.adjudicate_remote_publication(
     context: gunbc.session_auto_publish.PublicationContextArtifactHealer {
-      repair_target: HealerRepairTargetAuthorBranch,
+      repair_target: gunbc.session_auto_publish.HealerRepairTargetAuthorBranch,
     },
-    operation: HealerMutateAuthorBranch,
+    operation: gunbc.session_auto_publish.HealerMutateAuthorBranch,
   ) {
-    PublicationRefuse { cause: HealerAuthorBranchMutationForbidden } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.HealerAuthorBranchMutationForbidden } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
-    && publication_is_permitted(
-      disposition: adjudicate_remote_publication(
+    && gunbc.session_auto_publish.publication_is_permitted(
+      disposition: gunbc.session_auto_publish.adjudicate_remote_publication(
         context: gunbc.session_auto_publish.PublicationContextArtifactHealer {
-          repair_target: HealerRepairTargetBotBranch,
+          repair_target: gunbc.session_auto_publish.HealerRepairTargetBotBranch,
         },
-        operation: RemotePushBranch,
+        operation: gunbc.session_auto_publish.RemotePushBranch,
       ),
     )
-    && match adjudicate_remote_publication(
+    && match gunbc.session_auto_publish.adjudicate_remote_publication(
       context: gunbc.session_auto_publish.PublicationContextArtifactHealer {
-        repair_target: HealerRepairTargetPatchArtifact,
+        repair_target: gunbc.session_auto_publish.HealerRepairTargetPatchArtifact,
       },
-      operation: RemotePushBranch,
+      operation: gunbc.session_auto_publish.RemotePushBranch,
     ) {
-      PublicationRefuse { cause: PatchArtifactRemotePublicationForbidden } => true
-      PublicationPermit => false
+      gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.PatchArtifactRemotePublicationForbidden } => true
+      gunbc.session_auto_publish.PublicationPermit => false
     }
 }
 
 test fn healer_bot_branch_refuses_pr_creation() -> Bool {
-  match adjudicate_remote_publication(
+  match gunbc.session_auto_publish.adjudicate_remote_publication(
     context: gunbc.session_auto_publish.PublicationContextArtifactHealer {
-      repair_target: HealerRepairTargetBotBranch,
+      repair_target: gunbc.session_auto_publish.HealerRepairTargetBotBranch,
     },
-    operation: RemoteCreatePullRequest,
+    operation: gunbc.session_auto_publish.RemoteCreatePullRequest,
   ) {
-    PublicationRefuse { cause: HealerBotBranchOperationForbidden } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.HealerBotBranchOperationForbidden } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 data unknown_context_red_note: String = "Unevaluable publication contexts must refuse remote publication rather than pass — the absorbing fallback in the worst place."
 
 test fn unknown_context_refuses_remote_publication() -> Bool {
-  match adjudicate_remote_publication(
-    context: PublicationContextUnknown,
-    operation: RemotePushBranch,
+  match gunbc.session_auto_publish.adjudicate_remote_publication(
+    context: gunbc.session_auto_publish.PublicationContextUnknown,
+    operation: gunbc.session_auto_publish.RemotePushBranch,
   ) {
-    PublicationRefuse { cause: PublicationContextUnknownRefused } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.PublicationContextUnknownRefused } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
-    && match adjudicate_local_checkpoint(context: PublicationContextUnknown) {
-      PublicationRefuse { cause: PublicationContextUnknownRefused } => true
-      PublicationPermit => false
+    && match gunbc.session_auto_publish.adjudicate_local_checkpoint(context: gunbc.session_auto_publish.PublicationContextUnknown) {
+      gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.PublicationContextUnknownRefused } => true
+      gunbc.session_auto_publish.PublicationPermit => false
     }
 }
 
 test fn unknown_healer_target_refuses_remote_publication() -> Bool {
-  match adjudicate_remote_publication(
+  match gunbc.session_auto_publish.adjudicate_remote_publication(
     context: gunbc.session_auto_publish.PublicationContextArtifactHealer {
-      repair_target: HealerRepairTargetUnknown,
+      repair_target: gunbc.session_auto_publish.HealerRepairTargetUnknown,
     },
-    operation: RemotePushBranch,
+    operation: gunbc.session_auto_publish.RemotePushBranch,
   ) {
-    PublicationRefuse { cause: HealerRepairTargetUnknownRefused } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.HealerRepairTargetUnknownRefused } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 test fn red_scratch_probe_remote_would_have_published() -> Bool {
-  match adjudicate_remote_publication(
-    context: PublicationContextScratchProbe,
-    operation: RemoteCreatePullRequest,
+  match gunbc.session_auto_publish.adjudicate_remote_publication(
+    context: gunbc.session_auto_publish.PublicationContextScratchProbe,
+    operation: gunbc.session_auto_publish.RemoteCreatePullRequest,
   ) {
-    PublicationRefuse { cause: ScratchProbeRemotePublicationForbidden } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.ScratchProbeRemotePublicationForbidden } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 test fn red_autosave_remote_would_have_published() -> Bool {
-  match adjudicate_remote_publication(
-    context: PublicationContextDashboardAutosave,
-    operation: RemotePushBranch,
+  match gunbc.session_auto_publish.adjudicate_remote_publication(
+    context: gunbc.session_auto_publish.PublicationContextDashboardAutosave,
+    operation: gunbc.session_auto_publish.RemotePushBranch,
   ) {
-    PublicationRefuse { cause: AutosaveRemotePublicationForbidden } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.AutosaveRemotePublicationForbidden } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 fn ingested_publish_request(head: std.types.CommitSha) -> gunbc.session_auto_publish_ctrl_ingest.PublicationRequest {
-  ingest_publication_request_from_ctrl(
-    authority: harness_ctrl_publication_ingest_authority(),
+  gunbc.session_auto_publish_ctrl_ingest.ingest_publication_request_from_ctrl(
+    authority: gunbc.session_auto_publish_ctrl_ingest.harness_ctrl_publication_ingest_authority(),
     expected_remote_head: head,
     candidate_head: head,
   )
@@ -331,7 +331,7 @@ fn validation_receipt_for_head(head: std.types.CommitSha, digest: std.content_ha
     parser_revision: "parser-v1",
     formatter_revision: "formatter-v1",
     compiler_revision: "compiler-v1",
-    verdict: PostWriteValidationAccepted,
+    verdict: gunbc.session_auto_publish.PostWriteValidationAccepted,
   }
 }
 
@@ -340,11 +340,11 @@ fn clean_publish_attempt(head: std.types.CommitSha, paths: List<String>) -> gunb
   let digest = write_digest_a
   gunbc.session_auto_publish.RemotePublishAttempt {
     context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
-    operation: RemotePushBranch,
+    operation: gunbc.session_auto_publish.RemotePushBranch,
     observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head },
     current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head },
     current_local_head: v2.std.optional.Present { value: head },
-    index_cleanliness: IndexClean,
+    index_cleanliness: gunbc.session_auto_publish.IndexClean,
     unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
     conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
     declared_write_paths: paths,
@@ -352,14 +352,14 @@ fn clean_publish_attempt(head: std.types.CommitSha, paths: List<String>) -> gunb
     post_write_validation: v2.std.optional.Present {
       value: validation_receipt_for_head(head: head, digest: digest),
     },
-    peer_authorship: PeerAuthoredByPublisher,
+    peer_authorship: gunbc.session_auto_publish.PeerAuthoredByPublisher,
     equivalent_pre_push: v2.std.optional.Absent,
   }
 }
 
 test fn ingested_request_positive_control_permits_remote_publication() -> Bool {
-  publication_is_permitted(
-    disposition: admit_remote_publication(
+  gunbc.session_auto_publish.publication_is_permitted(
+    disposition: gunbc.session_auto_publish.admit_remote_publication(
       attempt: clean_publish_attempt(
         head: head_a,
         paths: ["dag/gunbc/session_auto_publish.dag"],
@@ -370,14 +370,14 @@ test fn ingested_request_positive_control_permits_remote_publication() -> Bool {
 
 test fn fixture_uncompilable_tree_refuses_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
-  match admit_remote_publication(
+  match gunbc.session_auto_publish.admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
-      operation: RemotePushBranch,
+      operation: gunbc.session_auto_publish.RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: v2.std.optional.Present { value: head_a },
-      index_cleanliness: IndexClean,
+      index_cleanliness: gunbc.session_auto_publish.IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
@@ -390,28 +390,28 @@ test fn fixture_uncompilable_tree_refuses_before_remote_write() -> Bool {
           parser_revision: "parser-v1",
           formatter_revision: "formatter-v1",
           compiler_revision: "compiler-v1",
-          verdict: PostWriteValidationRejected,
+          verdict: gunbc.session_auto_publish.PostWriteValidationRejected,
         },
       },
-      peer_authorship: PeerAuthoredByPublisher,
+      peer_authorship: gunbc.session_auto_publish.PeerAuthoredByPublisher,
       equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
-    PublicationRefuse { cause: PostWriteValidationRejectedRefused } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.PostWriteValidationRejectedRefused } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 test fn fixture_conflict_markers_refuse_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
-  match admit_remote_publication(
+  match gunbc.session_auto_publish.admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
-      operation: RemotePushBranch,
+      operation: gunbc.session_auto_publish.RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: v2.std.optional.Present { value: head_a },
-      index_cleanliness: IndexClean,
+      index_cleanliness: gunbc.session_auto_publish.IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 39 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
@@ -419,25 +419,25 @@ test fn fixture_conflict_markers_refuse_before_remote_write() -> Bool {
       post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_a, digest: write_digest_a),
       },
-      peer_authorship: PeerAuthoredByPublisher,
+      peer_authorship: gunbc.session_auto_publish.PeerAuthoredByPublisher,
       equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
-    PublicationRefuse { cause: ConflictMarkersPresent { count: 39 } } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.ConflictMarkersPresent { count: 39 } } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 test fn fixture_write_outside_declared_set_refuses_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
-  match admit_remote_publication(
+  match gunbc.session_auto_publish.admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
-      operation: RemotePushBranch,
+      operation: gunbc.session_auto_publish.RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: v2.std.optional.Present { value: head_a },
-      index_cleanliness: IndexClean,
+      index_cleanliness: gunbc.session_auto_publish.IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
@@ -445,26 +445,26 @@ test fn fixture_write_outside_declared_set_refuses_before_remote_write() -> Bool
       post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_a, digest: write_digest_a),
       },
-      peer_authorship: PeerAuthoredByPublisher,
+      peer_authorship: gunbc.session_auto_publish.PeerAuthoredByPublisher,
       equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
-    PublicationRefuse { cause: WriteOutsideDeclaredSet { path: path } } =>
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.WriteOutsideDeclaredSet { path: path } } =>
       path == "scratch/spike_probe.dag"
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 test fn fixture_peer_commit_not_authored_by_publisher_refuses() -> Bool {
   let request = ingested_publish_request(head: head_a)
-  match admit_remote_publication(
+  match gunbc.session_auto_publish.admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
-      operation: RemotePushBranch,
+      operation: gunbc.session_auto_publish.RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: v2.std.optional.Present { value: head_a },
-      index_cleanliness: IndexClean,
+      index_cleanliness: gunbc.session_auto_publish.IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
@@ -472,25 +472,25 @@ test fn fixture_peer_commit_not_authored_by_publisher_refuses() -> Bool {
       post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_a, digest: write_digest_a),
       },
-      peer_authorship: PeerNotAuthoredByPublisher,
+      peer_authorship: gunbc.session_auto_publish.PeerNotAuthoredByPublisher,
       equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
-    PublicationRefuse { cause: PeerCommitNotAuthoredByPublisherRefused } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.PeerCommitNotAuthoredByPublisherRefused } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 test fn fixture_remote_head_moved_refuses_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
-  match admit_remote_publication(
+  match gunbc.session_auto_publish.admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
-      operation: RemotePushBranch,
+      operation: gunbc.session_auto_publish.RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_b },
       current_local_head: v2.std.optional.Present { value: head_a },
-      index_cleanliness: IndexClean,
+      index_cleanliness: gunbc.session_auto_publish.IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
@@ -498,24 +498,24 @@ test fn fixture_remote_head_moved_refuses_before_remote_write() -> Bool {
       post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_a, digest: write_digest_a),
       },
-      peer_authorship: PeerAuthoredByPublisher,
+      peer_authorship: gunbc.session_auto_publish.PeerAuthoredByPublisher,
       equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
-    PublicationRefuse { cause: RemoteHeadMovedSinceObservation } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.RemoteHeadMovedSinceObservation } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 test fn fixture_no_explicit_request_refuses_before_remote_write() -> Bool {
-  match admit_remote_publication(
+  match gunbc.session_auto_publish.admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
-      context: PublicationContextScratchProbe,
-      operation: RemotePushBranch,
+      context: gunbc.session_auto_publish.PublicationContextScratchProbe,
+      operation: gunbc.session_auto_publish.RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: v2.std.optional.Present { value: head_a },
-      index_cleanliness: IndexClean,
+      index_cleanliness: gunbc.session_auto_publish.IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
@@ -523,25 +523,25 @@ test fn fixture_no_explicit_request_refuses_before_remote_write() -> Bool {
       post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_a, digest: write_digest_a),
       },
-      peer_authorship: PeerAuthoredByPublisher,
+      peer_authorship: gunbc.session_auto_publish.PeerAuthoredByPublisher,
       equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
-    PublicationRefuse { cause: ScratchProbeRemotePublicationForbidden } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.ScratchProbeRemotePublicationForbidden } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 test fn red_unevaluable_validation_status_refuses_not_passes() -> Bool {
   let request = ingested_publish_request(head: head_a)
-  match admit_remote_publication(
+  match gunbc.session_auto_publish.admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
-      operation: RemotePushBranch,
+      operation: gunbc.session_auto_publish.RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: v2.std.optional.Present { value: head_a },
-      index_cleanliness: IndexClean,
+      index_cleanliness: gunbc.session_auto_publish.IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
@@ -554,28 +554,28 @@ test fn red_unevaluable_validation_status_refuses_not_passes() -> Bool {
           parser_revision: "parser-v1",
           formatter_revision: "formatter-v1",
           compiler_revision: "compiler-v1",
-          verdict: PostWriteValidationUnknown,
+          verdict: gunbc.session_auto_publish.PostWriteValidationUnknown,
         },
       },
-      peer_authorship: PeerAuthoredByPublisher,
+      peer_authorship: gunbc.session_auto_publish.PeerAuthoredByPublisher,
       equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
-    PublicationRefuse { cause: PostWriteValidationUnknownRefused } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.PostWriteValidationUnknownRefused } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 test fn red_transferable_green_evidence_refuses_when_receipt_head_differs_from_request() -> Bool {
   let request = ingested_publish_request(head: head_a)
-  match admit_remote_publication(
+  match gunbc.session_auto_publish.admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
-      operation: RemotePushBranch,
+      operation: gunbc.session_auto_publish.RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: v2.std.optional.Present { value: head_a },
-      index_cleanliness: IndexClean,
+      index_cleanliness: gunbc.session_auto_publish.IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
@@ -583,25 +583,25 @@ test fn red_transferable_green_evidence_refuses_when_receipt_head_differs_from_r
       post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_b, digest: write_digest_a),
       },
-      peer_authorship: PeerAuthoredByPublisher,
+      peer_authorship: gunbc.session_auto_publish.PeerAuthoredByPublisher,
       equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
-    PublicationRefuse { cause: PostWriteValidationReceiptHeadMismatch } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.PostWriteValidationReceiptHeadMismatch } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 test fn dirty_index_refuses_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
-  match admit_remote_publication(
+  match gunbc.session_auto_publish.admit_remote_publication(
     attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
-      operation: RemotePushBranch,
+      operation: gunbc.session_auto_publish.RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_local_head: v2.std.optional.Present { value: head_a },
-      index_cleanliness: IndexDirty,
+      index_cleanliness: gunbc.session_auto_publish.IndexDirty,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
@@ -609,42 +609,42 @@ test fn dirty_index_refuses_before_remote_write() -> Bool {
       post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_a, digest: write_digest_a),
       },
-      peer_authorship: PeerAuthoredByPublisher,
+      peer_authorship: gunbc.session_auto_publish.PeerAuthoredByPublisher,
       equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
-    PublicationRefuse { cause: IndexDirtyRefused } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.IndexDirtyRefused } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 test fn red_patch_artifact_remote_push_would_have_published() -> Bool {
-  match adjudicate_remote_publication(
+  match gunbc.session_auto_publish.adjudicate_remote_publication(
     context: gunbc.session_auto_publish.PublicationContextArtifactHealer {
-      repair_target: HealerRepairTargetPatchArtifact,
+      repair_target: gunbc.session_auto_publish.HealerRepairTargetPatchArtifact,
     },
-    operation: RemoteCreatePullRequest,
+    operation: gunbc.session_auto_publish.RemoteCreatePullRequest,
   ) {
-    PublicationRefuse { cause: PatchArtifactRemotePublicationForbidden } => true
-    PublicationPermit => false
+    gunbc.session_auto_publish.PublicationRefuse { cause: gunbc.session_auto_publish.PatchArtifactRemotePublicationForbidden } => true
+    gunbc.session_auto_publish.PublicationPermit => false
   }
 }
 
 test fn ctrl_user_publish_derives_intent_from_ingested_request_only() -> Bool {
   let request = ingested_publish_request(head: head_a)
-  publication_is_permitted(
-    disposition: adjudicate_remote_publication(
+  gunbc.session_auto_publish.publication_is_permitted(
+    disposition: gunbc.session_auto_publish.adjudicate_remote_publication(
       context: gunbc.session_auto_publish.PublicationContextCtrlUserPublish { request: request },
-      operation: RemotePushBranch,
+      operation: gunbc.session_auto_publish.RemotePushBranch,
     ),
   )
-    && match admit_remote_publication(
+    && match gunbc.session_auto_publish.admit_remote_publication(
       attempt: clean_publish_attempt(
         head: head_a,
         paths: ["dag/gunbc/session_auto_publish.dag"],
       ),
     ) {
-      PublicationPermit => true
-      PublicationRefuse { cause: _ } => false
+      gunbc.session_auto_publish.PublicationPermit => true
+      gunbc.session_auto_publish.PublicationRefuse { cause: _ } => false
     }
 }

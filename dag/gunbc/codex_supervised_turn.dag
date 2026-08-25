@@ -1,5 +1,6 @@
 module gunbc.codex_supervised_turn
 
+
 data codex_supervised_turn_authority_note: String = "SUPERVISED-RUNNER REALIZATION (continuity receipt 2026-08-13). In-flight turns do NOT survive client death — tool calls execute in the local app-server process, so one supervised process must fence each WorkerTurn attempt. std.temporal_effect HeldLease is the execution lease — an issued LeaseEpoch (lease_key, resource_fingerprint, owner_fingerprint, generation) plus the observed reading of it; do not mint a parallel session carrier. Update the observation through held_lease_with_observed, never by respelling the epoch fields.\n\nTHREE LAYERS STAY SEPARATE (reviewer ruling):\n  durable goal — WorkerTurn reaching a terminal disposition with an observed head\n  execution lease — HeldLease over the supervised app-server process, fenced by generation\n  controller — belt tick reconciling desired vs observed thread state\n\nTHE TRAP: an abandoned turn leaves thread status idle with partial work on disk. Thread idle alone NEVER authorizes turn/start; turn identity plus a runner-written terminal receipt is required. CodexRunnerTurnTerminalReceipt is written ONLY by the supervised runner when the process ends — nothing else writes one on crash.\n\nExactly-once: client_command_id is carried on the terminal receipt so a lost turn/start reply does not collapse into absent."
 
 data codex_supervised_process_supervision_note: String = "PROCESS SUPERVISION (srv1 receipt 2026-08-13). The lease fences the bundled native executable from CodexRuntimeBundle projection — NEVER /usr/bin/codex, which is a Node shim that spawns the platform binary. Killing the shim orphans the agent and produces a false 'work continued' reading. thread/start and turn/start share one held-open app-server stdin session realized through host_effect_apply CodexSupervisedWorkerTurn (gunbc.codex_supervised_turn_run). In-flight turns do NOT survive process death; thread/resume is the recovery path on a surviving thread."
@@ -274,11 +275,11 @@ fn codex_supervised_turn_session_standing_admits(
   classification: gunbc.codex_app_server_press.AccountStandingClassification,
 ) -> Bool {
   match classification {
-    AccountStandingAuthenticatedRateLimitsReadable => true
-    AccountStandingLoginRequired => false
-    AccountStandingQuotaReached => false
-    AccountStandingInitializeMissing => false
-    AccountStandingIncomplete => false
+    gunbc.codex_app_server_press.AccountStandingAuthenticatedRateLimitsReadable => true
+    gunbc.codex_app_server_press.AccountStandingLoginRequired => false
+    gunbc.codex_app_server_press.AccountStandingQuotaReached => false
+    gunbc.codex_app_server_press.AccountStandingInitializeMissing => false
+    gunbc.codex_app_server_press.AccountStandingIncomplete => false
   }
 }
 
@@ -353,14 +354,14 @@ fn supervised_thread_id_from_line(line: String) -> std.types.NonEmptyStr? {
 
 fn native_id_from_entity_result(result: extdeps.languages.json.emit.JsonValue, entity_key: String) -> std.types.NonEmptyStr? {
   match extdeps.languages.json.parse.json_object_unique_member(v: result, key: entity_key) {
-    JsonMemberFound { value: entity } =>
+    extdeps.languages.json.parse.JsonMemberFound { value: entity } =>
       match entity {
-        JsonObject { members: _ } =>
+        extdeps.languages.json.emit.JsonObject { members: _ } =>
           match extdeps.languages.json.parse.json_object_unique_member(
             v: entity,
             key: extdeps.llm.codex_app_server.codex_entity_id_key as String,
           ) {
-            JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: id } } =>
+            extdeps.languages.json.parse.JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: id } } =>
               if id == "" {
                 none
               } else {
@@ -380,16 +381,16 @@ fn supervised_rpc_from_id_response(
   entity_key: String,
 ) -> SupervisedRpcObservation {
   match extdeps.languages.json.parse.json_object_unique_member(v: obj, key: "error") {
-    JsonMemberFound { value: err } =>
+    extdeps.languages.json.parse.JsonMemberFound { value: err } =>
       SupervisedRpcError {
         reason: concat(
           "json-rpc error on id ",
           concat(to_string(n: id), concat(": ", serialize_supervised_rpc_error(err: err))),
         ) as std.types.NonEmptyStr,
       }
-    JsonMemberAbsent =>
+    extdeps.languages.json.parse.JsonMemberAbsent =>
       match extdeps.languages.json.parse.json_object_unique_member(v: obj, key: "result") {
-        JsonMemberFound { value: result } =>
+        extdeps.languages.json.parse.JsonMemberFound { value: result } =>
           match native_id_from_entity_result(result: result, entity_key: entity_key) {
             Present { value: native_id } => SupervisedRpcOk { native_id: native_id }
             Absent =>
@@ -403,24 +404,24 @@ fn supervised_rpc_from_id_response(
                 ) as std.types.NonEmptyStr,
               }
           }
-        JsonMemberAbsent =>
+        extdeps.languages.json.parse.JsonMemberAbsent =>
           SupervisedRpcError {
             reason: concat("id ", concat(to_string(n: id), ": missing result")) as std.types.NonEmptyStr,
           }
-        JsonMemberDuplicated { count: _ } =>
+        extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
           SupervisedRpcError {
             reason: concat("id ", concat(to_string(n: id), ": duplicate result")) as std.types.NonEmptyStr,
           }
-        JsonMemberNotAnObject =>
+        extdeps.languages.json.parse.JsonMemberNotAnObject =>
           SupervisedRpcError {
             reason: concat("id ", concat(to_string(n: id), ": result not object")) as std.types.NonEmptyStr,
           }
       }
-    JsonMemberDuplicated { count: _ } =>
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
       SupervisedRpcError {
         reason: concat("id ", concat(to_string(n: id), ": duplicate error")) as std.types.NonEmptyStr,
       }
-    JsonMemberNotAnObject =>
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       SupervisedRpcError {
         reason: concat("id ", concat(to_string(n: id), ": error not object")) as std.types.NonEmptyStr,
       }
@@ -429,18 +430,18 @@ fn supervised_rpc_from_id_response(
 
 fn serialize_supervised_rpc_error(err: extdeps.languages.json.emit.JsonValue) -> String {
   match err {
-    JsonObject { members: _ } => "structured error" as String
-    JsonNull => "unstructured error" as String
-    JsonBool { value: _ } => "unstructured error" as String
-    JsonNumber { lexeme: _ } => "unstructured error" as String
-    JsonString { value: _ } => "unstructured error" as String
-    JsonArray { elements: _ } => "unstructured error" as String
+    extdeps.languages.json.emit.JsonObject { members: _ } => "structured error" as String
+    extdeps.languages.json.emit.JsonNull => "unstructured error" as String
+    extdeps.languages.json.emit.JsonBool { value: _ } => "unstructured error" as String
+    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => "unstructured error" as String
+    extdeps.languages.json.emit.JsonString { value: _ } => "unstructured error" as String
+    extdeps.languages.json.emit.JsonArray { elements: _ } => "unstructured error" as String
   }
 }
 
 fn supervised_turn_terminal_from_notification(parsed: extdeps.languages.json.emit.JsonValue) -> SupervisedTurnTerminalSignal {
   match extdeps.languages.json.parse.json_object_unique_member(v: parsed, key: "method") {
-    JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: method } } =>
+    extdeps.languages.json.parse.JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: method } } =>
       if method == "turn/completed" {
         SupervisedTurnTerminalCompleted
       } else if method == "turn/failed" {
@@ -480,8 +481,8 @@ fn absorb_supervised_turn_line(
       Absent => acc
       Present { value: parsed } =>
         match extdeps.languages.json.parse.json_object_unique_member(v: parsed, key: "id") {
-          JsonMemberFound { value: idv } =>
-            match gunbc.codex_supervised_turn.json_rpc_id_as_int(v: idv) {
+          extdeps.languages.json.parse.JsonMemberFound { value: idv } =>
+            match json_rpc_id_as_int(v: idv) {
               Present { value: n } =>
                 if n == extdeps.llm.codex_app_server.codex_supervised_thread_start_id {
                   SupervisedTurnParseAcc {
@@ -540,12 +541,12 @@ fn absorb_supervised_turn_line(
 
 fn json_rpc_id_as_int(v: extdeps.languages.json.emit.JsonValue) -> Int? {
   match v {
-    JsonNumber { lexeme: l } => parse_int(s: l as String)
-    JsonNull => none
-    JsonBool { value: _ } => none
-    JsonString { value: _ } => none
-    JsonArray { elements: _ } => none
-    JsonObject { members: _ } => none
+    extdeps.languages.json.emit.JsonNumber { lexeme: l } => parse_int(s: l as String)
+    extdeps.languages.json.emit.JsonNull => none
+    extdeps.languages.json.emit.JsonBool { value: _ } => none
+    extdeps.languages.json.emit.JsonString { value: _ } => none
+    extdeps.languages.json.emit.JsonArray { elements: _ } => none
+    extdeps.languages.json.emit.JsonObject { members: _ } => none
   }
 }
 

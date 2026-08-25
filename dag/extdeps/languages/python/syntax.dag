@@ -3,43 +3,43 @@ module extdeps.languages.python.syntax
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.python.org/3/reference/expressions.html"
   }
 }
 
 data python_item_forms: List<std.syntax.ItemForm> = [
-  std.syntax.ItemForm { kind: FuncForm, keyword: "def", has_type_params: false, has_params: true,
+  std.syntax.ItemForm { kind: std.syntax.FuncForm, keyword: "def", has_type_params: false, has_params: true,
     has_return_type: true, return_required: false,
-    has_uses: false, body_kind: BlockBody },
-  std.syntax.ItemForm { kind: StructForm, keyword: "class", has_type_params: false, has_params: false,
+    has_uses: false, body_kind: std.syntax.BlockBody },
+  std.syntax.ItemForm { kind: std.syntax.StructForm, keyword: "class", has_type_params: false, has_params: false,
     has_return_type: false, return_required: false,
-    has_uses: false, body_kind: BlockBody },
-  std.syntax.ItemForm { kind: EnumForm, keyword: "class", has_type_params: false, has_params: false,
+    has_uses: false, body_kind: std.syntax.BlockBody },
+  std.syntax.ItemForm { kind: std.syntax.EnumForm, keyword: "class", has_type_params: false, has_params: false,
     has_return_type: false, return_required: false,
-    has_uses: false, body_kind: BlockBody },
-  std.syntax.ItemForm { kind: TypeAliasForm, keyword: "", has_type_params: false, has_params: false,
+    has_uses: false, body_kind: std.syntax.BlockBody },
+  std.syntax.ItemForm { kind: std.syntax.TypeAliasForm, keyword: "", has_type_params: false, has_params: false,
     has_return_type: false, return_required: false,
-    has_uses: false, body_kind: NoBody },
-  std.syntax.ItemForm { kind: ModuleForm, keyword: "", has_type_params: false, has_params: false,
+    has_uses: false, body_kind: std.syntax.NoBody },
+  std.syntax.ItemForm { kind: std.syntax.ModuleForm, keyword: "", has_type_params: false, has_params: false,
     has_return_type: false, return_required: false,
-    has_uses: false, body_kind: NoBody }
+    has_uses: false, body_kind: std.syntax.NoBody }
 ]
 
 data python_operators: List<std.syntax.OperatorSpec> = [
   std.syntax.OperatorSpec { symbol: "or", left_bp: 5, right_bp: 6, binop: std.syntax.Or, algebra_field: none },
   std.syntax.OperatorSpec { symbol: "and", left_bp: 7, right_bp: 8, binop: std.syntax.And, algebra_field: none },
-  std.syntax.OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: Eq, algebra_field: none },
-  std.syntax.OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: Ne, algebra_field: none },
-  std.syntax.OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: Lt, algebra_field: none },
-  std.syntax.OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: Gt, algebra_field: none },
-  std.syntax.OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: Le, algebra_field: none },
-  std.syntax.OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: Ge, algebra_field: none },
-  std.syntax.OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add, algebra_field: none },
-  std.syntax.OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub, algebra_field: none },
-  std.syntax.OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: std.syntax.Eq, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: std.syntax.Ne, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: std.syntax.Lt, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: std.syntax.Gt, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: std.syntax.Le, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: std.syntax.Ge, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: std.syntax.Add, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: std.syntax.Sub, algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: std.syntax.Mul, algebra_field: none },
 
-  std.syntax.OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Present { value: AlgReciprocal } },
-  std.syntax.OperatorSpec { symbol: "//", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Present { value: AlgQuotient } },
-  std.syntax.OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod, algebra_field: none }
+  std.syntax.OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: std.syntax.Div, algebra_field: Present { value: std.syntax.AlgReciprocal } },
+  std.syntax.OperatorSpec { symbol: "//", left_bp: 15, right_bp: 16, binop: std.syntax.Div, algebra_field: Present { value: std.syntax.AlgQuotient } },
+  std.syntax.OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: std.syntax.Mod, algebra_field: none }
 ]

@@ -11,10 +11,10 @@ data green_by_vacancy_note: String = "The operator finding this file exists to a
 
 fn fixture_complete() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
   gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
-    item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: AsymptoticClassAndDominance },
-    v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "classify_complexity"),
+    item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: gunbc.v1_complexity_capability_census.AsymptoticClassAndDominance },
+    v1_carrier: std.decl_ref.decl_ref(module_path: "v1.compiler.complexity", decl_name: "classify_complexity"),
     disposition: gunbc.v1_complexity_capability_census.CompleteInV2 {
-      carrier: decl_ref(module_path: "v2.lens.cost", decl_name: "asymptotic_class_of_cost"),
+      carrier: std.decl_ref.decl_ref(module_path: "v2.lens.cost", decl_name: "asymptotic_class_of_cost"),
       note: "fixture" as std.types.NonEmptyStr
     }
   }
@@ -22,11 +22,11 @@ fn fixture_complete() -> gunbc.v1_complexity_capability_census.V1ComplexityInven
 
 fn fixture_integration() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
   gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
-    item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: CallGraphAndScc },
-    v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "build_scc_index"),
+    item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: gunbc.v1_complexity_capability_census.CallGraphAndScc },
+    v1_carrier: std.decl_ref.decl_ref(module_path: "v1.compiler.complexity", decl_name: "build_scc_index"),
     disposition: gunbc.v1_complexity_capability_census.IntegrationOwed {
-      substrate_carrier: decl_ref(module_path: "std.graph", decl_name: "graph_multi_node_scc_members"),
-      phase: ParityC4Interprocedural,
+      substrate_carrier: std.decl_ref.decl_ref(module_path: "std.graph", decl_name: "graph_multi_node_scc_members"),
+      phase: gunbc.v1_complexity_capability_census.ParityC4Interprocedural,
       note: "fixture" as std.types.NonEmptyStr
     }
   }
@@ -34,12 +34,12 @@ fn fixture_integration() -> gunbc.v1_complexity_capability_census.V1ComplexityIn
 
 fn fixture_migration() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
   gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
-    item: gunbc.v1_complexity_capability_census.LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo },
-    v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "evict_summary"),
+    item: gunbc.v1_complexity_capability_census.LegacyHazardItem { hazard: gunbc.v1_complexity_capability_census.SummaryEvictionHazard, of_capability: gunbc.v1_complexity_capability_census.InterproceduralSummaryMemo },
+    v1_carrier: std.decl_ref.decl_ref(module_path: "v1.compiler.complexity", decl_name: "evict_summary"),
     disposition: gunbc.v1_complexity_capability_census.MigrationOwed {
-      destination: MigrateToV2LensCost,
-      producer: FactsFromCostLens,
-      phase: ParityC1ExpressionAuthority,
+      destination: gunbc.v1_complexity_capability_census.MigrateToV2LensCost,
+      producer: gunbc.v1_complexity_capability_census.FactsFromCostLens,
+      phase: gunbc.v1_complexity_capability_census.ParityC1ExpressionAuthority,
       note: "fixture" as std.types.NonEmptyStr
     }
   }
@@ -47,10 +47,10 @@ fn fixture_migration() -> gunbc.v1_complexity_capability_census.V1ComplexityInve
 
 fn fixture_superseded() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
   gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
-    item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: ParserProgressFactProduction },
-    v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "collect_parser_progress_edges"),
+    item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: gunbc.v1_complexity_capability_census.ParserProgressFactProduction },
+    v1_carrier: std.decl_ref.decl_ref(module_path: "v1.compiler.complexity", decl_name: "collect_parser_progress_edges"),
     disposition: gunbc.v1_complexity_capability_census.SupersededByBetterModel {
-      superseded_by: decl_ref(module_path: "std.termination", decl_name: "DescentEvidence"),
+      superseded_by: std.decl_ref.decl_ref(module_path: "std.termination", decl_name: "DescentEvidence"),
       note: "fixture — uninhabited by the roster, proven here so the arm is not green-by-vacancy" as std.types.NonEmptyStr
     }
   }
@@ -58,10 +58,10 @@ fn fixture_superseded() -> gunbc.v1_complexity_capability_census.V1ComplexityInv
 
 fn fixture_retirement_owed() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
   gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
-    item: gunbc.v1_complexity_capability_census.LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
-    v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "parser_state_expr_progress"),
+    item: gunbc.v1_complexity_capability_census.LegacyRealizationItem { realization: gunbc.v1_complexity_capability_census.ParserProgressV1WalkerRealization, of_capability: gunbc.v1_complexity_capability_census.ParserProgressFactProduction },
+    v1_carrier: std.decl_ref.decl_ref(module_path: "v1.compiler.complexity", decl_name: "parser_state_expr_progress"),
     disposition: gunbc.v1_complexity_capability_census.RetirementOwed {
-      trigger: gunbc.v1_complexity_capability_census.RetiresWhenReplacementExecutes { replacement: ParserProgressFactProduction },
+      trigger: gunbc.v1_complexity_capability_census.RetiresWhenReplacementExecutes { replacement: gunbc.v1_complexity_capability_census.ParserProgressFactProduction },
       note: "fixture" as std.types.NonEmptyStr
     }
   }
@@ -69,8 +69,8 @@ fn fixture_retirement_owed() -> gunbc.v1_complexity_capability_census.V1Complexi
 
 fn fixture_retired() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
   gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
-    item: gunbc.v1_complexity_capability_census.LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
-    v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "parser_state_expr_progress"),
+    item: gunbc.v1_complexity_capability_census.LegacyRealizationItem { realization: gunbc.v1_complexity_capability_census.ParserProgressV1WalkerRealization, of_capability: gunbc.v1_complexity_capability_census.ParserProgressFactProduction },
+    v1_carrier: std.decl_ref.decl_ref(module_path: "v1.compiler.complexity", decl_name: "parser_state_expr_progress"),
     disposition: gunbc.v1_complexity_capability_census.Retired {
       reason: "fixture — uninhabited by the roster, proven here so the arm is not green-by-vacancy" as std.types.NonEmptyStr
     }
@@ -91,74 +91,74 @@ fn all_disposition_fixtures() -> List<gunbc.v1_complexity_capability_census.V1Co
 // The fixture list is load-bearing, not decoration: this folds over ALL SIX arm fixtures and asserts the set covers every one of the four work kinds. The enumerated per-arm check below states which arm maps where; this one states that the fixture SET is complete over the work-kind space, so an arm added without a fixture leaves a kind uncovered and reds here.
 fn fixture_kind_present(kind: gunbc.v1_complexity_capability_census.CapabilityWorkKind) -> Bool {
   fold(all_disposition_fixtures(), init: false, f: (acc, c) =>
-    acc || capability_work_kind(c: c) == kind)
+    acc || gunbc.v1_complexity_capability_census.capability_work_kind(c: c) == kind)
 }
 
 test fn w_fixture_set_covers_every_work_kind() -> Bool {
-  fixture_kind_present(kind: NoWorkOwed) &&
-  fixture_kind_present(kind: IntegrationWork) &&
-  fixture_kind_present(kind: MigrationWork) &&
-  fixture_kind_present(kind: RetirementWork) &&
+  fixture_kind_present(kind: gunbc.v1_complexity_capability_census.NoWorkOwed) &&
+  fixture_kind_present(kind: gunbc.v1_complexity_capability_census.IntegrationWork) &&
+  fixture_kind_present(kind: gunbc.v1_complexity_capability_census.MigrationWork) &&
+  fixture_kind_present(kind: gunbc.v1_complexity_capability_census.RetirementWork) &&
   length(xs: all_disposition_fixtures()) == 6
 }
 
 test fn w_every_disposition_arm_has_a_fixture_and_one_work_kind() -> Bool {
-  capability_work_kind(c: fixture_complete()) == NoWorkOwed &&
-  capability_work_kind(c: fixture_superseded()) == NoWorkOwed &&
-  capability_work_kind(c: fixture_retired()) == NoWorkOwed &&
-  capability_work_kind(c: fixture_integration()) == IntegrationWork &&
-  capability_work_kind(c: fixture_migration()) == MigrationWork &&
-  capability_work_kind(c: fixture_retirement_owed()) == RetirementWork
+  gunbc.v1_complexity_capability_census.capability_work_kind(c: fixture_complete()) == gunbc.v1_complexity_capability_census.NoWorkOwed &&
+  gunbc.v1_complexity_capability_census.capability_work_kind(c: fixture_superseded()) == gunbc.v1_complexity_capability_census.NoWorkOwed &&
+  gunbc.v1_complexity_capability_census.capability_work_kind(c: fixture_retired()) == gunbc.v1_complexity_capability_census.NoWorkOwed &&
+  gunbc.v1_complexity_capability_census.capability_work_kind(c: fixture_integration()) == gunbc.v1_complexity_capability_census.IntegrationWork &&
+  gunbc.v1_complexity_capability_census.capability_work_kind(c: fixture_migration()) == gunbc.v1_complexity_capability_census.MigrationWork &&
+  gunbc.v1_complexity_capability_census.capability_work_kind(c: fixture_retirement_owed()) == gunbc.v1_complexity_capability_census.RetirementWork
 }
 
 test fn w_work_owed_partitions_every_fixture_arm() -> Bool {
-  !capability_work_owed(c: fixture_complete()) &&
-  !capability_work_owed(c: fixture_superseded()) &&
-  !capability_work_owed(c: fixture_retired()) &&
-  capability_work_owed(c: fixture_integration()) &&
-  capability_work_owed(c: fixture_migration()) &&
-  capability_work_owed(c: fixture_retirement_owed())
+  !gunbc.v1_complexity_capability_census.capability_work_owed(c: fixture_complete()) &&
+  !gunbc.v1_complexity_capability_census.capability_work_owed(c: fixture_superseded()) &&
+  !gunbc.v1_complexity_capability_census.capability_work_owed(c: fixture_retired()) &&
+  gunbc.v1_complexity_capability_census.capability_work_owed(c: fixture_integration()) &&
+  gunbc.v1_complexity_capability_census.capability_work_owed(c: fixture_migration()) &&
+  gunbc.v1_complexity_capability_census.capability_work_owed(c: fixture_retirement_owed())
 }
 
 // The operator's correction, pinned as its own control. AvailableInSharedSubstrate previously projected as discharged, which understated C4: v2 has not consumed std.graph, so the work changed from migration to integration but did not disappear. If a future edit routes IntegrationOwed back into the no-work-owed partition, this reds.
 test fn w_integration_owed_is_not_discharged() -> Bool {
-  capability_work_owed(c: call_graph_and_scc) &&
-  capability_work_kind(c: call_graph_and_scc) == IntegrationWork &&
-  capability_work_kind(c: call_graph_and_scc) != NoWorkOwed
+  gunbc.v1_complexity_capability_census.capability_work_owed(c: gunbc.v1_complexity_capability_census.call_graph_and_scc) &&
+  gunbc.v1_complexity_capability_census.capability_work_kind(c: gunbc.v1_complexity_capability_census.call_graph_and_scc) == gunbc.v1_complexity_capability_census.IntegrationWork &&
+  gunbc.v1_complexity_capability_census.capability_work_kind(c: gunbc.v1_complexity_capability_census.call_graph_and_scc) != gunbc.v1_complexity_capability_census.NoWorkOwed
 }
 
 data w_retirement_is_owed_until_replacement_note: String = "The parser-progress ruling, pinned. The semantic capability survives as a migration row; the v1 walker realization is retirement-owed, NOT retired, because retiring before the replacement executes would delete a live capability. The trigger names the capability whose execution discharges it, so the edge is checkable rather than prose."
 
 test fn w_parser_progress_ruling_is_modeled_as_two_rows() -> Bool {
-  capability_work_kind(c: parser_progress_fact_production) == MigrationWork &&
-  capability_work_kind(c: parser_progress_v1_walker) == RetirementWork &&
-  capability_work_owed(c: parser_progress_v1_walker) &&
+  gunbc.v1_complexity_capability_census.capability_work_kind(c: gunbc.v1_complexity_capability_census.parser_progress_fact_production) == gunbc.v1_complexity_capability_census.MigrationWork &&
+  gunbc.v1_complexity_capability_census.capability_work_kind(c: gunbc.v1_complexity_capability_census.parser_progress_v1_walker) == gunbc.v1_complexity_capability_census.RetirementWork &&
+  gunbc.v1_complexity_capability_census.capability_work_owed(c: gunbc.v1_complexity_capability_census.parser_progress_v1_walker) &&
   match parser_progress_v1_walker.disposition {
-    RetirementOwed { trigger: t, note: _ } =>
+    gunbc.v1_complexity_capability_census.RetirementOwed { trigger: t, note: _ } =>
       match t {
-        RetiresWhenReplacementExecutes { replacement: r } => r == ParserProgressFactProduction
-        RetiresWithSeedDeletion => false
+        gunbc.v1_complexity_capability_census.RetiresWhenReplacementExecutes { replacement: r } => r == gunbc.v1_complexity_capability_census.ParserProgressFactProduction
+        gunbc.v1_complexity_capability_census.RetiresWithSeedDeletion => false
       }
     _ => false
   }
 }
 
 test fn w_every_roster_row_lands_in_exactly_one_work_kind() -> Bool {
-  fold(v1_complexity_inventory_roster, init: true, f: (acc, c) =>
-    let k = capability_work_kind(c: c)
+  fold(gunbc.v1_complexity_capability_census.v1_complexity_inventory_roster, init: true, f: (acc, c) =>
+    let k = gunbc.v1_complexity_capability_census.capability_work_kind(c: c)
     acc && (
-      (k == NoWorkOwed && !capability_work_owed(c: c)) ||
-      (k != NoWorkOwed && capability_work_owed(c: c))
+      (k == gunbc.v1_complexity_capability_census.NoWorkOwed && !gunbc.v1_complexity_capability_census.capability_work_owed(c: c)) ||
+      (k != gunbc.v1_complexity_capability_census.NoWorkOwed && gunbc.v1_complexity_capability_census.capability_work_owed(c: c))
     ))
 }
 
 // An internal consistency join, not a tree-copied count: the four work-kind populations must exhaust the roster. No literal expected count appears — the assertion is that the parts sum to the whole, which stays true as rows are added and breaks if a kind is dropped from the projection.
 test fn w_work_kind_counts_exhaust_the_roster() -> Bool {
-  let n = length(xs: v1_complexity_inventory_roster)
-  let none_owed = capability_work_count(rows: v1_complexity_inventory_roster, kind: NoWorkOwed)
-  let integration = capability_work_count(rows: v1_complexity_inventory_roster, kind: IntegrationWork)
-  let migration = capability_work_count(rows: v1_complexity_inventory_roster, kind: MigrationWork)
-  let retirement = capability_work_count(rows: v1_complexity_inventory_roster, kind: RetirementWork)
+  let n = length(xs: gunbc.v1_complexity_capability_census.v1_complexity_inventory_roster)
+  let none_owed = gunbc.v1_complexity_capability_census.capability_work_count(rows: gunbc.v1_complexity_capability_census.v1_complexity_inventory_roster, kind: gunbc.v1_complexity_capability_census.NoWorkOwed)
+  let integration = gunbc.v1_complexity_capability_census.capability_work_count(rows: gunbc.v1_complexity_capability_census.v1_complexity_inventory_roster, kind: gunbc.v1_complexity_capability_census.IntegrationWork)
+  let migration = gunbc.v1_complexity_capability_census.capability_work_count(rows: gunbc.v1_complexity_capability_census.v1_complexity_inventory_roster, kind: gunbc.v1_complexity_capability_census.MigrationWork)
+  let retirement = gunbc.v1_complexity_capability_census.capability_work_count(rows: gunbc.v1_complexity_capability_census.v1_complexity_inventory_roster, kind: gunbc.v1_complexity_capability_census.RetirementWork)
   none_owed + integration + migration + retirement == n &&
   integration > 0 &&
   migration > 0 &&
@@ -168,23 +168,23 @@ test fn w_work_kind_counts_exhaust_the_roster() -> Bool {
 data w_destinations_are_signed_vocabulary_note: String = "Routing metadata is drawn from the signed C0(a) ruling's closed vocabulary rather than spelled freehand — and the ruling is carried on THREE axes, not one (operator review 2026-08-05). The discriminating half is the SECOND assertion: the role axis names the legacy oracle because the ruling assigns it a role, while the destination axis does not, so a row migrating INTO the deletion target has no constructor. Fusing the two, as the previous revision did, made that state writable. This control asserts each axis maps to exactly the module paths its own axis is allowed to name."
 
 test fn w_role_and_destination_are_separate_axes() -> Bool {
-  cost_program_role_module_path(r: RoleMigrationAuthority) == "v2.lens.cost" &&
-  cost_program_role_module_path(r: RoleAsymptoticProjection) == "v2.lens.complexity" &&
-  cost_program_role_module_path(r: RoleRealizationAccounts) == "std.realization_schedule" &&
-  cost_program_role_module_path(r: RoleLegacyOracle) == "v1.compiler.complexity" &&
-  cost_migration_destination_module_path(d: MigrateToV2LensCost) == "v2.lens.cost" &&
-  cost_migration_destination_module_path(d: MigrateToV2LensComplexity) == "v2.lens.complexity" &&
-  cost_migration_destination_module_path(d: MigrateToStdRealizationSchedule) == "std.realization_schedule" &&
-  !fold([MigrateToV2LensCost, MigrateToV2LensComplexity, MigrateToStdRealizationSchedule], init: false, f: (acc, d) =>
-    acc || cost_migration_destination_module_path(d: d) == "v1.compiler.complexity")
+  gunbc.v1_complexity_capability_census.cost_program_role_module_path(r: gunbc.v1_complexity_capability_census.RoleMigrationAuthority) == "v2.lens.cost" &&
+  gunbc.v1_complexity_capability_census.cost_program_role_module_path(r: gunbc.v1_complexity_capability_census.RoleAsymptoticProjection) == "v2.lens.complexity" &&
+  gunbc.v1_complexity_capability_census.cost_program_role_module_path(r: gunbc.v1_complexity_capability_census.RoleRealizationAccounts) == "std.realization_schedule" &&
+  gunbc.v1_complexity_capability_census.cost_program_role_module_path(r: gunbc.v1_complexity_capability_census.RoleLegacyOracle) == "v1.compiler.complexity" &&
+  gunbc.v1_complexity_capability_census.cost_migration_destination_module_path(d: gunbc.v1_complexity_capability_census.MigrateToV2LensCost) == "v2.lens.cost" &&
+  gunbc.v1_complexity_capability_census.cost_migration_destination_module_path(d: gunbc.v1_complexity_capability_census.MigrateToV2LensComplexity) == "v2.lens.complexity" &&
+  gunbc.v1_complexity_capability_census.cost_migration_destination_module_path(d: gunbc.v1_complexity_capability_census.MigrateToStdRealizationSchedule) == "std.realization_schedule" &&
+  !fold([gunbc.v1_complexity_capability_census.MigrateToV2LensCost, gunbc.v1_complexity_capability_census.MigrateToV2LensComplexity, gunbc.v1_complexity_capability_census.MigrateToStdRealizationSchedule], init: false, f: (acc, d) =>
+    acc || gunbc.v1_complexity_capability_census.cost_migration_destination_module_path(d: d) == "v1.compiler.complexity")
 }
 
 data w_producer_is_independent_of_destination_note: String = "The live specimen that forced the third axis. Parser-progress facts are produced by the v2 PARSER and joined through std.termination; their accounting still lands in the cost authority. With one enum the row had to name v2.lens.cost as producer, contradicting its own explanation. This asserts the two axes actually differ on that row — if a future edit re-fuses them, the inequality reds."
 
 test fn w_parser_progress_producer_differs_from_its_destination() -> Bool {
   match parser_progress_fact_production.disposition {
-    MigrationOwed { destination: d, producer: p, phase: _, note: _ } =>
-      d == MigrateToV2LensCost && p == FactsFromV2Parser && p != FactsFromCostLens
+    gunbc.v1_complexity_capability_census.MigrationOwed { destination: d, producer: p, phase: _, note: _ } =>
+      d == gunbc.v1_complexity_capability_census.MigrateToV2LensCost && p == gunbc.v1_complexity_capability_census.FactsFromV2Parser && p != gunbc.v1_complexity_capability_census.FactsFromCostLens
     _ => false
   }
 }
@@ -192,19 +192,19 @@ test fn w_parser_progress_producer_differs_from_its_destination() -> Bool {
 data w_residues_are_not_capabilities_note: String = "The operator's peer-inflation finding, pinned. SummaryEviction and ParserProgressV1Walker previously sat as variants of the capability vocabulary, so counting capabilities counted two things that are not capabilities. They are now residue items carrying the capability they belong to. ORACLE SHAPE, stated because an earlier revision of this very test got it wrong: the population assertion is the IDENTITY JOIN semantic + residues == rows, with both terms derived — not semantic + 2 == rows, whose literal 2 was measured from the same tree it checks and would have needed a manual edit the first time a third residue landed. DESIGN §5 names that shape a change detector. The identity-grained half — WHICH rows are residues and which capability each belongs to — is asserted separately below, where naming them is the point rather than a count."
 
 test fn w_legacy_residues_are_not_semantic_capabilities() -> Bool {
-  let rows = length(xs: v1_complexity_inventory_roster)
-  let semantic = inventory_semantic_capability_count()
-  let residues = inventory_residue_count()
+  let rows = length(xs: gunbc.v1_complexity_capability_census.v1_complexity_inventory_roster)
+  let semantic = gunbc.v1_complexity_capability_census.inventory_semantic_capability_count()
+  let residues = gunbc.v1_complexity_capability_census.inventory_residue_count()
   semantic < rows &&
   semantic + residues == rows &&
-  !inventory_row_is_semantic_capability(row: summary_eviction) &&
-  !inventory_row_is_semantic_capability(row: parser_progress_v1_walker) &&
+  !gunbc.v1_complexity_capability_census.inventory_row_is_semantic_capability(row: gunbc.v1_complexity_capability_census.summary_eviction) &&
+  !gunbc.v1_complexity_capability_census.inventory_row_is_semantic_capability(row: gunbc.v1_complexity_capability_census.parser_progress_v1_walker) &&
   (match summary_eviction.item {
-    LegacyHazardItem { hazard: h, of_capability: c } => h == SummaryEvictionHazard && c == InterproceduralSummaryMemo
+    gunbc.v1_complexity_capability_census.LegacyHazardItem { hazard: h, of_capability: c } => h == gunbc.v1_complexity_capability_census.SummaryEvictionHazard && c == gunbc.v1_complexity_capability_census.InterproceduralSummaryMemo
     _ => false
   }) &&
   (match parser_progress_v1_walker.item {
-    LegacyRealizationItem { realization: r, of_capability: c } => r == ParserProgressV1WalkerRealization && c == ParserProgressFactProduction
+    gunbc.v1_complexity_capability_census.LegacyRealizationItem { realization: r, of_capability: c } => r == gunbc.v1_complexity_capability_census.ParserProgressV1WalkerRealization && c == gunbc.v1_complexity_capability_census.ParserProgressFactProduction
     _ => false
   })
 }
@@ -212,47 +212,47 @@ test fn w_legacy_residues_are_not_semantic_capabilities() -> Bool {
 data w_identity_distinctness_is_validated_note: String = "Stated as validation, not construction, because that is what it is (operator review 2026-08-05). A closed coproduct makes an identity outside the vocabulary unrepresentable; it does not stop a List from carrying one identity twice. This executes the distinctness fold over the live roster, and the paired control proves the fold is discriminating — a list with a planted duplicate must come back false, otherwise the green above would mean nothing."
 
 test fn w_roster_identities_are_distinct() -> Bool {
-  inventory_identity_keys_distinct() &&
-  length(xs: inventory_identity_keys()) == length(xs: v1_complexity_inventory_roster)
+  gunbc.v1_complexity_capability_census.inventory_identity_keys_distinct() &&
+  length(xs: gunbc.v1_complexity_capability_census.inventory_identity_keys()) == length(xs: gunbc.v1_complexity_capability_census.v1_complexity_inventory_roster)
 }
 
 test fn w_distinctness_fold_reds_on_a_planted_duplicate() -> Bool {
   let planted = [
-    inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: CallGraphAndScc }),
-    inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: AsymptoticClassAndDominance }),
-    inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: CallGraphAndScc })
+    gunbc.v1_complexity_capability_census.inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: gunbc.v1_complexity_capability_census.CallGraphAndScc }),
+    gunbc.v1_complexity_capability_census.inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: gunbc.v1_complexity_capability_census.AsymptoticClassAndDominance }),
+    gunbc.v1_complexity_capability_census.inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: gunbc.v1_complexity_capability_census.CallGraphAndScc })
   ]
   let dup_free = [
-    inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: CallGraphAndScc }),
-    inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: AsymptoticClassAndDominance })
+    gunbc.v1_complexity_capability_census.inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: gunbc.v1_complexity_capability_census.CallGraphAndScc }),
+    gunbc.v1_complexity_capability_census.inventory_item_key(item: gunbc.v1_complexity_capability_census.SemanticCapabilityItem { capability: gunbc.v1_complexity_capability_census.AsymptoticClassAndDominance })
   ]
-  !keys_are_distinct(keys: planted) &&
-  keys_are_distinct(keys: dup_free) &&
-  inventory_item_key(item: gunbc.v1_complexity_capability_census.LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo }) !=
-    inventory_item_key(item: gunbc.v1_complexity_capability_census.LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: CallGraphAndScc })
+  !gunbc.v1_complexity_capability_census.keys_are_distinct(keys: planted) &&
+  gunbc.v1_complexity_capability_census.keys_are_distinct(keys: dup_free) &&
+  gunbc.v1_complexity_capability_census.inventory_item_key(item: gunbc.v1_complexity_capability_census.LegacyHazardItem { hazard: gunbc.v1_complexity_capability_census.SummaryEvictionHazard, of_capability: gunbc.v1_complexity_capability_census.InterproceduralSummaryMemo }) !=
+    gunbc.v1_complexity_capability_census.inventory_item_key(item: gunbc.v1_complexity_capability_census.LegacyHazardItem { hazard: gunbc.v1_complexity_capability_census.SummaryEvictionHazard, of_capability: gunbc.v1_complexity_capability_census.CallGraphAndScc })
 }
 
 
 data w_every_row_cites_the_seed_module_note: String = "Every row's v1_carrier must be a DeclarationRef into the seed module the census is about. This is the cheap structural half of citation hygiene; that the referenced declaration actually EXISTS is the long-lane resolution census's job, because deciding it requires the decl_facts scan."
 
 test fn w_every_v1_carrier_targets_the_seed_module() -> Bool {
-  fold(v1_complexity_inventory_roster, init: true, f: (acc, c) =>
+  fold(gunbc.v1_complexity_capability_census.v1_complexity_inventory_roster, init: true, f: (acc, c) =>
     acc && (c.v1_carrier.module_path as String) == "v1.compiler.complexity")
 }
 
 test fn w_cited_carrier_absence_is_structural_not_a_lookup_failure() -> Bool {
-  match capability_cited_carrier(c: fixture_retired()) {
+  match gunbc.v1_complexity_capability_census.capability_cited_carrier(c: fixture_retired()) {
     Present { value: _ } => false
     Absent => true
   } &&
-  match capability_cited_carrier(c: fixture_retirement_owed()) {
+  match gunbc.v1_complexity_capability_census.capability_cited_carrier(c: fixture_retirement_owed()) {
     Present { value: _ } => false
     Absent => true
   } &&
-  match capability_cited_carrier(c: asymptotic_class_and_dominance) {
+  match gunbc.v1_complexity_capability_census.capability_cited_carrier(c: gunbc.v1_complexity_capability_census.asymptotic_class_and_dominance) {
     Present { value: r } => (r.module_path as String) == "v2.lens.cost"
     Absent => false
   }
 }
 
-data w_retirement_is_owed_until_replacement_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the replacement for the v1 walker realization EXECUTES; retirement is owed, not due, because retiring before the replacement executes deletes a live capability, so the trigger is the replacement running green and not the migration row being authored")
+data w_retirement_is_owed_until_replacement_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "the replacement for the v1 walker realization EXECUTES; retirement is owed, not due, because retiring before the replacement executes deletes a live capability, so the trigger is the replacement running green and not the migration row being authored")

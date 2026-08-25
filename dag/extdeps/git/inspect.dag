@@ -171,7 +171,7 @@ service git.Inspect {
   }
 
   operation MergeBase {
-    input { repository_path: String, left: GitRef, right: GitRef }
+    input { repository_path: String, left: std.types.GitRef, right: std.types.GitRef }
     output {
       sha: std.types.CommitSha from "stdout"
       success: Bool from "exit_success"

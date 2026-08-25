@@ -3,23 +3,23 @@ module v2.test.claim.self_host.emitter_producer_provenance_witness
 
 data witness_roster_half_deleted_note: String = "TWENTY-FIVE WITNESSES WERE DELETED FROM THIS FILE with the self-host frontier roster, and the deletion is a retirement rather than a coverage loss, for one reason: every one of them had the roster's promotion state as its subject. They asked whether an oracle row was enrolled, whether an enrolled row authorized an EmitterProduced disposition, whether a hand-forged authorization token failed mint consistency, whether the executed-verdict mint refused at a baseline of zero, and whether the producer-qualified counts matched their baselines. With no roster there is no row to promote, no disposition to authorize, and no baseline to count against — the invalid states those witnesses guarded have no representation left, which is the highest rung DESIGN section 4b describes and the one place it permits the evidence to go with the machinery.
 
-TWO CLAIMS SURVIVED THE DELETION and keep their controls, which is why this file still exists. The first is the closure wall: a V2Emitter receipt cannot be minted when v1.compiler.emit_rust is in its realized closure, so a claim that the v2 emitter produced a module cannot be made while the seed emitter is what actually ran. That wall is independent of any roster — it constrains the receipt, not the row — and mint_v2_interpreted_receipt_with_seed_closure_refuses is its executing RED. The second is that the wet known-red entries are one shared authority rather than two drifting copies.
+TWO CLAIMS SURVIVED THE DELETION and keep their controls, which is why this file still exists. The first is the closure wall: a V2Emitter receipt cannot be minted when emit_rust is in its realized closure, so a claim that the v2 emitter produced a module cannot be made while the seed emitter is what actually ran. That wall is independent of any roster — it constrains the receipt, not the row — and v2.compiler.self_host.emitter_producer_provenance.mint_v2_interpreted_receipt_with_seed_closure_refuses is its executing RED. The second is that the wet known-red entries are one shared authority rather than two drifting copies.
 
 ONE DELETED WITNESS DESERVES ITS OWN SENTENCE because it looked like a real control and was not reachable as one. witness_v2_producer_claim_with_seed_closure_unauthorized_reds fabricated a v2 receipt over a seed closure and asserted the oracle refused to authorize it. Its subject was the authorization fold, which is gone; the underlying claim — that such a receipt is illegitimate — is now enforced one rung higher, at the mint, where the receipt cannot be constructed at all. The refusal it tested still holds; it holds by construction instead of by validation, and the mint control below is what proves it."
 
-test fn witness_seed_emit_rust_poison_structural_refusal_reds() -> v2.std.logic.Bool {
-  mint_v2_interpreted_receipt_with_seed_closure_refuses(
+test fn witness_seed_emit_rust_poison_structural_refusal_reds() -> Bool {
+  v2.compiler.self_host.emitter_producer_provenance.mint_v2_interpreted_receipt_with_seed_closure_refuses(
     module_path: "src/v2/compiler/03_body_producer.dag"
   )
 }
 
-test fn witness_v2_interpreted_closure_is_seed_free() -> v2.std.logic.Bool {
-  v2_interpreted_emitter_closure_seed_free_holds()
+test fn witness_v2_interpreted_closure_is_seed_free() -> Bool {
+  v2.compiler.self_host.emitter_producer_provenance.v2_interpreted_emitter_closure_seed_free_holds()
 }
 
-test fn witness_wet_known_red_entries_is_shared_authority() -> v2.std.logic.Bool {
-  schedule_witness_entries_structurally_equal(
-    left: seed_emitter_behavioral_wet_known_red_entries,
-    right: falsifier_self_host_wet_known_red_entries
+test fn witness_wet_known_red_entries_is_shared_authority() -> Bool {
+  v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries.schedule_witness_entries_structurally_equal(
+    left: v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries.seed_emitter_behavioral_wet_known_red_entries,
+    right: v2.compiler.self_host.wet_receipt_enrollment.falsifier_self_host_wet_known_red_entries
   )
 }

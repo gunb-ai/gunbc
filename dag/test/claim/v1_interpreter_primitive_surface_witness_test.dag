@@ -8,28 +8,28 @@ fn planted_row(identity: String, spelling: String, symbol: String) -> gunbc.v1_i
     authored_spelling: spelling,
     realization_module: "planted",
     dispatch_symbol: symbol,
-    dispatch_emit_site: EvalBuiltinInnerSite,
-    enumeration: AuthoredInRoster,
+    dispatch_emit_site: gunbc.v1_interpreter_primitive_surface.EvalBuiltinInnerSite,
+    enumeration: gunbc.v1_interpreter_primitive_surface.AuthoredInRoster,
   }
 }
 
 test fn derived_surface_excludes_deleted_bridge_arm() -> Bool {
-  !v1_interpreter_free_call_arms() |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows")
+  !gunbc.v1_interpreter_primitive_surface.v1_interpreter_free_call_arms() |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows")
 }
 
 test fn stage0_emission_source_identities_host_scaffold_deleted() -> Bool {
-  !v1_interpreter_free_call_arms()
+  !gunbc.v1_interpreter_primitive_surface.v1_interpreter_free_call_arms()
     |> any(r => r.authored_spelling == "stage0_emission_source_identities_host")
 }
 
 test fn observed_monotonic_nanos_arm_is_one_authored_roster_free_call() -> Bool {
-  let rows = v1_interpreter_authored_roster_arms()
+  let rows = gunbc.v1_interpreter_primitive_surface.v1_interpreter_authored_roster_arms()
     |> filter(r => r.authored_spelling == "observed_monotonic_nanos")
   count(rows) == 1 && (rows |> all(r =>
     r.arm.identity == "free_call.observed_monotonic_nanos"
       && r.form == gunbc.v1_interpreter_primitive_surface.FreeCall
       && r.dispatch_symbol == "eval_builtin_inner"
-      && r.enumeration == AuthoredInRoster
+      && r.enumeration == gunbc.v1_interpreter_primitive_surface.AuthoredInRoster
   ))
 }
 
@@ -41,63 +41,63 @@ test fn every_derived_site_contributes_rows() -> Bool {
     "try_v2_std_collection_map_primitive_grounding",
     "try_parse_table_memo_dispatch",
   ]
-  symbols |> all(s => v1_interpreter_authored_roster_arms() |> any(r => r.dispatch_symbol == s))
+  symbols |> all(s => gunbc.v1_interpreter_primitive_surface.v1_interpreter_authored_roster_arms() |> any(r => r.dispatch_symbol == s))
 }
 
 test fn method_rows_are_authored_in_roster_rather_than_transcribed() -> Bool {
-  let rows = v1_interpreter_method_call_arms() |> filter(r => r.dispatch_symbol == "eval_algebra_method_inner")
+  let rows = gunbc.v1_interpreter_primitive_surface.v1_interpreter_method_call_arms() |> filter(r => r.dispatch_symbol == "eval_algebra_method_inner")
   rows |> any(r => r.authored_spelling == "lookup")
-    && rows |> all(r => r.enumeration == AuthoredInRoster)
+    && rows |> all(r => r.enumeration == gunbc.v1_interpreter_primitive_surface.AuthoredInRoster)
 }
 
 test fn v4_bridge_rows_are_authored_in_roster_rather_than_transcribed() -> Bool {
-  let rows = v1_interpreter_authored_roster_arms() |> filter(r => r.dispatch_symbol == "eval_call" && r.form == gunbc.v1_interpreter_primitive_surface.FreeCall)
+  let rows = gunbc.v1_interpreter_primitive_surface.v1_interpreter_authored_roster_arms() |> filter(r => r.dispatch_symbol == "eval_call" && r.form == gunbc.v1_interpreter_primitive_surface.FreeCall)
   rows |> any(r => r.authored_spelling == "resolve_type_node")
-    && rows |> all(r => r.enumeration == AuthoredInRoster)
+    && rows |> all(r => r.enumeration == gunbc.v1_interpreter_primitive_surface.AuthoredInRoster)
 }
 
 test fn alias_spellings_share_one_arm_identity() -> Bool {
-  let rows = v1_interpreter_free_call_arms()
+  let rows = gunbc.v1_interpreter_primitive_surface.v1_interpreter_free_call_arms()
   let a = rows |> filter(r => r.authored_spelling == "map_contains_key") |> map(r => r.arm.identity)
   let b = rows |> filter(r => r.authored_spelling == "map_has") |> map(r => r.arm.identity)
   count(a) == 1 && count(b) == 1 && (a |> all(x => b |> any(y => y == x)))
 }
 
 test fn every_row_is_unique_on_site_identity_and_spelling() -> Bool {
-  count(duplicate_row_keys(rows: v1_interpreter_primitive_arms())) == 0
+  count(gunbc.v1_interpreter_primitive_surface.duplicate_row_keys(rows: gunbc.v1_interpreter_primitive_surface.v1_interpreter_primitive_arms())) == 0
 }
 
 test fn duplicate_detector_catches_a_row_repeated_under_one_identity() -> Bool {
   let planted = [
-    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
-    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
   ]
-  count(duplicate_row_keys(rows: planted)) == 1
+  count(gunbc.v1_interpreter_primitive_surface.duplicate_row_keys(rows: planted)) == 1
 }
 
 test fn duplicate_detector_admits_one_spelling_at_two_distinct_sites() -> Bool {
   let planted = [
-    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "site_one"),
-    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "site_two"),
+    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "site_one"),
+    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "site_two"),
   ]
-  count(duplicate_row_keys(rows: planted)) == 0
+  count(gunbc.v1_interpreter_primitive_surface.duplicate_row_keys(rows: planted)) == 0
 }
 
 test fn free_call_carries_no_shadowed_spelling() -> Bool {
-  form_has_no_shadowed_spelling(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == gunbc.v1_interpreter_primitive_surface.FreeCall))
+  gunbc.v1_interpreter_primitive_surface.form_has_no_shadowed_spelling(rows: gunbc.v1_interpreter_primitive_surface.v1_interpreter_primitive_arms() |> filter(r => r.form == gunbc.v1_interpreter_primitive_surface.FreeCall))
 }
 
 test fn method_call_shadowing_is_exactly_the_known_lookup_case() -> Bool {
-  let s = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == gunbc.v1_interpreter_primitive_surface.MethodCall))
+  let s = gunbc.v1_interpreter_primitive_surface.shadowed_spellings(rows: gunbc.v1_interpreter_primitive_surface.v1_interpreter_primitive_arms() |> filter(r => r.form == gunbc.v1_interpreter_primitive_surface.MethodCall))
   count(s) == 1 && (s |> all(x => x == "lookup"))
 }
 
 test fn native_special_form_carries_no_shadow_at_all() -> Bool {
-  form_has_no_shadowed_spelling(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == NativeSpecial))
+  gunbc.v1_interpreter_primitive_surface.form_has_no_shadowed_spelling(rows: gunbc.v1_interpreter_primitive_surface.v1_interpreter_primitive_arms() |> filter(r => r.form == gunbc.v1_interpreter_primitive_surface.NativeSpecial))
 }
 
 test fn the_two_shadowed_arm_identities_under_lookup_are_exactly_the_expected_pair() -> Bool {
-  let ids = v1_interpreter_primitive_arms()
+  let ids = gunbc.v1_interpreter_primitive_surface.v1_interpreter_primitive_arms()
     |> filter(r => r.authored_spelling == "lookup" && r.form == gunbc.v1_interpreter_primitive_surface.MethodCall)
     |> map(r => r.arm.identity)
   count(ids) == 2 && (ids |> any(x => x == "method_call.lookup")) && (ids |> any(x => x == "method_call_short_circuit.lookup"))
@@ -105,36 +105,36 @@ test fn the_two_shadowed_arm_identities_under_lookup_are_exactly_the_expected_pa
 
 test fn shadow_detector_catches_a_planted_duplicate() -> Bool {
   let planted = [
-    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
-    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.beta", spelling: "alpha", symbol: "planted_dispatch"),
+    planted_row(identity: "planted.alpha", spelling: "alpha", symbol: "planted_dispatch"),
+    planted_row(identity: "planted.beta", spelling: "alpha", symbol: "planted_dispatch"),
   ]
-  !form_has_no_shadowed_spelling(rows: planted) && count(shadowed_spellings(rows: planted)) == 1
+  !gunbc.v1_interpreter_primitive_surface.form_has_no_shadowed_spelling(rows: planted) && count(gunbc.v1_interpreter_primitive_surface.shadowed_spellings(rows: planted)) == 1
 }
 
 test fn shadow_detector_admits_a_real_alias_pair() -> Bool {
   let alias = [
-    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.shared", spelling: "alpha", symbol: "planted_dispatch"),
-    test.claim.v1_interpreter_primitive_surface_witness_test.planted_row(identity: "planted.shared", spelling: "beta", symbol: "planted_dispatch"),
+    planted_row(identity: "planted.shared", spelling: "alpha", symbol: "planted_dispatch"),
+    planted_row(identity: "planted.shared", spelling: "beta", symbol: "planted_dispatch"),
   ]
-  form_has_no_shadowed_spelling(rows: alias)
+  gunbc.v1_interpreter_primitive_surface.form_has_no_shadowed_spelling(rows: alias)
 }
 
 test fn lookup_is_dispatched_under_more_than_one_site() -> Bool {
-  v1_interpreter_cross_form_spellings() |> any(s => s == "lookup")
+  gunbc.v1_interpreter_primitive_surface.v1_interpreter_cross_form_spellings() |> any(s => s == "lookup")
 }
 
 test fn no_live_row_carries_an_undecodable_form() -> Bool {
-  count(v1_interpreter_unknown_form_arms()) == 0
+  count(gunbc.v1_interpreter_primitive_surface.v1_interpreter_unknown_form_arms()) == 0
 }
 
 test fn an_unrecognised_form_label_refuses_rather_than_defaulting() -> Bool {
-  form_is_unknown(form: decode_dispatch_form(label: "NotAFormLabel")) && !form_is_unknown(form: decode_dispatch_form(label: "FreeCall"))
+  gunbc.v1_interpreter_primitive_surface.form_is_unknown(form: gunbc.v1_interpreter_primitive_surface.decode_dispatch_form(label: "NotAFormLabel")) && !gunbc.v1_interpreter_primitive_surface.form_is_unknown(form: gunbc.v1_interpreter_primitive_surface.decode_dispatch_form(label: "FreeCall"))
 }
 
 
 test fn the_declared_residue_is_exactly_the_two_non_match_arm_sites() -> Bool {
   let expected = ["eval_method_call", "eval_service_call"]
-  let actual = v1_interpreter_declared_arms() |> map(r => r.dispatch_symbol)
+  let actual = gunbc.v1_interpreter_primitive_surface.v1_interpreter_declared_arms() |> map(r => r.dispatch_symbol)
   count(actual |> filter(s => !expected |> any(e => e == s))) == 0
     && count(expected |> filter(e => !actual |> any(s => s == e))) == 0
 }

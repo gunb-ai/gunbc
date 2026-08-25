@@ -1,5 +1,11 @@
 module test.claim.scm_merge_witness
 
+
+
+
+
+
+
 // NAMES ARE QUALIFIED BECAUSE A TOP-LEVEL DEFINITION IS CORPUS-WIDE. `leaf` and `bind` are
 // the obvious names for these helpers and both are already defined by other witness files.
 // The resolver admits duplicate top-level definitions and silently selects one (#8707), so a
@@ -24,15 +30,15 @@ type Fixture {
 
 fn store_or_empty(outcome: gunbc.scm.object_store.StoreOutcome) -> gunbc.scm.object_store.ObjectStore {
   match outcome {
-    Stored { store: store, identity: _ } => store
-    LocatorCollision { identity: _, existing: _, incoming: _ } => gunbc.scm.object_store.empty_store()
+    gunbc.scm.object_store.Stored { store: store, identity: _ } => store
+    gunbc.scm.object_store.LocatorCollision { identity: _, existing: _, incoming: _ } => gunbc.scm.object_store.empty_store()
   }
 }
 
 fn identity_or(outcome: gunbc.scm.object_store.StoreOutcome, fallback: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.ObjectId {
   match outcome {
-    Stored { store: _, identity: identity } => identity
-    LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
+    gunbc.scm.object_store.Stored { store: _, identity: identity } => identity
+    gunbc.scm.object_store.LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
   }
 }
 
@@ -50,8 +56,8 @@ fn fixture_with(edges: List<v2.std.node.Edge>) -> Fixture {
 
 fn fallback_id() -> gunbc.scm.object_store.ObjectId {
   match gunbc.scm.object_store.store_node(store: gunbc.scm.object_store.empty_store(), n: merge_witness_leaf(name: ^fallback)) {
-    Stored { store: _, identity: identity } => identity
-    LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
+    gunbc.scm.object_store.Stored { store: _, identity: identity } => identity
+    gunbc.scm.object_store.LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
   }
 }
 
@@ -71,17 +77,17 @@ fn remove_f_proposal() -> gunbc.scm.merge.Proposal {
 
 fn outcome_is_merged(o: gunbc.scm.merge.MergeOutcome) -> Bool {
   match o {
-    Merged { store: _, commit: _, roles: _ } => true
-    MergeRolesContested { role: _, alternatives: _ } => false
-    MergeRefused { cause: _ } => false
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => true
+    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => false
+    gunbc.scm.merge.MergeRefused { cause: _ } => false
   }
 }
 
 fn merged_roles(o: gunbc.scm.merge.MergeOutcome) -> List<gunbc.scm.merge.ResolvedRole> {
   match o {
-    Merged { store: _, commit: _, roles: roles } => roles
-    MergeRolesContested { role: _, alternatives: _ } => []
-    MergeRefused { cause: _ } => []
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: roles } => roles
+    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => []
+    gunbc.scm.merge.MergeRefused { cause: _ } => []
   }
 }
 
@@ -96,11 +102,11 @@ fn refusal_locates(
   usage_site: v2.std.node.Symbol,
 ) -> Bool {
   match o {
-    Merged { store: _, commit: _, roles: _ } => false
-    MergeRolesContested { role: _, alternatives: _ } => false
-    MergeRefused { cause: cause } =>
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => false
+    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => false
+    gunbc.scm.merge.MergeRefused { cause: cause } =>
       match cause {
-        RequiredDependencyRemoved { dependency: dep, removed_role: removed } =>
+        gunbc.scm.merge.RequiredDependencyRemoved { dependency: dep, removed_role: removed } =>
           ((dep.dependent as String) == (dependent as String))
             && ((dep.required as String) == (required as String))
             && ((dep.usage_site as String) == (usage_site as String))
@@ -108,7 +114,7 @@ fn refusal_locates(
         TargetRootMissing { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
-        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: _ } => false
+        gunbc.scm.merge.DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: _ } => false
       }
   }
 }
@@ -120,10 +126,10 @@ fn role_holds_target_object(roles: List<gunbc.scm.merge.ResolvedRole>, role: v2.
     } else {
       if (r.role as String) == (role as String) {
         match r.value {
-          PreservedFromTarget { object: object } =>
+          gunbc.scm.merge.PreservedFromTarget { object: object } =>
             gunbc.scm.object_store.object_id_eq(left: object, right: expected)
-          ProvidedByProposal { object: _ } => false
-          RemovedByProposal => false
+          gunbc.scm.merge.ProvidedByProposal { object: _ } => false
+          gunbc.scm.merge.RemovedByProposal => false
         }
       } else {
         false
@@ -136,9 +142,9 @@ fn role_absent_from_result(roles: List<gunbc.scm.merge.ResolvedRole>, role: v2.s
   fold(roles, init: true, f: fn(ok, r) {
     if (r.role as String) == (role as String) {
       match r.value {
-        RemovedByProposal => ok
-        PreservedFromTarget { object: _ } => false
-        ProvidedByProposal { object: _ } => false
+        gunbc.scm.merge.RemovedByProposal => ok
+        gunbc.scm.merge.PreservedFromTarget { object: _ } => false
+        gunbc.scm.merge.ProvidedByProposal { object: _ } => false
       }
     } else {
       ok
@@ -223,29 +229,29 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
     ],
   )
   match out {
-    MergeRefused { cause: cause } =>
+    gunbc.scm.merge.MergeRefused { cause: cause } =>
       match cause {
-        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
+        gunbc.scm.merge.DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
           (kind as String) == (^barrier_before as String)
-        RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
+        gunbc.scm.merge.RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
         TargetRootMissing { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
       }
-    Merged { store: _, commit: _, roles: _ } => false
-    MergeRolesContested { role: _, alternatives: _ } => false
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => false
+    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => false
   }
 }
 
 // CONTAINMENT IS NOT PROPAGATION -- THE DISCRIMINATING FORM. `g` and `f` share a container and
 // nothing else; a container-based algorithm believes `g` depends on `f` for that reason alone, which
-// is what the `v2.std.dependency.Contains` row states. `f` is then REMOVED. Because containment does not propagate a
+// is what the `Contains` row states. `f` is then REMOVED. Because containment does not propagate a
 // removal, `g` is untouched and the merge lands.
 //
 // THE ROW HAS TO SURVIVE TO THE VALIDATOR FOR THIS TO MEAN ANYTHING, and an earlier version of this
 // claim did not clear that bar. It stated the row as `dependent: f`, and since the proposal authored
 // `f` the row was discarded by effective_dependencies before validation ever saw it -- so the claim
-// passed because its dependency was thrown away, not because v2.std.dependency.Contains was inert. Mutating v2.std.dependency.Contains
+// passed because its dependency was thrown away, not because Contains was inert. Mutating Contains
 // to propagate left it green, which is how the hole surfaced. Here `g` is the dependent and `g` is
 // never authored, so the row reaches the validator and the mutation bites.
 test fn a_contains_relation_does_not_propagate_a_removal() -> Bool {
@@ -295,7 +301,7 @@ test fn the_same_row_under_a_supported_kind_refuses() -> Bool {
 }
 
 // A ROLE NO PROPOSAL AUTHORED KEEPS THE TARGET'S OWN OBJECT. This is a regression control on the
-// preservation MECHANISM, and it is deliberately not described as a test of v2.std.dependency.Contains propagation --
+// preservation MECHANISM, and it is deliberately not described as a test of Contains propagation --
 // preservation here is structural (a role nothing authored is never rebuilt), so no frontier decision
 // can reach it. Saying otherwise would credit the claim with catching something it cannot catch.
 test fn an_independent_sibling_is_preserved_exactly() -> Bool {
@@ -420,17 +426,17 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
     proposals: [],
   )
   match out {
-    MergeRefused { cause: cause } =>
+    gunbc.scm.merge.MergeRefused { cause: cause } =>
       match cause {
-        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
+        gunbc.scm.merge.DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
           (kind as String) == (^placement_depends_on as String)
-        RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
+        gunbc.scm.merge.RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
         TargetRootMissing { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
         BindingLocatorCollision { role: _, identity: _ } => false
       }
-    Merged { store: _, commit: _, roles: _ } => false
-    MergeRolesContested { role: _, alternatives: _ } => false
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => false
+    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => false
   }
 }
 
@@ -438,17 +444,17 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
 // requires f = F2, another requires f absent: two distinct requested states, so two alternatives.
 fn contested_alternative_count(o: gunbc.scm.merge.MergeOutcome) -> Int {
   match o {
-    MergeRolesContested { role: _, alternatives: alternatives } => length(alternatives)
-    Merged { store: _, commit: _, roles: _ } => 0
-    MergeRefused { cause: _ } => 0
+    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: alternatives } => length(alternatives)
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => 0
+    gunbc.scm.merge.MergeRefused { cause: _ } => 0
   }
 }
 
 fn contested_at_role(o: gunbc.scm.merge.MergeOutcome, role: v2.std.node.Symbol) -> Bool {
   match o {
-    MergeRolesContested { role: at, alternatives: _ } => (at as String) == (role as String)
-    Merged { store: _, commit: _, roles: _ } => false
-    MergeRefused { cause: _ } => false
+    gunbc.scm.merge.MergeRolesContested { role: at, alternatives: _ } => (at as String) == (role as String)
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => false
+    gunbc.scm.merge.MergeRefused { cause: _ } => false
   }
 }
 

@@ -5,23 +5,23 @@ module extdeps.vendor.amphenol
 // weaker authority this corpus already accepts for several vendor rows (intel, samsung, ampere).
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Amphenol"
   }
 }
 
 data amphenol_registrant_note: String = "ONE ENTITY, SEVERAL BRANDS, AND THE BRANDS DO NOT GET THEIR OWN ROWS. Distributors list the M.2 connector under Amphenol ICC, Amphenol FCI and Amphenol Communications Solutions, and the lane that dispatched this work named the vendor as Amphenol Communications Solutions. Those are business-unit brands rather than independently governed entities, and the read authority describes one corporation. So this row is the corporation and the brands are not modelled - which is the MIRROR of the Tyco decision in this same tree, where two rows were minted BECAUSE two documents named two entities with two registered addresses. The rule is the same in both directions: the entity count follows what the documents establish, not what the branding suggests. WHAT IS NOT ESTABLISHED: whether Amphenol Communications Solutions is a distinct legal entity from Amphenol Corporation. No document read here says so, and asserting either way would invent a corporate structure. A filing that establishes it would split this row exactly as Tyco split."
 
-data amphenol: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "Amphenol Corporation" }
+data amphenol: extdeps.vendor.Vendor<extdeps.hardware.Hardware> = extdeps.vendor.Vendor { legal_name: "Amphenol Corporation" }
 
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
   subject: extdeps.external_authority.ExternalSubjectRef {
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.vendor.amphenol",
       decl_name: "amphenol",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.vendor.amphenol.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

@@ -6,42 +6,42 @@ type IdempotencyFact {
 }
 
 fn idempotency_classify(view: v2.std.dependency.DependencyView) -> v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict> {
-  classify_dependency_view(classifier: idempotency_classifier, view: view)
+  v2.std.dependency.classify_dependency_view(classifier: v2.lens.common.algebraic_composition.idempotency_classifier, view: view)
 }
 
 fn idempotency_fact(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> IdempotencyFact {
   IdempotencyFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_snoc_item(xs: acc, item: idempotency_classify(view: view))
+      v2.std.algebra.list_snoc_item(xs: acc, item: idempotency_classify(view: view))
     })
   }
 }
 
-fn idempotency_verdict_unresolved(verdict: v2.lens.common.algebraic_composition.IdempotencyVerdict) -> v2.std.logic.Bool {
+fn idempotency_verdict_unresolved(verdict: v2.lens.common.algebraic_composition.IdempotencyVerdict) -> Bool {
   match verdict {
-    RequiresAlgebraWitness => true
-    AlgebraicIdempotenceProven { law: law } =>
+    v2.lens.common.algebraic_composition.RequiresAlgebraWitness => true
+    v2.lens.common.algebraic_composition.AlgebraicIdempotenceProven { law: law } =>
       match law {
-        Holds { value: _ } => false
-        Violates { diagnostic: _ } => true
+        v2.std.witness.Holds { value: _ } => false
+        v2.std.witness.Violates { diagnostic: _ } => true
       }
   }
 }
 
 fn idempotency_first_law_violation_diagnostic(fact: IdempotencyFact) -> v2.std.optional.Optional<v2.std.diagnostic.Diagnostic> {
-  fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
-    optional_prefer_first_present(
+  fold(fact.dependencies, init: v2.std.optional.optional_absent(), f: fn(acc, dep) {
+    v2.std.optional.optional_prefer_first_present(
       left: acc,
       right: match dep.classification {
-        AlgebraicIdempotenceProven { law: Violates { diagnostic: d } } =>
-          optional_present(value: d)
-        _ => optional_absent()
+        v2.lens.common.algebraic_composition.AlgebraicIdempotenceProven { law: v2.std.witness.Violates { diagnostic: d } } =>
+          v2.std.optional.optional_present(value: d)
+        _ => v2.std.optional.optional_absent()
       }
     )
   })
 }
 
-fn idempotency_fact_unresolved(fact: IdempotencyFact) -> v2.std.logic.Bool {
+fn idempotency_fact_unresolved(fact: IdempotencyFact) -> Bool {
   fold(fact.dependencies, init: false, f: fn(acc, dep) {
     acc || idempotency_verdict_unresolved(verdict: dep.classification)
   })
@@ -50,18 +50,18 @@ fn idempotency_fact_unresolved(fact: IdempotencyFact) -> v2.std.logic.Bool {
 fn idempotency_witness_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^idempotency_reason_unresolved_projection,
-    at: v2.std.diagnostic.Textual { file: ^idempotency_projection_virtual_file, extent: WholeFile },
-    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^idempotency_projection_virtual_file, extent: v2.std.diagnostic.WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
   }
 }
 
 fn idempotency_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<IdempotencyFact> {
   let fact = idempotency_fact(tree: tree, dependencies: dependencies)
   let law_diagnostic = idempotency_first_law_violation_diagnostic(fact: fact)
-  match optional_present_witness(opt: law_diagnostic) {
-    Holds { value: d } =>
+  match v2.std.collection.optional_present_witness(opt: law_diagnostic) {
+    v2.std.witness.Holds { value: d } =>
       v2.std.witness.Violates { diagnostic: d }
-    Violates { diagnostic: _ } =>
+    v2.std.witness.Violates { diagnostic: _ } =>
       if idempotency_fact_unresolved(fact: fact) {
         v2.std.witness.Violates { diagnostic: idempotency_witness_diagnostic() }
       } else {
@@ -70,14 +70,14 @@ fn idempotency_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencie
   }
 }
 
-fn idempotency_verdict_eq(a: v2.lens.common.algebraic_composition.IdempotencyVerdict, b: v2.lens.common.algebraic_composition.IdempotencyVerdict) -> v2.std.logic.Bool {
+fn idempotency_verdict_eq(a: v2.lens.common.algebraic_composition.IdempotencyVerdict, b: v2.lens.common.algebraic_composition.IdempotencyVerdict) -> Bool {
   match a {
-    AlgebraicIdempotenceProven { law: a_law } => match b {
-      AlgebraicIdempotenceProven { law: b_law } => a_law == b_law
+    v2.lens.common.algebraic_composition.AlgebraicIdempotenceProven { law: a_law } => match b {
+      v2.lens.common.algebraic_composition.AlgebraicIdempotenceProven { law: b_law } => a_law == b_law
       _ => false
     }
-    RequiresAlgebraWitness => match b {
-      RequiresAlgebraWitness => true
+    v2.lens.common.algebraic_composition.RequiresAlgebraWitness => match b {
+      v2.lens.common.algebraic_composition.RequiresAlgebraWitness => true
       _ => false
     }
   }
@@ -86,14 +86,14 @@ fn idempotency_verdict_eq(a: v2.lens.common.algebraic_composition.IdempotencyVer
 fn idempotency_classified_eq(
   a: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict>,
   b: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict>
-) -> v2.std.logic.Bool {
-  classified_dependency_view_eq(a: a, b: b, classification_eq: idempotency_verdict_eq)
+) -> Bool {
+  v2.std.dependency.classified_dependency_view_eq(a: a, b: b, classification_eq: idempotency_verdict_eq)
 }
 
-fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> v2.std.logic.Bool {
-  bag_eq(xs: a.dependencies, ys: b.dependencies, eq: idempotency_classified_eq)
+fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {
+  v2.std.algebra.bag_eq(xs: a.dependencies, ys: b.dependencies, eq: idempotency_classified_eq)
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority }
 }

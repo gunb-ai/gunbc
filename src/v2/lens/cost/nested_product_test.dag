@@ -1,5 +1,6 @@
 module v2.test.lens_cost.nested_product
 
+
 data nested_product_body: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
   children: [],
@@ -22,9 +23,9 @@ data nested_product_input: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn nested_product_claim_holds() -> v2.std.logic.Bool {
+test fn nested_product_claim_holds() -> Bool {
   match v2.lens.cost.cost_lens(n: nested_product_input) {
-    Holds { value: actual } =>
+    v2.std.witness.Holds { value: actual } =>
       actual == v2.lens.cost.ProductCost {
         lhs: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: nested_product_input } },
         rhs: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: nested_product_inner } }

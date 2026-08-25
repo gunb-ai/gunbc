@@ -14,19 +14,19 @@ fn cursor_sdk_local_credential_from_dispatch(
   credential: gunbc.dispatch_selection.CursorCredentialRef,
 ) -> CursorSdkLocalCredentialAdmission {
   match credential {
-    CursorApiKeySecretRef { secret_ref: ref } =>
-      match cursor_sdk_admit_exact_secret_ref_version(ref: ref) {
-        CursorSdkSecretRefVersionRefused { reason } =>
+    gunbc.dispatch_selection.CursorApiKeySecretRef { secret_ref: ref } =>
+      match gunbc.cursor_sdk_secret_admission.cursor_sdk_admit_exact_secret_ref_version(ref: ref) {
+        gunbc.cursor_sdk_secret_admission.CursorSdkSecretRefVersionRefused { reason } =>
           CursorSdkLocalCredentialRefused { reason: reason }
-        CursorSdkSecretRefVersionAdmitted { secret_ref: admitted_ref } => {
+        gunbc.cursor_sdk_secret_admission.CursorSdkSecretRefVersionAdmitted { secret_ref: admitted_ref } => {
           let local = extdeps.llm.cursor_sdk.CursorSdkApiKeySecretRef { secret_ref: admitted_ref }
           CursorSdkLocalCredentialAdmitted {
             credential: local,
-            materialization: cursor_sdk_materialize_api_key(credential: local),
+            materialization: extdeps.llm.cursor_sdk.cursor_sdk_materialize_api_key(credential: local),
           }
         }
       }
-    CursorLocalLoginRef =>
+    gunbc.dispatch_selection.CursorLocalLoginRef =>
       CursorSdkLocalCredentialRefused {
         reason: "Cursor SDK local automation requires CursorApiKeySecretRef, not interactive login" as std.types.NonEmptyStr,
       }
@@ -34,14 +34,14 @@ fn cursor_sdk_local_credential_from_dispatch(
 }
 
 fn cursor_sdk_local_usage_standing() -> extdeps.llm.cursor_sdk_facts.CursorSdkLocalAccountUsageUnobservable {
-  cursor_sdk_local_account_usage_unobservable()
+  extdeps.llm.cursor_sdk_facts.cursor_sdk_local_account_usage_unobservable()
 }
 
 fn cursor_sdk_materialization_uses_secret_ref(
   materialization: extdeps.llm.cursor_sdk.CursorSdkApiKeyMaterialization,
 ) -> Bool {
   match materialization {
-    CursorSdkApiKeyFromSecretRef { secret_ref: _ } => true
-    CursorSdkApiKeyFromEnvironment { env_var: _ } => false
+    extdeps.llm.cursor_sdk.CursorSdkApiKeyFromSecretRef { secret_ref: _ } => true
+    extdeps.llm.cursor_sdk.CursorSdkApiKeyFromEnvironment { env_var: _ } => false
   }
 }

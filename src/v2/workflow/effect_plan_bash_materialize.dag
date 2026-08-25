@@ -19,7 +19,7 @@ fn bash_bind_operation_invocation(
   bindings: List<v2.std.operation_argv.OperationInputBinding>
 ) -> BashBoundOperationInvocation {
   BashBoundOperationInvocation {
-    invocation: bind_operation_invocation(at: at, bindings: bindings),
+    invocation: v2.std.operation_argv.bind_operation_invocation(at: at, bindings: bindings),
     executable_position: DeclarationLiteral
   }
 }
@@ -30,7 +30,7 @@ fn bash_bind_operation_invocation_host_env_executable(
   env_var: String
 ) -> BashBoundOperationInvocation {
   BashBoundOperationInvocation {
-    invocation: bind_operation_invocation(at: at, bindings: bindings),
+    invocation: v2.std.operation_argv.bind_operation_invocation(at: at, bindings: bindings),
     executable_position: HostEnvVar { name: env_var }
   }
 }
@@ -88,14 +88,14 @@ fn effect_plan_bash_argv_nul_index(
   argv: List<String>,
   index: Int
 ) -> v2.std.optional.Optional<Int> {
-  match list_at_optional(xs: argv, index: index) {
-    Present { value: argument } =>
+  match v2.std.collection.list_at_optional(xs: argv, index: index) {
+    v2.std.optional.Present { value: argument } =>
       if string_contains(s: argument, pattern: "\u{0000}") {
-        optional_present(value: index)
+        v2.std.optional.optional_present(value: index)
       } else {
         effect_plan_bash_argv_nul_index(argv: argv, index: index + 1)
       }
-    Absent => optional_absent()
+    v2.std.optional.Absent => v2.std.optional.optional_absent()
   }
 }
 
@@ -104,16 +104,16 @@ fn effect_plan_bash_command_from_argv(
   executable_position: BashShellExecutablePosition
 ) -> v2.std.node.Node {
   match executable_position {
-    DeclarationLiteral => bash_build_command_from_lits(lits: argv)
+    DeclarationLiteral => v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: argv)
     HostEnvVar { name: env_var } =>
-      match list_head(xs: argv) {
-        HeadAbsent => bash_build_command_from_lits(lits: [])
-        HeadFound { value: _ } =>
-          bash_build_command(
-            words: bash_build_command_words_from_lits_suffix(
+      match v2.std.algebra.list_head(xs: argv) {
+        v2.std.algebra.HeadAbsent => v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: [])
+        v2.std.algebra.HeadFound { value: _ } =>
+          v2.extdeps.languages.bash_build.bash_build_command(
+            words: v2.extdeps.languages.bash_build.bash_build_command_words_from_lits_suffix(
               lits: argv,
-              accumulated: bash_build_command_words_single(
-                word: bash_build_word_var(name: env_var)
+              accumulated: v2.extdeps.languages.bash_build.bash_build_command_words_single(
+                word: v2.extdeps.languages.bash_build.bash_build_word_var(name: env_var)
               ),
               index: 1
             )
@@ -134,15 +134,15 @@ fn effect_plan_bash_encode_invocation(
     at.operation,
     invocation.bindings
   ) {
-    ArgvMaterialized { argv: argv } =>
+    v2.std.operation_argv.ArgvMaterialized { argv: argv } =>
       match effect_plan_bash_argv_nul_index(argv: argv, index: 0) {
-        Present { value: argument_index } =>
+        v2.std.optional.Present { value: argument_index } =>
           effect_plan_bash_refuse(
             step_index: step_index,
             operation: v2.std.optional.Present { value: at },
             cause: ArgumentContainsNul { argument_index: argument_index }
           )
-        Absent =>
+        v2.std.optional.Absent =>
           EffectPlanBashEncodingAccepted {
             encoding: EffectPlanBashEncoded {
               statement: effect_plan_bash_command_from_argv(
@@ -152,7 +152,7 @@ fn effect_plan_bash_encode_invocation(
             }
           }
       }
-    ArgvMaterializationRefused { at: refused_at, cause: cause } =>
+    v2.std.operation_argv.ArgvMaterializationRefused { at: refused_at, cause: cause } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: v2.std.optional.Present { value: refused_at },
@@ -166,12 +166,12 @@ fn effect_plan_bash_encode_step(
   step_index: Int
 ) -> EffectPlanBashEncodeResult {
   match step {
-    Do { effect: bound } =>
+    v2.std.effect_plan.Do { effect: bound } =>
       effect_plan_bash_encode_invocation(
         bound: bound,
         step_index: step_index
       )
-    If { cond: _, then_: _, else_: _ } =>
+    v2.std.effect_plan.If { cond: _, then_: _, else_: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: v2.std.optional.Absent,
@@ -179,7 +179,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedIf
         }
       )
-    For { binder: _, over: _, body: _ } =>
+    v2.std.effect_plan.For { binder: _, over: _, body: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: v2.std.optional.Absent,
@@ -187,7 +187,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedFor
         }
       )
-    While { cond: _, body: _ } =>
+    v2.std.effect_plan.While { cond: _, body: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: v2.std.optional.Absent,
@@ -195,7 +195,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedWhile
         }
       )
-    Retry { body: _, escalations: _, on_exhausted: _ } =>
+    v2.std.effect_plan.Retry { body: _, escalations: _, on_exhausted: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: v2.std.optional.Absent,
@@ -203,7 +203,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedRetry
         }
       )
-    Let { name: _, value: _ } =>
+    v2.std.effect_plan.Let { name: _, value: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: v2.std.optional.Absent,
@@ -211,7 +211,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedLet
         }
       )
-    Call { callee: _, args: _ } =>
+    v2.std.effect_plan.Call { callee: _, args: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: v2.std.optional.Absent,
@@ -233,7 +233,7 @@ fn effect_plan_bash_and_then(
         EffectPlanBashEmpty => left
         EffectPlanBashEncoded { statement: right_statement } =>
           EffectPlanBashEncoded {
-            statement: bash_build_and_then(
+            statement: v2.extdeps.languages.bash_build.bash_build_and_then(
               left: left_statement,
               right: right_statement
             )
@@ -246,18 +246,18 @@ fn effect_plan_bash_encode_steps(
   steps: List<v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation>>,
   step_index: Int
 ) -> EffectPlanBashEncodeResult {
-  match list_head(xs: steps) {
-    HeadAbsent =>
+  match v2.std.algebra.list_head(xs: steps) {
+    v2.std.algebra.HeadAbsent =>
       EffectPlanBashEncodingAccepted { encoding: EffectPlanBashEmpty }
-    HeadFound { value: step } =>
+    v2.std.algebra.HeadFound { value: step } =>
       match effect_plan_bash_encode_step(step: step, step_index: step_index) {
         EffectPlanBashEncodingRefused { refusal: refusal } =>
           EffectPlanBashEncodingRefused { refusal: refusal }
         EffectPlanBashEncodingAccepted { encoding: first } =>
-          match list_tail(xs: steps) {
-            TailAbsent =>
+          match v2.std.algebra.list_tail(xs: steps) {
+            v2.std.algebra.TailAbsent =>
               EffectPlanBashEncodingAccepted { encoding: first }
-            TailFound { tail: rest } =>
+            v2.std.algebra.TailFound { tail: rest } =>
               match effect_plan_bash_encode_steps(
                 steps: rest,
                 step_index: step_index + 1
@@ -281,13 +281,13 @@ fn effect_plan_bash_encode(
   plan: v2.std.effect_plan.EffectPlan<BashBoundOperationInvocation>
 ) -> EffectPlanBashEncodeResult {
   match plan.on_failure {
-    Continue =>
+    v2.std.orchestration.Continue =>
       effect_plan_bash_refuse(
         step_index: -1,
         operation: v2.std.optional.Absent,
-        cause: UnsupportedFailurePolicy { policy: Continue }
+        cause: UnsupportedFailurePolicy { policy: v2.std.orchestration.Continue }
       )
-    FailFast =>
+    v2.std.orchestration.FailFast =>
       effect_plan_bash_encode_steps(steps: plan.steps, step_index: 0)
   }
 }
@@ -307,8 +307,8 @@ fn effect_plan_bash_unsupported_step_label(
 
 fn effect_plan_bash_failure_policy_label(policy: v2.std.orchestration.FailurePolicy) -> String {
   match policy {
-    Continue => "Continue"
-    FailFast => "FailFast"
+    v2.std.orchestration.Continue => "Continue"
+    v2.std.orchestration.FailFast => "FailFast"
   }
 }
 
@@ -327,7 +327,7 @@ fn effect_plan_bash_cause_label(cause: EffectPlanBashRefusalCause) -> String {
     OperationArgvRefused { cause: argv_cause } =>
       concat(
         "OperationArgvRefused:",
-        operation_argv_cause_label(cause: argv_cause)
+        v2.std.operation_argv.operation_argv_cause_label(cause: argv_cause)
       )
     ArgumentContainsNul { argument_index: argument_index } =>
       concat("ArgumentContainsNul:", to_string(argument_index))
@@ -340,8 +340,8 @@ fn effect_plan_bash_operation_label(
   operation: v2.std.optional.Optional<v2.std.operation_argv.OperationRef>
 ) -> String {
   match operation {
-    Present { value: at } => concat(" at ", operation_argv_ref_label(at: at))
-    Absent => ""
+    v2.std.optional.Present { value: at } => concat(" at ", v2.std.operation_argv.operation_argv_ref_label(at: at))
+    v2.std.optional.Absent => ""
   }
 }
 
@@ -367,10 +367,10 @@ fn effect_plan_bash_materialize(
         EffectPlanBashEmpty =>
           EffectPlanBashMaterialized { source: "" }
         EffectPlanBashEncoded { statement: statement } =>
-          match bash_fold_serialize_node(stmt: statement) {
-            Accepted { value: source, diagnostics: _ } =>
+          match v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node(stmt: statement) {
+            v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
               EffectPlanBashMaterialized { source: source }
-            Rejected { diagnostics: diagnostics } =>
+            v2.std.diagnostic.Rejected { diagnostics: diagnostics } =>
               EffectPlanBashMaterializationRefused {
                 refusal: EffectPlanBashRefusal {
                   step_index: -1,

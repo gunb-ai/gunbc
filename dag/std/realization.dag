@@ -5,37 +5,37 @@ type Independence = Independent | Dependent | Unknown
 
 fn independence_from_effect_shapes(left: std.effects.EffectShape<std.effects.KeySource>, right: std.effects.EffectShape<std.effects.KeySource>) -> Independence {
   match left {
-    ReadEffect => match right {
-      ReadEffect => Independent
-      UpsertEffect { key_source: _ } => Unknown
-      DeleteEffect { key_source: _ } => Unknown
-      CreateEffect { cause: _ } => Unknown
-      AppendEffect => Unknown
-      ExecuteEffect => Unknown
+    std.effects.ReadEffect => match right {
+      std.effects.ReadEffect => Independent
+      std.effects.UpsertEffect { key_source: _ } => Unknown
+      std.effects.DeleteEffect { key_source: _ } => Unknown
+      std.effects.CreateEffect { cause: _ } => Unknown
+      std.effects.AppendEffect => Unknown
+      std.effects.ExecuteEffect => Unknown
     }
-    UpsertEffect { key_source: lk } => match right {
-      ReadEffect => Unknown
-      UpsertEffect { key_source: rk } =>
-        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
-      DeleteEffect { key_source: rk } =>
-        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
-      CreateEffect { cause: _ } => Unknown
-      AppendEffect => Unknown
-      ExecuteEffect => Unknown
+    std.effects.UpsertEffect { key_source: lk } => match right {
+      std.effects.ReadEffect => Unknown
+      std.effects.UpsertEffect { key_source: rk } =>
+        if std.effects.key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+      std.effects.DeleteEffect { key_source: rk } =>
+        if std.effects.key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+      std.effects.CreateEffect { cause: _ } => Unknown
+      std.effects.AppendEffect => Unknown
+      std.effects.ExecuteEffect => Unknown
     }
-    DeleteEffect { key_source: lk } => match right {
-      ReadEffect => Unknown
-      UpsertEffect { key_source: rk } =>
-        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
-      DeleteEffect { key_source: rk } =>
-        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
-      CreateEffect { cause: _ } => Unknown
-      AppendEffect => Unknown
-      ExecuteEffect => Unknown
+    std.effects.DeleteEffect { key_source: lk } => match right {
+      std.effects.ReadEffect => Unknown
+      std.effects.UpsertEffect { key_source: rk } =>
+        if std.effects.key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+      std.effects.DeleteEffect { key_source: rk } =>
+        if std.effects.key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+      std.effects.CreateEffect { cause: _ } => Unknown
+      std.effects.AppendEffect => Unknown
+      std.effects.ExecuteEffect => Unknown
     }
-    CreateEffect { cause: _ } => Unknown
-    AppendEffect => Unknown
-    ExecuteEffect => Unknown
+    std.effects.CreateEffect { cause: _ } => Unknown
+    std.effects.AppendEffect => Unknown
+    std.effects.ExecuteEffect => Unknown
   }
 }
 
@@ -51,13 +51,13 @@ type RealizedStep<S> {
   shape: std.effects.EffectShape<std.effects.KeySource>
   placement: Placement
   materialization: Materialization
-  cost: CostAccount<S>
+  cost: std.realization_schedule.CostAccount<S>
 }
 
-fn mark_collapsible_share<S>(acc: List<std.realization.RealizedStep<S>>, s: std.realization.RealizedStep<S>) -> List<std.realization.RealizedStep<S>> {
+fn mark_collapsible_share<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> List<RealizedStep<S>> {
   acc |> map(e =>
-    if create_double_init_collapsible(a: e.shape, b: s.shape) {
-      std.realization.RealizedStep {
+    if std.effects.create_double_init_collapsible(a: e.shape, b: s.shape) {
+      RealizedStep {
         shape: e.shape,
         placement: e.placement,
         materialization: Share,
@@ -69,12 +69,12 @@ fn mark_collapsible_share<S>(acc: List<std.realization.RealizedStep<S>>, s: std.
   )
 }
 
-fn has_collapsible_peer<S>(acc: List<std.realization.RealizedStep<S>>, s: std.realization.RealizedStep<S>) -> Bool {
-  let peers = acc |> filter(e => create_double_init_collapsible(a: e.shape, b: s.shape))
+fn has_collapsible_peer<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> Bool {
+  let peers = acc |> filter(e => std.effects.create_double_init_collapsible(a: e.shape, b: s.shape))
   !((peers |> length) == 0)
 }
 
-fn reconcile<S>(steps: List<std.realization.RealizedStep<S>>) -> List<std.realization.RealizedStep<S>> {
+fn reconcile<S>(steps: List<RealizedStep<S>>) -> List<RealizedStep<S>> {
   reverse(steps |> fold(init: [], f: fn(acc, s) {
     if has_collapsible_peer(acc: acc, s: s) {
       mark_collapsible_share(acc: acc, s: s)

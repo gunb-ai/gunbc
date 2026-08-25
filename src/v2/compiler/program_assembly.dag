@@ -3,14 +3,14 @@ module v2.compiler.program_assembly
 
 type ProgramAssemblyFoldState
   = ProgramAssemblyFoldOk {
-      roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
+      roots: std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
       index: v2.std.cross_tree.resolution.SourceRootIndex
     }
   | ProgramAssemblyFoldFailed {
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics
     }
 
-fn program_assembly_empty_roots() -> FreeMonoid<v2.compiler.normalized_tree.NormalizedTree> {
+fn program_assembly_empty_roots() -> std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree> {
   std.algebra.Empty
 }
 
@@ -21,9 +21,9 @@ fn program_assembly_read_to_normalized_root_prepared(
   residue: v2.std.diagnostic.Diagnostics
 ) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   match read.artifact.kind {
-    SourceFile =>
+    v2.std.artifact.SourceFile =>
       v2.std.diagnostic.bind_outcome(
-        o: tokenize(
+        o: v2.compiler.tokenize.tokenize(
           text: read.source.carried,
           file: read.compilation_unit,
           rules: lm.lex
@@ -50,7 +50,7 @@ fn program_assembly_read_to_normalized_root(
 ) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   match v2.compiler.parse.prepare_grammar(grammar: lm.grammar) {
     v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
+    v2.std.diagnostic.Accepted { value: prepared, diagnostics: residue } =>
       program_assembly_read_to_normalized_root_prepared(
         read: read,
         lm: lm,
@@ -70,14 +70,14 @@ fn program_assembly_fold_step(
   match state {
     ProgramAssemblyFoldFailed { diagnostics: d } =>
       ProgramAssemblyFoldFailed { diagnostics: d }
-    ProgramAssemblyFoldOk { roots: acc, index: v2.test.claim.concept_index_enumeration.idx } =>
+    ProgramAssemblyFoldOk { roots: acc, index: idx } =>
       match program_assembly_read_to_normalized_root_prepared(read: read, lm: lm, prepared: prepared, residue: residue) {
-        Accepted { value: test.claim.extdeps_llm_claude_trust_witness.root, diagnostics: _ } =>
-          match v2.extdeps.languages.dag.qualified_name_from_module_node(root: test.claim.extdeps_llm_claude_trust_witness.root.root) {
-            Accepted { value: qn, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: root, diagnostics: _ } =>
+          match v2.extdeps.languages.dag.qualified_name_from_module_node(root: root.root) {
+            v2.std.diagnostic.Accepted { value: qn, diagnostics: _ } =>
               ProgramAssemblyFoldOk {
-                roots: v2.std.algebra.list_snoc_item(xs: acc, item: test.claim.extdeps_llm_claude_trust_witness.root),
-                index: v2.std.cross_tree.resolution.source_root_index_insert(index: v2.test.claim.concept_index_enumeration.idx, module: qn, root: read.source_root)
+                roots: v2.std.algebra.list_snoc_item(xs: acc, item: root),
+                index: v2.std.cross_tree.resolution.source_root_index_insert(index: idx, module: qn, root: read.source_root)
               }
             v2.std.diagnostic.Rejected { diagnostics: d } =>
               ProgramAssemblyFoldFailed { diagnostics: d }
@@ -106,7 +106,7 @@ fn program_assembly_fold_ingest(
       match v2.compiler.parse.prepare_grammar(grammar: lm.grammar) {
         v2.std.diagnostic.Rejected { diagnostics: d } =>
           ProgramAssemblyFoldFailed { diagnostics: d }
-        Accepted { value: prepared, diagnostics: residue } =>
+        v2.std.diagnostic.Accepted { value: prepared, diagnostics: residue } =>
           v2.std.algebra.fold_list(
             xs: ingest,
             empty: ProgramAssemblyFoldOk {
@@ -124,7 +124,7 @@ fn program_assembly_fold_ingest(
 fn module_roots_from_source_root_ingest(
   ingest: v2.compiler.source_authority.SourceRootIngest,
   lm: v2.std.language_model.LanguageModel
-) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   match program_assembly_fold_ingest(ingest: ingest, lm: lm) {
     ProgramAssemblyFoldOk { roots: roots, index: _ } =>
       v2.std.diagnostic.outcome_accepted(value: roots)
@@ -134,10 +134,10 @@ fn module_roots_from_source_root_ingest(
 }
 
 fn assemble_program_from_module_roots(
-  roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
+  roots: std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
   admission: v2.compiler.name_resolve.Admission,
   lm: v2.std.language_model.LanguageModel
-) -> v2.std.diagnostic.Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   v2.std.diagnostic.bind_outcome(
     o: v2.compiler.name_resolve.validate_module_roots(roots: roots),
     f: fn(validated_roots) {
@@ -154,11 +154,11 @@ fn assemble_program_from_ingest(
   ingest: v2.compiler.source_authority.SourceRootIngest,
   admission: v2.compiler.name_resolve.Admission,
   lm: v2.std.language_model.LanguageModel
-) -> v2.std.diagnostic.Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match program_assembly_fold_ingest(ingest: ingest, lm: lm) {
     ProgramAssemblyFoldFailed { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
-    ProgramAssemblyFoldOk { roots: roots, index: v2.test.claim.concept_index_enumeration.idx } =>
+    ProgramAssemblyFoldOk { roots: roots, index: idx } =>
       v2.std.diagnostic.bind_outcome(
         o: v2.compiler.name_resolve.validate_module_roots(roots: roots),
         f: fn(validated_roots) {
@@ -166,7 +166,7 @@ fn assemble_program_from_ingest(
             lm: lm,
             roots: validated_roots,
             admission: admission,
-            index: v2.test.claim.concept_index_enumeration.idx,
+            index: idx,
             active_roots: v2.compiler.source_authority.source_root_set_from_ingest(ingest: ingest)
           )
         }

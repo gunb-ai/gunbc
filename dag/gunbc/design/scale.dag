@@ -9,8 +9,8 @@ type ScaleValue
 
 fn scale_value_wire(v: ScaleValue) -> String {
   match v {
-    LengthValue { length: l } => css_length_wire(l: l)
-    FontStackValue { stack: s } => css_font_stack_wire(s: s)
+    LengthValue { length: l } => extdeps.languages.css.values.css_length_wire(l: l)
+    FontStackValue { stack: s } => extdeps.languages.css.values.css_font_stack_wire(s: s)
   }
 }
 
@@ -22,11 +22,11 @@ type ScaleToken {
 data scale_token_derive_note: String = "length_token DERIVES the token name from the magnitude (space-4 from px 4), so the number lives exactly once and a name/value divergence is unwritable (D3). named_length_token is for the semantic-named dimension tokens whose name does NOT encode the magnitude (measure, h-mark) — no fork to close there. font_token carries a typed CssFontStack."
 
 fn length_token(prefix: String, px: Int) -> ScaleToken {
-  ScaleToken { name: join([prefix, "-", to_string(px)], ""), value: LengthValue { length: css_px(n: px) } }
+  ScaleToken { name: join([prefix, "-", to_string(px)], ""), value: LengthValue { length: extdeps.languages.css.values.css_px(n: px) } }
 }
 
 fn named_length_token(name: String, px: Int) -> ScaleToken {
-  ScaleToken { name: name, value: LengthValue { length: css_px(n: px) } }
+  ScaleToken { name: name, value: LengthValue { length: extdeps.languages.css.values.css_px(n: px) } }
 }
 
 fn font_token(name: String, families: List<extdeps.languages.css.values.CssFontFamily>) -> ScaleToken {
@@ -38,7 +38,7 @@ fn scale_var(t: ScaleToken) -> String {
 }
 
 fn scale_decl(t: ScaleToken) -> gunbc.design.material.CssDecl {
-  decl(prop: extdeps.languages.css.properties.CustomProperty { name: t.name }, value: scale_value_wire(v: t.value))
+  gunbc.design.material.decl(prop: CustomProperty { name: t.name }, value: scale_value_wire(v: t.value))
 }
 
 fn scale_pair(a: ScaleToken, b: ScaleToken) -> String {
@@ -84,12 +84,12 @@ data type_scale: List<ScaleToken> = [
 
 data font_sans: ScaleToken = font_token(name: "font-sans", families: [
   extdeps.languages.css.values.NamedFamily { name: "Noto Sans" },
-  extdeps.languages.css.values.GenericFamily { kind: GenericSystemUi },
-  extdeps.languages.css.values.GenericFamily { kind: GenericSansSerif },
+  extdeps.languages.css.values.GenericFamily { kind: extdeps.languages.css.values.GenericSystemUi },
+  extdeps.languages.css.values.GenericFamily { kind: extdeps.languages.css.values.GenericSansSerif },
 ])
 data font_mono: ScaleToken = font_token(name: "font-mono", families: [
   extdeps.languages.css.values.NamedFamily { name: "JetBrains Mono" },
-  extdeps.languages.css.values.GenericFamily { kind: GenericMonospace },
+  extdeps.languages.css.values.GenericFamily { kind: extdeps.languages.css.values.GenericMonospace },
 ])
 
 data font_stack: List<ScaleToken> = [font_sans, font_mono]
@@ -131,7 +131,7 @@ fn scale_var_decls() -> List<gunbc.design.material.CssDecl> {
 data scale_root_css_note: String = "The token :root block. Emitted alongside theme_root_css so a page's stylesheet carries both authorities in :root and every rule references them by var. This block is the ONE home of raw px/font literals; the untokened-length census excludes it by scope (it runs over the page's BuildRule rows, never this block) exactly as the unthemed-color census excludes the theme var block."
 
 fn scale_root_css() -> String {
-  css_block(selector: ":root", decls: scale_var_decls())
+  gunbc.design.material.css_block(selector: ":root", decls: scale_var_decls())
 }
 
 fn name_present(names: List<String>, name: String) -> Bool {

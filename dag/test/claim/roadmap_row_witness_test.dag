@@ -1,23 +1,23 @@
 module test.claim.roadmap_row_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data roadmap_row_witness_note: String = "Composition slice 2's receipts: the RoadmapRow archetype's grid asserted over the SERVED surfaces (the emitted stylesheet and the rendered page), the actuator's scale proven derived-not-set, and the density consumption pinned — the expected blocks are assembled from the archetype's own derivation fns and asserted verbatim against the emission, the same full-block pattern the page witness set. Declared bound: contains-grain cannot count occurrences, so a ROGUE duplicate block for the same selector is outside this file's reach — the register and tactile suites scan the wider sheet."
 
 fn expected_node_head_block() -> String {
   join([
     ".node-head { display: grid; grid-template-columns: ",
-    roadmap_row_grid_template(),
+    gunbc.roadmap_component.roadmap_row_grid_template(),
     "; gap: var(--space-8); align-items: center; min-height: var(--h-row) }",
   ], "")
 }
 
 fn expected_node_mid_block() -> String {
   join([
-    ".", node_mid_class,
+    ".", gunbc.roadmap_component.node_mid_class,
     " { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; min-width: var(--space-0); grid-column: ",
-    to_string(roadmap_row_head_column(region_key: row_region_key(r: TitleRegion))),
+    to_string(gunbc.roadmap_component.roadmap_row_head_column(region_key: gunbc.roadmap_component.row_region_key(r: gunbc.roadmap_component.TitleRegion))),
     " }",
   ], "")
 }
@@ -27,24 +27,24 @@ data head_column_derivation_note: String = "A3 routine-state collapse receipts: 
 fn expected_status_column_block() -> String {
   join([
     ".node-head > .status { grid-column: ",
-    to_string(roadmap_row_head_column(region_key: row_region_key(r: StatusChipRegion))),
+    to_string(gunbc.roadmap_component.roadmap_row_head_column(region_key: gunbc.roadmap_component.row_region_key(r: gunbc.roadmap_component.StatusChipRegion))),
     " }",
   ], "")
 }
 
 test fn roadmap_row_head_columns_derive_from_archetype() -> Bool {
-  roadmap_row_head_column(region_key: row_region_key(r: StatusChipRegion)) == 1
-    && roadmap_row_head_column(region_key: row_region_key(r: TitleRegion)) == 2
-    && roadmap_row_head_column(region_key: row_region_key(r: ActuatorRegion)) == 3
-    && roadmap_row_head_column(region_key: "activity") == 0
-    && string_contains(s: roadmap_css(), pattern: expected_status_column_block())
+  gunbc.roadmap_component.roadmap_row_head_column(region_key: gunbc.roadmap_component.row_region_key(r: gunbc.roadmap_component.StatusChipRegion)) == 1
+    && gunbc.roadmap_component.roadmap_row_head_column(region_key: gunbc.roadmap_component.row_region_key(r: gunbc.roadmap_component.TitleRegion)) == 2
+    && gunbc.roadmap_component.roadmap_row_head_column(region_key: gunbc.roadmap_component.row_region_key(r: gunbc.roadmap_component.ActuatorRegion)) == 3
+    && gunbc.roadmap_component.roadmap_row_head_column(region_key: "activity") == 0
+    && string_contains(s: gunbc.roadmap_style.roadmap_css(), pattern: expected_status_column_block())
 }
 
 fn expected_workflow_controls_block() -> String {
   join([
-    ".", workflow_controls_class,
+    ".", gunbc.roadmap_component.workflow_controls_class,
     " { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-4); flex-wrap: wrap; min-width: var(--space-0); grid-column: ",
-    to_string(roadmap_row_head_column(region_key: row_region_key(r: ActuatorRegion))),
+    to_string(gunbc.roadmap_component.roadmap_row_head_column(region_key: gunbc.roadmap_component.row_region_key(r: gunbc.roadmap_component.ActuatorRegion))),
     " }",
   ], "")
 }
@@ -52,7 +52,7 @@ fn expected_workflow_controls_block() -> String {
 fn expected_row_actuator_block() -> String {
   join([
     ".node-head .dispatch-btn { font-size: var(--text-11); min-height: var(--h-row); padding: var(--space-0) var(--space-8); margin-left: var(--space-0); max-width: ",
-    dispatch_reserved_width(),
+    gunbc.roadmap_component.dispatch_reserved_width(),
     "; overflow: hidden; white-space: nowrap }",
   ], "")
 }
@@ -60,25 +60,25 @@ fn expected_row_actuator_block() -> String {
 data grid_structure_note: String = "The template the stylesheet carries must be the one DERIVED from the archetype's placements — the expected block embeds roadmap_row_grid_template(), so an archetype edit the stylesheet misses, or a hand template the archetype never declared, reds. The head-track count remains 3: chip auto, title 1fr, ActuatorRegion auto. Workflow lamps v0 realizes that last region as one workflow-controls wrapper rather than adding strip/button/Stop as grid siblings."
 
 fn head_track_count() -> Int {
-  count(roadmap_row_archetype |> filter(r => match r.placement {
-    HeadTrack { track: _ } => true
-    InTitleFlow => false
-    UnderHead => false
+  count(gunbc.roadmap_component.roadmap_row_archetype |> filter(r => match r.placement {
+    gunbc.roadmap_component.HeadTrack { track: _ } => true
+    gunbc.roadmap_component.InTitleFlow => false
+    gunbc.roadmap_component.UnderHead => false
   }))
 }
 
 test fn roadmap_row_grid_structure_holds() -> Bool {
-  return string_contains(s: roadmap_css(), pattern: expected_node_head_block())
-    && string_contains(s: roadmap_css(), pattern: expected_node_mid_block())
-    && string_contains(s: roadmap_css(), pattern: expected_workflow_controls_block())
+  return string_contains(s: gunbc.roadmap_style.roadmap_css(), pattern: expected_node_head_block())
+    && string_contains(s: gunbc.roadmap_style.roadmap_css(), pattern: expected_node_mid_block())
+    && string_contains(s: gunbc.roadmap_style.roadmap_css(), pattern: expected_workflow_controls_block())
     && head_track_count() == 3
-    && roadmap_row_grid_template() == "auto 1fr auto"
+    && gunbc.roadmap_component.roadmap_row_grid_template() == "auto 1fr auto"
 }
 
 test fn roadmap_row_page_carries_the_cells() -> Bool {
-  match extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.roadmap_page_for_authority()) {
-    extdeps.languages.html.EmitRejected { reason: _ } => false
-    extdeps.languages.html.EmitOk { html: h } =>
+  match try_serialize_html_source(node: gunbc.roadmap_page.roadmap_page_for_authority()) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
       h.length() > 0
         && string_contains(s: h, pattern: join(["class=\"", gunbc.roadmap_component.node_mid_class, "\""], ""))
         && string_contains(s: h, pattern: "class=\"node-head\"")
@@ -98,7 +98,7 @@ fn actuator_block_derived(block: String) -> Bool {
 }
 
 test fn roadmap_row_actuator_scale_derived_not_set() -> Bool {
-  return string_contains(s: roadmap_css(), pattern: expected_row_actuator_block())
+  return string_contains(s: gunbc.roadmap_style.roadmap_css(), pattern: expected_row_actuator_block())
     && actuator_block_derived(block: expected_row_actuator_block())
 }
 

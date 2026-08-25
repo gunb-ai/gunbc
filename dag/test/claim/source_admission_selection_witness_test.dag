@@ -1,7 +1,7 @@
 module test.claim.source_admission_selection_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 type FixtureTrees {
   base: extdeps.git.object_store.GitObjectId
@@ -10,13 +10,13 @@ type FixtureTrees {
 }
 
 fn fixture_trees() -> FixtureTrees? {
-  match git_sha1_object_id(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+  match extdeps.git.object_store.git_sha1_object_id(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
     Absent => none
     Present { value: base } =>
-      match git_sha1_object_id(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") {
+      match extdeps.git.object_store.git_sha1_object_id(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") {
         Absent => none
         Present { value: head } =>
-          match git_sha1_object_id(hex: "cccccccccccccccccccccccccccccccccccccccc") {
+          match extdeps.git.object_store.git_sha1_object_id(hex: "cccccccccccccccccccccccccccccccccccccccc") {
             Absent => none
             Present { value: other } =>
               Present {
@@ -35,15 +35,15 @@ fn on_trees(body: fn(FixtureTrees) -> Bool) -> Bool {
 }
 
 fn mechanism_a() -> gunbc.source_admission_selection.ComputedMechanismIdentity {
-  fixture_computed_mechanism(executing: SeedRustExecuting, label: "mechanism-a")
+  gunbc.source_admission_selection.fixture_computed_mechanism(executing: gunbc.source_admission_selection.SeedRustExecuting, label: "mechanism-a")
 }
 
 fn mechanism_b() -> gunbc.source_admission_selection.ComputedMechanismIdentity {
-  fixture_computed_mechanism(executing: SeedRustExecuting, label: "mechanism-b")
+  gunbc.source_admission_selection.fixture_computed_mechanism(executing: gunbc.source_admission_selection.SeedRustExecuting, label: "mechanism-b")
 }
 
 fn mechanism_self_emitted() -> gunbc.source_admission_selection.ComputedMechanismIdentity {
-  fixture_computed_mechanism(executing: SelfEmittedExecuting, label: "mechanism-a")
+  gunbc.source_admission_selection.fixture_computed_mechanism(executing: gunbc.source_admission_selection.SelfEmittedExecuting, label: "mechanism-a")
 }
 
 fn identity_of(file: gunbc.source_admission_selection.SourcePoolFile) -> gunbc.source_admission_selection.ActiveSourceIdentity {
@@ -55,8 +55,8 @@ fn identity_of(file: gunbc.source_admission_selection.SourcePoolFile) -> gunbc.s
 }
 
 fn observed_from_files(files: List<gunbc.source_admission_selection.SourcePoolFile>) -> gunbc.source_admission_selection.ActiveSourceManifest {
-  let rows = project_active_source_rows(files: files)
-  admit_active_source_manifest(
+  let rows = gunbc.source_admission_selection.project_active_source_rows(files: files)
+  gunbc.source_admission_selection.admit_active_source_manifest(
     rows: rows,
     expected_keys: map(rows, r => r.module_path)
   )
@@ -67,11 +67,11 @@ fn mint_from_files(
   mechanism: gunbc.source_admission_selection.ComputedMechanismIdentity,
   files: List<gunbc.source_admission_selection.SourcePoolFile>
 ) -> gunbc.source_admission_selection.AnnotationCorpusAdmitted? {
-  let rows = project_active_source_rows(files: files)
-  mint_annotation_corpus_admitted(
+  let rows = gunbc.source_admission_selection.project_active_source_rows(files: files)
+  gunbc.source_admission_selection.mint_annotation_corpus_admitted(
     tree: tree,
     mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism },
-    manifest: admit_active_source_manifest(
+    manifest: gunbc.source_admission_selection.admit_active_source_manifest(
       rows: rows,
       expected_keys: map(rows, r => r.module_path)
     ),
@@ -85,7 +85,7 @@ fn select_with_receipt(
   head_mechanism: gunbc.source_admission_selection.AnnotationMechanismIdentity,
   head_files: List<gunbc.source_admission_selection.SourcePoolFile>
 ) -> gunbc.source_admission_selection.SourceAdmissionSelection {
-  select_source_admission(
+  gunbc.source_admission_selection.select_source_admission(
     evaluating_merge_tree: true,
     base_tree: trees.base,
     head_tree: trees.head,
@@ -99,14 +99,14 @@ fn refusal_is(
   sel: gunbc.source_admission_selection.SourceAdmissionSelection,
   wanted: gunbc.source_admission_selection.SourceTransitionRefusalCause
 ) -> Bool {
-  match source_admission_refusal_cause(sel: sel) {
+  match gunbc.source_admission_selection.source_admission_refusal_cause(sel: sel) {
     Absent => false
     Present { value: cause } => cause == wanted
   }
 }
 
 fn file_high() -> gunbc.source_admission_selection.SourcePoolFile {
-  fixture_source(
+  gunbc.source_admission_selection.fixture_source(
     root_ordinal: 0,
     module_path: "mod.alpha",
     path: "root0/alpha.dag",
@@ -115,7 +115,7 @@ fn file_high() -> gunbc.source_admission_selection.SourcePoolFile {
 }
 
 fn file_low() -> gunbc.source_admission_selection.SourcePoolFile {
-  fixture_source(
+  gunbc.source_admission_selection.fixture_source(
     root_ordinal: 1,
     module_path: "mod.alpha",
     path: "root1/alpha.dag",
@@ -124,7 +124,7 @@ fn file_low() -> gunbc.source_admission_selection.SourcePoolFile {
 }
 
 fn file_beta() -> gunbc.source_admission_selection.SourcePoolFile {
-  fixture_source(
+  gunbc.source_admission_selection.fixture_source(
     root_ordinal: 0,
     module_path: "mod.beta",
     path: "root0/beta.dag",
@@ -133,7 +133,7 @@ fn file_beta() -> gunbc.source_admission_selection.SourcePoolFile {
 }
 
 fn file_beta_changed() -> gunbc.source_admission_selection.SourcePoolFile {
-  fixture_source(
+  gunbc.source_admission_selection.fixture_source(
     root_ordinal: 0,
     module_path: "mod.beta",
     path: "root0/beta.dag",
@@ -142,7 +142,7 @@ fn file_beta_changed() -> gunbc.source_admission_selection.SourcePoolFile {
 }
 
 fn file_gamma() -> gunbc.source_admission_selection.SourcePoolFile {
-  fixture_source(
+  gunbc.source_admission_selection.fixture_source(
     root_ordinal: 0,
     module_path: "mod.gamma",
     path: "root0/gamma.dag",
@@ -151,21 +151,21 @@ fn file_gamma() -> gunbc.source_admission_selection.SourcePoolFile {
 }
 
 test fn source_admission_production_mechanism_identity_is_unobservable() -> Bool {
-  match production_annotation_mechanism_identity() {
-    MechanismIdentityComputed { computed: _ } => false
-    MechanismIdentityUnobservable { cause: _ } => true
+  match gunbc.source_admission_selection.production_annotation_mechanism_identity() {
+    gunbc.source_admission_selection.MechanismIdentityComputed { computed: _ } => false
+    gunbc.source_admission_selection.MechanismIdentityUnobservable { cause: _ } => true
   }
 }
 
 test fn source_admission_induction_standing_awaits_computed_identity_on_8201_head() -> Bool {
-  match annotation_corpus_induction_standing() {
+  match gunbc.source_admission_selection.annotation_corpus_induction_standing() {
     Absent => false
     Present { value: standing } =>
       match standing {
-        AwaitingComputedMechanismIdentity { tree: tree } =>
-          git_object_id_eq(left: tree, right: annotation_corpus_induction_base_tree)
-        AwaitingAdmittedSourceJoin { tree: _, mechanism: _ } => false
-        CorpusAdmitted { receipt: _ } => false
+        gunbc.source_admission_selection.AwaitingComputedMechanismIdentity { tree: tree } =>
+          extdeps.git.object_store.git_object_id_eq(left: tree, right: gunbc.source_admission_selection.annotation_corpus_induction_base_tree)
+        gunbc.source_admission_selection.AwaitingAdmittedSourceJoin { tree: _, mechanism: _ } => false
+        gunbc.source_admission_selection.CorpusAdmitted { receipt: _ } => false
       }
   }
 }
@@ -173,10 +173,10 @@ test fn source_admission_induction_standing_awaits_computed_identity_on_8201_hea
 test fn source_admission_cannot_mint_receipt_when_mechanism_unobservable() -> Bool {
   on_trees(body: fn(trees) {
     let rows = [identity_of(file: file_beta())]
-    match mint_annotation_corpus_admitted(
+    match gunbc.source_admission_selection.mint_annotation_corpus_admitted(
       tree: trees.base,
-      mechanism: production_annotation_mechanism_identity(),
-      manifest: admit_active_source_manifest(
+      mechanism: gunbc.source_admission_selection.production_annotation_mechanism_identity(),
+      manifest: gunbc.source_admission_selection.admit_active_source_manifest(
         rows: rows,
         expected_keys: ["mod.beta"]
       ),
@@ -192,10 +192,10 @@ test fn source_admission_cannot_mint_receipt_when_admitted_set_is_not_identity_j
   on_trees(body: fn(trees) {
     let observed = [identity_of(file: file_beta()), identity_of(file: file_gamma())]
     let admitted = [identity_of(file: file_beta()), identity_of(file: file_beta())]
-    match mint_annotation_corpus_admitted(
+    match gunbc.source_admission_selection.mint_annotation_corpus_admitted(
       tree: trees.base,
       mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
-      manifest: admit_active_source_manifest(
+      manifest: gunbc.source_admission_selection.admit_active_source_manifest(
         rows: observed,
         expected_keys: ["mod.beta", "mod.gamma"]
       ),
@@ -208,28 +208,28 @@ test fn source_admission_cannot_mint_receipt_when_admitted_set_is_not_identity_j
 }
 
 test fn source_admission_same_count_different_keys_is_incomplete_walk_not_observed() -> Bool {
-  match admit_active_source_manifest(
+  match gunbc.source_admission_selection.admit_active_source_manifest(
     rows: [identity_of(file: file_beta())],
     expected_keys: ["mod.gamma"]
   ) {
-    ManifestObserved { rows: _ } => false
-    ManifestUnobservable { cause: cause } =>
+    gunbc.source_admission_selection.ManifestObserved { rows: _ } => false
+    gunbc.source_admission_selection.ManifestUnobservable { cause: cause } =>
       match cause {
-        IncompleteWalk { expected_keys: _, observed_count: n } => n == 1
-        EmptyUniverse => false
-        DuplicateModulePath { module_path: _ } => false
+        gunbc.source_admission_selection.IncompleteWalk { expected_keys: _, observed_count: n } => n == 1
+        gunbc.source_admission_selection.EmptyUniverse => false
+        gunbc.source_admission_selection.DuplicateModulePath { module_path: _ } => false
       }
   }
 }
 
 test fn source_admission_empty_expected_keys_is_empty_universe() -> Bool {
-  match admit_active_source_manifest(rows: [], expected_keys: []) {
-    ManifestObserved { rows: _ } => false
-    ManifestUnobservable { cause: cause } =>
+  match gunbc.source_admission_selection.admit_active_source_manifest(rows: [], expected_keys: []) {
+    gunbc.source_admission_selection.ManifestObserved { rows: _ } => false
+    gunbc.source_admission_selection.ManifestUnobservable { cause: cause } =>
       match cause {
-        EmptyUniverse => true
-        IncompleteWalk { expected_keys: _, observed_count: _ } => false
-        DuplicateModulePath { module_path: _ } => false
+        gunbc.source_admission_selection.EmptyUniverse => true
+        gunbc.source_admission_selection.IncompleteWalk { expected_keys: _, observed_count: _ } => false
+        gunbc.source_admission_selection.DuplicateModulePath { module_path: _ } => false
       }
   }
 }
@@ -243,19 +243,19 @@ test fn source_admission_partial_walk_refuses_not_observed_with_fewer_rows() -> 
     ) {
       Absent => false
       Present { value: receipt } =>
-        test.claim.source_admission_selection_witness.refusal_is(
-          sel: select_source_admission(
+        refusal_is(
+          sel: gunbc.source_admission_selection.select_source_admission(
             evaluating_merge_tree: true,
             base_tree: trees.base,
             head_tree: trees.head,
             base_receipt: Present { value: receipt },
             head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
-            head_manifest: admit_active_source_manifest(
+            head_manifest: gunbc.source_admission_selection.admit_active_source_manifest(
               rows: [identity_of(file: file_beta())],
               expected_keys: ["mod.beta", "mod.gamma"]
             ),
           ),
-          wanted: TransitionManifestUnobservable,
+          wanted: gunbc.source_admission_selection.TransitionManifestUnobservable,
         )
     }
   })
@@ -270,8 +270,8 @@ test fn source_admission_not_merge_tree_refuses() -> Bool {
     ) {
       Absent => false
       Present { value: receipt } =>
-        test.claim.source_admission_selection_witness.refusal_is(
-          sel: select_source_admission(
+        refusal_is(
+          sel: gunbc.source_admission_selection.select_source_admission(
             evaluating_merge_tree: false,
             base_tree: trees.base,
             head_tree: trees.head,
@@ -279,7 +279,7 @@ test fn source_admission_not_merge_tree_refuses() -> Bool {
             head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
             head_manifest: observed_from_files(files: [file_beta()]),
           ),
-          wanted: NotMergeTree,
+          wanted: gunbc.source_admission_selection.NotMergeTree,
         )
     }
   })
@@ -287,7 +287,7 @@ test fn source_admission_not_merge_tree_refuses() -> Bool {
 
 test fn source_admission_missing_base_receipt_refuses_not_incremental_empty() -> Bool {
   on_trees(body: fn(trees) {
-    let sel = select_source_admission(
+    let sel = gunbc.source_admission_selection.select_source_admission(
       evaluating_merge_tree: true,
       base_tree: trees.base,
       head_tree: trees.head,
@@ -295,9 +295,9 @@ test fn source_admission_missing_base_receipt_refuses_not_incremental_empty() ->
       head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
       head_manifest: observed_from_files(files: [file_beta()]),
     )
-    test.claim.source_admission_selection_witness.refusal_is(sel: sel, wanted: BaseReceiptAbsent)
-      && source_admission_is_incremental(sel: sel) == false
-      && source_admission_is_unchanged_noop(sel: sel) == false
+    refusal_is(sel: sel, wanted: gunbc.source_admission_selection.BaseReceiptAbsent)
+      && gunbc.source_admission_selection.source_admission_is_incremental(sel: sel) == false
+      && gunbc.source_admission_selection.source_admission_is_unchanged_noop(sel: sel) == false
   })
 }
 
@@ -310,14 +310,14 @@ test fn source_admission_production_unobservable_refuses_even_with_fixture_recei
     ) {
       Absent => false
       Present { value: receipt } =>
-        test.claim.source_admission_selection_witness.refusal_is(
+        refusal_is(
           sel: select_with_receipt(
             trees: trees,
             receipt: receipt,
-            head_mechanism: production_annotation_mechanism_identity(),
+            head_mechanism: gunbc.source_admission_selection.production_annotation_mechanism_identity(),
             head_files: [file_beta()],
           ),
-          wanted: TransitionMechanismIdentityUnobservable,
+          wanted: gunbc.source_admission_selection.TransitionMechanismIdentityUnobservable,
         )
     }
   })
@@ -338,9 +338,9 @@ test fn source_admission_identical_manifest_is_unchanged_noop_not_empty_incremen
           head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
           head_files: [file_beta(), file_gamma()],
         )
-        source_admission_is_unchanged_noop(sel: sel)
-          && source_admission_is_incremental(sel: sel) == false
-          && incremental_changed_module_paths(sel: sel) == []
+        gunbc.source_admission_selection.source_admission_is_unchanged_noop(sel: sel)
+          && gunbc.source_admission_selection.source_admission_is_incremental(sel: sel) == false
+          && gunbc.source_admission_selection.incremental_changed_module_paths(sel: sel) == []
     }
   })
 }
@@ -360,8 +360,8 @@ test fn source_admission_content_change_selects_only_the_changed_head_row() -> B
           head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
           head_files: [file_beta_changed(), file_gamma()],
         )
-        source_admission_is_incremental(sel: sel)
-          && incremental_changed_module_paths(sel: sel) == ["mod.beta"]
+        gunbc.source_admission_selection.source_admission_is_incremental(sel: sel)
+          && gunbc.source_admission_selection.incremental_changed_module_paths(sel: sel) == ["mod.beta"]
     }
   })
 }
@@ -381,7 +381,7 @@ test fn source_admission_removal_only_is_unchanged_noop() -> Bool {
           head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
           head_files: [file_beta()],
         )
-        source_admission_is_unchanged_noop(sel: sel)
+        gunbc.source_admission_selection.source_admission_is_unchanged_noop(sel: sel)
     }
   })
 }
@@ -401,8 +401,8 @@ test fn source_admission_known_mechanism_digest_change_is_entire_head_not_refuse
           head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_b() },
           head_files: [file_beta()],
         )
-        source_admission_is_entire_head(sel: sel)
-          && source_admission_is_incremental(sel: sel) == false
+        gunbc.source_admission_selection.source_admission_is_entire_head(sel: sel)
+          && gunbc.source_admission_selection.source_admission_is_incremental(sel: sel) == false
     }
   })
 }
@@ -416,7 +416,7 @@ test fn source_admission_seed_to_self_emitted_is_entire_head_even_with_same_dige
     ) {
       Absent => false
       Present { value: receipt } =>
-        source_admission_is_entire_head(
+        gunbc.source_admission_selection.source_admission_is_entire_head(
           sel: select_with_receipt(
             trees: trees,
             receipt: receipt,
@@ -429,9 +429,9 @@ test fn source_admission_seed_to_self_emitted_is_entire_head_even_with_same_dige
 }
 
 test fn source_admission_primary_precedence_independent_of_pool_file_list_order() -> Bool {
-  let forward = project_active_source_rows(files: [file_high(), file_low()])
-  let reversed = project_active_source_rows(files: [file_low(), file_high()])
-  active_source_lists_identity_join(expected: forward, observed: reversed)
+  let forward = gunbc.source_admission_selection.project_active_source_rows(files: [file_high(), file_low()])
+  let reversed = gunbc.source_admission_selection.project_active_source_rows(files: [file_low(), file_high()])
+  gunbc.source_admission_selection.active_source_lists_identity_join(expected: forward, observed: reversed)
     && forward |> any(row => row.path == "root0/alpha.dag")
 }
 
@@ -450,11 +450,11 @@ test fn source_admission_deleting_higher_precedence_exposes_lower_as_incremental
           head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
           head_files: [file_low()],
         )
-        source_admission_is_incremental(sel: sel)
-          && incremental_changed_module_paths(sel: sel) == ["mod.alpha"]
+        gunbc.source_admission_selection.source_admission_is_incremental(sel: sel)
+          && gunbc.source_admission_selection.incremental_changed_module_paths(sel: sel) == ["mod.alpha"]
           && match sel {
-            IncrementalSources { changed: changed } =>
-              nonempty_active_sources_all(rows: changed) |> any(row =>
+            gunbc.source_admission_selection.IncrementalSources { changed: changed } =>
+              gunbc.source_admission_selection.nonempty_active_sources_all(rows: changed) |> any(row =>
                 row.path == "root1/alpha.dag"
               )
             _ => false
@@ -472,7 +472,7 @@ test fn source_admission_deleting_shadowed_loser_is_active_map_noop() -> Bool {
     ) {
       Absent => false
       Present { value: receipt } =>
-        source_admission_is_unchanged_noop(
+        gunbc.source_admission_selection.source_admission_is_unchanged_noop(
           sel: select_with_receipt(
             trees: trees,
             receipt: receipt,
@@ -493,8 +493,8 @@ test fn source_admission_receipt_tree_mismatch_refuses() -> Bool {
     ) {
       Absent => false
       Present { value: receipt } =>
-        test.claim.source_admission_selection_witness.refusal_is(
-          sel: select_source_admission(
+        refusal_is(
+          sel: gunbc.source_admission_selection.select_source_admission(
             evaluating_merge_tree: true,
             base_tree: trees.base,
             head_tree: trees.head,
@@ -502,17 +502,17 @@ test fn source_admission_receipt_tree_mismatch_refuses() -> Bool {
             head_mechanism: gunbc.source_admission_selection.MechanismIdentityComputed { computed: mechanism_a() },
             head_manifest: observed_from_files(files: [file_beta()]),
           ),
-          wanted: BaseReceiptTreeMismatch,
+          wanted: gunbc.source_admission_selection.BaseReceiptTreeMismatch,
         )
     }
   })
 }
 
 test fn source_admission_seed_roots_name_executing_path_not_dag_only() -> Bool {
-  admission_mechanism_seed_roots |> any(root =>
+  gunbc.source_admission_selection.admission_mechanism_seed_roots |> any(root =>
     (root.realization_file as String) == "src/v1/stage0/src/v1_compiler_tokenize.rs"
       && (root.function_name as String) == "tokenize_artifact"
-  ) && admission_mechanism_seed_roots |> any(root =>
+  ) && gunbc.source_admission_selection.admission_mechanism_seed_roots |> any(root =>
     (root.function_name as String) == "alloc_occurrence_id"
   )
 }

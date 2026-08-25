@@ -22,13 +22,13 @@ fn ensure_decide<P, E>(
   observation_satisfies: Bool,
   mismatch_reason: String,
   plan: EnsurePlan<P>,
-) -> UpsertDecision<P> {
+) -> std.upsert_decision.UpsertDecision<P> {
   match observation {
     EnsureInaccessible { reason } =>
       std.upsert_decision.Refuse { reason: reason as std.types.NonEmptyStr }
     EnsureObserved { evidence: _ } =>
       if observation_satisfies {
-        Noop
+        std.upsert_decision.Noop
       } else {
         match policy {
           EnsureObserveOnly =>
@@ -60,10 +60,10 @@ fn ensure_readback<E>(
   observation: EnsureObservation<E>,
   observation_satisfies: Bool,
   mismatch_reason: String,
-) -> Reconciliation<Bool, E> {
+) -> std.realization_reconcile.Reconciliation<Bool, E> {
   match observation {
     EnsureObserved { evidence } =>
-      reconcile_grounded(
+      std.realization_reconcile.reconcile_grounded(
         apply_effect: applied,
         show_read: std.realization_reconcile.ReadObserved { value: evidence },
         grounding: if observation_satisfies {
@@ -73,13 +73,13 @@ fn ensure_readback<E>(
         },
       )
     EnsureAbsent { reason } =>
-      reconcile_grounded(
+      std.realization_reconcile.reconcile_grounded(
         apply_effect: applied,
         show_read: std.realization_reconcile.ReadAbsent { reason: reason },
         grounding: std.realization_reconcile.DoesNotGround { reason: reason },
       )
     EnsureInaccessible { reason } =>
-      reconcile_grounded(
+      std.realization_reconcile.reconcile_grounded(
         apply_effect: applied,
         show_read: std.realization_reconcile.ReadAbsent { reason: reason },
         grounding: std.realization_reconcile.DoesNotGround { reason: reason },

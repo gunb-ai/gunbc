@@ -1,12 +1,13 @@
 module gunbc.build_cache_endpoint_observe
 
-data build_cache_endpoint_observe_scope_disposition: Disposition = SingleAuthority
+
+data build_cache_endpoint_observe_scope_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 data observe_is_the_missing_producer_note: String = "THIS MODULE IS THE PRODUCER TWO PROVEN-BUT-UNWIRED AUTHORITIES WERE WAITING ON. gunbc.build_cache_ensure admit_ensure_build_cache_instance takes a BuildCacheServerPlacement, an EndpointPathState and an ObservationCurrency; gunbc.build_cache_endpoint_observation could produce none of them and said so in its own body, returning ProcTableUnreadable with the detail 'shell transport available but /proc endpoint-owner walk has no host_effect producer yet'. So the admission was reachable only from tests, and gunbc.host_effect_realize realize_provision_build_cache rendered and restarted the unit unconditionally instead. That is the rung problem the shell-to-dag census C-note names: the refusal a live CI-capacity incident was fixed by is computed by a function no production caller called.\n\nWHAT IS HERE AND WHAT IS NOT. Everything below is a PURE DECODE of read text into the modeled states -- no transport, no effect, no host. The reads themselves are performed by gunbc.host_effect_realize, which is where a transport already exists, and are handed back as BuildCacheEndpointReads. Splitting it that way is not tidiness: it makes every arm of the decode reachable from a fixture, so the discriminating REDs run against specimen text rather than against a host, and it keeps this module free of the effect graph it would otherwise have to import.\n\nEVERY READ IS NON-MUTATING, AND THAT IS A CORRECTNESS PROPERTY RATHER THAN A COURTESY. The one probe that would be easiest to reach for -- sccache --show-stats -- is refused as evidence anywhere in this lane, because extdeps.cache.sccache sccache_stats_query_does_not_spawn_note records by measurement that it prints a full table whether or not any server exists. It therefore cannot establish absence, which is precisely the question the path axis asks. A real compile WOULD establish it and is a mutation. Neither is admissible."
 
 type HostRead
   = HostReadText { text: String }
-  | HostReadFailed { detail: NonEmptyStr }
+  | HostReadFailed { detail: std.types.NonEmptyStr }
 
 data host_read_carries_failure_not_emptiness_note: String = "A FAILED READ IS NOT AN EMPTY READ, and conflating them is the empty-observation narrow DESIGN names beside the absorbing fallback. find printing nothing means no process holds the socket; find not running, or being denied, also prints nothing on stdout. If both arrive as the same String the decoder answers 'nothing is listening' to a question it never got an answer to, and the caller then unlinks a socket or starts a unit on that basis. So the runner classifies exit status into these two arms before any text reaches a decoder, and every decode of HostReadFailed lands on an Unavailable/Undecided arm rather than on an absence."
 
@@ -14,14 +15,14 @@ type EndpointListenerRead
   = ListenerOwnerPid { pid: std.nat.Nat }
   | ListenerNone
   | ListenerAmbiguous { candidate_count: std.nat.Nat }
-  | ListenerUndecided { detail: NonEmptyStr }
+  | ListenerUndecided { detail: std.types.NonEmptyStr }
 
 type EndpointPathKind
   = PathKindSocket
-  | PathKindOtherObject { described: NonEmptyStr }
+  | PathKindOtherObject { described: std.types.NonEmptyStr }
   | PathKindAbsent
   | PathKindNoFilesystemPath
-  | PathKindUnreadable { detail: NonEmptyStr }
+  | PathKindUnreadable { detail: std.types.NonEmptyStr }
 
 data path_kind_no_filesystem_path_note: String = "A TCP ENDPOINT HAS NO PATH, AND THAT IS ITS OWN ARM RATHER THAN PathKindAbsent. Absent means we looked at a path and found nothing there, which licenses a bind; no-path means the question does not apply to this instance's endpoint shape at all. Collapsing them would make the two indistinguishable to a reader deciding whether an unlink could ever be relevant -- and gunbc.build_cache_endpoint_path already refuses a stale-socket unlink over a TCP endpoint positively for the same reason, so answering the path axis with a fabricated 'absent' here would put the contradiction one layer earlier where nothing refuses it."
 
@@ -37,10 +38,10 @@ type BuildCacheEndpointReads {
 }
 
 type BuildCacheEndpointSurvey {
-  observation: BuildCacheEndpointObservation
-  placement: BuildCacheServerPlacement
-  path: EndpointPathState
-  currency: ObservationCurrency
+  observation: gunbc.build_cache_instance.BuildCacheEndpointObservation
+  placement: gunbc.build_cache_instance.BuildCacheServerPlacement
+  path: gunbc.build_cache_endpoint_path.EndpointPathState
+  currency: gunbc.build_cache_endpoint_path.ObservationCurrency
 }
 
 // --- argv construction ------------------------------------------------------
@@ -51,38 +52,38 @@ data listener_chain_is_the_receipt_chain_note: String = "THIS IS THE CHAIN THE S
 // happened to be a tool name; they now derive from the cited coreutils authorities, and the two
 // transports that consume them take the same value -- the local one runs it, the ssh ones flatten it
 // with extdeps.exec.command argv_words. One construction, two addressings.
-fn proc_net_unix_read_command() -> ArgvCommand {
-  cat_command(path: procfs_path_literal(p: ProcNetUnix) as String)
+fn proc_net_unix_read_command() -> extdeps.exec.command.ArgvCommand {
+  extdeps.tools.gnu_coreutils.cat_command(path: extdeps.linux.procfs.procfs_path_literal(p: extdeps.linux.procfs.ProcNetUnix) as String)
 }
 
 data boot_id_path: String = "/proc/sys/kernel/random/boot_id"
 
-fn boot_id_read_command() -> ArgvCommand {
-  cat_command(path: boot_id_path)
+fn boot_id_read_command() -> extdeps.exec.command.ArgvCommand {
+  extdeps.tools.gnu_coreutils.cat_command(path: boot_id_path)
 }
 
-fn endpoint_path_kind_command(path: NonEmptyStr) -> ArgvCommand {
-  stat_file_type_command(path: path as String)
+fn endpoint_path_kind_command(path: std.types.NonEmptyStr) -> extdeps.exec.command.ArgvCommand {
+  extdeps.tools.stat.stat_file_type_command(path: path as String)
 }
 
 fn proc_pid_path(pid: std.nat.Nat, leaf: String) -> String {
   join(["/proc/", to_string(pid), "/", leaf], "")
 }
 
-fn owner_cgroup_command(pid: std.nat.Nat) -> ArgvCommand {
-  cat_command(path: proc_pid_path(pid: pid, leaf: "cgroup"))
+fn owner_cgroup_command(pid: std.nat.Nat) -> extdeps.exec.command.ArgvCommand {
+  extdeps.tools.gnu_coreutils.cat_command(path: proc_pid_path(pid: pid, leaf: "cgroup"))
 }
 
-fn owner_proc_stat_command(pid: std.nat.Nat) -> ArgvCommand {
-  cat_command(path: proc_pid_path(pid: pid, leaf: "stat"))
+fn owner_proc_stat_command(pid: std.nat.Nat) -> extdeps.exec.command.ArgvCommand {
+  extdeps.tools.gnu_coreutils.cat_command(path: proc_pid_path(pid: pid, leaf: "stat"))
 }
 
-fn owner_principal_command(pid: std.nat.Nat) -> ArgvCommand {
-  stat_owner_user_name_command(path: proc_pid_path(pid: pid, leaf: ""))
+fn owner_principal_command(pid: std.nat.Nat) -> extdeps.exec.command.ArgvCommand {
+  extdeps.tools.stat.stat_owner_user_name_command(path: proc_pid_path(pid: pid, leaf: ""))
 }
 
-fn owner_executable_command(pid: std.nat.Nat) -> ArgvCommand {
-  readlink_command(path: proc_pid_path(pid: pid, leaf: "exe"))
+fn owner_executable_command(pid: std.nat.Nat) -> extdeps.exec.command.ArgvCommand {
+  extdeps.tools.gnu_coreutils.readlink_command(path: proc_pid_path(pid: pid, leaf: "exe"))
 }
 
 // --- decoders ---------------------------------------------------------------
@@ -107,20 +108,20 @@ fn leading_digits(s: String) -> String {
 fn nat_from_digits(digits: String, whence: String) -> EndpointListenerRead {
   if digits == "" {
     ListenerUndecided {
-      detail: concat("no decimal digits followed ", whence) as NonEmptyStr,
+      detail: concat("no decimal digits followed ", whence) as std.types.NonEmptyStr,
     }
   } else {
     match parse_int(s: digits) {
       Absent =>
         ListenerUndecided {
-          detail: concat("the decimal run following ", concat(whence, " does not parse as an integer")) as NonEmptyStr,
+          detail: concat("the decimal run following ", concat(whence, " does not parse as an integer")) as std.types.NonEmptyStr,
         }
       Present { value: parsed } =>
-        match checked_int_magnitude(a: parsed) {
-          CheckedNatReady { value: n } => ListenerOwnerPid { pid: n }
-          CheckedNatOverflow { cause: _ } =>
+        match std.checked_arithmetic.checked_int_magnitude(a: parsed) {
+          std.checked_arithmetic.CheckedNatReady { value: n } => ListenerOwnerPid { pid: n }
+          std.checked_arithmetic.CheckedNatOverflow { cause: _ } =>
             ListenerUndecided {
-              detail: concat("the decimal run following ", concat(whence, " does not represent a process id")) as NonEmptyStr,
+              detail: concat("the decimal run following ", concat(whence, " does not represent a process id")) as std.types.NonEmptyStr,
             }
         }
     }
@@ -135,15 +136,15 @@ data proc_net_unix_state_field_index: Int = 5
 data proc_net_unix_inode_field_index: Int = 6
 
 type EndpointInodeLookup
-  = ListenInodeFound { inode: NonEmptyStr }
+  = ListenInodeFound { inode: std.types.NonEmptyStr }
   | NoListenEntryAtPath
-  | InodeLookupUndecided { detail: NonEmptyStr }
+  | InodeLookupUndecided { detail: std.types.NonEmptyStr }
 
 fn proc_net_unix_fields(line: String) -> List<String> {
   filter(std.algebra.trim(line).split(" "), w => w != "")
 }
 
-fn proc_net_unix_line_is_listen_at(line: String, path: NonEmptyStr) -> Bool {
+fn proc_net_unix_line_is_listen_at(line: String, path: std.types.NonEmptyStr) -> Bool {
   let f = proc_net_unix_fields(line: line)
   if f.count() < 8 {
     false
@@ -167,11 +168,11 @@ fn proc_net_unix_line_inode(line: String) -> String {
   }
 }
 
-fn listen_inode_at_path(read: HostRead, path: NonEmptyStr) -> EndpointInodeLookup {
+fn listen_inode_at_path(read: HostRead, path: std.types.NonEmptyStr) -> EndpointInodeLookup {
   match read {
     HostReadFailed { detail: d } =>
       InodeLookupUndecided {
-        detail: concat("/proc/net/unix could not be read, so whether anything is listening at this endpoint is unknown: ", d as String) as NonEmptyStr,
+        detail: concat("/proc/net/unix could not be read, so whether anything is listening at this endpoint is unknown: ", d as String) as std.types.NonEmptyStr,
       }
     HostReadText { text: t } => {
       let listening = filter(t.split("\n"), l => proc_net_unix_line_is_listen_at(line: l, path: path))
@@ -179,20 +180,20 @@ fn listen_inode_at_path(read: HostRead, path: NonEmptyStr) -> EndpointInodeLooku
         NoListenEntryAtPath
       } else if listening.count() > 1 {
         InodeLookupUndecided {
-          detail: "/proc/net/unix carries more than one LISTEN entry for this exact endpoint path, which the kernel does not produce for a single bound socket; refusing rather than picking one" as NonEmptyStr,
+          detail: "/proc/net/unix carries more than one LISTEN entry for this exact endpoint path, which the kernel does not produce for a single bound socket; refusing rather than picking one" as std.types.NonEmptyStr,
         }
       } else {
         match listening.first() {
           Absent =>
-            InodeLookupUndecided { detail: "a counted LISTEN line could not be re-read" as NonEmptyStr }
+            InodeLookupUndecided { detail: "a counted LISTEN line could not be re-read" as std.types.NonEmptyStr }
           Present { value: line } => {
             let inode = leading_digits(proc_net_unix_line_inode(line: line))
             if inode == "" {
               InodeLookupUndecided {
-                detail: "the LISTEN entry for this endpoint carries no numeric inode" as NonEmptyStr,
+                detail: "the LISTEN entry for this endpoint carries no numeric inode" as std.types.NonEmptyStr,
               }
             } else {
-              ListenInodeFound { inode: inode as NonEmptyStr }
+              ListenInodeFound { inode: inode as std.types.NonEmptyStr }
             }
           }
         }
@@ -211,15 +212,15 @@ fn fd_holder_of_find_output(read: HostRead) -> EndpointListenerRead {
       if holders.count() == 0 {
         ListenerNone
       } else if holders.count() > 1 {
-        match checked_int_magnitude(a: holders.count()) {
-          CheckedNatReady { value: n } => ListenerAmbiguous { candidate_count: n }
-          CheckedNatOverflow { cause: _ } =>
-            ListenerUndecided { detail: "an uncountable number of processes hold this endpoint's socket open" as NonEmptyStr }
+        match std.checked_arithmetic.checked_int_magnitude(a: holders.count()) {
+          std.checked_arithmetic.CheckedNatReady { value: n } => ListenerAmbiguous { candidate_count: n }
+          std.checked_arithmetic.CheckedNatOverflow { cause: _ } =>
+            ListenerUndecided { detail: "an uncountable number of processes hold this endpoint's socket open" as std.types.NonEmptyStr }
         }
       } else {
         match holders.first() {
           Absent =>
-            ListenerUndecided { detail: "a counted fd-holder line could not be re-read" as NonEmptyStr }
+            ListenerUndecided { detail: "a counted fd-holder line could not be re-read" as std.types.NonEmptyStr }
           Present { value: line } => pid_of_proc_fd_path(fd_path: std.algebra.trim(line))
         }
       }
@@ -233,7 +234,7 @@ fn pid_of_proc_fd_path(fd_path: String) -> EndpointListenerRead {
   match fd_path.split("/").skip(2).first() {
     Absent =>
       ListenerUndecided {
-        detail: concat("a /proc fd link path had no pid segment: ", fd_path) as NonEmptyStr,
+        detail: concat("a /proc fd link path had no pid segment: ", fd_path) as std.types.NonEmptyStr,
       }
     Present { value: seg } =>
       nat_from_digits(digits: leading_digits(seg), whence: "the pid segment of the /proc fd link path")
@@ -256,30 +257,30 @@ fn path_kind_of_stat_read(read: HostRead, exit_success: Bool) -> EndpointPathKin
           PathKindSocket
         } else if word == "" {
           PathKindUnreadable {
-            detail: "stat reported success over the endpoint path and printed no object type" as NonEmptyStr,
+            detail: "stat reported success over the endpoint path and printed no object type" as std.types.NonEmptyStr,
           }
         } else {
-          PathKindOtherObject { described: word as NonEmptyStr }
+          PathKindOtherObject { described: word as std.types.NonEmptyStr }
         }
       }
     }
   }
 }
 
-fn currency_of_boot_id_read(read: HostRead) -> ObservationCurrency {
+fn currency_of_boot_id_read(read: HostRead) -> gunbc.build_cache_endpoint_path.ObservationCurrency {
   match read {
     HostReadFailed { detail: d } =>
-      ObservationCurrencyUnknown {
-        detail: concat("the host's boot id could not be read, so whether this observation survives a reboot is unknown: ", d as String) as NonEmptyStr,
+      gunbc.build_cache_endpoint_path.ObservationCurrencyUnknown {
+        detail: concat("the host's boot id could not be read, so whether this observation survives a reboot is unknown: ", d as String) as std.types.NonEmptyStr,
       }
     HostReadText { text: t } => {
       let b = std.algebra.trim(t)
       if b == "" {
-        ObservationCurrencyUnknown {
-          detail: "the host's boot id read returned empty text" as NonEmptyStr,
+        gunbc.build_cache_endpoint_path.ObservationCurrencyUnknown {
+          detail: "the host's boot id read returned empty text" as std.types.NonEmptyStr,
         }
       } else {
-        ObservationCurrent { observed_at_boot: b as NonEmptyStr }
+        gunbc.build_cache_endpoint_path.ObservationCurrent { observed_at_boot: b as std.types.NonEmptyStr }
       }
     }
   }
@@ -299,7 +300,7 @@ fn cgroup_last_segment_from(segments: List<String>) -> String {
   }
 }
 
-fn unit_name_of_cgroup_path(cgroup_path: NonEmptyStr) -> String {
+fn unit_name_of_cgroup_path(cgroup_path: std.types.NonEmptyStr) -> String {
   let leaf = cgroup_last_segment_from(segments: (cgroup_path as String).split("/"))
   if leaf.ends_with(systemd_unit_suffix) { leaf } else { "" }
 }
@@ -315,42 +316,42 @@ fn runner_slot_index_text(unit_name: String) -> String {
   }
 }
 
-fn runner_slot_lifecycle_for(host: HostIdentity, slot_index: std.nat.Nat) -> RunnerSlotLifecycle {
-  if slot_index >= 1 && slot_index <= gunbc_runner_slots_per_host(host: host) {
-    DesiredRunnerSlot
+fn runner_slot_lifecycle_for(host: product.placement_supply.HostIdentity, slot_index: std.nat.Nat) -> gunbc.build_cache_instance.RunnerSlotLifecycle {
+  if slot_index >= 1 && slot_index <= gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: host) {
+    gunbc.build_cache_instance.DesiredRunnerSlot
   } else {
-    RetiredRunnerSlot
+    gunbc.build_cache_instance.RetiredRunnerSlot
   }
 }
 
-fn runner_slot_index_value(index_text: String) -> CheckedNat {
+fn runner_slot_index_value(index_text: String) -> std.checked_arithmetic.CheckedNat {
   match parse_int(s: index_text) {
-    Absent => checked_int_magnitude(a: 0 - 1)
-    Present { value: n } => checked_int_magnitude(a: n)
+    Absent => std.checked_arithmetic.checked_int_magnitude(a: 0 - 1)
+    Present { value: n } => std.checked_arithmetic.checked_int_magnitude(a: n)
   }
 }
 
 fn runner_owner_context(
-  instance: BuildCacheInstance,
+  instance: gunbc.build_cache_instance.BuildCacheInstance,
   unit_name: String,
-  cgroup_path: NonEmptyStr,
-) -> EndpointOwnerContext {
+  cgroup_path: std.types.NonEmptyStr,
+) -> gunbc.build_cache_instance.EndpointOwnerContext {
   let index_text = leading_digits(runner_slot_index_text(unit_name: unit_name))
   if index_text == "" {
-    OwnerContextUndecided {
-      detail: concat("the endpoint owner's cgroup names a runner-slot unit whose slot index does not parse: ", unit_name) as NonEmptyStr,
+    gunbc.build_cache_instance.OwnerContextUndecided {
+      detail: concat("the endpoint owner's cgroup names a runner-slot unit whose slot index does not parse: ", unit_name) as std.types.NonEmptyStr,
       observed_cgroup: cgroup_path,
     }
   } else {
     match runner_slot_index_value(index_text: index_text) {
-      CheckedNatOverflow { cause: _ } =>
-        OwnerContextUndecided {
-          detail: concat("the endpoint owner's cgroup names a runner-slot unit whose slot index is not a cardinal: ", unit_name) as NonEmptyStr,
+      std.checked_arithmetic.CheckedNatOverflow { cause: _ } =>
+        gunbc.build_cache_instance.OwnerContextUndecided {
+          detail: concat("the endpoint owner's cgroup names a runner-slot unit whose slot index is not a cardinal: ", unit_name) as std.types.NonEmptyStr,
           observed_cgroup: cgroup_path,
         }
-      CheckedNatReady { value: idx } =>
-        OwnerInRunnerSlot {
-          slot: RunnerSlotIdentity { host: instance.identity.host, slot_index: idx },
+      std.checked_arithmetic.CheckedNatReady { value: idx } =>
+        gunbc.build_cache_instance.OwnerInRunnerSlot {
+          slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: instance.identity.host, slot_index: idx },
           lifecycle: runner_slot_lifecycle_for(host: instance.identity.host, slot_index: idx),
           observed_cgroup: cgroup_path,
         }
@@ -359,50 +360,50 @@ fn runner_owner_context(
 }
 
 fn owner_context_of_cgroup_path(
-  instance: BuildCacheInstance,
-  cgroup_path: NonEmptyStr,
-) -> EndpointOwnerContext {
+  instance: gunbc.build_cache_instance.BuildCacheInstance,
+  cgroup_path: std.types.NonEmptyStr,
+) -> gunbc.build_cache_instance.EndpointOwnerContext {
   let unit_name = unit_name_of_cgroup_path(cgroup_path: cgroup_path)
   if unit_name == "" {
-    OwnerContextUndecided {
-      detail: "the endpoint owner's cgroup ends in no systemd unit, so no supervisor owns it" as NonEmptyStr,
+    gunbc.build_cache_instance.OwnerContextUndecided {
+      detail: "the endpoint owner's cgroup ends in no systemd unit, so no supervisor owns it" as std.types.NonEmptyStr,
       observed_cgroup: cgroup_path,
     }
   } else if unit_name.starts_with(runner_slot_unit_prefix) {
     runner_owner_context(instance: instance, unit_name: unit_name, cgroup_path: cgroup_path)
   } else {
-    OwnerInSystemdUnit { unit: unit_name as NonEmptyStr, observed_cgroup: cgroup_path }
+    gunbc.build_cache_instance.OwnerInSystemdUnit { unit: unit_name as std.types.NonEmptyStr, observed_cgroup: cgroup_path }
   }
 }
 
 fn owner_context_of_cgroup_read(
-  instance: BuildCacheInstance,
+  instance: gunbc.build_cache_instance.BuildCacheInstance,
   read: HostRead,
-) -> EndpointOwnerContext {
+) -> gunbc.build_cache_instance.EndpointOwnerContext {
   match read {
     HostReadFailed { detail: d } =>
-      OwnerContextUndecided {
-        detail: concat("the endpoint owner's cgroup could not be read: ", d as String) as NonEmptyStr,
-        observed_cgroup: "unread" as NonEmptyStr,
+      gunbc.build_cache_instance.OwnerContextUndecided {
+        detail: concat("the endpoint owner's cgroup could not be read: ", d as String) as std.types.NonEmptyStr,
+        observed_cgroup: "unread" as std.types.NonEmptyStr,
       }
     HostReadText { text: t } =>
-      match read_unified_cgroup_membership(content: t) {
-        CurrentCgroupObserved { relative_path: p } =>
+      match extdeps.linux.proc_self_cgroup.read_unified_cgroup_membership(content: t) {
+        extdeps.linux.proc_self_cgroup.CurrentCgroupObserved { relative_path: p } =>
           owner_context_of_cgroup_path(instance: instance, cgroup_path: p)
-        MembershipMissing =>
-          OwnerContextUndecided {
-            detail: "the endpoint owner's /proc/PID/cgroup carries no unified (v2) hierarchy line" as NonEmptyStr,
-            observed_cgroup: "unread" as NonEmptyStr,
+        extdeps.linux.proc_self_cgroup.MembershipMissing =>
+          gunbc.build_cache_instance.OwnerContextUndecided {
+            detail: "the endpoint owner's /proc/PID/cgroup carries no unified (v2) hierarchy line" as std.types.NonEmptyStr,
+            observed_cgroup: "unread" as std.types.NonEmptyStr,
           }
-        MembershipAmbiguous { first: a, second: b } =>
-          OwnerContextUndecided {
-            detail: concat("the endpoint owner reports two unified cgroup paths: ", concat(a as String, concat(" and ", b as String))) as NonEmptyStr,
+        extdeps.linux.proc_self_cgroup.MembershipAmbiguous { first: a, second: b } =>
+          gunbc.build_cache_instance.OwnerContextUndecided {
+            detail: concat("the endpoint owner reports two unified cgroup paths: ", concat(a as String, concat(" and ", b as String))) as std.types.NonEmptyStr,
             observed_cgroup: a,
           }
-        MembershipMalformed { cause: _ } =>
-          OwnerContextUndecided {
-            detail: "the endpoint owner's /proc/PID/cgroup did not parse" as NonEmptyStr,
-            observed_cgroup: "unread" as NonEmptyStr,
+        extdeps.linux.proc_self_cgroup.MembershipMalformed { cause: _ } =>
+          gunbc.build_cache_instance.OwnerContextUndecided {
+            detail: "the endpoint owner's /proc/PID/cgroup did not parse" as std.types.NonEmptyStr,
+            observed_cgroup: "unread" as std.types.NonEmptyStr,
           }
       }
   }
@@ -431,37 +432,37 @@ fn starttime_of_proc_stat_text(text: String) -> String {
 
 type OwnerIdentityOutcome
   = OwnerIdentityObserved { identity: gunbc.build_cache_instance.ProcessIdentity }
-  | OwnerIdentityUnread { detail: NonEmptyStr }
+  | OwnerIdentityUnread { detail: std.types.NonEmptyStr }
 
 fn owner_identity(
   pid: std.nat.Nat,
-  currency: ObservationCurrency,
+  currency: gunbc.build_cache_endpoint_path.ObservationCurrency,
   proc_stat: HostRead,
 ) -> OwnerIdentityOutcome {
   match currency {
-    ObservationStale { detail: d } =>
+    gunbc.build_cache_endpoint_path.ObservationStale { detail: d } =>
       OwnerIdentityUnread {
-        detail: concat("a process id is only an identity relative to a boot, and this observation is not current: ", d as String) as NonEmptyStr,
+        detail: concat("a process id is only an identity relative to a boot, and this observation is not current: ", d as String) as std.types.NonEmptyStr,
       }
-    ObservationCurrencyUnknown { detail: d } =>
+    gunbc.build_cache_endpoint_path.ObservationCurrencyUnknown { detail: d } =>
       OwnerIdentityUnread {
-        detail: concat("a process id is only an identity relative to a boot, and the boot id is unread: ", d as String) as NonEmptyStr,
+        detail: concat("a process id is only an identity relative to a boot, and the boot id is unread: ", d as String) as std.types.NonEmptyStr,
       }
-    ObservationCurrent { observed_at_boot: boot } =>
+    gunbc.build_cache_endpoint_path.ObservationCurrent { observed_at_boot: boot } =>
       match proc_stat {
         HostReadFailed { detail: d } =>
           OwnerIdentityUnread {
-            detail: concat("the endpoint owner's /proc/PID/stat could not be read, so its start time is unknown and its pid is not an identity: ", d as String) as NonEmptyStr,
+            detail: concat("the endpoint owner's /proc/PID/stat could not be read, so its start time is unknown and its pid is not an identity: ", d as String) as std.types.NonEmptyStr,
           }
         HostReadText { text: t } => {
           let start = starttime_of_proc_stat_text(text: t)
           if start == "" {
             OwnerIdentityUnread {
-              detail: "the endpoint owner's /proc/PID/stat did not yield a start time field" as NonEmptyStr,
+              detail: "the endpoint owner's /proc/PID/stat did not yield a start time field" as std.types.NonEmptyStr,
             }
           } else {
             OwnerIdentityObserved {
-              identity: gunbc.build_cache_instance.ProcessIdentity { boot_id: boot, pid: pid, start_time: start as NonEmptyStr },
+              identity: gunbc.build_cache_instance.ProcessIdentity { boot_id: boot, pid: pid, start_time: start as std.types.NonEmptyStr },
             }
           }
         }
@@ -482,32 +483,32 @@ fn read_text_or(read: HostRead, fallback: String) -> String {
 // --- the two axes -----------------------------------------------------------
 
 fn endpoint_owner_observation(
-  instance: BuildCacheInstance,
+  instance: gunbc.build_cache_instance.BuildCacheInstance,
   reads: BuildCacheEndpointReads,
-  currency: ObservationCurrency,
-) -> BuildCacheEndpointObservation {
+  currency: gunbc.build_cache_endpoint_path.ObservationCurrency,
+) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
   match reads.listener {
-    ListenerNone => EndpointAbsent { instance: instance }
+    ListenerNone => gunbc.build_cache_instance.EndpointAbsent { instance: instance }
     ListenerAmbiguous { candidate_count: n } =>
-      EndpointOwnershipAmbiguous { instance: instance, candidate_count: n }
+      gunbc.build_cache_instance.EndpointOwnershipAmbiguous { instance: instance, candidate_count: n }
     ListenerUndecided { detail: d } =>
-      EndpointObservationUnavailable {
+      gunbc.build_cache_instance.EndpointObservationUnavailable {
         instance: instance,
-        reason: EndpointPathUnreadable { detail: d },
+        reason: gunbc.build_cache_instance.EndpointPathUnreadable { detail: d },
       }
     ListenerOwnerPid { pid: pid } =>
       match owner_identity(pid: pid, currency: currency, proc_stat: reads.owner_proc_stat) {
         OwnerIdentityUnread { detail: d } =>
-          EndpointObservationUnavailable {
+          gunbc.build_cache_instance.EndpointObservationUnavailable {
             instance: instance,
-            reason: ProcTableUnreadable { detail: d },
+            reason: gunbc.build_cache_instance.ProcTableUnreadable { detail: d },
           }
         OwnerIdentityObserved { identity: who } =>
-          EndpointOwnerObserved {
+          gunbc.build_cache_instance.EndpointOwnerObserved {
             instance: instance,
             owner: who,
-            executable: read_text_or(read: reads.owner_executable, fallback: "unread") as NonEmptyStr,
-            principal: read_text_or(read: reads.owner_principal, fallback: "unread") as NonEmptyStr,
+            executable: read_text_or(read: reads.owner_executable, fallback: "unread") as std.types.NonEmptyStr,
+            principal: read_text_or(read: reads.owner_principal, fallback: "unread") as std.types.NonEmptyStr,
             owner_context: owner_context_of_cgroup_read(instance: instance, read: reads.owner_cgroup),
             memory_limits: none,
             memory_events: none,
@@ -518,133 +519,133 @@ fn endpoint_owner_observation(
 
 data path_and_owner_are_joined_not_duplicated_note: String = "THE PATH AXIS AND THE OWNER AXIS ARE DERIVED FROM ONE PAIR OF READS, AND THAT IS A JOIN RATHER THAN A SECOND OPINION. gunbc.build_cache_endpoint_path's authority note fixes why the axes are separate: EndpointStaleSocket and EndpointPathAbsent both project to EndpointAbsent on the ownership axis, so ownership cannot carry the distinction actuation needs. What they must never do is disagree about whether a listener exists, which is what would happen if each ran its own probe. So /proc/net/unix is read once and the fd-holder walk is run once, and both axes are derived from those -- the owner axis asks who, the path axis asks what is at the path.\n\nALL FOUR CLAUSES OF THE EndpointStaleSocket OBSERVER CONTRACT ARE READ. Clause (1), stat reports a socket. Clause (2), no LISTEN entry for the exact path in /proc/net/unix. Clause (3), no /proc/*/fd link resolves to the socket's inode -- the fd-holder walk returning empty, which is why its empty result had to be distinguishable from its failure. Clause (4), one boot id across the pass; an unreadable boot id degrades the survey to ObservationCurrencyUnknown, which the unlink admission refuses. So this producer DOES return EndpointStaleSocket, and srv4's stranded socket becomes an admitted unlink rather than a permanent refusal.\n\nAn earlier revision of this note declared clause (3) unreadable and called that a bounded residue. It was not bounded and it was not a residue -- it was a false capability claim, refuted by executing the find walk (listener_chain_is_the_receipt_chain_note carries the measurement). The correction is recorded here rather than the sentence quietly deleted, because that claim shipped in a PR body and two other carriers as a reason not to try."
 
-data socket_held_open_without_listening_detail: NonEmptyStr = "the endpoint path holds a socket with no LISTEN entry, but a process still holds an open descriptor on its inode -- so it is NOT stale. This is exactly the state clause (3) of the stale-socket contract exists to catch: unlinking here severs a live process's socket and leaves it running and unreachable. Refusing, with the holder observable in the same walk"
+data socket_held_open_without_listening_detail: std.types.NonEmptyStr = "the endpoint path holds a socket with no LISTEN entry, but a process still holds an open descriptor on its inode -- so it is NOT stale. This is exactly the state clause (3) of the stale-socket contract exists to catch: unlinking here severs a live process's socket and leaves it running and unreachable. Refusing, with the holder observable in the same walk"
 
-fn stale_or_held(reads: BuildCacheEndpointReads) -> EndpointPathState {
+fn stale_or_held(reads: BuildCacheEndpointReads) -> gunbc.build_cache_endpoint_path.EndpointPathState {
   match reads.listen_inode {
     InodeLookupUndecided { detail: d } =>
-      EndpointPathObservationUnavailable { reason: EndpointPathUnreadable { detail: d } }
+      gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable { reason: gunbc.build_cache_instance.EndpointPathUnreadable { detail: d } }
     ListenInodeFound { inode: _ } =>
-      EndpointPathObservationUnavailable {
-        reason: EndpointPathUnreadable {
-          detail: "/proc/net/unix reports a LISTEN entry for this endpoint while the fd walk resolved no owner for its inode; the two reads disagree, so the path state is unread rather than stale" as NonEmptyStr,
+      gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable {
+        reason: gunbc.build_cache_instance.EndpointPathUnreadable {
+          detail: "/proc/net/unix reports a LISTEN entry for this endpoint while the fd walk resolved no owner for its inode; the two reads disagree, so the path state is unread rather than stale" as std.types.NonEmptyStr,
         },
       }
     NoListenEntryAtPath =>
       match reads.listener {
         ListenerNone =>
-          EndpointStaleSocket {
-            detail: "a socket file with no LISTEN entry and no process holding its inode open; all four clauses of the stale-socket observer contract are established, so a bind here would fail with address-in-use until it is unlinked" as NonEmptyStr,
+          gunbc.build_cache_endpoint_path.EndpointStaleSocket {
+            detail: "a socket file with no LISTEN entry and no process holding its inode open; all four clauses of the stale-socket observer contract are established, so a bind here would fail with address-in-use until it is unlinked" as std.types.NonEmptyStr,
           }
         ListenerOwnerPid { pid: _ } =>
-          EndpointPathConflict { detail: socket_held_open_without_listening_detail }
+          gunbc.build_cache_endpoint_path.EndpointPathConflict { detail: socket_held_open_without_listening_detail }
         ListenerAmbiguous { candidate_count: _ } =>
-          EndpointPathConflict { detail: socket_held_open_without_listening_detail }
+          gunbc.build_cache_endpoint_path.EndpointPathConflict { detail: socket_held_open_without_listening_detail }
         ListenerUndecided { detail: d } =>
-          EndpointPathObservationUnavailable { reason: EndpointPathUnreadable { detail: d } }
+          gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable { reason: gunbc.build_cache_instance.EndpointPathUnreadable { detail: d } }
       }
   }
 }
 
 data holder_is_not_listener_note: String = "AN OBSERVED HOLDER IS NOT A LISTENER, AND THIS ARM IS WHERE THAT WAS CONFLATED. The owner observation is built from the fd-holder walk -- some process has an open descriptor on the socket's inode -- while LISTENING is a separate read, the St==01 row for this exact path in /proc/net/unix. An earlier revision of endpoint_path_state answered EndpointListening from the owner observation alone, so a socket held open by a process that is NOT accepting connections was reported as a healthy listening endpoint. Both states refuse, so nothing was destroyed by it, but they refuse for DIFFERENT reasons and only one of them is true: EnsureEndpointOccupied says 'a live server is serving here, leave it alone', which is the wrong sentence to put in front of an operator whose cache is unreachable precisely because nothing is serving.\n\nIt is the state-space conflation DESIGN names, on the two reads that must stay separate for the whole stale-socket contract to mean anything -- clause (2) is 'no LISTEN entry' and clause (3) is 'no fd holder', and a decoder that lets either one answer for the other has collapsed a four-clause contract into a two-clause one. It was found by a witness whose fixture pairs a no-listen /proc/net/unix text with a non-empty holder walk, which is exactly the combination neither clause alone can distinguish."
 
-fn socket_owner_path_state(reads: BuildCacheEndpointReads, owner: gunbc.build_cache_instance.ProcessIdentity) -> EndpointPathState {
+fn socket_owner_path_state(reads: BuildCacheEndpointReads, owner: gunbc.build_cache_instance.ProcessIdentity) -> gunbc.build_cache_endpoint_path.EndpointPathState {
   match reads.listen_inode {
-    ListenInodeFound { inode: _ } => EndpointListening { owner: owner }
+    ListenInodeFound { inode: _ } => gunbc.build_cache_endpoint_path.EndpointListening { owner: owner }
     NoListenEntryAtPath =>
-      EndpointPathConflict {
+      gunbc.build_cache_endpoint_path.EndpointPathConflict {
         detail: socket_held_open_without_listening_detail,
       }
     InodeLookupUndecided { detail: d } =>
-      EndpointPathObservationUnavailable { reason: EndpointPathUnreadable { detail: d } }
+      gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable { reason: gunbc.build_cache_instance.EndpointPathUnreadable { detail: d } }
   }
 }
 
 fn endpoint_path_state(
-  instance: BuildCacheInstance,
+  instance: gunbc.build_cache_instance.BuildCacheInstance,
   reads: BuildCacheEndpointReads,
-  observation: BuildCacheEndpointObservation,
-) -> EndpointPathState {
+  observation: gunbc.build_cache_instance.BuildCacheEndpointObservation,
+) -> gunbc.build_cache_endpoint_path.EndpointPathState {
   match reads.path_kind {
     PathKindUnreadable { detail: d } =>
-      EndpointPathObservationUnavailable { reason: EndpointPathUnreadable { detail: d } }
+      gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable { reason: gunbc.build_cache_instance.EndpointPathUnreadable { detail: d } }
     PathKindOtherObject { described: what } =>
-      EndpointPathConflict {
+      gunbc.build_cache_endpoint_path.EndpointPathConflict {
         detail: concat(
           concat("the endpoint path holds a ", what as String),
           ", not a socket; nothing in this lane created it and removing it would destroy an object of unknown ownership",
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       }
     PathKindNoFilesystemPath =>
       match observation {
-        EndpointOwnerObserved {
+        gunbc.build_cache_instance.EndpointOwnerObserved {
           instance: _, owner: o, executable: _, principal: _,
           owner_context: _, memory_limits: _, memory_events: _,
         } =>
-          EndpointListening { owner: o }
-        EndpointAbsent { instance: _ } => EndpointPathAbsent
-        EndpointOwnershipAmbiguous { instance: _, candidate_count: _ } =>
-          EndpointPathObservationUnavailable {
-            reason: EndpointPathUnreadable {
-              detail: "the TCP endpoint resolved to more than one listening owner" as NonEmptyStr,
+          gunbc.build_cache_endpoint_path.EndpointListening { owner: o }
+        gunbc.build_cache_instance.EndpointAbsent { instance: _ } => gunbc.build_cache_endpoint_path.EndpointPathAbsent
+        gunbc.build_cache_instance.EndpointOwnershipAmbiguous { instance: _, candidate_count: _ } =>
+          gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable {
+            reason: gunbc.build_cache_instance.EndpointPathUnreadable {
+              detail: "the TCP endpoint resolved to more than one listening owner" as std.types.NonEmptyStr,
             },
           }
-        EndpointObservationUnavailable { instance: _, reason: r } =>
-          EndpointPathObservationUnavailable { reason: r }
+        gunbc.build_cache_instance.EndpointObservationUnavailable { instance: _, reason: r } =>
+          gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable { reason: r }
       }
     PathKindAbsent =>
       match reads.listener {
-        ListenerNone => EndpointPathAbsent
+        ListenerNone => gunbc.build_cache_endpoint_path.EndpointPathAbsent
         ListenerOwnerPid { pid: _ } =>
-          EndpointPathObservationUnavailable {
-            reason: EndpointPathUnreadable {
-              detail: "a process holds a listen on this endpoint while the path itself does not exist; the two reads disagree and the path state is therefore unread rather than absent" as NonEmptyStr,
+          gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable {
+            reason: gunbc.build_cache_instance.EndpointPathUnreadable {
+              detail: "a process holds a listen on this endpoint while the path itself does not exist; the two reads disagree and the path state is therefore unread rather than absent" as std.types.NonEmptyStr,
             },
           }
         ListenerAmbiguous { candidate_count: _ } =>
-          EndpointPathObservationUnavailable {
-            reason: EndpointPathUnreadable {
-              detail: "the endpoint resolved to more than one listening owner, so no single path state follows from it" as NonEmptyStr,
+          gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable {
+            reason: gunbc.build_cache_instance.EndpointPathUnreadable {
+              detail: "the endpoint resolved to more than one listening owner, so no single path state follows from it" as std.types.NonEmptyStr,
             },
           }
         ListenerUndecided { detail: d } =>
-          EndpointPathObservationUnavailable { reason: EndpointPathUnreadable { detail: d } }
+          gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable { reason: gunbc.build_cache_instance.EndpointPathUnreadable { detail: d } }
       }
     PathKindSocket =>
       match observation {
-        EndpointOwnerObserved {
+        gunbc.build_cache_instance.EndpointOwnerObserved {
           instance: _, owner: o, executable: _, principal: _,
           owner_context: _, memory_limits: _, memory_events: _,
         } =>
           socket_owner_path_state(reads: reads, owner: o)
-        EndpointAbsent { instance: _ } => stale_or_held(reads: reads)
-        EndpointOwnershipAmbiguous { instance: _, candidate_count: _ } =>
-          EndpointPathObservationUnavailable {
-            reason: EndpointPathUnreadable {
-              detail: "the endpoint socket resolved to more than one listening owner; the path is occupied but by whom is unresolved" as NonEmptyStr,
+        gunbc.build_cache_instance.EndpointAbsent { instance: _ } => stale_or_held(reads: reads)
+        gunbc.build_cache_instance.EndpointOwnershipAmbiguous { instance: _, candidate_count: _ } =>
+          gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable {
+            reason: gunbc.build_cache_instance.EndpointPathUnreadable {
+              detail: "the endpoint socket resolved to more than one listening owner; the path is occupied but by whom is unresolved" as std.types.NonEmptyStr,
             },
           }
-        EndpointObservationUnavailable { instance: _, reason: r } =>
-          EndpointPathObservationUnavailable { reason: r }
+        gunbc.build_cache_instance.EndpointObservationUnavailable { instance: _, reason: r } =>
+          gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable { reason: r }
       }
   }
 }
 
 fn survey_build_cache_endpoint(
-  instance: BuildCacheInstance,
+  instance: gunbc.build_cache_instance.BuildCacheInstance,
   reads: BuildCacheEndpointReads,
 ) -> BuildCacheEndpointSurvey {
   let currency = currency_of_boot_id_read(read: reads.boot_id)
   let observation = endpoint_owner_observation(instance: instance, reads: reads, currency: currency)
   BuildCacheEndpointSurvey {
     observation: observation,
-    placement: placement_of_endpoint_observation(observed: observation),
+    placement: gunbc.build_cache_instance.placement_of_endpoint_observation(observed: observation),
     path: endpoint_path_state(instance: instance, reads: reads, observation: observation),
     currency: currency,
   }
 }
 
-fn unreachable_host_reads(detail: NonEmptyStr) -> BuildCacheEndpointReads {
+fn unreachable_host_reads(detail: std.types.NonEmptyStr) -> BuildCacheEndpointReads {
   BuildCacheEndpointReads {
     boot_id: HostReadFailed { detail: detail },
     path_kind: PathKindUnreadable { detail: detail },

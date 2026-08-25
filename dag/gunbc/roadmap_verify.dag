@@ -44,8 +44,8 @@ type VerificationExec
 
 fn verification_execution_host(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> std.types.NonEmptyStr {
   match instance.provision_transport {
-    DashboardLocalProvision => instance.host_identity
-    DashboardSshProvision { host } => host
+    gunbc.roadmap_dashboard_instance.DashboardLocalProvision => instance.host_identity
+    gunbc.roadmap_dashboard_instance.DashboardSshProvision { host } => host
   }
 }
 
@@ -55,12 +55,12 @@ fn verification_exec(
   command: gunbc.roadmap_execution_contract.ModeledValidationCommand,
 ) -> VerificationExec {
   match instance.provision_transport {
-    DashboardLocalProvision => {
-      let result = gunbc.WitnessBin.Run(
+    gunbc.roadmap_dashboard_instance.DashboardLocalProvision => {
+      let result = WitnessBin.Run(
         workdir: workdir,
         bin_path: command.program,
         args: command.args,
-        expect: OutcomeIsData,
+        expect: gunbc.output_policy.OutcomeIsData,
       )
       VerificationExecRan {
         exit_code: result.exit_code,
@@ -68,21 +68,21 @@ fn verification_exec(
         stderr: result.stderr,
       }
     }
-    DashboardSshProvision { host } =>
-      match typed_argv_exec_over_ssh(
+    gunbc.roadmap_dashboard_instance.DashboardSshProvision { host } =>
+      match gunbc.typed_argv_exec.typed_argv_exec_over_ssh(
         host: host,
         argv: concat(
           ["/usr/bin/env", "-C", workdir as String, command.program as String],
           command.args,
         ),
       ) {
-        TypedArgvExecConverged { result } =>
+        gunbc.typed_argv_exec.TypedArgvExecConverged { result } =>
           VerificationExecRan {
             exit_code: result.exit_code,
             stdout: result.stdout,
             stderr: result.stderr,
           }
-        TypedArgvExecRefused { reason } =>
+        gunbc.typed_argv_exec.TypedArgvExecRefused { reason } =>
           VerificationExecTransportRefused { reason: reason }
       }
   }
@@ -94,7 +94,7 @@ fn verification_run_one(
   workdir: std.types.FilePath,
   validation: gunbc.roadmap_execution_contract.ValidationOperation,
 ) -> VerificationOutcome {
-  match validation_operation_command(
+  match gunbc.roadmap_execution_contract.validation_operation_command(
     validation: validation,
     environment: instance.execution_environment,
   ) {
@@ -173,10 +173,10 @@ fn verify_contract(
   workdir: std.types.FilePath,
   contract: gunbc.roadmap_execution_contract.WorkItemExecutionContract,
 ) -> VerificationOutcome {
-  match contract_closure(contract: contract) {
-    ContractDeclaresNoValidation => VerificationUnbound { node_id: node_id }
-    ContractClosesNothing => VerificationUnbound { node_id: node_id }
-    ContractCloses { validations } =>
+  match gunbc.roadmap_execution_contract.contract_closure(contract: contract) {
+    gunbc.roadmap_execution_contract.ContractDeclaresNoValidation => VerificationUnbound { node_id: node_id }
+    gunbc.roadmap_execution_contract.ContractClosesNothing => VerificationUnbound { node_id: node_id }
+    gunbc.roadmap_execution_contract.ContractCloses { validations } =>
       verification_fold(
         node_id: node_id,
         instance: instance,
@@ -203,15 +203,15 @@ fn verify_base_node_id(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
   node_id: String,
 ) -> VerificationOutcome {
-  match belt_lookup_node(node_id: node_id) {
+  match gunbc.roadmap_belt_actuate.belt_lookup_node(node_id: node_id) {
     AuthorityProjectionRefused { detail: detail } =>
       VerificationRefused {
         node_id: node_id,
         label: "authority-projection" as std.types.NonEmptyStr,
         reason: detail,
       }
-    NodeMissing => VerificationNodeNotFound { node_id: node_id }
-    NodeFound { node: node } =>
+    gunbc.roadmap_belt_actuate.NodeMissing => VerificationNodeNotFound { node_id: node_id }
+    gunbc.roadmap_belt_actuate.NodeFound { node: node } =>
       verify_base_before_dispatch(instance: instance, node: node)
   }
 }
@@ -237,30 +237,30 @@ type LegacySingleValidationVerificationReceipt {
 fn legacy_single_validation_verification_receipt_json(
   receipt: LegacySingleValidationVerificationReceipt,
 ) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "roadmap-verification-receipt/v1")),
-    json_kv(key: "node_id", value: json_string(s: receipt.node_id)),
-    json_kv(key: "attempt_key", value: json_string(s: receipt.attempt_key)),
-    json_kv(key: "host", value: json_string(s: receipt.host as String)),
-    json_kv(key: "worktree", value: json_string(s: receipt.worktree as String)),
-    json_kv(key: "revision", value: json_string(s: receipt.revision as String)),
-    json_kv(key: "validation_label", value: json_string(s: receipt.validation_label as String)),
-    json_kv(key: "command", value: json_string(s: receipt.command_wire)),
-    json_kv(
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: "roadmap-verification-receipt/v1")),
+    extdeps.languages.json.emit.json_kv(key: "node_id", value: extdeps.languages.json.emit.json_string(s: receipt.node_id)),
+    extdeps.languages.json.emit.json_kv(key: "attempt_key", value: extdeps.languages.json.emit.json_string(s: receipt.attempt_key)),
+    extdeps.languages.json.emit.json_kv(key: "host", value: extdeps.languages.json.emit.json_string(s: receipt.host as String)),
+    extdeps.languages.json.emit.json_kv(key: "worktree", value: extdeps.languages.json.emit.json_string(s: receipt.worktree as String)),
+    extdeps.languages.json.emit.json_kv(key: "revision", value: extdeps.languages.json.emit.json_string(s: receipt.revision as String)),
+    extdeps.languages.json.emit.json_kv(key: "validation_label", value: extdeps.languages.json.emit.json_string(s: receipt.validation_label as String)),
+    extdeps.languages.json.emit.json_kv(key: "command", value: extdeps.languages.json.emit.json_string(s: receipt.command_wire)),
+    extdeps.languages.json.emit.json_kv(
       key: "exit",
       value: match receipt.exit {
-        ExitObserved { code } => json_int(n: code)
-        ExitNotObserved { reason: _ } => json_int(n: 0 - 1)
+        ExitObserved { code } => extdeps.languages.json.emit.json_int(n: code)
+        ExitNotObserved { reason: _ } => extdeps.languages.json.emit.json_int(n: 0 - 1)
       },
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "exit_state",
       value: match receipt.exit {
-        ExitObserved { code: _ } => json_string(s: "observed")
-        ExitNotObserved { reason } => json_string(s: join(["not-observed: ", reason], ""))
+        ExitObserved { code: _ } => extdeps.languages.json.emit.json_string(s: "observed")
+        ExitNotObserved { reason } => extdeps.languages.json.emit.json_string(s: join(["not-observed: ", reason], ""))
       },
     ),
-    json_kv(key: "evidence", value: json_string(s: receipt.evidence)),
+    extdeps.languages.json.emit.json_kv(key: "evidence", value: extdeps.languages.json.emit.json_string(s: receipt.evidence)),
   ]))
 }
 
@@ -279,10 +279,10 @@ type AttemptVerification
 fn first_closing_validation(
   contract: gunbc.roadmap_execution_contract.WorkItemExecutionContract,
 ) -> gunbc.roadmap_execution_contract.ValidationOperation? {
-  match contract_closure(contract: contract) {
-    ContractDeclaresNoValidation => none
-    ContractClosesNothing => none
-    ContractCloses { validations } => first(validations)
+  match gunbc.roadmap_execution_contract.contract_closure(contract: contract) {
+    gunbc.roadmap_execution_contract.ContractDeclaresNoValidation => none
+    gunbc.roadmap_execution_contract.ContractClosesNothing => none
+    gunbc.roadmap_execution_contract.ContractCloses { validations } => first(validations)
   }
 }
 
@@ -301,7 +301,7 @@ fn verify_attempt(
         reason: "the node declares no closing validation, so an attempt against it cannot be verified; author a contract before dispatching",
       }
     Present { value: validation } =>
-      match validation_operation_command(
+      match gunbc.roadmap_execution_contract.validation_operation_command(
         validation: validation,
         environment: instance.execution_environment,
       ) {
@@ -351,7 +351,7 @@ fn verify_attempt(
                   worktree: worktree,
                   revision: revision,
                   validation_label: cmd.label,
-                  command_wire: modeled_validation_command_wire(command: cmd),
+                  command_wire: gunbc.roadmap_execution_contract.modeled_validation_command_wire(command: cmd),
                   exit: ExitNotObserved { reason: reason },
                   evidence: "",
                 },
@@ -381,7 +381,7 @@ fn verify_attempt(
                   worktree: worktree,
                   revision: revision,
                   validation_label: cmd.label,
-                  command_wire: modeled_validation_command_wire(command: cmd),
+                  command_wire: gunbc.roadmap_execution_contract.modeled_validation_command_wire(command: cmd),
                   exit: ExitObserved { code: exit_code },
                   evidence: join([std.algebra.trim(stdout), std.algebra.trim(stderr)], " "),
                 },
@@ -403,7 +403,7 @@ fn persist_verification_receipt(
   receipt: LegacySingleValidationVerificationReceipt,
 ) -> VerificationReceiptPersistence {
   match instance.provision_transport {
-    DashboardSshProvision { host } =>
+    gunbc.roadmap_dashboard_instance.DashboardSshProvision { host } =>
       ReceiptPersistRefused {
         reason: join([
           "instance is provisioned over ssh to ",
@@ -411,8 +411,8 @@ fn persist_verification_receipt(
           ", and no content-carrying transport is bound here; the receipt is returned as a value and not written",
         ], ""),
       }
-    DashboardLocalProvision => {
-      let path = dispatch_attempt_verification_path_for_instance(
+    gunbc.roadmap_dashboard_instance.DashboardLocalProvision => {
+      let path = gunbc.roadmap_dispatch_actuator.dispatch_attempt_verification_path_for_instance(
         instance: instance,
         node_id: node.node,
         attempt_key: receipt.attempt_key,
@@ -475,19 +475,19 @@ fn verification_process_exit(outcome: VerificationOutcome) -> std.process.Proces
   match outcome {
     VerificationPassed { node_id: _, validations_run: _ } => std.process.ExitSuccess
     VerificationFailed { node_id, label, detail } =>
-      exit_failure(reason: join([
+      std.process.exit_failure(reason: join([
         node_id, ": ", label as String, " failed: ", detail,
       ], ""))
     VerificationRefused { node_id, label, reason } =>
-      exit_failure(reason: join([
+      std.process.exit_failure(reason: join([
         node_id, ": ", label as String, " could not run: ", reason,
       ], ""))
     VerificationUnbound { node_id } =>
-      exit_failure(reason: join([
+      std.process.exit_failure(reason: join([
         node_id, ": no closing validation is declared, so there is nothing to verify",
       ], ""))
     VerificationNodeNotFound { node_id } =>
-      exit_failure(reason: join([
+      std.process.exit_failure(reason: join([
         node_id, ": node id is not declared in the roadmap authority",
       ], ""))
   }
@@ -496,7 +496,7 @@ fn verification_process_exit(outcome: VerificationOutcome) -> std.process.Proces
 func verify_srv2_lab_base_wet(node_id: String) -> std.process.ProcessExit {
   verification_process_exit(
     outcome: verify_base_node_id(
-      instance: srv2_lab_dashboard_instance(),
+      instance: gunbc.roadmap_dashboard_instance.srv2_lab_dashboard_instance(),
       node_id: node_id,
     ),
   )
@@ -505,7 +505,7 @@ func verify_srv2_lab_base_wet(node_id: String) -> std.process.ProcessExit {
 func verify_srv1_lab_base_wet(node_id: String) -> std.process.ProcessExit {
   verification_process_exit(
     outcome: verify_base_node_id(
-      instance: srv1_lab_dashboard_instance(),
+      instance: gunbc.roadmap_dashboard_instance.srv1_lab_dashboard_instance(),
       node_id: node_id,
     ),
   )

@@ -1,8 +1,8 @@
 module gunbc.plans.md_helpers
 
 
-fn h2(text: String) -> std.markdown.MarkdownBlock { std.markdown.HeadingBlock { level: H2, inlines: [std.markdown.TextInline { text: text }] } }
-fn h3(text: String) -> std.markdown.MarkdownBlock { std.markdown.HeadingBlock { level: H3, inlines: [std.markdown.TextInline { text: text }] } }
+fn h2(text: String) -> std.markdown.MarkdownBlock { std.markdown.HeadingBlock { level: std.markdown.H2, inlines: [std.markdown.TextInline { text: text }] } }
+fn h3(text: String) -> std.markdown.MarkdownBlock { std.markdown.HeadingBlock { level: std.markdown.H3, inlines: [std.markdown.TextInline { text: text }] } }
 fn p(text: String) -> std.markdown.MarkdownBlock { std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: text }] } }
 fn li(text: String) -> std.markdown.MarkdownListItem { std.markdown.MarkdownListItem { blocks: [p(text: text)] } }
 fn li_blocks(blocks: List<std.markdown.MarkdownBlock>) -> std.markdown.MarkdownListItem { std.markdown.MarkdownListItem { blocks: blocks } }
@@ -12,6 +12,6 @@ fn cell(text: String) -> std.markdown.MarkdownTableCell { std.markdown.MarkdownT
 fn row(cells: List<std.markdown.MarkdownTableCell>) -> std.markdown.MarkdownTableRow { std.markdown.MarkdownTableRow { cells: cells } }
 fn quote(blocks: List<std.markdown.MarkdownBlock>) -> std.markdown.MarkdownBlock { std.markdown.BlockquoteBlock { blocks: blocks } }
 fn tasks(items: List<std.markdown.MarkdownTaskItem>) -> std.markdown.MarkdownBlock { std.markdown.TaskListBlock { items: items } }
-fn todo(text: String) -> std.markdown.MarkdownTaskItem { std.markdown.MarkdownTaskItem { state: Unchecked, blocks: [p(text: text)] } }
+fn todo(text: String) -> std.markdown.MarkdownTaskItem { std.markdown.MarkdownTaskItem { state: std.markdown.Unchecked, blocks: [p(text: text)] } }
 fn task(state: std.markdown.CheckboxState, text: String) -> std.markdown.MarkdownTaskItem { std.markdown.MarkdownTaskItem { state: state, blocks: [p(text: text)] } }
-fn hr() -> std.markdown.MarkdownBlock { ThematicBreak }
+fn hr() -> std.markdown.MarkdownBlock { std.markdown.ThematicBreak }

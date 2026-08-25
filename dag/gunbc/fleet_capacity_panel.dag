@@ -1,5 +1,6 @@
 module gunbc.fleet_capacity_panel
 
+
 // THE FLEET CAPACITY PANEL ON THE DAILY WORKSPACE.
 //
 // It reads gunbc.fleet_capacity_control -- the SAME roster the dispatch gate reads -- rather than
@@ -39,47 +40,47 @@ data fleet_capacity_panel_binding_axis_note: String = "Each host row names its b
 // re-minted magnitude sitting beside its authority. Display-only is not an exemption --
 // the same literal is what a GB/GiB confusion is made of, and the authority is the thing
 // that already settled which one this is.
-fn gib_label(bytes: ByteSize) -> String {
-  join([to_string(byte_size_count(b: bytes) / gibibyte_scale_factor_bytes()), " GiB"], "")
+fn gib_label(bytes: std.measure.ByteSize) -> String {
+  join([to_string(std.measure.byte_size_count(b: bytes) / std.measure.gibibyte_scale_factor_bytes()), " GiB"], "")
 }
 
-fn host_standing_label(host: HostIdentity) -> String {
-  match host_withdrawal_for(host: host) {
+fn host_standing_label(host: product.placement_supply.HostIdentity) -> String {
+  match gunbc.fleet_capacity_control.host_withdrawal_for(host: host) {
     Present { value: w } =>
-      join(["withdrawn · ", withdrawal_cause_label(cause: w.cause), " · ",
-            withdrawal_cause_detail(cause: w.cause) as String], "")
+      join(["withdrawn · ", gunbc.fleet_capacity_control.withdrawal_cause_label(cause: w.cause), " · ",
+            gunbc.fleet_capacity_control.withdrawal_cause_detail(cause: w.cause) as String], "")
     Absent => "active"
   }
 }
 
-fn provider_standing_label(provider: ProviderKind) -> String {
-  match provider_withdrawal_for(provider: provider) {
+fn provider_standing_label(provider: extdeps.llm.cli_lifecycle.ProviderKind) -> String {
+  match gunbc.fleet_capacity_control.provider_withdrawal_for(provider: provider) {
     Present { value: w } =>
-      join(["withdrawn · ", withdrawal_cause_label(cause: w.cause), " · ",
-            withdrawal_cause_detail(cause: w.cause) as String], "")
+      join(["withdrawn · ", gunbc.fleet_capacity_control.withdrawal_cause_label(cause: w.cause), " · ",
+            gunbc.fleet_capacity_control.withdrawal_cause_detail(cause: w.cause) as String], "")
     Absent => "active"
   }
 }
 
-fn host_standing_class(host: HostIdentity) -> String {
-  match host_withdrawal_for(host: host) {
+fn host_standing_class(host: product.placement_supply.HostIdentity) -> String {
+  match gunbc.fleet_capacity_control.host_withdrawal_for(host: host) {
     Present { value: _ } => "capacity-row capacity-withdrawn"
     Absent => "capacity-row capacity-active"
   }
 }
 
-fn provider_standing_class(provider: ProviderKind) -> String {
-  match provider_withdrawal_for(provider: provider) {
+fn provider_standing_class(provider: extdeps.llm.cli_lifecycle.ProviderKind) -> String {
+  match gunbc.fleet_capacity_control.provider_withdrawal_for(provider: provider) {
     Present { value: _ } => "capacity-row capacity-withdrawn"
     Absent => "capacity-row capacity-active"
   }
 }
 
 fn fleet_committed_slot_total() -> Int {
-  fold(capacity_controlled_hosts(), init: 0, f: (acc, h) => {
-    match host_withdrawal_for(host: h) {
+  fold(gunbc.fleet_capacity_control.capacity_controlled_hosts(), init: 0, f: (acc, h) => {
+    match gunbc.fleet_capacity_control.host_withdrawal_for(host: h) {
       Present { value: _ } => acc
-      Absent => acc + gunbc_runner_slots_per_host(host: h)
+      Absent => acc + gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: h)
     }
   })
 }
@@ -88,40 +89,40 @@ fn fleet_committed_slot_total() -> Int {
 // Summing every host's committed width regardless of standing would report capacity the operator
 // has explicitly taken out of service, which is the number they turned the control to change.
 fn fleet_committed_slot_total_ignoring_withdrawals() -> Int {
-  fold(capacity_controlled_hosts(), init: 0, f: (acc, h) => {
-    acc + gunbc_runner_slots_per_host(host: h)
+  fold(gunbc.fleet_capacity_control.capacity_controlled_hosts(), init: 0, f: (acc, h) => {
+    acc + gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: h)
   })
 }
 
-fn host_capacity_row(host: HostIdentity) -> Fragment {
-  el_class("div", host_standing_class(host: host), [
-    el_class("span", "capacity-subject", [txt(host as String)]),
-    el_class("span", "capacity-metric", [
-      txt(join([to_string(gunbc_runner_slots_per_host(host: host)),
+fn host_capacity_row(host: product.placement_supply.HostIdentity) -> std.markup.Fragment {
+  gunbc.site.markup.el_class("div", host_standing_class(host: host), [
+    gunbc.site.markup.el_class("span", "capacity-subject", [gunbc.site.markup.txt(host as String)]),
+    gunbc.site.markup.el_class("span", "capacity-metric", [
+      gunbc.site.markup.txt(join([to_string(gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: host)),
                 " slots committed"], "")),
     ]),
-    el_class("span", "capacity-metric", [
-      txt(join([gib_label(bytes: gunbc_runner_slot_desired().memory_max), "/slot"], "")),
+    gunbc.site.markup.el_class("span", "capacity-metric", [
+      gunbc.site.markup.txt(join([gib_label(bytes: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_max), "/slot"], "")),
     ]),
-    el_class("span", "capacity-metric", [txt(host_width_binding_label(host: host))]),
-    el_class("span", "capacity-standing", [txt(host_standing_label(host: host))]),
+    gunbc.site.markup.el_class("span", "capacity-metric", [gunbc.site.markup.txt(gunbc.runner_slot_allocation.host_width_binding_label(host: host))]),
+    gunbc.site.markup.el_class("span", "capacity-standing", [gunbc.site.markup.txt(host_standing_label(host: host))]),
   ])
 }
 
-fn provider_capacity_row(provider: ProviderKind) -> Fragment {
-  el_class("div", provider_standing_class(provider: provider), [
-    el_class("span", "capacity-subject", [txt(provider_kind_label(kind: provider))]),
-    el_class("span", "capacity-metric", [txt("runtime")]),
-    el_class("span", "capacity-standing", [txt(provider_standing_label(provider: provider))]),
+fn provider_capacity_row(provider: extdeps.llm.cli_lifecycle.ProviderKind) -> std.markup.Fragment {
+  gunbc.site.markup.el_class("div", provider_standing_class(provider: provider), [
+    gunbc.site.markup.el_class("span", "capacity-subject", [gunbc.site.markup.txt(extdeps.llm.cli_lifecycle.provider_kind_label(kind: provider))]),
+    gunbc.site.markup.el_class("span", "capacity-metric", [gunbc.site.markup.txt("runtime")]),
+    gunbc.site.markup.el_class("span", "capacity-standing", [gunbc.site.markup.txt(provider_standing_label(provider: provider))]),
   ])
 }
 
 fn fleet_capacity_summary_line() -> String {
   join([
-    to_string(active_host_count()), " of ",
-    to_string(capacity_controlled_hosts() |> count), " hosts · ",
-    to_string(active_provider_count()), " of ",
-    to_string(capacity_controlled_providers() |> count), " runtimes · ",
+    to_string(gunbc.fleet_capacity_control.active_host_count()), " of ",
+    to_string(gunbc.fleet_capacity_control.capacity_controlled_hosts() |> count), " hosts · ",
+    to_string(gunbc.fleet_capacity_control.active_provider_count()), " of ",
+    to_string(gunbc.fleet_capacity_control.capacity_controlled_providers() |> count), " runtimes · ",
     to_string(fleet_committed_slot_total()), " slots committed",
   ], "")
 }
@@ -142,9 +143,9 @@ fn fleet_capacity_withdrawn_line() -> String? {
   }
 }
 
-fn fleet_capacity_withdrawn_nodes() -> List<Fragment> {
+fn fleet_capacity_withdrawn_nodes() -> List<std.markup.Fragment> {
   match fleet_capacity_withdrawn_line() {
-    Present { value: line } => [el_class("div", "capacity-withdrawn-total", [txt(line)])]
+    Present { value: line } => [gunbc.site.markup.el_class("div", "capacity-withdrawn-total", [gunbc.site.markup.txt(line)])]
     Absent => []
   }
 }
@@ -165,44 +166,44 @@ fn capacity_longest_len(labels: List<String>) -> Int {
 
 fn capacity_subject_labels() -> List<String> {
   concat(
-    map(capacity_controlled_hosts(), h => h as String),
-    map(capacity_controlled_providers(), p => provider_kind_label(kind: p)),
+    map(gunbc.fleet_capacity_control.capacity_controlled_hosts(), h => h as String),
+    map(gunbc.fleet_capacity_control.capacity_controlled_providers(), p => extdeps.llm.cli_lifecycle.provider_kind_label(kind: p)),
   )
 }
 
 fn capacity_metric_labels() -> List<String> {
   concat(
-    map(capacity_controlled_hosts(), h =>
-      join([to_string(gunbc_runner_slots_per_host(host: h)), " slots committed"], "")),
-    map(capacity_controlled_hosts(), h => host_width_binding_label(host: h)),
+    map(gunbc.fleet_capacity_control.capacity_controlled_hosts(), h =>
+      join([to_string(gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: h)), " slots committed"], "")),
+    map(gunbc.fleet_capacity_control.capacity_controlled_hosts(), h => gunbc.runner_slot_allocation.host_width_binding_label(host: h)),
   )
 }
 
 fn capacity_subject_reserved_width() -> String {
-  css_length_wire(l: css_ch(n: capacity_longest_len(labels: capacity_subject_labels())
+  extdeps.languages.css.values.css_length_wire(l: extdeps.languages.css.values.css_ch(n: capacity_longest_len(labels: capacity_subject_labels())
     + capacity_column_ch_gutter))
 }
 
 fn capacity_metric_reserved_width() -> String {
-  css_length_wire(l: css_ch(n: capacity_longest_len(labels: capacity_metric_labels())
+  extdeps.languages.css.values.css_length_wire(l: extdeps.languages.css.values.css_ch(n: capacity_longest_len(labels: capacity_metric_labels())
     + capacity_column_ch_gutter))
 }
 
-fn fleet_capacity_panel() -> Fragment {
-  el_class("section", "fleet-capacity-panel", concat(
+fn fleet_capacity_panel() -> std.markup.Fragment {
+  gunbc.site.markup.el_class("section", "fleet-capacity-panel", concat(
     [
-      el_class("h2", "capacity-title", [txt("fleet capacity")]),
-      el_class("div", "capacity-summary", [txt(fleet_capacity_summary_line())]),
+      gunbc.site.markup.el_class("h2", "capacity-title", [gunbc.site.markup.txt("fleet capacity")]),
+      gunbc.site.markup.el_class("div", "capacity-summary", [gunbc.site.markup.txt(fleet_capacity_summary_line())]),
     ],
     concat(
       fleet_capacity_withdrawn_nodes(),
       concat(
-        map(capacity_controlled_hosts(), h => host_capacity_row(host: h)),
+        map(gunbc.fleet_capacity_control.capacity_controlled_hosts(), h => host_capacity_row(host: h)),
         concat(
-          map(capacity_controlled_providers(), p => provider_capacity_row(provider: p)),
+          map(gunbc.fleet_capacity_control.capacity_controlled_providers(), p => provider_capacity_row(provider: p)),
           [
-            el_class("div", "capacity-declared-note", [
-              txt("committed allocations, not observed incarnations — srv3/srv4 commit 6 while running 5"),
+            gunbc.site.markup.el_class("div", "capacity-declared-note", [
+              gunbc.site.markup.txt("committed allocations, not observed incarnations — srv3/srv4 commit 6 while running 5"),
             ]),
           ],
         ),

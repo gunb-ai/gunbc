@@ -46,30 +46,30 @@ type SparkServingDurabilityTransaction
 // cost of a bound that is too loose is only waiting. The cadence is ten seconds because the poll is
 // one ssh round trip against a host that may be down, and a tighter cadence buys resolution the
 // verdict does not use: nothing here reports HOW LONG the reboot took, only that it happened.
-data spark_serving_reboot_return_bound: std.measure.Second = second(count: 600)
+data spark_serving_reboot_return_bound: std.measure.Second = std.measure.second(count: 600)
 
-data spark_serving_reboot_return_cadence: std.measure.Second = second(count: 10)
+data spark_serving_reboot_return_cadence: std.measure.Second = std.measure.second(count: 10)
 
 fn spark_serving_reboot_return_max_attempts() -> Int {
-  measure_fit_count_floor(
+  std.measure.measure_fit_count_floor(
     capacity: spark_serving_reboot_return_bound,
     each: spark_serving_reboot_return_cadence,
   )
 }
 
 fn spark_serving_reboot_return_bound_is_positive() -> Bool {
-  second_count(s: spark_serving_reboot_return_bound) > 0
+  std.measure.second_count(s: spark_serving_reboot_return_bound) > 0
 }
 
 fn spark_serving_read_boot_identity(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   host: product.placement_supply.HostIdentity,
 ) -> gunbc.spark.serving_durability.BootIdentityReading {
-  spark_serving_boot_identity_from_probe(
-    probe: spark_serving_probe_leg_via_locus(
+  gunbc.spark.serving_durability.spark_serving_boot_identity_from_probe(
+    probe: gunbc.spark.serving_observe.spark_serving_probe_leg_via_locus(
       context: context,
       host: host,
-      raw_words: spark_serving_boot_id_probe_argv(),
+      raw_words: gunbc.spark.serving_durability.spark_serving_boot_id_probe_argv(),
     ),
   )
 }
@@ -89,27 +89,27 @@ fn spark_serving_poll_for_new_boot_identity(
     gunbc.spark.serving_durability.BootIdentityUnobserved {
       cause: join([
         "the boot identity did not change within the declared return bound of ",
-        to_string(second_count(s: spark_serving_reboot_return_bound)),
-        "s at ", to_string(second_count(s: spark_serving_reboot_return_cadence)),
+        to_string(std.measure.second_count(s: spark_serving_reboot_return_bound)),
+        "s at ", to_string(std.measure.second_count(s: spark_serving_reboot_return_cadence)),
         "s cadence; last identity still ", before as String,
       ], "") as std.types.NonEmptyStr,
     }
   } else {
-    let paced = sleep_delay_seconds_second_carrier_projection(duration: spark_serving_reboot_return_cadence)
+    let paced = extdeps.tools.sleep.sleep_delay_seconds_second_carrier_projection(duration: spark_serving_reboot_return_cadence)
     if paced == false {
       gunbc.spark.serving_durability.BootIdentityUnobserved {
         cause: "the pacing delay between boot-identity probes failed, so the poll cannot state how long it waited" as std.types.NonEmptyStr,
       }
     } else {
       match spark_serving_read_boot_identity(context: context, host: host) {
-        BootIdentityUnobserved { cause: _ } =>
+        gunbc.spark.serving_durability.BootIdentityUnobserved { cause: _ } =>
           spark_serving_poll_for_new_boot_identity(
             context: context,
             host: host,
             before: before,
             attempt: attempt + 1,
           )
-        BootIdentityObserved { boot_id: seen } => {
+        gunbc.spark.serving_durability.BootIdentityObserved { boot_id: seen } => {
           let seen_text = seen as String
           let before_text = before as String
           if seen_text == before_text {
@@ -132,14 +132,14 @@ fn spark_serving_observe_linger_enabled(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   host: product.placement_supply.HostIdentity,
 ) -> Bool {
-  match spark_serving_probe_leg_via_locus(
+  match gunbc.spark.serving_observe.spark_serving_probe_leg_via_locus(
     context: context,
     host: host,
-    raw_words: spark_serving_linger_probe_words(),
+    raw_words: gunbc.spark.serving_converge_slice_wet.spark_serving_linger_probe_words(),
   ) {
     Absent => false
     Present { value: r } =>
-      match spark_serving_linger_enabled_from_stdout(stdout: r.stdout) {
+      match gunbc.spark.serving_converge_slice_wet.spark_serving_linger_enabled_from_stdout(stdout: r.stdout) {
         Absent => false
         Present { value: e } => e
       }
@@ -155,24 +155,24 @@ fn spark_serving_post_reboot_verdict(
   transition: gunbc.spark.serving_durability.RebootTransition,
 ) -> SparkServingDurabilityTransaction {
   let linger_enabled = spark_serving_observe_linger_enabled(context: context, host: host)
-  match spark_serving_replan_rows(context: context, host: host, linger_enabled: linger_enabled) {
-    SparkServingReplanRowsRefused { cause: why } =>
+  match gunbc.spark.serving_converge_slice_wet.spark_serving_replan_rows(context: context, host: host, linger_enabled: linger_enabled) {
+    gunbc.spark.serving_converge_slice_wet.SparkServingReplanRowsRefused { cause: why } =>
       DurabilityTransactionRefused {
         cause: join(["post-reboot replan refused, so no pending-action count exists to judge: ", why], ""),
       }
-    SparkServingReplanRowsReady { rows: rows } => {
-      let health = spark_serving_observe_terminal_health(context: context, host: host)
+    gunbc.spark.serving_converge_slice_wet.SparkServingReplanRowsReady { rows: rows } => {
+      let health = gunbc.spark.serving_observe.spark_serving_observe_terminal_health(context: context, host: host)
       DurabilityTransactionSettled {
-        verdict: spark_serving_durability_verdict(
+        verdict: gunbc.spark.serving_durability.spark_serving_durability_verdict(
           host: host,
           transition: transition,
           pending_action_count: length(rows),
-          serving_healthy: spark_serving_health_is_converged(health: health),
-          health_cause: spark_serving_health_wire(health: health) as std.types.NonEmptyStr,
+          serving_healthy: gunbc.spark.serving_terminal_health.spark_serving_health_is_converged(health: health),
+          health_cause: gunbc.spark.serving_terminal_health.spark_serving_health_wire(health: health) as std.types.NonEmptyStr,
         ),
         detail: join([
           "post-reboot pending_actions=", to_string(length(rows)),
-          " ", spark_serving_health_wire(health: health),
+          " ", gunbc.spark.serving_terminal_health.spark_serving_health_wire(health: health),
         ], ""),
       }
     }
@@ -184,7 +184,7 @@ fn spark_serving_durability_transaction_wire(t: SparkServingDurabilityTransactio
     DurabilityTransactionRefused { cause: c } =>
       join(["durability-transaction REFUSED ", c], "")
     DurabilityTransactionSettled { verdict: v, detail: d } =>
-      join([spark_serving_durability_wire(verdict: v), "\n", d], "")
+      join([gunbc.spark.serving_durability.spark_serving_durability_wire(verdict: v), "\n", d], "")
   }
 }
 
@@ -192,7 +192,7 @@ fn spark_serving_durability_transaction_is_proven(t: SparkServingDurabilityTrans
   match t {
     DurabilityTransactionRefused { cause: _ } => false
     DurabilityTransactionSettled { verdict: v, detail: _ } =>
-      spark_serving_durability_is_proven(verdict: v)
+      gunbc.spark.serving_durability.spark_serving_durability_is_proven(verdict: v)
   }
 }
 
@@ -201,9 +201,9 @@ data spark_serving_durability_receipt_path: String = "target/spark-serving-durab
 data spark_serving_durability_ci_attempt_raw: String = "spark-serving-durability-ci"
 
 func spark_serving_durability_ci_wet() -> std.process.ProcessExit {
-  match prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_durability_ci_attempt_raw) {
-    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
-    FleetSshContextReady { context: context, receipt: context_receipt } =>
+  match gunbc.fleet_ssh_locus.prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_durability_ci_attempt_raw) {
+    gunbc.fleet_ssh_locus.FleetSshContextRefused { cause: cause } => std.process.exit_failure(reason: cause)
+    gunbc.fleet_ssh_locus.FleetSshContextReady { context: context, receipt: context_receipt } =>
       spark_serving_durability_with_context(context: context, context_receipt: context_receipt)
   }
 }
@@ -215,19 +215,19 @@ func spark_serving_durability_with_context(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   context_receipt: String,
 ) -> std.process.ProcessExit {
-  let now = clock_now_probed_at()
-  match spark_converge_target_selection(execute_apply: true) {
-    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
-    SparkConvergeTargetAllObserveOnly =>
-      exit_failure(
+  let now = gunbc.clock_read.clock_now_probed_at()
+  match gunbc.fleet_multi_principal_probe.spark_converge_target_selection(execute_apply: true) {
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetRefused { reason: why } => std.process.exit_failure(reason: why)
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetAllObserveOnly =>
+      std.process.exit_failure(
         reason: "spark_serving_durability_ci_wet: SPARK_CONVERGE_TARGET names no host, and a durability transaction reboots its target, so it must never fan out across the fleet from an unset variable",
       )
-    SparkConvergeTargetSingle { host: only } =>
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetSingle { host: only } =>
       spark_serving_durability_for_host(
         context: context,
         context_receipt: context_receipt,
         host: only,
-        now: probed_at_word(reading: now) as String,
+        now: gunbc.clock_read.probed_at_word(reading: now) as String,
       )
   }
 }
@@ -239,7 +239,7 @@ func spark_serving_durability_for_host(
   now: String,
 ) -> std.process.ProcessExit {
   match spark_serving_read_boot_identity(context: context, host: host) {
-    BootIdentityUnobserved { cause: c } =>
+    gunbc.spark.serving_durability.BootIdentityUnobserved { cause: c } =>
       spark_serving_durability_emit(
         context_receipt: context_receipt,
         now: now,
@@ -249,15 +249,15 @@ func spark_serving_durability_for_host(
         ], ""),
         proven: false,
       )
-    BootIdentityObserved { boot_id: before } => {
-      let outcome = spark_serving_issue_reboot(context: context, host: host)
-      if spark_serving_reboot_was_attempted(outcome: outcome) == false {
+    gunbc.spark.serving_durability.BootIdentityObserved { boot_id: before } => {
+      let outcome = gunbc.spark.serving_reboot_probe.spark_serving_issue_reboot(context: context, host: host)
+      if gunbc.spark.serving_reboot_probe.spark_serving_reboot_was_attempted(outcome: outcome) == false {
         spark_serving_durability_emit(
           context_receipt: context_receipt,
           now: now,
           body: join([
             "durability-transaction REFUSED the reboot was never attempted, so no transition exists: ",
-            spark_serving_reboot_outcome_wire(outcome: outcome),
+            gunbc.spark.serving_reboot_probe.spark_serving_reboot_outcome_wire(outcome: outcome),
           ], ""),
           proven: false,
         )
@@ -271,7 +271,7 @@ func spark_serving_durability_for_host(
         let settled = spark_serving_post_reboot_verdict(
           context: context,
           host: host,
-          transition: spark_serving_reboot_transition(
+          transition: gunbc.spark.serving_durability.spark_serving_reboot_transition(
             before: gunbc.spark.serving_durability.BootIdentityObserved { boot_id: before },
             after: after,
           ),
@@ -280,7 +280,7 @@ func spark_serving_durability_for_host(
           context_receipt: context_receipt,
           now: now,
           body: join([
-            spark_serving_reboot_outcome_wire(outcome: outcome), "\n",
+            gunbc.spark.serving_reboot_probe.spark_serving_reboot_outcome_wire(outcome: outcome), "\n",
             spark_serving_durability_transaction_wire(t: settled),
           ], ""),
           proven: spark_serving_durability_transaction_is_proven(t: settled),
@@ -301,11 +301,11 @@ func spark_serving_durability_emit(
     context_receipt,
     body, "\n",
   ], "")
-  let w = Filesystem.Write(path: spark_serving_durability_receipt_path, content: text)
+  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: spark_serving_durability_receipt_path, content: text)
   if w.success == false {
-    exit_failure(reason: join(["durability receipt write failed: ", w.error], ""))
+    std.process.exit_failure(reason: join(["durability receipt write failed: ", w.error], ""))
   } else if proven == false {
-    exit_failure(reason: text)
+    std.process.exit_failure(reason: text)
   } else {
     std.process.ExitSuccess
   }

@@ -5,7 +5,7 @@ fn ownership_claim_pass_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lens_ownership_claim_pass_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -13,11 +13,11 @@ fn ownership_claim_fail_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lens_ownership_claim_fail_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn ownership_claim_input(ok: v2.std.logic.Bool) -> v2.std.node.Node {
+fn ownership_claim_input(ok: Bool) -> v2.std.node.Node {
   if ok {
     ownership_claim_pass_node()
   } else {
@@ -27,20 +27,20 @@ fn ownership_claim_input(ok: v2.std.logic.Bool) -> v2.std.node.Node {
 
 data claim_lens_ownership_resource_dependency: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_ownership resource dependency witness passes through run_test_claim",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: ownership_claim_input(ok: ownership_resource_dependency_claim_passes),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+  lhs: ownership_claim_input(ok: v2.test.lens_ownership.resource_dependency.ownership_resource_dependency_claim_passes),
   rhs: ownership_claim_pass_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
-data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<v2.std.node.Node> = eval_test_claim_subject(
+data subject_lens_ownership_resource_dependency: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> = v2.compiler.eval.eval_test_claim_subject(
   claim: claim_lens_ownership_resource_dependency,
-  context: eval_context_v4_evaluator(),
-  tree: ownership_claim_tree(),
+  context: v2.compiler.eval.eval_context_v4_evaluator(),
+  tree: v2.test.lens_ownership.resource_dependency.ownership_claim_tree(),
   evaluator_pin: ^lens_ownership_resource_dependency_pin
 )
 
-data lens_ownership_subject_rows: List<TestClaimEvalSubject<v2.std.node.Node>> = [
+data lens_ownership_subject_rows: List<v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>> = [
   subject_lens_ownership_resource_dependency
 ]
 
@@ -48,4 +48,4 @@ data lens_ownership_family_claim_ids: List<v2.std.node.Symbol> = [
   ^claim_lens_ownership_resource_dependency
 ]
 
-data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<v2.std.node.Node>> = lens_ownership_subject_rows
+data lens_ownership_node_subject_rows: List<v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node>> = lens_ownership_subject_rows

@@ -1,10 +1,10 @@
 module test.claim.host_budget_source_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // These rows are about the RELATION between a kernel family and a budget source, not about the machine running them, so they are SubstrateInputsOnly and give the same verdict on every platform. That is deliberate and is the point: the defect being walled is a claim the code makes about a platform, and a check that could only run on the affected platform would be untestable from the fleet's own Linux CI — which is how the fabricated label survived in the first place.
-data all_kernels: List<std.os.types.KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWindows]
+data all_kernels: List<std.os.types.KernelFamily> = [std.os.types.Linux, std.os.types.Darwin, std.os.types.WindowsNt, std.os.types.LinuxGuestOnWindows]
 
 data import_widening_shadowed_contains_note: String = "WHY THESE CALLS SAY string_contains RATHER THAN contains, and it is a receipt rather than a style choice. Deriving the declared_high expectation from its authority row required importing gunbc.runner_slot_allocation into this module. v1-seed fn names are NOT module-scoped, so widening the import closure pulled v2.std.algebra into it, and that module's contains(xs, item, eq) over FreeMonoid captured the bare name these lines were using for the STRING contains(haystack, needle). Four calls on lines unrelated to the change refused with 'no parameter named haystack', and the floor fold aborted during preparation -- so the whole 9782-witness roster failed to run over a two-line edit elsewhere in the file.\n\nTHE COST SHAPE IS THE POINT: an import added for one declaration silently re-resolved a bare name used by different declarations in the same module, and nothing local to those lines changed. string_contains is the unambiguous builtin and does not collide, so the calls are pinned to it. The general hazard is the same one std.decl_ref decl_ref_constructor_authority_note records for duplicated constructors -- unqualified seed names make an import closure a name-capture surface -- and it dissolves when v1 name resolution is namespace-scoped rather than bare."
 
@@ -15,44 +15,44 @@ data all_sources: List<gunbc.host_budget_source.HostBudgetSource> = [
   gunbc.host_budget_source.BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/system.slice" },
   gunbc.host_budget_source.BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/system.slice" },
   gunbc.host_budget_source.BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_high },
-  BudgetSourceMemAvailable,
-  BudgetSourceMemTotal,
-  BudgetSourceDarwinPhysicalMemory,
+  gunbc.host_budget_source.BudgetSourceMemAvailable,
+  gunbc.host_budget_source.BudgetSourceMemTotal,
+  gunbc.host_budget_source.BudgetSourceDarwinPhysicalMemory,
 ]
 
 test fn procfs_provision_follows_the_kernel_not_the_name() -> Bool {
-  kernel_provides_procfs(kernel: Linux)
-    && kernel_provides_procfs(kernel: LinuxGuestOnWindows)
-    && !kernel_provides_procfs(kernel: Darwin)
-    && !kernel_provides_procfs(kernel: WindowsNt)
+  extdeps.linux.procfs.kernel_provides_procfs(kernel: std.os.types.Linux)
+    && extdeps.linux.procfs.kernel_provides_procfs(kernel: std.os.types.LinuxGuestOnWindows)
+    && !extdeps.linux.procfs.kernel_provides_procfs(kernel: std.os.types.Darwin)
+    && !extdeps.linux.procfs.kernel_provides_procfs(kernel: std.os.types.WindowsNt)
 }
 
 test fn procfs_availability_is_absent_for_every_path_on_darwin() -> Bool {
   all(
-    procfs_paths_read_by_this_repository,
+    extdeps.linux.procfs.procfs_paths_read_by_this_repository,
     p =>
-      !procfs_availability_is_available(a: procfs_availability(kernel: Darwin, path: p))
-        && procfs_availability_is_available(a: procfs_availability(kernel: Linux, path: p))
+      !extdeps.linux.procfs.procfs_availability_is_available(a: extdeps.linux.procfs.procfs_availability(kernel: std.os.types.Darwin, path: p))
+        && extdeps.linux.procfs.procfs_availability_is_available(a: extdeps.linux.procfs.procfs_availability(kernel: std.os.types.Linux, path: p))
   )
 }
 
 test fn every_procfs_path_renders_an_absolute_proc_path() -> Bool {
   all(
-    procfs_paths_read_by_this_repository,
-    p => starts_with(s: procfs_path_literal(p: p) as String, prefix: "/proc/")
+    extdeps.linux.procfs.procfs_paths_read_by_this_repository,
+    p => starts_with(s: extdeps.linux.procfs.procfs_path_literal(p: p) as String, prefix: "/proc/")
   )
 }
 
 data degraded_is_private_limit_note: String = "The degraded axis is asserted as a PARTITION of the arms rather than arm-by-arm, so adding a source cannot leave the question unanswered: exactly the three non-degraded arms are the ones describing a bound private to this process, and everything meminfo-derived or unavailable is degraded. A witness that listed only the degraded arms would still pass if a new arm defaulted to non-degraded, which is the direction that actually costs something — a host-shared signal silently trusted as a private limit is the 2026-07-21 srv3 exit-137 shape."
 
 test fn degraded_is_exactly_the_non_private_sources() -> Bool {
-  !host_budget_source_is_degraded(s: BudgetSourceEnvOverride)
-    && !host_budget_source_is_degraded(s: gunbc.host_budget_source.BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup" })
-    && !host_budget_source_is_degraded(s: gunbc.host_budget_source.BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" })
-    && host_budget_source_is_degraded(s: BudgetSourceMemAvailable)
-    && host_budget_source_is_degraded(s: BudgetSourceMemTotal)
+  !gunbc.host_budget_source.host_budget_source_is_degraded(s: gunbc.host_budget_source.BudgetSourceEnvOverride)
+    && !gunbc.host_budget_source.host_budget_source_is_degraded(s: gunbc.host_budget_source.BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup" })
+    && !gunbc.host_budget_source.host_budget_source_is_degraded(s: gunbc.host_budget_source.BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" })
+    && gunbc.host_budget_source.host_budget_source_is_degraded(s: gunbc.host_budget_source.BudgetSourceMemAvailable)
+    && gunbc.host_budget_source.host_budget_source_is_degraded(s: gunbc.host_budget_source.BudgetSourceMemTotal)
     && gunbc.host_budget_source.host_budget_source_is_degraded(s: gunbc.host_budget_source.BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_high })
-    && host_budget_source_is_degraded(s: BudgetSourceDarwinPhysicalMemory)
+    && gunbc.host_budget_source.host_budget_source_is_degraded(s: gunbc.host_budget_source.BudgetSourceDarwinPhysicalMemory)
 }
 
 data platform_wall_red_control_note: String = "THE DISCRIMINATING PAIR, and it is the whole reason this file exists. The live defect is that read_host_budget_bytes reports BudgetSourceMemTotal on a Darwin host — a procfs-reading source named on a kernel that provides no procfs. The first witness asserts every procfs-reading arm is INADMISSIBLE on both non-procfs kernels; the second asserts those same arms stay admissible on both procfs kernels.\n\nOne without the other proves nothing. Asserting only inadmissibility is satisfied by a predicate that refuses everything, which would make the governor unable to name a legitimate cgroup read on Linux; asserting only admissibility is satisfied by the predicate that returns true unconditionally, which is the behaviour today. Together they pin the boundary exactly at 'reads procfs AND kernel lacks procfs', which is the sentence the bug violates."
@@ -61,9 +61,9 @@ test fn RED_procfs_sources_are_inadmissible_on_kernels_without_procfs() -> Bool 
   all(
     all_sources,
     s =>
-      if host_budget_source_reads_procfs(s: s) {
-        !host_budget_source_admissible_on_kernel(s: s, kernel: Darwin)
-          && !host_budget_source_admissible_on_kernel(s: s, kernel: WindowsNt)
+      if gunbc.host_budget_source.host_budget_source_reads_procfs(s: s) {
+        !gunbc.host_budget_source.host_budget_source_admissible_on_kernel(s: s, kernel: std.os.types.Darwin)
+          && !gunbc.host_budget_source.host_budget_source_admissible_on_kernel(s: s, kernel: std.os.types.WindowsNt)
       } else {
         true
       }
@@ -74,8 +74,8 @@ test fn procfs_sources_stay_admissible_on_kernels_with_procfs() -> Bool {
   all(
     all_sources,
     s =>
-      host_budget_source_admissible_on_kernel(s: s, kernel: Linux)
-        && host_budget_source_admissible_on_kernel(s: s, kernel: LinuxGuestOnWindows)
+      gunbc.host_budget_source.host_budget_source_admissible_on_kernel(s: s, kernel: std.os.types.Linux)
+        && gunbc.host_budget_source.host_budget_source_admissible_on_kernel(s: s, kernel: std.os.types.LinuxGuestOnWindows)
   )
 }
 
@@ -84,19 +84,19 @@ test fn each_kernel_selects_a_source_admissible_on_itself() -> Bool {
   all(
     all_kernels,
     k =>
-      match host_budget_source_for_kernel(kernel: k) {
-        Present { value: s } => host_budget_source_admissible_on_kernel(s: s, kernel: k)
+      match gunbc.host_budget_source.host_budget_source_for_kernel(kernel: k) {
+        Present { value: s } => gunbc.host_budget_source.host_budget_source_admissible_on_kernel(s: s, kernel: k)
         Absent => true
       }
   )
 }
 
 test fn darwin_selects_a_real_read_and_windows_selects_nothing() -> Bool {
-  match host_budget_source_for_kernel(kernel: Darwin) {
-    Present { value: s } => !host_budget_source_reads_procfs(s: s) && host_budget_source_is_degraded(s: s)
+  match gunbc.host_budget_source.host_budget_source_for_kernel(kernel: std.os.types.Darwin) {
+    Present { value: s } => !gunbc.host_budget_source.host_budget_source_reads_procfs(s: s) && gunbc.host_budget_source.host_budget_source_is_degraded(s: s)
     Absent => false
   }
-    && match host_budget_source_for_kernel(kernel: WindowsNt) {
+    && match gunbc.host_budget_source.host_budget_source_for_kernel(kernel: std.os.types.WindowsNt) {
       Present { value: _ } => false
       Absent => true
     }
@@ -108,7 +108,7 @@ test fn RED_unreadable_budget_yields_no_number_at_all() -> Bool {
   all(
     all_kernels,
     k =>
-      match host_budget_resolution_bytes(r: host_budget_unreadable_on_kernel(kernel: k)) {
+      match gunbc.host_budget_source.host_budget_resolution_bytes(r: gunbc.host_budget_source.host_budget_unreadable_on_kernel(kernel: k)) {
         Present { value: _ } => false
         Absent => true
       }
@@ -116,10 +116,10 @@ test fn RED_unreadable_budget_yields_no_number_at_all() -> Bool {
 }
 
 test fn a_resolved_budget_does_yield_its_bytes() -> Bool {
-  match host_budget_resolution_bytes(
-    r: gunbc.host_budget_source.HostBudgetResolved { source: BudgetSourceDarwinPhysicalMemory, bytes: byte_size(17179869184) }
+  match gunbc.host_budget_source.host_budget_resolution_bytes(
+    r: gunbc.host_budget_source.HostBudgetResolved { source: gunbc.host_budget_source.BudgetSourceDarwinPhysicalMemory, bytes: std.measure.byte_size(17179869184) }
   ) {
-    Present { value: b } => byte_size_count(b: b) == 17179869184
+    Present { value: b } => std.measure.byte_size_count(b: b) == 17179869184
     Absent => false
   }
 }
@@ -130,10 +130,10 @@ test fn no_selected_source_label_claims_a_path_its_kernel_lacks() -> Bool {
   all(
     all_kernels,
     k =>
-      match host_budget_source_for_kernel(kernel: k) {
+      match gunbc.host_budget_source.host_budget_source_for_kernel(kernel: k) {
         Present { value: s } =>
-          if string_contains(s: host_budget_source_label(s: s) as String, pattern: "/proc/") {
-            kernel_provides_procfs(kernel: k)
+          if string_contains(s: gunbc.host_budget_source.host_budget_source_label(s: s) as String, pattern: "/proc/") {
+            extdeps.linux.procfs.kernel_provides_procfs(kernel: k)
           } else {
             true
           }
@@ -143,7 +143,7 @@ test fn no_selected_source_label_claims_a_path_its_kernel_lacks() -> Bool {
 }
 
 test fn procfs_reading_labels_do_name_their_path() -> Bool {
-  string_contains(s: host_budget_source_label(s: BudgetSourceMemTotal) as String, pattern: "/proc/meminfo")
-    && string_contains(s: host_budget_source_label(s: BudgetSourceMemAvailable) as String, pattern: "/proc/meminfo")
-    && string_contains(s: host_budget_source_label(s: BudgetSourceEnvOverride) as String, pattern: "GUNBC_MEMORY_BUDGET_BYTES")
+  string_contains(s: gunbc.host_budget_source.host_budget_source_label(s: gunbc.host_budget_source.BudgetSourceMemTotal) as String, pattern: "/proc/meminfo")
+    && string_contains(s: gunbc.host_budget_source.host_budget_source_label(s: gunbc.host_budget_source.BudgetSourceMemAvailable) as String, pattern: "/proc/meminfo")
+    && string_contains(s: gunbc.host_budget_source.host_budget_source_label(s: gunbc.host_budget_source.BudgetSourceEnvOverride) as String, pattern: "GUNBC_MEMORY_BUDGET_BYTES")
 }

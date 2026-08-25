@@ -2,20 +2,20 @@ module v2.test.extdeps.spice_rc_passive_deck_claims
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn spice_rc_passive_deck_named_node_holds(node: v2.extdeps.formats.spice.NodeRef, expected: String) -> Bool {
+fn spice_rc_passive_deck_named_node_holds(node: NodeRef, expected: String) -> Bool {
   match node {
-    Named { node: v2.extdeps.formats.spice.NamedNode { name: name } } => name == expected
+    Named { node: NamedNode { name: name } } => name == expected
     _ => false
   }
 }
 
-fn spice_rc_passive_deck_first_resistor_holds(body: List<v2.extdeps.formats.spice.DeckStatement>) -> Bool {
-  match v2.std.collection.list_at_optional(xs: body, index: 0) {
+fn spice_rc_passive_deck_first_resistor_holds(body: List<DeckStatement>) -> Bool {
+  match list_at_optional(xs: body, index: 0) {
     Present {
-      value: v2.extdeps.formats.spice.DeckComponent {
-        component: v2.extdeps.formats.spice.Resistor {
+      value: DeckComponent {
+        component: Resistor {
           name: name,
           n_plus: n_plus,
           n_minus: n_minus,
@@ -27,18 +27,18 @@ fn spice_rc_passive_deck_first_resistor_holds(body: List<v2.extdeps.formats.spic
         && spice_rc_passive_deck_named_node_holds(node: n_plus, expected: "vin")
         && spice_rc_passive_deck_named_node_holds(node: n_minus, expected: "mid")
         && match value {
-          v2.extdeps.formats.spice.SpiceValue { lexeme: lexeme } => lexeme == "1k"
+          SpiceValue { lexeme: lexeme } => lexeme == "1k"
           _ => false
         }
     Absent => false
   }
 }
 
-fn spice_rc_passive_deck_second_capacitor_holds(body: List<v2.extdeps.formats.spice.DeckStatement>) -> Bool {
-  match v2.std.collection.list_at_optional(xs: body, index: 1) {
+fn spice_rc_passive_deck_second_capacitor_holds(body: List<DeckStatement>) -> Bool {
+  match list_at_optional(xs: body, index: 1) {
     Present {
-      value: v2.extdeps.formats.spice.DeckComponent {
-        component: v2.extdeps.formats.spice.Capacitor {
+      value: DeckComponent {
+        component: Capacitor {
           name: name,
           n_plus: n_plus,
           n_minus: n_minus,
@@ -49,26 +49,26 @@ fn spice_rc_passive_deck_second_capacitor_holds(body: List<v2.extdeps.formats.sp
       name == "1"
         && spice_rc_passive_deck_named_node_holds(node: n_plus, expected: "mid")
         && match n_minus {
-          v2.extdeps.formats.spice.Ground => true
+          Ground => true
           _ => false
         }
         && match value {
-          v2.extdeps.formats.spice.SpiceValue { lexeme: lexeme } => lexeme == "1u"
+          SpiceValue { lexeme: lexeme } => lexeme == "1u"
           _ => false
         }
     Absent => false
   }
 }
 
-fn spice_rc_passive_deck_op_directive_holds(body: List<v2.extdeps.formats.spice.DeckStatement>) -> Bool {
-  match v2.std.collection.list_at_optional(xs: body, index: 2) {
+fn spice_rc_passive_deck_op_directive_holds(body: List<DeckStatement>) -> Bool {
+  match list_at_optional(xs: body, index: 2) {
     Present {
-      value: v2.extdeps.formats.spice.DeckDirective {
+      value: DeckDirective {
         directive: directive
       }
     } =>
       match directive {
-        v2.extdeps.formats.spice.Op => true
+        Op => true
         _ => false
       }
     Absent => false
@@ -77,9 +77,9 @@ fn spice_rc_passive_deck_op_directive_holds(body: List<v2.extdeps.formats.spice.
 
 test fn spice_rc_passive_deck_authority_holds() -> Bool {
   match v2.test.fixture.spice_rc_passive_deck.spice_rc_passive_deck {
-    v2.extdeps.formats.spice.SpiceNetlist { title: title, body: body } =>
+    SpiceNetlist { title: title, body: body } =>
       title == "RC passive series deck"
-        && v2.std.algebra.length(xs: body) == 3
+        && length(xs: body) == 3
         && spice_rc_passive_deck_first_resistor_holds(body: body)
         && spice_rc_passive_deck_second_capacitor_holds(body: body)
         && spice_rc_passive_deck_op_directive_holds(body: body)

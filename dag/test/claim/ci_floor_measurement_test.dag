@@ -2,17 +2,17 @@ module test.claim.ci_floor_measurement
 
 
 fn witness_runner_cap_lt_session_cap() -> Bool {
-  witness_runner_cgroup_cap_lt_dashboard_session_cap()
+  gunbc.ci_floor_measurement.witness_runner_cgroup_cap_lt_dashboard_session_cap()
 }
 
 fn witness_ram_speed_ceiling_is_min_of_high_and_max() -> Bool {
-  byte_size_count(b: gunbc_ci_runner_slot_ram_speed_ceiling()) <= byte_size_count(b: gunbc_ci_runner_slot_memory_max_live)
-    && byte_size_count(b: gunbc_ci_runner_slot_ram_speed_ceiling()) <= byte_size_count(b: gunbc_ci_runner_slot_memory_high_live)
+  std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_slot_ram_speed_ceiling()) <= std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_slot_memory_max_live)
+    && std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_slot_ram_speed_ceiling()) <= std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_slot_memory_high_live)
 }
 
 test fn ci_floor_measurement_witnesses() -> Bool {
   witness_runner_cap_lt_session_cap()
     && witness_ram_speed_ceiling_is_min_of_high_and_max()
-    && witness_live_caps_derive_from_allocation_authority()
-    && witness_floor_run_peak_receipts_at_throttle_line()
+    && gunbc.ci_floor_measurement.witness_live_caps_derive_from_allocation_authority()
+    && gunbc.ci_floor_measurement.witness_floor_run_peak_receipts_at_throttle_line()
 }

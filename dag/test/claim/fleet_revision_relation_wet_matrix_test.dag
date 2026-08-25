@@ -1,7 +1,7 @@
 module test.claim.fleet_revision_relation_wet_matrix
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 // THIS FILE DOES NOT RUN IN THE REQUIRED FLOOR TODAY, AND THAT IS STATED FIRST BECAUSE THE
 // OPPOSITE IS THE NATURAL ASSUMPTION FOR A GREEN WITNESS FILE. It is a wet/replay class: every
@@ -68,20 +68,20 @@ data revision_d_hex: String = "8286843fce4511d0157573ba33b48ba46e48958a"
 // the probe would never be dispatched and the case would prove nothing about exit 128.
 data revision_absent_hex: String = "1111111111111111111111111111111111111111"
 
-fn rev(hex: String) -> GitObjectId? { git_sha1_object_id(hex: hex) }
+fn rev(hex: String) -> extdeps.git.object_store.GitObjectId? { extdeps.git.object_store.git_sha1_object_id(hex: hex) }
 
-fn relation_in(repository_path: String, current_hex: String, accepted_hex: String) -> DeployRevisionRelation? {
+fn relation_in(repository_path: String, current_hex: String, accepted_hex: String) -> gunbc.live_deploy.revision.DeployRevisionRelation? {
   match rev(hex: current_hex) {
     Present { value: cur } =>
       match rev(hex: accepted_hex) {
         Present { value: acc } =>
-          match observe_fleet_revision_relation_in(
+          match gunbc.fleet_desired_observe.observe_fleet_revision_relation_in(
             repository_path: repository_path,
             current: cur,
             accepted: acc,
           ) {
-            FleetRevisionRelationObservation { current: c, accepted: a, relation: rel } =>
-              if git_object_id_eq(left: c, right: cur) && git_object_id_eq(left: a, right: acc) {
+            gunbc.fleet_main_revision.FleetRevisionRelationObservation { current: c, accepted: a, relation: rel } =>
+              if extdeps.git.object_store.git_object_id_eq(left: c, right: cur) && extdeps.git.object_store.git_object_id_eq(left: a, right: acc) {
                 Present { value: rel }
               } else {
                 none
@@ -93,25 +93,25 @@ fn relation_in(repository_path: String, current_hex: String, accepted_hex: Strin
   }
 }
 
-fn is_same(r: DeployRevisionRelation?) -> Bool {
-  match r { Present { value: SameRevision } => true  _ => false }
+fn is_same(r: gunbc.live_deploy.revision.DeployRevisionRelation?) -> Bool {
+  match r { Present { value: gunbc.live_deploy.revision.SameRevision } => true  _ => false }
 }
 
-fn is_deployed_ancestor(r: DeployRevisionRelation?) -> Bool {
-  match r { Present { value: DeployedIsAncestor } => true  _ => false }
+fn is_deployed_ancestor(r: gunbc.live_deploy.revision.DeployRevisionRelation?) -> Bool {
+  match r { Present { value: gunbc.live_deploy.revision.DeployedIsAncestor } => true  _ => false }
 }
 
-fn is_candidate_ancestor(r: DeployRevisionRelation?) -> Bool {
-  match r { Present { value: CandidateIsAncestor } => true  _ => false }
+fn is_candidate_ancestor(r: gunbc.live_deploy.revision.DeployRevisionRelation?) -> Bool {
+  match r { Present { value: gunbc.live_deploy.revision.CandidateIsAncestor } => true  _ => false }
 }
 
-fn is_unrelated(r: DeployRevisionRelation?) -> Bool {
-  match r { Present { value: UnrelatedHistories } => true  _ => false }
+fn is_unrelated(r: gunbc.live_deploy.revision.DeployRevisionRelation?) -> Bool {
+  match r { Present { value: gunbc.live_deploy.revision.UnrelatedHistories } => true  _ => false }
 }
 
-fn is_unverifiable(r: DeployRevisionRelation?) -> Bool {
+fn is_unverifiable(r: gunbc.live_deploy.revision.DeployRevisionRelation?) -> Bool {
   match r {
-    Present { value: RelationUnverifiable { cause: _ } } => true
+    Present { value: gunbc.live_deploy.revision.RelationUnverifiable { cause: _ } } => true
     _ => false
   }
 }

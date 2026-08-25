@@ -31,11 +31,11 @@ fn fx_node_custom(
     line: gunbc.roadmap_status.TicketLine { done: false, ticket: fx_ticket(headline: headline) },
     carriers: [],
     sizing: if sized {
-      gunbc.roadmap_model.Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
-    } else { Unsized },
+      gunbc.roadmap_model.Sized { intricacy: gunbc.roadmap_model.IntricacyLow, volume: gunbc.roadmap_model.VolumeSmall, repo: "gunbc", acceptance: gunbc.roadmap_model.ManualAcceptance }
+    } else { gunbc.roadmap_model.Unsized },
     execution: if bound {
-      gunbc.roadmap_execution_contract.ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
-    } else { ExecutionContractUnspecified },
+      gunbc.roadmap_execution_contract.ExecutionContract { validations: [gunbc.roadmap_execution_contract.CargoFmtValidation], extra_capabilities: [] }
+    } else { gunbc.roadmap_execution_contract.ExecutionContractUnspecified },
     owner: "fixture",
     signoff: gunbc.roadmap_status.Unsigned,
   }
@@ -48,11 +48,11 @@ fn fx_node(id: String, bound: Bool, sized: Bool) -> gunbc.roadmap_model.RoadmapN
     line: gunbc.roadmap_status.TicketLine { done: false, ticket: fx_ticket(headline: concat("Fixture: ", id)) },
     carriers: [],
     sizing: if sized {
-      gunbc.roadmap_model.Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
-    } else { Unsized },
+      gunbc.roadmap_model.Sized { intricacy: gunbc.roadmap_model.IntricacyLow, volume: gunbc.roadmap_model.VolumeSmall, repo: "gunbc", acceptance: gunbc.roadmap_model.ManualAcceptance }
+    } else { gunbc.roadmap_model.Unsized },
     execution: if bound {
-      gunbc.roadmap_execution_contract.ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
-    } else { ExecutionContractUnspecified },
+      gunbc.roadmap_execution_contract.ExecutionContract { validations: [gunbc.roadmap_execution_contract.CargoFmtValidation], extra_capabilities: [] }
+    } else { gunbc.roadmap_execution_contract.ExecutionContractUnspecified },
     owner: "fixture",
     signoff: gunbc.roadmap_status.Unsigned,
   }
@@ -64,8 +64,8 @@ fn fx_pr_node(id: String) -> gunbc.roadmap_model.RoadmapNode {
     node: id as gunbc.roadmap_model.RoadmapNodeId,
     line: gunbc.roadmap_status.DerivableLine { prs: [9999], title: concat("Fixture merged-PR node: ", id), description: "merged but never accepted" },
     carriers: [],
-    sizing: gunbc.roadmap_model.Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: PrsMerged },
-    execution: gunbc.roadmap_execution_contract.ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] },
+    sizing: gunbc.roadmap_model.Sized { intricacy: gunbc.roadmap_model.IntricacyLow, volume: gunbc.roadmap_model.VolumeSmall, repo: "gunbc", acceptance: gunbc.roadmap_model.PrsMerged },
+    execution: gunbc.roadmap_execution_contract.ExecutionContract { validations: [gunbc.roadmap_execution_contract.CargoFmtValidation], extra_capabilities: [] },
     owner: "fixture",
     signoff: gunbc.roadmap_status.Unsigned,
   }
@@ -98,7 +98,7 @@ fn fx_edges() -> List<gunbc.roadmap_model.RoadmapEdge> {
 
 fn fx_lines() -> List<gunbc.v1_deletion_plan.V1FinishLineSpec> {
   [ gunbc.v1_deletion_plan.V1FinishLineSpec {
-      line: CompilerFixedPoint,
+      line: gunbc.v1_deletion_plan.CompilerFixedPoint,
       name: "Fixture finish line",
       claim: "The fixture program completes.",
       node: "fline" as gunbc.roadmap_model.RoadmapNodeId,
@@ -108,13 +108,13 @@ fn fx_lines() -> List<gunbc.v1_deletion_plan.V1FinishLineSpec> {
 fn fx_fronts() -> List<gunbc.roadmap_program_view.ConvergenceFrontSpec> {
   [
     gunbc.roadmap_program_view.ConvergenceFrontSpec {
-      front: NamespacePDeriveFront,
+      front: gunbc.roadmap_program_view.NamespacePDeriveFront,
       name: "Fixture front one",
       purpose: "fixture",
       gates: [ "fc" as gunbc.roadmap_model.RoadmapNodeId ],
     },
     gunbc.roadmap_program_view.ConvergenceFrontSpec {
-      front: V2GenerationFront,
+      front: gunbc.roadmap_program_view.V2GenerationFront,
       name: "Fixture front two",
       purpose: "fixture",
       gates: [ "fd" as gunbc.roadmap_model.RoadmapNodeId ],
@@ -125,7 +125,7 @@ fn fx_fronts() -> List<gunbc.roadmap_program_view.ConvergenceFrontSpec> {
 fn fx_receipt_for(n: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_model.RoadmapAcceptanceReceipt {
   gunbc.roadmap_model.RoadmapAcceptanceReceipt {
     node: n.node,
-    criteria_digest: roadmap_criteria_digest(t: fx_ticket(headline: concat("Fixture: ", n.node as String))),
+    criteria_digest: gunbc.roadmap_model.roadmap_criteria_digest(t: fx_ticket(headline: concat("Fixture: ", n.node as String))),
     red_control: gunbc.roadmap_status.RedControlExecuted {
       witness_module: "test.claim.roadmap_program_view_witness" as std.types.NonEmptyStr,
       witness_fn: "fixture" as std.types.NonEmptyStr,
@@ -141,7 +141,7 @@ fn fx_receipt_for(n: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_model.Roa
 }
 
 fn fx_view(receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>, in_flight: List<String>) -> gunbc.roadmap_program_view.V1ProgramViewResult {
-  program_view(
+  gunbc.roadmap_program_view.program_view(
     lines: fx_lines(), fronts: fx_fronts(),
     nodes: fx_nodes(), edges: fx_edges(),
     receipts: receipts, in_flight: in_flight,
@@ -150,14 +150,14 @@ fn fx_view(receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>, in_flig
 
 fn fx_derived(receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>, in_flight: List<String>) -> gunbc.roadmap_program_view.V1DeletionProgramView {
   match fx_view(receipts: receipts, in_flight: in_flight) {
-    ProgramViewDerived { view } => view
-    ProgramViewRefused { causes: _ } => gunbc.roadmap_program_view.V1DeletionProgramView {
+    gunbc.roadmap_program_view.ProgramViewDerived { view } => view
+    gunbc.roadmap_program_view.ProgramViewRefused { causes: _ } => gunbc.roadmap_program_view.V1DeletionProgramView {
       finish_lines: [], fronts: [],
       remaining: gunbc.roadmap_program_view.RemainingShape {
         sequential_depth: 0 - 1, open_fronts: 0 - 1, startable_now: 0 - 1,
         in_flight: 0 - 1, dependency_held: 0 - 1, contract_held: 0 - 1, unsized: 0 - 1,
       },
-      proposed: ProposedCarrierAbsent,
+      proposed: gunbc.roadmap_program_view.ProposedCarrierAbsent,
     }
   }
 }
@@ -216,8 +216,8 @@ test fn witness_acceptance_moves_the_primary_constraint() -> Bool {
             (bc.subject as String) == "fa"
               && (ac.subject as String) == "fb"
               && match ac.kind {
-                ImplementationConstraint => true
-                ContractConstraint => false
+                gunbc.roadmap_program_view.ImplementationConstraint => true
+                gunbc.roadmap_program_view.ContractConstraint => false
               }
         }
       }
@@ -226,40 +226,40 @@ test fn witness_acceptance_moves_the_primary_constraint() -> Bool {
 }
 
 test fn witness_red_misspelled_identities_refuse_with_located_causes() -> Bool {
-  let bad_line = program_view(
+  let bad_line = gunbc.roadmap_program_view.program_view(
     lines: [ gunbc.v1_deletion_plan.V1FinishLineSpec {
-      line: CompilerFixedPoint, name: "typo", claim: "typo",
+      line: gunbc.v1_deletion_plan.CompilerFixedPoint, name: "typo", claim: "typo",
       node: "fline-typo" as gunbc.roadmap_model.RoadmapNodeId,
     } ],
     fronts: fx_fronts(), nodes: fx_nodes(), edges: fx_edges(), receipts: [], in_flight: [])
-  let bad_gate = program_view(
+  let bad_gate = gunbc.roadmap_program_view.program_view(
     lines: fx_lines(),
     fronts: [ gunbc.roadmap_program_view.ConvergenceFrontSpec {
-      front: V2GenerationFront, name: "typo front", purpose: "typo",
+      front: gunbc.roadmap_program_view.V2GenerationFront, name: "typo front", purpose: "typo",
       gates: [ "fd-typo" as gunbc.roadmap_model.RoadmapNodeId ],
     } ],
     nodes: fx_nodes(), edges: fx_edges(), receipts: [], in_flight: [])
   let line_refused = match bad_line {
-    ProgramViewRefused { causes } =>
+    gunbc.roadmap_program_view.ProgramViewRefused { causes } =>
       count(causes) == 1 && all(causes, c => match c {
-        FinishLineNodeUnresolved { line_key, node } =>
+        gunbc.roadmap_program_view.FinishLineNodeUnresolved { line_key, node } =>
           line_key == "compiler-fixed-point" && (node as String) == "fline-typo"
-        FrontGateUnresolved { front_key: _, gate: _ } => false
-        DuplicateAcceptanceReceipt { node: _ } => false
-        DuplicateProgramNodeId { node: _ } => false
+        gunbc.roadmap_program_view.FrontGateUnresolved { front_key: _, gate: _ } => false
+        gunbc.roadmap_program_view.DuplicateAcceptanceReceipt { node: _ } => false
+        gunbc.roadmap_program_view.DuplicateProgramNodeId { node: _ } => false
       })
-    ProgramViewDerived { view: _ } => false
+    gunbc.roadmap_program_view.ProgramViewDerived { view: _ } => false
   }
   let gate_refused = match bad_gate {
-    ProgramViewRefused { causes } =>
+    gunbc.roadmap_program_view.ProgramViewRefused { causes } =>
       count(causes) == 1 && all(causes, c => match c {
-        FrontGateUnresolved { front_key, gate } =>
+        gunbc.roadmap_program_view.FrontGateUnresolved { front_key, gate } =>
           front_key == "v2-generation" && (gate as String) == "fd-typo"
-        FinishLineNodeUnresolved { line_key: _, node: _ } => false
-        DuplicateAcceptanceReceipt { node: _ } => false
-        DuplicateProgramNodeId { node: _ } => false
+        gunbc.roadmap_program_view.FinishLineNodeUnresolved { line_key: _, node: _ } => false
+        gunbc.roadmap_program_view.DuplicateAcceptanceReceipt { node: _ } => false
+        gunbc.roadmap_program_view.DuplicateProgramNodeId { node: _ } => false
       })
-    ProgramViewDerived { view: _ } => false
+    gunbc.roadmap_program_view.ProgramViewDerived { view: _ } => false
   }
   line_refused && gate_refused
 }
@@ -267,7 +267,7 @@ test fn witness_red_misspelled_identities_refuse_with_located_causes() -> Bool {
 test fn witness_red_duplicate_receipts_refuse_projection() -> Bool {
   let n = fx_node(id: "fa", bound: true, sized: true)
   let duplicate_receipts = [ fx_receipt_for(n: n), fx_receipt_for(n: n) ]
-  match program_view(
+  match gunbc.roadmap_program_view.program_view(
     lines: fx_lines(),
     fronts: fx_fronts(),
     nodes: fx_nodes(),
@@ -275,15 +275,15 @@ test fn witness_red_duplicate_receipts_refuse_projection() -> Bool {
     receipts: duplicate_receipts,
     in_flight: [],
   ) {
-    ProgramViewRefused { causes } =>
+    gunbc.roadmap_program_view.ProgramViewRefused { causes } =>
       count(causes) == 1
         && all(causes, c => match c {
-          DuplicateAcceptanceReceipt { node } => (node as String) == "fa"
-          FinishLineNodeUnresolved { line_key: _, node: _ } => false
-          FrontGateUnresolved { front_key: _, gate: _ } => false
-          DuplicateProgramNodeId { node: _ } => false
+          gunbc.roadmap_program_view.DuplicateAcceptanceReceipt { node } => (node as String) == "fa"
+          gunbc.roadmap_program_view.FinishLineNodeUnresolved { line_key: _, node: _ } => false
+          gunbc.roadmap_program_view.FrontGateUnresolved { front_key: _, gate: _ } => false
+          gunbc.roadmap_program_view.DuplicateProgramNodeId { node: _ } => false
         })
-    ProgramViewDerived { view: _ } => false
+    gunbc.roadmap_program_view.ProgramViewDerived { view: _ } => false
   }
 }
 
@@ -294,7 +294,7 @@ test fn witness_red_duplicate_node_ids_refuse_projection() -> Bool {
     bound: false,
     sized: false,
   )
-  match program_view(
+  match gunbc.roadmap_program_view.program_view(
     lines: fx_lines(),
     fronts: fx_fronts(),
     nodes: concat(fx_nodes(), [conflicting_fb]),
@@ -302,15 +302,15 @@ test fn witness_red_duplicate_node_ids_refuse_projection() -> Bool {
     receipts: [],
     in_flight: [],
   ) {
-    ProgramViewRefused { causes } =>
+    gunbc.roadmap_program_view.ProgramViewRefused { causes } =>
       count(causes) == 1
         && all(causes, c => match c {
-          DuplicateProgramNodeId { node } => (node as String) == "fb"
-          FinishLineNodeUnresolved { line_key: _, node: _ } => false
-          FrontGateUnresolved { front_key: _, gate: _ } => false
-          DuplicateAcceptanceReceipt { node: _ } => false
+          gunbc.roadmap_program_view.DuplicateProgramNodeId { node } => (node as String) == "fb"
+          gunbc.roadmap_program_view.FinishLineNodeUnresolved { line_key: _, node: _ } => false
+          gunbc.roadmap_program_view.FrontGateUnresolved { front_key: _, gate: _ } => false
+          gunbc.roadmap_program_view.DuplicateAcceptanceReceipt { node: _ } => false
         })
-    ProgramViewDerived { view: _ } => false
+    gunbc.roadmap_program_view.ProgramViewDerived { view: _ } => false
   }
 }
 
@@ -327,7 +327,7 @@ test fn witness_unmet_parents_block_startability() -> Bool {
 test fn witness_red_merged_prs_and_contracts_do_not_accept() -> Bool {
   let bogus_receipt = gunbc.roadmap_model.RoadmapAcceptanceReceipt {
     node: "fe" as gunbc.roadmap_model.RoadmapNodeId,
-    criteria_digest: roadmap_criteria_digest(t: fx_ticket(headline: "Fixture: fe")),
+    criteria_digest: gunbc.roadmap_model.roadmap_criteria_digest(t: fx_ticket(headline: "Fixture: fe")),
     red_control: gunbc.roadmap_status.RedControlExecuted {
       witness_module: "test.claim.roadmap_program_view_witness" as std.types.NonEmptyStr,
       witness_fn: "fixture" as std.types.NonEmptyStr,
@@ -366,9 +366,9 @@ test fn witness_in_flight_is_an_overlay_not_a_state() -> Bool {
 
 test fn witness_proposed_plane_carries_nothing_by_construction() -> Bool {
   match fx_view(receipts: [], in_flight: []) {
-    ProgramViewRefused { causes: _ } => false
-    ProgramViewDerived { view } => match view.proposed {
-      ProposedCarrierAbsent => true
+    gunbc.roadmap_program_view.ProgramViewRefused { causes: _ } => false
+    gunbc.roadmap_program_view.ProgramViewDerived { view } => match view.proposed {
+      gunbc.roadmap_program_view.ProposedCarrierAbsent => true
     }
   }
 }
@@ -377,7 +377,7 @@ test fn witness_fixture_every_front_contributes_to_some_line() -> Bool {
   let view = fx_derived(receipts: [], in_flight: [])
   all(view.fronts, fv =>
     any(view.finish_lines, lv =>
-      lv.contributing_fronts |> any(c => program_front_key(front: c) == fv.key)))
+      lv.contributing_fronts |> any(c => gunbc.roadmap_program_view.program_front_key(front: c) == fv.key)))
 }
 
 fn probe_constraint_iff(lv: gunbc.roadmap_program_view.FinishLineView) -> Bool {

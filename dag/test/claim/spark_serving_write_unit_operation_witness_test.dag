@@ -9,16 +9,16 @@ fn kind_at(ops: List<gunbc.remote_operation.RemoteOperation>, i: Int) -> String 
     Absent => "<none>"
     Present { value: op } =>
       match op {
-        RemoteArgv { argv: _ } => "argv"
-        RemoteFileBytes { write: _, mode: _ } => "file"
+        gunbc.remote_operation.RemoteArgv { argv: _ } => "argv"
+        gunbc.remote_operation.RemoteFileBytes { write: _, mode: _ } => "file"
       }
   }
 }
 
 fn realize(effects: List<gunbc.spark.serving_realization.ServingInstallEffect>) -> gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsVerdict {
-  realize_spark_serving_install_effect_commands(
+  gunbc.spark.serving_converge_realize.realize_spark_serving_install_effect_commands(
     effects: effects,
-    executor_login: spark_serving_automation_principal_login(),
+    executor_login: gunbc.spark.serving_desired.spark_serving_automation_principal_login(),
   )
 }
 
@@ -29,10 +29,10 @@ fn realize(effects: List<gunbc.spark.serving_realization.ServingInstallEffect>) 
 // bytes ride stdin, so no argv-shaped verdict could ever express it. It now realizes.
 test fn write_user_unit_file_realizes_instead_of_refusing() -> Bool {
   match realize(effects: [gunbc.spark.serving_realization.WriteUserUnitFile]) {
-    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
-      remote_operation_count(operations: map(sts, st => st.operation)) == 2
-        && remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 1
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      gunbc.remote_operation.remote_operation_count(operations: map(sts, st => st.operation)) == 2
+        && gunbc.remote_operation.remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 1
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
 
@@ -43,17 +43,17 @@ test fn write_user_unit_file_realizes_instead_of_refusing() -> Bool {
 // correct sequence from one containing the same two operations.
 test fn the_unit_write_is_preceded_by_a_non_privileged_mkdir() -> Bool {
   match realize(effects: [gunbc.spark.serving_realization.WriteUserUnitFile]) {
-    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       match map(sts, st => st.operation).first() {
         Absent => false
         Present { value: first } =>
           match first {
-            RemoteArgv { argv: argv } =>
-              argv == ["mkdir", "-p", spark_serving_user_unit_dir() as String]
-            RemoteFileBytes { write: _, mode: _ } => false
+            gunbc.remote_operation.RemoteArgv { argv: argv } =>
+              argv == ["mkdir", "-p", gunbc.spark.serving_install_paths.spark_serving_user_unit_dir() as String]
+            gunbc.remote_operation.RemoteFileBytes { write: _, mode: _ } => false
           }
       }
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
 
@@ -62,16 +62,16 @@ test fn the_unit_write_is_preceded_by_a_non_privileged_mkdir() -> Bool {
 // here would silently require a sudoers grant that does not exist.
 test fn the_unit_directory_mkdir_is_not_privileged() -> Bool {
   match realize(effects: [gunbc.spark.serving_realization.WriteUserUnitFile]) {
-    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       match map(sts, st => st.operation).first() {
         Absent => false
         Present { value: first } =>
           match first {
-            RemoteArgv { argv: argv } => argv.first() != Present { value: "sudo" }
-            RemoteFileBytes { write: _, mode: _ } => false
+            gunbc.remote_operation.RemoteArgv { argv: argv } => argv.first() != Present { value: "sudo" }
+            gunbc.remote_operation.RemoteFileBytes { write: _, mode: _ } => false
           }
       }
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
 
@@ -79,10 +79,10 @@ test fn the_unit_directory_mkdir_is_not_privileged() -> Bool {
 // routed onto a command line, which is exactly what the typed-write module exists to prevent.
 test fn the_unit_write_carries_no_argv_projection() -> Bool {
   match realize(effects: [gunbc.spark.serving_realization.WriteUserUnitFile]) {
-    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
-      length(remote_operations_argv_only(operations: map(sts, st => st.operation))) == 1
-        && remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 1
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      length(gunbc.remote_operation.remote_operations_argv_only(operations: map(sts, st => st.operation))) == 1
+        && gunbc.remote_operation.remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 1
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
 
@@ -91,18 +91,18 @@ test fn the_unit_write_carries_no_argv_projection() -> Bool {
 // something.
 test fn the_unit_write_carries_the_rendered_bytes_at_the_modeled_path() -> Bool {
   match realize(effects: [gunbc.spark.serving_realization.WriteUserUnitFile]) {
-    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       match map(sts, st => st.operation)[1] {
         Absent => false
         Present { value: op } =>
           match op {
-            RemoteFileBytes { write: w, mode: _ } =>
-              w.content == spark_serving_desired_user_unit_text()
-                && (w.path as String) == (spark_serving_user_unit_path() as String)
-            RemoteArgv { argv: _ } => false
+            gunbc.remote_operation.RemoteFileBytes { write: w, mode: _ } =>
+              w.content == gunbc.spark.serving_unit_render.spark_serving_desired_user_unit_text()
+                && (w.path as String) == (gunbc.spark.serving_install_paths.spark_serving_user_unit_path() as String)
+            gunbc.remote_operation.RemoteArgv { argv: _ } => false
           }
       }
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
 
@@ -114,14 +114,14 @@ test fn the_unit_write_carries_the_rendered_bytes_at_the_modeled_path() -> Bool 
 // a genuine subset and not the whole population.
 test fn a_mixed_sequence_keeps_both_kinds_and_their_order() -> Bool {
   match realize(effects: [gunbc.spark.serving_realization.WriteUserUnitFile, gunbc.spark.serving_realization.EnableLingerForOwnAccount]) {
-    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
-      remote_operation_count(operations: map(sts, st => st.operation)) == 3
-        && remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 1
-        && length(remote_operations_argv_only(operations: map(sts, st => st.operation))) == 2
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      gunbc.remote_operation.remote_operation_count(operations: map(sts, st => st.operation)) == 3
+        && gunbc.remote_operation.remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 1
+        && length(gunbc.remote_operation.remote_operations_argv_only(operations: map(sts, st => st.operation))) == 2
         && kind_at(ops: map(sts, st => st.operation), i: 0) == "argv"
         && kind_at(ops: map(sts, st => st.operation), i: 1) == "file"
         && kind_at(ops: map(sts, st => st.operation), i: 2) == "argv"
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
 
@@ -132,8 +132,8 @@ test fn a_mixed_sequence_keeps_both_kinds_and_their_order() -> Bool {
 // realizing the part it understands.
 test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
   match realize(effects: [gunbc.spark.serving_realization.WriteUserUnitFile, gunbc.spark.serving_realization.RunContainerAsOwnUser]) {
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => true
-    SparkServingInstallRemoteCommandsPresent { steps: _ } => false
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => true
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: _ } => false
   }
 }
 
@@ -141,10 +141,10 @@ test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
 // a file write, so this pins the other direction.
 test fn an_argv_effect_is_still_an_argv_operation() -> Bool {
   match realize(effects: [gunbc.spark.serving_realization.EnableLingerForOwnAccount]) {
-    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
-      remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 0
-        && length(remote_operations_argv_only(operations: map(sts, st => st.operation))) == 1
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      gunbc.remote_operation.remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 0
+        && length(gunbc.remote_operation.remote_operations_argv_only(operations: map(sts, st => st.operation))) == 1
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
 
@@ -159,24 +159,24 @@ test fn an_argv_effect_is_still_an_argv_operation() -> Bool {
 // Two operations differing ONLY in content must produce different wires. Same path, same mode, same
 // kind, same count -- so nothing but the bytes can be doing the work.
 test fn two_writes_differing_only_in_content_have_different_wires() -> Bool {
-  match typed_remote_file_write_seal(
-    path: spark_serving_user_unit_path(),
+  match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+    path: gunbc.spark.serving_install_paths.spark_serving_user_unit_path(),
     content: "[Unit]\nDescription=A\n",
-    allowed_scope: gunbc.file_access.FileTreeScope { root_path: spark_serving_executor_home as std.types.NonEmptyStr },
+    allowed_scope: gunbc.file_access.FileTreeScope { root_path: gunbc.spark.serving_runtime_receipt.spark_serving_executor_home as std.types.NonEmptyStr },
   ) {
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
-    TypedRemoteFileWriteAdmitted { write: a } =>
-      match typed_remote_file_write_seal(
-        path: spark_serving_user_unit_path(),
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: a } =>
+      match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+        path: gunbc.spark.serving_install_paths.spark_serving_user_unit_path(),
         content: "[Unit]\nDescription=B\n",
-        allowed_scope: gunbc.file_access.FileTreeScope { root_path: spark_serving_executor_home as std.types.NonEmptyStr },
+        allowed_scope: gunbc.file_access.FileTreeScope { root_path: gunbc.spark.serving_runtime_receipt.spark_serving_executor_home as std.types.NonEmptyStr },
       ) {
-        TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
-        TypedRemoteFileWriteAdmitted { write: b } =>
-          remote_operation_wire(operation: gunbc.remote_operation.RemoteFileBytes { write: a, mode: gunbc.typed_remote_file_write.RemoteFileModeOwnerReadWrite })
-            != remote_operation_wire(operation: gunbc.remote_operation.RemoteFileBytes { write: b, mode: gunbc.typed_remote_file_write.RemoteFileModeOwnerReadWrite })
-            && remote_operation_label(operation: gunbc.remote_operation.RemoteFileBytes { write: a, mode: gunbc.typed_remote_file_write.RemoteFileModeOwnerReadWrite })
-              == remote_operation_label(operation: gunbc.remote_operation.RemoteFileBytes { write: b, mode: gunbc.typed_remote_file_write.RemoteFileModeOwnerReadWrite })
+        gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+        gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: b } =>
+          gunbc.remote_operation.remote_operation_wire(operation: gunbc.remote_operation.RemoteFileBytes { write: a, mode: gunbc.typed_remote_file_write.RemoteFileModeOwnerReadWrite })
+            != gunbc.remote_operation.remote_operation_wire(operation: gunbc.remote_operation.RemoteFileBytes { write: b, mode: gunbc.typed_remote_file_write.RemoteFileModeOwnerReadWrite })
+            && gunbc.remote_operation.remote_operation_label(operation: gunbc.remote_operation.RemoteFileBytes { write: a, mode: gunbc.typed_remote_file_write.RemoteFileModeOwnerReadWrite })
+              == gunbc.remote_operation.remote_operation_label(operation: gunbc.remote_operation.RemoteFileBytes { write: b, mode: gunbc.typed_remote_file_write.RemoteFileModeOwnerReadWrite })
       }
   }
 }
@@ -186,16 +186,16 @@ test fn two_writes_differing_only_in_content_have_different_wires() -> Bool {
 // sees that the label collapsing is intentional, not a second bug.
 test fn the_wire_discriminates_where_the_label_does_not() -> Bool {
   match realize(effects: [gunbc.spark.serving_realization.WriteUserUnitFile]) {
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
-    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
-      string_contains(remote_operations_wire(operations: map(sts, st => st.operation)), "content=")
-        && string_contains(remote_operations_wire(operations: map(sts, st => st.operation)), "mode=600")
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      string_contains(gunbc.remote_operation.remote_operations_wire(operations: map(sts, st => st.operation)), "content=")
+        && string_contains(gunbc.remote_operation.remote_operations_wire(operations: map(sts, st => st.operation)), "mode=600")
   }
 }
 
 // An argv operation's words are in the wire too. Without this, freezing an argv and swapping its
 // words would be the same silent hole one kind over.
 test fn an_argv_operations_words_are_in_its_wire() -> Bool {
-  remote_operation_wire(operation: gunbc.remote_operation.RemoteArgv { argv: ["mkdir", "-p", "/a"] })
-    != remote_operation_wire(operation: gunbc.remote_operation.RemoteArgv { argv: ["mkdir", "-p", "/b"] })
+  gunbc.remote_operation.remote_operation_wire(operation: gunbc.remote_operation.RemoteArgv { argv: ["mkdir", "-p", "/a"] })
+    != gunbc.remote_operation.remote_operation_wire(operation: gunbc.remote_operation.RemoteArgv { argv: ["mkdir", "-p", "/b"] })
 }

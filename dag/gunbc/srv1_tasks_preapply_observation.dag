@@ -57,12 +57,12 @@ fn read_pids_file(control_group: String, leaf: String) -> String {
 }
 
 fn observe_unit_tasks(unit: std.types.NonEmptyStr) -> Srv1TasksUnitObservation {
-  match host_converge_slice1_read_tasks_max_raw(unit: unit) {
+  match gunbc.host_converge_slice1.host_converge_slice1_read_tasks_max_raw(unit: unit) {
     Present { value: tmax } =>
-      match host_converge_slice1_read_tasks_current_raw(unit: unit) {
+      match gunbc.host_converge_slice1.host_converge_slice1_read_tasks_current_raw(unit: unit) {
         Present { value: tcur } =>
-          match systemctl_show_property_read(transport: LocalShell, unit: unit, property: ControlGroup) {
-            SystemdPropertyCaptured { value: cg } =>
+          match gunbc.systemctl_show_read.systemctl_show_property_read(transport: gunbc.host_effect.LocalShell, unit: unit, property: extdeps.systemd.ControlGroup) {
+            gunbc.systemctl_show_read.SystemdPropertyCaptured { value: cg } =>
               if cg == "" {
                 Srv1TasksUnitObservationRefused { unit: unit, cause: "ControlGroup read returned empty — cannot locate cgroupfs pids files" }
               } else {
@@ -79,7 +79,7 @@ fn observe_unit_tasks(unit: std.types.NonEmptyStr) -> Srv1TasksUnitObservation {
                   },
                 }
               }
-            SystemdPropertyCaptureRefused { reason: why } =>
+            gunbc.systemctl_show_read.SystemdPropertyCaptureRefused { reason: why } =>
               Srv1TasksUnitObservationRefused { unit: unit, cause: join(["ControlGroup read refused: ", why], "") }
           }
         _ => Srv1TasksUnitObservationRefused { unit: unit, cause: "TasksCurrent read refused" }
@@ -89,15 +89,15 @@ fn observe_unit_tasks(unit: std.types.NonEmptyStr) -> Srv1TasksUnitObservation {
 }
 
 fn observe_srv1_tasks_preapply() -> Srv1TasksPreApplyReceipt {
-  match host_converge_slice1_enumerate_units(instance_glob: runner_instance_glob(host: "srv1")) {
+  match gunbc.host_converge_slice1.host_converge_slice1_enumerate_units(instance_glob: gunbc.host_converge.runner_instance_glob(host: "srv1")) {
     Present { value: units } =>
       if length(units) == 0 {
         Srv1TasksPreApplyRefused { cause: "unit enumeration returned zero actions-runner@srv1-* units — refusing an empty observation rather than reporting a vacuous receipt" }
       } else {
         Srv1TasksPreApplyObserved {
           host: "srv1",
-          desired_tasks_max: to_string(gunbc_runner_slot_desired().tasks_max),
-          observer_cgroup_membership: filesystem_read(path: procfs_path_literal(p: ProcSelfCgroup) as String).content,
+          desired_tasks_max: to_string(gunbc.runner_slot_allocation.gunbc_runner_slot_desired().tasks_max),
+          observer_cgroup_membership: filesystem_read(path: extdeps.linux.procfs.procfs_path_literal(p: extdeps.linux.procfs.ProcSelfCgroup) as String).content,
           units: map(units, u => observe_unit_tasks(unit: u)),
         }
       }
@@ -114,13 +114,13 @@ data srv1_tasks_preapply_receipt_path: String = "target/srv1-tasks-preapply-rece
 
 func observe_srv1_tasks_preapply_wet() -> std.process.ProcessExit {
   let receipt = observe_srv1_tasks_preapply()
-  let w = Filesystem.Write(path: srv1_tasks_preapply_receipt_path, content: to_string(receipt))
+  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: srv1_tasks_preapply_receipt_path, content: to_string(receipt))
   if !w.success {
-    exit_failure(reason: join(["receipt write failed: ", w.error], ""))
+    std.process.exit_failure(reason: join(["receipt write failed: ", w.error], ""))
   } else {
     match receipt {
       Srv1TasksPreApplyObserved { host: _, desired_tasks_max: _, observer_cgroup_membership: _, units: _ } => std.process.ExitSuccess
-      Srv1TasksPreApplyRefused { cause: why } => exit_failure(reason: why)
+      Srv1TasksPreApplyRefused { cause: why } => std.process.exit_failure(reason: why)
     }
   }
 }

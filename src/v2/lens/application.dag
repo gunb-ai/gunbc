@@ -1,10 +1,11 @@
 module v2.lens.application
 
+
 type DeclarationId {
-  path: Path
+  path: v2.std.node.Path
 }
 type NodeId {
-  path: Path
+  path: v2.std.node.Path
 }
 type SourceSpan
 
@@ -23,11 +24,11 @@ type EnforceableLens<Output, Budget, Projected> {
 }
 
 type Lens<Output> {
-  read: fn(Node) -> Outcome<Output>
+  read: fn(v2.std.node.Node) -> v2.std.diagnostic.Outcome<Output>
 }
 
 type AdvisoryLens {
-  read: fn(Node) -> List<Report>
+  read: fn(v2.std.node.Node) -> List<v2.std.report.Report>
 }
 
 type LensApplicationConfig<Budget>
@@ -49,7 +50,7 @@ type EnforcedLensResult<Output, Projected> {
 }
 
 type LensEnforcementViolationInput<Projected, Budget> {
-  at: Node
+  at: v2.std.node.Node
   projected: Projected
   declared: Budget
 }
@@ -59,34 +60,34 @@ type IntrospectApplication<Output> {
   section: SectionRef
   span: SourceSpan
 }
-fn path_unresolvable_diagnostic(at: Node) -> Diagnostic {
-  Diagnostic {
+fn path_unresolvable_diagnostic(at: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^path_unresolvable_reason,
-    at: node_locus(node: at),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: at),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
-fn path_ambiguous_diagnostic(at: Node) -> Diagnostic {
-  Diagnostic {
+fn path_ambiguous_diagnostic(at: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^path_ambiguous_reason,
-    at: node_locus(node: at),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: at),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn lens_enforcement_violation_diagnostic<Projected, Budget>(
   input: LensEnforcementViolationInput<Projected, Budget>
-) -> Diagnostic {
-  Diagnostic {
+) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^lens_enforcement_violation_reason,
-    at: node_locus(node: input.at),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: input.at),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn lens_enforcement_violation_input<Projected, Budget>(
-  at: Node,
+  at: v2.std.node.Node,
   projected: Projected,
   declared: Budget
 ) -> LensEnforcementViolationInput<Projected, Budget> {
@@ -97,32 +98,32 @@ fn lens_enforcement_violation_input<Projected, Budget>(
   }
 }
 
-fn advisory_report_diagnostic(report: Report) -> Diagnostic {
-  Diagnostic {
-    reason: report_reason_to_diagnostic_reason(reason: report.reason),
+fn advisory_report_diagnostic(report: v2.std.report.Report) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
+    reason: v2.std.report.report_reason_to_diagnostic_reason(reason: report.reason),
     at: report.at,
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
-fn find_child_by_name(root: Node, name: Symbol) -> Outcome<Node> {
-  match find_named_child(root: root, name: name) {
-    Accepted { value: child, diagnostics: d } => Accepted { value: child, diagnostics: d }
-    Rejected { diagnostics: diags } =>
+fn find_child_by_name(root: v2.std.node.Node, name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  match v2.std.node_query.find_named_child(root: root, name: name) {
+    v2.std.diagnostic.Accepted { value: child, diagnostics: d } => v2.std.diagnostic.Accepted { value: child, diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: diags } =>
       if diags.head.reason == ^named_child_ambiguous {
-        outcome_rejected(d: path_ambiguous_diagnostic(at: root))
+        v2.std.diagnostic.outcome_rejected(d: path_ambiguous_diagnostic(at: root))
       } else {
-        outcome_rejected(d: path_unresolvable_diagnostic(at: root))
+        v2.std.diagnostic.outcome_rejected(d: path_unresolvable_diagnostic(at: root))
       }
   }
 }
 
-fn subterm_at_steps(root: Node, steps: List<Symbol>) -> Outcome<Node> {
-  fold_list(
+fn subterm_at_steps(root: v2.std.node.Node, steps: List<v2.std.node.Symbol>) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  v2.std.algebra.fold_list(
     xs: steps,
-    empty: outcome_accepted(value: root),
+    empty: v2.std.diagnostic.outcome_accepted(value: root),
     cons: fn(acc, step) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: acc,
         f: fn(current) {
           find_child_by_name(root: current, name: step)
@@ -132,32 +133,32 @@ fn subterm_at_steps(root: Node, steps: List<Symbol>) -> Outcome<Node> {
   )
 }
 
-fn subterm_at(root: Node, path: Path) -> Outcome<Node> {
+fn subterm_at(root: v2.std.node.Node, path: v2.std.node.Path) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   subterm_at_steps(root: root, steps: path.steps)
 }
 
-fn replace_edge_target(e: Edge, replacement: Node) -> Edge {
-  Edge { label: e.label, target: replacement }
+fn replace_edge_target(e: v2.std.node.Edge, replacement: v2.std.node.Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: e.label, target: replacement }
 }
 
 type PathSplit {
-  init: List<Symbol>
-  last: Symbol
+  init: List<v2.std.node.Symbol>
+  last: v2.std.node.Symbol
   first: Bool
 }
 
-fn split_path_steps(root: Node, steps: List<Symbol>) -> Outcome<PathSplit> {
-  if is_empty(xs: steps) {
-    outcome_rejected(d: path_unresolvable_diagnostic(at: root))
+fn split_path_steps(root: v2.std.node.Node, steps: List<v2.std.node.Symbol>) -> v2.std.diagnostic.Outcome<PathSplit> {
+  if v2.std.algebra.is_empty(xs: steps) {
+    v2.std.diagnostic.outcome_rejected(d: path_unresolvable_diagnostic(at: root))
   } else {
-    outcome_accepted(value: fold_list(
+    v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.fold_list(
       xs: steps,
       empty: PathSplit { init: [], last: ^path_unresolvable_reason, first: true },
       cons: fn(split, step) {
         match split.first {
           true => PathSplit { init: [], last: step, first: false }
           false => PathSplit {
-            init: list_snoc_item(xs: split.init, item: split.last),
+            init: v2.std.algebra.list_snoc_item(xs: split.init, item: split.last),
             last: step,
             first: false
           }
@@ -167,57 +168,57 @@ fn split_path_steps(root: Node, steps: List<Symbol>) -> Outcome<PathSplit> {
   }
 }
 
-fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Node> {
-  if name_occurrences(name: name, children: root.children) == 0 {
-    outcome_rejected(d: path_unresolvable_diagnostic(at: root))
-  } else if name_occurrences(name: name, children: root.children) == 1 {
-    outcome_accepted(value: node_rebuild(
+fn rebuild_node_with_child(root: v2.std.node.Node, name: v2.std.node.Symbol, child: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  if v2.std.node.name_occurrences(name: name, children: root.children) == 0 {
+    v2.std.diagnostic.outcome_rejected(d: path_unresolvable_diagnostic(at: root))
+  } else if v2.std.node.name_occurrences(name: name, children: root.children) == 1 {
+    v2.std.diagnostic.outcome_accepted(value: v2.std.node.node_rebuild(
       n: root,
       children: fold(
         root.children,
         init: std.algebra.Empty,
         f: fn(current_acc, edge) {
           match edge.label {
-            Named { name: edge_name } =>
+            v2.std.node.Named { name: edge_name } =>
               let next_edge = match edge_name == name {
                 true => replace_edge_target(e: edge, replacement: child)
                 false => edge
               }
-              list_snoc_item(xs: current_acc, item: next_edge)
-            Positional => list_snoc_item(xs: current_acc, item: edge)
+              v2.std.algebra.list_snoc_item(xs: current_acc, item: next_edge)
+            v2.std.node.Positional => v2.std.algebra.list_snoc_item(xs: current_acc, item: edge)
           }
         }
       )
     ))
   } else {
-    outcome_rejected(d: path_ambiguous_diagnostic(at: root))
+    v2.std.diagnostic.outcome_rejected(d: path_ambiguous_diagnostic(at: root))
   }
 }
 
 type AncestorFrame {
-  ancestor: Node
-  step: Symbol
+  ancestor: v2.std.node.Node
+  step: v2.std.node.Symbol
 }
 
 type AncestorWalk {
-  current: Node
+  current: v2.std.node.Node
   frames: List<AncestorFrame>
 }
 
-fn collect_ancestor_frames(root: Node, steps: List<Symbol>) -> Outcome<AncestorWalk> {
-  fold_list(
+fn collect_ancestor_frames(root: v2.std.node.Node, steps: List<v2.std.node.Symbol>) -> v2.std.diagnostic.Outcome<AncestorWalk> {
+  v2.std.algebra.fold_list(
     xs: steps,
-    empty: outcome_accepted(value: AncestorWalk { current: root, frames: [] }),
+    empty: v2.std.diagnostic.outcome_accepted(value: AncestorWalk { current: root, frames: [] }),
     cons: fn(walk_outcome, step) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: walk_outcome,
         f: fn(walk) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: find_child_by_name(root: walk.current, name: step),
             f: fn(child) {
-              outcome_accepted(value: AncestorWalk {
+              v2.std.diagnostic.outcome_accepted(value: AncestorWalk {
                 current: child,
-                frames: Cons {
+                frames: std.algebra.Cons {
                   head: AncestorFrame { ancestor: walk.current, step: step },
                   tail: walk.frames
                 }
@@ -230,8 +231,8 @@ fn collect_ancestor_frames(root: Node, steps: List<Symbol>) -> Outcome<AncestorW
   )
 }
 
-fn thread_up_with_ancestor_frame(acc_outcome: Outcome<Node>, frame: AncestorFrame) -> Outcome<Node> {
-  bind_outcome(
+fn thread_up_with_ancestor_frame(acc_outcome: v2.std.diagnostic.Outcome<v2.std.node.Node>, frame: AncestorFrame) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  v2.std.diagnostic.bind_outcome(
     o: acc_outcome,
     f: fn(child) {
       rebuild_node_with_child(
@@ -243,25 +244,25 @@ fn thread_up_with_ancestor_frame(acc_outcome: Outcome<Node>, frame: AncestorFram
   )
 }
 
-fn thread_substitution_up(frames: List<AncestorFrame>, rebuilt_child: Node) -> Outcome<Node> {
-  fold_list(
+fn thread_substitution_up(frames: List<AncestorFrame>, rebuilt_child: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  v2.std.algebra.fold_list(
     xs: frames,
-    empty: outcome_accepted(value: rebuilt_child),
+    empty: v2.std.diagnostic.outcome_accepted(value: rebuilt_child),
     cons: thread_up_with_ancestor_frame
   )
 }
 
-fn substitute_at(root: Node, path: Path, replacement: Node) -> Outcome<Node> {
-  if is_empty(xs: path.steps) {
-    outcome_accepted(value: replacement)
+fn substitute_at(root: v2.std.node.Node, path: v2.std.node.Path, replacement: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  if v2.std.algebra.is_empty(xs: path.steps) {
+    v2.std.diagnostic.outcome_accepted(value: replacement)
   } else {
-    bind_outcome(
+    v2.std.diagnostic.bind_outcome(
       o: split_path_steps(root: root, steps: path.steps),
       f: fn(split) {
-        bind_outcome(
+        v2.std.diagnostic.bind_outcome(
           o: collect_ancestor_frames(root: root, steps: split.init),
           f: fn(walk) {
-            bind_outcome(
+            v2.std.diagnostic.bind_outcome(
               o: rebuild_node_with_child(
                 root: walk.current,
                 name: split.last,
@@ -278,16 +279,16 @@ fn substitute_at(root: Node, path: Path, replacement: Node) -> Outcome<Node> {
   }
 }
 
-fn apply_edit(root: Node, edit: Edit) -> Outcome<Node> {
+fn apply_edit(root: v2.std.node.Node, edit: v2.std.node.Edit) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   substitute_at(root: root, path: edit.at, replacement: edit.replacement)
 }
 
-fn apply_diff_edits(root: Node, edits: List<Edit>) -> Outcome<Node> {
-  fold_list(
+fn apply_diff_edits(root: v2.std.node.Node, edits: List<v2.std.node.Edit>) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  v2.std.algebra.fold_list(
     xs: edits,
-    empty: outcome_accepted(value: root),
+    empty: v2.std.diagnostic.outcome_accepted(value: root),
     cons: fn(acc, edit) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: acc,
         f: fn(candidate) {
           apply_edit(root: candidate, edit: edit)
@@ -297,16 +298,16 @@ fn apply_diff_edits(root: Node, edits: List<Edit>) -> Outcome<Node> {
   )
 }
 
-fn apply_diff(root: Node, d: Diff) -> Outcome<Node> {
+fn apply_diff(root: v2.std.node.Node, d: v2.std.node.Diff) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   apply_diff_edits(root: root, edits: d.edits)
 }
 
-fn section_subject(root: Node, section: SectionRef) -> Outcome<Node> {
+fn section_subject(root: v2.std.node.Node, section: SectionRef) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match section {
     DeclarationScope { declaration: declaration } =>
       subterm_at(root: root, path: declaration.path)
     NodeScope { declaration: declaration, node: node } =>
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: subterm_at(root: root, path: declaration.path),
         f: fn(declaration_subject) {
           subterm_at(root: declaration_subject, path: node.path)
@@ -336,9 +337,9 @@ fn lens_enforcement_result<Output, Budget, Projected>(
 fn apply_lens<Output>(
   lens: Lens<Output>,
   section: SectionRef,
-  root: Node
-) -> Outcome<Output> {
-  bind_outcome(
+  root: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<Output> {
+  v2.std.diagnostic.bind_outcome(
     o: section_subject(root: root, section: section),
     f: fn(subject) {
       lens.read(root: subject)
@@ -349,13 +350,13 @@ fn apply_lens<Output>(
 fn apply_lens_enforce<Output, Budget, Projected>(
   enforceable: EnforceableLens<Output, Budget, Projected>,
   section: SectionRef,
-  root: Node,
+  root: v2.std.node.Node,
   budget: Budget
-) -> Outcome<EnforcedLensResult<Output, Projected>> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<EnforcedLensResult<Output, Projected>> {
+  v2.std.diagnostic.bind_outcome(
     o: section_subject(root: root, section: section),
     f: fn(subject) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: enforceable.lens.read(root: subject),
         f: fn(lens_output) {
           let enforcement_result = lens_enforcement_result(
@@ -367,7 +368,7 @@ fn apply_lens_enforce<Output, Budget, Projected>(
             output: lens_output,
             budget: budget
           ) {
-            outcome_rejected(
+            v2.std.diagnostic.outcome_rejected(
               d: lens_enforcement_violation_diagnostic(
                 input: lens_enforcement_violation_input(
                   at: subject,
@@ -377,7 +378,7 @@ fn apply_lens_enforce<Output, Budget, Projected>(
               )
             )
           } else {
-            outcome_accepted(value: enforcement_result)
+            v2.std.diagnostic.outcome_accepted(value: enforcement_result)
           }
         }
       )
@@ -387,41 +388,41 @@ fn apply_lens_enforce<Output, Budget, Projected>(
 
 type ReportDiagnosticsFold {
   started: Bool
-  acc: NonEmptyDiagnostics
+  acc: v2.std.diagnostic.NonEmptyDiagnostics
 }
 
-fn advisory_reports_empty_diagnostic(at: Node) -> Diagnostic {
-  Diagnostic {
+fn advisory_reports_empty_diagnostic(at: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^advisory_reports_empty_reason,
-    at: node_locus(node: at),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: at),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn reports_to_non_empty_diagnostics(
-  reports: List<Report>,
-  at: Node
-) -> Outcome<NonEmptyDiagnostics> {
-  if is_empty(xs: reports) {
-    outcome_rejected(d: advisory_reports_empty_diagnostic(at: at))
+  reports: List<v2.std.report.Report>,
+  at: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<v2.std.diagnostic.NonEmptyDiagnostics> {
+  if v2.std.algebra.is_empty(xs: reports) {
+    v2.std.diagnostic.outcome_rejected(d: advisory_reports_empty_diagnostic(at: at))
   } else {
-    outcome_accepted(value: fold_list(
+    v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.fold_list(
       xs: reports,
       empty: ReportDiagnosticsFold {
         started: false,
-        acc: diagnostics_singleton(d: advisory_reports_empty_diagnostic(at: at))
+        acc: v2.std.diagnostic.diagnostics_singleton(d: advisory_reports_empty_diagnostic(at: at))
       },
       cons: fn(state, report) {
         match state.started {
           false => ReportDiagnosticsFold {
             started: true,
-            acc: diagnostics_singleton(d: advisory_report_diagnostic(report: report))
+            acc: v2.std.diagnostic.diagnostics_singleton(d: advisory_report_diagnostic(report: report))
           }
           true => ReportDiagnosticsFold {
             started: true,
-            acc: non_empty_diagnostics_append(
+            acc: v2.std.diagnostic.non_empty_diagnostics_append(
               a: state.acc,
-              b: diagnostics_singleton(d: advisory_report_diagnostic(report: report))
+              b: v2.std.diagnostic.diagnostics_singleton(d: advisory_report_diagnostic(report: report))
             )
           }
         }
@@ -433,23 +434,23 @@ fn reports_to_non_empty_diagnostics(
 fn apply_advisory_lens(
   lens: AdvisoryLens,
   section: SectionRef,
-  root: Node,
-  config: LensApplicationConfig<Report>
-) -> Outcome<List<Report>> {
-  bind_outcome(
+  root: v2.std.node.Node,
+  config: LensApplicationConfig<v2.std.report.Report>
+) -> v2.std.diagnostic.Outcome<List<v2.std.report.Report>> {
+  v2.std.diagnostic.bind_outcome(
     o: section_subject(root: root, section: section),
     f: fn(subject) {
       let reports = lens.read(root: subject)
       match config {
-        LensIntrospect => outcome_accepted(value: reports)
+        LensIntrospect => v2.std.diagnostic.outcome_accepted(value: reports)
         LensEnforce { budget: _ } =>
-          if is_empty(xs: reports) {
-            outcome_accepted(value: reports)
+          if v2.std.algebra.is_empty(xs: reports) {
+            v2.std.diagnostic.outcome_accepted(value: reports)
           } else {
-            bind_outcome(
+            v2.std.diagnostic.bind_outcome(
               o: reports_to_non_empty_diagnostics(reports: reports, at: subject),
               f: fn(diagnostics) {
-                Rejected { diagnostics: diagnostics }
+                v2.std.diagnostic.Rejected { diagnostics: diagnostics }
               }
             )
           }
@@ -458,6 +459,6 @@ fn apply_advisory_lens(
   )
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch }
 }

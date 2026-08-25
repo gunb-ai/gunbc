@@ -4,29 +4,29 @@ module v2.std.verdict
 type Verdict<Subj, T>
   = Pass
   | SemanticMismatch {
-      actual: Outcome<T>,
-      falsification: v2.std.optional.Optional<FalsificationReceipt<Subj, T>>
+      actual: v2.std.diagnostic.Outcome<T>,
+      falsification: v2.std.optional.Optional<v2.std.test_claim_falsification.FalsificationReceipt<Subj, T>>
     }
-  | BuildFailed { actual: Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic }
-  | RunFailed { actual: Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic }
-  | Deferred { actual: Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic }
+  | BuildFailed { actual: v2.std.diagnostic.Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic }
+  | RunFailed { actual: v2.std.diagnostic.Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic }
+  | Deferred { actual: v2.std.diagnostic.Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic }
 
 fn verdict_semantic_mismatch<Subj, T>(
-  actual: Outcome<T>,
-  falsification: v2.std.optional.Optional<FalsificationReceipt<Subj, T>>
+  actual: v2.std.diagnostic.Outcome<T>,
+  falsification: v2.std.optional.Optional<v2.std.test_claim_falsification.FalsificationReceipt<Subj, T>>
 ) -> Verdict<Subj, T> {
   SemanticMismatch { actual: actual, falsification: falsification }
 }
 
-fn verdict_build_failed<Subj, T>(actual: Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic) -> Verdict<Subj, T> {
+fn verdict_build_failed<Subj, T>(actual: v2.std.diagnostic.Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic) -> Verdict<Subj, T> {
   BuildFailed { actual: actual, diagnostic: diagnostic }
 }
 
-fn verdict_run_failed<Subj, T>(actual: Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic) -> Verdict<Subj, T> {
+fn verdict_run_failed<Subj, T>(actual: v2.std.diagnostic.Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic) -> Verdict<Subj, T> {
   RunFailed { actual: actual, diagnostic: diagnostic }
 }
 
-fn verdict_fail<Subj, T>(actual: Outcome<T>) -> Verdict<Subj, T> {
+fn verdict_fail<Subj, T>(actual: v2.std.diagnostic.Outcome<T>) -> Verdict<Subj, T> {
   verdict_semantic_mismatch(actual: actual, falsification: v2.std.optional.Absent)
 }
 
@@ -52,7 +52,7 @@ fn verdict_combine<Subj, T>(a: Verdict<Subj, T>, b: Verdict<Subj, T>) -> Verdict
   }
 }
 
-fn verdict_monoid<Subj, T>() -> Monoid<Verdict<Subj, T>> {
+fn verdict_monoid<Subj, T>() -> std.algebra.Monoid<Verdict<Subj, T>> {
   std.algebra.Monoid {
     op: verdict_combine,
     identity: Pass
@@ -65,7 +65,7 @@ type VerdictTally {
   deferred: v2.std.nat.Nat
 }
 
-data verdict_tally_empty: VerdictTally = VerdictTally { pass: Zero, fail: Zero, deferred: Zero }
+data verdict_tally_empty: VerdictTally = VerdictTally { pass: v2.std.nat.Zero, fail: v2.std.nat.Zero, deferred: v2.std.nat.Zero }
 
 fn verdict_tally_add<Subj, T>(t: VerdictTally, v: Verdict<Subj, T>) -> VerdictTally {
   match v {
@@ -88,14 +88,14 @@ fn verdict_tally<Subj, T>(vs: List<Verdict<Subj, T>>) -> VerdictTally {
 }
 
 fn verdict_tally_total(t: VerdictTally) -> v2.std.nat.Nat {
-  nat_add(a: nat_add(a: t.pass, b: t.fail), b: t.deferred)
+  v2.std.nat.nat_add(a: v2.std.nat.nat_add(a: t.pass, b: t.fail), b: t.deferred)
 }
 
 fn verdict_fold<Subj, T>(
   rs: List<Verdict<Subj, T>>,
   empty_verdict: Verdict<Subj, T>
 ) -> Verdict<Subj, T> {
-  match is_empty(xs: rs) {
+  match v2.std.algebra.is_empty(xs: rs) {
     true => empty_verdict
     false => fold(rs, init: Pass, f: fn(acc, v) {
       verdict_combine(a: acc, b: v)

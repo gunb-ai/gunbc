@@ -4,17 +4,17 @@ module test.claim.dispatch_selection_witness
 fn fixture_multibucket_codex_standing_inventory(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> gunbc.dispatch_selection.ProviderInventory {
-  match dashboard_instance_provider_executable(instance: instance) {
+  match gunbc.roadmap_dashboard_instance.dashboard_instance_provider_executable(instance: instance) {
     Absent => gunbc.dispatch_selection.ProviderInventory { offers: [] }
     Present { value: executable } =>
       gunbc.dispatch_selection.ProviderInventory {
         offers: [
-          fixture_codex_offer_with_standing(
+          gunbc.dispatch_selection.fixture_codex_offer_with_standing(
             instance: instance,
             executable: executable,
-            standing: provider_standing_from_fixture_bundle(
+            standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
               provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-                kind: CodexCliProvider,
+                kind: extdeps.llm.cli_lifecycle.CodexCliProvider,
                 host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
                 executable: "codex" as std.types.NonEmptyStr,
                 observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -25,26 +25,26 @@ fn fixture_multibucket_codex_standing_inventory(
                 service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
               },
               bundle: gunbc.provider_standing.ProviderStandingBundle {
-                installation: InstallationReady,
-                authentication: AuthenticationAuthenticated,
-                entitlement: EntitlementObservedAvailable,
+                installation: gunbc.provider_standing.InstallationReady,
+                authentication: gunbc.provider_standing.AuthenticationAuthenticated,
+                entitlement: gunbc.provider_standing.EntitlementObservedAvailable,
                 limits: [
                   gunbc.provider_standing.LimitExhausted {
                     subject: gunbc.provider_standing.ProviderNativeLimitBucket {
-                      credential: LimitCredentialUnspecified,
+                      credential: gunbc.provider_standing.LimitCredentialUnspecified,
                       native_key: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
                     },
                     native_token: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
                   },
                   gunbc.provider_standing.LimitObservedAvailable {
                     subject: gunbc.provider_standing.ProviderNativeLimitBucket {
-                      credential: LimitCredentialUnspecified,
-                      native_key: codex_bengalfox_rate_limit_id,
+                      credential: gunbc.provider_standing.LimitCredentialUnspecified,
+                      native_key: extdeps.llm.codex_app_server.codex_bengalfox_rate_limit_id,
                     },
                   },
                 ],
-                turn: TurnNotStarted,
-                tool_environment: ToolEnvironmentReady,
+                turn: gunbc.provider_standing.TurnNotStarted,
+                tool_environment: gunbc.provider_standing.ToolEnvironmentReady,
               },
             ),
           ),
@@ -54,118 +54,118 @@ fn fixture_multibucket_codex_standing_inventory(
 }
 
 test fn witness_automatic_codex_preserves_medium_effort() -> Bool {
-  automatic_codex_behavior_preservation_holds(
-    instance: srv1_live_dashboard_instance(),
+  gunbc.dispatch_selection.automatic_codex_behavior_preservation_holds(
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
   )
 }
 
 test fn witness_intricacy_does_not_change_automatic_effort() -> Bool {
-  let inventory = fixture_inventory_codex_only_available(
-    instance: srv1_live_dashboard_instance(),
+  let inventory = gunbc.dispatch_selection.fixture_inventory_codex_only_available(
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
   )
-  let high = resolve_dispatch_selection(
+  let high = gunbc.dispatch_selection.resolve_dispatch_selection(
     inventory: inventory,
-    request: default_provider_selection_request(),
+    request: gunbc.dispatch_selection.default_provider_selection_request(),
     node_sizing: gunbc.roadmap_model.Sized {
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
+      intricacy: gunbc.roadmap_model.IntricacyHigh,
+      volume: gunbc.roadmap_model.VolumeMedium,
       repo: "gunbc",
-      acceptance: PrsMerged,
+      acceptance: gunbc.roadmap_model.PrsMerged,
     },
   )
-  let low = resolve_dispatch_selection(
+  let low = gunbc.dispatch_selection.resolve_dispatch_selection(
     inventory: inventory,
-    request: default_provider_selection_request(),
+    request: gunbc.dispatch_selection.default_provider_selection_request(),
     node_sizing: gunbc.roadmap_model.Sized {
-      intricacy: IntricacyLow,
-      volume: VolumeMedium,
+      intricacy: gunbc.roadmap_model.IntricacyLow,
+      volume: gunbc.roadmap_model.VolumeMedium,
       repo: "gunbc",
-      acceptance: PrsMerged,
+      acceptance: gunbc.roadmap_model.PrsMerged,
     },
   )
   match high {
-    DispatchSelectionResolved { receipt: high_receipt } =>
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt: high_receipt } =>
       match low {
-        DispatchSelectionResolved { receipt: low_receipt } =>
-          high_receipt.applied_effort == ReasoningMedium
-            && low_receipt.applied_effort == ReasoningMedium
+        gunbc.dispatch_selection.DispatchSelectionResolved { receipt: low_receipt } =>
+          high_receipt.applied_effort == extdeps.llm.cli.ReasoningMedium
+            && low_receipt.applied_effort == extdeps.llm.cli.ReasoningMedium
             && high_receipt.applied_effort == low_receipt.applied_effort
-        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } =>
+        gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } =>
           false
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 
 test fn witness_deep_profile_refuses_without_realization() -> Bool {
-  match resolve_dispatch_selection(
-    inventory: fixture_inventory_codex_only_available(
-      instance: srv1_live_dashboard_instance(),
+  match gunbc.dispatch_selection.resolve_dispatch_selection(
+    inventory: gunbc.dispatch_selection.fixture_inventory_codex_only_available(
+      instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     ),
-    request: gunbc.dispatch_selection.SelectAutomatically { profile: ProfileDeep },
-    node_sizing: Unsized,
+    request: gunbc.dispatch_selection.SelectAutomatically { profile: gunbc.dispatch_selection.ProfileDeep },
+    node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
-    DispatchSelectionResolved { receipt: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt: _ } => false
   }
 }
 
 test fn witness_production_codex_selection_refuses_unobserved_fingerprint() -> Bool {
-  let inventory = provider_inventory_for_instance(
-    instance: srv1_live_dashboard_instance(),
+  let inventory = gunbc.dispatch_selection.provider_inventory_for_instance(
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
   )
   let production_offer_is_unobserved = any(inventory.offers, offer =>
     match offer {
-      OfferCodex { offer: o } =>
+      gunbc.dispatch_selection.OfferCodex { offer: o } =>
         match o.process_fingerprint {
-          CodexProcessFingerprintUnobserved { reason: _ } => true
+          gunbc.codex_provider_runtime_receipt.CodexProcessFingerprintUnobserved { reason: _ } => true
           _ => false
         }
       _ => false
     }
   )
-  match resolve_dispatch_selection(
+  match gunbc.dispatch_selection.resolve_dispatch_selection(
     inventory: inventory,
-    request: default_provider_selection_request(),
-    node_sizing: Unsized,
+    request: gunbc.dispatch_selection.default_provider_selection_request(),
+    node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
       production_offer_is_unobserved
         && (
-          reason == dispatch_codex_process_fingerprint_unobserved_selection_refusal
-          || reason == dispatch_selection_standing_ineligible_reason
+          reason == gunbc.dispatch_selection.dispatch_codex_process_fingerprint_unobserved_selection_refusal
+          || reason == gunbc.dispatch_selection.dispatch_selection_standing_ineligible_reason
         )
-    DispatchSelectionResolved { receipt: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt: _ } => false
   }
 }
 
 test fn witness_srv1_inventory_includes_codex() -> Bool {
-  match dashboard_instance_provider_executable(instance: srv1_live_dashboard_instance()) {
+  match gunbc.roadmap_dashboard_instance.dashboard_instance_provider_executable(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()) {
     Absent => false
     Present { value: executable } =>
-      inventory_includes_provider_kind(
+      gunbc.dispatch_selection.inventory_includes_provider_kind(
         inventory: gunbc.dispatch_selection.ProviderInventory {
           offers: [
-            fixture_codex_offer_with_standing(
-              instance: srv1_live_dashboard_instance(),
-              standing: provider_standing_inventory_unobserved(),
+            gunbc.dispatch_selection.fixture_codex_offer_with_standing(
+              instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
+              standing: gunbc.provider_standing.provider_standing_inventory_unobserved(),
               executable: executable,
             ),
           ],
         },
-        kind: CodexCliProvider,
+        kind: extdeps.llm.cli_lifecycle.CodexCliProvider,
       )
   }
 }
 
 test fn witness_srv1_inventory_includes_claude() -> Bool {
-  inventory_includes_provider_kind(
-    inventory: fixture_inventory_codex_then_claude(
-      instance: srv1_live_dashboard_instance(),
-      codex_standing: provider_standing_inventory_unobserved(),
-      claude_standing: provider_standing_from_fixture_bundle(
+  gunbc.dispatch_selection.inventory_includes_provider_kind(
+    inventory: gunbc.dispatch_selection.fixture_inventory_codex_then_claude(
+      instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
+      codex_standing: gunbc.provider_standing.provider_standing_inventory_unobserved(),
+      claude_standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
         provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-          kind: ClaudeCliProvider,
+          kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
           host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as std.types.NonEmptyStr },
           executable: "claude" as std.types.NonEmptyStr,
           observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
@@ -181,143 +181,143 @@ test fn witness_srv1_inventory_includes_claude() -> Bool {
             reason: "fixture claude inventory row" as std.types.NonEmptyStr,
           },
         },
-        bundle: fixture_standing_bundle_authenticated_available(),
+        bundle: gunbc.provider_standing.fixture_standing_bundle_authenticated_available(),
       ),
     ),
-    kind: ClaudeCliProvider,
+    kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
   )
 }
 
 test fn witness_production_inventory_excludes_claude() -> Bool {
-  !inventory_includes_provider_kind(
-    inventory: provider_inventory_for_instance(
-      instance: srv1_live_dashboard_instance(),
+  !gunbc.dispatch_selection.inventory_includes_provider_kind(
+    inventory: gunbc.dispatch_selection.provider_inventory_for_instance(
+      instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     ),
-    kind: ClaudeCliProvider,
+    kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
   )
 }
 
 test fn witness_srv2_inventory_includes_cursor() -> Bool {
-  inventory_includes_provider_kind(
-    inventory: provider_inventory_for_instance(
-      instance: srv2_lab_dashboard_instance(),
+  gunbc.dispatch_selection.inventory_includes_provider_kind(
+    inventory: gunbc.dispatch_selection.provider_inventory_for_instance(
+      instance: gunbc.roadmap_dashboard_instance.srv2_lab_dashboard_instance(),
     ),
-    kind: CursorCliProvider,
+    kind: extdeps.llm.cli_lifecycle.CursorCliProvider,
   )
 }
 
 test fn witness_srv2_cursor_selection_resolves() -> Bool {
-  match resolve_dispatch_selection(
-    inventory: fixture_inventory_codex_and_cursor_available(
-      instance: srv2_lab_dashboard_instance(),
+  match gunbc.dispatch_selection.resolve_dispatch_selection(
+    inventory: gunbc.dispatch_selection.fixture_inventory_codex_and_cursor_available(
+      instance: gunbc.roadmap_dashboard_instance.srv2_lab_dashboard_instance(),
     ),
     request: gunbc.dispatch_selection.SelectCursor {
-      profile: ProfileAutomatic,
-      credential: CursorLocalLoginRef,
+      profile: gunbc.dispatch_selection.ProfileAutomatic,
+      credential: gunbc.dispatch_selection.CursorLocalLoginRef,
       model: extdeps.llm.cursor_cli.cursor_model_auto,
       agent_mode: "default-edit",
     },
-    node_sizing: Unsized,
+    node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchSelectionResolved { receipt } =>
-      receipt.provider_kind == CursorCliProvider
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt } =>
+      receipt.provider_kind == extdeps.llm.cli_lifecycle.CursorCliProvider
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 
 test fn witness_receipt_records_requested_and_resolved() -> Bool {
-  let request = gunbc.dispatch_selection.SelectAutomatically { profile: ProfileAutomatic }
-  match resolve_dispatch_selection(
-    inventory: fixture_inventory_codex_only_available(
-      instance: srv1_live_dashboard_instance(),
+  let request = gunbc.dispatch_selection.SelectAutomatically { profile: gunbc.dispatch_selection.ProfileAutomatic }
+  match gunbc.dispatch_selection.resolve_dispatch_selection(
+    inventory: gunbc.dispatch_selection.fixture_inventory_codex_only_available(
+      instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     ),
     request: request,
-    node_sizing: Unsized,
+    node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchSelectionResolved { receipt } =>
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt } =>
       match receipt.requested_selection {
-        SelectAutomatically { profile: ProfileAutomatic } =>
+        gunbc.dispatch_selection.SelectAutomatically { profile: gunbc.dispatch_selection.ProfileAutomatic } =>
           match receipt.resolved_selection {
-            ResolvedCodex { selection: s, instance: _, account_binding: _ } =>
-              s.effort == ReasoningMedium
-                && receipt.applied_effort == ReasoningMedium
-                && receipt.provider_kind == CodexCliProvider
+            gunbc.dispatch_selection.ResolvedCodex { selection: s, instance: _, account_binding: _ } =>
+              s.effort == extdeps.llm.cli.ReasoningMedium
+                && receipt.applied_effort == extdeps.llm.cli.ReasoningMedium
+                && receipt.provider_kind == extdeps.llm.cli_lifecycle.CodexCliProvider
                 && match receipt.resolved_execution {
-                  DispatchResolvedExecution {
+                  gunbc.dispatch_selection.DispatchResolvedExecution {
                     provider_instance: inst,
-                    credential_binding: CodexCredentialBinding { binding: _ },
-                    model_identity: DispatchModelNamed { model: m },
-                    provider_control: CodexProviderControl { effort: e },
+                    credential_binding: gunbc.dispatch_selection.CodexCredentialBinding { binding: _ },
+                    model_identity: gunbc.dispatch_selection.DispatchModelNamed { model: m },
+                    provider_control: gunbc.dispatch_selection.CodexProviderControl { effort: e },
                     provider_version: _,
-                    temporal_bounds: DispatchTemporalUnobserved { reason: _ },
-                    usage_observations: DispatchUsageUnobserved { reason: _ },
-                    attempt_identity: DispatchAttemptUnassigned { reason: _ },
+                    temporal_bounds: gunbc.dispatch_selection.DispatchTemporalUnobserved { reason: _ },
+                    usage_observations: gunbc.dispatch_selection.DispatchUsageUnobserved { reason: _ },
+                    attempt_identity: gunbc.dispatch_selection.DispatchAttemptUnassigned { reason: _ },
                   } =>
-                    inst.kind == CodexCliProvider
-                      && m == dispatch_codex_default_model
-                      && e == ReasoningMedium
+                    inst.kind == extdeps.llm.cli_lifecycle.CodexCliProvider
+                      && m == gunbc.dispatch_selection.dispatch_codex_default_model
+                      && e == extdeps.llm.cli.ReasoningMedium
                 }
             _ => false
           }
         _ => false
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 
 test fn witness_carrier_notes_record_directive_addendum() -> Bool {
   string_contains(
-    s: dispatch_execution_preference_alias_note,
+    s: gunbc.dispatch_selection.dispatch_execution_preference_alias_note,
     pattern: "ExecutionPreference",
   )
     && string_contains(
-      s: dispatch_deep_selection_heuristic_note,
+      s: gunbc.dispatch_selection.dispatch_deep_selection_heuristic_note,
       pattern: "RISK/JUDGMENT",
     )
     && string_contains(
-      s: dispatch_execution_receipt_bar_note,
+      s: gunbc.dispatch_selection.dispatch_execution_receipt_bar_note,
       pattern: "REQUESTED",
     )
 }
 
 test fn witness_wrong_selection_shape_refuses() -> Bool {
-  match dispatch_selection_for_instance(
-    instance: srv1_live_dashboard_instance(),
+  match gunbc.dispatch_selection.dispatch_selection_for_instance(
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     request: gunbc.dispatch_selection.SelectCursor {
-      profile: ProfileAutomatic,
-      credential: CursorLocalLoginRef,
+      profile: gunbc.dispatch_selection.ProfileAutomatic,
+      credential: gunbc.dispatch_selection.CursorLocalLoginRef,
       model: extdeps.llm.cursor_cli.cursor_model_auto,
       agent_mode: "default-edit",
     },
-    node_sizing: Unsized,
+    node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
-      reason == dispatch_selection_shape_mismatch_reason
-    DispatchSelectionResolved { receipt: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+      reason == gunbc.dispatch_selection.dispatch_selection_shape_mismatch_reason
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt: _ } => false
   }
 }
 
 test fn witness_probe_bridge_ineligible_standing_refuses_selection() -> Bool {
-  let instance = srv1_live_dashboard_instance()
-  match dashboard_instance_provider_executable(instance: instance) {
+  let instance = gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()
+  match gunbc.roadmap_dashboard_instance.dashboard_instance_provider_executable(instance: instance) {
     Absent => false
     Present { value: executable } =>
-      match resolve_dispatch_selection(
+      match gunbc.dispatch_selection.resolve_dispatch_selection(
         inventory: gunbc.dispatch_selection.ProviderInventory {
           offers: [
-            fixture_codex_offer_with_standing(
+            gunbc.dispatch_selection.fixture_codex_offer_with_standing(
               instance: instance,
-              standing: provider_standing_from_observed_bundle(
-                fact_id: selection_fixture_standing_fact_id,
-                provider: codex_offer_for_instance_with_standing(
+              standing: gunbc.provider_standing.provider_standing_from_observed_bundle(
+                fact_id: gunbc.provider_standing.selection_fixture_standing_fact_id,
+                provider: gunbc.dispatch_selection.codex_offer_for_instance_with_standing(
                   instance: instance,
-                  standing: provider_standing_inventory_unobserved(),
+                  standing: gunbc.provider_standing.provider_standing_inventory_unobserved(),
                   executable: executable,
-                  process_fingerprint: fixture_codex_process_fingerprint_standing(),
+                  process_fingerprint: gunbc.dispatch_selection.fixture_codex_process_fingerprint_standing(),
                 ).instance,
-                bundle: provider_standing_bundle_from_codex_dashboard_probes(
+                bundle: gunbc.provider_standing_probe_bridge.provider_standing_bundle_from_codex_dashboard_probes(
                   observation: gunbc.provider_standing_probe_bridge.CodexProviderDashboardProbeObservation {
-                    state_root: CodexStateRootPresent,
+                    state_root: gunbc.provider_standing_probe_bridge.CodexStateRootPresent,
                     runtime: gunbc.provider_standing_probe_bridge.ProviderDashboardExecProbeReported {
                       succeeded: true,
                       stdout: "codex-cli 0.145.0" as String,
@@ -335,20 +335,20 @@ test fn witness_probe_bridge_ineligible_standing_refuses_selection() -> Bool {
             ),
           ],
         },
-        request: default_provider_selection_request(),
-        node_sizing: Unsized,
+        request: gunbc.dispatch_selection.default_provider_selection_request(),
+        node_sizing: gunbc.roadmap_model.Unsized,
       ) {
-        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
-          reason == dispatch_selection_standing_ineligible_reason
-        DispatchSelectionResolved { receipt: _ } => false
+        gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+          reason == gunbc.dispatch_selection.dispatch_selection_standing_ineligible_reason
+        gunbc.dispatch_selection.DispatchSelectionResolved { receipt: _ } => false
       }
   }
 }
 
 test fn witness_srv1_claude_selection_resolves_with_fixture_standing() -> Bool {
-  let instance = srv1_live_dashboard_instance()
+  let instance = gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()
   let claude_provider = extdeps.llm.cli_lifecycle.ProviderInstance {
-    kind: ClaudeCliProvider,
+    kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
     host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as std.types.NonEmptyStr },
     executable: "claude" as std.types.NonEmptyStr,
     observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
@@ -364,105 +364,105 @@ test fn witness_srv1_claude_selection_resolves_with_fixture_standing() -> Bool {
       reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
   }
-  match resolve_dispatch_selection(
-    inventory: fixture_inventory_codex_then_claude(
+  match gunbc.dispatch_selection.resolve_dispatch_selection(
+    inventory: gunbc.dispatch_selection.fixture_inventory_codex_then_claude(
       instance: instance,
-      codex_standing: provider_standing_inventory_unobserved(),
-      claude_standing: provider_standing_from_fixture_bundle(
+      codex_standing: gunbc.provider_standing.provider_standing_inventory_unobserved(),
+      claude_standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
         provider: claude_provider,
-        bundle: fixture_standing_bundle_authenticated_available(),
+        bundle: gunbc.provider_standing.fixture_standing_bundle_authenticated_available(),
       ),
     ),
-    request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
-    node_sizing: Unsized,
+    request: gunbc.dispatch_selection.provider_selection_request_for_kind(kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider),
+    node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchSelectionResolved { receipt } =>
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt } =>
       match receipt.resolved_selection {
-        ResolvedClaude { selection: s, instance: _ } =>
-          receipt.provider_kind == ClaudeCliProvider
-            && s.effort == ReasoningMedium
+        gunbc.dispatch_selection.ResolvedClaude { selection: s, instance: _ } =>
+          receipt.provider_kind == extdeps.llm.cli_lifecycle.ClaudeCliProvider
+            && s.effort == extdeps.llm.cli.ReasoningMedium
         _ => false
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 
 test fn witness_claude_request_refuses_on_codex_only_inventory() -> Bool {
-  match resolve_dispatch_selection(
-    inventory: fixture_inventory_codex_only_available(
-      instance: srv2_lab_dashboard_instance(),
+  match gunbc.dispatch_selection.resolve_dispatch_selection(
+    inventory: gunbc.dispatch_selection.fixture_inventory_codex_only_available(
+      instance: gunbc.roadmap_dashboard_instance.srv2_lab_dashboard_instance(),
     ),
-    request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
-    node_sizing: Unsized,
+    request: gunbc.dispatch_selection.provider_selection_request_for_kind(kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider),
+    node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
-      reason == dispatch_selection_shape_mismatch_reason
-    DispatchSelectionResolved { receipt: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+      reason == gunbc.dispatch_selection.dispatch_selection_shape_mismatch_reason
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt: _ } => false
   }
 }
 
 test fn witness_exact_override_requires_explicit_provider_arm() -> Bool {
-  match dispatch_selection_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    request: gunbc.dispatch_selection.SelectAutomatically { profile: ProfileExactOverride },
-    node_sizing: Unsized,
+  match gunbc.dispatch_selection.dispatch_selection_for_instance(
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
+    request: gunbc.dispatch_selection.SelectAutomatically { profile: gunbc.dispatch_selection.ProfileExactOverride },
+    node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
-    DispatchSelectionResolved { receipt: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => true
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt: _ } => false
   }
 }
 
 test fn witness_automatic_multibucket_native_exhaustion_refuses_join_undetermined() -> Bool {
   let inventory = fixture_multibucket_codex_standing_inventory(
-    instance: srv1_live_dashboard_instance(),
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
   )
-  match resolve_dispatch_selection(
+  match gunbc.dispatch_selection.resolve_dispatch_selection(
     inventory: inventory,
-    request: default_provider_selection_request(),
-    node_sizing: Unsized,
+    request: gunbc.dispatch_selection.default_provider_selection_request(),
+    node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
-      reason == dispatch_selection_automatic_native_bucket_join_undetermined_refusal(native_key: extdeps.llm.codex_app_server.codex_default_rate_limit_id)
-    DispatchSelectionResolved { receipt: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+      reason == gunbc.dispatch_selection.dispatch_selection_automatic_native_bucket_join_undetermined_refusal(native_key: extdeps.llm.codex_app_server.codex_default_rate_limit_id)
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt: _ } => false
   }
 }
 
 test fn witness_explicit_override_bengalfox_admitted_from_same_inventory() -> Bool {
   let inventory = fixture_multibucket_codex_standing_inventory(
-    instance: srv1_live_dashboard_instance(),
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
   )
-  match resolve_dispatch_selection(
+  match gunbc.dispatch_selection.resolve_dispatch_selection(
     inventory: inventory,
     request: gunbc.dispatch_selection.SelectCodex {
-      profile: ProfileExactOverride,
-      account: codex_roadmap_account_selection(),
-      model: dispatch_codex_default_model,
-      effort: ReasoningMedium,
+      profile: gunbc.dispatch_selection.ProfileExactOverride,
+      account: gunbc.provider_account.codex_roadmap_account_selection(),
+      model: gunbc.dispatch_selection.dispatch_codex_default_model,
+      effort: extdeps.llm.cli.ReasoningMedium,
       operator_asserted_native_limit_bucket: Present {
-        value: codex_bengalfox_rate_limit_id,
+        value: extdeps.llm.codex_app_server.codex_bengalfox_rate_limit_id,
       },
     },
-    node_sizing: Unsized,
+    node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchSelectionResolved { receipt } =>
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt } =>
       match receipt.resolved_selection {
-        ResolvedCodex { selection: s } =>
-          receipt.provider_kind == CodexCliProvider
-            && s.model == dispatch_codex_default_model
+        gunbc.dispatch_selection.ResolvedCodex { selection: s } =>
+          receipt.provider_kind == extdeps.llm.cli_lifecycle.CodexCliProvider
+            && s.model == gunbc.dispatch_selection.dispatch_codex_default_model
         _ => false
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 
 test fn witness_select_claude_automatic_honors_request_credential_and_model() -> Bool {
-  let instance = srv1_live_dashboard_instance()
+  let instance = gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()
   let request_credential = gunbc.dispatch_selection.ClaudeStateRootRef {
     root: "/managed/claude-enrollment" as std.types.FilePath,
   }
   let request_model = "claude-managed-model" as std.types.NonEmptyStr
   let claude_provider = extdeps.llm.cli_lifecycle.ProviderInstance {
-    kind: ClaudeCliProvider,
+    kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
     host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as std.types.NonEmptyStr },
     executable: "claude" as std.types.NonEmptyStr,
     observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
@@ -478,33 +478,33 @@ test fn witness_select_claude_automatic_honors_request_credential_and_model() ->
       reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
   }
-  match resolve_dispatch_selection(
-    inventory: fixture_inventory_codex_then_claude(
+  match gunbc.dispatch_selection.resolve_dispatch_selection(
+    inventory: gunbc.dispatch_selection.fixture_inventory_codex_then_claude(
       instance: instance,
-      codex_standing: provider_standing_inventory_unobserved(),
-      claude_standing: provider_standing_from_fixture_bundle(
+      codex_standing: gunbc.provider_standing.provider_standing_inventory_unobserved(),
+      claude_standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
         provider: claude_provider,
-        bundle: fixture_standing_bundle_authenticated_available(),
+        bundle: gunbc.provider_standing.fixture_standing_bundle_authenticated_available(),
       ),
     ),
     request: gunbc.dispatch_selection.SelectClaude {
-      profile: ProfileAutomatic,
+      profile: gunbc.dispatch_selection.ProfileAutomatic,
       credential: request_credential,
       model: request_model,
-      effort: ReasoningHigh,
-      workflow_mode: dispatch_claude_default_workflow_mode,
+      effort: extdeps.llm.cli.ReasoningHigh,
+      workflow_mode: gunbc.dispatch_selection.dispatch_claude_default_workflow_mode,
     },
-    node_sizing: Unsized,
+    node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchSelectionResolved { receipt } =>
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt } =>
       match receipt.resolved_selection {
-        ResolvedClaude { selection: s, instance: _ } =>
+        gunbc.dispatch_selection.ResolvedClaude { selection: s, instance: _ } =>
           s.credential == request_credential
             && s.model == request_model
-            && s.effort == ReasoningMedium
+            && s.effort == extdeps.llm.cli.ReasoningMedium
         _ => false
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 

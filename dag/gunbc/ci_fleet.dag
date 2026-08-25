@@ -32,7 +32,7 @@ fn per_second_billed_cost_quote(unit_price: std.measure.MoneyAmountMicro, curren
 }
 
 fn cost_estimate_unit_price_micros(quote: CostEstimate) -> std.nat.Nat {
-  money_amount_micro_count(m: quote.unit_price)
+  std.measure.money_amount_micro_count(m: quote.unit_price)
 }
 
 fn operator_owned_cost() -> CostModel {
@@ -42,8 +42,8 @@ fn operator_owned_cost() -> CostModel {
 data srv1_offer: ComputeOffer = ComputeOffer {
   provider: "gunbc-operator-srv1",
   supply: ComputeSupplyFacts {
-    physical: srv1_host,
-    execution: fleet_intent_execution_surface(),
+    physical: gunbc.fleet_intent.srv1_host,
+    execution: gunbc.fleet_intent.fleet_intent_execution_surface(),
     cost: Present { value: operator_owned_cost() },
     observed_performance: [],
   },
@@ -54,8 +54,8 @@ data srv1_offer: ComputeOffer = ComputeOffer {
 data srv2_offer: ComputeOffer = ComputeOffer {
   provider: "gunbc-operator-srv2",
   supply: ComputeSupplyFacts {
-    physical: srv2_host,
-    execution: fleet_intent_execution_surface(),
+    physical: gunbc.fleet_intent.srv2_host,
+    execution: gunbc.fleet_intent.fleet_intent_execution_surface(),
     cost: Present { value: operator_owned_cost() },
     observed_performance: [],
   },
@@ -66,8 +66,8 @@ data srv2_offer: ComputeOffer = ComputeOffer {
 data srv3_offer: ComputeOffer = ComputeOffer {
   provider: "gunbc-operator-srv3",
   supply: ComputeSupplyFacts {
-    physical: srv3_host,
-    execution: fleet_intent_execution_surface(),
+    physical: gunbc.fleet_intent.srv3_host,
+    execution: gunbc.fleet_intent.fleet_intent_execution_surface(),
     cost: Present { value: operator_owned_cost() },
     observed_performance: [],
   },
@@ -78,8 +78,8 @@ data srv3_offer: ComputeOffer = ComputeOffer {
 data srv4_offer: ComputeOffer = ComputeOffer {
   provider: "gunbc-operator-srv4",
   supply: ComputeSupplyFacts {
-    physical: srv4_host,
-    execution: fleet_intent_execution_surface(),
+    physical: gunbc.fleet_intent.srv4_host,
+    execution: gunbc.fleet_intent.fleet_intent_execution_surface(),
     cost: Present { value: operator_owned_cost() },
     observed_performance: [],
   },
@@ -92,22 +92,22 @@ data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_off
 data gunbc_ci_host_identity: product.placement_supply.HostIdentity = "gunbc-ci-fleet"
 
 data gunbc_ci_cpu: extdeps.cpu.types.CpuFacts = extdeps.cpu.types.CpuFacts {
-  catalog: altra_q6430_catalog,
-  deployment: extdeps.cpu.types.CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
+  catalog: extdeps.cpu.ampere.altra_q6430_catalog,
+  deployment: extdeps.cpu.types.CpuDeploymentFacts { sustained_per_thread_hz: std.measure.hertz(3000000000) },
 }
 
 data gunbc_ci_linux_surface: std.os.types.OperatingSystemSurface = std.os.types.OperatingSystemSurface {
-  kernel: Linux,
+  kernel: std.os.types.Linux,
   distro_or_product: none,
   version: none,
-  filesystem_semantics: Posix,
-  process_semantics: PosixProcess,
+  filesystem_semantics: std.os.types.Posix,
+  process_semantics: std.os.types.PosixProcess,
 }
 
-data gunbc_ci_host_memory_deferral_note: String = fleet_host_memory_nominal_vs_usable_note
+data gunbc_ci_host_memory_deferral_note: String = gunbc.fleet_intent.fleet_host_memory_nominal_vs_usable_note
 
 data gunbc_ci_host_memory_deferral_disposition: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_fleet",
     decl_name: "gunbc_ci_host",
@@ -119,7 +119,7 @@ data gunbc_ci_host: gunbc.fleet_intent.ComputeHost = gunbc.fleet_intent.ComputeH
   identity: gunbc_ci_host_identity,
   baseboard: none,
   processors: [gunbc.fleet_intent.CpuProcessor { cpu: gunbc_ci_cpu }],
-  memory: [gunbc.fleet_intent.MemoryDevice { capacity: byte_size(134217728000), memory_kind: Dram, bandwidth: none }],
+  memory: [gunbc.fleet_intent.MemoryDevice { capacity: std.measure.byte_size(134217728000), memory_kind: extdeps.memory.types.Dram, bandwidth: none }],
   storage: [],
   network_interfaces: [],
 }
@@ -130,7 +130,7 @@ data gunbc_ci_fleet_offer: ComputeOffer = ComputeOffer {
     physical: gunbc_ci_host,
     execution: gunbc.fleet_intent.ExecutionSurface {
       os: gunbc_ci_linux_surface,
-      isolation: PerJobFilesystem,
+      isolation: gunbc.fleet_intent.PerJobFilesystem,
       container_runtime: none,
       toolchains: [],
       mounted_storage: [],

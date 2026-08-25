@@ -11,7 +11,7 @@ module product.altra_motherboard.minimal_design
 // part is documented as being outside its production envelope, and a design that quietly selected
 // two to save routing effort would be shipping a debug fixture wearing a product's name. That is
 // why the channel count is selected against a declared INTENT here rather than chosen as a scalar
-// — the same count is admissible for one purpose and refused for another, which a bare std.integer.Int cannot
+// — the same count is admissible for one purpose and refused for another, which a bare Int cannot
 // express.
 // WHAT THE BOARD IS FOR, and it is a modelled fact because the vendor's admissibility depends on
 // it. An engineering bring-up board is a legitimate thing to build and the one- and two-channel
@@ -23,13 +23,13 @@ type DesignIntent
 
 
 type DesignRefusal
-  = DebugOnlyChannelCountUnderProductionIntent { selected: std.integer.Int }
-  | ChannelCountExceedsControllerPopulation { selected: std.integer.Int, available: std.integer.Int }
-  | ChannelPopulationIsNotAnAdmittedCount { populated: std.integer.Int }
-  | ChannelPopulatedMoreThanOnce { channel: std.integer.Int }
+  = DebugOnlyChannelCountUnderProductionIntent { selected: Int }
+  | ChannelCountExceedsControllerPopulation { selected: Int, available: Int }
+  | ChannelPopulationIsNotAnAdmittedCount { populated: Int }
+  | ChannelPopulatedMoreThanOnce { channel: Int }
   | ChannelHasNoDimmPositions
-  | DimmPositionRepeatedOnChannel { position: std.integer.Int }
-  | PcieLanesExceedPackage { requested: std.integer.Int, available: std.integer.Int }
+  | DimmPositionRepeatedOnChannel { position: Int }
+  | PcieLanesExceedPackage { requested: Int, available: Int }
 
 // A CHANNEL HAS AN IDENTITY, AND IT IS NOT ITS ORDINAL POSITION IN A COUNT. An earlier revision
 // derived the populated set from the count by generating [0..n), which is cardinality standing
@@ -51,7 +51,7 @@ type DdrChannelIdentity
   | DdrChannel6
   | DdrChannel7
 
-fn ddr_channel_ordinal(c: DdrChannelIdentity) -> std.integer.Int {
+fn ddr_channel_ordinal(c: DdrChannelIdentity) -> Int {
   match c {
     DdrChannel0 => 0
     DdrChannel1 => 1
@@ -73,7 +73,7 @@ type DimmSlotPosition
   = FirstDimmOnChannel
   | SecondDimmOnChannel
 
-fn dimm_slot_position_ordinal(p: DimmSlotPosition) -> std.integer.Int {
+fn dimm_slot_position_ordinal(p: DimmSlotPosition) -> Int {
   match p {
     FirstDimmOnChannel => 0
     SecondDimmOnChannel => 1
@@ -93,8 +93,8 @@ type ActiveDdrTopology {
   positions_per_channel: List<DimmSlotPosition>
 }
 
-fn topology_channel_count(t: ActiveDdrTopology) -> std.integer.Int {
-  list_length(items: t.populated_channels)
+fn topology_channel_count(t: ActiveDdrTopology) -> Int {
+  std.types.list_length(items: t.populated_channels)
 }
 
 fn topology_slot_identities(t: ActiveDdrTopology) -> List<DdrSlotIdentity> {
@@ -122,16 +122,16 @@ type MemoryConfiguration {
 // set, which becomes a refusal below rather than a nearest admitted value. This is the direction
 // the old shape could not fail in — a count could only ever be admissible, because it was chosen
 // from the admissible type in the first place.
-fn admitted_channel_count(n: std.integer.Int) -> extdeps.cpu.ampere_altra_memory_controller.ActiveDdrChannelCount? {
-  fold([OneChannel, TwoChannels, FourChannels, SixChannels, EightChannels], init: none, f: fn(acc, c) {
+fn admitted_channel_count(n: Int) -> extdeps.cpu.ampere_altra_memory_controller.ActiveDdrChannelCount? {
+  fold([extdeps.cpu.ampere_altra_memory_controller.OneChannel, extdeps.cpu.ampere_altra_memory_controller.TwoChannels, extdeps.cpu.ampere_altra_memory_controller.FourChannels, extdeps.cpu.ampere_altra_memory_controller.SixChannels, extdeps.cpu.ampere_altra_memory_controller.EightChannels], init: none, f: fn(acc, c) {
     match acc {
       Present { value: v } => Present { value: v }
-      Absent => if active_channel_count(c: c) == n { Present { value: c } } else { none }
+      Absent => if extdeps.cpu.ampere_altra_memory_controller.active_channel_count(c: c) == n { Present { value: c } } else { none }
     }
   })
 }
 
-fn channel_occurrences(cs: List<DdrChannelIdentity>, c: DdrChannelIdentity) -> std.integer.Int {
+fn channel_occurrences(cs: List<DdrChannelIdentity>, c: DdrChannelIdentity) -> Int {
   fold(cs, init: 0, f: fn(acc, q) {
     if ddr_channel_ordinal(c: q) == ddr_channel_ordinal(c: c) { acc + 1 } else { acc }
   })
@@ -143,7 +143,7 @@ fn channel_occurrences(cs: List<DdrChannelIdentity>, c: DdrChannelIdentity) -> s
 // duplicates every slot on one — [FirstDimmOnChannel, FirstDimmOnChannel] against four channels
 // yields eight identities naming four slots. Refusing only the channel axis left that writable,
 // and a duplicated DdrSlotIdentity is exactly the fact everything downstream keys on.
-fn position_occurrences(ps: List<DimmSlotPosition>, p: DimmSlotPosition) -> std.integer.Int {
+fn position_occurrences(ps: List<DimmSlotPosition>, p: DimmSlotPosition) -> Int {
   fold(ps, init: 0, f: fn(acc, q) {
     if dimm_slot_position_ordinal(p: q) == dimm_slot_position_ordinal(p: p) { acc + 1 } else { acc }
   })
@@ -198,7 +198,7 @@ fn duplicate_channel_causes(t: ActiveDdrTopology) -> List<DesignRefusal> {
 type AltraMinimalMotherboard {
   intent: DesignIntent
   memory: MemoryConfiguration
-  pcie_lanes_broken_out: std.integer.Int
+  pcie_lanes_broken_out: Int
 }
 
 type DesignAdmission
@@ -217,12 +217,12 @@ fn push_design_refusal(acc: DesignRefusalSet?, r: DesignRefusal) -> DesignRefusa
   }
 }
 
-fn design_refusal_count(s: DesignRefusalSet) -> std.integer.Int {
+fn design_refusal_count(s: DesignRefusalSet) -> Int {
   1 + fold(s.rest, init: 0, f: fn(acc, _r) { acc + 1 })
 }
 
-fn total_dimms(m: MemoryConfiguration) -> std.integer.Int {
-  list_length(items: topology_slot_identities(t: m.topology))
+fn total_dimms(m: MemoryConfiguration) -> Int {
+  std.types.list_length(items: topology_slot_identities(t: m.topology))
 }
 
 // EVERY BOUND IS READ FROM THE PACKAGE AUTHORITY, never retyped. The controller population and
@@ -237,25 +237,25 @@ fn design_causes(d: AltraMinimalMotherboard) -> List<DesignRefusal> {
       match d.intent {
         EngineeringBringUp => []
         Production =>
-          if channel_count_is_production_qualified(c: c) {
+          if extdeps.cpu.ampere_altra_memory_controller.channel_count_is_production_qualified(c: c) {
             []
           } else {
             [DebugOnlyChannelCountUnderProductionIntent { selected: selected }]
           }
       }
   }
-  let population_cause = if selected > altra_ddr4_channel_count {
-    [ChannelCountExceedsControllerPopulation { selected: selected, available: altra_ddr4_channel_count }]
+  let population_cause = if selected > extdeps.cpu.ampere_altra_package.altra_ddr4_channel_count {
+    [ChannelCountExceedsControllerPopulation { selected: selected, available: extdeps.cpu.ampere_altra_package.altra_ddr4_channel_count }]
   } else {
     concat([], duplicate_channel_causes(t: d.memory.topology))
   }
-  let dimm_cause = if list_length(items: d.memory.topology.positions_per_channel) < 1 {
+  let dimm_cause = if std.types.list_length(items: d.memory.topology.positions_per_channel) < 1 {
     [ChannelHasNoDimmPositions]
   } else {
     duplicate_position_causes(t: d.memory.topology)
   }
-  let pcie_cause = if d.pcie_lanes_broken_out > altra_pcie_gen4_lane_count {
-    [PcieLanesExceedPackage { requested: d.pcie_lanes_broken_out, available: altra_pcie_gen4_lane_count }]
+  let pcie_cause = if d.pcie_lanes_broken_out > extdeps.cpu.ampere_altra_package.altra_pcie_gen4_lane_count {
+    [PcieLanesExceedPackage { requested: d.pcie_lanes_broken_out, available: extdeps.cpu.ampere_altra_package.altra_pcie_gen4_lane_count }]
   } else {
     []
   }

@@ -50,7 +50,7 @@ type ShellEmissionAuthorization
   = Authorized { justification: ShellEmissionJustification }
   | Refused { cause: ShellEmissionRefusal }
 
-fn availability_fact_is_unknown(fact: AvailabilityFact) -> v2.std.logic.Bool {
+fn availability_fact_is_unknown(fact: AvailabilityFact) -> Bool {
   match fact {
     Absent => false
     Present => false
@@ -58,13 +58,13 @@ fn availability_fact_is_unknown(fact: AvailabilityFact) -> v2.std.logic.Bool {
   }
 }
 
-fn runtime_availability_gate_has_unknown(gate: RuntimeAvailabilityGate) -> v2.std.logic.Bool {
+fn runtime_availability_gate_has_unknown(gate: RuntimeAvailabilityGate) -> Bool {
   availability_fact_is_unknown(fact: gate.gunbc_binary)
     || availability_fact_is_unknown(fact: gate.typed_transport)
     || availability_fact_is_unknown(fact: gate.plan_interpreter)
 }
 
-fn shell_emission_site_id_eq(left: ShellEmissionSiteId, right: ShellEmissionSiteId) -> v2.std.logic.Bool {
+fn shell_emission_site_id_eq(left: ShellEmissionSiteId, right: ShellEmissionSiteId) -> Bool {
   left == right
 }
 
@@ -72,7 +72,7 @@ fn shell_emission_roster_lookup(
   roster: List<ShellEmissionRosterEntry>,
   site: ShellEmissionSiteId
 ) -> List<ShellEmissionRosterEntry> {
-  filter(
+  v2.std.algebra.filter(
     xs: roster,
     predicate: fn(entry) { shell_emission_roster_entry_matches(entry: entry, site: site) }
   )
@@ -81,7 +81,7 @@ fn shell_emission_roster_lookup(
 fn shell_emission_roster_entry_matches(
   entry: ShellEmissionRosterEntry,
   site: ShellEmissionSiteId
-) -> v2.std.logic.Bool {
+) -> Bool {
   shell_emission_site_id_eq(left: entry.site, right: site)
 }
 
@@ -102,15 +102,15 @@ fn shell_emission_authorize_steady_state(
   roster: List<ShellEmissionRosterEntry>,
   site: ShellEmissionSiteId
 ) -> ShellEmissionAuthorization {
-  match list_head(xs: shell_emission_roster_lookup(roster: roster, site: site)) {
-    HeadFound { value: entry } =>
+  match v2.std.algebra.list_head(xs: shell_emission_roster_lookup(roster: roster, site: site)) {
+    v2.std.algebra.HeadFound { value: entry } =>
       Authorized {
         justification: RosterException {
           roster_key: entry.roster_key,
           dissolution: entry.dissolution
         }
       }
-    HeadAbsent =>
+    v2.std.algebra.HeadAbsent =>
       Refused { cause: RuntimePresentRequiresTypedRealization { capability: capability } }
   }
 }
@@ -149,7 +149,7 @@ fn shell_emission_authorize_by_window(
   }
 }
 
-fn shell_emission_authorization_is_authorized(auth: ShellEmissionAuthorization) -> v2.std.logic.Bool {
+fn shell_emission_authorization_is_authorized(auth: ShellEmissionAuthorization) -> Bool {
   match auth {
     Authorized { justification: _ } => true
     Refused { cause: _ } => false

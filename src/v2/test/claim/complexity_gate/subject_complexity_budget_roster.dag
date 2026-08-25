@@ -2,8 +2,8 @@ module v2.test.complexity_gate.subject_complexity_budget_roster
 
 
 type LensSubjectComplexityBudgetRow {
-  subject_producer: fn() -> Outcome<v2.std.node.Node>
-  declared_budget: fn(v2.std.node.Node) -> ComplexityBound
+  subject_producer: fn() -> v2.std.diagnostic.Outcome<v2.std.node.Node>
+  declared_budget: fn(v2.std.node.Node) -> v2.lens.complexity.ComplexityBound
 }
 
 fn complexity_declared_budget_for_row(
@@ -14,16 +14,16 @@ fn complexity_declared_budget_for_row(
 }
 
 fn complexity_declared_budget_constant(_body: v2.std.node.Node) -> v2.lens.complexity.ComplexityBound {
-  ConstantComplexity
+  v2.lens.complexity.ConstantComplexity
 }
 
 fn complexity_declared_budget_loop_linear(body: v2.std.node.Node) -> v2.lens.complexity.ComplexityBound {
-  match loop_bound_witness_for_node(n: body) {
-    Holds { value: bound } =>
-      linear_complexity(
-        size_var: v2.lens.cost.SizeVariable { source: loop_bound_measure(bound: bound) }
+  match v2.std.cardinality.loop_bound_witness_for_node(n: body) {
+    v2.std.witness.Holds { value: bound } =>
+      v2.lens.complexity.linear_complexity(
+        size_var: v2.lens.cost.SizeVariable { source: v2.std.cardinality.loop_bound_measure(bound: bound) }
       )
-    Violates { diagnostic: _ } => unknown_complexity()
+    v2.std.witness.Violates { diagnostic: _ } => v2.lens.complexity.unknown_complexity()
   }
 }
 

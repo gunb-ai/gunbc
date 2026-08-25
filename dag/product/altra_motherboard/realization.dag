@@ -101,31 +101,31 @@ type PopulationRealizationRefusal
   = RequiredFunctionWithoutJustifiedPart { requirement: BoardRequirementIdentity }
 
 fn mt_jade_reference_platform_ref() -> std.decl_ref.DeclarationRef {
-  decl_ref(module_path: "extdeps.ocp.mt_jade.subject", decl_name: "mt_jade_reference_platform")
+  std.decl_ref.decl_ref(module_path: "extdeps.ocp.mt_jade.subject", decl_name: "mt_jade_reference_platform")
 }
 
 fn mt_jade_platform_authority_ref() -> std.decl_ref.DeclarationRef {
-  decl_ref(module_path: "extdeps.ocp.mt_jade.platform", decl_name: "extdeps_external_authority_anchor")
+  std.decl_ref.decl_ref(module_path: "extdeps.ocp.mt_jade.platform", decl_name: "extdeps_external_authority_anchor")
 }
 
 fn dp83867_candidate_ref() -> std.decl_ref.DeclarationRef {
-  decl_ref(module_path: "extdeps.network.ti_dp83867", decl_name: "dp83867irrgz")
+  std.decl_ref.decl_ref(module_path: "extdeps.network.ti_dp83867", decl_name: "dp83867irrgz")
 }
 
 fn tps53688_candidate_ref() -> std.decl_ref.DeclarationRef {
-  decl_ref(module_path: "extdeps.power.ti_tps53688", decl_name: "tps53688rsbr")
+  std.decl_ref.decl_ref(module_path: "extdeps.power.ti_tps53688", decl_name: "tps53688rsbr")
 }
 
 fn tps3808_candidate_ref() -> std.decl_ref.DeclarationRef {
-  decl_ref(module_path: "extdeps.power.ti_tps3808", decl_name: "tps3808g01dbvr")
+  std.decl_ref.decl_ref(module_path: "extdeps.power.ti_tps3808", decl_name: "tps3808g01dbvr")
 }
 
 fn cdce913_candidate_ref() -> std.decl_ref.DeclarationRef {
-  decl_ref(module_path: "extdeps.clock.ti_cdce913", decl_name: "cdce913pwr")
+  std.decl_ref.decl_ref(module_path: "extdeps.clock.ti_cdce913", decl_name: "cdce913pwr")
 }
 
 fn processor_power_rail_order_ref() -> std.decl_ref.DeclarationRef {
-  decl_ref(module_path: "extdeps.ocp.mt_jade.platform", decl_name: "processor_power_rail_enable_order")
+  std.decl_ref.decl_ref(module_path: "extdeps.ocp.mt_jade.platform", decl_name: "processor_power_rail_enable_order")
 }
 
 // THE 1P REALIZATION ROSTER. Providers name plan identities; justification states WHY that
@@ -258,7 +258,7 @@ fn requirement_has_providers_on_plan(
       true
     } else if !row_covers_requirement(row: row, req: req) {
       false
-    } else if list_length(items: row.providers) == 0 {
+    } else if std.types.list_length(items: row.providers) == 0 {
       false
     } else if !justification_discharges_required_function(j: row.justification) {
       false
@@ -283,6 +283,6 @@ fn population_realization_refusals(
   })
 }
 
-fn population_realization_refusal_count(cs: List<PopulationRealizationRefusal>) -> std.integer.Int {
+fn population_realization_refusal_count(cs: List<PopulationRealizationRefusal>) -> Int {
   fold(cs, init: 0, f: fn(acc, _c) { acc + 1 })
 }

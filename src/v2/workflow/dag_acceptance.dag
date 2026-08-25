@@ -10,12 +10,12 @@ data dag_acceptance_target_compile_construction_note: String = "TargetCompileCla
 data dag_acceptance_verdict_derivation_note: String = "THE VERDICT IS DERIVED, NEVER STORED. DagAcceptanceReceipt carries the contract identity, the candidate identity, and the executed rows; the verdict is a fold over those rows. There is no verdict field to transcribe, so rung inflation on this harness's own output is unrepresentable rather than lens-caught — the meta-obligation of DESIGN section 4b applied to the instrument itself."
 
 type DagCandidate {
-  file: Symbol,
+  file: v2.std.node.Symbol,
   source: String
 }
 
-fn candidate_identity(candidate: DagCandidate) -> Fnv1a64Structural {
-  content_hash_atom(value: candidate.source)
+fn candidate_identity(candidate: DagCandidate) -> std.content_hash.Fnv1a64Structural {
+  std.content_hash.content_hash_atom(value: candidate.source)
 }
 
 type EvalExpectation
@@ -29,24 +29,24 @@ type CandidateEvalBudget
 data eval_claim_coverage_obligation_note: String = "A COVERAGE OBLIGATION, DECLARED RATHER THAN LEFT AS AN IMPLIED PASS. An Eval claim names the runtime node to evaluate, and there is today no resolution from `evaluate the function named X in this candidate` to that node — so the Eval branch is NOT exercised end to end from a source string anywhere in this repository, and the fail-fast versus full-ledger split is proven at the decision function instead. That is a gap in what is OBSERVED, not a gap in what is modeled, and it is named here so it can be closed rather than rediscovered: the trigger is a candidate-relative entry-point resolution reaching this claim, at which point EvalClaim carries the resolved node and the policy split gets its end-to-end pair."
 
 type EvalClaim {
-  identity: Symbol,
-  evaluated_function: Symbol,
+  identity: v2.std.node.Symbol,
+  evaluated_function: v2.std.node.Symbol,
   runtime: v2.std.node.Node,
   budget: CandidateEvalBudget,
   expectation: EvalExpectation
 }
 
 type TranslationClaim {
-  target: TargetModel,
-  target_identity: Symbol,
-  emitter_identity: Symbol
+  target: v2.std.compilers.target_model.TargetModel,
+  target_identity: v2.std.node.Symbol,
+  emitter_identity: v2.std.node.Symbol
 }
 
 data target_compile_policy_absent_note: String = "THERE IS NO POLICY FIELD ON THIS CLAIM, AND THAT IS A MODELING DECISION RATHER THAN AN OMISSION. The acceptance rule is fixed today: a target toolchain that rejects the emitted source rejects the candidate, an unreadable failure is undecided, and an unavailable toolchain is not a verdict at all. A policy axis carrying exactly one point is a second name for that fixed rule — the nickname class DESIGN section 3 forbids — and it would read as configurability that does not exist. Next-rung trigger: a SECOND acceptance rule with a real consumer, at which point the axis is minted with two inhabitants and this row is deleted."
 
 type TargetCompileClaim {
   translation: TranslationClaim,
-  toolchain_identity: Symbol
+  toolchain_identity: v2.std.node.Symbol
 }
 
 type DagStageObligation
@@ -74,11 +74,11 @@ fn obligation_prerequisites(obligation: DagStageObligation) -> List<DagStageObli
 
 data obligation_identity_note: String = "Obligation equality is STRUCTURAL over the identities each claim already carries, never a discriminant comparison: two TranslateObligations naming different targets are different obligations, and folding them together would let one target's receipt satisfy another target's prerequisite. Every claim therefore names itself — an Eval claim that cannot say what was evaluated is not evidence, and 'the candidate passed Eval' is meaningless without it."
 
-fn translation_claim_eq(a: TranslationClaim, b: TranslationClaim) -> v2.std.logic.Bool {
+fn translation_claim_eq(a: TranslationClaim, b: TranslationClaim) -> Bool {
   (a.target_identity == b.target_identity) && (a.emitter_identity == b.emitter_identity)
 }
 
-fn obligation_eq(a: DagStageObligation, b: DagStageObligation) -> v2.std.logic.Bool {
+fn obligation_eq(a: DagStageObligation, b: DagStageObligation) -> Bool {
   match a {
     EvalStage { claim: ca } =>
       match b {
@@ -101,7 +101,7 @@ fn obligation_eq(a: DagStageObligation, b: DagStageObligation) -> v2.std.logic.B
   }
 }
 
-fn obligation_label(obligation: DagStageObligation) -> Symbol {
+fn obligation_label(obligation: DagStageObligation) -> v2.std.node.Symbol {
   match obligation {
     TokenizeStage => ^obligation_tokenize
     ParseStage => ^obligation_parse
@@ -127,26 +127,26 @@ data acceptance_policy_note: String = "TWO POLICIES, ONE RECEIPT SHAPE. Interact
 
 type StageCostRow {
   obligation: DagStageObligation,
-  required: Millisecond
+  required: std.measure.Millisecond
 }
 
 type VerifierBudgetLedger
   = VerifierBudgetUnbounded
-  | VerifierBudgetTotal { total: Millisecond }
+  | VerifierBudgetTotal { total: std.measure.Millisecond }
 
 data verifier_budget_measure_note: String = "DURATIONS ARE Millisecond, THE CITED std.measure CARRIER, NOT BARE Int. Two `_ms` scalars can be added and compared with nothing checking that they are the same quantity, and a module that carries its own millisecond scalars is a second representation of duration standing beside std/measure.dag (review 54506 caught exactly that in the first cut).\n\nAND THE LEDGER COUNTS WHAT IT HAS SPENT RATHER THAN WHAT REMAINS, which is a consequence of the same move. Nat is a CommutativeSemiring — it has addition and no subtraction — so a decrementing ledger would have needed an operation its own carrier does not provide. Admission is therefore `spent + required` against the declared total, and a refusal reports all three of required, total and already-spent rather than a single derived remainder, which is strictly more of the fact than the remainder carried."
 
 data verifier_budget_subject_note: String = "THE BUDGET FACTS HAVE TWO DIFFERENT SUBJECTS AND THE SAME SYMPTOM. A candidate that blows its declared CPU budget is a fact about the CANDIDATE and lands as a rejection. The verifier running out of budget before a stage starts is a fact about US and lands as StageNotRun VerifierBudgetUnavailable — it must never become a semantic rejection, or a slow machine reads as a bad model. Every duration here is a DECLARED input: the required cost comes from the contract's own cost policy and the total from the runner's ledger. This module never estimates either, because an invented cost would make the refusal a fabrication rather than a measurement."
 
 type DagAcceptanceContract {
-  name: Symbol,
+  name: v2.std.node.Symbol,
   obligations: NonEmptyObligations,
   policy: AcceptancePolicy,
   stage_costs: List<StageCostRow>
 }
 
 type TargetCompileObservation
-  = TargetCompileDecided { verdict: TargetCompileVerdict }
+  = TargetCompileDecided { verdict: v2.std.leaf_model_verification.TargetCompileVerdict }
   | TargetCompileFailedUnparsed { exit_code: Int, stderr_length: Int }
   | TargetCompilerUnavailable { cause: String }
 
@@ -164,25 +164,25 @@ type AcceptanceEnvironment {
 }
 
 type StageReceipt
-  = FrontEndReceiptRow { stage: FrontEndStage, receipt: FrontEndStageReceipt }
+  = FrontEndReceiptRow { stage: v2.compiler.staged_front_end.FrontEndStage, receipt: v2.compiler.staged_front_end.FrontEndStageReceipt }
   | InferReceiptRow { node_count: Int }
   | EvalReceiptRow { claim: EvalClaim, result_node_count: Int }
   | TranslateReceiptRow { claim: TranslationClaim, emitted_length: Int }
   | TargetCompileReceiptRow { claim: TargetCompileClaim }
 
 type StageRefusal
-  = StageDiagnosticRefusal { diagnostics: NonEmptyDiagnostics }
+  = StageDiagnosticRefusal { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
   | EvalExpectationUnmet { claim: EvalClaim, observed_node_count: Int, expected_node_count: Int }
   | TargetCompileRefusal { claim: TargetCompileClaim, observation: TargetCompileObservation }
 
 type StageNotRunReason
   = NotRequiredByContract
-  | BlockedByPrerequisite { prerequisite: Symbol }
-  | SkippedAfterDecisiveRejection { rejected_obligation: Symbol }
+  | BlockedByPrerequisite { prerequisite: v2.std.node.Symbol }
+  | SkippedAfterDecisiveRejection { rejected_obligation: v2.std.node.Symbol }
   | VerifierBudgetUnavailable {
-      required: Millisecond,
-      budget_total: Millisecond,
-      already_spent: Millisecond
+      required: std.measure.Millisecond,
+      budget_total: std.measure.Millisecond,
+      already_spent: std.measure.Millisecond
     }
   | ExecutorUnavailable { cause: String }
 
@@ -196,7 +196,7 @@ type StageExecution
   | StagePassedWithFrontier {
       obligation: DagStageObligation,
       receipt: StageReceipt,
-      diagnostics: NonEmptyDiagnostics
+      diagnostics: v2.std.diagnostic.NonEmptyDiagnostics
     }
   | StageRejected { obligation: DagStageObligation, refusal: StageRefusal }
   | StageNotRun { obligation: DagStageObligation, reason: StageNotRunReason }
@@ -207,13 +207,13 @@ data stage_execution_frontier_note: String = "ACCEPTED CLEAN AND ACCEPTED-WITH-D
 data stage_execution_arity_note: String = "FIVE ARMS, AND THE LAST TWO ARE THE ONES THAT USUALLY GO MISSING. Passed, Rejected and NotRun cannot express 'the stage executed and the result is unknowable', which is exactly what an unparseable target-toolchain failure is. Folding it into Rejected would inflate rejection counts with our own ignorance; folding it into NotRun would claim work we did pay for never happened. Undecided is counted, and it drives the verdict to Incomplete rather than to Rejected."
 
 type DagAcceptanceVerdict
-  = AcceptanceContractSatisfied { frontier_stages: List<Symbol> }
-  | AcceptanceContractRejected { first_rejection: Symbol, further_rejections: List<Symbol> }
-  | AcceptanceContractIncomplete { first_unfinished: Symbol, further_unfinished: List<Symbol> }
+  = AcceptanceContractSatisfied { frontier_stages: List<v2.std.node.Symbol> }
+  | AcceptanceContractRejected { first_rejection: v2.std.node.Symbol, further_rejections: List<v2.std.node.Symbol> }
+  | AcceptanceContractIncomplete { first_unfinished: v2.std.node.Symbol, further_unfinished: List<v2.std.node.Symbol> }
 
 type DagAcceptanceReceipt {
-  contract_name: Symbol,
-  candidate_identity: Fnv1a64Structural,
+  contract_name: v2.std.node.Symbol,
+  candidate_identity: std.content_hash.Fnv1a64Structural,
   rows: List<StageExecution>
 }
 
@@ -227,7 +227,7 @@ fn no_rows() -> List<StageExecution> {
   []
 }
 
-fn no_labels() -> List<Symbol> {
+fn no_labels() -> List<v2.std.node.Symbol> {
   []
 }
 
@@ -239,18 +239,18 @@ fn contract_obligation_list(contract: DagAcceptanceContract) -> List<DagStageObl
   concat([contract.obligations.head], contract.obligations.tail)
 }
 
-fn obligation_member(xs: List<DagStageObligation>, obligation: DagStageObligation) -> v2.std.logic.Bool {
+fn obligation_member(xs: List<DagStageObligation>, obligation: DagStageObligation) -> Bool {
   fold(xs, init: false, f: fn(acc, x) { acc || obligation_eq(a: x, b: obligation) })
 }
 
 fn dedupe_obligations(xs: List<DagStageObligation>) -> List<DagStageObligation> {
   fold(xs, init: no_obligations(), f: fn(acc, o) {
-    if obligation_member(xs: acc, obligation: o) { acc } else { list_snoc_item(xs: acc, item: o) }
+    if obligation_member(xs: acc, obligation: o) { acc } else { v2.std.algebra.list_snoc_item(xs: acc, item: o) }
   })
 }
 
 fn obligation_closure(obligation: DagStageObligation) -> List<DagStageObligation> {
-  list_snoc_item(
+  v2.std.algebra.list_snoc_item(
     xs: fold(obligation_prerequisites(obligation: obligation), init: no_obligations(), f: fn(acc, p) {
       concat(acc, obligation_closure(obligation: p))
     }),
@@ -282,33 +282,33 @@ fn required_front_end_depth(obligations: List<DagStageObligation>) -> Int {
   })
 }
 
-fn no_cost() -> Millisecond {
-  millisecond(count: 0)
+fn no_cost() -> std.measure.Millisecond {
+  std.measure.millisecond(count: 0)
 }
 
-fn stage_cost(contract: DagAcceptanceContract, obligation: DagStageObligation) -> Millisecond {
+fn stage_cost(contract: DagAcceptanceContract, obligation: DagStageObligation) -> std.measure.Millisecond {
   fold(contract.stage_costs, init: no_cost(), f: fn(acc, row) {
     if obligation_eq(a: row.obligation, b: obligation) { row.required } else { acc }
   })
 }
 
-fn millisecond_sum(a: Millisecond, b: Millisecond) -> Millisecond {
-  millisecond(count: millisecond_count(m: a) + millisecond_count(m: b))
+fn millisecond_sum(a: std.measure.Millisecond, b: std.measure.Millisecond) -> std.measure.Millisecond {
+  std.measure.millisecond(count: std.measure.millisecond_count(m: a) + std.measure.millisecond_count(m: b))
 }
 
 fn ledger_admits(
   ledger: VerifierBudgetLedger,
-  spent: Millisecond,
-  required: Millisecond
-) -> v2.std.logic.Bool {
+  spent: std.measure.Millisecond,
+  required: std.measure.Millisecond
+) -> Bool {
   match ledger {
     VerifierBudgetUnbounded => true
     VerifierBudgetTotal { total: total } =>
-      !(millisecond_count(m: millisecond_sum(a: spent, b: required)) > millisecond_count(m: total))
+      !(std.measure.millisecond_count(m: millisecond_sum(a: spent, b: required)) > std.measure.millisecond_count(m: total))
   }
 }
 
-fn ledger_total(ledger: VerifierBudgetLedger) -> Millisecond {
+fn ledger_total(ledger: VerifierBudgetLedger) -> std.measure.Millisecond {
   match ledger {
     VerifierBudgetUnbounded => no_cost()
     VerifierBudgetTotal { total: total } => total
@@ -323,30 +323,30 @@ type TranslationOutputRow {
 type AcceptanceRunState {
   rows: List<StageExecution>,
   resolved: v2.std.optional.Optional<v2.std.node.Node>,
-  inferred: v2.std.optional.Optional<InferredTree>,
+  inferred: v2.std.optional.Optional<v2.compiler.inferred_tree.InferredTree>,
   translations: List<TranslationOutputRow>,
-  spent: Millisecond,
-  first_rejection: v2.std.optional.Optional<Symbol>
+  spent: std.measure.Millisecond,
+  first_rejection: v2.std.optional.Optional<v2.std.node.Symbol>
 }
 
-fn front_end_stage_obligation(stage: FrontEndStage) -> DagStageObligation {
+fn front_end_stage_obligation(stage: v2.compiler.staged_front_end.FrontEndStage) -> DagStageObligation {
   match stage {
-    FrontEndTokenize => TokenizeStage
-    FrontEndParse => ParseStage
-    FrontEndNormalize => NormalizeStage
-    FrontEndResolve => ResolveStage
+    v2.compiler.staged_front_end.FrontEndTokenize => TokenizeStage
+    v2.compiler.staged_front_end.FrontEndParse => ParseStage
+    v2.compiler.staged_front_end.FrontEndNormalize => NormalizeStage
+    v2.compiler.staged_front_end.FrontEndResolve => ResolveStage
   }
 }
 
-fn front_end_step_row(step: FrontEndStageStep) -> StageExecution {
+fn front_end_step_row(step: v2.compiler.staged_front_end.FrontEndStageStep) -> StageExecution {
   match step {
-    FrontEndStagePassed { stage: s, receipt: r, diagnostics: d } =>
+    v2.compiler.staged_front_end.FrontEndStagePassed { stage: s, receipt: r, diagnostics: d } =>
       passed_row(
         obligation: front_end_stage_obligation(stage: s),
         receipt: FrontEndReceiptRow { stage: s, receipt: r },
         diagnostics: d
       )
-    FrontEndStageRejected { stage: s, diagnostics: d } =>
+    v2.compiler.staged_front_end.FrontEndStageRejected { stage: s, diagnostics: d } =>
       StageRejected {
         obligation: front_end_stage_obligation(stage: s),
         refusal: StageDiagnosticRefusal { diagnostics: d }
@@ -355,36 +355,36 @@ fn front_end_step_row(step: FrontEndStageStep) -> StageExecution {
 }
 
 fn front_end_step_for_stage(
-  run: FrontEndRun,
-  stage: FrontEndStage
-) -> v2.std.optional.Optional<FrontEndStageStep> {
-  fold(run.steps, init: optional_absent(), f: fn(acc, step) {
+  run: v2.compiler.staged_front_end.FrontEndRun,
+  stage: v2.compiler.staged_front_end.FrontEndStage
+) -> v2.std.optional.Optional<v2.compiler.staged_front_end.FrontEndStageStep> {
+  fold(run.steps, init: v2.std.optional.optional_absent(), f: fn(acc, step) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent =>
         if front_end_step_stage_matches(step: step, stage: stage) {
-          optional_present(value: step)
+          v2.std.optional.optional_present(value: step)
         } else {
-          optional_absent()
+          v2.std.optional.optional_absent()
         }
     }
   })
 }
 
-fn front_end_step_stage_matches(step: FrontEndStageStep, stage: FrontEndStage) -> v2.std.logic.Bool {
+fn front_end_step_stage_matches(step: v2.compiler.staged_front_end.FrontEndStageStep, stage: v2.compiler.staged_front_end.FrontEndStage) -> Bool {
   match step {
-    FrontEndStagePassed { stage: s, receipt: _, diagnostics: _ } =>
+    v2.compiler.staged_front_end.FrontEndStagePassed { stage: s, receipt: _, diagnostics: _ } =>
       discriminant(v: s) == discriminant(v: stage)
-    FrontEndStageRejected { stage: s, diagnostics: _ } =>
+    v2.compiler.staged_front_end.FrontEndStageRejected { stage: s, diagnostics: _ } =>
       discriminant(v: s) == discriminant(v: stage)
   }
 }
 
 fn front_end_row_for_stage(
-  run: FrontEndRun,
-  stage: FrontEndStage,
+  run: v2.compiler.staged_front_end.FrontEndRun,
+  stage: v2.compiler.staged_front_end.FrontEndStage,
   effective: List<DagStageObligation>,
-  admitted: v2.std.logic.Bool,
+  admitted: Bool,
   budget_refusal: StageNotRunReason
 ) -> StageExecution {
   let obligation = front_end_stage_obligation(stage: stage)
@@ -397,8 +397,8 @@ fn front_end_row_for_stage(
     }
   } else {
     match front_end_step_for_stage(run: run, stage: stage) {
-      Present { value: step } => front_end_step_row(step: step)
-      Absent =>
+      v2.std.optional.Present { value: step } => front_end_step_row(step: step)
+      v2.std.optional.Absent =>
         StageNotRun {
           obligation: obligation,
           reason: missing_step_reason(obligation: obligation)
@@ -407,11 +407,11 @@ fn front_end_row_for_stage(
   }
 }
 
-fn first_prerequisite_label(obligation: DagStageObligation) -> v2.std.optional.Optional<Symbol> {
-  fold(obligation_prerequisites(obligation: obligation), init: optional_absent(), f: fn(acc, p) {
+fn first_prerequisite_label(obligation: DagStageObligation) -> v2.std.optional.Optional<v2.std.node.Symbol> {
+  fold(obligation_prerequisites(obligation: obligation), init: v2.std.optional.optional_absent(), f: fn(acc, p) {
     match acc {
-      Present { value: _ } => acc
-      Absent => optional_present(value: obligation_label(obligation: p))
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent => v2.std.optional.optional_present(value: obligation_label(obligation: p))
     }
   })
 }
@@ -420,19 +420,19 @@ data missing_step_reason_note: String = "The prerequisite named in a block is RE
 
 fn missing_step_reason(obligation: DagStageObligation) -> StageNotRunReason {
   match first_prerequisite_label(obligation: obligation) {
-    Present { value: label } => BlockedByPrerequisite { prerequisite: label }
-    Absent => ExecutorUnavailable { cause: "staged front end returned no step for its first stage" }
+    v2.std.optional.Present { value: label } => BlockedByPrerequisite { prerequisite: label }
+    v2.std.optional.Absent => ExecutorUnavailable { cause: "staged front end returned no step for its first stage" }
   }
 }
 
-fn front_end_stage_order() -> List<FrontEndStage> {
-  [FrontEndTokenize, FrontEndParse, FrontEndNormalize, FrontEndResolve]
+fn front_end_stage_order() -> List<v2.compiler.staged_front_end.FrontEndStage> {
+  [v2.compiler.staged_front_end.FrontEndTokenize, v2.compiler.staged_front_end.FrontEndParse, v2.compiler.staged_front_end.FrontEndNormalize, v2.compiler.staged_front_end.FrontEndResolve]
 }
 
 fn front_end_declared_cost(
   contract: DagAcceptanceContract,
   effective: List<DagStageObligation>
-) -> Millisecond {
+) -> std.measure.Millisecond {
   fold(front_end_stage_order(), init: no_cost(), f: fn(acc, stage) {
     let obligation = front_end_stage_obligation(stage: stage)
     if obligation_member(xs: effective, obligation: obligation) {
@@ -445,22 +445,22 @@ fn front_end_declared_cost(
 
 data front_end_budget_grain_note: String = "The front end is budget-gated ONCE, as the staged unit it executes as, against the SUM of the declared costs of the front-end obligations the contract actually needs. Gating its four stages individually would be a second story about how the work is performed: they run inside one staged fold, so a per-stage refusal after the fold had already run would report a saving that was never made."
 
-fn front_end_run_resolved(run: FrontEndRun) -> v2.std.optional.Optional<v2.std.node.Node> {
+fn front_end_run_resolved(run: v2.compiler.staged_front_end.FrontEndRun) -> v2.std.optional.Optional<v2.std.node.Node> {
   match run.completion {
-    FrontEndResolvedModule { resolved: n } => optional_present(value: n)
-    FrontEndBoundReached { last: _ } => optional_absent()
-    FrontEndRefused => v2.std.optional.Absent
+    v2.compiler.staged_front_end.FrontEndResolvedModule { resolved: n } => v2.std.optional.optional_present(value: n)
+    v2.compiler.staged_front_end.FrontEndBoundReached { last: _ } => v2.std.optional.optional_absent()
+    v2.compiler.staged_front_end.FrontEndRefused => v2.std.optional.Absent
   }
 }
 
 fn passed_row(
   obligation: DagStageObligation,
   receipt: StageReceipt,
-  diagnostics: Diagnostics
+  diagnostics: v2.std.diagnostic.Diagnostics
 ) -> StageExecution {
   match diagnostics {
-    None => StagePassed { obligation: obligation, receipt: receipt }
-    Some { diagnostics: d } =>
+    v2.std.diagnostic.None => StagePassed { obligation: obligation, receipt: receipt }
+    v2.std.diagnostic.Some { diagnostics: d } =>
       StagePassedWithFrontier { obligation: obligation, receipt: receipt, diagnostics: d }
   }
 }
@@ -475,7 +475,7 @@ fn row_obligation(row: StageExecution) -> DagStageObligation {
   }
 }
 
-fn row_passed(row: StageExecution) -> v2.std.logic.Bool {
+fn row_passed(row: StageExecution) -> Bool {
   match row {
     StagePassed { obligation: _, receipt: _ } => true
     StagePassedWithFrontier { obligation: _, receipt: _, diagnostics: _ } => true
@@ -485,7 +485,7 @@ fn row_passed(row: StageExecution) -> v2.std.logic.Bool {
   }
 }
 
-fn obligation_passed_in(rows: List<StageExecution>, obligation: DagStageObligation) -> v2.std.logic.Bool {
+fn obligation_passed_in(rows: List<StageExecution>, obligation: DagStageObligation) -> Bool {
   fold(rows, init: false, f: fn(acc, row) {
     acc || (obligation_eq(a: row_obligation(row: row), b: obligation) && row_passed(row: row))
   })
@@ -494,15 +494,15 @@ fn obligation_passed_in(rows: List<StageExecution>, obligation: DagStageObligati
 fn unsatisfied_prerequisite(
   rows: List<StageExecution>,
   obligation: DagStageObligation
-) -> v2.std.optional.Optional<Symbol> {
-  fold(obligation_prerequisites(obligation: obligation), init: optional_absent(), f: fn(acc, p) {
+) -> v2.std.optional.Optional<v2.std.node.Symbol> {
+  fold(obligation_prerequisites(obligation: obligation), init: v2.std.optional.optional_absent(), f: fn(acc, p) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent =>
         if obligation_passed_in(rows: rows, obligation: p) {
-          optional_absent()
+          v2.std.optional.optional_absent()
         } else {
-          optional_present(value: obligation_label(obligation: p))
+          v2.std.optional.optional_present(value: obligation_label(obligation: p))
         }
     }
   })
@@ -512,14 +512,14 @@ fn translation_for(
   translations: List<TranslationOutputRow>,
   claim: TranslationClaim
 ) -> v2.std.optional.Optional<String> {
-  fold(translations, init: optional_absent(), f: fn(acc, row) {
+  fold(translations, init: v2.std.optional.optional_absent(), f: fn(acc, row) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent =>
         if translation_claim_eq(a: row.claim, b: claim) {
-          optional_present(value: row.emitted)
+          v2.std.optional.optional_present(value: row.emitted)
         } else {
-          optional_absent()
+          v2.std.optional.optional_absent()
         }
     }
   })
@@ -527,7 +527,7 @@ fn translation_for(
 
 fn state_with_row(state: AcceptanceRunState, row: StageExecution) -> AcceptanceRunState {
   AcceptanceRunState {
-    rows: list_snoc_item(xs: state.rows, item: row),
+    rows: v2.std.algebra.list_snoc_item(xs: state.rows, item: row),
     resolved: state.resolved,
     inferred: state.inferred,
     translations: state.translations,
@@ -536,12 +536,12 @@ fn state_with_row(state: AcceptanceRunState, row: StageExecution) -> AcceptanceR
   }
 }
 
-fn acceptance_first_rejection(prior: v2.std.optional.Optional<Symbol>, row: StageExecution) -> v2.std.optional.Optional<Symbol> {
+fn acceptance_first_rejection(prior: v2.std.optional.Optional<v2.std.node.Symbol>, row: StageExecution) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match prior {
-    Present { value: _ } => prior
-    Absent =>
+    v2.std.optional.Present { value: _ } => prior
+    v2.std.optional.Absent =>
       match row {
-        StageRejected { obligation: o, refusal: _ } => optional_present(value: obligation_label(obligation: o))
+        StageRejected { obligation: o, refusal: _ } => v2.std.optional.optional_present(value: obligation_label(obligation: o))
         _ => v2.std.optional.Absent
       }
   }
@@ -549,7 +549,7 @@ fn acceptance_first_rejection(prior: v2.std.optional.Optional<Symbol>, row: Stag
 
 fn infer_execution(state: AcceptanceRunState) -> AcceptanceRunState {
   match state.resolved {
-    Absent =>
+    v2.std.optional.Absent =>
       state_with_row(
         state: state,
         row: StageNotRun {
@@ -557,9 +557,9 @@ fn infer_execution(state: AcceptanceRunState) -> AcceptanceRunState {
           reason: ExecutorUnavailable { cause: "resolve passed but the staged front end carried no resolved module" }
         }
       )
-    Present { value: resolved } =>
-      match infer(tree: resolved) {
-        Rejected { diagnostics: d } =>
+    v2.std.optional.Present { value: resolved } =>
+      match v2.compiler.infer.infer(tree: resolved) {
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           state_with_row(
             state: state,
             row: StageRejected {
@@ -567,13 +567,13 @@ fn infer_execution(state: AcceptanceRunState) -> AcceptanceRunState {
               refusal: StageDiagnosticRefusal { diagnostics: d }
             }
           )
-        Accepted { value: inferred, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: inferred, diagnostics: d } =>
           state_with_inferred(
             state: state_with_row(
               state: state,
               row: passed_row(
                 obligation: InferStage,
-                receipt: InferReceiptRow { node_count: node_subtree_count(n: inferred.root) },
+                receipt: InferReceiptRow { node_count: v2.std.node.node_subtree_count(n: inferred.root) },
                 diagnostics: d
               )
             ),
@@ -583,11 +583,11 @@ fn infer_execution(state: AcceptanceRunState) -> AcceptanceRunState {
   }
 }
 
-fn state_with_inferred(state: AcceptanceRunState, inferred: InferredTree) -> AcceptanceRunState {
+fn state_with_inferred(state: AcceptanceRunState, inferred: v2.compiler.inferred_tree.InferredTree) -> AcceptanceRunState {
   AcceptanceRunState {
     rows: state.rows,
     resolved: state.resolved,
-    inferred: optional_present(value: inferred),
+    inferred: v2.std.optional.optional_present(value: inferred),
     translations: state.translations,
     spent: state.spent,
     first_rejection: state.first_rejection
@@ -602,13 +602,13 @@ fn state_with_translation(
     rows: state.rows,
     resolved: state.resolved,
     inferred: state.inferred,
-    translations: list_snoc_item(xs: state.translations, item: row),
+    translations: v2.std.algebra.list_snoc_item(xs: state.translations, item: row),
     spent: state.spent,
     first_rejection: state.first_rejection
   }
 }
 
-fn state_with_spent(state: AcceptanceRunState, spent: Millisecond) -> AcceptanceRunState {
+fn state_with_spent(state: AcceptanceRunState, spent: std.measure.Millisecond) -> AcceptanceRunState {
   AcceptanceRunState {
     rows: state.rows,
     resolved: state.resolved,
@@ -622,7 +622,7 @@ fn state_with_spent(state: AcceptanceRunState, spent: Millisecond) -> Acceptance
 fn eval_expectation_row(
   claim: EvalClaim,
   observed_node_count: Int,
-  diagnostics: Diagnostics
+  diagnostics: v2.std.diagnostic.Diagnostics
 ) -> StageExecution {
   match claim.expectation {
     EvaluatesWithoutRefusal =>
@@ -665,7 +665,7 @@ fn eval_execution(state: AcceptanceRunState, claim: EvalClaim) -> AcceptanceRunS
       )
     NoDeclaredCandidateBudget =>
       match state.inferred {
-        Absent =>
+        v2.std.optional.Absent =>
           state_with_row(
             state: state,
             row: StageNotRun {
@@ -673,9 +673,9 @@ fn eval_execution(state: AcceptanceRunState, claim: EvalClaim) -> AcceptanceRunS
               reason: ExecutorUnavailable { cause: "infer passed but no inferred tree was carried" }
             }
           )
-        Present { value: inferred } =>
-          match compile_inferred(inferred: inferred, mode: Eval { runtime: claim.runtime }) {
-            Rejected { diagnostics: d } =>
+        v2.std.optional.Present { value: inferred } =>
+          match v2.compiler.compile.compile_inferred(inferred: inferred, mode: v2.compiler.compile.Eval { runtime: claim.runtime }) {
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               state_with_row(
                 state: state,
                 row: StageRejected {
@@ -683,7 +683,7 @@ fn eval_execution(state: AcceptanceRunState, claim: EvalClaim) -> AcceptanceRunS
                   refusal: StageDiagnosticRefusal { diagnostics: d }
                 }
               )
-            Accepted { value: compiled, diagnostics: d } =>
+            v2.std.diagnostic.Accepted { value: compiled, diagnostics: d } =>
               state_with_row(
                 state: state,
                 row: eval_output_row(claim: claim, output: compiled, diagnostics: d)
@@ -695,17 +695,17 @@ fn eval_execution(state: AcceptanceRunState, claim: EvalClaim) -> AcceptanceRunS
 
 fn eval_output_row(
   claim: EvalClaim,
-  output: CompileOutput,
-  diagnostics: Diagnostics
+  output: v2.compiler.compile.CompileOutput,
+  diagnostics: v2.std.diagnostic.Diagnostics
 ) -> StageExecution {
   match output {
-    EvalResult { value: m } =>
+    v2.compiler.compile.EvalResult { value: m } =>
       eval_expectation_row(
         claim: claim,
-        observed_node_count: node_subtree_count(n: m.carried),
+        observed_node_count: v2.std.node.node_subtree_count(n: m.carried),
         diagnostics: diagnostics
       )
-    TranslateResult { source: _ } =>
+    v2.compiler.compile.TranslateResult { source: _ } =>
       StageNotRun {
         obligation: EvalStage { claim: claim },
         reason: ExecutorUnavailable { cause: "eval mode returned a translation output" }
@@ -715,7 +715,7 @@ fn eval_output_row(
 
 fn translate_execution(state: AcceptanceRunState, claim: TranslationClaim) -> AcceptanceRunState {
   match state.inferred {
-    Absent =>
+    v2.std.optional.Absent =>
       state_with_row(
         state: state,
         row: StageNotRun {
@@ -723,9 +723,9 @@ fn translate_execution(state: AcceptanceRunState, claim: TranslationClaim) -> Ac
           reason: ExecutorUnavailable { cause: "infer passed but no inferred tree was carried" }
         }
       )
-    Present { value: inferred } =>
-      match compile_inferred(inferred: inferred, mode: TranslateTo { target: claim.target }) {
-        Rejected { diagnostics: d } =>
+    v2.std.optional.Present { value: inferred } =>
+      match v2.compiler.compile.compile_inferred(inferred: inferred, mode: v2.compiler.compile.TranslateTo { target: claim.target }) {
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           state_with_row(
             state: state,
             row: StageRejected {
@@ -733,7 +733,7 @@ fn translate_execution(state: AcceptanceRunState, claim: TranslationClaim) -> Ac
               refusal: StageDiagnosticRefusal { diagnostics: d }
             }
           )
-        Accepted { value: compiled, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: compiled, diagnostics: d } =>
           translate_output_state(state: state, claim: claim, output: compiled, diagnostics: d)
       }
   }
@@ -742,11 +742,11 @@ fn translate_execution(state: AcceptanceRunState, claim: TranslationClaim) -> Ac
 fn translate_output_state(
   state: AcceptanceRunState,
   claim: TranslationClaim,
-  output: CompileOutput,
-  diagnostics: Diagnostics
+  output: v2.compiler.compile.CompileOutput,
+  diagnostics: v2.std.diagnostic.Diagnostics
 ) -> AcceptanceRunState {
   match output {
-    TranslateResult { source: m } =>
+    v2.compiler.compile.TranslateResult { source: m } =>
       state_with_row(
         state: state_with_translation(
           state: state,
@@ -758,7 +758,7 @@ fn translate_output_state(
           diagnostics: diagnostics
         )
       )
-    EvalResult { value: _ } =>
+    v2.compiler.compile.EvalResult { value: _ } =>
       state_with_row(
         state: state,
         row: StageNotRun {
@@ -791,16 +791,16 @@ fn target_compile_row(
 
 fn target_compile_decided_row(
   claim: TargetCompileClaim,
-  verdict: TargetCompileVerdict,
+  verdict: v2.std.leaf_model_verification.TargetCompileVerdict,
   observation: TargetCompileObservation
 ) -> StageExecution {
   match verdict {
-    TargetCompileAccepted =>
+    v2.std.leaf_model_verification.TargetCompileAccepted =>
       StagePassed {
         obligation: TargetCompileStage { claim: claim },
         receipt: TargetCompileReceiptRow { claim: claim }
       }
-    TargetCompileRejected { diagnostic_code: _ } =>
+    v2.std.leaf_model_verification.TargetCompileRejected { diagnostic_code: _ } =>
       StageRejected {
         obligation: TargetCompileStage { claim: claim },
         refusal: TargetCompileRefusal { claim: claim, observation: observation }
@@ -814,7 +814,7 @@ fn target_compile_execution(
   claim: TargetCompileClaim
 ) -> AcceptanceRunState {
   match translation_for(translations: state.translations, claim: claim.translation) {
-    Absent =>
+    v2.std.optional.Absent =>
       state_with_row(
         state: state,
         row: StageNotRun {
@@ -822,7 +822,7 @@ fn target_compile_execution(
           reason: ExecutorUnavailable { cause: "no emitted target source was recorded for the declared translation" }
         }
       )
-    Present { value: emitted } =>
+    v2.std.optional.Present { value: emitted } =>
       state_with_row(
         state: state,
         row: target_compile_row(
@@ -839,19 +839,19 @@ fn declined_reason(
   contract: DagAcceptanceContract,
   state: AcceptanceRunState,
   obligation: DagStageObligation,
-  required: Millisecond,
+  required: std.measure.Millisecond,
   ledger: VerifierBudgetLedger
 ) -> v2.std.optional.Optional<StageNotRunReason> {
   match unsatisfied_prerequisite(rows: state.rows, obligation: obligation) {
-    Present { value: p } => optional_present(value: BlockedByPrerequisite { prerequisite: p })
-    Absent =>
+    v2.std.optional.Present { value: p } => v2.std.optional.optional_present(value: BlockedByPrerequisite { prerequisite: p })
+    v2.std.optional.Absent =>
       match fail_fast_skip_reason(contract: contract, state: state) {
-        Present { value: r } => optional_present(value: r)
-        Absent =>
+        v2.std.optional.Present { value: r } => v2.std.optional.optional_present(value: r)
+        v2.std.optional.Absent =>
           if ledger_admits(ledger: ledger, spent: state.spent, required: required) {
-            optional_absent()
+            v2.std.optional.optional_absent()
           } else {
-            optional_present(
+            v2.std.optional.optional_present(
               value: budget_refusal(ledger: ledger, spent: state.spent, required: required)
             )
           }
@@ -864,12 +864,12 @@ fn fail_fast_skip_reason(
   state: AcceptanceRunState
 ) -> v2.std.optional.Optional<StageNotRunReason> {
   match contract.policy {
-    FullLedger => optional_absent()
+    FullLedger => v2.std.optional.optional_absent()
     InteractiveFailFast =>
       match state.first_rejection {
-        Absent => optional_absent()
-        Present { value: label } =>
-          optional_present(value: SkippedAfterDecisiveRejection { rejected_obligation: label })
+        v2.std.optional.Absent => v2.std.optional.optional_absent()
+        v2.std.optional.Present { value: label } =>
+          v2.std.optional.optional_present(value: SkippedAfterDecisiveRejection { rejected_obligation: label })
       }
   }
 }
@@ -909,9 +909,9 @@ fn attempt_obligation(
     required: required,
     ledger: env.budget
   ) {
-    Present { value: reason } =>
+    v2.std.optional.Present { value: reason } =>
       state_with_row(state: state, row: StageNotRun { obligation: obligation, reason: reason })
-    Absent =>
+    v2.std.optional.Absent =>
       state_with_spent(
         state: execute_obligation(state: state, env: env, obligation: obligation),
         spent: millisecond_sum(a: state.spent, b: required)
@@ -919,7 +919,7 @@ fn attempt_obligation(
   }
 }
 
-fn is_front_end_obligation(obligation: DagStageObligation) -> v2.std.logic.Bool {
+fn is_front_end_obligation(obligation: DagStageObligation) -> Bool {
   match obligation {
     TokenizeStage => true
     ParseStage => true
@@ -931,20 +931,20 @@ fn is_front_end_obligation(obligation: DagStageObligation) -> v2.std.logic.Bool 
 
 fn post_front_end_obligations(effective: List<DagStageObligation>) -> List<DagStageObligation> {
   fold(effective, init: no_rows(), f: fn(acc, o) {
-    if is_front_end_obligation(obligation: o) { acc } else { list_snoc_item(xs: acc, item: o) }
+    if is_front_end_obligation(obligation: o) { acc } else { v2.std.algebra.list_snoc_item(xs: acc, item: o) }
   })
 }
 
-fn rows_first_rejection(rows: List<StageExecution>) -> v2.std.optional.Optional<Symbol> {
-  fold(rows, init: optional_absent(), f: fn(acc, row) { acceptance_first_rejection(prior: acc, row: row) })
+fn rows_first_rejection(rows: List<StageExecution>) -> v2.std.optional.Optional<v2.std.node.Symbol> {
+  fold(rows, init: v2.std.optional.optional_absent(), f: fn(acc, row) { acceptance_first_rejection(prior: acc, row: row) })
 }
 
 fn front_end_rows(
-  run: FrontEndRun,
+  run: v2.compiler.staged_front_end.FrontEndRun,
   effective: List<DagStageObligation>
 ) -> List<StageExecution> {
   fold(front_end_stage_order(), init: no_rows(), f: fn(acc, stage) {
-    list_snoc_item(
+    v2.std.algebra.list_snoc_item(
       xs: acc,
       item: front_end_row_for_stage(
         run: run,
@@ -959,8 +959,8 @@ fn front_end_rows(
 
 fn budget_refusal(
   ledger: VerifierBudgetLedger,
-  spent: Millisecond,
-  required: Millisecond
+  spent: std.measure.Millisecond,
+  required: std.measure.Millisecond
 ) -> StageNotRunReason {
   VerifierBudgetUnavailable {
     required: required,
@@ -975,7 +975,7 @@ fn budget_refused_rows(
   ledger: VerifierBudgetLedger
 ) -> List<StageExecution> {
   fold(effective, init: no_rows(), f: fn(acc, o) {
-    list_snoc_item(
+    v2.std.algebra.list_snoc_item(
       xs: acc,
       item: StageNotRun {
         obligation: o,
@@ -994,7 +994,7 @@ fn unrequired_fixed_rows(effective: List<DagStageObligation>) -> List<StageExecu
     if obligation_member(xs: effective, obligation: o) {
       acc
     } else {
-      list_snoc_item(xs: acc, item: StageNotRun { obligation: o, reason: NotRequiredByContract })
+      v2.std.algebra.list_snoc_item(xs: acc, item: StageNotRun { obligation: o, reason: NotRequiredByContract })
     }
   })
 }
@@ -1004,9 +1004,9 @@ fn acceptance_rows_admitted(
   candidate: DagCandidate,
   env: AcceptanceEnvironment,
   effective: List<DagStageObligation>,
-  front_end_cost: Millisecond
+  front_end_cost: std.measure.Millisecond
 ) -> List<StageExecution> {
-  let run = run_front_end_to(
+  let run = v2.compiler.staged_front_end.run_front_end_to(
     source: candidate.source,
     file: candidate.file,
     depth: required_front_end_depth(obligations: effective)
@@ -1020,7 +1020,7 @@ fn acceptance_rows_admitted(
     init: AcceptanceRunState {
       rows: initial_rows,
       resolved: front_end_run_resolved(run: run),
-      inferred: optional_absent(),
+      inferred: v2.std.optional.optional_absent(),
       translations: no_translations(),
       spent: front_end_cost,
       first_rejection: rows_first_rejection(rows: initial_rows)
@@ -1063,86 +1063,86 @@ fn run_acceptance(
   }
 }
 
-fn row_rejection_label(row: StageExecution) -> v2.std.optional.Optional<Symbol> {
+fn row_rejection_label(row: StageExecution) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match row {
-    StageRejected { obligation: o, refusal: _ } => optional_present(value: obligation_label(obligation: o))
+    StageRejected { obligation: o, refusal: _ } => v2.std.optional.optional_present(value: obligation_label(obligation: o))
     _ => v2.std.optional.Absent
   }
 }
 
-fn row_unfinished_label(row: StageExecution) -> v2.std.optional.Optional<Symbol> {
+fn row_unfinished_label(row: StageExecution) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match row {
-    StageUndecided { obligation: o, cause: _ } => optional_present(value: obligation_label(obligation: o))
+    StageUndecided { obligation: o, cause: _ } => v2.std.optional.optional_present(value: obligation_label(obligation: o))
     StageNotRun { obligation: o, reason: reason } =>
       match reason {
-        NotRequiredByContract => optional_absent()
-        _ => optional_present(value: obligation_label(obligation: o))
+        NotRequiredByContract => v2.std.optional.optional_absent()
+        _ => v2.std.optional.optional_present(value: obligation_label(obligation: o))
       }
     _ => v2.std.optional.Absent
   }
 }
 
-fn row_frontier_label(row: StageExecution) -> v2.std.optional.Optional<Symbol> {
+fn row_frontier_label(row: StageExecution) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match row {
     StagePassedWithFrontier { obligation: o, receipt: _, diagnostics: _ } =>
-      optional_present(value: obligation_label(obligation: o))
-    _ => optional_absent()
+      v2.std.optional.optional_present(value: obligation_label(obligation: o))
+    _ => v2.std.optional.optional_absent()
   }
 }
 
 fn collect_labels(
   rows: List<StageExecution>,
-  select: fn(StageExecution) -> v2.std.optional.Optional<Symbol>
-) -> List<Symbol> {
+  select: fn(StageExecution) -> v2.std.optional.Optional<v2.std.node.Symbol>
+) -> List<v2.std.node.Symbol> {
   fold(rows, init: no_labels(), f: fn(acc, row) {
     match select(row) {
-      Present { value: label } => list_snoc_item(xs: acc, item: label)
-      Absent => acc
+      v2.std.optional.Present { value: label } => v2.std.algebra.list_snoc_item(xs: acc, item: label)
+      v2.std.optional.Absent => acc
     }
   })
 }
 
-fn labels_verdict_rejected(labels: List<Symbol>) -> v2.std.optional.Optional<DagAcceptanceVerdict> {
-  fold(labels, init: optional_absent(), f: fn(acc, label) {
+fn labels_verdict_rejected(labels: List<v2.std.node.Symbol>) -> v2.std.optional.Optional<DagAcceptanceVerdict> {
+  fold(labels, init: v2.std.optional.optional_absent(), f: fn(acc, label) {
     match acc {
-      Absent =>
-        optional_present(
+      v2.std.optional.Absent =>
+        v2.std.optional.optional_present(
           value: AcceptanceContractRejected { first_rejection: label, further_rejections: no_labels() }
         )
-      Present { value: v } => optional_present(value: verdict_with_further_rejection(verdict: v, label: label))
+      v2.std.optional.Present { value: v } => v2.std.optional.optional_present(value: verdict_with_further_rejection(verdict: v, label: label))
     }
   })
 }
 
-fn verdict_with_further_rejection(verdict: DagAcceptanceVerdict, label: Symbol) -> DagAcceptanceVerdict {
+fn verdict_with_further_rejection(verdict: DagAcceptanceVerdict, label: v2.std.node.Symbol) -> DagAcceptanceVerdict {
   match verdict {
     AcceptanceContractRejected { first_rejection: first, further_rejections: further } =>
       AcceptanceContractRejected {
         first_rejection: first,
-        further_rejections: list_snoc_item(xs: further, item: label)
+        further_rejections: v2.std.algebra.list_snoc_item(xs: further, item: label)
       }
     _ => verdict
   }
 }
 
-fn labels_verdict_incomplete(labels: List<Symbol>) -> v2.std.optional.Optional<DagAcceptanceVerdict> {
-  fold(labels, init: optional_absent(), f: fn(acc, label) {
+fn labels_verdict_incomplete(labels: List<v2.std.node.Symbol>) -> v2.std.optional.Optional<DagAcceptanceVerdict> {
+  fold(labels, init: v2.std.optional.optional_absent(), f: fn(acc, label) {
     match acc {
-      Absent =>
-        optional_present(
+      v2.std.optional.Absent =>
+        v2.std.optional.optional_present(
           value: AcceptanceContractIncomplete { first_unfinished: label, further_unfinished: no_labels() }
         )
-      Present { value: v } => optional_present(value: verdict_with_further_unfinished(verdict: v, label: label))
+      v2.std.optional.Present { value: v } => v2.std.optional.optional_present(value: verdict_with_further_unfinished(verdict: v, label: label))
     }
   })
 }
 
-fn verdict_with_further_unfinished(verdict: DagAcceptanceVerdict, label: Symbol) -> DagAcceptanceVerdict {
+fn verdict_with_further_unfinished(verdict: DagAcceptanceVerdict, label: v2.std.node.Symbol) -> DagAcceptanceVerdict {
   match verdict {
     AcceptanceContractIncomplete { first_unfinished: first, further_unfinished: further } =>
       AcceptanceContractIncomplete {
         first_unfinished: first,
-        further_unfinished: list_snoc_item(xs: further, item: label)
+        further_unfinished: v2.std.algebra.list_snoc_item(xs: further, item: label)
       }
     _ => verdict
   }
@@ -1150,11 +1150,11 @@ fn verdict_with_further_unfinished(verdict: DagAcceptanceVerdict, label: Symbol)
 
 fn acceptance_verdict(receipt: DagAcceptanceReceipt) -> DagAcceptanceVerdict {
   match labels_verdict_rejected(labels: collect_labels(rows: receipt.rows, select: row_rejection_label)) {
-    Present { value: v } => v
-    Absent =>
+    v2.std.optional.Present { value: v } => v
+    v2.std.optional.Absent =>
       match labels_verdict_incomplete(labels: collect_labels(rows: receipt.rows, select: row_unfinished_label)) {
-        Present { value: v } => v
-        Absent =>
+        v2.std.optional.Present { value: v } => v
+        v2.std.optional.Absent =>
           AcceptanceContractSatisfied {
             frontier_stages: collect_labels(rows: receipt.rows, select: row_frontier_label)
           }

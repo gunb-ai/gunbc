@@ -81,7 +81,7 @@ fn reference_derived_file_dependencies_match_provenances(
   file_dependencies: List<std.occurrence_binding_candidates.DirectFileDependency>
 ) -> ListsAgreementAtVerdict {
   direct_file_dependency_lists_eq(
-    left: direct_file_dependencies_from_provenances(provenances: provenances),
+    left: std.occurrence_binding_candidates.direct_file_dependencies_from_provenances(provenances: provenances),
     right: file_dependencies,
   )
 }
@@ -109,12 +109,12 @@ fn assess_controlled_two_mention_provenance_projection(
   production: std.occurrence_binding_candidates.ReferenceDerivedClauseEProduction,
 ) -> NamespaceClauseEProjectionVerdict {
   match production {
-    ReferenceDerivedClauseEProductionReady {
+    std.occurrence_binding_candidates.ReferenceDerivedClauseEProductionReady {
       projection: projection,
       consumer_file: _,
     } =>
       match projection {
-        ReferenceDerivedDependencyProjectionReady {
+        std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionReady {
           binding_provenance: provenances,
           file_dependencies: dependencies,
           bound_population: bound_population,
@@ -161,11 +161,11 @@ fn assess_controlled_two_mention_provenance_projection(
                           }
                         ListsAgree => {
                           match bound_population {
-                            ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
+                            std.occurrence_binding_candidates.ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
                               NamespaceClauseEProjectionRefused {
                                 failure: ProjectionBindingRefused { population: bound_population },
                               }
-                            AllReferencesBound { providers: providers } =>
+                            std.occurrence_binding_candidates.AllReferencesBound { providers: providers } =>
                               match provenance_provider_lists_agree(
                                 provenances: provenances,
                                 providers: providers,
@@ -196,11 +196,11 @@ fn assess_controlled_two_mention_provenance_projection(
                 }
             }
           }
-        ReferenceDerivedDependencyProjectionBindingRefused { population: population } =>
+        std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionBindingRefused { population: population } =>
           NamespaceClauseEProjectionRefused {
             failure: ProjectionBindingRefused { population: population },
           }
-        ReferenceDerivedDependencyProjectionFileRefused {
+        std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionFileRefused {
           first_failure: first_failure,
           more_failures: more_failures,
         } =>
@@ -211,7 +211,7 @@ fn assess_controlled_two_mention_provenance_projection(
             },
           }
       }
-    ReferenceDerivedClauseEProductionRefused { refusal: refusal } =>
+    std.occurrence_binding_candidates.ReferenceDerivedClauseEProductionRefused { refusal: refusal } =>
       NamespaceClauseEProductionRefused { refusal: refusal }
   }
 }

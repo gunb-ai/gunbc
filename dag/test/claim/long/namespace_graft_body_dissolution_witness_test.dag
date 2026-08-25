@@ -19,9 +19,9 @@ fn rejection_reasons(source: String) -> List<v2.std.node.Symbol> {
       match v2.compiler.parse.parse_module(tokens: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: a), grammar: v2.extdeps.languages.dag.dag_grammar()) {
         Rejected { diagnostics: _ } => no_reasons()
         Accepted { value: artifact, diagnostics: _ } =>
-          match v2.compiler.normalize.normalize(parse_tree: test.claim.long.namespace_graft_body_dissolution_witness_test.artifact_tree(artifact: artifact)) {
+          match v2.compiler.normalize.normalize(parse_tree: artifact_tree(artifact: artifact)) {
             Accepted { value: _, diagnostics: _ } => no_reasons()
-            Rejected { diagnostics: d } => test.claim.long.namespace_graft_body_dissolution_witness_test.all_reasons(d: d)
+            Rejected { diagnostics: d } => all_reasons(d: d)
           }
       }
   }
@@ -36,25 +36,25 @@ fn diagnostic_reason(d: v2.std.diagnostic.Diagnostic) -> v2.std.node.Symbol {
 }
 
 fn all_reasons(d: v2.std.diagnostic.NonEmptyDiagnostics) -> List<v2.std.node.Symbol> {
-  v2.std.algebra.fold_list(xs: d.tail, empty: [test.claim.long.namespace_graft_body_dissolution_witness_test.diagnostic_reason(d: d.head)], cons: fn(acc, item) {
-    concat(acc, [test.claim.long.namespace_graft_body_dissolution_witness_test.diagnostic_reason(d: item)])
+  v2.std.algebra.fold_list(xs: d.tail, empty: [diagnostic_reason(d: d.head)], cons: fn(acc, item) {
+    concat(acc, [diagnostic_reason(d: item)])
   })
 }
 
-fn reasons_contain(reasons: List<v2.std.node.Symbol>, sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn reasons_contain(reasons: List<v2.std.node.Symbol>, sym: v2.std.node.Symbol) -> Bool {
   v2.std.algebra.fold_list(xs: reasons, empty: false, cons: fn(acc, r) {
     acc || (r == sym)
   })
 }
 
-fn normalize_accepts(source: String) -> v2.std.logic.Bool {
+fn normalize_accepts(source: String) -> Bool {
   match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^graft_guard_probe, rules: v2.extdeps.languages.dag.dag_lex_rules()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: a, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: a), grammar: v2.extdeps.languages.dag.dag_grammar()) {
         Rejected { diagnostics: _ } => false
         Accepted { value: artifact, diagnostics: _ } =>
-          match v2.compiler.normalize.normalize(parse_tree: test.claim.long.namespace_graft_body_dissolution_witness_test.artifact_tree(artifact: artifact)) {
+          match v2.compiler.normalize.normalize(parse_tree: artifact_tree(artifact: artifact)) {
             Accepted { value: _, diagnostics: _ } => true
             Rejected { diagnostics: _ } => false
           }
@@ -69,7 +69,7 @@ fn normalized_tree_optional(source: String) -> v2.std.node.Node? {
       match v2.compiler.parse.parse_module(tokens: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: a), grammar: v2.extdeps.languages.dag.dag_grammar()) {
         Rejected { diagnostics: _ } => v2.std.optional.optional_absent()
         Accepted { value: artifact, diagnostics: _ } =>
-          match v2.compiler.normalize.normalize(parse_tree: test.claim.long.namespace_graft_body_dissolution_witness_test.artifact_tree(artifact: artifact)) {
+          match v2.compiler.normalize.normalize(parse_tree: artifact_tree(artifact: artifact)) {
             Rejected { diagnostics: _ } => v2.std.optional.optional_absent()
             Accepted { value: n, diagnostics: _ } => v2.std.optional.optional_present(value: normalized_root_node(t: n))
           }
@@ -77,26 +77,26 @@ fn normalized_tree_optional(source: String) -> v2.std.node.Node? {
   }
 }
 
-fn normalized_root_node(t: v2.compiler.normalized_tree.NormalizedTree) -> v2.std.node.Node {
+fn normalized_root_node(t: NormalizedTree) -> v2.std.node.Node {
   t.root
 }
 
-fn tree_contains_atom(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn tree_contains_atom(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> Bool {
   match v2.std.grammar.node_atom_identity_optional(node: n) {
-    Present { value: id } =>
+    v2.std.collection.Present { value: id } =>
       match id == sym {
         true => true
         false => children_contain_atom(n: n, sym: sym)
       }
-    Absent => children_contain_atom(n: n, sym: sym)
+    v2.std.collection.Absent => children_contain_atom(n: n, sym: sym)
   }
 }
 
-fn edge_target_node(e: v2.std.node.Edge) -> v2.std.node.Node {
+fn edge_target_node(e: Edge) -> v2.std.node.Node {
   e.target
 }
 
-fn children_contain_atom(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn children_contain_atom(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> Bool {
   v2.std.algebra.fold_list(xs: n.children, empty: false, cons: fn(acc, e) {
     acc || tree_contains_atom(n: edge_target_node(e: e), sym: sym)
   })
@@ -110,22 +110,22 @@ data lowered_body_source: String = "module graft_guard_probe\n\ndata d3: LiveTre
 
 data header_only_source: String = "module graft_guard_probe\n"
 
-test fn witness_type_fn_module_dissolution_refuses_RED() -> v2.std.logic.Bool {
-  test.claim.long.namespace_graft_body_dissolution_witness_test.reasons_contain(reasons: rejection_reasons(source: mixed_type_fn_source), sym: ^namespace_graft_body_dissolved_refused)
+test fn witness_type_fn_module_dissolution_refuses_RED() -> Bool {
+  reasons_contain(reasons: rejection_reasons(source: mixed_type_fn_source), sym: ^namespace_graft_body_dissolved_refused)
 }
 
-test fn witness_type_only_module_dissolution_refuses_RED() -> v2.std.logic.Bool {
-  test.claim.long.namespace_graft_body_dissolution_witness_test.reasons_contain(reasons: rejection_reasons(source: type_only_source), sym: ^namespace_graft_body_dissolved_refused)
+test fn witness_type_only_module_dissolution_refuses_RED() -> Bool {
+  reasons_contain(reasons: rejection_reasons(source: type_only_source), sym: ^namespace_graft_body_dissolved_refused)
 }
 
-test fn witness_lowered_body_module_still_grafts() -> v2.std.logic.Bool {
+test fn witness_lowered_body_module_still_grafts() -> Bool {
   normalize_accepts(source: lowered_body_source)
     && (match normalized_tree_optional(source: lowered_body_source) {
-      Present { value: n } => tree_contains_atom(n: n, sym: ^list_append)
-      Absent => false
+      v2.std.collection.Present { value: n } => tree_contains_atom(n: n, sym: ^list_append)
+      v2.std.collection.Absent => false
     })
 }
 
-test fn witness_header_only_module_still_accepts() -> v2.std.logic.Bool {
+test fn witness_header_only_module_still_accepts() -> Bool {
   normalize_accepts(source: header_only_source)
 }

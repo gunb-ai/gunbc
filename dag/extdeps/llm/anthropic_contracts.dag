@@ -3,7 +3,7 @@ module extdeps.llm.anthropic_contracts
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/message_param.py"
   }
 }
@@ -11,31 +11,31 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 data wire_contract: std.serialization.VariantEncoding = extdeps.llm.llm_contracts.llm_snake_wire_contract
 
 data anthropic_chat_message_wire_contract: std.serialization.CoproductWireContract = {
-  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicChatMessage", field: WholeDeclaration },
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicChatMessage", field: std.decl_ref.WholeDeclaration },
   encoding: std.serialization.InternallyTaggedObject { tag_field: "role", naming: std.serialization.StripSuffixAndSnakeCase { suffix: "Message" } }
 }
 
 data anthropic_user_content_block_wire_contract: std.serialization.CoproductWireContract = {
-  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicUserContentBlock", field: WholeDeclaration },
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicUserContentBlock", field: std.decl_ref.WholeDeclaration },
   encoding: std.serialization.InternallyTaggedObject { tag_field: "type", naming: std.serialization.StripPrefixSuffixAndSnakeCase { prefix: "User", suffix: "Block" } }
 }
 
 data anthropic_assistant_content_block_wire_contract: std.serialization.CoproductWireContract = {
-  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicAssistantContentBlock", field: WholeDeclaration },
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicAssistantContentBlock", field: std.decl_ref.WholeDeclaration },
   encoding: std.serialization.InternallyTaggedObject { tag_field: "type", naming: std.serialization.StripPrefixSuffixAndSnakeCase { prefix: "Assistant", suffix: "Block" } }
 }
 
 data anthropic_messages_200_content_block_wire_contract: std.serialization.CoproductWireContract = {
-  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicMessages200ContentBlock", field: WholeDeclaration },
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicMessages200ContentBlock", field: std.decl_ref.WholeDeclaration },
   encoding: std.serialization.InternallyTaggedObject { tag_field: "type", naming: std.serialization.StripPrefixSuffixAndSnakeCase { prefix: "Messages", suffix: "Block" } }
 }
 
 data anthropic_tool_result_content_wire_contract: std.serialization.CoproductWireContract = {
-  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolResultContent", field: WholeDeclaration },
-  encoding: UntaggedVariant
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolResultContent", field: std.decl_ref.WholeDeclaration },
+  encoding: std.serialization.UntaggedVariant
 }
 
 data anthropic_tool_result_block_wire_contract: std.serialization.CoproductWireContract = {
-  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolResultBlock", field: WholeDeclaration },
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolResultBlock", field: std.decl_ref.WholeDeclaration },
   encoding: std.serialization.InternallyTaggedObject { tag_field: "type", naming: std.serialization.StripPrefixSuffixAndSnakeCase { prefix: "Anthropic", suffix: "Block" } }
 }

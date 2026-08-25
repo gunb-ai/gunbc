@@ -1,20 +1,20 @@
 module test.claim.source_integration_proof_kernel_model_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data proof_kernel_model_witness_note: String = "The green first-slice witnesses exercise the candidate-generation fold from finite declared generators rather than a caller-supplied CandidateSet: one transformation plus one scheduled inference generator derives four combination classes from the accepted seed. Tightening inference_rounds or candidate_classes changes the disposition to a typed, located, counted refusal; proposal, grounding, and frame controls remain distinct. Acceptance is derived from those executed positive and negative scenarios into a sole-constructor receipt, so callers cannot assert a passing Boolean or construct the receipt outside the proof-kernel module. The capability frontier is closed and derived by set difference, so duplicate admissions cannot erase missing work and a refused admission is missing like an absent one. This suite does not claim generator completeness or the public reconciliation fold exists; those remain live capabilities in the separate quarantined closing witness."
 
 fn p1_transformation() -> gunbc.source_integration_proof_kernel.KernelDirectAuthoredTransformation {
   gunbc.source_integration_proof_kernel.KernelDirectAuthoredTransformation {
-    proposal: p0_proposal(),
-    ready_evidence: p0_ready_evidence(),
+    proposal: test.claim.source_integration_landing_spine_witness.p0_proposal(),
+    ready_evidence: test.claim.source_integration_landing_spine_witness.p0_ready_evidence(),
     delta: [gunbc.source_integration_proof_kernel.KernelGroundedDelta {
       key: "worker-declaration-name",
       before: "worker",
       after: "build_worker",
       scope: "source-worker",
-      grounding_claim: p0_builds_claim(),
+      grounding_claim: test.claim.source_integration_landing_spine_witness.p0_builds_claim(),
     }],
   }
 }
@@ -77,7 +77,7 @@ fn p1_spec_with(
     inference_schedule: inference_schedule,
     invariants: [gunbc.source_integration_proof_kernel.KernelInvariant {
       identity: "builds-after-rename",
-      claims: [p0_builds_claim()],
+      claims: [test.claim.source_integration_landing_spine_witness.p0_builds_claim()],
       procedure: "apply-grounded-replacement",
     }],
     equivalence: "p1-exact-bounded-fact-equivalence",
@@ -104,9 +104,9 @@ fn p1_model_spec() -> gunbc.source_integration_proof_kernel.KernelCandidateGener
 
 test fn witness_candidate_generation_is_admitted_from_finite_generators() -> Bool {
   let spec = p1_model_spec()
-  let assessment = assess_bounded_candidate_generation(spec: spec)
-  kernel_candidate_generation_admitted(assessment: assessment)
-    && count(kernel_transformations(spec: spec)) == 1
+  let assessment = gunbc.source_integration_proof_kernel.assess_bounded_candidate_generation(spec: spec)
+  gunbc.source_integration_proof_kernel.kernel_candidate_generation_admitted(assessment: assessment)
+    && count(gunbc.source_integration_proof_kernel.kernel_transformations(spec: spec)) == 1
     && count(spec.accepted_facts) == 1
     && count(spec.procedures) == 1
     && count(spec.inference_schedule) == 1
@@ -117,7 +117,7 @@ test fn witness_candidate_generation_is_admitted_from_finite_generators() -> Boo
 }
 
 test fn witness_candidate_generation_bound_refusal_is_typed_located_counted() -> Bool {
-  let assessment = assess_bounded_candidate_generation(
+  let assessment = gunbc.source_integration_proof_kernel.assess_bounded_candidate_generation(
     spec: p1_spec_with(
       remaining: [p1_transformation()],
       first_delta: p1_transformation().delta,
@@ -128,10 +128,10 @@ test fn witness_candidate_generation_bound_refusal_is_typed_located_counted() ->
       candidate_class_bound: 16,
     ),
   )
-  !kernel_candidate_generation_admitted(assessment: assessment)
+  !gunbc.source_integration_proof_kernel.kernel_candidate_generation_admitted(assessment: assessment)
     && count(assessment.refusals) == 1
     && assessment.refusals |> any(refusal =>
-      refusal.kind == KernelProposalBoundExceeded
+      refusal.kind == gunbc.source_integration_proof_kernel.KernelProposalBoundExceeded
         && refusal.locus == "bounds.proposal_occurrences"
         && refusal.occurrences == 2
     )
@@ -140,15 +140,15 @@ test fn witness_candidate_generation_bound_refusal_is_typed_located_counted() ->
 test fn witness_delta_grounding_and_frame_refusals_stay_distinct() -> Bool {
   let ungrounded_claim = std.claim_evidence.Claim {
     id: "not-an-authored-guarantee",
-    subject: p0_proposal().transformation,
-    target: p0_proposal().target,
+    subject: test.claim.source_integration_landing_spine_witness.p0_proposal().transformation,
+    target: test.claim.source_integration_landing_spine_witness.p0_proposal().target,
     proposition: gunbc.source_integration_landing_spine.LandingGuaranteeProposition {
       statement: "this claim is absent from the proposal contract",
     },
     scope: "source-and-public-behavior",
-    bound: p0_proposal().attempt,
+    bound: test.claim.source_integration_landing_spine_witness.p0_proposal().attempt,
   }
-  let assessment = assess_bounded_candidate_generation(
+  let assessment = gunbc.source_integration_proof_kernel.assess_bounded_candidate_generation(
     spec: p1_spec_with(
       remaining: [],
       first_delta: [gunbc.source_integration_proof_kernel.KernelGroundedDelta {
@@ -156,7 +156,7 @@ test fn witness_delta_grounding_and_frame_refusals_stay_distinct() -> Bool {
         before: "off",
         after: "on",
         scope: "outside-authored-frame",
-        grounding_claim: p0_builds_claim(),
+        grounding_claim: test.claim.source_integration_landing_spine_witness.p0_builds_claim(),
       }, gunbc.source_integration_proof_kernel.KernelGroundedDelta {
         key: "worker-declaration-name",
         before: "worker",
@@ -171,15 +171,15 @@ test fn witness_delta_grounding_and_frame_refusals_stay_distinct() -> Bool {
       candidate_class_bound: 16,
     ),
   )
-  !kernel_candidate_generation_admitted(assessment: assessment)
+  !gunbc.source_integration_proof_kernel.kernel_candidate_generation_admitted(assessment: assessment)
     && count(assessment.refusals) == 2
     && assessment.refusals |> any(refusal =>
-      refusal.kind == KernelDeltaOutsideFrame
+      refusal.kind == gunbc.source_integration_proof_kernel.KernelDeltaOutsideFrame
         && refusal.locus == "transformations.delta.scope"
         && refusal.occurrences == 1
     )
     && assessment.refusals |> any(refusal =>
-      refusal.kind == KernelDeltaUngrounded
+      refusal.kind == gunbc.source_integration_proof_kernel.KernelDeltaUngrounded
         && refusal.locus == "transformations.delta.grounding_claim"
         && refusal.occurrences == 1
     )
@@ -200,13 +200,13 @@ fn p1_bound_refusal_spec() -> gunbc.source_integration_proof_kernel.KernelCandid
 fn p1_delta_refusal_spec() -> gunbc.source_integration_proof_kernel.KernelCandidateGenerationSpec {
   let ungrounded_claim = std.claim_evidence.Claim {
     id: "acceptance-control-ungrounded-claim",
-    subject: p0_proposal().transformation,
-    target: p0_proposal().target,
+    subject: test.claim.source_integration_landing_spine_witness.p0_proposal().transformation,
+    target: test.claim.source_integration_landing_spine_witness.p0_proposal().target,
     proposition: gunbc.source_integration_landing_spine.LandingGuaranteeProposition {
       statement: "acceptance control claim absent from proposal guarantees",
     },
     scope: "source-and-public-behavior",
-    bound: p0_proposal().attempt,
+    bound: test.claim.source_integration_landing_spine_witness.p0_proposal().attempt,
   }
   p1_spec_with(
     remaining: [],
@@ -256,27 +256,27 @@ fn p1_candidate_class_refusal_spec() -> gunbc.source_integration_proof_kernel.Ke
 }
 
 test fn witness_closure_bounds_change_generation_disposition() -> Bool {
-  let round_refused = assess_bounded_candidate_generation(
+  let round_refused = gunbc.source_integration_proof_kernel.assess_bounded_candidate_generation(
     spec: p1_inference_round_refusal_spec(),
   )
-  let class_refused = assess_bounded_candidate_generation(
+  let class_refused = gunbc.source_integration_proof_kernel.assess_bounded_candidate_generation(
     spec: p1_candidate_class_refusal_spec(),
   )
-  kernel_refusal_occurrences(
+  gunbc.source_integration_proof_kernel.kernel_refusal_occurrences(
     refusals: round_refused.refusals,
-    kind: KernelInferenceRoundBoundExceeded,
+    kind: gunbc.source_integration_proof_kernel.KernelInferenceRoundBoundExceeded,
     locus: "bounds.inference_rounds",
   ) == 2
-    && kernel_refusal_occurrences(
+    && gunbc.source_integration_proof_kernel.kernel_refusal_occurrences(
       refusals: class_refused.refusals,
-      kind: KernelCandidateClassBoundExceeded,
+      kind: gunbc.source_integration_proof_kernel.KernelCandidateClassBoundExceeded,
       locus: "bounds.candidate_classes",
     ) == 4
     && count(class_refused.candidates) == 2
 }
 
 fn p1_first_slice_acceptance_admissions() -> List<gunbc.source_integration_proof_kernel.KernelAcceptanceAdmission> {
-  [assess_bounded_candidate_generation_acceptance(
+  [gunbc.source_integration_proof_kernel.assess_bounded_candidate_generation_acceptance(
     admitted_spec: p1_model_spec(),
     proposal_bound_refusal_spec: p1_bound_refusal_spec(),
     grounding_and_frame_refusal_spec: p1_delta_refusal_spec(),
@@ -288,20 +288,20 @@ fn p1_first_slice_acceptance_admissions() -> List<gunbc.source_integration_proof
 test fn witness_closing_frontier_is_derived_and_duplicate_safe() -> Bool {
   let admissions = p1_first_slice_acceptance_admissions()
   let duplicated = append(admissions, items: admissions)
-  count(kernel_required_acceptance_capabilities()) == 17
+  count(gunbc.source_integration_proof_kernel.kernel_required_acceptance_capabilities()) == 17
     && admissions |> any(admission => match admission {
-      KernelAcceptanceEstablished { receipt } =>
-        receipt.capability == KernelBoundedCandidateGenerationModeled
-      KernelAcceptanceRefused { capability: _, failed_scenarios: _ } => false
+      gunbc.source_integration_proof_kernel.KernelAcceptanceEstablished { receipt } =>
+        receipt.capability == gunbc.source_integration_proof_kernel.KernelBoundedCandidateGenerationModeled
+      gunbc.source_integration_proof_kernel.KernelAcceptanceRefused { capability: _, failed_scenarios: _ } => false
     })
-    && kernel_closing_frontier_count(admissions: admissions) == 16
-    && kernel_closing_frontier_count(admissions: duplicated) == 16
-    && count(kernel_missing_acceptance_capabilities(admissions: admissions)) == 16
-    && !kernel_closing_contract_holds(admissions: admissions)
+    && gunbc.source_integration_proof_kernel.kernel_closing_frontier_count(admissions: admissions) == 16
+    && gunbc.source_integration_proof_kernel.kernel_closing_frontier_count(admissions: duplicated) == 16
+    && count(gunbc.source_integration_proof_kernel.kernel_missing_acceptance_capabilities(admissions: admissions)) == 16
+    && !gunbc.source_integration_proof_kernel.kernel_closing_contract_holds(admissions: admissions)
 }
 
 test fn witness_failed_scenario_cannot_mint_acceptance_receipt() -> Bool {
-  let refused = assess_bounded_candidate_generation_acceptance(
+  let refused = gunbc.source_integration_proof_kernel.assess_bounded_candidate_generation_acceptance(
     admitted_spec: p1_bound_refusal_spec(),
     proposal_bound_refusal_spec: p1_bound_refusal_spec(),
     grounding_and_frame_refusal_spec: p1_delta_refusal_spec(),
@@ -309,10 +309,10 @@ test fn witness_failed_scenario_cannot_mint_acceptance_receipt() -> Bool {
     candidate_class_refusal_spec: p1_candidate_class_refusal_spec(),
   )
   match refused {
-    KernelAcceptanceRefused { capability, failed_scenarios } =>
-      capability == KernelBoundedCandidateGenerationModeled
+    gunbc.source_integration_proof_kernel.KernelAcceptanceRefused { capability, failed_scenarios } =>
+      capability == gunbc.source_integration_proof_kernel.KernelBoundedCandidateGenerationModeled
         && count(failed_scenarios) == 1
-        && kernel_closing_frontier_count(admissions: [refused]) == 17
-    KernelAcceptanceEstablished { receipt: _ } => false
+        && gunbc.source_integration_proof_kernel.kernel_closing_frontier_count(admissions: [refused]) == 17
+    gunbc.source_integration_proof_kernel.KernelAcceptanceEstablished { receipt: _ } => false
   }
 }

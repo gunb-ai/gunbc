@@ -1,14 +1,14 @@
 module test.claim.runner_replace_incarnation_seam_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn srv3_os_target() -> gunbc.host_effect.NodeControlPlane {
-  gunbc.host_effect.HostOs { node: srv3_host }
+  gunbc.host_effect.HostOs { node: gunbc.fleet_intent.srv3_host }
 }
 
 fn witness_replace_fixture_incarnation() -> gunbc.runner_incarnation.LocalRunnerSlotIncarnation {
-  runner_slot_incarnation(host: operator_host_srv3, slot_index: 6, unit_active: true)
+  gunbc.runner_incarnation.runner_slot_incarnation(host: gunbc.fleet_intent_network.operator_host_srv3, slot_index: 6, unit_active: true)
 }
 
 fn witness_replace_fixture_cause() -> gunbc.runner_lifecycle.RunnerReplacementCause {
@@ -25,14 +25,14 @@ fn witness_replace_fixture_effect() -> gunbc.host_effect.HostEffect {
 test fn witness_replace_resolved_cell_preserves_from_and_cause() -> Bool {
   let from = witness_replace_fixture_incarnation()
   let cause = witness_replace_fixture_cause()
-  match resolve_host_effect_cell(target: srv3_os_target(), effect: witness_replace_fixture_effect()) {
-    ReplaceRunnerIncarnationOnHost { node: _, from: resolved_from, cause: resolved_cause } =>
-      local_runner_slot_incarnation_fields_match(left: from, right: resolved_from)
+  match gunbc.host_effect_realize.resolve_host_effect_cell(target: srv3_os_target(), effect: witness_replace_fixture_effect()) {
+    gunbc.host_effect_realize.ReplaceRunnerIncarnationOnHost { node: _, from: resolved_from, cause: resolved_cause } =>
+      gunbc.runner_incarnation.local_runner_slot_incarnation_fields_match(left: from, right: resolved_from)
         && match resolved_cause {
-          ReplacementCauseConnectivityDetached { registration_id: id } => id == 42
-          ReplacementCauseOrphanedRegistration {} => false
-          ReplacementCauseWedgedBroker {} => false
-          ReplacementCauseOperatorForced { detail: _ } => false
+          gunbc.runner_lifecycle.ReplacementCauseConnectivityDetached { registration_id: id } => id == 42
+          gunbc.runner_lifecycle.ReplacementCauseOrphanedRegistration {} => false
+          gunbc.runner_lifecycle.ReplacementCauseWedgedBroker {} => false
+          gunbc.runner_lifecycle.ReplacementCauseOperatorForced { detail: _ } => false
         }
     _ => false
   }
@@ -42,8 +42,8 @@ fn witness_replace_fixture_intent() -> gunbc.host_effect.HostEffectIntent {
   gunbc.host_effect.HostEffectIntent {
     target: srv3_os_target(),
     effect: witness_replace_fixture_effect(),
-    evidence: host_effect_identity_evidence,
-    transport: LocalShell,
+    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    transport: gunbc.host_effect.LocalShell,
     privilege_denial: none,
   }
 }
@@ -51,55 +51,55 @@ fn witness_replace_fixture_intent() -> gunbc.host_effect.HostEffectIntent {
 test fn witness_replace_lifecycle_realizer_preserves_from_and_cause() -> Bool {
   let from = witness_replace_fixture_incarnation()
   let cause = witness_replace_fixture_cause()
-  match runner_lifecycle_realize_replace_runner_incarnation(intent: witness_replace_fixture_intent()) {
-    NotConverged { reason: _, applied: intent } =>
+  match gunbc.runner_lifecycle_realize.runner_lifecycle_realize_replace_runner_incarnation(intent: witness_replace_fixture_intent()) {
+    std.realization_reconcile.NotConverged { reason: _, applied: intent } =>
       match intent.effect {
-        ReplaceRunnerIncarnation { from: applied_from, cause: applied_cause } =>
-          local_runner_slot_incarnation_fields_match(left: from, right: applied_from)
+        gunbc.host_effect.ReplaceRunnerIncarnation { from: applied_from, cause: applied_cause } =>
+          gunbc.runner_incarnation.local_runner_slot_incarnation_fields_match(left: from, right: applied_from)
             && match applied_cause {
-              ReplacementCauseConnectivityDetached { registration_id: id } => id == 42
-              ReplacementCauseOrphanedRegistration {} => false
-              ReplacementCauseWedgedBroker {} => false
-              ReplacementCauseOperatorForced { detail: _ } => false
+              gunbc.runner_lifecycle.ReplacementCauseConnectivityDetached { registration_id: id } => id == 42
+              gunbc.runner_lifecycle.ReplacementCauseOrphanedRegistration {} => false
+              gunbc.runner_lifecycle.ReplacementCauseWedgedBroker {} => false
+              gunbc.runner_lifecycle.ReplacementCauseOperatorForced { detail: _ } => false
             }
         _ => false
       }
-    Converged { evidence: _, applied: _ } => false
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => false
   }
 }
 
 test fn witness_replace_host_effect_apply_routes_to_lifecycle_scaffold() -> Bool {
-  match host_effect_apply(
+  match gunbc.host_effect_realize.host_effect_apply(
     target: srv3_os_target(),
     effect: witness_replace_fixture_effect(),
-    evidence: host_effect_identity_evidence,
-    transport: LocalShell,
+    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    transport: gunbc.host_effect.LocalShell,
   ) {
-    NotConverged { reason: r, applied: intent } =>
+    std.realization_reconcile.NotConverged { reason: r, applied: intent } =>
       string_contains(s: r, pattern: "ReplaceRunnerIncarnation")
         && match intent.effect {
-          ReplaceRunnerIncarnation { from: applied_from, cause: applied_cause } =>
-            local_runner_slot_incarnation_fields_match(
+          gunbc.host_effect.ReplaceRunnerIncarnation { from: applied_from, cause: applied_cause } =>
+            gunbc.runner_incarnation.local_runner_slot_incarnation_fields_match(
               left: witness_replace_fixture_incarnation(),
               right: applied_from,
             )
               && match applied_cause {
-                ReplacementCauseConnectivityDetached { registration_id: id } => id == 42
-                ReplacementCauseOrphanedRegistration {} => false
-                ReplacementCauseWedgedBroker {} => false
-                ReplacementCauseOperatorForced { detail: _ } => false
+                gunbc.runner_lifecycle.ReplacementCauseConnectivityDetached { registration_id: id } => id == 42
+                gunbc.runner_lifecycle.ReplacementCauseOrphanedRegistration {} => false
+                gunbc.runner_lifecycle.ReplacementCauseWedgedBroker {} => false
+                gunbc.runner_lifecycle.ReplacementCauseOperatorForced { detail: _ } => false
               }
           _ => false
         }
-    Converged { evidence: _, applied: _ } => false
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => false
   }
 }
 
 test fn witness_replace_incarnation_on_host_is_not_shell_script() -> Bool {
-  match resolve_host_effect_cell(target: srv3_os_target(), effect: witness_replace_fixture_effect()) {
-    ShellOnHost { node: _, script: _ } => false
-    ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } => true
-    IncompatibleCell { reason: _ } => false
+  match gunbc.host_effect_realize.resolve_host_effect_cell(target: srv3_os_target(), effect: witness_replace_fixture_effect()) {
+    gunbc.host_effect_realize.ShellOnHost { node: _, script: _ } => false
+    gunbc.host_effect_realize.ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } => true
+    gunbc.host_effect_realize.IncompatibleCell { reason: _ } => false
     _ => false
   }
 }

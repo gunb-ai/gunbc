@@ -156,10 +156,10 @@ fn connection_refused_presentation(specimen: ConnectionRefusedExactSpecimen) -> 
       requested_url: specimen.requested_url,
       origin: specimen.origin,
     },
-    navigation: ChromiumNavigationFailed { error: ChromiumErrConnectionRefused },
+    navigation: ChromiumNavigationFailed { error: extdeps.browser.chromium.ChromiumErrConnectionRefused },
     document: ChromiumInternalPresentedDocument {
-      document: ChromiumWebDataErrorDocument,
-      final_url: ChromiumWebDataErrorUrl,
+      document: extdeps.browser.chromium.ChromiumWebDataErrorDocument,
+      final_url: extdeps.browser.chromium.ChromiumWebDataErrorUrl,
     },
   }
 }
@@ -171,15 +171,15 @@ fn empty_body_502_presentation(specimen: EmptyBody502ExactSpecimen) -> Navigatio
       origin: specimen.origin,
       status: 502,
       configured_headers: [
-        ContentLengthHeader { bytes: byte_size(0) },
+        ContentLengthHeader { bytes: std.measure.byte_size(0) },
         Empty502SpecimenHeader,
       ],
       body: EmptyNavigationResponseBody,
     },
-    navigation: ChromiumNavigationFailed { error: ChromiumErrHttpResponseCodeFailure },
+    navigation: ChromiumNavigationFailed { error: extdeps.browser.chromium.ChromiumErrHttpResponseCodeFailure },
     document: ChromiumInternalPresentedDocument {
-      document: ChromiumWebDataErrorDocument,
-      final_url: ChromiumWebDataErrorUrl,
+      document: extdeps.browser.chromium.ChromiumWebDataErrorDocument,
+      final_url: extdeps.browser.chromium.ChromiumWebDataErrorUrl,
     },
   }
 }
@@ -191,13 +191,13 @@ fn sentinel_body_502_presentation(specimen: SentinelBody502ExactSpecimen) -> Nav
       origin: specimen.origin,
       status: 502,
       configured_headers: [
-        ContentLengthHeader { bytes: byte_size(26) },
+        ContentLengthHeader { bytes: std.measure.byte_size(26) },
         TextPlainUtf8ContentTypeHeader,
         Sentinel502SpecimenHeader,
       ],
       body: Utf8NavigationResponseBody {
         text: "GUNBC_TYPED_ERROR_SENTINEL" as std.types.NonEmptyStr,
-        bytes: byte_size(26),
+        bytes: std.measure.byte_size(26),
       },
     },
     navigation: NavigationReturnedHttpResponse { status: 502 },
@@ -209,12 +209,12 @@ data playwright_chromium_151_linux_arm64_headless_navigation_run: PlaywrightChro
   environment: BrowserExecutionEnvironment {
     chromium_build: extdeps.browser.chromium.chromium_151_0_7922_34,
     playwright_build: extdeps.automation.playwright.playwright_1_62_1,
-    browser_binary_provenance: PlaywrightManagedChromiumDownload,
-    container_userland: Debian12Bookworm,
+    browser_binary_provenance: extdeps.automation.playwright.PlaywrightManagedChromiumDownload,
+    container_userland: extdeps.os.debian.Debian12Bookworm,
     container_visible_host_kernel: ContainerVisibleHostKernel {
       visible_release: "6.8.0-124-generic" as LinuxKernelRelease,
     },
-    architecture: Aarch64,
+    architecture: extdeps.toolchain.types.Aarch64,
     presentation_mode: HeadlessPresentation,
     launch_configuration: PlaywrightDefaultChromiumLaunch {
       executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as std.types.FilePath,
@@ -227,8 +227,8 @@ data playwright_chromium_151_linux_arm64_headless_navigation_run: PlaywrightChro
       origin: LocalSyntheticHarness,
       screenshot: ScreenshotArtifact {
         path: "dag/test/fixtures/browser/chromium_151_connection_refused.png" as std.types.BinaryFilePath,
-        digest: sha256_digest(hex: "637bf51bb5163ec58e6f325d1ed304bfa3618940ac75cb493ddd81d4895b29d3" as std.types.NonEmptyStr),
-        bytes: byte_size(19520),
+        digest: extdeps.crypto.hash.sha256_digest(hex: "637bf51bb5163ec58e6f325d1ed304bfa3618940ac75cb493ddd81d4895b29d3" as std.types.NonEmptyStr),
+        bytes: std.measure.byte_size(19520),
       },
       recovery_trials: [explicit_reload_recovery(body: "RECOVERED_REFUSED" as std.types.NonEmptyStr)],
     },
@@ -237,8 +237,8 @@ data playwright_chromium_151_linux_arm64_headless_navigation_run: PlaywrightChro
       origin: LocalSyntheticHarness,
       screenshot: ScreenshotArtifact {
         path: "dag/test/fixtures/browser/chromium_151_empty_502.png" as std.types.BinaryFilePath,
-        digest: sha256_digest(hex: "f8a0b51701f18c0ff3ea22825103e5016fe68e69c7eca1190ed8162c05df22c6" as std.types.NonEmptyStr),
-        bytes: byte_size(14089),
+        digest: extdeps.crypto.hash.sha256_digest(hex: "f8a0b51701f18c0ff3ea22825103e5016fe68e69c7eca1190ed8162c05df22c6" as std.types.NonEmptyStr),
+        bytes: std.measure.byte_size(14089),
       },
       recovery_trials: [explicit_reload_recovery(body: "RECOVERED_EMPTY" as std.types.NonEmptyStr)],
     },
@@ -247,8 +247,8 @@ data playwright_chromium_151_linux_arm64_headless_navigation_run: PlaywrightChro
       origin: LocalSyntheticHarness,
       screenshot: ScreenshotArtifact {
         path: "dag/test/fixtures/browser/chromium_151_bodied_502.png" as std.types.BinaryFilePath,
-        digest: sha256_digest(hex: "165dea20b5ecdaa9a864ff11c3924e9e6d3bbd956fa94f6b7827d948acc5bf71" as std.types.NonEmptyStr),
-        bytes: byte_size(6337),
+        digest: extdeps.crypto.hash.sha256_digest(hex: "165dea20b5ecdaa9a864ff11c3924e9e6d3bbd956fa94f6b7827d948acc5bf71" as std.types.NonEmptyStr),
+        bytes: std.measure.byte_size(6337),
       },
       recovery_trials: [explicit_reload_recovery(body: "RECOVERED_BODY" as std.types.NonEmptyStr)],
     },

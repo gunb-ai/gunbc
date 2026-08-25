@@ -7,12 +7,12 @@ fn witness_family_realize_width(
   bound_bytes: std.measure.ByteSize,
   budget: std.realize_pack.HostBudget,
   witness_root: v2.std.node.Node,
-  independence_override: v2.std.integer.Int
+  independence_override: Int
 ) -> std.realize_pack.RealizeVerdict {
   let independence = if independence_override > 0 {
     independence_override
   } else {
-    spine_receipt(root: witness_root).independence_width
+    v2.std.spine.spine_receipt(root: witness_root).independence_width
   }
   std.realize_pack.realize_pack_width(
     bound: std.realize_pack.BoundDerived { bytes: bound_bytes },

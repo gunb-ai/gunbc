@@ -159,12 +159,12 @@ fn to_pascal(name: String) -> String {
 fn test_function_name(projection: TestProjection, target: v1.compiler.artifact.RenderTarget) -> String {
   let conventions = v1.compiler.languages.test_conventions_for_target(target: target)
   let formatted = match conventions.name_style {
-    SnakeCaseTestNames => concat(
+    v1.compiler.languages.SnakeCaseTestNames => concat(
       to_snake(name: sanitize_service_name(name: projection.service_name)),
       "_",
       to_snake(name: projection.operation_name)
     )
-    PascalCaseTestNames => concat(
+    v1.compiler.languages.PascalCaseTestNames => concat(
       to_pascal(name: sanitize_service_name(name: projection.service_name)),
       to_pascal(name: projection.operation_name)
     )

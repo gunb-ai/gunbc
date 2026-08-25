@@ -1,7 +1,7 @@
 module test.claim.no_fake_anomalies_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data no_fake_anomalies_note: String = "THE WALL for the expectation backfill (operator acceptance 2026-07-25). Converting the ~24 fake anomalies one call site at a time is a bounded backfill of a missing semantic axis, but the fix is a CONVENTION — 'annotate your red controls' — and conventions have half-lives: a red control written next month without an expectation paints an anomaly glyph again and the class regrows. This witness is what makes the class extinct instead of merely cleaned. It runs a PASSING corpus at DEFAULT verbosity in a child process and asserts its stderr carries no anomaly glyph at all, so the day anyone lands an unannotated deliberate-failure probe, CI reds on the PR rather than the noise accumulating silently. Decidable, cheap, and it needs no new mechanism — the glyphs are the observable the operator reads anyway. Checks BOTH glyph spellings because the child chooses its own rendering: emoji under GitHub Actions, ASCII on a plain terminal (gunbc.observation_seed_render), and a wall that only knew one spelling would pass vacuously in whichever environment it was not written for."
 
@@ -10,19 +10,19 @@ data anomaly_glyph_ascii: String = "✗"
 
 fn claim_batch_path() -> String {
   let root = git.Inspect.Toplevel()
-  witness_bin_release_path(root: root.path, bin_name: "claim_batch")
+  tools.host_prelude.witness_bin_release_path(root: root.path, bin_name: "claim_batch")
 }
 
 fn run_corpus_capturing_stderr(entry: String, function: String) -> String {
   let root = git.Inspect.Toplevel()
-  let result = gunbc.WitnessBin.Run(
+  let result = WitnessBin.Run(
     workdir: root.path,
-    bin_path: test.claim.no_fake_anomalies_witness.claim_batch_path(),
-    args: claim_batch_claims_argv(
+    bin_path: claim_batch_path(),
+    args: tools.host_prelude.claim_batch_claims_argv(
       source_roots: gunbc.ci_layer_roots.compile_clean_source_roots(),
       claims: [tools.host_prelude.ClaimRun { entry: entry, function: function }]
     ),
-    expect: ExpectSuccess
+    expect: gunbc.output_policy.ExpectSuccess
   )
   result.stderr
 }

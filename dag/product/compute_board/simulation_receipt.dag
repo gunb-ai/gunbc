@@ -53,7 +53,7 @@ data icarus_verilog_tool: SimulationTool = SimulationTool {
   subject: std.decl_ref.DeclarationRef {
     module_path: "extdeps.simulators.icarus_verilog.subject",
     decl_name: "icarus_verilog_simulator",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
   reported_version: "Icarus Verilog version 11.0 (stable)",
 }
@@ -62,7 +62,7 @@ data ngspice_tool: SimulationTool = SimulationTool {
   subject: std.decl_ref.DeclarationRef {
     module_path: "extdeps.simulators.ngspice.subject",
     decl_name: "ngspice_simulator",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
   reported_version: "ngspice-39",
 }
@@ -138,7 +138,7 @@ data yosys_tool: SimulationTool = SimulationTool {
   subject: std.decl_ref.DeclarationRef {
     module_path: "extdeps.toolchain.icestorm.subject",
     decl_name: "icestorm_project",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
   reported_version: "Yosys 0.23 (git sha1 7ce5011c24b)",
 }
@@ -147,7 +147,7 @@ data nextpnr_tool: SimulationTool = SimulationTool {
   subject: std.decl_ref.DeclarationRef {
     module_path: "extdeps.toolchain.icestorm.subject",
     decl_name: "icestorm_project",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
   reported_version: "nextpnr-ice40 Version 0.4-1+b1",
 }
@@ -173,7 +173,7 @@ data icepack_tool: SimulationTool = SimulationTool {
   subject: std.decl_ref.DeclarationRef {
     module_path: "extdeps.toolchain.icestorm.subject",
     decl_name: "icestorm_project",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
   reported_version: "icepack (Project IceStorm)",
 }

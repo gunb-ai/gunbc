@@ -24,12 +24,12 @@ type ClockFrame {
 }
 
 fn clock_frame_eq(a: ClockFrame, b: ClockFrame) -> Bool {
-  clock_domain_eq(a: a.domain, b: b.domain) && clock_basis_eq(a: a.basis, b: b.basis)
+  std.measure.clock_domain_eq(a: a.domain, b: b.domain) && std.measure.clock_basis_eq(a: a.basis, b: b.basis)
 }
 
 type OccurrenceExtent {
   occurrence: std.observation.OccurrenceId
-  interval: OrderedClosedInterval<std.measure.Nanosecond>
+  interval: std.interval.OrderedClosedInterval<std.measure.Nanosecond>
 }
 
 type ExtentConstruction
@@ -37,7 +37,7 @@ type ExtentConstruction
   | ExtentRefused { cause: std.types.NonEmptyStr }
 
 fn nanosecond_le(a: std.measure.Nanosecond, b: std.measure.Nanosecond) -> Bool {
-  nanosecond_count(n: a) <= nanosecond_count(n: b)
+  std.measure.nanosecond_count(n: a) <= std.measure.nanosecond_count(n: b)
 }
 
 // An extent is built from the two instants actually recorded, so a caller cannot assemble one from
@@ -48,13 +48,13 @@ fn occurrence_extent(
   begin: std.measure.ObservationInstant,
   end: std.measure.ObservationInstant,
 ) -> ExtentConstruction {
-  match compare_instants(a: begin, b: end) {
-    InstantIncomparable { left: _, right: _ } =>
+  match std.measure.compare_instants(a: begin, b: end) {
+    std.measure.InstantIncomparable { left: _, right: _ } =>
       ExtentRefused { cause: "begin and end are on different clocks; the width would describe no timeline" }
-    InstantAfter =>
+    std.measure.InstantAfter =>
       ExtentRefused { cause: "end precedes begin" }
-    InstantBefore => extent_from_ordered(occurrence: occurrence, begin: begin, end: end)
-    InstantSame => extent_from_ordered(occurrence: occurrence, begin: begin, end: end)
+    std.measure.InstantBefore => extent_from_ordered(occurrence: occurrence, begin: begin, end: end)
+    std.measure.InstantSame => extent_from_ordered(occurrence: occurrence, begin: begin, end: end)
   }
 }
 
@@ -63,9 +63,9 @@ fn extent_from_ordered(
   begin: std.measure.ObservationInstant,
   end: std.measure.ObservationInstant,
 ) -> ExtentConstruction {
-  match closed_interval(low: begin.since_origin, high: end.since_origin, le: nanosecond_le) {
-    IntervalRefused { reason: r } => ExtentRefused { cause: r }
-    IntervalReady { interval: i } =>
+  match std.interval.closed_interval(low: begin.since_origin, high: end.since_origin, le: nanosecond_le) {
+    std.interval.IntervalRefused { reason: r } => ExtentRefused { cause: r }
+    std.interval.IntervalReady { interval: i } =>
       ExtentReady {
         frame: ClockFrame { domain: begin.domain, basis: begin.basis },
         extent: OccurrenceExtent { occurrence: occurrence, interval: i }
@@ -77,8 +77,8 @@ fn extent_from_ordered(
 // Unattributed is the complement of their union, so no instant is ever unattributed and attributed
 // at once.
 type AttributionSpan
-  = Attributed { occurrence: std.observation.OccurrenceId, interval: OrderedClosedInterval<std.measure.Nanosecond> }
-  | Unattributed { parent: std.observation.OccurrenceId, interval: OrderedClosedInterval<std.measure.Nanosecond> }
+  = Attributed { occurrence: std.observation.OccurrenceId, interval: std.interval.OrderedClosedInterval<std.measure.Nanosecond> }
+  | Unattributed { parent: std.observation.OccurrenceId, interval: std.interval.OrderedClosedInterval<std.measure.Nanosecond> }
 
 type AttributionResult
   = AttributionComputed { spans: List<AttributionSpan> }
@@ -92,11 +92,11 @@ type ExtentInFrame {
 }
 
 fn extent_low_ns(e: ExtentInFrame) -> std.nat.Nat {
-  nanosecond_count(n: interval_low(interval: e.extent.interval))
+  std.measure.nanosecond_count(n: std.interval.interval_low(interval: e.extent.interval))
 }
 
 fn extent_high_ns(e: ExtentInFrame) -> std.nat.Nat {
-  nanosecond_count(n: interval_high(interval: e.extent.interval))
+  std.measure.nanosecond_count(n: std.interval.interval_high(interval: e.extent.interval))
 }
 
 type AttributionScan {
@@ -118,9 +118,9 @@ type GapConstruction
 
 fn gap_span(parent: std.observation.OccurrenceId, from: std.nat.Nat, to: std.nat.Nat) -> GapConstruction {
   if to > from {
-    match closed_interval(low: nanosecond(count: from), high: nanosecond(count: to), le: nanosecond_le) {
-      IntervalRefused { reason: r } => GapRefused { cause: r }
-      IntervalReady { interval: i } => GapReady { span: Unattributed { parent: parent, interval: i } }
+    match std.interval.closed_interval(low: std.measure.nanosecond(count: from), high: std.measure.nanosecond(count: to), le: nanosecond_le) {
+      std.interval.IntervalRefused { reason: r } => GapRefused { cause: r }
+      std.interval.IntervalReady { interval: i } => GapReady { span: Unattributed { parent: parent, interval: i } }
     }
   } else {
     GapEmpty
@@ -195,7 +195,7 @@ fn attribute_within(
   children: List<ExtentInFrame>,
 ) -> AttributionResult {
   let ordered = sort_by(children, fn(c) { extent_low_ns(e: c) })
-  let scanned = v2.std.algebra.fold_list(
+  let scanned = fold_list(
     ordered,
     AttributionScan { cursor: extent_low_ns(e: parent), spans: [], refusal: Absent },
     (acc, c) => attribution_step(acc: acc, parent: parent, child: c)
@@ -217,9 +217,9 @@ fn attribute_within(
 
 
 // A SPAN IS A START PLUS A WIDTH, which is how a producer records one and why it is the caller's
-// input shape: a std.nat.Nat width cannot be negative, so the ordered-pair refusal that OrderedClosedInterval
+// input shape: a Nat width cannot be negative, so the ordered-pair refusal that OrderedClosedInterval
 // exists to catch is already impossible at this door. The refusal arm below is therefore unreachable
-// under std.nat.Nat arithmetic and is still carried, because "cannot happen" is a claim about today's
+// under Nat arithmetic and is still carried, because "cannot happen" is a claim about today's
 // carrier and not a licence to fabricate a span if it ever does.
 type ExtentSpec {
   occurrence: std.observation.OccurrenceId
@@ -233,13 +233,13 @@ type SpecConstruction
   | SpecRefused { cause: std.types.NonEmptyStr }
 
 fn extent_from_spec(spec: ExtentSpec) -> SpecConstruction {
-  match closed_interval(
-    low: nanosecond(count: spec.start_ns),
-    high: nanosecond(count: spec.start_ns + spec.width_ns),
+  match std.interval.closed_interval(
+    low: std.measure.nanosecond(count: spec.start_ns),
+    high: std.measure.nanosecond(count: spec.start_ns + spec.width_ns),
     le: nanosecond_le
   ) {
-    IntervalRefused { reason: r } => SpecRefused { cause: r }
-    IntervalReady { interval: i } =>
+    std.interval.IntervalRefused { reason: r } => SpecRefused { cause: r }
+    std.interval.IntervalReady { interval: i } =>
       SpecReady {
         extent: ExtentInFrame {
           frame: spec.frame,
@@ -266,7 +266,7 @@ fn attribute_specs(parent: ExtentSpec, children: List<ExtentSpec>) -> Attributio
   match extent_from_spec(spec: parent) {
     SpecRefused { cause: c } => AttributionRefusedImpossibleInterval { cause: c }
     SpecReady { extent: p } => {
-      let scanned = v2.std.algebra.fold_list(
+      let scanned = fold_list(
         children,
         SpecScan { extents: [], refusal: Absent },
         (acc, spec) => spec_scan_step(acc: acc, spec: spec)

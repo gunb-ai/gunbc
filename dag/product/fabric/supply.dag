@@ -1,5 +1,6 @@
 module product.fabric.supply
 
+
 // A SupplierOffer is a supplier's statement of capacity it is willing to sell. Owned
 // capacity and rented capacity are ONE type: what differs is the evidence behind
 // the statement, not the kind of thing being stated.
@@ -47,12 +48,12 @@ module product.fabric.supply
 // compares normalized quotes; it does not model any supplier's tariff.
 
 type OfferQuote =
-  | QuotedPerSecond(MoneyPerSecond)
-  | QuotedPerMinute(MoneyPerMinute)
-  | QuotedPerHour(MoneyPerHour)
-  | QuotedFlatPerGrant(MoneyOnce)
+  | QuotedPerSecond(std.measure.MoneyPerSecond)
+  | QuotedPerMinute(std.measure.MoneyPerMinute)
+  | QuotedPerHour(std.measure.MoneyPerHour)
+  | QuotedFlatPerGrant(std.measure.MoneyOnce)
 
-fn offer_quote_amount(q: OfferQuote) -> MoneyAmountMicro {
+fn offer_quote_amount(q: OfferQuote) -> std.measure.MoneyAmountMicro {
   match q {
     QuotedPerSecond(r) => r.amount
     QuotedPerMinute(r) => r.amount
@@ -61,7 +62,7 @@ fn offer_quote_amount(q: OfferQuote) -> MoneyAmountMicro {
   }
 }
 
-fn offer_quote_currency(q: OfferQuote) -> CurrencyCode {
+fn offer_quote_currency(q: OfferQuote) -> std.currency.CurrencyCode {
   match q {
     QuotedPerSecond(r) => r.currency
     QuotedPerMinute(r) => r.currency
@@ -71,24 +72,24 @@ fn offer_quote_currency(q: OfferQuote) -> CurrencyCode {
 }
 
 type OfferEvidence
-  = ObservedSupply { observed_at: Timestamp, receipt: ObservationReceiptRef }
+  = ObservedSupply { observed_at: std.types.Timestamp, receipt: product.fabric.demand.ObservationReceiptRef }
   | QuotedSupply {
-      quoted_at: Timestamp,
-      valid_until: Timestamp,
-      receipt: ObservationReceiptRef,
+      quoted_at: std.types.Timestamp,
+      valid_until: std.types.Timestamp,
+      receipt: product.fabric.demand.ObservationReceiptRef,
     }
 
 type SupplierOffer<P> {
-  id: FabricIdentity<P, OfferKey>
+  id: product.fabric.identity.FabricIdentity<P, product.fabric.identity.OfferKey>
   executor: P
-  shape: Shape
-  capabilities: CapabilityManifestRef
-  trust_domain: TrustDomainRef
-  isolation: IsolationProfile
+  shape: product.fabric.work.Shape
+  capabilities: product.fabric.work.CapabilityManifestRef
+  trust_domain: product.fabric.work.TrustDomainRef
+  isolation: product.fabric.isolation.IsolationProfile
   quantity_bound: Int
-  ready_at: Timestamp
+  ready_at: std.types.Timestamp
   quote: OfferQuote
-  billing_quantum: Second
+  billing_quantum: std.measure.Second
   evidence: OfferEvidence
 }
 
@@ -160,9 +161,9 @@ type SupplySelectionPolicy =
 
 type OfferFungibility
   = Fungible
-  | TrustDomainMismatch { required: TrustDomainRef, offered: TrustDomainRef }
-  | CapabilitiesNotOffered { required: CapabilityManifestRef, offered: CapabilityManifestRef }
-  | IsolationNotProvided { missing: List<IsolationGuarantee> }
+  | TrustDomainMismatch { required: product.fabric.work.TrustDomainRef, offered: product.fabric.work.TrustDomainRef }
+  | CapabilitiesNotOffered { required: product.fabric.work.CapabilityManifestRef, offered: product.fabric.work.CapabilityManifestRef }
+  | IsolationNotProvided { missing: List<product.fabric.isolation.IsolationGuarantee> }
   | ShapeAxesNotCovered { unmet: List<UnmetShapeAxis> }
 
 // ShapeNotCovered IS DELETED RATHER THAN KEPT BESIDE ITS REPLACEMENT.
@@ -193,10 +194,10 @@ type OfferFungibility
 // only knows an estimate cannot construct ExactGrantDuration and claim
 // otherwise -- the two arms are the wall, not a comment beside a single field.
 type GrantDuration
-  = ExactGrantDuration { seconds: Second }
-  | EstimatedGrantDuration { seconds: Second }
+  = ExactGrantDuration { seconds: std.measure.Second }
+  | EstimatedGrantDuration { seconds: std.measure.Second }
 
-fn grant_duration_seconds(d: GrantDuration) -> Second {
+fn grant_duration_seconds(d: GrantDuration) -> std.measure.Second {
   match d {
     ExactGrantDuration { seconds: s } => s
     EstimatedGrantDuration { seconds: s } => s
@@ -205,11 +206,11 @@ fn grant_duration_seconds(d: GrantDuration) -> Second {
 
 type DemandOfferAffordability
   = Affordable
-  | AffordableUnderEstimate { duration_seconds: Second, projected_total: MoneyAmountMicro }
-  | QuoteExceedsMaximumBuyOrder { quoted: MoneyAmountMicro, maximum: MoneyAmountMicro }
-  | QuoteCurrencyMismatch { quoted: CurrencyCode, budgeted: CurrencyCode }
+  | AffordableUnderEstimate { duration_seconds: std.measure.Second, projected_total: std.measure.MoneyAmountMicro }
+  | QuoteExceedsMaximumBuyOrder { quoted: std.measure.MoneyAmountMicro, maximum: std.measure.MoneyAmountMicro }
+  | QuoteCurrencyMismatch { quoted: std.currency.CurrencyCode, budgeted: std.currency.CurrencyCode }
 
-fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
+fn offer_covers_shape(offered: product.fabric.work.Shape, needed: product.fabric.work.Shape) -> Bool {
   (unmet_shape_axes(offered: offered, needed: needed) |> count) == 0
 }
 
@@ -229,49 +230,49 @@ fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
 // binary built for one does not run on the other, so the comparison is a match and a mismatch is
 // total. Threads and memory are genuine at-least comparisons.
 type UnmetShapeAxis
-  = ThreadsNotCovered { required: HardwareThreadCount, offered: HardwareThreadCount }
-  | MemoryNotCovered { required: ByteSize, offered: ByteSize }
-  | MemoryNotOffered { required: ByteSize }
-  | ArchitectureMismatch { required: Architecture, offered: Architecture }
-  | ArchitectureNotOffered { required: Architecture }
+  = ThreadsNotCovered { required: std.measure.HardwareThreadCount, offered: std.measure.HardwareThreadCount }
+  | MemoryNotCovered { required: std.measure.ByteSize, offered: std.measure.ByteSize }
+  | MemoryNotOffered { required: std.measure.ByteSize }
+  | ArchitectureMismatch { required: extdeps.toolchain.types.Architecture, offered: extdeps.toolchain.types.Architecture }
+  | ArchitectureNotOffered { required: extdeps.toolchain.types.Architecture }
 
 fn unmet_shape_axis_wire(axis: UnmetShapeAxis) -> String {
   match axis {
     ThreadsNotCovered { required: r, offered: o } =>
-      join(["threads: needs ", to_string(hardware_thread_count_value(t: r)),
-            ", offered ", to_string(hardware_thread_count_value(t: o))], "")
+      join(["threads: needs ", to_string(std.measure.hardware_thread_count_value(t: r)),
+            ", offered ", to_string(std.measure.hardware_thread_count_value(t: o))], "")
     MemoryNotCovered { required: r, offered: o } =>
-      join(["memory: needs ", to_string(byte_size_count(b: r)),
-            " bytes, offered ", to_string(byte_size_count(b: o))], "")
+      join(["memory: needs ", to_string(std.measure.byte_size_count(b: r)),
+            " bytes, offered ", to_string(std.measure.byte_size_count(b: o))], "")
     MemoryNotOffered { required: r } =>
-      join(["memory: needs ", to_string(byte_size_count(b: r)),
+      join(["memory: needs ", to_string(std.measure.byte_size_count(b: r)),
             " bytes, offer states none"], "")
     ArchitectureMismatch { required: r, offered: o } =>
-      join(["architecture: needs ", architecture_diagnostic_name(arch: r) as String,
-            ", offered ", architecture_diagnostic_name(arch: o) as String], "")
+      join(["architecture: needs ", extdeps.toolchain.types.architecture_diagnostic_name(arch: r) as String,
+            ", offered ", extdeps.toolchain.types.architecture_diagnostic_name(arch: o) as String], "")
     ArchitectureNotOffered { required: r } =>
-      join(["architecture: needs ", architecture_diagnostic_name(arch: r) as String,
+      join(["architecture: needs ", extdeps.toolchain.types.architecture_diagnostic_name(arch: r) as String,
             ", offer states none"], "")
   }
 }
 
-fn unmet_thread_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
-  if hardware_thread_count_value(t: offered.hard.threads)
-    >= hardware_thread_count_value(t: needed.hard.threads) {
+fn unmet_thread_axis(offered: product.fabric.work.Shape, needed: product.fabric.work.Shape) -> List<UnmetShapeAxis> {
+  if std.measure.hardware_thread_count_value(t: offered.hard.threads)
+    >= std.measure.hardware_thread_count_value(t: needed.hard.threads) {
     []
   } else {
     [ThreadsNotCovered { required: needed.hard.threads, offered: offered.hard.threads }]
   }
 }
 
-fn unmet_memory_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+fn unmet_memory_axis(offered: product.fabric.work.Shape, needed: product.fabric.work.Shape) -> List<UnmetShapeAxis> {
   match needed.envelope.memory {
     Absent => []
     Present { value: want } =>
       match offered.envelope.memory {
         Absent => [MemoryNotOffered { required: want.min_bytes }]
         Present { value: have } =>
-          if byte_size_count(b: have.min_bytes) >= byte_size_count(b: want.min_bytes) {
+          if std.measure.byte_size_count(b: have.min_bytes) >= std.measure.byte_size_count(b: want.min_bytes) {
             []
           } else {
             [MemoryNotCovered { required: want.min_bytes, offered: have.min_bytes }]
@@ -280,7 +281,7 @@ fn unmet_memory_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
   }
 }
 
-fn unmet_architecture_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+fn unmet_architecture_axis(offered: product.fabric.work.Shape, needed: product.fabric.work.Shape) -> List<UnmetShapeAxis> {
   match needed.envelope.cpu {
     Absent => []
     Present { value: want_cpu } =>
@@ -302,7 +303,7 @@ fn unmet_architecture_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis
   }
 }
 
-fn unmet_shape_axes(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+fn unmet_shape_axes(offered: product.fabric.work.Shape, needed: product.fabric.work.Shape) -> List<UnmetShapeAxis> {
   concat(
     unmet_thread_axis(offered: offered, needed: needed),
     concat(
@@ -319,8 +320,8 @@ fn unmet_shape_axes(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
 // fungible offers, and choosing -- like pricing -- is where economics live,
 // never here.
 
-fn offer_fungibility_for<P>(requirements: ExecutionRequirements, offer: SupplierOffer<P>) -> OfferFungibility {
-  let missing_isolation = unsatisfied_isolation_guarantees(
+fn offer_fungibility_for<P>(requirements: product.fabric.work.ExecutionRequirements, offer: SupplierOffer<P>) -> OfferFungibility {
+  let missing_isolation = product.fabric.isolation.unsatisfied_isolation_guarantees(
     required: requirements.isolation,
     provided: offer.isolation,
   )
@@ -338,8 +339,8 @@ fn offer_fungibility_for<P>(requirements: ExecutionRequirements, offer: Supplier
   }
 }
 
-fn seconds_per_hour() -> std.nat.Nat {
-  minutes_per_hour() * seconds_per_minute()
+fn seconds_per_hour() -> Nat {
+  std.measure.minutes_per_hour() * std.measure.seconds_per_minute()
 }
 
 // A BILLING QUANTUM: the smallest interval a supplier ever charges for, and
@@ -364,7 +365,7 @@ fn seconds_per_hour() -> std.nat.Nat {
 // vendor into the per-hour arm made a three-minute job project a whole hour, a
 // twentyfold overstatement that would have kept the selection fold from ever
 // choosing that supplier. The quantum is now the supplier's own.
-fn billed_unit_count(seconds: std.nat.Nat, quantum_seconds: std.nat.Nat) -> std.nat.Nat {
+fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
   if quantum_seconds == 0 {
     seconds
   } else {
@@ -387,7 +388,7 @@ fn billed_unit_count(seconds: std.nat.Nat, quantum_seconds: std.nat.Nat) -> std.
 // cost exceeds the ceiling, which is the absorbing-fallback failure (DESIGN
 // section 5) one level down: a refusal arm that quietly narrows instead of
 // refusing.
-fn billed_seconds(seconds: std.nat.Nat, quantum_seconds: std.nat.Nat) -> std.nat.Nat {
+fn billed_seconds(seconds: Nat, quantum_seconds: Nat) -> Nat {
   if quantum_seconds == 0 {
     seconds
   } else {
@@ -405,17 +406,17 @@ fn billed_seconds(seconds: std.nat.Nat, quantum_seconds: std.nat.Nat) -> std.nat
 fn offer_quoted_total_for_grant(
   quote: OfferQuote,
   duration: GrantDuration,
-  quantum: Second,
-) -> MoneyAmountMicro {
-  let seconds = second_count(s: grant_duration_seconds(d: duration))
-  let billed = billed_seconds(seconds: seconds, quantum_seconds: second_count(s: quantum))
+  quantum: std.measure.Second,
+) -> std.measure.MoneyAmountMicro {
+  let seconds = std.measure.second_count(s: grant_duration_seconds(d: duration))
+  let billed = billed_seconds(seconds: seconds, quantum_seconds: std.measure.second_count(s: quantum))
   match quote {
     QuotedFlatPerGrant(r) => r.amount
-    QuotedPerSecond(r) => measure_scale_fraction_ceil(m: r.amount, num: billed, den: 1)
+    QuotedPerSecond(r) => std.measure.measure_scale_fraction_ceil(m: r.amount, num: billed, den: 1)
     QuotedPerMinute(r) =>
-      measure_scale_fraction_ceil(m: r.amount, num: billed, den: seconds_per_minute())
+      std.measure.measure_scale_fraction_ceil(m: r.amount, num: billed, den: std.measure.seconds_per_minute())
     QuotedPerHour(r) =>
-      measure_scale_fraction_ceil(m: r.amount, num: billed, den: seconds_per_hour())
+      std.measure.measure_scale_fraction_ceil(m: r.amount, num: billed, den: seconds_per_hour())
   }
 }
 
@@ -464,15 +465,15 @@ fn offer_quoted_total_for_grant(
 
 fn offer_affordability_for<P>(
   offer: SupplierOffer<P>,
-  maximum_buy_order: MoneyAmountMicro,
-  budget_currency: CurrencyCode,
+  maximum_buy_order: std.measure.MoneyAmountMicro,
+  budget_currency: std.currency.CurrencyCode,
   duration: GrantDuration,
 ) -> DemandOfferAffordability {
   if offer_quote_currency(q: offer.quote) != budget_currency {
     QuoteCurrencyMismatch { quoted: offer_quote_currency(q: offer.quote), budgeted: budget_currency }
   } else {
     let projected = offer_quoted_total_for_grant(quote: offer.quote, duration: duration, quantum: offer.billing_quantum)
-    if money_amount_micro_count(m: projected) > money_amount_micro_count(m: maximum_buy_order) {
+    if std.measure.money_amount_micro_count(m: projected) > std.measure.money_amount_micro_count(m: maximum_buy_order) {
       QuoteExceedsMaximumBuyOrder { quoted: projected, maximum: maximum_buy_order }
     } else {
       match duration {

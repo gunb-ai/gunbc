@@ -4,56 +4,56 @@ module v2.test.long.a4_opacity
 data a4_opacity_authority_source_text: String = "a4_opacity_test"
 
 data a4_opacity_target_model: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
-  produced_decl_support: ProducedDeclUnwired,
-  bundle: rust_target_model_node(),
-  lex: rust_fn_add_lex(),
-  binding_spellings: rust_binding_spellings(),
-  token_class_emit_transforms: target_model_emit_transforms_empty,
+  produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
+  bundle: v2.extdeps.languages.rust.rust_target_model_node(),
+  lex: v2.extdeps.languages.rust.rust_fn_add_lex(),
+  binding_spellings: v2.extdeps.languages.rust.rust_binding_spellings(),
+  token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
   authority_source_text: a4_opacity_authority_source_text,
-  runtime_row: target_emit_host_runtime_row_unconfigured
+  runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
 }
 
-data a4_opacity_charoffset_for_byteoffset_source: Medium<String> = extdeps.communication.medium.Medium {
+data a4_opacity_charoffset_for_byteoffset_source: extdeps.communication.medium.Medium<String> = extdeps.communication.medium.Medium {
   carried: "module a4opacity.refined_twin\n\ntype ByteOffset {\n  value: Int\n}\ntype CharOffset {\n  value: Int\n}\n\nfn expects_byte(x: ByteOffset) -> Int = x.value\n\nfn call_site(c: CharOffset) -> Int = expects_byte(c)\n",
   fidelity: extdeps.communication.medium.Lossless
 }
 
-data a4_opacity_byteoffset_for_charoffset_source: Medium<String> = extdeps.communication.medium.Medium {
+data a4_opacity_byteoffset_for_charoffset_source: extdeps.communication.medium.Medium<String> = extdeps.communication.medium.Medium {
   carried: "module a4opacity.refined_twin_reverse\n\ntype ByteOffset {\n  value: Int\n}\ntype CharOffset {\n  value: Int\n}\n\nfn expects_char(x: CharOffset) -> Int = x.value\n\nfn call_site(b: ByteOffset) -> Int = expects_char(b)\n",
   fidelity: extdeps.communication.medium.Lossless
 }
 
-data a4_opacity_same_brand_source: Medium<String> = extdeps.communication.medium.Medium {
+data a4_opacity_same_brand_source: extdeps.communication.medium.Medium<String> = extdeps.communication.medium.Medium {
   carried: "module a4opacity.same_brand\n\ntype ByteOffset {\n  value: Int\n}\n\nfn expects_byte(x: ByteOffset) -> Int = x.value\n\nfn call_site(b: ByteOffset) -> Int = expects_byte(b)\n",
   fidelity: extdeps.communication.medium.Lossless
 }
 
-fn a4_opacity_compile(source: Medium<String>) -> v2.std.diagnostic.Outcome<Medium<String>> {
-  compile_ingest_staging(source: source, target: a4_opacity_target_model)
+fn a4_opacity_compile(source: extdeps.communication.medium.Medium<String>) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
+  v2.compiler.compile.compile_ingest_staging(source: source, target: a4_opacity_target_model)
 }
 
-fn a4_opacity_rejects(source: Medium<String>) -> v2.std.logic.Bool {
+fn a4_opacity_rejects(source: extdeps.communication.medium.Medium<String>) -> Bool {
   match a4_opacity_compile(source: source) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-fn a4_opacity_accepts(source: Medium<String>) -> v2.std.logic.Bool {
+fn a4_opacity_accepts(source: extdeps.communication.medium.Medium<String>) -> Bool {
   match a4_opacity_compile(source: source) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn a4_opacity_charoffset_for_byteoffset_rejects() -> v2.std.logic.Bool {
+test fn a4_opacity_charoffset_for_byteoffset_rejects() -> Bool {
   a4_opacity_rejects(source: a4_opacity_charoffset_for_byteoffset_source)
 }
 
-test fn a4_opacity_byteoffset_for_charoffset_rejects() -> v2.std.logic.Bool {
+test fn a4_opacity_byteoffset_for_charoffset_rejects() -> Bool {
   a4_opacity_rejects(source: a4_opacity_byteoffset_for_charoffset_source)
 }
 
-test fn a4_opacity_same_brand_accepts() -> v2.std.logic.Bool {
+test fn a4_opacity_same_brand_accepts() -> Bool {
   a4_opacity_accepts(source: a4_opacity_same_brand_source)
 }

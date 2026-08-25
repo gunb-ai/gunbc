@@ -13,11 +13,11 @@ type RoadmapDocument {
 }
 
 fn section_blocks(s: RoadmapSection, merged: List<Int>) -> List<std.markdown.MarkdownBlock> {
-  project_roadmap_section(title: s.title, elements: s.elements, merged: merged).blocks
+  gunbc.roadmap_emit.project_roadmap_section(title: s.title, elements: s.elements, merged: merged).blocks
 }
 
 fn lead_lane_blocks(s: RoadmapSection, merged: List<Int>) -> List<std.markdown.MarkdownBlock> {
-  project_roadmap_section(title: concat("✦ ", s.title), elements: s.elements, merged: merged).blocks
+  gunbc.roadmap_emit.project_roadmap_section(title: concat("✦ ", s.title), elements: s.elements, merged: merged).blocks
 }
 
 fn project_roadmap_to_markdown(doc: RoadmapDocument, merged: List<Int>) -> std.markdown.MarkdownDocument {

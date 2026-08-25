@@ -3,7 +3,7 @@ module extdeps.github.workflow_runs
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/rest/actions/workflow-runs"
   }
 }
@@ -28,9 +28,9 @@ type WorkflowRunConclusion
 
 data conclusion_authority_consolidation_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowRunConclusion"),
+    ref: std.decl_ref.decl_ref(module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowRunConclusion"),
     reason: "WorkflowRunConclusion (workflow runs REST API) and CheckConclusion (checks REST API, extdeps.github.checks) share 7 of 8 variants: WorkflowRunConclusion adds StartupFailure, CheckConclusion adds Stale. These are genuinely different API shapes today",
-    dissolution: unbound_dissolution(description: "GitHub API unifies conclusion values across both APIs, or std gains a tagged-union type allowing a shared core with API-specific extensions"),
+    dissolution: std.dissolution.unbound_dissolution(description: "GitHub API unifies conclusion values across both APIs, or std gains a tagged-union type allowing a shared core with API-specific extensions"),
   )
 ]
 
@@ -108,7 +108,7 @@ data structural_coverage_gap_workflow_run_codec_hand_rolled: List<String> = [
 
 service github.WorkflowRuns {
   config {
-    endpoint: default_api_base
+    endpoint: extdeps.github.github.default_api_base
     auth: Bearer
     auth_source: std.credentials.EnvVar { name: "GITHUB_TOKEN" }
 
@@ -121,7 +121,7 @@ service github.WorkflowRuns {
       owner: String
       repo: String
       head_sha: std.types.CommitSha
-      per_page: Int = default_per_page
+      per_page: Int = extdeps.github.github.default_per_page
     }
     output {
       runs: WorkflowRunList
@@ -134,10 +134,10 @@ service github.WorkflowRuns {
     }
     response {
       200 => WorkflowRunList
-      401 => GitHubErrorShape
-      403 => GitHubErrorShape
-      404 => GitHubErrorShape
-      500 => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      403 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      500 => extdeps.github.errors.GitHubErrorShape
     }
   }
 }

@@ -1,7 +1,7 @@
 module v2.test.claim.bash_command_fold
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data bash_fold_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of extdeps.languages.bash.program serialize_stmt and of the grammar rows/segment spellings. Each fold test compares bash_emit (row-emit) against its golden only (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
 
@@ -116,287 +116,287 @@ fn bash_fold_with_redir_stmt(node: v2.std.node.Node) -> v2.workflow.bash_emit.Ba
   }
 }
 
-fn bash_fold_direct_serialize_matches_golden(emitted: v2.std.node.Node, target: v2.std.compilers.target_model.TargetModel, golden: String) -> v2.std.logic.Bool {
-  match target_serialize_source_from_model(target: target, emitted: emitted) {
-    Accepted { value: source, diagnostics: d } =>
+fn bash_fold_direct_serialize_matches_golden(emitted: v2.std.node.Node, target: v2.std.compilers.target_model.TargetModel, golden: String) -> Bool {
+  match v2.compiler.translate.target_serialize_source_from_model(target: target, emitted: emitted) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == golden) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn bash_fold_relation_row_true_witness_holds() -> v2.std.logic.Bool {
-  match bash_fold_relation_row_witness(
-    emitted: bash_fold_cmd_true_emitted,
+test fn bash_fold_relation_row_true_witness_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness(
+    emitted: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
     lhs: ^bash_production_fold_command
   ) {
-    Holds { value: _ } => true
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Holds { value: _ } => true
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_fold_command_single_lit_true_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
-    stmt: bash_fold_command_stmt(node: bash_fold_cmd_true_emitted),
+test fn bash_fold_command_single_lit_true_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
+    stmt: bash_fold_command_stmt(node: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted),
     golden: bash_fold_cmd_true_golden
   )
 }
 
-test fn bash_fold_command_multi_lit_echo_hi_holds() -> v2.std.logic.Bool {
-  bash_fold_stmt_kind_sentinel == from_code_point(cp: 2)
-    && bash_fold_word_lit_sentinel == from_code_point(cp: 0)
-    && bash_fold_word_var_sentinel == from_code_point(cp: 1)
-    && bash_fold_word_concat_sentinel == from_code_point(cp: 3)
-    && bash_fold_word_cmdsubst_sentinel == from_code_point(cp: 4)
-    && bash_emit_matches_golden(
-      stmt: bash_fold_command_stmt(node: bash_fold_cmd_echo_hi_emitted),
+test fn bash_fold_command_multi_lit_echo_hi_holds() -> Bool {
+  v2.extdeps.languages.bash_command_fold.bash_fold_stmt_kind_sentinel == from_code_point(cp: 2)
+    && v2.extdeps.languages.bash_command_fold.bash_fold_word_lit_sentinel == from_code_point(cp: 0)
+    && v2.extdeps.languages.bash_command_fold.bash_fold_word_var_sentinel == from_code_point(cp: 1)
+    && v2.extdeps.languages.bash_command_fold.bash_fold_word_concat_sentinel == from_code_point(cp: 3)
+    && v2.extdeps.languages.bash_command_fold.bash_fold_word_cmdsubst_sentinel == from_code_point(cp: 4)
+    && v2.workflow.bash_emit.bash_emit_matches_golden(
+      stmt: bash_fold_command_stmt(node: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_echo_hi_emitted),
       golden: bash_fold_cmd_echo_hi_golden
     )
 }
 
-test fn bash_fold_command_var_ref_x_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
-    stmt: bash_fold_command_stmt(node: bash_fold_cmd_var_x_emitted),
+test fn bash_fold_command_var_ref_x_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
+    stmt: bash_fold_command_stmt(node: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_var_x_emitted),
     golden: bash_fold_cmd_var_x_golden
   )
 }
 
-test fn bash_fold_command_arbitrary_grep_triple_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_command_arbitrary_grep_triple_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_command_stmt(
-      node: bash_build_command_from_lits(lits: ["grep", "-rn", "foo_bar.baz"])
+      node: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["grep", "-rn", "foo_bar.baz"])
     ),
     golden: bash_fold_cmd_grep_golden
   )
 }
 
-test fn bash_fold_command_arbitrary_var_home_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_command_arbitrary_var_home_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_command_stmt(
-      node: bash_build_command_from_word_nodes(words: [bash_build_word_var(name: "HOME")])
+      node: v2.extdeps.languages.bash_build.bash_build_command_from_word_nodes(words: [v2.extdeps.languages.bash_build.bash_build_word_var(name: "HOME")])
     ),
     golden: bash_fold_cmd_home_golden
   )
 }
 
-test fn bash_fold_command_arbitrary_lit_quote_escape_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_command_arbitrary_lit_quote_escape_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_command_stmt(
-      node: bash_build_command_from_lits(lits: ["a'b"])
+      node: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["a'b"])
     ),
     golden: bash_fold_cmd_quote_golden
   )
 }
 
-test fn bash_fold_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
-  bash_emit_wrong_target_oracle_holds(
-    emitted: bash_fold_cmd_true_emitted,
+test fn bash_fold_wrong_production_rejects_oracle_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_wrong_target_oracle_holds(
+    emitted: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
     golden: bash_fold_cmd_true_golden,
-    wrong_target_witness: bash_fold_cmd_true_wrong_target_model_witness()
+    wrong_target_witness: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_wrong_target_model_witness()
   )
 }
 
-test fn bash_fold_direct_serialize_single_lit_true_holds() -> v2.std.logic.Bool {
-  match bash_fold_target_model_for_emitted_witness(
-    emitted: bash_fold_cmd_true_emitted,
+test fn bash_fold_direct_serialize_single_lit_true_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_target_model_for_emitted_witness(
+    emitted: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
     source_literal: ^bash_fold_dynamic_source_literal,
     source_text: bash_fold_cmd_true_golden,
     production_binding: ^bash_production_fold_command,
     rule_name: ^bash_relation_rule_fold_command
   ) {
-    Holds { value: target } =>
+    v2.std.witness.Holds { value: target } =>
       bash_fold_direct_serialize_matches_golden(
-        emitted: bash_fold_cmd_true_emitted,
+        emitted: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
         target: target,
         golden: bash_fold_cmd_true_golden
       )
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_fold_direct_serialize_multi_lit_echo_hi_holds() -> v2.std.logic.Bool {
-  match bash_fold_target_model_for_emitted_witness(
-    emitted: bash_fold_cmd_echo_hi_emitted,
+test fn bash_fold_direct_serialize_multi_lit_echo_hi_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_target_model_for_emitted_witness(
+    emitted: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_echo_hi_emitted,
     source_literal: ^bash_fold_dynamic_source_literal,
     source_text: bash_fold_cmd_echo_hi_golden,
     production_binding: ^bash_production_fold_command,
     rule_name: ^bash_relation_rule_fold_command
   ) {
-    Holds { value: target } =>
+    v2.std.witness.Holds { value: target } =>
       bash_fold_direct_serialize_matches_golden(
-        emitted: bash_fold_cmd_echo_hi_emitted,
+        emitted: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_echo_hi_emitted,
         target: target,
         golden: bash_fold_cmd_echo_hi_golden
       )
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_fold_direct_serialize_var_ref_x_holds() -> v2.std.logic.Bool {
-  match bash_fold_target_model_for_emitted_witness(
-    emitted: bash_fold_cmd_var_x_emitted,
+test fn bash_fold_direct_serialize_var_ref_x_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_target_model_for_emitted_witness(
+    emitted: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_var_x_emitted,
     source_literal: ^bash_fold_dynamic_source_literal,
     source_text: bash_fold_cmd_var_x_golden,
     production_binding: ^bash_production_fold_command,
     rule_name: ^bash_relation_rule_fold_command
   ) {
-    Holds { value: target } =>
+    v2.std.witness.Holds { value: target } =>
       bash_fold_direct_serialize_matches_golden(
-        emitted: bash_fold_cmd_var_x_emitted,
+        emitted: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_var_x_emitted,
         target: target,
         golden: bash_fold_cmd_var_x_golden
       )
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_fold_emitted_tree_differs_on_wrong_fixture_holds() -> v2.std.logic.Bool {
-  bash_fold_cmd_true_emitted != bash_fold_cmd_true_wrong_emitted
+test fn bash_fold_emitted_tree_differs_on_wrong_fixture_holds() -> Bool {
+  v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted != v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_wrong_emitted
 }
 
-test fn bash_fold_exit_code_42_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
-    stmt: bash_fold_exit_stmt(node: bash_fold_exit_42_emitted),
+test fn bash_fold_exit_code_42_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
+    stmt: bash_fold_exit_stmt(node: v2.extdeps.languages.bash_command_fold.bash_fold_exit_42_emitted),
     golden: bash_fold_exit_42_golden
   )
 }
 
-test fn bash_fold_exit_code_0_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
-    stmt: bash_fold_exit_stmt(node: bash_build_exit(code: "0")),
+test fn bash_fold_exit_code_0_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
+    stmt: bash_fold_exit_stmt(node: v2.extdeps.languages.bash_build.bash_build_exit(code: "0")),
     golden: bash_fold_exit_0_golden
   )
 }
 
-test fn bash_fold_exit_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
-  bash_emit_wrong_target_oracle_holds(
-    emitted: bash_fold_exit_42_emitted,
+test fn bash_fold_exit_wrong_production_rejects_oracle_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_wrong_target_oracle_holds(
+    emitted: v2.extdeps.languages.bash_command_fold.bash_fold_exit_42_emitted,
     golden: bash_fold_exit_42_golden,
-    wrong_target_witness: bash_fold_exit_wrong_target_model_witness()
+    wrong_target_witness: v2.extdeps.languages.bash_command_fold.bash_fold_exit_wrong_target_model_witness()
   )
 }
 
-test fn bash_fold_assign_lit_foo_bar_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
-    stmt: bash_fold_assign_stmt(node: bash_fold_assign_foo_bar_emitted),
+test fn bash_fold_assign_lit_foo_bar_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
+    stmt: bash_fold_assign_stmt(node: v2.extdeps.languages.bash_command_fold.bash_fold_assign_foo_bar_emitted),
     golden: bash_fold_assign_foo_golden
   )
 }
 
-test fn bash_fold_assign_var_x_home_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_assign_var_x_home_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_assign_stmt(
-      node: bash_build_assign_var(name: "X", var_name: "HOME")
+      node: v2.extdeps.languages.bash_build.bash_build_assign_var(name: "X", var_name: "HOME")
     ),
     golden: bash_fold_assign_home_golden
   )
 }
 
-test fn bash_fold_assign_lit_quote_escape_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_assign_lit_quote_escape_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_assign_stmt(
-      node: bash_build_assign_lit(name: "VAR", text: "a'b")
+      node: v2.extdeps.languages.bash_build.bash_build_assign_lit(name: "VAR", text: "a'b")
     ),
     golden: bash_fold_assign_quote_golden
   )
 }
 
-test fn bash_fold_assign_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
-  bash_emit_wrong_target_oracle_holds(
-    emitted: bash_fold_assign_foo_bar_emitted,
+test fn bash_fold_assign_wrong_production_rejects_oracle_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_wrong_target_oracle_holds(
+    emitted: v2.extdeps.languages.bash_command_fold.bash_fold_assign_foo_bar_emitted,
     golden: bash_fold_assign_foo_golden,
-    wrong_target_witness: bash_fold_assign_wrong_target_model_witness()
+    wrong_target_witness: v2.extdeps.languages.bash_command_fold.bash_fold_assign_wrong_target_model_witness()
   )
 }
 
-test fn bash_fold_and_then_true_false_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
-    stmt: bash_fold_and_then_stmt(node: bash_fold_and_then_true_false_emitted),
+test fn bash_fold_and_then_true_false_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
+    stmt: bash_fold_and_then_stmt(node: v2.extdeps.languages.bash_command_fold.bash_fold_and_then_true_false_emitted),
     golden: bash_fold_and_then_golden
   )
 }
 
-test fn bash_fold_or_else_true_false_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_or_else_true_false_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_or_else_stmt(
-      node: bash_build_or_else(
-        left: bash_fold_cmd_true_emitted,
-        right: bash_build_command_from_lits(lits: ["false"])
+      node: v2.extdeps.languages.bash_build.bash_build_or_else(
+        left: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
+        right: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["false"])
       )
     ),
     golden: bash_fold_or_else_golden
   )
 }
 
-test fn bash_fold_pipe_echo_hi_wc_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
-    stmt: bash_fold_pipe_stmt(node: bash_fold_pipe_echo_hi_wc_emitted),
+test fn bash_fold_pipe_echo_hi_wc_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
+    stmt: bash_fold_pipe_stmt(node: v2.extdeps.languages.bash_command_fold.bash_fold_pipe_echo_hi_wc_emitted),
     golden: bash_fold_pipe_golden
   )
 }
 
-test fn bash_fold_and_then_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_relation_row_witness(
-    emitted: bash_fold_and_then_true_false_emitted,
+test fn bash_fold_and_then_wrong_production_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness(
+    emitted: v2.extdeps.languages.bash_command_fold.bash_fold_and_then_true_false_emitted,
     lhs: ^bash_production_fold_or_else
   ) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => true
   }
 }
 
-test fn bash_fold_pipe_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_relation_row_witness(
-    emitted: bash_fold_pipe_echo_hi_wc_emitted,
+test fn bash_fold_pipe_wrong_production_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness(
+    emitted: v2.extdeps.languages.bash_command_fold.bash_fold_pipe_echo_hi_wc_emitted,
     lhs: ^bash_production_fold_and_then
   ) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => true
   }
 }
 
-test fn bash_fold_pipe_and_then_left_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_pipe_and_then_left_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_pipe_stmt(
-      node: bash_build_pipe(
-        left: bash_fold_and_then_true_false_emitted,
-        right: bash_fold_cmd_wc_minus_c_emitted
+      node: v2.extdeps.languages.bash_build.bash_build_pipe(
+        left: v2.extdeps.languages.bash_command_fold.bash_fold_and_then_true_false_emitted,
+        right: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_wc_minus_c_emitted
       )
     ),
     golden: bash_fold_pipe_and_then_golden
   )
 }
 
-test fn bash_fold_pipe_three_stage_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_pipe_three_stage_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_pipe_stmt(
-      node: bash_build_pipe(
-        left: bash_build_pipe(
-          left: bash_fold_cmd_echo_hi_emitted,
-          right: bash_fold_cmd_wc_minus_c_emitted
+      node: v2.extdeps.languages.bash_build.bash_build_pipe(
+        left: v2.extdeps.languages.bash_build.bash_build_pipe(
+          left: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_echo_hi_emitted,
+          right: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_wc_minus_c_emitted
         ),
-        right: bash_build_command_from_lits(lits: ["tr", "-d", " "])
+        right: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["tr", "-d", " "])
       )
     ),
     golden: bash_fold_pipe_three_golden
   )
 }
 
-test fn bash_fold_subshell_true_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_subshell_true_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_subshell_stmt(
-      node: bash_build_subshell_from_stmts(stmts: [bash_fold_cmd_true_emitted])
+      node: v2.extdeps.languages.bash_build.bash_build_subshell_from_stmts(stmts: [v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted])
     ),
     golden: bash_fold_subshell_golden
   )
 }
 
-test fn bash_fold_subshell_multi_stmt_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_subshell_multi_stmt_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_subshell_stmt(
-      node: bash_build_subshell_from_stmts(
+      node: v2.extdeps.languages.bash_build.bash_build_subshell_from_stmts(
         stmts: [
-          bash_fold_cmd_true_emitted,
-          bash_build_command_from_lits(lits: ["false"])
+          v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
+          v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["false"])
         ]
       )
     ),
@@ -404,35 +404,35 @@ test fn bash_fold_subshell_multi_stmt_holds() -> v2.std.logic.Bool {
   )
 }
 
-test fn bash_fold_subshell_nested_and_then_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_subshell_nested_and_then_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_subshell_stmt(
-      node: bash_build_subshell_from_stmts(stmts: [bash_fold_and_then_true_false_emitted])
+      node: v2.extdeps.languages.bash_build.bash_build_subshell_from_stmts(stmts: [v2.extdeps.languages.bash_command_fold.bash_fold_and_then_true_false_emitted])
     ),
     golden: bash_fold_subshell_nested_golden
   )
 }
 
-test fn bash_fold_if_true_then_echo_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_if_true_then_echo_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_if_stmt(
-      node: bash_build_if_from_stmts(
-        cond: bash_fold_cmd_true_emitted,
-        then_stmts: [bash_fold_cmd_echo_hi_emitted]
+      node: v2.extdeps.languages.bash_build.bash_build_if_from_stmts(
+        cond: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
+        then_stmts: [v2.extdeps.languages.bash_command_fold.bash_fold_cmd_echo_hi_emitted]
       )
     ),
     golden: bash_fold_if_echo_golden
   )
 }
 
-test fn bash_fold_if_multi_then_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_if_multi_then_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_if_stmt(
-      node: bash_build_if_from_stmts(
-        cond: bash_fold_cmd_true_emitted,
+      node: v2.extdeps.languages.bash_build.bash_build_if_from_stmts(
+        cond: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
         then_stmts: [
-          bash_fold_cmd_echo_hi_emitted,
-          bash_build_command_from_lits(lits: ["false"])
+          v2.extdeps.languages.bash_command_fold.bash_fold_cmd_echo_hi_emitted,
+          v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["false"])
         ]
       )
     ),
@@ -440,46 +440,46 @@ test fn bash_fold_if_multi_then_holds() -> v2.std.logic.Bool {
   )
 }
 
-test fn bash_fold_if_then_pipe_soundness_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_if_then_pipe_soundness_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_if_stmt(
-      node: bash_build_if_from_stmts(
-        cond: bash_fold_cmd_true_emitted,
-        then_stmts: [bash_fold_pipe_echo_hi_wc_emitted]
+      node: v2.extdeps.languages.bash_build.bash_build_if_from_stmts(
+        cond: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
+        then_stmts: [v2.extdeps.languages.bash_command_fold.bash_fold_pipe_echo_hi_wc_emitted]
       )
     ),
     golden: bash_fold_if_pipe_golden
   )
 }
 
-test fn bash_fold_subshell_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_relation_row_witness(
-    emitted: bash_build_subshell_from_stmts(stmts: [bash_fold_cmd_true_emitted]),
+test fn bash_fold_subshell_wrong_production_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness(
+    emitted: v2.extdeps.languages.bash_build.bash_build_subshell_from_stmts(stmts: [v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted]),
     lhs: ^bash_production_fold_if
   ) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => true
   }
 }
 
-test fn bash_fold_if_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_relation_row_witness(
-    emitted: bash_build_if_from_stmts(
-      cond: bash_fold_cmd_true_emitted,
-      then_stmts: [bash_fold_cmd_echo_hi_emitted]
+test fn bash_fold_if_wrong_production_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness(
+    emitted: v2.extdeps.languages.bash_build.bash_build_if_from_stmts(
+      cond: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
+      then_stmts: [v2.extdeps.languages.bash_command_fold.bash_fold_cmd_echo_hi_emitted]
     ),
     lhs: ^bash_production_fold_subshell
   ) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => true
   }
 }
 
-test fn bash_fold_with_redir_stderr_null_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_with_redir_stderr_null_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_with_redir_stmt(
-      node: bash_build_with_redir(
-        inner: bash_fold_cmd_true_emitted,
+      node: v2.extdeps.languages.bash_build.bash_build_with_redir(
+        inner: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
         redir: ^bash_production_fold_redir_stderr_null
       )
     ),
@@ -487,11 +487,11 @@ test fn bash_fold_with_redir_stderr_null_holds() -> v2.std.logic.Bool {
   )
 }
 
-test fn bash_fold_with_redir_stdout_and_stderr_null_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_with_redir_stdout_and_stderr_null_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_with_redir_stmt(
-      node: bash_build_with_redir(
-        inner: bash_fold_cmd_true_emitted,
+      node: v2.extdeps.languages.bash_build.bash_build_with_redir(
+        inner: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
         redir: ^bash_production_fold_redir_stdout_and_stderr_null
       )
     ),
@@ -499,11 +499,11 @@ test fn bash_fold_with_redir_stdout_and_stderr_null_holds() -> v2.std.logic.Bool
   )
 }
 
-test fn bash_fold_with_redir_stdout_to_stderr_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_with_redir_stdout_to_stderr_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_with_redir_stmt(
-      node: bash_build_with_redir(
-        inner: bash_fold_cmd_true_emitted,
+      node: v2.extdeps.languages.bash_build.bash_build_with_redir(
+        inner: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
         redir: ^bash_production_fold_redir_stdout_to_stderr
       )
     ),
@@ -511,69 +511,69 @@ test fn bash_fold_with_redir_stdout_to_stderr_holds() -> v2.std.logic.Bool {
   )
 }
 
-test fn bash_fold_with_redir_redir_to_file_var_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_with_redir_redir_to_file_var_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_with_redir_stmt(
-      node: bash_build_with_redir_to_file(
-        inner: bash_fold_cmd_true_emitted,
-        path: bash_build_word_var(name: "PROBE_BIN")
+      node: v2.extdeps.languages.bash_build.bash_build_with_redir_to_file(
+        inner: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
+        path: v2.extdeps.languages.bash_build.bash_build_word_var(name: "PROBE_BIN")
       )
     ),
     golden: bash_fold_redir_file_golden
   )
 }
 
-test fn bash_fold_heredoc_holds() -> v2.std.logic.Bool {
-  match bash_emit_heredoc(path_spelling: "'out'", delimiter: "EOF", body: "hello") {
-    Accepted { value: folded, diagnostics: _ } => folded == bash_fold_heredoc_golden
-    Rejected { diagnostics: _ } => false
+test fn bash_fold_heredoc_holds() -> Bool {
+  match v2.workflow.bash_emit.bash_emit_heredoc(path_spelling: "'out'", delimiter: "EOF", body: "hello") {
+    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded == bash_fold_heredoc_golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn bash_fold_with_redir_wrong_spellings_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_with_redir_wrong_target_model_witness() {
-    Holds { value: target } =>
-      bash_emit_wrong_spelling_oracle_holds(
-        emit_o: bash_emit_from_target(emitted: bash_stmt_with_redir_emitted, target: target),
+test fn bash_fold_with_redir_wrong_spellings_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_with_redir_wrong_target_model_witness() {
+    v2.std.witness.Holds { value: target } =>
+      v2.workflow.bash_emit.bash_emit_wrong_spelling_oracle_holds(
+        emit_o: v2.workflow.bash_emit.bash_emit_from_target(emitted: v2.extdeps.languages.bash.bash_stmt_with_redir_emitted, target: target),
         golden: bash_fold_redir_stderr_golden
       )
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_fold_heredoc_wrong_spellings_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_heredoc_wrong_target_model_witness() {
-    Holds { value: target } =>
+test fn bash_fold_heredoc_wrong_spellings_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_heredoc_wrong_target_model_witness() {
+    v2.std.witness.Holds { value: target } =>
       target.authority_source_text != bash_fold_heredoc_golden
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_fold_with_redir_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_relation_row_witness(
-    emitted: bash_stmt_with_redir_emitted,
+test fn bash_fold_with_redir_wrong_production_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness(
+    emitted: v2.extdeps.languages.bash.bash_stmt_with_redir_emitted,
     lhs: ^bash_production_fold_command
   ) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => true
   }
 }
 
-test fn bash_fold_heredoc_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_relation_row_witness(
-    emitted: bash_stmt_heredoc_emitted,
+test fn bash_fold_heredoc_wrong_production_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness(
+    emitted: v2.extdeps.languages.bash.bash_stmt_heredoc_emitted,
     lhs: ^bash_production_fold_command
   ) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => true
   }
 }
 
-test fn bash_fold_with_redir_pipe_soundness_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_fold_with_redir_pipe_soundness_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: bash_fold_with_redir_stmt(
-      node: bash_build_with_redir(
-        inner: bash_fold_pipe_echo_hi_wc_emitted,
+      node: v2.extdeps.languages.bash_build.bash_build_with_redir(
+        inner: v2.extdeps.languages.bash_command_fold.bash_fold_pipe_echo_hi_wc_emitted,
         redir: ^bash_production_fold_redir_stderr_null
       )
     ),
@@ -581,130 +581,130 @@ test fn bash_fold_with_redir_pipe_soundness_holds() -> v2.std.logic.Bool {
   )
 }
 
-test fn bash_fold_raw_line_orch_emit_holds() -> v2.std.logic.Bool {
-  bash_emit_raw_line_matches_golden(text: "! ( foo )", golden: bash_fold_raw_orch_golden)
+test fn bash_fold_raw_line_orch_emit_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_raw_line_matches_golden(text: "! ( foo )", golden: bash_fold_raw_orch_golden)
 }
 
-test fn bash_fold_raw_line_x_eq_holds() -> v2.std.logic.Bool {
-  bash_emit_raw_line_matches_golden(text: "x=y", golden: bash_fold_raw_xeq_golden)
+test fn bash_fold_raw_line_x_eq_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_raw_line_matches_golden(text: "x=y", golden: bash_fold_raw_xeq_golden)
 }
 
-test fn bash_fold_raw_line_cmdsubst_holds() -> v2.std.logic.Bool {
-  bash_emit_raw_line_matches_golden(text: "$(a)", golden: bash_fold_raw_cmdsubst_golden)
+test fn bash_fold_raw_line_cmdsubst_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_raw_line_matches_golden(text: "$(a)", golden: bash_fold_raw_cmdsubst_golden)
 }
 
-test fn bash_fold_raw_line_paren_holds() -> v2.std.logic.Bool {
-  bash_emit_raw_line_matches_golden(text: "a)b", golden: bash_fold_raw_paren_golden)
+test fn bash_fold_raw_line_paren_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_raw_line_matches_golden(text: "a)b", golden: bash_fold_raw_paren_golden)
 }
 
-test fn bash_fold_raw_line_quoted_holds() -> v2.std.logic.Bool {
-  bash_emit_raw_line_matches_golden(text: "'q'", golden: bash_fold_raw_quoted_golden)
+test fn bash_fold_raw_line_quoted_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_raw_line_matches_golden(text: "'q'", golden: bash_fold_raw_quoted_golden)
 }
 
-test fn bash_fold_raw_line_mktemp_holds() -> v2.std.logic.Bool {
-  bash_emit_raw_line_matches_golden(
+test fn bash_fold_raw_line_mktemp_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_raw_line_matches_golden(
     text: "TMPDIR=$('mktemp' '-d')",
     golden: bash_fold_raw_mktemp_golden
   )
 }
 
-test fn bash_fold_raw_line_trailing_nl_holds() -> v2.std.logic.Bool {
-  bash_emit_raw_line_matches_golden(text: "ab\n", golden: bash_fold_raw_nl_golden)
+test fn bash_fold_raw_line_trailing_nl_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_raw_line_matches_golden(text: "ab\n", golden: bash_fold_raw_nl_golden)
 }
 
-test fn bash_fold_raw_line_wrong_spellings_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_raw_line_wrong_target_model_witness() {
-    Holds { value: target } =>
-      bash_emit_wrong_spelling_oracle_holds(
-        emit_o: bash_emit_from_target(emitted: bash_word_pass_emitted, target: target),
+test fn bash_fold_raw_line_wrong_spellings_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_raw_line_wrong_target_model_witness() {
+    v2.std.witness.Holds { value: target } =>
+      v2.workflow.bash_emit.bash_emit_wrong_spelling_oracle_holds(
+        emit_o: v2.workflow.bash_emit.bash_emit_from_target(emitted: v2.extdeps.languages.bash.bash_word_pass_emitted, target: target),
         golden: bash_fold_raw_orch_golden
       )
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_fold_raw_line_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_relation_row_witness(
-    emitted: bash_word_pass_emitted,
+test fn bash_fold_raw_line_wrong_production_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness(
+    emitted: v2.extdeps.languages.bash.bash_word_pass_emitted,
     lhs: ^bash_production_fold_command
   ) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => true
   }
 }
 
-test fn bash_fold_negation_subshell_false_holds() -> v2.std.logic.Bool {
-  match bash_emit_negation(
-    inner: bash_build_subshell_from_stmts(stmts: [bash_build_command_from_lits(lits: ["false"])])
+test fn bash_fold_negation_subshell_false_holds() -> Bool {
+  match v2.workflow.bash_emit.bash_emit_negation(
+    inner: v2.extdeps.languages.bash_build.bash_build_subshell_from_stmts(stmts: [v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["false"])])
   ) {
-    Accepted { value: folded, diagnostics: _ } => folded == bash_fold_negation_golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded == bash_fold_negation_golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn bash_fold_negation_subshell_rawline_holds() -> v2.std.logic.Bool {
-  match bash_emit_negation_spelling(inner_spelling: "(do_verify\nmore)") {
-    Accepted { value: folded, diagnostics: _ } => folded == bash_fold_negation_raw_golden
-    Rejected { diagnostics: _ } => false
+test fn bash_fold_negation_subshell_rawline_holds() -> Bool {
+  match v2.workflow.bash_emit.bash_emit_negation_spelling(inner_spelling: "(do_verify\nmore)") {
+    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded == bash_fold_negation_raw_golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn bash_fold_negation_wrong_spellings_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_negation_wrong_target_model_witness() {
-    Holds { value: target } =>
-      bash_emit_wrong_spelling_oracle_holds(
-        emit_o: bash_emit_from_target(emitted: bash_stmt_negation_emitted, target: target),
+test fn bash_fold_negation_wrong_spellings_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_negation_wrong_target_model_witness() {
+    v2.std.witness.Holds { value: target } =>
+      v2.workflow.bash_emit.bash_emit_wrong_spelling_oracle_holds(
+        emit_o: v2.workflow.bash_emit.bash_emit_from_target(emitted: v2.extdeps.languages.bash.bash_stmt_negation_emitted, target: target),
         golden: bash_fold_negation_golden
       )
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_fold_negation_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_relation_row_witness(
-    emitted: bash_stmt_negation_emitted,
+test fn bash_fold_negation_wrong_production_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness(
+    emitted: v2.extdeps.languages.bash.bash_stmt_negation_emitted,
     lhs: ^bash_production_fold_subshell
   ) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => true
   }
 }
 
-test fn bash_fold_env_prefixed_lit_t_holds() -> v2.std.logic.Bool {
-  match bash_emit_env_prefixed(
+test fn bash_fold_env_prefixed_lit_t_holds() -> Bool {
+  match v2.workflow.bash_emit.bash_emit_env_prefixed(
     name: "TMPDIR",
     value_spelling: "'/t'",
     command_spelling: "'true'"
   ) {
-    Accepted { value: folded, diagnostics: _ } => folded == bash_fold_env_prefixed_golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded == bash_fold_env_prefixed_golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn bash_fold_env_prefixed_wrong_spellings_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_env_prefixed_wrong_target_model_witness() {
-    Holds { value: target } =>
+test fn bash_fold_env_prefixed_wrong_spellings_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_env_prefixed_wrong_target_model_witness() {
+    v2.std.witness.Holds { value: target } =>
       target.authority_source_text != bash_fold_env_prefixed_golden
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_fold_env_prefixed_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
-  match bash_fold_relation_row_witness(
-    emitted: bash_stmt_env_prefixed_emitted,
+test fn bash_fold_env_prefixed_wrong_production_rejects_oracle_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness(
+    emitted: v2.extdeps.languages.bash.bash_stmt_env_prefixed_emitted,
     lhs: ^bash_production_fold_command
   ) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => true
   }
 }
 
-test fn bash_fold_delegated_bundle_fail_closed_holds() -> v2.std.logic.Bool {
-  match bash_fold_relation_row_witness(
-    emitted: bash_stmt_heredoc_emitted,
+test fn bash_fold_delegated_bundle_fail_closed_holds() -> Bool {
+  match v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness(
+    emitted: v2.extdeps.languages.bash.bash_stmt_heredoc_emitted,
     lhs: ^bash_production_fold_command
   ) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => true
   }
 }

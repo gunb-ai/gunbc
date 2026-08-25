@@ -1,5 +1,6 @@
 module v2.test.lens_synthesis.synthesis_gap_polynomial
 
+
 data synthesis_gap_poly_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^synthesis_gap_poly_atom_symbol } },
   children: [],
@@ -36,31 +37,31 @@ data synthesis_gap_poly_sentinel: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn synthesis_gap_poly_lens_non_empty() -> v2.std.logic.Bool {
+test fn synthesis_gap_poly_lens_non_empty() -> Bool {
   v2.std.algebra.non_empty(v2.lens.synthesis.synthesis_lens(n: synthesis_gap_poly_input, declared_technique: v2.lens.synthesis.DecisionTree))
 }
 
 fn synthesis_gap_poly_known_reason_node(realization: v2.lens.complexity.ComplexityBound) -> v2.std.node.Node {
   match v2.lens.synthesis.assess_decision_tree(n: synthesis_gap_poly_input, realization: realization) {
-    SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
+    v2.lens.synthesis.SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
       match r.reason {
-        SynthesisGapDecisionTree => synthesis_gap_poly_input
-        SynthesisGapInformationTheoretic => synthesis_gap_poly_sentinel
+        v2.std.report.SynthesisGapDecisionTree => synthesis_gap_poly_input
+        v2.std.report.SynthesisGapInformationTheoretic => synthesis_gap_poly_sentinel
       }
-    SynthesisOptimal { realization_cost: _, lower_bound: _ } => synthesis_gap_poly_sentinel
-    SynthesisNoTechnique { diagnostic: _ } => synthesis_gap_poly_sentinel
+    v2.lens.synthesis.SynthesisOptimal { realization_cost: _, lower_bound: _ } => synthesis_gap_poly_sentinel
+    v2.lens.synthesis.SynthesisNoTechnique { diagnostic: _ } => synthesis_gap_poly_sentinel
   }
 }
 
 fn synthesis_gap_poly_first_reason_node() -> v2.std.node.Node {
   let realization = v2.lens.complexity.complexity_lens(n: synthesis_gap_poly_input)
   match realization {
-    UnknownComplexity { diagnostic: _ } => synthesis_gap_poly_sentinel
-    ConstantComplexity => synthesis_gap_poly_known_reason_node(realization: realization)
-    SizedComplexity { class: _, variables: _ } => synthesis_gap_poly_known_reason_node(realization: realization)
+    v2.lens.complexity.UnknownComplexity { diagnostic: _ } => synthesis_gap_poly_sentinel
+    v2.lens.complexity.ConstantComplexity => synthesis_gap_poly_known_reason_node(realization: realization)
+    v2.lens.complexity.SizedComplexity { class: _, variables: _ } => synthesis_gap_poly_known_reason_node(realization: realization)
   }
 }
 
-test fn synthesis_gap_poly_reason_claim_holds() -> v2.std.logic.Bool {
+test fn synthesis_gap_poly_reason_claim_holds() -> Bool {
   synthesis_gap_poly_first_reason_node() == synthesis_gap_poly_input
 }

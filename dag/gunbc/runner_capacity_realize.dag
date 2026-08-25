@@ -19,19 +19,19 @@ type RunnerCapacityApplyOutcome
   | RunnerCapacityApplyRefused { reason: String }
 
 fn disk_preflight_refusal(host: product.placement_supply.HostIdentity, requested_width: Int) -> String? {
-  match runner_width_disk_preflight(
+  match gunbc.runner_lifecycle.runner_width_disk_preflight(
     requested_width: requested_width,
-    disk: host_disk_observation(host: host),
+    disk: gunbc.host_disk_observation.host_disk_observation(host: host),
   ) {
-    DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => none
-    DiskHeadroomInsufficient { requested_width: w, required: _, observed_free: _ } =>
+    gunbc.runner_lifecycle.DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => none
+    gunbc.runner_lifecycle.DiskHeadroomInsufficient { requested_width: w, required: _, observed_free: _ } =>
       Present {
         value: concat(
           concat("disk headroom insufficient for width ", to_string(w)),
           concat(" on ", host as String),
         ),
       }
-    DiskHeadroomUnobserved { requested_width: w, reason: r } =>
+    gunbc.runner_lifecycle.DiskHeadroomUnobserved { requested_width: w, reason: r } =>
       Present {
         value: concat(
           concat(concat("disk unobservable for width ", to_string(w)), concat(" on ", host as String)),
@@ -43,23 +43,23 @@ fn disk_preflight_refusal(host: product.placement_supply.HostIdentity, requested
 
 fn disk_preflight_refusal_for_host_plan(host_plan: gunbc.runner_capacity_plan.RunnerCapacityHostPlan) -> String? {
   match host_plan.admission {
-    WidthAdmitted { width: w } => disk_preflight_refusal(host: host_plan.host, requested_width: w)
+    gunbc.runner_capacity_plan.WidthAdmitted { width: w } => disk_preflight_refusal(host: host_plan.host, requested_width: w)
     _ => none
   }
 }
 
 fn non_add_action_refusal(action: gunbc.runner_capacity_plan.RunnerCapacityAction, host: product.placement_supply.HostIdentity) -> String? {
   match action {
-    RunnerSlotAdd { to: _ } => none
-    RunnerSlotChange { from: _, to: _ } =>
+    gunbc.runner_capacity_plan.RunnerSlotAdd { to: _ } => none
+    gunbc.runner_capacity_plan.RunnerSlotChange { from: _, to: _ } =>
       Present {
         value: concat("RunnerSlotChange outside runner-capacity apply on ", host as String),
       }
-    RunnerSlotRemove { from: _ } =>
+    gunbc.runner_capacity_plan.RunnerSlotRemove { from: _ } =>
       Present {
         value: concat("RunnerSlotRemove outside runner-capacity apply on ", host as String),
       }
-    RunnerIncarnationReplace { slot: _, cause: _ } =>
+    gunbc.runner_capacity_plan.RunnerIncarnationReplace { slot: _, cause: _ } =>
       Present {
         value: concat(
           "RunnerIncarnationReplace outside runner-capacity apply on ",
@@ -87,7 +87,7 @@ fn count_add_actions_in_host_plan(host_plan: gunbc.runner_capacity_plan.RunnerCa
     init: 0,
     f: (n, a) =>
       match a {
-        RunnerSlotAdd { to: _ } => n + 1
+        gunbc.runner_capacity_plan.RunnerSlotAdd { to: _ } => n + 1
         _ => n
       },
   )
@@ -95,8 +95,8 @@ fn count_add_actions_in_host_plan(host_plan: gunbc.runner_capacity_plan.RunnerCa
 
 fn count_runner_slot_add_actions(plan: gunbc.runner_capacity_plan.RunnerCapacityPlan) -> Int {
   match plan {
-    PlanRefused { reason: _ } => 0
-    PlanReady { hosts: hs } =>
+    gunbc.runner_capacity_plan.PlanRefused { reason: _ } => 0
+    gunbc.runner_capacity_plan.PlanReady { hosts: hs } =>
       fold(
         hs,
         init: 0,
@@ -155,14 +155,14 @@ fn runner_capacity_reapply_plans_zero_additions(
   observed_srv3: List<RunnerSlotIdentity>,
   observed_srv4: List<RunnerSlotIdentity>,
 ) -> Bool {
-  addition_actions(host: operator_host_srv3, requested_width: srv3_width, observed: observed_srv3).length() == 0
-    && addition_actions(host: operator_host_srv4, requested_width: srv4_width, observed: observed_srv4).length() == 0
+  gunbc.runner_capacity_plan.addition_actions(host: gunbc.fleet_intent_network.operator_host_srv3, requested_width: srv3_width, observed: observed_srv3).length() == 0
+    && gunbc.runner_capacity_plan.addition_actions(host: gunbc.fleet_intent_network.operator_host_srv4, requested_width: srv4_width, observed: observed_srv4).length() == 0
 }
 
 fn runner_capacity_apply_plan(plan: gunbc.runner_capacity_plan.RunnerCapacityPlan) -> RunnerCapacityApplyOutcome {
   match plan {
-    PlanRefused { reason: r } => RunnerCapacityApplyRefused { reason: r }
-    PlanReady { hosts: hs } =>
+    gunbc.runner_capacity_plan.PlanRefused { reason: r } => RunnerCapacityApplyRefused { reason: r }
+    gunbc.runner_capacity_plan.PlanReady { hosts: hs } =>
       RunnerCapacityApplyCompleted {
         hosts: map(hs, h => runner_capacity_apply_host_plan(host_plan: h)),
       }
@@ -223,14 +223,14 @@ fn runner_capacity_host_apply_receipt(
 }
 
 fn runner_capacity_apply_wet_exit(srv3_width: Int, srv4_width: Int) -> std.process.ProcessExit {
-  let plan = runner_capacity_plan(
+  let plan = gunbc.runner_capacity_plan.runner_capacity_plan(
     srv3_width: srv3_width,
     srv4_width: srv4_width,
-    roster: organization_runner_roster_evidence(),
+    roster: gunbc.fleet_runner_connectivity.organization_runner_roster_evidence(),
   )
   let outcome = runner_capacity_apply_plan(plan: plan)
   if runner_capacity_apply_any_host_refused(outcome: outcome) {
-    exit_failure(reason: "runner-capacity apply: one or more hosts refused; see per-host receipts")
+    std.process.exit_failure(reason: "runner-capacity apply: one or more hosts refused; see per-host receipts")
   } else {
     std.process.ExitSuccess
   }

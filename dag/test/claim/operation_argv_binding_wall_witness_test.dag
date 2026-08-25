@@ -1,7 +1,7 @@
 module test.claim.operation_argv_binding_wall_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data operation_argv_binding_wall_note: String = "What EARNS the genericity. A binder that reads the declaration could have become a wider channel than the fixed list it replaces, so two classes are walled, both proven here by execution against real corpus declarations. (1) UNDECLARED NAMES ARE REFUSED, not injected: the seed's previous materializer inserted package, bin, args, unit and property into the binding environment of EVERY operation unconditionally -- a live hole, not a hypothetical one, since any operation whose argv referenced one of those names took the caller's value whether or not it declared the input. (2) THE EXECUTABLE POSITION IS NOT BINDABLE (see the corpus witness and dag/test/fixture/argv_executable_position_probe.dag). Each refusal is typed and located and has no arm that proceeds -- nothing is sanitized, escaped, or dropped (DESIGN 5)."
 
@@ -19,8 +19,8 @@ fn argv_text(m: v2.std.operation_argv.ArgvMaterialization) -> String {
 
 fn show_property_with(bindings: List<v2.std.operation_argv.OperationInputBinding>) -> v2.std.operation_argv.ArgvMaterialization {
   shell_materialize_operation_argv(
-    test.claim.operation_argv_binding_wall_witness.systemctl_path,
-    test.claim.operation_argv_binding_wall_witness.systemctl_service,
+    systemctl_path,
+    systemctl_service,
     systemctl_show_property,
     bindings
   )

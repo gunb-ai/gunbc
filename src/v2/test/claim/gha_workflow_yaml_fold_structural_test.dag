@@ -2,19 +2,19 @@ module v2.test.claim.gha_workflow_yaml_fold_structural
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn gha_fold_relation_row_job_witness_holds() -> Bool {
-  match v2.extdeps.languages.gha_workflow_yaml_fold.gha_fold_job_emitted_witness(job: gunbc.gha_yaml_fold_pilot.gha_fold_pilot_job) {
+  match gha_fold_job_emitted_witness(job: gunbc.gha_yaml_fold_pilot.gha_fold_pilot_job) {
     Holds { value: emitted } =>
-      match v2.extdeps.languages.gha_workflow_yaml_fold.gha_fold_relation_row_witness(
+      match gha_fold_relation_row_witness(
         emitted: emitted,
         lhs: ^gha_production_fold_job
       ) {
         Holds { value: _ } => true
-        v2.std.witness.Violates { diagnostic: _ } => false
+        Violates { diagnostic: _ } => false
       }
-    v2.std.witness.Violates { diagnostic: _ } => false
+    Violates { diagnostic: _ } => false
   }
 }
 

@@ -100,16 +100,16 @@ fn contract_witness_controlled_production() -> std.occurrence_binding_candidates
 }
 
 test fn witness_substrate_establishes_controlled_scenario() -> Bool {
-  match assess_controlled_two_mention_provenance_projection(
+  match gunbc.namespace_clause_e_projection_law.assess_controlled_two_mention_provenance_projection(
     production: contract_witness_controlled_production(),
   ) {
-    NamespaceClauseEProjectionEstablished => true
+    gunbc.namespace_clause_e_projection_law.NamespaceClauseEProjectionEstablished => true
     _ => false
   }
 }
 
 test fn witness_substrate_refuses_one_mention_only() -> Bool {
-  match assess_controlled_two_mention_provenance_projection(
+  match gunbc.namespace_clause_e_projection_law.assess_controlled_two_mention_provenance_projection(
     production: contract_witness_production(
       provenances: [
         contract_witness_provenance(
@@ -126,15 +126,15 @@ test fn witness_substrate_refuses_one_mention_only() -> Bool {
       ],
     ),
   ) {
-    NamespaceClauseEProjectionRefused {
-      failure: BindingProvenanceCountWrong { expected: 2, found: 1 },
+    gunbc.namespace_clause_e_projection_law.NamespaceClauseEProjectionRefused {
+      failure: gunbc.namespace_clause_e_projection_law.BindingProvenanceCountWrong { expected: 2, found: 1 },
     } => true
     _ => false
   }
 }
 
 test fn witness_substrate_refuses_two_declarations_same_provider_file() -> Bool {
-  match assess_controlled_two_mention_provenance_projection(
+  match gunbc.namespace_clause_e_projection_law.assess_controlled_two_mention_provenance_projection(
     production: contract_witness_production(
       provenances: [
         contract_witness_provenance(
@@ -159,15 +159,15 @@ test fn witness_substrate_refuses_two_declarations_same_provider_file() -> Bool 
       ],
     ),
   ) {
-    NamespaceClauseEProjectionRefused {
-      failure: DeclarationOccurrencesNotShared,
+    gunbc.namespace_clause_e_projection_law.NamespaceClauseEProjectionRefused {
+      failure: gunbc.namespace_clause_e_projection_law.DeclarationOccurrencesNotShared,
     } => true
     _ => false
   }
 }
 
 test fn witness_substrate_refuses_duplicate_reference_occurrence() -> Bool {
-  match assess_controlled_two_mention_provenance_projection(
+  match gunbc.namespace_clause_e_projection_law.assess_controlled_two_mention_provenance_projection(
     production: contract_witness_production(
       provenances: [
         contract_witness_provenance(
@@ -192,15 +192,15 @@ test fn witness_substrate_refuses_duplicate_reference_occurrence() -> Bool {
       ],
     ),
   ) {
-    NamespaceClauseEProjectionRefused {
-      failure: ReferenceOccurrencesNotDistinct,
+    gunbc.namespace_clause_e_projection_law.NamespaceClauseEProjectionRefused {
+      failure: gunbc.namespace_clause_e_projection_law.ReferenceOccurrencesNotDistinct,
     } => true
     _ => false
   }
 }
 
 test fn witness_substrate_refuses_two_file_dependencies() -> Bool {
-  match assess_controlled_two_mention_provenance_projection(
+  match gunbc.namespace_clause_e_projection_law.assess_controlled_two_mention_provenance_projection(
     production: contract_witness_production(
       provenances: [
         contract_witness_provenance(
@@ -231,15 +231,15 @@ test fn witness_substrate_refuses_two_file_dependencies() -> Bool {
       ],
     ),
   ) {
-    NamespaceClauseEProjectionRefused {
-      failure: FileDependencyCountWrong { expected: 1, found: 2 },
+    gunbc.namespace_clause_e_projection_law.NamespaceClauseEProjectionRefused {
+      failure: gunbc.namespace_clause_e_projection_law.FileDependencyCountWrong { expected: 1, found: 2 },
     } => true
     _ => false
   }
 }
 
 test fn witness_substrate_refuses_changed_declaration_identity_in_bound_population() -> Bool {
-  match assess_controlled_two_mention_provenance_projection(
+  match gunbc.namespace_clause_e_projection_law.assess_controlled_two_mention_provenance_projection(
     production: contract_witness_production(
       provenances: [
         contract_witness_provenance(
@@ -264,15 +264,15 @@ test fn witness_substrate_refuses_changed_declaration_identity_in_bound_populati
       ],
     ),
   ) {
-    NamespaceClauseEProjectionRefused {
-      failure: BoundPopulationInconsistentWithProvenance,
+    gunbc.namespace_clause_e_projection_law.NamespaceClauseEProjectionRefused {
+      failure: gunbc.namespace_clause_e_projection_law.BoundPopulationInconsistentWithProvenance,
     } => true
     _ => false
   }
 }
 
 test fn witness_substrate_refuses_projection_inconsistent_with_bound_population() -> Bool {
-  match assess_controlled_two_mention_provenance_projection(
+  match gunbc.namespace_clause_e_projection_law.assess_controlled_two_mention_provenance_projection(
     production: contract_witness_production(
       provenances: [
         contract_witness_provenance(
@@ -302,15 +302,15 @@ test fn witness_substrate_refuses_projection_inconsistent_with_bound_population(
       ],
     ),
   ) {
-    NamespaceClauseEProjectionRefused {
-      failure: ProvenanceProjectionInconsistent,
+    gunbc.namespace_clause_e_projection_law.NamespaceClauseEProjectionRefused {
+      failure: gunbc.namespace_clause_e_projection_law.ProvenanceProjectionInconsistent,
     } => true
     _ => false
   }
 }
 
 test fn witness_substrate_refuses_reference_population_refused() -> Bool {
-  match assess_controlled_two_mention_provenance_projection(
+  match gunbc.namespace_clause_e_projection_law.assess_controlled_two_mention_provenance_projection(
     production: std.occurrence_binding_candidates.ReferenceDerivedClauseEProductionReady {
       projection: std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionReady {
         binding_provenance: [
@@ -334,15 +334,15 @@ test fn witness_substrate_refuses_reference_population_refused() -> Bool {
       consumer_file: contract_witness_consumer_file(),
     },
   ) {
-    NamespaceClauseEProjectionRefused {
-      failure: ProjectionBindingRefused { population: _ },
+    gunbc.namespace_clause_e_projection_law.NamespaceClauseEProjectionRefused {
+      failure: gunbc.namespace_clause_e_projection_law.ProjectionBindingRefused { population: _ },
     } => true
     _ => false
   }
 }
 
 test fn witness_substrate_refuses_file_path_missing() -> Bool {
-  match assess_controlled_two_mention_provenance_projection(
+  match gunbc.namespace_clause_e_projection_law.assess_controlled_two_mention_provenance_projection(
     production: std.occurrence_binding_candidates.ReferenceDerivedClauseEProductionReady {
       projection: std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionFileRefused {
         first_failure: std.occurrence_binding_candidates.CrossFileBindingProvenanceProjectionFilePathMissing {
@@ -353,9 +353,9 @@ test fn witness_substrate_refuses_file_path_missing() -> Bool {
       consumer_file: contract_witness_consumer_file(),
     },
   ) {
-    NamespaceClauseEProjectionRefused {
-      failure: ProjectionFileRefused {
-        first_failure: CrossFileBindingProvenanceProjectionFilePathMissing { module_path: _ },
+    gunbc.namespace_clause_e_projection_law.NamespaceClauseEProjectionRefused {
+      failure: gunbc.namespace_clause_e_projection_law.ProjectionFileRefused {
+        first_failure: std.occurrence_binding_candidates.CrossFileBindingProvenanceProjectionFilePathMissing { module_path: _ },
         more_failures: _,
       },
     } => true

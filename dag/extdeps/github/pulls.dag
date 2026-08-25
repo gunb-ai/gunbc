@@ -3,14 +3,14 @@ module extdeps.github.pulls
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/rest/pulls/pulls"
   }
 }
 
 data github_cli_pull_merge_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "cli.github.com/manual/gh_pr_merge"
   }
 }
@@ -46,7 +46,7 @@ type PullRequest {
   updated_at: std.types.Timestamp
   merged_at: std.types.Timestamp?
   draft: Bool
-  merge_commit_sha: CommitSha?
+  merge_commit_sha: std.types.CommitSha?
 }
 
 data pull_timing_observation_provenance_note: String = "One-time GitHub REST pull on 2026-08-01 under this module's existing GET-pull authority. Each row is the PullRequest.created_at and PullRequest.merged_at pair returned by github.Pulls.Get, normalized once from the wire Timestamp strings to Unix epoch milliseconds so arithmetic consumers do not pretend Timestamp is subtractable. The source URL remains on every row and fetched_on makes staleness inspectable. PullRequest stays the one wire-response authority; PullTimingObservation is its cited, immutable arithmetic projection, not a second endpoint or response model."
@@ -163,7 +163,7 @@ service github.CliPulls {
 
 service github.Pulls {
   config {
-    endpoint: default_api_base
+    endpoint: extdeps.github.github.default_api_base
     auth: Bearer
     auth_source: std.credentials.EnvVar { name: "GITHUB_TOKEN" }
 
@@ -176,7 +176,7 @@ service github.Pulls {
       owner: String
       repo: String
       state: PullRequestState = Open
-      per_page: Int = default_per_page
+      per_page: Int = extdeps.github.github.default_per_page
     }
     output {
       pulls: List<PullRequest>
@@ -190,10 +190,10 @@ service github.Pulls {
     }
     response {
       200 => List<PullRequest>
-      401 => GitHubErrorShape
-      404 => GitHubErrorShape
-      422 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      422 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 
@@ -214,9 +214,9 @@ service github.Pulls {
     }
     response {
       200 => PullRequest
-      401 => GitHubErrorShape
-      404 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 
@@ -239,9 +239,9 @@ service github.Pulls {
     }
     response {
       200 => String
-      401 => GitHubErrorShape
-      404 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 
@@ -262,9 +262,9 @@ service github.Pulls {
     }
     response {
       200 => List<PullReview>
-      401 => GitHubErrorShape
-      404 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 
@@ -290,9 +290,9 @@ service github.Pulls {
     }
     response {
       200 => PullReview
-      401 => GitHubErrorShape
-      422 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      422 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 
@@ -313,9 +313,9 @@ service github.Pulls {
     }
     response {
       200 => List<ReviewComment>
-      401 => GitHubErrorShape
-      404 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 }
@@ -331,13 +331,13 @@ type PullReview {
 data structural_coverage_gap_github_pull_review_response_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "PullReview" },
-      extdeps.coverage.JsonPending { field: "node_id" },
-      extdeps.coverage.JsonPending { field: "user" },
-      extdeps.coverage.JsonPending { field: "pull_request_url" },
-      extdeps.coverage.JsonPending { field: "_links" },
-      extdeps.coverage.JsonPending { field: "submitted_at" },
-      extdeps.coverage.JsonPending { field: "author_association" }
+      Subject { path: "PullReview" },
+      JsonPending { field: "node_id" },
+      JsonPending { field: "user" },
+      JsonPending { field: "pull_request_url" },
+      JsonPending { field: "_links" },
+      JsonPending { field: "submitted_at" },
+      JsonPending { field: "author_association" }
     ],
     trigger: "GitHub PullReview consumer needs full review response fidelity"
   }

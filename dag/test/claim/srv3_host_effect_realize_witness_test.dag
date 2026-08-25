@@ -1,52 +1,52 @@
 module test.claim.srv3_host_effect_realize_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn os_install_actuator_toolchain_ensure_rejects_bmc_controller_target() -> Bool {
-  match host_effect_apply(
-    target: gunbc.host_effect.BmcController { node: srv1_host },
+  match gunbc.host_effect_realize.host_effect_apply(
+    target: gunbc.host_effect.BmcController { node: gunbc.fleet_intent.srv1_host },
     effect: gunbc.host_effect.OsInstallActuatorToolchainEnsure {},
-    evidence: host_effect_identity_evidence,
-    transport: LocalShell,
+    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    transport: gunbc.host_effect.LocalShell,
   ) {
-    NotConverged { reason: why, applied: _ } =>
+    std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "OsInstallActuatorToolchainEnsure")
     _ => false
   }
 }
 
 test fn os_install_actuator_toolchain_ensure_rejects_emit_artifact_transport() -> Bool {
-  match host_effect_apply(
-    target: gunbc.host_effect.HostOs { node: srv1_host },
+  match gunbc.host_effect_realize.host_effect_apply(
+    target: gunbc.host_effect.HostOs { node: gunbc.fleet_intent.srv1_host },
     effect: gunbc.host_effect.OsInstallActuatorToolchainEnsure {},
-    evidence: host_effect_identity_evidence,
+    evidence: gunbc.host_effect.host_effect_identity_evidence,
     transport: gunbc.host_effect.EmitArtifactThenThinRun {
       bootstrap: gunbc.host_effect.BootstrapFragment { script: "true" },
       invocation: gunbc.host_effect.ThinInvocation { argv: ["true"] },
     },
   ) {
-    NotConverged { reason: why, applied: _ } =>
+    std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "EmitArtifactThenThinRun")
     _ => false
   }
 }
 
 test fn argv_with_bin_prepends_bin_path_to_args() -> Bool {
-  srv3_argv_with_bin(bin_path: "/usr/bin/apt-get", args: ["install", "-y", "curl"]) ==
+  gunbc.host_effect_realize.srv3_argv_with_bin(bin_path: "/usr/bin/apt-get", args: ["install", "-y", "curl"]) ==
     ["/usr/bin/apt-get", "install", "-y", "curl"]
 }
 
 test fn argv_with_bin_on_empty_args_is_just_bin_path() -> Bool {
-  srv3_argv_with_bin(bin_path: "/usr/bin/apt-get", args: []) == ["/usr/bin/apt-get"]
+  gunbc.host_effect_realize.srv3_argv_with_bin(bin_path: "/usr/bin/apt-get", args: []) == ["/usr/bin/apt-get"]
 }
 
 
 test fn posix_command_v_check_argv_shapes_a_command_v_invocation() -> Bool {
-  posix_command_v_check_argv(command: "curl" as std.types.NonEmptyStr) ==
+  extdeps.shell.posix_command_v_check_argv(command: "curl" as std.types.NonEmptyStr) ==
     ["sh", "-c", "command -v \"$1\"", "sh", "curl"]
 }
 
 test fn shell_test_is_executable_argv_shapes_a_test_dash_x_invocation() -> Bool {
-  shell_test_is_executable_argv(path: "/usr/bin/curl" as std.types.FilePath) == ["test", "-x", "/usr/bin/curl"]
+  extdeps.shell.shell_test_is_executable_argv(path: "/usr/bin/curl" as std.types.FilePath) == ["test", "-x", "/usr/bin/curl"]
 }

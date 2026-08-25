@@ -5,7 +5,7 @@ module v2.test.claim_pipeline.normalize
 data spine_normalize_module_subject: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^spine_normalize_module } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 fn spine_normalize_service_parse_tree() -> v2.std.node.Node {
   v2.std.node.Node {
@@ -16,68 +16,68 @@ fn spine_normalize_service_parse_tree() -> v2.std.node.Node {
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^spine_normalize_service_decl },
         target: v2.std.node.Node {
-          kind: v2.std.node.TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
 }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-test fn spine_normalize_accepts_well_formed_sugar() -> v2.std.logic.Bool {
-  match normalize(parse_tree: spine_normalize_service_parse_tree()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+test fn spine_normalize_accepts_well_formed_sugar() -> Bool {
+  match v2.compiler.normalize.normalize(parse_tree: spine_normalize_service_parse_tree()) {
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn spine_normalize_nested_service_parse_tree() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^spine_normalize_nested_field },
         target: spine_normalize_service_parse_tree()
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn spine_normalize_child_is_service_sugar_atom(n: v2.std.node.Node) -> v2.std.logic.Bool {
+fn spine_normalize_child_is_service_sugar_atom(n: v2.std.node.Node) -> Bool {
   match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
       id == ^dag_c3_surface_sugar_service
-    TypeNode { connective: _ } => false
+    v2.std.node.TypeNode { connective: _ } => false
     ComputationNode { behavior: _ } => false
   }
 }
 
-test fn spine_normalize_dissolves_interior_service_sugar() -> v2.std.logic.Bool {
-  match normalize(parse_tree: spine_normalize_nested_service_parse_tree()) {
-    Accepted { value: normalized, diagnostics: _ } =>
+test fn spine_normalize_dissolves_interior_service_sugar() -> Bool {
+  match v2.compiler.normalize.normalize(parse_tree: spine_normalize_nested_service_parse_tree()) {
+    v2.std.diagnostic.Accepted { value: normalized, diagnostics: _ } =>
       fold(normalized.root.children, init: true, f: fn(acc, e) {
         acc && !spine_normalize_child_is_service_sugar_atom(n: e.target)
       })
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn spine_normalize_bool_atom(b: v2.std.logic.Bool) -> v2.std.node.Node {
+fn spine_normalize_bool_atom(b: Bool) -> v2.std.node.Node {
   match b {
     true =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^spine_normalize_pass } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
 }
     false =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^spine_normalize_fail } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
 }
   }
 }

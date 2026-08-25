@@ -4,92 +4,92 @@ module v2.std.compilers.body_lowering
 fn body_lowering_diagnostic(reason: v2.std.node.Symbol, n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: node_locus(node: n),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: n),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn lower_binary_infix(left: v2.std.node.Node, operator: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
-  node_synthetic(
+  v2.std.node.node_synthetic(
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
-      v2.std.node.Edge { label: Positional, target: operator },
-      v2.std.node.Edge { label: Positional, target: left },
-      v2.std.node.Edge { label: Positional, target: right }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: operator },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: left },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: right }
     ]
   )
 }
 
 fn lower_branch(condition: v2.std.node.Node, then_arm: v2.std.node.Node, else_arm: v2.std.node.Node) -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.ComputationNode { behavior: Branch },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Branch },
     children: [
-      v2.std.node.Edge { label: Positional, target: condition },
-      v2.std.node.Edge { label: Positional, target: then_arm },
-      v2.std.node.Edge { label: Positional, target: else_arm }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: condition },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: then_arm },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: else_arm }
     ]
   )
 }
 
 fn lower_loop(value: v2.std.node.Node, bound: v2.std.node.Node) -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.ComputationNode { behavior: Loop },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Loop },
     children: [
-      v2.std.node.Edge { label: Positional, target: value },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: value },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^loop_bound_edge }, target: bound }
     ]
   )
 }
 
 fn lower_bind(key_binding: v2.std.node.Node, value: v2.std.node.Node, body_binding: v2.std.node.Node) -> v2.std.node.Node {
-  node_synthetic(
+  v2.std.node.node_synthetic(
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Bind },
     children: [
-      v2.std.node.Edge { label: Positional, target: key_binding },
-      v2.std.node.Edge { label: Positional, target: value },
-      v2.std.node.Edge { label: Positional, target: body_binding }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: key_binding },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: value },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: body_binding }
     ]
   )
 }
 
 fn lower_match(scrutinee: v2.std.node.Node, arms: List<v2.std.node.Node>) -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.ComputationNode { behavior: Match },
-    children: list_append(
-      left: [v2.std.node.Edge { label: Positional, target: scrutinee }],
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Match },
+    children: v2.std.algebra.list_append(
+      left: [v2.std.node.Edge { label: v2.std.node.Positional, target: scrutinee }],
       right: fold(arms, init: Empty, f: fn(acc, arm) {
-        list_snoc_item(xs: acc, item: v2.std.node.Edge { label: Positional, target: arm })
+        v2.std.algebra.list_snoc_item(xs: acc, item: v2.std.node.Edge { label: v2.std.node.Positional, target: arm })
       })
     )
   )
 }
 
-fn lower_block_body_atoms(atoms: List<v2.std.node.Node>, witness: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
-  match list_at_optional(xs: atoms, index: 0) {
-    Present { value: left } =>
-      match list_at_optional(xs: atoms, index: 1) {
-        Present { value: operator } =>
-          match list_at_optional(xs: atoms, index: 2) {
-            Present { value: right } =>
+fn lower_block_body_atoms(atoms: List<v2.std.node.Node>, witness: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  match v2.std.collection.list_at_optional(xs: atoms, index: 0) {
+    v2.std.collection.Present { value: left } =>
+      match v2.std.collection.list_at_optional(xs: atoms, index: 1) {
+        v2.std.collection.Present { value: operator } =>
+          match v2.std.collection.list_at_optional(xs: atoms, index: 2) {
+            v2.std.collection.Present { value: right } =>
               if count(atoms) == 3 {
-                outcome_accepted(value: lower_binary_infix(left: left, operator: operator, right: right))
+                v2.std.diagnostic.outcome_accepted(value: lower_binary_infix(left: left, operator: operator, right: right))
               } else {
-                outcome_rejected(
+                v2.std.diagnostic.outcome_rejected(
                   d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
                 )
               }
-            Absent =>
-              outcome_rejected(
+            v2.std.collection.Absent =>
+              v2.std.diagnostic.outcome_rejected(
                 d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
               )
           }
-        Absent =>
-          outcome_rejected(
+        v2.std.collection.Absent =>
+          v2.std.diagnostic.outcome_rejected(
             d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
           )
       }
-    Absent =>
-      outcome_rejected(
+    v2.std.collection.Absent =>
+      v2.std.diagnostic.outcome_rejected(
         d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
       )
   }

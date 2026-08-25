@@ -11,42 +11,42 @@ data carrier_alias_surface_invariant_note: String = "WHAT WENT WRONG ONCE, STATE
 // uses to pick the canonical key -- so this witness lands on the spelling the compiler will
 // actually look up, not on one an independently-authored ordering happens to agree with.
 fn ascii_least(candidates: List<String>) -> String? {
-  sorted_map_keys(v2.lens.grounding.candidates |> fold(init: v2.std.collection.empty_map(), f: (acc, s) => v2.std.collection.map_insert(acc, s, true))) |> first
+  sorted_map_keys(candidates |> fold(init: empty_map(), f: (acc, s) => map_insert(acc, s, true))) |> first
 }
 
-fn carrier_alias_spellings(carrier: v2.std.rust_leaf_model_claim.AlgebraCarrier) -> List<String> {
-  gunbc.roadmap_authority.carrier.spellings
-    |> v2.std.algebra.filter(spelling => carrier_spelling_row_present(m: spelling.container_alias_row))
+fn carrier_alias_spellings(carrier: std.algebra.AlgebraCarrier) -> List<String> {
+  carrier.spellings
+    |> filter(spelling => std.algebra.carrier_spelling_row_present(m: spelling.container_alias_row))
     |> map(spelling => spelling.text)
 }
 
-fn carrier_spelling_has_method_surface(carrier: v2.std.rust_leaf_model_claim.AlgebraCarrier, text: String) -> Bool {
-  gunbc.roadmap_authority.carrier.spellings
-    |> v2.std.algebra.any(spelling => spelling.text == text && carrier_spelling_row_present(m: spelling.method_surface))
+fn carrier_spelling_has_method_surface(carrier: std.algebra.AlgebraCarrier, text: String) -> Bool {
+  carrier.spellings
+    |> any(spelling => spelling.text == text && std.algebra.carrier_spelling_row_present(m: spelling.method_surface))
 }
 
-fn carrier_alias_canonical_declares_method_surface(carrier: v2.std.rust_leaf_model_claim.AlgebraCarrier) -> Bool {
-  match ascii_least(candidates: carrier_alias_spellings(carrier: gunbc.roadmap_authority.carrier)) {
+fn carrier_alias_canonical_declares_method_surface(carrier: std.algebra.AlgebraCarrier) -> Bool {
+  match ascii_least(candidates: carrier_alias_spellings(carrier: carrier)) {
     Absent => true
-    Present { value: canonical } => carrier_spelling_has_method_surface(carrier: gunbc.roadmap_authority.carrier, text: canonical)
+    Present { value: canonical } => carrier_spelling_has_method_surface(carrier: carrier, text: canonical)
   }
 }
 
-fn absent_surface() -> CarrierRowMembership {
-  RowAbsent { reason: "fixture: the pre-repair PartialFunction shape -- resolves as a container alias, carries no profile" }
+fn absent_surface() -> std.algebra.CarrierRowMembership {
+  std.algebra.RowAbsent { reason: "fixture: the pre-repair PartialFunction shape -- resolves as a container alias, carries no profile" }
 }
 
-fn carrier_missing_its_alias_surface() -> v2.std.rust_leaf_model_claim.AlgebraCarrier {
-  v2.std.rust_leaf_model_claim.AlgebraCarrier {
+fn carrier_missing_its_alias_surface() -> std.algebra.AlgebraCarrier {
+  std.algebra.AlgebraCarrier {
     name: "FixturePartialFunction",
     profile: std.algebra.PartialFunctionProfile,
     spellings: [
-      CarrierSpelling {
+      std.algebra.CarrierSpelling {
         text: "FixturePartialFunction",
         method_surface: absent_surface(),
-        container_algebra_row: RowPresent,
-        container_alias_row: RowPresent,
-        container_roster_name: RowPresent,
+        container_algebra_row: std.algebra.RowPresent,
+        container_alias_row: std.algebra.RowPresent,
+        container_roster_name: std.algebra.RowPresent,
         container_arity_row: absent_surface(),
       },
     ],
@@ -54,7 +54,7 @@ fn carrier_missing_its_alias_surface() -> v2.std.rust_leaf_model_claim.AlgebraCa
 }
 
 test fn every_alias_resolving_carrier_declares_a_method_surface() -> Bool {
-  algebra_carriers() |> all(carrier => carrier_alias_canonical_declares_method_surface(carrier: gunbc.roadmap_authority.carrier))
+  std.algebra.algebra_carriers() |> all(carrier => carrier_alias_canonical_declares_method_surface(carrier: carrier))
 }
 
 test fn a_carrier_without_its_alias_surface_is_refused_by_the_same_predicate() -> Bool {
@@ -62,18 +62,18 @@ test fn a_carrier_without_its_alias_surface_is_refused_by_the_same_predicate() -
 }
 
 test fn every_derived_alias_row_key_resolves_through_a_carrier_with_a_profile() -> Bool {
-  sorted_map_keys(carrier_container_alias_rows())
+  sorted_map_keys(std.algebra.carrier_container_alias_rows())
     |> all(spelling =>
-      algebra_carriers() |> v2.std.algebra.any(carrier =>
-        carrier_alias_spellings(carrier: gunbc.roadmap_authority.carrier) |> v2.std.algebra.any(alias => alias == spelling)
-          && carrier_alias_canonical_declares_method_surface(carrier: gunbc.roadmap_authority.carrier)))
+      std.algebra.algebra_carriers() |> any(carrier =>
+        carrier_alias_spellings(carrier: carrier) |> any(alias => alias == spelling)
+          && carrier_alias_canonical_declares_method_surface(carrier: carrier)))
 }
 
 test fn the_repaired_instance_is_derived_not_authored() -> Bool {
-  match std.algebra.kernel_algebra_profile |> v2.test.manual.fn_as_value.get("PartialFunction") {
+  match std.algebra.kernel_algebra_profile |> get("PartialFunction") {
     Absent => false
-    Present { value: gunbc.plans.md_helpers.p } =>
-      match gunbc.plans.md_helpers.p {
+    Present { value: p } =>
+      match p {
         std.algebra.PartialFunctionProfile => true
         _ => false
       }

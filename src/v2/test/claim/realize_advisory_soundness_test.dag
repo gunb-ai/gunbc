@@ -1,7 +1,7 @@
 module v2.test.claim.realize_advisory_soundness_test
 
 
-fn obs(known: v2.std.logic.Bool, derived: Int, observed: Int) -> v2.workflow.realize_advisory_soundness.AdvisoryObservation {
+fn obs(known: Bool, derived: Int, observed: Int) -> v2.workflow.realize_advisory_soundness.AdvisoryObservation {
   v2.workflow.realize_advisory_soundness.AdvisoryObservation {
     entry: "synthetic_entry.dag",
     subject_function: "synthetic_fn",
@@ -11,32 +11,32 @@ fn obs(known: v2.std.logic.Bool, derived: Int, observed: Int) -> v2.workflow.rea
   }
 }
 
-test fn witness_sound_bound_carries_margin() -> v2.std.logic.Bool {
-  match advisory_soundness_for(o: obs(known: true, derived: 1000, observed: 800)) {
-    BoundSound { margin_bytes: m } => m == 200
-    BoundUnsound { derived_bytes: _, observed_peak_bytes: _ } => false
-    BoundUnknown { entry: _, subject_function: _ } => false
+test fn witness_sound_bound_carries_margin() -> Bool {
+  match v2.workflow.realize_advisory_soundness.advisory_soundness_for(o: obs(known: true, derived: 1000, observed: 800)) {
+    v2.workflow.realize_advisory_soundness.BoundSound { margin_bytes: m } => m == 200
+    v2.workflow.realize_advisory_soundness.BoundUnsound { derived_bytes: _, observed_peak_bytes: _ } => false
+    v2.workflow.realize_advisory_soundness.BoundUnknown { entry: _, subject_function: _ } => false
   }
 }
 
-test fn witness_exceedance_is_unsound() -> v2.std.logic.Bool {
-  match advisory_soundness_for(o: obs(known: true, derived: 1000, observed: 1001)) {
-    BoundUnsound { derived_bytes: d, observed_peak_bytes: p } => d == 1000 && p == 1001
-    BoundSound { margin_bytes: _ } => false
-    BoundUnknown { entry: _, subject_function: _ } => false
+test fn witness_exceedance_is_unsound() -> Bool {
+  match v2.workflow.realize_advisory_soundness.advisory_soundness_for(o: obs(known: true, derived: 1000, observed: 1001)) {
+    v2.workflow.realize_advisory_soundness.BoundUnsound { derived_bytes: d, observed_peak_bytes: p } => d == 1000 && p == 1001
+    v2.workflow.realize_advisory_soundness.BoundSound { margin_bytes: _ } => false
+    v2.workflow.realize_advisory_soundness.BoundUnknown { entry: _, subject_function: _ } => false
   }
 }
 
-test fn witness_unknown_bound_is_not_sound() -> v2.std.logic.Bool {
-  advisory_observation_is_sound(o: obs(known: false, derived: 0, observed: 500)) == false
+test fn witness_unknown_bound_is_not_sound() -> Bool {
+  v2.workflow.realize_advisory_soundness.advisory_observation_is_sound(o: obs(known: false, derived: 0, observed: 500)) == false
 }
 
-test fn witness_exact_bound_is_sound() -> v2.std.logic.Bool {
-  advisory_observation_is_sound(o: obs(known: true, derived: 500, observed: 500))
+test fn witness_exact_bound_is_sound() -> Bool {
+  v2.workflow.realize_advisory_soundness.advisory_observation_is_sound(o: obs(known: true, derived: 500, observed: 500))
 }
 
-test fn witness_window_reds_on_one_unsound() -> v2.std.logic.Bool {
-  let all_sound = advisory_window_all_sound(
+test fn witness_window_reds_on_one_unsound() -> Bool {
+  let all_sound = v2.workflow.realize_advisory_soundness.advisory_window_all_sound(
     observations: [
       obs(known: true, derived: 1000, observed: 900),
       obs(known: true, derived: 1000, observed: 1200),
@@ -46,8 +46,8 @@ test fn witness_window_reds_on_one_unsound() -> v2.std.logic.Bool {
   all_sound == false
 }
 
-test fn witness_window_green_when_all_sound() -> v2.std.logic.Bool {
-  advisory_window_all_sound(
+test fn witness_window_green_when_all_sound() -> Bool {
+  v2.workflow.realize_advisory_soundness.advisory_window_all_sound(
     observations: [
       obs(known: true, derived: 1000, observed: 900),
       obs(known: true, derived: 2000, observed: 1)

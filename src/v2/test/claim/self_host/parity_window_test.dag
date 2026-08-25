@@ -1,25 +1,25 @@
 module v2.test.claim.self_host.parity_window_test
 
 
-fn verdict_is_revert_required(v: v2.compiler.self_host.parity_window.ParityMonitorVerdict) -> v2.std.logic.Bool {
+fn verdict_is_revert_required(v: v2.compiler.self_host.parity_window.ParityMonitorVerdict) -> Bool {
   match v {
-    ParityHolding { family: _, consecutive_green: _ } => false
-    ParityRevertRequired { family: _, red_window_id: _ } => true
-    ParityUnobserved { family: _ } => false
-    ParityEvidenceRefused { family: _, cause: _ } => false
+    v2.compiler.self_host.parity_window.ParityHolding { family: _, consecutive_green: _ } => false
+    v2.compiler.self_host.parity_window.ParityRevertRequired { family: _, red_window_id: _ } => true
+    v2.compiler.self_host.parity_window.ParityUnobserved { family: _ } => false
+    v2.compiler.self_host.parity_window.ParityEvidenceRefused { family: _, cause: _ } => false
   }
 }
 
-fn verdict_is_evidence_refused(v: v2.compiler.self_host.parity_window.ParityMonitorVerdict) -> v2.std.logic.Bool {
+fn verdict_is_evidence_refused(v: v2.compiler.self_host.parity_window.ParityMonitorVerdict) -> Bool {
   match v {
-    ParityHolding { family: _, consecutive_green: _ } => false
-    ParityRevertRequired { family: _, red_window_id: _ } => false
-    ParityUnobserved { family: _ } => false
-    ParityEvidenceRefused { family: _, cause: _ } => true
+    v2.compiler.self_host.parity_window.ParityHolding { family: _, consecutive_green: _ } => false
+    v2.compiler.self_host.parity_window.ParityRevertRequired { family: _, red_window_id: _ } => false
+    v2.compiler.self_host.parity_window.ParityUnobserved { family: _ } => false
+    v2.compiler.self_host.parity_window.ParityEvidenceRefused { family: _, cause: _ } => true
   }
 }
 
-fn observed(family: String, id: String, seq: Int, green: v2.std.logic.Bool, warm: v2.std.logic.Bool) -> v2.compiler.self_host.parity_window.ParityObservation {
+fn observed(family: String, id: String, seq: Int, green: Bool, warm: Bool) -> v2.compiler.self_host.parity_window.ParityObservation {
   v2.compiler.self_host.parity_window.WindowObserved {
     receipt: v2.compiler.self_host.parity_window.ParityWindowReceipt {
       family: family,
@@ -32,100 +32,100 @@ fn observed(family: String, id: String, seq: Int, green: v2.std.logic.Bool, warm
 }
 
 fn green_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
-  v2.test.claim.self_host.parity_window_test.observed(family: "add", id: id, seq: seq, green: true, warm: true)
+  observed(family: "add", id: id, seq: seq, green: true, warm: true)
 }
 
 fn red_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
-  v2.test.claim.self_host.parity_window_test.observed(family: "add", id: id, seq: seq, green: false, warm: true)
+  observed(family: "add", id: id, seq: seq, green: false, warm: true)
 }
 
 fn cold_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
-  v2.test.claim.self_host.parity_window_test.observed(family: "add", id: id, seq: seq, green: true, warm: false)
+  observed(family: "add", id: id, seq: seq, green: true, warm: false)
 }
 
 fn ack_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
   v2.compiler.self_host.parity_window.RevertAcknowledged { family: "add", ack_id: id, cadence_sequence: seq }
 }
 
-test fn witness_empty_history_is_unobserved() -> v2.std.logic.Bool {
-  let unobserved = match parity_monitor_verdict(family: "add", observations: []) {
-    ParityHolding { family: _, consecutive_green: _ } => false
-    ParityRevertRequired { family: _, red_window_id: _ } => false
-    ParityUnobserved { family: f } => f == "add"
-    ParityEvidenceRefused { family: _, cause: _ } => false
+test fn witness_empty_history_is_unobserved() -> Bool {
+  let unobserved = match v2.compiler.self_host.parity_window.parity_monitor_verdict(family: "add", observations: []) {
+    v2.compiler.self_host.parity_window.ParityHolding { family: _, consecutive_green: _ } => false
+    v2.compiler.self_host.parity_window.ParityRevertRequired { family: _, red_window_id: _ } => false
+    v2.compiler.self_host.parity_window.ParityUnobserved { family: f } => f == "add"
+    v2.compiler.self_host.parity_window.ParityEvidenceRefused { family: _, cause: _ } => false
   }
-  unobserved && (parity_routing_admitted(family: "add", observations: []) == false)
+  unobserved && (v2.compiler.self_host.parity_window.parity_routing_admitted(family: "add", observations: []) == false)
 }
 
-test fn witness_green_holds() -> v2.std.logic.Bool {
-  match parity_monitor_verdict(family: "add", observations: [green_obs(id: "w1", seq: 1)]) {
-    ParityHolding { family: f, consecutive_green: n } => (f == "add") && (n == 1)
-    ParityRevertRequired { family: _, red_window_id: _ } => false
-    ParityUnobserved { family: _ } => false
-    ParityEvidenceRefused { family: _, cause: _ } => false
+test fn witness_green_holds() -> Bool {
+  match v2.compiler.self_host.parity_window.parity_monitor_verdict(family: "add", observations: [green_obs(id: "w1", seq: 1)]) {
+    v2.compiler.self_host.parity_window.ParityHolding { family: f, consecutive_green: n } => (f == "add") && (n == 1)
+    v2.compiler.self_host.parity_window.ParityRevertRequired { family: _, red_window_id: _ } => false
+    v2.compiler.self_host.parity_window.ParityUnobserved { family: _ } => false
+    v2.compiler.self_host.parity_window.ParityEvidenceRefused { family: _, cause: _ } => false
   }
 }
 
-test fn witness_greens_accumulate_streak() -> v2.std.logic.Bool {
-  match parity_monitor_verdict(
+test fn witness_greens_accumulate_streak() -> Bool {
+  match v2.compiler.self_host.parity_window.parity_monitor_verdict(
     family: "add",
     observations: [green_obs(id: "w1", seq: 1), green_obs(id: "w2", seq: 2), green_obs(id: "w3", seq: 3)]
   ) {
-    ParityHolding { family: _, consecutive_green: n } => n == 3
-    ParityRevertRequired { family: _, red_window_id: _ } => false
-    ParityUnobserved { family: _ } => false
-    ParityEvidenceRefused { family: _, cause: _ } => false
+    v2.compiler.self_host.parity_window.ParityHolding { family: _, consecutive_green: n } => n == 3
+    v2.compiler.self_host.parity_window.ParityRevertRequired { family: _, red_window_id: _ } => false
+    v2.compiler.self_host.parity_window.ParityUnobserved { family: _ } => false
+    v2.compiler.self_host.parity_window.ParityEvidenceRefused { family: _, cause: _ } => false
   }
 }
 
-test fn witness_red_demands_revert_naming_window() -> v2.std.logic.Bool {
-  match parity_monitor_verdict(
+test fn witness_red_demands_revert_naming_window() -> Bool {
+  match v2.compiler.self_host.parity_window.parity_monitor_verdict(
     family: "add",
     observations: [green_obs(id: "w1", seq: 1), red_obs(id: "w2", seq: 2)]
   ) {
-    ParityHolding { family: _, consecutive_green: _ } => false
-    ParityRevertRequired { family: f, red_window_id: w } => (f == "add") && (w == "w2")
-    ParityUnobserved { family: _ } => false
-    ParityEvidenceRefused { family: _, cause: _ } => false
+    v2.compiler.self_host.parity_window.ParityHolding { family: _, consecutive_green: _ } => false
+    v2.compiler.self_host.parity_window.ParityRevertRequired { family: f, red_window_id: w } => (f == "add") && (w == "w2")
+    v2.compiler.self_host.parity_window.ParityUnobserved { family: _ } => false
+    v2.compiler.self_host.parity_window.ParityEvidenceRefused { family: _, cause: _ } => false
   }
 }
 
-test fn witness_red_latches_over_later_green() -> v2.std.logic.Bool {
-  match parity_monitor_verdict(
+test fn witness_red_latches_over_later_green() -> Bool {
+  match v2.compiler.self_host.parity_window.parity_monitor_verdict(
     family: "add",
     observations: [green_obs(id: "w1", seq: 1), red_obs(id: "w2", seq: 2), green_obs(id: "w3", seq: 3)]
   ) {
-    ParityHolding { family: _, consecutive_green: _ } => false
-    ParityRevertRequired { family: _, red_window_id: w } => w == "w2"
-    ParityUnobserved { family: _ } => false
-    ParityEvidenceRefused { family: _, cause: _ } => false
+    v2.compiler.self_host.parity_window.ParityHolding { family: _, consecutive_green: _ } => false
+    v2.compiler.self_host.parity_window.ParityRevertRequired { family: _, red_window_id: w } => w == "w2"
+    v2.compiler.self_host.parity_window.ParityUnobserved { family: _ } => false
+    v2.compiler.self_host.parity_window.ParityEvidenceRefused { family: _, cause: _ } => false
   }
 }
 
-test fn witness_latch_names_first_red_window() -> v2.std.logic.Bool {
-  match parity_monitor_verdict(
+test fn witness_latch_names_first_red_window() -> Bool {
+  match v2.compiler.self_host.parity_window.parity_monitor_verdict(
     family: "add",
     observations: [red_obs(id: "w1", seq: 1), red_obs(id: "w2", seq: 2)]
   ) {
-    ParityHolding { family: _, consecutive_green: _ } => false
-    ParityRevertRequired { family: _, red_window_id: w } => w == "w1"
-    ParityUnobserved { family: _ } => false
-    ParityEvidenceRefused { family: _, cause: _ } => false
+    v2.compiler.self_host.parity_window.ParityHolding { family: _, consecutive_green: _ } => false
+    v2.compiler.self_host.parity_window.ParityRevertRequired { family: _, red_window_id: w } => w == "w1"
+    v2.compiler.self_host.parity_window.ParityUnobserved { family: _ } => false
+    v2.compiler.self_host.parity_window.ParityEvidenceRefused { family: _, cause: _ } => false
   }
 }
 
-fn latched_revert_names(v: v2.compiler.self_host.parity_window.ParityMonitorVerdict, expected_window: String) -> v2.std.logic.Bool {
+fn latched_revert_names(v: v2.compiler.self_host.parity_window.ParityMonitorVerdict, expected_window: String) -> Bool {
   match v {
-    ParityHolding { family: _, consecutive_green: _ } => false
-    ParityRevertRequired { family: _, red_window_id: w } => w == expected_window
-    ParityUnobserved { family: _ } => false
-    ParityEvidenceRefused { family: _, cause: _ } => false
+    v2.compiler.self_host.parity_window.ParityHolding { family: _, consecutive_green: _ } => false
+    v2.compiler.self_host.parity_window.ParityRevertRequired { family: _, red_window_id: w } => w == expected_window
+    v2.compiler.self_host.parity_window.ParityUnobserved { family: _ } => false
+    v2.compiler.self_host.parity_window.ParityEvidenceRefused { family: _, cause: _ } => false
   }
 }
 
-test fn witness_latch_survives_qualified_later_green() -> v2.std.logic.Bool {
+test fn witness_latch_survives_qualified_later_green() -> Bool {
   latched_revert_names(
-    v: parity_monitor_verdict(
+    v: v2.compiler.self_host.parity_window.parity_monitor_verdict(
       family: "add",
       observations: [
         green_obs(id: "w1", seq: 1),
@@ -137,40 +137,40 @@ test fn witness_latch_survives_qualified_later_green() -> v2.std.logic.Bool {
   )
 }
 
-test fn witness_mixed_family_while_latched_refuses() -> v2.std.logic.Bool {
+test fn witness_mixed_family_while_latched_refuses() -> Bool {
   let obs = [
     green_obs(id: "w1", seq: 1),
     red_obs(id: "w2", seq: 2),
-    v2.test.claim.self_host.parity_window_test.observed(family: "other_family", id: "w3", seq: 3, green: true, warm: true)
+    observed(family: "other_family", id: "w3", seq: 3, green: true, warm: true)
   ]
-  verdict_is_evidence_refused(v: parity_monitor_verdict(family: "add", observations: obs))
-    && (parity_routing_admitted(family: "add", observations: obs) == false)
+  verdict_is_evidence_refused(v: v2.compiler.self_host.parity_window.parity_monitor_verdict(family: "add", observations: obs))
+    && (v2.compiler.self_host.parity_window.parity_routing_admitted(family: "add", observations: obs) == false)
 }
 
-test fn witness_cadence_violation_while_latched_refuses() -> v2.std.logic.Bool {
+test fn witness_cadence_violation_while_latched_refuses() -> Bool {
   let obs = [
     green_obs(id: "w1", seq: 1),
     red_obs(id: "w2", seq: 2),
     green_obs(id: "w3", seq: 2)
   ]
-  verdict_is_evidence_refused(v: parity_monitor_verdict(family: "add", observations: obs))
-    && (parity_routing_admitted(family: "add", observations: obs) == false)
+  verdict_is_evidence_refused(v: v2.compiler.self_host.parity_window.parity_monitor_verdict(family: "add", observations: obs))
+    && (v2.compiler.self_host.parity_window.parity_routing_admitted(family: "add", observations: obs) == false)
 }
 
-test fn witness_ack_from_other_family_refuses_and_never_clears() -> v2.std.logic.Bool {
+test fn witness_ack_from_other_family_refuses_and_never_clears() -> Bool {
   let obs = [
     red_obs(id: "w1", seq: 1),
     v2.compiler.self_host.parity_window.RevertAcknowledged { family: "other_family", ack_id: "foreign-ack", cadence_sequence: 2 },
     green_obs(id: "w3", seq: 3)
   ]
-  verdict_is_evidence_refused(v: parity_monitor_verdict(family: "add", observations: obs))
-    && (parity_routing_admitted(family: "add", observations: obs) == false)
+  verdict_is_evidence_refused(v: v2.compiler.self_host.parity_window.parity_monitor_verdict(family: "add", observations: obs))
+    && (v2.compiler.self_host.parity_window.parity_routing_admitted(family: "add", observations: obs) == false)
 }
 
-test fn witness_unqualified_observation_blocks_later_ack_recovery() -> v2.std.logic.Bool {
+test fn witness_unqualified_observation_blocks_later_ack_recovery() -> Bool {
   let obs = [
     red_obs(id: "w1", seq: 1),
-    v2.test.claim.self_host.parity_window_test.observed(family: "other_family", id: "w2", seq: 2, green: true, warm: true),
+    observed(family: "other_family", id: "w2", seq: 2, green: true, warm: true),
     ack_obs(id: "ack-1", seq: 3),
     green_obs(id: "w3", seq: 4)
   ]
@@ -179,90 +179,90 @@ test fn witness_unqualified_observation_blocks_later_ack_recovery() -> v2.std.lo
     ack_obs(id: "ack-1", seq: 3),
     green_obs(id: "w3", seq: 4)
   ]
-  verdict_is_evidence_refused(v: parity_monitor_verdict(family: "add", observations: obs))
-    && (parity_routing_admitted(family: "add", observations: obs) == false)
-    && parity_routing_admitted(family: "add", observations: unqualified_free)
+  verdict_is_evidence_refused(v: v2.compiler.self_host.parity_window.parity_monitor_verdict(family: "add", observations: obs))
+    && (v2.compiler.self_host.parity_window.parity_routing_admitted(family: "add", observations: obs) == false)
+    && v2.compiler.self_host.parity_window.parity_routing_admitted(family: "add", observations: unqualified_free)
 }
 
-test fn witness_cold_divergence_demands_revert() -> v2.std.logic.Bool {
+test fn witness_cold_divergence_demands_revert() -> Bool {
   verdict_is_revert_required(
-    v: parity_monitor_verdict(
+    v: v2.compiler.self_host.parity_window.parity_monitor_verdict(
       family: "add",
       observations: [green_obs(id: "w1", seq: 1), cold_obs(id: "w2", seq: 2)]
     )
   )
 }
 
-test fn witness_mixed_family_receipt_refused() -> v2.std.logic.Bool {
-  match parity_monitor_verdict(
+test fn witness_mixed_family_receipt_refused() -> Bool {
+  match v2.compiler.self_host.parity_window.parity_monitor_verdict(
     family: "add",
     observations: [
       green_obs(id: "w1", seq: 1),
-      v2.test.claim.self_host.parity_window_test.observed(family: "meet_join", id: "w2", seq: 2, green: true, warm: true)
+      observed(family: "meet_join", id: "w2", seq: 2, green: true, warm: true)
     ]
   ) {
-    ParityHolding { family: _, consecutive_green: _ } => false
-    ParityRevertRequired { family: _, red_window_id: _ } => false
-    ParityUnobserved { family: _ } => false
-    ParityEvidenceRefused { family: _, cause: c } =>
+    v2.compiler.self_host.parity_window.ParityHolding { family: _, consecutive_green: _ } => false
+    v2.compiler.self_host.parity_window.ParityRevertRequired { family: _, red_window_id: _ } => false
+    v2.compiler.self_host.parity_window.ParityUnobserved { family: _ } => false
+    v2.compiler.self_host.parity_window.ParityEvidenceRefused { family: _, cause: c } =>
       match c {
-        MixedFamilyReceipt { requested: rq, found: fd, cadence_sequence: s } =>
+        v2.compiler.self_host.parity_window.MixedFamilyReceipt { requested: rq, found: fd, cadence_sequence: s } =>
           (rq == "add") && (fd == "meet_join") && (s == 2)
-        CadenceOrderViolation { prior_sequence: _, offending_sequence: _ } => false
+        v2.compiler.self_host.parity_window.CadenceOrderViolation { prior_sequence: _, offending_sequence: _ } => false
       }
   }
 }
 
-test fn witness_refusal_is_absorbing() -> v2.std.logic.Bool {
+test fn witness_refusal_is_absorbing() -> Bool {
   verdict_is_evidence_refused(
-    v: parity_monitor_verdict(
+    v: v2.compiler.self_host.parity_window.parity_monitor_verdict(
       family: "add",
       observations: [
-        v2.test.claim.self_host.parity_window_test.observed(family: "meet_join", id: "w1", seq: 1, green: true, warm: true),
+        observed(family: "meet_join", id: "w1", seq: 1, green: true, warm: true),
         green_obs(id: "w2", seq: 2)
       ]
     )
   )
 }
 
-test fn witness_refused_evidence_denies_routing_admission() -> v2.std.logic.Bool {
+test fn witness_refused_evidence_denies_routing_admission() -> Bool {
   let refused_evidence = [
     green_obs(id: "w1", seq: 1),
-    v2.test.claim.self_host.parity_window_test.observed(family: "meet_join", id: "w2", seq: 2, green: true, warm: true)
+    observed(family: "meet_join", id: "w2", seq: 2, green: true, warm: true)
   ]
   let out_of_order = [green_obs(id: "w1", seq: 2), green_obs(id: "w2", seq: 2)]
   verdict_is_evidence_refused(
-    v: parity_monitor_verdict(family: "add", observations: refused_evidence)
+    v: v2.compiler.self_host.parity_window.parity_monitor_verdict(family: "add", observations: refused_evidence)
   )
-    && (parity_routing_admitted(family: "add", observations: refused_evidence) == false)
+    && (v2.compiler.self_host.parity_window.parity_routing_admitted(family: "add", observations: refused_evidence) == false)
     && verdict_is_evidence_refused(
-      v: parity_monitor_verdict(family: "add", observations: out_of_order)
+      v: v2.compiler.self_host.parity_window.parity_monitor_verdict(family: "add", observations: out_of_order)
     )
-    && (parity_routing_admitted(family: "add", observations: out_of_order) == false)
+    && (v2.compiler.self_host.parity_window.parity_routing_admitted(family: "add", observations: out_of_order) == false)
     && (verdict_is_revert_required(
-      v: parity_monitor_verdict(family: "add", observations: refused_evidence)
+      v: v2.compiler.self_host.parity_window.parity_monitor_verdict(family: "add", observations: refused_evidence)
     ) == false)
 }
 
-test fn witness_cadence_order_violation_refused() -> v2.std.logic.Bool {
-  match parity_monitor_verdict(
+test fn witness_cadence_order_violation_refused() -> Bool {
+  match v2.compiler.self_host.parity_window.parity_monitor_verdict(
     family: "add",
     observations: [green_obs(id: "w1", seq: 2), green_obs(id: "w2", seq: 2)]
   ) {
-    ParityHolding { family: _, consecutive_green: _ } => false
-    ParityRevertRequired { family: _, red_window_id: _ } => false
-    ParityUnobserved { family: _ } => false
-    ParityEvidenceRefused { family: _, cause: c } =>
+    v2.compiler.self_host.parity_window.ParityHolding { family: _, consecutive_green: _ } => false
+    v2.compiler.self_host.parity_window.ParityRevertRequired { family: _, red_window_id: _ } => false
+    v2.compiler.self_host.parity_window.ParityUnobserved { family: _ } => false
+    v2.compiler.self_host.parity_window.ParityEvidenceRefused { family: _, cause: c } =>
       match c {
-        MixedFamilyReceipt { requested: _, found: _, cadence_sequence: _ } => false
-        CadenceOrderViolation { prior_sequence: p, offending_sequence: o } =>
+        v2.compiler.self_host.parity_window.MixedFamilyReceipt { requested: _, found: _, cadence_sequence: _ } => false
+        v2.compiler.self_host.parity_window.CadenceOrderViolation { prior_sequence: p, offending_sequence: o } =>
           (p == 2) && (o == 2)
       }
   }
 }
 
-test fn witness_ack_opens_new_epoch_then_green_holds() -> v2.std.logic.Bool {
-  match parity_monitor_verdict(
+test fn witness_ack_opens_new_epoch_then_green_holds() -> Bool {
+  match v2.compiler.self_host.parity_window.parity_monitor_verdict(
     family: "add",
     observations: [
       green_obs(id: "w1", seq: 1),
@@ -271,21 +271,21 @@ test fn witness_ack_opens_new_epoch_then_green_holds() -> v2.std.logic.Bool {
       green_obs(id: "w4", seq: 4)
     ]
   ) {
-    ParityHolding { family: f, consecutive_green: n } => (f == "add") && (n == 1)
-    ParityRevertRequired { family: _, red_window_id: _ } => false
-    ParityUnobserved { family: _ } => false
-    ParityEvidenceRefused { family: _, cause: _ } => false
+    v2.compiler.self_host.parity_window.ParityHolding { family: f, consecutive_green: n } => (f == "add") && (n == 1)
+    v2.compiler.self_host.parity_window.ParityRevertRequired { family: _, red_window_id: _ } => false
+    v2.compiler.self_host.parity_window.ParityUnobserved { family: _ } => false
+    v2.compiler.self_host.parity_window.ParityEvidenceRefused { family: _, cause: _ } => false
   }
 }
 
-test fn witness_ack_alone_is_unobserved_not_holding() -> v2.std.logic.Bool {
-  match parity_monitor_verdict(
+test fn witness_ack_alone_is_unobserved_not_holding() -> Bool {
+  match v2.compiler.self_host.parity_window.parity_monitor_verdict(
     family: "add",
     observations: [red_obs(id: "w1", seq: 1), ack_obs(id: "revert-7091", seq: 2)]
   ) {
-    ParityHolding { family: _, consecutive_green: _ } => false
-    ParityRevertRequired { family: _, red_window_id: _ } => false
-    ParityUnobserved { family: f } => f == "add"
-    ParityEvidenceRefused { family: _, cause: _ } => false
+    v2.compiler.self_host.parity_window.ParityHolding { family: _, consecutive_green: _ } => false
+    v2.compiler.self_host.parity_window.ParityRevertRequired { family: _, red_window_id: _ } => false
+    v2.compiler.self_host.parity_window.ParityUnobserved { family: f } => f == "add"
+    v2.compiler.self_host.parity_window.ParityEvidenceRefused { family: _, cause: _ } => false
   }
 }

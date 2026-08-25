@@ -4,7 +4,7 @@ module extdeps.cache.rustup
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "rust-lang.github.io/rustup/overrides.html"
   }
 }
@@ -14,29 +14,29 @@ data rustup_toolchain_store_id: std.cache_identity.CacheInterfaceId = "rustup_to
 data rustup_toolchain_store_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: rustup_toolchain_store_id
   backing_surface: "rustup-toolchains-dir"
-  transport_encoding: CatalogOpaqueStringEncoding
+  transport_encoding: extdeps.cache.types.CatalogOpaqueStringEncoding
   key_derivation: {
 
-    key_inputs: extdeps.cache.types.NativeInternal { cited_inputs: [ToolchainSpec] }
+    key_inputs: extdeps.cache.types.NativeInternal { cited_inputs: [extdeps.cache.types.ToolchainSpec] }
     overwritable: false
     prefix_fallback_allowed: false
     content_verified_on_read: true
-    visibility_scope: Org
-    invalidation_triggers: [ToolchainChange, ManualPurge]
+    visibility_scope: std.cache_interface.Org
+    invalidation_triggers: [std.cache_interface.ToolchainChange, std.cache_interface.ManualPurge]
   }
   io: {
-    lookup_semantics: NativeInternalLookup
-    write_semantics: ProviderInternal
-    miss_semantics: MissThenCreate
+    lookup_semantics: std.cache_interface.NativeInternalLookup
+    write_semantics: std.cache_interface.ProviderInternal
+    miss_semantics: std.cache_interface.MissThenCreate
   }
   placement: {
-    value_shape: FileTree
-    locality: PerHostFilesystem
-    retention: { release_policy: ReleasedNever, capacity: CapacityUnobserved }
-    atomicity: PerFile
-    auth: FilesystemPerms
-    read_latency: LocalDiskUs
-    consistency: Strong
+    value_shape: std.cache_interface.FileTree
+    locality: std.cache_interface.PerHostFilesystem
+    retention: { release_policy: std.cache_interface.ReleasedNever, capacity: std.cache_interface.CapacityUnobserved }
+    atomicity: std.cache_interface.PerFile
+    auth: std.cache_interface.FilesystemPerms
+    read_latency: std.cache_interface.LocalDiskUs
+    consistency: std.cache_interface.Strong
   }
   evidence: [
     {

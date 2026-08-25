@@ -20,8 +20,8 @@ type ObservationSubject {
 
 fn observation_decl_field_key(field: std.decl_ref.DeclField) -> String {
   match field {
-    WholeDeclaration => "whole"
-    NamedField { field_name: f } => concat("field=", f)
+    std.decl_ref.WholeDeclaration => "whole"
+    std.decl_ref.NamedField { field_name: f } => concat("field=", f)
   }
 }
 
@@ -206,7 +206,7 @@ fn observation_clock_lookup(
   basis: std.measure.ClockBasis
 ) -> ClockLookup {
   fold(durations, init: ClockNotFound, f: (acc, t) =>
-    if clock_basis_eq(a: timed_measurement_basis(t: t), b: basis) {
+    if std.measure.clock_basis_eq(a: timed_measurement_basis(t: t), b: basis) {
       match acc {
         ClockNotFound => ClockFound { elapsed: timed_measurement_elapsed(t: t) }
         ClockFound { elapsed: _ } => ClockAmbiguous
@@ -226,7 +226,7 @@ fn observation_duration_of(
     ClockNotFound =>
       MeasuredUnavailable {
         cause: concat(
-          concat("no ", clock_basis_label(b: basis) as String),
+          concat("no ", std.measure.clock_basis_label(b: basis) as String),
           " duration was recorded on this event"
         ) as std.types.NonEmptyStr
       }
@@ -234,7 +234,7 @@ fn observation_duration_of(
     ClockAmbiguous =>
       MeasuredUnavailable {
         cause: concat(
-          concat("two ", clock_basis_label(b: basis) as String),
+          concat("two ", std.measure.clock_basis_label(b: basis) as String),
           " durations were recorded on one event; the observation is ambiguous"
         ) as std.types.NonEmptyStr
       }
@@ -246,15 +246,15 @@ fn observation_duration(event: ObservationEvent, basis: std.measure.ClockBasis) 
 }
 
 fn observation_wall(event: ObservationEvent) -> Measured<std.measure.Nanosecond> {
-  observation_duration(event: event, basis: WallClock)
+  observation_duration(event: event, basis: std.measure.WallClock)
 }
 
 fn observation_durations_wall(elapsed: std.measure.Nanosecond) -> List<TimedMeasurement> {
-  [TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: elapsed } }]
+  [TimedMeasurement { basis: std.measure.WallClock, elapsed: MeasuredValue { value: elapsed } }]
 }
 
 fn observation_durations_wall_unavailable(cause: std.types.NonEmptyStr) -> List<TimedMeasurement> {
-  [TimedMeasurement { basis: WallClock, elapsed: MeasuredUnavailable { cause: cause } }]
+  [TimedMeasurement { basis: std.measure.WallClock, elapsed: MeasuredUnavailable { cause: cause } }]
 }
 
 fn observation_durations_cpu_and_wall(
@@ -262,8 +262,8 @@ fn observation_durations_cpu_and_wall(
   wall: std.measure.Nanosecond
 ) -> List<TimedMeasurement> {
   [
-    TimedMeasurement { basis: CpuClock, elapsed: MeasuredValue { value: cpu } },
-    TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: wall } }
+    TimedMeasurement { basis: std.measure.CpuClock, elapsed: MeasuredValue { value: cpu } },
+    TimedMeasurement { basis: std.measure.WallClock, elapsed: MeasuredValue { value: wall } }
   ]
 }
 
@@ -340,9 +340,9 @@ fn observation_outcome_is_anomaly(o: ObservationOutcome) -> Bool {
 }
 
 fn observation_attention_of_elapsed(elapsed: std.measure.Nanosecond, basis: AttentionBasis) -> AttentionLevel {
-  if measure_le(a: elapsed, b: millisecond_to_nanosecond(m: basis.average)) {
+  if std.measure.measure_le(a: elapsed, b: std.measure.millisecond_to_nanosecond(m: basis.average)) {
     Ambient
-  } else if measure_le(a: elapsed, b: millisecond_to_nanosecond(m: basis.maximum)) {
+  } else if std.measure.measure_le(a: elapsed, b: std.measure.millisecond_to_nanosecond(m: basis.maximum)) {
     Notable
   } else {
     Anomaly
@@ -506,16 +506,16 @@ fn observation_class_is_intrinsic_anomaly(c: ObservationEventClass) -> Bool {
 
 fn observation_class_glyph(c: ObservationEventClass) -> std.symbols.SymbolId {
   match c {
-    ClassBegin => NodeRunning
-    ClassStep => NodeRunning
-    ClassDone => NodeCompleted
-    ClassRefused => StatusRefused
-    ClassFailed => NodeFailed
-    ClassTimedOut => StatusTimedOut
-    ClassSkipped => NodeSkipped
-    ClassFinal => StatusFinal
-    ClassBlocked => StatusBlocked
-    ClassDwellEscalation => StatusDwell
+    ClassBegin => std.symbols.NodeRunning
+    ClassStep => std.symbols.NodeRunning
+    ClassDone => std.symbols.NodeCompleted
+    ClassRefused => std.symbols.StatusRefused
+    ClassFailed => std.symbols.NodeFailed
+    ClassTimedOut => std.symbols.StatusTimedOut
+    ClassSkipped => std.symbols.NodeSkipped
+    ClassFinal => std.symbols.StatusFinal
+    ClassBlocked => std.symbols.StatusBlocked
+    ClassDwellEscalation => std.symbols.StatusDwell
   }
 }
 
@@ -537,12 +537,12 @@ type ChangePresentation {
 
 fn observation_change_presentation<K, V>(hunk: std.change.KeyedDiffHunk<K, V>) -> ChangePresentation {
   match hunk {
-    KeyedDiffAddedHunk { hunk_key: _, to: _ } =>
-      ChangePresentation { symbol: ChangeAdded, tag: "new" as std.types.NonEmptyStr }
-    KeyedDiffRemovedHunk { hunk_key: _, from: _ } =>
-      ChangePresentation { symbol: ChangeRemoved, tag: "removed" as std.types.NonEmptyStr }
-    KeyedDiffModifiedHunk { hunk_key: _, from: _, to: _ } =>
-      ChangePresentation { symbol: ChangeModified, tag: "edited" as std.types.NonEmptyStr }
+    std.change.KeyedDiffAddedHunk { hunk_key: _, to: _ } =>
+      ChangePresentation { symbol: std.symbols.ChangeAdded, tag: "new" as std.types.NonEmptyStr }
+    std.change.KeyedDiffRemovedHunk { hunk_key: _, from: _ } =>
+      ChangePresentation { symbol: std.symbols.ChangeRemoved, tag: "removed" as std.types.NonEmptyStr }
+    std.change.KeyedDiffModifiedHunk { hunk_key: _, from: _, to: _ } =>
+      ChangePresentation { symbol: std.symbols.ChangeModified, tag: "edited" as std.types.NonEmptyStr }
   }
 }
 
@@ -585,11 +585,11 @@ fn observation_no_op_attention(n: SelectionNoOp) -> AttentionLevel {
 
 fn observation_no_op_symbol(n: SelectionNoOp) -> std.symbols.SymbolId {
   match n {
-    DocsPolicy => NodeSkipped
-    Uncovered { declaration: _ } => StatusWarning
-    NoDeclsTouched => NodeSkipped
-    GeneratedArtifactNoOp { drift_gate_authority: _ } => StatusInfo
-    DepartedPath { cause: _ } => StatusWarning
+    DocsPolicy => std.symbols.NodeSkipped
+    Uncovered { declaration: _ } => std.symbols.StatusWarning
+    NoDeclsTouched => std.symbols.NodeSkipped
+    GeneratedArtifactNoOp { drift_gate_authority: _ } => std.symbols.StatusInfo
+    DepartedPath { cause: _ } => std.symbols.StatusWarning
   }
 }
 
@@ -605,7 +605,7 @@ fn observation_no_op_explanation(n: SelectionNoOp) -> std.types.NonEmptyStr {
 
 data observation_human_units_contract: String = "Rendered magnitudes are in human units, and a raw telemetry dump is a census violation rather than a projection. The named negative example is the floor memory heartbeat's current shape: sixty-plus identical context-free byte dumps an hour, current=16111669248 with no subject attached, which is precisely the line that was present throughout the ten-minute crawl window and told the operator nothing. A projection states the magnitude at a scale a human reads and attaches the subject it belongs to. This contract is stated on the model so the P3 census has an authority to check against; the renderers that satisfy it are P1 and later."
 
-data observation_heartbeat_period: std.measure.Millisecond = millisecond(count: 60000)
+data observation_heartbeat_period: std.measure.Millisecond = std.measure.millisecond(count: 60000)
 
 data observation_heartbeat_period_note: String = "The heartbeat cadence is a measured fact of the running system, not a preference: the floor's memory heartbeat already samples and prints once per minute, and the lockstep witness reads that period out of the live seed rather than trusting this row. It is stated here because the dwell threshold is derived from it."
 
@@ -620,18 +620,18 @@ data observation_dwell_threshold: DwellThreshold = DwellThreshold {
 }
 
 data observation_dwell_threshold_disposition: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
     decl_name: "observation_dwell_threshold",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data observation_dwell_recalibration_note: String = "Declared scaffold, with its trigger: the design doc says T's basis is the measured quiet-time distribution. That distribution is not yet collected — the gauntlet and falsifier whole-corpus runs are the context that will produce it (design doc section 6b names that lane as the escalation law's primary home). Deriving T from the heartbeat period is a grounded interim, not taste, because the period is itself measured and law 2 is stated in terms of it. Dissolve-on: the first measured quiet-time distribution from a gauntlet cadence replaces the basis, and this row's period becomes a projection of it."
 
 fn observation_escalation_depth(quiet: std.measure.Millisecond, t: DwellThreshold) -> std.nat.Nat {
-  millisecond_count(m: quiet) / millisecond_count(m: t.period)
+  std.measure.millisecond_count(m: quiet) / std.measure.millisecond_count(m: t.period)
 }
 
 // Law 3: attention escalates by dwell time, RECURSIVELY. A subject quiet past T surfaces its current child, past 2T the grandchild, and so on to the leaf — the collapse rule of law 4 run in reverse under time pressure, over the same tree and the same events. Depth is floor of quiet over T, so one law covers every level instead of a special case per level; the reference implementation expands one level only, and only on a TTY, which is why the CI crawl window stayed silent.
@@ -656,13 +656,13 @@ type WatchdogVerdict
 data observation_watchdog_note: String = "Law 1: every subject at entry grain and above emits a matched Begin and exactly one Outcome, so an orphaned Begin is a DETECTABLE DEFECT rather than a silence to be interpreted. The watchdog converts quiet-past-budget into a typed line, which also closes the batch-wall hang gap — a batch that never completes currently rides silently to the step cap. The exceeded-budget arithmetic is not restated here: it calls std.temporal_effect.stall_budget_verdict, the one carrier already answering elapsed-against-limit, so there is a single authority for what over-budget means and this module only adds the subject the verdict is about."
 
 fn observation_watchdog(subject: ObservationSubject, elapsed: std.measure.Millisecond, budget: std.measure.Millisecond) -> WatchdogVerdict {
-  match stall_budget_verdict(budget: std.temporal_effect.EffectStallBudget {
+  match std.temporal_effect.stall_budget_verdict(budget: std.temporal_effect.EffectStallBudget {
     step_id: observation_subject_render(subject: subject),
     limit_ms: budget,
     elapsed_ms: elapsed
   }) {
-    StallWithinBudget => WatchdogQuiet
-    StallBudgetExceeded { step_id: _, elapsed_ms: e, limit_ms: l } =>
+    std.temporal_effect.StallWithinBudget => WatchdogQuiet
+    std.temporal_effect.StallBudgetExceeded { step_id: _, elapsed_ms: e, limit_ms: l } =>
       WatchdogOrphanedBegin { subject: subject, elapsed: e, budget: l }
   }
 }
@@ -697,7 +697,7 @@ data observation_law_process_to_outcome: ObservationLaw = ObservationLaw {
   enforced_by: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
     decl_name: "observation_watchdog",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -707,7 +707,7 @@ data observation_law_heartbeat_identity: ObservationLaw = ObservationLaw {
   enforced_by: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
     decl_name: "observation_subject_render",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -717,7 +717,7 @@ data observation_law_dwell_escalation: ObservationLaw = ObservationLaw {
   enforced_by: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
     decl_name: "observation_escalation_subject",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -727,7 +727,7 @@ data observation_law_quiet_at_arms_length: ObservationLaw = ObservationLaw {
   enforced_by: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
     decl_name: "observation_presentation",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -737,7 +737,7 @@ data observation_law_every_response_true: ObservationLaw = ObservationLaw {
   enforced_by: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
     decl_name: "observation_attention",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -883,7 +883,7 @@ fn observation_rollup_add_elapsed(
     MeasuredValue { value: v } =>
       match acc {
         MeasuredUnavailable { cause: _ } => MeasuredValue { value: v }
-        MeasuredValue { value: a } => MeasuredValue { value: measure_add(a: a, b: v) }
+        MeasuredValue { value: a } => MeasuredValue { value: std.measure.measure_add(a: a, b: v) }
       }
   }
 }
@@ -897,7 +897,7 @@ fn observation_rollup_max_rss(
     MeasuredValue { value: v } =>
       match acc {
         MeasuredUnavailable { cause: _ } => MeasuredValue { value: v }
-        MeasuredValue { value: a } => if measure_le(a: a, b: v) { MeasuredValue { value: v } } else { acc }
+        MeasuredValue { value: a } => if std.measure.measure_le(a: a, b: v) { MeasuredValue { value: v } } else { acc }
       }
   }
 }
@@ -1180,7 +1180,7 @@ fn sequence_scan_step(acc: SequenceScan, r: RecordedObservation) -> SequenceScan
 // The first defect wins and later records cannot green it: once a gap is seen the reduction is
 // incomplete no matter how clean the tail reads.
 fn classify_producer_file(records: List<RecordedObservation>) -> SequenceVerdict {
-  v2.std.algebra.fold_list(
+  fold_list(
     records,
     SequenceScan { started: false, prev_key: "", prev_sequence: 0, verdict: SequenceEmpty },
     (acc, r) => sequence_scan_step(acc: acc, r: r)
@@ -1217,7 +1217,7 @@ type ParentResolution
   | ParentMissingFromAttempt { parent_id: std.types.NonEmptyStr }
 
 fn occurrence_present_in(records: List<RecordedObservation>, target: OccurrenceId) -> Bool {
-  v2.std.algebra.fold_list(records, false, (acc, r) =>
+  fold_list(records, false, (acc, r) =>
     acc || (r.occurrence.id == target.id && r.occurrence.attempt == target.attempt))
 }
 
@@ -1265,7 +1265,7 @@ type ActiveOccurrences {
 }
 
 fn occurrence_concluded_in(records: List<RecordedObservation>, target: OccurrenceId) -> Bool {
-  v2.std.algebra.fold_list(records, false, (acc, r) =>
+  fold_list(records, false, (acc, r) =>
     acc || (r.occurrence.id == target.id
       && r.occurrence.attempt == target.attempt
       && match r.event.transition { Concluded { outcome: _ } => true, _ => false }))

@@ -13,13 +13,13 @@ type ModuleDeclarationFact {
 type ImportResolutionFact {
   path: String
   import_module: String
-  target_declared: v2.std.logic.Bool
+  target_declared: Bool
 }
 
 type ModuleDependencyEdge {
   path: String
   target_module: String
-  target_declared: v2.std.logic.Bool
+  target_declared: Bool
 }
 
 data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today dependency_resolution_facts_live unions import_resolution_facts_live with strict-tier reference_derived_import_resolution_facts_live (host twin selection_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, dependency_resolution_facts_live swaps to reference_derived_resolution_facts_flagged_pending_reference_producer and nothing above it changes: dependency_closure, import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read ModuleDependencyEdge rows as data, never import syntax). Do not add a second edge producer beside dependency_resolution_facts_live; the swap replaces its body."
@@ -76,7 +76,7 @@ fn import_fact_to_dependency_edge(edge: ImportResolutionFact) -> ModuleDependenc
 }
 
 fn dependency_edges_from_import_facts(edges: List<ImportResolutionFact>) -> List<ModuleDependencyEdge> {
-  list_reverse(xs: fold_list(
+  v2.std.algebra.list_reverse(xs: v2.std.algebra.fold_list(
     xs: edges,
     empty: std.algebra.Empty,
     cons: fn(acc, edge) {
@@ -122,8 +122,8 @@ fn reference_derived_resolution_facts_flagged_pending_reference_producer(
   pool_roots: List<String>,
   importer_roots: List<String>,
   exclude_substrings: List<String>
-) -> Outcome<List<ModuleDependencyEdge>> {
-  outcome_accepted(
+) -> v2.std.diagnostic.Outcome<List<ModuleDependencyEdge>> {
+  v2.std.diagnostic.outcome_accepted(
     value: dependency_edges_from_import_facts(
       edges: import_resolution_facts_live(
         pool_roots: pool_roots,
@@ -134,28 +134,28 @@ fn reference_derived_resolution_facts_flagged_pending_reference_producer(
   )
 }
 
-fn string_eq(a: String, b: String) -> v2.std.logic.Bool {
+fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-data no_paths: FreeMonoid<String> = std.algebra.Empty
+data no_paths: std.algebra.FreeMonoid<String> = std.algebra.Empty
 
 data no_import_facts: List<ImportResolutionFact> = []
 
-fn add_unseen(acc: FreeMonoid<String>, item: String) -> FreeMonoid<String> {
-  if contains(xs: acc, item: item, eq: v2.lens.module_graph.string_eq) {
+fn add_unseen(acc: std.algebra.FreeMonoid<String>, item: String) -> std.algebra.FreeMonoid<String> {
+  if v2.std.algebra.contains(xs: acc, item: item, eq: string_eq) {
     acc
   } else {
-    list_snoc_item(xs: acc, item: item)
+    v2.std.algebra.list_snoc_item(xs: acc, item: item)
   }
 }
 
-fn union_unseen(acc: FreeMonoid<String>, more: FreeMonoid<String>) -> FreeMonoid<String> {
-  fold_list(xs: more, empty: acc, cons: fn(a, x) { add_unseen(acc: a, item: x) })
+fn union_unseen(acc: std.algebra.FreeMonoid<String>, more: std.algebra.FreeMonoid<String>) -> std.algebra.FreeMonoid<String> {
+  v2.std.algebra.fold_list(xs: more, empty: acc, cons: fn(a, x) { add_unseen(acc: a, item: x) })
 }
 
 type ImportClosureBfsState {
-  reached: FreeMonoid<String>
+  reached: std.algebra.FreeMonoid<String>
   queue: List<String>
 }
 
@@ -167,20 +167,20 @@ fn map_lookup_where_rejected_unreachable<K, V>(m: Map<K, V>, key: K) -> v2.std.o
 }
 
 fn build_module_to_path(nodes: List<ModuleDeclarationFact>) -> Map<String, String> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: nodes,
-    empty: empty_map(),
+    empty: v2.std.collection.empty_map(),
     cons: fn(acc, node) {
-      map_insert(m: acc, key: node.module, value: node.path)
+      v2.std.collection.map_insert(m: acc, key: node.module, value: node.path)
     }
   )
 }
 
 fn snoc_unseen_list(acc: List<String>, item: String) -> List<String> {
-  if contains(xs: acc, item: item, eq: v2.lens.module_graph.string_eq) {
+  if v2.std.algebra.contains(xs: acc, item: item, eq: string_eq) {
     acc
   } else {
-    list_snoc_item(xs: acc, item: item)
+    v2.std.algebra.list_snoc_item(xs: acc, item: item)
   }
 }
 
@@ -190,22 +190,22 @@ fn extend_adjacency_for_dependency_edge(
   module_to_path: Map<String, String>
 ) -> Map<String, List<String>> {
   match map_lookup_where_rejected_unreachable(m: module_to_path, key: edge.target_module) {
-    Present { value: imported_path } =>
+    v2.std.optional.Present { value: imported_path } =>
       match map_lookup_where_rejected_unreachable(m: acc, key: edge.path) {
-        Present { value: existing } =>
-          map_insert(
+        v2.std.optional.Present { value: existing } =>
+          v2.std.collection.map_insert(
             m: acc,
             key: edge.path,
             value: snoc_unseen_list(acc: existing, item: imported_path)
           )
-        Absent =>
-          map_insert(
+        v2.std.optional.Absent =>
+          v2.std.collection.map_insert(
             m: acc,
             key: edge.path,
-            value: list_snoc_item(xs: no_paths, item: imported_path)
+            value: v2.std.algebra.list_snoc_item(xs: no_paths, item: imported_path)
           )
       }
-    Absent => acc
+    v2.std.optional.Absent => acc
   }
 }
 
@@ -214,9 +214,9 @@ fn build_dependency_adjacency(
   nodes: List<ModuleDeclarationFact>
 ) -> Map<String, List<String>> {
   let module_to_path = build_module_to_path(nodes: nodes)
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: edges,
-    empty: empty_map(),
+    empty: v2.std.collection.empty_map(),
     cons: fn(acc, edge) {
       extend_adjacency_for_dependency_edge(
         acc: acc,
@@ -250,12 +250,12 @@ fn build_import_adjacency(
 }
 
 fn bfs_absorb_neighbor(state: ImportClosureBfsState, path: String) -> ImportClosureBfsState {
-  if contains(xs: state.reached, item: path, eq: v2.lens.module_graph.string_eq) {
+  if v2.std.algebra.contains(xs: state.reached, item: path, eq: string_eq) {
     state
   } else {
     ImportClosureBfsState {
-      reached: list_snoc_item(xs: state.reached, item: path),
-      queue: list_snoc_item(xs: state.queue, item: path)
+      reached: v2.std.algebra.list_snoc_item(xs: state.reached, item: path),
+      queue: v2.std.algebra.list_snoc_item(xs: state.queue, item: path)
     }
   }
 }
@@ -264,7 +264,7 @@ fn bfs_absorb_neighbors(
   state: ImportClosureBfsState,
   neighbors: List<String>
 ) -> ImportClosureBfsState {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: neighbors,
     empty: state,
     cons: fn(acc, path) { bfs_absorb_neighbor(state: acc, path: path) }
@@ -274,20 +274,20 @@ fn bfs_absorb_neighbors(
 fn import_closure_bfs_walk(
   state: ImportClosureBfsState,
   adjacency: Map<String, List<String>>
-) -> FreeMonoid<String> {
+) -> std.algebra.FreeMonoid<String> {
   match state.queue |> first {
-    Present { value: importer } =>
+    v2.std.optional.Present { value: importer } =>
       let rest = state.queue |> skip(1)
       let neighbors = match map_lookup_where_rejected_unreachable(m: adjacency, key: importer) {
-        Present { value: paths } => paths
-        Absent => no_paths
+        v2.std.optional.Present { value: paths } => paths
+        v2.std.optional.Absent => no_paths
       }
       let next = bfs_absorb_neighbors(
         state: ImportClosureBfsState { reached: state.reached, queue: rest },
         neighbors: neighbors
       )
       import_closure_bfs_walk(state: next, adjacency: adjacency)
-    Absent => state.reached
+    v2.std.optional.Absent => state.reached
   }
 }
 
@@ -295,12 +295,12 @@ fn dependency_closure(
   entry_path: String,
   edges: List<ModuleDependencyEdge>,
   nodes: List<ModuleDeclarationFact>
-) -> FreeMonoid<String> {
+) -> std.algebra.FreeMonoid<String> {
   let adjacency = build_dependency_adjacency(edges: edges, nodes: nodes)
   import_closure_bfs_walk(
     state: ImportClosureBfsState {
-      reached: list_snoc_item(xs: no_paths, item: entry_path),
-      queue: list_snoc_item(xs: no_paths, item: entry_path)
+      reached: v2.std.algebra.list_snoc_item(xs: no_paths, item: entry_path),
+      queue: v2.std.algebra.list_snoc_item(xs: no_paths, item: entry_path)
     },
     adjacency: adjacency
   )
@@ -310,7 +310,7 @@ fn import_closure(
   entry_path: String,
   edges: List<ImportResolutionFact>,
   nodes: List<ModuleDeclarationFact>
-) -> FreeMonoid<String> {
+) -> std.algebra.FreeMonoid<String> {
   dependency_closure(
     entry_path: entry_path,
     edges: dependency_edges_from_import_facts(edges: edges),
@@ -324,7 +324,7 @@ fn dependency_closure_live_excluding(
   entry_path: String,
   pool_roots: List<String>,
   exclude_substrings: List<String>
-) -> FreeMonoid<String> {
+) -> std.algebra.FreeMonoid<String> {
   dependency_closure(
     entry_path: entry_path,
     edges: dependency_resolution_facts_live(
@@ -340,7 +340,7 @@ fn import_closure_live_excluding(
   entry_path: String,
   pool_roots: List<String>,
   exclude_substrings: List<String>
-) -> FreeMonoid<String> {
+) -> std.algebra.FreeMonoid<String> {
   dependency_closure_live_excluding(
     entry_path: entry_path,
     pool_roots: pool_roots,
@@ -348,7 +348,7 @@ fn import_closure_live_excluding(
   )
 }
 
-fn import_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMonoid<String> {
+fn import_closure_live(entry_path: String, pool_roots: List<String>) -> std.algebra.FreeMonoid<String> {
   import_closure_live_excluding(
     entry_path: entry_path,
     pool_roots: pool_roots,
@@ -364,16 +364,16 @@ fn strip_leading_dot_slash(s: String) -> String {
   }
 }
 
-fn path_matches_touched(closure_path: String, touched_path: String) -> v2.std.logic.Bool {
+fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
   let file = strip_leading_dot_slash(closure_path)
   let target = strip_leading_dot_slash(touched_path)
-  v2.lens.module_graph.string_eq(a: file, b: target)
+  string_eq(a: file, b: target)
     || ends_with(s: file, suffix: target)
     || ends_with(s: target, suffix: file)
 }
 
-fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> v2.std.logic.Bool {
-  any(xs: closure, predicate: fn(closure_path) { path_matches_touched(closure_path: closure_path, touched_path: path) })
+fn touched_path_in_closure(closure: std.algebra.FreeMonoid<String>, path: String) -> Bool {
+  v2.std.algebra.any(xs: closure, predicate: fn(closure_path) { path_matches_touched(closure_path: closure_path, touched_path: path) })
 }
 
 data edgeless_entry_has_no_special_arm_note: String = "There is deliberately NO edgeless-entry arm here, and the one this branch briefly carried (entry_without_declared_edges_never_skips_note + module_declares_outgoing_dependency_edge, added after the import strip and now deleted) was the absorbing fallback DESIGN 5 names verbatim: 'can't compute the affected set -> rerun the entire suite'. It answered affected=true for every entry with no outgoing edges, which after the strip was ~530 claim modules, silently and uncounted — so the deficit's frequency was zero by construction while its cost surfaced as a 95-minute CI floor instead of as a diagnostic. It also was not answering an unknown: dependency_closure seeds with the entry itself, so an edgeless entry has the precise closure of the entry alone and 'affected iff my own file is touched' is a real answer. The two states that arm conflated are split on the host twin (cli_run.rs entry_file_touched_via_import_closure): a producer that looked and found no edges falls through to the closure; a producer that could not read or parse the file returns a typed AFFECTED-SET REFUSAL, because an unknown dependency set is not an empty one."
@@ -383,20 +383,20 @@ fn entry_affected_by_touched_paths_excluding(
   pool_roots: List<String>,
   touched_paths: List<String>,
   exclude_substrings: List<String>
-) -> v2.std.logic.Bool {
+) -> Bool {
   let closure = dependency_closure_live_excluding(
     entry_path: entry_path,
     pool_roots: pool_roots,
     exclude_substrings: exclude_substrings
   )
-  any(xs: touched_paths, predicate: fn(path) { touched_path_in_closure(closure: closure, path: path) })
+  v2.std.algebra.any(xs: touched_paths, predicate: fn(path) { touched_path_in_closure(closure: closure, path: path) })
 }
 
 fn entry_affected_by_touched_paths(
   entry_path: String,
   pool_roots: List<String>,
   touched_paths: List<String>
-) -> v2.std.logic.Bool {
+) -> Bool {
   entry_affected_by_touched_paths_excluding(
     entry_path: entry_path,
     pool_roots: pool_roots,

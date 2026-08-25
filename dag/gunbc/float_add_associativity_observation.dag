@@ -1,7 +1,7 @@
 module gunbc.float_add_associativity_observation
 
 
-data float_add_associativity_cited_standard: extdeps.standards.ieee_754_2019.Ieee754Standard = ieee_754_2019
+data float_add_associativity_cited_standard: extdeps.standards.ieee_754_2019.Ieee754Standard = extdeps.standards.ieee_754_2019.ieee_754_2019
 
 data float_add_associativity_observation_note: String = "Observing-layer execution receipt for Float add associativity under the IEEE 754 standard modeled in extdeps.standards.ieee_754_2019. Witness magnitudes derive from host execution via observe_float_add_associativity_triple, not hand-authored fold results. The associativity verdict shape lives in std.algebra_law; this module records only the observed folds and assembled receipt."
 
@@ -9,7 +9,7 @@ data float_add_operation_identity_grounding_gap_note: String = "GROUNDING GAP (h
 
 data float_add_associativity_subject: std.algebra_law.AssociativityOperationSubject = std.algebra_law.AssociativityFloatAdd {}
 
-fn observe_float_add_associativity_triple(a: Float, b: Float, c: Float) -> AssociativityCounterexampleWitness<Float> {
+fn observe_float_add_associativity_triple(a: Float, b: Float, c: Float) -> std.algebra_law.AssociativityCounterexampleWitness<Float> {
   let left = (a + b) + c
   let right = a + (b + c)
   std.algebra_law.AssociativityCounterexampleWitness {
@@ -21,7 +21,7 @@ fn observe_float_add_associativity_triple(a: Float, b: Float, c: Float) -> Assoc
   }
 }
 
-data float_add_associativity_refuted: AssociativityRefutationReceipt<Float> = std.algebra_law.AssociativityRefutationReceipt {
+data float_add_associativity_refuted: std.algebra_law.AssociativityRefutationReceipt<Float> = std.algebra_law.AssociativityRefutationReceipt {
   subject: float_add_associativity_subject,
   witness: observe_float_add_associativity_triple(
     a: 10000000000000000.0,
@@ -31,5 +31,5 @@ data float_add_associativity_refuted: AssociativityRefutationReceipt<Float> = st
 }
 
 fn float_add_associativity_refutation_holds() -> Bool {
-  associativity_refutation_holds_for_float_add(receipt: float_add_associativity_refuted)
+  std.algebra_law.associativity_refutation_holds_for_float_add(receipt: float_add_associativity_refuted)
 }

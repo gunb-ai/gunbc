@@ -13,22 +13,22 @@ fn subject_write() -> gunbc.typed_remote_file_write.TypedRemoteFileWrite? {
     content: subject_content,
     allowed_scope: unit_dir_scope,
   ) {
-    TypedRemoteFileWriteAdmitted { write: w } => Present { value: w }
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } => Present { value: w }
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
   }
 }
 
 fn converged(c: gunbc.typed_remote_file_write.TypedRemoteFileConvergence) -> Bool {
   match c {
-    TypedRemoteFileConverged { path: _, mode: _ } => true
-    TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
+    gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => true
+    gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
   }
 }
 
 fn refusal_step(c: gunbc.typed_remote_file_write.TypedRemoteFileConvergence) -> String {
   match c {
-    TypedRemoteFileConverged { path: _, mode: _ } => "converged"
-    TypedRemoteFileConvergenceRefused { step: s, reason: _ } => s
+    gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => "converged"
+    gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: s, reason: _ } => s
   }
 }
 
@@ -63,9 +63,9 @@ test fn the_stage_step_does_not_echo_content_back() -> Bool {
     Absent => false
     Present { value: w } => {
       let argv = gunbc.typed_remote_file_write.typed_remote_file_stage_argv(write: w)
-      !std.materialization_ladder.string_list_contains(xs: argv, wanted: "tee")
-        && std.materialization_ladder.string_list_contains(xs: argv, wanted: "dd")
-        && std.materialization_ladder.string_list_contains(xs: argv, wanted: "status=none")
+      !string_list_contains(xs: argv, wanted: "tee")
+        && string_list_contains(xs: argv, wanted: "dd")
+        && string_list_contains(xs: argv, wanted: "status=none")
     }
   }
 }
@@ -95,9 +95,9 @@ test fn the_comparison_reads_the_destination_not_the_staging_file() -> Bool {
   match subject_write() {
     Absent => false
     Present { value: w } => {
-      let argv = typed_remote_file_compare_argv(write: w)
+      let argv = gunbc.typed_remote_file_write.typed_remote_file_compare_argv(write: w)
       argv == ["cmp", "-s", "-", subject_path as String]
-        && !std.materialization_ladder.string_list_contains(xs: argv, wanted: typed_remote_file_staging_path(write: w))
+        && !string_list_contains(xs: argv, wanted: gunbc.typed_remote_file_write.typed_remote_file_staging_path(write: w))
     }
   }
 }
@@ -108,8 +108,8 @@ test fn the_comparison_takes_the_declared_side_from_stdin() -> Bool {
   match subject_write() {
     Absent => false
     Present { value: w } =>
-      std.materialization_ladder.string_list_contains(xs: typed_remote_file_compare_argv(write: w), wanted: "-")
-        && !std.materialization_ladder.string_list_contains(xs: typed_remote_file_compare_argv(write: w), wanted: "cat")
+      string_list_contains(xs: gunbc.typed_remote_file_write.typed_remote_file_compare_argv(write: w), wanted: "-")
+        && !string_list_contains(xs: gunbc.typed_remote_file_write.typed_remote_file_compare_argv(write: w), wanted: "cat")
   }
 }
 
@@ -125,7 +125,7 @@ fn classify(exit_code: Int, stderr: String) -> gunbc.typed_remote_file_write.Typ
     Absent =>
       gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: "fixture", reason: "seal refused" }
     Present { value: w } =>
-      classify_typed_remote_file_comparison(
+      gunbc.typed_remote_file_write.classify_typed_remote_file_comparison(
         write: w,
         mode: gunbc.typed_remote_file_write.RemoteFileModeOwnerReadWriteWorldRead,
         compare_exit_code: exit_code,
@@ -148,14 +148,14 @@ fn classify(exit_code: Int, stderr: String) -> gunbc.typed_remote_file_write.Typ
 // exit code they were handed.
 // The positive control. Without it every refusal below would pass on a function that never converges.
 test fn a_destination_cmp_calls_identical_converges() -> Bool {
-  converged(c: test.claim.typed_remote_file_converge_witness_test.classify(exit_code: 0, stderr: ""))
+  converged(c: classify(exit_code: 0, stderr: ""))
 }
 
 // THE CLAIM THIS ARM EXISTS FOR: a successful write whose destination holds something else. This is
 // exactly what a zero exit from the writing process cannot distinguish, and why RemoteExecAccepted
 // was never convergence.
 test fn a_destination_cmp_calls_different_refuses() -> Bool {
-  let c = test.claim.typed_remote_file_converge_witness_test.classify(exit_code: 1, stderr: "")
+  let c = classify(exit_code: 1, stderr: "")
   !converged(c: c) && refusal_step(c: c) == "compare"
 }
 
@@ -163,7 +163,7 @@ test fn a_destination_cmp_calls_different_refuses() -> Bool {
 // missing destination, an unreadable one, no cmp on the host. Reporting that as a content difference
 // would blame the bytes for a failure to compare them, and would send a reader to the wrong fix.
 test fn a_comparison_that_could_not_run_refuses_separately_from_a_difference() -> Bool {
-  let c = test.claim.typed_remote_file_converge_witness_test.classify(exit_code: 2, stderr: "cmp: No such file or directory")
+  let c = classify(exit_code: 2, stderr: "cmp: No such file or directory")
   !converged(c: c) && refusal_step(c: c) == "compare"
     && string_contains(
       match c { gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => "" gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: _, reason: r } => r },
@@ -179,13 +179,13 @@ test fn a_comparison_that_could_not_run_refuses_separately_from_a_difference() -
 // reader who cannot tell "the file is wrong" from "I could not read the file" has one word for two
 // situations whose remedies differ.
 test fn the_difference_and_the_error_do_not_render_the_same_reason() -> Bool {
-  let differ = match test.claim.typed_remote_file_converge_witness_test.classify(exit_code: 1, stderr: "") {
-    TypedRemoteFileConverged { path: _, mode: _ } => ""
-    TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
+  let differ = match classify(exit_code: 1, stderr: "") {
+    gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => ""
+    gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
   }
-  let errored = match test.claim.typed_remote_file_converge_witness_test.classify(exit_code: 2, stderr: "boom") {
-    TypedRemoteFileConverged { path: _, mode: _ } => ""
-    TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
+  let errored = match classify(exit_code: 2, stderr: "boom") {
+    gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => ""
+    gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
   }
   differ != errored
     && string_contains(differ, "are not the declared content")
@@ -202,7 +202,7 @@ test fn a_path_outside_the_scope_is_never_admitted() -> Bool {
     content: subject_content,
     allowed_scope: unit_dir_scope,
   ) {
-    TypedRemoteFileWriteAdmitted { write: _ } => false
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: _ } => false
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
   }
 }

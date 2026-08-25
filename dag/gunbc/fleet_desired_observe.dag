@@ -47,7 +47,7 @@ data fleet_desired_observe_repository_path_note: String = "The repository whose 
 // MERGE-BASE-DERIVED RELATION.
 //
 // The decidable half is a pure fold in gunbc.fleet_main_revision, and only this function may feed
-// it observed facts. std.constructors.Product code must not author an exit_code, a base hex and a stderr and call
+// it observed facts. Product code must not author an exit_code, a base hex and a stderr and call
 // that fold as though those had been observed -- the fold stays public because the POLICY has to
 // be witnessable hermetically (git.Inspect.MergeBase carries no mock_response, so any witness
 // reaching it refuses under the hermetic envelope), but authoring its inputs outside an actual
@@ -89,23 +89,23 @@ data fleet_desired_observe_repository_path_note: String = "The repository whose 
 // and saying otherwise would credit this change with a repair it did not make.
 fn observe_fleet_revision_relation_in(
   repository_path: String,
-  current: GitObjectId,
-  accepted: GitObjectId,
-) -> FleetRevisionRelationObservation {
-  if git_object_id_eq(left: current, right: accepted) {
-    FleetRevisionRelationObservation {
+  current: extdeps.git.object_store.GitObjectId,
+  accepted: extdeps.git.object_store.GitObjectId,
+) -> gunbc.fleet_main_revision.FleetRevisionRelationObservation {
+  if extdeps.git.object_store.git_object_id_eq(left: current, right: accepted) {
+    gunbc.fleet_main_revision.FleetRevisionRelationObservation {
       current: current,
       accepted: accepted,
-      relation: SameRevision,
+      relation: gunbc.live_deploy.revision.SameRevision,
     }
   } else {
     let probe = git.Inspect.MergeBase(
       repository_path: repository_path,
-      left: git_object_id_wire_hex(oid: current) as String as GitRef,
-      right: git_object_id_wire_hex(oid: accepted) as String as GitRef,
-      expect: OutcomeIsData,
+      left: extdeps.git.object_store.git_object_id_wire_hex(oid: current) as String as std.types.GitRef,
+      right: extdeps.git.object_store.git_object_id_wire_hex(oid: accepted) as String as std.types.GitRef,
+      expect: gunbc.output_policy.OutcomeIsData,
     )
-    fleet_revision_relation_from_merge_base(
+    gunbc.fleet_main_revision.fleet_revision_relation_from_merge_base(
       current: current,
       accepted: accepted,
       exit_code: probe.exit_code,
@@ -119,9 +119,9 @@ fn observe_fleet_revision_relation_in(
 // NOT do: it does not re-check equality, re-decode, or re-classify. A wrapper that repeated any of
 // that would be the second authority this split was written to avoid.
 fn observe_fleet_revision_relation(
-  current: GitObjectId,
-  accepted: GitObjectId,
-) -> FleetRevisionRelationObservation {
+  current: extdeps.git.object_store.GitObjectId,
+  accepted: extdeps.git.object_store.GitObjectId,
+) -> gunbc.fleet_main_revision.FleetRevisionRelationObservation {
   observe_fleet_revision_relation_in(
     repository_path: fleet_desired_observe_repository_path,
     current: current,
@@ -170,16 +170,16 @@ fn fleet_revision_standing(repo: std.types.FilePath) -> FleetRevisionStanding {
       }
     Absent =>
       match observed {
-        FleetDesiredUnobserved { cause: c } => RevisionUnobserved { cause: c }
-        FleetDesiredAbsent =>
+        gunbc.fleet_main_revision.FleetDesiredUnobserved { cause: c } => RevisionUnobserved { cause: c }
+        gunbc.fleet_main_revision.FleetDesiredAbsent =>
           RevisionUnobserved {
             cause: concat("fleet_desired_observe: origin advertises no ", gunbc.fleet_main_revision.fleet_desired_ref_name),
           }
-        FleetDesiredUndecodable { advertised: line } =>
+        gunbc.fleet_main_revision.FleetDesiredUndecodable { advertised: line } =>
           RevisionUnobserved {
             cause: concat("fleet_desired_observe: advertisement is not a decodable object id: ", line),
           }
-        FleetDesiredAdmitted { revision: _ } =>
+        gunbc.fleet_main_revision.FleetDesiredAdmitted { revision: _ } =>
           RevisionUnobserved {
             cause: "fleet_desired_observe: admitted revision projected no target (unreachable by construction)",
           }

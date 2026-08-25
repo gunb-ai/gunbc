@@ -7,24 +7,24 @@ type EffectIoResourceBackend
   | StorageResourceBackend
 
 type EffectIoResourceLocator {
-  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend
+  backend: EffectIoResourceBackend
   identity: v2.std.node.Hash
 }
 
 type EffectIoFixtureStore {
-  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend
+  backend: EffectIoResourceBackend
   entries: Map<v2.std.node.Hash, v2.std.runtime.RuntimeValue>
 }
 
 type EffectIoPureHandlerBundle {
-  fixture_store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore
+  fixture_store: EffectIoFixtureStore
   handlers: v2.std.runtime.EffectHandlerBinding
 }
 
 type V4EffectIoPureRuntime {
   bundle_identity: v2.std.node.Symbol
-  declared_backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend
-  fixture_store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore
+  declared_backend: EffectIoResourceBackend
+  fixture_store: EffectIoFixtureStore
   handlers: v2.std.runtime.EffectHandlerBinding
 }
 
@@ -32,7 +32,7 @@ fn effect_io_pure_unit_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^effect_io_pure_unit_type } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -40,7 +40,7 @@ fn effect_io_pure_operation_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^effect_io_pure_operation } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -48,7 +48,7 @@ fn effect_io_pure_effect_signature_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^effect_io_pure_effect_signature } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -63,9 +63,9 @@ fn effect_io_pure_operation_ref() -> v2.std.model_core.PrimitiveOperationRef {
 
 fn effect_io_pure_empty_environment() -> v2.std.runtime.EvaluationEnvironment {
   v2.std.runtime.EvaluationEnvironment {
-    bindings: std.algebra.PartialFunction {
+    bindings: PartialFunction {
       lookup: fn(_) {
-        v2.std.optional.Absent
+        v2.std.collection.Absent
       }
     }
   }
@@ -81,59 +81,59 @@ fn effect_io_pure_empty_frame() -> v2.std.runtime.EvaluationFrame {
 fn effect_io_pure_args_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^effect_io_pure_args_absent,
-    at: node_locus(node: effect_io_pure_operation_node()),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: effect_io_pure_operation_node()),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn effect_io_pure_locator_from_args(
-  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
+  backend: EffectIoResourceBackend,
   args: List<v2.std.runtime.RuntimeValue>
-) -> Witness<v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator> {
-  match list_nth(xs: args, wanted: 0, absent: effect_io_pure_args_absent_diagnostic()) {
-    Holds { value: locator_value } =>
+) -> Witness<EffectIoResourceLocator> {
+  match v2.std.collection.list_nth(xs: args, wanted: 0, absent: effect_io_pure_args_absent_diagnostic()) {
+    v2.std.witness.Holds { value: locator_value } =>
       match effect_io_pure_locator_identity(value: locator_value) {
-        Holds { value: digest } =>
+        v2.std.witness.Holds { value: digest } =>
           v2.std.witness.Holds {
-            value: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator {
+            value: EffectIoResourceLocator {
               backend: backend,
               identity: digest
             }
           }
-        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn effect_io_pure_locator_unrepresentable_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^effect_io_pure_locator_unrepresentable,
-    at: node_locus(node: effect_io_pure_operation_node()),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: effect_io_pure_operation_node()),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn effect_io_pure_locator_identity(value: v2.std.runtime.RuntimeValue) -> Witness<v2.std.node.Hash> {
-  match runtime_value_node_projection(value: value) {
-    RuntimeValueNodeProjected { node: reified } =>
-      v2.std.witness.Holds { value: content_hash(n: reified) }
-    RuntimeValueNodeUnrepresentable =>
+  match v2.std.runtime.runtime_value_node_projection(value: value) {
+    v2.std.runtime.RuntimeValueNodeProjected { node: reified } =>
+      v2.std.witness.Holds { value: v2.std.node.content_hash(n: reified) }
+    v2.std.runtime.RuntimeValueNodeUnrepresentable =>
       v2.std.witness.Violates { diagnostic: effect_io_pure_locator_unrepresentable_diagnostic() }
   }
 }
 
 fn effect_io_pure_write_payload_from_args(args: List<v2.std.runtime.RuntimeValue>) -> Witness<v2.std.runtime.RuntimeValue> {
-  match list_nth(xs: args, wanted: 1, absent: effect_io_pure_args_absent_diagnostic()) {
-    Holds { value: payload } => v2.std.witness.Holds { value: payload }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+  match v2.std.collection.list_nth(xs: args, wanted: 1, absent: effect_io_pure_args_absent_diagnostic()) {
+    v2.std.witness.Holds { value: payload } => v2.std.witness.Holds { value: payload }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn effect_io_pure_backends_match(
-  left: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
-  right: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend
-) -> v2.std.logic.Bool {
+  left: EffectIoResourceBackend,
+  right: EffectIoResourceBackend
+) -> Bool {
   match left {
     FileResourceBackend =>
       match right {
@@ -154,69 +154,69 @@ fn effect_io_pure_backends_match(
 }
 
 fn effect_io_pure_store_lookup(
-  store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore,
-  locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator
+  store: EffectIoFixtureStore,
+  locator: EffectIoResourceLocator
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
     match v2.std.collection.map_get(m: store.entries, key: locator.identity) {
-      Accepted { value: opt, diagnostics: None } =>
+      v2.std.diagnostic.Accepted { value: opt, diagnostics: v2.std.diagnostic.None } =>
         match opt {
-          Present { value: payload } =>
+          v2.std.collection.Present { value: payload } =>
             v2.std.diagnostic.Accepted { value: payload, diagnostics: v2.std.diagnostic.None }
-          Absent =>
-            outcome_rejected(
+          v2.std.collection.Absent =>
+            v2.std.diagnostic.outcome_rejected(
               d: v2.std.diagnostic.Diagnostic {
                 reason: ^effect_io_pure_resource_absent,
-                at: node_locus(node: effect_io_pure_operation_node()),
-                correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+                at: v2.std.diagnostic.node_locus(node: effect_io_pure_operation_node()),
+                correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
               }
             )
         }
-      Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+      v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
     }
   } else {
-    outcome_rejected(
+    v2.std.diagnostic.outcome_rejected(
       d: v2.std.diagnostic.Diagnostic {
         reason: ^effect_io_pure_backend_mismatch,
-        at: node_locus(node: effect_io_pure_operation_node()),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.node_locus(node: effect_io_pure_operation_node()),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
     )
   }
 }
 
 fn effect_io_pure_handle_read(
-  store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore,
+  store: EffectIoFixtureStore,
   request: v2.std.runtime.EffectRequest
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
-    Holds { value: locator } => effect_io_pure_store_lookup(store: store, locator: locator)
-    Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
+    v2.std.witness.Holds { value: locator } => effect_io_pure_store_lookup(store: store, locator: locator)
+    v2.std.witness.Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
   }
 }
 
 fn effect_io_pure_handle_write(
-  store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore,
+  store: EffectIoFixtureStore,
   request: v2.std.runtime.EffectRequest
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: store.backend, args: request.arguments) {
-    Holds { value: locator } =>
+    v2.std.witness.Holds { value: locator } =>
       match effect_io_pure_write_payload_from_args(args: request.arguments) {
-        Holds { value: payload } =>
+        v2.std.witness.Holds { value: payload } =>
           if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
             v2.std.diagnostic.Accepted { value: payload, diagnostics: v2.std.diagnostic.None }
           } else {
-            outcome_rejected(
+            v2.std.diagnostic.outcome_rejected(
               d: v2.std.diagnostic.Diagnostic {
                 reason: ^effect_io_pure_backend_mismatch,
-                at: node_locus(node: effect_io_pure_operation_node()),
-                correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+                at: v2.std.diagnostic.node_locus(node: effect_io_pure_operation_node()),
+                correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
               }
             )
           }
-        Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
+        v2.std.witness.Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
       }
-    Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
   }
 }
 
@@ -225,11 +225,11 @@ fn effect_io_pure_invoke_handler(
   request: v2.std.runtime.EffectRequest
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match handler {
-    EffectHandler { handle: h } => h(request)
+    v2.std.runtime.EffectHandler { handle: h } => h(request)
   }
 }
 
-fn effect_io_pure_handler_binding(store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore) -> v2.extdeps.runtimes.v2_effect_io_pure.EffectIoPureHandlerBundle {
+fn effect_io_pure_handler_binding(store: EffectIoFixtureStore) -> EffectIoPureHandlerBundle {
   EffectIoPureHandlerBundle {
     fixture_store: store,
     handlers: v2.std.runtime.EffectHandlerBinding {
@@ -248,17 +248,17 @@ fn effect_io_pure_handler_binding(store: v2.extdeps.runtimes.v2_effect_io_pure.E
 }
 
 fn effect_io_pure_fixture_store(
-  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
+  backend: EffectIoResourceBackend,
   entries: Map<v2.std.node.Hash, v2.std.runtime.RuntimeValue>
-) -> v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore {
+) -> EffectIoFixtureStore {
   EffectIoFixtureStore {
     backend: backend,
     entries: entries
   }
 }
 
-fn effect_io_pure_empty_fixture_store(backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend) -> v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore {
-  effect_io_pure_fixture_store(backend: backend, entries: empty_map())
+fn effect_io_pure_empty_fixture_store(backend: EffectIoResourceBackend) -> EffectIoFixtureStore {
+  effect_io_pure_fixture_store(backend: backend, entries: v2.std.collection.empty_map())
 }
 
 fn effect_io_pure_request(
@@ -274,11 +274,11 @@ fn effect_io_pure_request(
 }
 
 fn effect_io_pure_read_request(args: List<v2.std.runtime.RuntimeValue>) -> v2.std.runtime.EffectRequest {
-  effect_io_pure_request(kind: ReadResource, args: args)
+  effect_io_pure_request(kind: v2.std.runtime.ReadResource, args: args)
 }
 
 fn effect_io_pure_write_request(args: List<v2.std.runtime.RuntimeValue>) -> v2.std.runtime.EffectRequest {
-  effect_io_pure_request(kind: WriteResource, args: args)
+  effect_io_pure_request(kind: v2.std.runtime.WriteResource, args: args)
 }
 
 fn effect_io_pure_append_receipt(
@@ -295,9 +295,9 @@ fn effect_io_pure_append_receipt(
 }
 
 fn effect_io_pure_runtime(
-  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
-  store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore
-) -> v2.extdeps.runtimes.v2_effect_io_pure.V4EffectIoPureRuntime {
+  backend: EffectIoResourceBackend,
+  store: EffectIoFixtureStore
+) -> V4EffectIoPureRuntime {
   let bundle = effect_io_pure_handler_binding(store: store)
   V4EffectIoPureRuntime {
     bundle_identity: ^v2_effect_io_pure_runtime_id,
@@ -307,7 +307,7 @@ fn effect_io_pure_runtime(
   }
 }
 
-fn effect_io_pure_runtime_from_backend(backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend) -> v2.extdeps.runtimes.v2_effect_io_pure.V4EffectIoPureRuntime {
+fn effect_io_pure_runtime_from_backend(backend: EffectIoResourceBackend) -> V4EffectIoPureRuntime {
   effect_io_pure_runtime(
     backend: backend,
     store: effect_io_pure_empty_fixture_store(backend: backend)
@@ -315,49 +315,49 @@ fn effect_io_pure_runtime_from_backend(backend: v2.extdeps.runtimes.v2_effect_io
 }
 
 fn effect_io_pure_apply_write(
-  store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore,
-  locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator,
+  store: EffectIoFixtureStore,
+  locator: EffectIoResourceLocator,
   payload: v2.std.runtime.RuntimeValue
-) -> v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore {
+) -> EffectIoFixtureStore {
   EffectIoFixtureStore {
     backend: store.backend,
-    entries: map_insert(m: store.entries, key: locator.identity, value: payload)
+    entries: v2.std.collection.map_insert(m: store.entries, key: locator.identity, value: payload)
   }
 }
 
 fn effect_io_pure_read_write_roundtrip(
-  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
+  backend: EffectIoResourceBackend,
   payload: v2.std.runtime.RuntimeValue,
   locator_arg: v2.std.runtime.RuntimeValue
-) -> v2.std.logic.Bool {
+) -> Bool {
   match effect_io_pure_locator_from_args(
     backend: backend,
     args: std.algebra.Cons { head: locator_arg, tail: std.algebra.Empty }
   ) {
-    Holds { value: locator } =>
+    v2.std.witness.Holds { value: locator } =>
       effect_io_pure_roundtrip_through_store(
         backend: backend,
         locator: locator,
         payload: payload,
         locator_arg: locator_arg
       )
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
 fn effect_io_pure_roundtrip_through_store(
-  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
-  locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator,
+  backend: EffectIoResourceBackend,
+  locator: EffectIoResourceLocator,
   payload: v2.std.runtime.RuntimeValue,
   locator_arg: v2.std.runtime.RuntimeValue
-) -> v2.std.logic.Bool {
+) -> Bool {
   let store0 = effect_io_pure_empty_fixture_store(backend: backend)
   let bundle0 = effect_io_pure_handler_binding(store: store0)
   let write_args = std.algebra.Cons { head: locator_arg, tail: std.algebra.Cons { head: payload, tail: std.algebra.Empty } }
   let write_request = effect_io_pure_write_request(args: write_args)
-  let write_handler = effect_handler_for_kind(binding: bundle0.handlers, kind: WriteResource)
+  let write_handler = v2.std.runtime.effect_handler_for_kind(binding: bundle0.handlers, kind: v2.std.runtime.WriteResource)
   match effect_io_pure_invoke_handler(handler: write_handler, request: write_request) {
-    Accepted { value: written, diagnostics: None } =>
+    v2.std.diagnostic.Accepted { value: written, diagnostics: v2.std.diagnostic.None } =>
       if written == payload {
         let store1 = effect_io_pure_apply_write(
           store: store0,
@@ -367,9 +367,9 @@ fn effect_io_pure_roundtrip_through_store(
         let bundle1 = effect_io_pure_handler_binding(store: store1)
         let read_args = std.algebra.Cons { head: locator_arg, tail: std.algebra.Empty }
         let read_request = effect_io_pure_read_request(args: read_args)
-        let read_handler = effect_handler_for_kind(binding: bundle1.handlers, kind: ReadResource)
+        let read_handler = v2.std.runtime.effect_handler_for_kind(binding: bundle1.handlers, kind: v2.std.runtime.ReadResource)
         match effect_io_pure_invoke_handler(handler: read_handler, request: read_request) {
-          Accepted { value: read_back, diagnostics: None } => read_back == written
+          v2.std.diagnostic.Accepted { value: read_back, diagnostics: v2.std.diagnostic.None } => read_back == written
           _ => false
         }
       } else {

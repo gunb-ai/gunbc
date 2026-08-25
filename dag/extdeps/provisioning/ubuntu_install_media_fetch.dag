@@ -4,7 +4,7 @@ module extdeps.provisioning.ubuntu_install_media_fetch
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS"
   }
 }
@@ -39,14 +39,14 @@ data mirror_fold_refusal_doc: String = "DESIGN §5 fix (cursor review, PR #6596)
 
 // The presence probe is OutcomeIsData: a non-zero `test -f` here means the media is ABSENT, which is one of this fn's four declared answers (InstallMediaFetchAbsent), not a fault. The type already draws the distinction the arm formalises — InstallMediaFetchVerifyInfraFailure is the separate 'the probe itself broke' arm — so subject-state and probe-breakage were never conflated here; only the effect layer's glyph conflated them. Admissible under the §5 guard: this fn returns InstallMediaFetchObservation, a typed observation whose arms ARE the adjudication, and the exit selects among them.
 fn observe_install_media_fetch(path: std.types.NonEmptyStr, expected_hash: std.types.NonEmptyStr) -> InstallMediaFetchObservation {
-  let present = shell.Test.IsFile(path: path as std.types.FilePath, expect: OutcomeIsData)
+  let present = shell.Test.IsFile(path: path as std.types.FilePath, expect: gunbc.output_policy.OutcomeIsData)
   if present.is_file == false {
     InstallMediaFetchAbsent
   } else {
-    match sha256sum_verify_via_shell(path: path, expected_digest: expected_hash) {
-      Sha256Matches => InstallMediaFetchVerified
-      Sha256Mismatch => InstallMediaFetchHashMismatch
-      Sha256VerifyInfraFailure { reason: r } => InstallMediaFetchVerifyInfraFailure { reason: r }
+    match extdeps.tools.sha256sum.sha256sum_verify_via_shell(path: path, expected_digest: expected_hash) {
+      extdeps.tools.sha256sum.Sha256Matches => InstallMediaFetchVerified
+      extdeps.tools.sha256sum.Sha256Mismatch => InstallMediaFetchHashMismatch
+      extdeps.tools.sha256sum.Sha256VerifyInfraFailure { reason: r } => InstallMediaFetchVerifyInfraFailure { reason: r }
     }
   }
 }
@@ -61,8 +61,8 @@ fn install_media_fetch_try_mirror(
   if downloaded.success == false {
     MirrorUnreachable
   } else {
-    match sha256sum_verify_via_shell(path: part_path, expected_digest: expected_hash) {
-      Sha256Matches => {
+    match extdeps.tools.sha256sum.sha256sum_verify_via_shell(path: part_path, expected_digest: expected_hash) {
+      extdeps.tools.sha256sum.Sha256Matches => {
         let moved = shell.Move.File(source: part_path as std.types.FilePath, destination: final_path as std.types.FilePath)
         if moved.success {
           MirrorTerminal { outcome: InstallMediaFetchFetched { path: final_path, mirror_url: url } }
@@ -74,11 +74,11 @@ fn install_media_fetch_try_mirror(
           }
         }
       }
-      Sha256Mismatch => {
+      extdeps.tools.sha256sum.Sha256Mismatch => {
         let cleaned = shell.Remove.RecursiveForce(path: part_path as std.types.FilePath)
         MirrorHashMismatch
       }
-      Sha256VerifyInfraFailure { reason: r } => {
+      extdeps.tools.sha256sum.Sha256VerifyInfraFailure { reason: r } => {
         let cleaned = shell.Remove.RecursiveForce(path: part_path as std.types.FilePath)
         MirrorTerminal {
           outcome: InstallMediaFetchRefused {
@@ -128,8 +128,8 @@ fn install_media_fetch_try_mirrors(
 }
 
 fn install_media_fetch_reconcile(artifact: extdeps.provisioning.ubuntu_install_media.UbuntuInstallMediaArtifactRow) -> InstallMediaFetchReconcileOutcome {
-  let final_path = ubuntu_install_media_install_path(artifact: artifact)
-  let part_path = ubuntu_install_media_part_path(install_path: final_path)
+  let final_path = extdeps.provisioning.ubuntu_install_media.ubuntu_install_media_install_path(artifact: artifact)
+  let part_path = extdeps.provisioning.ubuntu_install_media.ubuntu_install_media_part_path(install_path: final_path)
   let expected_hash = artifact.content_sha256 as std.types.NonEmptyStr
   match observe_install_media_fetch(path: final_path, expected_hash: expected_hash) {
     InstallMediaFetchVerified => InstallMediaFetchAlreadyPresent { path: final_path }
@@ -143,12 +143,12 @@ fn install_media_fetch_reconcile(artifact: extdeps.provisioning.ubuntu_install_m
       reason: concat("VerifyInfraFailureRefusal: ", r as String) as std.types.NonEmptyStr
     }
     InstallMediaFetchAbsent => {
-      let mkdir = shell.Mkdir.Parents(path: ubuntu_install_media_artifacts_dir() as std.types.FilePath)
+      let mkdir = shell.Mkdir.Parents(path: extdeps.provisioning.ubuntu_install_media.ubuntu_install_media_artifacts_dir() as std.types.FilePath)
       if mkdir.success == false {
         InstallMediaFetchRefused { reason: "mkdir -p failed" as std.types.NonEmptyStr }
       } else {
         install_media_fetch_try_mirrors(
-          urls: ubuntu_install_media_mirror_urls(artifact: artifact),
+          urls: extdeps.provisioning.ubuntu_install_media.ubuntu_install_media_mirror_urls(artifact: artifact),
           part_path: part_path,
           final_path: final_path,
           expected_hash: expected_hash,

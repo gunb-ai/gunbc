@@ -3,13 +3,13 @@ module gunbc.plans.affected_set_self_confirmation
 
 fn affected_set_self_confirmation_body() -> List<std.markdown.MarkdownBlock> {
   [
-    p(text: "**Status:** 7933B follow-on (operator recut 2026-08-06). 7933A lands the broad stop-line first; this plan is the durable authority shape."),
-    h2(text: "7933B — true self-confirmation"),
-    p(text: "One authority produces host-consumed skip-block data. Mechanism declarations and validating checks are referenced symbolically (not a hardcoded path roster). Host consumes a generated or direct projection — no authored Rust twin. Unresolved mechanism or check identity REFUSES. Adding a new selection mechanism without a validating relation REFUSES."),
-    ul(items: [
-      li(text: "**Dissolves (7933A Rust scaffold):** `cli_run_affected_set_stop_line_bridge` — delete `COMPILE_CLEAN_*_VALIDATING_ENTRY` consts and the broad-rule helpers in cli_run.rs once host consumes a generated/direct `.dag` projection."),
-      li(text: "**7933B authority shape:** symbolic mechanism refs + validating-check refs in `.dag`; generated or directly consumed host projection; unresolved mechanism/check identity REFUSES; new selection mechanism without validating relation REFUSES."),
-      li(text: "**Keeps:** discriminating controls from 7933A — mechanism-touch pair, #7915 repair-receipt pair, scope-only RED control (identity membership, not cardinality); re-home as `.dag` witnesses when 7933B lands."),
+    gunbc.plans.md_helpers.p(text: "**Status:** 7933B follow-on (operator recut 2026-08-06). 7933A lands the broad stop-line first; this plan is the durable authority shape."),
+    gunbc.plans.md_helpers.h2(text: "7933B — true self-confirmation"),
+    gunbc.plans.md_helpers.p(text: "One authority produces host-consumed skip-block data. Mechanism declarations and validating checks are referenced symbolically (not a hardcoded path roster). Host consumes a generated or direct projection — no authored Rust twin. Unresolved mechanism or check identity REFUSES. Adding a new selection mechanism without a validating relation REFUSES."),
+    gunbc.plans.md_helpers.ul(items: [
+      gunbc.plans.md_helpers.li(text: "**Dissolves (7933A Rust scaffold):** `cli_run_affected_set_stop_line_bridge` — delete `COMPILE_CLEAN_*_VALIDATING_ENTRY` consts and the broad-rule helpers in cli_run.rs once host consumes a generated/direct `.dag` projection."),
+      gunbc.plans.md_helpers.li(text: "**7933B authority shape:** symbolic mechanism refs + validating-check refs in `.dag`; generated or directly consumed host projection; unresolved mechanism/check identity REFUSES; new selection mechanism without validating relation REFUSES."),
+      gunbc.plans.md_helpers.li(text: "**Keeps:** discriminating controls from 7933A — mechanism-touch pair, #7915 repair-receipt pair, scope-only RED control (identity membership, not cardinality); re-home as `.dag` witnesses when 7933B lands."),
     ]),
   ]
 }
@@ -18,6 +18,6 @@ data affected_set_self_confirmation_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "affected-set-self-confirmation",
   title: "Plan — affected-set true self-confirmation (7933B)",
   body: affected_set_self_confirmation_body(),
-  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "7933B authority live: symbolic mechanism refs, generated/direct host projection, refusal on unresolved mechanism or check identity — DELETE the cli_run.rs 7933A scaffold (COMPILE_CLEAN_* consts + broad-rule bridge); gunbc.affected_set_stop_line becomes rationale/cost carrier only or dissolves into the new authority module.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "7933B authority live: symbolic mechanism refs, generated/direct host projection, refusal on unresolved mechanism or check identity — DELETE the cli_run.rs 7933A scaffold (COMPILE_CLEAN_* consts + broad-rule bridge); gunbc.affected_set_stop_line becomes rationale/cost carrier only or dissolves into the new authority module.")
   }
 }

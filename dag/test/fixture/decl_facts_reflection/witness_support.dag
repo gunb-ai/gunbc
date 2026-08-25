@@ -50,7 +50,7 @@ data decl_facts_skeleton_fixture_pool_roots: List<String> = [
   "dag/test/fixture/decl_facts_reflection",
 ]
 
-data decl_facts_reflection_fixture_facts: List<v2.std.decl_index.DeclFact> = v2.std.decl_index.decl_facts(pool_roots: test.fixture.decl_facts_reflection.witness_support.decl_facts_reflection_fixture_pool_roots)
+data decl_facts_reflection_fixture_facts: List<v2.std.decl_index.DeclFact> = v2.std.decl_index.decl_facts(pool_roots: decl_facts_reflection_fixture_pool_roots)
 
 data decl_facts_skeleton_fixture_facts: List<v2.std.decl_index.DeclFact> = v2.std.decl_index.decl_facts(pool_roots: decl_facts_skeleton_fixture_pool_roots)
 

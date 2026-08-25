@@ -1,51 +1,51 @@
 module examples.html_markup_smoke
 
 
-data tiny: std.markup.Fragment = extdeps.browser.Element {
+data tiny: std.markup.Fragment = std.markup.Element {
   tag: "p",
   attributes: [],
   children: [ std.markup.FragmentText { content: "ok" } ],
 }
 
-data with_attr: std.markup.Fragment = extdeps.browser.Element {
+data with_attr: std.markup.Fragment = std.markup.Element {
   tag: "a",
-  attributes: [ attr(name: "href", value: "/tree/dag" ) ],
+  attributes: [ std.markup.attr(name: "href", value: "/tree/dag" ) ],
   children: [ std.markup.FragmentText { content: "dag" } ],
 }
 
-data href_amp: std.markup.Fragment = extdeps.browser.Element {
+data href_amp: std.markup.Fragment = std.markup.Element {
   tag: "a",
-  attributes: [ attr(name: "href", value: "/x?a=1&b=2" ) ],
+  attributes: [ std.markup.attr(name: "href", value: "/x?a=1&b=2" ) ],
   children: [ std.markup.FragmentText { content: "link" } ],
 }
 
-data href_hostile: std.markup.Fragment = extdeps.browser.Element {
+data href_hostile: std.markup.Fragment = std.markup.Element {
   tag: "a",
-  attributes: [ attr(name: "href", value: "x\"&<y onmouseover=z" ) ],
+  attributes: [ std.markup.attr(name: "href", value: "x\"&<y onmouseover=z" ) ],
   children: [],
 }
 
-data href_javascript: std.markup.Fragment = extdeps.browser.Element {
+data href_javascript: std.markup.Fragment = std.markup.Element {
   tag: "a",
-  attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
+  attributes: [ std.markup.attr(name: "href", value: "javascript:alert(1)" ) ],
   children: [ std.markup.FragmentText { content: "click" } ],
 }
 
 fn serialize_ok(node: std.markup.Fragment, expected: String) -> Bool {
-  match try_serialize_html_source(node: node) {
-    EmitOk { html: h } => h == expected
-    EmitRejected { reason: _ } => false
+  match extdeps.languages.html.try_serialize_html_source(node: node) {
+    extdeps.languages.html.EmitOk { html: h } => h == expected
+    extdeps.languages.html.EmitRejected { reason: _ } => false
   }
 }
 
 fn serialize_rejects(node: std.markup.Fragment) -> Bool {
-  match try_serialize_html_source(node: node) {
-    EmitRejected { reason: _ } => true
-    EmitOk { html: _ } => false
+  match extdeps.languages.html.try_serialize_html_source(node: node) {
+    extdeps.languages.html.EmitRejected { reason: _ } => true
+    extdeps.languages.html.EmitOk { html: _ } => false
   }
 }
 
-func main() -> std.process.ProcessExit {
+func main() -> ProcessExit {
   if serialize_ok(node: tiny, expected: "<p>ok</p>")
     && serialize_ok(node: with_attr, expected: "<a href=\"/tree/dag\">dag</a>")
     && serialize_ok(node: href_amp, expected: "<a href=\"/x?a=1&amp;b=2\">link</a>")
@@ -54,9 +54,9 @@ func main() -> std.process.ProcessExit {
       expected: "<a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a>"
     )
     && serialize_rejects(node: href_javascript)
-    && escape_text(s: "<b>") == "&lt;b&gt;" {
+    && std.markup.escape_text(s: "<b>") == "&lt;b&gt;" {
     ExitSuccess
   } else {
-    std.process.ExitFailure { code: exit_code_general_error, reason: "html_markup_smoke mismatch" }
+    ExitFailure { code: extdeps.process.posix_exit.exit_code_general_error, reason: "html_markup_smoke mismatch" }
   }
 }

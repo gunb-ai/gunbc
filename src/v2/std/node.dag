@@ -1,5 +1,7 @@
 module v2.std.node
 
+
+
 type Symbol
 type Hash = std.content_hash.Fnv1a64Structural
 
@@ -7,21 +9,21 @@ data node_occurrence_id_v2_facade_note: String = "TEMPORARY COMPATIBILITY: v2 ca
 
 type NodeOccurrenceId
   = SyntheticOccurrence
-  | MintedOccurrence { id: std.occurrence_identity.OccurrenceId }
+  | MintedOccurrence { id: OccurrenceId }
 
 fn node_occurrence_id_to_shared(
   occurrence: NodeOccurrenceId
-) -> std.occurrence_identity.NodeOccurrenceIdentity {
+) -> NodeOccurrenceIdentity {
   match occurrence {
     SyntheticOccurrence =>
-      std.occurrence_identity.OccurrenceSynthetic
+      OccurrenceSynthetic
     MintedOccurrence { id: id } =>
-      std.occurrence_identity.OccurrenceMinted { id: id }
+      OccurrenceMinted { id: id }
   }
 }
 
 fn node_occurrence_id_from_shared(
-  occurrence: std.occurrence_identity.NodeOccurrenceIdentity
+  occurrence: NodeOccurrenceIdentity
 ) -> NodeOccurrenceId {
   match occurrence {
     OccurrenceSynthetic =>
@@ -31,9 +33,9 @@ fn node_occurrence_id_from_shared(
   }
 }
 
-fn node_occurrence_minted(id: std.occurrence_identity.OccurrenceId) -> NodeOccurrenceId {
+fn node_occurrence_minted(id: OccurrenceId) -> NodeOccurrenceId {
   node_occurrence_id_from_shared(
-    occurrence: std.occurrence_identity.node_occurrence_identity_minted(id: id)
+    occurrence: node_occurrence_identity_minted(id: id)
   )
 }
 

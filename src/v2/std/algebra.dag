@@ -7,7 +7,7 @@ type ApproximateField<T> {
   negate: fn(T) -> T
   mul: fn(T, T) -> T
   one: T
-  compare: fn(T, T) -> Ordering
+  compare: fn(T, T) -> std.algebra.Ordering
 }
 
 type Equivalence<T> {
@@ -24,8 +24,8 @@ type FreeMonoidUniqueState<T> {
 
 fn fold_list<T, A>(xs: std.algebra.FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
   match xs {
-    Empty => empty
-    Cons { head: h, tail: t } => fold_list(xs: t, empty: cons(empty, h), cons: cons)
+    std.algebra.Empty => empty
+    std.algebra.Cons { head: h, tail: t } => fold_list(xs: t, empty: cons(empty, h), cons: cons)
   }
 }
 fn fold_non_empty<T>(head: T, tail: std.algebra.FreeMonoid<T>, cons: fn(T, T) -> T) -> T {
@@ -34,8 +34,8 @@ fn fold_non_empty<T>(head: T, tail: std.algebra.FreeMonoid<T>, cons: fn(T, T) ->
 
 fn fold_list_right<T, A>(xs: std.algebra.FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A {
   match xs {
-    Empty => empty
-    Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
+    std.algebra.Empty => empty
+    std.algebra.Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
   }
 }
 
@@ -63,10 +63,10 @@ type ListTailResult<T>
   = TailFound { tail: std.algebra.FreeMonoid<T> }
   | TailAbsent
 
-fn list_tail<T>(xs: std.algebra.FreeMonoid<T>) -> v2.std.algebra.ListTailResult<T> {
+fn list_tail<T>(xs: std.algebra.FreeMonoid<T>) -> ListTailResult<T> {
   match xs {
-    Empty => v2.std.algebra.TailAbsent
-    Cons { head: _, tail: t } => v2.std.algebra.TailFound { tail: t }
+    std.algebra.Empty => TailAbsent
+    std.algebra.Cons { head: _, tail: t } => TailFound { tail: t }
   }
 }
 
@@ -74,10 +74,10 @@ type ListHeadResult<T>
   = HeadFound { value: T }
   | HeadAbsent
 
-fn list_head<T>(xs: std.algebra.FreeMonoid<T>) -> v2.std.algebra.ListHeadResult<T> {
+fn list_head<T>(xs: std.algebra.FreeMonoid<T>) -> ListHeadResult<T> {
   match xs {
-    Empty => v2.std.algebra.HeadAbsent
-    Cons { head: h, tail: _ } => v2.std.algebra.HeadFound { value: h }
+    std.algebra.Empty => HeadAbsent
+    std.algebra.Cons { head: h, tail: _ } => HeadFound { value: h }
   }
 }
 
@@ -86,8 +86,8 @@ fn skip<T>(xs: std.algebra.FreeMonoid<T>, n: Int) -> std.algebra.FreeMonoid<T> {
     xs
   } else {
     match xs {
-      Empty => std.algebra.Empty
-      Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
+      std.algebra.Empty => std.algebra.Empty
+      std.algebra.Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
     }
   }
 }
@@ -97,36 +97,36 @@ fn fold_list_node<T>(
 ) -> v2.std.node.Node {
   fold_list_right(
     xs: xs,
-    empty: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [],
- occurrence_id: SyntheticOccurrence
+    empty: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: [],
+ occurrence_id: v2.std.node.SyntheticOccurrence
 },
     snoc: fn(tail_node, item) {
       v2.std.node.Node {
-        kind: v2.std.node.TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: [
           v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_head }, target: item_node(item) },
           v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_tail }, target: tail_node },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
 }
     }
   )
 }
 
 fn algebra_empty_conj() -> v2.std.node.Node {
-  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [],
- occurrence_id: SyntheticOccurrence
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: [],
+ occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn free_monoid_tail_type_fixpoint(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: v2.std.node.Node {
-      kind: v2.std.node.TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
       children: [
         v2.std.node.Edge { label: v2.std.node.Named { name: ^free_monoid_type_fixpoint }, target: algebra_empty_conj() },
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
 },
     inhabitant: inhabitant,
   )
@@ -134,13 +134,13 @@ fn free_monoid_tail_type_fixpoint(inhabitant: v2.std.node.Node) -> v2.std.node.N
 
 fn free_monoid_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Disj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^free_monoid_variant_empty }, target: algebra_empty_conj() },
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^free_monoid_variant_cons },
         target: v2.std.node.Node {
-          kind: v2.std.node.TypeNode { connective: Conj },
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
           children: [
             v2.std.node.Edge { label: v2.std.node.Named { name: ^free_monoid_field_head }, target: inhabitant },
             v2.std.node.Edge {
@@ -148,96 +148,96 @@ fn free_monoid_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
               target: free_monoid_tail_type_fixpoint(inhabitant: inhabitant),
             },
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
 },
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn algebra_binary_fn_node(domain: v2.std.node.Node, codomain: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
-      v2.std.node.Edge { label: Positional, target: domain },
-      v2.std.node.Edge { label: Positional, target: domain },
-      v2.std.node.Edge { label: Positional, target: codomain },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: domain },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: domain },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: codomain },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn algebra_unary_fn_node(domain: v2.std.node.Node, codomain: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
-      v2.std.node.Edge { label: Positional, target: domain },
-      v2.std.node.Edge { label: Positional, target: codomain },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: domain },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: codomain },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ordering_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Disj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^ordering_variant_less }, target: algebra_empty_conj() },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^ordering_variant_equal }, target: algebra_empty_conj() },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^ordering_variant_greater }, target: algebra_empty_conj() },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn magma_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^magma_field_op },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn semigroup_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^semigroup_field_magma }, target: magma_type_node(inhabitant: inhabitant) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn monoid_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^monoid_field_semigroup }, target: semigroup_type_node(inhabitant: inhabitant) },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^monoid_field_identity }, target: inhabitant },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn commutative_monoid_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^commutative_monoid_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn group_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^group_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
       v2.std.node.Edge {
@@ -245,65 +245,65 @@ fn group_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
         target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn abelian_group_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^abelian_group_field_group }, target: group_type_node(inhabitant: inhabitant) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn semiring_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^semiring_field_add }, target: commutative_monoid_type_node(inhabitant: inhabitant) },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^semiring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn commutative_semiring_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^commutative_semiring_field_semiring }, target: semiring_type_node(inhabitant: inhabitant) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ring_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^ring_field_add }, target: abelian_group_type_node(inhabitant: inhabitant) },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^ring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn commutative_ring_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^commutative_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn ordered_ring_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^ordered_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
       v2.std.node.Edge {
@@ -311,36 +311,36 @@ fn ordered_ring_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
         target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn field_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^field_field_commutative_ring }, target: commutative_ring_type_node(inhabitant: inhabitant) },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^field_field_reciprocal }, target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn field_reciprocal_operation_node() -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^field_reciprocal_operation } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn field_reciprocal_nonzero_precondition_node() -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^field_reciprocal_nonzero_precondition } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn approximate_field_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^approximate_field_field_add },
@@ -361,13 +361,13 @@ fn approximate_field_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node
         target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn lattice_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^lattice_field_meet },
@@ -378,25 +378,25 @@ fn lattice_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
         target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn bounded_lattice_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^bounded_lattice_field_lattice }, target: lattice_type_node(inhabitant: inhabitant) },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^bounded_lattice_field_top }, target: inhabitant },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^bounded_lattice_field_bottom }, target: inhabitant },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn boolean_algebra_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^boolean_algebra_field_bounded_lattice },
@@ -407,18 +407,18 @@ fn boolean_algebra_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
         target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn algebra_inhabitance_node(algebra: v2.std.node.Node, inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_edge }, target: algebra },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^inhabitant_edge }, target: inhabitant },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -546,25 +546,25 @@ fn boolean_algebra_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
 
 fn bool_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Disj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^bool_variant_true }, target: algebra_empty_conj() },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^bool_variant_false }, target: algebra_empty_conj() },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn equivalence_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^equivalence_field_eq },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: bool_type_node())
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -584,8 +584,8 @@ fn free_monoid_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
 
 fn is_empty<T>(xs: std.algebra.FreeMonoid<T>) -> Bool {
   match xs {
-    Empty => true
-    Cons { head: _, tail: _ } => false
+    std.algebra.Empty => true
+    std.algebra.Cons { head: _, tail: _ } => false
   }
 }
 
@@ -689,9 +689,9 @@ fn non_empty_to_list<T>(xs: std.algebra.FreeSemigroup<T>) -> std.algebra.FreeMon
 
 fn list_init<T>(xs: std.algebra.FreeMonoid<T>) -> std.algebra.FreeMonoid<T> {
   match xs {
-    Empty => std.algebra.Empty
-    Cons { head: _, tail: std.algebra.Empty } => std.algebra.Empty
-    Cons { head: h, tail: t } => std.algebra.Cons { head: h, tail: list_init(xs: t) }
+    std.algebra.Empty => std.algebra.Empty
+    std.algebra.Cons { head: _, tail: std.algebra.Empty } => std.algebra.Empty
+    std.algebra.Cons { head: h, tail: t } => std.algebra.Cons { head: h, tail: list_init(xs: t) }
   }
 }
 
@@ -718,15 +718,15 @@ fn zip_eq<T>(
   eq: fn(T, T) -> Bool
 ) -> Bool {
   match a {
-    Empty =>
+    std.algebra.Empty =>
       match b {
-        Empty => true
-        Cons { head: _, tail: _ } => false
+        std.algebra.Empty => true
+        std.algebra.Cons { head: _, tail: _ } => false
       }
-    Cons { head: ha, tail: ta } =>
+    std.algebra.Cons { head: ha, tail: ta } =>
       match b {
-        Empty => false
-        Cons { head: hb, tail: tb } =>
+        std.algebra.Empty => false
+        std.algebra.Cons { head: hb, tail: tb } =>
           eq(ha, hb) && zip_eq(a: ta, b: tb, eq: eq)
       }
   }
@@ -738,11 +738,11 @@ fn zip_map<A, B, C>(
   f: fn(A, B) -> C
 ) -> std.algebra.FreeMonoid<C> {
   match a {
-    Empty => std.algebra.Empty
-    Cons { head: ha, tail: ta } =>
+    std.algebra.Empty => std.algebra.Empty
+    std.algebra.Cons { head: ha, tail: ta } =>
       match b {
-        Empty => std.algebra.Empty
-        Cons { head: hb, tail: tb } =>
+        std.algebra.Empty => std.algebra.Empty
+        std.algebra.Cons { head: hb, tail: tb } =>
           std.algebra.Cons { head: f(ha, hb), tail: zip_map(a: ta, b: tb, f: f) }
       }
   }
@@ -750,8 +750,8 @@ fn zip_map<A, B, C>(
 
 fn reduce_or<T>(xs: std.algebra.FreeMonoid<T>, fallback: T, combine: fn(T, T) -> T) -> T {
   match xs {
-    Empty => fallback
-    Cons { head: h, tail: t } => fold_non_empty(head: h, tail: t, cons: combine)
+    std.algebra.Empty => fallback
+    std.algebra.Cons { head: h, tail: t } => fold_non_empty(head: h, tail: t, cons: combine)
   }
 }
 
@@ -761,11 +761,11 @@ fn is_prefix_of<T>(
   eq: fn(T, T) -> Bool
 ) -> Bool {
   match prefix {
-    Empty => true
-    Cons { head: h_prefix, tail: t_prefix } =>
+    std.algebra.Empty => true
+    std.algebra.Cons { head: h_prefix, tail: t_prefix } =>
       match xs {
-        Empty => false
-        Cons { head: h_xs, tail: t_xs } =>
+        std.algebra.Empty => false
+        std.algebra.Cons { head: h_xs, tail: t_xs } =>
           eq(h_prefix, h_xs) && is_prefix_of(prefix: t_prefix, xs: t_xs, eq: eq)
       }
   }

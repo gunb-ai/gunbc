@@ -70,7 +70,7 @@ fn obs_glyph_resolves_all_tiers(c: std.observation.ObservationEventClass) -> Boo
 }
 
 test fn w_presentation_is_total_over_class_roster() -> Bool {
-  fold(observation_event_classes, init: true, f: (acc, c) =>
+  fold(std.observation.observation_event_classes, init: true, f: (acc, c) =>
     acc && obs_glyph_resolves_all_tiers(c: c)
   )
 }
@@ -105,7 +105,7 @@ test fn w_refused_is_distinct_from_failed() -> Bool {
 }
 
 test fn w_anomaly_classes_never_collapse() -> Bool {
-  fold(observation_event_classes, init: true, f: (acc, c) => {
+  fold(std.observation.observation_event_classes, init: true, f: (acc, c) => {
     let p = std.observation.observation_presentation(c: c)
     if std.observation.observation_class_is_intrinsic_anomaly(c: c) {
       acc && !p.collapsible && p.expands_fully
@@ -129,7 +129,7 @@ test fn w_density_is_the_single_display_authority() -> Bool {
 }
 
 test fn w_presentation_projects_density_rather_than_restating_it() -> Bool {
-  fold(observation_event_classes, init: true, f: (acc, c) => {
+  fold(std.observation.observation_event_classes, init: true, f: (acc, c) => {
     let p = std.observation.observation_presentation(c: c)
     let d = std.observation.observation_class_density(c: c)
     acc &&
@@ -242,37 +242,37 @@ test fn w_attention_availability_precedence_and_causes_hold() -> Bool {
     obs_event(transition: std.observation.Concluded { outcome: std.observation.Final { shown_failures: 0 } }, wall_ms: 500)
   ]
   match std.observation.observation_attention_under(event: begin, basis: no_basis) {
-    AttentionAssigned { level: l } => l == std.observation.Ambient
-    AttentionRefused { cause: _ } => false
+    std.observation.AttentionAssigned { level: l } => l == std.observation.Ambient
+    std.observation.AttentionRefused { cause: _ } => false
   } &&
   match std.observation.observation_attention_under(event: refused, basis: no_basis) {
-    AttentionAssigned { level: l } => l == std.observation.Anomaly
-    AttentionRefused { cause: _ } => false
+    std.observation.AttentionAssigned { level: l } => l == std.observation.Anomaly
+    std.observation.AttentionRefused { cause: _ } => false
   } &&
   match std.observation.observation_attention_under(event: failed, basis: no_basis) {
-    AttentionAssigned { level: l } => l == std.observation.Anomaly
-    AttentionRefused { cause: _ } => false
+    std.observation.AttentionAssigned { level: l } => l == std.observation.Anomaly
+    std.observation.AttentionRefused { cause: _ } => false
   } &&
   match std.observation.observation_attention_under(event: timed_out, basis: no_basis) {
-    AttentionAssigned { level: l } => l == std.observation.Anomaly
-    AttentionRefused { cause: _ } => false
+    std.observation.AttentionAssigned { level: l } => l == std.observation.Anomaly
+    std.observation.AttentionRefused { cause: _ } => false
   } &&
   match std.observation.observation_attention_under(event: no_wall, basis: no_basis) {
-    AttentionAssigned { level: l } => l == std.observation.Ambient
-    AttentionRefused { cause: _ } => false
+    std.observation.AttentionAssigned { level: l } => l == std.observation.Ambient
+    std.observation.AttentionRefused { cause: _ } => false
   } &&
   match std.observation.observation_attention_under(event: done_no_wall, basis: no_basis) {
-    AttentionAssigned { level: l } => l == std.observation.Ambient
-    AttentionRefused { cause: _ } => false
+    std.observation.AttentionAssigned { level: l } => l == std.observation.Ambient
+    std.observation.AttentionRefused { cause: _ } => false
   } &&
   match std.observation.observation_attention_under(event: refused_no_wall, basis: no_basis) {
-    AttentionAssigned { level: l } => l == std.observation.Anomaly
-    AttentionRefused { cause: _ } => false
+    std.observation.AttentionAssigned { level: l } => l == std.observation.Anomaly
+    std.observation.AttentionRefused { cause: _ } => false
   } &&
   fold(measured_routine, init: true, f: (acc, event) =>
     acc && match std.observation.observation_attention_under(event: event, basis: no_basis) {
-      AttentionAssigned { level: _ } => false
-      AttentionRefused { cause: c } => c == basis_cause
+      std.observation.AttentionAssigned { level: _ } => false
+      std.observation.AttentionRefused { cause: c } => c == basis_cause
     }
   )
 }
@@ -293,8 +293,8 @@ test fn w_attention_strict_facade_equals_measured_value_projection() -> Bool {
   ]
   fold(events, init: true, f: (acc, event) =>
     acc && match std.observation.observation_attention_under(event: event, basis: std.observation.MeasuredValue { value: obs_basis() }) {
-      AttentionAssigned { level: l } => l == std.observation.observation_attention(event: event, basis: obs_basis())
-      AttentionRefused { cause: _ } => false
+      std.observation.AttentionAssigned { level: l } => l == std.observation.observation_attention(event: event, basis: obs_basis())
+      std.observation.AttentionRefused { cause: _ } => false
     }
   )
 }
@@ -302,8 +302,8 @@ test fn w_attention_strict_facade_equals_measured_value_projection() -> Bool {
 test fn w_unavailable_measurement_carries_a_cause() -> Bool {
   let event = obs_event(transition: std.observation.Concluded { outcome: std.observation.Done }, wall_ms: 1)
   match event.rss {
-    MeasuredValue { value: _ } => false
-    MeasuredUnavailable { cause: c } => c != ""
+    std.observation.MeasuredValue { value: _ } => false
+    std.observation.MeasuredUnavailable { cause: c } => c != ""
   }
 }
 
@@ -326,8 +326,8 @@ test fn w_blocked_on_carries_holders_and_named_remaining() -> Bool {
   count(b.holders) == 1 &&
   b.resource == std.observation.MemoryBudget &&
   match b.remaining {
-    RemainingUnknown { cause: c } => c != ""
-    RemainingBounded { by: _ } => false
+    std.observation.RemainingUnknown { cause: c } => c != ""
+    std.observation.RemainingBounded { by: _ } => false
   }
 }
 
@@ -368,8 +368,8 @@ test fn w_watchdog_converts_quiet_past_budget_into_a_typed_line() -> Bool {
   std.observation.observation_watchdog_attention(v: within) == std.observation.Ambient &&
   std.observation.observation_watchdog_attention(v: past) == std.observation.Anomaly &&
   match past {
-    WatchdogQuiet => false
-    WatchdogOrphanedBegin { subject: s, elapsed: _, budget: _ } => count(s.segments) == 3
+    std.observation.WatchdogQuiet => false
+    std.observation.WatchdogOrphanedBegin { subject: s, elapsed: _, budget: _ } => count(s.segments) == 3
   }
 }
 
@@ -461,7 +461,7 @@ test fn w_presentation_glyph_reads_the_table_not_a_hardcoded_string() -> Bool {
 }
 
 test fn w_presentation_colour_comes_from_the_glyph_authority() -> Bool {
-  fold(observation_event_classes, init: true, f: (acc, c) => {
+  fold(std.observation.observation_event_classes, init: true, f: (acc, c) => {
     let p = std.observation.observation_presentation(c: c)
     acc && match extdeps.render.glyphs.symbol_color(id: p.glyph) {
       Present { value: _ } => true
@@ -489,7 +489,7 @@ test fn w_reward_animal_selection_is_deterministic_and_wraps() -> Bool {
 
 test fn w_every_law_is_stated_and_bound_to_an_enforcer() -> Bool {
   count(std.observation.observation_laws) == 5 &&
-  fold(observation_laws, init: true, f: (acc, l) =>
+  fold(std.observation.observation_laws, init: true, f: (acc, l) =>
     acc && l.id != "" && l.statement != "" && l.enforced_by.module_path == "std.observation" && l.enforced_by.decl_name != ""
   )
 }
@@ -566,7 +566,7 @@ test fn w_departed_path_is_not_a_no_op() -> Bool {
 test fn w_psi_pressure_carries_a_scaled_magnitude_not_a_scalar() -> Bool {
   let hold = std.observation.PsiPressure { avg10: std.measure.basis_point(count: 3750) }
   match hold {
-    PsiPressure { avg10: r } => std.measure.basis_point_count(bp: r) == 3750
+    std.observation.PsiPressure { avg10: r } => std.measure.basis_point_count(bp: r) == 3750
     _ => false
   }
 }

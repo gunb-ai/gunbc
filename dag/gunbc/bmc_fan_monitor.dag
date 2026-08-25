@@ -39,7 +39,7 @@ fn bmc_fan_assess_monitoring_samples_rec(
         reason: "post-restart monitoring produced no safety samples",
         receipt: receipt,
       }
-    } else if second_count(previous_elapsed) >= second_count(required_elapsed) {
+    } else if std.measure.second_count(previous_elapsed) >= std.measure.second_count(required_elapsed) {
       BmcFanMonitoringCompleted {
         receipt: receipt,
       }
@@ -51,19 +51,19 @@ fn bmc_fan_assess_monitoring_samples_rec(
     }
   } else {
     let sample = remaining.first()
-    let sample_gap_seconds = second_count(sample.elapsed) - second_count(previous_elapsed)
+    let sample_gap_seconds = std.measure.second_count(sample.elapsed) - std.measure.second_count(previous_elapsed)
     let receipt = BmcFanMonitoringReceipt {
       sample_count: sample_count + 1,
       elapsed: sample.elapsed,
       required_elapsed: required_elapsed,
       maximum_sample_gap: maximum_sample_gap,
     }
-    if second_count(sample.elapsed) <= second_count(previous_elapsed) {
+    if std.measure.second_count(sample.elapsed) <= std.measure.second_count(previous_elapsed) {
       BmcFanMonitoringRefused {
         reason: "post-restart monitoring samples are not strictly time-ordered",
         receipt: receipt,
       }
-    } else if sample_gap_seconds > second_count(maximum_sample_gap) {
+    } else if sample_gap_seconds > std.measure.second_count(maximum_sample_gap) {
       BmcFanMonitoringRefused {
         reason: "post-restart monitoring sample gap exceeded its admitted cadence",
         receipt: receipt,
@@ -90,12 +90,12 @@ fn bmc_fan_assess_monitoring_samples(
   required_elapsed: std.measure.Second,
   maximum_sample_gap: std.measure.Second,
 ) -> BmcFanMonitoringResult {
-  if second_count(required_elapsed) <= 0 || second_count(maximum_sample_gap) <= 0 {
+  if std.measure.second_count(required_elapsed) <= 0 || std.measure.second_count(maximum_sample_gap) <= 0 {
     BmcFanMonitoringRefused {
       reason: "post-restart monitoring bound and maximum sample gap must be positive",
       receipt: BmcFanMonitoringReceipt {
         sample_count: 0,
-        elapsed: second(0),
+        elapsed: std.measure.second(0),
         required_elapsed: required_elapsed,
         maximum_sample_gap: maximum_sample_gap,
       },
@@ -103,7 +103,7 @@ fn bmc_fan_assess_monitoring_samples(
   } else {
     bmc_fan_assess_monitoring_samples_rec(
       remaining: samples,
-      previous_elapsed: second(0),
+      previous_elapsed: std.measure.second(0),
       sample_count: 0,
       required_elapsed: required_elapsed,
       maximum_sample_gap: maximum_sample_gap,

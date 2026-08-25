@@ -4,7 +4,7 @@ fn idempotent_operation_missing_semantics_diagnostic(node: v2.std.node.Node) -> 
   v2.std.diagnostic.Diagnostic {
     reason: ^idempotent_operation_eval_missing_semantics,
     at: v2.std.diagnostic.node_locus(node: node),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -51,7 +51,7 @@ fn idempotent_operation_interpretation_structure_witness() -> v2.std.runtime.Int
     choose_branch: ^idempotent_operation_eval_choose_branch,
     step_loop: ^idempotent_operation_eval_step_loop,
     bind_value: ^idempotent_operation_eval_bind_value,
-    choose_arm: ^runtime_reject_match_arm
+    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
   }
 }
 
@@ -81,7 +81,8 @@ fn idempotent_operation_eval_context() -> v2.compiler.eval.EvalContext {
       },
     match: v2.std.runtime.MatchInterpreter {
       choose_arm: v2.std.runtime.runtime_reject_match_arm,
-      identity: ^runtime_reject_match_arm    }
+      identity: ^v2.std.runtime.runtime_reject_match_arm
+    }
     },
     structure_witness: idempotent_operation_interpretation_structure_witness()
   )
@@ -104,7 +105,7 @@ fn idempotent_operation_inferred_tree(root: v2.std.node.Node) -> v2.compiler.inf
   let facts = idempotent_operation_inferred_facts(root: root)
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.algebra.PartialFunction {
+    facts: PartialFunction {
       lookup: fn(_) {
         Present { value: facts }
       }
@@ -128,68 +129,68 @@ fn idempotent_operation_run_via_test_claim(claim: v2.std.verification.TestClaim)
 
 fn idempotent_operation_generated_run(row: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim>) -> v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>> {
   match row {
-    Accepted { value: claim, diagnostics: None } =>
+    v2.std.diagnostic.Accepted { value: claim, diagnostics: v2.std.diagnostic.None } =>
       v2.std.diagnostic.Accepted {
         value: idempotent_operation_run_via_test_claim(claim: claim),
         diagnostics: v2.std.diagnostic.None
       }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
-fn idempotent_operation_run_non_pass(row: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>) -> v2.std.logic.Bool {
+fn idempotent_operation_run_non_pass(row: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>) -> Bool {
   match row {
-    Accepted { value: run, diagnostics: None } =>
+    v2.std.diagnostic.Accepted { value: run, diagnostics: v2.std.diagnostic.None } =>
       match run.verdict {
-        Pass => false
-        SemanticMismatch { actual: _, falsification: _ } => true
-        BuildFailed { actual: _, diagnostic: _ } => true
-        RunFailed { actual: _, diagnostic: _ } => true
-        Deferred { actual: _, diagnostic: _ } => true
+        v2.std.verdict.Pass => false
+        v2.std.verdict.SemanticMismatch { actual: _, falsification: _ } => true
+        v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => true
+        v2.std.verdict.RunFailed { actual: _, diagnostic: _ } => true
+        v2.std.verdict.Deferred { actual: _, diagnostic: _ } => true
       }
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
 data generated_read_idempotent_operation_claim: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> = v2.lens.testgen.testgen_emit_idempotent_operation_claim(
   label: v2.lens.testgen.idempotent_label_read,
   subject: v2.std.effects.sample_read_subject,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 )
 
 data generated_upsert_idempotent_operation_claim: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> = v2.lens.testgen.testgen_emit_idempotent_operation_claim(
   label: v2.lens.testgen.idempotent_label_upsert,
   subject: v2.std.effects.sample_upsert_subject,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 )
 
 data generated_delete_idempotent_operation_claim: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> = v2.lens.testgen.testgen_emit_idempotent_operation_claim(
   label: v2.lens.testgen.idempotent_label_delete,
   subject: v2.std.effects.sample_delete_subject,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 )
 
 data generated_create_if_absent_idempotent_operation_claim: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> = v2.lens.testgen.testgen_emit_idempotent_operation_claim(
   label: v2.lens.testgen.idempotent_label_create_if_absent,
   subject: v2.std.effects.sample_create_if_absent_subject,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 )
 
 data generated_label_only_idempotent_skip: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> = v2.lens.testgen.testgen_emit_idempotent_operation_claim(
   label: "generated/idempotent_operation: skip label-only inhabitance without composable body",
   subject: v2.std.effects.sample_label_only_subject,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 )
 
-fn generated_label_only_skip_is_rejected() -> v2.std.logic.Bool {
+fn generated_label_only_skip_is_rejected() -> Bool {
   match generated_label_only_idempotent_skip {
-    Rejected { diagnostics: d } => d.head.reason == ^idempotent_operation_tautology_skip
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^idempotent_operation_tautology_skip
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-data generated_label_only_skip_pins_rejection: v2.std.logic.Bool = generated_label_only_skip_is_rejected()
+data generated_label_only_skip_pins_rejection: Bool = generated_label_only_skip_is_rejected()
 
 data run_read_idempotent_operation_via_run_test_claim: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>> = idempotent_operation_generated_run(
   row: generated_read_idempotent_operation_claim
@@ -207,19 +208,19 @@ data run_create_if_absent_idempotent_operation_via_run_test_claim: v2.std.diagno
   row: generated_create_if_absent_idempotent_operation_claim
 )
 
-data witness_read_idempotent_operation_run_non_pass: v2.std.logic.Bool = idempotent_operation_run_non_pass(
+data witness_read_idempotent_operation_run_non_pass: Bool = idempotent_operation_run_non_pass(
   row: run_read_idempotent_operation_via_run_test_claim
 )
 
-data witness_upsert_idempotent_operation_run_non_pass: v2.std.logic.Bool = idempotent_operation_run_non_pass(
+data witness_upsert_idempotent_operation_run_non_pass: Bool = idempotent_operation_run_non_pass(
   row: run_upsert_idempotent_operation_via_run_test_claim
 )
 
-data witness_delete_idempotent_operation_run_non_pass: v2.std.logic.Bool = idempotent_operation_run_non_pass(
+data witness_delete_idempotent_operation_run_non_pass: Bool = idempotent_operation_run_non_pass(
   row: run_delete_idempotent_operation_via_run_test_claim
 )
 
-data witness_create_if_absent_idempotent_operation_run_non_pass: v2.std.logic.Bool = idempotent_operation_run_non_pass(
+data witness_create_if_absent_idempotent_operation_run_non_pass: Bool = idempotent_operation_run_non_pass(
   row: run_create_if_absent_idempotent_operation_via_run_test_claim
 )
 
@@ -232,11 +233,11 @@ fn generated_idempotent_operation_claim_rows() -> List<v2.std.diagnostic.Outcome
   ]
 }
 
-fn generated_idempotent_operation_sample_count_is_four() -> v2.std.logic.Bool {
+fn generated_idempotent_operation_sample_count_is_four() -> Bool {
   v2.std.algebra.length(xs: generated_idempotent_operation_claim_rows()) == 4
 }
 
-fn generated_idempotent_operation_scheduled_subject_count_is_four() -> v2.std.logic.Bool {
+fn generated_idempotent_operation_scheduled_subject_count_is_four() -> Bool {
   v2.std.algebra.length(xs: v2.lens.testgen.testgen_scheduled_idempotent_operation_subjects()) == 4
 }
 
@@ -249,6 +250,6 @@ fn generated_idempotent_operation_run_rows() -> List<v2.std.diagnostic.Outcome<v
   ]
 }
 
-fn generated_idempotent_operation_run_count_is_four() -> v2.std.logic.Bool {
+fn generated_idempotent_operation_run_count_is_four() -> Bool {
   v2.std.algebra.length(xs: generated_idempotent_operation_run_rows()) == 4
 }

@@ -4,17 +4,17 @@ module extdeps.render.terminal
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.unicode.org/reports/tr11/"
   }
 }
 
 fn span_width(span: std.render.Span, tier: std.symbols.Tier) -> Int? {
-  let text_w = string_display_width(s: span.text)
+  let text_w = extdeps.unicode.display.string_display_width(s: span.text)
   match span.style.symbol {
     null => Present { value: text_w }
-    sym  => match resolve_symbol(id: sym, tier: tier) {
-      Present { value: s } => Present { value: text_w + string_display_width(s: s) }
+    sym  => match extdeps.render.glyphs.resolve_symbol(id: sym, tier: tier) {
+      Present { value: s } => Present { value: text_w + extdeps.unicode.display.string_display_width(s: s) }
       Absent => none
     }
   }
@@ -34,7 +34,7 @@ fn truncate_spans(spans: List<std.render.Span>, budget: Int, tier: std.symbols.T
               if w <= st.remaining {
                 Present { value: { kept: concat(st.kept, [span]), remaining: st.remaining - w } }
               } else {
-                Present { value: { kept: concat(st.kept, [std.render.Span { text: truncate_text(text: span.text, max_width: st.remaining), style: span.style }]), remaining: 0 } }
+                Present { value: { kept: concat(st.kept, [std.render.Span { text: extdeps.unicode.display.truncate_text(text: span.text, max_width: st.remaining), style: span.style }]), remaining: 0 } }
               }
             Absent => none
           }
@@ -77,7 +77,7 @@ fn constrain_frame(frame: std.render.RenderFrame, viewport: std.render.Viewport,
 
 fn project_frame(frame: std.render.RenderFrame, viewport: std.render.Viewport, cap: std.render.RenderCapability) -> std.render.RenderFrame? {
   match constrain_frame(frame: frame, viewport: viewport, tier: cap.tier) {
-    Present { value: f } => Present { value: std.render.RenderFrame { lines: f.lines, cursor_action: cursor_action_under(requested: f.cursor_action, cap: cap) } }
+    Present { value: f } => Present { value: std.render.RenderFrame { lines: f.lines, cursor_action: std.render.cursor_action_under(requested: f.cursor_action, cap: cap) } }
     Absent => none
   }
 }
@@ -85,7 +85,7 @@ fn project_frame(frame: std.render.RenderFrame, viewport: std.render.Viewport, c
 fn serialize_span(span: std.render.Span, cap: std.render.RenderCapability) -> String {
   let glyph = match span.style.symbol {
     null => ""
-    sym  => match resolve_symbol(id: sym, tier: cap.tier) {
+    sym  => match extdeps.render.glyphs.resolve_symbol(id: sym, tier: cap.tier) {
       Present { value: s } => s
       Absent => ""
     }
@@ -94,7 +94,7 @@ fn serialize_span(span: std.render.Span, cap: std.render.RenderCapability) -> St
   if cap.color {
     match span.style.color {
       null => body
-      c    => match ansi_code(c: c) {
+      c    => match extdeps.render.ansi.ansi_code(c: c) {
         Present { value: code } => concat(code, concat(body, "\x1b[0m"))
         Absent => body
       }
@@ -105,10 +105,10 @@ fn serialize_span(span: std.render.Span, cap: std.render.RenderCapability) -> St
 }
 
 fn serialize_line(line: std.render.Line, cap: std.render.RenderCapability) -> String {
-  let pad = repeat_string(s: " ", n: line.indent * 4)
+  let pad = std.render_repeat_string_bootstrap.repeat_string(s: " ", n: line.indent * 4)
   let body = fold(line.spans,
     init: "",
-    f: (acc, span) => concat(acc, extdeps.render.terminal.serialize_span(span: span, cap: cap))
+    f: (acc, span) => concat(acc, serialize_span(span: span, cap: cap))
   )
   concat(pad, body)
 }
@@ -133,7 +133,7 @@ fn admit_line_feed_against_projection(projection: TerminalWriteProjection, rende
     TerminalWriteProjected { bytes: b, next: n } =>
       match n {
         DynamicLineOpen =>
-          if ansi_text_contains_line_feed(text: rendered) {
+          if extdeps.render.ansi.ansi_text_contains_line_feed(text: rendered) {
             TerminalWriteRefused {
               cause: "rendered text cannot contain a line feed on a write that leaves the dynamic line open" as std.types.NonEmptyStr
             }
@@ -151,7 +151,7 @@ fn project_terminal_write_admitted(
   capability: std.render.RenderCapability,
   rendered: String
 ) -> TerminalWriteProjection {
-  if ansi_text_contains_cursor_control(text: rendered) {
+  if extdeps.render.ansi.ansi_text_contains_cursor_control(text: rendered) {
     TerminalWriteRefused { cause: "rendered text cannot contain terminal cursor-control bytes" as std.types.NonEmptyStr }
   } else {
     admit_line_feed_against_projection(
@@ -173,59 +173,59 @@ fn project_terminal_write_line_admitted(
   rendered: String
 ) -> TerminalWriteProjection {
   match requested {
-      Clear =>
+      std.render.Clear =>
         if rendered != "" {
           TerminalWriteRefused { cause: "Clear requires empty rendered text" as std.types.NonEmptyStr }
         } else {
           match prior {
             DynamicLineOpen =>
               TerminalWriteProjected {
-                bytes: concat(ansi_carriage_return, ansi_erase_entire_line()),
+                bytes: concat(extdeps.render.ansi.ansi_carriage_return, extdeps.render.ansi.ansi_erase_entire_line()),
                 next: DynamicLineClosed
               }
             DynamicLineClosed =>
               TerminalWriteProjected { bytes: "", next: DynamicLineClosed }
           }
         }
-      Overwrite =>
-        match cursor_action_under(requested: Overwrite, cap: capability) {
-          Overwrite =>
+      std.render.Overwrite =>
+        match std.render.cursor_action_under(requested: std.render.Overwrite, cap: capability) {
+          std.render.Overwrite =>
             TerminalWriteProjected {
-              bytes: concat(ansi_carriage_return, concat(ansi_erase_entire_line(), rendered)),
+              bytes: concat(extdeps.render.ansi.ansi_carriage_return, concat(extdeps.render.ansi.ansi_erase_entire_line(), rendered)),
               next: DynamicLineOpen
             }
-          Append =>
+          std.render.Append =>
             match prior {
               DynamicLineOpen =>
                 TerminalWriteProjected {
                   bytes: concat(
-                    ansi_carriage_return,
-                    concat(ansi_erase_entire_line(), concat(rendered, ansi_line_feed))
+                    extdeps.render.ansi.ansi_carriage_return,
+                    concat(extdeps.render.ansi.ansi_erase_entire_line(), concat(rendered, extdeps.render.ansi.ansi_line_feed))
                   ),
                   next: DynamicLineClosed
                 }
               DynamicLineClosed =>
                 TerminalWriteProjected {
-                  bytes: concat(rendered, ansi_line_feed),
+                  bytes: concat(rendered, extdeps.render.ansi.ansi_line_feed),
                   next: DynamicLineClosed
                 }
             }
-          Clear =>
+          std.render.Clear =>
             TerminalWriteRefused { cause: "Overwrite cannot project to Clear" as std.types.NonEmptyStr }
         }
-      Append =>
+      std.render.Append =>
         match prior {
           DynamicLineOpen =>
             TerminalWriteProjected {
               bytes: concat(
-                ansi_carriage_return,
-                concat(ansi_erase_entire_line(), concat(rendered, ansi_line_feed))
+                extdeps.render.ansi.ansi_carriage_return,
+                concat(extdeps.render.ansi.ansi_erase_entire_line(), concat(rendered, extdeps.render.ansi.ansi_line_feed))
               ),
               next: DynamicLineClosed
             }
           DynamicLineClosed =>
             TerminalWriteProjected {
-              bytes: concat(rendered, ansi_line_feed),
+              bytes: concat(rendered, extdeps.render.ansi.ansi_line_feed),
               next: DynamicLineClosed
             }
         }

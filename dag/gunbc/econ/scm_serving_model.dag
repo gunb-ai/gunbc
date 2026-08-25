@@ -57,15 +57,15 @@ fn binary_gibibyte_bytes() -> std.nat.Nat {
 // Vendors round a partial billing unit UP (Cloudflare states it outright: 'Cloudflare rounds up your usage to the next billing unit'), so bytes convert to billing units by ceiling division, never truncation. Truncating would under-state every bill by up to one unit per axis -- small at these sizes, wrong at every size.
 fn bytes_to_billing_units(bytes: std.nat.Nat, basis: extdeps.pricing.object_storage.ByteBasis) -> std.nat.Nat? {
   match basis {
-    DecimalGigabyte => {
+    extdeps.pricing.object_storage.DecimalGigabyte => {
       let d = decimal_gigabyte_bytes()
       Present { value: ((bytes + d) - 1) / d }
     }
-    BinaryGibibyte => {
+    extdeps.pricing.object_storage.BinaryGibibyte => {
       let d = binary_gibibyte_bytes()
       Present { value: ((bytes + d) - 1) / d }
     }
-    ByteBasisUnstated => none
+    extdeps.pricing.object_storage.ByteBasisUnstated => none
   }
 }
 
@@ -73,9 +73,9 @@ fn assumed_basis(assumption: ByteBasisAssumption) -> extdeps.pricing.object_stor
   match assumption {
     BasisAssumed { basis: b, rationale: _ } =>
       match b {
-        ByteBasisUnstated => none
-        DecimalGigabyte => Present { value: b }
-        BinaryGibibyte => Present { value: b }
+        extdeps.pricing.object_storage.ByteBasisUnstated => none
+        extdeps.pricing.object_storage.DecimalGigabyte => Present { value: b }
+        extdeps.pricing.object_storage.BinaryGibibyte => Present { value: b }
       }
     BasisUnknown => none
   }
@@ -85,9 +85,9 @@ data basis_reconciliation_note: String = "A cited row that DOES state its byte b
 
 fn basis_compatible_with_row(row_basis: extdeps.pricing.object_storage.ByteBasis, assumed: extdeps.pricing.object_storage.ByteBasis) -> Bool {
   match row_basis {
-    ByteBasisUnstated => true
-    DecimalGigabyte => match assumed { DecimalGigabyte => true  BinaryGibibyte => false  ByteBasisUnstated => false }
-    BinaryGibibyte => match assumed { BinaryGibibyte => true  DecimalGigabyte => false  ByteBasisUnstated => false }
+    extdeps.pricing.object_storage.ByteBasisUnstated => true
+    extdeps.pricing.object_storage.DecimalGigabyte => match assumed { extdeps.pricing.object_storage.DecimalGigabyte => true  extdeps.pricing.object_storage.BinaryGibibyte => false  extdeps.pricing.object_storage.ByteBasisUnstated => false }
+    extdeps.pricing.object_storage.BinaryGibibyte => match assumed { extdeps.pricing.object_storage.BinaryGibibyte => true  extdeps.pricing.object_storage.DecimalGigabyte => false  extdeps.pricing.object_storage.ByteBasisUnstated => false }
   }
 }
 
@@ -97,8 +97,8 @@ fn derive_scm_usage(
 ) -> ScmUsageResult {
   match assumed_basis(assumption: assumption) {
     Present { value: basis } => {
-      let per_user_stored = byte_size_count(b: profile.stored_bytes_per_user_after_dedup)
-      let per_user_egress = byte_size_count(b: profile.monthly_egress_bytes_per_user)
+      let per_user_stored = std.measure.byte_size_count(b: profile.stored_bytes_per_user_after_dedup)
+      let per_user_egress = std.measure.byte_size_count(b: profile.monthly_egress_bytes_per_user)
       if profile.user_count <= 0 {
         ScmUsageRefused { cause: UserCountZero }
       } else if per_user_stored <= 0 {
@@ -129,7 +129,7 @@ fn derive_scm_usage(
 }
 
 fn requests_cost_micros(count: std.nat.Nat, row: extdeps.pricing.object_storage.ObjectStorageRequestRow) -> std.nat.Nat {
-  (count * money_rate_micros(q: row.per_million)) / 1000000
+  (count * std.measure.money_rate_micros(q: row.per_million)) / 1000000
 }
 
 fn derive_scm_monthly_cost(
@@ -149,9 +149,9 @@ fn derive_scm_monthly_cost(
       } else if !basis_compatible_with_row(row_basis: cited_egress_basis(row: egress_row), assumed: basis) {
         ScmMonthlyCostRefused { cause: BasisContradictsCitedRow }
       } else {
-        match storage_rate_micros(row: storage_row) {
+        match extdeps.pricing.object_storage.storage_rate_micros(row: storage_row) {
           Present { value: storage_rate } =>
-            match egress_rate_micros(row: egress_row) {
+            match extdeps.pricing.object_storage.egress_rate_micros(row: egress_row) {
               Present { value: egress_rate } =>
                 match derive_scm_usage(profile: profile, assumption: assumption) {
                   ScmUsageDerived { usage: u } => {
@@ -183,23 +183,23 @@ fn all_rows_same_vendor(
   read_row: extdeps.pricing.object_storage.ObjectStorageRequestRow,
   write_row: extdeps.pricing.object_storage.ObjectStorageRequestRow,
 ) -> Bool {
-  storage_vendor_eq(a: storage_row.vendor, b: egress_row.vendor)
-    && storage_vendor_eq(a: storage_row.vendor, b: read_row.vendor)
-    && storage_vendor_eq(a: storage_row.vendor, b: write_row.vendor)
+  extdeps.pricing.object_storage.storage_vendor_eq(a: storage_row.vendor, b: egress_row.vendor)
+    && extdeps.pricing.object_storage.storage_vendor_eq(a: storage_row.vendor, b: read_row.vendor)
+    && extdeps.pricing.object_storage.storage_vendor_eq(a: storage_row.vendor, b: write_row.vendor)
 }
 
 fn cited_storage_basis(row: extdeps.pricing.object_storage.ObjectStorageClassRow) -> extdeps.pricing.object_storage.ByteBasis {
   match row.storage_rate {
     RateCited { rate: _, quoted_unit_label: _, byte_basis: b } => b
-    RateUnavailable { cause: _ } => ByteBasisUnstated
+    RateUnavailable { cause: _ } => extdeps.pricing.object_storage.ByteBasisUnstated
   }
 }
 
 fn cited_egress_basis(row: extdeps.pricing.object_storage.ObjectStorageEgressRow) -> extdeps.pricing.object_storage.ByteBasis {
   match row.egress_rate {
     TransferCited { rate: _, quoted_unit_label: _, byte_basis: b } => b
-    TransferIncludedAtNoCharge { terms: _ } => ByteBasisUnstated
-    TransferUnavailable { cause: _ } => ByteBasisUnstated
+    TransferIncludedAtNoCharge { terms: _ } => extdeps.pricing.object_storage.ByteBasisUnstated
+    TransferUnavailable { cause: _ } => extdeps.pricing.object_storage.ByteBasisUnstated
   }
 }
 
@@ -207,7 +207,7 @@ data egress_dominance_note: String = "The reason this model separates network fr
 
 data progressive_tier_note: String = "Flat-rate multiplication is correct only below the first tier boundary, and an SCM crosses those boundaries exactly when it starts to matter: at a million users on this profile the workload holds 100 TB and moves 500 TB a month, which is past AWS's 50 TB storage step and past all three of its egress steps. Vendor tiers are PROGRESSIVE (each rate applies only to the slice inside its own band, like tax brackets), so pricing the whole volume at the top band's rate under-states the bill and pricing it at the first band's rate over-states it. This fold applies each band to its own slice; a ladder is a list of rows ascending by lower bound, and the last band runs to the workload's actual volume."
 
-// std.nat.Nat subtraction below zero is not representable, and a tier slice legitimately goes negative when the workload never reaches that band -- so the clamp is explicit rather than an if-branch returning a bare literal (which types as Int and would fork the carrier).
+// Nat subtraction below zero is not representable, and a tier slice legitimately goes negative when the workload never reaches that band -- so the clamp is explicit rather than an if-branch returning a bare literal (which types as Int and would fork the carrier).
 fn saturating_sub(a: std.nat.Nat, b: std.nat.Nat) -> std.nat.Nat {
   std.nat.nat_max(a: a, b: b) - b
 }
@@ -229,7 +229,7 @@ fn progressive_cost(units: std.nat.Nat, tiers: List<RateTier>) -> std.nat.Nat {
     if !a.started {
       TierFoldAcc { started: true, prev_lower: tier.lower_bound_units, prev_rate: tier.rate_micros, total_micros: 0 }
     } else {
-      let cap = nat_min(a: units, b: tier.lower_bound_units)
+      let cap = std.nat.nat_min(a: units, b: tier.lower_bound_units)
       let slice = saturating_sub(a: cap, b: a.prev_lower)
       TierFoldAcc {
         started: true,
@@ -250,7 +250,7 @@ type TierLadderAcc {
 
 fn storage_ladder(rows: List<extdeps.pricing.object_storage.ObjectStorageClassRow>) -> List<RateTier>? {
   let acc = fold(rows, init: TierLadderAcc { ok: true, tiers: [] }, f: fn(a, row) {
-    match storage_rate_micros(row: row) {
+    match extdeps.pricing.object_storage.storage_rate_micros(row: row) {
       Present { value: r } =>
         TierLadderAcc {
           ok: a.ok,
@@ -259,12 +259,12 @@ fn storage_ladder(rows: List<extdeps.pricing.object_storage.ObjectStorageClassRo
       _ => TierLadderAcc { ok: false, tiers: a.tiers }
     }
   })
-  if acc.ok && (list_length(items: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
+  if acc.ok && (std.types.list_length(items: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
 }
 
 fn egress_ladder(rows: List<extdeps.pricing.object_storage.ObjectStorageEgressRow>) -> List<RateTier>? {
   let acc = fold(rows, init: TierLadderAcc { ok: true, tiers: [] }, f: fn(a, row) {
-    match egress_rate_micros(row: row) {
+    match extdeps.pricing.object_storage.egress_rate_micros(row: row) {
       Present { value: r } =>
         TierLadderAcc {
           ok: a.ok,
@@ -273,7 +273,7 @@ fn egress_ladder(rows: List<extdeps.pricing.object_storage.ObjectStorageEgressRo
       _ => TierLadderAcc { ok: false, tiers: a.tiers }
     }
   })
-  if acc.ok && (list_length(items: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
+  if acc.ok && (std.types.list_length(items: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
 }
 
 data request_pricing_note: String = "Two vendors here state that requests are not billed at all (Wasabi: 'No fees for egress or API requests'; Storj: 'No API fees'). That is a DIFFERENT fact from a zero rate and from an unknown rate, so it gets its own arm -- a model that encoded it as rate zero could not tell 'the vendor says free' apart from 'nobody filled this in yet'."
@@ -283,7 +283,7 @@ type RequestPricing
   | RequestsIncludedAtNoCharge { terms: std.types.NonEmptyStr }
 
 type ProviderQuote {
-  vendor: extdeps.pricing.object_storage.StorageVendor
+  vendor: StorageVendor
   quote_label: std.types.NonEmptyStr
   storage_rows: List<extdeps.pricing.object_storage.ObjectStorageClassRow>
   egress_rows: List<extdeps.pricing.object_storage.ObjectStorageEgressRow>
@@ -294,9 +294,9 @@ type ProviderQuote {
 // A quote carries the byte basis its own vendor states (BinaryGibibyte for Google, which says 'per 1 gibibyte'), or ByteBasisUnstated when the vendor does not say -- in which case the caller's declared assumption fills in. The vendor OUTRANKS the modeler: a stated basis is never overridden by an assumption, which is why the matrix can hold Google beside AWS without pretending they quote the same unit.
 fn effective_basis(quoted: extdeps.pricing.object_storage.ByteBasis, assumption: ByteBasisAssumption) -> extdeps.pricing.object_storage.ByteBasis? {
   match quoted {
-    ByteBasisUnstated => assumed_basis(assumption: assumption)
-    DecimalGigabyte => Present { value: quoted }
-    BinaryGibibyte => Present { value: quoted }
+    extdeps.pricing.object_storage.ByteBasisUnstated => assumed_basis(assumption: assumption)
+    extdeps.pricing.object_storage.DecimalGigabyte => Present { value: quoted }
+    extdeps.pricing.object_storage.BinaryGibibyte => Present { value: quoted }
   }
 }
 
@@ -320,8 +320,8 @@ fn quote_provider_monthly(
         Present { value: st_tiers } =>
           match egress_ladder(rows: quote.egress_rows) {
             Present { value: eg_tiers } => {
-              let stored_bytes = profile.user_count * byte_size_count(b: profile.stored_bytes_per_user_after_dedup)
-              let egress_bytes = profile.user_count * byte_size_count(b: profile.monthly_egress_bytes_per_user)
+              let stored_bytes = profile.user_count * std.measure.byte_size_count(b: profile.stored_bytes_per_user_after_dedup)
+              let egress_bytes = profile.user_count * std.measure.byte_size_count(b: profile.monthly_egress_bytes_per_user)
               match bytes_to_billing_units(bytes: stored_bytes, basis: basis) {
                 Present { value: st_units } =>
                   match bytes_to_billing_units(bytes: egress_bytes, basis: basis) {

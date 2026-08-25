@@ -11,13 +11,13 @@ type DeclarationIdentity {
 }
 
 type DeclarationRefResolution
-  = DeclarationRefResolved { declaration_identity: v2.std.decl_ref_resolution.DeclarationIdentity }
+  = DeclarationRefResolved { declaration_identity: DeclarationIdentity }
   | DeclarationRefModuleAbsent { reference: std.decl_ref.DeclarationRef }
   | DeclarationRefDeclarationAbsent { reference: std.decl_ref.DeclarationRef }
   | DeclarationRefFieldAbsent { reference: std.decl_ref.DeclarationRef }
-  | DeclarationRefAmbiguous { reference: std.decl_ref.DeclarationRef, candidates: List<v2.std.decl_ref_resolution.DeclarationIdentity> }
+  | DeclarationRefAmbiguous { reference: std.decl_ref.DeclarationRef, candidates: List<DeclarationIdentity> }
 
-fn declaration_identity_from_fact(fact: v2.std.decl_index.DeclFact) -> v2.std.decl_ref_resolution.DeclarationIdentity {
+fn declaration_identity_from_fact(fact: v2.std.decl_index.DeclFact) -> DeclarationIdentity {
   DeclarationIdentity {
     qualified_name: fact.qualified_name,
     name: fact.name,
@@ -27,7 +27,7 @@ fn declaration_identity_from_fact(fact: v2.std.decl_index.DeclFact) -> v2.std.de
 }
 
 fn declaration_ref_target_qualified_name(ref: std.decl_ref.DeclarationRef) -> String {
-  logical_qualified_name_from_module(
+  v2.std.decl_index.logical_qualified_name_from_module(
     module_name: ref.module_path as String,
     name: ref.decl_name as String
   )
@@ -38,16 +38,16 @@ fn module_path_declared(module_path: String, modules: List<v2.lens.module_graph.
 }
 
 
-fn declaration_identities_from_facts(facts: List<v2.std.decl_index.DeclFact>) -> List<v2.std.decl_ref_resolution.DeclarationIdentity> {
+fn declaration_identities_from_facts(facts: List<v2.std.decl_index.DeclFact>) -> List<DeclarationIdentity> {
   list_map(xs: facts, f: fn(fact) { declaration_identity_from_fact(fact: fact) })
 }
 
 fn decl_ref_named_field_present(ref: std.decl_ref.DeclarationRef, fact: v2.std.decl_index.DeclFact) -> Bool {
   match ref.field {
-    WholeDeclaration => true
-    NamedField { field_name: f } =>
+    std.decl_ref.WholeDeclaration => true
+    std.decl_ref.NamedField { field_name: f } =>
       any(
-        xs: v2.std.node_query.node_labeled_child_edges(node: fact.node),
+        xs: node_labeled_child_edges(node: fact.node),
         predicate: fn(e) { named_edge_sort_key(e: e) == f as String }
       )
   }
@@ -57,7 +57,7 @@ fn resolve_declaration_ref(
   ref: std.decl_ref.DeclarationRef,
   facts: List<v2.std.decl_index.DeclFact>,
   modules: List<v2.lens.module_graph.ModuleDeclarationFact>
-) -> v2.std.decl_ref_resolution.DeclarationRefResolution {
+) -> DeclarationRefResolution {
   if !module_path_declared(module_path: ref.module_path as String, modules: modules) {
     DeclarationRefModuleAbsent { reference: ref }
   } else {
@@ -126,10 +126,10 @@ fn declaration_ref_resolution_census(
   refs: List<std.decl_ref.DeclarationRef>,
   facts: List<v2.std.decl_index.DeclFact>,
   modules: List<v2.lens.module_graph.ModuleDeclarationFact>
-) -> v2.std.decl_ref_resolution.DeclarationRefResolutionCensus {
+) -> DeclarationRefResolutionCensus {
   fold(
     refs,
-    init: v2.std.decl_ref_resolution.DeclarationRefResolutionCensus {
+    init: DeclarationRefResolutionCensus {
       resolved_count: 0,
       module_absent_count: 0,
       declaration_absent_count: 0,

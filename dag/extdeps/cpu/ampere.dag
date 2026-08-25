@@ -206,7 +206,7 @@ data ampere_altra_avl_authority: extdeps.external_authority.ExternalAuthority = 
   }
 }
 
-data ampere_altra_avl_current_issue: std.types.NonEmptyStr = "1.15 (December 2025)"
+data ampere_altra_avl_current_issue: NonEmptyStr = "1.15 (December 2025)"
 
 
 // The Ampere Altra family product brief, cited for the per-SKU table (core
@@ -215,7 +215,7 @@ data ampere_altra_avl_current_issue: std.types.NonEmptyStr = "1.15 (December 202
 // socket geometry, the brief is where the SKU table lives.
 data ampere_altra_family_product_brief_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
   }
 }
@@ -233,14 +233,14 @@ data ampere_altra_family_product_brief_authority: extdeps.external_authority.Ext
 data altra_q8030_catalog: extdeps.cpu.types.CpuModelCatalogRow = extdeps.cpu.types.CpuModelCatalogRow {
   model_number: "Q80-30",
   oem_listing_id: none,
-  vendor: ampere_vendor,
+  vendor: extdeps.vendor.ampere.ampere_vendor,
   architecture: extdeps.toolchain.types.Aarch64,
   cores: 80,
-  threads: hardware_thread_count(80),
-  nominal_sustained_per_thread_hz: hertz(3000000000),
+  threads: std.measure.hardware_thread_count(80),
+  nominal_sustained_per_thread_hz: std.measure.hertz(3000000000),
   socket: ampere_lga4926_socket,
   socket_citations: socket_lga4926_citations,
-  tdp_watts: watt(161),
+  tdp_watts: std.measure.watt(161),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
   l2_cache: ampere_altra_l2_cache_geometry,

@@ -9,7 +9,7 @@ type ChangeKind
   | ArtifactChanged
 
 type Change {
-  kind: v2.std.change.ChangeKind
+  kind: ChangeKind
   subject: v2.std.node.Node
   at: v2.std.node.Path
 }

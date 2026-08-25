@@ -285,55 +285,10 @@ fn legacy_test_behavior_unclassified_count_live() -> Int {
 // Each side therefore names ONE exact identity that exists independently of
 // this migration. Both are full `path::fn` identities, the format the scanners
 // actually emit (verified by execution, not assumed).
-// REPOINTED by the namespace cut. The previous identity lived in
-// class_b_trim_specimen_test.rs, whose whole subject was `import` binding
-// semantics ("explicit `import std.algebra { trim }` binds in a narrow pool
-// while a bare `trim` refuses"), so the cut that makes `import` a parse error
-// retired the module along with four of the five cli_run symbols it consumed.
-// That is the hazard this control's own comment names -- an identity chosen to
-// exist "independently of this migration" was independent of the TEST
-// migration and not of the import cut, so the control would have gone false
-// while looking like a scanner regression rather than a deleted subject.
-// The replacement is deliberately algebraic -- FieldOfFractions construction has
-// no relationship to imports, namespaces, or test migration.
-//
-// BUT THE STRONGER CLAIM IS FALSE AND IS NOT MADE HERE: there is no permanently
-// safe choice for THIS control, and picking a different row does not fix it.
-// Its subject must be a legacy Rust test, because legacy-test discovery is what
-// it is a known-positive FOR; every module in that kernel carries its own
-// dissolution condition by design; and the kernel's own helpers row states the
-// endpoint outright -- "the retained kernel empties as its modules migrate, at
-// which point the harness has no consumer and is deleted with the last row."
-// So the control is structurally temporary, and every candidate names some
-// lane as its adversary: namespace_unique_on_chain_policy names the namespace
-// lane, none_undetermined_carrier_refuse and field_of_fractions_single_declaration
-// name the floor, and THIS ROW names the interpreter. It was chosen because its
-// dissolution is a feature ADDITION (a typed representation receipt) rather than
-// a deletion, so no cut in flight removes it -- not because it is independent.
-//
-// THE OBLIGATION THAT FOLLOWS: whenever a lane drains a retained module, this
-// control must be re-checked, and it dies with the kernel. A control whose
-// independence is relative to a named adversary needs that adversary written
-// down, or the next lane inherits the trap this repoint just paid for.
-data legacy_discovery_known_positive: String = "src/v1/tests/src/rs::field_of_fractions_pair_stays_boxed_record_not_native_collapse"
+data legacy_discovery_known_positive: String = "src/v1/tests/src/class_b_trim_specimen_test.rs::trim_free_call_refuses_in_narrow_pool_without_algebra_authority"
 
 // Deliberately a witness with no relationship to test migration, so that
 // draining the retained kernel to zero cannot silently drain this control too.
-//
-// WHY THIS SIDE IS STRUCTURALLY BETTER PLACED THAN ITS LEGACY SIBLING ABOVE,
-// stated as lane-independent facts because they are true on any branch: its
-// subject is a .dag witness rather than a retained Rust module, so it sits
-// OUTSIDE the kernel that empties as its modules migrate; and the ContentHash
-// work its subject belongs to dissolves by FEATURE ADDITION (Phase B: substrate
-// typecheck refusing union-level equality), never by deletion. Addition-
-// dissolving subjects survive cuts and die to slower, more visible feature work.
-//
-// What would invalidate this row: ContentHash Phase B landing, or any lane
-// retiring the cited witness. Re-check on either.
-//
-// Per-cut verifications belong in the deciding branch's own record, NOT here --
-// a claim scoped to one migration, authored into a carrier that made no such
-// claim, is inherited by every later reader who is not on that branch.
 data witness_discovery_known_positive: String = "dag/test/claim/content_hash_family_grounded_witness_test.dag::content_hash_cited_sha256_literals_validate"
 
 fn legacy_discovery_known_positive_present(discovered_legacy: List<String>) -> Bool {

@@ -12,13 +12,13 @@ type Grounding<E>
 type DurabilityGroundingRefusal<Target, ReadbackSubject>
   = EffectiveStateDoesNotGround { reason: String }
   | DeclaredLifetimeDoesNotGround {
-      cause: StateDurabilityRefusal<Target, ReadbackSubject>,
+      cause: std.state_durability.StateDurabilityRefusal<Target, ReadbackSubject>,
     }
 
 type DurabilityQualifiedGrounding<E, Target, ReadbackSubject>
   = DurabilityGrounds {
       effective_state_evidence: E,
-      durability_evidence: StateDurabilityQualification<Target, ReadbackSubject>,
+      durability_evidence: std.state_durability.StateDurabilityQualification<Target, ReadbackSubject>,
     }
   | DurabilityDoesNotGround {
       cause: DurabilityGroundingRefusal<Target, ReadbackSubject>,
@@ -65,12 +65,12 @@ fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
       }
     Grounds { evidence: evidence } =>
       match durability {
-        StateDurabilityQualified { qualification: qualification } =>
+        std.state_durability.StateDurabilityQualified { qualification: qualification } =>
           DurabilityGrounds {
             effective_state_evidence: evidence,
             durability_evidence: qualification,
           }
-        StateDurabilityRefused { cause: cause } =>
+        std.state_durability.StateDurabilityRefused { cause: cause } =>
           DurabilityDoesNotGround {
             cause: DeclaredLifetimeDoesNotGround { cause: cause },
           }

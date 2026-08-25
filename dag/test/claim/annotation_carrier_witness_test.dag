@@ -1,19 +1,19 @@
 module test.claim.annotation_carrier
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn census_closure_frontier_rows_count_matches_hand_count() -> Bool {
-  length(xs: census_closure_frontier_rows()) == 24
+  length(xs: gunbc.census_closure_frontier.census_closure_frontier_rows()) == 24
 }
 
 test fn census_closure_frontier_rows_well_formed() -> Bool {
-  std.roster_frontier.frontier_rows_well_formed(rows: census_closure_frontier_rows())
+  std.roster_frontier.frontier_rows_well_formed(rows: gunbc.census_closure_frontier.census_closure_frontier_rows())
 }
 
 test fn frontier_expiry_fold_partitions_unbound_and_pending() -> Bool {
   let report = std.roster_frontier.fold_frontier_expiry(
-    rows: census_closure_frontier_rows(),
+    rows: gunbc.census_closure_frontier.census_closure_frontier_rows(),
     present_decls: [],
   )
   report.unbound_count + report.pending_count == 24
@@ -22,10 +22,10 @@ test fn frontier_expiry_fold_partitions_unbound_and_pending() -> Bool {
 }
 
 test fn frontier_expiry_fired_row_still_present_reds() -> Bool {
-  let mac_trigger = decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")
-  let base = std.roster_frontier.fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: [])
+  let mac_trigger = std.decl_ref.decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")
+  let base = std.roster_frontier.fold_frontier_expiry(rows: gunbc.census_closure_frontier.census_closure_frontier_rows(), present_decls: [])
   let report = std.roster_frontier.fold_frontier_expiry(
-    rows: census_closure_frontier_rows(),
+    rows: gunbc.census_closure_frontier.census_closure_frontier_rows(),
     present_decls: [mac_trigger],
   )
   report.fired_still_present_count == 1
@@ -35,10 +35,10 @@ test fn frontier_expiry_fired_row_still_present_reds() -> Bool {
 }
 
 test fn frontier_expiry_fired_trigger_absent_from_rows_is_clean() -> Bool {
-  let absent_trigger = decl_ref(module_path: "extdeps.network.mac", decl_name: "already_deleted_frontier_unit")
-  let base = std.roster_frontier.fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: [])
+  let absent_trigger = std.decl_ref.decl_ref(module_path: "extdeps.network.mac", decl_name: "already_deleted_frontier_unit")
+  let base = std.roster_frontier.fold_frontier_expiry(rows: gunbc.census_closure_frontier.census_closure_frontier_rows(), present_decls: [])
   let report = std.roster_frontier.fold_frontier_expiry(
-    rows: census_closure_frontier_rows(),
+    rows: gunbc.census_closure_frontier.census_closure_frontier_rows(),
     present_decls: [absent_trigger],
   )
   report.fired_still_present_count == 0
@@ -48,63 +48,63 @@ test fn frontier_expiry_fired_trigger_absent_from_rows_is_clean() -> Bool {
 }
 
 test fn unbound_condition_reports_unbound_not_pending() -> Bool {
-  let c = unbound_dissolution(description: "every caller migrates to partition_fold_outcome")
-  match dissolution_status(condition: c, present_decls: []) {
-    DissolutionUnbound => true
-    DissolutionPending => false
-    DissolutionFired => false
+  let c = std.dissolution.unbound_dissolution(description: "every caller migrates to partition_fold_outcome")
+  match std.dissolution.dissolution_status(condition: c, present_decls: []) {
+    std.dissolution.DissolutionUnbound => true
+    std.dissolution.DissolutionPending => false
+    std.dissolution.DissolutionFired => false
   }
 }
 
 test fn unbound_condition_cannot_be_forced_to_fire_by_any_present_decls() -> Bool {
-  let c = unbound_dissolution(description: "extdeps.network.mac parse_mac_address lands")
+  let c = std.dissolution.unbound_dissolution(description: "extdeps.network.mac parse_mac_address lands")
   let probes = [
-    decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address"),
-    decl_ref(module_path: "std.dissolution", decl_name: "unbound_dissolution"),
+    std.decl_ref.decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address"),
+    std.decl_ref.decl_ref(module_path: "std.dissolution", decl_name: "unbound_dissolution"),
   ]
   fold(probes, init: true, f: fn(acc, p) {
-    acc && match dissolution_status(condition: c, present_decls: [p]) {
-      DissolutionUnbound => true
-      DissolutionPending => false
-      DissolutionFired => false
+    acc && match std.dissolution.dissolution_status(condition: c, present_decls: [p]) {
+      std.dissolution.DissolutionUnbound => true
+      std.dissolution.DissolutionPending => false
+      std.dissolution.DissolutionFired => false
     }
   })
-    && match dissolution_status(condition: c, present_decls: probes) {
-      DissolutionUnbound => true
-      DissolutionPending => false
-      DissolutionFired => false
+    && match std.dissolution.dissolution_status(condition: c, present_decls: probes) {
+      std.dissolution.DissolutionUnbound => true
+      std.dissolution.DissolutionPending => false
+      std.dissolution.DissolutionFired => false
     }
 }
 
 test fn bound_condition_pends_until_its_declaration_appears() -> Bool {
-  let target = decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")
-  let c = bound_dissolution(ref: target)
-  let pending = match dissolution_status(condition: c, present_decls: []) {
-    DissolutionPending => true
-    DissolutionUnbound => false
-    DissolutionFired => false
+  let target = std.decl_ref.decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")
+  let c = std.dissolution.bound_dissolution(ref: target)
+  let pending = match std.dissolution.dissolution_status(condition: c, present_decls: []) {
+    std.dissolution.DissolutionPending => true
+    std.dissolution.DissolutionUnbound => false
+    std.dissolution.DissolutionFired => false
   }
-  let fired = match dissolution_status(condition: c, present_decls: [target]) {
-    DissolutionFired => true
-    DissolutionUnbound => false
-    DissolutionPending => false
+  let fired = match std.dissolution.dissolution_status(condition: c, present_decls: [target]) {
+    std.dissolution.DissolutionFired => true
+    std.dissolution.DissolutionUnbound => false
+    std.dissolution.DissolutionPending => false
   }
   pending && fired
 }
 
 test fn bound_condition_does_not_fire_on_a_near_miss_ref() -> Bool {
-  let c = bound_dissolution(
-    ref: decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address"),
+  let c = std.dissolution.bound_dissolution(
+    ref: std.decl_ref.decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address"),
   )
   let near_misses = [
-    decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_addres"),
-    decl_ref(module_path: "extdeps.network.max", decl_name: "parse_mac_address"),
+    std.decl_ref.decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_addres"),
+    std.decl_ref.decl_ref(module_path: "extdeps.network.max", decl_name: "parse_mac_address"),
   ]
   fold(near_misses, init: true, f: fn(acc, p) {
-    acc && match dissolution_status(condition: c, present_decls: [p]) {
-      DissolutionPending => true
-      DissolutionUnbound => false
-      DissolutionFired => false
+    acc && match std.dissolution.dissolution_status(condition: c, present_decls: [p]) {
+      std.dissolution.DissolutionPending => true
+      std.dissolution.DissolutionUnbound => false
+      std.dissolution.DissolutionFired => false
     }
   })
 }

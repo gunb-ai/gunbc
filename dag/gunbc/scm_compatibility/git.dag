@@ -19,25 +19,25 @@ type GitCompatibilityObjectPurpose
 
 type GitCompatibilityRefusal
   = GitCompatibilityObjectWrongKind {
-      purpose: gunbc.scm_compatibility.git.GitCompatibilityObjectPurpose,
+      purpose: GitCompatibilityObjectPurpose,
       stored: extdeps.git.object_store.StoredObject,
     }
   | GitCompatibilityObjectPromisorUnavailable {
-      purpose: gunbc.scm_compatibility.git.GitCompatibilityObjectPurpose,
+      purpose: GitCompatibilityObjectPurpose,
       oid: extdeps.git.object_store.GitObjectId,
       promisor: std.types.NonEmptyStr,
     }
   | GitCompatibilityObjectUnexpectedlyMissing {
-      purpose: gunbc.scm_compatibility.git.GitCompatibilityObjectPurpose,
+      purpose: GitCompatibilityObjectPurpose,
       oid: extdeps.git.object_store.GitObjectId,
     }
   | GitCompatibilityObjectCorrupt {
-      purpose: gunbc.scm_compatibility.git.GitCompatibilityObjectPurpose,
+      purpose: GitCompatibilityObjectPurpose,
       oid: extdeps.git.object_store.GitObjectId,
       reason: std.types.NonEmptyStr,
     }
   | GitCompatibilityRepositoryInvalid {
-      purpose: gunbc.scm_compatibility.git.GitCompatibilityObjectPurpose,
+      purpose: GitCompatibilityObjectPurpose,
       cause: extdeps.git.object_store.GitRepositoryDecodeRefusal,
     }
   | GitCompatibilityReadBackRejected { axis: extdeps.git.object_store.GitReadBackMismatchAxis }
@@ -69,17 +69,17 @@ type GitCompatibilityRefusal
     }
 
 type GitCompatibilityBindingOutcome
-  = GitCompatibilityBound { receipt: gunbc.scm_compatibility.git.GitCompatibilityReceipt }
-  | GitCompatibilityBindingRefused { cause: gunbc.scm_compatibility.git.GitCompatibilityRefusal }
+  = GitCompatibilityBound { receipt: GitCompatibilityReceipt }
+  | GitCompatibilityBindingRefused { cause: GitCompatibilityRefusal }
 
 type GitCompatibilityBindingOutcomeFold<R> {
-  bound: fn(gunbc.scm_compatibility.git.GitCompatibilityReceipt) -> R
-  refused: fn(gunbc.scm_compatibility.git.GitCompatibilityRefusal) -> R
+  bound: fn(GitCompatibilityReceipt) -> R
+  refused: fn(GitCompatibilityRefusal) -> R
 }
 
 fn git_compatibility_binding_outcome_fold<R>(
-  outcome: gunbc.scm_compatibility.git.GitCompatibilityBindingOutcome,
-  fold: gunbc.scm_compatibility.git.GitCompatibilityBindingOutcomeFold<R>,
+  outcome: GitCompatibilityBindingOutcome,
+  fold: GitCompatibilityBindingOutcomeFold<R>,
 ) -> R {
   match outcome {
     GitCompatibilityBound { receipt } => fold.bound(receipt)
@@ -88,33 +88,33 @@ fn git_compatibility_binding_outcome_fold<R>(
 }
 
 fn git_compatibility_object_refusal(
-  purpose: gunbc.scm_compatibility.git.GitCompatibilityObjectPurpose,
+  purpose: GitCompatibilityObjectPurpose,
   lookup: extdeps.git.object_store.ObjectLookupResult,
-) -> gunbc.scm_compatibility.git.GitCompatibilityRefusal {
+) -> GitCompatibilityRefusal {
   match lookup {
-    ObjectFound { stored } =>
+    extdeps.git.object_store.ObjectFound { stored } =>
       GitCompatibilityObjectWrongKind {
         purpose: purpose,
         stored: stored,
       }
-    ObjectPromisorUnavailable { oid, promisor } =>
+    extdeps.git.object_store.ObjectPromisorUnavailable { oid, promisor } =>
       GitCompatibilityObjectPromisorUnavailable {
         purpose: purpose,
         oid: oid,
         promisor: promisor,
       }
-    ObjectUnexpectedlyMissing { oid } =>
+    extdeps.git.object_store.ObjectUnexpectedlyMissing { oid } =>
       GitCompatibilityObjectUnexpectedlyMissing {
         purpose: purpose,
         oid: oid,
       }
-    ObjectCorrupt { oid, reason } =>
+    extdeps.git.object_store.ObjectCorrupt { oid, reason } =>
       GitCompatibilityObjectCorrupt {
         purpose: purpose,
         oid: oid,
         reason: reason,
       }
-    ObjectRepositoryInvalid { cause } =>
+    extdeps.git.object_store.ObjectRepositoryInvalid { cause } =>
       GitCompatibilityRepositoryInvalid {
         purpose: purpose,
         cause: cause,
@@ -129,38 +129,38 @@ fn git_compatibility_bind_commit(
   target: extdeps.git.object_store.GitRefName,
   expected_generation: extdeps.git.object_store.GitObjectId,
   proposed_generation: extdeps.git.object_store.GitObjectId,
-) -> gunbc.scm_compatibility.git.GitCompatibilityBindingOutcome {
-  match git_project_repository(
+) -> GitCompatibilityBindingOutcome {
+  match extdeps.git.object_store.git_project_repository(
     repo: repository,
     tree_oid: tree,
   ) {
-    GitProjected { projection } =>
-      match git_verify_independent_read_back(
+    extdeps.git.object_store.GitProjected { projection } =>
+      match extdeps.git.object_store.git_verify_independent_read_back(
         projection: projection,
         observation: read_back,
       ) {
-        GitReadBackVerified { observation } =>
-          match git_model_update_ref_exact(
+        extdeps.git.object_store.GitReadBackVerified { observation } =>
+          match extdeps.git.object_store.git_model_update_ref_exact(
             repo: repository,
             name: target,
             new_oid: proposed_generation,
             expected_old: expected_generation,
           ) {
-            GitRefTransitionModeled {
+            extdeps.git.object_store.GitRefTransitionModeled {
               repository: _,
               transition,
             } =>
               GitCompatibilityBound {
-                receipt: gunbc.scm_compatibility.git.GitCompatibilityReceipt {
+                receipt: GitCompatibilityReceipt {
                   target: target,
                   generation: expected_generation,
                   projection: projection,
                   read_back: observation,
                   advance: transition,
-                  unsupported: git_r0_unsupported_boundary,
+                  unsupported: extdeps.git.object_store.git_r0_unsupported_boundary,
                 },
               }
-            GitRefAdvanceRepositoryInvalid {
+            extdeps.git.object_store.GitRefAdvanceRepositoryInvalid {
               repository: _,
               cause,
             } =>
@@ -169,7 +169,7 @@ fn git_compatibility_bind_commit(
                   cause: cause,
                 },
               }
-            GitRefAdvanceStale {
+            extdeps.git.object_store.GitRefAdvanceStale {
               repository: _,
               name,
               expected_old,
@@ -182,11 +182,11 @@ fn git_compatibility_bind_commit(
                   observed: observed,
                 },
               }
-            GitRefAdvanceMissing { repository: _, name } =>
+            extdeps.git.object_store.GitRefAdvanceMissing { repository: _, name } =>
               GitCompatibilityBindingRefused {
                 cause: GitCompatibilityAdvanceMissing { name: name },
               }
-            GitRefAdvanceDuplicate {
+            extdeps.git.object_store.GitRefAdvanceDuplicate {
               repository: _,
               name,
               count,
@@ -197,7 +197,7 @@ fn git_compatibility_bind_commit(
                   count: count,
                 },
               }
-            GitRefAdvanceSymbolicCycle {
+            extdeps.git.object_store.GitRefAdvanceSymbolicCycle {
               repository: _,
               name,
               chain,
@@ -208,7 +208,7 @@ fn git_compatibility_bind_commit(
                   chain: chain,
                 },
               }
-            GitRefAdvanceFormatMismatch {
+            extdeps.git.object_store.GitRefAdvanceFormatMismatch {
               repository: _,
               repository_format,
               oid,
@@ -219,7 +219,7 @@ fn git_compatibility_bind_commit(
                   oid: oid,
                 },
               }
-            GitRefAdvanceTargetUnavailable {
+            extdeps.git.object_store.GitRefAdvanceTargetUnavailable {
               repository: _,
               oid: _,
               lookup,
@@ -230,7 +230,7 @@ fn git_compatibility_bind_commit(
                   lookup: lookup,
                 ),
               }
-            GitRefAdvanceTargetKindRefused {
+            extdeps.git.object_store.GitRefAdvanceTargetKindRefused {
               repository: _,
               name,
               oid,
@@ -244,12 +244,12 @@ fn git_compatibility_bind_commit(
                 },
               }
           }
-        GitReadBackMismatch { axis } =>
+        extdeps.git.object_store.GitReadBackMismatch { axis } =>
           GitCompatibilityBindingRefused {
             cause: GitCompatibilityReadBackRejected { axis: axis },
           }
       }
-    GitProjectionRefused { cause } =>
+    extdeps.git.object_store.GitProjectionRefused { cause } =>
       GitCompatibilityBindingRefused {
         cause: git_compatibility_object_refusal(
           purpose: GitCompatibilityProjectionTree,
@@ -261,7 +261,7 @@ fn git_compatibility_bind_commit(
 
 fn git_compatibility_generation_wrong_kind(
   stored: extdeps.git.object_store.StoredObject,
-) -> gunbc.scm_compatibility.git.GitCompatibilityBindingOutcome {
+) -> GitCompatibilityBindingOutcome {
   GitCompatibilityBindingRefused {
     cause: GitCompatibilityObjectWrongKind {
       purpose: GitCompatibilityGenerationCommit,
@@ -276,13 +276,13 @@ fn git_compatibility_bind(
   target: extdeps.git.object_store.GitRefName,
   expected_generation: extdeps.git.object_store.GitObjectId,
   proposed_generation: extdeps.git.object_store.GitObjectId,
-) -> gunbc.scm_compatibility.git.GitCompatibilityBindingOutcome {
-  match git_lookup_object(
+) -> GitCompatibilityBindingOutcome {
+  match extdeps.git.object_store.git_lookup_object(
     repo: repository,
     oid: expected_generation,
   ) {
-    ObjectFound { stored } =>
-      store_object_fold(
+    extdeps.git.object_store.ObjectFound { stored } =>
+      extdeps.git.object_store.store_object_fold(
         object: stored.object,
         fold: extdeps.git.object_store.StoreObjectFold {
           blob: fn(_) {
@@ -320,11 +320,11 @@ fn git_compatibility_octets_identity(
   tag: std.types.NonEmptyStr,
   octets: List<std.integer.UInt8>,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: tag,
     members: octets
       |> map(octet =>
-        compatibility_identity_text(
+        gunbc.scm_compatibility_shape.compatibility_identity_text(
           tag: "octet",
           value: to_string(octet),
         )
@@ -338,16 +338,16 @@ fn git_compatibility_bytes_identity(
 ) -> std.content_hash.Fnv1a64Structural {
   git_compatibility_octets_identity(
     tag: tag,
-    octets: bytes_octets(b: bytes),
+    octets: std.bytes.bytes_octets(b: bytes),
   )
 }
 
 fn git_compatibility_object_id_identity(
   oid: extdeps.git.object_store.GitObjectId,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_text(
+  gunbc.scm_compatibility_shape.compatibility_identity_text(
     tag: "git-object-id",
-    value: git_object_id_wire_hex(oid: oid) as String,
+    value: extdeps.git.object_store.git_object_id_wire_hex(oid: oid) as String,
   )
 }
 
@@ -355,10 +355,10 @@ fn git_compatibility_object_format_identity(
   format: extdeps.git.object_store.GitObjectFormat,
 ) -> std.content_hash.Fnv1a64Structural {
   let label = match format {
-    GitObjectFormatSha1 => "sha1"
-    GitObjectFormatSha256 => "sha256"
+    extdeps.git.object_store.GitObjectFormatSha1 => "sha1"
+    extdeps.git.object_store.GitObjectFormatSha256 => "sha256"
   }
-  compatibility_identity_text(
+  gunbc.scm_compatibility_shape.compatibility_identity_text(
     tag: "git-object-format",
     value: label,
   )
@@ -367,14 +367,14 @@ fn git_compatibility_object_format_identity(
 fn git_compatibility_tree_wire_entry_identity(
   entry: extdeps.git.object_store.GitTreeWireEntry,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: "git-tree-wire-entry",
     members: [
-      compatibility_identity_text(
+      gunbc.scm_compatibility_shape.compatibility_identity_text(
         tag: "mode",
         value: entry.mode as String,
       ),
-      compatibility_identity_text(
+      gunbc.scm_compatibility_shape.compatibility_identity_text(
         tag: "object-type",
         value: entry.object_type as String,
       ),
@@ -391,13 +391,13 @@ fn git_compatibility_ref_target_identity(
   target: extdeps.git.object_store.RefTarget,
 ) -> std.content_hash.Fnv1a64Structural {
   match target {
-    DirectTarget { oid } =>
-      compatibility_identity_sequence(
+    extdeps.git.object_store.DirectTarget { oid } =>
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "git-direct-target",
         members: [git_compatibility_object_id_identity(oid: oid)],
       )
-    SymbolicTarget { ref_name } =>
-      compatibility_identity_text(
+    extdeps.git.object_store.SymbolicTarget { ref_name } =>
+      gunbc.scm_compatibility_shape.compatibility_identity_text(
         tag: "git-symbolic-target",
         value: ref_name as String,
       )
@@ -407,10 +407,10 @@ fn git_compatibility_ref_target_identity(
 fn git_compatibility_ref_identity(
   record: extdeps.git.object_store.GitRefRecord,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: "git-ref",
     members: [
-      compatibility_identity_text(
+      gunbc.scm_compatibility_shape.compatibility_identity_text(
         tag: "name",
         value: record.name as String,
       ),
@@ -423,13 +423,13 @@ fn git_compatibility_tree_mode_identity(
   mode: extdeps.git.object_store.GitTreeMode,
 ) -> std.content_hash.Fnv1a64Structural {
   let label = match mode {
-    GitRegularBlobMode => "regular"
-    GitExecutableBlobMode => "executable"
-    GitSymlinkMode => "symlink"
-    GitSubtreeMode => "subtree"
-    GitlinkMode => "gitlink"
+    extdeps.git.object_store.GitRegularBlobMode => "regular"
+    extdeps.git.object_store.GitExecutableBlobMode => "executable"
+    extdeps.git.object_store.GitSymlinkMode => "symlink"
+    extdeps.git.object_store.GitSubtreeMode => "subtree"
+    extdeps.git.object_store.GitlinkMode => "gitlink"
   }
-  compatibility_identity_text(
+  gunbc.scm_compatibility_shape.compatibility_identity_text(
     tag: "git-tree-mode",
     value: label,
   )
@@ -439,12 +439,12 @@ fn git_compatibility_index_stage_identity(
   stage: extdeps.git.object_store.GitIndexStage,
 ) -> std.content_hash.Fnv1a64Structural {
   let label = match stage {
-    GitIndexStageNormal => "normal"
-    GitIndexStageBase => "base"
-    GitIndexStageOurs => "ours"
-    GitIndexStageTheirs => "theirs"
+    extdeps.git.object_store.GitIndexStageNormal => "normal"
+    extdeps.git.object_store.GitIndexStageBase => "base"
+    extdeps.git.object_store.GitIndexStageOurs => "ours"
+    extdeps.git.object_store.GitIndexStageTheirs => "theirs"
   }
-  compatibility_identity_text(
+  gunbc.scm_compatibility_shape.compatibility_identity_text(
     tag: "git-index-stage",
     value: label,
   )
@@ -453,12 +453,12 @@ fn git_compatibility_index_stage_identity(
 fn git_compatibility_index_entry_identity(
   entry: extdeps.git.object_store.GitIndexEntry,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: "git-index-entry",
     members: [
       git_compatibility_octets_identity(
         tag: "path",
-        octets: git_path_octets(path: entry.path),
+        octets: extdeps.git.object_store.git_path_octets(path: entry.path),
       ),
       git_compatibility_tree_mode_identity(mode: entry.mode),
       git_compatibility_object_id_identity(oid: entry.oid),
@@ -471,15 +471,15 @@ fn git_compatibility_worktree_entry_identity(
   entry: extdeps.git.object_store.GitWorktreeEntry,
 ) -> std.content_hash.Fnv1a64Structural {
   match entry {
-    GitWorktreeRegular { path, executable, content } =>
-      compatibility_identity_sequence(
+    extdeps.git.object_store.GitWorktreeRegular { path, executable, content } =>
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "git-worktree-regular",
         members: [
           git_compatibility_octets_identity(
             tag: "path",
-            octets: git_path_octets(path: path),
+            octets: extdeps.git.object_store.git_path_octets(path: path),
           ),
-          compatibility_identity_text(
+          gunbc.scm_compatibility_shape.compatibility_identity_text(
             tag: "executable",
             value: to_string(executable),
           ),
@@ -489,13 +489,13 @@ fn git_compatibility_worktree_entry_identity(
           ),
         ],
       )
-    GitWorktreeSymlink { path, target } =>
-      compatibility_identity_sequence(
+    extdeps.git.object_store.GitWorktreeSymlink { path, target } =>
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "git-worktree-symlink",
         members: [
           git_compatibility_octets_identity(
             tag: "path",
-            octets: git_path_octets(path: path),
+            octets: extdeps.git.object_store.git_path_octets(path: path),
           ),
           git_compatibility_bytes_identity(
             tag: "target",
@@ -503,13 +503,13 @@ fn git_compatibility_worktree_entry_identity(
           ),
         ],
       )
-    GitWorktreeGitlink { path, checkout } =>
-      compatibility_identity_sequence(
+    extdeps.git.object_store.GitWorktreeGitlink { path, checkout } =>
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "git-worktree-gitlink",
         members: [
           git_compatibility_octets_identity(
             tag: "path",
-            octets: git_path_octets(path: path),
+            octets: extdeps.git.object_store.git_path_octets(path: path),
           ),
           git_compatibility_object_id_identity(oid: checkout),
         ],
@@ -520,15 +520,15 @@ fn git_compatibility_worktree_entry_identity(
 fn git_compatibility_unavailable_identity(
   unavailable: extdeps.git.object_store.GitUnavailableObject,
 ) -> std.content_hash.Fnv1a64Structural {
-  git_unavailable_object_fold(
+  extdeps.git.object_store.git_unavailable_object_fold(
     unavailable: unavailable,
     fold: extdeps.git.object_store.GitUnavailableObjectFold {
       promisor: fn(oid, promisor) {
-        compatibility_identity_sequence(
+        gunbc.scm_compatibility_shape.compatibility_identity_sequence(
           tag: "git-promisor-unavailable",
           members: [
             git_compatibility_object_id_identity(oid: oid),
-            compatibility_identity_text(
+            gunbc.scm_compatibility_shape.compatibility_identity_text(
               tag: "promisor",
               value: promisor as String,
             ),
@@ -536,17 +536,17 @@ fn git_compatibility_unavailable_identity(
         )
       },
       unexpected_missing: fn(oid) {
-        compatibility_identity_sequence(
+        gunbc.scm_compatibility_shape.compatibility_identity_sequence(
           tag: "git-unexpected-missing",
           members: [git_compatibility_object_id_identity(oid: oid)],
         )
       },
       corrupt: fn(oid, reason) {
-        compatibility_identity_sequence(
+        gunbc.scm_compatibility_shape.compatibility_identity_sequence(
           tag: "git-corrupt",
           members: [
             git_compatibility_object_id_identity(oid: oid),
-            compatibility_identity_text(
+            gunbc.scm_compatibility_shape.compatibility_identity_text(
               tag: "reason",
               value: reason as String,
             ),
@@ -560,45 +560,45 @@ fn git_compatibility_unavailable_identity(
 fn git_compatibility_observed_state_identity(
   observation: extdeps.git.object_store.GitR0ReadBackObservation,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: "git-readback-state-v1",
     members: [
       git_compatibility_object_format_identity(
         format: observation.object_format,
       ),
       git_compatibility_object_id_identity(oid: observation.tree_oid),
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "tree-entries",
         members: observation.tree_entries
           |> map(entry =>
             git_compatibility_tree_wire_entry_identity(entry: entry)
           ),
       ),
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "tag-oids",
         members: observation.tag_oids
           |> map(oid => git_compatibility_object_id_identity(oid: oid)),
       ),
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "refs",
         members: observation.refs
           |> map(record => git_compatibility_ref_identity(record: record)),
       ),
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "index",
         members: observation.index
           |> map(entry =>
             git_compatibility_index_entry_identity(entry: entry)
           ),
       ),
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "worktree",
         members: observation.worktree
           |> map(entry =>
             git_compatibility_worktree_entry_identity(entry: entry)
           ),
       ),
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "unavailable",
         members: observation.unavailable
           |> map(unavailable =>
@@ -613,28 +613,28 @@ fn git_compatibility_observed_state_identity(
 
 fn git_compatibility_fidelity() -> gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
   gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
-    endpoint_state: CompatibilityFidelityPreserved,
+    endpoint_state: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
     upstream_change_evidence: gunbc.scm_compatibility_shape.CompatibilityFidelityDowngraded {
       cause: "an exact Git endpoint and history do not recover an authored source operation",
     },
     native_proposal_contract: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
       cause: "ordinary Git import carries no native reads/frame/ensures proposal contract",
     },
-    history: CompatibilityFidelityPreserved,
-    publication: CompatibilityFidelityPreserved,
+    history: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
+    publication: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
     conflict_facts: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
       cause: "R0 does not promote Git conflict presentation into semantic evidence",
     },
-    path_and_mode: CompatibilityFidelityPreserved,
-    availability: CompatibilityFidelityPreserved,
-    native_identity: CompatibilityFidelityPreserved,
+    path_and_mode: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
+    availability: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
+    native_identity: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
   }
 }
 
 fn git_compatibility_projection_receipt(
-  receipt: gunbc.scm_compatibility.git.GitCompatibilityReceipt,
+  receipt: GitCompatibilityReceipt,
 ) -> gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
-  let generation = git_object_id_wire_hex(oid: receipt.generation) as std.types.NonEmptyStr
+  let generation = extdeps.git.object_store.git_object_id_wire_hex(oid: receipt.generation) as std.types.NonEmptyStr
   let state = git_compatibility_observed_state_identity(
     observation: receipt.read_back,
   )
@@ -642,23 +642,23 @@ fn git_compatibility_projection_receipt(
     realization: "git-r0",
     target: receipt.target as std.types.NonEmptyStr,
     generation_evidence: generation,
-    projection: compatibility_projection_handle(
+    projection: gunbc.scm_compatibility_shape.compatibility_projection_handle(
       realization: "git-r0",
       state: state,
     ),
-    read_back: compatibility_read_back_handle(
+    read_back: gunbc.scm_compatibility_shape.compatibility_read_back_handle(
       realization: "git-r0",
       producer: receipt.read_back.git_version,
       state: state,
     ),
     advance: gunbc.scm_compatibility_shape.CompatibilityAdvanceModeled {
-      guarantee: CompatibilityExactCompareAndAdvance,
+      guarantee: gunbc.scm_compatibility_shape.CompatibilityExactCompareAndAdvance,
     },
     fidelity: git_compatibility_fidelity(),
   }
 }
 
-fn git_compatibility_projection_handler() -> gunbc.scm_compatibility_shape.CompatibilityProjectionHandler<gunbc.scm_compatibility.git.GitCompatibilityReceipt> {
+fn git_compatibility_projection_handler() -> gunbc.scm_compatibility_shape.CompatibilityProjectionHandler<GitCompatibilityReceipt> {
   gunbc.scm_compatibility_shape.CompatibilityProjectionHandler {
     project: fn(receipt) {
       git_compatibility_projection_receipt(receipt: receipt)

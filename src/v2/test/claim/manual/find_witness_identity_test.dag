@@ -1,19 +1,19 @@
 module v2.test.manual.find_witness_identity
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 fn identity_source_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^identity_source_atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 fn identity_other_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^identity_other_atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 fn identity_closedness() -> v2.std.witness.StructuralPropertyWitness {
@@ -78,73 +78,73 @@ fn mismatched_evidence_witness() -> v2.std.witness.StructuralPropertyWitness {
 }
 fn rejected_for_no_candidate(o: v2.std.diagnostic.Outcome<v2.std.find_witness.FindWitnessResult>) -> Bool {
   match o {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_no_candidate
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_no_candidate
   }
 }
 fn rejected_for_ambiguous_candidate(o: v2.std.diagnostic.Outcome<v2.std.find_witness.FindWitnessResult>) -> Bool {
   match o {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_ambiguous_candidate
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_ambiguous_candidate
   }
 }
 fn rejected_for_not_realized(o: v2.std.diagnostic.Outcome<v2.std.find_witness.FindWitnessResult>) -> Bool {
   match o {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_not_realized
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_not_realized
   }
 }
 fn quality_is_identity(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {
-    Identity => true
-    Exact => false
+    v2.std.coercion.Identity => true
+    v2.std.coercion.Exact => false
     Widened => false
   }
 }
-test data witness_find_witness_identity_accepts: Bool = match find_witness(
+test data witness_find_witness_identity_accepts: Bool = match v2.std.find_witness.find_witness(
   source_facts: identity_source_node(),
   candidates: candidate_set_identity_single(),
   predicate: exact_identity_predicate(),
-  multiplicity_policy: UniqueOnly
+  multiplicity_policy: v2.std.find_witness.UniqueOnly
 ) {
-  Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
-  Rejected { diagnostics: _ } => false
+  v2.std.diagnostic.Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
+  v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }
-test data witness_find_witness_non_identity_rejects: Bool = v2.test.manual.find_witness_identity.rejected_for_no_candidate(
-  o: find_witness(
+test data witness_find_witness_non_identity_rejects: Bool = rejected_for_no_candidate(
+  o: v2.std.find_witness.find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_non_identity_single(),
     predicate: exact_identity_predicate(),
-    multiplicity_policy: UniqueOnly
+    multiplicity_policy: v2.std.find_witness.UniqueOnly
   )
 )
-test data witness_find_witness_constraint_rule_accepts: Bool = match find_witness(
+test data witness_find_witness_constraint_rule_accepts: Bool = match v2.std.find_witness.find_witness(
   source_facts: identity_source_node(),
   candidates: candidate_set_identity_single(),
   predicate: constraint_predicate(),
-  multiplicity_policy: UniqueOnly
+  multiplicity_policy: v2.std.find_witness.UniqueOnly
 ) {
-  Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
-  Rejected { diagnostics: _ } => false
+  v2.std.diagnostic.Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
+  v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }
 test data witness_find_witness_other_rule_rejects: Bool = rejected_for_not_realized(
-  o: find_witness(
+  o: v2.std.find_witness.find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_identity_single(),
     predicate: unknown_rule_predicate(),
-    multiplicity_policy: UniqueOnly
+    multiplicity_policy: v2.std.find_witness.UniqueOnly
   )
 )
 test data witness_find_witness_unique_only_ambiguous_rejects: Bool = rejected_for_ambiguous_candidate(
-  o: find_witness(
+  o: v2.std.find_witness.find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_identity_duplicate(),
     predicate: exact_identity_predicate(),
-    multiplicity_policy: UniqueOnly
+    multiplicity_policy: v2.std.find_witness.UniqueOnly
   )
 )
-test data witness_find_witness_selected_invalid_rejects: Bool = v2.test.manual.find_witness_identity.rejected_for_no_candidate(
-  o: find_witness(
+test data witness_find_witness_selected_invalid_rejects: Bool = rejected_for_no_candidate(
+  o: v2.std.find_witness.find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_identity_duplicate(),
     predicate: exact_identity_predicate(),
@@ -153,8 +153,8 @@ test data witness_find_witness_selected_invalid_rejects: Bool = v2.test.manual.f
     }
   )
 )
-test data witness_find_witness_user_selected_invalid_rejects: Bool = v2.test.manual.find_witness_identity.rejected_for_no_candidate(
-  o: find_witness(
+test data witness_find_witness_user_selected_invalid_rejects: Bool = rejected_for_no_candidate(
+  o: v2.std.find_witness.find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_identity_duplicate(),
     predicate: exact_identity_predicate(),
@@ -163,32 +163,32 @@ test data witness_find_witness_user_selected_invalid_rejects: Bool = v2.test.man
     }
   )
 )
-test data witness_verify_witness_accepts: Bool = match verify_witness(
+test data witness_verify_witness_accepts: Bool = match v2.std.find_witness.verify_witness(
   source_facts: identity_source_node(),
   candidate: identity_source_node(),
   predicate: exact_identity_predicate(),
   witness: valid_identity_witness()
 ) {
-  Accepted { value: _, diagnostics: _ } => true
-  Rejected { diagnostics: _ } => false
+  v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+  v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }
-test data witness_verify_witness_property_mismatch_rejects: Bool = match verify_witness(
+test data witness_verify_witness_property_mismatch_rejects: Bool = match v2.std.find_witness.verify_witness(
   source_facts: identity_source_node(),
   candidate: identity_source_node(),
   predicate: exact_identity_predicate(),
   witness: mismatched_property_witness()
 ) {
-  Accepted { value: _, diagnostics: _ } => false
-  Rejected { diagnostics: _ } => true
+  v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+  v2.std.diagnostic.Rejected { diagnostics: _ } => true
 }
-test data witness_verify_witness_evidence_mismatch_rejects: Bool = match verify_witness(
+test data witness_verify_witness_evidence_mismatch_rejects: Bool = match v2.std.find_witness.verify_witness(
   source_facts: identity_source_node(),
   candidate: identity_source_node(),
   predicate: exact_identity_predicate(),
   witness: mismatched_evidence_witness()
 ) {
-  Accepted { value: _, diagnostics: _ } => false
-  Rejected { diagnostics: _ } => true
+  v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+  v2.std.diagnostic.Rejected { diagnostics: _ } => true
 }
 fn identity_grounding() -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
@@ -202,12 +202,12 @@ fn identity_grounding() -> v2.std.constraints.CanonicalGrounding {
 fn coercion_identity_candidates() -> v2.std.coercion.CoercionCandidateSet {
   v2.std.coercion.CoercionCandidateSet { set: candidate_set_identity_single() }
 }
-test data witness_coercion_fold_identity_accepts: Bool = match coercion_fold(
+test data witness_coercion_fold_identity_accepts: Bool = match v2.std.coercion.coercion_fold(
   source: identity_grounding(),
   candidates: coercion_identity_candidates(),
   policy: v2.std.find_witness.TargetDeclaredPriority { priority: identity_source_node() }
 ) {
-  Accepted { value: r, diagnostics: _ } =>
-    (r.target == identity_source_node()) && v2.test.manual.find_witness_identity.quality_is_identity(q: r.quality)
-  Rejected { diagnostics: _ } => false
+  v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
+    (r.target == identity_source_node()) && quality_is_identity(q: r.quality)
+  v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }

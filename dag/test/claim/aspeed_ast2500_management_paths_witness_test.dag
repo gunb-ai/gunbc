@@ -1,39 +1,39 @@
 module test.claim.aspeed_ast2500_management_paths_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn path_eq(a: extdeps.bmc.aspeed_ast2500.Ast2500ManagementAcquisitionPath, b: extdeps.bmc.aspeed_ast2500.Ast2500ManagementAcquisitionPath) -> Bool {
   match a {
-    GpioDigitalTripInput { gpio_pin_count: ac } =>
+    extdeps.bmc.aspeed_ast2500.GpioDigitalTripInput { gpio_pin_count: ac } =>
       match b {
-        GpioDigitalTripInput { gpio_pin_count: bc } => ac == bc
+        extdeps.bmc.aspeed_ast2500.GpioDigitalTripInput { gpio_pin_count: bc } => ac == bc
         _ => false
       }
-    SgpioShiftRegisterTripInput { sgpio_input_port_count: ac } =>
+    extdeps.bmc.aspeed_ast2500.SgpioShiftRegisterTripInput { sgpio_input_port_count: ac } =>
       match b {
-        SgpioShiftRegisterTripInput { sgpio_input_port_count: bc } => ac == bc
+        extdeps.bmc.aspeed_ast2500.SgpioShiftRegisterTripInput { sgpio_input_port_count: bc } => ac == bc
         _ => false
       }
-    I2cSmbusSensorBus { controller_count: ac } =>
+    extdeps.bmc.aspeed_ast2500.I2cSmbusSensorBus { controller_count: ac } =>
       match b {
-        I2cSmbusSensorBus { controller_count: bc } => ac == bc
+        extdeps.bmc.aspeed_ast2500.I2cSmbusSensorBus { controller_count: bc } => ac == bc
         _ => false
       }
-    AdcAnalogInput { channel_count: ac } =>
+    extdeps.bmc.aspeed_ast2500.AdcAnalogInput { channel_count: ac } =>
       match b {
-        AdcAnalogInput { channel_count: bc } => ac == bc
+        extdeps.bmc.aspeed_ast2500.AdcAnalogInput { channel_count: bc } => ac == bc
         _ => false
       }
-    PeciProcessorTelemetry { max_cpu_count: acpu, max_domain_per_cpu: adom } =>
+    extdeps.bmc.aspeed_ast2500.PeciProcessorTelemetry { max_cpu_count: acpu, max_domain_per_cpu: adom } =>
       match b {
-        PeciProcessorTelemetry { max_cpu_count: bcpu, max_domain_per_cpu: bdom } =>
+        extdeps.bmc.aspeed_ast2500.PeciProcessorTelemetry { max_cpu_count: bcpu, max_domain_per_cpu: bdom } =>
           acpu == bcpu && adom == bdom
         _ => false
       }
-    FanTachPulseCounter { tach_input_count: ac } =>
+    extdeps.bmc.aspeed_ast2500.FanTachPulseCounter { tach_input_count: ac } =>
       match b {
-        FanTachPulseCounter { tach_input_count: bc } => ac == bc
+        extdeps.bmc.aspeed_ast2500.FanTachPulseCounter { tach_input_count: bc } => ac == bc
         _ => false
       }
   }
@@ -54,27 +54,27 @@ test fn w_the_catalog_names_ast2500_and_the_aspeed_vendor() -> Bool {
 
 // SIX PATHS, TWO MODES — THE SPLIT THE BRIEF ASKED FOR.
 test fn w_six_management_acquisition_paths_split_two_hardwired_and_four_pollable() -> Bool {
-  list_length(items: ast2500_management_acquisition_paths) == 6
-    && ast2500_hardwired_trip_line_path_count(paths: ast2500_management_acquisition_paths) == 2
-    && ast2500_pollable_sensor_reading_path_count(paths: ast2500_management_acquisition_paths) == 4
+  std.types.list_length(items: extdeps.bmc.aspeed_ast2500.ast2500_management_acquisition_paths) == 6
+    && extdeps.bmc.aspeed_ast2500.ast2500_hardwired_trip_line_path_count(paths: extdeps.bmc.aspeed_ast2500.ast2500_management_acquisition_paths) == 2
+    && extdeps.bmc.aspeed_ast2500.ast2500_pollable_sensor_reading_path_count(paths: extdeps.bmc.aspeed_ast2500.ast2500_management_acquisition_paths) == 4
 }
 
 // EACH PATH CLASSIFIES THROUGH THE CANONICAL MODE PROJECTION.
 test fn w_mode_projection_classifies_each_path() -> Bool {
-  fold(ast2500_management_acquisition_paths, init: true, f: fn(acc, p) {
-    acc && match ast2500_management_acquisition_mode(path: p) {
-      HardwiredTripLine =>
+  fold(extdeps.bmc.aspeed_ast2500.ast2500_management_acquisition_paths, init: true, f: fn(acc, p) {
+    acc && match extdeps.bmc.aspeed_ast2500.ast2500_management_acquisition_mode(path: p) {
+      extdeps.bmc.aspeed_ast2500.HardwiredTripLine =>
         match p {
-          GpioDigitalTripInput { gpio_pin_count: _ } => true
-          SgpioShiftRegisterTripInput { sgpio_input_port_count: _ } => true
+          extdeps.bmc.aspeed_ast2500.GpioDigitalTripInput { gpio_pin_count: _ } => true
+          extdeps.bmc.aspeed_ast2500.SgpioShiftRegisterTripInput { sgpio_input_port_count: _ } => true
           _ => false
         }
-      PollableSensorReading =>
+      extdeps.bmc.aspeed_ast2500.PollableSensorReading =>
         match p {
-          I2cSmbusSensorBus { controller_count: _ } => true
-          AdcAnalogInput { channel_count: _ } => true
-          PeciProcessorTelemetry { max_cpu_count: _, max_domain_per_cpu: _ } => true
-          FanTachPulseCounter { tach_input_count: _ } => true
+          extdeps.bmc.aspeed_ast2500.I2cSmbusSensorBus { controller_count: _ } => true
+          extdeps.bmc.aspeed_ast2500.AdcAnalogInput { channel_count: _ } => true
+          extdeps.bmc.aspeed_ast2500.PeciProcessorTelemetry { max_cpu_count: _, max_domain_per_cpu: _ } => true
+          extdeps.bmc.aspeed_ast2500.FanTachPulseCounter { tach_input_count: _ } => true
           _ => false
         }
     }
@@ -83,36 +83,36 @@ test fn w_mode_projection_classifies_each_path() -> Bool {
 
 // CITED CAPACITIES FROM THE DATASHEET SECTIONS, NOT ROUNDED PROSE.
 test fn w_cited_path_capacities_match_the_datasheet_rows() -> Bool {
-  test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(
-    paths: ast2500_management_acquisition_paths,
+  list_contains_path(
+    paths: extdeps.bmc.aspeed_ast2500.ast2500_management_acquisition_paths,
     wanted: extdeps.bmc.aspeed_ast2500.GpioDigitalTripInput { gpio_pin_count: 228 },
   )
-    && test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(
-      paths: ast2500_management_acquisition_paths,
+    && list_contains_path(
+      paths: extdeps.bmc.aspeed_ast2500.ast2500_management_acquisition_paths,
       wanted: extdeps.bmc.aspeed_ast2500.SgpioShiftRegisterTripInput { sgpio_input_port_count: 80 },
     )
-    && test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(
-      paths: ast2500_management_acquisition_paths,
+    && list_contains_path(
+      paths: extdeps.bmc.aspeed_ast2500.ast2500_management_acquisition_paths,
       wanted: extdeps.bmc.aspeed_ast2500.I2cSmbusSensorBus { controller_count: 14 },
     )
-    && test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(
-      paths: ast2500_management_acquisition_paths,
+    && list_contains_path(
+      paths: extdeps.bmc.aspeed_ast2500.ast2500_management_acquisition_paths,
       wanted: extdeps.bmc.aspeed_ast2500.AdcAnalogInput { channel_count: 16 },
     )
-    && test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(
-      paths: ast2500_management_acquisition_paths,
+    && list_contains_path(
+      paths: extdeps.bmc.aspeed_ast2500.ast2500_management_acquisition_paths,
       wanted: extdeps.bmc.aspeed_ast2500.PeciProcessorTelemetry { max_cpu_count: 8, max_domain_per_cpu: 2 },
     )
-    && test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(
-      paths: ast2500_management_acquisition_paths,
+    && list_contains_path(
+      paths: extdeps.bmc.aspeed_ast2500.ast2500_management_acquisition_paths,
       wanted: extdeps.bmc.aspeed_ast2500.FanTachPulseCounter { tach_input_count: 16 },
     )
 }
 
 // THE CATALOG CARRIES THE SAME PATH ROSTER AS THE CHIP AUTHORITY.
 test fn w_catalog_management_paths_match_the_authority_roster() -> Bool {
-  list_length(items: aspeed_ast2500_catalog.management_acquisition_paths) == 6
+  std.types.list_length(items: aspeed_ast2500_catalog.management_acquisition_paths) == 6
     && fold(aspeed_ast2500_catalog.management_acquisition_paths, init: true, f: fn(acc, p) {
-      acc && test.claim.aspeed_ast2500_management_paths_witness.list_contains_path(paths: ast2500_management_acquisition_paths, wanted: p)
+      acc && list_contains_path(paths: extdeps.bmc.aspeed_ast2500.ast2500_management_acquisition_paths, wanted: p)
     })
 }

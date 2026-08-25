@@ -5,22 +5,22 @@ module extdeps.filesystem.linux
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "docs.kernel.org/filesystems/overlayfs.html",
   },
 }
 
 data linux_rename_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
-    locator: "man7.org/linux/man-pages/man2/html",
+    scheme: extdeps.uri.Https,
+    locator: "man7.org/linux/man-pages/man2/rename.2.html",
   },
 }
 
 data linux_sync_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
-    locator: "man7.org/linux/man-pages/man2/html",
+    scheme: extdeps.uri.Https,
+    locator: "man7.org/linux/man-pages/man2/sync.2.html",
   },
 }
 
@@ -152,7 +152,7 @@ fn linux_proc_mount_unescape(field: String) -> String {
 // through `parse_int` returning Absent -- so absence routes into a refusal that already exists
 // instead of minting a second one beside it. It is unreachable in any case: the caller has already
 // refused a row whose field count is not six.
-fn linux_proc_mount_field(fields: List<NonEmptyStr>, index: Int) -> String {
+fn linux_proc_mount_field(fields: List<std.types.NonEmptyStr>, index: Int) -> String {
   match fields.skip(n: index).first() {
     Present { value: field } => field as String
     Absent => ""
@@ -504,4 +504,4 @@ fn linux_overlay_observation_is_flash_backed(
 
 data linux_file_publication_semantics_note: String = "Literal mechanism facts precede any durability judgment. Linux rename replacement is atomic when replacing an existing pathname on the same filesystem; Linux sync writes pending filesystem metadata and cached file data to the underlying filesystems and waits for I/O completion. OverlayFS names the writable upper directory separately from the lower directory. Synchronized durability commit is admitted only through the LinuxSynchronizedRenameReplacePublication unit variant; partial protocol records remain explicitly unsynchronized. This module records those operations and observed mount relationships; it does not itself claim survival across a lifecycle boundary."
 
-data linux_proc_mounts_parser_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: a cited proc_mounts grammar row set lands in the shared grammar substrate with forward ingest and escape decoding. linux_proc_mount_row_from_line then becomes that grammar forward fold, and the same rows own any later serialization; until then this parser is the declared six-field Linux wire scaffold, fail-closed through LinuxProcMountLineRefusal rather than a second typed represent")
+data linux_proc_mounts_parser_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: a cited proc_mounts grammar row set lands in the shared grammar substrate with forward ingest and escape decoding. linux_proc_mount_row_from_line then becomes that grammar forward fold, and the same rows own any later serialization; until then this parser is the declared six-field Linux wire scaffold, fail-closed through LinuxProcMountLineRefusal rather than a second typed represent")

@@ -3,28 +3,28 @@ module test.claim.scaffold_disposition_census_fixture_witness_test
 
 data scaffold_disposition_census_fixture_witness_note: String = "Fixture-and-oracle witness for the exact scaffold disposition census (adhoc-220d7fd9-374, dashboard node). Proves only what is decidable TODAY, without the blocked exact constructor/variant-value identity prerequisite (owned elsewhere): the fixture pool and its independently authored oracle agree by identity join in both directions (not count equality alone, per DESIGN 'completeness is an identity join'), the oracle is duplicate-free and exhausts all four states with Terminal kept distinct from ScaffoldDecodeRefused, kind-based exclusion of fn declarations is real, and the two identity-adversarial controls (ambiguous / missing subject identity) genuinely exhibit the property they claim. It does NOT assert that a census classifies each specimen into its expected state -- that consumer does not exist yet; this witness proves the fixtures and oracle it will consume are well-formed and non-vacuous, so the oracle counts are a true oracle rather than a measurement copied from the tree."
 
-data scaffold_disposition_census_pool_facts: List<v2.std.decl_index.DeclFact> = decl_facts(pool_roots: scaffold_disposition_census_fixture_pool_roots)
+data scaffold_disposition_census_pool_facts: List<v2.std.decl_index.DeclFact> = v2.std.decl_index.decl_facts(pool_roots: test.fixture.scaffold_disposition_census.expected_classification.scaffold_disposition_census_fixture_pool_roots)
 
 fn is_data_item(fact: v2.std.decl_index.DeclFact) -> Bool {
   match fact.kind {
-    DataItem => true
+    v2.std.decl_index.DataItem => true
     _ => false
   }
 }
 
 fn is_fn_item(fact: v2.std.decl_index.DeclFact) -> Bool {
   match fact.kind {
-    FnItem => true
+    v2.std.decl_index.FnItem => true
     _ => false
   }
 }
 
 fn qualified_names_of(facts: List<v2.std.decl_index.DeclFact>) -> List<String> {
-  v2.std.algebra.list_map(xs: facts, f: fn(f) { f.qualified_name })
+  list_map(xs: facts, f: fn(f) { f.qualified_name })
 }
 
 fn qualified_names_of_rows(rows: List<test.fixture.scaffold_disposition_census.expected_classification.ExpectedScaffoldCensusRow>) -> List<String> {
-  v2.std.algebra.list_map(xs: rows, f: fn(r) { r.qualified_name })
+  list_map(xs: rows, f: fn(r) { r.qualified_name })
 }
 
 fn str_eq(a: String, b: String) -> Bool {
@@ -35,27 +35,27 @@ data scaffold_disposition_census_pool_data_facts: List<v2.std.decl_index.DeclFac
 
 data scaffold_disposition_census_pool_data_qualified_names: List<String> = qualified_names_of(facts: scaffold_disposition_census_pool_data_facts)
 
-data scaffold_disposition_census_oracle_qualified_names: List<String> = qualified_names_of_rows(rows: scaffold_disposition_census_expected_rows)
+data scaffold_disposition_census_oracle_qualified_names: List<String> = qualified_names_of_rows(rows: test.fixture.scaffold_disposition_census.expected_classification.scaffold_disposition_census_expected_rows)
 
 test fn scaffold_disposition_census_fixture_pool_is_nonempty() -> Bool {
   length(xs: scaffold_disposition_census_pool_facts) > 0
 }
 
 test fn scaffold_disposition_census_oracle_qualified_names_are_unique() -> Bool {
-  v2.std.algebra.unique(xs: scaffold_disposition_census_oracle_qualified_names, eq: test.claim.scaffold_disposition_census_fixture_witness_test.str_eq)
+  unique(xs: scaffold_disposition_census_oracle_qualified_names, eq: str_eq)
 }
 
 test fn scaffold_disposition_census_oracle_covers_every_real_data_declaration() -> Bool {
-  v2.std.algebra.for_all(
+  for_all(
     xs: scaffold_disposition_census_pool_data_qualified_names,
-    predicate: fn(qn) { contains(xs: scaffold_disposition_census_oracle_qualified_names, item: qn, eq: test.claim.scaffold_disposition_census_fixture_witness_test.str_eq) }
+    predicate: fn(qn) { contains(xs: scaffold_disposition_census_oracle_qualified_names, item: qn, eq: str_eq) }
   )
 }
 
 test fn scaffold_disposition_census_oracle_names_no_extra_declarations() -> Bool {
-  v2.std.algebra.for_all(
+  for_all(
     xs: scaffold_disposition_census_oracle_qualified_names,
-    predicate: fn(qn) { contains(xs: scaffold_disposition_census_pool_data_qualified_names, item: qn, eq: test.claim.scaffold_disposition_census_fixture_witness_test.str_eq) }
+    predicate: fn(qn) { contains(xs: scaffold_disposition_census_pool_data_qualified_names, item: qn, eq: str_eq) }
   )
 }
 
@@ -66,58 +66,58 @@ data scaffold_disposition_census_deliberately_incomplete_oracle_names: List<Stri
 ]
 
 test fn scaffold_disposition_census_identity_join_discriminates_incomplete_oracle_red() -> Bool {
-  !v2.std.algebra.for_all(
+  !for_all(
     xs: scaffold_disposition_census_pool_data_qualified_names,
-    predicate: fn(qn) { contains(xs: scaffold_disposition_census_deliberately_incomplete_oracle_names, item: qn, eq: test.claim.scaffold_disposition_census_fixture_witness_test.str_eq) }
+    predicate: fn(qn) { contains(xs: scaffold_disposition_census_deliberately_incomplete_oracle_names, item: qn, eq: str_eq) }
   )
 }
 
 test fn scaffold_disposition_census_oracle_exhausts_all_four_states() -> Bool {
-  any(xs: scaffold_disposition_census_expected_rows, predicate: fn(r) {
+  any(xs: test.fixture.scaffold_disposition_census.expected_classification.scaffold_disposition_census_expected_rows, predicate: fn(r) {
     match r.expected_state {
-      NonDisposition => true
+      test.fixture.scaffold_disposition_census.expected_classification.NonDisposition => true
       _ => false
     }
   })
-    && any(xs: scaffold_disposition_census_expected_rows, predicate: fn(r) {
+    && any(xs: test.fixture.scaffold_disposition_census.expected_classification.scaffold_disposition_census_expected_rows, predicate: fn(r) {
       match r.expected_state {
-        Terminal => true
+        test.fixture.scaffold_disposition_census.expected_classification.Terminal => true
         _ => false
       }
     })
-    && any(xs: scaffold_disposition_census_expected_rows, predicate: fn(r) {
+    && any(xs: test.fixture.scaffold_disposition_census.expected_classification.scaffold_disposition_census_expected_rows, predicate: fn(r) {
       match r.expected_state {
-        ScaffoldDecoded => true
+        test.fixture.scaffold_disposition_census.expected_classification.ScaffoldDecoded => true
         _ => false
       }
     })
-    && any(xs: scaffold_disposition_census_expected_rows, predicate: fn(r) {
+    && any(xs: test.fixture.scaffold_disposition_census.expected_classification.scaffold_disposition_census_expected_rows, predicate: fn(r) {
       match r.expected_state {
-        ScaffoldDecodeRefused => true
+        test.fixture.scaffold_disposition_census.expected_classification.ScaffoldDecodeRefused => true
         _ => false
       }
     })
 }
 
 test fn scaffold_disposition_census_terminal_rows_are_distinct_from_refused_rows() -> Bool {
-  v2.std.algebra.count_where(xs: scaffold_disposition_census_expected_rows, predicate: fn(r) {
+  count_where(xs: test.fixture.scaffold_disposition_census.expected_classification.scaffold_disposition_census_expected_rows, predicate: fn(r) {
     match r.expected_state {
-      Terminal => true
+      test.fixture.scaffold_disposition_census.expected_classification.Terminal => true
       _ => false
     }
   }) == 2
-    && v2.std.algebra.count_where(xs: scaffold_disposition_census_expected_rows, predicate: fn(r) {
+    && count_where(xs: test.fixture.scaffold_disposition_census.expected_classification.scaffold_disposition_census_expected_rows, predicate: fn(r) {
       match r.expected_state {
-        ScaffoldDecodeRefused => true
+        test.fixture.scaffold_disposition_census.expected_classification.ScaffoldDecodeRefused => true
         _ => false
       }
     }) == 3
 }
 
 test fn scaffold_disposition_census_scaffold_decoded_covers_full_axis_cross() -> Bool {
-  v2.std.algebra.count_where(xs: scaffold_disposition_census_expected_rows, predicate: fn(r) {
+  count_where(xs: test.fixture.scaffold_disposition_census.expected_classification.scaffold_disposition_census_expected_rows, predicate: fn(r) {
     match r.expected_state {
-      ScaffoldDecoded => true
+      test.fixture.scaffold_disposition_census.expected_classification.ScaffoldDecoded => true
       _ => false
     }
   }) == 7
@@ -132,24 +132,24 @@ test fn scaffold_disposition_census_fn_kind_declarations_are_excluded_from_data_
 }
 
 test fn scaffold_disposition_census_planted_ambiguous_control_has_exactly_two_matches() -> Bool {
-  length(xs: v2.std.decl_facts_skeleton.decl_facts_matching_qualified_name(qn: scaffold_census_planted_ambiguous_qualified_name, facts: scaffold_census_planted_ambiguous_control_facts)) == 2
+  length(xs: v2.std.decl_facts_skeleton.decl_facts_matching_qualified_name(qn: test.fixture.scaffold_disposition_census.expected_classification.scaffold_census_planted_ambiguous_qualified_name, facts: test.fixture.scaffold_disposition_census.expected_classification.scaffold_census_planted_ambiguous_control_facts)) == 2
 }
 
 test fn scaffold_disposition_census_planted_missing_control_has_zero_matches_in_real_pool() -> Bool {
-  length(xs: v2.std.decl_facts_skeleton.decl_facts_matching_qualified_name(qn: scaffold_census_planted_missing_qualified_name, facts: scaffold_disposition_census_pool_data_facts)) == 0
+  length(xs: v2.std.decl_facts_skeleton.decl_facts_matching_qualified_name(qn: test.fixture.scaffold_disposition_census.expected_classification.scaffold_census_planted_missing_qualified_name, facts: scaffold_disposition_census_pool_data_facts)) == 0
 }
 
 test fn scaffold_disposition_census_planted_missing_is_distinct_from_planted_ambiguous() -> Bool {
-  !(scaffold_census_planted_missing_qualified_name == scaffold_census_planted_ambiguous_qualified_name)
+  !(test.fixture.scaffold_disposition_census.expected_classification.scaffold_census_planted_missing_qualified_name == test.fixture.scaffold_disposition_census.expected_classification.scaffold_census_planted_ambiguous_qualified_name)
 }
 
 test fn scaffold_disposition_census_identity_adversarial_controls_both_expect_refusal() -> Bool {
-  length(xs: scaffold_census_identity_adversarial_controls) == 2
-    && v2.std.algebra.for_all(
-      xs: scaffold_census_identity_adversarial_controls,
+  length(xs: test.fixture.scaffold_disposition_census.expected_classification.scaffold_census_identity_adversarial_controls) == 2
+    && for_all(
+      xs: test.fixture.scaffold_disposition_census.expected_classification.scaffold_census_identity_adversarial_controls,
       predicate: fn(r) {
         match r.expected_state {
-          ScaffoldDecodeRefused => true
+          test.fixture.scaffold_disposition_census.expected_classification.ScaffoldDecodeRefused => true
           _ => false
         }
       }

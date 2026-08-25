@@ -15,9 +15,9 @@ module test.claim.quarantine_probe_disposition_witness_test
 // still executes: the floor's own decline scan (`witness_file_from_source`) fires only on an
 // explicit ReadsLiveTree declaration, while affected-set selection treats undeclared as
 // live-reading and fail-closed. Both consumers get a true answer from the same silence.
-data quarantine_probe_disposition_witness_note: v2.std.text.String = "Live claim plus controls for the total quarantine-probe disposition join. THE LIVE CLAIM IS DELIBERATELY NOT WHERE THE DISCRIMINATION LIVES: it is a universal over the live admission rows, so it stays meaningful at any population size including zero, and it would pass vacuously on an empty roster. The discrimination is carried by the synthetic controls below, which are authored here and cannot lose their subject when a live quarantine dissolves -- each of the five holder arms is shown to derive HeldByExactlyOne on its own, held-by-nothing is shown to derive the alarm, and held-by-two is shown to refuse. The controls therefore prove the fold DISCRIMINATES rather than merely agreeing with today's tree."
+data quarantine_probe_disposition_witness_note: String = "Live claim plus controls for the total quarantine-probe disposition join. THE LIVE CLAIM IS DELIBERATELY NOT WHERE THE DISCRIMINATION LIVES: it is a universal over the live admission rows, so it stays meaningful at any population size including zero, and it would pass vacuously on an empty roster. The discrimination is carried by the synthetic controls below, which are authored here and cannot lose their subject when a live quarantine dissolves -- each of the five holder arms is shown to derive HeldByExactlyOne on its own, held-by-nothing is shown to derive the alarm, and held-by-two is shown to refuse. The controls therefore prove the fold DISCRIMINATES rather than merely agreeing with today's tree."
 
-fn witness_pool_roots() -> List<v2.std.text.String> {
+fn witness_pool_roots() -> List<String> {
   ["dag", "src/v2"]
 }
 
@@ -28,7 +28,7 @@ fn witness_pool_roots() -> List<v2.std.text.String> {
 // dropping a segment and a suffix, and dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag
 // declares test.claim.self_host_03_normalize_behavioral_witness. Deriving the identity from the
 // path would silently miss the roster this fold joins against, and a miss reads as an alarm.
-fn module_for_entry(facts: List<v2.lens.module_graph.ModuleDeclarationFact>, entry: v2.std.text.String) -> v2.std.text.String {
+fn module_for_entry(facts: List<v2.lens.module_graph.ModuleDeclarationFact>, entry: String) -> String {
   v2.std.algebra.fold_list(
     xs: facts,
     empty: "",
@@ -59,12 +59,12 @@ fn module_for_entry(facts: List<v2.lens.module_graph.ModuleDeclarationFact>, ent
 // reads, so it tracks the arm that actually fires; when the floor's copy is deleted (its own
 // deletion trigger, staged in v2.workflow.required_floor), this derivation and the arm it feeds
 // dissolve together with it.
-fn entry_declares_reads_live_tree(entry: v2.std.text.String) -> v2.std.logic.Bool {
+fn entry_declares_reads_live_tree(entry: String) -> Bool {
   let source = filesystem_read(path: entry).content
   source.contains("LiveTreeDisposition") && source.contains("ReadsLiveTree")
 }
 
-fn live_tree_declined_entries(rows: List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission>) -> List<v2.std.text.String> {
+fn live_tree_declined_entries(rows: List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission>) -> List<String> {
   v2.std.algebra.fold_list(
     xs: rows,
     empty: v2.std.algebra.Empty {},
@@ -119,7 +119,7 @@ fn live_quarantine_probe_facts() -> gunbc.quarantine_probe_disposition.Quarantin
 // and so cannot be evaluated from inside it. Mirroring the literal here would be a second
 // representation that drifts silently. Unmeasured and zero are different states, and this guard
 // exists to refuse exactly that conflation, so it does not commit it in its own witness.
-test fn every_quarantine_probe_derives_exactly_one_disposition() -> v2.std.logic.Bool {
+test fn every_quarantine_probe_derives_exactly_one_disposition() -> Bool {
   gunbc.quarantine_probe_disposition.quarantine_probe_dispositions_all_hold(
     subjects: live_quarantine_probe_subjects(),
     facts: live_quarantine_probe_facts()
@@ -134,7 +134,7 @@ test fn every_quarantine_probe_derives_exactly_one_disposition() -> v2.std.logic
 // home prefixes 7, the live-tree entries 1. The path-exclusion axis is not mutated here because
 // it holds nothing live to lose; its derivation is exercised by the fixture control above, which
 // is the honest split between an arm with no inhabitants and an arm with no test.
-test fn every_supplied_population_is_load_bearing_on_the_live_claim() -> v2.std.logic.Bool {
+test fn every_supplied_population_is_load_bearing_on_the_live_claim() -> Bool {
   let subjects = live_quarantine_probe_subjects()
   !gunbc.quarantine_probe_disposition.quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_expected_red())
     && !gunbc.quarantine_probe_disposition.quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_route_gap())
@@ -143,7 +143,7 @@ test fn every_supplied_population_is_load_bearing_on_the_live_claim() -> v2.std.
     && gunbc.quarantine_probe_disposition.quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_quarantine_probe_facts())
 }
 
-fn probe_no_strings() -> List<v2.std.text.String> {
+fn probe_no_strings() -> List<String> {
   v2.std.algebra.Empty {}
 }
 
@@ -191,9 +191,9 @@ fn live_facts_without_live_tree() -> gunbc.quarantine_probe_disposition.Quaranti
   }
 }
 
-data probe_fixture_module: v2.std.text.String = "test.claim.synthetic_quarantine_probe_witness"
-data probe_fixture_entry: v2.std.text.String = "dag/test/claim/synthetic_quarantine_probe_witness_test.dag"
-data probe_fixture_function: v2.std.text.String = "synthetic_probe_holds"
+data probe_fixture_module: String = "test.claim.synthetic_quarantine_probe_witness"
+data probe_fixture_entry: String = "dag/test/claim/synthetic_quarantine_probe_witness_test.dag"
+data probe_fixture_function: String = "synthetic_probe_holds"
 
 fn probe_fixture_subject() -> gunbc.quarantine_probe_disposition.QuarantineProbeSubject {
   gunbc.quarantine_probe_disposition.QuarantineProbeSubject {
@@ -203,7 +203,7 @@ fn probe_fixture_subject() -> gunbc.quarantine_probe_disposition.QuarantineProbe
   }
 }
 
-fn probe_fixture_identity() -> v2.std.text.String {
+fn probe_fixture_identity() -> String {
   gunbc.quarantine_probe_disposition.quarantine_probe_identity(module: probe_fixture_module, function: probe_fixture_function)
 }
 
@@ -277,7 +277,7 @@ fn facts_with_two_holders() -> gunbc.quarantine_probe_disposition.QuarantineProb
   }
 }
 
-fn disposition_is_held_by(disposition: gunbc.quarantine_probe_disposition.QuarantineProbeDisposition, expected: gunbc.quarantine_probe_disposition.QuarantineProbeHolder) -> v2.std.logic.Bool {
+fn disposition_is_held_by(disposition: gunbc.quarantine_probe_disposition.QuarantineProbeDisposition, expected: gunbc.quarantine_probe_disposition.QuarantineProbeHolder) -> Bool {
   match disposition {
     gunbc.quarantine_probe_disposition.HeldByExactlyOne { identity: i, holder: h } => quarantine_probe_holder_eq(a: h, b: expected)
     gunbc.quarantine_probe_disposition.QuarantineProbeNowPassing { identity: i, entry: e, function: f } => false
@@ -285,7 +285,7 @@ fn disposition_is_held_by(disposition: gunbc.quarantine_probe_disposition.Quaran
   }
 }
 
-fn quarantine_probe_holder_eq(a: gunbc.quarantine_probe_disposition.QuarantineProbeHolder, b: gunbc.quarantine_probe_disposition.QuarantineProbeHolder) -> v2.std.logic.Bool {
+fn quarantine_probe_holder_eq(a: gunbc.quarantine_probe_disposition.QuarantineProbeHolder, b: gunbc.quarantine_probe_disposition.QuarantineProbeHolder) -> Bool {
   match a {
     gunbc.quarantine_probe_disposition.FloorExpectedRedHeld => match b {
       gunbc.quarantine_probe_disposition.FloorExpectedRedHeld => true
@@ -310,7 +310,7 @@ fn quarantine_probe_holder_eq(a: gunbc.quarantine_probe_disposition.QuarantinePr
   }
 }
 
-fn disposition_is_now_passing(disposition: gunbc.quarantine_probe_disposition.QuarantineProbeDisposition) -> v2.std.logic.Bool {
+fn disposition_is_now_passing(disposition: gunbc.quarantine_probe_disposition.QuarantineProbeDisposition) -> Bool {
   match disposition {
     gunbc.quarantine_probe_disposition.HeldByExactlyOne { identity: i, holder: h } => false
     gunbc.quarantine_probe_disposition.QuarantineProbeNowPassing { identity: i, entry: e, function: f } => i == probe_fixture_identity()
@@ -318,7 +318,7 @@ fn disposition_is_now_passing(disposition: gunbc.quarantine_probe_disposition.Qu
   }
 }
 
-fn disposition_is_held_by_more_than_one(disposition: gunbc.quarantine_probe_disposition.QuarantineProbeDisposition) -> v2.std.logic.Bool {
+fn disposition_is_held_by_more_than_one(disposition: gunbc.quarantine_probe_disposition.QuarantineProbeDisposition) -> Bool {
   match disposition {
     gunbc.quarantine_probe_disposition.HeldByExactlyOne { identity: i, holder: h } => false
     gunbc.quarantine_probe_disposition.QuarantineProbeNowPassing { identity: i, entry: e, function: f } => false
@@ -330,11 +330,11 @@ fn fixture_disposition(facts: gunbc.quarantine_probe_disposition.QuarantineProbe
   gunbc.quarantine_probe_disposition.quarantine_probe_disposition(subject: probe_fixture_subject(), facts: facts)
 }
 
-// THE POSITIVE CONTROL, ONE ARM AT A TIME. Each holder in isolation derives gunbc.quarantine_probe_disposition.HeldByExactlyOne and
-// carries the holder it found -- including gunbc.quarantine_probe_disposition.NeverRunPathExcluded, whose derivation is exercised here even
-// though no live row inhabits it, and gunbc.quarantine_probe_disposition.NeverRunDeclinedByLiveTreeRead. An arm with no live inhabitant is
+// THE POSITIVE CONTROL, ONE ARM AT A TIME. Each holder in isolation derives HeldByExactlyOne and
+// carries the holder it found -- including NeverRunPathExcluded, whose derivation is exercised here even
+// though no live row inhabits it, and NeverRunDeclinedByLiveTreeRead. An arm with no live inhabitant is
 // not an unexercised arm.
-test fn each_holder_alone_derives_exactly_one_disposition() -> v2.std.logic.Bool {
+test fn each_holder_alone_derives_exactly_one_disposition() -> Bool {
   disposition_is_held_by(disposition: fixture_disposition(facts: facts_with_expected_red()), expected: gunbc.quarantine_probe_disposition.FloorExpectedRedHeld {})
     && disposition_is_held_by(disposition: fixture_disposition(facts: facts_with_route_gap()), expected: gunbc.quarantine_probe_disposition.RouteGapHeldNoVerdict {})
     && disposition_is_held_by(
@@ -355,7 +355,7 @@ test fn each_holder_alone_derives_exactly_one_disposition() -> v2.std.logic.Bool
 // derives the ALARM and does NOT hold. There is no accepting arm for this state anywhere in the
 // model, so a corpus in this condition cannot be made green by classification -- only by
 // deleting the admission row or by giving it a mechanism that really holds it.
-test fn a_probe_held_by_nothing_is_an_alarm_and_does_not_hold() -> v2.std.logic.Bool {
+test fn a_probe_held_by_nothing_is_an_alarm_and_does_not_hold() -> Bool {
   disposition_is_now_passing(disposition: fixture_disposition(facts: probe_fixture_no_facts()))
     && !gunbc.quarantine_probe_disposition.quarantine_probe_disposition_holds(disposition: fixture_disposition(facts: probe_fixture_no_facts()))
     && !gunbc.quarantine_probe_disposition.quarantine_probe_dispositions_all_hold(
@@ -368,7 +368,7 @@ test fn a_probe_held_by_nothing_is_an_alarm_and_does_not_hold() -> v2.std.logic.
 // than a false positive: two authorities for one fact means someone has to decide which one
 // actually holds it. No live row exercises this today, so the control is what keeps the arm
 // real.
-test fn a_probe_held_by_two_mechanisms_refuses() -> v2.std.logic.Bool {
+test fn a_probe_held_by_two_mechanisms_refuses() -> Bool {
   disposition_is_held_by_more_than_one(disposition: fixture_disposition(facts: facts_with_two_holders()))
     && !gunbc.quarantine_probe_disposition.quarantine_probe_disposition_holds(disposition: fixture_disposition(facts: facts_with_two_holders()))
 }
@@ -376,7 +376,7 @@ test fn a_probe_held_by_two_mechanisms_refuses() -> v2.std.logic.Bool {
 // THE JOIN IS ON EXACT IDENTITY, NOT CONTAINMENT. A roster row whose name merely CONTAINS the
 // probe's identity does not hold it. Without this, a rename or a near-miss would read as
 // covered, which is the substring weakness the exact-admission authority was built to remove.
-test fn a_roster_row_that_merely_contains_the_identity_does_not_hold_it() -> v2.std.logic.Bool {
+test fn a_roster_row_that_merely_contains_the_identity_does_not_hold_it() -> Bool {
   let near_miss = gunbc.quarantine_probe_disposition.QuarantineProbeHoldingFacts {
     expected_red_roster: std.algebra.Cons { head: concat(probe_fixture_identity(), "_extra"), tail: v2.std.algebra.Empty {} },
     route_gap_roster: v2.std.algebra.Empty {},
@@ -389,7 +389,7 @@ test fn a_roster_row_that_merely_contains_the_identity_does_not_hold_it() -> v2.
 }
 
 // THE ANCHORED AGREEMENT POINT WITH THE PRODUCER. legacy_test_behavior_unclassified_frontier_is_zero
-// is the one live row this witness classifies gunbc.quarantine_probe_disposition.NeverRunDeclinedByLiveTreeRead, and the floor
+// is the one live row this witness classifies NeverRunDeclinedByLiveTreeRead, and the floor
 // really does decline it: main run 32553487573 (sha 967b5bc1b92) reports
 // `offered=11812 routed=10439 declined_long=543 declined_live=830`, and 10439 + 543 + 830 =
 // 11812 exactly, so the three arms partition the offered sites and the declined population is
@@ -398,7 +398,7 @@ test fn a_roster_row_that_merely_contains_the_identity_does_not_hold_it() -> v2.
 // destructive one. This test asserts the classification half, which is the half this fold owns;
 // the run receipt above is the producer half and is prose because no .dag consumer can read a
 // workflow log.
-test fn the_live_tree_declined_row_is_the_one_the_floor_declines() -> v2.std.logic.Bool {
+test fn the_live_tree_declined_row_is_the_one_the_floor_declines() -> Bool {
   let facts = live_quarantine_probe_facts()
   let subject = gunbc.quarantine_probe_disposition.QuarantineProbeSubject {
     module: "test.claim.legacy_test_behavior_disposition_acceptance_test",
@@ -417,7 +417,7 @@ test fn the_live_tree_declined_row_is_the_one_the_floor_declines() -> v2.std.log
 // everything: the entry that declares ReadsLiveTree reads true, and a sibling admission entry
 // that does not declare it reads false. Both are live files, so this control also fails if the
 // read itself stops working.
-test fn the_live_tree_declaration_read_discriminates() -> v2.std.logic.Bool {
+test fn the_live_tree_declaration_read_discriminates() -> Bool {
   entry_declares_reads_live_tree(entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag")
     && !entry_declares_reads_live_tree(entry: "dag/test/claim/method_arg_declared_contract_witness_test.dag")
 }

@@ -4,21 +4,21 @@ module extdeps.bmc.serial_console
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/openbmc/obmc-console"
   }
 }
 
 data redfish_serial_interface_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "redfish.dmtf.org/schemas/v1/SerialInterface.json"
   }
 }
 
 data ipmi_sol_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.intel.com/content/dam/www/public/us/en/documents/product-briefs/ipmi-second-gen-interface-spec-v2-rev1-1.pdf"
   }
 }
@@ -58,18 +58,18 @@ fn sol_console_transport_wire(transport: SolConsoleTransport) -> std.types.NonEm
 
 fn sol_console_transport_authority_for(transport: SolConsoleTransport) -> extdeps.external_authority.ExternalAuthority {
   match transport {
-    ObmcConsoleCli => extdeps.bmc.serial_console.extdeps_external_authority_anchor
+    ObmcConsoleCli => extdeps_external_authority_anchor
     RedfishSerialInterface => redfish_serial_interface_authority
     IpmiSol => ipmi_sol_authority
   }
 }
 
 data sol_console_capture_bash_emit_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.bmc.serial_console",
     decl_name: "sol_console_capture_script",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -91,8 +91,8 @@ type SolConsoleSendIntent {
 // The retirement is now the trigger rather than a sentence about one: the named
 // declaration exists today, so `dissolution_status` reports this obligation PENDING
 // against the live declaration population and FIRED the moment the script is deleted.
-data sol_console_send_bash_emit_dissolution_trigger: DissolutionCondition = retires_dissolution(
-  ref: decl_ref(module_path: "extdeps.bmc.serial_console", decl_name: "sol_console_send_script")
+data sol_console_send_bash_emit_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.retires_dissolution(
+  ref: std.decl_ref.decl_ref(module_path: "extdeps.bmc.serial_console", decl_name: "sol_console_send_script")
 )
 
 fn sol_console_send_script(intent: SolConsoleSendIntent) -> String {

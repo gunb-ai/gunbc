@@ -9,8 +9,8 @@ fn schedule_witness_entry_cited(
   probe_entry: String,
   probe_function: String,
   entries: List<std.realization_schedule.ScheduleWitnessEntry>
-) -> v2.std.logic.Bool {
-  any(
+) -> Bool {
+  v2.std.algebra.any(
     xs: entries,
     predicate: fn(entry) {
       (entry.entry == probe_entry) && (entry.function == probe_function)
@@ -21,15 +21,15 @@ fn schedule_witness_entry_cited(
 fn schedule_witness_entries_structurally_equal(
   left: List<std.realization_schedule.ScheduleWitnessEntry>,
   right: List<std.realization_schedule.ScheduleWitnessEntry>
-) -> v2.std.logic.Bool {
-  if length(xs: left) != length(xs: right) {
+) -> Bool {
+  if v2.std.algebra.length(xs: left) != v2.std.algebra.length(xs: right) {
     false
   } else {
-    fold_list(
+    v2.std.algebra.fold_list(
       left,
       empty: true,
       cons: fn(ok, left_entry) {
-        ok && any(
+        ok && v2.std.algebra.any(
           xs: right,
           predicate: fn(right_entry) {
             std.realization_schedule.schedule_witness_entry_eq(a: left_entry, b: right_entry)

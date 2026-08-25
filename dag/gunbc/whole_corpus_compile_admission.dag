@@ -1,5 +1,6 @@
 module gunbc.whole_corpus_compile_admission
 
+
 data whole_corpus_compile_admission_authority_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Single authority for the arm-time admission of a WHOLE-CORPUS compile against the host memory budget gunbc.host_budget_source already models. The budget half and the source half were both modeled; the JOIN between them and the decision to start the run was not, which is the defect this module closes. Its sibling for the floor walk is gunbc.runner_slot_allocation gunbc_floor_minimum_viable_armed_budget, enforced by claim_executor at arm time as a fail-fast refusal on a provably doomed walk; nothing played that role for the compile instrument, and this module is that role, derived the same way from a measured demand figure."
 }
@@ -50,8 +51,8 @@ fn whole_corpus_compile_admission_at_budget(
 
 fn whole_corpus_compile_admission(budget: gunbc.host_budget_source.HostBudgetResolution) -> WholeCorpusCompileAdmission {
   match budget {
-    HostBudgetUnreadable { reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
-    HostBudgetResolved { source: s, bytes: b } =>
+    gunbc.host_budget_source.HostBudgetUnreadable { reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
+    gunbc.host_budget_source.HostBudgetResolved { source: s, bytes: b } =>
       whole_corpus_compile_admission_at_budget(bytes: b, source: s)
   }
 }

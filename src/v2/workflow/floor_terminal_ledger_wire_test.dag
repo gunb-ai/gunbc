@@ -1,41 +1,42 @@
 module v2.workflow.floor_terminal_ledger_wire_test
 
+
 // THE FIXTURE'S SNAPSHOT IS BUILT THROUGH THE PRODUCTION ADMISSION, so a bad hex here degrades to
 // `UnpublishedWorkingTree` -- and `an_unpublished_run_is_a_shape_and_an_unrecognized_snapshot_refuses`
 // asserts this binding IS candidate-bound, so the degradation fails a test instead of passing
 // silently. The alternative spelling, `git_object_id_from_untagged_hex(...) as GitObjectId` on the
 // absent arm, type-checks and RENDERS THE OPTIONAL WRAPPER -- the same trap this module refuses in
 // its parser, and it would have sat here unreachable until the day it was reached.
-fn fixture_snapshot(hex: String) -> RepositorySnapshot {
-  match admit_repository_snapshot_wire(wire: hex) {
-    SnapshotAdmitted { snapshot: s } => s
-    SnapshotWireUnrecognized { offending: _ } => UnpublishedWorkingTree
+fn fixture_snapshot(hex: String) -> v2.workflow.floor_terminal_ledger.RepositorySnapshot {
+  match v2.workflow.floor_terminal_ledger_wire.admit_repository_snapshot_wire(wire: hex) {
+    v2.workflow.floor_terminal_ledger_wire.SnapshotAdmitted { snapshot: s } => s
+    v2.workflow.floor_terminal_ledger_wire.SnapshotWireUnrecognized { offending: _ } => v2.workflow.floor_terminal_ledger.UnpublishedWorkingTree
   }
 }
 
-fn ident(f: String) -> WitnessIdentity {
-  WitnessIdentity { module_path: "test.claim.example", function: f }
+fn ident(f: String) -> v2.workflow.floor2_prepared_subject.WitnessIdentity {
+  v2.workflow.floor2_prepared_subject.WitnessIdentity { module_path: "test.claim.example", function: f }
 }
 
-fn binding() -> LedgerBinding {
-  LedgerBinding {
+fn binding() -> v2.workflow.floor_terminal_ledger.LedgerBinding {
+  v2.workflow.floor_terminal_ledger.LedgerBinding {
     repository_snapshot: fixture_snapshot(hex: "1234567890abcdef1234567890abcdef12345678"),
-    prepared_subject: structural_content_hash(digest: "0000000000000002")
+    prepared_subject: std.content_hash.structural_content_hash(digest: "0000000000000002")
   }
 }
 
-fn passing_row(f: String) -> ClaimTerminalRow {
-  ClaimTerminalRow {
+fn passing_row(f: String) -> v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
+  v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
     identity: ident(f: f),
-    expectation: ExpectedToHold,
-    terminal: Returned { observation: ObservedVerdict { holds: true } }
+    expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+    terminal: v2.workflow.floor_terminal_ledger.Returned { observation: v2.workflow.floor_terminal_ledger.ObservedVerdict { holds: true } }
   }
 }
 
-fn rendered_text(rows: List<ClaimTerminalRow>) -> String {
-  match render_ledger(binding: binding(), rows: rows) {
-    LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => ""
-    LedgerRendered { text: t } => t
+fn rendered_text(rows: List<v2.workflow.floor_terminal_ledger.ClaimTerminalRow>) -> String {
+  match v2.workflow.floor_terminal_ledger_wire.render_ledger(binding: binding(), rows: rows) {
+    v2.workflow.floor_terminal_ledger_wire.LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => ""
+    v2.workflow.floor_terminal_ledger_wire.LedgerRendered { text: t } => t
   }
 }
 
@@ -47,93 +48,93 @@ fn rendered_text(rows: List<ClaimTerminalRow>) -> String {
 // that was wrong on both sides identically -- the failure a same-instrument comparison cannot
 // see. Each now carries its own tag and its own disposition, and that is the RED: collapse either
 // mapping back to one arm and the agreement assertion below fails.
-fn every_shape() -> List<ClaimTerminalRow> {
+fn every_shape() -> List<v2.workflow.floor_terminal_ledger.ClaimTerminalRow> {
   [
-    ClaimTerminalRow {
+    v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
       identity: ident(f: "pass"),
-      expectation: ExpectedToHold,
-      terminal: Returned { observation: ObservedVerdict { holds: true } }
+      expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+      terminal: v2.workflow.floor_terminal_ledger.Returned { observation: v2.workflow.floor_terminal_ledger.ObservedVerdict { holds: true } }
     },
-    ClaimTerminalRow {
+    v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
       identity: ident(f: "fail"),
-      expectation: ExpectedToHold,
-      terminal: Returned { observation: ObservedVerdict { holds: false } }
+      expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+      terminal: v2.workflow.floor_terminal_ledger.Returned { observation: v2.workflow.floor_terminal_ledger.ObservedVerdict { holds: false } }
     },
-    ClaimTerminalRow {
+    v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
       identity: ident(f: "known_red_held"),
-      expectation: ExpectedRed,
-      terminal: Returned { observation: ObservedVerdict { holds: false } }
+      expectation: v2.workflow.floor_terminal_ledger.ExpectedRed,
+      terminal: v2.workflow.floor_terminal_ledger.Returned { observation: v2.workflow.floor_terminal_ledger.ObservedVerdict { holds: false } }
     },
-    ClaimTerminalRow {
+    v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
       identity: ident(f: "known_red_now_passing"),
-      expectation: ExpectedRed,
-      terminal: Returned { observation: ObservedVerdict { holds: true } }
+      expectation: v2.workflow.floor_terminal_ledger.ExpectedRed,
+      terminal: v2.workflow.floor_terminal_ledger.Returned { observation: v2.workflow.floor_terminal_ledger.ObservedVerdict { holds: true } }
     },
-    ClaimTerminalRow {
+    v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
       identity: ident(f: "unreadable"),
-      expectation: ExpectedToHold,
-      terminal: Returned { observation: ObservationUnrepresentable { reason: "not-a-bool" } }
+      expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+      terminal: v2.workflow.floor_terminal_ledger.Returned { observation: v2.workflow.floor_terminal_ledger.ObservationUnrepresentable { reason: "not-a-bool" } }
     },
-    ClaimTerminalRow {
+    v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
       identity: ident(f: "runtime_errored"),
-      expectation: ExpectedToHold,
-      terminal: RuntimeErrored { message: "boom" }
+      expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+      terminal: v2.workflow.floor_terminal_ledger.RuntimeErrored { message: "boom" }
     },
-    ClaimTerminalRow {
+    v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
       identity: ident(f: "budget_refused"),
-      expectation: ExpectedToHold,
-      terminal: BudgetRefused {
-        safety: SafetyInterrupted {
+      expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+      terminal: v2.workflow.floor_terminal_ledger.BudgetRefused {
+        safety: v2.workflow.required_floor.SafetyInterrupted {
           raised_by: "wall",
           elapsed_cpu_at_least: 0,
           elapsed_wall_at_least: 0
         }
       }
     },
-    ClaimTerminalRow {
+    v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
       identity: ident(f: "passed_over_budget"),
-      expectation: ExpectedToHold,
-      terminal: BudgetRefused {
-        safety: CompletedPastSafetyLimit {
+      expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+      terminal: v2.workflow.floor_terminal_ledger.BudgetRefused {
+        safety: v2.workflow.required_floor.CompletedPastSafetyLimit {
           observed_cpu: 57193,
           observed_wall: 57337,
-          preemption: OpaqueHostCallUnbounded { operation: "compile_dag_rust_emit_check" }
+          preemption: v2.workflow.required_floor.OpaqueHostCallUnbounded { operation: "compile_dag_rust_emit_check" }
         }
       }
     },
-    ClaimTerminalRow {
+    v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
       identity: ident(f: "known_red_passed_over_budget"),
-      expectation: ExpectedRed,
-      terminal: BudgetRefused {
-        safety: CompletedPastSafetyLimit {
+      expectation: v2.workflow.floor_terminal_ledger.ExpectedRed,
+      terminal: v2.workflow.floor_terminal_ledger.BudgetRefused {
+        safety: v2.workflow.required_floor.CompletedPastSafetyLimit {
           observed_cpu: 57193,
           observed_wall: 57337,
-          preemption: OpaqueHostCallUnbounded { operation: "compile_dag_rust_emit_check" }
+          preemption: v2.workflow.required_floor.OpaqueHostCallUnbounded { operation: "compile_dag_rust_emit_check" }
         }
       }
     },
-    ClaimTerminalRow {
+    v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
       identity: ident(f: "budget_terminal_without_safety_cause"),
-      expectation: ExpectedToHold,
-      terminal: BudgetRefused { safety: CompletedWithinSafetyLimits }
+      expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+      terminal: v2.workflow.floor_terminal_ledger.BudgetRefused { safety: v2.workflow.required_floor.CompletedWithinSafetyLimits }
     },
-    ClaimTerminalRow {
+    v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
       identity: ident(f: "host_tool_unresolved"),
-      expectation: ExpectedToHold,
-      terminal: HostToolUnresolved { name: "rustfmt", probed: [] }
+      expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+      terminal: v2.workflow.floor_terminal_ledger.HostToolUnresolved { name: "rustfmt", probed: [] }
     },
-    ClaimTerminalRow {
+    v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
       identity: ident(f: "route_gap"),
-      expectation: ExpectedToHold,
-      terminal: RouteGap { route: "shell" }
+      expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+      terminal: v2.workflow.floor_terminal_ledger.RouteGap { route: "shell" }
     }
   ]
 }
 
-fn readback_rows_of(text: String) -> List<LedgerReadbackRow> {
-  match parse_ledger(text: text) {
-    LedgerUnreadable { reason: _, at: _ } => []
-    LedgerRead {
+fn readback_rows_of(text: String) -> List<v2.workflow.floor_terminal_ledger_wire.LedgerReadbackRow> {
+  match v2.workflow.floor_terminal_ledger_wire.parse_ledger(text: text) {
+    v2.workflow.floor_terminal_ledger_wire.LedgerUnreadable { reason: _, at: _ } => []
+    v2.workflow.floor_terminal_ledger_wire.LedgerRead {
       repository_snapshot: _,
       prepared_subject: _,
       roster_identity: _,
@@ -150,13 +151,13 @@ fn readback_rows_of(text: String) -> List<LedgerReadbackRow> {
 // structural check in the wire module and answer none of the obligation's question. So this
 // walks EVERY terminal shape through render -> parse -> disposition and requires agreement with
 // `claim_disposition` on the typed row it started from.
-fn disposition_survives(row: ClaimTerminalRow) -> Bool {
-  match parse_readback_row(line: render_row(row: row)) {
+fn disposition_survives(row: v2.workflow.floor_terminal_ledger.ClaimTerminalRow) -> Bool {
+  match v2.workflow.floor_terminal_ledger_wire.parse_readback_row(line: v2.workflow.floor_terminal_ledger_wire.render_row(row: row)) {
     Absent => false
     Present { value: parsed } =>
-      match readback_disposition(row: parsed) {
+      match v2.workflow.floor_terminal_ledger_wire.readback_disposition(row: parsed) {
         Absent => false
-        Present { value: d } => d == claim_disposition(row: row)
+        Present { value: d } => d == v2.workflow.floor_terminal_ledger.claim_disposition(row: row)
       }
   }
 }
@@ -175,8 +176,8 @@ test fn the_digest_catches_an_edited_row_while_the_count_stays_equal() -> Bool {
   let honest = rendered_text(rows: [passing_row(f: "a"), passing_row(f: "b")])
   let tampered = honest.replace(pattern: "example.b", replacement: "example.z")
   honest.split(delimiter: "\n").length() == tampered.split(delimiter: "\n").length()
-    && readback_digest_agrees(readback: parse_ledger(text: honest))
-    && !readback_digest_agrees(readback: parse_ledger(text: tampered))
+    && v2.workflow.floor_terminal_ledger_wire.readback_digest_agrees(readback: v2.workflow.floor_terminal_ledger_wire.parse_ledger(text: honest))
+    && !v2.workflow.floor_terminal_ledger_wire.readback_digest_agrees(readback: v2.workflow.floor_terminal_ledger_wire.parse_ledger(text: tampered))
 }
 
 // THE FOOTER IS COMPARED TO THE PLANNED POPULATION, NEVER TO THE ROWS THE READER PARSED.
@@ -185,21 +186,21 @@ test fn the_digest_catches_an_edited_row_while_the_count_stays_equal() -> Bool {
 test fn a_truncated_ledger_with_a_consistent_footer_still_fails_the_planned_count() -> Bool {
   let three = [passing_row(f: "a"), passing_row(f: "b"), passing_row(f: "c")]
   let short = rendered_text(rows: [passing_row(f: "a"), passing_row(f: "b")])
-  readback_footer_count_agrees(readback: parse_ledger(text: short), planned_rows: 2)
-    && !readback_footer_count_agrees(readback: parse_ledger(text: short), planned_rows: three.length())
+  v2.workflow.floor_terminal_ledger_wire.readback_footer_count_agrees(readback: v2.workflow.floor_terminal_ledger_wire.parse_ledger(text: short), planned_rows: 2)
+    && !v2.workflow.floor_terminal_ledger_wire.readback_footer_count_agrees(readback: v2.workflow.floor_terminal_ledger_wire.parse_ledger(text: short), planned_rows: three.length())
 }
 
 // A FIELD CARRYING THE SEPARATOR IS REFUSED, NOT SANITIZED. The neighbouring disposition writer
 // replaces tabs with spaces, which publishes a different fact than the one observed.
 test fn a_field_carrying_the_separator_makes_the_ledger_unrenderable() -> Bool {
-  let poisoned = ClaimTerminalRow {
+  let poisoned = v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
     identity: ident(f: "a"),
-    expectation: ExpectedToHold,
-    terminal: RouteGap { route: "shell\tinjected" }
+    expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+    terminal: v2.workflow.floor_terminal_ledger.RouteGap { route: "shell\tinjected" }
   }
-  match render_ledger(binding: binding(), rows: [poisoned]) {
-    LedgerRendered { text: _ } => false
-    LedgerUnrenderable { reason: r, offending: _, diagnosis: _ } => r == "field-carries-separator"
+  match v2.workflow.floor_terminal_ledger_wire.render_ledger(binding: binding(), rows: [poisoned]) {
+    v2.workflow.floor_terminal_ledger_wire.LedgerRendered { text: _ } => false
+    v2.workflow.floor_terminal_ledger_wire.LedgerUnrenderable { reason: r, offending: _, diagnosis: _ } => r == "field-carries-separator"
   }
 }
 
@@ -210,8 +211,8 @@ test fn one_unparseable_line_refuses_the_whole_file() -> Bool {
   let honest = rendered_text(rows: [passing_row(f: "a"), passing_row(f: "b")])
   let damaged = honest.replace(pattern: "example.b\texpect-hold", replacement: "example.b")
   readback_rows_of(text: honest).length() == 2
-    && match parse_ledger(text: damaged) {
-         LedgerRead {
+    && match v2.workflow.floor_terminal_ledger_wire.parse_ledger(text: damaged) {
+         v2.workflow.floor_terminal_ledger_wire.LedgerRead {
            repository_snapshot: _,
            prepared_subject: _,
            roster_identity: _,
@@ -219,14 +220,14 @@ test fn one_unparseable_line_refuses_the_whole_file() -> Bool {
            footer_row_count_wire: _,
            footer_digest: _
          } => false
-         LedgerUnreadable { reason: r, at: _ } => r == "ledger-row-unparseable"
+         v2.workflow.floor_terminal_ledger_wire.LedgerUnreadable { reason: r, at: _ } => r == "ledger-row-unparseable"
        }
 }
 
 // A FOREIGN FORMAT REFUSES RATHER THAN BEING READ AS AN EMPTY LEDGER.
 test fn a_ledger_in_an_unrecognized_format_is_unreadable_not_empty() -> Bool {
-  match parse_ledger(text: "some-other-thing/9\ta\tb\tc\n#end\t0\t0000000000000000") {
-    LedgerRead {
+  match v2.workflow.floor_terminal_ledger_wire.parse_ledger(text: "some-other-thing/9\ta\tb\tc\n#end\t0\t0000000000000000") {
+    v2.workflow.floor_terminal_ledger_wire.LedgerRead {
       repository_snapshot: _,
       prepared_subject: _,
       roster_identity: _,
@@ -234,30 +235,30 @@ test fn a_ledger_in_an_unrecognized_format_is_unreadable_not_empty() -> Bool {
       footer_row_count_wire: _,
       footer_digest: _
     } => false
-    LedgerUnreadable { reason: r, at: _ } => r == "ledger-format-unrecognized"
+    v2.workflow.floor_terminal_ledger_wire.LedgerUnreadable { reason: r, at: _ } => r == "ledger-format-unrecognized"
   }
 }
 
 // THE SEED-FACING RENDERER AND THE TYPED ONE MUST PRODUCE THE SAME BYTES, or the module has two
 // renderers and the artifact has no single author. Asserted over EVERY terminal shape.
-fn seed_row_of(row: ClaimTerminalRow) -> SeedLedgerRow {
-  SeedLedgerRow {
-    qualified: witness_identity_qualified_name(identity: row.identity),
-    expectation_wire: render_expectation(expectation: row.expectation),
-    terminal_tag: render_terminal_tag(terminal: row.terminal),
-    terminal_detail: render_terminal_detail(terminal: row.terminal),
-    seed_disposition_wire: render_disposition(disposition: claim_disposition(row: row))
+fn seed_row_of(row: v2.workflow.floor_terminal_ledger.ClaimTerminalRow) -> v2.workflow.floor_terminal_ledger_wire.SeedLedgerRow {
+  v2.workflow.floor_terminal_ledger_wire.SeedLedgerRow {
+    qualified: v2.workflow.floor2_prepared_subject.witness_identity_qualified_name(identity: row.identity),
+    expectation_wire: v2.workflow.floor_terminal_ledger_wire.render_expectation(expectation: row.expectation),
+    terminal_tag: v2.workflow.floor_terminal_ledger_wire.render_terminal_tag(terminal: row.terminal),
+    terminal_detail: v2.workflow.floor_terminal_ledger_wire.render_terminal_detail(terminal: row.terminal),
+    seed_disposition_wire: v2.workflow.floor_terminal_ledger_wire.render_disposition(disposition: v2.workflow.floor_terminal_ledger.claim_disposition(row: row))
   }
 }
 
-fn seed_rendered_text(rows: List<ClaimTerminalRow>) -> String {
-  match render_ledger_from_seed(
+fn seed_rendered_text(rows: List<v2.workflow.floor_terminal_ledger.ClaimTerminalRow>) -> String {
+  match v2.workflow.floor_terminal_ledger_wire.render_ledger_from_seed(
     repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
     rows: map(rows, r => seed_row_of(row: r))
   ) {
-    LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => ""
-    LedgerRendered { text: t } => t
+    v2.workflow.floor_terminal_ledger_wire.LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => ""
+    v2.workflow.floor_terminal_ledger_wire.LedgerRendered { text: t } => t
   }
 }
 
@@ -272,20 +273,20 @@ test fn the_seed_facing_renderer_produces_the_same_bytes_as_the_typed_one() -> B
 // publish whichever one the writer happened to send.
 test fn a_seed_row_whose_disposition_disagrees_with_its_tag_refuses() -> Bool {
   let honest = seed_row_of(row: passing_row(f: "a"))
-  let lying = SeedLedgerRow {
+  let lying = v2.workflow.floor_terminal_ledger_wire.SeedLedgerRow {
     qualified: honest.qualified,
     expectation_wire: honest.expectation_wire,
     terminal_tag: honest.terminal_tag,
     terminal_detail: honest.terminal_detail,
     seed_disposition_wire: "failed"
   }
-  match render_ledger_from_seed(
+  match v2.workflow.floor_terminal_ledger_wire.render_ledger_from_seed(
     repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
     rows: [honest, lying]
   ) {
-    LedgerRendered { text: _ } => false
-    LedgerUnrenderable { reason: r, offending: o, diagnosis: _ } =>
+    v2.workflow.floor_terminal_ledger_wire.LedgerRendered { text: _ } => false
+    v2.workflow.floor_terminal_ledger_wire.LedgerUnrenderable { reason: r, offending: o, diagnosis: _ } =>
       r == "seed-disposition-disagrees" && o == honest.qualified
   }
 }
@@ -294,20 +295,20 @@ test fn a_seed_row_whose_disposition_disagrees_with_its_tag_refuses() -> Bool {
 // than rendering a row whose meaning the reader would derive differently.
 test fn a_seed_row_with_an_unknown_terminal_tag_refuses() -> Bool {
   let honest = seed_row_of(row: passing_row(f: "a"))
-  let futuristic = SeedLedgerRow {
+  let futuristic = v2.workflow.floor_terminal_ledger_wire.SeedLedgerRow {
     qualified: honest.qualified,
     expectation_wire: honest.expectation_wire,
     terminal_tag: "returned-superposed",
     terminal_detail: "",
     seed_disposition_wire: "passed"
   }
-  match render_ledger_from_seed(
+  match v2.workflow.floor_terminal_ledger_wire.render_ledger_from_seed(
     repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
     rows: [futuristic]
   ) {
-    LedgerRendered { text: _ } => false
-    LedgerUnrenderable { reason: r, offending: _, diagnosis: _ } => r == "seed-terminal-tag-unrecognized"
+    v2.workflow.floor_terminal_ledger_wire.LedgerRendered { text: _ } => false
+    v2.workflow.floor_terminal_ledger_wire.LedgerUnrenderable { reason: r, offending: _, diagnosis: _ } => r == "seed-terminal-tag-unrecognized"
   }
 }
 
@@ -323,20 +324,20 @@ test fn a_seed_row_with_an_unknown_terminal_tag_refuses() -> Bool {
 test fn a_refused_ledger_keeps_every_row_as_a_diagnosis_that_cannot_parse_as_a_ledger() -> Bool {
   let honest = seed_row_of(row: passing_row(f: "a"))
   let other = seed_row_of(row: passing_row(f: "b"))
-  let lying = SeedLedgerRow {
+  let lying = v2.workflow.floor_terminal_ledger_wire.SeedLedgerRow {
     qualified: "test.claim.example.c",
     expectation_wire: honest.expectation_wire,
     terminal_tag: honest.terminal_tag,
     terminal_detail: honest.terminal_detail,
     seed_disposition_wire: "failed"
   }
-  match render_ledger_from_seed(
+  match v2.workflow.floor_terminal_ledger_wire.render_ledger_from_seed(
     repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
     rows: [honest, other, lying]
   ) {
-    LedgerRendered { text: _ } => false
-    LedgerUnrenderable { reason: r, offending: o, diagnosis: d } =>
+    v2.workflow.floor_terminal_ledger_wire.LedgerRendered { text: _ } => false
+    v2.workflow.floor_terminal_ledger_wire.LedgerUnrenderable { reason: r, offending: o, diagnosis: d } =>
       r == "seed-disposition-disagrees"
         && o == "test.claim.example.c"
         && d.split(delimiter: "\n").length() == 5
@@ -344,8 +345,8 @@ test fn a_refused_ledger_keeps_every_row_as_a_diagnosis_that_cannot_parse_as_a_l
         && d.split(delimiter: "test.claim.example.a").length() == 2
         && d.split(delimiter: "test.claim.example.b").length() == 2
         && d.split(delimiter: "test.claim.example.c").length() == 3
-        && match parse_ledger(text: d) {
-             LedgerRead {
+        && match v2.workflow.floor_terminal_ledger_wire.parse_ledger(text: d) {
+             v2.workflow.floor_terminal_ledger_wire.LedgerRead {
                repository_snapshot: _,
                prepared_subject: _,
                roster_identity: _,
@@ -353,7 +354,7 @@ test fn a_refused_ledger_keeps_every_row_as_a_diagnosis_that_cannot_parse_as_a_l
                footer_row_count_wire: _,
                footer_digest: _
              } => false
-             LedgerUnreadable { reason: pr, at: _ } => pr == "ledger-format-unrecognized"
+             v2.workflow.floor_terminal_ledger_wire.LedgerUnreadable { reason: pr, at: _ } => pr == "ledger-format-unrecognized"
            }
   }
 }
@@ -372,20 +373,20 @@ test fn a_refused_ledger_keeps_every_row_as_a_diagnosis_that_cannot_parse_as_a_l
 //   ... so a reader comparing stated rows to observed lines sees the discrepancy
 test fn a_row_carrying_a_newline_is_detectable_against_the_stated_row_count() -> Bool {
   let honest = seed_row_of(row: passing_row(f: "a"))
-  let forger = SeedLedgerRow {
+  let forger = v2.workflow.floor_terminal_ledger_wire.SeedLedgerRow {
     qualified: "test.claim.example.c",
     expectation_wire: honest.expectation_wire,
     terminal_tag: honest.terminal_tag,
     terminal_detail: "innocent\n#refused\tfabricated-reason\ttest.claim.example.a\t1",
     seed_disposition_wire: "failed"
   }
-  match render_ledger_from_seed(
+  match v2.workflow.floor_terminal_ledger_wire.render_ledger_from_seed(
     repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
     prepared_subject: "0000000000000002",
     rows: [honest, forger]
   ) {
-    LedgerRendered { text: _ } => false
-    LedgerUnrenderable { reason: _, offending: _, diagnosis: d } =>
+    v2.workflow.floor_terminal_ledger_wire.LedgerRendered { text: _ } => false
+    v2.workflow.floor_terminal_ledger_wire.LedgerUnrenderable { reason: _, offending: _, diagnosis: d } =>
       d.split(delimiter: "\t2").length() == 2
       && d.split(delimiter: "\n").length() == 5
       && d.split(delimiter: "\n").length() != 4
@@ -397,27 +398,27 @@ test fn a_row_carrying_a_newline_is_detectable_against_the_stated_row_count() ->
 // candidate-bound evidence to unbound evidence.
 test fn an_unpublished_run_is_a_shape_and_an_unrecognized_snapshot_refuses() -> Bool {
   let rows = [seed_row_of(row: passing_row(f: "a"))]
-  let unpublished = match render_ledger_from_seed(
+  let unpublished = match v2.workflow.floor_terminal_ledger_wire.render_ledger_from_seed(
     repository_snapshot: "unpublished",
     prepared_subject: "0000000000000002",
     rows: rows
   ) {
-    LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => false
-    LedgerRendered { text: t } => t.split(delimiter: "unpublished").length() == 2
+    v2.workflow.floor_terminal_ledger_wire.LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => false
+    v2.workflow.floor_terminal_ledger_wire.LedgerRendered { text: t } => t.split(delimiter: "unpublished").length() == 2
   }
-  let garbage = match render_ledger_from_seed(
+  let garbage = match v2.workflow.floor_terminal_ledger_wire.render_ledger_from_seed(
     repository_snapshot: "not-a-commit",
     prepared_subject: "0000000000000002",
     rows: rows
   ) {
-    LedgerRendered { text: _ } => false
-    LedgerUnrenderable { reason: r, offending: o, diagnosis: _ } =>
+    v2.workflow.floor_terminal_ledger_wire.LedgerRendered { text: _ } => false
+    v2.workflow.floor_terminal_ledger_wire.LedgerUnrenderable { reason: r, offending: o, diagnosis: _ } =>
       r == "seed-repository-snapshot-unrecognized" && o == "not-a-commit"
   }
   unpublished && garbage
-    && ledger_is_candidate_bound(binding: binding())
-    && !ledger_is_candidate_bound(binding: LedgerBinding {
-         repository_snapshot: UnpublishedWorkingTree,
-         prepared_subject: structural_content_hash(digest: "0000000000000002")
+    && v2.workflow.floor_terminal_ledger.ledger_is_candidate_bound(binding: binding())
+    && !v2.workflow.floor_terminal_ledger.ledger_is_candidate_bound(binding: v2.workflow.floor_terminal_ledger.LedgerBinding {
+         repository_snapshot: v2.workflow.floor_terminal_ledger.UnpublishedWorkingTree,
+         prepared_subject: std.content_hash.structural_content_hash(digest: "0000000000000002")
        })
 }

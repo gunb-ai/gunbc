@@ -1,7 +1,7 @@
 module test.claim.anomaly_evidence_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data anomaly_evidence_witness_note: String = "Composition slice 4: anomaly evidence is a SURFACE, not a tooltip. The loud band's located reason (step: detail, or the wire reason) renders as the first line of the row's disclosure — persistent and inspectable in the DOM — while the title attribute stays a convenience channel, never the only carrier. The predicate below defines what 'is a surface' means mechanically; the RED feeds it the title-only shape (yesterday's program) and it must refuse."
 
@@ -26,12 +26,12 @@ fn reason_is_a_disclosure_surface(js: String) -> Bool {
 }
 
 test fn anomaly_reason_is_a_surface() -> Bool {
-  return reason_is_a_disclosure_surface(js: dispatch_client_js_source())
+  return reason_is_a_disclosure_surface(js: gunbc.roadmap_component.dispatch_client_js_source())
 }
 
 // Passing empty text REMOVES that producer's line rather than writing an empty one, and the distinction is not cosmetic. A blank .disclosure-reason is a visible element asserting nothing, which reads as a row that has been inspected and found fine — the fabricated-plausible-output shape at the presentation layer. Removal is also what makes the surface safe to drive from the two-second workflow poll: a segment that stops refusing must stop claiming the row is unwell, and it must do that without touching the dispatch producer's line.
 test fn anomaly_reason_empty_text_removes_the_line() -> Bool {
-  let js = dispatch_client_js_source()
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
   return string_contains(s: js, pattern: "if (!text) {   rl && rl.remove();")
 }
 
@@ -39,23 +39,23 @@ data producer_roster_note: String = "The three producers that must reach the sur
 
 test fn anomaly_dispatch_answer_reaches_the_surface() -> Bool {
   return producer_reaches_the_surface(
-    js: dispatch_client_js_source(),
+    js: gunbc.roadmap_component.dispatch_client_js_source(),
     source_arg: "dt, 'dispatch', band === 'loud' ?")
 }
 
 test fn anomaly_unreadable_answer_reaches_the_surface() -> Bool {
-  let js = dispatch_client_js_source()
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
   return producer_reaches_the_surface(js: js, source_arg: "gunbcRowDisclosure(b), 'dispatch', why")
     && string_contains(s: js, pattern: "const why = 'no readable answer from the dispatch route: ' + e;")
 }
 
 test fn anomaly_unreadable_answer_does_not_name_the_network() -> Bool {
-  return !string_contains(s: dispatch_client_js_source(), pattern: "'network error'")
+  return !string_contains(s: gunbc.roadmap_component.dispatch_client_js_source(), pattern: "'network error'")
 }
 
 test fn anomaly_workflow_segment_reaches_the_surface() -> Bool {
   return producer_reaches_the_surface(
-    js: dispatch_client_js_source(),
+    js: gunbc.roadmap_component.dispatch_client_js_source(),
     source_arg: "gunbcRowDisclosure(act), 'workflow:' + seg.kind, bad ? seg.short_label + ' · ' + seg.state + ' — ' + sd : ''")
 }
 
@@ -63,7 +63,7 @@ data workflow_segment_fallback_note: String = "A refused segment whose wire deta
 
 test fn anomaly_workflow_segment_falls_closed_on_empty_detail() -> Bool {
   return string_contains(
-    s: dispatch_client_js_source(),
+    s: gunbc.roadmap_component.dispatch_client_js_source(),
     pattern: "const sd = seg.detail || 'no located reason on the wire';")
 }
 
@@ -98,13 +98,13 @@ test fn anomaly_producer_red_on_surface_without_callers() -> Bool {
 }
 
 test fn anomaly_title_stays_a_convenience() -> Bool {
-  let js = dispatch_client_js_source()
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
   return string_contains(s: js, pattern: "b.title = why ? base +")
     && string_contains(s: js, pattern: "' — '")
 }
 
 test fn anomaly_reason_surface_is_styled() -> Bool {
-  return string_contains(s: roadmap_css(), pattern: ".disclosure-reason { font-size: var(--text-12); color: var(--text); border-left: var(--border-2) solid var(--band-loud); padding-left: var(--space-6); margin: var(--space-2) var(--space-0) var(--space-2) }")
+  return string_contains(s: gunbc.roadmap_style.roadmap_css(), pattern: ".disclosure-reason { font-size: var(--text-12); color: var(--text); border-left: var(--border-2) solid var(--band-loud); padding-left: var(--space-6); margin: var(--space-2) var(--space-0) var(--space-2) }")
 }
 
 data accessible_name_note: String = "The accessible name is the THIRD reason channel and it was silently broken, which is why it is pinned here rather than left to the markup witnesses. `seg.label + ': ' + seg.state + (seg.detail ? ' — ' + seg.detail : '')` was emitted without the group, so it parsed as `(label + state + detail) ? ' — ' + detail : ''` — always true, since a concatenation is never the empty string — and a screen reader was told the detail alone with no label and no state. The model always said the right thing; the printer dropped the group (extdeps.languages.typescript.program.ts_operator_precedence_note). Asserting the parenthesized text here means the row's accessible name cannot silently lose its subject again."
@@ -112,27 +112,27 @@ data accessible_name_note: String = "The accessible name is the THIRD reason cha
 // Re-pointed at A2: the stage chips carried label+state in an aria-label because their visible face was a compressed chip; the activity ledger row IS its accessible name — one text node carrying label, state, and detail, readable by any client without attribute decoding. The class this guards (an obligation's state never lives in border style or attributes alone) is unchanged; the carrier moved from attribute to content.
 test fn anomaly_stage_accessible_name_keeps_label_and_state() -> Bool {
   return string_contains(
-    s: dispatch_client_js_source(),
+    s: gunbc.roadmap_component.dispatch_client_js_source(),
     pattern: "ob.textContent = seg.label + ' · ' + seg.state + (seg.detail ? ' — ' + seg.detail : '')")
 }
 
 test fn anomaly_workflow_refusal_reason_survives_concatenation() -> Bool {
   return string_contains(
-    s: dispatch_client_js_source(),
+    s: gunbc.roadmap_component.dispatch_client_js_source(),
     pattern: "const why = 'workflow observation refused: ' + (wj.reason || 'no located reason on the wire');")
 }
 
 data absent_reason_phrase_single_authority_note: String = "One phrase, one row. 'the wire carried no reason' was spelled two ways at four sites — 'no located reason on the wire' in the dispatch band, 'no reason on the wire' in the sessions, attempts, and workflow observation banners — for one fact, which is the nickname §3 forbids at the smallest possible scale. It is worth fixing at this scale precisely because it is small: a phrase that means the same thing should not tell the operator it might not, and four literals is where a fifth comes from. This witness pins that no site spells it independently."
 
 test fn anomaly_absent_reason_phrase_has_one_spelling() -> Bool {
-  let js = dispatch_client_js_source()
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
   return !string_contains(s: js, pattern: "'no reason on the wire'")
     && string_contains(s: js, pattern: "'no located reason on the wire'")
 }
 
 // The cleanup chip is the fourth row-scoped producer: a refused or failed teardown is a verdict about THIS work item, so its reason belongs on the same surface as the dispatch and workflow verdicts rather than in a chip tooltip. It carries its own source so a row that is simultaneously refused at cleanup and refused at Verify shows both.
 test fn anomaly_cleanup_refusal_reaches_the_surface() -> Bool {
-  let js = dispatch_client_js_source()
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
   return producer_reaches_the_surface(
       js: js,
       source_arg: "gunbcRowDisclosure(cc), 'cleanup', action + ' refused — ' + ccWhy")
@@ -143,6 +143,6 @@ test fn anomaly_cleanup_refusal_reaches_the_surface() -> Bool {
 
 test fn anomaly_instance_label_keeps_both_halves() -> Bool {
   return string_contains(
-    s: dispatch_client_js_source(),
+    s: gunbc.roadmap_component.dispatch_client_js_source(),
     pattern: "il.title = 'host ' + (ij.host_identity || 'unknown') + ' · repo ' + (ij.repo_root || 'unknown');")
 }

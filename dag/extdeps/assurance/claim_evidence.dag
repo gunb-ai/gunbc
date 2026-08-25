@@ -3,23 +3,23 @@ module extdeps.assurance.claim_evidence
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.omg.org/spec/SACM/"
   }
 }
 
-data sacm_claim_evidence_authority: extdeps.external_authority.ExternalAuthority = extdeps.assurance.claim_evidence.extdeps_external_authority_anchor
+data sacm_claim_evidence_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
 
 data w3c_prov_dm_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.w3.org/TR/prov-dm/"
   }
 }
 
 data belnap_four_valued_information_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "doi.org/10.1007/978-94-010-1161-7_2"
   }
 }

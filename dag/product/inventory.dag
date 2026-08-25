@@ -9,9 +9,9 @@ module product.inventory
 //
 // Reuse, never fork (DESIGN section 3): ProcurementReceiptIdentity and PhysicalAssetIdentity are
 // imported from product.placement_supply, which already models the physical placement seam this
-// module hands stock to on installation; catalog rows are cited by std.decl_ref std.decl_ref.DeclarationRef,
+// module hands stock to on installation; catalog rows are cited by std.decl_ref DeclarationRef,
 // which is also how std.pareto keys identity, so no eq or display is re-minted here; money is
-// std.measure std.measure.MoneyOnce; lot identity is std.minted_identity std.minted_identity.MintedId over this module's own
+// std.measure MoneyOnce; lot identity is std.minted_identity MintedId over this module's own
 // subject marker.
 //
 // Grain (DESIGN section 2, deep): fungible stock lives at LOT grain. A PhysicalAssetIdentity
@@ -135,7 +135,7 @@ fn lot_receipt_is_recorded(lot: ProcurementLot) -> Bool {
 
 fn lot_landed_cost_reading(lot: ProcurementLot) -> LandedCostReading {
   match lot.landed_cost {
-    LandedCostRecorded { cost: c } => LandedCostReadingMicros { micros: money_once_micros(q: c) }
+    LandedCostRecorded { cost: c } => LandedCostReadingMicros { micros: std.measure.money_once_micros(q: c) }
     LandedCostUnsettled => LandedCostReadingUnsettled
     LandedCostHeldPrivately => LandedCostReadingHeldPrivately
   }
@@ -196,7 +196,7 @@ fn sum_landed_cost(lots: List<ProcurementLot>) -> LandedCostSum {
             if t.currency == c.currency {
               LandedCostTotal {
                 total: std.measure.MoneyOnce {
-                  amount: money_amount_micro(count: money_once_micros(q: t) + money_once_micros(q: c)),
+                  amount: std.measure.money_amount_micro(count: std.measure.money_once_micros(q: t) + std.measure.money_once_micros(q: c)),
                   currency: t.currency,
                 },
               }
@@ -588,7 +588,7 @@ fn transfer_step(
         ordinal: ordinal,
         event: event,
       )
-    Present { value: moved } => LedgerAdvanced { state: product.inventory.advance(state: state, distribution: moved) }
+    Present { value: moved } => LedgerAdvanced { state: advance(state: state, distribution: moved) }
   }
 }
 

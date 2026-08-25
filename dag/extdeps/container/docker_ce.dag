@@ -1,20 +1,22 @@
 module extdeps.container.docker_ce
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
+
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https,
     locator: "docs.docker.com/engine/install/ubuntu/",
   }
 }
 
 type DockerCeAptRepo {
-  keyring_url: NonEmptyStr
-  keyring_path: NonEmptyStr
-  keyring_fingerprint: NonEmptyStr
-  repo_base: NonEmptyStr
-  suite: NonEmptyStr
-  component: NonEmptyStr
-  arch: NonEmptyStr
+  keyring_url: std.types.NonEmptyStr
+  keyring_path: std.types.NonEmptyStr
+  keyring_fingerprint: std.types.NonEmptyStr
+  repo_base: std.types.NonEmptyStr
+  suite: std.types.NonEmptyStr
+  component: std.types.NonEmptyStr
+  arch: std.types.NonEmptyStr
 }
 
 // Docker's apt signing-key fingerprint is a PUBLISHED fact (docs.docker.com/engine/install/ubuntu: 9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88). A keyring fetched by blind curl is a supply-chain fail-open — the install script verifies the imported key's fingerprint against the pinned row and refuses on mismatch, the same posture as sccache's pinned release digests.
@@ -28,7 +30,7 @@ data docker_ce_apt_repo_noble_arm64: DockerCeAptRepo = DockerCeAptRepo {
   arch: "arm64",
 }
 
-data docker_ce_packages: List<NonEmptyStr> = [
+data docker_ce_packages: List<std.types.NonEmptyStr> = [
   "docker-ce",
   "docker-ce-cli",
   "containerd.io",
@@ -58,14 +60,14 @@ fn docker_ce_apt_source_line(repo: DockerCeAptRepo) -> String {
 //
 // It dissolves when host_effect_apply binds an AptRepoEnsure plus PackageInstall effect
 // without the shell leaf, at which point `docker_ce_repo_install_script` is deleted.
-data docker_ce_install_dissolution_trigger: DissolutionCondition = retires_dissolution(
-  ref: decl_ref(
+data docker_ce_install_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.retires_dissolution(
+  ref: std.decl_ref.decl_ref(
     module_path: "extdeps.container.docker_ce",
     decl_name: "docker_ce_repo_install_script",
   )
 )
 
-fn docker_ce_repo_install_script(repo: DockerCeAptRepo, packages: List<NonEmptyStr>) -> String {
+fn docker_ce_repo_install_script(repo: DockerCeAptRepo, packages: List<std.types.NonEmptyStr>) -> String {
   join(
     [
       "set -e",

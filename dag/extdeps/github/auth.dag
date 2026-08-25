@@ -4,7 +4,7 @@ module extdeps.github.auth
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/rest/authentication"
   }
 }
@@ -20,7 +20,7 @@ type GitHubAuthSource {
 data default_github_auth_source: GitHubAuthSource = {
   credential_source: std.credentials.EnvVar { name: "GITHUB_TOKEN" },
   token_metadata: DeclaredGitHubTokenMetadata {
-    scopes: [ScopeRepo, ScopeGist],
+    scopes: [extdeps.github.github.ScopeRepo, extdeps.github.github.ScopeGist],
     expires_at: none
   }
 }
@@ -28,9 +28,9 @@ data default_github_auth_source: GitHubAuthSource = {
 data structural_coverage_gap_github_token_metadata_verification: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "GitHubAuthToken" },
-      extdeps.coverage.DeclaredMetadata { field: "scopes" },
-      extdeps.coverage.DeclaredMetadata { field: "expires_at" }
+      Subject { path: "GitHubAuthToken" },
+      DeclaredMetadata { field: "scopes" },
+      DeclaredMetadata { field: "expires_at" }
     ],
     trigger: "GitHub token introspection or installation-token issuance surface"
   }
@@ -46,19 +46,19 @@ data structural_coverage_gap_github_token_metadata_verification: List<extdeps.co
 // names the variable, because "no token" and "the wrong variable" are different problems for the
 // caller and only the second is fixable by editing the auth source.
 type GitHubAuthTokenRead
-  = GitHubAuthTokenObserved { token: GitHubAuthToken }
-  | GitHubAuthTokenUnavailable { variable: NonEmptyStr }
+  = GitHubAuthTokenObserved { token: extdeps.github.github.GitHubAuthToken }
+  | GitHubAuthTokenUnavailable { variable: std.types.NonEmptyStr }
 
 func github_token() -> GitHubAuthTokenRead
 {
   cred = match default_github_auth_source.credential_source {
-    EnvVar { name } => env_credential(env_var: name as std.types.NonEmptyStr)
+    std.credentials.EnvVar { name } => extdeps.shell.credentials.env_credential(env_var: name as std.types.NonEmptyStr)
   }
   return match cred.token {
     Absent =>
       GitHubAuthTokenUnavailable {
         variable: match default_github_auth_source.credential_source {
-          EnvVar { name } => name as NonEmptyStr
+          std.credentials.EnvVar { name } => name as std.types.NonEmptyStr
         }
       }
     Present { value: secret } =>

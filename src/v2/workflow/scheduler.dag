@@ -5,11 +5,11 @@ module v2.workflow.scheduler
 //
 // Frontier, layering, completion and blocked-evidence are facts about a prerequisite graph, not
 // about program structure, so they are stated once over a subject parameter. The compiler binds the
-// subject to v2.std.node.Node; host convergence binds it to a planned operation identity. Neither is privileged
+// subject to Node; host convergence binds it to a planned operation identity. Neither is privileged
 // and there is exactly one implementation, so cycle refusal and readiness cannot drift apart between
 // them -- which is the whole reason this is a parameterization rather than a second scheduler.
 type RunnableFrontier<Subject> {
-  ready: List<extdeps.coverage.Subject>
+  ready: List<Subject>
 }
 
 type SchedulerBlockedEvidence
@@ -17,27 +17,27 @@ type SchedulerBlockedEvidence
 
 type SchedulerPlan<Subject>
   = SchedulerPlanComplete {
-      layers: List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>,
-      scheduled: List<extdeps.coverage.Subject>
+      layers: List<v2.std.dependency.ReadinessLayer<Subject>>,
+      scheduled: List<Subject>
     }
   | SchedulerPlanRunnable {
-      frontier: RunnableFrontier<extdeps.coverage.Subject>,
-      scheduled: List<extdeps.coverage.Subject>,
-      remaining: List<extdeps.coverage.Subject>,
-      layers: List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>
+      frontier: RunnableFrontier<Subject>,
+      scheduled: List<Subject>,
+      remaining: List<Subject>,
+      layers: List<v2.std.dependency.ReadinessLayer<Subject>>
     }
   | SchedulerPlanBlocked {
       evidence: SchedulerBlockedEvidence,
-      scheduled: List<extdeps.coverage.Subject>,
-      remaining: List<extdeps.coverage.Subject>,
-      layers: List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>
+      scheduled: List<Subject>,
+      remaining: List<Subject>,
+      layers: List<v2.std.dependency.ReadinessLayer<Subject>>
     }
 
 type SchedulerRunState<Subject> {
-  scheduled: List<extdeps.coverage.Subject>
-  remaining: List<extdeps.coverage.Subject>
-  layers: List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>
-  frontier: RunnableFrontier<extdeps.coverage.Subject>
+  scheduled: List<Subject>
+  remaining: List<Subject>
+  layers: List<v2.std.dependency.ReadinessLayer<Subject>>
+  frontier: RunnableFrontier<Subject>
 }
 
 fn scheduler_execution_dependency_kind_classifier() -> v2.std.dependency.DependencyKindClassifier<Bool> {
@@ -61,7 +61,7 @@ fn scheduler_execution_dependency_kind_classifier() -> v2.std.dependency.Depende
 }
 
 fn scheduler_relation_orders_execution<S>(relation: v2.std.dependency.DependencyRelation<S>) -> Bool {
-  classify_dependency_kind(
+  v2.std.dependency.classify_dependency_kind(
     classifier: scheduler_execution_dependency_kind_classifier(),
     kind: relation.kind
   )
@@ -70,14 +70,14 @@ fn scheduler_relation_orders_execution<S>(relation: v2.std.dependency.Dependency
 fn scheduler_execution_relations<S>(
   relations: List<v2.std.dependency.DependencyRelation<S>>
 ) -> List<v2.std.dependency.DependencyRelation<S>> {
-  filter(xs: relations, predicate: scheduler_relation_orders_execution)
+  v2.std.algebra.filter(xs: relations, predicate: scheduler_relation_orders_execution)
 }
 
 fn scheduler_append_subject_once<S>(xs: List<S>, item: S, eq: fn(S, S) -> Bool) -> List<S> {
-  if contains(xs: xs, item: item, eq: eq) {
+  if v2.std.algebra.contains(xs: xs, item: item, eq: eq) {
     xs
   } else {
-    list_snoc_item(xs: xs, item: item)
+    v2.std.algebra.list_snoc_item(xs: xs, item: item)
   }
 }
 
@@ -101,7 +101,7 @@ fn scheduler_relation_unblocked<S>(
   eq: fn(S, S) -> Bool
 ) -> Bool {
   if eq(relation.dependent, candidate) {
-    contains(xs: scheduled, item: relation.prerequisite, eq: eq)
+    v2.std.algebra.contains(xs: scheduled, item: relation.prerequisite, eq: eq)
   } else {
     true
   }
@@ -113,7 +113,7 @@ fn scheduler_subject_unblocked<S>(
   candidate: S,
   eq: fn(S, S) -> Bool
 ) -> Bool {
-  for_all(
+  v2.std.algebra.for_all(
     xs: relations,
     predicate: fn(relation) {
       scheduler_relation_unblocked(
@@ -127,7 +127,7 @@ fn scheduler_subject_unblocked<S>(
 }
 
 fn scheduler_subject_unscheduled<S>(scheduled: List<S>, candidate: S, eq: fn(S, S) -> Bool) -> Bool {
-  contains(xs: scheduled, item: candidate, eq: eq) == false
+  v2.std.algebra.contains(xs: scheduled, item: candidate, eq: eq) == false
 }
 
 fn runnable_frontier_from_relations<S>(
@@ -138,7 +138,7 @@ fn runnable_frontier_from_relations<S>(
 ) -> RunnableFrontier<S> {
   let execution_relations = scheduler_execution_relations(relations: relations)
   RunnableFrontier {
-    ready: filter(
+    ready: v2.std.algebra.filter(
       xs: subjects,
       predicate: fn(candidate) {
         scheduler_subject_unscheduled(scheduled: scheduled, candidate: candidate, eq: eq)
@@ -158,7 +158,7 @@ fn scheduler_remaining_subjects<S>(
   scheduled: List<S>,
   eq: fn(S, S) -> Bool
 ) -> List<S> {
-  filter(
+  v2.std.algebra.filter(
     xs: subjects,
     predicate: fn(candidate) {
       scheduler_subject_unscheduled(scheduled: scheduled, candidate: candidate, eq: eq)
@@ -184,8 +184,8 @@ fn scheduler_append_frontier_layer<S>(
   layers: List<v2.std.dependency.ReadinessLayer<S>>,
   frontier: RunnableFrontier<S>
 ) -> List<v2.std.dependency.ReadinessLayer<S>> {
-  if non_empty(xs: frontier.ready) {
-    list_snoc_item(
+  if v2.std.algebra.non_empty(xs: frontier.ready) {
+    v2.std.algebra.list_snoc_item(
       xs: layers,
       item: v2.std.dependency.ReadinessLayer { ready: frontier.ready }
     )
@@ -213,7 +213,7 @@ fn scheduler_step_state_from_relations<S>(
   state: SchedulerRunState<S>,
   eq: fn(S, S) -> Bool
 ) -> SchedulerRunState<S> {
-  if is_empty(xs: state.remaining) {
+  if v2.std.algebra.is_empty(xs: state.remaining) {
     state
   } else {
     let frontier = runnable_frontier_from_relations(
@@ -222,7 +222,7 @@ fn scheduler_step_state_from_relations<S>(
       scheduled: state.scheduled,
       eq: eq
     )
-    if non_empty(xs: frontier.ready) {
+    if v2.std.algebra.non_empty(xs: frontier.ready) {
       let scheduled = scheduler_schedule_frontier(scheduled: state.scheduled, frontier: frontier, eq: eq)
       SchedulerRunState {
         scheduled: scheduled,
@@ -242,13 +242,13 @@ fn scheduler_step_state_from_relations<S>(
 }
 
 fn scheduler_plan_from_state<S>(state: SchedulerRunState<S>) -> SchedulerPlan<S> {
-  if is_empty(xs: state.remaining) {
+  if v2.std.algebra.is_empty(xs: state.remaining) {
     SchedulerPlanComplete {
       layers: state.layers,
       scheduled: state.scheduled
     }
   } else {
-    if non_empty(xs: state.frontier.ready) {
+    if v2.std.algebra.non_empty(xs: state.frontier.ready) {
       SchedulerPlanRunnable {
         frontier: state.frontier,
         scheduled: state.scheduled,
@@ -320,13 +320,13 @@ fn scheduler_plan_from_relations<S>(
 
 fn scheduler_nodes_from_layers<S>(layers: List<v2.std.dependency.ReadinessLayer<S>>) -> List<S> {
   fold(layers, init: [], f: fn(nodes, layer) {
-    list_append(left: nodes, right: layer.ready)
+    v2.std.algebra.list_append(left: nodes, right: layer.ready)
   })
 }
 
 fn scheduler_plan_for_layers<S>(layers: List<v2.std.dependency.ReadinessLayer<S>>, blocked: List<S>) -> SchedulerPlan<S> {
   let runnable = runnable_frontier_from_layers(layers: layers)
-  if non_empty(xs: runnable.ready) {
+  if v2.std.algebra.non_empty(xs: runnable.ready) {
     SchedulerPlanComplete {
       layers: layers,
       scheduled: scheduler_nodes_from_layers(layers: layers)
@@ -342,15 +342,15 @@ fn scheduler_plan_for_layers<S>(layers: List<v2.std.dependency.ReadinessLayer<S>
 }
 
 fn scheduler_first_readiness_layer<S>(layers: List<v2.std.dependency.ReadinessLayer<S>>) -> Witness<v2.std.dependency.ReadinessLayer<S>> {
-  optional_present_witness(
-    opt: list_at_optional(xs: layers, index: 0)
+  v2.std.collection.optional_present_witness(
+    opt: v2.std.collection.list_at_optional(xs: layers, index: 0)
   )
 }
 
 fn runnable_frontier_from_layers<S>(layers: List<v2.std.dependency.ReadinessLayer<S>>) -> RunnableFrontier<S> {
   match scheduler_first_readiness_layer(layers: layers) {
-    Holds { value: layer } => RunnableFrontier { ready: layer.ready }
-    Violates { diagnostic: _ } => RunnableFrontier { ready: [] }
+    v2.std.witness.Holds { value: layer } => RunnableFrontier { ready: layer.ready }
+    v2.std.witness.Violates { diagnostic: _ } => RunnableFrontier { ready: [] }
   }
 }
 
@@ -359,7 +359,7 @@ fn runnable_frontier(graph_node: v2.std.node.Node) -> RunnableFrontier<v2.std.no
 }
 
 fn scheduler_layers(graph_node: v2.std.node.Node) -> List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>> {
-  topological_layers(graph_node: graph_node)
+  v2.std.dependency.topological_layers(graph_node: graph_node)
 }
 
 fn scheduler_plan(graph_node: v2.std.node.Node) -> SchedulerPlan<v2.std.node.Node> {
@@ -370,7 +370,7 @@ fn scheduler_plan(graph_node: v2.std.node.Node) -> SchedulerPlan<v2.std.node.Nod
 }
 
 // THE NODE-SUBJECT WRAPPERS. The kernel above is subject-generic; the compiler's own consumers
-// schedule `v2.std.node.Node` and supply structural identity, so the binding of `S = v2.std.node.Node` with `node_eq`
+// schedule `Node` and supply structural identity, so the binding of `S = Node` with `node_eq`
 // lives here once rather than at each call site.
 fn scheduler_node_eq(left: v2.std.node.Node, right: v2.std.node.Node) -> Bool {
   left == right
@@ -383,7 +383,7 @@ fn runnable_frontier_from_dependencies(
 ) -> RunnableFrontier<v2.std.node.Node> {
   runnable_frontier_from_relations(
     subjects: nodes,
-    relations: dependency_view_relations(views: dependencies),
+    relations: v2.std.dependency.dependency_view_relations(views: dependencies),
     scheduled: scheduled,
     eq: scheduler_node_eq
   )
@@ -397,15 +397,15 @@ fn scheduler_append_node_once(nodes: List<v2.std.node.Node>, node: v2.std.node.N
   scheduler_append_subject_once(xs: nodes, item: node, eq: scheduler_node_eq)
 }
 
-// The v2.std.node.Node-subject view filter, kept at its established name and signature. Consumers ask which
+// The Node-subject view filter, kept at its established name and signature. Consumers ask which
 // dependencies order execution and get DependencyViews back, because that is what they hold and what
 // carries their usage_site; the generic kernel answers the same question over relations.
 fn scheduler_execution_dependencies(dependencies: List<v2.std.dependency.DependencyView>) -> List<v2.std.dependency.DependencyView> {
-  filter(xs: dependencies, predicate: scheduler_dependency_orders_execution)
+  v2.std.algebra.filter(xs: dependencies, predicate: scheduler_dependency_orders_execution)
 }
 
 fn scheduler_dependency_orders_execution(dependency: v2.std.dependency.DependencyView) -> Bool {
-  classify_dependency_kind(
+  v2.std.dependency.classify_dependency_kind(
     classifier: scheduler_execution_dependency_kind_classifier(),
     kind: dependency.kind
   )
@@ -418,7 +418,7 @@ fn scheduler_step_plan_from_dependencies(
 ) -> SchedulerPlan<v2.std.node.Node> {
   scheduler_step_plan_from_relations(
     subjects: nodes,
-    relations: dependency_view_relations(views: dependencies),
+    relations: v2.std.dependency.dependency_view_relations(views: dependencies),
     scheduled: scheduled,
     eq: scheduler_node_eq
   )
@@ -431,7 +431,7 @@ fn scheduler_plan_from_dependencies(
 ) -> SchedulerPlan<v2.std.node.Node> {
   scheduler_plan_from_relations(
     subjects: nodes,
-    relations: dependency_view_relations(views: dependencies),
+    relations: v2.std.dependency.dependency_view_relations(views: dependencies),
     scheduled: scheduled,
     eq: scheduler_node_eq
   )

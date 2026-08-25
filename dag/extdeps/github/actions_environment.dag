@@ -3,7 +3,7 @@ module extdeps.github.actions_environment
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/actions/reference/variables-reference"
   }
 }
@@ -22,9 +22,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.actions_environment",
       decl_name: "github_sha_variable_name",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.github.actions_environment.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

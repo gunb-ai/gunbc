@@ -1,25 +1,25 @@
 module test.claim.orthogonal_geometry_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn room() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
-fn building() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
+fn room() -> std.coordinate_frame.CoordinateFrameIdentity { std.coordinate_frame.coordinate_frame_identity(occurrence: 1) }
+fn building() -> std.coordinate_frame.CoordinateFrameIdentity { std.coordinate_frame.coordinate_frame_identity(occurrence: 2) }
 
-fn p2(x: Int, y: Int) -> std.affine_space.Point2 { point2(frame: test.claim.orthogonal_geometry_witness.room(), x: x, y: y) }
+fn p2(x: Int, y: Int) -> std.affine_space.Point2 { std.affine_space.point2(frame: room(), x: x, y: y) }
 
 // Both frames these tests draw in are millimetre frames, which is exactly the fact the readers
 // used to assume and now have to be told. Registering them is what keeps every length assertion
 // below meaning what it always meant.
 fn mm_registry() -> std.spatial_frame.SpatialFrameRegistry {
-  let r0 = empty_frame_registry()
-  let r1 = match register_frame(r: r0, identity: test.claim.orthogonal_geometry_witness.room(), length_scale: Milli) {
-    FrameRegistered { frame: f } => registry_with(r: r0, f: f)
-    FrameRegistrationRefused { cause: _ } => r0
+  let r0 = std.spatial_frame.empty_frame_registry()
+  let r1 = match std.spatial_frame.register_frame(r: r0, identity: room(), length_scale: std.measure.Milli) {
+    std.spatial_frame.FrameRegistered { frame: f } => std.spatial_frame.registry_with(r: r0, f: f)
+    std.spatial_frame.FrameRegistrationRefused { cause: _ } => r0
   }
-  match register_frame(r: r1, identity: test.claim.orthogonal_geometry_witness.building(), length_scale: Milli) {
-    FrameRegistered { frame: f } => registry_with(r: r1, f: f)
-    FrameRegistrationRefused { cause: _ } => r1
+  match std.spatial_frame.register_frame(r: r1, identity: building(), length_scale: std.measure.Milli) {
+    std.spatial_frame.FrameRegistered { frame: f } => std.spatial_frame.registry_with(r: r1, f: f)
+    std.spatial_frame.FrameRegistrationRefused { cause: _ } => r1
   }
 }
 
@@ -28,25 +28,25 @@ fn mm_registry() -> std.spatial_frame.SpatialFrameRegistry {
 // than being quietly read as a count.
 fn extent_is_mm(e: std.spatial_frame.FrameExtent, want: std.nat.Nat) -> Bool {
   match e {
-    ExtentFrameUnregistered { identity: _ } => false
-    ExtentInFrame { length: l } =>
-      match frame_length_as_millimeter(l: l) {
-        LengthProjectionRefused { cause: _ } => false
-        LengthProjected { value: v } => millimeter_count(m: v) == want
+    std.spatial_frame.ExtentFrameUnregistered { identity: _ } => false
+    std.spatial_frame.ExtentInFrame { length: l } =>
+      match std.spatial_frame.frame_length_as_millimeter(l: l) {
+        std.spatial_frame.LengthProjectionRefused { cause: _ } => false
+        std.spatial_frame.LengthProjected { value: v } => std.measure.millimeter_count(m: v) == want
       }
   }
 }
-fn p3(x: Int, y: Int, z: Int) -> std.affine_space.Point3 { point3(frame: test.claim.orthogonal_geometry_witness.room(), x: x, y: y, z: z) }
+fn p3(x: Int, y: Int, z: Int) -> std.affine_space.Point3 { std.affine_space.point3(frame: room(), x: x, y: y, z: z) }
 
 // EVERY NEGATIVE CONTROL BELOW HAS A POSITIVE SIBLING IN THE SAME WITNESS. A mint that refused
 // everything would satisfy the refusal half of each pair, and that failure mode is invisible to a
 // refusal-only control - the same gap that let SPATIAL-2 ship a wall which did not exist.
 fn refusal_is_extent_not_positive(r: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_geometry.AxisAlignedBox3>, axis: std.euclidean_geometry.Axis3) -> Bool {
   match r {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } =>
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } =>
       match c {
-        ExtentNotPositive { axis: a } => axis3_same(a: a, b: axis)
+        std.orthogonal_geometry.ExtentNotPositive { axis: a } => axis3_same(a: a, b: axis)
         _ => false
       }
   }
@@ -54,20 +54,20 @@ fn refusal_is_extent_not_positive(r: std.orthogonal_geometry.OrthogonalConstruct
 
 fn axis3_same(a: std.euclidean_geometry.Axis3, b: std.euclidean_geometry.Axis3) -> Bool {
   match a {
-    Axis3X => match b { Axis3X => true  Axis3Y => false Axis3Z => false }
-    Axis3Y => match b { Axis3X => false Axis3Y => true  Axis3Z => false }
-    Axis3Z => match b { Axis3X => false Axis3Y => false Axis3Z => true }
+    std.euclidean_geometry.Axis3X => match b { std.euclidean_geometry.Axis3X => true  std.euclidean_geometry.Axis3Y => false std.euclidean_geometry.Axis3Z => false }
+    std.euclidean_geometry.Axis3Y => match b { std.euclidean_geometry.Axis3X => false std.euclidean_geometry.Axis3Y => true  std.euclidean_geometry.Axis3Z => false }
+    std.euclidean_geometry.Axis3Z => match b { std.euclidean_geometry.Axis3X => false std.euclidean_geometry.Axis3Y => false std.euclidean_geometry.Axis3Z => true }
   }
 }
 
 fn axis_direction_same(a: std.euclidean_geometry.AxisDirection3, b: std.euclidean_geometry.AxisDirection3) -> Bool {
   match a {
-    PositiveX => match b { PositiveX => true _ => false }
-    NegativeX => match b { NegativeX => true _ => false }
-    PositiveY => match b { PositiveY => true _ => false }
-    NegativeY => match b { NegativeY => true _ => false }
-    PositiveZ => match b { PositiveZ => true _ => false }
-    NegativeZ => match b { NegativeZ => true _ => false }
+    std.euclidean_geometry.PositiveX => match b { std.euclidean_geometry.PositiveX => true _ => false }
+    std.euclidean_geometry.NegativeX => match b { std.euclidean_geometry.NegativeX => true _ => false }
+    std.euclidean_geometry.PositiveY => match b { std.euclidean_geometry.PositiveY => true _ => false }
+    std.euclidean_geometry.NegativeY => match b { std.euclidean_geometry.NegativeY => true _ => false }
+    std.euclidean_geometry.PositiveZ => match b { std.euclidean_geometry.PositiveZ => true _ => false }
+    std.euclidean_geometry.NegativeZ => match b { std.euclidean_geometry.NegativeZ => true _ => false }
   }
 }
 
@@ -75,30 +75,30 @@ fn axis_direction_same(a: std.euclidean_geometry.AxisDirection3, b: std.euclidea
 // the other is a limit of the exact kernel. A single "bad segment" refusal would send both callers
 // to the same wrong place.
 test fn segment_walls_hold() -> Bool {
-  let axis_aligned = match axis_aligned_segment2(start: test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), end: test.claim.orthogonal_geometry_witness.p2(x: 3000, y: 0)) {
-    OrthogonalReady { value: s } =>
-      match segment2_axis(s: s) { Axis2X => true Axis2Y => false }
-        && extent_is_mm(e: segment2_extent(registry: test.claim.orthogonal_geometry_witness.mm_registry(), s: s), want: 3000)
-    OrthogonalRefused { cause: _ } => false
+  let axis_aligned = match std.orthogonal_geometry.axis_aligned_segment2(start: p2(x: 0, y: 0), end: p2(x: 3000, y: 0)) {
+    std.orthogonal_geometry.OrthogonalReady { value: s } =>
+      match std.orthogonal_geometry.segment2_axis(s: s) { std.orthogonal_geometry.Axis2X => true std.orthogonal_geometry.Axis2Y => false }
+        && extent_is_mm(e: std.orthogonal_geometry.segment2_extent(registry: mm_registry(), s: s), want: 3000)
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
   }
-  let negative_direction_still_positive_length = match axis_aligned_segment2(start: test.claim.orthogonal_geometry_witness.p2(x: 0, y: 500), end: test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0 - 500)) {
-    OrthogonalReady { value: s } => extent_is_mm(e: segment2_extent(registry: test.claim.orthogonal_geometry_witness.mm_registry(), s: s), want: 1000)
-    OrthogonalRefused { cause: _ } => false
+  let negative_direction_still_positive_length = match std.orthogonal_geometry.axis_aligned_segment2(start: p2(x: 0, y: 500), end: p2(x: 0, y: 0 - 500)) {
+    std.orthogonal_geometry.OrthogonalReady { value: s } => extent_is_mm(e: std.orthogonal_geometry.segment2_extent(registry: mm_registry(), s: s), want: 1000)
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
   }
-  let degenerate = match axis_aligned_segment2(start: test.claim.orthogonal_geometry_witness.p2(x: 7, y: 7), end: test.claim.orthogonal_geometry_witness.p2(x: 7, y: 7)) {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } => match c { SegmentEndpointsCoincide => true _ => false }
+  let degenerate = match std.orthogonal_geometry.axis_aligned_segment2(start: p2(x: 7, y: 7), end: p2(x: 7, y: 7)) {
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.SegmentEndpointsCoincide => true _ => false }
   }
-  let diagonal = match axis_aligned_segment2(start: test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), end: test.claim.orthogonal_geometry_witness.p2(x: 10, y: 10)) {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } => match c { SegmentNotAxisAligned => true _ => false }
+  let diagonal = match std.orthogonal_geometry.axis_aligned_segment2(start: p2(x: 0, y: 0), end: p2(x: 10, y: 10)) {
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.SegmentNotAxisAligned => true _ => false }
   }
-  let cross_frame = match axis_aligned_segment2(start: test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), end: point2(frame: test.claim.orthogonal_geometry_witness.building(), x: 10, y: 0)) {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } =>
+  let cross_frame = match std.orthogonal_geometry.axis_aligned_segment2(start: p2(x: 0, y: 0), end: std.affine_space.point2(frame: building(), x: 10, y: 0)) {
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } =>
       match c {
-        OrthogonalFrameMismatch { expected: e, observed: o } =>
-          coordinate_frame_identity_eq(a: e, b: test.claim.orthogonal_geometry_witness.room()) && coordinate_frame_identity_eq(a: o, b: test.claim.orthogonal_geometry_witness.building())
+        std.orthogonal_geometry.OrthogonalFrameMismatch { expected: e, observed: o } =>
+          std.coordinate_frame.coordinate_frame_identity_eq(a: e, b: room()) && std.coordinate_frame.coordinate_frame_identity_eq(a: o, b: building())
         _ => false
       }
   }
@@ -108,24 +108,24 @@ test fn segment_walls_hold() -> Bool {
 // THE REFUSAL NAMES WHICH AXIS COLLAPSED. "The box is degenerate" sends a caller to inspect three
 // numbers the mint already narrowed to one.
 test fn box_and_rectangle_walls_hold() -> Bool {
-  let good_box = match axis_aligned_box3(min: test.claim.orthogonal_geometry_witness.p3(x: 0, y: 0, z: 0), max: test.claim.orthogonal_geometry_witness.p3(x: 4000, y: 3000, z: 2400)) {
-    OrthogonalReady { value: b } =>
-      box3_contains_point(b: b, p: test.claim.orthogonal_geometry_witness.p3(x: 100, y: 100, z: 100))
-        && !box3_contains_point(b: b, p: test.claim.orthogonal_geometry_witness.p3(x: 100, y: 100, z: 9999))
-        && !box3_contains_point(b: b, p: point3(frame: test.claim.orthogonal_geometry_witness.building(), x: 100, y: 100, z: 100))
-    OrthogonalRefused { cause: _ } => false
+  let good_box = match std.orthogonal_geometry.axis_aligned_box3(min: p3(x: 0, y: 0, z: 0), max: p3(x: 4000, y: 3000, z: 2400)) {
+    std.orthogonal_geometry.OrthogonalReady { value: b } =>
+      std.orthogonal_geometry.box3_contains_point(b: b, p: p3(x: 100, y: 100, z: 100))
+        && !std.orthogonal_geometry.box3_contains_point(b: b, p: p3(x: 100, y: 100, z: 9999))
+        && !std.orthogonal_geometry.box3_contains_point(b: b, p: std.affine_space.point3(frame: building(), x: 100, y: 100, z: 100))
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
   }
-  let flat_x = refusal_is_extent_not_positive(r: axis_aligned_box3(min: test.claim.orthogonal_geometry_witness.p3(x: 0, y: 0, z: 0), max: test.claim.orthogonal_geometry_witness.p3(x: 0, y: 3000, z: 2400)), axis: Axis3X)
-  let flat_y = refusal_is_extent_not_positive(r: axis_aligned_box3(min: test.claim.orthogonal_geometry_witness.p3(x: 0, y: 0, z: 0), max: test.claim.orthogonal_geometry_witness.p3(x: 4000, y: 0, z: 2400)), axis: Axis3Y)
-  let flat_z = refusal_is_extent_not_positive(r: axis_aligned_box3(min: test.claim.orthogonal_geometry_witness.p3(x: 0, y: 0, z: 0), max: test.claim.orthogonal_geometry_witness.p3(x: 4000, y: 3000, z: 0)), axis: Axis3Z)
-  let inverted = refusal_is_extent_not_positive(r: axis_aligned_box3(min: test.claim.orthogonal_geometry_witness.p3(x: 0, y: 0, z: 0), max: test.claim.orthogonal_geometry_witness.p3(x: 0 - 10, y: 3000, z: 2400)), axis: Axis3X)
-  let good_rect = match axis_aligned_rectangle2(min: test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), max: test.claim.orthogonal_geometry_witness.p2(x: 1200, y: 800)) {
-    OrthogonalReady { value: r } => extent_is_mm(e: rectangle2_width(registry: test.claim.orthogonal_geometry_witness.mm_registry(), r: r), want: 1200) && extent_is_mm(e: rectangle2_height(registry: test.claim.orthogonal_geometry_witness.mm_registry(), r: r), want: 800)
-    OrthogonalRefused { cause: _ } => false
+  let flat_x = refusal_is_extent_not_positive(r: std.orthogonal_geometry.axis_aligned_box3(min: p3(x: 0, y: 0, z: 0), max: p3(x: 0, y: 3000, z: 2400)), axis: std.euclidean_geometry.Axis3X)
+  let flat_y = refusal_is_extent_not_positive(r: std.orthogonal_geometry.axis_aligned_box3(min: p3(x: 0, y: 0, z: 0), max: p3(x: 4000, y: 0, z: 2400)), axis: std.euclidean_geometry.Axis3Y)
+  let flat_z = refusal_is_extent_not_positive(r: std.orthogonal_geometry.axis_aligned_box3(min: p3(x: 0, y: 0, z: 0), max: p3(x: 4000, y: 3000, z: 0)), axis: std.euclidean_geometry.Axis3Z)
+  let inverted = refusal_is_extent_not_positive(r: std.orthogonal_geometry.axis_aligned_box3(min: p3(x: 0, y: 0, z: 0), max: p3(x: 0 - 10, y: 3000, z: 2400)), axis: std.euclidean_geometry.Axis3X)
+  let good_rect = match std.orthogonal_geometry.axis_aligned_rectangle2(min: p2(x: 0, y: 0), max: p2(x: 1200, y: 800)) {
+    std.orthogonal_geometry.OrthogonalReady { value: r } => extent_is_mm(e: std.orthogonal_geometry.rectangle2_width(registry: mm_registry(), r: r), want: 1200) && extent_is_mm(e: std.orthogonal_geometry.rectangle2_height(registry: mm_registry(), r: r), want: 800)
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
   }
-  let thin_rect = match axis_aligned_rectangle2(min: test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), max: test.claim.orthogonal_geometry_witness.p2(x: 1200, y: 0)) {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } => match c { ExtentNotPositive { axis: a } => axis3_same(a: a, b: Axis3Y) _ => false }
+  let thin_rect = match std.orthogonal_geometry.axis_aligned_rectangle2(min: p2(x: 0, y: 0), max: p2(x: 1200, y: 0)) {
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.ExtentNotPositive { axis: a } => axis3_same(a: a, b: std.euclidean_geometry.Axis3Y) _ => false }
   }
   good_box && flat_x && flat_y && flat_z && inverted && good_rect && thin_rect
 }
@@ -134,22 +134,22 @@ test fn box_and_rectangle_walls_hold() -> Bool {
 // asserting it: two rooms sharing a wall plane are adjacent, and a containment test that called
 // them intersecting would report every neighbour as a collision.
 test fn box_overlap_treats_touching_faces_as_adjacent() -> Bool {
-  match axis_aligned_box3(min: test.claim.orthogonal_geometry_witness.p3(x: 0, y: 0, z: 0), max: test.claim.orthogonal_geometry_witness.p3(x: 1000, y: 1000, z: 1000)) {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: a } =>
-      match axis_aligned_box3(min: test.claim.orthogonal_geometry_witness.p3(x: 1000, y: 0, z: 0), max: test.claim.orthogonal_geometry_witness.p3(x: 2000, y: 1000, z: 1000)) {
-        OrthogonalRefused { cause: _ } => false
-        OrthogonalReady { value: touching } =>
-          match axis_aligned_box3(min: test.claim.orthogonal_geometry_witness.p3(x: 999, y: 0, z: 0), max: test.claim.orthogonal_geometry_witness.p3(x: 2000, y: 1000, z: 1000)) {
-            OrthogonalRefused { cause: _ } => false
-            OrthogonalReady { value: overlapping } =>
-              match box3_overlaps(a: a, b: touching) {
-                OrthogonalReady { value: t } =>
-                  match box3_overlaps(a: a, b: overlapping) {
-                    OrthogonalReady { value: o } => !t && o
-                    OrthogonalRefused { cause: _ } => false
+  match std.orthogonal_geometry.axis_aligned_box3(min: p3(x: 0, y: 0, z: 0), max: p3(x: 1000, y: 1000, z: 1000)) {
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: a } =>
+      match std.orthogonal_geometry.axis_aligned_box3(min: p3(x: 1000, y: 0, z: 0), max: p3(x: 2000, y: 1000, z: 1000)) {
+        std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+        std.orthogonal_geometry.OrthogonalReady { value: touching } =>
+          match std.orthogonal_geometry.axis_aligned_box3(min: p3(x: 999, y: 0, z: 0), max: p3(x: 2000, y: 1000, z: 1000)) {
+            std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+            std.orthogonal_geometry.OrthogonalReady { value: overlapping } =>
+              match std.orthogonal_geometry.box3_overlaps(a: a, b: touching) {
+                std.orthogonal_geometry.OrthogonalReady { value: t } =>
+                  match std.orthogonal_geometry.box3_overlaps(a: a, b: overlapping) {
+                    std.orthogonal_geometry.OrthogonalReady { value: o } => !t && o
+                    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
                   }
-                OrthogonalRefused { cause: _ } => false
+                std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
               }
           }
       }
@@ -161,25 +161,25 @@ test fn box_overlap_treats_touching_faces_as_adjacent() -> Bool {
 // derivation is the right-handed one and that a parallel pair, the only unreachable-by-intent
 // input, refuses.
 test fn rotation_is_orientation_preserving_by_construction() -> Bool {
-  let identity_rotation = match orthogonal_rotation3(x_image: PositiveX, y_image: PositiveY) {
-    OrthogonalReady { value: r } => axis_direction_same(a: rotation_z_image(r: r), b: PositiveZ)
-    OrthogonalRefused { cause: _ } => false
+  let identity_rotation = match std.orthogonal_geometry.orthogonal_rotation3(x_image: std.euclidean_geometry.PositiveX, y_image: std.euclidean_geometry.PositiveY) {
+    std.orthogonal_geometry.OrthogonalReady { value: r } => axis_direction_same(a: std.orthogonal_geometry.rotation_z_image(r: r), b: std.euclidean_geometry.PositiveZ)
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
   }
-  let quarter_turn_about_z = match orthogonal_rotation3(x_image: PositiveY, y_image: NegativeX) {
-    OrthogonalReady { value: r } => axis_direction_same(a: rotation_z_image(r: r), b: PositiveZ)
-    OrthogonalRefused { cause: _ } => false
+  let quarter_turn_about_z = match std.orthogonal_geometry.orthogonal_rotation3(x_image: std.euclidean_geometry.PositiveY, y_image: std.euclidean_geometry.NegativeX) {
+    std.orthogonal_geometry.OrthogonalReady { value: r } => axis_direction_same(a: std.orthogonal_geometry.rotation_z_image(r: r), b: std.euclidean_geometry.PositiveZ)
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
   }
-  let quarter_turn_about_x = match orthogonal_rotation3(x_image: PositiveX, y_image: PositiveZ) {
-    OrthogonalReady { value: r } => axis_direction_same(a: rotation_z_image(r: r), b: NegativeY)
-    OrthogonalRefused { cause: _ } => false
+  let quarter_turn_about_x = match std.orthogonal_geometry.orthogonal_rotation3(x_image: std.euclidean_geometry.PositiveX, y_image: std.euclidean_geometry.PositiveZ) {
+    std.orthogonal_geometry.OrthogonalReady { value: r } => axis_direction_same(a: std.orthogonal_geometry.rotation_z_image(r: r), b: std.euclidean_geometry.NegativeY)
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
   }
-  let parallel_same = match orthogonal_rotation3(x_image: PositiveX, y_image: PositiveX) {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } => match c { RotationAxesParallel => true _ => false }
+  let parallel_same = match std.orthogonal_geometry.orthogonal_rotation3(x_image: std.euclidean_geometry.PositiveX, y_image: std.euclidean_geometry.PositiveX) {
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.RotationAxesParallel => true _ => false }
   }
-  let parallel_opposite = match orthogonal_rotation3(x_image: PositiveX, y_image: NegativeX) {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } => match c { RotationAxesParallel => true _ => false }
+  let parallel_opposite = match std.orthogonal_geometry.orthogonal_rotation3(x_image: std.euclidean_geometry.PositiveX, y_image: std.euclidean_geometry.NegativeX) {
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.RotationAxesParallel => true _ => false }
   }
   identity_rotation && quarter_turn_about_z && quarter_turn_about_x && parallel_same && parallel_opposite
 }
@@ -188,34 +188,34 @@ test fn rotation_is_orientation_preserving_by_construction() -> Bool {
 // self-intersection pair is the one worth reading: both loops have four axis-aligned, alternating
 // edges and no repeated vertex, so nothing local to an edge distinguishes them.
 test fn loop_walls_hold() -> Bool {
-  let square = [test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 4000, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 4000, y: 3000), test.claim.orthogonal_geometry_witness.p2(x: 0, y: 3000)]
-  let good = match orthogonal_loop2(vertices: square) {
-    OrthogonalReady { value: l } => (loop2_vertices(l: l) |> count) == 4
-    OrthogonalRefused { cause: _ } => false
+  let square = [p2(x: 0, y: 0), p2(x: 4000, y: 0), p2(x: 4000, y: 3000), p2(x: 0, y: 3000)]
+  let good = match std.orthogonal_geometry.orthogonal_loop2(vertices: square) {
+    std.orthogonal_geometry.OrthogonalReady { value: l } => (std.orthogonal_geometry.loop2_vertices(l: l) |> count) == 4
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
   }
   let l_shape = [
-    test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 6000, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 6000, y: 2000),
-    test.claim.orthogonal_geometry_witness.p2(x: 3000, y: 2000), test.claim.orthogonal_geometry_witness.p2(x: 3000, y: 4000), test.claim.orthogonal_geometry_witness.p2(x: 0, y: 4000)
+    p2(x: 0, y: 0), p2(x: 6000, y: 0), p2(x: 6000, y: 2000),
+    p2(x: 3000, y: 2000), p2(x: 3000, y: 4000), p2(x: 0, y: 4000)
   ]
-  let good_l = match orthogonal_loop2(vertices: l_shape) {
-    OrthogonalReady { value: l } => (loop2_vertices(l: l) |> count) == 6
-    OrthogonalRefused { cause: _ } => false
+  let good_l = match std.orthogonal_geometry.orthogonal_loop2(vertices: l_shape) {
+    std.orthogonal_geometry.OrthogonalReady { value: l } => (std.orthogonal_geometry.loop2_vertices(l: l) |> count) == 6
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
   }
-  let too_few = match orthogonal_loop2(vertices: [test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 1, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 1, y: 1)]) {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } => match c { LoopTooFewVertices { supplied: n } => n == 3 _ => false }
+  let too_few = match std.orthogonal_geometry.orthogonal_loop2(vertices: [p2(x: 0, y: 0), p2(x: 1, y: 0), p2(x: 1, y: 1)]) {
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.LoopTooFewVertices { supplied: n } => n == 3 _ => false }
   }
-  let diagonal_edge = match orthogonal_loop2(vertices: [test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 4000, y: 100), test.claim.orthogonal_geometry_witness.p2(x: 4000, y: 3000), test.claim.orthogonal_geometry_witness.p2(x: 0, y: 3000)]) {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } => match c { LoopEdgeNotAxisAligned => true _ => false }
+  let diagonal_edge = match std.orthogonal_geometry.orthogonal_loop2(vertices: [p2(x: 0, y: 0), p2(x: 4000, y: 100), p2(x: 4000, y: 3000), p2(x: 0, y: 3000)]) {
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.LoopEdgeNotAxisAligned => true _ => false }
   }
-  let collinear_run = match orthogonal_loop2(vertices: [test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 2000, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 4000, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 4000, y: 3000), test.claim.orthogonal_geometry_witness.p2(x: 0, y: 3000)]) {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } => match c { LoopEdgesNotPerpendicular => true _ => false }
+  let collinear_run = match std.orthogonal_geometry.orthogonal_loop2(vertices: [p2(x: 0, y: 0), p2(x: 2000, y: 0), p2(x: 4000, y: 0), p2(x: 4000, y: 3000), p2(x: 0, y: 3000)]) {
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.LoopEdgesNotPerpendicular => true _ => false }
   }
-  let cross_frame = match orthogonal_loop2(vertices: [test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), point2(frame: test.claim.orthogonal_geometry_witness.building(), x: 4000, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 4000, y: 3000), test.claim.orthogonal_geometry_witness.p2(x: 0, y: 3000)]) {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } => match c { OrthogonalFrameMismatch { expected: _, observed: _ } => true _ => false }
+  let cross_frame = match std.orthogonal_geometry.orthogonal_loop2(vertices: [p2(x: 0, y: 0), std.affine_space.point2(frame: building(), x: 4000, y: 0), p2(x: 4000, y: 3000), p2(x: 0, y: 3000)]) {
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.OrthogonalFrameMismatch { expected: _, observed: _ } => true _ => false }
   }
   good && good_l && too_few && diagonal_edge && collinear_run && cross_frame
 }
@@ -225,39 +225,39 @@ test fn loop_walls_hold() -> Bool {
 // it, which is why that test exists rather than a repeated-vertex check standing in for it.
 test fn self_intersecting_loop_refuses() -> Bool {
   let figure_eight = [
-    test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 2000, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 2000, y: 2000), test.claim.orthogonal_geometry_witness.p2(x: 1000, y: 2000),
-    test.claim.orthogonal_geometry_witness.p2(x: 1000, y: 1000), test.claim.orthogonal_geometry_witness.p2(x: 3000, y: 1000), test.claim.orthogonal_geometry_witness.p2(x: 3000, y: 3000), test.claim.orthogonal_geometry_witness.p2(x: 0, y: 3000)
+    p2(x: 0, y: 0), p2(x: 2000, y: 0), p2(x: 2000, y: 2000), p2(x: 1000, y: 2000),
+    p2(x: 1000, y: 1000), p2(x: 3000, y: 1000), p2(x: 3000, y: 3000), p2(x: 0, y: 3000)
   ]
-  match orthogonal_loop2(vertices: figure_eight) {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } => match c { LoopSelfIntersects => true _ => false }
+  match std.orthogonal_geometry.orthogonal_loop2(vertices: figure_eight) {
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.LoopSelfIntersects => true _ => false }
   }
 }
 
 // A BOUNDING BOX OF NOTHING IS NOT A DEGENERATE BOX AT THE ORIGIN. Returning one would be the
 // fabricated plausible output DESIGN 5 forbids, so the empty list is the one refusal.
 test fn bounding_box_is_derived_and_refuses_emptiness() -> Bool {
-  let derived = match bounding_box3(points: [test.claim.orthogonal_geometry_witness.p3(x: 10, y: 0 - 5, z: 3), test.claim.orthogonal_geometry_witness.p3(x: 0 - 2, y: 40, z: 3), test.claim.orthogonal_geometry_witness.p3(x: 7, y: 1, z: 99)]) {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: b } =>
-      signed_frame_component_count(c: bounding_box3_min(b: b).x) == 0 - 2
-        && signed_frame_component_count(c: bounding_box3_min(b: b).y) == 0 - 5
-        && signed_frame_component_count(c: bounding_box3_min(b: b).z) == 3
-        && signed_frame_component_count(c: bounding_box3_max(b: b).x) == 10
-        && signed_frame_component_count(c: bounding_box3_max(b: b).y) == 40
-        && signed_frame_component_count(c: bounding_box3_max(b: b).z) == 99
+  let derived = match std.orthogonal_geometry.bounding_box3(points: [p3(x: 10, y: 0 - 5, z: 3), p3(x: 0 - 2, y: 40, z: 3), p3(x: 7, y: 1, z: 99)]) {
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: b } =>
+      std.affine_space.signed_frame_component_count(c: std.orthogonal_geometry.bounding_box3_min(b: b).x) == 0 - 2
+        && std.affine_space.signed_frame_component_count(c: std.orthogonal_geometry.bounding_box3_min(b: b).y) == 0 - 5
+        && std.affine_space.signed_frame_component_count(c: std.orthogonal_geometry.bounding_box3_min(b: b).z) == 3
+        && std.affine_space.signed_frame_component_count(c: std.orthogonal_geometry.bounding_box3_max(b: b).x) == 10
+        && std.affine_space.signed_frame_component_count(c: std.orthogonal_geometry.bounding_box3_max(b: b).y) == 40
+        && std.affine_space.signed_frame_component_count(c: std.orthogonal_geometry.bounding_box3_max(b: b).z) == 99
   }
-  let coplanar_still_bounds = match bounding_box3(points: [test.claim.orthogonal_geometry_witness.p3(x: 0, y: 0, z: 5), test.claim.orthogonal_geometry_witness.p3(x: 10, y: 10, z: 5)]) {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: b } => signed_frame_component_count(c: bounding_box3_max(b: b).z) == 5
+  let coplanar_still_bounds = match std.orthogonal_geometry.bounding_box3(points: [p3(x: 0, y: 0, z: 5), p3(x: 10, y: 10, z: 5)]) {
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: b } => std.affine_space.signed_frame_component_count(c: std.orthogonal_geometry.bounding_box3_max(b: b).z) == 5
   }
-  let empty = match bounding_box3(points: []) {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } => match c { BoundingBoxHasNoPoints => true _ => false }
+  let empty = match std.orthogonal_geometry.bounding_box3(points: []) {
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.BoundingBoxHasNoPoints => true _ => false }
   }
-  let cross_frame = match bounding_box3(points: [test.claim.orthogonal_geometry_witness.p3(x: 0, y: 0, z: 0), point3(frame: test.claim.orthogonal_geometry_witness.building(), x: 1, y: 1, z: 1)]) {
-    OrthogonalReady { value: _ } => false
-    OrthogonalRefused { cause: c } => match c { OrthogonalFrameMismatch { expected: _, observed: _ } => true _ => false }
+  let cross_frame = match std.orthogonal_geometry.bounding_box3(points: [p3(x: 0, y: 0, z: 0), std.affine_space.point3(frame: building(), x: 1, y: 1, z: 1)]) {
+    std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.OrthogonalFrameMismatch { expected: _, observed: _ } => true _ => false }
   }
   derived && coplanar_still_bounds && empty && cross_frame
 }
@@ -267,37 +267,37 @@ test fn bounding_box_is_derived_and_refuses_emptiness() -> Bool {
 // cross-frame arm is not written because the mint now takes only one frame-bearing input - the
 // mismatch it used to refuse has no representation.
 test fn plane_surface_and_prism_hold() -> Bool {
-  let floor_plane = plane3(frame: test.claim.orthogonal_geometry_witness.room(), normal_axis: Axis3Z, offset: 0)
-  let on_plane = plane3_contains_point(plane: floor_plane, p: test.claim.orthogonal_geometry_witness.p3(x: 500, y: 500, z: 0))
-  let off_plane = !plane3_contains_point(plane: floor_plane, p: test.claim.orthogonal_geometry_witness.p3(x: 500, y: 500, z: 1))
-  let other_frame_not_on_plane = !plane3_contains_point(plane: floor_plane, p: point3(frame: test.claim.orthogonal_geometry_witness.building(), x: 500, y: 500, z: 0))
-  let surface = match axis_aligned_rectangle2(min: test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), max: test.claim.orthogonal_geometry_witness.p2(x: 4000, y: 3000)) {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: rect } =>
-      extent_is_mm(e: rectangle2_width(registry: test.claim.orthogonal_geometry_witness.mm_registry(), r: surface3_extent(s: axis_aligned_surface3(offset: 0, extent: rect))), want: 4000)
+  let floor_plane = std.orthogonal_geometry.plane3(frame: room(), normal_axis: std.euclidean_geometry.Axis3Z, offset: 0)
+  let on_plane = std.orthogonal_geometry.plane3_contains_point(plane: floor_plane, p: p3(x: 500, y: 500, z: 0))
+  let off_plane = !std.orthogonal_geometry.plane3_contains_point(plane: floor_plane, p: p3(x: 500, y: 500, z: 1))
+  let other_frame_not_on_plane = !std.orthogonal_geometry.plane3_contains_point(plane: floor_plane, p: std.affine_space.point3(frame: building(), x: 500, y: 500, z: 0))
+  let surface = match std.orthogonal_geometry.axis_aligned_rectangle2(min: p2(x: 0, y: 0), max: p2(x: 4000, y: 3000)) {
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: rect } =>
+      extent_is_mm(e: std.orthogonal_geometry.rectangle2_width(registry: mm_registry(), r: std.orthogonal_geometry.surface3_extent(s: std.orthogonal_geometry.axis_aligned_surface3(offset: 0, extent: rect))), want: 4000)
   }
-  let surface_plane_is_derived = match axis_aligned_rectangle2(min: point2(frame: test.claim.orthogonal_geometry_witness.building(), x: 0, y: 0), max: point2(frame: test.claim.orthogonal_geometry_witness.building(), x: 10, y: 10)) {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: rect } =>
-      let sf = axis_aligned_surface3(offset: 250, extent: rect)
-      axis3_same(a: plane3_normal_axis(p: surface3_plane(s: sf)), b: Axis3Z)
-        && coordinate_frame_identity_eq(a: surface3_frame(s: sf), b: test.claim.orthogonal_geometry_witness.building())
-        && plane3_contains_point(plane: surface3_plane(s: sf), p: point3(frame: test.claim.orthogonal_geometry_witness.building(), x: 5, y: 5, z: 250))
+  let surface_plane_is_derived = match std.orthogonal_geometry.axis_aligned_rectangle2(min: std.affine_space.point2(frame: building(), x: 0, y: 0), max: std.affine_space.point2(frame: building(), x: 10, y: 10)) {
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: rect } =>
+      let sf = std.orthogonal_geometry.axis_aligned_surface3(offset: 250, extent: rect)
+      axis3_same(a: std.orthogonal_geometry.plane3_normal_axis(p: std.orthogonal_geometry.surface3_plane(s: sf)), b: std.euclidean_geometry.Axis3Z)
+        && std.coordinate_frame.coordinate_frame_identity_eq(a: std.orthogonal_geometry.surface3_frame(s: sf), b: building())
+        && std.orthogonal_geometry.plane3_contains_point(plane: std.orthogonal_geometry.surface3_plane(s: sf), p: std.affine_space.point3(frame: building(), x: 5, y: 5, z: 250))
   }
-  let prism = match orthogonal_loop2(vertices: [test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 4000, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 4000, y: 3000), test.claim.orthogonal_geometry_witness.p2(x: 0, y: 3000)]) {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: l } =>
-      match orthogonal_prism3(footprint: l, low: 0, high: 2400) {
-        OrthogonalReady { value: pr } => extent_is_mm(e: prism3_height(registry: test.claim.orthogonal_geometry_witness.mm_registry(), p: pr), want: 2400)
-        OrthogonalRefused { cause: _ } => false
+  let prism = match std.orthogonal_geometry.orthogonal_loop2(vertices: [p2(x: 0, y: 0), p2(x: 4000, y: 0), p2(x: 4000, y: 3000), p2(x: 0, y: 3000)]) {
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: l } =>
+      match std.orthogonal_geometry.orthogonal_prism3(footprint: l, low: 0, high: 2400) {
+        std.orthogonal_geometry.OrthogonalReady { value: pr } => extent_is_mm(e: std.orthogonal_geometry.prism3_height(registry: mm_registry(), p: pr), want: 2400)
+        std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
       }
   }
-  let flat_prism = match orthogonal_loop2(vertices: [test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 4000, y: 0), test.claim.orthogonal_geometry_witness.p2(x: 4000, y: 3000), test.claim.orthogonal_geometry_witness.p2(x: 0, y: 3000)]) {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: l } =>
-      match orthogonal_prism3(footprint: l, low: 2400, high: 2400) {
-        OrthogonalReady { value: _ } => false
-        OrthogonalRefused { cause: c } => match c { ExtentNotPositive { axis: a } => axis3_same(a: a, b: Axis3Z) _ => false }
+  let flat_prism = match std.orthogonal_geometry.orthogonal_loop2(vertices: [p2(x: 0, y: 0), p2(x: 4000, y: 0), p2(x: 4000, y: 3000), p2(x: 0, y: 3000)]) {
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: l } =>
+      match std.orthogonal_geometry.orthogonal_prism3(footprint: l, low: 2400, high: 2400) {
+        std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+        std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.ExtentNotPositive { axis: a } => axis3_same(a: a, b: std.euclidean_geometry.Axis3Z) _ => false }
       }
   }
   on_plane && off_plane && other_frame_not_on_plane && surface && surface_plane_is_derived && prism && flat_prism
@@ -312,13 +312,13 @@ test fn plane_surface_and_prism_hold() -> Bool {
 // Read as micrometres it answers. Read as millimetres it REFUSES rather than dividing, because
 // this reader is not a converter: the caller asked what the shape measures, not for a change of
 // unit, and a 500 um pitch has no whole-millimetre answer at all.
-fn board() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 77) }
+fn board() -> std.coordinate_frame.CoordinateFrameIdentity { std.coordinate_frame.coordinate_frame_identity(occurrence: 77) }
 
 fn micro_registry() -> std.spatial_frame.SpatialFrameRegistry {
-  let r0 = empty_frame_registry()
-  match register_frame(r: r0, identity: test.claim.orthogonal_geometry_witness.board(), length_scale: Micro) {
-    FrameRegistered { frame: f } => registry_with(r: r0, f: f)
-    FrameRegistrationRefused { cause: _ } => r0
+  let r0 = std.spatial_frame.empty_frame_registry()
+  match std.spatial_frame.register_frame(r: r0, identity: board(), length_scale: std.measure.Micro) {
+    std.spatial_frame.FrameRegistered { frame: f } => std.spatial_frame.registry_with(r: r0, f: f)
+    std.spatial_frame.FrameRegistrationRefused { cause: _ } => r0
   }
 }
 
@@ -328,22 +328,22 @@ fn micro_registry() -> std.spatial_frame.SpatialFrameRegistry {
 // reader's actual job — returning the extent in the frame's registered unit — went
 // unwitnessed. The count is asserted first, then the refusal.
 test fn a_reader_takes_the_unit_from_the_frame_not_from_itself() -> Bool {
-  match axis_aligned_rectangle2(
-    min: point2(frame: test.claim.orthogonal_geometry_witness.board(), x: 0, y: 0),
-    max: point2(frame: test.claim.orthogonal_geometry_witness.board(), x: 20000, y: 20000)
+  match std.orthogonal_geometry.axis_aligned_rectangle2(
+    min: std.affine_space.point2(frame: board(), x: 0, y: 0),
+    max: std.affine_space.point2(frame: board(), x: 20000, y: 20000)
   ) {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: rect } =>
-      match rectangle2_width(registry: test.claim.orthogonal_geometry_witness.micro_registry(), r: rect) {
-        ExtentFrameUnregistered { identity: _ } => false
-        ExtentInFrame { length: l } =>
-          match frame_length_as_micrometer(l: l) {
-            LengthProjectionRefused { cause: _ } => false
-            LengthProjected { value: um } =>
-              measure_count(m: um) == 20000
-                && match frame_length_as_millimeter(l: l) {
-                  LengthProjected { value: _ } => false
-                  LengthProjectionRefused { cause: _ } => true
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: rect } =>
+      match std.orthogonal_geometry.rectangle2_width(registry: micro_registry(), r: rect) {
+        std.spatial_frame.ExtentFrameUnregistered { identity: _ } => false
+        std.spatial_frame.ExtentInFrame { length: l } =>
+          match std.spatial_frame.frame_length_as_micrometer(l: l) {
+            std.spatial_frame.LengthProjectionRefused { cause: _ } => false
+            std.spatial_frame.LengthProjected { value: um } =>
+              std.measure.measure_count(m: um) == 20000
+                && match std.spatial_frame.frame_length_as_millimeter(l: l) {
+                  std.spatial_frame.LengthProjected { value: _ } => false
+                  std.spatial_frame.LengthProjectionRefused { cause: _ } => true
                 }
           }
       }
@@ -353,12 +353,12 @@ test fn a_reader_takes_the_unit_from_the_frame_not_from_itself() -> Bool {
 // An unregistered frame has no unit, and a reader that fell back to millimetres would answer a
 // plausible number for a real question. The registry above holds the board frame only.
 test fn an_unregistered_frame_refuses_rather_than_measuring() -> Bool {
-  match axis_aligned_rectangle2(min: test.claim.orthogonal_geometry_witness.p2(x: 0, y: 0), max: test.claim.orthogonal_geometry_witness.p2(x: 1200, y: 800)) {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: rect } =>
-      match rectangle2_width(registry: test.claim.orthogonal_geometry_witness.micro_registry(), r: rect) {
-        ExtentInFrame { length: _ } => false
-        ExtentFrameUnregistered { identity: _ } => true
+  match std.orthogonal_geometry.axis_aligned_rectangle2(min: p2(x: 0, y: 0), max: p2(x: 1200, y: 800)) {
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: rect } =>
+      match std.orthogonal_geometry.rectangle2_width(registry: micro_registry(), r: rect) {
+        std.spatial_frame.ExtentInFrame { length: _ } => false
+        std.spatial_frame.ExtentFrameUnregistered { identity: _ } => true
       }
   }
 }

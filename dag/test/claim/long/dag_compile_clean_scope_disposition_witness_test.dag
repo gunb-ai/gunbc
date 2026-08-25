@@ -1,10 +1,10 @@
 module test.claim.long.dag_compile_clean_scope_disposition_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data dag_compile_clean_scope_disposition_long_note: String = "THE FIXTURE-GRAIN DISPOSITION ROW RECEIPT, re-homed off per-PR discovery (fast-lane BudgetExceeded, run 31077616566, 5002ms thread-CPU against the 5000ms budget on the seven-row fold). Mechanism stays pinned fixture pool + roster (scope_disposition_witness_roster_note) — NOT live compile_clean_shard_entry_paths. WHY NOT SPLIT: two per-PR halves each still paid a cold module_declaration_facts_live scan and failed at 5002ms and 5001ms — total cost unchanged, admission doubled. Cheap scope witnesses (empty-touched, partition authority, admission duplicates, path-grain dissolve trigger) stay per-PR in dag/test/claim/dag_compile_clean_scope_witness_test.dag. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/long/dag_compile_clean_scope_disposition_witness_test.dag --function dag_compile_clean_scope_all_disposition_rows_hold."
 
 test fn dag_compile_clean_scope_all_disposition_rows_hold() -> Bool {
-  witness_touched_path_dispositions_hold()
+  tools.dag_compile_clean_scope.witness_touched_path_dispositions_hold()
 }

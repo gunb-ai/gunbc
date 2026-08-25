@@ -16,24 +16,24 @@ data pre_push_check_only_note: String = "Pre-push gates refuse with a fix recipe
 data pre_push_fmt_recipe_defork_note: String = "CargoFmtCheck previously carried a pre-baked fail_recipe field holding a byte-identical copy of the row in gunbc.githooks_pre_push_emit — one string, two authorities (DESIGN section 3). The payload is deleted rather than repointed: a failure message is not a property of WHICH gate fired, it is a projection of the outcome that gate OBSERVED, so pre_push_fmt_outcome_recipe derives it from the exit status through the single authority in gunbc.local_tidy_spec. A pre-baked recipe on the binding is precisely what let a could-not-run outcome render a drift remedy."
 
 fn pre_push_fmt_outcome(status: Int) -> gunbc.local_tidy_spec.LocalTidyFmtOutcome {
-  local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: status)
+  gunbc.local_tidy_spec.local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: status)
 }
 
 fn pre_push_fmt_outcome_recipe(status: Int) -> String {
-  local_tidy_fmt_outcome_recipe(
+  gunbc.local_tidy_spec.local_tidy_fmt_outcome_recipe(
     outcome: pre_push_fmt_outcome(status: status),
-    drift_recipe: local_tidy_fmt_pre_push_drift_recipe
+    drift_recipe: gunbc.local_tidy_spec.local_tidy_fmt_pre_push_drift_recipe
   )
 }
 
 fn pre_push_fmt_outcome_blocks(status: Int) -> Bool {
-  local_tidy_fmt_outcome_blocks(outcome: pre_push_fmt_outcome(status: status))
+  gunbc.local_tidy_spec.local_tidy_fmt_outcome_blocks(outcome: pre_push_fmt_outcome(status: status))
 }
 
 fn pre_push_fmt_spawn_refusal_recipe(cause: String) -> String {
-  local_tidy_fmt_outcome_recipe(
+  gunbc.local_tidy_spec.local_tidy_fmt_outcome_recipe(
     outcome: gunbc.local_tidy_spec.FmtToolUnavailable { program: "cargo", cause: cause },
-    drift_recipe: local_tidy_fmt_pre_push_drift_recipe
+    drift_recipe: gunbc.local_tidy_spec.local_tidy_fmt_pre_push_drift_recipe
   )
 }
 
@@ -48,12 +48,12 @@ fn pre_push_source_roots() -> List<String> {
 }
 
 fn pre_push_path_hits_globs(path: String, globs: List<String>) -> Bool {
-  any(globs, g => local_tidy_path_matches_glob(path: path, glob: g))
+  any(globs, g => gunbc.local_tidy_spec.local_tidy_path_matches_glob(path: path, glob: g))
 }
 
 fn pre_push_path_hits_binding(path: String, binding: PrePushGateBinding) -> Bool {
   match binding.kind {
-    CargoFmtCheck => path_is_rust_monolith(path: path)
+    CargoFmtCheck => tools.rust_stage0_gates.path_is_rust_monolith(path: path)
     _ => pre_push_path_hits_globs(path: path, globs: binding.trigger_globs)
   }
 }
@@ -74,19 +74,19 @@ fn pre_push_all_bindings() -> List<PrePushGateBinding> {
 }
 
 fn pre_push_bindings() -> List<PrePushGateBinding> {
-  fold(project_local_tidy_checks(roster: commit_gate_roster), init: [], f: fn(acc, check) {
+  fold(gunbc.commit_workflow.project_local_tidy_checks(roster: gunbc.commit_workflow.commit_gate_roster), init: [], f: fn(acc, check) {
     match check {
-      LocalTidyWitnessCheck { entry, check_fns } =>
+      gunbc.commit_workflow.LocalTidyWitnessCheck { entry, check_fns } =>
         fold(check_fns, init: acc, f: fn(inner, fn_name) {
           concat(inner, [PrePushGateBinding {
             kind: DocWitnessRun { entry: entry, function: fn_name },
-            trigger_globs: local_tidy_trigger_globs(check: check)
+            trigger_globs: gunbc.local_tidy_spec.local_tidy_trigger_globs(check: check)
           }])
         })
-      LocalTidyCargoFmtCheck =>
+      gunbc.commit_workflow.LocalTidyCargoFmtCheck =>
         concat(acc, [PrePushGateBinding {
           kind: CargoFmtCheck,
-          trigger_globs: local_tidy_trigger_globs(check: check)
+          trigger_globs: gunbc.local_tidy_spec.local_tidy_trigger_globs(check: check)
         }])
     }
   })
@@ -113,7 +113,7 @@ fn pre_push_active_kinds(changed_paths: List<String>) -> List<PrePushGateKind> {
 }
 
 fn pre_push_zero_sha_authority() -> String {
-  pre_push_zero_sha
+  extdeps.git.hooks.pre_push_zero_sha
 }
 
 fn pre_push_witness_corpus_plan_entry_authority() -> String {

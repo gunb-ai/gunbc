@@ -1,15 +1,16 @@
 module extdeps.tools.hostname
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "man7.org/linux/man-pages/man1/hostname.1.html"
   }
 }
 
-data extdeps_hostnamectl_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_hostnamectl_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.freedesktop.org/software/systemd/man/latest/hostnamectl.html"
   }
 }
@@ -18,7 +19,7 @@ fn hostname_short_read_argv() -> List<String> {
   ["hostname", "-s"]
 }
 
-fn hostname_set_argv(desired: DnsLabel) -> List<String> {
+fn hostname_set_argv(desired: extdeps.dns.domain_name.DnsLabel) -> List<String> {
   ["hostnamectl", "set-hostname", desired as String]
 }
 
@@ -41,7 +42,7 @@ service os.Hostname {
   }
 
   operation Set {
-    input { desired: DnsLabel }
+    input { desired: extdeps.dns.domain_name.DnsLabel }
     output {
       success: Bool from "exit_success"
       stderr: String from "stderr"
@@ -67,10 +68,10 @@ data hostname_program: NonEmptyStr = "hostname"
 // configured to call itself, which may be fully qualified; `hostname -s` prints the first label
 // only. A receipt that records identity wants the former, a converge that matches a fleet member's
 // short name wants the latter, and collapsing them would silently change which one a caller got.
-fn hostname_read_command() -> ArgvCommand {
-  argv_command(program: hostname_program, arguments: [])
+fn hostname_read_command() -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(program: hostname_program, arguments: [])
 }
 
-fn hostname_short_read_command() -> ArgvCommand {
-  argv_command(program: hostname_program, arguments: ["-s"])
+fn hostname_short_read_command() -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(program: hostname_program, arguments: ["-s"])
 }

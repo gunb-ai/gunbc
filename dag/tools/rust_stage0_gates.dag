@@ -53,11 +53,11 @@ data unit_must_run_failclosed_note: std.disposition.Disposition = std.dispositio
 }
 
 data unit_must_run_staged_note: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "tools.rust_stage0_gates",
     decl_name: "per_unit_test_selector",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

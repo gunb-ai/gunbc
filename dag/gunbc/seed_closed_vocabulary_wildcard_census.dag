@@ -1,5 +1,6 @@
 module gunbc.seed_closed_vocabulary_wildcard_census
 
+
 // WHAT THIS CARRIER IS. The .dag substrate's vocabularies are CLOSED coproducts, and
 // closure is a guarantee: a fold over one either names every member or fails to compile.
 // A seed-side Rust `match` over the SAME vocabulary that ends in a catch-all discards

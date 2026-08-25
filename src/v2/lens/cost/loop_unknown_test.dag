@@ -1,14 +1,15 @@
 module v2.test.lens_cost.loop_unknown
 
+
 data loop_unknown_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: v2.std.node.Loop },
   children: [],
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn loop_unknown_claim_holds() -> v2.std.logic.Bool {
+test fn loop_unknown_claim_holds() -> Bool {
   match v2.lens.cost.cost_lens(n: loop_unknown_input) {
-    Violates { diagnostic: _ } => true
+    v2.std.witness.Violates { diagnostic: _ } => true
     _ => false
   }
 }

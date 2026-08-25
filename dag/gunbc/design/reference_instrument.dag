@@ -6,13 +6,13 @@ data reference_instrument_note: String = "THE JOIN, NOT A HUB (DESIGN section 3 
 data subject_identity_note: String = "SUBJECTS ARE REFERENCED SYMBOLICALLY, NEVER RENAMED (review finding, 2026-08-04). An earlier revision declared a local coproduct — CitedInstrument = PipBoy3000FalloutNewVegas | PipBoy3000MkVTvSeries — beside the real extdeps subject declarations, which is a second identity system for subjects the containment tree already names, and exactly the nicknaming class DESIGN section 3 forbids. Identity now travels as ExternalSubjectRef over DeclarationRef, the same carrier extdeps.external_authority uses for scope subjects, so a subject is named by module and declaration or not at all. The refs are built here rather than imported because both product modules name their scope declaration extdeps_model_scope, so importing the pair would collide; the symbolic form is the same one every scope row already carries."
 
 data pip_boy_3000_subject: extdeps.external_authority.ExternalSubjectRef = extdeps.external_authority.ExternalSubjectRef {
-  declaration: decl_ref(
+  declaration: std.decl_ref.decl_ref(
     module_path: "extdeps.instrument.pip_boy_3000",
     decl_name: "pip_boy_3000"),
 }
 
 data pip_boy_mk_v_subject: extdeps.external_authority.ExternalSubjectRef = extdeps.external_authority.ExternalSubjectRef {
-  declaration: decl_ref(
+  declaration: std.decl_ref.decl_ref(
     module_path: "extdeps.instrument.pip_boy_3000_mk_v",
     decl_name: "pip_boy_3000_mk_v"),
 }
@@ -57,7 +57,7 @@ data provenance_by_construction_note: String = "ONE TOTAL FUNCTION, NOT TWO LIST
 fn pip_boy_3000_citation(decl_name: String) -> InstrumentCitation {
   InstrumentCitation {
     subject: pip_boy_3000_subject,
-    fact: decl_ref(
+    fact: std.decl_ref.decl_ref(
       module_path: "extdeps.instrument.pip_boy_3000",
       decl_name: decl_name),
   }
@@ -108,7 +108,7 @@ fn axis_citations(a: InstrumentBehaviourAxis) -> List<InstrumentCitation> {
 
 fn axis_is_cited_on(axis: InstrumentBehaviourAxis, subject: extdeps.external_authority.ExternalSubjectRef) -> Bool {
   fold(axis_citations(a: axis), init: false, f: (acc, c) =>
-    acc || external_subject_ref_eq(a: c.subject, b: subject))
+    acc || extdeps.external_authority.external_subject_ref_eq(a: c.subject, b: subject))
 }
 
 fn axis_is_originated(axis: InstrumentBehaviourAxis) -> Bool {
@@ -225,13 +225,13 @@ type CoverageObligation {
 data mk_v_display_effect_obligation: CoverageObligation = CoverageObligation {
   question: "Does the Fallout TV series Pip-Boy 3000 Mk V realize any display-effect axis — optical instability, resting-offset calibration, or impulse glitch?",
   blocked_by: "Its manual grounds display colour, brightness, demo mode, clock, alarm and radio, and states no display-effect setting. Absence from the sections read is not a denial, and no roster in that manual is asserted complete.",
-  dissolution: unbound_dissolution(description: "A Mk V settings enumeration is read that either grounds a display-effect setting or is complete enough for its absence to decide the question."),
+  dissolution: std.dissolution.unbound_dissolution(description: "A Mk V settings enumeration is read that either grounds a display-effect setting or is complete enough for its absence to decide the question."),
 }
 
 data mk_v_accelerometer_obligation: CoverageObligation = CoverageObligation {
   question: "Does the Mk V carry an accelerometer, as its sibling does for the tilt-derived Geiger simulation?",
   blocked_by: "Its manual, as read, does not mention an accelerometer or any tilt-driven behaviour.",
-  dissolution: unbound_dissolution(description: "A Mk V source grounds or denies onboard motion sensing."),
+  dissolution: std.dissolution.unbound_dissolution(description: "A Mk V source grounds or denies onboard motion sensing."),
 }
 
 data reference_instrument_obligations: List<CoverageObligation> = [

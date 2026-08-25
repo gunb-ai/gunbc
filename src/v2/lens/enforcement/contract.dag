@@ -21,7 +21,7 @@ type EnrollmentDiscoveryReceipt {
 }
 
 data lens_contract_cost: LensContract = {
-  entry: lens_registry_v0_cost,
+  entry: v2.lens.registry.lens_registry_v0_cost,
   mode: v2.lens.enforcement.vocab.Blocking,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: v2.lens.enforcement.vocab.BoundConsumerWitness {
@@ -34,32 +34,32 @@ data lens_contract_cost: LensContract = {
   exemptions: [],
   boundary: v2.lens.common.construction_justification.ConstructionJustification {
     class: v2.lens.common.construction_justification.WallNow {
-      mechanism: SubstrateMandatoryTag,
+      mechanism: std.disposition.SubstrateMandatoryTag,
       authority: std.decl_ref.DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: std.decl_ref.WholeDeclaration }
     }
   }
 }
 
 data lens_contract_complexity_derived_kernel: LensContract = {
-  entry: lens_registry_v0_complexity_derived_kernel,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_complexity_derived_kernel,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
   boundary: v2.lens.enforcement.complexity_contract_subject.complexity_derived_kernel_boundary
 }
 
 data lens_contract_complexity_optimality: LensContract = {
-  entry: lens_registry_v0_complexity_optimality,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_complexity_optimality,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
   boundary: v2.lens.enforcement.complexity_contract_subject.complexity_optimality_boundary
 }
 
 data lens_contract_emitted_binary_effect_confinement: LensContract = {
-  entry: lens_registry_v0_emitted_binary_effect_confinement,
+  entry: v2.lens.registry.lens_registry_v0_emitted_binary_effect_confinement,
   mode: v2.lens.enforcement.vocab.Blocking,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: v2.lens.enforcement.vocab.BoundConsumerWitness {
@@ -72,293 +72,293 @@ data lens_contract_emitted_binary_effect_confinement: LensContract = {
   exemptions: [],
   boundary: v2.lens.common.construction_justification.ConstructionJustification {
     class: v2.lens.common.construction_justification.WallNow {
-      mechanism: SingleAuthority,
+      mechanism: std.disposition.SingleAuthority,
       authority: std.decl_ref.DeclarationRef { module_path: "v2.std.host_transport", decl_name: "EmittedEffectFamily", field: std.decl_ref.WholeDeclaration }
     }
   }
 }
 
 data lens_contract_complexity_accumulator_copy: LensContract = {
-  entry: lens_registry_v0_complexity_accumulator_copy,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_complexity_accumulator_copy,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SubstrateMandatoryTag } }
 }
 
 data lens_contract_complexity_linearity_audit: LensContract = {
-  entry: lens_registry_v0_complexity_linearity_audit,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_complexity_linearity_audit,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SubstrateMandatoryTag } }
 }
 
 data lens_contract_fallback_arm_census: LensContract = {
-  entry: lens_registry_v0_fallback_arm_census,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_fallback_arm_census,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch } }
 }
 
 data lens_contract_complexity_lowering: LensContract = {
-  entry: lens_registry_v0_complexity_lowering,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_complexity_lowering,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_coverage: LensContract = {
-  entry: lens_registry_v0_coverage,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_coverage,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SubstrateMandatoryTag } }
 }
 
 data lens_contract_dependency_fidelity: LensContract = {
-  entry: lens_registry_v0_dependency_fidelity,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_dependency_fidelity,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_discrimination: LensContract = {
-  entry: lens_registry_v0_discrimination,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_discrimination,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SubstrateMandatoryTag } }
 }
 
 data lens_contract_disposition_redundancy: LensContract = {
-  entry: lens_registry_v0_disposition_redundancy,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_disposition_redundancy,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SubstrateMandatoryTag } }
 }
 
 data lens_contract_doc_reachability: LensContract = {
-  entry: lens_registry_v0_doc_reachability,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_doc_reachability,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch } }
 }
 
 data lens_contract_duplicate_computation: LensContract = {
-  entry: lens_registry_v0_duplicate_computation,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_duplicate_computation,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch } }
 }
 
 data lens_contract_effect_reach: LensContract = {
-  entry: lens_registry_v0_effect_reach,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_effect_reach,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_mandatory_tag: LensContract = {
-  entry: lens_registry_v0_mandatory_tag,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_mandatory_tag,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: WallNow }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallNow }
 }
 
 data lens_contract_extdeps_shape_transport_policy: LensContract = {
-  entry: lens_registry_v0_extdeps_shape_transport_policy,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_extdeps_shape_transport_policy,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch } }
 }
 
 data lens_contract_fact_cardinality: LensContract = {
-  entry: lens_registry_v0_fact_cardinality,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_fact_cardinality,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_fact_density: LensContract = {
-  entry: lens_registry_v0_fact_density,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_fact_density,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SubstrateMandatoryTag } }
 }
 
 data lens_contract_fn_family: LensContract = {
-  entry: lens_registry_v0_fn_family,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_fn_family,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_grounding: LensContract = {
-  entry: lens_registry_v0_grounding,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_grounding,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: RatchetForever }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.RatchetForever }
 }
 
 data lens_contract_host_language_transport_script: LensContract = {
-  entry: lens_registry_v0_host_language_transport_script,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_host_language_transport_script,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch } }
 }
 
 data lens_contract_identical_variant_payload: LensContract = {
-  entry: lens_registry_v0_identical_variant_payload,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_identical_variant_payload,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_inert_carrier: LensContract = {
-  entry: lens_registry_v0_inert_carrier,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_inert_carrier,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch } }
 }
 
 data lens_contract_intent_linearity: LensContract = {
-  entry: lens_registry_v0_intent_linearity,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_intent_linearity,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_interface_summary: LensContract = {
-  entry: lens_registry_v0_interface_summary,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_interface_summary,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_languages_consumer_census: LensContract = {
-  entry: lens_registry_v0_languages_consumer_census,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_languages_consumer_census,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_leaf_model_verification: LensContract = {
-  entry: lens_registry_v0_leaf_model_verification,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_leaf_model_verification,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch } }
 }
 
 data lens_contract_live_read_classification: LensContract = {
-  entry: lens_registry_v0_live_read_classification,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_live_read_classification,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_machine_shape: LensContract = {
-  entry: lens_registry_v0_machine_shape,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_machine_shape,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_meta_exec_confinement: LensContract = {
-  entry: lens_registry_v0_meta_exec_confinement,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_meta_exec_confinement,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch } }
 }
 
 data lens_contract_mock_totality: LensContract = {
-  entry: lens_registry_v0_mock_totality,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_mock_totality,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SubstrateMandatoryTag } }
 }
 
 data lens_contract_mutation_adequacy: LensContract = {
-  entry: lens_registry_v0_mutation_adequacy,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_mutation_adequacy,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_non_fold_residue: LensContract = {
-  entry: lens_registry_v0_non_fold_residue,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_non_fold_residue,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SubstrateMandatoryTag } }
 }
 
 data lens_contract_realization_vocabulary_containment: LensContract = {
-  entry: lens_registry_v0_realization_vocabulary_containment,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_realization_vocabulary_containment,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch } }
 }
 
 data lens_contract_schedule_lens: LensContract = {
-  entry: lens_registry_v0_schedule_lens,
+  entry: v2.lens.registry.lens_registry_v0_schedule_lens,
   mode: v2.lens.enforcement.vocab.Blocking,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster {
     roots: [
@@ -375,66 +375,66 @@ data lens_contract_schedule_lens: LensContract = {
     }
   },
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch } }
 }
 
 data lens_contract_simulated_relationship: LensContract = {
-  entry: lens_registry_v0_simulated_relationship,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_simulated_relationship,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_structural_similarity: LensContract = {
-  entry: lens_registry_v0_structural_similarity,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_structural_similarity,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_subsumption: LensContract = {
-  entry: lens_registry_v0_subsumption,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_subsumption,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_synthesis: LensContract = {
-  entry: lens_registry_v0_synthesis,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_synthesis,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: RatchetForever }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.RatchetForever }
 }
 
 data lens_contract_test_migration_debt: LensContract = {
-  entry: lens_registry_v0_test_migration_debt,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_test_migration_debt,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_unit_modeling: LensContract = {
-  entry: lens_registry_v0_unit_modeling,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_unit_modeling,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: RatchetForever }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.RatchetForever }
 }
 
 data lens_contract_vacuity: LensContract = {
-  entry: lens_registry_v0_vacuity,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_vacuity,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: v2.lens.enforcement.vocab.BoundConsumerWitness {
     witness: std.realization_schedule.ScheduleWitnessEntry {
@@ -444,34 +444,34 @@ data lens_contract_vacuity: LensContract = {
     }
   },
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch } }
 }
 
 data lens_contract_visibility: LensContract = {
-  entry: lens_registry_v0_visibility,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_visibility,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_wiring_liveness: LensContract = {
-  entry: lens_registry_v0_wiring_liveness,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_wiring_liveness,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch } }
 }
 
 data lens_contract_witness_cost_locality: LensContract = {
-  entry: lens_registry_v0_witness_cost_locality,
-  mode: AuditOnly,
+  entry: v2.lens.registry.lens_registry_v0_witness_cost_locality,
+  mode: v2.lens.enforcement.vocab.AuditOnly,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
+  consumer_witness: v2.lens.enforcement.vocab.NoConsumerWitness,
   exemptions: [],
-  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority } }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority } }
 }
 
 data lens_contract_registry: List<LensContract> = [

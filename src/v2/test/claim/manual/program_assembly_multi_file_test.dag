@@ -1,23 +1,23 @@
 module v2.test.manual.program_assembly_multi_file
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn pa_graft_module_root(root: v2.std.node.Node) -> v2.std.node.Node {
-  match module_header_containment_graft(root: root) {
-    Accepted { value: grafted, diagnostics: _ } => grafted
-    Rejected { diagnostics: _ } => root
+  match v2.compiler.namespace_graft.module_header_containment_graft(root: root) {
+    v2.std.diagnostic.Accepted { value: grafted, diagnostics: _ } => grafted
+    v2.std.diagnostic.Rejected { diagnostics: _ } => root
   }
 }
 
 fn pa_qn_node(seg: v2.std.node.Symbol) -> v2.std.node.Node {
-  fold_list_node(
+  v2.std.algebra.fold_list_node(
     xs: std.algebra.Cons { head: seg, tail: std.algebra.Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
       }
     }
   )
@@ -25,13 +25,13 @@ fn pa_qn_node(seg: v2.std.node.Symbol) -> v2.std.node.Node {
 
 fn pa_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header,
-        target: dag_grammar_atom(id: ^dag_surface_module_header)
+        target: v2.extdeps.languages.dag.dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
         target: pa_qn_node(seg: seg)
       ),
@@ -40,23 +40,23 @@ fn pa_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, expor
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: export_atom } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn pa_subject_with_import_use() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header,
-        target: dag_grammar_atom(id: ^dag_surface_module_header)
+        target: v2.extdeps.languages.dag.dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
         target: pa_qn_node(seg: ^pa_subject_seg)
       ),
@@ -65,16 +65,16 @@ fn pa_subject_with_import_use() -> v2.std.node.Node {
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^pa_imported_decl } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn pa_cross_file_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
-  admit_normalized_roots(
+fn pa_cross_file_roots() -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+  v2.compiler.normalized_tree.admit_normalized_roots(
     roots: std.algebra.Cons {
     head: pa_graft_module_root(root: pa_subject_with_import_use()),
     tail: std.algebra.Cons {
@@ -92,8 +92,8 @@ fn pa_cross_file_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.nor
   )
 }
 
-fn pa_duplicate_module_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
-  admit_normalized_roots(
+fn pa_duplicate_module_roots() -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+  v2.compiler.normalized_tree.admit_normalized_roots(
     roots: std.algebra.Cons {
     head: pa_graft_module_root(
       root: pa_module_root(
@@ -125,7 +125,7 @@ fn pa_cross_file_admission() -> v2.compiler.name_resolve.Admission {
     imports: std.algebra.Cons {
       head: v2.compiler.name_resolve.Import {
         target: std.algebra.Cons { head: ^pa_imported_seg, tail: std.algebra.Empty },
-        visibility: ImportVisible
+        visibility: v2.compiler.name_resolve.ImportVisible
       },
       tail: std.algebra.Empty
     }
@@ -134,35 +134,35 @@ fn pa_cross_file_admission() -> v2.compiler.name_resolve.Admission {
 
 test fn program_assembly_cross_file_import_assembles_holds() -> Bool {
   match pa_cross_file_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted_roots, diagnostics: _ } =>
-    match assemble_program_from_module_roots(
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted_roots, diagnostics: _ } =>
+    match v2.compiler.program_assembly.assemble_program_from_module_roots(
       roots: admitted_roots,
       admission: pa_cross_file_admission(),
-      lm: dag_language_model_surface_empty_prelude()
+      lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude()
     ) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
 test fn program_assembly_duplicate_module_roots_rejects() -> Bool {
   match pa_duplicate_module_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted_roots, diagnostics: _ } =>
-    match assemble_program_from_module_roots(
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted_roots, diagnostics: _ } =>
+    match v2.compiler.program_assembly.assemble_program_from_module_roots(
       roots: admitted_roots,
       admission: pa_cross_file_admission(),
-      lm: dag_language_model_surface_empty_prelude()
+      lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude()
     ) {
-      Accepted { value: _, diagnostics: _ } => false
-      Rejected { diagnostics: _ } => true
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: _ } => true
     }
   }
 }
 
-data pa_ingest_stub_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module pa_subject_seg", fidelity: extdeps.communication.medium.Lossless }
+data pa_ingest_stub_source: extdeps.communication.medium.Medium<String> = extdeps.communication.medium.Medium { carried: "module pa_subject_seg", fidelity: extdeps.communication.medium.Lossless }
 data pa_ingest_source_file_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact {
   kind: v2.std.artifact.SourceFile,
   id: ^pa_ingest_source_file_artifact,
@@ -170,7 +170,7 @@ data pa_ingest_source_file_artifact: v2.std.artifact.Artifact = v2.std.artifact.
 }
 
 data pa_ingest_test_claim_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact {
-  kind: TestClaimArtifact,
+  kind: v2.std.artifact.TestClaimArtifact,
   id: ^pa_ingest_test_claim_artifact,
   file_path: "src/v2/test/fixture/pa_ingest_claim.dag"
 }
@@ -179,14 +179,14 @@ data pa_ingest_source_file_read: v2.compiler.source_authority.DagSourceReadWitne
   source: pa_ingest_stub_source,
   artifact: pa_ingest_source_file_artifact,
   compilation_unit: ^pa_ingest_peer_cu,
-  source_root: V2Tree
+  source_root: v2.std.cross_tree.import_model.V2Tree
 }
 
 data pa_ingest_non_source_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
   source: pa_ingest_stub_source,
   artifact: pa_ingest_test_claim_artifact,
   compilation_unit: ^pa_ingest_peer_cu,
-  source_root: V2Tree
+  source_root: v2.std.cross_tree.import_model.V2Tree
 }
 
 data pa_ingest_non_source_ingest: v2.compiler.source_authority.SourceRootIngest = std.algebra.Cons {
@@ -195,7 +195,7 @@ data pa_ingest_non_source_ingest: v2.compiler.source_authority.SourceRootIngest 
 }
 
 test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
-  match assemble_program_from_ingest(
+  match v2.compiler.program_assembly.assemble_program_from_ingest(
     ingest: pa_ingest_non_source_ingest,
     admission: v2.compiler.name_resolve.Admission {
       subject: v2.compiler.name_resolve.ResolutionSubject {
@@ -203,10 +203,10 @@ test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
       },
       imports: std.algebra.Empty
     },
-    lm: dag_language_model_surface_empty_prelude()
+    lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^source_authority_read_artifact_not_source_file
   }
 }

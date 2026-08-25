@@ -8,8 +8,8 @@ data empty_string_list: List<String> = []
 data rust_module_dependency_graph_unresolved_edge: String = "Rust module dependency graph not modeled — cannot walk from cargo bin roots to dependent source files"
 
 fn path_is_test_harness(path: String) -> Bool {
-  rust_source_path_has_prefix(path: path, prefix: rust_source_prefix_test_harness)
-    || rust_source_path_has_prefix(path: path, prefix: rust_source_prefix_stage0_test)
+  gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_path_has_prefix(path: path, prefix: gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_prefix_test_harness)
+    || gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_path_has_prefix(path: path, prefix: gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_prefix_stage0_test)
 }
 
 type RustProductReachabilityVerdict
@@ -32,7 +32,7 @@ fn product_reachability_verdict_for_path(
   path: String,
   cargo_bin_repo_paths: List<String>
 ) -> RustProductReachabilityVerdict {
-  if path_in_list(path: path, paths: cargo_bin_repo_paths) {
+  if gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: path, paths: cargo_bin_repo_paths) {
     ProductReachable { path: path, entry_path: path }
   } else if path_is_test_harness(path: path) {
     TestOnlyReachable { path: path }
@@ -63,7 +63,7 @@ fn product_reachability_receipt(
   observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation
 ) -> ProductReachabilityReceipt {
   match observation {
-    RustManifestObserved {
+    gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: revision,
       tracked_rust_repo_paths: tracked_paths,
       cargo_bin_repo_paths: cargo_bin_repo_paths,
@@ -82,9 +82,9 @@ fn product_reachability_receipt(
           )
         }
       }
-    RustManifestReadRefused { detail: detail } => ProductReachabilityObservationRefused
-    RustManifestParseRefused { detail: detail } => ProductReachabilityObservationRefused
-    GitObservationRefused { detail: detail } => ProductReachabilityObservationRefused
+    gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: detail } => ProductReachabilityObservationRefused
+    gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: detail } => ProductReachabilityObservationRefused
+    gunbc.stage0_rust_host_observation.GitObservationRefused { detail: detail } => ProductReachabilityObservationRefused
   }
 }
 
@@ -96,7 +96,7 @@ fn exact_paths_from_verdicts(
 ) -> List<String> {
   v2.std.algebra.fold_list(
     xs: verdicts,
-    empty: gunbc.stage0_rust_product_reachability.empty_string_list,
+    empty: empty_string_list,
     cons: fn(acc, verdict) {
       match verdict {
         ProductReachable { path: path, entry_path: entry_path } =>
@@ -202,14 +202,14 @@ fn exact_reachability_refused_paths(
 fn product_reachability_witness_observation(
   tracked_paths: List<String>,
   cargo_bin_repo_paths: List<String>
-) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
+) -> gunbc.stage0_rust_host_observation.RustManifestObserved {
   gunbc.stage0_rust_host_observation.RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: tracked_paths,
     prior_tracked_rust_repo_paths: tracked_paths,
     cargo_bin_repo_paths: cargo_bin_repo_paths,
-    emit_population_evidence: EmitPopulationConfirmed {
+    emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
       emitted_stage0_repo_paths: tracked_paths
     }
   }

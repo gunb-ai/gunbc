@@ -20,11 +20,11 @@ fn required_env(name: std.types.NonEmptyStr) -> String? {
 func main() -> std.process.ProcessExit {
   let branch = match required_env(name: "GUNBC_HEAL_BRANCH_REF") {
     Present { value: value } => value
-    Absent => return exit_failure(reason: "HealDispatchRefused: GUNBC_HEAL_BRANCH_REF is absent")
+    Absent => return std.process.exit_failure(reason: "HealDispatchRefused: GUNBC_HEAL_BRANCH_REF is absent")
   }
   let healed_head = match required_env(name: "GUNBC_HEALED_HEAD") {
     Present { value: value } => value as std.types.CommitSha
-    Absent => return exit_failure(reason: "HealDispatchRefused: GUNBC_HEALED_HEAD is absent")
+    Absent => return std.process.exit_failure(reason: "HealDispatchRefused: GUNBC_HEALED_HEAD is absent")
   }
   let receipt = github.Workflows.CreateDispatch(
     owner: ci_heal_dispatch_owner,
@@ -36,6 +36,6 @@ func main() -> std.process.ProcessExit {
   if receipt.workflow_run_id > 0 {
     std.process.ExitSuccess
   } else {
-    exit_failure(reason: "HealDispatchRefused: dispatch response carried no workflow run identity")
+    std.process.exit_failure(reason: "HealDispatchRefused: dispatch response carried no workflow run identity")
   }
 }

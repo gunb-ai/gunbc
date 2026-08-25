@@ -1,25 +1,25 @@
 module v2.test.lens_determinism.reach_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn det_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn det_positional(target: v2.std.node.Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Positional, target: target }
+  v2.std.node.Edge { label: v2.std.node.Positional, target: target }
 }
 
 fn det_call(callee: v2.std.node.Symbol, arg: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [det_positional(target: det_atom(id: callee)), det_positional(target: arg)],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -47,103 +47,103 @@ fn nested_map_keys_fixture() -> v2.std.node.Node {
   det_call(callee: ^emit_concat, arg: map_keys_call_fixture())
 }
 
-fn witness_violates(w: Witness<v2.std.determinism.DeterminismFact>) -> v2.std.logic.Bool {
+fn witness_violates(w: Witness<v2.std.determinism.DeterminismFact>) -> Bool {
   match w {
-    Violates { diagnostic: _ } => true
-    Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
   }
 }
 
-fn witness_holds(w: Witness<v2.std.determinism.DeterminismFact>) -> v2.std.logic.Bool {
+fn witness_holds(w: Witness<v2.std.determinism.DeterminismFact>) -> Bool {
   match w {
-    Holds { value: _ } => true
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Holds { value: _ } => true
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-fn axis_is_nondeterministic(a: std.determinism.Determinism) -> v2.std.logic.Bool {
+fn axis_is_nondeterministic(a: std.determinism.Determinism) -> Bool {
   match a {
-    NonDeterministic { source: _ } => true
-    Deterministic => false
+    std.determinism.NonDeterministic { source: _ } => true
+    std.determinism.Deterministic => false
   }
 }
 
-test fn determinism_flags_map_keys_reach() -> v2.std.logic.Bool {
-  witness_violates(w: determinism_contract_witness(signature: ^emit_fixture, n: map_keys_call_fixture()))
+test fn determinism_flags_map_keys_reach() -> Bool {
+  witness_violates(w: v2.lens.determinism.determinism_contract_witness(signature: ^emit_fixture, n: map_keys_call_fixture()))
 }
 
-test fn determinism_flags_map_values_reach() -> v2.std.logic.Bool {
-  witness_violates(w: determinism_contract_witness(signature: ^emit_fixture, n: map_values_call_fixture()))
+test fn determinism_flags_map_values_reach() -> Bool {
+  witness_violates(w: v2.lens.determinism.determinism_contract_witness(signature: ^emit_fixture, n: map_values_call_fixture()))
 }
 
-test fn determinism_holds_sorted_map_keys_sibling() -> v2.std.logic.Bool {
-  witness_holds(w: determinism_contract_witness(signature: ^emit_fixture, n: sorted_map_keys_call_fixture()))
+test fn determinism_holds_sorted_map_keys_sibling() -> Bool {
+  witness_holds(w: v2.lens.determinism.determinism_contract_witness(signature: ^emit_fixture, n: sorted_map_keys_call_fixture()))
 }
 
-test fn sorted_map_keys_acceptance_is_caused_by_declared_canonical_order() -> v2.std.logic.Bool {
+test fn sorted_map_keys_acceptance_is_caused_by_declared_canonical_order() -> Bool {
   match std.primitive_identity.primitive_identity_for_canonical_name(authored_symbol: "sorted_map_keys") {
-    Present { value: identity } =>
+    v2.std.optional.Present { value: identity } =>
       std.primitive_identity.primitive_identity_eq(left: identity, right: std.primitive_identity.primitive_sorted_map_keys)
         && match std.primitive_identity.primitive_traversal_order_for_identity(identity: identity) {
-          Present { value: CanonicalOrder } => true
+          v2.std.optional.Present { value: std.primitive_identity.CanonicalOrder } => true
           _ => false
         }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn determinism_holds_clean_call() -> v2.std.logic.Bool {
-  witness_holds(w: determinism_contract_witness(signature: ^emit_fixture, n: clean_call_fixture()))
+test fn determinism_holds_clean_call() -> Bool {
+  witness_holds(w: v2.lens.determinism.determinism_contract_witness(signature: ^emit_fixture, n: clean_call_fixture()))
 }
 
-test fn determinism_flags_nested_map_keys_in_subtree() -> v2.std.logic.Bool {
-  witness_violates(w: determinism_contract_witness(signature: ^emit_fixture, n: nested_map_keys_fixture()))
+test fn determinism_flags_nested_map_keys_in_subtree() -> Bool {
+  witness_violates(w: v2.lens.determinism.determinism_contract_witness(signature: ^emit_fixture, n: nested_map_keys_fixture()))
 }
 
-test fn determinism_axis_map_keys_is_nondeterministic() -> v2.std.logic.Bool {
-  axis_is_nondeterministic(a: determinism_axis_for_node(n: map_keys_call_fixture()))
+test fn determinism_axis_map_keys_is_nondeterministic() -> Bool {
+  axis_is_nondeterministic(a: v2.lens.determinism.determinism_axis_for_node(n: map_keys_call_fixture()))
 }
 
-fn gate_rejects(o: v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>>) -> v2.std.logic.Bool {
+fn gate_rejects(o: v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>>) -> Bool {
   match o {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-fn gate_accepts(o: v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>>) -> v2.std.logic.Bool {
+fn gate_accepts(o: v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>>) -> Bool {
   match o {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn determinism_gate_rejects_map_keys_reach() -> v2.std.logic.Bool {
-  gate_rejects(o: determinism_compile_gate(node: map_keys_call_fixture()))
+test fn determinism_gate_rejects_map_keys_reach() -> Bool {
+  gate_rejects(o: v2.lens.determinism.determinism_compile_gate(node: map_keys_call_fixture()))
 }
 
-test fn determinism_gate_rejects_map_values_reach() -> v2.std.logic.Bool {
-  gate_rejects(o: determinism_compile_gate(node: map_values_call_fixture()))
+test fn determinism_gate_rejects_map_values_reach() -> Bool {
+  gate_rejects(o: v2.lens.determinism.determinism_compile_gate(node: map_values_call_fixture()))
 }
 
-test fn determinism_gate_accepts_clean_tree() -> v2.std.logic.Bool {
-  v2.test.lens_determinism.reach_witness.gate_accepts(o: determinism_compile_gate(node: clean_call_fixture()))
+test fn determinism_gate_accepts_clean_tree() -> Bool {
+  gate_accepts(o: v2.lens.determinism.determinism_compile_gate(node: clean_call_fixture()))
 }
 
-test fn determinism_gate_accepts_unrelated_keys_call() -> v2.std.logic.Bool {
-  v2.test.lens_determinism.reach_witness.gate_accepts(o: determinism_compile_gate(node: unrelated_same_named_call_fixture(callee: ^keys)))
+test fn determinism_gate_accepts_unrelated_keys_call() -> Bool {
+  gate_accepts(o: v2.lens.determinism.determinism_compile_gate(node: unrelated_same_named_call_fixture(callee: ^keys)))
 }
 
-test fn determinism_gate_accepts_unrelated_values_call() -> v2.std.logic.Bool {
-  v2.test.lens_determinism.reach_witness.gate_accepts(o: determinism_compile_gate(node: unrelated_same_named_call_fixture(callee: ^values)))
+test fn determinism_gate_accepts_unrelated_values_call() -> Bool {
+  gate_accepts(o: v2.lens.determinism.determinism_compile_gate(node: unrelated_same_named_call_fixture(callee: ^values)))
 }
 
-test fn determinism_gate_accepts_sorted_map_keys_sibling() -> v2.std.logic.Bool {
-  v2.test.lens_determinism.reach_witness.gate_accepts(o: determinism_compile_gate(node: sorted_map_keys_call_fixture()))
+test fn determinism_gate_accepts_sorted_map_keys_sibling() -> Bool {
+  gate_accepts(o: v2.lens.determinism.determinism_compile_gate(node: sorted_map_keys_call_fixture()))
 }
 
-test fn determinism_gate_rejects_nested_map_keys_in_subtree() -> v2.std.logic.Bool {
-  gate_rejects(o: determinism_compile_gate(node: nested_map_keys_fixture()))
+test fn determinism_gate_rejects_nested_map_keys_in_subtree() -> Bool {
+  gate_rejects(o: v2.lens.determinism.determinism_compile_gate(node: nested_map_keys_fixture()))
 }
 
 // ---------------------------------------------------------------------------
@@ -157,44 +157,44 @@ test fn determinism_gate_rejects_nested_map_keys_in_subtree() -> v2.std.logic.Bo
 // not, so every one of these five fixtures would have been accepted by it,
 // including the two that must refuse.
 
-fn index_by_call_fixture() -> Node {
+fn index_by_call_fixture() -> v2.std.node.Node {
   det_call(callee: ^index_by, arg: det_atom(id: ^emit_export_list))
 }
 
-fn length_call_fixture() -> Node {
+fn length_call_fixture() -> v2.std.node.Node {
   det_call(callee: ^length, arg: det_atom(id: ^emit_export_list))
 }
 
-fn decl_facts_call_fixture() -> Node {
+fn decl_facts_call_fixture() -> v2.std.node.Node {
   det_call(callee: ^decl_facts, arg: det_atom(id: ^emit_pool_roots))
 }
 
-fn concept_decl_facts_live_call_fixture() -> Node {
+fn concept_decl_facts_live_call_fixture() -> v2.std.node.Node {
   det_call(callee: ^concept_decl_facts_live, arg: det_atom(id: ^emit_pool_roots))
 }
 
-fn fold_list_call_fixture() -> Node {
+fn fold_list_call_fixture() -> v2.std.node.Node {
   det_call(callee: ^fold_list, arg: det_atom(id: ^emit_export_list))
 }
 
 test fn determinism_gate_rejects_unclassified_traversal_order() -> Bool {
-  gate_rejects(o: determinism_compile_gate(node: index_by_call_fixture()))
+  gate_rejects(o: v2.lens.determinism.determinism_compile_gate(node: index_by_call_fixture()))
 }
 
 test fn determinism_gate_accepts_order_free_result() -> Bool {
-  gate_accepts(o: determinism_compile_gate(node: length_call_fixture()))
+  gate_accepts(o: v2.lens.determinism.determinism_compile_gate(node: length_call_fixture()))
 }
 
 test fn determinism_gate_accepts_canonical_order() -> Bool {
-  gate_accepts(o: determinism_compile_gate(node: decl_facts_call_fixture()))
+  gate_accepts(o: v2.lens.determinism.determinism_compile_gate(node: decl_facts_call_fixture()))
 }
 
 test fn determinism_gate_accepts_source_preserving_order() -> Bool {
-  gate_accepts(o: determinism_compile_gate(node: concept_decl_facts_live_call_fixture()))
+  gate_accepts(o: v2.lens.determinism.determinism_compile_gate(node: concept_decl_facts_live_call_fixture()))
 }
 
 test fn determinism_gate_accepts_fold_list_source_order() -> Bool {
-  gate_accepts(o: determinism_compile_gate(node: fold_list_call_fixture()))
+  gate_accepts(o: v2.lens.determinism.determinism_compile_gate(node: fold_list_call_fixture()))
 }
 
 // ---------------------------------------------------------------------------
@@ -209,26 +209,26 @@ test fn determinism_gate_accepts_fold_list_source_order() -> Bool {
 // happens to be complete, and could not distinguish a working predicate from
 // one that returns Empty unconditionally.
 
-fn unclassified_planted_definition() -> PrimitiveDefinition {
-  PrimitiveDefinition {
-    identity: primitive_identity_slug(name: "planted_primitive_with_no_traversal_fact"),
-    semantic_contract: PrimitiveSemanticContract {
-      canonical_name: "planted_primitive_with_no_traversal_fact" as NonEmptyStr,
-      signature: SignatureUngrounded {
-        reason: "planted fixture with no algebra template arm; this definition exists to leave the TRAVERSAL denominator open, and grounding a signature on it would fabricate one for a primitive that does not exist." as NonEmptyStr
+fn unclassified_planted_definition() -> std.primitive_identity.PrimitiveDefinition {
+  std.primitive_identity.PrimitiveDefinition {
+    identity: std.primitive_projection.primitive_identity_slug(name: "planted_primitive_with_no_traversal_fact"),
+    semantic_contract: std.primitive_identity.PrimitiveSemanticContract {
+      canonical_name: "planted_primitive_with_no_traversal_fact" as std.types.NonEmptyStr,
+      signature: std.primitive_identity.SignatureUngrounded {
+        reason: "planted fixture with no algebra template arm; this definition exists to leave the TRAVERSAL denominator open, and grounding a signature on it would fabricate one for a primitive that does not exist." as std.types.NonEmptyStr
       }
     }
   }
 }
 
 test fn determinism_denominator_is_closed_on_declared_primitives() -> Bool {
-  primitive_traversal_denominator_is_closed()
+  std.primitive_identity.primitive_traversal_denominator_is_closed()
 }
 
 test fn determinism_denominator_predicate_finds_a_planted_hole() -> Bool {
-  count(primitive_definitions_missing_traversal_fact_in(defs: [unclassified_planted_definition()])) == 1
+  count(std.primitive_identity.primitive_definitions_missing_traversal_fact_in(defs: [unclassified_planted_definition()])) == 1
 }
 
 test fn determinism_denominator_predicate_passes_a_classified_definition() -> Bool {
-  count(primitive_definitions_missing_traversal_fact_in(defs: [primitive_map_keys_definition])) == 0
+  count(std.primitive_identity.primitive_definitions_missing_traversal_fact_in(defs: [std.primitive_identity.primitive_map_keys_definition])) == 0
 }

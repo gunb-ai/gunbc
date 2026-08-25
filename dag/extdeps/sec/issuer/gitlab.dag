@@ -4,12 +4,12 @@ module extdeps.sec.issuer.gitlab
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=0001653482"
   }
 }
 
-data gitlab_cik_digits: std.types.NonEmptyStr = "1653482"
+data gitlab_cik_digits: NonEmptyStr = "1653482"
 
 data gitlab_cik: extdeps.sec.types.Cik = extdeps.sec.types.Cik { digits: gitlab_cik_digits }
 
@@ -19,6 +19,6 @@ data gitlab_issuer_catalog: extdeps.sec.types.IssuerCatalogRow = extdeps.sec.typ
   cik: gitlab_cik,
   registrant_name: "Gitlab Inc.",
   primary_ticker: gitlab_ticker,
-  exchange: Nasdaq,
+  exchange: extdeps.sec.types.Nasdaq,
   vendor: extdeps.vendor.gitlab.gitlab,
 }

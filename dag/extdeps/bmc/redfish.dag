@@ -3,13 +3,13 @@ module extdeps.bmc.redfish
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "dmtf.org/standards/redfish"
   }
 }
 
 fn redfish_memory_summary_from_gib(total_gib: std.measure.Gibibyte) -> extdeps.bmc.types.RedfishMemorySummary {
-  extdeps.bmc.types.RedfishMemorySummary { total_memory_bytes: gibibyte_to_byte_size(g: total_gib) }
+  extdeps.bmc.types.RedfishMemorySummary { total_memory_bytes: std.measure.gibibyte_to_byte_size(g: total_gib) }
 }
 
 fn redfish_processor_summary(
@@ -51,23 +51,23 @@ fn redfish_system_inventory(
   }
 }
 
-fn redfish_power_consumed_total_watts(controls: List<extdeps.bmc.types.RedfishPowerControl>) -> std.measure.Watt? {
+fn redfish_power_consumed_total_watts(controls: List<extdeps.bmc.types.RedfishPowerControl>) -> Watt? {
   fold(
     controls,
     init: v2.std.optional.Absent,
     f: (acc, ctrl) =>
       match ctrl.power_consumed_watts {
-        Absent => acc
-        Present { value: w } =>
+        v2.std.optional.Absent => acc
+        v2.std.optional.Present { value: w } =>
           match acc {
-            Absent => v2.std.optional.Present { value: w }
-            Present { value: sum } => v2.std.optional.Present { value: watt(count: watt_count(sum) + watt_count(w)) }
+            v2.std.optional.Absent => v2.std.optional.Present { value: w }
+            v2.std.optional.Present { value: sum } => v2.std.optional.Present { value: std.measure.watt(count: std.measure.watt_count(sum) + std.measure.watt_count(w)) }
           }
       }
   )
 }
 
-fn redfish_sensors_power_total_watts(sensors: List<extdeps.bmc.types.RedfishSensorReading>) -> std.measure.Watt? {
+fn redfish_sensors_power_total_watts(sensors: List<extdeps.bmc.types.RedfishSensorReading>) -> Watt? {
   fold(
     sensors,
     init: v2.std.optional.Absent,
@@ -75,34 +75,34 @@ fn redfish_sensors_power_total_watts(sensors: List<extdeps.bmc.types.RedfishSens
       match sensor {
         PowerSensor { name: _, watts: reading } =>
           match reading {
-            Absent => acc
-            Present { value: w } =>
+            v2.std.optional.Absent => acc
+            v2.std.optional.Present { value: w } =>
               match acc {
-                Absent => v2.std.optional.Present { value: w }
-                Present { value: sum } => v2.std.optional.Present { value: watt(count: watt_count(sum) + watt_count(w)) }
+                v2.std.optional.Absent => v2.std.optional.Present { value: w }
+                v2.std.optional.Present { value: sum } => v2.std.optional.Present { value: std.measure.watt(count: std.measure.watt_count(sum) + std.measure.watt_count(w)) }
               }
           }
-        TemperatureSensor { name: _, celsius: _ } => acc
-        FanTachSensor { name: _, rpm: _ } => acc
+        extdeps.bmc.types.TemperatureSensor { name: _, celsius: _ } => acc
+        extdeps.bmc.types.FanTachSensor { name: _, rpm: _ } => acc
       }
   )
 }
 
-fn bmc_telemetry_power_consumed_watts(snapshot: extdeps.bmc.types.BmcTelemetrySnapshot) -> std.measure.Watt? {
+fn bmc_telemetry_power_consumed_watts(snapshot: extdeps.bmc.types.BmcTelemetrySnapshot) -> Watt? {
   match snapshot.power {
-    Present { value: p } =>
+    v2.std.optional.Present { value: p } =>
       match redfish_power_consumed_total_watts(controls: p.controls) {
-        Present { value: w } => v2.std.optional.Present { value: w }
-        Absent =>
+        v2.std.optional.Present { value: w } => v2.std.optional.Present { value: w }
+        v2.std.optional.Absent =>
           match snapshot.sensors {
-            Absent => none
-            Present { value: s } => redfish_sensors_power_total_watts(sensors: s.sensors)
+            v2.std.optional.Absent => none
+            v2.std.optional.Present { value: s } => redfish_sensors_power_total_watts(sensors: s.sensors)
           }
       }
-    Absent =>
+    v2.std.optional.Absent =>
       match snapshot.sensors {
-        Absent => none
-        Present { value: s } => redfish_sensors_power_total_watts(sensors: s.sensors)
+        v2.std.optional.Absent => none
+        v2.std.optional.Present { value: s } => redfish_sensors_power_total_watts(sensors: s.sensors)
       }
   }
 }
@@ -113,8 +113,8 @@ fn redfish_primary_power_control(power: extdeps.bmc.types.RedfishPowerSubsystem)
     init: v2.std.optional.Absent,
     f: (acc, ctrl) =>
       match acc {
-        Present { value: _ } => acc
-        Absent => v2.std.optional.Present { value: ctrl }
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent => v2.std.optional.Present { value: ctrl }
       }
   )
 }

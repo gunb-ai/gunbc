@@ -3,7 +3,7 @@ module extdeps.formats.dnsmasq
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "thekelleys.org.uk/dnsmasq/docs/dnsmasq.conf.example"
   }
 }
@@ -33,7 +33,7 @@ fn dnsmasq_directive_line(d: DnsmasqDirective) -> String {
 }
 
 fn dnsmasq_to_doc(directives: List<DnsmasqDirective>) -> std.layout.Doc {
-  doc_concat(parts: map(directives, d => doc_line_of(text: dnsmasq_directive_line(d: d))))
+  std.layout.doc_concat(parts: map(directives, d => std.layout.doc_line_of(text: dnsmasq_directive_line(d: d))))
 }
 
 fn serialize_dnsmasq(directives: List<DnsmasqDirective>) -> String {

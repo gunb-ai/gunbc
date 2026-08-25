@@ -8,7 +8,7 @@ type ProbeSelection {
 
 type ProbeKind = ProbeRuntime | ProbeDev
 
-fn node(key: std.types.NonEmptyStr, name: std.types.NonEmptyStr, v: std.types.NonEmptyStr) -> PackageLockNode<std.types.NonEmptyStr, ProbeSelection, String> {
+fn node(key: std.types.NonEmptyStr, name: std.types.NonEmptyStr, v: std.types.NonEmptyStr) -> extdeps.package.PackageLockNode<std.types.NonEmptyStr, ProbeSelection, String> {
   extdeps.package.PackageLockNode {
     key: key,
     selection: ProbeSelection { name: name, version: v },
@@ -16,7 +16,7 @@ fn node(key: std.types.NonEmptyStr, name: std.types.NonEmptyStr, v: std.types.No
   }
 }
 
-fn graph() -> PackageLockGraph<std.types.NonEmptyStr, std.types.NonEmptyStr, ProbeSelection, String, ProbeKind> {
+fn graph() -> extdeps.package.PackageLockGraph<std.types.NonEmptyStr, std.types.NonEmptyStr, ProbeSelection, String, ProbeKind> {
   extdeps.package.PackageLockGraph {
     manager: "probe-pm" as std.types.NonEmptyStr,
     roots: ["node_modules/a" as std.types.NonEmptyStr],
@@ -33,26 +33,26 @@ fn graph() -> PackageLockGraph<std.types.NonEmptyStr, std.types.NonEmptyStr, Pro
 }
 
 test fn same_name_version_different_paths_stay_distinct() -> Bool {
-  match package_lock_lookup_node(graph: graph(), key: "node_modules/a" as std.types.NonEmptyStr) {
-    PackageLockNodeUnique { node: _ } =>
-      match package_lock_lookup_node(graph: graph(), key: "node_modules/b/node_modules/a" as std.types.NonEmptyStr) {
-        PackageLockNodeUnique { node: _ } =>
-          match package_lock_lookup_node(graph: graph(), key: "node_modules/c" as std.types.NonEmptyStr) {
-            PackageLockNodeAbsent { key: _ } => true
-            PackageLockNodeUnique { node: _ } => false
-            PackageLockNodeDuplicate { key: _, count: _ } => false
+  match extdeps.package.package_lock_lookup_node(graph: graph(), key: "node_modules/a" as std.types.NonEmptyStr) {
+    extdeps.package.PackageLockNodeUnique { node: _ } =>
+      match extdeps.package.package_lock_lookup_node(graph: graph(), key: "node_modules/b/node_modules/a" as std.types.NonEmptyStr) {
+        extdeps.package.PackageLockNodeUnique { node: _ } =>
+          match extdeps.package.package_lock_lookup_node(graph: graph(), key: "node_modules/c" as std.types.NonEmptyStr) {
+            extdeps.package.PackageLockNodeAbsent { key: _ } => true
+            extdeps.package.PackageLockNodeUnique { node: _ } => false
+            extdeps.package.PackageLockNodeDuplicate { key: _, count: _ } => false
           }
-        PackageLockNodeAbsent { key: _ } => false
-        PackageLockNodeDuplicate { key: _, count: _ } => false
+        extdeps.package.PackageLockNodeAbsent { key: _ } => false
+        extdeps.package.PackageLockNodeDuplicate { key: _, count: _ } => false
       }
-    PackageLockNodeAbsent { key: _ } => false
-    PackageLockNodeDuplicate { key: _, count: _ } => false
+    extdeps.package.PackageLockNodeAbsent { key: _ } => false
+    extdeps.package.PackageLockNodeDuplicate { key: _, count: _ } => false
   }
 }
 
 test fn admitted_graph_accepts_unique_keys() -> Bool {
-  match package_lock_admit_graph(graph: graph()) {
-    PackageLockGraphAdmitted { graph: _ } => true
+  match extdeps.package.package_lock_admit_graph(graph: graph()) {
+    extdeps.package.PackageLockGraphAdmitted { graph: _ } => true
     _ => false
   }
 }
@@ -68,8 +68,8 @@ test fn edge_to_missing_node_refuses() -> Bool {
       kind: ProbeRuntime,
     }],
   }
-  match package_lock_admit_graph(graph: g) {
-    PackageLockGraphMissingEdgeDependency { key } =>
+  match extdeps.package.package_lock_admit_graph(graph: g) {
+    extdeps.package.PackageLockGraphMissingEdgeDependency { key } =>
       key == ("node_modules/missing" as std.types.NonEmptyStr)
     _ => false
   }
@@ -89,23 +89,23 @@ test fn duplicate_identical_node_keys_refuse_admission() -> Bool {
       kind: ProbeRuntime,
     }],
   }
-  match package_lock_lookup_node(graph: g, key: "dup" as std.types.NonEmptyStr) {
-    PackageLockNodeDuplicate { key, count } =>
+  match extdeps.package.package_lock_lookup_node(graph: g, key: "dup" as std.types.NonEmptyStr) {
+    extdeps.package.PackageLockNodeDuplicate { key, count } =>
       key == ("dup" as std.types.NonEmptyStr)
         && count == 2
-        && match package_lock_admit_graph(graph: g) {
-          PackageLockGraphDuplicateNode { key: k2, count: c2 } =>
+        && match extdeps.package.package_lock_admit_graph(graph: g) {
+          extdeps.package.PackageLockGraphDuplicateNode { key: k2, count: c2 } =>
             k2 == ("dup" as std.types.NonEmptyStr) && c2 == 2
           _ => false
         }
-    PackageLockNodeUnique { node: _ } => false
-    PackageLockNodeAbsent { key: _ } => false
+    extdeps.package.PackageLockNodeUnique { node: _ } => false
+    extdeps.package.PackageLockNodeAbsent { key: _ } => false
   }
 }
 
 test fn package_delivery_boundary_readmits_raw_graph() -> Bool {
-  match admit_codex_package_lock_graph(raw_graph: graph()) {
-    PackageLockGraphAdmitted { graph: _ } => true
+  match gunbc.package_delivery.admit_codex_package_lock_graph(raw_graph: graph()) {
+    extdeps.package.PackageLockGraphAdmitted { graph: _ } => true
     _ => false
   }
 }
@@ -117,10 +117,10 @@ test fn admitted_nodes_do_not_surface_as_missing_root() -> Bool {
     nodes: [node(key: "only" as std.types.NonEmptyStr, name: "a" as std.types.NonEmptyStr, v: "1.0.0" as std.types.NonEmptyStr)],
     edges: [],
   }
-  match package_lock_admit_graph(graph: g) {
-    PackageLockGraphAdmitted { graph: _ } => true
-    PackageLockGraphLookupInconsistency { key: _ } => false
-    PackageLockGraphMissingRoot { key: _ } => false
+  match extdeps.package.package_lock_admit_graph(graph: g) {
+    extdeps.package.PackageLockGraphAdmitted { graph: _ } => true
+    extdeps.package.PackageLockGraphLookupInconsistency { key: _ } => false
+    extdeps.package.PackageLockGraphMissingRoot { key: _ } => false
     _ => false
   }
 }

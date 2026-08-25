@@ -1,7 +1,7 @@
 module test.claim.record_literal_call_arg_handoff_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data record_literal_call_arg_handoff_witness_note: String = "Permanent regression control for PR #8262 record-literal call-arg handoff. direct_call_arg_mismatch_diags skips record-literal actuals; direct_call_structured_application_mismatch_diags must still refuse every mismatch the legacy path refused for that shape. Pair 1 (nominal-at-literal): Box at Node param — diagnostics_witness record_literal_field_walls carries it on the production compile path. Pair 2 (resolved-type legacy): warm-fox Cons/FreeMonoid<Node> at inline sole_constructor NormalizedTree in compile_dag_rust_emit_check — the shape main's legacy path refused before the skip. On the current base v2.compiler.normalized_tree is still type NormalizedTree = Node, so the same call on the production compile path stays green because it is Node-at-Node, not because the check is complete; when gunbc#8256 lands the sealed carrier (type NormalizedTree sole_constructor { root: Node }), that call becomes a genuine nominal mismatch and warm-fox measured it compile-clean on the production path — open BL-1 typecheck residue, not enrolled as correct behavior here."
 

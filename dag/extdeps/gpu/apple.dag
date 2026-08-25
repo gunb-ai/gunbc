@@ -4,7 +4,7 @@ module extdeps.gpu.apple
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.apple.com/macbook-pro/specs/"
   }
 }
@@ -13,16 +13,16 @@ data apple_m5_gpu_catalog: extdeps.gpu.types.GpuModelCatalogRow = extdeps.gpu.ty
   vendor: extdeps.vendor.apple.apple,
   model: "Apple M5 GPU",
   microarchitecture: "Apple GPU",
-  execution_lane_count: hardware_thread_count(10),
+  execution_lane_count: std.measure.hardware_thread_count(10),
   memory: extdeps.memory.types.MemoryFacts {
-    capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)),
-    memory_kind: UnifiedShared,
+    capacity: std.measure.gibibyte_to_byte_size(g: std.measure.gibibyte(count: 16)),
+    memory_kind: extdeps.memory.types.UnifiedShared,
   },
-  memory_bandwidth: bandwidth(count: 153000000000),
+  memory_bandwidth: std.measure.bandwidth(count: 153000000000),
   boost_clock: none,
   tdp_watts: none,
   compute_capability: none,
-  supported_runtimes: [Metal],
+  supported_runtimes: [extdeps.gpu.types.Metal],
   interconnect: none,
   sm_cache: none,
   sm_cache_citations: [],

@@ -1,7 +1,7 @@
 module test.claim.runner_connectivity_recovery_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn act_ts(s: String) -> std.types.Timestamp {
   s as std.types.Timestamp
@@ -17,11 +17,11 @@ fn fixture_incarnation(slot: gunbc.build_cache_instance.RunnerSlotIdentity, pid:
   gunbc.runner_connectivity_recovery.RunnerLocalIncarnation {
     slot: slot,
     process: gunbc.build_cache_instance.ProcessIdentity {
-      boot_id: "boot-a" as std.types.NonEmptyStr,
+      boot_id: "boot-a" as NonEmptyStr,
       pid: pid,
-      start_time: start as std.types.NonEmptyStr,
+      start_time: start as NonEmptyStr,
     },
-    unit: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
+    unit: "actions-runner@srv1-01.service" as NonEmptyStr,
   }
 }
 
@@ -31,44 +31,44 @@ fn fixture_labels() -> List<String> {
 
 fn remote_offline_evidence() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
   gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
-    registration: RunnerRemoteOffline,
+    registration: gunbc.runner_broker_progress_watchdog.RunnerRemoteOffline,
     registration_id: "",
-    grade: ObservedEvidence,
+    grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
   }
 }
 
 fn remote_online_evidence(labels: List<String>) -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
   gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
     registration: gunbc.runner_broker_progress_watchdog.RunnerRemoteOnline {
-      runner_name: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
+      runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
       labels: labels,
     },
     registration_id: "reg-1",
-    grade: ObservedEvidence,
+    grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
   }
 }
 
 fn remote_busy_evidence() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
   gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
-    registration: gunbc.runner_broker_progress_watchdog.RunnerRemoteBusy { detail: "job assigned" as std.types.NonEmptyStr },
+    registration: gunbc.runner_broker_progress_watchdog.RunnerRemoteBusy { detail: "job assigned" as NonEmptyStr },
     registration_id: "",
-    grade: ObservedEvidence,
+    grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
   }
 }
 
-fn wedged_broker_progress() -> gunbc.runner_broker_progress_watchdog.BrokerProgressObservation {
+fn wedged_broker_progress() -> BrokerProgressObservation {
   gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
-    silence_seconds: runner_broker_progress_silence_bound_seconds,
-    grade: ObservedEvidence,
+    silence_seconds: gunbc.runner_broker_progress_watchdog.runner_broker_progress_silence_bound_seconds,
+    grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
   }
 }
 
 fn wedged_worker_observation() -> gunbc.runner_broker_progress_watchdog.RunnerWorkerObservation {
-  gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence }
+  gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence }
 }
 
 fn wedged_snapshot(act_at: std.types.Timestamp) -> gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
-  let slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 1)
+  let slot = fixture_slot(host: gunbc.fleet_intent_network.operator_host_srv1, index: 1)
   let inc = fixture_incarnation(slot: slot, pid: 4242, start: "80000000")
   gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
@@ -91,7 +91,7 @@ fn wedged_snapshot(act_at: std.types.Timestamp) -> gunbc.runner_connectivity_rec
 }
 
 fn connected_snapshot(act_at: std.types.Timestamp, pid: Int, start: String) -> gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
-  let slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 1)
+  let slot = fixture_slot(host: gunbc.fleet_intent_network.operator_host_srv1, index: 1)
   let inc = fixture_incarnation(slot: slot, pid: pid, start: start)
   gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
@@ -114,38 +114,38 @@ fn connected_snapshot(act_at: std.types.Timestamp, pid: Int, start: String) -> g
 }
 
 test fn wedged_slot_requests_incarnation_replace() -> Bool {
-  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
-  let snap = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: act)
-  match decide_runner_connectivity_action_for_snapshot(
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let snap = wedged_snapshot(act_at: act)
+  match gunbc.runner_connectivity_recovery.decide_runner_connectivity_action_for_snapshot(
     snap: snap,
     prior: snap,
     act_at: act,
-    reach: HostReachAdmitted,
+    reach: gunbc.runner_broker_progress_watchdog.HostReachAdmitted,
     allow_replace: true,
   ) {
-    RunnerIncarnationReplace { slot: _, from: _, cause: RemoteRegistrationOfflineWhileLocalAlive } => true
-    RunnerConnectedNoop { local: _, remote: _ } => false
-    RunnerRepairRefused { slot: _, cause: _ } => false
+    gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: gunbc.runner_connectivity_recovery.RemoteRegistrationOfflineWhileLocalAlive } => true
+    gunbc.runner_connectivity_recovery.RunnerConnectedNoop { local: _, remote: _ } => false
+    gunbc.runner_connectivity_recovery.RunnerRepairRefused { slot: _, cause: _ } => false
   }
 }
 
 test fn connected_slot_is_noop() -> Bool {
-  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
   let snap = connected_snapshot(act_at: act, pid: 5000, start: "90000000")
-  action_is_noop(
-    action: decide_runner_connectivity_action_for_snapshot(
+  gunbc.runner_connectivity_recovery.action_is_noop(
+    action: gunbc.runner_connectivity_recovery.decide_runner_connectivity_action_for_snapshot(
       snap: snap,
       prior: snap,
       act_at: act,
-      reach: HostReachAdmitted,
+      reach: gunbc.runner_broker_progress_watchdog.HostReachAdmitted,
       allow_replace: true,
     ),
   )
 }
 
 test fn remotely_busy_slot_refuses_restart() -> Bool {
-  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
-  let slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 2)
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let slot = fixture_slot(host: gunbc.fleet_intent_network.operator_host_srv1, index: 2)
   let inc = fixture_incarnation(slot: slot, pid: 1111, start: "70000000")
   let snap = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
@@ -161,39 +161,39 @@ test fn remotely_busy_slot_refuses_restart() -> Bool {
     confirmed_at: act,
     last_restart_at: Absent,
   }
-  match decide_runner_connectivity_action_for_snapshot(
+  match gunbc.runner_connectivity_recovery.decide_runner_connectivity_action_for_snapshot(
     snap: snap,
     prior: snap,
     act_at: act,
-    reach: HostReachAdmitted,
+    reach: gunbc.runner_broker_progress_watchdog.HostReachAdmitted,
     allow_replace: true,
   ) {
-    RunnerRepairRefused { slot: _, cause: RunnerRemotelyBusy } => true
-    RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
-    RunnerConnectedNoop { local: _, remote: _ } => false
+    gunbc.runner_connectivity_recovery.RunnerRepairRefused { slot: _, cause: gunbc.runner_connectivity_recovery.RunnerRemotelyBusy } => true
+    gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+    gunbc.runner_connectivity_recovery.RunnerConnectedNoop { local: _, remote: _ } => false
   }
 }
 
 test fn stale_observation_refuses_restart() -> Bool {
-  let snap = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z"))
-  match decide_runner_connectivity_action_for_snapshot(
+  let snap = wedged_snapshot(act_at: act_ts(s: "2026-08-06T20:00:00Z"))
+  match gunbc.runner_connectivity_recovery.decide_runner_connectivity_action_for_snapshot(
     snap: snap,
     prior: snap,
-    act_at: test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:05:00Z"),
-    reach: HostReachAdmitted,
+    act_at: act_ts(s: "2026-08-06T20:05:00Z"),
+    reach: gunbc.runner_broker_progress_watchdog.HostReachAdmitted,
     allow_replace: true,
   ) {
-    RunnerRepairRefused { slot: _, cause: gunbc.runner_connectivity_recovery.ObservationStale { observed_at: _, act_at: _ } } => true
-    RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
-    RunnerConnectedNoop { local: _, remote: _ } => false
+    gunbc.runner_connectivity_recovery.RunnerRepairRefused { slot: _, cause: gunbc.runner_connectivity_recovery.ObservationStale { observed_at: _, act_at: _ } } => true
+    gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+    gunbc.runner_connectivity_recovery.RunnerConnectedNoop { local: _, remote: _ } => false
   }
 }
 
 test fn degraded_fleet_allows_only_canary_replace() -> Bool {
-  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
-  let s1 = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: act)
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let s1 = wedged_snapshot(act_at: act)
   let s2 = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
-    slot: test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 2),
+    slot: fixture_slot(host: gunbc.fleet_intent_network.operator_host_srv1, index: 2),
     local: s1.local,
     remote: s1.remote,
     broker: s1.broker,
@@ -202,41 +202,41 @@ test fn degraded_fleet_allows_only_canary_replace() -> Bool {
     confirmed_at: act,
     last_restart_at: Absent,
   }
-  let standing = classify_control_plane_standing(
+  let standing = gunbc.runner_connectivity_recovery.classify_control_plane_standing(
     snapshots: [s1, s2],
     degraded_threshold_percent: 50,
   )
   let canary = s1.slot
-  let canary_action = plan_slot_connectivity_action(
+  let canary_action = gunbc.runner_connectivity_recovery.plan_slot_connectivity_action(
     snap: s1,
     prior: s1,
     act_at: act,
-    reach: HostReachAdmitted,
+    reach: gunbc.runner_broker_progress_watchdog.HostReachAdmitted,
     standing: standing,
     canary_slot: canary,
     canary_verified: false,
   )
-  let sibling_action = plan_slot_connectivity_action(
+  let sibling_action = gunbc.runner_connectivity_recovery.plan_slot_connectivity_action(
     snap: s2,
     prior: s2,
     act_at: act,
-    reach: HostReachAdmitted,
+    reach: gunbc.runner_broker_progress_watchdog.HostReachAdmitted,
     standing: standing,
     canary_slot: canary,
     canary_verified: false,
   )
-  action_is_replace(action: canary_action)
+  gunbc.runner_connectivity_recovery.action_is_replace(action: canary_action)
     && match sibling_action {
-         RunnerRepairRefused { slot: _, cause: CanaryAwaitingVerification } => true
-         RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
-         RunnerConnectedNoop { local: _, remote: _ } => false
+         gunbc.runner_connectivity_recovery.RunnerRepairRefused { slot: _, cause: gunbc.runner_connectivity_recovery.CanaryAwaitingVerification } => true
+         gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+         gunbc.runner_connectivity_recovery.RunnerConnectedNoop { local: _, remote: _ } => false
        }
 }
 
 test fn srv3_reach_refused_while_srv1_continues() -> Bool {
-  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
-  let srv1 = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: act)
-  let srv3_slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv3, index: 1)
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let srv1 = wedged_snapshot(act_at: act)
+  let srv3_slot = fixture_slot(host: gunbc.fleet_intent_network.operator_host_srv3, index: 1)
   let srv3 = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: srv3_slot,
     local: gunbc.runner_connectivity_recovery.RunnerLocalObservation {
@@ -255,31 +255,31 @@ test fn srv3_reach_refused_while_srv1_continues() -> Bool {
     confirmed_at: act,
     last_restart_at: Absent,
   }
-  match decide_runner_connectivity_action_for_snapshot(
+  match gunbc.runner_connectivity_recovery.decide_runner_connectivity_action_for_snapshot(
     snap: srv3,
     prior: srv3,
     act_at: act,
-    reach: host_reach_admission_for_fleet_host(host: operator_host_srv3),
+    reach: gunbc.runner_connectivity_recovery.host_reach_admission_for_fleet_host(host: gunbc.fleet_intent_network.operator_host_srv3),
     allow_replace: true,
   ) {
-    RunnerRepairRefused { slot: _, cause: HostReachAdmissionRefused { reason: _ } } => true
-    RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
-    RunnerConnectedNoop { local: _, remote: _ } => false
+    gunbc.runner_connectivity_recovery.RunnerRepairRefused { slot: _, cause: gunbc.runner_connectivity_recovery.HostReachAdmissionRefused { reason: _ } } => true
+    gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+    gunbc.runner_connectivity_recovery.RunnerConnectedNoop { local: _, remote: _ } => false
   }
-    && action_is_replace(
-         action: decide_runner_connectivity_action_for_snapshot(
+    && gunbc.runner_connectivity_recovery.action_is_replace(
+         action: gunbc.runner_connectivity_recovery.decide_runner_connectivity_action_for_snapshot(
            snap: srv1,
            prior: srv1,
            act_at: act,
-           reach: host_reach_admission_for_fleet_host(host: operator_host_srv1),
+           reach: gunbc.runner_connectivity_recovery.host_reach_admission_for_fleet_host(host: gunbc.fleet_intent_network.operator_host_srv1),
            allow_replace: true,
          ),
        )
 }
 
 test fn postcondition_verifies_new_incarnation_and_remote_online() -> Bool {
-  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
-  let slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 1)
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let slot = fixture_slot(host: gunbc.fleet_intent_network.operator_host_srv1, index: 1)
   let prior = fixture_incarnation(slot: slot, pid: 4242, start: "80000000")
   let after_local = gunbc.runner_connectivity_recovery.RunnerLocalObservation {
     incarnation: fixture_incarnation(slot: slot, pid: 5151, start: "91000000"),
@@ -291,21 +291,21 @@ test fn postcondition_verifies_new_incarnation_and_remote_online() -> Bool {
     observed_at: act,
     control_plane_error_burst: false,
   }
-  match verify_incarnation_replace_postcondition(
+  match gunbc.runner_connectivity_recovery.verify_incarnation_replace_postcondition(
     slot: slot,
     prior: prior,
     after_local: after_local,
     after_remote: after_remote,
     expected_labels: fixture_labels(),
   ) {
-    ReplaceVerified { slot: _, prior: _, successor: _, remote: _ } => true
-    ReplacePostconditionFailed { slot: _, reason: _ } => false
+    gunbc.runner_connectivity_recovery.ReplaceVerified { slot: _, prior: _, successor: _, remote: _ } => true
+    gunbc.runner_connectivity_recovery.ReplacePostconditionFailed { slot: _, reason: _ } => false
   }
 }
 
 test fn postcondition_fails_when_prior_process_survives() -> Bool {
-  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
-  let slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 1)
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let slot = fixture_slot(host: gunbc.fleet_intent_network.operator_host_srv1, index: 1)
   let prior = fixture_incarnation(slot: slot, pid: 4242, start: "80000000")
   let after_local = gunbc.runner_connectivity_recovery.RunnerLocalObservation {
     incarnation: prior,
@@ -317,34 +317,34 @@ test fn postcondition_fails_when_prior_process_survives() -> Bool {
     observed_at: act,
     control_plane_error_burst: false,
   }
-  match verify_incarnation_replace_postcondition(
+  match gunbc.runner_connectivity_recovery.verify_incarnation_replace_postcondition(
     slot: slot,
     prior: prior,
     after_local: after_local,
     after_remote: after_remote,
     expected_labels: fixture_labels(),
   ) {
-    ReplacePostconditionFailed { slot: _, reason: _ } => true
-    ReplaceVerified { slot: _, prior: _, successor: _, remote: _ } => false
+    gunbc.runner_connectivity_recovery.ReplacePostconditionFailed { slot: _, reason: _ } => true
+    gunbc.runner_connectivity_recovery.ReplaceVerified { slot: _, prior: _, successor: _, remote: _ } => false
   }
 }
 
 test fn rerun_after_successful_replace_is_noop() -> Bool {
-  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
   let snap = connected_snapshot(act_at: act, pid: 5151, start: "91000000")
-  action_is_noop(
-    action: decide_runner_connectivity_action_for_snapshot(
+  gunbc.runner_connectivity_recovery.action_is_noop(
+    action: gunbc.runner_connectivity_recovery.decide_runner_connectivity_action_for_snapshot(
       snap: snap,
       prior: snap,
       act_at: act,
-      reach: HostReachAdmitted,
+      reach: gunbc.runner_broker_progress_watchdog.HostReachAdmitted,
       allow_replace: true,
     ),
   )
 }
 
 test fn control_plane_burst_classifies_degraded() -> Bool {
-  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
   let snap = connected_snapshot(act_at: act, pid: 1, start: "1")
   let burst = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: snap.slot,
@@ -360,17 +360,17 @@ test fn control_plane_burst_classifies_degraded() -> Bool {
     confirmed_at: act,
     last_restart_at: Absent,
   }
-  match classify_control_plane_standing(snapshots: [snap, burst], degraded_threshold_percent: 75) {
-    RunnerControlPlaneDegraded { offline_slots: _, total_slots: _, reason: _ } => true
-    RunnerControlPlaneHealthy => false
+  match gunbc.runner_connectivity_recovery.classify_control_plane_standing(snapshots: [snap, burst], degraded_threshold_percent: 75) {
+    gunbc.runner_connectivity_recovery.RunnerControlPlaneDegraded { offline_slots: _, total_slots: _, reason: _ } => true
+    gunbc.runner_connectivity_recovery.RunnerControlPlaneHealthy => false
   }
 }
 
 test fn fleet_plan_enforces_per_host_replace_cap() -> Bool {
-  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
-  let s1 = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: act)
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let s1 = wedged_snapshot(act_at: act)
   let s2 = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
-    slot: test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 2),
+    slot: fixture_slot(host: gunbc.fleet_intent_network.operator_host_srv1, index: 2),
     local: s1.local,
     remote: s1.remote,
     broker: s1.broker,
@@ -380,7 +380,7 @@ test fn fleet_plan_enforces_per_host_replace_cap() -> Bool {
     last_restart_at: Absent,
   }
   let s3 = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
-    slot: test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 3),
+    slot: fixture_slot(host: gunbc.fleet_intent_network.operator_host_srv1, index: 3),
     local: s1.local,
     remote: s1.remote,
     broker: s1.broker,
@@ -389,30 +389,30 @@ test fn fleet_plan_enforces_per_host_replace_cap() -> Bool {
     confirmed_at: act,
     last_restart_at: Absent,
   }
-  let plan = plan_fleet_connectivity_repair(
+  let plan = gunbc.runner_connectivity_recovery.plan_fleet_connectivity_repair(
     snapshots: [s1, s2, s3],
     act_at: act,
     canary_verified: true,
   )
-  count_replace_actions_for_host(
+  gunbc.runner_connectivity_recovery.count_replace_actions_for_host(
     actions: plan.actions,
-    host: operator_host_srv1,
-  ) <= runner_connectivity_max_replacements_per_host_per_tick
+    host: gunbc.fleet_intent_network.operator_host_srv1,
+  ) <= gunbc.runner_connectivity_recovery.runner_connectivity_max_replacements_per_host_per_tick
     && match plan.actions.skip(n: 2).first() {
          Present { value: action } =>
            match action {
-             RunnerRepairRefused { slot: _, cause: HostReplacementCapExceeded { host: _, cap: _ } } =>
+             gunbc.runner_connectivity_recovery.RunnerRepairRefused { slot: _, cause: gunbc.runner_connectivity_recovery.HostReplacementCapExceeded { host: _, cap: _ } } =>
                true
-             RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
-             RunnerConnectedNoop { local: _, remote: _ } => false
+             gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+             gunbc.runner_connectivity_recovery.RunnerConnectedNoop { local: _, remote: _ } => false
            }
          Absent => false
        }
 }
 
 test fn offline_with_recent_broker_progress_refuses_replace() -> Bool {
-  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z")
-  let slot = test.claim.runner_connectivity_recovery_witness.fixture_slot(host: operator_host_srv1, index: 4)
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let slot = fixture_slot(host: gunbc.fleet_intent_network.operator_host_srv1, index: 4)
   let inc = fixture_incarnation(slot: slot, pid: 3333, start: "50000000")
   let snap = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
@@ -423,41 +423,41 @@ test fn offline_with_recent_broker_progress_refuses_replace() -> Bool {
       control_plane_error_burst: false,
     },
     broker: gunbc.runner_broker_progress_watchdog.BrokerProgressObserved {
-      last_event: AcquireAttempt,
+      last_event: gunbc.runner_broker_progress_watchdog.AcquireAttempt,
       last_at: act,
-      grade: ObservedEvidence,
+      grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
     },
     worker: wedged_worker_observation(),
     registration_grace_elapsed: true,
     confirmed_at: act,
     last_restart_at: Absent,
   }
-  match decide_runner_connectivity_action_for_snapshot(
+  match gunbc.runner_connectivity_recovery.decide_runner_connectivity_action_for_snapshot(
     snap: snap,
     prior: snap,
     act_at: act,
-    reach: HostReachAdmitted,
+    reach: gunbc.runner_broker_progress_watchdog.HostReachAdmitted,
     allow_replace: true,
   ) {
-    RunnerRepairRefused { slot: _, cause: BrokerProgressStillRecent { silence_seconds: _ } } => true
-    RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
-    RunnerConnectedNoop { local: _, remote: _ } => false
+    gunbc.runner_connectivity_recovery.RunnerRepairRefused { slot: _, cause: gunbc.runner_connectivity_recovery.BrokerProgressStillRecent { silence_seconds: _ } } => true
+    gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+    gunbc.runner_connectivity_recovery.RunnerConnectedNoop { local: _, remote: _ } => false
   }
 }
 
 test fn reobservation_refuses_when_act_at_advances_after_decision_receipt() -> Bool {
-  let prior = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:00:00Z"))
-  let act = test.claim.runner_connectivity_recovery_witness.act_ts(s: "2026-08-06T20:05:00Z")
-  let snap = test.claim.runner_connectivity_recovery_witness.wedged_snapshot(act_at: act)
-  match decide_runner_connectivity_action_for_snapshot(
+  let prior = wedged_snapshot(act_at: act_ts(s: "2026-08-06T20:00:00Z"))
+  let act = act_ts(s: "2026-08-06T20:05:00Z")
+  let snap = wedged_snapshot(act_at: act)
+  match gunbc.runner_connectivity_recovery.decide_runner_connectivity_action_for_snapshot(
     snap: snap,
     prior: prior,
     act_at: act,
-    reach: HostReachAdmitted,
+    reach: gunbc.runner_broker_progress_watchdog.HostReachAdmitted,
     allow_replace: true,
   ) {
-    RunnerRepairRefused { slot: _, cause: ReobservationRefused { reason: _ } } => true
-    RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
-    RunnerConnectedNoop { local: _, remote: _ } => false
+    gunbc.runner_connectivity_recovery.RunnerRepairRefused { slot: _, cause: gunbc.runner_connectivity_recovery.ReobservationRefused { reason: _ } } => true
+    gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+    gunbc.runner_connectivity_recovery.RunnerConnectedNoop { local: _, remote: _ } => false
   }
 }

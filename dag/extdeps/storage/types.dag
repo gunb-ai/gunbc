@@ -4,7 +4,7 @@ module extdeps.storage.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/PCI_Express"
   }
 }
@@ -16,9 +16,9 @@ type PcieGeneration =
 
 fn pcie_generation_per_lane_bandwidth(g: PcieGeneration) -> std.measure.Bandwidth {
   match g {
-    Gen3 => bandwidth(8000000000 * 128 / 130 / 8)
-    Gen4 => bandwidth(16000000000 * 128 / 130 / 8)
-    Gen5 => bandwidth(32000000000 * 128 / 130 / 8)
+    Gen3 => std.measure.bandwidth(8000000000 * 128 / 130 / 8)
+    Gen4 => std.measure.bandwidth(16000000000 * 128 / 130 / 8)
+    Gen5 => std.measure.bandwidth(32000000000 * 128 / 130 / 8)
   }
 }
 
@@ -29,7 +29,7 @@ type PcieLink {
 }
 
 fn pcie_link_bandwidth(link: PcieLink) -> std.measure.Bandwidth {
-  bandwidth(bandwidth_count(pcie_generation_per_lane_bandwidth(g: link.generation)) * link.lane_count)
+  std.measure.bandwidth(std.measure.bandwidth_count(pcie_generation_per_lane_bandwidth(g: link.generation)) * link.lane_count)
 }
 
 fn pcie_interconnect_link(link: PcieLink) -> std.machine_shape.InterconnectLink {
@@ -50,7 +50,7 @@ type NvmeFormFactor =
 
 type NvmeDeviceCatalogRow {
   part_number: std.types.NonEmptyStr
-  manufacturer: Vendor<extdeps.hardware.Hardware>
+  manufacturer: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
 
   capacity_bytes: std.measure.ByteSize
 

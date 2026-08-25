@@ -3,7 +3,7 @@ module extdeps.object_storage.content_addressed
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Object_storage#Content-addressable_storage"
   }
 }
@@ -13,7 +13,7 @@ type CasObjectId {
 }
 
 type CasAddressingConfig {
-  container: ObjectContainer
+  container: extdeps.object_storage.ObjectContainer
   key_derivation: std.cache_interface.KeyDerivationClass
   write_mode: std.cache_interface.CacheWriteSemantics
 }

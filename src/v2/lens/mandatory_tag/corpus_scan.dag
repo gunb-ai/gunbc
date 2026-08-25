@@ -13,11 +13,11 @@ fn corpus_anchor_facts(module: v2.std.qualified_name.QualifiedName) -> ExtdepsEx
   extdeps_external_authority_facts_for_qualified_name(module: module)
 }
 
-fn corpus_live_clean_tree_holds() -> v2.std.logic.Bool {
+fn corpus_live_clean_tree_holds() -> Bool {
   extdeps_external_authority_live_clean_tree_holds()
 }
 
-fn corpus_live_roster_module_count() -> v2.std.integer.Int {
+fn corpus_live_roster_module_count() -> Int {
   extdeps_external_authority_live_roster_module_count()
 }
 
@@ -49,7 +49,7 @@ data extdeps_archive_format_module: v2.std.qualified_name.QualifiedName = std.al
   head: ^extdeps,
   tail: std.algebra.Cons {
     head: ^archive,
-    tail: std.algebra.Cons { head: symbol_intern_lexeme(lexeme: "format"), tail: std.algebra.Empty }
+    tail: std.algebra.Cons { head: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: "format"), tail: std.algebra.Empty }
   }
 }
 
@@ -57,7 +57,7 @@ data extdeps_ollama_binary_release_module: v2.std.qualified_name.QualifiedName =
   head: ^extdeps,
   tail: std.algebra.Cons {
     head: ^ollama,
-    tail: std.algebra.Cons { head: symbol_intern_lexeme(lexeme: "binary_release"), tail: std.algebra.Empty }
+    tail: std.algebra.Cons { head: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: "binary_release"), tail: std.algebra.Empty }
   }
 }
 
@@ -65,7 +65,7 @@ data extdeps_ollama_capability_module: v2.std.qualified_name.QualifiedName = std
   head: ^extdeps,
   tail: std.algebra.Cons {
     head: ^ollama,
-    tail: std.algebra.Cons { head: symbol_intern_lexeme(lexeme: "capability"), tail: std.algebra.Empty }
+    tail: std.algebra.Cons { head: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: "capability"), tail: std.algebra.Empty }
   }
 }
 
@@ -73,6 +73,6 @@ data extdeps_ollama_gpu_support_module: v2.std.qualified_name.QualifiedName = st
   head: ^extdeps,
   tail: std.algebra.Cons {
     head: ^ollama,
-    tail: std.algebra.Cons { head: symbol_intern_lexeme(lexeme: "gpu_support"), tail: std.algebra.Empty }
+    tail: std.algebra.Cons { head: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: "gpu_support"), tail: std.algebra.Empty }
   }
 }

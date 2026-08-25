@@ -6,7 +6,7 @@ module extdeps.connector.samtec_ftsh_105_01_l_dv
 // document family that were observed, rather than a constructed path nobody has seen resolve.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "suddendocs.samtec.com/prints/ftsh-1xx-xx-xxx-dh-xx footprint.pdf"
   }
 }
@@ -15,7 +15,7 @@ data ftsh_105_01_l_dv_note: String = "THIS ROW HAS NO UPSTREAM PRECEDENT BEHIND 
 
 data ftsh_105_01_l_dv: extdeps.land_pattern.types.CatalogPartIdentity = extdeps.land_pattern.types.CatalogPartIdentity {
   ordering_part_number: "FTSH-105-01-L-DV",
-  vendor: samtec,
+  vendor: extdeps.vendor.samtec.samtec,
   board_pattern: extdeps.land_pattern.types.MountingPatternObligation {
     what_is_missing: "the vendor's per-variant footprint print for the -DV variant of FTSH-105-01-L, which Samtec publishes as a print in its footprint series and which this row does not transcribe",
   },
@@ -26,9 +26,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.connector.samtec_ftsh_105_01_l_dv",
       decl_name: "ftsh_105_01_l_dv",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.connector.samtec_ftsh_105_01_l_dv.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

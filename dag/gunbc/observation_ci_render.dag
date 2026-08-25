@@ -1,5 +1,6 @@
 module gunbc.observation_ci_render
 
+
 data observation_ci_render_note: String = "P1 of the progress-and-observation lane: the CI-log renderer, built first because the CI log is where the pain lives. Append-only, no repaint — a GitHub Actions log cannot be redrawn, so every line is final when written. This module PROJECTS the std.observation event vocabulary into lines; it computes no facts of its own and holds no telemetry source. Every number it prints arrives in an event or a heartbeat sample that the process already had (law 5), which is why the flagship acceptance can replay a captured run: the renderer is a pure function of the stream."
 
 data observation_ci_render_tone_note: String = "Tone contract (operator, 2026-07-24). Arm's-length lines are plain sentences a human reads without decoding — not dense key-equals-value chains, which belong in receipt boxes and files. Magnitudes are in human units: gibibytes, minutes, percent. The named negative example is the floor memory heartbeat's current shape, sixty-plus context-free byte dumps an hour, each carrying a raw current=16106717184 and no subject at all; that line is what the operator watched for ten minutes while a single module typechecked, and it is the exact shape this renderer must not reproduce."
@@ -55,8 +56,8 @@ data ci_human_duration_note: String = "A second duration projection beside gunbc
 // ObservationEvent retains exact Nanosecond wall time through classification and ordering. Arm's-length lines keep existing millisecond-and-larger spelling byte-stable, while a sub-millisecond event prints its exact nanosecond count instead of fabricating 0ms. The floor conversion is confined to this named presentation boundary.
 fn ci_measured_bytes_text(m: std.observation.Measured<std.measure.ByteSize>) -> String {
   match m {
-    MeasuredValue { value: b } => ci_human_bytes(b: b)
-    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+    std.observation.MeasuredValue { value: b } => ci_human_bytes(b: b)
+    std.observation.MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
   }
 }
 
@@ -65,15 +66,15 @@ fn ci_measured_bytes_text(m: std.observation.Measured<std.measure.ByteSize>) -> 
 // indistinguishable from one that finished instantly.
 fn ci_measured_elapsed_text(m: std.observation.Measured<std.measure.Nanosecond>) -> String {
   match m {
-    MeasuredValue { value: d } => ci_human_elapsed(d: d)
-    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+    std.observation.MeasuredValue { value: d } => ci_human_elapsed(d: d)
+    std.observation.MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
   }
 }
 
 fn ci_measured_percent_text(m: std.observation.Measured<std.measure.BasisPoint>) -> String {
   match m {
-    MeasuredValue { value: bp } => ci_human_percent(bp: bp)
-    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+    std.observation.MeasuredValue { value: bp } => ci_human_percent(bp: bp)
+    std.observation.MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
   }
 }
 
@@ -97,9 +98,9 @@ type LinePlacement
 // Law 4's asymmetry made structural. Placement is DERIVED from the line's attention, never chosen at the call site, so an anomaly cannot be written into a collapsed group: the group is exactly where a reader will not look, and burying a refusal there is how a stopped line reads as silence. This is the construction that replaces the review instruction not to hide refusals.
 fn ci_line_placement(attention: std.observation.AttentionLevel) -> LinePlacement {
   match attention {
-    Ambient => InsideCollapsedGroup
-    Notable => OutsideGroup
-    Anomaly => OutsideGroup
+    std.observation.Ambient => InsideCollapsedGroup
+    std.observation.Notable => OutsideGroup
+    std.observation.Anomaly => OutsideGroup
   }
 }
 
@@ -141,17 +142,17 @@ fn ci_subject_activity(subject: std.observation.ObservationSubject) -> Observati
     init: ObservationActivity { run: "", batch: "", entry: "", module_path: "", declaration: "", phase: "" },
     f: (acc, seg) =>
       match seg {
-        RunSegment { id: i } =>
+        std.observation.RunSegment { id: i } =>
           ObservationActivity { run: i, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, declaration: acc.declaration, phase: acc.phase }
-        BatchSegment { index: _, label: l } =>
+        std.observation.BatchSegment { index: _, label: l } =>
           ObservationActivity { run: acc.run, batch: l, entry: acc.entry, module_path: acc.module_path, declaration: acc.declaration, phase: acc.phase }
-        EntrySegment { source_path: p } =>
+        std.observation.EntrySegment { source_path: p } =>
           ObservationActivity { run: acc.run, batch: acc.batch, entry: p, module_path: acc.module_path, declaration: acc.declaration, phase: acc.phase }
-        ModuleSegment { module_path: m } =>
+        std.observation.ModuleSegment { module_path: m } =>
           ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: m, declaration: acc.declaration, phase: acc.phase }
-        DeclarationSegment { declaration: d } =>
+        std.observation.DeclarationSegment { declaration: d } =>
           ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, declaration: std.observation.observation_declaration_key(d: d), phase: acc.phase }
-        PhaseSegment { name: n } =>
+        std.observation.PhaseSegment { name: n } =>
           ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, declaration: acc.declaration, phase: n }
       }
   )
@@ -187,10 +188,10 @@ fn ci_subject_detail_text(subject: std.observation.ObservationSubject) -> String
 
 fn ci_outcome_text(o: std.observation.ObservationOutcome) -> String {
   match o {
-    Done => "done"
-    Refused { diagnostic: d } => concat("refused: ", d)
-    Failed { error: e, output: _ } => concat("failed: ", e)
-    TimedOut { basis: k, budget: b, elapsed: e } =>
+    std.observation.Done => "done"
+    std.observation.Refused { diagnostic: d } => concat("refused: ", d)
+    std.observation.Failed { error: e, output: _ } => concat("failed: ", e)
+    std.observation.TimedOut { basis: k, budget: b, elapsed: e } =>
       concat(
         "timed out after ",
         concat(
@@ -204,15 +205,15 @@ fn ci_outcome_text(o: std.observation.ObservationOutcome) -> String {
           )
         )
       )
-    Skipped { reason: r } => concat("skipped: ", r)
-    Final { shown_failures: n } => concat("finished with ", concat(to_string(n), " problems shown"))
+    std.observation.Skipped { reason: r } => concat("skipped: ", r)
+    std.observation.Final { shown_failures: n } => concat("finished with ", concat(to_string(n), " problems shown"))
   }
 }
 
 fn ci_duration_suffix(wall: std.observation.Measured<std.measure.Nanosecond>) -> String {
   match wall {
-    MeasuredValue { value: w } => concat(" in ", ci_human_elapsed(d: w))
-    MeasuredUnavailable { cause: c } => concat(" (duration unmeasured: ", concat(c, ")"))
+    std.observation.MeasuredValue { value: w } => concat(" in ", ci_human_elapsed(d: w))
+    std.observation.MeasuredUnavailable { cause: c } => concat(" (duration unmeasured: ", concat(c, ")"))
   }
 }
 
@@ -223,15 +224,15 @@ fn ci_event_line_at_attention(event: std.observation.ObservationEvent, attention
   let presentation = std.observation.observation_presentation(c: std.observation.observation_event_class(event: event))
   let subject = ci_subject_leaf_text(subject: event.subject)
   match event.transition {
-    Begin =>
+    std.observation.Begin =>
       RenderedLine { glyph: presentation.glyph, text: concat("started ", subject), attention: attention }
-    Step { k: k, n: n } =>
+    std.observation.Step { k: k, n: n } =>
       RenderedLine {
         glyph: presentation.glyph,
         text: concat(subject, concat(": ", concat(to_string(k), concat(" of ", to_string(n))))),
         attention: attention
       }
-    Concluded { outcome: o } =>
+    std.observation.Concluded { outcome: o } =>
       RenderedLine {
         glyph: presentation.glyph,
         text: concat(subject, concat(" ", concat(ci_outcome_text(o: o), ci_duration_suffix(wall: std.observation.observation_wall(event: event))))),
@@ -280,9 +281,9 @@ fn ci_heartbeat_line(sample: HeartbeatSample) -> RenderedLine {
 
 fn ci_hold_cause_text(hold: std.observation.SchedulerHold) -> String {
   match hold {
-    PsiPressure { avg10: bp } =>
+    std.observation.PsiPressure { avg10: bp } =>
       concat("blocked on memory reclaim (pressure ", concat(ci_human_percent(bp: bp), ")"))
-    CurrentHighWater { current: c, high_water: hw } =>
+    std.observation.CurrentHighWater { current: c, high_water: hw } =>
       concat("blocked on the memory high-water line (", concat(ci_human_bytes(b: c), concat(" of ", concat(ci_human_bytes(b: hw), ")"))))
     _ => "blocked on scheduler admission"
   }
@@ -377,7 +378,7 @@ fn ci_run_summary_glyph(summary: FloorRunSummary) -> std.symbols.SymbolId {
   }
 }
 
-// The run summary keeps std.observation.Refused and std.observation.Failed apart, because a summary that collapses them undoes at the last line exactly what the outcome sum spends the model establishing. A run that only refused stopped deliberately and its glyph says so; a run carrying any failure is broken, and breakage dominates the summary glyph because it is the stronger claim about the run. Both counts appear in the text either way, so the glyph chooses emphasis and never hides a number.
+// The run summary keeps Refused and Failed apart, because a summary that collapses them undoes at the last line exactly what the outcome sum spends the model establishing. A run that only refused stopped deliberately and its glyph says so; a run carrying any failure is broken, and breakage dominates the summary glyph because it is the stronger claim about the run. Both counts appear in the text either way, so the glyph chooses emphasis and never hides a number.
 fn ci_run_summary_line(summary: FloorRunSummary) -> RenderedLine {
   let problems = summary.refusals + summary.failures
   RenderedLine {
@@ -455,9 +456,9 @@ fn ci_routine_projection(
   grain: std.observation.ObservationGrain?,
 ) -> RoutineProjection {
   match std.observation.observation_class_density(c: std.observation.observation_event_class(event: event)) {
-    AnomalyExpanded => EmittedAtLeaf { reason: AnomalyPierces }
-    SummaryAlwaysShown => EmittedAtLeaf { reason: RunSummaryShown }
-    RoutineCollapsible =>
+    std.observation.AnomalyExpanded => EmittedAtLeaf { reason: AnomalyPierces }
+    std.observation.SummaryAlwaysShown => EmittedAtLeaf { reason: RunSummaryShown }
+    std.observation.RoutineCollapsible =>
       match grain {
         Absent => EmittedAtLeaf { reason: LeafGrainRequested }
         Present { value: g } =>
@@ -505,8 +506,8 @@ fn ci_rollup_measurement_note(rollup: std.observation.ObservationRollup) -> Stri
 // wrong number. Absence is disclosed by ci_rollup_measurement_note rather than filled in.
 fn ci_rollup_peak_text(rollup: std.observation.ObservationRollup) -> String {
   match rollup.peak_rss {
-    MeasuredValue { value: v } => concat(" · peak ", ci_measured_bytes_text(m: rollup.peak_rss))
-    MeasuredUnavailable { cause: _ } => ""
+    std.observation.MeasuredValue { value: v } => concat(" · peak ", ci_measured_bytes_text(m: rollup.peak_rss))
+    std.observation.MeasuredUnavailable { cause: _ } => ""
   }
 }
 
@@ -530,9 +531,9 @@ fn ci_batch_summary_line(rollup: std.observation.ObservationRollup) -> RenderedL
   }
 }
 
-// The duration crosses as the std.measure carrier, never a bare std.nat.Nat named `*_nanos`. Wrapping it
+// The duration crosses as the std.measure carrier, never a bare Nat named `*_nanos`. Wrapping it
 // immediately inside the body would NOT discharge that — the PARAMETER surface is what a caller can
-// get wrong, and a caller passing milliseconds into a `work_nanos: std.nat.Nat` would have typechecked. The
+// get wrong, and a caller passing milliseconds into a `work_nanos: Nat` would have typechecked. The
 // seed constructs no carrier of its own: it calls `nanosecond(count:)` across the interpreter
 // boundary and passes the result back in, so the constructor stays the single authority (a record
 // built in Rust would have forked it). Same shape as gunbc.floor_component_receipt's surface.

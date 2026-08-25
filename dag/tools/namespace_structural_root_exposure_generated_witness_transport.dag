@@ -10,7 +10,7 @@ fn namespace_structural_root_exposure_generated_witness_bin() -> tools.host_prel
 }
 
 fn run_namespace_structural_root_exposure_generated_witness() -> Bool {
-  run_witness_bin_program(
+  tools.host_prelude.run_witness_bin_program(
     invoke: namespace_structural_root_exposure_generated_witness_bin(),
     prereqs: [],
     args: []

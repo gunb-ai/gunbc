@@ -5,7 +5,7 @@ type Lean4NameValue
 type Lean4SyntaxValue
 type Lean4NatValue = v2.std.nat.Nat
 fn lean4_format_authoritative_locus() -> v2.std.diagnostic.Locus {
-  port_locus(port: ^lean4_format_authoritative_locus_port)
+  v2.std.diagnostic.port_locus(port: ^lean4_format_authoritative_locus_port)
 }
 
 fn lean4_nat_succ(n: v2.std.nat.Nat) -> v2.std.nat.Nat {
@@ -49,7 +49,7 @@ fn lean4_nat_catalog_format_width() -> v2.std.nat.Nat {
                 n: lean4_nat_add_ten(
                   n: lean4_nat_add_ten(
                     n: lean4_nat_add_ten(
-                      n: lean4_nat_add_ten(n: lean4_nat_add_ten(n: Zero))
+                      n: lean4_nat_add_ten(n: lean4_nat_add_ten(n: v2.std.nat.Zero))
                     )
                   )
                 )
@@ -63,35 +63,35 @@ fn lean4_nat_catalog_format_width() -> v2.std.nat.Nat {
 }
 
 fn lean4_nat_catalog_format_indent() -> v2.std.nat.Nat {
-  lean4_nat_succ(n: lean4_nat_succ(n: Zero))
+  lean4_nat_succ(n: lean4_nat_succ(n: v2.std.nat.Zero))
 }
 
 fn lean4_nat_peano_from_non_negative_int(value: Int) -> v2.std.nat.Nat {
   if value == 0 {
-    Zero
+    v2.std.nat.Zero
   } else {
     v2.std.nat.Succ { prev: lean4_nat_peano_from_non_negative_int(value: value - 1) }
   }
 }
 
-fn lean4_nat_materialize_non_negative_int(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<v2.std.nat.Nat> {
+fn lean4_nat_materialize_non_negative_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<v2.std.nat.Nat> {
   if value < 0 {
     v2.std.diagnostic.Rejected {
-      diagnostics: diagnostics_singleton(
+      diagnostics: v2.std.diagnostic.diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_out_of_range,
           at: at,
-          correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
+          correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.UserInputBoundary }
         }
       )
     }
   } else if value > lean4_nat_max_materializable() {
     v2.std.diagnostic.Rejected {
-      diagnostics: diagnostics_singleton(
+      diagnostics: v2.std.diagnostic.diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_exceeds_ceiling,
           at: at,
-          correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
+          correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.UserInputBoundary }
         }
       )
     }
@@ -103,24 +103,24 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: v2.std.diagnostic.Locu
   }
 }
 
-fn make_lean4_nat_value(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<Lean4NatValue> {
+fn make_lean4_nat_value(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Lean4NatValue> {
   if value < 0 {
     v2.std.diagnostic.Rejected {
-      diagnostics: diagnostics_singleton(
+      diagnostics: v2.std.diagnostic.diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_out_of_range,
           at: at,
-          correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
+          correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.UserInputBoundary }
         }
       )
     }
   } else if value > lean4_nat_max_materializable() {
     v2.std.diagnostic.Rejected {
-      diagnostics: diagnostics_singleton(
+      diagnostics: v2.std.diagnostic.diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_exceeds_ceiling,
           at: at,
-          correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
+          correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.UserInputBoundary }
         }
       )
     }
@@ -133,7 +133,7 @@ fn make_lean4_nat_value(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<Lean
   }
 }
 
-fn lean4_nat_authoritative_literal(value: Int) -> Outcome<Lean4NatValue> {
+fn lean4_nat_authoritative_literal(value: Int) -> v2.std.diagnostic.Outcome<Lean4NatValue> {
   make_lean4_nat_value(value: value, at: lean4_format_authoritative_locus())
 }
 
@@ -151,8 +151,8 @@ type Lean4OptionAssignment {
 }
 
 type Lean4FormatConfig {
-  format_width: Outcome<Lean4NatValue>
-  format_indent: Outcome<Lean4NatValue>
+  format_width: v2.std.diagnostic.Outcome<Lean4NatValue>
+  format_indent: v2.std.diagnostic.Outcome<Lean4NatValue>
   format_unicode: Bool
   pp_oneline: Bool
   lake_lean_options: List<Lean4OptionAssignment>
@@ -169,5 +169,5 @@ data lean4_format_defaults: Lean4FormatConfig = Lean4FormatConfig {
 type Lean4FormatConfigPatch = v2.std.patch.ConfigPatchRecord<Lean4FormatConfig>
 
 fn lean4_format_layer(base: Lean4FormatConfig, patch: Lean4FormatConfigPatch) -> Lean4FormatConfig {
-  config_patch_layer(base: base, patch: patch)
+  v2.std.patch.config_patch_layer(base: base, patch: patch)
 }

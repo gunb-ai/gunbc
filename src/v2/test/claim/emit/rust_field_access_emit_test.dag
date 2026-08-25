@@ -1,47 +1,47 @@
 module v2.test.emit.rust_field_access_emit
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data rust_field_access_emit_root: v2.std.node.Node = dag_field_access_arrow_with_body_fixture
+data rust_field_access_emit_root: v2.std.node.Node = v2.extdeps.languages.dag.dag_field_access_arrow_with_body_fixture
 
 fn rust_field_access_emit_wrong_field_body() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
       v2.std.node.Edge {
-        label: Positional,
-        target: dag_type_atom_node(identity: ^dag_token_dot)
+        label: v2.std.node.Positional,
+        target: v2.extdeps.languages.dag.dag_type_atom_node(identity: ^dag_token_dot)
       },
       v2.std.node.Edge {
-        label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_param_r)
+        label: v2.std.node.Positional,
+        target: v2.extdeps.languages.dag.dag_type_atom_node(identity: ^dag_binding_param_r)
       },
       v2.std.node.Edge {
-        label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_pick_lit_one)
+        label: v2.std.node.Positional,
+        target: v2.extdeps.languages.dag.dag_type_atom_node(identity: ^dag_binding_pick_lit_one)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn rust_field_access_emit_wrong_field_root() -> v2.std.node.Node {
-  dag_arrow_with_body_node(
-    domain: dag_field_access_arrow_domain_conj_node(),
+  v2.extdeps.languages.dag.dag_arrow_with_body_node(
+    domain: v2.extdeps.languages.dag.dag_field_access_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
     body: rust_field_access_emit_wrong_field_body()
   )
 }
 
 fn rust_field_access_emit_facts_miss(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_absent()
+  v2.std.optional.optional_absent()
 }
 
 fn rust_field_access_emit_inferred_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.algebra.PartialFunction { lookup: rust_field_access_emit_facts_miss }
+    facts: PartialFunction { lookup: rust_field_access_emit_facts_miss }
   }
 }
 
@@ -49,27 +49,27 @@ fn rust_field_access_emit_from_root(root: v2.std.node.Node, target: v2.std.compi
   v2.compiler.emit.emit(tree: rust_field_access_emit_inferred_tree_for(root: root), target: target)
 }
 
-test fn rust_field_access_emit_get_accepts() -> v2.std.logic.Bool {
+test fn rust_field_access_emit_get_accepts() -> Bool {
   match rust_field_access_emit_from_root(
     root: rust_field_access_emit_root,
-    target: rust_field_access_target_model_staging()
+    target: v2.extdeps.languages.rust_test.rust_field_access_target_model_staging()
   ) {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_field_access_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried == v2.extdeps.languages.rust_test.rust_field_access_source_text) && (d == v2.std.diagnostic.None)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_field_access_emit_wrong_field_discriminates() -> v2.std.logic.Bool {
+test fn rust_field_access_emit_wrong_field_discriminates() -> Bool {
   match rust_field_access_emit_from_root(
     root: rust_field_access_emit_wrong_field_root(),
-    target: rust_field_access_target_model_staging()
+    target: v2.extdeps.languages.rust_test.rust_field_access_target_model_staging()
   ) {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_field_access_wrong_field_source_text) &&
-      (source.carried != rust_field_access_source_text) &&
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried == v2.extdeps.languages.rust_test.rust_field_access_wrong_field_source_text) &&
+      (source.carried != v2.extdeps.languages.rust_test.rust_field_access_source_text) &&
       (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

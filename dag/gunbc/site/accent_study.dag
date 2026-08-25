@@ -5,48 +5,48 @@ data accent_study_note: String = "Preview-only study page (ninth pass): the acce
 
 fn figure_vars_style(figure: gunbc.design.material.Material) -> String {
   join([
-    "--figure: ", paint(m: figure),
-    "; --figure-lit: ", paint(m: lit_variant(m: figure)),
-    "; --figure-halo: ", paint_alpha(m: figure, alpha_pct: 14),
-    "; --figure-edge: ", paint_alpha(m: edge_variant(m: figure), alpha_pct: 50),
+    "--figure: ", gunbc.design.material.paint(m: figure),
+    "; --figure-lit: ", gunbc.design.material.paint(m: gunbc.site.starlight.lit_variant(m: figure)),
+    "; --figure-halo: ", gunbc.design.material.paint_alpha(m: figure, alpha_pct: 14),
+    "; --figure-edge: ", gunbc.design.material.paint_alpha(m: gunbc.site.starlight.edge_variant(m: figure), alpha_pct: 50),
   ], "")
 }
 
 fn theme_vars_style(t: gunbc.design.theme.Theme) -> String {
-  join(map(theme_var_decls(t: t), d => join([css_property_wire(p: d.prop), ": ", d.value], "")), "; ")
+  join(map(gunbc.design.theme.theme_var_decls(t: t), d => join([css_property_wire(p: d.prop), ": ", d.value], "")), "; ")
 }
 
 fn candidate_panel(r: gunbc.site.starlight.StarlightRender) -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "div",
     attributes: [
-      attr(name: "class", value: "panel variant" ),
-      attr(name: "style", value: figure_vars_style(figure: r.figure) ),
+      std.markup.attr(name: "class", value: "panel variant" ),
+      std.markup.attr(name: "style", value: figure_vars_style(figure: r.figure) ),
     ],
     children: [
-      constellation_svg(stars: layer_stars, edges: layer_import_edges),
-      el_class("p", "mono label", [
-        txt(join([render_label(r: r), " · ", paint(m: r.figure)], "")),
+      gunbc.site.constellation.constellation_svg(stars: gunbc.site.constellation.layer_stars, edges: gunbc.site.constellation.layer_import_edges),
+      gunbc.site.markup.el_class("p", "mono label", [
+        gunbc.site.markup.txt(join([gunbc.site.starlight.render_label(r: r), " · ", gunbc.design.material.paint(m: r.figure)], "")),
       ]),
     ],
   }
 }
 
 fn verdigris_panel() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "div",
     attributes: [
-      attr(name: "class", value: "panel variant" ),
-      attr(name: "style", value: join([
+      std.markup.attr(name: "class", value: "panel variant" ),
+      std.markup.attr(name: "style", value: join([
         figure_vars_style(figure: g_figure()),
-        "; --figure-edge: ", paint_alpha(m: verdigris_patina, alpha_pct: 65),
+        "; --figure-edge: ", gunbc.design.material.paint_alpha(m: gunbc.site.starlight.verdigris_patina, alpha_pct: 65),
       ], "") ),
     ],
     children: [
-      constellation_svg(stars: layer_stars, edges: layer_import_edges),
-      el_class("p", "mono label", [
-        txt(join([
-          "G starlight + verdigris patina on the edges · ", paint(m: verdigris_patina),
+      gunbc.site.constellation.constellation_svg(stars: gunbc.site.constellation.layer_stars, edges: gunbc.site.constellation.layer_import_edges),
+      gunbc.site.markup.el_class("p", "mono label", [
+        gunbc.site.markup.txt(join([
+          "G starlight + verdigris patina on the edges · ", gunbc.design.material.paint(m: gunbc.site.starlight.verdigris_patina),
           " — green enters as material, never as starlight (no green stars exist)",
         ], "")),
       ]),
@@ -55,23 +55,23 @@ fn verdigris_panel() -> std.markup.Fragment {
 }
 
 fn g_figure() -> gunbc.design.material.Material {
-  fold(study_candidates, init: verdigris_patina, f: (acc, r) => {
+  fold(gunbc.site.starlight.study_candidates, init: gunbc.site.starlight.verdigris_patina, f: (acc, r) => {
     let candidate_code = r.spectral.code as String
     if candidate_code == "G" { r.figure } else { acc }
   })
 }
 
 fn day_panel() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "div",
     attributes: [
-      attr(name: "class", value: "panel variant day-panel" ),
-      attr(name: "style", value: theme_vars_style(t: day_theme) ),
+      std.markup.attr(name: "class", value: "panel variant day-panel" ),
+      std.markup.attr(name: "style", value: theme_vars_style(t: gunbc.design.theme.day_theme) ),
     ],
     children: [
-      constellation_svg(stars: layer_stars, edges: layer_import_edges),
-      el_class("p", "mono label", [
-        txt("the day atlas — indigo ink on paper; identical fact rows, accent-independent"),
+      gunbc.site.constellation.constellation_svg(stars: gunbc.site.constellation.layer_stars, edges: gunbc.site.constellation.layer_import_edges),
+      gunbc.site.markup.el_class("p", "mono label", [
+        gunbc.site.markup.txt("the day atlas — indigo ink on paper; identical fact rows, accent-independent"),
       ]),
     ],
   }
@@ -79,98 +79,98 @@ fn day_panel() -> std.markup.Fragment {
 
 fn study_static_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "body" }, decls: [
-      role_decl(prop: Background, r: CanvasRole),
-      role_decl(prop: Color, r: TextRole),
-      decl(prop: FontFamily, value: "'Noto Sans', system-ui, sans-serif"),
-      decl(prop: Margin, value: "0"),
-      decl(prop: LineHeight, value: "1.55"),
+    gunbc.design.material.StaticRule { selector: ElementSelector { tag: "body" }, decls: [
+      gunbc.design.theme.role_decl(prop: Background, r: gunbc.design.theme.CanvasRole),
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextRole),
+      gunbc.design.material.decl(prop: FontFamily, value: "'Noto Sans', system-ui, sans-serif"),
+      gunbc.design.material.decl(prop: Margin, value: "0"),
+      gunbc.design.material.decl(prop: LineHeight, value: "1.55"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "main" }, decls: [
-      decl(prop: MaxWidth, value: "54rem"),
-      decl(prop: Margin, value: "0 auto"),
-      decl(prop: Padding, value: "3rem 1.5rem 4rem"),
+    gunbc.design.material.StaticRule { selector: ElementSelector { tag: "main" }, decls: [
+      gunbc.design.material.decl(prop: MaxWidth, value: "54rem"),
+      gunbc.design.material.decl(prop: Margin, value: "0 auto"),
+      gunbc.design.material.decl(prop: Padding, value: "3rem 1.5rem 4rem"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "h1" }, decls: [
-      decl(prop: FontSize, value: "1.2rem"),
-      decl(prop: FontWeight, value: "500"),
+    gunbc.design.material.StaticRule { selector: ElementSelector { tag: "h1" }, decls: [
+      gunbc.design.material.decl(prop: FontSize, value: "1.2rem"),
+      gunbc.design.material.decl(prop: FontWeight, value: "500"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "thesis" }, decls: [
-      role_decl(prop: Color, r: TextDimRole),
-      decl(prop: Margin, value: "0.25rem 0 0"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "thesis" }, decls: [
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextDimRole),
+      gunbc.design.material.decl(prop: Margin, value: "0.25rem 0 0"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "h2" }, decls: [
-      decl(prop: FontSize, value: "0.85rem"),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: extdeps.languages.css.properties.RawProperty { name: "code-spacing" }, value: "0.08em"),
-      decl(prop: TextTransform, value: "lowercase"),
-      role_decl(prop: Color, r: TextDimRole),
-      decl(prop: MarginTop, value: "2.2rem"),
+    gunbc.design.material.StaticRule { selector: ElementSelector { tag: "h2" }, decls: [
+      gunbc.design.material.decl(prop: FontSize, value: "0.85rem"),
+      gunbc.design.material.decl(prop: FontWeight, value: "500"),
+      gunbc.design.material.decl(prop: RawProperty { name: "code-spacing" }, value: "0.08em"),
+      gunbc.design.material.decl(prop: TextTransform, value: "lowercase"),
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextDimRole),
+      gunbc.design.material.decl(prop: MarginTop, value: "2.2rem"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "panel" }, decls: [
-      role_decl(prop: Background, r: SurfaceRole),
-      decl(prop: Border, value: "1px solid var(--border)"),
-      decl(prop: BorderRadius, value: "3px"),
-      decl(prop: Padding, value: "1.1rem 1.25rem"),
-      decl(prop: MarginTop, value: "0.8rem"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "panel" }, decls: [
+      gunbc.design.theme.role_decl(prop: Background, r: gunbc.design.theme.SurfaceRole),
+      gunbc.design.material.decl(prop: Border, value: "1px solid var(--border)"),
+      gunbc.design.material.decl(prop: BorderRadius, value: "3px"),
+      gunbc.design.material.decl(prop: Padding, value: "1.1rem 1.25rem"),
+      gunbc.design.material.decl(prop: MarginTop, value: "0.8rem"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "day-panel" }, decls: [
-      decl(prop: Background, value: "var(--canvas)"),
-      decl(prop: Color, value: "var(--text)"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "day-panel" }, decls: [
+      gunbc.design.material.decl(prop: Background, value: "var(--canvas)"),
+      gunbc.design.material.decl(prop: Color, value: "var(--text)"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "constellation" }, decls: [
-      decl(prop: Width, value: "100%"),
-      decl(prop: Height, value: "auto"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "constellation" }, decls: [
+      gunbc.design.material.decl(prop: Width, value: "100%"),
+      gunbc.design.material.decl(prop: Height, value: "auto"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mono" }, decls: [
-      decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
-      decl(prop: FontSize, value: "0.78em"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "mono" }, decls: [
+      gunbc.design.material.decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
+      gunbc.design.material.decl(prop: FontSize, value: "0.78em"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "label" }, decls: [
-      role_decl(prop: Color, r: TextDimRole),
-      decl(prop: Margin, value: "0.6rem 0 0"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "label" }, decls: [
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextDimRole),
+      gunbc.design.material.decl(prop: Margin, value: "0.6rem 0 0"),
     ] },
   ]
 }
 
 fn study_root_css() -> String {
   join([
-    join([":root { ", join(map(theme_var_decls(t: night_theme), d => join([css_property_wire(p: d.prop), ": ", d.value], "")), "; "), " }"], ""),
-    serialize_rules(rules: concat(study_static_rules(), figure_rules())),
+    join([":root { ", join(map(gunbc.design.theme.theme_var_decls(t: gunbc.design.theme.night_theme), d => join([css_property_wire(p: d.prop), ": ", d.value], "")), "; "), " }"], ""),
+    gunbc.design.material.serialize_rules(rules: concat(study_static_rules(), gunbc.site.moodboard.figure_rules())),
   ], "\n")
 }
 
 fn accent_study_page() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "html", attributes: [ attr(name: "lang", value: "en" ) ], children: [
-    el("head", [
-      std.markup.Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-      el("title", [ txt("gunb.ai — starlight accent study (phase 0, preview only)") ]),
-      el("style", [ txt(study_root_css()) ]),
+  std.markup.Element { tag: "html", attributes: [ std.markup.attr(name: "lang", value: "en" ) ], children: [
+    gunbc.site.markup.el("head", [
+      std.markup.Element { tag: "meta", attributes: [ std.markup.attr(name: "charset", value: "utf-8" ) ], children: [] },
+      gunbc.site.markup.el("title", [ gunbc.site.markup.txt("gunb.ai — starlight accent study (phase 0, preview only)") ]),
+      gunbc.site.markup.el("style", [ gunbc.site.markup.txt(study_root_css()) ]),
     ]),
-    el("body", [
-      el("main", [
-        el("h1", [ txt("starlight accent study") ]),
-        el_class("p", "thesis", [ txt(register_thesis) ]),
-        el_class("p", "thesis", [ txt("the night accent is starlight, so the candidates are stellar classes (Morgan-Keenan); same constellation fact rows in every panel — only the temperature changes. no green panel exists: there are no green stars.") ]),
-        el("h2", [ txt("candidates — pick a temperature") ]),
-        el("div", map(study_candidates, r => candidate_panel(r: r))),
-        el("h2", [ txt("green, where physics allows it — patina, not starlight") ]),
+    gunbc.site.markup.el("body", [
+      gunbc.site.markup.el("main", [
+        gunbc.site.markup.el("h1", [ gunbc.site.markup.txt("starlight accent study") ]),
+        gunbc.site.markup.el_class("p", "thesis", [ gunbc.site.markup.txt(gunbc.design.principles.register_thesis) ]),
+        gunbc.site.markup.el_class("p", "thesis", [ gunbc.site.markup.txt("the night accent is starlight, so the candidates are stellar classes (Morgan-Keenan); same constellation fact rows in every panel — only the temperature changes. no green panel exists: there are no green stars.") ]),
+        gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("candidates — pick a temperature") ]),
+        gunbc.site.markup.el("div", map(gunbc.site.starlight.study_candidates, r => candidate_panel(r: r))),
+        gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("green, where physics allows it — patina, not starlight") ]),
         verdigris_panel(),
-        el("h2", [ txt("the day identity is accent-independent") ]),
+        gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("the day identity is accent-independent") ]),
         day_panel(),
-        el_class("p", "mono label", [ txt(stellar_color_perception_quote) ]),
+        gunbc.site.markup.el_class("p", "mono label", [ gunbc.site.markup.txt(extdeps.astronomy.stellar_classification.stellar_color_perception_quote) ]),
       ]),
     ]),
   ] }
 }
 
 fn accent_study_html() -> String {
-  match try_serialize_html_source(node: accent_study_page()) {
-    EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
-    EmitRejected { reason: r } => concat("EMIT REJECTED: ", r)
+  match extdeps.languages.html.try_serialize_html_source(node: accent_study_page()) {
+    extdeps.languages.html.EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
+    extdeps.languages.html.EmitRejected { reason: r } => concat("EMIT REJECTED: ", r)
   }
 }
 
 fn accent_study_preconditions_hold() -> Bool {
-  candidates_admissible(rs: study_candidates)
+  gunbc.site.starlight.candidates_admissible(rs: gunbc.site.starlight.study_candidates)
 }

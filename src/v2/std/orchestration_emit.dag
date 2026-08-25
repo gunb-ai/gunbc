@@ -26,9 +26,9 @@ type OrchRunEmitPlan {
 
 type OrchestrationEmitMedium {
   authority: v2.std.compilers.target_model.TargetModel
-  realize_run_rawline: fn(String) -> TargetModel
-  run_env_plan: fn(Run) -> OrchRunEmitPlan
-  realize_seq2: fn(String, String) -> TargetModel
+  realize_run_rawline: fn(String) -> v2.std.compilers.target_model.TargetModel
+  run_env_plan: fn(v2.std.orchestration.Run) -> OrchRunEmitPlan
+  realize_seq2: fn(String, String) -> v2.std.compilers.target_model.TargetModel
   realize_retry: fn(
     String,
     String,
@@ -38,17 +38,17 @@ type OrchestrationEmitMedium {
     String,
     String,
     String
-  ) -> TargetModel
-  realize_retry_1level: fn(String, String, String, String, String) -> TargetModel
-  realize_retry_escalation_final: fn(String, String) -> TargetModel
-  realize_retry_escalation_step: fn(String, String, String, String, String) -> TargetModel
-  realize_if: fn(String, String) -> Outcome<TargetModel>
-  realize_if_else: fn(String, String, String) -> Outcome<TargetModel>
-  realize_if_block: fn(String, String) -> Outcome<TargetModel>
-  realize_if_else_block: fn(String, String, String) -> Outcome<TargetModel>
-  realize_while: fn(String, String) -> Outcome<TargetModel>
-  realize_procedure: fn(String, String) -> TargetModel
-  realize_call: fn(String, String) -> TargetModel
-  realize_cmdsubst_assign: fn(String, String) -> TargetModel
-  realize_let_assign: fn(String, String) -> TargetModel
+  ) -> v2.std.compilers.target_model.TargetModel
+  realize_retry_1level: fn(String, String, String, String, String) -> v2.std.compilers.target_model.TargetModel
+  realize_retry_escalation_final: fn(String, String) -> v2.std.compilers.target_model.TargetModel
+  realize_retry_escalation_step: fn(String, String, String, String, String) -> v2.std.compilers.target_model.TargetModel
+  realize_if: fn(String, String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel>
+  realize_if_else: fn(String, String, String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel>
+  realize_if_block: fn(String, String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel>
+  realize_if_else_block: fn(String, String, String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel>
+  realize_while: fn(String, String) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel>
+  realize_procedure: fn(String, String) -> v2.std.compilers.target_model.TargetModel
+  realize_call: fn(String, String) -> v2.std.compilers.target_model.TargetModel
+  realize_cmdsubst_assign: fn(String, String) -> v2.std.compilers.target_model.TargetModel
+  realize_let_assign: fn(String, String) -> v2.std.compilers.target_model.TargetModel
 }

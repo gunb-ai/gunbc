@@ -1,6 +1,7 @@
 module test.claim.function_derive_alias_hop_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data function_derive_alias_hop_witness_note: String = "Executing regression control for function-valued carrier derive admissibility through a type-alias hop. A function value implements Clone through the Rust Rc<dyn Fn> realization, but it implements neither Debug nor serde Serialize/Deserialize; changing Rc therefore cannot repair those impossible derives. The positive fixture makes a record reach a callable through a structural alias and requires Clone-only emission. The Bytes fixture is the discriminating native-realization control: Bytes has a Rust checkpoint, so the alias RHS is not the emitted representation and must not narrow its holder. The plain structural alias proves the walk does not narrow every alias. All rows cross the real emitter through compile_dag_rust_emit_check."
 

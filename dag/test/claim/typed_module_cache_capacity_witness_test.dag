@@ -1,7 +1,7 @@
 module test.claim.typed_module_cache_capacity_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data typed_module_cache_capacity_witness_note: String = "Executes the modelled cap derivation that extdeps.realization.reconcile_in_process now cites as its RuntimeDerivedLimit authority. The load-bearing cell is unreadable_budget_refuses_rather_than_defaulting: the seed's previous unwrap_or(CEIL) turned an unknown budget into the MOST PERMISSIVE cap available and OOM-killed the full witness corpus twice, so the discriminating question is not whether a cap is produced but whether the refusal survives. Both clamp directions are pinned because a one-sided clamp would look correct on the ordinary budget and fail exactly at the extremes the clamp exists for."
 
@@ -9,16 +9,16 @@ data typed_module_cache_capacity_witness_note: String = "Executes the modelled c
 fn ordinary_budget() -> gunbc.host_budget_source.HostBudgetResolution {
   gunbc.host_budget_source.HostBudgetResolved {
     source: gunbc.host_budget_source.BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" },
-    bytes: byte_size(count: 943718400)
+    bytes: std.measure.byte_size(count: 943718400)
   }
 }
 
 fn tiny_budget() -> gunbc.host_budget_source.HostBudgetResolution {
-  gunbc.host_budget_source.HostBudgetResolved { source: BudgetSourceMemTotal, bytes: byte_size(count: 1048576) }
+  gunbc.host_budget_source.HostBudgetResolved { source: gunbc.host_budget_source.BudgetSourceMemTotal, bytes: std.measure.byte_size(count: 1048576) }
 }
 
 fn huge_budget() -> gunbc.host_budget_source.HostBudgetResolution {
-  gunbc.host_budget_source.HostBudgetResolved { source: BudgetSourceMemTotal, bytes: byte_size(count: 107374182400) }
+  gunbc.host_budget_source.HostBudgetResolved { source: gunbc.host_budget_source.BudgetSourceMemTotal, bytes: std.measure.byte_size(count: 107374182400) }
 }
 
 fn unreadable_budget() -> gunbc.host_budget_source.HostBudgetResolution {
@@ -27,51 +27,51 @@ fn unreadable_budget() -> gunbc.host_budget_source.HostBudgetResolution {
 
 fn cap_entries_or(c: gunbc.typed_module_cache_capacity.TypedModuleCacheCap, fallback: Int) -> Int {
   match c {
-    CapEntries { entries: n } => n
-    CapEntryRefused { reason: _ } => fallback
+    gunbc.typed_module_cache_capacity.CapEntries { entries: n } => n
+    gunbc.typed_module_cache_capacity.CapEntryRefused { reason: _ } => fallback
   }
 }
 
 test fn ordinary_budget_derives_the_quotient() -> Bool {
-  cap_entries_or(c: typed_module_cache_entry_cap(r: ordinary_budget()), fallback: 0) == 300
+  cap_entries_or(c: gunbc.typed_module_cache_capacity.typed_module_cache_entry_cap(r: ordinary_budget()), fallback: 0) == 300
 }
 
 test fn a_tiny_budget_clamps_up_to_the_floor() -> Bool {
-  let derived = cap_entries_or(c: typed_module_cache_entry_cap(r: tiny_budget()), fallback: 0)
-  derived == typed_module_cache_entries_floor
+  let derived = cap_entries_or(c: gunbc.typed_module_cache_capacity.typed_module_cache_entry_cap(r: tiny_budget()), fallback: 0)
+  derived == gunbc.typed_module_cache_capacity.typed_module_cache_entries_floor
 }
 
 test fn a_huge_budget_clamps_down_to_the_ceiling() -> Bool {
-  let derived = cap_entries_or(c: typed_module_cache_entry_cap(r: huge_budget()), fallback: 0)
-  derived == typed_module_cache_entries_ceiling
+  let derived = cap_entries_or(c: gunbc.typed_module_cache_capacity.typed_module_cache_entry_cap(r: huge_budget()), fallback: 0)
+  derived == gunbc.typed_module_cache_capacity.typed_module_cache_entries_ceiling
 }
 
 // THE CONTROL THIS FILE EXISTS FOR. An unreadable budget must refuse. The
 // specific wrong answer -- the one with a receipt -- is the ceiling, so this
 // asserts refusal AND that the value is not the most permissive cap.
 test fn unreadable_budget_refuses_rather_than_defaulting() -> Bool {
-  match typed_module_cache_entry_cap(r: unreadable_budget()) {
-    CapEntries { entries: _ } => false
-    CapEntryRefused { reason: _ } => true
+  match gunbc.typed_module_cache_capacity.typed_module_cache_entry_cap(r: unreadable_budget()) {
+    gunbc.typed_module_cache_capacity.CapEntries { entries: _ } => false
+    gunbc.typed_module_cache_capacity.CapEntryRefused { reason: _ } => true
   }
 }
 
 test fn unreadable_budget_does_not_yield_the_ceiling() -> Bool {
-  let derived = cap_entries_or(c: typed_module_cache_entry_cap(r: unreadable_budget()), fallback: 0)
-  derived != typed_module_cache_entries_ceiling
+  let derived = cap_entries_or(c: gunbc.typed_module_cache_capacity.typed_module_cache_entry_cap(r: unreadable_budget()), fallback: 0)
+  derived != gunbc.typed_module_cache_capacity.typed_module_cache_entries_ceiling
 }
 
 test fn a_positive_override_is_still_clamped_to_the_ceiling() -> Bool {
   let capped = cap_entries_or(
-    c: typed_module_cache_entry_cap_with_override(override_entries: 999999, r: ordinary_budget()),
+    c: gunbc.typed_module_cache_capacity.typed_module_cache_entry_cap_with_override(override_entries: 999999, r: ordinary_budget()),
     fallback: 0
   )
-  capped == typed_module_cache_entries_ceiling
+  capped == gunbc.typed_module_cache_capacity.typed_module_cache_entries_ceiling
 }
 
 test fn a_zero_override_falls_through_to_the_derived_cap() -> Bool {
   let fell_through = cap_entries_or(
-    c: typed_module_cache_entry_cap_with_override(override_entries: 0, r: ordinary_budget()),
+    c: gunbc.typed_module_cache_capacity.typed_module_cache_entry_cap_with_override(override_entries: 0, r: ordinary_budget()),
     fallback: 0
   )
   fell_through == 300
@@ -80,8 +80,8 @@ test fn a_zero_override_falls_through_to_the_derived_cap() -> Bool {
 // A zero override on an UNREADABLE budget must still refuse: falling through
 // must reach the derivation, not a number.
 test fn a_zero_override_on_an_unreadable_budget_still_refuses() -> Bool {
-  match typed_module_cache_entry_cap_with_override(override_entries: 0, r: unreadable_budget()) {
-    CapEntries { entries: _ } => false
-    CapEntryRefused { reason: _ } => true
+  match gunbc.typed_module_cache_capacity.typed_module_cache_entry_cap_with_override(override_entries: 0, r: unreadable_budget()) {
+    gunbc.typed_module_cache_capacity.CapEntries { entries: _ } => false
+    gunbc.typed_module_cache_capacity.CapEntryRefused { reason: _ } => true
   }
 }

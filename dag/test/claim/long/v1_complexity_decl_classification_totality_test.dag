@@ -5,42 +5,42 @@ data totality_witness_note: String = "The exact half of C0(b2) totality: derive 
 
 data totality_pool_roots: List<String> = ["dag", "src/v2", "src/v1"]
 
-data totality_population: List<v2.std.decl_index.DeclFact> = v1_complexity_decl_population(pool_roots: totality_pool_roots)
+data totality_population: List<v2.std.decl_index.DeclFact> = gunbc.v1_complexity_decl_classification.v1_complexity_decl_population(pool_roots: totality_pool_roots)
 
 test fn w_population_and_roster_counts_match() -> Bool {
-  population_matches_roster_count(
+  gunbc.v1_complexity_decl_classification.population_matches_roster_count(
     facts: totality_population,
     roster: gunbc.v1_complexity_decl_classification_roster.v1_complexity_decl_classification_roster
   )
 }
 
 test fn w_every_population_declaration_is_classified() -> Bool {
-  every_population_fact_classified(
+  gunbc.v1_complexity_decl_classification.every_population_fact_classified(
     facts: totality_population,
     roster: gunbc.v1_complexity_decl_classification_roster.v1_complexity_decl_classification_roster
   )
 }
 
 test fn w_every_classification_row_matches_population() -> Bool {
-  every_roster_row_matches_population(
+  gunbc.v1_complexity_decl_classification.every_roster_row_matches_population(
     roster: gunbc.v1_complexity_decl_classification_roster.v1_complexity_decl_classification_roster,
     facts: totality_population
   )
 }
 
 test fn w_no_stale_classification_rows() -> Bool {
-  every_roster_row_matches_population(
+  gunbc.v1_complexity_decl_classification.every_roster_row_matches_population(
     roster: gunbc.v1_complexity_decl_classification_roster.v1_complexity_decl_classification_roster,
     facts: totality_population
-  ) && roster_names_distinct(roster: gunbc.v1_complexity_decl_classification_roster.v1_complexity_decl_classification_roster)
+  ) && gunbc.v1_complexity_decl_classification.roster_names_distinct(roster: gunbc.v1_complexity_decl_classification_roster.v1_complexity_decl_classification_roster)
 }
 
 test fn w_derived_population_is_nonempty() -> Bool {
-  v1_complexity_decl_population_count(pool_roots: totality_pool_roots) > 100
+  gunbc.v1_complexity_decl_classification.v1_complexity_decl_population_count(pool_roots: totality_pool_roots) > 100
 }
 
 data population_key_precondition_note: String = "The name-keyed join's precondition read against the REAL population — the irreducible half, which is why it is here. classification_matches_fact matches a roster row to a DeclFact on bare name; that is sound only while the DERIVED population's top-level names are distinct. The four witnesses above cannot see a violation: a duplicate name in the population still classifies, still matches a roster row, and leaves no stale row — the counts can even agree while one roster row silently answers for two declarations. roster_names_distinct does not cover it either, since it constrains the authored side only. The MECHANISM half — a planted-duplicate RED and a distinct positive control over synthetic two-element fixtures — lives in the per-PR companion test.claim.v1_complexity_decl_classification_witness_test, because a fixture that authors its own input and its own expected answer pays no scan and has no business on a cadence."
 
 test fn w_population_decl_names_are_distinct() -> Bool {
-  population_names_distinct(facts: totality_population)
+  gunbc.v1_complexity_decl_classification.population_names_distinct(facts: totality_population)
 }

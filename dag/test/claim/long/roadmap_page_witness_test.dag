@@ -1,20 +1,22 @@
 module test.claim.long.roadmap_page_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data dispatch_asset_status_contract_note: String = "The dispatch client consumes the belt's LABEL authority, so the discriminating assertion is total coverage of belt_dispatch_all_status_labels() in the emitted band chain — a boolean-ok wire contract cannot satisfy it, and a new belt label that the client cannot band reds here. The former blob-wide `!j.ok` negative did not scope to the dispatch handler: the separately-modeled POST /cleanup/ route legitimately answers a boolean, so scanning the whole asset for `j.ok` reported a contract violation that the dispatch path never committed."
 
 // Rendered UNFOCUSED deliberately. These claims are about ROW MARKUP, not about which lanes appear; leaving them on the focused page made them silently depend on the focus setting and go red when a lane they sampled was hidden. The served page's own focus behaviour is covered by roadmap_focus_witness_test, where it belongs.
 fn authority_page_html() -> HtmlEmitResult {
-  try_serialize_html_source(node: roadmap_page_for_doc(doc: gunbc.roadmap_authority.roadmap_authority_for(focus: NoFocus)))
+  extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.roadmap_page_for_doc(doc: roadmap_authority_for(focus: gunbc.roadmap_focus.NoFocus)))
 }
 
 data header_pin_a1_note: String = "The header assertions moved TWICE at A1 (presentation recon, operator feedback 2026-08-01). First the content: the unselected site mark (candidate A, whose aria-label said gunb.ai on a gunbc tool surface) is replaced by the text wordmark, the h1 carries the PAGE name alone so it never restates the wordmark, and both toggles are server-rendered with visible content and an accessible name — the theme toggle with its parse-time-true initial state ('theme · auto': no data-theme exists until the client program runs, so prefers-color-scheme governs, which IS auto), the sound toggle with its name only (its state has no parse-time truth; see gunbc.roadmap_page.sound_toggle_placement_note). Second the SHAPE of the assertion: the former whole-header byte pin asserted the accidental composition — element order and adjacency that nobody decided — so it redded on any reorder while proving nothing semantic. Each assertion below is now ONE claim (wordmark exists; page-name h1 exists; each control is labeled before JavaScript). Header composition is deliberately NOT pinned: the A1 list layout is a provisional renderer, per the PR's own scope statement."
 
 test fn witness_authority_serializes_with_structure() -> Bool {
   match authority_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "<span class=\"wordmark\">gunbc</span>")
         && string_contains(s: h, pattern: "<h1>roadmap</h1>")
         && string_contains(s: h, pattern: "<button class=\"sound-toggle\" type=\"button\">sound</button>")
@@ -31,21 +33,21 @@ test fn witness_authority_serializes_with_structure() -> Bool {
 // A3 routine-state collapse flip: the former positive pin 'class="status status-' asserted that SOME chip serialized, which an all-open focused page satisfies only by rendering the routine default as permanent chrome. The decided rule (lifecycle_chip_renders) hides exactly the open default, so the discriminating page pins are the NEGATIVE — an open chip serialized anywhere is the collapse failing — plus node-head presence for the structural claim; the review/done chips keep their own positive pins on constructed fixtures (witness_merged_pr_is_review_evidence_not_acceptance).
 test fn witness_authority_page_preserves_multi_parent_dependencies() -> Bool {
   match authority_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "requires all: v1-materialization-kernel, v1-emitter-fixed-point")
   }
 }
 
 fn empty_doc_html() -> HtmlEmitResult {
-  let empty = RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
-  try_serialize_html_source(node: roadmap_page(doc: empty, merged: []))
+  let empty = gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
+  extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.roadmap_page(doc: empty, merged: []))
 }
 
 test fn witness_empty_doc_is_minimal_shell() -> Bool {
   match empty_doc_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       starts_with(s: h, prefix: "<html lang=\"en\"><head><meta charset=\"utf-8\"")
         && string_contains(s: h, pattern: "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"")
         && string_contains(s: h, pattern: "<title>gunbc — roadmap</title></head>")
@@ -60,22 +62,22 @@ test fn witness_empty_doc_is_minimal_shell() -> Bool {
 
 test fn witness_authority_differs_from_empty() -> Bool {
   match authority_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: authority } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: authority } =>
       match empty_doc_html() {
-        EmitRejected { reason: _ } => false
-        EmitOk { html: empty } => !(authority == empty)
+        extdeps.languages.html.EmitRejected { reason: _ } => false
+        extdeps.languages.html.EmitOk { html: empty } => !(authority == empty)
       }
   }
 }
 
 test fn witness_authority_shows_finish_line_progress() -> Bool {
   match authority_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: authority } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: authority } =>
       match empty_doc_html() {
-        EmitRejected { reason: _ } => false
-        EmitOk { html: empty } =>
+        extdeps.languages.html.EmitRejected { reason: _ } => false
+        extdeps.languages.html.EmitOk { html: empty } =>
           string_contains(s: authority, pattern: "class=\"finish-line-progress\"")
             && string_contains(s: authority, pattern: "v1 exit: four finish lines")
             && string_contains(s: authority, pattern: " of 4 complete")
@@ -94,13 +96,13 @@ test fn witness_authority_shows_finish_line_progress() -> Bool {
 data finish_line_variant_fixture_note: String = "The accepted variant is proven by FIXTURE, not by live-population absence (A1; the former !contains('finish-line-accepted') negative both redded on the stylesheet — which now legitimately carries the .finish-line-accepted rule — and was the live-state transcription class the operator ruled against: it would have reported 'a finish line was accepted', which is news, not a defect). Both reachable variants render from constructed inputs: the same spec accepted and not accepted, so the state class, the chip word, and their divergence are pinned independent of today's roadmap population."
 
 test fn witness_finish_line_variants_render_from_fixture() -> Bool {
-  let s = first(v1_exit_finish_lines()).value
-  match try_serialize_html_source(node: finish_line_row(spec: s, accepted_ids: [s.node])) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: accepted_html } =>
-      match try_serialize_html_source(node: finish_line_row(spec: s, accepted_ids: [])) {
-        EmitRejected { reason: _ } => false
-        EmitOk { html: active_html } =>
+  let s = first(gunbc.v1_deletion_plan.v1_exit_finish_lines()).value
+  match extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.finish_line_row(spec: s, accepted_ids: [s.node])) {
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: accepted_html } =>
+      match extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.finish_line_row(spec: s, accepted_ids: [])) {
+        extdeps.languages.html.EmitRejected { reason: _ } => false
+        extdeps.languages.html.EmitOk { html: active_html } =>
           string_contains(s: accepted_html, pattern: "class=\"finish-line finish-line-accepted\"")
             && string_contains(s: accepted_html, pattern: ">accepted<")
             && string_contains(s: active_html, pattern: "class=\"finish-line finish-line-active\"")
@@ -113,9 +115,9 @@ test fn witness_finish_line_variants_render_from_fixture() -> Bool {
 data daily_leads_operational_note: String = "The A1 placement wall (presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / may not open with the four strategic finish-line claims — it carries the one-line program-progress summary with the LOCAL denominator, and the full narrative block lives on /roadmap only. The 'of 4' magnitude is structural, not a live-population transcription: v1_exit_finish_lines is the authored four-row design list, unlike the deleted global declared/accepted/active counts this section used to show (see live_state_count_transcription_note in test.claim.roadmap_authority)."
 
 test fn witness_daily_leads_operational_not_narrative() -> Bool {
-  match try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_for_authority()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+  match extdeps.languages.html.try_serialize_html_source(node: roadmap_daily_workspace_page_for_authority()) {
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"program-progress\"")
         && string_contains(s: h, pattern: " of 4 finish lines complete")
         && !string_contains(s: h, pattern: "class=\"finish-line-progress\"")
@@ -124,21 +126,21 @@ test fn witness_daily_leads_operational_not_narrative() -> Bool {
 }
 
 fn depth_chain_html(fuel: Int) -> HtmlEmitResult {
-  let parent = gunbc.roadmap_authority.authored(identity: "rnfx_716835YJMPRW9JAC4H1Z", id: "p", done: false, content: "parent-node")
-  let child = gunbc.roadmap_authority.authored(identity: "rnfx_DY971T4PDGRTPY6WDHDR", id: "c", done: false, content: "child-node-title")
-  let edge = RoadmapEdge { child: child.node, parent: parent.node }
-  try_serialize_html_source(node: nodes_ul(items: [parent], nodes: [parent, child], edges: [edge], merged: [], fuel: fuel))
+  let parent = authored(identity: "rnfx_716835YJMPRW9JAC4H1Z", id: "p", done: false, content: "parent-node")
+  let child = authored(identity: "rnfx_DY971T4PDGRTPY6WDHDR", id: "c", done: false, content: "child-node-title")
+  let edge = gunbc.roadmap_model.RoadmapEdge { child: child.node, parent: parent.node }
+  extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.nodes_ul(items: [parent], nodes: [parent, child], edges: [edge], merged: [], fuel: fuel))
 }
 
 fn bold_title_html() -> HtmlEmitResult {
-  let rn = gunbc.roadmap_authority.authored(identity: "rnfx_4JKJ1ZMAYSR30YJW8T8B", id: "bold1", done: false, content: "**bold** item")
-  try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0))
+  let rn = authored(identity: "rnfx_4JKJ1ZMAYSR30YJW8T8B", id: "bold1", done: false, content: "**bold** item")
+  extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0))
 }
 
 test fn witness_bold_title_renders_strong() -> Bool {
   match bold_title_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "<strong>bold</strong>")
         && !string_contains(s: h, pattern: "**")
   }
@@ -146,11 +148,11 @@ test fn witness_bold_title_renders_strong() -> Bool {
 
 test fn witness_depth_cap_fails_honest() -> Bool {
   match depth_chain_html(fuel: 0) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: truncated } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: truncated } =>
       match depth_chain_html(fuel: 1) {
-        EmitRejected { reason: _ } => false
-        EmitOk { html: expanded } =>
+        extdeps.languages.html.EmitRejected { reason: _ } => false
+        extdeps.languages.html.EmitOk { html: expanded } =>
           string_contains(s: truncated, pattern: "depth limit")
             && !string_contains(s: truncated, pattern: "child-node-title")
             && string_contains(s: expanded, pattern: "child-node-title")
@@ -159,34 +161,34 @@ test fn witness_depth_cap_fails_honest() -> Bool {
   }
 }
 
-fn dispatch_doc_html_for(rn: RoadmapNode) -> HtmlEmitResult {
-  let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  try_serialize_html_source(node: roadmap_page(doc: doc, merged: []))
+fn dispatch_doc_html_for(rn: gunbc.roadmap_model.RoadmapNode) -> HtmlEmitResult {
+  let sec = gunbc.roadmap_document.RoadmapSection { title: "Belt", elements: [ gunbc.roadmap_model.section_group(label: "", nodes: [rn], edges: []) ] }
+  let doc = gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.roadmap_page(doc: doc, merged: []))
 }
 
-fn dispatch_doc_html_for_with_merged(rn: RoadmapNode, merged: List<Int>) -> HtmlEmitResult {
-  let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  try_serialize_html_source(node: roadmap_page(doc: doc, merged: merged))
+fn dispatch_doc_html_for_with_merged(rn: gunbc.roadmap_model.RoadmapNode, merged: List<Int>) -> HtmlEmitResult {
+  let sec = gunbc.roadmap_document.RoadmapSection { title: "Belt", elements: [ gunbc.roadmap_model.section_group(label: "", nodes: [rn], edges: []) ] }
+  let doc = gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.roadmap_page(doc: doc, merged: merged))
 }
 
-fn ready_dispatch_node() -> RoadmapNode {
-  gunbc.roadmap_authority.authored_wi(identity: "rnfx_7KPP33Y7P6BH9CBVKZ03", id: "disp1",
+fn ready_dispatch_node() -> gunbc.roadmap_model.RoadmapNode {
+  authored_wi(identity: "rnfx_7KPP33Y7P6BH9CBVKZ03", id: "disp1",
     done: false,
     content: "dispatch-me",
-    intricacy: IntricacyLow,
-    volume: VolumeSmall,
+    intricacy: gunbc.roadmap_model.IntricacyLow,
+    volume: gunbc.roadmap_model.VolumeSmall,
     repo: "gunbc")
 }
 
-fn unsized_open_dispatch_node() -> RoadmapNode {
-  gunbc.roadmap_authority.authored(identity: "rnfx_324RFH775DGZZMVETPT6", id: "disp-unsized", done: false, content: "observe-only")
+fn unsized_open_dispatch_node() -> gunbc.roadmap_model.RoadmapNode {
+  authored(identity: "rnfx_324RFH775DGZZMVETPT6", id: "disp-unsized", done: false, content: "observe-only")
 }
 
-fn signed_off_dispatch_node() -> RoadmapNode {
+fn signed_off_dispatch_node() -> gunbc.roadmap_model.RoadmapNode {
   let base = ready_dispatch_node()
-  RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
     identity: "rnfx_08P5JSFSS1NH1YY20PWV" as RoadmapNodeIdentity,
     node: base.node,
     line: base.line,
@@ -194,22 +196,22 @@ fn signed_off_dispatch_node() -> RoadmapNode {
     sizing: base.sizing,
     execution: base.execution,
     owner: base.owner,
-    signoff: gunbc.roadmap_authority.signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
+    signoff: signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
   }
 }
 
-fn dispatch_doc_page(rn: RoadmapNode) -> Fragment {
-  let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  roadmap_page(doc: doc, merged: [])
+fn dispatch_doc_page(rn: gunbc.roadmap_model.RoadmapNode) -> std.markup.Fragment {
+  let sec = gunbc.roadmap_document.RoadmapSection { title: "Belt", elements: [ gunbc.roadmap_model.section_group(label: "", nodes: [rn], edges: []) ] }
+  let doc = gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  gunbc.roadmap_page.roadmap_page(doc: doc, merged: [])
 }
 
 data server_zero_furniture_note: String = "The attention rule's server half (A2): a rendered row carries NO workflow furniture — no pre-rendered stage chips, no lamp strip, no hidden progress container, no 'waiting' text. Activity DOM exists only when the client paints it from the decided /workflow.json view of a live attempt. The former version of this witness pinned the seven server-rendered pending chips as a POSITIVE; the same patterns are now the discriminating negatives, so reintroducing preloaded furniture reds here."
 
 test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
   match dispatch_doc_html_for(rn: ready_dispatch_node()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "<button class=\"dispatch-btn action-primary\"")
         && string_contains(s: h, pattern: "data-availability=\"available\"")
         && string_contains(s: h, pattern: "data-node=")
@@ -227,7 +229,7 @@ test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
 data client_reads_decided_activity_note: String = "A2 flip of the belt-B contract pins: the client consumes the DECIDED activity object (attempt.activity — arm, attention, summary, evidence) and the segment roster; the former positives provider_activity / workflow_status / remaining_obligations are now the discriminating NEGATIVES, because a client that re-derives a summary or a remaining count from the raw fields is a second projection authority. The segments receiver is pinned in its grouped spelling — (attempt.segments || []).forEach — the exact shape whose ungrouped form was the 2026-08-01 silent no-op."
 
 test fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
-  let js = dispatch_client_js_source()
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
   string_contains(s: js, pattern: "fetch('/dispatch/")
     && string_contains(s: js, pattern: "fetch('/workflow.json')")
     && string_contains(s: js, pattern: "attempt.activity")
@@ -241,59 +243,59 @@ test fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
     && string_contains(s: js, pattern: "s === 'spawned' ? 'ok'")
     && string_contains(s: js, pattern: "s === 'already_live' ? 'ok'")
     && all(
-      belt_dispatch_all_status_labels(),
+      gunbc.roadmap_belt_actuate.belt_dispatch_all_status_labels(),
       label => string_contains(s: js, pattern: join(["'", label, "'"], "")),
     )
     && !string_contains(s: js, pattern: "j.node)")
 }
 
 test fn witness_page_script_census_clean() -> Bool {
-  page_script_census(page: dispatch_doc_page(rn: ready_dispatch_node())).length() == 0
+  gunbc.roadmap_page.page_script_census(page: dispatch_doc_page(rn: ready_dispatch_node())).length() == 0
 }
 
-fn hand_inline_script_page() -> Fragment {
-  Element { tag: "body", attributes: [], children: [
-    dispatch_client_script(),
-    Element { tag: "script", attributes: [], children: [ FragmentText { content: "alert('rogue')" } ] },
+fn hand_inline_script_page() -> std.markup.Fragment {
+  std.markup.Element { tag: "body", attributes: [], children: [
+    gunbc.roadmap_page.dispatch_client_script(),
+    std.markup.Element { tag: "script", attributes: [], children: [ std.markup.FragmentText { content: "alert('rogue')" } ] },
   ] }
 }
 
 test fn witness_inline_hand_script_reds() -> Bool {
-  let v = page_script_census(page: hand_inline_script_page())
+  let v = gunbc.roadmap_page.page_script_census(page: hand_inline_script_page())
   v.length() == 1 && all(v, x => x.kind == "inline-js" && x.detail == "alert('rogue')")
 }
 
-fn rogue_src_script_page() -> Fragment {
-  Element { tag: "body", attributes: [], children: [
-    dispatch_client_script(),
-    Element { tag: "script", attributes: [ attr(name: "src", value: "https://evil.example/x.js" ) ], children: [] },
+fn rogue_src_script_page() -> std.markup.Fragment {
+  std.markup.Element { tag: "body", attributes: [], children: [
+    gunbc.roadmap_page.dispatch_client_script(),
+    std.markup.Element { tag: "script", attributes: [ std.markup.attr(name: "src", value: "https://evil.example/x.js" ) ], children: [] },
   ] }
 }
 
 test fn witness_rogue_src_script_reds() -> Bool {
-  let v = page_script_census(page: rogue_src_script_page())
+  let v = gunbc.roadmap_page.page_script_census(page: rogue_src_script_page())
   v.length() == 1 && all(v, x => x.kind == "unknown-src")
 }
 
 test fn witness_signed_off_node_doc_has_no_button() -> Bool {
   match dispatch_doc_html_for(rn: signed_off_dispatch_node()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       !string_contains(s: h, pattern: "<button class=\"dispatch-btn")
   }
 }
 
 test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
-  let node = gunbc.roadmap_authority.derivable_wi(identity: "rnfx_0RXWPCEK3N82T9871CXP", id: "disp-review",
+  let node = derivable_wi(identity: "rnfx_0RXWPCEK3N82T9871CXP", id: "disp-review",
     prs: [7301],
     title: "review-me",
     description: "",
-    intricacy: IntricacyLow,
-    volume: VolumeSmall,
+    intricacy: gunbc.roadmap_model.IntricacyLow,
+    volume: gunbc.roadmap_model.VolumeSmall,
     repo: "gunbc")
   match dispatch_doc_html_for_with_merged(rn: node, merged: [7301]) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"status status-review\"")
         && string_contains(s: h, pattern: "<button class=\"dispatch-btn action-secondary\"")
         && string_contains(s: h, pattern: "data-availability=\"override\"")
@@ -302,8 +304,8 @@ test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
 
 test fn witness_unsized_open_node_keeps_manual_dispatch() -> Bool {
   match dispatch_doc_html_for(rn: unsized_open_dispatch_node()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"workflow-controls\"")
         && string_contains(s: h, pattern: "<button class=\"dispatch-btn action-secondary\"")
   }
@@ -313,8 +315,8 @@ data supporting_facts_disclosure_note: String = "The A1 row-reduction wall (pres
 
 test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool {
   match dispatch_doc_html_for(rn: ready_dispatch_node()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "<span class=\"node-mid\"><span class=\"title\">dispatch-me</span></span>")
         && string_contains(
           s: h,
@@ -324,34 +326,34 @@ test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool {
 }
 
 fn blocked_dispatch_workspace_html() -> HtmlEmitResult {
-  let policy_blocker = gunbc.roadmap_authority.authored(identity: "rnfx_ENDCMSJ7A7XTXK91KKZD", id: "disp-policy-blocker",
+  let policy_blocker = authored(identity: "rnfx_ENDCMSJ7A7XTXK91KKZD", id: "disp-policy-blocker",
     done: false,
     content: "policy prerequisite")
-  let model_blocker = gunbc.roadmap_authority.authored(identity: "rnfx_2R3ZJWEHE8BDYVGJ82Z9", id: "disp-model-blocker",
+  let model_blocker = authored(identity: "rnfx_2R3ZJWEHE8BDYVGJ82Z9", id: "disp-model-blocker",
     done: false,
     content: "model prerequisite")
-  let blocked = gunbc.roadmap_authority.authored_wi(identity: "rnfx_VRBYQ6ZVRKNMCNVXFCG6", id: "disp-blocked",
+  let blocked = authored_wi(identity: "rnfx_VRBYQ6ZVRKNMCNVXFCG6", id: "disp-blocked",
     done: false,
     content: "blocked work",
-    intricacy: IntricacyLow,
-    volume: VolumeSmall,
+    intricacy: gunbc.roadmap_model.IntricacyLow,
+    volume: gunbc.roadmap_model.VolumeSmall,
     repo: "gunbc")
   let edges = [
-    RoadmapEdge { child: blocked.node, parent: policy_blocker.node },
-    RoadmapEdge { child: blocked.node, parent: model_blocker.node },
+    gunbc.roadmap_model.RoadmapEdge { child: blocked.node, parent: policy_blocker.node },
+    gunbc.roadmap_model.RoadmapEdge { child: blocked.node, parent: model_blocker.node },
   ]
-  let sec = RoadmapSection {
+  let sec = gunbc.roadmap_document.RoadmapSection {
     title: "Belt",
-    elements: [ section_group(label: "", nodes: [policy_blocker, model_blocker, blocked], edges: edges) ],
+    elements: [ gunbc.roadmap_model.section_group(label: "", nodes: [policy_blocker, model_blocker, blocked], edges: edges) ],
   }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  try_serialize_html_source(node: roadmap_daily_workspace_page(doc: doc, merged: []))
+  let doc = gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page(doc: doc, merged: []))
 }
 
 test fn witness_upcoming_node_keeps_manual_out_of_order_dispatch() -> Bool {
   match blocked_dispatch_workspace_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"frontier-bucket frontier-upcoming\"")
         && string_contains(s: h, pattern: "data-node=\"disp-blocked\"")
         && string_contains(s: h, pattern: "class=\"workflow-controls\"")
@@ -362,20 +364,20 @@ test fn witness_upcoming_node_keeps_manual_out_of_order_dispatch() -> Bool {
 
 test fn witness_upcoming_node_preserves_multi_parent_dependencies() -> Bool {
   match blocked_dispatch_workspace_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "requires all: disp-policy-blocker, disp-model-blocker")
   }
 }
 
-fn superseded_dispatch_node() -> RoadmapNode {
-  gunbc.roadmap_authority.superseded(identity: "rnfx_8MRNSMQ6RXCDT2FC8ZKY", id: "disp1", by: "successor-lane", content: "dispatch-me")
+fn superseded_dispatch_node() -> gunbc.roadmap_model.RoadmapNode {
+  superseded(identity: "rnfx_8MRNSMQ6RXCDT2FC8ZKY", id: "disp1", by: "successor-lane", content: "dispatch-me")
 }
 
 test fn witness_superseded_node_marked_no_button() -> Bool {
   match dispatch_doc_html_for(rn: superseded_dispatch_node()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "node node-superseded")
         && string_contains(s: h, pattern: "→ successor-lane")
         && !string_contains(s: h, pattern: "<button class=\"dispatch-btn")
@@ -386,8 +388,8 @@ data readable_witness_enrollment_note: String = "The six readability witnesses b
 
 test fn witness_ticket_rows_render_structured() -> Bool {
   match authority_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>details</summary>")
         && string_contains(s: h, pattern: "class=\"ticket-brief\"")
         && string_contains(s: h, pattern: ">displaced cost</span>")
@@ -396,8 +398,8 @@ test fn witness_ticket_rows_render_structured() -> Bool {
   }
 }
 
-fn long_brief_fixture() -> RoadmapNode {
-  gunbc.roadmap_authority.ticket_row(identity: "rnfx_J87HN1XAW9JEHR4KTWC0", id: "brief-overrun-fixture", done: false, t: TicketFields {
+fn long_brief_fixture() -> gunbc.roadmap_model.RoadmapNode {
+  ticket_row(identity: "rnfx_J87HN1XAW9JEHR4KTWC0", id: "brief-overrun-fixture", done: false, t: TicketFields {
     headline: "fixture",
     brief: "w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w",
     displaced_cost: "",
@@ -423,8 +425,8 @@ data combinator_witness_repoint_note: String = "Repointed at A1: the former subj
 
 test fn witness_style_child_combinator_unescaped() -> Bool {
   match authority_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "details.section-fold > summary")
         && !string_contains(s: h, pattern: "&gt; summary")
         && string_contains(s: h, pattern: ".node-superseded .title")
@@ -433,21 +435,21 @@ test fn witness_style_child_combinator_unescaped() -> Bool {
 }
 
 test fn witness_raw_text_close_guard_refuses() -> Bool {
-  let bad = Element {
+  let bad = std.markup.Element {
     tag: "style",
     attributes: [],
-    children: [ FragmentText { content: "a \{ color: red } </style><p>escaped</p>" } ],
+    children: [ std.markup.FragmentText { content: "a \{ color: red } </style><p>escaped</p>" } ],
   }
-  match try_serialize_html_source(node: bad) {
-    EmitOk { html: _ } => false
-    EmitRejected { reason: r } => string_contains(s: r, pattern: "close sequence")
+  match extdeps.languages.html.try_serialize_html_source(node: bad) {
+    extdeps.languages.html.EmitOk { html: _ } => false
+    extdeps.languages.html.EmitRejected { reason: r } => string_contains(s: r, pattern: "close sequence")
   }
 }
 
 test fn witness_item_detail_disclosure_present() -> Bool {
   match authority_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "<details class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>details</summary>")
         && string_contains(s: h, pattern: "class=\"item-body\"")
         && !string_contains(s: h, pattern: "<span class=\"disclosure-mark\">›</span>brief</summary>")
@@ -456,15 +458,15 @@ test fn witness_item_detail_disclosure_present() -> Bool {
 
 test fn witness_status_chip_min_width() -> Bool {
   match authority_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } => string_contains(s: h, pattern: "min-width: var(--w-status)")
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } => string_contains(s: h, pattern: "min-width: var(--w-status)")
   }
 }
 
 test fn witness_dispatch_button_carries_accent() -> Bool {
   match authority_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: ".dispatch-btn")
         && string_contains(s: h, pattern: "border-color: var(--band-invite)")
   }
@@ -472,8 +474,8 @@ test fn witness_dispatch_button_carries_accent() -> Bool {
 
 test fn witness_page_containers_centered() -> Bool {
   match authority_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: ".roadmap { padding: var(--space-16) var(--space-24); max-width: var(--measure); margin-left: auto; margin-right: auto }")
   }
 }
@@ -482,9 +484,9 @@ test fn witness_authority_leads_within_budget() -> Bool {
   roadmap_authority_lead_budget_violations().length() == 0
 }
 
-fn overlong_lead_node() -> RoadmapNode {
+fn overlong_lead_node() -> gunbc.roadmap_model.RoadmapNode {
   let chunk = "a lead with no separator so the whole line stands "
-  gunbc.roadmap_authority.authored(identity: "rnfx_FKEE5NQSZN982W3TF9SS", id: "overlong-lead",
+  authored(identity: "rnfx_FKEE5NQSZN982W3TF9SS", id: "overlong-lead",
     done: false,
     content: join([chunk, chunk, chunk, chunk, chunk, chunk, chunk], ""),
   )
@@ -499,57 +501,57 @@ test fn witness_overlong_lead_reds() -> Bool {
 
 data parity_witness_note: String = "The server/client semantic parity obligation (operator blocker 7, 2026-08-01), discharged over the SAME constructed facts across every executable link: (1) the SERVER realization — render_work_row over the falsifier specimen view — is serialized and its semantic regions asserted exactly (arm and attention data, the decided summary sentence, each obligation label · state — detail line, each evidence label: value row, and on the refused arm the located reason inside an OPEN disclosure); (2) the WIRE — activity_view_json_value over the same view — carries the identical summary string, so the client receives byte-what the server rendered; (3) the CLIENT realization is pinned verbatim-paint: it reads av.summary / av.arm / av.attention and composes obligation and evidence lines from the SAME seam constants (activity_state_sep / activity_detail_sep / activity_evidence_kv_sep / activity_disclosure_label are data the emitted program embeds), so its composed strings equal the server's by one-authority construction. The DOM-mutation link the interpreter cannot execute is covered by the playwright specimen receipt (falsifier fixture intercepted, real emitted client, three widths). RED directions: a server renderer that drops a region reds (1); a seam change that moves the summary reds (1) and (2) together or not at all; a client that re-derives its own composition loses the shared-constant literals and reds (3)."
 
-fn parity_specimen_segments() -> List<gunbc.roadmap_workflow_stage.WorkflowSegment> {
+fn parity_specimen_segments() -> List<WorkflowSegment> {
   [
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "admission receipt readable" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "worktree created" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "turn.completed and process exit 0" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.ReviewWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.GoalAuditWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "admission receipt readable" },
+    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "worktree created" },
+    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "turn.completed and process exit 0" },
+    WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
   ]
 }
 
-fn parity_specimen_activity() -> gunbc.roadmap_presentation.ActivityView {
-  gunbc.roadmap_presentation.activity_view_from_parts(
+fn parity_specimen_activity() -> ActivityView {
+  activity_view_from_parts(
     segments: parity_specimen_segments(),
     remaining: 4,
-    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     current_activity: "Worked for 6m 34s")
 }
 
-fn parity_specimen_view(activity: gunbc.roadmap_presentation.ActivityView) -> gunbc.roadmap_presentation.WorkRowView {
-  gunbc.roadmap_presentation.WorkRowView {
+fn parity_specimen_view(activity: ActivityView) -> WorkRowView {
+  WorkRowView {
     node_id: "parity-specimen",
     headline: "Record which generator actually produced each result",
     summary: none,
-    lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
-    scheduling: gunbc.roadmap_presentation.SchedulingReady,
+    lifecycle: OpenLifecycle,
+    scheduling: SchedulingReady,
     superseded_by: "",
     activity: activity,
-    action: gunbc.roadmap_presentation.action_view(
-      scheduling: gunbc.roadmap_presentation.SchedulingReady,
-      lifecycle: gunbc.roadmap_presentation.OpenLifecycle),
+    action: action_view(
+      scheduling: SchedulingReady,
+      lifecycle: OpenLifecycle),
     supporting_facts: [],
-    disclosure: gunbc.roadmap_presentation.NoDisclosure,
+    disclosure: NoDisclosure,
   }
 }
 
-fn parity_row_html(activity: gunbc.roadmap_presentation.ActivityView) -> HtmlEmitResult {
+fn parity_row_html(activity: ActivityView) -> HtmlEmitResult {
   let view = parity_specimen_view(activity: activity)
-  try_serialize_html_source(node: Element {
+  extdeps.languages.html.try_serialize_html_source(node: std.markup.Element {
     tag: "li",
-    attributes: gunbc.roadmap_page.node_li_attributes(view: view),
-    children: gunbc.roadmap_page.render_work_row(view: view),
+    attributes: node_li_attributes(view: view),
+    children: render_work_row(view: view),
   })
 }
 
 test fn witness_parity_server_realizes_decided_regions() -> Bool {
-  let summary = gunbc.roadmap_presentation.activity_summary_line(a: parity_specimen_activity())
+  let summary = activity_summary_line(a: parity_specimen_activity())
   match parity_row_html(activity: parity_specimen_activity()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       summary == "Agent turn completed; the retained session is no longer running · Verification next · 4 remaining"
         && string_contains(s: h, pattern: "class=\"node-activity\"")
         && string_contains(s: h, pattern: "data-arm=\"active\"")
@@ -564,9 +566,9 @@ test fn witness_parity_server_realizes_decided_regions() -> Bool {
 }
 
 test fn witness_parity_wire_carries_the_server_sentence() -> Bool {
-  let summary = gunbc.roadmap_presentation.activity_summary_line(a: parity_specimen_activity())
-  let wire = serialize_json(
-    v: gunbc.roadmap_presentation.activity_view_json_value(view: parity_specimen_activity()))
+  let summary = activity_summary_line(a: parity_specimen_activity())
+  let wire = extdeps.languages.json.emit.serialize_json(
+    v: activity_view_json_value(view: parity_specimen_activity()))
   string_contains(s: wire, pattern: join(["\"summary\": \"", summary, "\""], ""))
     && string_contains(s: wire, pattern: "\"arm\": \"active\"")
     && string_contains(s: wire, pattern: "\"attention\": \"routine\"")
@@ -574,7 +576,7 @@ test fn witness_parity_wire_carries_the_server_sentence() -> Bool {
 }
 
 test fn witness_parity_client_paints_verbatim_with_shared_constants() -> Bool {
-  let js = dispatch_client_js_source()
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
   string_contains(s: js, pattern: "av.summary")
     && string_contains(s: js, pattern: "av.arm")
     && string_contains(s: js, pattern: "av.attention")
@@ -587,17 +589,17 @@ test fn witness_parity_client_paints_verbatim_with_shared_constants() -> Bool {
 data parity_refused_note: String = "The refused arm's parity: the server realization carries the located reason inside an OPEN activity disclosure (the attention rule's auto-expand, realized as the open attribute at render), and the client pins the same auto-open decision through data-auto-opened. A refusal whose reason failed to reach either surface is the title-only world the anomaly witnesses forbid."
 
 test fn witness_parity_refused_arm_carries_located_reason_open() -> Bool {
-  let refused = gunbc.roadmap_presentation.activity_view_from_parts(
+  let refused = activity_view_from_parts(
     segments: [
-      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
-      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
+      WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+      WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
     ],
     remaining: 6,
-    process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     current_activity: "")
   match parity_row_html(activity: refused) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "data-arm=\"refused\"")
         && string_contains(s: h, pattern: "class=\"activity-located-reason\"")
         && string_contains(s: h, pattern: "turn.completed with process unobserved: no exit was established")
@@ -608,7 +610,7 @@ test fn witness_parity_refused_arm_carries_located_reason_open() -> Bool {
 data a2_hierarchy_closeout_witnesses_note: String = "The A2 hierarchy-closeout receipts (operator gap ruling 2026-08-02; S0 amendments, operator recalibration 2026-08-02), each pinning a decided fact rather than accidental composition: the selection grammar ships in the emitted client asset (selection and activation distinct — interactive elements never move selection through the click channel; Escape clears; exactly the selected row's primary action earns action-focal, the class renamed from action-live because live means sessions/observation elsewhere in this product); selection has KEYBOARD PARITY (rows carry tabindex, keyboard focus is gated on :focus-visible so pointer clicks on inner controls cannot move selection through the focus channel, Enter/Space on the focused row toggles, and every path funnels through the one gunbcSelectRow); the three observation channels join ONE impact region (each channel's located row appends into the shared disclosure and the painter no longer prepends free-standing banners to main); and the stylesheet carries the quiet-rest pair, the action-focal band restore on the family's DERIVED rest-band vars, the li.node:focus-visible outline, and the header's shared composition frame. The axis pins on the dispatch button itself (ready renders action-primary/available; review and out-of-order render action-secondary/override; done and superseded render no button at all) live with the existing per-fixture witnesses above. The action-live spellings below are DISCRIMINATING NEGATIVES: the retired name reappearing means the rename regressed or a second prominence authority stood up."
 
 test fn witness_selection_grammar_ships_in_client_asset() -> Bool {
-  let js = dispatch_client_js_source()
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
   string_contains(s: js, pattern: "const gunbcClearSelection")
     && string_contains(s: js, pattern: "const gunbcSelectRow")
     && string_contains(s: js, pattern: "classList.add('node-selected')")
@@ -621,10 +623,10 @@ test fn witness_selection_grammar_ships_in_client_asset() -> Bool {
 }
 
 test fn witness_selection_has_keyboard_parity() -> Bool {
-  let js = dispatch_client_js_source()
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
   match dispatch_doc_html_for(rn: ready_dispatch_node()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } => string_contains(s: h, pattern: "tabindex=\"0\"")
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } => string_contains(s: h, pattern: "tabindex=\"0\"")
   }
     && string_contains(s: js, pattern: "addEventListener('focusin'")
     && string_contains(s: js, pattern: "matches(':focus-visible')")
@@ -636,7 +638,7 @@ test fn witness_selection_has_keyboard_parity() -> Bool {
 }
 
 test fn witness_observation_channels_join_one_impact_region() -> Bool {
-  let js = dispatch_client_js_source()
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
   string_contains(s: js, pattern: "const gunbcObserveImpactBox")
     && string_contains(s: js, pattern: "'workspace-observation client-minted'")
     && string_contains(s: js, pattern: "impactDetail && impactDetail.append(bn)")
@@ -647,9 +649,9 @@ test fn witness_observation_channels_join_one_impact_region() -> Bool {
 }
 
 test fn witness_prominence_and_frame_rules_present_in_css() -> Bool {
-  string_contains(s: roadmap_css(), pattern: ".dispatch-btn.action-primary, .dispatch-btn.action-secondary { color: var(--text-dim); background: var(--surface); border-color: var(--border) }")
-    && string_contains(s: roadmap_css(), pattern: ".dispatch-btn.action-focal { color: var(--band-invite-ink); background: var(--band-invite); border-color: var(--band-invite) }")
-    && string_contains(s: roadmap_css(), pattern: "li.node:focus-visible { outline: var(--border-2) solid var(--focus) }")
-    && !string_contains(s: roadmap_css(), pattern: "action-live")
-    && string_contains(s: roadmap_css(), pattern: ".header-inner { max-width: var(--measure); margin-left: auto; margin-right: auto; display: flex; align-items: center; gap: var(--space-12) }")
+  string_contains(s: gunbc.roadmap_style.roadmap_css(), pattern: ".dispatch-btn.action-primary, .dispatch-btn.action-secondary { color: var(--text-dim); background: var(--surface); border-color: var(--border) }")
+    && string_contains(s: gunbc.roadmap_style.roadmap_css(), pattern: ".dispatch-btn.action-focal { color: var(--band-invite-ink); background: var(--band-invite); border-color: var(--band-invite) }")
+    && string_contains(s: gunbc.roadmap_style.roadmap_css(), pattern: "li.node:focus-visible { outline: var(--border-2) solid var(--focus) }")
+    && !string_contains(s: gunbc.roadmap_style.roadmap_css(), pattern: "action-live")
+    && string_contains(s: gunbc.roadmap_style.roadmap_css(), pattern: ".header-inner { max-width: var(--measure); margin-left: auto; margin-right: auto; display: flex; align-items: center; gap: var(--space-12) }")
 }

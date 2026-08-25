@@ -3,18 +3,18 @@ module test.claim.uri_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn uri_scheme_is_http_matches_https_holds() -> Bool {
-  uri_scheme_is_http(s: Https)
+  extdeps.uri.uri_scheme_is_http(s: extdeps.uri.Https)
 }
 
 test fn uri_scheme_is_http_rejects_file_holds() -> Bool {
-  uri_scheme_is_http(s: File) == false
+  extdeps.uri.uri_scheme_is_http(s: extdeps.uri.File) == false
 }
 
 test fn uri_is_url_https_projection_holds() -> Bool {
-  uri_is_url(uri: extdeps.uri.Uri { scheme: Https, locator: "example.com/spec" })
+  extdeps.uri.uri_is_url(uri: extdeps.uri.Uri { scheme: extdeps.uri.Https, locator: "example.com/spec" })
 }
 
 test fn uri_is_url_file_not_url_holds() -> Bool {
-  uri_is_url(uri: extdeps.uri.Uri { scheme: File, locator: "/doc/spec.pdf" }) == false
+  extdeps.uri.uri_is_url(uri: extdeps.uri.Uri { scheme: extdeps.uri.File, locator: "/doc/spec.pdf" }) == false
 }
 

@@ -1,5 +1,6 @@
 module test.manual.process_argv_expansion_receipt
 
+
 // THE FOUR-CASE HOST RECEIPT for the argv splice law (design note, open question 9-ter).
 //
 // Each case alone is ambiguous; the set is the evidence:
@@ -62,8 +63,8 @@ test fn case4_expansion_carrier_splices() -> Bool {
     lex: probe_lex(),
     binding_spellings: v2.std.collection.empty_map()
   ) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: surface, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: surface, diagnostics: _ } =>
       extdeps.tools.jq.jq_argv_expansion_probe(expansion: v2.std.compilers.cli_surface.process_argv_expansion(surface: surface), payload: "1") == 0
   }
 }

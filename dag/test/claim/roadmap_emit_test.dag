@@ -1,7 +1,7 @@
 module test.claim.roadmap_emit
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data parent_id: gunbc.roadmap_model.RoadmapNodeId = "invert-hand-maintained"
 data second_parent_id: gunbc.roadmap_model.RoadmapNodeId = "model-before-implement"
@@ -9,12 +9,12 @@ data child_id: gunbc.roadmap_model.RoadmapNodeId = "pr-checkbox-status"
 
 fn parent_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
-    identity: "rnfx_5E27VQFME81E3RP60RE6" as gunbc.roadmap_model.RoadmapNodeIdentity,
+    identity: "rnfx_5E27VQFME81E3RP60RE6" as RoadmapNodeIdentity,
     node: parent_id,
     line: gunbc.roadmap_status.AuthoredLine { done: false, content: "**invert hand-maintained**" },
     carriers: [gunbc.roadmap_model.Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }],
-    sizing: Unsized,
-    execution: ExecutionContractUnspecified,
+    sizing: gunbc.roadmap_model.Unsized,
+    execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
     signoff: gunbc.roadmap_status.Unsigned,
   }
@@ -22,12 +22,12 @@ fn parent_node() -> gunbc.roadmap_model.RoadmapNode {
 
 fn roadmap_emit_child_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
-    identity: "rnfx_8P7AJ3QVQCM2E8W3AMR7" as gunbc.roadmap_model.RoadmapNodeIdentity,
-    node: test.claim.roadmap_emit.child_id,
+    identity: "rnfx_8P7AJ3QVQCM2E8W3AMR7" as RoadmapNodeIdentity,
+    node: child_id,
     line: gunbc.roadmap_status.DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
-    sizing: Unsized,
-    execution: ExecutionContractUnspecified,
+    sizing: gunbc.roadmap_model.Unsized,
+    execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
     signoff: gunbc.roadmap_status.Unsigned,
   }
@@ -35,23 +35,23 @@ fn roadmap_emit_child_node() -> gunbc.roadmap_model.RoadmapNode {
 
 fn signed_child_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
-    identity: "rnfx_D1QNZ9290W7D8GPH4XJQ" as gunbc.roadmap_model.RoadmapNodeIdentity,
-    node: test.claim.roadmap_emit.child_id,
+    identity: "rnfx_D1QNZ9290W7D8GPH4XJQ" as RoadmapNodeIdentity,
+    node: child_id,
     line: gunbc.roadmap_status.DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
-    sizing: Unsized,
-    execution: ExecutionContractUnspecified,
+    sizing: gunbc.roadmap_model.Unsized,
+    execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
     signoff: gunbc.roadmap_status.SignedOff { by: "operator", works: gunbc.roadmap_status.RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: gunbc.roadmap_status.HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
   }
 }
 
-fn nodes() -> List<gunbc.roadmap_model.RoadmapNode> { [test.claim.roadmap_emit.parent_node(), roadmap_emit_child_node()] }
-fn edges() -> List<gunbc.roadmap_model.RoadmapEdge> { [gunbc.roadmap_model.RoadmapEdge { child: test.claim.roadmap_emit.child_id, parent: parent_id }] }
+fn nodes() -> List<gunbc.roadmap_model.RoadmapNode> { [parent_node(), roadmap_emit_child_node()] }
+fn edges() -> List<gunbc.roadmap_model.RoadmapEdge> { [gunbc.roadmap_model.RoadmapEdge { child: child_id, parent: parent_id }] }
 
 fn emit_nodes(nodes: List<gunbc.roadmap_model.RoadmapNode>, merged: List<Int>) -> String {
-  serialize_markdown_source(doc: project_roadmap_section(
-    title: "6. Expansion", elements: [section_group(label: "", nodes: nodes, edges: test.claim.roadmap_emit.edges())], merged: merged,
+  extdeps.languages.markdown.serialize_markdown_source(doc: gunbc.roadmap_emit.project_roadmap_section(
+    title: "6. Expansion", elements: [gunbc.roadmap_model.section_group(label: "", nodes: nodes, edges: edges())], merged: merged,
   ))
 }
 
@@ -60,30 +60,30 @@ fn emit_roadmap(merged: List<Int>) -> String {
 }
 
 test fn witness_heading() -> Bool {
-  string_contains(s: test.claim.roadmap_emit.emit_roadmap(merged: [5491]), pattern: "## 6. Expansion")
+  string_contains(s: emit_roadmap(merged: [5491]), pattern: "## 6. Expansion")
 }
 
 test fn witness_parent_authored_box_and_link() -> Bool {
-  let out = test.claim.roadmap_emit.emit_roadmap(merged: [5491])
+  let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "- [ ] **invert hand-maintained**")
     && string_contains(s: out, pattern: "[plan](docs/plans/invert-hand-maintained.md)")
 }
 
 test fn witness_child_merged_unsigned_awaiting_signoff() -> Bool {
-  let out = test.claim.roadmap_emit.emit_roadmap(merged: [5491])
+  let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
     && string_contains(s: out, pattern: "⏳ awaiting sign-off")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
 }
 
 test fn witness_child_signed_checked() -> Bool {
-  let out = emit_nodes(nodes: [test.claim.roadmap_emit.parent_node(), signed_child_node()], merged: [])
+  let out = emit_nodes(nodes: [parent_node(), signed_child_node()], merged: [])
   string_contains(s: out, pattern: "[x] **PR-checkbox status**")
     && string_contains(s: out, pattern: "✓ signed off: operator")
 }
 
 test fn witness_child_derived_unchecked_when_unmerged() -> Bool {
-  let out = test.claim.roadmap_emit.emit_roadmap(merged: [])
+  let out = emit_roadmap(merged: [])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
     && !string_contains(s: out, pattern: "⏳ awaiting sign-off")
@@ -91,12 +91,12 @@ test fn witness_child_derived_unchecked_when_unmerged() -> Bool {
 
 test fn witness_multi_parent_dependencies_render_complete_set() -> Bool {
   let es = [
-    gunbc.roadmap_model.RoadmapEdge { child: test.claim.roadmap_emit.child_id, parent: parent_id },
-    gunbc.roadmap_model.RoadmapEdge { child: test.claim.roadmap_emit.child_id, parent: second_parent_id },
+    gunbc.roadmap_model.RoadmapEdge { child: child_id, parent: parent_id },
+    gunbc.roadmap_model.RoadmapEdge { child: child_id, parent: second_parent_id },
   ]
-  let out = serialize_markdown_source(doc: project_roadmap_section(
+  let out = extdeps.languages.markdown.serialize_markdown_source(doc: gunbc.roadmap_emit.project_roadmap_section(
     title: "6. Expansion",
-    elements: [section_group(label: "", nodes: nodes(), edges: es)],
+    elements: [gunbc.roadmap_model.section_group(label: "", nodes: nodes(), edges: es)],
     merged: [],
   ))
   string_contains(
@@ -107,19 +107,19 @@ test fn witness_multi_parent_dependencies_render_complete_set() -> Bool {
 
 fn superseded_child_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
-    identity: "rnfx_HSDEAR3FG68K530CRD70" as gunbc.roadmap_model.RoadmapNodeIdentity,
-    node: test.claim.roadmap_emit.child_id,
+    identity: "rnfx_HSDEAR3FG68K530CRD70" as RoadmapNodeIdentity,
+    node: child_id,
     line: gunbc.roadmap_status.SupersededLine { by: "successor-lane", content: "**PR-checkbox status**" },
     carriers: [],
-    sizing: Unsized,
-    execution: ExecutionContractUnspecified,
+    sizing: gunbc.roadmap_model.Unsized,
+    execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
     signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
 test fn witness_superseded_checked_struck_no_signoff_suffix() -> Bool {
-  let out = emit_nodes(nodes: [test.claim.roadmap_emit.parent_node(), superseded_child_node()], merged: [])
+  let out = emit_nodes(nodes: [parent_node(), superseded_child_node()], merged: [])
   string_contains(s: out, pattern: "[x] ~~**PR-checkbox status**~~ **superseded →** successor-lane")
     && !string_contains(s: out, pattern: "⏳ awaiting sign-off")
 }

@@ -2,17 +2,17 @@ module v2.test.fixture.walk_plan_stage.barrier_witness
 
 
 test fn walk_plan_stage_barrier_witness_holds() -> Bool {
-  let receipt = Filesystem.Read(path: walk_plan_stage_stage1_receipt_path)
+  let receipt = extdeps.filesystem.filesystem_io.Filesystem.Read(path: v2.test.fixture.walk_plan_stage.common.walk_plan_stage_stage1_receipt_path)
   receipt.success
     && string_contains(s: receipt.content, pattern: "attempt_id=walk-plan-stage-fixture")
-    && string_contains(s: receipt.content, pattern: "plan_site=" + walk_plan_stage_plan_site)
+    && string_contains(s: receipt.content, pattern: "plan_site=" + v2.test.fixture.walk_plan_stage.common.walk_plan_stage_plan_site)
     && string_contains(s: receipt.content, pattern: "outcome=passed")
     && string_contains(
       s: receipt.content,
-      pattern: "claim\t" + walk_plan_stage_overlap_peer_a_entry + "\twalk_plan_stage_overlap_peer_a_holds\tpassed"
+      pattern: "claim\t" + v2.test.fixture.walk_plan_stage.common.walk_plan_stage_overlap_peer_a_entry + "\twalk_plan_stage_overlap_peer_a_holds\tpassed"
     )
     && string_contains(
       s: receipt.content,
-      pattern: "claim\t" + walk_plan_stage_overlap_peer_b_entry + "\twalk_plan_stage_overlap_peer_b_holds\tpassed"
+      pattern: "claim\t" + v2.test.fixture.walk_plan_stage.common.walk_plan_stage_overlap_peer_b_entry + "\twalk_plan_stage_overlap_peer_b_holds\tpassed"
     )
 }

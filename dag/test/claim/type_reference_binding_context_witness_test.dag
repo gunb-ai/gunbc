@@ -65,12 +65,12 @@ fn trbc_fixture_reference(
 test fn module_root_containment_derives_root_exposure_holds() -> Bool {
   let type_decl = std.occurrence_identity.OccurrenceId { value: 10 }
   let type_path = trbc_fixture_path(ancestors: [], terminal: type_decl)
-  match declaration_exposure_from_containment(
+  match std.occurrence_binding_candidates.declaration_exposure_from_containment(
     module_path: trbc_module_path(dotted: "std.content_hash"),
     containment: type_path,
-    grounding: NamespaceStructuralRootExposure,
+    grounding: std.occurrence_binding_candidates.NamespaceStructuralRootExposure,
   ) {
-    RootExposure => true
+    std.occurrence_binding_candidates.RootExposure => true
     _ => false
   }
 }
@@ -78,12 +78,12 @@ test fn module_root_containment_derives_root_exposure_holds() -> Bool {
 test fn single_ancestor_containment_derives_module_exposure_holds() -> Bool {
   let fn_body = std.occurrence_identity.OccurrenceId { value: 20 }
   let fn_path = trbc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 1 }], terminal: fn_body)
-  match declaration_exposure_from_containment(
+  match std.occurrence_binding_candidates.declaration_exposure_from_containment(
     module_path: trbc_module_path(dotted: "extdeps.consumer"),
     containment: fn_path,
-    grounding: NamespaceStructuralRootExposure,
+    grounding: std.occurrence_binding_candidates.NamespaceStructuralRootExposure,
   ) {
-    ModuleExposure { module: module } => module == trbc_module_path(dotted: "extdeps.consumer")
+    std.occurrence_binding_candidates.ModuleExposure { module: module } => module == trbc_module_path(dotted: "extdeps.consumer")
     _ => false
   }
 }
@@ -93,12 +93,12 @@ test fn nested_containment_derives_lexical_exposure_holds() -> Bool {
   let inner = std.occurrence_identity.OccurrenceId { value: 2 }
   let binder = std.occurrence_identity.OccurrenceId { value: 30 }
   let nested_path = trbc_fixture_path(ancestors: [outer, inner], terminal: binder)
-  match declaration_exposure_from_containment(
+  match std.occurrence_binding_candidates.declaration_exposure_from_containment(
     module_path: trbc_module_path(dotted: "extdeps.consumer"),
     containment: nested_path,
-    grounding: NamespaceStructuralRootExposure,
+    grounding: std.occurrence_binding_candidates.NamespaceStructuralRootExposure,
   ) {
-    LexicalExposure { exposing_scope: scope } =>
+    std.occurrence_binding_candidates.LexicalExposure { exposing_scope: scope } =>
       scope.terminal == inner && (scope.ancestors |> count) == 1
     _ => false
   }
@@ -109,7 +109,7 @@ test fn graph_builder_merges_two_module_input_rows_holds() -> Bool {
   let consumer_fn = std.occurrence_identity.OccurrenceId { value: 20 }
   let provider_path = trbc_fixture_path(ancestors: [], terminal: provider_type)
   let consumer_path = trbc_fixture_path(ancestors: [], terminal: consumer_fn)
-  let merged = build_graph_type_reference_binding_inputs(
+  let merged = gunbc.type_reference_binding_context.build_graph_type_reference_binding_inputs(
     sources: [
       gunbc.type_reference_binding_context.ModuleOccurrenceBindingSource {
         module_path: trbc_module_path(dotted: "extdeps.provider"),
@@ -120,7 +120,7 @@ test fn graph_builder_merges_two_module_input_rows_holds() -> Bool {
             ],
           },
           declarations: [
-            trbc_fixture_declaration(occurrence: provider_type, containment: provider_path, category: TypeOccurrence),
+            trbc_fixture_declaration(occurrence: provider_type, containment: provider_path, category: std.occurrence_identity.TypeOccurrence),
           ],
           references: [],
         },
@@ -134,7 +134,7 @@ test fn graph_builder_merges_two_module_input_rows_holds() -> Bool {
             ],
           },
           declarations: [
-            trbc_fixture_declaration(occurrence: consumer_fn, containment: consumer_path, category: CallableOccurrence),
+            trbc_fixture_declaration(occurrence: consumer_fn, containment: consumer_path, category: std.occurrence_identity.CallableOccurrence),
           ],
           references: [],
         },
@@ -160,7 +160,7 @@ test fn cross_module_builder_inputs_bind_via_kernel_holds() -> Bool {
       ],
     },
     declarations: [
-      trbc_fixture_declaration(occurrence: type_decl, containment: type_path, category: TypeOccurrence),
+      trbc_fixture_declaration(occurrence: type_decl, containment: type_path, category: std.occurrence_identity.TypeOccurrence),
     ],
     references: [],
   }
@@ -172,10 +172,10 @@ test fn cross_module_builder_inputs_bind_via_kernel_holds() -> Bool {
       ],
     },
     declarations: [
-      trbc_fixture_declaration(occurrence: fn_body, containment: fn_path, category: CallableOccurrence),
+      trbc_fixture_declaration(occurrence: fn_body, containment: fn_path, category: std.occurrence_identity.CallableOccurrence),
     ],
     references: [
-      trbc_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+      trbc_fixture_reference(occurrence: type_ref, containment: ref_path, category: std.occurrence_identity.TypeOccurrence),
     ],
   }
   let graph_transport = std.occurrence_identity.OccurrenceTransport {
@@ -185,7 +185,7 @@ test fn cross_module_builder_inputs_bind_via_kernel_holds() -> Bool {
     declarations: concat(provider_transport.declarations, consumer_transport.declarations),
     references: consumer_transport.references,
   }
-  let ctx = build_type_reference_binding_context(
+  let ctx = gunbc.type_reference_binding_context.build_type_reference_binding_context(
     transport: graph_transport,
     sources: [
       gunbc.type_reference_binding_context.ModuleOccurrenceBindingSource {
@@ -198,12 +198,12 @@ test fn cross_module_builder_inputs_bind_via_kernel_holds() -> Bool {
       },
     ],
   )
-  match resolve_type_reference_containment_binding(
+  match std.occurrence_binding_candidates.resolve_type_reference_containment_binding(
     transport: ctx.transport,
     inputs: ctx.inputs,
-    reference: trbc_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+    reference: trbc_fixture_reference(occurrence: type_ref, containment: ref_path, category: std.occurrence_identity.TypeOccurrence),
   ) {
-    ReferenceBindingProjectionBound { provider: provider } =>
+    std.occurrence_binding_candidates.ReferenceBindingProjectionBound { provider: provider } =>
       provider.declaration_occurrence.value == 10
         && provider.provider_module == trbc_module_path(dotted: "std.content_hash")
         && provider.consumer_module == trbc_module_path(dotted: "extdeps.consumer")
@@ -225,7 +225,7 @@ test fn module_exposure_override_refuses_cross_module_pool_coincidence_holds() -
       ],
     },
     declarations: [
-      trbc_fixture_declaration(occurrence: type_decl, containment: type_path, category: TypeOccurrence),
+      trbc_fixture_declaration(occurrence: type_decl, containment: type_path, category: std.occurrence_identity.TypeOccurrence),
     ],
     references: [],
   }
@@ -237,18 +237,18 @@ test fn module_exposure_override_refuses_cross_module_pool_coincidence_holds() -
       ],
     },
     declarations: [
-      trbc_fixture_declaration(occurrence: fn_body, containment: fn_path, category: CallableOccurrence),
+      trbc_fixture_declaration(occurrence: fn_body, containment: fn_path, category: std.occurrence_identity.CallableOccurrence),
     ],
     references: [
-      trbc_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+      trbc_fixture_reference(occurrence: type_ref, containment: ref_path, category: std.occurrence_identity.TypeOccurrence),
     ],
   }
-  let inputs = merge_occurrence_binding_input_rows(
-    left: occurrence_binding_inputs_from_module_transport(
+  let inputs = gunbc.type_reference_binding_context.merge_occurrence_binding_input_rows(
+    left: gunbc.type_reference_binding_context.occurrence_binding_inputs_from_module_transport(
       module_path: trbc_module_path(dotted: "std.content_hash"),
       transport: provider_transport,
     ),
-    right: occurrence_binding_inputs_from_module_transport(
+    right: gunbc.type_reference_binding_context.occurrence_binding_inputs_from_module_transport(
       module_path: trbc_module_path(dotted: "extdeps.consumer"),
       transport: consumer_transport,
     ),
@@ -271,7 +271,7 @@ test fn module_exposure_override_refuses_cross_module_pool_coincidence_holds() -
     exposure_rows: forced_module_exposure,
     authored_order_rows: inputs.authored_order_rows,
   }
-  match resolve_type_reference_containment_binding(
+  match std.occurrence_binding_candidates.resolve_type_reference_containment_binding(
     transport: std.occurrence_identity.OccurrenceTransport {
       index: std.occurrence_identity.OccurrenceIndex {
         entries: concat(
@@ -283,9 +283,9 @@ test fn module_exposure_override_refuses_cross_module_pool_coincidence_holds() -
       references: consumer_transport.references,
     },
     inputs: overridden_inputs,
-    reference: trbc_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+    reference: trbc_fixture_reference(occurrence: type_ref, containment: ref_path, category: std.occurrence_identity.TypeOccurrence),
   ) {
-    ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 30
+    std.occurrence_binding_candidates.ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 30
     _ => false
   }
 }

@@ -1,30 +1,31 @@
 module v2.lens.cited_symbol_resolution
 
+
 data cited_symbol_resolution_law: String = "feature:cited-symbol-resolution — every typed DeclarationRef enrolled in hand_authored_production_doc_declaration_refs (HandAuthoredDocBind primary_work + additional_works, excluding permanent g1-cited-symbol-control-* probe rows) resolves to exactly one decl_facts row over a declared module, or refuses with a typed five-arm result. Population is structural, not corpus text scan. Permanent planted controls in hand_authored_cited_symbol_control_declaration_refs stay enrolled for mutation witnesses — they never retire when production goes green (operator ruling 2026-08-03, DESIGN 4b(4)). Resolution semantics live in v2.std.decl_ref_resolution.resolve_declaration_ref over decl_facts + module_declaration_facts — single authority, no per-kind fork. dissolve-on: substrate refuses unwritable DeclarationRef at construction; enrollment widens to every structural DeclarationRef carrier when the Node-tree reader lands."
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SubstrateMandatoryTag }
 }
 
-data cited_symbol_planted_ambiguous_control_ref: DeclarationRef = DeclarationRef {
+data cited_symbol_planted_ambiguous_control_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.std.node",
   decl_name: "G1_planted_ambiguous_control_RED",
-  field: WholeDeclaration,
+  field: std.decl_ref.WholeDeclaration,
 }
 
-data cited_symbol_planted_ambiguous_control_facts: List<DeclFact> = [
-  DeclFact {
+data cited_symbol_planted_ambiguous_control_facts: List<v2.std.decl_index.DeclFact> = [
+  v2.std.decl_index.DeclFact {
     qualified_name: "std.node.G1_planted_ambiguous_control_RED",
     name: "G1_planted_ambiguous_control_RED",
-    kind: FnItem,
-    node: enforcement_red_probe_body_leaf,
+    kind: v2.std.decl_index.FnItem,
+    node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
     rel_path: "synthetic/g1_ambiguous_a.dag",
   },
-  DeclFact {
+  v2.std.decl_index.DeclFact {
     qualified_name: "std.node.G1_planted_ambiguous_control_RED",
     name: "G1_planted_ambiguous_control_RED",
-    kind: FnItem,
-    node: enforcement_red_probe_body_leaf,
+    kind: v2.std.decl_index.FnItem,
+    node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
     rel_path: "synthetic/g1_ambiguous_b.dag",
   },
 ]
@@ -35,40 +36,40 @@ data cited_symbol_roster_registry_widening_note: String = "THE DENOMINATOR NOW A
 
 data cited_symbol_instance_gap_carrier_widening_note: String = "THE DENOMINATOR NOW ALSO INCLUDES THE INSTANCE-GAP CARRIERS, and this widening closes a rot mode on the artifact form several lanes use as their OUTPUT. An instance-gap carrier records a measured defect as typed rows whose content is almost entirely DeclarationRefs — the sites where the defect was found. Nothing imported those modules, so nothing resolved their refs: rename a cited declaration and the row goes quietly false while every required check stays green. That is worse than the same rot in prose, because the row's typed shape reads as machine-checked when it was not.\n\nWHY WIDENING RATHER THAN A NEW CHECK: cited_symbol_resolution_law dissolves on 'enrollment widens to every structural DeclarationRef carrier'. These are such carriers, so they enroll under v2.std.decl_ref_resolution unchanged — no second algorithm, for the reason the generated-document widening already states. WHAT DOES NOT WIDEN: the carriers' String fields. lambda_argument_typing_gate.callee_spelled stays a String on purpose — the defect it records IS that the callee is consulted by spelling rather than by declaration, so typing it would assert the resolution the row exists to prove absent."
 
-fn cited_symbol_production_declaration_refs() -> List<DeclarationRef> {
+fn cited_symbol_production_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
   concat(
     concat(
-      concat(hand_authored_production_doc_declaration_refs(), generated_document_declaration_refs()),
-      roster_registry_declaration_refs()
+      concat(gunbc.doc_graph_roots.hand_authored_production_doc_declaration_refs(), gunbc.documentary_refs.generated_document_declaration_refs()),
+      v2.lens.roster_registry.roster_registry_declaration_refs()
     ),
-    concat(lambda_typing_gate_declaration_refs(), list_membership_gap_declaration_refs())
+    concat(gunbc.lambda_argument_typing_gate.lambda_typing_gate_declaration_refs(), gunbc.list_membership_operation_gap.list_membership_gap_declaration_refs())
   )
 }
 
 fn cited_symbol_resolution_violation_count() -> Int {
-  let pool = hand_authored_works_resolution_pool_roots()
-  cited_declaration_ref_refusal_count(
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
+  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
     refs: cited_symbol_production_declaration_refs(),
-    facts: decl_facts(pool_roots: pool),
-    modules: module_declaration_facts_live(pool_roots: pool)
+    facts: v2.std.decl_index.decl_facts(pool_roots: pool),
+    modules: v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
   )
 }
 
 fn cited_symbol_enrolled_refusal_count() -> Int {
-  let pool = hand_authored_works_resolution_pool_roots()
-  cited_declaration_ref_refusal_count(
-    refs: hand_authored_doc_declaration_refs(),
-    facts: decl_facts(pool_roots: pool),
-    modules: module_declaration_facts_live(pool_roots: pool)
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
+  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
+    refs: gunbc.doc_graph_roots.hand_authored_doc_declaration_refs(),
+    facts: v2.std.decl_index.decl_facts(pool_roots: pool),
+    modules: v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
   )
 }
 
 fn cited_symbol_planted_control_refusal_count() -> Int {
-  let pool = hand_authored_works_resolution_pool_roots()
-  cited_declaration_ref_refusal_count(
-    refs: hand_authored_cited_symbol_control_declaration_refs(),
-    facts: decl_facts(pool_roots: pool),
-    modules: module_declaration_facts_live(pool_roots: pool)
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
+  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
+    refs: gunbc.doc_graph_roots.hand_authored_cited_symbol_control_declaration_refs(),
+    facts: v2.std.decl_index.decl_facts(pool_roots: pool),
+    modules: v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
   )
 }
 
@@ -83,14 +84,14 @@ fn cited_symbol_production_reference_count() -> Int {
 }
 
 fn cited_symbol_unresolved_reference_report() -> List<String> {
-  let pool = hand_authored_works_resolution_pool_roots()
-  let facts = decl_facts(pool_roots: pool)
-  let modules = module_declaration_facts_live(pool_roots: pool)
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
+  let facts = v2.std.decl_index.decl_facts(pool_roots: pool)
+  let modules = v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
   concat(
     map(
       filter(
         cited_symbol_production_declaration_refs(),
-        r => !declaration_ref_resolves(ref: r, facts: facts, modules: modules)
+        r => !v2.std.decl_ref_resolution.declaration_ref_resolves(ref: r, facts: facts, modules: modules)
       ),
       r => concat(
         cited_symbol_reference_refusal_arm(ref: r, facts: facts, modules: modules),
@@ -99,8 +100,8 @@ fn cited_symbol_unresolved_reference_report() -> List<String> {
     ),
     map(
       filter(
-        hand_authored_outside_index_declaration_refs(),
-        r => declaration_ref_resolves(ref: r, facts: facts, modules: modules)
+        gunbc.doc_graph_roots.hand_authored_outside_index_declaration_refs(),
+        r => v2.std.decl_ref_resolution.declaration_ref_resolves(ref: r, facts: facts, modules: modules)
       ),
       r => concat(
         "OUTSIDE-INDEX-RESOLVES ",
@@ -120,15 +121,15 @@ fn cited_symbol_unresolved_reference_report() -> List<String> {
 }
 
 fn cited_symbol_reference_refusal_arm(
-  ref: DeclarationRef,
-  facts: List<DeclFact>,
-  modules: List<ModuleDeclarationFact>
+  ref: std.decl_ref.DeclarationRef,
+  facts: List<v2.std.decl_index.DeclFact>,
+  modules: List<v2.lens.module_graph.ModuleDeclarationFact>
 ) -> String {
-  match resolve_declaration_ref(ref: ref, facts: facts, modules: modules) {
-    DeclarationRefResolved { declaration_identity: _ } => "RESOLVED"
-    DeclarationRefModuleAbsent { reference: _ } => "MODULE-ABSENT"
-    DeclarationRefDeclarationAbsent { reference: _ } => "DECLARATION-ABSENT"
-    DeclarationRefFieldAbsent { reference: _ } => "FIELD-ABSENT"
-    DeclarationRefAmbiguous { reference: _, candidates: _ } => "AMBIGUOUS"
+  match v2.std.decl_ref_resolution.resolve_declaration_ref(ref: ref, facts: facts, modules: modules) {
+    v2.std.decl_ref_resolution.DeclarationRefResolved { declaration_identity: _ } => "RESOLVED"
+    v2.std.decl_ref_resolution.DeclarationRefModuleAbsent { reference: _ } => "MODULE-ABSENT"
+    v2.std.decl_ref_resolution.DeclarationRefDeclarationAbsent { reference: _ } => "DECLARATION-ABSENT"
+    v2.std.decl_ref_resolution.DeclarationRefFieldAbsent { reference: _ } => "FIELD-ABSENT"
+    v2.std.decl_ref_resolution.DeclarationRefAmbiguous { reference: _, candidates: _ } => "AMBIGUOUS"
   }
 }

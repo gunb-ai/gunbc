@@ -1,7 +1,7 @@
 module test.claim.typed_witness_invocation
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn typed_git_toplevel_resolves_holds() -> Bool {
   let result = git.Inspect.Toplevel()
@@ -14,44 +14,44 @@ test fn typed_is_executable_positive_holds() -> Bool {
 }
 
 test fn typed_is_executable_negative_red_control_holds() -> Bool {
-  let result = shell.Test.IsExecutable(path: "/nonexistent/no/such/binary", expect: ExpectFailure)
+  let result = shell.Test.IsExecutable(path: "/nonexistent/no/such/binary", expect: gunbc.output_policy.ExpectFailure)
   result.executable == false
 }
 
 test fn typed_witness_bin_run_argv_holds() -> Bool {
-  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/true")
+  let result = WitnessBin.Run(workdir: "/", bin_path: "/bin/true")
   result.success
 }
 
 test fn typed_witness_bin_run_nonzero_red_control_holds() -> Bool {
-  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/false", expect: ExpectFailure)
+  let result = WitnessBin.Run(workdir: "/", bin_path: "/bin/false", expect: gunbc.output_policy.ExpectFailure)
   result.success == false
 }
 
 test fn typed_witness_bin_run_args_splice_holds() -> Bool {
-  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/echo", args: ["alpha", "beta"])
+  let result = WitnessBin.Run(workdir: "/", bin_path: "/bin/echo", args: ["alpha", "beta"])
   result.success && result.stdout == "alpha beta"
 }
 
 test fn typed_witness_bin_run_workdir_anchors_holds() -> Bool {
-  let result = gunbc.WitnessBin.Run(workdir: "/tmp", bin_path: "/bin/pwd")
+  let result = WitnessBin.Run(workdir: "/tmp", bin_path: "/bin/pwd")
   result.success && result.stdout == "/tmp"
 }
 
 test fn typed_witness_bin_run_workdir_anchors_root_control_holds() -> Bool {
   let toplevel = git.Inspect.Toplevel()
-  let result = gunbc.WitnessBin.Run(workdir: toplevel.path, bin_path: "/bin/pwd")
+  let result = WitnessBin.Run(workdir: toplevel.path, bin_path: "/bin/pwd")
   result.success && result.stdout == toplevel.path
 }
 
 test fn typed_run_witness_bin_unbuildable_red_control_holds() -> Bool {
-  run_witness_bin(var_name: "NO_SUCH", bin_name: "no_such_witness_bin_zzz", args: []) == false
+  tools.host_prelude.run_witness_bin(var_name: "NO_SUCH", bin_name: "no_such_witness_bin_zzz", args: []) == false
 }
 
 data typed_witness_bin_run_loud_failure_red_control_note: String = "Deliberate unannotated gunbc.WitnessBin.Run of /bin/false (no ExpectFailure / OutcomeIsData) so the observation layer paints an anomaly glyph. Kept as the cheap producer for no_fake_anomalies_witness_test's RED control after WitnessBinNotEnrolled closed the mid-floor cargo path that typed_run_witness_bin_unbuildable_red_control_holds used to exercise. A cargo.BuildInheritEnv of a missing --bin also works but costs ~90s child wall and blew the per-PR wet batch clamp (FLOOR-BATCH-OVER-BUDGET batch=4); /bin/false keeps the discrimination without the corpus-denominated cost."
 
 test fn typed_witness_bin_run_loud_failure_red_control_holds() -> Bool {
-  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/false")
+  let result = WitnessBin.Run(workdir: "/", bin_path: "/bin/false")
   result.success == false
 }
 
@@ -61,12 +61,12 @@ test fn typed_is_nonempty_positive_holds() -> Bool {
 }
 
 test fn typed_is_nonempty_zero_byte_red_control_holds() -> Bool {
-  let result = shell.Test.IsNonEmpty(path: "/dev/null", expect: ExpectFailure)
+  let result = shell.Test.IsNonEmpty(path: "/dev/null", expect: gunbc.output_policy.ExpectFailure)
   result.nonempty == false
 }
 
 test fn typed_gunbc_cli_run_claim_holds() -> Bool {
-  let result = gunbc.Cli.Run(
+  let result = Cli.Run(
     workdir: "/",
     bin_path: "/bin/true",
     source_roots: ["dag"],
@@ -78,7 +78,7 @@ test fn typed_gunbc_cli_run_claim_holds() -> Bool {
 }
 
 test fn typed_claim_batch_pooled_argv_shape_holds() -> Bool {
-  claim_batch_claims_argv(
+  tools.host_prelude.claim_batch_claims_argv(
     source_roots: ["dag", "src/v2"],
     claims: [
       tools.host_prelude.ClaimRun { entry: "a.dag", function: "f1" },
@@ -94,7 +94,7 @@ test fn typed_claim_batch_pooled_argv_shape_holds() -> Bool {
 }
 
 test fn typed_claim_batch_pooled_run_red_control_holds() -> Bool {
-  let result = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/bin/false", args: ["--entry", "x.dag"], expect: ExpectFailure)
+  let result = WitnessBin.Run(workdir: "/", bin_path: "/bin/false", args: ["--entry", "x.dag"], expect: gunbc.output_policy.ExpectFailure)
   result.success == false
 }
 
@@ -103,7 +103,7 @@ test fn typed_claim_executor_verify_build_artifacts_red_control_holds() -> Bool 
     workdir: "/",
     bin_path: "/bin/false",
     artifact_paths: ["/bin/sh"],
-    expect: ExpectFailure
+    expect: gunbc.output_policy.ExpectFailure
   )
   result.success == false
 }

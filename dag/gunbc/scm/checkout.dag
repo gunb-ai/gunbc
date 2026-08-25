@@ -1,5 +1,8 @@
 module gunbc.scm.checkout
 
+
+
+
 // A COMMIT IS A ROOT IDENTITY AND NOTHING ELSE. No parent, no author, no timestamp, no message, no
 // branch. Those are facts about proposals and acceptances -- about who asked for something and who
 // agreed to it -- and fusing them into the program's identity is what forces a whole-tree snapshot

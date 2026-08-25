@@ -6,7 +6,7 @@ data determinism_root_derivation_note: String = "The determinism roots are DERIV
 data determinism_leak_source_note: String = "One source ref for every root, and it names the CLASSIFYING authority rather than a leaking realization. The deleted registry pointed each root at v1.runtime_rust map_keys -- one target's Rust text, which is neither where the claim is decided nor true of the interpreter or of any future target. What makes a call a leak is its PrimitiveTraversalOrderFact, so that is what the refusal cites; WHICH root was reached is already carried by the diagnostic locus, which names the call node itself."
 
 fn determinism_leak_source() -> std.decl_ref.DeclarationRef {
-  std.decl_ref(module_path: "std.primitive_identity", decl_name: "primitive_declared_traversal_facts")
+  std.decl_ref.decl_ref(module_path: "std.primitive_identity", decl_name: "primitive_declared_traversal_facts")
 }
 
 data determinism_traversal_order_classification_note: String = "Two orders leak and three do not, and the two that leak leak for DIFFERENT reasons that share one remedy. HostUnspecifiedOrder is the real hazard, and the hazard is stated at the grain that is actually established: the host iterates a hash map on a per-process seed, so the ORDER THE PRIMITIVE RETURNS is not a function of its input alone. That is a confirmed property of the realization (v1_rt map_keys over im::HashMap on std RandomState). WHAT IS NOT CLAIMED, because it was searched for and not found: that any such call currently reaches emitted bytes. A corpus-wide sweep found exactly one fold building a LIST from unsorted map iteration and its consumer refuses on ambiguity; the rest initialise maps or feed debug dumps, interning and lens output. The gate does not rest on that join and does not need it -- an unsorted iteration is a defect only where its result reaches output as an ORDERED LIST, which is a per-site question, while the reason to refuse the CALL is that the primitive's contract does not promise an order at all and nothing at the call site says the caller does not need one. TraversalOrderUnclassified is ignorance, and it refuses for the fail-closed reason DESIGN gives -- an unanswered question is not a negative answer, and treating it as one is exactly the absorbing fallback in the direction that reads as safe. CanonicalOrder and SourcePreservingOrder are answered and stable. OrderFreeResult is answered and vacuous: the result exposes no traversal, so the order question belongs to whatever later traverses it."
@@ -24,11 +24,11 @@ fn traversal_order_leaks(order: std.primitive_identity.TraversalOrder) -> Bool {
 fn node_callee_symbol(n: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   if v2.std.node_query.node_is_call(node: n) {
     match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: n), index: 0) {
-      Present { value: callee } => match callee.kind {
+      v2.std.optional.Present { value: callee } => match callee.kind {
         v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } => v2.std.optional.optional_present(value: sym)
         _ => v2.std.optional.optional_absent()
       }
-      Absent => v2.std.optional.optional_absent()
+      v2.std.optional.Absent => v2.std.optional.optional_absent()
     }
   } else {
     v2.std.optional.optional_absent()
@@ -37,19 +37,19 @@ fn node_callee_symbol(n: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.no
 
 fn local_determinism_axis(n: v2.std.node.Node) -> std.determinism.Determinism {
   match node_callee_symbol(n: n) {
-    Present { value: sym } => match std.primitive_identity.primitive_identity_for_canonical_name(authored_symbol: v2.std.compilers.lexing.symbol_lexeme(sym: sym)) {
-      Present { value: identity } => match std.primitive_identity.primitive_traversal_order_for_identity(identity: identity) {
-        Present { value: order } =>
+    v2.std.optional.Present { value: sym } => match std.primitive_identity.primitive_identity_for_canonical_name(authored_symbol: v2.std.compilers.lexing.symbol_lexeme(sym: sym)) {
+      v2.std.optional.Present { value: identity } => match std.primitive_identity.primitive_traversal_order_for_identity(identity: identity) {
+        v2.std.optional.Present { value: order } =>
           if traversal_order_leaks(order: order) {
             std.determinism.NonDeterministic { source: determinism_leak_source() }
           } else {
             std.determinism.Deterministic
           }
-        Absent => std.determinism.NonDeterministic { source: determinism_leak_source() }
+        v2.std.optional.Absent => std.determinism.NonDeterministic { source: determinism_leak_source() }
       }
-      Absent => std.determinism.Deterministic
+      v2.std.optional.Absent => std.determinism.Deterministic
     }
-    Absent => std.determinism.Deterministic
+    v2.std.optional.Absent => std.determinism.Deterministic
   }
 }
 
@@ -130,7 +130,7 @@ fn determinism_compile_gate(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome
       v2.std.diagnostic.Rejected {
         diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
       }
-    Empty => v2.std.diagnostic.outcome_accepted(value: v2.std.witness.Holds { value: node })
+    std.algebra.Empty => v2.std.diagnostic.outcome_accepted(value: v2.std.witness.Holds { value: node })
   }
 }
 

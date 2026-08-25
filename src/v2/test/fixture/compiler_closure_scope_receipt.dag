@@ -36,7 +36,7 @@ data compiler_closure_scope_receipt_frontier: List<CompilerClosureScopeReceiptFr
 data compiler_closure_excluded_module_path: String = "src/v2/lens/affected_set/closure_deep_chain.dag"
 
 fn compiler_closure_scope_receipt_frontier_count() -> Int {
-  length(xs: compiler_closure_scope_receipt_frontier)
+  v2.std.algebra.length(xs: compiler_closure_scope_receipt_frontier)
 }
 
 fn compiler_closure_scoped_module_count_hand_at_withdrawal() -> Int {
@@ -67,11 +67,11 @@ fn compiler_closure_scoped_module_count_drift_delta() -> Int {
   compiler_closure_scoped_module_count_live_measured() - compiler_closure_scoped_module_count_hand_at_withdrawal()
 }
 
-fn scoped_closure_excluded_module_path_holds() -> v2.std.logic.Bool {
+fn scoped_closure_excluded_module_path_holds() -> Bool {
   compiler_closure_excluded_module_path == "src/v2/lens/affected_set/closure_deep_chain.dag"
 }
 
-fn compiler_closure_scope_receipt_frontier_row_holds() -> v2.std.logic.Bool {
+fn compiler_closure_scope_receipt_frontier_row_holds() -> Bool {
   (compiler_closure_scope_receipt_frontier_count() == 1)
     && (compiler_closure_scoped_module_count_hand_at_withdrawal() == 65)
     && (compiler_closure_scoped_module_count_live_measured() == 88)

@@ -3,7 +3,7 @@ module extdeps.linux.procfs
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "man7.org/linux/man-pages/man5/proc.5.html"
   }
 }
@@ -44,10 +44,10 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
 // Provision is a total match over std.os.types.KernelFamily rather than a roster of platforms that happen to have it, so adding a kernel family to that closed enum forces an answer here instead of silently defaulting. LinuxGuestOnWindows answers TRUE deliberately and is the arm most likely to be got wrong by pattern-matching on the name: WSL2 runs a real Linux kernel and synthesizes a real procfs, so a consumer that treated it as a Windows platform would refuse observations the host can actually serve. Darwin and WindowsNt answer false — each has its own mechanism for the same facts (Mach task_info, sysctl, the Windows process API), and modeling those is a separate job this module does not attempt.
 fn kernel_provides_procfs(kernel: std.os.types.KernelFamily) -> Bool {
   match kernel {
-    Linux => true
-    LinuxGuestOnWindows => true
-    Darwin => false
-    WindowsNt => false
+    std.os.types.Linux => true
+    std.os.types.LinuxGuestOnWindows => true
+    std.os.types.Darwin => false
+    std.os.types.WindowsNt => false
   }
 }
 
@@ -65,10 +65,10 @@ fn procfs_availability(kernel: std.os.types.KernelFamily, path: ProcfsPath) -> P
 
 fn kernel_family_label(kernel: std.os.types.KernelFamily) -> std.types.NonEmptyStr {
   match kernel {
-    Linux => "Linux"
-    LinuxGuestOnWindows => "LinuxGuestOnWindows"
-    Darwin => "Darwin"
-    WindowsNt => "WindowsNt"
+    std.os.types.Linux => "Linux"
+    std.os.types.LinuxGuestOnWindows => "LinuxGuestOnWindows"
+    std.os.types.Darwin => "Darwin"
+    std.os.types.WindowsNt => "WindowsNt"
   }
 }
 
@@ -97,9 +97,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.linux.procfs",
       decl_name: "procfs_paths_read_by_this_repository",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.linux.procfs.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

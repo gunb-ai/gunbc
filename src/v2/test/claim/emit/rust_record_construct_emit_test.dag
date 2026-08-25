@@ -1,36 +1,36 @@
 module v2.test.emit.rust_record_construct_emit
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data rust_record_construct_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
-  root: dag_fixture_emitted_rec_fn,
-  facts: std.algebra.PartialFunction { lookup: rust_record_construct_emit_facts_miss }
+  root: v2.extdeps.languages.dag.dag_fixture_emitted_rec_fn,
+  facts: PartialFunction { lookup: rust_record_construct_emit_facts_miss }
 }
 
 fn rust_record_construct_emit_facts_miss(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_absent()
+  v2.std.optional.optional_absent()
 }
 
 fn rust_record_construct_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   v2.compiler.emit.emit(tree: rust_record_construct_emit_inferred_tree, target: target)
 }
 
-test fn rust_record_construct_emit_mk_accepts() -> v2.std.logic.Bool {
-  match rust_record_construct_emit_from_tree(target: rust_rec_target_model_staging()) {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_rec_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+test fn rust_record_construct_emit_mk_accepts() -> Bool {
+  match rust_record_construct_emit_from_tree(target: v2.extdeps.languages.rust_test.rust_rec_target_model_staging()) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried == v2.extdeps.languages.rust_test.rust_rec_source_text) && (d == v2.std.diagnostic.None)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_record_construct_emit_wrong_field_discriminates() -> v2.std.logic.Bool {
-  match rust_record_construct_emit_from_tree(target: rust_rec_wrong_field_target_model_staging()) {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_rec_wrong_value_source_text) &&
-      (source.carried != rust_rec_source_text) &&
+test fn rust_record_construct_emit_wrong_field_discriminates() -> Bool {
+  match rust_record_construct_emit_from_tree(target: v2.extdeps.languages.rust_test.rust_rec_wrong_field_target_model_staging()) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried == v2.extdeps.languages.rust_test.rust_rec_wrong_value_source_text) &&
+      (source.carried != v2.extdeps.languages.rust_test.rust_rec_source_text) &&
       (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

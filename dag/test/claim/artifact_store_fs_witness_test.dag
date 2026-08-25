@@ -1,7 +1,7 @@
 module test.claim.artifact_store_fs_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data artifact_store_fs_witness_note: String = "P2 host-transport witnesses: the content-addressed roundtrip against the real Filesystem service. COVERAGE, STATED HONESTLY (corrected 2026-07-29 after an operator question exposed the previous sentence as false): this file runs WET ONLY. The old text claimed 'hermetic runs replay the service mock', and they do not - a hermetic run of artifact_fs_roundtrip_holds fails with 'no mock_response for operation Write - refusing to fabricate Unit', which is the envelope refusing fail-closed, not a mock being replayed. Nor does CI run it in either mode: the file is in gunbc.ci_layer_roots witness_exclusion_frontier as OfflineLocalRecipe and is absent from the explicit witness_entries roster, so discovery never selects it. The accurate claim these witnesses support is therefore 'green under a manual local wet run', never 'green in CI' - a transport whose real behavior CI never exercises is the proxy-assertion class, and the fix is a wet-lane cadence enrollment (where the other real-effect witnesses ride), not a stronger sentence here. PRECONDITION of the local recipe: the store-root directory must already exist, because Filesystem.Write does not create parents - without it all of these fail identically, which is a property of the recipe rather than of any one test. Store root under /tmp per the filesystem_write_closure_scale_witness precedent. Grant refusals surface as typed ArtifactFs*Refused variants — never widened to miss/false/[] (review 40162). RED control: a key whose toolchain input differs never serves the stored artifact - stale-never-served on the persistent tier."
 
@@ -9,8 +9,8 @@ data fs_store_root: String = "/tmp/gunbc_artifact_store_witness"
 data non_scratch_store_root: String = "/tmp/other_scratch"
 
 fn stored_key(toolchain: String) -> std.content_hash.ContentHash {
-  artifact_key_hash(key: std.artifact_store.ArtifactKey {
-    closure_digest: content_hash_atom(value: "fs-transport-closure-fixture"),
+  std.artifact_store.artifact_key_hash(key: std.artifact_store.ArtifactKey {
+    closure_digest: std.content_hash.content_hash_atom(value: "fs-transport-closure-fixture"),
     emitter_identity: "v1-seed",
     target_language: "rust",
     toolchain: toolchain
@@ -20,55 +20,55 @@ fn stored_key(toolchain: String) -> std.content_hash.ContentHash {
 test fn artifact_fs_roundtrip_holds() -> Bool {
   let key = stored_key(toolchain: "1.93.0")
   let payload = "artifact-payload-bytes-fixture"
-  let put_ok = match artifact_fs_put(store_root: fs_store_root, key: key, payload: payload) {
-    ArtifactFsPutOk => true
-    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
-    ArtifactFsPutFailed { path: p } => false
+  let put_ok = match extdeps.realization.artifact_store_fs.artifact_fs_put(store_root: fs_store_root, key: key, payload: payload) {
+    extdeps.realization.artifact_store_fs.ArtifactFsPutOk => true
+    extdeps.realization.artifact_store_fs.ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsPutFailed { path: p } => false
   }
-  let served = match artifact_fs_get(store_root: fs_store_root, key: key) {
-    ArtifactFsHit { payload: p } => p == payload
-    ArtifactFsMiss { path: _ } => false
-    ArtifactFsRefused { verb: v, target: t, frame: f } => false
+  let served = match extdeps.realization.artifact_store_fs.artifact_fs_get(store_root: fs_store_root, key: key) {
+    extdeps.realization.artifact_store_fs.ArtifactFsHit { payload: p } => p == payload
+    extdeps.realization.artifact_store_fs.ArtifactFsMiss { path: _ } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsRefused { verb: v, target: t, frame: f } => false
   }
   put_ok && served
 }
 
 test fn artifact_fs_refuses_non_scratch_store_root_holds() -> Bool {
   let key = stored_key(toolchain: "refused-root")
-  match artifact_fs_get(store_root: non_scratch_store_root, key: key) {
-    ArtifactFsRefused { verb: v, target: t, frame: f } =>
-      verb_eq(a: v, b: Read) && f == artifact_store_scratch_frame
-    ArtifactFsHit { payload: _ } => false
-    ArtifactFsMiss { path: _ } => false
+  match extdeps.realization.artifact_store_fs.artifact_fs_get(store_root: non_scratch_store_root, key: key) {
+    extdeps.realization.artifact_store_fs.ArtifactFsRefused { verb: v, target: t, frame: f } =>
+      std.effect_grant.verb_eq(a: v, b: std.effect_grant.Read) && f == std.artifact_store_scratch_grant.artifact_store_scratch_frame
+    extdeps.realization.artifact_store_fs.ArtifactFsHit { payload: _ } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsMiss { path: _ } => false
   }
 }
 
 test fn artifact_fs_delete_then_misses_holds() -> Bool {
   let key = stored_key(toolchain: "delete-case")
-  let put_ok = match artifact_fs_put(store_root: fs_store_root, key: key, payload: "to-be-evicted") {
-    ArtifactFsPutOk => true
-    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
-    ArtifactFsPutFailed { path: p } => false
+  let put_ok = match extdeps.realization.artifact_store_fs.artifact_fs_put(store_root: fs_store_root, key: key, payload: "to-be-evicted") {
+    extdeps.realization.artifact_store_fs.ArtifactFsPutOk => true
+    extdeps.realization.artifact_store_fs.ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsPutFailed { path: p } => false
   }
-  let listed = match artifact_fs_list(store_root: fs_store_root) {
-    ArtifactFsListOk { entries: es } => es |> any(e => string_contains(e, key))
-    ArtifactFsListRefused { verb: v, target: t, frame: f } => false
-    ArtifactFsListFailed { path: p } => false
+  let listed = match extdeps.realization.artifact_store_fs.artifact_fs_list(store_root: fs_store_root) {
+    extdeps.realization.artifact_store_fs.ArtifactFsListOk { entries: es } => es |> any(e => string_contains(e, key))
+    extdeps.realization.artifact_store_fs.ArtifactFsListRefused { verb: v, target: t, frame: f } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsListFailed { path: p } => false
   }
-  let deleted = match artifact_fs_delete(store_root: fs_store_root, key: key) {
-    ArtifactFsDeleteOk => true
-    ArtifactFsDeleteRefused { verb: v, target: t, frame: f } => false
-    ArtifactFsDeleteFailed { path: p } => false
+  let deleted = match extdeps.realization.artifact_store_fs.artifact_fs_delete(store_root: fs_store_root, key: key) {
+    extdeps.realization.artifact_store_fs.ArtifactFsDeleteOk => true
+    extdeps.realization.artifact_store_fs.ArtifactFsDeleteRefused { verb: v, target: t, frame: f } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsDeleteFailed { path: p } => false
   }
-  let missed = match artifact_fs_get(store_root: fs_store_root, key: key) {
-    ArtifactFsHit { payload: _ } => false
-    ArtifactFsMiss { path: _ } => true
-    ArtifactFsRefused { verb: v, target: t, frame: f } => false
+  let missed = match extdeps.realization.artifact_store_fs.artifact_fs_get(store_root: fs_store_root, key: key) {
+    extdeps.realization.artifact_store_fs.ArtifactFsHit { payload: _ } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsMiss { path: _ } => true
+    extdeps.realization.artifact_store_fs.ArtifactFsRefused { verb: v, target: t, frame: f } => false
   }
-  let unlisted = match artifact_fs_list(store_root: fs_store_root) {
-    ArtifactFsListOk { entries: es } => (es |> any(e => string_contains(e, key))) == false
-    ArtifactFsListRefused { verb: v, target: t, frame: f } => false
-    ArtifactFsListFailed { path: p } => false
+  let unlisted = match extdeps.realization.artifact_store_fs.artifact_fs_list(store_root: fs_store_root) {
+    extdeps.realization.artifact_store_fs.ArtifactFsListOk { entries: es } => (es |> any(e => string_contains(e, key))) == false
+    extdeps.realization.artifact_store_fs.ArtifactFsListRefused { verb: v, target: t, frame: f } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsListFailed { path: p } => false
   }
   put_ok && listed && deleted && missed && unlisted
 }
@@ -76,15 +76,15 @@ test fn artifact_fs_delete_then_misses_holds() -> Bool {
 test fn artifact_fs_mutated_input_misses_holds() -> Bool {
   let key = stored_key(toolchain: "1.93.0")
   let mutated = stored_key(toolchain: "1.94.0")
-  let put_ok = match artifact_fs_put(store_root: fs_store_root, key: key, payload: "original-toolchain-artifact") {
-    ArtifactFsPutOk => true
-    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
-    ArtifactFsPutFailed { path: p } => false
+  let put_ok = match extdeps.realization.artifact_store_fs.artifact_fs_put(store_root: fs_store_root, key: key, payload: "original-toolchain-artifact") {
+    extdeps.realization.artifact_store_fs.ArtifactFsPutOk => true
+    extdeps.realization.artifact_store_fs.ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsPutFailed { path: p } => false
   }
-  let miss = match artifact_fs_get(store_root: fs_store_root, key: mutated) {
-    ArtifactFsHit { payload: _ } => false
-    ArtifactFsMiss { path: _ } => true
-    ArtifactFsRefused { verb: v, target: t, frame: f } => false
+  let miss = match extdeps.realization.artifact_store_fs.artifact_fs_get(store_root: fs_store_root, key: mutated) {
+    extdeps.realization.artifact_store_fs.ArtifactFsHit { payload: _ } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsMiss { path: _ } => true
+    extdeps.realization.artifact_store_fs.ArtifactFsRefused { verb: v, target: t, frame: f } => false
   }
   put_ok && miss && (key == mutated) == false
 }
@@ -95,8 +95,8 @@ data artifact_store_fs_eviction_witness_note: String = "The budget-enforcement r
 data eviction_store_root: String = "/tmp/gunbc_artifact_store_eviction_witness"
 
 fn eviction_key(tag: String) -> std.content_hash.ContentHash {
-  artifact_key_hash(key: std.artifact_store.ArtifactKey {
-    closure_digest: content_hash_atom(value: tag),
+  std.artifact_store.artifact_key_hash(key: std.artifact_store.ArtifactKey {
+    closure_digest: std.content_hash.content_hash_atom(value: tag),
     emitter_identity: "v1-seed",
     target_language: "rust",
     toolchain: "1.93.0"
@@ -104,7 +104,7 @@ fn eviction_key(tag: String) -> std.content_hash.ContentHash {
 }
 
 fn eviction_probe_store() -> std.artifact_store.ArtifactStore {
-  std.artifact_store.ArtifactStore { budget: byte_size(count: 60), next_ordinal: 1, rows: [] }
+  std.artifact_store.ArtifactStore { budget: std.measure.byte_size(count: 60), next_ordinal: 1, rows: [] }
 }
 
 fn fs_list_contains(entries: List<String>, key: std.content_hash.ContentHash) -> Bool {
@@ -114,34 +114,34 @@ fn fs_list_contains(entries: List<String>, key: std.content_hash.ContentHash) ->
 test fn artifact_fs_eviction_removes_only_the_evicted_key() -> Bool {
   let victim = eviction_key(tag: "eviction-victim")
   let survivor = eviction_key(tag: "eviction-survivor")
-  let put_victim = artifact_fs_put(store_root: eviction_store_root, key: victim, payload: "victim-bytes")
-  let put_survivor = artifact_fs_put(store_root: eviction_store_root, key: survivor, payload: "survivor-bytes")
+  let put_victim = extdeps.realization.artifact_store_fs.artifact_fs_put(store_root: eviction_store_root, key: victim, payload: "victim-bytes")
+  let put_survivor = extdeps.realization.artifact_store_fs.artifact_fs_put(store_root: eviction_store_root, key: survivor, payload: "survivor-bytes")
   let both_written = match put_victim {
-    ArtifactFsPutOk => match put_survivor {
-      ArtifactFsPutOk => true
-      ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
-      ArtifactFsPutFailed { path: p } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsPutOk => match put_survivor {
+      extdeps.realization.artifact_store_fs.ArtifactFsPutOk => true
+      extdeps.realization.artifact_store_fs.ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+      extdeps.realization.artifact_store_fs.ArtifactFsPutFailed { path: p } => false
     }
-    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
-    ArtifactFsPutFailed { path: p } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsPutFailed { path: p } => false
   }
-  store_put_fold(
-    outcome: store_put(store: eviction_probe_store(), key: victim, artifact_bytes: byte_size(count: 40)),
+  std.artifact_store.store_put_fold(
+    outcome: std.artifact_store.store_put(store: eviction_probe_store(), key: victim, artifact_bytes: std.measure.byte_size(count: 40)),
     admitted: fn(warmed, warmed_evicted) {
-      store_put_fold(
-        outcome: store_put(store: warmed, key: survivor, artifact_bytes: byte_size(count: 40)),
+      std.artifact_store.store_put_fold(
+        outcome: std.artifact_store.store_put(store: warmed, key: survivor, artifact_bytes: std.measure.byte_size(count: 40)),
         admitted: fn(packed, evicted) {
-          let steps = apply_store_evictions(store_root: eviction_store_root, evicted: evicted)
-          let applied = eviction_all_applied(steps: steps) && (eviction_deleted_count(steps: steps) == 1)
-          match artifact_fs_list(store_root: eviction_store_root) {
-            ArtifactFsListOk { entries: entries } =>
+          let steps = extdeps.realization.artifact_store_fs.apply_store_evictions(store_root: eviction_store_root, evicted: evicted)
+          let applied = extdeps.realization.artifact_store_fs.eviction_all_applied(steps: steps) && (extdeps.realization.artifact_store_fs.eviction_deleted_count(steps: steps) == 1)
+          match extdeps.realization.artifact_store_fs.artifact_fs_list(store_root: eviction_store_root) {
+            extdeps.realization.artifact_store_fs.ArtifactFsListOk { entries: entries } =>
               both_written
                 && (warmed_evicted.count() == 0)
                 && applied
                 && (fs_list_contains(entries: entries, key: victim) == false)
                 && fs_list_contains(entries: entries, key: survivor)
-            ArtifactFsListRefused { verb: v, target: t, frame: f } => false
-            ArtifactFsListFailed { path: p } => false
+            extdeps.realization.artifact_store_fs.ArtifactFsListRefused { verb: v, target: t, frame: f } => false
+            extdeps.realization.artifact_store_fs.ArtifactFsListFailed { path: p } => false
           }
         },
         did_not_fit: (a, b) => false
@@ -153,11 +153,11 @@ test fn artifact_fs_eviction_removes_only_the_evicted_key() -> Bool {
 
 test fn artifact_fs_eviction_of_empty_receipt_deletes_nothing() -> Bool {
   let solo = eviction_key(tag: "eviction-solo")
-  store_put_fold(
-    outcome: store_put(store: eviction_probe_store(), key: solo, artifact_bytes: byte_size(count: 40)),
+  std.artifact_store.store_put_fold(
+    outcome: std.artifact_store.store_put(store: eviction_probe_store(), key: solo, artifact_bytes: std.measure.byte_size(count: 40)),
     admitted: fn(packed, evicted) {
-      let steps = apply_store_evictions(store_root: eviction_store_root, evicted: evicted)
-      (steps.count() == 0) && eviction_all_applied(steps: steps)
+      let steps = extdeps.realization.artifact_store_fs.apply_store_evictions(store_root: eviction_store_root, evicted: evicted)
+      (steps.count() == 0) && extdeps.realization.artifact_store_fs.eviction_all_applied(steps: steps)
     },
     did_not_fit: (a, b) => false
   )

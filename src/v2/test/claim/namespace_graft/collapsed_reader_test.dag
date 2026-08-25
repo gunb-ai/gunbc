@@ -7,12 +7,12 @@ fn cr_sym_node(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn cr_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> v2.std.node.Node {
-  fold_list_node(
+  v2.std.algebra.fold_list_node(
     xs: segments,
     item_node: fn(sym) { cr_sym_node(sym: sym) }
   )
@@ -30,102 +30,102 @@ fn cr_pre_graft_module_root(
   body_edges: List<v2.std.node.Edge>
 ) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: concat(
       [
-        dag_named_edge(
+        v2.extdeps.languages.dag.dag_named_edge(
           name: ^dag_surface_module_header,
-          target: dag_grammar_atom(id: ^dag_surface_module_header)
+          target: v2.extdeps.languages.dag.dag_grammar_atom(id: ^dag_surface_module_header)
         ),
-        dag_named_edge(
+        v2.extdeps.languages.dag.dag_named_edge(
           name: ^dag_surface_module_header_qualified_name,
           target: cr_qn_spine(segments: qn)
         )
       ],
       body_edges
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-data cr_module_qn: v2.std.qualified_name.QualifiedName = qualified_name_from_dotted_string(dotted: "v2.test.namespace_graft.collapsed")
+data cr_module_qn: v2.std.qualified_name.QualifiedName = v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.test.namespace_graft.collapsed")
 
 data cr_pre_graft_root: v2.std.node.Node = cr_pre_graft_module_root(
   qn: cr_module_qn,
   body_edges: [cr_export_edge(name: ^CrPilotType)]
 )
 
-data cr_grafted_root: v2.std.node.Node = match module_header_containment_graft(root: cr_pre_graft_root) {
-  Accepted { value: grafted, diagnostics: _ } => grafted
-  Rejected { diagnostics: _ } => cr_pre_graft_root
+data cr_grafted_root: v2.std.node.Node = match v2.compiler.namespace_graft.module_header_containment_graft(root: cr_pre_graft_root) {
+  v2.std.diagnostic.Accepted { value: grafted, diagnostics: _ } => grafted
+  v2.std.diagnostic.Rejected { diagnostics: _ } => cr_pre_graft_root
 }
 
 data cr_bare_conj_root: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-fn cr_outcome_accepted_qn(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>) -> v2.std.logic.Bool {
+fn cr_outcome_accepted_qn(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>) -> Bool {
   match out {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn cr_qn_eq(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> v2.std.logic.Bool {
+fn cr_qn_eq(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> Bool {
   match out {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: actual, diagnostics: _ } => actual == expected
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: actual, diagnostics: _ } => actual == expected
   }
 }
 
-fn cr_outcomes_agree(lhs: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, rhs: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>) -> v2.std.logic.Bool {
+fn cr_outcomes_agree(lhs: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, rhs: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>) -> Bool {
   match lhs {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: lhs_qn, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: lhs_qn, diagnostics: _ } =>
       match rhs {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: rhs_qn, diagnostics: _ } => lhs_qn == rhs_qn
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: rhs_qn, diagnostics: _ } => lhs_qn == rhs_qn
       }
   }
 }
 
-test fn collapsed_reader_grafted_spine_agreement_holds() -> v2.std.logic.Bool {
+test fn collapsed_reader_grafted_spine_agreement_holds() -> Bool {
   cr_outcomes_agree(
-    lhs: qualified_name_from_module_node(root: cr_grafted_root),
-    rhs: qualified_name_from_graft_spine(root: cr_grafted_root)
+    lhs: v2.extdeps.languages.dag.qualified_name_from_module_node(root: cr_grafted_root),
+    rhs: v2.extdeps.languages.dag.qualified_name_from_graft_spine(root: cr_grafted_root)
   )
 }
 
-test fn collapsed_reader_grafted_expected_qn_holds() -> v2.std.logic.Bool {
+test fn collapsed_reader_grafted_expected_qn_holds() -> Bool {
   cr_qn_eq(
-    out: qualified_name_from_module_node(root: cr_grafted_root),
+    out: v2.extdeps.languages.dag.qualified_name_from_module_node(root: cr_grafted_root),
     expected: cr_module_qn
   )
 }
 
-test fn collapsed_reader_pre_graft_header_agreement_holds() -> v2.std.logic.Bool {
+test fn collapsed_reader_pre_graft_header_agreement_holds() -> Bool {
   cr_qn_eq(
-    out: qualified_name_from_module_node(root: cr_pre_graft_root),
+    out: v2.extdeps.languages.dag.qualified_name_from_module_node(root: cr_pre_graft_root),
     expected: cr_module_qn
   )
 }
 
 data claim_collapsed_reader_bare_conj_refused: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "collapsed QN reader RED: bare Conj (neither grafted spine nor module header) refuses — graft-awareness widens acceptance to grafted trees only",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: cr_sym_node(sym: ^cr_bool_true),
   rhs: cr_sym_node(
-    sym: if cr_outcome_accepted_qn(out: qualified_name_from_module_node(root: cr_bare_conj_root)) {
+    sym: if cr_outcome_accepted_qn(out: v2.extdeps.languages.dag.qualified_name_from_module_node(root: cr_bare_conj_root)) {
       ^cr_bool_false
     } else {
       ^cr_bool_true
     }
   ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
-test fn collapsed_reader_bare_conj_refused_holds() -> v2.std.logic.Bool {
-  !cr_outcome_accepted_qn(out: qualified_name_from_module_node(root: cr_bare_conj_root))
+test fn collapsed_reader_bare_conj_refused_holds() -> Bool {
+  !cr_outcome_accepted_qn(out: v2.extdeps.languages.dag.qualified_name_from_module_node(root: cr_bare_conj_root))
 }

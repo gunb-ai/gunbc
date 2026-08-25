@@ -1,5 +1,7 @@
 module v2.test.manual.nominal_distinctness_cross_call
 
+
+
 data nominal_distinct_forbidden_authority_source_text: String = "nominal_distinct_forbidden_authority_source_text"
 
 data nominal_distinct_records_source: extdeps.communication.medium.Medium<String> = extdeps.communication.medium.Medium { carried: "module nominal.distinct.records.probe\n\ntype WrapA {\n  value: Int\n}\n\ntype WrapB {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(b: WrapB) -> Int = expects_a(b)\n", fidelity: extdeps.communication.medium.Lossless }
@@ -55,7 +57,7 @@ data nominal_distinct_control_compile_receipt: v2.std.diagnostic.Outcome<extdeps
 
 test fn nominal_distinct_control_compiles_ok() -> Bool {
   match nominal_distinct_control_compile_receipt {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

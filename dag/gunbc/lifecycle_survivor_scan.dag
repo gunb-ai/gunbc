@@ -30,7 +30,7 @@ module gunbc.lifecycle_survivor_scan
 // inability to observe one are different states.
 data lifecycle_survivor_scan_roots: List<String> = ["dag", "src/v2"]
 
-data lifecycle_survivor_scan_facts: List<v2.std.decl_index.DataDeclTypeFact> = data_decl_type_facts(pool_roots: lifecycle_survivor_scan_roots)
+data lifecycle_survivor_scan_facts: List<v2.std.decl_index.DataDeclTypeFact> = v2.std.decl_index.data_decl_type_facts(pool_roots: lifecycle_survivor_scan_roots)
 
 // Raw prose is exactly the two bare string carriers, matching `type_is_bare_string` in the
 // field-grain wall. A refined or wrapped carrier is not raw; a `DissolutionCondition` is the
@@ -52,9 +52,9 @@ fn raw_lifecycle_string_survivor_facts() -> List<v2.std.decl_index.DataDeclTypeF
 }
 
 fn raw_lifecycle_string_survivor_refs() -> List<std.decl_ref.DeclarationRef> {
-  v2.std.algebra.list_map(
+  list_map(
     xs: raw_lifecycle_string_survivor_facts(),
-    f: fn(f) { decl_ref(module_path: f.module_path, decl_name: f.decl_name) }
+    f: fn(f) { std.decl_ref.decl_ref(module_path: f.module_path, decl_name: f.decl_name) }
   )
 }
 
@@ -63,7 +63,7 @@ fn raw_lifecycle_string_survivor_count() -> Int {
 }
 
 fn raw_lifecycle_string_survivor_keys() -> List<String> {
-  v2.std.algebra.list_map(xs: raw_lifecycle_string_survivor_refs(), f: fn(r) { declaration_ref_display_key(ref: r) })
+  list_map(xs: raw_lifecycle_string_survivor_refs(), f: fn(r) { std.decl_ref.declaration_ref_display_key(ref: r) })
 }
 
 // The gate. An unclassified raw survivor does not need to be classified -- it needs to not

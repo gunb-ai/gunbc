@@ -1,5 +1,6 @@
 module gunbc.runner_lifecycle
 
+
 // PR B seam (operator 2026-08-06): vivid-eagle-131 owns gunbc.apply plan + typed actions;
 // still-ram-738 owns these HostEffect arms + ADD sequence + shared RunnerSlotIdentity;
 // vivid-otter-718 stacks ReplaceRunnerIncarnation / repair arms on the SAME identity — no fork.
@@ -12,7 +13,7 @@ type RunnerReplacementCause
   | ReplacementCauseWedgedBroker {}
   | ReplacementCauseOperatorForced { detail: String }
 
-data runner_lifecycle_authority_disposition: Disposition = SingleAuthority
+data runner_lifecycle_authority_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 data runner_lifecycle_ctrl_void_note: String = "gunbc citations must not treat ctrl as a live upstream repo (operator ruling 2026-08-06). On hosts ctrl IS still deployed: install-actions-runner.sh lives at /home/briansrls/ctrl/scripts/session-dashboard/host/install-actions-runner.sh; ctrl-runner-reclaim.timer is active. gunbc.runner_lifecycle ADD path must READ that installer as ground truth for what creates a runner, then subsume it through HostEffect arms — never invoke ctrl from gunbc run, never fork runner-liveness-reconcile (timer active on srv1 every 2 min; /opt/actions-runner/runner-liveness-reconcile.sh documents the Aug-6 outage — #7940 subsumes it). runner_host_deploy ctrl path literals remain void legacy pointers only."
 
@@ -114,17 +115,17 @@ type RunnerSlotAddSequence
 // TRIGGER: it becomes load-bearing the moment anything in production selects a step sequence --
 // which is the same event that makes the fabric provisioning arm below necessary. Until then its
 // witness is the only thing executing it, and a witness is not a consumer.
-fn runner_slot_add_sequence_for(host: HostIdentity, slot_index: std.nat.Nat) -> RunnerSlotAddSequence {
-  match runner_slot_membership(host: host, slot_index: slot_index) {
-    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
+fn runner_slot_add_sequence_for(host: product.placement_supply.HostIdentity, slot_index: std.nat.Nat) -> RunnerSlotAddSequence {
+  match gunbc.runner_slot_allocation.runner_slot_membership(host: host, slot_index: slot_index) {
+    gunbc.runner_slot_allocation.SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
       SlotIsNotACommittedMember {
         reason: "slot index is outside the host committed population: asking what a slot is FOR only means something once it IS a slot, so this refuses rather than classifying an identity the host was never admitted to carry"
       }
-    CommittedSlotMember { identity: _, purpose: p } =>
+    gunbc.runner_slot_allocation.CommittedSlotMember { identity: _, purpose: p } =>
       match p {
-        SlotServesGitHubActions =>
+        gunbc.runner_slot_allocation.SlotServesGitHubActions =>
           GitHubRunnerAddSequence { steps: runner_slot_add_steps_ordered() }
-        SlotServesFabricExecution =>
+        gunbc.runner_slot_allocation.SlotServesFabricExecution =>
           FabricSlotHasNoGitHubAddSequence {
             reason: "fabric execution slot: the GitHub runner add sequence does not apply to it, and refusing is not the same as having nothing to say. gunbc.fabric_cell_converge now models the fabric family's DESIRED AND OBSERVED SUBSTRATE MEMBERSHIP; its host-effect realization remains absent, so there is no provisioning sequence to name and no fabric success arm belongs in this GitHub lifecycle. What is refused here is the FILTERED SUBSEQUENCE: this sequence fetches an actions-runner release, verifies its arch digest and starts an actions-runner unit, so the GitHub steps minus the GitHub-specific ones would provision a slot that downloads GitHub's runner in order never to run GitHub's runner"
           }
@@ -153,35 +154,35 @@ fn runner_slot_caps_precede_start() -> Bool {
   runner_slot_add_step_index(step: AddStepMemoryCaps) < runner_slot_add_step_index(step: AddStepStartUnit)
 }
 
-fn runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
-  join(["actions-runner@", runner_slot_instance_name(slot: slot), ".service"], "") as NonEmptyStr
+fn runner_slot_unit_name(slot: gunbc.build_cache_instance.RunnerSlotIdentity) -> std.types.NonEmptyStr {
+  join(["actions-runner@", gunbc.build_cache_instance.runner_slot_instance_name(slot: slot), ".service"], "") as std.types.NonEmptyStr
 }
 
-fn runner_slot_dir_path(slot: RunnerSlotIdentity) -> NonEmptyStr {
-  join([actions_runner_base_dir, "/", runner_slot_instance_name(slot: slot)], "") as NonEmptyStr
+fn runner_slot_dir_path(slot: gunbc.build_cache_instance.RunnerSlotIdentity) -> std.types.NonEmptyStr {
+  join([extdeps.github.actions_runner.actions_runner_base_dir, "/", gunbc.build_cache_instance.runner_slot_instance_name(slot: slot)], "") as std.types.NonEmptyStr
 }
 
 data runner_slot_disk_budget_per_slot_note: String = "Conservative per-slot disk charge for width preflight on srv4 (operator 2026-08-06): a host cannot silently fall back to the historical five-slot pin. Unobservable disk REFUSES; insufficient headroom REFUSES — never absorbs to a width the disk happens to permit.\n\nTHE NUMBER IS CIRCULAR AND THAT IS RECORDED HERE RATHER THAN IN THE ROWS THAT CITE IT. This note previously read 'derived from srv4_runner_count_disk_cap_note arithmetic (~38GB per slot at width 7 on 500GB class disk)' as if that were a provenance. It is not: 500GB class disk divided by the width of the day IS the derivation, so the charge was computed FROM a desired width and is now used to CONSTRAIN one. Nothing was measured. A separate observation of live per-slot usage under an active reclaimer came in near 2.5 GB, two orders of magnitude below this row.\n\nWHAT THAT COSTS NOW, at the width the CPU axis committed on 2026-08-23: runner_width_disk_preflight charges 21 x 40.96 GB, about 860 GB, against srv4's 500 GB NVMe, and is EXPECTED TO REFUSE. So a circular charge is refusing a derived width -- two unmeasured numbers meeting -- and neither the refusal nor a hypothetical pass would be evidence about srv4's real disk. The refusal is still correct behaviour: refusing on an unreliable charge is the fail-closed arm, and lowering the charge to make the width fit would be fitting the measurement to the answer.\n\nWHAT IS NOT CLAIMED: that srv4 cannot hold 21 slots. Every ephemeral runner keeps a _work tree plus caches so the true figure is not 2.5 GB either, and the question is open in both directions. DISSOLVE-ON: a measured per-slot disk series on srv4 replacing this row, at which point the preflight either refuses on evidence or stops refusing."
 
-data runner_slot_disk_budget_per_slot: ByteSize = byte_size(40960000000)
+data runner_slot_disk_budget_per_slot: std.measure.ByteSize = std.measure.byte_size(40960000000)
 
-fn runner_width_disk_required(requested_width: Int) -> ByteSize {
-  byte_size(count: requested_width * byte_size_count(b: runner_slot_disk_budget_per_slot))
+fn runner_width_disk_required(requested_width: Int) -> std.measure.ByteSize {
+  std.measure.byte_size(count: requested_width * std.measure.byte_size_count(b: runner_slot_disk_budget_per_slot))
 }
 
 type RunnerWidthDiskPreflight
-  = DiskHeadroomSufficient { requested_width: Int, required: ByteSize, observed_free: ByteSize }
-  | DiskHeadroomInsufficient { requested_width: Int, required: ByteSize, observed_free: ByteSize }
+  = DiskHeadroomSufficient { requested_width: Int, required: std.measure.ByteSize, observed_free: std.measure.ByteSize }
+  | DiskHeadroomInsufficient { requested_width: Int, required: std.measure.ByteSize, observed_free: std.measure.ByteSize }
   | DiskHeadroomUnobserved { requested_width: Int, reason: String }
 
 fn runner_width_disk_preflight(
   requested_width: Int,
-  disk: HostDiskObservation,
+  disk: gunbc.host_disk_observation.HostDiskObservation,
 ) -> RunnerWidthDiskPreflight {
   let required = runner_width_disk_required(requested_width: requested_width)
   match disk {
-    DiskObserved { free_bytes: free } =>
-      if byte_size_count(b: free) >= byte_size_count(b: required) {
+    gunbc.host_disk_observation.DiskObserved { free_bytes: free } =>
+      if std.measure.byte_size_count(b: free) >= std.measure.byte_size_count(b: required) {
         DiskHeadroomSufficient { requested_width: requested_width, required: required, observed_free: free }
       } else {
         DiskHeadroomInsufficient {
@@ -190,15 +191,15 @@ fn runner_width_disk_preflight(
           observed_free: free,
         }
       }
-    DiskUnobserved { reason: r } =>
+    gunbc.host_disk_observation.DiskUnobserved { reason: r } =>
       DiskHeadroomUnobserved { requested_width: requested_width, reason: r }
-    DiskObservationRefused { detail: d } =>
+    gunbc.host_disk_observation.DiskObservationRefused { detail: d } =>
       DiskHeadroomUnobserved { requested_width: requested_width, reason: d as String }
   }
 }
 
 type RunnerSlotLifecycleReceipt {
-  slot: RunnerSlotIdentity
+  slot: gunbc.build_cache_instance.RunnerSlotIdentity
   requested: Bool
   materialized: Bool
   active_unit: Bool
@@ -209,7 +210,7 @@ type RunnerSlotLifecycleReceipt {
 }
 
 type HostRunnerCapacityReceipt {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   requested_width: Int
   materialized_count: Int
   active_unit_count: Int
@@ -227,52 +228,52 @@ fn host_runner_capacity_converged(receipt: HostRunnerCapacityReceipt) -> Bool {
 
 type RunnerLocalStateObservation
   = RunnerLocalStateObserved {
-      slot: RunnerSlotIdentity
+      slot: gunbc.build_cache_instance.RunnerSlotIdentity
       unit_active: Bool
       unit_busy: Bool
-      runner_version: NonEmptyStr
+      runner_version: std.types.NonEmptyStr
     }
-  | RunnerLocalStateUnobserved { slot: RunnerSlotIdentity, reason: NonEmptyStr }
+  | RunnerLocalStateUnobserved { slot: gunbc.build_cache_instance.RunnerSlotIdentity, reason: std.types.NonEmptyStr }
 
 type GitHubRunnerRegistrationObservation
   = GitHubRunnerRegisteredOnline {
-      slot: RunnerSlotIdentity
-      organization: NonEmptyStr
+      slot: gunbc.build_cache_instance.RunnerSlotIdentity
+      organization: std.types.NonEmptyStr
       ephemeral: Bool
       online: Bool
       busy: Bool
-      runner_version: NonEmptyStr
+      runner_version: std.types.NonEmptyStr
       labels_match: Bool
     }
-  | GitHubRunnerRegistrationPending { slot: RunnerSlotIdentity, reason: NonEmptyStr }
-  | GitHubRunnerRegistrationRefused { slot: RunnerSlotIdentity, reason: NonEmptyStr }
+  | GitHubRunnerRegistrationPending { slot: gunbc.build_cache_instance.RunnerSlotIdentity, reason: std.types.NonEmptyStr }
+  | GitHubRunnerRegistrationRefused { slot: gunbc.build_cache_instance.RunnerSlotIdentity, reason: std.types.NonEmptyStr }
 
 // Aspiration bind: runner_lifecycle_realize is not yet a single top-level decl; names the realize
 // module's per-effect dissolve targets (runner_lifecycle_realize_*), not a live symbol (review 49698).
 
-data runner_lifecycle_effects_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+data runner_lifecycle_effects_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.runner_lifecycle_realize",
     decl_name: "runner_lifecycle_realize_wet_transport_dissolve_on",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
-data runner_lifecycle_cited_release: ActionsRunnerRelease = actions_runner_release_2_334_0
+data runner_lifecycle_cited_release: extdeps.github.actions_runner.ActionsRunnerRelease = extdeps.github.actions_runner.actions_runner_release_2_334_0
 
-data runner_lifecycle_ci_org: NonEmptyStr = gunbai_ci_declared.owner_login
+data runner_lifecycle_ci_org: std.types.NonEmptyStr = gunbai_ci_declared.owner_login
 
-data runner_lifecycle_ci_installation_id: GitHubAppInstallationId = gunbai_ci_declared_installation_id
+data runner_lifecycle_ci_installation_id: extdeps.github.app.GitHubAppInstallationId = gunbc.auth.github_apps.gunbai_ci_declared_installation_id
 
 type RunnerPerSlotMemoryCaps {
-  memory_max: ByteSize
-  memory_high: ByteSize
-  memory_swap_max: ByteSize
+  memory_max: std.measure.ByteSize
+  memory_high: std.measure.ByteSize
+  memory_swap_max: std.measure.ByteSize
 }
 
 fn runner_lifecycle_per_slot_caps() -> RunnerPerSlotMemoryCaps {
-  let desired = gunbc_runner_slot_desired()
+  let desired = gunbc.runner_slot_allocation.gunbc_runner_slot_desired()
   RunnerPerSlotMemoryCaps {
     memory_max: desired.memory_max,
     memory_high: desired.memory_high,
@@ -280,14 +281,14 @@ fn runner_lifecycle_per_slot_caps() -> RunnerPerSlotMemoryCaps {
   }
 }
 
-data runner_lifecycle_jit_wrapper_path: String = join([actions_runner_base_dir, "/jit-runner.sh"], "")
+data runner_lifecycle_jit_wrapper_path: String = join([extdeps.github.actions_runner.actions_runner_base_dir, "/jit-runner.sh"], "")
 
-data runner_lifecycle_systemd_template_unit: String = gunbc_runner_unit_template
+data runner_lifecycle_systemd_template_unit: String = gunbc.host_converge.gunbc_runner_unit_template
 
 data runner_lifecycle_memory_cap_apply_note: String = "Per-slot caps are applied IMPERATIVELY on hosts (operator probe 2026-08-07): systemctl set-property writes /etc/systemd/system.control/<unit>.d/50-*.conf; read back with systemctl show -p MemoryMax/MemoryHigh/MemorySwapMax — not a hand-authored unit drop-in file. host_converge_slice1 is the precedent for EnsureRunnerMemoryCaps realization. srv1's five slots were hand-converged 2026-08-07 to the 14GiB memory model (MemoryMax=15032385536 MemoryHigh=13958643712 MemorySwapMax=34359738368 CPUWeight=100) AND (per that note's own text) to TasksMax=512 — which the 2026-08-08 operator ruling on PR 8045 identified as the diagnosed EAGAIN outage value, not the repair; desired is 16384 (gunbc.runner_slot_allocation). The 512 claim was DECIDED FALSE BY OBSERVATION (executed pre-apply receipt, workflow_dispatch run 31288091024, 2026-08-09, operator-accepted): all five srv1 slots read effective TasksMax=16384 with matching cgroup pids.max=16384, so the tasks axis is Converged and srv1 serves as the acceptance row 6 no-op control on ALL converged axes. srv2/srv3/srv4 remain at 16GiB until the workflow applies; their tasks state is unobserved."
 
-data runner_lifecycle_memory_cap_dropin: String = gunbc_runner_per_slot_dropin_path
+data runner_lifecycle_memory_cap_dropin: String = gunbc.host_converge.gunbc_runner_per_slot_dropin_path
 
-data runner_lifecycle_memory_swap_dropin: String = gunbc_runner_per_slot_swap_dropin_path
+data runner_lifecycle_memory_swap_dropin: String = gunbc.host_converge.gunbc_runner_per_slot_swap_dropin_path
 
-data runner_lifecycle_memory_high_dropin: String = gunbc_runner_per_slot_high_dropin_path
+data runner_lifecycle_memory_high_dropin: String = gunbc.host_converge.gunbc_runner_per_slot_high_dropin_path

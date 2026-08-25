@@ -1,38 +1,10 @@
 module std.nat
 
 
-// A natural number is a CARRIER, not an operations table. The prior declaration
-// -- Nat = CommutativeSemiring<std.magnitude.Magnitude> -- said a natural number IS a record of
-// {add, zero, mul, one}, naming the STRUCTURE where the carrier belonged. Its own
-// module contradicted it: nat_compare and nat_max order two Nats with `<` and `>`,
-// which no operations-record admits. The import era never made a consumer check
-// the declaration, so the contradiction sat unobserved rather than being allowed.
-//
-// The semiring is a VALUE the carrier inhabits (v2.std.nat models it that way, and
-// DESIGN §4 states the rule: operations come from inhabitance, as Int.add derives
-// from Int inhabiting a ring). No such value is declared here because nothing in
-// the corpus consumes a Nat's .add/.zero/.mul/.one -- adding one now would be
-// speculative structure, not grounding.
-//
-// REPAIR 2026-08-17 (second attempt, different layer). The FIRST attempt was
-// `Int where range(min: 0)`, which is NOT AVAILABLE here because std.integer declares
-//     type Int = AbelianGroup<GroupCompletion<std.nat.Nat>>
-// so a Nat defined over Int closes the cycle Nat -> Int -> GroupCompletion<Nat>.
-// A whole-tree compile at 3e493652f7a aborted with `has overflowed its stack`
-// inside reconcile, where the immediately preceding commit reached reconcile and
-// completed it. Whether the bare `Int` here reaches the kernel primitive (as
-// std.types' EpochSecs and five siblings do, compiling fine) or std.integer's
-// algebraic Int is exactly the pool-dependent binding this branch is about --
-// which is why that position could not take the idiom on faith.
-//
-// The carrier below routes through NOTHING, so no cycle is reachable from it. It is
-// also the shape v2 already uses -- src/v2/std/nat.dag declares `type Nat` opaque --
-// so this makes the two declarations agree instead of forking (DESIGN section 3), and
-// it drops the operations-record the header above shows the module contradicting.
-type Nat
+type Nat = std.algebra.CommutativeSemiring<std.magnitude.Magnitude>
 
 fn nat_compare(a: Nat, b: Nat) -> std.algebra.Ordering {
-  if a < b { Less } else { if a > b { Greater } else { Equal } }
+  if a < b { std.algebra.Less } else { if a > b { std.algebra.Greater } else { std.algebra.Equal } }
 }
 
 fn nat_max(a: Nat, b: Nat) -> Nat {

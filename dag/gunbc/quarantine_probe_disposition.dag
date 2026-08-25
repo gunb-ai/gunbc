@@ -19,7 +19,7 @@ module gunbc.quarantine_probe_disposition
 // true -- the quarantine's own removal path (a rostered row that passes reds the build) never
 // fired, because the row was never on that roster in the first place.
 //
-// WHY NOT THE OBVIOUS GUARD. "Every std.witness_admission.QuarantineProbeExpectRed admission must appear in
+// WHY NOT THE OBVIOUS GUARD. "Every QuarantineProbeExpectRed admission must appear in
 // floor_expected_red" is the version this lane was first given and it is WRONG, measured: of
 // the 19 live rows, 6 are legitimately held by the route-gap machinery and 7 by the floor's
 // long-home decline, so that predicate produces 13 false positives on its first run and grows
@@ -42,7 +42,7 @@ module gunbc.quarantine_probe_disposition
 // an unstated premise -- that a discovered identity is either planned or long-declined -- and
 // the floor's own receipt line names three arms. Deleting the row on that reading would have
 // discarded a live red control.
-data quarantine_probe_disposition_authority_note: v2.std.text.String = "The total disposition join over gunbc.explicit_witness_admission rows whose cadence is QuarantineProbeExpectRed. It answers WHICH DECLARED MECHANISM HOLDS THIS PROBE'S RED OBLIGATION, and refuses both of the ways that question can fail to have one answer: no mechanism holds it (the probe is not gated anywhere, so a green run says nothing about it) and more than one does (two authorities for one fact). Every fact it reads is supplied by the caller -- the rosters, the home prefixes and the path exclusions are all parameters -- so this module owns the DERIVATION and none of the populations, and a caller that can only supply three of the four axes says so by what it passes rather than by the fold quietly assuming the fourth."
+data quarantine_probe_disposition_authority_note: String = "The total disposition join over gunbc.explicit_witness_admission rows whose cadence is QuarantineProbeExpectRed. It answers WHICH DECLARED MECHANISM HOLDS THIS PROBE'S RED OBLIGATION, and refuses both of the ways that question can fail to have one answer: no mechanism holds it (the probe is not gated anywhere, so a green run says nothing about it) and more than one does (two authorities for one fact). Every fact it reads is supplied by the caller -- the rosters, the home prefixes and the path exclusions are all parameters -- so this module owns the DERIVATION and none of the populations, and a caller that can only supply three of the four axes says so by what it passes rather than by the fold quietly assuming the fourth."
 
 // THE FOUR DECLARED HOLDERS, and the fold is total over them by construction.
 //
@@ -115,9 +115,9 @@ data quarantine_probe_disposition_authority_note: v2.std.text.String = "The tota
 type QuarantineProbeHolder =
     FloorExpectedRedHeld
   | RouteGapHeldNoVerdict
-  | NeverRunDeclinedByHomePolicy { matched_prefix: v2.std.text.String }
-  | NeverRunDeclinedByLiveTreeRead { entry: v2.std.text.String }
-  | NeverRunPathExcluded { matched_substring: v2.std.text.String }
+  | NeverRunDeclinedByHomePolicy { matched_prefix: String }
+  | NeverRunDeclinedByLiveTreeRead { entry: String }
+  | NeverRunPathExcluded { matched_substring: String }
 
 // THE SUBJECT: one probe, named the way the floor names it.
 //
@@ -126,18 +126,18 @@ type QuarantineProbeHolder =
 // v2.test.manual.english_emit_add), and a path-shaped guess would silently miss the roster it
 // is joining against. The caller supplies it from the same declaration the floor reads.
 type QuarantineProbeSubject {
-  module: v2.std.text.String
-  entry: v2.std.text.String
-  function: v2.std.text.String
+  module: String
+  entry: String
+  function: String
 }
 
 // THE SUPPLIED FACTS. Four populations, four owners, none of them this module.
 type QuarantineProbeHoldingFacts {
-  expected_red_roster: List<v2.std.text.String>
-  route_gap_roster: List<v2.std.text.String>
-  home_prefixes: List<v2.std.text.String>
-  live_tree_declined_entries: List<v2.std.text.String>
-  path_exclusion_substrings: List<v2.std.text.String>
+  expected_red_roster: List<String>
+  route_gap_roster: List<String>
+  home_prefixes: List<String>
+  live_tree_declined_entries: List<String>
+  path_exclusion_substrings: List<String>
 }
 
 // THE ALARM IS AN ARM OF THE OUTCOME, NEVER A STABLE DISPOSITION.
@@ -155,9 +155,9 @@ type QuarantineProbeHoldingFacts {
 // decision is made against the evidence rather than re-derived. No live row exercises it today,
 // so this arm is about the future rather than the present.
 type QuarantineProbeDisposition =
-    HeldByExactlyOne { identity: v2.std.text.String, holder: QuarantineProbeHolder }
-  | QuarantineProbeNowPassing { identity: v2.std.text.String, entry: v2.std.text.String, function: v2.std.text.String }
-  | QuarantineProbeHeldByMoreThanOne { identity: v2.std.text.String, holders: List<QuarantineProbeHolder> }
+    HeldByExactlyOne { identity: String, holder: QuarantineProbeHolder }
+  | QuarantineProbeNowPassing { identity: String, entry: String, function: String }
+  | QuarantineProbeHeldByMoreThanOne { identity: String, holders: List<QuarantineProbeHolder> }
 
 // WHAT A HOLDER ESTABLISHES ABOUT THE CLAIM, derived totally from the holder and never stored.
 // Three states, because "the witness ran and failed as declared", "the witness ran and produced
@@ -179,11 +179,11 @@ fn quarantine_probe_verification_standing(holder: QuarantineProbeHolder) -> Quar
   }
 }
 
-fn quarantine_probe_identity(module: v2.std.text.String, function: v2.std.text.String) -> v2.std.text.String {
+fn quarantine_probe_identity(module: String, function: String) -> String {
   concat(module, concat(".", function))
 }
 
-fn quarantine_probe_subject_identity(subject: QuarantineProbeSubject) -> v2.std.text.String {
+fn quarantine_probe_subject_identity(subject: QuarantineProbeSubject) -> String {
   quarantine_probe_identity(module: subject.module, function: subject.function)
 }
 
@@ -194,7 +194,7 @@ fn quarantine_probe_subject_identity(subject: QuarantineProbeSubject) -> v2.std.
 // identity nor multiplicity, which is the weakness the exact-admission authority was built to
 // remove in the first place, and it is why the two arms that genuinely are substring-shaped
 // (home prefix, path exclusion) are matched by their own functions and carry what they matched.
-fn exact_member(needle: v2.std.text.String, population: List<v2.std.text.String>) -> v2.std.logic.Bool {
+fn exact_member(needle: String, population: List<String>) -> Bool {
   v2.std.algebra.fold_list(
     xs: population,
     empty: false,
@@ -202,7 +202,7 @@ fn exact_member(needle: v2.std.text.String, population: List<v2.std.text.String>
   )
 }
 
-fn first_matching_prefix(module: v2.std.text.String, prefixes: List<v2.std.text.String>) -> List<v2.std.text.String> {
+fn first_matching_prefix(module: String, prefixes: List<String>) -> List<String> {
   v2.std.algebra.fold_list(
     xs: prefixes,
     empty: v2.std.algebra.Empty {},
@@ -220,7 +220,7 @@ fn first_matching_prefix(module: v2.std.text.String, prefixes: List<v2.std.text.
   )
 }
 
-fn first_matching_substring(entry: v2.std.text.String, substrings: List<v2.std.text.String>) -> List<v2.std.text.String> {
+fn first_matching_substring(entry: String, substrings: List<String>) -> List<String> {
   v2.std.algebra.fold_list(
     xs: substrings,
     empty: v2.std.algebra.Empty {},
@@ -321,7 +321,7 @@ fn quarantine_probe_disposition(
   }
 }
 
-fn quarantine_probe_disposition_holds(disposition: QuarantineProbeDisposition) -> v2.std.logic.Bool {
+fn quarantine_probe_disposition_holds(disposition: QuarantineProbeDisposition) -> Bool {
   match disposition {
     HeldByExactlyOne { identity: i, holder: h } => true
     QuarantineProbeNowPassing { identity: i, entry: e, function: f } => false
@@ -345,7 +345,7 @@ fn quarantine_probe_dispositions(
 fn quarantine_probe_dispositions_all_hold(
   subjects: List<QuarantineProbeSubject>,
   facts: QuarantineProbeHoldingFacts
-) -> v2.std.logic.Bool {
+) -> Bool {
   v2.std.algebra.fold_list(
     xs: quarantine_probe_dispositions(subjects: subjects, facts: facts),
     empty: true,
@@ -357,7 +357,7 @@ fn quarantine_probe_dispositions_all_hold(
 // quarantine-probe consumer, which is the population the admission carrier claims a known red
 // for. The expectation axis answers a different question (which verdict is agreement) and is
 // deliberately not read here.
-fn admission_is_quarantine_probe(row: gunbc.explicit_witness_admission.ExplicitWitnessAdmission) -> v2.std.logic.Bool {
+fn admission_is_quarantine_probe(row: gunbc.explicit_witness_admission.ExplicitWitnessAdmission) -> Bool {
   match row.cadence {
     std.witness_admission.QuarantineProbeExpectRed => true
     _ => false

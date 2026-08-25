@@ -3,7 +3,7 @@ module extdeps.provisioning.network_boot
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "uefi.org/specs/UEFI/2.10/24_Network_Protocols_UDP_and_MTFTP.html"
   }
 }
@@ -19,17 +19,17 @@ type DhcpBootDirection =
 
 fn network_uefi_bootloader_artifact(arch: extdeps.toolchain.types.Architecture) -> std.types.NonEmptyStr? {
   match arch {
-    Aarch64 => Present { value: "grubnetaa64.efi" }
-    X86_64 => Present { value: "grubnetx64.efi" }
-    X86 => Absent
-    Arm => Absent
-    Armv7 => Absent
-    Mips => Absent
-    Mipsel => Absent
-    Mips64 => Absent
-    Mips64el => Absent
-    Riscv64 => Absent
-    Wasm32 => Absent
+    extdeps.toolchain.types.Aarch64 => Present { value: "grubnetaa64.efi" }
+    extdeps.toolchain.types.X86_64 => Present { value: "grubnetx64.efi" }
+    extdeps.toolchain.types.X86 => Absent
+    extdeps.toolchain.types.Arm => Absent
+    extdeps.toolchain.types.Armv7 => Absent
+    extdeps.toolchain.types.Mips => Absent
+    extdeps.toolchain.types.Mipsel => Absent
+    extdeps.toolchain.types.Mips64 => Absent
+    extdeps.toolchain.types.Mips64el => Absent
+    extdeps.toolchain.types.Riscv64 => Absent
+    extdeps.toolchain.types.Wasm32 => Absent
   }
 }
 

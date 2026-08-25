@@ -1,30 +1,30 @@
 module test.claim.claude_sdk_parser_drop_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data claude_sdk_parser_drop_witness_note: String = "Hermetic half of audit §4.1 parser-drop evidence: fixture positive control, RED parsed-surface control, RED forgery controls over claude_sdk_parser_drop_receipt_holds on inline JSON (dropped-array shortcut and absent sdk_parsed_event_types). The wet receipt filesystem_read witness lives in claude_sdk_parser_drop_live_witness_test.dag (ReadsLiveTree)."
 
 test fn witness_control_response_parser_drop_fixture_holds() -> Bool {
-  claude_sdk_control_response_parser_drop_holds(
-    subprocess_raw_types: parser_drop_fixture_subprocess_raw_types,
-    sdk_parsed_types: parser_drop_fixture_sdk_parsed_types
+  extdeps.llm.claude_agent_sdk_stream.claude_sdk_control_response_parser_drop_holds(
+    subprocess_raw_types: extdeps.llm.claude_agent_sdk_stream.parser_drop_fixture_subprocess_raw_types,
+    sdk_parsed_types: extdeps.llm.claude_agent_sdk_stream.parser_drop_fixture_sdk_parsed_types
   )
 }
 
 test fn RED_parsed_surface_including_control_response_does_not_hold() -> Bool {
-  !claude_sdk_control_response_parser_drop_holds(
-    subprocess_raw_types: parser_drop_fixture_subprocess_raw_types,
-    sdk_parsed_types: parser_drop_red_control_parsed_types
+  !extdeps.llm.claude_agent_sdk_stream.claude_sdk_control_response_parser_drop_holds(
+    subprocess_raw_types: extdeps.llm.claude_agent_sdk_stream.parser_drop_fixture_subprocess_raw_types,
+    sdk_parsed_types: extdeps.llm.claude_agent_sdk_stream.parser_drop_red_control_parsed_types
   )
 }
 
 test fn RED_wet_receipt_dropped_array_alone_is_not_sufficient() -> Bool {
   let forged = "{\"comparison\":{\"event_types_dropped_by_sdk_parser\":[\"control_response\"],\"sdk_subprocess_raw_event_types\":[\"system\"],\"sdk_parsed_event_types\":[\"control_response\",\"system\"]}}"
-  !claude_sdk_parser_drop_receipt_holds(text: forged)
+  !extdeps.llm.claude_agent_sdk_stream.claude_sdk_parser_drop_receipt_holds(text: forged)
 }
 
 test fn RED_wet_receipt_missing_sdk_parsed_event_types_does_not_hold() -> Bool {
   let forged = "{\"comparison\":{\"sdk_subprocess_raw_event_types\":[\"control_response\",\"system\"]}}"
-  !claude_sdk_parser_drop_receipt_holds(text: forged)
+  !extdeps.llm.claude_agent_sdk_stream.claude_sdk_parser_drop_receipt_holds(text: forged)
 }

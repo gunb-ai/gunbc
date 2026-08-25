@@ -1,7 +1,7 @@
 module test.claim.bmc_live_receipts_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // The firmware VERSION is the per-host observation and the only one. srv3 was
 // flashed to 3.22.00 on 2026-08-11 and re-observed 2026-08-12; the surface it
@@ -21,8 +21,8 @@ test fn update_surface_receipts_do_not_claim_an_available_backup_image() -> Bool
 }
 
 test fn overlay_receipt_records_literal_mount_and_write_facts_only() -> Bool {
-  match srv4_bmc_config_persistence_observation {
-    BmcOverlayConfigObserved {
+  match gunbc.fleet_bmc_observation.srv4_bmc_config_persistence_observation {
+    extdeps.bmc.types.BmcOverlayConfigObserved {
       firmware: firmware,
       config_path: config_path,
       overlay: overlay,
@@ -34,11 +34,11 @@ test fn overlay_receipt_records_literal_mount_and_write_facts_only() -> Bool {
     } =>
       firmware.version.major == 3
         && firmware.version.minor == 22
-        && config_path == srv4_bmc_fan_observed_config_path
-        && linux_overlay_observation_is_flash_backed(observation: overlay)
+        && config_path == gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_config_path
+        && extdeps.filesystem.linux.linux_overlay_observation_is_flash_backed(observation: overlay)
         && writable
         && upper_override_present
-    BmcConfigPersistenceUnsupported {
+    extdeps.bmc.types.BmcConfigPersistenceUnsupported {
       firmware: _,
       config_path: _,
       reason: _,
@@ -49,10 +49,10 @@ test fn overlay_receipt_records_literal_mount_and_write_facts_only() -> Bool {
 }
 
 test fn observed_fan_curve_is_validated_before_use() -> Bool {
-  match validate_bmc_fan_curve(curve: srv4_bmc_fan_observed_curve) {
-    BmcFanCurveValid { curve: validated } =>
-      validated.curve == srv4_bmc_fan_observed_curve
-    BmcFanCurveInvalid { cause: _ } => false
+  match extdeps.bmc.types.validate_bmc_fan_curve(curve: gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_curve) {
+    extdeps.bmc.types.BmcFanCurveValid { curve: validated } =>
+      validated.curve == gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_curve
+    extdeps.bmc.types.BmcFanCurveInvalid { cause: _ } => false
   }
 }
 
@@ -60,22 +60,22 @@ test fn duty_curve_cannot_fall_after_reaching_full_duty() -> Bool {
   let falling = extdeps.bmc.types.BmcFanCurve {
     control_sensor: "TEMP_SOC",
     steps: [
-      extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(90), duty: percent(100) },
-      extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(95), duty: percent(30) },
+      extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(90), duty: std.measure.percent(100) },
+      extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(95), duty: std.measure.percent(30) },
     ],
-    minimum_duty: percent(30),
-    sensor_unavailable_duty: percent(100),
-    zone_failsafe_duty: percent(100),
-    positive_hysteresis: positive_celsius_delta(
-      count: positive_measure_count(predecessor: 0),
+    minimum_duty: std.measure.percent(30),
+    sensor_unavailable_duty: std.measure.percent(100),
+    zone_failsafe_duty: std.measure.percent(100),
+    positive_hysteresis: std.measure.positive_celsius_delta(
+      count: std.measure.positive_measure_count(predecessor: 0),
     ),
-    negative_hysteresis: positive_celsius_delta(
-      count: positive_measure_count(predecessor: 0),
+    negative_hysteresis: std.measure.positive_celsius_delta(
+      count: std.measure.positive_measure_count(predecessor: 0),
     ),
   }
-  match validate_bmc_fan_curve(curve: falling) {
-    BmcFanCurveInvalid {
-      cause: BmcFanCurveDutyDecreased { previous: _, current: _ },
+  match extdeps.bmc.types.validate_bmc_fan_curve(curve: falling) {
+    extdeps.bmc.types.BmcFanCurveInvalid {
+      cause: extdeps.bmc.types.BmcFanCurveDutyDecreased { previous: _, current: _ },
     } => true
     _ => false
   }
@@ -85,25 +85,25 @@ test fn fan_curve_refuses_duty_above_full() -> Bool {
   let above_full = extdeps.bmc.types.BmcFanCurve {
     control_sensor: "TEMP_SOC",
     steps: [
-      extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(90), duty: percent(100) },
+      extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(90), duty: std.measure.percent(100) },
     ],
-    minimum_duty: percent(101),
-    sensor_unavailable_duty: percent(100),
-    zone_failsafe_duty: percent(100),
-    positive_hysteresis: positive_celsius_delta(
-      count: positive_measure_count(predecessor: 0),
+    minimum_duty: std.measure.percent(101),
+    sensor_unavailable_duty: std.measure.percent(100),
+    zone_failsafe_duty: std.measure.percent(100),
+    positive_hysteresis: std.measure.positive_celsius_delta(
+      count: std.measure.positive_measure_count(predecessor: 0),
     ),
-    negative_hysteresis: positive_celsius_delta(
-      count: positive_measure_count(predecessor: 0),
+    negative_hysteresis: std.measure.positive_celsius_delta(
+      count: std.measure.positive_measure_count(predecessor: 0),
     ),
   }
-  match validate_bmc_fan_curve(curve: above_full) {
-    BmcFanCurveInvalid {
-      cause: BmcFanCurveDutyAboveFull {
-        field: BmcFanCurveMinimumDuty,
+  match extdeps.bmc.types.validate_bmc_fan_curve(curve: above_full) {
+    extdeps.bmc.types.BmcFanCurveInvalid {
+      cause: extdeps.bmc.types.BmcFanCurveDutyAboveFull {
+        field: extdeps.bmc.types.BmcFanCurveMinimumDuty,
         duty: duty,
       },
-    } => duty == percent(101)
+    } => duty == std.measure.percent(101)
     _ => false
   }
 }
@@ -112,26 +112,26 @@ test fn fan_curve_refuses_minimum_above_first_step() -> Bool {
   let below_minimum = extdeps.bmc.types.BmcFanCurve {
     control_sensor: "TEMP_SOC",
     steps: [
-      extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(90), duty: percent(30) },
-      extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(95), duty: percent(100) },
+      extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(90), duty: std.measure.percent(30) },
+      extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(95), duty: std.measure.percent(100) },
     ],
-    minimum_duty: percent(40),
-    sensor_unavailable_duty: percent(100),
-    zone_failsafe_duty: percent(100),
-    positive_hysteresis: positive_celsius_delta(
-      count: positive_measure_count(predecessor: 0),
+    minimum_duty: std.measure.percent(40),
+    sensor_unavailable_duty: std.measure.percent(100),
+    zone_failsafe_duty: std.measure.percent(100),
+    positive_hysteresis: std.measure.positive_celsius_delta(
+      count: std.measure.positive_measure_count(predecessor: 0),
     ),
-    negative_hysteresis: positive_celsius_delta(
-      count: positive_measure_count(predecessor: 0),
+    negative_hysteresis: std.measure.positive_celsius_delta(
+      count: std.measure.positive_measure_count(predecessor: 0),
     ),
   }
-  match validate_bmc_fan_curve(curve: below_minimum) {
-    BmcFanCurveInvalid {
-      cause: BmcFanCurveMinimumExceedsFirstStep {
+  match extdeps.bmc.types.validate_bmc_fan_curve(curve: below_minimum) {
+    extdeps.bmc.types.BmcFanCurveInvalid {
+      cause: extdeps.bmc.types.BmcFanCurveMinimumExceedsFirstStep {
         minimum: minimum,
         first_step: first_step,
       },
-    } => minimum == percent(40) && first_step == percent(30)
+    } => minimum == std.measure.percent(40) && first_step == std.measure.percent(30)
     _ => false
   }
 }
@@ -139,32 +139,32 @@ test fn fan_curve_refuses_minimum_above_first_step() -> Bool {
 data fixture_proc_mounts: String = "cow / overlay rw,lowerdir=/run/initramfs/ro,upperdir=/run/initramfs/rw/cow 0 0\n/dev/mtdblock4 /run/initramfs/ro squashfs ro 0 0\n/dev/mtdblock5 /run/initramfs/rw jffs2 rw 0 0\n"
 
 test fn proc_mounts_parser_derives_literal_overlay_paths() -> Bool {
-  match linux_overlay_observation_from_proc_mounts(
+  match extdeps.filesystem.linux.linux_overlay_observation_from_proc_mounts(
     proc_mounts: fixture_proc_mounts,
   ) {
-    LinuxOverlayParsed { observation: observation } =>
+    extdeps.filesystem.linux.LinuxOverlayParsed { observation: observation } =>
       observation.lower_directory == "/run/initramfs/ro"
         && observation.upper_directory == "/run/initramfs/rw/cow"
-        && linux_overlay_observation_is_flash_backed(observation: observation)
-    LinuxOverlayRefused { cause: _ } => false
+        && extdeps.filesystem.linux.linux_overlay_observation_is_flash_backed(observation: observation)
+    extdeps.filesystem.linux.LinuxOverlayRefused { cause: _ } => false
   }
 }
 
 test fn proc_mounts_parser_decodes_kernel_mount_escapes() -> Bool {
   let escaped = "cow / overlay rw,lowerdir=/run/initramfs/ro\\040image,upperdir=/run/initramfs/rw/cow 0 0\n/dev/mtdblock4 /run/initramfs/ro\\040image squashfs ro 0 0\n/dev/mtdblock5 /run/initramfs/rw jffs2 rw 0 0"
-  match linux_overlay_observation_from_proc_mounts(proc_mounts: escaped) {
-    LinuxOverlayParsed { observation: observation } =>
+  match extdeps.filesystem.linux.linux_overlay_observation_from_proc_mounts(proc_mounts: escaped) {
+    extdeps.filesystem.linux.LinuxOverlayParsed { observation: observation } =>
       observation.lower_directory == "/run/initramfs/ro image"
         && observation.lower_backing_mount.target == "/run/initramfs/ro image"
-    LinuxOverlayRefused { cause: _ } => false
+    extdeps.filesystem.linux.LinuxOverlayRefused { cause: _ } => false
   }
 }
 
 test fn proc_mounts_parser_refuses_multi_lower_overlay() -> Bool {
   let multiple = "cow / overlay rw,lowerdir=/ro/a:/ro/b,upperdir=/rw/cow 0 0\n/dev/a /ro squashfs ro 0 0\n/dev/b /rw jffs2 rw 0 0"
-  match linux_overlay_observation_from_proc_mounts(proc_mounts: multiple) {
-    LinuxOverlayRefused {
-      cause: LinuxOverlayMultipleLowerDirectoriesUnsupported { wire: _ },
+  match extdeps.filesystem.linux.linux_overlay_observation_from_proc_mounts(proc_mounts: multiple) {
+    extdeps.filesystem.linux.LinuxOverlayRefused {
+      cause: extdeps.filesystem.linux.LinuxOverlayMultipleLowerDirectoriesUnsupported { wire: _ },
     } => true
     _ => false
   }
@@ -172,41 +172,41 @@ test fn proc_mounts_parser_refuses_multi_lower_overlay() -> Bool {
 
 test fn proc_mounts_parser_refuses_relative_overlay_paths() -> Bool {
   let relative = "cow / overlay rw,lowerdir=ro,upperdir=/rw/cow 0 0\n/dev/a /ro squashfs ro 0 0\n/dev/b /rw jffs2 rw 0 0"
-  match linux_overlay_observation_from_proc_mounts(proc_mounts: relative) {
-    LinuxOverlayRefused {
-      cause: LinuxOverlayDirectoryNotAbsolute { path: "ro" },
+  match extdeps.filesystem.linux.linux_overlay_observation_from_proc_mounts(proc_mounts: relative) {
+    extdeps.filesystem.linux.LinuxOverlayRefused {
+      cause: extdeps.filesystem.linux.LinuxOverlayDirectoryNotAbsolute { path: "ro" },
     } => true
     _ => false
   }
 }
 
 test fn convergence_receipt_binds_host_realizer_readback_and_live_health() -> Bool {
-  let receipt = srv4_bmc_fan_convergence_receipt
+  let receipt = gunbc.fleet_bmc_observation.srv4_bmc_fan_convergence_receipt
   receipt.host == srv4_host.identity
-    && receipt.policy.curve == srv4_bmc_fan_observed_curve
-    && receipt.policy.board_config_path == srv4_bmc_fan_observed_config_path
-    && receipt.active_config_digest == srv4_bmc_fan_active_config_digest
+    && receipt.policy.curve == gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_curve
+    && receipt.policy.board_config_path == gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_config_path
+    && receipt.active_config_digest == gunbc.fleet_bmc_observation.srv4_bmc_fan_active_config_digest
     && !receipt.zone_failsafe_active
     && receipt.monitoring_sample_count == 12
     && receipt.final_tachs.length() == 4
     && fold(
       receipt.final_tachs,
       init: true,
-      f: (healthy, tach) => healthy && rpm_count(tach.reading) > 0,
+      f: (healthy, tach) => healthy && std.measure.rpm_count(tach.reading) > 0,
     )
 }
 
 test fn restart_receipt_binds_one_literal_perturbation_generation_and_readback() -> Bool {
   let receipt = gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt
   receipt.host == srv4_host.identity
-    && receipt.perturbation_generation == srv4_bmc_fan_perturbation_generation
-    && receipt.reset.reset_type == ResetGracefulRestart
+    && receipt.perturbation_generation == gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation
+    && receipt.reset.reset_type == extdeps.bmc.types.ResetGracefulRestart
     && receipt.reset.accepted
     && receipt.bmc_down_observed
     && receipt.bmc_returned
-    && receipt.before.active_config_digest == srv4_bmc_fan_active_config_digest
-    && receipt.post_reboot_active_config_digest == srv4_bmc_fan_active_config_digest
-    && receipt.post_reboot_policy.curve == srv4_bmc_fan_observed_curve
+    && receipt.before.active_config_digest == gunbc.fleet_bmc_observation.srv4_bmc_fan_active_config_digest
+    && receipt.post_reboot_active_config_digest == gunbc.fleet_bmc_observation.srv4_bmc_fan_active_config_digest
+    && receipt.post_reboot_policy.curve == gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_curve
     && receipt.post_reboot_controller_active
     && !receipt.post_reboot_zone_failsafe_active
     && receipt.post_reboot_observer_exit_success

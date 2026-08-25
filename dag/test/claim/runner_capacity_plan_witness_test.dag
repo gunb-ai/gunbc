@@ -1,6 +1,7 @@
 module test.claim.runner_capacity_plan_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // THIS REPLACES A WITNESS THAT ASSERTED TWO ADDITIONS PER HOST AT REQUESTED 7, AND THE OLD
 // ASSERTION WAS WRONG IN A WAY ITS GREEN CONCEALED. It required slots 06 AND 07 on hosts whose
@@ -24,16 +25,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // request above the ceiling by construction, so this stays a check on the refusal arm rather than
 // on whatever number the fleet happened to commit the day it was written.
 test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled() -> Bool {
-  let plan = runner_capacity_plan(
-    srv3_width: gunbc_runner_slots_per_host(host: operator_host_srv3) + 1,
-    srv4_width: gunbc_runner_slots_per_host(host: operator_host_srv4) + 1,
-    roster: organization_runner_roster_evidence()
+  let plan = gunbc.runner_capacity_plan.runner_capacity_plan(
+    srv3_width: gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: gunbc.fleet_intent_network.operator_host_srv3) + 1,
+    srv4_width: gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: gunbc.fleet_intent_network.operator_host_srv4) + 1,
+    roster: gunbc.fleet_runner_connectivity.organization_runner_roster_evidence()
   )
   match plan {
-    PlanReady { hosts: _ } =>
-      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 0
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 0
-    PlanRefused { reason: _ } => false
+    gunbc.runner_capacity_plan.PlanReady { hosts: _ } =>
+      gunbc.runner_capacity_plan.runner_capacity_add_count(plan: plan, host: gunbc.fleet_intent_network.operator_host_srv3) == 0
+        && gunbc.runner_capacity_plan.runner_capacity_add_count(plan: plan, host: gunbc.fleet_intent_network.operator_host_srv4) == 0
+    gunbc.runner_capacity_plan.PlanRefused { reason: _ } => false
   }
 }
 
@@ -43,16 +44,16 @@ test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled(
 // slot, so its GitHub population is 5, it is already at 5, and NO addition is planned -- the sixth
 // slot exists in the model and is deliberately not a GitHub runner. Same width, same request,
 // different populations.
-fn added_indices(actions: List<RunnerCapacityAction>) -> List<Int> {
+fn added_indices(actions: List<gunbc.runner_capacity_plan.RunnerCapacityAction>) -> List<Int> {
   fold(
     actions,
     init: [],
     f: (acc, a) =>
       match a {
-        RunnerSlotAdd { to: id } => concat(acc, [id.slot_index])
-        RunnerSlotChange { from: _, to: _ } => acc
-        RunnerSlotRemove { from: _ } => acc
-        RunnerIncarnationReplace { slot: _, cause: _ } => acc
+        gunbc.runner_capacity_plan.RunnerSlotAdd { to: id } => concat(acc, [id.slot_index])
+        gunbc.runner_capacity_plan.RunnerSlotChange { from: _, to: _ } => acc
+        gunbc.runner_capacity_plan.RunnerSlotRemove { from: _ } => acc
+        gunbc.runner_capacity_plan.RunnerIncarnationReplace { slot: _, cause: _ } => acc
       }
   )
 }
@@ -70,31 +71,31 @@ fn added_indices(actions: List<RunnerCapacityAction>) -> List<Int> {
 // them. srv4 must additionally add 06 because it has no fabric member; srv3 must not, because 06 is
 // its fabric slot. So the pair also still discriminates purpose, which is what it was named for.
 test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
-  let plan = runner_capacity_plan(
+  let plan = gunbc.runner_capacity_plan.runner_capacity_plan(
     srv3_width: 6,
     srv4_width: 6,
-    roster: organization_runner_roster_evidence()
+    roster: gunbc.fleet_runner_connectivity.organization_runner_roster_evidence()
   )
   match plan {
-    PlanReady { hosts: _ } =>
-      added_indices(actions: addition_actions(
-        host: operator_host_srv3, requested_width: 6,
-        observed: observed_prefix_from_roster(host: operator_host_srv3)
+    gunbc.runner_capacity_plan.PlanReady { hosts: _ } =>
+      added_indices(actions: gunbc.runner_capacity_plan.addition_actions(
+        host: gunbc.fleet_intent_network.operator_host_srv3, requested_width: 6,
+        observed: observed_prefix_from_roster(host: gunbc.fleet_intent_network.operator_host_srv3)
       )) == [3]
-        && added_indices(actions: addition_actions(
-             host: operator_host_srv4, requested_width: 6,
-             observed: observed_prefix_from_roster(host: operator_host_srv4)
+        && added_indices(actions: gunbc.runner_capacity_plan.addition_actions(
+             host: gunbc.fleet_intent_network.operator_host_srv4, requested_width: 6,
+             observed: observed_prefix_from_roster(host: gunbc.fleet_intent_network.operator_host_srv4)
            )) == [3, 6]
-    PlanRefused { reason: _ } => false
+    gunbc.runner_capacity_plan.PlanRefused { reason: _ } => false
   }
 }
 
-fn observed_prefix_from_roster(host: HostIdentity) -> List<RunnerSlotIdentity> {
-  match observed_github_slot_identities(host: host, roster: organization_runner_roster_evidence()) {
-    GitHubSlotPopulationObserved { identities: ids } => ids
-    GitHubSlotPopulationUnreadable { reason: _ } => []
-    GitHubSlotPopulationDuplicateRegistration { slot: _ } => []
-    GitHubSlotPopulationForeignRegistration { registration_name: _ } => []
+fn observed_prefix_from_roster(host: product.placement_supply.HostIdentity) -> List<gunbc.build_cache_instance.RunnerSlotIdentity> {
+  match gunbc.runner_capacity_plan.observed_github_slot_identities(host: host, roster: gunbc.fleet_runner_connectivity.organization_runner_roster_evidence()) {
+    gunbc.runner_capacity_plan.GitHubSlotPopulationObserved { identities: ids } => ids
+    gunbc.runner_capacity_plan.GitHubSlotPopulationUnreadable { reason: _ } => []
+    gunbc.runner_capacity_plan.GitHubSlotPopulationDuplicateRegistration { slot: _ } => []
+    gunbc.runner_capacity_plan.GitHubSlotPopulationForeignRegistration { registration_name: _ } => []
   }
 }
 
@@ -118,22 +119,22 @@ fn observed_prefix_from_roster(host: HostIdentity) -> List<RunnerSlotIdentity> {
 // is the same shape appearing on both sides of the change. These rows exercise the addition
 // arithmetic directly and are entitled to hand it any population they like, including a hole-free
 // one. What was wrong was the PLANNER deriving that shape from a width instead of reading it.
-fn observed_prefix(host: HostIdentity, n: Int) -> List<RunnerSlotIdentity> {
+fn observed_prefix(host: product.placement_supply.HostIdentity, n: Int) -> List<gunbc.build_cache_instance.RunnerSlotIdentity> {
   fold(
-    committed_slot_identities(host: host),
+    gunbc.runner_slot_allocation.committed_slot_identities(host: host),
     init: [],
     f: (acc, id) => if id.slot_index > n { acc } else { concat(acc, [id]) }
   )
 }
 
 test fn the_additions_run_is_general_across_transitions() -> Bool {
-  nat_range_inclusive(lo: 6, hi: 6) == [6]
-    && nat_range_inclusive(lo: 6, hi: 7) == [6, 7]
-    && nat_range_inclusive(lo: 1, hi: 3) == [1, 2, 3]
-    && nat_range_inclusive(lo: 6, hi: 5) == []
-    && addition_actions(host: operator_host_srv4, requested_width: 6, observed: observed_prefix(host: operator_host_srv4, n: 0)).length() == 6
-    && addition_actions(host: operator_host_srv4, requested_width: 3, observed: observed_prefix(host: operator_host_srv4, n: 0)).length() == 3
-    && addition_actions(host: operator_host_srv4, requested_width: 6, observed: observed_prefix(host: operator_host_srv4, n: 6)).length() == 0
+  std.nat.nat_range_inclusive(lo: 6, hi: 6) == [6]
+    && std.nat.nat_range_inclusive(lo: 6, hi: 7) == [6, 7]
+    && std.nat.nat_range_inclusive(lo: 1, hi: 3) == [1, 2, 3]
+    && std.nat.nat_range_inclusive(lo: 6, hi: 5) == []
+    && gunbc.runner_capacity_plan.addition_actions(host: gunbc.fleet_intent_network.operator_host_srv4, requested_width: 6, observed: observed_prefix(host: gunbc.fleet_intent_network.operator_host_srv4, n: 0)).length() == 6
+    && gunbc.runner_capacity_plan.addition_actions(host: gunbc.fleet_intent_network.operator_host_srv4, requested_width: 3, observed: observed_prefix(host: gunbc.fleet_intent_network.operator_host_srv4, n: 0)).length() == 3
+    && gunbc.runner_capacity_plan.addition_actions(host: gunbc.fleet_intent_network.operator_host_srv4, requested_width: 6, observed: observed_prefix(host: gunbc.fleet_intent_network.operator_host_srv4, n: 6)).length() == 0
 }
 
 // THE DESIRED GitHub SET SKIPS THE FABRIC MEMBER WHEREVER IT SITS, which is the assumption the
@@ -142,10 +143,10 @@ test fn the_additions_run_is_general_across_transitions() -> Bool {
 // gap at the top today. srv4 has no carve and desires all six. If a fabric member ever lands
 // mid-range this row is what refuses to enumerate through it.
 test fn the_desired_github_set_excludes_the_fabric_member() -> Bool {
-  desired_github_identities(host: operator_host_srv3, requested_width: 6).length() == 5
-    && desired_github_identities(host: operator_host_srv4, requested_width: 6).length() == 6
-    && desired_github_identities(host: operator_host_srv3, requested_width: 5).length() == 5
-    && desired_github_identities(host: operator_host_srv1, requested_width: 5).length() == 5
+  gunbc.runner_capacity_plan.desired_github_identities(host: gunbc.fleet_intent_network.operator_host_srv3, requested_width: 6).length() == 5
+    && gunbc.runner_capacity_plan.desired_github_identities(host: gunbc.fleet_intent_network.operator_host_srv4, requested_width: 6).length() == 6
+    && gunbc.runner_capacity_plan.desired_github_identities(host: gunbc.fleet_intent_network.operator_host_srv3, requested_width: 5).length() == 5
+    && gunbc.runner_capacity_plan.desired_github_identities(host: gunbc.fleet_intent_network.operator_host_srv1, requested_width: 5).length() == 5
 }
 
 // THE FLIP ROW AND THE NON-FLIP ROW, AND THE SECOND ONE IS THE TRAP. srv4 at 5-to-6 is the
@@ -162,39 +163,40 @@ test fn the_desired_github_set_excludes_the_fabric_member() -> Bool {
 // against the srv4 row beside it, and a future reader who deletes it as redundant removes the half
 // that discriminates.
 test fn the_same_widening_differs_by_purpose_across_two_six_wide_hosts() -> Bool {
-  addition_actions(host: operator_host_srv4, requested_width: 6, observed: observed_prefix(host: operator_host_srv4, n: 5)).length() == 1
-    && addition_actions(host: operator_host_srv3, requested_width: 6, observed: observed_prefix(host: operator_host_srv3, n: 5)).length() == 0
+  gunbc.runner_capacity_plan.addition_actions(host: gunbc.fleet_intent_network.operator_host_srv4, requested_width: 6, observed: observed_prefix(host: gunbc.fleet_intent_network.operator_host_srv4, n: 5)).length() == 1
+    && gunbc.runner_capacity_plan.addition_actions(host: gunbc.fleet_intent_network.operator_host_srv3, requested_width: 6, observed: observed_prefix(host: gunbc.fleet_intent_network.operator_host_srv3, n: 5)).length() == 0
 }
 
 test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
-  match runner_capacity_plan(
+  match gunbc.runner_capacity_plan.runner_capacity_plan(
     srv3_width: 6,
     srv4_width: 6,
-    roster: RosterReadUnavailable { reason: "503" }
+    roster: gunbc.fleet_runner_connectivity.RosterReadUnavailable { reason: "503" }
   ) {
-    PlanRefused { reason: _ } => true
-    PlanReady { hosts: _ } => false
+    gunbc.runner_capacity_plan.PlanRefused { reason: _ } => true
+    gunbc.runner_capacity_plan.PlanReady { hosts: _ } => false
   }
 }
 
 test fn satisfied_observed_width_plans_zero_additions() -> Bool {
-  addition_actions(host: operator_host_srv3, requested_width: 5, observed: observed_prefix(host: operator_host_srv3, n: 5)).length() == 0
-    && addition_actions(host: operator_host_srv3, requested_width: 7, observed: observed_prefix(host: operator_host_srv3, n: 7)).length() == 0
+  gunbc.runner_capacity_plan.addition_actions(host: gunbc.fleet_intent_network.operator_host_srv3, requested_width: 5, observed: observed_prefix(host: gunbc.fleet_intent_network.operator_host_srv3, n: 5)).length() == 0
+    && gunbc.runner_capacity_plan.addition_actions(host: gunbc.fleet_intent_network.operator_host_srv3, requested_width: 7, observed: observed_prefix(host: gunbc.fleet_intent_network.operator_host_srv3, n: 7)).length() == 0
 }
 
-fn population_is_refused(v: SlotPopulationVerdict) -> Bool {
+fn population_is_refused(v: gunbc.runner_capacity_plan.SlotPopulationVerdict) -> Bool {
   match v {
-    SlotPopulationRefused { reason: _ } => true
-    SlotPopulationReconciled => false
+    gunbc.runner_capacity_plan.SlotPopulationRefused { reason: _ } => true
+    gunbc.runner_capacity_plan.SlotPopulationReconciled => false
   }
 }
 
-fn srv3_slot(i: std.nat.Nat) -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv3, slot_index: i }
+
+fn srv3_slot(i: std.nat.Nat) -> gunbc.build_cache_instance.RunnerSlotIdentity {
+  gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv3, slot_index: i }
 }
 
-fn srv1_slot(i: std.nat.Nat) -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv1, slot_index: i }
+fn srv1_slot(i: std.nat.Nat) -> gunbc.build_cache_instance.RunnerSlotIdentity {
+  gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv1, slot_index: i }
 }
 
 // A GitHub RUNNER SITTING IN THE FABRIC'S SLOT MUST NOT READ AS CONVERGED, AND THE THIRD ROW IS THE
@@ -218,13 +220,13 @@ fn srv1_slot(i: std.nat.Nat) -> RunnerSlotIdentity {
 // THE SECOND ROW IS THE CONTROL. The same identity asked about its OWN host must pass, or the
 // refusal is just a broken function rather than a subject binding.
 test fn an_identity_from_another_host_cannot_answer_for_this_one() -> Bool {
-  population_is_refused(v: validate_observed_github_slot_members(
-    host: operator_host_srv3,
-    observed: [srv3_slot(i: 1), RunnerSlotIdentity { host: operator_host_srv4, slot_index: 1 }],
+  population_is_refused(v: gunbc.runner_capacity_plan.validate_observed_github_slot_members(
+    host: gunbc.fleet_intent_network.operator_host_srv3,
+    observed: [srv3_slot(i: 1), gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv4, slot_index: 1 }],
   ))
-    && !population_is_refused(v: validate_observed_github_slot_members(
-      host: operator_host_srv4,
-      observed: [RunnerSlotIdentity { host: operator_host_srv4, slot_index: 1 }],
+    && !population_is_refused(v: gunbc.runner_capacity_plan.validate_observed_github_slot_members(
+      host: gunbc.fleet_intent_network.operator_host_srv4,
+      observed: [gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv4, slot_index: 1 }],
     ))
 }
 
@@ -239,37 +241,37 @@ test fn an_identity_from_another_host_cannot_answer_for_this_one() -> Bool {
 // from six to twenty-one underneath these clauses and they did not notice -- which is the property
 // runner_slot_allocation was built to have, observed rather than asserted.
 test fn a_github_runner_in_a_fabric_slot_refuses_instead_of_reading_converged() -> Bool {
-  population_is_refused(v: validate_observed_github_slot_members(
-    host: operator_host_srv3,
+  population_is_refused(v: gunbc.runner_capacity_plan.validate_observed_github_slot_members(
+    host: gunbc.fleet_intent_network.operator_host_srv3,
     observed: [srv3_slot(i: 1), srv3_slot(i: 2), srv3_slot(i: 3), srv3_slot(i: 4), srv3_slot(i: 5), srv3_slot(i: 6)],
   ))
-    && !population_is_refused(v: validate_observed_github_slot_members(
-      host: operator_host_srv3,
+    && !population_is_refused(v: gunbc.runner_capacity_plan.validate_observed_github_slot_members(
+      host: gunbc.fleet_intent_network.operator_host_srv3,
       observed: [srv3_slot(i: 1), srv3_slot(i: 2), srv3_slot(i: 3), srv3_slot(i: 4), srv3_slot(i: 5)],
     ))
-    && population_is_refused(v: validate_observed_github_slot_members(
-      host: operator_host_srv3,
+    && population_is_refused(v: gunbc.runner_capacity_plan.validate_observed_github_slot_members(
+      host: gunbc.fleet_intent_network.operator_host_srv3,
       observed: [srv3_slot(i: 1), srv3_slot(i: 2), srv3_slot(i: 3), srv3_slot(i: 4), srv3_slot(i: 6)],
     ))
-    && !population_is_refused(v: validate_observed_github_slot_members(
-      host: operator_host_srv1,
+    && !population_is_refused(v: gunbc.runner_capacity_plan.validate_observed_github_slot_members(
+      host: gunbc.fleet_intent_network.operator_host_srv1,
       observed: [srv1_slot(i: 1), srv1_slot(i: 2), srv1_slot(i: 3), srv1_slot(i: 4), srv1_slot(i: 5)],
     ))
-    && population_is_refused(v: validate_observed_github_slot_members(
-      host: operator_host_srv1,
-      observed: [srv1_slot(i: 1), srv1_slot(i: gunbc_runner_slots_per_host(host: operator_host_srv1) + 1)],
+    && population_is_refused(v: gunbc.runner_capacity_plan.validate_observed_github_slot_members(
+      host: gunbc.fleet_intent_network.operator_host_srv1,
+      observed: [srv1_slot(i: 1), srv1_slot(i: gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: gunbc.fleet_intent_network.operator_host_srv1) + 1)],
     ))
 }
 
 fn width_parses_to(value: String, expected: Int) -> Bool {
-  match parse_positive_width(value: value) {
+  match gunbc.runner_capacity_plan.parse_positive_width(value: value) {
     Absent => false
     Present { value: n } => n == expected
   }
 }
 
 fn width_refuses(value: String) -> Bool {
-  match parse_positive_width(value: value) {
+  match gunbc.runner_capacity_plan.parse_positive_width(value: value) {
     Absent => true
     Present { value: _ } => false
   }
@@ -317,22 +319,22 @@ test fn every_positive_width_is_spellable_at_the_apply_boundary() -> Bool {
 // derives additions from observed_width, so OVER-counting the observed population plans FEWER
 // additions than convergence needs. A host short of registrations reads as converged with nothing
 // to plan, whatever roster it is handed.
-fn one_registration(name: String, id: std.nat.Nat) -> GitHubSelfHostedRunnerRegistration {
-  GitHubSelfHostedRunnerRegistration {
+fn one_registration(name: String, id: std.nat.Nat) -> extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration {
+  extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration {
     id: id,
-    name: name as NonEmptyStr,
-    status: GitHubRunnerOnline,
+    name: name as std.types.NonEmptyStr,
+    status: extdeps.github.ci_runner.GitHubRunnerOnline,
     busy: false,
     ephemeral: true,
-    version: "2.334.0" as NonEmptyStr,
-    os: "Linux" as NonEmptyStr,
+    version: "2.334.0" as std.types.NonEmptyStr,
+    os: "Linux" as std.types.NonEmptyStr,
     labels: [],
   }
 }
 
-fn roster_of(names: List<String>) -> OrganizationRunnerRosterEvidence {
-  RosterObserved {
-    observed_on: "witness-fixture" as NonEmptyStr,
+fn roster_of(names: List<String>) -> gunbc.fleet_runner_connectivity.OrganizationRunnerRosterEvidence {
+  gunbc.fleet_runner_connectivity.RosterObserved {
+    observed_on: "witness-fixture" as std.types.NonEmptyStr,
     registrations: fold(
       names,
       init: [],
@@ -341,10 +343,10 @@ fn roster_of(names: List<String>) -> OrganizationRunnerRosterEvidence {
   }
 }
 
-fn plan_is_refused(host: HostIdentity, width: Int, roster: OrganizationRunnerRosterEvidence) -> Bool {
-  match plan_runner_capacity_host(host: host, requested_width: width, roster: roster) {
-    HostCapacityPlanRefused { reason: _ } => true
-    HostCapacityPlanReady { plan: _ } => false
+fn plan_is_refused(host: product.placement_supply.HostIdentity, width: Int, roster: gunbc.fleet_runner_connectivity.OrganizationRunnerRosterEvidence) -> Bool {
+  match gunbc.runner_capacity_plan.plan_runner_capacity_host(host: host, requested_width: width, roster: roster) {
+    gunbc.runner_capacity_plan.HostCapacityPlanRefused { reason: _ } => true
+    gunbc.runner_capacity_plan.HostCapacityPlanReady { plan: _ } => false
   }
 }
 
@@ -354,7 +356,7 @@ fn plan_is_refused(host: HostIdentity, width: Int, roster: OrganizationRunnerRos
 // differ in ONE element, srv3-06, and they must disagree.
 test fn a_github_registration_on_the_fabric_slot_now_refuses_the_plan() -> Bool {
   plan_is_refused(
-    host: operator_host_srv3,
+    host: gunbc.fleet_intent_network.operator_host_srv3,
     width: 5,
     roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05", "srv3-06"]),
   )
@@ -362,7 +364,7 @@ test fn a_github_registration_on_the_fabric_slot_now_refuses_the_plan() -> Bool 
 
 test fn the_same_roster_without_the_fabric_slot_is_not_refused() -> Bool {
   !plan_is_refused(
-    host: operator_host_srv3,
+    host: gunbc.fleet_intent_network.operator_host_srv3,
     width: 5,
     roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05"]),
   )
@@ -374,7 +376,7 @@ test fn the_same_roster_without_the_fabric_slot_is_not_refused() -> Bool {
 // GitHub already holds.
 test fn a_registration_naming_no_committed_slot_refuses_instead_of_being_dropped() -> Bool {
   plan_is_refused(
-    host: operator_host_srv3,
+    host: gunbc.fleet_intent_network.operator_host_srv3,
     width: 5,
     roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05", "srv9-01"]),
   )
@@ -385,14 +387,14 @@ test fn a_registration_naming_no_committed_slot_refuses_instead_of_being_dropped
 // at all -- it never read the roster, so it answered materialized_width_for_host regardless of what
 // GitHub held, and would have said five.
 test fn another_hosts_registrations_do_not_widen_this_host() -> Bool {
-  match observed_github_slot_identities(
-    host: operator_host_srv3,
+  match gunbc.runner_capacity_plan.observed_github_slot_identities(
+    host: gunbc.fleet_intent_network.operator_host_srv3,
     roster: roster_of(names: ["srv1-01", "srv1-02", "srv1-03"]),
   ) {
-    GitHubSlotPopulationObserved { identities: ids } => length(ids) == 0
-    GitHubSlotPopulationUnreadable { reason: _ } => false
-    GitHubSlotPopulationDuplicateRegistration { slot: _ } => false
-    GitHubSlotPopulationForeignRegistration { registration_name: _ } => false
+    gunbc.runner_capacity_plan.GitHubSlotPopulationObserved { identities: ids } => length(ids) == 0
+    gunbc.runner_capacity_plan.GitHubSlotPopulationUnreadable { reason: _ } => false
+    gunbc.runner_capacity_plan.GitHubSlotPopulationDuplicateRegistration { slot: _ } => false
+    gunbc.runner_capacity_plan.GitHubSlotPopulationForeignRegistration { registration_name: _ } => false
   }
 }
 
@@ -404,7 +406,7 @@ test fn another_hosts_registrations_do_not_widen_this_host() -> Bool {
 // same roster with the duplicate collapsed, which must NOT refuse.
 test fn a_duplicate_registration_refuses_because_the_observed_population_is_a_set() -> Bool {
   plan_is_refused(
-    host: operator_host_srv3,
+    host: gunbc.fleet_intent_network.operator_host_srv3,
     width: 5,
     roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-02", "srv3-03", "srv3-04", "srv3-05"]),
   )
@@ -412,7 +414,7 @@ test fn a_duplicate_registration_refuses_because_the_observed_population_is_a_se
 
 test fn the_same_roster_without_the_duplicate_is_not_refused() -> Bool {
   !plan_is_refused(
-    host: operator_host_srv3,
+    host: gunbc.fleet_intent_network.operator_host_srv3,
     width: 5,
     roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05"]),
   )
@@ -432,7 +434,7 @@ test fn the_same_roster_without_the_duplicate_is_not_refused() -> Bool {
 // the unaccounted registration rather than about the planner disliking every roster.
 test fn a_github_registration_with_no_local_incarnation_refuses_instead_of_being_dropped() -> Bool {
   plan_is_refused(
-    host: operator_host_srv4,
+    host: gunbc.fleet_intent_network.operator_host_srv4,
     width: 5,
     roster: roster_of(names: ["srv4-01", "srv4-02", "srv4-03", "srv4-04", "srv4-05", "srv4-06"]),
   )
@@ -440,7 +442,7 @@ test fn a_github_registration_with_no_local_incarnation_refuses_instead_of_being
 
 test fn the_same_roster_within_the_materialized_width_is_not_refused() -> Bool {
   !plan_is_refused(
-    host: operator_host_srv4,
+    host: gunbc.fleet_intent_network.operator_host_srv4,
     width: 5,
     roster: roster_of(names: ["srv4-01", "srv4-02", "srv4-03", "srv4-04", "srv4-05"]),
   )

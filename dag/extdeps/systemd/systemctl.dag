@@ -1,21 +1,23 @@
 module extdeps.systemd.systemctl
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.freedesktop.org/software/systemd/man/latest/systemctl.html"
   }
 }
 
-data systemctl_authority: ExternalAuthority = extdeps_external_authority_anchor
+data systemctl_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
 
-data systemctl_binary_name: NonEmptyStr = "systemctl" as NonEmptyStr
+data systemctl_binary_name: std.types.NonEmptyStr = "systemctl" as std.types.NonEmptyStr
 
-fn systemctl_binary_path() -> NonEmptyStr {
-  systemd_binary_path(name: systemctl_binary_name)
+fn systemctl_binary_path() -> std.types.NonEmptyStr {
+  extdeps.systemd.systemd_binary_path(name: systemctl_binary_name)
 }
 
-data systemctl_reboot_verb: NonEmptyStr = "reboot" as NonEmptyStr
+data systemctl_reboot_verb: std.types.NonEmptyStr = "reboot" as std.types.NonEmptyStr
 
 // The reboot command in the two renderings a sudoers grant and its actuator need. Unlike
 // enable-linger this verb takes no subject -- it reboots the host the grant is installed on -- and
@@ -26,8 +28,8 @@ fn systemctl_reboot_argv() -> List<String> {
   [systemctl_binary_name as String, systemctl_reboot_verb as String]
 }
 
-fn systemctl_reboot_command() -> NonEmptyStr {
-  join([systemctl_binary_path() as String, " ", systemctl_reboot_verb as String], "") as NonEmptyStr
+fn systemctl_reboot_command() -> std.types.NonEmptyStr {
+  join([systemctl_binary_path() as String, " ", systemctl_reboot_verb as String], "") as std.types.NonEmptyStr
 }
 
 // THE REST OF THIS MODULE STILL SPELLS "systemctl" INLINE, at 24 sites, and that is left alone
@@ -41,7 +43,7 @@ fn systemctl_daemon_reload_argv() -> List<String> {
   ["systemctl", "daemon-reload"]
 }
 
-fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
+fn systemctl_enable_argv(unit: std.types.NonEmptyStr) -> List<String> {
   ["systemctl", "enable", unit as String]
 }
 
@@ -50,23 +52,23 @@ fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
 // the compilers the pool exists to hold. `start` on an already-active slice is a no-op that re-applies the
 // unit's resource directives, which is what a converger wants. The modeled `Start` operation already exists
 // on the service surface; this is its argv authority for the shell-body realization edge.
-fn systemctl_start_argv(unit: NonEmptyStr) -> List<String> {
+fn systemctl_start_argv(unit: std.types.NonEmptyStr) -> List<String> {
   ["systemctl", "start", unit as String]
 }
 
-fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
+fn systemctl_restart_argv(unit: std.types.NonEmptyStr) -> List<String> {
   ["systemctl", "restart", unit as String]
 }
 
-fn systemctl_disable_now_argv(unit: NonEmptyStr) -> List<String> {
+fn systemctl_disable_now_argv(unit: std.types.NonEmptyStr) -> List<String> {
   ["systemctl", "disable", "--now", unit as String]
 }
 
-fn systemctl_stop_argv(unit: NonEmptyStr) -> List<String> {
+fn systemctl_stop_argv(unit: std.types.NonEmptyStr) -> List<String> {
   ["systemctl", "stop", unit as String]
 }
 
-fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr) -> List<String> {
+fn systemctl_set_property_argv(unit: std.types.NonEmptyStr, property: std.types.NonEmptyStr, value: std.types.NonEmptyStr) -> List<String> {
   [
     "systemctl",
     "set-property",
@@ -75,16 +77,16 @@ fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: 
   ]
 }
 
-fn systemctl_revert_memory_caps_argv(unit: NonEmptyStr) -> List<String> {
+fn systemctl_revert_memory_caps_argv(unit: std.types.NonEmptyStr) -> List<String> {
   ["systemctl", "revert", unit as String, "MemoryMax", "MemoryHigh"]
 }
 
-fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
+fn systemctl_show_property_argv(unit: std.types.NonEmptyStr, property: extdeps.systemd.SystemdUnitProperty) -> List<String> {
   [
     "systemctl",
     "show",
     unit as String,
-    concat("--property=", systemd_unit_property_wire(property: property) as String),
+    concat("--property=", extdeps.systemd.systemd_unit_property_wire(property: property) as String),
     "--value",
   ]
 }
@@ -95,7 +97,7 @@ fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty
 // manager could parse a unit file for it). A unit can be loaded and active yet not enabled, and
 // would then not come back after a reboot -- so a convergence claim that reads only is-active is
 // answering a question it was not asked.
-fn systemctl_user_is_enabled_argv(unit: NonEmptyStr) -> List<String> {
+fn systemctl_user_is_enabled_argv(unit: std.types.NonEmptyStr) -> List<String> {
   ["systemctl", "--user", "is-enabled", unit as String]
 }
 
@@ -121,11 +123,11 @@ fn systemctl_user_is_enabled_argv(unit: NonEmptyStr) -> List<String> {
 // two remedies under one word, so a plan that needed only one of them pays for both, and -- worse --
 // the two facts stop being separately observable in the actuation the way they are separately
 // observable on the host.
-fn systemctl_user_enable_argv(unit: NonEmptyStr) -> List<String> {
+fn systemctl_user_enable_argv(unit: std.types.NonEmptyStr) -> List<String> {
   ["systemctl", "--user", "enable", unit as String]
 }
 
-fn systemctl_user_start_argv(unit: NonEmptyStr) -> List<String> {
+fn systemctl_user_start_argv(unit: std.types.NonEmptyStr) -> List<String> {
   ["systemctl", "--user", "start", unit as String]
 }
 
@@ -137,11 +139,11 @@ fn systemctl_user_start_argv(unit: NonEmptyStr) -> List<String> {
 // `systemctl show` exits 0 for a unit the manager has never heard of and prints not-found, so a nonzero exit
 // means the MANAGER was unreadable, which is a different refusal from an absent unit and must not be folded
 // into it.
-fn systemctl_show_load_state_argv(unit: NonEmptyStr) -> List<String> {
+fn systemctl_show_load_state_argv(unit: std.types.NonEmptyStr) -> List<String> {
   ["systemctl", "show", unit as String, "--property=LoadState", "--value"]
 }
 
-fn systemctl_status_argv(unit: NonEmptyStr) -> List<String> {
+fn systemctl_status_argv(unit: std.types.NonEmptyStr) -> List<String> {
   ["systemctl", "status", "--no-pager", "--full", unit as String]
 }
 
@@ -159,7 +161,7 @@ type UnitFileState
 
 service systemd.Systemctl {
   operation Enable {
-    input { unit: NonEmptyStr }
+    input { unit: std.types.NonEmptyStr }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -173,7 +175,7 @@ service systemd.Systemctl {
   }
 
   operation Restart {
-    input { unit: NonEmptyStr }
+    input { unit: std.types.NonEmptyStr }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -187,7 +189,7 @@ service systemd.Systemctl {
   }
 
   operation DisableNow {
-    input { unit: NonEmptyStr }
+    input { unit: std.types.NonEmptyStr }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -201,7 +203,7 @@ service systemd.Systemctl {
   }
 
   operation Start {
-    input { unit: NonEmptyStr }
+    input { unit: std.types.NonEmptyStr }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -215,7 +217,7 @@ service systemd.Systemctl {
   }
 
   operation Stop {
-    input { unit: NonEmptyStr }
+    input { unit: std.types.NonEmptyStr }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -232,7 +234,7 @@ service systemd.Systemctl {
   }
 
   operation SetProperty {
-    input { unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr }
+    input { unit: std.types.NonEmptyStr, property: std.types.NonEmptyStr, value: std.types.NonEmptyStr }
     output {
       success: Bool from "exit_success"
       stderr: String from "stderr"
@@ -248,7 +250,7 @@ service systemd.Systemctl {
   }
 
   operation RevertMemoryCaps {
-    input { unit: NonEmptyStr }
+    input { unit: std.types.NonEmptyStr }
     output {
       success: Bool from "exit_success"
       stderr: String from "stderr"
@@ -277,7 +279,7 @@ service systemd.Systemctl {
   }
 
   operation IsActive {
-    input { unit: NonEmptyStr }
+    input { unit: std.types.NonEmptyStr }
     output {
       state: String from "stdout"
       active: Bool from "exit_success"
@@ -295,7 +297,7 @@ service systemd.Systemctl {
   }
 
   operation ShowProperty {
-    input { unit: NonEmptyStr, property: SystemdUnitProperty }
+    input { unit: std.types.NonEmptyStr, property: extdeps.systemd.SystemdUnitProperty }
     output {
       value: String from "stdout"
       success: Bool from "exit_success"
@@ -312,7 +314,7 @@ service systemd.Systemctl {
   }
 
   operation ShowLoadState {
-    input { unit: NonEmptyStr }
+    input { unit: std.types.NonEmptyStr }
     output {
       value: String from "stdout"
       success: Bool from "exit_success"
@@ -330,7 +332,7 @@ service systemd.Systemctl {
 
   operation ListUnits {
     input {
-      pattern: NonEmptyStr,
+      pattern: std.types.NonEmptyStr,
       unit_type: String = "service",
       state: String = "active",
     }
@@ -363,7 +365,7 @@ service systemd.Systemctl {
   }
 
   operation Status {
-    input { unit: NonEmptyStr }
+    input { unit: std.types.NonEmptyStr }
     output {
       stdout: String from "stdout"
       success: Bool from "exit_success"
@@ -391,7 +393,7 @@ service systemd.Systemctl {
 // on have not been observed by this repository, and sudo resolves the command through its own
 // secure_path. sudo's OWN path is absolute because extdeps.sudo.elevation records it with a
 // consumer -- the NOPASSWD rules that name it.
-data systemctl_program: NonEmptyStr = "systemctl"
+data systemctl_program: std.types.NonEmptyStr = "systemctl"
 
 // ENABLE --now IS FUSED HERE AND SPLIT IN THE USER-SCOPE BUILDERS ABOVE, which reads like a
 // contradiction and is not. That split exists because the user-scope consumer converges the two
@@ -414,11 +416,11 @@ data systemctl_program: NonEmptyStr = "systemctl"
 // system manager, so an unelevated invocation is not a weaker version of this request, it is a
 // different one that fails. sudo's own calling convention comes from extdeps.sudo.elevation rather
 // than being re-spelled as two more literals here.
-fn systemctl_enable_now_command(units: List<String>) -> ArgvCommand {
-  argv_command(
-    program: sudo_binary_path,
+fn systemctl_enable_now_command(units: List<String>) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(
+    program: extdeps.sudo.elevation.sudo_binary_path,
     arguments: append(
-      [sudo_non_interactive_flag as String, systemctl_program as String, "enable", "--now"],
+      [extdeps.sudo.elevation.sudo_non_interactive_flag as String, systemctl_program as String, "enable", "--now"],
       items: units,
     ),
   )

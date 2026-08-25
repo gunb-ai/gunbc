@@ -1,31 +1,32 @@
 module test.claim.fleet_capacity_control_witness_test
 
-fn host_rows_srv3_down() -> List<HostCapacityWithdrawal> {
-  [HostCapacityWithdrawal {
-    host: operator_host_srv3,
-    cause: WithdrawnForMaintenance { detail: "memory upgrade" as NonEmptyStr },
+
+fn host_rows_srv3_down() -> List<gunbc.fleet_capacity_control.HostCapacityWithdrawal> {
+  [gunbc.fleet_capacity_control.HostCapacityWithdrawal {
+    host: gunbc.fleet_intent_network.operator_host_srv3,
+    cause: gunbc.fleet_capacity_control.WithdrawnForMaintenance { detail: "memory upgrade" as std.types.NonEmptyStr },
   }]
 }
 
-fn provider_rows_codex_down() -> List<ProviderCapacityWithdrawal> {
-  [ProviderCapacityWithdrawal {
-    provider: CodexCliProvider,
-    cause: WithdrawnToReduceSpend { detail: "quota exhausted" as NonEmptyStr },
+fn provider_rows_codex_down() -> List<gunbc.fleet_capacity_control.ProviderCapacityWithdrawal> {
+  [gunbc.fleet_capacity_control.ProviderCapacityWithdrawal {
+    provider: extdeps.llm.cli_lifecycle.CodexCliProvider,
+    cause: gunbc.fleet_capacity_control.WithdrawnToReduceSpend { detail: "quota exhausted" as std.types.NonEmptyStr },
   }]
 }
 
 fn admission_label(
-  hosts: List<HostCapacityWithdrawal>,
-  providers: List<ProviderCapacityWithdrawal>,
-  host: HostIdentity,
-  provider: ProviderKind,
+  hosts: List<gunbc.fleet_capacity_control.HostCapacityWithdrawal>,
+  providers: List<gunbc.fleet_capacity_control.ProviderCapacityWithdrawal>,
+  host: product.placement_supply.HostIdentity,
+  provider: extdeps.llm.cli_lifecycle.ProviderKind,
 ) -> String {
-  match fleet_capacity_admission_in(
+  match gunbc.fleet_capacity_control.fleet_capacity_admission_in(
     host_rows: hosts, provider_rows: providers, host: host, provider: provider,
   ) {
-    CapacityAdmitted => "admitted"
-    CapacityRefusedHostWithdrawn { host: _, cause: _ } => "refused-host"
-    CapacityRefusedProviderWithdrawn { provider: _, cause: _ } => "refused-provider"
+    gunbc.fleet_capacity_control.CapacityAdmitted => "admitted"
+    gunbc.fleet_capacity_control.CapacityRefusedHostWithdrawn { host: _, cause: _ } => "refused-host"
+    gunbc.fleet_capacity_control.CapacityRefusedProviderWithdrawn { provider: _, cause: _ } => "refused-provider"
   }
 }
 
@@ -38,11 +39,11 @@ fn admission_label(
 test fn a_downed_host_and_a_cut_runtime_do_not_share_one_answer() -> Bool {
   let host_down = admission_label(
     hosts: host_rows_srv3_down(), providers: [],
-    host: operator_host_srv3, provider: ClaudeCliProvider,
+    host: gunbc.fleet_intent_network.operator_host_srv3, provider: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
   )
   let runtime_down = admission_label(
     hosts: [], providers: provider_rows_codex_down(),
-    host: operator_host_srv3, provider: CodexCliProvider,
+    host: gunbc.fleet_intent_network.operator_host_srv3, provider: extdeps.llm.cli_lifecycle.CodexCliProvider,
   )
   host_down != runtime_down
     && host_down == "refused-host"
@@ -54,7 +55,7 @@ test fn a_downed_host_and_a_cut_runtime_do_not_share_one_answer() -> Bool {
 test fn a_downed_host_dominates_a_cut_runtime() -> Bool {
   admission_label(
     hosts: host_rows_srv3_down(), providers: provider_rows_codex_down(),
-    host: operator_host_srv3, provider: CodexCliProvider,
+    host: gunbc.fleet_intent_network.operator_host_srv3, provider: extdeps.llm.cli_lifecycle.CodexCliProvider,
   ) == "refused-host"
 }
 
@@ -63,7 +64,7 @@ test fn a_downed_host_dominates_a_cut_runtime() -> Bool {
 test fn a_withdrawal_does_not_leak_to_its_siblings() -> Bool {
   admission_label(
     hosts: host_rows_srv3_down(), providers: provider_rows_codex_down(),
-    host: operator_host_srv1, provider: ClaudeCliProvider,
+    host: gunbc.fleet_intent_network.operator_host_srv1, provider: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
   ) == "admitted"
 }
 
@@ -73,12 +74,12 @@ test fn a_withdrawal_does_not_leak_to_its_siblings() -> Bool {
 // reachability would flap an intermittently-failing host back into service between its failures,
 // which is exactly why the cause is carried rather than being a bare withdrawn flag.
 test fn only_maintenance_withdrawals_admit_automatic_restore() -> Bool {
-  withdrawal_admits_automatic_restore(
-    cause: WithdrawnForMaintenance { detail: "d" as NonEmptyStr })
-    && !withdrawal_admits_automatic_restore(
-      cause: WithdrawnForObservedFault { detail: "d" as NonEmptyStr })
-    && !withdrawal_admits_automatic_restore(
-      cause: WithdrawnToReduceSpend { detail: "d" as NonEmptyStr })
+  gunbc.fleet_capacity_control.withdrawal_admits_automatic_restore(
+    cause: gunbc.fleet_capacity_control.WithdrawnForMaintenance { detail: "d" as std.types.NonEmptyStr })
+    && !gunbc.fleet_capacity_control.withdrawal_admits_automatic_restore(
+      cause: gunbc.fleet_capacity_control.WithdrawnForObservedFault { detail: "d" as std.types.NonEmptyStr })
+    && !gunbc.fleet_capacity_control.withdrawal_admits_automatic_restore(
+      cause: gunbc.fleet_capacity_control.WithdrawnToReduceSpend { detail: "d" as std.types.NonEmptyStr })
 }
 
 // THE ACCOUNT AXIS REFUSES RATHER THAN BEING ABSENT (operator ruling 2026-08-23).
@@ -88,18 +89,18 @@ test fn only_maintenance_withdrawals_admit_automatic_restore() -> Bool {
 // here" -- the not-applicable-versus-malformed conflation -- and would let an ambiguous request be
 // answered by whichever reading happened to get built.
 test fn the_account_axis_refuses_by_name_instead_of_being_absent() -> Bool {
-  let account = apply_capacity_control(request: CutProviderAccountBinding {
-    provider: ClaudeCliProvider,
-    account: "work-account" as NonEmptyStr,
-    cause: WithdrawnToReduceSpend { detail: "rotating" as NonEmptyStr },
+  let account = gunbc.fleet_capacity_control.apply_capacity_control(request: gunbc.fleet_capacity_control.CutProviderAccountBinding {
+    provider: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
+    account: "work-account" as std.types.NonEmptyStr,
+    cause: gunbc.fleet_capacity_control.WithdrawnToReduceSpend { detail: "rotating" as std.types.NonEmptyStr },
   })
-  let runtime = apply_capacity_control(request: CutProviderRuntime {
-    provider: ClaudeCliProvider,
-    cause: WithdrawnToReduceSpend { detail: "rotating" as NonEmptyStr },
+  let runtime = gunbc.fleet_capacity_control.apply_capacity_control(request: gunbc.fleet_capacity_control.CutProviderRuntime {
+    provider: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
+    cause: gunbc.fleet_capacity_control.WithdrawnToReduceSpend { detail: "rotating" as std.types.NonEmptyStr },
   })
-  !capacity_control_is_planned(outcome: account)
-    && capacity_control_is_planned(outcome: runtime)
-    && string_contains(s: capacity_control_outcome_line(outcome: account), pattern: "account binding")
+  !gunbc.fleet_capacity_control.capacity_control_is_planned(outcome: account)
+    && gunbc.fleet_capacity_control.capacity_control_is_planned(outcome: runtime)
+    && string_contains(s: gunbc.fleet_capacity_control.capacity_control_outcome_line(outcome: account), pattern: "account binding")
 }
 
 // THE CONTROL PLANS AND DOES NOT APPLY, AND THIS IS THE WITNESS THAT JOINS THE TWO (review 54905).
@@ -114,37 +115,37 @@ test fn the_account_axis_refuses_by_name_instead_of_being_absent() -> Bool {
 // withdrawal takes authoring a roster row and committing it, so a green here means the control is
 // honest about the boundary rather than that it failed.
 test fn planning_a_cut_does_not_withdraw_anything_by_itself() -> Bool {
-  let outcome = apply_capacity_control(request: CutHost {
-    host: operator_host_srv3,
-    cause: WithdrawnForMaintenance { detail: "memory upgrade" as NonEmptyStr },
+  let outcome = gunbc.fleet_capacity_control.apply_capacity_control(request: gunbc.fleet_capacity_control.CutHost {
+    host: gunbc.fleet_intent_network.operator_host_srv3,
+    cause: gunbc.fleet_capacity_control.WithdrawnForMaintenance { detail: "memory upgrade" as std.types.NonEmptyStr },
   })
-  capacity_control_is_planned(outcome: outcome)
-    && !host_is_withdrawn(host: operator_host_srv3)
-    && string_contains(s: capacity_control_outcome_line(outcome: outcome), pattern: "plan:")
-    && string_contains(s: capacity_control_outcome_line(outcome: outcome),
+  gunbc.fleet_capacity_control.capacity_control_is_planned(outcome: outcome)
+    && !gunbc.fleet_capacity_control.host_is_withdrawn(host: gunbc.fleet_intent_network.operator_host_srv3)
+    && string_contains(s: gunbc.fleet_capacity_control.capacity_control_outcome_line(outcome: outcome), pattern: "plan:")
+    && string_contains(s: gunbc.fleet_capacity_control.capacity_control_outcome_line(outcome: outcome),
                        pattern: "add to withdrawn_hosts")
 }
 
 test fn planning_a_runtime_cut_does_not_withdraw_it_by_itself() -> Bool {
-  let outcome = apply_capacity_control(request: CutProviderRuntime {
-    provider: CodexCliProvider,
-    cause: WithdrawnToReduceSpend { detail: "quota" as NonEmptyStr },
+  let outcome = gunbc.fleet_capacity_control.apply_capacity_control(request: gunbc.fleet_capacity_control.CutProviderRuntime {
+    provider: extdeps.llm.cli_lifecycle.CodexCliProvider,
+    cause: gunbc.fleet_capacity_control.WithdrawnToReduceSpend { detail: "quota" as std.types.NonEmptyStr },
   })
-  capacity_control_is_planned(outcome: outcome)
-    && !provider_is_withdrawn(provider: CodexCliProvider)
+  gunbc.fleet_capacity_control.capacity_control_is_planned(outcome: outcome)
+    && !gunbc.fleet_capacity_control.provider_is_withdrawn(provider: extdeps.llm.cli_lifecycle.CodexCliProvider)
 }
 
 // CUTTING A RUNTIME AND CUTTING A HOST ARE DIFFERENT PLANS, NOT ONE CONTROL WITH AN ARGUMENT.
 test fn the_two_cut_controls_actuate_distinctly() -> Bool {
-  let cut_host = capacity_control_outcome_line(outcome: apply_capacity_control(
-    request: CutHost {
-      host: operator_host_srv3,
-      cause: WithdrawnForMaintenance { detail: "ram" as NonEmptyStr },
+  let cut_host = gunbc.fleet_capacity_control.capacity_control_outcome_line(outcome: gunbc.fleet_capacity_control.apply_capacity_control(
+    request: gunbc.fleet_capacity_control.CutHost {
+      host: gunbc.fleet_intent_network.operator_host_srv3,
+      cause: gunbc.fleet_capacity_control.WithdrawnForMaintenance { detail: "ram" as std.types.NonEmptyStr },
     }))
-  let cut_runtime = capacity_control_outcome_line(outcome: apply_capacity_control(
-    request: CutProviderRuntime {
-      provider: CursorCliProvider,
-      cause: WithdrawnForMaintenance { detail: "ram" as NonEmptyStr },
+  let cut_runtime = gunbc.fleet_capacity_control.capacity_control_outcome_line(outcome: gunbc.fleet_capacity_control.apply_capacity_control(
+    request: gunbc.fleet_capacity_control.CutProviderRuntime {
+      provider: extdeps.llm.cli_lifecycle.CursorCliProvider,
+      cause: gunbc.fleet_capacity_control.WithdrawnForMaintenance { detail: "ram" as std.types.NonEmptyStr },
     }))
   cut_host != cut_runtime
     && string_contains(s: cut_host, pattern: "srv3")
@@ -158,8 +159,8 @@ test fn the_two_cut_controls_actuate_distinctly() -> Bool {
 // machine or a runtime out of service should require an author to face a red test and say so,
 // rather than riding in as a data row nobody reads.
 test fn the_live_rosters_withdraw_nothing() -> Bool {
-  active_host_count() == 4
-    && active_provider_count() == 3
-    && (withdrawn_hosts |> count) == 0
-    && (withdrawn_providers |> count) == 0
+  gunbc.fleet_capacity_control.active_host_count() == 4
+    && gunbc.fleet_capacity_control.active_provider_count() == 3
+    && (gunbc.fleet_capacity_control.withdrawn_hosts |> count) == 0
+    && (gunbc.fleet_capacity_control.withdrawn_providers |> count) == 0
 }

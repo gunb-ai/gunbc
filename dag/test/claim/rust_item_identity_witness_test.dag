@@ -2,38 +2,38 @@ module test.claim.rust_item_identity_witness
 
 
 test fn rust_item_identity_note_cites_impl_method_gap() -> Bool {
-  string_contains(s: rust_item_identity_note, pattern: "impl-block method")
-    && string_contains(s: rust_item_identity_extension_proposal_note, pattern: "ImplMethod")
+  string_contains(s: gunbc.rust_item_identity.rust_item_identity_note, pattern: "impl-block method")
+    && string_contains(s: gunbc.rust_item_identity.rust_item_identity_extension_proposal_note, pattern: "ImplMethod")
 }
 
 test fn rust_item_identity_key_includes_impl_subject() -> Bool {
   let item = gunbc.rust_item_identity.RustItemIdentity {
     repo_path: "src/v1/stage0/src/cli_run.rs",
-    kind: RustImplMethod,
+    kind: gunbc.rust_item_identity.RustImplMethod,
     name: "fmt",
     impl_subject: "std::fmt::Display for Stage0CargoBinManifestParseRefusal",
     start_line: 100,
     loc: 5
   }
-  rust_item_identity_key(item: item) == "src/v1/stage0/src/cli_run.rs::impl_method::std::fmt::Display for Stage0CargoBinManifestParseRefusal::fmt"
+  gunbc.rust_item_identity.rust_item_identity_key(item: item) == "src/v1/stage0/src/cli_run.rs::impl_method::std::fmt::Display for Stage0CargoBinManifestParseRefusal::fmt"
 }
 
 test fn rust_item_identity_key_omits_empty_impl_subject() -> Bool {
   let item = gunbc.rust_item_identity.RustItemIdentity {
     repo_path: "src/v1/stage0/src/cli_run.rs",
-    kind: RustFunction,
+    kind: gunbc.rust_item_identity.RustFunction,
     name: "parse_stage0_cargo_manifest_bin_paths",
     impl_subject: "",
     start_line: 200,
     loc: 50
   }
-  rust_item_identity_key(item: item) == "src/v1/stage0/src/cli_run.rs::fn::parse_stage0_cargo_manifest_bin_paths"
+  gunbc.rust_item_identity.rust_item_identity_key(item: item) == "src/v1/stage0/src/cli_run.rs::fn::parse_stage0_cargo_manifest_bin_paths"
 }
 
 test fn seed_growth_admission_note_cites_seed_growth_authority() -> Bool {
   string_contains(s: gunbc.seed_growth_admission.seed_growth_admission_note, pattern: "gunbc.seed_growth")
     && string_contains(s: gunbc.seed_growth_admission.seed_growth_admission_note, pattern: "completeness join")
-    && string_contains(s: seed_growth_justification_roster_note, pattern: "CLOSED ROSTER")
+    && string_contains(s: gunbc.seed_growth_admission.seed_growth_justification_roster_note, pattern: "CLOSED ROSTER")
 }
 
 test fn g0_population_note_cites_census_host() -> Bool {
@@ -44,6 +44,6 @@ test fn g0_population_note_cites_census_host() -> Bool {
 }
 
 test fn rust_item_host_observation_scaffold_names_python_dissolution() -> Bool {
-  string_contains(s: rust_item_host_observation_scaffold_note, pattern: "rust_item_census.py")
-    && string_contains(s: rust_item_host_observation_scaffold_note, pattern: "extdeps/languages/rust")
+  string_contains(s: gunbc.rust_item_identity.rust_item_host_observation_scaffold_note, pattern: "rust_item_census.py")
+    && string_contains(s: gunbc.rust_item_identity.rust_item_host_observation_scaffold_note, pattern: "extdeps/languages/rust")
 }

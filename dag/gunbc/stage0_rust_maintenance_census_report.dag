@@ -22,61 +22,61 @@ type RustMaintenanceCensusReport
 
 fn row_has_disposition_variant(
   row: gunbc.stage0_rust_source_lifecycle_scaffold.RustSourceLifecycleRow,
-  predicate: fn(RustMaintenanceDisposition) -> Bool
+  predicate: fn(gunbc.stage0_rust_source_lifecycle_scaffold.RustMaintenanceDisposition) -> Bool
 ) -> Bool {
-  any(xs: row.maintenance_dispositions, predicate: predicate)
+  v2.std.algebra.any(xs: row.maintenance_dispositions, predicate: predicate)
 }
 
 fn is_emit_from_disposition(d: gunbc.stage0_rust_source_lifecycle_scaffold.RustMaintenanceDisposition) -> Bool {
   match d {
-    Generated { authority: authority } => false
-    EmitFrom { authority: authority } => true
-    DeleteWith { roadmap_node: roadmap_node } => false
-    RetainedKernel { reason: reason } => false
-    HandScaffold { reason: _, dissolution: _ } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.Generated { authority: authority } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.EmitFrom { authority: authority } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.DeleteWith { roadmap_node: roadmap_node } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.RetainedKernel { reason: reason } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.HandScaffold { reason: _, dissolution: _ } => false
   }
 }
 
 fn is_delete_with_disposition(d: gunbc.stage0_rust_source_lifecycle_scaffold.RustMaintenanceDisposition) -> Bool {
   match d {
-    Generated { authority: authority } => false
-    EmitFrom { authority: authority } => false
-    DeleteWith { roadmap_node: roadmap_node } => true
-    RetainedKernel { reason: reason } => false
-    HandScaffold { reason: _, dissolution: _ } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.Generated { authority: authority } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.EmitFrom { authority: authority } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.DeleteWith { roadmap_node: roadmap_node } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.RetainedKernel { reason: reason } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.HandScaffold { reason: _, dissolution: _ } => false
   }
 }
 
 fn is_retained_kernel_disposition(d: gunbc.stage0_rust_source_lifecycle_scaffold.RustMaintenanceDisposition) -> Bool {
   match d {
-    Generated { authority: authority } => false
-    EmitFrom { authority: authority } => false
-    DeleteWith { roadmap_node: roadmap_node } => false
-    RetainedKernel { reason: reason } => true
-    HandScaffold { reason: _, dissolution: _ } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.Generated { authority: authority } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.EmitFrom { authority: authority } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.DeleteWith { roadmap_node: roadmap_node } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.RetainedKernel { reason: reason } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.HandScaffold { reason: _, dissolution: _ } => false
   }
 }
 
 fn is_hand_scaffold_disposition(d: gunbc.stage0_rust_source_lifecycle_scaffold.RustMaintenanceDisposition) -> Bool {
   match d {
-    Generated { authority: authority } => false
-    EmitFrom { authority: authority } => false
-    DeleteWith { roadmap_node: roadmap_node } => false
-    RetainedKernel { reason: reason } => false
-    HandScaffold { reason: _, dissolution: _ } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.Generated { authority: authority } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.EmitFrom { authority: authority } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.DeleteWith { roadmap_node: roadmap_node } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.RetainedKernel { reason: reason } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.HandScaffold { reason: _, dissolution: _ } => true
   }
 }
 
 fn disposition_category_paths(
   rows: List<gunbc.stage0_rust_source_lifecycle_scaffold.RustSourceLifecycleRow>,
   tracked_paths: List<String>,
-  predicate: fn(RustMaintenanceDisposition) -> Bool
+  predicate: fn(gunbc.stage0_rust_source_lifecycle_scaffold.RustMaintenanceDisposition) -> Bool
 ) -> List<String> {
   v2.std.algebra.list_map(
-    xs: filter(
+    xs: v2.std.algebra.filter(
       xs: rows,
       predicate: fn(row) {
-        path_in_list(path: row.path, paths: tracked_paths)
+        gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: row.path, paths: tracked_paths)
           && row_has_disposition_variant(row: row, predicate: predicate)
       }
     ),
@@ -85,20 +85,20 @@ fn disposition_category_paths(
 }
 
 fn current_rust_maintenance_census_report() -> RustMaintenanceCensusReport {
-  rust_maintenance_census_report_over(observation: current_stage0_rust_source_observation())
+  rust_maintenance_census_report_over(observation: gunbc.stage0_rust_host_observation.current_stage0_rust_source_observation())
 }
 
 fn rust_maintenance_census_report_over(
   observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation
 ) -> RustMaintenanceCensusReport {
   match observation {
-    RustManifestReadRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: detail } =>
       RustMaintenanceCensusObservationRefused { detail: detail }
-    RustManifestParseRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: detail } =>
       RustMaintenanceCensusObservationRefused { detail: detail }
-    GitObservationRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.GitObservationRefused { detail: detail } =>
       RustMaintenanceCensusObservationRefused { detail: detail }
-    RustManifestObserved {
+    gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: revision,
       manifest_content_identity: _,
       tracked_rust_repo_paths: _,
@@ -106,12 +106,12 @@ fn rust_maintenance_census_report_over(
       cargo_bin_repo_paths: _,
       emit_population_evidence: _
     } =>
-      match lifecycle_totality_receipt(observation: observation) {
-        LifecycleTotalityObservationRefused =>
+      match gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_receipt(observation: observation) {
+        gunbc.stage0_rust_lifecycle_totality.LifecycleTotalityObservationRefused =>
           RustMaintenanceCensusObservationRefused {
             detail: "lifecycle_totality_receipt refused a RustManifestObserved subject"
           }
-        LifecycleTotalityDerived {
+        gunbc.stage0_rust_lifecycle_totality.LifecycleTotalityDerived {
           tracked_paths: tracked_paths,
           generated_paths: generated_paths,
           maintenance_disposition_paths: maintenance_disposition_paths,
@@ -124,12 +124,12 @@ fn rust_maintenance_census_report_over(
           role_without_disposition_paths: role_without_disposition_paths,
           ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
         } => {
-          let rows = disposition_authority_rows()
-          let all_duplicate_paths = list_concat_unique(
-            acc: list_concat_unique(acc: duplicate_disposition_paths, items: duplicate_generated_paths),
+          let rows = gunbc.stage0_rust_source_lifecycle_scaffold.disposition_authority_rows()
+          let all_duplicate_paths = gunbc.stage0_rust_source_lifecycle_scaffold.list_concat_unique(
+            acc: gunbc.stage0_rust_source_lifecycle_scaffold.list_concat_unique(acc: duplicate_disposition_paths, items: duplicate_generated_paths),
             items: duplicate_role_paths
           )
-          let all_unknown_or_refused_paths = list_concat_unique(
+          let all_unknown_or_refused_paths = gunbc.stage0_rust_source_lifecycle_scaffold.list_concat_unique(
             acc: unclassified_paths,
             items: ill_formed_maintenance_disposition_paths
           )

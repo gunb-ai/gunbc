@@ -2,27 +2,27 @@ module gunbc.cli_run_floor_lens_oracle_scaffold
 
 
 
-data cli_run_floor_lens_read_refusal_hand_rust_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+data cli_run_floor_lens_read_refusal_hand_rust_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "v1_compiler.cli_run",
     decl_name: "refuse_on_module_graph_read_refusals",
     field: WholeDeclaration
   }
 }
 
-data cli_run_floor_lens_observation_hand_rust_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+data cli_run_floor_lens_observation_hand_rust_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "v1_compiler.cli_run",
     decl_name: "import_resolution_facts_with_observation",
     field: WholeDeclaration
   }
 }
 
-data cli_run_floor_lens_hand_rust_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: refuse_on_module_graph_read_refusals + import_resolution_facts_with_observation — the typed read-refusal arm and the observation projection in HAND-Rust (the host realization of the v2.lens.module_graph fact production until it emits from workflow dag). The census walk and justification census this carrier also tracked are DELETED, not dissolved: the supply-side lens enforcement they served made every floor discovery run acquire a whole-corpus world to answer a question about lens authorship, and the answer had no consumer that justified the acquisition. DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md) OR ROADMAP 5-dissolve-patches (gunbc.roadmap_authority ticket) retires the HAND fact production entirely")
+data cli_run_floor_lens_hand_rust_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: refuse_on_module_graph_read_refusals + import_resolution_facts_with_observation — the typed read-refusal arm and the observation projection in HAND-Rust (the host realization of the v2.lens.module_graph fact production until it emits from workflow dag). The census walk and justification census this carrier also tracked are DELETED, not dissolved: the supply-side lens enforcement they served made every floor discovery run acquire a whole-corpus world to answer a question about lens authorship, and the answer had no consumer that justified the acquisition. DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md) OR ROADMAP 5-dissolve-patches (gunbc.roadmap_authority ticket) retires the HAND fact production entirely")
 
-data cli_run_floor_lens_scaffold_shape_red_control: std.disposition.Disposition = Terminal {
+data cli_run_floor_lens_scaffold_shape_red_control: Disposition = Terminal {
   reason: "RED CONTROL for the scaffold-shape cells in dag/test/claim/cli_run_floor_lens_oracle_witness_test.dag: a Terminal disposition, so the canonical reader v2.lens.disposition_redundancy.disposition_is_terminal must answer true for it while answering false for every Scaffold row above. Without this row the shape assertions could pass on a reader that answered false unconditionally; with it, the reader is proven to discriminate. Not a disposition ABOUT any declaration — it is test data declared beside the rows it controls."
 }
 

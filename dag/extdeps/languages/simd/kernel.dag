@@ -3,7 +3,7 @@ module extdeps.languages.simd.kernel
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "gcc.gnu.org/onlinedocs/gcc/Vector-Extensions.html"
   }
 }
@@ -19,10 +19,10 @@ type SimdKernelEmitSurface {
   buffer_layout: SimdKernelBufferLayout
 }
 
-fn simd_kernel_medium(surface: SimdKernelEmitSurface) -> Medium<SimdKernelEmitSurface> {
+fn simd_kernel_medium(surface: SimdKernelEmitSurface) -> extdeps.communication.medium.Medium<SimdKernelEmitSurface> {
   extdeps.communication.medium.Medium {
     carried: surface
-    fidelity: Lossless
+    fidelity: extdeps.communication.medium.Lossless
   }
 }
 
@@ -79,7 +79,7 @@ fn contiguous_loop_elementwise_kernel(
   b: List<Int>,
   c: List<Int>
 ) -> List<Int> {
-  [pure_dag_seam_unreachable()]
+  [std.bytes.pure_dag_seam_unreachable()]
 }
 
 fn contiguous_loop_elementwise_float_kernel(
@@ -89,23 +89,23 @@ fn contiguous_loop_elementwise_float_kernel(
   b: List<Float>,
   c: List<Float>
 ) -> List<Float> {
-  [pure_dag_seam_unreachable_float()]
+  [std.bytes.pure_dag_seam_unreachable_float()]
 }
 
 data simd_kernel_int_execution_host_realization_marker: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.simd.kernel",
     decl_name: "contiguous_loop_elementwise_kernel",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data simd_kernel_float_execution_host_realization_marker: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.simd.kernel",
     decl_name: "contiguous_loop_elementwise_float_kernel",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }

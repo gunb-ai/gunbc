@@ -13,10 +13,10 @@ data codex_account_label_separator: String = "@"
 
 fn codex_account_directory_name(selection: CodexAccountSelection) -> String {
   match selection {
-    CodexDefaultAccount => codex_state_root_default_relative as String
+    CodexDefaultAccount => extdeps.llm.codex_auth.codex_state_root_default_relative as String
     CodexLabelledAccount { label } =>
       join([
-        codex_state_root_default_relative as String,
+        extdeps.llm.codex_auth.codex_state_root_default_relative as String,
         codex_account_label_separator,
         label as String,
       ], "")
@@ -70,22 +70,22 @@ type CredentialSharingDiscipline
   | ConcurrentBindingSafe
 
 fn codex_observed_ceiling() -> SessionConcurrency {
-  ManySessions { total: codex_observed_concurrent_sessions_per_root }
+  ManySessions { total: extdeps.llm.codex_auth.codex_observed_concurrent_sessions_per_root }
 }
 
 fn codex_sharing_discipline(
   persistence: extdeps.llm.codex_auth.CodexRefreshPersistence,
 ) -> CredentialSharingDiscipline {
   match persistence {
-    CodexPersistenceUnobserved => SharingDisciplineUnknown
-    CodexPersistenceObservedLoginOnly =>
+    extdeps.llm.codex_auth.CodexPersistenceUnobserved => SharingDisciplineUnknown
+    extdeps.llm.codex_auth.CodexPersistenceObservedLoginOnly =>
       ConcurrentBindingObservedUpTo { ceiling: codex_observed_ceiling() }
-    CodexPersistsOnRefresh => ExclusiveBinding
+    extdeps.llm.codex_auth.CodexPersistsOnRefresh => ExclusiveBinding
   }
 }
 
 fn codex_current_sharing_discipline() -> CredentialSharingDiscipline {
-  codex_sharing_discipline(persistence: codex_observed_refresh_persistence)
+  codex_sharing_discipline(persistence: extdeps.llm.codex_auth.codex_observed_refresh_persistence)
 }
 
 data provider_account_binding_admission_note: String = "THE EARLIER VERSION OF THIS NOTE CLAIMED THE INVALID ARCHITECTURE WAS UNWRITABLE, AND THAT WAS FALSE. It said the admission is a typed value a caller must match, so the arm that proceeds anyway does not exist to be written. Both halves were true of THIS function and irrelevant to the system, because nothing called it. admit_account_binding returned a value no consumer ever received: gunbc.roadmap_dashboard_instance wrote DashboardExistingProviderState directly, with a state root and an executable and no binding at all, so every deployment in the fleet was constructed along a path this admission never touched. A wall with no doorway in front of it is vocabulary.\\n\\nThat is the exact construction-versus-validation error the rule exists to catch, committed while quoting the rule. The test the earlier note should have been held to: can the bad state be written? It could — by not calling this function, which is what every caller did.\\n\\nTHE FIX IS THAT THE TOKEN IS NOW A REQUIRED FIELD. AdmittedAccountBinding is a separate type produced by the admitted arm below, and DashboardExistingProviderState carries one, so a provider state cannot be constructed without naming an admitted binding. The admission is no longer something a caller may consult; it is something the value cannot exist without.\\n\\nWhat this closes and what it does not, stated plainly rather than claimed away: a caller cannot reach a provider state by skipping admission, because the field has no default and the type has no other constructor. A caller CAN still hand-author an AdmittedAccountBinding literal, since this language has no module-private constructors — that residue is real, it is the same one every branded carrier in this tree carries, and it is a lens question rather than a construction one. What is gone is the accidental bypass, which is the one that was actually being taken."
@@ -199,7 +199,7 @@ fn admitted_single_session_binding(
 
 data codex_roadmap_account_evidence_note: String = "The evidence the fleet's codex account actually rests on, authored as an EvidencedSharingDiscipline so that stating 'unknown' here is not expressible. It tracks codex_observed_refresh_persistence rather than restating it, and the witness pins the two together so a change to the observation that did not reach this row reds rather than drifting."
 
-data codex_roadmap_account_evidence: EvidencedSharingDiscipline = EvidencedObservedUpTo { ceiling: ManySessions { total: codex_observed_concurrent_sessions_per_root } }
+data codex_roadmap_account_evidence: EvidencedSharingDiscipline = EvidencedObservedUpTo { ceiling: ManySessions { total: extdeps.llm.codex_auth.codex_observed_concurrent_sessions_per_root } }
 
 // The dedicated dashboard account, named once here rather than inferred from a path. Every instance's provider state root ends in this label by the @-suffix convention above, so reading the account back out of the directory string would work and would be a second representation — the selection is the fact and the path is derived from it, not the other way round.
 data codex_roadmap_account_label: ProviderAccountLabel = "gunbc-roadmap" as ProviderAccountLabel

@@ -4,14 +4,14 @@ module extdeps.systems.nvidia
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.nvidia.com/dgx/dgx-spark/hardware.html"
   }
 }
 
 data dgx_spark_system_overview_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.nvidia.com/dgx/dgx-spark/system-overview.html"
   }
 }
@@ -21,44 +21,44 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.systems.nvidia",
       decl_name: "dgx_spark_catalog_row",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.systems.nvidia.extdeps_external_authority_anchor,
-  further_citations: [extdeps.systems.nvidia.dgx_spark_system_overview_authority]
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [dgx_spark_system_overview_authority]
 }
 
 // SPARK-0 (2026-08-05). Every field below was read from the two cited docs.nvidia.com pages by live fetch, not recalled: CPU '20-core Arm processor (10 Cortex-X925 + 10 Cortex-A725)'; GPU 'NVIDIA Blackwell Architecture with 5th Generation Tensor Cores, 4th Generation RT Cores' and '6,144' CUDA cores; memory '128 GB LPDDR5x unified system memory, 256-bit interface, 4266 MHz, 273 GB/s bandwidth'; storage '1 TB or 4 TB NVMe M.2 with self-encryption' (two SKUs, hence two catalog rows below); networking '1x RJ-45 (10 GbE)', 'ConnectX-7 Smart NIC', 'Wi-Fi 7, Bluetooth 5.4'; power '240W external power supply' with 'GB10 SOC thermal design power of 140W' (the 140W figure is the WHOLE SoC's TDP, not the GPU alone or the CPU alone, so it is carried at the system row, never misattributed onto the nested GPU catalog row's own tdp_watts field).
 // Fields the two pages do not state -- GPU boost clock, GPU-only TDP, CUDA compute-capability (sm_) number, NVLink-C2C link facts -- are left none rather than filled from unofficial sources (a ServeTheHome review and a Kubesimplify blog post both name 'sm_121' for the GB10, but neither is a docs.nvidia.com citation, so that number is not asserted here); this is a citation gap to note back, not a value to guess. Storage capacity is carried as the vendor-labeled decimal figure ('1 TB' / '4 TB'), not a raw byte count, because the cited page states only the marketing label.
 data nvidia_gb10_gpu_catalog: extdeps.gpu.types.GpuModelCatalogRow = extdeps.gpu.types.GpuModelCatalogRow {
-  vendor: nvidia,
+  vendor: extdeps.vendor.nvidia.nvidia,
   model: "GB10 Blackwell GPU",
   microarchitecture: "Blackwell",
-  execution_lane_count: hardware_thread_count(6144),
+  execution_lane_count: std.measure.hardware_thread_count(6144),
   memory: extdeps.memory.types.MemoryFacts {
-    capacity: gibibyte_to_byte_size(g: gibibyte(count: 128)),
-    memory_kind: UnifiedShared,
+    capacity: std.measure.gibibyte_to_byte_size(g: std.measure.gibibyte(count: 128)),
+    memory_kind: extdeps.memory.types.UnifiedShared,
   },
-  memory_bandwidth: bandwidth(count: 273000000000),
+  memory_bandwidth: std.measure.bandwidth(count: 273000000000),
   boost_clock: none,
   tdp_watts: none,
   compute_capability: none,
-  supported_runtimes: [Cuda],
+  supported_runtimes: [extdeps.gpu.types.Cuda],
   interconnect: none,
   sm_cache: none,
   sm_cache_citations: [],
 }
 
 data dgx_spark_cpu_core_clusters: List<extdeps.systems.types.CpuCoreCluster> = [
-  extdeps.systems.types.CpuCoreCluster { microarchitecture: "Arm Cortex-X925", core_count: hardware_thread_count(10) },
-  extdeps.systems.types.CpuCoreCluster { microarchitecture: "Arm Cortex-A725", core_count: hardware_thread_count(10) },
+  extdeps.systems.types.CpuCoreCluster { microarchitecture: "Arm Cortex-X925", core_count: std.measure.hardware_thread_count(10) },
+  extdeps.systems.types.CpuCoreCluster { microarchitecture: "Arm Cortex-A725", core_count: std.measure.hardware_thread_count(10) },
 ]
 
 data dgx_spark_network_ports: List<extdeps.systems.types.SystemNetworkPort> = [
-  extdeps.systems.types.SystemNetworkPort { medium: WiredEthernet, product_name: none, bandwidth: none },
-  extdeps.systems.types.SystemNetworkPort { medium: SmartNic, product_name: "NVIDIA ConnectX-7", bandwidth: none },
-  extdeps.systems.types.SystemNetworkPort { medium: WirelessLan, product_name: "Wi-Fi 7", bandwidth: none },
-  extdeps.systems.types.SystemNetworkPort { medium: ShortRangeWireless, product_name: "Bluetooth 5.4", bandwidth: none },
+  extdeps.systems.types.SystemNetworkPort { medium: extdeps.systems.types.WiredEthernet, product_name: none, bandwidth: none },
+  extdeps.systems.types.SystemNetworkPort { medium: extdeps.systems.types.SmartNic, product_name: "NVIDIA ConnectX-7", bandwidth: none },
+  extdeps.systems.types.SystemNetworkPort { medium: extdeps.systems.types.WirelessLan, product_name: "Wi-Fi 7", bandwidth: none },
+  extdeps.systems.types.SystemNetworkPort { medium: extdeps.systems.types.ShortRangeWireless, product_name: "Bluetooth 5.4", bandwidth: none },
 ]
 
 // dgx_spark_catalog_row's IntegratedComputeSystemCatalogRow.memory and .memory_bandwidth
@@ -68,27 +68,27 @@ data dgx_spark_network_ports: List<extdeps.systems.types.SystemNetworkPort> = [
 // literals a second time (review 49122; DESIGN §3 parallel-representation).
 fn dgx_spark_catalog_row(storage_capacity: std.measure.ByteSize) -> extdeps.systems.types.IntegratedComputeSystemCatalogRow {
   extdeps.systems.types.IntegratedComputeSystemCatalogRow {
-    vendor: nvidia,
+    vendor: extdeps.vendor.nvidia.nvidia,
     model: "NVIDIA DGX Spark",
     soc_model: "GB10 Grace Blackwell Superchip",
-    cpu_architecture: Aarch64,
+    cpu_architecture: extdeps.toolchain.types.Aarch64,
     cpu_core_clusters: dgx_spark_cpu_core_clusters,
     gpu: nvidia_gb10_gpu_catalog,
     memory: nvidia_gb10_gpu_catalog.memory,
-    memory_bus_width: bit_width(count: 256),
-    memory_data_rate: hertz(count: 4266000000),
+    memory_bus_width: std.measure.bit_width(count: 256),
+    memory_data_rate: std.measure.hertz(count: 4266000000),
     memory_bandwidth: nvidia_gb10_gpu_catalog.memory_bandwidth,
     storage_capacity: storage_capacity,
     network_ports: dgx_spark_network_ports,
-    external_power_supply: watt(count: 240),
-    soc_thermal_design_power: watt(count: 140),
+    external_power_supply: std.measure.watt(count: 240),
+    soc_thermal_design_power: std.measure.watt(count: 140),
   }
 }
 
 data nvidia_dgx_spark_1tb_catalog: extdeps.systems.types.IntegratedComputeSystemCatalogRow = dgx_spark_catalog_row(
-  storage_capacity: byte_size(count: 1000000000000),
+  storage_capacity: std.measure.byte_size(count: 1000000000000),
 )
 
 data nvidia_dgx_spark_4tb_catalog: extdeps.systems.types.IntegratedComputeSystemCatalogRow = dgx_spark_catalog_row(
-  storage_capacity: byte_size(count: 4000000000000),
+  storage_capacity: std.measure.byte_size(count: 4000000000000),
 )

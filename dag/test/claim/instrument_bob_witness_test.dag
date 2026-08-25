@@ -1,7 +1,7 @@
 module test.claim.instrument_bob_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data instrument_bob_witness_note: String = "The three properties that make the bob a modelled behaviour rather than an animation — bounded, settling, inert — each with the control that reds it. The settle claim is the one worth reading closely: it is carried as descent evidence over the advance function, so a retune that made the envelope grow would not merely look wrong, it would fail a claim about termination."
 
@@ -10,10 +10,10 @@ fn an_impulse(magnitude: Int) -> gunbc.capability_binding.PhysicalImpulse {
     source_provider: std.decl_ref.DeclarationRef {
       module_path: "gunbc.capability_binding",
       decl_name: "synthetic_tap_impulse",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     },
     magnitude_milli_m_per_s2: magnitude,
-    direction: ImpulseDown,
+    direction: gunbc.capability_binding.ImpulseDown,
     observed_at_ms: 0,
   }
 }
@@ -21,39 +21,39 @@ fn an_impulse(magnitude: Int) -> gunbc.capability_binding.PhysicalImpulse {
 data clamp_is_the_load_bearing_half_note: String = "A hand can deliver an order of magnitude more acceleration than a fingertip. The reference magnitude maps a firm knock onto the full envelope, and everything above it clamps — so a violent smack and an absurd one produce the SAME travel, and the plate cannot be thrown off the screen by a large input. This is the claim that a linear scaling would fail."
 
 fn witness_a_harder_smack_never_travels_further_than_the_bound() -> Bool {
-  amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli) == bob_max_travel_px * 1000
-    && amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli * 10) ==
-         bob_max_travel_px * 1000
-    && amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli * 1000) ==
-         bob_max_travel_px * 1000
-    && amplitude_for_impulse(magnitude_milli_m_per_s2: 0) == 0
-    && clamp_amplitude(milli: 0 - 5000) == 0
+  gunbc.design.instrument_bob.amplitude_for_impulse(magnitude_milli_m_per_s2: gunbc.design.instrument_bob.impulse_reference_magnitude_milli) == gunbc.design.instrument_bob.bob_max_travel_px * 1000
+    && gunbc.design.instrument_bob.amplitude_for_impulse(magnitude_milli_m_per_s2: gunbc.design.instrument_bob.impulse_reference_magnitude_milli * 10) ==
+         gunbc.design.instrument_bob.bob_max_travel_px * 1000
+    && gunbc.design.instrument_bob.amplitude_for_impulse(magnitude_milli_m_per_s2: gunbc.design.instrument_bob.impulse_reference_magnitude_milli * 1000) ==
+         gunbc.design.instrument_bob.bob_max_travel_px * 1000
+    && gunbc.design.instrument_bob.amplitude_for_impulse(magnitude_milli_m_per_s2: 0) == 0
+    && gunbc.design.instrument_bob.clamp_amplitude(milli: 0 - 5000) == 0
 }
 
 fn witness_a_gentler_knock_travels_proportionally_less() -> Bool {
-  amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli / 2) <
-      amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli)
-    && amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli / 2) > 0
+  gunbc.design.instrument_bob.amplitude_for_impulse(magnitude_milli_m_per_s2: gunbc.design.instrument_bob.impulse_reference_magnitude_milli / 2) <
+      gunbc.design.instrument_bob.amplitude_for_impulse(magnitude_milli_m_per_s2: gunbc.design.instrument_bob.impulse_reference_magnitude_milli)
+    && gunbc.design.instrument_bob.amplitude_for_impulse(magnitude_milli_m_per_s2: gunbc.design.instrument_bob.impulse_reference_magnitude_milli / 2) > 0
 }
 
 data register_bound_note: String = "The bob's ceiling sits strictly under the register's attraction travel, so instrument character can never move a subject as far as a real response does. Asserted as a relationship between the two authorities rather than as two independent numbers, which is what makes a later retune of either one red rather than silently violating the law."
 
 fn witness_the_bob_stays_under_the_registers_attraction_travel() -> Bool {
-  bob_max_travel_px < gunbc.design.salience.attraction_travel_max_px
-    && bob_max_travel_px <= instrument_displacement_max_px
-    && bob_is_within_register_bound(s: apply_impulse(i: an_impulse(magnitude: 999999), m: MotionFull))
-    && bob_is_within_register_bound(s: bob_at_rest)
-    && bob_idle_character_px < bob_max_travel_px
+  gunbc.design.instrument_bob.bob_max_travel_px < gunbc.design.salience.attraction_travel_max_px
+    && gunbc.design.instrument_bob.bob_max_travel_px <= gunbc.design.instrument_physical.instrument_displacement_max_px
+    && gunbc.design.instrument_bob.bob_is_within_register_bound(s: gunbc.design.instrument_bob.apply_impulse(i: an_impulse(magnitude: 999999), m: gunbc.design.instrument_bob.MotionFull))
+    && gunbc.design.instrument_bob.bob_is_within_register_bound(s: gunbc.design.instrument_bob.bob_at_rest)
+    && gunbc.design.instrument_bob.bob_idle_character_px < gunbc.design.instrument_bob.bob_max_travel_px
 }
 
 fn witness_red_every_advanced_state_stays_bounded() -> Bool {
-  let hit = apply_impulse(i: an_impulse(magnitude: 999999), m: MotionFull)
+  let hit = gunbc.design.instrument_bob.apply_impulse(i: an_impulse(magnitude: 999999), m: gunbc.design.instrument_bob.MotionFull)
   let a1 = gunbc.design.instrument_bob.advance(s: hit, dt_ms: 60)
   let a2 = gunbc.design.instrument_bob.advance(s: a1, dt_ms: 200)
   let a3 = gunbc.design.instrument_bob.advance(s: a2, dt_ms: 500)
-  bob_is_within_register_bound(s: a1)
-    && bob_is_within_register_bound(s: a2)
-    && bob_is_within_register_bound(s: a3)
+  gunbc.design.instrument_bob.bob_is_within_register_bound(s: a1)
+    && gunbc.design.instrument_bob.bob_is_within_register_bound(s: a2)
+    && gunbc.design.instrument_bob.bob_is_within_register_bound(s: a3)
 }
 
 data step_size_independence_note: String = "THE DEFECT THIS CONTROL EXISTS FOR. Decaying by each step's duration made the envelope a function of how a caller chose to advance rather than of elapsed time, and at the production interval — sixteen milliseconds against a one-hundred-and-eighty-millisecond half-life — it decayed by nothing at all. So this asserts the property directly: reaching one instant in many small steps and reaching it in one large step produce the SAME amplitude, and the production interval genuinely reduces it. A model that regressed to per-step decay fails the first conjunct AND the second."
@@ -63,75 +63,75 @@ fn advance_n(s: gunbc.design.instrument_bob.BobState, dt_ms: Int, n: Int) -> gun
 }
 
 fn witness_decay_is_independent_of_how_the_caller_steps() -> Bool {
-  let hit = apply_impulse(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull)
+  let hit = gunbc.design.instrument_bob.apply_impulse(i: an_impulse(magnitude: gunbc.design.instrument_bob.impulse_reference_magnitude_milli), m: gunbc.design.instrument_bob.MotionFull)
   let many = advance_n(s: hit, dt_ms: 16, n: 10)
   let once = gunbc.design.instrument_bob.advance(s: hit, dt_ms: 160)
-  bob_amplitude_milli(s: many) == bob_amplitude_milli(s: once)
-    && bob_amplitude_milli(s: many) < bob_amplitude_milli(s: hit)
-    && bob_amplitude_milli(s: gunbc.design.instrument_bob.advance(s: hit, dt_ms: 16)) < bob_amplitude_milli(s: hit)
-    && bob_amplitude_milli(s: advance_n(s: hit, dt_ms: 16, n: 60)) == 0
+  gunbc.design.instrument_bob.bob_amplitude_milli(s: many) == gunbc.design.instrument_bob.bob_amplitude_milli(s: once)
+    && gunbc.design.instrument_bob.bob_amplitude_milli(s: many) < gunbc.design.instrument_bob.bob_amplitude_milli(s: hit)
+    && gunbc.design.instrument_bob.bob_amplitude_milli(s: gunbc.design.instrument_bob.advance(s: hit, dt_ms: 16)) < gunbc.design.instrument_bob.bob_amplitude_milli(s: hit)
+    && gunbc.design.instrument_bob.bob_amplitude_milli(s: advance_n(s: hit, dt_ms: 16, n: 60)) == 0
 }
 
 data settling_note: String = "The bob always comes to rest, and the claim is carried as descent evidence rather than as a sentence. Advancing a ringing bob past a half-life STRICTLY decreases the envelope; a shorter advance is non-increasing; neither is ever Unknown. A model whose envelope could grow would fail here rather than merely looking wrong on screen."
 
 fn witness_the_bob_always_settles_with_strict_descent() -> Bool {
-  let hit = apply_impulse(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull)
-  evidence_rank(e: advance_descent_evidence(s: hit, dt_ms: bob_half_life_ms)) == 2
-    && evidence_rank(e: advance_descent_evidence(s: hit, dt_ms: bob_half_life_ms * 3)) == 2
-    && evidence_rank(e: advance_descent_evidence(s: hit, dt_ms: 16)) == 2
-    && evidence_rank(e: advance_descent_evidence(s: bob_at_rest, dt_ms: 10)) == 2
-    && evidence_rank(e: advance_descent_evidence(s: hit, dt_ms: 10)) > 0
+  let hit = gunbc.design.instrument_bob.apply_impulse(i: an_impulse(magnitude: gunbc.design.instrument_bob.impulse_reference_magnitude_milli), m: gunbc.design.instrument_bob.MotionFull)
+  std.termination.evidence_rank(e: gunbc.design.instrument_bob.advance_descent_evidence(s: hit, dt_ms: gunbc.design.instrument_bob.bob_half_life_ms)) == 2
+    && std.termination.evidence_rank(e: gunbc.design.instrument_bob.advance_descent_evidence(s: hit, dt_ms: gunbc.design.instrument_bob.bob_half_life_ms * 3)) == 2
+    && std.termination.evidence_rank(e: gunbc.design.instrument_bob.advance_descent_evidence(s: hit, dt_ms: 16)) == 2
+    && std.termination.evidence_rank(e: gunbc.design.instrument_bob.advance_descent_evidence(s: gunbc.design.instrument_bob.bob_at_rest, dt_ms: 10)) == 2
+    && std.termination.evidence_rank(e: gunbc.design.instrument_bob.advance_descent_evidence(s: hit, dt_ms: 10)) > 0
 }
 
 fn witness_the_envelope_strictly_decays_and_reaches_rest() -> Bool {
-  let hit = apply_impulse(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull)
-  let a1 = gunbc.design.instrument_bob.advance(s: hit, dt_ms: bob_half_life_ms)
-  let a2 = gunbc.design.instrument_bob.advance(s: a1, dt_ms: bob_half_life_ms)
-  bob_amplitude_milli(s: a1) < bob_amplitude_milli(s: hit)
-    && bob_amplitude_milli(s: a2) < bob_amplitude_milli(s: a1)
-    && bob_phase_key(p: gunbc.design.instrument_bob.advance(s: hit, dt_ms: bob_half_life_ms * 20).phase) == "settled"
-    && bob_amplitude_milli(s: gunbc.design.instrument_bob.advance(s: hit, dt_ms: bob_half_life_ms * 20)) == 0
+  let hit = gunbc.design.instrument_bob.apply_impulse(i: an_impulse(magnitude: gunbc.design.instrument_bob.impulse_reference_magnitude_milli), m: gunbc.design.instrument_bob.MotionFull)
+  let a1 = gunbc.design.instrument_bob.advance(s: hit, dt_ms: gunbc.design.instrument_bob.bob_half_life_ms)
+  let a2 = gunbc.design.instrument_bob.advance(s: a1, dt_ms: gunbc.design.instrument_bob.bob_half_life_ms)
+  gunbc.design.instrument_bob.bob_amplitude_milli(s: a1) < gunbc.design.instrument_bob.bob_amplitude_milli(s: hit)
+    && gunbc.design.instrument_bob.bob_amplitude_milli(s: a2) < gunbc.design.instrument_bob.bob_amplitude_milli(s: a1)
+    && gunbc.design.instrument_bob.bob_phase_key(p: gunbc.design.instrument_bob.advance(s: hit, dt_ms: gunbc.design.instrument_bob.bob_half_life_ms * 20).phase) == "settled"
+    && gunbc.design.instrument_bob.bob_amplitude_milli(s: gunbc.design.instrument_bob.advance(s: hit, dt_ms: gunbc.design.instrument_bob.bob_half_life_ms * 20)) == 0
 }
 
 data derived_settle_bound_note: String = "The settle time is derived from the bound, the floor and the half-life rather than declared, so retuning any of the three moves it and no second number goes stale. The largest admissible knock rings for a little over a second, which is the interval a bobber on water actually takes and is why the number reads as correct rather than as arbitrary."
 
 fn witness_the_settle_time_is_derived_and_finite() -> Bool {
-  half_lives_to_settle(initial_milli: bob_max_travel_px * 1000) > 0
-    && max_settle_time_ms() == half_lives_to_settle(initial_milli: bob_max_travel_px * 1000) * bob_half_life_ms
-    && max_settle_time_ms() > 500
-    && max_settle_time_ms() < 2000
-    && settle_time_ms(initial_milli: 0) == 0
+  gunbc.design.instrument_bob.half_lives_to_settle(initial_milli: gunbc.design.instrument_bob.bob_max_travel_px * 1000) > 0
+    && gunbc.design.instrument_bob.max_settle_time_ms() == gunbc.design.instrument_bob.half_lives_to_settle(initial_milli: gunbc.design.instrument_bob.bob_max_travel_px * 1000) * gunbc.design.instrument_bob.bob_half_life_ms
+    && gunbc.design.instrument_bob.max_settle_time_ms() > 500
+    && gunbc.design.instrument_bob.max_settle_time_ms() < 2000
+    && gunbc.design.instrument_bob.settle_time_ms(initial_milli: 0) == 0
 }
 
 fn witness_halving_is_monotone() -> Bool {
-  halve_n_times(milli: 9000, n: 0) == 9000
-    && halve_n_times(milli: 9000, n: 1) == 4500
-    && halve_n_times(milli: 9000, n: 2) == 2250
-    && halve_n_times(milli: 9000, n: 40) == 0
-    && amplitude_at(initial_milli: 9000, elapsed_ms: bob_half_life_ms) == 4500
-    && amplitude_at(initial_milli: 9000, elapsed_ms: 0) == 9000
-    && amplitude_at(initial_milli: 9000, elapsed_ms: bob_half_life_ms * 2) == 2250
-    && amplitude_at(initial_milli: 9000, elapsed_ms: bob_half_life_ms / 2) < 9000
-    && amplitude_at(initial_milli: 9000, elapsed_ms: bob_half_life_ms / 2) > 4500
+  gunbc.design.instrument_bob.halve_n_times(milli: 9000, n: 0) == 9000
+    && gunbc.design.instrument_bob.halve_n_times(milli: 9000, n: 1) == 4500
+    && gunbc.design.instrument_bob.halve_n_times(milli: 9000, n: 2) == 2250
+    && gunbc.design.instrument_bob.halve_n_times(milli: 9000, n: 40) == 0
+    && gunbc.design.instrument_bob.amplitude_at(initial_milli: 9000, elapsed_ms: gunbc.design.instrument_bob.bob_half_life_ms) == 4500
+    && gunbc.design.instrument_bob.amplitude_at(initial_milli: 9000, elapsed_ms: 0) == 9000
+    && gunbc.design.instrument_bob.amplitude_at(initial_milli: 9000, elapsed_ms: gunbc.design.instrument_bob.bob_half_life_ms * 2) == 2250
+    && gunbc.design.instrument_bob.amplitude_at(initial_milli: 9000, elapsed_ms: gunbc.design.instrument_bob.bob_half_life_ms / 2) < 9000
+    && gunbc.design.instrument_bob.amplitude_at(initial_milli: 9000, elapsed_ms: gunbc.design.instrument_bob.bob_half_life_ms / 2) > 4500
 }
 
 data reduced_motion_note: String = "The preference removes the movement and keeps the receipt, and the control asserts BOTH halves. A reduced-motion viewer gets no displacement at all — not a smaller one — and the impulse that produced it remains a real, typed, nameable fact. Suppressing the impulse along with the motion would make a preference about animation into a loss of information, and would make an arriving impulse indistinguishable from a sensor that never fired."
 
 fn witness_reduced_motion_removes_travel_and_keeps_the_impulse() -> Bool {
-  let i = an_impulse(magnitude: impulse_reference_magnitude_milli)
-  let reduced = apply_impulse(i: i, m: MotionReduced)
-  let full = apply_impulse(i: i, m: MotionFull)
-  bob_amplitude_milli(s: reduced) == 0
-    && bob_displacement_px(s: reduced) == 0
-    && bob_phase_key(p: reduced.phase) == "at-rest"
-    && bob_amplitude_milli(s: full) > 0
-    && i.magnitude_milli_m_per_s2 == impulse_reference_magnitude_milli
+  let i = an_impulse(magnitude: gunbc.design.instrument_bob.impulse_reference_magnitude_milli)
+  let reduced = gunbc.design.instrument_bob.apply_impulse(i: i, m: gunbc.design.instrument_bob.MotionReduced)
+  let full = gunbc.design.instrument_bob.apply_impulse(i: i, m: gunbc.design.instrument_bob.MotionFull)
+  gunbc.design.instrument_bob.bob_amplitude_milli(s: reduced) == 0
+    && gunbc.design.instrument_bob.bob_displacement_px(s: reduced) == 0
+    && gunbc.design.instrument_bob.bob_phase_key(p: reduced.phase) == "at-rest"
+    && gunbc.design.instrument_bob.bob_amplitude_milli(s: full) > 0
+    && i.magnitude_milli_m_per_s2 == gunbc.design.instrument_bob.impulse_reference_magnitude_milli
     && i.source_provider.decl_name == "synthetic_tap_impulse"
-    && motion_preference_key(m: MotionReduced) == "reduced"
+    && gunbc.design.instrument_bob.motion_preference_key(m: gunbc.design.instrument_bob.MotionReduced) == "reduced"
 }
 
 fn witness_the_bob_carries_no_domain_fact() -> Bool {
-  bob_carries_no_domain_fact()
+  gunbc.design.instrument_bob.bob_carries_no_domain_fact()
 }
 
 data platform_blindness_note: String = "The physics never learns where the knock came from. Two impulses with the same magnitude from different bindings — one synthetic, one a hardware reading — produce identical states, which is what makes a new platform binding a new producer rather than a physics edit. The binding identity survives on the impulse for the receipt to render; it simply has no influence on travel."
@@ -142,21 +142,21 @@ fn witness_the_physics_is_blind_to_which_binding_produced_the_impulse() -> Bool 
     source_provider: std.decl_ref.DeclarationRef {
       module_path: "extdeps.w3c.device_orientation_and_motion",
       decl_name: "devicemotion_event_type",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     },
     magnitude_milli_m_per_s2: 3000,
-    direction: ImpulseUp,
+    direction: gunbc.capability_binding.ImpulseUp,
     observed_at_ms: 4200,
   }
-  bob_amplitude_milli(s: apply_impulse(i: synthetic, m: MotionFull)) ==
-      bob_amplitude_milli(s: apply_impulse(i: hardware, m: MotionFull))
+  gunbc.design.instrument_bob.bob_amplitude_milli(s: gunbc.design.instrument_bob.apply_impulse(i: synthetic, m: gunbc.design.instrument_bob.MotionFull)) ==
+      gunbc.design.instrument_bob.bob_amplitude_milli(s: gunbc.design.instrument_bob.apply_impulse(i: hardware, m: gunbc.design.instrument_bob.MotionFull))
     && synthetic.source_provider.module_path != hardware.source_provider.module_path
 }
 
 data frame_sequence_witness_note: String = "The deterministic frame sequence is what makes the bob judgeable without a browser: the whole response is a finite list computed with no clock and no host, so a physics regression is a diff over a list rather than something someone has to watch for. These claims assert the four properties a renderer relies on — it is deterministic, it terminates exactly once, every frame stays inside the envelope in BOTH directions, and it actually crosses rest rather than sagging."
 
 fn a_knock_sequence() -> gunbc.design.instrument_bob.BobSequence {
-  bob_sequence(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull, interval_ms: 16)
+  gunbc.design.instrument_bob.bob_sequence(i: an_impulse(magnitude: gunbc.design.instrument_bob.impulse_reference_magnitude_milli), m: gunbc.design.instrument_bob.MotionFull, interval_ms: 16)
 }
 
 data no_or_empty_helper_note: String = "THE FRAMES ARE REACHED ONLY THROUGH THE SETTLED ARM (review finding, 2026-08-07). This file used to call a helper that answered a refused sequence with an empty list, and five claims below then asserted properties of that empty list — every one of which a vacuous fold or an empty-list predicate can satisfy. The helper is deleted at its authority; here the consequence is that each frame claim takes the frames as a parameter, and the single match in the keystone is the one place a refusal is answered, with false."
@@ -165,36 +165,36 @@ data settled_arm_note: String = "The sequence a consumer receives is the SETTLED
 
 fn witness_the_production_sequence_is_admitted_not_truncated() -> Bool {
   match a_knock_sequence() {
-    BobSequenceSettled { frames: fs } => fs.length() > 4
-        BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    gunbc.design.instrument_bob.BobSequenceSettled { frames: fs } => fs.length() > 4
+        gunbc.design.instrument_bob.BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
   }
 }
 
 fn witness_red_an_exhausted_budget_refuses_rather_than_truncating() -> Bool {
-  let hit = apply_impulse(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull)
-  let starved = bob_frames_from(s: hit, interval_ms: 16, budget: 3, budget_allowed: 3)
-  let refused_interval = bob_sequence(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull, interval_ms: 0)
+  let hit = gunbc.design.instrument_bob.apply_impulse(i: an_impulse(magnitude: gunbc.design.instrument_bob.impulse_reference_magnitude_milli), m: gunbc.design.instrument_bob.MotionFull)
+  let starved = gunbc.design.instrument_bob.bob_frames_from(s: hit, interval_ms: 16, budget: 3, budget_allowed: 3)
+  let refused_interval = gunbc.design.instrument_bob.bob_sequence(i: an_impulse(magnitude: gunbc.design.instrument_bob.impulse_reference_magnitude_milli), m: gunbc.design.instrument_bob.MotionFull, interval_ms: 0)
   match starved {
-    BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: b } =>
-      bob_sequence_refusal_key(r: c) == "budget-exhausted-before-settling"
+    gunbc.design.instrument_bob.BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: b } =>
+      gunbc.design.instrument_bob.bob_sequence_refusal_key(r: c) == "budget-exhausted-before-settling"
         && n == 3
         && b == 3
-    BobSequenceSettled { frames: _ } => false
+    gunbc.design.instrument_bob.BobSequenceSettled { frames: _ } => false
   }
   && match refused_interval {
-    BobSequenceRefused { cause: c2, frames_emitted: _, budget_allowed: _ } =>
-      bob_sequence_refusal_key(r: c2) == "non-positive-frame-interval"
-    BobSequenceSettled { frames: _ } => false
+    gunbc.design.instrument_bob.BobSequenceRefused { cause: c2, frames_emitted: _, budget_allowed: _ } =>
+      gunbc.design.instrument_bob.bob_sequence_refusal_key(r: c2) == "non-positive-frame-interval"
+    gunbc.design.instrument_bob.BobSequenceSettled { frames: _ } => false
   }
 }
 
 fn witness_the_frame_sequence_is_deterministic() -> Bool {
   match a_knock_sequence() {
-    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
-    BobSequenceSettled { frames: a } =>
+    gunbc.design.instrument_bob.BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    gunbc.design.instrument_bob.BobSequenceSettled { frames: a } =>
       match a_knock_sequence() {
-        BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
-        BobSequenceSettled { frames: b } =>
+        gunbc.design.instrument_bob.BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+        gunbc.design.instrument_bob.BobSequenceSettled { frames: b } =>
           a.length() == b.length()
             && a.length() > 1
             && fold(a, init: 0, f: (acc, f) => acc + f.displacement_px) ==
@@ -204,56 +204,56 @@ fn witness_the_frame_sequence_is_deterministic() -> Bool {
 }
 
 fn witness_the_sequence_terminates_exactly_once_and_is_bounded(fs: List<gunbc.design.instrument_bob.BobFrame>) -> Bool {
-  frames_terminate_exactly_once(fs: fs)
-    && settled_frame_count(fs: fs) == 1
-    && fs.length() <= max_frame_count(interval_ms: 16) + 1
-    && frames_are_within_bound(fs: fs)
+  gunbc.design.instrument_bob.frames_terminate_exactly_once(fs: fs)
+    && gunbc.design.instrument_bob.settled_frame_count(fs: fs) == 1
+    && fs.length() <= gunbc.design.instrument_bob.max_frame_count(interval_ms: 16) + 1
+    && gunbc.design.instrument_bob.frames_are_within_bound(fs: fs)
 }
 
 data crosses_rest_note: String = "A bobber crosses the waterline; a sag does not; and a square wave jumps over it. The sequence must start at rest, travel downward first because a knock pushes the plate away from the hand, occupy positions that are neither rest nor an extreme, appear on both sides of rest, visibly lose reach, and end at zero on its own."
 
 fn witness_the_plate_bobs_rather_than_sagging(fs: List<gunbc.design.instrument_bob.BobFrame>) -> Bool {
-  frames_cross_rest(fs: fs)
-    && frames_visit_an_intermediate_position(fs: fs)
-    && frames_max_abs_between(fs: fs, from_ms: 0, to_ms: 1) == 0
-    && frames_last_displacement(fs: fs) == 0
+  gunbc.design.instrument_bob.frames_cross_rest(fs: fs)
+    && gunbc.design.instrument_bob.frames_visit_an_intermediate_position(fs: fs)
+    && gunbc.design.instrument_bob.frames_max_abs_between(fs: fs, from_ms: 0, to_ms: 1) == 0
+    && gunbc.design.instrument_bob.frames_last_displacement(fs: fs) == 0
 }
 
 data waveform_note: String = "The waveform read directly, because the crossing claim above can be satisfied by a shape nobody would accept. It starts at rest, reaches full reach downward a quarter-period in, returns THROUGH rest at the half-period, and reaches full reach upward at three quarters — and the value a sixteenth of a period in is strictly between rest and the extreme, which is the conjunct a two-valued sign function cannot pass."
 
 fn witness_the_waveform_passes_through_rest_rather_than_jumping() -> Bool {
-  oscillation_milli(elapsed_ms: 0) == 0
-    && oscillation_milli(elapsed_ms: bob_quarter_period_ms()) == 0 - oscillation_unit_milli
-    && oscillation_milli(elapsed_ms: bob_half_period_ms) == 0
-    && oscillation_milli(elapsed_ms: bob_quarter_period_ms() * 3) == oscillation_unit_milli
-    && oscillation_milli(elapsed_ms: 16) < 0
-    && oscillation_milli(elapsed_ms: 16) > (0 - oscillation_unit_milli)
+  gunbc.design.instrument_bob.oscillation_milli(elapsed_ms: 0) == 0
+    && gunbc.design.instrument_bob.oscillation_milli(elapsed_ms: gunbc.design.instrument_bob.bob_quarter_period_ms()) == 0 - gunbc.design.instrument_bob.oscillation_unit_milli
+    && gunbc.design.instrument_bob.oscillation_milli(elapsed_ms: gunbc.design.instrument_bob.bob_half_period_ms) == 0
+    && gunbc.design.instrument_bob.oscillation_milli(elapsed_ms: gunbc.design.instrument_bob.bob_quarter_period_ms() * 3) == gunbc.design.instrument_bob.oscillation_unit_milli
+    && gunbc.design.instrument_bob.oscillation_milli(elapsed_ms: 16) < 0
+    && gunbc.design.instrument_bob.oscillation_milli(elapsed_ms: 16) > (0 - gunbc.design.instrument_bob.oscillation_unit_milli)
 }
 
 data reach_falls_note: String = "The reach of the SHIPPED frames diminishes: the largest displacement in the first third of the settle window strictly exceeds the largest in the last third. Stated over the emitted list rather than over the envelope function, because the defect this replaces left the envelope function correct in isolation while the sequence it produced never fell."
 
 fn witness_the_shipped_reach_actually_falls(fs: List<gunbc.design.instrument_bob.BobFrame>) -> Bool {
-  let settle = max_settle_time_ms()
-  frames_max_abs_between(fs: fs, from_ms: 0, to_ms: settle / 3) >
-    frames_max_abs_between(fs: fs, from_ms: (settle * 2) / 3, to_ms: settle * 4)
+  let settle = gunbc.design.instrument_bob.max_settle_time_ms()
+  gunbc.design.instrument_bob.frames_max_abs_between(fs: fs, from_ms: 0, to_ms: settle / 3) >
+    gunbc.design.instrument_bob.frames_max_abs_between(fs: fs, from_ms: (settle * 2) / 3, to_ms: settle * 4)
 }
 
 fn witness_red_a_frame_outside_the_envelope_is_rejected_in_both_directions() -> Bool {
-  frame_is_within_bound(f: gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: bob_max_travel_px, phase: BobRinging })
-    && frame_is_within_bound(f: gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: 0 - bob_max_travel_px, phase: BobRinging })
-    && !frame_is_within_bound(f: gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: bob_max_travel_px + 1, phase: BobRinging })
-    && !frame_is_within_bound(f: gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: 0 - (bob_max_travel_px + 1), phase: BobRinging })
-    && !frames_visit_an_intermediate_position(fs: [
-         gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: 0, phase: BobRinging },
-         gunbc.design.instrument_bob.BobFrame { at_ms: 45, displacement_px: 0 - bob_max_travel_px, phase: BobRinging },
-         gunbc.design.instrument_bob.BobFrame { at_ms: 90, displacement_px: bob_max_travel_px, phase: BobRinging },
+  gunbc.design.instrument_bob.frame_is_within_bound(f: gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: gunbc.design.instrument_bob.bob_max_travel_px, phase: gunbc.design.instrument_bob.BobRinging })
+    && gunbc.design.instrument_bob.frame_is_within_bound(f: gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: 0 - gunbc.design.instrument_bob.bob_max_travel_px, phase: gunbc.design.instrument_bob.BobRinging })
+    && !gunbc.design.instrument_bob.frame_is_within_bound(f: gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: gunbc.design.instrument_bob.bob_max_travel_px + 1, phase: gunbc.design.instrument_bob.BobRinging })
+    && !gunbc.design.instrument_bob.frame_is_within_bound(f: gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: 0 - (gunbc.design.instrument_bob.bob_max_travel_px + 1), phase: gunbc.design.instrument_bob.BobRinging })
+    && !gunbc.design.instrument_bob.frames_visit_an_intermediate_position(fs: [
+         gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: 0, phase: gunbc.design.instrument_bob.BobRinging },
+         gunbc.design.instrument_bob.BobFrame { at_ms: 45, displacement_px: 0 - gunbc.design.instrument_bob.bob_max_travel_px, phase: gunbc.design.instrument_bob.BobRinging },
+         gunbc.design.instrument_bob.BobFrame { at_ms: 90, displacement_px: gunbc.design.instrument_bob.bob_max_travel_px, phase: gunbc.design.instrument_bob.BobRinging },
        ])
 }
 
 fn witness_reduced_motion_yields_one_still_frame() -> Bool {
-  match bob_sequence(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionReduced, interval_ms: 16) {
-    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
-    BobSequenceSettled { frames: fs } =>
+  match gunbc.design.instrument_bob.bob_sequence(i: an_impulse(magnitude: gunbc.design.instrument_bob.impulse_reference_magnitude_milli), m: gunbc.design.instrument_bob.MotionReduced, interval_ms: 16) {
+    gunbc.design.instrument_bob.BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    gunbc.design.instrument_bob.BobSequenceSettled { frames: fs } =>
           fs.length() == 1
             && fold(fs, init: true, f: (acc, f) => acc && f.displacement_px == 0)
   }
@@ -263,8 +263,8 @@ data keystone_conjunction_note: String = "EVERY CLAIM IN THIS FILE IS JOINED INT
 
 test fn instrument_bob_keystone_holds() -> Bool {
   match a_knock_sequence() {
-    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
-    BobSequenceSettled { frames: fs } =>
+    gunbc.design.instrument_bob.BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    gunbc.design.instrument_bob.BobSequenceSettled { frames: fs } =>
       witness_the_production_sequence_is_admitted_not_truncated()
         && witness_red_an_exhausted_budget_refuses_rather_than_truncating()
         && witness_the_frame_sequence_is_deterministic()

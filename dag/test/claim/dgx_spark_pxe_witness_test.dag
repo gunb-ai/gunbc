@@ -11,60 +11,60 @@ data witness_http_root: extdeps.uri.Uri = extdeps.uri.Uri {
   locator: "install.spark.lan",
 }
 
-data witness_dhcp_authority: std.decl_ref.DeclarationRef = decl_ref(
+data witness_dhcp_authority: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "gunbc.spark.dgx_pxe_boot",
   decl_name: "admit_spark_unattended_pxe_boot",
 )
 
-data witness_tftp_endpoint: std.decl_ref.DeclarationRef = decl_ref(
+data witness_tftp_endpoint: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.systems.nvidia_dgx_spark_pxe",
   decl_name: "spark_pxe_tftp_relative_path",
 )
 
-data witness_http_endpoint: std.decl_ref.DeclarationRef = decl_ref(
+data witness_http_endpoint: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.systems.nvidia_dgx_spark_pxe",
   decl_name: "spark_pxe_http_install_image_path",
 )
 
 test fn w_bootloader_filename_matches_cited_page() -> Bool {
-  spark_pxe_bootloader_filename == "grubnetaa64.efi.signed"
+  extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_bootloader_filename == "grubnetaa64.efi.signed"
 }
 
 test fn w_fastos_tftp_layout_matches_cited_page() -> Bool {
-  spark_pxe_tftp_relative_path(p: extdeps.systems.nvidia_dgx_spark_pxe.TftpBootloader, image: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball) == "grubnetaa64.efi.signed"
-    && spark_pxe_tftp_relative_path(p: extdeps.systems.nvidia_dgx_spark_pxe.TftpKernelImage, image: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball) == "fastos/vmlinuz"
-    && spark_pxe_http_install_image_path(image: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball) == "fastos/usb.customer.tar.gz"
+  extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_tftp_relative_path(p: extdeps.systems.nvidia_dgx_spark_pxe.TftpBootloader, image: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball) == "grubnetaa64.efi.signed"
+    && extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_tftp_relative_path(p: extdeps.systems.nvidia_dgx_spark_pxe.TftpKernelImage, image: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball) == "fastos/vmlinuz"
+    && extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_http_install_image_path(image: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball) == "fastos/usb.customer.tar.gz"
 }
 
 test fn w_fastos_unattended_cmdline_carries_pxeinstall_and_image_url() -> Bool {
   string_contains(
-    s: spark_fastos_unattended_kernel_cmdline(http_image_root: witness_http_root),
+    s: extdeps.systems.nvidia_dgx_spark_pxe.spark_fastos_unattended_kernel_cmdline(http_image_root: witness_http_root),
     pattern: "pxeinstall=true",
   )
     && string_contains(
-      s: spark_fastos_unattended_kernel_cmdline(http_image_root: witness_http_root),
+      s: extdeps.systems.nvidia_dgx_spark_pxe.spark_fastos_unattended_kernel_cmdline(http_image_root: witness_http_root),
       pattern: "noui",
     )
     && string_contains(
-      s: spark_fastos_unattended_kernel_cmdline(http_image_root: witness_http_root),
+      s: extdeps.systems.nvidia_dgx_spark_pxe.spark_fastos_unattended_kernel_cmdline(http_image_root: witness_http_root),
       pattern: "fastos_usbimg_url=http://install.spark.lan/fastos/usb.customer.tar.gz",
     )
 }
 
 test fn w_unattended_boot_model_uses_uefi_pxe_not_http_boot() -> Bool {
-  match spark_unattended_image_boot(
+  match gunbc.spark.dgx_pxe_boot.spark_unattended_image_boot(
     image_kind: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
     http_image_root: witness_http_root,
     isolation: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly,
   ).network_chain.boot_mode {
-    UefiPxe { tftp_root: _ } => true
+    extdeps.provisioning.network_boot.UefiPxe { tftp_root: _ } => true
     _ => false
   }
 }
 
 test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
-  match admit_spark_unattended_pxe_boot(
+  match gunbc.spark.dgx_pxe_boot.admit_spark_unattended_pxe_boot(
     image_kind: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
     http_image_root: witness_http_root,
@@ -75,14 +75,14 @@ test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
     isolation: Present { value: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
   ) {
-    SparkUnattendedPxeBootAdmitted { boot: b } =>
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: b } =>
       match b.network_chain.dhcp_direction {
-        ProxyDhcp => true
-        NativeDhcpBootOptions => false
+        extdeps.provisioning.network_boot.ProxyDhcp => true
+        extdeps.provisioning.network_boot.NativeDhcpBootOptions => false
       }
-    SparkUnattendedPxeBootRefused { reason: _ } => false
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
   }
-    && match admit_spark_unattended_pxe_boot(
+    && match gunbc.spark.dgx_pxe_boot.admit_spark_unattended_pxe_boot(
       image_kind: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball,
       tftp_root: witness_tftp_root,
       http_image_root: witness_http_root,
@@ -93,26 +93,26 @@ test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
       isolation: Present { value: gunbc.spark.dgx_pxe_boot.IsolatedProvisioningSegment },
       firmware_config: Present { value: synthetic_ready_firmware_config() },
     ) {
-      SparkUnattendedPxeBootAdmitted { boot: b } =>
+      gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: b } =>
         match b.network_chain.dhcp_direction {
-          NativeDhcpBootOptions => true
-          ProxyDhcp => false
+          extdeps.provisioning.network_boot.NativeDhcpBootOptions => true
+          extdeps.provisioning.network_boot.ProxyDhcp => false
         }
-      SparkUnattendedPxeBootRefused { reason: _ } => false
+      gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
     }
 }
 
 test fn w_red_network_standing_without_observation_is_unobserved() -> Bool {
-  match evaluate_pxe_network_standing(
+  match gunbc.spark.dgx_pxe_boot.evaluate_pxe_network_standing(
     observation: none,
     dhcp_authority: none,
     tftp_endpoint: none,
     http_endpoint: none,
     isolation: none,
   ) {
-    PxeNetworkUnobserved => true
-    PxeNetworkGapped { gaps: _ } => false
-    PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: _ } => false
+    gunbc.spark.dgx_pxe_boot.PxeNetworkUnobserved => true
+    gunbc.spark.dgx_pxe_boot.PxeNetworkGapped { gaps: _ } => false
+    gunbc.spark.dgx_pxe_boot.PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: _ } => false
   }
 }
 
@@ -136,40 +136,40 @@ fn synthetic_ready_firmware_config() -> gunbc.spark.dgx_pxe_boot.SparkUefiPxeCon
 }
 
 test fn w_network_standing_ready_when_all_observations_and_isolation_present() -> Bool {
-  match evaluate_pxe_network_standing(
+  match gunbc.spark.dgx_pxe_boot.evaluate_pxe_network_standing(
     observation: Present { value: synthetic_ready_network_observation() },
     dhcp_authority: Present { value: witness_dhcp_authority },
     tftp_endpoint: Present { value: witness_tftp_endpoint },
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: Present { value: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly },
   ) {
-    PxeNetworkReady {
+    gunbc.spark.dgx_pxe_boot.PxeNetworkReady {
       dhcp_authority: _,
       tftp_endpoint: _,
       http_endpoint: _,
       isolation: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly,
     } => true
-    PxeNetworkGapped { gaps: _ } => false
-    PxeNetworkUnobserved => false
+    gunbc.spark.dgx_pxe_boot.PxeNetworkGapped { gaps: _ } => false
+    gunbc.spark.dgx_pxe_boot.PxeNetworkUnobserved => false
   }
 }
 
 test fn w_red_reachability_without_isolation_not_ready() -> Bool {
-  match evaluate_pxe_network_standing(
+  match gunbc.spark.dgx_pxe_boot.evaluate_pxe_network_standing(
     observation: Present { value: synthetic_ready_network_observation() },
     dhcp_authority: Present { value: witness_dhcp_authority },
     tftp_endpoint: Present { value: witness_tftp_endpoint },
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: none,
   ) {
-    PxeNetworkGapped { gaps: gs } => list_length(items: gs) == 1
-    PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: _ } => false
-    PxeNetworkUnobserved => false
+    gunbc.spark.dgx_pxe_boot.PxeNetworkGapped { gaps: gs } => list_length(items: gs) == 1
+    gunbc.spark.dgx_pxe_boot.PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: _ } => false
+    gunbc.spark.dgx_pxe_boot.PxeNetworkUnobserved => false
   }
 }
 
 test fn w_firmware_intervention_instruction_derives_bootloader_authority() -> Bool {
-  match evaluate_spark_pxe_firmware_standing(
+  match gunbc.spark.dgx_pxe_boot.evaluate_spark_pxe_firmware_standing(
     config: gunbc.spark.dgx_pxe_boot.SparkUefiPxeConfiguration {
       secure_boot: extdeps.systems.nvidia_dgx_spark_pxe.BootloaderEnrolledForPxe { bootloader: "grubnetaa64.efi" },
       network_stack_enabled: true,
@@ -177,17 +177,17 @@ test fn w_firmware_intervention_instruction_derives_bootloader_authority() -> Bo
       nic_pxe_boot_enabled: true,
     },
   ) {
-    SparkPxeFirmwareHumanInterventionRequired { intervention: i } =>
+    gunbc.spark.dgx_pxe_boot.SparkPxeFirmwareHumanInterventionRequired { intervention: i } =>
       string_contains(
         s: i.instruction,
-        pattern: spark_pxe_bootloader_filename as String,
+        pattern: extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_bootloader_filename as String,
       )
-    SparkPxeFirmwareReady => false
+    gunbc.spark.dgx_pxe_boot.SparkPxeFirmwareReady => false
   }
 }
 
 test fn w_firmware_standing_refuses_secure_boot_default_without_enrollment() -> Bool {
-  match evaluate_spark_pxe_firmware_standing(
+  match gunbc.spark.dgx_pxe_boot.evaluate_spark_pxe_firmware_standing(
     config: gunbc.spark.dgx_pxe_boot.SparkUefiPxeConfiguration {
       secure_boot: extdeps.systems.nvidia_dgx_spark_pxe.BootloaderEnrolledForPxe { bootloader: "grubnetaa64.efi" },
       network_stack_enabled: true,
@@ -195,25 +195,25 @@ test fn w_firmware_standing_refuses_secure_boot_default_without_enrollment() -> 
       nic_pxe_boot_enabled: true,
     },
   ) {
-    SparkPxeFirmwareHumanInterventionRequired { intervention: i } =>
+    gunbc.spark.dgx_pxe_boot.SparkPxeFirmwareHumanInterventionRequired { intervention: i } =>
       i.frequency == std.human_intervention.DeviceOnce && i.identity == "spark-pxe-firmware-enablement"
-    SparkPxeFirmwareReady => false
+    gunbc.spark.dgx_pxe_boot.SparkPxeFirmwareReady => false
   }
-    && match evaluate_spark_pxe_firmware_standing(
+    && match gunbc.spark.dgx_pxe_boot.evaluate_spark_pxe_firmware_standing(
       config: gunbc.spark.dgx_pxe_boot.SparkUefiPxeConfiguration {
-        secure_boot: extdeps.systems.nvidia_dgx_spark_pxe.BootloaderEnrolledForPxe { bootloader: spark_pxe_bootloader_filename },
+        secure_boot: extdeps.systems.nvidia_dgx_spark_pxe.BootloaderEnrolledForPxe { bootloader: extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_bootloader_filename },
         network_stack_enabled: true,
         ipv4_pxe_support_enabled: true,
         nic_pxe_boot_enabled: true,
       },
     ) {
-      SparkPxeFirmwareReady => true
-      SparkPxeFirmwareHumanInterventionRequired { intervention: _ } => false
+      gunbc.spark.dgx_pxe_boot.SparkPxeFirmwareReady => true
+      gunbc.spark.dgx_pxe_boot.SparkPxeFirmwareHumanInterventionRequired { intervention: _ } => false
     }
 }
 
 test fn w_red_admission_without_observation_refuses() -> Bool {
-  match admit_spark_unattended_pxe_boot(
+  match gunbc.spark.dgx_pxe_boot.admit_spark_unattended_pxe_boot(
     image_kind: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
     http_image_root: witness_http_root,
@@ -224,14 +224,14 @@ test fn w_red_admission_without_observation_refuses() -> Bool {
     isolation: none,
     firmware_config: none,
   ) {
-    SparkUnattendedPxeBootRefused { reason: gunbc.spark.dgx_pxe_boot.NetworkObservationAbsent } => true
-    SparkUnattendedPxeBootRefused { reason: _ } => false
-    SparkUnattendedPxeBootAdmitted { boot: _ } => false
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: gunbc.spark.dgx_pxe_boot.NetworkObservationAbsent } => true
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: _ } => false
   }
 }
 
 test fn w_red_admission_without_firmware_config_refuses() -> Bool {
-  match admit_spark_unattended_pxe_boot(
+  match gunbc.spark.dgx_pxe_boot.admit_spark_unattended_pxe_boot(
     image_kind: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
     http_image_root: witness_http_root,
@@ -242,14 +242,14 @@ test fn w_red_admission_without_firmware_config_refuses() -> Bool {
     isolation: Present { value: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly },
     firmware_config: none,
   ) {
-    SparkUnattendedPxeBootRefused { reason: gunbc.spark.dgx_pxe_boot.FirmwareConfigurationAbsent } => true
-    SparkUnattendedPxeBootRefused { reason: _ } => false
-    SparkUnattendedPxeBootAdmitted { boot: _ } => false
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: gunbc.spark.dgx_pxe_boot.FirmwareConfigurationAbsent } => true
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: _ } => false
   }
 }
 
 test fn w_admission_with_ready_standings_succeeds() -> Bool {
-  match admit_spark_unattended_pxe_boot(
+  match gunbc.spark.dgx_pxe_boot.admit_spark_unattended_pxe_boot(
     image_kind: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
     http_image_root: witness_http_root,
@@ -260,19 +260,19 @@ test fn w_admission_with_ready_standings_succeeds() -> Bool {
     isolation: Present { value: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
   ) {
-    SparkUnattendedPxeBootAdmitted { boot: b } =>
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: b } =>
       b.image_kind == extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball
         && b.tftp_kernel == "fastos/vmlinuz"
         && match b.network_chain.dhcp_direction {
-          ProxyDhcp => true
-          NativeDhcpBootOptions => false
+          extdeps.provisioning.network_boot.ProxyDhcp => true
+          extdeps.provisioning.network_boot.NativeDhcpBootOptions => false
         }
-    SparkUnattendedPxeBootRefused { reason: _ } => false
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
   }
 }
 
 test fn w_red_admission_with_network_gap_refuses_before_firmware() -> Bool {
-  match admit_spark_unattended_pxe_boot(
+  match gunbc.spark.dgx_pxe_boot.admit_spark_unattended_pxe_boot(
     image_kind: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball,
     tftp_root: witness_tftp_root,
     http_image_root: witness_http_root,
@@ -291,15 +291,15 @@ test fn w_red_admission_with_network_gap_refuses_before_firmware() -> Bool {
     isolation: Present { value: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
   ) {
-    SparkUnattendedPxeBootRefused { reason: gunbc.spark.dgx_pxe_boot.UnattendedPxeBootNetworkStandingIncomplete { gaps: gs } } =>
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: gunbc.spark.dgx_pxe_boot.UnattendedPxeBootNetworkStandingIncomplete { gaps: gs } } =>
       list_length(items: gs) == 1
-    SparkUnattendedPxeBootRefused { reason: _ } => false
-    SparkUnattendedPxeBootAdmitted { boot: _ } => false
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: _ } => false
   }
 }
 
 test fn w_red_admission_with_firmware_gap_refuses() -> Bool {
-  match admit_spark_unattended_pxe_boot(
+  match gunbc.spark.dgx_pxe_boot.admit_spark_unattended_pxe_boot(
     image_kind: extdeps.systems.nvidia_dgx_spark_pxe.DgxOsIsoImage,
     tftp_root: witness_tftp_root,
     http_image_root: witness_http_root,
@@ -317,11 +317,11 @@ test fn w_red_admission_with_firmware_gap_refuses() -> Bool {
       }
     },
   ) {
-    SparkUnattendedPxeBootRefused {
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused {
       reason: gunbc.spark.dgx_pxe_boot.UnattendedPxeBootFirmwareHumanInterventionRequired { intervention: i }
     } =>
       i.frequency == std.human_intervention.DeviceOnce
-    SparkUnattendedPxeBootRefused { reason: _ } => false
-    SparkUnattendedPxeBootAdmitted { boot: _ } => false
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
+    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: _ } => false
   }
 }

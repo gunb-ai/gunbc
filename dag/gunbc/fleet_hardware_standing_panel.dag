@@ -1,5 +1,6 @@
 module gunbc.fleet_hardware_standing_panel
 
+
 // WHAT THE FLEET IS BELIEVED TO CONTAIN, BESIDE WHAT WAS ACTUALLY READ OFF IT.
 //
 // The inventory already reconciles expectation against observation per host and produces a typed
@@ -50,39 +51,39 @@ fn hardware_standing_class(standing: HardwareStanding) -> String {
   }
 }
 
-fn dimm_standing(verdict: DimmReconcileVerdict) -> HardwareStanding {
+fn dimm_standing(verdict: product.installed_bom_reconcile.DimmReconcileVerdict) -> HardwareStanding {
   match verdict {
-    DimmPopulationConfirmed { host: _, stick_count: _ } => HardwareConfirmed
-    DimmPopulationRefused { host: _, discrepancies: _, count: _ } => HardwareRefused
-    DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => HardwareMisfiled
-    DimmPopulationUnconfirmed { host: _, cause: _ } => HardwareUnread
+    product.installed_bom_reconcile.DimmPopulationConfirmed { host: _, stick_count: _ } => HardwareConfirmed
+    product.installed_bom_reconcile.DimmPopulationRefused { host: _, discrepancies: _, count: _ } => HardwareRefused
+    product.installed_bom_reconcile.DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => HardwareMisfiled
+    product.installed_bom_reconcile.DimmPopulationUnconfirmed { host: _, cause: _ } => HardwareUnread
   }
 }
 
-fn processor_standing(verdict: ProcessorReconcileVerdict) -> HardwareStanding {
+fn processor_standing(verdict: product.installed_bom_reconcile.ProcessorReconcileVerdict) -> HardwareStanding {
   match verdict {
-    ProcessorModelConfirmed { host: _, model_number: _ } => HardwareConfirmed
-    ProcessorModelRefused { host: _, expected: _, observed: _ } => HardwareRefused
-    ProcessorObservationHostMismatch { expectation_host: _, observation_host: _ } => HardwareMisfiled
-    ProcessorModelUnconfirmed { host: _, cause: _ } => HardwareUnread
+    product.installed_bom_reconcile.ProcessorModelConfirmed { host: _, model_number: _ } => HardwareConfirmed
+    product.installed_bom_reconcile.ProcessorModelRefused { host: _, expected: _, observed: _ } => HardwareRefused
+    product.installed_bom_reconcile.ProcessorObservationHostMismatch { expectation_host: _, observation_host: _ } => HardwareMisfiled
+    product.installed_bom_reconcile.ProcessorModelUnconfirmed { host: _, cause: _ } => HardwareUnread
   }
 }
 
-fn dimm_verdict_host(verdict: DimmReconcileVerdict) -> HostIdentity {
+fn dimm_verdict_host(verdict: product.installed_bom_reconcile.DimmReconcileVerdict) -> product.placement_supply.HostIdentity {
   match verdict {
-    DimmPopulationConfirmed { host: h, stick_count: _ } => h
-    DimmPopulationRefused { host: h, discrepancies: _, count: _ } => h
-    DimmObservationHostMismatch { expectation_host: h, observation_host: _ } => h
-    DimmPopulationUnconfirmed { host: h, cause: _ } => h
+    product.installed_bom_reconcile.DimmPopulationConfirmed { host: h, stick_count: _ } => h
+    product.installed_bom_reconcile.DimmPopulationRefused { host: h, discrepancies: _, count: _ } => h
+    product.installed_bom_reconcile.DimmObservationHostMismatch { expectation_host: h, observation_host: _ } => h
+    product.installed_bom_reconcile.DimmPopulationUnconfirmed { host: h, cause: _ } => h
   }
 }
 
-fn processor_verdict_host(verdict: ProcessorReconcileVerdict) -> HostIdentity {
+fn processor_verdict_host(verdict: product.installed_bom_reconcile.ProcessorReconcileVerdict) -> product.placement_supply.HostIdentity {
   match verdict {
-    ProcessorModelConfirmed { host: h, model_number: _ } => h
-    ProcessorModelRefused { host: h, expected: _, observed: _ } => h
-    ProcessorObservationHostMismatch { expectation_host: h, observation_host: _ } => h
-    ProcessorModelUnconfirmed { host: h, cause: _ } => h
+    product.installed_bom_reconcile.ProcessorModelConfirmed { host: h, model_number: _ } => h
+    product.installed_bom_reconcile.ProcessorModelRefused { host: h, expected: _, observed: _ } => h
+    product.installed_bom_reconcile.ProcessorObservationHostMismatch { expectation_host: h, observation_host: _ } => h
+    product.installed_bom_reconcile.ProcessorModelUnconfirmed { host: h, cause: _ } => h
   }
 }
 
@@ -92,49 +93,49 @@ fn processor_verdict_host(verdict: ProcessorReconcileVerdict) -> HostIdentity {
 // mismatch and the discrepancy tally are the two independent axes the verdict already separates --
 // a population can hold the right count of the wrong part, or the wrong count of the right one --
 // so both are rendered rather than folded into one number.
-fn dimm_detail(verdict: DimmReconcileVerdict) -> String {
+fn dimm_detail(verdict: product.installed_bom_reconcile.DimmReconcileVerdict) -> String {
   match verdict {
-    DimmPopulationConfirmed { host: _, stick_count: n } =>
+    product.installed_bom_reconcile.DimmPopulationConfirmed { host: _, stick_count: n } =>
       join([to_string(n), " sticks as expected"], "")
-    DimmPopulationRefused { host: _, discrepancies: d, count: c } =>
+    product.installed_bom_reconcile.DimmPopulationRefused { host: _, discrepancies: d, count: c } =>
       join([
         match c {
-          DimmCountMatches { count: n } => join([to_string(n), " sticks"], "")
-          DimmCountDiffers { expected: e, observed: o } =>
+          product.installed_bom_reconcile.DimmCountMatches { count: n } => join([to_string(n), " sticks"], "")
+          product.installed_bom_reconcile.DimmCountDiffers { expected: e, observed: o } =>
             join(["expected ", to_string(e), " sticks, read ", to_string(o)], "")
         },
         " · ", to_string(d |> count), " slot discrepancies",
       ], "")
-    DimmObservationHostMismatch { expectation_host: e, observation_host: o } =>
+    product.installed_bom_reconcile.DimmObservationHostMismatch { expectation_host: e, observation_host: o } =>
       join(["reading filed against ", o as String, ", expected ", e as String], "")
-    DimmPopulationUnconfirmed { host: _, cause: c } => c as String
+    product.installed_bom_reconcile.DimmPopulationUnconfirmed { host: _, cause: c } => c as String
   }
 }
 
-fn processor_detail(verdict: ProcessorReconcileVerdict) -> String {
+fn processor_detail(verdict: product.installed_bom_reconcile.ProcessorReconcileVerdict) -> String {
   match verdict {
-    ProcessorModelConfirmed { host: _, model_number: m } => m as String
-    ProcessorModelRefused { host: _, expected: e, observed: o } =>
+    product.installed_bom_reconcile.ProcessorModelConfirmed { host: _, model_number: m } => m as String
+    product.installed_bom_reconcile.ProcessorModelRefused { host: _, expected: e, observed: o } =>
       join(["expected ", e as String, ", read ", o as String], "")
-    ProcessorObservationHostMismatch { expectation_host: e, observation_host: o } =>
+    product.installed_bom_reconcile.ProcessorObservationHostMismatch { expectation_host: e, observation_host: o } =>
       join(["reading filed against ", o as String, ", expected ", e as String], "")
-    ProcessorModelUnconfirmed { host: _, cause: c } => c as String
+    product.installed_bom_reconcile.ProcessorModelUnconfirmed { host: _, cause: c } => c as String
   }
 }
 
-fn hardware_axis_cell(standing: HardwareStanding, detail: String) -> List<Fragment> {
+fn hardware_axis_cell(standing: HardwareStanding, detail: String) -> List<std.markup.Fragment> {
   [
-    el_class("span", hardware_standing_class(standing: standing), [
-      txt(hardware_standing_label(standing: standing)),
+    gunbc.site.markup.el_class("span", hardware_standing_class(standing: standing), [
+      gunbc.site.markup.txt(hardware_standing_label(standing: standing)),
     ]),
-    el_class("span", "hardware-detail", [txt(detail)]),
+    gunbc.site.markup.el_class("span", "hardware-detail", [gunbc.site.markup.txt(detail)]),
   ]
 }
 
-fn dimm_row(verdict: DimmReconcileVerdict) -> Fragment {
-  el_class("div", "hardware-row", concat(
-    [el_class("span", "hardware-subject", [txt(dimm_verdict_host(verdict: verdict) as String)]),
-     el_class("span", "hardware-axis", [txt(hardware_axis_labels().first())])],
+fn dimm_row(verdict: product.installed_bom_reconcile.DimmReconcileVerdict) -> std.markup.Fragment {
+  gunbc.site.markup.el_class("div", "hardware-row", concat(
+    [gunbc.site.markup.el_class("span", "hardware-subject", [gunbc.site.markup.txt(dimm_verdict_host(verdict: verdict) as String)]),
+     gunbc.site.markup.el_class("span", "hardware-axis", [gunbc.site.markup.txt(hardware_axis_labels().first())])],
     hardware_axis_cell(
       standing: dimm_standing(verdict: verdict),
       detail: dimm_detail(verdict: verdict),
@@ -142,10 +143,10 @@ fn dimm_row(verdict: DimmReconcileVerdict) -> Fragment {
   ))
 }
 
-fn processor_row(verdict: ProcessorReconcileVerdict) -> Fragment {
-  el_class("div", "hardware-row", concat(
-    [el_class("span", "hardware-subject", [txt(processor_verdict_host(verdict: verdict) as String)]),
-     el_class("span", "hardware-axis", [txt(hardware_axis_labels().skip(n: 1).first())])],
+fn processor_row(verdict: product.installed_bom_reconcile.ProcessorReconcileVerdict) -> std.markup.Fragment {
+  gunbc.site.markup.el_class("div", "hardware-row", concat(
+    [gunbc.site.markup.el_class("span", "hardware-subject", [gunbc.site.markup.txt(processor_verdict_host(verdict: verdict) as String)]),
+     gunbc.site.markup.el_class("span", "hardware-axis", [gunbc.site.markup.txt(hardware_axis_labels().skip(n: 1).first())])],
     hardware_axis_cell(
       standing: processor_standing(verdict: verdict),
       detail: processor_detail(verdict: verdict),
@@ -154,11 +155,11 @@ fn processor_row(verdict: ProcessorReconcileVerdict) -> Fragment {
 }
 
 fn fleet_dimm_standings() -> List<HardwareStanding> {
-  map(fleet_dimm_verdicts, v => dimm_standing(verdict: v))
+  map(gunbc.fleet_physical_inventory.fleet_dimm_verdicts, v => dimm_standing(verdict: v))
 }
 
 fn fleet_processor_standings() -> List<HardwareStanding> {
-  map(fleet_processor_verdicts, v => processor_standing(verdict: v))
+  map(gunbc.fleet_physical_inventory.fleet_processor_verdicts, v => processor_standing(verdict: v))
 }
 
 fn standing_count(standings: List<HardwareStanding>, wanted: HardwareStanding) -> Int {
@@ -205,9 +206,9 @@ fn fleet_hardware_outstanding_line() -> String? {
   }
 }
 
-fn fleet_hardware_outstanding_nodes() -> List<Fragment> {
+fn fleet_hardware_outstanding_nodes() -> List<std.markup.Fragment> {
   match fleet_hardware_outstanding_line() {
-    Present { value: line } => [el_class("div", "hardware-outstanding", [txt(line)])]
+    Present { value: line } => [gunbc.site.markup.el_class("div", "hardware-outstanding", [gunbc.site.markup.txt(line)])]
     Absent => []
   }
 }
@@ -231,32 +232,32 @@ fn hardware_axis_labels() -> List<String> { ["memory", "processor"] }
 
 fn hardware_axis_reserved_width() -> String {
   let widest = hardware_longest_len(labels: hardware_axis_labels()) + hardware_column_ch_gutter
-  css_length_wire(l: css_ch(n: widest))
+  extdeps.languages.css.values.css_length_wire(l: extdeps.languages.css.values.css_ch(n: widest))
 }
 
 fn hardware_subject_reserved_width() -> String {
-  let labels = map(fleet_dimm_verdicts, v => dimm_verdict_host(verdict: v) as String)
+  let labels = map(gunbc.fleet_physical_inventory.fleet_dimm_verdicts, v => dimm_verdict_host(verdict: v) as String)
   let widest = hardware_longest_len(labels: labels) + hardware_column_ch_gutter
-  css_length_wire(l: css_ch(n: widest))
+  extdeps.languages.css.values.css_length_wire(l: extdeps.languages.css.values.css_ch(n: widest))
 }
 
 fn hardware_standing_reserved_width() -> String {
   let all = [HardwareConfirmed, HardwareRefused, HardwareUnread, HardwareMisfiled]
   let labels = map(all, s => hardware_standing_label(standing: s))
   let widest = hardware_longest_len(labels: labels) + hardware_column_ch_gutter
-  css_length_wire(l: css_ch(n: widest))
+  extdeps.languages.css.values.css_length_wire(l: extdeps.languages.css.values.css_ch(n: widest))
 }
 
-fn fleet_hardware_standing_panel() -> Fragment {
-  el_class("section", "fleet-hardware-standing", concat(
+fn fleet_hardware_standing_panel() -> std.markup.Fragment {
+  gunbc.site.markup.el_class("section", "fleet-hardware-standing", concat(
     concat(
-      [el_class("h2", "hardware-heading", [txt("Fleet hardware standing")]),
-       el_class("div", "hardware-summary", [txt(fleet_hardware_summary_line())])],
+      [gunbc.site.markup.el_class("h2", "hardware-heading", [gunbc.site.markup.txt("Fleet hardware standing")]),
+       gunbc.site.markup.el_class("div", "hardware-summary", [gunbc.site.markup.txt(fleet_hardware_summary_line())])],
       fleet_hardware_outstanding_nodes(),
     ),
     concat(
-      map(fleet_dimm_verdicts, v => dimm_row(verdict: v)),
-      map(fleet_processor_verdicts, v => processor_row(verdict: v)),
+      map(gunbc.fleet_physical_inventory.fleet_dimm_verdicts, v => dimm_row(verdict: v)),
+      map(gunbc.fleet_physical_inventory.fleet_processor_verdicts, v => processor_row(verdict: v)),
     ),
   ))
 }

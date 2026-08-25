@@ -1,49 +1,50 @@
 module gunbc.fleet_intent
 
+
 type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
 type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
 
-type WorkUnitId = NonEmptyStr where brand("WorkUnitId")
+type WorkUnitId = std.types.NonEmptyStr where brand("WorkUnitId")
 
-type ProviderIdentity = NonEmptyStr where brand("ProviderIdentity")
+type ProviderIdentity = std.types.NonEmptyStr where brand("ProviderIdentity")
 
 type MemoryDevice {
-  capacity: ByteSize
-  memory_kind: MemoryKind
-  bandwidth: Bandwidth?
+  capacity: std.measure.ByteSize
+  memory_kind: extdeps.memory.types.MemoryKind
+  bandwidth: std.measure.Bandwidth?
 }
 
 type StorageMount {
-  mount_path: NonEmptyStr
-  device: StorageDevice
-  lifecycle: PersistenceKind
+  mount_path: std.types.NonEmptyStr
+  device: extdeps.storage.types.StorageDevice
+  lifecycle: extdeps.storage.types.PersistenceKind
 }
 
 type ProcessorKind
-  = CpuProcessor { cpu: CpuFacts }
-  | GpuProcessor { gpu: GpuFacts }
-  | AcceleratorProcessor { accelerator: AcceleratorFacts }
+  = CpuProcessor { cpu: extdeps.cpu.types.CpuFacts }
+  | GpuProcessor { gpu: extdeps.gpu.types.GpuFacts }
+  | AcceleratorProcessor { accelerator: extdeps.gpu.types.AcceleratorFacts }
 
 type ExecutionSurface {
-  os: OperatingSystemSurface
+  os: std.os.types.OperatingSystemSurface
   isolation: IsolationBoundary
   container_runtime: ContainerRuntime?
-  toolchains: List<ToolchainCapability>
+  toolchains: List<extdeps.toolchain.types.ToolchainCapability>
   mounted_storage: List<StorageMount>
-  network: List<NetworkInterface>
+  network: List<product.network_topology.NetworkInterface>
 }
 
 type ComputeHost {
-  identity: HostIdentity
-  baseboard: ServerBaseboard?
-  bmc_intent: BmcControlPlaneIntent?
+  identity: product.placement_supply.HostIdentity
+  baseboard: extdeps.boards.types.ServerBaseboard?
+  bmc_intent: gunbc.bmc_intent.BmcControlPlaneIntent?
   processors: List<ProcessorKind>
   memory: List<MemoryDevice>
-  storage: List<StorageDevice>
-  network_interfaces: List<NetworkInterface>
+  storage: List<extdeps.storage.types.StorageDevice>
+  network_interfaces: List<product.network_topology.NetworkInterface>
 }
 
-fn compute_host_primary_cpu(host: ComputeHost) -> CpuFacts? {
+fn compute_host_primary_cpu(host: ComputeHost) -> extdeps.cpu.types.CpuFacts? {
   match host.processors.first() {
     Absent => none
     Present { value: kind } =>
@@ -55,23 +56,23 @@ fn compute_host_primary_cpu(host: ComputeHost) -> CpuFacts? {
   }
 }
 
-fn compute_host_ram_bytes_total(host: ComputeHost) -> ByteSize {
-  byte_size(
+fn compute_host_ram_bytes_total(host: ComputeHost) -> std.measure.ByteSize {
+  std.measure.byte_size(
     host.memory
       |> fold(
         init: 0,
-        f: (acc, dev) => acc + byte_size_count(dev.capacity),
+        f: (acc, dev) => acc + std.measure.byte_size_count(dev.capacity),
       ),
   )
 }
 
-fn memory_devices_from_population(pop: HostMemoryPopulation) -> List<MemoryDevice> {
+fn memory_devices_from_population(pop: extdeps.memory.types.HostMemoryPopulation) -> List<MemoryDevice> {
   pop.rows
     |> map(
       row =>
         MemoryDevice {
-          capacity: memory_population_row_bytes(row: row),
-          memory_kind: Dram,
+          capacity: extdeps.memory.memory_population_row_bytes(row: row),
+          memory_kind: extdeps.memory.types.Dram,
           bandwidth: none,
         }
     )
@@ -85,23 +86,23 @@ type MeasurementConfidence
 type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
-  cost: CostAccount<Nano>
+  cost: std.realization_schedule.CostAccount<std.measure.Nano>
   cpu_seconds: Float?
   sample_count: Int
   measurement_context: ExecutionSurface
   confidence: MeasurementConfidence
-  cache_state_summary: NonEmptyStr?
+  cache_state_summary: std.types.NonEmptyStr?
 }
 
 data host_v1_interpreter_provider: ProviderIdentity = "host:v1-interpreter"
 
 data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface {
-  os: OperatingSystemSurface {
-    kernel: Linux,
+  os: std.os.types.OperatingSystemSurface {
+    kernel: std.os.types.Linux,
     distro_or_product: none,
     version: none,
-    filesystem_semantics: Posix,
-    process_semantics: PosixProcess,
+    filesystem_semantics: std.os.types.Posix,
+    process_semantics: std.os.types.PosixProcess,
   },
   isolation: SharedHostHome,
   container_runtime: none,
@@ -112,13 +113,13 @@ data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface 
 
 fn performance_receipt_host_single_sample(
   work_shape: WorkUnitId,
-  wall_time: Nanosecond,
-  space: ByteSize,
+  wall_time: std.measure.Nanosecond,
+  space: std.measure.ByteSize,
 ) -> PerformanceReceipt {
   PerformanceReceipt {
     provider: host_v1_interpreter_provider,
     work_shape: work_shape,
-    cost: cost_account_measured_from_time_and_space(time: wall_time, space: space),
+    cost: std.realization_measurement.cost_account_measured_from_time_and_space(time: wall_time, space: space),
     cpu_seconds: none,
     sample_count: 1,
     measurement_context: host_v1_interpreter_execution_surface,
@@ -127,68 +128,68 @@ fn performance_receipt_host_single_sample(
   }
 }
 
-fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanosecond {
-  nanosecond(
+fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> std.measure.Nanosecond {
+  std.measure.nanosecond(
     count: fold(
       receipts,
       init: 0,
-      f: (acc, receipt) => acc + measure_count(m: receipt.cost.time)
+      f: (acc, receipt) => acc + std.measure.measure_count(m: receipt.cost.time)
     )
   )
 }
 
-fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<Nano> {
-  cost_account_measured_from_time_and_space(
+fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> std.realization_schedule.CostAccount<std.measure.Nano> {
+  std.realization_measurement.cost_account_measured_from_time_and_space(
     time: performance_receipts_total_time(receipts: receipts),
-    space: space_measure_list_seq(spaces: map(receipts, receipt => receipt.cost.space))
+    space: std.realization_measurement.space_measure_list_seq(spaces: map(receipts, receipt => receipt.cost.space))
   )
 }
 
-data fleet_intent_cpu: CpuFacts = CpuFacts {
-  catalog: altra_max_m12830_catalog,
-  deployment: CpuDeploymentFacts { sustained_per_thread_hz: hertz(3000000000) },
+data fleet_intent_cpu: extdeps.cpu.types.CpuFacts = extdeps.cpu.types.CpuFacts {
+  catalog: extdeps.cpu.ampere.altra_max_m12830_catalog,
+  deployment: extdeps.cpu.types.CpuDeploymentFacts { sustained_per_thread_hz: std.measure.hertz(3000000000) },
 }
 
-data fleet_intent_os_surface: OperatingSystemSurface = OperatingSystemSurface {
-  kernel: Linux,
+data fleet_intent_os_surface: std.os.types.OperatingSystemSurface = std.os.types.OperatingSystemSurface {
+  kernel: std.os.types.Linux,
   distro_or_product: none,
   version: none,
-  filesystem_semantics: Posix,
-  process_semantics: PosixProcess,
+  filesystem_semantics: std.os.types.Posix,
+  process_semantics: std.os.types.PosixProcess,
 }
 
-data srv1_baseboard: ServerBaseboard = ServerBaseboard {
-  catalog: asrock_altrad8ud_1l2t_catalog,
-  bmc: BmcEndpoint { host: "192.168.1.183", protocol: Redfish },
+data srv1_baseboard: extdeps.boards.types.ServerBaseboard = extdeps.boards.types.ServerBaseboard {
+  catalog: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_catalog,
+  bmc: std.bmc.BmcEndpoint { host: "192.168.1.183", protocol: std.bmc.Redfish },
 }
-data srv2_baseboard: ServerBaseboard = ServerBaseboard {
-  catalog: asrock_altrad8ud_1l2t_catalog,
-  bmc: BmcEndpoint { host: "192.168.1.184", protocol: Redfish },
+data srv2_baseboard: extdeps.boards.types.ServerBaseboard = extdeps.boards.types.ServerBaseboard {
+  catalog: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_catalog,
+  bmc: std.bmc.BmcEndpoint { host: "192.168.1.184", protocol: std.bmc.Redfish },
 }
-data srv3_baseboard: ServerBaseboard = ServerBaseboard {
-  catalog: asrock_altrad8ud_1l2t_catalog,
-  bmc: BmcEndpoint { host: "192.168.1.192", protocol: Redfish },
+data srv3_baseboard: extdeps.boards.types.ServerBaseboard = extdeps.boards.types.ServerBaseboard {
+  catalog: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_catalog,
+  bmc: std.bmc.BmcEndpoint { host: "192.168.1.192", protocol: std.bmc.Redfish },
 }
-data srv4_baseboard: ServerBaseboard = ServerBaseboard {
-  catalog: asrock_altrad8ud_1l2t_catalog,
-  bmc: BmcEndpoint { host: "192.168.1.195", protocol: Redfish },
+data srv4_baseboard: extdeps.boards.types.ServerBaseboard = extdeps.boards.types.ServerBaseboard {
+  catalog: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_catalog,
+  bmc: std.bmc.BmcEndpoint { host: "192.168.1.195", protocol: std.bmc.Redfish },
 }
 
-data srv1_nvme0: StorageDevice = nvme_storage_device(
-  catalog: wd_black_sn850x_2tb_catalog,
-  persistence: Persistent,
+data srv1_nvme0: extdeps.storage.types.StorageDevice = extdeps.storage.types.nvme_storage_device(
+  catalog: extdeps.storage.western_digital.wd_black_sn850x_2tb_catalog,
+  persistence: extdeps.storage.types.Persistent,
 )
-data srv2_nvme0: StorageDevice = nvme_storage_device(
-  catalog: wd_black_sn850x_2tb_catalog,
-  persistence: Persistent,
+data srv2_nvme0: extdeps.storage.types.StorageDevice = extdeps.storage.types.nvme_storage_device(
+  catalog: extdeps.storage.western_digital.wd_black_sn850x_2tb_catalog,
+  persistence: extdeps.storage.types.Persistent,
 )
-data srv3_nvme0: StorageDevice = nvme_storage_device(
-  catalog: samsung_970_evo_plus_2tb_catalog,
-  persistence: Persistent,
+data srv3_nvme0: extdeps.storage.types.StorageDevice = extdeps.storage.types.nvme_storage_device(
+  catalog: extdeps.storage.samsung.samsung_970_evo_plus_2tb_catalog,
+  persistence: extdeps.storage.types.Persistent,
 )
-data srv4_nvme0: StorageDevice = nvme_storage_device(
-  catalog: samsung_970_evo_500gb_catalog,
-  persistence: Persistent,
+data srv4_nvme0: extdeps.storage.types.StorageDevice = extdeps.storage.types.nvme_storage_device(
+  catalog: extdeps.storage.samsung.samsung_970_evo_500gb_catalog,
+  persistence: extdeps.storage.types.Persistent,
 )
 
 data fleet_host_memory_nominal_vs_usable_note: String = "Two DISTINCT memory facts for fleet hosts, must not be conflated: (1) NOMINAL DIMM population — every host's memory derives from per-DIMM BMC Redfish observations through HostMemoryPopulation rows (module x stick_count). srv1, srv3 and srv4 carry 8 x 64 GiB Samsung (512 GiB each) as of 2026-08-22; srv2 alone still carries 8 x 16 GiB Hynix from its 2026-07-16 observation, because its 64 GiB install failed memory training and was reverted (see gunbc.host_memory_qualification). The srv3/srv4 rows are authenticated Redfish reads taken 2026-08-22; srv1's is operator-relayed at the population grain with no independent read, a WEAKER evidence class carried in prose only -- the row's shape is identical to the measured hosts', so nothing downstream can tell them apart. The fleet is HETEROGENEOUS as of that date, and srv2 must not inherit any widened commitment derived from the other three. (2) OS-USABLE budget — the MemTotal-shaped CI runner budget authority, which is a SEPARATE fact with its own provenance requirement.\n\nTHE UPGRADE MAKES THE SPLIT LOAD-BEARING RATHER THAN PEDANTIC, so it is restated here in the direction the mistake would now be made. The temptation before was to write 128 GiB nominal over a 125 GiB usable figure, a 3 GiB error. The temptation NOW is to write 512 GiB over it, a 387 GiB error, on the two hosts where a conservation wall would spend it. A management controller reports what is installed; only the kernel reports what is usable after firmware and kernel reservations. srv3 and srv4 now carry MEASURED current-boot MemTotal in gunbc.ci_floor_measurement (about 502.25 GiB each, read over SSH 2026-08-22); srv1 and srv2 still carry a conservative lower bound there, because no /proc/meminfo read has been taken on either. THE 512-VERSUS-502 GAP IS THE WHOLE POINT OF THE SPLIT: about 10 GiB per host disappears between what the management controller reports installed and what the kernel reports usable, and a wall spending nominal would overcommit by that much on every upgraded host. The remaining bound is dissolved by one ordinary /proc/meminfo read on srv1 and srv2 and by nothing that can be reached over Redfish."
@@ -197,17 +198,17 @@ data srv1_memory_population_observation_2026_07_16_note: String = "srv1 BMC 192.
 
 data srv1_memory_population_observation_2026_08_22_note: String = "srv1 UPGRADED to the 64 GiB Samsung population on 2026-08-22 and POSTed cleanly on the first attempt. OPERATOR-SUPPLIED OBSERVATION, not a read this lane took: reported from the host as 8 x M393A8G40D40-CRB totalling 502 GB as dmidecode/free render it. srv1's host does not accept the fleet-automation key and its BMC credential is not in Secret Manager, so no independent confirmation was available here.\n\nATTRIBUTION IS THE POINT OF THAT SENTENCE. srv3 and srv4 carry BMC Redfish reads taken directly; this row does not, and recording the difference is what keeps a relayed figure from being cited later as though it had the same standing (DESIGN 4b, rung honesty at a declared subject grain). It is admitted because the reporting path is the operator observing their own machine, which is the same class of evidence srv1 and srv2's 2026-07-16 rows already rest on.\n\nDissolve-on: an independent read of srv1 at either grain -- a BMC Redfish Memory collection once a credential exists, or /proc/meminfo plus dmidecode over a key authorized on that host."
 
-data srv1_memory_population: HostMemoryPopulation = HostMemoryPopulation {
+data srv1_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps.memory.types.HostMemoryPopulation {
   rows: [
-    MemoryPopulationRow { module: m393a8g40d40_crb0q_catalog, stick_count: 8 },
+    extdeps.memory.types.MemoryPopulationRow { module: extdeps.memory.samsung.m393a8g40d40_crb0q_catalog, stick_count: 8 },
   ],
 }
 
 data srv2_memory_population_observation_note: String = "srv2 BMC 192.168.1.184 Redfish observation 2026-07-16 (rotated cred, operator-supplied): MemorySummary TotalSystemMemoryGiB=128; per-DIMM dimm0..dimm7 all HMA82GR7AFR4N-VK RankCount=1 DataWidthBits=64 BusWidthBits=72 CapacityMiB=16384 OperatingSpeedMhz=2666 (×8). Uniform 8-stick population of the existing cited row hma82gr7afr4n_vk_catalog (AFR4N=x4 1R) totals 128 GiB — dissolves the gibibyte(128) placeholder."
 
-data srv2_memory_population: HostMemoryPopulation = HostMemoryPopulation {
+data srv2_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps.memory.types.HostMemoryPopulation {
   rows: [
-    MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    extdeps.memory.types.MemoryPopulationRow { module: extdeps.memory.sk_hynix.hma82gr7afr4n_vk_catalog, stick_count: 8 },
   ],
 }
 
@@ -217,52 +218,53 @@ data srv3_memory_population_superseded_note: String = "THE 2026-07-16 MIXED HYNI
 
 data srv3_memory_population_observation_2026_08_22_note: String = "srv3 BMC 192.168.1.192 Redfish observation 2026-08-22T20:15:38Z, taken through the rotated credential in Secret Manager (bmc-srv3-admin). MemorySummary TotalSystemMemoryGiB=512; per-DIMM dimm0..dimm7 ALL M393A8G40D40-CRB CapacityMiB=65536 OperatingSpeedMhz=2133 RankCount=2 Manufacturer=Samsung, eight distinct serial numbers, banks DDR4_A1 through H1 (one per channel). Uniform 8-stick population of m393a8g40d40_crb0q_catalog totals 512 GiB.\n\nTHE READ WAS TAKEN MID-BOOT AND THAT IS WHY THE TIMESTAMP IS PRECISE. At 20:14:31 the same endpoint still reported 128 GiB and the old Hynix parts with BootProgress=None; the host had powered on at 20:13:15 after a blackout and had not completed POST. It reported SystemHardwareInitializationComplete at 20:15:05 and 512 GiB at 20:15:38. A reader who catches this endpoint before POST completes gets the PREVIOUS population with no indication it is stale, which is a live trap for exactly this kind of observation and is recorded so the next observer waits for BootProgress rather than trusting a quiet answer.\n\nOPERATING SPEED IS THE PART'S RATING, NOT A DOWNTRAIN. 2133 is what this DDR4-2133 module is specified at; the fleet moved 2666 -> 2133 by installing it. That is a real bandwidth reduction bought for 4x capacity and it is a trade the operator made deliberately, not a fault to chase.\n\nREDFISH RankCount=2 IS RECORDED HERE AND NOT IN THE CATALOG ROW. It is an observation of this host's controller enumeration; the module's logical rank organization is the OEM's fact and lives in extdeps.memory.samsung. See that row's note for why the two are not competing answers."
 
-data srv3_memory_population: HostMemoryPopulation = HostMemoryPopulation {
+data srv3_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps.memory.types.HostMemoryPopulation {
   rows: [
-    MemoryPopulationRow { module: m393a8g40d40_crb0q_catalog, stick_count: 8 },
+    extdeps.memory.types.MemoryPopulationRow { module: extdeps.memory.samsung.m393a8g40d40_crb0q_catalog, stick_count: 8 },
   ],
 }
 
 data srv1_host: ComputeHost = ComputeHost {
-  identity: operator_host_srv1,
+  identity: gunbc.fleet_intent_network.operator_host_srv1,
   baseboard: Present { value: srv1_baseboard },
-  bmc_intent: Present { value: fleet_bmc_valid_state },
+  bmc_intent: Present { value: gunbc.bmc_intent.fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: memory_devices_from_population(pop: srv1_memory_population),
   storage: [srv1_nvme0],
   network_interfaces: [],
 }
 data srv2_host: ComputeHost = ComputeHost {
-  identity: operator_host_srv2,
+  identity: gunbc.fleet_intent_network.operator_host_srv2,
   baseboard: Present { value: srv2_baseboard },
-  bmc_intent: Present { value: fleet_bmc_valid_state },
+  bmc_intent: Present { value: gunbc.bmc_intent.fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: memory_devices_from_population(pop: srv2_memory_population),
   storage: [srv2_nvme0],
   network_interfaces: [],
 }
 data srv3_host: ComputeHost = ComputeHost {
-  identity: operator_host_srv3,
+  identity: gunbc.fleet_intent_network.operator_host_srv3,
   baseboard: Present { value: srv3_baseboard },
-  bmc_intent: Present { value: fleet_bmc_valid_state },
+  bmc_intent: Present { value: gunbc.bmc_intent.fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: memory_devices_from_population(pop: srv3_memory_population),
   storage: [srv3_nvme0],
   network_interfaces: [],
 }
 
+
 data srv4_memory_population_observation_note: String = "srv4 BMC 192.168.1.195 Redfish observation 2026-08-22, taken between 19:46Z and 20:15Z (the exact minute was not recorded at read time and is NOT reconstructed here -- the window is bounded below by the 19:45:57Z correctable-ECC entry this session read first and above by the srv3 read at 20:15:38Z). srv3 carries a precise timestamp because its read was taken against a live boot transition and the clock mattered; this one was not, and a fabricated second would be worth less than an honest window. Taken through the rotated credential in Secret Manager (bmc-srv4-admin) -- the authenticated read this host's deferral named as its dissolution condition, so that scaffold is RETIRED by this row rather than carried forward. MemorySummary TotalSystemMemoryGiB=512; per-DIMM dimm0..dimm7 ALL M393A8G40D40-CRB CapacityMiB=65536 OperatingSpeedMhz=2133 RankCount=2 Manufacturer=Samsung, eight distinct serials, banks DDR4_A1 through H1, every module State=Enabled Health=OK and system HealthRollup=OK.\n\nTHE DEFERRAL'S OWN INSTRUCTION SAID TO DECODE AGAINST THE SK HYNIX CATALOG AND THAT INSTRUCTION IS SUPERSEDED, which is worth saying because following it literally would have produced a wrong row. It was written when the expected finding was srv1's uniform Hynix population; what is actually installed is a Samsung part that had no catalog row at all until 2026-08-22. The deferral was right that srv1's population must not be assumed, and wrong about which catalog the answer would come from.\n\nONE CORRECTABLE ECC EVENT IS ON RECORD FOR THIS POPULATION, logged 2026-08-22T19:45:57Z on Socket 0 / Channel 0 / DIMM 0 (bank 13, row 166, column 96), about three minutes after an unclean restart following a power blackout. It was corrected by ECC and no uncorrectable event accompanied it. It is recorded here rather than left in the BMC log because it is the only memory event this population has produced and because a repeat at the same bank/row/column would distinguish a marginal device from a single upset -- see gunbc.host_memory_qualification for the qualification standing this does not by itself change."
 
-data srv4_memory_population: HostMemoryPopulation = HostMemoryPopulation {
+data srv4_memory_population: extdeps.memory.types.HostMemoryPopulation = extdeps.memory.types.HostMemoryPopulation {
   rows: [
-    MemoryPopulationRow { module: m393a8g40d40_crb0q_catalog, stick_count: 8 },
+    extdeps.memory.types.MemoryPopulationRow { module: extdeps.memory.samsung.m393a8g40d40_crb0q_catalog, stick_count: 8 },
   ],
 }
 
 data srv4_host: ComputeHost = ComputeHost {
-  identity: operator_host_srv4,
+  identity: gunbc.fleet_intent_network.operator_host_srv4,
   baseboard: Present { value: srv4_baseboard },
-  bmc_intent: Present { value: fleet_bmc_valid_state },
+  bmc_intent: Present { value: gunbc.bmc_intent.fleet_bmc_valid_state },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
   memory: memory_devices_from_population(pop: srv4_memory_population),
   storage: [srv4_nvme0],
@@ -276,7 +278,7 @@ fn fleet_intent_execution_surface() -> ExecutionSurface {
     os: fleet_intent_os_surface,
     isolation: PerJobFilesystem,
     container_runtime: Present { value: Docker },
-    toolchains: [sccache_toolchain_capability],
+    toolchains: [extdeps.cache.sccache.sccache_toolchain_capability],
     mounted_storage: [],
     network: [],
   }

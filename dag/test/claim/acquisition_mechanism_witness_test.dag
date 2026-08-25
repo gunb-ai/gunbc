@@ -1,18 +1,18 @@
 module test.claim.acquisition_mechanism_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn acquisition_witness_floor_equals(f: gunbc.econ.acquisition.AcquisitionCostForecast, expected: std.nat.Nat) -> Bool {
-  match acquisition_forecast_cost_floor_micros(forecast: f) {
+  match gunbc.econ.acquisition.acquisition_forecast_cost_floor_micros(forecast: f) {
     Present { value: v } => v == expected
     Absent => false
   }
 }
 
 data two_usd_per_click: std.measure.MoneyOnce = std.measure.MoneyOnce {
-  amount: money_amount_micro(count: 2000000),
-  currency: Usd,
+  amount: std.measure.money_amount_micro(count: 2000000),
+  currency: std.currency.Usd,
 }
 
 data click_to_customer_scenario: gunbc.econ.acquisition.AcquisitionScenario = gunbc.econ.acquisition.AcquisitionScenario {
@@ -25,73 +25,73 @@ data click_to_customer_scenario: gunbc.econ.acquisition.AcquisitionScenario = gu
 }
 
 test fn w_two_step_funnel_composes_exact_fraction_and_cost() -> Bool {
-  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared { scenario: click_to_customer_scenario }) {
-    AcquisitionForecastDerived { forecast: f } =>
+  match gunbc.econ.acquisition.derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared { scenario: click_to_customer_scenario }) {
+    gunbc.econ.acquisition.AcquisitionForecastDerived { forecast: f } =>
       (f.composed_rate.num == 1)
         && (f.composed_rate.denom == 40)
-        && (money_once_micros(q: f.entry_unit_cost) == 2000000)
+        && (std.measure.money_once_micros(q: f.entry_unit_cost) == 2000000)
         && acquisition_witness_floor_equals(f: f, expected: 80000000)
         && ((f.entry_stage_label as String) == "click")
         && ((f.outcome_stage_label as String) == "customer")
-    AcquisitionForecastRefused { cause: _ } => false
+    gunbc.econ.acquisition.AcquisitionForecastRefused { cause: _ } => false
   }
 }
 
 data indivisible_scenario: gunbc.econ.acquisition.AcquisitionScenario = gunbc.econ.acquisition.AcquisitionScenario {
   entry_stage_label: "click",
-  entry_unit_cost: std.measure.MoneyOnce { amount: money_amount_micro(count: 1000000), currency: Usd },
+  entry_unit_cost: std.measure.MoneyOnce { amount: std.measure.money_amount_micro(count: 1000000), currency: std.currency.Usd },
   steps: [
     gunbc.econ.acquisition.AcquisitionStageStep { stage_label: "signup", assumed_rate: gunbc.econ.acquisition.ConversionRate { num: 3, denom: 7 } },
   ],
 }
 
 test fn w_exact_fraction_is_authority_and_floor_is_lossy() -> Bool {
-  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared { scenario: indivisible_scenario }) {
-    AcquisitionForecastDerived { forecast: f } =>
+  match gunbc.econ.acquisition.derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared { scenario: indivisible_scenario }) {
+    gunbc.econ.acquisition.AcquisitionForecastDerived { forecast: f } =>
       (f.composed_rate.num == 3)
         && (f.composed_rate.denom == 7)
-        && (money_once_micros(q: f.entry_unit_cost) == 1000000)
+        && (std.measure.money_once_micros(q: f.entry_unit_cost) == 1000000)
         && acquisition_witness_floor_equals(f: f, expected: 2333333)
-        && ((2333333 * f.composed_rate.num) != (money_once_micros(q: f.entry_unit_cost) * f.composed_rate.denom))
-    AcquisitionForecastRefused { cause: _ } => false
+        && ((2333333 * f.composed_rate.num) != (std.measure.money_once_micros(q: f.entry_unit_cost) * f.composed_rate.denom))
+    gunbc.econ.acquisition.AcquisitionForecastRefused { cause: _ } => false
   }
 }
 
 test fn w_red_unknown_scenario_refuses() -> Bool {
-  match derive_acquisition_cost_forecast(input: AcquisitionScenarioUnknown) {
-    AcquisitionForecastRefused { cause: ScenarioUnknown } => true
+  match gunbc.econ.acquisition.derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioUnknown) {
+    gunbc.econ.acquisition.AcquisitionForecastRefused { cause: gunbc.econ.acquisition.ScenarioUnknown } => true
     _ => false
   }
 }
 
 test fn w_red_zero_entry_unit_cost_refuses() -> Bool {
-  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
+  match gunbc.econ.acquisition.derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
     scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
-      entry_unit_cost: std.measure.MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd },
+      entry_unit_cost: std.measure.MoneyOnce { amount: std.measure.money_amount_micro(count: 0), currency: std.currency.Usd },
       steps: click_to_customer_scenario.steps,
     },
   }) {
-    AcquisitionForecastRefused { cause: ZeroEntryUnitCost } => true
+    gunbc.econ.acquisition.AcquisitionForecastRefused { cause: gunbc.econ.acquisition.ZeroEntryUnitCost } => true
     _ => false
   }
 }
 
 test fn w_red_empty_funnel_refuses() -> Bool {
-  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
+  match gunbc.econ.acquisition.derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
     scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
       steps: [],
     },
   }) {
-    AcquisitionForecastRefused { cause: EmptyFunnel } => true
+    gunbc.econ.acquisition.AcquisitionForecastRefused { cause: gunbc.econ.acquisition.EmptyFunnel } => true
     _ => false
   }
 }
 
 test fn w_red_zero_numerator_refuses_naming_the_stage() -> Bool {
-  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
+  match gunbc.econ.acquisition.derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
     scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
@@ -101,14 +101,14 @@ test fn w_red_zero_numerator_refuses_naming_the_stage() -> Bool {
       ],
     },
   }) {
-    AcquisitionForecastRefused { cause: ZeroConversionNumerator { stage_label: l } } =>
+    gunbc.econ.acquisition.AcquisitionForecastRefused { cause: gunbc.econ.acquisition.ZeroConversionNumerator { stage_label: l } } =>
       (l as String) == "customer"
     _ => false
   }
 }
 
 test fn w_red_zero_cohort_refuses_naming_the_stage() -> Bool {
-  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
+  match gunbc.econ.acquisition.derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
     scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
@@ -117,14 +117,14 @@ test fn w_red_zero_cohort_refuses_naming_the_stage() -> Bool {
       ],
     },
   }) {
-    AcquisitionForecastRefused { cause: ZeroConversionCohort { stage_label: l } } =>
+    gunbc.econ.acquisition.AcquisitionForecastRefused { cause: gunbc.econ.acquisition.ZeroConversionCohort { stage_label: l } } =>
       (l as String) == "lead"
     _ => false
   }
 }
 
 test fn w_red_rate_above_unity_refuses_naming_the_stage() -> Bool {
-  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
+  match gunbc.econ.acquisition.derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
     scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
@@ -133,7 +133,7 @@ test fn w_red_rate_above_unity_refuses_naming_the_stage() -> Bool {
       ],
     },
   }) {
-    AcquisitionForecastRefused { cause: ConversionRateExceedsUnity { stage_label: l } } =>
+    gunbc.econ.acquisition.AcquisitionForecastRefused { cause: gunbc.econ.acquisition.ConversionRateExceedsUnity { stage_label: l } } =>
       (l as String) == "lead"
     _ => false
   }
@@ -147,14 +147,14 @@ data zero_converted_forecast_fixture: gunbc.econ.acquisition.AcquisitionCostFore
 }
 
 test fn w_red_floor_projection_refuses_hand_built_zero_converted_forecast() -> Bool {
-  match acquisition_forecast_cost_floor_micros(forecast: zero_converted_forecast_fixture) {
+  match gunbc.econ.acquisition.acquisition_forecast_cost_floor_micros(forecast: zero_converted_forecast_fixture) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn w_red_first_invalid_stage_wins() -> Bool {
-  match derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
+  match gunbc.econ.acquisition.derive_acquisition_cost_forecast(input: gunbc.econ.acquisition.AcquisitionScenarioDeclared {
     scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
@@ -164,7 +164,7 @@ test fn w_red_first_invalid_stage_wins() -> Bool {
       ],
     },
   }) {
-    AcquisitionForecastRefused { cause: ZeroConversionNumerator { stage_label: l } } =>
+    gunbc.econ.acquisition.AcquisitionForecastRefused { cause: gunbc.econ.acquisition.ZeroConversionNumerator { stage_label: l } } =>
       (l as String) == "lead"
     _ => false
   }

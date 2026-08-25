@@ -54,17 +54,17 @@ fn stackup_copper_layers(s: Stackup) -> List<CopperLayer> {
 }
 
 fn stackup_ply_thickness(p: StackupPly) -> Int {
-  micrometer_count(m: p.dielectric.thickness) + micrometer_count(m: p.copper.thickness)
+  std.measure.micrometer_count(m: p.dielectric.thickness) + std.measure.micrometer_count(m: p.copper.thickness)
 }
 
 fn stackup_total_thickness(s: Stackup) -> std.measure.Micrometer {
-  let top = micrometer_count(m: s.top.thickness)
+  let top = std.measure.micrometer_count(m: s.top.thickness)
   let below = v2.std.algebra.fold_list(
     xs: s.plies,
     empty: 0,
     cons: fn(acc, p) { acc + stackup_ply_thickness(p: p) },
   )
-  micrometer(count: top + below)
+  std.measure.micrometer(count: top + below)
 }
 
 // BALANCE IS CHECKED, NOT CONSTRUCTED, AND THAT IS THE HONEST RUNG. An unbalanced stackup warps on
@@ -77,7 +77,7 @@ fn stackup_total_thickness(s: Stackup) -> std.measure.Micrometer {
 // predicate does not read, and a board balanced in copper over asymmetric cores is not proven flat
 // by it.
 fn stackup_copper_thickness_profile(s: Stackup) -> List<Int> {
-  map(stackup_copper_layers(s: s), c => micrometer_count(m: c.thickness))
+  map(stackup_copper_layers(s: s), c => std.measure.micrometer_count(m: c.thickness))
 }
 
 fn stackup_is_copper_balanced(s: Stackup) -> Bool {
@@ -135,11 +135,11 @@ type AdmittedStackup sole_constructor {
 }
 
 fn stackup_has_zero_thickness_copper(s: Stackup) -> Bool {
-  count(filter(stackup_copper_layers(s: s), c => micrometer_count(m: c.thickness) <= 0)) > 0
+  count(filter(stackup_copper_layers(s: s), c => std.measure.micrometer_count(m: c.thickness) <= 0)) > 0
 }
 
 fn stackup_has_zero_thickness_dielectric(s: Stackup) -> Bool {
-  count(filter(s.plies, p => micrometer_count(m: p.dielectric.thickness) <= 0)) > 0
+  count(filter(s.plies, p => std.measure.micrometer_count(m: p.dielectric.thickness) <= 0)) > 0
 }
 
 // A SIGNAL LAYER WITHOUT A PLANE HAS NOWHERE TO RETURN ITS CURRENT. Return current follows the
@@ -208,5 +208,5 @@ fn admitted_stackup_body(a: AdmittedStackup) -> Stackup {
 //
 // THE ONLY ROUTE FROM A STACKUP TO AN ESTABLISHED CAPABILITY.
 fn establish_stackup_capability(a: AdmittedStackup) -> product.pcb.world.PcbCapabilityStanding {
-  capability_established(authority: a.authority)
+  product.pcb.world.capability_established(authority: a.authority)
 }

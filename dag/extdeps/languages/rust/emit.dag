@@ -4,7 +4,7 @@ module extdeps.languages.rust.emit
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "doc.rust-lang.org/reference/"
   }
 }
@@ -285,11 +285,11 @@ type RustPairCompletionSpelling {
 data rust_pair_completion_carrier: String = "GroupCompletion"
 
 data rust_pair_completion_spellings: List<RustPairCompletionSpelling> = [
-  { capability_key: PairCompletionOpNeg, method: "neg", trait_path: "std::ops::Neg", where_bounds: "" },
-  { capability_key: PairCompletionOpAdd, method: "add", trait_path: "std::ops::Add", where_bounds: "where M: std::ops::Add<Output = M>," },
-  { capability_key: PairCompletionOpSub, method: "sub", trait_path: "std::ops::Sub", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Neg<Output = M>," },
-  { capability_key: PairCompletionOpMul, method: "mul", trait_path: "std::ops::Mul", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Mul<Output = M> + Clone," },
-  { capability_key: PairCompletionOpDiv, method: "div", trait_path: "std::ops::Div", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default," }
+  { capability_key: std.trait_derive_shape.PairCompletionOpNeg, method: "neg", trait_path: "std::ops::Neg", where_bounds: "" },
+  { capability_key: std.trait_derive_shape.PairCompletionOpAdd, method: "add", trait_path: "std::ops::Add", where_bounds: "where M: std::ops::Add<Output = M>," },
+  { capability_key: std.trait_derive_shape.PairCompletionOpSub, method: "sub", trait_path: "std::ops::Sub", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Neg<Output = M>," },
+  { capability_key: std.trait_derive_shape.PairCompletionOpMul, method: "mul", trait_path: "std::ops::Mul", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Mul<Output = M> + Clone," },
+  { capability_key: std.trait_derive_shape.PairCompletionOpDiv, method: "div", trait_path: "std::ops::Div", where_bounds: "where M: std::ops::Add<Output = M> + std::ops::Sub<Output = M> + std::ops::Div<Output = M> + Default," }
 ]
 
 data rust_pair_completion_key_join_note: String = "The spelling rows carry the TargetCapabilityKey they answer for, so the join to std.trait_derive_shape pair_completion_op_rows is an identity match on the key itself. This REPLACES a sixteen-arm rust_pair_completion_op_key that mapped every capability to a method-name String purely to compare Strings -- a second, positional naming scheme for something the key already names (DESIGN section 3). That function was total-with-no-wildcard, which was the right repair for the coproduct it matched on; once the key became the open TargetCapabilityKey brand an exhaustive match was no longer available, and reconstructing one would have meant re-closing the brand. Joining on the key is the construction the totality argument was standing in for: a capability with no pair-completion spelling still resolves to Absent and still surfaces through the compile_error! arm. ONE THING GOT WEAKER AND IT IS NOT PAPERED OVER: the old arm printed the missing op's own method name, which it could only do because op_key was total over a closed coproduct. TargetCapabilityKey is an open Symbol brand and this corpus has no Symbol-to-String projection, so the arm now prints the keys that ARE spelled and says one row is unmatched, rather than naming the unmatched key. That is less precise and it is a real loss; it is not a silent one -- the arm still refuses at Rust compile time, still identifies the drifted pair of tables, and the reader can difference the printed list against pair_completion_op_rows in one step. NEXT-RUNG TRIGGER: a Symbol-to-String projection in v2.std.node, at which point the key names itself again."
@@ -303,13 +303,13 @@ fn rust_pair_completion_spelling_for(op: std.trait_derive_shape.PairCompletionOp
 fn rust_pair_completion_factor_source(factor: std.trait_derive_shape.PairCompletionFactor) -> String {
   concat(
     match factor.operand {
-      PairCompletionSelf => "self"
-      PairCompletionRhs => "rhs"
+      std.trait_derive_shape.PairCompletionSelf => "self"
+      std.trait_derive_shape.PairCompletionRhs => "rhs"
     },
     ".",
     match factor.component {
-      PairCompletionPos => "pos"
-      PairCompletionNeg => "neg"
+      std.trait_derive_shape.PairCompletionPos => "pos"
+      std.trait_derive_shape.PairCompletionNeg => "neg"
     }
   )
 }
@@ -356,7 +356,7 @@ fn rust_pair_completion_no_later_sources() -> List<String> {
 
 fn rust_pair_completion_body_render(body: std.trait_derive_shape.PairCompletionBody) -> String {
   match body {
-    PairCompletionSumOfProducts { pos: pos, neg: neg } =>
+    std.trait_derive_shape.PairCompletionSumOfProducts { pos: pos, neg: neg } =>
       concat(
         "{\n        ", rust_pair_completion_carrier, " {\n",
         "            pos: ",
@@ -369,8 +369,8 @@ fn rust_pair_completion_body_render(body: std.trait_derive_shape.PairCompletionB
         "        }\n",
         "    }\n"
       )
-    PairCompletionNegatedAddend => "{ self + (-rhs) }\n"
-    PairCompletionCanonicalQuotient =>
+    std.trait_derive_shape.PairCompletionNegatedAddend => "{ self + (-rhs) }\n"
+    std.trait_derive_shape.PairCompletionCanonicalQuotient =>
       concat(
         "{\n",
         "        let q = (self.pos - self.neg) / (rhs.pos - rhs.neg);\n",

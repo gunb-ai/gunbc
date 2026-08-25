@@ -4,7 +4,7 @@ module extdeps.cloud.hetzner
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.hetzner.com/cloud/servers/overview"
   }
 }
@@ -13,9 +13,9 @@ type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
 
 data hetzner_money_rate_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "HetznerCloudServerCatalogRow"),
+    ref: std.decl_ref.decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "HetznerCloudServerCatalogRow"),
     reason: "hourly/monthly_cap: MoneyAmountMicro + separate currency forks std.measure MoneyRate<P> (MoneyPerHour/MoneyPerMonth); parallel representation fork",
-    dissolution: unbound_dissolution(description: "next hetzner-cloud catalog edit routes hourly and monthly_cap through MoneyPerHour/MoneyPerMonth"),
+    dissolution: std.dissolution.unbound_dissolution(description: "next hetzner-cloud catalog edit routes hourly and monthly_cap through MoneyPerHour/MoneyPerMonth"),
   )
 ]
 
@@ -33,11 +33,11 @@ type HetznerCloudServerCatalogRow {
 
 data cax41_catalog: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow {
   server_type: Cax41,
-  vcpus: hardware_thread_count(16),
-  memory_bytes: byte_size(34359738368),
-  disk_bytes: byte_size(343597383680),
-  hourly: money_amount_micro(count: 50500),
-  monthly_cap: money_amount_micro(count: 31490000),
+  vcpus: std.measure.hardware_thread_count(16),
+  memory_bytes: std.measure.byte_size(34359738368),
+  disk_bytes: std.measure.byte_size(343597383680),
+  hourly: std.measure.money_amount_micro(count: 50500),
+  monthly_cap: std.measure.money_amount_micro(count: 31490000),
   currency: Eur,
   pricing_citation: "GE-D9256",
   cpu_architecture: Aarch64,

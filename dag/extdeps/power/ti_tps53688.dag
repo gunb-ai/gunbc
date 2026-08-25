@@ -5,7 +5,7 @@ module extdeps.power.ti_tps53688
 // reprints is RSB0040A, stamped 4215000/A, 08/2016.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.ti.com/lit/ds/symlink/tps53688.pdf"
   }
 }
@@ -14,7 +14,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 // vendor's orderable part-details listing for TPS53688RSBR gives its package as "WQFN (RSB) 40".
 data tps53688rsbr_part_details_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.ti.com/product/TPS53688/part-details/TPS53688RSBR"
   }
 }
@@ -24,19 +24,19 @@ data ti_tps53688_note: String = "THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SE
 data tps53688_rsb0040a_drawing: extdeps.land_pattern.types.PackageDrawingRef = extdeps.land_pattern.types.PackageDrawingRef {
   drawing_number: "4215000/A",
   revision_date: "08/2016",
-  reprinted_in: extdeps.power.ti_tps53688.extdeps_external_authority_anchor,
+  reprinted_in: extdeps_external_authority_anchor,
 }
 
 data tps53688_rsb0040a_body: extdeps.land_pattern.types.PackageBodyDimensions = extdeps.land_pattern.types.PackageBodyDimensions {
   designator: "RSB0040A",
   drawing: tps53688_rsb0040a_drawing,
   terminal_count: 40,
-  terminal_pitch: micrometer(count: 400),
-  body_length_min: micrometer(count: 4900),
-  body_length_max: micrometer(count: 5100),
-  body_width_min: micrometer(count: 4900),
-  body_width_max: micrometer(count: 5100),
-  height_max: micrometer(count: 800),
+  terminal_pitch: std.measure.micrometer(count: 400),
+  body_length_min: std.measure.micrometer(count: 4900),
+  body_length_max: std.measure.micrometer(count: 5100),
+  body_width_min: std.measure.micrometer(count: 4900),
+  body_width_max: std.measure.micrometer(count: 5100),
+  height_max: std.measure.micrometer(count: 800),
 }
 
 data tps53688_rsb0040a_land_pattern: extdeps.land_pattern.types.VendorRecommendedLandPattern = extdeps.land_pattern.types.VendorRecommendedLandPattern {
@@ -44,11 +44,11 @@ data tps53688_rsb0040a_land_pattern: extdeps.land_pattern.types.VendorRecommende
   drawing: tps53688_rsb0040a_drawing,
   geometry: extdeps.land_pattern.types.QuadRowLandGeometry {
     lands_per_side: 10,
-    pitch: micrometer(count: 400),
-    side_span_centre_to_centre: micrometer(count: 4800),
-    land_length: micrometer(count: 600),
-    land_width: micrometer(count: 200),
-    thermal_land_side: Present { value: micrometer(count: 3600) },
+    pitch: std.measure.micrometer(count: 400),
+    side_span_centre_to_centre: std.measure.micrometer(count: 4800),
+    land_length: std.measure.micrometer(count: 600),
+    land_width: std.measure.micrometer(count: 200),
+    thermal_land_side: Present { value: std.measure.micrometer(count: 3600) },
   },
 }
 
@@ -67,9 +67,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.power.ti_tps53688",
       decl_name: "tps53688rsbr",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.power.ti_tps53688.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [tps53688rsbr_part_details_authority]
 }

@@ -1,22 +1,23 @@
 module v2.test.manual.process_numeric_refinements
 
+
 test fn witness_exit_code_256_rejects() -> Bool {
   match v2.extdeps.posix.make_exit_code(value: 256, at: v2.std.diagnostic.node_locus(node: v2.test.manual.connective_anchors.stub_empty_conj)) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics } => diagnostics.head.reason == ^exit_code_out_of_range
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics } => diagnostics.head.reason == ^exit_code_out_of_range
   }
 }
 
 test fn witness_process_id_zero_rejects() -> Bool {
   match v2.extdeps.posix.make_process_id(value: 0, at: v2.std.diagnostic.node_locus(node: v2.test.manual.connective_anchors.stub_empty_conj)) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics } => diagnostics.head.reason == ^process_id_out_of_range
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics } => diagnostics.head.reason == ^process_id_out_of_range
   }
 }
 
 test fn witness_signal_num_zero_rejects() -> Bool {
   match v2.extdeps.posix.make_signal_num(value: 0, at: v2.std.diagnostic.node_locus(node: v2.test.manual.connective_anchors.stub_empty_conj)) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics } => diagnostics.head.reason == ^signal_num_out_of_range
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics } => diagnostics.head.reason == ^signal_num_out_of_range
   }
 }

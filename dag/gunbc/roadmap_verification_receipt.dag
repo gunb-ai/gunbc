@@ -118,15 +118,15 @@ fn exact_verification_address_for(
 fn current_verification_selection_json(
   selection: CurrentVerificationSelection,
 ) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(
       key: "schema",
-      value: json_string(s: current_verification_selection_schema as String),
+      value: extdeps.languages.json.emit.json_string(s: current_verification_selection_schema as String),
     ),
-    json_kv(key: "head_sha", value: json_string(s: selection.head_sha as String)),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(key: "head_sha", value: extdeps.languages.json.emit.json_string(s: selection.head_sha as String)),
+    extdeps.languages.json.emit.json_kv(
       key: "change_window_identity",
-      value: json_string(s: selection.change_window_identity.digest as String),
+      value: extdeps.languages.json.emit.json_string(s: selection.change_window_identity.digest as String),
     ),
   ]))
 }
@@ -138,7 +138,7 @@ fn verification_subject_decode_v1(doc: extdeps.languages.json.emit.JsonValue) ->
       match verification_receipt_string_member(doc: doc, key: "criteria_digest") {
         VerificationReceiptMemberUnreadable { reason: _ } => none
         VerificationReceiptMemberRead { value: criteria_wire } =>
-          match fnv1a64_structural_hex_digest(hex: criteria_wire) {
+          match std.content_hash.fnv1a64_structural_hex_digest(hex: criteria_wire) {
             Absent => none
             Present { value: criteria_digest } =>
               match verification_receipt_string_member(doc: doc, key: "attempt_key") {
@@ -157,7 +157,7 @@ fn verification_subject_decode_v1(doc: extdeps.languages.json.emit.JsonValue) ->
                               attempt_key: attempt_key,
                               branch: branch as std.types.NonEmptyStr,
                               head_sha: head_sha as std.types.CommitSha,
-                              change_window_identity: git_diff_window_absent_identity(),
+                              change_window_identity: gunbc.git_diff_change_window.git_diff_window_absent_identity(),
                             },
                           }
                       }
@@ -169,7 +169,7 @@ fn verification_subject_decode_v1(doc: extdeps.languages.json.emit.JsonValue) ->
 }
 
 fn verification_receipt_v1_decode(receipt: String) -> LegacyExactHeadVerificationReceipt? {
-  match parse_json(s: receipt) {
+  match extdeps.languages.json.parse.parse_json(s: receipt) {
     Absent => none
     Present { value: doc } =>
       match verification_receipt_object_member(doc: doc, key: "subject") {
@@ -181,7 +181,7 @@ fn verification_receipt_v1_decode(receipt: String) -> LegacyExactHeadVerificatio
               match verification_receipt_string_member(doc: doc, key: "oracle_identity") {
                 VerificationReceiptMemberUnreadable { reason: _ } => none
                 VerificationReceiptMemberRead { value: oracle_wire } =>
-                  match validation_oracle_parse_pinned_identity_wire(text: oracle_wire) {
+                  match gunbc.roadmap_validation_oracle.validation_oracle_parse_pinned_identity_wire(text: oracle_wire) {
                     Absent => none
                     Present { value: oracle_identity } =>
                       match verification_receipt_object_member(doc: doc, key: "verdict") {
@@ -216,7 +216,7 @@ fn current_verification_selection_decode_document(
   expected_head_sha: String,
   content: String,
 ) -> CurrentVerificationSelectionObservation {
-  match parse_json(s: content) {
+  match extdeps.languages.json.parse.parse_json(s: content) {
     Absent =>
       SelectionMalformed {
         cause: join([
@@ -251,7 +251,7 @@ fn current_verification_selection_decode_document(
                   VerificationReceiptMemberUnreadable { reason: r } =>
                     SelectionMalformed { cause: r }
                   VerificationReceiptMemberRead { value: window_wire } =>
-                    match fnv1a64_structural_hex_digest(hex: window_wire) {
+                    match std.content_hash.fnv1a64_structural_hex_digest(hex: window_wire) {
                       Absent =>
                         SelectionMalformed {
                           cause: "current verification selection change_window_identity is not readable",
@@ -285,7 +285,7 @@ fn current_verification_selection_observe(
   verification_dir: String,
   head_sha: String,
 ) -> CurrentVerificationSelectionObservation {
-  let attempt_listing = Filesystem.List(path: attempt_dir)
+  let attempt_listing = extdeps.filesystem.filesystem_io.Filesystem.List(path: attempt_dir)
   if !attempt_listing.success {
     SelectionUnreadable {
       cause: join([
@@ -302,7 +302,7 @@ fn current_verification_selection_observe(
   ) {
     SelectionAbsent
   } else {
-    let verification_listing = Filesystem.List(path: verification_dir)
+    let verification_listing = extdeps.filesystem.filesystem_io.Filesystem.List(path: verification_dir)
     if !verification_listing.success {
       SelectionUnreadable {
         cause: join([
@@ -327,7 +327,7 @@ fn current_verification_selection_observe(
           [verification_dir, "/", selection_basename],
           "",
         )
-        let read = Filesystem.Read(path: selection_path)
+        let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: selection_path)
         if !read.success {
           SelectionUnreadable {
             cause: join([
@@ -356,7 +356,7 @@ fn exact_verification_receipt_source_read(
   receipt_basename: String,
 ) -> ExactVerificationReceiptSource {
   let receipt_path = join([verification_dir, "/", receipt_basename], "")
-  let attempt_listing = Filesystem.List(path: attempt_dir)
+  let attempt_listing = extdeps.filesystem.filesystem_io.Filesystem.List(path: attempt_dir)
   if !attempt_listing.success {
     ExactVerificationReceiptUnreadable {
       detail: join([
@@ -373,7 +373,7 @@ fn exact_verification_receipt_source_read(
   ) {
     ExactVerificationReceiptAbsent
   } else {
-    let verification_listing = Filesystem.List(path: verification_dir)
+    let verification_listing = extdeps.filesystem.filesystem_io.Filesystem.List(path: verification_dir)
     if !verification_listing.success {
       ExactVerificationReceiptUnreadable {
         detail: join([
@@ -390,7 +390,7 @@ fn exact_verification_receipt_source_read(
     ) {
       ExactVerificationReceiptAbsent
     } else {
-      let read = Filesystem.Read(path: receipt_path)
+      let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: receipt_path)
       if read.success {
         ExactVerificationReceiptPresent { text: read.content }
       } else {
@@ -426,7 +426,7 @@ fn verification_receipt_text_classify(receipt: String) -> VerificationReceiptTex
       reason: "the receipt file exists and is empty, so its content was lost or its write was interrupted; an empty file is not an absent one",
     }
   } else {
-    match parse_json(s: receipt) {
+    match extdeps.languages.json.parse.parse_json(s: receipt) {
       Absent =>
         VerificationReceiptTextUndecodable {
           reason: "verification receipt is not one complete JSON value",
@@ -456,11 +456,11 @@ fn verification_receipt_text_classify(receipt: String) -> VerificationReceiptTex
                 Present { value: legacy } =>
                   VerificationReceiptTextV1ExactHead { legacy: legacy }
               }
-            } else if schema == (validation_receipt_schema as String) {
-              match validation_receipt_decode_document(doc: doc) {
-                ValidationReceiptUndecodable { reason } =>
+            } else if schema == (gunbc.roadmap_validation_oracle.validation_receipt_schema as String) {
+              match gunbc.roadmap_validation_oracle.validation_receipt_decode_document(doc: doc) {
+                gunbc.roadmap_validation_oracle.ValidationReceiptUndecodable { reason } =>
                   VerificationReceiptTextUndecodable { reason: reason }
-                ValidationReceiptDecoded { verdict_key } =>
+                gunbc.roadmap_validation_oracle.ValidationReceiptDecoded { verdict_key } =>
                   VerificationReceiptTextLegacyAttempt { verdict_key: verdict_key }
               }
             } else {
@@ -469,7 +469,7 @@ fn verification_receipt_text_classify(receipt: String) -> VerificationReceiptTex
                   "verification receipt schema is ", schema,
                   " and is neither ", verification_receipt_schema as String,
                   ", nor ", verification_receipt_schema_v1 as String,
-                  ", nor ", validation_receipt_schema as String,
+                  ", nor ", gunbc.roadmap_validation_oracle.validation_receipt_schema as String,
                 ], ""),
               }
             }
@@ -520,13 +520,13 @@ fn belt_verification_decision(
                 ], ""),
               }
             VerificationSubjectMatches =>
-              if validation_verdict_key(verdict: receipt.verdict) == "not_run" {
+              if gunbc.roadmap_validation_oracle.validation_verdict_key(verdict: receipt.verdict) == "not_run" {
                 BeltVerificationRun
               } else {
                 BeltVerificationDefer {
                   reason: join([
                     "an exact-head verification verdict is already recorded: ",
-                    validation_verdict_key(verdict: receipt.verdict),
+                    gunbc.roadmap_validation_oracle.validation_verdict_key(verdict: receipt.verdict),
                   ], ""),
                 }
               }
@@ -573,7 +573,7 @@ fn verification_subject_match(
       expected: expected.node_identity as String,
       found: found.node_identity as String,
     }
-  } else if !content_hash_eq_structural(
+  } else if !std.content_hash.content_hash_eq_structural(
     left: found.criteria_digest,
     right: expected.criteria_digest,
   ) {
@@ -600,7 +600,7 @@ fn verification_subject_match(
       expected: expected.head_sha as String,
       found: found.head_sha as String,
     }
-  } else if !content_hash_eq_structural(
+  } else if !std.content_hash.content_hash_eq_structural(
     left: found.change_window_identity,
     right: expected.change_window_identity,
   ) {
@@ -670,7 +670,7 @@ fn verification_evidence_for(
 fn verification_evidence_moves_lamp(evidence: VerificationEvidence) -> Bool {
   match evidence {
     VerificationEvidenceForSubject { receipt } =>
-      validation_verdict_key(verdict: receipt.verdict) == "passed"
+      gunbc.roadmap_validation_oracle.validation_verdict_key(verdict: receipt.verdict) == "passed"
     VerificationEvidenceForAnotherSubject {
       field: _, expected: _, found: _,
     } => false
@@ -700,25 +700,25 @@ fn verification_receipt_string_member(
   doc: extdeps.languages.json.emit.JsonValue,
   key: String,
 ) -> VerificationReceiptMember {
-  match json_object_unique_member(v: doc, key: key) {
-    JsonMemberNotAnObject =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       VerificationReceiptMemberUnreadable {
         reason: "verification receipt is not a JSON object",
       }
-    JsonMemberAbsent =>
+    extdeps.languages.json.parse.JsonMemberAbsent =>
       VerificationReceiptMemberUnreadable {
         reason: join(["verification receipt has no ", key, " member"], ""),
       }
-    JsonMemberDuplicated { count: n } =>
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: n } =>
       VerificationReceiptMemberUnreadable {
         reason: join([
           "verification receipt carries ", to_string(n), " ", key,
           " members; an identity member must occur exactly once",
         ], ""),
       }
-    JsonMemberFound { value: v } =>
+    extdeps.languages.json.parse.JsonMemberFound { value: v } =>
       match v {
-        JsonString { value: sv } => VerificationReceiptMemberRead { value: sv }
+        extdeps.languages.json.emit.JsonString { value: sv } => VerificationReceiptMemberRead { value: sv }
         _ =>
           VerificationReceiptMemberUnreadable {
             reason: join(["verification receipt ", key, " is not a JSON string"], ""),
@@ -728,10 +728,10 @@ fn verification_receipt_string_member(
 }
 
 fn verification_receipt_int_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> Int? {
-  match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value: v } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
+    extdeps.languages.json.parse.JsonMemberFound { value: v } =>
       match v {
-        JsonNumber { lexeme: lx } => parse_int(s: lx as String)
+        extdeps.languages.json.emit.JsonNumber { lexeme: lx } => parse_int(s: lx as String)
         _ => none
       }
     _ => none
@@ -739,8 +739,8 @@ fn verification_receipt_int_member(doc: extdeps.languages.json.emit.JsonValue, k
 }
 
 fn verification_receipt_object_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> extdeps.languages.json.emit.JsonValue? {
-  match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value: v } => Present { value: v }
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
+    extdeps.languages.json.parse.JsonMemberFound { value: v } => Present { value: v }
     _ => none
   }
 }
@@ -749,12 +749,12 @@ fn verification_receipt_string_array_member(
   doc: extdeps.languages.json.emit.JsonValue,
   key: String,
 ) -> List<String>? {
-  match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value: v } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
+    extdeps.languages.json.parse.JsonMemberFound { value: v } =>
       match v {
-        JsonArray { elements } => {
+        extdeps.languages.json.emit.JsonArray { elements } => {
           let parsed = map(elements, e => match e {
-            JsonString { value: s } => Present { value: s }
+            extdeps.languages.json.emit.JsonString { value: s } => Present { value: s }
             _ => none
           })
           let readable = filter(parsed, x => match x {
@@ -779,21 +779,21 @@ fn verification_receipt_string_array_member(
 }
 
 fn verification_subject_json(subject: VerificationSubject) -> extdeps.languages.json.emit.JsonValue {
-  json_object(members: [
-    json_kv(
+  extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(
       key: "node_identity",
-      value: json_string(s: subject.node_identity as String),
+      value: extdeps.languages.json.emit.json_string(s: subject.node_identity as String),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "criteria_digest",
-      value: json_string(s: subject.criteria_digest.digest as String),
+      value: extdeps.languages.json.emit.json_string(s: subject.criteria_digest.digest as String),
     ),
-    json_kv(key: "attempt_key", value: json_string(s: subject.attempt_key)),
-    json_kv(key: "branch", value: json_string(s: subject.branch as String)),
-    json_kv(key: "head_sha", value: json_string(s: subject.head_sha as String)),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(key: "attempt_key", value: extdeps.languages.json.emit.json_string(s: subject.attempt_key)),
+    extdeps.languages.json.emit.json_kv(key: "branch", value: extdeps.languages.json.emit.json_string(s: subject.branch as String)),
+    extdeps.languages.json.emit.json_kv(key: "head_sha", value: extdeps.languages.json.emit.json_string(s: subject.head_sha as String)),
+    extdeps.languages.json.emit.json_kv(
       key: "change_window_identity",
-      value: json_string(s: subject.change_window_identity.digest as String),
+      value: extdeps.languages.json.emit.json_string(s: subject.change_window_identity.digest as String),
     ),
   ])
 }
@@ -802,20 +802,20 @@ fn verification_validation_operation_json(
   validation: gunbc.roadmap_execution_contract.ValidationOperation,
 ) -> extdeps.languages.json.emit.JsonValue {
   match validation {
-    GunbcClaimValidation { entry, function } =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "gunbc-claim")),
-        json_kv(key: "entry", value: json_string(s: entry as String)),
-        json_kv(key: "function", value: json_string(s: function as String)),
+    gunbc.roadmap_execution_contract.GunbcClaimValidation { entry, function } =>
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "gunbc-claim")),
+        extdeps.languages.json.emit.json_kv(key: "entry", value: extdeps.languages.json.emit.json_string(s: entry as String)),
+        extdeps.languages.json.emit.json_kv(key: "function", value: extdeps.languages.json.emit.json_string(s: function as String)),
       ])
-    CargoTestValidation { filter } =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "cargo-test")),
-        json_kv(key: "filter", value: json_string(s: filter as String)),
+    gunbc.roadmap_execution_contract.CargoTestValidation { filter } =>
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "cargo-test")),
+        extdeps.languages.json.emit.json_kv(key: "filter", value: extdeps.languages.json.emit.json_string(s: filter as String)),
       ])
-    CargoFmtValidation =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "cargo-fmt")),
+    gunbc.roadmap_execution_contract.CargoFmtValidation =>
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "cargo-fmt")),
       ])
   }
 }
@@ -823,12 +823,12 @@ fn verification_validation_operation_json(
 fn verification_modeled_command_json(
   command: gunbc.roadmap_execution_contract.ModeledValidationCommand,
 ) -> extdeps.languages.json.emit.JsonValue {
-  json_object(members: [
-    json_kv(key: "label", value: json_string(s: command.label as String)),
-    json_kv(key: "program", value: json_string(s: command.program as String)),
-    json_kv(
+  extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "label", value: extdeps.languages.json.emit.json_string(s: command.label as String)),
+    extdeps.languages.json.emit.json_kv(key: "program", value: extdeps.languages.json.emit.json_string(s: command.program as String)),
+    extdeps.languages.json.emit.json_kv(
       key: "args",
-      value: json_array(elements: map(command.args, a => json_string(s: a))),
+      value: extdeps.languages.json.emit.json_array(elements: map(command.args, a => extdeps.languages.json.emit.json_string(s: a))),
     ),
   ])
 }
@@ -836,80 +836,80 @@ fn verification_modeled_command_json(
 fn verification_validation_execution_json(
   execution: ValidationExecution,
 ) -> extdeps.languages.json.emit.JsonValue {
-  json_object(members: [
-    json_kv(
+  extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(
       key: "validation",
       value: verification_validation_operation_json(
         validation: execution.validation,
       ),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "command",
       value: verification_modeled_command_json(command: execution.command),
     ),
-    json_kv(key: "exit_code", value: json_int(n: execution.exit_code)),
-    json_kv(key: "stdout", value: json_string(s: execution.stdout)),
-    json_kv(key: "stderr", value: json_string(s: execution.stderr)),
+    extdeps.languages.json.emit.json_kv(key: "exit_code", value: extdeps.languages.json.emit.json_int(n: execution.exit_code)),
+    extdeps.languages.json.emit.json_kv(key: "stdout", value: extdeps.languages.json.emit.json_string(s: execution.stdout)),
+    extdeps.languages.json.emit.json_kv(key: "stderr", value: extdeps.languages.json.emit.json_string(s: execution.stderr)),
   ])
 }
 
 fn verification_verdict_json(verdict: gunbc.roadmap_validation_oracle.ValidationVerdict) -> extdeps.languages.json.emit.JsonValue {
   match verdict {
-    ValidationNotRun =>
-      json_object(members: [
-        json_kv(key: "key", value: json_string(s: "not_run")),
+    gunbc.roadmap_validation_oracle.ValidationNotRun =>
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "key", value: extdeps.languages.json.emit.json_string(s: "not_run")),
       ])
-    ValidationPassed { command, oracle_identity } =>
-      json_object(members: [
-        json_kv(key: "key", value: json_string(s: "passed")),
-        json_kv(key: "command", value: json_string(s: command)),
-        json_kv(
+    gunbc.roadmap_validation_oracle.ValidationPassed { command, oracle_identity } =>
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "key", value: extdeps.languages.json.emit.json_string(s: "passed")),
+        extdeps.languages.json.emit.json_kv(key: "command", value: extdeps.languages.json.emit.json_string(s: command)),
+        extdeps.languages.json.emit.json_kv(
           key: "oracle_identity",
-          value: json_string(
-            s: serialize_content_hash(hash: oracle_identity) as String,
+          value: extdeps.languages.json.emit.json_string(
+            s: std.content_hash.serialize_content_hash(hash: oracle_identity) as String,
           ),
         ),
       ])
-    ValidationFailed { command, exit_code, detail } =>
-      json_object(members: [
-        json_kv(key: "key", value: json_string(s: "failed")),
-        json_kv(key: "command", value: json_string(s: command)),
-        json_kv(key: "exit_code", value: json_int(n: exit_code)),
-        json_kv(key: "detail", value: json_string(s: detail)),
+    gunbc.roadmap_validation_oracle.ValidationFailed { command, exit_code, detail } =>
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "key", value: extdeps.languages.json.emit.json_string(s: "failed")),
+        extdeps.languages.json.emit.json_kv(key: "command", value: extdeps.languages.json.emit.json_string(s: command)),
+        extdeps.languages.json.emit.json_kv(key: "exit_code", value: extdeps.languages.json.emit.json_int(n: exit_code)),
+        extdeps.languages.json.emit.json_kv(key: "detail", value: extdeps.languages.json.emit.json_string(s: detail)),
       ])
-    ValidationRefused { cause } =>
-      json_object(members: [
-        json_kv(key: "key", value: json_string(s: "refused")),
-        json_kv(
+    gunbc.roadmap_validation_oracle.ValidationRefused { cause } =>
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "key", value: extdeps.languages.json.emit.json_string(s: "refused")),
+        extdeps.languages.json.emit.json_kv(
           key: "cause_kind",
-          value: json_string(s: validation_refusal_cause_key(cause: cause)),
+          value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_validation_oracle.validation_refusal_cause_key(cause: cause)),
         ),
-        json_kv(
+        extdeps.languages.json.emit.json_kv(
           key: "cause_detail",
-          value: json_string(s: validation_refusal_cause_detail(cause: cause)),
+          value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_validation_oracle.validation_refusal_cause_detail(cause: cause)),
         ),
       ])
   }
 }
 
 fn verification_receipt_json(receipt: VerificationReceipt) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: verification_receipt_schema as String)),
-    json_kv(key: "subject", value: verification_subject_json(subject: receipt.subject)),
-    json_kv(
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: verification_receipt_schema as String)),
+    extdeps.languages.json.emit.json_kv(key: "subject", value: verification_subject_json(subject: receipt.subject)),
+    extdeps.languages.json.emit.json_kv(
       key: "oracle_identity",
-      value: json_string(
-        s: serialize_content_hash(hash: receipt.oracle_identity) as String,
+      value: extdeps.languages.json.emit.json_string(
+        s: std.content_hash.serialize_content_hash(hash: receipt.oracle_identity) as String,
       ),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "executions",
-      value: json_array(elements: map(
+      value: extdeps.languages.json.emit.json_array(elements: map(
         receipt.executions,
         e => verification_validation_execution_json(execution: e),
       )),
     ),
-    json_kv(key: "verdict", value: verification_verdict_json(verdict: receipt.verdict)),
+    extdeps.languages.json.emit.json_kv(key: "verdict", value: verification_verdict_json(verdict: receipt.verdict)),
   ]))
 }
 
@@ -924,7 +924,7 @@ fn verification_subject_decode(doc: extdeps.languages.json.emit.JsonValue) -> Ve
       match verification_receipt_string_member(doc: doc, key: "criteria_digest") {
         VerificationReceiptMemberUnreadable { reason: _ } => none
         VerificationReceiptMemberRead { value: criteria_wire } =>
-          match fnv1a64_structural_hex_digest(hex: criteria_wire) {
+          match std.content_hash.fnv1a64_structural_hex_digest(hex: criteria_wire) {
             Absent => none
             Present { value: criteria_digest } =>
               match verification_receipt_string_member(doc: doc, key: "attempt_key") {
@@ -942,7 +942,7 @@ fn verification_subject_decode(doc: extdeps.languages.json.emit.JsonValue) -> Ve
                           ) {
                             VerificationReceiptMemberUnreadable { reason: _ } => none
                             VerificationReceiptMemberRead { value: window_identity_wire } =>
-                              match fnv1a64_structural_hex_digest(hex: window_identity_wire) {
+                              match std.content_hash.fnv1a64_structural_hex_digest(hex: window_identity_wire) {
                                 Absent => none
                                 Present { value: change_window_identity } =>
                                   Present {
@@ -995,7 +995,7 @@ fn verification_validation_operation_decode(
             }
         }
       } else if kind == "cargo-fmt" {
-        Present { value: CargoFmtValidation }
+        Present { value: gunbc.roadmap_execution_contract.CargoFmtValidation }
       } else {
         none
       }
@@ -1069,10 +1069,10 @@ fn verification_validation_execution_decode(
 }
 
 fn verification_executions_decode(doc: extdeps.languages.json.emit.JsonValue) -> List<ValidationExecution>? {
-  match json_object_unique_member(v: doc, key: "executions") {
-    JsonMemberFound { value: executions_value } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: "executions") {
+    extdeps.languages.json.parse.JsonMemberFound { value: executions_value } =>
       match executions_value {
-        JsonArray { elements } => {
+        extdeps.languages.json.emit.JsonArray { elements } => {
           let parsed = map(
             elements,
             e => verification_validation_execution_decode(doc: e),
@@ -1089,7 +1089,7 @@ fn verification_executions_decode(doc: extdeps.languages.json.emit.JsonValue) ->
                   Present { value: v } => v
                   Absent =>
                     ValidationExecution {
-                      validation: CargoFmtValidation,
+                      validation: gunbc.roadmap_execution_contract.CargoFmtValidation,
                       command: gunbc.roadmap_execution_contract.ModeledValidationCommand {
                         label: "decode-placeholder" as std.types.NonEmptyStr,
                         program: "/dev/null" as std.types.FilePath,
@@ -1117,7 +1117,7 @@ fn verification_verdict_decode(doc: extdeps.languages.json.emit.JsonValue) -> gu
     VerificationReceiptMemberUnreadable { reason: _ } => none
     VerificationReceiptMemberRead { value: key } =>
       if key == "not_run" {
-        Present { value: ValidationNotRun }
+        Present { value: gunbc.roadmap_validation_oracle.ValidationNotRun }
       } else if key == "passed" {
         match verification_receipt_string_member(doc: doc, key: "command") {
           VerificationReceiptMemberUnreadable { reason: _ } => none
@@ -1125,7 +1125,7 @@ fn verification_verdict_decode(doc: extdeps.languages.json.emit.JsonValue) -> gu
             match verification_receipt_string_member(doc: doc, key: "oracle_identity") {
               VerificationReceiptMemberUnreadable { reason: _ } => none
               VerificationReceiptMemberRead { value: identity_wire } =>
-                match validation_oracle_parse_pinned_identity_wire(text: identity_wire) {
+                match gunbc.roadmap_validation_oracle.validation_oracle_parse_pinned_identity_wire(text: identity_wire) {
                   Absent => none
                   Present { value: oracle_identity } =>
                     Present {
@@ -1164,7 +1164,7 @@ fn verification_verdict_decode(doc: extdeps.languages.json.emit.JsonValue) -> gu
             match verification_receipt_string_member(doc: doc, key: "cause_detail") {
               VerificationReceiptMemberUnreadable { reason: _ } => none
               VerificationReceiptMemberRead { value: cause_detail } =>
-                match validation_refusal_cause_decode(
+                match gunbc.roadmap_validation_oracle.validation_refusal_cause_decode(
                   cause_kind: cause_kind,
                   cause_detail: cause_detail,
                 ) {
@@ -1220,7 +1220,7 @@ fn verification_receipt_decode_document(doc: extdeps.languages.json.emit.JsonVal
                   VerificationReceiptMemberUnreadable { reason: r } =>
                     VerificationReceiptUndecodable { reason: r }
                   VerificationReceiptMemberRead { value: oracle_wire } =>
-                    match validation_oracle_parse_pinned_identity_wire(text: oracle_wire) {
+                    match gunbc.roadmap_validation_oracle.validation_oracle_parse_pinned_identity_wire(text: oracle_wire) {
                       Absent =>
                         VerificationReceiptUndecodable {
                           reason: "verification receipt oracle_identity is not readable",
@@ -1238,10 +1238,10 @@ fn verification_receipt_decode_document(doc: extdeps.languages.json.emit.JsonVal
                                   reason: "verification receipt verdict is not readable",
                                 }
                               Present { value: verdict } =>
-                                match json_object_unique_member(v: doc, key: "executions") {
-                                  JsonMemberFound { value: executions_value } =>
+                                match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: "executions") {
+                                  extdeps.languages.json.parse.JsonMemberFound { value: executions_value } =>
                                     match executions_value {
-                                      JsonArray { elements } => {
+                                      extdeps.languages.json.emit.JsonArray { elements } => {
                                         let parsed = map(
                                           elements,
                                           e => verification_validation_execution_decode(doc: e),
@@ -1264,7 +1264,7 @@ fn verification_receipt_decode_document(doc: extdeps.languages.json.emit.JsonVal
                                                   Present { value: v } => v
                                                   Absent =>
                                                     ValidationExecution {
-                                                      validation: CargoFmtValidation,
+                                                      validation: gunbc.roadmap_execution_contract.CargoFmtValidation,
                                                       command: gunbc.roadmap_execution_contract.ModeledValidationCommand {
                                                         label: "decode-placeholder" as std.types.NonEmptyStr,
                                                         program: "/dev/null" as std.types.FilePath,
@@ -1306,7 +1306,7 @@ fn verification_receipt_decode_document(doc: extdeps.languages.json.emit.JsonVal
 }
 
 fn verification_receipt_decode(receipt: String) -> VerificationReceiptDecode {
-  match parse_json(s: receipt) {
+  match extdeps.languages.json.parse.parse_json(s: receipt) {
     Absent =>
       VerificationReceiptUndecodable {
         reason: "verification receipt is not one complete JSON value",

@@ -62,7 +62,7 @@ fn migration_roster_contains(site: String) -> Bool {
   contains(
     xs: complexity_linearity_migration_debt_roster_live(),
     item: site,
-    eq: v2.lens.complexity_linearity_audit.string_eq
+    eq: string_eq
   )
 }
 
@@ -185,6 +185,6 @@ fn complexity_linearity_syntactic_site_fired_live(site: String) -> Bool {
   complexity_linearity_syntactic_site_fired(site: site)
 }
 
-data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

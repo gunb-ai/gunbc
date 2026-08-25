@@ -3,15 +3,15 @@ module v2.test.long.decl_index_enumeration
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
-test fn decl_facts_nonempty_over_witness_roots() -> v2.std.logic.Bool {
+test fn decl_facts_nonempty_over_witness_roots() -> Bool {
   return v2.std.decl_index.decl_facts_count(pool_roots: gunbc.ci_layer_roots.witness_layer_roots) > 500
 }
 
-test fn decl_facts_fn_items_nonempty_over_witness_roots() -> v2.std.logic.Bool {
+test fn decl_facts_fn_items_nonempty_over_witness_roots() -> Bool {
   return v2.std.decl_index.decl_facts_fn_item_count(pool_roots: gunbc.ci_layer_roots.witness_layer_roots) > 100
 }
 
-test fn decl_facts_rows_carry_locked_shape_fields() -> v2.std.logic.Bool {
+test fn decl_facts_rows_carry_locked_shape_fields() -> Bool {
   fold(v2.std.decl_index.decl_facts(pool_roots: gunbc.ci_layer_roots.witness_layer_roots), init: false, f: fn(found, fact) {
     if found {
       found
@@ -25,7 +25,7 @@ test fn decl_facts_rows_carry_locked_shape_fields() -> v2.std.logic.Bool {
   })
 }
 
-test fn logical_qualified_name_strips_v2_prefix() -> v2.std.logic.Bool {
+test fn logical_qualified_name_strips_v2_prefix() -> Bool {
   return v2.std.decl_index.logical_qualified_name_from_module(
     module_name: "v2.std.concept_index",
     name: "enumerate_concepts"

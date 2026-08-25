@@ -1,5 +1,6 @@
 module v2.std.bounded_lattice_completeness
 
+
 type BlNamedChildLookup
   = BlNamedChildFound { target: v2.std.node.Node }
   | BlNamedChildMissing
@@ -7,8 +8,8 @@ type BlNamedChildLookup
 
 fn bl_named_child_lookup(root: v2.std.node.Node, name: v2.std.node.Symbol) -> BlNamedChildLookup {
   match v2.std.node_query.find_named_child(root: root, name: name) {
-    Accepted { value: target, diagnostics: _ } => BlNamedChildFound { target: target }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: target, diagnostics: _ } => BlNamedChildFound { target: target }
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       if d.head.reason == ^named_child_missing {
         BlNamedChildMissing
       } else if d.head.reason == ^named_child_ambiguous {
@@ -78,11 +79,11 @@ fn infer_bounded_lattice_completeness_rejects(
   completeness: v2.std.algebra.BoundedLatticeInstanceCompleteness,
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match completeness {
-    NotBoundedLatticeInstance =>
+    v2.std.algebra.NotBoundedLatticeInstance =>
       v2.std.diagnostic.Accepted { value: instance, diagnostics: None }
-    BoundedLatticeComplete =>
+    v2.std.algebra.BoundedLatticeComplete =>
       v2.std.diagnostic.Accepted { value: instance, diagnostics: None }
-    BoundedLatticePartial { missing: m } =>
+    v2.std.algebra.BoundedLatticePartial { missing: m } =>
       v2.std.diagnostic.outcome_rejected(
         infer_bounded_lattice_partial_instance_diagnostic(
           at: v2.std.diagnostic.node_locus(node: instance),
@@ -99,16 +100,16 @@ fn infer_bounded_lattice_instance_gate(instance: v2.std.node.Node) -> v2.std.dia
   )
 }
 
-fn infer_edge_consumes_bounded_lattice_partial(edge: v2.std.node.Edge, partials: List<v2.std.node.Node>) -> v2.std.logic.Bool {
+fn infer_edge_consumes_bounded_lattice_partial(edge: v2.std.node.Edge, partials: List<v2.std.node.Node>) -> Bool {
   if v2.std.algebra.any(xs: partials, predicate: fn(p) { edge.target == p }) {
     match edge.label {
-      Named { name: sym } =>
+      v2.std.node.Named { name: sym } =>
         sym == ^algebra_edge
           || sym == ^inhabitant_edge
           || sym == ^lattice_field_meet
           || sym == ^lattice_field_join
           || sym == ^boolean_algebra_field_bounded_lattice
-      Positional => false
+      v2.std.node.Positional => false
     }
   } else {
     false
@@ -121,7 +122,7 @@ fn infer_bounded_lattice_consumer_gate(
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match fold(consumer.children, init: v2.std.diagnostic.outcome_accepted(value: consumer), f: fn(acc, e) {
     match acc {
-      Rejected { diagnostics: r } =>
+      v2.std.diagnostic.Rejected { diagnostics: r } =>
         if infer_edge_consumes_bounded_lattice_partial(edge: e, partials: partials) {
           v2.std.diagnostic.Rejected {
             diagnostics: v2.std.diagnostic.non_empty_diagnostics_append(
@@ -137,7 +138,7 @@ fn infer_bounded_lattice_consumer_gate(
         } else {
           v2.std.diagnostic.Rejected { diagnostics: r }
         }
-      Accepted { value: _, diagnostics: d } =>
+      v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
         if infer_edge_consumes_bounded_lattice_partial(edge: e, partials: partials) {
           v2.std.diagnostic.outcome_rejected(
             infer_bounded_lattice_consumer_partial_diagnostic(
@@ -150,19 +151,21 @@ fn infer_bounded_lattice_consumer_gate(
         }
     }
   }) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: _, diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: consumer, diagnostics: d }
   }
 }
 
 fn partial_bounded_lattice_instances_in_tree(tree: v2.std.node.Node) -> List<v2.std.node.Node> {
-  let alg: v2.std.node.NodeFold<List<v2.std.node.Node>> = v2.std.node.NodeFold {
+  v2.std.node.fold_node(
+    n: tree,
+    algebra: v2.std.node.NodeFold {
       init: fn(n0) {
         match bounded_lattice_instance_completeness(instance: n0) {
-          BoundedLatticePartial { missing: _ } => [n0]
-          NotBoundedLatticeInstance => []
-          BoundedLatticeComplete => []
+          v2.std.algebra.BoundedLatticePartial { missing: _ } => [n0]
+          v2.std.algebra.NotBoundedLatticeInstance => []
+          v2.std.algebra.BoundedLatticeComplete => []
         }
       },
       step: fn(acc, e, child) {
@@ -175,5 +178,5 @@ fn partial_bounded_lattice_instances_in_tree(tree: v2.std.node.Node) -> List<v2.
         )
       }
     }
-  v2.std.node.fold_node(n: tree, algebra: alg)
+  )
 }

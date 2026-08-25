@@ -1,5 +1,6 @@
 module test.manual.command_runner_local_argv_receipt
 
+
 // THE DISCRIMINATING RECEIPT FOR command_runner's TRANSPORT-AGNOSTIC RUN SITE.
 //
 // WHAT IT DISCRIMINATES, which is the only thing that makes it worth running. The run site used
@@ -28,10 +29,10 @@ module test.manual.command_runner_local_argv_receipt
 // test/manual/process_argv_expansion_receipt_test.dag is, for the same reason.
 
 test fn spaced_operand_survives_as_one_argument() -> Bool {
-  process_outcome_receipt_text(
-    outcome: run_shell_command_capture(
-      command: printf_command(format: "%s|", values: ["a b"]),
-      transport: LocalExec,
+  gunbc.command_runner.process_outcome_receipt_text(
+    outcome: gunbc.command_runner.run_shell_command_capture(
+      command: extdeps.tools.gnu_coreutils.printf_command(format: "%s|", values: ["a b"]),
+      transport: extdeps.exec.command.LocalExec,
     )
   ) == "a b|"
 }
@@ -40,10 +41,10 @@ test fn spaced_operand_survives_as_one_argument() -> Bool {
 // the equality above: the shell-split rendering must NOT be what comes back. Written separately so
 // a future edit that weakens the positive into something like a nonempty check still trips here.
 test fn shell_split_rendering_is_not_what_comes_back() -> Bool {
-  process_outcome_receipt_text(
-    outcome: run_shell_command_capture(
-      command: printf_command(format: "%s|", values: ["a b"]),
-      transport: LocalExec,
+  gunbc.command_runner.process_outcome_receipt_text(
+    outcome: gunbc.command_runner.run_shell_command_capture(
+      command: extdeps.tools.gnu_coreutils.printf_command(format: "%s|", values: ["a b"]),
+      transport: extdeps.exec.command.LocalExec,
     )
   ) != "a|b|"
 }
@@ -51,10 +52,10 @@ test fn shell_split_rendering_is_not_what_comes_back() -> Bool {
 // Control that the runner works at all on the ordinary case, so a failure above is read as a
 // splitting regression rather than as the whole path being broken.
 test fn plain_operand_round_trips() -> Bool {
-  process_outcome_receipt_text(
-    outcome: run_shell_command_capture(
-      command: printf_command(format: "%s|", values: ["plain"]),
-      transport: LocalExec,
+  gunbc.command_runner.process_outcome_receipt_text(
+    outcome: gunbc.command_runner.run_shell_command_capture(
+      command: extdeps.tools.gnu_coreutils.printf_command(format: "%s|", values: ["plain"]),
+      transport: extdeps.exec.command.LocalExec,
     )
   ) == "plain|"
 }
@@ -76,24 +77,24 @@ test fn plain_operand_round_trips() -> Bool {
 // nothing in the value distinguishes them.
 
 test fn nonzero_exit_printing_nothing_is_refused_not_absent() -> Bool {
-  match run_shell_command_capture(
-    command: posix_sh_program_command(script: "exit 3"),
-    transport: LocalExec,
+  match gunbc.command_runner.run_shell_command_capture(
+    command: extdeps.posix.sh_invocation.posix_sh_program_command(script: "exit 3"),
+    transport: extdeps.exec.command.LocalExec,
   ) {
-    ProcessRefused { exit_code: _, stderr: _ } => true
-    ProcessOutputAbsent => false
-    ProcessOutputPresent { text: _ } => false
+    extdeps.shell.exec.ProcessRefused { exit_code: _, stderr: _ } => true
+    extdeps.shell.exec.ProcessOutputAbsent => false
+    extdeps.shell.exec.ProcessOutputPresent { text: _ } => false
   }
 }
 
 test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
-  match run_shell_command_capture(
-    command: true_command(),
-    transport: LocalExec,
+  match gunbc.command_runner.run_shell_command_capture(
+    command: extdeps.tools.gnu_coreutils.true_command(),
+    transport: extdeps.exec.command.LocalExec,
   ) {
-    ProcessOutputAbsent => true
-    ProcessRefused { exit_code: _, stderr: _ } => false
-    ProcessOutputPresent { text: _ } => false
+    extdeps.shell.exec.ProcessOutputAbsent => true
+    extdeps.shell.exec.ProcessRefused { exit_code: _, stderr: _ } => false
+    extdeps.shell.exec.ProcessOutputPresent { text: _ } => false
   }
 }
 
@@ -163,12 +164,12 @@ test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
 // The positive arm, so a failure above reads as a lost distinction rather than as everything
 // collapsing into one variant.
 test fn zero_exit_with_output_is_present() -> Bool {
-  match run_shell_command_capture(
-    command: printf_command(format: "%s", values: ["value"]),
-    transport: LocalExec,
+  match gunbc.command_runner.run_shell_command_capture(
+    command: extdeps.tools.gnu_coreutils.printf_command(format: "%s", values: ["value"]),
+    transport: extdeps.exec.command.LocalExec,
   ) {
-    ProcessOutputPresent { text: t } => t == "value"
-    ProcessOutputAbsent => false
-    ProcessRefused { exit_code: _, stderr: _ } => false
+    extdeps.shell.exec.ProcessOutputPresent { text: t } => t == "value"
+    extdeps.shell.exec.ProcessOutputAbsent => false
+    extdeps.shell.exec.ProcessRefused { exit_code: _, stderr: _ } => false
   }
 }

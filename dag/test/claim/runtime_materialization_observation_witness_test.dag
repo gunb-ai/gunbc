@@ -2,12 +2,12 @@ module test.claim.runtime_materialization_observation_witness_test
 
 
 fn required_identity() -> std.types.NonEmptyStr {
-  ollama_runtime_materialization_identity_for_required_release().digest
+  gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release().digest
 }
 
 fn corrupted_under_a_correct_root() -> gunbc.ollama_runtime_bundle.RuntimeMaterializationObservation {
   gunbc.ollama_runtime_bundle.RuntimeMaterializationIncomplete {
-    identity: ollama_runtime_materialization_identity_for_required_release(),
+    identity: gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release(),
     first_defect: gunbc.ollama_runtime_bundle.RuntimeExecutableMissing { expected_relative_path: "bin/ollama" as std.types.NonEmptyStr },
     further_defects: [],
   }
@@ -19,10 +19,10 @@ fn corrupted_under_a_correct_root() -> gunbc.ollama_runtime_bundle.RuntimeMateri
 // is INCOMPLETE -- not absent, and not unobservable.
 test fn a_corrupted_extraction_under_a_correct_root_is_incomplete() -> Bool {
   match corrupted_under_a_correct_root() {
-    RuntimeMaterializationIncomplete { identity: _, first_defect: _, further_defects: _ } => true
-    RuntimeMaterializationAbsent => false
-    RuntimeMaterializationComplete { identity: _ } => false
-    RuntimeMaterializationObservationRefused { cause: _ } => false
+    gunbc.ollama_runtime_bundle.RuntimeMaterializationIncomplete { identity: _, first_defect: _, further_defects: _ } => true
+    gunbc.ollama_runtime_bundle.RuntimeMaterializationAbsent => false
+    gunbc.ollama_runtime_bundle.RuntimeMaterializationComplete { identity: _ } => false
+    gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused { cause: _ } => false
   }
 }
 
@@ -36,15 +36,15 @@ test fn a_corrupted_extraction_under_a_correct_root_is_incomplete() -> Bool {
 // and the value incomplete projects must not equal the desired identity -- otherwise a corrupted root
 // would compare converged.
 test fn an_incomplete_runtime_projects_a_member_and_an_absent_one_does_not() -> Bool {
-  match runtime_materialization_state_digest(observation: corrupted_under_a_correct_root()) {
+  match gunbc.ollama_runtime_bundle.runtime_materialization_state_digest(observation: corrupted_under_a_correct_root()) {
     Absent => false
     Present { value: incomplete_digest } =>
-      match runtime_materialization_state_digest(observation: gunbc.ollama_runtime_bundle.RuntimeMaterializationAbsent) {
+      match gunbc.ollama_runtime_bundle.runtime_materialization_state_digest(observation: gunbc.ollama_runtime_bundle.RuntimeMaterializationAbsent) {
         Present { value: _ } => false
         Absent =>
           (incomplete_digest as String) != (required_identity() as String)
-            && runtime_materialization_was_observed(observation: corrupted_under_a_correct_root())
-            && runtime_materialization_was_observed(observation: gunbc.ollama_runtime_bundle.RuntimeMaterializationAbsent)
+            && gunbc.ollama_runtime_bundle.runtime_materialization_was_observed(observation: corrupted_under_a_correct_root())
+            && gunbc.ollama_runtime_bundle.runtime_materialization_was_observed(observation: gunbc.ollama_runtime_bundle.RuntimeMaterializationAbsent)
       }
   }
 }
@@ -53,12 +53,12 @@ test fn an_incomplete_runtime_projects_a_member_and_an_absent_one_does_not() -> 
 // the claim above while making every partial state indistinguishable, so repairing one defect and
 // introducing another would read as no change at all.
 test fn distinct_defects_project_distinct_state_values() -> Bool {
-  match runtime_materialization_state_digest(observation: corrupted_under_a_correct_root()) {
+  match gunbc.ollama_runtime_bundle.runtime_materialization_state_digest(observation: corrupted_under_a_correct_root()) {
     Absent => false
     Present { value: missing_digest } =>
-      match runtime_materialization_state_digest(
+      match gunbc.ollama_runtime_bundle.runtime_materialization_state_digest(
         observation: gunbc.ollama_runtime_bundle.RuntimeMaterializationIncomplete {
-          identity: ollama_runtime_materialization_identity_for_required_release(),
+          identity: gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release(),
           first_defect: gunbc.ollama_runtime_bundle.RuntimeRootPresentButEmpty,
           further_defects: [],
         },
@@ -74,21 +74,21 @@ test fn distinct_defects_project_distinct_state_values() -> Bool {
 // and calling an established fact an inability to establish it is the collapse this lane has found
 // at every layer. Refusal is reserved for genuinely not knowing, and only it answers false here.
 test fn only_a_refusal_reports_the_runtime_as_unobserved() -> Bool {
-  !runtime_materialization_was_observed(
+  !gunbc.ollama_runtime_bundle.runtime_materialization_was_observed(
     observation: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused {
       cause: "runtime root unreadable: permission denied" as std.types.NonEmptyStr,
     },
   )
-    && runtime_materialization_was_observed(observation: corrupted_under_a_correct_root())
+    && gunbc.ollama_runtime_bundle.runtime_materialization_was_observed(observation: corrupted_under_a_correct_root())
 }
 
 // A complete materialization is the ONLY arm that projects an identity, and it projects the one it
 // was observed to hold. Without this the three negative claims above pass on a projection that
 // simply never answers.
 test fn only_a_complete_materialization_projects_its_identity() -> Bool {
-  match runtime_materialization_state_digest(
+  match gunbc.ollama_runtime_bundle.runtime_materialization_state_digest(
     observation: gunbc.ollama_runtime_bundle.RuntimeMaterializationComplete {
-      identity: ollama_runtime_materialization_identity_for_required_release(),
+      identity: gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release(),
     },
   ) {
     Absent => false
@@ -100,10 +100,10 @@ test fn only_a_complete_materialization_projects_its_identity() -> Bool {
 // "incomplete with nothing wrong" has no constructor. This pins that the accessor agrees with the
 // type rather than quietly returning an empty list the type already forbids.
 test fn an_incomplete_materialization_always_reports_a_defect() -> Bool {
-  length(runtime_materialization_defects(observation: corrupted_under_a_correct_root())) == 1
-    && length(runtime_materialization_defects(
+  length(gunbc.ollama_runtime_bundle.runtime_materialization_defects(observation: corrupted_under_a_correct_root())) == 1
+    && length(gunbc.ollama_runtime_bundle.runtime_materialization_defects(
       observation: gunbc.ollama_runtime_bundle.RuntimeMaterializationIncomplete {
-        identity: ollama_runtime_materialization_identity_for_required_release(),
+        identity: gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release(),
         first_defect: gunbc.ollama_runtime_bundle.RuntimeRootPresentButEmpty,
         further_defects: [gunbc.ollama_runtime_bundle.RuntimeExecutableMissing { expected_relative_path: "bin/ollama" as std.types.NonEmptyStr }],
       },
@@ -112,10 +112,10 @@ test fn an_incomplete_materialization_always_reports_a_defect() -> Bool {
 
 // The settled arms report no defects, so the accessor is not answering the same way for everything.
 test fn a_complete_or_absent_runtime_reports_no_defects() -> Bool {
-  length(runtime_materialization_defects(observation: gunbc.ollama_runtime_bundle.RuntimeMaterializationAbsent)) == 0
-    && length(runtime_materialization_defects(
+  length(gunbc.ollama_runtime_bundle.runtime_materialization_defects(observation: gunbc.ollama_runtime_bundle.RuntimeMaterializationAbsent)) == 0
+    && length(gunbc.ollama_runtime_bundle.runtime_materialization_defects(
       observation: gunbc.ollama_runtime_bundle.RuntimeMaterializationComplete {
-        identity: ollama_runtime_materialization_identity_for_required_release(),
+        identity: gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release(),
       },
     )) == 0
 }
@@ -132,22 +132,22 @@ test fn a_complete_or_absent_runtime_reports_no_defects() -> Bool {
 // Sharing a digest with Complete is what would let the member converge, which is the actual harm --
 // an arm name that reconcile never reads would be cosmetic.
 test fn a_missing_completion_receipt_is_not_complete() -> Bool {
-  let ident = ollama_runtime_materialization_identity_for_required_release()
+  let ident = gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release()
   let no_receipt = gunbc.ollama_runtime_bundle.RuntimeMaterializationIncomplete {
     identity: ident,
     first_defect: gunbc.ollama_runtime_bundle.RuntimeMaterializationReceiptMissing,
     further_defects: [],
   }
-  match runtime_materialization_state_digest(observation: no_receipt) {
+  match gunbc.ollama_runtime_bundle.runtime_materialization_state_digest(observation: no_receipt) {
     Absent => false
     Present { value: partial } =>
-      match runtime_materialization_state_digest(
+      match gunbc.ollama_runtime_bundle.runtime_materialization_state_digest(
         observation: gunbc.ollama_runtime_bundle.RuntimeMaterializationComplete { identity: ident },
       ) {
         Absent => false
         Present { value: whole } =>
           (partial as String) != (whole as String)
-            && runtime_materialization_was_observed(observation: no_receipt)
+            && gunbc.ollama_runtime_bundle.runtime_materialization_was_observed(observation: no_receipt)
       }
   }
 }
@@ -162,7 +162,7 @@ test fn a_missing_completion_receipt_is_not_complete() -> Bool {
 // previous release carries a receipt too. `cat` is what makes the identity comparison possible, so
 // the claim pins the reading command and explicitly refuses the existence test it used to require.
 test fn the_observer_probes_for_the_completion_receipt() -> Bool {
-  let argv = spark_serving_runtime_materialization_receipt_probe_argv()
+  let argv = gunbc.spark.serving_observe.spark_serving_runtime_materialization_receipt_probe_argv()
   length(argv) == 2
     && argv[0] == "cat"
     && argv[0] != "test"

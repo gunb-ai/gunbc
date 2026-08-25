@@ -79,8 +79,8 @@ test fn w_refusal_carries_its_phase() -> Bool {
     rss_growth_limit: v2.workflow.required_floor.required_floor_preparation_rss_growth_limit(),
   ) {
     v2.workflow.required_floor.PreparationWithinLimits { phase: _, observed_cpu: _, observed_wall: _, observed_rss_growth: _ } => false
-    v2.workflow.required_floor.FloorPreparationRefused { phase: gunbc.plans.md_helpers.p, observed_cpu: _, observed_wall: _, observed_rss_growth: _ } =>
-      match gunbc.plans.md_helpers.p {
+    v2.workflow.required_floor.FloorPreparationRefused { phase: p, observed_cpu: _, observed_wall: _, observed_rss_growth: _ } =>
+      match p {
         v2.workflow.required_floor.ModulePathIndexBuild => false
         v2.workflow.required_floor.SharedModuleIndexBuild => false
         v2.workflow.required_floor.BareReferenceEdgeIndexBuild => true

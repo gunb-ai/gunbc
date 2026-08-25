@@ -9,20 +9,20 @@ fn uefi_boot_config_commands(desired: DesiredBootSource) -> List<extdeps.firmwar
   match desired {
     BootFromInstallMedia { efi_file: f } => [
       extdeps.firmware.uefi_shell.MapDevices { refresh: true },
-      extdeps.firmware.uefi_shell.BcfgDump { target: BcfgBoot },
-      extdeps.firmware.uefi_shell.BcfgAdd { target: BcfgBoot, index: 0, file: f, description: "gunbc-install-media" as std.types.NonEmptyStr },
-      extdeps.firmware.uefi_shell.Reset { mode: ResetWarm },
+      extdeps.firmware.uefi_shell.BcfgDump { target: extdeps.firmware.uefi_shell.BcfgBoot },
+      extdeps.firmware.uefi_shell.BcfgAdd { target: extdeps.firmware.uefi_shell.BcfgBoot, index: 0, file: f, description: "gunbc-install-media" as std.types.NonEmptyStr },
+      extdeps.firmware.uefi_shell.Reset { mode: extdeps.firmware.uefi_shell.ResetWarm },
     ]
     BootFromPxeEntry { boot_index: i } => [
-      extdeps.firmware.uefi_shell.BcfgDump { target: BcfgBoot },
-      extdeps.firmware.uefi_shell.BcfgMove { target: BcfgBoot, from_index: i, to_index: 0 },
-      extdeps.firmware.uefi_shell.Reset { mode: ResetWarm },
+      extdeps.firmware.uefi_shell.BcfgDump { target: extdeps.firmware.uefi_shell.BcfgBoot },
+      extdeps.firmware.uefi_shell.BcfgMove { target: extdeps.firmware.uefi_shell.BcfgBoot, from_index: i, to_index: 0 },
+      extdeps.firmware.uefi_shell.Reset { mode: extdeps.firmware.uefi_shell.ResetWarm },
     ]
   }
 }
 
 fn uefi_boot_config_script(desired: DesiredBootSource) -> String {
-  uefi_shell_script(commands: uefi_boot_config_commands(desired: desired))
+  extdeps.firmware.uefi_shell.uefi_shell_script(commands: uefi_boot_config_commands(desired: desired))
 }
 
 data srv4_uefi_install_boot: DesiredBootSource = BootFromInstallMedia {

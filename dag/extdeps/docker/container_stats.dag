@@ -3,7 +3,7 @@ module extdeps.docker.container_stats
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.docker.com/engine/api/v1.47"
   }
 }
@@ -77,7 +77,7 @@ type Networks {
 
 service docker.ContainerStats {
   config {
-    endpoint: docker_default_endpoint
+    endpoint: extdeps.docker.endpoint.docker_default_endpoint
   }
 
   operation GetStats {
@@ -104,21 +104,21 @@ service docker.ContainerStats {
 
 data cpu_percent_ratio_carrier_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.frontier_row_decl(
-    ref: decl_field_ref(
+    ref: std.decl_ref.decl_field_ref(
       module_path: "extdeps.docker.container_stats",
       decl_name: "ContainerStats",
       field_name: "cpu_percent",
     ),
     reason: "cpu_percent: Float? is a percentage/ratio without a Measure<Quantity, Scale, M> carrier; bare Float cannot encode unit semantics (is it 0–1 normalized or 0–100 scale?); fail-closed violation on unit-modeling",
-    dissolution: unbound_dissolution(description: "Ratio or PercentagePoint typed alias lands in std/measure"),
+    dissolution: std.dissolution.unbound_dissolution(description: "Ratio or PercentagePoint typed alias lands in std/measure"),
   )
 ]
 
 data container_stats_error_responses_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.docker.container_stats", decl_name: "Stats"),
+    ref: std.decl_ref.decl_ref(module_path: "extdeps.docker.container_stats", decl_name: "Stats"),
     reason: "Error responses (404 => String, 500 => String) collapse distinct error shapes (not-found vs server error) to opaque string, violating fail-closed (errors must be typed and located with structured diagnostics). Docker API returns JSON error objects with reason/message; should be modeled as ErrorDetail coproduct or structured record (NotFound | ServerError variants with message and optional retry info)",
-    dissolution: unbound_dissolution(description: "typed error response variants land in extdeps/docker or extdeps/github.errors pattern applied here"),
+    dissolution: std.dissolution.unbound_dissolution(description: "typed error response variants land in extdeps/docker or extdeps/github.errors pattern applied here"),
   )
 ]
 
@@ -140,20 +140,20 @@ fn container_stats_online_cpus(stats: ContainerStats) -> std.nat.Nat {
 
 data memory_stats_working_set_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.frontier_row_decl(
-    ref: decl_field_ref(
+    ref: std.decl_ref.decl_field_ref(
       module_path: "extdeps.docker.container_stats",
       decl_name: "MemoryStats",
       field_name: "usage",
     ),
     reason: "MemoryStats.usage includes page cache (inactive_file); true working-set = usage - stats.inactive_file from Docker stats sub-map",
-    dissolution: unbound_dissolution(description: "B2 models stats sub-map with inactive_file and policy uses working_set not raw usage"),
+    dissolution: std.dissolution.unbound_dissolution(description: "B2 models stats sub-map with inactive_file and policy uses working_set not raw usage"),
   )
 ]
 
 data blkio_value_unit_ambiguity_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.docker.container_stats", decl_name: "BlkioValue"),
+    ref: std.decl_ref.decl_ref(module_path: "extdeps.docker.container_stats", decl_name: "BlkioValue"),
     reason: "BlkioValue.value: Nat carries parent-dependent units (bytes under io_service_bytes_recursive, time under io_service_time_recursive, count under io_serviced_recursive); flat Nat smuggles unit invisible to type system (fail-closed unit-modeling); Docker wire format is the constraint; remedy = typed per-list accessors returning ByteSize|Nanosecond|Nat or parent-tagged union",
-    dissolution: unbound_dissolution(description: "typed or tagged union models for BlkioValue land in extdeps/docker"),
+    dissolution: std.dissolution.unbound_dissolution(description: "typed or tagged union models for BlkioValue land in extdeps/docker"),
   )
 ]

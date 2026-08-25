@@ -5,10 +5,10 @@ data artifact_store_scratch_grant_note: String = "P-B scratch-grant authority (d
 
 data artifact_store_scratch_frame: std.materialization_ladder.Frame = std.materialization_ladder.Frame {
   name: "artifact-store-scratch",
-  kind: SharedStateFrame
+  kind: std.materialization_ladder.SharedStateFrame
 }
 
-data artifact_store_scratch_root: std.effect_grant.NamespacePosition = filesystem_position(path: ["tmp"])
+data artifact_store_scratch_root: std.effect_grant.NamespacePosition = std.effect_grant.filesystem_position(path: ["tmp"])
 
 fn is_gunbc_tmp_scratch_store_root(store_root: String) -> Bool {
   starts_with(s: store_root, prefix: "/tmp/gunbc_")
@@ -19,16 +19,16 @@ fn artifact_store_scratch_envelope() -> std.effect_grant.Envelope {
     frame: artifact_store_scratch_frame,
     grants: [
       std.effect_grant.Grant {
-        verb: Read,
+        verb: std.effect_grant.Read,
         root: artifact_store_scratch_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConvention
       },
       std.effect_grant.Grant {
-        verb: Write,
+        verb: std.effect_grant.Write,
         root: artifact_store_scratch_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConvention
       },
     ]
   }
@@ -43,17 +43,17 @@ fn artifact_store_scratch_target_admissible(
   } else {
     std.effect_grant.Envelope { frame: artifact_store_scratch_frame, grants: [] }
   }
-  admit_effect(
+  std.effect_grant.admit_effect(
     env: env,
     verb: verb,
-    target: absolute_path_position(path: store_root)
+    target: std.filesystem_path_grant.absolute_path_position(path: store_root)
   )
 }
 
 fn artifact_store_scratch_write_admissible(store_root: String) -> std.access.AccessDecision {
-  artifact_store_scratch_target_admissible(store_root: store_root, verb: Write)
+  artifact_store_scratch_target_admissible(store_root: store_root, verb: std.effect_grant.Write)
 }
 
 fn artifact_store_scratch_read_admissible(store_root: String) -> std.access.AccessDecision {
-  artifact_store_scratch_target_admissible(store_root: store_root, verb: Read)
+  artifact_store_scratch_target_admissible(store_root: store_root, verb: std.effect_grant.Read)
 }

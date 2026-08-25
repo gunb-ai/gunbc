@@ -7,13 +7,13 @@ fn emit_module_append_decl(
   partial: String,
   tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<String> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<String> {
+  v2.std.diagnostic.bind_outcome(
     o: v2.compiler.emit.emit(tree: tree, target: target),
     f: fn(medium) {
-      outcome_accepted(
-        value: list_append(
-          left: list_append(left: partial, right: medium.carried),
+      v2.std.diagnostic.outcome_accepted(
+        value: v2.std.algebra.list_append(
+          left: v2.std.algebra.list_append(left: partial, right: medium.carried),
           right: emit_module_decl_separator
         )
       )
@@ -22,11 +22,11 @@ fn emit_module_append_decl(
 }
 
 fn emit_module_step(
-  acc: Outcome<String>,
+  acc: v2.std.diagnostic.Outcome<String>,
   tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<String> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<String> {
+  v2.std.diagnostic.bind_outcome(
     o: acc,
     f: fn(partial) {
       emit_module_append_decl(partial: partial, tree: tree, target: target)
@@ -34,8 +34,8 @@ fn emit_module_step(
   )
 }
 
-fn emit_module_text(decls: List<v2.compiler.inferred_tree.InferredTree>, target: v2.std.compilers.target_model.TargetModel) -> Outcome<String> {
-  fold_list(
+fn emit_module_text(decls: List<v2.compiler.inferred_tree.InferredTree>, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<String> {
+  v2.std.algebra.fold_list(
     xs: decls,
     empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, tree) {
@@ -44,11 +44,11 @@ fn emit_module_text(decls: List<v2.compiler.inferred_tree.InferredTree>, target:
   )
 }
 
-fn emit_module(decls: List<v2.compiler.inferred_tree.InferredTree>, target: v2.std.compilers.target_model.TargetModel) -> Outcome<extdeps.communication.medium.Medium<String>> {
-  bind_outcome(
+fn emit_module(decls: List<v2.compiler.inferred_tree.InferredTree>, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
+  v2.std.diagnostic.bind_outcome(
     o: emit_module_text(decls: decls, target: target),
     f: fn(joined) {
-      target_source_medium(text: joined, target: target)
+      v2.compiler.target_carriers.target_source_medium(text: joined, target: target)
     }
   )
 }
@@ -63,13 +63,13 @@ type EmitFamilyMember {
 fn emit_family_append_member(
   partial: String,
   member: EmitFamilyMember
-) -> Outcome<String> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<String> {
+  v2.std.diagnostic.bind_outcome(
     o: v2.compiler.emit.emit(tree: member.tree, target: member.target),
     f: fn(medium) {
-      outcome_accepted(
-        value: list_append(
-          left: list_append(left: partial, right: medium.carried),
+      v2.std.diagnostic.outcome_accepted(
+        value: v2.std.algebra.list_append(
+          left: v2.std.algebra.list_append(left: partial, right: medium.carried),
           right: emit_module_decl_separator
         )
       )
@@ -77,12 +77,12 @@ fn emit_family_append_member(
   )
 }
 
-fn emit_family_text(members: List<EmitFamilyMember>) -> Outcome<String> {
-  fold_list(
+fn emit_family_text(members: List<EmitFamilyMember>) -> v2.std.diagnostic.Outcome<String> {
+  v2.std.algebra.fold_list(
     xs: members,
     empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, member) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: acc,
         f: fn(partial) {
           emit_family_append_member(partial: partial, member: member)
@@ -95,11 +95,11 @@ fn emit_family_text(members: List<EmitFamilyMember>) -> Outcome<String> {
 fn emit_family(
   members: List<EmitFamilyMember>,
   transport_target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<extdeps.communication.medium.Medium<String>> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
+  v2.std.diagnostic.bind_outcome(
     o: emit_family_text(members: members),
     f: fn(joined) {
-      target_source_medium(text: joined, target: transport_target)
+      v2.compiler.target_carriers.target_source_medium(text: joined, target: transport_target)
     }
   )
 }

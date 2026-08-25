@@ -10,22 +10,22 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 // right, which is exactly why the defect survived -- 1718 looked correct beside a
 // termination that had been copied down from the AM4 rows.
 test fn w_am5_processors_terminate_as_land_grid_array() -> Bool {
-  extdeps.cpu.types.socket_termination_as_package_termination(t: extdeps.cpu.amd.ryzen_7_pro_8700ge_catalog.socket.termination) == extdeps.cpu.types.LandGridArray
-    && extdeps.cpu.types.socket_termination_as_package_termination(t: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.socket.termination) == extdeps.cpu.types.LandGridArray
+  extdeps.cpu.types.socket_termination_as_package_termination(t: ryzen_7_pro_8700ge_catalog.socket.termination) == extdeps.cpu.types.LandGridArray
+    && extdeps.cpu.types.socket_termination_as_package_termination(t: ryzen_9_7950x3d_catalog.socket.termination) == extdeps.cpu.types.LandGridArray
 }
 
 // AM4 STAYS PGA. Without this the fix above could have been applied corpus-wide, which
 // would have replaced one wrong termination with another rather than reading each socket.
 test fn w_am4_processors_still_terminate_as_pin_grid_array() -> Bool {
-  extdeps.cpu.types.socket_termination_as_package_termination(t: extdeps.cpu.amd.ryzen_5_3600_catalog.socket.termination) == extdeps.cpu.types.PinGridArray
+  extdeps.cpu.types.socket_termination_as_package_termination(t: ryzen_5_3600_catalog.socket.termination) == extdeps.cpu.types.PinGridArray
 }
 
 // THE CONTACT COUNTS ARE UNCHANGED BY THE TERMINATION FIX. The defect was in the package
 // axis alone, and this pins that the repair did not drift the counts while touching the rows.
 test fn w_the_contact_counts_survive_the_termination_correction() -> Bool {
-  extdeps.cpu.amd.ryzen_5_3600_catalog.socket.contact_count == 1331
-    && extdeps.cpu.amd.ryzen_7_pro_8700ge_catalog.socket.contact_count == 1718
-    && extdeps.cpu.amd.ryzen_9_7950x3d_catalog.socket.contact_count == 1718
+  ryzen_5_3600_catalog.socket.contact_count == 1331
+    && ryzen_7_pro_8700ge_catalog.socket.contact_count == 1718
+    && ryzen_9_7950x3d_catalog.socket.contact_count == 1718
 }
 
 // RED control: the two terminations are distinguishable, so the assertions above are
@@ -111,10 +111,10 @@ fn every_row_cites_its_socket(rows: List<extdeps.cpu.types.CpuModelCatalogRow>) 
 }
 
 test fn w_every_catalog_row_in_both_rosters_cites_its_socket() -> Bool {
-  every_row_cites_its_socket(rows: amd_cpu_catalog_rows)
-    && every_row_cites_its_socket(rows: ampere_cpu_catalog_rows)
-    && count(amd_cpu_catalog_rows) == 3
-    && count(ampere_cpu_catalog_rows) == 3
+  every_row_cites_its_socket(rows: extdeps.cpu.amd.amd_cpu_catalog_rows)
+    && every_row_cites_its_socket(rows: extdeps.cpu.ampere.ampere_cpu_catalog_rows)
+    && count(extdeps.cpu.amd.amd_cpu_catalog_rows) == 3
+    && count(extdeps.cpu.ampere.ampere_cpu_catalog_rows) == 3
 }
 
 // RED control: the census discriminates. A roster carrying a row with no citations must fail, or
@@ -122,22 +122,22 @@ test fn w_every_catalog_row_in_both_rosters_cites_its_socket() -> Bool {
 // count-based census most often lies.
 test fn w_red_a_row_without_citations_fails_the_census() -> Bool {
   let uncited = extdeps.cpu.types.CpuModelCatalogRow {
-    model_number: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.model_number,
-    oem_listing_id: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.oem_listing_id,
-    vendor: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.vendor,
-    architecture: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.architecture,
-    cores: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.cores,
-    threads: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.threads,
-    nominal_sustained_per_thread_hz: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.nominal_sustained_per_thread_hz,
-    socket: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.socket,
+    model_number: ryzen_9_7950x3d_catalog.model_number,
+    oem_listing_id: ryzen_9_7950x3d_catalog.oem_listing_id,
+    vendor: ryzen_9_7950x3d_catalog.vendor,
+    architecture: ryzen_9_7950x3d_catalog.architecture,
+    cores: ryzen_9_7950x3d_catalog.cores,
+    threads: ryzen_9_7950x3d_catalog.threads,
+    nominal_sustained_per_thread_hz: ryzen_9_7950x3d_catalog.nominal_sustained_per_thread_hz,
+    socket: ryzen_9_7950x3d_catalog.socket,
     socket_citations: [],
-    tdp_watts: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.tdp_watts,
-    l1_cache: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.l1_cache,
-    l1_cache_citations: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.l1_cache_citations,
-    l2_cache: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.l2_cache,
-    l2_cache_citations: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.l2_cache_citations,
-    l3_cache: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.l3_cache,
-    l3_cache_citations: extdeps.cpu.amd.ryzen_9_7950x3d_catalog.l3_cache_citations,
+    tdp_watts: ryzen_9_7950x3d_catalog.tdp_watts,
+    l1_cache: ryzen_9_7950x3d_catalog.l1_cache,
+    l1_cache_citations: ryzen_9_7950x3d_catalog.l1_cache_citations,
+    l2_cache: ryzen_9_7950x3d_catalog.l2_cache,
+    l2_cache_citations: ryzen_9_7950x3d_catalog.l2_cache_citations,
+    l3_cache: ryzen_9_7950x3d_catalog.l3_cache,
+    l3_cache_citations: ryzen_9_7950x3d_catalog.l3_cache_citations,
   }
   !every_row_cites_its_socket(rows: [uncited])
     && every_row_cites_its_socket(rows: [extdeps.cpu.amd.ryzen_9_7950x3d_catalog])

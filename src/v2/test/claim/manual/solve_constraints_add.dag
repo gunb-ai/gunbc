@@ -2,11 +2,11 @@ module v2.test.manual.solve_constraints_add
 
 
 fn fixture_add_constraint_graph() -> v2.std.constraints.ConstraintGraph {
-  v2.std.constraints.ConstraintGraph { root: fixture_add_resolved_tree() }
+  v2.std.constraints.ConstraintGraph { root: v2.test.manual.infer_ground_add.fixture_add_resolved_tree() }
 }
 
 fn anchor_solve_constraints_add() -> v2.std.diagnostic.Outcome<v2.std.constraints.CanonicalGrounding> {
-  solve_constraints(
+  v2.std.constraints.solve_constraints(
     policy: v2.std.constraints.ConstraintSolvePolicy {
       graph: fixture_add_constraint_graph()
     }
@@ -14,24 +14,24 @@ fn anchor_solve_constraints_add() -> v2.std.diagnostic.Outcome<v2.std.constraint
 }
 
 data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraints_add() {
-  Accepted { value: g, diagnostics: d } =>
-    (g.node == fixture_add_resolved_tree())
+  v2.std.diagnostic.Accepted { value: g, diagnostics: d } =>
+    (g.node == v2.test.manual.infer_ground_add.fixture_add_resolved_tree())
       && (g.witness.structural.property == ^preservation_rule_constraint_satisfaction)
-      && (g.witness.structural.evidence == fixture_add_resolved_tree())
+      && (g.witness.structural.evidence == v2.test.manual.infer_ground_add.fixture_add_resolved_tree())
       && (g.witness.closedness.property == ^constraint_property_candidate_set_closedness)
       && (d == v2.std.diagnostic.None)
-  Rejected { diagnostics: _ } => false
+  v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }
 fn solve_constraints_witness_fail_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^solve_constraints_witness_fail_atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 fn solve_constraints_claim_input(ok: Bool) -> v2.std.node.Node {
   if ok {
-    fixture_add_resolved_node()
+    v2.test.manual.infer_ground_add.fixture_add_resolved_node()
   } else {
     solve_constraints_witness_fail_node()
   }
@@ -39,16 +39,16 @@ fn solve_constraints_claim_input(ok: Bool) -> v2.std.node.Node {
 
 data claim_solve_constraints_add_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/solve_constraints_add: constraint path module compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: fixture_add_resolved_node(),
-  expected_value: fixture_add_resolved_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+  input: v2.test.manual.infer_ground_add.fixture_add_resolved_node(),
+  expected_value: v2.test.manual.infer_ground_add.fixture_add_resolved_node(),
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
 data claim_solve_constraints_add_accepts: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/solve_constraints_add: solve_constraints Accepted on add graph root",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: solve_constraints_claim_input(ok: witness_solve_constraints_add_accepts),
-  expected_value: fixture_add_resolved_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  expected_value: v2.test.manual.infer_ground_add.fixture_add_resolved_node(),
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }

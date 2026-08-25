@@ -1,27 +1,27 @@
 module test.claim.scm_agentic_stress_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data stress_note: String = "Stressing the profile toward agent-driven development, because the human-authored numbers load the wrong axis. Human baseline: 200 object reads and 20 writes per user-month. Agent-autonomous baseline below: 2,000,000 logical NODE reads and 200,000 node writes per user-month -- four orders of magnitude, which is roughly one agent working continuously at a few thousand node reads an hour, and still conservative for a fleet of agents. Storage and egress are also raised (500 MB held, 2 GB moved) but only by single-digit multiples, because dedup flattens what agents store far more than it flattens what they touch. The finding this witness pins: at these rates operations stop being a rounding error and become the entire bill on request-metered vendors, which INVERTS the provider ranking computed on the human profile."
 
-data stress_basis_assumption: gunbc.econ.scm_serving_model.ByteBasisAssumption = gunbc.econ.scm_serving_model.BasisAssumed {
-  basis: DecimalGigabyte,
+data stress_basis_assumption: ByteBasisAssumption = gunbc.econ.scm_serving_model.BasisAssumed {
+  basis: extdeps.pricing.object_storage.DecimalGigabyte,
   rationale: "Same declared basis as the human-profile matrix so the two are comparable; none of these vendors states one.",
 }
 
 data human_profile_10k: gunbc.econ.scm_serving_model.ScmWorkloadProfile = gunbc.econ.scm_serving_model.ScmWorkloadProfile {
   user_count: 10000,
-  stored_bytes_per_user_after_dedup: byte_size(count: 100000000),
-  monthly_egress_bytes_per_user: byte_size(count: 500000000),
+  stored_bytes_per_user_after_dedup: std.measure.byte_size(count: 100000000),
+  monthly_egress_bytes_per_user: std.measure.byte_size(count: 500000000),
   monthly_object_reads_per_user: 200,
   monthly_object_writes_per_user: 20,
 }
 
 data agentic_base_10k: gunbc.econ.scm_serving_model.ScmWorkloadProfile = gunbc.econ.scm_serving_model.ScmWorkloadProfile {
   user_count: 10000,
-  stored_bytes_per_user_after_dedup: byte_size(count: 500000000),
-  monthly_egress_bytes_per_user: byte_size(count: 2000000000),
+  stored_bytes_per_user_after_dedup: std.measure.byte_size(count: 500000000),
+  monthly_egress_bytes_per_user: std.measure.byte_size(count: 2000000000),
   monthly_object_reads_per_user: 0,
   monthly_object_writes_per_user: 0,
 }
@@ -30,14 +30,14 @@ data agentic_logical_node_reads_per_user: std.nat.Nat = 2000000
 
 data agentic_logical_node_writes_per_user: std.nat.Nat = 200000
 
-data agentic_unpacked_10k: gunbc.econ.scm_serving_model.ScmWorkloadProfile = profile_with_packed_ops(
+data agentic_unpacked_10k: gunbc.econ.scm_serving_model.ScmWorkloadProfile = gunbc.econ.scm_serving_model.profile_with_packed_ops(
   base: agentic_base_10k,
   logical_node_reads_per_user: agentic_logical_node_reads_per_user,
   logical_node_writes_per_user: agentic_logical_node_writes_per_user,
-  policy: UnpackedNodeGrain,
+  policy: gunbc.econ.scm_serving_model.UnpackedNodeGrain,
 )
 
-data agentic_packed_10k: gunbc.econ.scm_serving_model.ScmWorkloadProfile = profile_with_packed_ops(
+data agentic_packed_10k: gunbc.econ.scm_serving_model.ScmWorkloadProfile = gunbc.econ.scm_serving_model.profile_with_packed_ops(
   base: agentic_base_10k,
   logical_node_reads_per_user: agentic_logical_node_reads_per_user,
   logical_node_writes_per_user: agentic_logical_node_writes_per_user,
@@ -45,50 +45,50 @@ data agentic_packed_10k: gunbc.econ.scm_serving_model.ScmWorkloadProfile = profi
 )
 
 data aws_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.scm_serving_model.ProviderQuote {
-  vendor: AwsS3,
+  vendor: extdeps.pricing.object_storage.AwsS3,
   quote_label: "AWS S3 Standard, us-east-1",
-  storage_rows: [s3_standard_first_50tb, s3_standard_next_450tb, s3_standard_over_500tb],
-  egress_rows: [s3_egress_first_10tb, s3_egress_next_40tb, s3_egress_next_100tb, s3_egress_over_150tb],
-  requests: gunbc.econ.scm_serving_model.RequestsBilled { read_row: s3_tier2_requests, write_row: s3_tier1_requests },
-  quoted_basis: ByteBasisUnstated,
+  storage_rows: [extdeps.pricing.object_storage.s3_standard_first_50tb, extdeps.pricing.object_storage.s3_standard_next_450tb, extdeps.pricing.object_storage.s3_standard_over_500tb],
+  egress_rows: [extdeps.pricing.object_storage.s3_egress_first_10tb, extdeps.pricing.object_storage.s3_egress_next_40tb, extdeps.pricing.object_storage.s3_egress_next_100tb, extdeps.pricing.object_storage.s3_egress_over_150tb],
+  requests: gunbc.econ.scm_serving_model.RequestsBilled { read_row: extdeps.pricing.object_storage.s3_tier2_requests, write_row: extdeps.pricing.object_storage.s3_tier1_requests },
+  quoted_basis: extdeps.pricing.object_storage.ByteBasisUnstated,
 }
 
 data r2_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.scm_serving_model.ProviderQuote {
-  vendor: CloudflareR2,
+  vendor: extdeps.pricing.object_storage.CloudflareR2,
   quote_label: "Cloudflare R2 Standard",
-  storage_rows: [r2_standard],
-  egress_rows: [r2_egress_free],
-  requests: gunbc.econ.scm_serving_model.RequestsBilled { read_row: r2_class_b_operations, write_row: r2_class_a_operations },
-  quoted_basis: ByteBasisUnstated,
+  storage_rows: [extdeps.pricing.object_storage.r2_standard],
+  egress_rows: [extdeps.pricing.object_storage.r2_egress_free],
+  requests: gunbc.econ.scm_serving_model.RequestsBilled { read_row: extdeps.pricing.object_storage.r2_class_b_operations, write_row: extdeps.pricing.object_storage.r2_class_a_operations },
+  quoted_basis: extdeps.pricing.object_storage.ByteBasisUnstated,
 }
 
 data wasabi_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.scm_serving_model.ProviderQuote {
-  vendor: Wasabi,
+  vendor: extdeps.pricing.object_storage.Wasabi,
   quote_label: "Wasabi Hot Cloud Storage (pay as you go)",
-  storage_rows: [wasabi_hot_storage],
-  egress_rows: [wasabi_egress_free],
+  storage_rows: [extdeps.pricing.object_storage.wasabi_hot_storage],
+  egress_rows: [extdeps.pricing.object_storage.wasabi_egress_free],
   requests: gunbc.econ.scm_serving_model.RequestsIncludedAtNoCharge { terms: "No fees for egress or API requests." },
-  quoted_basis: ByteBasisUnstated,
+  quoted_basis: extdeps.pricing.object_storage.ByteBasisUnstated,
 }
 
 data storj_quote: gunbc.econ.scm_serving_model.ProviderQuote = gunbc.econ.scm_serving_model.ProviderQuote {
-  vendor: Storj,
+  vendor: extdeps.pricing.object_storage.Storj,
   quote_label: "Storj Standard (distributed)",
-  storage_rows: [storj_standard_storage],
-  egress_rows: [storj_egress],
+  storage_rows: [extdeps.pricing.object_storage.storj_standard_storage],
+  egress_rows: [extdeps.pricing.object_storage.storj_egress],
   requests: gunbc.econ.scm_serving_model.RequestsIncludedAtNoCharge { terms: "No API fees." },
-  quoted_basis: ByteBasisUnstated,
+  quoted_basis: extdeps.pricing.object_storage.ByteBasisUnstated,
 }
 
 fn total_for(quote: gunbc.econ.scm_serving_model.ProviderQuote, profile: gunbc.econ.scm_serving_model.ScmWorkloadProfile) -> std.nat.Nat? {
-  quote_total_micros(
-    result: quote_provider_monthly(profile: profile, quote: quote, assumption: stress_basis_assumption)
+  gunbc.econ.scm_serving_model.quote_total_micros(
+    result: gunbc.econ.scm_serving_model.quote_provider_monthly(profile: profile, quote: quote, assumption: stress_basis_assumption)
   )
 }
 
 fn ops_for(quote: gunbc.econ.scm_serving_model.ProviderQuote, profile: gunbc.econ.scm_serving_model.ScmWorkloadProfile) -> std.nat.Nat? {
-  quote_operations_micros(
-    result: quote_provider_monthly(profile: profile, quote: quote, assumption: stress_basis_assumption)
+  gunbc.econ.scm_serving_model.quote_operations_micros(
+    result: gunbc.econ.scm_serving_model.quote_provider_monthly(profile: profile, quote: quote, assumption: stress_basis_assumption)
   )
 }
 
@@ -100,24 +100,24 @@ fn w_total_equals(quote: gunbc.econ.scm_serving_model.ProviderQuote, profile: gu
 }
 
 test fn w_packing_divides_the_operation_count() -> Bool {
-  (packed_object_count(logical_node_ops: 2000000, policy: UnpackedNodeGrain) == 2000000)
-    && (packed_object_count(logical_node_ops: 2000000, policy: gunbc.econ.scm_serving_model.PackedObjects { nodes_per_object: 1000 }) == 2000)
-    && (packed_object_count(logical_node_ops: 1, policy: gunbc.econ.scm_serving_model.PackedObjects { nodes_per_object: 1000 }) == 1)
+  (gunbc.econ.scm_serving_model.packed_object_count(logical_node_ops: 2000000, policy: gunbc.econ.scm_serving_model.UnpackedNodeGrain) == 2000000)
+    && (gunbc.econ.scm_serving_model.packed_object_count(logical_node_ops: 2000000, policy: gunbc.econ.scm_serving_model.PackedObjects { nodes_per_object: 1000 }) == 2000)
+    && (gunbc.econ.scm_serving_model.packed_object_count(logical_node_ops: 1, policy: gunbc.econ.scm_serving_model.PackedObjects { nodes_per_object: 1000 }) == 1)
     && (agentic_unpacked_10k.monthly_object_reads_per_user == 2000000)
     && (agentic_packed_10k.monthly_object_reads_per_user == 2000)
 }
 
 test fn w_agentic_unpacked_bills_at_agentic_magnitudes() -> Bool {
-  test.claim.scm_agentic_stress_witness.w_total_equals(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: agentic_unpacked_10k, expected: 16275000000)
-    && test.claim.scm_agentic_stress_witness.w_total_equals(quote: test.claim.scm_agentic_stress_witness.aws_quote, profile: agentic_unpacked_10k, expected: 19866200000)
-    && test.claim.scm_agentic_stress_witness.w_total_equals(quote: test.claim.scm_agentic_stress_witness.storj_quote, profile: agentic_unpacked_10k, expected: 175000000)
-    && test.claim.scm_agentic_stress_witness.w_total_equals(quote: test.claim.scm_agentic_stress_witness.wasabi_quote, profile: agentic_unpacked_10k, expected: 39950000)
+  w_total_equals(quote: r2_quote, profile: agentic_unpacked_10k, expected: 16275000000)
+    && w_total_equals(quote: aws_quote, profile: agentic_unpacked_10k, expected: 19866200000)
+    && w_total_equals(quote: storj_quote, profile: agentic_unpacked_10k, expected: 175000000)
+    && w_total_equals(quote: wasabi_quote, profile: agentic_unpacked_10k, expected: 39950000)
 }
 
 test fn w_operations_become_essentially_the_whole_request_metered_bill() -> Bool {
-  match ops_for(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: agentic_unpacked_10k) {
+  match ops_for(quote: r2_quote, profile: agentic_unpacked_10k) {
     Present { value: ops } =>
-      match total_for(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: agentic_unpacked_10k) {
+      match total_for(quote: r2_quote, profile: agentic_unpacked_10k) {
         Present { value: total } => (ops * 100) > (total * 99)
         _ => false
       }
@@ -126,9 +126,9 @@ test fn w_operations_become_essentially_the_whole_request_metered_bill() -> Bool
 }
 
 test fn w_operations_are_a_rounding_error_on_the_human_profile() -> Bool {
-  match ops_for(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: human_profile_10k) {
+  match ops_for(quote: r2_quote, profile: human_profile_10k) {
     Present { value: ops } =>
-      match total_for(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: human_profile_10k) {
+      match total_for(quote: r2_quote, profile: human_profile_10k) {
         Present { value: total } => (ops * 10) < total
         _ => false
       }
@@ -137,13 +137,13 @@ test fn w_operations_are_a_rounding_error_on_the_human_profile() -> Bool {
 }
 
 test fn w_ranking_inverts_between_human_and_agentic_profiles() -> Bool {
-  match total_for(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: human_profile_10k) {
+  match total_for(quote: r2_quote, profile: human_profile_10k) {
     Present { value: r2_human } =>
-      match total_for(quote: test.claim.scm_agentic_stress_witness.storj_quote, profile: human_profile_10k) {
+      match total_for(quote: storj_quote, profile: human_profile_10k) {
         Present { value: storj_human } =>
-          match total_for(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: agentic_unpacked_10k) {
+          match total_for(quote: r2_quote, profile: agentic_unpacked_10k) {
             Present { value: r2_agentic } =>
-              match total_for(quote: test.claim.scm_agentic_stress_witness.storj_quote, profile: agentic_unpacked_10k) {
+              match total_for(quote: storj_quote, profile: agentic_unpacked_10k) {
                 Present { value: storj_agentic } =>
                   (r2_human < storj_human) && (r2_agentic > storj_agentic)
                 _ => false
@@ -157,11 +157,11 @@ test fn w_ranking_inverts_between_human_and_agentic_profiles() -> Bool {
 }
 
 test fn w_no_request_fee_vendors_win_by_two_orders_of_magnitude() -> Bool {
-  match total_for(quote: test.claim.scm_agentic_stress_witness.wasabi_quote, profile: agentic_unpacked_10k) {
+  match total_for(quote: wasabi_quote, profile: agentic_unpacked_10k) {
     Present { value: wasabi } =>
-      match total_for(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: agentic_unpacked_10k) {
+      match total_for(quote: r2_quote, profile: agentic_unpacked_10k) {
         Present { value: r2 } =>
-          match total_for(quote: test.claim.scm_agentic_stress_witness.aws_quote, profile: agentic_unpacked_10k) {
+          match total_for(quote: aws_quote, profile: agentic_unpacked_10k) {
             Present { value: aws } =>
               ((wasabi * 400) < r2) && ((wasabi * 400) < aws)
             _ => false
@@ -173,10 +173,10 @@ test fn w_no_request_fee_vendors_win_by_two_orders_of_magnitude() -> Bool {
 }
 
 test fn w_packing_collapses_the_request_metered_bill() -> Bool {
-  test.claim.scm_agentic_stress_witness.w_total_equals(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: agentic_packed_10k, expected: 91200000)
-    && match total_for(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: agentic_unpacked_10k) {
+  w_total_equals(quote: r2_quote, profile: agentic_packed_10k, expected: 91200000)
+    && match total_for(quote: r2_quote, profile: agentic_unpacked_10k) {
       Present { value: unpacked } =>
-        match total_for(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: agentic_packed_10k) {
+        match total_for(quote: r2_quote, profile: agentic_packed_10k) {
           Present { value: packed } =>
             (unpacked > (packed * 150)) && (unpacked < (packed * 200))
           _ => false
@@ -191,9 +191,9 @@ test fn w_packing_leaves_the_byte_axes_untouched() -> Bool {
 }
 
 test fn w_agentic_at_one_million_users_is_a_seven_figure_bill_unpacked() -> Bool {
-  match total_for(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: profile_at_user_count(profile: agentic_unpacked_10k, user_count: 1000000)) {
+  match total_for(quote: r2_quote, profile: gunbc.econ.scm_serving_model.profile_at_user_count(profile: agentic_unpacked_10k, user_count: 1000000)) {
     Present { value: r2 } =>
-      match total_for(quote: test.claim.scm_agentic_stress_witness.wasabi_quote, profile: profile_at_user_count(profile: agentic_unpacked_10k, user_count: 1000000)) {
+      match total_for(quote: wasabi_quote, profile: gunbc.econ.scm_serving_model.profile_at_user_count(profile: agentic_unpacked_10k, user_count: 1000000)) {
         Present { value: wasabi } =>
           (r2 == 1627500000000) && (wasabi == 3995000000) && (r2 > (wasabi * 400))
         _ => false
@@ -203,13 +203,13 @@ test fn w_agentic_at_one_million_users_is_a_seven_figure_bill_unpacked() -> Bool
 }
 
 test fn w_red_packing_by_one_is_the_unpacked_count() -> Bool {
-  packed_object_count(logical_node_ops: 2000000, policy: gunbc.econ.scm_serving_model.PackedObjects { nodes_per_object: 1 }) == 2000000
+  gunbc.econ.scm_serving_model.packed_object_count(logical_node_ops: 2000000, policy: gunbc.econ.scm_serving_model.PackedObjects { nodes_per_object: 1 }) == 2000000
 }
 
 test fn w_red_agentic_profile_is_not_the_human_profile() -> Bool {
-  match total_for(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: human_profile_10k) {
+  match total_for(quote: r2_quote, profile: human_profile_10k) {
     Present { value: human } =>
-      match total_for(quote: test.claim.scm_agentic_stress_witness.r2_quote, profile: agentic_unpacked_10k) {
+      match total_for(quote: r2_quote, profile: agentic_unpacked_10k) {
         Present { value: agentic } => agentic > (human * 900)
         _ => false
       }

@@ -1,111 +1,111 @@
 module test.claim.bach_double_slit_observation_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn w_bach_cited_buildup_progression_holds() -> Bool {
-  bach_cited_buildup_progression_holds()
+  gunbc.bach_double_slit_observation.bach_cited_buildup_progression_holds()
 }
 
 test fn w_bach_cited_distribution_observations_match_canonical_sequence() -> Bool {
-  bach_cited_distribution_observations_match_canonical_sequence()
+  gunbc.bach_double_slit_observation.bach_cited_distribution_observations_match_canonical_sequence()
 }
 
 test fn w_bach_double_slit_interference_evidence_holds() -> Bool {
-  bach_double_slit_interference_evidence_holds()
+  gunbc.bach_double_slit_observation.bach_double_slit_interference_evidence_holds()
 }
 
 test fn w_bach_buildup_rejects_non_increasing_counts() -> Bool {
   let reversed = [
-    bach_buildup_6235_electrons,
-    bach_buildup_1004_electrons,
-    bach_buildup_209_electrons,
-    bach_buildup_7_electrons,
-    bach_buildup_2_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_6235_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_1004_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_209_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_7_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_2_electrons,
   ]
-  bach_buildup_progression_rejects_non_increasing_counts(rows: reversed)
+  gunbc.bach_double_slit_observation.bach_buildup_progression_rejects_non_increasing_counts(rows: reversed)
 }
 
 test fn w_bach_buildup_rejects_status_regression() -> Bool {
   let regressed = [
-    bach_buildup_1004_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_1004_electrons,
     extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow {
-      apparatus: bach_et_al_2013_double_slit,
-      figure_3_panel: Figure3PanelC,
+      apparatus: extdeps.physics.bach_et_al_2013_double_slit.bach_et_al_2013_double_slit,
+      figure_3_panel: extdeps.physics.bach_et_al_2013_double_slit.Figure3PanelC,
       detected_electrons: 209,
-      pattern_status: PatternNotYetDiscernible,
+      pattern_status: extdeps.physics.bach_et_al_2013_double_slit.PatternNotYetDiscernible,
     },
-    bach_buildup_6235_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_6235_electrons,
   ]
-  bach_buildup_progression_rejects_status_regression(rows: regressed)
+  gunbc.bach_double_slit_observation.bach_buildup_progression_rejects_status_regression(rows: regressed)
 }
 
 test fn w_bach_buildup_rejects_missing_discernible_before_clearly_visible() -> Bool {
   let skipped_discernible = [
-    bach_buildup_2_electrons,
-    bach_buildup_6235_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_2_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_6235_electrons,
   ]
-  bach_buildup_progression_rejects_missing_discernible_before_clearly_visible(
+  gunbc.bach_double_slit_observation.bach_buildup_progression_rejects_missing_discernible_before_clearly_visible(
     rows: skipped_discernible,
   )
 }
 
 test fn w_bach_buildup_rejects_missing_discernible_row() -> Bool {
   let missing_discernible = [
-    bach_buildup_2_electrons,
-    bach_buildup_7_electrons,
-    bach_buildup_209_electrons,
-    bach_buildup_6235_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_2_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_7_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_209_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_6235_electrons,
   ]
-  bach_buildup_progression_rejects_missing_discernible_before_clearly_visible(
+  gunbc.bach_double_slit_observation.bach_buildup_progression_rejects_missing_discernible_before_clearly_visible(
     rows: missing_discernible,
   )
 }
 
 test fn w_bach_buildup_rejects_final_not_clearly_visible() -> Bool {
   let bad_final = [
-    bach_buildup_2_electrons,
-    bach_buildup_7_electrons,
-    bach_buildup_209_electrons,
-    bach_buildup_1004_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_2_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_7_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_209_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_1004_electrons,
     extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow {
-      apparatus: bach_et_al_2013_double_slit,
-      figure_3_panel: Figure3PanelE,
+      apparatus: extdeps.physics.bach_et_al_2013_double_slit.bach_et_al_2013_double_slit,
+      figure_3_panel: extdeps.physics.bach_et_al_2013_double_slit.Figure3PanelE,
       detected_electrons: 6235,
-      pattern_status: PatternNotYetDiscernible,
+      pattern_status: extdeps.physics.bach_et_al_2013_double_slit.PatternNotYetDiscernible,
     },
   ]
-  bach_buildup_progression_rejects_final_not_clearly_visible(rows: bad_final)
+  gunbc.bach_double_slit_observation.bach_buildup_progression_rejects_final_not_clearly_visible(rows: bad_final)
 }
 
 test fn w_bach_buildup_rejects_wrong_panel_order() -> Bool {
   let wrong_panel_order = [
-    bach_buildup_6235_electrons,
-    bach_buildup_1004_electrons,
-    bach_buildup_209_electrons,
-    bach_buildup_7_electrons,
-    bach_buildup_2_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_6235_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_1004_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_209_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_7_electrons,
+    extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_2_electrons,
   ]
-  bach_buildup_progression_rejects_wrong_panel_order(rows: wrong_panel_order)
+  gunbc.bach_double_slit_observation.bach_buildup_progression_rejects_wrong_panel_order(rows: wrong_panel_order)
 }
 
 test fn w_bach_interference_rejects_missing_both_open_diffraction_observation() -> Bool {
   let without_both_open = [
-    SlitOneSingleSlitDiffractionObserved,
-    SlitTwoSingleSlitDiffractionObserved,
+    extdeps.physics.bach_et_al_2013_double_slit.SlitOneSingleSlitDiffractionObserved,
+    extdeps.physics.bach_et_al_2013_double_slit.SlitTwoSingleSlitDiffractionObserved,
   ]
-  bach_double_slit_interference_evidence_rejects_for_distribution(
+  gunbc.bach_double_slit_observation.bach_double_slit_interference_evidence_rejects_for_distribution(
     observations: without_both_open,
   )
 }
 
 test fn w_bach_interference_rejects_noncanonical_distribution_order() -> Bool {
   let both_open_first = [
-    BothSlitsDoubleSlitDiffractionObserved,
-    SlitOneSingleSlitDiffractionObserved,
-    SlitTwoSingleSlitDiffractionObserved,
+    extdeps.physics.bach_et_al_2013_double_slit.BothSlitsDoubleSlitDiffractionObserved,
+    extdeps.physics.bach_et_al_2013_double_slit.SlitOneSingleSlitDiffractionObserved,
+    extdeps.physics.bach_et_al_2013_double_slit.SlitTwoSingleSlitDiffractionObserved,
   ]
-  bach_double_slit_interference_evidence_rejects_for_distribution(
+  gunbc.bach_double_slit_observation.bach_double_slit_interference_evidence_rejects_for_distribution(
     observations: both_open_first,
   )
 }

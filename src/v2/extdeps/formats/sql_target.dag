@@ -17,12 +17,12 @@ fn sql_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.Concr
       empty: std.algebra.Empty,
       cons: fn(acc, token) {
         match token {
-          BoundToken { binding: binding, token_class: _ } =>
+          v2.std.compilers.target_model.BoundToken { binding: binding, token_class: _ } =>
             v2.std.algebra.list_snoc_item(
               xs: acc,
               item: v2.std.node.Edge { label: v2.std.node.Positional, target: sql_atom(id: binding) }
             )
-          FixedToken { token_class: _ } => acc
+          v2.std.compilers.target_model.FixedToken { token_class: _ } => acc
         }
       }
     ),
@@ -32,8 +32,8 @@ fn sql_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.Concr
 
 fn sql_formal_symbol_from_token(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.grammar.FormalGrammarSymbol {
   match token {
-    FixedToken { token_class: c } => v2.std.grammar.grammar_formal_terminal(identity: c)
-    BoundToken { token_class: c, binding: b } =>
+    v2.std.compilers.target_model.FixedToken { token_class: c } => v2.std.grammar.grammar_formal_terminal(identity: c)
+    v2.std.compilers.target_model.BoundToken { token_class: c, binding: b } =>
       v2.std.grammar.grammar_formal_terminal_bound(identity: c, binding: b)
   }
 }
@@ -82,13 +82,13 @@ fn sql_lhs_exact_relation_row_witness(
     lhs: lhs,
     child: emitted
   ) {
-    Holds { value: selected } =>
+    v2.std.witness.Holds { value: selected } =>
       v2.std.grammar.derive_grammar_relation_row_node(
         production: selected,
         productions: productions,
         emitted: emitted
       )
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -103,7 +103,7 @@ fn sql_relation_translation_rules_witness(
     tokens: tokens,
     emitted: emitted
   ) {
-    Holds { value: row } =>
+    v2.std.witness.Holds { value: row } =>
       v2.std.witness.Holds {
         value: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -113,7 +113,7 @@ fn sql_relation_translation_rules_witness(
           occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -129,8 +129,8 @@ fn sql_relation_translation_rules_node(
     tokens: tokens,
     emitted: emitted
   ) {
-    Holds { value: rules } => rules
-    Violates { diagnostic: _ } => sql_empty_translation_rules_node()
+    v2.std.witness.Holds { value: rules } => rules
+    v2.std.witness.Violates { diagnostic: _ } => sql_empty_translation_rules_node()
   }
 }
 

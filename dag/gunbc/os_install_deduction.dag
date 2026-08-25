@@ -56,11 +56,11 @@ fn fold_nbd_proxy_os_install_preflight_verdict(
     NotUnattendedByPolicy
   } else {
     match payload.delivery {
-      NoCloudNet { seed_url: _ } => IncompleteSeedDelivery
-      NoCloudLocal =>
+      extdeps.os.ubuntu_autoinstall.NoCloudNet { seed_url: _ } => IncompleteSeedDelivery
+      extdeps.os.ubuntu_autoinstall.NoCloudLocal =>
         match payload.storage_policy {
-          StoragePolicyDirectLayout => CompleteForUnattended
-          StoragePolicyAbsent =>
+          extdeps.os.ubuntu_autoinstall.StoragePolicyDirectLayout => CompleteForUnattended
+          extdeps.os.ubuntu_autoinstall.StoragePolicyAbsent =>
             match disk {
               EmptyDisk => RequiresStoragePolicy
               ForeignOsPresent => AutoinstallIncompleteNotBootable

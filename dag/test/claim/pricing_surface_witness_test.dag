@@ -1,18 +1,19 @@
 module test.claim.pricing_surface_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn witness_github_2core_per_hour_derived_not_stored() -> Bool {
-  let derived = per_hour_equivalent_from_per_minute(q: github_actions_linux_2core_price.per_minute)
-  money_per_hour_micros(q: derived) == 360000
+  let derived = std.measure.per_hour_equivalent_from_per_minute(q: github_actions_linux_2core_price.per_minute)
+  std.measure.money_per_hour_micros(q: derived) == 360000
 }
 
 test fn witness_github_2core_per_hour_exceeds_aws_m7a_large_on_demand() -> Bool {
-  let github_hourly = per_hour_equivalent_from_per_minute(q: github_actions_linux_2core_price.per_minute)
+  let github_hourly = std.measure.per_hour_equivalent_from_per_minute(q: github_actions_linux_2core_price.per_minute)
   let aws_hourly = aws_ec2_m7a_large_us_east_1.per_hour
-  money_per_hour_micros(q: github_hourly) > money_per_hour_micros(q: aws_hourly)
-    && money_per_hour_micros(q: github_hourly) == 360000
-    && money_per_hour_micros(q: aws_hourly) == 115920
+  std.measure.money_per_hour_micros(q: github_hourly) > std.measure.money_per_hour_micros(q: aws_hourly)
+    && std.measure.money_per_hour_micros(q: github_hourly) == 360000
+    && std.measure.money_per_hour_micros(q: aws_hourly) == 115920
 }
 
 // THE 2000 IS THE VENDOR'S PUBLISHED PRICE, NOT A MEASUREMENT OF OUR OWN TREE.
@@ -24,27 +25,28 @@ test fn witness_github_2core_per_hour_exceeds_aws_m7a_large_on_demand() -> Bool 
 // oracle. The ordering claim above is the substance; the equality below is what stops the
 // ordering from being satisfied by a wrong number that happens to sort the same way.
 test fn witness_ubicloud_premium_2core_undercuts_github_2core_per_minute() -> Bool {
-  money_per_minute_micros(q: github_actions_linux_2core_price.per_minute) > money_per_minute_micros(q: ubicloud_premium_standard_2_price.per_minute)
-    && money_per_minute_micros(q: ubicloud_premium_standard_2_price.per_minute) == 2000
-    && money_per_minute_micros(q: github_actions_linux_2core_price.per_minute) == 6000
+  std.measure.money_per_minute_micros(q: github_actions_linux_2core_price.per_minute) > std.measure.money_per_minute_micros(q: ubicloud_premium_standard_2_price.per_minute)
+    && std.measure.money_per_minute_micros(q: ubicloud_premium_standard_2_price.per_minute) == 2000
+    && std.measure.money_per_minute_micros(q: github_actions_linux_2core_price.per_minute) == 6000
 }
 
 test fn witness_hetzner_ax41_monthly_matches_cited_price() -> Bool {
-  money_per_month_micros(q: hetzner_ax41_1_ltd_price.monthly) == 57300000
-    && hetzner_dedicated_setup_fee_micros(row: hetzner_ax41_1_ltd_price) == 0
+  std.measure.money_per_month_micros(q: hetzner_ax41_1_ltd_price.monthly) == 57300000
+    && extdeps.pricing.hetzner_dedicated.hetzner_dedicated_setup_fee_micros(row: extdeps.pricing.hetzner_dedicated.hetzner_ax41_1_ltd_price) == 0
 }
 
 test fn witness_hetzner_ax41_hourly_equivalent_derived() -> Bool {
-  let derived = per_hour_equivalent_from_per_month(q: hetzner_ax41_1_ltd_price.monthly)
-  money_per_hour_micros(q: derived) == 57300000 / billing_month_as_hour_count()
+  let derived = std.measure.per_hour_equivalent_from_per_month(q: hetzner_ax41_1_ltd_price.monthly)
+  std.measure.money_per_hour_micros(q: derived) == 57300000 / std.measure.billing_month_as_hour_count()
 }
 
-data wrong_github_2core_per_minute_fixture: MoneyPerMinute = MoneyPerMinute {
-  amount: money_amount_micro(count: 5999),
-  currency: Usd,
+data wrong_github_2core_per_minute_fixture: std.measure.MoneyPerMinute = std.measure.MoneyPerMinute {
+  amount: std.measure.money_amount_micro(count: 5999),
+  currency: std.currency.Usd,
 }
 
 test fn witness_wrong_github_per_minute_red_control() -> Bool {
-  let derived = per_hour_equivalent_from_per_minute(q: wrong_github_2core_per_minute_fixture)
-  money_per_hour_micros(q: derived) != 360000
+  let derived = std.measure.per_hour_equivalent_from_per_minute(q: wrong_github_2core_per_minute_fixture)
+  std.measure.money_per_hour_micros(q: derived) != 360000
 }
+

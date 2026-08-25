@@ -5,12 +5,12 @@ module extdeps.advertising.meta_ads
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "developers.facebook.com/docs/marketing-api/reference/ad-campaign"
   }
 }
 
-data meta_ads_subject: Vendor<extdeps.securities.Securities> = meta_platforms
+data meta_ads_subject: extdeps.vendor.Vendor<extdeps.securities.Securities> = extdeps.vendor.meta_platforms.meta_platforms
 
 data meta_ads_provenance_note: String = "Interface facts live-fetched 2026-08-01 from the Meta Marketing API developer docs: the anchor page (which, per the API's legacy object naming, is the AD SET reference -- billing_event, bid_strategy, and optimization_goal are ad-set-level fields) and the bidding overview at developers.facebook.com/docs/marketing-api/bidding, which states the billing-event concept verbatim: the system 'defines events you want to pay for, including impressions, clicks, or various actions.' Two Business Help Center pages were attempted and are client-rendered (this fetch reads only their titles): 'About Ad Auctions | Meta Business Help Center' (facebook.com/business/help/430291176997542) and 'Best Practices for Minimum Budgets | Meta Business Help Center' (facebook.com/business/help/203183363050448) -- the latter is why the minimum-budget row below is RateUnavailable with that cause, never a remembered number."
 

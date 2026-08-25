@@ -9,140 +9,140 @@ fn has(s: String, p: String) -> Bool {
 }
 
 fn unavailable_recipe(status: Int) -> String {
-  pre_push_fmt_outcome_recipe(status: status)
+  gunbc.githooks_pre_push_plan.pre_push_fmt_outcome_recipe(status: status)
 }
 
 test fn witness_exit_zero_is_clean() -> Bool {
-  match local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 0) {
-    FmtClean => true
-    FmtDrift => false
-    FmtToolUnavailable { program: _, cause: _ } => false
+  match gunbc.local_tidy_spec.local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 0) {
+    gunbc.local_tidy_spec.FmtClean => true
+    gunbc.local_tidy_spec.FmtDrift => false
+    gunbc.local_tidy_spec.FmtToolUnavailable { program: _, cause: _ } => false
   }
 }
 
 test fn witness_exit_one_is_drift() -> Bool {
-  match local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 1) {
-    FmtDrift => true
-    FmtClean => false
-    FmtToolUnavailable { program: _, cause: _ } => false
+  match gunbc.local_tidy_spec.local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 1) {
+    gunbc.local_tidy_spec.FmtDrift => true
+    gunbc.local_tidy_spec.FmtClean => false
+    gunbc.local_tidy_spec.FmtToolUnavailable { program: _, cause: _ } => false
   }
 }
 
 test fn witness_command_not_found_is_tool_unavailable() -> Bool {
-  match local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 127) {
-    FmtToolUnavailable { program, cause } =>
-      program == "cargo" && test.claim.local_tidy_fmt_outcome.has(s: cause, p: "127")
-    FmtClean => false
-    FmtDrift => false
+  match gunbc.local_tidy_spec.local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 127) {
+    gunbc.local_tidy_spec.FmtToolUnavailable { program, cause } =>
+      program == "cargo" && has(s: cause, p: "127")
+    gunbc.local_tidy_spec.FmtClean => false
+    gunbc.local_tidy_spec.FmtDrift => false
   }
 }
 
 test fn witness_not_executable_and_no_such_subcommand_are_tool_unavailable() -> Bool {
-  let not_executable = match local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 126) {
-    FmtToolUnavailable { program: _, cause: _ } => true
-    FmtClean => false
-    FmtDrift => false
+  let not_executable = match gunbc.local_tidy_spec.local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 126) {
+    gunbc.local_tidy_spec.FmtToolUnavailable { program: _, cause: _ } => true
+    gunbc.local_tidy_spec.FmtClean => false
+    gunbc.local_tidy_spec.FmtDrift => false
   }
-  let no_such_subcommand = match local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 101) {
-    FmtToolUnavailable { program: _, cause: _ } => true
-    FmtClean => false
-    FmtDrift => false
+  let no_such_subcommand = match gunbc.local_tidy_spec.local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 101) {
+    gunbc.local_tidy_spec.FmtToolUnavailable { program: _, cause: _ } => true
+    gunbc.local_tidy_spec.FmtClean => false
+    gunbc.local_tidy_spec.FmtDrift => false
   }
   not_executable && no_such_subcommand
 }
 
 test fn witness_drift_recipe_is_reached_only_by_the_drift_arm() -> Bool {
-  local_tidy_fmt_outcome_recipe(
-    outcome: FmtDrift,
-    drift_recipe: local_tidy_fmt_pre_push_drift_recipe
-  ) == local_tidy_fmt_pre_push_drift_recipe
+  gunbc.local_tidy_spec.local_tidy_fmt_outcome_recipe(
+    outcome: gunbc.local_tidy_spec.FmtDrift,
+    drift_recipe: gunbc.local_tidy_spec.local_tidy_fmt_pre_push_drift_recipe
+  ) == gunbc.local_tidy_spec.local_tidy_fmt_pre_push_drift_recipe
 }
 
 test fn witness_clean_recipe_is_empty() -> Bool {
-  local_tidy_fmt_outcome_recipe(
-    outcome: FmtClean,
-    drift_recipe: local_tidy_fmt_pre_push_drift_recipe
+  gunbc.local_tidy_spec.local_tidy_fmt_outcome_recipe(
+    outcome: gunbc.local_tidy_spec.FmtClean,
+    drift_recipe: gunbc.local_tidy_spec.local_tidy_fmt_pre_push_drift_recipe
   ) == ""
 }
 
 test fn witness_unavailable_recipe_never_says_drift() -> Bool {
   let recipe = unavailable_recipe(status: 127)
-  !test.claim.local_tidy_fmt_outcome.has(s: recipe, p: "drift")
-    && !test.claim.local_tidy_fmt_outcome.has(s: recipe, p: local_tidy_fmt_pre_push_drift_recipe)
+  !has(s: recipe, p: "drift")
+    && !has(s: recipe, p: gunbc.local_tidy_spec.local_tidy_fmt_pre_push_drift_recipe)
 }
 
 test fn witness_unavailable_recipe_proposes_no_cargo_remedy() -> Bool {
   let recipe = unavailable_recipe(status: 127)
-  !test.claim.local_tidy_fmt_outcome.has(s: recipe, p: "run: cargo fmt")
-    && test.claim.local_tidy_fmt_outcome.has(s: recipe, p: "cargo")
-    && test.claim.local_tidy_fmt_outcome.has(s: recipe, p: "DID NOT RUN")
+  !has(s: recipe, p: "run: cargo fmt")
+    && has(s: recipe, p: "cargo")
+    && has(s: recipe, p: "DID NOT RUN")
 }
 
 test fn witness_unavailable_recipe_advertises_no_bypass() -> Bool {
   let recipe = unavailable_recipe(status: 127)
-  !test.claim.local_tidy_fmt_outcome.has(s: recipe, p: "--no-verify")
-    && !test.claim.local_tidy_fmt_outcome.has(s: recipe, p: "skip")
-    && !test.claim.local_tidy_fmt_outcome.has(s: recipe, p: "override")
+  !has(s: recipe, p: "--no-verify")
+    && !has(s: recipe, p: "skip")
+    && !has(s: recipe, p: "override")
 }
 
 test fn witness_hooks_end_the_unavailable_message_at_the_remedy() -> Bool {
-  let push = expected_githooks_pre_push_sh()
-  let commit = expected_githooks_pre_commit_sh()
-  test.claim.local_tidy_fmt_outcome.has(s: push, p: "then re-run.\" >&2")
-    && test.claim.local_tidy_fmt_outcome.has(s: commit, p: "then re-run.\" >&2")
+  let push = gunbc.githooks_pre_push_emit.expected_githooks_pre_push_sh()
+  let commit = gunbc.githooks_pre_commit_emit.expected_githooks_pre_commit_sh()
+  has(s: push, p: "then re-run.\" >&2")
+    && has(s: commit, p: "then re-run.\" >&2")
 }
 
 test fn witness_unavailable_recipe_is_reachable_for_the_pre_commit_surface_too() -> Bool {
-  let recipe = local_tidy_fmt_outcome_recipe(
+  let recipe = gunbc.local_tidy_spec.local_tidy_fmt_outcome_recipe(
     outcome: gunbc.local_tidy_spec.FmtToolUnavailable { program: "cargo", cause: "exit status 127" },
-    drift_recipe: local_tidy_fmt_pre_commit_drift_recipe
+    drift_recipe: gunbc.local_tidy_spec.local_tidy_fmt_pre_commit_drift_recipe
   )
-  !test.claim.local_tidy_fmt_outcome.has(s: recipe, p: "drift")
-    && !test.claim.local_tidy_fmt_outcome.has(s: recipe, p: local_tidy_fmt_pre_commit_drift_recipe)
+  !has(s: recipe, p: "drift")
+    && !has(s: recipe, p: gunbc.local_tidy_spec.local_tidy_fmt_pre_commit_drift_recipe)
 }
 
 test fn witness_spawn_refusal_is_tool_unavailable_not_drift() -> Bool {
-  let recipe = pre_push_fmt_spawn_refusal_recipe(cause: "No such file or directory")
-  test.claim.local_tidy_fmt_outcome.has(s: recipe, p: "No such file or directory")
-    && test.claim.local_tidy_fmt_outcome.has(s: recipe, p: "DID NOT RUN")
-    && !test.claim.local_tidy_fmt_outcome.has(s: recipe, p: "drift")
+  let recipe = gunbc.githooks_pre_push_plan.pre_push_fmt_spawn_refusal_recipe(cause: "No such file or directory")
+  has(s: recipe, p: "No such file or directory")
+    && has(s: recipe, p: "DID NOT RUN")
+    && !has(s: recipe, p: "drift")
 }
 
 test fn witness_every_non_verdict_status_still_stops_the_line() -> Bool {
-  !local_tidy_fmt_outcome_blocks(outcome: FmtClean)
-    && pre_push_fmt_outcome_blocks(status: 1)
-    && pre_push_fmt_outcome_blocks(status: 127)
-    && pre_push_fmt_outcome_blocks(status: 126)
-    && !pre_push_fmt_outcome_blocks(status: 0)
+  !gunbc.local_tidy_spec.local_tidy_fmt_outcome_blocks(outcome: gunbc.local_tidy_spec.FmtClean)
+    && gunbc.githooks_pre_push_plan.pre_push_fmt_outcome_blocks(status: 1)
+    && gunbc.githooks_pre_push_plan.pre_push_fmt_outcome_blocks(status: 127)
+    && gunbc.githooks_pre_push_plan.pre_push_fmt_outcome_blocks(status: 126)
+    && !gunbc.githooks_pre_push_plan.pre_push_fmt_outcome_blocks(status: 0)
 }
 
 test fn witness_pre_push_hook_branches_on_exit_status() -> Bool {
-  let sh = expected_githooks_pre_push_sh()
-  test.claim.local_tidy_fmt_outcome.has(s: sh, p: "fmt_rc=0")
-    && test.claim.local_tidy_fmt_outcome.has(s: sh, p: "cargo fmt --all --check || fmt_rc=$?")
-    && test.claim.local_tidy_fmt_outcome.has(s: sh, p: "if [[ \"$fmt_rc\" == \"1\" ]]; then")
-    && test.claim.local_tidy_fmt_outcome.has(s: sh, p: "if [[ \"$fmt_rc\" != \"0\" ]]; then")
+  let sh = gunbc.githooks_pre_push_emit.expected_githooks_pre_push_sh()
+  has(s: sh, p: "fmt_rc=0")
+    && has(s: sh, p: "cargo fmt --all --check || fmt_rc=$?")
+    && has(s: sh, p: "if [[ \"$fmt_rc\" == \"1\" ]]; then")
+    && has(s: sh, p: "if [[ \"$fmt_rc\" != \"0\" ]]; then")
 }
 
 test fn witness_pre_push_hook_reports_tool_unavailable() -> Bool {
-  let sh = expected_githooks_pre_push_sh()
-  test.claim.local_tidy_fmt_outcome.has(s: sh, p: "could not be run (exit status $fmt_rc)")
-    && test.claim.local_tidy_fmt_outcome.has(s: sh, p: "DID NOT RUN")
+  let sh = gunbc.githooks_pre_push_emit.expected_githooks_pre_push_sh()
+  has(s: sh, p: "could not be run (exit status $fmt_rc)")
+    && has(s: sh, p: "DID NOT RUN")
 }
 
 test fn witness_pre_commit_hook_branches_on_exit_status() -> Bool {
-  let sh = expected_githooks_pre_commit_sh()
-  test.claim.local_tidy_fmt_outcome.has(s: sh, p: "fmt_rc=0")
-    && test.claim.local_tidy_fmt_outcome.has(s: sh, p: "cargo fmt --all --check || fmt_rc=$?")
-    && test.claim.local_tidy_fmt_outcome.has(s: sh, p: "if [[ \"$fmt_rc\" == \"1\" ]]; then")
-    && test.claim.local_tidy_fmt_outcome.has(s: sh, p: "could not be run (exit status $fmt_rc)")
+  let sh = gunbc.githooks_pre_commit_emit.expected_githooks_pre_commit_sh()
+  has(s: sh, p: "fmt_rc=0")
+    && has(s: sh, p: "cargo fmt --all --check || fmt_rc=$?")
+    && has(s: sh, p: "if [[ \"$fmt_rc\" == \"1\" ]]; then")
+    && has(s: sh, p: "could not be run (exit status $fmt_rc)")
 }
 
 test fn witness_hand_rust_receipt_is_counted_and_named() -> Bool {
   gunbc.githooks_pre_push_fmt_transport_scaffold.githooks_pre_push_fmt_transport_hand_rust_loc_delta_net == 57
-    && test.claim.local_tidy_fmt_outcome.has(s: dissolution_description(condition: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "dissolve-on")
-    && test.claim.local_tidy_fmt_outcome.has(s: dissolution_description(condition: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "emitted crate partition")
-    && test.claim.local_tidy_fmt_outcome.has(s: dissolution_description(condition: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "NOT a census shrink")
+    && has(s: std.dissolution.dissolution_description(condition: gunbc.githooks_pre_push_fmt_transport_scaffold.githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "dissolve-on")
+    && has(s: std.dissolution.dissolution_description(condition: gunbc.githooks_pre_push_fmt_transport_scaffold.githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "emitted crate partition")
+    && has(s: std.dissolution.dissolution_description(condition: gunbc.githooks_pre_push_fmt_transport_scaffold.githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "NOT a census shrink")
 }
 
 test fn witness_hand_rust_receipt_names_a_live_discriminator() -> Bool {
@@ -150,14 +150,14 @@ test fn witness_hand_rust_receipt_names_a_live_discriminator() -> Bool {
 }
 
 test fn witness_pre_push_emit_states_its_own_medium_disposition() -> Bool {
-  test.claim.local_tidy_fmt_outcome.has(s: githooks_pre_push_emit_medium_disposition_note, p: "dissolve-on")
-    && test.claim.local_tidy_fmt_outcome.has(s: githooks_pre_push_emit_medium_disposition_note, p: "GrammarRelationRow")
-    && test.claim.local_tidy_fmt_outcome.has(s: githooks_pre_push_emit_medium_disposition_note, p: "githooks_pre_push_emit_scaffold")
+  has(s: gunbc.githooks_pre_push_emit.githooks_pre_push_emit_medium_disposition_note, p: "dissolve-on")
+    && has(s: gunbc.githooks_pre_push_emit.githooks_pre_push_emit_medium_disposition_note, p: "GrammarRelationRow")
+    && has(s: gunbc.githooks_pre_push_emit.githooks_pre_push_emit_medium_disposition_note, p: "githooks_pre_push_emit_scaffold")
 }
 
 test fn witness_hooks_no_longer_conflate_absence_with_drift() -> Bool {
-  let push = expected_githooks_pre_push_sh()
-  let commit = expected_githooks_pre_commit_sh()
-  !test.claim.local_tidy_fmt_outcome.has(s: push, p: "if ! cargo fmt --all --check; then")
-    && !test.claim.local_tidy_fmt_outcome.has(s: commit, p: "if cargo fmt --all --check; then")
+  let push = gunbc.githooks_pre_push_emit.expected_githooks_pre_push_sh()
+  let commit = gunbc.githooks_pre_commit_emit.expected_githooks_pre_commit_sh()
+  !has(s: push, p: "if ! cargo fmt --all --check; then")
+    && !has(s: commit, p: "if cargo fmt --all --check; then")
 }

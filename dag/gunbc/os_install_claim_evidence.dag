@@ -10,7 +10,7 @@ type OsInstallEvidenceInference = std.claim_evidence.EvidenceInference<gunbc.os_
 data os_install_kvm_observation_probe: gunbc.readback_independence.ReadBackProbe = gunbc.readback_independence.ReadBackProbe {
   label: "operator-attested KVM screen",
   subject: "one host's visible runtime screen",
-  effect_on_subject: ProbeInert,
+  effect_on_subject: gunbc.readback_independence.ProbeInert,
 }
 
 fn os_install_runtime_diagnostic_claim(
@@ -36,7 +36,7 @@ fn os_install_boot_suggestion_claim(
 ) -> OsInstallEvidenceClaim {
   os_install_runtime_diagnostic_claim(
     target: target,
-    proposition: KvmSuggestsOsBooted,
+    proposition: gunbc.os_install_deduction.KvmSuggestsOsBooted,
     preflight: preflight,
     bound: bound,
   )
@@ -49,7 +49,7 @@ fn os_install_completed_claim(
 ) -> OsInstallEvidenceClaim {
   os_install_runtime_diagnostic_claim(
     target: target,
-    proposition: RuntimeOsInstalled,
+    proposition: gunbc.os_install_deduction.RuntimeOsInstalled,
     preflight: preflight,
     bound: bound,
   )
@@ -61,7 +61,7 @@ fn os_install_kvm_attestation_inference(
   preflight: gunbc.os_install_deduction.OsInstallPreflightVerdict,
   bound: std.types.RunKey,
 ) -> OsInstallEvidenceInference {
-  let proposition = runtime_verdict_from_kvm_attestation(
+  let proposition = gunbc.os_install_deduction.runtime_verdict_from_kvm_attestation(
     attestation: attestation,
     preflight: preflight,
   )
@@ -71,12 +71,12 @@ fn os_install_kvm_attestation_inference(
     preflight: preflight,
     bound: bound,
   )
-  infer_probe_evidence(
+  gunbc.claim_evidence_probe_rule.infer_probe_evidence(
     fact: std.claim_evidence.RecordedFact {
       id: fact_id,
       value: attestation,
     },
-    direction: EvidenceSupports,
+    direction: std.claim_evidence.EvidenceSupports,
     inference_rule: "kvm-screen-supports-runtime-diagnostic-only",
     authority: attestation.attested_by,
     provenance: std.claim_evidence.EvidenceProvenance {

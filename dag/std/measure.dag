@@ -1,5 +1,7 @@
 module std.measure
 
+
+
 type Quantity =
     Time
   | Length
@@ -98,19 +100,19 @@ fn gibibyte_scale_factor_bytes() -> std.nat.Nat {
 }
 
 fn kibi_factor() -> std.nat.Nat {
-  iec_kibi_factor()
+  extdeps.units.iec_80000_13.iec_kibi_factor()
 }
 
 fn seconds_per_minute() -> std.nat.Nat {
-  iso8601_seconds_per_minute()
+  extdeps.units.iso8601.iso8601_seconds_per_minute()
 }
 
 fn minutes_per_hour() -> std.nat.Nat {
-  iso8601_minutes_per_hour()
+  extdeps.units.iso8601.iso8601_minutes_per_hour()
 }
 
 fn hours_per_day() -> std.nat.Nat {
-  iso8601_hours_per_day()
+  extdeps.units.iso8601.iso8601_hours_per_day()
 }
 
 fn seconds_per_day() -> std.nat.Nat {
@@ -272,7 +274,7 @@ fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
 type BitWidth = Measure<Information, One, std.nat.Nat>
 
 fn bits_per_byte() -> std.nat.Nat {
-  octet_bit_count()
+  extdeps.units.iec_80000_13.octet_bit_count()
 }
 
 type Hertz = Measure<Frequency, One, std.nat.Nat>
@@ -677,7 +679,7 @@ type Once
 
 type MoneyRate<P> {
   amount: MoneyAmountMicro
-  currency: CurrencyCode
+  currency: std.currency.CurrencyCode
 }
 
 type MoneyPerSecond = MoneyRate<PerSecond>
@@ -950,11 +952,11 @@ fn percent_count(p: Percent) -> std.nat.Nat {
 data permyriad_scale_note: String = "RgbScaled and sRGB<->HSL integer kernels use a permyriad (parts per 10000) channel scale — grounded on extdeps.units.dimensionless.parts_per_ten_thousand_unity_count (same authority as basis_point_unity_count)."
 
 fn permyriad_half_for_round_half_up() -> Int {
-  parts_per_ten_thousand_unity_count() / 2
+  extdeps.units.dimensionless.parts_per_ten_thousand_unity_count() / 2
 }
 
 fn percent_scale_hundred() -> Int {
-  percent_unity_hundred_count()
+  extdeps.units.dimensionless.percent_unity_hundred_count()
 }
 
 data percent_from_computed_int_frontier: String = "Percent = Measure<Dimensionless, One, Nat>; percent(n) accepts literal Nat only. Runtime eval refuses computed Int→Nat cast (runtime error: cannot cast Int to Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.design.material quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal)."
@@ -970,7 +972,7 @@ fn basis_point_count(bp: BasisPoint) -> std.nat.Nat {
 }
 
 fn basis_point_unity_count() -> std.nat.Nat {
-  parts_per_ten_thousand_unity_count()
+  extdeps.units.dimensionless.parts_per_ten_thousand_unity_count()
 }
 
 data basis_point_unit_note: String = "One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same Measure<Dimensionless, One, Nat> shape, different semantic axis for utilization ratios and filed margin envelopes."
@@ -1020,10 +1022,10 @@ data clock_basis_authority_reachability_note: String = "WHY THIS CARRIER LIVES I
 
 data measure_clock_basis_seed_entry_note: String = "Two nullary constructors exist so the v1 seed can hand a ClockBasis across the interpreter boundary WITHOUT building a Value in Rust — the same discipline millisecond(count:) and nanosecond(count:) already carry at this seam, and the reason gunbc.witness_row_cost's seed notes give for it: a carrier assembled on the Rust side is a second copy of this module's shape, and it drifts silently. WHICH one the seed calls is chosen by matching its own typed BudgetKind, so the clock is never recovered from a label string; the function name is a symbol the seed selects, not prose it parses. They dissolve with the seed transport itself, on the witness-realization lane's trigger — when a realized runner enforces the deadline, it constructs the outcome here directly and has nothing to marshal."
 
-fn clock_basis_label(b: ClockBasis) -> NonEmptyStr {
+fn clock_basis_label(b: ClockBasis) -> std.types.NonEmptyStr {
   match b {
-    CpuClock => "thread-CPU" as NonEmptyStr
-    WallClock => "wall" as NonEmptyStr
+    CpuClock => "thread-CPU" as std.types.NonEmptyStr
+    WallClock => "wall" as std.types.NonEmptyStr
   }
 }
 
@@ -1035,30 +1037,30 @@ fn clock_basis_label(b: ClockBasis) -> NonEmptyStr {
 // where a unit is being CHANGED - the single place a wrong unit is most likely to enter - was the
 // one place the substrate accepted an undimensioned number.
 fn square_metres_to_square_millimetres(area: SquareMeter) -> SquareMillimeter {
-  square_millimeter(count: square_meter_count(m: area) * square_millimetres_per_square_metre())
+  square_millimeter(count: square_meter_count(m: area) * extdeps.units.iso_80000_3.square_millimetres_per_square_metre())
 }
 
 fn cubic_metres_to_cubic_millimetres(volume: CubicMeter) -> CubicMillimeter {
-  cubic_millimeter(count: cubic_meter_count(m: volume) * cubic_millimetres_per_cubic_metre())
+  cubic_millimeter(count: cubic_meter_count(m: volume) * extdeps.units.iso_80000_3.cubic_millimetres_per_cubic_metre())
 }
 
 // One full turn in arcseconds, derived from the cited subdivision chain rather than restated.
 fn full_turn_arcseconds() -> Arcsecond {
-  arcsecond(count: arcseconds_per_turn())
+  arcsecond(count: extdeps.units.iso_80000_3.arcseconds_per_turn())
 }
 
 fn degrees_to_arcseconds(degrees: Degree) -> Arcsecond {
-  arcsecond(count: degree_count(d: degrees) * arcseconds_per_degree_derived())
+  arcsecond(count: degree_count(d: degrees) * extdeps.units.iso_80000_3.arcseconds_per_degree_derived())
 }
 
 fn turns_to_arcseconds(turns: Turn) -> Arcsecond {
-  arcsecond(count: turn_count(t: turns) * arcseconds_per_turn())
+  arcsecond(count: turn_count(t: turns) * extdeps.units.iso_80000_3.arcseconds_per_turn())
 }
 
 // A quarter turn is exact in arcseconds because the subdivision is rational - the same reason the
 // turn is the canonical unit and radian conversion is absent.
 fn quarter_turn_arcseconds() -> Arcsecond {
-  arcsecond(count: arcseconds_per_turn() / 4)
+  arcsecond(count: extdeps.units.iso_80000_3.arcseconds_per_turn() / 4)
 }
 
 fn turn(count: std.nat.Nat) -> Turn {
@@ -1077,9 +1079,9 @@ fn signed_square_millimeter_count(m: SignedSquareMillimeter) -> Int {
   measure_count(m)
 }
 
-data amortization_months_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper.")
+data amortization_months_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper.")
 
-data basis_point_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname.")
+data basis_point_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname.")
 
 // WHICH ORIGIN a reading was taken against, and it is a DIFFERENT axis from ClockBasis rather than a
 // finer spelling of it. ClockBasis says which KIND of clock produced a duration (cpu or wall);
@@ -1093,8 +1095,8 @@ data basis_point_dissolve_on: DissolutionCondition = unbound_dissolution(descrip
 // console timestamp is not a substitute either: it is formatted wall time, reordered by buffering
 // and rounded to the millisecond.
 type ClockDomain
-  = ProcessMonotonic { process: NonEmptyStr }
-  | SharedMonotonic { origin: NonEmptyStr }
+  = ProcessMonotonic { process: std.types.NonEmptyStr }
+  | SharedMonotonic { origin: std.types.NonEmptyStr }
 
 fn clock_domain_eq(a: ClockDomain, b: ClockDomain) -> Bool {
   match a {

@@ -9,7 +9,7 @@ data diagnostics_constructor_owner_suite: String = "constructor_owner"
 data diagnostics_record_field_walls_suite: String = "record_field_walls"
 
 fn run_diagnostics_suite(suite: String) -> Bool {
-  run_witness_bin(
+  tools.host_prelude.run_witness_bin(
     var_name: "DIAGNOSTICS_WITNESS",
     bin_name: "diagnostics_witness",
     args: [suite]

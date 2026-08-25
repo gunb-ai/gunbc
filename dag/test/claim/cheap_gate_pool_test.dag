@@ -2,11 +2,11 @@ module test.claim.cheap_gate_pool
 
 
 test fn cheap_pool_chunk_totality_holds() -> Bool {
-  claims_covered_by_cheap_pool_chunks(claims: extdeps_external_authority_claims())
+  tools.cheap_gate_pool.claims_covered_by_cheap_pool_chunks(claims: tools.extdeps_external_authority_transport.extdeps_external_authority_claims())
 }
 
 test fn cheap_pool_chunking_preserves_count() -> Bool {
-  length(cheap_pool_chunked_claims()) == length(cheap_claim_pool_claims())
+  length(tools.cheap_gate_pool.cheap_pool_chunked_claims()) == length(tools.cheap_gate_pool.cheap_claim_pool_claims())
 }
 
 test fn cheap_pool_chunk_totality_red_control_holds() -> Bool {
@@ -14,15 +14,15 @@ test fn cheap_pool_chunk_totality_red_control_holds() -> Bool {
     entry: "dag/test/claim/__no_such_entry_zzz.dag",
     function: "no_such_claim_zzz"
   }
-  !claims_covered_by_cheap_pool_chunks(claims: [bogus])
+  !tools.cheap_gate_pool.claims_covered_by_cheap_pool_chunks(claims: [bogus])
 }
 
 test fn cheap_pool_chunk_cap_splits_at_cap() -> Bool {
   let a = tools.host_prelude.ClaimRun { entry: "a.dag", function: "f1" }
   let b = tools.host_prelude.ClaimRun { entry: "a.dag", function: "f2" }
   let c = tools.host_prelude.ClaimRun { entry: "b.dag", function: "g" }
-  let chunks = chunk_claims(claims: [a, b, c], max_per_child: 2)
+  let chunks = tools.cheap_gate_pool.chunk_claims(claims: [a, b, c], max_per_child: 2)
   length(chunks) == 2
-    && claim_in_pool(c: c, pool: chunks.skip(n: 1).first())
-    && cheap_gate_pool_max_claims_per_child > 0
+    && tools.cheap_gate_pool.claim_in_pool(c: c, pool: chunks.skip(n: 1).first())
+    && tools.cheap_gate_pool.cheap_gate_pool_max_claims_per_child > 0
 }

@@ -1,7 +1,7 @@
 module test.claim.firmware_prerequisite_evidence_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // A SECOND, LOWER REFUSAL, authored rather than observed — the fixture that
 // makes order-independence testable at all. With one refusal and one
@@ -9,25 +9,25 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // answer, so a two-element list cannot distinguish them however it is
 // ordered. Only a second refusal forces the fold to choose.
 data synthetic_lower_refusal: extdeps.firmware.types.FirmwarePrerequisiteObservation = extdeps.firmware.types.FirmwarePrerequisiteObservation {
-  board: AsrockRackAltrad8ud1l2t,
-  subject: HostBios,
-  image_kind: OpenBmcWebUiTar,
+  board: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
+  subject: extdeps.firmware.types.HostBios,
+  image_kind: extdeps.firmware.types.OpenBmcWebUiTar,
   gating_target: extdeps.firmware.types.BmcController,
-  gating_version: firmware_semantic_version(major: 1, minor: 0, patch: 0),
+  gating_version: extdeps.firmware.types.firmware_semantic_version(major: 1, minor: 0, patch: 0),
   outcome: extdeps.firmware.types.PushRefusedByTarget { diagnostic: "authored probe; no such push was executed" },
   observed_at: 1786579200000,
 }
 
 data forward_evidence: List<extdeps.firmware.types.FirmwarePrerequisiteObservation> = [
-  asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
+  extdeps.boards.asrock_rack.asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
   synthetic_lower_refusal,
-  asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
+  extdeps.boards.asrock_rack.asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
 ]
 
 data reversed_evidence: List<extdeps.firmware.types.FirmwarePrerequisiteObservation> = [
-  asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
+  extdeps.boards.asrock_rack.asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
   synthetic_lower_refusal,
-  asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
+  extdeps.boards.asrock_rack.asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
 ]
 
 // THE ORACLE IS AN IDENTITY JOIN, not a copy. An earlier revision hand-wrote
@@ -49,9 +49,9 @@ fn verdict_against_declared_minimum(
   observations: List<extdeps.firmware.types.FirmwarePrerequisiteObservation>,
 ) -> extdeps.firmware.types.PrerequisiteEvidenceVerdict {
   match asrock_altrad8ud_bios_3_10_openbmc_release.prerequisite {
-    RequiresMinimumTargetFirmware { target: _, minimum: m } =>
-      prerequisite_evidence_verdict(minimum: m, observations: observations)
-    NoFirmwarePrerequisite => PrerequisiteEvidenceAbsent
+    extdeps.firmware.types.RequiresMinimumTargetFirmware { target: _, minimum: m } =>
+      extdeps.firmware.types.prerequisite_evidence_verdict(minimum: m, observations: observations)
+    extdeps.firmware.types.NoFirmwarePrerequisite => extdeps.firmware.types.PrerequisiteEvidenceAbsent
   }
 }
 
@@ -79,16 +79,16 @@ fn bounds_are_the_executed_pair(
   observations: List<extdeps.firmware.types.FirmwarePrerequisiteObservation>,
 ) -> Bool {
   match verdict_against_declared_minimum(observations: observations) {
-    PrerequisiteConsistentUpperBound { highest_refusal: r, lowest_acceptance: a } =>
+    extdeps.firmware.types.PrerequisiteConsistentUpperBound { highest_refusal: r, lowest_acceptance: a } =>
       match r {
-        Present { value: rv } =>
+        v2.std.optional.Present { value: rv } =>
           match a {
-            Present { value: av } =>
+            v2.std.optional.Present { value: av } =>
               same_firmware_version(a: rv, b: asrock_altrad8ud_bios_310_push_refused_at_bmc_207.gating_version)
                 && same_firmware_version(a: av, b: asrock_altrad8ud_bios_310_push_accepted_at_bmc_322.gating_version)
-            Absent => false
+            v2.std.optional.Absent => false
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
     _ => false
   }
@@ -98,7 +98,7 @@ fn bounds_are_the_executed_pair(
 // what it actually establishes: an UPPER BOUND. 3.06.00 exists in the
 // capability catalog and was never pushed, so the true threshold may be lower.
 test fn executed_pair_supports_the_declared_minimum_as_an_upper_bound() -> Bool {
-  bounds_are_the_executed_pair(observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence)
+  bounds_are_the_executed_pair(observations: extdeps.boards.asrock_rack.asrock_altrad8ud_bios_openbmc_prerequisite_evidence)
 }
 
 // ORDER INDEPENDENCE, and it took a third observation to make it real. The
@@ -120,17 +120,17 @@ test fn the_bounds_do_not_depend_on_authoring_order() -> Bool {
 // transcribed here (review 51524).
 test fn an_acceptance_only_history_reports_no_refusal_bound() -> Bool {
   match verdict_against_declared_minimum(
-    observations: [asrock_altrad8ud_bios_310_push_accepted_at_bmc_322],
+    observations: [extdeps.boards.asrock_rack.asrock_altrad8ud_bios_310_push_accepted_at_bmc_322],
   ) {
-    PrerequisiteConsistentUpperBound { highest_refusal: r, lowest_acceptance: a } =>
+    extdeps.firmware.types.PrerequisiteConsistentUpperBound { highest_refusal: r, lowest_acceptance: a } =>
       match r {
-        Absent =>
+        v2.std.optional.Absent =>
           match a {
-            Present { value: av } =>
+            v2.std.optional.Present { value: av } =>
               same_firmware_version(a: av, b: asrock_altrad8ud_bios_310_push_accepted_at_bmc_322.gating_version)
-            Absent => false
+            v2.std.optional.Absent => false
           }
-        Present { value: _ } => false
+        v2.std.optional.Present { value: _ } => false
       }
     _ => false
   }
@@ -140,11 +140,11 @@ test fn an_acceptance_only_history_reports_no_refusal_bound() -> Bool {
 // accepted the bytes is contradicted by the acceptance, not merely unsupported
 // — this is the arm that catches a minimum inflated past its evidence.
 test fn a_minimum_above_the_accepting_version_is_contradicted() -> Bool {
-  match prerequisite_evidence_verdict(
-    minimum: firmware_semantic_version(major: 4, minor: 0, patch: 0),
-    observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
+  match extdeps.firmware.types.prerequisite_evidence_verdict(
+    minimum: extdeps.firmware.types.firmware_semantic_version(major: 4, minor: 0, patch: 0),
+    observations: extdeps.boards.asrock_rack.asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
   ) {
-    PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: a } =>
+    extdeps.firmware.types.PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: a } =>
       same_firmware_version(a: a, b: asrock_altrad8ud_bios_310_push_accepted_at_bmc_322.gating_version)
     _ => false
   }
@@ -155,11 +155,11 @@ test fn a_minimum_above_the_accepting_version_is_contradicted() -> Bool {
 // minimum relaxed below its evidence, which is the direction that would let an
 // unappliable push be admitted.
 test fn a_minimum_at_or_below_the_refusing_version_is_contradicted() -> Bool {
-  match prerequisite_evidence_verdict(
-    minimum: firmware_semantic_version(major: 2, minor: 0, patch: 0),
-    observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
+  match extdeps.firmware.types.prerequisite_evidence_verdict(
+    minimum: extdeps.firmware.types.firmware_semantic_version(major: 2, minor: 0, patch: 0),
+    observations: extdeps.boards.asrock_rack.asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
   ) {
-    PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: r } =>
+    extdeps.firmware.types.PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: r } =>
       same_firmware_version(a: r, b: asrock_altrad8ud_bios_310_push_refused_at_bmc_207.gating_version)
     _ => false
   }
@@ -169,7 +169,7 @@ test fn a_minimum_at_or_below_the_refusing_version_is_contradicted() -> Bool {
 // minimum must not read the same as an evidenced one.
 test fn no_observations_yields_absent_not_consistent() -> Bool {
   match verdict_against_declared_minimum(observations: []) {
-    PrerequisiteEvidenceAbsent => true
+    extdeps.firmware.types.PrerequisiteEvidenceAbsent => true
     _ => false
   }
 }

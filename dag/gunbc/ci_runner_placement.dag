@@ -6,11 +6,11 @@ type WorkloadClass
   | InteractiveLatencySensitive
 
 data gunbc_ci_cpu_weight_unit_modeling_marker: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.measure",
     decl_name: "Measure",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -56,13 +56,13 @@ type SessionSliceResolution
   | SessionSliceUnresolved { reason: String }
 
 fn resolve_regime1_slice(c: std.measure.ByteSize, n: Int) -> SessionSliceResolution {
-  if byte_size_count(b: c) == 0 {
+  if std.measure.byte_size_count(b: c) == 0 {
     SessionSliceUnresolved { reason: "per-session cap is zero bytes: refuse a degenerate sessions-slice" }
   } else if n <= 0 {
     SessionSliceUnresolved { reason: "session concurrency is non-positive: refuse a degenerate sessions-slice" }
   } else {
     SessionSliceResolved {
-      bytes: measure_scale_fraction_floor(m: c, num: n, den: 1),
+      bytes: std.measure.measure_scale_fraction_floor(m: c, num: n, den: 1),
       per_session_cap: c,
       concurrency: n,
     }
@@ -71,29 +71,29 @@ fn resolve_regime1_slice(c: std.measure.ByteSize, n: Int) -> SessionSliceResolut
 
 fn resolve_session_slice(mode: gunbc.ci_floor_measurement.SessionReservationMode, oomd: gunbc.ci_floor_measurement.OomdEnforcementEvidence) -> SessionSliceResolution {
   match mode {
-    SessionReservationModeUnset =>
+    gunbc.ci_floor_measurement.SessionReservationModeUnset =>
       SessionSliceUnresolved {
         reason: "session reservation mode unset: the per-session budget is an operator operating-point choice (REGIME-1 worst-case cap C * concurrency N, or REGIME-2 measured aggregate with C as the oomd eviction ceiling) grounded in the measured distribution (min 0.28 / median ~2.06 / max 8.27 GiB); refuse to derive the host sessions-slice (and therefore the conserving runner count) until gunbc_ci_session_reservation_mode is set. See the operating curve in the manifest."
       }
-    Regime1WorstCase { point: p } =>
+    gunbc.ci_floor_measurement.Regime1WorstCase { point: p } =>
       match p {
-        SessionOperatingPointUnset =>
+        gunbc.ci_floor_measurement.SessionOperatingPointUnset =>
           SessionSliceUnresolved { reason: "REGIME-1 operating point unset: refuse to derive a worst-case sessions-slice without a (cap, concurrency) pair" }
-        SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } =>
+        gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } =>
           resolve_regime1_slice(c: c, n: n)
       }
-    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: n, aggregate_reservation: agg } =>
+    gunbc.ci_floor_measurement.Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: n, aggregate_reservation: agg } =>
       match oomd {
-        OomdUnverified =>
+        gunbc.ci_floor_measurement.OomdUnverified =>
           SessionSliceUnresolved { reason: "REGIME-2 keystone unmet: it over-commits the per-session caps, so it is unsound until per-cgroup memory.max + systemd-oomd eviction is verified live on the hosts (gunbc_fleet_oomd_evidence = OomdUnverified). Fail closed; do NOT reserve the smaller aggregate without the runtime eviction floor." }
-        OomdEnforced =>
+        gunbc.ci_floor_measurement.OomdEnforced =>
           match agg {
-            SessionAggregateUnmeasured =>
+            gunbc.ci_floor_measurement.SessionAggregateUnmeasured =>
               SessionSliceUnresolved { reason: "REGIME-2 aggregate-concurrent-peak series unmeasured: refuse to derive the aggregate sessions-slice without a measured realistic concurrent peak (the 13 per-session samples are NOT an aggregate). Fail closed." }
-            SessionAggregateMeasured { bytes: agg_bytes } =>
-              if byte_size_count(b: agg_bytes) == 0 {
+            gunbc.ci_floor_measurement.SessionAggregateMeasured { bytes: agg_bytes } =>
+              if std.measure.byte_size_count(b: agg_bytes) == 0 {
                 SessionSliceUnresolved { reason: "REGIME-2 measured aggregate is zero bytes: refuse a degenerate sessions-slice" }
-              } else if byte_size_count(b: ceiling) == 0 {
+              } else if std.measure.byte_size_count(b: ceiling) == 0 {
                 SessionSliceUnresolved { reason: "REGIME-2 oomd eviction ceiling is zero bytes: refuse a degenerate per-session ceiling" }
               } else if n <= 0 {
                 SessionSliceUnresolved { reason: "REGIME-2 session concurrency is non-positive: refuse a degenerate admitted-session target" }
@@ -113,9 +113,9 @@ data gunbc_ci_runner_count_from_budget_disposition: std.disposition.Disposition 
 
 fn host_fixed_overhead_bytes(o: gunbc.ci_floor_measurement.HostFixedOverhead) -> std.measure.ByteSize {
   match o {
-    HostFixedOverheadMeasured { bytes: b, provenance: _ } => b
-    HostFixedOverheadAllowance { bytes: b, reason: _ } => b
-    HostFixedOverheadUnmeasured => byte_size(0)
+    gunbc.ci_floor_measurement.HostFixedOverheadMeasured { bytes: b, provenance: _ } => b
+    gunbc.ci_floor_measurement.HostFixedOverheadAllowance { bytes: b, reason: _ } => b
+    gunbc.ci_floor_measurement.HostFixedOverheadUnmeasured => std.measure.byte_size(0)
   }
 }
 
@@ -126,9 +126,9 @@ type HostOverheadResolution
 
 fn host_overhead_or_refusal(host: product.placement_supply.HostIdentity, o: gunbc.ci_floor_measurement.HostFixedOverhead) -> HostOverheadResolution {
   match o {
-    HostFixedOverheadMeasured { bytes: b, provenance: _ } => HostOverheadResolved { bytes: b }
-    HostFixedOverheadAllowance { bytes: b, reason: _ } => HostOverheadResolved { bytes: b }
-    HostFixedOverheadUnmeasured =>
+    gunbc.ci_floor_measurement.HostFixedOverheadMeasured { bytes: b, provenance: _ } => HostOverheadResolved { bytes: b }
+    gunbc.ci_floor_measurement.HostFixedOverheadAllowance { bytes: b, reason: _ } => HostOverheadResolved { bytes: b }
+    gunbc.ci_floor_measurement.HostFixedOverheadUnmeasured =>
       HostOverheadUnresolved {
         reason: concat("host fixed overhead is unmeasured and carries no operator allowance, so the share of RAM this host spends on residents the budget does not model is unknown: refuse to derive a runner width rather than charge zero (which would silently hand the host its whole RAM) or borrow another host's number. Classify it in gunbc.ci_floor_measurement gunbc_ci_host_fixed_overhead_for. Host: ", host)
       }
@@ -138,14 +138,14 @@ fn host_overhead_or_refusal(host: product.placement_supply.HostIdentity, o: gunb
 fn conservation_host_deployment(offer: gunbc.ci_fleet.ComputeOffer, nproc: std.measure.HardwareThreadCount) -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
-    runner_count: declared_runner_count_for(host: offer.supply.physical.identity),
-    runner_slice_cap: gunbc_runner_pool_budget_for(host: offer.supply.physical.identity),
-    per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
-    per_runner_memory_swap_cap: gunbc_runner_slot_desired().memory_swap_max,
-    per_runner_memory_high_cap: gunbc_runner_slot_desired().memory_high,
-    per_runner_tasks_max: gunbc_runner_slot_desired().tasks_max,
+    runner_count: gunbc.fleet_host_budget.declared_runner_count_for(host: offer.supply.physical.identity),
+    runner_slice_cap: gunbc.fleet_host_budget.gunbc_runner_pool_budget_for(host: offer.supply.physical.identity),
+    per_runner_memory_cap: gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap,
+    per_runner_memory_swap_cap: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_swap_max,
+    per_runner_memory_high_cap: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_high,
+    per_runner_tasks_max: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().tasks_max,
     build_tokens: nproc,
-    runner: runner_spec_from_offer(offer: offer),
+    runner: gunbc.runner_spec_from_offer.runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,
   }
 }
@@ -160,24 +160,24 @@ type HostSessionSliceResolution
   | SessionSliceUnsized { reason: String }
 
 fn session_reservation_declared_bytes() -> std.measure.ByteSize? {
-  match gunbc_ci_session_reservation_mode {
-    Regime2AggregateOomd { oomd_eviction_ceiling: _, session_concurrency: _, aggregate_reservation: agg } =>
+  match gunbc.ci_floor_measurement.gunbc_ci_session_reservation_mode {
+    gunbc.ci_floor_measurement.Regime2AggregateOomd { oomd_eviction_ceiling: _, session_concurrency: _, aggregate_reservation: agg } =>
       match agg {
-        SessionAggregateMeasured { bytes: b } => Present { value: b }
-        SessionAggregateUnmeasured => none
+        gunbc.ci_floor_measurement.SessionAggregateMeasured { bytes: b } => Present { value: b }
+        gunbc.ci_floor_measurement.SessionAggregateUnmeasured => none
       }
-    Regime1WorstCase { point: p } =>
+    gunbc.ci_floor_measurement.Regime1WorstCase { point: p } =>
       match p {
-        SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } =>
-          Present { value: measure_scale_fraction_floor(m: c, num: n, den: 1) }
-        SessionOperatingPointUnset => none
+        gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } =>
+          Present { value: std.measure.measure_scale_fraction_floor(m: c, num: n, den: 1) }
+        gunbc.ci_floor_measurement.SessionOperatingPointUnset => none
       }
-    SessionReservationModeUnset => none
+    gunbc.ci_floor_measurement.SessionReservationModeUnset => none
   }
 }
 
 fn host_session_slice_resolution(host: product.placement_supply.HostIdentity) -> HostSessionSliceResolution {
-  if host_carries_interactive_sessions(host: host) {
+  if gunbc.session_residency.host_carries_interactive_sessions(host: host) {
     match session_reservation_declared_bytes() {
       Present { value: b } => SessionSliceCharged { bytes: b }
       Absent =>
@@ -193,8 +193,8 @@ fn host_session_slice_resolution(host: product.placement_supply.HostIdentity) ->
 fn host_session_slice_bytes(host: product.placement_supply.HostIdentity) -> std.measure.ByteSize {
   match host_session_slice_resolution(host: host) {
     SessionSliceCharged { bytes: b } => b
-    SessionSliceNotApplicable => byte_size(0)
-    SessionSliceUnsized { reason: _ } => byte_size(0)
+    SessionSliceNotApplicable => std.measure.byte_size(0)
+    SessionSliceUnsized { reason: _ } => std.measure.byte_size(0)
   }
 }
 
@@ -216,17 +216,17 @@ type HostUsableRamResolution
 
 fn host_usable_ram_or_refusal(host: product.placement_supply.HostIdentity, r: gunbc.ci_floor_measurement.HostUsableRam) -> HostUsableRamResolution {
   match r {
-    HostUsableRamMeasured { bytes: b, provenance: _ } => HostUsableRamResolved { bytes: b }
-    HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => HostUsableRamResolved { bytes: b }
-    HostUsableRamUnmeasured =>
+    gunbc.ci_floor_measurement.HostUsableRamMeasured { bytes: b, provenance: _ } => HostUsableRamResolved { bytes: b }
+    gunbc.ci_floor_measurement.HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => HostUsableRamResolved { bytes: b }
+    gunbc.ci_floor_measurement.HostUsableRamUnmeasured =>
       HostUsableRamUnresolved {
         reason: concat("host OS-usable RAM is unclassified, so the ceiling every other charge in this budget is checked against is unknown: refuse to derive a runner width rather than borrow another host's MemTotal (which is how a correct sum acquires a fabricated premise). Classify it in gunbc.ci_floor_measurement gunbc_ci_host_usable_ram_for. Host: ", host)
       }
   }
 }
 
-fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: gunbc.ci_fleet.ComputeOffer, control_plane_placement: FabricControlPlanePlacement) -> DeploymentAccumulator {
-  match compute_host_primary_cpu(host: offer.supply.physical) {
+fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: gunbc.ci_fleet.ComputeOffer, control_plane_placement: gunbc.fabric_control_plane_charge.FabricControlPlanePlacement) -> DeploymentAccumulator {
+  match gunbc.fleet_intent.compute_host_primary_cpu(host: offer.supply.physical) {
     Absent =>
       DeploymentAccumulator {
         deployments: acc.deployments,
@@ -235,7 +235,7 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: gunbc.c
         total: acc.total,
       }
     Present { value: cpu } =>
-      match host_usable_ram_or_refusal(host: offer.supply.physical.identity, r: gunbc_ci_host_usable_ram_for(host: offer.supply.physical.identity)) {
+      match host_usable_ram_or_refusal(host: offer.supply.physical.identity, r: gunbc.ci_floor_measurement.gunbc_ci_host_usable_ram_for(host: offer.supply.physical.identity)) {
         HostUsableRamUnresolved { reason: rr } =>
           DeploymentAccumulator {
             deployments: acc.deployments,
@@ -245,7 +245,7 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: gunbc.c
           }
         HostUsableRamResolved { bytes: host_ram } => {
       let host_id = offer.supply.physical.identity
-      let headroom = oomd_actuation_floor(host: host_ram)
+      let headroom = gunbc.fleet_host_budget.oomd_actuation_floor(host: host_ram)
       match host_session_slice_resolution(host: host_id) {
         SessionSliceUnsized { reason: sr } =>
           DeploymentAccumulator {
@@ -254,7 +254,7 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: gunbc.c
             any_unfit: acc.any_unfit,
             total: acc.total,
           }
-        SessionSliceNotApplicable => accumulate_with_session_slice(acc: acc, offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: headroom, session_pool: byte_size(0), control_plane_placement: control_plane_placement)
+        SessionSliceNotApplicable => accumulate_with_session_slice(acc: acc, offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: headroom, session_pool: std.measure.byte_size(0), control_plane_placement: control_plane_placement)
         SessionSliceCharged { bytes: session_pool } => accumulate_with_session_slice(acc: acc, offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: headroom, session_pool: session_pool, control_plane_placement: control_plane_placement)
       }
         }
@@ -265,14 +265,14 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: gunbc.c
 fn accumulate_with_session_slice(
   acc: DeploymentAccumulator,
   offer: gunbc.ci_fleet.ComputeOffer,
-  cpu: extdeps.cpu.types.CpuFacts,
+  cpu: CpuFacts,
   host_id: product.placement_supply.HostIdentity,
   host_ram: std.measure.ByteSize,
   headroom: std.measure.ByteSize,
   session_pool: std.measure.ByteSize,
-  control_plane_placement: FabricControlPlanePlacement
+  control_plane_placement: gunbc.fabric_control_plane_charge.FabricControlPlanePlacement
 ) -> DeploymentAccumulator {
-      match host_overhead_or_refusal(host: host_id, o: gunbc_ci_host_fixed_overhead_for(host: host_id)) {
+      match host_overhead_or_refusal(host: host_id, o: gunbc.ci_floor_measurement.gunbc_ci_host_fixed_overhead_for(host: host_id)) {
         HostOverheadUnresolved { reason: orr } =>
           DeploymentAccumulator {
             deployments: acc.deployments,
@@ -281,31 +281,31 @@ fn accumulate_with_session_slice(
             total: acc.total,
           }
         HostOverheadResolved { bytes: overhead } =>
-      match compile_pool_bytes_for(
-        placement: gunbc_compile_pool_placement,
-        nproc: cpu_facts_threads(cpu: cpu),
+      match gunbc.fleet_host_budget.compile_pool_bytes_for(
+        placement: gunbc.host_layout.gunbc_compile_pool_placement,
+        nproc: extdeps.cpu.cpu_facts_threads(cpu: cpu),
         host: host_ram,
-        citation: jobserver_config
+        citation: extdeps.jobserver.jobserver_config
       ) {
-        CompilePoolUnresolved { reason: r } =>
+        gunbc.fleet_host_budget.CompilePoolUnresolved { reason: r } =>
           DeploymentAccumulator {
             deployments: acc.deployments,
             unsound_reason: if acc.unsound_reason == "" { concat("compile pool unresolved: ", r) } else { acc.unsound_reason },
             any_unfit: acc.any_unfit,
             total: acc.total,
           }
-        CompilePoolDerived { bytes: compile_pool } =>
-        match host_allocation_verdict(
+        gunbc.fleet_host_budget.CompilePoolDerived { bytes: compile_pool } =>
+        match gunbc.fleet_host_budget.host_allocation_verdict(
           host: host_ram,
           overhead: overhead,
           headroom: headroom,
-          runner_pool: gunbc_runner_pool_budget_for(host: host_id),
+          runner_pool: gunbc.fleet_host_budget.gunbc_runner_pool_budget_for(host: host_id),
           session_pool: session_pool,
           compile_pool: compile_pool,
-          control_plane: host_fabric_control_plane_claim_under(host: host_id, placement: control_plane_placement)
+          control_plane: gunbc.fabric_control_plane_charge.host_fabric_control_plane_claim_under(host: host_id, placement: control_plane_placement)
         ) {
-          HostAllocationConserves => {
-          let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
+          gunbc.fleet_host_budget.HostAllocationConserves => {
+          let dep = conservation_host_deployment(offer: offer, nproc: extdeps.cpu.cpu_facts_threads(cpu: cpu))
           DeploymentAccumulator {
             deployments: concat(acc.deployments, [dep]),
             unsound_reason: acc.unsound_reason,
@@ -313,14 +313,14 @@ fn accumulate_with_session_slice(
             total: acc.total + dep.runner_count,
           }
           }
-          HostAllocationOversubscribed =>
+          gunbc.fleet_host_budget.HostAllocationOversubscribed =>
           DeploymentAccumulator {
             deployments: acc.deployments,
             unsound_reason: if acc.unsound_reason == "" { concat("host allocation over-committed (runner_pool + session_pool + compile_pool + overhead + headroom exceeds host RAM): ", offer.supply.physical.identity) } else { acc.unsound_reason },
             any_unfit: acc.any_unfit,
             total: acc.total,
           }
-          HostAllocationUnchargeable { cause: c } =>
+          gunbc.fleet_host_budget.HostAllocationUnchargeable { cause: c } =>
           DeploymentAccumulator {
             deployments: acc.deployments,
             unsound_reason: if acc.unsound_reason == "" { concat(concat("host allocation unchargeable on ", offer.supply.physical.identity), concat(": ", c)) } else { acc.unsound_reason },
@@ -333,12 +333,12 @@ fn accumulate_with_session_slice(
 }
 
 fn runner_deployment_plan() -> RunnerDeploymentPlan {
-  runner_deployment_plan_under_placement(control_plane_placement: fabric_control_plane_placement)
+  runner_deployment_plan_under_placement(control_plane_placement: gunbc.fabric_control_plane_charge.fabric_control_plane_placement)
 }
 
-fn runner_deployment_plan_under_placement(control_plane_placement: FabricControlPlanePlacement) -> RunnerDeploymentPlan {
+fn runner_deployment_plan_under_placement(control_plane_placement: gunbc.fabric_control_plane_charge.FabricControlPlanePlacement) -> RunnerDeploymentPlan {
   let acc = fold(
-    fleet_intent_offers,
+    gunbc.ci_fleet.fleet_intent_offers,
     init: DeploymentAccumulator { deployments: [], unsound_reason: "", any_unfit: false, total: 0 },
     f: (a, o) => accumulate_conservation_deployment(acc: a, offer: o, control_plane_placement: control_plane_placement)
   )
@@ -381,15 +381,15 @@ type SessionReservationPlan
   | SessionReservationUnsound { reason: String }
 
 fn samples_covered(cap: std.measure.ByteSize) -> Int {
-  fold(gunbc_ci_per_session_peak_samples, init: 0, f: (acc, s) => if measure_le(a: s, b: cap) { acc + 1 } else { acc })
+  fold(gunbc.ci_floor_measurement.gunbc_ci_per_session_peak_samples, init: 0, f: (acc, s) => if std.measure.measure_le(a: s, b: cap) { acc + 1 } else { acc })
 }
 
 fn session_reservation_plan() -> SessionReservationPlan {
-  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode, oomd: gunbc_fleet_oomd_evidence) {
+  match resolve_session_slice(mode: gunbc.ci_floor_measurement.gunbc_ci_session_reservation_mode, oomd: gunbc.fleet_host_budget.gunbc_fleet_oomd_evidence) {
     SessionSliceUnresolved { reason: r } => SessionReservationUnsound { reason: r }
     SessionSliceResolved { bytes: _, per_session_cap: c, concurrency: n } =>
       SessionReservationDerived {
-        hosts: map(fleet_intent_offers, o => SessionHostReservation {
+        hosts: map(gunbc.ci_fleet.fleet_intent_offers, o => SessionHostReservation {
           identity: o.supply.physical.identity,
           session_count: n,
           per_session_reservation: c,
@@ -404,11 +404,11 @@ fn session_reservation_plan() -> SessionReservationPlan {
 }
 
 data gunbc_ci_count_field_measure_followup: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.measure",
     decl_name: "HardwareThreadCount",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -422,9 +422,9 @@ type OperatingPointRow {
 }
 
 fn evaluate_operating_point(cap: std.measure.ByteSize, n: Int) -> OperatingPointRow {
-  let slice = match resolve_session_slice(mode: gunbc.ci_floor_measurement.Regime1WorstCase { point: gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: cap, session_concurrency: n } }, oomd: gunbc_fleet_oomd_evidence) {
+  let slice = match resolve_session_slice(mode: gunbc.ci_floor_measurement.Regime1WorstCase { point: gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: cap, session_concurrency: n } }, oomd: gunbc.fleet_host_budget.gunbc_fleet_oomd_evidence) {
     SessionSliceResolved { bytes: b, per_session_cap: _, concurrency: _ } => b
-    SessionSliceUnresolved { reason: _ } => byte_size(0)
+    SessionSliceUnresolved { reason: _ } => std.measure.byte_size(0)
   }
   OperatingPointRow {
     per_session_cap: cap,
@@ -436,16 +436,16 @@ fn evaluate_operating_point(cap: std.measure.ByteSize, n: Int) -> OperatingPoint
 }
 
 data gunbc_ci_session_operating_curve_candidates: List<gunbc.ci_floor_measurement.SessionOperatingPoint> = [
-  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: byte_size(2211908157), session_concurrency: 16 },
-  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: byte_size(4294967296), session_concurrency: 16 },
-  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: byte_size(8879844884), session_concurrency: 6 },
-  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: byte_size(10737418240), session_concurrency: 6 },
-  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: byte_size(8879844884), session_concurrency: 4 },
+  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: std.measure.byte_size(2211908157), session_concurrency: 16 },
+  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: std.measure.byte_size(4294967296), session_concurrency: 16 },
+  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: std.measure.byte_size(8879844884), session_concurrency: 6 },
+  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: std.measure.byte_size(10737418240), session_concurrency: 6 },
+  gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: std.measure.byte_size(8879844884), session_concurrency: 4 },
 ]
 
 fn operating_curve() -> List<OperatingPointRow> {
   map(gunbc_ci_session_operating_curve_candidates, op => match op {
-    SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } => evaluate_operating_point(cap: c, n: n)
-    SessionOperatingPointUnset => evaluate_operating_point(cap: byte_size(0), n: 0)
+    gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } => evaluate_operating_point(cap: c, n: n)
+    gunbc.ci_floor_measurement.SessionOperatingPointUnset => evaluate_operating_point(cap: std.measure.byte_size(0), n: 0)
   })
 }

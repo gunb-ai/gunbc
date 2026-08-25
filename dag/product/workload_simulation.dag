@@ -1,5 +1,6 @@
 module product.workload_simulation
 
+
 // MONEY IS A CARRIER HERE, NOT A Nat WITH ITS UNIT IN THE FIELD NAME.
 // std.measure's own note states the rule this module initially broke: an amount is never
 // "folded into a bare amount with the unit in the field name". Every money field below is
@@ -44,7 +45,7 @@ type ArrivalShape
   | DiurnalArrival { trough: std.nat.Nat, peak: std.nat.Nat, period_slots: std.nat.Nat, busy_slots: std.nat.Nat }
   | BurstyArrival { base: std.nat.Nat, burst: std.nat.Nat, every_slots: std.nat.Nat, burst_width: std.nat.Nat }
 
-fn arrival_label(s: ArrivalShape) -> NonEmptyStr {
+fn arrival_label(s: ArrivalShape) -> std.types.NonEmptyStr {
   match s {
     FlatArrival { concurrent } => "flat",
     DiurnalArrival { trough, peak, period_slots, busy_slots } => "diurnal",
@@ -83,10 +84,10 @@ fn concurrency_at(s: ArrivalShape, slot: std.nat.Nat) -> std.nat.Nat {
 // simulation that dropped it would price owned capacity at its marginal cost and conclude
 // that owning is always free.
 type SupplyLane {
-  label: NonEmptyStr
+  label: std.types.NonEmptyStr
   capacity: std.nat.Nat
-  variable_per_slot: MoneyAmountMicro
-  committed_per_slot: MoneyAmountMicro
+  variable_per_slot: std.measure.MoneyAmountMicro
+  committed_per_slot: std.measure.MoneyAmountMicro
   billing_quantum_slots: std.nat.Nat
 }
 
@@ -121,7 +122,7 @@ fn billed_slots_per_job(quantum_slots: std.nat.Nat) -> std.nat.Nat {
 // cheapest ask.
 type PlacementAccum {
   remaining: std.nat.Nat
-  variable_spend: MoneyAmountMicro
+  variable_spend: std.measure.MoneyAmountMicro
   placed_committed: std.nat.Nat
   placed_variable: std.nat.Nat
   unplaced: std.nat.Nat
@@ -131,17 +132,17 @@ type PlacementAccum {
 // count to ask "is this greater than zero" is a predicate on the value, not arithmetic across
 // units, so it does not reintroduce the mixing the carrier exists to forbid.
 fn lane_is_committed(lane: SupplyLane) -> Bool {
-  money_amount_micro_count(m: lane.committed_per_slot) > 0
+  std.measure.money_amount_micro_count(m: lane.committed_per_slot) > 0
 }
 
 fn place_on_lane(acc: PlacementAccum, lane: SupplyLane) -> PlacementAccum {
-  let taken = nat_min(a: acc.remaining, b: lane.capacity)
+  let taken = std.nat.nat_min(a: acc.remaining, b: lane.capacity)
   let billed = taken * billed_slots_per_job(quantum_slots: lane.billing_quantum_slots)
   PlacementAccum {
     remaining: acc.remaining - taken,
-    variable_spend: measure_add(
+    variable_spend: std.measure.measure_add(
       a: acc.variable_spend,
-      b: measure_scale_fraction_floor(m: lane.variable_per_slot, num: billed, den: 1),
+      b: std.measure.measure_scale_fraction_floor(m: lane.variable_per_slot, num: billed, den: 1),
     ),
     placed_committed: if lane_is_committed(lane: lane) { acc.placed_committed + taken } else { acc.placed_committed },
     placed_variable: if lane_is_committed(lane: lane) { acc.placed_variable } else { acc.placed_variable + taken },
@@ -152,7 +153,7 @@ fn place_on_lane(acc: PlacementAccum, lane: SupplyLane) -> PlacementAccum {
 fn place_slot(lanes: List<SupplyLane>, concurrent: std.nat.Nat) -> PlacementAccum {
   let seeded = PlacementAccum {
     remaining: concurrent,
-    variable_spend: money_amount_micro(count: 0),
+    variable_spend: std.measure.money_amount_micro(count: 0),
     placed_committed: 0,
     placed_variable: 0,
     unplaced: 0,
@@ -172,7 +173,7 @@ fn place_slot(lanes: List<SupplyLane>, concurrent: std.nat.Nat) -> PlacementAccu
 // ---------------------------------------------------------------------------------------
 
 type RunAccum {
-  variable_spend: MoneyAmountMicro
+  variable_spend: std.measure.MoneyAmountMicro
   committed_slot_jobs: std.nat.Nat
   variable_slot_jobs: std.nat.Nat
   unplaced_slot_jobs: std.nat.Nat
@@ -182,7 +183,7 @@ type RunAccum {
 
 fn run_step(acc: RunAccum, placed: PlacementAccum, concurrent: std.nat.Nat) -> RunAccum {
   RunAccum {
-    variable_spend: measure_add(a: acc.variable_spend, b: placed.variable_spend),
+    variable_spend: std.measure.measure_add(a: acc.variable_spend, b: placed.variable_spend),
     committed_slot_jobs: acc.committed_slot_jobs + placed.placed_committed,
     variable_slot_jobs: acc.variable_slot_jobs + placed.placed_variable,
     unplaced_slot_jobs: acc.unplaced_slot_jobs + placed.unplaced,
@@ -191,13 +192,13 @@ fn run_step(acc: RunAccum, placed: PlacementAccum, concurrent: std.nat.Nat) -> R
   }
 }
 
-fn lane_committed_total(lanes: List<SupplyLane>, slots: std.nat.Nat) -> MoneyAmountMicro {
+fn lane_committed_total(lanes: List<SupplyLane>, slots: std.nat.Nat) -> std.measure.MoneyAmountMicro {
   fold(
     lanes,
-    init: money_amount_micro(count: 0),
-    f: (acc, lane) => measure_add(
+    init: std.measure.money_amount_micro(count: 0),
+    f: (acc, lane) => std.measure.measure_add(
       a: acc,
-      b: measure_scale_fraction_floor(m: lane.committed_per_slot, num: slots, den: 1),
+      b: std.measure.measure_scale_fraction_floor(m: lane.committed_per_slot, num: slots, den: 1),
     ),
   )
 }
@@ -215,11 +216,11 @@ fn committed_capacity_total(lanes: List<SupplyLane>) -> std.nat.Nat {
 // quietly dropping the job, either of which would make the total look affordable by
 // pricing work that never ran.
 type SimulationResult {
-  arrival: NonEmptyStr
+  arrival: std.types.NonEmptyStr
   slots: std.nat.Nat
-  variable_spend: MoneyAmountMicro
-  committed_spend: MoneyAmountMicro
-  total_spend: MoneyAmountMicro
+  variable_spend: std.measure.MoneyAmountMicro
+  committed_spend: std.measure.MoneyAmountMicro
+  total_spend: std.measure.MoneyAmountMicro
   committed_slot_jobs: std.nat.Nat
   variable_slot_jobs: std.nat.Nat
   unplaced_slot_jobs: std.nat.Nat
@@ -239,9 +240,9 @@ fn run_one_slot(acc: RunAccum, shape: ArrivalShape, lanes: List<SupplyLane>, slo
 // capacity and no slots both force committed_slot_jobs to zero, so the quotient is zero
 // either way and nat_max only keeps the division total.
 fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: std.nat.Nat) -> SimulationResult {
-  let grid = nat_range_inclusive(lo: 0, hi: std.nat.nat_max(a: slots, b: 1) - 1)
+  let grid = std.nat.nat_range_inclusive(lo: 0, hi: std.nat.nat_max(a: slots, b: 1) - 1)
   let seeded = RunAccum {
-    variable_spend: money_amount_micro(count: 0),
+    variable_spend: std.measure.money_amount_micro(count: 0),
     committed_slot_jobs: 0,
     variable_slot_jobs: 0,
     unplaced_slot_jobs: 0,
@@ -256,7 +257,7 @@ fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: std.nat.Nat) ->
     slots: slots,
     variable_spend: run.variable_spend,
     committed_spend: committed,
-    total_spend: measure_add(a: run.variable_spend, b: committed),
+    total_spend: std.measure.measure_add(a: run.variable_spend, b: committed),
     committed_slot_jobs: run.committed_slot_jobs,
     variable_slot_jobs: run.variable_slot_jobs,
     unplaced_slot_jobs: run.unplaced_slot_jobs,
@@ -276,18 +277,18 @@ fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: std.nat.Nat) ->
 // always is once bought, and which is the comparison that talks operators into capacity
 // they cannot fill.
 type AcquisitionVerdict
-  = CommitmentPaysOff { saved: MoneyAmountMicro, occupancy_permille: std.nat.Nat }
-  | CommitmentCostsMore { excess: MoneyAmountMicro, occupancy_permille: std.nat.Nat }
+  = CommitmentPaysOff { saved: std.measure.MoneyAmountMicro, occupancy_permille: std.nat.Nat }
+  | CommitmentCostsMore { excess: std.measure.MoneyAmountMicro, occupancy_permille: std.nat.Nat }
   | CommitmentBreaksEven { occupancy_permille: std.nat.Nat }
-  | VerdictRefusedUnplacedWork { unplaced_slot_jobs: NonEmptyStr }
+  | VerdictRefusedUnplacedWork { unplaced_slot_jobs: std.types.NonEmptyStr }
 
 // std.measure carries add, scale and compare but no subtraction, and the gap is principled:
 // Nat-backed measures cannot represent a negative result, so a general difference would need
 // a refusal arm for the case where the subtrahend is larger. Here both call sites have
 // already established the ordering with measure_le, so the difference is total by
 // construction and the guard belongs in the caller's branch rather than in a carrier.
-fn money_difference(larger: MoneyAmountMicro, smaller: MoneyAmountMicro) -> MoneyAmountMicro {
-  money_amount_micro(count: money_amount_micro_count(m: larger) - money_amount_micro_count(m: smaller))
+fn money_difference(larger: std.measure.MoneyAmountMicro, smaller: std.measure.MoneyAmountMicro) -> std.measure.MoneyAmountMicro {
+  std.measure.money_amount_micro(count: std.measure.money_amount_micro_count(m: larger) - std.measure.money_amount_micro_count(m: smaller))
 }
 
 fn acquisition_verdict(with_commitment: SimulationResult, all_rented: SimulationResult) -> AcquisitionVerdict {
@@ -296,13 +297,13 @@ fn acquisition_verdict(with_commitment: SimulationResult, all_rented: Simulation
       unplaced_slot_jobs: "A portfolio left work unplaced, so the two totals price different amounts of work and cannot be compared. Raise a lane's bound or admit the demand cannot be served; do not read the cheaper number.",
     }
   } else {
-    if !measure_le(a: all_rented.total_spend, b: with_commitment.total_spend) {
+    if !std.measure.measure_le(a: all_rented.total_spend, b: with_commitment.total_spend) {
       CommitmentPaysOff {
         saved: money_difference(larger: all_rented.total_spend, smaller: with_commitment.total_spend),
         occupancy_permille: with_commitment.committed_occupancy_permille,
       }
     } else {
-      if !measure_le(a: with_commitment.total_spend, b: all_rented.total_spend) {
+      if !std.measure.measure_le(a: with_commitment.total_spend, b: all_rented.total_spend) {
         CommitmentCostsMore {
           excess: money_difference(larger: with_commitment.total_spend, smaller: all_rented.total_spend),
           occupancy_permille: with_commitment.committed_occupancy_permille,

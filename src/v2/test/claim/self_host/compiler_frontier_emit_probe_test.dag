@@ -2,8 +2,8 @@ module v2.test.self_host.compiler_frontier_emit_probe
 
 
 test fn frontier_classify_unlisted_reason_refuses_holds() -> Bool {
-  match frontier_classify_rejection_reason(reason: ^frontier_probe_unlisted_reason_red_control) {
-    UnknownProbeCause { reason: reason } => reason == ^frontier_probe_unlisted_reason_red_control
+  match v2.compiler.self_host.frontier_probe_types.frontier_classify_rejection_reason(reason: ^frontier_probe_unlisted_reason_red_control) {
+    v2.compiler.self_host.frontier_probe_types.UnknownProbeCause { reason: reason } => reason == ^frontier_probe_unlisted_reason_red_control
     _ => false
   }
 }

@@ -1,7 +1,7 @@
 module test.claim.push_event_witness_wet
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data push_event_fixture_path: String = "dag/test/fixture/github_push_event/main_push.json"
 
@@ -9,22 +9,22 @@ data push_event_fixture_path: String = "dag/test/fixture/github_push_event/main_
 data real_execution_home_doc: String = "These witnesses drive real Filesystem.Read effects (extdeps.filesystem.filesystem_io has no mock_response), so the hermetic discovery corpus refuses them by construction. Excluded from discovery (gunbc.ci_layer_roots witness_exclusion_substrings) and re-enrolled as declared Wet explicit entries (bin_witness_wet_entries), same lane as the srv3 install-media real-execution witnesses."
 
 test fn witness_push_before_from_fixture_file() -> Bool {
-  match push_before_from_event_path(path: push_event_fixture_path) {
-    PushBeforeObserved { sha: sha } =>
+  match extdeps.github.push_event.push_before_from_event_path(path: push_event_fixture_path) {
+    extdeps.github.push_event.PushBeforeObserved { sha: sha } =>
       (sha as String) == "1111111111111111111111111111111111111111"
-    PushBeforeAbsent { detail: _ } => false
-    PushBeforeZeroSha => false
-    PushBeforeMalformed { detail: _ } => false
-    PushEventPayloadReadRefused { path: _, cause: _ } => false
+    extdeps.github.push_event.PushBeforeAbsent { detail: _ } => false
+    extdeps.github.push_event.PushBeforeZeroSha => false
+    extdeps.github.push_event.PushBeforeMalformed { detail: _ } => false
+    extdeps.github.push_event.PushEventPayloadReadRefused { path: _, cause: _ } => false
   }
 }
 
 test fn witness_push_before_payload_read_refused_on_missing_path() -> Bool {
-  match push_before_from_event_path(path: "__gunbc_missing_push_event_fixture__.json") {
-    PushEventPayloadReadRefused { path: _, cause: _ } => true
-    PushBeforeObserved { sha: _ } => false
-    PushBeforeAbsent { detail: _ } => false
-    PushBeforeZeroSha => false
-    PushBeforeMalformed { detail: _ } => false
+  match extdeps.github.push_event.push_before_from_event_path(path: "__gunbc_missing_push_event_fixture__.json") {
+    extdeps.github.push_event.PushEventPayloadReadRefused { path: _, cause: _ } => true
+    extdeps.github.push_event.PushBeforeObserved { sha: _ } => false
+    extdeps.github.push_event.PushBeforeAbsent { detail: _ } => false
+    extdeps.github.push_event.PushBeforeZeroSha => false
+    extdeps.github.push_event.PushBeforeMalformed { detail: _ } => false
   }
 }

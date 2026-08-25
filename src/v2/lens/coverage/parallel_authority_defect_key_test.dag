@@ -1,5 +1,6 @@
 module v2.test.lens_coverage.parallel_authority_defect_key
 
+
 data parallel_authority_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^parallel_authority_symbol } },
   children: [],
@@ -10,6 +11,6 @@ data expected_parallel_authority_acceptance: v2.lens.coverage.CoverageDefectAcce
   concern: v2.lens.coverage.CoverageDefectAcceptanceKey { lens: v2.lens.coverage.ParallelAuthority }
 }
 
-test fn parallel_authority_defect_key_claim_holds() -> v2.std.logic.Bool {
+test fn parallel_authority_defect_key_claim_holds() -> Bool {
   v2.lens.coverage.coverage_defect_parallel_authority == expected_parallel_authority_acceptance
 }

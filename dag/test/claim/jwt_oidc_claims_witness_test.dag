@@ -34,23 +34,23 @@ test fn registered_claims_are_all_optional() -> Bool {
 
 // THE COLON RULE IS NOW CHECKED, AND THE REFUSAL IS THE POINT. RFC 7519 section 2 requires that a StringOrURI containing a colon be a URI; the previous brand accepted any NonEmptyStr, so the rule was documented and unenforced.\n\nThe discriminating input is 9:30 — it contains a colon and its scheme position starts with a digit, which RFC 3986 forbids. A brand admits it silently. The decoder refuses it. The two positive cases bracket the refusal: a bare name with no colon is admissible and stays bare, and urn:openai:amr:passkey is admissible and decodes its scheme as urn, which extdeps.uri's closed scheme enum could not have represented.
 test fn bare_string_without_colon_is_admitted() -> Bool {
-  match jwt_string_or_uri_of_wire(raw: "pop" as std.types.NonEmptyStr) {
-    StringOrUriRefused { raw: _, reason: _ } => false
-    StringOrUriDecoded { value } =>
+  match extdeps.auth.jwt.jwt_string_or_uri_of_wire(raw: "pop" as std.types.NonEmptyStr) {
+    extdeps.auth.jwt.StringOrUriRefused { raw: _, reason: _ } => false
+    extdeps.auth.jwt.StringOrUriDecoded { value } =>
       match value {
-        JwtUriString { value: _, scheme: _ } => false
-        JwtBareString { value: v } => (v as String) == "pop"
+        extdeps.auth.jwt.JwtUriString { value: _, scheme: _ } => false
+        extdeps.auth.jwt.JwtBareString { value: v } => (v as String) == "pop"
       }
   }
 }
 
 test fn urn_scheme_is_admitted_and_decoded() -> Bool {
-  match jwt_string_or_uri_of_wire(raw: "urn:openai:amr:passkey" as std.types.NonEmptyStr) {
-    StringOrUriRefused { raw: _, reason: _ } => false
-    StringOrUriDecoded { value } =>
+  match extdeps.auth.jwt.jwt_string_or_uri_of_wire(raw: "urn:openai:amr:passkey" as std.types.NonEmptyStr) {
+    extdeps.auth.jwt.StringOrUriRefused { raw: _, reason: _ } => false
+    extdeps.auth.jwt.StringOrUriDecoded { value } =>
       match value {
-        JwtBareString { value: _ } => false
-        JwtUriString { value: v, scheme } =>
+        extdeps.auth.jwt.JwtBareString { value: _ } => false
+        extdeps.auth.jwt.JwtUriString { value: v, scheme } =>
           (scheme as String) == "urn"
             && (v as String) == "urn:openai:amr:passkey"
       }
@@ -58,17 +58,17 @@ test fn urn_scheme_is_admitted_and_decoded() -> Bool {
 }
 
 test fn colon_value_that_is_not_a_uri_is_refused() -> Bool {
-  match jwt_string_or_uri_of_wire(raw: "9:30" as std.types.NonEmptyStr) {
-    StringOrUriDecoded { value: _ } => false
-    StringOrUriRefused { raw, reason: _ } => (raw as String) == "9:30"
+  match extdeps.auth.jwt.jwt_string_or_uri_of_wire(raw: "9:30" as std.types.NonEmptyStr) {
+    extdeps.auth.jwt.StringOrUriDecoded { value: _ } => false
+    extdeps.auth.jwt.StringOrUriRefused { raw, reason: _ } => (raw as String) == "9:30"
   }
 }
 
 test fn string_or_uri_round_trips_to_its_wire_form() -> Bool {
-  match jwt_string_or_uri_of_wire(raw: "https://auth.openai.com" as std.types.NonEmptyStr) {
-    StringOrUriRefused { raw: _, reason: _ } => false
-    StringOrUriDecoded { value } =>
-      (jwt_string_or_uri_wire(value: value) as String) == "https://auth.openai.com"
+  match extdeps.auth.jwt.jwt_string_or_uri_of_wire(raw: "https://auth.openai.com" as std.types.NonEmptyStr) {
+    extdeps.auth.jwt.StringOrUriRefused { raw: _, reason: _ } => false
+    extdeps.auth.jwt.StringOrUriDecoded { value } =>
+      (extdeps.auth.jwt.jwt_string_or_uri_wire(value: value) as String) == "https://auth.openai.com"
   }
 }
 
@@ -84,14 +84,14 @@ fn multiple_audience() -> extdeps.auth.jwt.JwtAudience {
 }
 
 test fn audience_keeps_its_wire_encoding() -> Bool {
-  let same_values = count(jwt_audience_values(audience: single_audience())) == 1
-    && count(jwt_audience_values(audience: multiple_audience())) == 1
+  let same_values = count(extdeps.auth.jwt.jwt_audience_values(audience: single_audience())) == 1
+    && count(extdeps.auth.jwt.jwt_audience_values(audience: multiple_audience())) == 1
   let distinguishable = match single_audience() {
-    JwtAudienceMultiple { values: _ } => false
-    JwtAudienceSingle { value: _ } =>
+    extdeps.auth.jwt.JwtAudienceMultiple { values: _ } => false
+    extdeps.auth.jwt.JwtAudienceSingle { value: _ } =>
       match multiple_audience() {
-        JwtAudienceSingle { value: _ } => false
-        JwtAudienceMultiple { values: _ } => true
+        extdeps.auth.jwt.JwtAudienceSingle { value: _ } => false
+        extdeps.auth.jwt.JwtAudienceMultiple { values: _ } => true
       }
   }
   same_values && distinguishable
@@ -100,88 +100,88 @@ test fn audience_keeps_its_wire_encoding() -> Bool {
 data numeric_date_note: String = "A FRACTIONAL NumericDate REFUSES INSTEAD OF ROUNDING. RFC 7519 section 2 admits non-integer values; an Int carrier silently rounds them, and rounding an expiry moves the instant the issuer named in one direction or the other without ever reporting that it did.\\n\\nThe positive claim pins the observed codex pair — iat and exp exactly 3600 seconds apart — so the arithmetic is still exercised on the case that actually occurs, and it compares through std.measure.Second rather than through a bare Int, so a lifetime returned in the wrong unit cannot satisfy it. The two negative claims are the discriminating ones: a fractional expiry produces a typed refusal where a truncating model would return a number and pass, and an expiry preceding issuance refuses where a clamp would report zero and look like an expired credential."
 
 test fn whole_second_lifetime_is_exact() -> Bool {
-  match numeric_date_lifetime(
+  match extdeps.auth.jwt.numeric_date_lifetime(
     issued: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 1000000 },
     expires: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 1003600 },
   ) {
-    LifetimeNotWholeSeconds { reason: _ } => false
-    LifetimeExpiryPrecedesIssuance { issued_at: _, expires_at: _ } => false
-    LifetimeWholeSeconds { seconds } =>
-      second_count(s: seconds) == second_count(s: codex_id_token_observed_lifetime)
+    extdeps.auth.jwt.LifetimeNotWholeSeconds { reason: _ } => false
+    extdeps.auth.jwt.LifetimeExpiryPrecedesIssuance { issued_at: _, expires_at: _ } => false
+    extdeps.auth.jwt.LifetimeWholeSeconds { seconds } =>
+      std.measure.second_count(s: seconds) == std.measure.second_count(s: extdeps.llm.codex_auth.codex_id_token_observed_lifetime)
   }
 }
 
 test fn fractional_date_refuses_rather_than_rounding() -> Bool {
-  match numeric_date_lifetime(
+  match extdeps.auth.jwt.numeric_date_lifetime(
     issued: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 1000000 },
     expires: extdeps.auth.jwt.NumericDateFractionalSeconds {
       whole_seconds: 1003600,
       fractional_digits: "5" as std.types.NonEmptyStr,
     },
   ) {
-    LifetimeWholeSeconds { seconds: _ } => false
-    LifetimeExpiryPrecedesIssuance { issued_at: _, expires_at: _ } => false
-    LifetimeNotWholeSeconds { reason: _ } => true
+    extdeps.auth.jwt.LifetimeWholeSeconds { seconds: _ } => false
+    extdeps.auth.jwt.LifetimeExpiryPrecedesIssuance { issued_at: _, expires_at: _ } => false
+    extdeps.auth.jwt.LifetimeNotWholeSeconds { reason: _ } => true
   }
 }
 
 test fn expiry_before_issuance_refuses_rather_than_clamping() -> Bool {
-  match numeric_date_lifetime(
+  match extdeps.auth.jwt.numeric_date_lifetime(
     issued: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 1003600 },
     expires: extdeps.auth.jwt.NumericDateWholeSeconds { seconds: 1000000 },
   ) {
-    LifetimeWholeSeconds { seconds: _ } => false
-    LifetimeNotWholeSeconds { reason: _ } => false
-    LifetimeExpiryPrecedesIssuance { issued_at, expires_at } =>
+    extdeps.auth.jwt.LifetimeWholeSeconds { seconds: _ } => false
+    extdeps.auth.jwt.LifetimeNotWholeSeconds { reason: _ } => false
+    extdeps.auth.jwt.LifetimeExpiryPrecedesIssuance { issued_at, expires_at } =>
       issued_at == 1003600 && expires_at == 1000000
   }
 }
 
 // THE URI ARM NAMES A SHAPE, NOT AN OWNER. RFC 8176 registers short names and says nothing about who may use a URI, so classifying every colon-bearing amr value as PRIVATE was an inference the specification does not license.\n\nAll four values observed in the codex token are decoded here through the shared StringOrURI rule: two registered short names and two URI-valued methods. The refusal case is the one the old local colon test could not produce — a colon-bearing value that is not a valid URI was previously filed as a vendor method, and is now refused.
 fn amr_is_uri_valued(raw: std.types.NonEmptyStr) -> Bool {
-  match oidc_amr_of_wire(raw: raw) {
-    AmrRefused { raw: _, reason: _ } => false
-    AmrDecoded { method } =>
+  match extdeps.auth.oidc.oidc_amr_of_wire(raw: raw) {
+    extdeps.auth.oidc.AmrRefused { raw: _, reason: _ } => false
+    extdeps.auth.oidc.AmrDecoded { method } =>
       match method {
-        AmrUriValuedMethod { value: _ } => true
+        extdeps.auth.oidc.AmrUriValuedMethod { value: _ } => true
         _ => false
       }
   }
 }
 
 fn amr_is_registered_pop(raw: std.types.NonEmptyStr) -> Bool {
-  match oidc_amr_of_wire(raw: raw) {
-    AmrRefused { raw: _, reason: _ } => false
-    AmrDecoded { method } =>
+  match extdeps.auth.oidc.oidc_amr_of_wire(raw: raw) {
+    extdeps.auth.oidc.AmrRefused { raw: _, reason: _ } => false
+    extdeps.auth.oidc.AmrDecoded { method } =>
       match method {
-        AmrProofOfPossession => true
+        extdeps.auth.oidc.AmrProofOfPossession => true
         _ => false
       }
   }
 }
 
 test fn observed_amr_values_decode_by_shape() -> Bool {
-  count(codex_observed_id_token_amr_wire) == 4
+  count(extdeps.llm.codex_auth.codex_observed_id_token_amr_wire) == 4
     && amr_is_registered_pop(raw: "pop" as std.types.NonEmptyStr)
     && amr_is_uri_valued(raw: "urn:openai:amr:passkey" as std.types.NonEmptyStr)
     && amr_is_uri_valued(raw: "urn:openai:amr:google" as std.types.NonEmptyStr)
 }
 
 test fn unregistered_short_name_is_not_forced_into_the_uri_arm() -> Bool {
-  match oidc_amr_of_wire(raw: "hwk" as std.types.NonEmptyStr) {
-    AmrRefused { raw: _, reason: _ } => false
-    AmrDecoded { method } =>
+  match extdeps.auth.oidc.oidc_amr_of_wire(raw: "hwk" as std.types.NonEmptyStr) {
+    extdeps.auth.oidc.AmrRefused { raw: _, reason: _ } => false
+    extdeps.auth.oidc.AmrDecoded { method } =>
       match method {
-        AmrUnregisteredName { name } => (name as String) == "hwk"
+        extdeps.auth.oidc.AmrUnregisteredName { name } => (name as String) == "hwk"
         _ => false
       }
   }
 }
 
 test fn malformed_colon_amr_refuses() -> Bool {
-  match oidc_amr_of_wire(raw: "9:30" as std.types.NonEmptyStr) {
-    AmrDecoded { method: _ } => false
-    AmrRefused { raw, reason: _ } => (raw as String) == "9:30"
+  match extdeps.auth.oidc.oidc_amr_of_wire(raw: "9:30" as std.types.NonEmptyStr) {
+    extdeps.auth.oidc.AmrDecoded { method: _ } => false
+    extdeps.auth.oidc.AmrRefused { raw, reason: _ } => (raw as String) == "9:30"
   }
 }
 
@@ -233,7 +233,7 @@ test fn minimal_conforming_id_token_is_representable() -> Bool {
 }
 
 test fn id_token_projects_onto_registered_claims() -> Bool {
-  let r = oidc_id_token_registered_claims(claims: minimal_id_token())
+  let r = extdeps.auth.oidc.oidc_id_token_registered_claims(claims: minimal_id_token())
   match r.issued_at {
     Absent => false
     Present { value: _ } =>
@@ -248,7 +248,7 @@ data observation_is_not_requirement_note: String = "THE PROFILE RECORDS PRESENCE
 
 fn profile_marks_present(claim: String) -> Bool {
   any(
-    codex_observed_id_token_claim_profile,
+    extdeps.llm.codex_auth.codex_observed_id_token_claim_profile,
     row => (row.claim as String) == claim && row.observed_present,
   )
 }

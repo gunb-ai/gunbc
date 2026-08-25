@@ -36,7 +36,7 @@ fn derive_codex_provider_runtime_receipt(
   bundled_executable: std.types.FilePath,
   bundle_receipt_identity_hex: std.types.NonEmptyStr,
 ) -> CodexProviderRuntimeReceipt? {
-  match provider_runtime_placement_for_host(host: host) {
+  match gunbc.host_layout.provider_runtime_placement_for_host(host: host) {
     Absent => none
     Present { value: placement } =>
       Present {
@@ -44,7 +44,7 @@ fn derive_codex_provider_runtime_receipt(
           host: host,
           placement: placement,
           bundled_executable: bundled_executable,
-          version_marker: codex_runtime_version_identity_marker() as std.types.NonEmptyStr,
+          version_marker: gunbc.package_delivery.codex_runtime_version_identity_marker() as std.types.NonEmptyStr,
           bundle_receipt_identity_hex: bundle_receipt_identity_hex,
           process_fingerprint: CodexProcessFingerprintUnobserved {
             reason: codex_process_fingerprint_unobserved_reason,

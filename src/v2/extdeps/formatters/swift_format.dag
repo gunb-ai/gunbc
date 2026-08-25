@@ -2,8 +2,8 @@ module v2.extdeps.formatters.swift_format
 
 
 type SwiftFormatIndentation
-  = SwiftFormatSpaces { count: Outcome<v2.std.refinement.PositiveInt> }
-  | SwiftFormatTabs { count: Outcome<v2.std.refinement.PositiveInt> }
+  = SwiftFormatSpaces { count: v2.std.diagnostic.Outcome<v2.std.refinement.PositiveInt> }
+  | SwiftFormatTabs { count: v2.std.diagnostic.Outcome<v2.std.refinement.PositiveInt> }
 
 type SwiftFormatFileScopedAccessLevel
   = SwiftFormatPrivate
@@ -33,12 +33,12 @@ type SwiftFormatOrderedImports {
 }
 
 type SwiftFormatConfig {
-  version: Outcome<v2.std.refinement.ExactOneInt>
-  line_length: Outcome<v2.std.refinement.PositiveInt>
+  version: v2.std.diagnostic.Outcome<v2.std.refinement.ExactOneInt>
+  line_length: v2.std.diagnostic.Outcome<v2.std.refinement.PositiveInt>
   indentation: SwiftFormatIndentation,
-  tab_width: Outcome<v2.std.refinement.PositiveInt>
-  maximum_blank_lines: Outcome<v2.std.refinement.NonNegativeInt>
-  spaces_before_end_of_line_comments: Outcome<v2.std.refinement.NonNegativeInt>
+  tab_width: v2.std.diagnostic.Outcome<v2.std.refinement.PositiveInt>
+  maximum_blank_lines: v2.std.diagnostic.Outcome<v2.std.refinement.NonNegativeInt>
+  spaces_before_end_of_line_comments: v2.std.diagnostic.Outcome<v2.std.refinement.NonNegativeInt>
   respects_existing_line_breaks: Bool,
   line_break_before_control_flow_keywords: Bool,
   line_break_before_each_argument: Bool,
@@ -59,12 +59,12 @@ type SwiftFormatConfig {
 }
 
 data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
-  version: exact_one_int_authoritative_literal(value: 1),
-  line_length: positive_int_authoritative_literal(value: 100),
-  indentation: SwiftFormatSpaces { count: positive_int_authoritative_literal(value: 2) },
-  tab_width: positive_int_authoritative_literal(value: 8),
-  maximum_blank_lines: non_negative_int_authoritative_literal(value: 1),
-  spaces_before_end_of_line_comments: non_negative_int_authoritative_literal(value: 2),
+  version: v2.std.refinement.exact_one_int_authoritative_literal(value: 1),
+  line_length: v2.std.refinement.positive_int_authoritative_literal(value: 100),
+  indentation: SwiftFormatSpaces { count: v2.std.refinement.positive_int_authoritative_literal(value: 2) },
+  tab_width: v2.std.refinement.positive_int_authoritative_literal(value: 8),
+  maximum_blank_lines: v2.std.refinement.non_negative_int_authoritative_literal(value: 1),
+  spaces_before_end_of_line_comments: v2.std.refinement.non_negative_int_authoritative_literal(value: 2),
   respects_existing_line_breaks: true,
   line_break_before_control_flow_keywords: false,
   line_break_before_each_argument: false,
@@ -94,5 +94,5 @@ data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
 type SwiftFormatConfigPatch = v2.std.patch.ConfigPatchRecord<SwiftFormatConfig>
 
 fn swift_format_layer(base: SwiftFormatConfig, patch: SwiftFormatConfigPatch) -> SwiftFormatConfig {
-  config_patch_layer(base: base, patch: patch)
+  v2.std.patch.config_patch_layer(base: base, patch: patch)
 }

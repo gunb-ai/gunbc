@@ -11,11 +11,11 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 // exists to prevent - so every population assertion below is paired with its
 // mirror.
 
-fn work_of(principal: NonEmptyStr, key: product.fabric.identity.WorkKey) -> product.fabric.identity.FabricIdentity<NonEmptyStr, product.fabric.identity.WorkKey> {
+fn work_of(principal: std.types.NonEmptyStr, key: product.fabric.identity.WorkKey) -> product.fabric.identity.FabricIdentity<std.types.NonEmptyStr, product.fabric.identity.WorkKey> {
   product.fabric.identity.FabricIdentity { principal: principal, key: key }
 }
 
-fn demand_id(principal: NonEmptyStr, key: product.fabric.identity.DemandKey) -> product.fabric.identity.FabricIdentity<NonEmptyStr, product.fabric.identity.DemandKey> {
+fn demand_id(principal: std.types.NonEmptyStr, key: product.fabric.identity.DemandKey) -> product.fabric.identity.FabricIdentity<std.types.NonEmptyStr, product.fabric.identity.DemandKey> {
   product.fabric.identity.FabricIdentity { principal: principal, key: key }
 }
 
@@ -41,11 +41,11 @@ fn attaching_satisfaction() -> product.fabric.demand.SatisfactionRequirement {
 }
 
 fn demand_of(
-  principal: NonEmptyStr,
+  principal: std.types.NonEmptyStr,
   key: product.fabric.identity.DemandKey,
   work_key: product.fabric.identity.WorkKey,
   satisfaction: product.fabric.demand.SatisfactionRequirement,
-) -> product.fabric.demand.Demand<NonEmptyStr> {
+) -> product.fabric.demand.Demand<std.types.NonEmptyStr> {
   product.fabric.demand.Demand {
     id: demand_id(principal: principal, key: key),
     work: work_of(principal: principal, key: work_key),
@@ -63,7 +63,7 @@ fn demand_of(
 // identity. Reproducing that here rather than fabricating two work identities
 // is what makes the withdrawal test discriminate at all.
 
-fn github_demand() -> product.fabric.demand.Demand<NonEmptyStr> {
+fn github_demand() -> product.fabric.demand.Demand<std.types.NonEmptyStr> {
   product.fabric.demand.Demand {
     id: demand_id(principal: "github", key: "demand-gh"),
     work: work_of(principal: "fabric", key: "work-1"),
@@ -74,7 +74,7 @@ fn github_demand() -> product.fabric.demand.Demand<NonEmptyStr> {
   }
 }
 
-fn gitlab_demand() -> product.fabric.demand.Demand<NonEmptyStr> {
+fn gitlab_demand() -> product.fabric.demand.Demand<std.types.NonEmptyStr> {
   product.fabric.demand.Demand {
     id: demand_id(principal: "gitlab", key: "demand-gl"),
     work: work_of(principal: "fabric", key: "work-1"),
@@ -85,7 +85,7 @@ fn gitlab_demand() -> product.fabric.demand.Demand<NonEmptyStr> {
   }
 }
 
-fn running_grant() -> product.fabric.execution.ExecutionGrant<NonEmptyStr> {
+fn running_grant() -> product.fabric.execution.ExecutionGrant<std.types.NonEmptyStr> {
   product.fabric.execution.ExecutionGrant {
     id: product.fabric.identity.FabricIdentity { principal: "fabric", key: "grant-1" },
     object: product.fabric.execution.FabricGrantObject {
@@ -124,7 +124,7 @@ fn running_grant() -> product.fabric.execution.ExecutionGrant<NonEmptyStr> {
 // so a test asserting "released" cannot be satisfied by a refusal and a test
 // asserting a refusal cannot be satisfied by the wrong cause.
 
-fn effect_label(e: product.fabric.arbitration.DemandCommandEffect<NonEmptyStr>) -> NonEmptyStr {
+fn effect_label(e: product.fabric.arbitration.DemandCommandEffect<std.types.NonEmptyStr>) -> std.types.NonEmptyStr {
   match e {
     product.fabric.arbitration.CommandRefused { refusal: r } => refusal_label(r: r)
     product.fabric.arbitration.DemandAdmitted { population: _, directive: d } => directive_label(d: d)
@@ -138,7 +138,7 @@ fn effect_label(e: product.fabric.arbitration.DemandCommandEffect<NonEmptyStr>) 
   }
 }
 
-fn refusal_label(r: product.fabric.demand.DemandRefusal<NonEmptyStr>) -> NonEmptyStr {
+fn refusal_label(r: product.fabric.demand.DemandRefusal<std.types.NonEmptyStr>) -> std.types.NonEmptyStr {
   match r {
     product.fabric.demand.UnknownDemand { demand: _ } => "unknown-demand"
     product.fabric.demand.AttestationDoesNotCoverPrincipal { attested: _, acting: _ } => "attestation-does-not-cover-principal"
@@ -150,13 +150,13 @@ fn refusal_label(r: product.fabric.demand.DemandRefusal<NonEmptyStr>) -> NonEmpt
   }
 }
 
-fn directive_label(d: product.fabric.demand.SatisfactionDirective) -> NonEmptyStr {
+fn directive_label(d: product.fabric.demand.SatisfactionDirective) -> std.types.NonEmptyStr {
   match d {
     product.fabric.demand.SatisfiedByTerminalReceipt => "satisfied-by-terminal-receipt"
     product.fabric.demand.AttachToExistingExecution => "attach-to-existing-execution"
     product.fabric.demand.AwaitAdmission => "await-admission"
-    product.fabric.demand.RequireNewAttempt { reuse: gunbc.plans.md_helpers.p } =>
-      match gunbc.plans.md_helpers.p {
+    product.fabric.demand.RequireNewAttempt { reuse: p } =>
+      match p {
         product.fabric.demand.ReuseAcceptedStepReceipts => "new-attempt-reusing-steps"
         product.fabric.demand.RefuseStepReuseAtDeclaredFrame => "new-attempt-refusing-step-reuse"
       }
@@ -166,18 +166,18 @@ fn directive_label(d: product.fabric.demand.SatisfactionDirective) -> NonEmptySt
 // A refusal carries no population at all, so the helper cannot return one; the
 // empty registry is the honest stand-in and every test that reads it is
 // asserting an arm it already named, never inferring the refusal from emptiness.
-fn effect_population(e: product.fabric.arbitration.DemandCommandEffect<NonEmptyStr>) -> product.fabric.demand.DemandPopulation<NonEmptyStr> {
+fn effect_population(e: product.fabric.arbitration.DemandCommandEffect<std.types.NonEmptyStr>) -> product.fabric.demand.DemandPopulation<std.types.NonEmptyStr> {
   match e {
     product.fabric.arbitration.CommandRefused { refusal: _ } => product.fabric.demand.empty_demand_population()
-    product.fabric.arbitration.DemandAdmitted { population: gunbc.plans.md_helpers.p, directive: _ } => gunbc.plans.md_helpers.p
-    product.fabric.arbitration.WorkStillRequiredAttemptContinues { population: gunbc.plans.md_helpers.p, remaining: _, attempts: _ } => gunbc.plans.md_helpers.p
-    product.fabric.arbitration.WorkStillRequiredNothingRunning { population: gunbc.plans.md_helpers.p, remaining: _ } => gunbc.plans.md_helpers.p
-    product.fabric.arbitration.WorkReleasedAttemptStops { population: gunbc.plans.md_helpers.p, work: _, release_plan: _ } => gunbc.plans.md_helpers.p
-    product.fabric.arbitration.WorkReleasedNothingRunning { population: gunbc.plans.md_helpers.p, work: _ } => gunbc.plans.md_helpers.p
+    product.fabric.arbitration.DemandAdmitted { population: p, directive: _ } => p
+    product.fabric.arbitration.WorkStillRequiredAttemptContinues { population: p, remaining: _, attempts: _ } => p
+    product.fabric.arbitration.WorkStillRequiredNothingRunning { population: p, remaining: _ } => p
+    product.fabric.arbitration.WorkReleasedAttemptStops { population: p, work: _, release_plan: _ } => p
+    product.fabric.arbitration.WorkReleasedNothingRunning { population: p, work: _ } => p
   }
 }
 
-fn released_reservations(e: product.fabric.arbitration.DemandCommandEffect<NonEmptyStr>) -> List<product.fabric.execution.ReservationRef> {
+fn released_reservations(e: product.fabric.arbitration.DemandCommandEffect<std.types.NonEmptyStr>) -> List<product.fabric.execution.ReservationRef> {
   match e {
     product.fabric.arbitration.CommandRefused { refusal: _ } => []
     product.fabric.arbitration.DemandAdmitted { population: _, directive: _ } => []
@@ -189,7 +189,7 @@ fn released_reservations(e: product.fabric.arbitration.DemandCommandEffect<NonEm
   }
 }
 
-fn withdraw(principal: NonEmptyStr, key: product.fabric.identity.DemandKey) -> product.fabric.demand.DemandCommand<NonEmptyStr> {
+fn withdraw(principal: std.types.NonEmptyStr, key: product.fabric.identity.DemandKey) -> product.fabric.demand.DemandCommand<std.types.NonEmptyStr> {
   product.fabric.demand.WithdrawDemand { demand: demand_id(principal: principal, key: key), evidence: "withdrawal-1" }
 }
 
@@ -197,7 +197,7 @@ fn withdraw(principal: NonEmptyStr, key: product.fabric.identity.DemandKey) -> p
 // through the core, because a DemandPopulation has no literal. That is the
 // point of the seal: the fixture cannot author a population omitting one
 // provider any more than a provider binding can.
-fn both_demands() -> product.fabric.demand.DemandPopulation<NonEmptyStr> {
+fn both_demands() -> product.fabric.demand.DemandPopulation<std.types.NonEmptyStr> {
   let first = decide_as(
     attested: "github",
     population: product.fabric.demand.empty_demand_population(),
@@ -222,7 +222,7 @@ fn both_demands() -> product.fabric.demand.DemandPopulation<NonEmptyStr> {
 // because a record literal is exactly what the carrier no longer admits. That
 // is not a concession to the wall - it is the whole population of routes to a
 // CommandAttestation, which is what makes the wall worth having.
-fn single_github_registry() -> product.fabric.demand.DemandPopulation<NonEmptyStr> {
+fn single_github_registry() -> product.fabric.demand.DemandPopulation<std.types.NonEmptyStr> {
   effect_population(
     e: decide_as(
       attested: "github",
@@ -233,7 +233,7 @@ fn single_github_registry() -> product.fabric.demand.DemandPopulation<NonEmptySt
   )
 }
 
-fn single_gitlab_registry() -> product.fabric.demand.DemandPopulation<NonEmptyStr> {
+fn single_gitlab_registry() -> product.fabric.demand.DemandPopulation<std.types.NonEmptyStr> {
   effect_population(
     e: decide_as(
       attested: "gitlab",
@@ -244,7 +244,7 @@ fn single_gitlab_registry() -> product.fabric.demand.DemandPopulation<NonEmptySt
   )
 }
 
-fn attesting(principal: NonEmptyStr) -> product.fabric.demand.CommandAttestation<NonEmptyStr> {
+fn attesting(principal: std.types.NonEmptyStr) -> product.fabric.demand.CommandAttestation<std.types.NonEmptyStr> {
   product.fabric.demand.attest_command_principal(
     principal: principal,
     evidence: "binding-auth-1",
@@ -260,16 +260,16 @@ fn attesting(principal: NonEmptyStr) -> product.fabric.demand.CommandAttestation
 // CoreCommand has no cross-module literal. A test that could hand the fold a
 // command with no attestation would be testing a shape the model does not have.
 fn admitted_core(
-  attested: NonEmptyStr,
-  command: product.fabric.demand.DemandCommand<NonEmptyStr>,
-) -> List<product.fabric.demand.CoreCommand<NonEmptyStr>> {
+  attested: std.types.NonEmptyStr,
+  command: product.fabric.demand.DemandCommand<std.types.NonEmptyStr>,
+) -> List<product.fabric.demand.CoreCommand<std.types.NonEmptyStr>> {
   match product.fabric.demand.admit_command(attestation: attesting(principal: attested), command: command) {
     product.fabric.demand.CommandAdmitted { core: c } => [c]
     product.fabric.demand.CommandAdmissionRefused { refusal: _ } => []
   }
 }
 
-fn admission_label(a: product.fabric.demand.CommandAdmission<NonEmptyStr>) -> NonEmptyStr {
+fn admission_label(a: product.fabric.demand.CommandAdmission<std.types.NonEmptyStr>) -> std.types.NonEmptyStr {
   match a {
     product.fabric.demand.CommandAdmitted { core: _ } => "admitted"
     product.fabric.demand.CommandAdmissionRefused { refusal: r } => refusal_label(r: r)
@@ -280,11 +280,11 @@ fn admission_label(a: product.fabric.demand.CommandAdmission<NonEmptyStr>) -> No
 // reached at two different boundaries, so the helper reports the admission
 // cause rather than inventing a third state for "never reached the fold".
 fn decide_as(
-  attested: NonEmptyStr,
-  population: product.fabric.demand.DemandPopulation<NonEmptyStr>,
-  grants: List<product.fabric.execution.ExecutionGrant<NonEmptyStr>>,
-  command: product.fabric.demand.DemandCommand<NonEmptyStr>,
-) -> product.fabric.arbitration.DemandCommandEffect<NonEmptyStr> {
+  attested: std.types.NonEmptyStr,
+  population: product.fabric.demand.DemandPopulation<std.types.NonEmptyStr>,
+  grants: List<product.fabric.execution.ExecutionGrant<std.types.NonEmptyStr>>,
+  command: product.fabric.demand.DemandCommand<std.types.NonEmptyStr>,
+) -> product.fabric.arbitration.DemandCommandEffect<std.types.NonEmptyStr> {
   match admitted_core(attested: attested, command: command) {
     Empty {} =>
       product.fabric.arbitration.CommandRefused {
@@ -293,7 +293,7 @@ fn decide_as(
           acting: product.fabric.demand.acting_principal(command: command),
         }
       }
-    std.algebra.Cons { head: c, tail: _ } =>
+    Cons { head: c, tail: _ } =>
       product.fabric.arbitration.decide_demand_command(
         registry: population,
         grants: grants,
@@ -304,10 +304,10 @@ fn decide_as(
 }
 
 fn decide(
-  population: List<product.fabric.demand.Demand<NonEmptyStr>>,
-  grants: List<product.fabric.execution.ExecutionGrant<NonEmptyStr>>,
-  command: product.fabric.demand.DemandCommand<NonEmptyStr>,
-) -> product.fabric.arbitration.DemandCommandEffect<NonEmptyStr> {
+  population: List<product.fabric.demand.Demand<std.types.NonEmptyStr>>,
+  grants: List<product.fabric.execution.ExecutionGrant<std.types.NonEmptyStr>>,
+  command: product.fabric.demand.DemandCommand<std.types.NonEmptyStr>,
+) -> product.fabric.arbitration.DemandCommandEffect<std.types.NonEmptyStr> {
   decide_as(
     attested: product.fabric.demand.acting_principal(command: command),
     population: population,
@@ -385,10 +385,10 @@ test fn an_unregistered_key_refuses_as_unknown_not_as_a_principal_mismatch() -> 
 // execution state, same other two fields - only this one moves, and it moves
 // the output between satisfaction and execution.
 
-fn decide_with_receipt(command: product.fabric.demand.DemandCommand<NonEmptyStr>) -> product.fabric.arbitration.DemandCommandEffect<NonEmptyStr> {
+fn decide_with_receipt(command: product.fabric.demand.DemandCommand<std.types.NonEmptyStr>) -> product.fabric.arbitration.DemandCommandEffect<std.types.NonEmptyStr> {
   match admitted_core(attested: "github", command: command) {
     Empty {} => product.fabric.arbitration.CommandRefused { refusal: product.fabric.demand.UnknownDemand { demand: demand_id(principal: "github", key: "unreachable") } }
-    std.algebra.Cons { head: c, tail: _ } =>
+    Cons { head: c, tail: _ } =>
       product.fabric.arbitration.decide_demand_command(
         registry: product.fabric.demand.empty_demand_population(),
         grants: [],
@@ -575,7 +575,7 @@ test fn a_binding_may_not_submit_a_demand_under_a_principal_it_did_not_attest_to
 // one resource reservation, so two grants must yield four named reservations -
 // a head-only implementation yields two and this goes red.
 
-fn second_running_grant() -> product.fabric.execution.ExecutionGrant<NonEmptyStr> {
+fn second_running_grant() -> product.fabric.execution.ExecutionGrant<std.types.NonEmptyStr> {
   product.fabric.execution.ExecutionGrant {
     id: product.fabric.identity.FabricIdentity { principal: "fabric", key: "grant-2" },
     object: product.fabric.execution.FabricGrantObject {
@@ -639,8 +639,8 @@ test fn a_surviving_work_names_every_running_attempt() -> Bool {
 }
 
 fn continuing_attempts(
-  e: product.fabric.arbitration.DemandCommandEffect<NonEmptyStr>,
-) -> List<product.fabric.identity.FabricIdentity<NonEmptyStr, product.fabric.identity.ExecutionAttemptKey>> {
+  e: product.fabric.arbitration.DemandCommandEffect<std.types.NonEmptyStr>,
+) -> List<product.fabric.identity.FabricIdentity<std.types.NonEmptyStr, product.fabric.identity.ExecutionAttemptKey>> {
   match e {
     product.fabric.arbitration.CommandRefused { refusal: _ } => []
     product.fabric.arbitration.DemandAdmitted { population: _, directive: _ } => []
@@ -696,7 +696,7 @@ test fn a_release_names_the_authority_that_vouched_for_the_command() -> Bool {
     && release_authorities(e: released).length() == 1
 }
 
-fn release_authorities(e: product.fabric.arbitration.DemandCommandEffect<NonEmptyStr>) -> List<std.decl_ref.DeclarationRef> {
+fn release_authorities(e: product.fabric.arbitration.DemandCommandEffect<std.types.NonEmptyStr>) -> List<std.decl_ref.DeclarationRef> {
   match e {
     product.fabric.arbitration.CommandRefused { refusal: _ } => []
     product.fabric.arbitration.DemandAdmitted { population: _, directive: _ } => []
@@ -705,7 +705,7 @@ fn release_authorities(e: product.fabric.arbitration.DemandCommandEffect<NonEmpt
     product.fabric.arbitration.WorkReleasedNothingRunning { population: _, work: _ } => []
     product.fabric.arbitration.WorkReleasedAttemptStops { population: _, work: _, release_plan: plan } =>
       plan
-        |> v2.std.algebra.filter(rel => rel.vouched_by == witness_authority())
+        |> filter(rel => rel.vouched_by == witness_authority())
         |> map(rel => rel.vouched_by)
   }
 }

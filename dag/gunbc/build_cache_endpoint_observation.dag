@@ -1,7 +1,7 @@
 module gunbc.build_cache_endpoint_observation
 
 
-data build_cache_endpoint_observation_authority_disposition: std.disposition.Disposition = SingleAuthority
+data build_cache_endpoint_observation_authority_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 // THE CI CACHE ENDPOINT PRODUCER for units, caps, and owner context. gunbc.build_cache_instance carries
 // desired intent and placement derivation; this module will walk /proc for listener ownership, cgroup
@@ -17,21 +17,21 @@ data build_cache_endpoint_observation_authority_disposition: std.disposition.Dis
 // obtainable FROM a HostIdentity is exactly what it waits on. Its only consumers today are witnesses.
 
 fn build_cache_ci_endpoint_observed_producer(host: product.placement_supply.HostIdentity) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
-  let instance = ci_cache_instance(host: host)
-  match fleet_shell_transport_observation(host: host) {
-    ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } =>
+  let instance = gunbc.build_cache_instance.ci_cache_instance(host: host)
+  match gunbc.fleet_shell_transport_observation.fleet_shell_transport_observation(host: host) {
+    gunbc.fleet_shell_transport_observation.ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } =>
       gunbc.build_cache_instance.EndpointObservationUnavailable {
         instance: instance,
-        reason: ProcTableUnreadable {
-          detail: "this fleet-wide surface takes only a HostIdentity and so has no transport to read an endpoint owner through; the live producer is gunbc.build_cache_endpoint_observe, driven from gunbc.host_effect_realize where a HostEffectTransport exists" as NonEmptyStr,
+        reason: gunbc.build_cache_instance.ProcTableUnreadable {
+          detail: "this fleet-wide surface takes only a HostIdentity and so has no transport to read an endpoint owner through; the live producer is gunbc.build_cache_endpoint_observe, driven from gunbc.host_effect_realize where a HostEffectTransport exists" as std.types.NonEmptyStr,
         },
       }
-    ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
+    gunbc.fleet_shell_transport_observation.ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
       gunbc.build_cache_instance.EndpointObservationUnavailable {
         instance: instance,
         reason: gunbc.build_cache_instance.ReachRefused { detail: d },
       }
-    ShellTransportUnobserved { reason: r } =>
+    gunbc.fleet_shell_transport_observation.ShellTransportUnobserved { reason: r } =>
       gunbc.build_cache_instance.EndpointObservationUnavailable {
         instance: instance,
         reason: gunbc.build_cache_instance.ReachRefused {
@@ -46,7 +46,7 @@ fn build_cache_ci_endpoint_observation(host: product.placement_supply.HostIdenti
 }
 
 fn build_cache_ci_placement_observation(host: product.placement_supply.HostIdentity) -> gunbc.build_cache_instance.BuildCacheServerPlacement {
-  placement_of_endpoint_observation(
+  gunbc.build_cache_instance.placement_of_endpoint_observation(
     observed: build_cache_ci_endpoint_observation(host: host),
   )
 }
@@ -57,17 +57,17 @@ fn build_cache_ci_placement_unknown_count(hosts: List<product.placement_supply.H
     hosts,
     h =>
       match build_cache_ci_placement_observation(host: h) {
-        ServerPlacementUnknown { detail: _ } => true
+        gunbc.build_cache_instance.ServerPlacementUnknown { detail: _ } => true
         _ => false
       },
   ).length()
 }
 
 data build_cache_ci_endpoint_observed_producer_dissolve_on: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }

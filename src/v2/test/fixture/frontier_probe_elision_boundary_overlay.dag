@@ -13,131 +13,131 @@ data frontier_probe_elision_boundary_coverage_receipt: v2.compiler.source_author
 
 
 data frontier_probe_elision_boundary_closure_refs: List<v2.compiler.source_authority.SourceRef> = std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/cache/catalog_io.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "8934d991a5b7ad35" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/cache/catalog_io.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "8934d991a5b7ad35" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/cache/catalog_placement.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "c03b984b2e42ffba" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/cache/catalog_placement.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "c03b984b2e42ffba" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/cache/materialization.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "e331495eca079258" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/cache/materialization.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "e331495eca079258" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/cache/types.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "21b183a31c910dee" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/cache/types.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "21b183a31c910dee" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/communication/fidelity_carriers.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "f5db08170d166d92" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/communication/fidelity_carriers.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "f5db08170d166d92" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/communication/medium.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "0432a67765ab74da" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/communication/medium.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "0432a67765ab74da" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/crypto/hash.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "6c9f2c80419ab998" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/crypto/hash.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "6c9f2c80419ab998" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/external_authority.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "d09cefd3a5440e2b" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/external_authority.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "d09cefd3a5440e2b" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/filesystem/filesystem_io.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "92f2188727bd0a4f" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/filesystem/filesystem_io.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "92f2188727bd0a4f" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/realization/compile_stage_memo.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "f58f953e7a55fc31" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/realization/compile_stage_memo.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "f58f953e7a55fc31" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/realization/parse_table_memo.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "4deb6b17e6ca6ca0" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/realization/parse_table_memo.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "4deb6b17e6ca6ca0" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/transports/sql.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "c9e156a31b892fa3" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/transports/sql.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "c9e156a31b892fa3" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/units/dimensionless.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "d0f856ae87dfe2d1" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/units/dimensionless.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "d0f856ae87dfe2d1" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/units/iec_80000_13.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "9ae8b5a48c9ee7c4" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/units/iec_80000_13.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "9ae8b5a48c9ee7c4" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/units/iso8601.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "cc6a59bcb94a15ef" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/units/iso8601.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "cc6a59bcb94a15ef" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/uri.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "5f63f5cc2576be72" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/extdeps/uri.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "5f63f5cc2576be72" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/access.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "08d29f4d520c1bc1" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/access.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "08d29f4d520c1bc1" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/algebra.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "84bf732fe6c1373f" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/algebra.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "84bf732fe6c1373f" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/authorization_profile.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "5757c34faaf0e4ba" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/authorization_profile.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "5757c34faaf0e4ba" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/bit.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "2ea058e4226b4ae8" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/bit.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "2ea058e4226b4ae8" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/cache_identity.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "46678f0bf7a7ffaa" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/cache_identity.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "46678f0bf7a7ffaa" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/cache_interface.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "13cafada43638107" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/cache_interface.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "13cafada43638107" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/computation.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "83eb5422ad0bee7c" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/computation.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "83eb5422ad0bee7c" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/constructors.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "96657465d5237516" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/constructors.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "96657465d5237516" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/content_hash.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "81caf4ac575a84b1" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/content_hash.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "81caf4ac575a84b1" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/currency.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "f8824f924f79ea20" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/currency.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "f8824f924f79ea20" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/decl_ref.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "545ec7431b535ead" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/decl_ref.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "545ec7431b535ead" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/determinism.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "d861b34ab3ec80da" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/determinism.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "d861b34ab3ec80da" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/disposition.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "090afec885f15c41" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/disposition.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "090afec885f15c41" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/effect_grant.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "57cca83ee4a2ba9a" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/effect_grant.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "57cca83ee4a2ba9a" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/effects.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "c923335012cce32c" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/effects.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "c923335012cce32c" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/error_primitives.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "7436232c81bef628" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/error_primitives.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "7436232c81bef628" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/execution_mode.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "478b930600d2f600" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/execution_mode.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "478b930600d2f600" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/http_path.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "ae1a342563ee0216" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/http_path.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "ae1a342563ee0216" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/induction.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "5febb582d46089ae" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/induction.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "5febb582d46089ae" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/integer.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "6e1d3b4e90666b06" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/integer.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "6e1d3b4e90666b06" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/interface_summary.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "6aa58b5956f0ef15" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/interface_summary.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "6aa58b5956f0ef15" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/iteration.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "9c248d36d4e2a6a5" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/iteration.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "9c248d36d4e2a6a5" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/keyed_roster.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "557264b56d8c0b83" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/keyed_roster.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "557264b56d8c0b83" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/keyed_row.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "2efd0957d721bd76" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/keyed_row.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "2efd0957d721bd76" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/logic.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "db4b9e7234652102" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/logic.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "db4b9e7234652102" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/machine_constraints.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "f536cefc89957ed4" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/machine_constraints.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "f536cefc89957ed4" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/machine_shape.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "414ca07672cc2142" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/machine_shape.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "414ca07672cc2142" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/magnitude.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "150fb3458e1162b8" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/magnitude.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "150fb3458e1162b8" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/materialization_ladder.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "25dccceb0e2513b1" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/materialization_ladder.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "25dccceb0e2513b1" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/measure.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "311ac212b445db6c" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/measure.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "311ac212b445db6c" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/nat.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "dd9d178699dc5461" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/nat.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "dd9d178699dc5461" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/occurrence_identity.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "f132c34d76e91edc" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/occurrence_identity.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "f132c34d76e91edc" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/pareto.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "dd805f92974b1a43" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/pareto.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "dd805f92974b1a43" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/perturbation.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "50b147933f84bda6" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/perturbation.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "50b147933f84bda6" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/primitives.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "513e0908af8ff1ca" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/primitives.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "513e0908af8ff1ca" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/realization.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "b79fc0779dca3fe4" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/realization.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "b79fc0779dca3fe4" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/realization_measurement.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "9b3b89e2a387724a" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/realization_measurement.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "9b3b89e2a387724a" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/realization_reconcile.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "d171ed4623e38e1a" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/realization_reconcile.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "d171ed4623e38e1a" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/realization_schedule.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "a147b0f5b5c9c386" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/realization_schedule.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "a147b0f5b5c9c386" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/realization_width.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "2bf64b75ce8d9567" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/realization_width.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "2bf64b75ce8d9567" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/roster_frontier.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "772d30158c1a2bbf" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/roster_frontier.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "772d30158c1a2bbf" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/serialization.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "08b8348012cc69ab" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/serialization.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "08b8348012cc69ab" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/state_durability.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "a6fdea3328271d45" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/state_durability.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "a6fdea3328271d45" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/termination.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "121ec2693f712015" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/termination.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "121ec2693f712015" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/trait_derive_shape.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "af42ca28e22419a0" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/trait_derive_shape.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "af42ca28e22419a0" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/types.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "7731560ce85ad552" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/types.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "7731560ce85ad552" }) },
   tail: std.algebra.Cons {
-  head: v2.compiler.source_authority.SourceRef { path: "dag/std/verification.dag", source_root: DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "09fc60f19db1f037" }) },
+  head: v2.compiler.source_authority.SourceRef { path: "dag/std/verification.dag", source_root: v2.std.cross_tree.import_model.DagTree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "09fc60f19db1f037" }) },
   tail: std.algebra.Cons {
   head: v2.compiler.source_authority.SourceRef { path: "src/v2/compiler/00_compile.dag", source_root: V2Tree, content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "5f3cc4ebf14e733c" }) },
   tail: std.algebra.Cons {

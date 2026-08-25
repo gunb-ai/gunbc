@@ -18,25 +18,25 @@ type PublicProjectionPlan {
 }
 
 fn publication_subject_digest(subject: PublicProjectionSubject) -> std.content_hash.ContentHash {
-  content_hash_tagged(
+  std.content_hash.content_hash_tagged(
     tag: "publication-subject",
-    payload: content_hash_combine_structural(
-      left: content_hash_atom(value: serialize_content_hash(hash: subject.subject_identity)),
-      right: content_hash_atom(value: serialize_content_hash(hash: subject.content_identity)),
+    payload: std.content_hash.content_hash_combine_structural(
+      left: std.content_hash.content_hash_atom(value: std.content_hash.serialize_content_hash(hash: subject.subject_identity)),
+      right: std.content_hash.content_hash_atom(value: std.content_hash.serialize_content_hash(hash: subject.content_identity)),
     ),
   )
 }
 
 fn projection_digest_from_subjects(subjects: List<PublicProjectionSubject>) -> std.content_hash.ContentHash {
   let digests = map(subjects, subject => publication_subject_digest(subject: subject))
-  as_content_hash_structural(
+  std.content_hash.as_content_hash_structural(
     structural: fold(
-      sort_by(digests, digest => serialize_content_hash(hash: digest) as String),
-      init: content_hash_atom(value: "public-projection" as std.types.NonEmptyStr),
+      sort_by(digests, digest => std.content_hash.serialize_content_hash(hash: digest) as String),
+      init: std.content_hash.content_hash_atom(value: "public-projection" as std.types.NonEmptyStr),
       f: fn(acc, digest) {
-        content_hash_combine_structural(
+        std.content_hash.content_hash_combine_structural(
           left: acc,
-          right: content_hash_atom(value: serialize_content_hash(hash: digest)),
+          right: std.content_hash.content_hash_atom(value: std.content_hash.serialize_content_hash(hash: digest)),
         )
       },
     )
@@ -56,16 +56,16 @@ fn partition_authored_subjects(
     authored_subjects,
     init: AuthoredSubjectPartition { included: [], omitted: [] },
     f: fn(parts, subject) {
-      match resolve_disposition_for_path(
+      match gunbc.publication_policy.resolve_disposition_for_path(
         policy: admitted.policy,
         path: subject.path,
       ) {
-        PublishPublic =>
+        gunbc.publication_policy.PublishPublic =>
           AuthoredSubjectPartition {
             included: append(parts.included, items: [subject]),
             omitted: parts.omitted,
           }
-        WithholdPrivate =>
+        gunbc.publication_policy.WithholdPrivate =>
           AuthoredSubjectPartition {
             included: parts.included,
             omitted: append(parts.omitted, items: [subject]),

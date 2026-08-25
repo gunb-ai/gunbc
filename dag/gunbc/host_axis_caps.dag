@@ -1,30 +1,31 @@
 module gunbc.host_axis_caps
 
+
 data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy under the deploy principal (ghrunner sudo) — gunbc converge on the operator principal does NOT write drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert (operator privilege hold 2026-08-13). system.control set-property RESIDUE is a separate reconcile axis: stale 50-MemoryMax.conf / 50-MemoryHigh.conf shadow deploy drop-ins until teardown via deploy apply (author derived drop-ins before revert). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
 
-type CapMemberAt = NonEmptyStr
+type CapMemberAt = std.types.NonEmptyStr
 
 type CapMember {
-  dropin_path: NonEmptyStr
+  dropin_path: std.types.NonEmptyStr
   content: String
 }
 
-data caps_managed_dropin_paths: List<NonEmptyStr> = [
-  gunbc_runner_per_slot_dropin_path as NonEmptyStr,
-  gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr,
-  gunbc_runner_per_slot_high_dropin_path as NonEmptyStr,
-  gunbc_runner_per_slot_tasks_dropin_path as NonEmptyStr,
+data caps_managed_dropin_paths: List<std.types.NonEmptyStr> = [
+  gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+  gunbc.host_converge.gunbc_runner_per_slot_swap_dropin_path as std.types.NonEmptyStr,
+  gunbc.host_converge.gunbc_runner_per_slot_high_dropin_path as std.types.NonEmptyStr,
+  gunbc.host_converge.gunbc_runner_per_slot_tasks_dropin_path as std.types.NonEmptyStr,
 ]
 
-fn cap_is_managed_path(p: NonEmptyStr) -> Bool {
+fn cap_is_managed_path(p: std.types.NonEmptyStr) -> Bool {
   fold(caps_managed_dropin_paths, init: false, f: (acc, mp) => acc || (mp as String == p as String))
 }
 
-fn cap_member_key(m: CapMember) -> NonEmptyStr {
+fn cap_member_key(m: CapMember) -> std.types.NonEmptyStr {
   m.dropin_path
 }
 
-fn cap_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+fn cap_member_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
   a as String == b as String
 }
 
@@ -32,19 +33,19 @@ fn cap_member_value_eq(a: CapMember, b: CapMember) -> Bool {
   a.content == b.content
 }
 
-fn cap_member_ownership(m: CapMember) -> Ownership? {
+fn cap_member_ownership(m: CapMember) -> gunbc.ownership.Ownership? {
   if cap_is_managed_path(p: m.dropin_path) {
     Present { value: gunbc.ownership.Owned }
   } else {
-    Present { value: Ensured }
+    Present { value: gunbc.ownership.Ensured }
   }
 }
 
-fn cap_dropin_content(property: NonEmptyStr, bytes_value: NonEmptyStr) -> String {
+fn cap_dropin_content(property: std.types.NonEmptyStr, bytes_value: std.types.NonEmptyStr) -> String {
   join(["[Service]\n", property as String, "=", bytes_value as String, "\n"], "")
 }
 
-fn desired_cap_member(dropin_path: NonEmptyStr, property: NonEmptyStr, bytes_value: NonEmptyStr) -> CapMember {
+fn desired_cap_member(dropin_path: std.types.NonEmptyStr, property: std.types.NonEmptyStr, bytes_value: std.types.NonEmptyStr) -> CapMember {
   CapMember {
     dropin_path: dropin_path,
     content: cap_dropin_content(property: property, bytes_value: bytes_value),
@@ -61,20 +62,20 @@ fn desired_cap_member(dropin_path: NonEmptyStr, property: NonEmptyStr, bytes_val
 // hand-spelled fallback (DESIGN §5). The statement JOIN is the grammar's too
 // (shell_command_text_of_stmts over bash_fold_serialize_stmts_semi), so sequencing is not
 // workflow-code concatenation either.
-fn cap_write_content_intent(content: String, path: Node) -> Node {
-  bash_build_with_redir_to_file(
-    inner: shell_command_intent(words: ["printf", "%s", content]),
+fn cap_write_content_intent(content: String, path: v2.std.node.Node) -> v2.std.node.Node {
+  v2.extdeps.languages.bash_build.bash_build_with_redir_to_file(
+    inner: gunbc.shell_command_text.shell_command_intent(words: ["printf", "%s", content]),
     path: path,
   )
 }
 
-fn cap_upsert_stmts(m: CapMember) -> List<Node> {
+fn cap_upsert_stmts(m: CapMember) -> List<v2.std.node.Node> {
   [
     cap_write_content_intent(
       content: m.content,
-      path: bash_build_word_lit(text: m.dropin_path as String),
+      path: v2.extdeps.languages.bash_build.bash_build_word_lit(text: m.dropin_path as String),
     ),
-    shell_command_intent(words: systemctl_daemon_reload_argv()),
+    gunbc.shell_command_text.shell_command_intent(words: extdeps.systemd.systemctl.systemctl_daemon_reload_argv()),
   ]
 }
 
@@ -87,12 +88,12 @@ fn cap_upsert_stmts(m: CapMember) -> List<Node> {
 // authority. The rendering is still built as a modeled bash program rather than joined text,
 // because a line an operator may copy is a line that must be correct to copy.
 fn cap_upsert_script(m: CapMember) -> String {
-  shell_command_text_of_stmts(stmts: cap_upsert_stmts(m: m))
+  gunbc.shell_command_text.shell_command_text_of_stmts(stmts: cap_upsert_stmts(m: m))
 }
 
-fn caps_reconcile(desired: List<CapMember>, observed: List<CapMember>) -> MembershipPlan<CapMember, CapMemberAt> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
+fn caps_reconcile(desired: List<CapMember>, observed: List<CapMember>) -> gunbc.membership_reconcile.MembershipPlan<CapMember, CapMemberAt> {
+  gunbc.membership_reconcile.membership_plan_admitting_outcome(
+    outcome: gunbc.membership_reconcile.membership_reconcile(
       desired: desired,
       observed: observed,
       key_of: cap_member_key,
@@ -103,55 +104,55 @@ fn caps_reconcile(desired: List<CapMember>, observed: List<CapMember>) -> Member
   )
 }
 
-fn caps_effects(desired: List<CapMember>, observed: List<CapMember>) -> EffectsOrRefusal<CapMember> {
-  membership_effects(plan: caps_reconcile(desired: desired, observed: observed))
+fn caps_effects(desired: List<CapMember>, observed: List<CapMember>) -> gunbc.membership_reconcile.EffectsOrRefusal<CapMember> {
+  gunbc.membership_reconcile.membership_effects(plan: caps_reconcile(desired: desired, observed: observed))
 }
 
 fn caps_upsert_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
-  membership_write_count(plan: caps_reconcile(desired: desired, observed: observed))
+  gunbc.membership_reconcile.membership_write_count(plan: caps_reconcile(desired: desired, observed: observed))
 }
 
 fn caps_teardown_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
-  membership_removal_count(plan: caps_reconcile(desired: desired, observed: observed))
+  gunbc.membership_reconcile.membership_removal_count(plan: caps_reconcile(desired: desired, observed: observed))
 }
 
 fn caps_refusal_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
-  membership_refusal_count(plan: caps_reconcile(desired: desired, observed: observed))
+  gunbc.membership_reconcile.membership_refusal_count(plan: caps_reconcile(desired: desired, observed: observed))
 }
 
 // system.control set-property residue — shadows deploy-authored drop-ins (sorts later, wins).
-type ControlShadowMemberAt = NonEmptyStr
+type ControlShadowMemberAt = std.types.NonEmptyStr
 
 type ControlShadowUnit {
-  unit: NonEmptyStr
+  unit: std.types.NonEmptyStr
 }
 
-data control_shadow_memory_max_filename: NonEmptyStr = "50-MemoryMax.conf"
-data control_shadow_memory_high_filename: NonEmptyStr = "50-MemoryHigh.conf"
+data control_shadow_memory_max_filename: std.types.NonEmptyStr = "50-MemoryMax.conf"
+data control_shadow_memory_high_filename: std.types.NonEmptyStr = "50-MemoryHigh.conf"
 
-data control_shadow_managed_filenames: List<NonEmptyStr> = [
+data control_shadow_managed_filenames: List<std.types.NonEmptyStr> = [
   control_shadow_memory_max_filename,
   control_shadow_memory_high_filename,
 ]
 
-fn control_shadow_dropin_path(unit: NonEmptyStr, filename: NonEmptyStr) -> NonEmptyStr {
+fn control_shadow_dropin_path(unit: std.types.NonEmptyStr, filename: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
   join([
-    gunbc_runner_control_dropin_dir_prefix,
+    gunbc.host_converge.gunbc_runner_control_dropin_dir_prefix,
     unit as String,
     ".d/",
     filename as String,
-  ], "") as NonEmptyStr
+  ], "") as std.types.NonEmptyStr
 }
 
-fn control_shadow_unit(unit: NonEmptyStr) -> ControlShadowUnit {
+fn control_shadow_unit(unit: std.types.NonEmptyStr) -> ControlShadowUnit {
   ControlShadowUnit { unit: unit }
 }
 
-fn control_shadow_unit_key(u: ControlShadowUnit) -> NonEmptyStr {
+fn control_shadow_unit_key(u: ControlShadowUnit) -> std.types.NonEmptyStr {
   u.unit
 }
 
-fn control_shadow_unit_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+fn control_shadow_unit_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
   a as String == b as String
 }
 
@@ -159,31 +160,31 @@ fn control_shadow_unit_value_eq(a: ControlShadowUnit, b: ControlShadowUnit) -> B
   a.unit as String == b.unit as String
 }
 
-fn control_shadow_unit_ownership(u: ControlShadowUnit) -> Ownership? {
+fn control_shadow_unit_ownership(u: ControlShadowUnit) -> gunbc.ownership.Ownership? {
   Present { value: gunbc.ownership.Owned }
 }
 
 fn control_shadow_revert_script(u: ControlShadowUnit) -> String {
-  concat(join(systemctl_revert_memory_caps_argv(unit: u.unit), " "), "\n")
+  concat(join(extdeps.systemd.systemctl.systemctl_revert_memory_caps_argv(unit: u.unit), " "), "\n")
 }
 
 fn control_shadow_revert_script_matches_extdeps_argv(u: ControlShadowUnit) -> Bool {
-  join(systemctl_revert_memory_caps_argv(unit: u.unit), " ") == std.algebra.trim(s: control_shadow_revert_script(u: u))
+  join(extdeps.systemd.systemctl.systemctl_revert_memory_caps_argv(unit: u.unit), " ") == std.algebra.trim(s: control_shadow_revert_script(u: u))
 }
 
 fn derived_runner_memory_max_cap_member() -> CapMember {
   desired_cap_member(
-    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
-    property: systemd_memory_max_property as NonEmptyStr,
-    bytes_value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)) as NonEmptyStr,
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
+    property: extdeps.systemd.systemd_memory_max_property as std.types.NonEmptyStr,
+    bytes_value: to_string(std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_max)) as std.types.NonEmptyStr,
   )
 }
 
 fn derived_runner_memory_high_cap_member() -> CapMember {
   desired_cap_member(
-    dropin_path: gunbc_runner_per_slot_high_dropin_path as NonEmptyStr,
-    property: systemd_memory_high_property as NonEmptyStr,
-    bytes_value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_high)) as NonEmptyStr,
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_high_dropin_path as std.types.NonEmptyStr,
+    property: extdeps.systemd.systemd_memory_high_property as std.types.NonEmptyStr,
+    bytes_value: to_string(std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_high)) as std.types.NonEmptyStr,
   )
 }
 
@@ -221,78 +222,78 @@ data memory_cap_author_before_shadow_revert_ordering_note: String = "Deploy drop
 
 data host_axis_caps_author_before_revert_enforced: Bool = true
 
-fn runner_slot_service_units_range(host: HostIdentity, slot: Int, limit: Int) -> List<NonEmptyStr> {
+fn runner_slot_service_units_range(host: product.placement_supply.HostIdentity, slot: Int, limit: Int) -> List<std.types.NonEmptyStr> {
   if slot > limit {
     []
   } else {
     concat(
-      [runner_slot_unit_name(slot: RunnerSlotIdentity { host: host, slot_index: slot })],
+      [gunbc.runner_lifecycle.runner_slot_unit_name(slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: host, slot_index: slot })],
       runner_slot_service_units_range(host: host, slot: slot + 1, limit: limit)
     )
   }
 }
 
-fn runner_slot_service_units_for_host(host: HostIdentity) -> List<NonEmptyStr> {
+fn runner_slot_service_units_for_host(host: product.placement_supply.HostIdentity) -> List<std.types.NonEmptyStr> {
   runner_slot_service_units_range(
     host: host,
     slot: 1,
-    limit: gunbc_runner_slots_per_host(host: host),
+    limit: gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: host),
   )
 }
 
-fn deploy_cap_upsert_staged_stmts(m: CapMember, stage_name: String) -> List<Node> {
+fn deploy_cap_upsert_staged_stmts(m: CapMember, stage_name: String) -> List<v2.std.node.Node> {
   [
     cap_write_content_intent(
       content: m.content,
-      path: deploy_stage_path_word(stage_name: stage_name),
+      path: gunbc.live_deploy.operations.deploy_stage_path_word(stage_name: stage_name),
     ),
-    bash_build_command_with_words(words: concat(
-      shell_literal_words(words: ["sudo", "-n", "install", "-m", "0644"]),
+    v2.extdeps.languages.bash_build.bash_build_command_with_words(words: concat(
+      gunbc.shell_command_text.shell_literal_words(words: ["sudo", "-n", "install", "-m", "0644"]),
       [
-        deploy_stage_path_word(stage_name: stage_name),
-        bash_build_word_lit(text: m.dropin_path as String),
+        gunbc.live_deploy.operations.deploy_stage_path_word(stage_name: stage_name),
+        v2.extdeps.languages.bash_build.bash_build_word_lit(text: m.dropin_path as String),
       ],
     )),
   ]
 }
 
-fn deploy_runner_memory_cap_author_stmts() -> List<Node> {
+fn deploy_runner_memory_cap_author_stmts() -> List<v2.std.node.Node> {
   concat(
     concat(
       deploy_cap_upsert_staged_stmts(m: derived_runner_memory_max_cap_member(), stage_name: "20-fleet-width.conf"),
       deploy_cap_upsert_staged_stmts(m: derived_runner_memory_high_cap_member(), stage_name: "40-fleet-high.conf"),
     ),
-    [shell_privileged_command_intent(argv: systemctl_daemon_reload_argv())],
+    [gunbc.shell_command_text.shell_privileged_command_intent(argv: extdeps.systemd.systemctl.systemctl_daemon_reload_argv())],
   )
 }
 
 fn deploy_runner_memory_cap_author_script() -> String {
-  shell_command_text_of_stmts(stmts: deploy_runner_memory_cap_author_stmts())
+  gunbc.shell_command_text.shell_command_text_of_stmts(stmts: deploy_runner_memory_cap_author_stmts())
 }
 
-fn deploy_control_shadow_revert_stmt(u: ControlShadowUnit) -> Node {
-  shell_privileged_command_intent(argv: systemctl_revert_memory_caps_argv(unit: u.unit))
+fn deploy_control_shadow_revert_stmt(u: ControlShadowUnit) -> v2.std.node.Node {
+  gunbc.shell_command_text.shell_privileged_command_intent(argv: extdeps.systemd.systemctl.systemctl_revert_memory_caps_argv(unit: u.unit))
 }
 
-fn deploy_memory_cap_shadow_revert_stmts(units: List<NonEmptyStr>) -> List<Node> {
+fn deploy_memory_cap_shadow_revert_stmts(units: List<std.types.NonEmptyStr>) -> List<v2.std.node.Node> {
   map(units, unit => deploy_control_shadow_revert_stmt(u: control_shadow_unit(unit: unit)))
 }
 
-fn deploy_memory_cap_shadow_revert_script(units: List<NonEmptyStr>) -> String {
-  shell_command_text_of_stmts(stmts: deploy_memory_cap_shadow_revert_stmts(units: units))
+fn deploy_memory_cap_shadow_revert_script(units: List<std.types.NonEmptyStr>) -> String {
+  gunbc.shell_command_text.shell_command_text_of_stmts(stmts: deploy_memory_cap_shadow_revert_stmts(units: units))
 }
 
 // Production deploy script: author derived template drop-ins, daemon-reload, then per-unit shadow revert.
-fn deploy_memory_cap_apply_script_for_host(host: HostIdentity) -> String {
+fn deploy_memory_cap_apply_script_for_host(host: product.placement_supply.HostIdentity) -> String {
   deploy_memory_cap_apply_script_ordered(units: runner_slot_service_units_for_host(host: host))
 }
 
 // Deploy apply composite: author derived drop-ins first, then shadow revert per unit.
-fn deploy_memory_cap_apply_script_ordered(units: List<NonEmptyStr>) -> String {
-  shell_command_text_of_stmts(stmts: deploy_memory_cap_apply_stmts_ordered(units: units))
+fn deploy_memory_cap_apply_script_ordered(units: List<std.types.NonEmptyStr>) -> String {
+  gunbc.shell_command_text.shell_command_text_of_stmts(stmts: deploy_memory_cap_apply_stmts_ordered(units: units))
 }
 
-fn deploy_memory_cap_apply_stmts_ordered(units: List<NonEmptyStr>) -> List<Node> {
+fn deploy_memory_cap_apply_stmts_ordered(units: List<std.types.NonEmptyStr>) -> List<v2.std.node.Node> {
   concat(
     deploy_runner_memory_cap_author_stmts(),
     deploy_memory_cap_shadow_revert_stmts(units: units),
@@ -300,17 +301,17 @@ fn deploy_memory_cap_apply_stmts_ordered(units: List<NonEmptyStr>) -> List<Node>
 }
 
 // Pin external script to deploy_memory_cap_apply_script_ordered's concat(author, reverts).
-fn deploy_memory_cap_script_matches_ordered_composition(script: String, units: List<NonEmptyStr>) -> Bool {
+fn deploy_memory_cap_script_matches_ordered_composition(script: String, units: List<std.types.NonEmptyStr>) -> Bool {
   script == deploy_memory_cap_apply_script_ordered(units: units)
 }
 
 // Independently derive author + revert halves; refuse reversed or padded wrong-order scripts.
-fn deploy_memory_cap_script_author_precedes_shadow_revert(script: String, units: List<NonEmptyStr>) -> Bool {
-  let ordered = shell_command_text_of_stmts(stmts: concat(
+fn deploy_memory_cap_script_author_precedes_shadow_revert(script: String, units: List<std.types.NonEmptyStr>) -> Bool {
+  let ordered = gunbc.shell_command_text.shell_command_text_of_stmts(stmts: concat(
     deploy_runner_memory_cap_author_stmts(),
     deploy_memory_cap_shadow_revert_stmts(units: units),
   ))
-  list_length(items: units) > 0 && script == ordered
+  std.types.list_length(items: units) > 0 && script == ordered
 }
 
 // Enrolled: live_deploy apply emits deploy_memory_cap_apply_script_for_host after sudoers preamble.
@@ -319,9 +320,9 @@ data deploy_memory_cap_live_deploy_enrollment_note: String = "deploy_memory_cap_
 fn control_shadow_reconcile(
   desired: List<ControlShadowUnit>,
   observed: List<ControlShadowUnit>,
-) -> MembershipPlan<ControlShadowUnit, ControlShadowMemberAt> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
+) -> gunbc.membership_reconcile.MembershipPlan<ControlShadowUnit, ControlShadowMemberAt> {
+  gunbc.membership_reconcile.membership_plan_admitting_outcome(
+    outcome: gunbc.membership_reconcile.membership_reconcile(
       desired: desired,
       observed: observed,
       key_of: control_shadow_unit_key,
@@ -335,20 +336,20 @@ fn control_shadow_reconcile(
 fn control_shadow_effects(
   desired: List<ControlShadowUnit>,
   observed: List<ControlShadowUnit>,
-) -> EffectsOrRefusal<ControlShadowUnit> {
-  membership_effects(plan: control_shadow_reconcile(desired: desired, observed: observed))
+) -> gunbc.membership_reconcile.EffectsOrRefusal<ControlShadowUnit> {
+  gunbc.membership_reconcile.membership_effects(plan: control_shadow_reconcile(desired: desired, observed: observed))
 }
 
 fn control_shadow_teardown_count(
   desired: List<ControlShadowUnit>,
   observed: List<ControlShadowUnit>,
 ) -> Int {
-  membership_removal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
+  gunbc.membership_reconcile.membership_removal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
 }
 
 fn control_shadow_refusal_count(
   desired: List<ControlShadowUnit>,
   observed: List<ControlShadowUnit>,
 ) -> Int {
-  membership_refusal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
+  gunbc.membership_reconcile.membership_refusal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
 }

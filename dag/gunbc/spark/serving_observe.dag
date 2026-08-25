@@ -1,5 +1,6 @@
 module gunbc.spark.serving_observe
 
+
 data spark_serving_observe_transport_note: String = "OBSERVATION PRODUCER (SPARK-SERVE-BIND-0 item B) over FleetSsh — callers supply a sealed FleetSshExecutionContext rather than hardcoding one credential route."
 
 data spark_serving_observe_note: String = "Wet observation only; a green witness over fixture strings is not proof gpt-oss:20b is serving. Runtime closure identity requires the release-archive admission receipt under ~/.local/share/gunbc/spark-serving/ (archive digest admitted at materialization — not proof of completed install) plus independent /api/version and /api/tags probes. This branch does not install or start Ollama on the hosts."
@@ -14,13 +15,13 @@ data spark_serving_observe_ci_receipt_path: String = "target/spark-serving-obser
 
 fn spark_serving_load_state_probe_words() -> List<String> {
   [
-    "systemctl", "--user", "show", spark_serving_unit_name, "--property=LoadState", "--value",
+    "systemctl", "--user", "show", gunbc.spark.serving_unit_identity.spark_serving_unit_name, "--property=LoadState", "--value",
   ]
 }
 
 fn spark_serving_active_probe_words() -> List<String> {
   [
-    "systemctl", "--user", "is-active", spark_serving_unit_name,
+    "systemctl", "--user", "is-active", gunbc.spark.serving_unit_identity.spark_serving_unit_name,
   ]
 }
 
@@ -46,14 +47,14 @@ data spark_serving_grant_probe_words: List<String> = [
   "sudo", "-n", "-l",
 ]
 
-fn spark_serving_grant_outcome_from_probe(probe: SshSessionExecResult?) -> SparkGrantOutcome {
+fn spark_serving_grant_outcome_from_probe(probe: extdeps.ssh.session.SshSessionExecResult?) -> gunbc.spark.managed_access_bootstrap.SparkGrantOutcome {
   match probe {
-    Absent => GrantProbeRefused { cause: "the grant probe leg did not run" }
+    Absent => gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: "the grant probe leg did not run" }
     Present { value: r } =>
       if r.success {
-        GrantEnumerated { listing: r.stdout }
+        gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: r.stdout }
       } else {
-        GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr)], "") }
+        gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr)], "") }
       }
   }
 }
@@ -78,7 +79,7 @@ fn spark_serving_grant_outcome_from_probe(probe: SshSessionExecResult?) -> Spark
 // gunbc-automation, so reading that account's own passwd row and its own ~/.ssh is unprivileged,
 // while reading another account's home is not. A second identity is therefore a COVERAGE OBLIGATION
 // named here, not a field inferred from this one.
-data spark_serving_account_probe_login: NonEmptyStr = spark_managed_executor_login as NonEmptyStr
+data spark_serving_account_probe_login: std.types.NonEmptyStr = gunbc.spark.managed_access_bootstrap.spark_managed_executor_login as std.types.NonEmptyStr
 
 fn spark_serving_account_probe_words() -> List<String> {
   ["getent", "passwd", spark_serving_account_probe_login as String]
@@ -98,7 +99,7 @@ fn spark_serving_authorized_keys_probe_words() -> List<String> {
   [
     "ls", "-ld",
     join([
-      spark_managed_principal_home(login: spark_serving_account_probe_login) as String,
+      gunbc.spark.managed_access_bootstrap.spark_managed_principal_home(login: spark_serving_account_probe_login) as String,
       "/.ssh/authorized_keys",
     ], ""),
   ]
@@ -109,23 +110,23 @@ fn spark_serving_authorized_keys_probe_words() -> List<String> {
 // fields are exactly what fleet_posix_accounts PosixUser already asks for.
 type SparkManagedAccountObservation
   = ManagedAccountObserved {
-      login: NonEmptyStr,
-      uid: NonEmptyStr,
-      gid: NonEmptyStr,
-      shell: NonEmptyStr,
-      authorized_keys_mode: NonEmptyStr,
-      authorized_keys_owner: NonEmptyStr,
+      login: std.types.NonEmptyStr,
+      uid: std.types.NonEmptyStr,
+      gid: std.types.NonEmptyStr,
+      shell: std.types.NonEmptyStr,
+      authorized_keys_mode: std.types.NonEmptyStr,
+      authorized_keys_owner: std.types.NonEmptyStr,
     }
   | ManagedAccountKeyFileUnread {
-      login: NonEmptyStr,
-      uid: NonEmptyStr,
-      gid: NonEmptyStr,
-      shell: NonEmptyStr,
-      cause: NonEmptyStr,
+      login: std.types.NonEmptyStr,
+      uid: std.types.NonEmptyStr,
+      gid: std.types.NonEmptyStr,
+      shell: std.types.NonEmptyStr,
+      cause: std.types.NonEmptyStr,
     }
-  | ManagedAccountAbsent { detail: NonEmptyStr }
-  | ManagedAccountRowMalformed { detail: NonEmptyStr }
-  | ManagedAccountProbeRefused { cause: NonEmptyStr }
+  | ManagedAccountAbsent { detail: std.types.NonEmptyStr }
+  | ManagedAccountRowMalformed { detail: std.types.NonEmptyStr }
+  | ManagedAccountProbeRefused { cause: std.types.NonEmptyStr }
 
 // THE KEY-FILE ARM IS SEPARATE FROM THE ACCOUNT ARM ON PURPOSE. An account that exists with an
 // unreadable authorized_keys is a different state from an account that does not exist, and they have
@@ -165,10 +166,10 @@ fn spark_serving_account_field(row: List<String>, index: Int) -> String? {
 // nesting is confined to this one function, which is the price of making the malformed state
 // unrepresentable instead of detectable.
 type SparkPasswdRow {
-  login: NonEmptyStr
-  uid: NonEmptyStr
-  gid: NonEmptyStr
-  shell: NonEmptyStr
+  login: std.types.NonEmptyStr
+  uid: std.types.NonEmptyStr
+  gid: std.types.NonEmptyStr
+  shell: std.types.NonEmptyStr
 }
 
 fn spark_serving_passwd_row(fields: List<String>) -> SparkPasswdRow? {
@@ -182,10 +183,10 @@ fn spark_serving_passwd_row(fields: List<String>) -> SparkPasswdRow? {
           Absent => none
           Present { value: shell } => Present {
             value: SparkPasswdRow {
-              login: login as NonEmptyStr,
-              uid: uid as NonEmptyStr,
-              gid: gid as NonEmptyStr,
-              shell: shell as NonEmptyStr,
+              login: login as std.types.NonEmptyStr,
+              uid: uid as std.types.NonEmptyStr,
+              gid: gid as std.types.NonEmptyStr,
+              shell: shell as std.types.NonEmptyStr,
             },
           }
         }
@@ -199,8 +200,8 @@ fn spark_serving_passwd_row(fields: List<String>) -> SparkPasswdRow? {
 // ManagedAccountKeyFileUnread already says. Minting a second variant for it would be the state-space
 // split with no remedy difference that the passwd case genuinely does have.
 type SparkKeyFileFacts {
-  mode: NonEmptyStr
-  owner: NonEmptyStr
+  mode: std.types.NonEmptyStr
+  owner: std.types.NonEmptyStr
 }
 
 fn spark_serving_key_file_facts(fields: List<String>) -> SparkKeyFileFacts? {
@@ -209,15 +210,15 @@ fn spark_serving_key_file_facts(fields: List<String>) -> SparkKeyFileFacts? {
     Present { value: mode } => match spark_serving_account_field(row: fields, index: 2) {
       Absent => none
       Present { value: owner } => Present {
-        value: SparkKeyFileFacts { mode: mode as NonEmptyStr, owner: owner as NonEmptyStr },
+        value: SparkKeyFileFacts { mode: mode as std.types.NonEmptyStr, owner: owner as std.types.NonEmptyStr },
       }
     }
   }
 }
 
 fn spark_serving_account_observation_from_probes(
-  passwd_probe: SshSessionExecResult?,
-  key_probe: SshSessionExecResult?,
+  passwd_probe: extdeps.ssh.session.SshSessionExecResult?,
+  key_probe: extdeps.ssh.session.SshSessionExecResult?,
 ) -> SparkManagedAccountObservation {
   match passwd_probe {
     Absent => ManagedAccountProbeRefused { cause: "the account probe leg did not run" }
@@ -227,7 +228,7 @@ fn spark_serving_account_observation_from_probes(
           detail: join([
             "getent passwd ", spark_serving_account_probe_login as String,
             " exit=", to_string(pw.exit_code), " stderr=", std.algebra.trim(s: pw.stderr),
-          ], "") as NonEmptyStr,
+          ], "") as std.types.NonEmptyStr,
         }
       } else {
         match spark_serving_passwd_row(fields: split(std.algebra.trim(s: pw.stdout), ":")) {
@@ -235,13 +236,13 @@ fn spark_serving_account_observation_from_probes(
             ManagedAccountRowMalformed {
               detail: join([
                 "getent passwd returned a row that does not decode: ", std.algebra.trim(s: pw.stdout),
-              ], "") as NonEmptyStr,
+              ], "") as std.types.NonEmptyStr,
             }
           Present { value: row } => match key_probe {
             Absent =>
               ManagedAccountKeyFileUnread {
                 login: row.login, uid: row.uid, gid: row.gid, shell: row.shell,
-                cause: "the authorized_keys probe leg did not run" as NonEmptyStr,
+                cause: "the authorized_keys probe leg did not run" as std.types.NonEmptyStr,
               }
             Present { value: k } =>
               if k.success == false {
@@ -249,7 +250,7 @@ fn spark_serving_account_observation_from_probes(
                   login: row.login, uid: row.uid, gid: row.gid, shell: row.shell,
                   cause: join([
                     "ls -ld exit=", to_string(k.exit_code), " stderr=", std.algebra.trim(s: k.stderr),
-                  ], "") as NonEmptyStr,
+                  ], "") as std.types.NonEmptyStr,
                 }
               } else {
                 match spark_serving_key_file_facts(
@@ -260,7 +261,7 @@ fn spark_serving_account_observation_from_probes(
                       login: row.login, uid: row.uid, gid: row.gid, shell: row.shell,
                       cause: join([
                         "ls -ld output does not decode: ", std.algebra.trim(s: k.stdout),
-                      ], "") as NonEmptyStr,
+                      ], "") as std.types.NonEmptyStr,
                     }
                   Present { value: kf } =>
                     ManagedAccountObserved {
@@ -276,7 +277,7 @@ fn spark_serving_account_observation_from_probes(
   }
 }
 
-fn spark_serving_account_line(host: HostIdentity, account: SparkManagedAccountObservation) -> String {
+fn spark_serving_account_line(host: product.placement_supply.HostIdentity, account: SparkManagedAccountObservation) -> String {
   match account {
     ManagedAccountObserved { login: l, uid: u, gid: g, shell: sh, authorized_keys_mode: m, authorized_keys_owner: o } =>
       join([
@@ -307,8 +308,8 @@ fn spark_serving_account_line(host: HostIdentity, account: SparkManagedAccountOb
 // question the run was dispatched to answer. A field with a witness and no wet reader is a carrier,
 // not an observation.
 type SparkServingHostObservation {
-  readback: SparkServingReadback
-  observation: SparkServingObservation
+  readback: gunbc.spark.serving_loaded_release.SparkServingReadback
+  observation: gunbc.spark.serving_release.SparkServingObservation
   account: SparkManagedAccountObservation
 }
 
@@ -317,7 +318,7 @@ type SparkServingObservationReport
       first: SparkServingHostObservation,
       more: List<SparkServingHostObservation>,
     }
-  | SparkServingObservationReportRefused { cause: NonEmptyStr }
+  | SparkServingObservationReportRefused { cause: std.types.NonEmptyStr }
 
 // LOCUS-PARAMETERIZED PROBE LEG. Same observation, either credential locus. The
 // context-taking leg below remains for the operator-workstation entry; this one is what the
@@ -336,18 +337,18 @@ type SparkServingObservationReport
 // renders with its cause attached. The distinction the exit code preserves: 127 is "this leg was
 // never attempted", not "the command ran and failed".
 fn spark_serving_probe_leg_via_locus(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
   raw_words: List<String>,
-) -> SshSessionExecResult? {
-  match run_typed_argv_transport(
+) -> extdeps.ssh.session.SshSessionExecResult? {
+  match gunbc.host_effect_realize.run_typed_argv_transport(
     argv: raw_words,
-    transport: fleet_locus_transport(context: context, host: host),
+    transport: gunbc.fleet_ssh_locus.fleet_locus_transport(context: context, host: host),
   ) {
-    TypedArgvExecConverged { result: r } => Present { value: r }
-    TypedArgvExecRefused { reason: why } =>
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } => Present { value: r }
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } =>
       Present {
-        value: SshSessionExecResult {
+        value: extdeps.ssh.session.SshSessionExecResult {
           exit_code: 127,
           success: false,
           stdout: "",
@@ -358,8 +359,8 @@ fn spark_serving_probe_leg_via_locus(
 }
 
 fn spark_serving_observe_host_via_locus(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
 ) -> SparkServingHostObservation {
   let readback = spark_serving_readback_from_probe_results(
     host: host,
@@ -369,14 +370,14 @@ fn spark_serving_observe_host_via_locus(
     tags: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_tags_probe_words),
     nvidia_driver: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_nvidia_driver_probe_words),
     runtime_receipt: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_runtime_materialization_receipt_probe_argv()),
-    active_enter: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_active_enter_probe_argv()),
-    default_target_enter: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_default_target_enter_probe_argv()),
-    uptime: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_uptime_probe_argv()),
+    active_enter: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: gunbc.spark.serving_boot_provenance.spark_serving_active_enter_probe_argv()),
+    default_target_enter: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: gunbc.spark.serving_boot_provenance.spark_serving_default_target_enter_probe_argv()),
+    uptime: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: gunbc.spark.serving_boot_provenance.spark_serving_uptime_probe_argv()),
     grants: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_grant_probe_words),
   )
   SparkServingHostObservation {
     readback: readback,
-    observation: derive_spark_serving_observation(readback: readback),
+    observation: gunbc.spark.serving_loaded_release.derive_spark_serving_observation(readback: readback),
     account: spark_serving_account_observation_from_probes(
       passwd_probe: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_account_probe_words()),
       key_probe: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_authorized_keys_probe_words()),
@@ -385,19 +386,19 @@ fn spark_serving_observe_host_via_locus(
 }
 
 fn spark_serving_probe_leg(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
   raw_words: List<String>,
-) -> SshSessionExecResult? {
-  match portable_remote_words(raws: raw_words) {
+) -> extdeps.ssh.session.SshSessionExecResult? {
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: raw_words) {
     Absent => none
     Present { value: words } => Present {
-      value: ssh_session_exec_portable_words(
-        client_args: shape_fleet_ssh_exec(
+      value: extdeps.ssh.session.ssh_session_exec_portable_words(
+        client_args: gunbc.fleet_known_hosts_anchor.shape_fleet_ssh_exec(
           context: context,
-          target: SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-            principal: spark_serving_automation_principal_login(),
+          target: gunbc.fleet_known_hosts_anchor.SshTarget {
+            endpoint: gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: host as String) as std.types.NonEmptyStr,
+            principal: gunbc.spark.serving_desired.spark_serving_automation_principal_login(),
           },
           words: words,
         ),
@@ -407,165 +408,165 @@ fn spark_serving_probe_leg(
 }
 
 fn spark_serving_unit_outcome_from_probe_results(
-  load_state: SshSessionExecResult?,
-  is_active: SshSessionExecResult?,
-) -> SparkServingUnitProbeOutcome {
+  load_state: extdeps.ssh.session.SshSessionExecResult?,
+  is_active: extdeps.ssh.session.SshSessionExecResult?,
+) -> gunbc.spark.serving_loaded_release.SparkServingUnitProbeOutcome {
   match load_state {
     Absent =>
-      SparkServingUnitObservationRefused {
-        cause: "unit LoadState probe leg did not run" as NonEmptyStr,
+      gunbc.spark.serving_loaded_release.SparkServingUnitObservationRefused {
+        cause: "unit LoadState probe leg did not run" as std.types.NonEmptyStr,
       }
     Present { value: load } =>
       if load.success == false {
-        SparkServingUnitObservationRefused {
+        gunbc.spark.serving_loaded_release.SparkServingUnitObservationRefused {
           cause: join([
-            "unit LoadState probe failed for ", spark_serving_unit_name,
+            "unit LoadState probe failed for ", gunbc.spark.serving_unit_identity.spark_serving_unit_name,
             " exit=", to_string(load.exit_code),
             " stderr=", load.stderr,
-          ], "") as NonEmptyStr,
+          ], "") as std.types.NonEmptyStr,
         }
-      } else if std.algebra.trim(s: load.stdout) == (systemd_unit_load_state_not_found_wire as String) {
-        SparkServingUnitAbsent
+      } else if std.algebra.trim(s: load.stdout) == (extdeps.systemd.systemd_unit_load_state_not_found_wire as String) {
+        gunbc.spark.serving_loaded_release.SparkServingUnitAbsent
       } else {
         match is_active {
           Absent =>
-            SparkServingUnitObservationRefused {
-              cause: "unit is-active probe leg did not run after LoadState observation" as NonEmptyStr,
+            gunbc.spark.serving_loaded_release.SparkServingUnitObservationRefused {
+              cause: "unit is-active probe leg did not run after LoadState observation" as std.types.NonEmptyStr,
             }
           Present { value: active } =>
             if active.success && std.algebra.trim(s: active.stdout) == "active" {
-              SparkServingUnitActive
+              gunbc.spark.serving_loaded_release.SparkServingUnitActive
             } else if active.exit_code == 3 {
-              SparkServingUnitInactive
+              gunbc.spark.serving_loaded_release.SparkServingUnitInactive
             } else if active.success == false {
-              SparkServingUnitObservationRefused {
+              gunbc.spark.serving_loaded_release.SparkServingUnitObservationRefused {
                 cause: join([
-                  "unit is-active probe failed for ", spark_serving_unit_name,
+                  "unit is-active probe failed for ", gunbc.spark.serving_unit_identity.spark_serving_unit_name,
                   " exit=", to_string(active.exit_code),
                   " stderr=", active.stderr,
-                ], "") as NonEmptyStr,
+                ], "") as std.types.NonEmptyStr,
               }
             } else {
-              SparkServingUnitInactive
+              gunbc.spark.serving_loaded_release.SparkServingUnitInactive
             }
         }
       }
   }
 }
 
-fn spark_serving_version_field_from_probe(probe: SshSessionExecResult?) -> SparkServingReadbackField {
+fn spark_serving_version_field_from_probe(probe: extdeps.ssh.session.SshSessionExecResult?) -> gunbc.spark.serving_readback_parse.SparkServingReadbackField {
   match probe {
     Absent =>
-      SparkServingReadbackRefused {
-        cause: "probe leg did not run" as NonEmptyStr,
+      gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
+        cause: "probe leg did not run" as std.types.NonEmptyStr,
       }
     Present { value: r } =>
       if r.success {
-        spark_serving_parse_version_json(stdout: r.stdout)
+        gunbc.spark.serving_readback_parse.spark_serving_parse_version_json(stdout: r.stdout)
       } else {
-        SparkServingReadbackRefused {
+        gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
           cause: join([
             "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
-          ], "") as NonEmptyStr,
+          ], "") as std.types.NonEmptyStr,
         }
       }
   }
 }
 
-fn spark_serving_tags_fields_from_probe(probe: SshSessionExecResult?) -> SparkServingTagsReadbackFields {
+fn spark_serving_tags_fields_from_probe(probe: extdeps.ssh.session.SshSessionExecResult?) -> gunbc.spark.serving_readback_parse.SparkServingTagsReadbackFields {
   match probe {
     Absent =>
-      SparkServingTagsReadbackFields {
-        model_name: SparkServingReadbackRefused {
-          cause: "probe leg did not run" as NonEmptyStr,
+      gunbc.spark.serving_readback_parse.SparkServingTagsReadbackFields {
+        model_name: gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
+          cause: "probe leg did not run" as std.types.NonEmptyStr,
         },
-        model_tag: SparkServingReadbackRefused {
-          cause: "probe leg did not run" as NonEmptyStr,
+        model_tag: gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
+          cause: "probe leg did not run" as std.types.NonEmptyStr,
         },
-        model_manifest_digest: SparkServingReadbackRefused {
-          cause: "probe leg did not run" as NonEmptyStr,
+        model_manifest_digest: gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
+          cause: "probe leg did not run" as std.types.NonEmptyStr,
         },
       }
     Present { value: r } =>
       if r.success {
-        spark_serving_parse_tags_json(stdout: r.stdout)
+        gunbc.spark.serving_readback_parse.spark_serving_parse_tags_json(stdout: r.stdout)
       } else {
-        SparkServingTagsReadbackFields {
-          model_name: SparkServingReadbackRefused {
+        gunbc.spark.serving_readback_parse.SparkServingTagsReadbackFields {
+          model_name: gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
             cause: join([
               "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
-            ], "") as NonEmptyStr,
+            ], "") as std.types.NonEmptyStr,
           },
-          model_tag: SparkServingReadbackRefused {
+          model_tag: gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
             cause: join([
               "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
-            ], "") as NonEmptyStr,
+            ], "") as std.types.NonEmptyStr,
           },
-          model_manifest_digest: SparkServingReadbackRefused {
+          model_manifest_digest: gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
             cause: join([
               "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
-            ], "") as NonEmptyStr,
+            ], "") as std.types.NonEmptyStr,
           },
         }
       }
   }
 }
 
-fn spark_serving_unit_outcome_label(outcome: SparkServingUnitProbeOutcome) -> String {
+fn spark_serving_unit_outcome_label(outcome: gunbc.spark.serving_loaded_release.SparkServingUnitProbeOutcome) -> String {
   match outcome {
-    SparkServingUnitActive => "active"
-    SparkServingUnitInactive => "inactive"
-    SparkServingUnitAbsent => "absent"
-    SparkServingUnitObservationRefused { cause: _ } => "refused"
+    gunbc.spark.serving_loaded_release.SparkServingUnitActive => "active"
+    gunbc.spark.serving_loaded_release.SparkServingUnitInactive => "inactive"
+    gunbc.spark.serving_loaded_release.SparkServingUnitAbsent => "absent"
+    gunbc.spark.serving_loaded_release.SparkServingUnitObservationRefused { cause: _ } => "refused"
   }
 }
 
-fn spark_serving_nvidia_driver_field_from_probe(probe: SshSessionExecResult?) -> SparkServingReadbackField {
+fn spark_serving_nvidia_driver_field_from_probe(probe: extdeps.ssh.session.SshSessionExecResult?) -> gunbc.spark.serving_readback_parse.SparkServingReadbackField {
   match probe {
     Absent =>
-      SparkServingReadbackRefused {
-        cause: "probe leg did not run" as NonEmptyStr,
+      gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
+        cause: "probe leg did not run" as std.types.NonEmptyStr,
       }
     Present { value: r } =>
       if r.success {
-        spark_serving_parse_nvidia_driver_version(stdout: r.stdout)
+        gunbc.spark.serving_runtime_admission.spark_serving_parse_nvidia_driver_version(stdout: r.stdout)
       } else {
-        SparkServingReadbackRefused {
+        gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
           cause: join([
             "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
-          ], "") as NonEmptyStr,
+          ], "") as std.types.NonEmptyStr,
         }
       }
   }
 }
 
 fn spark_serving_readback_from_probe_results(
-  host: HostIdentity,
-  load_state: SshSessionExecResult?,
-  is_active: SshSessionExecResult?,
-  version: SshSessionExecResult?,
-  tags: SshSessionExecResult?,
-  nvidia_driver: SshSessionExecResult?,
-  runtime_receipt: SshSessionExecResult?,
-  active_enter: SshSessionExecResult?,
-  default_target_enter: SshSessionExecResult?,
-  uptime: SshSessionExecResult?,
-  grants: SshSessionExecResult?,
-) -> SparkServingReadback {
+  host: product.placement_supply.HostIdentity,
+  load_state: extdeps.ssh.session.SshSessionExecResult?,
+  is_active: extdeps.ssh.session.SshSessionExecResult?,
+  version: extdeps.ssh.session.SshSessionExecResult?,
+  tags: extdeps.ssh.session.SshSessionExecResult?,
+  nvidia_driver: extdeps.ssh.session.SshSessionExecResult?,
+  runtime_receipt: extdeps.ssh.session.SshSessionExecResult?,
+  active_enter: extdeps.ssh.session.SshSessionExecResult?,
+  default_target_enter: extdeps.ssh.session.SshSessionExecResult?,
+  uptime: extdeps.ssh.session.SshSessionExecResult?,
+  grants: extdeps.ssh.session.SshSessionExecResult?,
+) -> gunbc.spark.serving_loaded_release.SparkServingReadback {
   let tags_fields = spark_serving_tags_fields_from_probe(probe: tags)
-  SparkServingReadback {
+  gunbc.spark.serving_loaded_release.SparkServingReadback {
     host: host,
     unit_outcome: spark_serving_unit_outcome_from_probe_results(
       load_state: load_state,
       is_active: is_active,
     ),
     runtime_version: spark_serving_version_field_from_probe(probe: version),
-    runtime_materialization_identity: spark_serving_materialization_receipt_field_from_probe(probe: runtime_receipt),
+    runtime_materialization_identity: gunbc.spark.serving_runtime_receipt.spark_serving_materialization_receipt_field_from_probe(probe: runtime_receipt),
     model_name: tags_fields.model_name,
     model_tag: tags_fields.model_tag,
     model_manifest_digest: tags_fields.model_manifest_digest,
     nvidia_driver: spark_serving_nvidia_driver_field_from_probe(probe: nvidia_driver),
-    bind_address: SparkServingReadbackAbsent,
+    bind_address: gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent,
     boot_provenance: spark_serving_boot_provenance_from_probes(
       active_enter: active_enter,
       default_target_enter: default_target_enter,
@@ -579,20 +580,20 @@ fn spark_serving_readback_from_probe_results(
 // boot. Collapsing an absent leg into a durability failure would manufacture the exact finding this
 // observation exists to report honestly.
 fn spark_serving_boot_provenance_from_probes(
-  active_enter: SshSessionExecResult?,
-  default_target_enter: SshSessionExecResult?,
-  uptime: SshSessionExecResult?,
-) -> SparkServingBootProvenance {
+  active_enter: extdeps.ssh.session.SshSessionExecResult?,
+  default_target_enter: extdeps.ssh.session.SshSessionExecResult?,
+  uptime: extdeps.ssh.session.SshSessionExecResult?,
+) -> gunbc.spark.serving_boot_provenance.SparkServingBootProvenance {
   match active_enter {
-    Absent => BootProvenanceUnobserved { cause: "ActiveEnterTimestampMonotonic probe leg did not run" as NonEmptyStr }
+    Absent => gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: "ActiveEnterTimestampMonotonic probe leg did not run" as std.types.NonEmptyStr }
     Present { value: enter } =>
       match default_target_enter {
-        Absent => BootProvenanceUnobserved { cause: "default.target ActiveEnterTimestampMonotonic probe leg did not run" as NonEmptyStr }
+        Absent => gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: "default.target ActiveEnterTimestampMonotonic probe leg did not run" as std.types.NonEmptyStr }
         Present { value: target } =>
           match uptime {
-            Absent => BootProvenanceUnobserved { cause: "/proc/uptime probe leg did not run" as NonEmptyStr }
+            Absent => gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: "/proc/uptime probe leg did not run" as std.types.NonEmptyStr }
             Present { value: up } =>
-              spark_serving_classify_boot_provenance(
+              gunbc.spark.serving_boot_provenance.spark_serving_classify_boot_provenance(
                 active_enter: enter,
                 default_target_enter: target,
                 uptime: up,
@@ -602,31 +603,31 @@ fn spark_serving_boot_provenance_from_probes(
   }
 }
 
-fn spark_serving_readback_line(readback: SparkServingReadback) -> String {
+fn spark_serving_readback_line(readback: gunbc.spark.serving_loaded_release.SparkServingReadback) -> String {
   join([
     "observe host=", readback.host as String,
     " unit_outcome=", spark_serving_unit_outcome_label(outcome: readback.unit_outcome),
-    " runtime_version=", spark_serving_readback_field_label(field: readback.runtime_version),
-    " runtime_materialization_identity=", spark_serving_readback_field_label(field: readback.runtime_materialization_identity),
-    " model_name=", spark_serving_readback_field_label(field: readback.model_name),
-    " model_tag=", spark_serving_readback_field_label(field: readback.model_tag),
-    " model_digest=", spark_serving_readback_field_label(field: readback.model_manifest_digest),
-    " nvidia_driver=", spark_serving_readback_field_label(field: readback.nvidia_driver),
-    " ", spark_serving_boot_provenance_wire(p: readback.boot_provenance),
+    " runtime_version=", gunbc.spark.serving_readback_parse.spark_serving_readback_field_label(field: readback.runtime_version),
+    " runtime_materialization_identity=", gunbc.spark.serving_readback_parse.spark_serving_readback_field_label(field: readback.runtime_materialization_identity),
+    " model_name=", gunbc.spark.serving_readback_parse.spark_serving_readback_field_label(field: readback.model_name),
+    " model_tag=", gunbc.spark.serving_readback_parse.spark_serving_readback_field_label(field: readback.model_tag),
+    " model_digest=", gunbc.spark.serving_readback_parse.spark_serving_readback_field_label(field: readback.model_manifest_digest),
+    " nvidia_driver=", gunbc.spark.serving_readback_parse.spark_serving_readback_field_label(field: readback.nvidia_driver),
+    " ", gunbc.spark.serving_boot_provenance.spark_serving_boot_provenance_wire(p: readback.boot_provenance),
     "\n",
-    spark_managed_grant_report(host: readback.host, outcome: readback.grants),
+    gunbc.spark.managed_grant_reconcile.spark_managed_grant_report(host: readback.host, outcome: readback.grants),
   ], "")
 }
 
-fn spark_serving_observation_line(observation: SparkServingObservation) -> String {
+fn spark_serving_observation_line(observation: gunbc.spark.serving_release.SparkServingObservation) -> String {
   match observation {
-    SparkServingAbsent { host: h } => join(["observation host=", h as String, " state=absent\n"], "")
-    SparkServingObservationRefused { host: h, cause: c } =>
+    gunbc.spark.serving_release.SparkServingAbsent { host: h } => join(["observation host=", h as String, " state=absent\n"], "")
+    gunbc.spark.serving_release.SparkServingObservationRefused { host: h, cause: c } =>
       join(["observation host=", h as String, " state=refused cause=", c as String, "\n"], "")
-    SparkServingObserved { host: h, loaded_release: r } =>
+    gunbc.spark.serving_release.SparkServingObserved { host: h, loaded_release: r } =>
       join([
         "observation host=", h as String, " state=observed digest=",
-        spark_serving_release_identity(spec: r).digest.digest as String, "\n",
+        gunbc.spark.serving_release.spark_serving_release_identity(spec: r).digest.digest as String, "\n",
       ], "")
   }
 }
@@ -640,8 +641,8 @@ fn spark_serving_observation_line(observation: SparkServingObservation) -> Strin
 // have surfaced it as a mystery rather than a typo. Repaired in passing because this change adds a
 // field to exactly that record.
 fn spark_serving_observe_host(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
 ) -> SparkServingHostObservation {
   let load_state = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_load_state_probe_words())
   let is_active = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_probe_words())
@@ -653,9 +654,9 @@ fn spark_serving_observe_host(
     host: host,
     raw_words: spark_serving_runtime_materialization_receipt_probe_argv(),
   )
-  let active_enter = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_enter_probe_argv())
-  let default_target_enter = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_default_target_enter_probe_argv())
-  let uptime = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_uptime_probe_argv())
+  let active_enter = spark_serving_probe_leg(context: context, host: host, raw_words: gunbc.spark.serving_boot_provenance.spark_serving_active_enter_probe_argv())
+  let default_target_enter = spark_serving_probe_leg(context: context, host: host, raw_words: gunbc.spark.serving_boot_provenance.spark_serving_default_target_enter_probe_argv())
+  let uptime = spark_serving_probe_leg(context: context, host: host, raw_words: gunbc.spark.serving_boot_provenance.spark_serving_uptime_probe_argv())
   let grants = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_grant_probe_words)
   let readback = spark_serving_readback_from_probe_results(
     host: host,
@@ -672,7 +673,7 @@ fn spark_serving_observe_host(
   )
   SparkServingHostObservation {
     readback: readback,
-    observation: derive_spark_serving_observation(readback: readback),
+    observation: gunbc.spark.serving_loaded_release.derive_spark_serving_observation(readback: readback),
     account: spark_serving_account_observation_from_probes(
       passwd_probe: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_account_probe_words()),
       key_probe: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_authorized_keys_probe_words()),
@@ -681,8 +682,8 @@ fn spark_serving_observe_host(
 }
 
 fn spark_serving_observations_from_hosts(
-  context: FleetSshExecutionContext,
-  hosts: List<HostIdentity>,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  hosts: List<product.placement_supply.HostIdentity>,
 ) -> List<SparkServingHostObservation> {
   map(hosts, h => spark_serving_observe_host(context: context, host: h))
 }
@@ -703,15 +704,15 @@ fn spark_serving_observation_report_from_observations(
 }
 
 fn spark_serving_observe_with_context(
-  context: FleetSshExecutionContext,
-  hosts: List<HostIdentity>,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  hosts: List<product.placement_supply.HostIdentity>,
 ) -> SparkServingObservationReport {
   match spark_serving_observation_report_from_observations(
     observations: spark_serving_observations_from_hosts(context: context, hosts: hosts),
   ) {
     Absent =>
       SparkServingObservationReportRefused {
-        cause: "spark serving observation requires at least one host" as NonEmptyStr,
+        cause: "spark serving observation requires at least one host" as std.types.NonEmptyStr,
       }
     Present { value: report } => report
   }
@@ -803,10 +804,10 @@ fn spark_serving_host_observation_lines(ho: SparkServingHostObservation) -> Stri
 type SparkServingCurrentBootDurabilityStanding
   = CurrentBootDurabilityExhibitedFleetWide { observed_hosts: Int }
   | CurrentBootDurabilityNotExhibited { exhibiting: Int, observed_hosts: Int }
-  | CurrentBootDurabilityUnobserved { cause: NonEmptyStr }
+  | CurrentBootDurabilityUnobserved { cause: std.types.NonEmptyStr }
 
 fn spark_serving_host_exhibits_current_boot_durability(ho: SparkServingHostObservation) -> Bool {
-  spark_serving_boot_provenance_establishes_durability(p: ho.readback.boot_provenance)
+  gunbc.spark.serving_boot_provenance.spark_serving_boot_provenance_establishes_durability(p: ho.readback.boot_provenance)
 }
 
 fn spark_serving_current_boot_durability_standing(
@@ -886,16 +887,16 @@ fn spark_serving_observation_report_text(
   }
 }
 
-fn spark_serving_observation_succeeded(observation: SparkServingObservation) -> Bool {
+fn spark_serving_observation_succeeded(observation: gunbc.spark.serving_release.SparkServingObservation) -> Bool {
   match observation {
-    SparkServingObserved { host: _, loaded_release: _ } => true
-    SparkServingAbsent { host: _ } => false
-    SparkServingObservationRefused { host: _, cause: _ } => false
+    gunbc.spark.serving_release.SparkServingObserved { host: _, loaded_release: _ } => true
+    gunbc.spark.serving_release.SparkServingAbsent { host: _ } => false
+    gunbc.spark.serving_release.SparkServingObservationRefused { host: _, cause: _ } => false
   }
 }
 
-fn spark_serving_all_observations_succeeded(observations: List<SparkServingObservation>) -> Bool {
-  fold_list(
+fn spark_serving_all_observations_succeeded(observations: List<gunbc.spark.serving_release.SparkServingObservation>) -> Bool {
+  v2.std.algebra.fold_list(
     xs: observations,
     empty: true,
     cons: fn(acc, obs) {
@@ -919,16 +920,16 @@ fn spark_serving_observation_report_succeeded(report: SparkServingObservationRep
 // SparkServingObservationRefused is the probe failing to answer at all, and refuses. This axis is
 // deliberately weaker than spark_serving_observation_succeeded, which the converge entries use
 // because there absence means the desired state was not reached.
-fn spark_serving_observation_was_made(observation: SparkServingObservation) -> Bool {
+fn spark_serving_observation_was_made(observation: gunbc.spark.serving_release.SparkServingObservation) -> Bool {
   match observation {
-    SparkServingObserved { host: _, loaded_release: _ } => true
-    SparkServingAbsent { host: _ } => true
-    SparkServingObservationRefused { host: _, cause: _ } => false
+    gunbc.spark.serving_release.SparkServingObserved { host: _, loaded_release: _ } => true
+    gunbc.spark.serving_release.SparkServingAbsent { host: _ } => true
+    gunbc.spark.serving_release.SparkServingObservationRefused { host: _, cause: _ } => false
   }
 }
 
-fn spark_serving_all_observations_were_made(observations: List<SparkServingObservation>) -> Bool {
-  fold_list(
+fn spark_serving_all_observations_were_made(observations: List<gunbc.spark.serving_release.SparkServingObservation>) -> Bool {
+  v2.std.algebra.fold_list(
     xs: observations,
     empty: true,
     cons: fn(acc, obs) {
@@ -946,82 +947,84 @@ fn spark_serving_report_observations_were_made(report: SparkServingObservationRe
   }
 }
 
-func spark_serving_observe_wet() -> ProcessExit
-  uses net: Network
+
+func spark_serving_observe_wet() -> std.process.ProcessExit
+  uses net: std.resources.Network
 {
-  match fleet_ssh_attempt_raw_from_env() {
+  match gunbc.fleet_multi_principal_probe.fleet_ssh_attempt_raw_from_env() {
     Absent =>
-      exit_failure(
+      std.process.exit_failure(
         reason: "spark_serving_observe_wet requires GUNBC_FLEET_SSH_ATTEMPT_RAW or GitHub GITHUB_RUN_ID+GITHUB_RUN_ATTEMPT env"
       )
     Present { value: attempt_raw } => spark_serving_observe_with_attempt(attempt_raw: attempt_raw)
   }
 }
 
-func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
-  uses net: Network
+func spark_serving_observe_with_attempt(attempt_raw: String) -> std.process.ProcessExit
+  uses net: std.resources.Network
 {
-  let now = clock_now_probed_at()
-  run_with_materialized_fleet_ssh_binding(
+  let now = gunbc.clock_read.clock_now_probed_at()
+  gunbc.spark.credential_workflow.run_with_materialized_fleet_ssh_binding(
     attempt_raw: attempt_raw,
-    token_source: GcloudPrintToken,
+    token_source: gunbc.auth.access_token_source.GcloudPrintToken,
     body: fn(credential) {
-      let report = match fleet_ssh_attempt_identity(raw: attempt_raw) {
+      let report = match gunbc.fleet_known_hosts_anchor.fleet_ssh_attempt_identity(raw: attempt_raw) {
         Absent =>
           SparkServingObservationReportRefused {
-            cause: "attempt identity is not a safe path segment" as NonEmptyStr,
+            cause: "attempt identity is not a safe path segment" as std.types.NonEmptyStr,
           }
         Present { value: attempt } => {
-          let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
-          match fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
+          let materialization = gunbc.fleet_known_hosts_anchor.materialize_fleet_known_hosts_anchor(attempt: attempt)
+          match gunbc.fleet_known_hosts_anchor.fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
             Absent =>
               SparkServingObservationReportRefused {
-                cause: known_hosts_materialization_receipt(outcome: materialization) as NonEmptyStr,
+                cause: gunbc.fleet_known_hosts_anchor.known_hosts_materialization_receipt(outcome: materialization) as std.types.NonEmptyStr,
               }
             Present { value: context } =>
               spark_serving_observe_with_context(
                 context: context,
-                hosts: spark_serving_desired_hosts,
+                hosts: gunbc.spark.serving_desired.spark_serving_desired_hosts,
               )
           }
         }
       }
-      let materialization_receipt = match fleet_ssh_attempt_identity(raw: attempt_raw) {
+      let materialization_receipt = match gunbc.fleet_known_hosts_anchor.fleet_ssh_attempt_identity(raw: attempt_raw) {
         Absent => ""
         Present { value: attempt } =>
-          known_hosts_materialization_receipt(
-            outcome: materialize_fleet_known_hosts_anchor(attempt: attempt),
+          gunbc.fleet_known_hosts_anchor.known_hosts_materialization_receipt(
+            outcome: gunbc.fleet_known_hosts_anchor.materialize_fleet_known_hosts_anchor(attempt: attempt),
           )
       }
       let receipt = spark_serving_observation_report_text(
         report: report,
-        probed_at: probed_at_word(reading: now) as String,
+        probed_at: gunbc.clock_read.probed_at_word(reading: now) as String,
         attempt_raw: attempt_raw,
         materialization_receipt: materialization_receipt,
       )
       if spark_serving_observation_report_succeeded(report: report) == false {
-        exit_failure(reason: receipt)
+        std.process.exit_failure(reason: receipt)
       } else {
-        let w = Filesystem.Write(path: spark_serving_observe_receipt_path, content: receipt)
+        let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: spark_serving_observe_receipt_path, content: receipt)
         if w.success {
-          ExitSuccess
+          std.process.ExitSuccess
         } else {
-          exit_failure(reason: join(["spark serving observe receipt write failed: ", w.error], ""))
+          std.process.exit_failure(reason: join(["spark serving observe receipt write failed: ", w.error], ""))
         }
       }
     },
   )
 }
 
+
 // RUNNER-SIDE OBSERVATION ENTRY. spark_serving_observe_wet above resolves a credential through
 // GcloudPrintToken and is therefore an operator-workstation route only; a GHA self-hosted slot
 // carries no gcloud and that fetch fails at runtime rather than degrading. This entry observes
 // through the in-run ssh-agent the job already materialized, so the same probe legs run where
 // the fleet actually is. It is READ-ONLY: every word list here is a query.
-func spark_serving_observe_ci_wet() -> ProcessExit {
-  match prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_observe_ci_attempt_raw) {
-    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
-    FleetSshContextReady { context: context, receipt: context_receipt } =>
+func spark_serving_observe_ci_wet() -> std.process.ProcessExit {
+  match gunbc.fleet_ssh_locus.prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_observe_ci_attempt_raw) {
+    gunbc.fleet_ssh_locus.FleetSshContextRefused { cause: cause } => std.process.exit_failure(reason: cause)
+    gunbc.fleet_ssh_locus.FleetSshContextReady { context: context, receipt: context_receipt } =>
       spark_serving_observe_ci_with_context(context: context, context_receipt: context_receipt)
   }
 }
@@ -1031,39 +1034,39 @@ func spark_serving_observe_ci_wet() -> ProcessExit {
 data spark_serving_observe_ci_attempt_raw: String = "spark-serving-observe-ci"
 
 func spark_serving_observe_ci_with_context(
-  context: FleetSshExecutionContext,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   context_receipt: String,
-) -> ProcessExit {
-  let now = clock_now_probed_at()
+) -> std.process.ProcessExit {
+  let now = gunbc.clock_read.clock_now_probed_at()
   let observations = map(
-    spark_serving_desired_hosts,
+    gunbc.spark.serving_desired.spark_serving_desired_hosts,
     h => spark_serving_observe_host_via_locus(context: context, host: h),
   )
   let report = match spark_serving_observation_report_from_observations(observations: observations) {
     Absent =>
       SparkServingObservationReportRefused {
-        cause: "spark_serving_observe_ci_wet: no host was probed — an empty observation list is ignorance, not a clean fleet" as NonEmptyStr,
+        cause: "spark_serving_observe_ci_wet: no host was probed — an empty observation list is ignorance, not a clean fleet" as std.types.NonEmptyStr,
       }
     Present { value: r } => r
   }
   let body = join([
-    join(["spark_serving_observe_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n"], ""),
-    join(["credential_locus=", fleet_locus_label(context: context), "\n"], ""),
+    join(["spark_serving_observe_ci_wet probed_at=", gunbc.clock_read.probed_at_word(reading: now) as String, "\n"], ""),
+    join(["credential_locus=", gunbc.fleet_ssh_locus.fleet_locus_label(context: context), "\n"], ""),
     context_receipt,
     spark_serving_report_body_lines(report: report),
   ], "")
-  let w = Filesystem.Write(path: spark_serving_observe_ci_receipt_path, content: body)
+  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: spark_serving_observe_ci_receipt_path, content: body)
   if w.success == false {
-    exit_failure(reason: join(["receipt write failed: ", w.error], ""))
+    std.process.exit_failure(reason: join(["receipt write failed: ", w.error], ""))
   } else if spark_serving_report_observations_were_made(report: report) == false {
-    exit_failure(
+    std.process.exit_failure(
       reason: join(
         ["spark_serving_observe_ci_wet: at least one host could not be observed\n", body],
         "",
       ),
     )
   } else {
-    ExitSuccess
+    std.process.ExitSuccess
   }
 }
 
@@ -1073,16 +1076,16 @@ func spark_serving_observe_ci_with_context(
 // way that matters: a disabled unit exits non-zero while printing "disabled", which is a successful
 // observation of a real state. Reading only the exit code would render that as a failed probe, so
 // the word is what is classified and the exit code only distinguishes "we could not ask".
-fn classify_is_enabled_stdout(result: SshSessionExecResult) -> SparkServingUnitManagerState {
+fn classify_is_enabled_stdout(result: extdeps.ssh.session.SshSessionExecResult) -> gunbc.spark.serving_observed_members.SparkServingUnitManagerState {
   let word = std.algebra.trim(s: result.stdout)
   if word == "enabled" || word == "enabled-runtime" {
-    UserUnitManagerEnabled
+    gunbc.spark.serving_observed_members.UserUnitManagerEnabled
   } else if word == "disabled" {
-    UserUnitManagerDisabled
+    gunbc.spark.serving_observed_members.UserUnitManagerDisabled
   } else if word == "not-found" {
-    UserUnitManagerNotRegistered
+    gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered
   } else {
-    UserUnitManagerUnobserved
+    gunbc.spark.serving_observed_members.UserUnitManagerUnobserved
   }
 }
 
@@ -1090,7 +1093,7 @@ fn classify_is_enabled_stdout(result: SshSessionExecResult) -> SparkServingUnitM
 // is an unobserved member. systemd's own message is not available here, so the discriminator is the
 // exit code GNU coreutils uses for a missing operand target alongside a stderr naming the path --
 // and where neither holds, the honest answer is unobserved rather than a guess at absence.
-fn cat_reported_missing_file(result: SshSessionExecResult) -> Bool {
+fn cat_reported_missing_file(result: extdeps.ssh.session.SshSessionExecResult) -> Bool {
   string_contains(result.stderr, "No such file or directory")
 }
 
@@ -1098,9 +1101,9 @@ fn cat_reported_missing_file(result: SshSessionExecResult) -> Bool {
 // and reconcile against separate addresses, but they come from the same two remote legs -- so they
 // are read once and returned together rather than by two callers each paying the round trips again.
 type SparkServingObservedUnit {
-  state: SparkServingObservedUnitState
-  enablement: SparkServingUnitManagerState
-  activity: SparkServingObservedActivityState
+  state: gunbc.spark.serving_observed_members.SparkServingObservedUnitState
+  enablement: gunbc.spark.serving_observed_members.SparkServingUnitManagerState
+  activity: gunbc.spark.serving_observed_members.SparkServingObservedActivityState
 }
 
 // `systemctl --user is-active` and nothing else decides this, and it answers in THREE definite ways
@@ -1112,17 +1115,17 @@ type SparkServingObservedUnit {
 // Every OTHER outcome does leave the activity unobserved, and that arm is still load-bearing: a
 // manager we could not reach has not told us the unit is dead, and planning a start on that silence
 // would actuate off a probe that never answered.
-fn classify_is_active_result(result: SshSessionExecResult) -> SparkServingObservedActivityState {
+fn classify_is_active_result(result: extdeps.ssh.session.SshSessionExecResult) -> gunbc.spark.serving_observed_members.SparkServingObservedActivityState {
   if result.success && std.algebra.trim(s: result.stdout) == "active" {
-    UnitActivityRunning
+    gunbc.spark.serving_observed_members.UnitActivityRunning
   } else if result.exit_code == 3 {
-    UnitActivityStopped
+    gunbc.spark.serving_observed_members.UnitActivityStopped
   } else if result.exit_code == 4 {
     UnitActivityNoSuchUnit
   } else if result.success {
-    UnitActivityStopped
+    gunbc.spark.serving_observed_members.UnitActivityStopped
   } else {
-    UnitActivityUnobserved
+    gunbc.spark.serving_observed_members.UnitActivityUnobserved
   }
 }
 
@@ -1176,7 +1179,7 @@ fn spark_serving_model_blobs_listing_argv() -> List<String> {
 // once inside the classifier. A decode that refuses yields an EMPTY argv list, which makes sha256sum
 // read no files and produce no lines -- and the classifier then refuses on its own decode, so the
 // empty case cannot be mistaken for "every blob verified".
-fn spark_serving_manifest_required_digests(manifest_body: String) -> List<NonEmptyStr> {
+fn spark_serving_manifest_required_digests(manifest_body: String) -> List<std.types.NonEmptyStr> {
   match spark_serving_manifest_decode(body: manifest_body) {
     SparkServingManifestDigests { first: f, further: r } => concat([f], r)
     SparkServingManifestUnparseable => []
@@ -1185,13 +1188,13 @@ fn spark_serving_manifest_required_digests(manifest_body: String) -> List<NonEmp
   }
 }
 
-fn spark_serving_model_blob_digest_argv(digest_hexes: List<NonEmptyStr>) -> List<String> {
+fn spark_serving_model_blob_digest_argv(digest_hexes: List<std.types.NonEmptyStr>) -> List<String> {
   concat(
     ["sha256sum"],
     map(digest_hexes, h => join([
       spark_serving_desired_model_blobs_dir() as String,
       "/",
-      ollama_blob_file_name(digest_hex: h) as String,
+      extdeps.ollama.model_store.ollama_blob_file_name(digest_hex: h) as String,
     ], "")),
   )
 }
@@ -1200,7 +1203,7 @@ fn spark_serving_model_blob_digest_argv(digest_hexes: List<NonEmptyStr>) -> List
 // its own filename carries; anything else -- a short read, a rewritten layer, a name that does not
 // match its bytes -- is a mismatch, and the FIRST one is reported rather than a count, because an
 // operator repairs a named blob and not a number.
-fn spark_serving_first_corrupt_blob(stdout: String, expected: List<NonEmptyStr>) -> NonEmptyStr? {
+fn spark_serving_first_corrupt_blob(stdout: String, expected: List<std.types.NonEmptyStr>) -> std.types.NonEmptyStr? {
   fold(expected, init: none, f: fn(acc, want) {
     match acc {
       Present { value: found } => Present { value: found }
@@ -1208,7 +1211,7 @@ fn spark_serving_first_corrupt_blob(stdout: String, expected: List<NonEmptyStr>)
         if any(
           split(std.algebra.trim(s: stdout), "\n"),
           line =>
-            string_contains(line, ollama_blob_file_name(digest_hex: want) as String)
+            string_contains(line, extdeps.ollama.model_store.ollama_blob_file_name(digest_hex: want) as String)
               && std.algebra.trim(s: split(std.algebra.trim(s: line), " ")[0]) == (want as String),
         ) {
           none
@@ -1235,13 +1238,13 @@ fn spark_serving_first_corrupt_blob(stdout: String, expected: List<NonEmptyStr>)
 // that is in fact unparseable. The refusal was already fail-closed; what was wrong was the sentence
 // it produced, and a diagnostic that misdescribes the fault sends the reader to the wrong place.
 type SparkServingManifestDecode
-  = SparkServingManifestDigests { first: NonEmptyStr, further: List<NonEmptyStr> }
+  = SparkServingManifestDigests { first: std.types.NonEmptyStr, further: List<std.types.NonEmptyStr> }
   | SparkServingManifestUnparseable
-  | SparkServingManifestMalformed { detail: NonEmptyStr }
+  | SparkServingManifestMalformed { detail: std.types.NonEmptyStr }
   | SparkServingManifestNamesNoBlobs
 
 fn spark_serving_manifest_decode(body: String) -> SparkServingManifestDecode {
-  match parse_json(s: body) {
+  match extdeps.languages.json.parse.parse_json(s: body) {
     Absent => SparkServingManifestUnparseable
     Present { value: doc } =>
       match spark_serving_manifest_descriptor_lists(doc: doc) {
@@ -1254,7 +1257,7 @@ fn spark_serving_manifest_decode(body: String) -> SparkServingManifestDecode {
   }
 }
 
-fn spark_serving_manifest_descriptor_lists(doc: JsonValue) -> SparkServingManifestDecode {
+fn spark_serving_manifest_descriptor_lists(doc: extdeps.languages.json.emit.JsonValue) -> SparkServingManifestDecode {
   match spark_serving_manifest_config_digest(doc: doc) {
     SparkServingManifestMalformed { detail: d } => SparkServingManifestMalformed { detail: d }
     SparkServingManifestUnparseable => SparkServingManifestUnparseable
@@ -1269,8 +1272,8 @@ fn spark_serving_manifest_descriptor_lists(doc: JsonValue) -> SparkServingManife
 }
 
 fn spark_serving_manifest_join_layers(
-  doc: JsonValue,
-  config: List<NonEmptyStr>,
+  doc: extdeps.languages.json.emit.JsonValue,
+  config: List<std.types.NonEmptyStr>,
 ) -> SparkServingManifestDecode {
   match spark_serving_manifest_layer_digests(doc: doc) {
     SparkServingManifestMalformed { detail: d } => SparkServingManifestMalformed { detail: d }
@@ -1290,7 +1293,7 @@ fn spark_serving_manifest_join_layers(
   }
 }
 
-fn spark_serving_manifest_digest_list(v: SparkServingManifestDecode) -> List<NonEmptyStr> {
+fn spark_serving_manifest_digest_list(v: SparkServingManifestDecode) -> List<std.types.NonEmptyStr> {
   match v {
     SparkServingManifestDigests { first: f, further: r } => concat([f], r)
     SparkServingManifestUnparseable => []
@@ -1303,27 +1306,27 @@ fn spark_serving_manifest_digest_list(v: SparkServingManifestDecode) -> List<Non
 // digest, carries two, or carries one this decoder cannot read means the manifest is not the shape
 // upstream documents -- and treating it as "this layer requires nothing" would quietly shrink the
 // required closure, which is the direction that reports a store complete when it is not.
-fn spark_serving_descriptor_digest(v: JsonValue) -> SparkServingManifestDecode {
-  match json_object_unique_member(v: v, key: "digest") {
-    JsonMemberFound { value: d } =>
-      match spark_serving_digest_hex_from_wire(wire: json_string_value_or_empty(v: d)) {
+fn spark_serving_descriptor_digest(v: extdeps.languages.json.emit.JsonValue) -> SparkServingManifestDecode {
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: "digest") {
+    extdeps.languages.json.parse.JsonMemberFound { value: d } =>
+      match spark_serving_digest_hex_from_wire(wire: extdeps.languages.json.parse.json_string_value_or_empty(v: d)) {
         Absent =>
           SparkServingManifestMalformed {
-            detail: "a descriptor digest is not a readable sha256 wire value" as NonEmptyStr,
+            detail: "a descriptor digest is not a readable sha256 wire value" as std.types.NonEmptyStr,
           }
         Present { value: hex } => SparkServingManifestDigests { first: hex, further: [] }
       }
-    JsonMemberAbsent =>
+    extdeps.languages.json.parse.JsonMemberAbsent =>
       SparkServingManifestMalformed {
-        detail: "a descriptor carries no digest" as NonEmptyStr,
+        detail: "a descriptor carries no digest" as std.types.NonEmptyStr,
       }
-    JsonMemberDuplicated { count: _ } =>
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
       SparkServingManifestMalformed {
-        detail: "a descriptor carries more than one digest" as NonEmptyStr,
+        detail: "a descriptor carries more than one digest" as std.types.NonEmptyStr,
       }
-    JsonMemberNotAnObject =>
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       SparkServingManifestMalformed {
-        detail: "a descriptor is not an object" as NonEmptyStr,
+        detail: "a descriptor is not an object" as std.types.NonEmptyStr,
       }
   }
 }
@@ -1331,12 +1334,12 @@ fn spark_serving_descriptor_digest(v: JsonValue) -> SparkServingManifestDecode {
 // `sha256:<hex>` is the WIRE spelling. The on-disk file is `sha256-<hex>`, and conflating the two is
 // how a consumer ends up looking for a file that exists on no host. The prefix is stripped here so
 // the digest travels as its hex alone and each side spells it its own way.
-fn spark_serving_digest_hex_from_wire(wire: String) -> NonEmptyStr? {
+fn spark_serving_digest_hex_from_wire(wire: String) -> std.types.NonEmptyStr? {
   let parts = split(wire, ":")
   if length(parts) == 2 && parts[0] == "sha256" {
     match parts[1] {
       Present { value: hex } =>
-        if hex != "" { Present { value: hex as NonEmptyStr } } else { none }
+        if hex != "" { Present { value: hex as std.types.NonEmptyStr } } else { none }
       Absent => none
     }
   } else {
@@ -1344,22 +1347,22 @@ fn spark_serving_digest_hex_from_wire(wire: String) -> NonEmptyStr? {
   }
 }
 
-fn spark_serving_manifest_config_digest(doc: JsonValue) -> SparkServingManifestDecode {
-  match json_object_unique_member(v: doc, key: "config") {
-    JsonMemberFound { value: cfg } => spark_serving_descriptor_digest(v: cfg)
-    JsonMemberAbsent => SparkServingManifestNamesNoBlobs
-    JsonMemberDuplicated { count: _ } =>
-      SparkServingManifestMalformed { detail: "manifest carries more than one config" as NonEmptyStr }
-    JsonMemberNotAnObject =>
-      SparkServingManifestMalformed { detail: "manifest is not an object" as NonEmptyStr }
+fn spark_serving_manifest_config_digest(doc: extdeps.languages.json.emit.JsonValue) -> SparkServingManifestDecode {
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: "config") {
+    extdeps.languages.json.parse.JsonMemberFound { value: cfg } => spark_serving_descriptor_digest(v: cfg)
+    extdeps.languages.json.parse.JsonMemberAbsent => SparkServingManifestNamesNoBlobs
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
+      SparkServingManifestMalformed { detail: "manifest carries more than one config" as std.types.NonEmptyStr }
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
+      SparkServingManifestMalformed { detail: "manifest is not an object" as std.types.NonEmptyStr }
   }
 }
 
-fn spark_serving_manifest_layer_digests(doc: JsonValue) -> SparkServingManifestDecode {
-  match json_object_unique_member(v: doc, key: "layers") {
-    JsonMemberFound { value: layers } =>
+fn spark_serving_manifest_layer_digests(doc: extdeps.languages.json.emit.JsonValue) -> SparkServingManifestDecode {
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: "layers") {
+    extdeps.languages.json.parse.JsonMemberFound { value: layers } =>
       match layers {
-        JsonArray { elements: els } =>
+        extdeps.languages.json.emit.JsonArray { elements: els } =>
           fold(els, init: SparkServingManifestNamesNoBlobs, f: fn(acc, el) {
             match acc {
               SparkServingManifestMalformed { detail: d } =>
@@ -1381,27 +1384,27 @@ fn spark_serving_manifest_layer_digests(doc: JsonValue) -> SparkServingManifestD
                 }
             }
           })
-        JsonObject { members: _ } =>
-          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
-        JsonString { value: _ } =>
-          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
-        JsonNumber { lexeme: _ } =>
-          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
-        JsonBool { value: _ } =>
-          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
-        JsonNull =>
-          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
+        extdeps.languages.json.emit.JsonObject { members: _ } =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as std.types.NonEmptyStr }
+        extdeps.languages.json.emit.JsonString { value: _ } =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as std.types.NonEmptyStr }
+        extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as std.types.NonEmptyStr }
+        extdeps.languages.json.emit.JsonBool { value: _ } =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as std.types.NonEmptyStr }
+        extdeps.languages.json.emit.JsonNull =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as std.types.NonEmptyStr }
       }
-    JsonMemberAbsent => SparkServingManifestNamesNoBlobs
-    JsonMemberDuplicated { count: _ } =>
-      SparkServingManifestMalformed { detail: "manifest carries more than one layers key" as NonEmptyStr }
-    JsonMemberNotAnObject =>
-      SparkServingManifestMalformed { detail: "manifest is not an object" as NonEmptyStr }
+    extdeps.languages.json.parse.JsonMemberAbsent => SparkServingManifestNamesNoBlobs
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
+      SparkServingManifestMalformed { detail: "manifest carries more than one layers key" as std.types.NonEmptyStr }
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
+      SparkServingManifestMalformed { detail: "manifest is not an object" as std.types.NonEmptyStr }
   }
 }
 
-fn spark_serving_blob_file_name_for(digest_hex: NonEmptyStr) -> String {
-  ollama_blob_file_name(digest_hex: digest_hex)
+fn spark_serving_blob_file_name_for(digest_hex: std.types.NonEmptyStr) -> String {
+  extdeps.ollama.model_store.ollama_blob_file_name(digest_hex: digest_hex)
 }
 
 // THE IDENTITY IS READ, NOT COMPUTED THIS SIDE, AND THE FAMILY IS WHY.
@@ -1442,26 +1445,26 @@ fn spark_serving_model_manifest_digest_argv() -> List<String> {
 }
 
 fn spark_serving_observe_model_store(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
-) -> ModelStoreObservation {
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
+) -> gunbc.ollama_runtime_bundle.ModelStoreObservation {
   match spark_serving_probe_leg(
     context: context, host: host, raw_words: spark_serving_model_manifest_probe_argv(),
   ) {
     Absent =>
-      ModelStoreObservationRefused {
-        cause: "model manifest probe leg did not run" as NonEmptyStr,
+      gunbc.ollama_runtime_bundle.ModelStoreObservationRefused {
+        cause: "model manifest probe leg did not run" as std.types.NonEmptyStr,
       }
     Present { value: manifest } =>
       if manifest.success == false {
         if cat_reported_missing_file(result: manifest) {
-          ModelStoreAbsent
+          gunbc.ollama_runtime_bundle.ModelStoreAbsent
         } else {
-          ModelStoreObservationRefused {
+          gunbc.ollama_runtime_bundle.ModelStoreObservationRefused {
             cause: join([
               "model manifest unreadable exit=", to_string(manifest.exit_code),
               " stderr=", manifest.stderr,
-            ], "") as NonEmptyStr,
+            ], "") as std.types.NonEmptyStr,
           }
         }
       } else {
@@ -1469,16 +1472,16 @@ fn spark_serving_observe_model_store(
           context: context, host: host, raw_words: spark_serving_model_blobs_listing_argv(),
         ) {
           Absent =>
-            ModelStoreObservationRefused {
-              cause: "model blob listing leg did not run, so a complete manifest cannot be told from a complete store" as NonEmptyStr,
+            gunbc.ollama_runtime_bundle.ModelStoreObservationRefused {
+              cause: "model blob listing leg did not run, so a complete manifest cannot be told from a complete store" as std.types.NonEmptyStr,
             }
           Present { value: blobs } =>
             if blobs.success == false {
-              ModelStoreObservationRefused {
+              gunbc.ollama_runtime_bundle.ModelStoreObservationRefused {
                 cause: join([
                   "model blob listing failed exit=", to_string(blobs.exit_code),
                   " stderr=", blobs.stderr,
-                ], "") as NonEmptyStr,
+                ], "") as std.types.NonEmptyStr,
               }
             } else {
               match spark_serving_probe_leg(
@@ -1486,16 +1489,16 @@ fn spark_serving_observe_model_store(
                 raw_words: spark_serving_model_manifest_digest_argv(),
               ) {
                 Absent =>
-                  ModelStoreObservationRefused {
-                    cause: "model manifest digest leg did not run, and an identity this side invented would not be comparable to the desired one" as NonEmptyStr,
+                  gunbc.ollama_runtime_bundle.ModelStoreObservationRefused {
+                    cause: "model manifest digest leg did not run, and an identity this side invented would not be comparable to the desired one" as std.types.NonEmptyStr,
                   }
                 Present { value: digest } =>
                   if digest.success == false {
-                    ModelStoreObservationRefused {
+                    gunbc.ollama_runtime_bundle.ModelStoreObservationRefused {
                       cause: join([
                         "model manifest digest failed exit=", to_string(digest.exit_code),
                         " stderr=", digest.stderr,
-                      ], "") as NonEmptyStr,
+                      ], "") as std.types.NonEmptyStr,
                     }
                   } else {
                     match spark_serving_probe_leg(
@@ -1507,8 +1510,8 @@ fn spark_serving_observe_model_store(
                       ),
                     ) {
                       Absent =>
-                        ModelStoreObservationRefused {
-                          cause: "model blob digest leg did not run, so blob contents were never verified" as NonEmptyStr,
+                        gunbc.ollama_runtime_bundle.ModelStoreObservationRefused {
+                          cause: "model blob digest leg did not run, so blob contents were never verified" as std.types.NonEmptyStr,
                         }
                       Present { value: blobdigests } =>
                         spark_serving_classify_model_store(
@@ -1535,20 +1538,20 @@ fn spark_serving_classify_model_store(
   manifest_digest_stdout: String,
   blobs_listing: String,
   blob_digest_stdout: String,
-) -> ModelStoreObservation {
+) -> gunbc.ollama_runtime_bundle.ModelStoreObservation {
   let present = split(std.algebra.trim(s: blobs_listing), "\n")
   match spark_serving_manifest_decode(body: manifest_body) {
     SparkServingManifestUnparseable =>
-      ModelStoreObservationRefused {
-        cause: "model manifest is not parseable JSON" as NonEmptyStr,
+      gunbc.ollama_runtime_bundle.ModelStoreObservationRefused {
+        cause: "model manifest is not parseable JSON" as std.types.NonEmptyStr,
       }
     SparkServingManifestMalformed { detail: d } =>
-      ModelStoreObservationRefused {
-        cause: join(["model manifest is malformed: ", d as String], "") as NonEmptyStr,
+      gunbc.ollama_runtime_bundle.ModelStoreObservationRefused {
+        cause: join(["model manifest is malformed: ", d as String], "") as std.types.NonEmptyStr,
       }
     SparkServingManifestNamesNoBlobs =>
-      ModelStoreObservationRefused {
-        cause: "model manifest names no blob digests — refusing rather than reporting a store complete against an empty requirement" as NonEmptyStr,
+      gunbc.ollama_runtime_bundle.ModelStoreObservationRefused {
+        cause: "model manifest names no blob digests — refusing rather than reporting a store complete against an empty requirement" as std.types.NonEmptyStr,
       }
     SparkServingManifestDigests { first: rf, further: rr } => {
       let required = concat([rf], rr)
@@ -1562,23 +1565,23 @@ fn spark_serving_classify_model_store(
       })
       match observed_identity {
         Absent =>
-          ModelStoreObservationRefused {
-            cause: "sha256sum output is not a readable sha256 hex digest" as NonEmptyStr,
+          gunbc.ollama_runtime_bundle.ModelStoreObservationRefused {
+            cause: "sha256sum output is not a readable sha256 hex digest" as std.types.NonEmptyStr,
           }
         Present { value: ident } =>
           match missing.first() {
             Absent =>
               match spark_serving_first_corrupt_blob(stdout: blob_digest_stdout, expected: required) {
                 Present { value: bad } =>
-                  ModelStoreCorrupt { manifest_identity: ident, first_corrupt_blob: bad }
+                  gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: ident, first_corrupt_blob: bad }
                 Absent =>
-                  ModelStoreComplete {
+                  gunbc.ollama_runtime_bundle.ModelStoreComplete {
                     manifest_identity: ident,
                     blob_closure_count: length(required),
                   }
               }
             Present { value: head } =>
-              ModelStoreIncomplete {
+              gunbc.ollama_runtime_bundle.ModelStoreIncomplete {
                 manifest_identity: ident,
                 first_missing_blob: head,
                 further_missing_blobs: missing.skip(n: 1),
@@ -1590,27 +1593,27 @@ fn spark_serving_classify_model_store(
 }
 
 fn spark_serving_observe_user_unit_pair(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
 ) -> SparkServingObservedUnit {
   match spark_serving_probe_leg(
-    context: context, host: host, raw_words: spark_serving_user_unit_read_argv(),
+    context: context, host: host, raw_words: gunbc.spark.serving_observed_members.spark_serving_user_unit_read_argv(),
   ) {
     Absent =>
       SparkServingObservedUnit {
-        state: UserUnitStateUnobserved,
-        enablement: UserUnitManagerUnobserved,
-        activity: UnitActivityUnobserved,
+        state: gunbc.spark.serving_observed_members.UserUnitStateUnobserved,
+        enablement: gunbc.spark.serving_observed_members.UserUnitManagerUnobserved,
+        activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved,
       }
     Present { value: read } =>
       match spark_serving_probe_leg(
-        context: context, host: host, raw_words: spark_serving_user_unit_is_enabled_argv(),
+        context: context, host: host, raw_words: gunbc.spark.serving_observed_members.spark_serving_user_unit_is_enabled_argv(),
       ) {
         Absent =>
           SparkServingObservedUnit {
-            state: UserUnitStateUnobserved,
-            enablement: UserUnitManagerUnobserved,
-            activity: UnitActivityUnobserved,
+            state: gunbc.spark.serving_observed_members.UserUnitStateUnobserved,
+            enablement: gunbc.spark.serving_observed_members.UserUnitManagerUnobserved,
+            activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved,
           }
         Present { value: enabled } =>
           match spark_serving_probe_leg(
@@ -1618,17 +1621,17 @@ fn spark_serving_observe_user_unit_pair(
           ) {
             Absent =>
               SparkServingObservedUnit {
-                state: classify_observed_user_unit(
+                state: gunbc.spark.serving_observed_members.classify_observed_user_unit(
                   read_succeeded: read.success,
                   read_stdout: read.stdout,
                   file_absent: cat_reported_missing_file(result: read),
                 ),
                 enablement: classify_is_enabled_stdout(result: enabled),
-                activity: UnitActivityUnobserved,
+                activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved,
               }
             Present { value: active } =>
               SparkServingObservedUnit {
-                state: classify_observed_user_unit(
+                state: gunbc.spark.serving_observed_members.classify_observed_user_unit(
                   read_succeeded: read.success,
                   read_stdout: read.stdout,
                   file_absent: cat_reported_missing_file(result: read),
@@ -1668,52 +1671,52 @@ fn spark_serving_observe_user_unit_pair(
 // present and +x -- and neither is observed yet, so `Complete` still means "the expected executable
 // is in the expected place and is executable", not "the tree is the one the identity names".
 fn spark_serving_runtime_root_probe_argv() -> List<String> {
-  ["test", "-d", spark_serving_required_runtime_root() as String]
+  ["test", "-d", gunbc.spark.serving_install_paths.spark_serving_required_runtime_root() as String]
 }
 
 fn spark_serving_runtime_executable_probe_argv() -> List<String> {
-  ["test", "-f", spark_serving_required_runtime_executable_path() as String]
+  ["test", "-f", gunbc.spark.serving_install_paths.spark_serving_required_runtime_executable_path() as String]
 }
 
 fn spark_serving_runtime_executable_bit_probe_argv() -> List<String> {
-  ["test", "-x", spark_serving_required_runtime_executable_path() as String]
+  ["test", "-x", gunbc.spark.serving_install_paths.spark_serving_required_runtime_executable_path() as String]
 }
 
 fn spark_serving_runtime_root_listing_argv() -> List<String> {
-  ["ls", "-A", spark_serving_required_runtime_root() as String]
+  ["ls", "-A", gunbc.spark.serving_install_paths.spark_serving_required_runtime_root() as String]
 }
 
-fn spark_serving_required_runtime_executable_rel() -> NonEmptyStr {
+fn spark_serving_required_runtime_executable_rel() -> std.types.NonEmptyStr {
   ollama_required_release.executable_relative_path
 }
 
 fn spark_serving_classify_runtime_executable_absence(
-  listing: SshSessionExecResult?,
-) -> RuntimeMaterializationObservation {
-  let identity = ollama_runtime_materialization_identity_for_required_release()
+  listing: extdeps.ssh.session.SshSessionExecResult?,
+) -> gunbc.ollama_runtime_bundle.RuntimeMaterializationObservation {
+  let identity = gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release()
   match listing {
     Absent =>
-      RuntimeMaterializationObservationRefused {
-        cause: "runtime root listing leg did not run, so an empty root cannot be told from a populated one" as NonEmptyStr,
+      gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused {
+        cause: "runtime root listing leg did not run, so an empty root cannot be told from a populated one" as std.types.NonEmptyStr,
       }
     Present { value: ls } =>
       if ls.success == false {
-        RuntimeMaterializationObservationRefused {
+        gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused {
           cause: join([
             "runtime root listing failed exit=", to_string(ls.exit_code), " stderr=", ls.stderr,
-          ], "") as NonEmptyStr,
+          ], "") as std.types.NonEmptyStr,
         }
       } else {
         if (ls.stdout as String).trim() == "" {
-          RuntimeMaterializationIncomplete {
+          gunbc.ollama_runtime_bundle.RuntimeMaterializationIncomplete {
             identity: identity,
-            first_defect: RuntimeRootPresentButEmpty,
+            first_defect: gunbc.ollama_runtime_bundle.RuntimeRootPresentButEmpty,
             further_defects: [],
           }
         } else {
-          RuntimeMaterializationIncomplete {
+          gunbc.ollama_runtime_bundle.RuntimeMaterializationIncomplete {
             identity: identity,
-            first_defect: RuntimeExecutableMissing {
+            first_defect: gunbc.ollama_runtime_bundle.RuntimeExecutableMissing {
               expected_relative_path: spark_serving_required_runtime_executable_rel(),
             },
             further_defects: [],
@@ -1737,7 +1740,7 @@ fn spark_serving_classify_runtime_executable_absence(
 // root makes that unlikely by construction, and an observation that cannot tell the difference is
 // still one that would be believed if it happened.
 fn spark_serving_runtime_materialization_receipt_probe_argv() -> List<String> {
-  ["cat", spark_serving_required_runtime_receipt_path() as String]
+  ["cat", gunbc.spark.serving_install_paths.spark_serving_required_runtime_receipt_path() as String]
 }
 
 // TERMINAL SERVING HEALTH, OBSERVED. Two legs, in order: the version endpoint says the runtime that
@@ -1770,20 +1773,20 @@ fn spark_serving_runtime_materialization_receipt_probe_argv() -> List<String> {
 // rename of the same one -- so this refuses before either probe runs and names the placement as the
 // cause.
 fn spark_serving_observe_terminal_health(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
-) -> SparkServingTerminalHealth {
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
+) -> gunbc.spark.serving_terminal_health.SparkServingTerminalHealth {
   if spark_serving_place_health_request_body(context: context, host: host) == false {
-    ServingHealthUnobserved {
-      cause: "the health request body was not placed on the host, so no generation probe was issued -- this is a defect on the OBSERVING side and says nothing about whether the host serves" as NonEmptyStr,
+    gunbc.spark.serving_terminal_health.ServingHealthUnobserved {
+      cause: "the health request body was not placed on the host, so no generation probe was issued -- this is a defect on the OBSERVING side and says nothing about whether the host serves" as std.types.NonEmptyStr,
     }
   } else {
-    spark_serving_health_from_captures(
+    gunbc.spark.serving_terminal_health.spark_serving_health_from_captures(
       version: spark_serving_probe_capture(
-        context: context, host: host, raw_words: spark_serving_health_version_probe_argv(),
+        context: context, host: host, raw_words: gunbc.spark.serving_terminal_health.spark_serving_health_version_probe_argv(),
       ),
       generate: spark_serving_probe_capture(
-        context: context, host: host, raw_words: spark_serving_health_generate_probe_argv(),
+        context: context, host: host, raw_words: gunbc.spark.serving_terminal_health.spark_serving_health_generate_probe_argv(),
       ),
     )
   }
@@ -1804,40 +1807,40 @@ fn spark_serving_observe_terminal_health(
 // actually issued. Asking it of a host that never generated returns a true fact about an
 // unrelated moment.
 fn spark_serving_observe_residency(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
-  health: SparkServingTerminalHealth,
-) -> SparkServingResidency {
-  match spark_serving_served_proof(health: health) {
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
+  health: gunbc.spark.serving_terminal_health.SparkServingTerminalHealth,
+) -> gunbc.spark.serving_terminal_health.SparkServingResidency {
+  match gunbc.spark.serving_terminal_health.spark_serving_served_proof(health: health) {
     Absent =>
-      ResidencyUnobserved {
-        cause: "no generation was proven on this host, so nothing anchors a residency read to a moment we caused" as NonEmptyStr,
+      gunbc.spark.serving_terminal_health.ResidencyUnobserved {
+        cause: "no generation was proven on this host, so nothing anchors a residency read to a moment we caused" as std.types.NonEmptyStr,
       }
     Present { value: proof } =>
-      spark_serving_residency_from_capture(
+      gunbc.spark.serving_terminal_health.spark_serving_residency_from_capture(
         proof: proof,
         capture: spark_serving_probe_capture(
-          context: context, host: host, raw_words: spark_serving_health_ps_probe_argv(),
+          context: context, host: host, raw_words: gunbc.spark.serving_terminal_health.spark_serving_health_ps_probe_argv(),
         ),
       )
   }
 }
 
 fn spark_serving_probe_capture(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
   raw_words: List<String>,
-) -> SparkServingProbeCapture {
+) -> gunbc.spark.serving_terminal_health.SparkServingProbeCapture {
   match spark_serving_probe_leg(context: context, host: host, raw_words: raw_words) {
     Absent =>
-      ProbeNeverRan {
-        cause: "the probe leg did not execute: no transport result was produced" as NonEmptyStr,
+      gunbc.spark.serving_terminal_health.ProbeNeverRan {
+        cause: "the probe leg did not execute: no transport result was produced" as std.types.NonEmptyStr,
       }
     Present { value: r } =>
       if r.success {
-        ProbeAnswered { stdout: r.stdout }
+        gunbc.spark.serving_terminal_health.ProbeAnswered { stdout: r.stdout }
       } else {
-        ProbeFailed { exit_code: r.exit_code, stderr: r.stderr }
+        gunbc.spark.serving_terminal_health.ProbeFailed { exit_code: r.exit_code, stderr: r.stderr }
       }
   }
 }
@@ -1846,15 +1849,15 @@ fn spark_serving_probe_capture(
 // typed file write every other remote write uses, so the path is admitted for containment and
 // far-side portability rather than trusted.
 func spark_serving_place_health_request_body(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
 ) -> Bool
-  uses net: Network
+  uses net: std.resources.Network
 {
   let made = spark_serving_probe_leg_via_locus(
     context: context,
     host: host,
-    raw_words: ["mkdir", "-p", spark_serving_readiness_scratch_root() as String],
+    raw_words: ["mkdir", "-p", gunbc.spark.serving_install_paths.spark_serving_readiness_scratch_root() as String],
   )
   match made {
     Absent => false
@@ -1862,17 +1865,17 @@ func spark_serving_place_health_request_body(
       if m.success == false {
         false
       } else {
-        match typed_remote_file_write_seal(
-          path: spark_serving_health_request_body_path(),
-          content: spark_serving_health_request_body(),
-          allowed_scope: FileTreeScope { root_path: spark_serving_executor_home as NonEmptyStr },
+        match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+          path: gunbc.spark.serving_install_paths.spark_serving_health_request_body_path(),
+          content: gunbc.spark.serving_terminal_health.spark_serving_health_request_body(),
+          allowed_scope: gunbc.file_access.FileTreeScope { root_path: gunbc.spark.serving_runtime_receipt.spark_serving_executor_home as std.types.NonEmptyStr },
         ) {
-          TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
-          TypedRemoteFileWriteAdmitted { write: w } =>
-            remote_execution_permits_continuation(
-              execution: spark_serving_run_operation(
-                operation: RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite },
-                transport: fleet_locus_transport(context: context, host: host),
+          gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+          gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } =>
+            gunbc.remote_operation.remote_execution_permits_continuation(
+              execution: gunbc.spark.serving_converge_apply.spark_serving_run_operation(
+                operation: gunbc.remote_operation.RemoteFileBytes { write: w, mode: gunbc.typed_remote_file_write.RemoteFileModeOwnerReadWrite },
+                transport: gunbc.fleet_ssh_locus.fleet_locus_transport(context: context, host: host),
               ),
             )
         }
@@ -1884,27 +1887,27 @@ func spark_serving_place_health_request_body(
 // writes nothing useful, so returning its stdout regardless would hand the decoder an error page to
 // interpret. Empty is the honest input: it decodes to unobserved.
 fn spark_serving_observe_runtime_materialization(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
-) -> RuntimeMaterializationObservation {
-  let identity = ollama_runtime_materialization_identity_for_required_release()
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
+) -> gunbc.ollama_runtime_bundle.RuntimeMaterializationObservation {
+  let identity = gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release()
   match spark_serving_probe_leg(
     context: context, host: host, raw_words: spark_serving_runtime_root_probe_argv(),
   ) {
     Absent =>
-      RuntimeMaterializationObservationRefused {
-        cause: "runtime root probe leg did not run" as NonEmptyStr,
+      gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused {
+        cause: "runtime root probe leg did not run" as std.types.NonEmptyStr,
       }
     Present { value: root } =>
       if root.success == false {
-        RuntimeMaterializationAbsent
+        gunbc.ollama_runtime_bundle.RuntimeMaterializationAbsent
       } else {
         match spark_serving_probe_leg(
           context: context, host: host, raw_words: spark_serving_runtime_executable_probe_argv(),
         ) {
           Absent =>
-            RuntimeMaterializationObservationRefused {
-              cause: "runtime executable probe leg did not run" as NonEmptyStr,
+            gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused {
+              cause: "runtime executable probe leg did not run" as std.types.NonEmptyStr,
             }
           Present { value: exe } =>
             if exe.success == false {
@@ -1918,14 +1921,14 @@ fn spark_serving_observe_runtime_materialization(
                 context: context, host: host, raw_words: spark_serving_runtime_executable_bit_probe_argv(),
               ) {
                 Absent =>
-                  RuntimeMaterializationObservationRefused {
-                    cause: "runtime executable-bit probe leg did not run" as NonEmptyStr,
+                  gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused {
+                    cause: "runtime executable-bit probe leg did not run" as std.types.NonEmptyStr,
                   }
                 Present { value: bit } =>
                   if bit.success == false {
-                    RuntimeMaterializationIncomplete {
+                    gunbc.ollama_runtime_bundle.RuntimeMaterializationIncomplete {
                       identity: identity,
-                      first_defect: RuntimeExecutableNotExecutable {
+                      first_defect: gunbc.ollama_runtime_bundle.RuntimeExecutableNotExecutable {
                         expected_relative_path: spark_serving_required_runtime_executable_rel(),
                       },
                       further_defects: [],
@@ -1936,26 +1939,26 @@ fn spark_serving_observe_runtime_materialization(
                       raw_words: spark_serving_runtime_materialization_receipt_probe_argv(),
                     ) {
                       Absent =>
-                        RuntimeMaterializationObservationRefused {
-                          cause: "runtime materialization receipt probe leg did not run" as NonEmptyStr,
+                        gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused {
+                          cause: "runtime materialization receipt probe leg did not run" as std.types.NonEmptyStr,
                         }
                       Present { value: receipt } =>
                         if receipt.success == false {
-                          RuntimeMaterializationIncomplete {
+                          gunbc.ollama_runtime_bundle.RuntimeMaterializationIncomplete {
                             identity: identity,
-                            first_defect: RuntimeMaterializationReceiptMissing,
+                            first_defect: gunbc.ollama_runtime_bundle.RuntimeMaterializationReceiptMissing,
                             further_defects: [],
                           }
                         } else if std.algebra.trim(s: receipt.stdout) != (identity.digest as String) {
-                          RuntimeMaterializationIncomplete {
+                          gunbc.ollama_runtime_bundle.RuntimeMaterializationIncomplete {
                             identity: identity,
-                            first_defect: RuntimeMaterializationReceiptIdentityMismatch {
-                              observed: std.algebra.trim(s: receipt.stdout) as NonEmptyStr,
+                            first_defect: gunbc.ollama_runtime_bundle.RuntimeMaterializationReceiptIdentityMismatch {
+                              observed: std.algebra.trim(s: receipt.stdout) as std.types.NonEmptyStr,
                             },
                             further_defects: [],
                           }
                         } else {
-                          RuntimeMaterializationComplete { identity: identity }
+                          gunbc.ollama_runtime_bundle.RuntimeMaterializationComplete { identity: identity }
                         }
                     }
                   }
@@ -1966,6 +1969,7 @@ fn spark_serving_observe_runtime_materialization(
   }
 }
 
+
 // ONE OBSERVATION IN, ONE PROJECTION OUT.
 //
 // The production caller was invoking the probe pair TWICE -- once for .state and once for
@@ -1973,13 +1977,13 @@ fn spark_serving_observe_runtime_materialization(
 // enablement read at another. Two facts about one unit taken from two different observations is not
 // an observation of that unit. This takes the bound pair so the join is structural.
 fn spark_serving_observed_members_for_unit(
-  host: HostIdentity,
-  runtime: RuntimeMaterializationObservation,
-  store: ModelStoreObservation,
+  host: product.placement_supply.HostIdentity,
+  runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservation,
+  store: gunbc.ollama_runtime_bundle.ModelStoreObservation,
   observed_unit: SparkServingObservedUnit,
-  linger: SparkServingObservedLingerState,
-) -> SparkServingObservedMemberProjection {
-  spark_serving_observed_members(
+  linger: gunbc.spark.serving_observed_members.SparkServingObservedLingerState,
+) -> gunbc.spark.serving_observed_members.SparkServingObservedMemberProjection {
+  gunbc.spark.serving_observed_members.spark_serving_observed_members(
     host: host,
     runtime: runtime,
     store: store,
@@ -1992,15 +1996,15 @@ fn spark_serving_observed_members_for_unit(
 
 // `sha256sum` prints "<hex>  <path>". Only the hex is taken, and it must parse as a real sha256 --
 // a truncated or error-shaped line refuses rather than becoming an identity nothing can compare.
-fn spark_serving_sha256sum_identity(stdout: String) -> NonEmptyStr? {
+fn spark_serving_sha256sum_identity(stdout: String) -> std.types.NonEmptyStr? {
   match split(std.algebra.trim(s: stdout), " ").first() {
     Absent => none
     Present { value: hex } =>
-      match sha256_hex_digest(hex: std.algebra.trim(s: hex)) {
+      match std.content_hash.sha256_hex_digest(hex: std.algebra.trim(s: hex)) {
         Absent => none
         Present { value: d } =>
           Present {
-            value: serialize_content_hash(hash: as_content_hash_cryptographic(digest: d)) as NonEmptyStr,
+            value: std.content_hash.serialize_content_hash(hash: std.content_hash.as_content_hash_cryptographic(digest: d)) as std.types.NonEmptyStr,
           }
       }
   }

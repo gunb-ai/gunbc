@@ -3,7 +3,7 @@ module extdeps.bmc.aspeed_ast2500
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.aspeedtech.com/server_ast2500/"
   }
 }
@@ -14,12 +14,12 @@ data aspeed_ast2500_datasheet_note: String = "AST2500/AST2520 A2 Datasheet V1.6 
 // closed — not an open-ended sensor enum — because the datasheet names exactly
 // these controller blocks for management I/O.
 type Ast2500ManagementAcquisitionPath
-  = GpioDigitalTripInput { gpio_pin_count: std.integer.Int }
-  | SgpioShiftRegisterTripInput { sgpio_input_port_count: std.integer.Int }
-  | I2cSmbusSensorBus { controller_count: std.integer.Int }
-  | AdcAnalogInput { channel_count: std.integer.Int }
-  | PeciProcessorTelemetry { max_cpu_count: std.integer.Int, max_domain_per_cpu: std.integer.Int }
-  | FanTachPulseCounter { tach_input_count: std.integer.Int }
+  = GpioDigitalTripInput { gpio_pin_count: Int }
+  | SgpioShiftRegisterTripInput { sgpio_input_port_count: Int }
+  | I2cSmbusSensorBus { controller_count: Int }
+  | AdcAnalogInput { channel_count: Int }
+  | PeciProcessorTelemetry { max_cpu_count: Int, max_domain_per_cpu: Int }
+  | FanTachPulseCounter { tach_input_count: Int }
 
 // THE INTERACTION MODE IS ORTHOGONAL TO THE CONTROLLER IDENTITY. Two arms, not
 // a preference flag on each path: hardwired trip lines are interrupt-qualified
@@ -56,7 +56,7 @@ data ast2500_management_acquisition_paths: List<Ast2500ManagementAcquisitionPath
 
 type AspeedAst2500CatalogRow {
   ordering_part_number: std.types.NonEmptyStr
-  manufacturer: Vendor<extdeps.hardware.Hardware>
+  manufacturer: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   management_acquisition_paths: List<Ast2500ManagementAcquisitionPath>
 }
 
@@ -68,7 +68,7 @@ data aspeed_ast2500_catalog: AspeedAst2500CatalogRow = AspeedAst2500CatalogRow {
 
 fn ast2500_hardwired_trip_line_path_count(
   paths: List<Ast2500ManagementAcquisitionPath>,
-) -> std.integer.Int {
+) -> Int {
   fold(paths, init: 0, f: fn(acc, p) {
     match ast2500_management_acquisition_mode(path: p) {
       HardwiredTripLine => acc + 1
@@ -79,7 +79,7 @@ fn ast2500_hardwired_trip_line_path_count(
 
 fn ast2500_pollable_sensor_reading_path_count(
   paths: List<Ast2500ManagementAcquisitionPath>,
-) -> std.integer.Int {
+) -> Int {
   fold(paths, init: 0, f: fn(acc, p) {
     match ast2500_management_acquisition_mode(path: p) {
       HardwiredTripLine => acc
@@ -93,9 +93,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.bmc.aspeed_ast2500",
       decl_name: "aspeed_ast2500_catalog",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.bmc.aspeed_ast2500.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

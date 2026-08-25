@@ -1,5 +1,10 @@
 module gunbc.scm.merge
 
+
+
+
+
+
 // A REQUIREMENT IS AUTHORED, AND ABSENCE IS ONE OF THE THINGS THAT CAN BE AUTHORED. This is the
 // correction that motivated the rewrite. A dependency-derived frontier can answer "is removing f
 // compatible with everything that depends on f", but it cannot express "the author requested that f
@@ -138,7 +143,7 @@ fn kind_name(kind: v2.std.dependency.DependencyKind) -> v2.std.node.Symbol {
 // WHERE A ROLE'S VALUE CAME FROM IS PART OF THE ANSWER, NOT AN IMPLEMENTATION DETAIL. The
 // preservation law -- every role outside the implication frontier holds exactly what the target held
 // -- is only checkable if the result says which roles it preserved. Collapsing this to a bare
-// gunbc.scm.object_store.ObjectId would make "preserved the target object" and "recomputed something that happens to hash
+// ObjectId would make "preserved the target object" and "recomputed something that happens to hash
 // equal" indistinguishable, and the first is the law while the second is a coincidence.
 type RoleValue
   = PreservedFromTarget { object: gunbc.scm.object_store.ObjectId }
@@ -195,7 +200,7 @@ type MergeRefusal
 // decides whether a contest exists at all. So both normalize to the REQUESTED STATE first.
 //
 // THE CONVERSION BELONGS HERE, NOT ABOVE. Normalizing a present binding means storing the node
-// and taking its gunbc.scm.object_store.ObjectId, which can itself collide -- so it is object-store work, and a seam
+// and taking its ObjectId, which can itself collide -- so it is object-store work, and a seam
 // that performed it would either duplicate this module's authority or redo its refusals.
 type DesiredRoleValue
   = DesiredBindingPresent { object: gunbc.scm.object_store.ObjectId }
@@ -246,7 +251,7 @@ type MergeOutcome
 
 fn edge_label_role(label: v2.std.node.EdgeLabel) -> v2.std.node.Symbol? {
   match label {
-    Named { name: name } => Present { value: name }
+    v2.std.node.Named { name: name } => Present { value: name }
     Positional => none
   }
 }
@@ -300,8 +305,8 @@ fn role_is_present(roles: List<ResolvedRole>, role: v2.std.node.Symbol) -> Bool 
 }
 
 // A REPLACEMENT IS A MAP, NOT A FOLD THAT REBUILDS. Written as a fold with concat-at-end this copied
-// the accumulator once per incoming.role, making a single replacement O(roles^2); as a map it is O(roles) and
-// the intent -- every incoming.role kept, one substituted -- is visible in the shape rather than reconstructed
+// the accumulator once per role, making a single replacement O(roles^2); as a map it is O(roles) and
+// the intent -- every role kept, one substituted -- is visible in the shape rather than reconstructed
 // by reading the accumulator.
 fn replaced_role_or_original(r: ResolvedRole, incoming: ResolvedRole) -> ResolvedRole {
   if (r.role as String) == (incoming.role as String) { incoming } else { r }
@@ -359,7 +364,7 @@ fn alternatives_contain(alternatives: List<DesiredRoleValue>, desired: DesiredRo
 // distinct alternative makes the reported set complete under any permutation.
 fn authored_with_alternative(
   a: AuthoredRoleState,
-  role: Symbol,
+  role: v2.std.node.Symbol,
   desired: DesiredRoleValue,
 ) -> AuthoredRoleState {
   if (a.role as String) != (role as String) {
@@ -408,11 +413,11 @@ fn normalize_requirement(store: gunbc.scm.object_store.ObjectStore, req: Require
       Normalized { store: store, desired: DesiredBindingAbsent }
     RequireBinding { role: role, value: value } =>
       match gunbc.scm.object_store.store_node(store: store, n: value) {
-        LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+        gunbc.scm.object_store.LocatorCollision { identity: identity, existing: _, incoming: _ } =>
           NormalizeRefused {
             cause: BindingLocatorCollision { role: role, identity: identity },
           }
-        Stored { store: store, identity: identity } =>
+        gunbc.scm.object_store.Stored { store: store, identity: identity } =>
           Normalized {
             store: store,
             desired: DesiredBindingPresent { object: identity },
@@ -571,12 +576,12 @@ fn root_edge_step(store: gunbc.scm.object_store.ObjectStore, acc: MergeRootAcc, 
 
 fn root_edge_for(store: gunbc.scm.object_store.ObjectStore, acc: MergeRootAcc, role: v2.std.node.Symbol, object: gunbc.scm.object_store.ObjectId) -> MergeRootAcc {
   match gunbc.scm.checkout.checkout_object(store: store, identity: object) {
-    CheckoutRefused { cause: _ } =>
+    gunbc.scm.checkout.CheckoutRefused { cause: _ } =>
       MergeRootAcc {
         edges: acc.edges,
         refusal: Present { value: TargetChildMissing { role: role, identity: object } },
       }
-    CheckedOut { program: program } =>
+    gunbc.scm.checkout.CheckedOut { program: program } =>
       MergeRootAcc {
         edges: concat([v2.std.node.Edge { label: v2.std.node.Named { name: role }, target: program }], acc.edges),
         refusal: none,
@@ -651,10 +656,10 @@ fn authored_role_name(a: AuthoredRoleState) -> v2.std.node.Symbol {
 // A FLATTEN IS STILL A COPY PER STEP. An earlier revision of this sweep left this fold alone with a
 // comment claiming that appending a LIST rather than an element made it linear. That is false --
 // concat(acc, xs) copies acc whatever xs is, so the total stayed quadratic in the number of
-// p.dependencies -- and it is recorded here because the wrong reason was more dangerous than the
+// dependencies -- and it is recorded here because the wrong reason was more dangerous than the
 // defect: a justified exception stops being re-examined.
 //
-// Prepending each proposal's p.dependencies REVERSED, then reversing once at the end, restores the
+// Prepending each proposal's dependencies REVERSED, then reversing once at the end, restores the
 // original order at a total cost proportional to the output.
 fn all_proposal_dependencies(proposals: List<Proposal>) -> List<MergeDependency> {
   reverse(
@@ -687,11 +692,11 @@ fn finish_merge(
             store: applied.store,
             n: root_node_of(edges: reverse(built.edges)),
           ) {
-            LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+            gunbc.scm.object_store.LocatorCollision { identity: identity, existing: _, incoming: _ } =>
               MergeRefused {
                 cause: BindingLocatorCollision { role: ^commit_root, identity: identity },
               }
-            Stored { store: store, identity: identity } =>
+            gunbc.scm.object_store.Stored { store: store, identity: identity } =>
               Merged {
                 store: store,
                 commit: gunbc.scm.checkout.Commit { root: identity },

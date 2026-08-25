@@ -1,10 +1,10 @@
 module v2.test.manual.int_cross_target_coercion
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn python_unbounded_int_grounding() -> v2.std.constraints.CanonicalGrounding {
-  let source = python_int_inhabitant_node()
+  let source = v2.extdeps.languages.python.python_int_inhabitant_node()
   v2.std.constraints.CanonicalGrounding {
     node: source,
     witness: v2.std.constraints.CanonicalGroundingWitness {
@@ -21,16 +21,16 @@ fn python_unbounded_int_grounding() -> v2.std.constraints.CanonicalGrounding {
 }
 
 fn cross_target_python_to_rust_i32_coercion_fold() -> v2.std.diagnostic.Outcome<v2.std.coercion.CoercionResult> {
-  bind_outcome(
-    o: coercion_candidate_set_from_declared_inhabitants(
-      inhabitants_root: rust_declared_inhabitants_root(),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.coercion.coercion_candidate_set_from_declared_inhabitants(
+      inhabitants_root: v2.extdeps.languages.rust.rust_declared_inhabitants_root(),
       closedness_property: ^target_model_edge_declared_inhabitants
     ),
     f: fn(candidates) {
-      coercion_fold(
+      v2.std.coercion.coercion_fold(
         source: python_unbounded_int_grounding(),
         candidates: candidates,
-        policy: v2.std.find_witness.TargetDeclaredPriority { priority: rust_inhabitant_i32_node() }
+        policy: v2.std.find_witness.TargetDeclaredPriority { priority: v2.extdeps.languages.rust.rust_inhabitant_i32_node() }
       )
     }
   )
@@ -38,59 +38,59 @@ fn cross_target_python_to_rust_i32_coercion_fold() -> v2.std.diagnostic.Outcome<
 
 fn coercion_outcome_node_projection(actual: v2.std.diagnostic.Outcome<v2.std.coercion.CoercionResult>) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match actual {
-    Accepted { value: r, diagnostics: ad } =>
+    v2.std.diagnostic.Accepted { value: r, diagnostics: ad } =>
       v2.std.diagnostic.Accepted { value: r.target, diagnostics: ad }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 data cross_target_upstream_find_witness_rejection: v2.std.diagnostic.Diagnostic = v2.std.diagnostic.Diagnostic {
   reason: ^find_witness_reason_no_candidate,
-  at: node_locus(node: python_int_inhabitant_node()),
-  correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+  at: v2.std.diagnostic.node_locus(node: v2.extdeps.languages.python.python_int_inhabitant_node()),
+  correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
 }
 
 data cross_target_coercion_expected_rejection: v2.std.diagnostic.NonEmptyDiagnostics = v2.std.diagnostic.NonEmptyDiagnostics {
-  head: coercion_not_realized_diagnostic(
+  head: v2.std.coercion.coercion_not_realized_diagnostic(
     source: python_unbounded_int_grounding(),
-    kind: NoTargetCandidate
+    kind: v2.std.coercion.NoTargetCandidate
   ),
   tail: [cross_target_upstream_find_witness_rejection]
 }
 
 data claim_cross_target_python_to_rust_i32_rejects: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "manual/int_cross_target: python unbounded int -> rust declared inhabitants rejects (no exact witness)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: python_int_inhabitant_node(),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+  input: v2.extdeps.languages.python.python_int_inhabitant_node(),
   expected_rejection: cross_target_coercion_expected_rejection,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
-test data witness_cross_target_python_to_rust_i32_rejects: Bool = match run_test_claim_assert(
+test data witness_cross_target_python_to_rust_i32_rejects: Bool = match v2.compiler.eval.run_test_claim_assert(
   claim: claim_cross_target_python_to_rust_i32_rejects,
   actual: coercion_outcome_node_projection(
     actual: cross_target_python_to_rust_i32_coercion_fold()
   ),
-  at: python_int_inhabitant_node()
+  at: v2.extdeps.languages.python.python_int_inhabitant_node()
 ) {
-  Pass => true
-  SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
-  Deferred { actual: _, diagnostic: _ } => false
+  v2.std.verdict.Pass => true
+  v2.std.verdict.SemanticMismatch { actual: _, falsification: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.RunFailed { actual: _, diagnostic: _ } => false
+  v2.std.verdict.Deferred { actual: _, diagnostic: _ } => false
 }
 
 
 data claim_int_cross_target_coercion_module_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/int_cross_target: cross-target coercion safety anchors compile",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: python_int_inhabitant_node(),
-  expected_value: python_int_inhabitant_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+  input: v2.extdeps.languages.python.python_int_inhabitant_node(),
+  expected_value: v2.extdeps.languages.python.python_int_inhabitant_node(),
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
 fn rust_i32_grounding() -> v2.std.constraints.CanonicalGrounding {
-  let source = rust_inhabitant_i32_node()
+  let source = v2.extdeps.languages.rust.rust_inhabitant_i32_node()
   v2.std.constraints.CanonicalGrounding {
     node: source,
     witness: v2.std.constraints.CanonicalGroundingWitness {
@@ -107,16 +107,16 @@ fn rust_i32_grounding() -> v2.std.constraints.CanonicalGrounding {
 }
 
 fn cross_target_rust_i32_to_python_int_coercion_fold() -> v2.std.diagnostic.Outcome<v2.std.coercion.CoercionResult> {
-  bind_outcome(
-    o: coercion_candidate_set_from_declared_inhabitants(
-      inhabitants_root: python_declared_inhabitants_root(),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.coercion.coercion_candidate_set_from_declared_inhabitants(
+      inhabitants_root: v2.extdeps.languages.python.python_declared_inhabitants_root(),
       closedness_property: ^target_model_edge_declared_inhabitants
     ),
     f: fn(candidates) {
       v2.extdeps.coercion_widening.coercion_fold_rust_i32_to_python_int_widening(
         source: rust_i32_grounding(),
         candidates: candidates,
-        priority: python_int_inhabitant_node()
+        priority: v2.extdeps.languages.python.python_int_inhabitant_node()
       )
     }
   )
@@ -124,64 +124,64 @@ fn cross_target_rust_i32_to_python_int_coercion_fold() -> v2.std.diagnostic.Outc
 
 fn quality_is_widened(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {
-    Widened => true
-    Identity => false
-    Exact => false
+    v2.std.coercion.Widened => true
+    v2.std.coercion.Identity => false
+    v2.std.coercion.Exact => false
   }
 }
 
 test fn witness_cross_target_rust_i32_to_python_int_accepts() -> Bool {
   let outcome = cross_target_rust_i32_to_python_int_coercion_fold()
   match outcome {
-    Accepted { value: r, diagnostics: _ } =>
-      (r.target == python_int_inhabitant_node()) && quality_is_widened(q: r.quality)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
+      (r.target == v2.extdeps.languages.python.python_int_inhabitant_node()) && quality_is_widened(q: r.quality)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 
 fn cross_target_python_to_rust_i32_narrowing_fold() -> v2.std.diagnostic.Outcome<v2.std.coercion.CoercionResult> {
-  bind_outcome(
-    o: coercion_candidate_set_from_declared_inhabitants(
-      inhabitants_root: rust_declared_inhabitants_root(),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.coercion.coercion_candidate_set_from_declared_inhabitants(
+      inhabitants_root: v2.extdeps.languages.rust.rust_declared_inhabitants_root(),
       closedness_property: ^target_model_edge_declared_inhabitants
     ),
     f: fn(candidates) {
       v2.extdeps.coercion_widening.coercion_fold_python_int_to_rust_i32_narrowing(
         source: python_unbounded_int_grounding(),
         candidates: candidates,
-        priority: rust_inhabitant_i32_node()
+        priority: v2.extdeps.languages.rust.rust_inhabitant_i32_node()
       )
     }
   )
 }
 
 data cross_target_narrowing_expected_rejection: v2.std.diagnostic.NonEmptyDiagnostics = v2.std.diagnostic.NonEmptyDiagnostics {
-  head: coercion_not_realized_diagnostic(
+  head: v2.std.coercion.coercion_not_realized_diagnostic(
     source: python_unbounded_int_grounding(),
-    kind: WouldLoseInformation
+    kind: v2.std.coercion.WouldLoseInformation
   ),
   tail: [cross_target_upstream_find_witness_rejection]
 }
 
 data claim_cross_target_python_to_rust_i32_would_lose_information: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "manual/int_cross_target: python int -> rust i32 refinement reverse rejects WouldLoseInformation",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: python_int_inhabitant_node(),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+  input: v2.extdeps.languages.python.python_int_inhabitant_node(),
   expected_rejection: cross_target_narrowing_expected_rejection,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
-test data witness_cross_target_python_to_rust_i32_would_lose_information: Bool = match run_test_claim_assert(
+test data witness_cross_target_python_to_rust_i32_would_lose_information: Bool = match v2.compiler.eval.run_test_claim_assert(
   claim: claim_cross_target_python_to_rust_i32_would_lose_information,
   actual: coercion_outcome_node_projection(
     actual: cross_target_python_to_rust_i32_narrowing_fold()
   ),
-  at: python_int_inhabitant_node()
+  at: v2.extdeps.languages.python.python_int_inhabitant_node()
 ) {
-  Pass => true
-  SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
-  Deferred { actual: _, diagnostic: _ } => false
+  v2.std.verdict.Pass => true
+  v2.std.verdict.SemanticMismatch { actual: _, falsification: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.RunFailed { actual: _, diagnostic: _ } => false
+  v2.std.verdict.Deferred { actual: _, diagnostic: _ } => false
 }

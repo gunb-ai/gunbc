@@ -3,23 +3,23 @@ module extdeps.memory
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Computer_memory"
   }
 }
 
 fn memory_population_row_bytes(row: extdeps.memory.types.MemoryPopulationRow) -> std.measure.ByteSize {
-  byte_size(
-    byte_size_count(row.module.capacity_bytes) * row.stick_count,
+  std.measure.byte_size(
+    std.measure.byte_size_count(row.module.capacity_bytes) * row.stick_count,
   )
 }
 
 fn host_memory_population_nominal_bytes(pop: extdeps.memory.types.HostMemoryPopulation) -> std.measure.ByteSize {
-  byte_size(
+  std.measure.byte_size(
     pop.rows
       |> fold(
         init: 0,
-        f: (acc, row) => acc + byte_size_count(memory_population_row_bytes(row)),
+        f: (acc, row) => acc + std.measure.byte_size_count(memory_population_row_bytes(row)),
       ),
   )
 }

@@ -2,7 +2,7 @@ module gunbc.heal_push_plan
 
 
 fn artifact_repository_path(a: gunbc.generated_artifact.GeneratedArtifact) -> extdeps.github.effect.RepositoryPath {
-  extdeps.github.effect.RepositoryPath { value: artifact_path(a: a) }
+  extdeps.github.effect.RepositoryPath { value: gunbc.generated_artifact.artifact_path(a: a) }
 }
 
 fn artifact_push_authorized(
@@ -10,10 +10,10 @@ fn artifact_push_authorized(
   authority: gunbc.auth.github_credential.GitHubCredentialAuthority,
   control_plane: gunbc.auth.github_apps.GitHubAppControlPlaneState
 ) -> Bool {
-  credential_authorizes_required(
+  gunbc.auth.github_credential.credential_authorizes_required(
     authority: authority,
     control_plane: control_plane,
-    required: advance_branch_required_permissions(paths: [artifact_repository_path(a: a)])
+    required: extdeps.github.effect.advance_branch_required_permissions(paths: [artifact_repository_path(a: a)])
   )
 }
 
@@ -87,20 +87,20 @@ type RefusalDerivation
 
 fn capability_failure(c: gunbc.auth.github_credential.CredentialCapability) -> HealPushFailure? {
   match c {
-    CredentialGrants => none
-    CredentialKindCannotSatisfy { missing } =>
+    gunbc.auth.github_credential.CredentialGrants => none
+    gunbc.auth.github_credential.CredentialKindCannotSatisfy { missing } =>
       Present { value: HealPushFailure { cause: ActionsJobCredentialScopeUnavailable, missing: Present { value: missing }, site: none } }
-    CredentialScopeNotGranted { missing } =>
+    gunbc.auth.github_credential.CredentialScopeNotGranted { missing } =>
       Present { value: HealPushFailure { cause: ActionsJobCredentialScopeNotGranted, missing: Present { value: missing }, site: none } }
-    CredentialForkPolicyUnobserved { missing } =>
+    gunbc.auth.github_credential.CredentialForkPolicyUnobserved { missing } =>
       Present { value: HealPushFailure { cause: ActionsJobCredentialForkPolicyUnobserved, missing: Present { value: missing }, site: none } }
-    CredentialAxisNotModeled { missing } =>
+    gunbc.auth.github_credential.CredentialAxisNotModeled { missing } =>
       Present { value: HealPushFailure { cause: ActionsJobCredentialAxisNotModeled, missing: Present { value: missing }, site: none } }
-    CredentialDeclaredAccessInvalid { missing } =>
+    gunbc.auth.github_credential.CredentialDeclaredAccessInvalid { missing } =>
       Present { value: HealPushFailure { cause: ActionsJobCredentialDeclaredAccessInvalid, missing: Present { value: missing }, site: none } }
-    CredentialSubjectMismatch { missing } =>
+    gunbc.auth.github_credential.CredentialSubjectMismatch { missing } =>
       Present { value: HealPushFailure { cause: ManagedCredentialSubjectMismatch, missing: Present { value: missing }, site: none } }
-    CredentialGrantNotObserved { missing } =>
+    gunbc.auth.github_credential.CredentialGrantNotObserved { missing } =>
       Present { value: HealPushFailure { cause: ManagedInstallationGrantUnobserved, missing: Present { value: missing }, site: none } }
   }
 }
@@ -112,11 +112,11 @@ fn refusal_failure_population(
   authority: gunbc.auth.github_credential.GitHubCredentialAuthority,
   control_plane: gunbc.auth.github_apps.GitHubAppControlPlaneState
 ) -> List<HealPushFailure> {
-  v2.std.algebra.fold_list(
-    xs: unsatisfied_capabilities_for_required(
+  fold_list(
+    xs: gunbc.auth.github_credential.unsatisfied_capabilities_for_required(
       authority: authority,
       control_plane: control_plane,
-      required: advance_branch_required_permissions(paths: paths)
+      required: extdeps.github.effect.advance_branch_required_permissions(paths: paths)
     ),
     empty: no_heal_push_failures,
     cons: fn(acc, c) {
@@ -177,33 +177,33 @@ fn plan_heal_push_from_binding(
   control_plane: gunbc.auth.github_apps.GitHubAppControlPlaneState
 ) -> HealPushPlan {
   match resolution {
-    PushBindingResolved { binding: _, authority } =>
+    gunbc.auth.github_credential.PushBindingResolved { binding: _, authority } =>
       plan_heal_push(artifacts: artifacts, authority: authority, control_plane: control_plane)
-    PushCredentialBindingMissing { checkout_step } =>
+    gunbc.auth.github_credential.PushCredentialBindingMissing { checkout_step } =>
       binding_refused_plan(
         artifacts: artifacts,
         cause: PushBindingMissingOnCheckoutStep,
         site: step_site(checkout_step: checkout_step)
       )
-    PushCredentialLeaseUnresolved { checkout_step } =>
+    gunbc.auth.github_credential.PushCredentialLeaseUnresolved { checkout_step } =>
       binding_refused_plan(
         artifacts: artifacts,
         cause: PushBindingLeaseUnresolved,
         site: step_site(checkout_step: checkout_step)
       )
-    PushBindingStepKindUnsupported { checkout_step } =>
+    gunbc.auth.github_credential.PushBindingStepKindUnsupported { checkout_step } =>
       binding_refused_plan(
         artifacts: artifacts,
         cause: PushBindingStepKindNotSupported,
         site: step_site(checkout_step: checkout_step)
       )
-    PushBindingActionMismatch { checkout_step } =>
+    gunbc.auth.github_credential.PushBindingActionMismatch { checkout_step } =>
       binding_refused_plan(
         artifacts: artifacts,
         cause: PushBindingActionNotCheckout,
         site: step_site(checkout_step: checkout_step)
       )
-    PushBindingInputDuplicated { checkout_step, input } =>
+    gunbc.auth.github_credential.PushBindingInputDuplicated { checkout_step, input } =>
       binding_refused_plan(
         artifacts: artifacts,
         cause: PushBindingInputObservationDuplicated,
@@ -213,7 +213,7 @@ fn plan_heal_push_from_binding(
           observed_kind: none
         }
       )
-    PushBindingInputUnsupported { checkout_step, input, observed_kind } =>
+    gunbc.auth.github_credential.PushBindingInputUnsupported { checkout_step, input, observed_kind } =>
       binding_refused_plan(
         artifacts: artifacts,
         cause: PushBindingInputValueUnsupported,
@@ -249,9 +249,9 @@ fn binding_refused_plan(
 }
 
 data live_heal_push_plan: HealPushPlan = plan_heal_push_from_binding(
-  artifacts: committed_generated_artifacts(),
-  resolution: live_heal_push_binding_resolution,
-  control_plane: live_heal_control_plane
+  artifacts: gunbc.generated_artifact.committed_generated_artifacts(),
+  resolution: gunbc.ci_heal_credential.live_heal_push_binding_resolution,
+  control_plane: gunbc.ci_heal_credential.live_heal_control_plane
 )
 
 fn plan_ready_artifacts(plan: HealPushPlan) -> List<gunbc.generated_artifact.GeneratedArtifact> {
@@ -321,7 +321,7 @@ fn failure_is_actions_workflow_scope_residual(f: HealPushFailure) -> Bool {
   match f.cause {
     ActionsJobCredentialScopeUnavailable => match f.missing {
       Absent => false
-      Present { value: axis } => permission_name_eq(a: axis, b: workflows_permission_name)
+      Present { value: axis } => extdeps.github.app.permission_name_eq(a: axis, b: extdeps.github.actions_token.workflows_permission_name)
     }
     ActionsJobCredentialScopeNotGranted => false
     ActionsJobCredentialAxisNotModeled => false
@@ -341,15 +341,15 @@ fn failure_is_actions_workflow_scope_residual(f: HealPushFailure) -> Bool {
 fn author_residual_exact(refusal: HealPushRefusal) -> Bool {
   count(refusal.failures) > 0
     && count(refusal.paths) > 0
-    && v2.std.algebra.fold_list(
+    && fold_list(
          xs: refusal.failures,
          empty: true,
          cons: fn(acc, f) { acc && failure_is_actions_workflow_scope_residual(f: f) }
        )
-    && v2.std.algebra.fold_list(
+    && fold_list(
          xs: refusal.paths,
          empty: true,
-         cons: fn(acc, p) { acc && is_workflow_projection_path(path: p) }
+         cons: fn(acc, p) { acc && extdeps.github.effect.is_workflow_projection_path(path: p) }
        )
 }
 
@@ -410,16 +410,16 @@ fn author_commit_required_committed_artifacts() -> List<gunbc.generated_artifact
   let author_paths = remediation_author_commit_paths(r: live_heal_remediation)
   filter(
     plan_refused_artifacts(plan: live_heal_push_plan),
-    a => any(author_paths, p => p.value == artifact_path(a: a))
+    a => any(author_paths, p => p.value == gunbc.generated_artifact.artifact_path(a: a))
   )
 }
 
 fn auto_push_eligible_committed_artifact_paths() -> List<String> {
-  map(auto_push_eligible_committed_artifacts(), a => artifact_path(a: a))
+  map(auto_push_eligible_committed_artifacts(), a => gunbc.generated_artifact.artifact_path(a: a))
 }
 
 fn author_commit_required_committed_artifact_paths() -> List<String> {
-  map(author_commit_required_committed_artifacts(), a => artifact_path(a: a))
+  map(author_commit_required_committed_artifacts(), a => gunbc.generated_artifact.artifact_path(a: a))
 }
 
 fn path_requires_author_commit(path: String) -> Bool {
@@ -450,7 +450,7 @@ fn classify_heal_repair_paths(changed_paths: List<String>) -> HealRepairDisposit
 }
 
 fn refusal_causes_token(causes: List<HealPushRefusalCause>) -> String {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: causes,
     empty: "HealPushRefusalPopulationEmpty",
     cons: fn(acc, c) {

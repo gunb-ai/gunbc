@@ -11,26 +11,26 @@ fn probe_bin_path(tmp_dir: String) -> String {
 }
 
 fn claim_executor_readiness(root: String) -> tools.host_prelude.WitnessBinReadiness {
-  witness_bin_ensure_built_typed(
+  tools.host_prelude.witness_bin_ensure_built_typed(
     root: root,
-    bin: witness_bin(var_name: "CLAIM_EXECUTOR", bin_name: claim_executor_bin_name)
+    bin: tools.host_prelude.witness_bin(var_name: "CLAIM_EXECUTOR", bin_name: gunbc.cli_invoke.claim_executor_bin_name)
   )
 }
 
 fn claim_executor_ready(root: String) -> Bool {
-  witness_bin_readiness_is_ready(readiness: claim_executor_readiness(root: root))
+  tools.host_prelude.witness_bin_readiness_is_ready(readiness: claim_executor_readiness(root: root))
 }
 
 fn claim_executor_path(root: String) -> String {
-  witness_bin_release_path(root: root, bin_name: claim_executor_bin_name)
+  tools.host_prelude.witness_bin_release_path(root: root, bin_name: gunbc.cli_invoke.claim_executor_bin_name)
 }
 
 fn make_probe_executable(path: String) -> Bool {
-  let chmod = gunbc.WitnessBin.Run(
+  let chmod = WitnessBin.Run(
     workdir: "/",
-    bin_path: chmod_binary_path as String,
-    args: chmod_add_executable_args(path: path),
-    expect: ExpectSuccess,
+    bin_path: extdeps.tools.chmod.chmod_binary_path as String,
+    args: extdeps.tools.chmod.chmod_add_executable_args(path: path),
+    expect: gunbc.output_policy.ExpectSuccess,
   )
   chmod.success
 }
@@ -40,7 +40,7 @@ fn verify_artifacts_typed(root: String, paths: List<String>) -> Bool {
     workdir: root,
     bin_path: claim_executor_path(root: root),
     artifact_paths: paths,
-    expect: OutcomeIsData,
+    expect: gunbc.output_policy.OutcomeIsData,
   )
   result.success
 }
@@ -76,38 +76,38 @@ fn readiness_probe_path(tmp_dir: String) -> String {
 
 fn readiness_refusal_locates(readiness: tools.host_prelude.WitnessBinReadiness, path: String, reason: tools.host_prelude.WitnessBinRefusalReason) -> Bool {
   match readiness {
-    WitnessBinReady { path: _ } => false
-    WitnessBinRefused { bin_name: _, path: p, reason: r } => p == path && r == reason
+    tools.host_prelude.WitnessBinReady { path: _ } => false
+    tools.host_prelude.WitnessBinRefused { bin_name: _, path: p, reason: r } => p == path && r == reason
   }
 }
 
 fn readiness_is_ready_at(readiness: tools.host_prelude.WitnessBinReadiness, path: String) -> Bool {
   match readiness {
-    WitnessBinReady { path: p } => p == path
-    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+    tools.host_prelude.WitnessBinReady { path: p } => p == path
+    tools.host_prelude.WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
   }
 }
 
 fn witness_readiness_absent_refuses_located() -> Bool {
   let tmp = shell.Mktemp.Dir()
   let path = readiness_probe_path(tmp_dir: tmp.path)
-  let readiness = witness_bin_artifact_readiness(bin_name: "readiness_probe_bin", path: path)
+  let readiness = tools.host_prelude.witness_bin_artifact_readiness(bin_name: "readiness_probe_bin", path: path)
   let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
   tmp.success
     && cleaned.success
-    && readiness_refusal_locates(readiness: readiness, path: path, reason: WitnessBinArtifactAbsent)
+    && readiness_refusal_locates(readiness: readiness, path: path, reason: tools.host_prelude.WitnessBinArtifactAbsent)
 }
 
 fn witness_readiness_not_executable_refuses_located() -> Bool {
   let tmp = shell.Mktemp.Dir()
   let path = readiness_probe_path(tmp_dir: tmp.path)
   let wrote = Filesystem.Write(path: path, content: "not executable")
-  let readiness = witness_bin_artifact_readiness(bin_name: "readiness_probe_bin", path: path)
+  let readiness = tools.host_prelude.witness_bin_artifact_readiness(bin_name: "readiness_probe_bin", path: path)
   let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
   tmp.success
     && wrote.success
     && cleaned.success
-    && readiness_refusal_locates(readiness: readiness, path: path, reason: WitnessBinArtifactNotExecutable)
+    && readiness_refusal_locates(readiness: readiness, path: path, reason: tools.host_prelude.WitnessBinArtifactNotExecutable)
 }
 
 fn witness_readiness_empty_artifact_refuses_located() -> Bool {
@@ -115,13 +115,13 @@ fn witness_readiness_empty_artifact_refuses_located() -> Bool {
   let path = readiness_probe_path(tmp_dir: tmp.path)
   let wrote = Filesystem.Write(path: path, content: "")
   let executable = make_probe_executable(path: path)
-  let readiness = witness_bin_artifact_readiness(bin_name: "readiness_probe_bin", path: path)
+  let readiness = tools.host_prelude.witness_bin_artifact_readiness(bin_name: "readiness_probe_bin", path: path)
   let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
   tmp.success
     && wrote.success
     && executable
     && cleaned.success
-    && readiness_refusal_locates(readiness: readiness, path: path, reason: WitnessBinArtifactEmpty)
+    && readiness_refusal_locates(readiness: readiness, path: path, reason: tools.host_prelude.WitnessBinArtifactEmpty)
 }
 
 fn witness_readiness_nonempty_executable_is_ready() -> Bool {
@@ -129,7 +129,7 @@ fn witness_readiness_nonempty_executable_is_ready() -> Bool {
   let path = readiness_probe_path(tmp_dir: tmp.path)
   let wrote = Filesystem.Write(path: path, content: "x")
   let executable = make_probe_executable(path: path)
-  let readiness = witness_bin_artifact_readiness(bin_name: "readiness_probe_bin", path: path)
+  let readiness = tools.host_prelude.witness_bin_artifact_readiness(bin_name: "readiness_probe_bin", path: path)
   let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
   tmp.success
     && wrote.success

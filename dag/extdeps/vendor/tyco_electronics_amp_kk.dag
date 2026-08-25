@@ -5,23 +5,23 @@ module extdeps.vendor.tyco_electronics_amp_kk
 // Electronics AMP K.K. (3-5-8 Hisamoto Takatsu-ku Kawasaki, 213-8535)".
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Specification+Or+Standard%7F114-115006%7FB%7Fpdf%7FEnglish%7FENG_SS_114-115006_B_114-115006_REV_B.pdf%7F2199119-3"
   }
 }
 
 data tyco_electronics_amp_kk_note: String = "A SEPARATE ROW FROM extdeps.vendor.tyco_electronics, AND DELIBERATELY SO. Two application specifications read on the same day carry two different entities in their headers: the DDR4 socket document is issued by Tyco Electronics Corporation of Harrisburg, Pennsylvania, and the M.2 document by Tyco Electronics AMP K.K. of Kawasaki, Japan, with its own registered address. They trade under one brand and it would have been easy to fold them into one vendor row, which is exactly what DESIGN section 3 forbids: independently governed entities inhabiting a shared brand are not one authority, and merging them would make a correction to either one edit the other. What is NOT established here is the relationship between them - parent, subsidiary, or successor - because no document read establishes it, and asserting one would be inventing a corporate structure to tidy a roster."
 
-data tyco_electronics_amp_kk: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "Tyco Electronics AMP K.K." }
+data tyco_electronics_amp_kk: extdeps.vendor.Vendor<extdeps.hardware.Hardware> = extdeps.vendor.Vendor { legal_name: "Tyco Electronics AMP K.K." }
 
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
   subject: extdeps.external_authority.ExternalSubjectRef {
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.vendor.tyco_electronics_amp_kk",
       decl_name: "tyco_electronics_amp_kk",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.vendor.tyco_electronics_amp_kk.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

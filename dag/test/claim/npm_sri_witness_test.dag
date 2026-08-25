@@ -9,83 +9,83 @@ data claude_agent_sdk_integrity: String = "sha512-glc7SdwPkOkLw8oxwLo9PKTdLJGqW/
 data claude_agent_sdk_integrity_hex: String = "82573b49dc0f90e90bc3ca31c0ba3d3ca4dd2c91aa5bf3c8478bab59716846d5fd625970a33b0455ce53735f84bcb4a47ebb313c9a905aa3a0a6350e4177f5a0"
 
 test fn npm_sri_parses_measured_claude_agent_sdk_integrity_exact_hex() -> Bool {
-  match npm_decode_integrity(wire: test.claim.npm_sri_witness_test.claude_agent_sdk_integrity) {
-    NpmSingleSha512Integrity { digest } =>
-      (digest.hex as String) == test.claim.npm_sri_witness_test.claude_agent_sdk_integrity_hex
+  match extdeps.npm.npm_decode_integrity(wire: claude_agent_sdk_integrity) {
+    extdeps.npm.NpmSingleSha512Integrity { digest } =>
+      (digest.hex as String) == claude_agent_sdk_integrity_hex
     _ => false
   }
 }
 
 test fn npm_sri_refuses_structural_expectation() -> Bool {
-  match npm_decode_integrity(wire: test.claim.npm_sri_witness_test.claude_agent_sdk_integrity) {
-    NpmSingleSha512Integrity { digest } =>
-      match compare_content_hash(
-        left: as_content_hash_sha512(digest: digest),
-        right: content_hash_of_value(value: "not-a-digest" as std.types.NonEmptyStr),
+  match extdeps.npm.npm_decode_integrity(wire: claude_agent_sdk_integrity) {
+    extdeps.npm.NpmSingleSha512Integrity { digest } =>
+      match std.content_hash.compare_content_hash(
+        left: std.content_hash.as_content_hash_sha512(digest: digest),
+        right: std.content_hash.content_hash_of_value(value: "not-a-digest" as std.types.NonEmptyStr),
       ) {
-        ContentHashCrossFamilyIncomparable => true
-        ContentHashEqual => false
-        ContentHashDifferent => false
+        std.content_hash.ContentHashCrossFamilyIncomparable => true
+        std.content_hash.ContentHashEqual => false
+        std.content_hash.ContentHashDifferent => false
       }
     _ => false
   }
 }
 
 test fn npm_sri_refuses_sha256_prefix_as_unsupported_algorithm() -> Bool {
-  match npm_decode_integrity(wire: "sha256-deadbeef") {
-    NpmIntegrityUnsupportedAlgorithm { algorithm } =>
+  match extdeps.npm.npm_decode_integrity(wire: "sha256-deadbeef") {
+    extdeps.npm.NpmIntegrityUnsupportedAlgorithm { algorithm } =>
       algorithm == ("sha256" as std.types.NonEmptyStr)
     _ => false
   }
 }
 
 test fn npm_sri_refuses_malformed_base64() -> Bool {
-  match npm_decode_integrity(wire: "sha512-!!!") {
-    NpmIntegrityMalformed { reason: _ } => true
+  match extdeps.npm.npm_decode_integrity(wire: "sha512-!!!") {
+    extdeps.npm.NpmIntegrityMalformed { reason: _ } => true
     _ => false
   }
 }
 
 test fn npm_sri_refuses_wrong_decoded_length() -> Bool {
-  match npm_decode_integrity(wire: "sha512-YQ==") {
-    NpmIntegrityMalformed { reason } =>
+  match extdeps.npm.npm_decode_integrity(wire: "sha512-YQ==") {
+    extdeps.npm.NpmIntegrityMalformed { reason } =>
       (reason as String) == "sha512 decoded length is not 64 octets"
     _ => false
   }
 }
 
 test fn npm_sri_refuses_noncanonical_overpadding() -> Bool {
-  let overpadded = concat(test.claim.npm_sri_witness_test.claude_agent_sdk_integrity, "=")
-  match npm_decode_integrity(wire: overpadded) {
-    NpmIntegrityMalformed { reason } =>
+  let overpadded = concat(claude_agent_sdk_integrity, "=")
+  match extdeps.npm.npm_decode_integrity(wire: overpadded) {
+    extdeps.npm.NpmIntegrityMalformed { reason } =>
       (reason as String) == "sha512 base64 payload is noncanonical"
     _ => false
   }
 }
 
 test fn npm_sri_refuses_options() -> Bool {
-  match npm_decode_integrity(
+  match extdeps.npm.npm_decode_integrity(
     wire: "sha512-glc7SdwPkOkLw8oxwLo9PKTdLJGqW/PIR4urWXFoRtX9YllwozsEVc5Tc1+EvLSkfrsxPJqQWqOgpjUOQXf1oA==?ct=application/javascript",
   ) {
-    NpmIntegrityOptionsUnsupported => true
+    extdeps.npm.NpmIntegrityOptionsUnsupported => true
     _ => false
   }
 }
 
 test fn npm_sri_refuses_multiple_expressions() -> Bool {
-  match npm_decode_integrity(
+  match extdeps.npm.npm_decode_integrity(
     wire: "sha512-glc7SdwPkOkLw8oxwLo9PKTdLJGqW/PIR4urWXFoRtX9YllwozsEVc5Tc1+EvLSkfrsxPJqQWqOgpjUOQXf1oA== sha256-abc",
   ) {
-    NpmIntegrityMultipleExpressionsUnsupported { count } => count == 2
+    extdeps.npm.NpmIntegrityMultipleExpressionsUnsupported { count } => count == 2
     _ => false
   }
 }
 
 test fn npm_package_lock_format_admits_v3_only() -> Bool {
-  match npm_decode_package_lock_format(observed: 3) {
-    NpmPackageLockFormatDecoded { format: NpmPackageLockV3 } =>
-      match npm_decode_package_lock_format(observed: 2) {
-        NpmPackageLockFormatUnsupported { observed } => observed == 2
+  match extdeps.npm.npm_decode_package_lock_format(observed: 3) {
+    extdeps.npm.NpmPackageLockFormatDecoded { format: extdeps.npm.NpmPackageLockV3 } =>
+      match extdeps.npm.npm_decode_package_lock_format(observed: 2) {
+        extdeps.npm.NpmPackageLockFormatUnsupported { observed } => observed == 2
         _ => false
       }
     _ => false
@@ -93,8 +93,8 @@ test fn npm_package_lock_format_admits_v3_only() -> Bool {
 }
 
 test fn npm_sri_preserves_sha1_as_native_arm() -> Bool {
-  match npm_decode_integrity(wire: "sha1-AAECAwQFBgcICQoLDA0ODxAREhM=") {
-    NpmSingleSha1Integrity { digest: _ } => true
+  match extdeps.npm.npm_decode_integrity(wire: "sha1-AAECAwQFBgcICQoLDA0ODxAREhM=") {
+    extdeps.npm.NpmSingleSha1Integrity { digest: _ } => true
     _ => false
   }
 }
@@ -107,13 +107,13 @@ test fn npm_boolean_member_distinguishes_absent_observed_wrong_type() -> Bool {
   let wrong_obj = extdeps.languages.json.emit.JsonObject {
     members: [extdeps.languages.json.emit.JsonKeyValue { key: "optional", value: extdeps.languages.json.emit.JsonString { value: "false" } }],
   }
-  match npm_json_boolean_member(v: absent_obj, key: "optional") {
-    NpmBooleanMemberAbsent =>
-      match npm_json_boolean_member(v: observed_obj, key: "optional") {
-        NpmBooleanMemberObserved { value } =>
+  match extdeps.npm.npm_json_boolean_member(v: absent_obj, key: "optional") {
+    extdeps.npm.NpmBooleanMemberAbsent =>
+      match extdeps.npm.npm_json_boolean_member(v: observed_obj, key: "optional") {
+        extdeps.npm.NpmBooleanMemberObserved { value } =>
           value
-            && match npm_json_boolean_member(v: wrong_obj, key: "optional") {
-              NpmBooleanMemberWrongType { observed: _ } => true
+            && match extdeps.npm.npm_json_boolean_member(v: wrong_obj, key: "optional") {
+              extdeps.npm.NpmBooleanMemberWrongType { observed: _ } => true
               _ => false
             }
         _ => false
@@ -135,12 +135,12 @@ test fn npm_string_list_member_refuses_wrong_type() -> Bool {
       },
     ],
   }
-  match npm_json_string_list_member_observation(v: wrong, key: "os") {
-    NpmStringListMemberWrongType { observed: _ } =>
-      match npm_json_string_list_member_observation(v: absent, key: "os") {
-        NpmStringListMemberAbsent =>
-          match npm_json_string_list_member_observation(v: ok, key: "os") {
-            NpmStringListMemberObserved { values } => count(values) == 1
+  match extdeps.npm.npm_json_string_list_member_observation(v: wrong, key: "os") {
+    extdeps.npm.NpmStringListMemberWrongType { observed: _ } =>
+      match extdeps.npm.npm_json_string_list_member_observation(v: absent, key: "os") {
+        extdeps.npm.NpmStringListMemberAbsent =>
+          match extdeps.npm.npm_json_string_list_member_observation(v: ok, key: "os") {
+            extdeps.npm.NpmStringListMemberObserved { values } => count(values) == 1
             _ => false
           }
         _ => false
@@ -151,9 +151,9 @@ test fn npm_string_list_member_refuses_wrong_type() -> Bool {
 
 test fn lock_node_with_stringly_has_install_script_is_unsupported() -> Bool {
   let text = "{\"name\":\"x\",\"lockfileVersion\":3,\"packages\":{\"\":{\"name\":\"x\"},\"node_modules/a\":{\"version\":\"1.0.0\",\"resolved\":\"https://registry.npmjs.org/a/-/a-1.0.0.tgz\",\"integrity\":\"sha512-yG3sPWNda/2YAIQIDq9MrrjoCTIQ7rxYM5IasrG3VBcuhCLTkgeg/JzqmJq1V98RE4MJ5jCxDXXQlOjrditFRw==\",\"hasInstallScript\":\"false\"}}}"
-  match npm_decode_package_lock_text(text: text) {
-    NpmPackageLockParsed { manager: _, nodes, unsupported, graph: _ } =>
+  match extdeps.npm.npm_decode_package_lock_text(text: text) {
+    extdeps.npm.NpmPackageLockParsed { manager: _, nodes, unsupported, graph: _ } =>
       count(nodes) == 1 && count(unsupported) == 1
-    NpmPackageLockParseRefused { cause: _ } => false
+    extdeps.npm.NpmPackageLockParseRefused { cause: _ } => false
   }
 }

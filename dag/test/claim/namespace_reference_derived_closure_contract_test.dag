@@ -22,7 +22,7 @@ fn fixture_index_entry(
     projection: std.occurrence_identity.OccurrenceProjection {
       occurrence: occurrence,
       authored_name: authored_name,
-      diagnostic_span: test.claim.namespace_reference_derived_closure_contract.fixture_span(),
+      diagnostic_span: fixture_span(),
     },
     containment: containment,
   }
@@ -33,48 +33,48 @@ fn fixture_transport() -> std.occurrence_identity.OccurrenceTransport {
   let second = oid(value: 2)
   let later = oid(value: 3)
   let reference = oid(value: 10)
-  let first_path = test.claim.namespace_reference_derived_closure_contract.fixture_path(ancestor: oid(value: 20), terminal: first)
-  let second_path = test.claim.namespace_reference_derived_closure_contract.fixture_path(ancestor: oid(value: 21), terminal: second)
-  let later_path = test.claim.namespace_reference_derived_closure_contract.fixture_path(ancestor: oid(value: 22), terminal: later)
-  let reference_path = test.claim.namespace_reference_derived_closure_contract.fixture_path(ancestor: oid(value: 23), terminal: reference)
+  let first_path = fixture_path(ancestor: oid(value: 20), terminal: first)
+  let second_path = fixture_path(ancestor: oid(value: 21), terminal: second)
+  let later_path = fixture_path(ancestor: oid(value: 22), terminal: later)
+  let reference_path = fixture_path(ancestor: oid(value: 23), terminal: reference)
   std.occurrence_identity.OccurrenceTransport {
     index: std.occurrence_identity.OccurrenceIndex { entries: [
-      test.claim.namespace_reference_derived_closure_contract.fixture_index_entry(occurrence: first, authored_name: "x", containment: first_path),
-      test.claim.namespace_reference_derived_closure_contract.fixture_index_entry(occurrence: second, authored_name: "x", containment: second_path),
-      test.claim.namespace_reference_derived_closure_contract.fixture_index_entry(occurrence: later, authored_name: "x", containment: later_path),
-      test.claim.namespace_reference_derived_closure_contract.fixture_index_entry(occurrence: reference, authored_name: "x", containment: reference_path),
+      fixture_index_entry(occurrence: first, authored_name: "x", containment: first_path),
+      fixture_index_entry(occurrence: second, authored_name: "x", containment: second_path),
+      fixture_index_entry(occurrence: later, authored_name: "x", containment: later_path),
+      fixture_index_entry(occurrence: reference, authored_name: "x", containment: reference_path),
     ] },
     declarations: [
       std.occurrence_identity.DeclarationOccurrence {
         occurrence: first,
         containment: first_path,
-        category: LexicalValueOccurrence,
-        diagnostic_span: test.claim.namespace_reference_derived_closure_contract.fixture_span(),
+        category: std.occurrence_identity.LexicalValueOccurrence,
+        diagnostic_span: fixture_span(),
       },
       std.occurrence_identity.DeclarationOccurrence {
         occurrence: second,
         containment: second_path,
-        category: LexicalValueOccurrence,
-        diagnostic_span: test.claim.namespace_reference_derived_closure_contract.fixture_span(),
+        category: std.occurrence_identity.LexicalValueOccurrence,
+        diagnostic_span: fixture_span(),
       },
       std.occurrence_identity.DeclarationOccurrence {
         occurrence: later,
         containment: later_path,
-        category: LexicalValueOccurrence,
-        diagnostic_span: test.claim.namespace_reference_derived_closure_contract.fixture_span(),
+        category: std.occurrence_identity.LexicalValueOccurrence,
+        diagnostic_span: fixture_span(),
       },
     ],
     references: [std.occurrence_identity.ReferenceOccurrence {
       occurrence: reference,
       containment: reference_path,
-      category: LexicalValueOccurrence,
-      diagnostic_span: test.claim.namespace_reference_derived_closure_contract.fixture_span(),
+      category: std.occurrence_identity.LexicalValueOccurrence,
+      diagnostic_span: fixture_span(),
     }],
   }
 }
 
 fn p1_outcome(supplied_candidates: List<std.occurrence_identity.OccurrenceId>) -> std.occurrence_binding_resolve.OccurrenceReferenceBindingOutcome {
-  resolve_reference_occurrence_binding(
+  std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
     transport: fixture_transport(),
     occurrence: oid(value: 10),
     supplied_candidates: supplied_candidates,
@@ -89,29 +89,29 @@ fn p1_resolution(supplied_candidates: List<std.occurrence_identity.OccurrenceId>
 
 fn positive_admissions() -> List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> {
   [
-    assess_reference_binding_observation(observation: std.reference_binding_observation.SameFileNeighbourObservation {
+    gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.SameFileNeighbourObservation {
       neighbour: oid(value: 1),
       resolution: p1_resolution(supplied_candidates: [oid(value: 1)]),
     }),
-    assess_reference_binding_observation(observation: std.reference_binding_observation.SiblingBranchObservation {
+    gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.SiblingBranchObservation {
       own_branch_declaration: oid(value: 2),
       sibling_branch_declaration: oid(value: 3),
       resolution: p1_resolution(supplied_candidates: [oid(value: 2)]),
     }),
-    assess_reference_binding_observation(observation: std.reference_binding_observation.LaterDeclarationObservation {
+    gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.LaterDeclarationObservation {
       later_declaration: oid(value: 3),
       resolution: p1_resolution(supplied_candidates: []),
     }),
-    assess_reference_binding_observation(observation: std.reference_binding_observation.DistinctHomonymObservation {
+    gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.DistinctHomonymObservation {
       first_declaration: oid(value: 1),
       second_declaration: oid(value: 2),
       resolution: p1_resolution(supplied_candidates: [oid(value: 1), oid(value: 2)]),
     }),
-    assess_reference_binding_observation(observation: std.reference_binding_observation.RepeatedMentionDependencyObservation {
+    gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.RepeatedMentionDependencyObservation {
       provider_file: "dag/provider.dag",
       projected_dependencies: ["dag/provider.dag"],
     }),
-    assess_reference_binding_observation(observation: std.reference_binding_observation.UnrelatedLoadedFileObservation {
+    gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.UnrelatedLoadedFileObservation {
       provider_file: "dag/provider.dag",
       unrelated_loaded_file: "dag/unrelated.dag",
       projected_dependencies: ["dag/provider.dag"],
@@ -120,96 +120,96 @@ fn positive_admissions() -> List<gunbc.namespace_reference_derived_closure_admis
 }
 
 test fn witness_positive_population_closes_exact_six_capabilities() -> Bool {
-  count(reference_derived_closure_required_capabilities()) == 6
-    && reference_derived_closure_closing_frontier_count(admissions: []) == 6
-    && reference_derived_closure_closing_contract_holds(admissions: positive_admissions())
+  count(gunbc.namespace_reference_derived_closure_contract.reference_derived_closure_required_capabilities()) == 6
+    && gunbc.namespace_reference_derived_closure_contract.reference_derived_closure_closing_frontier_count(admissions: []) == 6
+    && gunbc.namespace_reference_derived_closure_contract.reference_derived_closure_closing_contract_holds(admissions: positive_admissions())
 }
 
 test fn witness_same_file_neighbour_removal_fires_refusal() -> Bool {
-  match assess_reference_binding_observation(observation: std.reference_binding_observation.SameFileNeighbourObservation {
+  match gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.SameFileNeighbourObservation {
     neighbour: oid(value: 1),
     resolution: p1_resolution(supplied_candidates: []),
   }) {
-    ReferenceDerivedClosureRefused { capability, failure } =>
-      capability == SameFileEarlierNeighbourVisible && failure == SameFileNeighbourMissing
+    gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureRefused { capability, failure } =>
+      capability == gunbc.namespace_reference_derived_closure_admission.SameFileEarlierNeighbourVisible && failure == gunbc.namespace_reference_derived_closure_admission.SameFileNeighbourMissing
     _ => false
   }
 }
 
 test fn witness_sibling_branch_leak_fires_refusal() -> Bool {
-  match assess_reference_binding_observation(observation: std.reference_binding_observation.SiblingBranchObservation {
+  match gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.SiblingBranchObservation {
     own_branch_declaration: oid(value: 1),
     sibling_branch_declaration: oid(value: 2),
     resolution: p1_resolution(supplied_candidates: [oid(value: 1), oid(value: 2)]),
   }) {
-    ReferenceDerivedClosureRefused { capability, failure } =>
-      capability == SiblingDecisionBranchExcluded && failure == SiblingBranchLeaked
+    gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureRefused { capability, failure } =>
+      capability == gunbc.namespace_reference_derived_closure_admission.SiblingDecisionBranchExcluded && failure == gunbc.namespace_reference_derived_closure_admission.SiblingBranchLeaked
     _ => false
   }
 }
 
 test fn witness_later_declaration_leak_fires_refusal() -> Bool {
-  match assess_reference_binding_observation(observation: std.reference_binding_observation.LaterDeclarationObservation {
+  match gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.LaterDeclarationObservation {
     later_declaration: oid(value: 3),
       resolution: p1_resolution(supplied_candidates: [oid(value: 3)]),
   }) {
-    ReferenceDerivedClosureRefused { capability, failure } =>
-      capability == LaterDeclarationExcluded && failure == LaterDeclarationLeaked
+    gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureRefused { capability, failure } =>
+      capability == gunbc.namespace_reference_derived_closure_admission.LaterDeclarationExcluded && failure == gunbc.namespace_reference_derived_closure_admission.LaterDeclarationLeaked
     _ => false
   }
 }
 
 test fn witness_distinct_homonym_collapse_fires_refusal() -> Bool {
-  match assess_reference_binding_observation(observation: std.reference_binding_observation.DistinctHomonymObservation {
+  match gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.DistinctHomonymObservation {
     first_declaration: oid(value: 1),
     second_declaration: oid(value: 2),
     resolution: p1_resolution(supplied_candidates: [oid(value: 1)]),
   }) {
-    ReferenceDerivedClosureRefused { capability, failure } =>
-      capability == DistinctSameSpelledDeclarationsPreserved && failure == DistinctDeclarationCollapsed
+    gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureRefused { capability, failure } =>
+      capability == gunbc.namespace_reference_derived_closure_admission.DistinctSameSpelledDeclarationsPreserved && failure == gunbc.namespace_reference_derived_closure_admission.DistinctDeclarationCollapsed
     _ => false
   }
 }
 
 test fn witness_repeated_mention_dependency_duplication_fires_refusal() -> Bool {
-  match assess_reference_binding_observation(observation: std.reference_binding_observation.RepeatedMentionDependencyObservation {
+  match gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.RepeatedMentionDependencyObservation {
     provider_file: "dag/provider.dag",
     projected_dependencies: ["dag/provider.dag", "dag/provider.dag"],
   }) {
-    ReferenceDerivedClosureRefused { capability, failure } =>
-      capability == RepeatedMentionsCollapseDependency && failure == RepeatedMentionDuplicatedDependency
+    gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureRefused { capability, failure } =>
+      capability == gunbc.namespace_reference_derived_closure_admission.RepeatedMentionsCollapseDependency && failure == gunbc.namespace_reference_derived_closure_admission.RepeatedMentionDuplicatedDependency
     _ => false
   }
 }
 
 test fn witness_unrelated_loaded_file_dependency_fires_refusal() -> Bool {
-  match assess_reference_binding_observation(observation: std.reference_binding_observation.UnrelatedLoadedFileObservation {
+  match gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.UnrelatedLoadedFileObservation {
     provider_file: "dag/provider.dag",
     unrelated_loaded_file: "dag/unrelated.dag",
     projected_dependencies: ["dag/provider.dag", "dag/unrelated.dag"],
   }) {
-    ReferenceDerivedClosureRefused { capability, failure } =>
-      capability == UnrelatedLoadedFileExcluded && failure == UnrelatedLoadedFileDependencyLeaked
+    gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureRefused { capability, failure } =>
+      capability == gunbc.namespace_reference_derived_closure_admission.UnrelatedLoadedFileExcluded && failure == gunbc.namespace_reference_derived_closure_admission.UnrelatedLoadedFileDependencyLeaked
     _ => false
   }
 }
 
 test fn witness_duplicate_admission_cannot_erase_missing_capability() -> Bool {
-  let one = assess_reference_binding_observation(observation: std.reference_binding_observation.SameFileNeighbourObservation {
+  let one = gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.SameFileNeighbourObservation {
     neighbour: oid(value: 1),
     resolution: p1_resolution(supplied_candidates: [oid(value: 1)]),
   })
-  reference_derived_closure_closing_frontier_count(admissions: [one]) == 5
-    && reference_derived_closure_closing_frontier_count(admissions: [one, one]) == 5
-    && !reference_derived_closure_closing_contract_holds(admissions: [one, one])
+  gunbc.namespace_reference_derived_closure_contract.reference_derived_closure_closing_frontier_count(admissions: [one]) == 5
+    && gunbc.namespace_reference_derived_closure_contract.reference_derived_closure_closing_frontier_count(admissions: [one, one]) == 5
+    && !gunbc.namespace_reference_derived_closure_contract.reference_derived_closure_closing_contract_holds(admissions: [one, one])
 }
 
 test fn witness_refusal_vetoes_a_contradictory_established_receipt() -> Bool {
-  let refusal = assess_reference_binding_observation(observation: std.reference_binding_observation.SameFileNeighbourObservation {
+  let refusal = gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation(observation: std.reference_binding_observation.SameFileNeighbourObservation {
     neighbour: oid(value: 1),
     resolution: p1_resolution(supplied_candidates: []),
   })
   let contradictory = append(positive_admissions(), items: [refusal])
-  reference_derived_closure_closing_frontier_count(admissions: contradictory) == 1
-    && !reference_derived_closure_closing_contract_holds(admissions: contradictory)
+  gunbc.namespace_reference_derived_closure_contract.reference_derived_closure_closing_frontier_count(admissions: contradictory) == 1
+    && !gunbc.namespace_reference_derived_closure_contract.reference_derived_closure_closing_contract_holds(admissions: contradictory)
 }

@@ -35,7 +35,7 @@ fn npi_witness_provenance(
     reference_occurrence: reference_occurrence,
     declaration_occurrence: declaration_occurrence,
     consumer_file: npi_witness_consumer_file(),
-    provider_file: cross_file_clause_e_fixture_provider_file(),
+    provider_file: test.fixture.cross_file_clause_e_fixture.cross_file_clause_e_fixture_provider_file(),
   }
 }
 
@@ -54,7 +54,7 @@ fn npi_witness_provider(
 fn npi_witness_file_dependency() -> std.occurrence_binding_candidates.DirectFileDependency {
   std.occurrence_binding_candidates.DirectFileDependency {
     consumer_file: npi_witness_consumer_file(),
-    provider_file: cross_file_clause_e_fixture_provider_file(),
+    provider_file: test.fixture.cross_file_clause_e_fixture.cross_file_clause_e_fixture_provider_file(),
   }
 }
 
@@ -99,8 +99,8 @@ fn npi_witness_baseline_projection() -> std.occurrence_binding_candidates.Refere
 fn npi_projection_for_assembled_closure(
   closure: std.occurrence_binding_candidates.AssembledCrossFileBindingClosure,
 ) -> std.occurrence_binding_candidates.ReferenceDerivedDependencyProjection? {
-  match reference_derived_dependency_projection_for_assembled_closure(closure: closure) {
-    AssembledClosureDependencyProjectionReady { projection: projection } =>
+  match std.occurrence_binding_candidates.reference_derived_dependency_projection_for_assembled_closure(closure: closure) {
+    std.occurrence_binding_candidates.AssembledClosureDependencyProjectionReady { projection: projection } =>
       Present { value: projection }
     _ => Absent
   }
@@ -109,20 +109,20 @@ fn npi_projection_for_assembled_closure(
 fn npi_pool_perturbation_preserves_full_carrier(
   unrelated_loaded_provider: std.occurrence_binding_candidates.CrossFileBindingClosureRow,
 ) -> Bool {
-  let baseline_closure = cross_file_clause_e_fixture_baseline_assembled_closure()
-  let perturbed_closure = cross_file_clause_e_fixture_perturbed_assembled_closure(
+  let baseline_closure = test.fixture.cross_file_clause_e_fixture.cross_file_clause_e_fixture_baseline_assembled_closure()
+  let perturbed_closure = test.fixture.cross_file_clause_e_fixture.cross_file_clause_e_fixture_perturbed_assembled_closure(
     unrelated_loaded_provider: unrelated_loaded_provider,
   )
   match npi_projection_for_assembled_closure(closure: baseline_closure) {
     Present { value: baseline } =>
       match npi_projection_for_assembled_closure(closure: perturbed_closure) {
         Present { value: perturbed } =>
-          match assess_pool_independent_projection_equality(
+          match gunbc.namespace_pool_independence.assess_pool_independent_projection_equality(
             source_subject: npi_witness_consumer_file(),
             baseline: baseline,
             perturbed: perturbed,
           ) {
-            PoolIndependenceEstablished => true
+            gunbc.namespace_pool_independence.PoolIndependenceEstablished => true
             _ => false
           }
         Absent => false
@@ -133,7 +133,7 @@ fn npi_pool_perturbation_preserves_full_carrier(
 
 test fn unrelated_loaded_unrelated_spellings_preserves_full_carrier_holds() -> Bool {
   npi_pool_perturbation_preserves_full_carrier(
-    unrelated_loaded_provider: cross_file_clause_e_fixture_unrelated_loaded_provider_row(
+    unrelated_loaded_provider: test.fixture.cross_file_clause_e_fixture.cross_file_clause_e_fixture_unrelated_loaded_provider_row(
       declaration_authored_name: "unrelated_noise",
       module_dotted: "app.unrelated",
       file_path: "app/unrelated.dag",
@@ -153,7 +153,7 @@ fn npi_reference_occurrence_in_transport(
 }
 
 fn npi_colliding_decoy_row() -> std.occurrence_binding_candidates.CrossFileBindingClosureRow {
-  cross_file_clause_e_fixture_unrelated_loaded_provider_row(
+  test.fixture.cross_file_clause_e_fixture.cross_file_clause_e_fixture_unrelated_loaded_provider_row(
     declaration_authored_name: "helper",
     module_dotted: "app.decoy",
     file_path: "app/decoy.dag",
@@ -161,26 +161,26 @@ fn npi_colliding_decoy_row() -> std.occurrence_binding_candidates.CrossFileBindi
 }
 
 test fn colliding_root_exported_homonym_refuses_ambiguity_holds() -> Bool {
-  let baseline_closure = cross_file_clause_e_fixture_baseline_assembled_closure()
-  let perturbed_closure = cross_file_clause_e_fixture_perturbed_assembled_closure(
+  let baseline_closure = test.fixture.cross_file_clause_e_fixture.cross_file_clause_e_fixture_baseline_assembled_closure()
+  let perturbed_closure = test.fixture.cross_file_clause_e_fixture.cross_file_clause_e_fixture_perturbed_assembled_closure(
     unrelated_loaded_provider: npi_colliding_decoy_row(),
   )
-  match reference_derived_dependency_projection_for_assembled_closure(closure: baseline_closure) {
-    AssembledClosureDependencyProjectionReady { projection: _ } =>
+  match std.occurrence_binding_candidates.reference_derived_dependency_projection_for_assembled_closure(closure: baseline_closure) {
+    std.occurrence_binding_candidates.AssembledClosureDependencyProjectionReady { projection: _ } =>
       match perturbed_closure {
-        AssembledCrossFileBindingClosureReady {
+        std.occurrence_binding_candidates.AssembledCrossFileBindingClosureReady {
           transport: transport,
           inputs: _,
           module_files: _,
           consumer_file: _,
         } =>
-          match reference_derived_dependency_projection_for_assembled_closure(
+          match std.occurrence_binding_candidates.reference_derived_dependency_projection_for_assembled_closure(
             closure: perturbed_closure,
           ) {
-            AssembledClosureDependencyProjectionRefused {
-              refusal: AssembledClosureDependencyProjectionBindingRefused {
-                population: ReferencePopulationRefused {
-                  first_failure: ReferenceBindingProjectionAmbiguous {
+            std.occurrence_binding_candidates.AssembledClosureDependencyProjectionRefused {
+              refusal: std.occurrence_binding_candidates.AssembledClosureDependencyProjectionBindingRefused {
+                population: std.occurrence_binding_candidates.ReferencePopulationRefused {
+                  first_failure: std.occurrence_binding_candidates.ReferenceBindingProjectionAmbiguous {
                     occurrence: first_ambiguous,
                   },
                   more_failures: more_failures,
@@ -194,7 +194,7 @@ test fn colliding_root_exported_homonym_refuses_ambiguity_holds() -> Bool {
                 )
                 && match more_failures |> first {
                   Present {
-                    value: ReferenceBindingProjectionAmbiguous {
+                    value: std.occurrence_binding_candidates.ReferenceBindingProjectionAmbiguous {
                       occurrence: second_ambiguous,
                     },
                   } =>
@@ -239,26 +239,26 @@ test fn same_file_reselection_red_refuses_full_carrier_holds() -> Bool {
       ),
     ],
   )
-  match assess_pool_independent_projection_equality(
+  match gunbc.namespace_pool_independence.assess_pool_independent_projection_equality(
     source_subject: npi_witness_consumer_file(),
     baseline: baseline,
     perturbed: perturbed,
   ) {
-    PoolIndependenceRefused {
-      failure: DeclarationOccurrenceIdentityMismatch,
-    } => assess_file_dependencies_only_equality(baseline: baseline, perturbed: perturbed)
+    gunbc.namespace_pool_independence.PoolIndependenceRefused {
+      failure: gunbc.namespace_pool_independence.DeclarationOccurrenceIdentityMismatch,
+    } => gunbc.namespace_pool_independence.assess_file_dependencies_only_equality(baseline: baseline, perturbed: perturbed)
     _ => false
   }
 }
 
 test fn red_source_subject_mismatch_holds() -> Bool {
-  match assess_pool_independent_projection_equality(
+  match gunbc.namespace_pool_independence.assess_pool_independent_projection_equality(
     source_subject: "app/wrong.dag",
     baseline: npi_witness_baseline_projection(),
     perturbed: npi_witness_baseline_projection(),
   ) {
-    PoolIndependenceRefused {
-      failure: SourceSubjectConsumerFileMismatch { expected: _, found: _ },
+    gunbc.namespace_pool_independence.PoolIndependenceRefused {
+      failure: gunbc.namespace_pool_independence.SourceSubjectConsumerFileMismatch { expected: _, found: _ },
     } => true
     _ => false
   }
@@ -289,13 +289,13 @@ test fn red_reference_occurrence_identity_mismatch_holds() -> Bool {
       ),
     ],
   )
-  match assess_pool_independent_projection_equality(
+  match gunbc.namespace_pool_independence.assess_pool_independent_projection_equality(
     source_subject: npi_witness_consumer_file(),
     baseline: baseline,
     perturbed: perturbed,
   ) {
-    PoolIndependenceRefused {
-      failure: ReferenceOccurrenceIdentityMismatch,
+    gunbc.namespace_pool_independence.PoolIndependenceRefused {
+      failure: gunbc.namespace_pool_independence.ReferenceOccurrenceIdentityMismatch,
     } => true
     _ => false
   }
@@ -328,13 +328,13 @@ test fn red_bound_population_mismatch_holds() -> Bool {
       },
     ],
   )
-  match assess_pool_independent_projection_equality(
+  match gunbc.namespace_pool_independence.assess_pool_independent_projection_equality(
     source_subject: npi_witness_consumer_file(),
     baseline: baseline,
     perturbed: perturbed,
   ) {
-    PoolIndependenceRefused {
-      failure: BoundReferencePopulationMismatch,
+    gunbc.namespace_pool_independence.PoolIndependenceRefused {
+      failure: gunbc.namespace_pool_independence.BoundReferencePopulationMismatch,
     } => true
     _ => false
   }
@@ -373,12 +373,12 @@ test fn red_file_dependency_mismatch_holds() -> Bool {
       ],
     },
   }
-  match assess_pool_independent_projection_equality(
+  match gunbc.namespace_pool_independence.assess_pool_independent_projection_equality(
     source_subject: npi_witness_consumer_file(),
     baseline: baseline,
     perturbed: perturbed,
   ) {
-    PoolIndependenceRefused { failure: FileDependencyMismatch } => true
+    gunbc.namespace_pool_independence.PoolIndependenceRefused { failure: gunbc.namespace_pool_independence.FileDependencyMismatch } => true
     _ => false
   }
 }
@@ -393,12 +393,12 @@ test fn red_refusal_outcome_mismatch_holds() -> Bool {
       more_failures: [],
     },
   }
-  match assess_pool_independent_projection_equality(
+  match gunbc.namespace_pool_independence.assess_pool_independent_projection_equality(
     source_subject: npi_witness_consumer_file(),
     baseline: baseline,
     perturbed: perturbed,
   ) {
-    PoolIndependenceRefused { failure: RefusalOutcomeMismatch } => true
+    gunbc.namespace_pool_independence.PoolIndependenceRefused { failure: gunbc.namespace_pool_independence.RefusalOutcomeMismatch } => true
     _ => false
   }
 }

@@ -4,7 +4,7 @@ module extdeps.runtime.syscalls.linux
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/torvalds/linux/blob/v6.8/arch/x86/entry/syscalls/syscall_64.tbl"
   }
 }
@@ -21,7 +21,7 @@ data linux_x86_64_syscall_subset: List<std.os.invocation.SyscallEntry> = [
 
 data linux_x86_64_syscall_abi: std.os.invocation.SyscallAbi = {
   table: linux_x86_64_syscall_subset,
-  convention: sysv_amd64_linux_syscall_convention,
+  convention: extdeps.runtime.abi.sysv_amd64.sysv_amd64_linux_syscall_convention,
 }
 
 data sys_aarch64_read: std.os.invocation.SyscallEntry   = std.os.invocation.SyscallEntry { number: 63,  name: "read",   arg_count: 3 }
@@ -36,7 +36,7 @@ data linux_aarch64_syscall_subset: List<std.os.invocation.SyscallEntry> = [
 
 data linux_aarch64_syscall_abi: std.os.invocation.SyscallAbi = {
   table: linux_aarch64_syscall_subset,
-  convention: aapcs64_linux_syscall_convention,
+  convention: extdeps.runtime.abi.aapcs64.aapcs64_linux_syscall_convention,
 }
 
 fn witness_read_number_is_0() -> Bool    { sys_read.number == 0 }

@@ -1,7 +1,7 @@
 module v2.test.execution.effect_io_eval_by_execution
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn effect_io_eval_termination_proof() -> v2.std.cardinality.TerminationProof {
   v2.std.cardinality.TerminationProof {
@@ -20,15 +20,15 @@ fn effect_io_eval_literal_value() -> v2.std.runtime.RuntimeValue {
 }
 
 data effect_io_eval_locator_literal: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Value },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data effect_io_eval_payload_literal: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Value },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data effect_io_eval_roundtrip_node: v2.std.node.Node = v2.compiler.eval.effect_io_roundtrip_transform(
@@ -87,7 +87,7 @@ fn effect_io_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {
     branch: v2.std.runtime.BranchInterpreter { choose_branch: effect_io_eval_reject_branch, identity: ^effect_io_eval_reject_branch },
     loop: v2.std.runtime.LoopInterpreter { step_loop: effect_io_eval_step_loop, identity: ^effect_io_eval_step_loop },
     bind: v2.std.runtime.BindInterpreter { bind_value: effect_io_eval_bind_value, identity: ^effect_io_eval_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
@@ -97,7 +97,8 @@ fn effect_io_eval_structure_witness() -> v2.std.runtime.InterpretationStructureW
     call_primitive: ^effect_io_eval_reject_primitive,
     choose_branch: ^effect_io_eval_reject_branch,
     step_loop: ^effect_io_eval_step_loop,
-    bind_value: ^effect_io_eval_bind_value,    choose_arm: ^runtime_reject_match_arm
+    bind_value: ^effect_io_eval_bind_value,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 
@@ -106,8 +107,8 @@ fn effect_io_eval_context_bound() -> v2.compiler.eval.EvalContext {
     runtime_identity: ^effect_io_eval_runtime_id,
     interpretation: effect_io_eval_interpretation(),
     structure_witness: effect_io_eval_structure_witness(),
-    backend: FileResourceBackend,
-    store: v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_empty_fixture_store(backend: FileResourceBackend)
+    backend: v2.extdeps.runtimes.v2_effect_io_pure.FileResourceBackend,
+    store: v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_empty_fixture_store(backend: v2.extdeps.runtimes.v2_effect_io_pure.FileResourceBackend)
   )
 }
 
@@ -142,38 +143,38 @@ fn effect_io_eval_fact_lookup(node: v2.std.node.Node) -> v2.std.optional.Optiona
 fn effect_io_eval_tree() -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: effect_io_eval_roundtrip_node,
-    facts: std.algebra.PartialFunction { lookup: effect_io_eval_fact_lookup }
+    facts: PartialFunction { lookup: effect_io_eval_fact_lookup }
   }
 }
 
-test fn effect_io_eval_roundtrip_holds() -> v2.std.logic.Bool {
+test fn effect_io_eval_roundtrip_holds() -> Bool {
   match v2.compiler.eval.eval_with_context(
     tree: effect_io_eval_tree(),
     context: effect_io_eval_context_bound(),
     inputs: v2.compiler.eval.inputs_root_only(root: effect_io_eval_roundtrip_node)
   ) {
-    Accepted { value: v, diagnostics: None } => v == effect_io_eval_literal_value()
+    v2.std.diagnostic.Accepted { value: v, diagnostics: v2.std.diagnostic.None } => v == effect_io_eval_literal_value()
     _ => false
   }
 }
 
-test fn effect_io_eval_unbound_fail_closed_holds() -> v2.std.logic.Bool {
+test fn effect_io_eval_unbound_fail_closed_holds() -> Bool {
   match v2.compiler.eval.eval_with_context(
     tree: effect_io_eval_tree(),
     context: effect_io_eval_context_unbound(),
     inputs: v2.compiler.eval.inputs_root_only(root: effect_io_eval_roundtrip_node)
   ) {
-    Rejected { diagnostics: d } => d.head.reason == ^effect_io_eval_primitive_rejected
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^effect_io_eval_primitive_rejected
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
 data claim_effect_io_eval_roundtrip: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "V4-EFFECTS-IO: eval yields ReadResource→WriteResource round-trip through handler binding",
-  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: effect_io_eval_roundtrip_node,
   rhs: effect_io_eval_payload_literal,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
 data subject_effect_io_eval_roundtrip: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> = v2.compiler.eval.eval_test_claim_subject(

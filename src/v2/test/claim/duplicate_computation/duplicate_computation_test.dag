@@ -1,7 +1,7 @@
 module v2.test.duplicate_computation.duplicate_computation
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data synthetic_compile_key: String = "gunbc compile --source-root dag --target rust"
 data synthetic_other_key: String = "cargo build -p v1-compiler --release --bin gunbc"
@@ -9,70 +9,70 @@ data synthetic_other_key: String = "cargo build -p v1-compiler --release --bin g
 data synthetic_unguarded_a: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "synthetic.site_a",
   computation_key: synthetic_compile_key,
-  guard: UnguardedDemand,
-  replication: SingleRun
+  guard: v2.lens.duplicate_computation.UnguardedDemand,
+  replication: v2.lens.duplicate_computation.SingleRun
 }
 
 data synthetic_unguarded_b: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "synthetic.site_b",
   computation_key: synthetic_compile_key,
-  guard: UnguardedDemand,
-  replication: SingleRun
+  guard: v2.lens.duplicate_computation.UnguardedDemand,
+  replication: v2.lens.duplicate_computation.SingleRun
 }
 
 data synthetic_guarded_b: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "synthetic.site_b",
   computation_key: synthetic_compile_key,
-  guard: GuardedFallbackDemand,
-  replication: SingleRun
+  guard: v2.lens.duplicate_computation.GuardedFallbackDemand,
+  replication: v2.lens.duplicate_computation.SingleRun
 }
 
 data synthetic_other_unguarded: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "synthetic.site_c",
   computation_key: synthetic_other_key,
-  guard: UnguardedDemand,
-  replication: SingleRun
+  guard: v2.lens.duplicate_computation.UnguardedDemand,
+  replication: v2.lens.duplicate_computation.SingleRun
 }
 
 data synthetic_oracle_a: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "synthetic.site_a",
   computation_key: synthetic_compile_key,
-  guard: UnguardedDemand,
+  guard: v2.lens.duplicate_computation.UnguardedDemand,
   replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 }
 }
 
 data synthetic_oracle_b: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "synthetic.site_b",
   computation_key: synthetic_compile_key,
-  guard: UnguardedDemand,
+  guard: v2.lens.duplicate_computation.UnguardedDemand,
   replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 }
 }
 
 data synthetic_oracle_c: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "synthetic.site_c",
   computation_key: synthetic_compile_key,
-  guard: UnguardedDemand,
+  guard: v2.lens.duplicate_computation.UnguardedDemand,
   replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 }
 }
 
-test fn duplicate_unguarded_demands_are_violations() -> v2.std.logic.Bool {
-  duplicate_computation_violation_count(facts: [synthetic_unguarded_a, synthetic_unguarded_b]) == 1
+test fn duplicate_unguarded_demands_are_violations() -> Bool {
+  v2.lens.duplicate_computation.duplicate_computation_violation_count(facts: [synthetic_unguarded_a, synthetic_unguarded_b]) == 1
 }
 
-test fn duplicate_guarded_demands_are_clean() -> v2.std.logic.Bool {
-  duplicate_computation_clean_holds(facts: [synthetic_unguarded_a, synthetic_guarded_b])
+test fn duplicate_guarded_demands_are_clean() -> Bool {
+  v2.lens.duplicate_computation.duplicate_computation_clean_holds(facts: [synthetic_unguarded_a, synthetic_guarded_b])
 }
 
-test fn duplicate_distinct_keys_are_clean() -> v2.std.logic.Bool {
-  duplicate_computation_clean_holds(facts: [synthetic_unguarded_a, synthetic_other_unguarded])
+test fn duplicate_distinct_keys_are_clean() -> Bool {
+  v2.lens.duplicate_computation.duplicate_computation_clean_holds(facts: [synthetic_unguarded_a, synthetic_other_unguarded])
 }
 
-test fn duplicate_declared_oracle_is_admissible() -> v2.std.logic.Bool {
-  duplicate_computation_clean_holds(facts: [synthetic_oracle_a, synthetic_oracle_b])
+test fn duplicate_declared_oracle_is_admissible() -> Bool {
+  v2.lens.duplicate_computation.duplicate_computation_clean_holds(facts: [synthetic_oracle_a, synthetic_oracle_b])
 }
 
-test fn duplicate_undeclared_oracle_reds() -> v2.std.logic.Bool {
-  duplicate_computation_violation_count(facts: [synthetic_oracle_a, synthetic_oracle_b, synthetic_oracle_c]) == 1
+test fn duplicate_undeclared_oracle_reds() -> Bool {
+  v2.lens.duplicate_computation.duplicate_computation_violation_count(facts: [synthetic_oracle_a, synthetic_oracle_b, synthetic_oracle_c]) == 1
 }
 
 fn synthetic_typed_compile_invocation(site: String, out_dir: String) -> v2.lens.duplicate_computation.TypedArgvInvocation {
@@ -84,55 +84,55 @@ fn synthetic_typed_compile_invocation(site: String, out_dir: String) -> v2.lens.
 }
 
 fn synthetic_typed_pair_facts(replication: v2.lens.duplicate_computation.ReplicationIntent) -> List<v2.lens.duplicate_computation.ComputationDemandFact> {
-  list_append(
-    left: typed_argv_computation_demands(
+  v2.std.algebra.list_append(
+    left: v2.lens.duplicate_computation.typed_argv_computation_demands(
       invocation: synthetic_typed_compile_invocation(site: "synthetic.typed_run_1", out_dir: "/tmp/typed-out-1"),
-      guard: UnguardedDemand,
+      guard: v2.lens.duplicate_computation.UnguardedDemand,
       replication: replication
     ),
-    right: typed_argv_computation_demands(
+    right: v2.lens.duplicate_computation.typed_argv_computation_demands(
       invocation: synthetic_typed_compile_invocation(site: "synthetic.typed_run_2", out_dir: "/tmp/typed-out-2"),
-      guard: UnguardedDemand,
+      guard: v2.lens.duplicate_computation.UnguardedDemand,
       replication: replication
     )
   )
 }
 
-test fn typed_argv_compile_pair_without_declaration_reds() -> v2.std.logic.Bool {
-  duplicate_computation_violation_count(facts: synthetic_typed_pair_facts(replication: SingleRun)) == 1
+test fn typed_argv_compile_pair_without_declaration_reds() -> Bool {
+  v2.lens.duplicate_computation.duplicate_computation_violation_count(facts: synthetic_typed_pair_facts(replication: v2.lens.duplicate_computation.SingleRun)) == 1
 }
 
-test fn typed_argv_compile_pair_declared_oracle_is_admissible() -> v2.std.logic.Bool {
-  duplicate_computation_clean_holds(facts: synthetic_typed_pair_facts(replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 }))
+test fn typed_argv_compile_pair_declared_oracle_is_admissible() -> Bool {
+  v2.lens.duplicate_computation.duplicate_computation_clean_holds(facts: synthetic_typed_pair_facts(replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 }))
 }
 
-test fn typed_argv_non_compile_invocation_projects_no_demand() -> v2.std.logic.Bool {
-  length(xs: typed_argv_computation_demands(
+test fn typed_argv_non_compile_invocation_projects_no_demand() -> Bool {
+  v2.std.algebra.length(xs: v2.lens.duplicate_computation.typed_argv_computation_demands(
     invocation: v2.lens.duplicate_computation.TypedArgvInvocation {
       site: "synthetic.typed_version_probe",
       tool: "gunbc",
       args: ["--version"]
     },
-    guard: UnguardedDemand,
-    replication: SingleRun
+    guard: v2.lens.duplicate_computation.UnguardedDemand,
+    replication: v2.lens.duplicate_computation.SingleRun
   )) == 0
 }
 
-test fn typed_argv_guarded_build_is_clean() -> v2.std.logic.Bool {
-  duplicate_computation_clean_holds(facts: list_append(
-    left: typed_argv_computation_demands(
+test fn typed_argv_guarded_build_is_clean() -> Bool {
+  v2.lens.duplicate_computation.duplicate_computation_clean_holds(facts: v2.std.algebra.list_append(
+    left: v2.lens.duplicate_computation.typed_argv_computation_demands(
       invocation: v2.lens.duplicate_computation.TypedArgvInvocation {
         site: "synthetic.guarded_build",
         tool: "cargo",
         args: ["build", "-p", "v1-compiler", "--release", "--bin", "gunbc"]
       },
-      guard: GuardedFallbackDemand,
-      replication: SingleRun
+      guard: v2.lens.duplicate_computation.GuardedFallbackDemand,
+      replication: v2.lens.duplicate_computation.SingleRun
     ),
-    right: typed_argv_computation_demands(
+    right: v2.lens.duplicate_computation.typed_argv_computation_demands(
       invocation: synthetic_typed_compile_invocation(site: "synthetic.guarded_compile", out_dir: "OUT1"),
-      guard: UnguardedDemand,
-      replication: SingleRun
+      guard: v2.lens.duplicate_computation.UnguardedDemand,
+      replication: v2.lens.duplicate_computation.SingleRun
     )
   ))
 }

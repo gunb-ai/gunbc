@@ -3,14 +3,14 @@ module extdeps.tailscale.acl
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "tailscale.com/kb/1018"
   }
 }
 
 fn tailscale_grants_external_authority_holds() -> Bool {
-  uri_wire(uri: extdeps.uri.Uri {
-    scheme: Https,
+  extdeps.uri.uri_wire(uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https,
     locator: "tailscale.com/kb/1018",
   }) == "https://tailscale.com/kb/1018"
 }
@@ -20,11 +20,11 @@ data tailscale_acl_policy_language_uri: String = "tailscale.com/kb/1337/acl-synt
 data dashboard_cutover_mac_ip: std.types.NonEmptyStr = "100.65.94.55"
 
 data dashboard_cutover_mac_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.tailscale.acl",
     decl_name: "dashboard_cutover_mac_ip",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

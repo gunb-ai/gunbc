@@ -81,13 +81,13 @@ fn session_publication_posture_fold<T>(
 
 fn change_local_admission_detail(outcome: gunbc.publication_admission_delta.ChangeLocalAdmissionOutcome) -> String {
   match outcome {
-    ChangeLocalAdmitted { delta: delta, candidate: _ } =>
+    gunbc.publication_admission_delta.ChangeLocalAdmitted { delta: delta, candidate: _ } =>
       join(["change-local admission admitted; delta_count=", to_string(count(delta))], "")
-    ChangeLocalRefused { cause: cause } =>
+    gunbc.publication_admission_delta.ChangeLocalRefused { cause: cause } =>
       match cause {
-        CandidateDigestInconsistent { expected: _, observed: _ } =>
+        gunbc.publication_admission_delta.CandidateDigestInconsistent { expected: _, observed: _ } =>
           "change-local admission refused: candidate projection digest inconsistent"
-        WholeProjectionAuditRequired { detail: detail } => detail
+        gunbc.publication_admission_delta.WholeProjectionAuditRequired { detail: detail } => detail
       }
   }
 }
@@ -99,7 +99,7 @@ fn receipt_authorizes_newly_public(
   authority: gunbc.publication_decision.PublicationAuthorityId,
 ) -> Bool {
   fold(receipts, init: false, f: fn(found, receipt) {
-    found || publication_decision_authorizes_newly_public(
+    found || gunbc.publication_decision.publication_decision_authorizes_newly_public(
       receipt: receipt,
       subject: subject,
       policy_version: policy_version,
@@ -113,7 +113,7 @@ fn receipt_binds_subject_content(
   subject: gunbc.public_projection.PublicProjectionSubject,
 ) -> Bool {
   fold(receipts, init: false, f: fn(found, receipt) {
-    found || publication_decision_binds_content(
+    found || gunbc.publication_decision.publication_decision_binds_content(
       receipt: receipt,
       subject_identity: subject.subject_identity,
       content_identity: subject.content_identity,
@@ -133,7 +133,7 @@ fn newly_public_subject_receipt_refusal(
       Present { value: _ } => acc
       Absent =>
         match item {
-          NewlyPublic { subject: subject } =>
+          gunbc.publication_admission_delta.NewlyPublic { subject: subject } =>
             if receipt_authorizes_newly_public(
               receipts: decisions,
               subject: subject,
@@ -145,7 +145,7 @@ fn newly_public_subject_receipt_refusal(
               Present {
                 value: DecisionReceiptNotAuthorizing {
                   session: session,
-                  subject_identity: serialize_content_hash(hash: subject.subject_identity) as String,
+                  subject_identity: std.content_hash.serialize_content_hash(hash: subject.subject_identity) as String,
                   detail: "decision receipt does not authorize newly public subject",
                 },
               }
@@ -153,7 +153,7 @@ fn newly_public_subject_receipt_refusal(
               Present {
                 value: DecisionReceiptMissing {
                   session: session,
-                  subject_identity: serialize_content_hash(hash: subject.subject_identity) as String,
+                  subject_identity: std.content_hash.serialize_content_hash(hash: subject.subject_identity) as String,
                 },
               }
             }
@@ -205,12 +205,12 @@ fn admit_public_write(
         },
       }
     SoleModeledPublisher { session: publisher } =>
-      let admission = admit_change_local_projection(request: gunbc.publication_admission_delta.ChangeLocalAdmissionRequest {
+      let admission = gunbc.publication_admission_delta.admit_change_local_projection(request: gunbc.publication_admission_delta.ChangeLocalAdmissionRequest {
         current: current,
         candidate: candidate,
       })
       match admission {
-        ChangeLocalAdmitted { delta: delta, candidate: plan } =>
+        gunbc.publication_admission_delta.ChangeLocalAdmitted { delta: delta, candidate: plan } =>
           match newly_public_subject_receipt_refusal(
             delta: delta,
             decisions: decisions,
@@ -260,7 +260,7 @@ fn admit_public_write(
                 }
               }
           }
-        ChangeLocalRefused { cause: cause } =>
+        gunbc.publication_admission_delta.ChangeLocalRefused { cause: cause } =>
           PublicWriteRefused {
             session: publisher,
             cause: ProjectionNotAdmitted {

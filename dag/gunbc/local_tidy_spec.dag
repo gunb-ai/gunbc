@@ -1,14 +1,14 @@
 module gunbc.local_tidy_spec
 
 
-data local_tidy_checks: List<gunbc.commit_workflow.LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
+data local_tidy_checks: List<gunbc.commit_workflow.LocalTidyCheck> = gunbc.commit_workflow.project_local_tidy_checks(roster: gunbc.commit_workflow.commit_gate_roster)
 
 data githooks_pre_push_emit_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.githooks_pre_push_emit",
     decl_name: "expected_githooks_pre_push_sh",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -32,13 +32,13 @@ fn doc_reachability_trigger_globs() -> List<String> {
 }
 
 fn cargo_fmt_trigger_globs() -> List<String> {
-  map(rust_monolith_suffixes(), s => suffix_to_glob_pattern(suffix: s))
+  map(tools.rust_stage0_gates.rust_monolith_suffixes(), s => suffix_to_glob_pattern(suffix: s))
 }
 
 fn local_tidy_trigger_globs(check: gunbc.commit_workflow.LocalTidyCheck) -> List<String> {
   match check {
-    LocalTidyWitnessCheck { entry: _, check_fns: _ } => doc_reachability_trigger_globs()
-    LocalTidyCargoFmtCheck => cargo_fmt_trigger_globs()
+    gunbc.commit_workflow.LocalTidyWitnessCheck { entry: _, check_fns: _ } => doc_reachability_trigger_globs()
+    gunbc.commit_workflow.LocalTidyCargoFmtCheck => cargo_fmt_trigger_globs()
   }
 }
 
@@ -56,7 +56,7 @@ fn local_tidy_path_matches_glob(path: String, glob: String) -> Bool {
 
 fn local_tidy_path_matches_trigger(path: String, check: gunbc.commit_workflow.LocalTidyCheck) -> Bool {
   match check {
-    LocalTidyCargoFmtCheck => path_is_rust_monolith(path: path)
+    gunbc.commit_workflow.LocalTidyCargoFmtCheck => tools.rust_stage0_gates.path_is_rust_monolith(path: path)
     _ => any(
       local_tidy_trigger_globs(check: check),
       g => local_tidy_path_matches_glob(path: path, glob: g)

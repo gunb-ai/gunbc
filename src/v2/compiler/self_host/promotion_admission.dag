@@ -54,7 +54,7 @@ type BuildOutcome
 // is the truncation, and agreeing runs against differing sizes is the moved goalpost.
 type BehavioralCorpus {
   identity: String
-  expected_cases: v2.std.integer.Int
+  expected_cases: Int
 }
 
 // Every receipt names the generation it is ABOUT. Admission joins on that subject,
@@ -66,8 +66,8 @@ type BehavioralEquivalenceReceipt {
   subject: v2.compiler.self_host.generation.GenerationIdentity
   oracle: v2.compiler.self_host.generation.GenerationIdentity
   corpus: BehavioralCorpus
-  cases_compared: v2.std.integer.Int
-  outcome: v2.compiler.self_host.promotion_admission.ObservedVerdict<EquivalenceOutcome>
+  cases_compared: Int
+  outcome: ObservedVerdict<EquivalenceOutcome>
 }
 
 // The discriminating RED. A behavioral corpus that cannot fail proves nothing, so a
@@ -78,12 +78,12 @@ type DiscriminatingFaultReceipt {
   subject: v2.compiler.self_host.generation.GenerationIdentity
   corpus: BehavioralCorpus
   planted_fault: String
-  outcome: v2.compiler.self_host.promotion_admission.ObservedVerdict<FaultOutcome>
+  outcome: ObservedVerdict<FaultOutcome>
 }
 
 type BuildReceipt {
   subject: v2.compiler.self_host.generation.GenerationIdentity
-  outcome: v2.compiler.self_host.promotion_admission.ObservedVerdict<BuildOutcome>
+  outcome: ObservedVerdict<BuildOutcome>
 }
 
 type GenerationProvenanceReceipt {
@@ -123,10 +123,10 @@ type SelfHostCandidate {
 // realization handler rather than a fact about which generation was under test.
 type BehavioralComparisonObservation {
   corpus: BehavioralCorpus
-  cases_compared: v2.std.integer.Int
-  build: v2.compiler.self_host.promotion_admission.ObservedVerdict<BuildOutcome>
-  equivalence: v2.compiler.self_host.promotion_admission.ObservedVerdict<EquivalenceOutcome>
-  fault: v2.compiler.self_host.promotion_admission.ObservedVerdict<FaultOutcome>
+  cases_compared: Int
+  build: ObservedVerdict<BuildOutcome>
+  equivalence: ObservedVerdict<EquivalenceOutcome>
+  fault: ObservedVerdict<FaultOutcome>
 }
 
 fn build_receipt_from_observation(
@@ -175,10 +175,10 @@ type PromotionRefusalCause
   | OracleNotDeclaredSeed { receipt: v2.std.node.Symbol }
   | SuccessorNotProducedByCandidate
   | CorpusMismatchAcrossReceipts { receipt: v2.std.node.Symbol }
-  | CorpusPopulationMismatch { receipt: v2.std.node.Symbol, expected: v2.std.integer.Int, compared: v2.std.integer.Int }
+  | CorpusPopulationMismatch { receipt: v2.std.node.Symbol, expected: Int, compared: Int }
 
 type PromotionOutcome
-  = Promoted { successor: v2.compiler.self_host.generation.SuccessorGeneration, cases_compared: v2.std.integer.Int }
+  = Promoted { successor: v2.compiler.self_host.generation.SuccessorGeneration, cases_compared: Int }
   | PromotionRefused { causes: List<PromotionRefusalCause> }
 
 fn stale_causes_for(
@@ -186,15 +186,15 @@ fn stale_causes_for(
   subject: v2.compiler.self_host.generation.GenerationIdentity,
   expected: v2.compiler.self_host.generation.GenerationIdentity
 ) -> List<PromotionRefusalCause> {
-  fold_list(
-    xs: generation_identity_mismatched_axes(left: expected, right: subject),
-    empty: freemonoid_empty(),
+  v2.std.algebra.fold_list(
+    xs: v2.compiler.self_host.generation.generation_identity_mismatched_axes(left: expected, right: subject),
+    empty: v2.std.algebra.freemonoid_empty(),
     cons: fn(acc, axis) {
-      list_snoc_item(
+      v2.std.algebra.list_snoc_item(
         xs: acc,
         item: StaleReceiptSubject {
           receipt: receipt,
-          axis: generation_axis_symbol(axis: axis)
+          axis: v2.compiler.self_host.generation.generation_axis_symbol(axis: axis)
         }
       )
     }
@@ -209,7 +209,7 @@ fn build_receipt_causes(
   let stale = stale_causes_for(receipt: receipt, subject: r.subject, expected: expected)
   match r.outcome {
     ObservationUnavailable { cause: c } =>
-      list_snoc_item(
+      v2.std.algebra.list_snoc_item(
         xs: stale,
         item: ReceiptObservationUnavailable { receipt: receipt, cause: c }
       )
@@ -217,7 +217,7 @@ fn build_receipt_causes(
       match v {
         BuildGreen => stale
         BuildFailed { cause: _ } =>
-          list_snoc_item(xs: stale, item: BuildNotGreen { receipt: receipt })
+          v2.std.algebra.list_snoc_item(xs: stale, item: BuildNotGreen { receipt: receipt })
       }
   }
 }
@@ -250,22 +250,22 @@ fn equivalence_receipt_causes(
     subject: r.subject,
     expected: expected
   )
-  let stale = if length(
-    xs: generation_identity_mismatched_axes(left: expected_oracle, right: r.oracle)
+  let stale = if v2.std.algebra.length(
+    xs: v2.compiler.self_host.generation.generation_identity_mismatched_axes(left: expected_oracle, right: r.oracle)
   ) == 0 {
     subject_stale
   } else {
-    list_snoc_item(xs: subject_stale, item: OracleNotDeclaredSeed { receipt: receipt })
+    v2.std.algebra.list_snoc_item(xs: subject_stale, item: OracleNotDeclaredSeed { receipt: receipt })
   }
   let declared = if r.corpus.expected_cases <= 0 {
-    list_snoc_item(xs: stale, item: EmptyBehavioralCorpus { receipt: receipt })
+    v2.std.algebra.list_snoc_item(xs: stale, item: EmptyBehavioralCorpus { receipt: receipt })
   } else {
     stale
   }
   let sized = if r.cases_compared == r.corpus.expected_cases {
     declared
   } else {
-    list_snoc_item(
+    v2.std.algebra.list_snoc_item(
       xs: declared,
       item: CorpusPopulationMismatch {
         receipt: receipt,
@@ -276,7 +276,7 @@ fn equivalence_receipt_causes(
   }
   match r.outcome {
     ObservationUnavailable { cause: c } =>
-      list_snoc_item(
+      v2.std.algebra.list_snoc_item(
         xs: sized,
         item: ReceiptObservationUnavailable { receipt: receipt, cause: c }
       )
@@ -284,7 +284,7 @@ fn equivalence_receipt_causes(
       match v {
         BehaviorAgrees => sized
         BehaviorDiverges { at_case: c } =>
-          list_snoc_item(
+          v2.std.algebra.list_snoc_item(
             xs: sized,
             item: BehaviorDivergedFromOracle { receipt: receipt, at_case: c }
           )
@@ -303,7 +303,7 @@ fn fault_receipt_causes(
   )
   match r.outcome {
     ObservationUnavailable { cause: c } =>
-      list_snoc_item(
+      v2.std.algebra.list_snoc_item(
         xs: stale,
         item: ReceiptObservationUnavailable {
           receipt: ^receipt_discriminating_fault,
@@ -314,7 +314,7 @@ fn fault_receipt_causes(
       match v {
         FaultCaught => stale
         FaultNotCaught { at_case: c } =>
-          list_snoc_item(xs: stale, item: DiscriminatingFaultNotCaught { at_case: c })
+          v2.std.algebra.list_snoc_item(xs: stale, item: DiscriminatingFaultNotCaught { at_case: c })
       }
   }
 }
@@ -331,15 +331,15 @@ fn provenance_receipt_causes(
   declared_producer: v2.compiler.self_host.generation.GenerationIdentity
 ) -> List<PromotionRefusalCause> {
   let stale = stale_causes_for(receipt: receipt, subject: r.subject, expected: expected)
-  if length(
-    xs: generation_identity_mismatched_axes(
+  if v2.std.algebra.length(
+    xs: v2.compiler.self_host.generation.generation_identity_mismatched_axes(
       left: declared_producer,
       right: r.producer
     )
   ) == 0 {
     stale
   } else {
-    list_snoc_item(
+    v2.std.algebra.list_snoc_item(
       xs: stale,
       item: ProvenanceNotDeclaredProducer { receipt: receipt }
     )
@@ -354,8 +354,8 @@ fn artifact_causes(
   identity: v2.compiler.self_host.generation.GenerationIdentity
 ) -> List<PromotionRefusalCause> {
   match identity.materialized_artifact {
-    ArtifactMaterialized { digest: _ } => freemonoid_empty()
-    ArtifactNotMaterialized =>
+    v2.compiler.self_host.generation.ArtifactMaterialized { digest: _ } => v2.std.algebra.freemonoid_empty()
+    v2.compiler.self_host.generation.ArtifactNotMaterialized =>
       [PromotionArtifactNotMaterialized { receipt: receipt }]
   }
 }
@@ -364,21 +364,21 @@ fn artifact_causes(
 // ran "the logic truth table" while disagreeing about how many cases that is, and the
 // per-receipt population join would then hold against three different bars — each run
 // self-consistent, the bundle incoherent.
-fn behavioral_corpus_agrees(left: BehavioralCorpus, right: BehavioralCorpus) -> v2.std.logic.Bool {
+fn behavioral_corpus_agrees(left: BehavioralCorpus, right: BehavioralCorpus) -> Bool {
   left.identity == right.identity && left.expected_cases == right.expected_cases
 }
 
 fn concat_causes(
   parts: List<List<PromotionRefusalCause>>
 ) -> List<PromotionRefusalCause> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: parts,
-    empty: freemonoid_empty(),
+    empty: v2.std.algebra.freemonoid_empty(),
     cons: fn(acc, part) {
-      fold_list(
+      v2.std.algebra.fold_list(
         xs: part,
         empty: acc,
-        cons: fn(inner, cause) { list_snoc_item(xs: inner, item: cause) }
+        cons: fn(inner, cause) { v2.std.algebra.list_snoc_item(xs: inner, item: cause) }
       )
     }
   )
@@ -403,18 +403,18 @@ fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause>
   let candidate_identity = c.candidate.identity
   let successor_identity = c.successor.identity
   let seed_identity = c.candidate.produced_by_seed.identity
-  let chain_causes = if length(
-    xs: generation_identity_mismatched_axes(
+  let chain_causes = if v2.std.algebra.length(
+    xs: v2.compiler.self_host.generation.generation_identity_mismatched_axes(
       left: candidate_identity,
       right: c.successor.produced_by_candidate.identity
     )
-  ) == 0 && length(
-    xs: generation_identity_mismatched_axes(
+  ) == 0 && v2.std.algebra.length(
+    xs: v2.compiler.self_host.generation.generation_identity_mismatched_axes(
       left: c.candidate.produced_by_seed.identity,
       right: c.successor.produced_by_candidate.produced_by_seed.identity
     )
   ) == 0 {
-    freemonoid_empty()
+    v2.std.algebra.freemonoid_empty()
   } else {
     [SuccessorNotProducedByCandidate]
   }
@@ -425,7 +425,7 @@ fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause>
     left: c.successor_equivalence.corpus,
     right: c.discriminating_fault.corpus
   ) {
-    freemonoid_empty()
+    v2.std.algebra.freemonoid_empty()
   } else {
     [CorpusMismatchAcrossReceipts { receipt: ^receipt_discriminating_fault }]
   }
@@ -479,7 +479,7 @@ fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause>
 // unhandled case has no arm that produces Promoted.
 fn admit_promotion(c: SelfHostCandidate) -> PromotionOutcome {
   let causes = promotion_refusal_causes(c: c)
-  if length(xs: causes) == 0 {
+  if v2.std.algebra.length(xs: causes) == 0 {
     Promoted {
       successor: c.successor,
       cases_compared: c.candidate_equivalence.cases_compared
@@ -489,11 +489,11 @@ fn admit_promotion(c: SelfHostCandidate) -> PromotionOutcome {
   }
 }
 
-fn promotion_refusal_carries(o: PromotionOutcome, cause: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn promotion_refusal_carries(o: PromotionOutcome, cause: v2.std.node.Symbol) -> Bool {
   match o {
     Promoted { successor: _, cases_compared: _ } => false
     PromotionRefused { causes: cs } =>
-      fold_list(
+      v2.std.algebra.fold_list(
         xs: cs,
         empty: false,
         cons: fn(acc, c) { acc || promotion_refusal_cause_symbol(c: c) == cause }

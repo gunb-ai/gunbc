@@ -12,7 +12,7 @@ test fn grub_quotes_semicolon_cmdline_args_only() -> Bool {
     ],
     initrd_image: "/casper/initrd",
   }
-  let r = grub_menuentry_render(entry: entry)
+  let r = extdeps.bootloader.grub.grub_menuentry_render(entry: entry)
   string_contains(s: r, pattern: "\"ds=nocloud;s=/cdrom/nocloud/srv4/\"")
     && string_contains(s: r, pattern: " ip=dhcp ")
     && (string_contains(s: r, pattern: "\"ip=dhcp\"") == false)

@@ -1,25 +1,25 @@
 module test.claim.scm_serving_model_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // One profile, priced twice: the SAME 10,000-user SCM workload against AWS S3 (metered egress) and Cloudflare R2 (zero egress), so the spread between them is derived from cited rows rather than asserted. Profile matches the envelope gunbc.econ.free_tier_serving already declares (100 MB stored and 500 MB egress per user-month) so the two models are comparable, plus object-operation counts this axis needs and that one does not have.
-data decimal_basis_assumption: gunbc.econ.scm_serving_model.ByteBasisAssumption = gunbc.econ.scm_serving_model.BasisAssumed {
-  basis: DecimalGigabyte,
+data decimal_basis_assumption: ByteBasisAssumption = gunbc.econ.scm_serving_model.BasisAssumed {
+  basis: extdeps.pricing.object_storage.DecimalGigabyte,
   rationale: "Neither cited pricing surface states its byte basis, so this is a DECLARED modeling assumption (the knowable-wedge shape): decimal 10^9 bytes per billing unit, the reading that makes the vendor's own 'GB' arithmetic in their worked examples come out. Swapping to BinaryGibibyte moves every figure below by 7.4 percent, which is why it is a parameter and not a constant.",
 }
 
 data solo_scm_10k_profile: gunbc.econ.scm_serving_model.ScmWorkloadProfile = gunbc.econ.scm_serving_model.ScmWorkloadProfile {
   user_count: 10000,
-  stored_bytes_per_user_after_dedup: byte_size(count: 100000000),
-  monthly_egress_bytes_per_user: byte_size(count: 500000000),
+  stored_bytes_per_user_after_dedup: std.measure.byte_size(count: 100000000),
+  monthly_egress_bytes_per_user: std.measure.byte_size(count: 500000000),
   monthly_object_reads_per_user: 200,
   monthly_object_writes_per_user: 20,
 }
 
 test fn w_usage_derives_from_workload_primitives() -> Bool {
-  match derive_scm_usage(profile: solo_scm_10k_profile, assumption: decimal_basis_assumption) {
-    ScmUsageDerived { usage: u } =>
+  match gunbc.econ.scm_serving_model.derive_scm_usage(profile: solo_scm_10k_profile, assumption: decimal_basis_assumption) {
+    gunbc.econ.scm_serving_model.ScmUsageDerived { usage: u } =>
       (u.stored_billing_units == 1000)
         && (u.egress_billing_units == 5000)
         && (u.object_reads == 2000000)
@@ -29,15 +29,15 @@ test fn w_usage_derives_from_workload_primitives() -> Bool {
 }
 
 test fn w_s3_bill_is_egress_dominated() -> Bool {
-  match derive_scm_monthly_cost(
+  match gunbc.econ.scm_serving_model.derive_scm_monthly_cost(
     profile: solo_scm_10k_profile,
-    storage_row: s3_standard_first_50tb,
-    egress_row: s3_egress_first_10tb,
-    read_row: s3_tier2_requests,
-    write_row: s3_tier1_requests,
+    storage_row: extdeps.pricing.object_storage.s3_standard_first_50tb,
+    egress_row: extdeps.pricing.object_storage.s3_egress_first_10tb,
+    read_row: extdeps.pricing.object_storage.s3_tier2_requests,
+    write_row: extdeps.pricing.object_storage.s3_tier1_requests,
     assumption: decimal_basis_assumption,
   ) {
-    ScmMonthlyCostDerived {
+    gunbc.econ.scm_serving_model.ScmMonthlyCostDerived {
       storage_micros: st,
       egress_micros: eg,
       operations_micros: ops,
@@ -53,15 +53,15 @@ test fn w_s3_bill_is_egress_dominated() -> Bool {
 }
 
 test fn w_r2_bill_has_no_egress_term() -> Bool {
-  match derive_scm_monthly_cost(
+  match gunbc.econ.scm_serving_model.derive_scm_monthly_cost(
     profile: solo_scm_10k_profile,
-    storage_row: r2_standard,
-    egress_row: r2_egress_free,
-    read_row: r2_class_b_operations,
-    write_row: r2_class_a_operations,
+    storage_row: extdeps.pricing.object_storage.r2_standard,
+    egress_row: extdeps.pricing.object_storage.r2_egress_free,
+    read_row: extdeps.pricing.object_storage.r2_class_b_operations,
+    write_row: extdeps.pricing.object_storage.r2_class_a_operations,
     assumption: decimal_basis_assumption,
   ) {
-    ScmMonthlyCostDerived {
+    gunbc.econ.scm_serving_model.ScmMonthlyCostDerived {
       storage_micros: st,
       egress_micros: eg,
       operations_micros: ops,
@@ -76,24 +76,24 @@ test fn w_r2_bill_has_no_egress_term() -> Bool {
 }
 
 test fn w_zero_egress_vendor_is_an_order_of_magnitude_cheaper_on_this_profile() -> Bool {
-  match derive_scm_monthly_cost(
+  match gunbc.econ.scm_serving_model.derive_scm_monthly_cost(
     profile: solo_scm_10k_profile,
-    storage_row: s3_standard_first_50tb,
-    egress_row: s3_egress_first_10tb,
-    read_row: s3_tier2_requests,
-    write_row: s3_tier1_requests,
+    storage_row: extdeps.pricing.object_storage.s3_standard_first_50tb,
+    egress_row: extdeps.pricing.object_storage.s3_egress_first_10tb,
+    read_row: extdeps.pricing.object_storage.s3_tier2_requests,
+    write_row: extdeps.pricing.object_storage.s3_tier1_requests,
     assumption: decimal_basis_assumption,
   ) {
-    ScmMonthlyCostDerived { storage_micros: _, egress_micros: _, operations_micros: _, total_micros: metered } =>
-      match derive_scm_monthly_cost(
+    gunbc.econ.scm_serving_model.ScmMonthlyCostDerived { storage_micros: _, egress_micros: _, operations_micros: _, total_micros: metered } =>
+      match gunbc.econ.scm_serving_model.derive_scm_monthly_cost(
         profile: solo_scm_10k_profile,
-        storage_row: r2_standard,
-        egress_row: r2_egress_free,
-        read_row: r2_class_b_operations,
-        write_row: r2_class_a_operations,
+        storage_row: extdeps.pricing.object_storage.r2_standard,
+        egress_row: extdeps.pricing.object_storage.r2_egress_free,
+        read_row: extdeps.pricing.object_storage.r2_class_b_operations,
+        write_row: extdeps.pricing.object_storage.r2_class_a_operations,
         assumption: decimal_basis_assumption,
       ) {
-        ScmMonthlyCostDerived { storage_micros: _, egress_micros: _, operations_micros: _, total_micros: unmetered } =>
+        gunbc.econ.scm_serving_model.ScmMonthlyCostDerived { storage_micros: _, egress_micros: _, operations_micros: _, total_micros: unmetered } =>
           (metered > (unmetered * 20)) && (metered < (unmetered * 40))
         _ => false
       }
@@ -102,9 +102,9 @@ test fn w_zero_egress_vendor_is_an_order_of_magnitude_cheaper_on_this_profile() 
 }
 
 test fn w_durability_is_a_cited_vendor_attribute_not_folklore() -> Bool {
-  match durability_nines(row: s3_standard_first_50tb) {
+  match extdeps.pricing.object_storage.durability_nines(row: extdeps.pricing.object_storage.s3_standard_first_50tb) {
     Present { value: n } =>
-      match durability_nines(row: s3_standard_infrequent_access) {
+      match extdeps.pricing.object_storage.durability_nines(row: extdeps.pricing.object_storage.s3_standard_infrequent_access) {
         Present { value: m } => (n == 11) && (m == 11)
         _ => false
       }
@@ -113,47 +113,47 @@ test fn w_durability_is_a_cited_vendor_attribute_not_folklore() -> Bool {
 }
 
 test fn w_red_unknown_basis_refuses() -> Bool {
-  match derive_scm_usage(profile: solo_scm_10k_profile, assumption: BasisUnknown) {
-    ScmUsageRefused { cause: BasisAssumptionUnknown } => true
+  match gunbc.econ.scm_serving_model.derive_scm_usage(profile: solo_scm_10k_profile, assumption: gunbc.econ.scm_serving_model.BasisUnknown) {
+    gunbc.econ.scm_serving_model.ScmUsageRefused { cause: BasisAssumptionUnknown } => true
     _ => false
   }
 }
 
 test fn w_red_zero_users_refuses() -> Bool {
-  match derive_scm_usage(
+  match gunbc.econ.scm_serving_model.derive_scm_usage(
     profile: gunbc.econ.scm_serving_model.ScmWorkloadProfile {
       user_count: 0,
-      stored_bytes_per_user_after_dedup: byte_size(count: 100000000),
-      monthly_egress_bytes_per_user: byte_size(count: 500000000),
+      stored_bytes_per_user_after_dedup: std.measure.byte_size(count: 100000000),
+      monthly_egress_bytes_per_user: std.measure.byte_size(count: 500000000),
       monthly_object_reads_per_user: 200,
       monthly_object_writes_per_user: 20,
     },
     assumption: decimal_basis_assumption,
   ) {
-    ScmUsageRefused { cause: gunbc.econ.scm_serving_model.UserCountZero } => true
+    gunbc.econ.scm_serving_model.ScmUsageRefused { cause: gunbc.econ.scm_serving_model.UserCountZero } => true
     _ => false
   }
 }
 
 test fn w_red_cross_vendor_blend_refuses() -> Bool {
-  match derive_scm_monthly_cost(
+  match gunbc.econ.scm_serving_model.derive_scm_monthly_cost(
     profile: solo_scm_10k_profile,
-    storage_row: s3_standard_first_50tb,
-    egress_row: r2_egress_free,
-    read_row: s3_tier2_requests,
-    write_row: s3_tier1_requests,
+    storage_row: extdeps.pricing.object_storage.s3_standard_first_50tb,
+    egress_row: extdeps.pricing.object_storage.r2_egress_free,
+    read_row: extdeps.pricing.object_storage.s3_tier2_requests,
+    write_row: extdeps.pricing.object_storage.s3_tier1_requests,
     assumption: decimal_basis_assumption,
   ) {
-    ScmMonthlyCostRefused { cause: VendorMismatchAcrossRows } => true
+    gunbc.econ.scm_serving_model.ScmMonthlyCostRefused { cause: gunbc.econ.scm_serving_model.VendorMismatchAcrossRows } => true
     _ => false
   }
 }
 
 test fn w_red_uncited_vendor_rate_refuses() -> Bool {
-  match storage_rate_micros(row: b2_storage_rate_unavailable) {
+  match extdeps.pricing.object_storage.storage_rate_micros(row: extdeps.pricing.object_storage.b2_storage_rate_unavailable) {
     Present { value: _ } => false
     _ =>
-      match storage_rate_micros(row: hetzner_object_storage_rate_unavailable) {
+      match extdeps.pricing.object_storage.storage_rate_micros(row: extdeps.pricing.object_storage.hetzner_object_storage_rate_unavailable) {
         Present { value: _ } => false
         _ => true
       }
@@ -161,28 +161,28 @@ test fn w_red_uncited_vendor_rate_refuses() -> Bool {
 }
 
 test fn w_red_declared_basis_contradicting_a_cited_row_refuses() -> Bool {
-  match derive_scm_monthly_cost(
+  match gunbc.econ.scm_serving_model.derive_scm_monthly_cost(
     profile: solo_scm_10k_profile,
-    storage_row: r2_standard,
-    egress_row: gcs_default_replication,
-    read_row: r2_class_b_operations,
-    write_row: r2_class_a_operations,
+    storage_row: extdeps.pricing.object_storage.r2_standard,
+    egress_row: extdeps.pricing.object_storage.gcs_default_replication,
+    read_row: extdeps.pricing.object_storage.r2_class_b_operations,
+    write_row: extdeps.pricing.object_storage.r2_class_a_operations,
     assumption: decimal_basis_assumption,
   ) {
-    ScmMonthlyCostRefused { cause: VendorMismatchAcrossRows } => true
+    gunbc.econ.scm_serving_model.ScmMonthlyCostRefused { cause: gunbc.econ.scm_serving_model.VendorMismatchAcrossRows } => true
     _ => false
   }
 }
 
 test fn w_red_binary_basis_moves_every_figure() -> Bool {
-  match derive_scm_usage(
+  match gunbc.econ.scm_serving_model.derive_scm_usage(
     profile: solo_scm_10k_profile,
     assumption: gunbc.econ.scm_serving_model.BasisAssumed {
-      basis: BinaryGibibyte,
+      basis: extdeps.pricing.object_storage.BinaryGibibyte,
       rationale: "control: the same profile read as binary units",
     },
   ) {
-    ScmUsageDerived { usage: u } =>
+    gunbc.econ.scm_serving_model.ScmUsageDerived { usage: u } =>
       !(u.stored_billing_units == 1000) && (u.stored_billing_units == 932)
     _ => false
   }

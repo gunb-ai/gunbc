@@ -1,12 +1,12 @@
 module v2.test.emit.semantic_decl_target_refusal
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data semantic_decl_target_refusal_enrollment_note: String = "Enrolled via witness_discovery_scan_dirs (src/v2/test/claim/emit/) at F7 Inc1 ready — CI-gated fail-closed refusal receipt for unwired targets."
 
 fn sdtr_empty_conj() -> v2.std.node.Node {
-  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: [], occurrence_id: v2.std.node.SyntheticOccurrence }
 }
 
 fn sdtr_variant_edge(name: v2.std.node.Symbol) -> v2.std.node.Edge {
@@ -15,24 +15,24 @@ fn sdtr_variant_edge(name: v2.std.node.Symbol) -> v2.std.node.Edge {
 
 fn sdtr_bool_coproduct() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Disj },
     children: [ sdtr_variant_edge(name: ^True), sdtr_variant_edge(name: ^False) ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn sdtr_unwired_target_refuses() -> v2.std.logic.Bool {
-  match emit_semantic_type_decl(
-    name: ^v2.std.logic.Bool,
+fn sdtr_unwired_target_refuses() -> Bool {
+  match v2.compiler.emit_semantic_decl.emit_semantic_type_decl(
+    name: ^Bool,
     params: std.algebra.Empty,
     node: sdtr_bool_coproduct(),
-    target: cpp_target_model()
+    target: v2.extdeps.languages.cpp.cpp_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-test fn semantic_decl_unwired_target_refuses() -> v2.std.logic.Bool {
+test fn semantic_decl_unwired_target_refuses() -> Bool {
   sdtr_unwired_target_refuses()
 }

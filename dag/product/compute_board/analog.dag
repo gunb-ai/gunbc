@@ -21,14 +21,14 @@ type ElectricalComponentInstance
       part: std.types.NonEmptyStr,
       positive_terminal: product.electrical.connectivity.TerminalIdentity,
       negative_terminal: product.electrical.connectivity.TerminalIdentity,
-      resistance: Measure<Resistance, Kilo, std.nat.Nat>,
+      resistance: std.measure.Measure<std.measure.Resistance, std.measure.Kilo, std.nat.Nat>,
     }
   | CapacitorInstance {
       identity: product.electrical.connectivity.ComponentInstanceIdentity,
       part: std.types.NonEmptyStr,
       positive_terminal: product.electrical.connectivity.TerminalIdentity,
       negative_terminal: product.electrical.connectivity.TerminalIdentity,
-      capacitance: Measure<Capacitance, Nano, std.nat.Nat>,
+      capacitance: std.measure.Measure<std.measure.Capacitance, std.measure.Nano, std.nat.Nat>,
     }
   | IndependentVoltageSourceInstance {
       identity: product.electrical.connectivity.ComponentInstanceIdentity,
@@ -107,7 +107,7 @@ fn net_of_terminal(intent: AnalogCircuitIntent, t: product.electrical.connectivi
   fold(intent.nets, init: none, f: fn(acc, net) {
     match acc {
       Present { value: v } => Present { value: v }
-      Absent => if net_contains_terminal(net: net, t: t) { Present { value: net.identity } } else { none }
+      Absent => if product.electrical.connectivity.net_contains_terminal(net: net, t: t) { Present { value: net.identity } } else { none }
     }
   })
 }
@@ -119,14 +119,14 @@ fn net_of_terminal(intent: AnalogCircuitIntent, t: product.electrical.connectivi
 // what to do with it.
 fn net_membership_count(intent: AnalogCircuitIntent, t: product.electrical.connectivity.ElectricalTerminalRef) -> std.nat.Nat {
   fold(intent.nets, init: 0, f: fn(acc, net) {
-    if net_contains_terminal(net: net, t: t) { acc + 1 } else { acc }
+    if product.electrical.connectivity.net_contains_terminal(net: net, t: t) { acc + 1 } else { acc }
   })
 }
 
 fn component_terminals(c: ElectricalComponentInstance) -> List<product.electrical.connectivity.ElectricalTerminalRef> {
   [
-    terminal_ref(component: component_identity(c: c), terminal: component_positive_terminal(c: c)),
-    terminal_ref(component: component_identity(c: c), terminal: component_negative_terminal(c: c)),
+    product.electrical.connectivity.terminal_ref(component: component_identity(c: c), terminal: component_positive_terminal(c: c)),
+    product.electrical.connectivity.terminal_ref(component: component_identity(c: c), terminal: component_negative_terminal(c: c)),
   ]
 }
 

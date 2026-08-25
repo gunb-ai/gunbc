@@ -1,5 +1,7 @@
 module gunbc.measurement_provenance
 
+
+
 data measurement_provenance_root_note: String = "FOUR SPECIMENS, ONE ABSENT RELATION, ONE DAY (2026-08-20, this fleet). (1) A stale binary produced first_generation_equal=true — tree and compiler were different vintages and nothing in the receipt said so. (2) A DIFFERENT stale binary produced a 9-declaration drop that did not exist, escalated through three sessions before execution refuted it byte-identical across 131 files — the binary had been replaced mid-sequence as collateral from an unrelated all-bins build, and the author never typed a command that built it. (3) `cargo build 2>&1 | tail -4 && next` takes tail's exit status, so a FAILED build proceeded as success and the downstream step measured a stale artifact. (4) A treatment merge hit 'refusing to merge unrelated histories' on a shallow clone; unguarded, the baseline numbers would have re-reported as the treatment arm. Every one returned a plausible, well-formed number. Every one was caught by a person noticing an inconsistency, never by a mechanism. The root is not 'stale binaries' — it is one relation, absent in all four: a reported observation is not structurally bound to the SUCCESSFUL CONSTRUCTION of its exact instrument and its exact subject. This module makes the unbound observation unrepresentable rather than checkable."
 
 data measurement_provenance_construction_not_validation_note: String = "THE SHAPE THIS MODULE REFUSES TO BE: a function whose job is to verify that a measurement carries its provenance. If such a function can exist, the bad state was already writable and this would be a validator standing where construction belongs (DESIGN section 5). Instead Observation<Value> is a coproduct whose bound arm (Observed) is reachable ONLY by folding two retrievability observations that both landed on ArtifactAvailable. The unbound arms carry no StoredArtifact: there is nothing to copy forward, so a caller cannot manufacture instrument or subject identity for a build that did not produce retrievable bytes. observe is the ONLY constructor of Observed; no other function in this module builds one."
@@ -41,21 +43,21 @@ fn observe<Value>(
   value: Value,
 ) -> Observation<Value> {
   match instrument_availability {
-    ArtifactMissing =>
+    gunbc.devboot.outcome.ArtifactMissing =>
       InstrumentNotHeld { execution: instrument_execution, availability: instrument_availability }
-    ArtifactCorrupt { expected, observed } =>
+    gunbc.devboot.outcome.ArtifactCorrupt { expected, observed } =>
       InstrumentNotHeld { execution: instrument_execution, availability: instrument_availability }
-    ArtifactUnreadable { detail } =>
+    gunbc.devboot.outcome.ArtifactUnreadable { detail } =>
       InstrumentNotHeld { execution: instrument_execution, availability: instrument_availability }
-    ArtifactAvailable { artifact: instrument_artifact } =>
+    gunbc.devboot.outcome.ArtifactAvailable { artifact: instrument_artifact } =>
       match subject_availability {
-        ArtifactMissing =>
+        gunbc.devboot.outcome.ArtifactMissing =>
           SubjectNotHeld { execution: subject_execution, availability: subject_availability }
-        ArtifactCorrupt { expected, observed } =>
+        gunbc.devboot.outcome.ArtifactCorrupt { expected, observed } =>
           SubjectNotHeld { execution: subject_execution, availability: subject_availability }
-        ArtifactUnreadable { detail } =>
+        gunbc.devboot.outcome.ArtifactUnreadable { detail } =>
           SubjectNotHeld { execution: subject_execution, availability: subject_availability }
-        ArtifactAvailable { artifact: subject_artifact } =>
+        gunbc.devboot.outcome.ArtifactAvailable { artifact: subject_artifact } =>
           Observed {
             instrument: instrument_artifact,
             subject: subject_artifact,

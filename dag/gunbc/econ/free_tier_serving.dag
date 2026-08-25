@@ -44,10 +44,10 @@ fn derive_free_tier_serving_floor(
   match assumptions_input {
     FreeTierAssumptionsUnknown => FreeTierFloorRefused { cause: ServingAssumptionsUnknown }
     FreeTierAssumptionsDeclared { envelope: env, assumptions: a } => {
-      let per_user_storage = byte_size_count(b: env.storage_bytes_per_user)
-      let per_user_egress = byte_size_count(b: env.monthly_egress_bytes_per_user)
-      let box_storage = byte_size_count(b: box_row.storage_bytes)
-      let egress_allowance = byte_size_count(b: a.per_box_monthly_egress_allowance)
+      let per_user_storage = std.measure.byte_size_count(b: env.storage_bytes_per_user)
+      let per_user_egress = std.measure.byte_size_count(b: env.monthly_egress_bytes_per_user)
+      let box_storage = std.measure.byte_size_count(b: box_row.storage_bytes)
+      let egress_allowance = std.measure.byte_size_count(b: a.per_box_monthly_egress_allowance)
       if a.user_count <= 0 {
         FreeTierFloorRefused { cause: UserCountZero }
       } else if per_user_storage <= 0 {
@@ -68,7 +68,7 @@ fn derive_free_tier_serving_floor(
           floor: FreeTierServingFloor {
             box_count: box_count,
             monthly_floor: std.measure.MoneyPerMonth {
-              amount: money_amount_micro(count: box_count * money_per_month_micros(q: box_row.monthly)),
+              amount: std.measure.money_amount_micro(count: box_count * std.measure.money_per_month_micros(q: box_row.monthly)),
               currency: box_row.monthly.currency,
             },
           }
@@ -83,9 +83,9 @@ fn average_serving_cost_per_registered_user_year_micros_upper_bound(
   annual_cost_of_revenue: extdeps.sec.facts.FiledMonetaryFact,
   registered_users: extdeps.sec.operating_metrics.RegisteredUserCountRow
 ) -> std.nat.Nat? {
-  match filed_amount(fact: annual_cost_of_revenue) {
+  match extdeps.sec.facts.filed_amount(fact: annual_cost_of_revenue) {
     Present { value: c } => {
-      let cost_whole_usd = usd_whole_dollars_count(m: c)
+      let cost_whole_usd = extdeps.sec.facts.usd_whole_dollars_count(m: c)
       let user_floor = registered_users.registered_user_count_floor
       if user_floor <= 0 {
         none

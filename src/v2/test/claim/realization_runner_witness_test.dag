@@ -1,24 +1,24 @@
 module v2.test.claim.realization_runner_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data runner_test_a_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^runner_test_a } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data runner_test_b_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^runner_test_b } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data runner_test_a_to_b: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: runner_test_a_node,
   dependent: runner_test_b_node,
-  kind: DataDependsOn,
+  kind: v2.std.dependency.DataDependsOn,
   usage_site: runner_test_b_node
 }
 
@@ -27,11 +27,11 @@ data runner_test_nodes: List<v2.std.node.Node> = [runner_test_a_node, runner_tes
 data runner_test_dependencies: List<v2.std.dependency.DependencyView> = [runner_test_a_to_b]
 
 data runner_test_first_batch: v2.workflow.executor.ExecutorBatch = v2.workflow.executor.ExecutorBatch {
-  jobs: [executor_job_for_node(node: runner_test_a_node)]
+  jobs: [v2.workflow.executor.executor_job_for_node(node: runner_test_a_node)]
 }
 
 data runner_test_second_batch: v2.workflow.executor.ExecutorBatch = v2.workflow.executor.ExecutorBatch {
-  jobs: [executor_job_for_node(node: runner_test_b_node)]
+  jobs: [v2.workflow.executor.executor_job_for_node(node: runner_test_b_node)]
 }
 
 data runner_test_batches: List<v2.workflow.executor.ExecutorBatch> = [
@@ -40,69 +40,69 @@ data runner_test_batches: List<v2.workflow.executor.ExecutorBatch> = [
 ]
 
 test fn witness_node_keyed_store_put_and_has() -> Bool {
-  let store = node_keyed_store_put(
-    store: node_keyed_store_empty(),
+  let store = v2.workflow.realization_runner.node_keyed_store_put(
+    store: v2.workflow.realization_runner.node_keyed_store_empty(),
     node: runner_test_a_node,
-    value: runner_ordering_only
+    value: v2.workflow.realization_runner.runner_ordering_only
   )
-  node_keyed_store_has_node(store: store, node: runner_test_a_node)
-    && !node_keyed_store_has_node(store: store, node: runner_test_b_node)
-    && (node_keyed_store_node_count(store: store) == 1)
+  v2.workflow.realization_runner.node_keyed_store_has_node(store: store, node: runner_test_a_node)
+    && !v2.workflow.realization_runner.node_keyed_store_has_node(store: store, node: runner_test_b_node)
+    && (v2.workflow.realization_runner.node_keyed_store_node_count(store: store) == 1)
 }
 
 test fn witness_runner_schedule_batch_helpers() -> Bool {
-  match runner_schedule_plan_from_dependencies(
+  match v2.workflow.realization_runner.runner_schedule_plan_from_dependencies(
     nodes: runner_test_nodes,
     dependencies: runner_test_dependencies,
-    value: runner_ordering_only
+    value: v2.workflow.realization_runner.runner_ordering_only
   ) {
-    RunnerScheduleComplete { batches: batches, store: _ } =>
-      (runner_schedule_batch_count(batches: batches) == 2)
-        && runner_schedule_contains_batch(batches: batches, batch: runner_test_first_batch)
-        && runner_schedule_contains_batch(batches: batches, batch: runner_test_second_batch)
-    RunnerScheduleBlocked { evidence: _ } => false
+    v2.workflow.realization_runner.RunnerScheduleComplete { batches: batches, store: _ } =>
+      (v2.workflow.realization_runner.runner_schedule_batch_count(batches: batches) == 2)
+        && v2.workflow.realization_runner.runner_schedule_contains_batch(batches: batches, batch: runner_test_first_batch)
+        && v2.workflow.realization_runner.runner_schedule_contains_batch(batches: batches, batch: runner_test_second_batch)
+    v2.workflow.realization_runner.RunnerScheduleBlocked { evidence: _ } => false
   }
 }
 
 test fn witness_runner_walk_populates_store_in_dependency_order() -> Bool {
-  match runner_walk_batches(
+  match v2.workflow.realization_runner.runner_walk_batches(
     batches: runner_test_batches,
     dependencies: runner_test_dependencies,
-    store: node_keyed_store_empty(),
-    value: runner_ordering_only
+    store: v2.workflow.realization_runner.node_keyed_store_empty(),
+    value: v2.workflow.realization_runner.runner_ordering_only
   ) {
-    RunnerDispatchOk { store: store } =>
-      node_keyed_store_has_node(store: store, node: runner_test_a_node)
-        && node_keyed_store_has_node(store: store, node: runner_test_b_node)
-    RunnerDispatchBlocked { evidence: _ } => false
+    v2.workflow.realization_runner.RunnerDispatchOk { store: store } =>
+      v2.workflow.realization_runner.node_keyed_store_has_node(store: store, node: runner_test_a_node)
+        && v2.workflow.realization_runner.node_keyed_store_has_node(store: store, node: runner_test_b_node)
+    v2.workflow.realization_runner.RunnerDispatchBlocked { evidence: _ } => false
   }
 }
 
 test fn witness_runner_schedule_matches_executor_batches() -> Bool {
-  match runner_schedule_plan_from_dependencies(
+  match v2.workflow.realization_runner.runner_schedule_plan_from_dependencies(
     nodes: runner_test_nodes,
     dependencies: runner_test_dependencies,
-    value: runner_ordering_only
+    value: v2.workflow.realization_runner.runner_ordering_only
   ) {
-    RunnerScheduleComplete { batches: batches, store: store } =>
-      (runner_schedule_batch_count(batches: batches) == 2)
-        && runner_schedule_store_covers_nodes(store: store, nodes: runner_test_nodes)
-    RunnerScheduleBlocked { evidence: _ } => false
+    v2.workflow.realization_runner.RunnerScheduleComplete { batches: batches, store: store } =>
+      (v2.workflow.realization_runner.runner_schedule_batch_count(batches: batches) == 2)
+        && v2.workflow.realization_runner.runner_schedule_store_covers_nodes(store: store, nodes: runner_test_nodes)
+    v2.workflow.realization_runner.RunnerScheduleBlocked { evidence: _ } => false
   }
 }
 
 test fn witness_runner_blocks_when_prerequisite_missing() -> Bool {
   let batch = v2.workflow.executor.ExecutorBatch {
-    jobs: [executor_job_for_node(node: runner_test_b_node)]
+    jobs: [v2.workflow.executor.executor_job_for_node(node: runner_test_b_node)]
   }
-  match runner_dispatch_batch(
+  match v2.workflow.realization_runner.runner_dispatch_batch(
     batch: batch,
     dependencies: runner_test_dependencies,
-    store: node_keyed_store_empty(),
-    value: runner_ordering_only
+    store: v2.workflow.realization_runner.node_keyed_store_empty(),
+    value: v2.workflow.realization_runner.runner_ordering_only
   ) {
-    RunnerDispatchBlocked { evidence: _ } => true
-    RunnerDispatchOk { store: _ } => false
+    v2.workflow.realization_runner.RunnerDispatchBlocked { evidence: _ } => true
+    v2.workflow.realization_runner.RunnerDispatchOk { store: _ } => false
   }
 }
 
@@ -168,62 +168,62 @@ data graph_artifact_duplicated: v2.workflow.realization_runner.NodeKeyedGraphArt
 }
 
 test fn witness_graph_artifact_shared_row_counted_once() -> Bool {
-  match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: graph_hash_root) {
-    NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
+  match v2.workflow.realization_runner.node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: graph_hash_root) {
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
       std.measure.byte_size_count(b: bytes) == 25
-    NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
-    NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
   }
 }
 
 test fn witness_graph_artifact_subgraph_bytes() -> Bool {
-  match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: graph_hash_a) {
-    NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
+  match v2.workflow.realization_runner.node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: graph_hash_a) {
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
       std.measure.byte_size_count(b: bytes) == 10
-    NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
-    NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
   }
 }
 
 test fn witness_graph_artifact_total_matches_fully_reachable_root() -> Bool {
-  std.measure.byte_size_count(b: node_keyed_graph_artifact_total_bytes(artifact: graph_artifact_diamond)) == 25
+  std.measure.byte_size_count(b: v2.workflow.realization_runner.node_keyed_graph_artifact_total_bytes(artifact: graph_artifact_diamond)) == 25
 }
 
 test fn witness_graph_artifact_entry_binds_value_root() -> Bool {
-  match node_keyed_graph_entry_value_bytes(
+  match v2.workflow.realization_runner.node_keyed_graph_entry_value_bytes(
     artifact: graph_artifact_diamond,
     entry: v2.workflow.realization_runner.NodeKeyedGraphArtifactEntry { store_node: graph_hash_store_node, value_root: graph_hash_b }
   ) {
-    NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
       std.measure.byte_size_count(b: bytes) == 12
-    NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
-    NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
   }
 }
 
 test fn witness_graph_artifact_missing_child_ref_refuses() -> Bool {
-  match node_keyed_graph_transitive_bytes(
+  match v2.workflow.realization_runner.node_keyed_graph_transitive_bytes(
     artifact: graph_artifact_dangling,
     root: graph_hash_dangling_root
   ) {
-    NodeKeyedGraphTransitiveBytesMissingRow { missing: missing } =>
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesMissingRow { missing: missing } =>
       missing == graph_hash_never_encoded
-    NodeKeyedGraphTransitiveBytesSettled { bytes: _ } => false
-    NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesSettled { bytes: _ } => false
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
   }
 }
 
 test fn witness_graph_artifact_missing_root_refuses() -> Bool {
-  match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: graph_hash_absent) {
-    NodeKeyedGraphTransitiveBytesMissingRow { missing: missing } =>
+  match v2.workflow.realization_runner.node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: graph_hash_absent) {
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesMissingRow { missing: missing } =>
       missing == graph_hash_absent
-    NodeKeyedGraphTransitiveBytesSettled { bytes: _ } => false
-    NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesSettled { bytes: _ } => false
+    v2.workflow.realization_runner.NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
   }
 }
 
 test fn witness_graph_artifact_interning_check_discriminates() -> Bool {
-  node_keyed_graph_rows_interned(rows: graph_artifact_diamond.rows)
-    && !node_keyed_graph_rows_interned(rows: graph_artifact_duplicated.rows)
+  v2.workflow.realization_runner.node_keyed_graph_rows_interned(rows: graph_artifact_diamond.rows)
+    && !v2.workflow.realization_runner.node_keyed_graph_rows_interned(rows: graph_artifact_duplicated.rows)
 }
 

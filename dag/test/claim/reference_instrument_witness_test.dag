@@ -1,34 +1,34 @@
 module test.claim.reference_instrument_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data reference_instrument_witness_note: String = "Receipts for the two cited Pip-Boy products and the join over them, RECUT against a direct read of both manuals (2026-08-04). The prior witness set was ten green claims over an inverted attribution, and it is the reason these claims are shaped differently: they read the product rosters and the evidence rows, and the evidence rows point INTO the product modules, so a wrong setting can no longer be consistent with a right attribution. What no in-repo witness can establish is that a quoted wording matches the upstream document — that is a read-path fact, carried as a SourceReadReceipt, and the lesson recorded rather than papered over is that ten structural greens did not make the upstream claim true."
 
 fn setting_present(wanted: String) -> Bool {
-  fold(pip_boy_3000_settings, init: false, f: (acc, row) =>
-    acc || pip_boy_3000_setting_label(s: row.setting) == wanted)
+  fold(extdeps.instrument.pip_boy_3000.pip_boy_3000_settings, init: false, f: (acc, row) =>
+    acc || extdeps.instrument.pip_boy_3000.pip_boy_3000_setting_label(s: row.setting) == wanted)
 }
 
 fn capability_present(wanted: String) -> Bool {
-  fold(pip_boy_mk_v_capabilities, init: false, f: (acc, c) =>
-    acc || pip_boy_mk_v_capability_label(c: c) == wanted)
+  fold(extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_capabilities, init: false, f: (acc, c) =>
+    acc || extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_capability_label(c: c) == wanted)
 }
 
 fn glitch_mode_present(wanted: String) -> Bool {
-  fold(pip_boy_3000_glitch_modes, init: false, f: (acc, m) =>
-    acc || pip_boy_3000_glitch_mode_label(m: m) == wanted)
+  fold(extdeps.instrument.pip_boy_3000.pip_boy_3000_glitch_modes, init: false, f: (acc, m) =>
+    acc || extdeps.instrument.pip_boy_3000.pip_boy_3000_glitch_mode_label(m: m) == wanted)
 }
 
 test fn witness_two_products_are_distinct_subjects() -> Bool {
-  return pip_boy_3000_licensing_statement != pip_boy_mk_v_licensing_statement
-    && !external_subject_ref_eq(a: pip_boy_3000_subject, b: pip_boy_mk_v_subject)
+  return extdeps.instrument.pip_boy_3000.pip_boy_3000_licensing_statement != extdeps.instrument.pip_boy_3000_mk_v.pip_boy_mk_v_licensing_statement
+    && !extdeps.external_authority.external_subject_ref_eq(a: gunbc.design.reference_instrument.pip_boy_3000_subject, b: gunbc.design.reference_instrument.pip_boy_mk_v_subject)
 }
 
 test fn witness_both_products_share_one_manufacturer_and_stay_distinct_subjects() -> Bool {
   return pip_boy_3000_manufacturer.legal_name == pip_boy_mk_v_manufacturer.legal_name
     && pip_boy_3000_manufacturer.legal_name == "The Wand Company Limited"
-    && !external_subject_ref_eq(a: pip_boy_3000_subject, b: pip_boy_mk_v_subject)
+    && !extdeps.external_authority.external_subject_ref_eq(a: gunbc.design.reference_instrument.pip_boy_3000_subject, b: gunbc.design.reference_instrument.pip_boy_mk_v_subject)
 }
 
 test fn witness_impulse_settings_belong_to_the_named_referent() -> Bool {
@@ -53,68 +53,68 @@ test fn witness_mk_v_carries_only_its_own_manuals_capabilities() -> Bool {
 }
 
 test fn witness_named_referent_covers_the_directive() -> Bool {
-  return named_referent_covers_directive()
-    && external_subject_ref_eq(a: named_referent, b: pip_boy_3000_subject)
+  return gunbc.design.reference_instrument.named_referent_covers_directive()
+    && extdeps.external_authority.external_subject_ref_eq(a: gunbc.design.reference_instrument.named_referent, b: gunbc.design.reference_instrument.pip_boy_3000_subject)
 }
 
 test fn witness_mk_v_does_not_cover_the_directive() -> Bool {
-  return !mk_v_covers_directive()
-    && !axis_is_cited_on(axis: ImpulseGlitch, subject: pip_boy_mk_v_subject)
-    && !axis_is_cited_on(axis: OpticalInstability, subject: pip_boy_mk_v_subject)
+  return !gunbc.design.reference_instrument.mk_v_covers_directive()
+    && !gunbc.design.reference_instrument.axis_is_cited_on(axis: gunbc.design.reference_instrument.ImpulseGlitch, subject: gunbc.design.reference_instrument.pip_boy_mk_v_subject)
+    && !gunbc.design.reference_instrument.axis_is_cited_on(axis: gunbc.design.reference_instrument.OpticalInstability, subject: gunbc.design.reference_instrument.pip_boy_mk_v_subject)
 }
 
 test fn witness_impulse_axes_resolve_to_the_named_referent() -> Bool {
-  return axis_is_cited_on(axis: ImpulseGlitch, subject: pip_boy_3000_subject)
-    && axis_is_cited_on(axis: ImpulseThreshold, subject: pip_boy_3000_subject)
-    && axis_is_cited_on(axis: TiltDerivedReadout, subject: pip_boy_3000_subject)
-    && axis_is_cited_on(axis: RestingOffsetCalibration, subject: pip_boy_3000_subject)
+  return gunbc.design.reference_instrument.axis_is_cited_on(axis: gunbc.design.reference_instrument.ImpulseGlitch, subject: gunbc.design.reference_instrument.pip_boy_3000_subject)
+    && gunbc.design.reference_instrument.axis_is_cited_on(axis: gunbc.design.reference_instrument.ImpulseThreshold, subject: gunbc.design.reference_instrument.pip_boy_3000_subject)
+    && gunbc.design.reference_instrument.axis_is_cited_on(axis: gunbc.design.reference_instrument.TiltDerivedReadout, subject: gunbc.design.reference_instrument.pip_boy_3000_subject)
+    && gunbc.design.reference_instrument.axis_is_cited_on(axis: gunbc.design.reference_instrument.RestingOffsetCalibration, subject: gunbc.design.reference_instrument.pip_boy_3000_subject)
 }
 
 test fn witness_every_evidence_row_lands_in_its_own_subject_module() -> Bool {
-  return all_evidence_is_contained()
+  return gunbc.design.reference_instrument.all_evidence_is_contained()
 }
 
 test fn witness_a_cross_attached_citation_is_refused() -> Bool {
   let cross_attached = gunbc.design.reference_instrument.InstrumentCitation {
-    subject: pip_boy_mk_v_subject,
-    fact: decl_ref(
+    subject: gunbc.design.reference_instrument.pip_boy_mk_v_subject,
+    fact: std.decl_ref.decl_ref(
       module_path: "extdeps.instrument.pip_boy_3000",
       decl_name: "glitch_on_tap_row"),
   }
-  return !citation_is_contained(c: cross_attached)
-    && citation_is_contained(c: pip_boy_3000_citation(decl_name: "glitch_on_tap_row"))
+  return !gunbc.design.reference_instrument.citation_is_contained(c: cross_attached)
+    && gunbc.design.reference_instrument.citation_is_contained(c: gunbc.design.reference_instrument.pip_boy_3000_citation(decl_name: "glitch_on_tap_row"))
 }
 
 fn provenance_is_cited(a: gunbc.design.reference_instrument.InstrumentBehaviourAxis) -> Bool {
-  match axis_provenance(a: a) {
-    CitedOn { first, rest } => true
-    OriginatedHere { rationale } => false
+  match gunbc.design.reference_instrument.axis_provenance(a: a) {
+    gunbc.design.reference_instrument.CitedOn { first, rest } => true
+    gunbc.design.reference_instrument.OriginatedHere { rationale } => false
   }
 }
 
 test fn witness_buoyant_drift_is_originated_not_cited() -> Bool {
-  return axis_is_originated(axis: BuoyantDrift)
-    && !axis_has_any_evidence(axis: BuoyantDrift)
-    && !axis_is_cited_on(axis: BuoyantDrift, subject: pip_boy_3000_subject)
-    && !axis_is_cited_on(axis: BuoyantDrift, subject: pip_boy_mk_v_subject)
+  return gunbc.design.reference_instrument.axis_is_originated(axis: gunbc.design.reference_instrument.BuoyantDrift)
+    && !gunbc.design.reference_instrument.axis_has_any_evidence(axis: gunbc.design.reference_instrument.BuoyantDrift)
+    && !gunbc.design.reference_instrument.axis_is_cited_on(axis: gunbc.design.reference_instrument.BuoyantDrift, subject: gunbc.design.reference_instrument.pip_boy_3000_subject)
+    && !gunbc.design.reference_instrument.axis_is_cited_on(axis: gunbc.design.reference_instrument.BuoyantDrift, subject: gunbc.design.reference_instrument.pip_boy_mk_v_subject)
 }
 
 data provenance_control_note: String = "PERMANENT REGRESSION CONTROL, not a validator. The XOR that this claim's predecessor checked is now unwritable — axis_provenance is an exhaustive match over a closed coproduct, so an axis with both provenance kinds or with none has no constructor — and DESIGN section 4b(4) keeps the evidence enrolled when the production check dissolves, because deleting it would recreate specification-without-execution one rung up. What it asserts now is the READ: which arm each axis actually lands on."
 
 test fn witness_each_axis_lands_on_its_expected_provenance_arm() -> Bool {
-  return provenance_is_cited(a: OpticalInstability)
-    && provenance_is_cited(a: RestingOffsetCalibration)
-    && provenance_is_cited(a: ImpulseGlitch)
-    && provenance_is_cited(a: ImpulseThreshold)
-    && provenance_is_cited(a: TiltDerivedReadout)
-    && !provenance_is_cited(a: BuoyantDrift)
+  return provenance_is_cited(a: gunbc.design.reference_instrument.OpticalInstability)
+    && provenance_is_cited(a: gunbc.design.reference_instrument.RestingOffsetCalibration)
+    && provenance_is_cited(a: gunbc.design.reference_instrument.ImpulseGlitch)
+    && provenance_is_cited(a: gunbc.design.reference_instrument.ImpulseThreshold)
+    && provenance_is_cited(a: gunbc.design.reference_instrument.TiltDerivedReadout)
+    && !provenance_is_cited(a: gunbc.design.reference_instrument.BuoyantDrift)
 }
 
 test fn witness_a_cited_axis_carries_at_least_one_citation() -> Bool {
-  return fold(axis_citations(a: ImpulseGlitch), init: false, f: (acc, c) => true)
-    && fold(axis_citations(a: BuoyantDrift), init: true, f: (acc, c) => false)
+  return fold(gunbc.design.reference_instrument.axis_citations(a: gunbc.design.reference_instrument.ImpulseGlitch), init: false, f: (acc, c) => true)
+    && fold(gunbc.design.reference_instrument.axis_citations(a: gunbc.design.reference_instrument.BuoyantDrift), init: true, f: (acc, c) => false)
 }
 
 test fn witness_both_manuals_were_read_directly() -> Bool {
-  return all_sources_read_directly()
+  return gunbc.design.reference_instrument.all_sources_read_directly()
 }

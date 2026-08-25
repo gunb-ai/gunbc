@@ -5,36 +5,36 @@ type CompilerClosureEmitReceipt {
   closure_size: Int
   layer_count: Int
   ready_size: Int
-  source: Medium<String>
+  source: extdeps.communication.medium.Medium<String>
 }
 
 fn compiler_import_closure_reading(root: v2.std.node.Node) -> List<v2.std.dependency.DependencyView> {
-  dependency_lens(root: root)
+  v2.std.dependency.dependency_lens(root: root)
 }
 
 fn compiler_import_closure(root: v2.std.node.Node) -> v2.lens.affected_set.AffectedSetClosureAcc {
-  affected_set_closure(
+  v2.lens.affected_set.affected_set_closure(
     dependencies: compiler_import_closure_reading(root: root),
     edit_locus: root
   )
 }
 
 fn compiler_closure_layer_count(root: v2.std.node.Node) -> Int {
-  length(xs: topological_layers(graph_node: root))
+  v2.std.algebra.length(xs: v2.std.dependency.topological_layers(graph_node: root))
 }
 
 fn compiler_closure_ready_count(root: v2.std.node.Node) -> Int {
-  length(xs: ready_set(graph_node: root))
+  v2.std.algebra.length(xs: v2.std.dependency.ready_set(graph_node: root))
 }
 
 fn compiler_closure_frontier_count(closure: v2.lens.affected_set.AffectedSetClosureAcc) -> Int {
-  length(xs: closure.frontier)
+  v2.std.algebra.length(xs: closure.frontier)
 }
 
 fn compiler_closure_frontier_subset_of_ready(root: v2.std.node.Node, closure: v2.lens.affected_set.AffectedSetClosureAcc) -> Bool {
-  let ready = ready_set(graph_node: root)
+  let ready = v2.std.dependency.ready_set(graph_node: root)
   fold(closure.frontier, init: true, f: fn(ok, node) {
-    ok && contains(xs: ready, item: node, eq: fn(left, right) { left == right })
+    ok && v2.std.algebra.contains(xs: ready, item: node, eq: fn(left, right) { left == right })
   })
 }
 
@@ -48,8 +48,8 @@ fn compiler_import_closure_is_acyclic(root: v2.std.node.Node, closure: v2.lens.a
 fn compiler_closure_cyclic_diagnostic(root: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^compiler_import_closure_cyclic,
-    at: node_locus(node: root),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: root),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -57,25 +57,25 @@ fn emit_compiler_import_closure_from_ingest(
   ingest: v2.compiler.source_authority.SourceRootIngest,
   admission: v2.compiler.name_resolve.Admission,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<CompilerClosureEmitReceipt> {
-  let lm = dag_language_model()
-  bind_outcome(
-    o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
+) -> v2.std.diagnostic.Outcome<CompilerClosureEmitReceipt> {
+  let lm = v2.extdeps.languages.dag.dag_language_model()
+  v2.std.diagnostic.bind_outcome(
+    o: v2.compiler.program_assembly.assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
     f: fn(resolved) {
-      bind_outcome(
-        o: infer(tree: resolved),
+      v2.std.diagnostic.bind_outcome(
+        o: v2.compiler.infer.infer(tree: resolved),
         f: fn(inferred) {
           let closure = compiler_import_closure(root: inferred.root)
           if compiler_import_closure_is_acyclic(root: inferred.root, closure: closure) {
-            bind_outcome(
-              o: emit_for_target(
+            v2.std.diagnostic.bind_outcome(
+              o: v2.compiler.program_partition.emit_for_target(
                 program: inferred,
-                segment: program_segment_whole_program(),
+                segment: v2.std.program_segment.program_segment_whole_program(),
                 target: target,
-                boundary: partition_boundary_fail_closed()
+                boundary: v2.std.program_segment.partition_boundary_fail_closed()
               ),
               f: fn(source) {
-                outcome_accepted(
+                v2.std.diagnostic.outcome_accepted(
                   value: CompilerClosureEmitReceipt {
                     closure_size: compiler_closure_frontier_count(closure: closure),
                     layer_count: compiler_closure_layer_count(root: inferred.root),
@@ -86,7 +86,7 @@ fn emit_compiler_import_closure_from_ingest(
               }
             )
           } else {
-            outcome_rejected(d: compiler_closure_cyclic_diagnostic(root: inferred.root))
+            v2.std.diagnostic.outcome_rejected(d: compiler_closure_cyclic_diagnostic(root: inferred.root))
           }
         }
       )

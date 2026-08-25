@@ -14,41 +14,45 @@ module test.claim.scm_commit_closure_json_v2_witness
 // that refused unconditionally would pass all seven refusal claims, and a comparison that could not
 // say no would pass the round trip.
 
+
+
+
+
 // ------------------------------------------------------------------------------------------------
 // Fixtures. Every name here is prefixed so it cannot collide corpus-wide: a top-level definition is
 // corpus-scoped and the resolver ADMITS duplicates while silently selecting one, so a generic
 // helper name is a live correctness hazard rather than a style question (#8719).
 // ------------------------------------------------------------------------------------------------
 
-fn closure_doc_atom(identity: v2.std.node.Symbol) -> Node {
+fn closure_doc_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } }, children: [])
 }
 
-fn closure_doc_named(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: target }
+fn closure_doc_named(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
-fn closure_doc_program() -> Node {
+fn closure_doc_program() -> v2.std.node.Node {
   v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      closure_doc_named(name: ^test.claim.git_remote_ref_cas_witness.alpha, target: closure_doc_atom(identity: ^A)),
-      closure_doc_named(name: ^test.claim.git_remote_ref_cas_witness.beta, target: closure_doc_atom(identity: ^B)),
+      closure_doc_named(name: ^alpha, target: closure_doc_atom(identity: ^A)),
+      closure_doc_named(name: ^beta, target: closure_doc_atom(identity: ^B)),
     ],
   )
 }
 
 // A DIFFERENT program, used only to prove the comparison below can answer no.
-fn scm_image_other_program() -> Node {
+fn scm_image_other_program() -> v2.std.node.Node {
   v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
-    children: [closure_doc_named(name: ^test.claim.git_remote_ref_cas_witness.alpha, target: closure_doc_atom(identity: ^A))],
+    children: [closure_doc_named(name: ^alpha, target: closure_doc_atom(identity: ^A))],
   )
 }
 
 // One atom referenced by TWO parents. Sharing is the property positions exist to preserve, so the
 // fixture that proves it must actually share.
-fn scm_image_shared_program() -> Node {
+fn scm_image_shared_program() -> v2.std.node.Node {
   v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
@@ -63,15 +67,15 @@ type ScmImagePut {
   identity: gunbc.scm.object_store.ObjectId
 }
 
-fn scm_image_put(store: gunbc.scm.object_store.ObjectStore, n: Node) -> ScmImagePut {
+fn scm_image_put(store: gunbc.scm.object_store.ObjectStore, n: v2.std.node.Node) -> ScmImagePut {
   match gunbc.scm.object_store.store_node(store: store, n: n) {
-    Stored { store: s, identity: i } => ScmImagePut { store: s, identity: i }
+    gunbc.scm.object_store.Stored { store: s, identity: i } => ScmImagePut { store: s, identity: i }
     gunbc.scm.object_store.LocatorCollision { identity: i, existing: _, incoming: _ } =>
       ScmImagePut { store: store, identity: i }
   }
 }
 
-fn scm_image_encoded(n: Node) -> extdeps.languages.json.emit.JsonValue {
+fn scm_image_encoded(n: v2.std.node.Node) -> extdeps.languages.json.emit.JsonValue {
   let put = scm_image_put(store: gunbc.scm.object_store.empty_store(), n: n)
   gunbc.scm.commit_closure_json_v2.encode_closure_document(store: put.store, root: put.identity)
 }
@@ -81,11 +85,11 @@ fn scm_image_encoded(n: Node) -> extdeps.languages.json.emit.JsonValue {
 // occurrence identity, so asserting on it would assert the one property the model says must not
 // matter. The expectation is canonicalized for the same reason store_node canonicalizes: named-edge
 // order is not a fact this store preserves.
-fn scm_image_loads_as(loaded: gunbc.scm.commit_closure_json_v2.ClosureDocLoadOutcome, expected: Node) -> Bool {
+fn scm_image_loads_as(loaded: gunbc.scm.commit_closure_json_v2.ClosureDocLoadOutcome, expected: v2.std.node.Node) -> Bool {
   match loaded {
     gunbc.scm.commit_closure_json_v2.ClosureDocRefused { cause: _ } => false
-    gunbc.scm.commit_closure_json_v2.ClosureDocLoaded { store: store, root: test.claim.extdeps_llm_claude_trust_witness.root } =>
-      match gunbc.scm.checkout.checkout(store: store, commit: gunbc.scm.checkout.commit_of_root(root: test.claim.extdeps_llm_claude_trust_witness.root)) {
+    gunbc.scm.commit_closure_json_v2.ClosureDocLoaded { store: store, root: root } =>
+      match gunbc.scm.checkout.checkout(store: store, commit: gunbc.scm.checkout.commit_of_root(root: root)) {
         gunbc.scm.checkout.CheckoutRefused { cause: _ } => false
         gunbc.scm.checkout.CheckedOut { program: program } =>
           (v2.std.node.content_hash(n: program).digest as String)
@@ -144,7 +148,7 @@ test fn scm_image_survives_serialization_to_text_and_back() -> Bool {
 fn scm_image_objects_member_count(acc: Int, m: extdeps.languages.json.emit.JsonKeyValue) -> Int {
   if m.key == "objects" {
     match m.value {
-      JsonArray { elements: es } => count(es)
+      extdeps.languages.json.emit.JsonArray { elements: es } => count(es)
       _ => acc
     }
   } else {
@@ -177,7 +181,7 @@ test fn scm_image_the_object_counter_distinguishes_a_larger_program() -> Bool {
 
 fn scm_image_members(v: extdeps.languages.json.emit.JsonValue) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   match v {
-    JsonObject { members: ms } => ms
+    extdeps.languages.json.emit.JsonObject { members: ms } => ms
     _ => []
   }
 }
@@ -198,7 +202,7 @@ fn scm_image_key_differs(m: extdeps.languages.json.emit.JsonKeyValue, key: Strin
 }
 
 fn scm_image_drop_key(members: List<extdeps.languages.json.emit.JsonKeyValue>, key: String) -> List<extdeps.languages.json.emit.JsonKeyValue> {
-  v2.std.algebra.filter(members, m => scm_image_key_differs(m: m, key: key))
+  filter(members, m => scm_image_key_differs(m: m, key: key))
 }
 
 fn scm_image_without(v: extdeps.languages.json.emit.JsonValue, key: String) -> extdeps.languages.json.emit.JsonValue {
@@ -386,6 +390,7 @@ test fn scm_image_the_hand_authored_shape_itself_loads() -> Bool {
   )
 }
 
+
 // ------------------------------------------------------------------------------------------------
 // THE CHECKED ENCODER. encode_closure_document cannot refuse -- it returns a JsonValue -- so an incomplete
 // closure encodes to a document carrying the empty reference, which decode rejects. That is correct
@@ -438,6 +443,7 @@ test fn scm_image_a_complete_closure_encodes() -> Bool {
   }
 }
 
+
 // ------------------------------------------------------------------------------------------------
 // THE NODE IDENTITY PROTOCOL, ACROSS A PERMUTED WIRE ORDER.
 //
@@ -456,7 +462,7 @@ test fn scm_image_a_complete_closure_encodes() -> Bool {
 
 fn scm_image_identity_of(outcome: gunbc.scm.object_store.StoreOutcome, fallback: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.ObjectId {
   match outcome {
-    Stored { store: _, identity: i } => i
+    gunbc.scm.object_store.Stored { store: _, identity: i } => i
     gunbc.scm.object_store.LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
   }
 }
@@ -477,7 +483,7 @@ fn scm_image_insert_children(kind: v2.std.node.NodeKind, children: List<gunbc.sc
 }
 
 fn scm_image_named_stored(name: v2.std.node.Symbol, target: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.StoredEdge {
-  gunbc.scm.object_store.StoredEdge { label: Named { name: name }, target: target }
+  gunbc.scm.object_store.StoredEdge { label: v2.std.node.Named { name: name }, target: target }
 }
 
 fn scm_image_positional_stored(target: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.StoredEdge {
@@ -493,16 +499,16 @@ test fn scm_image_permuted_named_children_reconstruct_the_canonical_identity() -
   let forward = scm_image_insert_children(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      scm_image_named_stored(name: ^test.claim.git_remote_ref_cas_witness.alpha, target: atoms.first),
-      scm_image_named_stored(name: ^test.claim.git_remote_ref_cas_witness.beta, target: atoms.second),
+      scm_image_named_stored(name: ^alpha, target: atoms.first),
+      scm_image_named_stored(name: ^beta, target: atoms.second),
     ],
     fallback: atoms.first
   )
   let swapped = scm_image_insert_children(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      scm_image_named_stored(name: ^test.claim.git_remote_ref_cas_witness.beta, target: atoms.second),
-      scm_image_named_stored(name: ^test.claim.git_remote_ref_cas_witness.alpha, target: atoms.first),
+      scm_image_named_stored(name: ^beta, target: atoms.second),
+      scm_image_named_stored(name: ^alpha, target: atoms.first),
     ],
     fallback: atoms.second
   )
@@ -514,7 +520,7 @@ test fn scm_image_permuted_named_children_reconstruct_the_canonical_identity() -
 test fn scm_image_permuted_positional_children_are_a_different_identity() -> Bool {
   let atoms = scm_image_two_atoms()
   let forward = scm_image_insert_children(
-    kind: v2.std.node.TypeNode { connective: Cardinality },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
     children: [
       scm_image_positional_stored(target: atoms.first),
       scm_image_positional_stored(target: atoms.second),
@@ -522,7 +528,7 @@ test fn scm_image_permuted_positional_children_are_a_different_identity() -> Boo
     fallback: atoms.first
   )
   let swapped = scm_image_insert_children(
-    kind: v2.std.node.TypeNode { connective: Cardinality },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
     children: [
       scm_image_positional_stored(target: atoms.second),
       scm_image_positional_stored(target: atoms.first),
@@ -531,6 +537,7 @@ test fn scm_image_permuted_positional_children_are_a_different_identity() -> Boo
   )
   gunbc.scm.object_store.object_id_eq(left: forward, right: swapped) == false
 }
+
 
 // ------------------------------------------------------------------------------------------------
 // THE CLOSED MEMBER SET. A matched format tag means "I understand this exact schema", not "I
@@ -687,3 +694,8 @@ test fn scm_image_an_atom_carrying_its_identity_still_loads() -> Bool {
     expected: closure_doc_atom(identity: ^A),
   )
 }
+
+
+
+
+

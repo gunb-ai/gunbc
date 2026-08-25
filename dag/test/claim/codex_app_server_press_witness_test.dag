@@ -29,11 +29,11 @@ data fixture_digest_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eeb
 
 
 fn fixture_digest() -> std.content_hash.Sha512Digest? {
-  sha512_hex_digest(hex: fixture_digest_hex)
+  std.content_hash.sha512_hex_digest(hex: fixture_digest_hex)
 }
 
 fn fixture_bundle_from_digest(digest: std.content_hash.Sha512Digest) -> gunbc.package_delivery.CodexRuntimeBundle {
-  let id = as_content_hash_sha512(digest: digest)
+  let id = std.content_hash.as_content_hash_sha512(digest: digest)
   let target = gunbc.package_delivery.CodexNpmRuntimeTarget {
     os: "linux" as std.types.NonEmptyStr,
     cpu: "arm64" as std.types.NonEmptyStr,
@@ -70,7 +70,7 @@ fn fixture_bundle_from_digest(digest: std.content_hash.Sha512Digest) -> gunbc.pa
 
 fn fixture_process_receipt() -> gunbc.codex_app_server_press.ProviderProcessReceipt {
   gunbc.codex_app_server_press.ProviderProcessReceipt {
-    exit: ProviderProcessObservationFailed,
+    exit: gunbc.codex_app_server_press.ProviderProcessObservationFailed,
     wire: none,
   }
 }
@@ -79,12 +79,12 @@ fn fixture_preflight_subject() -> gunbc.codex_app_server_press.CodexAccountPrefl
   match fixture_digest() {
     Absent => none
     Present { value: digest } =>
-      match project_codex_app_server_stdio_binding(
+      match gunbc.provider_interface_binding.project_codex_app_server_stdio_binding(
         bundle: fixture_bundle_from_digest(digest: digest),
       ) {
-        ProviderInterfaceResolved { binding } =>
+        gunbc.provider_interface_binding.ProviderInterfaceResolved { binding } =>
           Present {
-            value: preflight_subject_from_bundle(
+            value: gunbc.codex_app_server_press.preflight_subject_from_bundle(
               bundle: fixture_bundle_from_digest(digest: digest),
               binding: binding,
               probe_key: "probe-fixture-1" as gunbc.codex_app_server_press.ProviderProbeKey,
@@ -97,11 +97,11 @@ fn fixture_preflight_subject() -> gunbc.codex_app_server_press.CodexAccountPrefl
 }
 
 test fn press_turn_target_itinerary_is_five_steps_starting_with_initialize() -> Bool {
-  let steps = codex_press_method_itinerary()
+  let steps = gunbc.codex_app_server_press.codex_press_method_itinerary()
   match steps.first() {
     Present { value: step } =>
       match step {
-        CodexAppServerInitialize => count(steps) == 5
+        extdeps.llm.codex_app_server.CodexAppServerInitialize => count(steps) == 5
         _ => false
       }
     Absent => false
@@ -109,13 +109,13 @@ test fn press_turn_target_itinerary_is_five_steps_starting_with_initialize() -> 
 }
 
 test fn press_account_trip_itinerary_is_three_steps_without_turn_start() -> Bool {
-  let steps = codex_press_account_trip_methods()
+  let steps = gunbc.codex_app_server_press.codex_press_account_trip_methods()
   count(steps) == 3
     && match steps.last() {
       Present { value: last } =>
         match last {
-          CodexAppServerAccountRateLimitsRead => true
-          CodexAppServerTurnStart => false
+          extdeps.llm.codex_app_server.CodexAppServerAccountRateLimitsRead => true
+          extdeps.llm.codex_app_server.CodexAppServerTurnStart => false
           _ => false
         }
       Absent => false
@@ -123,15 +123,15 @@ test fn press_account_trip_itinerary_is_three_steps_without_turn_start() -> Bool
 }
 
 test fn press_itinerary_wire_names_match_generated_schema() -> Bool {
-  let steps = codex_press_method_itinerary()
+  let steps = gunbc.codex_app_server_press.codex_press_method_itinerary()
   count(steps) == 5
-    && (codex_app_server_method_wire_name(method: CodexAppServerInitialize) as String) == "initialize"
-    && (codex_app_server_method_wire_name(method: CodexAppServerTurnStart) as String) == "turn/start"
+    && (extdeps.llm.codex_app_server.codex_app_server_method_wire_name(method: extdeps.llm.codex_app_server.CodexAppServerInitialize) as String) == "initialize"
+    && (extdeps.llm.codex_app_server.codex_app_server_method_wire_name(method: extdeps.llm.codex_app_server.CodexAppServerTurnStart) as String) == "turn/start"
     && match steps.last() {
       Present { value: last } =>
         match last {
-          CodexAppServerTurnStart =>
-            (codex_app_server_method_wire_name(method: last) as String) == "turn/start"
+          extdeps.llm.codex_app_server.CodexAppServerTurnStart =>
+            (extdeps.llm.codex_app_server.codex_app_server_method_wire_name(method: last) as String) == "turn/start"
           _ => false
         }
       Absent => false
@@ -142,14 +142,14 @@ test fn stdio_binding_derives_from_runtime_bundle() -> Bool {
   match fixture_digest() {
     Absent => false
     Present { value: digest } =>
-      match project_codex_app_server_stdio_binding(
+      match gunbc.provider_interface_binding.project_codex_app_server_stdio_binding(
         bundle: fixture_bundle_from_digest(digest: digest),
       ) {
-        ProviderInterfaceResolved { binding } =>
+        gunbc.provider_interface_binding.ProviderInterfaceResolved { binding } =>
           match binding.interface {
             CodexAppServer {} =>
               match binding.transport {
-                CodexAppServerStdio =>
+                extdeps.llm.codex_app_server.CodexAppServerStdio =>
                   (binding.executable.path as String) == "/tmp/codex-runtime-fixture/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex"
                 _ => false
               }
@@ -166,14 +166,14 @@ test fn preflight_subject_carries_runtime_receipt_and_probe_key() -> Bool {
       (subject.probe_key as String) == "probe-fixture-1"
         && (subject.credential.codex_home as String) == "/tmp/gunbc-codex-home-fixture"
         && match subject.runtime {
-          CodexRuntimeBundleReceiptRef { receipt_identity: id } =>
+          gunbc.codex_app_server_press.CodexRuntimeBundleReceiptRef { receipt_identity: id } =>
             match fixture_digest() {
               Absent => false
               Present { value: digest } =>
-                (id as String) == (as_content_hash_sha512(digest: digest) as String)
+                (id as String) == (std.content_hash.as_content_hash_sha512(digest: digest) as String)
             }
         }
-        && count(codex_press_account_trip_methods()) == 3
+        && count(gunbc.codex_app_server_press.codex_press_account_trip_methods()) == 3
   }
 }
 
@@ -181,9 +181,9 @@ test fn preflight_subject_without_turn_never_displays_as_running_or_finished() -
   match fixture_preflight_subject() {
     Absent => false
     Present { value: _ } =>
-      press_display_running(disposition: ProviderTurnNotObserved) == false
-        && press_display_finished(disposition: ProviderTurnNotObserved) == false
-        && automatic_recovery_authorized(disposition: ProviderTurnNotObserved) == false
+      gunbc.provider_turn_adjudication.press_display_running(disposition: gunbc.provider_turn_adjudication.ProviderTurnNotObserved) == false
+        && gunbc.provider_turn_adjudication.press_display_finished(disposition: gunbc.provider_turn_adjudication.ProviderTurnNotObserved) == false
+        && gunbc.provider_turn_adjudication.automatic_recovery_authorized(disposition: gunbc.provider_turn_adjudication.ProviderTurnNotObserved) == false
   }
 }
 
@@ -195,16 +195,16 @@ test fn failed_unclassified_cannot_authorize_recovery() -> Bool {
   }
   let classified_retryable = gunbc.provider_turn_adjudication.ProviderTurnFailed {
     cause: gunbc.provider_turn_adjudication.ProviderNativeCauseClassified {
-      class: RetryableTransient,
+      class: gunbc.provider_turn_adjudication.RetryableTransient,
       evidence: "provider-native retryable class with retained evidence" as std.types.NonEmptyStr,
     },
   }
-  automatic_recovery_authorized(disposition: unknown) == false
-    && automatic_recovery_authorized(disposition: classified_retryable) == false
+  gunbc.provider_turn_adjudication.automatic_recovery_authorized(disposition: unknown) == false
+    && gunbc.provider_turn_adjudication.automatic_recovery_authorized(disposition: classified_retryable) == false
 }
 
 test fn account_ready_wire_status_is_not_turn_started_or_dispatch_accepted() -> Bool {
-  let evidence = parse_account_trip_stdout_for_tests(
+  let evidence = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
@@ -213,7 +213,7 @@ test fn account_ready_wire_status_is_not_turn_started_or_dispatch_accepted() -> 
       ),
     ),
   )
-  let standing = account_standing_summary_from_evidence(evidence: evidence)
+  let standing = gunbc.codex_app_server_press.account_standing_summary_from_evidence(evidence: evidence)
   match fixture_preflight_subject() {
     Absent => false
     Present { value: subject } =>
@@ -225,8 +225,8 @@ test fn account_ready_wire_status_is_not_turn_started_or_dispatch_accepted() -> 
           process: fixture_process_receipt(),
         },
       }
-      let status = codex_press_outcome_wire_status(outcome: outcome)
-      let caption = codex_press_outcome_operator_caption(outcome: outcome)
+      let status = gunbc.codex_app_server_press.codex_press_outcome_wire_status(outcome: outcome)
+      let caption = gunbc.codex_app_server_press.codex_press_outcome_operator_caption(outcome: outcome)
       let ready_ok = status == "account_authenticated_rate_limits_readable"
         && status != "turn_started"
         && status != "accepted"
@@ -234,14 +234,14 @@ test fn account_ready_wire_status_is_not_turn_started_or_dispatch_accepted() -> 
         && caption == "authenticated; codex capacity available"
         && caption != "turn started"
       match evidence.classification {
-        AccountStandingAuthenticatedRateLimitsReadable => ready_ok
+        gunbc.codex_app_server_press.AccountStandingAuthenticatedRateLimitsReadable => ready_ok
         _ => false
       }
   }
 }
 
 test fn empty_rate_limits_object_is_incomplete_not_ready() -> Bool {
-  let evidence = parse_account_trip_stdout_for_tests(
+  let evidence = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
@@ -251,14 +251,14 @@ test fn empty_rate_limits_object_is_incomplete_not_ready() -> Bool {
     ),
   )
   match evidence.classification {
-    AccountStandingIncomplete => true
-    AccountStandingAuthenticatedRateLimitsReadable => false
+    gunbc.codex_app_server_press.AccountStandingIncomplete => true
+    gunbc.codex_app_server_press.AccountStandingAuthenticatedRateLimitsReadable => false
     _ => false
   }
 }
 
 test fn saturated_primary_window_is_quota_reached() -> Bool {
-  let evidence = parse_account_trip_stdout_for_tests(
+  let evidence = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
@@ -268,13 +268,13 @@ test fn saturated_primary_window_is_quota_reached() -> Bool {
     ),
   )
   match evidence.classification {
-    AccountStandingQuotaReached => true
+    gunbc.codex_app_server_press.AccountStandingQuotaReached => true
     _ => false
   }
 }
 
 test fn spend_control_reached_is_quota_reached() -> Bool {
-  let evidence = parse_account_trip_stdout_for_tests(
+  let evidence = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
@@ -284,19 +284,19 @@ test fn spend_control_reached_is_quota_reached() -> Bool {
     ),
   )
   match evidence.classification {
-    AccountStandingQuotaReached => true
+    gunbc.codex_app_server_press.AccountStandingQuotaReached => true
     _ => false
   }
 }
 
 test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Bool {
-  let login = parse_account_trip_stdout_for_tests(
+  let login = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":null,\"requiresOpenaiAuth\":true}}\n",
     ),
   )
-  let quota = parse_account_trip_stdout_for_tests(
+  let quota = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
@@ -305,7 +305,7 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
       ),
     ),
   )
-  let quota_message_only = parse_account_trip_stdout_for_tests(
+  let quota_message_only = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
@@ -314,7 +314,7 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
       ),
     ),
   )
-  let ok = parse_account_trip_stdout_for_tests(
+  let ok = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
@@ -323,7 +323,7 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
       ),
     ),
   )
-  let empty_limits = parse_account_trip_stdout_for_tests(
+  let empty_limits = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
@@ -332,16 +332,16 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
       ),
     ),
   )
-  let missing = parse_account_trip_stdout_for_tests(
+  let missing = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: "{\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"message\":\"boom\"}}\n",
   )
-  let incomplete = parse_account_trip_stdout_for_tests(
+  let incomplete = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{}}}\n",
     ),
   )
-  let duplicate = parse_account_trip_stdout_for_tests(
+  let duplicate = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
@@ -354,44 +354,44 @@ test fn account_trip_typed_session_classifies_login_quota_ok_incomplete() -> Boo
     ),
   )
   let login_ok = match login.classification {
-    AccountStandingLoginRequired => true
+    gunbc.codex_app_server_press.AccountStandingLoginRequired => true
     _ => false
   }
   let quota_ok = match quota.classification {
-    AccountStandingQuotaReached => true
+    gunbc.codex_app_server_press.AccountStandingQuotaReached => true
     _ => false
   }
   let quota_message_only_incomplete = match quota_message_only.classification {
-    AccountStandingIncomplete => true
+    gunbc.codex_app_server_press.AccountStandingIncomplete => true
     _ => false
   }
   let ready_ok = match ok.classification {
-    AccountStandingAuthenticatedRateLimitsReadable => true
+    gunbc.codex_app_server_press.AccountStandingAuthenticatedRateLimitsReadable => true
     _ => false
   }
   let empty_limits_incomplete = match empty_limits.classification {
-    AccountStandingIncomplete => true
+    gunbc.codex_app_server_press.AccountStandingIncomplete => true
     _ => false
   }
   let missing_ok = match missing.classification {
-    AccountStandingInitializeMissing => true
+    gunbc.codex_app_server_press.AccountStandingInitializeMissing => true
     _ => false
   }
   let incomplete_ok = match incomplete.classification {
-    AccountStandingIncomplete => true
+    gunbc.codex_app_server_press.AccountStandingIncomplete => true
     _ => false
   }
   let duplicate_ok = match duplicate.classification {
-    AccountStandingIncomplete => true
+    gunbc.codex_app_server_press.AccountStandingIncomplete => true
     _ => false
   }
-  let projected = account_standing_projection(classification: ok.classification)
+  let projected = gunbc.codex_app_server_press.account_standing_projection(classification: ok.classification)
   let projection_ok = projected == "initialize_ok; account_read_ok; rate_limits_observed"
   login_ok && quota_ok && quota_message_only_incomplete && ready_ok && empty_limits_incomplete && missing_ok && incomplete_ok && duplicate_ok && projection_ok
 }
 
 test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
-  let evidence = parse_account_trip_stdout_for_tests(
+  let evidence = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
@@ -407,22 +407,22 @@ test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
         reason: "codex quota exhausted at account/rateLimits/read" as std.types.NonEmptyStr,
         receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt {
           subject: subject,
-          standing: account_standing_summary_from_evidence(evidence: evidence),
+          standing: gunbc.codex_app_server_press.account_standing_summary_from_evidence(evidence: evidence),
           wire_evidence: none,
           process: fixture_process_receipt(),
         },
       }
-      codex_press_outcome_wire_status(outcome: outcome) == "press_refused"
-        && codex_press_outcome_operator_caption(outcome: outcome) == "codex quota exhausted"
-        && codex_press_outcome_wire_status(outcome: outcome) != "accepted"
-        && codex_press_outcome_wire_status(outcome: outcome) != "turn_started"
+      gunbc.codex_app_server_press.codex_press_outcome_wire_status(outcome: outcome) == "press_refused"
+        && gunbc.codex_app_server_press.codex_press_outcome_operator_caption(outcome: outcome) == "codex quota exhausted"
+        && gunbc.codex_app_server_press.codex_press_outcome_wire_status(outcome: outcome) != "accepted"
+        && gunbc.codex_app_server_press.codex_press_outcome_wire_status(outcome: outcome) != "turn_started"
   }
 }
 
 data rate_limit_id_witness_note: String = "Discriminating controls for the limitId absorbing-fallback repair (review 50532). The fabrication these pin is NOT cosmetic: buckets are read downstream BY limit_id, so a malformed id emitted under the synthesized default would put a sibling bucket's numbers on the codex bucket. The sibling-only control is the one that fails loudest against the old code — it carries a REAL id (codex_bengalfox), so a reader that defaults on anything other than absence reports it as codex. The absence control is the positive: the legacy mirror legitimately has no limitId and must still yield codex, so this pair proves the split rather than a blanket refusal."
 
 fn rate_limit_bucket_ids_for_stdout(line: String) -> List<String> {
-  let evidence = parse_account_trip_stdout_for_tests(
+  let evidence = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(fixture_account_read_chatgpt_requires_auth_true_line, line),
@@ -432,9 +432,9 @@ fn rate_limit_bucket_ids_for_stdout(line: String) -> List<String> {
     evidence.rate_limit_buckets,
     bucket =>
       match bucket {
-        CodexBucketCapacityAvailable { limit_id: id } => id as String
-        CodexBucketUnavailableUntilReset { limit_id: id, reached_type: _, resets_at: _ } => id as String
-        CodexBucketCapacityUnknown { limit_id: id } => id as String
+        gunbc.codex_app_server_press.CodexBucketCapacityAvailable { limit_id: id } => id as String
+        gunbc.codex_app_server_press.CodexBucketUnavailableUntilReset { limit_id: id, reached_type: _, resets_at: _ } => id as String
+        gunbc.codex_app_server_press.CodexBucketCapacityUnknown { limit_id: id } => id as String
       },
   )
 }
@@ -457,7 +457,7 @@ test fn nonstring_limit_id_emits_no_bucket_rather_than_a_fabricated_one() -> Boo
 }
 
 test fn negative_resets_at_refuses_epoch_secs_mint() -> Bool {
-  let evidence = parse_account_trip_stdout_for_tests(
+  let evidence = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
@@ -467,13 +467,13 @@ test fn negative_resets_at_refuses_epoch_secs_mint() -> Bool {
     ),
   )
   match evidence.classification {
-    AccountStandingQuotaReached =>
+    gunbc.codex_app_server_press.AccountStandingQuotaReached =>
       fold(
         evidence.rate_limit_buckets,
         init: false,
         f: (acc, bucket) =>
           match bucket {
-            CodexBucketUnavailableUntilReset { limit_id: id, reached_type: _, resets_at: resets } =>
+            gunbc.codex_app_server_press.CodexBucketUnavailableUntilReset { limit_id: id, reached_type: _, resets_at: resets } =>
               if (id as String) == "codex" {
                 match resets {
                   Absent => true
@@ -490,7 +490,7 @@ test fn negative_resets_at_refuses_epoch_secs_mint() -> Bool {
 }
 
 test fn live_exhausted_multibucket_is_quota_on_codex_with_bengalfox_available() -> Bool {
-  let evidence = parse_account_trip_stdout_for_tests(
+  let evidence = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       concat(
@@ -500,7 +500,7 @@ test fn live_exhausted_multibucket_is_quota_on_codex_with_bengalfox_available() 
     ),
   )
   let quota_ok = match evidence.classification {
-    AccountStandingQuotaReached => true
+    gunbc.codex_app_server_press.AccountStandingQuotaReached => true
     _ => false
   }
   let bucket_count_ok = count(evidence.rate_limit_buckets) == 2
@@ -509,7 +509,7 @@ test fn live_exhausted_multibucket_is_quota_on_codex_with_bengalfox_available() 
     init: false,
     f: (acc, bucket) =>
       match bucket {
-        CodexBucketUnavailableUntilReset { limit_id: id, reached_type: _, resets_at: _ } =>
+        gunbc.codex_app_server_press.CodexBucketUnavailableUntilReset { limit_id: id, reached_type: _, resets_at: _ } =>
           acc || (id as String) == "codex"
         _ => acc
       },
@@ -519,7 +519,7 @@ test fn live_exhausted_multibucket_is_quota_on_codex_with_bengalfox_available() 
     init: false,
     f: (acc, bucket) =>
       match bucket {
-        CodexBucketCapacityAvailable { limit_id: id } =>
+        gunbc.codex_app_server_press.CodexBucketCapacityAvailable { limit_id: id } =>
           acc || (id as String) == "codex_bengalfox"
         _ => acc
       },
@@ -529,20 +529,20 @@ test fn live_exhausted_multibucket_is_quota_on_codex_with_bengalfox_available() 
 }
 
 test fn missing_rate_limits_response_after_auth_is_incomplete_handshake_class() -> Bool {
-  let evidence = parse_account_trip_stdout_for_tests(
+  let evidence = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       fixture_account_read_chatgpt_requires_auth_true_line,
     ),
   )
   match evidence.classification {
-    AccountStandingIncomplete => count(evidence.rate_limit_buckets) == 0
+    gunbc.codex_app_server_press.AccountStandingIncomplete => count(evidence.rate_limit_buckets) == 0
     _ => false
   }
 }
 
 test fn login_required_wire_status_is_not_accepted_or_turn_started() -> Bool {
-  let evidence = parse_account_trip_stdout_for_tests(
+  let evidence = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n",
       "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"requiresOpenaiAuth\":true}}\n",
@@ -555,20 +555,20 @@ test fn login_required_wire_status_is_not_accepted_or_turn_started() -> Bool {
         reason: "codex app-server account trip requires login" as std.types.NonEmptyStr,
         receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt {
           subject: subject,
-          standing: account_standing_summary_from_evidence(evidence: evidence),
+          standing: gunbc.codex_app_server_press.account_standing_summary_from_evidence(evidence: evidence),
           wire_evidence: none,
           process: fixture_process_receipt(),
         },
       }
-      codex_press_outcome_wire_status(outcome: outcome) == "login_required"
-        && codex_press_outcome_wire_status(outcome: outcome) != "accepted"
-        && codex_press_outcome_wire_status(outcome: outcome) != "turn_started"
-        && codex_press_outcome_operator_caption(outcome: outcome) == "login required"
+      gunbc.codex_app_server_press.codex_press_outcome_wire_status(outcome: outcome) == "login_required"
+        && gunbc.codex_app_server_press.codex_press_outcome_wire_status(outcome: outcome) != "accepted"
+        && gunbc.codex_app_server_press.codex_press_outcome_wire_status(outcome: outcome) != "turn_started"
+        && gunbc.codex_app_server_press.codex_press_outcome_operator_caption(outcome: outcome) == "login required"
   }
 }
 
 test fn unknown_frame_is_digested_not_silent() -> Bool {
-  let evidence = parse_account_trip_stdout_for_tests(
+  let evidence = gunbc.codex_app_server_press.parse_account_trip_stdout_for_tests(
     stdout: concat(
       "{\"jsonrpc\":\"2.0\",\"method\":\"notification\",\"params\":{}}\n",
       concat(
@@ -581,7 +581,7 @@ test fn unknown_frame_is_digested_not_silent() -> Bool {
     ),
   )
   match evidence.classification {
-    AccountStandingAuthenticatedRateLimitsReadable => count(evidence.unknown_frame_digests) == 1
+    gunbc.codex_app_server_press.AccountStandingAuthenticatedRateLimitsReadable => count(evidence.unknown_frame_digests) == 1
     _ => false
   }
 }

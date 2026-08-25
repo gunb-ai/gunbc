@@ -1,5 +1,6 @@
 module gunbc.plan_registry_batch_f
 
+
 data batch_f_plans: List<gunbc.plan.Plan> = [
   gunbc.plans.self_applying_lenses.self_applying_lenses_plan,
   gunbc.plans.budget_tree.budget_tree_plan,

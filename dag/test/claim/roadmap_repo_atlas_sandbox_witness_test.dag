@@ -13,45 +13,45 @@ fn atlas_page_fixture_nodes() -> List<v2.lens.module_graph.ModuleDeclarationFact
 }
 
 fn atlas_page_snapshot_plain() -> gunbc.repo_atlas_projection.RepoAtlasSnapshot {
-  repo_atlas_snapshot(
-    subject: AtlasSubjectUnobserved,
+  gunbc.repo_atlas_projection.repo_atlas_snapshot(
+    subject: gunbc.repo_atlas_projection.AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
-    observation: AtlasChangesNotObserved,
-    impact: AtlasImpactNotComputed)
+    observation: gunbc.repo_atlas_projection.AtlasChangesNotObserved,
+    impact: gunbc.repo_atlas_projection.AtlasImpactNotComputed)
 }
 
 fn atlas_page_snapshot_changed() -> gunbc.repo_atlas_projection.RepoAtlasSnapshot {
-  repo_atlas_snapshot(
-    subject: AtlasSubjectUnobserved,
+  gunbc.repo_atlas_projection.repo_atlas_snapshot(
+    subject: gunbc.repo_atlas_projection.AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
     observation: gunbc.repo_atlas_projection.AtlasComparisonObserved {
-      comparison: gunbc.repo_atlas_projection.AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot },
+      comparison: gunbc.repo_atlas_projection.AtlasComparison { base: "HEAD^", head: "HEAD", relation: extdeps.git.TwoDot },
       diff: extdeps.git.GitDiffNameStatusComplete { entries: [
-        extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+        extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
       ] }
     },
-    impact: AtlasImpactNotComputed)
+    impact: gunbc.repo_atlas_projection.AtlasImpactNotComputed)
 }
 
 fn atlas_page_snapshot_refused() -> gunbc.repo_atlas_projection.RepoAtlasSnapshot {
-  repo_atlas_snapshot(
-    subject: AtlasSubjectUnobserved,
+  gunbc.repo_atlas_projection.repo_atlas_snapshot(
+    subject: gunbc.repo_atlas_projection.AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
     observation: gunbc.repo_atlas_projection.AtlasComparisonObserved {
-      comparison: gunbc.repo_atlas_projection.AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot },
+      comparison: gunbc.repo_atlas_projection.AtlasComparison { base: "HEAD^", head: "HEAD", relation: extdeps.git.TwoDot },
       diff: extdeps.git.GitDiffNameStatusComplete { entries: [
-        extdeps.git.GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+        extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
       ] }
     },
-    impact: AtlasImpactNotComputed)
+    impact: gunbc.repo_atlas_projection.AtlasImpactNotComputed)
 }
 
 fn atlas_page_snapshot_impacted(exact: Bool) -> gunbc.repo_atlas_projection.RepoAtlasSnapshot {
-  repo_atlas_snapshot(
-    subject: AtlasSubjectUnobserved,
+  gunbc.repo_atlas_projection.repo_atlas_snapshot(
+    subject: gunbc.repo_atlas_projection.AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
-    observation: AtlasChangesNotObserved,
-    impact: atlas_impact_from_reading(reading: v2.lens.module_impact_query.ImpactReading {
+    observation: gunbc.repo_atlas_projection.AtlasChangesNotObserved,
+    impact: gunbc.repo_atlas_projection.atlas_impact_from_reading(reading: v2.lens.module_impact_query.ImpactReading {
       direction: v2.lens.module_impact_query.DependentsOf,
       seeds: [v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" }],
       reached: [v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" }],
@@ -62,9 +62,9 @@ fn atlas_page_snapshot_impacted(exact: Bool) -> gunbc.repo_atlas_projection.Repo
 }
 
 fn atlas_page_html(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> String {
-  match try_serialize_html_source(node: repo_atlas_document(snapshot: snapshot)) {
-    EmitOk { html: h } => h
-    EmitRejected { reason: _ } => ""
+  match extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_repo_atlas_sandbox.repo_atlas_document(snapshot: snapshot)) {
+    extdeps.languages.html.EmitOk { html: h } => h
+    extdeps.languages.html.EmitRejected { reason: _ } => ""
   }
 }
 
@@ -141,25 +141,25 @@ test fn a_changed_module_is_marked_on_the_page() -> Bool {
 data atlas_page_geometry_note: String = "ACCEPTANCE 11. The renderer receives an ADDRESS and lowers it with nested transforms. These claims pin the lowering itself — that ring 0 slot 0 sits at the top of the inner ring with no rotation, and that a half-way slot turns 180 degrees — so a geometry change is a visible diff rather than a silent re-layout."
 
 test fn ring_zero_slot_zero_lowers_to_an_unrotated_inner_transform() -> Bool {
-  let lowered = atlas_cell_transform(address: gunbc.repo_atlas_projection.AtlasAddress { ring: 0, slot: 0 })
+  let lowered = gunbc.roadmap_repo_atlas_sandbox.atlas_cell_transform(address: gunbc.repo_atlas_projection.AtlasAddress { ring: 0, slot: 0 })
   lowered == "translate(420 420) rotate(0.000) translate(0 -34)"
 }
 
 test fn the_ring_radius_grows_by_the_declared_gap() -> Bool {
-  atlas_ring_radius(ring: 0) == 34
-    && atlas_ring_radius(ring: 1) == 58
-    && atlas_ring_radius(ring: 15) == 394
+  gunbc.roadmap_repo_atlas_sandbox.atlas_ring_radius(ring: 0) == 34
+    && gunbc.roadmap_repo_atlas_sandbox.atlas_ring_radius(ring: 1) == 58
+    && gunbc.roadmap_repo_atlas_sandbox.atlas_ring_radius(ring: 15) == 394
 }
 
 test fn a_half_way_slot_turns_one_hundred_and_eighty_degrees() -> Bool {
-  let half = atlas_ring_slot_count(ring: 0) / 2
-  atlas_slot_angle_millidegrees(address: gunbc.repo_atlas_projection.AtlasAddress { ring: 0, slot: half }) / 1000 == 180
+  let half = gunbc.roadmap_repo_atlas_sandbox.atlas_ring_slot_count(ring: 0) / 2
+  gunbc.roadmap_repo_atlas_sandbox.atlas_slot_angle_millidegrees(address: gunbc.repo_atlas_projection.AtlasAddress { ring: 0, slot: half }) / 1000 == 180
 }
 
 test fn the_ring_slot_probe_reads_the_declared_table() -> Bool {
-  atlas_ring_slot_count(ring: 0) == 32
-    && atlas_ring_slot_count(ring: 1) == 56
-    && atlas_ring_slot_count(ring: 15) == 392
+  gunbc.roadmap_repo_atlas_sandbox.atlas_ring_slot_count(ring: 0) == 32
+    && gunbc.roadmap_repo_atlas_sandbox.atlas_ring_slot_count(ring: 1) == 56
+    && gunbc.roadmap_repo_atlas_sandbox.atlas_ring_slot_count(ring: 15) == 392
 }
 
 data repo_atlas_document_shape_note: String = "ACCEPTANCE: the served route returns a COMPLETE document, like every sibling on the same serve table. Each element is asserted individually rather than through one composite check, so a page missing only its charset or only its stylesheet fails on the missing part and names it."
@@ -172,7 +172,7 @@ test fn the_served_page_is_a_complete_document() -> Bool {
     && string_contains(haystack: html, needle: "charset=\"utf-8\"")
     && string_contains(haystack: html, needle: "width=device-width")
     && string_contains(haystack: html, needle: "<title>")
-    && string_contains(haystack: html, needle: repo_atlas_page_title)
+    && string_contains(haystack: html, needle: gunbc.roadmap_repo_atlas_sandbox.repo_atlas_page_title)
 }
 
 test fn the_served_page_embeds_its_stylesheet() -> Bool {
@@ -184,7 +184,7 @@ test fn the_served_page_embeds_its_stylesheet() -> Bool {
 data repo_atlas_channel_distinguishable_note: String = "THE CLAIM THE CARRIER'S NOTE USED TO ASSERT WITHOUT EVIDENCE. A structural dot and a changed dot must not resolve to the same paint. Asserted on the STYLESHEET rather than on prose: the change channel must bind a different role variable than the structure channel, and the impact channel must be a stroke rather than a fill, so deleting a rule reds here."
 
 test fn the_change_channel_is_painted_differently_from_structure() -> Bool {
-  let css = repo_atlas_css()
+  let css = gunbc.roadmap_repo_atlas_sandbox.repo_atlas_css()
   string_contains(haystack: css, needle: ".atlas-dot")
     && string_contains(haystack: css, needle: ".atlas-dot-changed")
     && string_contains(haystack: css, needle: ".atlas-impact-ring")
@@ -194,7 +194,7 @@ test fn the_change_channel_is_painted_differently_from_structure() -> Bool {
 
 data atlas_live_page_is_wet_note: String = "THE LIVE-PAGE CLAIM WAS DELETED FROM THIS FILE, DELIBERATELY, AND THIS ROW IS THE RECEIPT. repo_atlas_page now performs real host effects — git status, git rev-parse, git diff, and the working-tree module walk — so calling it from a hermetic per-PR witness would refuse with 'no mock_response for operation', which is correct hermetic behaviour in the wrong lane (the same split external_model_scope_live_cover_witness_test records).
 
-WHAT STILL COVERS THE SERVED SHAPE: every claim here drives repo_atlas_document, which IS the function the handler renders, with controlled snapshots. What is NOT covered by any hermetic claim is the live observation itself — whether the tree is clean, whether the comparison resolves — and that is precisely what the browser and latency receipt has to establish by execution, not something to assert here with a mock."
+WHAT STILL COVERS THE SERVED SHAPE: every claim here drives gunbc.roadmap_repo_atlas_sandbox.repo_atlas_document, which IS the function the handler renders, with controlled snapshots. What is NOT covered by any hermetic claim is the live observation itself — whether the tree is clean, whether the comparison resolves — and that is precisely what the browser and latency receipt has to establish by execution, not something to assert here with a mock."
 
 data atlas_plane_split_note: String = "ACCEPTANCE: the change plane is a SEPARATE group, and the paired control proves the structure group is untouched by it. The claim compares the two documents rather than merely asserting the group appears — if a change were still expressed by classing the structural circle, the changes group would be absent and the structure group would differ, and both halves red."
 
@@ -219,8 +219,8 @@ Both halves are asserted: the MODEL always distinguished these slots in millideg
 fn atlas_slot_pair_separates(ring: Int, low: Int, high: Int) -> Bool {
   let a = gunbc.repo_atlas_projection.AtlasAddress { ring: ring, slot: low }
   let b = gunbc.repo_atlas_projection.AtlasAddress { ring: ring, slot: high }
-  atlas_slot_angle_millidegrees(address: a) < atlas_slot_angle_millidegrees(address: b)
-    && atlas_cell_transform(address: a) != atlas_cell_transform(address: b)
+  gunbc.roadmap_repo_atlas_sandbox.atlas_slot_angle_millidegrees(address: a) < gunbc.roadmap_repo_atlas_sandbox.atlas_slot_angle_millidegrees(address: b)
+    && gunbc.roadmap_repo_atlas_sandbox.atlas_cell_transform(address: a) != gunbc.roadmap_repo_atlas_sandbox.atlas_cell_transform(address: b)
 }
 
 test fn the_slot_pairs_that_collapsed_now_separate() -> Bool {
@@ -234,10 +234,10 @@ test fn the_slot_pairs_that_collapsed_now_separate() -> Bool {
 data atlas_fraction_render_note: String = "The serializer must keep three decimals and PAD them, or 918 and 18 millidegrees would both render as a fraction beginning with 1 and two different addresses would print the same text."
 
 test fn millidegrees_render_with_padded_fraction() -> Bool {
-  atlas_millidegrees_text(millidegrees: 918) == "0.918"
-    && atlas_millidegrees_text(millidegrees: 180) == "0.180"
-    && atlas_millidegrees_text(millidegrees: 7) == "0.007"
-    && atlas_millidegrees_text(millidegrees: 360000) == "360.000"
+  gunbc.roadmap_repo_atlas_sandbox.atlas_millidegrees_text(millidegrees: 918) == "0.918"
+    && gunbc.roadmap_repo_atlas_sandbox.atlas_millidegrees_text(millidegrees: 180) == "0.180"
+    && gunbc.roadmap_repo_atlas_sandbox.atlas_millidegrees_text(millidegrees: 7) == "0.007"
+    && gunbc.roadmap_repo_atlas_sandbox.atlas_millidegrees_text(millidegrees: 360000) == "360.000"
 }
 
 data atlas_focus_note: String = "ACCEPTANCE: the atlas is ONE keyboard stop, not one per cell. The live page has 2168 occupied cells; a tabindex on each would have made the study a two-thousand-stop keyboard trap. Titles remain on every dot for pointer inspection."

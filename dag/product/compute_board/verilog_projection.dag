@@ -47,13 +47,13 @@ type VerilogBinding {
   spelling: String
 }
 
-fn spelling_count(bindings: std.algebra.FreeMonoid<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> std.nat.Nat {
+fn spelling_count(bindings: List<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> std.nat.Nat {
   fold(bindings, init: 0, f: fn(acc, b) {
     if (b.signal as String) == (name as String) { acc + 1 } else { acc }
   })
 }
 
-fn spelling_for(bindings: std.algebra.FreeMonoid<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> String? {
+fn spelling_for(bindings: List<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> String? {
   fold(bindings, init: none, f: fn(acc, b) {
     match acc {
       Present { value: v } => Present { value: v }
@@ -72,12 +72,12 @@ fn spelling_for(bindings: std.algebra.FreeMonoid<VerilogBinding>, name: product.
 
 fn signal_is_declared_output(intent: product.compute_board.digital_control.DigitalControlIntent, name: product.compute_board.digital_control.SignalName) -> Bool {
   fold(intent.signals, init: false, f: fn(acc, s) {
-    acc || (signal_direction_is_output(s: s) && (s.name as String) == (name as String))
+    acc || (product.compute_board.digital_control.signal_direction_is_output(s: s) && (s.name as String) == (name as String))
   })
 }
 
 // Every signal the module names, including the module name itself, must be bound and admissible.
-fn signal_admission_refusal(bindings: std.algebra.FreeMonoid<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> VerilogProjectionRefusal? {
+fn signal_admission_refusal(bindings: List<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> VerilogProjectionRefusal? {
   if spelling_count(bindings: bindings, name: name) > 1 {
     Present { value: DuplicateSignalBinding { signal: name as std.types.NonEmptyStr } }
   } else {
@@ -94,7 +94,7 @@ fn signal_admission_refusal(bindings: std.algebra.FreeMonoid<VerilogBinding>, na
 }
 
 fn first_admission_refusal(
-  bindings: std.algebra.FreeMonoid<VerilogBinding>,
+  bindings: List<VerilogBinding>,
   intent: product.compute_board.digital_control.DigitalControlIntent
 ) -> VerilogProjectionRefusal? {
   match signal_admission_refusal(bindings: bindings, name: intent.block_name) {
@@ -122,7 +122,7 @@ fn first_admission_refusal(
 // owns its own syntax: a fold from board vocabulary onto the Verilog AST, naming no keyword, no
 // punctuation and no layout. If a Verilog spelling ever reappears in this module, the language
 // has leaked back into the product and the wall this lane built has come down.
-fn symbol_for(bindings: std.algebra.FreeMonoid<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> v2.std.node.Symbol? {
+fn symbol_for(bindings: List<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> v2.std.node.Symbol? {
   fold(bindings, init: none, f: fn(acc, b) {
     match acc {
       Present { value: v } => Present { value: v }
@@ -131,32 +131,32 @@ fn symbol_for(bindings: std.algebra.FreeMonoid<VerilogBinding>, name: product.co
   })
 }
 
-fn binding_spellings_for(bindings: std.algebra.FreeMonoid<VerilogBinding>) -> Map<v2.std.node.Symbol, String> {
+fn binding_spellings_for(bindings: List<VerilogBinding>) -> Map<v2.std.node.Symbol, String> {
   fold(bindings, init: v2.extdeps.languages.verilog.verilog_base_spellings(), f: fn(acc, b) {
-    map_insert(acc, b.symbol, b.spelling)
+    v2.std.collection.map_insert(acc, b.symbol, b.spelling)
   })
 }
 
 fn direction_symbol(s: product.compute_board.digital_control.DigitalSignal) -> v2.std.node.Symbol {
   match s.direction {
-    DigitalInput => ^verilog_dir_input
-    DigitalOutput => ^verilog_dir_output
+    product.compute_board.digital_control.DigitalInput => ^verilog_dir_input
+    product.compute_board.digital_control.DigitalOutput => ^verilog_dir_output
   }
 }
 
-fn expr_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, e: product.compute_board.digital_control.DigitalExpr) -> v2.std.node.Node {
+fn expr_node(bindings: List<VerilogBinding>, e: product.compute_board.digital_control.DigitalExpr) -> v2.std.node.Node {
   match e {
-    SignalRef { signal: n } =>
+    product.compute_board.digital_control.SignalRef { signal: n } =>
       v2.extdeps.languages.verilog.verilog_signal_reference(name: symbol_or_unbound(bindings: bindings, name: n))
-    Negation { operand: inner } =>
+    product.compute_board.digital_control.Negation { operand: inner } =>
       v2.extdeps.languages.verilog.verilog_unary_application(operator: ^verilog_op_not, operand: expr_node(bindings: bindings, e: inner))
-    Conjunction { left: l, right: r } =>
+    product.compute_board.digital_control.Conjunction { left: l, right: r } =>
       v2.extdeps.languages.verilog.verilog_binary_application(
         left: expr_node(bindings: bindings, e: l),
         operator: ^verilog_op_and,
         right: expr_node(bindings: bindings, e: r)
       )
-    Disjunction { left: l, right: r } =>
+    product.compute_board.digital_control.Disjunction { left: l, right: r } =>
       v2.extdeps.languages.verilog.verilog_binary_application(
         left: expr_node(bindings: bindings, e: l),
         operator: ^verilog_op_or,
@@ -169,14 +169,14 @@ fn expr_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, e: product.comput
 // refuses on a signal with no binding. The arm exists because the lookup is total and must
 // answer something; it is unreachable on the production path and the witness for the unbound
 // case proves the refusal fires first.
-fn symbol_or_unbound(bindings: std.algebra.FreeMonoid<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> v2.std.node.Symbol {
+fn symbol_or_unbound(bindings: List<VerilogBinding>, name: product.compute_board.digital_control.SignalName) -> v2.std.node.Symbol {
   match symbol_for(bindings: bindings, name: name) {
     Present { value: sym } => sym
     Absent => ^verilog_unbound_signal
   }
 }
 
-fn port_list_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, signals: std.algebra.FreeMonoid<product.compute_board.digital_control.DigitalSignal>) -> v2.std.node.Node {
+fn port_list_node(bindings: List<VerilogBinding>, signals: List<product.compute_board.digital_control.DigitalSignal>) -> v2.std.node.Node {
   match signals {
     Empty => v2.extdeps.languages.verilog.verilog_conj(children: [])
     Cons { head: s, tail: rest } =>
@@ -200,7 +200,7 @@ fn port_list_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, signals: std
   }
 }
 
-fn assign_list_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, equations: std.algebra.FreeMonoid<product.compute_board.digital_control.DigitalEquation>) -> v2.std.node.Node {
+fn assign_list_node(bindings: List<VerilogBinding>, equations: List<product.compute_board.digital_control.DigitalEquation>) -> v2.std.node.Node {
   match equations {
     Empty => v2.extdeps.languages.verilog.verilog_conj(children: [])
     Cons { head: eq, tail: rest } =>
@@ -224,7 +224,7 @@ fn assign_list_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, equations:
   }
 }
 
-fn intent_module_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, intent: product.compute_board.digital_control.DigitalControlIntent) -> v2.std.node.Node {
+fn intent_module_node(bindings: List<VerilogBinding>, intent: product.compute_board.digital_control.DigitalControlIntent) -> v2.std.node.Node {
   v2.extdeps.languages.verilog.verilog_module_declaration(
     name: symbol_or_unbound(bindings: bindings, name: intent.block_name),
     ports: port_list_node(bindings: bindings, signals: intent.signals),
@@ -235,7 +235,7 @@ fn intent_module_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, intent: 
 fn project_intent_to_verilog(
   article_identity: product.compute_board.article.BoardArticleIdentity,
   intent: product.compute_board.digital_control.DigitalControlIntent,
-  bindings: std.algebra.FreeMonoid<VerilogBinding>
+  bindings: List<VerilogBinding>
 ) -> VerilogProjection {
   match first_admission_refusal(bindings: bindings, intent: intent) {
     Present { value: r } => VerilogProjectionRefused { cause: r }
@@ -244,14 +244,14 @@ fn project_intent_to_verilog(
         module_node: intent_module_node(bindings: bindings, intent: intent),
         spellings: binding_spellings_for(bindings: bindings)
       ) {
-        VerilogEmitted { source: src } =>
+        v2.extdeps.languages.verilog.VerilogEmitted { source: src } =>
           VerilogModuleEmitted {
             receipt: VerilogEmissionReceipt {
               source_article: article_identity,
               source: src,
             },
           }
-        VerilogEmissionRefused { reason: why } =>
+        v2.extdeps.languages.verilog.VerilogEmissionRefused { reason: why } =>
           VerilogProjectionRefused { cause: TargetEmissionRefused { reason: why } }
       }
   }
@@ -261,12 +261,12 @@ fn project_intent_to_verilog(
 // spelling is target syntax, and the correction that produced this module's shape was removing
 // exactly that kind of fact from the authority. The article names logical signals; this table
 // says how this one target spells them.
-data power_interlock_verilog_bindings: std.algebra.FreeMonoid<VerilogBinding> = [
+data power_interlock_verilog_bindings: List<VerilogBinding> = [
   VerilogBinding { signal: "board_power_interlock" as product.compute_board.digital_control.SignalName, symbol: ^interlock_module_name, spelling: "board_power_interlock" },
-  VerilogBinding { signal: conditioned_good_signal, symbol: ^interlock_conditioned_good, spelling: "conditioned_good" },
-  VerilogBinding { signal: fault_signal, symbol: ^interlock_fault, spelling: "fault" },
-  VerilogBinding { signal: power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
-  VerilogBinding { signal: reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
+  VerilogBinding { signal: product.compute_board.digital_control.conditioned_good_signal, symbol: ^interlock_conditioned_good, spelling: "conditioned_good" },
+  VerilogBinding { signal: product.compute_board.digital_control.fault_signal, symbol: ^interlock_fault, spelling: "fault" },
+  VerilogBinding { signal: product.compute_board.digital_control.power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
+  VerilogBinding { signal: product.compute_board.digital_control.reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
 ]
 
 // The production entry point, for the same reason the SPICE side has one: identity and intent
@@ -279,7 +279,7 @@ data power_interlock_verilog_bindings: std.algebra.FreeMonoid<VerilogBinding> = 
 // nothing drives, has no route to this function at all.
 fn project_article_to_verilog(
   admitted: product.compute_board.admission.AdmittedBoardPowerInterfaceArticle,
-  bindings: std.algebra.FreeMonoid<VerilogBinding>
+  bindings: List<VerilogBinding>
 ) -> VerilogProjection {
   let article = product.compute_board.admission.admitted_article(a: admitted)
   project_intent_to_verilog(

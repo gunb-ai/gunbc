@@ -28,46 +28,46 @@ type MetaExecConfinementLeak {
 
 data empty_meta_exec_leaks: List<MetaExecConfinementLeak> = []
 
-fn char_eq(a: std.types.Char, b: std.types.Char) -> v2.std.logic.Bool {
+fn char_eq(a: std.types.Char, b: std.types.Char) -> Bool {
   a == b
 }
 
-fn list_contains_str(xs: List<String>, target: String) -> v2.std.logic.Bool {
-  fold_list(
+fn list_contains_str(xs: List<String>, target: String) -> Bool {
+  v2.std.algebra.fold_list(
     xs: xs,
     empty: false,
     cons: fn(acc, s) { acc || (s == target) }
   )
 }
 
-fn path_has_any_prefix(prefixes: List<String>, path: String) -> v2.std.logic.Bool {
-  fold_list(
+fn path_has_any_prefix(prefixes: List<String>, path: String) -> Bool {
+  v2.std.algebra.fold_list(
     xs: prefixes,
     empty: false,
-    cons: fn(acc, p) { acc || is_prefix_of(prefix: p, xs: path, eq: v2.lens.meta_exec_confinement.char_eq) }
+    cons: fn(acc, p) { acc || v2.std.algebra.is_prefix_of(prefix: p, xs: path, eq: char_eq) }
   )
 }
 
-fn path_is_meta_exec_realization_edge(path: String) -> v2.std.logic.Bool {
-  v2.lens.meta_exec_confinement.path_has_any_prefix(prefixes: meta_exec_realization_edge_path_prefixes, path: path)
+fn path_is_meta_exec_realization_edge(path: String) -> Bool {
+  path_has_any_prefix(prefixes: meta_exec_realization_edge_path_prefixes, path: path)
 }
 
-fn is_meta_exec_confinement_leak(fact: v2.std.layer.LayerImportFact, roster: List<String>) -> v2.std.logic.Bool {
+fn is_meta_exec_confinement_leak(fact: v2.std.layer.LayerImportFact, roster: List<String>) -> Bool {
   fact.import_module == target_meta_exec_module
     && (path_is_meta_exec_realization_edge(path: fact.path) == false)
-    && (v2.lens.meta_exec_confinement.list_contains_str(xs: roster, target: fact.path) == false)
+    && (list_contains_str(xs: roster, target: fact.path) == false)
 }
 
 fn scan_facts_for_leaks(
   facts: List<v2.std.layer.LayerImportFact>,
   roster: List<String>
 ) -> List<MetaExecConfinementLeak> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: facts,
     empty: empty_meta_exec_leaks,
     cons: fn(acc, fact) {
       if is_meta_exec_confinement_leak(fact: fact, roster: roster) {
-        list_snoc_item(
+        v2.std.algebra.list_snoc_item(
           xs: acc,
           item: MetaExecConfinementLeak {
             path: fact.path,
@@ -85,21 +85,21 @@ fn meta_exec_leak_count(
   facts: List<v2.std.layer.LayerImportFact>,
   roster: List<String>
 ) -> Int {
-  length(xs: scan_facts_for_leaks(facts: facts, roster: roster))
+  v2.std.algebra.length(xs: scan_facts_for_leaks(facts: facts, roster: roster))
 }
 
 fn meta_exec_confinement_holds(
   facts: List<v2.std.layer.LayerImportFact>,
   roster: List<String>
-) -> v2.std.logic.Bool {
-  is_empty(xs: scan_facts_for_leaks(facts: facts, roster: roster))
+) -> Bool {
+  v2.std.algebra.is_empty(xs: scan_facts_for_leaks(facts: facts, roster: roster))
 }
 
 fn meta_exec_leak_count_canonical(facts: List<v2.std.layer.LayerImportFact>) -> Int {
   meta_exec_leak_count(facts: facts, roster: meta_exec_confinement_exception_paths())
 }
 
-fn meta_exec_confinement_holds_canonical(facts: List<v2.std.layer.LayerImportFact>) -> v2.std.logic.Bool {
+fn meta_exec_confinement_holds_canonical(facts: List<v2.std.layer.LayerImportFact>) -> Bool {
   meta_exec_confinement_holds(facts: facts, roster: meta_exec_confinement_exception_paths())
 }
 
@@ -117,26 +117,26 @@ data meta_exec_consumer_scan_roots: List<String> = [
 
 fn meta_exec_leak_count_live(scan_roots: List<String>) -> Int {
   meta_exec_leak_count_canonical(
-    facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
+    facts: v2.std.layer.layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
   )
 }
 
-fn meta_exec_confinement_clean_live(scan_roots: List<String>) -> v2.std.logic.Bool {
+fn meta_exec_confinement_clean_live(scan_roots: List<String>) -> Bool {
   meta_exec_confinement_holds_canonical(
-    facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
+    facts: v2.std.layer.layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
   )
 }
 
 data empty_meta_exec_path_list: List<String> = []
 
 fn meta_exec_leak_candidate_paths_from_facts(facts: List<v2.std.layer.LayerImportFact>) -> List<String> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: facts,
     empty: empty_meta_exec_path_list,
     cons: fn(acc, fact) {
       if fact.import_module == target_meta_exec_module
         && (path_is_meta_exec_realization_edge(path: fact.path) == false) {
-        list_snoc_item(xs: acc, item: fact.path)
+        v2.std.algebra.list_snoc_item(xs: acc, item: fact.path)
       } else {
         acc
       }
@@ -146,7 +146,7 @@ fn meta_exec_leak_candidate_paths_from_facts(facts: List<v2.std.layer.LayerImpor
 
 fn meta_exec_live_leak_candidate_paths(scan_roots: List<String>) -> List<String> {
   meta_exec_leak_candidate_paths_from_facts(
-    facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
+    facts: v2.std.layer.layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
   )
 }
 
@@ -154,14 +154,14 @@ fn meta_exec_stale_roster_entries(
   roster: List<String>,
   live_leak_paths: List<String>
 ) -> List<String> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: roster,
     empty: empty_meta_exec_path_list,
     cons: fn(acc, entry) {
-      if v2.lens.meta_exec_confinement.list_contains_str(xs: live_leak_paths, target: entry) {
+      if list_contains_str(xs: live_leak_paths, target: entry) {
         acc
       } else {
-        list_snoc_item(xs: acc, item: entry)
+        v2.std.algebra.list_snoc_item(xs: acc, item: entry)
       }
     }
   )
@@ -171,14 +171,14 @@ fn meta_exec_roster_stale_count(
   roster: List<String>,
   live_leak_paths: List<String>
 ) -> Int {
-  length(xs: meta_exec_stale_roster_entries(roster: roster, live_leak_paths: live_leak_paths))
+  v2.std.algebra.length(xs: meta_exec_stale_roster_entries(roster: roster, live_leak_paths: live_leak_paths))
 }
 
 fn meta_exec_roster_sound(
   roster: List<String>,
   live_leak_paths: List<String>
-) -> v2.std.logic.Bool {
-  is_empty(xs: meta_exec_stale_roster_entries(roster: roster, live_leak_paths: live_leak_paths))
+) -> Bool {
+  v2.std.algebra.is_empty(xs: meta_exec_stale_roster_entries(roster: roster, live_leak_paths: live_leak_paths))
 }
 
 fn meta_exec_roster_stale_count_live(scan_roots: List<String>) -> Int {
@@ -188,7 +188,7 @@ fn meta_exec_roster_stale_count_live(scan_roots: List<String>) -> Int {
   )
 }
 
-fn meta_exec_roster_sound_live(scan_roots: List<String>) -> v2.std.logic.Bool {
+fn meta_exec_roster_sound_live(scan_roots: List<String>) -> Bool {
   meta_exec_roster_sound(
     roster: meta_exec_confinement_exception_paths(),
     live_leak_paths: meta_exec_live_leak_candidate_paths(scan_roots: scan_roots)
@@ -196,5 +196,5 @@ fn meta_exec_roster_sound_live(scan_roots: List<String>) -> v2.std.logic.Bool {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch }
 }

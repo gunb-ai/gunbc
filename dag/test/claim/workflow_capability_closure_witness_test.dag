@@ -1,7 +1,7 @@
 module test.claim.workflow_capability_closure_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // THE SUBJECT IS A REAL WORKFLOW THAT REALLY FAILED, transcribed from a git receipt rather than
 // invented: .github/workflows/deploy.yml at a4677f33f4a8d5951de84a9e32383a8835797bab, deleted in
@@ -13,15 +13,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // It died on `cargo: command not found` without ever reaching its terminal step. The model
 // represented it as a perfectly valid workflow, because by the time these are Steps a job that
 // needs a toolchain and a job that has one look the same.
-data deploy_yml_shape: List<CapabilityAnnotatedStep> = [
-  CapabilityAnnotatedStep { step_name: "Checkout", role: capability_neutral },
-  CapabilityAnnotatedStep {
+data deploy_yml_shape: List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> = [
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Checkout", role: gunbc.workflow_capability_closure.capability_neutral },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
     step_name: "Build the deploy binary",
-    role: consumes_only(capabilities: [CargoCapability]),
+    role: gunbc.workflow_capability_closure.consumes_only(capabilities: [gunbc.roadmap_execution_contract.CargoCapability]),
   },
-  CapabilityAnnotatedStep { step_name: "Materialize the pinned provider runtime", role: capability_neutral },
-  CapabilityAnnotatedStep { step_name: "Deploy the dashboard to srv1", role: capability_neutral },
-  CapabilityAnnotatedStep { step_name: "Advance the admitted fleet revision", role: capability_neutral },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Materialize the pinned provider runtime", role: gunbc.workflow_capability_closure.capability_neutral },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Deploy the dashboard to srv1", role: gunbc.workflow_capability_closure.capability_neutral },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Advance the admitted fleet revision", role: gunbc.workflow_capability_closure.capability_neutral },
 ]
 
 // THE RED. This shape must refuse.
@@ -32,17 +32,17 @@ test fn a_job_consuming_cargo_with_no_provider_refuses() -> Bool {
 // POSITIVE CONTROL, and without it the red above is worthless: a checker that refuses EVERY job
 // would pass it. This is witnesses.yml's live shape -- setup-rust-toolchain provides, the build
 // step consumes -- and it must be admitted.
-data witnesses_yml_shape: List<CapabilityAnnotatedStep> = [
-  CapabilityAnnotatedStep { step_name: "Checkout", role: capability_neutral },
-  CapabilityAnnotatedStep {
+data witnesses_yml_shape: List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> = [
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Checkout", role: gunbc.workflow_capability_closure.capability_neutral },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
     step_name: "Install Rust toolchain",
-    role: provides_only(capabilities: [CargoCapability]),
+    role: gunbc.workflow_capability_closure.provides_only(capabilities: [gunbc.roadmap_execution_contract.CargoCapability]),
   },
   gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
     step_name: "Build the witness fold",
-    role: consumes_only(capabilities: [CargoCapability]),
+    role: gunbc.workflow_capability_closure.consumes_only(capabilities: [gunbc.roadmap_execution_contract.CargoCapability]),
   },
-  CapabilityAnnotatedStep { step_name: "All witnesses (one prepared subject, one fold)", role: capability_neutral },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "All witnesses (one prepared subject, one fold)", role: gunbc.workflow_capability_closure.capability_neutral },
 ]
 
 test fn a_job_providing_before_consuming_is_admitted() -> Bool {
@@ -53,15 +53,15 @@ test fn a_job_providing_before_consuming_is_admitted() -> Bool {
 // contain a toolchain step anywhere" passes this job, and this job is broken in exactly the way
 // deploy.yml was: the cargo invocation resolves nothing, because the provider has not run yet.
 // Ordering is the content of the claim, so it gets its own witness.
-data provider_after_consumer_shape: List<CapabilityAnnotatedStep> = [
-  CapabilityAnnotatedStep { step_name: "Checkout", role: capability_neutral },
-  CapabilityAnnotatedStep {
+data provider_after_consumer_shape: List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> = [
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Checkout", role: gunbc.workflow_capability_closure.capability_neutral },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
     step_name: "Build the deploy binary",
-    role: consumes_only(capabilities: [CargoCapability]),
+    role: gunbc.workflow_capability_closure.consumes_only(capabilities: [gunbc.roadmap_execution_contract.CargoCapability]),
   },
   gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
     step_name: "Install Rust toolchain",
-    role: provides_only(capabilities: [CargoCapability]),
+    role: gunbc.workflow_capability_closure.provides_only(capabilities: [gunbc.roadmap_execution_contract.CargoCapability]),
   },
 ]
 
@@ -86,60 +86,60 @@ test fn the_live_witness_floor_job_closes_its_capabilities() -> Bool {
 // expressible for the first time. If provides were granted before consumes was checked, such a step
 // would always close -- the vacuous answer, and exactly the shape a careless fold produces. So the
 // fold checks consumes against what PRECEDING steps provided, then grants.
-data self_satisfying_step: List<CapabilityAnnotatedStep> = [
-  CapabilityAnnotatedStep {
+data self_satisfying_step: List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> = [
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
     step_name: "Pretends to provide what it needs",
-    role: StepCapabilityRole {
-      provides: [CargoCapability],
-      consumes: [CargoCapability],
+    role: gunbc.workflow_capability_closure.StepCapabilityRole {
+      provides: [gunbc.roadmap_execution_contract.CargoCapability],
+      consumes: [gunbc.roadmap_execution_contract.CargoCapability],
     },
   },
 ]
 
 test fn a_step_cannot_satisfy_its_own_requirement() -> Bool {
-  capability_closure_is_closed(v: workflow_job_capability_closure(steps: self_satisfying_step)) == false
+  gunbc.workflow_capability_closure.capability_closure_is_closed(v: gunbc.workflow_capability_closure.workflow_job_capability_closure(steps: self_satisfying_step)) == false
 }
 
 // MULTI-CAPABILITY PROVISION, the case that forced the record model: one action installs several
 // tools and later steps consume different ones. A singular-capability carrier could not express
 // this without either a false Neutral or a lie about what the action installs.
-data multi_capability_job: List<CapabilityAnnotatedStep> = [
-  CapabilityAnnotatedStep {
+data multi_capability_job: List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> = [
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
     step_name: "Setup Rust",
-    role: provides_only(capabilities: [CargoCapability, RustcCapability]),
+    role: gunbc.workflow_capability_closure.provides_only(capabilities: [gunbc.roadmap_execution_contract.CargoCapability, gunbc.roadmap_execution_contract.RustcCapability]),
   },
-  CapabilityAnnotatedStep {
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
     step_name: "Derive native-cache root",
-    role: consumes_only(capabilities: [RustcCapability]),
+    role: gunbc.workflow_capability_closure.consumes_only(capabilities: [gunbc.roadmap_execution_contract.RustcCapability]),
   },
-  CapabilityAnnotatedStep {
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
     step_name: "Build",
-    role: consumes_only(capabilities: [CargoCapability]),
+    role: gunbc.workflow_capability_closure.consumes_only(capabilities: [gunbc.roadmap_execution_contract.CargoCapability]),
   },
 ]
 
 test fn one_step_can_provide_several_capabilities() -> Bool {
-  capability_closure_is_closed(v: workflow_job_capability_closure(steps: multi_capability_job))
+  gunbc.workflow_capability_closure.capability_closure_is_closed(v: gunbc.workflow_capability_closure.workflow_job_capability_closure(steps: multi_capability_job))
 }
 
 // ...and the discriminator for it: a consumer of a capability the provider does NOT install must
 // still refuse, so "provides a list" is not read as "provides everything".
-data multi_capability_missing_one: List<CapabilityAnnotatedStep> = [
-  CapabilityAnnotatedStep {
+data multi_capability_missing_one: List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> = [
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
     step_name: "Setup Rust",
-    role: provides_only(capabilities: [CargoCapability, RustcCapability]),
+    role: gunbc.workflow_capability_closure.provides_only(capabilities: [gunbc.roadmap_execution_contract.CargoCapability, gunbc.roadmap_execution_contract.RustcCapability]),
   },
-  CapabilityAnnotatedStep {
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
     step_name: "Format check",
-    role: consumes_only(capabilities: [RustfmtCapability]),
+    role: gunbc.workflow_capability_closure.consumes_only(capabilities: [gunbc.roadmap_execution_contract.RustfmtCapability]),
   },
 ]
 
 test fn a_capability_outside_the_provided_list_still_refuses() -> Bool {
-  capability_closure_is_closed(v: workflow_job_capability_closure(steps: multi_capability_missing_one)) == false
+  gunbc.workflow_capability_closure.capability_closure_is_closed(v: gunbc.workflow_capability_closure.workflow_job_capability_closure(steps: multi_capability_missing_one)) == false
 }
 
 // THE LIVE FLEET-CONVERGE JOB, the second real consumer.
 test fn the_live_fleet_converge_build_job_closes_its_capabilities() -> Bool {
-  fleet_converge_build_job_capability_closure_holds()
+  gunbc.fleet_converge_workflow.fleet_converge_build_job_capability_closure_holds()
 }

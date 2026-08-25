@@ -3,7 +3,7 @@ module extdeps.cloud.gcp.serviceusage
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "cloud.google.com/service-usage/docs/reference/rest/v1/services/batchEnable"
   }
 }
@@ -27,7 +27,7 @@ service gcp.ServiceUsage {
 
     idempotent
     transport rest {
-      method: POST,
+      method: v2.std.network.POST,
       path: "/v1/projects/\{project_id\}/services:batchEnable",
       body: { serviceIds: service_ids }
     }

@@ -1,20 +1,20 @@
 module test.claim.sec_edgar_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data gitlab_fy2026_gross_margin_ratio_low: Float = 0.8735
 
 data gitlab_fy2026_gross_margin_ratio_high: Float = 0.8737
 
 test fn w_gitlab_filed_facts_internal_consistency() -> Bool {
-  match filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue) {
+  match extdeps.sec.facts.filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue) {
     Present { value: revenue } =>
-      match filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_cost_of_revenue) {
+      match extdeps.sec.facts.filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_cost_of_revenue) {
         Present { value: cost } =>
-          match filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_gross_profit) {
+          match extdeps.sec.facts.filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_gross_profit) {
             Present { value: gross_profit } =>
-              filed_gross_profit_matches_revenue_minus_cost(
+              extdeps.sec.facts.filed_gross_profit_matches_revenue_minus_cost(
                 revenue: revenue,
                 cost_of_revenue: cost,
                 gross_profit: gross_profit
@@ -28,12 +28,12 @@ test fn w_gitlab_filed_facts_internal_consistency() -> Bool {
 }
 
 test fn w_gitlab_gross_margin_derivation_matches_filed_facts() -> Bool {
-  match derive_gross_margin_ratio_from_facts(
+  match extdeps.sec.facts.derive_gross_margin_ratio_from_facts(
     revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue,
     gross_profit: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_gross_profit
   ) {
     Present { value: ratio } =>
-      gross_margin_ratio_in_band(
+      extdeps.sec.facts.gross_margin_ratio_in_band(
         ratio: ratio,
         low: gitlab_fy2026_gross_margin_ratio_low,
         high: gitlab_fy2026_gross_margin_ratio_high
@@ -43,17 +43,17 @@ test fn w_gitlab_gross_margin_derivation_matches_filed_facts() -> Bool {
 }
 
 test fn w_gitlab_gross_margin_red_on_perturbed_gross_profit() -> Bool {
-  match filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue) {
+  match extdeps.sec.facts.filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue) {
     Present { value: revenue } =>
-      match filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_cost_of_revenue) {
+      match extdeps.sec.facts.filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_cost_of_revenue) {
         Present { value: cost } =>
-          match filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_gross_profit) {
+          match extdeps.sec.facts.filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_gross_profit) {
             Present { value: gross_profit } =>
-              !filed_gross_profit_matches_revenue_minus_cost(
+              !extdeps.sec.facts.filed_gross_profit_matches_revenue_minus_cost(
                 revenue: revenue,
                 cost_of_revenue: cost,
-                gross_profit: usd_whole_dollars(
-                  count: usd_whole_dollars_count(gross_profit) + 1
+                gross_profit: extdeps.sec.facts.usd_whole_dollars(
+                  count: extdeps.sec.facts.usd_whole_dollars_count(gross_profit) + 1
                 )
               )
             _ => false
@@ -65,6 +65,6 @@ test fn w_gitlab_gross_margin_red_on_perturbed_gross_profit() -> Bool {
 }
 
 test fn w_gitlab_cik_verified_on_edgar() -> Bool {
-  cik_padded_digits(cik: extdeps.sec.issuer.gitlab.gitlab_cik) == "0001653482"
+  extdeps.sec.edgar.cik_padded_digits(cik: extdeps.sec.issuer.gitlab.gitlab_cik) == "0001653482"
 }
 

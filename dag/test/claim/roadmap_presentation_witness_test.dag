@@ -2,24 +2,24 @@ module test.claim.roadmap_presentation_witness
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data presentation_witness_fixture_note: String = "Every witness here runs against CONSTRUCTED fixtures, never the live roadmap population — a live count or a live row is a moving target that turns a semantic claim into a snapshot transcription (the A1 lesson, and the standing fixtures-not-live-counts rule). The specimen fixture is the operator's falsifier row (docs/plans/roadmap-presentation-seam-design.md section 1): seven obligations with Environment/Workspace/Agent complete, four pending, worker process exited, session container present."
 
 fn fx_specimen_segments() -> List<gunbc.roadmap_workflow_stage.WorkflowSegment> {
   [
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "admission receipt readable" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "worktree created" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "turn.completed and process exit 0" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "admission receipt readable" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "worktree created" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "turn.completed and process exit 0" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.ReviewWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.GoalAuditWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
   ]
 }
 
 fn fx_specimen_activity() -> gunbc.roadmap_presentation.ActivityView {
-  activity_view_from_parts(
+  gunbc.roadmap_presentation.activity_view_from_parts(
     segments: fx_specimen_segments(),
     remaining: 4,
     process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "" },
@@ -31,103 +31,103 @@ data specimen_consequence_note: String = "The operator's worked example verbatim
 
 test fn witness_specimen_summary_states_consequence_and_next_obligation() -> Bool {
   match fx_specimen_activity() {
-    ActiveWork { summary, obligations: _, remaining_obligation_count: remaining, current_activity: _, attention, evidence: _ } =>
+    gunbc.roadmap_presentation.ActiveWork { summary, obligations: _, remaining_obligation_count: remaining, current_activity: _, attention, evidence: _ } =>
       summary == "Agent turn completed; the retained session is no longer running · Verification next · 4 remaining"
         && remaining == 4
-        && match attention { ActivityRoutine => true ActivityAnomalous => false }
-    NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
-    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
-    ActivityUnobservable { reason: _ } => false
+        && match attention { gunbc.roadmap_presentation.ActivityRoutine => true gunbc.roadmap_presentation.ActivityAnomalous => false }
+    gunbc.roadmap_presentation.NoActiveWork => false
+    gunbc.roadmap_presentation.ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    gunbc.roadmap_presentation.LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+    gunbc.roadmap_presentation.CompletedWork { outcome: _, evidence: _ } => false
+    gunbc.roadmap_presentation.ActivityUnobservable { reason: _ } => false
   }
 }
 
 test fn witness_specimen_evidence_rows_carry_raw_facts_as_evidence() -> Bool {
   match fx_specimen_activity() {
-    ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence } =>
+    gunbc.roadmap_presentation.ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence } =>
       count(evidence) == 2
         && fold(evidence, init: false, f: (acc, row) => acc || (row.label == "session container" && row.value == "present"))
         && fold(evidence, init: false, f: (acc, row) => acc || (row.label == "worker process" && row.value == "process exited"))
         && count(obligations) == 7
-    NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
-    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
-    ActivityUnobservable { reason: _ } => false
+    gunbc.roadmap_presentation.NoActiveWork => false
+    gunbc.roadmap_presentation.ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    gunbc.roadmap_presentation.LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+    gunbc.roadmap_presentation.CompletedWork { outcome: _, evidence: _ } => false
+    gunbc.roadmap_presentation.ActivityUnobservable { reason: _ } => false
   }
 }
 
 test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
   let segments = [
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentActive, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentActive, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
   ]
-  match activity_view_from_parts(
+  match gunbc.roadmap_presentation.activity_view_from_parts(
     segments: segments,
     remaining: 5,
     process: gunbc.worker_lifecycle.WorkerProcessRunning { command: "codex exec" },
     current_activity: "",
   ) {
-    ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } =>
+    gunbc.roadmap_presentation.ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } =>
       summary == "Agent working"
-    NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
-    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
-    ActivityUnobservable { reason: _ } => false
+    gunbc.roadmap_presentation.NoActiveWork => false
+    gunbc.roadmap_presentation.ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    gunbc.roadmap_presentation.LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+    gunbc.roadmap_presentation.CompletedWork { outcome: _, evidence: _ } => false
+    gunbc.roadmap_presentation.ActivityUnobservable { reason: _ } => false
   }
 }
 
 // A refusal is a first-class presentation state with its LOCATED reason, never a styling variant of progress (DESIGN 5: typed, located; the attention rule auto-expands it). The discriminating fixture puts the refusal mid-ledger; the view must surface the refusing obligation's own detail string, and a failed segment must rank as anomalous ActiveWork — the two are distinct states with distinct remedies, and a refused ledger outranks a failed one because the refusal names an evidence gap the failure count cannot explain.
 test fn witness_refused_segment_projects_located_reason() -> Bool {
   let segments = [
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
   ]
-  match activity_view_from_parts(
+  match gunbc.roadmap_presentation.activity_view_from_parts(
     segments: segments,
     remaining: 6,
     process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "" },
     current_activity: "",
   ) {
-    ActiveWorkRefused { summary, located_reason, evidence: _ } =>
+    gunbc.roadmap_presentation.ActiveWorkRefused { summary, located_reason, evidence: _ } =>
       summary == "Agent evidence refused"
         && located_reason == "turn.completed with process unobserved: no exit was established"
-    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
-    NoActiveWork => false
-    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
-    ActivityUnobservable { reason: _ } => false
+    gunbc.roadmap_presentation.ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+    gunbc.roadmap_presentation.NoActiveWork => false
+    gunbc.roadmap_presentation.LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+    gunbc.roadmap_presentation.CompletedWork { outcome: _, evidence: _ } => false
+    gunbc.roadmap_presentation.ActivityUnobservable { reason: _ } => false
   }
 }
 
 test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
   let segments = [
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentFailed, detail: "exit 1 before terminal event" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentFailed, detail: "exit 1 before terminal event" },
   ]
-  match activity_view_from_parts(
+  match gunbc.roadmap_presentation.activity_view_from_parts(
     segments: segments,
     remaining: 6,
     process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 1, last_command: "" },
     current_activity: "",
   ) {
-    ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention, evidence: _ } =>
+    gunbc.roadmap_presentation.ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention, evidence: _ } =>
       summary == "Agent failed"
-        && match attention { ActivityAnomalous => true ActivityRoutine => false }
-    NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
-    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
-    ActivityUnobservable { reason: _ } => false
+        && match attention { gunbc.roadmap_presentation.ActivityAnomalous => true gunbc.roadmap_presentation.ActivityRoutine => false }
+    gunbc.roadmap_presentation.NoActiveWork => false
+    gunbc.roadmap_presentation.ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    gunbc.roadmap_presentation.LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+    gunbc.roadmap_presentation.CompletedWork { outcome: _, evidence: _ } => false
+    gunbc.roadmap_presentation.ActivityUnobservable { reason: _ } => false
   }
 }
 
 // The ticket headline is ONE typed field read end-to-end. The discriminating input is a headline that CONTAINS the legacy separators (an em-dash clause and a sentence break): under the deleted recompose-and-reparse round trip ('**headline** — brief' then split at punctuation) this headline would come back truncated at its own dash. The legacy residue is asserted separately on an AuthoredLine, where the lead heuristic is the declared residue of this projection.
 test fn witness_ticket_headline_survives_own_punctuation() -> Bool {
-  let t = gunbc.roadmap_authority.fields(
+  let t = fields(
     headline: "Close the wall — phase 2. Cleanly",
     boundary: "brief text",
     displaced_cost: "",
@@ -135,19 +135,19 @@ test fn witness_ticket_headline_survives_own_punctuation() -> Bool {
     red_control: "",
     out_of_scope: "",
     handback: "")
-  let rn = gunbc.roadmap_authority.ticket_row(identity: "rnfx_A2PRES0000000000000001", id: "a2-headline", done: false, t: t)
-  row_headline(line: rn.line) == "Close the wall — phase 2. Cleanly"
+  let rn = ticket_row(identity: "rnfx_A2PRES0000000000000001", id: "a2-headline", done: false, t: t)
+  gunbc.roadmap_presentation.row_headline(line: rn.line) == "Close the wall — phase 2. Cleanly"
 }
 
 test fn witness_legacy_line_keeps_lead_residue() -> Bool {
-  legacy_lead(full: "lead claim — trailing brief") == "lead claim"
-    && legacy_lead(full: "First sentence. Second sentence") == "First sentence"
-    && legacy_lead(full: "no separator at all") == "no separator at all"
+  gunbc.roadmap_presentation.legacy_lead(full: "lead claim — trailing brief") == "lead claim"
+    && gunbc.roadmap_presentation.legacy_lead(full: "First sentence. Second sentence") == "First sentence"
+    && gunbc.roadmap_presentation.legacy_lead(full: "no separator at all") == "no separator at all"
 }
 
 test fn witness_summary_is_absent_until_typed_source_exists() -> Bool {
-  let rn = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000002", id: "a2-sum", done: false, content: "content — with dash")
-  match row_summary(line: rn.line) {
+  let rn = authored(identity: "rnfx_A2PRES0000000000000002", id: "a2-sum", done: false, content: "content — with dash")
+  match gunbc.roadmap_presentation.row_summary(line: rn.line) {
     Absent => true
     Present { value: _ } => false
   }
@@ -156,60 +156,60 @@ test fn witness_summary_is_absent_until_typed_source_exists() -> Bool {
 data exact_constructor_note: String = "The exact-constructor discrimination (operator constraint 3): 'active' is never a disjunction of narrower facts. NoActiveAttempt projects to NoActiveWork with zero furniture; an unreadable evidence situation projects to ActivityUnobservable PRESERVING its located reason — distinct from both refusal and absence; and a fully-complete ledger projects to CompletedWork (the receipt-backed outcome), never to a routine ActiveWork whose summary happens to say complete. The RED controls are the cross-arm assertions: if unobservable collapsed into absence, the reason would be dropped and the second witness fails; if terminal collapsed into active, the third witness's CompletedWork arm never matches."
 
 test fn witness_no_attempt_projects_zero_furniture() -> Bool {
-  match activity_view_of(facts: NoActiveAttempt) {
-    NoActiveWork => true
-    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
-    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
-    ActivityUnobservable { reason: _ } => false
+  match gunbc.roadmap_presentation.activity_view_of(facts: gunbc.roadmap_presentation.NoActiveAttempt) {
+    gunbc.roadmap_presentation.NoActiveWork => true
+    gunbc.roadmap_presentation.ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+    gunbc.roadmap_presentation.ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    gunbc.roadmap_presentation.LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+    gunbc.roadmap_presentation.CompletedWork { outcome: _, evidence: _ } => false
+    gunbc.roadmap_presentation.ActivityUnobservable { reason: _ } => false
   }
 }
 
 test fn witness_unobservable_preserves_located_reason() -> Bool {
-  match activity_view_of(facts: gunbc.roadmap_presentation.AttemptUnobservable { reason: "attempt state file unreadable: permission denied" }) {
-    ActivityUnobservable { reason } => reason == "attempt state file unreadable: permission denied"
-    NoActiveWork => false
-    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
-    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+  match gunbc.roadmap_presentation.activity_view_of(facts: gunbc.roadmap_presentation.AttemptUnobservable { reason: "attempt state file unreadable: permission denied" }) {
+    gunbc.roadmap_presentation.ActivityUnobservable { reason } => reason == "attempt state file unreadable: permission denied"
+    gunbc.roadmap_presentation.NoActiveWork => false
+    gunbc.roadmap_presentation.ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+    gunbc.roadmap_presentation.ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    gunbc.roadmap_presentation.LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+    gunbc.roadmap_presentation.CompletedWork { outcome: _, evidence: _ } => false
   }
 }
 
 test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
   let segments = [
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.ReviewWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.GoalAuditWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
   ]
-  match activity_view_from_parts(
+  match gunbc.roadmap_presentation.activity_view_from_parts(
     segments: segments,
     remaining: 0,
     process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "" },
     current_activity: "",
   ) {
-    CompletedWork { outcome, evidence: _ } => outcome == "All obligations complete"
-    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
-    NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
-    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    ActivityUnobservable { reason: _ } => false
+    gunbc.roadmap_presentation.CompletedWork { outcome, evidence: _ } => outcome == "All obligations complete"
+    gunbc.roadmap_presentation.ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+    gunbc.roadmap_presentation.NoActiveWork => false
+    gunbc.roadmap_presentation.ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    gunbc.roadmap_presentation.LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+    gunbc.roadmap_presentation.ActivityUnobservable { reason: _ } => false
   }
 }
 
 // The two-axis discrimination over the TYPED scheduling position: a SchedulingReady row's dispatch is Available AND Primary; an upcoming/unplanned row's dispatch is the preserved manual override — fully operable, but AvailableAsOverride and Secondary. The RED control is the conjunction: if availability implied priority (the A1 ten-equal-pills defect), the override arm would surface as primary and the second assertion fails; if the override were dropped entirely (losing the deliberate out-of-order path), the secondary list would be empty and it also fails.
 test fn witness_ready_dispatch_is_primary_override_is_secondary() -> Bool {
-  let ready_view = action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle)
-  let blocked_view = action_view(scheduling: gunbc.roadmap_presentation.SchedulingUpcoming { blockers: ["a2-parent-1"] }, lifecycle: OpenLifecycle)
+  let ready_view = gunbc.roadmap_presentation.action_view(scheduling: gunbc.roadmap_presentation.SchedulingReady, lifecycle: gunbc.roadmap_presentation.OpenLifecycle)
+  let blocked_view = gunbc.roadmap_presentation.action_view(scheduling: gunbc.roadmap_presentation.SchedulingUpcoming { blockers: ["a2-parent-1"] }, lifecycle: gunbc.roadmap_presentation.OpenLifecycle)
   let ready_ok = match ready_view.primary_action {
     Present { value: a } =>
-      match a.kind { DispatchAction => true ClearSessionAction => false }
-        && match a.availability { ActionAvailable => true AvailableAsOverride => false ActionUnavailable => false }
+      match a.kind { gunbc.roadmap_presentation.DispatchAction => true gunbc.roadmap_presentation.ClearSessionAction => false }
+        && match a.availability { gunbc.roadmap_presentation.ActionAvailable => true gunbc.roadmap_presentation.AvailableAsOverride => false gunbc.roadmap_presentation.ActionUnavailable => false }
     Absent => false
   }
   let blocked_primary_empty = match blocked_view.primary_action {
@@ -217,63 +217,63 @@ test fn witness_ready_dispatch_is_primary_override_is_secondary() -> Bool {
     Present { value: _ } => false
   }
   let blocked_has_override = fold(blocked_view.secondary_actions, init: false, f: (acc, a) =>
-    acc || (match a.kind { DispatchAction => true ClearSessionAction => false }
-      && match a.availability { AvailableAsOverride => true ActionAvailable => false ActionUnavailable => false }
-      && match a.priority { SecondaryAction => true PrimaryAction => false DiagnosticAction => false }))
+    acc || (match a.kind { gunbc.roadmap_presentation.DispatchAction => true gunbc.roadmap_presentation.ClearSessionAction => false }
+      && match a.availability { gunbc.roadmap_presentation.AvailableAsOverride => true gunbc.roadmap_presentation.ActionAvailable => false gunbc.roadmap_presentation.ActionUnavailable => false }
+      && match a.priority { gunbc.roadmap_presentation.SecondaryAction => true gunbc.roadmap_presentation.PrimaryAction => false gunbc.roadmap_presentation.DiagnosticAction => false }))
   ready_ok && blocked_primary_empty && blocked_has_override
 }
 
 test fn witness_done_and_superseded_rows_offer_no_dispatch() -> Bool {
-  count(dispatch_action(scheduling: SchedulingReady, lifecycle: DoneLifecycle)) == 0
-    && count(dispatch_action(scheduling: SchedulingReady, lifecycle: SupersededLifecycle)) == 0
+  count(gunbc.roadmap_presentation.dispatch_action(scheduling: gunbc.roadmap_presentation.SchedulingReady, lifecycle: gunbc.roadmap_presentation.DoneLifecycle)) == 0
+    && count(gunbc.roadmap_presentation.dispatch_action(scheduling: gunbc.roadmap_presentation.SchedulingReady, lifecycle: gunbc.roadmap_presentation.SupersededLifecycle)) == 0
 }
 
 data cleanup_from_admission_note: String = "The session action derives from the OBSERVED cleanup admission and from nothing else (operator blocker 4, 2026-08-01). The prior constructor minted an ActionAvailable ClearSessionAction whenever the activity arm looked active/refused/completed — availability inferred from presentation state, exactly the fabrication the two-axis note forbids in the other direction. The discriminating trio: an allowed observed cleanup is Available and Diagnostic; an observed-but-disallowed cleanup is ActionUnavailable (this arm's first real consumer) while KEEPING its label and detail so the refusal is legible; no observed cleanup action is NoSessionAction, not an empty-labeled button. The RED: the deleted arm — action_view over any activity yields no ClearSessionAction — is asserted directly, so reintroducing the fabrication reds."
 
 test fn witness_session_action_derives_from_observed_admission() -> Bool {
-  let allowed = session_action_view(cleanup_action: "clear", cleanup_allowed: true, cleanup_detail: "only retained tmux session metadata will be removed")
-  let disallowed = session_action_view(cleanup_action: "clear", cleanup_allowed: false, cleanup_detail: "pane still running")
-  let absent = session_action_view(cleanup_action: "", cleanup_allowed: false, cleanup_detail: "")
+  let allowed = gunbc.roadmap_presentation.session_action_view(cleanup_action: "clear", cleanup_allowed: true, cleanup_detail: "only retained tmux session metadata will be removed")
+  let disallowed = gunbc.roadmap_presentation.session_action_view(cleanup_action: "clear", cleanup_allowed: false, cleanup_detail: "pane still running")
+  let absent = gunbc.roadmap_presentation.session_action_view(cleanup_action: "", cleanup_allowed: false, cleanup_detail: "")
   let allowed_ok = match allowed {
-    SessionAction { kind, availability, priority, label, detail: _ } =>
-      match kind { ClearSessionAction => true DispatchAction => false }
-        && match availability { ActionAvailable => true AvailableAsOverride => false ActionUnavailable => false }
-        && match priority { DiagnosticAction => true PrimaryAction => false SecondaryAction => false }
+    gunbc.roadmap_presentation.SessionAction { kind, availability, priority, label, detail: _ } =>
+      match kind { gunbc.roadmap_presentation.ClearSessionAction => true gunbc.roadmap_presentation.DispatchAction => false }
+        && match availability { gunbc.roadmap_presentation.ActionAvailable => true gunbc.roadmap_presentation.AvailableAsOverride => false gunbc.roadmap_presentation.ActionUnavailable => false }
+        && match priority { gunbc.roadmap_presentation.DiagnosticAction => true gunbc.roadmap_presentation.PrimaryAction => false gunbc.roadmap_presentation.SecondaryAction => false }
         && label == "clear"
-    NoSessionAction => false
+    gunbc.roadmap_presentation.NoSessionAction => false
   }
   let disallowed_ok = match disallowed {
-    SessionAction { kind: _, availability, priority: _, label, detail } =>
-      match availability { ActionUnavailable => true ActionAvailable => false AvailableAsOverride => false }
+    gunbc.roadmap_presentation.SessionAction { kind: _, availability, priority: _, label, detail } =>
+      match availability { gunbc.roadmap_presentation.ActionUnavailable => true gunbc.roadmap_presentation.ActionAvailable => false gunbc.roadmap_presentation.AvailableAsOverride => false }
         && label == "clear" && detail == "pane still running"
-    NoSessionAction => false
+    gunbc.roadmap_presentation.NoSessionAction => false
   }
   let absent_ok = match absent {
-    NoSessionAction => true
-    SessionAction { kind: _, availability: _, priority: _, label: _, detail: _ } => false
+    gunbc.roadmap_presentation.NoSessionAction => true
+    gunbc.roadmap_presentation.SessionAction { kind: _, availability: _, priority: _, label: _, detail: _ } => false
   }
   allowed_ok && disallowed_ok && absent_ok
 }
 
 fn action_view_has_no_clear(v: gunbc.roadmap_presentation.ActionView) -> Bool {
   (match v.primary_action {
-    Present { value: a } => match a.kind { ClearSessionAction => false DispatchAction => true }
+    Present { value: a } => match a.kind { gunbc.roadmap_presentation.ClearSessionAction => false gunbc.roadmap_presentation.DispatchAction => true }
     Absent => true
   })
     && !fold(v.secondary_actions, init: false, f: (acc, a) =>
-      acc || match a.kind { ClearSessionAction => true DispatchAction => false })
+      acc || match a.kind { gunbc.roadmap_presentation.ClearSessionAction => true gunbc.roadmap_presentation.DispatchAction => false })
 }
 
 test fn witness_action_view_never_fabricates_cleanup() -> Bool {
-  action_view_has_no_clear(v: action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle))
-    && action_view_has_no_clear(v: action_view(scheduling: gunbc.roadmap_presentation.SchedulingUpcoming { blockers: [] }, lifecycle: OpenLifecycle))
-    && action_view_has_no_clear(v: action_view(scheduling: SchedulingReady, lifecycle: ReviewLifecycle))
+  action_view_has_no_clear(v: gunbc.roadmap_presentation.action_view(scheduling: gunbc.roadmap_presentation.SchedulingReady, lifecycle: gunbc.roadmap_presentation.OpenLifecycle))
+    && action_view_has_no_clear(v: gunbc.roadmap_presentation.action_view(scheduling: gunbc.roadmap_presentation.SchedulingUpcoming { blockers: [] }, lifecycle: gunbc.roadmap_presentation.OpenLifecycle))
+    && action_view_has_no_clear(v: gunbc.roadmap_presentation.action_view(scheduling: gunbc.roadmap_presentation.SchedulingReady, lifecycle: gunbc.roadmap_presentation.ReviewLifecycle))
 }
 
 data session_facts_decided_note: String = "The decided session line and title detail (operator blocker 5): the client formerly concatenated 'session · present — ' + process_state and its own provider-facts title in TypeScript — a second prose authority. Both strings are now decided here and the witness pins them, including the empty-process-detail arm (no dangling separator)."
 
 test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
-  let v = session_facts_view(
+  let v = gunbc.roadmap_presentation.session_facts_view(
     process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
     process_detail: "exit=0 last-command=codex",
     provider: "codex",
@@ -283,7 +283,7 @@ test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
     cleanup_action: "clear",
     cleanup_allowed: true,
     cleanup_detail: "only retained tmux session metadata will be removed")
-  let bare = session_facts_view(
+  let bare = gunbc.roadmap_presentation.session_facts_view(
     process: gunbc.worker_lifecycle.WorkerProcessRunning { command: "codex exec" },
     process_detail: "",
     provider: "codex",
@@ -302,35 +302,35 @@ test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
 data lifecycle_axis_note: String = "Lifecycle discriminates on the node's own facts, distinct from frontier scheduling: an Unsigned node with unmerged evidence is open; merged evidence without signoff is review — implementation artifacts never accept (roadmap_acceptance_boundary_note); an accepting signoff is done; a superseded line outranks everything and carries its forwarding pointer."
 
 test fn witness_lifecycle_axes_discriminate() -> Bool {
-  let open_node = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000003", id: "a2-open", done: false, content: "open work")
-  let done_line_node = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000004", id: "a2-review", done: true, content: "review work")
-  let signed_node = gunbc.roadmap_authority.sign(rn: open_node, s: gunbc.roadmap_authority.signed(
+  let open_node = authored(identity: "rnfx_A2PRES0000000000000003", id: "a2-open", done: false, content: "open work")
+  let done_line_node = authored(identity: "rnfx_A2PRES0000000000000004", id: "a2-review", done: true, content: "review work")
+  let signed_node = sign(rn: open_node, s: signed(
     by: "operator",
     works: gunbc.roadmap_status.RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_lifecycle_axes_discriminate", executed_on: "2026-08-01" },
     scope_equivalent: gunbc.roadmap_status.HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
     as_expected: true))
-  let superseded_node = gunbc.roadmap_authority.superseded(identity: "rnfx_A2PRES0000000000000005", id: "a2-sup", by: "a2-open", content: "old shape")
-  work_lifecycle_key(l: work_lifecycle(rn: open_node, merged: [])) == "open"
-    && work_lifecycle_key(l: work_lifecycle(rn: done_line_node, merged: [])) == "review"
-    && work_lifecycle_key(l: work_lifecycle(rn: signed_node, merged: [])) == "done"
-    && work_lifecycle_key(l: work_lifecycle(rn: superseded_node, merged: [])) == "superseded"
+  let superseded_node = superseded(identity: "rnfx_A2PRES0000000000000005", id: "a2-sup", by: "a2-open", content: "old shape")
+  gunbc.roadmap_presentation.work_lifecycle_key(l: gunbc.roadmap_presentation.work_lifecycle(rn: open_node, merged: [])) == "open"
+    && gunbc.roadmap_presentation.work_lifecycle_key(l: gunbc.roadmap_presentation.work_lifecycle(rn: done_line_node, merged: [])) == "review"
+    && gunbc.roadmap_presentation.work_lifecycle_key(l: gunbc.roadmap_presentation.work_lifecycle(rn: signed_node, merged: [])) == "done"
+    && gunbc.roadmap_presentation.work_lifecycle_key(l: gunbc.roadmap_presentation.work_lifecycle(rn: superseded_node, merged: [])) == "superseded"
 }
 
 data supporting_facts_demotion_note: String = "Owner, sizing, and carriers are supporting facts for the disclosure region — present when declared, absent (not empty-labeled) when not. The integration witness drives work_row_view end-to-end on a fixture node and asserts the composed row: typed headline, honest Absent summary, the typed scheduling position with its complete blocker set, and the actions/facts composed from the same fixture."
 
 fn fx_row_nodes() -> List<gunbc.roadmap_model.RoadmapNode> {
   [
-    gunbc.roadmap_authority.authored_wi(identity: "rnfx_A2PRES0000000000000006", id: "a2-row",
-      done: false, content: "row headline — row brief", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
-    gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000007", id: "a2-parent-1", done: false, content: "parent one"),
-    gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000008", id: "a2-parent-2", done: false, content: "parent two"),
+    authored_wi(identity: "rnfx_A2PRES0000000000000006", id: "a2-row",
+      done: false, content: "row headline — row brief", intricacy: gunbc.roadmap_model.IntricacyLow, volume: gunbc.roadmap_model.VolumeSmall, repo: "gunbc"),
+    authored(identity: "rnfx_A2PRES0000000000000007", id: "a2-parent-1", done: false, content: "parent one"),
+    authored(identity: "rnfx_A2PRES0000000000000008", id: "a2-parent-2", done: false, content: "parent two"),
   ]
 }
 
 fn fx_row_edges() -> List<gunbc.roadmap_model.RoadmapEdge> {
   [
-    gunbc.roadmap_authority.edge(child: "a2-row", parent: "a2-parent-1"),
-    gunbc.roadmap_authority.edge(child: "a2-row", parent: "a2-parent-2"),
+    edge(child: "a2-row", parent: "a2-parent-1"),
+    edge(child: "a2-row", parent: "a2-parent-2"),
   ]
 }
 
@@ -338,53 +338,53 @@ fn fx_row(activity: gunbc.roadmap_presentation.ActivityView) -> gunbc.roadmap_pr
   let nodes = fx_row_nodes()
   match nodes.first() {
     Present { value: rn } =>
-      work_row_view(rn: rn, nodes: nodes, edges: fx_row_edges(), merged: [], activity: activity)
-    Absent => work_row_view(
-      rn: gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000009", id: "a2-unreachable", done: false, content: "unreachable"),
+      gunbc.roadmap_presentation.work_row_view(rn: rn, nodes: nodes, edges: fx_row_edges(), merged: [], activity: activity)
+    Absent => gunbc.roadmap_presentation.work_row_view(
+      rn: authored(identity: "rnfx_A2PRES0000000000000009", id: "a2-unreachable", done: false, content: "unreachable"),
       nodes: [], edges: [], merged: [], activity: activity)
   }
 }
 
 test fn witness_work_row_view_composes_from_fixture() -> Bool {
-  let row = fx_row(activity: NoActiveWork)
+  let row = fx_row(activity: gunbc.roadmap_presentation.NoActiveWork)
   row.headline == "row headline"
     && row.node_id == "a2-row"
     && (match row.scheduling {
-      SchedulingUpcoming { blockers } =>
+      gunbc.roadmap_presentation.SchedulingUpcoming { blockers } =>
         count(blockers) == 2
           && fold(blockers, init: true, f: (acc, b) => acc && (b == "a2-parent-1" || b == "a2-parent-2"))
-      SchedulingReady => false
-      SchedulingDone => false
-      SchedulingSuperseded => false
-      SchedulingUnplanned => false
+      gunbc.roadmap_presentation.SchedulingReady => false
+      gunbc.roadmap_presentation.SchedulingDone => false
+      gunbc.roadmap_presentation.SchedulingSuperseded => false
+      gunbc.roadmap_presentation.SchedulingUnplanned => false
     })
-    && work_lifecycle_key(l: row.lifecycle) == "open"
+    && gunbc.roadmap_presentation.work_lifecycle_key(l: row.lifecycle) == "open"
     && row.superseded_by == ""
     && match row.summary { Absent => true Present { value: _ } => false }
     && fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "sizing")
     && !fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "owner")
-    && match row.activity { NoActiveWork => true ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false CompletedWork { outcome: _, evidence: _ } => false ActivityUnobservable { reason: _ } => false }
+    && match row.activity { gunbc.roadmap_presentation.NoActiveWork => true gunbc.roadmap_presentation.ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false gunbc.roadmap_presentation.ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false gunbc.roadmap_presentation.LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false gunbc.roadmap_presentation.CompletedWork { outcome: _, evidence: _ } => false gunbc.roadmap_presentation.ActivityUnobservable { reason: _ } => false }
 }
 
 // The scheduling axis discriminates by the SAME predicates spawn_frontier filters (operator blocker 2: ready was a caller-assertable Bool; now the position is projected, not asserted). The fixtures cover the five arms: a sized dependency-met node is Ready; a sized node under an open parent is Upcoming CARRYING that blocker; an unsized node is Unplanned (never conflated with Upcoming — it has no blockers to fabricate); a superseded line is Superseded whatever else holds; and the dependency line renders only for an Upcoming row with more than one blocker.
 test fn witness_scheduling_projects_typed_positions() -> Bool {
   let nodes = fx_row_nodes()
   let edges = fx_row_edges()
-  let child = match nodes.first() { Present { value: rn } => rn Absent => gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000010", id: "a2-x", done: false, content: "x") }
-  let ready_node = gunbc.roadmap_authority.authored_wi(identity: "rnfx_A2PRES0000000000000011", id: "a2-ready",
-    done: false, content: "ready row", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc")
-  let unsized_node = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000012", id: "a2-unsized", done: false, content: "unsized row")
-  let superseded_node = gunbc.roadmap_authority.superseded(identity: "rnfx_A2PRES0000000000000013", id: "a2-sup2", by: "a2-ready", content: "old")
-  work_scheduling_key(s: work_scheduling(rn: child, nodes: nodes, edges: edges)) == "upcoming"
-    && work_scheduling_key(s: work_scheduling(rn: ready_node, nodes: [ready_node], edges: [])) == "ready"
-    && work_scheduling_key(s: work_scheduling(rn: unsized_node, nodes: [unsized_node], edges: [])) == "unplanned"
-    && work_scheduling_key(s: work_scheduling(rn: superseded_node, nodes: [superseded_node], edges: [])) == "superseded"
+  let child = match nodes.first() { Present { value: rn } => rn Absent => authored(identity: "rnfx_A2PRES0000000000000010", id: "a2-x", done: false, content: "x") }
+  let ready_node = authored_wi(identity: "rnfx_A2PRES0000000000000011", id: "a2-ready",
+    done: false, content: "ready row", intricacy: gunbc.roadmap_model.IntricacyLow, volume: gunbc.roadmap_model.VolumeSmall, repo: "gunbc")
+  let unsized_node = authored(identity: "rnfx_A2PRES0000000000000012", id: "a2-unsized", done: false, content: "unsized row")
+  let superseded_node = superseded(identity: "rnfx_A2PRES0000000000000013", id: "a2-sup2", by: "a2-ready", content: "old")
+  gunbc.roadmap_presentation.work_scheduling_key(s: gunbc.roadmap_presentation.work_scheduling(rn: child, nodes: nodes, edges: edges)) == "upcoming"
+    && gunbc.roadmap_presentation.work_scheduling_key(s: gunbc.roadmap_presentation.work_scheduling(rn: ready_node, nodes: [ready_node], edges: [])) == "ready"
+    && gunbc.roadmap_presentation.work_scheduling_key(s: gunbc.roadmap_presentation.work_scheduling(rn: unsized_node, nodes: [unsized_node], edges: [])) == "unplanned"
+    && gunbc.roadmap_presentation.work_scheduling_key(s: gunbc.roadmap_presentation.work_scheduling(rn: superseded_node, nodes: [superseded_node], edges: [])) == "superseded"
 }
 
 test fn witness_dependency_line_only_for_multi_blocker_upcoming() -> Bool {
-  let two = scheduling_dependency_line(s: gunbc.roadmap_presentation.SchedulingUpcoming { blockers: ["a2-parent-1", "a2-parent-2"] })
-  let one = scheduling_dependency_line(s: gunbc.roadmap_presentation.SchedulingUpcoming { blockers: ["a2-parent-1"] })
-  let ready = scheduling_dependency_line(s: SchedulingReady)
+  let two = gunbc.roadmap_presentation.scheduling_dependency_line(s: gunbc.roadmap_presentation.SchedulingUpcoming { blockers: ["a2-parent-1", "a2-parent-2"] })
+  let one = gunbc.roadmap_presentation.scheduling_dependency_line(s: gunbc.roadmap_presentation.SchedulingUpcoming { blockers: ["a2-parent-1"] })
+  let ready = gunbc.roadmap_presentation.scheduling_dependency_line(s: gunbc.roadmap_presentation.SchedulingReady)
   (match two { Present { value: line } => line == "requires all: a2-parent-1, a2-parent-2" Absent => false })
     && (match one { Absent => true Present { value: _ } => false })
     && (match ready { Absent => true Present { value: _ } => false })
@@ -394,24 +394,24 @@ data active_before_ready_note: String = "The workspace grouping (operator blocke
 
 fn band_entry_row_count(entries: List<gunbc.roadmap_presentation.WorkBandEntry>) -> Int {
   fold(entries, init: 0, f: (acc, e) => match e {
-    BandRow { row: _ } => acc + 1
-    BandFamily { family } => acc + count(family.rows)
+    gunbc.roadmap_presentation.BandRow { row: _ } => acc + 1
+    gunbc.roadmap_presentation.BandFamily { family } => acc + count(family.rows)
   })
 }
 
 fn band_entry_has_active(entries: List<gunbc.roadmap_presentation.WorkBandEntry>) -> Bool {
   fold(entries, init: false, f: (acc, e) => acc || (match e {
-    BandRow { row } => row_is_active_work(row: row)
-    BandFamily { family } => fold(family.rows, init: false, f: (a, r) => a || row_is_active_work(row: r))
+    gunbc.roadmap_presentation.BandRow { row } => gunbc.roadmap_presentation.row_is_active_work(row: row)
+    gunbc.roadmap_presentation.BandFamily { family } => fold(family.rows, init: false, f: (a, r) => a || gunbc.roadmap_presentation.row_is_active_work(row: r))
   }))
 }
 
 test fn witness_daily_workspace_surfaces_active_above_ready() -> Bool {
   let active_row = fx_row(activity: fx_specimen_activity())
-  let idle_row = fx_row(activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [idle_row, active_row], program: none, observation: ObservationsNominal, families: [], members: [])
+  let idle_row = fx_row(activity: gunbc.roadmap_presentation.NoActiveWork)
+  let ws = gunbc.roadmap_presentation.daily_workspace_view(rows: [idle_row, active_row], program: none, observation: gunbc.roadmap_presentation.ObservationsNominal, families: [], members: [])
   count(ws.active) == 1
-    && fold(ws.active, init: true, f: (acc, r) => acc && row_is_active_work(row: r))
+    && fold(ws.active, init: true, f: (acc, r) => acc && gunbc.roadmap_presentation.row_is_active_work(row: r))
     && band_entry_row_count(entries: ws.upcoming) == 1
     && band_entry_row_count(entries: ws.ready) == 0
     && !band_entry_has_active(entries: ws.upcoming)
@@ -448,64 +448,64 @@ fn fx_family_members() -> List<gunbc.roadmap_presentation.WorkFamilyMemberFact> 
 }
 
 test fn witness_family_claim_stated_once_rows_carry_subject() -> Bool {
-  let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: NoActiveWork)
-  let lookalike = fx_family_member_row(node_id: "solo", headline: join([fx_family_claim(), " for: Unlisted"], ""), activity: NoActiveWork)
-  let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [m1, lookalike, m2], program: none, observation: ObservationsNominal,
+  let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: gunbc.roadmap_presentation.NoActiveWork)
+  let lookalike = fx_family_member_row(node_id: "solo", headline: join([fx_family_claim(), " for: Unlisted"], ""), activity: gunbc.roadmap_presentation.NoActiveWork)
+  let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: gunbc.roadmap_presentation.NoActiveWork)
+  let ws = gunbc.roadmap_presentation.daily_workspace_view(rows: [m1, lookalike, m2], program: none, observation: gunbc.roadmap_presentation.ObservationsNominal,
     families: fx_family_decls(), members: fx_family_members())
   count(ws.upcoming) == 2
     && (match ws.upcoming.first() {
       Present { value: e } => match e {
-        BandFamily { family } =>
+        gunbc.roadmap_presentation.BandFamily { family } =>
           family.claim == fx_family_claim()
             && count(family.rows) == 2
             && (match family.rows.first() {
               Present { value: r } => r.headline == "Alpha subject"
               Absent => false
             })
-        BandRow { row: _ } => false
+        gunbc.roadmap_presentation.BandRow { row: _ } => false
       }
       Absent => false
     })
     && fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
-      BandRow { row } => row.node_id == "solo" && row.headline == join([fx_family_claim(), " for: Unlisted"], "")
-      BandFamily { family: _ } => false
+      gunbc.roadmap_presentation.BandRow { row } => row.node_id == "solo" && row.headline == join([fx_family_claim(), " for: Unlisted"], "")
+      gunbc.roadmap_presentation.BandFamily { family: _ } => false
     }))
 }
 
 test fn witness_family_membership_is_typed_not_parsed() -> Bool {
-  let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [m2], program: none, observation: ObservationsNominal,
+  let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: gunbc.roadmap_presentation.NoActiveWork)
+  let ws = gunbc.roadmap_presentation.daily_workspace_view(rows: [m2], program: none, observation: gunbc.roadmap_presentation.ObservationsNominal,
     families: fx_family_decls(), members: fx_family_members())
   fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
-    BandFamily { family } => fold(family.rows, init: false, f: (a, r) =>
+    gunbc.roadmap_presentation.BandFamily { family } => fold(family.rows, init: false, f: (a, r) =>
       a || r.headline == join([fx_family_claim(), " nested in a subject"], ""))
-    BandRow { row: _ } => false
+    gunbc.roadmap_presentation.BandRow { row: _ } => false
   }))
 }
 
 test fn witness_active_family_member_leaves_group() -> Bool {
   let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: fx_specimen_activity())
-  let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [m1, m2], program: none, observation: ObservationsNominal,
+  let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: gunbc.roadmap_presentation.NoActiveWork)
+  let ws = gunbc.roadmap_presentation.daily_workspace_view(rows: [m1, m2], program: none, observation: gunbc.roadmap_presentation.ObservationsNominal,
     families: fx_family_decls(), members: fx_family_members())
   count(ws.active) == 1
     && (match ws.active.first() { Present { value: r } => r.node_id == "cc-a" Absent => false })
     && fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
-      BandFamily { family } => count(family.rows) == 1
-      BandRow { row: _ } => false
+      gunbc.roadmap_presentation.BandFamily { family } => count(family.rows) == 1
+      gunbc.roadmap_presentation.BandRow { row: _ } => false
     }))
 }
 
 test fn witness_undeclared_family_member_stays_ungrouped_row() -> Bool {
-  let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [m1], program: none, observation: ObservationsNominal,
+  let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: gunbc.roadmap_presentation.NoActiveWork)
+  let ws = gunbc.roadmap_presentation.daily_workspace_view(rows: [m1], program: none, observation: gunbc.roadmap_presentation.ObservationsNominal,
     families: [], members: fx_family_members())
   count(ws.upcoming) == 1
     && (match ws.upcoming.first() {
       Present { value: e } => match e {
-        BandRow { row } => row.headline == "Write the closing check for: Alpha subject"
-        BandFamily { family: _ } => false
+        gunbc.roadmap_presentation.BandRow { row } => row.headline == "Write the closing check for: Alpha subject"
+        gunbc.roadmap_presentation.BandFamily { family: _ } => false
       }
       Absent => false
     })
@@ -514,26 +514,26 @@ test fn witness_undeclared_family_member_stays_ungrouped_row() -> Bool {
 data lifecycle_chip_witness_note: String = "Routine-state collapse both directions: the open default derives chip-hidden (the band and the node class still carry the state), and every departing lifecycle derives chip-shown. A future lifecycle arm added without a chip decision fails compile at the match, not silently."
 
 test fn witness_lifecycle_chip_only_when_discriminating() -> Bool {
-  !lifecycle_chip_renders(l: OpenLifecycle)
-    && lifecycle_chip_renders(l: ReviewLifecycle)
-    && lifecycle_chip_renders(l: DoneLifecycle)
-    && lifecycle_chip_renders(l: SupersededLifecycle)
+  !gunbc.roadmap_presentation.lifecycle_chip_renders(l: gunbc.roadmap_presentation.OpenLifecycle)
+    && gunbc.roadmap_presentation.lifecycle_chip_renders(l: gunbc.roadmap_presentation.ReviewLifecycle)
+    && gunbc.roadmap_presentation.lifecycle_chip_renders(l: gunbc.roadmap_presentation.DoneLifecycle)
+    && gunbc.roadmap_presentation.lifecycle_chip_renders(l: gunbc.roadmap_presentation.SupersededLifecycle)
 }
 
 // The one-failure-once discrimination: a workspace-level refusal produces ONE banner (the impact view carries the located reason) and covers each row's unobservable narration — but only the unobservable arm, and only while the workspace impact is present. The REDs: an active row is never covered (a live attempt's narration must survive a broken observation channel claim), and with a nominal workspace observation a row-specific unobservable reason narrates on its own row (coverage false).
 test fn witness_workspace_impact_narrates_once() -> Bool {
-  let impact = observation_impact_view(workflow_refused: Present { value: "GET /workflow.json refused: connection refused" })
-  let nominal = observation_impact_view(workflow_refused: none)
+  let impact = gunbc.roadmap_presentation.observation_impact_view(workflow_refused: Present { value: "GET /workflow.json refused: connection refused" })
+  let nominal = gunbc.roadmap_presentation.observation_impact_view(workflow_refused: none)
   let impact_ok = match impact {
-    WorkspaceObservationImpact { summary, located_reason } =>
+    gunbc.roadmap_presentation.WorkspaceObservationImpact { summary, located_reason } =>
       summary == "workflow observation unavailable"
         && located_reason == "GET /workflow.json refused: connection refused"
-    ObservationsNominal => false
+    gunbc.roadmap_presentation.ObservationsNominal => false
   }
   let unobs = gunbc.roadmap_presentation.ActivityUnobservable { reason: "GET /workflow.json refused: connection refused" }
   impact_ok
-    && (match nominal { ObservationsNominal => true WorkspaceObservationImpact { summary: _, located_reason: _ } => false })
-    && workspace_covers_row_activity(observation: impact, a: unobs)
-    && !workspace_covers_row_activity(observation: impact, a: fx_specimen_activity())
-    && !workspace_covers_row_activity(observation: nominal, a: unobs)
+    && (match nominal { gunbc.roadmap_presentation.ObservationsNominal => true gunbc.roadmap_presentation.WorkspaceObservationImpact { summary: _, located_reason: _ } => false })
+    && gunbc.roadmap_presentation.workspace_covers_row_activity(observation: impact, a: unobs)
+    && !gunbc.roadmap_presentation.workspace_covers_row_activity(observation: impact, a: fx_specimen_activity())
+    && !gunbc.roadmap_presentation.workspace_covers_row_activity(observation: nominal, a: unobs)
 }

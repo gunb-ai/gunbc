@@ -3,15 +3,15 @@ module extdeps.tools.node
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "nodejs.org/docs/latest/api/cli.html"
   }
 }
 
-data node_cli_tool: CliTool = CliTool {
+data node_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "node",
   min_version: none,
-  installable_via: [SourceApt { package: package_nodejs }],
+  installable_via: [extdeps.tools.SourceApt { package: extdeps.apt.package_nodejs }],
 }
 
 data node_cli_version_observation_note: String = "Observed node --version is recorded on CodexBuildToolchainReceipt beside npm.Cli.Version so the ambient toolchain that performed offline ci is attributable. Service is named nodejs.Cli (not node.Cli) because bare `node` is the substrate Node primitive — a §3 nickname collision that made Version unresolvable (Primitive() receiver). min_version = none is not a materialization receipt."
@@ -38,9 +38,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.tools.node",
       decl_name: "node_cli_tool",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.tools.node.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

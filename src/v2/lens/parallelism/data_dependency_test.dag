@@ -1,5 +1,6 @@
 module v2.test.lens_parallelism.data_dependency
 
+
 data parallelism_child: v2.std.node.Node = v2.test.lens_common.infer_fixture.claim_atom_node(s: ^parallelism_child_symbol)
 
 data parallelism_root: v2.std.node.Node = v2.std.node.Node {
@@ -48,9 +49,9 @@ data parallelism_data_dependency_claim: LensParallelismClaim = LensParallelismCl
   actual: v2.lens.parallelism.parallelism_witness(tree: parallelism_claim_tree(), dependencies: [parallelism_dependency])
 }
 
-test fn parallelism_data_dependency_claim_holds() -> v2.std.logic.Bool {
+test fn parallelism_data_dependency_claim_holds() -> Bool {
   match parallelism_data_dependency_claim.actual {
-    Holds { value: actual } =>
+    v2.std.witness.Holds { value: actual } =>
       v2.lens.parallelism.parallelism_fact_eq(a: actual, b: parallelism_data_dependency_claim.expected)
     _ => false
   }

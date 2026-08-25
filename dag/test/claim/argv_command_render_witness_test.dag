@@ -1,5 +1,6 @@
 module test.claim.argv_command_render
 
+
 // THESE WITNESSES NOW BUILD THEIR SUBJECT THROUGH PRODUCTION BUILDERS, and that is a consequence of
 // the wall rather than a preference about test style: extdeps.exec.command ArgvCommand is
 // sole_constructor, so a witness cannot hand-author one, exactly as extdeps.shell.exec's
@@ -12,19 +13,19 @@ module test.claim.argv_command_render
 // changed nothing about quoting. What this file is a witness FOR is the quoting, so the quoting is
 // what it states literally.
 test fn shell_quote_plain_args_single_quoted() -> Bool {
-  shell_command_render(command: nbd_client_disconnect_command(device: "/dev/nbd0"))
-    == join(["'", nbd_client_program as String, "' '-d' '/dev/nbd0'"], "")
+  extdeps.exec.command.shell_command_render(command: extdeps.storage.nbd.nbd_client_disconnect_command(device: "/dev/nbd0"))
+    == join(["'", extdeps.storage.nbd.nbd_client_program as String, "' '-d' '/dev/nbd0'"], "")
 }
 
 test fn shell_quote_escapes_embedded_apostrophe() -> Bool {
   string_contains(
-    s: shell_command_render(command: cat_command(path: "it's")),
+    s: extdeps.exec.command.shell_command_render(command: extdeps.tools.gnu_coreutils.cat_command(path: "it's")),
     pattern: "'it'\\''s'",
   )
 }
 
 test fn shell_quote_apostrophe_render_reopens_single_quote_context() -> Bool {
-  let rendered = shell_command_render(command: printf_command(format: "%s", values: ["o'brien"]))
+  let rendered = extdeps.exec.command.shell_command_render(command: extdeps.tools.gnu_coreutils.printf_command(format: "%s", values: ["o'brien"]))
   string_contains(s: rendered, pattern: "'\\''")
     && !string_contains(s: rendered, pattern: "'o'brien'")
 }

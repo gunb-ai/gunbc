@@ -4,55 +4,55 @@ module extdeps.git.object_store
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "git-scm.com/book/en/v2/Git-Internals-Git-Objects"
   }
 }
 
 data git_object_store_config: extdeps.object_storage.content_addressed.CasAddressingConfig = extdeps.object_storage.content_addressed.CasAddressingConfig {
   container: extdeps.object_storage.ObjectContainer { name: "objects" }
-  key_derivation: ContentAddressedByValue
-  write_mode: WriteOnce
+  key_derivation: std.cache_interface.ContentAddressedByValue
+  write_mode: std.cache_interface.WriteOnce
 }
 
 data git_ls_tree_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "git-scm.com/docs/git-ls-tree"
   }
 }
 
 data git_ls_files_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "git-scm.com/docs/git-ls-files"
   }
 }
 
 data git_gitattributes_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "git-scm.com/docs/gitattributes#_conflict_marker_size"
   }
 }
 
 data git_update_ref_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "git-scm.com/docs/git-update-ref"
   }
 }
 
 data git_hash_transition_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "git-scm.com/docs/hash-function-transition"
   }
 }
 
 data git_partial_clone_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "git-scm.com/docs/partial-clone"
   }
 }
@@ -62,20 +62,20 @@ type GitTreeEntryNameAfterSlashValue = Int where range(min: 48, max: 255)
 
 type GitTreeEntryNameOctet
   = GitTreeEntryNameOctetBeforeSlash {
-      value: extdeps.git.object_store.GitTreeEntryNameBeforeSlashValue,
+      value: GitTreeEntryNameBeforeSlashValue,
     }
   | GitTreeEntryNameOctetAfterSlash {
-      value: extdeps.git.object_store.GitTreeEntryNameAfterSlashValue,
+      value: GitTreeEntryNameAfterSlashValue,
     }
 
 type GitTreeEntryName {
-  first: extdeps.git.object_store.GitTreeEntryNameOctet
-  rest: List<extdeps.git.object_store.GitTreeEntryNameOctet>
+  first: GitTreeEntryNameOctet
+  rest: List<GitTreeEntryNameOctet>
 }
 
 type GitPath {
-  first: extdeps.git.object_store.GitTreeEntryName
-  rest: List<extdeps.git.object_store.GitTreeEntryName>
+  first: GitTreeEntryName
+  rest: List<GitTreeEntryName>
 }
 
 type GitTreeWireName {
@@ -83,7 +83,7 @@ type GitTreeWireName {
 }
 
 fn git_tree_entry_name_octet_value(
-  octet: extdeps.git.object_store.GitTreeEntryNameOctet,
+  octet: GitTreeEntryNameOctet,
 ) -> std.integer.UInt8 {
   match octet {
     GitTreeEntryNameOctetBeforeSlash { value } => value
@@ -92,7 +92,7 @@ fn git_tree_entry_name_octet_value(
 }
 
 fn git_tree_entry_name_octets(
-  name: extdeps.git.object_store.GitTreeEntryName,
+  name: GitTreeEntryName,
 ) -> List<std.integer.UInt8> {
   append(
     [git_tree_entry_name_octet_value(octet: name.first)],
@@ -101,7 +101,7 @@ fn git_tree_entry_name_octets(
   )
 }
 
-fn git_path_octets(path: extdeps.git.object_store.GitPath) -> List<std.integer.UInt8> {
+fn git_path_octets(path: GitPath) -> List<std.integer.UInt8> {
   fold(
     path.rest,
     init: git_tree_entry_name_octets(name: path.first),
@@ -122,22 +122,22 @@ type GitTreeEntryNameDecodeRefusal
   | GitTreeEntryNameForbiddenOctet { octet: std.integer.UInt8 }
 
 type GitTreeEntryNameDecodeOutcome
-  = GitTreeEntryNameDecoded { name: extdeps.git.object_store.GitTreeEntryName }
+  = GitTreeEntryNameDecoded { name: GitTreeEntryName }
   | GitTreeEntryNameDecodeRefused {
-      cause: extdeps.git.object_store.GitTreeEntryNameDecodeRefusal,
+      cause: GitTreeEntryNameDecodeRefusal,
     }
 
 type GitTreeEntryNameOctetsDecodeOutcome
   = GitTreeEntryNameOctetsDecoded {
-      octets: List<extdeps.git.object_store.GitTreeEntryNameOctet>,
+      octets: List<GitTreeEntryNameOctet>,
     }
   | GitTreeEntryNameOctetsDecodeRefused {
-      cause: extdeps.git.object_store.GitTreeEntryNameDecodeRefusal,
+      cause: GitTreeEntryNameDecodeRefusal,
     }
 
 fn git_decode_tree_entry_name_octet(
   octet: std.integer.UInt8,
-) -> extdeps.git.object_store.GitTreeEntryNameOctet? {
+) -> GitTreeEntryNameOctet? {
   if octet >= 1 && octet <= 46 {
     Present {
       value: GitTreeEntryNameOctetBeforeSlash { value: octet }
@@ -152,9 +152,9 @@ fn git_decode_tree_entry_name_octet(
 }
 
 fn git_decode_tree_entry_name_octet_step(
-  state: extdeps.git.object_store.GitTreeEntryNameOctetsDecodeOutcome,
+  state: GitTreeEntryNameOctetsDecodeOutcome,
   octet: std.integer.UInt8,
-) -> extdeps.git.object_store.GitTreeEntryNameOctetsDecodeOutcome {
+) -> GitTreeEntryNameOctetsDecodeOutcome {
   match state {
     GitTreeEntryNameOctetsDecodeRefused { cause } =>
       GitTreeEntryNameOctetsDecodeRefused { cause: cause }
@@ -172,8 +172,8 @@ fn git_decode_tree_entry_name_octet_step(
 }
 
 fn git_decode_tree_entry_name(
-  wire: extdeps.git.object_store.GitTreeWireName,
-) -> extdeps.git.object_store.GitTreeEntryNameDecodeOutcome {
+  wire: GitTreeWireName,
+) -> GitTreeEntryNameDecodeOutcome {
   match fold(
     wire.octets,
     init: GitTreeEntryNameOctetsDecoded { octets: [] },
@@ -188,7 +188,7 @@ fn git_decode_tree_entry_name(
         }
         Present { value: first } =>
           GitTreeEntryNameDecoded {
-            name: extdeps.git.object_store.GitTreeEntryName {
+            name: GitTreeEntryName {
               first: first,
               rest: octets.skip(n: 1),
             }
@@ -200,30 +200,30 @@ fn git_decode_tree_entry_name(
 type GitPathDecodeRefusal
   = GitPathComponentRefused {
       component_index: std.integer.NonNegativeInt,
-      cause: extdeps.git.object_store.GitTreeEntryNameDecodeRefusal,
+      cause: GitTreeEntryNameDecodeRefusal,
     }
 
 type GitPathDecodeOutcome
-  = GitPathDecoded { path: extdeps.git.object_store.GitPath }
-  | GitPathDecodeRefused { cause: extdeps.git.object_store.GitPathDecodeRefusal }
+  = GitPathDecoded { path: GitPath }
+  | GitPathDecodeRefused { cause: GitPathDecodeRefusal }
 
 type GitPathDecodeState
   = GitPathDecodeBuilding {
-      components: List<extdeps.git.object_store.GitTreeEntryName>,
+      components: List<GitTreeEntryName>,
       current: List<std.integer.UInt8>,
     }
-  | GitPathDecodeStopped { cause: extdeps.git.object_store.GitPathDecodeRefusal }
+  | GitPathDecodeStopped { cause: GitPathDecodeRefusal }
 
 fn git_path_decode_step(
-  state: extdeps.git.object_store.GitPathDecodeState,
+  state: GitPathDecodeState,
   octet: std.integer.UInt8,
-) -> extdeps.git.object_store.GitPathDecodeState {
+) -> GitPathDecodeState {
   match state {
     GitPathDecodeStopped { cause } => GitPathDecodeStopped { cause: cause }
     GitPathDecodeBuilding { components, current } =>
       if octet == 47 {
         match git_decode_tree_entry_name(
-          wire: extdeps.git.object_store.GitTreeWireName { octets: current },
+          wire: GitTreeWireName { octets: current },
         ) {
           GitTreeEntryNameDecodeRefused { cause } =>
             GitPathDecodeStopped {
@@ -247,7 +247,7 @@ fn git_path_decode_step(
   }
 }
 
-fn git_decode_path_octets(octets: List<std.integer.UInt8>) -> extdeps.git.object_store.GitPathDecodeOutcome {
+fn git_decode_path_octets(octets: List<std.integer.UInt8>) -> GitPathDecodeOutcome {
   match fold(
     octets,
     init: GitPathDecodeBuilding {
@@ -259,7 +259,7 @@ fn git_decode_path_octets(octets: List<std.integer.UInt8>) -> extdeps.git.object
     GitPathDecodeStopped { cause } => GitPathDecodeRefused { cause: cause }
     GitPathDecodeBuilding { components, current } =>
       match git_decode_tree_entry_name(
-        wire: extdeps.git.object_store.GitTreeWireName { octets: current },
+        wire: GitTreeWireName { octets: current },
       ) {
         GitTreeEntryNameDecodeRefused { cause } =>
           GitPathDecodeRefused {
@@ -280,7 +280,7 @@ fn git_decode_path_octets(octets: List<std.integer.UInt8>) -> extdeps.git.object
               }
             Present { value: first } =>
               GitPathDecoded {
-                path: extdeps.git.object_store.GitPath {
+                path: GitPath {
                   first: first,
                   rest: all_components.skip(n: 1),
                 }
@@ -302,8 +302,8 @@ data git_object_id_text_note: String = "THE VALIDATING CONSTRUCTORS. A bare stri
 
 These reuse git_decode_lower_hex_octets rather than introducing a second hex reader, so the canonical form is one authority: git spells object ids in LOWERCASE hex, and an uppercase or mixed-case spelling refuses rather than being folded, because folding would make two textual forms name one object and quietly break the round trip. A caller holding a foreign-cased id normalizes deliberately at its own boundary."
 
-fn git_sha1_object_id(hex: String) -> extdeps.git.object_store.GitObjectId? {
-  match sha1_hex_digest(hex: hex) {
+fn git_sha1_object_id(hex: String) -> GitObjectId? {
+  match std.content_hash.sha1_hex_digest(hex: hex) {
     Present { value: digest } =>
       Present {
         value: GitSha1ObjectId {
@@ -314,8 +314,8 @@ fn git_sha1_object_id(hex: String) -> extdeps.git.object_store.GitObjectId? {
   }
 }
 
-fn git_sha256_object_id(hex: String) -> extdeps.git.object_store.GitObjectId? {
-  match sha256_hex_digest(hex: hex) {
+fn git_sha256_object_id(hex: String) -> GitObjectId? {
+  match std.content_hash.sha256_hex_digest(hex: hex) {
     Present { value: digest } =>
       Present {
         value: GitSha256ObjectId {
@@ -330,7 +330,7 @@ data git_object_id_eq_note: String = "Format-aware equality, held beside the typ
 
 data git_object_id_untagged_hex_note: String = "THE ONE DECODER FOR UNTAGGED PLUMBING OUTPUT (review 47517, §3). Git's own plumbing (show --format=%T and friends) prints a bare lowercase-hex object id with no family tag; the family is decidable from the canonical text width alone because the two supported hash functions have distinct digest lengths (40 for SHA-1, 64 for SHA-256, per git's hash-function-transition design). That inference is a fact about GIT'S wire, so it lives here at the GitObjectId authority — a consumer re-deriving it by measuring hex lengths is a second representation of the family axis (the capture tool did exactly this). Our OWN wires stay family-prefixed (<family>:<hex>, render/parse_git_object_id_wire) and never route through this decoder; this fn exists only for text git itself produced. A width that is neither 40 nor 64 refuses."
 
-fn git_object_id_from_untagged_hex(hex: String) -> extdeps.git.object_store.GitObjectId? {
+fn git_object_id_from_untagged_hex(hex: String) -> GitObjectId? {
   let line = std.algebra.trim(hex)
   if line.length() == 40 {
     git_sha1_object_id(hex: line)
@@ -341,38 +341,38 @@ fn git_object_id_from_untagged_hex(hex: String) -> extdeps.git.object_store.GitO
   }
 }
 
-fn git_object_id_format(oid: extdeps.git.object_store.GitObjectId) -> extdeps.git.object_store.GitObjectFormat {
+fn git_object_id_format(oid: GitObjectId) -> GitObjectFormat {
   match oid {
     GitSha1ObjectId { digest: _ } => GitObjectFormatSha1
     GitSha256ObjectId { digest: _ } => GitObjectFormatSha256
   }
 }
 
-fn git_object_id_wire_hex(oid: extdeps.git.object_store.GitObjectId) -> std.types.NonEmptyStr {
+fn git_object_id_wire_hex(oid: GitObjectId) -> std.types.NonEmptyStr {
   match oid {
     GitSha1ObjectId { digest } => digest.hex
     GitSha256ObjectId { digest } => digest.hex
   }
 }
 
-fn git_object_id_content_hash(oid: extdeps.git.object_store.GitObjectId) -> std.content_hash.ContentHash {
+fn git_object_id_content_hash(oid: GitObjectId) -> std.content_hash.ContentHash {
   match oid {
-    GitSha1ObjectId { digest } => as_content_hash_sha1(digest: digest)
-    GitSha256ObjectId { digest } => as_content_hash_cryptographic(digest: digest)
+    GitSha1ObjectId { digest } => std.content_hash.as_content_hash_sha1(digest: digest)
+    GitSha256ObjectId { digest } => std.content_hash.as_content_hash_cryptographic(digest: digest)
   }
 }
 
-fn git_object_id_eq(left: extdeps.git.object_store.GitObjectId, right: extdeps.git.object_store.GitObjectId) -> Bool {
+fn git_object_id_eq(left: GitObjectId, right: GitObjectId) -> Bool {
   match left {
     GitSha1ObjectId { digest: l } =>
       match right {
-        GitSha1ObjectId { digest: r } => content_hash_eq_sha1(left: l, right: r)
+        GitSha1ObjectId { digest: r } => std.content_hash.content_hash_eq_sha1(left: l, right: r)
         GitSha256ObjectId { digest: _ } => false
       }
     GitSha256ObjectId { digest: l } =>
       match right {
         GitSha1ObjectId { digest: _ } => false
-        GitSha256ObjectId { digest: r } => content_hash_eq_cryptographic(left: l, right: r)
+        GitSha256ObjectId { digest: r } => std.content_hash.content_hash_eq_cryptographic(left: l, right: r)
       }
   }
 }
@@ -384,26 +384,26 @@ type Blob {
 }
 
 type TreeEntry
-  = RegularBlobEntry { name: extdeps.git.object_store.GitTreeEntryName, oid: extdeps.git.object_store.GitObjectId }
-  | ExecutableBlobEntry { name: extdeps.git.object_store.GitTreeEntryName, oid: extdeps.git.object_store.GitObjectId }
-  | SymlinkEntry { name: extdeps.git.object_store.GitTreeEntryName, oid: extdeps.git.object_store.GitObjectId }
-  | SubtreeEntry { name: extdeps.git.object_store.GitTreeEntryName, oid: extdeps.git.object_store.GitObjectId }
-  | GitlinkEntry { name: extdeps.git.object_store.GitTreeEntryName, oid: extdeps.git.object_store.GitObjectId }
+  = RegularBlobEntry { name: GitTreeEntryName, oid: GitObjectId }
+  | ExecutableBlobEntry { name: GitTreeEntryName, oid: GitObjectId }
+  | SymlinkEntry { name: GitTreeEntryName, oid: GitObjectId }
+  | SubtreeEntry { name: GitTreeEntryName, oid: GitObjectId }
+  | GitlinkEntry { name: GitTreeEntryName, oid: GitObjectId }
 
 type Tree {
-  entries: List<extdeps.git.object_store.TreeEntry>
+  entries: List<TreeEntry>
 }
 
 type Commit {
-  tree: extdeps.git.object_store.GitObjectId
-  parents: List<extdeps.git.object_store.GitObjectId>
+  tree: GitObjectId
+  parents: List<GitObjectId>
   author: extdeps.git.GitAuthor
   committer: extdeps.git.GitAuthor
   message: Bytes
 }
 
 type AnnotatedTag {
-  target: extdeps.git.object_store.GitObjectId
+  target: GitObjectId
   target_type: extdeps.git.ObjectType
   name: std.types.NonEmptyStr
   tagger: extdeps.git.GitAuthor
@@ -411,21 +411,21 @@ type AnnotatedTag {
 }
 
 type StoreObject
-  = ObjectBlob { blob: extdeps.git.object_store.Blob }
-  | ObjectTree { tree: extdeps.git.object_store.Tree }
-  | ObjectCommit { commit: extdeps.git.object_store.Commit }
-  | ObjectTag { tag: extdeps.git.object_store.AnnotatedTag }
+  = ObjectBlob { blob: Blob }
+  | ObjectTree { tree: Tree }
+  | ObjectCommit { commit: Commit }
+  | ObjectTag { tag: AnnotatedTag }
 
 type StoreObjectFold<R> {
-  blob: fn(extdeps.git.object_store.Blob) -> R
-  tree: fn(extdeps.git.object_store.Tree) -> R
-  commit: fn(extdeps.git.object_store.Commit) -> R
-  tag: fn(extdeps.git.object_store.AnnotatedTag) -> R
+  blob: fn(Blob) -> R
+  tree: fn(Tree) -> R
+  commit: fn(Commit) -> R
+  tag: fn(AnnotatedTag) -> R
 }
 
 fn store_object_fold<R>(
-  object: extdeps.git.object_store.StoreObject,
-  fold: extdeps.git.object_store.StoreObjectFold<R>,
+  object: StoreObject,
+  fold: StoreObjectFold<R>,
 ) -> R {
   match object {
     ObjectBlob { blob } => fold.blob(blob)
@@ -436,52 +436,52 @@ fn store_object_fold<R>(
 }
 
 type GitCanonicalHashInputRefusal
-  = GitCanonicalHashInputInvalidObjectId { oid: extdeps.git.object_store.GitObjectId }
+  = GitCanonicalHashInputInvalidObjectId { oid: GitObjectId }
 
 type GitCanonicalHashInputOutcome
   = GitCanonicalHashInputReady { bytes: Bytes }
-  | GitCanonicalHashInputRefused { cause: extdeps.git.object_store.GitCanonicalHashInputRefusal }
+  | GitCanonicalHashInputRefused { cause: GitCanonicalHashInputRefusal }
 
 type GitHashObjectObservationProducer
   = GitHashObjectCliExecuted {
       attempt: std.types.NonEmptyStr,
       exit_code: std.integer.NonNegativeInt,
-      stdout_oid: extdeps.git.object_store.GitObjectId,
+      stdout_oid: GitObjectId,
     }
   | GitHashObjectCallerAssertion
 
 type GitContentAddressReceipt
   = GitHashObjectObserved {
       git_version: std.types.NonEmptyStr,
-      object_format: extdeps.git.object_store.GitObjectFormat,
+      object_format: GitObjectFormat,
       canonical_input: Bytes,
-      observed_oid: extdeps.git.object_store.GitObjectId,
-      producer: extdeps.git.object_store.GitHashObjectObservationProducer,
+      observed_oid: GitObjectId,
+      producer: GitHashObjectObservationProducer,
     }
   | GitHashObjectObservationUnavailable {
-      cause: extdeps.git.object_store.GitCanonicalHashInputRefusal,
+      cause: GitCanonicalHashInputRefusal,
     }
 
 type StoredObject {
-  oid: extdeps.git.object_store.GitObjectId
-  content_address: extdeps.git.object_store.GitContentAddressReceipt
-  object: extdeps.git.object_store.StoreObject
+  oid: GitObjectId
+  content_address: GitContentAddressReceipt
+  object: StoreObject
 }
 
 type GitUnavailableObject
-  = GitPromisorObjectUnavailable { oid: extdeps.git.object_store.GitObjectId, promisor: std.types.NonEmptyStr }
-  | GitUnexpectedObjectMissing { oid: extdeps.git.object_store.GitObjectId }
-  | GitCorruptObject { oid: extdeps.git.object_store.GitObjectId, reason: std.types.NonEmptyStr }
+  = GitPromisorObjectUnavailable { oid: GitObjectId, promisor: std.types.NonEmptyStr }
+  | GitUnexpectedObjectMissing { oid: GitObjectId }
+  | GitCorruptObject { oid: GitObjectId, reason: std.types.NonEmptyStr }
 
 type GitUnavailableObjectFold<R> {
-  promisor: fn(extdeps.git.object_store.GitObjectId, std.types.NonEmptyStr) -> R
-  unexpected_missing: fn(extdeps.git.object_store.GitObjectId) -> R
-  corrupt: fn(extdeps.git.object_store.GitObjectId, std.types.NonEmptyStr) -> R
+  promisor: fn(GitObjectId, std.types.NonEmptyStr) -> R
+  unexpected_missing: fn(GitObjectId) -> R
+  corrupt: fn(GitObjectId, std.types.NonEmptyStr) -> R
 }
 
 fn git_unavailable_object_fold<R>(
-  unavailable: extdeps.git.object_store.GitUnavailableObject,
-  fold: extdeps.git.object_store.GitUnavailableObjectFold<R>,
+  unavailable: GitUnavailableObject,
+  fold: GitUnavailableObjectFold<R>,
 ) -> R {
   match unavailable {
     GitPromisorObjectUnavailable { oid, promisor } =>
@@ -494,11 +494,11 @@ fn git_unavailable_object_fold<R>(
 }
 
 fn git_unavailable_object_oid(
-  unavailable: extdeps.git.object_store.GitUnavailableObject,
-) -> extdeps.git.object_store.GitObjectId {
+  unavailable: GitUnavailableObject,
+) -> GitObjectId {
   git_unavailable_object_fold(
     unavailable: unavailable,
-    fold: extdeps.git.object_store.GitUnavailableObjectFold {
+    fold: GitUnavailableObjectFold {
       promisor: fn(oid, _) { oid },
       unexpected_missing: fn(oid) { oid },
       corrupt: fn(oid, _) { oid },
@@ -507,33 +507,33 @@ fn git_unavailable_object_oid(
 }
 
 type ObjectLookupResult
-  = ObjectFound { stored: extdeps.git.object_store.StoredObject }
-  | ObjectPromisorUnavailable { oid: extdeps.git.object_store.GitObjectId, promisor: std.types.NonEmptyStr }
-  | ObjectUnexpectedlyMissing { oid: extdeps.git.object_store.GitObjectId }
-  | ObjectCorrupt { oid: extdeps.git.object_store.GitObjectId, reason: std.types.NonEmptyStr }
-  | ObjectRepositoryInvalid { cause: extdeps.git.object_store.GitRepositoryDecodeRefusal }
+  = ObjectFound { stored: StoredObject }
+  | ObjectPromisorUnavailable { oid: GitObjectId, promisor: std.types.NonEmptyStr }
+  | ObjectUnexpectedlyMissing { oid: GitObjectId }
+  | ObjectCorrupt { oid: GitObjectId, reason: std.types.NonEmptyStr }
+  | ObjectRepositoryInvalid { cause: GitRepositoryDecodeRefusal }
 
 type GitRefName = std.types.NonEmptyStr where brand("GitRefName")
 
 type RefTarget
-  = DirectTarget { oid: extdeps.git.object_store.GitObjectId }
-  | SymbolicTarget { ref_name: extdeps.git.object_store.GitRefName }
+  = DirectTarget { oid: GitObjectId }
+  | SymbolicTarget { ref_name: GitRefName }
 
 type GitRefRecord {
-  name: extdeps.git.object_store.GitRefName
-  target: extdeps.git.object_store.RefTarget
+  name: GitRefName
+  target: RefTarget
 }
 
 type RefResolutionResult
-  = RefResolved { oid: extdeps.git.object_store.GitObjectId }
-  | RefNotFound { name: extdeps.git.object_store.GitRefName }
-  | RefNotDirect { name: extdeps.git.object_store.GitRefName, target: extdeps.git.object_store.GitRefName }
-  | RefDuplicate { name: extdeps.git.object_store.GitRefName, count: std.integer.NonNegativeInt }
+  = RefResolved { oid: GitObjectId }
+  | RefNotFound { name: GitRefName }
+  | RefNotDirect { name: GitRefName, target: GitRefName }
+  | RefDuplicate { name: GitRefName, count: std.integer.NonNegativeInt }
 
 type GitRefLookupResult
-  = GitRefLookupMissing { name: extdeps.git.object_store.GitRefName }
-  | GitRefLookupUnique { record: extdeps.git.object_store.GitRefRecord }
-  | GitRefLookupDuplicate { name: extdeps.git.object_store.GitRefName, count: std.integer.NonNegativeInt }
+  = GitRefLookupMissing { name: GitRefName }
+  | GitRefLookupUnique { record: GitRefRecord }
+  | GitRefLookupDuplicate { name: GitRefName, count: std.integer.NonNegativeInt }
 
 type GitIndexStage
   = GitIndexStageNormal
@@ -546,90 +546,90 @@ type GitEffectiveConflictMarkerGrammar {
 }
 
 // Per-path effective conflict grammar after Git resolves gitattributes conflict-marker-size. Git defaults each marker to seven characters, but the attribute can choose another positive width for a path; consumers must observe the effective value rather than assume the default. The upstream fact is stored once as std.integer.PositiveInt and all three tokens derive from it, so empty, mismatched, and non-marker grammars are unwritable.
-fn git_conflict_marker_begin(grammar: extdeps.git.object_store.GitEffectiveConflictMarkerGrammar) -> String {
+fn git_conflict_marker_begin(grammar: GitEffectiveConflictMarkerGrammar) -> String {
   std.render_repeat_string_bootstrap.repeat_string(s: "<", n: grammar.size)
 }
 
-fn git_conflict_marker_separator(grammar: extdeps.git.object_store.GitEffectiveConflictMarkerGrammar) -> String {
+fn git_conflict_marker_separator(grammar: GitEffectiveConflictMarkerGrammar) -> String {
   std.render_repeat_string_bootstrap.repeat_string(s: "=", n: grammar.size)
 }
 
-fn git_conflict_marker_end(grammar: extdeps.git.object_store.GitEffectiveConflictMarkerGrammar) -> String {
+fn git_conflict_marker_end(grammar: GitEffectiveConflictMarkerGrammar) -> String {
   std.render_repeat_string_bootstrap.repeat_string(s: ">", n: grammar.size)
 }
 
 type GitIndexEntry {
-  path: extdeps.git.object_store.GitPath
-  mode: extdeps.git.object_store.GitTreeMode
-  oid: extdeps.git.object_store.GitObjectId
-  stage: extdeps.git.object_store.GitIndexStage
+  path: GitPath
+  mode: GitTreeMode
+  oid: GitObjectId
+  stage: GitIndexStage
 }
 
 type GitWorktreeEntry
-  = GitWorktreeRegular { path: extdeps.git.object_store.GitPath, executable: Bool, content: Bytes }
-  | GitWorktreeSymlink { path: extdeps.git.object_store.GitPath, target: Bytes }
-  | GitWorktreeGitlink { path: extdeps.git.object_store.GitPath, checkout: extdeps.git.object_store.GitObjectId }
+  = GitWorktreeRegular { path: GitPath, executable: Bool, content: Bytes }
+  | GitWorktreeSymlink { path: GitPath, target: Bytes }
+  | GitWorktreeGitlink { path: GitPath, checkout: GitObjectId }
 
 type GitRepositoryState {
-  object_format: extdeps.git.object_store.GitObjectFormat
-  objects: List<extdeps.git.object_store.StoredObject>
-  unavailable: List<extdeps.git.object_store.GitUnavailableObject>
-  refs: List<extdeps.git.object_store.GitRefRecord>
-  index: List<extdeps.git.object_store.GitIndexEntry>
-  worktree: List<extdeps.git.object_store.GitWorktreeEntry>
+  object_format: GitObjectFormat
+  objects: List<StoredObject>
+  unavailable: List<GitUnavailableObject>
+  refs: List<GitRefRecord>
+  index: List<GitIndexEntry>
+  worktree: List<GitWorktreeEntry>
 }
 
 type GitRepositoryPointerOrigin
-  = GitStoredObjectPointer { owner: extdeps.git.object_store.GitObjectId }
-  | GitDirectRefPointer { name: extdeps.git.object_store.GitRefName }
-  | GitIndexPointer { path: extdeps.git.object_store.GitPath, stage: extdeps.git.object_store.GitIndexStage }
+  = GitStoredObjectPointer { owner: GitObjectId }
+  | GitDirectRefPointer { name: GitRefName }
+  | GitIndexPointer { path: GitPath, stage: GitIndexStage }
 
 type GitRepositoryDecodeRefusal
-  = GitRepositoryDuplicateStoredObject { oid: extdeps.git.object_store.GitObjectId }
-  | GitRepositoryDuplicateUnavailableObject { oid: extdeps.git.object_store.GitObjectId }
-  | GitRepositoryPresentAndUnavailableObject { oid: extdeps.git.object_store.GitObjectId }
-  | GitRepositoryStoredObjectUnadmitted { oid: extdeps.git.object_store.GitObjectId }
+  = GitRepositoryDuplicateStoredObject { oid: GitObjectId }
+  | GitRepositoryDuplicateUnavailableObject { oid: GitObjectId }
+  | GitRepositoryPresentAndUnavailableObject { oid: GitObjectId }
+  | GitRepositoryStoredObjectUnadmitted { oid: GitObjectId }
   | GitRepositoryObjectFormatMismatch {
-      oid: extdeps.git.object_store.GitObjectId,
-      repository_format: extdeps.git.object_store.GitObjectFormat,
+      oid: GitObjectId,
+      repository_format: GitObjectFormat,
     }
   | GitRepositoryPointerUnexpectedlyMissing {
-      origin: extdeps.git.object_store.GitRepositoryPointerOrigin,
-      target: extdeps.git.object_store.GitObjectId,
+      origin: GitRepositoryPointerOrigin,
+      target: GitObjectId,
     }
   | GitRepositoryPointerCorrupt {
-      origin: extdeps.git.object_store.GitRepositoryPointerOrigin,
-      target: extdeps.git.object_store.GitObjectId,
+      origin: GitRepositoryPointerOrigin,
+      target: GitObjectId,
       reason: std.types.NonEmptyStr,
     }
   | GitRepositoryPointerKindMismatch {
-      origin: extdeps.git.object_store.GitRepositoryPointerOrigin,
-      target: extdeps.git.object_store.GitObjectId,
+      origin: GitRepositoryPointerOrigin,
+      target: GitObjectId,
       expected: extdeps.git.ObjectType,
       observed: extdeps.git.ObjectType,
     }
   | GitRepositoryDuplicateRef {
-      name: extdeps.git.object_store.GitRefName,
+      name: GitRefName,
       count: std.integer.NonNegativeInt,
     }
 
 type GitRepositoryDecodeOutcome
-  = GitRepositoryDecoded { repository: extdeps.git.object_store.GitRepositoryState }
-  | GitRepositoryDecodeRefused { cause: extdeps.git.object_store.GitRepositoryDecodeRefusal }
+  = GitRepositoryDecoded { repository: GitRepositoryState }
+  | GitRepositoryDecodeRefused { cause: GitRepositoryDecodeRefusal }
 
-fn store_object_kind(object: extdeps.git.object_store.StoreObject) -> extdeps.git.ObjectType {
+fn store_object_kind(object: StoreObject) -> extdeps.git.ObjectType {
   store_object_fold(
     object: object,
-    fold: extdeps.git.object_store.StoreObjectFold {
-      blob: fn(_) { BlobObj },
-      tree: fn(_) { TreeObj },
-      commit: fn(_) { CommitObj },
-      tag: fn(_) { TagObj },
+    fold: StoreObjectFold {
+      blob: fn(_) { extdeps.git.BlobObj },
+      tree: fn(_) { extdeps.git.TreeObj },
+      commit: fn(_) { extdeps.git.CommitObj },
+      tag: fn(_) { extdeps.git.TagObj },
     },
   )
 }
 
-fn git_object_id_raw_size(oid: extdeps.git.object_store.GitObjectId) -> std.integer.NonNegativeInt {
+fn git_object_id_raw_size(oid: GitObjectId) -> std.integer.NonNegativeInt {
   match oid {
     GitSha1ObjectId { digest: _ } => 20
     GitSha256ObjectId { digest: _ } => 32
@@ -638,10 +638,10 @@ fn git_object_id_raw_size(oid: extdeps.git.object_store.GitObjectId) -> std.inte
 
 fn git_object_type_wire_name(object_type: extdeps.git.ObjectType) -> String {
   match object_type {
-    BlobObj => "blob"
-    TreeObj => "tree"
-    CommitObj => "commit"
-    TagObj => "tag"
+    extdeps.git.BlobObj => "blob"
+    extdeps.git.TreeObj => "tree"
+    extdeps.git.CommitObj => "commit"
+    extdeps.git.TagObj => "tag"
   }
 }
 
@@ -692,7 +692,7 @@ fn git_decode_lower_hex_octets(text: String) -> List<std.integer.UInt8>? {
   }
 }
 
-fn git_object_id_raw_octets(oid: extdeps.git.object_store.GitObjectId) -> List<std.integer.UInt8>? {
+fn git_object_id_raw_octets(oid: GitObjectId) -> List<std.integer.UInt8>? {
   let text = git_object_id_wire_hex(oid: oid) as String
   let expected = git_object_id_raw_size(oid: oid)
   if text.length() != expected * 2 {
@@ -712,13 +712,13 @@ fn git_object_id_raw_octets(oid: extdeps.git.object_store.GitObjectId) -> List<s
 
 type GitTreeEntryCanonicalParts {
   mode: std.types.NonEmptyStr
-  name: extdeps.git.object_store.GitTreeEntryName
-  oid: extdeps.git.object_store.GitObjectId
+  name: GitTreeEntryName
+  oid: GitObjectId
 }
 
 fn git_tree_entry_canonical_parts(
-  entry: extdeps.git.object_store.TreeEntry,
-) -> extdeps.git.object_store.GitTreeEntryCanonicalParts {
+  entry: TreeEntry,
+) -> GitTreeEntryCanonicalParts {
   match entry {
     RegularBlobEntry { name, oid } =>
       GitTreeEntryCanonicalParts { mode: "100644", name: name, oid: oid }
@@ -750,9 +750,9 @@ fn git_author_wire_line(role: String, author: extdeps.git.GitAuthor) -> String {
 }
 
 fn git_tree_canonical_payload_step(
-  state: extdeps.git.object_store.GitCanonicalHashInputOutcome,
-  entry: extdeps.git.object_store.TreeEntry,
-) -> extdeps.git.object_store.GitCanonicalHashInputOutcome {
+  state: GitCanonicalHashInputOutcome,
+  entry: TreeEntry,
+) -> GitCanonicalHashInputOutcome {
   match state {
     GitCanonicalHashInputRefused { cause } =>
       GitCanonicalHashInputRefused { cause: cause }
@@ -785,10 +785,10 @@ fn git_tree_canonical_payload_step(
   }
 }
 
-fn git_store_object_references(object: extdeps.git.object_store.StoreObject) -> List<extdeps.git.object_store.GitObjectId> {
+fn git_store_object_references(object: StoreObject) -> List<GitObjectId> {
   store_object_fold(
     object: object,
-    fold: extdeps.git.object_store.StoreObjectFold {
+    fold: StoreObjectFold {
       blob: fn(_) { [] },
       tree: fn(tree) {
         tree.entries
@@ -803,8 +803,8 @@ fn git_store_object_references(object: extdeps.git.object_store.StoreObject) -> 
 }
 
 fn git_store_object_references_format(
-  object: extdeps.git.object_store.StoreObject,
-  format: extdeps.git.object_store.GitObjectFormat,
+  object: StoreObject,
+  format: GitObjectFormat,
 ) -> Bool {
   all(
     git_store_object_references(object: object),
@@ -813,14 +813,14 @@ fn git_store_object_references_format(
 }
 
 fn git_blob_canonical_payload(
-  blob: extdeps.git.object_store.Blob,
-) -> extdeps.git.object_store.GitCanonicalHashInputOutcome {
+  blob: Blob,
+) -> GitCanonicalHashInputOutcome {
   GitCanonicalHashInputReady { bytes: blob.content }
 }
 
 fn git_tree_canonical_payload(
-  tree: extdeps.git.object_store.Tree,
-) -> extdeps.git.object_store.GitCanonicalHashInputOutcome {
+  tree: Tree,
+) -> GitCanonicalHashInputOutcome {
   fold(
     tree.entries,
     init: GitCanonicalHashInputReady {
@@ -831,8 +831,8 @@ fn git_tree_canonical_payload(
 }
 
 fn git_commit_canonical_payload(
-  commit: extdeps.git.object_store.Commit,
-) -> extdeps.git.object_store.GitCanonicalHashInputOutcome {
+  commit: Commit,
+) -> GitCanonicalHashInputOutcome {
   let parent_lines = commit.parents
     |> map(parent => join(
       [
@@ -880,8 +880,8 @@ fn git_commit_canonical_payload(
 }
 
 fn git_tag_canonical_payload(
-  tag: extdeps.git.object_store.AnnotatedTag,
-) -> extdeps.git.object_store.GitCanonicalHashInputOutcome {
+  tag: AnnotatedTag,
+) -> GitCanonicalHashInputOutcome {
   let header = join(
     [
       "object ",
@@ -915,11 +915,11 @@ fn git_tag_canonical_payload(
 }
 
 fn git_store_object_canonical_payload(
-  object: extdeps.git.object_store.StoreObject,
-) -> extdeps.git.object_store.GitCanonicalHashInputOutcome {
+  object: StoreObject,
+) -> GitCanonicalHashInputOutcome {
   store_object_fold(
     object: object,
-    fold: extdeps.git.object_store.StoreObjectFold {
+    fold: StoreObjectFold {
       blob: git_blob_canonical_payload,
       tree: git_tree_canonical_payload,
       commit: git_commit_canonical_payload,
@@ -929,8 +929,8 @@ fn git_store_object_canonical_payload(
 }
 
 fn git_store_object_canonical_hash_input(
-  object: extdeps.git.object_store.StoreObject,
-) -> extdeps.git.object_store.GitCanonicalHashInputOutcome {
+  object: StoreObject,
+) -> GitCanonicalHashInputOutcome {
   match git_store_object_canonical_payload(object: object) {
     GitCanonicalHashInputRefused { cause } =>
       GitCanonicalHashInputRefused { cause: cause }
@@ -958,23 +958,23 @@ fn git_store_object_canonical_hash_input(
   }
 }
 
-fn git_store_object_canonical_size(object: extdeps.git.object_store.StoreObject) -> std.measure.ByteSize? {
+fn git_store_object_canonical_size(object: StoreObject) -> std.measure.ByteSize? {
   match git_store_object_canonical_payload(object: object) {
     GitCanonicalHashInputReady { bytes } =>
       Present {
-        value: byte_size(count: count(std.bytes.bytes_octets(b: bytes)))
+        value: std.measure.byte_size(count: count(std.bytes.bytes_octets(b: bytes)))
       }
     GitCanonicalHashInputRefused { cause: _ } => none
   }
 }
 
-fn stored_object_oid(stored: extdeps.git.object_store.StoredObject) -> extdeps.git.object_store.GitObjectId {
+fn stored_object_oid(stored: StoredObject) -> GitObjectId {
   stored.oid
 }
 
 fn git_stored_object_receipt_valid(
-  stored: extdeps.git.object_store.StoredObject,
-  repository_format: extdeps.git.object_store.GitObjectFormat,
+  stored: StoredObject,
+  repository_format: GitObjectFormat,
 ) -> Bool {
   match stored.content_address {
     GitHashObjectObservationUnavailable { cause: _ } => false
@@ -1012,14 +1012,14 @@ fn git_stored_object_receipt_valid(
 
 type GitStoredObjectIndexOutcome
   = GitStoredObjectIndexReady {
-      index: Map<extdeps.git.object_store.GitObjectId, extdeps.git.object_store.StoredObject>,
+      index: Map<GitObjectId, StoredObject>,
     }
-  | GitStoredObjectIndexDuplicate { oid: extdeps.git.object_store.GitObjectId }
+  | GitStoredObjectIndexDuplicate { oid: GitObjectId }
 
 fn git_stored_object_index_step(
-  state: extdeps.git.object_store.GitStoredObjectIndexOutcome,
-  stored: extdeps.git.object_store.StoredObject,
-) -> extdeps.git.object_store.GitStoredObjectIndexOutcome {
+  state: GitStoredObjectIndexOutcome,
+  stored: StoredObject,
+) -> GitStoredObjectIndexOutcome {
   match state {
     GitStoredObjectIndexDuplicate { oid } =>
       GitStoredObjectIndexDuplicate { oid: oid }
@@ -1035,8 +1035,8 @@ fn git_stored_object_index_step(
 }
 
 fn git_stored_object_index(
-  objects: List<extdeps.git.object_store.StoredObject>,
-) -> extdeps.git.object_store.GitStoredObjectIndexOutcome {
+  objects: List<StoredObject>,
+) -> GitStoredObjectIndexOutcome {
   fold(
     objects,
     init: GitStoredObjectIndexReady { index: empty_map() },
@@ -1046,14 +1046,14 @@ fn git_stored_object_index(
 
 type GitUnavailableObjectIndexOutcome
   = GitUnavailableObjectIndexReady {
-      index: Map<extdeps.git.object_store.GitObjectId, extdeps.git.object_store.GitUnavailableObject>,
+      index: Map<GitObjectId, GitUnavailableObject>,
     }
-  | GitUnavailableObjectIndexDuplicate { oid: extdeps.git.object_store.GitObjectId }
+  | GitUnavailableObjectIndexDuplicate { oid: GitObjectId }
 
 fn git_unavailable_object_index_step(
-  state: extdeps.git.object_store.GitUnavailableObjectIndexOutcome,
-  unavailable: extdeps.git.object_store.GitUnavailableObject,
-) -> extdeps.git.object_store.GitUnavailableObjectIndexOutcome {
+  state: GitUnavailableObjectIndexOutcome,
+  unavailable: GitUnavailableObject,
+) -> GitUnavailableObjectIndexOutcome {
   match state {
     GitUnavailableObjectIndexDuplicate { oid } =>
       GitUnavailableObjectIndexDuplicate { oid: oid }
@@ -1070,8 +1070,8 @@ fn git_unavailable_object_index_step(
 }
 
 fn git_unavailable_object_index(
-  unavailable: List<extdeps.git.object_store.GitUnavailableObject>,
-) -> extdeps.git.object_store.GitUnavailableObjectIndexOutcome {
+  unavailable: List<GitUnavailableObject>,
+) -> GitUnavailableObjectIndexOutcome {
   fold(
     unavailable,
     init: GitUnavailableObjectIndexReady { index: empty_map() },
@@ -1080,13 +1080,13 @@ fn git_unavailable_object_index(
 }
 
 type GitRefNameIndexOutcome
-  = GitRefNamesUnique { names: Map<extdeps.git.object_store.GitRefName, Bool> }
-  | GitRefNameDuplicate { name: extdeps.git.object_store.GitRefName }
+  = GitRefNamesUnique { names: Map<GitRefName, Bool> }
+  | GitRefNameDuplicate { name: GitRefName }
 
 fn git_ref_name_index_step(
-  state: extdeps.git.object_store.GitRefNameIndexOutcome,
-  record: extdeps.git.object_store.GitRefRecord,
-) -> extdeps.git.object_store.GitRefNameIndexOutcome {
+  state: GitRefNameIndexOutcome,
+  record: GitRefRecord,
+) -> GitRefNameIndexOutcome {
   match state {
     GitRefNameDuplicate { name } =>
       GitRefNameDuplicate { name: name }
@@ -1102,8 +1102,8 @@ fn git_ref_name_index_step(
 }
 
 fn git_ref_name_index(
-  refs: List<extdeps.git.object_store.GitRefRecord>,
-) -> extdeps.git.object_store.GitRefNameIndexOutcome {
+  refs: List<GitRefRecord>,
+) -> GitRefNameIndexOutcome {
   fold(
     refs,
     init: GitRefNamesUnique { names: empty_map() },
@@ -1116,26 +1116,26 @@ type GitObjectKindExpectation
   | GitExpectedObjectKind { kind: extdeps.git.ObjectType }
 
 type GitRepositoryPointer {
-  origin: extdeps.git.object_store.GitRepositoryPointerOrigin
-  target: extdeps.git.object_store.GitObjectId
-  expected: extdeps.git.object_store.GitObjectKindExpectation
+  origin: GitRepositoryPointerOrigin
+  target: GitObjectId
+  expected: GitObjectKindExpectation
 }
 
 fn git_tree_entry_local_pointer(
-  owner: extdeps.git.object_store.GitObjectId,
-  entry: extdeps.git.object_store.TreeEntry,
-) -> extdeps.git.object_store.GitRepositoryPointer? {
+  owner: GitObjectId,
+  entry: TreeEntry,
+) -> GitRepositoryPointer? {
   let parts = git_tree_entry_canonical_parts(entry: entry)
   if parts.mode == "160000" {
     none
   } else {
     let expected = if parts.mode == "40000" {
-      TreeObj
+      extdeps.git.TreeObj
     } else {
-      BlobObj
+      extdeps.git.BlobObj
     }
     Present {
-      value: extdeps.git.object_store.GitRepositoryPointer {
+      value: GitRepositoryPointer {
         origin: GitStoredObjectPointer { owner: owner },
         target: parts.oid,
         expected: GitExpectedObjectKind { kind: expected },
@@ -1145,11 +1145,11 @@ fn git_tree_entry_local_pointer(
 }
 
 fn git_stored_object_local_pointers(
-  stored: extdeps.git.object_store.StoredObject,
-) -> List<extdeps.git.object_store.GitRepositoryPointer> {
+  stored: StoredObject,
+) -> List<GitRepositoryPointer> {
   store_object_fold(
     object: stored.object,
-    fold: extdeps.git.object_store.StoreObjectFold {
+    fold: StoreObjectFold {
       blob: fn(_) { [] },
       tree: fn(tree) {
         tree.entries
@@ -1169,14 +1169,14 @@ fn git_stored_object_local_pointers(
             GitRepositoryPointer {
               origin: GitStoredObjectPointer { owner: stored.oid },
               target: commit.tree,
-              expected: GitExpectedObjectKind { kind: TreeObj },
+              expected: GitExpectedObjectKind { kind: extdeps.git.TreeObj },
             },
           ],
           items: commit.parents |> map(parent =>
             GitRepositoryPointer {
               origin: GitStoredObjectPointer { owner: stored.oid },
               target: parent,
-              expected: GitExpectedObjectKind { kind: CommitObj },
+              expected: GitExpectedObjectKind { kind: extdeps.git.CommitObj },
             }
           ),
         )
@@ -1195,8 +1195,8 @@ fn git_stored_object_local_pointers(
 }
 
 fn git_ref_local_pointers(
-  refs: List<extdeps.git.object_store.GitRefRecord>,
-) -> List<extdeps.git.object_store.GitRepositoryPointer> {
+  refs: List<GitRefRecord>,
+) -> List<GitRepositoryPointer> {
   refs |> flat_map(record =>
     match record.target {
       SymbolicTarget { ref_name: _ } => []
@@ -1205,7 +1205,7 @@ fn git_ref_local_pointers(
           s: record.name as String,
           prefix: "refs/heads/",
         ) {
-          GitExpectedObjectKind { kind: CommitObj }
+          GitExpectedObjectKind { kind: extdeps.git.CommitObj }
         } else {
           GitAnyObjectKind
         }
@@ -1222,8 +1222,8 @@ fn git_ref_local_pointers(
 }
 
 fn git_index_local_pointers(
-  index: List<extdeps.git.object_store.GitIndexEntry>,
-) -> List<extdeps.git.object_store.GitRepositoryPointer> {
+  index: List<GitIndexEntry>,
+) -> List<GitRepositoryPointer> {
   index |> flat_map(entry =>
     match entry.mode {
       GitlinkMode => []
@@ -1235,7 +1235,7 @@ fn git_index_local_pointers(
               stage: entry.stage,
             },
             target: entry.oid,
-            expected: GitExpectedObjectKind { kind: TreeObj },
+            expected: GitExpectedObjectKind { kind: extdeps.git.TreeObj },
           },
         ]
       _ =>
@@ -1246,7 +1246,7 @@ fn git_index_local_pointers(
               stage: entry.stage,
             },
             target: entry.oid,
-            expected: GitExpectedObjectKind { kind: BlobObj },
+            expected: GitExpectedObjectKind { kind: extdeps.git.BlobObj },
           },
         ]
     }
@@ -1254,8 +1254,8 @@ fn git_index_local_pointers(
 }
 
 fn git_repository_local_pointers(
-  repo: extdeps.git.object_store.GitRepositoryState,
-) -> List<extdeps.git.object_store.GitRepositoryPointer> {
+  repo: GitRepositoryState,
+) -> List<GitRepositoryPointer> {
   concat(
     repo.objects
       |> flat_map(stored =>
@@ -1270,15 +1270,15 @@ fn git_repository_local_pointers(
 
 type GitRepositoryPointerCheck
   = GitRepositoryPointersValid
-  | GitRepositoryPointerInvalid { cause: extdeps.git.object_store.GitRepositoryDecodeRefusal }
+  | GitRepositoryPointerInvalid { cause: GitRepositoryDecodeRefusal }
 
 fn git_repository_pointer_check_step(
-  stored: Map<extdeps.git.object_store.GitObjectId, extdeps.git.object_store.StoredObject>,
-  unavailable: Map<extdeps.git.object_store.GitObjectId, extdeps.git.object_store.GitUnavailableObject>,
-  repository_format: extdeps.git.object_store.GitObjectFormat,
-  state: extdeps.git.object_store.GitRepositoryPointerCheck,
-  pointer: extdeps.git.object_store.GitRepositoryPointer,
-) -> extdeps.git.object_store.GitRepositoryPointerCheck {
+  stored: Map<GitObjectId, StoredObject>,
+  unavailable: Map<GitObjectId, GitUnavailableObject>,
+  repository_format: GitObjectFormat,
+  state: GitRepositoryPointerCheck,
+  pointer: GitRepositoryPointer,
+) -> GitRepositoryPointerCheck {
   match state {
     GitRepositoryPointerInvalid { cause } =>
       GitRepositoryPointerInvalid { cause: cause }
@@ -1315,7 +1315,7 @@ fn git_repository_pointer_check_step(
               Present { value } =>
                 git_unavailable_object_fold(
                   unavailable: value,
-                  fold: extdeps.git.object_store.GitUnavailableObjectFold {
+                  fold: GitUnavailableObjectFold {
                     promisor: fn(_, _) {
                       GitRepositoryPointersValid
                     },
@@ -1351,8 +1351,8 @@ fn git_repository_pointer_check_step(
 }
 
 fn git_decode_repository(
-  repo: extdeps.git.object_store.GitRepositoryState,
-) -> extdeps.git.object_store.GitRepositoryDecodeOutcome {
+  repo: GitRepositoryState,
+) -> GitRepositoryDecodeOutcome {
   match git_stored_object_index(objects: repo.objects) {
     GitStoredObjectIndexDuplicate { oid } =>
       GitRepositoryDecodeRefused {
@@ -1456,14 +1456,14 @@ fn git_decode_repository(
   }
 }
 
-fn git_find_stored_object(objects: List<extdeps.git.object_store.StoredObject>, oid: extdeps.git.object_store.GitObjectId) -> extdeps.git.object_store.StoredObject? {
+fn git_find_stored_object(objects: List<StoredObject>, oid: GitObjectId) -> StoredObject? {
   objects |> filter(o => stored_object_oid(stored: o) == oid) |> first
 }
 
 fn git_find_unavailable(
-  unavailable: List<extdeps.git.object_store.GitUnavailableObject>,
-  oid: extdeps.git.object_store.GitObjectId,
-) -> extdeps.git.object_store.GitUnavailableObject? {
+  unavailable: List<GitUnavailableObject>,
+  oid: GitObjectId,
+) -> GitUnavailableObject? {
   unavailable
     |> filter(item =>
       git_unavailable_object_oid(unavailable: item) == oid
@@ -1472,9 +1472,9 @@ fn git_find_unavailable(
 }
 
 fn git_lookup_object_after_repository_decode(
-  repo: extdeps.git.object_store.GitRepositoryState,
-  oid: extdeps.git.object_store.GitObjectId,
-) -> extdeps.git.object_store.ObjectLookupResult {
+  repo: GitRepositoryState,
+  oid: GitObjectId,
+) -> ObjectLookupResult {
   match git_find_stored_object(objects: repo.objects, oid: oid) {
     Present { value: stored } =>
       if git_stored_object_receipt_valid(
@@ -1503,9 +1503,9 @@ fn git_lookup_object_after_repository_decode(
 }
 
 fn git_lookup_object(
-  repo: extdeps.git.object_store.GitRepositoryState,
-  oid: extdeps.git.object_store.GitObjectId,
-) -> extdeps.git.object_store.ObjectLookupResult {
+  repo: GitRepositoryState,
+  oid: GitObjectId,
+) -> ObjectLookupResult {
   match git_decode_repository(repo: repo) {
     GitRepositoryDecodeRefused { cause } =>
       ObjectRepositoryInvalid { cause: cause }
@@ -1517,7 +1517,7 @@ fn git_lookup_object(
   }
 }
 
-fn git_lookup_ref(refs: List<extdeps.git.object_store.GitRefRecord>, name: extdeps.git.object_store.GitRefName) -> extdeps.git.object_store.GitRefLookupResult {
+fn git_lookup_ref(refs: List<GitRefRecord>, name: GitRefName) -> GitRefLookupResult {
   let matching = refs |> filter(record => record.name == name)
   let matching_count = count(matching)
   if matching_count == 0 {
@@ -1532,7 +1532,7 @@ fn git_lookup_ref(refs: List<extdeps.git.object_store.GitRefRecord>, name: extde
   }
 }
 
-fn git_resolve_direct_ref(repo: extdeps.git.object_store.GitRepositoryState, name: extdeps.git.object_store.GitRefName) -> extdeps.git.object_store.RefResolutionResult {
+fn git_resolve_direct_ref(repo: GitRepositoryState, name: GitRefName) -> RefResolutionResult {
   match git_lookup_ref(refs: repo.refs, name: name) {
     GitRefLookupUnique { record } => match record.target {
       DirectTarget { oid } => RefResolved { oid: oid }
@@ -1547,28 +1547,28 @@ fn git_resolve_direct_ref(repo: extdeps.git.object_store.GitRepositoryState, nam
 type GitTreeWireEntry {
   mode: std.types.NonEmptyStr
   object_type: std.types.NonEmptyStr
-  oid: extdeps.git.object_store.GitObjectId
-  name: extdeps.git.object_store.GitTreeWireName
+  oid: GitObjectId
+  name: GitTreeWireName
 }
 
 type GitTreeDecodeRefusal
   = GitTreeModeObjectMismatch {
       mode: std.types.NonEmptyStr,
       object_type: std.types.NonEmptyStr,
-      name: extdeps.git.object_store.GitTreeWireName,
+      name: GitTreeWireName,
     }
   | GitTreeEntryNameRefused {
-      name: extdeps.git.object_store.GitTreeWireName,
-      cause: extdeps.git.object_store.GitTreeEntryNameDecodeRefusal,
+      name: GitTreeWireName,
+      cause: GitTreeEntryNameDecodeRefusal,
     }
 
 type GitTreeDecodeOutcome
-  = GitTreeDecoded { entries: List<extdeps.git.object_store.TreeEntry> }
-  | GitTreeDecodeRefused { cause: extdeps.git.object_store.GitTreeDecodeRefusal }
+  = GitTreeDecoded { entries: List<TreeEntry> }
+  | GitTreeDecodeRefused { cause: GitTreeDecodeRefusal }
 
 type GitTreeEntryDecodeOutcome
-  = GitTreeEntryDecoded { entry: extdeps.git.object_store.TreeEntry }
-  | GitTreeEntryDecodeRefused { cause: extdeps.git.object_store.GitTreeDecodeRefusal }
+  = GitTreeEntryDecoded { entry: TreeEntry }
+  | GitTreeEntryDecodeRefused { cause: GitTreeDecodeRefusal }
 
 type GitTreeMode
   = GitRegularBlobMode
@@ -1578,10 +1578,10 @@ type GitTreeMode
   | GitlinkMode
 
 type GitTreeModeDecodeOutcome
-  = GitTreeModeDecoded { mode: extdeps.git.object_store.GitTreeMode }
+  = GitTreeModeDecoded { mode: GitTreeMode }
   | GitTreeModeRefused
 
-fn git_decode_tree_mode(text: std.types.NonEmptyStr) -> extdeps.git.object_store.GitTreeModeDecodeOutcome {
+fn git_decode_tree_mode(text: std.types.NonEmptyStr) -> GitTreeModeDecodeOutcome {
   if text == "100644" {
     GitTreeModeDecoded { mode: GitRegularBlobMode }
   } else if text == "100755" {
@@ -1597,7 +1597,7 @@ fn git_decode_tree_mode(text: std.types.NonEmptyStr) -> extdeps.git.object_store
   }
 }
 
-fn git_tree_mode_object_type(mode: extdeps.git.object_store.GitTreeMode) -> std.types.NonEmptyStr {
+fn git_tree_mode_object_type(mode: GitTreeMode) -> std.types.NonEmptyStr {
   match mode {
     GitRegularBlobMode => "blob"
     GitExecutableBlobMode => "blob"
@@ -1608,10 +1608,10 @@ fn git_tree_mode_object_type(mode: extdeps.git.object_store.GitTreeMode) -> std.
 }
 
 fn git_tree_entry_from_mode(
-  mode: extdeps.git.object_store.GitTreeMode,
-  name: extdeps.git.object_store.GitTreeEntryName,
-  oid: extdeps.git.object_store.GitObjectId,
-) -> extdeps.git.object_store.TreeEntry {
+  mode: GitTreeMode,
+  name: GitTreeEntryName,
+  oid: GitObjectId,
+) -> TreeEntry {
   match mode {
     GitRegularBlobMode => RegularBlobEntry { name: name, oid: oid }
     GitExecutableBlobMode => ExecutableBlobEntry { name: name, oid: oid }
@@ -1621,7 +1621,7 @@ fn git_tree_entry_from_mode(
   }
 }
 
-fn git_decode_tree_entry(entry: extdeps.git.object_store.GitTreeWireEntry) -> extdeps.git.object_store.GitTreeEntryDecodeOutcome {
+fn git_decode_tree_entry(entry: GitTreeWireEntry) -> GitTreeEntryDecodeOutcome {
   match git_decode_tree_entry_name(wire: entry.name) {
     GitTreeEntryNameDecodeRefused { cause } =>
       GitTreeEntryDecodeRefused {
@@ -1662,9 +1662,9 @@ fn git_decode_tree_entry(entry: extdeps.git.object_store.GitTreeWireEntry) -> ex
 }
 
 fn git_decode_tree_step(
-  state: extdeps.git.object_store.GitTreeDecodeOutcome,
-  wire: extdeps.git.object_store.GitTreeWireEntry,
-) -> extdeps.git.object_store.GitTreeDecodeOutcome {
+  state: GitTreeDecodeOutcome,
+  wire: GitTreeWireEntry,
+) -> GitTreeDecodeOutcome {
   match state {
     GitTreeDecodeRefused { cause } => GitTreeDecodeRefused { cause: cause }
     GitTreeDecoded { entries } => match git_decode_tree_entry(entry: wire) {
@@ -1676,7 +1676,7 @@ fn git_decode_tree_step(
   }
 }
 
-fn git_decode_tree(entries: List<extdeps.git.object_store.GitTreeWireEntry>) -> extdeps.git.object_store.GitTreeDecodeOutcome {
+fn git_decode_tree(entries: List<GitTreeWireEntry>) -> GitTreeDecodeOutcome {
   fold(entries, init: GitTreeDecoded { entries: [] }, f: git_decode_tree_step)
 }
 
@@ -1693,8 +1693,8 @@ type GitNulQuartetRefusal
   | GitNulQuartetIncompleteRecord { field_count: std.integer.NonNegativeInt }
 
 type GitNulQuartetDecodeOutcome
-  = GitNulQuartetsDecoded { rows: List<extdeps.git.object_store.GitNulQuartet> }
-  | GitNulQuartetsRefused { cause: extdeps.git.object_store.GitNulQuartetRefusal }
+  = GitNulQuartetsDecoded { rows: List<GitNulQuartet> }
+  | GitNulQuartetsRefused { cause: GitNulQuartetRefusal }
 
 // A single ls-files -z / ls-tree -z record is ONE NUL-terminated chunk whose
 // internal fields are SP SP TAB delimited ("<a> <b> <c>\t<d>"), never four
@@ -1717,12 +1717,12 @@ type GitNulRecordSplitState
       third: List<std.integer.UInt8>,
       fourth: List<std.integer.UInt8>,
     }
-  | GitNulRecordSplitRefused { cause: extdeps.git.object_store.GitNulQuartetRefusal }
+  | GitNulRecordSplitRefused { cause: GitNulQuartetRefusal }
 
 fn git_nul_record_split_octet_step(
-  state: extdeps.git.object_store.GitNulRecordSplitState,
+  state: GitNulRecordSplitState,
   octet: std.integer.UInt8,
-) -> extdeps.git.object_store.GitNulRecordSplitState {
+) -> GitNulRecordSplitState {
   match state {
     GitNulRecordSplitRefused { cause } =>
       GitNulRecordSplitRefused { cause: cause }
@@ -1785,12 +1785,12 @@ fn git_nul_record_split_octet_step(
 }
 
 type GitNulRecordSplitOutcome
-  = GitNulRecordSplitDecoded { quartet: extdeps.git.object_store.GitNulQuartet }
-  | GitNulRecordSplitRefusedOutcome { cause: extdeps.git.object_store.GitNulQuartetRefusal }
+  = GitNulRecordSplitDecoded { quartet: GitNulQuartet }
+  | GitNulRecordSplitRefusedOutcome { cause: GitNulQuartetRefusal }
 
 fn git_split_nul_record_quartet(
   record: List<std.integer.UInt8>,
-) -> extdeps.git.object_store.GitNulRecordSplitOutcome {
+) -> GitNulRecordSplitOutcome {
   match fold(
     record,
     init: GitNulRecordSplitAwaitFirstSpace { first: [] },
@@ -1803,7 +1803,7 @@ fn git_split_nul_record_quartet(
         GitNulRecordSplitRefusedOutcome { cause: GitNulQuartetEmptyField }
       } else {
         GitNulRecordSplitDecoded {
-          quartet: extdeps.git.object_store.GitNulQuartet {
+          quartet: GitNulQuartet {
             first: first,
             second: second,
             third: third,
@@ -1827,13 +1827,13 @@ fn git_split_nul_record_quartet(
 }
 
 type GitNulQuartetRowsFoldState
-  = GitNulQuartetRowsAccumulating { rows: List<extdeps.git.object_store.GitNulQuartet> }
-  | GitNulQuartetRowsRefused { cause: extdeps.git.object_store.GitNulQuartetRefusal }
+  = GitNulQuartetRowsAccumulating { rows: List<GitNulQuartet> }
+  | GitNulQuartetRowsRefused { cause: GitNulQuartetRefusal }
 
 fn git_nul_quartet_rows_step(
-  state: extdeps.git.object_store.GitNulQuartetRowsFoldState,
+  state: GitNulQuartetRowsFoldState,
   record: List<std.integer.UInt8>,
-) -> extdeps.git.object_store.GitNulQuartetRowsFoldState {
+) -> GitNulQuartetRowsFoldState {
   match state {
     GitNulQuartetRowsRefused { cause } =>
       GitNulQuartetRowsRefused { cause: cause }
@@ -1855,12 +1855,12 @@ type GitNulFieldFoldState
       fields: List<List<std.integer.UInt8>>,
       terminated: Bool,
     }
-  | GitNulFieldsRefused { cause: extdeps.git.object_store.GitNulQuartetRefusal }
+  | GitNulFieldsRefused { cause: GitNulQuartetRefusal }
 
 fn git_nul_field_octet_step(
-  state: extdeps.git.object_store.GitNulFieldFoldState,
+  state: GitNulFieldFoldState,
   octet: std.integer.UInt8,
-) -> extdeps.git.object_store.GitNulFieldFoldState {
+) -> GitNulFieldFoldState {
   match state {
     GitNulFieldsRefused { cause } => GitNulFieldsRefused { cause: cause }
     GitNulFieldsAccumulating { current, fields, terminated: _ } =>
@@ -1884,7 +1884,7 @@ fn git_nul_field_octet_step(
   }
 }
 
-fn git_decode_nul_quartets(payload: Bytes) -> extdeps.git.object_store.GitNulQuartetDecodeOutcome {
+fn git_decode_nul_quartets(payload: Bytes) -> GitNulQuartetDecodeOutcome {
   match fold(
     std.bytes.bytes_octets(b: payload),
     init: GitNulFieldsAccumulating {
@@ -1916,15 +1916,15 @@ fn git_decode_nul_quartets(payload: Bytes) -> extdeps.git.object_store.GitNulQua
 
 type GitObjectIdTextRefusal
   = GitObjectIdTextWrongLength {
-      format: extdeps.git.object_store.GitObjectFormat,
+      format: GitObjectFormat,
       observed: std.integer.NonNegativeInt,
     }
   | GitObjectIdTextNonHexadecimal
   | GitObjectIdTextNonCanonicalUppercase
 
 type GitObjectIdTextDecodeOutcome
-  = GitObjectIdTextDecoded { oid: extdeps.git.object_store.GitObjectId }
-  | GitObjectIdTextRefused { cause: extdeps.git.object_store.GitObjectIdTextRefusal }
+  = GitObjectIdTextDecoded { oid: GitObjectId }
+  | GitObjectIdTextRefused { cause: GitObjectIdTextRefusal }
 
 fn git_hex_code_point(cp: Int) -> Bool {
   (cp >= 48 && cp <= 57)
@@ -1933,9 +1933,9 @@ fn git_hex_code_point(cp: Int) -> Bool {
 }
 
 fn git_decode_object_id_text(
-  format: extdeps.git.object_store.GitObjectFormat,
+  format: GitObjectFormat,
   text: String,
-) -> extdeps.git.object_store.GitObjectIdTextDecodeOutcome {
+) -> GitObjectIdTextDecodeOutcome {
   let expected_length = match format {
     GitObjectFormatSha1 => 40
     GitObjectFormatSha256 => 64
@@ -1968,14 +1968,14 @@ fn git_decode_object_id_text(
 }
 
 type GitLsTreeZRefusal
-  = GitLsTreeZFramingRefused { cause: extdeps.git.object_store.GitNulQuartetRefusal }
+  = GitLsTreeZFramingRefused { cause: GitNulQuartetRefusal }
   | GitLsTreeZHeaderNonAscii { field: std.types.NonEmptyStr }
-  | GitLsTreeZObjectIdRefused { cause: extdeps.git.object_store.GitObjectIdTextRefusal }
-  | GitLsTreeZEntryRefused { cause: extdeps.git.object_store.GitTreeDecodeRefusal }
+  | GitLsTreeZObjectIdRefused { cause: GitObjectIdTextRefusal }
+  | GitLsTreeZEntryRefused { cause: GitTreeDecodeRefusal }
 
 type GitLsTreeZDecodeOutcome
-  = GitLsTreeZDecoded { entries: List<extdeps.git.object_store.GitTreeWireEntry> }
-  | GitLsTreeZRefused { cause: extdeps.git.object_store.GitLsTreeZRefusal }
+  = GitLsTreeZDecoded { entries: List<GitTreeWireEntry> }
+  | GitLsTreeZRefused { cause: GitLsTreeZRefusal }
 
 fn git_ascii_field_text(octets: List<std.integer.UInt8>) -> std.types.NonEmptyStr? {
   if all(octets, octet => octet > 0 && octet < 128) {
@@ -1991,10 +1991,10 @@ fn git_ascii_field_text(octets: List<std.integer.UInt8>) -> std.types.NonEmptySt
 }
 
 fn git_ls_tree_z_row_step(
-  state: extdeps.git.object_store.GitLsTreeZDecodeOutcome,
-  row: extdeps.git.object_store.GitNulQuartet,
-  format: extdeps.git.object_store.GitObjectFormat,
-) -> extdeps.git.object_store.GitLsTreeZDecodeOutcome {
+  state: GitLsTreeZDecodeOutcome,
+  row: GitNulQuartet,
+  format: GitObjectFormat,
+) -> GitLsTreeZDecodeOutcome {
   match state {
     GitLsTreeZRefused { cause } => GitLsTreeZRefused { cause: cause }
     GitLsTreeZDecoded { entries } =>
@@ -2026,7 +2026,7 @@ fn git_ls_tree_z_row_step(
                         mode: mode,
                         object_type: object_type,
                         oid: oid,
-                        name: extdeps.git.object_store.GitTreeWireName { octets: row.fourth },
+                        name: GitTreeWireName { octets: row.fourth },
                       }
                       match git_decode_tree_entry(entry: wire) {
                         GitTreeEntryDecodeRefused { cause } =>
@@ -2047,8 +2047,8 @@ fn git_ls_tree_z_row_step(
 
 fn git_decode_ls_tree_z(
   payload: Bytes,
-  format: extdeps.git.object_store.GitObjectFormat,
-) -> extdeps.git.object_store.GitLsTreeZDecodeOutcome {
+  format: GitObjectFormat,
+) -> GitLsTreeZDecodeOutcome {
   match git_decode_nul_quartets(payload: payload) {
     GitNulQuartetsRefused { cause } =>
       GitLsTreeZRefused {
@@ -2068,10 +2068,10 @@ fn git_decode_ls_tree_z(
 }
 
 type GitIndexStageDecodeOutcome
-  = GitIndexStageDecoded { stage: extdeps.git.object_store.GitIndexStage }
+  = GitIndexStageDecoded { stage: GitIndexStage }
   | GitIndexStageRefused { text: std.types.NonEmptyStr }
 
-fn git_decode_index_stage(text: std.types.NonEmptyStr) -> extdeps.git.object_store.GitIndexStageDecodeOutcome {
+fn git_decode_index_stage(text: std.types.NonEmptyStr) -> GitIndexStageDecodeOutcome {
   if text == "0" {
     GitIndexStageDecoded { stage: GitIndexStageNormal }
   } else if text == "1" {
@@ -2086,22 +2086,22 @@ fn git_decode_index_stage(text: std.types.NonEmptyStr) -> extdeps.git.object_sto
 }
 
 type GitLsFilesStageZRefusal
-  = GitLsFilesStageZFramingRefused { cause: extdeps.git.object_store.GitNulQuartetRefusal }
+  = GitLsFilesStageZFramingRefused { cause: GitNulQuartetRefusal }
   | GitLsFilesStageZHeaderNonAscii { field: std.types.NonEmptyStr }
   | GitLsFilesStageZModeRefused { mode: std.types.NonEmptyStr }
-  | GitLsFilesStageZObjectIdRefused { cause: extdeps.git.object_store.GitObjectIdTextRefusal }
+  | GitLsFilesStageZObjectIdRefused { cause: GitObjectIdTextRefusal }
   | GitLsFilesStageZStageRefused { stage: std.types.NonEmptyStr }
-  | GitLsFilesStageZPathRefused { cause: extdeps.git.object_store.GitPathDecodeRefusal }
+  | GitLsFilesStageZPathRefused { cause: GitPathDecodeRefusal }
 
 type GitLsFilesStageZDecodeOutcome
-  = GitLsFilesStageZDecoded { entries: List<extdeps.git.object_store.GitIndexEntry> }
-  | GitLsFilesStageZRefused { cause: extdeps.git.object_store.GitLsFilesStageZRefusal }
+  = GitLsFilesStageZDecoded { entries: List<GitIndexEntry> }
+  | GitLsFilesStageZRefused { cause: GitLsFilesStageZRefusal }
 
 fn git_ls_files_stage_z_row_step(
-  state: extdeps.git.object_store.GitLsFilesStageZDecodeOutcome,
-  row: extdeps.git.object_store.GitNulQuartet,
-  format: extdeps.git.object_store.GitObjectFormat,
-) -> extdeps.git.object_store.GitLsFilesStageZDecodeOutcome {
+  state: GitLsFilesStageZDecodeOutcome,
+  row: GitNulQuartet,
+  format: GitObjectFormat,
+) -> GitLsFilesStageZDecodeOutcome {
   match state {
     GitLsFilesStageZRefused { cause } =>
       GitLsFilesStageZRefused { cause: cause }
@@ -2182,8 +2182,8 @@ fn git_ls_files_stage_z_row_step(
 
 fn git_decode_ls_files_stage_z(
   payload: Bytes,
-  format: extdeps.git.object_store.GitObjectFormat,
-) -> extdeps.git.object_store.GitLsFilesStageZDecodeOutcome {
+  format: GitObjectFormat,
+) -> GitLsFilesStageZDecodeOutcome {
   match git_decode_nul_quartets(payload: payload) {
     GitNulQuartetsRefused { cause } =>
       GitLsFilesStageZRefused {
@@ -2202,14 +2202,14 @@ fn git_decode_ls_files_stage_z(
   }
 }
 
-fn git_project_tree_entry(entry: extdeps.git.object_store.TreeEntry) -> extdeps.git.object_store.GitTreeWireEntry {
+fn git_project_tree_entry(entry: TreeEntry) -> GitTreeWireEntry {
   match entry {
     RegularBlobEntry { name, oid } =>
       GitTreeWireEntry {
         mode: "100644",
         object_type: "blob",
         oid: oid,
-        name: extdeps.git.object_store.GitTreeWireName {
+        name: GitTreeWireName {
           octets: git_tree_entry_name_octets(name: name)
         },
       }
@@ -2218,7 +2218,7 @@ fn git_project_tree_entry(entry: extdeps.git.object_store.TreeEntry) -> extdeps.
         mode: "100755",
         object_type: "blob",
         oid: oid,
-        name: extdeps.git.object_store.GitTreeWireName {
+        name: GitTreeWireName {
           octets: git_tree_entry_name_octets(name: name)
         },
       }
@@ -2227,7 +2227,7 @@ fn git_project_tree_entry(entry: extdeps.git.object_store.TreeEntry) -> extdeps.
         mode: "120000",
         object_type: "blob",
         oid: oid,
-        name: extdeps.git.object_store.GitTreeWireName {
+        name: GitTreeWireName {
           octets: git_tree_entry_name_octets(name: name)
         },
       }
@@ -2236,7 +2236,7 @@ fn git_project_tree_entry(entry: extdeps.git.object_store.TreeEntry) -> extdeps.
         mode: "040000",
         object_type: "tree",
         oid: oid,
-        name: extdeps.git.object_store.GitTreeWireName {
+        name: GitTreeWireName {
           octets: git_tree_entry_name_octets(name: name)
         },
       }
@@ -2245,47 +2245,47 @@ fn git_project_tree_entry(entry: extdeps.git.object_store.TreeEntry) -> extdeps.
         mode: "160000",
         object_type: "commit",
         oid: oid,
-        name: extdeps.git.object_store.GitTreeWireName {
+        name: GitTreeWireName {
           octets: git_tree_entry_name_octets(name: name)
         },
       }
   }
 }
 
-fn git_project_tree(tree: extdeps.git.object_store.Tree) -> List<extdeps.git.object_store.GitTreeWireEntry> {
+fn git_project_tree(tree: Tree) -> List<GitTreeWireEntry> {
   tree.entries |> map(entry => git_project_tree_entry(entry: entry))
 }
 
 type GitR0Projection {
-  object_format: extdeps.git.object_store.GitObjectFormat
-  tree_oid: extdeps.git.object_store.GitObjectId
-  tree_entries: List<extdeps.git.object_store.GitTreeWireEntry>
-  tags: List<extdeps.git.object_store.StoredObject>
-  refs: List<extdeps.git.object_store.GitRefRecord>
-  index: List<extdeps.git.object_store.GitIndexEntry>
-  worktree: List<extdeps.git.object_store.GitWorktreeEntry>
-  unavailable: List<extdeps.git.object_store.GitUnavailableObject>
+  object_format: GitObjectFormat
+  tree_oid: GitObjectId
+  tree_entries: List<GitTreeWireEntry>
+  tags: List<StoredObject>
+  refs: List<GitRefRecord>
+  index: List<GitIndexEntry>
+  worktree: List<GitWorktreeEntry>
+  unavailable: List<GitUnavailableObject>
 }
 
 type GitProjectionOutcome
-  = GitProjected { projection: extdeps.git.object_store.GitR0Projection }
-  | GitProjectionRefused { cause: extdeps.git.object_store.ObjectLookupResult }
+  = GitProjected { projection: GitR0Projection }
+  | GitProjectionRefused { cause: ObjectLookupResult }
 
-fn git_tag_objects(objects: List<extdeps.git.object_store.StoredObject>) -> List<extdeps.git.object_store.StoredObject> {
-  objects |> filter(o => store_object_kind(object: o.object) == TagObj)
+fn git_tag_objects(objects: List<StoredObject>) -> List<StoredObject> {
+  objects |> filter(o => store_object_kind(object: o.object) == extdeps.git.TagObj)
 }
 
 fn git_project_repository_after_repository_decode(
-  repo: extdeps.git.object_store.GitRepositoryState,
-  tree_oid: extdeps.git.object_store.GitObjectId,
-) -> extdeps.git.object_store.GitProjectionOutcome {
+  repo: GitRepositoryState,
+  tree_oid: GitObjectId,
+) -> GitProjectionOutcome {
   match git_lookup_object_after_repository_decode(
     repo: repo,
     oid: tree_oid,
   ) {
     ObjectFound { stored } => match stored.object {
       ObjectTree { tree } => GitProjected {
-        projection: extdeps.git.object_store.GitR0Projection {
+        projection: GitR0Projection {
           object_format: repo.object_format,
           tree_oid: tree_oid,
           tree_entries: git_project_tree(tree: tree),
@@ -2305,9 +2305,9 @@ fn git_project_repository_after_repository_decode(
 }
 
 fn git_project_repository(
-  repo: extdeps.git.object_store.GitRepositoryState,
-  tree_oid: extdeps.git.object_store.GitObjectId,
-) -> extdeps.git.object_store.GitProjectionOutcome {
+  repo: GitRepositoryState,
+  tree_oid: GitObjectId,
+) -> GitProjectionOutcome {
   match git_decode_repository(repo: repo) {
     GitRepositoryDecodeRefused { cause } =>
       GitProjectionRefused {
@@ -2323,14 +2323,14 @@ fn git_project_repository(
 
 type GitR0ReadBackObservation {
   git_version: std.types.NonEmptyStr
-  object_format: extdeps.git.object_store.GitObjectFormat
-  tree_oid: extdeps.git.object_store.GitObjectId
-  tree_entries: List<extdeps.git.object_store.GitTreeWireEntry>
-  tag_oids: List<extdeps.git.object_store.GitObjectId>
-  refs: List<extdeps.git.object_store.GitRefRecord>
-  index: List<extdeps.git.object_store.GitIndexEntry>
-  worktree: List<extdeps.git.object_store.GitWorktreeEntry>
-  unavailable: List<extdeps.git.object_store.GitUnavailableObject>
+  object_format: GitObjectFormat
+  tree_oid: GitObjectId
+  tree_entries: List<GitTreeWireEntry>
+  tag_oids: List<GitObjectId>
+  refs: List<GitRefRecord>
+  index: List<GitIndexEntry>
+  worktree: List<GitWorktreeEntry>
+  unavailable: List<GitUnavailableObject>
 }
 
 type GitReadBackMismatchAxis
@@ -2344,17 +2344,17 @@ type GitReadBackMismatchAxis
   | GitReadBackAvailabilityMismatch
 
 type GitReadBackOutcome
-  = GitReadBackVerified { observation: extdeps.git.object_store.GitR0ReadBackObservation }
-  | GitReadBackMismatch { axis: extdeps.git.object_store.GitReadBackMismatchAxis }
+  = GitReadBackVerified { observation: GitR0ReadBackObservation }
+  | GitReadBackMismatch { axis: GitReadBackMismatchAxis }
 
-fn git_projection_tag_oids(projection: extdeps.git.object_store.GitR0Projection) -> List<extdeps.git.object_store.GitObjectId> {
+fn git_projection_tag_oids(projection: GitR0Projection) -> List<GitObjectId> {
   projection.tags |> map(tag => stored_object_oid(stored: tag))
 }
 
 fn git_verify_independent_read_back(
-  projection: extdeps.git.object_store.GitR0Projection,
-  observation: extdeps.git.object_store.GitR0ReadBackObservation,
-) -> extdeps.git.object_store.GitReadBackOutcome {
+  projection: GitR0Projection,
+  observation: GitR0ReadBackObservation,
+) -> GitReadBackOutcome {
   if !(projection.object_format == observation.object_format) {
     GitReadBackMismatch { axis: GitReadBackObjectFormatMismatch }
   } else if !(projection.tree_oid == observation.tree_oid) {
@@ -2377,62 +2377,62 @@ fn git_verify_independent_read_back(
 }
 
 type GitModeledRefTransition {
-  requested_name: extdeps.git.object_store.GitRefName
-  advanced_name: extdeps.git.object_store.GitRefName
-  expected_old: extdeps.git.object_store.GitObjectId
-  new: extdeps.git.object_store.GitObjectId
+  requested_name: GitRefName
+  advanced_name: GitRefName
+  expected_old: GitObjectId
+  new: GitObjectId
 }
 
 type GitUpdateRefOutcome
   = GitRefTransitionModeled {
-      repository: extdeps.git.object_store.GitRepositoryState,
-      transition: extdeps.git.object_store.GitModeledRefTransition,
+      repository: GitRepositoryState,
+      transition: GitModeledRefTransition,
     }
   | GitRefAdvanceRepositoryInvalid {
-      repository: extdeps.git.object_store.GitRepositoryState,
-      cause: extdeps.git.object_store.GitRepositoryDecodeRefusal,
+      repository: GitRepositoryState,
+      cause: GitRepositoryDecodeRefusal,
     }
   | GitRefAdvanceStale {
-      repository: extdeps.git.object_store.GitRepositoryState,
-      name: extdeps.git.object_store.GitRefName,
-      expected_old: extdeps.git.object_store.GitObjectId,
-      observed: extdeps.git.object_store.GitObjectId,
+      repository: GitRepositoryState,
+      name: GitRefName,
+      expected_old: GitObjectId,
+      observed: GitObjectId,
     }
-  | GitRefAdvanceMissing { repository: extdeps.git.object_store.GitRepositoryState, name: extdeps.git.object_store.GitRefName }
+  | GitRefAdvanceMissing { repository: GitRepositoryState, name: GitRefName }
   | GitRefAdvanceDuplicate {
-      repository: extdeps.git.object_store.GitRepositoryState,
-      name: extdeps.git.object_store.GitRefName,
+      repository: GitRepositoryState,
+      name: GitRefName,
       count: std.integer.NonNegativeInt,
     }
   | GitRefAdvanceSymbolicCycle {
-      repository: extdeps.git.object_store.GitRepositoryState,
-      name: extdeps.git.object_store.GitRefName,
-      chain: List<extdeps.git.object_store.GitRefName>,
+      repository: GitRepositoryState,
+      name: GitRefName,
+      chain: List<GitRefName>,
     }
   | GitRefAdvanceFormatMismatch {
-      repository: extdeps.git.object_store.GitRepositoryState,
-      repository_format: extdeps.git.object_store.GitObjectFormat,
-      oid: extdeps.git.object_store.GitObjectId,
+      repository: GitRepositoryState,
+      repository_format: GitObjectFormat,
+      oid: GitObjectId,
     }
   | GitRefAdvanceTargetUnavailable {
-      repository: extdeps.git.object_store.GitRepositoryState,
-      oid: extdeps.git.object_store.GitObjectId,
-      lookup: extdeps.git.object_store.ObjectLookupResult,
+      repository: GitRepositoryState,
+      oid: GitObjectId,
+      lookup: ObjectLookupResult,
     }
   | GitRefAdvanceTargetKindRefused {
-      repository: extdeps.git.object_store.GitRepositoryState,
-      name: extdeps.git.object_store.GitRefName,
-      oid: extdeps.git.object_store.GitObjectId,
+      repository: GitRepositoryState,
+      name: GitRefName,
+      oid: GitObjectId,
       object_type: extdeps.git.ObjectType,
     }
 
 data git_modeled_ref_transition_boundary_note: std.types.NonEmptyStr = "git_model_update_ref_exact is the pure R0 transition model only. It proves the exact-old-OID decision and returned state, including Git's default recursive symbolic-ref dereference while retaining the symbolic ref itself; a symbolic cycle refuses. It mints no execution or read-back receipt. The independent receipt is witness_git_cli_fixture_hashes_projects_and_independently_reads_back in test.manual.git_upstream_model_execution: a fresh upstream Git process performs update-ref through symbolic HEAD, observes the direct target advance and retained HEAD target, and rejects stale/nonexistent targets. P3 must consume an executing transport observation, never promote this model transition to Applied."
 
 fn git_replace_direct_ref(
-  refs: List<extdeps.git.object_store.GitRefRecord>,
-  name: extdeps.git.object_store.GitRefName,
-  new_oid: extdeps.git.object_store.GitObjectId,
-) -> List<extdeps.git.object_store.GitRefRecord> {
+  refs: List<GitRefRecord>,
+  name: GitRefName,
+  new_oid: GitObjectId,
+) -> List<GitRefRecord> {
   refs |> map(record =>
     if record.name == name {
       GitRefRecord { name: record.name, target: DirectTarget { oid: new_oid } }
@@ -2443,14 +2443,14 @@ fn git_replace_direct_ref(
 }
 
 fn git_model_update_ref_exact_dereferenced(
-  repo: extdeps.git.object_store.GitRepositoryState,
-  requested_name: extdeps.git.object_store.GitRefName,
-  current_name: extdeps.git.object_store.GitRefName,
-  visited: List<extdeps.git.object_store.GitRefName>,
-  new_oid: extdeps.git.object_store.GitObjectId,
-  expected_old: extdeps.git.object_store.GitObjectId,
+  repo: GitRepositoryState,
+  requested_name: GitRefName,
+  current_name: GitRefName,
+  visited: List<GitRefName>,
+  new_oid: GitObjectId,
+  expected_old: GitObjectId,
   new_object_type: extdeps.git.ObjectType,
-) -> extdeps.git.object_store.GitUpdateRefOutcome {
+) -> GitUpdateRefOutcome {
   if visited |> any(name => name == current_name) {
     GitRefAdvanceSymbolicCycle {
       repository: repo,
@@ -2480,7 +2480,7 @@ fn git_model_update_ref_exact_dereferenced(
           )
         DirectTarget { oid: observed } =>
           if starts_with(s: current_name as String, prefix: "refs/heads/")
-            && !(new_object_type == CommitObj) {
+            && !(new_object_type == extdeps.git.CommitObj) {
             GitRefAdvanceTargetKindRefused {
               repository: repo,
               name: current_name,
@@ -2509,7 +2509,7 @@ fn git_model_update_ref_exact_dereferenced(
             }
             GitRefTransitionModeled {
               repository: updated,
-              transition: extdeps.git.object_store.GitModeledRefTransition {
+              transition: GitModeledRefTransition {
                 requested_name: requested_name,
                 advanced_name: current_name,
                 expected_old: expected_old,
@@ -2523,11 +2523,11 @@ fn git_model_update_ref_exact_dereferenced(
 }
 
 fn git_model_update_ref_exact_after_repository_decode(
-  repo: extdeps.git.object_store.GitRepositoryState,
-  name: extdeps.git.object_store.GitRefName,
-  new_oid: extdeps.git.object_store.GitObjectId,
-  expected_old: extdeps.git.object_store.GitObjectId,
-) -> extdeps.git.object_store.GitUpdateRefOutcome {
+  repo: GitRepositoryState,
+  name: GitRefName,
+  new_oid: GitObjectId,
+  expected_old: GitObjectId,
+) -> GitUpdateRefOutcome {
   if !(git_object_id_format(oid: new_oid) == repo.object_format) {
     GitRefAdvanceFormatMismatch {
       repository: repo,
@@ -2565,11 +2565,11 @@ fn git_model_update_ref_exact_after_repository_decode(
 }
 
 fn git_model_update_ref_exact(
-  repo: extdeps.git.object_store.GitRepositoryState,
-  name: extdeps.git.object_store.GitRefName,
-  new_oid: extdeps.git.object_store.GitObjectId,
-  expected_old: extdeps.git.object_store.GitObjectId,
-) -> extdeps.git.object_store.GitUpdateRefOutcome {
+  repo: GitRepositoryState,
+  name: GitRefName,
+  new_oid: GitObjectId,
+  expected_old: GitObjectId,
+) -> GitUpdateRefOutcome {
   match git_decode_repository(repo: repo) {
     GitRepositoryDecodeRefused { cause } =>
       GitRefAdvanceRepositoryInvalid {
@@ -2595,7 +2595,7 @@ type GitR0UnsupportedBoundary
   | GitShallowFetchNegotiation
   | GitMultiRefTransactionExecution
 
-data git_r0_unsupported_boundary: List<extdeps.git.object_store.GitR0UnsupportedBoundary> = [
+data git_r0_unsupported_boundary: List<GitR0UnsupportedBoundary> = [
   GitAttributesTransformExecution,
   GitCleanSmudgeFilterExecution,
   GitPackDeltaTransport,

@@ -3,14 +3,14 @@ module extdeps.project_schedule.cpm_pert
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.gao.gov/products/gao-16-89g"
   }
 }
 
 data rcpsp_lower_bound_external_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "doi.org/10.1016/S0377-2217(02)00763-4"
   }
 }

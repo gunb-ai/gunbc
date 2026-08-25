@@ -2,56 +2,56 @@ module test.claim.access_token_ensure_witness
 
 
 test fn auth_deficit_failure_classifies_interactive_upsert() -> Bool {
-  match gcloud_access_token_resolution(
+  match gunbc.auth.access_token_source.gcloud_access_token_resolution(
     success: false,
     stderr: "ERROR: (gcloud.auth.print-access-token) Reauthentication required.",
     token: "unused" as Secret,
   ) {
-    AccessTokenUpsertRequired {
-      plan: GoogleCloudInteractiveAuthenticationRequired {},
+    gunbc.auth.access_token_source.AccessTokenUpsertRequired {
+      plan: gunbc.auth.access_token_source.GoogleCloudInteractiveAuthenticationRequired {},
     } => true
-    AccessTokenEnsureRefused { reason: _ } => false
-    AccessTokenReady { token: _ } => false
+    gunbc.auth.access_token_source.AccessTokenEnsureRefused { reason: _ } => false
+    gunbc.auth.access_token_source.AccessTokenReady { token: _ } => false
   }
 }
 
 test fn infrastructure_failure_classifies_refuse_not_upsert() -> Bool {
-  match gcloud_access_token_resolution(
+  match gunbc.auth.access_token_source.gcloud_access_token_resolution(
     success: false,
     stderr: "gcloud: command not found",
     token: "unused" as Secret,
   ) {
-    AccessTokenEnsureRefused { reason: reason } =>
+    gunbc.auth.access_token_source.AccessTokenEnsureRefused { reason: reason } =>
       string_contains(s: reason as String, pattern: "command not found")
-    AccessTokenUpsertRequired { plan: _ } => false
-    AccessTokenReady { token: _ } => false
+    gunbc.auth.access_token_source.AccessTokenUpsertRequired { plan: _ } => false
+    gunbc.auth.access_token_source.AccessTokenReady { token: _ } => false
   }
 }
 
 test fn empty_stderr_failure_classifies_refuse_not_upsert() -> Bool {
-  match gcloud_access_token_resolution(
+  match gunbc.auth.access_token_source.gcloud_access_token_resolution(
     success: false,
     stderr: "",
     token: "unused" as Secret,
   ) {
-    AccessTokenEnsureRefused { reason: reason } =>
+    gunbc.auth.access_token_source.AccessTokenEnsureRefused { reason: reason } =>
       string_contains(
         s: reason as String,
         pattern: "without observable authentication deficit",
       )
-    AccessTokenUpsertRequired { plan: _ } => false
-    AccessTokenReady { token: _ } => false
+    gunbc.auth.access_token_source.AccessTokenUpsertRequired { plan: _ } => false
+    gunbc.auth.access_token_source.AccessTokenReady { token: _ } => false
   }
 }
 
 test fn successful_print_classifies_ready() -> Bool {
-  match gcloud_access_token_resolution(
+  match gunbc.auth.access_token_source.gcloud_access_token_resolution(
     success: true,
     stderr: "",
     token: "ya29.witness" as Secret,
   ) {
-    AccessTokenReady { token: token } => token == ("ya29.witness" as Secret)
-    AccessTokenUpsertRequired { plan: _ } => false
-    AccessTokenEnsureRefused { reason: _ } => false
+    gunbc.auth.access_token_source.AccessTokenReady { token: token } => token == ("ya29.witness" as Secret)
+    gunbc.auth.access_token_source.AccessTokenUpsertRequired { plan: _ } => false
+    gunbc.auth.access_token_source.AccessTokenEnsureRefused { reason: _ } => false
   }
 }

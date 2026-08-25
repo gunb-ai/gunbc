@@ -2,52 +2,52 @@ module test.claim.dag_compile_clean_scope_witness
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 test fn dag_compile_clean_scope_empty_touched_requires_whole_tree_holds() -> Bool {
-  witness_empty_touched_requires_whole_tree()
+  tools.dag_compile_clean_scope.witness_empty_touched_requires_whole_tree()
 }
 
 test fn dag_compile_clean_scope_disposition_row_count_pinned() -> Bool {
-  fold(scope_disposition_rows, init: 0, f: fn(n, row) { n + 1 }) == 7
+  fold(tools.dag_compile_clean_scope.scope_disposition_rows, init: 0, f: fn(n, row) { n + 1 }) == 7
 }
 
 test fn dag_compile_clean_scope_disposition_core_discriminates() -> Bool {
   let wrong_expectation = tools.dag_compile_clean_scope.ScopeDispositionRow {
     touched: "docs/plans/example.md",
-    expect: ExpectWholeTree
+    expect: tools.dag_compile_clean_scope.ExpectWholeTree
   }
-  touched_path_disposition_matches(row: wrong_expectation) == false
+  tools.dag_compile_clean_scope.touched_path_disposition_matches(row: wrong_expectation) == false
 }
 
 test fn dag_compile_clean_scope_partition_authority_holds() -> Bool {
-  witness_entry_roots_are_witness_layer_roots()
-    && witness_pool_roots_match_witness_layer_roots()
+  tools.dag_compile_clean_scope.witness_entry_roots_are_witness_layer_roots()
+    && tools.dag_compile_clean_scope.witness_pool_roots_match_witness_layer_roots()
 }
 
 test fn dag_compile_clean_scope_mixed_rs_and_dag_requires_whole_tree() -> Bool {
-  witness_mixed_rs_and_dag_requires_whole_tree()
+  tools.dag_compile_clean_scope.witness_mixed_rs_and_dag_requires_whole_tree()
 }
 
 test fn dag_compile_clean_scope_departed_dag_path_requires_whole_tree() -> Bool {
-  witness_departed_dag_path_requires_whole_tree()
+  tools.dag_compile_clean_scope.witness_departed_dag_path_requires_whole_tree()
 }
 
 test fn dag_compile_clean_scope_docs_only_departure_still_skips() -> Bool {
-  witness_docs_only_departure_still_skips()
+  tools.dag_compile_clean_scope.witness_docs_only_departure_still_skips()
 }
 
 test fn dag_compile_clean_scope_shard_roster_duplicate_refuses_at_admission() -> Bool {
-  witness_shard_roster_duplicate_refuses_at_scope_admission()
+  tools.dag_compile_clean_scope.witness_shard_roster_duplicate_refuses_at_scope_admission()
 }
 
 test fn dag_compile_clean_scope_empty_touched_duplicate_roster_refuses_at_admission() -> Bool {
-  witness_empty_touched_duplicate_roster_refuses_at_admission()
+  tools.dag_compile_clean_scope.witness_empty_touched_duplicate_roster_refuses_at_admission()
 }
 
 test fn dag_compile_clean_scope_docs_universe_path_grain_dissolve_on_named() -> Bool {
   string_contains(
-    s: dissolution_description(condition: compile_clean_docs_universe_path_grain_dissolve_trigger),
+    s: std.dissolution.dissolution_description(condition: tools.dag_compile_clean_scope.compile_clean_docs_universe_path_grain_dissolve_trigger),
     pattern: "dissolve-on: compile_clean_docs_universe_path_grain"
   )
 }

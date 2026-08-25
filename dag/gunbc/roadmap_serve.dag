@@ -1,5 +1,6 @@
 module gunbc.roadmap_serve
 
+
 data roadmap_serve_note: String = "The gunbc-served dashboard instantiation (docs/plans/gunbc-served-dashboard-design.md; belt B, parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler calls the SAME authority the static-site artifacts call (roadmap_page, roadmap_static_site) — the artifact table and this serve table are two projections of one authority set, never two copies of content, and every body is computed at request time so the served page is the LIVE roadmap, not a deploy-frozen snapshot (the section-3 dual-representation cost this module exists to remove). Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS — the single dispatch authority (#6914), no emitted JS, no subprocess exec, no env-var channel. The launch button that POSTs here is transport-agnostic and lands with belt A in roadmap_page (lane agreement 2026-07-20): the page never knows which backend answers."
 
 data roadmap_serve_interpreted_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
@@ -12,6 +13,7 @@ data roadmap_serve_interpreted_scaffold: std.disposition.Disposition = std.dispo
 }
 
 data roadmap_serve_interpreted_scaffold_note: String = "ROADMAP section-4 rules a NEW long-running interpreted workload a review reject, routed through emit-on-demand. gunbc serve under the tree-walker is exactly that workload, so it lands as this DECLARED scaffold: dissolution = emit-on-demand of the serve closure (emit -> build -> run native, artifact shared by content-hash — the same lane as the S1 parse census receipt). Interim cost is bounded and strictly better than the belt-A alternative it supersedes: A pays a full CLI startup (load + compile + resolve) per dispatch click; this process pays it once at bind time."
+
 
 data roadmap_serve_seam_restoration_note: String = "THE SOCKET SEAM WAS RESTORED ON 2026-08-19, AND THIS ROW RECORDS WHY THAT IS A REPAIR RATHER THAN NEW DEBT. #8286 deleted the cli_run driver surface and took `serve` and `converge` out as ONE population; the two are not the same case, and deleting them together is what made it wrong. Converge has a successor that EXISTS -- the modeled convergence spine, fleet_converge_timer -> fleet_converge_apply -> host_effect_realize -- so its verb can refuse and route there. Serve's declared successor is the scaffold ABOVE, roadmap_serve_interpreted_scaffold, dissolving to emit-on-demand of the serve closure, and it was never built. So the deletion removed a live outward-facing production route with no minimal Y able to hold the boundary, which is precisely the case DESIGN section 3 carves out: a gap-intolerant boundary keeps the staged form, and where no Y can hold it at all X stays but stays FROZEN. What the restore does is put X back and freeze it.\n\nMEASURED, NOT ASSUMED, because the cost of the repair turned on one fact. The retained engine still evaluates this module completely: roadmap_serve_witness_test runs 16/16 green against a binary built from the post-deletion tree, covering route selection, 404 and 501 folding, and dispatch-refuses-before-effects. What #8286 removed was the SOCKET SEAM only -- accept, minimal HTTP/1.1 parse, response write -- which its own surviving doc comment still described after the code was gone. The deletion left the prose and took the machinery, so the restore is a quarry revert into comments that already marked the insertion points, not new authoring.\n\nNO SECOND OBLIGATION IS REGISTERED, DELIBERATELY. The scaffold above already binds roadmap_serve_handle and already names the correct terminal, so its dissolution IS this seam's restoration trigger; a fresh row beside it would be two obligations over one independently removable unit, which DESIGN section 5 forbids. FROZEN MEANS: no new options, no new verbs, no new routes into the interpreter, no completion work, no flag or environment gate re-opening it -- an escape hatch is refused outright and would be a NewEscapeHatchOrAdmissionRow under gunbc.v1_maintenance_standing besides.\n\nTHE DELETED REFUSAL'S SUBSTANTIVE CLAIM IS NOT RETRACTED. Serve remains a desired SERVICE OCCURRENCE that convergence should observe and reconcile rather than a command, and it cannot be modeled that way today because gunbc.host_effect carries only the LiveDeployApply / LiveDeployRetract / LiveDeployEnsureDependency triple and the runner-slot family -- no generic service-occurrence member exists. That absence is why BOTH bring-up paths must name a command: the systemd unit through gunbc.live_deploy.emit, and the tmux path through gunbc.roadmap_dashboard_instance dashboard_instance_serve_argv. Registering that member is separate work and is the thing that stops this recurring.\n\nTHE ENGINE OBJECTION IS RECORDED RATHER THAN ARGUED AWAY. This does make the interpreter load-bearing for a capability two lanes are deleting -- the propagation consequence DESIGN section 3 names. It is not a NEW dependency; it is the one that stood until #8286. But if this route begins attracting completion work or performance work on the interpreted loop, the freeze has been repealed by drift, which is the standing danger gunbc.v1_maintenance_standing v1_seed_standing already warns about for the active-maintenance arm."
 
@@ -89,9 +91,9 @@ data roadmap_serve_build_shape_note: String = "Cost-shape per DESIGN §6 bare-mi
 
 fn roadmap_serve_route_row(spec: RoadmapServeRouteSpec) -> RoadmapServeRouteRow {
   match extdeps.uri_path.parse_path_template(raw: spec.raw) {
-    MalformedPathTemplate { raw: r, segment: s, reason: why } =>
+    extdeps.uri_path.MalformedPathTemplate { raw: r, segment: s, reason: why } =>
       RouteRowRefused { raw: r, segment: s, reason: why }
-    ParsedPathTemplate { template: tpl } =>
+    extdeps.uri_path.ParsedPathTemplate { template: tpl } =>
       RouteRow { route: extdeps.http.server.DynamicRoute { method: spec.method, path_pattern: tpl, handler: spec.handler } }
   }
 }
@@ -135,9 +137,9 @@ data serve_page_response_note: String = "A page render refusal is a TYPED 500 ca
 
 fn serve_page_response(page: std.markup.Fragment) -> extdeps.http.server.ServeHttpResponse {
   match extdeps.languages.html.try_serialize_html_source(node: page) {
-    EmitOk { html: h } =>
+    extdeps.languages.html.EmitOk { html: h } =>
       serve_text_response(status: 200, content_type: extdeps.http.server.text_html_utf8, body: h)
-    EmitRejected { reason: r } =>
+    extdeps.languages.html.EmitRejected { reason: r } =>
       serve_text_response(
         status: 500,
         content_type: extdeps.http.server.text_plain_utf8,
@@ -148,8 +150,8 @@ fn serve_page_response(page: std.markup.Fragment) -> extdeps.http.server.ServeHt
 
 fn serve_page_response_with_status(page: std.markup.Fragment, status: std.types.HttpStatus) -> extdeps.http.server.ServeHttpResponse {
   match extdeps.languages.html.try_serialize_html_source(node: page) {
-    EmitOk { html } => serve_text_response(status: status, content_type: extdeps.http.server.text_html_utf8, body: html)
-    EmitRejected { reason } => serve_text_response(
+    extdeps.languages.html.EmitOk { html } => serve_text_response(status: status, content_type: extdeps.http.server.text_html_utf8, body: html)
+    extdeps.languages.html.EmitRejected { reason } => serve_text_response(
       status: 500,
       content_type: extdeps.http.server.text_plain_utf8,
       body: gunbc.roadmap_site_surface_render.page_render_refusal_body(reason: reason),
@@ -161,19 +163,19 @@ data belt_dispatch_status_note: String = "TOTAL per-variant status mapping — e
 
 fn belt_dispatch_status(r: gunbc.roadmap_belt_actuate.BeltDispatchResult) -> std.types.HttpStatus {
   match r {
-    DispatchSpawned { node_id: _, session_name: _, provider: _ } => 200
-    DispatchAlreadyLive { node_id: _, session_name: _ } => 200
-    DispatchDisabled { node_id: _, instance_id: _, reason: _ } => 403
-    DispatchNodeNotFound { node_id: _ } => 404
-    DispatchNodeAlreadyDone { node_id: _ } => 409
-    DispatchObserveRefused { node_id: _, reason: _ } => 503
-    DispatchAuthorityRefused { node_id: _, detail: _ } => 503
-    DispatchSpawnFailed { node_id: _, step: _, detail: _, provider: _ } => 502
-    DispatchStaleSession { node_id: _, session_name: _, detail: _ } => 409
-    DispatchRevisionDrifted { node_id: _, desired: _, local: _ } => 409
-    DispatchRevisionUnobserved { node_id: _, cause: _ } => 503
-    DispatchSessionMultiplicityConflict { node_id: _, session_names: _, session_count: _ } => 409
-    DispatchSessionLivenessUnobserved { node_id: _, session_name: _, reason: _ } => 503
+    gunbc.roadmap_belt_actuate.DispatchSpawned { node_id: _, session_name: _, provider: _ } => 200
+    gunbc.roadmap_belt_actuate.DispatchAlreadyLive { node_id: _, session_name: _ } => 200
+    gunbc.roadmap_belt_actuate.DispatchDisabled { node_id: _, instance_id: _, reason: _ } => 403
+    gunbc.roadmap_belt_actuate.DispatchNodeNotFound { node_id: _ } => 404
+    gunbc.roadmap_belt_actuate.DispatchNodeAlreadyDone { node_id: _ } => 409
+    gunbc.roadmap_belt_actuate.DispatchObserveRefused { node_id: _, reason: _ } => 503
+    gunbc.roadmap_belt_actuate.DispatchAuthorityRefused { node_id: _, detail: _ } => 503
+    gunbc.roadmap_belt_actuate.DispatchSpawnFailed { node_id: _, step: _, detail: _, provider: _ } => 502
+    gunbc.roadmap_belt_actuate.DispatchStaleSession { node_id: _, session_name: _, detail: _ } => 409
+    gunbc.roadmap_belt_actuate.DispatchRevisionDrifted { node_id: _, desired: _, local: _ } => 409
+    gunbc.roadmap_belt_actuate.DispatchRevisionUnobserved { node_id: _, cause: _ } => 503
+    gunbc.roadmap_belt_actuate.DispatchSessionMultiplicityConflict { node_id: _, session_names: _, session_count: _ } => 409
+    gunbc.roadmap_belt_actuate.DispatchSessionLivenessUnobserved { node_id: _, session_name: _, reason: _ } => 503
   }
 }
 
@@ -410,9 +412,9 @@ fn serve_daily_page_response_for_instance(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> extdeps.http.server.ServeHttpResponse {
   let page = match gunbc.roadmap_belt_actuate.belt_workflow_attempts_observe_for_instance(instance: instance) {
-    WorkflowAttemptsObserved { attempts } =>
+    gunbc.roadmap_belt_actuate.WorkflowAttemptsObserved { attempts } =>
       gunbc.roadmap_page.roadmap_daily_workspace_page_for_authority_observed(attempts: attempts, attempts_refused: none)
-    WorkflowAttemptsRefused { reason } =>
+    gunbc.roadmap_belt_actuate.WorkflowAttemptsRefused { reason } =>
       gunbc.roadmap_page.roadmap_daily_workspace_page_for_authority_observed(attempts: [], attempts_refused: Present { value: reason })
   }
   serve_page_response(page: page)
@@ -456,8 +458,8 @@ fn serve_sessions_response() -> extdeps.http.server.ServeHttpResponse {
 
 fn http_method_label_join(methods: List<std.types.HttpMethod>) -> String {
   join(map(methods, m => match m {
-    GET => "GET"
-    POST => "POST"
+    std.types.GET => "GET"
+    std.types.POST => "POST"
     PUT => "PUT"
     PATCH => "PATCH"
     DELETE => "DELETE"
@@ -473,7 +475,7 @@ fn roadmap_serve_selection_response_for_instance(
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeHttpResponse {
   match sel {
-    SelectedDynamic { handler: h, params: ps } =>
+    extdeps.http.server.SelectedDynamic { handler: h, params: ps } =>
       roadmap_serve_invoke_for_instance(
         instance: instance,
         handler: h,
@@ -481,15 +483,15 @@ fn roadmap_serve_selection_response_for_instance(
         request: request,
         release_revision: release_revision,
       )
-    SelectedStatic { route: r } =>
+    extdeps.http.server.SelectedStatic { route: r } =>
       extdeps.http.server.ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
-    MethodNotAllowed { allowed: ms } =>
+    extdeps.http.server.MethodNotAllowed { allowed: ms } =>
       serve_text_response(
         status: 405,
         content_type: extdeps.http.server.text_plain_utf8,
         body: join(["method not allowed; allowed: ", http_method_label_join(methods: ms), "\n"], ""),
       )
-    NoRouteMatched =>
+    extdeps.http.server.NoRouteMatched =>
       serve_text_response(status: 404, content_type: extdeps.http.server.text_plain_utf8, body: "not found\n")
   }
 }
@@ -515,13 +517,13 @@ fn roadmap_serve_respond_for_instance(
   release_revision: std.types.CommitSha,
 ) -> extdeps.http.server.ServeHttpResponse {
   match extdeps.http.server.parse_http_method_label(label: method_label) {
-    UnknownMethod { label: l } =>
+    extdeps.http.server.UnknownMethod { label: l } =>
       serve_text_response(
         status: 501,
         content_type: extdeps.http.server.text_plain_utf8,
         body: join(["unrecognized method: ", l, "\n"], ""),
       )
-    KnownMethod { method: m } =>
+    extdeps.http.server.KnownMethod { method: m } =>
       match roadmap_serve_route_table_build() {
         RoadmapServeTableRefused { raw: r, segment: s, reason: why } =>
           serve_text_response(
@@ -574,6 +576,7 @@ fn roadmap_serve_handle(
     release_revision: release_revision,
   ))
 }
+
 
 fn roadmap_serve_handle_srv1_lab(
   method: String,

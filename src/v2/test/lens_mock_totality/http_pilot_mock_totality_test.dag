@@ -1,42 +1,44 @@
 module v2.test.lens_mock_totality.http_pilot_mock_totality
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedHttpPilotMock {
-  tag: v2.std.node.Symbol
+  tag: Symbol
 }
 
 data http_pilot_red_omit_keys: List<String> = ["test.HttpPilot.GetPost"]
 
-fn materialize_http_pilot_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedHttpPilotMock> {
+fn materialize_http_pilot_mock(case: PublishedMockCase) -> Outcome<MaterializedHttpPilotMock> {
   if case.operation_key == "test.HttpPilot.GetPost" {
-    outcome_accepted(value: MaterializedHttpPilotMock { tag: ^materialized_get_post })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedHttpPilotMock { tag: ^materialized_get_post })
   } else {
-    mock_unhandled_rejection()
+    v2.lens.mock_totality.mock_unhandled_rejection()
   }
 }
 
-fn real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  outcome_accepted_p(outcome: materialize_http_pilot_mock(case: case))
+fn real_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.outcome_accepted_p(outcome: materialize_http_pilot_mock(case: case))
 }
 
-fn omits_get_post_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  omit_consumer_handles(
+fn omits_get_post_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.omit_consumer_handles(
     case: case,
     omit_keys: http_pilot_red_omit_keys,
-    total_consumer_handles: v2.test.lens_mock_totality.http_pilot_mock_totality.real_consumer_handles
+    total_consumer_handles: real_consumer_handles
   )
 }
 
 test fn http_pilot_mock_consumer_is_total_holds() -> Bool {
-  mock_totality_green_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_green_holds(
     published: extdeps.test.mock_corpus.http_pilot_published_mock_corpus,
-    consumer_handles: v2.test.lens_mock_totality.http_pilot_mock_totality.real_consumer_handles
+    consumer_handles: real_consumer_handles
   )
 }
 
 test fn http_pilot_mock_omitted_member_is_red_holds() -> Bool {
-  mock_totality_red_on_omission_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_red_on_omission_holds(
     published: extdeps.test.mock_corpus.http_pilot_published_mock_corpus,
     consumer_handles: omits_get_post_consumer_handles
   )

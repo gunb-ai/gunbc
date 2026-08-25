@@ -4,41 +4,41 @@ module test.claim.language_module_home_test
 data witness_note: String = "The pure decision half of the language-module homing wall. These execute against the declared frontier and never touch the disk; the live walk that produces a real flat-path list is the wet half, per language_module_home_maximum_conclusion. The RED controls below are the reason this file is worth its lines: an exact-membership wall is trivially green if the membership test is wrong in the permissive direction, so each admitting assertion is paired with one that must refuse."
 
 test fn every_frontier_row_is_admitted() -> Bool {
-  all(legacy_language_module_homes, r => flat_module_admitted(file_path: r.file_path))
+  all(gunbc.language_module_home.legacy_language_module_homes, r => gunbc.language_module_home.flat_module_admitted(file_path: r.file_path))
 }
 
 test fn red_an_unlisted_flat_module_refuses() -> Bool {
-  !flat_module_admitted(file_path: "dag/extdeps/languages/kotlin_emit.dag")
+  !gunbc.language_module_home.flat_module_admitted(file_path: "dag/extdeps/languages/kotlin_emit.dag")
 }
 
 test fn red_a_near_miss_path_refuses() -> Bool {
-  !flat_module_admitted(file_path: "dag/extdeps/languages/html_fragment_extra.dag")
+  !gunbc.language_module_home.flat_module_admitted(file_path: "dag/extdeps/languages/html_fragment_extra.dag")
 }
 
 test fn red_the_canonical_destination_is_not_itself_a_frontier_row() -> Bool {
-  !flat_module_admitted(file_path: "dag/extdeps/languages/html/medium.dag")
+  !gunbc.language_module_home.flat_module_admitted(file_path: "dag/extdeps/languages/html/medium.dag")
 }
 
 test fn a_frontier_row_reports_where_it_moves_to() -> Bool {
-  match classify_flat_module(file_path: "dag/extdeps/languages/react_jsx.dag") {
-    FlatModuleOnFrontier { file_path: _, moves_to: m } => m == "dag/extdeps/languages/jsx/emit.dag",
-    FlatModuleRefused { file_path: _ } => false
+  match gunbc.language_module_home.classify_flat_module(file_path: "dag/extdeps/languages/react_jsx.dag") {
+    gunbc.language_module_home.FlatModuleOnFrontier { file_path: _, moves_to: m } => m == "dag/extdeps/languages/jsx/emit.dag",
+    gunbc.language_module_home.FlatModuleRefused { file_path: _ } => false
   }
 }
 
 test fn a_refusal_carries_the_offending_path() -> Bool {
-  match classify_flat_module(file_path: "dag/extdeps/languages/swift_emit.dag") {
-    FlatModuleRefused { file_path: p } => p == "dag/extdeps/languages/swift_emit.dag",
-    FlatModuleOnFrontier { file_path: _, moves_to: _ } => false
+  match gunbc.language_module_home.classify_flat_module(file_path: "dag/extdeps/languages/swift_emit.dag") {
+    gunbc.language_module_home.FlatModuleRefused { file_path: p } => p == "dag/extdeps/languages/swift_emit.dag",
+    gunbc.language_module_home.FlatModuleOnFrontier { file_path: _, moves_to: _ } => false
   }
 }
 
 test fn the_frontier_is_finite_and_nonempty() -> Bool {
-  legacy_flat_module_count() > 0
+  gunbc.language_module_home.legacy_flat_module_count() > 0
 }
 
 test fn a_walked_list_of_only_frontier_rows_holds() -> Bool {
-  every_flat_module_is_on_the_frontier(walked_flat_paths: [
+  gunbc.language_module_home.every_flat_module_is_on_the_frontier(walked_flat_paths: [
     "dag/extdeps/languages/html.dag",
     "dag/extdeps/languages/html_fragment.dag",
     "dag/extdeps/languages/markdown.dag",
@@ -47,36 +47,36 @@ test fn a_walked_list_of_only_frontier_rows_holds() -> Bool {
 }
 
 test fn red_a_walked_list_containing_one_new_flat_module_refuses() -> Bool {
-  !every_flat_module_is_on_the_frontier(walked_flat_paths: [
+  !gunbc.language_module_home.every_flat_module_is_on_the_frontier(walked_flat_paths: [
     "dag/extdeps/languages/html.dag",
     "dag/extdeps/languages/verilog_emit.dag"
   ])
 }
 
 test fn every_frontier_row_names_a_distinct_file() -> Bool {
-  all(legacy_language_module_homes, r =>
-    fold(legacy_language_module_homes, init: 0, f: fn(acc, o) {
+  all(gunbc.language_module_home.legacy_language_module_homes, r =>
+    fold(gunbc.language_module_home.legacy_language_module_homes, init: 0, f: fn(acc, o) {
       if o.file_path == r.file_path { acc + 1 } else { acc }
     }) == 1
   )
 }
 
 test fn every_frontier_row_moves_somewhere_else() -> Bool {
-  all(legacy_language_module_homes, r => r.moves_to != r.file_path)
+  all(gunbc.language_module_home.legacy_language_module_homes, r => r.moves_to != r.file_path)
 }
 
 test fn every_frontier_row_carries_a_dissolution_trigger() -> Bool {
-  all(legacy_language_module_homes, r => r.dissolution != "")
+  all(gunbc.language_module_home.legacy_language_module_homes, r => r.dissolution != "")
 }
 
 test fn every_declared_home_carries_a_canonical_prefix() -> Bool {
-  all(language_target_homes, h => h.canonical_prefix != "")
+  all(gunbc.language_module_home.language_target_homes, h => h.canonical_prefix != "")
 }
 
 data gate_predicate_note: String = "The gate predicate's controls. The one that matters most in practice is that THIS change's own added carriers are ADMITTED — a wall that refuses the change introducing it is a self-inflicted outage, and the only way to know is to run the real added-path list through the real predicate. THE RELATIONAL CONTROLS THAT USED TO SIT HERE WERE DELETED WITH THE PREDICATES THEY EXERCISED (operator REQUEST_CHANGES, 2026-08-05). One of them asserted that dag/extdeps/languages/html/verilog_emit.dag is admitted under the HTML home — associating that path with HTML by reading html/ OUT OF THE PATH, which is the path-to-identity fusion the module forbids, performed by the control meant to prove it never happens. A correct control names verilog_language_subject_ref and demands the Verilog prefix, and it cannot be written against a gate that receives only strings. The unregistered-directory control inverted for the same reason: gpu/ and simd/ were exceptions that bought nothing for existing files and licensed unlimited future ones, so a new file under them must now REFUSE and force the target registration."
 
 test fn this_changes_own_carriers_are_admitted() -> Bool {
-  (added_language_paths_refused(added: [
+  (gunbc.language_module_home.added_language_paths_refused(added: [
     "dag/extdeps/languages/c/subject.dag",
     "dag/extdeps/languages/go/subject.dag",
     "dag/extdeps/languages/jsx/subject.dag",
@@ -87,22 +87,22 @@ test fn this_changes_own_carriers_are_admitted() -> Bool {
 }
 
 test fn red_a_new_flat_language_module_is_refused_by_the_gate_predicate() -> Bool {
-  (added_language_paths_refused(added: ["dag/extdeps/languages/haskell_emit.dag"]) |> count) == 1
+  (gunbc.language_module_home.added_language_paths_refused(added: ["dag/extdeps/languages/haskell_emit.dag"]) |> count) == 1
 }
 
 test fn red_a_new_undeclared_target_directory_is_refused() -> Bool {
-  (added_language_paths_refused(added: ["dag/extdeps/languages/haskell/emit.dag"]) |> count) == 1
+  (gunbc.language_module_home.added_language_paths_refused(added: ["dag/extdeps/languages/haskell/emit.dag"]) |> count) == 1
 }
 
 test fn red_a_file_under_an_unregistered_target_directory_now_refuses() -> Bool {
-  (added_language_paths_refused(added: [
+  (gunbc.language_module_home.added_language_paths_refused(added: [
     "dag/extdeps/languages/gpu/wgsl/emit.dag",
     "dag/extdeps/languages/simd/kernel.dag"
   ]) |> count) == 2
 }
 
 test fn the_four_legacy_flat_modules_stay_admitted() -> Bool {
-  (added_language_paths_refused(added: [
+  (gunbc.language_module_home.added_language_paths_refused(added: [
     "dag/extdeps/languages/html.dag",
     "dag/extdeps/languages/html_fragment.dag",
     "dag/extdeps/languages/markdown.dag",
@@ -111,7 +111,7 @@ test fn the_four_legacy_flat_modules_stay_admitted() -> Bool {
 }
 
 test fn paths_outside_the_language_root_are_not_judged_here() -> Bool {
-  (added_language_paths_refused(added: [
+  (gunbc.language_module_home.added_language_paths_refused(added: [
     "dag/std/algebra.dag",
     "dag/extdeps/git.dag",
     "src/v2/extdeps/languages/bash_build.dag"

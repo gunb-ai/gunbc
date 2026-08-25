@@ -20,7 +20,7 @@ fn render_receipt_wire_v2(receipt: gunbc.merge_admission.MergeAdmissionReceiptV2
     merge_admission_receipt_schema_v2,
     receipt.attempt_id as String,
     render_gate_roster_hash_wire(hash: receipt.gate_roster_hash),
-    check_conclusion_wire_label(c: receipt.conclusion),
+    extdeps.github.checks.check_conclusion_wire_label(c: receipt.conclusion),
     receipt.tested_head_sha,
     receipt.tested_base_commit_sha,
   ], "\n")
@@ -50,7 +50,7 @@ fn receipt_wire_v2_pr_number(lines: List<String>) -> ReceiptWirePrNumber {
 }
 
 fn parse_receipt_wire_v2(text: String) -> gunbc.merge_admission.MergeAdmissionReceiptV2? {
-  let lines = receipt_wire_lines(text: text)
+  let lines = gunbc.merge_admission_subject.receipt_wire_lines(text: text)
   if !((length(lines) == 6) || (length(lines) == 7)) {
     none
   } else if !(lines.first() == merge_admission_receipt_schema_v2) {
@@ -62,10 +62,10 @@ fn parse_receipt_wire_v2(text: String) -> gunbc.merge_admission.MergeAdmissionRe
   } else if lines.skip(n: 5).first() == "" {
     none
   } else {
-    match walk_attempt_id(raw: lines.skip(n: 1).first()) {
+    match gunbc.merge_admission_subject.walk_attempt_id(raw: lines.skip(n: 1).first()) {
       Absent => none
       Present { value: attempt } =>
-            match parse_check_conclusion(raw: lines.skip(n: 3).first()) {
+            match extdeps.github.checks.parse_check_conclusion(raw: lines.skip(n: 3).first()) {
               Absent => none
               Present { value: conclusion } =>
                 match parse_gate_roster_hash_wire(line: lines.skip(n: 2).first()) {
@@ -111,25 +111,25 @@ fn shell_stdout_line(raw: String) -> String {
 }
 
 fn parse_gate_roster_hash_wire(line: String) -> gunbc.merge_admission.GateRosterHash? {
-  match fnv1a64_structural_hex_digest(hex: shell_stdout_line(raw: line)) {
+  match std.content_hash.fnv1a64_structural_hex_digest(hex: shell_stdout_line(raw: line)) {
     Present { value: structural } =>
-      Present { value: gate_roster_hash_from_structural(structural: structural) }
+      Present { value: gunbc.merge_admission.gate_roster_hash_from_structural(structural: structural) }
     Absent => none
   }
 }
 
 fn render_gate_roster_hash_wire(hash: gunbc.merge_admission.GateRosterHash) -> String {
-  serialize_content_hash(hash: as_content_hash_structural(structural: hash)) as String
+  std.content_hash.serialize_content_hash(hash: std.content_hash.as_content_hash_structural(structural: hash)) as String
 }
 
 fn render_receipt_wire_with_pr_line(receipt: gunbc.merge_admission.MergeAdmissionReceipt, pr_line: String) -> String {
   concat(
     concat(
       concat(
-        concat(git_object_id_wire_hex(oid: receipt.base_tree_hash), "\n"),
+        concat(extdeps.git.object_store.git_object_id_wire_hex(oid: receipt.base_tree_hash), "\n"),
         concat(render_gate_roster_hash_wire(hash: receipt.gate_roster_hash), "\n")
       ),
-      concat(check_conclusion_wire_label(c: receipt.conclusion), "\n")
+      concat(extdeps.github.checks.check_conclusion_wire_label(c: receipt.conclusion), "\n")
     ),
     concat(concat(receipt.head_sha, "\n"), pr_line)
   )
@@ -139,10 +139,10 @@ fn render_receipt_wire(receipt: gunbc.merge_admission.MergeAdmissionReceipt) -> 
   let core = concat(
     concat(
       concat(
-        concat(git_object_id_wire_hex(oid: receipt.base_tree_hash), "\n"),
+        concat(extdeps.git.object_store.git_object_id_wire_hex(oid: receipt.base_tree_hash), "\n"),
         concat(render_gate_roster_hash_wire(hash: receipt.gate_roster_hash), "\n")
       ),
-      concat(check_conclusion_wire_label(c: receipt.conclusion), "\n")
+      concat(extdeps.github.checks.check_conclusion_wire_label(c: receipt.conclusion), "\n")
     ),
     receipt.head_sha
   )
@@ -161,13 +161,13 @@ fn wire_pr_number_from_lines(lines: List<String>) -> Int? {
 }
 
 fn parse_receipt_wire(text: String) -> gunbc.merge_admission.MergeAdmissionReceipt? {
-  let lines = receipt_wire_lines(text: text)
+  let lines = gunbc.merge_admission_subject.receipt_wire_lines(text: text)
   if length(lines) < 4 {
     none
   } else {
-    match parse_check_conclusion(raw: lines.skip(n: 2).first()) {
+    match extdeps.github.checks.parse_check_conclusion(raw: lines.skip(n: 2).first()) {
       Present { value: conclusion } =>
-        match git_object_id_from_untagged_hex(hex: lines.first()) {
+        match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: lines.first()) {
           Present { value: base_tree_hash } =>
             match parse_gate_roster_hash_wire(line: lines.skip(n: 1).first()) {
               Absent => none
@@ -217,11 +217,11 @@ fn stamp_floor_receipt_with_conclusion(
   base_tree_hash: extdeps.git.object_store.GitObjectId,
   conclusion: extdeps.github.checks.CheckConclusion,
 ) -> gunbc.merge_admission.MergeAdmissionReceipt {
-  mint_merge_admission_receipt(
+  gunbc.merge_admission.mint_merge_admission_receipt(
     pr_number: pr_number,
     head_sha: head_sha,
     base_tree_hash: base_tree_hash,
-    gate_roster_hash: current_gate_roster_hash,
+    gate_roster_hash: gunbc.merge_admission.current_gate_roster_hash,
     conclusion: conclusion,
   )
 }

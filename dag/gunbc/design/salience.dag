@@ -100,10 +100,10 @@ data length_unit_comparability_note: String = "THE UNIT WORD IS NOT THE UNIT (re
 
 fn length_is_px(l: extdeps.languages.css.values.CssLength) -> Bool {
   match l.unit {
-    Px => true
-    Rem => false
-    Ch => false
-    Percent => false
+    extdeps.languages.css.values.Px => true
+    extdeps.languages.css.values.Rem => false
+    extdeps.languages.css.values.Ch => false
+    extdeps.languages.css.values.Percent => false
   }
 }
 
@@ -139,8 +139,8 @@ fn emission_for(role: SalienceRole, spec: EmissionSpec, discriminator: String) -
     } else {
       if !emission_spec_units_comparable(spec: spec) {
         EmissionUnitNotComparable {
-          core_unit: css_length_unit_token(u: spec.core_radius.unit),
-          corona_unit: css_length_unit_token(u: spec.corona_radius.unit),
+          core_unit: extdeps.languages.css.values.css_length_unit_token(u: spec.core_radius.unit),
+          corona_unit: extdeps.languages.css.values.css_length_unit_token(u: spec.corona_radius.unit),
         }
       } else {
         if emission_envelope(spec: spec) {
@@ -225,9 +225,9 @@ fn attraction_envelope(f: AttractionField) -> Bool {
 }
 
 data focal_attraction: AttractionField = AttractionField {
-  activation_radius: css_px(150),
-  max_travel: css_px(12),
-  settle: settle_spring,
+  activation_radius: extdeps.languages.css.values.css_px(150),
+  max_travel: extdeps.languages.css.values.css_px(12),
+  settle: gunbc.design.material.settle_spring,
 }
 
 data reduced_motion_note: String = "REDUCED MOTION PRESERVES THE DISTINCTION, NOT THE DECORATION. Because emission and physical motion are enhancement channels granted only alongside a non-emission discriminator (emission_for refuses a grant with none), a reduced-motion or no-emission rendering keeps every selection, state, and operability fact intact by construction — the discriminator channel is what carries them. Muting the spectacle can therefore never mute the truth."

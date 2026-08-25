@@ -25,7 +25,7 @@ fn surface_locus_eq(a: LanguageTargetSurfaceLocus, b: LanguageTargetSurfaceLocus
   match a {
     SurfaceDeclaration { ref: ra } =>
       match b {
-        SurfaceDeclaration { ref: rb } => declaration_ref_eq(a: ra, b: rb)
+        SurfaceDeclaration { ref: rb } => std.decl_ref.declaration_ref_eq(a: ra, b: rb)
         SurfaceModule { module_path: _ } => false
       }
     SurfaceModule { module_path: ma } =>
@@ -146,7 +146,7 @@ fn subject_occurrence_count(
   subjects: List<std.decl_ref.DeclarationRef>
 ) -> Int {
   fold(subjects, init: 0, f: fn(acc, s) {
-    if declaration_ref_eq(a: s, b: target) { acc + 1 } else { acc }
+    if std.decl_ref.declaration_ref_eq(a: s, b: target) { acc + 1 } else { acc }
   })
 }
 
@@ -168,7 +168,7 @@ fn projection_for_subject(
     ProjectionAmbiguous { subject: subject }
   } else {
     fold(projections, init: ProjectionAbsent { subject: subject }, f: fn(acc, p) {
-      if declaration_ref_eq(a: p.subject, b: subject) { ProjectionResolved { projection: p } } else { acc }
+      if std.decl_ref.declaration_ref_eq(a: p.subject, b: subject) { ProjectionResolved { projection: p } } else { acc }
     })
   }
 }
@@ -232,7 +232,7 @@ fn projection_subject_is_registered(
   projection: LanguageTargetProjection,
   registry: List<LanguageTargetRegistration>
 ) -> Bool {
-  declaration_ref_in_list(
+  std.decl_ref.declaration_ref_in_list(
     target: projection.subject,
     refs: registration_subjects(registry: registry)
   )
@@ -248,11 +248,11 @@ fn duplicate_projection_subject_count(projections: List<LanguageTargetProjection
 fn tally_contains(tally: NamedTargetTally, candidate: std.decl_ref.DeclarationRef) -> Bool {
   match tally {
     TallyNone => false
-    TallyOne { target: only } => declaration_ref_eq(a: only, b: candidate)
+    TallyOne { target: only } => std.decl_ref.declaration_ref_eq(a: only, b: candidate)
     TallyMany { first: f, second: sec, rest: r } =>
-      declaration_ref_eq(a: f, b: candidate)
-        || declaration_ref_eq(a: sec, b: candidate)
-        || declaration_ref_in_list(target: candidate, refs: r)
+      std.decl_ref.declaration_ref_eq(a: f, b: candidate)
+        || std.decl_ref.declaration_ref_eq(a: sec, b: candidate)
+        || std.decl_ref.declaration_ref_in_list(target: candidate, refs: r)
   }
 }
 
@@ -298,7 +298,7 @@ fn resolve_target_for_surface(
         candidates: tally_many_candidates(first: f, second: sec, rest: r)
       }
     TallyOne { target: t } =>
-      if declaration_ref_in_list(target: t, refs: registration_subjects(registry: registry)) {
+      if std.decl_ref.declaration_ref_in_list(target: t, refs: registration_subjects(registry: registry)) {
         TargetResolved { target: t }
       } else {
         TargetNotRegistered { target: t }
@@ -321,7 +321,7 @@ fn surface_row_violations(
         LegacyFrontier => [SurfaceMissingTargetIdentity { authority: row.authority, surface: row.surface }]
       }
     Present { value: t } =>
-      if declaration_ref_in_list(target: t, refs: registration_subjects(registry: registry)) {
+      if std.decl_ref.declaration_ref_in_list(target: t, refs: registration_subjects(registry: registry)) {
         []
       } else {
         [SurfaceNamesUnknownTarget {
@@ -412,7 +412,7 @@ fn duplicate_registration_violations(
   let subjects = registration_subjects(registry: registry)
   let scanned = fold(registry, init: DuplicateRegistryScan { reported: [], violations: [] }, f: fn(acc, r) {
     let subj = registration_subject(registration: r)
-    if declaration_ref_in_list(target: subj, refs: acc.reported) {
+    if std.decl_ref.declaration_ref_in_list(target: subj, refs: acc.reported) {
       acc
     } else {
       if subject_occurrence_count(target: subj, subjects: subjects) > 1 {
@@ -461,7 +461,7 @@ fn identified_row_count(
     match r.target {
       Absent => acc
       Present { value: t } =>
-        if declaration_ref_in_list(target: t, refs: subjects) { acc + 1 } else { acc }
+        if std.decl_ref.declaration_ref_in_list(target: t, refs: subjects) { acc + 1 } else { acc }
     }
   })
 }

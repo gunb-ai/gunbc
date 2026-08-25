@@ -5,7 +5,7 @@ fn tcc_cache_pass_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^tcc_cache_pass_sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -13,7 +13,7 @@ fn tcc_cache_fail_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^tcc_cache_fail_sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -47,8 +47,8 @@ fn tcc_cache_eval_context() -> v2.compiler.eval.EvalContext {
 fn tcc_cache_stub_claim() -> v2.std.verification.TestClaim {
   v2.std.verification.CompilesClaim {
     label: "manual/test_claim_cache: digest sensitivity scaffold",
-    anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
+    anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
     input: tcc_cache_pass_node(),
     expected_value: tcc_cache_pass_node()
   }
@@ -84,14 +84,14 @@ test fn tcc_cache_facts_diagnostic_digest_differs() -> Bool {
 fn tcc_cache_diagnostic_claim(expected_reason: v2.std.node.Symbol) -> v2.std.verification.TestClaim {
   v2.std.verification.DiagnosticClaim {
     label: "manual/test_claim_cache: diagnostic claim hash scaffold",
-    anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
+    anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
     input: tcc_cache_root(),
     expected_rejection: v2.std.diagnostic.diagnostics_singleton(
       d: v2.std.diagnostic.Diagnostic {
         reason: expected_reason,
         at: v2.std.diagnostic.node_locus(node: tcc_cache_root()),
-        correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
       }
     )
   }
@@ -103,16 +103,16 @@ test fn tcc_cache_compiles_equals_same_nodes_claim_hash_differs() -> Bool {
   v2.compiler.eval.test_claim_claim_hash_digest(
     c: v2.std.verification.CompilesClaim {
       label: "manual/test_claim_cache: compiles shape",
-      anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
+      anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
       input: node_x,
       expected_value: node_y
     }
   ) != v2.compiler.eval.test_claim_claim_hash_digest(
     c: v2.std.verification.EqualsClaim {
       label: "manual/test_claim_cache: equals shape",
-      anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
+      anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
       lhs: node_x,
       rhs: node_y
     }
@@ -346,23 +346,24 @@ fn tcc_interp_stub_allocate_body() -> v2.std.runtime.InterpretationAlgebra {
     },
     transform: v2.std.runtime.TransformInterpreter {
       call_primitive: v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive,
-      identity: ^v2_eval_call_primitive
+      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive
     },
     branch: v2.std.runtime.BranchInterpreter {
       choose_branch: v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch,
-      identity: ^v2_eval_choose_branch
+      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch
     },
     loop: v2.std.runtime.LoopInterpreter {
       step_loop: v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop,
-      identity: ^v2_eval_step_loop
+      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop
     },
     bind: v2.std.runtime.BindInterpreter {
       bind_value: v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value,
-      identity: ^v2_eval_bind_value
+      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value
     },
     match: v2.std.runtime.MatchInterpreter {
       choose_arm: v2.std.runtime.runtime_reject_match_arm,
-      identity: ^runtime_reject_match_arm    }
+      identity: ^v2.std.runtime.runtime_reject_match_arm
+    }
   }
 }
 
@@ -370,7 +371,7 @@ fn tcc_interp_stub_call_body() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
     value: v2.std.runtime.ValueInterpreter {
       allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal,
-      identity: ^v2_eval_allocate_literal
+      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal
     },
     transform: v2.std.runtime.TransformInterpreter {
       call_primitive: tcc_stub_call_b,
@@ -378,39 +379,42 @@ fn tcc_interp_stub_call_body() -> v2.std.runtime.InterpretationAlgebra {
     },
     branch: v2.std.runtime.BranchInterpreter {
       choose_branch: v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch,
-      identity: ^v2_eval_choose_branch
+      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch
     },
     loop: v2.std.runtime.LoopInterpreter {
       step_loop: v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop,
-      identity: ^v2_eval_step_loop
+      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop
     },
     bind: v2.std.runtime.BindInterpreter {
       bind_value: v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value,
-      identity: ^v2_eval_bind_value
+      identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value
     },
     match: v2.std.runtime.MatchInterpreter {
       choose_arm: v2.std.runtime.runtime_reject_match_arm,
-      identity: ^runtime_reject_match_arm    }
+      identity: ^v2.std.runtime.runtime_reject_match_arm
+    }
   }
 }
 
 fn tcc_witness_stub_allocate_body() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^tcc_stub_alloc_a,
-    call_primitive: ^v2_eval_call_primitive,
-    choose_branch: ^v2_eval_choose_branch,
-    step_loop: ^v2_eval_step_loop,
-    bind_value: ^v2_eval_bind_value,    choose_arm: ^runtime_reject_match_arm
+    call_primitive: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive,
+    choose_branch: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch,
+    step_loop: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop,
+    bind_value: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value,
+    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
   }
 }
 
 fn tcc_witness_stub_call_body() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
-    allocate_literal: ^v2_eval_allocate_literal,
+    allocate_literal: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal,
     call_primitive: ^tcc_stub_call_b,
-    choose_branch: ^v2_eval_choose_branch,
-    step_loop: ^v2_eval_step_loop,
-    bind_value: ^v2_eval_bind_value,    choose_arm: ^runtime_reject_match_arm
+    choose_branch: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch,
+    step_loop: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop,
+    bind_value: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value,
+    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
   }
 }
 
@@ -450,44 +454,46 @@ fn tcc_stub_choose_arm(
 
 fn tcc_interp_match_default_body() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
-    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal, identity: ^v2_eval_allocate_literal },
-    transform: v2.std.runtime.TransformInterpreter { call_primitive: v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive, identity: ^v2_eval_call_primitive },
-    branch: v2.std.runtime.BranchInterpreter { choose_branch: v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch, identity: ^v2_eval_choose_branch },
-    loop: v2.std.runtime.LoopInterpreter { step_loop: v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop, identity: ^v2_eval_step_loop },
-    bind: v2.std.runtime.BindInterpreter { bind_value: v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value, identity: ^v2_eval_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value },
+    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^v2.std.runtime.runtime_reject_match_arm }
   }
 }
 
 fn tcc_interp_match_stub_body() -> v2.std.runtime.InterpretationAlgebra {
   v2.std.runtime.InterpretationAlgebra {
-    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal, identity: ^v2_eval_allocate_literal },
-    transform: v2.std.runtime.TransformInterpreter { call_primitive: v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive, identity: ^v2_eval_call_primitive },
-    branch: v2.std.runtime.BranchInterpreter { choose_branch: v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch, identity: ^v2_eval_choose_branch },
-    loop: v2.std.runtime.LoopInterpreter { step_loop: v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop, identity: ^v2_eval_step_loop },
-    bind: v2.std.runtime.BindInterpreter { bind_value: v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value, identity: ^v2_eval_bind_value },
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value, identity: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value },
     match: v2.std.runtime.MatchInterpreter { choose_arm: tcc_stub_choose_arm, identity: ^tcc_stub_choose_arm }
   }
 }
 
 fn tcc_witness_match_default_body() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
-    allocate_literal: ^v2_eval_allocate_literal,
-    call_primitive: ^v2_eval_call_primitive,
-    choose_branch: ^v2_eval_choose_branch,
-    step_loop: ^v2_eval_step_loop,
-    bind_value: ^v2_eval_bind_value,    choose_arm: ^runtime_reject_match_arm
+    allocate_literal: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal,
+    call_primitive: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive,
+    choose_branch: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch,
+    step_loop: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop,
+    bind_value: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value,
+    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
   }
 }
 
 fn tcc_witness_match_stub_body() -> v2.std.runtime.InterpretationStructureWitness {
   v2.std.runtime.InterpretationStructureWitness {
-    allocate_literal: ^v2_eval_allocate_literal,
-    call_primitive: ^v2_eval_call_primitive,
-    choose_branch: ^v2_eval_choose_branch,
-    step_loop: ^v2_eval_step_loop,
-    bind_value: ^v2_eval_bind_value,
-    choose_arm: ^tcc_stub_choose_arm  }
+    allocate_literal: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_allocate_literal,
+    call_primitive: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_call_primitive,
+    choose_branch: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_choose_branch,
+    step_loop: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_step_loop,
+    bind_value: ^v2.extdeps.runtimes.v2_evaluator.v2_eval_bind_value,
+    choose_arm: ^tcc_stub_choose_arm
+  }
 }
 
 test fn tcc_cache_same_pin_match_only_slot_digest_differs() -> Bool {
@@ -529,14 +535,14 @@ test fn tcc_cache_same_pin_match_only_slot_identical_digest_equal() -> Bool {
 fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: List<v2.std.diagnostic.Diagnostic>) -> v2.std.verification.TestClaim {
   v2.std.verification.DiagnosticClaim {
     label: label_suffix,
-    anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
+    anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
     input: tcc_cache_root(),
     expected_rejection: v2.std.diagnostic.NonEmptyDiagnostics {
       head: v2.std.diagnostic.Diagnostic {
         reason: ^tcc_cache_expected_diag_a,
         at: v2.std.diagnostic.node_locus(node: tcc_cache_root()),
-        correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
       },
       tail: tail
     }
@@ -547,12 +553,12 @@ test fn tcc_cache_diagnostic_tail_permutation_claim_hash_invariant() -> Bool {
   let diag_b = v2.std.diagnostic.Diagnostic {
     reason: ^tcc_cache_tail_diag_b,
     at: v2.std.diagnostic.node_locus(node: tcc_cache_root()),
-    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
   }
   let diag_c = v2.std.diagnostic.Diagnostic {
     reason: ^tcc_cache_tail_diag_c,
     at: v2.std.diagnostic.node_locus(node: tcc_cache_root()),
-    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
   }
   v2.compiler.eval.test_claim_claim_hash_digest(
     c: tcc_cache_diagnostic_tail_bag_claim(
@@ -572,8 +578,8 @@ test fn tcc_cache_correction_variant_domain_claim_hash_differs() -> Bool {
   v2.compiler.eval.test_claim_claim_hash_digest(
     c: v2.std.verification.DiagnosticClaim {
       label: "manual/test_claim_cache: suggested vs unavailable correction domain",
-      anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
+      anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
       input: tcc_cache_root(),
       expected_rejection: v2.std.diagnostic.diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
@@ -586,14 +592,14 @@ test fn tcc_cache_correction_variant_domain_claim_hash_differs() -> Bool {
   ) != v2.compiler.eval.test_claim_claim_hash_digest(
     c: v2.std.verification.DiagnosticClaim {
       label: "manual/test_claim_cache: unavailable ambiguous intent correction",
-      anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
+      anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
       input: tcc_cache_root(),
       expected_rejection: v2.std.diagnostic.diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^tcc_cache_expected_diag_a,
           at: v2.std.diagnostic.node_locus(node: tcc_cache_root()),
-          correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+          correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
         }
       )
     }
@@ -604,28 +610,28 @@ test fn tcc_cache_locus_variant_domain_claim_hash_differs() -> Bool {
   v2.compiler.eval.test_claim_claim_hash_digest(
     c: v2.std.verification.DiagnosticClaim {
       label: "manual/test_claim_cache: node locus domain",
-      anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
+      anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
       input: tcc_cache_root(),
       expected_rejection: v2.std.diagnostic.diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^tcc_cache_expected_diag_a,
           at: v2.std.diagnostic.node_locus(node: tcc_cache_root()),
-          correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+          correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
         }
       )
     }
   ) != v2.compiler.eval.test_claim_claim_hash_digest(
     c: v2.std.verification.DiagnosticClaim {
       label: "manual/test_claim_cache: port locus domain",
-      anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit },
+      anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
       input: tcc_cache_root(),
       expected_rejection: v2.std.diagnostic.diagnostics_singleton(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^tcc_cache_expected_diag_a,
           at: v2.std.diagnostic.port_locus(port: ^tcc_cache_root_sym),
-          correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+          correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
         }
       )
     }

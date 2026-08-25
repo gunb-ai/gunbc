@@ -3,7 +3,7 @@ module extdeps.cloud.gcp.iam
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "cloud.google.com/iam/docs/overview"
   }
 }
@@ -95,12 +95,12 @@ fn gcp_condition_eq(a: IamCondition?, b: IamCondition?) -> Bool {
     Absent =>
       match b {
         Absent => true
-        Present { value: _ } => false
+        v2.std.optional.Present { value: _ } => false
       }
-    Present { value: ca } =>
+    v2.std.optional.Present { value: ca } =>
       match b {
         Absent => false
-        Present { value: cb } => ca.title == cb.title && ca.expression == cb.expression
+        v2.std.optional.Present { value: cb } => ca.title == cb.title && ca.expression == cb.expression
       }
   }
 }
@@ -162,14 +162,14 @@ fn reconcile_gcp_policy(
   owned_universe: GcpIamOwnedCellUniverse
 ) -> GcpPolicyReconciliation {
   let observed_cells = gcp_policy_cells(p: observed)
-  let added = desired_owned |> filter(c => !gcp_cell_in(c: c, xs: observed_cells))
-  let removed = observed_cells |> filter(c =>
+  let added = desired_owned |> v2.std.algebra.filter(c => !gcp_cell_in(c: c, xs: observed_cells))
+  let removed = observed_cells |> v2.std.algebra.filter(c =>
     gcp_cell_in(c: c, xs: owned_universe.cells) && !gcp_cell_in(c: c, xs: desired_owned))
-  let preserved = observed_cells |> filter(c => !gcp_cell_in(c: c, xs: owned_universe.cells))
+  let preserved = observed_cells |> v2.std.algebra.filter(c => !gcp_cell_in(c: c, xs: owned_universe.cells))
   if count(added) == 0 && count(removed) == 0 {
     GcpPolicyAlreadyConverged { policy: observed }
   } else {
-    let kept = observed_cells |> filter(c => !gcp_cell_in(c: c, xs: removed))
+    let kept = observed_cells |> v2.std.algebra.filter(c => !gcp_cell_in(c: c, xs: removed))
     let final_cells = fold(added, init: kept, f: (acc, c) => acc |> list_push(c))
     GcpPolicyDeltaRequired {
       policy: GcpPolicy {
@@ -213,7 +213,7 @@ fn role_grants_permission(authority: RolePermissionAuthority, permission: String
   match authority {
     RolePermissionsUnobserved { cause: c } => RoleGrantUndetermined { cause: c }
     RolePermissionsObserved { role: r } =>
-      if extdeps.cloud.gcp.iam.list_contains_string(xs: r.included_permissions, needle: permission) {
+      if list_contains_string(xs: r.included_permissions, needle: permission) {
         RoleGrantsPermission
       } else {
         RoleDoesNotGrantPermission
@@ -267,7 +267,7 @@ service gcp.IAM {
     }
 
     idempotent
-    transport rest { method: POST, path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken" }
+    transport rest { method: v2.std.network.POST, path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken" }
     response {
       200 => GcpGenerateAccessToken200Body
       401 => GcpErrorShape
@@ -301,7 +301,7 @@ service gcp.IamRoles {
       stage: String
     }
     readonly
-    transport rest { method: GET, path: "/v1/\{role_name\}" }
+    transport rest { method: v2.std.network.GET, path: "/v1/\{role_name\}" }
     response {
       200 => GcpPredefinedRole
       401 => GcpErrorShape
@@ -318,9 +318,9 @@ service gcp.ResourceManager {
 
   operation GetIamPolicy {
     input { access_token: Secret, project_id: extdeps.cloud.gcp.gcp.GcpProjectId }
-    output { bindings: std.types.Json, etag: String }
+    output { bindings: Json, etag: String }
     readonly
-    transport rest { method: POST, path: "/v1/projects/\{project_id\}:getIamPolicy" }
+    transport rest { method: v2.std.network.POST, path: "/v1/projects/\{project_id\}:getIamPolicy" }
     response {
       200 => GcpPolicy
       401 => GcpErrorShape
@@ -334,11 +334,11 @@ service gcp.ResourceManager {
     input {
       access_token: Secret
       project_id: extdeps.cloud.gcp.gcp.GcpProjectId
-      bindings: std.types.Json
+      bindings: Json
       etag: std.types.NonEmptyStr
     }
     output { ok: Bool }
-    transport rest { method: POST, path: "/v1/projects/\{project_id\}:setIamPolicy" }
+    transport rest { method: v2.std.network.POST, path: "/v1/projects/\{project_id\}:setIamPolicy" }
     response {
       200 => GcpPolicy
       401 => GcpErrorShape

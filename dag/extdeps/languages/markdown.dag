@@ -1,5 +1,6 @@
 module extdeps.languages.markdown
 
+
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: extdeps.uri.Https
@@ -87,17 +88,17 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> std.markup.MarkupMedium {
 
 fn md_inline_to_fragment(inline: std.markdown.MarkdownInline, sp: MarkdownSpellings) -> std.markup.Fragment {
   match inline {
-    TextInline { text } =>
+    std.markdown.TextInline { text } =>
       std.markup.FragmentText { content: text }
-    EmphasisInline { inlines } =>
+    std.markdown.EmphasisInline { inlines } =>
       std.markup.Element { tag: "em", attributes: [], children: md_inlines_to_fragments(inlines: inlines, sp: sp) }
-    StrongInline { inlines } =>
+    std.markdown.StrongInline { inlines } =>
       std.markup.Element { tag: "strong", attributes: [], children: md_inlines_to_fragments(inlines: inlines, sp: sp) }
-    CodeInline { text } =>
+    std.markdown.CodeInline { text } =>
       std.markup.Element { tag: "code", attributes: [], children: [ std.markup.FragmentText { content: text } ] }
-    LinkInline { inlines, url } =>
+    std.markdown.LinkInline { inlines, url } =>
       std.markup.RawNode { content: md_link_form(text: md_render_inlines(inlines: inlines, sp: sp), url: url, sp: sp) }
-    ImageInline { alt, url } =>
+    std.markdown.ImageInline { alt, url } =>
       std.markup.RawNode { content: join([sp.image_marker, md_link_form(text: alt, url: url, sp: sp)], "") }
   }
 }
@@ -119,7 +120,7 @@ fn md_item(marker: String, blocks: List<std.markdown.MarkdownBlock>, sp: Markdow
   fold(blocks, init: { idx: 0, out: "" }, f: (acc, b) => {
     if acc.idx == 0 {
       let lead = match b {
-        ParagraphBlock { inlines } =>
+        std.markdown.ParagraphBlock { inlines } =>
           join([pad, marker, md_render_inlines(inlines: inlines, sp: sp)], "")
         _ =>
           join([pad, marker, md_block(block: b, sp: sp)], "")
@@ -127,14 +128,14 @@ fn md_item(marker: String, blocks: List<std.markdown.MarkdownBlock>, sp: Markdow
       { idx: 1, out: lead }
     } else {
       let cont = match b {
-        UnorderedListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
-        OrderedListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
-        TaskListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
-        HeadingBlock { level: _, inlines: _ } => concat("\n\n", concat(std.render_repeat_string_bootstrap.repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
-        ParagraphBlock { inlines: _ } => concat("\n\n", concat(std.render_repeat_string_bootstrap.repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
-        CodeBlock { code: _ } => concat("\n\n", concat(std.render_repeat_string_bootstrap.repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
-        TableBlock { header: _, alignments: _, rows: _ } => concat("\n\n", concat(std.render_repeat_string_bootstrap.repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
-        BlockquoteBlock { blocks: _ } => concat("\n\n", concat(std.render_repeat_string_bootstrap.repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        std.markdown.UnorderedListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
+        std.markdown.OrderedListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
+        std.markdown.TaskListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
+        std.markdown.HeadingBlock { level: _, inlines: _ } => concat("\n\n", concat(std.render_repeat_string_bootstrap.repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        std.markdown.ParagraphBlock { inlines: _ } => concat("\n\n", concat(std.render_repeat_string_bootstrap.repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        std.markdown.CodeBlock { code: _ } => concat("\n\n", concat(std.render_repeat_string_bootstrap.repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        std.markdown.TableBlock { header: _, alignments: _, rows: _ } => concat("\n\n", concat(std.render_repeat_string_bootstrap.repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        std.markdown.BlockquoteBlock { blocks: _ } => concat("\n\n", concat(std.render_repeat_string_bootstrap.repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
         ThematicBreak => concat("\n\n", concat(std.render_repeat_string_bootstrap.repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
       }
       { idx: acc.idx + 1, out: concat(acc.out, cont) }
@@ -159,8 +160,8 @@ fn md_ordered(items: List<std.markdown.MarkdownListItem>, sp: MarkdownSpellings,
 
 fn md_task_box(state: std.markdown.CheckboxState, sp: MarkdownSpellings) -> String {
   match state {
-    Checked => sp.task_checked
-    Unchecked => sp.task_unchecked
+    std.markdown.Checked => sp.task_checked
+    std.markdown.Unchecked => sp.task_unchecked
   }
 }
 
@@ -173,9 +174,9 @@ fn md_tasklist(items: List<std.markdown.MarkdownTaskItem>, sp: MarkdownSpellings
 
 fn md_nested(block: std.markdown.MarkdownBlock, sp: MarkdownSpellings, depth: Int) -> String {
   match block {
-    UnorderedListBlock { items } => md_unordered(items: items, sp: sp, depth: depth)
-    OrderedListBlock { items } => md_ordered(items: items, sp: sp, depth: depth)
-    TaskListBlock { items } => md_tasklist(items: items, sp: sp, depth: depth)
+    std.markdown.UnorderedListBlock { items } => md_unordered(items: items, sp: sp, depth: depth)
+    std.markdown.OrderedListBlock { items } => md_ordered(items: items, sp: sp, depth: depth)
+    std.markdown.TaskListBlock { items } => md_tasklist(items: items, sp: sp, depth: depth)
     _ => md_block(block: block, sp: sp)
   }
 }
@@ -191,10 +192,10 @@ fn md_table_row(row: std.markdown.MarkdownTableRow, sp: MarkdownSpellings) -> St
 
 fn md_align_cell(a: std.markdown.MarkdownAlignment, sp: MarkdownSpellings) -> String {
   match a {
-    AlignNone => sp.table_align_none
-    AlignLeft => sp.table_align_left
-    AlignCenter => sp.table_align_center
-    AlignRight => sp.table_align_right
+    std.markdown.AlignNone => sp.table_align_none
+    std.markdown.AlignLeft => sp.table_align_left
+    std.markdown.AlignCenter => sp.table_align_center
+    std.markdown.AlignRight => sp.table_align_right
   }
 }
 
@@ -230,12 +231,12 @@ fn md_blockquote(blocks: List<std.markdown.MarkdownBlock>, sp: MarkdownSpellings
 
 fn heading_level_to_int(level: std.markdown.HeadingLevel) -> Int {
   match level {
-    H1 => 1
-    H2 => 2
-    H3 => 3
-    H4 => 4
-    H5 => 5
-    H6 => 6
+    std.markdown.H1 => 1
+    std.markdown.H2 => 2
+    std.markdown.H3 => 3
+    std.markdown.H4 => 4
+    std.markdown.H5 => 5
+    std.markdown.H6 => 6
   }
 }
 
@@ -249,25 +250,25 @@ fn md_code_block(code: String, sp: MarkdownSpellings) -> String {
 
 fn md_block(block: std.markdown.MarkdownBlock, sp: MarkdownSpellings) -> String {
   match block {
-    HeadingBlock { level, inlines } =>
+    std.markdown.HeadingBlock { level, inlines } =>
       join([
         std.render_repeat_string_bootstrap.repeat_string(s: sp.heading_marker, n: heading_level_to_int(level: level)),
         sp.heading_sep,
         md_render_inlines(inlines: inlines, sp: sp)
       ], "")
-    ParagraphBlock { inlines } =>
+    std.markdown.ParagraphBlock { inlines } =>
       md_render_inlines(inlines: inlines, sp: sp)
-    UnorderedListBlock { items } =>
+    std.markdown.UnorderedListBlock { items } =>
       md_unordered(items: items, sp: sp, depth: 0)
-    OrderedListBlock { items } =>
+    std.markdown.OrderedListBlock { items } =>
       md_ordered(items: items, sp: sp, depth: 0)
-    TaskListBlock { items } =>
+    std.markdown.TaskListBlock { items } =>
       md_tasklist(items: items, sp: sp, depth: 0)
-    CodeBlock { code } =>
+    std.markdown.CodeBlock { code } =>
       md_code_block(code: code, sp: sp)
-    TableBlock { header, alignments, rows } =>
+    std.markdown.TableBlock { header, alignments, rows } =>
       md_table(header: header, alignments: alignments, rows: rows, sp: sp)
-    BlockquoteBlock { blocks } =>
+    std.markdown.BlockquoteBlock { blocks } =>
       md_blockquote(blocks: blocks, sp: sp)
     ThematicBreak =>
       sp.thematic_break
@@ -427,8 +428,8 @@ fn markdown_medium_lossless(doc: std.markdown.MarkdownDocument) -> extdeps.commu
 
 fn markdown_url_validation(url: String) -> extdeps.uri_validation.RejectedUrlScheme? {
   match extdeps.uri_validation.validate_href(url: url) {
-    SafeHref { url: _ } => Absent
-    RejectedHref { reason: r } => Present { value: r }
+    extdeps.uri_validation.SafeHref { url: _ } => Absent
+    extdeps.uri_validation.RejectedHref { reason: r } => Present { value: r }
   }
 }
 
@@ -444,17 +445,17 @@ fn find_first_rejected_url_in_inlines(inlines: List<std.markdown.MarkdownInline>
 
 fn find_first_rejected_url_in_inline(inline: std.markdown.MarkdownInline) -> extdeps.uri_validation.RejectedUrlScheme? {
   match inline {
-    TextInline { text: _ } => Absent
-    CodeInline { text: _ } => Absent
-    ImageInline { alt: _, url } => markdown_url_validation(url: url)
-    LinkInline { inlines, url } =>
+    std.markdown.TextInline { text: _ } => Absent
+    std.markdown.CodeInline { text: _ } => Absent
+    std.markdown.ImageInline { alt: _, url } => markdown_url_validation(url: url)
+    std.markdown.LinkInline { inlines, url } =>
       match markdown_url_validation(url: url) {
         Present { value: r } => Present { value: r }
         Absent => find_first_rejected_url_in_inlines(inlines: inlines)
       }
-    EmphasisInline { inlines } =>
+    std.markdown.EmphasisInline { inlines } =>
       find_first_rejected_url_in_inlines(inlines: inlines)
-    StrongInline { inlines } =>
+    std.markdown.StrongInline { inlines } =>
       find_first_rejected_url_in_inlines(inlines: inlines)
   }
 }
@@ -491,12 +492,12 @@ fn find_first_rejected_url_in_rows(rows: List<std.markdown.MarkdownTableRow>) ->
 
 fn find_first_rejected_url_in_block(block: std.markdown.MarkdownBlock) -> extdeps.uri_validation.RejectedUrlScheme? {
   match block {
-    CodeBlock { code: _ } => Absent
-    HeadingBlock { level: _, inlines } =>
+    std.markdown.CodeBlock { code: _ } => Absent
+    std.markdown.HeadingBlock { level: _, inlines } =>
       find_first_rejected_url_in_inlines(inlines: inlines)
-    ParagraphBlock { inlines } =>
+    std.markdown.ParagraphBlock { inlines } =>
       find_first_rejected_url_in_inlines(inlines: inlines)
-    UnorderedListBlock { items } =>
+    std.markdown.UnorderedListBlock { items } =>
       fold(items,
         init: Absent,
         f: (acc, item) => match acc {
@@ -504,7 +505,7 @@ fn find_first_rejected_url_in_block(block: std.markdown.MarkdownBlock) -> extdep
           Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
         }
       )
-    OrderedListBlock { items } =>
+    std.markdown.OrderedListBlock { items } =>
       fold(items,
         init: Absent,
         f: (acc, item) => match acc {
@@ -512,7 +513,7 @@ fn find_first_rejected_url_in_block(block: std.markdown.MarkdownBlock) -> extdep
           Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
         }
       )
-    TaskListBlock { items } =>
+    std.markdown.TaskListBlock { items } =>
       fold(items,
         init: Absent,
         f: (acc, item) => match acc {
@@ -520,12 +521,12 @@ fn find_first_rejected_url_in_block(block: std.markdown.MarkdownBlock) -> extdep
           Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
         }
       )
-    TableBlock { header, alignments: _, rows } =>
+    std.markdown.TableBlock { header, alignments: _, rows } =>
       match find_first_rejected_url_in_cells(cells: header.cells) {
         Present { value: r } => Present { value: r }
         Absent => find_first_rejected_url_in_rows(rows: rows)
       }
-    BlockquoteBlock { blocks } =>
+    std.markdown.BlockquoteBlock { blocks } =>
       find_first_rejected_url_in_blocks(blocks: blocks)
     ThematicBreak => Absent
   }

@@ -1,7 +1,7 @@
 module test.claim.peak_resident_measured_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data live_tree_disposition_reason: String = "peak_resident_measured_holds reads /proc/self/status (VmHWM) through the observed_peak_resident_bytes host builtin - host state outside the resolved substrate closure, the exact hidden-behind-a-builtin class the entry-text classifier cannot see (live_tree.dag) - so this row declares ReadsLiveTree and never predict-skips."
 
@@ -11,22 +11,22 @@ data peak_resident_platform_precondition_retired_note: String = "A ProcSelfStatu
 
 test fn peak_resident_measured_holds() -> Bool {
   let peak = observed_peak_resident_bytes()
-  let account = cost_account_measured_from_time_and_space(
-    time: time_measure(count: 1),
-    space: byte_size(count: peak)
+  let account = std.realization_measurement.cost_account_measured_from_time_and_space(
+    time: std.measure.time_measure(count: 1),
+    space: std.measure.byte_size(count: peak)
   )
   peak > 0
-    && byte_size_count(account.space) == peak
+    && std.measure.byte_size_count(account.space) == peak
     && match account.basis {
-      Measured => true
-      Predicted => false
+      std.realization_schedule.Measured => true
+      std.realization_schedule.Predicted => false
     }
 }
 
 test fn space_seq_is_peak_not_sum_holds() -> Bool {
-  let a = byte_size(count: 5)
-  let b = byte_size(count: 3)
-  byte_size_count(space_measure_seq(a: a, b: b)) == 5
-    && byte_size_count(space_measure_par(a: a, b: b)) == 8
-    && byte_size_count(space_measure_list_seq(spaces: [a, b, byte_size(count: 4)])) == 5
+  let a = std.measure.byte_size(count: 5)
+  let b = std.measure.byte_size(count: 3)
+  std.measure.byte_size_count(std.realization_measurement.space_measure_seq(a: a, b: b)) == 5
+    && std.measure.byte_size_count(std.realization_measurement.space_measure_par(a: a, b: b)) == 8
+    && std.measure.byte_size_count(std.realization_measurement.space_measure_list_seq(spaces: [a, b, std.measure.byte_size(count: 4)])) == 5
 }

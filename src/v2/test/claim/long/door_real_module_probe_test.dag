@@ -2,18 +2,18 @@ module v2.test.long.door_real_module_probe
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data door_real_module_probe_note: String = "Phase-2 discriminating witness (sharp-bee-290 / smart-eagle-362): synthetic 2-module quad+peer program exercising resolve_with_admission_policy BY EXECUTION. Supersedes the pre-flip parsed-source quad_with_peer_reds_at_resolve_ambiguous_export falsification row — ImportScoped + subject admit_named_exports flat-merge reds resolve_ambiguous_export; NamespaceOnlyY (default) skips subject export merge and greens."
 
 data migration_owned_causes_note: String = "Cause ownership (sharp-bee-290 + nimble-boar-198 reconciliation 2026-07-13; durable table in v2.workflow.compile_door_ledger known_frontier_causes): resolve_ambiguous_export LANDED fix in phase-2 flip (this file's ImportScoped RED / NamespaceOnlyY GREEN pair). parse_grammar_choice_overlap_residue on import syntax remains migration-owned until phase-3 grammar deletion."
 
-fn quad_qn_node(seg: v2.std.node.Symbol) -> Node {
+fn quad_qn_node(seg: Symbol) -> Node {
   fold_list_node(
-    xs: std.algebra.Cons { head: seg, tail: std.algebra.Empty },
+    xs: Cons { head: seg, tail: Empty },
     item_node: fn(sym) {
-      v2.std.node.Node {
-        kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
@@ -21,9 +21,9 @@ fn quad_qn_node(seg: v2.std.node.Symbol) -> Node {
   )
 }
 
-fn quad_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+fn quad_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -33,10 +33,10 @@ fn quad_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, exp
         name: ^dag_surface_module_header_qualified_name,
         target: quad_qn_node(seg: seg)
       ),
-      v2.std.node.Edge {
+      Edge {
         label: Named { name: export_sym },
-        target: v2.std.node.Node {
-          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: export_atom } },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -47,8 +47,8 @@ fn quad_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, exp
 }
 
 fn quad_subject_with_import_use() -> Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^dag_surface_module_header,
@@ -58,10 +58,10 @@ fn quad_subject_with_import_use() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: quad_qn_node(seg: ^quadmod)
       ),
-      v2.std.node.Edge {
+      Edge {
         label: Named { name: ^list_append },
-        target: v2.std.node.Node {
-          kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_service } },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^dag_c3_surface_sugar_service } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
@@ -72,69 +72,69 @@ fn quad_subject_with_import_use() -> Node {
 }
 
 fn quad_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
-  admit_normalized_roots(
-    roots: std.algebra.Cons {
+  v2.compiler.normalized_tree.admit_normalized_roots(
+    roots: Cons {
     head: quad_subject_with_import_use(),
-    tail: std.algebra.Cons {
+    tail: Cons {
       head: quad_module_root(
         seg: ^minialg,
         export_sym: ^list_append,
         export_atom: ^dag_c3_surface_sugar_type
       ),
-      tail: std.algebra.Empty
+      tail: Empty
     }
   },
     diagnostics: v2.std.diagnostic.None
   )
 }
 
-fn quad_admission() -> v2.compiler.name_resolve.Admission {
-  v2.compiler.name_resolve.Admission {
-    subject: v2.compiler.name_resolve.ResolutionSubject {
-      name: std.algebra.Cons { head: ^quadmod, tail: std.algebra.Empty }
+fn quad_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject {
+      name: Cons { head: ^quadmod, tail: Empty }
     },
-    imports: std.algebra.Cons {
-      head: v2.compiler.name_resolve.Import {
-        target: std.algebra.Cons { head: ^minialg, tail: std.algebra.Empty },
+    imports: Cons {
+      head: Import {
+        target: Cons { head: ^minialg, tail: Empty },
         visibility: ImportVisible
       },
-      tail: std.algebra.Empty
+      tail: Empty
     }
   }
 }
 
 test fn quad_namespace_only_resolve_accepts_holds() -> Bool {
   match quad_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
-    match resolve_with_admission_policy(
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
+    match v2.compiler.name_resolve.resolve_with_admission_policy(
       lm: dag_language_model(),
       roots: admitted,
       admission: quad_admission(),
       index: source_root_index_empty(),
-      active_roots: std.algebra.Empty,
+      active_roots: Empty,
       policy: NamespaceOnlyY
     ) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
 test fn quad_import_scoped_admission_reds_ambiguous_export_holds() -> Bool {
   match quad_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
-    match resolve_with_admission_policy(
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
+    match v2.compiler.name_resolve.resolve_with_admission_policy(
       lm: dag_language_model(),
       roots: admitted,
       admission: quad_admission(),
       index: source_root_index_empty(),
-      active_roots: std.algebra.Empty,
+      active_roots: Empty,
       policy: ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => false
-      Rejected { diagnostics: d } => d.head.reason == ^resolve_ambiguous_export
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^resolve_ambiguous_export
     }
   }
 }

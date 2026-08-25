@@ -63,36 +63,36 @@ fn pdf_safe_open_structelem(struct_id: std.types.NonEmptyStr) -> PdfSafeProfileP
 
 fn admit_rfc_pdf_profile_parameter(construction: extdeps.standards.rfc_8118.PdfProfileParameterConstruction) -> PdfSafeProfileParameterConstruction {
   match construction {
-    ParameterConstructed(parameter) =>
+    extdeps.standards.rfc_8118.ParameterConstructed(parameter) =>
       match parameter {
         extdeps.standards.rfc_8118.OpenPage(p) => SafeParameterConstructed(SafeOpenPage(p))
-        OpenNamedDest(d) => SafeParameterConstructed(SafeOpenNamedDest(d))
-        OpenStructElem(e) => SafeParameterConstructed(SafeOpenStructElem(e))
-        OpenZoom(_) =>
+        extdeps.standards.rfc_8118.OpenNamedDest(d) => SafeParameterConstructed(SafeOpenNamedDest(d))
+        extdeps.standards.rfc_8118.OpenStructElem(e) => SafeParameterConstructed(SafeOpenStructElem(e))
+        extdeps.standards.rfc_8118.OpenZoom(_) =>
           SafeParameterConstructionRefused {
             cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom },
           }
-        OpenComment(_) =>
+        extdeps.standards.rfc_8118.OpenComment(_) =>
           SafeParameterConstructionRefused {
             cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterComment },
           }
-        OpenView(_) =>
+        extdeps.standards.rfc_8118.OpenView(_) =>
           SafeParameterConstructionRefused {
             cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterView },
           }
-        OpenViewRect(_) =>
+        extdeps.standards.rfc_8118.OpenViewRect(_) =>
           SafeParameterConstructionRefused {
             cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterViewRect },
           }
-        OpenHighlight(_) =>
+        extdeps.standards.rfc_8118.OpenHighlight(_) =>
           SafeParameterConstructionRefused {
             cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterHighlight },
           }
-        OpenSearch(_) =>
+        extdeps.standards.rfc_8118.OpenSearch(_) =>
           SafeParameterConstructionRefused {
             cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterSearch },
           }
-        OpenFdf(_) =>
+        extdeps.standards.rfc_8118.OpenFdf(_) =>
           SafeParameterConstructionRefused {
             cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterFdf },
           }
@@ -138,16 +138,16 @@ fn project_navigable_uri_safe(base: extdeps.uri.Uri, construction: PdfSafeParame
         cause: SafeParameterConstructionRefusedInSequence { cause: cause },
       }
     SafeSequenceConstructed(sequence) =>
-      match project_navigable_uri(
+      match extdeps.standards.rfc_8118.project_navigable_uri(
         base: base,
         sequence: pdf_safe_parameter_sequence_to_rfc(sequence: sequence),
       ) {
-        NavigableUriProjected { uri: u } => NavigableUriSafeProjected { uri: u }
-        NavigableUriRefused { cause: BaseLocatorAlreadyCarriesFragment { locator: l } } =>
+        extdeps.standards.rfc_8118.NavigableUriProjected { uri: u } => NavigableUriSafeProjected { uri: u }
+        extdeps.standards.rfc_8118.NavigableUriRefused { cause: extdeps.standards.rfc_8118.BaseLocatorAlreadyCarriesFragment { locator: l } } =>
           NavigableUriSafeRefused {
             cause: BaseLocatorAlreadyCarriesFragmentFromRfc { locator: l },
           }
-        NavigableUriRefused { cause: PdfOpenParameterPercentEncodeRefused { parameter: p, cause: c } } =>
+        extdeps.standards.rfc_8118.NavigableUriRefused { cause: extdeps.standards.rfc_8118.PdfOpenParameterPercentEncodeRefused { parameter: p, cause: c } } =>
           NavigableUriSafeRefused {
             cause: PdfOpenParameterPercentEncodeRefusedFromSafe { parameter: p, cause: c },
           }
@@ -159,7 +159,7 @@ fn pdf_safe_parameters_include_page(sequence: PdfSafeParameterSequence, page: st
   any(
     sequence.parameters,
     parameter => match parameter {
-      SafeOpenPage(PdfOpenPage { page: n }) => n == page
+      SafeOpenPage(extdeps.standards.rfc_8118.PdfOpenPage { page: n }) => n == page
       _ => false
     },
   )

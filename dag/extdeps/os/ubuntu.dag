@@ -4,23 +4,23 @@ module extdeps.os.ubuntu
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "documentation.ubuntu.com/release-notes/24.04/"
   }
 }
 
 data noble_numbat_2404_catalog: std.os.types.UbuntuDistributionCatalogRow = std.os.types.UbuntuDistributionCatalogRow {
-  distribution: NobleNumbat2404Lts,
+  distribution: std.os.types.NobleNumbat2404Lts,
   release_label: "24.04 LTS (Noble Numbat)",
   kernel_version: "6.8",
-  package_manager: Apt,
-  libc: GnuGlibc,
+  package_manager: std.os.types.Apt,
+  libc: std.os.types.GnuGlibc,
   libc_version: Present { value: "2.39" },
   security_maintenance_until: "2029-05-31",
 }
 
 fn ubuntu_distribution_catalog_row(distro: std.os.types.UbuntuDistribution) -> std.os.types.UbuntuDistributionCatalogRow {
   match distro {
-    NobleNumbat2404Lts => noble_numbat_2404_catalog
+    std.os.types.NobleNumbat2404Lts => noble_numbat_2404_catalog
   }
 }

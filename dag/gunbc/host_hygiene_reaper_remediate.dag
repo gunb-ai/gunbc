@@ -1,5 +1,6 @@
 module gunbc.host_hygiene_reaper_remediate
 
+
 data gunbc_host_hygiene_reaper_remediate_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "The MUTATE half of the reaper vertical (brief: split observe from mutate — a reaper that mutates on a misread IS the harm). The BOUND is structural, not a literal check in a script body: every effect this module can describe carries a `unit: NonEmptyStr` it did not choose — residual_reap_effect_for takes a ResidualSlotObservation the OBSERVE vertical already vetted (host_hygiene_reaper_observe.observe_residual_slot), and the override directory an effect touches is producible only through host_hygiene_reaper_observe.host_hygiene_override_dir_for_unit, a pure function of that same vetted unit. This module recomputes residual_reap_action(obs) INTERNALLY from gunbc.host_hygiene_reaper's single decision authority rather than accepting a caller-supplied ResidualReapAction — the only path to a KillOccupantAndRemoveOverride or RemoveOverrideDirEffect is through that one vetted function, never through gunbc.host_hygiene_reaper's permanent RED-control residual_reap_action_absorbing_fallback_widen_sketch fixture, which this module never imports."
 }
@@ -12,24 +13,24 @@ type ResidualReapEffect
 
 fn residual_reap_effect_for(obs: gunbc.host_hygiene_reaper.ResidualSlotObservation, occupant_pids: List<std.types.NonEmptyStr>) -> ResidualReapEffect {
   match gunbc.host_hygiene_reaper.residual_reap_action(obs: obs) {
-    NoActionNeeded => NoEffect { unit: obs.unit }
-    RemoveOverrideOnly => RemoveOverrideDirEffect {
+    gunbc.host_hygiene_reaper.NoActionNeeded => NoEffect { unit: obs.unit }
+    gunbc.host_hygiene_reaper.RemoveOverrideOnly => RemoveOverrideDirEffect {
       unit: obs.unit,
       dir: gunbc.host_hygiene_reaper_observe.host_hygiene_override_dir_for_unit(unit: obs.unit),
     }
-    KillOccupantAndRemoveOverride => TerminateOccupantsAndRemoveOverrideEffect {
+    gunbc.host_hygiene_reaper.KillOccupantAndRemoveOverride => TerminateOccupantsAndRemoveOverrideEffect {
       unit: obs.unit,
       pids: occupant_pids,
       dir: gunbc.host_hygiene_reaper_observe.host_hygiene_override_dir_for_unit(unit: obs.unit),
     }
-    ReapRefused { cause: c } => ReapEffectRefused { unit: obs.unit, cause: c }
+    gunbc.host_hygiene_reaper.ReapRefused { cause: c } => ReapEffectRefused { unit: obs.unit, cause: c }
   }
 }
 
 fn residual_reap_effect_for_outcome(o: gunbc.host_hygiene_reaper_observe.ResidualSlotObserveOutcome) -> ResidualReapEffect? {
   match o {
-    ResidualSlotObserved { slot: s, occupant_pids: p } => Present { value: residual_reap_effect_for(obs: s, occupant_pids: p) }
-    ResidualSlotObserveRefused { unit: _, cause: _ } => none
+    gunbc.host_hygiene_reaper_observe.ResidualSlotObserved { slot: s, occupant_pids: p } => Present { value: residual_reap_effect_for(obs: s, occupant_pids: p) }
+    gunbc.host_hygiene_reaper_observe.ResidualSlotObserveRefused { unit: _, cause: _ } => none
   }
 }
 

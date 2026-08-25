@@ -45,13 +45,13 @@ fn spark_serving_resource_address_wire(address: SparkServingResourceAddress) -> 
   match address {
     SparkServingRuntimeRootAddress => "runtime-root"
     SparkServingUserUnitAddress =>
-      join(["user-unit:", spark_serving_unit_name], "")
+      join(["user-unit:", gunbc.spark.serving_unit_identity.spark_serving_unit_name], "")
     SparkServingUserUnitRegistrationAddress =>
-      join(["user-unit-registration:", spark_serving_unit_name], "")
+      join(["user-unit-registration:", gunbc.spark.serving_unit_identity.spark_serving_unit_name], "")
     SparkServingUserUnitEnablementAddress =>
-      join(["user-unit-enablement:", spark_serving_unit_name], "")
+      join(["user-unit-enablement:", gunbc.spark.serving_unit_identity.spark_serving_unit_name], "")
     SparkServingUserUnitActivityAddress =>
-      join(["user-unit-activity:", spark_serving_unit_name], "")
+      join(["user-unit-activity:", gunbc.spark.serving_unit_identity.spark_serving_unit_name], "")
     SparkServingModelSlotAddress { slot: slot } =>
       join(["model-slot:", slot as String], "")
     SparkServingLingerAddress => "linger"
@@ -81,14 +81,14 @@ fn spark_serving_member_ownership(member: SparkServingMember) -> gunbc.ownership
 }
 
 fn spark_serving_serving_principal() -> std.types.NonEmptyStr {
-  spark_serving_automation_principal_login()
+  gunbc.spark.serving_desired.spark_serving_automation_principal_login()
 }
 
 // The desired unit member's state is the identity of the bytes that will be WRITTEN, taken through
 // the same function the observation takes over the bytes it READS. Hashing the typed spec instead
 // would put the two sides in different identity domains, so a converged host could never match.
 fn spark_serving_user_unit_state_digest() -> std.types.NonEmptyStr {
-  spark_serving_desired_user_unit_content_identity()
+  gunbc.spark.serving_unit_render.spark_serving_desired_user_unit_content_identity()
 }
 
 // The DESIRED enablement is a constant, because the model declares the unit must survive a reboot.
@@ -153,7 +153,7 @@ data spark_serving_user_unit_registered_without_content_state: std.types.NonEmpt
 
 fn spark_serving_desired_user_unit_registration_state_digest() -> std.types.NonEmptyStr {
   spark_serving_user_unit_registration_state(
-    content_digest: spark_serving_desired_user_unit_content_identity(),
+    content_digest: gunbc.spark.serving_unit_render.spark_serving_desired_user_unit_content_identity(),
   )
 }
 
@@ -181,7 +181,7 @@ fn spark_serving_executor_linger_state_label(state: SparkServingExecutorLingerSt
 }
 
 fn spark_serving_executor_linger_state_digest_for(state: SparkServingExecutorLingerState) -> std.types.NonEmptyStr {
-  content_hash_atom(
+  std.content_hash.content_hash_atom(
     value: spark_serving_executor_linger_state_label(state: state),
   ).digest as std.types.NonEmptyStr
 }
@@ -208,9 +208,9 @@ fn spark_serving_executor_linger_disabled_state_digest() -> std.types.NonEmptySt
 
 fn spark_serving_user_unit_file_write_intent() -> SparkServingUserUnitWriteIntent {
   SparkServingUserUnitWriteIntent {
-    path: spark_serving_user_unit_path(),
-    spec: spark_serving_user_unit_spec(
-      bind_host_port: spark_serving_desired_bind_host_port() as std.types.NonEmptyStr,
+    path: gunbc.spark.serving_install_paths.spark_serving_user_unit_path(),
+    spec: gunbc.spark.serving_install_paths.spark_serving_user_unit_spec(
+      bind_host_port: gunbc.spark.serving_desired.spark_serving_desired_bind_host_port() as std.types.NonEmptyStr,
     ),
   }
 }
@@ -238,56 +238,56 @@ fn spark_serving_desired_members(
   let host = occurrence.host
   let principal = spark_serving_serving_principal()
   let closure_digest = serving_release.runtime.closure_digest
-  let model_digest = serialize_content_hash(hash: serving_release.model.identity) as std.types.NonEmptyStr
+  let model_digest = std.content_hash.serialize_content_hash(hash: serving_release.model.identity) as std.types.NonEmptyStr
   [
     spark_serving_member(
       host: host,
       principal: principal,
       address: SparkServingRuntimeRootAddress,
       state_digest: closure_digest,
-      ownership: extdeps.languages.rust.types.Owned,
+      ownership: gunbc.ownership.Owned,
     ),
     spark_serving_member(
       host: host,
       principal: principal,
       address: SparkServingUserUnitAddress,
       state_digest: spark_serving_user_unit_state_digest(),
-      ownership: extdeps.languages.rust.types.Owned,
+      ownership: gunbc.ownership.Owned,
     ),
     spark_serving_member(
       host: host,
       principal: principal,
       address: SparkServingUserUnitRegistrationAddress,
       state_digest: spark_serving_desired_user_unit_registration_state_digest(),
-      ownership: extdeps.languages.rust.types.Owned,
+      ownership: gunbc.ownership.Owned,
     ),
     spark_serving_member(
       host: host,
       principal: principal,
       address: SparkServingUserUnitEnablementAddress,
       state_digest: spark_serving_user_unit_enabled_state_digest(),
-      ownership: extdeps.languages.rust.types.Owned,
+      ownership: gunbc.ownership.Owned,
     ),
     spark_serving_member(
       host: host,
       principal: principal,
       address: SparkServingUserUnitActivityAddress,
       state_digest: spark_serving_user_unit_active_state_digest(),
-      ownership: extdeps.languages.rust.types.Owned,
+      ownership: gunbc.ownership.Owned,
     ),
     spark_serving_member(
       host: host,
       principal: principal,
       address: SparkServingModelSlotAddress { slot: spark_serving_primary_model_slot },
       state_digest: model_digest,
-      ownership: extdeps.languages.rust.types.Owned,
+      ownership: gunbc.ownership.Owned,
     ),
     spark_serving_member(
       host: host,
       principal: principal,
       address: SparkServingLingerAddress,
       state_digest: spark_serving_executor_linger_state_digest(),
-      ownership: Ensured,
+      ownership: gunbc.ownership.Ensured,
     ),
   ]
 }
@@ -296,8 +296,8 @@ fn spark_serving_membership_reconcile(
   desired: List<SparkServingMember>,
   observed: List<SparkServingMember>,
 ) -> gunbc.membership_reconcile.MembershipPlan<SparkServingMember, SparkServingMemberAt> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
+  gunbc.membership_reconcile.membership_plan_admitting_outcome(
+    outcome: gunbc.membership_reconcile.membership_reconcile(
       desired: desired,
       observed: observed,
       key_of: spark_serving_member_key,
@@ -311,11 +311,11 @@ fn spark_serving_membership_reconcile(
 fn spark_serving_membership_effects(
   plan: gunbc.membership_reconcile.MembershipPlan<SparkServingMember, SparkServingMemberAt>,
 ) -> gunbc.membership_reconcile.EffectsOrRefusal<SparkServingMember> {
-  membership_effects(plan: plan)
+  gunbc.membership_reconcile.membership_effects(plan: plan)
 }
 
 fn spark_serving_membership_noop(plan: gunbc.membership_reconcile.MembershipPlan<SparkServingMember, SparkServingMemberAt>) -> Bool {
-  membership_write_count(plan: plan) == 0
-    && membership_removal_count(plan: plan) == 0
-    && membership_refusal_count(plan: plan) == 0
+  gunbc.membership_reconcile.membership_write_count(plan: plan) == 0
+    && gunbc.membership_reconcile.membership_removal_count(plan: plan) == 0
+    && gunbc.membership_reconcile.membership_refusal_count(plan: plan) == 0
 }

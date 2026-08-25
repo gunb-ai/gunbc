@@ -18,7 +18,7 @@ data runner_memory_cap_knob_names: List<String> = [
   "per_slot_memory_swap_max_bytes",
 ]
 
-fn runner_memory_knob_selected(name: String) -> std.types.Bool {
+fn runner_memory_knob_selected(name: String) -> Bool {
   fold(runner_memory_cap_knob_names, init: false, f: (acc, n) => acc || n == name)
 }
 
@@ -51,7 +51,7 @@ fn runner_memory_cap_readback_verdict(read: gunbc.runner_unit_live_read.RunnerUn
   gunbc.fleet_show_effective_read.per_slot_memory_cap_verdict_from_unit_read(read: read, target: knob.target)
 }
 
-fn provision_runner_memory_caps_routes_through_host_effect_apply() -> std.types.Bool {
+fn provision_runner_memory_caps_routes_through_host_effect_apply() -> Bool {
   match host_runner_memory_provision_realize_scaffold {
     std.disposition.Scaffold {
       dissolves_to: std.disposition.RealizationDispatch,

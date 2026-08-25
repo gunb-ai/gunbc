@@ -379,7 +379,7 @@ fn cited_reason_authorities() -> List<std.decl_ref.DeclarationRef> {
     init: [],
     f: fn(acc, row) {
       match row.reason {
-        ReasonDeclaredElsewhere { authority: test.claim.roadmap_document.authority } => concat(acc, [test.claim.roadmap_document.authority])
+        ReasonDeclaredElsewhere { authority: authority } => concat(acc, [authority])
         ReasonDeclaredHere { detail: _, dissolution: _ } => acc
         ReasonNotYetDeclared => acc
       }

@@ -1,37 +1,37 @@
 module test.claim.compute_board_simulation_receipt_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // THE JOIN, and it is the only thing that keeps a recorded run from decaying into folklore. The
 // receipt says a tool accepted these exact bytes; this asserts the product still emits exactly
 // those bytes. Without it the receipt would keep vouching for an artifact the projection stopped
 // producing, which is worse than having no receipt at all — it reads as evidence.
 fn admitted() -> product.compute_board.admission.AdmittedBoardPowerInterfaceArticle? {
-  match product.compute_board.admission.admit_board_article(a: power_interlock_article) {
-    BoardArticleAdmitted { article: adm } => Present { value: adm }
-    BoardArticleRefused { causes: _ } => none
+  match product.compute_board.admission.admit_board_article(a: product.compute_board.article.power_interlock_article) {
+    product.compute_board.admission.BoardArticleAdmitted { article: adm } => Present { value: adm }
+    product.compute_board.admission.BoardArticleRefused { causes: _ } => none
   }
 }
 
 test fn w_the_executed_verilog_is_what_the_product_emits_today() -> Bool {
-  match test.claim.compute_board_simulation_receipt_witness.admitted() {
+  match admitted() {
     Absent => false
     Present { value: adm } =>
-      match project_article_to_verilog(admitted: adm, bindings: power_interlock_verilog_bindings) {
-        VerilogProjectionRefused { cause: _ } => false
-        VerilogModuleEmitted { receipt: r } => r.source == interlock_verilog_artifact
+      match product.compute_board.verilog_projection.project_article_to_verilog(admitted: adm, bindings: product.compute_board.verilog_projection.power_interlock_verilog_bindings) {
+        product.compute_board.verilog_projection.VerilogProjectionRefused { cause: _ } => false
+        product.compute_board.verilog_projection.VerilogModuleEmitted { receipt: r } => r.source == product.compute_board.simulation_receipt.interlock_verilog_artifact
       }
   }
 }
 
 test fn w_the_executed_deck_is_what_the_product_emits_today() -> Bool {
-  match test.claim.compute_board_simulation_receipt_witness.admitted() {
+  match admitted() {
     Absent => false
     Present { value: adm } =>
-      match project_article_to_ngspice_run(admitted: adm) {
-        SpiceSliceRefused { cause: _ } => false
-        SpiceSliceProjected { receipt: r } => r.source == conditioning_network_artifact
+      match product.compute_board.spice_projection.project_article_to_ngspice_run(admitted: adm) {
+        product.compute_board.spice_projection.SpiceSliceRefused { cause: _ } => false
+        product.compute_board.spice_projection.SpiceSliceProjected { receipt: r } => r.source == product.compute_board.simulation_receipt.conditioning_network_artifact
       }
   }
 }
@@ -41,15 +41,15 @@ test fn w_the_executed_deck_is_what_the_product_emits_today() -> Bool {
 // the shared spice_netlist construction is what makes that unwritable, and this is the executing
 // check that it stayed shared.
 test fn w_the_run_deck_contains_the_receipt_circuit() -> Bool {
-  match test.claim.compute_board_simulation_receipt_witness.admitted() {
+  match admitted() {
     Absent => false
     Present { value: adm } =>
-      match project_article_to_spice(admitted: adm) {
-        SpiceSliceRefused { cause: _ } => false
-        SpiceSliceProjected { receipt: r } =>
-          match project_article_to_ngspice_run(admitted: adm) {
-            SpiceSliceRefused { cause: _ } => false
-            SpiceSliceProjected { receipt: run } => run.source == concat(r.source, "\n.op\n.end")
+      match product.compute_board.spice_projection.project_article_to_spice(admitted: adm) {
+        product.compute_board.spice_projection.SpiceSliceRefused { cause: _ } => false
+        product.compute_board.spice_projection.SpiceSliceProjected { receipt: r } =>
+          match product.compute_board.spice_projection.project_article_to_ngspice_run(admitted: adm) {
+            product.compute_board.spice_projection.SpiceSliceRefused { cause: _ } => false
+            product.compute_board.spice_projection.SpiceSliceProjected { receipt: run } => run.source == concat(r.source, "\n.op\n.end")
           }
       }
   }
@@ -58,15 +58,15 @@ test fn w_the_run_deck_contains_the_receipt_circuit() -> Bool {
 // Both recorded runs were accepted by their tool. A receipt whose outcome arm was never checked
 // would let a refusal sit in the corpus looking like evidence of success.
 test fn w_every_recorded_run_was_accepted() -> Bool {
-  fold(executed_runs, init: true, f: fn(acc, o) { acc && outcome_is_accepted(outcome: o) })
+  fold(product.compute_board.simulation_receipt.executed_runs, init: true, f: fn(acc, o) { acc && product.compute_board.simulation_receipt.outcome_is_accepted(outcome: o) })
 }
 
 // The observations are not empty, and they are DIFFERENT from one another. An empty observation
 // would make every claim above vacuous, and one shared observation string would mean a copy
 // rather than two runs.
 test fn w_the_observations_are_distinct_and_present() -> Bool {
-  let v = run_of(outcome: interlock_verilog_run)
-  let s = run_of(outcome: conditioning_network_run)
+  let v = product.compute_board.simulation_receipt.run_of(outcome: product.compute_board.simulation_receipt.interlock_verilog_run)
+  let s = product.compute_board.simulation_receipt.run_of(outcome: product.compute_board.simulation_receipt.conditioning_network_run)
   v.observation != "" && s.observation != "" && v.observation != s.observation
 }
 
@@ -74,7 +74,7 @@ test fn w_the_observations_are_distinct_and_present() -> Bool {
 // emitted a bare "10" would have solved cleanly and reported 1.2 A. This asserts the observation
 // recorded the milliamp figure, which is the only part of the run that discriminates the suffix.
 test fn w_the_operating_point_discriminates_the_scale_suffix() -> Bool {
-  let s = run_of(outcome: conditioning_network_run)
+  let s = product.compute_board.simulation_receipt.run_of(outcome: product.compute_board.simulation_receipt.conditioning_network_run)
   let divider_ratio_is_reported = list_length(items: split(s: s.observation, delimiter: "pg_cond 3.000000e+00")) > 1
   let series_current_pins_the_k_suffix = list_length(items: split(s: s.observation, delimiter: "-3.00000e-04")) > 1
   divider_ratio_is_reported && series_current_pins_the_k_suffix
@@ -105,7 +105,7 @@ fn without_filter_high_terminal(nets: List<product.electrical.connectivity.Elect
     concat(acc, [product.electrical.connectivity.ElectricalNet {
       identity: net.identity,
       members: fold(net.members, init: [], f: fn(macc, m) {
-        if (component_local_label(c: m.component) == "pg_filt") && ((m.terminal as String) == "1") {
+        if (product.electrical.connectivity.component_local_label(c: m.component) == "pg_filt") && ((m.terminal as String) == "1") {
           macc
         } else {
           concat(macc, [m])
@@ -115,7 +115,7 @@ fn without_filter_high_terminal(nets: List<product.electrical.connectivity.Elect
   })
 }
 
-fn terminal_member_count(nets: List<product.electrical.connectivity.ElectricalNet>) -> std.integer.Int {
+fn terminal_member_count(nets: List<product.electrical.connectivity.ElectricalNet>) -> Int {
   fold(nets, init: 0, f: fn(acc, net) {
     fold(net.members, init: acc, f: fn(macc, _m) { macc + 1 })
   })
@@ -124,21 +124,21 @@ fn terminal_member_count(nets: List<product.electrical.connectivity.ElectricalNe
 data floating_analog: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
   title: power_interlock_article.analog.title,
   components: power_interlock_article.analog.components,
-  nets: test.claim.compute_board_simulation_receipt_witness.without_filter_high_terminal(nets: power_interlock_article.analog.nets),
+  nets: without_filter_high_terminal(nets: power_interlock_article.analog.nets),
 }
 
 // The fixture's premise, executed: exactly one terminal member fewer than production. Without
 // this the tests below are only about the projection if someone remembers to check that something
 // actually floats.
 test fn w_the_floating_fixture_actually_floats_exactly_one_terminal() -> Bool {
-  let produced = test.claim.compute_board_simulation_receipt_witness.terminal_member_count(nets: power_interlock_article.analog.nets)
-  let floated = test.claim.compute_board_simulation_receipt_witness.terminal_member_count(nets: test.claim.compute_board_simulation_receipt_witness.floating_analog.nets)
+  let produced = terminal_member_count(nets: power_interlock_article.analog.nets)
+  let floated = terminal_member_count(nets: floating_analog.nets)
   produced > 0 && floated == (produced - 1)
 }
 
 data floating_terminal_article: product.compute_board.article.BoardPowerInterfaceArticle = product.compute_board.article.BoardPowerInterfaceArticle {
   identity: power_interlock_article.identity,
-  analog: test.claim.compute_board_simulation_receipt_witness.floating_analog,
+  analog: floating_analog,
   model_bindings: power_interlock_article.model_bindings,
   reference_net: power_interlock_article.reference_net,
   digital_control: power_interlock_article.digital_control,
@@ -150,28 +150,28 @@ data floating_terminal_article: product.compute_board.article.BoardPowerInterfac
 
 fn floating_article() -> product.compute_board.admission.AdmittedBoardPowerInterfaceArticle? {
   match product.compute_board.admission.admit_board_article(a: floating_terminal_article) {
-    BoardArticleAdmitted { article: adm } => Present { value: adm }
-    BoardArticleRefused { causes: _ } => none
+    product.compute_board.admission.BoardArticleAdmitted { article: adm } => Present { value: adm }
+    product.compute_board.admission.BoardArticleRefused { causes: _ } => none
   }
 }
 
 test fn w_the_floating_fixture_is_admitted_so_the_test_is_about_the_projection() -> Bool {
-  match test.claim.compute_board_simulation_receipt_witness.floating_article() {
+  match floating_article() {
     Present { value: _ } => true
     Absent => false
   }
 }
 
 test fn w_both_spice_paths_refuse_the_same_article() -> Bool {
-  match test.claim.compute_board_simulation_receipt_witness.floating_article() {
+  match floating_article() {
     Absent => false
     Present { value: adm } =>
-      match project_article_to_spice(admitted: adm) {
-        SpiceSliceProjected { receipt: _ } => false
-        SpiceSliceRefused { cause: _ } =>
-          match project_article_to_ngspice_run(admitted: adm) {
-            SpiceSliceProjected { receipt: _ } => false
-            SpiceSliceRefused { cause: _ } => true
+      match product.compute_board.spice_projection.project_article_to_spice(admitted: adm) {
+        product.compute_board.spice_projection.SpiceSliceProjected { receipt: _ } => false
+        product.compute_board.spice_projection.SpiceSliceRefused { cause: _ } =>
+          match product.compute_board.spice_projection.project_article_to_ngspice_run(admitted: adm) {
+            product.compute_board.spice_projection.SpiceSliceProjected { receipt: _ } => false
+            product.compute_board.spice_projection.SpiceSliceRefused { cause: _ } => true
           }
       }
   }
@@ -181,17 +181,17 @@ test fn w_both_spice_paths_refuse_the_same_article() -> Bool {
 // a constraint file; this asserts the product still emits exactly those bytes, so the recorded run
 // cannot drift into describing a pin assignment nobody generates.
 test fn w_the_placed_constraints_are_what_the_product_emits_today() -> Bool {
-  match test.claim.compute_board_simulation_receipt_witness.admitted() {
+  match admitted() {
     Absent => false
     Present { value: adm } =>
-      match project_article_to_pin_constraints(
+      match product.compute_board.device_binding.project_article_to_pin_constraints(
         admitted: adm,
-        realization: interlock_device_realization,
-        bindings: power_interlock_verilog_bindings,
-        assignments: interlock_pin_assignments
+        realization: product.compute_board.device_binding.interlock_device_realization,
+        bindings: product.compute_board.verilog_projection.power_interlock_verilog_bindings,
+        assignments: product.compute_board.device_binding.interlock_pin_assignments
       ) {
-        PinConstraintsRefused { causes: _ } => false
-        PinConstraintsEmitted { receipt: r } => r.source == interlock_pin_constraint_artifact
+        product.compute_board.device_binding.PinConstraintsRefused { causes: _ } => false
+        product.compute_board.device_binding.PinConstraintsEmitted { receipt: r } => r.source == product.compute_board.simulation_receipt.interlock_pin_constraint_artifact
       }
   }
 }
@@ -200,14 +200,14 @@ test fn w_the_placed_constraints_are_what_the_product_emits_today() -> Bool {
 // Two artifacts would let the simulated design and the implemented design diverge silently, which
 // is the failure mode that makes a green testbench meaningless.
 test fn w_synthesis_and_simulation_consumed_one_verilog_artifact() -> Bool {
-  let synth = run_of(outcome: interlock_synthesis_run)
-  let sim = run_of(outcome: interlock_verilog_run)
-  run_consumes_retained(r: synth, blob: interlock_verilog_artifact)
-    && run_consumes_retained(r: sim, blob: interlock_verilog_artifact)
+  let synth = product.compute_board.simulation_receipt.run_of(outcome: product.compute_board.simulation_receipt.interlock_synthesis_run)
+  let sim = product.compute_board.simulation_receipt.run_of(outcome: product.compute_board.simulation_receipt.interlock_verilog_run)
+  product.compute_board.simulation_receipt.run_consumes_retained(r: synth, blob: product.compute_board.simulation_receipt.interlock_verilog_artifact)
+    && product.compute_board.simulation_receipt.run_consumes_retained(r: sim, blob: product.compute_board.simulation_receipt.interlock_verilog_artifact)
 }
 
 test fn w_every_recorded_implementation_run_was_accepted() -> Bool {
-  fold(executed_implementation_runs, init: true, f: fn(acc, o) { acc && outcome_is_accepted(outcome: o) })
+  fold(product.compute_board.simulation_receipt.executed_implementation_runs, init: true, f: fn(acc, o) { acc && product.compute_board.simulation_receipt.outcome_is_accepted(outcome: o) })
 }
 
 // THE OBSERVATION NAMES A BITSTREAM, not merely a successful exit. A chain that synthesised and
@@ -219,9 +219,9 @@ test fn w_every_recorded_implementation_run_was_accepted() -> Bool {
 // fusion as the contract. A receipt that quotes a tool it did not run keeps vouching for that
 // tool's output after the output has drifted.
 test fn w_each_implementation_run_reports_its_own_tool() -> Bool {
-  let synth = run_of(outcome: interlock_synthesis_run)
-  let pnr = run_of(outcome: interlock_place_and_route_run)
-  let pack = run_of(outcome: interlock_bitstream_run)
+  let synth = product.compute_board.simulation_receipt.run_of(outcome: product.compute_board.simulation_receipt.interlock_synthesis_run)
+  let pnr = product.compute_board.simulation_receipt.run_of(outcome: product.compute_board.simulation_receipt.interlock_place_and_route_run)
+  let pack = product.compute_board.simulation_receipt.run_of(outcome: product.compute_board.simulation_receipt.interlock_bitstream_run)
   let synth_is_its_own = list_length(items: split(s: synth.observation, delimiter: "SB_LUT4")) > 1
     && list_length(items: split(s: synth.observation, delimiter: "32220 byte bitstream")) == 1
   let pnr_is_its_own = list_length(items: split(s: pnr.observation, delimiter: "constrained power_permit")) > 1
@@ -243,10 +243,10 @@ test fn w_each_implementation_run_reports_its_own_tool() -> Bool {
 // icepack consumes only nextpnr'"'"'s .asc, which this receipt does not retain. It therefore
 // carries no retained blob at all — previously it carried the .pcf, which it never read.
 test fn w_downstream_runs_name_the_input_they_actually_consumed() -> Bool {
-  let pnr = run_of(outcome: interlock_place_and_route_run)
-  let pack = run_of(outcome: interlock_bitstream_run)
-  let pnr_names_both = fold(pnr.inputs, init: false, f: fn(acc, i) { acc || run_input_is_upstream(i: i) })
-    && run_consumes_retained(r: pnr, blob: interlock_pin_constraint_artifact)
-  let pack_retains_nothing = fold(retained_input_blobs(r: pack), init: true, f: fn(acc, _b) { false })
+  let pnr = product.compute_board.simulation_receipt.run_of(outcome: product.compute_board.simulation_receipt.interlock_place_and_route_run)
+  let pack = product.compute_board.simulation_receipt.run_of(outcome: product.compute_board.simulation_receipt.interlock_bitstream_run)
+  let pnr_names_both = fold(pnr.inputs, init: false, f: fn(acc, i) { acc || product.compute_board.simulation_receipt.run_input_is_upstream(i: i) })
+    && product.compute_board.simulation_receipt.run_consumes_retained(r: pnr, blob: product.compute_board.simulation_receipt.interlock_pin_constraint_artifact)
+  let pack_retains_nothing = fold(product.compute_board.simulation_receipt.retained_input_blobs(r: pack), init: true, f: fn(acc, _b) { false })
   pnr_names_both && pack_retains_nothing
 }

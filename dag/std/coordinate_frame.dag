@@ -44,20 +44,20 @@ module std.coordinate_frame
 // is a display fact and belongs on whatever registers frames; it is deliberately absent here so it
 // cannot be mistaken for the identity.
 type CoordinateFrameIdentity {
-  occurrence: std.integer.Int
+  occurrence: Int
 }
 
 // THIRD INSTANCE OF ONE SHAPE, recorded rather than abstracted. `std.occurrence_identity` mints
 // SOURCE-occurrence identities, `gunbc.host_resource` mints host-resource identities, and this mints
 // coordinate-frame identities; all three are "a minted Int occurrence in a subject-specific space".
 // The subject-parameterized carrier that would unify them is already a registered trigger on the
-// fleet-reconcile lane, and it stays a trigger rather than being built here: sharing one std.integer.Int space
+// fleet-reconcile lane, and it stays a trigger rather than being built here: sharing one Int space
 // across subjects is what would let `coordinate_frame_identity_eq` answer true on a numeric
 // coincidence with an unrelated subject, the cross-family comparison the ContentHash family
 // grounding closed. What this row adds is evidence the extraction is due - three subjects, not two.
 data coordinate_frame_identity_extraction_note: String = "std.coordinate_frame CoordinateFrameIdentity is the third minted-occurrence identity carrier in the corpus, after std.occurrence_identity (source occurrences) and gunbc.host_resource HostResourceIdentity (host resources). The subject-parameterized extraction is registered on the membership-diff reconcile spine lane as a trigger, not built here. Do not merge the Int spaces without the subject parameter: equality across two subjects sharing one space answers true on a numeric coincidence."
 
-fn coordinate_frame_identity(occurrence: std.integer.Int) -> CoordinateFrameIdentity {
+fn coordinate_frame_identity(occurrence: Int) -> CoordinateFrameIdentity {
   CoordinateFrameIdentity { occurrence: occurrence }
 }
 

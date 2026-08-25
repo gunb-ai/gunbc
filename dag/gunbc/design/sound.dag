@@ -5,7 +5,7 @@ data design_sound_note: String = "The register's aural axis, and it is governed 
 
 The envelope is the aural sibling of the material layer's GlareEnvelope, and it exists for the same reason: to make the tasteless register inadmissible BY ROW rather than by review. Where the visual envelope refuses bright AND chromatic together, operation_sound_envelope refuses the four things that turn an operation sound into a notification: a long decay (a tone that rings is a chime), a nonzero attack (a swell is not a mechanism — real contacts are instantaneous), a loud peak (an instrument is heard, not announced), and a frequency outside the band where a small mechanism actually lives. The negative control is a 400 ms 880 Hz sine at half gain — a textbook notification bell — and it is provably refused, the same role the operator-rejected gamer cyan plays for colour.
 
-Timbre for the engage click is Square deliberately: the harmonic richness is what reads as a snap rather than a boop, and at 5 ms and low gain the harshness a square is otherwise criticised for is inaudible. Amplitudes are micros for the reason the extdeps carrier records — the substrate's arithmetic here is integral, and a fractional literal would be a second representation of the same magnitude.
+Timbre for the engage click is extdeps.web_audio.Square deliberately: the harmonic richness is what reads as a snap rather than a boop, and at 5 ms and low gain the harshness a square is otherwise criticised for is inaudible. Amplitudes are micros for the reason the extdeps carrier records — the substrate's arithmetic here is integral, and a fractional literal would be a second representation of the same magnitude.
 
 Mute is a state of the instrument, not an argument with it (operator: an instrument can be muted, not argued with): one persisted boolean, default SOUNDING, and no other volume axis — a mechanism has one voice, and a volume slider would be a second control the exemplar's scope forbids."
 
@@ -24,8 +24,8 @@ type SoundSpec {
 }
 
 data engage_detent_click: SoundSpec = SoundSpec {
-  frequency: hertz(2200),
-  timbre: Square,
+  frequency: std.measure.hertz(2200),
+  timbre: extdeps.web_audio.Square,
   attack: 0,
   decay: 5,
   peak_gain_micros: 120000,
@@ -39,7 +39,7 @@ data operation_sound_min_hz: Int = 120
 data operation_sound_max_hz: Int = 5000
 
 fn operation_sound_envelope(s: SoundSpec) -> Bool {
-  let hz = hertz_count(h: s.frequency)
+  let hz = std.measure.hertz_count(h: s.frequency)
   s.decay <= operation_sound_max_decay_ms
     && s.attack == 0
     && s.peak_gain_micros <= operation_sound_max_peak_gain_micros
@@ -53,8 +53,8 @@ fn every_declared_sound_admissible() -> Bool {
 }
 
 data notification_chime_negative_control: SoundSpec = SoundSpec {
-  frequency: hertz(880),
-  timbre: Sine,
+  frequency: std.measure.hertz(880),
+  timbre: extdeps.web_audio.Sine,
   attack: 20,
   decay: 400,
   peak_gain_micros: 500000,
@@ -64,17 +64,17 @@ data sound_default_sounding: Bool = true
 data sound_mute_storage_key: String = "gunbc.sound.muted"
 
 fn sound_spec_frequency_wire(s: SoundSpec) -> String {
-  to_string(hertz_count(h: s.frequency))
+  to_string(std.measure.hertz_count(h: s.frequency))
 }
 
 fn sound_spec_decay_seconds_wire(s: SoundSpec) -> String {
-  micros_decimal_wire(micros: s.decay * 1000)
+  extdeps.web_audio.micros_decimal_wire(micros: s.decay * 1000)
 }
 
 fn sound_spec_peak_gain_wire(s: SoundSpec) -> String {
-  micros_decimal_wire(micros: s.peak_gain_micros)
+  extdeps.web_audio.micros_decimal_wire(micros: s.peak_gain_micros)
 }
 
 fn sound_spec_timbre_wire(s: SoundSpec) -> String {
-  oscillator_type_wire(t: s.timbre)
+  extdeps.web_audio.oscillator_type_wire(t: s.timbre)
 }

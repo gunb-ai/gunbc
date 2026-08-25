@@ -2,8 +2,8 @@ module gunbc.roadmap_site_healthz_validate
 
 
 fn roadmap_site_healthz_body_parses() -> Bool {
-  roadmap_site_healthz_json_string_parses(
-    body: materialize_live_roadmap_site_surface_bundle().healthz_body
+  gunbc.roadmap_site_surface_expect.roadmap_site_healthz_json_string_parses(
+    body: gunbc.roadmap_site_surface_observe.materialize_live_roadmap_site_surface_bundle().healthz_body
   )
 }
 
@@ -12,10 +12,10 @@ fn roadmap_site_healthz_surface_is_current_for_bundle(
   bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
   observed_body: String,
 ) -> Bool {
-  roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: observed_body)
+  gunbc.roadmap_site_surface_expect.roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: observed_body)
 }
 
 fn roadmap_site_healthz_surface_is_current_from_observed_body(observed_body: String) -> Bool {
-  let bundle = materialize_live_roadmap_site_surface_bundle()
+  let bundle = gunbc.roadmap_site_surface_observe.materialize_live_roadmap_site_surface_bundle()
   roadmap_site_healthz_surface_is_current_for_bundle(bundle: bundle, observed_body: observed_body)
 }

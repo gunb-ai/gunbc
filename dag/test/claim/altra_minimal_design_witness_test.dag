@@ -1,14 +1,14 @@
 module test.claim.altra_minimal_design_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // THE FIXTURE NAMES ITS CHANNELS, which is the point of the change under test. An earlier version
 // of this helper took a channel COUNT, and could therefore only ever build populations that were
 // contiguous from zero -- so the defect it was meant to exercise was unreachable from the test.
-fn design(intent_is_production: Bool, chans: List<product.altra_motherboard.minimal_design.DdrChannelIdentity>, positions: List<product.altra_motherboard.minimal_design.DimmSlotPosition>, lanes: std.integer.Int) -> product.altra_motherboard.minimal_design.AltraMinimalMotherboard {
+fn design(intent_is_production: Bool, chans: List<product.altra_motherboard.minimal_design.DdrChannelIdentity>, positions: List<product.altra_motherboard.minimal_design.DimmSlotPosition>, lanes: Int) -> product.altra_motherboard.minimal_design.AltraMinimalMotherboard {
   product.altra_motherboard.minimal_design.AltraMinimalMotherboard {
-    intent: if intent_is_production { Production } else { EngineeringBringUp },
+    intent: if intent_is_production { product.altra_motherboard.minimal_design.Production } else { product.altra_motherboard.minimal_design.EngineeringBringUp },
     memory: product.altra_motherboard.minimal_design.MemoryConfiguration {
       topology: product.altra_motherboard.minimal_design.ActiveDdrTopology { populated_channels: chans, positions_per_channel: positions },
     },
@@ -16,39 +16,39 @@ fn design(intent_is_production: Bool, chans: List<product.altra_motherboard.mini
   }
 }
 
-fn one_dimm() -> List<product.altra_motherboard.minimal_design.DimmSlotPosition> { [FirstDimmOnChannel] }
+fn one_dimm() -> List<product.altra_motherboard.minimal_design.DimmSlotPosition> { [product.altra_motherboard.minimal_design.FirstDimmOnChannel] }
 
 fn admits(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> Bool {
-  match admit_design(d: d) {
-    DesignAdmitted { design: _ } => true
-    DesignRefused { causes: _ } => false
+  match product.altra_motherboard.minimal_design.admit_design(d: d) {
+    product.altra_motherboard.minimal_design.DesignAdmitted { design: _ } => true
+    product.altra_motherboard.minimal_design.DesignRefused { causes: _ } => false
   }
 }
 
 fn refusal_is(r: product.altra_motherboard.minimal_design.DesignRefusal, wanted: String) -> Bool {
   match r {
-    DebugOnlyChannelCountUnderProductionIntent { selected: _ } => wanted == "DebugOnly"
-    ChannelCountExceedsControllerPopulation { selected: _, available: _ } => wanted == "ExceedsControllers"
-    ChannelHasNoDimmPositions => wanted == "DimmPopulation"
-    DimmPositionRepeatedOnChannel { position: _ } => wanted == "DuplicatePosition"
-    ChannelPopulationIsNotAnAdmittedCount { populated: _ } => wanted == "NotAdmittedCount"
-    ChannelPopulatedMoreThanOnce { channel: _ } => wanted == "DuplicateChannel"
-    PcieLanesExceedPackage { requested: _, available: _ } => wanted == "PcieLanes"
+    product.altra_motherboard.minimal_design.DebugOnlyChannelCountUnderProductionIntent { selected: _ } => wanted == "DebugOnly"
+    product.altra_motherboard.minimal_design.ChannelCountExceedsControllerPopulation { selected: _, available: _ } => wanted == "ExceedsControllers"
+    product.altra_motherboard.minimal_design.ChannelHasNoDimmPositions => wanted == "DimmPopulation"
+    product.altra_motherboard.minimal_design.DimmPositionRepeatedOnChannel { position: _ } => wanted == "DuplicatePosition"
+    product.altra_motherboard.minimal_design.ChannelPopulationIsNotAnAdmittedCount { populated: _ } => wanted == "NotAdmittedCount"
+    product.altra_motherboard.minimal_design.ChannelPopulatedMoreThanOnce { channel: _ } => wanted == "DuplicateChannel"
+    product.altra_motherboard.minimal_design.PcieLanesExceedPackage { requested: _, available: _ } => wanted == "PcieLanes"
   }
 }
 
 fn refuses_naming(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, wanted: String) -> Bool {
-  match admit_design(d: d) {
-    DesignAdmitted { design: _ } => false
-    DesignRefused { causes: cs } =>
-      fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || test.claim.altra_minimal_design_witness.refusal_is(r: r, wanted: wanted) })
+  match product.altra_motherboard.minimal_design.admit_design(d: d) {
+    product.altra_motherboard.minimal_design.DesignAdmitted { design: _ } => false
+    product.altra_motherboard.minimal_design.DesignRefused { causes: cs } =>
+      fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || refusal_is(r: r, wanted: wanted) })
   }
 }
 
 // THE POSITIVE CONTROL. The selected 1P minimum admits: four channels is the smallest
 // production-qualified population, one DIMM per channel, four lanes of a hundred and twenty-eight.
 test fn w_the_selected_minimum_is_admitted() -> Bool {
-  test.claim.altra_minimal_design_witness.admits(d: altra_1p_minimum) && total_dimms(m: altra_1p_minimum.memory) == 4
+  admits(d: product.altra_motherboard.minimal_design.altra_1p_minimum) && product.altra_motherboard.minimal_design.total_dimms(m: altra_1p_minimum.memory) == 4
 }
 
 // THE WALL. Two channels is a configuration the vendor documents as engineering debug and
@@ -56,8 +56,8 @@ test fn w_the_selected_minimum_is_admitted() -> Bool {
 // the part is documented as outside its production envelope there. A design that quietly picked
 // two to save routing effort would be a debug fixture wearing a product's name.
 test fn w_a_debug_only_channel_count_is_refused_for_production() -> Bool {
-  test.claim.altra_minimal_design_witness.refuses_naming(d: design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1], positions: one_dimm(), lanes: 4), wanted: "DebugOnly")
-    && test.claim.altra_minimal_design_witness.refuses_naming(d: design(intent_is_production: true, chans: [DdrChannel0], positions: one_dimm(), lanes: 4), wanted: "DebugOnly")
+  refuses_naming(d: design(intent_is_production: true, chans: [product.altra_motherboard.minimal_design.DdrChannel0, product.altra_motherboard.minimal_design.DdrChannel1], positions: one_dimm(), lanes: 4), wanted: "DebugOnly")
+    && refuses_naming(d: design(intent_is_production: true, chans: [product.altra_motherboard.minimal_design.DdrChannel0], positions: one_dimm(), lanes: 4), wanted: "DebugOnly")
 }
 
 // AND THE SAME CONFIGURATION IS ADMITTED FOR BRING-UP, which is what makes the previous test a
@@ -65,18 +65,18 @@ test fn w_a_debug_only_channel_count_is_refused_for_production() -> Bool {
 // rule that simply refuses small channel counts, and the one- and two-channel configurations
 // exist precisely to serve bring-up.
 test fn w_the_same_count_is_admitted_for_engineering_bring_up() -> Bool {
-  test.claim.altra_minimal_design_witness.admits(d: design(intent_is_production: false, chans: [DdrChannel0, DdrChannel1], positions: one_dimm(), lanes: 4))
-    && test.claim.altra_minimal_design_witness.admits(d: design(intent_is_production: false, chans: [DdrChannel0], positions: one_dimm(), lanes: 4))
+  admits(d: design(intent_is_production: false, chans: [product.altra_motherboard.minimal_design.DdrChannel0, product.altra_motherboard.minimal_design.DdrChannel1], positions: one_dimm(), lanes: 4))
+    && admits(d: design(intent_is_production: false, chans: [product.altra_motherboard.minimal_design.DdrChannel0], positions: one_dimm(), lanes: 4))
 }
 
 // The admitted set is the vendor's enumeration, not an arithmetic range: four, six and eight are
 // production-qualified and one and two are not, and nothing in between is representable at all.
 test fn w_the_qualified_set_is_exactly_four_six_and_eight() -> Bool {
-  !channel_count_is_production_qualified(c: OneChannel)
-    && !channel_count_is_production_qualified(c: TwoChannels)
-    && channel_count_is_production_qualified(c: FourChannels)
-    && channel_count_is_production_qualified(c: SixChannels)
-    && channel_count_is_production_qualified(c: EightChannels)
+  !extdeps.cpu.ampere_altra_memory_controller.channel_count_is_production_qualified(c: extdeps.cpu.ampere_altra_memory_controller.OneChannel)
+    && !extdeps.cpu.ampere_altra_memory_controller.channel_count_is_production_qualified(c: extdeps.cpu.ampere_altra_memory_controller.TwoChannels)
+    && extdeps.cpu.ampere_altra_memory_controller.channel_count_is_production_qualified(c: extdeps.cpu.ampere_altra_memory_controller.FourChannels)
+    && extdeps.cpu.ampere_altra_memory_controller.channel_count_is_production_qualified(c: extdeps.cpu.ampere_altra_memory_controller.SixChannels)
+    && extdeps.cpu.ampere_altra_memory_controller.channel_count_is_production_qualified(c: extdeps.cpu.ampere_altra_memory_controller.EightChannels)
 }
 
 // EVERY BOUND IS READ FROM THE PACKAGE AUTHORITY. Eight channels is the controller population and
@@ -84,15 +84,15 @@ test fn w_the_qualified_set_is_exactly_four_six_and_eight() -> Bool {
 // retyped here — so a correction there moves this admission instead of leaving it agreeing with a
 // number that has changed.
 test fn w_the_bounds_come_from_the_cited_package() -> Bool {
-  active_channel_count(c: EightChannels) == altra_ddr4_channel_count
-    && altra_pcie_gen4_lane_count == 128
-    && test.claim.altra_minimal_design_witness.refuses_naming(d: design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3], positions: one_dimm(), lanes: 129), wanted: "PcieLanes")
+  extdeps.cpu.ampere_altra_memory_controller.active_channel_count(c: extdeps.cpu.ampere_altra_memory_controller.EightChannels) == extdeps.cpu.ampere_altra_package.altra_ddr4_channel_count
+    && extdeps.cpu.ampere_altra_package.altra_pcie_gen4_lane_count == 128
+    && refuses_naming(d: design(intent_is_production: true, chans: [product.altra_motherboard.minimal_design.DdrChannel0, product.altra_motherboard.minimal_design.DdrChannel1, product.altra_motherboard.minimal_design.DdrChannel2, product.altra_motherboard.minimal_design.DdrChannel3], positions: one_dimm(), lanes: 129), wanted: "PcieLanes")
 }
 
 // A channel with no DIMM on it is a channel that is not populated, which contradicts calling it
 // active.
 test fn w_an_unpopulated_channel_refuses() -> Bool {
-  test.claim.altra_minimal_design_witness.refuses_naming(d: design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3], positions: [], lanes: 4), wanted: "DimmPopulation")
+  refuses_naming(d: design(intent_is_production: true, chans: [product.altra_motherboard.minimal_design.DdrChannel0, product.altra_motherboard.minimal_design.DdrChannel1, product.altra_motherboard.minimal_design.DdrChannel2, product.altra_motherboard.minimal_design.DdrChannel3], positions: [], lanes: 4), wanted: "DimmPopulation")
 }
 
 // A POPULATION THE VENDOR DOES NOT ADMIT HAS NO NEAREST ANSWER. Three named controllers is not
@@ -109,14 +109,14 @@ test fn w_an_unpopulated_channel_refuses() -> Bool {
 test fn w_a_repeated_dimm_position_refuses() -> Bool {
   let d = design(
     intent_is_production: true,
-    chans: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
-    positions: [FirstDimmOnChannel, FirstDimmOnChannel],
+    chans: [product.altra_motherboard.minimal_design.DdrChannel0, product.altra_motherboard.minimal_design.DdrChannel1, product.altra_motherboard.minimal_design.DdrChannel2, product.altra_motherboard.minimal_design.DdrChannel3],
+    positions: [product.altra_motherboard.minimal_design.FirstDimmOnChannel, product.altra_motherboard.minimal_design.FirstDimmOnChannel],
     lanes: 4
   )
-  test.claim.altra_minimal_design_witness.refuses_naming(d: d, wanted: "DuplicatePosition")
-    && match admit_design(d: d) {
-         DesignAdmitted { design: _ } => false
-         DesignRefused { causes: cs } => design_refusal_count(s: cs) == 1
+  refuses_naming(d: d, wanted: "DuplicatePosition")
+    && match product.altra_motherboard.minimal_design.admit_design(d: d) {
+         product.altra_motherboard.minimal_design.DesignAdmitted { design: _ } => false
+         product.altra_motherboard.minimal_design.DesignRefused { causes: cs } => product.altra_motherboard.minimal_design.design_refusal_count(s: cs) == 1
        }
 }
 
@@ -124,17 +124,17 @@ test fn w_a_repeated_dimm_position_refuses() -> Bool {
 // two-DIMM-per-channel board, which is an ordinary capacity decision and must still be admitted.
 // Without this, refusing every multi-position topology would also read green.
 test fn w_two_distinct_dimm_positions_are_admitted() -> Bool {
-  test.claim.altra_minimal_design_witness.admits(d: design(
+  admits(d: design(
     intent_is_production: true,
-    chans: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
-    positions: [FirstDimmOnChannel, SecondDimmOnChannel],
+    chans: [product.altra_motherboard.minimal_design.DdrChannel0, product.altra_motherboard.minimal_design.DdrChannel1, product.altra_motherboard.minimal_design.DdrChannel2, product.altra_motherboard.minimal_design.DdrChannel3],
+    positions: [product.altra_motherboard.minimal_design.FirstDimmOnChannel, product.altra_motherboard.minimal_design.SecondDimmOnChannel],
     lanes: 4
   ))
 }
 
 test fn w_a_population_outside_the_admitted_set_refuses() -> Bool {
-  test.claim.altra_minimal_design_witness.refuses_naming(
-    d: design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1, DdrChannel2], positions: one_dimm(), lanes: 4),
+  refuses_naming(
+    d: design(intent_is_production: true, chans: [product.altra_motherboard.minimal_design.DdrChannel0, product.altra_motherboard.minimal_design.DdrChannel1, product.altra_motherboard.minimal_design.DdrChannel2], positions: one_dimm(), lanes: 4),
     wanted: "NotAdmittedCount"
   )
 }
@@ -146,23 +146,23 @@ test fn w_a_population_outside_the_admitted_set_refuses() -> Bool {
 test fn w_a_controller_populated_twice_refuses() -> Bool {
   let d = design(
     intent_is_production: true,
-    chans: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel0],
+    chans: [product.altra_motherboard.minimal_design.DdrChannel0, product.altra_motherboard.minimal_design.DdrChannel1, product.altra_motherboard.minimal_design.DdrChannel2, product.altra_motherboard.minimal_design.DdrChannel0],
     positions: one_dimm(),
     lanes: 4
   )
-  test.claim.altra_minimal_design_witness.refuses_naming(d: d, wanted: "DuplicateChannel")
-    && topology_channel_count(t: d.memory.topology) == 4
-    && match admit_design(d: d) {
-         DesignAdmitted { design: _ } => false
-         DesignRefused { causes: cs } => design_refusal_count(s: cs) == 1
+  refuses_naming(d: d, wanted: "DuplicateChannel")
+    && product.altra_motherboard.minimal_design.topology_channel_count(t: d.memory.topology) == 4
+    && match product.altra_motherboard.minimal_design.admit_design(d: d) {
+         product.altra_motherboard.minimal_design.DesignAdmitted { design: _ } => false
+         product.altra_motherboard.minimal_design.DesignRefused { causes: cs } => product.altra_motherboard.minimal_design.design_refusal_count(s: cs) == 1
        }
 }
 
 // Causes accumulate rather than stopping at the first, so a design with two independent problems
 // reports two. Counting is what makes that visible.
 test fn w_independent_defects_are_all_reported() -> Bool {
-  match admit_design(d: design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1], positions: [], lanes: 129)) {
-    DesignAdmitted { design: _ } => false
-    DesignRefused { causes: cs } => design_refusal_count(s: cs) == 3
+  match product.altra_motherboard.minimal_design.admit_design(d: design(intent_is_production: true, chans: [product.altra_motherboard.minimal_design.DdrChannel0, product.altra_motherboard.minimal_design.DdrChannel1], positions: [], lanes: 129)) {
+    product.altra_motherboard.minimal_design.DesignAdmitted { design: _ } => false
+    product.altra_motherboard.minimal_design.DesignRefused { causes: cs } => product.altra_motherboard.minimal_design.design_refusal_count(s: cs) == 3
   }
 }

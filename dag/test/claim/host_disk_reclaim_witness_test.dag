@@ -1,49 +1,50 @@
 module test.claim.host_disk_reclaim_witness_test
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn probe_checkout(packs: Int, tmp_packs: Int) -> CheckoutObservation {
-  CheckoutObservation {
-    git_dir: "/opt/actions-runner/srv4-01/_work/gunbc/gunbc/.git" as NonEmptyStr,
-    owner: "ghrunner" as NonEmptyStr,
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+fn probe_checkout(packs: Int, tmp_packs: Int) -> gunbc.host_disk_reclaim.CheckoutObservation {
+  gunbc.host_disk_reclaim.CheckoutObservation {
+    git_dir: "/opt/actions-runner/srv4-01/_work/gunbc/gunbc/.git" as std.types.NonEmptyStr,
+    owner: "ghrunner" as std.types.NonEmptyStr,
     pack_count: packs,
     tmp_pack_count: tmp_packs,
-    git_dir_bytes: byte_size(count: 8000000000),
+    git_dir_bytes: std.measure.byte_size(count: 8000000000),
   }
 }
 
-fn decision_label(d: RepackDecision) -> String {
+fn decision_label(d: gunbc.host_disk_reclaim.RepackDecision) -> String {
   match d {
-    RepackWarranted { git_dir: _, owner: _, pack_count: _ } => "warranted"
-    RepackBelowFragmentationGate { git_dir: _, pack_count: _ } => "below-gate"
-    RepackRefusedSlotBusy { git_dir: _, worker_cgroup_unit: _ } => "refused-busy"
-    RepackRefusedJobStateUnobservable { git_dir: _, reason: _ } => "refused-unobservable"
+    gunbc.host_disk_reclaim.RepackWarranted { git_dir: _, owner: _, pack_count: _ } => "warranted"
+    gunbc.host_disk_reclaim.RepackBelowFragmentationGate { git_dir: _, pack_count: _ } => "below-gate"
+    gunbc.host_disk_reclaim.RepackRefusedSlotBusy { git_dir: _, worker_cgroup_unit: _ } => "refused-busy"
+    gunbc.host_disk_reclaim.RepackRefusedJobStateUnobservable { git_dir: _, reason: _ } => "refused-unobservable"
   }
 }
 
-fn label_for(job_state: SlotJobState, packs: Int) -> String {
-  decision_label(d: repack_decision_for(job_state: job_state, checkout: probe_checkout(packs: packs, tmp_packs: 0)))
+fn label_for(job_state: gunbc.host_disk_reclaim.SlotJobState, packs: Int) -> String {
+  decision_label(d: gunbc.host_disk_reclaim.repack_decision_for(job_state: job_state, checkout: probe_checkout(packs: packs, tmp_packs: 0)))
 }
 
 // AN IDLE, FRAGMENTED CHECKOUT IS THE ONLY STATE THAT EARNS THE I/O. 46 is the measured upper end on
 // srv4 (operator 2026-08-22), so this is the live shape rather than an invented one.
 test fn an_idle_fragmented_checkout_is_warranted() -> Bool {
-  label_for(job_state: SlotIdle, packs: 46) == "warranted"
+  label_for(job_state: gunbc.host_disk_reclaim.SlotIdle, packs: 46) == "warranted"
 }
 
 // THE GATE IS A FRAGMENTATION GATE AND THIS IS THE ROW THAT PROVES IT IS NOT A SIZE GATE: the
 // checkout is 8GB in both this row and the one above, and only the pack count differs. A gate that
 // had drifted to charging on size would pass both.
 test fn an_idle_but_unfragmented_checkout_is_skipped_not_warranted() -> Bool {
-  label_for(job_state: SlotIdle, packs: reclaim_fragmentation_gate_packs) == "below-gate"
+  label_for(job_state: gunbc.host_disk_reclaim.SlotIdle, packs: gunbc.host_disk_reclaim.reclaim_fragmentation_gate_packs) == "below-gate"
 }
 
 // THE BOUNDARY IS EXCLUSIVE, asserted at both sides of the gate rather than near it, because an
 // off-by-one here means either re-packing a clean repo every six hours or never packing a repo that
 // has crossed the threshold.
 test fn the_fragmentation_gate_is_exclusive_at_both_sides() -> Bool {
-  label_for(job_state: SlotIdle, packs: reclaim_fragmentation_gate_packs + 1) == "warranted"
-    && label_for(job_state: SlotIdle, packs: reclaim_fragmentation_gate_packs - 1) == "below-gate"
+  label_for(job_state: gunbc.host_disk_reclaim.SlotIdle, packs: gunbc.host_disk_reclaim.reclaim_fragmentation_gate_packs + 1) == "warranted"
+    && label_for(job_state: gunbc.host_disk_reclaim.SlotIdle, packs: gunbc.host_disk_reclaim.reclaim_fragmentation_gate_packs - 1) == "below-gate"
 }
 
 // A RUNNING JOB REFUSES GIT WORK EVEN WHEN THE REPO IS MAXIMALLY FRAGMENTED. This is the safety
@@ -52,7 +53,7 @@ test fn the_fragmentation_gate_is_exclusive_at_both_sides() -> Bool {
 // strongly argues for repacking.
 test fn a_busy_slot_refuses_git_work_however_fragmented() -> Bool {
   label_for(
-    job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr },
+    job_state: gunbc.host_disk_reclaim.SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as std.types.NonEmptyStr },
     packs: 370,
   ) == "refused-busy"
 }
@@ -65,21 +66,21 @@ test fn a_busy_slot_refuses_git_work_however_fragmented() -> Bool {
 // state-space conflation DESIGN section 5 names.
 test fn the_two_refusals_do_not_share_one_answer() -> Bool {
   let busy = label_for(
-    job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr },
+    job_state: gunbc.host_disk_reclaim.SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as std.types.NonEmptyStr },
     packs: 370,
   )
   let unknown = label_for(
-    job_state: SlotJobStateUnobservable { reason: "cgroup read failed" as NonEmptyStr },
+    job_state: gunbc.host_disk_reclaim.SlotJobStateUnobservable { reason: "cgroup read failed" as std.types.NonEmptyStr },
     packs: 370,
   )
   busy != unknown && unknown == "refused-unobservable"
 }
 
-fn probe_slot(job_state: SlotJobState, tmp_packs: Int) -> SlotDiskObservation {
-  SlotDiskObservation {
-    slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 1 },
+fn probe_slot(job_state: gunbc.host_disk_reclaim.SlotJobState, tmp_packs: Int) -> gunbc.host_disk_reclaim.SlotDiskObservation {
+  gunbc.host_disk_reclaim.SlotDiskObservation {
+    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv4, slot_index: 1 },
     job_state: job_state,
-    diag_log_bytes: byte_size(count: 500000000),
+    diag_log_bytes: std.measure.byte_size(count: 500000000),
     checkouts: [probe_checkout(packs: 46, tmp_packs: tmp_packs)],
   }
 }
@@ -88,7 +89,7 @@ fn probe_slot(job_state: SlotJobState, tmp_packs: Int) -> SlotDiskObservation {
 // busy-ness per SLOT and then walks that slot's checkouts, so a per-checkout re-decision would be a
 // second authority for one fact.
 test fn every_checkout_under_a_busy_slot_is_refused() -> Bool {
-  let ds = slot_repack_decisions(obs: probe_slot(job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr }, tmp_packs: 0))
+  let ds = gunbc.host_disk_reclaim.slot_repack_decisions(obs: probe_slot(job_state: gunbc.host_disk_reclaim.SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as std.types.NonEmptyStr }, tmp_packs: 0))
   map(ds, d => decision_label(d: d)) == ["refused-busy"]
 }
 
@@ -96,9 +97,9 @@ test fn every_checkout_under_a_busy_slot_is_refused() -> Bool {
 // reported under a busy slot and an idle one. An interrupted index-pack's leftover is not job
 // state, so gating it on busy-ness would leave pure garbage on exactly the hosts working hardest.
 test fn interrupted_fetch_residue_is_reported_regardless_of_job_state() -> Bool {
-  slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr }, tmp_packs: 3))
-    && slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: SlotIdle, tmp_packs: 3))
-    && slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: SlotIdle, tmp_packs: 0)) == false
+  gunbc.host_disk_reclaim.slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: gunbc.host_disk_reclaim.SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as std.types.NonEmptyStr }, tmp_packs: 3))
+    && gunbc.host_disk_reclaim.slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: gunbc.host_disk_reclaim.SlotIdle, tmp_packs: 3))
+    && gunbc.host_disk_reclaim.slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: gunbc.host_disk_reclaim.SlotIdle, tmp_packs: 0)) == false
 }
 
 // THE TWO AGE FLOORS CARRY A DURATION, AND THIS ASSERTS THE RELATION RATHER THAN THE SECONDS. The
@@ -108,6 +109,6 @@ test fn interrupted_fetch_residue_is_reported_regardless_of_job_state() -> Bool 
 // the oracle failure DESIGN section 5 names -- and it would go red on a correct unit refactor while
 // staying green if both floors were wrong by the same factor.
 test fn the_age_floors_keep_their_authored_ratio() -> Bool {
-  second_count(s: reclaim_diag_max_age) == 3 * second_count(s: reclaim_tmp_pack_min_age)
-    && second_count(s: reclaim_tmp_pack_min_age) > 0
+  std.measure.second_count(s: gunbc.host_disk_reclaim.reclaim_diag_max_age) == 3 * std.measure.second_count(s: gunbc.host_disk_reclaim.reclaim_tmp_pack_min_age)
+    && std.measure.second_count(s: gunbc.host_disk_reclaim.reclaim_tmp_pack_min_age) > 0
 }

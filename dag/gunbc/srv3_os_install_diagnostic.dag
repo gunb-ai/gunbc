@@ -79,15 +79,15 @@ type OsInstallAttemptIntent {
 }
 
 data srv3_os_install_attempt_intent: OsInstallAttemptIntent = OsInstallAttemptIntent {
-  target_host: operator_host_srv3,
-  actuator_host: operator_host_srv1,
-  bmc_endpoint: asrock_srv3_live_bmc_host,
+  target_host: gunbc.fleet_intent_network.operator_host_srv3,
+  actuator_host: gunbc.fleet_intent_network.operator_host_srv1,
+  bmc_endpoint: extdeps.boards.asrock_rack.asrock_srv3_live_bmc_host,
   iso_path: gunbc.srv3_os_install_actuate_scope.srv3_actuator_virtual_media_iso_install_path,
-  iso_content_hash: srv3_seeded_install_media_content_hash,
+  iso_content_hash: gunbc.srv3_seeded_install_media_artifact.srv3_seeded_install_media_content_hash,
   expected_hostname: "srv3" as std.types.NonEmptyStr,
-  boot_source: BootTargetCd,
-  boot_override: BootOverrideOnce,
-  serve_port: srv3_nbd_proxy_local_port,
+  boot_source: extdeps.bmc.types.BootTargetCd,
+  boot_override: extdeps.bmc.types.BootOverrideOnce,
+  serve_port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port,
 }
 
 type NbdServeProcessObservation
@@ -325,10 +325,10 @@ fn redfish_power_on_boot_verdict(
   enabled: extdeps.bmc.types.RedfishBootSourceOverrideEnabled,
 ) -> RedfishSystemBootVerdict {
   match enabled {
-    BootOverrideDisabled => BootOverrideDisabledAfterAttempt
-    BootOverrideOnce =>
+    extdeps.bmc.types.BootOverrideDisabled => BootOverrideDisabledAfterAttempt
+    extdeps.bmc.types.BootOverrideOnce =>
       match target {
-        BootTargetCd => BootOverrideCdOnceArmed
+        extdeps.bmc.types.BootTargetCd => BootOverrideCdOnceArmed
         _ => PowerOnFirmware
       }
     _ => PowerOnFirmware
@@ -342,8 +342,8 @@ fn classify_redfish_system_boot(obs: RedfishSystemBootObservation) -> RedfishSys
     BootProgressSetupEntered => BootProgressSetupEnteredVerdict
     BootProgressNone =>
       match obs.power_state {
-        Off => PowerOff
-        On => redfish_power_on_boot_verdict(
+        extdeps.bmc.types.Off => PowerOff
+        extdeps.bmc.types.On => redfish_power_on_boot_verdict(
           target: obs.boot_override_target,
           enabled: obs.boot_override_enabled,
         )
@@ -351,8 +351,8 @@ fn classify_redfish_system_boot(obs: RedfishSystemBootObservation) -> RedfishSys
       }
     BootProgressUnknown =>
       match obs.power_state {
-        Off => PowerOff
-        On => redfish_power_on_boot_verdict(
+        extdeps.bmc.types.Off => PowerOff
+        extdeps.bmc.types.On => redfish_power_on_boot_verdict(
           target: obs.boot_override_target,
           enabled: obs.boot_override_enabled,
         )
@@ -426,8 +426,8 @@ fn router_table_has_wrong_dynamic_hostname(
     f: (acc, row) =>
       acc
         || match row.lease {
-          DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: extdeps.dhcp.v4.Active } =>
-            !network_identity_subsumes_fleet_slot(fleet_slot: fleet_slot, lease: row.lease)
+          extdeps.dhcp.v4.DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: extdeps.dhcp.v4.Active } =>
+            !gunbc.network_identity_subsumption.network_identity_subsumes_fleet_slot(fleet_slot: fleet_slot, lease: row.lease)
           _ => false
         },
   )
@@ -442,8 +442,8 @@ fn router_table_is_only_static_reservations(
     f: (acc, row) =>
       acc
         && match row.lease {
-          StaticDhcpReservation { reservation_label: _, status: _ } => true
-          DynamicDhcpLease { client_hostname: _, lease_time_remaining: _, status: _ } => false
+          extdeps.dhcp.v4.StaticDhcpReservation { reservation_label: _, status: _ } => true
+          extdeps.dhcp.v4.DynamicDhcpLease { client_hostname: _, lease_time_remaining: _, status: _ } => false
         },
   )
 }
@@ -452,7 +452,7 @@ fn classify_router_lease_table(
   table: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseTable,
   fleet_slot: product.placement_supply.HostIdentity,
 ) -> RouterLeaseDiagnosticVerdict {
-  if lease_table_has_os_up_subsumption(table: table, fleet_slot: fleet_slot) {
+  if gunbc.network_identity_subsumption.lease_table_has_os_up_subsumption(table: table, fleet_slot: fleet_slot) {
     Srv3OsLeasePresent
   } else {
     if router_table_is_only_static_reservations(table: table) {
@@ -745,9 +745,9 @@ data srv3_remote_bmc_probe_observation: Srv3InstallDebugObservation = Srv3Instal
   actuator_serve: ServeUnknown,
   bmc_websocket: WebsocketUpgradeAccepted,
   redfish_boot: RedfishBootObservation {
-    power_state: On,
-    boot_override_enabled: BootOverrideDisabled,
-    boot_override_target: BootTargetNone,
+    power_state: extdeps.bmc.types.On,
+    boot_override_enabled: extdeps.bmc.types.BootOverrideDisabled,
+    boot_override_target: extdeps.bmc.types.BootTargetNone,
     boot_progress: BootProgressNone,
   },
   virtual_media_session: VirtualMediaSessionUnknown,
@@ -790,9 +790,9 @@ fn srv3_install_debug_observation_from_actuation(
 
 fn redfish_boot_override_is_disabled_none(obs: RedfishBootObservation) -> Bool {
   match obs.boot_override_enabled {
-    BootOverrideDisabled =>
+    extdeps.bmc.types.BootOverrideDisabled =>
       match obs.boot_override_target {
-        BootTargetNone => true
+        extdeps.bmc.types.BootTargetNone => true
         _ => false
       }
     _ => false
@@ -827,7 +827,7 @@ fn sol_console_from_optional(sol: SolConsoleContentObservation?) -> SolConsoleCo
     Present { value: v } => v
     Absent =>
       SolConsoleContentObservation {
-        bytes_captured: byte_size(0),
+        bytes_captured: std.measure.byte_size(0),
         duration_ms: 0,
         contains_grub: false,
         contains_subiquity: false,
@@ -842,7 +842,7 @@ fn sol_console_from_optional(sol: SolConsoleContentObservation?) -> SolConsoleCo
 fn router_table_from_optional(table: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseTable?) -> extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseTable {
   match table {
     Present { value: v } => v
-    Absent => srv3_pre_install_lease_table
+    Absent => gunbc.network_identity_subsumption.srv3_pre_install_lease_table
   }
 }
 
@@ -1079,32 +1079,32 @@ fn parse_redfish_boot_observation(stdout: String) -> RedfishBootObservation {
   if string_contains(s: stdout, pattern: "boot_enabled=Once") {
     if string_contains(s: stdout, pattern: "boot_target=Cd") {
       RedfishBootObservation {
-        power_state: On,
-        boot_override_enabled: BootOverrideOnce,
-        boot_override_target: BootTargetCd,
+        power_state: extdeps.bmc.types.On,
+        boot_override_enabled: extdeps.bmc.types.BootOverrideOnce,
+        boot_override_target: extdeps.bmc.types.BootTargetCd,
         boot_progress: BootProgressNone,
       }
     } else {
       RedfishBootObservation {
-        power_state: On,
-        boot_override_enabled: BootOverrideOnce,
-        boot_override_target: BootTargetNone,
+        power_state: extdeps.bmc.types.On,
+        boot_override_enabled: extdeps.bmc.types.BootOverrideOnce,
+        boot_override_target: extdeps.bmc.types.BootTargetNone,
         boot_progress: BootProgressNone,
       }
     }
   } else {
     if string_contains(s: stdout, pattern: "boot_enabled=Disabled") {
       RedfishBootObservation {
-        power_state: On,
-        boot_override_enabled: BootOverrideDisabled,
-        boot_override_target: BootTargetNone,
+        power_state: extdeps.bmc.types.On,
+        boot_override_enabled: extdeps.bmc.types.BootOverrideDisabled,
+        boot_override_target: extdeps.bmc.types.BootTargetNone,
         boot_progress: BootProgressNone,
       }
     } else {
       RedfishBootObservation {
-        power_state: On,
-        boot_override_enabled: BootOverrideDisabled,
-        boot_override_target: BootTargetNone,
+        power_state: extdeps.bmc.types.On,
+        boot_override_enabled: extdeps.bmc.types.BootOverrideDisabled,
+        boot_override_target: extdeps.bmc.types.BootTargetNone,
         boot_progress: BootProgressUnknown,
       }
     }
@@ -1142,9 +1142,9 @@ fn parse_observe_content_hash_observed(stdout: String) -> std.content_hash.Conte
   } else {
     let tail = parts.skip(n: 1).first()
     let line = split(s: tail, delimiter: "\n").first()
-    match fnv1a64_structural_hex_digest(hex: split(s: line, delimiter: " ").first()) {
+    match std.content_hash.fnv1a64_structural_hex_digest(hex: split(s: line, delimiter: " ").first()) {
       Present { value: structural } =>
-        Present { value: as_content_hash_structural(structural: structural) }
+        Present { value: std.content_hash.as_content_hash_structural(structural: structural) }
       Absent => none
     }
   }
@@ -1194,7 +1194,7 @@ fn parse_actuator_serve_observation(stdout: String, intent: OsInstallAttemptInte
 fn parse_sol_console_observation(stdout: String) -> SolConsoleContentObservation {
   if string_contains(s: stdout, pattern: "surface=sol status=silent") {
     SolConsoleContentObservation {
-      bytes_captured: byte_size(0),
+      bytes_captured: std.measure.byte_size(0),
       duration_ms: 0,
       contains_grub: false,
       contains_subiquity: false,
@@ -1205,7 +1205,7 @@ fn parse_sol_console_observation(stdout: String) -> SolConsoleContentObservation
     }
   } else {
     SolConsoleContentObservation {
-      bytes_captured: byte_size(1),
+      bytes_captured: std.measure.byte_size(1),
       duration_ms: 0,
       contains_grub: string_contains(s: stdout, pattern: "marker=grub"),
       contains_subiquity: string_contains(s: stdout, pattern: "marker=subiquity"),

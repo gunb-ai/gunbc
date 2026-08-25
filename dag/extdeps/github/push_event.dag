@@ -3,7 +3,7 @@ module extdeps.github.push_event
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/webhooks/webhook-events-and-payloads#push"
   }
 }
@@ -17,10 +17,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.push_event",
       decl_name: "push_event_before_member",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.github.push_event.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -32,29 +32,29 @@ type PushBeforeObservation
   | PushEventPayloadReadRefused { path: String, cause: String }
 
 fn push_before_commit_sha_from_hex(hex: String) -> PushBeforeObservation {
-  match git_sha1_object_id(hex: hex) {
+  match extdeps.git.object_store.git_sha1_object_id(hex: hex) {
     Present { value: oid } =>
-      PushBeforeObserved { sha: git_object_id_wire_hex(oid: oid) as std.types.CommitSha }
+      PushBeforeObserved { sha: extdeps.git.object_store.git_object_id_wire_hex(oid: oid) as std.types.CommitSha }
     Absent =>
       PushBeforeMalformed { detail: "push event before member is not a valid git object id" }
   }
 }
 
 fn push_before_from_event_json(text: String) -> PushBeforeObservation {
-  match parse_json(s: text) {
+  match extdeps.languages.json.parse.parse_json(s: text) {
     Absent =>
       PushBeforeMalformed { detail: "GITHUB_EVENT_PATH payload is not valid JSON" }
     Present { value: doc } =>
-      match json_object_unique_member(v: doc, key: push_event_before_member) {
-        JsonMemberAbsent =>
+      match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: push_event_before_member) {
+        extdeps.languages.json.parse.JsonMemberAbsent =>
           PushBeforeAbsent { detail: "push event payload has no before member" }
-        JsonMemberDuplicated { count: _ } =>
+        extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
           PushBeforeMalformed { detail: "push event payload before member is duplicated" }
-        JsonMemberNotAnObject =>
+        extdeps.languages.json.parse.JsonMemberNotAnObject =>
           PushBeforeMalformed { detail: "push event payload root is not a JSON object" }
-        JsonMemberFound { value: v } =>
+        extdeps.languages.json.parse.JsonMemberFound { value: v } =>
           match v {
-            JsonString { value: sha } =>
+            extdeps.languages.json.emit.JsonString { value: sha } =>
               if sha == "" {
                 PushBeforeAbsent { detail: "push event before member is empty" }
               } else if sha == extdeps.git.hooks.zero_sha {
@@ -73,7 +73,7 @@ fn push_before_from_event_json(text: String) -> PushBeforeObservation {
 }
 
 fn push_before_from_event_path(path: String) -> PushBeforeObservation {
-  let read = Filesystem.Read(path: path)
+  let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path)
   if read.success {
     push_before_from_event_json(text: read.content)
   } else {

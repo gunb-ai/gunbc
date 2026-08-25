@@ -606,7 +606,7 @@ fn global_bare_unique_chain_candidate(env_module_path: String, candidates: List<
   match v1.compiler.infer_occurrence_binding.module_path_owner_binding_decide(owners: chain |> map(c => c.module_path)) {
     v1.compiler.infer_occurrence_binding.ModulePathBindingHit { owner: owner } =>
       chain |> filter(c => c.module_path == owner) |> first
-    ModulePathBindingMiss => Absent
+    v1.compiler.infer_occurrence_binding.ModulePathBindingMiss => Absent
     v1.compiler.infer_occurrence_binding.ModulePathBindingAmbiguous { owners: _ } => Absent
   }
 }
@@ -822,7 +822,7 @@ fn global_bare_is_ambiguous(env: TypeEnv, name: String) -> Bool {
         match v1.compiler.infer_occurrence_binding.module_path_owner_binding_decide(owners: chain |> map(c => c.module_path)) {
           v1.compiler.infer_occurrence_binding.ModulePathBindingAmbiguous { owners: _ } => true
           v1.compiler.infer_occurrence_binding.ModulePathBindingHit { owner: _ } => false
-          ModulePathBindingMiss => false
+          v1.compiler.infer_occurrence_binding.ModulePathBindingMiss => false
         }
       } else {
         global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands) == none
@@ -1004,11 +1004,11 @@ data merge_inductive_fields_dedupe_note: String = "Set-semantics merge (v1-run-s
 
 fn recursion_shape_key(shape: std.induction.RecursionShape) -> String {
   match shape {
-    DirectRecursion => "direct"
-    ListRecursion => "list"
-    OptionalRecursion => "optional"
-    SetRecursion => "set"
-    MapValueRecursion => "map_value"
+    std.induction.DirectRecursion => "direct"
+    std.induction.ListRecursion => "list"
+    std.induction.OptionalRecursion => "optional"
+    std.induction.SetRecursion => "set"
+    std.induction.MapValueRecursion => "map_value"
   }
 }
 

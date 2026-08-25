@@ -2,20 +2,20 @@ module gunbc.live_deploy.service_ready
 
 
 data live_deploy_service_ready_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.service_ready",
     decl_name: "live_deploy_service_ready_scaffold_dissolution_trigger",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 data live_deploy_service_ready_scaffold_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.readiness",
     decl_name: "live_deploy_poll_until_service_ready",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
@@ -35,13 +35,13 @@ type ServiceNotReady {
 
 data live_deploy_service_ready_unit_diagnosis_note: String = "unit_diagnosis carries the UNIT's own account of itself (systemctl status: Active state, main-PID exit code, recent journal lines), captured once when the poll bound is exhausted. It is a SEPARATE fact from last_probe and must not be folded into it: last_probe is what the health endpoint said (a curl-level observation from outside), unit_diagnosis is what the service said (a process-level observation from inside). Conflating them is the state-space conflation DESIGN 3 names -- 'the endpoint refused connection' and 'the process exited 1 while compiling' are different states whose remedies differ, and only the second locates the defect. Motivating incident: the srv1 deploy refused with ServiceNotReady on every run from belt B's merge (PR 6940) onward, and because the refusal carried only the curl exit the cause stayed unlocated for the whole window -- the line stopped, typed, but nobody could see WHY. gunbc serve has four distinct exit paths (source load, blocking diagnostics, no graph, bind failure) and the probe alone cannot tell them apart."
 
-data live_deploy_roadmap_unit_expected_startup: std.measure.Second = second(count: 40)
+data live_deploy_roadmap_unit_expected_startup: std.measure.Second = std.measure.second(count: 40)
 
 data live_deploy_service_ready_poll_bound_margin_factor: Int = 3
 
 data live_deploy_service_ready_poll_bound_reason: String = "Cold-start bound for gunbc-roadmap.service after systemctl restart, and the SECOND correction of this rationale -- the previous one was measured against the wrong phase and is the reason the srv1 deploy refused on every run for a day. Recorded plainly, because the failure mode is more instructive than the number.
 
-WHAT THE UNIT ACTUALLY DOES. The startup shape changed at belt B (PR 6940): the unit is no longer the former Node HTTP server, which bound its socket almost immediately. gunbc serve LOADS its source roots and then COMPILES the .dag graph to a resolved form, binding the port only after that compile succeeds. Readiness is therefore gated on load-plus-compile rather than on process spawn, and a compile that FAILS exits before any bind, presenting to the probe as connection-refused for the entire bound -- indistinguishable from slow, which is why unit_diagnosis exists.
+WHAT THE UNIT ACTUALLY DOES. The startup shape changed at belt B (PR 6940): the unit is no longer the former v2.std.node.Node HTTP server, which bound its socket almost immediately. gunbc serve LOADS its source roots and then COMPILES the .dag graph to a resolved form, binding the port only after that compile succeeds. Readiness is therefore gated on load-plus-compile rather than on process spawn, and a compile that FAILS exits before any bind, presenting to the probe as connection-refused for the entire bound -- indistinguishable from slow, which is why unit_diagnosis exists.
 
 THE MEASUREMENT ERROR. The prior rationale cited 'analyses-done at 3.3s, wide margin' and set the bound to 30s. That figure is real but it is the COMPILE phase only. It silently omitted the LOAD phase that precedes it, and load is the dominant term: build_module_index walks every source root and reads all 2,356 .dag files (12.7 MB) to serve a closure of 91, so the cost is denominated in the CORPUS rather than in the entry. Reproduced locally 2026-07-21 at 35.04s and 39.01s wall to listening, with raw file I/O only 0.18s of it and halving the corpus dropping it to 16s. Four independent srv1 observations from the operator's journal agree: listening at 35s, 36s, 36s and 39s after Started, every one of them a SUCCESSFUL start. So the service was never crashing and the deploy was never broken -- the probe simply gave up about four seconds early, and the refusal it emitted was accurate about its own bound while wrong about the world.
 
@@ -51,26 +51,26 @@ THIS IS NOT THE ABSORBING FALLBACK. The test DESIGN 5 sets is whether the failur
 
 DISSOLUTION TRIGGER. This bound is sized around a cost-shape defect, not a fact of the service: gunbc serve pays a corpus-scale load to serve an entry-scale closure (26x the sources it needs). When load_sources_for_entry / build_module_index are demand-scoped to the entry's closure, startup returns to roughly compile time alone and expected_startup drops back to single digits with the margin factor unchanged. Until then this is a loud, measured, receipt-carrying interim -- not a resting place."
 
-data live_deploy_service_ready_poll_bound: std.measure.Second = second(
-  count: second_count(s: live_deploy_roadmap_unit_expected_startup) * live_deploy_service_ready_poll_bound_margin_factor
+data live_deploy_service_ready_poll_bound: std.measure.Second = std.measure.second(
+  count: std.measure.second_count(s: live_deploy_roadmap_unit_expected_startup) * live_deploy_service_ready_poll_bound_margin_factor
 )
 
-data live_deploy_service_ready_poll_cadence: std.measure.Second = second(count: 1)
+data live_deploy_service_ready_poll_cadence: std.measure.Second = std.measure.second(count: 1)
 
 data live_deploy_host_sleep_generalization_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "Srv3BootOnceReadBackSleep",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 data live_deploy_executor_pacing_sleep_frontier_note: String = "Slice 3 readiness poll paces via extdeps.tools.sleep.Delay.Seconds (executor-local modeled sleep authority). General HostSleep duration host_effect variant is deferred — live_deploy_host_sleep_generalization_dissolution_trigger; Srv3BootOnceReadBackSleep dissolves as a consumer when HostSleep lands."
 
-data live_deploy_service_ready_unit_authority: std.types.NonEmptyStr = gunbc_roadmap_unit_name
+data live_deploy_service_ready_unit_authority: std.types.NonEmptyStr = gunbc.live_deploy.spec.gunbc_roadmap_unit_name
 
-data live_deploy_service_ready_endpoint_authority: std.types.NonEmptyStr = roadmap_site_health_path
+data live_deploy_service_ready_endpoint_authority: std.types.NonEmptyStr = gunbc.roadmap_site_surface_render.roadmap_site_health_path
 
 data live_deploy_unit_diagnosis_capture_placement_note: String = "The capture is performed by the DEPLOY ENTRY (readiness.live_deploy_poll_until_service_ready_for_deploy), never by the recursive poller, and that placement is load-bearing rather than stylistic. The poller is driven directly by claim witnesses; the deploy access it is handed carries an SshShell transport pointed at srv1, so performing the capture inside the poller's exhaustion branch made a hermetic refusal-shape witness attempt a LIVE cross-host SSH from whatever runner executed the corpus. That is non-hermetic by construction and it duly behaved differently per environment -- green locally, and on srv2-03 it returned a value that blew a downstream match (PR 7038, first CI run). So the recursive poller stays free of the capture effect and builds its refusal with UnitDiagnosisUnavailable, which is the honest statement at that point: nothing has been captured yet. The entry, which only the real deploy reaches, performs the capture once on the refusal and rebuilds it through service_not_ready_with_captured_diagnosis. Rendering matches the variant and emits the segment only for UnitDiagnosisCaptured, so exactly one unit_diagnosis segment ever appears, it is never a placeholder masquerading as an observation, and there is ONE rendering authority rather than a second copy of the format string at the entry."
 
@@ -81,7 +81,7 @@ fn service_not_ready_reason(refusal: ServiceNotReady) -> String {
         concat("ServiceNotReady unit=", refusal.unit as String),
         concat(" endpoint=", refusal.endpoint as String)
       ),
-      concat(" waited_s=", to_string(second_count(s: refusal.waited)))
+      concat(" waited_s=", to_string(std.measure.second_count(s: refusal.waited)))
     ),
     concat(" last_probe=", refusal.last_probe)
   )
@@ -110,11 +110,11 @@ fn live_deploy_readiness_poll_bound_seconds() -> std.measure.Second {
 }
 
 fn live_deploy_readiness_poll_bound_is_positive() -> Bool {
-  second_count(s: live_deploy_service_ready_poll_bound) > 0
+  std.measure.second_count(s: live_deploy_service_ready_poll_bound) > 0
 }
 
 fn live_deploy_service_ready_poll_max_attempts() -> Int {
-  measure_fit_count_floor(capacity: live_deploy_service_ready_poll_bound, each: live_deploy_service_ready_poll_cadence)
+  std.measure.measure_fit_count_floor(capacity: live_deploy_service_ready_poll_bound, each: live_deploy_service_ready_poll_cadence)
 }
 
 fn live_deploy_service_ready_poll_cadence_seconds() -> std.measure.Second {

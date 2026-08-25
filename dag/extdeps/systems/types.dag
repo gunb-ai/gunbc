@@ -4,7 +4,7 @@ module extdeps.systems.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/System_on_a_chip"
   }
 }
@@ -14,10 +14,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.systems.types",
       decl_name: "IntegratedComputeSystemCatalogRow",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.systems.types.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -36,7 +36,7 @@ type SystemNetworkPort {
 
 // A discrete CpuModelCatalogRow assumes a socketed, homogeneous-core part with cited per-level cache geometry (extdeps.cpu.types); a discrete GpuModelCatalogRow assumes a PCIe-attached card. Neither shape fits a single-package SoC that fuses a heterogeneous-core CPU cluster and a GPU behind one shared memory pool inside a sealed desktop enclosure with its own board-level NIC/storage/PSU facts -- forcing either would either fabricate cache geometry that is not cited anywhere, or silently drop the CPU/network/storage/power facts the product actually ships with. IntegratedComputeSystemCatalogRow is the system-grain shape for that class of product; it NESTS a GpuModelCatalogRow for the embedded GPU (the one piece that already has a grounded, reusable authority) rather than re-deriving GPU facts inline.
 type IntegratedComputeSystemCatalogRow {
-  vendor: Vendor<extdeps.hardware.Hardware>
+  vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   model: std.types.NonEmptyStr
   soc_model: std.types.NonEmptyStr
   cpu_architecture: extdeps.toolchain.types.Architecture
@@ -53,5 +53,5 @@ type IntegratedComputeSystemCatalogRow {
 }
 
 fn integrated_compute_system_cpu_core_count(row: IntegratedComputeSystemCatalogRow) -> Int {
-  fold(row.cpu_core_clusters, init: 0, f: (acc, cluster) => acc + hardware_thread_count_value(cluster.core_count))
+  fold(row.cpu_core_clusters, init: 0, f: (acc, cluster) => acc + std.measure.hardware_thread_count_value(cluster.core_count))
 }

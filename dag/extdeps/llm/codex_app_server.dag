@@ -3,7 +3,7 @@ module extdeps.llm.codex_app_server
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/openai/codex"
   }
 }
@@ -13,10 +13,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.llm.codex_app_server",
       decl_name: "CodexAppServerTransport",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.llm.codex_app_server.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -75,13 +75,13 @@ service codex_app_server.Cli {
 data codex_app_server_request_line_emit_note: String = "Request lines are BUILT through extdeps.languages.json.emit, not hand-authored as escaped string literals (review 50540). The literals they replace carried their own JSON grammar — braces, quoting and separators spelled out in \\{ and \\\" escapes — which is a second JSON representation sitting beside the module that already owns one (DESIGN §3 dual representation), and it is the representation that cannot escape a value: a method name or client field containing a quote would have produced a malformed frame with nothing to refuse it. serialize_json applies the escaping, so the wire bytes are a consequence of the modeled value rather than of an author getting the backslashes right."
 
 fn codex_app_server_jsonrpc_request(id: Int, method: String, params: extdeps.languages.json.emit.JsonValue) -> std.types.NonEmptyStr {
-  serialize_json(
-    v: json_object(
+  extdeps.languages.json.emit.serialize_json(
+    v: extdeps.languages.json.emit.json_object(
       members: [
-        json_kv(key: "jsonrpc", value: json_string(s: "2.0")),
-        json_kv(key: "id", value: json_int(n: id)),
-        json_kv(key: "method", value: json_string(s: method)),
-        json_kv(key: "params", value: params),
+        extdeps.languages.json.emit.json_kv(key: "jsonrpc", value: extdeps.languages.json.emit.json_string(s: "2.0")),
+        extdeps.languages.json.emit.json_kv(key: "id", value: extdeps.languages.json.emit.json_int(n: id)),
+        extdeps.languages.json.emit.json_kv(key: "method", value: extdeps.languages.json.emit.json_string(s: method)),
+        extdeps.languages.json.emit.json_kv(key: "params", value: params),
       ],
     ),
   ) as std.types.NonEmptyStr
@@ -91,30 +91,30 @@ fn codex_app_server_initialize_request_line() -> std.types.NonEmptyStr {
   codex_app_server_jsonrpc_request(
     id: 1,
     method: "initialize",
-    params: json_object(
+    params: extdeps.languages.json.emit.json_object(
       members: [
-        json_kv(
+        extdeps.languages.json.emit.json_kv(
           key: "clientInfo",
-          value: json_object(
+          value: extdeps.languages.json.emit.json_object(
             members: [
-              json_kv(key: "name", value: json_string(s: "gunbc")),
-              json_kv(key: "title", value: json_string(s: "gunbc")),
-              json_kv(key: "version", value: json_string(s: "0")),
+              extdeps.languages.json.emit.json_kv(key: "name", value: extdeps.languages.json.emit.json_string(s: "gunbc")),
+              extdeps.languages.json.emit.json_kv(key: "title", value: extdeps.languages.json.emit.json_string(s: "gunbc")),
+              extdeps.languages.json.emit.json_kv(key: "version", value: extdeps.languages.json.emit.json_string(s: "0")),
             ],
           ),
         ),
-        json_kv(key: "capabilities", value: json_object(members: [])),
+        extdeps.languages.json.emit.json_kv(key: "capabilities", value: extdeps.languages.json.emit.json_object(members: [])),
       ],
     ),
   )
 }
 
 fn codex_app_server_initialized_notification_line() -> std.types.NonEmptyStr {
-  serialize_json(
-    v: json_object(
+  extdeps.languages.json.emit.serialize_json(
+    v: extdeps.languages.json.emit.json_object(
       members: [
-        json_kv(key: "jsonrpc", value: json_string(s: "2.0")),
-        json_kv(key: "method", value: json_string(s: "initialized")),
+        extdeps.languages.json.emit.json_kv(key: "jsonrpc", value: extdeps.languages.json.emit.json_string(s: "2.0")),
+        extdeps.languages.json.emit.json_kv(key: "method", value: extdeps.languages.json.emit.json_string(s: "initialized")),
       ],
     ),
   ) as std.types.NonEmptyStr
@@ -124,7 +124,7 @@ fn codex_app_server_account_read_request_line() -> std.types.NonEmptyStr {
   codex_app_server_jsonrpc_request(
     id: 2,
     method: "account/read",
-    params: json_object(members: []),
+    params: extdeps.languages.json.emit.json_object(members: []),
   )
 }
 
@@ -132,7 +132,7 @@ fn codex_app_server_rate_limits_read_request_line() -> std.types.NonEmptyStr {
   codex_app_server_jsonrpc_request(
     id: 3,
     method: "account/rateLimits/read",
-    params: json_object(members: []),
+    params: extdeps.languages.json.emit.json_object(members: []),
   )
 }
 
@@ -153,9 +153,9 @@ fn codex_app_server_thread_start_request_line(cwd: std.types.FilePath) -> std.ty
   codex_app_server_jsonrpc_request(
     id: codex_supervised_thread_start_id,
     method: "thread/start",
-    params: json_object(
+    params: extdeps.languages.json.emit.json_object(
       members: [
-        json_kv(key: "cwd", value: json_string(s: cwd as String)),
+        extdeps.languages.json.emit.json_kv(key: "cwd", value: extdeps.languages.json.emit.json_string(s: cwd as String)),
       ],
     ),
   )
@@ -168,25 +168,25 @@ fn codex_app_server_turn_start_request_line(
   codex_app_server_jsonrpc_request(
     id: codex_supervised_turn_start_wire_id,
     method: "turn/start",
-    params: json_object(
+    params: extdeps.languages.json.emit.json_object(
       members: [
-        json_kv(
+        extdeps.languages.json.emit.json_kv(
           key: codex_turn_start_params_thread_id_key as String,
-          value: json_string(s: thread_id as String),
+          value: extdeps.languages.json.emit.json_string(s: thread_id as String),
         ),
-        json_kv(
+        extdeps.languages.json.emit.json_kv(
           key: codex_turn_start_params_input_key as String,
-          value: json_array(
+          value: extdeps.languages.json.emit.json_array(
             elements: [
-              json_object(
+              extdeps.languages.json.emit.json_object(
                 members: [
-                  json_kv(
+                  extdeps.languages.json.emit.json_kv(
                     key: codex_turn_input_text_type_key as String,
-                    value: json_string(s: "text"),
+                    value: extdeps.languages.json.emit.json_string(s: "text"),
                   ),
-                  json_kv(
+                  extdeps.languages.json.emit.json_kv(
                     key: codex_turn_input_text_value_key as String,
-                    value: json_string(s: user_input),
+                    value: extdeps.languages.json.emit.json_string(s: user_input),
                   ),
                 ],
               ),

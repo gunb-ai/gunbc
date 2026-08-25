@@ -6,11 +6,11 @@ module test.claim.ssh_client_options_witness_test
 // test; a module that could not itself be pinned would reproduce that defect one layer over.
 
 test fn w_strict_yes_serializes_to_exact_pair() -> Bool {
-  serialize_ssh_client_option(option: extdeps.ssh.client_options.StrictHostKeyChecking { value: StrictYes }) == ["-o", "StrictHostKeyChecking=yes"]
+  extdeps.ssh.client_options.serialize_ssh_client_option(option: extdeps.ssh.client_options.StrictHostKeyChecking { value: extdeps.ssh.client_options.StrictYes }) == ["-o", "StrictHostKeyChecking=yes"]
 }
 
 test fn w_known_hosts_path_serializes_to_exact_pair() -> Bool {
-  serialize_ssh_client_option(option: extdeps.ssh.client_options.UserKnownHostsFile { path: "/home/ghrunner/.ssh/anchor" as std.types.NonEmptyStr }) == ["-o", "UserKnownHostsFile=/home/ghrunner/.ssh/anchor"]
+  extdeps.ssh.client_options.serialize_ssh_client_option(option: extdeps.ssh.client_options.UserKnownHostsFile { path: "/home/ghrunner/.ssh/anchor" as std.types.NonEmptyStr }) == ["-o", "UserKnownHostsFile=/home/ghrunner/.ssh/anchor"]
 }
 
 // THE DISCRIMINATING PAIR. This is the divergence the corpus carried unnoticed -- one site
@@ -18,25 +18,25 @@ test fn w_known_hosts_path_serializes_to_exact_pair() -> Bool {
 // As variants they serialize differently AND are matchable, so the difference is now reachable by
 // a consumer rather than only by a human reading prose.
 test fn w_strict_no_is_a_different_value_not_a_different_spelling() -> Bool {
-  serialize_ssh_client_option(option: extdeps.ssh.client_options.StrictHostKeyChecking { value: StrictNo }) == ["-o", "StrictHostKeyChecking=no"] && serialize_ssh_client_option(option: extdeps.ssh.client_options.StrictHostKeyChecking { value: StrictNo }) != serialize_ssh_client_option(option: extdeps.ssh.client_options.StrictHostKeyChecking { value: StrictYes })
+  extdeps.ssh.client_options.serialize_ssh_client_option(option: extdeps.ssh.client_options.StrictHostKeyChecking { value: extdeps.ssh.client_options.StrictNo }) == ["-o", "StrictHostKeyChecking=no"] && extdeps.ssh.client_options.serialize_ssh_client_option(option: extdeps.ssh.client_options.StrictHostKeyChecking { value: extdeps.ssh.client_options.StrictNo }) != extdeps.ssh.client_options.serialize_ssh_client_option(option: extdeps.ssh.client_options.StrictHostKeyChecking { value: extdeps.ssh.client_options.StrictYes })
 }
 
 // accept-new carries a hyphen, so it would survive a naive same-shape assumption that every value
 // is its variant name lowercased. Pinned because that assumption is exactly how a wire spelling
 // silently drifts from its authority.
 test fn w_accept_new_keeps_its_upstream_hyphenated_spelling() -> Bool {
-  serialize_ssh_client_option(option: extdeps.ssh.client_options.StrictHostKeyChecking { value: StrictAcceptNew }) == ["-o", "StrictHostKeyChecking=accept-new"]
+  extdeps.ssh.client_options.serialize_ssh_client_option(option: extdeps.ssh.client_options.StrictHostKeyChecking { value: extdeps.ssh.client_options.StrictAcceptNew }) == ["-o", "StrictHostKeyChecking=accept-new"]
 }
 
 test fn w_bool_and_int_domains_serialize_without_a_second_enum() -> Bool {
-  serialize_ssh_client_option(option: extdeps.ssh.client_options.BatchMode { enabled: true }) == ["-o", "BatchMode=yes"] && serialize_ssh_client_option(option: extdeps.ssh.client_options.ConnectTimeout { seconds: second(count: 5) }) == ["-o", "ConnectTimeout=5"]
+  extdeps.ssh.client_options.serialize_ssh_client_option(option: extdeps.ssh.client_options.BatchMode { enabled: true }) == ["-o", "BatchMode=yes"] && extdeps.ssh.client_options.serialize_ssh_client_option(option: extdeps.ssh.client_options.ConnectTimeout { seconds: std.measure.second(count: 5) }) == ["-o", "ConnectTimeout=5"]
 }
 
 // The list serializer must FLATTEN, not nest: a transport splices a flat argv, so a List<List>
 // would produce a shell invocation with a list where a word belongs.
 test fn w_options_flatten_into_one_argv_run() -> Bool {
-  serialize_ssh_client_options(options: [
-    extdeps.ssh.client_options.StrictHostKeyChecking { value: StrictYes },
+  extdeps.ssh.client_options.serialize_ssh_client_options(options: [
+    extdeps.ssh.client_options.StrictHostKeyChecking { value: extdeps.ssh.client_options.StrictYes },
     extdeps.ssh.client_options.UserKnownHostsFile { path: "/tmp/anchor" as std.types.NonEmptyStr },
   ]) == ["-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=/tmp/anchor"]
 }
@@ -49,7 +49,7 @@ test fn w_options_flatten_into_one_argv_run() -> Bool {
 // form was anchored to the registry plus whatever the machine already believed. This asserts all six
 // words in order, so removing any disabler reds here rather than silently widening what is trusted.
 test fn w_trust_posture_excludes_every_other_host_key_source() -> Bool {
-  serialize_ssh_client_options(options: openssh_exclusive_known_hosts_trust_options(known_hosts: "/tmp/a" as std.types.NonEmptyStr)) == [
+  extdeps.ssh.client_options.serialize_ssh_client_options(options: extdeps.ssh.client_options.openssh_exclusive_known_hosts_trust_options(known_hosts: "/tmp/a" as std.types.NonEmptyStr)) == [
     "-o", "StrictHostKeyChecking=yes",
     "-o", "UserKnownHostsFile=/tmp/a",
     "-o", "GlobalKnownHostsFile=/dev/null",
@@ -67,5 +67,5 @@ test fn w_trust_posture_excludes_every_other_host_key_source() -> Bool {
 // serialization is correct and fails the moment `yes` and `no` collapse to the same argv, which is
 // the property the other claims depend on for their comparisons to mean anything.
 test fn red_control_wrong_serialization_is_rejected() -> Bool {
-  serialize_ssh_client_option(option: extdeps.ssh.client_options.StrictHostKeyChecking { value: StrictYes }) != ["-o", "StrictHostKeyChecking=no"]
+  extdeps.ssh.client_options.serialize_ssh_client_option(option: extdeps.ssh.client_options.StrictHostKeyChecking { value: extdeps.ssh.client_options.StrictYes }) != ["-o", "StrictHostKeyChecking=no"]
 }

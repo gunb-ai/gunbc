@@ -4,11 +4,11 @@ module v2.lens.enforcement.cost_coverage
 
 type CostCoverageIngestVerdict
   = IngestParsedClean
-  | IngestRejected { stage: String, reason: v2.std.node.Symbol }
+  | IngestRejected { stage: String, reason: Symbol }
 
 type CostCoverageFnVerdict
-  = FnCostKnown { asymptotic_class: v2.lens.cost.AsymptoticClass }
-  | FnCostUnknown { reason: v2.std.node.Symbol }
+  = FnCostKnown { asymptotic_class: AsymptoticClass }
+  | FnCostUnknown { reason: Symbol }
   | FnBodyParseTreeOpaque
   | FnBodyNotLocated
 
@@ -54,13 +54,13 @@ type CostCoverageCensusAcc {
   file_rows: List<CostCoverageFileReceipt>
 }
 
-data cost_coverage_unknown_asymptotic_class: v2.std.node.Symbol = ^cost_coverage_unknown_asymptotic_class
+data cost_coverage_unknown_asymptotic_class: Symbol = ^cost_coverage_unknown_asymptotic_class
 
-data cost_coverage_file_anchor: v2.std.node.Symbol = ^cost_coverage_file_anchor
+data cost_coverage_file_anchor: Symbol = ^cost_coverage_file_anchor
 
-data cost_coverage_reject_probe: v2.std.node.Symbol = ^cost_coverage_reject_probe
+data cost_coverage_reject_probe: Symbol = ^cost_coverage_reject_probe
 
-fn cost_coverage_collect_fn_decls(root: v2.std.node.Node, acc: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
+fn cost_coverage_collect_fn_decls(root: Node, acc: List<Node>) -> List<Node> {
   let acc1 = if dag_node_is_fn_decl(node: root) {
     list_append(left: acc, right: [root])
   } else {
@@ -71,7 +71,7 @@ fn cost_coverage_collect_fn_decls(root: v2.std.node.Node, acc: List<v2.std.node.
   })
 }
 
-fn cost_coverage_fn_body_from_decl(fn_decl: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn cost_coverage_fn_body_from_decl(fn_decl: Node) -> Optional<Node> {
   match parse_subtree_find_production_captured(
     root: fn_decl,
     emitted: ^dag_surface_fn_body
@@ -81,7 +81,7 @@ fn cost_coverage_fn_body_from_decl(fn_decl: v2.std.node.Node) -> Optional<v2.std
   }
 }
 
-fn cost_coverage_fn_verdict_from_body(body: v2.std.node.Node) -> CostCoverageFnVerdict {
+fn cost_coverage_fn_verdict_from_body(body: Node) -> CostCoverageFnVerdict {
   match judge_subject_node(n: body) {
     BodyUnavailable =>
       FnBodyParseTreeOpaque
@@ -132,7 +132,7 @@ fn cost_coverage_fn_receipt_step(
   acc: List<CostCoverageFnReceipt>,
   rel_path: String,
   fn_index: Int,
-  fn_decl: v2.std.node.Node
+  fn_decl: Node
 ) -> List<CostCoverageFnReceipt> {
   match cost_coverage_fn_body_from_decl(fn_decl: fn_decl) {
     Absent =>
@@ -162,12 +162,12 @@ fn cost_coverage_fn_receipt_step(
 
 fn cost_coverage_fn_receipts_for_module(
   rel_path: String,
-  module_root: v2.std.node.Node
+  module_root: Node
 ) -> List<CostCoverageFnReceipt> {
-  let fn_decls = cost_coverage_collect_fn_decls(root: module_root, acc: std.algebra.Empty)
+  let fn_decls = cost_coverage_collect_fn_decls(root: module_root, acc: Empty)
   fold_list(
     xs: fn_decls,
-    empty: std.algebra.Empty,
+    empty: Empty,
     cons: fn(acc, fn_decl) {
       cost_coverage_fn_receipt_step(
         acc: acc,
@@ -201,13 +201,13 @@ fn cost_coverage_empty_file_counts() -> CostCoverageFileReceipt {
     fn_unknown: 0,
     fn_body_parse_tree_opaque: 0,
     fn_body_not_located: 0,
-    fn_rows: std.algebra.Empty
+    fn_rows: Empty
   }
 }
 
 fn cost_coverage_file_receipt_from_module(
   rel_path: String,
-  module_root: v2.std.node.Node
+  module_root: Node
 ) -> CostCoverageFileReceipt {
   let fn_rows = cost_coverage_fn_receipts_for_module(rel_path: rel_path, module_root: module_root)
   let attempted = length(xs: fn_rows)
@@ -237,16 +237,16 @@ fn cost_coverage_file_receipt_from_module(
 
 fn cost_coverage_ingest_source_text(
   source_text: String,
-  file: v2.std.node.Symbol
-) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
+  file: Symbol
+) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: d } =>
-      v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d }
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
         Rejected { diagnostics: d } =>
-          v2.std.diagnostic.Rejected { diagnostics: d }
+          Rejected { diagnostics: d }
         Accepted { value: artifact, diagnostics: _ } =>
           normalize(parse_tree: artifact.tree)
       }
@@ -256,7 +256,7 @@ fn cost_coverage_ingest_source_text(
 fn cost_coverage_rejected_file_receipt(
   rel_path: String,
   stage: String,
-  reason: v2.std.node.Symbol
+  reason: Symbol
 ) -> CostCoverageFileReceipt {
   let empty = cost_coverage_empty_file_counts()
   CostCoverageFileReceipt {
@@ -328,7 +328,7 @@ fn cost_coverage_empty_census_acc() -> CostCoverageCensusAcc {
     fn_unknown: 0,
     fn_body_parse_tree_opaque: 0,
     fn_body_not_located: 0,
-    file_rows: std.algebra.Empty
+    file_rows: Empty
   }
 }
 

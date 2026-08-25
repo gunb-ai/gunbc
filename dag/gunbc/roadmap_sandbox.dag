@@ -5,72 +5,72 @@ data roadmap_sandbox_note: String = "The /sandbox design surface (P4): the regis
 
 fn sandbox_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "sandbox" }, decls: [
-      decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
-      decl(prop: MaxWidth, value: scale_var(t: measure_page)),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "sandbox" }, decls: [
+      gunbc.design.material.decl(prop: Padding, value: gunbc.design.scale.scale_pair(a: gunbc.design.scale.space_16, b: gunbc.design.scale.space_24)),
+      gunbc.design.material.decl(prop: MaxWidth, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.measure_page)),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".sandbox section" }, decls: [
-      decl(prop: MarginBottom, value: scale_var(t: space_24)),
+    gunbc.design.material.StaticRule { selector: RawSelector { text: ".sandbox section" }, decls: [
+      gunbc.design.material.decl(prop: MarginBottom, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_24)),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "swatch-row" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: Gap, value: scale_var(t: space_6)),
-      decl(prop: MarginBottom, value: scale_var(t: space_2)),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "swatch-row" }, decls: [
+      gunbc.design.material.decl(prop: Display, value: "flex"),
+      gunbc.design.material.decl(prop: AlignItems, value: "center"),
+      gunbc.design.material.decl(prop: Gap, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_6)),
+      gunbc.design.material.decl(prop: MarginBottom, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_2)),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "swatch" }, decls: [
-      decl(prop: Display, value: "inline-block"),
-      decl(prop: Width, value: scale_var(t: space_24)),
-      decl(prop: Height, value: scale_var(t: space_24)),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "swatch" }, decls: [
+      gunbc.design.material.decl(prop: Display, value: "inline-block"),
+      gunbc.design.material.decl(prop: Width, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_24)),
+      gunbc.design.material.decl(prop: Height, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_24)),
+      gunbc.design.material.decl(prop: BorderRadius, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.radius_3)),
+      gunbc.design.material.decl(prop: Border, value: gunbc.design.scale.scale_border(w: gunbc.design.scale.border_1, color_var: "var(--border)")),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "role-name" }, decls: [
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_12)),
-      role_decl(prop: Color, r: TextRole),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "role-name" }, decls: [
+      gunbc.design.material.decl(prop: FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
+      gunbc.design.material.decl(prop: FontSize, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.text_12)),
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextRole),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "role-var" }, decls: [
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_12)),
-      role_decl(prop: Color, r: TextDimRole),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "role-var" }, decls: [
+      gunbc.design.material.decl(prop: FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
+      gunbc.design.material.decl(prop: FontSize, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.text_12)),
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextDimRole),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "token-row" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: Gap, value: scale_var(t: space_8)),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_12)),
-      role_decl(prop: Color, r: TextDimRole),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "token-row" }, decls: [
+      gunbc.design.material.decl(prop: Display, value: "flex"),
+      gunbc.design.material.decl(prop: Gap, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_8)),
+      gunbc.design.material.decl(prop: FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
+      gunbc.design.material.decl(prop: FontSize, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.text_12)),
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextDimRole),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "gallery-row" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: Gap, value: scale_var(t: space_8)),
-      decl(prop: FlexWrap, value: "wrap"),
-      decl(prop: AlignItems, value: "baseline"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "gallery-row" }, decls: [
+      gunbc.design.material.decl(prop: Display, value: "flex"),
+      gunbc.design.material.decl(prop: Gap, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_8)),
+      gunbc.design.material.decl(prop: FlexWrap, value: "wrap"),
+      gunbc.design.material.decl(prop: AlignItems, value: "baseline"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "gallery-cell" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: Gap, value: scale_var(t: space_2)),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "gallery-cell" }, decls: [
+      gunbc.design.material.decl(prop: Display, value: "flex"),
+      gunbc.design.material.decl(prop: FlexDirection, value: "column"),
+      gunbc.design.material.decl(prop: AlignItems, value: "center"),
+      gunbc.design.material.decl(prop: Gap, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_2)),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "gallery-arm" }, decls: [
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_10)),
-      role_decl(prop: Color, r: TextDimRole),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "gallery-arm" }, decls: [
+      gunbc.design.material.decl(prop: FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
+      gunbc.design.material.decl(prop: FontSize, value: gunbc.design.scale.scale_var(t: text_10)),
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextDimRole),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "auditioner-bar" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: Gap, value: scale_var(t: space_4)),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: Margin, value: scale_triple(a: space_3, b: space_0, c: space_3)),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "auditioner-bar" }, decls: [
+      gunbc.design.material.decl(prop: Display, value: "flex"),
+      gunbc.design.material.decl(prop: Gap, value: gunbc.design.scale.scale_var(t: space_4)),
+      gunbc.design.material.decl(prop: AlignItems, value: "center"),
+      gunbc.design.material.decl(prop: Margin, value: scale_triple(a: space_3, b: space_0, c: space_3)),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "band-chip" }, decls: [
-      decl(prop: Display, value: "inline-block"),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_10)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "band-chip" }, decls: [
+      gunbc.design.material.decl(prop: Display, value: "inline-block"),
+      gunbc.design.material.decl(prop: FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
+      gunbc.design.material.decl(prop: FontSize, value: gunbc.design.scale.scale_var(t: text_10)),
+      gunbc.design.material.decl(prop: Padding, value: gunbc.design.scale.scale_pair(a: space_1, b: gunbc.design.scale.space_6)),
+      gunbc.design.material.decl(prop: BorderRadius, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.radius_3)),
     ] },
   ]
 }
@@ -79,82 +79,82 @@ data fixture_frame_width_note: String = "The three fixture frames simulate the f
 
 fn fixture_frame_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".sandbox-work-row" }, decls: [
-      decl(prop: MaxWidth, value: "none"),
+    gunbc.design.material.StaticRule { selector: RawSelector { text: ".sandbox-work-row" }, decls: [
+      gunbc.design.material.decl(prop: MaxWidth, value: "none"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "fixture-frame" }, decls: [
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: Padding, value: scale_var(t: space_8)),
-      decl(prop: MarginBottom, value: scale_var(t: space_16)),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "fixture-frame" }, decls: [
+      gunbc.design.material.decl(prop: Border, value: gunbc.design.scale.scale_border(w: gunbc.design.scale.border_1, color_var: "var(--border)")),
+      gunbc.design.material.decl(prop: Padding, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_8)),
+      gunbc.design.material.decl(prop: MarginBottom, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_16)),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "fixture-wide" }, decls: [
-      decl(prop: MaxWidth, value: "1680px"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "fixture-wide" }, decls: [
+      gunbc.design.material.decl(prop: MaxWidth, value: "1680px"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "fixture-medium" }, decls: [
-      decl(prop: MaxWidth, value: "1024px"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "fixture-medium" }, decls: [
+      gunbc.design.material.decl(prop: MaxWidth, value: "1024px"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "fixture-narrow" }, decls: [
-      decl(prop: MaxWidth, value: "480px"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "fixture-narrow" }, decls: [
+      gunbc.design.material.decl(prop: MaxWidth, value: "480px"),
     ] },
   ]
 }
 
 fn sandbox_css() -> String {
-  join([roadmap_css(), serialize_rules(rules: concat(sandbox_rules(), fixture_frame_rules()))], "\n")
+  join([gunbc.roadmap_style.roadmap_css(), gunbc.design.material.serialize_rules(rules: concat(sandbox_rules(), fixture_frame_rules()))], "\n")
 }
 
 fn role_swatch(theme: gunbc.design.theme.Theme, role: gunbc.design.theme.ThemeRole) -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "span",
     attributes: [
-      attr(name: "class", value: "swatch" ),
-      attr(name: "style", value: join(["background: ", paint(m: assignment_material(t: theme, r: role))], "") ),
-      attr(name: "title", value: join([theme.name, " ", role_key(r: role)], "") ),
+      std.markup.attr(name: "class", value: "swatch" ),
+      std.markup.attr(name: "style", value: join(["background: ", gunbc.design.material.paint(m: gunbc.design.theme.assignment_material(t: theme, r: role))], "") ),
+      std.markup.attr(name: "title", value: join([theme.name, " ", gunbc.design.theme.role_key(r: role)], "") ),
     ],
     children: [],
   }
 }
 
 fn role_row(role: gunbc.design.theme.ThemeRole) -> std.markup.Fragment {
-  el_class("div", "swatch-row", [
-    role_swatch(theme: night_theme, role: role),
-    role_swatch(theme: day_theme, role: role),
-    el_class("span", "role-name", [ txt(role_key(r: role)) ]),
-    el_class("span", "role-var", [ txt(role_var(r: role)) ]),
+  gunbc.site.markup.el_class("div", "swatch-row", [
+    role_swatch(theme: gunbc.design.theme.night_theme, role: role),
+    role_swatch(theme: gunbc.design.theme.day_theme, role: role),
+    gunbc.site.markup.el_class("span", "role-name", [ gunbc.site.markup.txt(gunbc.design.theme.role_key(r: role)) ]),
+    gunbc.site.markup.el_class("span", "role-var", [ gunbc.site.markup.txt(gunbc.design.theme.role_var(r: role)) ]),
   ])
 }
 
 fn roles_section() -> std.markup.Fragment {
-  el_class("section", "sandbox-roles",
-    concat([ el("h2", [ txt("roles — night / day") ]) ],
-      map(theme_roles, r => role_row(role: r))))
+  gunbc.site.markup.el_class("section", "sandbox-roles",
+    concat([ gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("roles — night / day") ]) ],
+      map(gunbc.design.theme.theme_roles, r => role_row(role: r))))
 }
 
 fn scale_token_row(t: gunbc.design.scale.ScaleToken) -> std.markup.Fragment {
-  el_class("div", "token-row", [
-    el_class("span", "token-name", [ txt(t.name) ]),
-    el_class("span", "token-value", [ txt(scale_value_wire(v: t.value)) ]),
+  gunbc.site.markup.el_class("div", "token-row", [
+    gunbc.site.markup.el_class("span", "token-name", [ gunbc.site.markup.txt(t.name) ]),
+    gunbc.site.markup.el_class("span", "token-value", [ gunbc.site.markup.txt(gunbc.design.scale.scale_value_wire(v: t.value)) ]),
   ])
 }
 
 fn scale_group(label: String, tokens: List<gunbc.design.scale.ScaleToken>) -> std.markup.Fragment {
-  el_class("div", "scale-group",
-    concat([ el_class("h3", "group-label", [ txt(label) ]) ],
+  gunbc.site.markup.el_class("div", "scale-group",
+    concat([ gunbc.site.markup.el_class("h3", "group-label", [ gunbc.site.markup.txt(label) ]) ],
       map(tokens, t => scale_token_row(t: t))))
 }
 
 fn scales_section() -> std.markup.Fragment {
-  el_class("section", "sandbox-scales", [
-    el("h2", [ txt("scales") ]),
-    scale_group(label: "spacing", tokens: spacing_scale),
-    scale_group(label: "type", tokens: type_scale),
-    scale_group(label: "font", tokens: font_stack),
-    scale_group(label: "dimension", tokens: dimension_scale),
+  gunbc.site.markup.el_class("section", "sandbox-scales", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("scales") ]),
+    scale_group(label: "spacing", tokens: gunbc.design.scale.spacing_scale),
+    scale_group(label: "type", tokens: gunbc.design.scale.type_scale),
+    scale_group(label: "font", tokens: gunbc.design.scale.font_stack),
+    scale_group(label: "dimension", tokens: gunbc.design.scale.dimension_scale),
   ])
 }
 
 fn gallery_states() -> List<gunbc.design.component.ComponentState> {
-  concat([dispatch_idle_state, dispatch_requested_state], dispatch_button_terminal_states())
+  concat([gunbc.roadmap_component.dispatch_idle_state, gunbc.roadmap_component.dispatch_requested_state], gunbc.roadmap_component.dispatch_button_terminal_states())
 }
 
 data gallery_arm_sublabel_note: String = "The caption collapse (W1d) makes band phrases the button text, so two refusal arms wear the same caption — CORRECT for the operator, ambiguous for a specimen sheet. The gallery is the diagnostic surface, so each cell carries the ARM identity as a sublabel under the instance (state.key, which for terminals IS the wire label — the same authority the coverage witness reads), and the live cells mirror it. The caption channel stays operator-vocabulary everywhere; the wire vocabulary survives only in the sublabel and title channels, where diagnosis lives."
@@ -162,59 +162,59 @@ data gallery_arm_sublabel_note: String = "The caption collapse (W1d) makes band 
 data band_chip_note: String = "The auditioner's live preview (W1f visibility fix, operator report 2026-07-24: 'the swatches button doesn't seem to do anything' — the toggle worked, proven by execution in a DOM-stub harness, but nothing NEAR it consumed the band vars; the roles section beside it paints theme literals by design). Five chips filled from var(--band-*) sit beside the control, so a set flip repaints the strip in the same glance that clicked it. Keys derive from workspace_band_paints — the chip strip cannot drift from the band vocabulary."
 
 fn band_chip(key: String) -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "span",
     attributes: [
-      attr(name: "class", value: "band-chip" ),
-      attr(name: "style", value: join(["background: var(--band-", key, "); color: var(--band-", key, "-ink)"], "") ),
+      std.markup.attr(name: "class", value: "band-chip" ),
+      std.markup.attr(name: "style", value: join(["background: var(--band-", key, "); color: var(--band-", key, "-ink)"], "") ),
     ],
-    children: [ txt(key) ],
+    children: [ gunbc.site.markup.txt(key) ],
   }
 }
 
 fn gallery_cell(button: std.markup.Fragment, arm: String) -> std.markup.Fragment {
-  el_class("div", "gallery-cell", [ button, el_class("span", "gallery-arm", [ txt(arm) ]) ])
+  gunbc.site.markup.el_class("div", "gallery-cell", [ button, gunbc.site.markup.el_class("span", "gallery-arm", [ gunbc.site.markup.txt(arm) ]) ])
 }
 
 fn gallery_instance(state: gunbc.design.component.ComponentState) -> std.markup.Fragment {
-  let cls = dispatch_state_class(state: state)
+  let cls = gunbc.roadmap_component.dispatch_state_class(state: state)
   let full = if cls == "" { "dispatch-btn" } else { join(["dispatch-btn ", cls], "") }
   gallery_cell(
-    button: extdeps.browser.Element {
+    button: std.markup.Element {
       tag: "button",
       attributes: [
-        attr(name: "class", value: full ),
-        attr(name: "type", value: "button" ),
-        attr(name: "disabled", value: "" ),
+        std.markup.attr(name: "class", value: full ),
+        std.markup.attr(name: "type", value: "button" ),
+        std.markup.attr(name: "disabled", value: "" ),
       ],
-      children: [ txt(dispatch_state_display_text(state: state)) ],
+      children: [ gunbc.site.markup.txt(gunbc.roadmap_component.dispatch_state_display_text(state: state)) ],
     },
     arm: state.key,
   )
 }
 
 fn gallery_section() -> std.markup.Fragment {
-  el_class("section", "sandbox-gallery", [
-    el("h2", [ txt("dispatch button — every state (static)") ]),
-    el_class("div", "gallery-row", map(gallery_states(), s => gallery_instance(state: s))),
+  gunbc.site.markup.el_class("section", "sandbox-gallery", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("dispatch button — every state (static)") ]),
+    gunbc.site.markup.el_class("div", "gallery-row", map(gallery_states(), s => gallery_instance(state: s))),
   ])
 }
 
 fn live_instance(wire_label: String) -> std.markup.Fragment {
   gallery_cell(
-    button: el_attrs("button", [
-      attr(name: "class", value: join(["dispatch-btn ", sandbox_live_class], "") ),
-      attr(name: "type", value: "button" ),
-      attr(name: "data-status", value: wire_label ),
-    ], [ txt(dispatch_caption_idle) ]),
+    button: gunbc.site.markup.el_attrs("button", [
+      std.markup.attr(name: "class", value: join(["dispatch-btn ", gunbc.roadmap_component.sandbox_live_class], "") ),
+      std.markup.attr(name: "type", value: "button" ),
+      std.markup.attr(name: "data-status", value: wire_label ),
+    ], [ gunbc.site.markup.txt(gunbc.roadmap_component.dispatch_caption_idle) ]),
     arm: wire_label,
   )
 }
 
 fn live_section() -> std.markup.Fragment {
-  el_class("section", "sandbox-live", [
-    el("h2", [ txt("live — press to exercise each wire arm (POST /sandbox/echo)") ]),
-    el_class("div", "gallery-row", map(belt_dispatch_all_status_labels(), l => live_instance(wire_label: l))),
+  gunbc.site.markup.el_class("section", "sandbox-live", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("live — press to exercise each wire arm (POST /sandbox/echo)") ]),
+    gunbc.site.markup.el_class("div", "gallery-row", map(gunbc.roadmap_belt_actuate.belt_dispatch_all_status_labels(), l => live_instance(wire_label: l))),
   ])
 }
 
@@ -222,13 +222,13 @@ data sandbox_work_row_fixture_note: String = "The A2 composition fixture (operat
 
 fn fixture_specimen_segments() -> List<gunbc.roadmap_workflow_stage.WorkflowSegment> {
   [
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "admission receipt readable" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "worktree created" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "turn.completed and process exit 0" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "admission receipt readable" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "worktree created" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "turn.completed and process exit 0" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.ReviewWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.GoalAuditWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, detail: "" },
   ]
 }
 
@@ -237,18 +237,18 @@ fn fixture_specimen_view(node_id: String, activity: gunbc.roadmap_presentation.A
     node_id: node_id,
     headline: "Record which generator actually produced each result",
     summary: none,
-    lifecycle: OpenLifecycle,
-    scheduling: SchedulingReady,
+    lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+    scheduling: gunbc.roadmap_presentation.SchedulingReady,
     superseded_by: "",
     activity: activity,
-    action: action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle),
+    action: gunbc.roadmap_presentation.action_view(scheduling: gunbc.roadmap_presentation.SchedulingReady, lifecycle: gunbc.roadmap_presentation.OpenLifecycle),
     supporting_facts: [],
-    disclosure: NoDisclosure,
+    disclosure: gunbc.roadmap_presentation.NoDisclosure,
   }
 }
 
 fn fixture_active_view() -> gunbc.roadmap_presentation.WorkRowView {
-  fixture_specimen_view(node_id: "sandbox-specimen-active", activity: activity_view_from_parts(
+  fixture_specimen_view(node_id: "sandbox-specimen-active", activity: gunbc.roadmap_presentation.activity_view_from_parts(
     segments: fixture_specimen_segments(),
     remaining: 4,
     process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
@@ -256,10 +256,10 @@ fn fixture_active_view() -> gunbc.roadmap_presentation.WorkRowView {
 }
 
 fn fixture_refused_view() -> gunbc.roadmap_presentation.WorkRowView {
-  fixture_specimen_view(node_id: "sandbox-specimen-refused", activity: activity_view_from_parts(
+  fixture_specimen_view(node_id: "sandbox-specimen-refused", activity: gunbc.roadmap_presentation.activity_view_from_parts(
     segments: [
-      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
+      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
     ],
     remaining: 6,
     process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "codex" },
@@ -267,17 +267,17 @@ fn fixture_refused_view() -> gunbc.roadmap_presentation.WorkRowView {
 }
 
 fn fixture_row_li(view: gunbc.roadmap_presentation.WorkRowView) -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "li",
-    attributes: node_li_attributes(view: view),
-    children: render_work_row(view: view),
+    attributes: gunbc.roadmap_page.node_li_attributes(view: view),
+    children: gunbc.roadmap_page.render_work_row(view: view),
   }
 }
 
 fn fixture_frame(label: String, cls: String) -> std.markup.Fragment {
-  el_class("div", join(["fixture-frame ", cls], ""), [
-    el_class("h3", "group-label", [ txt(label) ]),
-    el("ul", [
+  gunbc.site.markup.el_class("div", join(["fixture-frame ", cls], ""), [
+    gunbc.site.markup.el_class("h3", "group-label", [ gunbc.site.markup.txt(label) ]),
+    gunbc.site.markup.el("ul", [
       fixture_row_li(view: fixture_active_view()),
       fixture_row_li(view: fixture_refused_view()),
     ]),
@@ -285,8 +285,8 @@ fn fixture_frame(label: String, cls: String) -> std.markup.Fragment {
 }
 
 fn work_row_fixture_section() -> std.markup.Fragment {
-  el_class("section", "sandbox-work-row", [
-    el("h2", [ txt("work row — falsifier specimen at three widths (static)") ]),
+  gunbc.site.markup.el_class("section", "sandbox-work-row", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("work row — falsifier specimen at three widths (static)") ]),
     fixture_frame(label: "wide · 1680", cls: "fixture-wide"),
     fixture_frame(label: "medium · 1024", cls: "fixture-medium"),
     fixture_frame(label: "narrow · 480", cls: "fixture-narrow"),
@@ -300,13 +300,13 @@ fn fixture_ready_view(node_id: String, headline: String) -> gunbc.roadmap_presen
     node_id: node_id,
     headline: headline,
     summary: none,
-    lifecycle: OpenLifecycle,
-    scheduling: SchedulingReady,
+    lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+    scheduling: gunbc.roadmap_presentation.SchedulingReady,
     superseded_by: "",
-    activity: NoActiveWork,
-    action: action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle),
+    activity: gunbc.roadmap_presentation.NoActiveWork,
+    action: gunbc.roadmap_presentation.action_view(scheduling: gunbc.roadmap_presentation.SchedulingReady, lifecycle: gunbc.roadmap_presentation.OpenLifecycle),
     supporting_facts: [],
-    disclosure: NoDisclosure,
+    disclosure: gunbc.roadmap_presentation.NoDisclosure,
   }
 }
 
@@ -335,22 +335,22 @@ fn fixture_family_rows() -> List<gunbc.roadmap_presentation.WorkRowView> {
 }
 
 fn family_fixture_frame(label: String, cls: String) -> std.markup.Fragment {
-  el_class("div", join(["fixture-frame ", cls], ""), [
-    el_class("h3", "group-label", [ txt(label) ]),
-    workspace_entries_ul(
-      entries: band_entries(
+  gunbc.site.markup.el_class("div", join(["fixture-frame ", cls], ""), [
+    gunbc.site.markup.el_class("h3", "group-label", [ gunbc.site.markup.txt(label) ]),
+    gunbc.roadmap_page.workspace_entries_ul(
+      entries: gunbc.roadmap_presentation.band_entries(
         rows: fixture_family_rows(),
         families: [fixture_family_decl()],
         members: fixture_family_members(),
       ),
-      observation: ObservationsNominal,
+      observation: gunbc.roadmap_presentation.ObservationsNominal,
     ),
   ])
 }
 
 fn family_fixture_section() -> std.markup.Fragment {
-  el_class("section", "sandbox-family-fixture", [
-    el("h2", [ txt("family grouping — claim stated once, members carry subjects (static)") ]),
+  gunbc.site.markup.el_class("section", "sandbox-family-fixture", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("family grouping — claim stated once, members carry subjects (static)") ]),
     family_fixture_frame(label: "wide · 1680", cls: "fixture-wide"),
     family_fixture_frame(label: "medium · 1024", cls: "fixture-medium"),
     family_fixture_frame(label: "narrow · 480", cls: "fixture-narrow"),
@@ -360,35 +360,35 @@ fn family_fixture_section() -> std.markup.Fragment {
 data instrument_labs_section_note: String = "ONE CONTEXTUAL ENTRY, ON THE PAGE WHERE STUDIES LIVE, rather than three raw links in every shared header (review ruling, 2026-08-06). A header nav put development routes on the daily workspace and the roadmap, where they are noise to everyone not building the instrument. The sandbox is already the page for studies, so the labs belong here with a sentence saying what each one is for — and the rows come from gunbc.roadmap_component.instrument_lab_links, the same declaration the router builds its route specs from, so a link that resolves nowhere is caught by execution rather than by clicking."
 
 fn instrument_lab_entry(l: gunbc.roadmap_component.InstrumentLabLink) -> std.markup.Fragment {
-  el("li", [ el_attrs("a", [ attr(name: "href", value: l.path) ], [ txt(l.label) ]) ])
+  gunbc.site.markup.el("li", [ gunbc.site.markup.el_attrs("a", [ std.markup.attr(name: "href", value: l.path) ], [ gunbc.site.markup.txt(l.label) ]) ])
 }
 
 fn instrument_labs_section() -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("instrument labs") ]),
-    el("ul", map(instrument_lab_links, l => instrument_lab_entry(l: l))),
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("instrument labs") ]),
+    gunbc.site.markup.el("ul", map(gunbc.roadmap_component.instrument_lab_links, l => instrument_lab_entry(l: l))),
   ])
 }
 
 fn sandbox_page() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "html",
     attributes: [],
     children: [
-      el("head", [
-        std.markup.Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-        el("style", [ txt(sandbox_css()) ]),
-        el("title", [ txt("gunbc — sandbox") ]),
+      gunbc.site.markup.el("head", [
+        std.markup.Element { tag: "meta", attributes: [ std.markup.attr(name: "charset", value: "utf-8" ) ], children: [] },
+        gunbc.site.markup.el("style", [ gunbc.site.markup.txt(sandbox_css()) ]),
+        gunbc.site.markup.el("title", [ gunbc.site.markup.txt("gunbc — sandbox") ]),
       ]),
-      el("body", [
-        roadmap_header(page: "sandbox"),
-        el_class("div", "auditioner-bar", concat(
-          [ el_attrs("button", [
-              attr(name: "class", value: swatch_toggle_class ),
-              attr(name: "type", value: "button" ),
+      gunbc.site.markup.el("body", [
+        gunbc.roadmap_page.roadmap_header(page: "sandbox"),
+        gunbc.site.markup.el_class("div", "auditioner-bar", concat(
+          [ gunbc.site.markup.el_attrs("button", [
+              std.markup.attr(name: "class", value: gunbc.roadmap_component.swatch_toggle_class ),
+              std.markup.attr(name: "type", value: "button" ),
             ], []) ],
           map(workspace_band_paints(), p => band_chip(key: p.key)))),
-        el_class("main", "sandbox", [
+        gunbc.site.markup.el_class("main", "sandbox", [
           instrument_labs_section(),
           roles_section(),
           scales_section(),
@@ -400,8 +400,8 @@ fn sandbox_page() -> std.markup.Fragment {
         std.markup.Element {
           tag: "script",
           attributes: [
-            attr(name: "src", value: sandbox_asset_path ),
-            attr(name: "defer", value: "" ),
+            std.markup.attr(name: "src", value: gunbc.roadmap_component.sandbox_asset_path ),
+            std.markup.attr(name: "defer", value: "" ),
           ],
           children: [],
         },
@@ -411,5 +411,5 @@ fn sandbox_page() -> std.markup.Fragment {
 }
 
 fn sandbox_gallery_terminal_labels() -> List<String> {
-  map(component_terminal_states(c: dispatch_button_component()), s => s.key)
+  map(gunbc.design.component.component_terminal_states(c: gunbc.roadmap_component.dispatch_button_component()), s => s.key)
 }

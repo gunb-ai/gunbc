@@ -1,5 +1,6 @@
 module product.fabric.identity
 
+
 // Identity shell for every fabric carrier. The principal is PART of the identity
 // rather than metadata beside it, so that two principals asking for the same
 // computation hold two distinct identities without a later migration widening
@@ -17,17 +18,17 @@ module product.fabric.identity
 // supplier on SupplierOffer, grantee on ExecutionGrant, attesting producer on Receipt. An ExecutionGrant
 // is bilateral, so naming its grantee here does not erase the supplier role
 // its SupplierOffer reference carries.
-type DemandKey = NonEmptyStr where brand("DemandKey")
+type DemandKey = std.types.NonEmptyStr where brand("DemandKey")
 
-type WorkKey = NonEmptyStr where brand("WorkKey")
+type WorkKey = std.types.NonEmptyStr where brand("WorkKey")
 
-type ExecutionAttemptKey = NonEmptyStr where brand("ExecutionAttemptKey")
+type ExecutionAttemptKey = std.types.NonEmptyStr where brand("ExecutionAttemptKey")
 
-type OfferKey = NonEmptyStr where brand("OfferKey")
+type OfferKey = std.types.NonEmptyStr where brand("OfferKey")
 
-type GrantKey = NonEmptyStr where brand("GrantKey")
+type GrantKey = std.types.NonEmptyStr where brand("GrantKey")
 
-type ReceiptKey = NonEmptyStr where brand("ReceiptKey")
+type ReceiptKey = std.types.NonEmptyStr where brand("ReceiptKey")
 
 type FabricIdentity<P, K> {
   principal: P

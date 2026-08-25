@@ -20,7 +20,7 @@ fn bmc_intent_fan_curve_duty_at(curve: extdeps.bmc.types.BmcFanCurve, reading: s
     curve.steps,
     init: curve.minimum_duty,
     f: (selected, step) =>
-      if celsius_count(reading) >= celsius_count(step.at_or_above) {
+      if std.measure.celsius_count(reading) >= std.measure.celsius_count(step.at_or_above) {
         step.duty
       } else {
         selected
@@ -32,12 +32,12 @@ fn bmc_fan_curve_engages_cooling_early(
   curve: extdeps.bmc.types.BmcFanCurve,
   policy: BmcFanAcousticPolicy,
 ) -> Bool {
-  percent_count(
+  std.measure.percent_count(
     bmc_intent_fan_curve_duty_at(
       curve: curve,
       reading: policy.cooling_engaged_by_temperature,
     ),
-  ) >= percent_count(policy.cooling_engaged_duty_floor)
+  ) >= std.measure.percent_count(policy.cooling_engaged_duty_floor)
 }
 
 fn bmc_fan_curve_reaches_emergency_full_duty(
@@ -50,8 +50,8 @@ fn bmc_fan_curve_reaches_emergency_full_duty(
     f: (found, step) =>
       found
         || (
-          percent_count(step.duty) == 100
-            && celsius_count(step.at_or_above) <= celsius_count(policy.emergency_full_duty_at_or_below)
+          std.measure.percent_count(step.duty) == 100
+            && std.measure.celsius_count(step.at_or_above) <= std.measure.celsius_count(policy.emergency_full_duty_at_or_below)
         ),
   )
 }
@@ -66,10 +66,10 @@ fn bmc_fan_curve_effectively_reaches_full_duty_before(
     f: (found, step) =>
       found
         || (
-          percent_count(step.duty) == 100
+          std.measure.percent_count(step.duty) == 100
             && (
-              celsius_count(step.at_or_above) + positive_celsius_delta_count(curve.positive_hysteresis)
-            ) < celsius_count(temperature)
+              std.measure.celsius_count(step.at_or_above) + std.measure.positive_celsius_delta_count(curve.positive_hysteresis)
+            ) < std.measure.celsius_count(temperature)
         ),
   )
 }
@@ -89,47 +89,47 @@ type BmcControlPlaneIntent {
 }
 
 data fleet_bmc_fan_graceful_restart_boundary: std.state_durability.StateDurabilityBoundary = std.state_durability.ControlPlaneRestartBoundary {
-  mode: LifecycleGracefulRestart,
+  mode: std.state_durability.LifecycleGracefulRestart,
 }
 
 data fleet_bmc_fan_durability_intent: std.state_durability.StateDurabilityIntent = std.state_durability.DurableAcross {
-  boundaries: state_durability_boundary_requirements(
+  boundaries: std.state_durability.state_durability_boundary_requirements(
     first: fleet_bmc_fan_graceful_restart_boundary,
     additional: [],
   ),
 }
 
 data fleet_quiet_temp_soc_fan_curve_steps: List<extdeps.bmc.types.BmcFanCurveStep> = [
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(75), duty: percent(75) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(40), duty: std.measure.percent(30) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(55), duty: std.measure.percent(40) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(65), duty: std.measure.percent(50) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(75), duty: std.measure.percent(75) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(85), duty: std.measure.percent(100) },
 ]
 
 data fleet_quiet_temp_soc_fan_curve: extdeps.bmc.types.BmcFanCurve = extdeps.bmc.types.BmcFanCurve {
   control_sensor: "TEMP_SOC",
   steps: fleet_quiet_temp_soc_fan_curve_steps,
-  minimum_duty: percent(30),
-  sensor_unavailable_duty: percent(75),
-  zone_failsafe_duty: percent(30),
-  positive_hysteresis: positive_celsius_delta(
-    count: positive_measure_count(predecessor: 0),
+  minimum_duty: std.measure.percent(30),
+  sensor_unavailable_duty: std.measure.percent(75),
+  zone_failsafe_duty: std.measure.percent(30),
+  positive_hysteresis: std.measure.positive_celsius_delta(
+    count: std.measure.positive_measure_count(predecessor: 0),
   ),
-  negative_hysteresis: positive_celsius_delta(
-    count: positive_measure_count(predecessor: 0),
+  negative_hysteresis: std.measure.positive_celsius_delta(
+    count: std.measure.positive_measure_count(predecessor: 0),
   ),
 }
 
 data fleet_fan_acoustic_policy: BmcFanAcousticPolicy = BmcFanAcousticPolicy {
-  cooling_engaged_by_temperature: celsius(65),
-  cooling_engaged_duty_floor: percent(50),
-  emergency_full_duty_at_or_below: celsius(85),
+  cooling_engaged_by_temperature: std.measure.celsius(65),
+  cooling_engaged_duty_floor: std.measure.percent(50),
+  emergency_full_duty_at_or_below: std.measure.celsius(85),
 }
 
 data fleet_fan_thermal_guard: BmcFanThermalGuard = BmcFanThermalGuard {
-  processor_rollback_temperature: celsius(100),
-  component_rollback_temperature: celsius(90),
+  processor_rollback_temperature: std.measure.celsius(100),
+  component_rollback_temperature: std.measure.celsius(90),
   required_component_sensors: [
     "TEMP_Core_VRD",
     "TEMP_DIMM_A1",
@@ -163,19 +163,19 @@ fn fleet_fan_policy_is_thermally_bounded() -> Bool {
       curve: fleet_quiet_temp_soc_fan_curve,
       temperature: ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature,
     )
-    && (celsius_count(fleet_fan_acoustic_policy.cooling_engaged_by_temperature) < celsius_count(ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature))
-    && (celsius_count(fleet_fan_acoustic_policy.emergency_full_duty_at_or_below) < celsius_count(ampere_altra_max_m12830_thermal_limits.thermal_throttle_temperature))
+    && (std.measure.celsius_count(fleet_fan_acoustic_policy.cooling_engaged_by_temperature) < std.measure.celsius_count(ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature))
+    && (std.measure.celsius_count(fleet_fan_acoustic_policy.emergency_full_duty_at_or_below) < std.measure.celsius_count(ampere_altra_max_m12830_thermal_limits.thermal_throttle_temperature))
 }
 
 data fleet_bmc_valid_state: BmcControlPlaneIntent = BmcControlPlaneIntent {
-  firmware: BmcFirmwareUnpinned,
+  firmware: extdeps.bmc.capability.BmcFirmwareUnpinned,
   fan_policy: BmcFanPolicyIntent {
     durability: fleet_bmc_fan_durability_intent,
     curve: fleet_quiet_temp_soc_fan_curve,
     required_tach_inputs: ["FAN1", "FAN2", "FAN3", "FAN4"],
     acoustic_policy: fleet_fan_acoustic_policy,
     thermal_guard: fleet_fan_thermal_guard,
-    processor_thermal_limits: ampere_altra_max_m12830_thermal_limits,
+    processor_thermal_limits: extdeps.cpu.ampere.ampere_altra_max_m12830_thermal_limits,
   },
 }
 

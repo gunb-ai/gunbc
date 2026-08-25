@@ -1,34 +1,34 @@
 module test.claim.terminal_wire_projection_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_note: String = "Terminal-wire acceptance for the observation P2 prerequisite. These rows discriminate exact ECMA-48 bytes and the next-state transition for every cursor action, including downgrade and contradiction arms. The renderer supplies text; project_terminal_write is the sole owner of CR, LF, and erase-line control spelling."
 
 fn addressable() -> std.render.RenderCapability {
-  std.render.RenderCapability { color: false, tier: Ascii, cursor_addressable: true }
+  std.render.RenderCapability { color: false, tier: std.symbols.Ascii, cursor_addressable: true }
 }
 
 fn nonaddressable() -> std.render.RenderCapability {
-  std.render.RenderCapability { color: false, tier: Ascii, cursor_addressable: false }
+  std.render.RenderCapability { color: false, tier: std.symbols.Ascii, cursor_addressable: false }
 }
 
 fn projected_is(p: extdeps.render.terminal.TerminalWriteProjection, bytes: String, next: extdeps.render.terminal.DynamicLineState) -> Bool {
   match p {
-    TerminalWriteProjected { bytes: b, next: n } => b == bytes && n == next
-    TerminalWriteRefused { cause: _ } => false
+    extdeps.render.terminal.TerminalWriteProjected { bytes: b, next: n } => b == bytes && n == next
+    extdeps.render.terminal.TerminalWriteRefused { cause: _ } => false
   }
 }
 
 fn rendered_control_refuses(rendered: String) -> Bool {
-  match project_terminal_write(
-    prior: DynamicLineClosed,
-    requested: Append,
+  match extdeps.render.terminal.project_terminal_write(
+    prior: extdeps.render.terminal.DynamicLineClosed,
+    requested: std.render.Append,
     capability: addressable(),
     rendered: rendered
   ) {
-    TerminalWriteProjected { bytes: _, next: _ } => false
-    TerminalWriteRefused { cause: c } =>
+    extdeps.render.terminal.TerminalWriteProjected { bytes: _, next: _ } => false
+    extdeps.render.terminal.TerminalWriteRefused { cause: c } =>
       c == "rendered text cannot contain terminal cursor-control bytes"
   }
 }
@@ -43,7 +43,7 @@ type TerminalControlScan {
 
 fn terminal_control_scan() -> TerminalControlScan {
   let roster_scan = fold(
-    ansi_terminal_controls,
+    extdeps.render.ansi.ansi_terminal_controls,
     init: TerminalControlScan {
       next_index: 0,
       first_failure: -1,
@@ -52,7 +52,7 @@ fn terminal_control_scan() -> TerminalControlScan {
       escape_refuses: true
     },
     f: (acc, control) => {
-      let failure = if acc.first_failure >= 0 || ansi_control_is_content_admissible(c: control) || rendered_control_refuses(rendered: concat("forged", control)) {
+      let failure = if acc.first_failure >= 0 || extdeps.render.ansi.ansi_control_is_content_admissible(c: control) || rendered_control_refuses(rendered: concat("forged", control)) {
         acc.first_failure
       } else {
         acc.next_index
@@ -69,151 +69,151 @@ fn terminal_control_scan() -> TerminalControlScan {
   TerminalControlScan {
     next_index: roster_scan.next_index,
     first_failure: roster_scan.first_failure,
-    carriage_return_refuses: rendered_control_refuses(rendered: concat("forged", ansi_carriage_return)),
-    line_feed_refuses: rendered_control_refuses(rendered: concat("forged", ansi_line_feed)),
-    escape_refuses: rendered_control_refuses(rendered: concat("forged", ansi_escape))
+    carriage_return_refuses: rendered_control_refuses(rendered: concat("forged", extdeps.render.ansi.ansi_carriage_return)),
+    line_feed_refuses: rendered_control_refuses(rendered: concat("forged", extdeps.render.ansi.ansi_line_feed)),
+    escape_refuses: rendered_control_refuses(rendered: concat("forged", extdeps.render.ansi.ansi_escape))
   }
 }
 
 data content_admissible_scan_note: String = "The roster fold previously asserted that EVERY one of the 65 C0/C1 members refuses, and that assertion is what encoded the defect: LF and TAB are roster members, so a multi-line diagnostic was refused and the srv1 ServiceNotReady refusal rendered as a complaint about cursor-control bytes instead of itself. The fold now skips exactly the two content-admissible members and still requires refusal for the other 63, so the wall against smuggled overwrite/erase payloads is unchanged in strength — only its extent is corrected. The admissions are asserted POSITIVELY below rather than merely un-asserted, and the discriminating RED is line-feed-on-an-open-line: a regression to blanket-allow greens the admissions but reds that control."
 
 fn admissible_control_is_projected(rendered: String) -> Bool {
-  match project_terminal_write(
-    prior: DynamicLineClosed,
-    requested: Append,
+  match extdeps.render.terminal.project_terminal_write(
+    prior: extdeps.render.terminal.DynamicLineClosed,
+    requested: std.render.Append,
     capability: addressable(),
     rendered: rendered
   ) {
-    TerminalWriteProjected { bytes: b, next: n } =>
-      b == concat(rendered, ansi_line_feed) && n == DynamicLineClosed
-    TerminalWriteRefused { cause: _ } => false
+    extdeps.render.terminal.TerminalWriteProjected { bytes: b, next: n } =>
+      b == concat(rendered, extdeps.render.ansi.ansi_line_feed) && n == extdeps.render.terminal.DynamicLineClosed
+    extdeps.render.terminal.TerminalWriteRefused { cause: _ } => false
   }
 }
 
 fn line_feed_on_open_line_refuses() -> Bool {
-  match project_terminal_write(
-    prior: DynamicLineClosed,
-    requested: Overwrite,
+  match extdeps.render.terminal.project_terminal_write(
+    prior: extdeps.render.terminal.DynamicLineClosed,
+    requested: std.render.Overwrite,
     capability: addressable(),
-    rendered: concat("first", concat(ansi_line_feed, "second"))
+    rendered: concat("first", concat(extdeps.render.ansi.ansi_line_feed, "second"))
   ) {
-    TerminalWriteProjected { bytes: _, next: _ } => false
-    TerminalWriteRefused { cause: c } =>
+    extdeps.render.terminal.TerminalWriteProjected { bytes: _, next: _ } => false
+    extdeps.render.terminal.TerminalWriteRefused { cause: c } =>
       c == "rendered text cannot contain a line feed on a write that leaves the dynamic line open"
   }
 }
 
 test fn w_multiline_diagnostic_is_admitted_on_a_closing_write() -> Bool {
   admissible_control_is_projected(
-    rendered: concat("ServiceNotReady unit=gunbc-roadmap.service", concat(ansi_line_feed, "   Active: active (running)"))
+    rendered: concat("ServiceNotReady unit=gunbc-roadmap.service", concat(extdeps.render.ansi.ansi_line_feed, "   Active: active (running)"))
   ) &&
-  admissible_control_is_projected(rendered: concat("col", concat(ansi_horizontal_tab, "value"))) &&
+  admissible_control_is_projected(rendered: concat("col", concat(extdeps.render.ansi.ansi_horizontal_tab, "value"))) &&
   admissible_control_is_projected(
-    rendered: concat("a", concat(ansi_line_feed, concat(ansi_horizontal_tab, "b")))
+    rendered: concat("a", concat(extdeps.render.ansi.ansi_line_feed, concat(extdeps.render.ansi.ansi_horizontal_tab, "b")))
   )
 }
 
 test fn w_line_feed_refused_only_where_the_line_stays_open() -> Bool {
   line_feed_on_open_line_refuses() &&
-  admissible_control_is_projected(rendered: concat("closed", concat(ansi_line_feed, "write")))
+  admissible_control_is_projected(rendered: concat("closed", concat(extdeps.render.ansi.ansi_line_feed, "write")))
 }
 
 test fn w_tab_admitted_even_on_an_open_line() -> Bool {
-  match project_terminal_write(
-    prior: DynamicLineClosed,
-    requested: Overwrite,
+  match extdeps.render.terminal.project_terminal_write(
+    prior: extdeps.render.terminal.DynamicLineClosed,
+    requested: std.render.Overwrite,
     capability: addressable(),
-    rendered: concat("col", concat(ansi_horizontal_tab, "value"))
+    rendered: concat("col", concat(extdeps.render.ansi.ansi_horizontal_tab, "value"))
   ) {
-    TerminalWriteProjected { bytes: _, next: n } => n == DynamicLineOpen
-    TerminalWriteRefused { cause: _ } => false
+    extdeps.render.terminal.TerminalWriteProjected { bytes: _, next: n } => n == extdeps.render.terminal.DynamicLineOpen
+    extdeps.render.terminal.TerminalWriteRefused { cause: _ } => false
   }
 }
 
 test fn w_overwrite_projects_exact_bytes_and_opens_line() -> Bool {
   projected_is(
-    p: project_terminal_write(
-      prior: DynamicLineClosed,
-      requested: Overwrite,
+    p: extdeps.render.terminal.project_terminal_write(
+      prior: extdeps.render.terminal.DynamicLineClosed,
+      requested: std.render.Overwrite,
       capability: addressable(),
       rendered: "working"
     ),
-    bytes: concat(ansi_carriage_return, concat(ansi_erase_entire_line(), "working")),
-    next: DynamicLineOpen
+    bytes: concat(extdeps.render.ansi.ansi_carriage_return, concat(extdeps.render.ansi.ansi_erase_entire_line(), "working")),
+    next: extdeps.render.terminal.DynamicLineOpen
   ) &&
   projected_is(
-    p: project_terminal_write(
-      prior: DynamicLineOpen,
-      requested: Overwrite,
+    p: extdeps.render.terminal.project_terminal_write(
+      prior: extdeps.render.terminal.DynamicLineOpen,
+      requested: std.render.Overwrite,
       capability: addressable(),
       rendered: "still working"
     ),
-    bytes: concat(ansi_carriage_return, concat(ansi_erase_entire_line(), "still working")),
-    next: DynamicLineOpen
+    bytes: concat(extdeps.render.ansi.ansi_carriage_return, concat(extdeps.render.ansi.ansi_erase_entire_line(), "still working")),
+    next: extdeps.render.terminal.DynamicLineOpen
   )
 }
 
 test fn w_append_from_open_erases_then_closes() -> Bool {
   projected_is(
-    p: project_terminal_write(
-      prior: DynamicLineOpen,
-      requested: Append,
+    p: extdeps.render.terminal.project_terminal_write(
+      prior: extdeps.render.terminal.DynamicLineOpen,
+      requested: std.render.Append,
       capability: addressable(),
       rendered: "done"
     ),
     bytes: concat(
-      ansi_carriage_return,
-      concat(ansi_erase_entire_line(), concat("done", ansi_line_feed))
+      extdeps.render.ansi.ansi_carriage_return,
+      concat(extdeps.render.ansi.ansi_erase_entire_line(), concat("done", extdeps.render.ansi.ansi_line_feed))
     ),
-    next: DynamicLineClosed
+    next: extdeps.render.terminal.DynamicLineClosed
   )
 }
 
 test fn w_append_from_closed_is_plain_line() -> Bool {
   projected_is(
-    p: project_terminal_write(
-      prior: DynamicLineClosed,
-      requested: Append,
+    p: extdeps.render.terminal.project_terminal_write(
+      prior: extdeps.render.terminal.DynamicLineClosed,
+      requested: std.render.Append,
       capability: addressable(),
       rendered: "done"
     ),
-    bytes: concat("done", ansi_line_feed),
-    next: DynamicLineClosed
+    bytes: concat("done", extdeps.render.ansi.ansi_line_feed),
+    next: extdeps.render.terminal.DynamicLineClosed
   )
 }
 
 test fn w_clear_open_erases_and_clear_closed_is_noop() -> Bool {
   projected_is(
-    p: project_terminal_write(
-      prior: DynamicLineOpen,
-      requested: Clear,
+    p: extdeps.render.terminal.project_terminal_write(
+      prior: extdeps.render.terminal.DynamicLineOpen,
+      requested: std.render.Clear,
       capability: addressable(),
       rendered: ""
     ),
-    bytes: concat(ansi_carriage_return, ansi_erase_entire_line()),
-    next: DynamicLineClosed
+    bytes: concat(extdeps.render.ansi.ansi_carriage_return, extdeps.render.ansi.ansi_erase_entire_line()),
+    next: extdeps.render.terminal.DynamicLineClosed
   ) &&
   projected_is(
-    p: project_terminal_write(
-      prior: DynamicLineClosed,
-      requested: Clear,
+    p: extdeps.render.terminal.project_terminal_write(
+      prior: extdeps.render.terminal.DynamicLineClosed,
+      requested: std.render.Clear,
       capability: addressable(),
       rendered: ""
     ),
     bytes: "",
-    next: DynamicLineClosed
+    next: extdeps.render.terminal.DynamicLineClosed
   )
 }
 
 test fn w_clear_with_text_refuses() -> Bool {
-  match project_terminal_write(
-    prior: DynamicLineClosed,
-    requested: Clear,
+  match extdeps.render.terminal.project_terminal_write(
+    prior: extdeps.render.terminal.DynamicLineClosed,
+    requested: std.render.Clear,
     capability: addressable(),
     rendered: "caller tried to own clear bytes"
   ) {
-    TerminalWriteProjected { bytes: _, next: _ } => false
-    TerminalWriteRefused { cause: c } => c == "Clear requires empty rendered text"
+    extdeps.render.terminal.TerminalWriteProjected { bytes: _, next: _ } => false
+    extdeps.render.terminal.TerminalWriteRefused { cause: c } => c == "Clear requires empty rendered text"
   }
 }
 
@@ -226,62 +226,62 @@ test fn w_rendered_text_cannot_smuggle_cursor_control_bytes() -> Bool {
   ansi_c1_controls.count() == 32 &&
   scan.next_index == 65 &&
   scan.first_failure == -1 &&
-  ansi_text_contains_cursor_control(text: from_code_point(cp: 128))
-    && ansi_text_contains_cursor_control(text: from_code_point(cp: 159))
-    && !ansi_text_contains_cursor_control(text: "\\u{0080}")
+  extdeps.render.ansi.ansi_text_contains_cursor_control(text: from_code_point(cp: 128))
+    && extdeps.render.ansi.ansi_text_contains_cursor_control(text: from_code_point(cp: 159))
+    && !extdeps.render.ansi.ansi_text_contains_cursor_control(text: "\\u{0080}")
 }
 
 test fn w_nonaddressable_overwrite_downgrades_and_clear_noops() -> Bool {
   projected_is(
-    p: project_terminal_write(
-      prior: DynamicLineClosed,
-      requested: Overwrite,
+    p: extdeps.render.terminal.project_terminal_write(
+      prior: extdeps.render.terminal.DynamicLineClosed,
+      requested: std.render.Overwrite,
       capability: nonaddressable(),
       rendered: "working"
     ),
-    bytes: concat("working", ansi_line_feed),
-    next: DynamicLineClosed
+    bytes: concat("working", extdeps.render.ansi.ansi_line_feed),
+    next: extdeps.render.terminal.DynamicLineClosed
   ) &&
   projected_is(
-    p: project_terminal_write(
-      prior: DynamicLineClosed,
-      requested: Clear,
+    p: extdeps.render.terminal.project_terminal_write(
+      prior: extdeps.render.terminal.DynamicLineClosed,
+      requested: std.render.Clear,
       capability: nonaddressable(),
       rendered: ""
     ),
     bytes: "",
-    next: DynamicLineClosed
+    next: extdeps.render.terminal.DynamicLineClosed
   )
 }
 
 test fn w_nonaddressable_open_state_refuses_as_contradictory() -> Bool {
-  match project_terminal_write(
-    prior: DynamicLineOpen,
-    requested: Append,
+  match extdeps.render.terminal.project_terminal_write(
+    prior: extdeps.render.terminal.DynamicLineOpen,
+    requested: std.render.Append,
     capability: nonaddressable(),
     rendered: "done"
   ) {
-    TerminalWriteProjected { bytes: _, next: _ } => false
-    TerminalWriteRefused { cause: c } =>
+    extdeps.render.terminal.TerminalWriteProjected { bytes: _, next: _ } => false
+    extdeps.render.terminal.TerminalWriteRefused { cause: c } =>
       c == "non-addressable terminal cannot continue an open dynamic line"
   }
 }
 
 test fn w_ecma48_csi_perturbation_changes_wire_bytes() -> Bool {
-  let authoritative = concat(ansi_carriage_return, concat(ansi_erase_entire_line(), "working"))
-  let perturbed = concat(ansi_carriage_return, concat(ansi_escape, concat("]2K", "working")))
-  perturbation_consistent(
-    reading: BackwardDiffInDiffOut,
+  let authoritative = concat(extdeps.render.ansi.ansi_carriage_return, concat(extdeps.render.ansi.ansi_erase_entire_line(), "working"))
+  let perturbed = concat(extdeps.render.ansi.ansi_carriage_return, concat(extdeps.render.ansi.ansi_escape, concat("]2K", "working")))
+  std.perturbation.perturbation_consistent(
+    reading: std.perturbation.BackwardDiffInDiffOut,
     output_responded: authoritative != perturbed
   ) &&
   projected_is(
-    p: project_terminal_write(
-      prior: DynamicLineClosed,
-      requested: Overwrite,
+    p: extdeps.render.terminal.project_terminal_write(
+      prior: extdeps.render.terminal.DynamicLineClosed,
+      requested: std.render.Overwrite,
       capability: addressable(),
       rendered: "working"
     ),
     bytes: authoritative,
-    next: DynamicLineOpen
+    next: extdeps.render.terminal.DynamicLineOpen
   )
 }

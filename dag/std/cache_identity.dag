@@ -14,7 +14,7 @@ fn execution_receipt_digest_from_content_hash(hash: std.content_hash.ContentHash
 }
 
 fn execution_receipt_digest_of_value(value: std.types.NonEmptyStr) -> ExecutionReceiptDigest {
-  execution_receipt_digest_from_content_hash(hash: content_hash_of_value(value: value))
+  execution_receipt_digest_from_content_hash(hash: std.content_hash.content_hash_of_value(value: value))
 }
 
 data resolved_graph_artifact_kind: ArtifactKindId = "resolved_graph"
@@ -27,4 +27,4 @@ data typed_module_artifact_kind: ArtifactKindId = "typed_module"
 
 data hermetic_fixture_artifact_kind: ArtifactKindId = "hermetic_fixture"
 
-data cache_interface_product_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: std.cache_identity.CacheInterfaceProduct — deleted closed enum fork; sole cache-backend identity authority is CacheInterfaceId (extdeps/cache/*.dag cited rows keyed by id).")
+data cache_interface_product_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: std.cache_identity.CacheInterfaceProduct — deleted closed enum fork; sole cache-backend identity authority is CacheInterfaceId (extdeps/cache/*.dag cited rows keyed by id).")

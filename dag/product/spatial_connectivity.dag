@@ -49,14 +49,14 @@ type ConnectivityRefusal
   | OpeningRoomsShareNoWall { first: product.placement_supply.RoomIdentity, second: product.placement_supply.RoomIdentity }
   | OpeningOutsideSharedWall {
       opening: OpeningIdentity,
-      along_low: std.integer.Int,
-      along_high: std.integer.Int,
-      sill: std.integer.Int,
-      head: std.integer.Int,
-      shared_along_low: std.integer.Int,
-      shared_along_high: std.integer.Int,
-      shared_low: std.integer.Int,
-      shared_high: std.integer.Int,
+      along_low: Int,
+      along_high: Int,
+      sill: Int,
+      head: Int,
+      shared_along_low: Int,
+      shared_along_high: Int,
+      shared_low: Int,
+      shared_high: Int,
     }
   | OpeningHasNoArea { opening: OpeningIdentity }
   | OpeningDeclaredTwice { opening: OpeningIdentity }
@@ -74,10 +74,10 @@ type Opening {
   identity: OpeningIdentity
   first: product.placement_supply.RoomIdentity
   second: product.placement_supply.RoomIdentity
-  along_low: std.integer.Int
-  along_high: std.integer.Int
-  sill: std.integer.Int
-  head: std.integer.Int
+  along_low: Int
+  along_high: Int
+  sill: Int
+  head: Int
 }
 
 // Admitted openings travel as their own carrier so a consumer cannot hand an un-admitted list to the
@@ -96,17 +96,17 @@ fn opening_identity_eq(a: OpeningIdentity, b: OpeningIdentity) -> Bool {
 }
 
 fn find_room(w: product.spatial_world.World, identity: product.placement_supply.RoomIdentity) -> product.spatial_world.PlacedSpace? {
-  fold(world_rooms(w: w), init: none, f: (acc, r) =>
+  fold(product.spatial_world.world_rooms(w: w), init: none, f: (acc, r) =>
     match acc {
-      Present { value: found } => Present { value: found }
-      Absent => if product.spatial_connectivity.room_identity_eq(a: r.identity, b: identity) { Present { value: r } } else { none }
+      v2.std.optional.Present { value: found } => v2.std.optional.Present { value: found }
+      v2.std.optional.Absent => if room_identity_eq(a: r.identity, b: identity) { v2.std.optional.Present { value: r } } else { none }
     })
 }
 
 // The widest region the two rooms share on any one wall. Two rooms can meet along more than one wall
 // - an L-shaped pair meets twice - and an opening lies in one of them, so the admission asks whether
 // ANY shared region contains it rather than picking a region first and testing against that.
-fn region_contains(region: std.orthogonal_topology.WallOverlap, along_low: std.integer.Int, along_high: std.integer.Int, sill: std.integer.Int, head: std.integer.Int) -> Bool {
+fn region_contains(region: std.orthogonal_topology.WallOverlap, along_low: Int, along_high: Int, sill: Int, head: Int) -> Bool {
   region.along_low <= along_low
     && along_high <= region.along_high
     && region.low <= sill
@@ -114,25 +114,25 @@ fn region_contains(region: std.orthogonal_topology.WallOverlap, along_low: std.i
 }
 
 fn some_shared_region_contains(a: std.orthogonal_topology.EnclosedSpace, b: std.orthogonal_topology.EnclosedSpace, o: Opening) -> Bool {
-  let b_walls = space_walls(s: b)
-  fold(space_walls(s: a), init: false, f: (acc, wa) =>
+  let b_walls = std.orthogonal_topology.space_walls(s: b)
+  fold(std.orthogonal_topology.space_walls(s: a), init: false, f: (acc, wa) =>
     acc || fold(b_walls, init: false, f: (inner, wb) =>
       inner ||
-        match shared_wall_region(a: wa, b: wb) {
-          Absent => false
-          Present { value: region } =>
+        match std.orthogonal_topology.shared_wall_region(a: wa, b: wb) {
+          v2.std.optional.Absent => false
+          v2.std.optional.Present { value: region } =>
             region_contains(region: region, along_low: o.along_low, along_high: o.along_high, sill: o.sill, head: o.head)
         }))
 }
 
 fn rooms_share_any_wall(a: std.orthogonal_topology.EnclosedSpace, b: std.orthogonal_topology.EnclosedSpace) -> Bool {
-  let b_walls = space_walls(s: b)
-  fold(space_walls(s: a), init: false, f: (acc, wa) =>
+  let b_walls = std.orthogonal_topology.space_walls(s: b)
+  fold(std.orthogonal_topology.space_walls(s: a), init: false, f: (acc, wa) =>
     acc || fold(b_walls, init: false, f: (inner, wb) =>
       inner ||
-        match shared_wall_region(a: wa, b: wb) {
-          Absent => false
-          Present { value: _ } => true
+        match std.orthogonal_topology.shared_wall_region(a: wa, b: wb) {
+          v2.std.optional.Absent => false
+          v2.std.optional.Present { value: _ } => true
         }))
 }
 
@@ -145,15 +145,15 @@ fn admit_opening(w: product.spatial_world.World, o: Opening) -> ConnectivityCons
   if o.along_low >= o.along_high || o.sill >= o.head {
     ConnectivityRefused { cause: OpeningHasNoArea { opening: o.identity } }
   } else {
-    if product.spatial_connectivity.room_identity_eq(a: o.first, b: o.second) {
+    if room_identity_eq(a: o.first, b: o.second) {
       ConnectivityRefused { cause: OpeningJoinsRoomToItself { identity: o.first } }
     } else {
-      match product.spatial_connectivity.find_room(w: w, identity: o.first) {
-        Absent => ConnectivityRefused { cause: OpeningRoomMissing { identity: o.first } }
-        Present { value: ra } =>
-          match product.spatial_connectivity.find_room(w: w, identity: o.second) {
-            Absent => ConnectivityRefused { cause: OpeningRoomMissing { identity: o.second } }
-            Present { value: rb } =>
+      match find_room(w: w, identity: o.first) {
+        v2.std.optional.Absent => ConnectivityRefused { cause: OpeningRoomMissing { identity: o.first } }
+        v2.std.optional.Present { value: ra } =>
+          match find_room(w: w, identity: o.second) {
+            v2.std.optional.Absent => ConnectivityRefused { cause: OpeningRoomMissing { identity: o.second } }
+            v2.std.optional.Present { value: rb } =>
               if !rooms_share_any_wall(a: ra.space, b: rb.space) {
                 ConnectivityRefused { cause: OpeningRoomsShareNoWall { first: o.first, second: o.second } }
               } else {
@@ -173,15 +173,15 @@ fn admit_opening(w: product.spatial_world.World, o: Opening) -> ConnectivityCons
 // necessarily the one the caller meant, and saying so is better than guessing: the refusal names the
 // opening, so the caller can see its own numbers beside a region the rooms really do share.
 fn first_shared_region(a: std.orthogonal_topology.EnclosedSpace, b: std.orthogonal_topology.EnclosedSpace) -> std.orthogonal_topology.WallOverlap? {
-  let b_walls = space_walls(s: b)
-  fold(space_walls(s: a), init: none, f: (acc, wa) =>
+  let b_walls = std.orthogonal_topology.space_walls(s: b)
+  fold(std.orthogonal_topology.space_walls(s: a), init: none, f: (acc, wa) =>
     match acc {
-      Present { value: r } => Present { value: r }
-      Absent =>
+      v2.std.optional.Present { value: r } => v2.std.optional.Present { value: r }
+      v2.std.optional.Absent =>
         fold(b_walls, init: none, f: (inner, wb) =>
           match inner {
-            Present { value: r } => Present { value: r }
-            Absent => shared_wall_region(a: wa, b: wb)
+            v2.std.optional.Present { value: r } => v2.std.optional.Present { value: r }
+            v2.std.optional.Absent => std.orthogonal_topology.shared_wall_region(a: wa, b: wb)
           })
     })
 }
@@ -191,8 +191,8 @@ fn first_shared_region(a: std.orthogonal_topology.EnclosedSpace, b: std.orthogon
 // real measurement of a wall that is not there.
 fn widest_mismatch(a: std.orthogonal_topology.EnclosedSpace, b: std.orthogonal_topology.EnclosedSpace, o: Opening) -> ConnectivityRefusal {
   match first_shared_region(a: a, b: b) {
-    Absent => OpeningRoomsShareNoWall { first: o.first, second: o.second }
-    Present { value: region } =>
+    v2.std.optional.Absent => OpeningRoomsShareNoWall { first: o.first, second: o.second }
+    v2.std.optional.Present { value: region } =>
       OpeningOutsideSharedWall {
         opening: o.identity,
         along_low: o.along_low,
@@ -212,34 +212,34 @@ type PlanAcc {
   refusal: ConnectivityRefusal?
 }
 
-fn count_openings_named(openings: List<Opening>, wanted: OpeningIdentity) -> std.integer.Int {
+fn count_openings_named(openings: List<Opening>, wanted: OpeningIdentity) -> Int {
   fold(openings, init: 0, f: (n, o) => if opening_identity_eq(a: o.identity, b: wanted) { n + 1 } else { n })
 }
 
 fn opening_plan(w: product.spatial_world.World, openings: List<Opening>) -> ConnectivityConstruction<OpeningPlan> {
   let acc = fold(openings, init: PlanAcc { admitted: [], refusal: none }, f: (a, o) =>
     match a.refusal {
-      Present { value: c } => PlanAcc { admitted: a.admitted, refusal: Present { value: c } }
-      Absent =>
+      v2.std.optional.Present { value: c } => PlanAcc { admitted: a.admitted, refusal: v2.std.optional.Present { value: c } }
+      v2.std.optional.Absent =>
         if count_openings_named(openings: openings, wanted: o.identity) > 1 {
-          PlanAcc { admitted: a.admitted, refusal: Present { value: OpeningDeclaredTwice { opening: o.identity } } }
+          PlanAcc { admitted: a.admitted, refusal: v2.std.optional.Present { value: OpeningDeclaredTwice { opening: o.identity } } }
         } else {
           match admit_opening(w: w, o: o) {
-            ConnectivityRefused { cause: c } => PlanAcc { admitted: a.admitted, refusal: Present { value: c } }
+            ConnectivityRefused { cause: c } => PlanAcc { admitted: a.admitted, refusal: v2.std.optional.Present { value: c } }
             ConnectivityReady { value: ok } => PlanAcc { admitted: concat(a.admitted, [ok]), refusal: none }
           }
         }
     })
   match acc.refusal {
-    Present { value: c } => ConnectivityRefused { cause: c }
-    Absent => ConnectivityReady { value: OpeningPlan { openings: acc.admitted } }
+    v2.std.optional.Present { value: c } => ConnectivityRefused { cause: c }
+    v2.std.optional.Absent => ConnectivityReady { value: OpeningPlan { openings: acc.admitted } }
   }
 }
 
 fn plan_openings(p: OpeningPlan) -> List<Opening> { p.openings }
 
 fn contains_room(rooms: List<product.placement_supply.RoomIdentity>, wanted: product.placement_supply.RoomIdentity) -> Bool {
-  fold(rooms, init: false, f: (hit, r) => hit || product.spatial_connectivity.room_identity_eq(a: r, b: wanted))
+  fold(rooms, init: false, f: (hit, r) => hit || room_identity_eq(a: r, b: wanted))
 }
 
 // ONE RELAXATION: every opening with exactly one end already reached brings the other end in. An
@@ -262,11 +262,11 @@ fn relax_once(reached: List<product.placement_supply.RoomIdentity>, openings: Li
 // more rounds would have to visit some room twice, and revisiting reaches nothing new. The world's
 // room list is what the fold iterates, which is why the bound cannot drift from the thing it bounds.
 fn reachable_from(w: product.spatial_world.World, p: OpeningPlan, start: product.placement_supply.RoomIdentity) -> ConnectivityConstruction<List<product.placement_supply.RoomIdentity>> {
-  match product.spatial_connectivity.find_room(w: w, identity: start) {
-    Absent => ConnectivityRefused { cause: ReachabilityEndpointMissing { identity: start, role: TraversalStart } }
-    Present { value: _ } =>
+  match find_room(w: w, identity: start) {
+    v2.std.optional.Absent => ConnectivityRefused { cause: ReachabilityEndpointMissing { identity: start, role: TraversalStart } }
+    v2.std.optional.Present { value: _ } =>
       ConnectivityReady {
-        value: fold(world_rooms(w: w), init: [start], f: (reached, _) =>
+        value: fold(product.spatial_world.world_rooms(w: w), init: [start], f: (reached, _) =>
           relax_once(reached: reached, openings: plan_openings(p: p)))
       }
   }
@@ -276,9 +276,9 @@ fn rooms_are_connected(w: product.spatial_world.World, p: OpeningPlan, from: pro
   match reachable_from(w: w, p: p, start: from) {
     ConnectivityRefused { cause: c } => ConnectivityRefused { cause: c }
     ConnectivityReady { value: reached } =>
-      match product.spatial_connectivity.find_room(w: w, identity: to) {
-        Absent => ConnectivityRefused { cause: ReachabilityEndpointMissing { identity: to, role: TraversalTarget } }
-        Present { value: _ } => ConnectivityReady { value: contains_room(rooms: reached, wanted: to) }
+      match find_room(w: w, identity: to) {
+        v2.std.optional.Absent => ConnectivityRefused { cause: ReachabilityEndpointMissing { identity: to, role: TraversalTarget } }
+        v2.std.optional.Present { value: _ } => ConnectivityReady { value: contains_room(rooms: reached, wanted: to) }
       }
   }
 }
@@ -288,16 +288,16 @@ fn rooms_are_connected(w: product.spatial_world.World, p: OpeningPlan, from: pro
 // empty world has none to start from. The empty answer is `true` and it is the honest one: there is
 // no pair of rooms that fails to reach each other.
 fn unreachable_room(w: product.spatial_world.World, p: OpeningPlan) -> product.placement_supply.RoomIdentity? {
-  match world_rooms(w: w) {
-    Empty => none
-    Cons { head: first, tail: _ } =>
+  match product.spatial_world.world_rooms(w: w) {
+    std.algebra.Empty => none
+    std.algebra.Cons { head: first, tail: _ } =>
       match reachable_from(w: w, p: p, start: first.identity) {
         ConnectivityRefused { cause: _ } => none
         ConnectivityReady { value: reached } =>
-          fold(world_rooms(w: w), init: none, f: (acc, r) =>
+          fold(product.spatial_world.world_rooms(w: w), init: none, f: (acc, r) =>
             match acc {
-              Present { value: i } => Present { value: i }
-              Absent => if contains_room(rooms: reached, wanted: r.identity) { none } else { Present { value: r.identity } }
+              v2.std.optional.Present { value: i } => v2.std.optional.Present { value: i }
+              v2.std.optional.Absent => if contains_room(rooms: reached, wanted: r.identity) { none } else { v2.std.optional.Present { value: r.identity } }
             })
       }
   }
@@ -305,7 +305,7 @@ fn unreachable_room(w: product.spatial_world.World, p: OpeningPlan) -> product.p
 
 fn world_is_connected(w: product.spatial_world.World, p: OpeningPlan) -> Bool {
   match unreachable_room(w: w, p: p) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }

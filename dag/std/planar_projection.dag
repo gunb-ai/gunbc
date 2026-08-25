@@ -55,12 +55,12 @@ module std.planar_projection
 // It is also not an AxisDirection3, which can only name a signed axis: the axonometric row looks
 // along (1,1,1), which no signed unit axis can express.
 type ViewAxisTriple {
-  x: std.integer.Int
-  y: std.integer.Int
-  z: std.integer.Int
+  x: Int
+  y: Int
+  z: Int
 }
 
-fn view_axis_triple(x: std.integer.Int, y: std.integer.Int, z: std.integer.Int) -> ViewAxisTriple {
+fn view_axis_triple(x: Int, y: Int, z: Int) -> ViewAxisTriple {
   ViewAxisTriple { x: x, y: y, z: z }
 }
 
@@ -81,7 +81,7 @@ type ProjectionRefusal
   | ProjectionFrameRefused { refusal: std.affine_space.SpatialFrameRefusal }
   | ViewDirectionParallelToUpReference { direction: ViewAxisTriple, up_reference: ViewAxisTriple }
   | ViewDirectionIsZero
-  | ViewUnitsAreNotMillimetres { axis_image_u: std.integer.Int, axis_image_v: std.integer.Int }
+  | ViewUnitsAreNotMillimetres { axis_image_u: Int, axis_image_v: Int }
 
 type ProjectionConstruction<T>
   = ProjectionReady { value: T }
@@ -92,15 +92,15 @@ type ProjectionConstruction<T>
 // is the only constructor - sole_constructor, so no record literal outside this module can assemble
 // a map that no camera produces.
 type ProjectionMap sole_constructor {
-  ux: std.integer.Int
-  uy: std.integer.Int
-  uz: std.integer.Int
-  vx: std.integer.Int
-  vy: std.integer.Int
-  vz: std.integer.Int
-  wx: std.integer.Int
-  wy: std.integer.Int
-  wz: std.integer.Int
+  ux: Int
+  uy: Int
+  uz: Int
+  vx: Int
+  vy: Int
+  vz: Int
+  wx: Int
+  wy: Int
+  wz: Int
 }
 
 // A view is the join of the map with the two frame identities it relates. Carrying both is what lets
@@ -116,14 +116,14 @@ type ProjectionView sole_constructor {
 
 type ViewPoint2 {
   view: std.coordinate_frame.CoordinateFrameIdentity
-  u: std.integer.Int
-  v: std.integer.Int
+  u: Int
+  v: Int
 }
 
-fn checked_pair_cross_term(a: std.integer.Int, b: std.integer.Int, c: std.integer.Int, d: std.integer.Int) -> std.checked_arithmetic.CheckedInt {
-  checked_subtract_results(
-    a: checked_int_multiply(a: a, b: b),
-    b: checked_int_multiply(a: c, b: d),
+fn checked_pair_cross_term(a: Int, b: Int, c: Int, d: Int) -> std.checked_arithmetic.CheckedInt {
+  std.checked_arithmetic.checked_subtract_results(
+    a: std.checked_arithmetic.checked_int_multiply(a: a, b: b),
+    b: std.checked_arithmetic.checked_int_multiply(a: c, b: d),
   )
 }
 
@@ -143,14 +143,14 @@ fn checked_cross(a: ViewAxisTriple, b: ViewAxisTriple) -> CheckedTriple {
 
 fn settle_triple(t: CheckedTriple) -> ProjectionConstruction<ViewAxisTriple> {
   match t.x {
-    CheckedIntOverflow { cause: c } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: c } }
-    CheckedIntReady { value: xv } =>
+    std.checked_arithmetic.CheckedIntOverflow { cause: c } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: c } }
+    std.checked_arithmetic.CheckedIntReady { value: xv } =>
       match t.y {
-        CheckedIntOverflow { cause: c } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: c } }
-        CheckedIntReady { value: yv } =>
+        std.checked_arithmetic.CheckedIntOverflow { cause: c } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: c } }
+        std.checked_arithmetic.CheckedIntReady { value: yv } =>
           match t.z {
-            CheckedIntOverflow { cause: c } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: c } }
-            CheckedIntReady { value: zv } =>
+            std.checked_arithmetic.CheckedIntOverflow { cause: c } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: c } }
+            std.checked_arithmetic.CheckedIntReady { value: zv } =>
               ProjectionReady { value: view_axis_triple(x: xv, y: yv, z: zv) }
           }
       }
@@ -257,29 +257,29 @@ fn named_projection_view(
 
 fn point3_components(p: std.affine_space.Point3) -> ViewAxisTriple {
   view_axis_triple(
-    x: signed_frame_component_count(c: p.x),
-    y: signed_frame_component_count(c: p.y),
-    z: signed_frame_component_count(c: p.z),
+    x: std.affine_space.signed_frame_component_count(c: p.x),
+    y: std.affine_space.signed_frame_component_count(c: p.y),
+    z: std.affine_space.signed_frame_component_count(c: p.z),
   )
 }
 
-fn checked_row_dot(ax: std.integer.Int, ay: std.integer.Int, az: std.integer.Int, p: ViewAxisTriple) -> std.checked_arithmetic.CheckedInt {
-  checked_add_results(
-    a: checked_add_results(
-      a: checked_int_multiply(a: ax, b: p.x),
-      b: checked_int_multiply(a: ay, b: p.y),
+fn checked_row_dot(ax: Int, ay: Int, az: Int, p: ViewAxisTriple) -> std.checked_arithmetic.CheckedInt {
+  std.checked_arithmetic.checked_add_results(
+    a: std.checked_arithmetic.checked_add_results(
+      a: std.checked_arithmetic.checked_int_multiply(a: ax, b: p.x),
+      b: std.checked_arithmetic.checked_int_multiply(a: ay, b: p.y),
     ),
-    b: checked_int_multiply(a: az, b: p.z),
+    b: std.checked_arithmetic.checked_int_multiply(a: az, b: p.z),
   )
 }
 
 fn projection_frame_refusal(v: ProjectionView, p: std.affine_space.Point3) -> ProjectionRefusal {
   ProjectionFrameRefused {
     refusal: std.affine_space.SpatialFrameRefusal {
-      operation: OpProjectPoint3,
+      operation: std.affine_space.OpProjectPoint3,
       left_frame: v.source_frame,
       right_frame: p.frame,
-      relation: ProjectionSourceFrameRequired,
+      relation: std.affine_space.ProjectionSourceFrameRequired,
     },
   }
 }
@@ -288,16 +288,16 @@ fn projection_frame_refusal(v: ProjectionView, p: std.affine_space.Point3) -> Pr
 // another frame has no projection under this map, so an overflow reported for it would name the
 // wrong cause.
 fn project_point(v: ProjectionView, p: std.affine_space.Point3) -> ProjectionConstruction<ViewPoint2> {
-  if !coordinate_frame_identity_eq(a: v.source_frame, b: p.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: v.source_frame, b: p.frame) {
     ProjectionRefused { cause: projection_frame_refusal(v: v, p: p) }
   } else {
     let c = point3_components(p: p)
     match checked_row_dot(ax: v.map.ux, ay: v.map.uy, az: v.map.uz, p: c) {
-      CheckedIntOverflow { cause: cause } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: cause } }
-      CheckedIntReady { value: u } =>
+      std.checked_arithmetic.CheckedIntOverflow { cause: cause } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: cause } }
+      std.checked_arithmetic.CheckedIntReady { value: u } =>
         match checked_row_dot(ax: v.map.vx, ay: v.map.vy, az: v.map.vz, p: c) {
-          CheckedIntOverflow { cause: cause } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: cause } }
-          CheckedIntReady { value: vv } =>
+          std.checked_arithmetic.CheckedIntOverflow { cause: cause } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: cause } }
+          std.checked_arithmetic.CheckedIntReady { value: vv } =>
             ProjectionReady { value: ViewPoint2 { view: v.view_frame, u: u, v: vv } }
         }
     }
@@ -308,24 +308,24 @@ fn project_point(v: ProjectionView, p: std.affine_space.Point3) -> ProjectionCon
 // third field on ViewPoint2 because it is not a position on the page: a consumer that draws does not
 // want it, and a consumer that orders does not want the page coordinates. Fusing them would make
 // every drawing carry a number it must remember to ignore.
-fn projection_depth(v: ProjectionView, p: std.affine_space.Point3) -> ProjectionConstruction<std.integer.Int> {
-  if !coordinate_frame_identity_eq(a: v.source_frame, b: p.frame) {
+fn projection_depth(v: ProjectionView, p: std.affine_space.Point3) -> ProjectionConstruction<Int> {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: v.source_frame, b: p.frame) {
     ProjectionRefused { cause: projection_frame_refusal(v: v, p: p) }
   } else {
     match checked_row_dot(ax: v.map.wx, ay: v.map.wy, az: v.map.wz, p: point3_components(p: p)) {
-      CheckedIntOverflow { cause: cause } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: cause } }
-      CheckedIntReady { value: w } => ProjectionReady { value: w }
+      std.checked_arithmetic.CheckedIntOverflow { cause: cause } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: cause } }
+      std.checked_arithmetic.CheckedIntReady { value: w } => ProjectionReady { value: w }
     }
   }
 }
 
 // A SOURCE AXIS'S IMAGE ON THE PAGE - the map's column, which is the pair a reader would measure off
 // a drawing with a ruler. It is the quantity the millimetre question is decided by.
-fn axis_image_u(m: ProjectionMap, axis_index: std.integer.Int) -> std.integer.Int {
+fn axis_image_u(m: ProjectionMap, axis_index: Int) -> Int {
   if axis_index == 0 { m.ux } else { if axis_index == 1 { m.uy } else { m.uz } }
 }
 
-fn axis_image_v(m: ProjectionMap, axis_index: std.integer.Int) -> std.integer.Int {
+fn axis_image_v(m: ProjectionMap, axis_index: Int) -> Int {
   if axis_index == 0 { m.vx } else { if axis_index == 1 { m.vy } else { m.vz } }
 }
 
@@ -333,7 +333,7 @@ fn axis_image_v(m: ProjectionMap, axis_index: std.integer.Int) -> std.integer.In
 // when one entry is +/-1 and the other is zero, and length zero exactly when both are zero. Every
 // other column has an irrational or non-unit length, and it does not matter which - the answer to
 // "are view units millimetres" is already no.
-fn axis_image_preserves_length(m: ProjectionMap, axis_index: std.integer.Int) -> Bool {
+fn axis_image_preserves_length(m: ProjectionMap, axis_index: Int) -> Bool {
   let iu = axis_image_u(m: m, axis_index: axis_index)
   let iv = axis_image_v(m: m, axis_index: axis_index)
   let unit = (iu == 0 && (iv == 1 || iv == (0 - 1))) || (iv == 0 && (iu == 1 || iu == (0 - 1)))
@@ -349,7 +349,7 @@ fn view_units_are_millimetres(m: ProjectionMap) -> Bool {
     && axis_image_preserves_length(m: m, axis_index: 2)
 }
 
-fn first_distorted_axis(m: ProjectionMap) -> std.integer.Int {
+fn first_distorted_axis(m: ProjectionMap) -> Int {
   if !axis_image_preserves_length(m: m, axis_index: 0) {
     0
   } else {
@@ -372,6 +372,6 @@ fn view_point_millimetres(v: ProjectionView, p: ViewPoint2) -> ProjectionConstru
       },
     }
   } else {
-    ProjectionReady { value: point2(frame: p.view, x: p.u, y: p.v) }
+    ProjectionReady { value: std.affine_space.point2(frame: p.view, x: p.u, y: p.v) }
   }
 }

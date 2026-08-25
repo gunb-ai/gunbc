@@ -1,37 +1,38 @@
 module gunbc.runner_slot_provision
 
+
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
 // ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).
 // Per slot: cited ActionsRunnerRelease fetch+verify, base dir, extract, ownership, per-slot caps
 // BEFORE systemctl enable. srv3/srv4 materialization target is 6 slots; srv4 disk binding is
 // apply-time preflight in gunbc.runner_lifecycle runner_width_disk_preflight (not a row pin).
 
-data runner_slot_provision_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+data runner_slot_provision_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "host_effect_apply",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
-type RunnerSlotMemberAt = NonEmptyStr
+type RunnerSlotMemberAt = std.types.NonEmptyStr
 
 type RunnerSlotMember {
-  instance_name: NonEmptyStr
-  slot_dir: NonEmptyStr
+  instance_name: std.types.NonEmptyStr
+  slot_dir: std.types.NonEmptyStr
 }
 
 type RunnerSlotObservation
   = RunnerSlotsObserved { members: List<RunnerSlotMember> }
-  | RunnerSlotsUnobserved { reason: NonEmptyStr }
+  | RunnerSlotsUnobserved { reason: std.types.NonEmptyStr }
 
-fn runner_slot_instance_dir(instance_name: NonEmptyStr) -> NonEmptyStr {
-  join([actions_runner_base_dir, "/", instance_name as String], "") as NonEmptyStr
+fn runner_slot_instance_dir(instance_name: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
+  join([extdeps.github.actions_runner.actions_runner_base_dir, "/", instance_name as String], "") as std.types.NonEmptyStr
 }
 
 fn runner_slot_member_from_instance_name(instance_name: String) -> RunnerSlotMember {
-  let name = instance_name as NonEmptyStr
+  let name = instance_name as std.types.NonEmptyStr
   RunnerSlotMember {
     instance_name: name,
     slot_dir: runner_slot_instance_dir(instance_name: name),
@@ -72,28 +73,28 @@ fn runner_slot_member_from_instance_name(instance_name: String) -> RunnerSlotMem
 //
 // CONSEQUENCE ON THE FLEET: srv3 desires twenty against a committed width of twenty-one. srv1, srv2
 // and srv4 carry no fabric member and are unchanged.
-fn desired_runner_slot_members(deploy: RunnerHostDeploy) -> List<RunnerSlotMember> {
-  let host = deploy.host_label as HostIdentity
+fn desired_runner_slot_members(deploy: gunbc.runner_host_deploy.RunnerHostDeploy) -> List<RunnerSlotMember> {
+  let host = deploy.host_label as product.placement_supply.HostIdentity
   map(
     filter(
-      runner_index_seq(n: deploy.runner_count),
-      i => !identity_is_fabric_execution_member(
-        identity: RunnerSlotIdentity { host: host, slot_index: i },
+      gunbc.runner_host_deploy.runner_index_seq(n: deploy.runner_count),
+      i => !gunbc.runner_slot_allocation.identity_is_fabric_execution_member(
+        identity: gunbc.build_cache_instance.RunnerSlotIdentity { host: host, slot_index: i },
       ),
     ),
     i => runner_slot_member_from_instance_name(
-      instance_name: runner_slot_instance_name(
-        slot: RunnerSlotIdentity { host: host, slot_index: i },
+      instance_name: gunbc.build_cache_instance.runner_slot_instance_name(
+        slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: host, slot_index: i },
       ),
     ),
   )
 }
 
-fn runner_slot_member_key(m: RunnerSlotMember) -> NonEmptyStr {
+fn runner_slot_member_key(m: RunnerSlotMember) -> std.types.NonEmptyStr {
   m.instance_name
 }
 
-fn runner_slot_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+fn runner_slot_member_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
   a as String == b as String
 }
 
@@ -103,16 +104,16 @@ fn runner_slot_member_value_eq(a: RunnerSlotMember, b: RunnerSlotMember) -> Bool
 
 data runner_slot_member_ownership_scaffold_note: String = "Ownership is NOT asserted for every observed slot-dir under /opt/actions-runner. R5 teardown-owned-only requires a provenance signal (gunbc-managed systemd drop-in + unit template this lane writes) before apply lands; until host_effect observation can read that signal, ownership_of returns Absent so Removed out-of-band dirs yield MemberRemovalRefused rather than fabricated Owned (review 49707)."
 
-fn runner_slot_member_ownership(m: RunnerSlotMember) -> Ownership? {
+fn runner_slot_member_ownership(m: RunnerSlotMember) -> gunbc.ownership.Ownership? {
   Absent
 }
 
 fn runner_slot_membership_reconcile(
   desired: List<RunnerSlotMember>,
   observed: List<RunnerSlotMember>,
-) -> MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
+) -> gunbc.membership_reconcile.MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt> {
+  gunbc.membership_reconcile.membership_plan_admitting_outcome(
+    outcome: gunbc.membership_reconcile.membership_reconcile(
       desired: desired,
       observed: observed,
       key_of: runner_slot_member_key,
@@ -126,16 +127,16 @@ fn runner_slot_membership_reconcile(
 type RunnerSlotEnumerationPostcondition
   = RunnerSlotEnumerationMatched
   | RunnerSlotEnumerationMismatch {
-      host: HostIdentity
+      host: product.placement_supply.HostIdentity
       declared_count: Int
       observed_count: Int
     }
 
 fn runner_slot_enumeration_postcondition(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   observed: List<RunnerSlotMember>,
 ) -> RunnerSlotEnumerationPostcondition {
-  let declared = declared_runner_count_for(host: host)
+  let declared = gunbc.fleet_host_budget.declared_runner_count_for(host: host)
   let observed_count = length(observed)
   if observed_count == declared {
     RunnerSlotEnumerationMatched
@@ -149,15 +150,15 @@ fn runner_slot_enumeration_postcondition(
 }
 
 type RunnerSlotProvisionPlan {
-  host_label: NonEmptyStr
-  membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>
+  host_label: std.types.NonEmptyStr
+  membership: gunbc.membership_reconcile.MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>
   base_dir_script: String
   upsert_extract_scripts: List<String>
 }
 
 fn runner_slot_provision_plan(
-  deploy: RunnerHostDeploy,
-  artifact: ActionsRunnerBinaryArtifact,
+  deploy: gunbc.runner_host_deploy.RunnerHostDeploy,
+  artifact: extdeps.github.actions_runner.ActionsRunnerBinaryArtifact,
   observed: List<RunnerSlotMember>,
 ) -> RunnerSlotProvisionPlan {
   let membership = runner_slot_membership_reconcile(
@@ -167,18 +168,18 @@ fn runner_slot_provision_plan(
   RunnerSlotProvisionPlan {
     host_label: deploy.host_label,
     membership: membership,
-    base_dir_script: actions_runner_base_dir_ensure_script(runner_user: deploy.runner_user),
+    base_dir_script: extdeps.github.actions_runner.actions_runner_base_dir_ensure_script(runner_user: deploy.runner_user),
     upsert_extract_scripts: flat_map(membership.actions, a =>
       match a {
-        MemberAdded { at: _, to: m } =>
-          [actions_runner_slot_extract_script(
+        gunbc.membership_reconcile.MemberAdded { at: _, to: m } =>
+          [extdeps.github.actions_runner.actions_runner_slot_extract_script(
             artifact: artifact,
             slot_dir: m.slot_dir,
             job_user: deploy.job_user,
           )]
-        MemberChanged { at: _, from: _, to: _ } => []
-        MemberRemoved { at: _, from: _ } => []
-        MemberRemovalRefused { from: _, cause: _ } => []
+        gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => []
+        gunbc.membership_reconcile.MemberRemoved { at: _, from: _ } => []
+        gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => []
         MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
       }
     ),
@@ -186,7 +187,7 @@ fn runner_slot_provision_plan(
 }
 
 fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bool {
-  membership_added_count(plan: plan.membership) > 0
+  gunbc.membership_reconcile.membership_added_count(plan: plan.membership) > 0
 }
 
 // --- observation: the third converge member family -------------------------------------------
@@ -196,25 +197,25 @@ data runner_slot_observation_refuses_note: String = "AN UNREADABLE HOST REFUSES;
 func observe_runner_slot_members_wet() -> RunnerSlotObservation
   uses net: Network
 {
-  match run_shell_command_capture(
-    command: ls_one_per_line_command(path: actions_runner_base_dir),
-    transport: LocalExec,
+  match gunbc.command_runner.run_shell_command_capture(
+    command: extdeps.tools.gnu_coreutils.ls_one_per_line_command(path: extdeps.github.actions_runner.actions_runner_base_dir),
+    transport: extdeps.exec.command.LocalExec,
   ) {
-    ProcessRefused { exit_code: code, stderr: err } =>
+    extdeps.shell.exec.ProcessRefused { exit_code: code, stderr: err } =>
       RunnerSlotsUnobserved {
         reason: concat(
-          concat("could not enumerate ", actions_runner_base_dir),
+          concat("could not enumerate ", extdeps.github.actions_runner.actions_runner_base_dir),
           concat(": the listing refused rather than returning an empty directory, so this host's slot population is UNKNOWN and must not be read as empty. stderr: ", err)
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       }
-    ProcessOutputAbsent =>
+    extdeps.shell.exec.ProcessOutputAbsent =>
       RunnerSlotsUnobserved {
         reason: concat(
-          concat("enumerating ", actions_runner_base_dir),
+          concat("enumerating ", extdeps.github.actions_runner.actions_runner_base_dir),
           " produced no output at all -- not an empty listing, which would be an empty string. A command that yields nothing has not answered the question, and treating it as 'no slots' would propose installing every desired slot onto a host whose population was never read."
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       }
-    ProcessOutputPresent { text: t } =>
+    extdeps.shell.exec.ProcessOutputPresent { text: t } =>
       RunnerSlotsObserved {
         members: map(
           filter(t.split("\n"), l => std.algebra.trim(s: l) != ""),
@@ -225,15 +226,15 @@ func observe_runner_slot_members_wet() -> RunnerSlotObservation
 }
 
 type RunnerSlotConvergeVerdict
-  = RunnerSlotConvergePlanned { host: HostIdentity, plan: RunnerSlotProvisionPlan }
-  | RunnerSlotConvergeRefused { host: HostIdentity, reason: NonEmptyStr }
+  = RunnerSlotConvergePlanned { host: product.placement_supply.HostIdentity, plan: RunnerSlotProvisionPlan }
+  | RunnerSlotConvergeRefused { host: product.placement_supply.HostIdentity, reason: std.types.NonEmptyStr }
 
 data runner_slot_converge_verdict_note: String = "THE REFUSAL ARM IS THE REASON THIS FUNCTION EXISTS RATHER THAN CALLERS COMPOSING THE TWO HALVES THEMSELVES. A caller holding an observation and a deploy row can always pass the observed members straight into runner_slot_provision_plan, and the unobserved case would then be a list nobody looked at. Routing both through one verdict means the only way to reach a plan is to have actually read the host, and an unmodeled host or an unreadable directory produces a refusal that names which it was."
 
 fn runner_slot_converge_verdict(
-  host: HostIdentity,
-  deploy: RunnerHostDeploy,
-  artifact: ActionsRunnerBinaryArtifact,
+  host: product.placement_supply.HostIdentity,
+  deploy: gunbc.runner_host_deploy.RunnerHostDeploy,
+  artifact: extdeps.github.actions_runner.ActionsRunnerBinaryArtifact,
   observation: RunnerSlotObservation,
 ) -> RunnerSlotConvergeVerdict {
   match observation {

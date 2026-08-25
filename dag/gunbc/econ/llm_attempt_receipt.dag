@@ -86,7 +86,7 @@ type LlmAttemptReceipt {
   disposition: ReviewDisposition
 }
 
-// Throughput is an exact fraction over the SAME FieldOfFractions of std.nat.Nat authority gunbc.econ.acquisition ConversionRate consumes -- output tokens over elapsed nanoseconds -- and nothing divides until a consumer explicitly asks for the floor projection. Storing tokens-per-second as a scalar would bake one rounding into the authority and make a cross-host comparison depend on when the division happened. The floor projection below is a DECLARED lossy view and is total by typed refusal: it returns none on a zero denominator rather than dividing, because the record stays publicly constructible even though every derivation that PRODUCES one refuses a zero window first.
+// Throughput is an exact fraction over the SAME FieldOfFractions of Nat authority gunbc.econ.acquisition ConversionRate consumes -- output tokens over elapsed nanoseconds -- and nothing divides until a consumer explicitly asks for the floor projection. Storing tokens-per-second as a scalar would bake one rounding into the authority and make a cross-host comparison depend on when the division happened. The floor projection below is a DECLARED lossy view and is total by typed refusal: it returns none on a zero denominator rather than dividing, because the record stays publicly constructible even though every derivation that PRODUCES one refuses a zero window first.
 type TokenThroughput = std.algebra.FieldOfFractions<std.nat.Nat>
 
 type ThroughputRefusalCause
@@ -106,13 +106,13 @@ fn derive_decode_throughput(receipt: LlmAttemptReceipt) -> DecodeThroughputResul
       match receipt.durations.decode {
         none => DecodeThroughputRefused { cause: DecodeDurationUnobserved }
         Present { value: d } =>
-          if nanosecond_count(n: d) == 0 {
+          if std.measure.nanosecond_count(n: d) == 0 {
             DecodeThroughputRefused { cause: ZeroDecodeDuration }
           } else {
             DecodeThroughputDerived {
               throughput: std.algebra.FieldOfFractions {
-                num: token_count_value(t: u.output),
-                denom: nanosecond_count(n: d),
+                num: std.measure.token_count_value(t: u.output),
+                denom: std.measure.nanosecond_count(n: d),
               }
             }
           }
@@ -150,7 +150,7 @@ fn attempt_is_escalated(d: ReviewDisposition) -> Bool {
 }
 
 fn accepted_attempt_count(receipts: List<LlmAttemptReceipt>) -> std.nat.Nat {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: receipts,
     empty: 0,
     cons: fn(acc, r) { if attempt_is_accepted(d: r.disposition) { acc + 1 } else { acc } }
@@ -158,7 +158,7 @@ fn accepted_attempt_count(receipts: List<LlmAttemptReceipt>) -> std.nat.Nat {
 }
 
 fn escalated_attempt_count(receipts: List<LlmAttemptReceipt>) -> std.nat.Nat {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: receipts,
     empty: 0,
     cons: fn(acc, r) { if attempt_is_escalated(d: r.disposition) { acc + 1 } else { acc } }
@@ -166,7 +166,7 @@ fn escalated_attempt_count(receipts: List<LlmAttemptReceipt>) -> std.nat.Nat {
 }
 
 fn attempt_roster_count(receipts: List<LlmAttemptReceipt>) -> std.nat.Nat {
-  v2.std.algebra.fold_list(xs: receipts, empty: 0, cons: fn(acc, r) { acc + 1 })
+  fold_list(xs: receipts, empty: 0, cons: fn(acc, r) { acc + 1 })
 }
 
 type GoodputRefusalCause
@@ -186,13 +186,13 @@ fn derive_accepted_goodput(
   if attempt_roster_count(receipts: receipts) == 0 {
     AcceptedGoodputRefused { cause: EmptyAttemptRoster }
   } else {
-    if nanosecond_count(n: window) == 0 {
+    if std.measure.nanosecond_count(n: window) == 0 {
       AcceptedGoodputRefused { cause: ZeroObservationWindow }
     } else {
       AcceptedGoodputDerived {
         goodput: std.algebra.FieldOfFractions {
           num: accepted_attempt_count(receipts: receipts),
-          denom: nanosecond_count(n: window),
+          denom: std.measure.nanosecond_count(n: window),
         }
       }
     }

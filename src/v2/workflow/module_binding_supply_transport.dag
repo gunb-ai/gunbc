@@ -16,7 +16,7 @@ data mbs_layout_entry: String = "src/v2/test/claim/self_host/crate_layout_witnes
 
 data mbs_layout_claims_note: String = "The crate-layout witnesses run HERE, in the same overlay, because task 3 made them projections off the derived binding index instead of readers of a 27-row hand table. They need the real index, and the real index exists only inside this overlay — so this transport is their executing consumer.
 
-They were removed from compiler_frontier_census_holds in the same change (frontier_census_layout_relocation_note): the census is a pure zero-arity fast-lane gate that cannot obtain a host index, and the layer DAG forbids a compiler module importing v2.test.* to reach one. Enrolling them here is the other half of that removal, not a follow-on — a removal without this enrollment would leave a window where nothing checks crate layout at all.
+They were removed from compiler_frontier_census_holds in the same change (frontier_census_layout_relocation_note): the census is a pure zero-arity fast-lane gate that cannot obtain a host index, and the layer DAG forbids a compiler module importing test.* to reach one. Enrolling them here is the other half of that removal, not a follow-on — a removal without this enrollment would leave a window where nothing checks crate layout at all.
 
 Two rows were removed here with the self-host frontier roster cut: projection_refuses_on_absent_index and transition_parity_host_index_agrees_with_hand_rows. The parity witness asserted that the derived index and the hand-authored qualified-module bindings answer identically, and the hand rows are gone, so its subject is retired rather than dropped; the refusal witness guarded the projection those rows reached. crate_layout_witnesses still needs the real index and still runs here."
 
@@ -40,7 +40,7 @@ func run_module_binding_supply_gate_ready(root: String) -> Bool {
       template: concat(root, mbs_overlay_template)
     )
     if overlay.success {
-      let emitted = gunbc.WitnessBin.Run(
+      let emitted = WitnessBin.Run(
         workdir: root,
         bin_path: tools.host_prelude.witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
         args: mbs_emit_args(overlay_dir: overlay.path)
@@ -72,7 +72,7 @@ func run_module_binding_supply_gate() -> Bool {
   let root = git.Inspect.Toplevel()
   let ingest_bin = tools.host_prelude.witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
   match tools.host_prelude.witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
-    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
-    WitnessBinReady { path: _ } => run_module_binding_supply_gate_ready(root: root.path)
+    tools.host_prelude.WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+    tools.host_prelude.WitnessBinReady { path: _ } => run_module_binding_supply_gate_ready(root: root.path)
   }
 }

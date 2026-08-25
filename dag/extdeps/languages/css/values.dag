@@ -3,7 +3,7 @@ module extdeps.languages.css.values
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.w3.org/TR/css-values-4"
   }
 }
@@ -48,7 +48,7 @@ fn css_ch(n: Int) -> CssLength {
 
 data css_font_family_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.w3.org/TR/css-fonts-4/#font-family-prop"
   }
 }

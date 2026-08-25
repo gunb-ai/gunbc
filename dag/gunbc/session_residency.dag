@@ -20,15 +20,15 @@ type SessionResidencyEvidence
   | SessionsUnobserved { reason: String }
 
 fn host_session_evidence(host: product.placement_supply.HostIdentity) -> SessionResidencyEvidence {
-  if (host as String) == (operator_host_srv1 as String) {
+  if (host as String) == (gunbc.fleet_intent_network.operator_host_srv1 as String) {
     SessionsObservedPresent { observed_on: "2026-08-06", container_count: 19 }
-  } else if (host as String) == (operator_host_srv2 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv2 as String) {
     SessionsObservedPresent { observed_on: "2026-08-06", container_count: 19 }
-  } else if (host as String) == (operator_host_srv3 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv3 as String) {
     SessionsOperatorDeclaredAbsent {
       reason: "operator states srv3 carries no interactive sessions; NOT observed by the session that wrote this row, because the fleet-automation key is authorized for no user on srv3 (the B2 gap in gunbc.plans.fleet_subsumption_manual_gaps) and a direct login was refused. The fleet's own history agrees: srv3 was stood up through the modeled path as a CI host and has never carried a dashboard instance."
     }
-  } else if (host as String) == (operator_host_srv4 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv4 as String) {
     SessionsOperatorDeclaredAbsent {
       reason: "operator states srv4 carries no interactive sessions; NOT observed, because srv4 failed host-key verification from this session. Same standing history as srv3 — stood up as a CI host through the modeled path, never a dashboard instance."
     }
@@ -77,18 +77,18 @@ fn host_absence_is_operator_declared(host: product.placement_supply.HostIdentity
 fn operator_declared_absent_host_count() -> Int {
   count(
     filter(
-      [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
+      [gunbc.fleet_intent_network.operator_host_srv1, gunbc.fleet_intent_network.operator_host_srv2, gunbc.fleet_intent_network.operator_host_srv3, gunbc.fleet_intent_network.operator_host_srv4],
       h => host_absence_is_operator_declared(host: h)
     )
   )
 }
 
 data session_residency_negative_rows_dissolve_on: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
@@ -97,16 +97,16 @@ data session_residency_negative_rows_dissolve_on: std.disposition.Disposition = 
 // this fn only gates on shell transport and refuses until that lands.
 
 fn session_residency_shell_gated_census(host: product.placement_supply.HostIdentity) -> SessionResidencyEvidence {
-  match fleet_shell_transport_observation(host: host) {
-    ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } =>
+  match gunbc.fleet_shell_transport_observation.fleet_shell_transport_observation(host: host) {
+    gunbc.fleet_shell_transport_observation.ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } =>
       SessionsUnobserved {
         reason: "shell transport available but sessions.slice container census has no host_effect producer yet; dissolve-on HostEffectTransport cgroup walk",
       }
-    ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
+    gunbc.fleet_shell_transport_observation.ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
       SessionsUnobserved {
         reason: concat("session cgroup census refused: shell transport failed: ", d as String),
       }
-    ShellTransportUnobserved { reason: r } =>
+    gunbc.fleet_shell_transport_observation.ShellTransportUnobserved { reason: r } =>
       SessionsUnobserved { reason: concat("session cgroup census unobserved: ", r) }
   }
 }

@@ -1,120 +1,120 @@
 module test.claim.doc_reachability_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data live_tree_disposition_correction_note: String = "Corrected 2026-07-15: the 2026-07-12 machine-stamped SubstrateInputsOnly row (#6479 batch, entry-text classifier) was FALSE — every test fn below reads the live docs/ tree through the doc_graph_* host builtins (cli_run.rs build_doc_graph_report), the exact hidden-behind-a-builtin blind spot live_tree.dag:5 declares for that classifier. ReadsLiveTree restores the never-skip tooth so the orphan wall runs on every full floor; the false stamp let a docs-only PR (gunbc#6654) mint an orphan with green CI. #7023 recurrence: the shell documentation_only_skip shortcut exited before claim_executor, bypassing this lane entirely on docs-only PRs — retired proud-cat-517; floor_skip_discovery_witness proves by execution that docs-only diffs RUN this entry."
 
 data hand_authored_bind_keyed_roster_note: String = "HandAuthoredDocBind rows are keyed by hand_authored_bind_key (home + slug). std.keyed_roster keyed_roster_build refuses a repeated key at construction — the wall that makes a colliding bind identity unwritable rather than detectable only after merge. keyed_roster_union models the git clean-merge failure mode: two branches each append disjoint binds admit; overlapping bind keys refuse at per-PR admission instead of stalling main with duplicate slugs no per-branch uniqueness check can see."
 
 test fn doc_graph_has_no_orphan_docs() -> Bool {
-  return doc_graph_floor_orphan_clean_holds()
+  return gunbc.doc_graph_roots.doc_graph_floor_orphan_clean_holds()
 }
 
 test fn doc_graph_registered_plan_roots_nonempty() -> Bool {
-  return doc_graph_roots_all().count() > 0
+  return gunbc.doc_graph_roots.doc_graph_roots_all().count() > 0
 }
 
 test fn doc_graph_registered_plan_roots_all_admitted() -> Bool {
-  return doc_graph_admitted_root_count(doc_graph_roots_all()) == doc_graph_roots_all().count()
+  return doc_graph_admitted_root_count(gunbc.doc_graph_roots.doc_graph_roots_all()) == gunbc.doc_graph_roots.doc_graph_roots_all().count()
 }
 
 test fn doc_graph_hand_authored_slugs_not_registered() -> Bool {
-  return hand_authored_slugs_all_unregistered()
+  return gunbc.doc_graph_roots.hand_authored_slugs_all_unregistered()
 }
 
 test fn doc_graph_slug_wall_reds_on_registered_slug() -> Bool {
-  return hand_authored_plan_slug_is_unregistered(b: gunbc.doc_graph_roots.HandAuthoredDocBind {
-    home: PlanDoc,
+  return gunbc.doc_graph_roots.hand_authored_plan_slug_is_unregistered(b: gunbc.doc_graph_roots.HandAuthoredDocBind {
+    home: gunbc.doc_graph_roots.PlanDoc,
     slug: "typescript-gap-census",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.plans.typescript_gap_census", decl_name: "typescript_gap_census_plan", field: WholeDeclaration },
+    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.plans.typescript_gap_census", decl_name: "typescript_gap_census_plan", field: std.decl_ref.WholeDeclaration },
     additional_works: [],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic negative control: this slug IS registered, so the wall must refuse it") },
+    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "synthetic negative control: this slug IS registered, so the wall must refuse it") },
   }) == false
 }
 
 data works_construction_wall_note: String = "The empty-works RED control and the binds-works-all-nonempty witness that stood here were DELETED WITH the validation they backed (2026-07-31 verdict on gunbc#7489): primary_work is now a required scalar on HandAuthoredDocBind, so the zero-anchor bind the RED constructed no longer compiles — the wall moved from predicate to type, and asserting a predicate over an unwritable state is dead evidence. The residual discriminating probe (a compile-refusal probe proving a missing-primary_work row refuses) is named on the carrier note as ladder-probe-corpus record-completeness work. refs-carry-symbols below survives as honest validation ONLY until NonEmptyStr refinement is enforced at data positions (declared-conformance-general-wall's dissolution trigger — the 2026-08-01 recut retired the floor-inhabitance-wall slug this note formerly named; refinement enforcement sits on the general wall, not the accepted ground fragment)."
 
 test fn doc_graph_works_refs_carry_symbols() -> Bool {
-  return hand_authored_works_refs_all_carry_symbols()
+  return gunbc.doc_graph_roots.hand_authored_works_refs_all_carry_symbols()
 }
 
 test fn doc_graph_bind_identities_unique() -> Bool {
-  return hand_authored_bind_identities_unique()
+  return gunbc.doc_graph_roots.hand_authored_bind_identities_unique()
 }
 
 test fn doc_graph_bind_keyed_build_admits_live_incomings() -> Bool {
-  match hand_authored_doc_binds_construct() {
-    KeyedRosterBuilt { rows: _ } => true
-    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  match gunbc.doc_graph_roots.hand_authored_doc_binds_construct() {
+    std.keyed_roster.KeyedRosterBuilt { rows: _ } => true
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
 test fn doc_graph_duplicate_bind_key_red_control() -> Bool {
   let dup = gunbc.doc_graph_roots.HandAuthoredDocBind {
-    home: PlanDoc,
+    home: gunbc.doc_graph_roots.PlanDoc,
     slug: "synthetic-duplicate-identity-control",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key", field: WholeDeclaration },
+    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key", field: std.decl_ref.WholeDeclaration },
     additional_works: [],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic negative control: two rows carrying one (home, slug) identity must refuse at keyed construction — proves the construction wall discriminates") },
+    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "synthetic negative control: two rows carrying one (home, slug) identity must refuse at keyed construction — proves the construction wall discriminates") },
   }
   match std.keyed_roster.keyed_roster_build(
-    incomings: hand_authored_binds_to_keyed_rows(binds: [dup, dup]),
-    key_eq: hand_authored_bind_key_eq,
+    incomings: gunbc.doc_graph_roots.hand_authored_binds_to_keyed_rows(binds: [dup, dup]),
+    key_eq: gunbc.doc_graph_roots.hand_authored_bind_key_eq,
   ) {
-    KeyedRosterBuilt { rows: _ } => false
-    KeyedRosterBuildDuplicateKey { key: k, first: _, duplicate: _ } => k == "plan/synthetic-duplicate-identity-control"
+    std.keyed_roster.KeyedRosterBuilt { rows: _ } => false
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: _, duplicate: _ } => k == "plan/synthetic-duplicate-identity-control"
   }
 }
 
 fn fixture_union_branch_a_bind() -> gunbc.doc_graph_roots.HandAuthoredDocBind {
   gunbc.doc_graph_roots.HandAuthoredDocBind {
-    home: PlanDoc,
+    home: gunbc.doc_graph_roots.PlanDoc,
     slug: "synthetic-union-branch-a",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key", field: WholeDeclaration },
+    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key", field: std.decl_ref.WholeDeclaration },
     additional_works: [],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic union fixture: branch A disjoint bind key") },
+    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "synthetic union fixture: branch A disjoint bind key") },
   }
 }
 
 fn fixture_union_branch_b_disjoint_bind() -> gunbc.doc_graph_roots.HandAuthoredDocBind {
   gunbc.doc_graph_roots.HandAuthoredDocBind {
-    home: PlanDoc,
+    home: gunbc.doc_graph_roots.PlanDoc,
     slug: "synthetic-union-branch-b-disjoint",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key_eq", field: WholeDeclaration },
+    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key_eq", field: std.decl_ref.WholeDeclaration },
     additional_works: [],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic union fixture: branch B disjoint bind key") },
+    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "synthetic union fixture: branch B disjoint bind key") },
   }
 }
 
 fn fixture_union_branch_b_overlap_bind() -> gunbc.doc_graph_roots.HandAuthoredDocBind {
   gunbc.doc_graph_roots.HandAuthoredDocBind {
-    home: PlanDoc,
+    home: gunbc.doc_graph_roots.PlanDoc,
     slug: "synthetic-union-branch-a",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_doc_binds", field: WholeDeclaration },
+    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_doc_binds", field: std.decl_ref.WholeDeclaration },
     additional_works: [],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic union fixture: branch B overlaps branch A bind key") },
+    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "synthetic union fixture: branch B overlaps branch A bind key") },
   }
 }
 
 test fn doc_graph_bind_two_branch_union_disjoint_keys_admits() -> Bool {
   match std.keyed_roster.keyed_roster_union(
-    left: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_a_bind()]),
-    right: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_b_disjoint_bind()]),
-    key_eq: hand_authored_bind_key_eq,
+    left: gunbc.doc_graph_roots.hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_a_bind()]),
+    right: gunbc.doc_graph_roots.hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_b_disjoint_bind()]),
+    key_eq: gunbc.doc_graph_roots.hand_authored_bind_key_eq,
   ) {
-    KeyedRosterBuilt { rows: _ } => true
-    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    std.keyed_roster.KeyedRosterBuilt { rows: _ } => true
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
 test fn doc_graph_bind_two_branch_union_overlap_refuses_red_control() -> Bool {
   match std.keyed_roster.keyed_roster_union(
-    left: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_a_bind()]),
-    right: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_b_overlap_bind()]),
-    key_eq: hand_authored_bind_key_eq,
+    left: gunbc.doc_graph_roots.hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_a_bind()]),
+    right: gunbc.doc_graph_roots.hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_b_overlap_bind()]),
+    key_eq: gunbc.doc_graph_roots.hand_authored_bind_key_eq,
   ) {
-    KeyedRosterBuilt { rows: _ } => false
-    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    std.keyed_roster.KeyedRosterBuilt { rows: _ } => false
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       k == "plan/synthetic-union-branch-a"
         && f.value.slug == "synthetic-union-branch-a"
         && d.value.slug == "synthetic-union-branch-a"
@@ -122,13 +122,13 @@ test fn doc_graph_bind_two_branch_union_overlap_refuses_red_control() -> Bool {
 }
 
 test fn guarantee_recovery_bind_pins_both_anchors() -> Bool {
-  let rows = hand_authored_doc_binds() |> filter(b => b.slug == "compiler-guarantee-recovery-gap-analysis")
+  let rows = gunbc.doc_graph_roots.hand_authored_doc_binds() |> filter(b => b.slug == "compiler-guarantee-recovery-gap-analysis")
   return (rows |> count) == 1 && match rows |> first {
     Present { value: b } =>
       b.primary_work.module_path == "v1.compiler.infer"
         && b.primary_work.decl_name == "module_skips_direct_call_arg_check"
         && (b.additional_works |> count) == 1
-        && (hand_authored_bind_works(b: b) |> any(r => r.module_path == "v2.std.constraints" && r.decl_name == "solve_constraints"))
+        && (gunbc.doc_graph_roots.hand_authored_bind_works(b: b) |> any(r => r.module_path == "v2.std.constraints" && r.decl_name == "solve_constraints"))
     Absent => false
   }
 }
@@ -148,14 +148,14 @@ test fn doc_graph_universe_is_nonempty() -> Bool {
 // contradicting its own payload. Asserting the arm catches that directly;
 // grepping the description for the word "permanent" would not.
 test fn cited_symbol_discriminating_controls_have_no_retirement() -> Bool {
-  match hand_authored_doc_binds_population() {
-    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
-    HandAuthoredDocBindsBuilt { binds: binds } =>
+  match gunbc.doc_graph_roots.hand_authored_doc_binds_population() {
+    gunbc.doc_graph_roots.HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
+    gunbc.doc_graph_roots.HandAuthoredDocBindsBuilt { binds: binds } =>
       all(
-        filter(binds, b => hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
+        filter(binds, b => gunbc.doc_graph_roots.hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
         b => match b.dissolution {
-          PlanHasNoRetirement => true
-          PlanRetiresWhen { condition: _ } => false
+          gunbc.plan.PlanHasNoRetirement => true
+          gunbc.plan.PlanRetiresWhen { condition: _ } => false
         }
       )
   }
@@ -165,14 +165,14 @@ test fn cited_symbol_discriminating_controls_have_no_retirement() -> Bool {
 // witness above cannot pass by the filter being empty or by every row lacking a
 // retirement.
 test fn production_doc_binds_all_carry_a_retirement() -> Bool {
-  match hand_authored_doc_binds_population() {
-    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
-    HandAuthoredDocBindsBuilt { binds: binds } =>
+  match gunbc.doc_graph_roots.hand_authored_doc_binds_population() {
+    gunbc.doc_graph_roots.HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
+    gunbc.doc_graph_roots.HandAuthoredDocBindsBuilt { binds: binds } =>
       all(
-        filter(binds, b => !hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
+        filter(binds, b => !gunbc.doc_graph_roots.hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
         b => match b.dissolution {
-          PlanRetiresWhen { condition: _ } => true
-          PlanHasNoRetirement => false
+          gunbc.plan.PlanRetiresWhen { condition: _ } => true
+          gunbc.plan.PlanHasNoRetirement => false
         }
       )
   }

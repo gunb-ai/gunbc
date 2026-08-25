@@ -1,7 +1,7 @@
 module test.claim.observation_rollup_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data rollup_witness_home_doc: String = "S1 of the display-grain lane: the fold that accumulates routine leaf events into their ancestor at a declared grain, so a batch emits one conclusion instead of one line per witness. These claims pin the two properties the fold exists for and the two it must NOT have. What it exists for: routine and anomaly classes both COUNT (a summary claiming `0 failed` is only trustworthy if failures were tallied on the same pass), and the ancestor is located by the containment path rather than by a second taxonomy. What it must not have: an event outside the rollup's subject is REFUSED rather than folded (which would inflate a batch with foreign work) or dropped (which would report an incomplete total as if it were complete), and a subject with no segment at the requested grain answers Absent rather than substituting the root."
 
@@ -39,8 +39,8 @@ fn event_at(subject: std.observation.ObservationSubject, transition: std.observa
   std.observation.ObservationEvent {
     subject: subject,
     transition: transition,
-    durations: observation_durations_wall(elapsed: nanosecond(count: 1000)),
-    rss: std.observation.MeasuredValue { value: byte_size(count: 2048) },
+    durations: std.observation.observation_durations_wall(elapsed: std.measure.nanosecond(count: 1000)),
+    rss: std.observation.MeasuredValue { value: std.measure.byte_size(count: 2048) },
   }
 }
 
@@ -48,14 +48,14 @@ fn unmeasured_event_at(subject: std.observation.ObservationSubject, transition: 
   std.observation.ObservationEvent {
     subject: subject,
     transition: transition,
-    durations: observation_durations_wall_unavailable(cause: "synthetic fixture withholds the clock"),
+    durations: std.observation.observation_durations_wall_unavailable(cause: "synthetic fixture withholds the clock"),
     rss: std.observation.MeasuredUnavailable { cause: "synthetic fixture reads no cgroup" },
   }
 }
 
 test fn elapsed_sums_only_measured_walls_and_counts_the_absent_ones() -> Bool {
   let folded = fold_events(
-    rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
+    rollup: std.observation.observation_rollup_open(subject: batch_subject()),
     events: [
       event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
       event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
@@ -63,23 +63,23 @@ test fn elapsed_sums_only_measured_walls_and_counts_the_absent_ones() -> Bool {
     ],
   )
   let summed = match folded.elapsed {
-    MeasuredUnavailable { cause: _ } => false
-    MeasuredValue { value: v } => nanosecond_count(n: v) == 2000
+    std.observation.MeasuredUnavailable { cause: _ } => false
+    std.observation.MeasuredValue { value: v } => std.measure.nanosecond_count(n: v) == 2000
   }
   summed && folded.measurement_absent == 1 && folded.counts.done == 3
 }
 
 test fn RED_a_wholly_unmeasured_batch_stays_unavailable_rather_than_reporting_zero() -> Bool {
   let folded = fold_events(
-    rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
+    rollup: std.observation.observation_rollup_open(subject: batch_subject()),
     events: [
       unmeasured_event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
       unmeasured_event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
     ],
   )
   match folded.elapsed {
-    MeasuredUnavailable { cause: _ } => folded.measurement_absent == 2
-    MeasuredValue { value: _ } => false
+    std.observation.MeasuredUnavailable { cause: _ } => folded.measurement_absent == 2
+    std.observation.MeasuredValue { value: _ } => false
   }
 }
 
@@ -87,11 +87,11 @@ test fn peak_rss_keeps_the_maximum_reading_not_the_last_or_the_sum() -> Bool {
   let big = std.observation.ObservationEvent {
     subject: leaf_subject(entry: "dag/big.dag"),
     transition: std.observation.Concluded { outcome: std.observation.Done },
-    durations: observation_durations_wall(elapsed: nanosecond(count: 1000)),
-    rss: std.observation.MeasuredValue { value: byte_size(count: 9000) },
+    durations: std.observation.observation_durations_wall(elapsed: std.measure.nanosecond(count: 1000)),
+    rss: std.observation.MeasuredValue { value: std.measure.byte_size(count: 9000) },
   }
   let folded = fold_events(
-    rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
+    rollup: std.observation.observation_rollup_open(subject: batch_subject()),
     events: [
       event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
       big,
@@ -99,24 +99,24 @@ test fn peak_rss_keeps_the_maximum_reading_not_the_last_or_the_sum() -> Bool {
     ],
   )
   match folded.peak_rss {
-    MeasuredUnavailable { cause: _ } => false
-    MeasuredValue { value: v } => byte_size_count(b: v) == 9000
+    std.observation.MeasuredUnavailable { cause: _ } => false
+    std.observation.MeasuredValue { value: v } => std.measure.byte_size_count(b: v) == 9000
   }
 }
 
 fn fold_events(rollup: std.observation.ObservationRollup, events: List<std.observation.ObservationEvent>) -> std.observation.ObservationRollup {
   fold(events, init: rollup, f: (acc, e) =>
-    match observation_rollup_accept(rollup: acc, event: e) {
-      RollupAccepted { rollup: r } => r
-      RollupSubjectOutOfScope { subject: _ } => acc
+    match std.observation.observation_rollup_accept(rollup: acc, event: e) {
+      std.observation.RollupAccepted { rollup: r } => r
+      std.observation.RollupSubjectOutOfScope { subject: _ } => acc
     })
 }
 
 test fn routine_leaf_events_fold_into_their_batch_without_surviving_individually() -> Bool {
   let folded = fold_events(
-    rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
+    rollup: std.observation.observation_rollup_open(subject: batch_subject()),
     events: [
-      event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: Begin),
+      event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Begin),
       event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
       event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
       event_at(subject: leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: std.observation.Skipped { reason: "unaffected" } }),
@@ -125,12 +125,12 @@ test fn routine_leaf_events_fold_into_their_batch_without_surviving_individually
   folded.counts.begun == 1
     && folded.counts.done == 2
     && folded.counts.skipped == 1
-    && observation_counts_anomalies(counts: folded.counts) == 0
+    && std.observation.observation_counts_anomalies(counts: folded.counts) == 0
 }
 
 test fn anomaly_classes_are_counted_so_a_zero_failed_summary_is_earned() -> Bool {
   let folded = fold_events(
-    rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
+    rollup: std.observation.observation_rollup_open(subject: batch_subject()),
     events: [
       event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
       event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Failed { error: "witness red", output: "" } }),
@@ -140,22 +140,22 @@ test fn anomaly_classes_are_counted_so_a_zero_failed_summary_is_earned() -> Bool
   folded.counts.done == 1
     && folded.counts.failed == 1
     && folded.counts.refused == 1
-    && observation_counts_anomalies(counts: folded.counts) == 2
+    && std.observation.observation_counts_anomalies(counts: folded.counts) == 2
 }
 
 test fn RED_event_outside_the_rollup_subject_is_refused_not_folded() -> Bool {
-  match observation_rollup_accept(
-    rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
+  match std.observation.observation_rollup_accept(
+    rollup: std.observation.observation_rollup_open(subject: batch_subject()),
     event: event_at(subject: foreign_leaf_subject(), transition: std.observation.Concluded { outcome: std.observation.Done }),
   ) {
-    RollupAccepted { rollup: _ } => false
-    RollupSubjectOutOfScope { subject: _ } => true
+    std.observation.RollupAccepted { rollup: _ } => false
+    std.observation.RollupSubjectOutOfScope { subject: _ } => true
   }
 }
 
 test fn RED_a_refused_event_leaves_the_counts_untouched() -> Bool {
   let folded = fold_events(
-    rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
+    rollup: std.observation.observation_rollup_open(subject: batch_subject()),
     events: [
       event_at(subject: foreign_leaf_subject(), transition: std.observation.Concluded { outcome: std.observation.Done }),
       event_at(subject: foreign_leaf_subject(), transition: std.observation.Concluded { outcome: std.observation.Failed { error: "elsewhere", output: "" } }),
@@ -163,19 +163,19 @@ test fn RED_a_refused_event_leaves_the_counts_untouched() -> Bool {
   )
   folded.counts.done == 0
     && folded.counts.failed == 0
-    && observation_counts_anomalies(counts: folded.counts) == 0
+    && std.observation.observation_counts_anomalies(counts: folded.counts) == 0
 }
 
 test fn prefix_at_grain_locates_the_batch_ancestor_of_a_leaf() -> Bool {
-  match observation_subject_prefix_at_grain(subject: leaf_subject(entry: "dag/a.dag"), grain: BatchGrain) {
+  match std.observation.observation_subject_prefix_at_grain(subject: leaf_subject(entry: "dag/a.dag"), grain: std.observation.BatchGrain) {
     Absent => false
     Present { value: v } =>
-      count(v.segments) == 2 && observation_subject_contains(ancestor: v, descendant: leaf_subject(entry: "dag/a.dag"))
+      count(v.segments) == 2 && std.observation.observation_subject_contains(ancestor: v, descendant: leaf_subject(entry: "dag/a.dag"))
   }
 }
 
 test fn RED_prefix_at_grain_below_the_subject_depth_is_absent_not_the_root() -> Bool {
-  match observation_subject_prefix_at_grain(subject: test.claim.observation_rollup_witness.batch_subject(), grain: ModuleGrain) {
+  match std.observation.observation_subject_prefix_at_grain(subject: batch_subject(), grain: std.observation.ModuleGrain) {
     Absent => true
     Present { value: _ } => false
   }

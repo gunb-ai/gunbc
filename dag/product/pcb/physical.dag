@@ -103,12 +103,12 @@ fn physical_refusal_count(s: PhysicalRefusalSet) -> std.nat.Nat {
 // with a zero extent has no rectangle at all, and the geometry layer already refuses that — this
 // module does not get to decide the degenerate case differently from every other consumer.
 fn placement_extent(p: ComponentPlacement) -> std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_geometry.AxisAlignedRectangle2> {
-  axis_aligned_rectangle2(
+  std.orthogonal_geometry.axis_aligned_rectangle2(
     min: p.origin,
-    max: point2(
+    max: std.affine_space.point2(
       frame: p.origin.frame,
-      x: signed_frame_component_count(c: p.origin.x) + micrometer_count(m: p.body_envelope.body_width),
-      y: signed_frame_component_count(c: p.origin.y) + micrometer_count(m: p.body_envelope.body_height)
+      x: std.affine_space.signed_frame_component_count(c: p.origin.x) + std.measure.micrometer_count(m: p.body_envelope.body_width),
+      y: std.affine_space.signed_frame_component_count(c: p.origin.y) + std.measure.micrometer_count(m: p.body_envelope.body_height)
     )
   )
 }
@@ -118,9 +118,9 @@ fn placement_extent(p: ComponentPlacement) -> std.orthogonal_geometry.Orthogonal
 // frame is refused rather than accepted and quietly rounded. This is the article's
 // RequiresExactSubMillimeterCoordinateQuantum cause discharged by a check rather than by a claim.
 fn frame_is_sub_millimetre(registry: std.spatial_frame.SpatialFrameRegistry, frame: std.coordinate_frame.CoordinateFrameIdentity) -> Bool {
-  match frame_length_scale(r: registry, identity: frame) {
+  match std.spatial_frame.frame_length_scale(r: registry, identity: frame) {
     Absent => false
-    Present { value: s } => scales_agree(a: s, b: Micro)
+    Present { value: s } => std.spatial_frame.scales_agree(a: s, b: std.measure.Micro)
   }
 }
 
@@ -151,17 +151,17 @@ fn placement_refusals(
     } else {
       []
     }
-    let same_frame = coordinate_frame_identity_eq(a: p.origin.frame, b: article.frame)
+    let same_frame = std.coordinate_frame.coordinate_frame_identity_eq(a: p.origin.frame, b: article.frame)
     let frame_cause = if same_frame { [] } else { [PlacementFrameDiffersFromBoard { placement: p.identity }] }
     let geometry_causes = if !same_frame {
       []
     } else {
       match placement_extent(p: p) {
-        OrthogonalRefused { cause: _ } => [PlacementExtentNotPositive { placement: p.identity }]
-        OrthogonalReady { value: rect } =>
-          match rectangle2_contains_rectangle(outer: article.outline, inner: rect) {
-            OrthogonalRefused { cause: _ } => [PlacementNotWithinOutline { placement: p.identity }]
-            OrthogonalReady { value: inside } =>
+        std.orthogonal_geometry.OrthogonalRefused { cause: _ } => [PlacementExtentNotPositive { placement: p.identity }]
+        std.orthogonal_geometry.OrthogonalReady { value: rect } =>
+          match std.orthogonal_geometry.rectangle2_contains_rectangle(outer: article.outline, inner: rect) {
+            std.orthogonal_geometry.OrthogonalRefused { cause: _ } => [PlacementNotWithinOutline { placement: p.identity }]
+            std.orthogonal_geometry.OrthogonalReady { value: inside } =>
               if inside { [] } else { [PlacementNotWithinOutline { placement: p.identity }] }
           }
       }
@@ -199,14 +199,14 @@ fn overlap_refusals(article: BoardPhysicalArticle) -> List<PhysicalRefusal> {
     let inner = fold(article.placements, init: OverlapScan { index: 0, out: [] }, f: fn(bacc, b) {
       let hits = if bacc.index > acc.index {
         match placement_extent(p: a) {
-          OrthogonalRefused { cause: _ } => []
-          OrthogonalReady { value: ra } =>
+          std.orthogonal_geometry.OrthogonalRefused { cause: _ } => []
+          std.orthogonal_geometry.OrthogonalReady { value: ra } =>
             match placement_extent(p: b) {
-              OrthogonalRefused { cause: _ } => []
-              OrthogonalReady { value: rb } =>
-                match rectangle2_overlaps(a: ra, b: rb) {
-                  OrthogonalRefused { cause: _ } => []
-                  OrthogonalReady { value: hit } =>
+              std.orthogonal_geometry.OrthogonalRefused { cause: _ } => []
+              std.orthogonal_geometry.OrthogonalReady { value: rb } =>
+                match std.orthogonal_geometry.rectangle2_overlaps(a: ra, b: rb) {
+                  std.orthogonal_geometry.OrthogonalRefused { cause: _ } => []
+                  std.orthogonal_geometry.OrthogonalReady { value: hit } =>
                     if hit { [PlacementsOverlap { first: a.identity, second: b.identity }] } else { [] }
                 }
             }
@@ -222,7 +222,7 @@ fn overlap_refusals(article: BoardPhysicalArticle) -> List<PhysicalRefusal> {
 }
 
 fn physical_causes(registry: std.spatial_frame.SpatialFrameRegistry, article: BoardPhysicalArticle) -> List<PhysicalRefusal> {
-  let frame_causes = match frame_length_scale(r: registry, identity: article.frame) {
+  let frame_causes = match std.spatial_frame.frame_length_scale(r: registry, identity: article.frame) {
     Absent => [BoardFrameUnregistered { frame: article.frame }]
     Present { value: _ } =>
       if frame_is_sub_millimetre(registry: registry, frame: article.frame) {

@@ -32,11 +32,11 @@ type LifecycleState {
 }
 
 fn squash_result_tree(pr: PrIdentity, base: extdeps.git.object_store.GitObjectId) -> extdeps.git.object_store.GitObjectId {
-  merge_admission_fixture_git_tree_from_tagged(tag: pr.squash_tag as std.types.NonEmptyStr, base: base)
+  gunbc.merge_admission.merge_admission_fixture_git_tree_from_tagged(tag: pr.squash_tag as NonEmptyStr, base: base)
 }
 
 fn initial_lifecycle_state() -> LifecycleState {
-  let tip0 = match git_sha1_object_id(hex: "0000000000000000000000000000000000000001") {
+  let tip0 = match extdeps.git.object_store.git_sha1_object_id(hex: "0000000000000000000000000000000000000001") {
     Present { value: oid } => oid
     Absent =>
       extdeps.git.object_store.GitSha1ObjectId {
@@ -45,7 +45,7 @@ fn initial_lifecycle_state() -> LifecycleState {
         },
       }
   }
-  let roster0 = content_hash_atom(value: "merge-lifecycle-roster-0")
+  let roster0 = std.content_hash.content_hash_atom(value: "merge-lifecycle-roster-0")
   LifecycleState {
     main_tip: tip0,
     current_roster: roster0,
@@ -78,7 +78,7 @@ fn merge_enabled(
   roster: gunbc.merge_admission.GateRosterHash,
 ) -> Bool {
   fold(latest_receipt_for(receipts: receipts, pr: pr), init: false, f: fn(acc, r) {
-    acc || policy_admits(
+    acc || gunbc.merge_admission.policy_admits(
       policy: policy,
       receipt: r,
       merge_target_tree_hash: tip,
@@ -97,7 +97,7 @@ fn apply_lifecycle_event(policy: gunbc.merge_admission.AdmissionPolicy, state: L
   match ev {
     RunPrCi { pr } =>
       let tested = squash_result_tree(pr: pr, base: state.main_tip)
-      let receipt = mint_merge_admission_receipt(
+      let receipt = gunbc.merge_admission.mint_merge_admission_receipt(
         pr_number: Present { value: pr.number },
         head_sha: pr.head_sha,
         base_tree_hash: state.main_tip,
@@ -128,7 +128,7 @@ fn apply_lifecycle_event(policy: gunbc.merge_admission.AdmissionPolicy, state: L
     RosterBump =>
       LifecycleState {
         main_tip: state.main_tip,
-        current_roster: content_hash_tagged_structural(
+        current_roster: std.content_hash.content_hash_tagged_structural(
           tag: "merge-lifecycle-roster-bump",
           payload: state.current_roster
         ),

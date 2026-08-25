@@ -58,7 +58,7 @@ type DiverseCompilationRun {
 }
 
 type IndependentCompilerEvidence
-  = IndependentCompilerEvidenceUnavailable { correction: v2.std.diagnostic.Unavailable }
+  = IndependentCompilerEvidenceUnavailable { correction: Unavailable }
 
 type IndependentCompilerPair {
   primary: v2.std.node.Symbol
@@ -66,8 +66,8 @@ type IndependentCompilerPair {
 }
 
 type DiverseCompilationAgreement {
-  primary: v2.workflow.bootstrap.DiverseCompilationRun
-  secondary: v2.workflow.bootstrap.DiverseCompilationRun
+  primary: DiverseCompilationRun
+  secondary: DiverseCompilationRun
   independent_compilers: IndependentCompilerPair
   agreed_hash: BootstrapHashPin
 }
@@ -93,8 +93,8 @@ type SeedHonestyDischarge {
 }
 
 type SeedSelfVerifyReceipt {
-  claim: v2.workflow.bootstrap.DiverseCompilationRun
-  check: v2.workflow.bootstrap.DiverseCompilationRun
+  claim: DiverseCompilationRun
+  check: DiverseCompilationRun
 }
 
 type SeedHonestyDecision
@@ -112,7 +112,7 @@ data bootstrap_seed_honesty_disconnected_digest_note: String = "The self_host_by
 
 fn independent_compiler_evidence_unavailable() -> IndependentCompilerEvidence {
   IndependentCompilerEvidenceUnavailable {
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -131,8 +131,8 @@ type ConvergenceLadder {
 fn bs_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: v2.std.diagnostic.Textual { file: ^bootstrap_workflow_file, extent: WholeFile },
-    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+    at: Textual { file: ^bootstrap_workflow_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
   }
 }
 
@@ -148,9 +148,9 @@ fn bootstrap_construct_snoc_dedup(
   acc: List<BootstrapConstruct>,
   item: BootstrapConstruct
 ) -> List<BootstrapConstruct> {
-  match contains(xs: acc, item: item, eq: bootstrap_construct_eq) {
+  match v2.std.algebra.contains(xs: acc, item: item, eq: bootstrap_construct_eq) {
     true => acc
-    false => list_snoc_item(xs: acc, item: item)
+    false => v2.std.algebra.list_snoc_item(xs: acc, item: item)
   }
 }
 
@@ -158,7 +158,7 @@ fn bootstrap_construct_list_append_unique(
   left: List<BootstrapConstruct>,
   right: List<BootstrapConstruct>
 ) -> List<BootstrapConstruct> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: right,
     empty: left,
     cons: fn(acc, item) { bootstrap_construct_snoc_dedup(acc: acc, item: item) }
@@ -166,14 +166,14 @@ fn bootstrap_construct_list_append_unique(
 }
 
 fn seed_capability_language_model() -> v2.std.language_model.LanguageModel {
-  void_language_model(identity: ^bootstrap_seed_language_model_identity)
+  v2.std.language_model.void_language_model(identity: ^bootstrap_seed_language_model_identity)
 }
 
 fn bootstrap_construct_subset_node(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -183,7 +183,7 @@ fn bootstrap_source_snapshot_root() -> v2.std.node.Node {
 
 fn bootstrap_seed_capability_inventory_root() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^bootstrap_construct_source_language_subset },
@@ -202,7 +202,7 @@ fn bootstrap_seed_capability_inventory_root() -> v2.std.node.Node {
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_lowering_subset)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -212,7 +212,7 @@ type BootstrapConstructFoldState {
 
 fn bootstrap_construct_fold_init(n: v2.std.node.Node) -> BootstrapConstructFoldState {
   match n.kind {
-    TypeNode { connective: Atom { identity: sym } } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
       BootstrapConstructFoldState {
         constructs: [BootstrapConstruct { identity: sym }]
       }
@@ -230,7 +230,7 @@ fn bootstrap_construct_fold_step(
   }
 }
 
-fn bootstrap_construct_fold_algebra() -> NodeFold<BootstrapConstructFoldState> {
+fn bootstrap_construct_fold_algebra() -> v2.std.node.NodeFold<BootstrapConstructFoldState> {
   v2.std.node.NodeFold {
     init: bootstrap_construct_fold_init,
     step: bootstrap_construct_fold_step
@@ -238,7 +238,7 @@ fn bootstrap_construct_fold_algebra() -> NodeFold<BootstrapConstructFoldState> {
 }
 
 fn bootstrap_construct_fold_state(root: v2.std.node.Node) -> BootstrapConstructFoldState {
-  fold_node(n: root, algebra: bootstrap_construct_fold_algebra())
+  v2.std.node.fold_node(n: root, algebra: bootstrap_construct_fold_algebra())
 }
 
 fn bootstrap_footprint_constructs_from_node(root: v2.std.node.Node) -> List<BootstrapConstruct> {
@@ -265,7 +265,7 @@ fn bootstrap_target_model_bundle_construct_fold_step(
   child: BootstrapConstructFoldState
 ) -> BootstrapConstructFoldState {
   let facet_constructs = match edge.label {
-    Named { name: label } => bootstrap_target_model_bundle_construct_facet(label: label)
+    v2.std.node.Named { name: label } => bootstrap_target_model_bundle_construct_facet(label: label)
     Positional => []
   }
 
@@ -274,7 +274,7 @@ fn bootstrap_target_model_bundle_construct_fold_step(
   }
 }
 
-fn bootstrap_target_model_bundle_construct_fold_algebra() -> NodeFold<BootstrapConstructFoldState> {
+fn bootstrap_target_model_bundle_construct_fold_algebra() -> v2.std.node.NodeFold<BootstrapConstructFoldState> {
   v2.std.node.NodeFold {
     init: bootstrap_target_model_bundle_construct_fold_init,
     step: bootstrap_target_model_bundle_construct_fold_step
@@ -282,7 +282,7 @@ fn bootstrap_target_model_bundle_construct_fold_algebra() -> NodeFold<BootstrapC
 }
 
 fn bootstrap_target_model_bundle_construct_fold_state(root: v2.std.node.Node) -> BootstrapConstructFoldState {
-  fold_node(n: root, algebra: bootstrap_target_model_bundle_construct_fold_algebra())
+  v2.std.node.fold_node(n: root, algebra: bootstrap_target_model_bundle_construct_fold_algebra())
 }
 
 fn bootstrap_target_model_construct_inventory(target: v2.std.compilers.target_model.TargetModel) -> List<BootstrapConstruct> {
@@ -314,7 +314,7 @@ fn bootstrap_footprint_constructs_from_projection_inputs(
 }
 
 fn bootstrap_construct_inventory_unique(constructs: List<BootstrapConstruct>) -> Bool {
-  unique(xs: constructs, eq: bootstrap_construct_eq)
+  v2.std.algebra.unique(xs: constructs, eq: bootstrap_construct_eq)
 }
 
 fn bootstrap_canonical_snapshot_content_hash() -> BootstrapHashPin {
@@ -322,18 +322,18 @@ fn bootstrap_canonical_snapshot_content_hash() -> BootstrapHashPin {
 }
 
 fn bs_list_eq(a: List<v2.std.node.Symbol>, b: List<v2.std.node.Symbol>) -> Bool {
-  bag_eq(xs: a, ys: b, eq: bs_symbol_eq)
+  v2.std.algebra.bag_eq(xs: a, ys: b, eq: bs_symbol_eq)
 }
 
 fn bootstrap_constructs_eq(left: List<BootstrapConstruct>, right: List<BootstrapConstruct>) -> Bool {
-  bag_eq(xs: left, ys: right, eq: bootstrap_construct_eq)
+  v2.std.algebra.bag_eq(xs: left, ys: right, eq: bootstrap_construct_eq)
 }
 
 fn bootstrap_projection_runtime_identity_node(runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: runtime.runtime_identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -341,7 +341,7 @@ fn bootstrap_projection_snapshot_content_hash_pin_node(pin: v2.std.node.Symbol) 
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: pin } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 fn bootstrap_hash_digest_in_fixture_constants(digest: v2.std.node.Hash) -> Bool {
@@ -356,39 +356,39 @@ fn bootstrap_hash_digest_fixture_atom_node(digest: v2.std.node.Hash) -> v2.std.n
     v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: v2_stage0_hash } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
 }
   } else if digest == v2_stage1_hash {
     v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: v2_stage1_hash } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
 }
   } else if digest == v2_stage2_hash {
     v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: v2_stage2_hash } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
 }
   } else {
     v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: pinned_v4_fixed_point_hash } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
 }
   }
 }
 
 fn bootstrap_hash_pin_pair_projection_node(pin: v2.std.node.Symbol, digest: v2.std.node.Hash) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^bootstrap_projection_hash_pin_slot_edge },
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: pin } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
 }
       },
       v2.std.node.Edge {
@@ -396,7 +396,7 @@ fn bootstrap_hash_pin_pair_projection_node(pin: v2.std.node.Symbol, digest: v2.s
         target: bootstrap_hash_digest_fixture_atom_node(digest: digest)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -434,47 +434,47 @@ fn bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> v2.std.diagnosti
       }
     } else {
       v2.std.diagnostic.Rejected {
-        diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: ^bootstrap_hash_pin_digest_pair_unbound))
+        diagnostics: v2.std.diagnostic.diagnostics_singleton(d: bs_diagnostic(reason: ^bootstrap_hash_pin_digest_pair_unbound))
       }
     }
   } else {
     v2.std.diagnostic.Rejected {
-      diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: ^bootstrap_hash_digest_not_in_fixture_constants))
+      diagnostics: v2.std.diagnostic.diagnostics_singleton(d: bs_diagnostic(reason: ^bootstrap_hash_digest_not_in_fixture_constants))
     }
   }
 }
 
 fn bootstrap_plan_accepted_hash_pins_projectable(plan: BootstrapPlan) -> Bool {
   match bootstrap_hash_pin_projection_node(pin: plan.seed.produces_hash) {
-    Accepted { value: _, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
       match bootstrap_hash_pin_projection_node(pin: plan.self0.produces_hash) {
-        Accepted { value: _, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
           match bootstrap_hash_pin_projection_node(pin: plan.self1.produces_hash) {
-            Accepted { value: _, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
               match bootstrap_hash_pin_projection_node(pin: plan.fixpt.left_hash) {
-                Accepted { value: _, diagnostics: _ } =>
+                v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
                   match bootstrap_hash_pin_projection_node(pin: plan.fixpt.right_hash) {
-                    Accepted { value: _, diagnostics: _ } =>
+                    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
                       match bootstrap_hash_pin_projection_node(pin: plan.fixpt.pinned_hash) {
-                        Accepted { value: _, diagnostics: _ } => true
-                        Rejected { diagnostics: _ } => false
+                        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+                        v2.std.diagnostic.Rejected { diagnostics: _ } => false
                       }
-                    Rejected { diagnostics: _ } => false
+                    v2.std.diagnostic.Rejected { diagnostics: _ } => false
                   }
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn bootstrap_plan_accepted_hash_pins_projectable_ok() -> Bool {
   match bootstrap_plan {
-    Accepted { value: plan, diagnostics: _ } => bootstrap_plan_accepted_hash_pins_projectable(plan: plan)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: plan, diagnostics: _ } => bootstrap_plan_accepted_hash_pins_projectable(plan: plan)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -482,7 +482,7 @@ data bootstrap_plan_accepted_hash_pins_projectable_witness: Bool = bootstrap_pla
 
 fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^bootstrap_projection_snapshot_root_edge },
@@ -490,7 +490,7 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> v2.st
       },
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^bootstrap_projection_snapshot_language_model_edge },
-        target: language_model_to_node(lm: inputs.snapshot.language_model)
+        target: v2.std.language_model.language_model_to_node(lm: inputs.snapshot.language_model)
       },
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^bootstrap_projection_snapshot_content_hash_edge },
@@ -505,7 +505,7 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> v2.st
         target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -513,12 +513,12 @@ fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) ->
   (inputs.snapshot.root == bootstrap_source_snapshot_root())
     && (inputs.snapshot.language_model == seed_capability_language_model())
     && (inputs.snapshot.content_hash == bootstrap_canonical_snapshot_content_hash())
-    && (inputs.target_model == rust_target_model())
-    && (inputs.runtime_model == v2_evaluator_runtime())
+    && (inputs.target_model == v2.extdeps.languages.rust.rust_target_model())
+    && (inputs.runtime_model == v2.extdeps.runtimes.v2_evaluator.v2_evaluator_runtime())
 }
 
 fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFootprint> {
-  let closure_hash = content_hash(n: bootstrap_projection_closure_node(inputs: inputs))
+  let closure_hash = v2.std.node.content_hash(n: bootstrap_projection_closure_node(inputs: inputs))
   let constructs = bootstrap_footprint_constructs_from_projection_inputs(inputs: inputs)
   if bootstrap_projection_inputs_well_formed(inputs: inputs)
        && bootstrap_construct_inventory_unique(constructs: constructs) {
@@ -539,22 +539,22 @@ fn bootstrap_seed_capability_matches_footprint(
   capability: SeedCapability
 ) -> Witness<BootstrapCapabilityExact> {
   match footprint {
-    Holds { value: fp } =>
+    v2.std.witness.Holds { value: fp } =>
       if bootstrap_construct_inventory_unique(constructs: capability.constructs)
            && bootstrap_constructs_eq(left: fp.constructs, right: capability.constructs) {
         v2.std.witness.Holds { value: BootstrapCapabilityExact { footprint: fp, capability: capability } }
       } else {
         v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_capability_not_minimal) }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
 fn bootstrap_convergence_ladder(plan: v2.std.diagnostic.Outcome<BootstrapPlan>) -> Witness<ConvergenceLadder> {
   match plan {
-    Accepted { value: bp, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: bp, diagnostics: _ } =>
       v2.std.witness.Holds { value: ConvergenceLadder { entry_seed: ^v1_pipeline, plan: bp, fixed_point: bp.fixpt } }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_plan_unavailable_for_ladder) }
   }
 }
@@ -571,12 +571,12 @@ fn independent_compiler_pair_witness(
 }
 
 fn seed_self_verify_check(
-  claim: v2.workflow.bootstrap.DiverseCompilationRun,
-  check: v2.workflow.bootstrap.DiverseCompilationRun
-) -> v2.std.diagnostic.Outcome<v2.workflow.bootstrap.SeedSelfVerifyReceipt> {
+  claim: DiverseCompilationRun,
+  check: DiverseCompilationRun
+) -> v2.std.diagnostic.Outcome<SeedSelfVerifyReceipt> {
   if claim.output == check.output {
     v2.std.diagnostic.Rejected {
-      diagnostics: diagnostics_singleton(
+      diagnostics: v2.std.diagnostic.diagnostics_singleton(
         d: bs_diagnostic(reason: ^bootstrap_self_verify_same_artifact)
       )
     }
@@ -584,27 +584,27 @@ fn seed_self_verify_check(
     || !(claim.compiler == check.compiler)
     || !(claim.output_hash.pin == check.output_hash.pin) {
     v2.std.diagnostic.Rejected {
-      diagnostics: diagnostics_singleton(
+      diagnostics: v2.std.diagnostic.diagnostics_singleton(
         d: bs_diagnostic(reason: ^bootstrap_self_verify_provenance_mismatch)
       )
     }
   } else if !(claim.output_hash.digest == check.output_hash.digest) {
     v2.std.diagnostic.Rejected {
-      diagnostics: diagnostics_singleton(
+      diagnostics: v2.std.diagnostic.diagnostics_singleton(
         d: bs_diagnostic(reason: ^bootstrap_self_verify_diverged)
       )
     }
   } else {
     v2.std.diagnostic.Accepted {
-      value: v2.workflow.bootstrap.SeedSelfVerifyReceipt { claim: claim, check: check },
+      value: SeedSelfVerifyReceipt { claim: claim, check: check },
       diagnostics: v2.std.diagnostic.None
     }
   }
 }
 
 fn diverse_compilation_agreement_witness(
-  primary: v2.workflow.bootstrap.DiverseCompilationRun,
-  secondary: v2.workflow.bootstrap.DiverseCompilationRun,
+  primary: DiverseCompilationRun,
+  secondary: DiverseCompilationRun,
   independent_compilers: Witness<IndependentCompilerPair>,
   evidence: IndependentCompilerEvidence,
   agreed_hash: BootstrapHashPin
@@ -620,9 +620,9 @@ fn bootstrap_seed_honesty_discharge_witness(
   diverse_double_compilation: Witness<DiverseCompilationAgreement>
 ) -> Witness<SeedHonestyDischarge> {
   match diverse_double_compilation {
-    Holds { value: _ } =>
+    v2.std.witness.Holds { value: _ } =>
       v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_diverse_compilation_mismatch) }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -652,8 +652,8 @@ data bootstrap_projection_inputs: BootstrapProjectionInputs = BootstrapProjectio
     language_model: seed_capability_language_model(),
     content_hash: bootstrap_canonical_snapshot_content_hash()
   },
-  target_model: rust_target_model(),
-  runtime_model: v2_evaluator_runtime()
+  target_model: v2.extdeps.languages.rust.rust_target_model(),
+  runtime_model: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_runtime()
 }
 
 data bootstrap_footprint_witness: Witness<BootstrapFootprint> = bootstrap_footprint(inputs: bootstrap_projection_inputs)
@@ -671,13 +671,13 @@ data bootstrap_physical_axiom: PhysicalExecutionAxiom = PhysicalExecutionAxiom {
 data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap_seed_honesty_discharge_witness(
   axiom: ^seed_honesty_axiom,
   diverse_double_compilation: diverse_compilation_agreement_witness(
-    primary: v2.workflow.bootstrap.DiverseCompilationRun {
+    primary: DiverseCompilationRun {
       source: ^v2_dag_source,
       compiler: ^v1_pipeline,
       output: ^diverse_compile_fixed_point_output,
       output_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: ^pinned_v4_fixed_point_hash_pin }
     },
-    secondary: v2.workflow.bootstrap.DiverseCompilationRun {
+    secondary: DiverseCompilationRun {
       source: ^v2_dag_source,
       compiler: ^independent_compiler_witness,
       output: ^diverse_compile_fixed_point_output,
@@ -695,15 +695,15 @@ data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap
 
 fn bootstrap_stage_output(plan: v2.std.diagnostic.Outcome<BootstrapPlan>, s: v2.std.node.Symbol) -> Bool {
   match plan {
-    Accepted { value: bp, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: bp, diagnostics: _ } =>
       (s == bp.seed.produces) || (s == bp.self0.produces) || (s == bp.self1.produces)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn bootstrap_plan_well_formed(p: BootstrapPlan) -> v2.std.diagnostic.Outcome<BootstrapPlan> {
   match bootstrap_fixpt_witness(f: p.fixpt) {
-    Holds { value: _ } =>
+    v2.std.witness.Holds { value: _ } =>
       if bs_list_eq(a: p.seed.consumes, b: [^v2_dag_source])
            && (p.seed.produces == ^v2_stage0_binary)
            && (p.seed.compiled_by == ^v1_pipeline)
@@ -722,13 +722,13 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> v2.std.diagnostic.Outcome<Boo
            && (p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest) {
         v2.std.diagnostic.Accepted { value: p, diagnostics: v2.std.diagnostic.None }
       } else {
-        v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: ^bootstrap_mis_wired)) }
+        v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: bs_diagnostic(reason: ^bootstrap_mis_wired)) }
       }
-    Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
   }
 }
 
-data bootstrap_plan_fixpt_digest_mismatch_rejects: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
+data bootstrap_plan_fixpt_digest_mismatch_rejects: v2.std.diagnostic.Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
   seed: CompileStage {
     consumes: [^v2_dag_source],
     produces: ^v2_stage0_binary,
@@ -787,6 +787,6 @@ data bootstrap_plan: v2.std.diagnostic.Outcome<BootstrapPlan> = bootstrap_plan_w
 data bootstrap_convergence_ladder_witness: Witness<ConvergenceLadder> = bootstrap_convergence_ladder(plan: bootstrap_plan)
 
 data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_plan {
-  Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
-  Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+  v2.std.diagnostic.Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
+  v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
 }

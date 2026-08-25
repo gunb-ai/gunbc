@@ -1,6 +1,7 @@
 module test.claim.fabric_budget_encumbrance_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Budget is modeled as a lease over money: something is held exclusively,
 // the holder can be superseded while still believing it holds, and a late
@@ -21,15 +22,15 @@ data usd_account: product.fabric.budget.MoneyAccount = product.fabric.budget.Mon
 
 fn advanced_account(o: product.fabric.budget.MoneyOutcome) -> List<product.fabric.budget.MoneyAccount> {
   match o {
-    AccountAdvanced { account: a } => [a]
-    MoneyRefused { refusal: _ } => []
+    product.fabric.budget.AccountAdvanced { account: a } => [a]
+    product.fabric.budget.MoneyRefused { refusal: _ } => []
   }
 }
 
 fn is_refused(o: product.fabric.budget.MoneyOutcome) -> Bool {
   match o {
-    AccountAdvanced { account: _ } => false
-    MoneyRefused { refusal: _ } => true
+    product.fabric.budget.AccountAdvanced { account: _ } => false
+    product.fabric.budget.MoneyRefused { refusal: _ } => true
   }
 }
 
@@ -43,18 +44,18 @@ fn is_refused(o: product.fabric.budget.MoneyOutcome) -> Bool {
 
 fn refusal_label(o: product.fabric.budget.MoneyOutcome) -> std.types.NonEmptyStr {
   match o {
-    AccountAdvanced { account: _ } => "advanced"
-    MoneyRefused { refusal: r } =>
+    product.fabric.budget.AccountAdvanced { account: _ } => "advanced"
+    product.fabric.budget.MoneyRefused { refusal: r } =>
       match r {
-        CurrencyMismatch { account: _, account_currency: _, presented_currency: _ } => "currency-mismatch"
-        StaleLeaseGeneration { reference: _, presented: _ } => "stale-generation"
-        LedgerRefused { account: _, refusal: lr } =>
+        product.fabric.budget.CurrencyMismatch { account: _, account_currency: _, presented_currency: _ } => "currency-mismatch"
+        product.fabric.budget.StaleLeaseGeneration { reference: _, presented: _ } => "stale-generation"
+        product.fabric.budget.LedgerRefused { account: _, refusal: lr } =>
           match lr {
-            ExceedsAppropriation { requested: _, committed: _, ceiling: _ } => "exceeds-appropriation"
-            UnknownEncumbrance { reference: _ } => "unknown-encumbrance"
-            DuplicateReference { reference: _ } => "duplicate-reference"
-            ExpenditureExceedsEncumbrance { reference: _, actual: _, maximum_liability: _ } => "expenditure-exceeds-encumbrance"
-            AlreadyTerminal { reference: _ } => "already-terminal"
+            extdeps.accounting.encumbrance.ExceedsAppropriation { requested: _, committed: _, ceiling: _ } => "exceeds-appropriation"
+            extdeps.accounting.encumbrance.UnknownEncumbrance { reference: _ } => "unknown-encumbrance"
+            extdeps.accounting.encumbrance.DuplicateReference { reference: _ } => "duplicate-reference"
+            extdeps.accounting.encumbrance.ExpenditureExceedsEncumbrance { reference: _, actual: _, maximum_liability: _ } => "expenditure-exceeds-encumbrance"
+            extdeps.accounting.encumbrance.AlreadyTerminal { reference: _ } => "already-terminal"
           }
       }
   }
@@ -240,13 +241,13 @@ test fn the_currency_refusal_is_distinct_from_a_ceiling_refusal() -> Bool {
     },
   )
   match foreign {
-    AccountAdvanced { account: _ } => false
-    MoneyRefused { refusal: r } =>
+    product.fabric.budget.AccountAdvanced { account: _ } => false
+    product.fabric.budget.MoneyRefused { refusal: r } =>
       match r {
-        CurrencyMismatch { account: _, account_currency: ac, presented_currency: pc } =>
+        product.fabric.budget.CurrencyMismatch { account: _, account_currency: ac, presented_currency: pc } =>
           ac == std.currency.Usd && pc == std.currency.Eur
-        LedgerRefused { account: _, refusal: _ } => false
-        StaleLeaseGeneration { reference: _, presented: _ } => false
+        product.fabric.budget.LedgerRefused { account: _, refusal: _ } => false
+        product.fabric.budget.StaleLeaseGeneration { reference: _, presented: _ } => false
       }
   }
 }

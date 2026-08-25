@@ -1,7 +1,7 @@
 module v2.test.claim.compilation_unit_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_mod_a: v2.std.compilers.compilation_unit.ModuleId = "mod.a" as std.types.NonEmptyStr
 data witness_mod_b: v2.std.compilers.compilation_unit.ModuleId = "mod.b" as std.types.NonEmptyStr
@@ -16,48 +16,48 @@ data witness_type_int: v2.std.node.Symbol = ^witness_cu_int
 data witness_fn_use_point: v2.std.node.Symbol = ^witness_cu_use_point
 
 fn witness_type_atom(sym: v2.std.node.Symbol) -> v2.std.node.Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } }, children: [])
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } }, children: [])
 }
 
 fn witness_point_struct_conj_body() -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Conj },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^x },
-        target: v2.test.claim.compilation_unit_witness.witness_type_atom(sym: v2.test.claim.compilation_unit_witness.witness_type_int),
+        target: witness_type_atom(sym: witness_type_int),
       }
     ]
   )
 }
 
 fn witness_fn_taking_point_by_value() -> v2.std.node.Node {
-  node_synthetic(
+  v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode {
-      connective: Arrow,
+      connective: v2.std.node.Arrow,
     },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^domain },
-        target: v2.test.claim.compilation_unit_witness.witness_type_atom(sym: v2.test.claim.compilation_unit_witness.witness_type_point),
+        target: witness_type_atom(sym: witness_type_point),
       },
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^codomain },
-        target: v2.test.claim.compilation_unit_witness.witness_type_atom(sym: v2.test.claim.compilation_unit_witness.witness_type_int),
+        target: witness_type_atom(sym: witness_type_int),
       }
     ]
   )
 }
 
 fn witness_exports_for_c() -> List<v2.std.node.Node> {
-  [v2.test.claim.compilation_unit_witness.witness_fn_taking_point_by_value()]
+  [witness_fn_taking_point_by_value()]
 }
 
 fn witness_type_defs_for_c() -> List<v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow> {
   [
     v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow {
-      identity: v2.test.claim.compilation_unit_witness.witness_type_point,
-      definition: v2.test.claim.compilation_unit_witness.witness_point_struct_conj_body(),
+      identity: witness_type_point,
+      definition: witness_point_struct_conj_body(),
     }
   ]
 }
@@ -70,14 +70,14 @@ fn witness_triangle_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
     ],
-    exports: empty_map()
-      |> map_insert(witness_mod_a, std.algebra.Empty)
-      |> map_insert(witness_mod_b, std.algebra.Empty)
-      |> map_insert(witness_mod_c, v2.test.claim.compilation_unit_witness.witness_exports_for_c()),
-    type_definitions: empty_map()
-      |> map_insert(witness_mod_a, std.algebra.Empty)
-      |> map_insert(witness_mod_b, std.algebra.Empty)
-      |> map_insert(witness_mod_c, v2.test.claim.compilation_unit_witness.witness_type_defs_for_c()),
+    exports: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(witness_mod_a, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_b, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_c, witness_exports_for_c()),
+    type_definitions: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(witness_mod_a, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_b, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_c, witness_type_defs_for_c()),
   }
 }
 
@@ -88,108 +88,108 @@ fn witness_chain_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
     ],
-    exports: empty_map()
-      |> map_insert(witness_mod_a, std.algebra.Empty)
-      |> map_insert(witness_mod_b, std.algebra.Empty)
-      |> map_insert(witness_mod_c, std.algebra.Empty),
-    type_definitions: empty_map()
-      |> map_insert(witness_mod_a, std.algebra.Empty)
-      |> map_insert(witness_mod_b, std.algebra.Empty)
-      |> map_insert(witness_mod_c, std.algebra.Empty),
+    exports: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(witness_mod_a, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_b, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_c, std.algebra.Empty),
+    type_definitions: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(witness_mod_a, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_b, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_c, std.algebra.Empty),
   }
 }
 
 fn witness_two_unit_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
-  empty_map()
-    |> map_insert(witness_mod_a, v2.test.claim.compilation_unit_witness.witness_unit_one)
-    |> map_insert(witness_mod_b, v2.test.claim.compilation_unit_witness.witness_unit_one)
-    |> map_insert(witness_mod_c, v2.test.claim.compilation_unit_witness.witness_unit_two)
+  v2.std.collection.empty_map()
+    |> v2.std.collection.map_insert(witness_mod_a, witness_unit_one)
+    |> v2.std.collection.map_insert(witness_mod_b, witness_unit_one)
+    |> v2.std.collection.map_insert(witness_mod_c, witness_unit_two)
 }
 
 fn witness_single_unit_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
-  empty_map()
-    |> map_insert(witness_mod_a, witness_unit_all)
-    |> map_insert(witness_mod_b, witness_unit_all)
-    |> map_insert(witness_mod_c, witness_unit_all)
+  v2.std.collection.empty_map()
+    |> v2.std.collection.map_insert(witness_mod_a, witness_unit_all)
+    |> v2.std.collection.map_insert(witness_mod_b, witness_unit_all)
+    |> v2.std.collection.map_insert(witness_mod_c, witness_unit_all)
 }
 
 fn witness_partition_fold_two_units() -> List<v2.std.compilers.compilation_unit.CompilationUnit> {
-  partition_fold(
-    module_dag: v2.test.claim.compilation_unit_witness.witness_triangle_dag(),
-    assignment: v2.test.claim.compilation_unit_witness.witness_two_unit_assignment()
+  v2.std.compilers.compilation_unit.partition_fold(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment()
   )
 }
 
 test fn witness_unit_one_members_and_deps() -> Bool {
-  let units = v2.test.claim.compilation_unit_witness.witness_partition_fold_two_units()
-  match partition_unit_by_id(units: units, unit_id: v2.test.claim.compilation_unit_witness.witness_unit_one) {
+  let units = witness_partition_fold_two_units()
+  match v2.std.compilers.compilation_unit.partition_unit_by_id(units: units, unit_id: witness_unit_one) {
     Present { value: unit } =>
       (unit.members == [witness_mod_a, witness_mod_b])
-        && (unit.deps == [v2.test.claim.compilation_unit_witness.witness_unit_two])
+        && (unit.deps == [witness_unit_two])
     Absent => false
   }
 }
 
 test fn witness_unit_two_interface_carries_declaration_content() -> Bool {
-  let units = v2.test.claim.compilation_unit_witness.witness_partition_fold_two_units()
-  let export_decl = v2.test.claim.compilation_unit_witness.witness_fn_taking_point_by_value()
-  match partition_unit_by_id(units: units, unit_id: v2.test.claim.compilation_unit_witness.witness_unit_two) {
+  let units = witness_partition_fold_two_units()
+  let export_decl = witness_fn_taking_point_by_value()
+  match v2.std.compilers.compilation_unit.partition_unit_by_id(units: units, unit_id: witness_unit_two) {
     Present { value: unit } =>
       (unit.members == [witness_mod_c])
-        && (unit.deps == [v2.test.claim.compilation_unit_witness.witness_unit_one])
-        && partition_interface_contains_node(interface: unit.interface, needle: export_decl)
+        && (unit.deps == [witness_unit_one])
+        && v2.std.compilers.compilation_unit.partition_interface_contains_node(interface: unit.interface, needle: export_decl)
     Absent => false
   }
 }
 
 test fn witness_unit_two_interface_includes_by_value_type_def() -> Bool {
-  let units = v2.test.claim.compilation_unit_witness.witness_partition_fold_two_units()
-  let point_def = v2.test.claim.compilation_unit_witness.witness_point_struct_conj_body()
-  match partition_unit_by_id(units: units, unit_id: v2.test.claim.compilation_unit_witness.witness_unit_two) {
+  let units = witness_partition_fold_two_units()
+  let point_def = witness_point_struct_conj_body()
+  match v2.std.compilers.compilation_unit.partition_unit_by_id(units: units, unit_id: witness_unit_two) {
     Present { value: unit } =>
-      partition_interface_contains_node(interface: unit.interface, needle: point_def)
+      v2.std.compilers.compilation_unit.partition_interface_contains_node(interface: unit.interface, needle: point_def)
         && ((unit.interface |> count) >= 2)
     Absent => false
   }
 }
 
 test fn witness_interface_closure_saturates_on_triangle() -> Bool {
-  let dag = v2.test.claim.compilation_unit_witness.witness_triangle_dag()
-  let assignment = v2.test.claim.compilation_unit_witness.witness_two_unit_assignment()
-  let units = partition_fold(module_dag: dag, assignment: assignment)
-  match partition_unit_by_id(units: units, unit_id: v2.test.claim.compilation_unit_witness.witness_unit_two) {
+  let dag = witness_triangle_dag()
+  let assignment = witness_two_unit_assignment()
+  let units = v2.std.compilers.compilation_unit.partition_fold(module_dag: dag, assignment: assignment)
+  match v2.std.compilers.compilation_unit.partition_unit_by_id(units: units, unit_id: witness_unit_two) {
     Present { value: unit } =>
-      match partition_interface_closure_saturate_result(
-        seeds: [v2.test.claim.compilation_unit_witness.witness_fn_taking_point_by_value()],
+      match v2.std.compilers.compilation_unit.partition_interface_closure_saturate_result(
+        seeds: [witness_fn_taking_point_by_value()],
         module_dag: dag,
         members: unit.members
       ) {
-        PartitionInterfaceClosed { nodes: _ } => true
-        PartitionInterfaceTruncated => false
+        v2.std.compilers.compilation_unit.PartitionInterfaceClosed { nodes: _ } => true
+        v2.std.compilers.compilation_unit.PartitionInterfaceTruncated => false
       }
     Absent => false
   }
 }
 
 test fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
-  match partition_fold_outcome_with_closure_fuel(
-    module_dag: v2.test.claim.compilation_unit_witness.witness_triangle_dag(),
-    assignment: v2.test.claim.compilation_unit_witness.witness_two_unit_assignment(),
+  match v2.std.compilers.compilation_unit.partition_fold_outcome_with_closure_fuel(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment(),
     closure_fuel: 0
   ) {
-    PartitionFoldRefused {
-      cause: InterfaceClosureUnreachedFixpoint { unit_id: _ },
+    v2.std.compilers.compilation_unit.PartitionFoldRefused {
+      cause: v2.std.compilers.compilation_unit.InterfaceClosureUnreachedFixpoint { unit_id: _ },
     } => true
-    PartitionFoldOk { units: _ } => false
+    v2.std.compilers.compilation_unit.PartitionFoldOk { units: _ } => false
   }
 }
 
 test fn witness_single_unit_partition_has_no_cross_unit_deps() -> Bool {
-  let units = partition_fold(
-    module_dag: v2.test.claim.compilation_unit_witness.witness_triangle_dag(),
+  let units = v2.std.compilers.compilation_unit.partition_fold(
+    module_dag: witness_triangle_dag(),
     assignment: witness_single_unit_assignment()
   )
-  match partition_unit_by_id(units: units, unit_id: witness_unit_all) {
+  match v2.std.compilers.compilation_unit.partition_unit_by_id(units: units, unit_id: witness_unit_all) {
     Present { value: unit } =>
       (unit.members == [witness_mod_a, witness_mod_b, witness_mod_c])
         && (unit.deps == [])
@@ -199,78 +199,78 @@ test fn witness_single_unit_partition_has_no_cross_unit_deps() -> Bool {
 }
 
 test fn witness_intra_unit_edges_do_not_become_deps() -> Bool {
-  let units = partition_fold(
+  let units = v2.std.compilers.compilation_unit.partition_fold(
     module_dag: witness_chain_dag(),
     assignment: witness_single_unit_assignment()
   )
-  match partition_unit_by_id(units: units, unit_id: witness_unit_all) {
+  match v2.std.compilers.compilation_unit.partition_unit_by_id(units: units, unit_id: witness_unit_all) {
     Present { value: unit } => unit.deps == []
     Absent => false
   }
 }
 
 test fn witness_fold_deps_match_boundary_edges_two_unit() -> Bool {
-  partition_fold_deps_match_boundary_edges(
-    module_dag: v2.test.claim.compilation_unit_witness.witness_triangle_dag(),
-    assignment: v2.test.claim.compilation_unit_witness.witness_two_unit_assignment()
+  v2.std.compilers.compilation_unit.partition_fold_deps_match_boundary_edges(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment()
   )
 }
 
 test fn witness_fold_deps_match_boundary_edges_single_unit() -> Bool {
-  partition_fold_deps_match_boundary_edges(
-    module_dag: v2.test.claim.compilation_unit_witness.witness_triangle_dag(),
+  v2.std.compilers.compilation_unit.partition_fold_deps_match_boundary_edges(
+    module_dag: witness_triangle_dag(),
     assignment: witness_single_unit_assignment()
   )
 }
 
 test fn witness_misderived_deps_would_fail_receipt() -> Bool {
-  let units = v2.test.claim.compilation_unit_witness.witness_partition_fold_two_units()
-  match partition_unit_by_id(units: units, unit_id: v2.test.claim.compilation_unit_witness.witness_unit_one) {
+  let units = witness_partition_fold_two_units()
+  match v2.std.compilers.compilation_unit.partition_unit_by_id(units: units, unit_id: witness_unit_one) {
     Present { value: unit } =>
       !(unit.deps == [])
-        && !(unit.deps == [v2.test.claim.compilation_unit_witness.witness_unit_one])
-        && (unit.deps == [v2.test.claim.compilation_unit_witness.witness_unit_two])
+        && !(unit.deps == [witness_unit_one])
+        && (unit.deps == [witness_unit_two])
     Absent => false
   }
 }
 
 test fn witness_provenance_variants_distinct() -> Bool {
-  let explicit = partition_provenance_hand_explicit()
-  let derived = partition_provenance_policy_derived(
+  let explicit = v2.std.compilers.compilation_unit.partition_provenance_hand_explicit()
+  let derived = v2.std.compilers.compilation_unit.partition_provenance_policy_derived(
     policy: std.decl_ref.DeclarationRef {
       module_path: "v2.std.compilers.compilation_unit" as std.types.NonEmptyStr,
       decl_name: "partition_fold" as std.types.NonEmptyStr,
       field: std.decl_ref.WholeDeclaration,
     }
   )
-  !partition_provenance_eq(left: explicit, right: derived)
-    && partition_provenance_eq(left: explicit, right: explicit)
+  !v2.std.compilers.compilation_unit.partition_provenance_eq(left: explicit, right: derived)
+    && v2.std.compilers.compilation_unit.partition_provenance_eq(left: explicit, right: explicit)
     && match derived {
-      PolicyDerived { policy: _ } => true
-      HandExplicit => false
+      v2.std.compilers.compilation_unit.PolicyDerived { policy: _ } => true
+      v2.std.compilers.compilation_unit.HandExplicit => false
     }
 }
 
 test fn witness_r4_interface_carriers_only() -> Bool {
-  let valid_verdict = PartitionR4Valid
-  let refused_verdict = partition_r4_witness_refused_scc_split
+  let valid_verdict = v2.std.compilers.compilation_unit.PartitionR4Valid
+  let refused_verdict = v2.std.compilers.compilation_unit.partition_r4_witness_refused_scc_split
   match valid_verdict {
-    PartitionR4Valid => true
-    PartitionR4Refused { cause: _ } => false
+    v2.std.compilers.compilation_unit.PartitionR4Valid => true
+    v2.std.compilers.compilation_unit.PartitionR4Refused { cause: _ } => false
   }
     && match refused_verdict {
-      PartitionR4Valid => false
-      PartitionR4Refused { cause: _ } => true
+      v2.std.compilers.compilation_unit.PartitionR4Valid => false
+      v2.std.compilers.compilation_unit.PartitionR4Refused { cause: _ } => true
     }
 }
 
 test fn witness_partition_fold_outcome_ok_on_triangle() -> Bool {
-  match partition_fold_outcome(
-    module_dag: v2.test.claim.compilation_unit_witness.witness_triangle_dag(),
-    assignment: v2.test.claim.compilation_unit_witness.witness_two_unit_assignment()
+  match v2.std.compilers.compilation_unit.partition_fold_outcome(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment()
   ) {
-    PartitionFoldOk { units: units } => (units |> count) == 2
-    PartitionFoldRefused { cause: _ } => false
+    v2.std.compilers.compilation_unit.PartitionFoldOk { units: units } => (units |> count) == 2
+    v2.std.compilers.compilation_unit.PartitionFoldRefused { cause: _ } => false
   }
 }
 

@@ -42,7 +42,7 @@ fn atlas_hex_prefix_value(hex: String, digits: Int) -> Int {
 }
 
 fn atlas_cell_index(identity: v2.lens.module_impact_query.ModuleIdentity) -> Int {
-  let digest = content_hash_atom(value: identity.name).digest
+  let digest = std.content_hash.content_hash_atom(value: identity.name).digest
   atlas_hex_prefix_value(hex: digest, digits: 12) % atlas_total_cells()
 }
 
@@ -113,17 +113,17 @@ data repo_atlas_cell_order_note: String = "The accumulator carries an ORDERED in
 fn atlas_accumulate_cell(acc: AtlasCellAccumulator, identity: v2.lens.module_impact_query.ModuleIdentity) -> AtlasCellAccumulator {
   let index = atlas_cell_index(identity: identity)
   match v2.lens.module_graph.map_lookup_where_rejected_unreachable(m: acc.occupants, key: index) {
-    Present { value: existing } => AtlasCellAccumulator {
+    v2.std.optional.Present { value: existing } => AtlasCellAccumulator {
       order: acc.order,
-      occupants: map_insert(
+      occupants: v2.std.collection.map_insert(
         m: acc.occupants,
         key: index,
         value: concat(existing, [identity])
       )
     }
-    Absent => AtlasCellAccumulator {
+    v2.std.optional.Absent => AtlasCellAccumulator {
       order: concat([index], acc.order),
-      occupants: map_insert(m: acc.occupants, key: index, value: [identity])
+      occupants: v2.std.collection.map_insert(m: acc.occupants, key: index, value: [identity])
     }
   }
 }
@@ -131,14 +131,14 @@ fn atlas_accumulate_cell(acc: AtlasCellAccumulator, identity: v2.lens.module_imp
 fn atlas_cells_of_modules(identities: List<v2.lens.module_impact_query.ModuleIdentity>) -> List<RepoAtlasCell> {
   let acc = fold(
     identities,
-    init: AtlasCellAccumulator { order: [], occupants: empty_map() },
+    init: AtlasCellAccumulator { order: [], occupants: v2.std.collection.empty_map() },
     f: atlas_accumulate_cell
   )
   map(v2.std.algebra.list_reverse(xs: acc.order), index => RepoAtlasCell {
     address: atlas_address_of_index(index: index),
     occupants: match v2.lens.module_graph.map_lookup_where_rejected_unreachable(m: acc.occupants, key: index) {
-      Present { value: occupants } => occupants
-      Absent => []
+      v2.std.optional.Present { value: occupants } => occupants
+      v2.std.optional.Absent => []
     }
   })
 }
@@ -152,10 +152,10 @@ type AtlasIdentityDedup {
 
 fn atlas_dedup_step(acc: AtlasIdentityDedup, n: v2.lens.module_graph.ModuleDeclarationFact) -> AtlasIdentityDedup {
   match v2.lens.module_graph.map_lookup_where_rejected_unreachable(m: acc.seen, key: n.module) {
-    Present { value: _ } => acc
-    Absent => AtlasIdentityDedup {
+    v2.std.optional.Present { value: _ } => acc
+    v2.std.optional.Absent => AtlasIdentityDedup {
       order: concat([v2.lens.module_impact_query.ModuleIdentity { name: n.module }], acc.order),
-      seen: map_insert(m: acc.seen, key: n.module, value: true)
+      seen: v2.std.collection.map_insert(m: acc.seen, key: n.module, value: true)
     }
   }
 }
@@ -163,7 +163,7 @@ fn atlas_dedup_step(acc: AtlasIdentityDedup, n: v2.lens.module_graph.ModuleDecla
 fn atlas_module_identities(nodes: List<v2.lens.module_graph.ModuleDeclarationFact>) -> List<v2.lens.module_impact_query.ModuleIdentity> {
   v2.std.algebra.list_reverse(xs: fold(
     nodes,
-    init: AtlasIdentityDedup { order: [], seen: empty_map() },
+    init: AtlasIdentityDedup { order: [], seen: v2.std.collection.empty_map() },
     f: atlas_dedup_step
   ).order)
 }
@@ -232,21 +232,21 @@ data repo_atlas_refusal_note: String = "UNMERGED, PAIRING-BROKEN, UNKNOWN AND TR
 
 Dropping the bad entry and drawing the rest is the absorbing fallback DESIGN 5 forbids, in its narrowing direction: the deficit's frequency would be zeroed and the operator would read a complete overlay over an incomplete observation. The refusal is typed and located, so it is countable.
 
-DiffPairingBrokenStatus is enumerated here deliberately. The ruling's status list named eight arms and GitDiffChangeStatus carries NINE; matching the prose rather than the coproduct would have left one arm falling through whatever the default was."
+extdeps.git.DiffPairingBrokenStatus is enumerated here deliberately. The ruling's status list named eight arms and extdeps.git.GitDiffChangeStatus carries NINE; matching the prose rather than the coproduct would have left one arm falling through whatever the default was."
 
 data repo_atlas_status_totality_note: String = "ALL NINE ARMS ARE ENUMERATED AND NO WILDCARD REMAINS in any of the three status folds. A wildcard here is not a shorthand — it is a standing decision about statuses that do not exist yet: a tenth upstream GitDiffChangeStatus arm would have compiled clean and silently become an ordinary, non-departed, non-refusing change, which is the fail-open direction on the one wall this carrier exists to hold. With the wildcards gone a new upstream arm fails to typecheck until the atlas makes a conscious decision about it, so the refusal is the substrate's rather than this module's diligence."
 
 fn atlas_status_refusal(entry: extdeps.git.GitDiffStatusEntry) -> AtlasOverlayRefusalCause? {
   match entry.status {
-    DiffAddedStatus => v2.std.optional.Absent
-    DiffModifiedStatus => v2.std.optional.Absent
-    DiffCopiedStatus { similarity: _ } => v2.std.optional.Absent
-    DiffRenamedStatus { similarity: _ } => v2.std.optional.Absent
-    DiffDeletedStatus => v2.std.optional.Absent
-    DiffTypeChangedStatus => v2.std.optional.Absent
-    DiffUnmergedStatus => v2.std.optional.Present { value: UnmergedEntryPresent { path: entry.path } }
-    DiffPairingBrokenStatus => v2.std.optional.Present { value: PairingBrokenEntryPresent { path: entry.path } }
-    DiffUnknownGitStatus { raw: raw } =>
+    extdeps.git.DiffAddedStatus => v2.std.optional.Absent
+    extdeps.git.DiffModifiedStatus => v2.std.optional.Absent
+    extdeps.git.DiffCopiedStatus { similarity: _ } => v2.std.optional.Absent
+    extdeps.git.DiffRenamedStatus { similarity: _ } => v2.std.optional.Absent
+    extdeps.git.DiffDeletedStatus => v2.std.optional.Absent
+    extdeps.git.DiffTypeChangedStatus => v2.std.optional.Absent
+    extdeps.git.DiffUnmergedStatus => v2.std.optional.Present { value: UnmergedEntryPresent { path: entry.path } }
+    extdeps.git.DiffPairingBrokenStatus => v2.std.optional.Present { value: PairingBrokenEntryPresent { path: entry.path } }
+    extdeps.git.DiffUnknownGitStatus { raw: raw } =>
       v2.std.optional.Present { value: UnknownGitStatusPresent { path: entry.path, raw: raw } }
   }
 }
@@ -254,8 +254,8 @@ fn atlas_status_refusal(entry: extdeps.git.GitDiffStatusEntry) -> AtlasOverlayRe
 fn atlas_first_refusal(entries: List<extdeps.git.GitDiffStatusEntry>) -> AtlasOverlayRefusalCause? {
   fold(entries, init: v2.std.optional.Absent, f: (acc, e) =>
     match acc {
-      Present { value: cause } => v2.std.optional.Present { value: cause }
-      Absent => atlas_status_refusal(entry: e)
+      v2.std.optional.Present { value: cause } => v2.std.optional.Present { value: cause }
+      v2.std.optional.Absent => atlas_status_refusal(entry: e)
     })
 }
 
@@ -263,29 +263,29 @@ data repo_atlas_departed_status_note: String = "A DELETED path has departed. A R
 
 fn atlas_status_is_departure(status: extdeps.git.GitDiffChangeStatus) -> Bool {
   match status {
-    DiffDeletedStatus => true
-    DiffAddedStatus => false
-    DiffModifiedStatus => false
-    DiffCopiedStatus { similarity: _ } => false
-    DiffRenamedStatus { similarity: _ } => false
-    DiffTypeChangedStatus => false
-    DiffUnmergedStatus => false
-    DiffPairingBrokenStatus => false
-    DiffUnknownGitStatus { raw: _ } => false
+    extdeps.git.DiffDeletedStatus => true
+    extdeps.git.DiffAddedStatus => false
+    extdeps.git.DiffModifiedStatus => false
+    extdeps.git.DiffCopiedStatus { similarity: _ } => false
+    extdeps.git.DiffRenamedStatus { similarity: _ } => false
+    extdeps.git.DiffTypeChangedStatus => false
+    extdeps.git.DiffUnmergedStatus => false
+    extdeps.git.DiffPairingBrokenStatus => false
+    extdeps.git.DiffUnknownGitStatus { raw: _ } => false
   }
 }
 
 fn atlas_status_carries_departed_old_path(status: extdeps.git.GitDiffChangeStatus) -> Bool {
   match status {
-    DiffRenamedStatus { similarity: _ } => true
-    DiffCopiedStatus { similarity: _ } => false
-    DiffAddedStatus => false
-    DiffModifiedStatus => false
-    DiffDeletedStatus => false
-    DiffTypeChangedStatus => false
-    DiffUnmergedStatus => false
-    DiffPairingBrokenStatus => false
-    DiffUnknownGitStatus { raw: _ } => false
+    extdeps.git.DiffRenamedStatus { similarity: _ } => true
+    extdeps.git.DiffCopiedStatus { similarity: _ } => false
+    extdeps.git.DiffAddedStatus => false
+    extdeps.git.DiffModifiedStatus => false
+    extdeps.git.DiffDeletedStatus => false
+    extdeps.git.DiffTypeChangedStatus => false
+    extdeps.git.DiffUnmergedStatus => false
+    extdeps.git.DiffPairingBrokenStatus => false
+    extdeps.git.DiffUnknownGitStatus { raw: _ } => false
   }
 }
 
@@ -307,14 +307,14 @@ fn atlas_project_entry(
 ) -> AtlasProjectionAccumulator {
   let with_old = if atlas_status_carries_departed_old_path(status: entry.status) {
     match entry.old_path {
-      Present { value: old } => AtlasProjectionAccumulator {
+      v2.std.optional.Present { value: old } => AtlasProjectionAccumulator {
         marks_rev: acc.marks_rev,
         unprojected_rev: concat(
           [DepartedPathPriorIdentityUnavailable { path: old, status: entry.status }],
           acc.unprojected_rev
         )
       }
-      Absent => acc
+      v2.std.optional.Absent => acc
     }
   } else {
     acc
@@ -360,8 +360,8 @@ fn atlas_project_diff(
       AtlasChangeOverlayRefused { cause: DiffObservationTruncated }
     GitDiffNameStatusComplete { entries: entries } =>
       match atlas_first_refusal(entries: entries) {
-        Present { value: cause } => AtlasChangeOverlayRefused { cause: cause }
-        Absent => {
+        v2.std.optional.Present { value: cause } => AtlasChangeOverlayRefused { cause: cause }
+        v2.std.optional.Absent => {
           let acc = fold(
             entries,
             init: AtlasProjectionAccumulator { marks_rev: [], unprojected_rev: [] },

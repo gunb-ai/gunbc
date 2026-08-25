@@ -4,14 +4,14 @@ module test.fixture.record_construction_census.specimens
 data record_construction_census_fixture_note: String = "Closed fixture pool for the record-construction census witness (BoundedPoll deletion lane, adhoc-429f6982-280). The three specimens plant exactly one construction of CensusProbeSubject, one match-pattern-only mention, and one string literal spelling the same lexeme, so the witness proves the decl-fact skeleton's record_construction_spelling edge counts constructions and ONLY constructions: a match pattern contributes nothing (patterns marshal without construction identity) and a string literal spelling the type name contributes nothing (literal atoms ride positional edges). Oracle counts are authored here, independently of any tree measurement (DESIGN section 5: controlled fixture)."
 
 type CensusProbeSubject {
-  weight: v2.std.integer.Int
+  weight: Int
 }
 
 fn census_probe_constructs_subject() -> CensusProbeSubject {
   CensusProbeSubject { weight: 1 }
 }
 
-fn census_probe_matches_subject_only(s: CensusProbeSubject) -> v2.std.integer.Int {
+fn census_probe_matches_subject_only(s: CensusProbeSubject) -> Int {
   match s {
     CensusProbeSubject { weight: w } => w
   }

@@ -1,25 +1,26 @@
 module test.claim.emit_host_gate_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nonempty(s: String) -> Bool {
   s != ""
 }
 
 test fn w_rust_fixture_nonempty() -> Bool {
-  nonempty(s: rust_stdout_fixture_source)
+  nonempty(s: tools.emit_host_fixtures.rust_stdout_fixture_source)
 }
 
 test fn w_python_fixture_nonempty() -> Bool {
-  nonempty(s: python_stdout_fixture_source)
+  nonempty(s: tools.emit_host_fixtures.python_stdout_fixture_source)
 }
 
 test fn w_go_fixture_nonempty() -> Bool {
-  nonempty(s: go_stdout_fixture_source)
+  nonempty(s: tools.emit_host_fixtures.go_stdout_fixture_source)
 }
 
 test fn w_ts_fixture_nonempty() -> Bool {
-  nonempty(s: ts_host_fixture_source)
+  nonempty(s: tools.emit_host_fixtures.ts_host_fixture_source)
 }
 
 test fn w_byte_count_is_five() -> Bool {
@@ -27,6 +28,6 @@ test fn w_byte_count_is_five() -> Bool {
 }
 
 test fn w_ts_byte_count_is_four() -> Bool {
-  byte_size_count(ts_signed_i32_le_byte_count) == 4
+  byte_size_count(tools.emit_host_fixtures.ts_signed_i32_le_byte_count) == 4
 }
 

@@ -9,16 +9,16 @@ type EffectRegion
   | FrameScratch
   | UnclassifiedRegion
 
-data region_substrate_closure_root: std.effect_grant.NamespacePosition = filesystem_position(path: ["closure"])
-data region_repo_root: std.effect_grant.NamespacePosition = filesystem_position(path: ["repo"])
-data region_frame_scratch_root: std.effect_grant.NamespacePosition = filesystem_position(path: ["scratch"])
+data region_substrate_closure_root: std.effect_grant.NamespacePosition = std.effect_grant.filesystem_position(path: ["closure"])
+data region_repo_root: std.effect_grant.NamespacePosition = std.effect_grant.filesystem_position(path: ["repo"])
+data region_frame_scratch_root: std.effect_grant.NamespacePosition = std.effect_grant.filesystem_position(path: ["scratch"])
 
 fn classify_region(root: std.effect_grant.NamespacePosition) -> EffectRegion {
-  if position_under(target: root, root: region_substrate_closure_root) {
+  if std.effect_grant.position_under(target: root, root: region_substrate_closure_root) {
     SubstrateClosure
-  } else if position_under(target: root, root: region_repo_root) {
+  } else if std.effect_grant.position_under(target: root, root: region_repo_root) {
     RepoTree
-  } else if position_under(target: root, root: region_frame_scratch_root) {
+  } else if std.effect_grant.position_under(target: root, root: region_frame_scratch_root) {
     FrameScratch
   } else {
     UnclassifiedRegion
@@ -27,8 +27,8 @@ fn classify_region(root: std.effect_grant.NamespacePosition) -> EffectRegion {
 
 fn read_grant_replayable(g: std.effect_grant.Grant) -> Bool {
   match g.binding {
-    Replay { fixture_store: s } => true
-    RealTransport =>
+    std.effect_grant.Replay { fixture_store: s } => true
+    std.effect_grant.RealTransport =>
       match classify_region(root: g.root) {
         SubstrateClosure => true
         RepoTree => false
@@ -49,8 +49,8 @@ fn write_grant_isolated(g: std.effect_grant.Grant) -> Bool {
 
 fn read_grant_intersects_live_tree(g: std.effect_grant.Grant) -> Bool {
   match g.binding {
-    Replay { fixture_store: s } => false
-    RealTransport =>
+    std.effect_grant.Replay { fixture_store: s } => false
+    std.effect_grant.RealTransport =>
       match classify_region(root: g.root) {
         RepoTree => true
         UnclassifiedRegion => true
@@ -66,7 +66,7 @@ fn grants_all_read_replayable(grants: List<std.effect_grant.Grant>) -> Bool {
   } else {
     let g = grants.first()
     let rest = grants.skip(n: 1)
-    if verb_eq(a: g.verb, b: Read) {
+    if std.effect_grant.verb_eq(a: g.verb, b: std.effect_grant.Read) {
       read_grant_replayable(g: g) && grants_all_read_replayable(grants: rest)
     } else {
       grants_all_read_replayable(grants: rest)
@@ -80,7 +80,7 @@ fn grants_all_write_isolated(grants: List<std.effect_grant.Grant>) -> Bool {
   } else {
     let g = grants.first()
     let rest = grants.skip(n: 1)
-    if verb_eq(a: g.verb, b: Write) {
+    if std.effect_grant.verb_eq(a: g.verb, b: std.effect_grant.Write) {
       write_grant_isolated(g: g) && grants_all_write_isolated(grants: rest)
     } else {
       grants_all_write_isolated(grants: rest)
@@ -94,7 +94,7 @@ fn grants_any_read_intersects_live_tree(grants: List<std.effect_grant.Grant>) ->
   } else {
     let g = grants.first()
     let rest = grants.skip(n: 1)
-    if verb_eq(a: g.verb, b: Read) {
+    if std.effect_grant.verb_eq(a: g.verb, b: std.effect_grant.Read) {
       read_grant_intersects_live_tree(g: g) || grants_any_read_intersects_live_tree(grants: rest)
     } else {
       grants_any_read_intersects_live_tree(grants: rest)

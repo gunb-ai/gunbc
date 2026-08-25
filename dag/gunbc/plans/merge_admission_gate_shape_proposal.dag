@@ -2,71 +2,71 @@ module gunbc.plans.merge_admission_gate_shape_proposal
 
 
 fn status_block() -> std.markdown.MarkdownBlock {
-  quote(blocks: [
-    p(text: "**Status: gate-shape SIGNED OFF by loyal-bee-794 (2026-06-29)** — substrate predicate in gunbc.merge_admission (PR #5973). Actuator consumption (ci_failure_class wiring) is a separate follow-on PR, authored READY but HELD on GatingComputedDeferred until operator sign-off + ci_failure_class prerequisites. Activation is NOT flipped here."),
+  gunbc.plans.md_helpers.quote(blocks: [
+    gunbc.plans.md_helpers.p(text: "**Status: gate-shape SIGNED OFF by loyal-bee-794 (2026-06-29)** — substrate predicate in gunbc.merge_admission (PR #5973). Actuator consumption (ci_failure_class wiring) is a separate follow-on PR, authored READY but HELD on GatingComputedDeferred until operator sign-off + ci_failure_class prerequisites. Activation is NOT flipped here."),
   ])
 }
 
 fn section_proposed_actuator() -> List<std.markdown.MarkdownBlock> {
   [
-    h2(text: "1. Approved actuator shape (follow-on PR — READY but HELD)"),
-    p(text: "Merge admission is merge-time policy, orthogonal to per-commit floor gates. The actuator consumes a MergeAdmissionReceipt and live merge-target facts; it does NOT add a new gunbc.ci_gate variant."),
+    gunbc.plans.md_helpers.h2(text: "1. Approved actuator shape (follow-on PR — READY but HELD)"),
+    gunbc.plans.md_helpers.p(text: "Merge admission is merge-time policy, orthogonal to per-commit floor gates. The actuator consumes a MergeAdmissionReceipt and live merge-target facts; it does NOT add a new gunbc.ci_gate variant."),
     std.markdown.TableBlock {
-      header: gunbc.plans.md_helpers.row(cells: [cell(text: "Layer"), cell(text: "Home"), cell(text: "Role")]),
-      alignments: [AlignNone, AlignNone, AlignNone],
+      header: gunbc.plans.md_helpers.row(cells: [gunbc.plans.md_helpers.cell(text: "Layer"), gunbc.plans.md_helpers.cell(text: "Home"), gunbc.plans.md_helpers.cell(text: "Role")]),
+      alignments: [std.markdown.AlignNone, std.markdown.AlignNone, std.markdown.AlignNone],
       rows: [
         gunbc.plans.md_helpers.row(cells: [
-          cell(text: "Predicate (single authority)"),
-          cell(text: "gunbc.merge_admission.receipt_is_admissible"),
-          cell(text: "Pure fn: base_tree_hash == merge_target_tree_hash AND gate_roster_hash == current_gate_roster_hash AND conclusion Success"),
+          gunbc.plans.md_helpers.cell(text: "Predicate (single authority)"),
+          gunbc.plans.md_helpers.cell(text: "gunbc.merge_admission.receipt_is_admissible"),
+          gunbc.plans.md_helpers.cell(text: "Pure fn: base_tree_hash == merge_target_tree_hash AND gate_roster_hash == current_gate_roster_hash AND conclusion Success"),
         ]),
         gunbc.plans.md_helpers.row(cells: [
-          cell(text: "Consumption (follow-on, HELD)"),
-          cell(text: "gunbc.ci_failure_class.merge_admission_blocks_merge"),
-          cell(text: "Computed + surfaced via merge_freshness_gating_status; GatingComputedDeferred until operator sign-off — same pattern as floor_exit_blocks_merge today"),
+          gunbc.plans.md_helpers.cell(text: "Consumption (follow-on, HELD)"),
+          gunbc.plans.md_helpers.cell(text: "gunbc.ci_failure_class.merge_admission_blocks_merge"),
+          gunbc.plans.md_helpers.cell(text: "Computed + surfaced via merge_freshness_gating_status; GatingComputedDeferred until operator sign-off — same pattern as floor_exit_blocks_merge today"),
         ]),
         gunbc.plans.md_helpers.row(cells: [
-          cell(text: "Receipt mint (deferred)"),
-          cell(text: "CI floor green + recorded base tree + gate_roster_content_hash"),
-          cell(text: "Emitted at run time; stored as the PR merge-admission receipt"),
+          gunbc.plans.md_helpers.cell(text: "Receipt mint (deferred)"),
+          gunbc.plans.md_helpers.cell(text: "CI floor green + recorded base tree + gate_roster_content_hash"),
+          gunbc.plans.md_helpers.cell(text: "Emitted at run time; stored as the PR merge-admission receipt"),
         ]),
         gunbc.plans.md_helpers.row(cells: [
-          cell(text: "GitHub Rulesets handler (realization)"),
-          cell(text: "DERIVED/EMITTED transport of receipt_is_admissible + RepoStandard"),
-          cell(text: "One authority, N handlers: idempotent PUT from substrate when administration:write is available — NOT a separate read-only drift re-check authority (that framing is the section-3 re-encode trap)"),
+          gunbc.plans.md_helpers.cell(text: "GitHub Rulesets handler (realization)"),
+          gunbc.plans.md_helpers.cell(text: "DERIVED/EMITTED transport of receipt_is_admissible + RepoStandard"),
+          gunbc.plans.md_helpers.cell(text: "One authority, N handlers: idempotent PUT from substrate when administration:write is available — NOT a separate read-only drift re-check authority (that framing is the section-3 re-encode trap)"),
         ]),
       ],
     },
-    h3(text: "1.1 Consumption loop"),
-    ul(items: [
-      li(text: "At CI green: mint MergeAdmissionReceipt with base_tree_hash at run time, gate_roster_hash = gate_roster_content_hash(commit_gate_roster), conclusion Success."),
-      li(text: "At merge attempt: receipt_is_admissible(receipt, merge_target_tree_hash, current_gate_roster_hash)."),
-      li(text: "merge_admission_blocks_merge is false while GatingComputedDeferred — verdict computed, consumed by nothing that blocks a real merge."),
-      li(text: "GitHub Rulesets is one realization handler beneath the same predicate; substrate stays authoritative."),
+    gunbc.plans.md_helpers.h3(text: "1.1 Consumption loop"),
+    gunbc.plans.md_helpers.ul(items: [
+      gunbc.plans.md_helpers.li(text: "At CI green: mint MergeAdmissionReceipt with base_tree_hash at run time, gate_roster_hash = gate_roster_content_hash(commit_gate_roster), conclusion Success."),
+      gunbc.plans.md_helpers.li(text: "At merge attempt: receipt_is_admissible(receipt, merge_target_tree_hash, current_gate_roster_hash)."),
+      gunbc.plans.md_helpers.li(text: "merge_admission_blocks_merge is false while GatingComputedDeferred — verdict computed, consumed by nothing that blocks a real merge."),
+      gunbc.plans.md_helpers.li(text: "GitHub Rulesets is one realization handler beneath the same predicate; substrate stays authoritative."),
     ]),
-    p(text: "Explicitly NOT a second roster, NOT a new ci_gate row, NOT activation without operator sign-off."),
+    gunbc.plans.md_helpers.p(text: "Explicitly NOT a second roster, NOT a new ci_gate row, NOT activation without operator sign-off."),
   ]
 }
 
 fn section_signoff() -> List<std.markdown.MarkdownBlock> {
   [
-    h2(text: "2. Sign-off state"),
-    ul(items: [
-      li(text: "loyal-bee-794: gate-shape APPROVED (merge-time via ci_failure_class, KeyedReceipt keying)."),
-      li(text: "Operator: activation sign-off PENDING — merge_freshness_gating_status stays GatingComputedDeferred."),
-      li(text: "ci_failure_class prerequisites (clustering-reclass consumer, cap-recovery slack) still gate any GatingEnforced flip."),
+    gunbc.plans.md_helpers.h2(text: "2. Sign-off state"),
+    gunbc.plans.md_helpers.ul(items: [
+      gunbc.plans.md_helpers.li(text: "loyal-bee-794: gate-shape APPROVED (merge-time via ci_failure_class, KeyedReceipt keying)."),
+      gunbc.plans.md_helpers.li(text: "Operator: activation sign-off PENDING — merge_freshness_gating_status stays GatingComputedDeferred."),
+      gunbc.plans.md_helpers.li(text: "ci_failure_class prerequisites (clustering-reclass consumer, cap-recovery slack) still gate any GatingEnforced flip."),
     ]),
   ]
 }
 
 fn merge_admission_gate_shape_proposal_body() -> List<std.markdown.MarkdownBlock> {
-  concat([gunbc.plans.merge_admission_gate_shape_proposal.status_block()], concat(section_proposed_actuator(), section_signoff()))
+  concat([status_block()], concat(section_proposed_actuator(), section_signoff()))
 }
 
 data merge_admission_gate_shape_proposal_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "merge-admission-gate-shape-proposal",
   title: "[SIGNED OFF] Merge-admission gate shape — predicate landed, actuator follow-on HELD",
   body: merge_admission_gate_shape_proposal_body(),
-  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when KeyedReceipt actuator is witnessed in force or superseded by an enrolled enforcement plan.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "Delete when KeyedReceipt actuator is witnessed in force or superseded by an enrolled enforcement plan.")
   }
 }

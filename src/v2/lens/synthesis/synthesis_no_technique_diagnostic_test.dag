@@ -1,5 +1,6 @@
 module v2.test.lens_synthesis.synthesis_no_technique_diagnostic
 
+
 data synthesis_no_tech_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^synthesis_no_tech_atom_symbol } },
   children: [],
@@ -30,6 +31,6 @@ data synthesis_no_tech_input: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn synthesis_no_tech_diagnostics_non_empty() -> v2.std.logic.Bool {
+test fn synthesis_no_tech_diagnostics_non_empty() -> Bool {
   v2.std.algebra.non_empty(v2.lens.synthesis.synthesis_lens_diagnostics(n: synthesis_no_tech_input, declared_technique: v2.lens.synthesis.AlgebraicRank))
 }

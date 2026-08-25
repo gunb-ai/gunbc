@@ -1,56 +1,57 @@
 module v2.test.generated.coproduct_exhaustiveness
 
-fn reference_coproduct_exhaustiveness_anchor() -> GeneratedAnchorKey {
-  coproduct_exhaustiveness_anchor(coproduct_type: ^TestClaim, omitted_variant: ^DiagnosticClaim)
+
+fn reference_coproduct_exhaustiveness_anchor() -> v2.std.verification.GeneratedAnchorKey {
+  v2.lens.testgen.coproduct_exhaustiveness_anchor(coproduct_type: ^v2.std.verification.TestClaim, omitted_variant: ^v2.std.verification.DiagnosticClaim)
 }
 
-fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim> {
-  testgen_emit_coproduct_exhaustiveness_claim(anchor: reference_coproduct_exhaustiveness_anchor())
+fn generated_coproduct_exhaustiveness_claim() -> v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> {
+  v2.lens.testgen.testgen_emit_coproduct_exhaustiveness_claim(anchor: reference_coproduct_exhaustiveness_anchor())
 }
 
-fn generated_coproduct_exhaustiveness_input() -> Outcome<Node> {
+fn generated_coproduct_exhaustiveness_input() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match generated_coproduct_exhaustiveness_claim() {
-    Accepted { value: claim, diagnostics: _ } =>
-      Accepted { value: test_claim_input(c: claim), diagnostics: None }
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: claim, diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: v2.std.verification.test_claim_input(c: claim), diagnostics: v2.std.diagnostic.None }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
 fn witness_coproduct_exhaustiveness_claim_is_diagnostic() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
-    Accepted { value: DiagnosticClaim { label: _, anchor: GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: v2.std.verification.DiagnosticClaim { label: _, anchor: v2.std.verification.GeneratedClaimAnchor { generated_anchor: v2.std.verification.GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn witness_coproduct_exhaustiveness_generated_anchor() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
-    Accepted { value: claim, diagnostics: _ } =>
-      match test_claim_anchor(c: claim) {
-        GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } } => true
+    v2.std.diagnostic.Accepted { value: claim, diagnostics: _ } =>
+      match v2.std.verification.test_claim_anchor(c: claim) {
+        v2.std.verification.GeneratedClaimAnchor { generated_anchor: v2.std.verification.GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } } => true
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn anchor_is(a: ClaimAnchorKey, coproduct_type: Symbol, omitted_variant: Symbol) -> Bool {
+fn anchor_is(a: v2.std.verification.ClaimAnchorKey, coproduct_type: v2.std.node.Symbol, omitted_variant: v2.std.node.Symbol) -> Bool {
   match a {
-    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: ct, omitted_variant: ov } } =>
+    v2.std.verification.GeneratedClaimAnchor { generated_anchor: v2.std.verification.GeneratedCoproductExhaustiveness { coproduct_type: ct, omitted_variant: ov } } =>
       (ct == coproduct_type) && (ov == omitted_variant)
     _ => false
   }
 }
 
 fn roster_covers(
-  gens: List<Generator<TestgenConcept>>,
-  coproduct_type: Symbol,
-  omitted_variant: Symbol
+  gens: List<v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>>,
+  coproduct_type: v2.std.node.Symbol,
+  omitted_variant: v2.std.node.Symbol
 ) -> Bool {
   match gens {
-    Empty => false
-    Cons { head: g, tail: rest } =>
+    std.algebra.Empty => false
+    std.algebra.Cons { head: g, tail: rest } =>
       if anchor_is(a: g.anchor, coproduct_type: coproduct_type, omitted_variant: omitted_variant) {
         true
       } else {
@@ -60,13 +61,13 @@ fn roster_covers(
 }
 
 fn roster_covers_arms(
-  gens: List<Generator<TestgenConcept>>,
-  coproduct_type: Symbol,
-  arms: List<Symbol>
+  gens: List<v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>>,
+  coproduct_type: v2.std.node.Symbol,
+  arms: List<v2.std.node.Symbol>
 ) -> Bool {
   match arms {
-    Empty => true
-    Cons { head: arm, tail: rest } =>
+    std.algebra.Empty => true
+    std.algebra.Cons { head: arm, tail: rest } =>
       if roster_covers(gens: gens, coproduct_type: coproduct_type, omitted_variant: arm) {
         roster_covers_arms(gens: gens, coproduct_type: coproduct_type, arms: rest)
       } else {
@@ -76,25 +77,25 @@ fn roster_covers_arms(
 }
 
 fn roster_covers_all_arms_of_roster(
-  gens: List<Generator<TestgenConcept>>,
-  coproduct_type: Symbol
+  gens: List<v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>>,
+  coproduct_type: v2.std.node.Symbol
 ) -> Bool {
-  let arms = coproduct_arm_keys(type_name: coproduct_type)
-  (length(xs: arms) > 0)
+  let arms = v2.std.node_query.coproduct_arm_keys(type_name: coproduct_type)
+  (v2.std.algebra.length(xs: arms) > 0)
     && roster_covers_arms(gens: gens, coproduct_type: coproduct_type, arms: arms)
 }
 
-fn roster_covers_all_arms_of(coproduct_type: Symbol) -> Bool {
+fn roster_covers_all_arms_of(coproduct_type: v2.std.node.Symbol) -> Bool {
   roster_covers_all_arms_of_roster(
-    gens: testgen_scheduled_coproduct_exhaustiveness_generators(),
+    gens: v2.lens.testgen.testgen_scheduled_coproduct_exhaustiveness_generators(),
     coproduct_type: coproduct_type
   )
 }
 
 fn witness_coproduct_exhaustiveness_roster_covers_testclaim() -> Bool {
-  let gens = testgen_scheduled_coproduct_exhaustiveness_generators()
-  (length(xs: gens) > 0)
-    && roster_covers_all_arms_of_roster(gens: gens, coproduct_type: ^TestClaim)
+  let gens = v2.lens.testgen.testgen_scheduled_coproduct_exhaustiveness_generators()
+  (v2.std.algebra.length(xs: gens) > 0)
+    && roster_covers_all_arms_of_roster(gens: gens, coproduct_type: ^v2.std.verification.TestClaim)
 }
 
 fn witness_coproduct_exhaustiveness_covers_second_coproduct() -> Bool {

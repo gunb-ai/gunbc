@@ -23,8 +23,8 @@ fn sweep_dir_join(out: String, seg: String) -> String {
 
 fn entry_parent_dir(entry: String) -> String {
   let segs = split(s: entry, delimiter: "/")
-  let n = length(xs: segs)
-  let folded = fold_list(xs: segs, empty: SweepDirState { index: 0, out: "" }, cons: fn(st, seg) {
+  let n = v2.std.algebra.length(xs: segs)
+  let folded = v2.std.algebra.fold_list(xs: segs, empty: SweepDirState { index: 0, out: "" }, cons: fn(st, seg) {
     SweepDirState {
       index: st.index + 1,
       out: if st.index + 1 == n { st.out } else { sweep_dir_join(out: st.out, seg: seg) }
@@ -39,7 +39,7 @@ type SweepDirState {
 }
 
 fn identity_snoc_unique(acc: List<String>, f: String) -> List<String> {
-  if fold_list(xs: acc, empty: false, cons: fn(found, x) { found || (x == f) }) {
+  if v2.std.algebra.fold_list(xs: acc, empty: false, cons: fn(found, x) { found || (x == f) }) {
     acc
   } else {
     concat(acc, [f])
@@ -49,26 +49,26 @@ fn identity_snoc_unique(acc: List<String>, f: String) -> List<String> {
 data canonical_union_note: String = "The canonical enrolled population per entry is the UNION of the cadences that execute it: the per-PR discovery roster (the floor walk, which deliberately excludes exactly-admitted rows from ITS cadence), plus the exact-admission roster (gunbc.explicit_witness_admission), plus the substrate long-lane rows (ci_layer_roots) — each an enrolled executing consumer. Discovery exclusion is a CADENCE fact, not an enrollment fact; deriving the population from discovery alone would silently drop every long-lane witness."
 
 fn entry_canonical_identities(entry: String) -> List<String> {
-  let state = floor_discovery_walk_dir(
-    state: floor_discovery_walk_state_zero(),
+  let state = v2.workflow.floor_discovery_producer.floor_discovery_walk_dir(
+    state: v2.workflow.floor_discovery_producer.floor_discovery_walk_state_zero(),
     dir_path: entry_parent_dir(entry: entry),
     exclude_substrings: []
   )
-  let discovered = fold_list(xs: state.rows, empty: no_name_strings(), cons: fn(acc, r) {
+  let discovered = v2.std.algebra.fold_list(xs: state.rows, empty: no_name_strings(), cons: fn(acc, r) {
     if r.entry == entry {
       identity_snoc_unique(acc: acc, f: r.function)
     } else {
       acc
     }
   })
-  let with_admitted = fold_list(xs: gunbc.explicit_witness_admission.explicit_witness_admissions, empty: discovered, cons: fn(acc, a) {
+  let with_admitted = v2.std.algebra.fold_list(xs: gunbc.explicit_witness_admission.explicit_witness_admissions, empty: discovered, cons: fn(acc, a) {
     if a.witness.entry == entry {
       identity_snoc_unique(acc: acc, f: a.witness.function)
     } else {
       acc
     }
   })
-  fold_list(xs: gunbc.ci_layer_roots.falsifier_substrate_long_lane_rows, empty: with_admitted, cons: fn(acc, row) {
+  v2.std.algebra.fold_list(xs: gunbc.ci_layer_roots.falsifier_substrate_long_lane_rows, empty: with_admitted, cons: fn(acc, row) {
     if row.entry == entry {
       identity_snoc_unique(acc: acc, f: row.function)
     } else {
@@ -77,25 +77,25 @@ fn entry_canonical_identities(entry: String) -> List<String> {
   })
 }
 
-fn no_fn_symbols() -> List<v2.std.node.Symbol> {
+fn no_fn_symbols() -> List<Symbol> {
   []
 }
 
 fn sweep_row_located(a: v2.workflow.realization_attempt.EntryRealizationAttempt) -> String {
   match a.standing {
-    V2TranslateSerialized { emitted_nonempty: _ } => ""
-    V2RealizationRefused { phase: _, exact_cause: _, located: l } => l
+    v2.workflow.realization_attempt.V2TranslateSerialized { emitted_nonempty: _ } => ""
+    v2.workflow.realization_attempt.V2RealizationRefused { phase: _, exact_cause: _, located: l } => l
   }
 }
 
 fn sweep_row_cause(a: v2.workflow.realization_attempt.EntryRealizationAttempt) -> String {
   match a.standing {
-    V2TranslateSerialized { emitted_nonempty: _ } => ""
-    V2RealizationRefused { phase: _, exact_cause: c, located: _ } => symbol_lexeme(sym: c)
+    v2.workflow.realization_attempt.V2TranslateSerialized { emitted_nonempty: _ } => ""
+    v2.workflow.realization_attempt.V2RealizationRefused { phase: _, exact_cause: c, located: _ } => v2.std.compilers.lexing.symbol_lexeme(sym: c)
   }
 }
 
-fn sweep_rows(ingest: v2.compiler.source_authority.SourceRootIngest, admission: v2.compiler.name_resolve.Admission, entry: String) -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
+fn sweep_rows(ingest: v2.compiler.source_authority.SourceRootIngest, admission: v2.compiler.name_resolve.Admission, entry: String) -> List<RealizationSweepRow> {
   sweep_rows_with_identities(
     ingest: ingest,
     admission: admission,
@@ -104,21 +104,21 @@ fn sweep_rows(ingest: v2.compiler.source_authority.SourceRootIngest, admission: 
   )
 }
 
-fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIngest, admission: v2.compiler.name_resolve.Admission, entry: String, identities: List<String>) -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
-  match entry_witness_source(ingest: ingest, entry: entry) {
-    Absent =>
-      [v2.workflow.realization_sweep.RealizationSweepRow {
+fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIngest, admission: v2.compiler.name_resolve.Admission, entry: String, identities: List<String>) -> List<RealizationSweepRow> {
+  match v2.workflow.realization_attempt.entry_witness_source(ingest: ingest, entry: entry) {
+    v2.std.optional.Absent =>
+      [RealizationSweepRow {
         entry: entry,
         function: "",
         phase_label: "read",
         cause: "realization_sweep_entry_witness_absent",
         located: entry
       }]
-    Present { value: _entry_source } => {
+    v2.std.optional.Present { value: _entry_source } => {
       let names = identities
-      if length(xs: names) == 0 {
-        fold_list(
-          xs: attempt_closure_rows(
+      if v2.std.algebra.length(xs: names) == 0 {
+        v2.std.algebra.fold_list(
+          xs: v2.workflow.realization_attempt.attempt_closure_rows(
             ingest: ingest,
             admission: admission,
             fn_names: [^zz_member_scan],
@@ -126,39 +126,39 @@ fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIng
           ),
           empty: no_sweep_rows(),
           cons: fn(acc, a) {
-            concat(acc, [v2.workflow.realization_sweep.RealizationSweepRow {
+            concat(acc, [RealizationSweepRow {
               entry: entry,
               function: "(member-scan)",
-              phase_label: attempt_phase_label(a: a),
+              phase_label: v2.workflow.realization_attempt.attempt_phase_label(a: a),
               cause: sweep_row_cause(a: a),
               located: sweep_row_located(a: a)
             }])
           }
         )
       } else {
-      let attempts = attempt_closure_rows(
+      let attempts = v2.workflow.realization_attempt.attempt_closure_rows(
         ingest: ingest,
         admission: admission,
-        fn_names: fold_list(xs: names, empty: no_fn_symbols(), cons: fn(acc, n) {
-          concat(acc, [symbol_intern_lexeme(lexeme: n)])
+        fn_names: v2.std.algebra.fold_list(xs: names, empty: no_fn_symbols(), cons: fn(acc, n) {
+          concat(acc, [v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: n)])
         }),
         entry: entry
       )
-      fold_list(xs: names, empty: SweepPairState { index: 0, out: [] }, cons: fn(st, name) {
-        let row = match list_at_optional(xs: attempts, index: st.index) {
-          Absent =>
-            v2.workflow.realization_sweep.RealizationSweepRow {
+      v2.std.algebra.fold_list(xs: names, empty: SweepPairState { index: 0, out: [] }, cons: fn(st, name) {
+        let row = match v2.std.collection.list_at_optional(xs: attempts, index: st.index) {
+          v2.std.optional.Absent =>
+            RealizationSweepRow {
               entry: entry,
               function: name,
               phase_label: "read",
               cause: "realization_sweep_attempt_row_missing",
               located: entry
             }
-          Present { value: a } =>
-            v2.workflow.realization_sweep.RealizationSweepRow {
+          v2.std.optional.Present { value: a } =>
+            RealizationSweepRow {
               entry: entry,
               function: name,
-              phase_label: attempt_phase_label(a: a),
+              phase_label: v2.workflow.realization_attempt.attempt_phase_label(a: a),
               cause: sweep_row_cause(a: a),
               located: sweep_row_located(a: a)
             }
@@ -172,51 +172,51 @@ fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIng
 
 type SweepPairState {
   index: Int
-  out: List<v2.workflow.realization_sweep.RealizationSweepRow>
+  out: List<RealizationSweepRow>
 }
 
 data sweep_rows_from_refs_note: String = "Read-through seam for closures past the manifest inline cap (the SAME source_root_ingest_build_from_source_refs the frontier probe rides): the host manifest carries SourceRef rows (path + root + content hash, no inline source), the sweep reads them through the filesystem with content-hash verification, and a read failure is ONE located refusal row for the entry — typed, counted, never an empty roster."
 
-fn sweep_rows_from_refs(refs: List<v2.compiler.source_authority.SourceRef>, admission: v2.compiler.name_resolve.Admission, entry: String, identities: List<String>) -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
-  match source_root_ingest_build_from_source_refs(refs: refs) {
-    SourceRootIngestBuildReadFailed { result: _ } =>
-      [v2.workflow.realization_sweep.RealizationSweepRow {
+fn sweep_rows_from_refs(refs: List<v2.compiler.source_authority.SourceRef>, admission: v2.compiler.name_resolve.Admission, entry: String, identities: List<String>) -> List<RealizationSweepRow> {
+  match v2.compiler.source_authority.source_root_ingest_build_from_source_refs(refs: refs) {
+    v2.compiler.source_authority.SourceRootIngestBuildReadFailed { result: _ } =>
+      [RealizationSweepRow {
         entry: entry,
         function: "",
         phase_label: "read",
         cause: "realization_sweep_closure_read_refused",
         located: entry
       }]
-    SourceRootIngestBuildOk { ingest: ingest } =>
+    v2.compiler.source_authority.SourceRootIngestBuildOk { ingest: ingest } =>
       sweep_rows_with_identities(ingest: ingest, admission: admission, entry: entry, identities: identities)
   }
 }
 
-fn sweep_row_count_for(rows: List<v2.workflow.realization_sweep.RealizationSweepRow>, entry: String, function: String) -> Int {
-  fold_list(xs: rows, empty: 0, cons: fn(acc, r) {
+fn sweep_row_count_for(rows: List<RealizationSweepRow>, entry: String, function: String) -> Int {
+  v2.std.algebra.fold_list(xs: rows, empty: 0, cons: fn(acc, r) {
     if (r.entry == entry) && (r.function == function) { acc + 1 } else { acc }
   })
 }
 
-fn sweep_rows_join_canonical(rows: List<v2.workflow.realization_sweep.RealizationSweepRow>, entry: String, identities: List<String>) -> v2.std.logic.Bool {
-  let forward = fold_list(xs: identities, empty: true, cons: fn(acc, f) {
+fn sweep_rows_join_canonical(rows: List<RealizationSweepRow>, entry: String, identities: List<String>) -> Bool {
+  let forward = v2.std.algebra.fold_list(xs: identities, empty: true, cons: fn(acc, f) {
     acc && (sweep_row_count_for(rows: rows, entry: entry, function: f) == 1)
   })
-  let backward = fold_list(xs: rows, empty: true, cons: fn(acc, r) {
-    acc && fold_list(xs: identities, empty: false, cons: fn(found, f) { found || (f == r.function) })
+  let backward = v2.std.algebra.fold_list(xs: rows, empty: true, cons: fn(acc, r) {
+    acc && v2.std.algebra.fold_list(xs: identities, empty: false, cons: fn(found, f) { found || (f == r.function) })
   })
-  forward && backward && (length(xs: rows) == length(xs: identities))
+  forward && backward && (v2.std.algebra.length(xs: rows) == v2.std.algebra.length(xs: identities))
 }
 
 data member_scan_note: String = "Located attribution for assembly-parse refusals (the parse_g0_tokens_remain rows carry PortLocus, no file): each closure member is driven through the SAME canonical assembly as a singleton ingest — its own module header as the admission subject, no imports — so a member whose source the canonical grammar cannot parse yields a frontend-phase row whose entry IS the member's path. A resolve-phase refusal here is EXPECTED (imports are absent by construction) and is not reported; only frontend rows are the scan's product. The single-module probe instrument (ingested_resolved_module_from_source) is NOT used: it has measurably narrower grammar coverage than the assembled route and misattributes (== comparisons, projections and generic signatures refuse under it while parsing through assembly)."
 
-fn module_subject_of(source: String) -> List<v2.std.node.Symbol> {
-  fold_list(xs: split(s: source, delimiter: "\n"), empty: no_fn_symbols(), cons: fn(acc, line) {
-    if (length(xs: acc) == 0) && starts_with(s: line, prefix: "module ") {
-      fold_list(
+fn module_subject_of(source: String) -> List<Symbol> {
+  v2.std.algebra.fold_list(xs: split(s: source, delimiter: "\n"), empty: no_fn_symbols(), cons: fn(acc, line) {
+    if (v2.std.algebra.length(xs: acc) == 0) && starts_with(s: line, prefix: "module ") {
+      v2.std.algebra.fold_list(
         xs: split(s: substring(s: line, start: 7, end: string_length(s: line)), delimiter: "."),
         empty: no_fn_symbols(),
-        cons: fn(inner, seg) { concat(inner, [symbol_intern_lexeme(lexeme: seg)]) }
+        cons: fn(inner, seg) { concat(inner, [v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: seg)]) }
       )
     } else {
       acc
@@ -224,21 +224,21 @@ fn module_subject_of(source: String) -> List<v2.std.node.Symbol> {
   })
 }
 
-fn subject_admission(segments: List<v2.std.node.Symbol>) -> v2.compiler.name_resolve.Admission {
-  let reversed = fold_list(xs: segments, empty: std.algebra.Empty, cons: fn(acc, seg) { std.algebra.Cons { head: seg, tail: acc } })
+fn subject_admission(segments: List<Symbol>) -> v2.compiler.name_resolve.Admission {
+  let reversed = v2.std.algebra.fold_list(xs: segments, empty: std.algebra.Empty, cons: fn(acc, seg) { std.algebra.Cons { head: seg, tail: acc } })
   v2.compiler.name_resolve.Admission {
     subject: v2.compiler.name_resolve.ResolutionSubject {
-      name: fold_list(xs: reversed, empty: std.algebra.Empty, cons: fn(acc, seg) { std.algebra.Cons { head: seg, tail: acc } })
+      name: v2.std.algebra.fold_list(xs: reversed, empty: std.algebra.Empty, cons: fn(acc, seg) { std.algebra.Cons { head: seg, tail: acc } })
     },
     imports: std.algebra.Empty
   }
 }
 
-fn member_parse_rows(ingest: v2.compiler.source_authority.SourceRootIngest) -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
-  fold_list(xs: ingest, empty: no_sweep_rows(), cons: fn(acc, r) {
+fn member_parse_rows(ingest: v2.compiler.source_authority.SourceRootIngest) -> List<RealizationSweepRow> {
+  v2.std.algebra.fold_list(xs: ingest, empty: no_sweep_rows(), cons: fn(acc, r) {
     let singleton = std.algebra.Cons { head: r, tail: std.algebra.Empty }
-    let rows = fold_list(
-      xs: attempt_closure_rows(
+    let rows = v2.std.algebra.fold_list(
+      xs: v2.workflow.realization_attempt.attempt_closure_rows(
         ingest: singleton,
         admission: subject_admission(segments: module_subject_of(source: r.source.carried)),
         fn_names: [^zz_member_scan],
@@ -246,9 +246,9 @@ fn member_parse_rows(ingest: v2.compiler.source_authority.SourceRootIngest) -> L
       ),
       empty: no_sweep_rows(),
       cons: fn(inner, a) {
-        let label = attempt_phase_label(a: a)
+        let label = v2.workflow.realization_attempt.attempt_phase_label(a: a)
         if label == "frontend" {
-          concat(inner, [v2.workflow.realization_sweep.RealizationSweepRow {
+          concat(inner, [RealizationSweepRow {
             entry: r.artifact.file_path,
             function: "(member-scan)",
             phase_label: label,
@@ -264,26 +264,26 @@ fn member_parse_rows(ingest: v2.compiler.source_authority.SourceRootIngest) -> L
   })
 }
 
-fn member_parse_rows_from_refs(refs: List<v2.compiler.source_authority.SourceRef>) -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
-  match source_root_ingest_build_from_source_refs(refs: refs) {
-    SourceRootIngestBuildReadFailed { result: _ } =>
-      [v2.workflow.realization_sweep.RealizationSweepRow {
+fn member_parse_rows_from_refs(refs: List<v2.compiler.source_authority.SourceRef>) -> List<RealizationSweepRow> {
+  match v2.compiler.source_authority.source_root_ingest_build_from_source_refs(refs: refs) {
+    v2.compiler.source_authority.SourceRootIngestBuildReadFailed { result: _ } =>
+      [RealizationSweepRow {
         entry: "",
         function: "(member-scan)",
         phase_label: "read",
         cause: "realization_sweep_closure_read_refused",
         located: ""
       }]
-    SourceRootIngestBuildOk { ingest: ingest } => member_parse_rows(ingest: ingest)
+    v2.compiler.source_authority.SourceRootIngestBuildOk { ingest: ingest } => member_parse_rows(ingest: ingest)
   }
 }
 
-fn no_sweep_rows() -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
+fn no_sweep_rows() -> List<RealizationSweepRow> {
   []
 }
 
-fn sweep_receipt_tsv(rows: List<v2.workflow.realization_sweep.RealizationSweepRow>) -> String {
-  fold_list(xs: rows, empty: "", cons: fn(acc, r) {
+fn sweep_receipt_tsv(rows: List<RealizationSweepRow>) -> String {
+  v2.std.algebra.fold_list(xs: rows, empty: "", cons: fn(acc, r) {
     let line = concat(r.entry, "\t", r.function, "\t", r.phase_label, "\t", r.cause, "\t", r.located)
     if acc == "" { line } else { concat(acc, "\n", line) }
   })
@@ -295,9 +295,9 @@ type SweepHistogramState {
   out: String
 }
 
-fn sweep_histogram_tsv(rows: List<v2.workflow.realization_sweep.RealizationSweepRow>) -> String {
+fn sweep_histogram_tsv(rows: List<RealizationSweepRow>) -> String {
   let keys = map(rows, r => concat(r.phase_label, "\t", r.cause)) |> sort_by(k => k)
-  let folded = fold_list(xs: keys, empty: SweepHistogramState { prev: "", count: 0, out: "" }, cons: fn(st, k) {
+  let folded = v2.std.algebra.fold_list(xs: keys, empty: SweepHistogramState { prev: "", count: 0, out: "" }, cons: fn(st, k) {
     if st.count == 0 {
       SweepHistogramState { prev: k, count: 1, out: st.out }
     } else if k == st.prev {
@@ -306,15 +306,15 @@ fn sweep_histogram_tsv(rows: List<v2.workflow.realization_sweep.RealizationSweep
       SweepHistogramState {
         prev: k,
         count: 1,
-        out: if st.out == "" { concat(st.prev, "\t", integer_nat_to_decimal_string(value: st.count)) } else { concat(st.out, "\n", st.prev, "\t", integer_nat_to_decimal_string(value: st.count)) }
+        out: if st.out == "" { concat(st.prev, "\t", v2.std.integer.integer_nat_to_decimal_string(value: st.count)) } else { concat(st.out, "\n", st.prev, "\t", v2.std.integer.integer_nat_to_decimal_string(value: st.count)) }
       }
     }
   })
   if folded.count == 0 {
     folded.out
   } else if folded.out == "" {
-    concat(folded.prev, "\t", integer_nat_to_decimal_string(value: folded.count))
+    concat(folded.prev, "\t", v2.std.integer.integer_nat_to_decimal_string(value: folded.count))
   } else {
-    concat(folded.out, "\n", folded.prev, "\t", integer_nat_to_decimal_string(value: folded.count))
+    concat(folded.out, "\n", folded.prev, "\t", v2.std.integer.integer_nat_to_decimal_string(value: folded.count))
   }
 }

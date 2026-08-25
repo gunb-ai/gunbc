@@ -3,7 +3,7 @@ module extdeps.languages.yaml.ingest
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "yaml.org/spec/1.2.2/"
   }
 }
@@ -149,22 +149,22 @@ fn yaml_parse_mapping_entry(lines: List<String>, index: Int, indent: Int) -> Yam
     let rest = join(parts.skip(n: 1), ": ")
     if rest == "|" {
       let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 2, acc: [])
-      ParsedYamlEntry { entry: kv(key: key, value: extdeps.languages.yaml.types.YamlString { value: lit.text }), next_index: lit.next_index }
+      ParsedYamlEntry { entry: extdeps.languages.yaml.types.kv(key: key, value: extdeps.languages.yaml.types.YamlString { value: lit.text }), next_index: lit.next_index }
     } else if yaml_is_flow_sequence_text(text: rest) {
-      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
+      ParsedYamlEntry { entry: extdeps.languages.yaml.types.kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
     } else {
-      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_scalar_text(text: rest)), next_index: index + 1 }
+      ParsedYamlEntry { entry: extdeps.languages.yaml.types.kv(key: key, value: yaml_parse_scalar_text(text: rest)), next_index: index + 1 }
     }
   } else if ends_with(s: content, suffix: ":") {
     let key = substring(s: content, start: 0, end: content.length() - 1)
     if yaml_has_line_at(lines: lines, index: index + 1) && (yaml_indent_at(lines: lines, index: index + 1) == indent + 2) {
       match yaml_parse_block(lines: lines, index: index + 1, indent: indent + 2) {
         ParsedYamlBlock { value: nested, next_index: ni } =>
-          ParsedYamlEntry { entry: kv(key: key, value: nested), next_index: ni }
+          ParsedYamlEntry { entry: extdeps.languages.yaml.types.kv(key: key, value: nested), next_index: ni }
         YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
       }
     } else {
-      ParsedYamlEntry { entry: kv(key: key, value: extdeps.languages.yaml.types.YamlNull), next_index: index + 1 }
+      ParsedYamlEntry { entry: extdeps.languages.yaml.types.kv(key: key, value: extdeps.languages.yaml.types.YamlNull), next_index: index + 1 }
     }
   } else {
     YamlEntryRejected { reason: concat("malformed mapping entry: ", content) }
@@ -178,22 +178,22 @@ fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: 
     let rest = join(parts.skip(n: 1), ": ")
     if rest == "|" {
       let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 4, acc: [])
-      ParsedYamlEntry { entry: kv(key: key, value: extdeps.languages.yaml.types.YamlString { value: lit.text }), next_index: lit.next_index }
+      ParsedYamlEntry { entry: extdeps.languages.yaml.types.kv(key: key, value: extdeps.languages.yaml.types.YamlString { value: lit.text }), next_index: lit.next_index }
     } else if yaml_is_flow_sequence_text(text: rest) {
-      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
+      ParsedYamlEntry { entry: extdeps.languages.yaml.types.kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
     } else {
-      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_scalar_text(text: rest)), next_index: index + 1 }
+      ParsedYamlEntry { entry: extdeps.languages.yaml.types.kv(key: key, value: yaml_parse_scalar_text(text: rest)), next_index: index + 1 }
     }
   } else if ends_with(s: text, suffix: ":") {
     let key = substring(s: text, start: 0, end: text.length() - 1)
     if yaml_has_line_at(lines: lines, index: index + 1) && (yaml_indent_at(lines: lines, index: index + 1) == indent + 4) {
       match yaml_parse_block(lines: lines, index: index + 1, indent: indent + 4) {
         ParsedYamlBlock { value: nested, next_index: ni } =>
-          ParsedYamlEntry { entry: kv(key: key, value: nested), next_index: ni }
+          ParsedYamlEntry { entry: extdeps.languages.yaml.types.kv(key: key, value: nested), next_index: ni }
         YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
       }
     } else {
-      ParsedYamlEntry { entry: kv(key: key, value: extdeps.languages.yaml.types.YamlNull), next_index: index + 1 }
+      ParsedYamlEntry { entry: extdeps.languages.yaml.types.kv(key: key, value: extdeps.languages.yaml.types.YamlNull), next_index: index + 1 }
     }
   } else {
     YamlEntryRejected { reason: concat("malformed sequence-item mapping entry: ", text) }

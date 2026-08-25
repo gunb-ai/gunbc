@@ -15,14 +15,14 @@ module dag.test.claim.lifecycle_survivor_corpus_census
 // discovery by a WitnessExclusionRow AND carries a FalsifierCadenceJob enrollment, so it has
 // a named executing consumer. A witness moved out of discovery without one executes nowhere,
 // which is deletion of the evidence with the file retained.
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 // The claim. Not "every survivor is classified" -- there are none to classify, which is the
 // stronger statement and the one the migration is for. A newly authored
 // `data x_dissolve_on: String = "..."` anywhere under either root reds this; proven by
 // planting exactly that declaration in an isolated worktree and observing FAIL.
 test fn no_raw_lifecycle_string_survivors_remain() -> Bool {
-  no_raw_lifecycle_string_survivors()
+  gunbc.lifecycle_survivor_scan.no_raw_lifecycle_string_survivors()
 }
 
 // Zero is also what a producer that read nothing returns, so the gate above is only
@@ -30,17 +30,17 @@ test fn no_raw_lifecycle_string_survivors_remain() -> Bool {
 // walk, a walk seeing no bare strings, a type projection returning empty names, and a walk
 // that skips the test subtree where a survivor could hide.
 test fn scan_denominator_is_a_real_corpus() -> Bool {
-  scan_reads_a_real_corpus()
+  gunbc.lifecycle_survivor_scan.scan_reads_a_real_corpus()
 }
 
 test fn scan_denominator_contains_bare_string_declarations() -> Bool {
-  scan_sees_bare_string_declarations()
+  gunbc.lifecycle_survivor_scan.scan_sees_bare_string_declarations()
 }
 
 test fn scan_reads_a_declared_type_for_every_declaration() -> Bool {
-  scan_projects_every_declared_type()
+  gunbc.lifecycle_survivor_scan.scan_projects_every_declared_type()
 }
 
 test fn scan_denominator_includes_test_modules() -> Bool {
-  scan_reaches_test_modules()
+  gunbc.lifecycle_survivor_scan.scan_reaches_test_modules()
 }

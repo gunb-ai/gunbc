@@ -3,7 +3,7 @@ module extdeps.git.versioning
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "git-scm.com/docs/BreakingChanges.html"
   }
 }
@@ -48,8 +48,8 @@ fn git_release_to_version_identity(v: GitReleaseVersion) -> extdeps.version.Vers
 
 fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> std.algebra.Ordering {
   match std.nat.nat_compare(a: a.major, b: b.major) {
-    Equal => match std.nat.nat_compare(a: a.minor, b: b.minor) {
-      Equal => std.nat.nat_compare(a: a.patch, b: b.patch)
+    std.algebra.Equal => match std.nat.nat_compare(a: a.minor, b: b.minor) {
+      std.algebra.Equal => std.nat.nat_compare(a: a.patch, b: b.patch)
       other => other
     }
     other => other
@@ -57,7 +57,7 @@ fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> st
 }
 
 fn git_release_compare_identity(a: extdeps.version.VersionIdentity, b: extdeps.version.VersionIdentity) -> std.algebra.Ordering {
-  if a == b { Equal } else { Greater }
+  if a == b { std.algebra.Equal } else { std.algebra.Greater }
 }
 
 data git_release_version_scheme: extdeps.version.VersionScheme = {

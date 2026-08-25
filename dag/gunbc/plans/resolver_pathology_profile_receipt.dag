@@ -3,28 +3,28 @@ module gunbc.plans.resolver_pathology_profile_receipt
 
 fn resolver_pathology_profile_receipt_body() -> List<std.markdown.MarkdownBlock> {
   [
-    p(text: "**Status:** measurement doc only (no resolver refactor). Timestamped profiling receipt for ROADMAP §1 *profile the 518s resolve*. DESIGN.md remains authority."),
-    p(text: "**Owner:** vivid-carp-798. This is a **historical measurement receipt** — the numbers below are the finding; they are not re-derived on any cadence. The `scripts/profile-cold-resolve.sh` harness that produced them was deleted 2026-07-23 with the rest of `scripts/`, so the receipt no longer ships a runnable entrypoint. Re-measuring is a fresh measurement against today's resolver, not a replay of this one; the durable fix remains substrate-emitted resolve timings (gunbc bash-emit #5828)."),
-    hr(),
-    h2(text: "1. How these numbers were taken"),
-    p(text: "Cold resolve with `GUNBC_RESOLVED_GRAPH_CACHE_DIR` unset, per-entry resolve wall clock over the corpus, reported as top-N offenders plus an A/B on the `budget_roster_completeness_test` vs `fold_list_generic_instantiation` pair. Recorded here so the method survives the harness."),
-    hr(),
-    h2(text: "2. Measured top resolve offenders (warm typed_module_cache)"),
+    gunbc.plans.md_helpers.p(text: "**Status:** measurement doc only (no resolver refactor). Timestamped profiling receipt for ROADMAP §1 *profile the 518s resolve*. DESIGN.md remains authority."),
+    gunbc.plans.md_helpers.p(text: "**Owner:** vivid-carp-798. This is a **historical measurement receipt** — the numbers below are the finding; they are not re-derived on any cadence. The `scripts/profile-cold-resolve.sh` harness that produced them was deleted 2026-07-23 with the rest of `scripts/`, so the receipt no longer ships a runnable entrypoint. Re-measuring is a fresh measurement against today's resolver, not a replay of this one; the durable fix remains substrate-emitted resolve timings (gunbc bash-emit #5828)."),
+    gunbc.plans.md_helpers.hr(),
+    gunbc.plans.md_helpers.h2(text: "1. How these numbers were taken"),
+    gunbc.plans.md_helpers.p(text: "Cold resolve with `GUNBC_RESOLVED_GRAPH_CACHE_DIR` unset, per-entry resolve wall clock over the corpus, reported as top-N offenders plus an A/B on the `budget_roster_completeness_test` vs `fold_list_generic_instantiation` pair. Recorded here so the method survives the harness."),
+    gunbc.plans.md_helpers.hr(),
+    gunbc.plans.md_helpers.h2(text: "2. Measured top resolve offenders (warm typed_module_cache)"),
     std.markdown.TableBlock {
-      header: gunbc.plans.md_helpers.row(cells: [cell(text: "Rank"), cell(text: "ms"), cell(text: "items"), cell(text: "entry")]),
-      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      header: gunbc.plans.md_helpers.row(cells: [gunbc.plans.md_helpers.cell(text: "Rank"), gunbc.plans.md_helpers.cell(text: "ms"), gunbc.plans.md_helpers.cell(text: "items"), gunbc.plans.md_helpers.cell(text: "entry")]),
+      alignments: [std.markdown.AlignNone, std.markdown.AlignNone, std.markdown.AlignNone, std.markdown.AlignNone],
       rows: [
-        gunbc.plans.md_helpers.row(cells: [cell(text: "1"), cell(text: "9410"), cell(text: "1973"), cell(text: "v2/compiler/manual/dag_import_block_lexeme_stamp_test.dag")]),
-        gunbc.plans.md_helpers.row(cells: [cell(text: "2"), cell(text: "6164"), cell(text: "2594"), cell(text: "v2/test/claim/emit_host_gate/target_coverage_completeness_test.dag")]),
-        gunbc.plans.md_helpers.row(cells: [cell(text: "12"), cell(text: "1556"), cell(text: "2412"), cell(text: "complexity_gate/budget_roster_completeness_test.dag")]),
+        gunbc.plans.md_helpers.row(cells: [gunbc.plans.md_helpers.cell(text: "1"), gunbc.plans.md_helpers.cell(text: "9410"), gunbc.plans.md_helpers.cell(text: "1973"), gunbc.plans.md_helpers.cell(text: "v2/compiler/manual/dag_import_block_lexeme_stamp_test.dag")]),
+        gunbc.plans.md_helpers.row(cells: [gunbc.plans.md_helpers.cell(text: "2"), gunbc.plans.md_helpers.cell(text: "6164"), gunbc.plans.md_helpers.cell(text: "2594"), gunbc.plans.md_helpers.cell(text: "v2/test/claim/emit_host_gate/target_coverage_completeness_test.dag")]),
+        gunbc.plans.md_helpers.row(cells: [gunbc.plans.md_helpers.cell(text: "12"), gunbc.plans.md_helpers.cell(text: "1556"), gunbc.plans.md_helpers.cell(text: "2412"), gunbc.plans.md_helpers.cell(text: "complexity_gate/budget_roster_completeness_test.dag")]),
       ]
     },
-    hr(),
-    h2(text: "3. Pathological pair"),
-    p(text: "**Pathological:** `budget_roster_completeness_test.dag` — cold resolve 5513ms, 2412 registry items. **Structural twin:** `fold_list_generic_instantiation.dag` — 159ms, 226 items. **Ratio:** 34.7× wall (operator ~450× targets typecheck/item work; see prose receipt)."),
-    hr(),
-    h2(text: "4. Hypothesis"),
-    p(text: "**`reconcile_with_typed_cache` / `typecheck_module`** — fn-typed `List<LensSubjectComplexityBudgetRow>` roster rows pulling source-bridged `v2.compiler.*` modules. Not `resolve_modules` wiring (twins share 57-module closure at ~5.5s cold)."),
+    gunbc.plans.md_helpers.hr(),
+    gunbc.plans.md_helpers.h2(text: "3. Pathological pair"),
+    gunbc.plans.md_helpers.p(text: "**Pathological:** `budget_roster_completeness_test.dag` — cold resolve 5513ms, 2412 registry items. **Structural twin:** `fold_list_generic_instantiation.dag` — 159ms, 226 items. **Ratio:** 34.7× wall (operator ~450× targets typecheck/item work; see prose receipt)."),
+    gunbc.plans.md_helpers.hr(),
+    gunbc.plans.md_helpers.h2(text: "4. Hypothesis"),
+    gunbc.plans.md_helpers.p(text: "**`reconcile_with_typed_cache` / `typecheck_module`** — fn-typed `List<LensSubjectComplexityBudgetRow>` roster rows pulling source-bridged `v2.compiler.*` modules. Not `resolve_modules` wiring (twins share 57-module closure at ~5.5s cold)."),
   ]
 }
 
@@ -32,6 +32,6 @@ data resolver_pathology_profile_receipt_plan: gunbc.plan.Plan = gunbc.plan.Plan 
   slug: "resolver-pathology-profile-receipt",
   title: "Resolver pathology — cold-resolve profile receipt",
   body: resolver_pathology_profile_receipt_body(),
-  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when resolve-phase timings are substrate-emitted and ROADMAP 1-resolver-pathology closes with a fix PR.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "Delete when resolve-phase timings are substrate-emitted and ROADMAP 1-resolver-pathology closes with a fix PR.")
   }
 }

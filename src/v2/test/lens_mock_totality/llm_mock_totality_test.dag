@@ -1,37 +1,38 @@
 module v2.test.lens_mock_totality.llm_mock_totality
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedLlmMock {
-  tag: v2.std.node.Symbol
+  tag: Symbol
 }
 
 data llm_red_omit_keys: List<String> = ["llm.Gemini.CliPrompt"]
 
-fn materialize_llm_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedLlmMock> {
+fn materialize_llm_mock(case: PublishedMockCase) -> Outcome<MaterializedLlmMock> {
   if case.operation_key == "llm.OpenAI.ChatCompletion" {
-    outcome_accepted(value: MaterializedLlmMock { tag: ^materialized_openai_chat_completion })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedLlmMock { tag: ^materialized_openai_chat_completion })
   } else if case.operation_key == "llm.OpenAI.Responses" {
-    outcome_accepted(value: MaterializedLlmMock { tag: ^materialized_openai_responses })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedLlmMock { tag: ^materialized_openai_responses })
   } else if case.operation_key == "llm.Anthropic.Messages" {
-    outcome_accepted(value: MaterializedLlmMock { tag: ^materialized_anthropic_messages })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedLlmMock { tag: ^materialized_anthropic_messages })
   } else if case.operation_key == "llm.Anthropic.CliPrompt" {
-    outcome_accepted(value: MaterializedLlmMock { tag: ^materialized_anthropic_cli_prompt })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedLlmMock { tag: ^materialized_anthropic_cli_prompt })
   } else if case.operation_key == "llm.Codex.Review" {
-    outcome_accepted(value: MaterializedLlmMock { tag: ^materialized_codex_review })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedLlmMock { tag: ^materialized_codex_review })
   } else if case.operation_key == "llm.Gemini.CliPrompt" {
-    outcome_accepted(value: MaterializedLlmMock { tag: ^materialized_gemini_cli_prompt })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedLlmMock { tag: ^materialized_gemini_cli_prompt })
   } else {
-    mock_unhandled_rejection()
+    v2.lens.mock_totality.mock_unhandled_rejection()
   }
 }
 
-fn llm_real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  outcome_accepted_p(outcome: materialize_llm_mock(case: case))
+fn llm_real_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.outcome_accepted_p(outcome: materialize_llm_mock(case: case))
 }
 
-fn llm_omits_gemini_cli_prompt_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  omit_consumer_handles(
+fn llm_omits_gemini_cli_prompt_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.omit_consumer_handles(
     case: case,
     omit_keys: llm_red_omit_keys,
     total_consumer_handles: llm_real_consumer_handles
@@ -39,14 +40,14 @@ fn llm_omits_gemini_cli_prompt_consumer_handles(case: std.hermetic_replay.Publis
 }
 
 test fn llm_mock_consumer_is_total_holds() -> Bool {
-  mock_totality_green_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_green_holds(
     published: extdeps.llm.mock_corpus.llm_published_mock_corpus,
     consumer_handles: llm_real_consumer_handles
   )
 }
 
 test fn llm_mock_omitted_member_is_red_holds() -> Bool {
-  mock_totality_red_on_omission_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_red_on_omission_holds(
     published: extdeps.llm.mock_corpus.llm_published_mock_corpus,
     consumer_handles: llm_omits_gemini_cli_prompt_consumer_handles
   )

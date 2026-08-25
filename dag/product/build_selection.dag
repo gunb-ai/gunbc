@@ -1,5 +1,6 @@
 module product.build_selection
 
+
 // THE DOMAIN PROJECTOR. std.pareto is the universal selection spine and knows
 // nothing about hardware; this module is the one place that turns a resolved
 // build into the spine's vocabulary. It is the last stage of the pipeline —
@@ -108,17 +109,17 @@ data no_missing: List<std.types.NonEmptyStr> = []
 // could not be computed.
 fn line_missing(acc: List<std.types.NonEmptyStr>, r: product.build_fulfillment.LineResolution) -> List<std.types.NonEmptyStr> {
   match r {
-    LineRefused { line: l, cause: _ } =>
+    product.build_fulfillment.LineRefused { line: l, cause: _ } =>
       concat(acc, one_missing(name: join(["line ", l.display_label as String, " refused"], "") as std.types.NonEmptyStr))
-    LineResolved { line: l, fulfillment: f } =>
+    product.build_fulfillment.LineResolved { line: l, fulfillment: f } =>
       match f {
-        CompatibilityUnread { part: _, obligation: o } =>
+        product.build_fulfillment.CompatibilityUnread { part: _, obligation: o } =>
           concat(acc, one_missing(name: join([l.display_label as String, ": ", o as String], "") as std.types.NonEmptyStr))
-        SupplyMissing { part: _, requested: _, owned_available: _, market_units: _ } =>
+        product.build_fulfillment.SupplyMissing { part: _, requested: _, owned_available: _, market_units: _ } =>
           concat(acc, one_missing(name: join(["line ", l.display_label as String, " cannot be filled"], "") as std.types.NonEmptyStr))
-        OwnedInventory { lot: _, quantity: _, reservation: _, available_after: _ } => acc
-        NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } => acc
-        IncludedInSystem { part: _, quantity: _ } => acc
+        product.build_fulfillment.OwnedInventory { lot: _, quantity: _, reservation: _, available_after: _ } => acc
+        product.build_fulfillment.NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } => acc
+        product.build_fulfillment.IncludedInSystem { part: _, quantity: _ } => acc
       }
   }
 }
@@ -132,24 +133,24 @@ fn line_missing(acc: List<std.types.NonEmptyStr>, r: product.build_fulfillment.L
 // pipeline actually compares.
 fn cash_missing(declared: std.currency.CurrencyCode, cash: product.build_fulfillment.CashProjection) -> List<std.types.NonEmptyStr> {
   match cash {
-    CashDerived { cash: c } =>
+    product.build_fulfillment.CashDerived { cash: c } =>
       if c.currency != declared {
         one_missing(name: "priced in a currency the field did not declare" as std.types.NonEmptyStr)
       } else {
         no_missing
       }
-    CashNoPurchaseLines => no_missing
-    CashRefused { cause: _ } =>
+    product.build_fulfillment.CashNoPurchaseLines => no_missing
+    product.build_fulfillment.CashRefused { cause: _ } =>
       one_missing(name: "incremental cash refused" as std.types.NonEmptyStr)
   }
 }
 
 fn ceiling_missing(ceiling: product.build_fulfillment.ConstructibleCeiling) -> List<std.types.NonEmptyStr> {
   match ceiling {
-    CeilingDerived { builds: _, bottlenecks: _, bottleneck_units: _ } => no_missing
-    CeilingUnconstrainedByAnyLine =>
+    product.build_fulfillment.CeilingDerived { builds: _, bottlenecks: _, bottleneck_units: _ } => no_missing
+    product.build_fulfillment.CeilingUnconstrainedByAnyLine =>
       one_missing(name: "no line bounds the build count, so there is no ceiling to compare" as std.types.NonEmptyStr)
-    CeilingRefused { cause: _ } => one_missing(name: "constructible ceiling refused" as std.types.NonEmptyStr)
+    product.build_fulfillment.CeilingRefused { cause: _ } => one_missing(name: "constructible ceiling refused" as std.types.NonEmptyStr)
   }
 }
 
@@ -171,7 +172,7 @@ fn candidate_missing_inputs(candidate: BuildCandidate, declared: std.currency.Cu
 // here at all, because it is a declared missing input above.
 fn cash_reading(cash: product.build_fulfillment.CashProjection, declared: std.currency.CurrencyCode) -> BuildAxisReading {
   match cash {
-    CashDerived { cash: c } => BuildAxisReading { axis: cash_axis, magnitude: MagnitudeMoney { money: c } }
+    product.build_fulfillment.CashDerived { cash: c } => BuildAxisReading { axis: cash_axis, magnitude: MagnitudeMoney { money: c } }
     _ =>
       BuildAxisReading {
         axis: cash_axis,
@@ -189,7 +190,7 @@ fn cash_reading(cash: product.build_fulfillment.CashProjection, declared: std.cu
 // as a challenger, so it can neither win nor poison the field.
 fn ceiling_reading(ceiling: product.build_fulfillment.ConstructibleCeiling) -> BuildAxisReading {
   match ceiling {
-    CeilingDerived { builds: b, bottlenecks: _, bottleneck_units: _ } =>
+    product.build_fulfillment.CeilingDerived { builds: b, bottlenecks: _, bottleneck_units: _ } =>
       BuildAxisReading { axis: ceiling_axis, magnitude: MagnitudeUnitCount { units: b } }
     _ => BuildAxisReading { axis: ceiling_axis, magnitude: MagnitudeUnitCount { units: 0 } }
   }

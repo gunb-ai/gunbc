@@ -1,5 +1,6 @@
 module test.claim.realization_measurement_keystone
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data sample_subject: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "witness-subject-realization-measurement-keystone")
@@ -8,7 +9,7 @@ data sample_wall_time: std.measure.Nanosecond = std.measure.nanosecond(count: 50
 data sample_space_a: std.measure.ByteSize = std.measure.byte_size(count: 1024)
 data sample_space_b: std.measure.ByteSize = std.measure.byte_size(count: 2048)
 
-data sample_measure_effect: std.realization_measurement.RealizationMeasureEffect = std.realization_measurement.ObserveElapsedAtSubject {
+data sample_measure_effect: std.realization_measurement.RealizationMeasureEffect = ObserveElapsedAtSubject {
   subject: sample_subject
   work_shape: "realization_measurement_keystone_witnesses"
 }

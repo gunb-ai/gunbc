@@ -3,7 +3,7 @@ module extdeps.llm.cursor_stream
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "cursor.com/docs/sdk/typescript"
   }
 }
@@ -13,10 +13,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.llm.cursor_stream",
       decl_name: "CursorSdkStreamTerminalReconcile",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.llm.cursor_stream.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -112,33 +112,33 @@ fn cursor_sdk_terminal_status_from_wire(wire_status: String) -> CursorSdkTermina
 }
 
 fn cursor_sdk_error_from_object(v: extdeps.languages.json.emit.JsonValue) -> CursorSdkTerminalErrorWire? {
-  match json_object_unique_member(v: v, key: "message") {
-    JsonMemberFound { value: msg_v } => {
-      let message = json_string_value_or_empty(v: msg_v)
-      match json_object_unique_member(v: v, key: "code") {
-        JsonMemberFound { value: code_v } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: "message") {
+    extdeps.languages.json.parse.JsonMemberFound { value: msg_v } => {
+      let message = extdeps.languages.json.parse.json_string_value_or_empty(v: msg_v)
+      match extdeps.languages.json.parse.json_object_unique_member(v: v, key: "code") {
+        extdeps.languages.json.parse.JsonMemberFound { value: code_v } =>
           Present {
             value: CursorSdkTerminalErrorObserved {
               message: message,
-              code: parse_cursor_sdk_error_code(
-                raw: json_string_value_or_empty(v: code_v),
+              code: extdeps.llm.cursor_sdk_errors.parse_cursor_sdk_error_code(
+                raw: extdeps.languages.json.parse.json_string_value_or_empty(v: code_v),
               ),
             },
           }
-        JsonMemberAbsent =>
+        extdeps.languages.json.parse.JsonMemberAbsent =>
           Present {
             value: CursorSdkTerminalErrorObserved {
               message: message,
-              code: parse_cursor_sdk_error_code(raw: ""),
+              code: extdeps.llm.cursor_sdk_errors.parse_cursor_sdk_error_code(raw: ""),
             },
           }
-        JsonMemberDuplicated { count: _ } => none
-        JsonMemberNotAnObject => none
+        extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => none
+        extdeps.languages.json.parse.JsonMemberNotAnObject => none
       }
     }
-    JsonMemberAbsent => none
-    JsonMemberDuplicated { count: _ } => none
-    JsonMemberNotAnObject => none
+    extdeps.languages.json.parse.JsonMemberAbsent => none
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => none
+    extdeps.languages.json.parse.JsonMemberNotAnObject => none
   }
 }
 
@@ -149,16 +149,16 @@ fn cursor_sdk_stream_reconcile_run_result(raw: String) -> CursorSdkStreamTermina
       raw: raw,
     }
   } else {
-    match parse_json(s: raw) {
+    match extdeps.languages.json.parse.parse_json(s: raw) {
       Present { value: v } =>
-        match json_object_unique_member(v: v, key: "status") {
-          JsonMemberFound { value: status_v } =>
+        match extdeps.languages.json.parse.json_object_unique_member(v: v, key: "status") {
+          extdeps.languages.json.parse.JsonMemberFound { value: status_v } =>
             match cursor_sdk_terminal_status_from_wire(
-              wire_status: json_string_value_or_empty(v: status_v),
+              wire_status: extdeps.languages.json.parse.json_string_value_or_empty(v: status_v),
             ) {
               Present { value: status } =>
-                match json_object_unique_member(v: v, key: "error") {
-                  JsonMemberFound { value: err_v } =>
+                match extdeps.languages.json.parse.json_object_unique_member(v: v, key: "error") {
+                  extdeps.languages.json.parse.JsonMemberFound { value: err_v } =>
                     match cursor_sdk_error_from_object(v: err_v) {
                       Present { value: error_wire } =>
                         CursorSdkStreamTerminalsReconciled {
@@ -172,18 +172,18 @@ fn cursor_sdk_stream_reconcile_run_result(raw: String) -> CursorSdkStreamTermina
                           raw: raw,
                         }
                     }
-                  JsonMemberAbsent =>
+                  extdeps.languages.json.parse.JsonMemberAbsent =>
                     CursorSdkStreamTerminalsReconciled {
                       status: status,
                       error: CursorSdkTerminalErrorAbsent,
                       raw: raw,
                     }
-                  JsonMemberDuplicated { count: _ } =>
+                  extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
                     CursorSdkStreamTerminalsUnclassified {
                       reason: "duplicate error member in Cursor SDK run result" as std.types.NonEmptyStr,
                       raw: raw,
                     }
-                  JsonMemberNotAnObject =>
+                  extdeps.languages.json.parse.JsonMemberNotAnObject =>
                     CursorSdkStreamTerminalsUnclassified {
                       reason: "Cursor SDK run result error member not an object" as std.types.NonEmptyStr,
                       raw: raw,
@@ -195,17 +195,17 @@ fn cursor_sdk_stream_reconcile_run_result(raw: String) -> CursorSdkStreamTermina
                   raw: raw,
                 }
             }
-          JsonMemberAbsent =>
+          extdeps.languages.json.parse.JsonMemberAbsent =>
             CursorSdkStreamTerminalsUnclassified {
               reason: "Cursor SDK run result missing status member" as std.types.NonEmptyStr,
               raw: raw,
             }
-          JsonMemberDuplicated { count: _ } =>
+          extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
             CursorSdkStreamTerminalsUnclassified {
               reason: "duplicate status member in Cursor SDK run result" as std.types.NonEmptyStr,
               raw: raw,
             }
-          JsonMemberNotAnObject =>
+          extdeps.languages.json.parse.JsonMemberNotAnObject =>
             CursorSdkStreamTerminalsUnclassified {
               reason: "Cursor SDK run result is not a JSON object" as std.types.NonEmptyStr,
               raw: raw,
@@ -221,36 +221,36 @@ fn cursor_sdk_stream_reconcile_run_result(raw: String) -> CursorSdkStreamTermina
 }
 
 fn cursor_sdk_stream_classify_message_line(raw: String) -> CursorSdkMessageKind? {
-  match parse_json(s: raw) {
+  match extdeps.languages.json.parse.parse_json(s: raw) {
     Present { value: v } =>
-      match json_object_unique_member(v: v, key: "type") {
-        JsonMemberFound { value: type_v } =>
+      match extdeps.languages.json.parse.json_object_unique_member(v: v, key: "type") {
+        extdeps.languages.json.parse.JsonMemberFound { value: type_v } =>
           Present {
             value: cursor_sdk_message_kind_from_wire(
-              wire_type: json_string_value_or_empty(v: type_v),
+              wire_type: extdeps.languages.json.parse.json_string_value_or_empty(v: type_v),
             ),
           }
-        JsonMemberAbsent => none
-        JsonMemberDuplicated { count: _ } => none
-        JsonMemberNotAnObject => none
+        extdeps.languages.json.parse.JsonMemberAbsent => none
+        extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => none
+        extdeps.languages.json.parse.JsonMemberNotAnObject => none
       }
     Absent => none
   }
 }
 
 fn cursor_sdk_stream_classify_local_run_event(raw: String) -> CursorSdkLocalRunStreamKind? {
-  match parse_json(s: raw) {
+  match extdeps.languages.json.parse.parse_json(s: raw) {
     Present { value: v } =>
-      match json_object_unique_member(v: v, key: "type") {
-        JsonMemberFound { value: type_v } =>
+      match extdeps.languages.json.parse.json_object_unique_member(v: v, key: "type") {
+        extdeps.languages.json.parse.JsonMemberFound { value: type_v } =>
           Present {
             value: cursor_sdk_local_run_stream_kind_from_wire(
-              wire_type: json_string_value_or_empty(v: type_v),
+              wire_type: extdeps.languages.json.parse.json_string_value_or_empty(v: type_v),
             ),
           }
-        JsonMemberAbsent => none
-        JsonMemberDuplicated { count: _ } => none
-        JsonMemberNotAnObject => none
+        extdeps.languages.json.parse.JsonMemberAbsent => none
+        extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => none
+        extdeps.languages.json.parse.JsonMemberNotAnObject => none
       }
     Absent => none
   }

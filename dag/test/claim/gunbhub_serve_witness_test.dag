@@ -4,28 +4,28 @@ module test.claim.gunbhub_serve_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_compose_ok_html(node: std.markup.Fragment) -> String {
-  match gunbhub_compose_body(node: node) {
-    ComposedOk { html: h } => h
-    ComposeRejected { reason: _ } => ""
+  match gunbc.gunbhub_serve.gunbhub_compose_body(node: node) {
+    gunbc.gunbhub_serve.ComposedOk { html: h } => h
+    gunbc.gunbhub_serve.ComposeRejected { reason: _ } => ""
   }
 }
 
 fn expected_browse_html() -> String {
-  witness_compose_ok_html(node: gunbhub_browse_page())
+  witness_compose_ok_html(node: gunbc.gunbhub_serve.gunbhub_browse_page())
 }
 
 fn expected_readme_html() -> String {
-  witness_compose_ok_html(node: gunbhub_readme_page())
+  witness_compose_ok_html(node: gunbc.gunbhub_serve.gunbhub_readme_page())
 }
 
 fn witness_static_table_has_two_get_routes() -> Bool {
-  let table = gunbhub_served_static_route_table()
+  let table = gunbc.gunbhub_serve.gunbhub_served_static_route_table()
   count(xs: table.routes) == 2
 }
 
 fn witness_static_table_browse_row_matches_host_contract() -> Bool {
-  let table = gunbhub_served_static_route_table()
-  let browse_tpl = gunbhub_browse_path_template()
+  let table = gunbc.gunbhub_serve.gunbhub_served_static_route_table()
+  let browse_tpl = gunbc.gunbhub_serve.gunbhub_browse_path_template()
   fold(
     xs: table.routes,
     init: false,
@@ -34,19 +34,19 @@ fn witness_static_table_browse_row_matches_host_contract() -> Bool {
         acc
       } else {
         row.method == std.types.GET
-          && path_matches_template(template: row.path_pattern, path: "/")
-          && path_matches_template(template: browse_tpl, path: "/")
-          && row.body == test.claim.gunbhub_serve_witness.expected_browse_html()
-          && row.content_type == gunbhub_html_content_type()
-          && media_type_wire_label(m: gunbhub_html_content_type()) == "text/html; charset=utf-8"
+          && gunbc.gunbhub_serve.path_matches_template(template: row.path_pattern, path: "/")
+          && gunbc.gunbhub_serve.path_matches_template(template: browse_tpl, path: "/")
+          && row.body == expected_browse_html()
+          && row.content_type == gunbc.gunbhub_serve.gunbhub_html_content_type()
+          && extdeps.http.server.media_type_wire_label(m: gunbc.gunbhub_serve.gunbhub_html_content_type()) == "text/html; charset=utf-8"
           && row.status_on_hit == 200
       }
   )
 }
 
 fn witness_static_table_repo_path_row_is_m1_placeholder() -> Bool {
-  let table = gunbhub_served_static_route_table()
-  let repo_tpl = gunbhub_repo_path_template()
+  let table = gunbc.gunbhub_serve.gunbhub_served_static_route_table()
+  let repo_tpl = gunbc.gunbhub_serve.gunbhub_repo_path_template()
   fold(
     xs: table.routes,
     init: false,
@@ -55,94 +55,94 @@ fn witness_static_table_repo_path_row_is_m1_placeholder() -> Bool {
         acc
       } else {
         row.method == std.types.GET
-          && path_matches_template(template: row.path_pattern, path: "/README.md")
-          && path_matches_template(template: repo_tpl, path: "/README.md")
+          && gunbc.gunbhub_serve.path_matches_template(template: row.path_pattern, path: "/README.md")
+          && gunbc.gunbhub_serve.path_matches_template(template: repo_tpl, path: "/README.md")
           && row.body == expected_readme_html()
-          && row.content_type == gunbhub_html_content_type()
-          && media_type_wire_label(m: gunbhub_html_content_type()) == "text/html; charset=utf-8"
+          && row.content_type == gunbc.gunbhub_serve.gunbhub_html_content_type()
+          && extdeps.http.server.media_type_wire_label(m: gunbc.gunbhub_serve.gunbhub_html_content_type()) == "text/html; charset=utf-8"
           && row.status_on_hit == 200
       }
   )
 }
 
 fn witness_browse_served_body_matches_consumer() -> Bool {
-  let expected = test.claim.gunbhub_serve_witness.expected_browse_html()
-  match serve_gunbhub_request(
-    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "/" }
+  let expected = expected_browse_html()
+  match gunbc.gunbhub_serve.serve_gunbhub_request(
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: std.types.GET, path: "/" }
   ) {
-    Served { response: r } => r.body == expected && r.status == 200
+    gunbc.gunbhub_serve.Served { response: r } => r.body == expected && r.status == 200
     _ => false
   }
 }
 
 fn witness_readme_served_body_matches_static_table() -> Bool {
-  match serve_gunbhub_request(
-    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "/README.md" }
+  match gunbc.gunbhub_serve.serve_gunbhub_request(
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: std.types.GET, path: "/README.md" }
   ) {
-    Served { response: r } => r.body == expected_readme_html() && r.status == 200
+    gunbc.gunbhub_serve.Served { response: r } => r.body == expected_readme_html() && r.status == 200
     _ => false
   }
 }
 
 fn witness_browse_empty_path_also_matches() -> Bool {
-  match serve_gunbhub_request(
-    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "" }
+  match gunbc.gunbhub_serve.serve_gunbhub_request(
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: std.types.GET, path: "" }
   ) {
-    Served { response: r } => r.body == test.claim.gunbhub_serve_witness.expected_browse_html()
+    gunbc.gunbhub_serve.Served { response: r } => r.body == expected_browse_html()
     _ => false
   }
 }
 
 fn witness_unknown_path_not_found() -> Bool {
-  match serve_gunbhub_request(
-    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "/missing/nested" }
+  match gunbc.gunbhub_serve.serve_gunbhub_request(
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: std.types.GET, path: "/missing/nested" }
   ) {
-    RouteNotFound => true
+    gunbc.gunbhub_serve.RouteNotFound => true
     _ => false
   }
 }
 
 fn witness_wrong_method_not_allowed() -> Bool {
-  match serve_gunbhub_request(
-    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: POST, path: "/" }
+  match gunbc.gunbhub_serve.serve_gunbhub_request(
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: std.types.POST, path: "/" }
   ) {
-    MethodNotAllowed => true
+    gunbc.gunbhub_serve.MethodNotAllowed => true
     _ => false
   }
 }
 
 fn witness_repo_path_wrong_method_not_allowed() -> Bool {
-  match serve_gunbhub_request(
-    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: POST, path: "/README.md" }
+  match gunbc.gunbhub_serve.serve_gunbhub_request(
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: std.types.POST, path: "/README.md" }
   ) {
-    MethodNotAllowed => true
+    gunbc.gunbhub_serve.MethodNotAllowed => true
     _ => false
   }
 }
 
 fn witness_hostile_compose_rejects_fail_closed() -> Bool {
-  match gunbhub_compose_body(node: gunbhub_hostile_page()) {
-    ComposeRejected { reason: _ } => true
-    ComposedOk { html: _ } => false
+  match gunbc.gunbhub_serve.gunbhub_compose_body(node: gunbc.gunbhub_serve.gunbhub_hostile_page()) {
+    gunbc.gunbhub_serve.ComposeRejected { reason: _ } => true
+    gunbc.gunbhub_serve.ComposedOk { html: _ } => false
   }
 }
 
 fn witness_hostile_page_not_in_static_table() -> Bool {
-  match gunbhub_compose_body(node: gunbhub_hostile_page()) {
-    ComposeRejected { reason: _ } =>
-      count(xs: gunbhub_served_static_route_table().routes) == 2
-    ComposedOk { html: _ } => false
+  match gunbc.gunbhub_serve.gunbhub_compose_body(node: gunbc.gunbhub_serve.gunbhub_hostile_page()) {
+    gunbc.gunbhub_serve.ComposeRejected { reason: _ } =>
+      count(xs: gunbc.gunbhub_serve.gunbhub_served_static_route_table().routes) == 2
+    gunbc.gunbhub_serve.ComposedOk { html: _ } => false
   }
 }
 
 fn witness_hostile_page_rejected_before_response() -> Bool {
-  match serve_gunbhub_page_source(
-    source: gunbc.gunbhub_serve.ReactPage { node: gunbhub_hostile_page() }
+  match gunbc.gunbhub_serve.serve_gunbhub_page_source(
+    source: gunbc.gunbhub_serve.ReactPage { node: gunbc.gunbhub_serve.gunbhub_hostile_page() }
   ) {
-    RenderRejectedBeforeServe { reason: _ } => true
-    Served { response: _ } => false
-    RouteNotFound => false
-    MethodNotAllowed => false
+    gunbc.gunbhub_serve.RenderRejectedBeforeServe { reason: _ } => true
+    gunbc.gunbhub_serve.Served { response: _ } => false
+    gunbc.gunbhub_serve.RouteNotFound => false
+    gunbc.gunbhub_serve.MethodNotAllowed => false
   }
 }
 
@@ -151,9 +151,9 @@ fn witness_hostile_page_not_served_via_request_path() -> Bool {
 }
 
 fn witness_browse_route_binding_declared() -> Bool {
-  let browse = gunbhub_browse_route()
+  let browse = gunbc.gunbhub_serve.gunbhub_browse_route()
   fold(
-    xs: gunbhub_node_route_bindings(),
+    xs: gunbc.gunbhub_serve.gunbhub_node_route_bindings(),
     init: false,
     f: (acc, binding) =>
       if acc {
@@ -167,9 +167,9 @@ fn witness_browse_route_binding_declared() -> Bool {
 }
 
 fn witness_repo_path_route_binding_declared() -> Bool {
-  let repo = gunbhub_repo_path_route()
+  let repo = gunbc.gunbhub_serve.gunbhub_repo_path_route()
   fold(
-    xs: gunbhub_node_route_bindings(),
+    xs: gunbc.gunbhub_serve.gunbhub_node_route_bindings(),
     init: false,
     f: (acc, binding) =>
       if acc {
@@ -198,5 +198,5 @@ test fn gunbhub_serve_keystone_holds() -> Bool {
     && witness_hostile_page_not_served_via_request_path()
     && witness_browse_route_binding_declared()
     && witness_repo_path_route_binding_declared()
-    && gunbhub_html_render_keystone_holds()
+    && gunbc.gunbhub_serve_html.gunbhub_html_render_keystone_holds()
 }

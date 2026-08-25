@@ -4,7 +4,7 @@ module extdeps.cache
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/cache"
   }
 }
@@ -14,15 +14,15 @@ fn cache_interface_facts_from_catalog(row: extdeps.cache.types.CacheInterfaceCat
     identity: row.identity
     backing_surface: row.backing_surface
     transport_encoding: match row.transport_encoding {
-      CatalogOpaqueStringEncoding => OpaqueStringEncoding
-      CatalogCasContentEncoding => CasContentEncoding
-      SccacheInternalEncoding => NativeInternalEncoding
-      CargoFingerprintEncoding => CasContentEncoding
+      extdeps.cache.types.CatalogOpaqueStringEncoding => std.cache_interface.OpaqueStringEncoding
+      extdeps.cache.types.CatalogCasContentEncoding => std.cache_interface.CasContentEncoding
+      extdeps.cache.types.SccacheInternalEncoding => std.cache_interface.NativeInternalEncoding
+      extdeps.cache.types.CargoFingerprintEncoding => std.cache_interface.CasContentEncoding
     }
-    vendor_transport_encoding_collapsed: catalog_transport_encoding_collapsed_in_std_projection(encoding: row.transport_encoding)
+    vendor_transport_encoding_collapsed: extdeps.cache.types.catalog_transport_encoding_collapsed_in_std_projection(encoding: row.transport_encoding)
 
     key_derivation: {
-      vendor_only_key_inputs_omitted: catalog_has_vendor_only_key_inputs(inputs: catalog_inputs_considered(kd: row.key_derivation))
+      vendor_only_key_inputs_omitted: extdeps.cache.types.catalog_has_vendor_only_key_inputs(inputs: extdeps.cache.types.catalog_inputs_considered(kd: row.key_derivation))
       overwritable: row.key_derivation.overwritable
       prefix_fallback_allowed: row.key_derivation.prefix_fallback_allowed
       content_verified_on_read: row.key_derivation.content_verified_on_read
@@ -48,10 +48,10 @@ fn cache_key_projection_provider_key<T>(
   backend: extdeps.cache.types.CacheInterfaceCatalogFacts,
 ) -> extdeps.cache.types.CatalogProviderKey {
   match backend.transport_encoding {
-    CatalogOpaqueStringEncoding => extdeps.cache.types.CatalogOpaqueStringKey { key: artifact.subject_digest }
-    SccacheInternalEncoding => extdeps.cache.types.SccacheInternalHash { digest: artifact.subject_digest }
-    CatalogCasContentEncoding => extdeps.cache.types.CatalogCasContentDigest { digest: artifact.subject_digest }
-    CargoFingerprintEncoding => extdeps.cache.types.CargoFingerprint { digest: artifact.subject_digest }
+    extdeps.cache.types.CatalogOpaqueStringEncoding => extdeps.cache.types.CatalogOpaqueStringKey { key: artifact.subject_digest }
+    extdeps.cache.types.SccacheInternalEncoding => extdeps.cache.types.SccacheInternalHash { digest: artifact.subject_digest }
+    extdeps.cache.types.CatalogCasContentEncoding => extdeps.cache.types.CatalogCasContentDigest { digest: artifact.subject_digest }
+    extdeps.cache.types.CargoFingerprintEncoding => extdeps.cache.types.CargoFingerprint { digest: artifact.subject_digest }
   }
 }
 
@@ -68,9 +68,9 @@ fn cache_key_projection_transport<T>(
 fn cache_verified_hit_receipt<T>(
   artifact: std.cache_interface.ArtifactIdentity<T>,
   backend: extdeps.cache.types.CacheInterfaceCatalogFacts,
-  producer: ProducerReceipt<T>,
+  producer: std.cache_interface.ProducerReceipt<T>,
   content_digest: std.content_hash.ContentHash,
-) -> CatalogCachedArtifactReceipt<T> {
+) -> extdeps.cache.types.CatalogCachedArtifactReceipt<T> {
   extdeps.cache.types.CatalogCachedArtifactReceipt {
     artifact: artifact
     backend_key: cache_key_projection_transport(artifact: artifact, backend: backend)
@@ -80,13 +80,13 @@ fn cache_verified_hit_receipt<T>(
 }
 
 data gha_actions_cache: extdeps.cache.types.CacheInterfaceCatalogFacts = extdeps.cache.github_actions.gha_actions_cache_facts
-data sccache_local: extdeps.cache.types.CacheInterfaceCatalogFacts = sccache_local_facts
-data buildbuddy_cas: extdeps.cache.types.CacheInterfaceCatalogFacts = buildbuddy_cas_facts
+data sccache_local: extdeps.cache.types.CacheInterfaceCatalogFacts = extdeps.cache.sccache.sccache_local_facts
+data buildbuddy_cas: extdeps.cache.types.CacheInterfaceCatalogFacts = extdeps.cache.buildbuddy.buildbuddy_cas_facts
 data cargo_target_dir: extdeps.cache.types.CacheInterfaceCatalogFacts = extdeps.cache.cargo.cargo_target_dir_facts
 data rustup_toolchain_store: extdeps.cache.types.CacheInterfaceCatalogFacts = extdeps.cache.rustup.rustup_toolchain_store_facts
 data resolved_graph_cache: extdeps.cache.types.CacheInterfaceCatalogFacts = extdeps.realization.resolved_graph.resolved_graph_cache_facts
-data parse_table_memo: extdeps.cache.types.CacheInterfaceCatalogFacts = parse_table_memo_facts
-data compile_stage_memo: extdeps.cache.types.CacheInterfaceCatalogFacts = compile_stage_memo_facts
+data parse_table_memo: extdeps.cache.types.CacheInterfaceCatalogFacts = extdeps.realization.parse_table_memo.parse_table_memo_facts
+data compile_stage_memo: extdeps.cache.types.CacheInterfaceCatalogFacts = extdeps.realization.compile_stage_memo.compile_stage_memo_facts
 
 data cache_catalog: List<extdeps.cache.types.CacheInterfaceCatalogFacts> = [
   gha_actions_cache,
@@ -98,7 +98,7 @@ data cache_catalog: List<extdeps.cache.types.CacheInterfaceCatalogFacts> = [
   extdeps.realization.reconcile_in_process.typed_module_cache_facts,
   resolved_graph_cache,
   parse_table_memo,
-  compile_stage_memo_facts,
+  extdeps.realization.compile_stage_memo.compile_stage_memo_facts,
 ]
 
 data cache_catalog_rows: List<std.cache_interface.CacheInterfaceFacts> = cache_catalog
@@ -109,14 +109,14 @@ data parse_table_memo_projected: std.cache_interface.CacheInterfaceFacts = cache
 data cargo_target_dir_projected: std.cache_interface.CacheInterfaceFacts = cache_interface_facts_from_catalog(cargo_target_dir)
 
 data cache_layer_default_order: List<std.cache_identity.CacheInterfaceId> = [
-  parse_table_memo_id,
+  extdeps.realization.parse_table_memo.parse_table_memo_id,
   extdeps.realization.reconcile_in_process.parse_cache_id,
-  typed_module_cache_id,
-  cargo_target_dir_id,
-  sccache_local_id,
-  resolved_graph_cache_id,
-  rustup_toolchain_store_id,
+  extdeps.realization.reconcile_in_process.typed_module_cache_id,
+  extdeps.cache.cargo.cargo_target_dir_id,
+  extdeps.cache.sccache.sccache_local_id,
+  extdeps.realization.resolved_graph.resolved_graph_cache_id,
+  extdeps.cache.rustup.rustup_toolchain_store_id,
   extdeps.cache.buildbuddy.buildbuddy_cas_id,
   extdeps.cache.github_actions.gha_actions_cache_id,
-  compile_stage_memo_id,
+  extdeps.realization.compile_stage_memo.compile_stage_memo_id,
 ]

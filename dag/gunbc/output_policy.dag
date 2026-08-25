@@ -37,7 +37,7 @@ fn resolve_verbosity(env: VerbosityEnv) -> Verbosity {
   }
 }
 
-fn channel_decision(channel: gunbc.output_policy.OutputChannel, verbosity: Verbosity) -> OutputDecision {
+fn channel_decision(channel: OutputChannel, verbosity: Verbosity) -> OutputDecision {
   match channel {
     Diagnostic => Full
     ClaimResult => match verbosity {
@@ -86,8 +86,8 @@ type ChannelPolicy {
 // and a second phase enum beside them would be the nickname DESIGN section 3 forbids.
 fn routine_rollup_grain_for(verbosity: Verbosity) -> std.observation.ObservationGrain? {
   match verbosity {
-    Quiet => Present { value: BatchGrain }
-    Normal => Present { value: BatchGrain }
+    Quiet => Present { value: std.observation.BatchGrain }
+    Normal => Present { value: std.observation.BatchGrain }
     Verbose => none
   }
 }
@@ -124,7 +124,7 @@ fn resolve_channel_policy(verbose: Bool, quiet: Bool) -> ChannelPolicy {
   channel_policy(verbosity: resolve_verbosity(env: VerbosityEnv { verbose: verbose, quiet: quiet }))
 }
 
-fn is_emitted(channel: gunbc.output_policy.OutputChannel, verbosity: Verbosity) -> Bool {
+fn is_emitted(channel: OutputChannel, verbosity: Verbosity) -> Bool {
   match channel_decision(channel: channel, verbosity: verbosity) {
     Suppressed => false
     Condensed => true
@@ -132,7 +132,7 @@ fn is_emitted(channel: gunbc.output_policy.OutputChannel, verbosity: Verbosity) 
   }
 }
 
-fn is_condensed(channel: gunbc.output_policy.OutputChannel, verbosity: Verbosity) -> Bool {
+fn is_condensed(channel: OutputChannel, verbosity: Verbosity) -> Bool {
   match channel_decision(channel: channel, verbosity: verbosity) {
     Condensed => true
     Suppressed => false
@@ -189,7 +189,7 @@ fn divergence_disposition(diverges: Bool) -> StreamDisposition {
 data effect_stream_dispatch_note: String = "Observation dissolve (operator live-log 2026-07-25): Ambient ShellTrace silence at Normal must not force StreamSuppressed — Anomaly Failed still surfaces via divergence alone. Quiet no longer swallows divergence either (DESIGN §5: a failing effect is never silent). Verbose still surfaces every stream (Full). The channel grades Ambient scaffolding; the stream policy grades subject content; they compose rather than conflate."
 
 fn effect_stream_disposition(
-  channel: gunbc.output_policy.OutputChannel,
+  channel: OutputChannel,
   verbosity: Verbosity,
   expected: ExpectedOutcome,
   observed: ObservedOutcome
@@ -204,7 +204,7 @@ fn effect_stream_disposition(
 // This is the ONLY producer of surfaced subject text, and it neutralizes on the SurfaceContent arm. That is what makes neutralization a property of the arm rather than a caller's duty: there is no route by which un-neutralized subject text reaches a log, so no caller can forget it and no reviewer has to check (DESIGN 5 — the bad state is unwritable, not caught after the fact). A Bool field on the arm would have been the validation shape instead: it can be set false at a call site, which is precisely the escape hatch construction removes.
 fn surface_effect_stream(disposition: StreamDisposition, text: String) -> String? {
   match disposition {
-    SurfaceContent => Present { value: neutralize_workflow_commands(text: text) }
+    SurfaceContent => Present { value: extdeps.github.log_annotations.neutralize_workflow_commands(text: text) }
     SummarizeCounts => Absent
     StreamSuppressed => Absent
   }
@@ -248,7 +248,7 @@ fn shell_trace_stream_policy(verbosity: Verbosity) -> EffectStreamPolicy {
       channel: ShellTrace, verbosity: verbosity,
       expected: OutcomeIsData, observed: observed_outcome_from_exit(exit: 1)
     )
-    subject_line_guard: subject_text_line_guard
+    subject_line_guard: extdeps.github.log_annotations.subject_text_line_guard
   }
 }
 
@@ -270,9 +270,9 @@ data shell_trace_observation_convergence_note: String = "DISSOLVED (operator liv
 // outcome folds exactly when its class is routine, so a class that becomes an anomaly stops folding
 // without an edit here.
 fn concluded_outcome_folds(passed: Bool) -> Bool {
-  match observation_class_density(c: if passed { ClassDone } else { ClassFailed }) {
-    RoutineCollapsible => true
-    SummaryAlwaysShown => false
-    AnomalyExpanded => false
+  match std.observation.observation_class_density(c: if passed { std.observation.ClassDone } else { std.observation.ClassFailed }) {
+    std.observation.RoutineCollapsible => true
+    std.observation.SummaryAlwaysShown => false
+    std.observation.AnomalyExpanded => false
   }
 }

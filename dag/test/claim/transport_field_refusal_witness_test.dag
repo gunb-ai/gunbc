@@ -1,6 +1,7 @@
 module test.claim.transport_field_refusal_witness
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 // Regression control for the parser's transport/config field refusals (DESIGN §5: a failure arm
 // must refuse, never widen or fabricate). Three reflexes are pinned here, each with a positive
@@ -52,17 +53,17 @@ fn compiles(source: String, out_path: String) -> Bool {
 // of both the >= 1 and the == 0 assertions (DESIGN §5: top-as-ignorance is not top-as-answer).
 fn parse_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "ParseError")))
-    CensusNotRunnable { cause: _ } => -1
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } =>
+      gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_blocking_rows(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: "ParseError")))
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => -1
   }
 }
 
 fn not_modeled_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TransportEmissionNotModeled")))
-    CensusNotRunnable { cause: _ } => -1
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } =>
+      gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_blocking_rows(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: "TransportEmissionNotModeled")))
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => -1
   }
 }
 

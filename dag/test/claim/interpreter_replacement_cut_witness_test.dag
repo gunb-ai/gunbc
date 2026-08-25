@@ -5,44 +5,44 @@ data interpreter_replacement_cut_witness_note: String = "The first production Re
 
 fn causes_of(admission: gunbc.replacement_cut.PlanAdmission) -> List<gunbc.replacement_cut.CutRefusalCause> {
   match admission {
-    PlanAdmitted { admitted: _ } => []
-    PlanRefused { causes: cs } => cs
+    gunbc.replacement_cut.PlanAdmitted { admitted: _ } => []
+    gunbc.replacement_cut.PlanRefused { causes: cs } => cs
   }
 }
 
 fn is_undecided_consumer(c: gunbc.replacement_cut.CutRefusalCause) -> Bool {
   match c {
-    UndispositionedConsumer { consumer: _ } => true
-    UncoveredSurvivingConsumer { consumer: _ } => false
-    UndispositionedEvidence { evidence: _ } => false
-    CoveredByOldRoot { consumer: _ } => false
-    ReplacementNamesOldRoot { consumer: _ } => false
-    ConsumerDuplicated { consumer: _ } => false
-    EvidenceDuplicated { evidence: _ } => false
-    RegionMemberDuplicated { member: _ } => false
-    EnumeratedCensusEmpty => false
-    ExternalRolesEnumeratedEmpty => false
-    EmptyCoveredRegion => false
-    NewRootEqualsOldRoot => false
-    SelfReferentialDescent => false
+    gunbc.replacement_cut.UndispositionedConsumer { consumer: _ } => true
+    gunbc.replacement_cut.UncoveredSurvivingConsumer { consumer: _ } => false
+    gunbc.replacement_cut.UndispositionedEvidence { evidence: _ } => false
+    gunbc.replacement_cut.CoveredByOldRoot { consumer: _ } => false
+    gunbc.replacement_cut.ReplacementNamesOldRoot { consumer: _ } => false
+    gunbc.replacement_cut.ConsumerDuplicated { consumer: _ } => false
+    gunbc.replacement_cut.EvidenceDuplicated { evidence: _ } => false
+    gunbc.replacement_cut.RegionMemberDuplicated { member: _ } => false
+    gunbc.replacement_cut.EnumeratedCensusEmpty => false
+    gunbc.replacement_cut.ExternalRolesEnumeratedEmpty => false
+    gunbc.replacement_cut.EmptyCoveredRegion => false
+    gunbc.replacement_cut.NewRootEqualsOldRoot => false
+    gunbc.replacement_cut.SelfReferentialDescent => false
   }
 }
 
 fn is_uncovered_surviving(c: gunbc.replacement_cut.CutRefusalCause) -> Bool {
   match c {
-    UncoveredSurvivingConsumer { consumer: _ } => true
-    UndispositionedConsumer { consumer: _ } => false
-    UndispositionedEvidence { evidence: _ } => false
-    CoveredByOldRoot { consumer: _ } => false
-    ReplacementNamesOldRoot { consumer: _ } => false
-    ConsumerDuplicated { consumer: _ } => false
-    EvidenceDuplicated { evidence: _ } => false
-    RegionMemberDuplicated { member: _ } => false
-    EnumeratedCensusEmpty => false
-    ExternalRolesEnumeratedEmpty => false
-    EmptyCoveredRegion => false
-    NewRootEqualsOldRoot => false
-    SelfReferentialDescent => false
+    gunbc.replacement_cut.UncoveredSurvivingConsumer { consumer: _ } => true
+    gunbc.replacement_cut.UndispositionedConsumer { consumer: _ } => false
+    gunbc.replacement_cut.UndispositionedEvidence { evidence: _ } => false
+    gunbc.replacement_cut.CoveredByOldRoot { consumer: _ } => false
+    gunbc.replacement_cut.ReplacementNamesOldRoot { consumer: _ } => false
+    gunbc.replacement_cut.ConsumerDuplicated { consumer: _ } => false
+    gunbc.replacement_cut.EvidenceDuplicated { evidence: _ } => false
+    gunbc.replacement_cut.RegionMemberDuplicated { member: _ } => false
+    gunbc.replacement_cut.EnumeratedCensusEmpty => false
+    gunbc.replacement_cut.ExternalRolesEnumeratedEmpty => false
+    gunbc.replacement_cut.EmptyCoveredRegion => false
+    gunbc.replacement_cut.NewRootEqualsOldRoot => false
+    gunbc.replacement_cut.SelfReferentialDescent => false
   }
 }
 
@@ -52,16 +52,16 @@ fn count_matching(causes: List<gunbc.replacement_cut.CutRefusalCause>, p: fn(gun
 
 // The plan refuses, and that is the authored outcome rather than a defect.
 test fn interpreter_cut_plan_refuses_with_open_decisions() -> Bool {
-  let causes = test.claim.interpreter_replacement_cut_witness_test.causes_of(admission: gunbc.interpreter_replacement_cut.interpreter_cut_admission())
-  list_length(items: causes) == 4
-    && test.claim.interpreter_replacement_cut_witness_test.count_matching(causes: causes, p: is_undecided_consumer) == 1
-    && test.claim.interpreter_replacement_cut_witness_test.count_matching(causes: causes, p: is_uncovered_surviving) == 3
+  let causes = causes_of(admission: gunbc.interpreter_replacement_cut.interpreter_cut_admission())
+  std.types.list_length(items: causes) == 4
+    && count_matching(causes: causes, p: is_undecided_consumer) == 1
+    && count_matching(causes: causes, p: is_uncovered_surviving) == 3
 }
 
 // Every cause is one of the two open-decision classes. Any other class is an
 // authoring defect in the row, not a fact about the world.
 test fn every_refusal_cause_is_an_open_decision_not_a_defect() -> Bool {
-  let causes = test.claim.interpreter_replacement_cut_witness_test.causes_of(admission: gunbc.interpreter_replacement_cut.interpreter_cut_admission())
+  let causes = causes_of(admission: gunbc.interpreter_replacement_cut.interpreter_cut_admission())
   fold(
     causes,
     init: true,
@@ -71,19 +71,19 @@ test fn every_refusal_cause_is_an_open_decision_not_a_defect() -> Bool {
 
 fn census_rows(census: gunbc.replacement_cut.BoundaryCensus) -> List<gunbc.replacement_cut.BoundaryConsumer> {
   match census {
-    ConsumersEnumerated { consumers: rows } => rows
-    BoundaryDeclaredEmpty { basis: _ } => []
+    gunbc.replacement_cut.ConsumersEnumerated { consumers: rows } => rows
+    gunbc.replacement_cut.BoundaryDeclaredEmpty { basis: _ } => []
   }
 }
 
 fn is_causeless_disposition(d: gunbc.replacement_cut.ConsumerDisposition) -> Bool {
   match d {
-    Retire { reason: _ } => true
-    ReplacedByY { new_authority: _ } => true
-    RetainSameContract { justification: _, coverage: _ } => false
-    RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
-    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
-    Undecided => false
+    gunbc.replacement_cut.Retire { reason: _ } => true
+    gunbc.replacement_cut.ReplacedByY { new_authority: _ } => true
+    gunbc.replacement_cut.RetainSameContract { justification: _, coverage: _ } => false
+    gunbc.replacement_cut.RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+    gunbc.replacement_cut.EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
+    gunbc.replacement_cut.Undecided => false
   }
 }
 
@@ -93,23 +93,23 @@ fn count_consumers(rows: List<gunbc.replacement_cut.BoundaryConsumer>, p: fn(gun
 
 fn is_retire(d: gunbc.replacement_cut.ConsumerDisposition) -> Bool {
   match d {
-    Retire { reason: _ } => true
-    ReplacedByY { new_authority: _ } => false
-    RetainSameContract { justification: _, coverage: _ } => false
-    RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
-    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
-    Undecided => false
+    gunbc.replacement_cut.Retire { reason: _ } => true
+    gunbc.replacement_cut.ReplacedByY { new_authority: _ } => false
+    gunbc.replacement_cut.RetainSameContract { justification: _, coverage: _ } => false
+    gunbc.replacement_cut.RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+    gunbc.replacement_cut.EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
+    gunbc.replacement_cut.Undecided => false
   }
 }
 
 fn is_replaced(d: gunbc.replacement_cut.ConsumerDisposition) -> Bool {
   match d {
-    ReplacedByY { new_authority: _ } => true
-    Retire { reason: _ } => false
-    RetainSameContract { justification: _, coverage: _ } => false
-    RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
-    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
-    Undecided => false
+    gunbc.replacement_cut.ReplacedByY { new_authority: _ } => true
+    gunbc.replacement_cut.Retire { reason: _ } => false
+    gunbc.replacement_cut.RetainSameContract { justification: _, coverage: _ } => false
+    gunbc.replacement_cut.RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+    gunbc.replacement_cut.EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
+    gunbc.replacement_cut.Undecided => false
   }
 }
 
@@ -122,22 +122,22 @@ fn is_replaced(d: gunbc.replacement_cut.ConsumerDisposition) -> Bool {
 test fn retiring_with_x_needs_no_coverage_authority() -> Bool {
   let rows = census_rows(census: gunbc.interpreter_replacement_cut.interpreter_replacement_cut().boundary_census)
   let causeless = count_consumers(rows: rows, p: is_causeless_disposition)
-  list_length(items: rows) == 10
+  std.types.list_length(items: rows) == 10
     && count_consumers(rows: rows, p: is_retire) == 5
     && count_consumers(rows: rows, p: is_replaced) == 1
     && causeless == 6
-    && list_length(items: test.claim.interpreter_replacement_cut_witness_test.causes_of(admission: gunbc.interpreter_replacement_cut.interpreter_cut_admission()))
-       == list_length(items: rows) - causeless
+    && std.types.list_length(items: causes_of(admission: gunbc.interpreter_replacement_cut.interpreter_cut_admission()))
+       == std.types.list_length(items: rows) - causeless
 }
 
 // The descent arm carries a BOUNDARY and no identifier. This is the assertion
 // that the honest arm was not quietly upgraded into the joinable one.
 test fn descent_names_a_boundary_and_carries_no_cut_id() -> Bool {
   match gunbc.interpreter_replacement_cut.interpreter_cut_why_not_higher() {
-    DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
+    gunbc.replacement_cut.DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
       (b as String) == "the engine cut through the v1 driver region"
-    OutermostBoundary => false
-    DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
+    gunbc.replacement_cut.OutermostBoundary => false
+    gunbc.replacement_cut.DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
   }
 }
 
@@ -157,6 +157,6 @@ test fn new_root_names_the_boundary_not_a_realization() -> Bool {
 // The covered region is the exact set that leaves, and the old root is not in it.
 test fn covered_region_is_the_deleted_set_and_excludes_the_old_root() -> Bool {
   let cut = gunbc.interpreter_replacement_cut.interpreter_replacement_cut()
-  list_length(items: cut.covered_region) == 4
+  std.types.list_length(items: cut.covered_region) == 4
     && (cut.old_root_consumer as String) == "v1 .dag evaluation entry"
 }

@@ -7,56 +7,56 @@ data synthetic_double_slit_fixture: gunbc.physics.bach_double_slit_path_additivi
 
 data synthetic_first_minimum_both_open: gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow = gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow {
   fixture: synthetic_double_slit_fixture,
-  arrangement: BothSlitsOpen,
-  band: FirstMinimumBand,
+  arrangement: extdeps.physics.bach_et_al_2013_double_slit.BothSlitsOpen,
+  band: gunbc.physics.bach_double_slit_path_additivity.FirstMinimumBand,
   exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   arrival_count: 5,
 }
 
 data synthetic_first_minimum_slit_one: gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow = gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow {
   fixture: synthetic_double_slit_fixture,
-  arrangement: SlitOneOpen,
-  band: FirstMinimumBand,
+  arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitOneOpen,
+  band: gunbc.physics.bach_double_slit_path_additivity.FirstMinimumBand,
   exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   arrival_count: 10,
 }
 
 data synthetic_first_minimum_slit_two: gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow = gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow {
   fixture: synthetic_double_slit_fixture,
-  arrangement: SlitTwoOpen,
-  band: FirstMinimumBand,
+  arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitTwoOpen,
+  band: gunbc.physics.bach_double_slit_path_additivity.FirstMinimumBand,
   exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   arrival_count: 10,
 }
 
 data synthetic_central_both_open: gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow = gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow {
   fixture: synthetic_double_slit_fixture,
-  arrangement: BothSlitsOpen,
-  band: CentralBand,
+  arrangement: extdeps.physics.bach_et_al_2013_double_slit.BothSlitsOpen,
+  band: gunbc.physics.bach_double_slit_path_additivity.CentralBand,
   exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   arrival_count: 95,
 }
 
 data synthetic_central_slit_one: gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow = gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow {
   fixture: synthetic_double_slit_fixture,
-  arrangement: SlitOneOpen,
-  band: CentralBand,
+  arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitOneOpen,
+  band: gunbc.physics.bach_double_slit_path_additivity.CentralBand,
   exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   arrival_count: 40,
 }
 
 data synthetic_central_slit_two: gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow = gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow {
   fixture: synthetic_double_slit_fixture,
-  arrangement: SlitTwoOpen,
-  band: CentralBand,
+  arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitTwoOpen,
+  band: gunbc.physics.bach_double_slit_path_additivity.CentralBand,
   exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   arrival_count: 38,
 }
 
 data synthetic_blocked_central: gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow = gunbc.physics.bach_double_slit_path_additivity.SyntheticArrivalCountObservationRow {
   fixture: synthetic_double_slit_fixture,
-  arrangement: BothSlitsBlocked,
-  band: CentralBand,
+  arrangement: extdeps.physics.bach_et_al_2013_double_slit.BothSlitsBlocked,
+  band: gunbc.physics.bach_double_slit_path_additivity.CentralBand,
   exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   arrival_count: 0,
 }
@@ -74,10 +74,10 @@ data synthetic_fixture_arrival_count_observations: List<gunbc.physics.bach_doubl
 data path_additivity_subject: gunbc.physics.bach_double_slit_path_additivity.PathAdditivitySubject = gunbc.physics.bach_double_slit_path_additivity.PathAdditivitySyntheticFixture {}
 
 fn synthetic_first_minimum_verdict() -> gunbc.physics.bach_double_slit_path_additivity.PathAdditivityBandVerdict {
-  derive_path_additivity_refutation_at_band(
+  gunbc.physics.bach_double_slit_path_additivity.derive_path_additivity_refutation_at_band(
     rows: synthetic_fixture_arrival_count_observations,
     fixture: synthetic_double_slit_fixture,
-    band: FirstMinimumBand,
+    band: gunbc.physics.bach_double_slit_path_additivity.FirstMinimumBand,
     exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   )
 }
@@ -85,18 +85,18 @@ fn synthetic_first_minimum_verdict() -> gunbc.physics.bach_double_slit_path_addi
 data bach_double_slit_path_additivity_first_minimum_verdict: gunbc.physics.bach_double_slit_path_additivity.PathAdditivityBandVerdict = synthetic_first_minimum_verdict()
 
 fn synthetic_first_minimum_receipt_resolution() -> gunbc.physics.bach_double_slit_path_additivity.RefutationReceiptResolution {
-  refutation_receipt_resolution_from_band_verdict(verdict: synthetic_first_minimum_verdict())
+  gunbc.physics.bach_double_slit_path_additivity.refutation_receipt_resolution_from_band_verdict(verdict: synthetic_first_minimum_verdict())
 }
 
 fn bach_double_slit_path_additivity_refutation_holds() -> Bool {
   match bach_double_slit_path_additivity_first_minimum_verdict {
-    PathAdditivityRefutationAtBand { receipt: receipt } =>
-      path_additivity_refutation_holds_for_synthetic_fixture(receipt: receipt)
-    PathAdditivityHeldAtBand {
+    gunbc.physics.bach_double_slit_path_additivity.PathAdditivityRefutationAtBand { receipt: receipt } =>
+      gunbc.physics.bach_double_slit_path_additivity.path_additivity_refutation_holds_for_synthetic_fixture(receipt: receipt)
+    gunbc.physics.bach_double_slit_path_additivity.PathAdditivityHeldAtBand {
       band: held_band,
       exposure: held_exposure,
     } => false
-    PathAdditivityUndecidedAtBand { failure: undecided_failure } => false
+    gunbc.physics.bach_double_slit_path_additivity.PathAdditivityUndecidedAtBand { failure: undecided_failure } => false
   }
 }
 
@@ -105,13 +105,13 @@ fn synthetic_path_additivity_receipt_matches_fold_kernel(
   band: gunbc.physics.bach_double_slit_path_additivity.ScreenBand,
   exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureSession,
 ) -> Bool {
-  match resolve_additivity_inputs(
+  match gunbc.physics.bach_double_slit_path_additivity.resolve_additivity_inputs(
     rows: synthetic_fixture_arrival_count_observations,
     fixture: synthetic_double_slit_fixture,
     band: band,
     exposure: exposure,
   ) {
-    AdditivityInputsResolved {
+    gunbc.physics.bach_double_slit_path_additivity.AdditivityInputsResolved {
       left: resolved_left,
       right: resolved_right,
       both: resolved_both,
@@ -122,12 +122,12 @@ fn synthetic_path_additivity_receipt_matches_fold_kernel(
       receipt.witness.left_alternative_count == resolved_left
         && receipt.witness.right_alternative_count == resolved_right
         && receipt.witness.both_open_observed_count == resolved_both
-    AdditivityInputsIncomplete {
+    gunbc.physics.bach_double_slit_path_additivity.AdditivityInputsIncomplete {
       missing_arrangement: missing_arrangement,
       band: incomplete_band,
       exposure: incomplete_exposure,
     } => false
-    AdditivityInputsAmbiguous {
+    gunbc.physics.bach_double_slit_path_additivity.AdditivityInputsAmbiguous {
       arrangement: ambiguous_arrangement,
       band: ambiguous_band,
       exposure: ambiguous_exposure,
@@ -137,35 +137,35 @@ fn synthetic_path_additivity_receipt_matches_fold_kernel(
 }
 
 fn synthetic_central_band_verdict() -> gunbc.physics.bach_double_slit_path_additivity.PathAdditivityBandVerdict {
-  derive_path_additivity_refutation_at_band(
+  gunbc.physics.bach_double_slit_path_additivity.derive_path_additivity_refutation_at_band(
     rows: synthetic_fixture_arrival_count_observations,
     fixture: synthetic_double_slit_fixture,
-    band: CentralBand,
+    band: gunbc.physics.bach_double_slit_path_additivity.CentralBand,
     exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   )
 }
 
 fn bach_double_slit_path_additivity_central_band_refutation_holds() -> Bool {
-  match derive_path_additivity_refutation_at_band(
+  match gunbc.physics.bach_double_slit_path_additivity.derive_path_additivity_refutation_at_band(
     rows: synthetic_fixture_arrival_count_observations,
     fixture: synthetic_double_slit_fixture,
-    band: CentralBand,
+    band: gunbc.physics.bach_double_slit_path_additivity.CentralBand,
     exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   ) {
-    PathAdditivityRefutationAtBand {
-      receipt: PathAdditivityRefutationReceipt {
+    gunbc.physics.bach_double_slit_path_additivity.PathAdditivityRefutationAtBand {
+      receipt: gunbc.physics.bach_double_slit_path_additivity.PathAdditivityRefutationReceipt {
         witness: w,
         subject: s,
         location: l,
       },
     } =>
-      path_additivity_witness_is_counterexample(witness: w)
-        && path_additivity_witness_observed_vs_prediction(witness: w) == Greater
-    PathAdditivityHeldAtBand {
+      gunbc.physics.bach_double_slit_path_additivity.path_additivity_witness_is_counterexample(witness: w)
+        && gunbc.physics.bach_double_slit_path_additivity.path_additivity_witness_observed_vs_prediction(witness: w) == std.algebra.Greater
+    gunbc.physics.bach_double_slit_path_additivity.PathAdditivityHeldAtBand {
       band: held_band,
       exposure: held_exposure,
     } => false
-    PathAdditivityUndecidedAtBand { failure: undecided_failure } => false
+    gunbc.physics.bach_double_slit_path_additivity.PathAdditivityUndecidedAtBand { failure: undecided_failure } => false
   }
 }
 
@@ -174,29 +174,29 @@ fn synthetic_derive_first_minimum_verdict_from_partial_rows() -> gunbc.physics.b
     synthetic_first_minimum_both_open,
     synthetic_first_minimum_slit_one,
   ]
-  derive_path_additivity_refutation_at_band(
+  gunbc.physics.bach_double_slit_path_additivity.derive_path_additivity_refutation_at_band(
     rows: partial_rows,
     fixture: synthetic_double_slit_fixture,
-    band: FirstMinimumBand,
+    band: gunbc.physics.bach_double_slit_path_additivity.FirstMinimumBand,
     exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   )
 }
 
 fn synthetic_blocked_count_is_resolved_zero_not_missing() -> Bool {
-  match resolve_arrival_count_at(
+  match gunbc.physics.bach_double_slit_path_additivity.resolve_arrival_count_at(
     rows: synthetic_fixture_arrival_count_observations,
     fixture: synthetic_double_slit_fixture,
-    arrangement: BothSlitsBlocked,
-    band: CentralBand,
+    arrangement: extdeps.physics.bach_et_al_2013_double_slit.BothSlitsBlocked,
+    band: gunbc.physics.bach_double_slit_path_additivity.CentralBand,
     exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   ) {
-    ArrivalCountResolved { count: 0, contributing_rows: 1 } => true
-    ArrivalCountMissing {
+    gunbc.physics.bach_double_slit_path_additivity.ArrivalCountResolved { count: 0, contributing_rows: 1 } => true
+    gunbc.physics.bach_double_slit_path_additivity.ArrivalCountMissing {
       arrangement: missing_arrangement,
       band: missing_band,
       exposure: missing_exposure,
     } => false
-    ArrivalCountAmbiguous {
+    gunbc.physics.bach_double_slit_path_additivity.ArrivalCountAmbiguous {
       arrangement: ambiguous_arrangement,
       band: ambiguous_band,
       exposure: ambiguous_exposure,
@@ -210,18 +210,18 @@ fn synthetic_missing_row_yields_incomplete_inputs() -> Bool {
     synthetic_first_minimum_both_open,
     synthetic_first_minimum_slit_one,
   ]
-  match resolve_additivity_inputs(
+  match gunbc.physics.bach_double_slit_path_additivity.resolve_additivity_inputs(
     rows: partial_rows,
     fixture: synthetic_double_slit_fixture,
-    band: FirstMinimumBand,
+    band: gunbc.physics.bach_double_slit_path_additivity.FirstMinimumBand,
     exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
   ) {
-    AdditivityInputsIncomplete {
-      missing_arrangement: SlitTwoOpen,
+    gunbc.physics.bach_double_slit_path_additivity.AdditivityInputsIncomplete {
+      missing_arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitTwoOpen,
       band: incomplete_band,
       exposure: incomplete_exposure,
     } => true
-    AdditivityInputsResolved {
+    gunbc.physics.bach_double_slit_path_additivity.AdditivityInputsResolved {
       left: resolved_left,
       right: resolved_right,
       both: resolved_both,
@@ -229,7 +229,7 @@ fn synthetic_missing_row_yields_incomplete_inputs() -> Bool {
       right_contributing_rows: resolved_right_rows,
       both_contributing_rows: resolved_both_rows,
     } => false
-    AdditivityInputsAmbiguous {
+    gunbc.physics.bach_double_slit_path_additivity.AdditivityInputsAmbiguous {
       arrangement: ambiguous_arrangement,
       band: ambiguous_band,
       exposure: ambiguous_exposure,
@@ -240,22 +240,22 @@ fn synthetic_missing_row_yields_incomplete_inputs() -> Bool {
 
 fn synthetic_fold_receipt_resolution_matches_kernel_counts() -> Bool {
   match synthetic_first_minimum_receipt_resolution() {
-    RefutationReceiptResolved { receipt: folded } =>
-      match path_additivity_refutation_receipt_resolution_from_resolved_counts(
+    gunbc.physics.bach_double_slit_path_additivity.RefutationReceiptResolved { receipt: folded } =>
+      match gunbc.physics.bach_double_slit_path_additivity.path_additivity_refutation_receipt_resolution_from_resolved_counts(
         left: 10,
         right: 10,
         both: 5,
-        band: FirstMinimumBand,
+        band: gunbc.physics.bach_double_slit_path_additivity.FirstMinimumBand,
         exposure: gunbc.physics.bach_double_slit_path_additivity.SyntheticMatchedExposureOne {},
       ) {
-        RefutationReceiptResolved { receipt: kernel } =>
+        gunbc.physics.bach_double_slit_path_additivity.RefutationReceiptResolved { receipt: kernel } =>
           kernel.witness.left_alternative_count == folded.witness.left_alternative_count
             && kernel.witness.right_alternative_count == folded.witness.right_alternative_count
             && kernel.witness.both_open_observed_count == folded.witness.both_open_observed_count
-        RefutationNotEstablished { reason: AdditivityUndecided { failure: not_established_failure } } => false
-        RefutationNotEstablished { reason: AdditivityHeld { band: held_band, exposure: held_exposure } } => false
+        gunbc.physics.bach_double_slit_path_additivity.RefutationNotEstablished { reason: gunbc.physics.bach_double_slit_path_additivity.AdditivityUndecided { failure: not_established_failure } } => false
+        gunbc.physics.bach_double_slit_path_additivity.RefutationNotEstablished { reason: gunbc.physics.bach_double_slit_path_additivity.AdditivityHeld { band: held_band, exposure: held_exposure } } => false
       }
-    RefutationNotEstablished { reason: AdditivityUndecided { failure: not_established_failure } } => false
-    RefutationNotEstablished { reason: AdditivityHeld { band: held_band, exposure: held_exposure } } => false
+    gunbc.physics.bach_double_slit_path_additivity.RefutationNotEstablished { reason: gunbc.physics.bach_double_slit_path_additivity.AdditivityUndecided { failure: not_established_failure } } => false
+    gunbc.physics.bach_double_slit_path_additivity.RefutationNotEstablished { reason: gunbc.physics.bach_double_slit_path_additivity.AdditivityHeld { band: held_band, exposure: held_exposure } } => false
   }
 }

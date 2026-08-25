@@ -162,28 +162,28 @@ fn superseded(identity: String,
 
 data shell_typed_invocation_contract_note: String = "THE FIRST BOUND NODE, and it is bound to an ALREADY-GREEN validation on purpose. Until this row existed every node was ExecutionContractUnspecified, so dispatch_environment_admit refused on all of them and no part of the workflow below Env had ever executed end to end. A first binding therefore has two jobs that pull in opposite directions: prove the Verify path runs at all, and prove it discriminates. Those want different nodes, and conflating them is how a green pipeline gets mistaken for a working one. This row takes the FIRST job only — the validation it names passes today, so an Agent turn that changes nothing still produces a real admitted environment, a real derived command, and a real validation receipt. What that proves is the PLUMBING: capability admission, argv derivation, and receipt production, independent of whether the provider accomplished anything. It deliberately proves NOTHING about discrimination, and must not be read as evidence that Verify can fail — the discriminating red belongs on a second node whose validation is currently red and goes green when the work lands, and that node is the next binding, not this one.\n\nThe operation is the transport-clean corpus witness because it is what this ticket's own red control describes: 'a new unclassified production construction site reds the census'. It reads the live tree (SubstrateInputsOnly), so it is a statement about the repository rather than a fixture — a raw shell literal reappearing in that transport module reds it for real."
 
-fn shell_typed_invocation_execution_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+fn shell_typed_invocation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag" as std.types.FilePath,
-    function: "corpus_dag_compile_clean_transport_clean_holds" as std.types.NonEmptyStr,
+    entry: "src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag" as FilePath,
+    function: "corpus_dag_compile_clean_transport_clean_holds" as NonEmptyStr,
   )
 }
 
 data observation_raw_print_retirement_contract_note: String = "THE DISCRIMINATING BINDING — the half shell_typed_invocation_contract_note deliberately does not supply. That one names an already-green validation and therefore proves only that the Verify path RUNS: admission, argv derivation, receipt production. It cannot distinguish a working verifier from one that returns green unconditionally, because nothing it runs is capable of returning anything else. A pipeline with only that binding is the coverage-by-illusion tier — machinery present, nothing gating on it.\n\nThis contract names a validation that FAILS today. observation_emit_frontier_count() is 8; the witness asserts 0, which is this node's handback stated exactly ('the classified zero-residue progress census'). So Verify has a target that can genuinely go red, the red is the ticket's own acceptance condition rather than a planted fixture, and the transition red -> green IS the work being finished. Together the two bindings pin both directions: one proves the path executes, the other proves it discriminates, and neither claim is available from the other.\n\nThe witness is enrolled QuarantineProbeExpectRed in gunbc.ci_layer_roots so a deliberately-red acceptance test does not red the corpus — the cadence built for precisely this, where greening is a counted un-quarantine event and not a silent pass."
 
-fn observation_raw_print_retirement_execution_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag" as std.types.FilePath,
-    function: "observation_emit_frontier_is_zero" as std.types.NonEmptyStr,
+    entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag" as FilePath,
+    function: "observation_emit_frontier_is_zero" as NonEmptyStr,
   )
 }
 
 data v1_rust_source_observation_execution_contract_note: String = "The node closes only on the nullary wet claim that reads the runner's GITHUB_SHA independently through shell.Env.Get, observes checkout HEAD through the existing Git path, and admits only their exact match. Binding the contract to the pure fold would permit constructed constants to stand in for liveness; binding it to the older population-only witness would prove only that Git returned paths, not that the paths belonged to the workflow subject."
 
-fn v1_rust_source_observation_execution_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+fn v1_rust_source_observation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag" as std.types.FilePath,
-    function: "live_rust_observation_matches_actions_subject" as std.types.NonEmptyStr,
+    entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag" as FilePath,
+    function: "live_rust_observation_matches_actions_subject" as NonEmptyStr,
   )
 }
 
@@ -191,37 +191,37 @@ data namespace_structural_observations_execution_contract_note: String = "RETRAC
 
 data namespace_reference_derived_closure_execution_contract_note: String = "THE SIX-ARM CLOSING DISCRIMINATOR for namespace-reference-derived-closure. The validation is deliberately RED while its production admission seam carries a typed unavailable row for every clause: the closed capability population is the node's own red control, and missing capabilities are a derived set difference, so duplicate evidence cannot hide an unexecuted clause and zero work cannot verify as complete. Clauses (a-d) wait on #7515's structural candidate producer, (e) waits on its reference-derived dependency projection, and (f) waits on the projection's pool-membership-independence wall. The paired fixture suite executes the merged P1 kernel for the first four clauses and proves every clause rejects its planted wrong output, but the bound acceptance witness imports none of those fixtures; it can green only when the gated node supplies production observations. It is enrolled QuarantineProbeExpectRed until that transition."
 
-fn namespace_reference_derived_closure_execution_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+fn namespace_reference_derived_closure_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag" as std.types.FilePath,
-    function: "witness_namespace_reference_derived_closure_closing_contract_holds" as std.types.NonEmptyStr,
+    entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag" as FilePath,
+    function: "witness_namespace_reference_derived_closure_closing_contract_holds" as NonEmptyStr,
   )
 }
 
 data v1_interpreter_primitive_roster_execution_contract_note: String = "THE CLOSING CHECK IS STRUCTURAL, NOT A POPULATION PIN, and that choice is the whole content of this binding. The node asks whether the interpreter's dispatch surface is ENUMERABLE and whether its roster can silently disagree with the dispatch; it does not ask how large the surface currently is. So the bound validation asserts properties that survive the roster legitimately growing -- named dispatch sites contribute derived rows, duplicate row keys refuse, shadows are exactly the known set BY NAME, every declared row carries its own dissolution trigger, an arm carrying no semantic primitive identity stays representable, and an unrecognised form label refuses rather than defaulting.\n\nBinding it to counts would have re-created at the acceptance layer the exact defect #7615 removed from the witness layer: the five deleted witnesses pinned live-population numbers copied from the tree, which DESIGN.md 5 rules is not an oracle, and they duly behaved as pure change detectors that redded main twice. A closing check that reds on legitimate growth is worse than one that does not exist, because it trains everyone to edit the number rather than read the change.\n\nThe validation can genuinely fail: removing a dispatch site, dropping a declared row's trigger, admitting an unknown form label, or letting a second arm identity shadow a spelling each red it. The detectors' own discriminating REDs and positive controls live in test.claim.v1_interpreter_primitive_surface_witness_test and execute beside it."
 
-fn v1_interpreter_primitive_roster_execution_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+fn v1_interpreter_primitive_roster_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/v1_interpreter_primitive_roster_acceptance_test.dag" as std.types.FilePath,
-    function: "v1_interpreter_primitive_roster_acceptance_contract_holds" as std.types.NonEmptyStr,
+    entry: "dag/test/claim/v1_interpreter_primitive_roster_acceptance_test.dag" as FilePath,
+    function: "v1_interpreter_primitive_roster_acceptance_contract_holds" as NonEmptyStr,
   )
 }
 
 data v1_interpreter_primitive_dispatch_authority_execution_contract_note: String = "THE CLOSING CHECK FOR v1-interpreter-primitive-dispatch-authority. R1 inverts the roster: gunbc.v1_interpreter_primitive_surface v1_interpreter_authored_roster_arms is the canonical authority as authored InterpreterPrimitiveDispatchArm rows; v1_interpreter_dispatch_emit derives Rust enum variant names from arm identity and generates lookup tables. Compile-time exhaustiveness is site-scoped: single-family dispatch sites get a non-wildcard enum match; eval_call_bridge and eval_call_native_intercept share one enum per site but expand per-family subsets with a required wildcard (missing handler body is runtime unreachable!, not compile error — per-family enum split is follow-up). Structural properties that survive roster growth are asserted here; R0 discriminating controls remain in v1_interpreter_primitive_surface_witness_test."
 
-fn v1_interpreter_primitive_dispatch_authority_execution_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+fn v1_interpreter_primitive_dispatch_authority_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/v1_interpreter_primitive_dispatch_authority_acceptance_test.dag" as std.types.FilePath,
-    function: "v1_interpreter_primitive_dispatch_authority_acceptance_contract_holds" as std.types.NonEmptyStr,
+    entry: "dag/test/claim/v1_interpreter_primitive_dispatch_authority_acceptance_test.dag" as FilePath,
+    function: "v1_interpreter_primitive_dispatch_authority_acceptance_contract_holds" as NonEmptyStr,
   )
 }
 
 data scm_p1_proof_kernel_contract_note: String = "THE SCM P1 CLOSING DISCRIMINATOR, authored only after the first P1 carrier made the node's whole completion condition executable. The validation is deliberately RED: its closed capability population is the roadmap node's own bar, and this first slice supplies only the bounded candidate-generation model check. Missing behavior is derived set difference, never a hand-maintained progress count; duplicate passing rows cannot erase it, and a false row remains missing. The contract therefore cannot green on zero progress and cannot confuse a modeled carrier with an executed proof kernel. It is enrolled QuarantineProbeExpectRed in gunbc.ci_layer_roots. Each later P1 slice adds an executing scenario check without weakening the aggregate. When the final capability greens, that same change removes the expect-red enrollment and promotes the witness to ordinary discovery ratchet."
 
-fn scm_p1_proof_kernel_execution_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+fn scm_p1_proof_kernel_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag" as std.types.FilePath,
-    function: "witness_p1_proof_kernel_acceptance_contract_holds" as std.types.NonEmptyStr,
+    entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag" as FilePath,
+    function: "witness_p1_proof_kernel_acceptance_contract_holds" as NonEmptyStr,
   )
 }
 
@@ -229,10 +229,10 @@ data roadmap_with_execution_note: String = "The per-node execution binding, shap
 
 data v1_lane_binding_survey_note: String = "A BINDING NAMES THE VALIDATION THAT CLOSES A NODE, so it can only be authored once that validation exists. A node without one stays ExecutionContractUnspecified, which is the honest fail-closed state rather than a gap: dispatch refuses with a typed diagnostic instead of admitting an environment for work whose completion nothing can check. Fabricating contracts to make a lane look dispatchable produces exactly the coverage-by-illusion tier — every node clickable, every Verify vacuous. The closing validation is written as part of the node's first slice; the contract follows the witness, never precedes it.\n\nTHE ROSTER IS NOT TRANSCRIBED HERE. This row previously carried a hand survey — 'two of six startable roots are bindable' plus the four names and why each lacked a validation — and it rotted exactly as a hand-maintained count must: two of the four it named (v1-test-hygiene-producer-retirement, pderive-typesafe-nullary-reflection) were accepted while the sentence still listed them as unbound, and the leading count was edited twice by unrelated changes. startable_nodes_missing_closing_contract() computes the same set from the nodes themselves, so read it there and delete nothing by hand. What stays here is the RULE, which does not change when the roster does.\n\nv1-test-migration records both sides of that rule: its false-green deletion-guard contract was removed, then a behavior-grain validation that can fail on zero progress was authored and bound. See v1_test_migration_binding_history_note for that history and v1_test_migration_contract_note for the current completion authority."
 
-fn v2_emitter_producer_provenance_execution_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/self_host/emitter_producer_provenance_witness_test.dag" as std.types.FilePath,
-    function: "witness_restored_binding_without_executed_receipt_does_not_authorize_reds" as std.types.NonEmptyStr,
+    entry: "src/v2/test/claim/self_host/emitter_producer_provenance_witness_test.dag" as FilePath,
+    function: "witness_restored_binding_without_executed_receipt_does_not_authorize_reds" as NonEmptyStr,
   )
 }
 
@@ -240,17 +240,17 @@ data v2_emitter_producer_provenance_contract_note: String = "The validation is t
 
 data v2_emitter_direct_rust_door_execution_contract_note: String = "THE CANONICAL CLOSING VALIDATION for v2-emitter-direct-rust-door, rebound to direct_rust_door_production_group_closing_expectation_holds. The production path is now observed through ProvenancedRustEmissionObservation, which LOCATES the failure instead of erasing it: assembly ACCEPTS and inference ACCEPTS on the real add_probe source, and emission REJECTS the real inferred tree. That supersedes the earlier reading — carried in this note until 2026-08-05 and in the node first_slice — that the pieces were joined and the last step was simply not called; candidate_generation does call emit, and emit is where the path stops. The prior binding to witness_v2_emitter_direct_rust_door_closing_contract_holds is deleted along with its fold, whose single SeedEmitterRequiredForWrittenSource arm answered for BOTH a rejected pipeline and a seed-dependent artifact — a state-space conflation that made the red unlocatable. MissingTranslationRuleRefuses remains established through the rust_add missing-rules serialize refusal and is carried as the group's one green leaf, which is what proves the parent's red is located rather than uniform. Group ALGEBRA is discriminated by planted-observation controls at zero production cost (v2.test.self_host.direct_rust_door_group_algebra). State the walk claim exactly: ONE production implementation authority, ONE production walk per group construction, ONE scheduled group construction, measured by v2.test.claim.schedule_occurrence_multiplicity_test against the live falsifier schedule. The count was TWO until 2026-08-06: the root joined the long-lane batch solely to obtain an eval ceiling, because budget was a property of batch membership. Separating the execution-budget axis from the batch roster (std.witness_admission witness_admission_axis_separation_note) dropped it to one, which is what that witness now asserts. And state the location claim exactly: the in-memory group locates EmissionRejected; the scheduled executor receipt remains an unlocated Bool."
 
-fn v2_emitter_direct_rust_door_execution_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+fn v2_emitter_direct_rust_door_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag" as std.types.FilePath,
-    function: "direct_rust_door_production_group_closing_expectation_holds" as std.types.NonEmptyStr,
+    entry: "src/v2/test/claim/long/direct_rust_door_production_group_test.dag" as FilePath,
+    function: "direct_rust_door_production_group_closing_expectation_holds" as NonEmptyStr,
   )
 }
 
-fn v1_seed_honesty_decision_execution_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+fn v1_seed_honesty_decision_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/seed_honesty_discharge_unavailable_test.dag" as std.types.FilePath,
-    function: "v1_seed_honesty_decision_closing_contract_holds" as std.types.NonEmptyStr,
+    entry: "dag/test/claim/seed_honesty_discharge_unavailable_test.dag" as FilePath,
+    function: "v1_seed_honesty_decision_closing_contract_holds" as NonEmptyStr,
   )
 }
 
@@ -258,26 +258,26 @@ data v1_seed_honesty_decision_contract_note: String = "The validation names v1-s
 
 data v1_test_migration_binding_history_note: String = "v1-test-migration WAS DELIBERATELY UNBOUND after its former binding to test_migration_delete_guard_holds was removed: that binding produced a false green, as reading what the guard actually computes showed.\n\nThe guard is DIFF-SCOPED. cli_run.rs test_migration_delete_guard_uncovered_deletes_inner resolves a (base, head) pair, returns an empty violation list when base_rev == head_rev, returns an empty list again when neither rev resolves and GUNBC_CI_DIFF_BASE is unset, and otherwise inspects only the v1 test paths DELETED between those revs. Violations are empty whenever a change deletes no uncovered legacy test file, so the guard answers true. Measured on the tree that carried it: the guard passes today while test_migration_debt_live_module_count() is 81, so a dispatched agent could do no migration work at all and Verify would still go green. A validation that cannot fail on zero progress cannot close a node (DESIGN 5 — a wrong answer must be loud, and 'done' asserted over undone work is exactly the silent wrong answer).\n\nThe guard was KEPT at the time this note was written, as a per-change deletion wall. IT IS NOW DELETED (2026-08-12, V1-CONSUMER-DRAIN-1): test_migration_delete_guard_holds, test_migration_delete_guard_uncovered_deletes and the whole guard body are gone from cli_run.rs, from the primitive registry, from the interpreter dispatch surface and from the v1 type env. The reason is not that the analysis above was wrong — it was right, and it is why the node was unbound — but that the guard's SUBJECT stopped existing: it authorized deletions by checking a stem against _retired.dag / _retained.dag carriers, and gunbc#8146 deleted every such carrier when the authority inverted from classifying departures to declaring residents. A per-change wall over an empty authorize-set refuses nothing. The deletion wall it provided is SUPERSEDED, not dropped: an undeclared or stale module now reds through the identity join in v2.lens.test_migration_debt retained_rust_kernel_wall_holds, which does not depend on anyone remembering to classify a departure. The paragraphs above are retained as the reasoning that unbound the node, not as a description of live code.\n\nThe node's own bar — 'the per-file coverage mapping with nothing unmatched' — required a closing validation at the grain of legacy test BEHAVIOR, not modules: an admitted typed disposition for every discovered legacy test function, with unclassified as the derived set difference reaching zero. The module count is a trend metric that overstates debt by construction, because classification is exact-stem filename matching (chosen fail-closed after fuzzy matching wrongly reported an unrelated witness as covering `pipeline`), so a real witness under a different name still reads as debt. That missing graph once made the node honestly ClosingContractMissing in startable_nodes_missing_closing_contract. It now exists and the node is bound to it by v1_test_migration_execution_contract; v1_test_migration_contract_note records why that validation, rather than the deletion guard, is the completion authority."
 
-fn v1_test_migration_execution_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/manual/test_migration_debt_test.dag" as std.types.FilePath,
-    function: "retained_rust_kernel_wall_holds_against_live_tree" as std.types.NonEmptyStr,
+    entry: "src/v2/test/claim/manual/test_migration_debt_test.dag" as FilePath,
+    function: "retained_rust_kernel_wall_holds_against_live_tree" as NonEmptyStr,
   )
 }
 
 data roadmap_receipt_continuity_execution_contract_note: String = "THE CLOSING CHECK FOR roadmap-receipt-continuity. Acceptance history is append-only JSONL carrier dag/gunbc/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts is a replay projection only. Authored seal count/digest are deleted. Merge-base prior_history parses carrier content via git.Core.Show — never prior_history = [] on a changed carrier (PriorHistoryRevisionEvaluationRequired dissolved). The hermetic contract plants each operator red control: deleted events, prefix law on non-empty observed prior, empty-prior bypass discriminant (proves the old authority-changed path would admit deletion), digest-omitted field mutation, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed load/projection refusal chain. Live git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries)."
 
-fn roadmap_receipt_continuity_execution_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+fn roadmap_receipt_continuity_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/roadmap_receipt_continuity_acceptance_test.dag" as std.types.FilePath,
-    function: "roadmap_receipt_continuity_acceptance_contract_holds" as std.types.NonEmptyStr,
+    entry: "dag/test/claim/roadmap_receipt_continuity_acceptance_test.dag" as FilePath,
+    function: "roadmap_receipt_continuity_acceptance_contract_holds" as NonEmptyStr,
   )
 }
 
 data v1_test_migration_contract_note: String = "THE RETENTION-KERNEL CLOSING DISCRIMINATOR. REBOUND 2026-08-11 (gunbc#8146, review 51209) from legacy_test_behavior_unclassified_frontier_is_zero, which bound this node to the BEHAVIOR-grain disposition graph. That model is retired: the cutover inverted the authority from classifying departures to declaring residents (test.retirement.model retained_legacy_rust_test_modules), and legacy_test_behavior_dispositions() is now empty, so the old contract could never green under the model that replaced it. Leaving it bound would have left TWO authorities for one population (DESIGN section 3) and pointed downstream work at a completion criterion that no longer exists. The node now binds retained_rust_kernel_wall_holds_against_live_tree: a two-direction identity join between the live src/v1/tests/src discovery scan and the declared retained roster, plus the execution check (no #[ignore] / #[should_panic] in a retained module, default libtest harness). It does NOT bind the diff-scoped delete guard, which was deleted with the ratchets it served. Rung, stated rather than implied: the identity join is a construction wall (an undeclared module or a stale row is unwritable-and-green), the execution half is mechanically preventive text scanning with its false-negative class named at the lens."
 
 
-fn with_execution(rn: gunbc.roadmap_model.RoadmapNode, e: gunbc.roadmap_execution_contract.WorkItemExecutionContract) -> gunbc.roadmap_model.RoadmapNode {
+fn with_execution(rn: gunbc.roadmap_model.RoadmapNode, e: WorkItemExecutionContract) -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
     identity: rn.identity,
     node: rn.node,
@@ -2288,147 +2288,147 @@ fn declared_roadmap_nodes() -> List<gunbc.roadmap_model.RoadmapNode> {
 
 fn declared_roadmap_edges() -> List<gunbc.roadmap_model.RoadmapEdge> {
   concat([
-    gunbc.roadmap_authority.edge(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model"),
-    gunbc.roadmap_authority.edge(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model"),
-    gunbc.roadmap_authority.edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),
-    gunbc.roadmap_authority.edge(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape"),
-    gunbc.roadmap_authority.edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
-    gunbc.roadmap_authority.edge(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine"),
+    edge(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model"),
+    edge(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model"),
+    edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),
+    edge(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape"),
+    edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
+    edge(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine"),
 
-    gunbc.roadmap_authority.edge(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport"),
-    gunbc.roadmap_authority.edge(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel"),
-    gunbc.roadmap_authority.edge(child: "namespace-structural-observations", parent: "namespace-binding-kernel"),
-    gunbc.roadmap_authority.edge(child: "namespace-cross-file-provenance", parent: "namespace-binding-kernel"),
-    gunbc.roadmap_authority.edge(child: "namespace-pool-independence", parent: "namespace-cross-file-provenance"),
-    gunbc.roadmap_authority.edge(child: "namespace-reference-derived-closure", parent: "namespace-structural-observations"),
-    gunbc.roadmap_authority.edge(child: "namespace-reference-derived-closure", parent: "namespace-pool-independence"),
-    gunbc.roadmap_authority.edge(child: "namespace-ambiguity-discharge", parent: "namespace-reference-derived-closure"),
-    gunbc.roadmap_authority.edge(child: "namespace-canonical-binding", parent: "namespace-ambiguity-discharge"),
-    gunbc.roadmap_authority.edge(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding"),
-    gunbc.roadmap_authority.edge(child: "namespace-v2-import-completion", parent: "namespace-bound-only-consumers"),
-    gunbc.roadmap_authority.edge(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion"),
+    edge(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport"),
+    edge(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel"),
+    edge(child: "namespace-structural-observations", parent: "namespace-binding-kernel"),
+    edge(child: "namespace-cross-file-provenance", parent: "namespace-binding-kernel"),
+    edge(child: "namespace-pool-independence", parent: "namespace-cross-file-provenance"),
+    edge(child: "namespace-reference-derived-closure", parent: "namespace-structural-observations"),
+    edge(child: "namespace-reference-derived-closure", parent: "namespace-pool-independence"),
+    edge(child: "namespace-ambiguity-discharge", parent: "namespace-reference-derived-closure"),
+    edge(child: "namespace-canonical-binding", parent: "namespace-ambiguity-discharge"),
+    edge(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding"),
+    edge(child: "namespace-v2-import-completion", parent: "namespace-bound-only-consumers"),
+    edge(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion"),
 
-    gunbc.roadmap_authority.edge(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection"),
-    gunbc.roadmap_authority.edge(child: "pderive-source-slot-binding", parent: "pderive-static-supplemental-contract"),
-    gunbc.roadmap_authority.edge(child: "pderive-source-slot-binding", parent: "namespace-canonical-binding"),
-    gunbc.roadmap_authority.edge(child: "pderive-v2-emitter-consumer", parent: "pderive-source-slot-binding"),
-    gunbc.roadmap_authority.edge(child: "pderive-v2-emitter-consumer", parent: "v2-emitter-direct-rust-door"),
-    gunbc.roadmap_authority.edge(child: "pderive-error-movement-receipt", parent: "pderive-v2-emitter-consumer"),
+    edge(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection"),
+    edge(child: "pderive-source-slot-binding", parent: "pderive-static-supplemental-contract"),
+    edge(child: "pderive-source-slot-binding", parent: "namespace-canonical-binding"),
+    edge(child: "pderive-v2-emitter-consumer", parent: "pderive-source-slot-binding"),
+    edge(child: "pderive-v2-emitter-consumer", parent: "v2-emitter-direct-rust-door"),
+    edge(child: "pderive-error-movement-receipt", parent: "pderive-v2-emitter-consumer"),
 
-    gunbc.roadmap_authority.edge(child: "observation-scoped-run-consumer", parent: "observation-scoped-run-seed-growth-justification"),
-    gunbc.roadmap_authority.edge(child: "observation-ci-event-grouping", parent: "observation-scoped-run-consumer"),
-    gunbc.roadmap_authority.edge(child: "observation-collapse-watchdog-restatement", parent: "observation-ci-event-grouping"),
-    gunbc.roadmap_authority.edge(child: "observation-raw-print-retirement", parent: "observation-collapse-watchdog-restatement"),
+    edge(child: "observation-scoped-run-consumer", parent: "observation-scoped-run-seed-growth-justification"),
+    edge(child: "observation-ci-event-grouping", parent: "observation-scoped-run-consumer"),
+    edge(child: "observation-collapse-watchdog-restatement", parent: "observation-ci-event-grouping"),
+    edge(child: "observation-raw-print-retirement", parent: "observation-collapse-watchdog-restatement"),
 
-    gunbc.roadmap_authority.edge(child: "warm-merge-admission", parent: "five-minute-ci-gate"),
-    gunbc.roadmap_authority.edge(child: "v2-lens-suite-execution", parent: "native-selected-witness-bundle"),
-    gunbc.roadmap_authority.edge(child: "module-grain-materialization", parent: "five-minute-ci-gate"),
-    gunbc.roadmap_authority.edge(child: "pre-index-materialization-lookup", parent: "five-minute-ci-gate"),
-    gunbc.roadmap_authority.edge(child: "phased-single-process-ci", parent: "five-minute-ci-gate"),
-    gunbc.roadmap_authority.edge(child: "per-entry-assembly-decomposition", parent: "five-minute-ci-gate"),
-    gunbc.roadmap_authority.edge(child: "pre-index-materialization-lookup", parent: "module-grain-materialization"),
-    gunbc.roadmap_authority.edge(child: "per-entry-assembly-decomposition", parent: "module-grain-materialization"),
+    edge(child: "warm-merge-admission", parent: "five-minute-ci-gate"),
+    edge(child: "v2-lens-suite-execution", parent: "native-selected-witness-bundle"),
+    edge(child: "module-grain-materialization", parent: "five-minute-ci-gate"),
+    edge(child: "pre-index-materialization-lookup", parent: "five-minute-ci-gate"),
+    edge(child: "phased-single-process-ci", parent: "five-minute-ci-gate"),
+    edge(child: "per-entry-assembly-decomposition", parent: "five-minute-ci-gate"),
+    edge(child: "pre-index-materialization-lookup", parent: "module-grain-materialization"),
+    edge(child: "per-entry-assembly-decomposition", parent: "module-grain-materialization"),
 
-    gunbc.roadmap_authority.edge(child: "placement-live-roster-preflight", parent: "observation-scoped-run-consumer"),
-    gunbc.roadmap_authority.edge(child: "placement-two-host-warm-qualification", parent: "placement-live-roster-preflight"),
-    gunbc.roadmap_authority.edge(child: "placement-shadow-equality", parent: "placement-two-host-warm-qualification"),
-    gunbc.roadmap_authority.edge(child: "placement-atomic-authority-flip", parent: "placement-shadow-equality"),
-    gunbc.roadmap_authority.edge(child: "placement-compile-pool-envelope", parent: "placement-live-roster-preflight"),
+    edge(child: "placement-live-roster-preflight", parent: "observation-scoped-run-consumer"),
+    edge(child: "placement-two-host-warm-qualification", parent: "placement-live-roster-preflight"),
+    edge(child: "placement-shadow-equality", parent: "placement-two-host-warm-qualification"),
+    edge(child: "placement-atomic-authority-flip", parent: "placement-shadow-equality"),
+    edge(child: "placement-compile-pool-envelope", parent: "placement-live-roster-preflight"),
 
-    gunbc.roadmap_authority.edge(child: "ci-cost-arc-reconciliation", parent: "five-minute-ci-gate"),
-    gunbc.roadmap_authority.edge(child: "ci-build-once-per-subject", parent: "ci-cost-arc-reconciliation"),
-    gunbc.roadmap_authority.edge(child: "ci-floor-discovery-snapshot", parent: "ci-cost-arc-reconciliation"),
-    gunbc.roadmap_authority.edge(child: "ci-floor-discovery-snapshot", parent: "module-grain-materialization"),
+    edge(child: "ci-cost-arc-reconciliation", parent: "five-minute-ci-gate"),
+    edge(child: "ci-build-once-per-subject", parent: "ci-cost-arc-reconciliation"),
+    edge(child: "ci-floor-discovery-snapshot", parent: "ci-cost-arc-reconciliation"),
+    edge(child: "ci-floor-discovery-snapshot", parent: "module-grain-materialization"),
 
-    gunbc.roadmap_authority.edge(child: "compute-artifact-return-and-materialization", parent: "compute-exact-work-contract"),
-    gunbc.roadmap_authority.edge(child: "compute-deduplication-and-admission", parent: "compute-exact-work-contract"),
-    gunbc.roadmap_authority.edge(child: "compute-deduplication-and-admission", parent: "compute-artifact-return-and-materialization"),
-    gunbc.roadmap_authority.edge(child: "ci-owned-execution", parent: "compute-exact-work-contract"),
-    gunbc.roadmap_authority.edge(child: "ci-owned-execution", parent: "compute-artifact-return-and-materialization"),
-    gunbc.roadmap_authority.edge(child: "ci-owned-execution", parent: "compute-deduplication-and-admission"),
-    gunbc.roadmap_authority.edge(child: "ci-scoped-worker-shared-substrate", parent: "ci-floor-discovery-snapshot"),
-    gunbc.roadmap_authority.edge(child: "ci-selection-before-preparation", parent: "ci-floor-discovery-snapshot"),
-    gunbc.roadmap_authority.edge(child: "ci-streaming-realization", parent: "ci-selection-before-preparation"),
-    gunbc.roadmap_authority.edge(child: "ci-streaming-realization", parent: "ci-scoped-worker-shared-substrate"),
-    gunbc.roadmap_authority.edge(child: "phased-single-process-ci", parent: "ci-scoped-worker-shared-substrate"),
-    gunbc.roadmap_authority.edge(child: "ci-remote-build-containment", parent: "compute-artifact-return-and-materialization"),
-    gunbc.roadmap_authority.edge(child: "ci-check-projection", parent: "ci-owned-execution"),
-    gunbc.roadmap_authority.edge(child: "ci-check-projection", parent: "ci-executed-coverage-receipt"),
-    gunbc.roadmap_authority.edge(child: "ci-check-projection", parent: "ci-gate-contention-independent-verdict"),
-    gunbc.roadmap_authority.edge(child: "ci-actions-runner-retirement", parent: "ci-check-projection"),
+    edge(child: "compute-artifact-return-and-materialization", parent: "compute-exact-work-contract"),
+    edge(child: "compute-deduplication-and-admission", parent: "compute-exact-work-contract"),
+    edge(child: "compute-deduplication-and-admission", parent: "compute-artifact-return-and-materialization"),
+    edge(child: "ci-owned-execution", parent: "compute-exact-work-contract"),
+    edge(child: "ci-owned-execution", parent: "compute-artifact-return-and-materialization"),
+    edge(child: "ci-owned-execution", parent: "compute-deduplication-and-admission"),
+    edge(child: "ci-scoped-worker-shared-substrate", parent: "ci-floor-discovery-snapshot"),
+    edge(child: "ci-selection-before-preparation", parent: "ci-floor-discovery-snapshot"),
+    edge(child: "ci-streaming-realization", parent: "ci-selection-before-preparation"),
+    edge(child: "ci-streaming-realization", parent: "ci-scoped-worker-shared-substrate"),
+    edge(child: "phased-single-process-ci", parent: "ci-scoped-worker-shared-substrate"),
+    edge(child: "ci-remote-build-containment", parent: "compute-artifact-return-and-materialization"),
+    edge(child: "ci-check-projection", parent: "ci-owned-execution"),
+    edge(child: "ci-check-projection", parent: "ci-executed-coverage-receipt"),
+    edge(child: "ci-check-projection", parent: "ci-gate-contention-independent-verdict"),
+    edge(child: "ci-actions-runner-retirement", parent: "ci-check-projection"),
 
-    gunbc.roadmap_authority.edge(child: "generated-projection-registry-containment", parent: "commit-writer-admission"),
-    gunbc.roadmap_authority.edge(child: "generated-commit-policy-census", parent: "generated-projection-registry-containment"),
+    edge(child: "generated-projection-registry-containment", parent: "commit-writer-admission"),
+    edge(child: "generated-commit-policy-census", parent: "generated-projection-registry-containment"),
 
-    gunbc.roadmap_authority.edge(child: "v1-emitter-fixed-point", parent: "pderive-error-movement-receipt"),
-    gunbc.roadmap_authority.edge(child: "v2-emitter-direct-rust-door", parent: "v2-emitter-producer-provenance"),
-    gunbc.roadmap_authority.edge(child: "v2-emitter-first-behavioral-module", parent: "v2-emitter-direct-rust-door"),
-    gunbc.roadmap_authority.edge(child: "v2-emitter-native-bootstrap", parent: "v2-emitter-first-behavioral-module"),
-    gunbc.roadmap_authority.edge(child: "v2-emitter-native-bootstrap", parent: "pderive-error-movement-receipt"),
-    gunbc.roadmap_authority.edge(child: "v1-emitter-fixed-point", parent: "v2-emitter-native-bootstrap"),
-    gunbc.roadmap_authority.edge(child: "v1-honest-frontier", parent: "v1-test-hygiene-producer-retirement"),
-    gunbc.roadmap_authority.edge(child: "v1-honest-frontier", parent: "v1-rust-source-observation"),
-    gunbc.roadmap_authority.edge(child: "v1-hand-queue-drain", parent: "v1-honest-frontier"),
-    gunbc.roadmap_authority.edge(child: "v1-verification-ledger", parent: "v1-materialization-kernel"),
-    gunbc.roadmap_authority.edge(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point"),
-    gunbc.roadmap_authority.edge(child: "v1-ci-floor-cutover", parent: "v1-emitter-fixed-point"),
-    gunbc.roadmap_authority.edge(child: "v1-ci-floor-cutover", parent: "v1-honest-frontier"),
-    gunbc.roadmap_authority.edge(child: "v1-ci-floor-cutover", parent: "v1-verification-ledger"),
-    gunbc.roadmap_authority.edge(child: "v1-emitter-quarantine", parent: "v1-ci-floor-cutover"),
-    gunbc.roadmap_authority.edge(child: "v1-emitter-delete", parent: "v1-emitter-quarantine"),
-    gunbc.roadmap_authority.edge(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover"),
-    gunbc.roadmap_authority.edge(child: "v1-interpreter-primitive-dispatch-authority", parent: "v1-interpreter-primitive-roster"),
-    gunbc.roadmap_authority.edge(child: "v1-interpreter-quarantine", parent: "v1-interpreter-primitive-dispatch-authority"),
-    gunbc.roadmap_authority.edge(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine"),
-    gunbc.roadmap_authority.edge(child: "v1-interpreter-delete", parent: "v1-emitter-delete"),
-    gunbc.roadmap_authority.edge(child: "v1-products-v1-free", parent: "v1-interpreter-delete"),
-    gunbc.roadmap_authority.edge(child: "v1-products-v1-free", parent: "v1-hand-queue-drain"),
-    gunbc.roadmap_authority.edge(child: "v1-zero-hand-maintained-rust", parent: "v1-products-v1-free"),
-    gunbc.roadmap_authority.edge(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration"),
-    gunbc.roadmap_authority.edge(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision"),
-    gunbc.roadmap_authority.edge(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement"),
-    gunbc.roadmap_authority.edge(child: "namespace-import-deletion", parent: "namespace-legacy-choice-retirement"),
-    gunbc.roadmap_authority.edge(child: "v1-zero-hand-maintained-rust", parent: "namespace-import-deletion"),
+    edge(child: "v1-emitter-fixed-point", parent: "pderive-error-movement-receipt"),
+    edge(child: "v2-emitter-direct-rust-door", parent: "v2-emitter-producer-provenance"),
+    edge(child: "v2-emitter-first-behavioral-module", parent: "v2-emitter-direct-rust-door"),
+    edge(child: "v2-emitter-native-bootstrap", parent: "v2-emitter-first-behavioral-module"),
+    edge(child: "v2-emitter-native-bootstrap", parent: "pderive-error-movement-receipt"),
+    edge(child: "v1-emitter-fixed-point", parent: "v2-emitter-native-bootstrap"),
+    edge(child: "v1-honest-frontier", parent: "v1-test-hygiene-producer-retirement"),
+    edge(child: "v1-honest-frontier", parent: "v1-rust-source-observation"),
+    edge(child: "v1-hand-queue-drain", parent: "v1-honest-frontier"),
+    edge(child: "v1-verification-ledger", parent: "v1-materialization-kernel"),
+    edge(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point"),
+    edge(child: "v1-ci-floor-cutover", parent: "v1-emitter-fixed-point"),
+    edge(child: "v1-ci-floor-cutover", parent: "v1-honest-frontier"),
+    edge(child: "v1-ci-floor-cutover", parent: "v1-verification-ledger"),
+    edge(child: "v1-emitter-quarantine", parent: "v1-ci-floor-cutover"),
+    edge(child: "v1-emitter-delete", parent: "v1-emitter-quarantine"),
+    edge(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover"),
+    edge(child: "v1-interpreter-primitive-dispatch-authority", parent: "v1-interpreter-primitive-roster"),
+    edge(child: "v1-interpreter-quarantine", parent: "v1-interpreter-primitive-dispatch-authority"),
+    edge(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine"),
+    edge(child: "v1-interpreter-delete", parent: "v1-emitter-delete"),
+    edge(child: "v1-products-v1-free", parent: "v1-interpreter-delete"),
+    edge(child: "v1-products-v1-free", parent: "v1-hand-queue-drain"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "v1-products-v1-free"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement"),
+    edge(child: "namespace-import-deletion", parent: "namespace-legacy-choice-retirement"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "namespace-import-deletion"),
 
-    gunbc.roadmap_authority.edge(child: "shell-effectplan-to-bash", parent: "shell-typed-invocation"),
-    gunbc.roadmap_authority.edge(child: "shell-gate-migration", parent: "shell-effectplan-to-bash"),
-    gunbc.roadmap_authority.edge(child: "shell-residue-zero", parent: "shell-gate-migration"),
+    edge(child: "shell-effectplan-to-bash", parent: "shell-typed-invocation"),
+    edge(child: "shell-gate-migration", parent: "shell-effectplan-to-bash"),
+    edge(child: "shell-residue-zero", parent: "shell-gate-migration"),
 
-    gunbc.roadmap_authority.edge(child: "roadmap-runtime-ready-override", parent: "roadmap-runtime-identity-join"),
-    gunbc.roadmap_authority.edge(child: "roadmap-runtime-dispatch-consumer", parent: "roadmap-runtime-ready-override"),
-    gunbc.roadmap_authority.edge(child: "codex-app-server-press-vertical", parent: "roadmap-runtime-dispatch-consumer"),
-    gunbc.roadmap_authority.edge(child: "roadmap-runtime-readback", parent: "codex-app-server-press-vertical"),
+    edge(child: "roadmap-runtime-ready-override", parent: "roadmap-runtime-identity-join"),
+    edge(child: "roadmap-runtime-dispatch-consumer", parent: "roadmap-runtime-ready-override"),
+    edge(child: "codex-app-server-press-vertical", parent: "roadmap-runtime-dispatch-consumer"),
+    edge(child: "roadmap-runtime-readback", parent: "codex-app-server-press-vertical"),
 
-    gunbc.roadmap_authority.edge(child: "fleet-bmc-policy-convergence", parent: "fleet-state-frontier"),
-    gunbc.roadmap_authority.edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),
-    gunbc.roadmap_authority.edge(child: "fleet-closed-loop-converge", parent: "shell-gate-migration"),
-    gunbc.roadmap_authority.edge(child: "fleet-dashboard-instance-membership", parent: "fleet-state-frontier"),
-    gunbc.roadmap_authority.edge(child: "roadmap-serve-emitted-realization", parent: "fleet-state-frontier"),
-    gunbc.roadmap_authority.edge(child: "fleet-anti-entropy-hygiene", parent: "fleet-closed-loop-converge"),
-    gunbc.roadmap_authority.edge(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene"),
-    gunbc.roadmap_authority.edge(child: "fleet-main-revision-authority", parent: "fleet-closed-loop-converge"),
-    gunbc.roadmap_authority.edge(child: "fleet-atomic-convergence-verdict", parent: "fleet-closed-loop-converge"),
-    gunbc.roadmap_authority.edge(child: "fleet-runner-host-convergence", parent: "fleet-main-revision-authority"),
-    gunbc.roadmap_authority.edge(child: "fleet-runner-host-convergence", parent: "fleet-atomic-convergence-verdict"),
-    gunbc.roadmap_authority.edge(child: "fleet-runner-host-convergence", parent: "placement-compile-pool-envelope"),
-    gunbc.roadmap_authority.edge(child: "fleet-runner-host-convergence", parent: "compute-exact-work-contract"),
-    gunbc.roadmap_authority.edge(child: "fleet-runner-broker-recovery", parent: "fleet-runner-host-convergence"),
-    gunbc.roadmap_authority.edge(child: "fleet-spark-inference-serving", parent: "fleet-main-revision-authority"),
-    gunbc.roadmap_authority.edge(child: "fleet-spark-inference-serving", parent: "fleet-atomic-convergence-verdict"),
-    gunbc.roadmap_authority.edge(child: "fleet-spark-inference-serving", parent: "compute-exact-work-contract"),
+    edge(child: "fleet-bmc-policy-convergence", parent: "fleet-state-frontier"),
+    edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),
+    edge(child: "fleet-closed-loop-converge", parent: "shell-gate-migration"),
+    edge(child: "fleet-dashboard-instance-membership", parent: "fleet-state-frontier"),
+    edge(child: "roadmap-serve-emitted-realization", parent: "fleet-state-frontier"),
+    edge(child: "fleet-anti-entropy-hygiene", parent: "fleet-closed-loop-converge"),
+    edge(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene"),
+    edge(child: "fleet-main-revision-authority", parent: "fleet-closed-loop-converge"),
+    edge(child: "fleet-atomic-convergence-verdict", parent: "fleet-closed-loop-converge"),
+    edge(child: "fleet-runner-host-convergence", parent: "fleet-main-revision-authority"),
+    edge(child: "fleet-runner-host-convergence", parent: "fleet-atomic-convergence-verdict"),
+    edge(child: "fleet-runner-host-convergence", parent: "placement-compile-pool-envelope"),
+    edge(child: "fleet-runner-host-convergence", parent: "compute-exact-work-contract"),
+    edge(child: "fleet-runner-broker-recovery", parent: "fleet-runner-host-convergence"),
+    edge(child: "fleet-spark-inference-serving", parent: "fleet-main-revision-authority"),
+    edge(child: "fleet-spark-inference-serving", parent: "fleet-atomic-convergence-verdict"),
+    edge(child: "fleet-spark-inference-serving", parent: "compute-exact-work-contract"),
 
-    gunbc.roadmap_authority.edge(child: "judgment-mechanical-review-service", parent: "fleet-spark-inference-serving"),
-    gunbc.roadmap_authority.edge(child: "judgment-mechanical-review-service", parent: "confidence-semantic-impact-query"),
-    gunbc.roadmap_authority.edge(child: "judgment-mechanical-review-service", parent: "abstraction-candidate-discovery"),
-    gunbc.roadmap_authority.edge(child: "abstraction-candidate-discovery", parent: "confidence-semantic-impact-query"),
-    gunbc.roadmap_authority.edge(child: "judgment-model-selection-and-specialization", parent: "judgment-mechanical-review-service"),
-    gunbc.roadmap_authority.edge(child: "judgment-model-selection-and-specialization", parent: "fleet-spark-inference-serving"),
-    gunbc.roadmap_authority.edge(child: "fleet-spark-inference-serving", parent: "fleet-spark-host-enrollment"),
+    edge(child: "judgment-mechanical-review-service", parent: "fleet-spark-inference-serving"),
+    edge(child: "judgment-mechanical-review-service", parent: "confidence-semantic-impact-query"),
+    edge(child: "judgment-mechanical-review-service", parent: "abstraction-candidate-discovery"),
+    edge(child: "abstraction-candidate-discovery", parent: "confidence-semantic-impact-query"),
+    edge(child: "judgment-model-selection-and-specialization", parent: "judgment-mechanical-review-service"),
+    edge(child: "judgment-model-selection-and-specialization", parent: "fleet-spark-inference-serving"),
+    edge(child: "fleet-spark-inference-serving", parent: "fleet-spark-host-enrollment"),
 
-    gunbc.roadmap_authority.edge(child: "toolchain-single-resolver", parent: "toolchain-pin-model"),
-    gunbc.roadmap_authority.edge(child: "toolchain-rust-hermetic", parent: "toolchain-single-resolver"),
-    gunbc.roadmap_authority.edge(child: "toolchain-residue-zero", parent: "toolchain-rust-hermetic"),
-    gunbc.roadmap_authority.edge(child: "toolchain-system-floor", parent: "toolchain-single-resolver"),
+    edge(child: "toolchain-single-resolver", parent: "toolchain-pin-model"),
+    edge(child: "toolchain-rust-hermetic", parent: "toolchain-single-resolver"),
+    edge(child: "toolchain-residue-zero", parent: "toolchain-rust-hermetic"),
+    edge(child: "toolchain-system-floor", parent: "toolchain-single-resolver"),
   ], guarantee_ladder_edges())
 }
 
@@ -2458,43 +2458,43 @@ type RoadmapAcceptanceReceiptsProjection
   = RoadmapAcceptanceReceiptsProjected { receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt> }
   | RoadmapAcceptanceReceiptsProjectionRefused { detail: String }
 
-fn roadmap_acceptance_event_history_load() -> gunbc.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryLoad {
-  load_roadmap_acceptance_event_history(path: roadmap_acceptance_event_history_carrier_repo_path)
+fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad {
+  gunbc.roadmap_acceptance_history_carrier.load_roadmap_acceptance_event_history(path: gunbc.roadmap_acceptance_history_carrier.roadmap_acceptance_event_history_carrier_repo_path)
 }
 
 data roadmap_acceptance_history_note: String = "roadmap_acceptance_event_history is the single authority for acceptance facts, loaded from dag/gunbc/roadmap_acceptance_event_history.jsonl (append-only JSONL carrier). roadmap_acceptance_receipts projects the live receipt set by replaying recorded and revoked events only — never a second editable receipt list; LoadRefused is a typed RoadmapAcceptanceReceiptsProjectionRefused, never an empty receipt list. New acceptance appends AcceptanceRecorded to the carrier; withdrawal appends AcceptanceRevoked naming the exact prior receipt, a disposition, and audit fields. Authored seal count/digest are deleted: prefix law is enforced by gunbc.roadmap_acceptance_history_observation parsing merge-base carrier content via git.Core.Show — a changed carrier without valid merge-base parse refuses AcceptanceHistoryIntegrityRefusedPriorHistoryObservation, never prior_history = []."
 
 fn roadmap_acceptance_receipts_from_carrier_text(text: String) -> RoadmapAcceptanceReceiptsProjection {
-  match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
+  match gunbc.roadmap_acceptance_history_carrier.load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
+    gunbc.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryLoaded { events: events } =>
       RoadmapAcceptanceReceiptsProjected {
-        receipts: project_live_acceptance_receipts(history: events),
+        receipts: gunbc.roadmap_model.project_live_acceptance_receipts(history: events),
       }
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+    gunbc.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       RoadmapAcceptanceReceiptsProjectionRefused { detail: detail }
   }
 }
 
 fn roadmap_acceptance_receipts() -> RoadmapAcceptanceReceiptsProjection {
   match roadmap_acceptance_event_history_load() {
-    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
+    gunbc.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryLoaded { events: events } =>
       RoadmapAcceptanceReceiptsProjected {
-        receipts: project_live_acceptance_receipts(history: events),
+        receipts: gunbc.roadmap_model.project_live_acceptance_receipts(history: events),
       }
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+    gunbc.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       RoadmapAcceptanceReceiptsProjectionRefused { detail: detail }
   }
 }
 
 fn roadmap_acceptance_history_integrity_verdict_on_authority() -> gunbc.roadmap_model.AcceptanceHistoryIntegrityVerdict {
   match roadmap_acceptance_event_history_load() {
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+    gunbc.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       gunbc.roadmap_model.AcceptanceHistoryIntegrityRefusedPriorHistoryObservation {
         detail: concat("current history load refused: ", detail),
       }
-    RoadmapAcceptanceEventHistoryLoaded { events: current } =>
-      acceptance_history_integrity_verdict_from_prior_observation(
-        observation: current_roadmap_acceptance_history_prior_observation(current_history: current),
+    gunbc.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryLoaded { events: current } =>
+      gunbc.roadmap_acceptance_history_observation.acceptance_history_integrity_verdict_from_prior_observation(
+        observation: gunbc.roadmap_acceptance_history_observation.current_roadmap_acceptance_history_prior_observation(current_history: current),
         history: current,
       )
   }
@@ -2502,11 +2502,11 @@ fn roadmap_acceptance_history_integrity_verdict_on_authority() -> gunbc.roadmap_
 
 fn roadmap_acceptance_history_integrity_holds() -> Bool {
   match roadmap_acceptance_history_integrity_verdict_on_authority() {
-    AcceptanceHistoryIntegrityHolds => true
-    AcceptanceHistoryIntegrityRefusedReplay => false
-    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
-    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
-    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
+    gunbc.roadmap_model.AcceptanceHistoryIntegrityHolds => true
+    gunbc.roadmap_model.AcceptanceHistoryIntegrityRefusedReplay => false
+    gunbc.roadmap_model.AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
+    gunbc.roadmap_model.AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
+    gunbc.roadmap_model.AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
   }
 }
 
@@ -2530,7 +2530,7 @@ fn accepted_roadmap_nodes_projection() -> AcceptedRoadmapNodesProjection {
   match roadmap_acceptance_receipts() {
     RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
       AcceptedRoadmapNodesProjected {
-        nodes: declared_roadmap_nodes() |> filter(n => node_accepted(receipts: receipts, rn: n)),
+        nodes: declared_roadmap_nodes() |> filter(n => gunbc.roadmap_model.node_accepted(receipts: receipts, rn: n)),
       }
     RoadmapAcceptanceReceiptsProjectionRefused { detail: detail } =>
       AcceptedRoadmapNodesProjectionRefused { detail: detail }
@@ -2607,7 +2607,7 @@ fn node_is_startable_for_accepted(n: gunbc.roadmap_model.RoadmapNode, accepted: 
 data node_closing_validation_defork_note: String = "This used to answer the binding question locally, and its answer differed from the verifier's: any ExecutionContract counted as bound here, while an empty validation list counted as UNBOUND in gunbc.roadmap_verify and refused in gunbc.roadmap_dispatch_environment. It now reads the single authority, so a node bound to a contract that closes nothing keeps its acceptance task instead of vanishing from the frontier while remaining unverifiable."
 
 fn node_lacks_closing_validation(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
-  !contract_has_closing_validation(contract: n.execution)
+  !gunbc.roadmap_execution_contract.contract_has_closing_validation(contract: n.execution)
 }
 
 fn ticket_headline_of(n: gunbc.roadmap_model.RoadmapNode) -> String {
@@ -2741,10 +2741,10 @@ fn active_roadmap_edges_for_accepted(accepted: List<gunbc.roadmap_model.RoadmapN
 
 fn preamble() -> List<std.markdown.MarkdownBlock> {
   [
-    HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
-    ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap_authority.dag`. The authority declares every node and records a typed acceptance receipt per accepted node; the active set is derived as declared minus validly accepted, so acceptance never deletes a row and this projection stays active-only. It carries no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
-    ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Automatic admission from this refreshed authority is future work; the existing manual dispatch path remains live and outside this model slice. Ready may schedule only after every dependency is accepted; it never overrides a dependency or refusal. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
-    ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
+    std.markdown.HeadingBlock { level: std.markdown.H1, inlines: [std.markdown.TextInline { text: "gunbc — Roadmap" }] },
+    std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap_authority.dag`. The authority declares every node and records a typed acceptance receipt per accepted node; the active set is derived as declared minus validly accepted, so acceptance never deletes a row and this projection stays active-only. It carries no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
+    std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Automatic admission from this refreshed authority is future work; the existing manual dispatch path remains live and outside this model slice. Ready may schedule only after every dependency is accepted; it never overrides a dependency or refusal. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
+    std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
   ]
 }
 
@@ -2777,11 +2777,11 @@ fn active_section_for_acceptance(focus: gunbc.roadmap_focus.RoadmapFocus, accept
     title: "Active deliverables — dependency order",
     elements: concat(
       [
-        section_prose(content: "The graph has sixteen lanes: SCM compatibility · namespace · P-derive · observation · placement · compute · CI cost · CI control · generated artefacts · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · judgment · hermetic toolchain · compiler-guarantee (the DESIGN §4b ladder climbs; rung STATE lives in the guarantee claims carrier and is emitted, never restated in tickets — [gap analysis](docs/plans/compiler-guarantee-recovery-gap-analysis.md)). The three independent SCM R0 models, the separate P−1 evidence carrier, R1 compatibility-shape extraction, and P0 user-contract/landing spine are accepted; the operator-authored P1 proof-kernel node is active and fail-closed pending its first discriminating closing validation, while P2 and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Compute owns the one contract everything else asks for work through — an exact subject in, a typed ending and the outputs it promised back out — and it sits ABOVE CI rather than inside it, because owning CI, converging the fleet, serving models and eventually judging changes are four consumers of one fabric, not four execution systems. It grounds on the signed realization spine rather than minting a second scheduler beside it. CI control owns who starts, queues and hands out required work and how its result reaches GitHub; CI cost owns how much computation that work performs. Fleet owns whether a merge to main becomes applied machine state and whether that question has one answer. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+        gunbc.roadmap_model.section_prose(content: "The graph has sixteen lanes: SCM compatibility · namespace · P-derive · observation · placement · compute · CI cost · CI control · generated artefacts · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · judgment · hermetic toolchain · compiler-guarantee (the DESIGN §4b ladder climbs; rung STATE lives in the guarantee claims carrier and is emitted, never restated in tickets — [gap analysis](docs/plans/compiler-guarantee-recovery-gap-analysis.md)). The three independent SCM R0 models, the separate P−1 evidence carrier, R1 compatibility-shape extraction, and P0 user-contract/landing spine are accepted; the operator-authored P1 proof-kernel node is active and fail-closed pending its first discriminating closing validation, while P2 and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Compute owns the one contract everything else asks for work through — an exact subject in, a typed ending and the outputs it promised back out — and it sits ABOVE CI rather than inside it, because owning CI, converging the fleet, serving models and eventually judging changes are four consumers of one fabric, not four execution systems. It grounds on the signed realization spine rather than minting a second scheduler beside it. CI control owns who starts, queues and hands out required work and how its result reaches GitHub; CI cost owns how much computation that work performs. Fleet owns whether a merge to main becomes applied machine state and whether that question has one answer. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
       ],
       concat(
-        if focus_is_active(focus: focus) {
-          [section_prose(content: focus_notice(
+        if gunbc.roadmap_focus.focus_is_active(focus: focus) {
+          [gunbc.roadmap_model.section_prose(content: gunbc.roadmap_focus.focus_notice(
             focus: focus,
             nodes: nodes,
             edges: edges,
@@ -2790,14 +2790,14 @@ fn active_section_for_acceptance(focus: gunbc.roadmap_focus.RoadmapFocus, accept
           []
         },
         [
-          section_group(
+          gunbc.roadmap_model.section_group(
             label: "",
-            nodes: focus_visible_nodes(
+            nodes: gunbc.roadmap_focus.focus_visible_nodes(
               focus: focus,
               nodes: nodes,
               edges: edges,
             ),
-            edges: focus_visible_edges(
+            edges: gunbc.roadmap_focus.focus_visible_edges(
               focus: focus,
               nodes: nodes,
               edges: edges,
@@ -2811,7 +2811,7 @@ fn active_section_for_acceptance(focus: gunbc.roadmap_focus.RoadmapFocus, accept
 
 fn accepted_node_ids_from_receipts(receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>) -> List<gunbc.roadmap_model.RoadmapNodeId> {
   declared_roadmap_nodes()
-    |> filter(n => node_accepted(receipts: receipts, rn: n))
+    |> filter(n => gunbc.roadmap_model.node_accepted(receipts: receipts, rn: n))
     |> map(n => n.node)
 }
 
@@ -2820,7 +2820,7 @@ fn roadmap_authority_projection_from_carrier_text(text: String) -> RoadmapAuthor
     RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
       RoadmapAuthorityProjected {
         doc: gunbc.roadmap_document.RoadmapDocument {
-          preamble: gunbc.roadmap_authority.preamble(),
+          preamble: preamble(),
           lead_lanes: [],
           sections: [
             active_section_for_acceptance(
@@ -2843,7 +2843,7 @@ fn roadmap_authority_projection() -> RoadmapAuthorityProjection {
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
       RoadmapAuthorityProjected {
         doc: gunbc.roadmap_document.RoadmapDocument {
-          preamble: gunbc.roadmap_authority.preamble(),
+          preamble: preamble(),
           lead_lanes: [],
           sections: [active_section_for_acceptance(focus: roadmap_focus_selection, accepted: accepted)],
         },
@@ -2860,7 +2860,7 @@ data roadmap_authority_focus_parameter_note: String = "roadmap_authority_for exi
 
 fn roadmap_authority_for(focus: gunbc.roadmap_focus.RoadmapFocus) -> gunbc.roadmap_document.RoadmapDocument {
   gunbc.roadmap_document.RoadmapDocument {
-    preamble: gunbc.roadmap_authority.preamble(),
+    preamble: preamble(),
     lead_lanes: [],
     sections: [active_section_for(focus: focus)],
   }
@@ -2872,7 +2872,7 @@ fn active_section_for(focus: gunbc.roadmap_focus.RoadmapFocus) -> gunbc.roadmap_
       gunbc.roadmap_document.RoadmapSection {
         title: "Active deliverables — dependency order",
         elements: [
-          section_prose(content: concat("roadmap acceptance projection refused: ", detail)),
+          gunbc.roadmap_model.section_prose(content: concat("roadmap acceptance projection refused: ", detail)),
         ],
       }
     RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
@@ -3504,64 +3504,64 @@ fn guarantee_ladder_nodes() -> List<gunbc.roadmap_model.RoadmapNode> {
 
 fn guarantee_ladder_edges() -> List<gunbc.roadmap_model.RoadmapEdge> {
   [
-    gunbc.roadmap_authority.edge(child: "ladder-probe-corpus", parent: "ladder-measurement-schema"),
-    gunbc.roadmap_authority.edge(child: "ladder-claims-carrier", parent: "ladder-measurement-schema"),
-    gunbc.roadmap_authority.edge(child: "ladder-claims-carrier", parent: "ladder-probe-corpus"),
-    gunbc.roadmap_authority.edge(child: "guarantee-baseline-prevalence", parent: "ladder-probe-corpus"),
-    gunbc.roadmap_authority.edge(child: "guarantee-baseline-prevalence", parent: "ladder-claims-carrier"),
-    gunbc.roadmap_authority.edge(child: "ladder-census-emitters", parent: "ladder-claims-carrier"),
-    gunbc.roadmap_authority.edge(child: "call-missing-and-duplicate-wall", parent: "guarantee-baseline-prevalence"),
-    gunbc.roadmap_authority.edge(child: "compiler-declaration-floor", parent: "guarantee-baseline-prevalence"),
-    gunbc.roadmap_authority.edge(child: "compiler-declaration-floor", parent: "ladder-claims-carrier"),
-    gunbc.roadmap_authority.edge(child: "call-signature-resolution-coverage", parent: "guarantee-baseline-prevalence"),
-    gunbc.roadmap_authority.edge(child: "method-receiver-normalization", parent: "guarantee-baseline-prevalence"),
-    gunbc.roadmap_authority.edge(child: "declared-conformance-grounding", parent: "guarantee-baseline-prevalence"),
-    gunbc.roadmap_authority.edge(child: "argument-type-compatibility-grounding", parent: "guarantee-baseline-prevalence"),
-    gunbc.roadmap_authority.edge(child: "floor-exhaustiveness-refusal", parent: "guarantee-baseline-prevalence"),
-    gunbc.roadmap_authority.edge(child: "floor-generic-field-constraint-wall", parent: "guarantee-baseline-prevalence"),
-    gunbc.roadmap_authority.edge(child: "floor-parse-formation-wall", parent: "guarantee-baseline-prevalence"),
-    gunbc.roadmap_authority.edge(child: "floor-record-construction-wall", parent: "guarantee-baseline-prevalence"),
-    gunbc.roadmap_authority.edge(child: "method-zero-resolution-general-wall", parent: "method-receiver-normalization"),
-    gunbc.roadmap_authority.edge(child: "method-call-shape-seam", parent: "method-established-surface-wall"),
-    gunbc.roadmap_authority.edge(child: "declared-conformance-general-wall", parent: "declared-conformance-grounding"),
-    gunbc.roadmap_authority.edge(child: "floor-method-ambiguity-wall", parent: "primitive-identity-join"),
-    gunbc.roadmap_authority.edge(child: "floor-method-ambiguity-wall", parent: "method-zero-resolution-general-wall"),
-    gunbc.roadmap_authority.edge(child: "compiler-source-exemption-removal", parent: "argument-type-compatibility-grounding"),
-    gunbc.roadmap_authority.edge(child: "compiler-source-exemption-removal", parent: "declared-conformance-grounding"),
-    gunbc.roadmap_authority.edge(child: "cardinality-vertical-slice", parent: "ladder-claims-carrier"),
-    gunbc.roadmap_authority.edge(child: "cardinality-vertical-slice", parent: "unforgeable-construction-capability"),
-    gunbc.roadmap_authority.edge(child: "v2-translate-underived-refusal", parent: "v2-self-grounding-frontier"),
-    gunbc.roadmap_authority.edge(child: "v2-inferred-tree-completeness", parent: "v2-translate-underived-refusal"),
-    gunbc.roadmap_authority.edge(child: "v2-node-kind-derivation-coverage", parent: "v2-inferred-tree-completeness"),
-    gunbc.roadmap_authority.edge(child: "v2-target-realization-gate", parent: "v2-node-kind-derivation-coverage"),
-    gunbc.roadmap_authority.edge(child: "v2-target-realization-gate", parent: "primitive-identity-join"),
-    gunbc.roadmap_authority.edge(child: "determinism-denominator-closure", parent: "primitive-identity-join"),
-    gunbc.roadmap_authority.edge(child: "primitive-identity-join", parent: "interpreter-primitive-roster"),
-    gunbc.roadmap_authority.edge(child: "accepted-obligation-door-mechanism", parent: "ladder-claims-carrier"),
-    gunbc.roadmap_authority.edge(child: "accepted-floor-obligation-closure", parent: "accepted-obligation-door-mechanism"),
-    gunbc.roadmap_authority.edge(child: "accepted-floor-obligation-closure", parent: "call-missing-and-duplicate-wall"),
-    gunbc.roadmap_authority.edge(child: "accepted-floor-obligation-closure", parent: "call-signature-resolution-coverage"),
-    gunbc.roadmap_authority.edge(child: "accepted-floor-obligation-closure", parent: "method-zero-resolution-general-wall"),
-    gunbc.roadmap_authority.edge(child: "accepted-floor-obligation-closure", parent: "method-call-shape-seam"),
-    gunbc.roadmap_authority.edge(child: "accepted-floor-obligation-closure", parent: "declared-conformance-general-wall"),
-    gunbc.roadmap_authority.edge(child: "accepted-floor-obligation-closure", parent: "compiler-source-exemption-removal"),
-    gunbc.roadmap_authority.edge(child: "accepted-floor-obligation-closure", parent: "floor-exhaustiveness-refusal"),
-    gunbc.roadmap_authority.edge(child: "accepted-floor-obligation-closure", parent: "floor-generic-field-constraint-wall"),
-    gunbc.roadmap_authority.edge(child: "accepted-floor-obligation-closure", parent: "floor-parse-formation-wall"),
-    gunbc.roadmap_authority.edge(child: "accepted-floor-obligation-closure", parent: "floor-record-construction-wall"),
-    gunbc.roadmap_authority.edge(child: "extended-admission-cardinality", parent: "accepted-floor-obligation-closure"),
-    gunbc.roadmap_authority.edge(child: "extended-admission-cardinality", parent: "cardinality-vertical-slice"),
-    gunbc.roadmap_authority.edge(child: "extended-admission-ambiguity", parent: "accepted-floor-obligation-closure"),
-    gunbc.roadmap_authority.edge(child: "extended-admission-ambiguity", parent: "floor-method-ambiguity-wall"),
-    gunbc.roadmap_authority.edge(child: "extended-admission-v2-realization", parent: "accepted-floor-obligation-closure"),
-    gunbc.roadmap_authority.edge(child: "extended-admission-v2-realization", parent: "v2-target-realization-gate"),
-    gunbc.roadmap_authority.edge(child: "extended-admission-v2-translate", parent: "accepted-floor-obligation-closure"),
-    gunbc.roadmap_authority.edge(child: "extended-admission-v2-translate", parent: "v2-translate-underived-refusal"),
-    gunbc.roadmap_authority.edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-cardinality"),
-    gunbc.roadmap_authority.edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-ambiguity"),
-    gunbc.roadmap_authority.edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-v2-realization"),
-    gunbc.roadmap_authority.edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-v2-translate"),
-    gunbc.roadmap_authority.edge(child: "guarantee-residual-prevalence", parent: "accepted-extended-obligation-closure"),
+    edge(child: "ladder-probe-corpus", parent: "ladder-measurement-schema"),
+    edge(child: "ladder-claims-carrier", parent: "ladder-measurement-schema"),
+    edge(child: "ladder-claims-carrier", parent: "ladder-probe-corpus"),
+    edge(child: "guarantee-baseline-prevalence", parent: "ladder-probe-corpus"),
+    edge(child: "guarantee-baseline-prevalence", parent: "ladder-claims-carrier"),
+    edge(child: "ladder-census-emitters", parent: "ladder-claims-carrier"),
+    edge(child: "call-missing-and-duplicate-wall", parent: "guarantee-baseline-prevalence"),
+    edge(child: "compiler-declaration-floor", parent: "guarantee-baseline-prevalence"),
+    edge(child: "compiler-declaration-floor", parent: "ladder-claims-carrier"),
+    edge(child: "call-signature-resolution-coverage", parent: "guarantee-baseline-prevalence"),
+    edge(child: "method-receiver-normalization", parent: "guarantee-baseline-prevalence"),
+    edge(child: "declared-conformance-grounding", parent: "guarantee-baseline-prevalence"),
+    edge(child: "argument-type-compatibility-grounding", parent: "guarantee-baseline-prevalence"),
+    edge(child: "floor-exhaustiveness-refusal", parent: "guarantee-baseline-prevalence"),
+    edge(child: "floor-generic-field-constraint-wall", parent: "guarantee-baseline-prevalence"),
+    edge(child: "floor-parse-formation-wall", parent: "guarantee-baseline-prevalence"),
+    edge(child: "floor-record-construction-wall", parent: "guarantee-baseline-prevalence"),
+    edge(child: "method-zero-resolution-general-wall", parent: "method-receiver-normalization"),
+    edge(child: "method-call-shape-seam", parent: "method-established-surface-wall"),
+    edge(child: "declared-conformance-general-wall", parent: "declared-conformance-grounding"),
+    edge(child: "floor-method-ambiguity-wall", parent: "primitive-identity-join"),
+    edge(child: "floor-method-ambiguity-wall", parent: "method-zero-resolution-general-wall"),
+    edge(child: "compiler-source-exemption-removal", parent: "argument-type-compatibility-grounding"),
+    edge(child: "compiler-source-exemption-removal", parent: "declared-conformance-grounding"),
+    edge(child: "cardinality-vertical-slice", parent: "ladder-claims-carrier"),
+    edge(child: "cardinality-vertical-slice", parent: "unforgeable-construction-capability"),
+    edge(child: "v2-translate-underived-refusal", parent: "v2-self-grounding-frontier"),
+    edge(child: "v2-inferred-tree-completeness", parent: "v2-translate-underived-refusal"),
+    edge(child: "v2-node-kind-derivation-coverage", parent: "v2-inferred-tree-completeness"),
+    edge(child: "v2-target-realization-gate", parent: "v2-node-kind-derivation-coverage"),
+    edge(child: "v2-target-realization-gate", parent: "primitive-identity-join"),
+    edge(child: "determinism-denominator-closure", parent: "primitive-identity-join"),
+    edge(child: "primitive-identity-join", parent: "interpreter-primitive-roster"),
+    edge(child: "accepted-obligation-door-mechanism", parent: "ladder-claims-carrier"),
+    edge(child: "accepted-floor-obligation-closure", parent: "accepted-obligation-door-mechanism"),
+    edge(child: "accepted-floor-obligation-closure", parent: "call-missing-and-duplicate-wall"),
+    edge(child: "accepted-floor-obligation-closure", parent: "call-signature-resolution-coverage"),
+    edge(child: "accepted-floor-obligation-closure", parent: "method-zero-resolution-general-wall"),
+    edge(child: "accepted-floor-obligation-closure", parent: "method-call-shape-seam"),
+    edge(child: "accepted-floor-obligation-closure", parent: "declared-conformance-general-wall"),
+    edge(child: "accepted-floor-obligation-closure", parent: "compiler-source-exemption-removal"),
+    edge(child: "accepted-floor-obligation-closure", parent: "floor-exhaustiveness-refusal"),
+    edge(child: "accepted-floor-obligation-closure", parent: "floor-generic-field-constraint-wall"),
+    edge(child: "accepted-floor-obligation-closure", parent: "floor-parse-formation-wall"),
+    edge(child: "accepted-floor-obligation-closure", parent: "floor-record-construction-wall"),
+    edge(child: "extended-admission-cardinality", parent: "accepted-floor-obligation-closure"),
+    edge(child: "extended-admission-cardinality", parent: "cardinality-vertical-slice"),
+    edge(child: "extended-admission-ambiguity", parent: "accepted-floor-obligation-closure"),
+    edge(child: "extended-admission-ambiguity", parent: "floor-method-ambiguity-wall"),
+    edge(child: "extended-admission-v2-realization", parent: "accepted-floor-obligation-closure"),
+    edge(child: "extended-admission-v2-realization", parent: "v2-target-realization-gate"),
+    edge(child: "extended-admission-v2-translate", parent: "accepted-floor-obligation-closure"),
+    edge(child: "extended-admission-v2-translate", parent: "v2-translate-underived-refusal"),
+    edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-cardinality"),
+    edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-ambiguity"),
+    edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-v2-realization"),
+    edge(child: "accepted-extended-obligation-closure", parent: "extended-admission-v2-translate"),
+    edge(child: "guarantee-residual-prevalence", parent: "accepted-extended-obligation-closure"),
   ]
 }
 
@@ -3571,7 +3571,7 @@ data roadmap_authority_accessor_note: String = "Operational consumers (belt, dis
 fn roadmap_authority_refusal_document(detail: String) -> gunbc.roadmap_document.RoadmapDocument {
   gunbc.roadmap_document.RoadmapDocument {
     preamble: [
-      std.markdown.HeadingBlock { level: H1, inlines: [std.markdown.TextInline { text: "gunbc — Roadmap (unavailable)" }] },
+      std.markdown.HeadingBlock { level: std.markdown.H1, inlines: [std.markdown.TextInline { text: "gunbc — Roadmap (unavailable)" }] },
       std.markdown.ParagraphBlock {
         inlines: [std.markdown.TextInline {
           text: concat(
@@ -3601,8 +3601,8 @@ fn expected_roadmap_md_for_projection(proj: RoadmapAuthorityProjection) -> Strin
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       concat("# roadmap unavailable\n\n", concat(detail, "\n"))
     RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
-      serialize_markdown_source(
-        doc: project_roadmap_to_markdown(
+      extdeps.languages.markdown.serialize_markdown_source(
+        doc: gunbc.roadmap_document.project_roadmap_to_markdown(
           doc: doc,
           merged: authored_merged_prs()
         )

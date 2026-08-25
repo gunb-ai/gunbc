@@ -1,5 +1,6 @@
 module v2.workflow.gunbc_invoke_step_emit
 
+
 // THE SINGLE ROOT for emitting a `gunbc run` workflow step. Before this module every
 // such step was a per-site concat of a shell string (gunbc.cli_invoke gunbc_run_shell),
 // forked from the typed argv the same invocation takes on the gunbc.WitnessBin.Run
@@ -115,8 +116,8 @@ fn gunbc_invoke_root_relative_shell(rel: String) -> String {
 
 fn gunbc_invoke_word_shell(w: gunbc.cli_invoke.InvocationWord) -> String {
   match w {
-    LiteralWord { spelling: s } => s
-    RootRelativeWord { rel: r } => gunbc_invoke_root_relative_shell(rel: r)
+    gunbc.cli_invoke.LiteralWord { spelling: s } => s
+    gunbc.cli_invoke.RootRelativeWord { rel: r } => gunbc_invoke_root_relative_shell(rel: r)
   }
 }
 
@@ -132,8 +133,8 @@ fn gunbc_invoke_run(command: String) -> v2.std.orchestration.Run {
   v2.std.orchestration.Run {
     command: command,
     env: std.algebra.Empty,
-    redirect: v2.std.optional.Absent,
-    capture: v2.std.optional.Absent
+    redirect: v2.std.collection.Absent,
+    capture: v2.std.collection.Absent
   }
 }
 
@@ -147,9 +148,9 @@ fn gunbc_invoke_root_stamp_step() -> v2.std.orchestration.PipelineStep {
 
 fn gunbc_invoke_receipt_steps(receipt_rel: String?) -> List<v2.std.orchestration.PipelineStep> {
   match receipt_rel {
-    Present { value: rel } =>
+    v2.std.collection.Present { value: rel } =>
       [gunbc_invoke_do(command: concat("cat ", gunbc_invoke_root_relative_shell(rel: rel)))]
-    Absent => []
+    v2.std.collection.Absent => []
   }
 }
 
@@ -157,8 +158,8 @@ fn gunbc_invoke_run_with_env(command: String, env: std.algebra.FreeMonoid<v2.std
   v2.std.orchestration.Run {
     command: command,
     env: env,
-    redirect: v2.std.optional.Absent,
-    capture: v2.std.optional.Absent
+    redirect: v2.std.collection.Absent,
+    capture: v2.std.collection.Absent
   }
 }
 
@@ -219,12 +220,12 @@ fn gunbc_run_step_intent(
 
 fn gunbc_invoke_step_emit_pipeline(p: v2.std.orchestration.Pipeline) -> String {
   match v2.compiler.emit_orchestration.orch_emit_pipeline(p: p, medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       match d {
-        None => source.carried
-        Some { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
+        v2.std.diagnostic.None => source.carried
+        v2.std.diagnostic.Some { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
       }
-    Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
+    v2.std.diagnostic.Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
   }
 }
 

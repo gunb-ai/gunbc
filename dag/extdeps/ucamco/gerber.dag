@@ -3,7 +3,7 @@ module extdeps.ucamco.gerber
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.ucamco.com/en/gerber"
   }
 }
@@ -29,44 +29,44 @@ data gerber_format: GerberFormat = GerberFormatTarget
 // authorities stay separate; only the shared question they both answer is shared.
 data gerber_semantic_carriage: List<extdeps.ipc.dpmx.FormatSemanticRow> = [
   extdeps.ipc.dpmx.FormatSemanticRow {
-    semantic: LayerImagery,
-    carriage: CarriedInFormat,
-    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
+    semantic: extdeps.ipc.dpmx.LayerImagery,
+    carriage: extdeps.ipc.dpmx.CarriedInFormat,
+    authority: extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
-    semantic: DrillData,
+    semantic: extdeps.ipc.dpmx.DrillData,
     carriage: extdeps.ipc.dpmx.CarriedInCompanionArtifact { artifact: "drill file" },
-    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
+    authority: extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
     semantic: extdeps.ipc.dpmx.Stackup,
     carriage: extdeps.ipc.dpmx.CarriedInCompanionArtifact { artifact: "Gerber job file" },
-    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
+    authority: extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
-    semantic: NetlistConnectivity,
-    carriage: NotCarried,
-    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
+    semantic: extdeps.ipc.dpmx.NetlistConnectivity,
+    carriage: extdeps.ipc.dpmx.NotCarried,
+    authority: extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
-    semantic: ImpedanceRequirement,
-    carriage: NotCarried,
-    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
+    semantic: extdeps.ipc.dpmx.ImpedanceRequirement,
+    carriage: extdeps.ipc.dpmx.NotCarried,
+    authority: extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
     semantic: extdeps.ipc.dpmx.ComponentPlacement,
-    carriage: NotCarried,
-    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
+    carriage: extdeps.ipc.dpmx.NotCarried,
+    authority: extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
-    semantic: BillOfMaterials,
-    carriage: NotCarried,
-    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
+    semantic: extdeps.ipc.dpmx.BillOfMaterials,
+    carriage: extdeps.ipc.dpmx.NotCarried,
+    authority: extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
-    semantic: AssemblyInstruction,
-    carriage: NotCarried,
-    authority: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
+    semantic: extdeps.ipc.dpmx.AssemblyInstruction,
+    carriage: extdeps.ipc.dpmx.NotCarried,
+    authority: extdeps_external_authority_anchor,
   },
 ]
 
@@ -75,10 +75,10 @@ data gerber_model_scope: extdeps.external_authority.ExternalModelScope = extdeps
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ucamco.gerber",
       decl_name: "gerber_format",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.ucamco.gerber.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 

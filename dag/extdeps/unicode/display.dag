@@ -4,21 +4,21 @@ module extdeps.unicode.display
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.unicode.org/reports/tr11/"
   }
 }
 
-fn char_display_width(c: std.types.Char) -> std.unicode.types.DisplayWidth {
+fn char_display_width(c: Char) -> std.unicode.types.DisplayWidth {
   let cp = c
-  let is_zero_width = contains(extdeps.unicode.blocks.zero_width_codepoints, item: cp) || any(zero_width_blocks, predicate: b => in_block(cp: cp, block: b))
-  if is_zero_width { return ZeroWidth }
-  if any(wide_blocks, predicate: b => in_block(cp: cp, block: b)) { return Wide }
-  return Narrow
+  let is_zero_width = contains(extdeps.unicode.blocks.zero_width_codepoints, item: cp) || any(extdeps.unicode.blocks.zero_width_blocks, predicate: b => std.unicode.types.in_block(cp: cp, block: b))
+  if is_zero_width { return std.unicode.types.ZeroWidth }
+  if any(extdeps.unicode.blocks.wide_blocks, predicate: b => std.unicode.types.in_block(cp: cp, block: b)) { return std.unicode.types.Wide }
+  return std.unicode.types.Narrow
 }
 
-fn char_width(c: std.types.Char) -> Int {
-  display_width_columns(w: char_display_width(c: c))
+fn char_width(c: Char) -> Int {
+  std.unicode.types.display_width_columns(w: char_display_width(c: c))
 }
 
 fn string_display_width(s: String) -> Int {

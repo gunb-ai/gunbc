@@ -56,15 +56,15 @@ fn constant_cost(value: v2.std.nat.Nat) -> SymbolicCost {
 }
 
 fn zero_cost() -> SymbolicCost {
-  constant_cost(value: Zero)
+  constant_cost(value: v2.std.nat.Zero)
 }
 
 fn unit_cost() -> SymbolicCost {
-  constant_cost(value: v2.std.nat.Succ { prev: Zero })
+  constant_cost(value: v2.std.nat.Succ { prev: v2.std.nat.Zero })
 }
 
 fn nonzero_one() -> v2.std.cardinality.NonZeroNat {
-  v2.std.cardinality.NonZeroNat { prev: Zero }
+  v2.std.cardinality.NonZeroNat { prev: v2.std.nat.Zero }
 }
 
 fn polynomial_degree_two() -> PolynomialDegree {
@@ -85,8 +85,8 @@ fn linear_in_node(n: v2.std.node.Node) -> SymbolicCost {
 
 data cost_lattice_top_diagnostic: v2.std.diagnostic.Diagnostic = v2.std.diagnostic.Diagnostic {
   reason: ^cost_reason_unmodeled_symbolic_cost,
-  at: v2.std.diagnostic.Textual { file: ^cost_lattice_top_virtual_file, extent: WholeFile },
-  correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+  at: v2.std.diagnostic.Textual { file: ^cost_lattice_top_virtual_file, extent: v2.std.diagnostic.WholeFile },
+  correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
 }
 
 fn unknown_cost(diagnostic: v2.std.diagnostic.Diagnostic) -> SymbolicCost {
@@ -104,66 +104,66 @@ fn symbolic_cost_witness(c: SymbolicCost, n: v2.std.node.Node) -> Witness<Symbol
 
 fn base_cost_for_connective(c: v2.std.node.Connective, n: v2.std.node.Node) -> SymbolicCost {
   match c {
-    Atom { identity: _ } => zero_cost()
-    Conj => zero_cost()
-    Disj => zero_cost()
-    Arrow => unit_cost()
-    Cardinality => linear_in_node(n: n)
-    Instantiation => unit_cost()
+    v2.std.node.Atom { identity: _ } => zero_cost()
+    v2.std.node.Conj => zero_cost()
+    v2.std.node.Disj => zero_cost()
+    v2.std.node.Arrow => unit_cost()
+    v2.std.node.Cardinality => linear_in_node(n: n)
+    v2.std.node.Instantiation => unit_cost()
   }
 }
 
 fn base_cost_for_loop(n: v2.std.node.Node) -> SymbolicCost {
-  match loop_bound_witness_for_node(n: n) {
-    Holds { value: bound } =>
-      linear_in_node(n: loop_bound_measure(bound: bound))
-    Violates { diagnostic: d } =>
+  match v2.std.cardinality.loop_bound_witness_for_node(n: n) {
+    v2.std.witness.Holds { value: bound } =>
+      linear_in_node(n: v2.std.cardinality.loop_bound_measure(bound: bound))
+    v2.std.witness.Violates { diagnostic: d } =>
       unknown_cost(diagnostic: d)
   }
 }
 
 fn base_cost_for_behavior(b: v2.std.node.Behavior, n: v2.std.node.Node) -> SymbolicCost {
   match b {
-    Value => zero_cost()
-    Transform => unit_cost()
-    Branch => unit_cost()
-    Loop => base_cost_for_loop(n: n)
-    Bind => zero_cost()
+    v2.std.node.Value => zero_cost()
+    v2.std.node.Transform => unit_cost()
+    v2.std.node.Branch => unit_cost()
+    v2.std.node.Loop => base_cost_for_loop(n: n)
+    v2.std.node.Bind => zero_cost()
     Match => unit_cost()
   }
 }
 
 fn cost_mode_for_connective(c: v2.std.node.Connective) -> CostCompositionMode {
   match c {
-    Atom { identity: _ } => SequentialCost
-    Conj => SequentialCost
-    Disj => AlternativeCost
-    Arrow => SequentialCost
-    Cardinality => IterativeCost
-    Instantiation => SequentialCost
+    v2.std.node.Atom { identity: _ } => SequentialCost
+    v2.std.node.Conj => SequentialCost
+    v2.std.node.Disj => AlternativeCost
+    v2.std.node.Arrow => SequentialCost
+    v2.std.node.Cardinality => IterativeCost
+    v2.std.node.Instantiation => SequentialCost
   }
 }
 
 fn cost_mode_for_behavior(b: v2.std.node.Behavior) -> CostCompositionMode {
   match b {
-    Value => SequentialCost
-    Transform => SequentialCost
-    Branch => AlternativeCost
-    Loop => IterativeCost
-    Bind => SequentialCost
+    v2.std.node.Value => SequentialCost
+    v2.std.node.Transform => SequentialCost
+    v2.std.node.Branch => AlternativeCost
+    v2.std.node.Loop => IterativeCost
+    v2.std.node.Bind => SequentialCost
     Match => AlternativeCost
   }
 }
 
 fn cost_fold_init(n: v2.std.node.Node) -> SymbolicCostFoldState {
   match n.kind {
-    TypeNode { connective: c } =>
+    v2.std.node.TypeNode { connective: c } =>
       SymbolicCostFoldState {
         mode: cost_mode_for_connective(c: c),
         cost: base_cost_for_connective(c: c, n: n),
         parent: n
       }
-    ComputationNode { behavior: b } =>
+    v2.std.node.ComputationNode { behavior: b } =>
       SymbolicCostFoldState {
         mode: cost_mode_for_behavior(b: b),
         cost: base_cost_for_behavior(b: b, n: n),
@@ -174,11 +174,11 @@ fn cost_fold_init(n: v2.std.node.Node) -> SymbolicCostFoldState {
 
 fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
-    ConstantCost { value: Zero } => b
+    ConstantCost { value: v2.std.nat.Zero } => b
     UnknownCost { diagnostic: _ } => a
     _ =>
       match b {
-        ConstantCost { value: Zero } => a
+        ConstantCost { value: v2.std.nat.Zero } => a
         UnknownCost { diagnostic: _ } => b
         _ => SumCost { lhs: a, rhs: b }
       }
@@ -189,17 +189,17 @@ data symbolic_product_zero_absorption_note: String = "Zero is checked on BOTH op
 
 fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
-    ConstantCost { value: Zero } => zero_cost()
+    ConstantCost { value: v2.std.nat.Zero } => zero_cost()
     _ =>
       match b {
-        ConstantCost { value: Zero } => zero_cost()
+        ConstantCost { value: v2.std.nat.Zero } => zero_cost()
         _ =>
           match a {
-            ConstantCost { value: Succ { prev: Zero } } => b
+            ConstantCost { value: v2.std.nat.Succ { prev: v2.std.nat.Zero } } => b
             UnknownCost { diagnostic: _ } => a
             _ =>
               match b {
-                ConstantCost { value: Succ { prev: Zero } } => a
+                ConstantCost { value: v2.std.nat.Succ { prev: v2.std.nat.Zero } } => a
                 UnknownCost { diagnostic: _ } => b
                 _ => ProductCost { lhs: a, rhs: b }
               }
@@ -210,10 +210,10 @@ fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
 
 fn symbolic_max(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
-    ConstantCost { value: Zero } => b
+    ConstantCost { value: v2.std.nat.Zero } => b
     _ =>
       match b {
-        ConstantCost { value: Zero } => a
+        ConstantCost { value: v2.std.nat.Zero } => a
         _ =>
           if a == b {
             a
@@ -245,9 +245,9 @@ fn nonzero_nat_dominates(a: v2.std.cardinality.NonZeroNat, b: v2.std.cardinality
 }
 
 fn nat_dominates(a: v2.std.nat.Nat, b: v2.std.nat.Nat) -> Bool {
-  match v2.std.nat.nat_compare(a: a, b: b) {
-    Greater => true
-    Equal => true
+  match nat_compare(a: a, b: b) {
+    std.algebra.Greater => true
+    std.algebra.Equal => true
     _ => false
   }
 }
@@ -257,7 +257,7 @@ fn add_polynomial_degree(a: PolynomialDegree, b: PolynomialDegree) -> Polynomial
     predecessor_after_linear: v2.std.cardinality.NonZeroNat {
       prev: v2.std.nat.Succ {
         prev: v2.std.nat.Succ {
-          prev: nat_add(a: a.predecessor_after_linear.prev, b: b.predecessor_after_linear.prev)
+          prev: v2.std.nat.nat_add(a: a.predecessor_after_linear.prev, b: b.predecessor_after_linear.prev)
         }
       }
     }
@@ -281,7 +281,7 @@ fn add_polylog_exponent(a: PolyLogExponent, b: PolyLogExponent) -> PolyLogExpone
     predecessor_after_log: v2.std.cardinality.NonZeroNat {
       prev: v2.std.nat.Succ {
         prev: v2.std.nat.Succ {
-          prev: nat_add(a: a.predecessor_after_log.prev, b: b.predecessor_after_log.prev)
+          prev: v2.std.nat.nat_add(a: a.predecessor_after_log.prev, b: b.predecessor_after_log.prev)
         }
       }
     }
@@ -335,7 +335,7 @@ fn cost_fold_step(
   e: v2.std.node.Edge,
   child: SymbolicCostFoldState
 ) -> SymbolicCostFoldState {
-  if edge_contributes_to_cost_fold(parent: acc.parent, e: e) {
+  if v2.std.node.edge_contributes_to_cost_fold(parent: acc.parent, e: e) {
     SymbolicCostFoldState {
       mode: acc.mode,
       cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: child.cost),
@@ -346,7 +346,7 @@ fn cost_fold_step(
   }
 }
 
-fn symbolic_cost_fold() -> NodeFold<SymbolicCostFoldState> {
+fn symbolic_cost_fold() -> v2.std.node.NodeFold<SymbolicCostFoldState> {
   v2.std.node.NodeFold {
     init: cost_fold_init,
     step: cost_fold_step
@@ -354,7 +354,7 @@ fn symbolic_cost_fold() -> NodeFold<SymbolicCostFoldState> {
 }
 
 fn symbolic_cost_fold_state(n: v2.std.node.Node) -> SymbolicCostFoldState {
-  fold_node(n: n, algebra: symbolic_cost_fold())
+  v2.std.node.fold_node(n: n, algebra: symbolic_cost_fold())
 }
 
 fn symbolic_cost_of_node(n: v2.std.node.Node) -> SymbolicCost {
@@ -451,7 +451,7 @@ fn symbolic_cost_dominates(a: SymbolicCost, b: SymbolicCost) -> Bool {
       }
     _ =>
       match b {
-        ConstantCost { value: Zero } => true
+        ConstantCost { value: v2.std.nat.Zero } => true
         _ =>
           asymptotic_class_dominates(
             a: asymptotic_class_of_cost(cost: a),
@@ -573,19 +573,19 @@ fn cost_lattice_join(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   symbolic_max(a: a, b: b)
 }
 
-data symbolic_cost_sequential_monoid: Monoid<SymbolicCost> = std.algebra.Monoid {
+data symbolic_cost_sequential_monoid: std.algebra.Monoid<SymbolicCost> = std.algebra.Monoid {
   op: symbolic_sequential,
-  identity: ConstantCost { value: Zero }
+  identity: ConstantCost { value: v2.std.nat.Zero }
 }
 
-data symbolic_cost_lattice: BoundedLattice<SymbolicCost> = std.algebra.BoundedLattice {
+data symbolic_cost_lattice: std.algebra.BoundedLattice<SymbolicCost> = std.algebra.BoundedLattice {
   meet: cost_lattice_meet,
   join: cost_lattice_join,
   top: UnknownCost { diagnostic: cost_lattice_top_diagnostic },
-  bottom: ConstantCost { value: Zero }
+  bottom: ConstantCost { value: v2.std.nat.Zero }
 }
 
-data asymptotic_class_lattice: BoundedLattice<AsymptoticClass> = std.algebra.BoundedLattice {
+data asymptotic_class_lattice: std.algebra.BoundedLattice<AsymptoticClass> = std.algebra.BoundedLattice {
   meet: asymptotic_class_meet,
   join: asymptotic_class_join,
   top: ClassUnknown,
@@ -624,7 +624,7 @@ fn llvm_instruction_cost(i: v2.extdeps.languages.llvm_ir.LlvmInstruction) -> Int
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: v2.lens.common.construction_justification.WallNow {
-    mechanism: SubstrateMandatoryTag,
+    mechanism: std.disposition.SubstrateMandatoryTag,
     authority: std.decl_ref.DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: std.decl_ref.WholeDeclaration }
   }
 }

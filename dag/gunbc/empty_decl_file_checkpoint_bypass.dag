@@ -24,16 +24,16 @@ module gunbc.empty_decl_file_checkpoint_bypass
 // (literal_suffix_production_call_site_never_threads_declaration_identity).
 
 type BypassInstance {
-  caller: DeclarationRef
+  caller: std.decl_ref.DeclarationRef
   position: String
-  evidence: DeclarationRef
+  evidence: std.decl_ref.DeclarationRef
 }
 
 data empty_decl_file_bypass_instances: List<BypassInstance> = [
   {
-    caller: decl_ref(module_path: "v1.compiler.05_emit", decl_name: "emit_literal"),
+    caller: std.decl_ref.decl_ref(module_path: "v1.compiler.05_emit", decl_name: "emit_literal"),
     position: "String literal rendering: decl_file is passed as the empty string unconditionally",
-    evidence: decl_ref(module_path: "v1.tests.claim.checkpoint_identity_keying_witness_test", decl_name: "literal_suffix_production_call_site_never_threads_declaration_identity"),
+    evidence: std.decl_ref.decl_ref(module_path: "v1.tests.claim.checkpoint_identity_keying_witness_test", decl_name: "literal_suffix_production_call_site_never_threads_declaration_identity"),
   },
 ]
 
@@ -58,6 +58,6 @@ data empty_decl_file_bypass_population: PopulationBasis = UncountedNoSweepRun {
 // refuse being made to thread identity first. That ordering is the whole of the work: the refusal is
 // one arm, the threading is the population above, and the refusal cannot land before the population
 // is known or it converts an uncounted silence into an uncounted red.
-data empty_decl_file_bypass_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: lookup_checkpoint refuses rather than answering from the bare-name table when decl_file is empty, and every production call site threads a resolved declaration file, established by execution against a discriminating red at a site that previously answered from the table. Not satisfied by threading identity at the listed instance alone while the population remains UncountedNoSweepRun -- the sweep is the precondition for the refusal, not a follow-up to it.")
+data empty_decl_file_bypass_next_rung_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: lookup_checkpoint refuses rather than answering from the bare-name table when decl_file is empty, and every production call site threads a resolved declaration file, established by execution against a discriminating red at a site that previously answered from the table. Not satisfied by threading identity at the listed instance alone while the population remains UncountedNoSweepRun -- the sweep is the precondition for the refusal, not a follow-up to it.")
 
-data empty_decl_file_bypass_surfaced_by: DeclarationRef = decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "checkpoint_table_bypasses_identity_note")
+data empty_decl_file_bypass_surfaced_by: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "checkpoint_table_bypasses_identity_note")

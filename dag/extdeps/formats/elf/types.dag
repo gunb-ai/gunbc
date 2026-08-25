@@ -1,8 +1,9 @@
 module extdeps.formats.elf.types
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html"
   }
 }
@@ -12,8 +13,8 @@ type ElfIdent {
   mag1: Int
   mag2: Int
   mag3: Int
-  class: ElfClass
-  data: ElfDataEncoding
+  class: extdeps.formats.elf.primitives.ElfClass
+  data: extdeps.formats.elf.primitives.ElfDataEncoding
   version: Int
   osabi: Int
   abiversion: Int
@@ -21,8 +22,8 @@ type ElfIdent {
 
 type Elf64Ehdr {
   ident: ElfIdent
-  file_type: ElfFileType
-  machine: ElfMachine
+  file_type: extdeps.formats.elf.primitives.ElfFileType
+  machine: extdeps.formats.elf.primitives.ElfMachine
   version: Int
   entry: Int
   phoff: Int
@@ -39,7 +40,7 @@ type Elf64Ehdr {
 type ElfDecodeReason
   = Truncated { required_bytes: Int, available_bytes: Int }
   | InvalidElfMagic { mag0: Int, mag1: Int, mag2: Int, mag3: Int }
-  | ElfClassNotElf64 { class: ElfClass }
+  | ElfClassNotElf64 { class: extdeps.formats.elf.primitives.ElfClass }
   | UnsupportedElfClass { raw: Int }
   | UnsupportedElfData { raw: Int }
   | UnsupportedElfFileType { raw: Int }
@@ -74,21 +75,21 @@ fn read_u64_le_in_bounds(bytes: List<Int>, offset: Int) -> Int {
   byte_at_in_bounds(bytes, offset) + byte_at_in_bounds(bytes, offset + 1) * 256 + byte_at_in_bounds(bytes, offset + 2) * 65536 + byte_at_in_bounds(bytes, offset + 3) * 16777216 + byte_at_in_bounds(bytes, offset + 4) * 4294967296 + byte_at_in_bounds(bytes, offset + 5) * 1099511627776 + byte_at_in_bounds(bytes, offset + 6) * 281474976710656 + byte_at_in_bounds(bytes, offset + 7) * 72057594037927936
 }
 
-fn decode_elf_class(raw: Int) -> ElfDecodeOutcome<ElfClass> {
+fn decode_elf_class(raw: Int) -> ElfDecodeOutcome<extdeps.formats.elf.primitives.ElfClass> {
   if raw == elf_class_none { ElfDecoded { value: ElfClassNone } }
   else if raw == elf_class_32 { ElfDecoded { value: ElfClass32 } }
   else if raw == elf_class_64 { ElfDecoded { value: ElfClass64 } }
   else { ElfRejected { reason: UnsupportedElfClass { raw: raw } } }
 }
 
-fn decode_elf_data(raw: Int) -> ElfDecodeOutcome<ElfDataEncoding> {
+fn decode_elf_data(raw: Int) -> ElfDecodeOutcome<extdeps.formats.elf.primitives.ElfDataEncoding> {
   if raw == elf_data_none { ElfDecoded { value: ElfDataNone } }
   else if raw == elf_data_2lsb { ElfDecoded { value: ElfData2Lsb } }
   else if raw == elf_data_2msb { ElfDecoded { value: ElfData2Msb } }
   else { ElfRejected { reason: UnsupportedElfData { raw: raw } } }
 }
 
-fn decode_elf_type(raw: Int) -> ElfDecodeOutcome<ElfFileType> {
+fn decode_elf_type(raw: Int) -> ElfDecodeOutcome<extdeps.formats.elf.primitives.ElfFileType> {
   if raw == et_none { ElfDecoded { value: EtNone } }
   else if raw == et_rel { ElfDecoded { value: EtRel } }
   else if raw == et_exec { ElfDecoded { value: EtExec } }
@@ -97,7 +98,7 @@ fn decode_elf_type(raw: Int) -> ElfDecodeOutcome<ElfFileType> {
   else { ElfRejected { reason: UnsupportedElfFileType { raw: raw } } }
 }
 
-fn decode_elf_machine(raw: Int) -> ElfDecodeOutcome<ElfMachine> {
+fn decode_elf_machine(raw: Int) -> ElfDecodeOutcome<extdeps.formats.elf.primitives.ElfMachine> {
   if raw == em_none { ElfDecoded { value: EmNone } }
   else if raw == em_x86_64 { ElfDecoded { value: EmX86_64 } }
   else { ElfRejected { reason: UnsupportedElfMachine { raw: raw } } }
@@ -180,6 +181,7 @@ fn decode_elf64_ehdr(bytes: List<Int>) -> ElfDecodeOutcome<Elf64Ehdr> {
   }
 }
 
-fn elf64_ehdr_entry_point(hdr: Elf64Ehdr) -> EntryPoint {
-  EntryPoint { virtual_address: hdr.entry }
+fn elf64_ehdr_entry_point(hdr: Elf64Ehdr) -> std.exec_format.EntryPoint {
+  std.exec_format.EntryPoint { virtual_address: hdr.entry }
 }
+

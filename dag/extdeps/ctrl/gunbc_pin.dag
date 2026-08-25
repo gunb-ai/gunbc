@@ -3,7 +3,7 @@ module extdeps.ctrl.gunbc_pin
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/ctrl/blob/main/scripts/session-dashboard/lib/gunbc_run.mjs"
   }
 }

@@ -3,7 +3,7 @@ module extdeps.github.actions
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
   }
 }
@@ -160,7 +160,7 @@ type ConcurrencySpec
 
       cancel_in_progress: CancelInProgressSpec?
 
-      explicit_single: std.types.Unit?
+      explicit_single: Unit?
     }
 
 type RunnerSpec

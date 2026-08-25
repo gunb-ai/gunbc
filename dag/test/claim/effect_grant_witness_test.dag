@@ -1,40 +1,40 @@
 module test.claim.effect_grant_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // P-A discriminating witnesses for std.effect_grant. The core claim is fail-closed admissibility (DESIGN 5): an effect whose target is not under any grant root for its verb is REFUSED, never widened. Every positive arm is paired with a negative arm that goes RED if the refusal is dropped (empty envelope admits, wrong verb admits, wrong tree admits, sibling path admits, a child envelope widens past its parent).
 fn frame_named(name: String) -> std.materialization_ladder.Frame {
-  std.materialization_ladder.Frame { name: name, kind: SharedStateFrame }
+  std.materialization_ladder.Frame { name: name, kind: std.materialization_ladder.SharedStateFrame }
 }
 
 data test_frame: std.materialization_ladder.Frame = frame_named(name: "eval")
 
 data workspace_root: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: FilesystemPathTree,
+  tree: std.effect_grant.FilesystemPathTree,
   path: ["workspace"]
 }
 
 data workspace_file: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: FilesystemPathTree,
+  tree: std.effect_grant.FilesystemPathTree,
   path: ["workspace", "src", "foo.rs"]
 }
 
 data outside_workspace: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: FilesystemPathTree,
+  tree: std.effect_grant.FilesystemPathTree,
   path: ["etc", "passwd"]
 }
 
 data bmc_uri: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: UriTree,
+  tree: std.effect_grant.UriTree,
   path: ["https://bmc.local", "power"]
 }
 
 data workspace_write_grant: std.effect_grant.Grant = std.effect_grant.Grant {
-  verb: Write,
+  verb: std.effect_grant.Write,
   root: workspace_root,
-  binding: RealTransport,
-  lifecycle: LifecycleByConvention
+  binding: std.effect_grant.RealTransport,
+  lifecycle: std.effect_grant.LifecycleByConvention
 }
 
 data write_only_env: std.effect_grant.Envelope = std.effect_grant.Envelope {
@@ -42,17 +42,17 @@ data write_only_env: std.effect_grant.Envelope = std.effect_grant.Envelope {
   grants: [workspace_write_grant]
 }
 
-data usr_bin_root: std.effect_grant.NamespacePosition = filesystem_position(path: ["usr", "bin"])
+data usr_bin_root: std.effect_grant.NamespacePosition = std.effect_grant.filesystem_position(path: ["usr", "bin"])
 
-data apt_get_target: std.effect_grant.NamespacePosition = filesystem_position(path: ["usr", "bin", "apt-get"])
+data apt_get_target: std.effect_grant.NamespacePosition = std.effect_grant.filesystem_position(path: ["usr", "bin", "apt-get"])
 
-data other_bin_target: std.effect_grant.NamespacePosition = filesystem_position(path: ["usr", "sbin", "other"])
+data other_bin_target: std.effect_grant.NamespacePosition = std.effect_grant.filesystem_position(path: ["usr", "sbin", "other"])
 
 data execute_only_grant: std.effect_grant.Grant = std.effect_grant.Grant {
-  verb: Execute,
+  verb: std.effect_grant.Execute,
   root: usr_bin_root,
-  binding: RealTransport,
-  lifecycle: LifecycleByConstruction
+  binding: std.effect_grant.RealTransport,
+  lifecycle: std.effect_grant.LifecycleByConstruction
 }
 
 data execute_only_env: std.effect_grant.Envelope = std.effect_grant.Envelope {
@@ -67,75 +67,75 @@ data empty_env: std.effect_grant.Envelope = std.effect_grant.Envelope {
 
 fn is_admitted(a: std.access.AccessDecision) -> Bool {
   match a {
-    Permit => true
-    Deny { refusal: refusal } => false
+    std.access.Permit => true
+    std.access.Deny { refusal: refusal } => false
   }
 }
 
 fn is_refused(a: std.access.AccessDecision) -> Bool {
   match a {
-    Permit => false
-    Deny { refusal: refusal } => true
+    std.access.Permit => false
+    std.access.Deny { refusal: refusal } => true
   }
 }
 
 test fn effect_grant_verb_coarsening_witnesses() -> Bool {
-  verb_eq(a: verb_of_effect_shape(shape: ReadEffect), b: Read)
-    && verb_eq(a: verb_of_effect_shape(shape: std.effects.UpsertEffect { key_source: std.effects.PathParam { param: "id" } }), b: Write)
-    && verb_eq(a: verb_of_effect_shape(shape: std.effects.DeleteEffect { key_source: std.effects.PathParam { param: "id" } }), b: Write)
-    && verb_eq(a: verb_of_effect_shape(shape: std.effects.CreateEffect { cause: PostAlways }), b: Write)
-    && verb_eq(a: verb_of_effect_shape(shape: AppendEffect), b: Write)
-    && verb_eq(a: verb_of_effect_shape(shape: ExecuteEffect), b: Execute)
-    && !verb_eq(a: verb_of_effect_shape(shape: ReadEffect), b: Write)
-    && !verb_eq(a: verb_of_effect_shape(shape: ExecuteEffect), b: Write)
+  std.effect_grant.verb_eq(a: std.effect_grant.verb_of_effect_shape(shape: std.effects.ReadEffect), b: std.effect_grant.Read)
+    && std.effect_grant.verb_eq(a: std.effect_grant.verb_of_effect_shape(shape: std.effects.UpsertEffect { key_source: std.effects.PathParam { param: "id" } }), b: std.effect_grant.Write)
+    && std.effect_grant.verb_eq(a: std.effect_grant.verb_of_effect_shape(shape: std.effects.DeleteEffect { key_source: std.effects.PathParam { param: "id" } }), b: std.effect_grant.Write)
+    && std.effect_grant.verb_eq(a: std.effect_grant.verb_of_effect_shape(shape: std.effects.CreateEffect { cause: std.effects.PostAlways }), b: std.effect_grant.Write)
+    && std.effect_grant.verb_eq(a: std.effect_grant.verb_of_effect_shape(shape: std.effects.AppendEffect), b: std.effect_grant.Write)
+    && std.effect_grant.verb_eq(a: std.effect_grant.verb_of_effect_shape(shape: std.effects.ExecuteEffect), b: std.effect_grant.Execute)
+    && !std.effect_grant.verb_eq(a: std.effect_grant.verb_of_effect_shape(shape: std.effects.ReadEffect), b: std.effect_grant.Write)
+    && !std.effect_grant.verb_eq(a: std.effect_grant.verb_of_effect_shape(shape: std.effects.ExecuteEffect), b: std.effect_grant.Write)
 }
 
 test fn effect_grant_position_under_witnesses() -> Bool {
-  position_under(target: workspace_file, root: workspace_root)
-    && position_under(target: workspace_root, root: workspace_root)
-    && !position_under(target: outside_workspace, root: workspace_root)
-    && !position_under(
-         target: std.effect_grant.NamespacePosition { tree: UriTree, path: ["workspace", "src", "foo.rs"] },
+  std.effect_grant.position_under(target: workspace_file, root: workspace_root)
+    && std.effect_grant.position_under(target: workspace_root, root: workspace_root)
+    && !std.effect_grant.position_under(target: outside_workspace, root: workspace_root)
+    && !std.effect_grant.position_under(
+         target: std.effect_grant.NamespacePosition { tree: std.effect_grant.UriTree, path: ["workspace", "src", "foo.rs"] },
          root: workspace_root
        )
 }
 
 test fn effect_grant_admission_witnesses() -> Bool {
-  test.claim.effect_grant_witness_test.is_admitted(a: admit_effect(env: write_only_env, verb: Write, target: workspace_file))
-    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: write_only_env, verb: Write, target: outside_workspace))
-    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: write_only_env, verb: Read, target: workspace_file))
-    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: write_only_env, verb: Write, target: bmc_uri))
-    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: empty_env, verb: Write, target: workspace_file))
+  is_admitted(a: std.effect_grant.admit_effect(env: write_only_env, verb: std.effect_grant.Write, target: workspace_file))
+    && is_refused(a: std.effect_grant.admit_effect(env: write_only_env, verb: std.effect_grant.Write, target: outside_workspace))
+    && is_refused(a: std.effect_grant.admit_effect(env: write_only_env, verb: std.effect_grant.Read, target: workspace_file))
+    && is_refused(a: std.effect_grant.admit_effect(env: write_only_env, verb: std.effect_grant.Write, target: bmc_uri))
+    && is_refused(a: std.effect_grant.admit_effect(env: empty_env, verb: std.effect_grant.Write, target: workspace_file))
 }
 
 test fn effect_grant_execute_admission_witnesses() -> Bool {
-  test.claim.effect_grant_witness_test.is_admitted(a: admit_effect(env: execute_only_env, verb: Execute, target: apt_get_target))
-    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: execute_only_env, verb: Execute, target: other_bin_target))
-    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: execute_only_env, verb: Write, target: apt_get_target))
-    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: execute_only_env, verb: Read, target: apt_get_target))
-    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: write_only_env, verb: Execute, target: apt_get_target))
-    && test.claim.effect_grant_witness_test.is_refused(a: admit_effect(env: empty_env, verb: Execute, target: apt_get_target))
+  is_admitted(a: std.effect_grant.admit_effect(env: execute_only_env, verb: std.effect_grant.Execute, target: apt_get_target))
+    && is_refused(a: std.effect_grant.admit_effect(env: execute_only_env, verb: std.effect_grant.Execute, target: other_bin_target))
+    && is_refused(a: std.effect_grant.admit_effect(env: execute_only_env, verb: std.effect_grant.Write, target: apt_get_target))
+    && is_refused(a: std.effect_grant.admit_effect(env: execute_only_env, verb: std.effect_grant.Read, target: apt_get_target))
+    && is_refused(a: std.effect_grant.admit_effect(env: write_only_env, verb: std.effect_grant.Execute, target: apt_get_target))
+    && is_refused(a: std.effect_grant.admit_effect(env: empty_env, verb: std.effect_grant.Execute, target: apt_get_target))
 }
 
 test fn effect_grant_execute_refusal_is_located_witnesses() -> Bool {
-  match admit_effect(env: execute_only_env, verb: Execute, target: other_bin_target) {
-    Deny { refusal: refusal } =>
+  match std.effect_grant.admit_effect(env: execute_only_env, verb: std.effect_grant.Execute, target: other_bin_target) {
+    std.access.Deny { refusal: refusal } =>
       refusal.location.profile == "EffectRequest"
         && refusal.location.subject == test_frame.name
         && refusal.location.action == "execute"
         && refusal.location.object == "usr/sbin/other"
-    Permit => false
+    std.access.Permit => false
   }
 }
 
 test fn effect_grant_refusal_is_located_witnesses() -> Bool {
-  match admit_effect(env: write_only_env, verb: Write, target: outside_workspace) {
-    Deny { refusal: refusal } =>
+  match std.effect_grant.admit_effect(env: write_only_env, verb: std.effect_grant.Write, target: outside_workspace) {
+    std.access.Deny { refusal: refusal } =>
       refusal.location.profile == "EffectRequest"
         && refusal.location.subject == test_frame.name
         && refusal.location.action == "write"
         && refusal.location.object == "etc/passwd"
-    Permit => false
+    std.access.Permit => false
   }
 }
 
@@ -147,41 +147,41 @@ test fn effect_grant_bounding_witnesses() -> Bool {
   let child_ok = std.effect_grant.Envelope {
     frame: frame_named(name: "child"),
     grants: [std.effect_grant.Grant {
-      verb: Write,
-      root: std.effect_grant.NamespacePosition { tree: FilesystemPathTree, path: ["workspace", "scratch"] },
-      binding: RealTransport,
-      lifecycle: LifecycleByConstruction
+      verb: std.effect_grant.Write,
+      root: std.effect_grant.NamespacePosition { tree: std.effect_grant.FilesystemPathTree, path: ["workspace", "scratch"] },
+      binding: std.effect_grant.RealTransport,
+      lifecycle: std.effect_grant.LifecycleByConstruction
     }]
   }
   let child_widens_tree = std.effect_grant.Envelope {
     frame: frame_named(name: "child"),
     grants: [std.effect_grant.Grant {
-      verb: Write,
-      root: std.effect_grant.NamespacePosition { tree: FilesystemPathTree, path: ["etc"] },
-      binding: RealTransport,
-      lifecycle: LifecycleByConvention
+      verb: std.effect_grant.Write,
+      root: std.effect_grant.NamespacePosition { tree: std.effect_grant.FilesystemPathTree, path: ["etc"] },
+      binding: std.effect_grant.RealTransport,
+      lifecycle: std.effect_grant.LifecycleByConvention
     }]
   }
   let child_widens_verb = std.effect_grant.Envelope {
     frame: frame_named(name: "child"),
     grants: [std.effect_grant.Grant {
-      verb: Read,
-      root: std.effect_grant.NamespacePosition { tree: FilesystemPathTree, path: ["workspace", "scratch"] },
-      binding: RealTransport,
-      lifecycle: LifecycleByConvention
+      verb: std.effect_grant.Read,
+      root: std.effect_grant.NamespacePosition { tree: std.effect_grant.FilesystemPathTree, path: ["workspace", "scratch"] },
+      binding: std.effect_grant.RealTransport,
+      lifecycle: std.effect_grant.LifecycleByConvention
     }]
   }
   let child_widens_execute = std.effect_grant.Envelope {
     frame: frame_named(name: "child"),
     grants: [std.effect_grant.Grant {
-      verb: Execute,
-      root: std.effect_grant.NamespacePosition { tree: FilesystemPathTree, path: ["usr", "bin", "apt-get"] },
-      binding: RealTransport,
-      lifecycle: LifecycleByConstruction
+      verb: std.effect_grant.Execute,
+      root: std.effect_grant.NamespacePosition { tree: std.effect_grant.FilesystemPathTree, path: ["usr", "bin", "apt-get"] },
+      binding: std.effect_grant.RealTransport,
+      lifecycle: std.effect_grant.LifecycleByConstruction
     }]
   }
-  envelope_bounded_by(child: child_ok, parent: parent)
-    && !envelope_bounded_by(child: child_widens_tree, parent: parent)
-    && !envelope_bounded_by(child: child_widens_verb, parent: parent)
-    && !envelope_bounded_by(child: child_widens_execute, parent: parent)
+  std.effect_grant.envelope_bounded_by(child: child_ok, parent: parent)
+    && !std.effect_grant.envelope_bounded_by(child: child_widens_tree, parent: parent)
+    && !std.effect_grant.envelope_bounded_by(child: child_widens_verb, parent: parent)
+    && !std.effect_grant.envelope_bounded_by(child: child_widens_execute, parent: parent)
 }

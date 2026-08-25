@@ -12,8 +12,8 @@ fn parallelism_relation_for_view(
   parallelism_relation_for_policy(
     tree: tree,
     view: view,
-    policy: classify_dependency_kind(
-      classifier: parallelism_classifier,
+    policy: v2.std.dependency.classify_dependency_kind(
+      classifier: v2.lens.common.algebraic_composition.parallelism_classifier,
       kind: view.kind
     )
   )
@@ -22,27 +22,27 @@ fn parallelism_relation_for_view(
 fn parallelism_witness_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^parallelism_reason_unresolved_projection,
-    at: v2.std.diagnostic.Textual { file: ^parallelism_projection_virtual_file, extent: WholeFile },
-    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^parallelism_projection_virtual_file, extent: v2.std.diagnostic.WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
   }
 }
 
 fn parallelism_facts_for_source(tree: v2.compiler.inferred_tree.InferredTree, view: v2.std.dependency.DependencyView) -> Witness<v2.compiler.inferred_tree.InferredFacts> {
-  witness_from_optional(opt: tree.facts.lookup(view.source), absent: infer_facts_lookup_miss_diagnostic(key: view.source))
+  v2.std.witness.witness_from_optional(opt: tree.facts.lookup(view.source), absent: v2.compiler.infer.infer_facts_lookup_miss_diagnostic(key: view.source))
 }
 
 fn parallelism_coupling_absent_diagnostic(facts: v2.compiler.inferred_tree.InferredFacts) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^parallelism_reason_coupling_carrier_absent,
-    at: node_locus(node: inferred_facts_subject_node(facts: facts)),
-    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.node_locus(node: v2.compiler.infer.inferred_facts_subject_node(facts: facts)),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
   }
 }
 
 fn parallelism_relation_from_admitted_facts(facts: v2.compiler.inferred_tree.InferredFacts) -> v2.lens.common.algebraic_composition.ParallelismRelation {
-  match inferred_facts_descent(facts: facts) {
-    Violates { diagnostic: d } => v2.lens.common.algebraic_composition.UnresolvedCoupling { diagnostic: d }
-    Holds { value: _ } => v2.lens.common.algebraic_composition.UnresolvedCoupling { diagnostic: parallelism_coupling_absent_diagnostic(facts: facts) }
+  match v2.compiler.infer.inferred_facts_descent(facts: facts) {
+    v2.std.witness.Violates { diagnostic: d } => v2.lens.common.algebraic_composition.UnresolvedCoupling { diagnostic: d }
+    v2.std.witness.Holds { value: _ } => v2.lens.common.algebraic_composition.UnresolvedCoupling { diagnostic: parallelism_coupling_absent_diagnostic(facts: facts) }
   }
 }
 
@@ -50,8 +50,8 @@ fn parallelism_relation_from_source_facts_witness(
   source_facts: Witness<v2.compiler.inferred_tree.InferredFacts>
 ) -> v2.lens.common.algebraic_composition.ParallelismRelation {
   match source_facts {
-    Violates { diagnostic: d } => v2.lens.common.algebraic_composition.UnresolvedCoupling { diagnostic: d }
-    Holds { value: facts } => parallelism_relation_from_admitted_facts(facts: facts)
+    v2.std.witness.Violates { diagnostic: d } => v2.lens.common.algebraic_composition.UnresolvedCoupling { diagnostic: d }
+    v2.std.witness.Holds { value: facts } => parallelism_relation_from_admitted_facts(facts: facts)
   }
 }
 
@@ -70,8 +70,8 @@ fn parallelism_relation_for_policy(
   policy: v2.lens.common.algebraic_composition.ParallelismKindPolicy
 ) -> v2.lens.common.algebraic_composition.ParallelismRelation {
   match policy {
-    KnownParallelismRelation { relation: r } => r
-    ReadsParallelismFacts => parallelism_relation_for_reads_parallelism_facts(tree: tree, view: view)
+    v2.lens.common.algebraic_composition.KnownParallelismRelation { relation: r } => r
+    v2.lens.common.algebraic_composition.ReadsParallelismFacts => parallelism_relation_for_reads_parallelism_facts(tree: tree, view: view)
   }
 }
 
@@ -88,33 +88,33 @@ fn parallelism_classify(
 fn parallelism_fact(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> ParallelismFact {
   ParallelismFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_snoc_item(xs: acc, item: parallelism_classify(tree: tree, view: view))
+      v2.std.algebra.list_snoc_item(xs: acc, item: parallelism_classify(tree: tree, view: view))
     })
   }
 }
 
-fn parallelism_relation_unresolved(relation: v2.lens.common.algebraic_composition.ParallelismRelation) -> v2.std.logic.Bool {
+fn parallelism_relation_unresolved(relation: v2.lens.common.algebraic_composition.ParallelismRelation) -> Bool {
   match relation {
-    UnresolvedCoupling { diagnostic: _ } => true
-    DataDependent => false
-    EffectCoupled => false
-    BarrierCoupled => false
+    v2.lens.common.algebraic_composition.UnresolvedCoupling { diagnostic: _ } => true
+    v2.lens.common.algebraic_composition.DataDependent => false
+    v2.lens.common.algebraic_composition.EffectCoupled => false
+    v2.lens.common.algebraic_composition.BarrierCoupled => false
   }
 }
 
-fn parallelism_fact_unresolved(fact: ParallelismFact) -> v2.std.logic.Bool {
+fn parallelism_fact_unresolved(fact: ParallelismFact) -> Bool {
   fold(fact.dependencies, init: false, f: fn(acc, dep) {
     acc || parallelism_relation_unresolved(relation: dep.classification)
   })
 }
 
 fn parallelism_first_unresolved_coupling_diagnostic(fact: ParallelismFact) -> v2.std.optional.Optional<v2.std.diagnostic.Diagnostic> {
-  fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
-    optional_prefer_first_present(
+  fold(fact.dependencies, init: v2.std.optional.optional_absent(), f: fn(acc, dep) {
+    v2.std.optional.optional_prefer_first_present(
       left: acc,
       right: match dep.classification {
-        UnresolvedCoupling { diagnostic: d } => optional_present(value: d)
-        _ => optional_absent()
+        v2.lens.common.algebraic_composition.UnresolvedCoupling { diagnostic: d } => v2.std.optional.optional_present(value: d)
+        _ => v2.std.optional.optional_absent()
       }
     )
   })
@@ -123,10 +123,10 @@ fn parallelism_first_unresolved_coupling_diagnostic(fact: ParallelismFact) -> v2
 fn parallelism_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<ParallelismFact> {
   let fact = parallelism_fact(tree: tree, dependencies: dependencies)
   let unresolved_diagnostic = parallelism_first_unresolved_coupling_diagnostic(fact: fact)
-  match optional_present_witness(opt: unresolved_diagnostic) {
-    Holds { value: d } =>
+  match v2.std.collection.optional_present_witness(opt: unresolved_diagnostic) {
+    v2.std.witness.Holds { value: d } =>
       v2.std.witness.Violates { diagnostic: d }
-    Violates { diagnostic: _ } =>
+    v2.std.witness.Violates { diagnostic: _ } =>
       if parallelism_fact_unresolved(fact: fact) {
         v2.std.witness.Violates { diagnostic: parallelism_witness_diagnostic() }
       } else {
@@ -135,22 +135,22 @@ fn parallelism_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencie
   }
 }
 
-fn parallelism_relation_eq(a: v2.lens.common.algebraic_composition.ParallelismRelation, b: v2.lens.common.algebraic_composition.ParallelismRelation) -> v2.std.logic.Bool {
+fn parallelism_relation_eq(a: v2.lens.common.algebraic_composition.ParallelismRelation, b: v2.lens.common.algebraic_composition.ParallelismRelation) -> Bool {
   match a {
-    DataDependent => match b {
-      DataDependent => true
+    v2.lens.common.algebraic_composition.DataDependent => match b {
+      v2.lens.common.algebraic_composition.DataDependent => true
       _ => false
     }
-    EffectCoupled => match b {
-      EffectCoupled => true
+    v2.lens.common.algebraic_composition.EffectCoupled => match b {
+      v2.lens.common.algebraic_composition.EffectCoupled => true
       _ => false
     }
-    BarrierCoupled => match b {
-      BarrierCoupled => true
+    v2.lens.common.algebraic_composition.BarrierCoupled => match b {
+      v2.lens.common.algebraic_composition.BarrierCoupled => true
       _ => false
     }
-    UnresolvedCoupling { diagnostic: ad } => match b {
-      UnresolvedCoupling { diagnostic: bd } => ad == bd
+    v2.lens.common.algebraic_composition.UnresolvedCoupling { diagnostic: ad } => match b {
+      v2.lens.common.algebraic_composition.UnresolvedCoupling { diagnostic: bd } => ad == bd
       _ => false
     }
   }
@@ -159,14 +159,14 @@ fn parallelism_relation_eq(a: v2.lens.common.algebraic_composition.ParallelismRe
 fn parallelism_classified_eq(
   a: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.ParallelismRelation>,
   b: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.ParallelismRelation>
-) -> v2.std.logic.Bool {
-  classified_dependency_view_eq(a: a, b: b, classification_eq: parallelism_relation_eq)
+) -> Bool {
+  v2.std.dependency.classified_dependency_view_eq(a: a, b: b, classification_eq: parallelism_relation_eq)
 }
 
-fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> v2.std.logic.Bool {
-  bag_eq(xs: a.dependencies, ys: b.dependencies, eq: parallelism_classified_eq)
+fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
+  v2.std.algebra.bag_eq(xs: a.dependencies, ys: b.dependencies, eq: parallelism_classified_eq)
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority }
 }

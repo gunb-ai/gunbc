@@ -4,11 +4,11 @@ module v2.workflow.native_cache_fusion
 data native_cache_fusion_note: String = "P2/host fusion law (census R6 projection, 2026-07-22): the host transport decides warmness as compile_skipped = !cold_control && marker_exists (v1_interpreter.rs emit_host_run_transport_cached_in_workspace, the .native_ready rule), while the P2 model decides Share|Recompute via emit_on_demand_lookup over the artifact store. These are two realizations of ONE decision and must agree: marker-present under no control == store hit == Share; marker-absent or control-forced == miss == Recompute. This module states that agreement as the executable law over a modeled host observation (mirroring the cited Rust rule), so divergence between the model and the realization is a red, not silent drift. Full fusion — the host transport reading the P2 store itself — is the R6 construction end-state; until then this law is the tripwire."
 
 type HostWarmObservation {
-  marker_exists: v2.std.logic.Bool
-  cold_control: v2.std.logic.Bool
+  marker_exists: Bool
+  cold_control: Bool
 }
 
-fn host_compile_skipped(o: HostWarmObservation) -> v2.std.logic.Bool {
+fn host_compile_skipped(o: HostWarmObservation) -> Bool {
   o.cold_control == false && o.marker_exists
 }
 
@@ -18,11 +18,11 @@ fn model_lookup_for(o: HostWarmObservation, key: std.content_hash.ContentHash) -
       receipt: std.emit_on_demand.EmitOnDemandCacheReceipt { key: key, compile_skipped: true }
     }
   } else {
-    EmitOnDemandMiss
+    std.emit_on_demand.EmitOnDemandMiss
   }
 }
 
-fn fusion_agreement_holds_for(o: HostWarmObservation) -> v2.std.logic.Bool {
+fn fusion_agreement_holds_for(o: HostWarmObservation) -> Bool {
   let key = std.content_hash.content_hash_atom(value: "fusion-law-synthetic-key")
   let model_share = std.emit_on_demand.materialization_for_lookup(lookup: model_lookup_for(o: o, key: key)) == std.realization.Share
   host_compile_skipped(o: o) == model_share

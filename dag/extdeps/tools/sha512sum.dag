@@ -4,15 +4,15 @@ module extdeps.tools.sha512sum
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.gnu.org/software/coreutils/manual/coreutils.html"
   }
 }
 
-data sha512sum_cli_tool: CliTool = CliTool {
+data sha512sum_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "sha512sum",
   min_version: none,
-  installable_via: [SourceCoreutils],
+  installable_via: [extdeps.tools.SourceCoreutils],
 }
 
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
@@ -20,11 +20,11 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.tools.sha512sum",
       decl_name: "sha512sum_cli_tool",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.tools.sha512sum.extdeps_external_authority_anchor,
-  further_citations: [extdeps.crypto.hash.extdeps_external_authority_anchor]
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [extdeps_external_authority_anchor]
 }
 
 data sha512_algorithm_authority_consumed_note: String = "The FIPS 180-4 algorithm citation is CONSUMED from extdeps.crypto.hash, never re-minted here (DESIGN §3 single authority; review 50411 caught the fork). This module's own extdeps_external_authority_anchor is the coreutils manual — the tool that prints the digest — which is a different upstream subject from the algorithm it implements, so the two rows are distinct facts rather than a nickname pair. The anchor keeps a literal ExternalAuthority body deliberately: mandatory-tag enrollment reads the value subtree structurally and a datum alias reds as missing (extdeps.cache.pin sccache_pin_instantiation_note, review 44866). A further_citation carries no such constraint, so it references the owning module's row directly."
@@ -58,7 +58,7 @@ fn sha512sum_observe_file(path: std.types.FilePath) -> Sha512FileObservation {
   } else {
     match split(s: std.algebra.trim(read.stdout), delimiter: " ") |> first {
       Present { value: hex } =>
-        match sha512_hex_digest(hex: hex) {
+        match std.content_hash.sha512_hex_digest(hex: hex) {
           Present { value: digest } => Sha512FileObserved { digest: digest }
           Absent =>
             Sha512FileObservationRefused {

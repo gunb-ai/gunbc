@@ -3,7 +3,7 @@ module extdeps.cargo_message
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "doc.rust-lang.org/cargo/reference/external-tools.html#json-messages"
   }
 }
@@ -13,11 +13,11 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cargo_message",
       decl_name: "cargo_artifact_reason",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.cargo_message.extdeps_external_authority_anchor,
-  further_citations: [extdeps.cargo_build.extdeps_external_authority_anchor]
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [extdeps_external_authority_anchor]
 }
 
 data cargo_message_subject_note: String = "WHY THIS MODULE EXISTS, stated as the defect it closes rather than the feature it adds. service cargo.Build in extdeps.cargo_build reports exactly three outputs on every operation — success, stdout, stderr — and none of them reports the PATH of the artifact the build produced. A consumer that needs the built binary therefore has to assemble the path by convention (target dir, profile, binary name), and a stale binary sitting at that conventional location satisfies the observation completely: the digest downstream would be honestly computed over real bytes that are the wrong bytes, with nothing in the chain able to tell. Cargo will name the artifact itself if asked, which is what --message-format=json is for, so the honest route is to read the path cargo REPORTED rather than the path we predicted. This module owns that reading; extdeps.cargo_build owns the invocation shape."
@@ -47,7 +47,7 @@ type CargoArtifactHit
 // CargoArtifactAmbiguous is refused rather than resolved first-wins or last-wins:
 // two artifact messages naming one target means the stream describes a situation
 // this decode has no way to settle, and picking either reports a guess as an
-// observation. CargoArtifactExecutablePathEmpty exists because std.types.FilePath is String
+// observation. CargoArtifactExecutablePathEmpty exists because FilePath is String
 // where non_empty, so an empty path cannot become one — it refuses by name instead
 // of being cast into a carrier that would reject it anyway.
 type CargoArtifactSelection
@@ -77,12 +77,12 @@ type CargoScanState
 
 fn cargo_message_string_value(v: extdeps.languages.json.emit.JsonValue) -> String? {
   match v {
-    JsonString { value: s } => Present { value: s }
-    JsonNull => none
-    JsonBool { value: _ } => none
-    JsonNumber { lexeme: _ } => none
-    JsonArray { elements: _ } => none
-    JsonObject { members: _ } => none
+    extdeps.languages.json.emit.JsonString { value: s } => Present { value: s }
+    extdeps.languages.json.emit.JsonNull => none
+    extdeps.languages.json.emit.JsonBool { value: _ } => none
+    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => none
+    extdeps.languages.json.emit.JsonArray { elements: _ } => none
+    extdeps.languages.json.emit.JsonObject { members: _ } => none
   }
 }
 
@@ -95,40 +95,40 @@ type CargoTargetNameRead
   | CargoTargetNameReadRefused { selection: CargoArtifactSelection }
 
 fn cargo_message_target_name(doc: extdeps.languages.json.emit.JsonValue, line_number: Int) -> CargoTargetNameRead {
-  match json_object_unique_member(v: doc, key: cargo_message_target_member) {
-    JsonMemberAbsent =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: cargo_message_target_member) {
+    extdeps.languages.json.parse.JsonMemberAbsent =>
       CargoTargetNameReadRefused {
         selection: CargoMessageTargetNameAbsent { line_number: line_number }
       }
-    JsonMemberDuplicated { count: _ } =>
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
       CargoTargetNameReadRefused {
         selection: CargoMessageMemberDuplicated {
           line_number: line_number,
           key: cargo_message_target_member
         }
       }
-    JsonMemberNotAnObject =>
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       CargoTargetNameReadRefused {
         selection: CargoMessageLineNotAnObject { line_number: line_number }
       }
-    JsonMemberFound { value: target } =>
-      match json_object_unique_member(v: target, key: cargo_message_target_name_member) {
-        JsonMemberAbsent =>
+    extdeps.languages.json.parse.JsonMemberFound { value: target } =>
+      match extdeps.languages.json.parse.json_object_unique_member(v: target, key: cargo_message_target_name_member) {
+        extdeps.languages.json.parse.JsonMemberAbsent =>
           CargoTargetNameReadRefused {
             selection: CargoMessageTargetNameAbsent { line_number: line_number }
           }
-        JsonMemberDuplicated { count: _ } =>
+        extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
           CargoTargetNameReadRefused {
             selection: CargoMessageMemberDuplicated {
               line_number: line_number,
               key: cargo_message_target_name_member
             }
           }
-        JsonMemberNotAnObject =>
+        extdeps.languages.json.parse.JsonMemberNotAnObject =>
           CargoTargetNameReadRefused {
             selection: CargoMessageTargetNotAnObject { line_number: line_number }
           }
-        JsonMemberFound { value: name_value } =>
+        extdeps.languages.json.parse.JsonMemberFound { value: name_value } =>
           match cargo_message_string_value(v: name_value) {
             Absent =>
               CargoTargetNameReadRefused {
@@ -176,56 +176,56 @@ fn cargo_message_artifact_hit(
   line_number: Int,
   target_name: String
 ) -> CargoScanState {
-  match json_object_unique_member(v: doc, key: cargo_message_executable_member) {
-    JsonMemberDuplicated { count: _ } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: cargo_message_executable_member) {
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
       CargoScanRefused {
         selection: CargoMessageMemberDuplicated {
           line_number: line_number,
           key: cargo_message_executable_member
         }
       }
-    JsonMemberNotAnObject =>
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       CargoScanRefused {
         selection: CargoMessageLineNotAnObject { line_number: line_number }
       }
-    JsonMemberAbsent =>
+    extdeps.languages.json.parse.JsonMemberAbsent =>
       CargoScanRefused {
         selection: CargoMessageExecutableAbsent { line_number: line_number }
       }
-    JsonMemberFound { value: exe } =>
+    extdeps.languages.json.parse.JsonMemberFound { value: exe } =>
       match exe {
-        JsonNull =>
+        extdeps.languages.json.emit.JsonNull =>
           CargoScanning {
             hits: [CargoArtifactHitWithoutExecutable],
             line_number: line_number
           }
-        JsonString { value: path } =>
+        extdeps.languages.json.emit.JsonString { value: path } =>
           CargoScanning {
             hits: [CargoArtifactHitExecutable { path: path, line_number: line_number }],
             line_number: line_number
           }
-        JsonBool { value: _ } =>
+        extdeps.languages.json.emit.JsonBool { value: _ } =>
           CargoScanRefused {
             selection: CargoArtifactExecutableNotAString {
               target_name: target_name,
               line_number: line_number
             }
           }
-        JsonNumber { lexeme: _ } =>
+        extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
           CargoScanRefused {
             selection: CargoArtifactExecutableNotAString {
               target_name: target_name,
               line_number: line_number
             }
           }
-        JsonArray { elements: _ } =>
+        extdeps.languages.json.emit.JsonArray { elements: _ } =>
           CargoScanRefused {
             selection: CargoArtifactExecutableNotAString {
               target_name: target_name,
               line_number: line_number
             }
           }
-        JsonObject { members: _ } =>
+        extdeps.languages.json.emit.JsonObject { members: _ } =>
           CargoScanRefused {
             selection: CargoArtifactExecutableNotAString {
               target_name: target_name,
@@ -245,29 +245,29 @@ fn cargo_message_scan_line(
     CargoScanRefused { selection: s } => CargoScanRefused { selection: s }
     CargoScanning { hits: hits, line_number: previous } => {
       let line_number = previous + 1
-      match parse_json(s: line) {
+      match extdeps.languages.json.parse.parse_json(s: line) {
         Absent =>
           CargoScanRefused {
             selection: CargoMessageLineUnparseable { line_number: line_number }
           }
         Present { value: doc } =>
-          match json_object_unique_member(v: doc, key: cargo_message_reason_member) {
-            JsonMemberNotAnObject =>
+          match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: cargo_message_reason_member) {
+            extdeps.languages.json.parse.JsonMemberNotAnObject =>
               CargoScanRefused {
                 selection: CargoMessageLineNotAnObject { line_number: line_number }
               }
-            JsonMemberAbsent =>
+            extdeps.languages.json.parse.JsonMemberAbsent =>
               CargoScanRefused {
                 selection: CargoMessageReasonAbsent { line_number: line_number }
               }
-            JsonMemberDuplicated { count: _ } =>
+            extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
               CargoScanRefused {
                 selection: CargoMessageMemberDuplicated {
                   line_number: line_number,
                   key: cargo_message_reason_member
                 }
               }
-            JsonMemberFound { value: reason_value } =>
+            extdeps.languages.json.parse.JsonMemberFound { value: reason_value } =>
               match cargo_message_string_value(v: reason_value) {
                 Absent =>
                   CargoScanRefused {

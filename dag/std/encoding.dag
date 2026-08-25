@@ -100,7 +100,7 @@ fn encoding_lattice_join(a: Encoding, b: Encoding) -> Encoding {
   }
 }
 
-data encoding_bounded_lattice: BoundedLattice<Encoding> = {
+data encoding_bounded_lattice: std.algebra.BoundedLattice<Encoding> = {
   meet: encoding_lattice_meet
   join: encoding_lattice_join
   top: Unknown
@@ -108,7 +108,7 @@ data encoding_bounded_lattice: BoundedLattice<Encoding> = {
 }
 
 fn utf8_decode_bytes(payload: Bytes) -> String {
-  from_code_point(pure_dag_seam_unreachable())
+  from_code_point(std.bytes.pure_dag_seam_unreachable())
 }
 
 type Base64Variant = Standard | UrlSafe
@@ -301,11 +301,11 @@ fn base64_decode(s: String, variant: Base64Variant) -> List<std.integer.UInt8>? 
 }
 
 data utf8_decode_bytes_host_realization_marker: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.bytes",
     decl_name: "builtin_function_registry",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

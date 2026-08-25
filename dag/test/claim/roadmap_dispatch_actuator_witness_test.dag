@@ -1,12 +1,13 @@
 module test.claim.roadmap_dispatch_actuator
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn roadmap_dispatch_actuator_nid(s: String) -> gunbc.roadmap_model.RoadmapNodeId { s }
 
 fn sized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
-    identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as gunbc.roadmap_model.RoadmapNodeIdentity,
+    identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
     node: roadmap_dispatch_actuator_nid(s: id),
     line: gunbc.roadmap_status.DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
@@ -20,7 +21,7 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap_m
 fn fixture_section(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> gunbc.roadmap_document.RoadmapSection {
   gunbc.roadmap_document.RoadmapSection {
     title: "Test",
-    elements: [std.algebra.Group { group: gunbc.roadmap_model.SectionGroup { label: "test", nodes: nodes, edges: edges } }],
+    elements: [gunbc.roadmap_model.Group { group: gunbc.roadmap_model.SectionGroup { label: "test", nodes: nodes, edges: edges } }],
   }
 }
 
@@ -28,7 +29,7 @@ fn fixture_doc(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.r
   gunbc.roadmap_document.RoadmapDocument {
     preamble: [],
     lead_lanes: [],
-    sections: [test.claim.roadmap_dispatch_actuator.fixture_section(nodes: nodes, edges: edges)],
+    sections: [fixture_section(nodes: nodes, edges: edges)],
   }
 }
 
@@ -37,7 +38,7 @@ test fn witness_tmux_session_name_prefix() -> Bool {
 }
 
 test fn witness_brief_fill_includes_node_metadata() -> Bool {
-  let node = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
+  let node = sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
   let brief = gunbc.roadmap_dispatch_actuator.fill_dispatch_brief(
     template: gunbc.roadmap_spawner.dispatch_brief_template,
     fields: gunbc.roadmap_dispatch_actuator.dispatch_brief_fields(node: node),
@@ -70,16 +71,16 @@ test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
     },
   )
   match high {
-    DispatchSelectionResolved { receipt: high_receipt } =>
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt: high_receipt } =>
       match low {
-        DispatchSelectionResolved { receipt: low_receipt } =>
+        gunbc.dispatch_selection.DispatchSelectionResolved { receipt: low_receipt } =>
           extdeps.llm.cli.reasoning_effort_label(effort: high_receipt.applied_effort) == "medium"
             && extdeps.llm.cli.reasoning_effort_label(effort: low_receipt.applied_effort) == "medium"
             && high_receipt.applied_effort == low_receipt.applied_effort
-        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } =>
+        gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } =>
           false
       }
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 
@@ -126,8 +127,8 @@ test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
 test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() -> Bool {
   let instance = gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()
   match gunbc.roadmap_dashboard_instance.dashboard_instance_provider_executable(instance: instance) {
-    Absent => false
-    Present { value: executable } =>
+    std.upsert_decision.Absent => false
+    v2.std.optional.Present { value: executable } =>
       match gunbc.dispatch_selection.resolve_dispatch_selection(
         inventory: gunbc.dispatch_selection.ProviderInventory {
           offers: [
@@ -164,9 +165,9 @@ test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() ->
         request: gunbc.dispatch_selection.default_provider_selection_request(),
         node_sizing: gunbc.roadmap_model.Unsized,
       ) {
-        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+        gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
           reason == gunbc.dispatch_selection.dispatch_selection_standing_ineligible_reason
-        DispatchSelectionResolved { receipt: _ } => false
+        gunbc.dispatch_selection.DispatchSelectionResolved { receipt: _ } => false
       }
   }
 }
@@ -180,8 +181,8 @@ test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
     provider: gunbc.roadmap_dispatch_actuator.ClaudeCodeProvider,
     node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchActuatorSelectionRefused { reason: _ } => true
-    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint: _ } => false
+    gunbc.roadmap_dispatch_actuator.DispatchActuatorSelectionRefused { reason: _ } => true
+    gunbc.roadmap_dispatch_actuator.DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint: _ } => false
   }
 }
 
@@ -193,9 +194,9 @@ test fn witness_fixture_codex_fingerprint_is_historical_npm_shim_receipt() -> Bo
     request: gunbc.dispatch_selection.default_provider_selection_request(),
     node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchSelectionResolved { receipt } =>
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt } =>
       gunbc.dispatch_selection.resolved_process_fingerprint(resolved: receipt.resolved_selection) == ("node" as std.types.NonEmptyStr)
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 
@@ -234,7 +235,7 @@ fn codex_tmux_command_shape_holds(
 }
 
 test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
-  let node = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "codex-selected", prs: [1], title: "Codex selected")
+  let node = sized_derivable(id: "codex-selected", prs: [1], title: "Codex selected")
   match gunbc.roadmap_dispatch_actuator.dispatch_spawn_commands_for_inventory(
     instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     inventory: gunbc.dispatch_selection.fixture_inventory_codex_only_available(
@@ -251,15 +252,15 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
       operator_asserted_native_limit_bucket: std.upsert_decision.Absent,
     },
   ) {
-    DispatchSpawnRefused { step: _, detail: _ } => false
-    DispatchSpawnReady { commands: cmds } =>
+    gunbc.roadmap_dispatch_actuator.DispatchSpawnRefused { step: _, detail: _ } => false
+    gunbc.roadmap_dispatch_actuator.DispatchSpawnReady { commands: cmds } =>
       codex_tmux_command_shape_holds(
         cmds: cmds,
         codex_executable: match gunbc.roadmap_dashboard_instance.dashboard_instance_provider_executable(
           instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
         ) {
-          Present { value: executable } => executable as String
-          Absent => ""
+          v2.std.optional.Present { value: executable } => executable as String
+          std.upsert_decision.Absent => ""
         },
       )
   }
@@ -267,8 +268,8 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
 
 fn lab_instance_command_shape_holds(commands: gunbc.roadmap_dispatch_actuator.DispatchSpawnCommands, lab: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> Bool {
   match gunbc.roadmap_dashboard_instance.dashboard_instance_provider_executable(instance: lab) {
-    Absent => false
-    Present { value: codex_path } => {
+    std.upsert_decision.Absent => false
+    v2.std.optional.Present { value: codex_path } => {
   let codex_executable = codex_path as String
   let git_wire = join(commands.worktree_add.args, separator: "\0")
   let state_wire = join(commands.attempt_state_prepare.args, separator: "\0")
@@ -316,7 +317,7 @@ test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool 
   match gunbc.roadmap_dispatch_actuator.dispatch_spawn_commands_for_inventory(
     instance: lab,
     inventory: gunbc.dispatch_selection.fixture_inventory_codex_only_available(instance: lab),
-    node: test.claim.roadmap_dispatch_actuator.sized_derivable(
+    node: sized_derivable(
       id: "ts-dispatch-provider-events",
       prs: [],
       title: "Provider execution facts",
@@ -331,8 +332,8 @@ test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool 
       operator_asserted_native_limit_bucket: std.upsert_decision.Absent,
     },
   ) {
-    DispatchSpawnRefused { step: _, detail: _ } => false
-    DispatchSpawnReady { commands } =>
+    gunbc.roadmap_dispatch_actuator.DispatchSpawnRefused { step: _, detail: _ } => false
+    gunbc.roadmap_dispatch_actuator.DispatchSpawnReady { commands } =>
       lab_instance_command_shape_holds(commands: commands, lab: lab)
   }
 }
@@ -341,12 +342,12 @@ test fn witness_tmux_attempt_panes_parse_alive_and_exit() -> Bool {
   match extdeps.tmux.parse_tmux_attempt_panes_output(
     output: "gunbc-dispatch-a\t0\t\tnode\ngunbc-dispatch-b\t1\t7\tnode\n",
   ) {
-    AttemptPanesParsed { panes } =>
+    extdeps.tmux.AttemptPanesParsed { panes } =>
       count(panes) == 2
         && !panes.first().dead
         && panes.skip(n: 1).first().dead
         && panes.skip(n: 1).first().exit_code == v2.std.optional.Present { value: 7 }
-    AttemptPanesParseRefused { line_number: _, raw: _, reason: _ } => false
+    extdeps.tmux.AttemptPanesParseRefused { line_number: _, raw: _, reason: _ } => false
   }
 }
 
@@ -354,8 +355,8 @@ test fn witness_tmux_attempt_panes_malformed_row_refuses() -> Bool {
   match extdeps.tmux.parse_tmux_attempt_panes_output(
     output: "gunbc-dispatch-a\t1\tbogus\tnode\n",
   ) {
-    AttemptPanesParsed { panes: _ } => false
-    AttemptPanesParseRefused { line_number, raw, reason } =>
+    extdeps.tmux.AttemptPanesParsed { panes: _ } => false
+    extdeps.tmux.AttemptPanesParseRefused { line_number, raw, reason } =>
       line_number == 1
         && string_contains(s: raw, pattern: "bogus")
         && string_contains(s: reason, pattern: "dead/status")
@@ -373,8 +374,8 @@ test fn witness_event_pipe_emits_grammar_quoted_command() -> Bool {
     tee_program: "/usr/bin/tee",
     events_path: "/tmp/a';$(touch nope)",
   ) {
-    PipeEmitRefused { detail: _ } => false
-    PipeEmitted { command } =>
+    gunbc.dispatch_pipe_pane_emit.PipeEmitRefused { detail: _ } => false
+    gunbc.dispatch_pipe_pane_emit.PipeEmitted { command } =>
       emitted_pipe_body_matches(body: command.body as String)
   }
 }
@@ -419,21 +420,21 @@ test fn witness_stop_argv_targets_session() -> Bool {
 test fn witness_tmux_ls_parse_filters_prefix() -> Bool {
   let output = "other: 1 windows (created Fri Jul  3 04:14:00 2026)\ngunbc-dispatch-node-4: 2 windows (created Fri Jul  3 04:15:00 2026)\n"
   match extdeps.tmux.parse_tmux_ls_output(output: output) {
-    TmuxLsParsed { entries } => {
+    extdeps.tmux.TmuxLsParsed { entries } => {
       let filtered = gunbc.roadmap_dispatch_actuator.filter_dispatch_tmux_sessions(entries: entries)
       count(filtered) == 1
         && filtered.first().session_name == "gunbc-dispatch-node-4"
         && filtered.first().windows == 2
     }
-    TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
+    extdeps.tmux.TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
   }
 }
 
 test fn witness_not_ready_node_refused() -> Bool {
-  let parent = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "parent", prs: [100], title: "Parent")
-  let child = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "child", prs: [200], title: "Child")
+  let parent = sized_derivable(id: "parent", prs: [100], title: "Parent")
+  let child = sized_derivable(id: "child", prs: [200], title: "Child")
   let edges = [gunbc.roadmap_model.RoadmapEdge { child: roadmap_dispatch_actuator_nid(s: "child"), parent: roadmap_dispatch_actuator_nid(s: "parent") }]
-  let doc = test.claim.roadmap_dispatch_actuator.fixture_doc(nodes: [parent, child], edges: edges)
+  let doc = fixture_doc(nodes: [parent, child], edges: edges)
   let ready = gunbc.roadmap_spawner.next_spawnable(doc: doc, merged: [])
   match gunbc.roadmap_dispatch_actuator.classify_dispatch_request_for_process_fingerprint(
     node: child,
@@ -443,14 +444,14 @@ test fn witness_not_ready_node_refused() -> Bool {
     process_fingerprint: gunbc.dispatch_selection.dispatch_codex_process_fingerprint,
     effort: extdeps.llm.cli.ReasoningMedium,
   ) {
-    DispatchRefused { reason: r } => string_contains(s: r as String, pattern: "not in ready frontier")
+    gunbc.roadmap_dispatch_actuator.DispatchRefused { reason: r } => string_contains(s: r as String, pattern: "not in ready frontier")
     _ => false
   }
 }
 
 test fn witness_ready_node_permitted_without_live_session() -> Bool {
-  let node = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "ready-node", prs: [10], title: "Ready")
-  let doc = test.claim.roadmap_dispatch_actuator.fixture_doc(nodes: [node], edges: [])
+  let node = sized_derivable(id: "ready-node", prs: [10], title: "Ready")
+  let doc = fixture_doc(nodes: [node], edges: [])
   let ready = gunbc.roadmap_spawner.next_spawnable(doc: doc, merged: [])
   match gunbc.roadmap_dispatch_actuator.classify_dispatch_request_for_process_fingerprint(
     node: node,
@@ -460,7 +461,7 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
     process_fingerprint: gunbc.dispatch_selection.dispatch_codex_process_fingerprint,
     effort: extdeps.llm.cli.ReasoningMedium,
   ) {
-    DispatchPermitted { session_name: s, worktree_path: w, branch_name: b, brief: br, reasoning_effort: e } =>
+    gunbc.roadmap_dispatch_actuator.DispatchPermitted { session_name: s, worktree_path: w, branch_name: b, brief: br, reasoning_effort: e } =>
       s == "gunbc-dispatch-ready-node"
         && string_contains(s: w, pattern: "ready-node-afeedfacefeedface")
         && b == "dispatch/ready-node-afeedfacefeedface"
@@ -471,8 +472,8 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
 }
 
 test fn witness_live_lease_refused() -> Bool {
-  let node = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "leased-node", prs: [11], title: "Leased")
-  let doc = test.claim.roadmap_dispatch_actuator.fixture_doc(nodes: [node], edges: [])
+  let node = sized_derivable(id: "leased-node", prs: [11], title: "Leased")
+  let doc = fixture_doc(nodes: [node], edges: [])
   let ready = gunbc.roadmap_spawner.next_spawnable(doc: doc, merged: [])
   let entries = [extdeps.tmux.TmuxLsEntry { session_name: "gunbc-dispatch-leased-node", windows: 1 }]
   match gunbc.roadmap_dispatch_actuator.classify_dispatch_request_for_process_fingerprint(
@@ -483,7 +484,7 @@ test fn witness_live_lease_refused() -> Bool {
     process_fingerprint: gunbc.dispatch_selection.dispatch_codex_process_fingerprint,
     effort: extdeps.llm.cli.ReasoningMedium,
   ) {
-    DispatchRefused { reason: r } =>
+    gunbc.roadmap_dispatch_actuator.DispatchRefused { reason: r } =>
       string_contains(s: r as String, pattern: "name occupied")
         && string_contains(s: r as String, pattern: "fingerprint unobserved")
     _ => false
@@ -496,7 +497,7 @@ test fn witness_absent_lease_classifies_spawn() -> Bool {
     process_fingerprint: gunbc.dispatch_selection.dispatch_codex_process_fingerprint,
   )
   match gunbc.roadmap_dispatch_actuator.classify_dispatch_lease_upsert(scope: scope, obs: gunbc.roadmap_dispatch_actuator.SessionAbsent) {
-    UpsertClassification { verdict: std.upsert_decision.Absent, decision: std.upsert_decision.Apply { plan: gunbc.roadmap_dispatch_actuator.SpawnSession } } => true
+    std.upsert_decision.UpsertClassification { verdict: std.upsert_decision.Absent, decision: std.upsert_decision.Apply { plan: gunbc.roadmap_dispatch_actuator.SpawnSession } } => true
     _ => false
   }
 }
@@ -508,7 +509,7 @@ test fn witness_hostile_node_id_single_argv_token() -> Bool {
 test fn witness_live_sessions_panel_rows() -> Bool {
   let output = "gunbc-dispatch-panel-a: 1 windows (created Fri Jul  3 04:14:00 2026)\n"
   match extdeps.tmux.parse_tmux_ls_output(output: output) {
-    TmuxLsParsed { entries } => {
+    extdeps.tmux.TmuxLsParsed { entries } => {
       let filtered = gunbc.roadmap_dispatch_actuator.filter_dispatch_tmux_sessions(entries: entries)
       if count(filtered) == 1 {
         let entry = filtered.first()
@@ -528,19 +529,19 @@ test fn witness_live_sessions_panel_rows() -> Bool {
         false
       }
     }
-    TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
+    extdeps.tmux.TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
   }
 }
 
 test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
   let entry = gunbc.roadmap_dispatch_actuator.fixture_projection_standing_refusal_tmux_entry()
-  let node = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "panel-a", prs: [12], title: "Panel")
-  let doc = test.claim.roadmap_dispatch_actuator.fixture_doc(nodes: [node], edges: [])
+  let node = sized_derivable(id: "panel-a", prs: [12], title: "Panel")
+  let doc = fixture_doc(nodes: [node], edges: [])
   let ready = gunbc.roadmap_spawner.next_spawnable(doc: doc, merged: [])
   match gunbc.roadmap_dispatch_actuator.dispatch_actuator_selection(node_sizing: gunbc.roadmap_model.Unsized) {
-    DispatchActuatorSelectionRefused { reason } =>
+    gunbc.roadmap_dispatch_actuator.DispatchActuatorSelectionRefused { reason } =>
       reason == gunbc.dispatch_selection.dispatch_selection_standing_ineligible_reason
-    DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint: _ } => false
+    gunbc.roadmap_dispatch_actuator.DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint: _ } => false
   }
     && count(gunbc.roadmap_dispatch_actuator.dispatch_live_sessions_from_entries(entries: [entry])) == 0
     && match gunbc.roadmap_dispatch_actuator.classify_dispatch_request(
@@ -549,8 +550,8 @@ test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
       tmux_entries: [entry],
       attempt_key: "feedfacefeedface",
     ) {
-      DispatchRefused { reason: r } => r == gunbc.dispatch_selection.dispatch_selection_standing_ineligible_reason
-      DispatchPermitted { session_name: _, worktree_path: _, branch_name: _, brief: _, reasoning_effort: _ } => false
+      gunbc.roadmap_dispatch_actuator.DispatchRefused { reason: r } => r == gunbc.dispatch_selection.dispatch_selection_standing_ineligible_reason
+      gunbc.roadmap_dispatch_actuator.DispatchPermitted { session_name: _, worktree_path: _, branch_name: _, brief: _, reasoning_effort: _ } => false
     }
 }
 
@@ -566,8 +567,8 @@ test fn witness_name_only_observation_not_converged() -> Bool {
       windows: 1,
     },
   ) {
-    UnknownRefused => true
-    Converged => false
+    std.upsert_decision.UnknownRefused => true
+    std.upsert_decision.Converged => false
     _ => false
   }
 }
@@ -585,16 +586,16 @@ test fn witness_foreign_process_fingerprint_is_conflict() -> Bool {
       process_fingerprint: "foreign-shell" as std.types.NonEmptyStr,
     },
   ) {
-    UpsertClassification { verdict: std.upsert_decision.Conflict, decision: std.upsert_decision.Refuse { reason: _ } } => true
-    UpsertClassification { verdict: std.upsert_decision.Converged, decision: _ } => false
+    std.upsert_decision.UpsertClassification { verdict: std.upsert_decision.Conflict, decision: std.upsert_decision.Refuse { reason: _ } } => true
+    std.upsert_decision.UpsertClassification { verdict: std.upsert_decision.Converged, decision: _ } => false
     _ => false
   }
 }
 
 test fn witness_fingerprint_scaffold_marker_present() -> Bool {
   match gunbc.roadmap_dispatch_actuator.dispatch_tmux_process_fingerprint_observation_dissolution_trigger {
-    Scaffold { dissolves_to: _, bind: _ } => false
-    Terminal { reason: r } => string_contains(s: r as String, pattern: "DISSOLVED")
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => false
+    std.disposition.Terminal { reason: r } => string_contains(s: r as String, pattern: "DISSOLVED")
   }
 }
 
@@ -682,7 +683,7 @@ test fn witness_session_lease_shape_reused() -> Bool {
 }
 
 fn ticket_fixture_node() -> gunbc.roadmap_model.RoadmapNode {
-  gunbc.roadmap_authority.ticket_wi(identity: "rnfx_QSK1R8XNYS14GRZEVM6C", id: "ticket-fixture", done: false, t: gunbc.roadmap_status.TicketFields {
+  ticket_wi(identity: "rnfx_QSK1R8XNYS14GRZEVM6C", id: "ticket-fixture", done: false, t: TicketFields {
     headline: "Fixture Headline",
     brief: "A short brief.",
     displaced_cost: "the real displaced cost",
@@ -708,7 +709,7 @@ test fn witness_ticket_brief_fills_real_slots() -> Bool {
 }
 
 test fn witness_legacy_brief_still_stubs_with_title() -> Bool {
-  let node = test.claim.roadmap_dispatch_actuator.sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
+  let node = sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
   let brief = gunbc.roadmap_dispatch_actuator.filled_dispatch_brief_for_node(node: node)
   string_contains(s: brief, pattern: "Brief Title")
     && !string_contains(s: brief, pattern: "the real displaced cost")

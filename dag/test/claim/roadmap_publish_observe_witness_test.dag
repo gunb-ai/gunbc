@@ -1,7 +1,7 @@
 module test.claim.roadmap_publish_observe_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_scope_note: String = "Every arm of the remote-branch observation is claimed here with no remote and no credentials, which is possible only because the deciding function takes the three values the transport returns rather than calling it. What is NOT claimed, stated so the bound is visible: nothing here runs git.Core.LsRemoteHeads. A change that broke the transport while leaving remote_branch_observation_of intact would keep these green - the shim that calls it has no branches of its own, which is what makes that residue small enough to state rather than large enough to hide in."
 
@@ -11,13 +11,13 @@ data fixture_sha_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 fn tab() -> String { from_code_point(cp: 9) }
 
 fn line_of(sha: String, ref_name: String) -> String {
-  concat(sha, concat(test.claim.roadmap_publish_observe_witness_test.tab(), ref_name))
+  concat(sha, concat(tab(), ref_name))
 }
 
 fn origin() -> std.types.NonEmptyStr { "origin" as std.types.NonEmptyStr }
 
 fn read_ok(advertised: List<String>) -> gunbc.roadmap_publish.RemoteBranchObservation {
-  remote_branch_observation_of(
+  gunbc.roadmap_publish_observe.remote_branch_observation_of(
     remote: origin(),
     exit_code: 0,
     stderr: "",
@@ -27,24 +27,24 @@ fn read_ok(advertised: List<String>) -> gunbc.roadmap_publish.RemoteBranchObserv
 
 fn observed_branch_count(o: gunbc.roadmap_publish.RemoteBranchObservation) -> Int {
   match o {
-    RemoteBranchesRead { branches } => count(branches)
-    RemoteBranchesUnreadable { cause: _ } => 0 - 1
+    gunbc.roadmap_publish.RemoteBranchesRead { branches } => count(branches)
+    gunbc.roadmap_publish.RemoteBranchesUnreadable { cause: _ } => 0 - 1
   }
 }
 
 test fn an_advertisement_becomes_remote_branch_rows_carrying_head_shas() -> Bool {
   let o = read_ok(advertised: [
-    test.claim.roadmap_publish_observe_witness_test.line_of(sha: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a, ref_name: "refs/heads/main"),
-    test.claim.roadmap_publish_observe_witness_test.line_of(sha: test.claim.roadmap_publish_observe_witness_test.fixture_sha_b, ref_name: "refs/heads/dispatch/node-a7"),
+    line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
+    line_of(sha: fixture_sha_b, ref_name: "refs/heads/dispatch/node-a7"),
   ])
   match o {
-    RemoteBranchesUnreadable { cause: _ } => false
-    RemoteBranchesRead { branches } =>
+    gunbc.roadmap_publish.RemoteBranchesUnreadable { cause: _ } => false
+    gunbc.roadmap_publish.RemoteBranchesRead { branches } =>
       count(branches) == 2
         && all(branches, b => (b.remote as String) == "origin")
         && any(branches, b =>
              (b.branch as String) == "dispatch/node-a7"
-               && (b.head_sha as String) == test.claim.roadmap_publish_observe_witness_test.fixture_sha_b)
+               && (b.head_sha as String) == fixture_sha_b)
   }
 }
 
@@ -54,17 +54,17 @@ test fn an_empty_advertisement_reads_as_zero_branches_not_a_refusal() -> Bool {
 
 // The claim that motivates the whole slice. A nonzero exit from the ref advertisement must NOT arrive as an empty branch list: an empty list is the same value a successful read of a remote with no branches produces, so a consumer handed one for both reports the branch unpublished when the truth is that nothing was learned. That is ignorance-as-answer arriving in the direction that looks like an ordinary negative result, and it is the reason the observation is a coproduct.
 test fn a_failed_ref_advertisement_refuses_rather_than_reading_empty() -> Bool {
-  let o = remote_branch_observation_of(
+  let o = gunbc.roadmap_publish_observe.remote_branch_observation_of(
     remote: origin(),
     exit_code: 128,
     stderr: "fatal: repository not found",
     advertised: [],
   )
   match o {
-    RemoteBranchesRead { branches: _ } => false
-    RemoteBranchesUnreadable { cause } =>
+    gunbc.roadmap_publish.RemoteBranchesRead { branches: _ } => false
+    gunbc.roadmap_publish.RemoteBranchesUnreadable { cause } =>
       match cause {
-        RefAdvertisementRefused { remote, exit_code, stderr } =>
+        gunbc.roadmap_publish.RefAdvertisementRefused { remote, exit_code, stderr } =>
           (remote as String) == "origin"
             && exit_code == 128
             && stderr == "fatal: repository not found"
@@ -76,7 +76,7 @@ test fn a_failed_ref_advertisement_refuses_rather_than_reading_empty() -> Bool {
 data renderer_is_a_projection_note: String = "THE RENDERER IS CLAIMED SEPARATELY FROM THE CAUSE, and the split is the point of typing the cause at all. The claims above assert the FIELDS - which failure, which remote, which exit code, which stderr - so they hold whatever sentence is produced from them. This claim asserts that the sentence is derived from those fields and names the OPERATION rather than the argv spelling, which is the property the transport-anemia plan asks for.\\n\\nThe previous cut could only assert substrings of a flattened String, so it could not distinguish a renderer that lost a field from one that never had it. Splitting the two means a rendering regression and a modeling regression now fail different claims."
 
 test fn the_renderer_names_the_operation_and_not_the_argv_spelling() -> Bool {
-  let rendered = render_remote_branch_read_failure(
+  let rendered = gunbc.roadmap_publish.render_remote_branch_read_failure(
     cause: gunbc.roadmap_publish.RefAdvertisementRefused {
       remote: origin(),
       exit_code: 2,
@@ -91,7 +91,7 @@ test fn the_renderer_names_the_operation_and_not_the_argv_spelling() -> Bool {
 }
 
 test fn the_renderer_names_every_degenerate_ref_it_was_given() -> Bool {
-  let rendered = render_remote_branch_read_failure(
+  let rendered = gunbc.roadmap_publish.render_remote_branch_read_failure(
     cause: gunbc.roadmap_publish.AdvertisedRefProjectsEmptyBranch {
       remote: origin(),
       ref_names: ["refs/heads/", "refs/heads/"],
@@ -104,14 +104,14 @@ test fn the_renderer_names_every_degenerate_ref_it_was_given() -> Bool {
 
 test fn an_unreadable_advertisement_line_refuses_and_locates_itself() -> Bool {
   let o = read_ok(advertised: [
-    test.claim.roadmap_publish_observe_witness_test.line_of(sha: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a, ref_name: "refs/heads/main"),
+    line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
     "this line has no tab at all",
   ])
   match o {
-    RemoteBranchesRead { branches: _ } => false
-    RemoteBranchesUnreadable { cause } =>
+    gunbc.roadmap_publish.RemoteBranchesRead { branches: _ } => false
+    gunbc.roadmap_publish.RemoteBranchesUnreadable { cause } =>
       match cause {
-        AdvertisedLineUnparsed { remote, index, line } =>
+        gunbc.roadmap_publish.AdvertisedLineUnparsed { remote, index, line } =>
           (remote as String) == "origin"
             && index == 1
             && line == "this line has no tab at all"
@@ -123,13 +123,13 @@ test fn an_unreadable_advertisement_line_refuses_and_locates_itself() -> Bool {
 // The discriminating claim for the guard that exists because the brand does not enforce itself. RemoteBranch.branch is NonEmptyStr and `as NonEmptyStr` does not check - the compiler says so out loud, emitting `where-refinement unenforced: predicate 'non_empty'` at the cast site. So a ref advertised as exactly the heads prefix projects to the empty string and would be cast into a type whose entire content is the claim that it is not empty. Deleting the pre-cast guard turns this claim red while every other claim in this file stays green, because the empty name is well-formed at every other layer.
 test fn a_ref_projecting_to_an_empty_branch_name_refuses() -> Bool {
   let o = read_ok(advertised: [
-    test.claim.roadmap_publish_observe_witness_test.line_of(sha: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a, ref_name: "refs/heads/"),
+    line_of(sha: fixture_sha_a, ref_name: "refs/heads/"),
   ])
   match o {
-    RemoteBranchesRead { branches: _ } => false
-    RemoteBranchesUnreadable { cause } =>
+    gunbc.roadmap_publish.RemoteBranchesRead { branches: _ } => false
+    gunbc.roadmap_publish.RemoteBranchesUnreadable { cause } =>
       match cause {
-        AdvertisedRefProjectsEmptyBranch { remote, ref_names } =>
+        gunbc.roadmap_publish.AdvertisedRefProjectsEmptyBranch { remote, ref_names } =>
           (remote as String) == "origin"
             && count(ref_names) == 1
             && any(ref_names, n => n == "refs/heads/")
@@ -140,54 +140,54 @@ test fn a_ref_projecting_to_an_empty_branch_name_refuses() -> Bool {
 
 test fn the_empty_projection_filter_returns_only_the_degenerate_ref() -> Bool {
   let refs = [
-    extdeps.git.AdvertisedRef { object_id: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a as std.types.CommitSha, ref_name: "refs/heads/main" },
-    extdeps.git.AdvertisedRef { object_id: test.claim.roadmap_publish_observe_witness_test.fixture_sha_b as std.types.CommitSha, ref_name: "refs/heads/" },
+    extdeps.git.AdvertisedRef { object_id: fixture_sha_a as std.types.CommitSha, ref_name: "refs/heads/main" },
+    extdeps.git.AdvertisedRef { object_id: fixture_sha_b as std.types.CommitSha, ref_name: "refs/heads/" },
   ]
-  let degenerate = advertised_refs_projecting_empty_branch(refs: refs)
+  let degenerate = gunbc.roadmap_publish_observe.advertised_refs_projecting_empty_branch(refs: refs)
   count(degenerate) == 1
-    && any(degenerate, r => (r.object_id as String) == test.claim.roadmap_publish_observe_witness_test.fixture_sha_b)
-    && !any(degenerate, r => (r.object_id as String) == test.claim.roadmap_publish_observe_witness_test.fixture_sha_a)
-    && count(advertised_refs_projecting_empty_branch(refs: [])) == 0
+    && any(degenerate, r => (r.object_id as String) == fixture_sha_b)
+    && !any(degenerate, r => (r.object_id as String) == fixture_sha_a)
+    && count(gunbc.roadmap_publish_observe.advertised_refs_projecting_empty_branch(refs: [])) == 0
 }
 
 data end_to_end_note: String = "The observation is only worth building if it composes with the judgment it was built for, so this claim runs an advertisement all the way to a PublicationOutcome. It is the first place the two halves meet: extdeps.git reads the ref advertisement, gunbc.roadmap_publish_observe turns it into observations, gunbc.roadmap_publish adjudicates. Before this slice roadmap_publish had no producer at all - adjudicate_publication was called only from its own witness - so the adjudicator was a judgment nothing could ask."
 
 fn branches_of(o: gunbc.roadmap_publish.RemoteBranchObservation) -> List<gunbc.roadmap_publish.RemoteBranch> {
   match o {
-    RemoteBranchesRead { branches } => branches
-    RemoteBranchesUnreadable { cause: _ } => []
+    gunbc.roadmap_publish.RemoteBranchesRead { branches } => branches
+    gunbc.roadmap_publish.RemoteBranchesUnreadable { cause: _ } => []
   }
 }
 
 test fn an_advertisement_at_the_expected_head_adjudicates_as_published() -> Bool {
   let o = read_ok(advertised: [
-    test.claim.roadmap_publish_observe_witness_test.line_of(sha: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a, ref_name: "refs/heads/dispatch/node-a7"),
+    line_of(sha: fixture_sha_a, ref_name: "refs/heads/dispatch/node-a7"),
   ])
-  match adjudicate_remote_branch(
+  match gunbc.roadmap_publish.adjudicate_remote_branch(
     branches: branches_of(o: o),
     remote: origin(),
     branch: "dispatch/node-a7" as std.types.NonEmptyStr,
-    expected_head: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a as std.types.CommitSha,
+    expected_head: fixture_sha_a as std.types.CommitSha,
   ) {
-    RemoteBranchAtExpectedHeadWithoutPullRequest { branch, head_sha } =>
-      (branch as String) == "dispatch/node-a7" && (head_sha as String) == test.claim.roadmap_publish_observe_witness_test.fixture_sha_a
+    gunbc.roadmap_publish.RemoteBranchAtExpectedHeadWithoutPullRequest { branch, head_sha } =>
+      (branch as String) == "dispatch/node-a7" && (head_sha as String) == fixture_sha_a
     _ => false
   }
 }
 
 test fn an_advertisement_at_another_head_adjudicates_as_diverged() -> Bool {
   let o = read_ok(advertised: [
-    test.claim.roadmap_publish_observe_witness_test.line_of(sha: test.claim.roadmap_publish_observe_witness_test.fixture_sha_b, ref_name: "refs/heads/dispatch/node-a7"),
+    line_of(sha: fixture_sha_b, ref_name: "refs/heads/dispatch/node-a7"),
   ])
-  match adjudicate_remote_branch(
+  match gunbc.roadmap_publish.adjudicate_remote_branch(
     branches: branches_of(o: o),
     remote: origin(),
     branch: "dispatch/node-a7" as std.types.NonEmptyStr,
-    expected_head: test.claim.roadmap_publish_observe_witness_test.fixture_sha_a as std.types.CommitSha,
+    expected_head: fixture_sha_a as std.types.CommitSha,
   ) {
-    RemoteBranchHeadDiverged { branch: _, remote_head, expected_head } =>
-      (remote_head as String) == test.claim.roadmap_publish_observe_witness_test.fixture_sha_b
-        && (expected_head as String) == test.claim.roadmap_publish_observe_witness_test.fixture_sha_a
+    gunbc.roadmap_publish.RemoteBranchHeadDiverged { branch: _, remote_head, expected_head } =>
+      (remote_head as String) == fixture_sha_b
+        && (expected_head as String) == fixture_sha_a
     _ => false
   }
 }
@@ -197,56 +197,56 @@ data divergence_is_the_point_note: String = "The two claims above are the same a
 data worktree_binding_witness_note: String = "THESE ARE CONSTRUCTED, NOT OBSERVED, which is the property the observer/adjudicator split in gunbc.roadmap_publish_observe exists to buy. worktree_repository_binding_of takes the four facts a `git remote get-url` produces and decides; observe_worktree_repository_binding only feeds it. So every arm - including the two failure arms - is reachable here with no git, no worktree and no network, and a witness that needed a real misconfigured checkout to exercise the mismatch arm would never have been written."
 
 test fn worktree_bound_to_the_subject_repository_is_recognized() -> Bool {
-  match worktree_repository_binding_of(
+  match gunbc.roadmap_publish_observe.worktree_repository_binding_of(
     exit_code: 0,
     stderr: "",
     url: "https://github.com/gunb-ai/gunbc.git\n",
     expected: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
   ) {
-    WorktreeBoundToRepository => true
-    WorktreeBoundElsewhere { observed: _, expected: _ } => false
-    WorktreeRemoteUnreadable { exit_code: _, stderr: _ } => false
+    gunbc.roadmap_publish_observe.WorktreeBoundToRepository => true
+    gunbc.roadmap_publish_observe.WorktreeBoundElsewhere { observed: _, expected: _ } => false
+    gunbc.roadmap_publish_observe.WorktreeRemoteUnreadable { exit_code: _, stderr: _ } => false
   }
 }
 
 test fn worktree_pointing_at_another_repository_refuses_and_names_both() -> Bool {
-  match worktree_repository_binding_of(
+  match gunbc.roadmap_publish_observe.worktree_repository_binding_of(
     exit_code: 0,
     stderr: "",
     url: "https://github.com/someone-else/gunbc.git",
     expected: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
   ) {
-    WorktreeBoundElsewhere { observed: observed, expected: expected } =>
+    gunbc.roadmap_publish_observe.WorktreeBoundElsewhere { observed: observed, expected: expected } =>
       observed == "https://github.com/someone-else/gunbc.git"
         && expected as String == "https://github.com/gunb-ai/gunbc.git"
-    WorktreeBoundToRepository => false
-    WorktreeRemoteUnreadable { exit_code: _, stderr: _ } => false
+    gunbc.roadmap_publish_observe.WorktreeBoundToRepository => false
+    gunbc.roadmap_publish_observe.WorktreeRemoteUnreadable { exit_code: _, stderr: _ } => false
   }
 }
 
 test fn worktree_remote_read_failure_is_not_a_mismatch() -> Bool {
-  match worktree_repository_binding_of(
+  match gunbc.roadmap_publish_observe.worktree_repository_binding_of(
     exit_code: 128,
     stderr: "fatal: not a git repository",
     url: "",
     expected: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
   ) {
-    WorktreeRemoteUnreadable { exit_code: code, stderr: err } =>
+    gunbc.roadmap_publish_observe.WorktreeRemoteUnreadable { exit_code: code, stderr: err } =>
       code == 128 && err == "fatal: not a git repository"
-    WorktreeBoundToRepository => false
-    WorktreeBoundElsewhere { observed: _, expected: _ } => false
+    gunbc.roadmap_publish_observe.WorktreeBoundToRepository => false
+    gunbc.roadmap_publish_observe.WorktreeBoundElsewhere { observed: _, expected: _ } => false
   }
 }
 
 test fn empty_remote_url_is_unreadable_not_bound_elsewhere() -> Bool {
-  match worktree_repository_binding_of(
+  match gunbc.roadmap_publish_observe.worktree_repository_binding_of(
     exit_code: 0,
     stderr: "",
     url: "   \n",
     expected: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
   ) {
-    WorktreeRemoteUnreadable { exit_code: _, stderr: _ } => true
-    WorktreeBoundElsewhere { observed: _, expected: _ } => false
-    WorktreeBoundToRepository => false
+    gunbc.roadmap_publish_observe.WorktreeRemoteUnreadable { exit_code: _, stderr: _ } => true
+    gunbc.roadmap_publish_observe.WorktreeBoundElsewhere { observed: _, expected: _ } => false
+    gunbc.roadmap_publish_observe.WorktreeBoundToRepository => false
   }
 }

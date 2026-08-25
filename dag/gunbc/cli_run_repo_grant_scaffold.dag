@@ -3,15 +3,15 @@ module gunbc.cli_run_repo_grant_scaffold
 
 
 data cli_run_repo_grant_hand_rust_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.cli_run",
     decl_name: "repo_relative_path",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data cli_run_repo_grant_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: repo_relative_path/repo_relative_path_normalized HAND-Rust containment gate; DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md → GENERATED workflow host-effect apply, seed-shrink-census Chunk F) OR ROADMAP 5-dissolve-patches retires HAND path handling — not indefinite interim debt.")
+data cli_run_repo_grant_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: repo_relative_path/repo_relative_path_normalized HAND-Rust containment gate; DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md → GENERATED workflow host-effect apply, seed-shrink-census Chunk F) OR ROADMAP 5-dissolve-patches retires HAND path handling — not indefinite interim debt.")
 
 data cli_run_repo_grant_receipt_plan_anchor: String = "docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
 

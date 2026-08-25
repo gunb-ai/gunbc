@@ -24,10 +24,10 @@ fn utf8_encode_bytes(s: String) -> Bytes {
 }
 
 data bytes_seam_host_realization_marker: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.bytes",
     decl_name: "builtin_function_registry",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }

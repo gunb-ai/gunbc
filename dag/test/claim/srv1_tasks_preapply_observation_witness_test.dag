@@ -1,18 +1,18 @@
 module test.claim.srv1_tasks_preapply_observation_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // The ancestor read targets the PARENT of the systemd-reported ControlGroup — the
 // slice directory — never a hand-escaped reconstruction (the decoy-slice-name class).
 test fn ancestor_dir_is_parent_of_reported_control_group() -> Bool {
-  let parent = cgroup_parent_dir(control_group: "/system.slice/system-actions.slice/system-actions-runner.slice/actions-runner@srv1-01.service")
+  let parent = gunbc.srv1_tasks_preapply_observation.cgroup_parent_dir(control_group: "/system.slice/system-actions.slice/system-actions-runner.slice/actions-runner@srv1-01.service")
   parent == "/system.slice/system-actions.slice/system-actions-runner.slice"
 }
 
 // RED-shaped boundary: a degenerate one-segment path has no parent to read — the fn
 // returns it unchanged rather than fabricating an empty path that would read cgroupfs root.
 test fn degenerate_control_group_does_not_fabricate_a_parent() -> Bool {
-  cgroup_parent_dir(control_group: "degenerate") == "degenerate"
-    && cgroup_parent_dir(control_group: "/leaf") == "/leaf"
+  gunbc.srv1_tasks_preapply_observation.cgroup_parent_dir(control_group: "degenerate") == "degenerate"
+    && gunbc.srv1_tasks_preapply_observation.cgroup_parent_dir(control_group: "/leaf") == "/leaf"
 }

@@ -2,11 +2,11 @@ module v2.test.name_resolve.malformed_imported_root
 
 
 fn malformed_qn_node() -> v2.std.node.Node {
-  fold_list_node(
+  v2.std.algebra.fold_list_node(
     xs: std.algebra.Cons { head: ^malformed_seg, tail: std.algebra.Empty },
     item_node: fn(sym) {
       v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: v2.std.node.SyntheticOccurrence
 }
     }
   )
@@ -14,26 +14,26 @@ fn malformed_qn_node() -> v2.std.node.Node {
 
 fn malformed_root_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header,
-        target: dag_grammar_atom(id: ^dag_surface_module_header)
+        target: v2.extdeps.languages.dag.dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
         target: malformed_qn_node()
       ),
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^malformed_child_sym } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
 }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -41,38 +41,38 @@ fn malformed_entry_name() -> v2.std.qualified_name.QualifiedName {
   std.algebra.Cons { head: ^malformed_seg, tail: std.algebra.Empty }
 }
 
-fn roots_with_malformed_entry() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
-  bind_outcome(o: admit_normalized_tree(root: malformed_root_node(), diagnostics: v2.std.diagnostic.None), f: fn(a) {
-    outcome_accepted(value: std.algebra.Cons { head: a, tail: std.algebra.Empty })
+fn roots_with_malformed_entry() -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+  v2.std.diagnostic.bind_outcome(o: v2.compiler.normalized_tree.admit_normalized_tree(root: malformed_root_node(), diagnostics: v2.std.diagnostic.None), f: fn(a) {
+    v2.std.diagnostic.outcome_accepted(value: std.algebra.Cons { head: a, tail: std.algebra.Empty })
   })
 }
 
 fn import_edge_for_malformed() -> v2.compiler.name_resolve.Import {
-  v2.compiler.name_resolve.Import { target: malformed_entry_name(), visibility: ImportVisible }
+  v2.compiler.name_resolve.Import { target: malformed_entry_name(), visibility: v2.compiler.name_resolve.ImportVisible }
 }
 
 fn initial_admission_state() -> v2.compiler.name_resolve.AdmissionState {
-  v2.compiler.name_resolve.AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
+  v2.compiler.name_resolve.AdmissionAccepted { bindings: v2.std.collection.empty_map(), origins: v2.std.collection.empty_map() }
 }
 
 fn admit_result_is_rejected(state: v2.compiler.name_resolve.AdmissionState) -> Bool {
   match state {
-    AdmissionAccepted { bindings: _, origins: _ } => false
-    AdmissionRejected { diagnostics: _ } => true
+    v2.compiler.name_resolve.AdmissionAccepted { bindings: _, origins: _ } => false
+    v2.compiler.name_resolve.AdmissionRejected { diagnostics: _ } => true
   }
 }
 
 test fn witness_malformed_root_is_rejected_holds() -> Bool {
   match roots_with_malformed_entry() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: roots, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: roots, diagnostics: _ } =>
   admit_result_is_rejected(
-    state: admit_import_entry(
+    state: v2.compiler.name_resolve.admit_import_entry(
       roots: roots,
       import_edge: import_edge_for_malformed(),
       state: initial_admission_state(),
       subject_qn: malformed_entry_name(),
-      index: source_root_index_empty(),
+      index: v2.std.cross_tree.resolution.source_root_index_empty(),
       active_roots: std.algebra.Empty
     )
   )

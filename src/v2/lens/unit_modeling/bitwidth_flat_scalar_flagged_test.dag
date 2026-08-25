@@ -1,29 +1,29 @@
 module v2.test.lens_unit_modeling.bitwidth_flat_scalar_flagged
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data int_leaf_target_bitwidth: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data bitwidth_flat_scalar_input: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
     v2.std.node.Edge {
       label: v2.std.node.Named { name: ^pointer_width },
       target: int_leaf_target_bitwidth
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn bitwidth_flat_scalar_flagged_holds() -> v2.std.logic.Bool {
-  match unit_modeling_gate(node: bitwidth_flat_scalar_input) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+test fn bitwidth_flat_scalar_flagged_holds() -> Bool {
+  match v2.lens.unit_modeling.unit_modeling_gate(node: bitwidth_flat_scalar_input) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 

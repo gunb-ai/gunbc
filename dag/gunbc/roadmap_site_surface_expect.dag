@@ -1,5 +1,6 @@
 module gunbc.roadmap_site_surface_expect
 
+
 data roadmap_site_surface_expect_note: String = "PURE bundle predicates for roadmap served-surface witnesses. Every function here takes an already-materialized RoadmapSiteSurfaceBundle (or a typed HTTP read) and performs no filesystem, Git, authority, or rendering observation."
 
 fn roadmap_site_healthz_json_string_parses(body: String) -> Bool {
@@ -15,10 +16,10 @@ data healthz_surface_projection_member_count: Int = 3
 
 fn healthz_projected_member_or_empty(doc: extdeps.languages.json.emit.JsonValue, key: String) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value: v } => [extdeps.languages.json.emit.json_kv(key: key, value: v)]
-    JsonMemberAbsent => []
-    JsonMemberDuplicated { count: _ } => []
-    JsonMemberNotAnObject => []
+    extdeps.languages.json.parse.JsonMemberFound { value: v } => [extdeps.languages.json.emit.json_kv(key: key, value: v)]
+    extdeps.languages.json.parse.JsonMemberAbsent => []
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => []
+    extdeps.languages.json.parse.JsonMemberNotAnObject => []
   }
 }
 
@@ -35,7 +36,7 @@ fn healthz_projected_members(doc: extdeps.languages.json.emit.JsonValue) -> List
 fn healthz_projection_of_doc(doc: extdeps.languages.json.emit.JsonValue) -> String? {
   let members = healthz_projected_members(doc: doc)
   if length(members) == healthz_surface_projection_member_count {
-    Present { value: extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: members)) }
+    v2.std.collection.Present { value: extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: members)) }
   } else {
     none
   }
@@ -43,18 +44,18 @@ fn healthz_projection_of_doc(doc: extdeps.languages.json.emit.JsonValue) -> Stri
 
 fn healthz_surface_projection(body: String) -> String? {
   match extdeps.languages.json.parse.parse_json(s: extdeps.languages.json.grammar.json_text_trim_trailing_lf(body: body)) {
-    Absent => none
-    Present { value: doc } => healthz_projection_of_doc(doc: doc)
+    v2.std.collection.Absent => none
+    v2.std.collection.Present { value: doc } => healthz_projection_of_doc(doc: doc)
   }
 }
 
 fn roadmap_site_healthz_surface_is_current(bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle, observed_body: String) -> Bool {
   match healthz_surface_projection(body: observed_body) {
-    Absent => false
-    Present { value: observed } =>
+    v2.std.collection.Absent => false
+    v2.std.collection.Present { value: observed } =>
       match healthz_surface_projection(body: bundle.healthz_body) {
-        Absent => false
-        Present { value: expected } => observed == expected
+        v2.std.collection.Absent => false
+        v2.std.collection.Present { value: expected } => observed == expected
       }
   }
 }
@@ -91,8 +92,8 @@ fn healthz_round_trip_receipt_holds(bundle: gunbc.roadmap_site_surface_types.Roa
 
 fn healthz_read_grounds(bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle, read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead) -> Bool {
   match read {
-    HealthzProbeRefused { probe_error: _ } => false
-    HealthzBodyRead { body: observed_body } =>
+    gunbc.roadmap_site_surface_types.HealthzProbeRefused { probe_error: _ } => false
+    gunbc.roadmap_site_surface_types.HealthzBodyRead { body: observed_body } =>
       roadmap_site_healthz_json_string_parses(body: observed_body)
         && roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: observed_body)
   }

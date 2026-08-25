@@ -1,5 +1,6 @@
 module gunbc.runner_spec_from_offer
 
+
 fn kernel_runner_label(kernel: std.os.types.KernelFamily) -> String {
   match kernel {
     Linux => "linux"

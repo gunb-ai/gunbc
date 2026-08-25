@@ -37,7 +37,7 @@ fn complexity_mixed_row_claim_subject(c: ComplexityMixedRowClaim) -> ComplexityC
 fn complexity_derived_kernel_claim_eq(
   left: ComplexityDerivedKernelClaim,
   right: ComplexityDerivedKernelClaim
-) -> v2.std.logic.Bool {
+) -> Bool {
   match left {
     AsymptoticCostProjection => match right {
       AsymptoticCostProjection => true
@@ -81,7 +81,7 @@ fn complexity_derived_kernel_claim_eq(
 fn complexity_optimality_claim_eq(
   left: ComplexityOptimalityClaim,
   right: ComplexityOptimalityClaim
-) -> v2.std.logic.Bool {
+) -> Bool {
   match left {
     GlobalOptimality => match right {
       GlobalOptimality => true
@@ -101,7 +101,7 @@ fn complexity_optimality_claim_eq(
 fn complexity_contract_subject_eq(
   left: ComplexityContractSubject,
   right: ComplexityContractSubject
-) -> v2.std.logic.Bool {
+) -> Bool {
   match left {
     DerivedKernel => match right {
       DerivedKernel => true
@@ -148,17 +148,17 @@ data complexity_legacy_mixed_row_scope: List<ComplexityMixedRowClaim> = [
 ]
 
 data complexity_derived_kernel_boundary: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority }
 }
 
 data complexity_optimality_boundary: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: RatchetForever
+  class: v2.lens.common.construction_justification.RatchetForever
 }
 
 fn complexity_mixed_row_claim_belongs_to_subject(
   claim: ComplexityMixedRowClaim,
   subject: ComplexityContractSubject
-) -> v2.std.logic.Bool {
+) -> Bool {
   complexity_contract_subject_eq(
     left: complexity_mixed_row_claim_subject(c: claim),
     right: subject
@@ -168,17 +168,17 @@ fn complexity_mixed_row_claim_belongs_to_subject(
 fn complexity_scope_roster_has_no_duplicates(
   claim: ComplexityDerivedKernelClaim,
   planted_duplicate: ComplexityDerivedKernelClaim
-) -> v2.std.logic.Bool {
+) -> Bool {
   let roster = [
     claim,
     planted_duplicate
   ]
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: roster,
     empty: true,
     cons: fn(acc, item) {
       if acc {
-        let prior_count = fold_list(
+        let prior_count = v2.std.algebra.fold_list(
           xs: roster,
           empty: 0,
           cons: fn(count, other) {
@@ -197,17 +197,17 @@ fn complexity_scope_roster_has_no_duplicates(
   )
 }
 
-fn complexity_derived_kernel_scope_has_no_duplicates() -> v2.std.logic.Bool {
+fn complexity_derived_kernel_scope_has_no_duplicates() -> Bool {
   complexity_scope_roster_has_no_duplicates(
     claim: AsymptoticCostProjection,
     planted_duplicate: ComplexityClassComparison
   )
-    && fold_list(
+    && v2.std.algebra.fold_list(
       xs: complexity_derived_kernel_scope_statement,
       empty: true,
       cons: fn(acc, item) {
         if acc {
-          let prior_count = fold_list(
+          let prior_count = v2.std.algebra.fold_list(
             xs: complexity_derived_kernel_scope_statement,
             empty: 0,
             cons: fn(count, other) {
@@ -226,13 +226,13 @@ fn complexity_derived_kernel_scope_has_no_duplicates() -> v2.std.logic.Bool {
     )
 }
 
-fn complexity_optimality_scope_has_no_duplicates() -> v2.std.logic.Bool {
-  fold_list(
+fn complexity_optimality_scope_has_no_duplicates() -> Bool {
+  v2.std.algebra.fold_list(
     xs: complexity_optimality_scope_statement,
     empty: true,
     cons: fn(acc, item) {
       if acc {
-        let prior_count = fold_list(
+        let prior_count = v2.std.algebra.fold_list(
           xs: complexity_optimality_scope_statement,
           empty: 0,
           cons: fn(count, other) {
@@ -251,24 +251,24 @@ fn complexity_optimality_scope_has_no_duplicates() -> v2.std.logic.Bool {
   )
 }
 
-fn complexity_derived_kernel_scope_is_distinct() -> v2.std.logic.Bool {
+fn complexity_derived_kernel_scope_is_distinct() -> Bool {
   complexity_derived_kernel_scope_has_no_duplicates()
 }
 
-fn complexity_optimality_scope_is_distinct() -> v2.std.logic.Bool {
+fn complexity_optimality_scope_is_distinct() -> Bool {
   complexity_optimality_scope_has_no_duplicates()
 }
 
-fn complexity_legacy_row_claim_maps_to_declared_subject(claim: ComplexityMixedRowClaim) -> v2.std.logic.Bool {
+fn complexity_legacy_row_claim_maps_to_declared_subject(claim: ComplexityMixedRowClaim) -> Bool {
   match claim {
     DerivedClaim { claim: dk } =>
-      contains(
+      v2.std.algebra.contains(
         xs: complexity_derived_kernel_scope_statement,
         item: dk,
         eq: complexity_derived_kernel_claim_eq
       )
     OptimalityClaim { claim: ok } =>
-      contains(
+      v2.std.algebra.contains(
         xs: complexity_optimality_scope_statement,
         item: ok,
         eq: complexity_optimality_claim_eq
@@ -276,26 +276,26 @@ fn complexity_legacy_row_claim_maps_to_declared_subject(claim: ComplexityMixedRo
   }
 }
 
-fn complexity_contract_subjects_partition_legacy_mixed_row() -> v2.std.logic.Bool {
+fn complexity_contract_subjects_partition_legacy_mixed_row() -> Bool {
   complexity_derived_kernel_scope_is_distinct()
     && complexity_optimality_scope_is_distinct()
-    && for_all(
+    && v2.std.algebra.for_all(
       xs: complexity_legacy_mixed_row_scope,
       predicate: fn(claim) { complexity_legacy_row_claim_maps_to_declared_subject(claim: claim) }
     )
-    && length(xs: complexity_legacy_mixed_row_scope) == (length(xs: complexity_derived_kernel_scope_statement) + length(xs: complexity_optimality_scope_statement))
+    && v2.std.algebra.length(xs: complexity_legacy_mixed_row_scope) == (v2.std.algebra.length(xs: complexity_derived_kernel_scope_statement) + v2.std.algebra.length(xs: complexity_optimality_scope_statement))
 }
 
-fn complexity_derived_kernel_boundary_is_wall_after_grounding() -> v2.std.logic.Bool {
+fn complexity_derived_kernel_boundary_is_wall_after_grounding() -> Bool {
   match complexity_derived_kernel_boundary.class {
-    WallAfterGrounding { dissolves_to: _ } => true
+    v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: _ } => true
     _ => false
   }
 }
 
-fn complexity_optimality_boundary_is_ratchet_forever() -> v2.std.logic.Bool {
+fn complexity_optimality_boundary_is_ratchet_forever() -> Bool {
   match complexity_optimality_boundary.class {
-    RatchetForever => true
+    v2.lens.common.construction_justification.RatchetForever => true
     _ => false
   }
 }

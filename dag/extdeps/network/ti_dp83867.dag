@@ -6,7 +6,7 @@ module extdeps.network.ti_dp83867
 // row below is the RGZ one and says so at every field.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.ti.com/lit/ds/symlink/dp83867ir.pdf"
   }
 }
@@ -16,19 +16,19 @@ data ti_dp83867_note: String = "THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SEL
 data dp83867_rgz0048b_drawing: extdeps.land_pattern.types.PackageDrawingRef = extdeps.land_pattern.types.PackageDrawingRef {
   drawing_number: "4218795/B",
   revision_date: "02/2017",
-  reprinted_in: extdeps.network.ti_dp83867.extdeps_external_authority_anchor,
+  reprinted_in: extdeps_external_authority_anchor,
 }
 
 data dp83867_rgz0048b_body: extdeps.land_pattern.types.PackageBodyDimensions = extdeps.land_pattern.types.PackageBodyDimensions {
   designator: "RGZ0048B",
   drawing: dp83867_rgz0048b_drawing,
   terminal_count: 48,
-  terminal_pitch: micrometer(count: 500),
-  body_length_min: micrometer(count: 6850),
-  body_length_max: micrometer(count: 7150),
-  body_width_min: micrometer(count: 6850),
-  body_width_max: micrometer(count: 7150),
-  height_max: micrometer(count: 1000),
+  terminal_pitch: std.measure.micrometer(count: 500),
+  body_length_min: std.measure.micrometer(count: 6850),
+  body_length_max: std.measure.micrometer(count: 7150),
+  body_width_min: std.measure.micrometer(count: 6850),
+  body_width_max: std.measure.micrometer(count: 7150),
+  height_max: std.measure.micrometer(count: 1000),
 }
 
 data dp83867_rgz0048b_land_pattern: extdeps.land_pattern.types.VendorRecommendedLandPattern = extdeps.land_pattern.types.VendorRecommendedLandPattern {
@@ -36,11 +36,11 @@ data dp83867_rgz0048b_land_pattern: extdeps.land_pattern.types.VendorRecommended
   drawing: dp83867_rgz0048b_drawing,
   geometry: extdeps.land_pattern.types.QuadRowLandGeometry {
     lands_per_side: 12,
-    pitch: micrometer(count: 500),
-    side_span_centre_to_centre: micrometer(count: 6800),
-    land_length: micrometer(count: 600),
-    land_width: micrometer(count: 240),
-    thermal_land_side: Present { value: micrometer(count: 4100) },
+    pitch: std.measure.micrometer(count: 500),
+    side_span_centre_to_centre: std.measure.micrometer(count: 6800),
+    land_length: std.measure.micrometer(count: 600),
+    land_width: std.measure.micrometer(count: 240),
+    thermal_land_side: Present { value: std.measure.micrometer(count: 4100) },
   },
 }
 
@@ -59,9 +59,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.network.ti_dp83867",
       decl_name: "dp83867irrgz",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.network.ti_dp83867.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

@@ -4,7 +4,7 @@ module extdeps.github.hosted_runners
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/actions/reference/runners/github-hosted-runners"
   }
 }
@@ -23,57 +23,57 @@ type GithubHostedRunnerCatalogRow {
 }
 
 data github_hosted_ubuntu_slim_public_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
-  runs_on_label: UbuntuSlim,
+  runs_on_label: extdeps.github.actions.UbuntuSlim,
   visibility: PublicRepo,
-  vcpus: hardware_thread_count(1),
-  memory_bytes: byte_size(5000000000),
-  storage_bytes: byte_size(14000000000),
-  cpu_architecture: X86_64
+  vcpus: std.measure.hardware_thread_count(1),
+  memory_bytes: std.measure.byte_size(5000000000),
+  storage_bytes: std.measure.byte_size(14000000000),
+  cpu_architecture: extdeps.toolchain.types.X86_64
 }
 
 data github_hosted_ubuntu_slim_private_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
-  runs_on_label: UbuntuSlim,
+  runs_on_label: extdeps.github.actions.UbuntuSlim,
   visibility: PrivateRepo,
-  vcpus: hardware_thread_count(1),
-  memory_bytes: byte_size(5000000000),
-  storage_bytes: byte_size(14000000000),
-  cpu_architecture: X86_64
+  vcpus: std.measure.hardware_thread_count(1),
+  memory_bytes: std.measure.byte_size(5000000000),
+  storage_bytes: std.measure.byte_size(14000000000),
+  cpu_architecture: extdeps.toolchain.types.X86_64
 }
 
 data github_hosted_ubuntu_2404_public_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
-  runs_on_label: Ubuntu2404,
+  runs_on_label: extdeps.github.actions.Ubuntu2404,
   visibility: PublicRepo,
-  vcpus: hardware_thread_count(4),
-  memory_bytes: byte_size(16000000000),
-  storage_bytes: byte_size(14000000000),
-  cpu_architecture: X86_64
+  vcpus: std.measure.hardware_thread_count(4),
+  memory_bytes: std.measure.byte_size(16000000000),
+  storage_bytes: std.measure.byte_size(14000000000),
+  cpu_architecture: extdeps.toolchain.types.X86_64
 }
 
 data github_hosted_ubuntu_2404_private_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
-  runs_on_label: Ubuntu2404,
+  runs_on_label: extdeps.github.actions.Ubuntu2404,
   visibility: PrivateRepo,
-  vcpus: hardware_thread_count(2),
-  memory_bytes: byte_size(8000000000),
-  storage_bytes: byte_size(14000000000),
-  cpu_architecture: X86_64
+  vcpus: std.measure.hardware_thread_count(2),
+  memory_bytes: std.measure.byte_size(8000000000),
+  storage_bytes: std.measure.byte_size(14000000000),
+  cpu_architecture: extdeps.toolchain.types.X86_64
 }
 
 data github_hosted_ubuntu_2404_arm_public_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
-  runs_on_label: Ubuntu2404Arm,
+  runs_on_label: extdeps.github.actions.Ubuntu2404Arm,
   visibility: PublicRepo,
-  vcpus: hardware_thread_count(4),
-  memory_bytes: byte_size(16000000000),
-  storage_bytes: byte_size(14000000000),
-  cpu_architecture: Aarch64
+  vcpus: std.measure.hardware_thread_count(4),
+  memory_bytes: std.measure.byte_size(16000000000),
+  storage_bytes: std.measure.byte_size(14000000000),
+  cpu_architecture: extdeps.toolchain.types.Aarch64
 }
 
 data github_hosted_ubuntu_2404_arm_private_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {
-  runs_on_label: Ubuntu2404Arm,
+  runs_on_label: extdeps.github.actions.Ubuntu2404Arm,
   visibility: PrivateRepo,
-  vcpus: hardware_thread_count(2),
-  memory_bytes: byte_size(8000000000),
-  storage_bytes: byte_size(14000000000),
-  cpu_architecture: Aarch64
+  vcpus: std.measure.hardware_thread_count(2),
+  memory_bytes: std.measure.byte_size(8000000000),
+  storage_bytes: std.measure.byte_size(14000000000),
+  cpu_architecture: extdeps.toolchain.types.Aarch64
 }
 
 fn github_hosted_ubuntu_catalog() -> List<GithubHostedRunnerCatalogRow> {

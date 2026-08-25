@@ -1,19 +1,19 @@
 module test.claim.pcb_capability_established_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data a_stackup_authority: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "test.claim.pcb_capability_established_witness",
   decl_name: "a_stackup_authority",
-  field: WholeDeclaration,
+  field: std.decl_ref.WholeDeclaration,
 }
 
 // AN ESTABLISHED CAPABILITY PRODUCES NO REFUSAL. Before the established arm existed this was not
 // a property that could be false -- there was no value to test it with, so every capability
 // refused and AdmittedPcbWorld was unreachable for any world at all.
 test fn w_an_established_capability_is_not_unsettled() -> Bool {
-  match unsettled_capability(s: capability_established(authority: a_stackup_authority), name: "stackup") {
+  match product.pcb.world.unsettled_capability(s: product.pcb.world.capability_established(authority: a_stackup_authority), name: "stackup") {
     Absent => true
     Present { value: _ } => false
   }
@@ -22,11 +22,11 @@ test fn w_an_established_capability_is_not_unsettled() -> Bool {
 // RED control: the other two arms still refuse, and they refuse DISTINGUISHABLY. Without this the
 // assertion above would pass on a function that had simply stopped refusing anything.
 test fn w_red_pending_and_refused_still_produce_refusals() -> Bool {
-  (match unsettled_capability(s: capability_pending(what_is_owed: "a stackup"), name: "stackup") {
+  (match product.pcb.world.unsettled_capability(s: product.pcb.world.capability_pending(what_is_owed: "a stackup"), name: "stackup") {
     Present { value: _ } => true
     Absent => false
   })
-    && match unsettled_capability(s: product.pcb.world.CapabilityRefused { cause: "any cause" }, name: "stackup") {
+    && match product.pcb.world.unsettled_capability(s: product.pcb.world.CapabilityRefused { cause: "any cause" }, name: "stackup") {
       Present { value: _ } => true
       Absent => false
     }
@@ -37,20 +37,20 @@ test fn w_red_pending_and_refused_still_produce_refusals() -> Bool {
 // coproduct that exists to be tested. The three arms are distinguished here directly, which is
 // what any real consumer will do, so nothing in the module is kept alive by evidence alone.
 test fn w_the_three_standings_are_distinguishable_by_match() -> Bool {
-  (match capability_established(authority: a_stackup_authority) {
-    CapabilityEstablished { authority: _ } => true
-    CapabilityPending { owed: _ } => false
-    CapabilityRefused { cause: _ } => false
+  (match product.pcb.world.capability_established(authority: a_stackup_authority) {
+    product.pcb.world.CapabilityEstablished { authority: _ } => true
+    product.pcb.world.CapabilityPending { owed: _ } => false
+    product.pcb.world.CapabilityRefused { cause: _ } => false
   })
-    && (match capability_pending(what_is_owed: "a stackup") {
-      CapabilityPending { owed: _ } => true
-      CapabilityEstablished { authority: _ } => false
-      CapabilityRefused { cause: _ } => false
+    && (match product.pcb.world.capability_pending(what_is_owed: "a stackup") {
+      product.pcb.world.CapabilityPending { owed: _ } => true
+      product.pcb.world.CapabilityEstablished { authority: _ } => false
+      product.pcb.world.CapabilityRefused { cause: _ } => false
     })
-    && match (product.pcb.world.CapabilityRefused { cause: "any cause" }) {
-      CapabilityRefused { cause: _ } => true
-      CapabilityEstablished { authority: _ } => false
-      CapabilityPending { owed: _ } => false
+    && match product.pcb.world.CapabilityRefused { cause: "any cause" } {
+      product.pcb.world.CapabilityRefused { cause: _ } => true
+      product.pcb.world.CapabilityEstablished { authority: _ } => false
+      product.pcb.world.CapabilityPending { owed: _ } => false
     }
 }
 
@@ -58,11 +58,11 @@ test fn w_the_three_standings_are_distinguishable_by_match() -> Bool {
 // naming where the value lives would be a status flag, which is the shape this arm exists to
 // avoid: the world reports the STANDING and the authority says where to read the thing itself.
 test fn w_the_established_arm_retains_the_authority_it_was_given() -> Bool {
-  match capability_established(authority: a_stackup_authority) {
-    CapabilityEstablished { authority: a } =>
+  match product.pcb.world.capability_established(authority: a_stackup_authority) {
+    product.pcb.world.CapabilityEstablished { authority: a } =>
       a.decl_name == "a_stackup_authority"
         && a.module_path == "test.claim.pcb_capability_established_witness"
-    CapabilityPending { owed: _ } => false
-    CapabilityRefused { cause: _ } => false
+    product.pcb.world.CapabilityPending { owed: _ } => false
+    product.pcb.world.CapabilityRefused { cause: _ } => false
   }
 }

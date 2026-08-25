@@ -1,29 +1,29 @@
 module test.claim.ci_render_slowest_hot_style
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_body() -> List<String> {
   [
-    slowest_witness_row(rank: 1, function: "slow_a", entry: "e1", eval_ns: 41000000, resolve_ns: 5000000, total_ns: 46000000),
-    slowest_witness_row(rank: 2, function: "med_b", entry: "e2", eval_ns: 10000000, resolve_ns: 1000000, total_ns: 11000000)
+    gunbc.ci_render.slowest_witness_row(rank: 1, function: "slow_a", entry: "e1", eval_ns: 41000000, resolve_ns: 5000000, total_ns: 46000000),
+    gunbc.ci_render.slowest_witness_row(rank: 2, function: "med_b", entry: "e2", eval_ns: 10000000, resolve_ns: 1000000, total_ns: 11000000)
   ]
 }
 
 fn hot_box() -> String {
-  render_slowest_witnesses_box(body: sample_body(), hot_count: 1, width: 90, color: true)
+  gunbc.ci_render.render_slowest_witnesses_box(body: sample_body(), hot_count: 1, width: 90, color: true)
 }
 
 fn cold_box() -> String {
-  render_slowest_witnesses_box(body: sample_body(), hot_count: 0, width: 90, color: true)
+  gunbc.ci_render.render_slowest_witnesses_box(body: sample_body(), hot_count: 0, width: 90, color: true)
 }
 
 fn nocolor_box() -> String {
-  render_slowest_witnesses_box(body: sample_body(), hot_count: 1, width: 90, color: false)
+  gunbc.ci_render.render_slowest_witnesses_box(body: sample_body(), hot_count: 1, width: 90, color: false)
 }
 
 fn default_box() -> String {
-  render_slowest_witnesses_box_default(body: sample_body(), width: 90, color: true)
+  gunbc.ci_render.render_slowest_witnesses_box_default(body: sample_body(), width: 90, color: true)
 }
 
 test fn ci_render_slowest_hot_style_holds() -> Bool {

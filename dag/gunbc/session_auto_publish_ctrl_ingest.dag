@@ -47,8 +47,8 @@ fn harness_ctrl_publication_ingest_authority() -> CtrlPublicationIngestAuthority
     dashboard_session_id: "harness",
     authenticated_requester: "harness",
   ) {
-    Present { value: authority } => authority
-    Absent =>
+    v2.std.optional.Present { value: authority } => authority
+    v2.std.optional.Absent =>
       CtrlPublicationIngestAuthority {
         authenticated_requester: "harness",
         dashboard_session_id: "harness",

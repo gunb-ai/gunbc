@@ -18,22 +18,22 @@ type SurveyObligationId = std.types.NonEmptyStr where brand("SurveyObligationId"
 type LengthInterval = std.interval.OrderedClosedInterval<std.measure.Millimeter>
 
 fn millimeter_le(a: std.measure.Millimeter, b: std.measure.Millimeter) -> Bool {
-  millimeter_count(m: a) <= millimeter_count(m: b)
+  std.measure.millimeter_count(m: a) <= std.measure.millimeter_count(m: b)
 }
 
 fn length_interval(low: std.measure.Millimeter, high: std.measure.Millimeter) -> std.interval.IntervalConstruction<std.measure.Millimeter> {
-  closed_interval(low: low, high: high, le: millimeter_le)
+  std.interval.closed_interval(low: low, high: high, le: millimeter_le)
 }
 
 // Width comparison without subtraction: for ordered intervals,
 //   (high_a - low_a) <= (high_b - low_b)  <=>  (high_a + low_b) <= (high_b + low_a)
-// The additive form is used because the magnitude carrier counts in std.nat.Nat, where a subtraction would
+// The additive form is used because the magnitude carrier counts in Nat, where a subtraction would
 // need a partiality story of its own; this needs none.
 fn length_uncertainty_admissible(actual: LengthInterval, budget: LengthInterval) -> Bool {
-  let a_hi = millimeter_count(m: interval_high(interval: actual))
-  let a_lo = millimeter_count(m: interval_low(interval: actual))
-  let b_hi = millimeter_count(m: interval_high(interval: budget))
-  let b_lo = millimeter_count(m: interval_low(interval: budget))
+  let a_hi = std.measure.millimeter_count(m: std.interval.interval_high(interval: actual))
+  let a_lo = std.measure.millimeter_count(m: std.interval.interval_low(interval: actual))
+  let b_hi = std.measure.millimeter_count(m: std.interval.interval_high(interval: budget))
+  let b_lo = std.measure.millimeter_count(m: std.interval.interval_low(interval: budget))
   (a_hi + b_lo) <= (b_hi + a_lo)
 }
 
@@ -67,9 +67,9 @@ type RoomDimensionKnowledge {
 
 fn admit_room_dimension(
   dimension: RoomDimensionKnowledge,
-  requirement: SpatialRequirement<LengthInterval>,
+  requirement: std.spatial_knowledge.SpatialRequirement<LengthInterval>,
 ) -> RoomDimensionAdmission {
-  admit_spatial_decision_input(
+  std.spatial_knowledge.admit_spatial_decision_input(
     knowledge: dimension.standing,
     requirement: requirement,
     uncertainty_admissible: length_uncertainty_admissible,
@@ -77,7 +77,7 @@ fn admit_room_dimension(
 }
 
 fn render_room_dimension(dimension: RoomDimensionKnowledge) -> RoomDimensionRendering {
-  project_spatial_rendering(knowledge: dimension.standing)
+  std.spatial_knowledge.project_spatial_rendering(knowledge: dimension.standing)
 }
 
 // The renderer's style is DERIVED from the standing rather than coordinated with it by hand. The
@@ -91,10 +91,10 @@ type RenderStyle
 
 fn render_style(rendering: RoomDimensionRendering) -> RenderStyle {
   match rendering {
-    RenderMeasured { value: _, uncertainty: _ } => StrokeSolid
-    RenderEstimated { region: _ } => StrokeUncertaintyBand
-    RenderHypothesis { value: _, purpose: _ } => StrokeHypothesisDashed
-    RenderUnknown { obligation: _ } => NotDrawnObligationOnly
+    std.spatial_knowledge.RenderMeasured { value: _, uncertainty: _ } => StrokeSolid
+    std.spatial_knowledge.RenderEstimated { region: _ } => StrokeUncertaintyBand
+    std.spatial_knowledge.RenderHypothesis { value: _, purpose: _ } => StrokeHypothesisDashed
+    std.spatial_knowledge.RenderUnknown { obligation: _ } => NotDrawnObligationOnly
   }
 }
 
@@ -114,13 +114,13 @@ fn render_wire(dimension: RoomDimensionKnowledge) -> String {
   let rendering = render_room_dimension(dimension: dimension)
   let style = render_style_wire(style: render_style(rendering: rendering))
   match rendering {
-    RenderMeasured { value: v, uncertainty: _ } =>
+    std.spatial_knowledge.RenderMeasured { value: v, uncertainty: _ } =>
       "<line class={style} data-mm={millimeter_count(m: v)}/>"
-    RenderEstimated { region: r } =>
+    std.spatial_knowledge.RenderEstimated { region: r } =>
       "<band class={style} data-low={millimeter_count(m: interval_low(interval: r))} data-high={millimeter_count(m: interval_high(interval: r))}/>"
-    RenderHypothesis { value: v, purpose: _ } =>
+    std.spatial_knowledge.RenderHypothesis { value: v, purpose: _ } =>
       "<line class={style} data-mm={millimeter_count(m: v)}/>"
-    RenderUnknown { obligation: o } =>
+    std.spatial_knowledge.RenderUnknown { obligation: o } =>
       "<obligation class={style} data-survey={o as String}/>"
   }
 }

@@ -1,18 +1,19 @@
 module extdeps.memory.cisco_ucs
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.cisco.com/c/en/us/products/servers-unified-computing/ucs-c-series-rack-servers/datasheet-listing.html"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.memory.cisco_ucs",
       decl_name: "ucs_mr_1x648ru_a",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
@@ -41,12 +42,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // "M393A8G40D40-CRB0Q S", which is what links this Cisco PID to that specific Samsung part
 // number -- no reachable Cisco document names the underlying manufacturer part at all. The link
 // is therefore an observation of the part in hand, recorded as such.
-data ucs_mr_1x648ru_a: OemModuleOffering = OemModuleOffering {
-  oem: cisco,
+data ucs_mr_1x648ru_a: extdeps.memory.types.OemModuleOffering = extdeps.memory.types.OemModuleOffering {
+  oem: extdeps.vendor.cisco.cisco,
   oem_product_id: "UCS-MR-1X648RU-A",
   oem_part_number: "15-102952-01",
-  underlying_module: m393a8g40d40_crb0q_catalog,
-  link_evidence: OemLinkPhysicalLabelObserved {
+  underlying_module: extdeps.memory.samsung.m393a8g40d40_crb0q_catalog,
+  link_evidence: extdeps.memory.types.OemLinkPhysicalLabelObserved {
     label_text: "M393A8G40D40-CRB0Q S",
     observer: "operator, physical label on the module in hand, 2026-08-22",
   },

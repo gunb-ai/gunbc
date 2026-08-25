@@ -138,9 +138,9 @@ fn fleet_desired_advance_expectation(observed: FleetDesiredRevision) -> FleetDes
 // inside a typed cause for RelationUnverifiable -- one authority, refined -- not in a second outer
 // refusal path beside it.
 type FleetRevisionRelationObservation {
-  current: GitObjectId
-  accepted: GitObjectId
-  relation: DeployRevisionRelation
+  current: extdeps.git.object_store.GitObjectId
+  accepted: extdeps.git.object_store.GitObjectId
+  relation: gunbc.live_deploy.revision.DeployRevisionRelation
 }
 
 // THE ANCESTRY OBSERVATION, SPLIT SO THE DECIDABLE HALF IS ACTUALLY TESTABLE.
@@ -169,8 +169,8 @@ type FleetRevisionRelationObservation {
 // authority for "how do these two revisions relate"; the name is the deploy lane's, and it means
 // neither-is-an-ancestor rather than share-no-history.
 fn fleet_revision_relation_from_merge_base(
-  current: GitObjectId,
-  accepted: GitObjectId,
+  current: extdeps.git.object_store.GitObjectId,
+  accepted: extdeps.git.object_store.GitObjectId,
   exit_code: Int,
   base_hex: String,
   stderr: String,
@@ -213,28 +213,28 @@ fn fleet_revision_relation_from_merge_base(
 // carrying the shared base and an unrelated arm carrying none; this call site consumes the split
 // the day it lands, with no new evidence required. Raised to that owner separately.
 fn merge_base_relation(
-  current: GitObjectId,
-  accepted: GitObjectId,
+  current: extdeps.git.object_store.GitObjectId,
+  accepted: extdeps.git.object_store.GitObjectId,
   exit_code: Int,
   base_hex: String,
   stderr: String,
-) -> DeployRevisionRelation {
-  if git_object_id_eq(left: current, right: accepted) {
-    SameRevision
+) -> gunbc.live_deploy.revision.DeployRevisionRelation {
+  if extdeps.git.object_store.git_object_id_eq(left: current, right: accepted) {
+    gunbc.live_deploy.revision.SameRevision
   } else {
-    match merge_base_outcome(exit_code: exit_code, stdout: base_hex, stderr: stderr) {
-      NoCommonAncestor => UnrelatedHistories
-      MergeBaseReported { base_hex: hex } =>
-        match git_object_id_from_untagged_hex(hex: hex) {
+    match extdeps.git.inspect.merge_base_outcome(exit_code: exit_code, stdout: base_hex, stderr: stderr) {
+      extdeps.git.inspect.NoCommonAncestor => gunbc.live_deploy.revision.UnrelatedHistories
+      extdeps.git.inspect.MergeBaseReported { base_hex: hex } =>
+        match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: hex) {
           Present { value: base } =>
             relation_from_merge_base_oid(current: current, accepted: accepted, base: base)
           none =>
-            RelationUnverifiable {
+            gunbc.live_deploy.revision.RelationUnverifiable {
               cause: concat("git merge-base succeeded but its output is not a decodable object id: ", hex),
             }
         }
-      MergeBaseRefused { exit_code: _, stderr: why } =>
-        RelationUnverifiable {
+      extdeps.git.inspect.MergeBaseRefused { exit_code: _, stderr: why } =>
+        gunbc.live_deploy.revision.RelationUnverifiable {
           cause: concat("git merge-base could not answer for this pair: ", why),
         }
     }
@@ -247,27 +247,27 @@ fn merge_base_relation(
 // this module owns an evidence shape and not a policy. Reusing only the five variant names would
 // have left two places computing one decision, agreeing today and free to drift apart tomorrow.
 fn relation_from_merge_base_oid(
-  current: GitObjectId,
-  accepted: GitObjectId,
-  base: GitObjectId,
-) -> DeployRevisionRelation {
-  revision_relation_from_ancestry_facts(
-    same: git_object_id_eq(left: current, right: accepted),
-    deployed_is_ancestor_of_candidate: git_object_id_eq(left: base, right: current),
-    candidate_is_ancestor_of_deployed: git_object_id_eq(left: base, right: accepted),
+  current: extdeps.git.object_store.GitObjectId,
+  accepted: extdeps.git.object_store.GitObjectId,
+  base: extdeps.git.object_store.GitObjectId,
+) -> gunbc.live_deploy.revision.DeployRevisionRelation {
+  gunbc.live_deploy.revision.revision_relation_from_ancestry_facts(
+    same: extdeps.git.object_store.git_object_id_eq(left: current, right: accepted),
+    deployed_is_ancestor_of_candidate: extdeps.git.object_store.git_object_id_eq(left: base, right: current),
+    candidate_is_ancestor_of_deployed: extdeps.git.object_store.git_object_id_eq(left: base, right: accepted),
   )
 }
 
 type FleetDesiredAdvanceRefusal
   = AdvanceExpectationUnavailable { cause: FleetDesiredExpectationRefusal }
-  | AdvanceHistoriesUnrelated { current: GitObjectId, accepted: GitObjectId }
-  | AdvanceRelationUnobservable { current: GitObjectId, accepted: GitObjectId, cause: NonEmptyStr }
-  | InitialFleetDesiredCreationNotAuthorized { accepted: GitObjectId }
+  | AdvanceHistoriesUnrelated { current: extdeps.git.object_store.GitObjectId, accepted: extdeps.git.object_store.GitObjectId }
+  | AdvanceRelationUnobservable { current: extdeps.git.object_store.GitObjectId, accepted: extdeps.git.object_store.GitObjectId, cause: std.types.NonEmptyStr }
+  | InitialFleetDesiredCreationNotAuthorized { accepted: extdeps.git.object_store.GitObjectId }
   | AdvanceRelationIsAboutAnotherPair {
-      relation_current: GitObjectId,
-      relation_accepted: GitObjectId,
-      actual_current: GitObjectId,
-      actual_accepted: GitObjectId,
+      relation_current: extdeps.git.object_store.GitObjectId,
+      relation_accepted: extdeps.git.object_store.GitObjectId,
+      actual_current: extdeps.git.object_store.GitObjectId,
+      actual_accepted: extdeps.git.object_store.GitObjectId,
     }
 
 // THE INPUT IS A SUM SO THAT IRRELEVANT EVIDENCE CANNOT BE SUPPLIED, LET ALONE FABRICATED.
@@ -284,13 +284,13 @@ type FleetDesiredAdvanceRefusal
 // pairing is ABSENT FROM THE INPUT SPACE rather than rejected after construction.
 type FleetDesiredAdvanceInput<E, M>
   = FleetDesiredExpectationRefusedInput {
-      accepted: AcceptedFleetRevision<E, M>,
+      accepted: gunbc.fleet_revision_acceptance.AcceptedFleetRevision<E, M>,
       cause: FleetDesiredExpectationRefusal,
     }
-  | FleetDesiredRefAbsentInput { accepted: AcceptedFleetRevision<E, M> }
+  | FleetDesiredRefAbsentInput { accepted: gunbc.fleet_revision_acceptance.AcceptedFleetRevision<E, M> }
   | FleetDesiredObservedCurrentInput {
-      accepted: AcceptedFleetRevision<E, M>,
-      current: GitObjectId,
+      accepted: gunbc.fleet_revision_acceptance.AcceptedFleetRevision<E, M>,
+      current: extdeps.git.object_store.GitObjectId,
       relation: FleetRevisionRelationObservation,
     }
 
@@ -320,13 +320,13 @@ type FleetDesiredAdvanceInput<E, M>
 // immediately recreate the substitution this cut removed.
 type FleetDesiredAdvanceDecision<E, M>
   = FleetDesiredAdvanceAdmitted {
-      accepted: AcceptedFleetRevision<E, M>,
-      expected_prior: GitObjectId,
+      accepted: gunbc.fleet_revision_acceptance.AcceptedFleetRevision<E, M>,
+      expected_prior: extdeps.git.object_store.GitObjectId,
     }
-  | FleetDesiredAlreadyConverged { accepted: AcceptedFleetRevision<E, M> }
+  | FleetDesiredAlreadyConverged { accepted: gunbc.fleet_revision_acceptance.AcceptedFleetRevision<E, M> }
   | FleetDesiredSupersededNoOp {
-      accepted: AcceptedFleetRevision<E, M>,
-      current: GitObjectId,
+      accepted: gunbc.fleet_revision_acceptance.AcceptedFleetRevision<E, M>,
+      current: extdeps.git.object_store.GitObjectId,
     }
   | FleetDesiredAdvanceRefused { cause: FleetDesiredAdvanceRefusal }
 
@@ -335,10 +335,10 @@ type FleetDesiredAdvanceDecision<E, M>
 // the advance arm has one.
 fn fleet_desired_admitted_expectation<E, M>(
   decision: FleetDesiredAdvanceDecision<E, M>,
-) -> GitRemoteRefExpectation? {
+) -> extdeps.git.publication_transport.GitRemoteRefExpectation? {
   match decision {
     FleetDesiredAdvanceAdmitted { accepted: _, expected_prior: prior } =>
-      Present { value: RemoteRefMustEqual { oid: prior } }
+      Present { value: extdeps.git.publication_transport.RemoteRefMustEqual { oid: prior } }
     FleetDesiredAlreadyConverged { accepted: _ } => none
     FleetDesiredSupersededNoOp { accepted: _, current: _ } => none
     FleetDesiredAdvanceRefused { cause: _ } => none
@@ -370,20 +370,20 @@ fn fleet_desired_advance_refusal_message(cause: FleetDesiredAdvanceRefusal) -> S
     AdvanceHistoriesUnrelated { current: cur, accepted: acc } =>
       join([
         "neither revision is an ancestor of the other (current ",
-        git_object_id_wire_hex(oid: cur) as String,
-        ", accepted ", git_object_id_wire_hex(oid: acc) as String,
+        extdeps.git.object_store.git_object_id_wire_hex(oid: cur) as String,
+        ", accepted ", extdeps.git.object_store.git_object_id_wire_hex(oid: acc) as String,
         ") -- advancing would move the ref sideways",
       ], "")
     AdvanceRelationUnobservable { current: cur, accepted: acc, cause: c } =>
       join([
-        "the ancestry of ", git_object_id_wire_hex(oid: cur) as String,
-        " and ", git_object_id_wire_hex(oid: acc) as String,
+        "the ancestry of ", extdeps.git.object_store.git_object_id_wire_hex(oid: cur) as String,
+        " and ", extdeps.git.object_store.git_object_id_wire_hex(oid: acc) as String,
         " could not be established, and an unknown direction is never read as forward: ", c,
       ], "")
     InitialFleetDesiredCreationNotAuthorized { accepted: acc } =>
       join([
         "origin advertises no such ref. An absent ref is a STATE and creation is a CAPABILITY: this path is authorized to ADVANCE an existing ref, not to mint the fleet root. Creating it at ",
-        git_object_id_wire_hex(oid: acc) as String,
+        extdeps.git.object_store.git_object_id_wire_hex(oid: acc) as String,
         " needs a positive mint authority, which no observation of absence can supply",
       ], "")
     AdvanceRelationIsAboutAnotherPair {
@@ -393,10 +393,10 @@ fn fleet_desired_advance_refusal_message(cause: FleetDesiredAdvanceRefusal) -> S
       actual_accepted: aa,
     } =>
       join([
-        "the ancestry evidence compares ", git_object_id_wire_hex(oid: rc) as String,
-        " with ", git_object_id_wire_hex(oid: ra) as String,
-        " but the decision is about ", git_object_id_wire_hex(oid: ac) as String,
-        " and ", git_object_id_wire_hex(oid: aa) as String,
+        "the ancestry evidence compares ", extdeps.git.object_store.git_object_id_wire_hex(oid: rc) as String,
+        " with ", extdeps.git.object_store.git_object_id_wire_hex(oid: ra) as String,
+        " but the decision is about ", extdeps.git.object_store.git_object_id_wire_hex(oid: ac) as String,
+        " and ", extdeps.git.object_store.git_object_id_wire_hex(oid: aa) as String,
       ], "")
   }
 }
@@ -459,8 +459,8 @@ fn decide_fleet_desired_advance<E, M>(
 // they are not the exact pair under decision -- without that check the binding would be a naming
 // convention rather than a wall.
 fn decide_against_observed_current<E, M>(
-  accepted: AcceptedFleetRevision<E, M>,
-  current: GitObjectId,
+  accepted: gunbc.fleet_revision_acceptance.AcceptedFleetRevision<E, M>,
+  current: extdeps.git.object_store.GitObjectId,
   relation: FleetRevisionRelationObservation,
 ) -> FleetDesiredAdvanceDecision<E, M> {
   if relation_is_about(
@@ -483,13 +483,13 @@ fn decide_against_observed_current<E, M>(
 }
 
 fn relation_is_about(
-  relation_current: GitObjectId,
-  relation_accepted: GitObjectId,
-  actual_current: GitObjectId,
-  actual_accepted: GitObjectId,
+  relation_current: extdeps.git.object_store.GitObjectId,
+  relation_accepted: extdeps.git.object_store.GitObjectId,
+  actual_current: extdeps.git.object_store.GitObjectId,
+  actual_accepted: extdeps.git.object_store.GitObjectId,
 ) -> Bool {
-  git_object_id_eq(left: relation_current, right: actual_current)
-    && git_object_id_eq(left: relation_accepted, right: actual_accepted)
+  extdeps.git.object_store.git_object_id_eq(left: relation_current, right: actual_current)
+    && extdeps.git.object_store.git_object_id_eq(left: relation_accepted, right: actual_accepted)
 }
 
 // The relation vocabulary is reused from gunbc.live_deploy.revision rather than re-coined: the
@@ -498,21 +498,21 @@ fn relation_is_about(
 // is stated once here: `deployed` is the CURRENT desired ref, `candidate` is the newly ACCEPTED
 // revision.
 fn classify_admitted_relation<E, M>(
-  accepted: AcceptedFleetRevision<E, M>,
-  current: GitObjectId,
-  rel: DeployRevisionRelation,
+  accepted: gunbc.fleet_revision_acceptance.AcceptedFleetRevision<E, M>,
+  current: extdeps.git.object_store.GitObjectId,
+  rel: gunbc.live_deploy.revision.DeployRevisionRelation,
 ) -> FleetDesiredAdvanceDecision<E, M> {
   match rel {
-    SameRevision => FleetDesiredAlreadyConverged { accepted: accepted }
-    DeployedIsAncestor =>
+    gunbc.live_deploy.revision.SameRevision => FleetDesiredAlreadyConverged { accepted: accepted }
+    gunbc.live_deploy.revision.DeployedIsAncestor =>
       FleetDesiredAdvanceAdmitted { accepted: accepted, expected_prior: current }
-    CandidateIsAncestor =>
+    gunbc.live_deploy.revision.CandidateIsAncestor =>
       FleetDesiredSupersededNoOp { accepted: accepted, current: current }
-    UnrelatedHistories =>
+    gunbc.live_deploy.revision.UnrelatedHistories =>
       FleetDesiredAdvanceRefused {
         cause: AdvanceHistoriesUnrelated { current: current, accepted: accepted.revision },
       }
-    RelationUnverifiable { cause: c } =>
+    gunbc.live_deploy.revision.RelationUnverifiable { cause: c } =>
       FleetDesiredAdvanceRefused {
         cause: AdvanceRelationUnobservable {
           current: current,

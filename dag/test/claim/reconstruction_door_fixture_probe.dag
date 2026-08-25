@@ -1,5 +1,6 @@
 module test.claim.reconstruction_door_fixture_probe
 
+
 // Reconstruction-door probe (audit queue item 20a, stored-fixture replay; was labelled "ARM 1"). Declares a service
 // whose `id` output is a refined `NonEmptyStr`. Run under `--record` once,
 // then run each `witness_*` function under `--hermetic` against the SAME

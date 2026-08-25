@@ -91,7 +91,7 @@ fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_method_call",
       dispatch_emit_site: EvalMethodCallShortCircuitSite,
-      enumeration: DeclaredHere { dissolution: unbound_dissolution(description: "eval_method_call's lookup short-circuit is an if-guard rather than a match arm, so it has no token authority to expand from. It dissolves when the short-circuit is either deleted in favour of the algebra arm it shadows, or rewritten as an arm of a v1_method_short_circuit_arms macro in the shape the other five sites now use.") },
+      enumeration: DeclaredHere { dissolution: std.dissolution.unbound_dissolution(description: "eval_method_call's lookup short-circuit is an if-guard rather than a match arm, so it has no token authority to expand from. It dissolves when the short-circuit is either deleted in favour of the algebra arm it shadows, or rewritten as an arm of a v1_method_short_circuit_arms macro in the shape the other five sites now use.") },
     },
     InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "service_dispatch.Filesystem.Read" },
@@ -100,7 +100,7 @@ fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_service_call",
       dispatch_emit_site: EvalServiceCallCarveOutSite,
-      enumeration: DeclaredHere { dissolution: unbound_dissolution(description: "the hermetic checkout carve-out in eval_service_call is the interpreter's only service-name dispatch of its own; every other service operation resolves against ctx.service_ops from the declared .dag corpus. This row dissolves when the carve-out does.") },
+      enumeration: DeclaredHere { dissolution: std.dissolution.unbound_dissolution(description: "the hermetic checkout carve-out in eval_service_call is the interpreter's only service-name dispatch of its own; every other service operation resolves against ctx.service_ops from the declared .dag corpus. This row dissolves when the carve-out does.") },
     },
   ]
 }
@@ -118,7 +118,7 @@ fn arm_is_declared_here(arm: InterpreterPrimitiveDispatchArm) -> Bool {
 // asserts it so the contract note above is enforced rather than merely stated.
 fn arm_declares_dissolution_trigger(arm: InterpreterPrimitiveDispatchArm) -> Bool {
   match arm.enumeration {
-    DeclaredHere { dissolution: d } => !(dissolution_description(condition: d) == "")
+    DeclaredHere { dissolution: d } => !(std.dissolution.dissolution_description(condition: d) == "")
     AuthoredInRoster => false
   }
 }
@@ -144,15 +144,15 @@ fn v1_interpreter_row_count() -> Int {
 }
 
 fn dispatch_site_count() -> Int {
-  count(gunbc.v1_interpreter_primitive_surface.distinct_strings(xs: v1_interpreter_primitive_arms() |> map(r => r.dispatch_symbol)))
+  count(distinct_strings(xs: v1_interpreter_primitive_arms() |> map(r => r.dispatch_symbol)))
 }
 
 fn distinct_arm_identity_count() -> Int {
-  count(gunbc.v1_interpreter_primitive_surface.distinct_strings(xs: v1_interpreter_primitive_arms() |> map(r => r.arm.identity)))
+  count(distinct_strings(xs: v1_interpreter_primitive_arms() |> map(r => r.arm.identity)))
 }
 
 fn authored_spelling_count() -> Int {
-  count(gunbc.v1_interpreter_primitive_surface.distinct_strings(xs: v1_interpreter_primitive_arms() |> map(r => r.authored_spelling)))
+  count(distinct_strings(xs: v1_interpreter_primitive_arms() |> map(r => r.authored_spelling)))
 }
 
 fn spelling_arm_identities(rows: List<InterpreterPrimitiveDispatchArm>, spelling: String) -> List<String> {
@@ -173,7 +173,7 @@ fn shadowed_spellings(rows: List<InterpreterPrimitiveDispatchArm>) -> List<Strin
         spelling_arm_identities(rows: rows, spelling: r.authored_spelling)
           |> filter(id => id != r.arm.identity)) > 0)
     |> map(r => r.authored_spelling)
-  gunbc.v1_interpreter_primitive_surface.distinct_strings(xs: shadowed)
+  distinct_strings(xs: shadowed)
 }
 
 fn row_key(row: InterpreterPrimitiveDispatchArm) -> String {
@@ -192,7 +192,7 @@ fn duplicate_row_keys(rows: List<InterpreterPrimitiveDispatchArm>) -> List<Strin
           && o.arm.identity == r.arm.identity
           && o.dispatch_symbol == r.dispatch_symbol)) > 1)
     |> map(r => row_key(row: r))
-  gunbc.v1_interpreter_primitive_surface.distinct_strings(xs: dupes)
+  distinct_strings(xs: dupes)
 }
 
 fn v1_interpreter_cross_form_spellings() -> List<String> {
@@ -201,7 +201,7 @@ fn v1_interpreter_cross_form_spellings() -> List<String> {
     |> filter(r =>
       count(rows |> filter(o => o.authored_spelling == r.authored_spelling && o.form != r.form)) > 0)
     |> map(r => r.authored_spelling)
-  gunbc.v1_interpreter_primitive_surface.distinct_strings(xs: cross)
+  distinct_strings(xs: cross)
 }
 
 data v1_interpreter_primitive_surface_authority_note: String = "THE V1 INTERPRETER'S PRIMITIVE DISPATCH SURFACE, MADE ENUMERABLE. Before this carrier the surface had no roster anywhere: its only authority was string match arms inside the hand-maintained seed src/v1/stage0/src/v1_interpreter.rs, so 'which primitives does the interpreter provide' was a question no consumer could ask. That is why it was the fifth surface the primitive-identity census could not read, and why v1 deletion could not be sequenced honestly: you cannot show that nothing still needs a capability you cannot enumerate.\n\nTHE SURFACE IS A CLOSED SET OF DISPATCH SYMBOLS. Measured against the tree rather than assumed: eval_builtin_inner; eval_algebra_method_inner; eval_call, which carries TWO separate mechanisms -- guard-predicated v4 std bridge families AND a native fold intercept -- both running BEFORE the free-call dispatch, which is why fold_list and the bridge names never reach the builtin registry; try_v2_std_collection_map_primitive_grounding; try_parse_table_memo_dispatch; a lookup short-circuit inside eval_method_call; and the Filesystem.Read hermetic carve-out in eval_service_call. dispatch_site_count() derives the site count from the roster rather than restating it in prose. AN EARLIER REVISION UNDERCOUNTED eval_call by modelling it as the fold intercept alone, omitting the bridge spellings; the omission was caught in review, and it is recorded here rather than quietly corrected because it is the precise failure this carrier exists to prevent -- a denominator asserted from the sites someone happened to read.\n\nR1 INVERTS THE ROSTER: v1_interpreter_authored_roster_arms() is the canonical authority; gunbc.v1_interpreter_dispatch_emit derives Rust enum variants and spelling-to-variant lookup tables into src/v1/stage0/src/v1_interpreter_dispatch_generated.rs (drift-gated via gunbc.generated_artifact V1InterpreterDispatchGeneratedRsArtifact). Handler macros in v1_interpreter.rs consult the generated lookup before matching bodies on the generated enum. Exhaustiveness is site-scoped: on single-family sites (eval_builtin_inner, eval_algebra_method_inner, try_v2_std_collection_map_primitive_grounding, try_parse_table_memo_dispatch) a roster row without a handler body fails cargo build via a non-exhaustive inner match on the generated enum; on eval_call_bridge and eval_call_native_intercept — shared enums with per-family macro subsets — the same mismatch degrades to runtime unreachable! until per-family enum split lands (named follow-up). A handler identity absent from the roster cannot be reached through generated lookup without editing the roster (DESIGN.md 5, construction over validation). No live-tree scan of Rust source is involved and none is wanted.\n\nTHE RESIDUE IS CHECKABLE, WHICH IS THE POINT. Every primitive handler macro arm carries the token form `arm \"identity\" { \"spelling\" } =>` keyed to the generated enum; routing uses the generated lookup, not the macro spelling literals. What remains in the file as a BARE quoted match arm is non-primitive dispatch: pattern kinds, shell/file output channels, auth kinds, TLS postures, HTTP methods, and similar transport and value vocabulary -- not primitive names. So 'is there an unenumerated primitive arm' is answerable by looking for a bare quoted arm outside that named list.\n\nSERVICE OPERATIONS ARE NOT ARMS, and that is a finding rather than an omission. eval_service_call resolves Service.Op against ctx.service_ops, which is built from the DECLARED .dag corpus, so that population is already enumerable as data and is deliberately outside this roster's denominator. The interpreter contributes exactly one service-name dispatch of its own -- the Filesystem.Read hermetic checkout carve-out -- plus transport realizations, which dispatch on transport and HTTP method values rather than on primitive names. Only the carve-out is a row here.\n\nROWS CARRY THE ARM'S OWN FACTS ONLY. There is deliberately no primitive-identity field, not even an optional one: an arm that joins to no known primitive must remain representable, because that population is exactly what a primitive-identity join needs to discover. A roster whose shape forbade recording an unjoined arm would be complete by construction and useless as a denominator. This carrier answers WHICH ARMS EXIST; which primitive each one realizes belongs to the join.\n\nONE ROW PER (SITE, ARM IDENTITY, SPELLING); ALIASES SHARE AN ARM IDENTITY. length, count and size are one arm under three rows, so they cannot disagree by construction. duplicate_row_keys asserts that triple is unique across the whole surface. A spelling appearing under two different arm identities at the SAME site is unreachable code, because the earlier arm always wins. A spelling appearing at two different SITES is two genuine implementations: lookup is the live specimen, dispatched both by the eval_method_call short-circuit and by the algebra arm the short-circuit shadows."
@@ -1040,6 +1040,24 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       arm: InterpreterPrimitiveArmId { identity: "free_call.compile_dag_diagnostic_census" },
       form: FreeCall,
       authored_spelling: "compile_dag_diagnostic_census",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.observe_declared_import_closure_symbol_binding" },
+      form: FreeCall,
+      authored_spelling: "observe_declared_import_closure_symbol_binding",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.class_b_import_closure_gate_not_affected_skip" },
+      form: FreeCall,
+      authored_spelling: "class_b_import_closure_gate_not_affected_skip",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
       dispatch_emit_site: EvalBuiltinInnerSite,

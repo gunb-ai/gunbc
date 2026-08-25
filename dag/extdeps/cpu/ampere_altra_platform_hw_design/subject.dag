@@ -3,21 +3,21 @@ module extdeps.cpu.ampere_altra_platform_hw_design.subject
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
-    locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Apdf",
+    scheme: extdeps.uri.Https,
+    locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Altra_Platform_HW_Design_Specification_v1.00_20210120.pdf",
   }
 }
 
 data altra_platform_hw_design_subject_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
-    locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Apdf",
+    scheme: extdeps.uri.Https,
+    locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Altra_Platform_HW_Design_Specification_v1.00_20210120.pdf",
   }
 }
 
 data ampere_technical_document_index_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "amperecomputing.com/products/processors/altra",
   }
 }
@@ -65,7 +65,7 @@ type AltraPlatformHwDesignSpecification {
   revision: AltraPlatformHwDesignRevision
   version_label: std.types.NonEmptyStr
   publication_date: extdeps.publication.SpecificationDocumentDate
-  publisher: Vendor<extdeps.hardware.Hardware>
+  publisher: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   supersession_standing: HeldSpecificationSupersessionStanding
 }
 
@@ -74,7 +74,7 @@ data altra_platform_hw_design_specification: AltraPlatformHwDesignSpecification 
   revision: AltraPlatformHwDesignRev1_00 {},
   version_label: altra_platform_hw_design_version_label,
   publication_date: altra_platform_hw_design_publication_date,
-  publisher: ampere_vendor,
+  publisher: extdeps.vendor.ampere.ampere_vendor,
   supersession_standing: altra_platform_hw_design_supersession_standing,
 }
 
@@ -83,10 +83,10 @@ data altra_platform_hw_design_model_scope: extdeps.external_authority.ExternalMo
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
       decl_name: "altra_platform_hw_design_specification",
-      field: WholeDeclaration,
+      field: std.decl_ref.WholeDeclaration,
     }
   },
-  first_citation: extdeps.cpu.ampere_altra_platform_hw_design.subject.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [],
 }
 

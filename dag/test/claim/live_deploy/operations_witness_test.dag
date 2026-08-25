@@ -1,6 +1,7 @@
 module test.claim.live_deploy.operations_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data apt_install_path: String = "dag/extdeps/package_managers/apt.dag"
 data apt_install_service: String = "apt.PackageManager"
@@ -17,7 +18,7 @@ fn argv_join(argv: List<String>) -> String {
 // every argv element is a separately quoted word, so an element carrying a space or a quote
 // keeps its boundary. Transcribing the text here would only restate whatever the emitter did.
 fn quoted_command(argv: List<String>) -> String {
-  join(map(argv, w => posix_single_quote(spelling: w)), " ")
+  join(map(argv, w => extdeps.posix.shell_command_language.posix_single_quote(spelling: w)), " ")
 }
 
 fn quoted_privileged_command(argv: List<String>) -> String {
@@ -25,14 +26,14 @@ fn quoted_privileged_command(argv: List<String>) -> String {
 }
 
 test fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
-  let helper = dpkg_status_argv(package: package_tailscale)
-  let transport = operation_argv_tokens_or_refusal_label(
+  let helper = extdeps.dpkg.dpkg_status_argv(package: extdeps.apt.package_tailscale)
+  let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       "dag/extdeps/package_managers/dpkg.dag",
       "dpkg.Package",
       "Status",
       [
-        operation_argv_bind_text(name: "package", text: package_tailscale as String)
+        v2.std.operation_argv.operation_argv_bind_text(name: "package", text: extdeps.apt.package_tailscale as String)
       ]
     )
   )
@@ -40,14 +41,14 @@ test fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
 }
 
 test fn witness_apt_install_argv_matches_transport_row() -> Bool {
-  let helper = apt_install_argv(package: package_nodejs)
-  let transport = operation_argv_tokens_or_refusal_label(
+  let helper = extdeps.apt.apt_install_argv(package: extdeps.apt.package_nodejs)
+  let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       apt_install_path,
       apt_install_service,
       apt_install_operation,
       [
-        operation_argv_bind_text(name: "package", text: package_nodejs as String)
+        v2.std.operation_argv.operation_argv_bind_text(name: "package", text: extdeps.apt.package_nodejs as String)
       ]
     )
   )
@@ -55,14 +56,14 @@ test fn witness_apt_install_argv_matches_transport_row() -> Bool {
 }
 
 test fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
-  let helper = systemctl_restart_argv(unit: gunbc_roadmap_unit_name)
-  let transport = operation_argv_tokens_or_refusal_label(
+  let helper = extdeps.systemd.systemctl.systemctl_restart_argv(unit: gunbc.live_deploy.spec.gunbc_roadmap_unit_name)
+  let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       systemctl_path,
       systemctl_service,
       "Restart",
       [
-        operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
+        v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: gunbc.live_deploy.spec.gunbc_roadmap_unit_name as String)
       ]
     )
   )
@@ -70,14 +71,14 @@ test fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
 }
 
 test fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
-  let helper = systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name)
-  let transport = operation_argv_tokens_or_refusal_label(
+  let helper = extdeps.systemd.systemctl.systemctl_disable_now_argv(unit: gunbc.live_deploy.spec.gunbc_roadmap_unit_name)
+  let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       systemctl_path,
       systemctl_service,
       "DisableNow",
       [
-        operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
+        v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: gunbc.live_deploy.spec.gunbc_roadmap_unit_name as String)
       ]
     )
   )
@@ -85,8 +86,8 @@ test fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
 }
 
 test fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
-  let helper = systemctl_daemon_reload_argv()
-  let transport = operation_argv_tokens_or_refusal_label(
+  let helper = extdeps.systemd.systemctl.systemctl_daemon_reload_argv()
+  let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       systemctl_path,
       systemctl_service,
@@ -98,14 +99,14 @@ test fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
 }
 
 test fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
-  let helper = systemctl_enable_argv(unit: gunbc_roadmap_unit_name)
-  let transport = operation_argv_tokens_or_refusal_label(
+  let helper = extdeps.systemd.systemctl.systemctl_enable_argv(unit: gunbc.live_deploy.spec.gunbc_roadmap_unit_name)
+  let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       systemctl_path,
       systemctl_service,
       "Enable",
       [
-        operation_argv_bind_text(name: "unit", text: gunbc_roadmap_unit_name as String)
+        v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: gunbc.live_deploy.spec.gunbc_roadmap_unit_name as String)
       ]
     )
   )
@@ -120,58 +121,58 @@ test fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
 // expectation under a "matches transport" name is the worst of both — it looks like coherence
 // and asserts a byte string nobody derived.
 test fn witness_dpkg_status_command_matches_transport() -> Bool {
-  dpkg_status_command(package: package_tailscale)
-    == quoted_command(argv: dpkg_status_argv(package: package_tailscale))
+  gunbc.live_deploy.operations.dpkg_status_command(package: extdeps.apt.package_tailscale)
+    == quoted_command(argv: extdeps.dpkg.dpkg_status_argv(package: extdeps.apt.package_tailscale))
 }
 
 test fn witness_apt_install_command_matches_transport() -> Bool {
-  apt_install_command(package: package_nodejs, privileged: false)
-    == quoted_command(argv: apt_install_argv(package: package_nodejs))
+  gunbc.live_deploy.operations.apt_install_command(package: extdeps.apt.package_nodejs, privileged: false)
+    == quoted_command(argv: extdeps.apt.apt_install_argv(package: extdeps.apt.package_nodejs))
 }
 
 test fn witness_privileged_apt_install_command() -> Bool {
-  apt_install_command(package: package_tailscale, privileged: true)
-    == quoted_privileged_command(argv: apt_install_argv(package: package_tailscale))
+  gunbc.live_deploy.operations.apt_install_command(package: extdeps.apt.package_tailscale, privileged: true)
+    == quoted_privileged_command(argv: extdeps.apt.apt_install_argv(package: extdeps.apt.package_tailscale))
 }
 
 test fn witness_systemctl_restart_command_matches_transport() -> Bool {
-  systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true)
-    == quoted_privileged_command(argv: systemctl_restart_argv(unit: gunbc_roadmap_unit_name))
+  gunbc.live_deploy.operations.systemctl_restart_command(unit: gunbc.live_deploy.spec.gunbc_roadmap_unit_name, privileged: true)
+    == quoted_privileged_command(argv: extdeps.systemd.systemctl.systemctl_restart_argv(unit: gunbc.live_deploy.spec.gunbc_roadmap_unit_name))
 }
 
 test fn witness_systemctl_enable_command_matches_transport() -> Bool {
-  systemctl_enable_command(unit: gunbc_roadmap_unit_name, privileged: true)
-    == quoted_privileged_command(argv: systemctl_enable_argv(unit: gunbc_roadmap_unit_name))
+  gunbc.live_deploy.operations.systemctl_enable_command(unit: gunbc.live_deploy.spec.gunbc_roadmap_unit_name, privileged: true)
+    == quoted_privileged_command(argv: extdeps.systemd.systemctl.systemctl_enable_argv(unit: gunbc.live_deploy.spec.gunbc_roadmap_unit_name))
 }
 
 test fn witness_systemctl_disable_now_command_matches_transport() -> Bool {
-  systemctl_disable_now_command(unit: gunbc_roadmap_unit_name, privileged: true)
-    == quoted_privileged_command(argv: systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name))
+  gunbc.live_deploy.operations.systemctl_disable_now_command(unit: gunbc.live_deploy.spec.gunbc_roadmap_unit_name, privileged: true)
+    == quoted_privileged_command(argv: extdeps.systemd.systemctl.systemctl_disable_now_argv(unit: gunbc.live_deploy.spec.gunbc_roadmap_unit_name))
 }
 
 test fn witness_systemctl_daemon_reload_command_privileged() -> Bool {
-  systemctl_daemon_reload_command(privileged: true)
-    == quoted_privileged_command(argv: systemctl_daemon_reload_argv())
+  gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)
+    == quoted_privileged_command(argv: extdeps.systemd.systemctl.systemctl_daemon_reload_argv())
 }
 
 test fn live_deploy_operations_RED_apt_install_wrong_package_golden() -> Bool {
-  apt_install_command(package: package_tailscale, privileged: false)
-    != quoted_command(argv: apt_install_argv(package: package_nodejs))
+  gunbc.live_deploy.operations.apt_install_command(package: extdeps.apt.package_tailscale, privileged: false)
+    != quoted_command(argv: extdeps.apt.apt_install_argv(package: extdeps.apt.package_nodejs))
 }
 
 // RED discriminators against the former `join(argv, " ")` spelling returning. Under it an argv
 // element carrying a space or an apostrophe lost its boundary and the host re-parsed it as
 // several words; both assertions fail on that spelling and pass on the modelled command.
-data spacey_package: NonEmptyStr = "tail scale"
+data spacey_package: std.types.NonEmptyStr = "tail scale"
 
 test fn operations_RED_argv_element_with_a_space_keeps_its_boundary() -> Bool {
   string_contains(
-    s: apt_install_command(package: spacey_package, privileged: false),
-    pattern: posix_single_quote(spelling: spacey_package as String),
+    s: gunbc.live_deploy.operations.apt_install_command(package: spacey_package, privileged: false),
+    pattern: extdeps.posix.shell_command_language.posix_single_quote(spelling: spacey_package as String),
   )
 }
 
 test fn operations_RED_command_is_not_a_bare_space_join() -> Bool {
-  apt_install_command(package: spacey_package, privileged: false)
-    != argv_join(argv: apt_install_argv(package: spacey_package))
+  gunbc.live_deploy.operations.apt_install_command(package: spacey_package, privileged: false)
+    != argv_join(argv: extdeps.apt.apt_install_argv(package: spacey_package))
 }

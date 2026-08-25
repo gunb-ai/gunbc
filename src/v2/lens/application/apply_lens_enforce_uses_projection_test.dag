@@ -4,44 +4,44 @@ module v2.test.lens_application.apply_lens_enforce_uses_projection
 data projection_test_section: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^projection_section_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data projection_test_root: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
     v2.std.node.Edge {
       label: v2.std.node.Named { name: ^projection_section_step },
       target: projection_test_section
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-fn projection_test_read(root: v2.std.node.Node) -> Outcome<v2.std.node.Symbol> {
+fn projection_test_read(root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   match root.kind {
-    TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
-    TypeNode { connective: Conj } => outcome_accepted(value: ^projection_test_symbol)
-    ComputationNode { behavior: _ } => outcome_accepted(value: ^projection_test_symbol)
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } => v2.std.diagnostic.outcome_accepted(value: id)
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } => v2.std.diagnostic.outcome_accepted(value: ^projection_test_symbol)
+    v2.std.node.ComputationNode { behavior: _ } => v2.std.diagnostic.outcome_accepted(value: ^projection_test_symbol)
   }
 }
 
-data projection_test_lens: Lens<v2.std.node.Symbol> = v2.lens.application.Lens { read: projection_test_read }
+data projection_test_lens: v2.lens.application.Lens<v2.std.node.Symbol> = v2.lens.application.Lens { read: projection_test_read }
 
 fn projection_test_project(output: v2.std.node.Symbol) -> v2.std.node.Symbol {
   ^projection_projected_symbol
 }
 
-fn projection_test_violates(output: v2.std.node.Symbol, declared: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn projection_test_violates(output: v2.std.node.Symbol, declared: v2.std.node.Symbol) -> Bool {
   output == ^projection_budget_fail && declared == ^projection_budget_fail
 }
 
-data projection_test_enforcement: LensEnforcement<Symbol, Symbol, Symbol> = v2.lens.application.LensEnforcement {
+data projection_test_enforcement: v2.lens.application.LensEnforcement<v2.std.node.Symbol, v2.std.node.Symbol, v2.std.node.Symbol> = v2.lens.application.LensEnforcement {
   project: projection_test_project,
   violates: projection_test_violates
 }
 
-data projection_test_enforceable: EnforceableLens<Symbol, Symbol, Symbol> = v2.lens.application.EnforceableLens {
+data projection_test_enforceable: v2.lens.application.EnforceableLens<v2.std.node.Symbol, v2.std.node.Symbol, v2.std.node.Symbol> = v2.lens.application.EnforceableLens {
   lens: projection_test_lens,
   enforcement: projection_test_enforcement
 }
@@ -50,15 +50,15 @@ data projection_test_declaration: v2.lens.application.DeclarationId = v2.lens.ap
   path: v2.std.node.Path { steps: [^projection_section_step] }
 }
 
-test fn apply_lens_enforce_projection_claim_holds() -> v2.std.logic.Bool {
-  match apply_lens_enforce(
+test fn apply_lens_enforce_projection_claim_holds() -> Bool {
+  match v2.lens.application.apply_lens_enforce(
     enforceable: projection_test_enforceable,
     section: v2.lens.application.DeclarationScope { declaration: projection_test_declaration },
     root: projection_test_root,
     budget: ^projection_budget_ok
   ) {
-    Accepted { value: result, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: result, diagnostics: _ } =>
       result.output == ^projection_section_symbol && result.projected == ^projection_projected_symbol
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

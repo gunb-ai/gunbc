@@ -1,44 +1,44 @@
 module v2.test.emit.rust_logic_complement_emit
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn rust_logic_complement_emit_facts_miss(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_absent()
+  v2.std.optional.optional_absent()
 }
 
 fn rust_logic_complement_emit_inferred_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.algebra.PartialFunction { lookup: rust_logic_complement_emit_facts_miss }
+    facts: PartialFunction { lookup: rust_logic_complement_emit_facts_miss }
   }
 }
 
-data rust_logic_complement_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree = rust_logic_complement_emit_inferred_tree_for(root: dag_complement_arrow_with_body_fixture)
+data rust_logic_complement_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree = rust_logic_complement_emit_inferred_tree_for(root: v2.extdeps.languages.dag.dag_complement_arrow_with_body_fixture)
 
-data rust_logic_complement_emit_swapped_inferred_tree: v2.compiler.inferred_tree.InferredTree = rust_logic_complement_emit_inferred_tree_for(root: dag_complement_arrow_with_body_swapped_arms_fixture)
+data rust_logic_complement_emit_swapped_inferred_tree: v2.compiler.inferred_tree.InferredTree = rust_logic_complement_emit_inferred_tree_for(root: v2.extdeps.languages.dag.dag_complement_arrow_with_body_swapped_arms_fixture)
 
-test fn rust_logic_complement_emit_accepts() -> v2.std.logic.Bool {
+test fn rust_logic_complement_emit_accepts() -> Bool {
   match v2.compiler.emit.emit(
     tree: rust_logic_complement_emit_inferred_tree,
-    target: rust_logic_complement_target_model_staging()
+    target: v2.extdeps.languages.rust_test.rust_logic_complement_target_model_staging()
   ) {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_logic_complement_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried == v2.extdeps.languages.rust_test.rust_logic_complement_source_text) && (d == v2.std.diagnostic.None)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_logic_complement_emit_swapped_discriminates() -> v2.std.logic.Bool {
+test fn rust_logic_complement_emit_swapped_discriminates() -> Bool {
   match v2.compiler.emit.emit(
     tree: rust_logic_complement_emit_swapped_inferred_tree,
-    target: rust_logic_complement_target_model_staging()
+    target: v2.extdeps.languages.rust_test.rust_logic_complement_target_model_staging()
   ) {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_logic_complement_swapped_arms_source_text) &&
-      (source.carried != rust_logic_complement_source_text) &&
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried == v2.extdeps.languages.rust_test.rust_logic_complement_swapped_arms_source_text) &&
+      (source.carried != v2.extdeps.languages.rust_test.rust_logic_complement_source_text) &&
       (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

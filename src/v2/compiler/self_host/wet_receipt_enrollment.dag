@@ -7,9 +7,9 @@ data falsifier_self_host_wet_cadence_rehome_note: String = "2026-07-25 REHOME of
 
 data falsifier_self_host_wet_build_verification_cadence_note: String = "INTERIM home for green-wet TEMPLATE receipts (falsifier_self_host_wet_template_entries) after the 2026-07-25 rehome. Owner: #7199 falsifier lane (briansrls). Target date: 2026-08-08 — by then either (a) a dedicated build-verification workflow enrolls these rows under gunbc_falsifier_self_host_wet_receipt_wall_budget with kill-at-deadline on a sccache-healthy runner class, or (b) falsifier_self_host_wet_cadence_active flips true after a dated under-budget receipt on that runner class (typed AND). PARTIAL LAND 2026-08-06 (Lane D): arm (b) cadence flag only — falsifier.yml gunbc_falsifier_plan batch 2 schedules the template roster; the under-budget receipt leg of the typed AND remains OPEN (operator routing: interpreter_dispatch_bijection_real_roster_red_holds whole-transport wall ~692s vs 600s budget; witness not shrunk). Distinct from falsifier_self_host_wet_known_red_entries (assemble-red SelfEmitted expect_red quarantine — live on the falsifier, not this cadence)."
 
-data falsifier_self_host_wet_cadence_active: v2.std.logic.Bool = true
+data falsifier_self_host_wet_cadence_active: Bool = true
 
-fn falsifier_self_host_wet_cadence_is_active() -> v2.std.logic.Bool {
+fn falsifier_self_host_wet_cadence_is_active() -> Bool {
   falsifier_self_host_wet_cadence_active
 }
 
@@ -70,7 +70,7 @@ data falsifier_self_host_wet_template_entries: List<std.realization_schedule.Sch
   )
 ]
 
-fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() -> v2.std.logic.Bool {
+fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() -> Bool {
   falsifier_self_host_wet_cadence_is_active()
     && fold(
       falsifier_self_host_wet_template_entries,
@@ -148,8 +148,8 @@ data falsifier_self_host_wet_known_red_note: String = "Wet expect_red quarantine
 
 data falsifier_self_host_wet_known_red_entries: List<std.realization_schedule.ScheduleWitnessEntry> = v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries.seed_emitter_behavioral_wet_known_red_entries
 
-fn falsifier_self_host_wet_known_red_batch_enrolled() -> v2.std.logic.Bool {
-  length(xs: falsifier_self_host_wet_known_red_entries) > 0
+fn falsifier_self_host_wet_known_red_batch_enrolled() -> Bool {
+  v2.std.algebra.length(xs: falsifier_self_host_wet_known_red_entries) > 0
 }
 
 fn falsifier_self_host_wet_known_red_roster() -> List<std.realization_schedule.ScheduleWitnessEntry> {
@@ -162,7 +162,7 @@ fn schedule_entry_from_binding(b: v2.compiler.self_host.seed_emitter_behavioral_
 
 data wet_enrollment_roster_term_deleted_note: String = "The frontier-enrolled term is gone with the self-host frontier roster, and it was already empty. falsifier_self_host_wet_entries formerly appended a fold over the roster that admitted a row only when find_wet_receipt_binding matched its module_path; no row matched, which is precisely what falsifier_self_host_wet_template_only_holds asserted by requiring that term to have length zero. So the wet falsifier lane ran on template entries alone before the deletion and runs on template entries alone after it, with no entry added, removed or reordered.
 
-That gate is retired rather than weakened: it claimed the roster enrolls nothing, and there is no roster left to enroll anything. What survives is the binding lookup itself (find_wet_receipt_binding, schedule_entry_from_binding), which is keyed on a module path and needs no roster to be asked."
+That gate is retired rather than weakened: it claimed the roster enrolls nothing, and there is no roster left to enroll anything. What survives is the binding lookup itself (v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings.find_wet_receipt_binding, schedule_entry_from_binding), which is keyed on a module path and needs no roster to be asked."
 
 fn falsifier_self_host_wet_entries() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   falsifier_self_host_wet_template_entries

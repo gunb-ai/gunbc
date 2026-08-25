@@ -2,7 +2,7 @@ module examples.gunbhub_serve_program
 
 fn wa_unknown_path_is_not_found() -> Bool {
   match serve_gunbhub_request(
-    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "/unknown/nonexistent" }
+    req: GunbhubServeRequest { method: std.types.GET, path: "/unknown/nonexistent" }
   ) {
     RouteNotFound => true
     Served { response: _ } => false
@@ -20,7 +20,7 @@ fn wb_unsafe_href_is_rejected() -> Bool {
 
 fn wb_unsafe_href_rejected_before_serve() -> Bool {
   match serve_gunbhub_page_source(
-    source: gunbc.gunbhub_serve.ReactPage { node: gunbhub_hostile_page() }
+    source: ReactPage { node: gunbhub_hostile_page() }
   ) {
     RenderRejectedBeforeServe { reason: _ } => true
     Served { response: _ } => false
@@ -31,7 +31,7 @@ fn wb_unsafe_href_rejected_before_serve() -> Bool {
 
 fn browse_root_serves_200() -> Bool {
   match serve_gunbhub_request(
-    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "/" }
+    req: GunbhubServeRequest { method: std.types.GET, path: "/" }
   ) {
     Served { response: r } => r.status == 200 && r.body != ""
     RouteNotFound => false
@@ -50,7 +50,7 @@ func main() -> std.process.ProcessExit {
     std.process.ExitSuccess
   } else {
     std.process.ExitFailure {
-      code: exit_code_general_error,
+      code: extdeps.process.posix_exit.exit_code_general_error,
       reason: "gunbhub serve program assertion failed",
     }
   }

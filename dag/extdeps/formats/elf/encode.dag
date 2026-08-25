@@ -3,7 +3,7 @@ module extdeps.formats.elf.encode
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html"
   }
 }
@@ -172,7 +172,7 @@ fn encode_elf64_phdr(phdr: extdeps.formats.elf.segments.Elf64Phdr) -> List<Int> 
 fn int_lists_equal_at(left: List<Int>, right: List<Int>, i: Int, n: Int) -> Bool {
   if i >= n {
     true
-  } else if byte_at_in_bounds(left, i) != byte_at_in_bounds(right, i) {
+  } else if extdeps.formats.elf.types.byte_at_in_bounds(left, i) != extdeps.formats.elf.types.byte_at_in_bounds(right, i) {
     false
   } else {
     int_lists_equal_at(left, right, i: i + 1, n: n)
@@ -185,7 +185,7 @@ fn int_lists_equal(left: List<Int>, right: List<Int>) -> Bool {
 }
 
 fn witness_encode_decode_roundtrip_ehdr(hdr_bytes: List<Int>) -> Bool {
-  match decode_elf64_ehdr(hdr_bytes) {
+  match extdeps.formats.elf.types.decode_elf64_ehdr(hdr_bytes) {
     ElfDecoded { value: hdr } =>
       let out = encode_elf64_ehdr(hdr)
       count(out) == elf64_ehdr_size && int_lists_equal(hdr_bytes, out)

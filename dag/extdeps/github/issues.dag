@@ -3,14 +3,14 @@ module extdeps.github.issues
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/rest/issues/issues"
   }
 }
 
 data issue_comments_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/rest/issues/comments"
   }
 }
@@ -24,11 +24,11 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.issues",
       decl_name: "IssueState",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.github.issues.extdeps_external_authority_anchor,
-  further_citations: [extdeps.github.issues.issue_comments_authority]
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [issue_comments_authority]
 }
 
 type IssueState = Open | Closed
@@ -77,7 +77,7 @@ data issues_list_comments_absent_note: String = "THERE IS DELIBERATELY NO ListCo
 
 service github.Issues {
   config {
-    endpoint: default_api_base
+    endpoint: extdeps.github.github.default_api_base
     auth: Bearer
 
     rate_limit: { requests: 5000, per: hour, scope: core }
@@ -103,10 +103,10 @@ service github.Issues {
     }
     response {
       200 => String
-      401 => GitHubErrorShape
-      404 => GitHubErrorShape
-      422 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      422 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 
@@ -130,11 +130,11 @@ service github.Issues {
     }
     response {
       201 => Issue
-      401 => GitHubErrorShape
-      403 => GitHubErrorShape
-      404 => GitHubErrorShape
-      422 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      403 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      422 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 
@@ -159,11 +159,11 @@ service github.Issues {
     }
     response {
       200 => Issue
-      401 => GitHubErrorShape
-      403 => GitHubErrorShape
-      404 => GitHubErrorShape
-      422 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      403 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      422 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 
@@ -186,10 +186,10 @@ service github.Issues {
     }
     response {
       201 => IssueComment
-      401 => GitHubErrorShape
-      404 => GitHubErrorShape
-      422 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      422 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 }

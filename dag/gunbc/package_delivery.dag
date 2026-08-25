@@ -35,11 +35,11 @@ type CodexNpmIntegrityAdmission
 
 fn codex_admit_npm_integrity(
   integrity: extdeps.npm.NpmRegistryIntegrity,
-) -> gunbc.package_delivery.CodexNpmIntegrityAdmission {
+) -> CodexNpmIntegrityAdmission {
   match integrity {
-    NpmRegistrySha512Integrity { digest } =>
+    extdeps.npm.NpmRegistrySha512Integrity { digest } =>
       CodexNpmIntegrityAdmitted { digest: digest }
-    NpmRegistrySha1Integrity { digest } =>
+    extdeps.npm.NpmRegistrySha1Integrity { digest } =>
       CodexNpmIntegritySha1Unsupported { digest: digest }
   }
 }
@@ -71,8 +71,8 @@ type PackageArchiveDigestAdmission
 
 fn admit_observed_archive_digest(
   expected: std.content_hash.Sha512Digest,
-  observation: gunbc.package_delivery.PackageArchiveDigestObservation,
-) -> gunbc.package_delivery.PackageArchiveDigestAdmission {
+  observation: PackageArchiveDigestObservation,
+) -> PackageArchiveDigestAdmission {
   match observation {
     PackageArchiveDigestObserved { locator, observed } =>
       if (expected.hex as String) == (observed.hex as String) {
@@ -92,11 +92,11 @@ fn admit_observed_archive_digest(
 fn observe_package_archive_at_path(
   locator: std.types.NonEmptyStr,
   path: std.types.FilePath,
-) -> gunbc.package_delivery.PackageArchiveDigestObservation {
-  match sha512sum_observe_file(path: path) {
-    Sha512FileObserved { digest } =>
+) -> PackageArchiveDigestObservation {
+  match extdeps.tools.sha512sum.sha512sum_observe_file(path: path) {
+    extdeps.tools.sha512sum.Sha512FileObserved { digest } =>
       PackageArchiveDigestObserved { locator: locator, observed: digest }
-    Sha512FileObservationRefused { cause } =>
+    extdeps.tools.sha512sum.Sha512FileObservationRefused { cause } =>
       PackageArchiveDigestObservationRefused { locator: locator, cause: cause }
   }
 }
@@ -116,7 +116,7 @@ data codex_registry_locator_admission_note: String = "Digest matching proves con
 
 fn admit_codex_registry_artifact_locator(
   locator: std.types.NonEmptyStr,
-) -> gunbc.package_delivery.CodexRegistryLocatorAdmission {
+) -> CodexRegistryLocatorAdmission {
   let s = locator as String
   if s.starts_with(prefix: codex_npm_registry_https_prefix) {
     if s.contains("..") {
@@ -154,22 +154,22 @@ type AdmittedPackageArtifactReceipt {
 data admitted_package_path_note: String = "Staging archive paths are NOT durable receipt fields. StagedAdmittedPackageArtifact carries local_artifact_path only while the staging directory lives; CodexRuntimeBundleReceipt / CodexRuntimeBundle retain digest-only AdmittedPackageArtifactReceipt rows after staging is deleted."
 
 type StagedAdmittedPackageArtifact {
-  receipt: gunbc.package_delivery.AdmittedPackageArtifactReceipt
+  receipt: AdmittedPackageArtifactReceipt
   local_artifact_path: std.types.FilePath
 }
 
 type RegistryArtifactAcquisition
   = RegistryArtifactAdmitted {
-      staged: gunbc.package_delivery.StagedAdmittedPackageArtifact
+      staged: StagedAdmittedPackageArtifact
     }
   | RegistryArtifactLocatorRefused {
-      admission: gunbc.package_delivery.CodexRegistryLocatorAdmission
+      admission: CodexRegistryLocatorAdmission
     }
   | RegistryArtifactDownloadRefused {
       locator: std.types.NonEmptyStr
     }
   | RegistryArtifactIntegrityRefused {
-      admission: gunbc.package_delivery.PackageArchiveDigestAdmission
+      admission: PackageArchiveDigestAdmission
     }
   | RegistryArtifactSha1Unsupported {
       digest: std.content_hash.Sha1Digest
@@ -179,7 +179,7 @@ fn acquire_and_admit_registry_artifact(
   artifact: extdeps.npm.NpmRegistryArtifact,
   lock_node_key: std.types.NonEmptyStr,
   dest_dir: std.types.FilePath,
-) -> gunbc.package_delivery.RegistryArtifactAcquisition {
+) -> RegistryArtifactAcquisition {
   match admit_codex_registry_artifact_locator(locator: artifact.resolved.locator) {
     CodexRegistryLocatorRefused { locator, cause } =>
       RegistryArtifactLocatorRefused {
@@ -210,8 +210,8 @@ fn acquire_and_admit_registry_artifact(
             ) {
               PackageArchiveDigestMatched { locator: _, digest } =>
                 RegistryArtifactAdmitted {
-                  staged: gunbc.package_delivery.StagedAdmittedPackageArtifact {
-                    receipt: gunbc.package_delivery.AdmittedPackageArtifactReceipt {
+                  staged: StagedAdmittedPackageArtifact {
+                    receipt: AdmittedPackageArtifactReceipt {
                       lock_node_key: lock_node_key,
                       package_name: artifact.package.name,
                       version: artifact.version,
@@ -233,7 +233,7 @@ fn acquire_and_admit_registry_artifact(
 fn admit_codex_package_lock_graph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>(
   raw_graph: extdeps.package.PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>,
 ) -> extdeps.package.PackageLockGraphAdmission<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind> {
-  package_lock_admit_graph(graph: raw_graph)
+  extdeps.package.package_lock_admit_graph(graph: raw_graph)
 }
 
 type CodexPackageLockGraph = extdeps.package.PackageLockGraph<extdeps.npm.NpmPackageLockManager, extdeps.npm.NpmLockPathKey, extdeps.npm.NpmLockNodeSelection, extdeps.npm.NpmLockNodeMetadata, extdeps.npm.NpmDependencyKind>
@@ -244,8 +244,8 @@ type CodexPackageLockNode = extdeps.package.PackageLockNode<extdeps.npm.NpmLockP
 
 type CodexPackageLockAdmission
   = CodexPackageLockAdmitted {
-      graph: gunbc.package_delivery.CodexPackageLockGraph
-      nodes: List<gunbc.package_delivery.CodexPackageLockNode>
+      graph: CodexPackageLockGraph
+      nodes: List<CodexPackageLockNode>
       registry_artifacts: List<extdeps.npm.NpmRegistryArtifact>
     }
   | CodexPackageLockParseFailed {
@@ -255,32 +255,32 @@ type CodexPackageLockAdmission
       unsupported: List<extdeps.npm.NpmLockNodeFormUnsupportedCarrier>
     }
   | CodexPackageLockGraphRefused {
-      admission: gunbc.package_delivery.CodexPackageLockGraphAdmission
+      admission: CodexPackageLockGraphAdmission
     }
 
 fn codex_registry_artifacts_from_nodes(
-  nodes: List<gunbc.package_delivery.CodexPackageLockNode>,
+  nodes: List<CodexPackageLockNode>,
 ) -> List<extdeps.npm.NpmRegistryArtifact> {
   fold(
     nodes,
     init: [],
     f: (acc, node) => match node.selection {
-      NpmRegistrySelected { artifact } => acc |> list_push(artifact)
-      NpmRootProject { manifest_identity: _ } => acc
+      extdeps.npm.NpmRegistrySelected { artifact } => acc |> list_push(artifact)
+      extdeps.npm.NpmRootProject { manifest_identity: _ } => acc
     },
   )
 }
 
-fn admit_codex_package_lock_text(text: String) -> gunbc.package_delivery.CodexPackageLockAdmission {
-  match npm_decode_package_lock_text(text: text) {
-    NpmPackageLockParseRefused { cause } =>
+fn admit_codex_package_lock_text(text: String) -> CodexPackageLockAdmission {
+  match extdeps.npm.npm_decode_package_lock_text(text: text) {
+    extdeps.npm.NpmPackageLockParseRefused { cause } =>
       CodexPackageLockParseFailed { cause: cause }
-    NpmPackageLockParsed { manager: _, nodes, unsupported, graph } =>
+    extdeps.npm.NpmPackageLockParsed { manager: _, nodes, unsupported, graph } =>
       if count(unsupported) > 0 {
         CodexPackageLockUnsupportedNodes { unsupported: unsupported }
       } else {
         match admit_codex_package_lock_graph(raw_graph: graph) {
-          PackageLockGraphAdmitted { graph: admitted } =>
+          extdeps.package.PackageLockGraphAdmitted { graph: admitted } =>
             CodexPackageLockAdmitted {
               graph: admitted,
               nodes: nodes,
@@ -316,7 +316,7 @@ type CodexWrapperLookup
       key: std.types.NonEmptyStr
     }
   | CodexWrapperUnique {
-      node: gunbc.package_delivery.CodexPackageLockNode
+      node: CodexPackageLockNode
       artifact: extdeps.npm.NpmRegistryArtifact
     }
   | CodexWrapperDuplicate {
@@ -328,19 +328,19 @@ type CodexWrapperLookup
     }
 
 fn codex_wrapper_lookup(
-  graph: gunbc.package_delivery.CodexPackageLockGraph,
-) -> gunbc.package_delivery.CodexWrapperLookup {
+  graph: CodexPackageLockGraph,
+) -> CodexWrapperLookup {
   let key = extdeps.npm.NpmRelativeLockPath { key: codex_wrapper_lock_path_key }
-  match package_lock_lookup_node(graph: graph, key: key) {
-    PackageLockNodeAbsent { key: _ } =>
+  match extdeps.package.package_lock_lookup_node(graph: graph, key: key) {
+    extdeps.package.PackageLockNodeAbsent { key: _ } =>
       CodexWrapperAbsent { key: codex_wrapper_lock_path_key }
-    PackageLockNodeDuplicate { key: _, count } =>
+    extdeps.package.PackageLockNodeDuplicate { key: _, count } =>
       CodexWrapperDuplicate { key: codex_wrapper_lock_path_key, count: count }
-    PackageLockNodeUnique { node } =>
+    extdeps.package.PackageLockNodeUnique { node } =>
       match node.selection {
-        NpmRegistrySelected { artifact } =>
+        extdeps.npm.NpmRegistrySelected { artifact } =>
           CodexWrapperUnique { node: node, artifact: artifact }
-        NpmRootProject { manifest_identity: _ } =>
+        extdeps.npm.NpmRootProject { manifest_identity: _ } =>
           CodexWrapperWrongForm { key: codex_wrapper_lock_path_key }
       }
   }
@@ -379,11 +379,11 @@ fn publish_codex_runtime_current_link(
   release_parent: std.types.FilePath,
   release_root: std.types.FilePath,
 ) -> Bool {
-  let link = codex_runtime_current_link_path(release_parent: release_parent)
+  let link = gunbc.codex_runtime_paths.codex_runtime_current_link_path(release_parent: release_parent)
   shell.Symlink.AtomicReplace(target: release_root, link: link).success
 }
 
-fn codex_expected_platform_version(target: gunbc.package_delivery.CodexNpmRuntimeTarget) -> std.types.NonEmptyStr {
+fn codex_expected_platform_version(target: CodexNpmRuntimeTarget) -> std.types.NonEmptyStr {
   concat(
     codex_required_package_version as String,
     concat("-", concat(target.os as String, concat("-", target.cpu as String))),
@@ -401,7 +401,7 @@ fn codex_registry_locator_matches_version(
 
 type CodexNpmRuntimeTargetObservation
   = CodexNpmRuntimeTargetObserved {
-      target: gunbc.package_delivery.CodexNpmRuntimeTarget
+      target: CodexNpmRuntimeTarget
     }
   | CodexNpmRuntimeTargetObservationRefused {
       cause: std.types.NonEmptyStr
@@ -410,7 +410,7 @@ type CodexNpmRuntimeTargetObservation
 fn codex_map_uname_to_npm_target(
   kernel: String,
   machine: String,
-) -> gunbc.package_delivery.CodexNpmRuntimeTargetObservation {
+) -> CodexNpmRuntimeTargetObservation {
   let k = kernel.trim()
   let m = machine.trim()
   let os = if k == "Linux" {
@@ -440,13 +440,13 @@ fn codex_map_uname_to_npm_target(
           }
         Present { value: cpu_v } =>
           CodexNpmRuntimeTargetObserved {
-            target: gunbc.package_delivery.CodexNpmRuntimeTarget { os: os_v, cpu: cpu_v },
+            target: CodexNpmRuntimeTarget { os: os_v, cpu: cpu_v },
           }
       }
   }
 }
 
-fn observe_codex_npm_runtime_target() -> gunbc.package_delivery.CodexNpmRuntimeTargetObservation {
+fn observe_codex_npm_runtime_target() -> CodexNpmRuntimeTargetObservation {
   let kernel = shell.Uname.KernelName()
   let machine = shell.Uname.Machine()
   if kernel.success == false {
@@ -464,7 +464,7 @@ fn observe_codex_npm_runtime_target() -> gunbc.package_delivery.CodexNpmRuntimeT
 
 data codex_exact_platform_lock_key_note: String = "FIRST PROFILE PRODUCT POLICY — not a general npm resolver. Exactly one wrapper lock-node plus exactly one (os,cpu)→platform lock-node via exact-cardinality lookup. Product admission ALSO requires exact package name, version, optionality, and platform os/cpu metadata — a modified lock that keeps the key but changes those facts refuses."
 
-fn codex_platform_lock_path_key(target: gunbc.package_delivery.CodexNpmRuntimeTarget) -> std.types.NonEmptyStr? {
+fn codex_platform_lock_path_key(target: CodexNpmRuntimeTarget) -> std.types.NonEmptyStr? {
   if (target.os as String) == "linux" && (target.cpu as String) == "arm64" {
     Present { value: "node_modules/@openai/codex-linux-arm64" as std.types.NonEmptyStr }
   } else if (target.os as String) == "linux" && (target.cpu as String) == "x64" {
@@ -482,7 +482,7 @@ fn codex_platform_lock_path_key(target: gunbc.package_delivery.CodexNpmRuntimeTa
   }
 }
 
-fn codex_native_executable_rel(target: gunbc.package_delivery.CodexNpmRuntimeTarget) -> std.types.NonEmptyStr? {
+fn codex_native_executable_rel(target: CodexNpmRuntimeTarget) -> std.types.NonEmptyStr? {
   if (target.os as String) == "linux" && (target.cpu as String) == "arm64" {
     Present {
       value: "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as std.types.NonEmptyStr,
@@ -506,7 +506,7 @@ fn codex_native_executable_rel(target: gunbc.package_delivery.CodexNpmRuntimeTar
 
 fn codex_linux_arm64_native_executable_rel() -> std.types.NonEmptyStr? {
   codex_native_executable_rel(
-    target: gunbc.package_delivery.CodexNpmRuntimeTarget {
+    target: CodexNpmRuntimeTarget {
       os: "linux" as std.types.NonEmptyStr,
       cpu: "arm64" as std.types.NonEmptyStr,
     },
@@ -518,8 +518,8 @@ fn codex_bundled_executable_for_srv1() -> std.types.FilePath? {
     Absent => none
     Present { value: rel } =>
       Present {
-        value: codex_bundled_executable_at_current_link(
-          release_parent: srv1_codex_runtime_release_root,
+        value: gunbc.codex_runtime_paths.codex_bundled_executable_at_current_link(
+          release_parent: gunbc.codex_runtime_paths.srv1_codex_runtime_release_root,
           native_executable_rel: rel,
         )
       }
@@ -531,7 +531,7 @@ type CodexTargetPackageLookup
       key: std.types.NonEmptyStr
     }
   | CodexTargetPackageUnique {
-      node: gunbc.package_delivery.CodexPackageLockNode
+      node: CodexPackageLockNode
       artifact: extdeps.npm.NpmRegistryArtifact
     }
   | CodexTargetPackageDuplicate {
@@ -544,9 +544,9 @@ type CodexTargetPackageLookup
     }
 
 fn codex_target_package_lookup(
-  graph: gunbc.package_delivery.CodexPackageLockGraph,
-  target: gunbc.package_delivery.CodexNpmRuntimeTarget,
-) -> gunbc.package_delivery.CodexTargetPackageLookup {
+  graph: CodexPackageLockGraph,
+  target: CodexNpmRuntimeTarget,
+) -> CodexTargetPackageLookup {
   match codex_platform_lock_path_key(target: target) {
     Absent =>
       CodexTargetPackageWrongMetadata {
@@ -555,19 +555,19 @@ fn codex_target_package_lookup(
       }
     Present { value: path_key } => {
       let key = extdeps.npm.NpmRelativeLockPath { key: path_key }
-      match package_lock_lookup_node(graph: graph, key: key) {
-        PackageLockNodeAbsent { key: _ } =>
+      match extdeps.package.package_lock_lookup_node(graph: graph, key: key) {
+        extdeps.package.PackageLockNodeAbsent { key: _ } =>
           CodexTargetPackageAbsent { key: path_key }
-        PackageLockNodeDuplicate { key: _, count } =>
+        extdeps.package.PackageLockNodeDuplicate { key: _, count } =>
           CodexTargetPackageDuplicate { key: path_key, count: count }
-        PackageLockNodeUnique { node } =>
+        extdeps.package.PackageLockNodeUnique { node } =>
           match node.selection {
-            NpmRootProject { manifest_identity: _ } =>
+            extdeps.npm.NpmRootProject { manifest_identity: _ } =>
               CodexTargetPackageWrongMetadata {
                 key: path_key,
                 cause: "platform lock-node is root project, not registry artifact" as std.types.NonEmptyStr,
               }
-            NpmRegistrySelected { artifact } =>
+            extdeps.npm.NpmRegistrySelected { artifact } =>
               CodexTargetPackageUnique { node: node, artifact: artifact }
           }
       }
@@ -577,7 +577,7 @@ fn codex_target_package_lookup(
 
 type CodexSelectedNodeAdmission
   = CodexSelectedNodeAdmitted {
-      node: gunbc.package_delivery.CodexPackageLockNode
+      node: CodexPackageLockNode
       artifact: extdeps.npm.NpmRegistryArtifact
       lock_node_key: std.types.NonEmptyStr
     }
@@ -596,14 +596,14 @@ fn list_contains_str(xs: List<std.types.NonEmptyStr>, needle: std.types.NonEmpty
 }
 
 fn admit_codex_selected_node(
-  node: gunbc.package_delivery.CodexPackageLockNode,
+  node: CodexPackageLockNode,
   artifact: extdeps.npm.NpmRegistryArtifact,
   lock_node_key: std.types.NonEmptyStr,
   expect_optional: Bool,
   expect_version: std.types.NonEmptyStr,
   expect_os: std.types.NonEmptyStr?,
   expect_cpu: std.types.NonEmptyStr?,
-) -> gunbc.package_delivery.CodexSelectedNodeAdmission {
+) -> CodexSelectedNodeAdmission {
   if node.metadata.flags.has_install_script {
     CodexSelectedNodeInstallScriptRefused { lock_node_key: lock_node_key }
   } else if artifact.package.name != codex_required_package_name {
@@ -645,12 +645,12 @@ fn admit_codex_selected_node(
                 cause: "platform cpu expectation missing" as std.types.NonEmptyStr,
               }
             Present { value: cpu_v } =>
-              if gunbc.package_delivery.list_contains_str(xs: node.metadata.platform.os, needle: os_v) == false {
+              if list_contains_str(xs: node.metadata.platform.os, needle: os_v) == false {
                 CodexSelectedNodeIdentityRefused {
                   lock_node_key: lock_node_key,
                   cause: "platform os metadata does not match selected target" as std.types.NonEmptyStr,
                 }
-              } else if gunbc.package_delivery.list_contains_str(xs: node.metadata.platform.cpu, needle: cpu_v) == false {
+              } else if list_contains_str(xs: node.metadata.platform.cpu, needle: cpu_v) == false {
                 CodexSelectedNodeIdentityRefused {
                   lock_node_key: lock_node_key,
                   cause: "platform cpu metadata does not match selected target" as std.types.NonEmptyStr,
@@ -669,17 +669,17 @@ fn admit_codex_selected_node(
 
 type CodexExactTargetClosure
   = CodexExactTargetClosureSelected {
-      wrapper: gunbc.package_delivery.CodexSelectedNodeAdmission
-      platform: gunbc.package_delivery.CodexSelectedNodeAdmission
-      target: gunbc.package_delivery.CodexNpmRuntimeTarget
+      wrapper: CodexSelectedNodeAdmission
+      platform: CodexSelectedNodeAdmission
+      target: CodexNpmRuntimeTarget
       platform_lock_key: std.types.NonEmptyStr
       native_executable_rel: std.types.NonEmptyStr
     }
   | CodexExactTargetClosureWrapperRefused {
-      lookup: gunbc.package_delivery.CodexWrapperLookup
+      lookup: CodexWrapperLookup
     }
   | CodexExactTargetClosurePlatformRefused {
-      lookup: gunbc.package_delivery.CodexTargetPackageLookup
+      lookup: CodexTargetPackageLookup
     }
   | CodexExactTargetClosureInstallScriptRefused {
       lock_node_key: std.types.NonEmptyStr
@@ -689,13 +689,13 @@ type CodexExactTargetClosure
       cause: std.types.NonEmptyStr
     }
   | CodexExactTargetClosureNativePathAbsent {
-      target: gunbc.package_delivery.CodexNpmRuntimeTarget
+      target: CodexNpmRuntimeTarget
     }
 
 fn select_codex_exact_target_closure(
-  graph: gunbc.package_delivery.CodexPackageLockGraph,
-  target: gunbc.package_delivery.CodexNpmRuntimeTarget,
-) -> gunbc.package_delivery.CodexExactTargetClosure {
+  graph: CodexPackageLockGraph,
+  target: CodexNpmRuntimeTarget,
+) -> CodexExactTargetClosure {
   match codex_wrapper_lookup(graph: graph) {
     CodexWrapperUnique { node: wrapper_node, artifact: wrapper_artifact } =>
       match admit_codex_selected_node(
@@ -786,12 +786,12 @@ fn select_codex_exact_target_closure(
 
 fn lock_path_key_rel(key: extdeps.npm.NpmLockPathKey) -> std.types.NonEmptyStr? {
   match key {
-    NpmRootLockPath => none
-    NpmRelativeLockPath { key: rel } => Present { value: rel }
+    extdeps.npm.NpmRootLockPath => none
+    extdeps.npm.NpmRelativeLockPath { key: rel } => Present { value: rel }
   }
 }
 
-data codex_runtime_release_parent: std.types.FilePath = srv1_codex_runtime_release_root
+data codex_runtime_release_parent: std.types.FilePath = gunbc.codex_runtime_paths.srv1_codex_runtime_release_root
 
 data codex_runtime_receipt_sidecar_name: std.types.NonEmptyStr = ".gunbc-codex-runtime-receipt" as std.types.NonEmptyStr
 
@@ -824,11 +824,11 @@ type PackageTreeEntryKind
 type PackageTreeEntryReceipt {
   rel_path: std.types.NonEmptyStr
   mode_octal: std.types.NonEmptyStr
-  kind: gunbc.package_delivery.PackageTreeEntryKind
+  kind: PackageTreeEntryKind
 }
 
 type PackageMaterializedTreeReceipt {
-  entries: List<gunbc.package_delivery.PackageTreeEntryReceipt>
+  entries: List<PackageTreeEntryReceipt>
   tree_identity: std.content_hash.ContentHash
 }
 
@@ -840,12 +840,12 @@ type CodexBuildToolchainReceipt {
 type CodexRuntimeBundleReceipt {
   manifest_digest: std.content_hash.Sha512Digest
   lock_digest: std.content_hash.Sha512Digest
-  target: gunbc.package_delivery.CodexNpmRuntimeTarget
-  admitted_packages: List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>
+  target: CodexNpmRuntimeTarget
+  admitted_packages: List<AdmittedPackageArtifactReceipt>
   admitted_package_set_identity: std.content_hash.ContentHash
-  materialized_tree: gunbc.package_delivery.PackageMaterializedTreeReceipt
+  materialized_tree: PackageMaterializedTreeReceipt
   native_executable_digest: std.content_hash.Sha512Digest
-  toolchain: gunbc.package_delivery.CodexBuildToolchainReceipt
+  toolchain: CodexBuildToolchainReceipt
   protocol_schema_identity: std.content_hash.ContentHash
   receipt_identity: std.content_hash.ContentHash
 }
@@ -855,16 +855,16 @@ type CodexRuntimeBundle {
   native_executable_rel: std.types.NonEmptyStr
   wrapper_executable_rel: std.types.NonEmptyStr
   platform_package_rel: std.types.NonEmptyStr
-  target: gunbc.package_delivery.CodexNpmRuntimeTarget
-  admitted_packages: List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>
+  target: CodexNpmRuntimeTarget
+  admitted_packages: List<AdmittedPackageArtifactReceipt>
   admitted_package_set_identity: std.content_hash.ContentHash
-  receipt: gunbc.package_delivery.CodexRuntimeBundleReceipt
+  receipt: CodexRuntimeBundleReceipt
 }
 
 data admitted_package_set_identity_note: String = "AdmittedCodexPackageSetIdentity: SHA-512 over a canonical newline record of (lock_node_key, version, source_locator, observed_digest), rows ordered by lock_node_key ascending (exact two-node closure). Nested inside CodexRuntimeBundleReceipt."
 
 fn admitted_package_receipt_canonical_line(
-  receipt: gunbc.package_delivery.AdmittedPackageArtifactReceipt,
+  receipt: AdmittedPackageArtifactReceipt,
 ) -> String {
   concat(
     receipt.lock_node_key as String,
@@ -885,10 +885,10 @@ fn admitted_package_receipt_canonical_line(
 }
 
 fn sort_admitted_packages_by_lock_key(
-  receipts: List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>,
-) -> List<gunbc.package_delivery.AdmittedPackageArtifactReceipt> {
+  receipts: List<AdmittedPackageArtifactReceipt>,
+) -> List<AdmittedPackageArtifactReceipt> {
   match receipts.skip(n: 0).first() {
-    Absent => [] as List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>
+    Absent => [] as List<AdmittedPackageArtifactReceipt>
     Present { value: a } =>
       match receipts.skip(n: 1).first() {
         Absent => [a]
@@ -903,7 +903,7 @@ fn sort_admitted_packages_by_lock_key(
 }
 
 fn observe_admitted_package_set_identity(
-  receipts: List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>,
+  receipts: List<AdmittedPackageArtifactReceipt>,
   staging_dir: std.types.FilePath,
 ) -> std.content_hash.ContentHash? {
   let ordered = sort_admitted_packages_by_lock_key(receipts: receipts)
@@ -921,18 +921,18 @@ fn observe_admitted_package_set_identity(
   if wrote.success == false {
     none
   } else {
-    match sha512sum_observe_file(path: path as std.types.FilePath) {
-      Sha512FileObserved { digest } =>
-        Present { value: as_content_hash_sha512(digest: digest) }
-      Sha512FileObservationRefused { cause: _ } => none
+    match extdeps.tools.sha512sum.sha512sum_observe_file(path: path as std.types.FilePath) {
+      extdeps.tools.sha512sum.Sha512FileObserved { digest } =>
+        Present { value: std.content_hash.as_content_hash_sha512(digest: digest) }
+      extdeps.tools.sha512sum.Sha512FileObservationRefused { cause: _ } => none
     }
   }
 }
 
 fn observe_file_sha512(path: std.types.FilePath) -> std.content_hash.Sha512Digest? {
-  match sha512sum_observe_file(path: path) {
-    Sha512FileObserved { digest } => Present { value: digest }
-    Sha512FileObservationRefused { cause: _ } => none
+  match extdeps.tools.sha512sum.sha512sum_observe_file(path: path) {
+    extdeps.tools.sha512sum.Sha512FileObserved { digest } => Present { value: digest }
+    extdeps.tools.sha512sum.Sha512FileObservationRefused { cause: _ } => none
   }
 }
 
@@ -973,7 +973,7 @@ fn observe_node_cli_version() -> std.types.NonEmptyStr? {
   }
 }
 
-fn observe_codex_build_toolchain() -> gunbc.package_delivery.CodexBuildToolchainReceipt? {
+fn observe_codex_build_toolchain() -> CodexBuildToolchainReceipt? {
   match observe_npm_cli_version() {
     Absent => none
     Present { value: npm_ver } =>
@@ -981,7 +981,7 @@ fn observe_codex_build_toolchain() -> gunbc.package_delivery.CodexBuildToolchain
         Absent => none
         Present { value: node_ver } =>
           Present {
-            value: gunbc.package_delivery.CodexBuildToolchainReceipt {
+            value: CodexBuildToolchainReceipt {
               npm_cli_version: npm_ver,
               node_version: node_ver,
             },
@@ -990,7 +990,7 @@ fn observe_codex_build_toolchain() -> gunbc.package_delivery.CodexBuildToolchain
   }
 }
 
-fn package_tree_entry_canonical_line(entry: gunbc.package_delivery.PackageTreeEntryReceipt) -> String {
+fn package_tree_entry_canonical_line(entry: PackageTreeEntryReceipt) -> String {
   match entry.kind {
     PackageTreeRegularFile { content_digest } =>
       concat(
@@ -1024,13 +1024,13 @@ data package_materialized_tree_linux_find_note: String = "Installed-tree enumera
 data package_materialized_tree_observation_note: String = "TYPED FIND, TYPED REFUSAL (review 50535). This read previously built its argv by concat-ing the root into a single-quoted find string and running it through retained_foreign — medium-as-string (DESIGN §7), and a root containing an apostrophe escaped the wrapper outright. extdeps.shell already owned shell.Find, so the string form was also a §3 fork of an existing authority: the enumeration now goes through shell.Find.FilesAndSymlinksWithMode, where root is a distinct argv element and no quoting exists to escape. The trailing pipe to sort is gone too — std sort orders the rows in-substrate rather than borrowing the shell's collation, which is locale-dependent and was never declared.\n\nThe refusal half: every failure arm returned a bare none, so a missing find, a permission denial, an uninterpretable row, a digest failure and a write failure were one indistinguishable Absent and the caller's cause string was canned regardless of what actually happened (DESIGN §5 — a failure arm must refuse, and the refusal must be typed and located to be countable). Each arm now names its own cause. NOT a state this fixes, stated because the review named it: an EMPTY tree was never ambiguous — it returns an Observed receipt carrying zero entries, not a refusal."
 
 type PackageMaterializedTreeObservation
-  = PackageMaterializedTreeObserved { receipt: gunbc.package_delivery.PackageMaterializedTreeReceipt }
+  = PackageMaterializedTreeObserved { receipt: PackageMaterializedTreeReceipt }
   | PackageMaterializedTreeObservationRefused { cause: std.types.NonEmptyStr }
 
 fn observe_package_materialized_tree(
   root: std.types.FilePath,
   work_dir: std.types.FilePath,
-) -> gunbc.package_delivery.PackageMaterializedTreeObservation {
+) -> PackageMaterializedTreeObservation {
   let listed = shell.Find.FilesAndSymlinksWithMode(root: root)
   if listed.success == false {
     PackageMaterializedTreeObservationRefused {
@@ -1049,7 +1049,7 @@ fn observe_package_materialized_tree(
     )
     let entries_acc = fold(
       rows,
-      init: Present { value: [] as List<gunbc.package_delivery.PackageTreeEntryReceipt> },
+      init: Present { value: [] as List<PackageTreeEntryReceipt> },
       f: (acc, row) => match acc {
         Absent => none
         Present { value: so_far } => {
@@ -1128,15 +1128,15 @@ fn observe_package_materialized_tree(
             cause: "canonical installed-tree listing could not be written" as std.types.NonEmptyStr,
           }
         } else {
-          match sha512sum_observe_file(path: path as std.types.FilePath) {
-            Sha512FileObserved { digest } =>
+          match extdeps.tools.sha512sum.sha512sum_observe_file(path: path as std.types.FilePath) {
+            extdeps.tools.sha512sum.Sha512FileObserved { digest } =>
               PackageMaterializedTreeObserved {
-                receipt: gunbc.package_delivery.PackageMaterializedTreeReceipt {
+                receipt: PackageMaterializedTreeReceipt {
                   entries: entries,
-                  tree_identity: as_content_hash_sha512(digest: digest),
+                  tree_identity: std.content_hash.as_content_hash_sha512(digest: digest),
                 },
               }
-            Sha512FileObservationRefused { cause: digest_cause } =>
+            extdeps.tools.sha512sum.Sha512FileObservationRefused { cause: digest_cause } =>
               PackageMaterializedTreeObservationRefused { cause: digest_cause }
           }
         }
@@ -1170,11 +1170,11 @@ fn sort_json_members_by_key(members: List<extdeps.languages.json.emit.JsonKeyVal
 
 fn canonicalize_json_value(v: extdeps.languages.json.emit.JsonValue) -> extdeps.languages.json.emit.JsonValue? {
   match v {
-    JsonNull => Present { value: extdeps.languages.json.emit.JsonNull }
-    JsonBool { value: b } => Present { value: extdeps.languages.json.emit.JsonBool { value: b } }
-    JsonNumber { lexeme: l } => Present { value: extdeps.languages.json.emit.JsonNumber { lexeme: l } }
-    JsonString { value: s } => Present { value: extdeps.languages.json.emit.JsonString { value: s } }
-    JsonArray { elements } => {
+    extdeps.languages.json.emit.JsonNull => Present { value: extdeps.languages.json.emit.JsonNull }
+    extdeps.languages.json.emit.JsonBool { value: b } => Present { value: extdeps.languages.json.emit.JsonBool { value: b } }
+    extdeps.languages.json.emit.JsonNumber { lexeme: l } => Present { value: extdeps.languages.json.emit.JsonNumber { lexeme: l } }
+    extdeps.languages.json.emit.JsonString { value: s } => Present { value: extdeps.languages.json.emit.JsonString { value: s } }
+    extdeps.languages.json.emit.JsonArray { elements } => {
       let mapped = fold(
         elements,
         init: Present { value: [] as List<extdeps.languages.json.emit.JsonValue> },
@@ -1192,7 +1192,7 @@ fn canonicalize_json_value(v: extdeps.languages.json.emit.JsonValue) -> extdeps.
         Present { value: els } => Present { value: extdeps.languages.json.emit.JsonArray { elements: els } }
       }
     }
-    JsonObject { members } => {
+    extdeps.languages.json.emit.JsonObject { members } => {
       if json_object_keys_unique(members: members) == false {
         none
       } else {
@@ -1247,7 +1247,7 @@ fn protocol_schema_canonical_staging_path(
     concat(
       "/schema-canonical/",
       concat(
-        content_hash_atom(value: rel as std.types.NonEmptyStr).digest as String,
+        std.content_hash.content_hash_atom(value: rel as std.types.NonEmptyStr).digest as String,
         ".canonical.json",
       ),
     ),
@@ -1274,13 +1274,13 @@ fn protocol_schema_process_file_for_bundle(
   if raw.success == false {
     false
   } else {
-    match parse_json(s: raw.content) {
+    match extdeps.languages.json.parse.parse_json(s: raw.content) {
       Absent => false
       Present { value: parsed } =>
         match canonicalize_json_value(v: parsed) {
           Absent => false
           Present { value: canon } => {
-            let canon_body = serialize_json(v: canon)
+            let canon_body = extdeps.languages.json.emit.serialize_json(v: canon)
             let canon_path = protocol_schema_canonical_staging_path(
               work_dir: work_dir,
               rel: rel,
@@ -1292,8 +1292,8 @@ fn protocol_schema_process_file_for_bundle(
             if wrote_canon == false {
               false
             } else {
-              match sha512sum_observe_file(path: canon_path) {
-                Sha512FileObserved { digest } =>
+              match extdeps.tools.sha512sum.sha512sum_observe_file(path: canon_path) {
+                extdeps.tools.sha512sum.Sha512FileObserved { digest } =>
                   append_text_to_file(
                     path: manifest_path,
                     extra: concat(
@@ -1301,7 +1301,7 @@ fn protocol_schema_process_file_for_bundle(
                       concat("\t", concat(digest.hex as String, "\n")),
                     ),
                   )
-                Sha512FileObservationRefused { cause: _ } => false
+                extdeps.tools.sha512sum.Sha512FileObservationRefused { cause: _ } => false
               }
             }
           }
@@ -1372,10 +1372,10 @@ fn observe_protocol_schema_identity(
               if all_ok == false {
                 none
               } else {
-                match sha512sum_observe_file(path: manifest_path as std.types.FilePath) {
-                  Sha512FileObserved { digest } =>
-                    Present { value: as_content_hash_sha512(digest: digest) }
-                  Sha512FileObservationRefused { cause: _ } => none
+                match extdeps.tools.sha512sum.sha512sum_observe_file(path: manifest_path as std.types.FilePath) {
+                  extdeps.tools.sha512sum.Sha512FileObserved { digest } =>
+                    Present { value: std.content_hash.as_content_hash_sha512(digest: digest) }
+                  extdeps.tools.sha512sum.Sha512FileObservationRefused { cause: _ } => none
                 }
               }
             }
@@ -1387,7 +1387,7 @@ fn observe_protocol_schema_identity(
 }
 
 fn codex_runtime_bundle_receipt_canonical_body(
-  receipt: gunbc.package_delivery.CodexRuntimeBundleReceipt,
+  receipt: CodexRuntimeBundleReceipt,
 ) -> String? {
   match content_hash_sha512_hex(hash: receipt.admitted_package_set_identity) {
     Absent => none
@@ -1458,7 +1458,7 @@ fn codex_runtime_bundle_receipt_canonical_body(
 }
 
 fn observe_codex_runtime_bundle_receipt_identity(
-  receipt_without_identity: gunbc.package_delivery.CodexRuntimeBundleReceipt,
+  receipt_without_identity: CodexRuntimeBundleReceipt,
   staging_dir: std.types.FilePath,
 ) -> std.content_hash.ContentHash? {
   match codex_runtime_bundle_receipt_canonical_body(receipt: receipt_without_identity) {
@@ -1469,10 +1469,10 @@ fn observe_codex_runtime_bundle_receipt_identity(
       if wrote.success == false {
         none
       } else {
-        match sha512sum_observe_file(path: path as std.types.FilePath) {
-          Sha512FileObserved { digest } =>
-            Present { value: as_content_hash_sha512(digest: digest) }
-          Sha512FileObservationRefused { cause: _ } => none
+        match extdeps.tools.sha512sum.sha512sum_observe_file(path: path as std.types.FilePath) {
+          extdeps.tools.sha512sum.Sha512FileObserved { digest } =>
+            Present { value: std.content_hash.as_content_hash_sha512(digest: digest) }
+          extdeps.tools.sha512sum.Sha512FileObservationRefused { cause: _ } => none
         }
       }
     }
@@ -1532,11 +1532,11 @@ type CodexRuntimeReleaseOutcome
 
 fn validate_existing_codex_runtime_release(
   existing_root: std.types.FilePath,
-  receipt: gunbc.package_delivery.CodexRuntimeBundleReceipt,
+  receipt: CodexRuntimeBundleReceipt,
   native_executable_rel: std.types.NonEmptyStr,
   expected_hex: String,
   scratch_dir: std.types.FilePath,
-) -> gunbc.package_delivery.CodexRuntimeReleaseOutcome {
+) -> CodexRuntimeReleaseOutcome {
   match read_codex_runtime_receipt_sidecar(release_root: existing_root) {
     Absent =>
       CodexRuntimeReleaseReuseMismatch {
@@ -1677,7 +1677,7 @@ fn rename_publishing_noreplace(
 fn codex_runtime_release_ready_with_current_link(
   release_parent: std.types.FilePath,
   root: std.types.FilePath,
-) -> gunbc.package_delivery.CodexRuntimeReleaseOutcome {
+) -> CodexRuntimeReleaseOutcome {
   if publish_codex_runtime_current_link(
     release_parent: release_parent,
     release_root: root,
@@ -1692,11 +1692,11 @@ fn codex_runtime_release_ready_with_current_link(
 
 fn release_codex_runtime_bundle_immutable(
   build_root: std.types.FilePath,
-  receipt: gunbc.package_delivery.CodexRuntimeBundleReceipt,
+  receipt: CodexRuntimeBundleReceipt,
   native_executable_rel: std.types.NonEmptyStr,
   scratch_dir: std.types.FilePath,
   release_parent: std.types.FilePath,
-) -> gunbc.package_delivery.CodexRuntimeReleaseOutcome {
+) -> CodexRuntimeReleaseOutcome {
   match content_hash_sha512_hex(hash: receipt.receipt_identity) {
     Absent =>
       CodexRuntimeReleaseFailed {
@@ -1816,19 +1816,19 @@ fn release_codex_runtime_bundle_immutable(
 
 type CodexRuntimeMaterialization
   = CodexRuntimeMaterialized {
-      bundle: gunbc.package_delivery.CodexRuntimeBundle
+      bundle: CodexRuntimeBundle
     }
   | CodexRuntimeLockRefused {
-      admission: gunbc.package_delivery.CodexPackageLockAdmission
+      admission: CodexPackageLockAdmission
     }
   | CodexRuntimeExactClosureRefused {
-      closure: gunbc.package_delivery.CodexExactTargetClosure
+      closure: CodexExactTargetClosure
     }
   | CodexRuntimeTargetObservationRefused {
-      observation: gunbc.package_delivery.CodexNpmRuntimeTargetObservation
+      observation: CodexNpmRuntimeTargetObservation
     }
   | CodexRuntimeAcquisitionRefused {
-      acquisition: gunbc.package_delivery.RegistryArtifactAcquisition
+      acquisition: RegistryArtifactAcquisition
     }
   | CodexRuntimeWorkspaceRefused {
       cause: std.types.NonEmptyStr
@@ -1862,8 +1862,8 @@ type CodexRuntimeMaterialization
       hint: String
     }
 
-fn require_npm_host_dependency_for_materialization() -> gunbc.package_delivery.CodexRuntimeMaterialization? {
-  match first_absent_codex_wet_materialization_host_cli_dependency() {
+fn require_npm_host_dependency_for_materialization() -> CodexRuntimeMaterialization? {
+  match gunbc.host_cli_dependency.first_absent_codex_wet_materialization_host_cli_dependency() {
     Present { value: gunbc.host_cli_dependency.HostCliDependencyAbsent { tool, hint } } =>
       Present {
         value: CodexRuntimeHostDependencyRefused { tool: tool, hint: hint },
@@ -1873,7 +1873,7 @@ fn require_npm_host_dependency_for_materialization() -> gunbc.package_delivery.C
 }
 
 fn codex_runtime_materialization_failure_receipt(
-  outcome: gunbc.package_delivery.CodexRuntimeMaterialization,
+  outcome: CodexRuntimeMaterialization,
 ) -> String {
   let generic = match codex_runtime_materialization_refusal_reason(outcome: outcome) {
     Present { value: reason } => reason as String
@@ -1881,7 +1881,7 @@ fn codex_runtime_materialization_failure_receipt(
   }
   match outcome {
     CodexRuntimeHostDependencyRefused { tool, hint } =>
-      host_dependency_absent_wire(tool: tool, hint: hint)
+      gunbc.host_cli_dependency.host_dependency_absent_wire(tool: tool, hint: hint)
     CodexRuntimeMaterialized { bundle: _ } => generic
     CodexRuntimeLockRefused { admission: _ } => generic
     CodexRuntimeExactClosureRefused { closure: _ } => generic
@@ -1900,7 +1900,7 @@ fn codex_runtime_materialization_failure_receipt(
 }
 
 fn codex_runtime_materialization_refusal_reason(
-  outcome: gunbc.package_delivery.CodexRuntimeMaterialization,
+  outcome: CodexRuntimeMaterialization,
 ) -> std.types.NonEmptyStr? {
   match outcome {
     CodexRuntimeMaterialized { bundle: _ } => none
@@ -1933,17 +1933,17 @@ fn codex_runtime_materialization_refusal_reason(
 
 type TargetClosureAcquisitionAcc
   = TargetClosureAcquisitionOk {
-      admitted: List<gunbc.package_delivery.StagedAdmittedPackageArtifact>
+      admitted: List<StagedAdmittedPackageArtifact>
     }
   | TargetClosureAcquisitionFailed {
-      acquisition: gunbc.package_delivery.RegistryArtifactAcquisition
+      acquisition: RegistryArtifactAcquisition
     }
 
 fn acquire_and_admit_selected_pair(
-  wrapper: gunbc.package_delivery.CodexSelectedNodeAdmission,
-  platform: gunbc.package_delivery.CodexSelectedNodeAdmission,
+  wrapper: CodexSelectedNodeAdmission,
+  platform: CodexSelectedNodeAdmission,
   dest_dir: std.types.FilePath,
-) -> gunbc.package_delivery.TargetClosureAcquisitionAcc {
+) -> TargetClosureAcquisitionAcc {
   match wrapper {
     CodexSelectedNodeInstallScriptRefused { lock_node_key: _ } =>
       TargetClosureAcquisitionFailed {
@@ -2001,7 +2001,7 @@ fn acquire_and_admit_selected_pair(
 
 fn seed_npm_cache_from_admitted(
   cache: std.types.FilePath,
-  admitted: List<gunbc.package_delivery.StagedAdmittedPackageArtifact>,
+  admitted: List<StagedAdmittedPackageArtifact>,
 ) -> std.types.FilePath? {
   fold(
     admitted,
@@ -2024,10 +2024,10 @@ fn seed_npm_cache_from_admitted(
 }
 
 fn durable_admitted_receipts(
-  staged: List<gunbc.package_delivery.StagedAdmittedPackageArtifact>,
-) -> List<gunbc.package_delivery.AdmittedPackageArtifactReceipt> {
+  staged: List<StagedAdmittedPackageArtifact>,
+) -> List<AdmittedPackageArtifactReceipt> {
   match staged.skip(n: 0).first() {
-    Absent => [] as List<gunbc.package_delivery.AdmittedPackageArtifactReceipt>
+    Absent => [] as List<AdmittedPackageArtifactReceipt>
     Present { value: a } =>
       match staged.skip(n: 1).first() {
         Absent => [a.receipt]
@@ -2045,10 +2045,10 @@ fn finish_codex_runtime_materialization_after_install(
   native_path: std.types.FilePath,
   native_executable_rel: std.types.NonEmptyStr,
   platform_lock_key: std.types.NonEmptyStr,
-  selected_target: gunbc.package_delivery.CodexNpmRuntimeTarget,
-  staged_admitted: List<gunbc.package_delivery.StagedAdmittedPackageArtifact>,
+  selected_target: CodexNpmRuntimeTarget,
+  staged_admitted: List<StagedAdmittedPackageArtifact>,
   release_parent: std.types.FilePath,
-) -> gunbc.package_delivery.CodexRuntimeMaterialization {
+) -> CodexRuntimeMaterialization {
   let durable = durable_admitted_receipts(staged: staged_admitted)
   match observe_admitted_package_set_identity(
     receipts: durable,
@@ -2143,7 +2143,7 @@ fn finish_codex_runtime_materialization_after_install(
                                       let _ = shell.Remove.RecursiveForce(path: staging_dir)
                                       let _ = shell.Remove.RecursiveForce(path: cache_dir)
                                       CodexRuntimeMaterialized {
-                                        bundle: gunbc.package_delivery.CodexRuntimeBundle {
+                                        bundle: CodexRuntimeBundle {
                                           root: release_root,
                                           native_executable_rel: native_executable_rel,
                                           wrapper_executable_rel: codex_bundle_executable_rel,
@@ -2180,21 +2180,21 @@ fn finish_codex_runtime_materialization_after_install(
 
 type CodexRuntimeClosurePrepareOutcome
   = CodexRuntimeClosurePrepared {
-      source: gunbc.package_delivery.AdmittedCodexRuntimeSource
-      wrapper: gunbc.package_delivery.CodexSelectedNodeAdmission
-      platform: gunbc.package_delivery.CodexSelectedNodeAdmission
-      selected_target: gunbc.package_delivery.CodexNpmRuntimeTarget
+      source: AdmittedCodexRuntimeSource
+      wrapper: CodexSelectedNodeAdmission
+      platform: CodexSelectedNodeAdmission
+      selected_target: CodexNpmRuntimeTarget
       platform_lock_key: std.types.NonEmptyStr
       native_executable_rel: std.types.NonEmptyStr
     }
   | CodexRuntimeClosurePrepareLockRefused {
-      admission: gunbc.package_delivery.CodexPackageLockAdmission
+      admission: CodexPackageLockAdmission
     }
   | CodexRuntimeClosurePrepareTargetRefused {
-      observation: gunbc.package_delivery.CodexNpmRuntimeTargetObservation
+      observation: CodexNpmRuntimeTargetObservation
     }
   | CodexRuntimeClosurePrepareClosureRefused {
-      closure: gunbc.package_delivery.CodexExactTargetClosure
+      closure: CodexExactTargetClosure
     }
   | CodexRuntimeClosurePrepareHostDependencyRefused {
       tool: std.types.NonEmptyStr
@@ -2202,9 +2202,9 @@ type CodexRuntimeClosurePrepareOutcome
     }
 
 fn prepare_codex_runtime_closure(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
-) -> gunbc.package_delivery.CodexRuntimeClosurePrepareOutcome {
-  match first_absent_codex_wet_materialization_host_cli_dependency() {
+  source: AdmittedCodexRuntimeSource,
+) -> CodexRuntimeClosurePrepareOutcome {
+  match gunbc.host_cli_dependency.first_absent_codex_wet_materialization_host_cli_dependency() {
     Present { value: gunbc.host_cli_dependency.HostCliDependencyAbsent { tool, hint } } =>
       CodexRuntimeClosurePrepareHostDependencyRefused { tool: tool, hint: hint }
     Absent =>
@@ -2238,7 +2238,7 @@ fn prepare_codex_runtime_closure(
 }
 
 fn materialize_codex_runtime_bundle_through_prepare(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
 ) -> Bool {
   match prepare_codex_runtime_closure(source: source) {
     CodexRuntimeClosurePrepared {
@@ -2268,13 +2268,13 @@ type CodexRuntimePostInstallContext {
   native_path: std.types.FilePath
   native_executable_rel: std.types.NonEmptyStr
   platform_lock_key: std.types.NonEmptyStr
-  selected_target: gunbc.package_delivery.CodexNpmRuntimeTarget
-  staged_admitted: List<gunbc.package_delivery.StagedAdmittedPackageArtifact>
+  selected_target: CodexNpmRuntimeTarget
+  staged_admitted: List<StagedAdmittedPackageArtifact>
 }
 
 fn codex_runtime_install_from_prepared(
-  prepared: gunbc.package_delivery.CodexRuntimeClosurePrepareOutcome,
-) -> gunbc.package_delivery.CodexRuntimePostInstallContext? {
+  prepared: CodexRuntimeClosurePrepareOutcome,
+) -> CodexRuntimePostInstallContext? {
   match prepared {
     CodexRuntimeClosurePrepared {
       source: admitted_source,
@@ -2353,7 +2353,7 @@ fn codex_runtime_install_from_prepared(
                           none
                         } else {
                           Present {
-                            value: gunbc.package_delivery.CodexRuntimePostInstallContext {
+                            value: CodexRuntimePostInstallContext {
                               build_root: build.path,
                               staging_dir: staging.path,
                               cache_dir: cache.path,
@@ -2385,8 +2385,8 @@ fn codex_runtime_install_from_prepared(
 }
 
 fn codex_runtime_install_context_from_source(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
-) -> gunbc.package_delivery.CodexRuntimePostInstallContext? {
+  source: AdmittedCodexRuntimeSource,
+) -> CodexRuntimePostInstallContext? {
   match prepare_codex_runtime_closure(source: source) {
     CodexRuntimeClosurePrepared {
       source: admitted_source,
@@ -2425,7 +2425,7 @@ fn finish_bisect_observe_sha512_file(path: std.types.FilePath) -> Bool {
 }
 
 fn finish_bisect_observe_admitted_package_set_identity(
-  ctx: gunbc.package_delivery.CodexRuntimePostInstallContext,
+  ctx: CodexRuntimePostInstallContext,
 ) -> Bool {
   let durable = durable_admitted_receipts(staged: ctx.staged_admitted)
   match observe_admitted_package_set_identity(
@@ -2445,7 +2445,7 @@ fn finish_bisect_observe_codex_build_toolchain() -> Bool {
 }
 
 fn finish_bisect_observe_protocol_schema_identity(
-  ctx: gunbc.package_delivery.CodexRuntimePostInstallContext,
+  ctx: CodexRuntimePostInstallContext,
 ) -> Bool {
   match observe_protocol_schema_identity(
     native_executable: ctx.native_path,
@@ -2477,7 +2477,7 @@ fn finish_bisect_parse_protocol_schema_file(path: std.types.FilePath) -> Bool {
   if raw.success == false {
     false
   } else {
-    match parse_json(s: raw.content) {
+    match extdeps.languages.json.parse.parse_json(s: raw.content) {
       Absent => false
       Present { value: _ } => true
     }
@@ -2489,7 +2489,7 @@ fn finish_bisect_parse_canonicalize_protocol_schema_file(path: std.types.FilePat
   if raw.success == false {
     false
   } else {
-    match parse_json(s: raw.content) {
+    match extdeps.languages.json.parse.parse_json(s: raw.content) {
       Absent => false
       Present { value: parsed } =>
         match canonicalize_json_value(v: parsed) {
@@ -2543,7 +2543,7 @@ fn finish_bisect_parse_largest_protocol_schema_file(
 }
 
 fn finish_bisect_observe_package_materialized_tree(
-  ctx: gunbc.package_delivery.CodexRuntimePostInstallContext,
+  ctx: CodexRuntimePostInstallContext,
 ) -> Bool {
   match observe_package_materialized_tree(
     root: ctx.build_root,
@@ -2576,8 +2576,8 @@ fn finish_bisect_observe_package_materialized_tree_tiny_fixture() -> Bool {
 }
 
 fn finish_bisect_build_receipt_without_identity(
-  ctx: gunbc.package_delivery.CodexRuntimePostInstallContext,
-) -> gunbc.package_delivery.CodexRuntimeBundleReceipt? {
+  ctx: CodexRuntimePostInstallContext,
+) -> CodexRuntimeBundleReceipt? {
   let durable = durable_admitted_receipts(staged: ctx.staged_admitted)
   match observe_admitted_package_set_identity(
     receipts: durable,
@@ -2613,7 +2613,7 @@ fn finish_bisect_build_receipt_without_identity(
                                 receipts: durable,
                               )
                               Present {
-                                value: gunbc.package_delivery.CodexRuntimeBundleReceipt {
+                                value: CodexRuntimeBundleReceipt {
                                   manifest_digest: man_digest,
                                   lock_digest: lock_digest,
                                   target: ctx.selected_target,
@@ -2637,7 +2637,7 @@ fn finish_bisect_build_receipt_without_identity(
 }
 
 fn finish_bisect_observe_bundle_receipt_identity(
-  ctx: gunbc.package_delivery.CodexRuntimePostInstallContext,
+  ctx: CodexRuntimePostInstallContext,
 ) -> Bool {
   match finish_bisect_build_receipt_without_identity(ctx: ctx) {
     Absent => false
@@ -2653,7 +2653,7 @@ fn finish_bisect_observe_bundle_receipt_identity(
 }
 
 fn materialize_codex_runtime_finish_bisect_observe_set_identity_only(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
 ) -> Bool {
   match codex_runtime_install_context_from_source(source: source) {
     Present { value: ctx } =>
@@ -2663,7 +2663,7 @@ fn materialize_codex_runtime_finish_bisect_observe_set_identity_only(
 }
 
 fn materialize_codex_runtime_finish_bisect_observe_manifest_digest_only(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
 ) -> Bool {
   match codex_runtime_install_context_from_source(source: source) {
     Present { value: ctx } => finish_bisect_observe_sha512_file(path: ctx.man_dest)
@@ -2672,7 +2672,7 @@ fn materialize_codex_runtime_finish_bisect_observe_manifest_digest_only(
 }
 
 fn materialize_codex_runtime_finish_bisect_observe_lock_digest_only(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
 ) -> Bool {
   match codex_runtime_install_context_from_source(source: source) {
     Present { value: ctx } => finish_bisect_observe_sha512_file(path: ctx.lock_dest)
@@ -2681,7 +2681,7 @@ fn materialize_codex_runtime_finish_bisect_observe_lock_digest_only(
 }
 
 fn materialize_codex_runtime_finish_bisect_observe_native_digest_only(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
 ) -> Bool {
   match codex_runtime_install_context_from_source(source: source) {
     Present { value: ctx } => finish_bisect_observe_sha512_file(path: ctx.native_path)
@@ -2690,7 +2690,7 @@ fn materialize_codex_runtime_finish_bisect_observe_native_digest_only(
 }
 
 fn materialize_codex_runtime_finish_bisect_observe_toolchain_only(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
 ) -> Bool {
   match codex_runtime_install_context_from_source(source: source) {
     Present { value: _ } => finish_bisect_observe_codex_build_toolchain()
@@ -2699,7 +2699,7 @@ fn materialize_codex_runtime_finish_bisect_observe_toolchain_only(
 }
 
 fn materialize_codex_runtime_finish_bisect_observe_protocol_schema_only(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
 ) -> Bool {
   match codex_runtime_install_context_from_source(source: source) {
     Present { value: ctx } => finish_bisect_observe_protocol_schema_identity(ctx: ctx)
@@ -2708,7 +2708,7 @@ fn materialize_codex_runtime_finish_bisect_observe_protocol_schema_only(
 }
 
 fn materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
 ) -> Bool {
   match codex_runtime_install_context_from_source(source: source) {
     Present { value: ctx } =>
@@ -2721,7 +2721,7 @@ fn materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
 }
 
 fn materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
 ) -> Bool {
   match codex_runtime_install_context_from_source(source: source) {
     Present { value: ctx } =>
@@ -2734,7 +2734,7 @@ fn materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_s
 }
 
 fn materialize_codex_runtime_finish_bisect_observe_package_tree_only(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
 ) -> Bool {
   match codex_runtime_install_context_from_source(source: source) {
     Present { value: ctx } => finish_bisect_observe_package_materialized_tree(ctx: ctx)
@@ -2743,7 +2743,7 @@ fn materialize_codex_runtime_finish_bisect_observe_package_tree_only(
 }
 
 fn materialize_codex_runtime_finish_bisect_observe_receipt_identity_only(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
 ) -> Bool {
   match codex_runtime_install_context_from_source(source: source) {
     Present { value: ctx } => finish_bisect_observe_bundle_receipt_identity(ctx: ctx)
@@ -2752,7 +2752,7 @@ fn materialize_codex_runtime_finish_bisect_observe_receipt_identity_only(
 }
 
 fn materialize_codex_runtime_bundle_through_pair_acquire(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
 ) -> Bool {
   match prepare_codex_runtime_closure(source: source) {
     CodexRuntimeClosurePrepared {
@@ -2785,7 +2785,7 @@ fn materialize_codex_runtime_bundle_through_pair_acquire(
 }
 
 fn materialize_codex_runtime_bundle_through_npm_ci_offline(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
 ) -> Bool {
   match prepare_codex_runtime_closure(source: source) {
     CodexRuntimeClosurePrepared {
@@ -2817,7 +2817,7 @@ fn materialize_codex_runtime_bundle_through_npm_ci_offline(
 }
 
 fn materialize_codex_runtime_bundle_finish_after_install(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
   release_parent: std.types.FilePath,
 ) -> Bool {
   match prepare_codex_runtime_closure(source: source) {
@@ -2866,9 +2866,9 @@ fn materialize_codex_runtime_bundle_finish_after_install(
 }
 
 fn materialize_codex_runtime_bundle(
-  source: gunbc.package_delivery.AdmittedCodexRuntimeSource,
+  source: AdmittedCodexRuntimeSource,
   release_parent: std.types.FilePath,
-) -> gunbc.package_delivery.CodexRuntimeMaterialization {
+) -> CodexRuntimeMaterialization {
   match prepare_codex_runtime_closure(source: source) {
     CodexRuntimeClosurePrepared {
       source: admitted_source,
@@ -3030,17 +3030,17 @@ type SparkServingOllamaRuntimeMaterialization
     }
 
 fn spark_serving_ollama_runtime_materialization_receipt_write_path() -> std.types.FilePath {
-  spark_serving_runtime_receipt_wire_path()
+  gunbc.spark.serving_runtime_receipt.spark_serving_runtime_receipt_wire_path()
 }
 
 fn acquire_and_admit_ollama_release_archive(
   binary_release: extdeps.ollama.binary_release.OllamaBinaryRelease,
   dest_dir: std.types.FilePath,
-) -> gunbc.package_delivery.SparkServingOllamaArchiveAdmission {
-  let locator = ollama_binary_release_download_locator(binary_release: binary_release)
+) -> SparkServingOllamaArchiveAdmission {
+  let locator = extdeps.ollama.binary_release.ollama_binary_release_download_locator(binary_release: binary_release)
   let dest = concat(
     dest_dir as String,
-    concat("/", ollama_binary_release_asset_name(binary_release: binary_release) as String),
+    concat("/", extdeps.ollama.binary_release.ollama_binary_release_asset_name(binary_release: binary_release) as String),
   ) as std.types.FilePath
   let downloaded = http.Client.DownloadToFile(
     url: locator,
@@ -3049,26 +3049,26 @@ fn acquire_and_admit_ollama_release_archive(
   if downloaded.success == false {
     SparkServingOllamaArchiveDownloadRefused { locator: locator }
   } else {
-    match sha256sum_verify_via_shell(
+    match extdeps.tools.sha256sum.sha256sum_verify_via_shell(
       path: dest as std.types.NonEmptyStr,
       expected_digest: binary_release.digest.hex,
     ) {
-      Sha256Matches =>
+      extdeps.tools.sha256sum.Sha256Matches =>
         SparkServingOllamaArchiveAdmitted {
           local_path: dest,
           digest_hex: binary_release.digest.hex,
         }
-      Sha256Mismatch =>
+      extdeps.tools.sha256sum.Sha256Mismatch =>
         SparkServingOllamaArchiveIntegrityRefused {
           cause: "ollama release archive sha256 mismatch" as std.types.NonEmptyStr,
         }
-      Sha256VerifyInfraFailure { reason } =>
+      extdeps.tools.sha256sum.Sha256VerifyInfraFailure { reason } =>
         SparkServingOllamaArchiveIntegrityRefused { cause: reason }
     }
   }
 }
 
-fn materialize_spark_serving_ollama_runtime_bundle() -> gunbc.package_delivery.SparkServingOllamaRuntimeMaterialization {
+fn materialize_spark_serving_ollama_runtime_bundle() -> SparkServingOllamaRuntimeMaterialization {
   let staging = shell.Mktemp.Dir()
   if staging.success == false {
     SparkServingOllamaRuntimeWorkspaceRefused {
@@ -3076,7 +3076,7 @@ fn materialize_spark_serving_ollama_runtime_bundle() -> gunbc.package_delivery.S
     }
   } else {
     match acquire_and_admit_ollama_release_archive(
-      binary_release: ollama_required_release,
+      binary_release: extdeps.ollama.binary_release.ollama_required_release,
       dest_dir: staging.path,
     ) {
       SparkServingOllamaArchiveDownloadRefused { locator } => {
@@ -3091,7 +3091,7 @@ fn materialize_spark_serving_ollama_runtime_bundle() -> gunbc.package_delivery.S
         let receipt = gunbc.spark.serving_runtime_receipt.SparkServingRuntimeArchiveAdmissionReceipt {
           release_asset_digest_hex: digest_hex,
         }
-        if write_spark_serving_runtime_archive_admission_receipt(receipt: receipt) {
+        if gunbc.spark.serving_runtime_receipt.write_spark_serving_runtime_archive_admission_receipt(receipt: receipt) {
           let _ = shell.Remove.RecursiveForce(path: staging.path)
           SparkServingOllamaRuntimeMaterialized { receipt: receipt }
         } else {

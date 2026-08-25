@@ -2,18 +2,18 @@ module test.claim.served_surface_browser_observation_witness
 
 
 test fn witness_run_owns_one_execution_identity() -> Bool {
-  let run = playwright_chromium_151_linux_arm64_headless_navigation_run
+  let run = gunbc.served_surface_browser_observation.playwright_chromium_151_linux_arm64_headless_navigation_run
   let environment = run.environment
   environment.chromium_build == extdeps.browser.chromium.chromium_151_0_7922_34
-    && environment.chromium_build.source_identity == ChromiumSourceRevisionUnobserved
+    && environment.chromium_build.source_identity == extdeps.browser.chromium.ChromiumSourceRevisionUnobserved
     && environment.playwright_build == extdeps.automation.playwright.playwright_1_62_1
-    && environment.browser_binary_provenance == PlaywrightManagedChromiumDownload
-    && environment.container_userland == Debian12Bookworm
+    && environment.browser_binary_provenance == extdeps.automation.playwright.PlaywrightManagedChromiumDownload
+    && environment.container_userland == extdeps.os.debian.Debian12Bookworm
     && environment.container_visible_host_kernel == gunbc.served_surface_browser_observation.ContainerVisibleHostKernel {
       visible_release: "6.8.0-124-generic" as gunbc.served_surface_browser_observation.LinuxKernelRelease,
     }
     && environment.architecture == extdeps.toolchain.types.Aarch64
-    && environment.presentation_mode == HeadlessPresentation
+    && environment.presentation_mode == gunbc.served_surface_browser_observation.HeadlessPresentation
     && environment.launch_configuration == gunbc.served_surface_browser_observation.PlaywrightDefaultChromiumLaunch {
       executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as std.types.FilePath,
     }
@@ -22,66 +22,66 @@ test fn witness_run_owns_one_execution_identity() -> Bool {
 
 test fn witness_connection_refusal_is_exact_specimen() -> Bool {
   let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.connection_refused
-  let presentation = connection_refused_presentation(specimen: observation)
+  let presentation = gunbc.served_surface_browser_observation.connection_refused_presentation(specimen: observation)
   match presentation.stimulus {
-    TcpConnectionRefusedStimulus { requested_url: _, origin } => origin == LocalSyntheticHarness
+    gunbc.served_surface_browser_observation.TcpConnectionRefusedStimulus { requested_url: _, origin } => origin == gunbc.served_surface_browser_observation.LocalSyntheticHarness
     _ => false
   }
-    && presentation.navigation == gunbc.served_surface_browser_observation.ChromiumNavigationFailed { error: ChromiumErrConnectionRefused }
+    && presentation.navigation == gunbc.served_surface_browser_observation.ChromiumNavigationFailed { error: extdeps.browser.chromium.ChromiumErrConnectionRefused }
     && presentation.document == gunbc.served_surface_browser_observation.ChromiumInternalPresentedDocument {
-      document: ChromiumWebDataErrorDocument,
-      final_url: ChromiumWebDataErrorUrl,
+      document: extdeps.browser.chromium.ChromiumWebDataErrorDocument,
+      final_url: extdeps.browser.chromium.ChromiumWebDataErrorUrl,
     }
 }
 
 test fn witness_empty_502_is_exact_not_total_profile() -> Bool {
   let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.empty_502
-  let presentation = empty_body_502_presentation(specimen: observation)
+  let presentation = gunbc.served_surface_browser_observation.empty_body_502_presentation(specimen: observation)
   match presentation.stimulus {
-    HttpResponseStimulus { requested_url: _, origin, status, configured_headers, body } =>
-      origin == LocalSyntheticHarness
+    gunbc.served_surface_browser_observation.HttpResponseStimulus { requested_url: _, origin, status, configured_headers, body } =>
+      origin == gunbc.served_surface_browser_observation.LocalSyntheticHarness
         && status == 502
         && configured_headers == [
-          gunbc.served_surface_browser_observation.ContentLengthHeader { bytes: byte_size(0) },
-          Empty502SpecimenHeader,
+          gunbc.served_surface_browser_observation.ContentLengthHeader { bytes: std.measure.byte_size(0) },
+          gunbc.served_surface_browser_observation.Empty502SpecimenHeader,
         ]
-        && body == EmptyNavigationResponseBody
+        && body == gunbc.served_surface_browser_observation.EmptyNavigationResponseBody
     _ => false
   }
-    && presentation.navigation == gunbc.served_surface_browser_observation.ChromiumNavigationFailed { error: ChromiumErrHttpResponseCodeFailure }
+    && presentation.navigation == gunbc.served_surface_browser_observation.ChromiumNavigationFailed { error: extdeps.browser.chromium.ChromiumErrHttpResponseCodeFailure }
     && presentation.document == gunbc.served_surface_browser_observation.ChromiumInternalPresentedDocument {
-      document: ChromiumWebDataErrorDocument,
-      final_url: ChromiumWebDataErrorUrl,
+      document: extdeps.browser.chromium.ChromiumWebDataErrorDocument,
+      final_url: extdeps.browser.chromium.ChromiumWebDataErrorUrl,
     }
 }
 
 test fn witness_bodied_502_retains_network_document() -> Bool {
   let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.sentinel_502
-  let presentation = sentinel_body_502_presentation(specimen: observation)
+  let presentation = gunbc.served_surface_browser_observation.sentinel_body_502_presentation(specimen: observation)
   match presentation.stimulus {
-    HttpResponseStimulus { requested_url: _, origin, status, configured_headers, body } =>
-      origin == LocalSyntheticHarness
+    gunbc.served_surface_browser_observation.HttpResponseStimulus { requested_url: _, origin, status, configured_headers, body } =>
+      origin == gunbc.served_surface_browser_observation.LocalSyntheticHarness
         && status == 502
         && configured_headers == [
-          gunbc.served_surface_browser_observation.ContentLengthHeader { bytes: byte_size(26) },
-          TextPlainUtf8ContentTypeHeader,
-          Sentinel502SpecimenHeader,
+          gunbc.served_surface_browser_observation.ContentLengthHeader { bytes: std.measure.byte_size(26) },
+          gunbc.served_surface_browser_observation.TextPlainUtf8ContentTypeHeader,
+          gunbc.served_surface_browser_observation.Sentinel502SpecimenHeader,
         ]
         && body == gunbc.served_surface_browser_observation.Utf8NavigationResponseBody {
           text: "GUNBC_TYPED_ERROR_SENTINEL",
-          bytes: byte_size(26),
+          bytes: std.measure.byte_size(26),
         }
     _ => false
   }
     && presentation.navigation == gunbc.served_surface_browser_observation.NavigationReturnedHttpResponse { status: 502 }
     && presentation.document == gunbc.served_surface_browser_observation.NetworkResponsePresentedDocument {
-      final_url: local_http_url(locator: "127.0.0.1:43821/body" as std.types.NonEmptyStr),
+      final_url: gunbc.served_surface_browser_observation.local_http_url(locator: "127.0.0.1:43821/body" as std.types.NonEmptyStr),
     }
 }
 
 test fn witness_reload_trial_claims_sufficiency_not_necessity() -> Bool {
   let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.connection_refused
   let trial = observation.recovery_trials.first()
-  trial.action == ExplicitReload
-    && trial.outcome == HealthyResponseDocumentObserved
+  trial.action == gunbc.served_surface_browser_observation.ExplicitReload
+    && trial.outcome == gunbc.served_surface_browser_observation.HealthyResponseDocumentObserved
 }

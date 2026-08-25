@@ -2,17 +2,17 @@ module v2.test.extdeps_shape_transport_policy.lens_unit.clean_gist_create
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data clean_gist_create_service: String = "github.Gist"
 data clean_gist_create_operation: String = "Create"
 
-data clean_gist_create_argv_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact> = []
+data clean_gist_create_argv_facts: List<ExtdepsTransportArgvFact> = []
 
-data clean_gist_create_fusion_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsTransportFusionFact> = []
+data clean_gist_create_fusion_facts: List<ExtdepsTransportFusionFact> = []
 
 test fn clean_gist_create_is_green_holds() -> Bool {
-  v2.lens.extdeps_shape_transport_policy.extdeps_shape_transport_policy_violation_count_for_operation(
+  extdeps_shape_transport_policy_violation_count_for_operation(
     argv_facts: clean_gist_create_argv_facts,
     fusion_facts: clean_gist_create_fusion_facts,
     module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_github_gists_module,

@@ -1,30 +1,30 @@
 module v2.test.emit.rust_signature_general_emit
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data rust_signature_add_golden: String = "fn add(x: i32, y: i32) -> i32 { "
 
 data rust_signature_add_wrong_golden: String = "fn add(y: i32, x: i32) -> i32 { "
 
 fn rust_signature_add_decl() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add)
+  v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add)
 }
 
 fn rust_signature_add_text() -> v2.std.diagnostic.Outcome<String> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: rust_signature_add_decl(),
     f: fn(decl) {
-      bind_outcome(
-        o: rust_signature_with_open_from_decl(decl: decl),
+      v2.std.diagnostic.bind_outcome(
+        o: v2.extdeps.languages.rust.rust_signature_with_open_from_decl(decl: decl),
         f: fn(toks) {
-          bind_outcome(
-            o: serialize_concrete_syntax_tokens_to_source(
-              target: rust_target_model_staging(),
+          v2.std.diagnostic.bind_outcome(
+            o: v2.compiler.translate.serialize_concrete_syntax_tokens_to_source(
+              target: v2.extdeps.languages.rust.rust_target_model_staging(),
               tokens: toks
             ),
             f: fn(medium) {
-              outcome_accepted(value: medium.carried)
+              v2.std.diagnostic.outcome_accepted(value: medium.carried)
             }
           )
         }
@@ -33,14 +33,14 @@ fn rust_signature_add_text() -> v2.std.diagnostic.Outcome<String> {
   )
 }
 
-fn rust_signature_add_matches(golden: String) -> v2.std.logic.Bool {
+fn rust_signature_add_matches(golden: String) -> Bool {
   match rust_signature_add_text() {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_signature_general_reproduces_add_holds() -> v2.std.logic.Bool {
+test fn rust_signature_general_reproduces_add_holds() -> Bool {
   rust_signature_add_matches(golden: rust_signature_add_golden)
     && !rust_signature_add_matches(golden: rust_signature_add_wrong_golden)
 }

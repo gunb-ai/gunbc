@@ -3,7 +3,7 @@ module extdeps.rustup
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "rust-lang.github.io/rustup/"
   }
 }
@@ -50,9 +50,9 @@ fn rustup_component_eq(a: RustupComponent, b: RustupComponent) -> Bool {
 // the component note above already records that a component is a property of a toolchain and not
 // of a machine. A build that inherits an ambient RUSTUP_HOME is built by whichever toolchain that
 // root happens to hold.
-data rustup_environment_variables_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data rustup_environment_variables_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "rust-lang.github.io/rustup/environment-variables.html"
   }
 }
@@ -62,4 +62,4 @@ data rustup_environment_variables_authority: ExternalAuthority = ExternalAuthori
 // that it does. An axis with a single inhabitant is a nickname for a fixed fact (DESIGN section 3)
 // and the .dag front end reads a one-arm coproduct as a type alias besides, so the fact is stated
 // directly. A second rustup variable arriving is what turns this into an enumeration.
-data rustup_home_env_name: NonEmptyStr = "RUSTUP_HOME"
+data rustup_home_env_name: std.types.NonEmptyStr = "RUSTUP_HOME"

@@ -4,25 +4,25 @@ module test.claim.stage0_rust_maintenance_census_report_witness
 data maintenance_census_report_live_split_note: String = "maintenance_census_report_positive_control_derives_from_current_head moved to stage0_rust_maintenance_census_report_live_witness_test.dag (found 2026-08-06, PR #7894 CI red, batch=3 discovery-corpus): it calls current_rust_maintenance_census_report(), which reaches current_stage0_rust_source_observation() and therefore git.Inspect.HeadCommit without mock_response — the exact class stage0_rust_host_observation.dag host_observation_invocation_note and ci_layer_roots.dag's stage0_rust_host_observation_live_witness_test.dag / roadmap_receipt_continuity_live_witness_test.dag rows already document and exclude. A refusing hermetic discovery member fails its whole batch (CI receipt: batch 3 discovery-corpus, 7298-row corpus, PR #7894 run 31069215347). This file's remaining three witnesses only construct observations by hand (lifecycle_totality_witness_observation, disposition_authority_rows) or assert on the note string, so they stay hermetic."
 
 test fn maintenance_census_report_note_cites_identity_join() -> Bool {
-  string_contains(s: stage0_rust_maintenance_census_report_note, pattern: "identity-join")
-    && string_contains(s: stage0_rust_maintenance_census_report_note, pattern: "NO filename literal")
+  string_contains(s: gunbc.stage0_rust_maintenance_census_report.stage0_rust_maintenance_census_report_note, pattern: "identity-join")
+    && string_contains(s: gunbc.stage0_rust_maintenance_census_report.stage0_rust_maintenance_census_report_note, pattern: "NO filename literal")
 }
 
 test fn maintenance_census_report_category_paths_are_disjoint_by_predicate() -> Bool {
-  let rows = disposition_authority_rows()
+  let rows = gunbc.stage0_rust_source_lifecycle_scaffold.disposition_authority_rows()
   let tracked = [
     "src/v1/stage0/src/main.rs",
     "src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs"
   ]
-  let emit_from = disposition_category_paths(rows: rows, tracked_paths: tracked, predicate: is_emit_from_disposition)
-  let hand_scaffold = disposition_category_paths(rows: rows, tracked_paths: tracked, predicate: is_hand_scaffold_disposition)
-  !any(xs: emit_from, predicate: fn(path) { path_in_list(path: path, paths: hand_scaffold) })
+  let emit_from = gunbc.stage0_rust_maintenance_census_report.disposition_category_paths(rows: rows, tracked_paths: tracked, predicate: gunbc.stage0_rust_maintenance_census_report.is_emit_from_disposition)
+  let hand_scaffold = gunbc.stage0_rust_maintenance_census_report.disposition_category_paths(rows: rows, tracked_paths: tracked, predicate: gunbc.stage0_rust_maintenance_census_report.is_hand_scaffold_disposition)
+  !v2.std.algebra.any(xs: emit_from, predicate: fn(path) { gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: path, paths: hand_scaffold) })
 }
 
 test fn maintenance_census_report_red_control_reports_unclassified_as_unknown_or_refused() -> Bool {
-  let observation = lifecycle_totality_witness_observation(extra_paths: ["orphan_maintenance_census.rs"])
-  match rust_maintenance_census_report_over(observation: observation) {
-    RustMaintenanceCensusDerived {
+  let observation = gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_witness_observation(extra_paths: ["orphan_maintenance_census.rs"])
+  match gunbc.stage0_rust_maintenance_census_report.rust_maintenance_census_report_over(observation: observation) {
+    gunbc.stage0_rust_maintenance_census_report.RustMaintenanceCensusDerived {
       pinned_repository_revision: revision,
       tracked_rust_paths: tracked_rust_paths,
       generated_paths: generated_paths,
@@ -35,7 +35,7 @@ test fn maintenance_census_report_red_control_reports_unclassified_as_unknown_or
       duplicate_disposition_paths: duplicate_disposition_paths,
       cross_axis_overlap_paths: cross_axis_overlap_paths,
       role_without_disposition_paths: role_without_disposition_paths
-    } => path_in_list(path: "orphan_maintenance_census.rs", paths: unknown_or_refused_paths)
-    RustMaintenanceCensusObservationRefused { detail: detail } => false
+    } => gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: "orphan_maintenance_census.rs", paths: unknown_or_refused_paths)
+    gunbc.stage0_rust_maintenance_census_report.RustMaintenanceCensusObservationRefused { detail: detail } => false
   }
 }

@@ -11,14 +11,14 @@ module test.claim.scm_load_standing_witness
 // everything onto one standing would satisfy any single-arm assertion and is caught only here.
 
 
-fn ls_child() -> Node {
+fn ls_child() -> v2.std.node.Node {
   v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^load_standing_child } }, children: [])
 }
 
-fn ls_parent() -> Node {
+fn ls_parent() -> v2.std.node.Node {
   v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
-    children: [v2.std.node.Edge { label: Named { name: ^only_child }, target: ls_child() }],
+    children: [v2.std.node.Edge { label: v2.std.node.Named { name: ^only_child }, target: ls_child() }],
   )
 }
 
@@ -27,10 +27,10 @@ type LsBuilt { store: gunbc.scm.object_store.ObjectStore, root: gunbc.scm.object
 fn ls_full() -> LsBuilt {
   match gunbc.scm.object_store.store_node(store: gunbc.scm.object_store.empty_store(), n: ls_child()) {
     gunbc.scm.object_store.LocatorCollision { identity: i, existing: _, incoming: _ } => LsBuilt { store: gunbc.scm.object_store.empty_store(), root: i }
-    Stored { store: s1, identity: _ } =>
+    gunbc.scm.object_store.Stored { store: s1, identity: _ } =>
       match gunbc.scm.object_store.store_node(store: s1, n: ls_parent()) {
         gunbc.scm.object_store.LocatorCollision { identity: i, existing: _, incoming: _ } => LsBuilt { store: gunbc.scm.object_store.empty_store(), root: i }
-        Stored { store: s2, identity: gunbc.plans.md_helpers.p } => LsBuilt { store: s2, root: gunbc.plans.md_helpers.p }
+        gunbc.scm.object_store.Stored { store: s2, identity: p } => LsBuilt { store: s2, root: p }
       }
   }
 }
@@ -50,11 +50,11 @@ fn standing_eq(a: gunbc.scm.load_standing.LoadStanding, b: gunbc.scm.load_standi
 
 fn standing_tag(s: gunbc.scm.load_standing.LoadStanding) -> Int {
   match s {
-    LoadComplete => 0
-    LoadPartial => 1
-    LoadUnsupportedProtocol => 2
-    LoadDocumentMalformed => 3
-    LoadIdentityCollision => 4
+    gunbc.scm.load_standing.LoadComplete => 0
+    gunbc.scm.load_standing.LoadPartial => 1
+    gunbc.scm.load_standing.LoadUnsupportedProtocol => 2
+    gunbc.scm.load_standing.LoadDocumentMalformed => 3
+    gunbc.scm.load_standing.LoadIdentityCollision => 4
   }
 }
 
@@ -100,7 +100,7 @@ test fn only_an_unrecognized_format_is_a_protocol_gap() -> Bool {
   )
   let tag = gunbc.scm.commit_closure_json_v2.closure_document_load_standing(cause: gunbc.scm.commit_closure_json_v2.ClosureDocUnknownKindTag { found: "quantum" })
   standing_eq(a: protocol, b: gunbc.scm.load_standing.LoadUnsupportedProtocol)
-    && standing_eq(a: test.claim.deployed_tree_remote_witness.member, b: gunbc.scm.load_standing.LoadDocumentMalformed)
+    && standing_eq(a: member, b: gunbc.scm.load_standing.LoadDocumentMalformed)
     && standing_eq(a: tag, b: gunbc.scm.load_standing.LoadDocumentMalformed)
 }
 

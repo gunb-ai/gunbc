@@ -37,10 +37,10 @@ fn prose_row_gate_observation() -> gunbc.prose_row_frontier.ProseRowDiffObservat
   let diff = git.Core.DiffUnified0(
     base: "origin/main" as std.types.GitRef,
     head: "HEAD" as std.types.GitRef,
-    range: ThreeDot,
+    range: extdeps.git.ThreeDot,
   )
   if diff.success {
-    prose_row_diff_observation(diff_text: diff.diff)
+    gunbc.prose_row_frontier.prose_row_diff_observation(diff_text: diff.diff)
   } else {
     gunbc.prose_row_frontier.ProseRowDiffUnreadable {
       reason: "git.Core.DiffUnified0(origin/main...HEAD) failed"
@@ -53,10 +53,10 @@ fn prose_row_refusal_reason(refused: List<gunbc.prose_row_frontier.ProseRowRef>,
   concat(
     "prose row introduction gate: THIS CHANGE introduces prose-only data NAME_note: String declaration(s) under a path whose prose has already been migrated to authored // annotations (gunbc.prose_row_frontier prose_row_migration_scope). Move the irreducible rationale into a leading // block above the declaration it explains, and put any date, review id, PR number, SHA, status, count or dissolution condition in a typed carrier (DESIGN section 4c). Refused: ",
     concat(
-      prose_rows_render(rows: refused),
+      gunbc.prose_row_frontier.prose_rows_render(rows: refused),
       concat(
         " | counted out-of-scope residue, reported and NOT enforced, rows: ",
-        concat(to_string(residue_count), concat(" — ", prose_rows_render(rows: residue)))
+        concat(to_string(residue_count), concat(" — ", gunbc.prose_row_frontier.prose_rows_render(rows: residue)))
       )
     )
   )
@@ -69,17 +69,17 @@ fn prose_row_refusal_reason(refused: List<gunbc.prose_row_frontier.ProseRowRef>,
 // a copy of the rule is the fork this repository spends its time removing.
 fn prose_row_introduction_verdict(observation: gunbc.prose_row_frontier.ProseRowDiffObservation) -> std.process.ProcessExit {
   match observation {
-    ProseRowDiffUnreadable { reason: reason } => exit_failure(
+    gunbc.prose_row_frontier.ProseRowDiffUnreadable { reason: reason } => std.process.exit_failure(
       reason: concat("prose row introduction gate: ", concat(reason, " — refusing, never skipping (DESIGN section 5)"))
     )
-    ProseRowsObserved { added: added, removed: removed } => {
-      let introduced = prose_rows_introduced(added: added, removed: removed)
-      let refused = prose_rows_refused(introduced: introduced)
+    gunbc.prose_row_frontier.ProseRowsObserved { added: added, removed: removed } => {
+      let introduced = gunbc.prose_row_frontier.prose_rows_introduced(added: added, removed: removed)
+      let refused = gunbc.prose_row_frontier.prose_rows_refused(introduced: introduced)
       if (refused |> count) > 0 {
-        exit_failure(
+        std.process.exit_failure(
           reason: prose_row_refusal_reason(
             refused: refused,
-            residue: prose_rows_out_of_scope(introduced: introduced)
+            residue: gunbc.prose_row_frontier.prose_rows_out_of_scope(introduced: introduced)
           )
         )
       } else {
@@ -111,22 +111,22 @@ fn prose_row_receipt_row(row: gunbc.prose_row_frontier.ProseRowRef, disposition:
 
 fn prose_row_receipt_content(observation: gunbc.prose_row_frontier.ProseRowDiffObservation) -> String {
   match observation {
-    ProseRowDiffUnreadable { reason: reason } =>
+    gunbc.prose_row_frontier.ProseRowDiffUnreadable { reason: reason } =>
       concat("disposition\tpath\tdecl_name\nunreadable\t\t", reason)
-    ProseRowsObserved { added: added, removed: removed } => {
-      let introduced = prose_rows_introduced(added: added, removed: removed)
+    gunbc.prose_row_frontier.ProseRowsObserved { added: added, removed: removed } => {
+      let introduced = gunbc.prose_row_frontier.prose_rows_introduced(added: added, removed: removed)
       concat(
         "disposition\tpath\tdecl_name\n",
         concat(
           join(
-            prose_rows_refused(introduced: introduced)
+            gunbc.prose_row_frontier.prose_rows_refused(introduced: introduced)
               |> map(row => prose_row_receipt_row(row: row, disposition: "refused_in_scope")),
             "\n"
           ),
           concat(
             "\n",
             join(
-              prose_rows_out_of_scope(introduced: introduced)
+              gunbc.prose_row_frontier.prose_rows_out_of_scope(introduced: introduced)
                 |> map(row => prose_row_receipt_row(row: row, disposition: "counted_out_of_scope")),
               "\n"
             )
@@ -157,7 +157,7 @@ func run_prose_row_introduction_gate_body() -> std.process.ProcessExit {
   if written.success {
     prose_row_introduction_verdict(observation: observation)
   } else {
-    exit_failure(
+    std.process.exit_failure(
       reason: concat(
         "prose row introduction gate: could not write the counted residue receipt to ",
         concat(
@@ -178,8 +178,8 @@ func run_prose_row_introduction_gate_body() -> std.process.ProcessExit {
 // again, so there is never a second refusal authority to disagree with the first.
 fn prose_row_failure_reason(exit: std.process.ProcessExit) -> String {
   match exit {
-    ExitSuccess => ""
-    ExitFailure { code: _, reason: reason } => reason
+    std.process.ExitSuccess => ""
+    std.process.ExitFailure { code: _, reason: reason } => reason
   }
 }
 

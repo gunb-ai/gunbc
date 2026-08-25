@@ -2,21 +2,21 @@ module test.claim.systemctl_status_read_scaffold
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn witness_status_operation_argv_matches_authority() -> Bool {
-  systemctl_status_operation_argv_matches_authority(unit: "demo.service" as std.types.NonEmptyStr)
+  gunbc.systemctl_status_read.systemctl_status_operation_argv_matches_authority(unit: "demo.service" as std.types.NonEmptyStr)
 }
 
 test fn witness_status_read_local_returns_text() -> Bool {
-  match gunbc.systemctl_status_read(transport: gunbc.host_effect.LocalShell, unit: "demo.service" as std.types.NonEmptyStr) {
+  match gunbc.systemctl_status_read.systemctl_status_read(transport: gunbc.host_effect.LocalShell, unit: "demo.service" as std.types.NonEmptyStr) {
     UnitStatusCaptured { text: t } => t != ""
     UnitStatusCaptureRefused { reason: _ } => false
   }
 }
 
 test fn witness_dead_unit_status_capture_preserves_failed_text() -> Bool {
-  match unit_status_capture_from_stdout(
+  match gunbc.systemctl_status_read.unit_status_capture_from_stdout(
     stdout: "● gunbc-roadmap.service - Gunbc Roadmap\n     Loaded: loaded\n     Active: failed (Result: exit-code)",
     refusal: "",
   ) {
@@ -27,21 +27,21 @@ test fn witness_dead_unit_status_capture_preserves_failed_text() -> Bool {
 
 test fn witness_dissolution_trigger_declared_on_capture_note() -> Bool {
   string_contains(
-    s: live_deploy_unit_diagnosis_capture_exit_note,
+    s: gunbc.live_deploy.intent.live_deploy_unit_diagnosis_capture_exit_note,
     pattern: "dissolves-on: unit-diagnosis modeled as a typed systemd.Systemctl.Status observation",
   )
 }
 
 test fn witness_status_tail_scaffold_binds_dissolution_trigger() -> Bool {
-  match live_deploy_unit_status_tail_scaffold {
-    Scaffold {
-      dissolves_to: SingleAuthority,
-      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
+  match gunbc.live_deploy.intent.live_deploy_unit_status_tail_scaffold {
+    std.disposition.Scaffold {
+      dissolves_to: std.disposition.SingleAuthority,
+      bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: std.decl_ref.WholeDeclaration },
     } =>
       m == "gunbc.live_deploy.intent"
         && n == "live_deploy_unit_diagnosis_dissolution_trigger"
         && string_contains(
-          s: dissolution_description(condition: live_deploy_unit_diagnosis_dissolution_trigger),
+          s: std.dissolution.dissolution_description(condition: gunbc.live_deploy.intent.live_deploy_unit_diagnosis_dissolution_trigger),
           pattern: "never masked",
         )
     Terminal { reason: _ } => false

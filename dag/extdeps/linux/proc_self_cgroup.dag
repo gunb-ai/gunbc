@@ -4,14 +4,14 @@ module extdeps.linux.proc_self_cgroup
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "man7.org/linux/man-pages/man7/cgroups.7.html"
   }
 }
 
 data proc_self_cgroup_proc_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "man7.org/linux/man-pages/man5/proc.5.html#/proc/self/cgroup"
   }
 }
@@ -47,11 +47,11 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.linux.proc_self_cgroup",
       decl_name: "ProcPidCgroupMembershipRecord",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: proc_self_cgroup_proc_authority,
-  further_citations: [extdeps.linux.proc_self_cgroup.extdeps_external_authority_anchor]
+  further_citations: [extdeps_external_authority_anchor]
 }
 
 type ProcSelfCgroupMalformedScan

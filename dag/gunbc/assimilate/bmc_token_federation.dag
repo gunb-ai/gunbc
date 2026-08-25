@@ -11,8 +11,8 @@ fn gcp_token_smoke_run(command: String) -> v2.std.orchestration.Run {
   v2.std.orchestration.Run {
     command: command,
     env: Empty,
-    redirect: v2.std.optional.Absent,
-    capture: v2.std.optional.Absent
+    redirect: v2.std.collection.Absent,
+    capture: v2.std.collection.Absent
   }
 }
 
@@ -32,56 +32,56 @@ fn gcp_token_smoke_intent() -> v2.std.orchestration.Pipeline {
 
 fn gcp_token_smoke_script() -> String {
   match v2.compiler.emit_orchestration.orch_emit_pipeline(p: gcp_token_smoke_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       match d {
-        None => source.carried
-        Some { diagnostics: _ } => bmc_token_smoke_emit_refused_poison
+        v2.std.diagnostic.None => source.carried
+        v2.std.diagnostic.Some { diagnostics: _ } => bmc_token_smoke_emit_refused_poison
       }
-    Rejected { diagnostics: _ } => bmc_token_smoke_emit_refused_poison
+    v2.std.diagnostic.Rejected { diagnostics: _ } => bmc_token_smoke_emit_refused_poison
   }
 }
 
-data bmc_secrets_project_id: extdeps.cloud.gcp.gcp.GcpProjectId = fleet_secrets_project_id
+data bmc_secrets_project_id: extdeps.cloud.gcp.gcp.GcpProjectId = gunbc.auth.github_gcp_federation.fleet_secrets_project_id
 
-data bmc_secrets_project_number: String = fleet_secrets_project_number
+data bmc_secrets_project_number: String = gunbc.auth.github_gcp_federation.fleet_secrets_project_number
 
 data bmc_srv3_secret_name: String = "bmc-srv3-admin"
 
 data bmc_assimilator_sa_email: extdeps.cloud.gcp.gcp.ServiceAccountEmail = "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
 
-data bmc_federated_github_repo: String = federated_github_repo
+data bmc_federated_github_repo: String = gunbc.auth.github_gcp_federation.federated_github_repo
 
-data bmc_wif_pool_id: std.types.NonEmptyStr = github_wif_pool_id
+data bmc_wif_pool_id: std.types.NonEmptyStr = gunbc.auth.github_gcp_federation.github_wif_pool_id
 
-data bmc_wif_pool_display_name: std.types.NonEmptyStr = github_wif_pool_display_name
+data bmc_wif_pool_display_name: std.types.NonEmptyStr = gunbc.auth.github_gcp_federation.github_wif_pool_display_name
 
-data bmc_wif_provider_id: std.types.NonEmptyStr = github_wif_provider_id
+data bmc_wif_provider_id: std.types.NonEmptyStr = gunbc.auth.github_gcp_federation.github_wif_provider_id
 
-data bmc_wif_issuer_uri: std.types.NonEmptyStr = github_wif_issuer_uri
+data bmc_wif_issuer_uri: std.types.NonEmptyStr = gunbc.auth.github_gcp_federation.github_wif_issuer_uri
 
-data bmc_wif_attribute_mapping: Map<String, String> = github_wif_attribute_mapping
+data bmc_wif_attribute_mapping: Map<String, String> = gunbc.auth.github_gcp_federation.github_wif_attribute_mapping
 
 data bmc_assimilator_account_id: std.types.NonEmptyStr = "bmc-assimilator"
 
 data bmc_assimilator_display_name: std.types.NonEmptyStr = "BMC assimilator (keyless, srv3 secret only)"
 
-data bmc_wif_pool: extdeps.cloud.gcp.gcp.WifPool = github_wif_pool
+data bmc_wif_pool: extdeps.cloud.gcp.gcp.WifPool = gunbc.auth.github_gcp_federation.github_wif_pool
 
-data bmc_wif_provider: extdeps.cloud.gcp.gcp.WifProvider = github_wif_provider
+data bmc_wif_provider: extdeps.cloud.gcp.gcp.WifProvider = gunbc.auth.github_gcp_federation.github_wif_provider
 
 fn bmc_assimilator_sa_member() -> String {
-  federated_service_account_member(email: bmc_assimilator_sa_email)
+  gunbc.auth.github_gcp_federation.federated_service_account_member(email: bmc_assimilator_sa_email)
 }
 
-fn bmc_wif_provider_resource() -> String { github_wif_provider_resource() }
+fn bmc_wif_provider_resource() -> String { gunbc.auth.github_gcp_federation.github_wif_provider_resource() }
 
-fn bmc_wif_principal_set() -> String { github_wif_principal_set() }
+fn bmc_wif_principal_set() -> String { gunbc.auth.github_gcp_federation.github_wif_principal_set() }
 
-fn bmc_wif_attribute_condition() -> String { github_wif_attribute_condition() }
+fn bmc_wif_attribute_condition() -> String { gunbc.auth.github_gcp_federation.github_wif_attribute_condition() }
 
 data bmc_assimilator_allowed_roles: List<String> = [
   extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor,
-  role_secretmanager_secret_version_adder
+  extdeps.cloud.gcp.iam.role_secretmanager_secret_version_adder
 ]
 
 fn bmc_role_allowed(role: String) -> Bool {
@@ -106,18 +106,18 @@ fn bmc_secret_binding(role: String) -> SecretAccessBinding {
 
 data bmc_assimilator_bindings: List<SecretAccessBinding> = [
   bmc_secret_binding(role: extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor),
-  bmc_secret_binding(role: role_secretmanager_secret_version_adder)
+  bmc_secret_binding(role: extdeps.cloud.gcp.iam.role_secretmanager_secret_version_adder)
 ]
 
 fn gcp_wif_auth_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.UsesStep {
     name: Present { value: "Authenticate to GCP (keyless, Workload Identity Federation)" },
     id: Present { value: "gcp_auth" },
-    uses: google_auth_action,
+    uses: extdeps.github.actions.google_auth_action,
     with: Present {
       value: [
-        kv(key: "workload_identity_provider", value: yaml_string(s: bmc_wif_provider_resource())),
-        kv(key: "service_account", value: yaml_string(s: bmc_assimilator_sa_email as String))
+        extdeps.languages.yaml.types.kv(key: "workload_identity_provider", value: extdeps.languages.yaml.types.yaml_string(s: bmc_wif_provider_resource())),
+        extdeps.languages.yaml.types.kv(key: "service_account", value: extdeps.languages.yaml.types.yaml_string(s: bmc_assimilator_sa_email as String))
       ]
     },
     env: none,
@@ -145,7 +145,7 @@ fn bmc_checkout_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.UsesStep {
     name: Present { value: "Checkout" },
     id: none,
-    uses: checkout_action,
+    uses: extdeps.github.actions.checkout_action,
     with: none,
     env: none,
     if_condition: none,
@@ -158,13 +158,13 @@ fn bmc_token_smoke_job() -> extdeps.github.actions.Job {
   extdeps.github.actions.Job {
     id: "bmc_token_smoke",
     name: none,
-    runner: gunbc_ci_runner_spec(),
+    runner: gunbc.runner_spec_from_offer.gunbc_ci_runner_spec(),
     steps: [bmc_checkout_step(), gcp_wif_auth_step(), gcp_token_smoke_step()],
     needs: [],
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: Present { value: default_job_timeout_minutes },
+    timeout_minutes: Present { value: extdeps.github.actions.default_job_timeout_minutes },
     continue_on_error: none,
     concurrency: none,
     permissions: none
@@ -191,7 +191,7 @@ data bmc_token_smoke_workflow: extdeps.github.actions.Workflow = {
 }
 
 fn emit_bmc_token_smoke_workflow_yaml() -> String {
-  serialize_yaml(v: project_workflow_to_yaml(workflow: bmc_token_smoke_workflow))
+  extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.gha_workflow.project_workflow_to_yaml(workflow: bmc_token_smoke_workflow))
 }
 
 data bmc_federation_naming_residue_dissolve_on: String = "dissolve-on: the repository-level federation VALUES now have one authority in gunbc.auth.github_gcp_federation, but seven bmc_-prefixed names in this module still stand for concepts that are not BMC facts (the fleet secrets project and number, the pool, provider, issuer, attribute mapping, federated repo). Those names are a residual second naming scheme for one concept -- weaker than the value fork just removed, since no row can now disagree, but still a nickname. DISSOLVES WHEN consumers (bmc_bootstrap_provision, bmc_wif_delegation_chain, bmc_wif_canary_bootstrap and their witnesses) reference the github_gcp_federation symbols directly and these pass-through rows are deleted. Deferred rather than done here because the rename touches BMC production files and their witnesses, and it is separable from the value consolidation this change lands."

@@ -42,7 +42,7 @@ test fn no_property_is_both_settable_and_observation_only() -> Bool {
 }
 
 // THE MEMBER THAT MAKES THE REUSE UNSAFE, named explicitly rather than left implicit in the
-// classification. `extdeps.systemd.MemoryCurrent` is the specimen: it is what systemctl reports and what no unit
+// classification. `MemoryCurrent` is the specimen: it is what systemctl reports and what no unit
 // file may assign, so a directive type admitting it can spell a unit systemd rejects. If this ever
 // classifies settable, the argument in the carrier's header has silently inverted.
 test fn memory_current_is_the_specimen_that_forbids_reusing_the_show_surface() -> Bool {

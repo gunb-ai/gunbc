@@ -3,19 +3,19 @@ module v2.test.algebra_laws.nat_semiring
 
 fn atom_node(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn algebra_law_subject(algebra: v2.std.node.Symbol, inhabitant: v2.std.node.Symbol, law: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_subject_algebra_field }, target: v2.test.algebra_laws.nat_semiring.atom_node(s: algebra) },
-      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_subject_inhabitant_field }, target: v2.test.algebra_laws.nat_semiring.atom_node(s: inhabitant) },
-      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_subject_law_field }, target: v2.test.algebra_laws.nat_semiring.atom_node(s: law) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_subject_algebra_field }, target: atom_node(s: algebra) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_subject_inhabitant_field }, target: atom_node(s: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_subject_law_field }, target: atom_node(s: law) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -45,56 +45,56 @@ data nat_mul_associativity_input: v2.std.node.Node = nat_mul_law(law: ^law_nat_m
 data falsification_nat_add_wrong_identity: v2.std.node.Node = nat_add_law(law: ^nat_law_wrong_identity_symbol)
 
 fn accepted_claim(label: String, anchor: v2.std.verification.ManualAnchorKey, input: v2.std.node.Node) -> v2.std.verification.TestClaim {
-  v2.std.verification.EqualsClaim { label: label, anchor: manual_claim_anchor(anchor: anchor), lhs: input, rhs: input, classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit  }
+  v2.std.verification.EqualsClaim { label: label, anchor: v2.std.verification.manual_claim_anchor(anchor: anchor), lhs: input, rhs: input, classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit  }
   }
 }
 
 data claim_nat_add_left_identity: v2.std.verification.TestClaim = accepted_claim(
   label: "v2.std.nat.Nat addition left identity law",
-  anchor: ManualNatAddLeftIdentity,
+  anchor: v2.std.verification.ManualNatAddLeftIdentity,
   input: nat_add_left_identity_input
 )
 
 data claim_nat_add_right_identity: v2.std.verification.TestClaim = accepted_claim(
   label: "v2.std.nat.Nat addition right identity law",
-  anchor: ManualNatAddRightIdentity,
+  anchor: v2.std.verification.ManualNatAddRightIdentity,
   input: nat_add_right_identity_input
 )
 
 data claim_nat_add_associativity: v2.std.verification.TestClaim = accepted_claim(
   label: "v2.std.nat.Nat addition associativity law",
-  anchor: ManualNatAddAssociativity,
+  anchor: v2.std.verification.ManualNatAddAssociativity,
   input: nat_add_associativity_input
 )
 
 data claim_nat_mul_left_identity: v2.std.verification.TestClaim = accepted_claim(
   label: "v2.std.nat.Nat multiplication left identity law",
-  anchor: ManualNatMulLeftIdentity,
+  anchor: v2.std.verification.ManualNatMulLeftIdentity,
   input: nat_mul_left_identity_input
 )
 
 data claim_nat_mul_annihilator: v2.std.verification.TestClaim = accepted_claim(
   label: "v2.std.nat.Nat multiplication annihilator law",
-  anchor: ManualNatMulAnnihilator,
+  anchor: v2.std.verification.ManualNatMulAnnihilator,
   input: nat_mul_annihilator_input
 )
 
 data claim_nat_mul_associativity: v2.std.verification.TestClaim = accepted_claim(
   label: "v2.std.nat.Nat multiplication associativity law",
-  anchor: ManualNatMulAssociativity,
+  anchor: v2.std.verification.ManualNatMulAssociativity,
   input: nat_mul_associativity_input
 )
 
 data claim_nat_add_wrong_identity_falsifies_law: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "v2.std.nat.Nat addition wrong identity falsifies law claim",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: falsification_nat_add_wrong_identity,
-  expected_rejection: diagnostics_singleton(
+  expected_rejection: v2.std.diagnostic.diagnostics_singleton(
       d: v2.std.diagnostic.Diagnostic {
         reason: ^algebra_law_violation_reason,
-        at: node_locus(node: falsification_nat_add_wrong_identity),
+        at: v2.std.diagnostic.node_locus(node: falsification_nat_add_wrong_identity),
         correction: v2.std.diagnostic.Suggested { node: nat_add_left_identity_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }

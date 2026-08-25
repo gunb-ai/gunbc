@@ -70,15 +70,15 @@ type Comparison {
 service github.Commits {
   config {
     endpoint: extdeps.github.github.default_api_base
-    auth: std.types.Bearer
-    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+    auth: Bearer
+    auth_source: std.credentials.EnvVar { name: "GITHUB_TOKEN" }
 
     rate_limit: { requests: 5000, per: hour, scope: core }
   }
 
   operation Get {
     input {
-      auth_token: std.types.Secret
+      auth_token: Secret
       owner: String
       repo: String
       ref: String
@@ -102,7 +102,7 @@ service github.Commits {
 
   operation Compare {
     input {
-      auth_token: std.types.Secret
+      auth_token: Secret
       owner: String
       repo: String
       basehead: String

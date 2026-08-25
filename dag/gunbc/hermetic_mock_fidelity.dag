@@ -1,8 +1,5 @@
 module gunbc.hermetic_mock_fidelity
 
-// A DISCOVERED ERROR CLASS, FILED AS DESIGN section 4b REQUIRES: an operation whose hermetic
-// mock_response answers with ONE unconditional value, so every hermetic caller receives a
-// success the operation never performed.
 
 // A DISCOVERED ERROR CLASS, FILED AS DESIGN section 4b REQUIRES, AND SINCE REPAIRED: an
 // operation whose hermetic mock_response answered with ONE unconditional value, so every
@@ -192,6 +189,7 @@ fn hermetic_mock_fidelity_all_diagnosed() -> Bool {
     cons: fn(acc, r) { acc && hermetic_mock_row_names_what_it_fabricates(r: r) }
   )
 }
+
 
 fn hermetic_mock_fabricating_count() -> Int {
   v2.std.algebra.fold_list(

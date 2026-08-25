@@ -1,5 +1,6 @@
 module extdeps.systemd
 
+
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: extdeps.uri.Https
@@ -149,8 +150,8 @@ type SystemdUnitStatus {
 // 2026-08-22, `command -v` reports /usr/bin for loginctl, systemctl and journalctl alike, which is
 // the ordinary filesystem-hierarchy location for a distribution-packaged systemd; a host that
 // installed systemd somewhere else would need this row and not a second spelling at the call site.
-data systemd_binary_directory: NonEmptyStr = "/usr/bin" as NonEmptyStr
+data systemd_binary_directory: std.types.NonEmptyStr = "/usr/bin" as std.types.NonEmptyStr
 
-fn systemd_binary_path(name: NonEmptyStr) -> NonEmptyStr {
-  join([systemd_binary_directory as String, "/", name as String], "") as NonEmptyStr
+fn systemd_binary_path(name: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
+  join([systemd_binary_directory as String, "/", name as String], "") as std.types.NonEmptyStr
 }

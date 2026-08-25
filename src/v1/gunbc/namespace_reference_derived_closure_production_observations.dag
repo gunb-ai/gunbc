@@ -13,12 +13,12 @@ type NrdfcParsed
   | NrdfcParsedRefused
 
 fn nrdfc_parse(file: String, source: String) -> NrdfcParsed {
-  match parse_authored_occurrence_binding_source(file: file, source: source) {
-    ParsedOccurrenceBindingSourceRefused => NrdfcParsedRefused
-    ParsedOccurrenceBindingSourceReady { transport: transport, module_path: module_path } =>
+  match v1.gunbc.occurrence_binding_parser_walk.parse_authored_occurrence_binding_source(file: file, source: source) {
+    v1.gunbc.occurrence_binding_parser_walk.ParsedOccurrenceBindingSourceRefused => NrdfcParsedRefused
+    v1.gunbc.occurrence_binding_parser_walk.ParsedOccurrenceBindingSourceReady { transport: transport, module_path: module_path } =>
       NrdfcParsedReady {
         transport: transport,
-        inputs: occurrence_binding_inputs_from_transport(
+        inputs: v1.gunbc.occurrence_binding_parser_walk.occurrence_binding_inputs_from_transport(
           module_path: module_path,
           transport: transport,
         ),
@@ -49,24 +49,24 @@ fn same_file_neighbour_observation() -> std.reference_binding_observation.Refere
   ) {
     NrdfcParsedRefused =>
       std.reference_binding_observation.SameFileNeighbourProductionRefused {
-        gap: ReferenceBindingParserTransportRefused,
+        gap: std.reference_binding_observation.ReferenceBindingParserTransportRefused,
       }
     NrdfcParsedReady { transport: transport, inputs: inputs } =>
-      match reference_named(transport: transport, name: "fn_a") {
+      match v1.gunbc.occurrence_binding_parser_walk.reference_named(transport: transport, name: "fn_a") {
         Absent =>
           std.reference_binding_observation.SameFileNeighbourProductionRefused {
-            gap: ReferenceBindingNamedReferenceAbsent,
+            gap: std.reference_binding_observation.ReferenceBindingNamedReferenceAbsent,
           }
         Present { value: reference } =>
-          match declarations_named(transport: transport, name: "fn_a") |> first {
+          match v1.gunbc.occurrence_binding_parser_walk.declarations_named(transport: transport, name: "fn_a") |> first {
             Absent =>
               std.reference_binding_observation.SameFileNeighbourProductionRefused {
-                gap: ReferenceBindingNamedDeclarationAbsent,
+                gap: std.reference_binding_observation.ReferenceBindingNamedDeclarationAbsent,
               }
             Present { value: neighbour } =>
               std.reference_binding_observation.SameFileNeighbourObservation {
                 neighbour: neighbour.occurrence,
-                resolution: structural_binding_resolution_from_candidates(
+                resolution: std.reference_binding_observation.structural_binding_resolution_from_candidates(
                   transport: transport,
                   inputs: inputs,
                   reference: reference,
@@ -84,21 +84,21 @@ fn sibling_branch_observation() -> std.reference_binding_observation.ReferenceBi
   ) {
     NrdfcParsedRefused =>
       std.reference_binding_observation.SiblingBranchProductionRefused {
-        gap: ReferenceBindingParserTransportRefused,
+        gap: std.reference_binding_observation.ReferenceBindingParserTransportRefused,
       }
     NrdfcParsedReady { transport: transport, inputs: inputs } =>
-      let x_declarations = declarations_named(transport: transport, name: "x")
-      let x_references = references_named(transport: transport, name: "x")
+      let x_declarations = v1.gunbc.occurrence_binding_parser_walk.declarations_named(transport: transport, name: "x")
+      let x_references = v1.gunbc.occurrence_binding_parser_walk.references_named(transport: transport, name: "x")
       match x_declarations |> first {
         Absent =>
           std.reference_binding_observation.SiblingBranchProductionRefused {
-            gap: ReferenceBindingNamedDeclarationAbsent,
+            gap: std.reference_binding_observation.ReferenceBindingNamedDeclarationAbsent,
           }
         Present { value: then_branch_x } =>
           match x_declarations |> reverse |> first {
             Absent =>
               std.reference_binding_observation.SiblingBranchProductionRefused {
-                gap: ReferenceBindingNamedDeclarationAbsent,
+                gap: std.reference_binding_observation.ReferenceBindingNamedDeclarationAbsent,
               }
             Present { value: else_branch_x } =>
               match x_references |> reverse |> first {
@@ -107,14 +107,14 @@ fn sibling_branch_observation() -> std.reference_binding_observation.ReferenceBi
                     own_branch_declaration: else_branch_x.occurrence,
                     sibling_branch_declaration: then_branch_x.occurrence,
                     resolution: std.reference_binding_observation.StructuralBindingProductionRefused {
-                      gap: ReferenceBindingNamedReferenceAbsent,
+                      gap: std.reference_binding_observation.ReferenceBindingNamedReferenceAbsent,
                     },
                   }
                 Present { value: else_branch_ref } =>
                   std.reference_binding_observation.SiblingBranchObservation {
                     own_branch_declaration: else_branch_x.occurrence,
                     sibling_branch_declaration: then_branch_x.occurrence,
-                    resolution: structural_binding_resolution_from_candidates(
+                    resolution: std.reference_binding_observation.structural_binding_resolution_from_candidates(
                       transport: transport,
                       inputs: inputs,
                       reference: else_branch_ref,
@@ -133,24 +133,24 @@ fn later_declaration_observation() -> std.reference_binding_observation.Referenc
   ) {
     NrdfcParsedRefused =>
       std.reference_binding_observation.LaterDeclarationProductionRefused {
-        gap: ReferenceBindingParserTransportRefused,
+        gap: std.reference_binding_observation.ReferenceBindingParserTransportRefused,
       }
     NrdfcParsedReady { transport: transport, inputs: inputs } =>
-      match reference_named(transport: transport, name: "fn_later") {
+      match v1.gunbc.occurrence_binding_parser_walk.reference_named(transport: transport, name: "fn_later") {
         Absent =>
           std.reference_binding_observation.LaterDeclarationProductionRefused {
-            gap: ReferenceBindingNamedReferenceAbsent,
+            gap: std.reference_binding_observation.ReferenceBindingNamedReferenceAbsent,
           }
         Present { value: reference } =>
-          match declarations_named(transport: transport, name: "fn_later") |> first {
+          match v1.gunbc.occurrence_binding_parser_walk.declarations_named(transport: transport, name: "fn_later") |> first {
             Absent =>
               std.reference_binding_observation.LaterDeclarationProductionRefused {
-                gap: ReferenceBindingNamedDeclarationAbsent,
+                gap: std.reference_binding_observation.ReferenceBindingNamedDeclarationAbsent,
               }
             Present { value: later_declaration } =>
               std.reference_binding_observation.LaterDeclarationObservation {
                 later_declaration: later_declaration.occurrence,
-                resolution: structural_binding_resolution_from_candidates(
+                resolution: std.reference_binding_observation.structural_binding_resolution_from_candidates(
                   transport: transport,
                   inputs: inputs,
                   reference: reference,
@@ -168,32 +168,32 @@ fn distinct_homonym_observation() -> std.reference_binding_observation.Reference
   ) {
     NrdfcParsedRefused =>
       std.reference_binding_observation.DistinctHomonymProductionRefused {
-        gap: ReferenceBindingParserTransportRefused,
+        gap: std.reference_binding_observation.ReferenceBindingParserTransportRefused,
       }
     NrdfcParsedReady { transport: transport, inputs: inputs } =>
-      match reference_named(transport: transport, name: "helper") {
+      match v1.gunbc.occurrence_binding_parser_walk.reference_named(transport: transport, name: "helper") {
         Absent =>
           std.reference_binding_observation.DistinctHomonymProductionRefused {
-            gap: ReferenceBindingNamedReferenceAbsent,
+            gap: std.reference_binding_observation.ReferenceBindingNamedReferenceAbsent,
           }
         Present { value: reference } =>
-          let helpers = declarations_named(transport: transport, name: "helper")
+          let helpers = v1.gunbc.occurrence_binding_parser_walk.declarations_named(transport: transport, name: "helper")
           match helpers |> first {
             Absent =>
               std.reference_binding_observation.DistinctHomonymProductionRefused {
-                gap: ReferenceBindingNamedDeclarationAbsent,
+                gap: std.reference_binding_observation.ReferenceBindingNamedDeclarationAbsent,
               }
             Present { value: first_helper } =>
               match helpers |> reverse |> first {
                 Absent =>
                   std.reference_binding_observation.DistinctHomonymProductionRefused {
-                    gap: ReferenceBindingNamedDeclarationAbsent,
+                    gap: std.reference_binding_observation.ReferenceBindingNamedDeclarationAbsent,
                   }
                 Present { value: second_helper } =>
                   std.reference_binding_observation.DistinctHomonymObservation {
                     first_declaration: first_helper.occurrence,
                     second_declaration: second_helper.occurrence,
-                    resolution: structural_binding_resolution_from_candidates(
+                    resolution: std.reference_binding_observation.structural_binding_resolution_from_candidates(
                       transport: transport,
                       inputs: inputs,
                       reference: reference,

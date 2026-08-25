@@ -3,7 +3,7 @@ module extdeps.bmc
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Baseboard_management_controller"
   }
 }
@@ -20,10 +20,10 @@ fn bmc_observed_total_memory_bytes(obs: extdeps.bmc.types.BmcGroundedHostObserva
   obs.total_memory_bytes
 }
 
-fn bmc_observed_power_consumed_watts(obs: extdeps.bmc.types.BmcGroundedHostObservations) -> std.measure.Watt? {
+fn bmc_observed_power_consumed_watts(obs: extdeps.bmc.types.BmcGroundedHostObservations) -> Watt? {
   obs.power_consumed_watts
 }
 
 fn bmc_ground_snapshot(snapshot: extdeps.bmc.types.BmcTelemetrySnapshot) -> extdeps.bmc.types.BmcGroundedHostObservations {
-  bmc_ground_host_observations(snapshot: snapshot)
+  extdeps.bmc.redfish.bmc_ground_host_observations(snapshot: snapshot)
 }

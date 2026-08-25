@@ -7,9 +7,9 @@ data schedule_method_note: String = "This is a roadmap instantiation of the cite
 
 data remaining_cost_relative_sizing_follow_on_note: String = "FOLLOW-ON DERIVED READ, not slice 1 and never an authored field on RoadmapNode or NodeSizing: remaining-cost-to-complete-from-here is a node's own calibrated work plus the unfinished dependency closure, bucketed relative to the historical plus active task population by a separately grounded order-of-magnitude or quantile policy. It must project from this module's TotalWork and dependency-closure facts, so the label recalibrates as history accumulates and shrinks as prerequisites gain acceptance evidence. dissolve-on: a consumer needs relative portfolio sizing and grounds one population-bucketing policy; then one fold derives the label without creating a second sizing authority."
 
-data critical_path_method_used: extdeps.project_schedule.cpm_pert.CriticalPathMethod = critical_path_method
-data three_point_estimate_method_used: extdeps.project_schedule.cpm_pert.ThreePointEstimateMethod = three_point_estimate_method
-data resource_capacity_lower_bound_method_used: extdeps.project_schedule.cpm_pert.ResourceCapacityLowerBoundMethod = resource_capacity_lower_bound_method
+data critical_path_method_used: extdeps.project_schedule.cpm_pert.CriticalPathMethod = extdeps.project_schedule.cpm_pert.critical_path_method
+data three_point_estimate_method_used: extdeps.project_schedule.cpm_pert.ThreePointEstimateMethod = extdeps.project_schedule.cpm_pert.three_point_estimate_method
+data resource_capacity_lower_bound_method_used: extdeps.project_schedule.cpm_pert.ResourceCapacityLowerBoundMethod = extdeps.project_schedule.cpm_pert.resource_capacity_lower_bound_method
 
 type SizingCell {
   intricacy: gunbc.roadmap_model.Intricacy
@@ -22,8 +22,8 @@ fn sizing_cell_eq(a: SizingCell, b: SizingCell) -> Bool {
 
 fn sizing_cell_of(sizing: gunbc.roadmap_model.NodeSizing) -> SizingCell? {
   match sizing {
-    Unsized => Absent
-    Sized { intricacy, volume, repo: _, acceptance: _ } =>
+    gunbc.roadmap_model.Unsized => Absent
+    gunbc.roadmap_model.Sized { intricacy, volume, repo: _, acceptance: _ } =>
       Present { value: SizingCell { intricacy: intricacy, volume: volume } }
   }
 }
@@ -52,12 +52,12 @@ fn accepted_node_pull_links() -> List<AcceptedNodePullLink> {
 
 fn cited_pull_timings() -> List<extdeps.github.pulls.PullTimingObservation> {
   [
-    gunbc_pr_7393_timing,
-    gunbc_pr_7405_timing,
-    gunbc_pr_7429_timing,
-    gunbc_pr_7431_timing,
-    gunbc_pr_7441_timing,
-    gunbc_pr_7542_timing,
+    extdeps.github.pulls.gunbc_pr_7393_timing,
+    extdeps.github.pulls.gunbc_pr_7405_timing,
+    extdeps.github.pulls.gunbc_pr_7429_timing,
+    extdeps.github.pulls.gunbc_pr_7431_timing,
+    extdeps.github.pulls.gunbc_pr_7441_timing,
+    extdeps.github.pulls.gunbc_pr_7542_timing,
   ]
 }
 
@@ -119,7 +119,7 @@ fn observation_for_link(
   if count(matching_receipts) != 1 {
     return CycleTimeHistoryRefused { refusal: HistoryAcceptanceDuplicate { node: link.node } }
   }
-  if !node_accepted(receipts: receipts, rn: node) {
+  if !gunbc.roadmap_model.node_accepted(receipts: receipts, rn: node) {
     return CycleTimeHistoryRefused { refusal: HistoryAcceptanceMissing { node: link.node } }
   }
   let cell = match sizing_cell_of(sizing: node.sizing) {
@@ -155,7 +155,7 @@ fn observation_for_link(
       node: link.node,
       sizing_cell: cell,
       pull_number: pull.pull_number,
-      cycle_time: millisecond(count: pull.merged_at - pull.opened_at),
+      cycle_time: std.measure.millisecond(count: pull.merged_at - pull.opened_at),
       accepted_on: receipt.accepted_on,
       source_url: pull.source_url,
       provenance: AcceptedRoadmapNodePullHistory,
@@ -164,13 +164,13 @@ fn observation_for_link(
 }
 
 fn roadmap_cycle_time_observation_builds() -> List<CycleTimeObservationBuild> {
-  match roadmap_acceptance_receipts() {
-    RoadmapAcceptanceReceiptsProjectionRefused { detail: detail } =>
+  match gunbc.roadmap_authority.roadmap_acceptance_receipts() {
+    gunbc.roadmap_authority.RoadmapAcceptanceReceiptsProjectionRefused { detail: detail } =>
       [CycleTimeHistoryRefused {
         refusal: HistoryAcceptanceCarrierLoadRefused { detail: detail },
       }]
-    RoadmapAcceptanceReceiptsProjected { receipts: receipts } => {
-      let nodes = declared_roadmap_nodes()
+    gunbc.roadmap_authority.RoadmapAcceptanceReceiptsProjected { receipts: receipts } => {
+      let nodes = gunbc.roadmap_authority.declared_roadmap_nodes()
       let pulls = cited_pull_timings()
       let links = accepted_node_pull_links()
       links |> map(link => observation_for_link(
@@ -243,16 +243,16 @@ fn calibrate_cell(cell: SizingCell, observations: List<CycleTimeObservation>) ->
   let samples = observations
     |> filter(o => o.provenance == AcceptedRoadmapNodePullHistory)
     |> filter(o => sizing_cell_eq(a: o.sizing_cell, b: cell))
-    |> map(o => millisecond_count(m: o.cycle_time))
+    |> map(o => std.measure.millisecond_count(m: o.cycle_time))
     |> sort_by(n => n)
   if count(samples) == 0 {
     CalibrationRefusedNoSample { cell: cell }
   } else {
     Calibrated {
       interval: CycleTimeInterval {
-        minimum: millisecond(count: first(samples)),
-        median: millisecond(count: median_int(sorted: samples)),
-        maximum: millisecond(count: first(reverse(samples))),
+        minimum: std.measure.millisecond(count: first(samples)),
+        median: std.measure.millisecond(count: median_int(sorted: samples)),
+        maximum: std.measure.millisecond(count: first(reverse(samples))),
         sample_count: count(samples),
       }
     }
@@ -321,9 +321,9 @@ type CapacityConstrainedMinimum {
 }
 
 type ParallelismHeadroomInterval {
-  minimum: FieldOfFractions<std.measure.Millisecond>
-  median: FieldOfFractions<std.measure.Millisecond>
-  maximum: FieldOfFractions<std.measure.Millisecond>
+  minimum: std.algebra.FieldOfFractions<std.measure.Millisecond>
+  median: std.algebra.FieldOfFractions<std.measure.Millisecond>
+  maximum: std.algebra.FieldOfFractions<std.measure.Millisecond>
 }
 
 type ParallelismHeadroom { ratio: ParallelismHeadroomInterval }
@@ -432,7 +432,7 @@ fn dependency_graph(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gu
 }
 
 fn dependency_cycle_nodes(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> List<gunbc.roadmap_model.RoadmapNodeId> {
-  graph_cycle_members(
+  std.graph.graph_cycle_members(
     names: nodes |> map(n => n.node as String),
     graph: dependency_graph(nodes: nodes, edges: edges),
   ) |> map(n => n as gunbc.roadmap_model.RoadmapNodeId)
@@ -450,9 +450,9 @@ type ForecastBound = EarliestBound | MedianBound | LatestBound
 
 fn interval_bound(interval: CycleTimeInterval, bound: ForecastBound) -> Int {
   match bound {
-    EarliestBound => millisecond_count(m: interval.minimum)
-    MedianBound => millisecond_count(m: interval.median)
-    LatestBound => millisecond_count(m: interval.maximum)
+    EarliestBound => std.measure.millisecond_count(m: interval.minimum)
+    MedianBound => std.measure.millisecond_count(m: interval.median)
+    LatestBound => std.measure.millisecond_count(m: interval.maximum)
   }
 }
 
@@ -460,7 +460,7 @@ fn baseline_node_duration(
   interval: CycleTimeInterval,
   bound: ForecastBound,
 ) -> std.measure.Millisecond {
-  millisecond(count: interval_bound(interval: interval, bound: bound))
+  std.measure.millisecond(count: interval_bound(interval: interval, bound: bound))
 }
 
 type PathEstimate {
@@ -473,7 +473,7 @@ type PathEstimateResult
   | PathEstimateUnknown { node: gunbc.roadmap_model.RoadmapNodeId }
 
 fn longer_path(a: PathEstimate, b: PathEstimate) -> PathEstimate {
-  if millisecond_count(m: b.duration) > millisecond_count(m: a.duration) { b } else { a }
+  if std.measure.millisecond_count(m: b.duration) > std.measure.millisecond_count(m: a.duration) { b } else { a }
 }
 
 fn path_to_node(
@@ -512,15 +512,15 @@ fn path_to_node(
     Present { value } => value
     Absent => {
       let parent_best = parent_estimates |> fold(
-        init: PathEstimate { duration: millisecond(count: 0), path: [] },
+        init: PathEstimate { duration: std.measure.millisecond(count: 0), path: [] },
         f: (best, result) => match result {
           PathEstimated { estimate } => longer_path(a: best, b: estimate)
           PathEstimateUnknown { node: _ } => best
         },
       )
       PathEstimated { estimate: PathEstimate {
-        duration: millisecond(
-          count: millisecond_count(m: parent_best.duration) + millisecond_count(m: baseline_node_duration(
+        duration: std.measure.millisecond(
+          count: std.measure.millisecond_count(m: parent_best.duration) + std.measure.millisecond_count(m: baseline_node_duration(
             interval: interval,
             bound: bound,
           )),
@@ -541,7 +541,7 @@ type CriticalPathChoice {
 }
 
 fn forecast_instant(anchor: ForecastAnchorObservation, duration: std.measure.Millisecond) -> ForecastInstant {
-  ForecastInstant { epoch_ms: anchor.observed_at + millisecond_count(m: duration) }
+  ForecastInstant { epoch_ms: anchor.observed_at + std.measure.millisecond_count(m: duration) }
 }
 
 fn build_node_forecast(
@@ -605,12 +605,12 @@ fn total_work_duration(
   bound: ForecastBound,
 ) -> std.measure.Millisecond {
   let total = nodes |> fold(init: 0, f: (acc, node) =>
-    acc + millisecond_count(m: baseline_node_duration(
+    acc + std.measure.millisecond_count(m: baseline_node_duration(
       interval: node.calibrated_cycle_time,
       bound: bound,
     ))
   )
-  millisecond(count: total)
+  std.measure.millisecond(count: total)
 }
 
 fn total_work(
@@ -628,9 +628,9 @@ fn critical_path_minimum(
   anchor: ForecastAnchorObservation,
 ) -> CriticalPathMinimum {
   CriticalPathMinimum { duration: DurationEstimateInterval {
-    minimum: millisecond(count: bound.earliest.epoch_ms - anchor.observed_at),
-    median: millisecond(count: bound.median.epoch_ms - anchor.observed_at),
-    maximum: millisecond(count: bound.latest.epoch_ms - anchor.observed_at),
+    minimum: std.measure.millisecond(count: bound.earliest.epoch_ms - anchor.observed_at),
+    median: std.measure.millisecond(count: bound.median.epoch_ms - anchor.observed_at),
+    maximum: std.measure.millisecond(count: bound.latest.epoch_ms - anchor.observed_at),
   } }
 }
 
@@ -642,9 +642,9 @@ fn capacity_constrained_minimum(
 ) -> CapacityConstrainedMinimum {
   CapacityConstrainedMinimum {
     duration: DurationEstimateInterval {
-      minimum: millisecond(count: if millisecond_count(m: critical.duration.minimum) > (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.minimum) } else { (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap }),
-      median: millisecond(count: if millisecond_count(m: critical.duration.median) > (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.median) } else { (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap }),
-      maximum: millisecond(count: if millisecond_count(m: critical.duration.maximum) > (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.maximum) } else { (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap }),
+      minimum: std.measure.millisecond(count: if std.measure.millisecond_count(m: critical.duration.minimum) > (std.measure.millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap { std.measure.millisecond_count(m: critical.duration.minimum) } else { (std.measure.millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap }),
+      median: std.measure.millisecond(count: if std.measure.millisecond_count(m: critical.duration.median) > (std.measure.millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap { std.measure.millisecond_count(m: critical.duration.median) } else { (std.measure.millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap }),
+      maximum: std.measure.millisecond(count: if std.measure.millisecond_count(m: critical.duration.maximum) > (std.measure.millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap { std.measure.millisecond_count(m: critical.duration.maximum) } else { (std.measure.millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap }),
     },
     under_belt_slot_occupancy: belt_slot_occupancy,
   }
@@ -680,9 +680,9 @@ fn schedule_forecast(
 ) -> ScheduleForecastResult {
   let cycles = dependency_cycle_nodes(nodes: nodes, edges: edges)
   let unknown_endpoints = unknown_dependency_endpoints(nodes: nodes, edges: edges)
-  let unsized = nodes |> filter(n => match n.sizing { Unsized => true Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => false }) |> map(n => n.node)
+  let unsized = nodes |> filter(n => match n.sizing { gunbc.roadmap_model.Unsized => true gunbc.roadmap_model.Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => false }) |> map(n => n.node)
   let non_positive_observation_nodes = observations
-    |> filter(observation => millisecond_count(m: observation.cycle_time) <= 0)
+    |> filter(observation => std.measure.millisecond_count(m: observation.cycle_time) <= 0)
     |> fold(init: [], f: (located, observation) =>
       if any(located, node => node == observation.node) { located }
       else { append(located, items: [observation.node]) }
@@ -777,23 +777,23 @@ fn live_roadmap_schedule_forecast(
   assumptions: ScheduleForecastAssumptions,
   anchor: ForecastAnchorObservation,
 ) -> ScheduleForecastResult {
-  match roadmap_authority_projection() {
-    RoadmapAuthorityProjectionRefused { detail: detail } =>
+  match gunbc.roadmap_authority.roadmap_authority_projection() {
+    gunbc.roadmap_authority.RoadmapAuthorityProjectionRefused { detail: detail } =>
       ScheduleForecastRefused { refusals: [ForecastRoadmapAuthorityRefused { detail: detail }] }
-    RoadmapAuthorityProjected { doc: _, accepted: _ } =>
-      match accepted_roadmap_node_ids_projection() {
-        AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+    gunbc.roadmap_authority.RoadmapAuthorityProjected { doc: _, accepted: _ } =>
+      match gunbc.roadmap_authority.accepted_roadmap_node_ids_projection() {
+        gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
           let builds = roadmap_cycle_time_observation_builds()
           schedule_forecast(
-            nodes: active_roadmap_nodes_for_accepted(accepted: accepted),
-            edges: active_roadmap_edges_for_accepted(accepted: accepted),
+            nodes: gunbc.roadmap_authority.active_roadmap_nodes_for_accepted(accepted: accepted),
+            edges: gunbc.roadmap_authority.active_roadmap_edges_for_accepted(accepted: accepted),
             observations: accepted_cycle_time_observations(builds: builds),
             history_refusals: cycle_time_history_refusals(builds: builds),
             population_exclusions: cycle_time_population_exclusions(builds: builds),
             assumptions: assumptions,
             anchor: anchor,
           )
-        AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+        gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
           ScheduleForecastRefused { refusals: [ForecastRoadmapAuthorityRefused { detail: detail }] }
       }
   }

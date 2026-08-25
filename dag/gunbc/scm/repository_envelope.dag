@@ -20,6 +20,9 @@ module gunbc.scm.repository_envelope
 // and different messages name the SAME program, which is the point of content addressing and not a
 // collision.
 
+
+
+
 // THE ENCODING IS NOT CANONICAL WITH RESPECT TO INSERTION HISTORY, and that is declared here rather
 // than left for someone to discover by diffing two repositories that ought to match.
 //
@@ -136,7 +139,7 @@ fn repository_member_set_refusal(
   match gunbc.scm.commit_closure_json_v2.unexpected_member_key(v: v, allowed: allowed) {
     Absent => none
     Present { value: key } =>
-      Present { value: RepositoryUnexpectedMember { context: test.claim.tool_readiness_witness.context, key: key } }
+      Present { value: RepositoryUnexpectedMember { context: context, key: key } }
   }
 }
 
@@ -238,7 +241,7 @@ fn commit_search_step(acc: CommitSearch, c: RepositoryCommit, wanted: gunbc.scm.
 
 fn encode_optional_reference(commits: List<RepositoryCommit>, selected: gunbc.scm.object_store.ObjectId?) -> extdeps.languages.json.emit.JsonValue {
   match selected {
-    Absent => JsonNull
+    Absent => extdeps.languages.json.emit.JsonNull
     Present { value: identity } =>
       extdeps.languages.json.emit.json_string(s: commit_reference_of(commits: commits, selected: identity))
   }
@@ -267,7 +270,7 @@ fn encode_commit_records(acc: gunbc.scm.commit_closure_json_v2.EncodeAcc, commit
 // exist, and no migration claim -- building a synthetic second version now would test an invented
 // migration rather than the one the product eventually needs.
 fn encode_repository(repo: RepositoryEnvelope) -> extdeps.languages.json.emit.JsonValue {
-  encode_repository_v1(repo: gunbc.tools.review_codex.repo)
+  encode_repository_v1(repo: repo)
 }
 
 fn encode_repository_v1(repo: RepositoryEnvelope) -> extdeps.languages.json.emit.JsonValue {
@@ -332,13 +335,13 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
       RepositoryEncodeRefused { cause: RepositoryEncodeUncontainedTarget { target: target } }
     Absent =>
       match unresolved_commit_root(acc: acc, commits: repo.commits) {
-        Present { value: test.claim.extdeps_llm_claude_trust_witness.root } =>
-          RepositoryEncodeRefused { cause: RepositoryCommitRootNotInStore { root: test.claim.extdeps_llm_claude_trust_witness.root } }
+        Present { value: root } =>
+          RepositoryEncodeRefused { cause: RepositoryCommitRootNotInStore { root: root } }
         Absent =>
           match unresolved_checkout_selection(commits: repo.commits, selected: repo.checked_out) {
             Present { value: selected } =>
               RepositoryEncodeRefused { cause: RepositoryCheckoutNotInCommits { selected: selected } }
-            Absent => RepositoryEncoded { value: encode_repository(repo: gunbc.tools.review_codex.repo) }
+            Absent => RepositoryEncoded { value: encode_repository(repo: repo) }
           }
       }
   }
@@ -442,20 +445,20 @@ fn decode_commit_members(positions: gunbc.scm.commit_closure_json_v2.DecodePosit
       match gunbc.scm.json_member.read_member(v: value, key: "root") {
         gunbc.scm.json_member.MemberFailed { cause: c } =>
           CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryDecodeClosureDocRefusal { cause: c } } }
-        gunbc.scm.json_member.MemberObject { value: root_value } =>
+        MemberObject { value: root_value } =>
           match gunbc.scm.commit_closure_json_v2.decode_target(positions: positions, target_value: root_value) {
             gunbc.scm.commit_closure_json_v2.TargetDecodeFailed { cause: c } =>
               CommitDecodeAcc {
                 commits: acc.commits,
                 refusal: Present { value: commit_root_refusal(cause: c) },
               }
-            gunbc.scm.commit_closure_json_v2.TargetDecoded { target: test.claim.extdeps_llm_claude_trust_witness.root } =>
+            gunbc.scm.commit_closure_json_v2.TargetDecoded { target: root } =>
               match gunbc.scm.json_member.read_string_member(v: value, key: "message") {
                 gunbc.scm.json_member.MemberFailed { cause: c } =>
                   CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryDecodeClosureDocRefusal { cause: c } } }
                 gunbc.scm.json_member.MemberString { value: message } =>
                   CommitDecodeAcc {
-                    commits: concat([RepositoryCommit { root: test.claim.extdeps_llm_claude_trust_witness.root, message: message }], acc.commits),
+                    commits: concat([RepositoryCommit { root: root, message: message }], acc.commits),
                     refusal: acc.refusal,
                   }
                 _ =>
@@ -573,11 +576,11 @@ fn decode_repository_checkout(
     gunbc.scm.json_member.MemberLookupFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
     gunbc.scm.json_member.MemberValue { value: found } =>
       match found {
-        JsonNull =>
+        extdeps.languages.json.emit.JsonNull =>
           RepositoryDecoded {
             envelope: RepositoryEnvelope { store: store, commits: commits, checked_out: none }
           }
-        JsonString { value: reference } =>
+        extdeps.languages.json.emit.JsonString { value: reference } =>
           match commit_at_reference(commits: commits, reference: reference) {
             Absent =>
               RepositoryDecodeRefused { cause: RepositoryCheckoutReferenceUnresolved { reference: reference } }

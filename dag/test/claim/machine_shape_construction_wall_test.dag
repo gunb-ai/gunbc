@@ -1,7 +1,7 @@
 module test.claim.machine_shape_construction_wall
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data machine_shape_wall_witness_note: String = "RED/GREEN controls for MachineShape single-constructor compile gate (synthetic fixtures). A Transform call with callee Atom ^MachineShape is unsanctioned outside std.machine_shape and extdeps.*.machine_shape; ^shape_from_catalog is the sanctioned producer path."
 
@@ -9,19 +9,19 @@ fn ms_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn ms_positional(target: v2.std.node.Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Positional, target: target }
+  v2.std.node.Edge { label: v2.std.node.Positional, target: target }
 }
 
 fn ms_call(callee: v2.std.node.Symbol, arg: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [ms_positional(target: ms_atom(id: callee)), ms_positional(target: arg)],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -29,9 +29,9 @@ fn machine_shape_literal_fixture() -> v2.std.node.Node {
   ms_call(
     callee: ^MachineShape,
     arg: v2.std.node.Node {
-      kind: v2.std.node.TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
     }
   )
 }
@@ -40,7 +40,7 @@ fn shape_from_catalog_call_fixture() -> v2.std.node.Node {
   ms_call(callee: ^shape_from_catalog, arg: ms_atom(id: ^machine_shape_wall_fixture_input))
 }
 
-fn non_empty_contains_reason(d: v2.std.diagnostic.NonEmptyDiagnostics, reason: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn non_empty_contains_reason(d: v2.std.diagnostic.NonEmptyDiagnostics, reason: v2.std.node.Symbol) -> Bool {
   if d.head.reason == reason {
     true
   } else {
@@ -50,22 +50,22 @@ fn non_empty_contains_reason(d: v2.std.diagnostic.NonEmptyDiagnostics, reason: v
   }
 }
 
-fn gate_accepts(o: v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>>) -> v2.std.logic.Bool {
+fn gate_accepts(o: v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>>) -> Bool {
   match o {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn gate_red_synthetic_machine_shape_call() -> v2.std.logic.Bool {
+test fn gate_red_synthetic_machine_shape_call() -> Bool {
   match v2.lens.machine_shape.machine_shape_compile_gate(node: machine_shape_literal_fixture()) {
-    Rejected { diagnostics: d } =>
-      test.claim.machine_shape_construction_wall.non_empty_contains_reason(d: d, reason: ^machine_shape_unsanctioned_construction)
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
+      non_empty_contains_reason(d: d, reason: ^machine_shape_unsanctioned_construction)
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn gate_green_synthetic_shape_from_catalog_call() -> v2.std.logic.Bool {
-  test.claim.machine_shape_construction_wall.gate_accepts(o: v2.lens.machine_shape.machine_shape_compile_gate(node: shape_from_catalog_call_fixture()))
+test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {
+  gate_accepts(o: v2.lens.machine_shape.machine_shape_compile_gate(node: shape_from_catalog_call_fixture()))
 }
 

@@ -92,11 +92,11 @@ type PlatformRoleUpstream
 fn platform_firmware_role_upstream(role: PlatformFirmwareRole) -> PlatformRoleUpstream {
   match role {
     TrustedFirmwareSecureBootChain =>
-      UpstreamCited { subject: extdeps.firmware.trusted_firmware_a.subject.trusted_firmware_a_model_scope.subject.declaration }
+      UpstreamCited { subject: trusted_firmware_a_model_scope.subject.declaration }
     HostUefiFirmware =>
-      UpstreamCited { subject: extdeps.firmware.tianocore_edk2.subject.tianocore_edk2_model_scope.subject.declaration }
+      UpstreamCited { subject: tianocore_edk2_model_scope.subject.declaration }
     BaseboardManagementFirmware =>
-      UpstreamCited { subject: extdeps.firmware.openbmc.subject.openbmc_model_scope.subject.declaration }
+      UpstreamCited { subject: openbmc_model_scope.subject.declaration }
     SystemControlProcessorFirmware =>
       UpstreamNotModelledHere { reason: "Ampere system control processor firmware has no cited subject module in this repository yet; extdeps.ampere carries only an SCP diagnostic surface" }
     BoardProgrammableLogic =>
@@ -211,11 +211,11 @@ data board_power_interlock_firmware_contract: PlatformFirmwareContract = Platfor
   start_preconditions: [
     HostFirmwareStartPrecondition {
       kind: PowerPermitAsserted,
-      establishment: EstablishedByBoardSignal { signal: power_permit_signal },
+      establishment: EstablishedByBoardSignal { signal: product.compute_board.digital_control.power_permit_signal },
     },
     HostFirmwareStartPrecondition {
       kind: ResetReleased,
-      establishment: EstablishedByBoardSignal { signal: reset_release_signal },
+      establishment: EstablishedByBoardSignal { signal: product.compute_board.digital_control.reset_release_signal },
     },
     HostFirmwareStartPrecondition {
       kind: BootStorageReadable,
@@ -246,11 +246,11 @@ data board_power_interlock_firmware_contract: PlatformFirmwareContract = Platfor
 data board_power_interlock_bonds: List<ElectricalBond> = [
   PowerReturnConnection {
     domain: power_return_net,
-    terminal: terminal_ref(component: logic_supply_source.identity, terminal: logic_supply_source.negative_terminal),
+    terminal: product.electrical.connectivity.terminal_ref(component: logic_supply_source.identity, terminal: logic_supply_source.negative_terminal),
   },
   SignalReferenceConnection {
     signal_class: pg_conditioned_net,
-    terminal: terminal_ref(component: pg_conditioning_capacitor.identity, terminal: pg_conditioning_capacitor.positive_terminal),
+    terminal: product.electrical.connectivity.terminal_ref(component: pg_conditioning_capacitor.identity, terminal: pg_conditioning_capacitor.positive_terminal),
   },
   ChassisBond {
     board_feature: "mounting_hole_1" as BoardFeatureIdentity,
@@ -328,7 +328,7 @@ fn article_manufacturing_profile_selected(a: BoardPowerInterfaceArticle) -> Bool
 // values decide both the level AND the time constant — which is why they are a design pair rather
 // than one resistor with a second added beside it.
 data pg_divider_top: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.ResistorInstance {
-  identity: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"),
+  identity: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"),
   part: "power-good divider, upper leg",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
   negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
@@ -336,7 +336,7 @@ data pg_divider_top: product.compute_board.analog.ElectricalComponentInstance = 
 }
 
 data pg_divider_bottom: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.ResistorInstance {
-  identity: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"),
+  identity: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"),
   part: "power-good divider, lower leg",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
   negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
@@ -344,7 +344,7 @@ data pg_divider_bottom: product.compute_board.analog.ElectricalComponentInstance
 }
 
 data pg_conditioning_capacitor: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.CapacitorInstance {
-  identity: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"),
+  identity: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"),
   part: "power-good conditioning capacitor",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
   negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
@@ -352,21 +352,21 @@ data pg_conditioning_capacitor: product.compute_board.analog.ElectricalComponent
 }
 
 data logic_supply_source: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.IndependentVoltageSourceInstance {
-  identity: component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"),
+  identity: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"),
   part: "logic supply input",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
   negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
   potential_difference: std.measure.Measure { count: 12 },
 }
 
-data pg_raw_net: product.electrical.connectivity.NetIdentity = net_identity(design: board_power_interlock_design, local_identity: "pg_raw")
+data pg_raw_net: product.electrical.connectivity.NetIdentity = product.electrical.connectivity.net_identity(design: board_power_interlock_design, local_identity: "pg_raw")
 
 // THE NODE THE WHOLE ARTICLE IS ABOUT, and it did not previously exist. This is what the divider
 // produces, what the capacitor filters, and what the digital interlock's conditioned_good input
 // observes — one net joining the analog and digital halves that were formerly unconnected.
-data pg_conditioned_net: product.electrical.connectivity.NetIdentity = net_identity(design: board_power_interlock_design, local_identity: "pg_cond")
+data pg_conditioned_net: product.electrical.connectivity.NetIdentity = product.electrical.connectivity.net_identity(design: board_power_interlock_design, local_identity: "pg_cond")
 
-data power_return_net: product.electrical.connectivity.NetIdentity = net_identity(design: board_power_interlock_design, local_identity: "power_return")
+data power_return_net: product.electrical.connectivity.NetIdentity = product.electrical.connectivity.net_identity(design: board_power_interlock_design, local_identity: "power_return")
 
 data power_good_conditioning_intent: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
   title: "power-good conditioning network",
@@ -375,24 +375,24 @@ data power_good_conditioning_intent: product.compute_board.analog.AnalogCircuitI
     product.electrical.connectivity.ElectricalNet {
       identity: pg_raw_net,
       members: [
-        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"), terminal: "1" as product.electrical.connectivity.TerminalIdentity),
-        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"), terminal: "1" as product.electrical.connectivity.TerminalIdentity),
+        product.electrical.connectivity.terminal_ref(component: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"), terminal: "1" as product.electrical.connectivity.TerminalIdentity),
+        product.electrical.connectivity.terminal_ref(component: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"), terminal: "1" as product.electrical.connectivity.TerminalIdentity),
       ],
     },
     product.electrical.connectivity.ElectricalNet {
       identity: pg_conditioned_net,
       members: [
-        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"), terminal: "2" as product.electrical.connectivity.TerminalIdentity),
-        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"), terminal: "1" as product.electrical.connectivity.TerminalIdentity),
-        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"), terminal: "1" as product.electrical.connectivity.TerminalIdentity),
+        product.electrical.connectivity.terminal_ref(component: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"), terminal: "2" as product.electrical.connectivity.TerminalIdentity),
+        product.electrical.connectivity.terminal_ref(component: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"), terminal: "1" as product.electrical.connectivity.TerminalIdentity),
+        product.electrical.connectivity.terminal_ref(component: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"), terminal: "1" as product.electrical.connectivity.TerminalIdentity),
       ],
     },
     product.electrical.connectivity.ElectricalNet {
       identity: power_return_net,
       members: [
-        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"), terminal: "2" as product.electrical.connectivity.TerminalIdentity),
-        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"), terminal: "2" as product.electrical.connectivity.TerminalIdentity),
-        terminal_ref(component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"), terminal: "2" as product.electrical.connectivity.TerminalIdentity),
+        product.electrical.connectivity.terminal_ref(component: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"), terminal: "2" as product.electrical.connectivity.TerminalIdentity),
+        product.electrical.connectivity.terminal_ref(component: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"), terminal: "2" as product.electrical.connectivity.TerminalIdentity),
+        product.electrical.connectivity.terminal_ref(component: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"), terminal: "2" as product.electrical.connectivity.TerminalIdentity),
       ],
     },
   ],
@@ -400,20 +400,20 @@ data power_good_conditioning_intent: product.compute_board.analog.AnalogCircuitI
 
 data power_good_model_bindings: List<product.compute_board.analog.ComponentModelBinding> = [
   product.compute_board.analog.ComponentModelBinding {
-    component: component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"),
-    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal independent source at declared fidelity", fidelity: IdealLumped },
+    component: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "logic_in"),
+    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal independent source at declared fidelity", fidelity: product.compute_board.analog.IdealLumped },
   },
   product.compute_board.analog.ComponentModelBinding {
-    component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"),
-    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
+    component: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "pg_top"),
+    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: product.compute_board.analog.IdealLumped },
   },
   product.compute_board.analog.ComponentModelBinding {
-    component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"),
-    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
+    component: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "pg_bot"),
+    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: product.compute_board.analog.IdealLumped },
   },
   product.compute_board.analog.ComponentModelBinding {
-    component: component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"),
-    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
+    component: product.electrical.connectivity.component_instance_identity(design: board_power_interlock_design, local_identity: "pg_filt"),
+    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: product.compute_board.analog.IdealLumped },
   },
 ]
 
@@ -422,7 +422,7 @@ data power_interlock_article: BoardPowerInterfaceArticle = BoardPowerInterfaceAr
   analog: power_good_conditioning_intent,
   model_bindings: power_good_model_bindings,
   reference_net: power_return_net,
-  digital_control: board_power_interlock_intent,
+  digital_control: product.compute_board.digital_control.board_power_interlock_intent,
   bonds: board_power_interlock_bonds,
   platform_firmware: board_power_interlock_firmware_contract,
   physical: board_power_interlock_physical,

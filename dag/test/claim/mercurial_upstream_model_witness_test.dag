@@ -55,9 +55,9 @@ fn fixture_file_revisions() -> List<extdeps.mercurial.MercurialFileRevision> {
   [
     extdeps.mercurial.MercurialFileRevision {
       node: hg_file_regular,
-      parents: MercurialNoParents,
-      copy: MercurialNotCopied,
-      content: octets_bytes(o: [109, 97, 105, 110]),
+      parents: extdeps.mercurial.MercurialNoParents,
+      copy: extdeps.mercurial.MercurialNotCopied,
+      content: std.bytes.octets_bytes(o: [109, 97, 105, 110]),
     },
     extdeps.mercurial.MercurialFileRevision {
       node: hg_file_executable,
@@ -66,13 +66,13 @@ fn fixture_file_revisions() -> List<extdeps.mercurial.MercurialFileRevision> {
         path: hg_path_regular,
         file_revision: hg_file_regular,
       },
-      content: octets_bytes(o: [114, 117, 110]),
+      content: std.bytes.octets_bytes(o: [114, 117, 110]),
     },
     extdeps.mercurial.MercurialFileRevision {
       node: hg_file_symlink,
-      parents: MercurialNoParents,
-      copy: MercurialNotCopied,
-      content: octets_bytes(o: [46, 46, 47, 109, 97, 105, 110]),
+      parents: extdeps.mercurial.MercurialNoParents,
+      copy: extdeps.mercurial.MercurialNotCopied,
+      content: std.bytes.octets_bytes(o: [46, 46, 47, 109, 97, 105, 110]),
     },
   ]
 }
@@ -105,9 +105,9 @@ fn fixture_changesets() -> List<extdeps.mercurial.MercurialChangeset> {
     extdeps.mercurial.MercurialChangeset {
       node: hg_c0,
       manifest: hg_manifest,
-      parents: MercurialNoParents,
+      parents: extdeps.mercurial.MercurialNoParents,
       branch: "default",
-      branch_closure: MercurialBranchRemainsOpen,
+      branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-0",
       description: "root",
@@ -117,7 +117,7 @@ fn fixture_changesets() -> List<extdeps.mercurial.MercurialChangeset> {
       manifest: hg_manifest,
       parents: extdeps.mercurial.MercurialOneParent { parent: hg_c0 },
       branch: "default",
-      branch_closure: MercurialBranchRemainsOpen,
+      branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-1",
       description: "left",
@@ -127,7 +127,7 @@ fn fixture_changesets() -> List<extdeps.mercurial.MercurialChangeset> {
       manifest: hg_manifest,
       parents: extdeps.mercurial.MercurialOneParent { parent: hg_c0 },
       branch: "default",
-      branch_closure: MercurialBranchRemainsOpen,
+      branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-2",
       description: "right",
@@ -188,15 +188,15 @@ fn fixture_projection_contents_with_local_revisions(
       extdeps.mercurial.MercurialBookmark { name: "main", target: hg_c1 },
     ],
     tags: [
-      extdeps.mercurial.MercurialTag { name: "v0", target: hg_c0, source: MercurialVersionedTag },
-      extdeps.mercurial.MercurialTag { name: "scratch", target: hg_c2, source: MercurialLocalTag },
+      extdeps.mercurial.MercurialTag { name: "v0", target: hg_c0, source: extdeps.mercurial.MercurialVersionedTag },
+      extdeps.mercurial.MercurialTag { name: "scratch", target: hg_c2, source: extdeps.mercurial.MercurialLocalTag },
     ],
     phases: [
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c2, phase: "secret" },
     ],
-    publishing: MercurialNonPublishingServer,
+    publishing: extdeps.mercurial.MercurialNonPublishingServer,
     subrepositories: [
       extdeps.mercurial.MercurialSubrepository {
         path: hg_path_subrepo,
@@ -247,7 +247,7 @@ fn projection_with_phases(
   projection: extdeps.mercurial.MercurialRepositoryProjection,
   phases: List<extdeps.mercurial.MercurialPhaseWireEntry>,
 ) -> extdeps.mercurial.MercurialRepositoryProjection {
-  mercurial_projection_map_contents(
+  extdeps.mercurial.mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
       extdeps.mercurial.MercurialRepositoryProjectionContents {
@@ -272,7 +272,7 @@ fn projection_with_file_revisions(
   projection: extdeps.mercurial.MercurialRepositoryProjection,
   file_revisions: List<extdeps.mercurial.MercurialFileRevision>,
 ) -> extdeps.mercurial.MercurialRepositoryProjection {
-  mercurial_projection_map_contents(
+  extdeps.mercurial.mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
       extdeps.mercurial.MercurialRepositoryProjectionContents {
@@ -297,7 +297,7 @@ fn projection_with_evolution(
   projection: extdeps.mercurial.MercurialRepositoryProjection,
   evolution: extdeps.mercurial.MercurialEvolutionMetadata,
 ) -> extdeps.mercurial.MercurialRepositoryProjection {
-  mercurial_projection_map_contents(
+  extdeps.mercurial.mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
       extdeps.mercurial.MercurialRepositoryProjectionContents {
@@ -322,7 +322,7 @@ fn projection_with_manifests(
   projection: extdeps.mercurial.MercurialRepositoryProjection,
   manifests: List<extdeps.mercurial.MercurialManifestWire>,
 ) -> extdeps.mercurial.MercurialRepositoryProjection {
-  mercurial_projection_map_contents(
+  extdeps.mercurial.mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
       extdeps.mercurial.MercurialRepositoryProjectionContents {
@@ -347,7 +347,7 @@ fn projection_with_changesets(
   projection: extdeps.mercurial.MercurialRepositoryProjection,
   changesets: List<extdeps.mercurial.MercurialChangeset>,
 ) -> extdeps.mercurial.MercurialRepositoryProjection {
-  mercurial_projection_map_contents(
+  extdeps.mercurial.mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
       extdeps.mercurial.MercurialRepositoryProjectionContents {
@@ -372,7 +372,7 @@ fn projection_with_heads(
   projection: extdeps.mercurial.MercurialRepositoryProjection,
   heads: List<extdeps.mercurial.MercurialHead>,
 ) -> extdeps.mercurial.MercurialRepositoryProjection {
-  mercurial_projection_map_contents(
+  extdeps.mercurial.mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
       extdeps.mercurial.MercurialRepositoryProjectionContents {
@@ -397,7 +397,7 @@ fn projection_with_local_revisions(
   projection: extdeps.mercurial.MercurialRepositoryProjection,
   local_revisions: List<extdeps.mercurial.MercurialLocalRevisionEntry>,
 ) -> extdeps.mercurial.MercurialRepositoryProjection {
-  mercurial_projection_map_contents(
+  extdeps.mercurial.mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
       extdeps.mercurial.MercurialRepositoryProjectionContents {
@@ -422,7 +422,7 @@ fn projection_with_publishing(
   projection: extdeps.mercurial.MercurialRepositoryProjection,
   publishing: extdeps.mercurial.MercurialPublishingBehavior,
 ) -> extdeps.mercurial.MercurialRepositoryProjection {
-  mercurial_projection_map_contents(
+  extdeps.mercurial.mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
       extdeps.mercurial.MercurialRepositoryProjectionContents {
@@ -444,10 +444,10 @@ fn projection_with_publishing(
 }
 
 fn mercurial_fixture_repository() -> extdeps.mercurial.MercurialRepositoryState? {
-  match mercurial_decode_projection(projection: test.claim.mercurial_upstream_model_witness.fixture_projection()) {
-    MercurialDecoded { repository } => Present { value: repository }
-    MercurialDecodeRefused { cause: _ } => Absent
-    MercurialRepositoryUnavailable { reason: _ } => Absent
+  match extdeps.mercurial.mercurial_decode_projection(projection: fixture_projection()) {
+    extdeps.mercurial.MercurialDecoded { repository } => Present { value: repository }
+    extdeps.mercurial.MercurialDecodeRefused { cause: _ } => Absent
+    extdeps.mercurial.MercurialRepositoryUnavailable { reason: _ } => Absent
   }
 }
 
@@ -462,46 +462,46 @@ test fn witness_mercurial_upstream_authority_is_version_pinned() -> Bool {
 }
 
 test fn witness_mercurial_wire_identity_decodes_to_structural_node() -> Bool {
-  match mercurial_decode_node_identity(
+  match extdeps.mercurial.mercurial_decode_node_identity(
     observation: extdeps.mercurial.MercurialNodeIdentityObservation {
-      role: MercurialChangesetNodeIdentity,
+      role: extdeps.mercurial.MercurialChangesetNodeIdentity,
       text: "1111111111111111111111111111111111111111",
     },
   ) {
-    MercurialNodeIdentityDecoded { node } => node == hg_c0
+    extdeps.mercurial.MercurialNodeIdentityDecoded { node } => node == hg_c0
     _ => false
   }
 }
 
 test fn witness_mercurial_wire_identity_refuses_noncanonical_text() -> Bool {
-  let short = mercurial_decode_node_identity(
+  let short = extdeps.mercurial.mercurial_decode_node_identity(
     observation: extdeps.mercurial.MercurialNodeIdentityObservation {
-      role: MercurialChangesetNodeIdentity,
+      role: extdeps.mercurial.MercurialChangesetNodeIdentity,
       text: "x",
     },
   )
-  let non_hex = mercurial_decode_node_identity(
+  let non_hex = extdeps.mercurial.mercurial_decode_node_identity(
     observation: extdeps.mercurial.MercurialNodeIdentityObservation {
-      role: MercurialChangesetNodeIdentity,
+      role: extdeps.mercurial.MercurialChangesetNodeIdentity,
       text: "gggggggggggggggggggggggggggggggggggggggg",
     },
   )
-  let uppercase = mercurial_decode_node_identity(
+  let uppercase = extdeps.mercurial.mercurial_decode_node_identity(
     observation: extdeps.mercurial.MercurialNodeIdentityObservation {
-      role: MercurialChangesetNodeIdentity,
+      role: extdeps.mercurial.MercurialChangesetNodeIdentity,
       text: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     },
   )
   match short {
-    MercurialNodeIdentityDecodeRefused {
-      cause: MercurialNodeIdentityWrongLength { observed },
+    extdeps.mercurial.MercurialNodeIdentityDecodeRefused {
+      cause: extdeps.mercurial.MercurialNodeIdentityWrongLength { observed },
     } => if observed == 1 {
       match non_hex {
-        MercurialNodeIdentityDecodeRefused {
-          cause: MercurialNodeIdentityNonHexadecimal,
+        extdeps.mercurial.MercurialNodeIdentityDecodeRefused {
+          cause: extdeps.mercurial.MercurialNodeIdentityNonHexadecimal,
         } => match uppercase {
-          MercurialNodeIdentityDecodeRefused {
-            cause: MercurialNodeIdentityNonCanonicalUppercase,
+          extdeps.mercurial.MercurialNodeIdentityDecodeRefused {
+            cause: extdeps.mercurial.MercurialNodeIdentityNonCanonicalUppercase,
           } => true
           _ => false
         }
@@ -529,9 +529,9 @@ test fn witness_mercurial_present_identity_cannot_be_declared_missing() -> Bool 
     missing_manifests: [],
     missing_file_revisions: [hg_file_missing],
   }
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused {
-      cause: MercurialChangesetPresentAndDeclaredMissing { changeset },
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused {
+      cause: extdeps.mercurial.MercurialChangesetPresentAndDeclaredMissing { changeset },
     } => changeset == hg_c0
     _ => false
   }
@@ -541,7 +541,7 @@ test fn witness_mercurial_inaccessible_projection_cannot_carry_repository_facts(
   let inaccessible = extdeps.mercurial.MercurialInaccessibleProjection {
     reason: "repository permission denied",
   }
-  let mapped = mercurial_projection_map_contents(
+  let mapped = extdeps.mercurial.mercurial_projection_map_contents(
     projection: inaccessible,
     map_contents: fn(contents) {
       extdeps.mercurial.MercurialRepositoryProjectionContents {
@@ -561,7 +561,7 @@ test fn witness_mercurial_inaccessible_projection_cannot_carry_repository_facts(
     },
   )
   match mapped {
-    MercurialInaccessibleProjection { reason } =>
+    extdeps.mercurial.MercurialInaccessibleProjection { reason } =>
       reason == "repository permission denied"
     _ => false
   }
@@ -571,28 +571,28 @@ test fn witness_mercurial_empty_inaccessible_projection_stays_unavailable() -> B
   let inaccessible = extdeps.mercurial.MercurialInaccessibleProjection {
     reason: "repository permission denied",
   }
-  match mercurial_decode_projection(projection: inaccessible) {
-    MercurialRepositoryUnavailable { reason } =>
+  match extdeps.mercurial.mercurial_decode_projection(projection: inaccessible) {
+    extdeps.mercurial.MercurialRepositoryUnavailable { reason } =>
       reason == "repository permission denied"
     _ => false
   }
 }
 
 test fn witness_mercurial_fixture_decodes_and_projects_without_loss() -> Bool {
-  match mercurial_decode_projection(projection: test.claim.mercurial_upstream_model_witness.fixture_projection()) {
-    MercurialDecodeRefused { cause: _ } => false
-    MercurialRepositoryUnavailable { reason: _ } => false
-    MercurialDecoded { repository } =>
+  match extdeps.mercurial.mercurial_decode_projection(projection: fixture_projection()) {
+    extdeps.mercurial.MercurialDecodeRefused { cause: _ } => false
+    extdeps.mercurial.MercurialRepositoryUnavailable { reason: _ } => false
+    extdeps.mercurial.MercurialDecoded { repository } =>
       let contents = repository.contents
-      let projected = mercurial_project_repository(repository: repository)
-      match mercurial_assess_read_back(
+      let projected = extdeps.mercurial.mercurial_project_repository(repository: repository)
+      match extdeps.mercurial.mercurial_assess_read_back(
         expected: repository,
         observation: extdeps.mercurial.MercurialReadBackObservation {
           projection: projected,
           observed_by: "bounded projection round-trip control",
         },
       ) {
-        MercurialReadBackMatches { observed_by: _ } =>
+        extdeps.mercurial.MercurialReadBackMatches { observed_by: _ } =>
           count(contents.file_revisions) == 3
             && count(contents.manifests) == 1
             && count(contents.changesets) == 3
@@ -606,22 +606,22 @@ test fn witness_mercurial_readback_assessment_rejects_perturbed_observation() ->
   match mercurial_fixture_repository() {
     Absent => false
     Present { value: repository } =>
-      let projected = mercurial_project_repository(repository: repository)
+      let projected = extdeps.mercurial.mercurial_project_repository(repository: repository)
       let perturbed = projection_with_publishing(
         projection: projected,
-        publishing: MercurialPublishingServer,
+        publishing: extdeps.mercurial.MercurialPublishingServer,
       )
-      match mercurial_assess_read_back(
+      match extdeps.mercurial.mercurial_assess_read_back(
         expected: repository,
         observation: extdeps.mercurial.MercurialReadBackObservation {
           projection: perturbed,
           observed_by: "perturbed read-back RED",
         },
       ) {
-        MercurialReadBackMismatch { observed_by: _, expected: _, observed: _ } => true
-        MercurialReadBackMatches { observed_by: _ } => false
-        MercurialReadBackInvalid { observed_by: _, cause: _ } => false
-        MercurialReadBackUnavailable { observed_by: _, reason: _ } => false
+        extdeps.mercurial.MercurialReadBackMismatch { observed_by: _, expected: _, observed: _ } => true
+        extdeps.mercurial.MercurialReadBackMatches { observed_by: _ } => false
+        extdeps.mercurial.MercurialReadBackInvalid { observed_by: _, cause: _ } => false
+        extdeps.mercurial.MercurialReadBackUnavailable { observed_by: _, reason: _ } => false
       }
   }
 }
@@ -638,14 +638,14 @@ test fn witness_mercurial_manifest_flags_and_raw_path_remain_distinct() -> Bool 
           count(entries) == 3
             && match entries.first() {
               Present { value: entry } => match entry.flag {
-                MercurialRegularFile => true
+                extdeps.mercurial.MercurialRegularFile => true
                 _ => false
               }
               Absent => false
             }
             && match entries.skip(n: 1).first() {
               Present { value: entry } => match entry.flag {
-                MercurialExecutableFile => true
+                extdeps.mercurial.MercurialExecutableFile => true
                 _ => false
               }
               Absent => false
@@ -654,7 +654,7 @@ test fn witness_mercurial_manifest_flags_and_raw_path_remain_distinct() -> Bool 
               Present { value: entry } =>
                 entry.path == hg_path_symlink
                   && match entry.flag {
-                    MercurialSymlink => true
+                    extdeps.mercurial.MercurialSymlink => true
                     _ => false
                   }
               Absent => false
@@ -671,8 +671,8 @@ test fn witness_mercurial_copy_metadata_stays_on_file_revision() -> Bool {
       match contents.file_revisions.skip(n: 1).first() {
         Absent => false
         Present { value: file_revision } => match file_revision.copy {
-          MercurialNotCopied => false
-          MercurialCopiedFrom { path, file_revision: source_revision } =>
+          extdeps.mercurial.MercurialNotCopied => false
+          extdeps.mercurial.MercurialCopiedFrom { path, file_revision: source_revision } =>
             path == hg_path_regular && source_revision == hg_file_regular
         }
       }
@@ -680,7 +680,7 @@ test fn witness_mercurial_copy_metadata_stays_on_file_revision() -> Bool {
 }
 
 test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
-  let projection = test.claim.mercurial_upstream_model_witness.fixture_projection()
+  let projection = fixture_projection()
   let projection_contents = fixture_projection_contents()
   let broken = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_executable,
@@ -689,7 +689,7 @@ test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
       path: hg_path_regular,
       file_revision: hg_file_undeclared,
     },
-    content: octets_bytes(o: [114, 117, 110]),
+    content: std.bytes.octets_bytes(o: [114, 117, 110]),
   }
   let invalid = projection_with_file_revisions(
     projection: projection,
@@ -699,9 +699,9 @@ test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
       items: [broken],
     ),
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused {
-      cause: MercurialMissingCopySourceRevision {
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused {
+      cause: extdeps.mercurial.MercurialMissingCopySourceRevision {
         file_revision,
         source_path,
         source_revision,
@@ -715,7 +715,7 @@ test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
 }
 
 test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabricated() -> Bool {
-  let projection = test.claim.mercurial_upstream_model_witness.fixture_projection()
+  let projection = fixture_projection()
   let projection_contents = fixture_projection_contents()
   let partial = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_executable,
@@ -724,7 +724,7 @@ test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabrica
       path: hg_path_regular,
       file_revision: hg_file_missing,
     },
-    content: octets_bytes(o: [114, 117, 110]),
+    content: std.bytes.octets_bytes(o: [114, 117, 110]),
   }
   let declared_partial = projection_with_file_revisions(
     projection: projection,
@@ -734,39 +734,39 @@ test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabrica
       items: [partial],
     ),
   )
-  match mercurial_decode_projection(projection: declared_partial) {
-    MercurialDecodeRefused { cause: _ } => false
-    MercurialRepositoryUnavailable { reason: _ } => false
-    MercurialDecoded { repository } =>
+  match extdeps.mercurial.mercurial_decode_projection(projection: declared_partial) {
+    extdeps.mercurial.MercurialDecodeRefused { cause: _ } => false
+    extdeps.mercurial.MercurialRepositoryUnavailable { reason: _ } => false
+    extdeps.mercurial.MercurialDecoded { repository } =>
       let contents = repository.contents
       match contents.file_revisions.skip(n: 2).first() {
         Absent => false
         Present { value: file_revision } => match file_revision.copy {
-          MercurialCopiedFrom { path: _, file_revision: source_revision } =>
+          extdeps.mercurial.MercurialCopiedFrom { path: _, file_revision: source_revision } =>
             source_revision == hg_file_missing
-          MercurialNotCopied => false
+          extdeps.mercurial.MercurialNotCopied => false
         }
       }
   }
 }
 
 test fn witness_mercurial_clone_local_revision_can_change_without_identity_change() -> Bool {
-  let a = mercurial_decode_projection(
+  let a = extdeps.mercurial.mercurial_decode_projection(
     projection: fixture_projection_with_local_revisions(local_revisions: local_revisions_a()),
   )
-  let b = mercurial_decode_projection(
+  let b = extdeps.mercurial.mercurial_decode_projection(
     projection: fixture_projection_with_local_revisions(local_revisions: local_revisions_b()),
   )
   match a {
-    MercurialDecodeRefused { cause: _ } => false
-    MercurialRepositoryUnavailable { reason: _ } => false
-    MercurialDecoded { repository: repo_a } => match b {
-      MercurialDecodeRefused { cause: _ } => false
-      MercurialRepositoryUnavailable { reason: _ } => false
-      MercurialDecoded { repository: repo_b } =>
+    extdeps.mercurial.MercurialDecodeRefused { cause: _ } => false
+    extdeps.mercurial.MercurialRepositoryUnavailable { reason: _ } => false
+    extdeps.mercurial.MercurialDecoded { repository: repo_a } => match b {
+      extdeps.mercurial.MercurialDecodeRefused { cause: _ } => false
+      extdeps.mercurial.MercurialRepositoryUnavailable { reason: _ } => false
+      extdeps.mercurial.MercurialDecoded { repository: repo_b } =>
         let contents_a = repo_a.contents
         let contents_b = repo_b.contents
-        mercurial_portable_history(repository: repo_a) == mercurial_portable_history(repository: repo_b)
+        extdeps.mercurial.mercurial_portable_history(repository: repo_a) == extdeps.mercurial.mercurial_portable_history(repository: repo_b)
           && !(contents_a.local_revisions == contents_b.local_revisions)
     }
   }
@@ -777,7 +777,7 @@ test fn witness_mercurial_named_branch_bookmark_and_heads_do_not_collapse() -> B
     Absent => false
     Present { value: repository } =>
       let contents = repository.contents
-      mercurial_named_branch_changesets(repository: repository, branch: "default") == [hg_c0, hg_c1, hg_c2]
+      extdeps.mercurial.mercurial_named_branch_changesets(repository: repository, branch: "default") == [hg_c0, hg_c1, hg_c2]
         && contents.heads == [
           extdeps.mercurial.MercurialHead { changeset: hg_c1 },
           extdeps.mercurial.MercurialHead { changeset: hg_c2 },
@@ -796,21 +796,21 @@ test fn witness_mercurial_public_draft_secret_phases_remain_distinct() -> Bool {
       count(contents.phases) == 3
         && match contents.phases.first() {
           Present { value: entry } => match entry.phase {
-            MercurialPublic => true
+            extdeps.mercurial.MercurialPublic => true
             _ => false
           }
           Absent => false
         }
         && match contents.phases.skip(n: 1).first() {
           Present { value: entry } => match entry.phase {
-            MercurialDraft => true
+            extdeps.mercurial.MercurialDraft => true
             _ => false
           }
           Absent => false
         }
         && match contents.phases.skip(n: 2).first() {
           Present { value: entry } => match entry.phase {
-            MercurialSecret => true
+            extdeps.mercurial.MercurialSecret => true
             _ => false
           }
           Absent => false
@@ -819,21 +819,21 @@ test fn witness_mercurial_public_draft_secret_phases_remain_distinct() -> Bool {
 }
 
 test fn witness_mercurial_publishing_and_secret_exchange_rules_remain_distinct() -> Bool {
-  match mercurial_exchange_disposition(
-    publishing: MercurialPublishingServer,
-    phase: MercurialDraft,
+  match extdeps.mercurial.mercurial_exchange_disposition(
+    publishing: extdeps.mercurial.MercurialPublishingServer,
+    phase: extdeps.mercurial.MercurialDraft,
   ) {
-    MercurialExchangeVisible { resulting_phase: MercurialPublic } =>
-      match mercurial_exchange_disposition(
-        publishing: MercurialNonPublishingServer,
-        phase: MercurialDraft,
+    extdeps.mercurial.MercurialExchangeVisible { resulting_phase: extdeps.mercurial.MercurialPublic } =>
+      match extdeps.mercurial.mercurial_exchange_disposition(
+        publishing: extdeps.mercurial.MercurialNonPublishingServer,
+        phase: extdeps.mercurial.MercurialDraft,
       ) {
-        MercurialExchangeVisible { resulting_phase: MercurialDraft } =>
-          match mercurial_exchange_disposition(
-            publishing: MercurialPublishingServer,
-            phase: MercurialSecret,
+        extdeps.mercurial.MercurialExchangeVisible { resulting_phase: extdeps.mercurial.MercurialDraft } =>
+          match extdeps.mercurial.mercurial_exchange_disposition(
+            publishing: extdeps.mercurial.MercurialPublishingServer,
+            phase: extdeps.mercurial.MercurialSecret,
           ) {
-            MercurialExchangeWithheld => true
+            extdeps.mercurial.MercurialExchangeWithheld => true
             _ => false
           }
         _ => false
@@ -844,15 +844,15 @@ test fn witness_mercurial_publishing_and_secret_exchange_rules_remain_distinct()
 
 test fn witness_mercurial_missing_phase_refuses() -> Bool {
   let invalid = projection_with_phases(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     phases: [
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
     ],
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused {
-      cause: MercurialMissingPhase { changeset },
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused {
+      cause: extdeps.mercurial.MercurialMissingPhase { changeset },
     } => changeset == hg_c2
     _ => false
   }
@@ -860,7 +860,7 @@ test fn witness_mercurial_missing_phase_refuses() -> Bool {
 
 test fn witness_mercurial_duplicate_phase_refuses() -> Bool {
   let invalid = projection_with_phases(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     phases: [
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
@@ -868,9 +868,9 @@ test fn witness_mercurial_duplicate_phase_refuses() -> Bool {
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c2, phase: "secret" },
     ],
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused {
-      cause: MercurialDuplicatePhase { changeset },
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused {
+      cause: extdeps.mercurial.MercurialDuplicatePhase { changeset },
     } => changeset == hg_c1
     _ => false
   }
@@ -878,20 +878,20 @@ test fn witness_mercurial_duplicate_phase_refuses() -> Bool {
 
 test fn witness_mercurial_phase_monotonicity_violation_refuses() -> Bool {
   let invalid = projection_with_phases(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     phases: [
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c0, phase: "draft" },
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c1, phase: "public" },
       extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c2, phase: "secret" },
     ],
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused {
-      cause: MercurialPhaseMonotonicityViolation {
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused {
+      cause: extdeps.mercurial.MercurialPhaseMonotonicityViolation {
         parent,
-        parent_phase: MercurialDraft,
+        parent_phase: extdeps.mercurial.MercurialDraft,
         child,
-        child_phase: MercurialPublic,
+        child_phase: extdeps.mercurial.MercurialPublic,
       },
     } => parent == hg_c0 && child == hg_c1
     _ => false
@@ -902,14 +902,14 @@ test fn witness_mercurial_evolution_metadata_is_orthogonal_to_portable_history()
   match mercurial_fixture_repository() {
     Absent => false
     Present { value: with_evolution } =>
-      match mercurial_decode_projection(
+      match extdeps.mercurial.mercurial_decode_projection(
         projection: projection_with_evolution(
-          projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
-          evolution: MercurialEvolutionNotEnabled,
+          projection: fixture_projection(),
+          evolution: extdeps.mercurial.MercurialEvolutionNotEnabled,
         ),
       ) {
-        MercurialDecoded { repository: without_evolution } =>
-          mercurial_portable_history(repository: with_evolution) == mercurial_portable_history(repository: without_evolution)
+        extdeps.mercurial.MercurialDecoded { repository: without_evolution } =>
+          extdeps.mercurial.mercurial_portable_history(repository: with_evolution) == extdeps.mercurial.mercurial_portable_history(repository: without_evolution)
             && !(with_evolution == without_evolution)
         _ => false
       }
@@ -918,7 +918,7 @@ test fn witness_mercurial_evolution_metadata_is_orthogonal_to_portable_history()
 
 test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
   let invalid = projection_with_manifests(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     manifests: [
       extdeps.mercurial.MercurialManifestWire {
         node: hg_manifest,
@@ -932,22 +932,22 @@ test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
       },
     ],
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused { cause: _ } => true
-    MercurialDecoded { repository: _ } => false
-    MercurialRepositoryUnavailable { reason: _ } => false
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused { cause: _ } => true
+    extdeps.mercurial.MercurialDecoded { repository: _ } => false
+    extdeps.mercurial.MercurialRepositoryUnavailable { reason: _ } => false
   }
 }
 
 test fn witness_mercurial_unknown_phase_refuses() -> Bool {
   let invalid = projection_with_phases(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     phases: [extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c2, phase: "published" }],
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused { cause: _ } => true
-    MercurialDecoded { repository: _ } => false
-    MercurialRepositoryUnavailable { reason: _ } => false
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused { cause: _ } => true
+    extdeps.mercurial.MercurialDecoded { repository: _ } => false
+    extdeps.mercurial.MercurialRepositoryUnavailable { reason: _ } => false
   }
 }
 
@@ -958,22 +958,22 @@ test fn witness_mercurial_missing_parent_refuses() -> Bool {
     manifest: hg_manifest,
     parents: extdeps.mercurial.MercurialOneParent { parent: hg_missing_c },
     branch: "default",
-    branch_closure: MercurialBranchRemainsOpen,
+    branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
     user: "author@example.invalid",
     authored_at: "provenance-only-2",
     description: "right",
   }
   let invalid = projection_with_changesets(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     changesets: append(
       projection_contents.changesets |> filter(c => !(c.node == hg_c2)),
       items: [broken],
     ),
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused { cause: _ } => true
-    MercurialDecoded { repository: _ } => false
-    MercurialRepositoryUnavailable { reason: _ } => false
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused { cause: _ } => true
+    extdeps.mercurial.MercurialDecoded { repository: _ } => false
+    extdeps.mercurial.MercurialRepositoryUnavailable { reason: _ } => false
   }
 }
 
@@ -984,21 +984,21 @@ test fn witness_mercurial_duplicate_changeset_parent_refuses() -> Bool {
     manifest: hg_manifest,
     parents: extdeps.mercurial.MercurialTwoParents { first: hg_c0, second: hg_c0 },
     branch: "default",
-    branch_closure: MercurialBranchRemainsOpen,
+    branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
     user: "author@example.invalid",
     authored_at: "provenance-only-2",
     description: "right",
   }
   let invalid = projection_with_changesets(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     changesets: append(
       projection_contents.changesets |> filter(c => !(c.node == hg_c2)),
       items: [duplicate_parent],
     ),
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused {
-      cause: MercurialDuplicateChangesetParent { changeset, parent },
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused {
+      cause: extdeps.mercurial.MercurialDuplicateChangesetParent { changeset, parent },
     } => changeset == hg_c2 && parent == hg_c0
     _ => false
   }
@@ -1011,21 +1011,21 @@ test fn witness_mercurial_changeset_self_parent_refuses_as_cycle() -> Bool {
     manifest: hg_manifest,
     parents: extdeps.mercurial.MercurialOneParent { parent: hg_c2 },
     branch: "default",
-    branch_closure: MercurialBranchRemainsOpen,
+    branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
     user: "author@example.invalid",
     authored_at: "provenance-only-2",
     description: "right",
   }
   let invalid = projection_with_changesets(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     changesets: append(
       projection_contents.changesets |> filter(c => !(c.node == hg_c2)),
       items: [self_parent],
     ),
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused {
-      cause: MercurialChangesetAncestryCycle { changeset },
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused {
+      cause: extdeps.mercurial.MercurialChangesetAncestryCycle { changeset },
     } => changeset == hg_c2
     _ => false
   }
@@ -1037,7 +1037,7 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
     manifest: hg_manifest,
     parents: extdeps.mercurial.MercurialOneParent { parent: hg_c2 },
     branch: "default",
-    branch_closure: MercurialBranchRemainsOpen,
+    branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
     user: "author@example.invalid",
     authored_at: "provenance-only-1",
     description: "left",
@@ -1047,20 +1047,20 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
     manifest: hg_manifest,
     parents: extdeps.mercurial.MercurialOneParent { parent: hg_c1 },
     branch: "default",
-    branch_closure: MercurialBranchRemainsOpen,
+    branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
     user: "author@example.invalid",
     authored_at: "provenance-only-2",
     description: "right",
   }
   let invalid = projection_with_changesets(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     changesets: [
       extdeps.mercurial.MercurialChangeset {
         node: hg_c0,
         manifest: hg_manifest,
-        parents: MercurialNoParents,
+        parents: extdeps.mercurial.MercurialNoParents,
         branch: "default",
-        branch_closure: MercurialBranchRemainsOpen,
+        branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
         user: "author@example.invalid",
         authored_at: "provenance-only-0",
         description: "root",
@@ -1069,9 +1069,9 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
       cycle_right,
     ],
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused {
-      cause: MercurialChangesetAncestryCycle { changeset },
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused {
+      cause: extdeps.mercurial.MercurialChangesetAncestryCycle { changeset },
     } => changeset == hg_c1 || changeset == hg_c2
     _ => false
   }
@@ -1081,8 +1081,8 @@ test fn witness_mercurial_file_revision_cycle_refuses() -> Bool {
   let cycle_regular = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_regular,
     parents: extdeps.mercurial.MercurialOneParent { parent: hg_file_executable },
-    copy: MercurialNotCopied,
-    content: octets_bytes(o: [109, 97, 105, 110]),
+    copy: extdeps.mercurial.MercurialNotCopied,
+    content: std.bytes.octets_bytes(o: [109, 97, 105, 110]),
   }
   let cycle_executable = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_executable,
@@ -1091,24 +1091,24 @@ test fn witness_mercurial_file_revision_cycle_refuses() -> Bool {
       path: hg_path_regular,
       file_revision: hg_file_regular,
     },
-    content: octets_bytes(o: [114, 117, 110]),
+    content: std.bytes.octets_bytes(o: [114, 117, 110]),
   }
   let invalid = projection_with_file_revisions(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     file_revisions: [
       cycle_regular,
       cycle_executable,
       extdeps.mercurial.MercurialFileRevision {
         node: hg_file_symlink,
-        parents: MercurialNoParents,
-        copy: MercurialNotCopied,
-        content: octets_bytes(o: [46, 46, 47, 109, 97, 105, 110]),
+        parents: extdeps.mercurial.MercurialNoParents,
+        copy: extdeps.mercurial.MercurialNotCopied,
+        content: std.bytes.octets_bytes(o: [46, 46, 47, 109, 97, 105, 110]),
       },
     ],
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused {
-      cause: MercurialFileRevisionAncestryCycle { file_revision },
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused {
+      cause: extdeps.mercurial.MercurialFileRevisionAncestryCycle { file_revision },
     } =>
       file_revision == hg_file_regular || file_revision == hg_file_executable
     _ => false
@@ -1126,10 +1126,10 @@ test fn witness_mercurial_duplicate_file_revision_parent_refuses() -> Bool {
       path: hg_path_regular,
       file_revision: hg_file_regular,
     },
-    content: octets_bytes(o: [114, 117, 110]),
+    content: std.bytes.octets_bytes(o: [114, 117, 110]),
   }
   let invalid = projection_with_file_revisions(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     file_revisions: append(
       fixture_file_revisions()
         |> filter(file_revision =>
@@ -1138,9 +1138,9 @@ test fn witness_mercurial_duplicate_file_revision_parent_refuses() -> Bool {
       items: [duplicate_parent],
     ),
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused {
-      cause: MercurialDuplicateFileRevisionParent {
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused {
+      cause: extdeps.mercurial.MercurialDuplicateFileRevisionParent {
         file_revision,
         parent,
       },
@@ -1158,9 +1158,9 @@ test fn witness_mercurial_observed_non_head_refuses() -> Bool {
     },
     heads: [extdeps.mercurial.MercurialHead { changeset: hg_c0 }],
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused {
-      cause: MercurialHeadSetMismatch { observed, derived },
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused {
+      cause: extdeps.mercurial.MercurialHeadSetMismatch { observed, derived },
     } =>
       observed == [hg_c0]
         && derived == [hg_c1, hg_c2]
@@ -1173,9 +1173,9 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
     extdeps.mercurial.MercurialChangeset {
       node: hg_c0,
       manifest: hg_manifest,
-      parents: MercurialNoParents,
+      parents: extdeps.mercurial.MercurialNoParents,
       branch: "default",
-      branch_closure: MercurialBranchRemainsOpen,
+      branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-0",
       description: "default root",
@@ -1185,7 +1185,7 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
       manifest: hg_manifest,
       parents: extdeps.mercurial.MercurialOneParent { parent: hg_c0 },
       branch: "feature",
-      branch_closure: MercurialBranchRemainsOpen,
+      branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-1",
       description: "feature bridge",
@@ -1195,7 +1195,7 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
       manifest: hg_manifest,
       parents: extdeps.mercurial.MercurialOneParent { parent: hg_c1 },
       branch: "default",
-      branch_closure: MercurialBranchRemainsOpen,
+      branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-2",
       description: "default descendant",
@@ -1214,8 +1214,8 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
       extdeps.mercurial.MercurialHead { changeset: hg_c2 },
     ],
   )
-  match mercurial_decode_projection(projection: complete) {
-    MercurialDecoded { repository: _ } => true
+  match extdeps.mercurial.mercurial_decode_projection(projection: complete) {
+    extdeps.mercurial.MercurialDecoded { repository: _ } => true
     _ => false
   }
 }
@@ -1228,7 +1228,7 @@ fn fixture_projection_with_closed_right_head() -> extdeps.mercurial.MercurialRep
         manifest: changeset.manifest,
         parents: changeset.parents,
         branch: changeset.branch,
-        branch_closure: MercurialClosesBranch,
+        branch_closure: extdeps.mercurial.MercurialClosesBranch,
         user: changeset.user,
         authored_at: changeset.authored_at,
         description: changeset.description,
@@ -1250,8 +1250,8 @@ test fn witness_mercurial_closed_branch_head_is_excluded_from_open_heads() -> Bo
     projection: fixture_projection_with_closed_right_head(),
     heads: [extdeps.mercurial.MercurialHead { changeset: hg_c1 }],
   )
-  match mercurial_decode_projection(projection: complete) {
-    MercurialDecoded { repository: _ } => true
+  match extdeps.mercurial.mercurial_decode_projection(projection: complete) {
+    extdeps.mercurial.MercurialDecoded { repository: _ } => true
     _ => false
   }
 }
@@ -1264,9 +1264,9 @@ test fn witness_mercurial_closed_branch_head_cannot_be_reported_as_open() -> Boo
       extdeps.mercurial.MercurialHead { changeset: hg_c2 },
     ],
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused {
-      cause: MercurialHeadSetMismatch { observed, derived },
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused {
+      cause: extdeps.mercurial.MercurialHeadSetMismatch { observed, derived },
     } =>
       observed == [hg_c1, hg_c2]
         && derived == [hg_c1]
@@ -1276,11 +1276,11 @@ test fn witness_mercurial_closed_branch_head_cannot_be_reported_as_open() -> Boo
 
 test fn witness_mercurial_partial_capture_does_not_invent_exact_head_set() -> Bool {
   let with_missing_head = projection_with_heads(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     heads: [extdeps.mercurial.MercurialHead { changeset: hg_missing_c }],
   )
   let partial = match with_missing_head {
-    MercurialPartialProjection {
+    extdeps.mercurial.MercurialPartialProjection {
       contents,
       missing_changesets: _,
       missing_manifests,
@@ -1293,8 +1293,8 @@ test fn witness_mercurial_partial_capture_does_not_invent_exact_head_set() -> Bo
     }
     other => other
   }
-  match mercurial_decode_projection(projection: partial) {
-    MercurialDecoded { repository: _ } => true
+  match extdeps.mercurial.mercurial_decode_projection(projection: partial) {
+    extdeps.mercurial.MercurialDecoded { repository: _ } => true
     _ => false
   }
 }
@@ -1306,13 +1306,13 @@ test fn witness_mercurial_two_parent_merge_decodes_with_derived_head() -> Bool {
     manifest: hg_manifest,
     parents: extdeps.mercurial.MercurialTwoParents { first: hg_c0, second: hg_c1 },
     branch: "default",
-    branch_closure: MercurialBranchRemainsOpen,
+    branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
     user: "author@example.invalid",
     authored_at: "provenance-only-2",
     description: "merge",
   }
   let with_merge = projection_with_changesets(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     changesets: append(
       projection_contents.changesets |> filter(c => !(c.node == hg_c2)),
       items: [merge],
@@ -1322,15 +1322,15 @@ test fn witness_mercurial_two_parent_merge_decodes_with_derived_head() -> Bool {
     projection: with_merge,
     heads: [extdeps.mercurial.MercurialHead { changeset: hg_c2 }],
   )
-  match mercurial_decode_projection(projection: with_head) {
-    MercurialDecoded { repository: _ } => true
+  match extdeps.mercurial.mercurial_decode_projection(projection: with_head) {
+    extdeps.mercurial.MercurialDecoded { repository: _ } => true
     _ => false
   }
 }
 
 test fn witness_mercurial_duplicate_local_revision_refuses() -> Bool {
   let invalid = projection_with_local_revisions(
-    projection: test.claim.mercurial_upstream_model_witness.fixture_projection(),
+    projection: fixture_projection(),
     local_revisions: [
       extdeps.mercurial.MercurialLocalRevisionEntry {
         revision: extdeps.mercurial.MercurialLocalRevision { value: 0 },
@@ -1342,16 +1342,16 @@ test fn witness_mercurial_duplicate_local_revision_refuses() -> Bool {
       },
     ],
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused { cause: _ } => true
-    MercurialDecoded { repository: _ } => false
-    MercurialRepositoryUnavailable { reason: _ } => false
+  match extdeps.mercurial.mercurial_decode_projection(projection: invalid) {
+    extdeps.mercurial.MercurialDecodeRefused { cause: _ } => true
+    extdeps.mercurial.MercurialDecoded { repository: _ } => false
+    extdeps.mercurial.MercurialRepositoryUnavailable { reason: _ } => false
   }
 }
 
 test fn witness_mercurial_r0_write_capability_stays_unavailable() -> Bool {
-  match mercurial_r0_conditional_advance {
-    MercurialConditionalAdvanceUnavailable { reason } =>
+  match extdeps.mercurial.mercurial_r0_conditional_advance {
+    extdeps.mercurial.MercurialConditionalAdvanceUnavailable { reason } =>
       string_contains(s: reason, pattern: "no executing transaction transport")
   }
 }

@@ -5,28 +5,28 @@ data direct_rust_door_fixture_containment_witness_note: String = "wise-ram-22 PR
 
 data direct_rust_door_fixture_containment_lane_tag: String = "direct_rust_door_fixture_containment_hermetic"
 
-test fn fixture_synthetic_mint_is_fixture_source_produced_only() -> v2.std.logic.Bool {
-  match mint_synthetic_emitted_artifact_from_fixture_inferred(
-    inferred: direct_rust_door_inferred_tree,
-    target: direct_rust_door_target_model(),
+test fn fixture_synthetic_mint_is_fixture_source_produced_only() -> Bool {
+  match v2.compiler.self_host.fixture_synthetic_emission.mint_synthetic_emitted_artifact_from_fixture_inferred(
+    inferred: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_inferred_tree,
+    target: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_target_model(),
     module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path,
     fixture_lane_tag: direct_rust_door_fixture_containment_lane_tag
   ) {
-    Accepted { value: artifact, diagnostics: _ } =>
-      synthetic_emitted_artifact_has_fixture_source_produced_only(artifact: artifact)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+      v2.compiler.self_host.fixture_synthetic_emission.synthetic_emitted_artifact_has_fixture_source_produced_only(artifact: artifact)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn fixture_cargo_green_advance_is_not_behaviorally_equivalent() -> v2.std.logic.Bool {
-  match mint_synthetic_emitted_artifact_from_fixture_inferred(
-    inferred: direct_rust_door_inferred_tree,
-    target: direct_rust_door_target_model(),
+test fn fixture_cargo_green_advance_is_not_behaviorally_equivalent() -> Bool {
+  match v2.compiler.self_host.fixture_synthetic_emission.mint_synthetic_emitted_artifact_from_fixture_inferred(
+    inferred: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_inferred_tree,
+    target: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_target_model(),
     module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path,
     fixture_lane_tag: direct_rust_door_fixture_containment_lane_tag
   ) {
-    Accepted { value: artifact, diagnostics: _ } =>
-      match advance_written_synthetic_emitted_artifact_cargo_green(
+    v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+      match v2.compiler.self_host.fixture_synthetic_emission.advance_written_synthetic_emitted_artifact_cargo_green(
         written: v2.compiler.self_host.fixture_synthetic_emission.WrittenSyntheticEmittedArtifact {
           artifact: artifact,
           write: v2.compiler.self_host.candidate_generation.RustWorkspaceWriteReceipt {
@@ -39,15 +39,15 @@ test fn fixture_cargo_green_advance_is_not_behaviorally_equivalent() -> v2.std.l
         },
         cargo_green: true
       ) {
-        Present { value: cargo_written } =>
-          written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
+        v2.std.optional.Present { value: cargo_written } =>
+          v2.compiler.self_host.fixture_synthetic_emission.written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
             written: cargo_written
           )
-            && !written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification(
+            && !v2.compiler.self_host.fixture_synthetic_emission.written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification(
               written: cargo_written
             )
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

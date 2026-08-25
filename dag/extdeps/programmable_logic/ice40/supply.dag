@@ -13,7 +13,7 @@ data ice40_supply_note: String = "THE SUPPLY RAILS THE DEVICE REQUIRES, from Tab
 // extdeps.programmable_logic.ice40.subject.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/iCE/FPGA-DS-02029-4-3-iCE40-LP-HX-Family-Data-Sheet.ashx?document_id=49312"
   }
 }
@@ -43,7 +43,7 @@ fn supply_rail_symbol(r: Ice40SupplyRail) -> std.types.NonEmptyStr {
 // silently redefines the equality relation, and two members could be made equal by a copy-edit.
 // The exhaustive match means a new member cannot be added without receiving one, and the residual
 // risk becomes a shared tag, which a witness decides by execution.
-fn supply_rail_tag(r: Ice40SupplyRail) -> std.integer.Int {
+fn supply_rail_tag(r: Ice40SupplyRail) -> Int {
   match r {
     CoreSupply => 1
     PllSupply => 2
@@ -95,7 +95,7 @@ fn configuration_mode_name(m: Ice40ConfigurationMode) -> std.types.NonEmptyStr {
   }
 }
 
-fn configuration_mode_tag(m: Ice40ConfigurationMode) -> std.integer.Int {
+fn configuration_mode_tag(m: Ice40ConfigurationMode) -> Int {
   match m {
     SlaveSpiConfiguration => 1
     MasterSpiConfiguration => 2
@@ -128,8 +128,8 @@ fn requirement_admits(r: RailRequirement, v: std.measure.Millivolt) -> Bool {
   match r {
     MustBeLeftUnconnected => false
     OperatingWindow { minimum: lo, maximum: hi } =>
-      millivolt_count(v: v) >= millivolt_count(v: lo)
-        && millivolt_count(v: v) <= millivolt_count(v: hi)
+      std.measure.millivolt_count(v: v) >= std.measure.millivolt_count(v: lo)
+        && std.measure.millivolt_count(v: v) <= std.measure.millivolt_count(v: hi)
   }
 }
 
@@ -143,10 +143,10 @@ fn requirement_admits(r: RailRequirement, v: std.measure.Millivolt) -> Bool {
 // refuses. Ask nvcm_supply_requirement instead.
 fn rail_requirement(r: Ice40SupplyRail) -> RailRequirement? {
   match r {
-    CoreSupply => Present { value: OperatingWindow { minimum: millivolt(count: 1140), maximum: millivolt(count: 1260) } }
-    PllSupply => Present { value: OperatingWindow { minimum: millivolt(count: 1140), maximum: millivolt(count: 1260) } }
-    BankIoSupply => Present { value: OperatingWindow { minimum: millivolt(count: 1710), maximum: millivolt(count: 3460) } }
-    ConfigurationBankSupply => Present { value: OperatingWindow { minimum: millivolt(count: 1710), maximum: millivolt(count: 3460) } }
+    CoreSupply => Present { value: OperatingWindow { minimum: std.measure.millivolt(count: 1140), maximum: std.measure.millivolt(count: 1260) } }
+    PllSupply => Present { value: OperatingWindow { minimum: std.measure.millivolt(count: 1140), maximum: std.measure.millivolt(count: 1260) } }
+    BankIoSupply => Present { value: OperatingWindow { minimum: std.measure.millivolt(count: 1710), maximum: std.measure.millivolt(count: 3460) } }
+    ConfigurationBankSupply => Present { value: OperatingWindow { minimum: std.measure.millivolt(count: 1710), maximum: std.measure.millivolt(count: 3460) } }
     FastProgrammingSupply => Present { value: MustBeLeftUnconnected }
     NvcmProgrammingSupply => none
   }
@@ -154,10 +154,10 @@ fn rail_requirement(r: Ice40SupplyRail) -> RailRequirement? {
 
 fn nvcm_supply_requirement(m: Ice40ConfigurationMode) -> RailRequirement {
   match m {
-    SlaveSpiConfiguration => OperatingWindow { minimum: millivolt(count: 1710), maximum: millivolt(count: 3460) }
-    MasterSpiConfiguration => OperatingWindow { minimum: millivolt(count: 2300), maximum: millivolt(count: 3460) }
-    NvcmConfiguration => OperatingWindow { minimum: millivolt(count: 2300), maximum: millivolt(count: 3460) }
-    NvcmProgramming => OperatingWindow { minimum: millivolt(count: 2300), maximum: millivolt(count: 3000) }
+    SlaveSpiConfiguration => OperatingWindow { minimum: std.measure.millivolt(count: 1710), maximum: std.measure.millivolt(count: 3460) }
+    MasterSpiConfiguration => OperatingWindow { minimum: std.measure.millivolt(count: 2300), maximum: std.measure.millivolt(count: 3460) }
+    NvcmConfiguration => OperatingWindow { minimum: std.measure.millivolt(count: 2300), maximum: std.measure.millivolt(count: 3460) }
+    NvcmProgramming => OperatingWindow { minimum: std.measure.millivolt(count: 2300), maximum: std.measure.millivolt(count: 3000) }
   }
 }
 
@@ -174,23 +174,23 @@ type Ice40IoStandardSupply {
 
 data ice40_lvcmos33_supply: Ice40IoStandardSupply = Ice40IoStandardSupply {
   standard_name: "LVCMOS 3.3",
-  minimum: millivolt(count: 3140),
-  typical: millivolt(count: 3300),
-  maximum: millivolt(count: 3460),
+  minimum: std.measure.millivolt(count: 3140),
+  typical: std.measure.millivolt(count: 3300),
+  maximum: std.measure.millivolt(count: 3460),
 }
 
 data ice40_lvcmos25_supply: Ice40IoStandardSupply = Ice40IoStandardSupply {
   standard_name: "LVCMOS 2.5",
-  minimum: millivolt(count: 2370),
-  typical: millivolt(count: 2500),
-  maximum: millivolt(count: 2620),
+  minimum: std.measure.millivolt(count: 2370),
+  typical: std.measure.millivolt(count: 2500),
+  maximum: std.measure.millivolt(count: 2620),
 }
 
 data ice40_lvcmos18_supply: Ice40IoStandardSupply = Ice40IoStandardSupply {
   standard_name: "LVCMOS 1.8",
-  minimum: millivolt(count: 1710),
-  typical: millivolt(count: 1800),
-  maximum: millivolt(count: 1890),
+  minimum: std.measure.millivolt(count: 1710),
+  typical: std.measure.millivolt(count: 1800),
+  maximum: std.measure.millivolt(count: 1890),
 }
 
 data ice40_io_standard_supplies: List<Ice40IoStandardSupply> = [
@@ -220,10 +220,10 @@ data ice40_supply_model_scope: extdeps.external_authority.ExternalModelScope = e
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.programmable_logic.ice40.supply",
       decl_name: "ice40_inter_rail_constraints",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.programmable_logic.ice40.supply.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 

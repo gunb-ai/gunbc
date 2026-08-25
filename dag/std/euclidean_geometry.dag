@@ -49,34 +49,34 @@ type ExactLength
 // frame-relative area carrier, which nothing in the corpus consumes yet - so it is named here
 // rather than invented ahead of a consumer.
 fn frame_is_millimetre(registry: std.spatial_frame.SpatialFrameRegistry, identity: std.coordinate_frame.CoordinateFrameIdentity) -> Bool {
-  match frame_length_scale(r: registry, identity: identity) {
+  match std.spatial_frame.frame_length_scale(r: registry, identity: identity) {
     Absent => false
-    Present { value: s } => scales_agree(a: s, b: Milli)
+    Present { value: s } => std.spatial_frame.scales_agree(a: s, b: std.measure.Milli)
   }
 }
 
 fn metric_frame_refusal(op: std.affine_space.SpatialOperationIdentity, frame: std.coordinate_frame.CoordinateFrameIdentity) -> std.affine_space.SpatialFrameRefusal {
-  std.affine_space.SpatialFrameRefusal { operation: op, left_frame: frame, right_frame: frame, relation: MillimetreFrameRequired }
+  std.affine_space.SpatialFrameRefusal { operation: op, left_frame: frame, right_frame: frame, relation: std.affine_space.MillimetreFrameRequired }
 }
 
 // Dot product of two DISPLACEMENTS is an AREA with a meaningful sign - millimetre times millimetre
-// is millimetre squared. Returning a bare std.integer.Int erased that dimension at the first operation, and an
+// is millimetre squared. Returning a bare Int erased that dimension at the first operation, and an
 // erased dimension is how a plausible-looking wrong quantity travels. Sign is retained because a
 // negative dot product means the displacements point away from each other.
 fn dot3(registry: std.spatial_frame.SpatialFrameRegistry, a: std.affine_space.Vector3, b: std.affine_space.Vector3) -> std.affine_space.SpatialResult<std.measure.SignedSquareMillimeter> {
-  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
-    std.affine_space.SpatialFrameRefused { refusal: std.affine_space.SpatialFrameRefusal { operation: OpDot3, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+    std.affine_space.SpatialFrameRefused { refusal: std.affine_space.SpatialFrameRefusal { operation: std.affine_space.OpDot3, left_frame: a.frame, right_frame: b.frame, relation: std.affine_space.SameFrameOperandsRequired } }
   } else {
   if !frame_is_millimetre(registry: registry, identity: a.frame) {
-    std.affine_space.SpatialFrameRefused { refusal: metric_frame_refusal(op: OpDot3, frame: a.frame) }
+    std.affine_space.SpatialFrameRefused { refusal: metric_frame_refusal(op: std.affine_space.OpDot3, frame: a.frame) }
   } else {
-  let px = checked_int_multiply(a: signed_frame_component_count(c: a.x), b: signed_frame_component_count(c: b.x))
-  let py = checked_int_multiply(a: signed_frame_component_count(c: a.y), b: signed_frame_component_count(c: b.y))
-  let pz = checked_int_multiply(a: signed_frame_component_count(c: a.z), b: signed_frame_component_count(c: b.z))
-  match checked_add_results(a: checked_add_results(a: px, b: py), b: pz) {
-    CheckedIntOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-    CheckedIntReady { value: total } =>
-      std.affine_space.SpatialReady { value: signed_square_millimeter(count: total) }
+  let px = std.checked_arithmetic.checked_int_multiply(a: std.affine_space.signed_frame_component_count(c: a.x), b: std.affine_space.signed_frame_component_count(c: b.x))
+  let py = std.checked_arithmetic.checked_int_multiply(a: std.affine_space.signed_frame_component_count(c: a.y), b: std.affine_space.signed_frame_component_count(c: b.y))
+  let pz = std.checked_arithmetic.checked_int_multiply(a: std.affine_space.signed_frame_component_count(c: a.z), b: std.affine_space.signed_frame_component_count(c: b.z))
+  match std.checked_arithmetic.checked_add_results(a: std.checked_arithmetic.checked_add_results(a: px, b: py), b: pz) {
+    std.checked_arithmetic.CheckedIntOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+    std.checked_arithmetic.CheckedIntReady { value: total } =>
+      std.affine_space.SpatialReady { value: std.measure.signed_square_millimeter(count: total) }
   }
   }
   }
@@ -100,21 +100,21 @@ type AreaVector3 {
 // AreaVector3 is spelled in square millimetres, so an unguarded micrometre frame mislabels a
 // whole vector at once and each component then travels independently.
 fn cross3(registry: std.spatial_frame.SpatialFrameRegistry, a: std.affine_space.Vector3, b: std.affine_space.Vector3) -> std.affine_space.SpatialResult<AreaVector3> {
-  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
-    std.affine_space.SpatialFrameRefused { refusal: std.affine_space.SpatialFrameRefusal { operation: OpCross3, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+    std.affine_space.SpatialFrameRefused { refusal: std.affine_space.SpatialFrameRefusal { operation: std.affine_space.OpCross3, left_frame: a.frame, right_frame: b.frame, relation: std.affine_space.SameFrameOperandsRequired } }
   } else {
   if !frame_is_millimetre(registry: registry, identity: a.frame) {
-    std.affine_space.SpatialFrameRefused { refusal: metric_frame_refusal(op: OpCross3, frame: a.frame) }
+    std.affine_space.SpatialFrameRefused { refusal: metric_frame_refusal(op: std.affine_space.OpCross3, frame: a.frame) }
   } else {
-  let ax = signed_frame_component_count(c: a.x)
-  let ay = signed_frame_component_count(c: a.y)
-  let az = signed_frame_component_count(c: a.z)
-  let bx = signed_frame_component_count(c: b.x)
-  let by = signed_frame_component_count(c: b.y)
-  let bz = signed_frame_component_count(c: b.z)
-  let cx = checked_subtract_results(a: checked_int_multiply(a: ay, b: bz), b: checked_int_multiply(a: az, b: by))
-  let cy = checked_subtract_results(a: checked_int_multiply(a: az, b: bx), b: checked_int_multiply(a: ax, b: bz))
-  let cz = checked_subtract_results(a: checked_int_multiply(a: ax, b: by), b: checked_int_multiply(a: ay, b: bx))
+  let ax = std.affine_space.signed_frame_component_count(c: a.x)
+  let ay = std.affine_space.signed_frame_component_count(c: a.y)
+  let az = std.affine_space.signed_frame_component_count(c: a.z)
+  let bx = std.affine_space.signed_frame_component_count(c: b.x)
+  let by = std.affine_space.signed_frame_component_count(c: b.y)
+  let bz = std.affine_space.signed_frame_component_count(c: b.z)
+  let cx = std.checked_arithmetic.checked_subtract_results(a: std.checked_arithmetic.checked_int_multiply(a: ay, b: bz), b: std.checked_arithmetic.checked_int_multiply(a: az, b: by))
+  let cy = std.checked_arithmetic.checked_subtract_results(a: std.checked_arithmetic.checked_int_multiply(a: az, b: bx), b: std.checked_arithmetic.checked_int_multiply(a: ax, b: bz))
+  let cz = std.checked_arithmetic.checked_subtract_results(a: std.checked_arithmetic.checked_int_multiply(a: ax, b: by), b: std.checked_arithmetic.checked_int_multiply(a: ay, b: bx))
   area_vector3_from_checked(frame: a.frame, x: cx, y: cy, z: cz)
   }
   }
@@ -134,19 +134,19 @@ fn cross3(registry: std.spatial_frame.SpatialFrameRegistry, a: std.affine_space.
 // dimension are a different thing (this module's own cross3 comment, one dimension up).
 fn area_vector3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.checked_arithmetic.CheckedInt, y: std.checked_arithmetic.CheckedInt, z: std.checked_arithmetic.CheckedInt) -> std.affine_space.SpatialResult<AreaVector3> {
   match x {
-    CheckedIntOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-    CheckedIntReady { value: xv } =>
+    std.checked_arithmetic.CheckedIntOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+    std.checked_arithmetic.CheckedIntReady { value: xv } =>
       match y {
-        CheckedIntOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-        CheckedIntReady { value: yv } =>
+        std.checked_arithmetic.CheckedIntOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+        std.checked_arithmetic.CheckedIntReady { value: yv } =>
           match z {
-            CheckedIntOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-            CheckedIntReady { value: zv } =>
+            std.checked_arithmetic.CheckedIntOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+            std.checked_arithmetic.CheckedIntReady { value: zv } =>
               std.affine_space.SpatialReady { value: AreaVector3 {
                 frame: frame,
-                x: signed_square_millimeter(count: xv),
-                y: signed_square_millimeter(count: yv),
-                z: signed_square_millimeter(count: zv),
+                x: std.measure.signed_square_millimeter(count: xv),
+                y: std.measure.signed_square_millimeter(count: yv),
+                z: std.measure.signed_square_millimeter(count: zv),
               } }
           }
       }
@@ -161,23 +161,23 @@ fn area_vector3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity
 // and the answer was whatever the realization did about it.
 //
 // Nonnegativity is still by construction - a sum of squares - which is why the crossing into the
-// std.nat.Nat-backed area carrier is a magnitude read rather than a clamp.
+// Nat-backed area carrier is a magnitude read rather than a clamp.
 fn norm_squared3(registry: std.spatial_frame.SpatialFrameRegistry, v: std.affine_space.Vector3) -> std.affine_space.SpatialResult<std.measure.SquareMillimeter> {
   if !frame_is_millimetre(registry: registry, identity: v.frame) {
-    std.affine_space.SpatialFrameRefused { refusal: metric_frame_refusal(op: OpNormSquared3, frame: v.frame) }
+    std.affine_space.SpatialFrameRefused { refusal: metric_frame_refusal(op: std.affine_space.OpNormSquared3, frame: v.frame) }
   } else {
-  let x = signed_frame_component_count(c: v.x)
-  let y = signed_frame_component_count(c: v.y)
-  let z = signed_frame_component_count(c: v.z)
-  let sx = checked_int_multiply(a: x, b: x)
-  let sy = checked_int_multiply(a: y, b: y)
-  let sz = checked_int_multiply(a: z, b: z)
-  match checked_add_results(a: checked_add_results(a: sx, b: sy), b: sz) {
-    CheckedIntOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-    CheckedIntReady { value: total } =>
-      match checked_int_magnitude(a: total) {
-        CheckedNatOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-        CheckedNatReady { value: n } => std.affine_space.SpatialReady { value: square_millimeter(count: n) }
+  let x = std.affine_space.signed_frame_component_count(c: v.x)
+  let y = std.affine_space.signed_frame_component_count(c: v.y)
+  let z = std.affine_space.signed_frame_component_count(c: v.z)
+  let sx = std.checked_arithmetic.checked_int_multiply(a: x, b: x)
+  let sy = std.checked_arithmetic.checked_int_multiply(a: y, b: y)
+  let sz = std.checked_arithmetic.checked_int_multiply(a: z, b: z)
+  match std.checked_arithmetic.checked_add_results(a: std.checked_arithmetic.checked_add_results(a: sx, b: sy), b: sz) {
+    std.checked_arithmetic.CheckedIntOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+    std.checked_arithmetic.CheckedIntReady { value: total } =>
+      match std.checked_arithmetic.checked_int_magnitude(a: total) {
+        std.checked_arithmetic.CheckedNatOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+        std.checked_arithmetic.CheckedNatReady { value: n } => std.affine_space.SpatialReady { value: std.measure.square_millimeter(count: n) }
       }
   }
   }
@@ -193,23 +193,23 @@ fn norm_squared3(registry: std.spatial_frame.SpatialFrameRegistry, v: std.affine
 // caller holding a rational realization to go get a bigger integer, or the reverse.
 fn norm3(registry: std.spatial_frame.SpatialFrameRegistry, v: std.affine_space.Vector3) -> std.affine_space.SpatialResult<ExactLength> {
   if !frame_is_millimetre(registry: registry, identity: v.frame) {
-    std.affine_space.SpatialFrameRefused { refusal: metric_frame_refusal(op: OpNorm3, frame: v.frame) }
+    std.affine_space.SpatialFrameRefused { refusal: metric_frame_refusal(op: std.affine_space.OpNorm3, frame: v.frame) }
   } else {
-  let x = signed_frame_component_count(c: v.x)
-  let y = signed_frame_component_count(c: v.y)
-  let z = signed_frame_component_count(c: v.z)
-  let nonzero_axes = std.euclidean_geometry.axis_count(value: x) + std.euclidean_geometry.axis_count(value: y) + std.euclidean_geometry.axis_count(value: z)
+  let x = std.affine_space.signed_frame_component_count(c: v.x)
+  let y = std.affine_space.signed_frame_component_count(c: v.y)
+  let z = std.affine_space.signed_frame_component_count(c: v.z)
+  let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
   if nonzero_axes <= 1 {
-    match checked_int_magnitude(a: x + y + z) {
-      CheckedNatOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-      CheckedNatReady { value: n } =>
-        std.affine_space.SpatialReady { value: LengthExact { value: millimeter(count: n) } }
+    match std.checked_arithmetic.checked_int_magnitude(a: x + y + z) {
+      std.checked_arithmetic.CheckedNatOverflow { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+      std.checked_arithmetic.CheckedNatReady { value: n } =>
+        std.affine_space.SpatialReady { value: LengthExact { value: std.measure.millimeter(count: n) } }
     }
   } else {
     match norm_squared3(registry: registry, v: v) {
-      SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-      SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
-      SpatialReady { value: sq } =>
+      std.affine_space.SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+      std.affine_space.SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
+      std.affine_space.SpatialReady { value: sq } =>
         std.affine_space.SpatialReady { value: LengthRootUnresolvedInExactKernel {
           squared: sq,
           reason: "this exact kernel resolves a magnitude only for an axis-aligned displacement; the root may itself be exact ((3,4,0) has magnitude 5, which an integer square root would find) or irrational ((1,1,0) has none), and this arm distinguishes neither",
@@ -219,7 +219,7 @@ fn norm3(registry: std.spatial_frame.SpatialFrameRegistry, v: std.affine_space.V
   }
 }
 
-fn axis_count(value: std.integer.Int) -> std.nat.Nat {
+fn axis_count(value: Int) -> std.nat.Nat {
   if value == 0 { 0 } else { 1 }
 }
 
@@ -227,19 +227,19 @@ fn axis_count(value: std.integer.Int) -> std.nat.Nat {
 // separate approximation: one operation, asked of the vector between two points - and the point
 // subtraction is itself bounded, which is the third place this composite can refuse.
 fn distance3(registry: std.spatial_frame.SpatialFrameRegistry, from: std.affine_space.Point3, to: std.affine_space.Point3) -> std.affine_space.SpatialResult<ExactLength> {
-  match displacement_between3(from: from, to: to) {
-    SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-    SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
-    SpatialReady { value: d } => norm3(registry: registry, v: d)
+  match std.affine_space.displacement_between3(from: from, to: to) {
+    std.affine_space.SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+    std.affine_space.SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
+    std.affine_space.SpatialReady { value: d } => norm3(registry: registry, v: d)
   }
 }
 
 // Squared distance takes no root, and is what a comparison should use.
 fn distance_squared3(registry: std.spatial_frame.SpatialFrameRegistry, from: std.affine_space.Point3, to: std.affine_space.Point3) -> std.affine_space.SpatialResult<std.measure.SquareMillimeter> {
-  match displacement_between3(from: from, to: to) {
-    SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-    SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
-    SpatialReady { value: d } => norm_squared3(registry: registry, v: d)
+  match std.affine_space.displacement_between3(from: from, to: to) {
+    std.affine_space.SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+    std.affine_space.SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
+    std.affine_space.SpatialReady { value: d } => norm_squared3(registry: registry, v: d)
   }
 }
 
@@ -249,15 +249,15 @@ fn distance_squared3(registry: std.spatial_frame.SpatialFrameRegistry, from: std
 // cannot be computed has no answer, and returning false would be a verdict rather than a refusal.
 fn closer_than3(registry: std.spatial_frame.SpatialFrameRegistry, a_from: std.affine_space.Point3, a_to: std.affine_space.Point3, b_from: std.affine_space.Point3, b_to: std.affine_space.Point3) -> std.affine_space.SpatialResult<Bool> {
   match distance_squared3(registry: registry, from: a_from, to: a_to) {
-    SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-    SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
-    SpatialReady { value: a2 } =>
+    std.affine_space.SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+    std.affine_space.SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
+    std.affine_space.SpatialReady { value: a2 } =>
       match distance_squared3(registry: registry, from: b_from, to: b_to) {
-        SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-        SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
-        SpatialReady { value: b2 } =>
+        std.affine_space.SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+        std.affine_space.SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
+        std.affine_space.SpatialReady { value: b2 } =>
           std.affine_space.SpatialReady {
-            value: square_millimeter_count(m: a2) < square_millimeter_count(m: b2)
+            value: std.measure.square_millimeter_count(m: a2) < std.measure.square_millimeter_count(m: b2)
           }
       }
   }
@@ -277,7 +277,7 @@ type Axis3
   | Axis3Y
   | Axis3Z
 
-fn axis3_index(a: Axis3) -> std.integer.Int {
+fn axis3_index(a: Axis3) -> Int {
   match a {
     Axis3X => 0
     Axis3Y => 1
@@ -355,10 +355,10 @@ type Direction3Result
 // caller, safe today only because the single call site happened to be guarded. Inlined, the guard
 // is the enclosing branch and the case analysis cannot be reached without it.
 fn normalize3(registry: std.spatial_frame.SpatialFrameRegistry, v: std.affine_space.Vector3) -> std.affine_space.SpatialResult<Direction3Result> {
-  let x = signed_frame_component_count(c: v.x)
-  let y = signed_frame_component_count(c: v.y)
-  let z = signed_frame_component_count(c: v.z)
-  let nonzero_axes = std.euclidean_geometry.axis_count(value: x) + std.euclidean_geometry.axis_count(value: y) + std.euclidean_geometry.axis_count(value: z)
+  let x = std.affine_space.signed_frame_component_count(c: v.x)
+  let y = std.affine_space.signed_frame_component_count(c: v.y)
+  let z = std.affine_space.signed_frame_component_count(c: v.z)
+  let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
   if nonzero_axes == 0 {
     std.affine_space.SpatialReady { value: DirectionZeroVectorHasNone }
   } else {
@@ -377,9 +377,9 @@ fn normalize3(registry: std.spatial_frame.SpatialFrameRegistry, v: std.affine_sp
       } }
     } else {
       match norm_squared3(registry: registry, v: v) {
-        SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
-        SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
-        SpatialReady { value: sq } =>
+        std.affine_space.SpatialArithmeticRefused { cause: c } => std.affine_space.SpatialArithmeticRefused { cause: c }
+        std.affine_space.SpatialFrameRefused { refusal: fr } => std.affine_space.SpatialFrameRefused { refusal: fr }
+        std.affine_space.SpatialReady { value: sq } =>
           std.affine_space.SpatialReady { value: DirectionUnresolvedInAxisKernel {
             squared_magnitude: sq,
             reason: "this axis kernel resolves a unit direction only for an axis-aligned displacement; the direction may still be exactly representable ((3,4,0) is exactly (3/5,4/5,0)) and a richer realization - rational, algebraic, or error-bounded approximate - resolves it",

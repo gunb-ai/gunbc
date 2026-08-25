@@ -214,74 +214,74 @@ data claude_enrollment_managed_home_relative: String = ".gunbc/claude-enrollment
 data claude_enrollment_writer_reader_deployment_model_gap_reason: std.types.NonEmptyStr = "writer and reader service-identity populations are not yet derived from deployed service identities — name the deployment-model gap rather than asking the operator nine placement questions" as std.types.NonEmptyStr
 
 data claude_enrollment_host_effect_realization_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 data claude_enrollment_spawn_cli_private_pty_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 data claude_enrollment_observe_browser_challenge_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 data claude_enrollment_capture_setup_token_private_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 data claude_enrollment_secret_manager_add_version_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.cloud.gcp.secret_manager",
     decl_name: "AddVersion",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 data claude_enrollment_exact_version_read_back_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.cloud.gcp.secret_manager",
     decl_name: "AccessVersion",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 data claude_enrollment_clean_context_materialization_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.auth.materialized_secret",
     decl_name: "with_materialized_secret",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 data claude_enrollment_managed_paired_probe_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
@@ -336,24 +336,24 @@ fn missing_operator_choice_axes(
   choices: ClaudeEnrollmentOperatorChoices,
 ) -> List<std.types.NonEmptyStr> {
   let host_axis = match choices.enrollment_host {
-    Present { value: _ } => claude_enrollment_empty_non_empty_str_list
-    Absent => ["enrollment_host" as std.types.NonEmptyStr]
+    v2.std.optional.Present { value: _ } => claude_enrollment_empty_non_empty_str_list
+    v2.std.optional.Absent => ["enrollment_host" as std.types.NonEmptyStr]
   }
   let run_as_axis = match choices.run_as_principal {
-    Present { value: _ } => host_axis
-    Absent => append(host_axis, ["run_as_principal" as std.types.NonEmptyStr])
+    v2.std.optional.Present { value: _ } => host_axis
+    v2.std.optional.Absent => append(host_axis, ["run_as_principal" as std.types.NonEmptyStr])
   }
   let project_axis = match choices.gcp_project {
-    Present { value: _ } => run_as_axis
-    Absent => append(run_as_axis, ["gcp_project" as std.types.NonEmptyStr])
+    v2.std.optional.Present { value: _ } => run_as_axis
+    v2.std.optional.Absent => append(run_as_axis, ["gcp_project" as std.types.NonEmptyStr])
   }
   let secret_axis = match choices.secret_id_or_create_authorization {
-    Present { value: _ } => project_axis
-    Absent => append(project_axis, ["secret_id_or_create_authorization" as std.types.NonEmptyStr])
+    v2.std.optional.Present { value: _ } => project_axis
+    v2.std.optional.Absent => append(project_axis, ["secret_id_or_create_authorization" as std.types.NonEmptyStr])
   }
   match choices.account_label {
-    Present { value: _ } => secret_axis
-    Absent => append(secret_axis, ["account_label" as std.types.NonEmptyStr])
+    v2.std.optional.Present { value: _ } => secret_axis
+    v2.std.optional.Absent => append(secret_axis, ["account_label" as std.types.NonEmptyStr])
   }
 }
 
@@ -363,37 +363,37 @@ fn admit_enrollment_placement(
   sdk_runtime: ClaudeEnrollmentRuntimeBinding,
 ) -> ClaudeEnrollmentPlacementAdmission {
   let missing = missing_operator_choice_axes(choices: choices)
-  if list_length(items: missing) > 0 {
+  if std.types.list_length(items: missing) > 0 {
     EnrollmentPlacementRefusedUnbound { missing_axes: missing }
   } else {
     let account_label = match choices.account_label {
-      Present { value: label } => label
-      Absent => "unreachable" as std.types.NonEmptyStr
+      v2.std.optional.Present { value: label } => label
+      v2.std.optional.Absent => "unreachable" as std.types.NonEmptyStr
     }
     EnrollmentPlacementAdmitted {
       placement: ClaudeEnrollmentPlacement {
         host: EnrollmentHostSpecified {
           hostname: match choices.enrollment_host {
-            Present { value: host } => host
-            Absent => "unreachable" as std.types.NonEmptyStr
+            v2.std.optional.Present { value: host } => host
+            v2.std.optional.Absent => "unreachable" as std.types.NonEmptyStr
           },
         },
         run_as: EnrollmentUnixPrincipalSpecified {
           principal: match choices.run_as_principal {
-            Present { value: principal } => principal
-            Absent => "unreachable" as std.types.NonEmptyStr
+            v2.std.optional.Present { value: principal } => principal
+            v2.std.optional.Absent => "unreachable" as std.types.NonEmptyStr
           },
         },
         enrollment_root: claude_enrollment_root_for_account(account_label: account_label),
         account_label: account_label,
         secret_target: EnrollmentSecretTargetSpecified {
           project: match choices.gcp_project {
-            Present { value: project } => project
-            Absent => "unreachable" as std.types.NonEmptyStr
+            v2.std.optional.Present { value: project } => project
+            v2.std.optional.Absent => "unreachable" as std.types.NonEmptyStr
           },
           secret: match choices.secret_id_or_create_authorization {
-            Present { value: secret } => secret
-            Absent => "unreachable" as std.types.NonEmptyStr
+            v2.std.optional.Present { value: secret } => secret
+            v2.std.optional.Absent => "unreachable" as std.types.NonEmptyStr
           },
         },
         writer: EnrollmentPrincipalPopulationDeploymentModelGap {
@@ -487,11 +487,11 @@ fn admit_ambient_oauth_home_write_back(
   observation: ClaudeAmbientOAuthArtifactObservationPair?,
 ) -> ClaudeAmbientOAuthHomeWriteBackAdmission {
   match observation {
-    Absent =>
+    v2.std.optional.Absent =>
       AmbientOAuthWriteBackRefusedMissingObservation {
         reason: "ambient OAuth home artifact must be observed before and after admitted runtime use before any write-back" as std.types.NonEmptyStr,
       }
-    Present { value: pair } =>
+    v2.std.optional.Present { value: pair } =>
       if ambient_oauth_artifact_digest_eq(a: pair.before_use, b: pair.after_use) {
         AmbientOAuthWriteBackRefusedUnchanged { digest: pair.after_use }
       } else {
@@ -565,23 +565,23 @@ fn admit_enrollment_writer_lease(
   incumbent_epoch: Int?,
 ) -> ClaudeEnrollmentWriterLeaseAdmission {
   match incumbent_holder {
-    Present { value: incumbent } =>
+    v2.std.optional.Present { value: incumbent } =>
       if incumbent == holder {
         EnrollmentLeaseGranted { holder: holder, epoch: holder_epoch }
       } else {
         EnrollmentLeaseRefusedConcurrent {
           incumbent_holder: incumbent as std.types.NonEmptyStr,
           incumbent_binding_version: match incumbent_version {
-            Present { value: v } => v
-            Absent => "unknown" as std.types.NonEmptyStr
+            v2.std.optional.Present { value: v } => v
+            v2.std.optional.Absent => "unknown" as std.types.NonEmptyStr
           },
           incumbent_epoch: match incumbent_epoch {
-            Present { value: e } => e
-            Absent => 0
+            v2.std.optional.Present { value: e } => e
+            v2.std.optional.Absent => 0
           },
         }
       }
-    Absent => EnrollmentLeaseGranted { holder: holder, epoch: holder_epoch }
+    v2.std.optional.Absent => EnrollmentLeaseGranted { holder: holder, epoch: holder_epoch }
   }
 }
 
@@ -630,32 +630,32 @@ fn admit_setup_token_capture(
   format: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatObservation,
 ) -> ClaudeSetupTokenCaptureAdmission {
   match format {
-    SetupTokenFormatUnobserved { reason } =>
+    extdeps.llm.claude_setup_token_cli.SetupTokenFormatUnobserved { reason } =>
       SetupTokenCaptureRefusedFormatUnobserved { reason: reason }
-    SetupTokenFormatMeasured { format: measured } =>
+    extdeps.llm.claude_setup_token_cli.SetupTokenFormatMeasured { format: measured } =>
       if candidate_count > 1 {
         SetupTokenCaptureRefusedMultipleCandidates { count: candidate_count }
       } else if candidate_count == 0 {
         SetupTokenCaptureRefusedNoCandidate
       } else {
         match token {
-          Absent => SetupTokenCaptureRefusedNoCandidate
-          Present { value: candidate } =>
+          v2.std.optional.Absent => SetupTokenCaptureRefusedNoCandidate
+          v2.std.optional.Present { value: candidate } =>
             if !starts_with(s: candidate, prefix: measured.token_prefix as String) {
               SetupTokenCaptureRefusedMalformedPrefix
-            } else if !setup_token_candidate_length_ok(
+            } else if !extdeps.llm.claude_setup_token_cli.setup_token_candidate_length_ok(
               token: candidate,
               min_length: measured.min_length,
               max_length: measured.max_length,
             ) {
               SetupTokenCaptureRefusedMalformedLength {
-                observed: character_count(count: string_length(s: candidate)),
+                observed: std.measure.character_count(count: string_length(s: candidate)),
                 min: measured.min_length,
                 max: measured.max_length,
               }
             } else {
               SetupTokenCaptureAdmitted {
-                token_length: character_count(count: string_length(s: candidate)),
+                token_length: std.measure.character_count(count: string_length(s: candidate)),
               }
             }
         }
@@ -691,8 +691,8 @@ fn claude_authentication_standing_from_managed_credential(
   standing: ClaudeCredentialStanding,
 ) -> gunbc.provider_standing.ProviderAuthenticationStanding {
   match standing {
-    ClaudeCredentialUsable => AuthenticationAuthenticated
-    ClaudeCredentialExpiringSoon { detail: _ } => AuthenticationAuthenticated
+    ClaudeCredentialUsable => gunbc.provider_standing.AuthenticationAuthenticated
+    ClaudeCredentialExpiringSoon { detail: _ } => gunbc.provider_standing.AuthenticationAuthenticated
     ClaudeCredentialRejected { reason } =>
       gunbc.provider_standing.AuthenticationRefreshFailed { reason: reason as String }
     ClaudeCredentialObservationRefused { reason } =>
@@ -702,8 +702,8 @@ fn claude_authentication_standing_from_managed_credential(
 
 fn claude_enrollment_standing_bundle_before_probe() -> gunbc.provider_standing.ProviderStandingBundle {
   gunbc.provider_standing.ProviderStandingBundle {
-    installation: InstallationReady,
-    authentication: AuthenticationCredentialsAbsent,
+    installation: gunbc.provider_standing.InstallationReady,
+    authentication: gunbc.provider_standing.AuthenticationCredentialsAbsent,
     entitlement: gunbc.provider_standing.EntitlementObservationUnobserved {
       reason: "paired probe not yet executed under managed binding" as std.types.NonEmptyStr,
     },
@@ -712,7 +712,7 @@ fn claude_enrollment_standing_bundle_before_probe() -> gunbc.provider_standing.P
         reason: "paired probe not yet executed under managed binding" as std.types.NonEmptyStr,
       },
     ],
-    turn: TurnNotStarted,
+    turn: gunbc.provider_standing.TurnNotStarted,
     tool_environment: gunbc.provider_standing.ToolEnvironmentStandingUnobserved {
       reason: "paired probe not yet executed under managed binding" as std.types.NonEmptyStr,
     },
@@ -754,13 +754,13 @@ fn claude_enrollment_standing_bundle_from_paired_probe_verdict(
   credential_label: std.types.NonEmptyStr,
 ) -> gunbc.provider_standing.ProviderStandingBundle {
   let authentication = if auth_succeeded {
-    AuthenticationAuthenticated
+    gunbc.provider_standing.AuthenticationAuthenticated
   } else {
     gunbc.provider_standing.AuthenticationRefreshFailed { reason: auth_failure_reason as String }
   }
-  let limits_observed = list_length(items: observed_native_limit_keys) > 0
+  let limits_observed = std.types.list_length(items: observed_native_limit_keys) > 0
   let entitlement = if limits_observed {
-    EntitlementObservedAvailable
+    gunbc.provider_standing.EntitlementObservedAvailable
   } else {
     gunbc.provider_standing.EntitlementObservationUnobserved {
       reason: "entitlement surface not reached or not observed by paired probe" as std.types.NonEmptyStr,
@@ -781,17 +781,17 @@ fn claude_enrollment_standing_bundle_from_paired_probe_verdict(
     ]
   }
   let turn = if auth_succeeded {
-    TurnNotStarted
+    gunbc.provider_standing.TurnNotStarted
   } else {
     gunbc.provider_standing.TurnFailed { reason: auth_failure_reason }
   }
   gunbc.provider_standing.ProviderStandingBundle {
-    installation: InstallationReady,
+    installation: gunbc.provider_standing.InstallationReady,
     authentication: authentication,
     entitlement: entitlement,
     limits: limits,
     turn: turn,
-    tool_environment: ToolEnvironmentReady,
+    tool_environment: gunbc.provider_standing.ToolEnvironmentReady,
   }
 }
 
@@ -799,10 +799,10 @@ fn claude_enrollment_provider_standing_from_bundle(
   session: ClaudeEnrollmentSession,
   bundle: gunbc.provider_standing.ProviderStandingBundle,
 ) -> gunbc.provider_standing.ProviderStanding {
-  provider_standing_from_observed_bundle(
+  gunbc.provider_standing.provider_standing_from_observed_bundle(
     fact_id: session.standing_fact_id,
     provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-      kind: ClaudeCliProvider,
+      kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
       host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldObserved {
         value: session.placement.account_label,
       },

@@ -2,16 +2,16 @@ module v2.workflow.gha_expression_fidelity
 
 
 fn gha_expression_core_roundtrip_fidelity() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.DecodeFidelity> {
-  decode_fidelity_from_target(target: gha_expression_roundtrip_target_model())
+  v2.compiler.target_carriers.decode_fidelity_from_target(target: v2.extdeps.github.expression_fidelity.gha_expression_roundtrip_target_model())
 }
 
 fn gha_expression_core_advertises_lossless() -> Bool {
   match gha_expression_core_roundtrip_fidelity() {
-    Accepted { value: fidelity, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: fidelity, diagnostics: _ } =>
       match fidelity {
-        Lossless => true
-        Lossy => false
+        extdeps.communication.medium.Lossless => true
+        extdeps.communication.medium.Lossy => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

@@ -47,8 +47,8 @@ type EditConstruction<T>
 type RoomEdit
   = AddRoom { identity: product.placement_supply.RoomIdentity, space: std.orthogonal_topology.EnclosedSpace }
   | RemoveRoom { identity: product.placement_supply.RoomIdentity }
-  | MoveRoom { identity: product.placement_supply.RoomIdentity, east: std.integer.Int, north: std.integer.Int, up: std.integer.Int }
-  | SetCeilingHeight { identity: product.placement_supply.RoomIdentity, high: std.integer.Int }
+  | MoveRoom { identity: product.placement_supply.RoomIdentity, east: Int, north: Int, up: Int }
+  | SetCeilingHeight { identity: product.placement_supply.RoomIdentity, high: Int }
 
 fn edit_subject(e: RoomEdit) -> product.placement_supply.RoomIdentity {
   match e {
@@ -66,8 +66,8 @@ fn room_identity_eq(a: product.placement_supply.RoomIdentity, b: product.placeme
 fn find_room(rooms: List<product.spatial_world.PlacedSpace>, identity: product.placement_supply.RoomIdentity) -> product.spatial_world.PlacedSpace? {
   fold(rooms, init: none, f: (acc, r) =>
     match acc {
-      Present { value: found } => Present { value: found }
-      Absent => if product.spatial_edit.room_identity_eq(a: r.identity, b: identity) { Present { value: r } } else { none }
+      v2.std.optional.Present { value: found } => v2.std.optional.Present { value: found }
+      v2.std.optional.Absent => if room_identity_eq(a: r.identity, b: identity) { v2.std.optional.Present { value: r } } else { none }
     })
 }
 
@@ -81,52 +81,52 @@ type VertexAcc {
 // be a second arithmetic authority, and the one that skips the checks.
 fn move_vertex(acc: VertexAcc, by: std.affine_space.Vector2, v: std.affine_space.Point2) -> VertexAcc {
   match acc.refusal {
-    Present { value: c } => VertexAcc { moved: acc.moved, refusal: Present { value: c } }
-    Absent =>
-      match translate_point2(point: v, by: by) {
-        SpatialArithmeticRefused { cause: c } => VertexAcc { moved: acc.moved, refusal: Present { value: EditArithmeticRefused { cause: c } } }
-        SpatialFrameRefused { refusal: r } => VertexAcc { moved: acc.moved, refusal: Present { value: EditFrameRefused { refusal: r } } }
-        SpatialReady { value: p } => VertexAcc { moved: concat(acc.moved, [p]), refusal: none }
+    v2.std.optional.Present { value: c } => VertexAcc { moved: acc.moved, refusal: v2.std.optional.Present { value: c } }
+    v2.std.optional.Absent =>
+      match std.affine_space.translate_point2(point: v, by: by) {
+        std.affine_space.SpatialArithmeticRefused { cause: c } => VertexAcc { moved: acc.moved, refusal: v2.std.optional.Present { value: EditArithmeticRefused { cause: c } } }
+        std.affine_space.SpatialFrameRefused { refusal: r } => VertexAcc { moved: acc.moved, refusal: v2.std.optional.Present { value: EditFrameRefused { refusal: r } } }
+        std.affine_space.SpatialReady { value: p } => VertexAcc { moved: concat(acc.moved, [p]), refusal: none }
       }
   }
 }
 
-fn checked_offset(base: std.integer.Int, delta: std.integer.Int) -> EditConstruction<std.integer.Int> {
-  match checked_int_add(a: base, b: delta) {
-    CheckedIntOverflow { cause: c } => EditRefused { cause: EditArithmeticRefused { cause: c } }
-    CheckedIntReady { value: v } => EditReady { value: v }
+fn checked_offset(base: Int, delta: Int) -> EditConstruction<Int> {
+  match std.checked_arithmetic.checked_int_add(a: base, b: delta) {
+    std.checked_arithmetic.CheckedIntOverflow { cause: c } => EditRefused { cause: EditArithmeticRefused { cause: c } }
+    std.checked_arithmetic.CheckedIntReady { value: v } => EditReady { value: v }
   }
 }
 
 // The rebuilt space runs both mints, so the result is admissible geometry or a located refusal -
 // there is no path here that produces an EnclosedSpace the geometry layer would not have minted.
-fn space_from(vertices: List<std.affine_space.Point2>, low: std.integer.Int, high: std.integer.Int) -> EditConstruction<std.orthogonal_topology.EnclosedSpace> {
-  match orthogonal_loop2(vertices: vertices) {
-    OrthogonalRefused { cause: c } => EditRefused { cause: EditGeometryRefused { cause: c } }
-    OrthogonalReady { value: l } =>
-      match orthogonal_prism3(footprint: l, low: low, high: high) {
-        OrthogonalRefused { cause: c } => EditRefused { cause: EditGeometryRefused { cause: c } }
-        OrthogonalReady { value: p } => EditReady { value: enclosed_space(shell: closed_shell_of_prism(prism: p)) }
+fn space_from(vertices: List<std.affine_space.Point2>, low: Int, high: Int) -> EditConstruction<std.orthogonal_topology.EnclosedSpace> {
+  match std.orthogonal_geometry.orthogonal_loop2(vertices: vertices) {
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => EditRefused { cause: EditGeometryRefused { cause: c } }
+    std.orthogonal_geometry.OrthogonalReady { value: l } =>
+      match std.orthogonal_geometry.orthogonal_prism3(footprint: l, low: low, high: high) {
+        std.orthogonal_geometry.OrthogonalRefused { cause: c } => EditRefused { cause: EditGeometryRefused { cause: c } }
+        std.orthogonal_geometry.OrthogonalReady { value: p } => EditReady { value: std.orthogonal_topology.enclosed_space(shell: std.orthogonal_topology.closed_shell_of_prism(prism: p)) }
       }
   }
 }
 
-fn space_low(s: std.orthogonal_topology.EnclosedSpace) -> std.integer.Int {
-  signed_frame_component_count(c: prism3_low(p: shell_prism(s: space_shell(s: s))))
+fn space_low(s: std.orthogonal_topology.EnclosedSpace) -> Int {
+  std.affine_space.signed_frame_component_count(c: std.orthogonal_geometry.prism3_low(p: std.orthogonal_topology.shell_prism(s: std.orthogonal_topology.space_shell(s: s))))
 }
 
-fn space_high(s: std.orthogonal_topology.EnclosedSpace) -> std.integer.Int {
-  signed_frame_component_count(c: prism3_high(p: shell_prism(s: space_shell(s: s))))
+fn space_high(s: std.orthogonal_topology.EnclosedSpace) -> Int {
+  std.affine_space.signed_frame_component_count(c: std.orthogonal_geometry.prism3_high(p: std.orthogonal_topology.shell_prism(s: std.orthogonal_topology.space_shell(s: s))))
 }
 
-fn moved_space(current: std.orthogonal_topology.EnclosedSpace, east: std.integer.Int, north: std.integer.Int, up: std.integer.Int) -> EditConstruction<std.orthogonal_topology.EnclosedSpace> {
-  let footprint = space_footprint(s: current)
-  let by = vector2(frame: footprint.frame, x: east, y: north)
-  let acc = fold(loop2_vertices(l: footprint), init: VertexAcc { moved: [], refusal: none }, f: (a, v) =>
+fn moved_space(current: std.orthogonal_topology.EnclosedSpace, east: Int, north: Int, up: Int) -> EditConstruction<std.orthogonal_topology.EnclosedSpace> {
+  let footprint = std.orthogonal_topology.space_footprint(s: current)
+  let by = std.affine_space.vector2(frame: footprint.frame, x: east, y: north)
+  let acc = fold(std.orthogonal_geometry.loop2_vertices(l: footprint), init: VertexAcc { moved: [], refusal: none }, f: (a, v) =>
     move_vertex(acc: a, by: by, v: v))
   match acc.refusal {
-    Present { value: c } => EditRefused { cause: c }
-    Absent =>
+    v2.std.optional.Present { value: c } => EditRefused { cause: c }
+    v2.std.optional.Absent =>
       match checked_offset(base: space_low(s: current), delta: up) {
         EditRefused { cause: c } => EditRefused { cause: c }
         EditReady { value: low } =>
@@ -138,29 +138,29 @@ fn moved_space(current: std.orthogonal_topology.EnclosedSpace, east: std.integer
   }
 }
 
-fn raised_space(current: std.orthogonal_topology.EnclosedSpace, high: std.integer.Int) -> EditConstruction<std.orthogonal_topology.EnclosedSpace> {
-  space_from(vertices: loop2_vertices(l: space_footprint(s: current)), low: space_low(s: current), high: high)
+fn raised_space(current: std.orthogonal_topology.EnclosedSpace, high: Int) -> EditConstruction<std.orthogonal_topology.EnclosedSpace> {
+  space_from(vertices: std.orthogonal_geometry.loop2_vertices(l: std.orthogonal_topology.space_footprint(s: current)), low: space_low(s: current), high: high)
 }
 
 // ONE EDIT, ONE HUNK, AND THE HUNK'S `from` COMES FROM THE BASE. An add is the only arm that does not
 // read the base for a value, and it is the only one that refuses when the room IS there.
-fn edit_to_hunk(base: product.spatial_world.World, e: RoomEdit) -> EditConstruction<KeyedDiffHunk<RoomIdentity, EnclosedSpace>> {
-  let current = product.spatial_edit.find_room(rooms: world_rooms(w: base), identity: edit_subject(e: e))
+fn edit_to_hunk(base: product.spatial_world.World, e: RoomEdit) -> EditConstruction<std.change.KeyedDiffHunk<product.placement_supply.RoomIdentity, std.orthogonal_topology.EnclosedSpace>> {
+  let current = find_room(rooms: product.spatial_world.world_rooms(w: base), identity: edit_subject(e: e))
   match e {
     AddRoom { identity: i, space: s } =>
       match current {
-        Present { value: _ } => EditRefused { cause: EditTargetAlreadyPresent { identity: i } }
-        Absent => EditReady { value: std.change.KeyedDiffAddedHunk { hunk_key: i, to: s } }
+        v2.std.optional.Present { value: _ } => EditRefused { cause: EditTargetAlreadyPresent { identity: i } }
+        v2.std.optional.Absent => EditReady { value: std.change.KeyedDiffAddedHunk { hunk_key: i, to: s } }
       }
     RemoveRoom { identity: i } =>
       match current {
-        Absent => EditRefused { cause: EditTargetMissing { identity: i } }
-        Present { value: r } => EditReady { value: std.change.KeyedDiffRemovedHunk { hunk_key: i, from: r.space } }
+        v2.std.optional.Absent => EditRefused { cause: EditTargetMissing { identity: i } }
+        v2.std.optional.Present { value: r } => EditReady { value: std.change.KeyedDiffRemovedHunk { hunk_key: i, from: r.space } }
       }
     MoveRoom { identity: i, east: east, north: north, up: up } =>
       match current {
-        Absent => EditRefused { cause: EditTargetMissing { identity: i } }
-        Present { value: r } =>
+        v2.std.optional.Absent => EditRefused { cause: EditTargetMissing { identity: i } }
+        v2.std.optional.Present { value: r } =>
           match moved_space(current: r.space, east: east, north: north, up: up) {
             EditRefused { cause: c } => EditRefused { cause: c }
             EditReady { value: s } => EditReady { value: std.change.KeyedDiffModifiedHunk { hunk_key: i, from: r.space, to: s } }
@@ -168,8 +168,8 @@ fn edit_to_hunk(base: product.spatial_world.World, e: RoomEdit) -> EditConstruct
       }
     SetCeilingHeight { identity: i, high: high } =>
       match current {
-        Absent => EditRefused { cause: EditTargetMissing { identity: i } }
-        Present { value: r } =>
+        v2.std.optional.Absent => EditRefused { cause: EditTargetMissing { identity: i } }
+        v2.std.optional.Present { value: r } =>
           match raised_space(current: r.space, high: high) {
             EditRefused { cause: c } => EditRefused { cause: c }
             EditReady { value: s } => EditReady { value: std.change.KeyedDiffModifiedHunk { hunk_key: i, from: r.space, to: s } }
@@ -178,17 +178,17 @@ fn edit_to_hunk(base: product.spatial_world.World, e: RoomEdit) -> EditConstruct
   }
 }
 
-fn count_edits_for(edits: List<RoomEdit>, wanted: product.placement_supply.RoomIdentity) -> std.integer.Int {
-  fold(edits, init: 0, f: (n, e) => if product.spatial_edit.room_identity_eq(a: edit_subject(e: e), b: wanted) { n + 1 } else { n })
+fn count_edits_for(edits: List<RoomEdit>, wanted: product.placement_supply.RoomIdentity) -> Int {
+  fold(edits, init: 0, f: (n, e) => if room_identity_eq(a: edit_subject(e: e), b: wanted) { n + 1 } else { n })
 }
 
 fn first_double_edit(edits: List<RoomEdit>) -> product.placement_supply.RoomIdentity? {
   fold(edits, init: none, f: (found, e) =>
     match found {
-      Present { value: i } => Present { value: i }
-      Absent =>
+      v2.std.optional.Present { value: i } => v2.std.optional.Present { value: i }
+      v2.std.optional.Absent =>
         if count_edits_for(edits: edits, wanted: edit_subject(e: e)) > 1 {
-          Present { value: edit_subject(e: e) }
+          v2.std.optional.Present { value: edit_subject(e: e) }
         } else {
           none
         }
@@ -196,26 +196,26 @@ fn first_double_edit(edits: List<RoomEdit>) -> product.placement_supply.RoomIden
 }
 
 type HunkAcc {
-  hunks: List<KeyedDiffHunk<RoomIdentity, EnclosedSpace>>
+  hunks: List<std.change.KeyedDiffHunk<product.placement_supply.RoomIdentity, std.orthogonal_topology.EnclosedSpace>>
   refusal: EditRefusal?
 }
 
-fn edits_to_patch(base: product.spatial_world.World, edits: List<RoomEdit>) -> EditConstruction<KeyedPatch<RoomIdentity, EnclosedSpace>> {
+fn edits_to_patch(base: product.spatial_world.World, edits: List<RoomEdit>) -> EditConstruction<std.change.KeyedPatch<product.placement_supply.RoomIdentity, std.orthogonal_topology.EnclosedSpace>> {
   match first_double_edit(edits: edits) {
-    Present { value: i } => EditRefused { cause: RoomEditedTwiceInOneBatch { identity: i } }
-    Absent =>
+    v2.std.optional.Present { value: i } => EditRefused { cause: RoomEditedTwiceInOneBatch { identity: i } }
+    v2.std.optional.Absent =>
       let acc = fold(edits, init: HunkAcc { hunks: [], refusal: none }, f: (a, e) =>
         match a.refusal {
-          Present { value: c } => HunkAcc { hunks: a.hunks, refusal: Present { value: c } }
-          Absent =>
+          v2.std.optional.Present { value: c } => HunkAcc { hunks: a.hunks, refusal: v2.std.optional.Present { value: c } }
+          v2.std.optional.Absent =>
             match edit_to_hunk(base: base, e: e) {
-              EditRefused { cause: c } => HunkAcc { hunks: a.hunks, refusal: Present { value: c } }
+              EditRefused { cause: c } => HunkAcc { hunks: a.hunks, refusal: v2.std.optional.Present { value: c } }
               EditReady { value: h } => HunkAcc { hunks: concat(a.hunks, [h]), refusal: none }
             }
         })
       match acc.refusal {
-        Present { value: c } => EditRefused { cause: c }
-        Absent => EditReady { value: std.change.KeyedPatch { hunks: acc.hunks } }
+        v2.std.optional.Present { value: c } => EditRefused { cause: c }
+        v2.std.optional.Absent => EditReady { value: std.change.KeyedPatch { hunks: acc.hunks } }
       }
   }
 }
@@ -223,7 +223,7 @@ fn edits_to_patch(base: product.spatial_world.World, edits: List<RoomEdit>) -> E
 fn edits_to_variant(base: product.spatial_world.World, edits: List<RoomEdit>) -> EditConstruction<product.spatial_world.WorldVariant> {
   match edits_to_patch(base: base, edits: edits) {
     EditRefused { cause: c } => EditRefused { cause: c }
-    EditReady { value: p } => EditReady { value: world_variant(base: base, delta: p) }
+    EditReady { value: p } => EditReady { value: product.spatial_world.world_variant(base: base, delta: p) }
   }
 }
 
@@ -235,11 +235,11 @@ fn edits_to_variant(base: product.spatial_world.World, edits: List<RoomEdit>) ->
 // admit it.
 type EditOutcome
   = EditNotCompiled { cause: EditRefusal }
-  | EditRealized { result: WorldConstruction<product.spatial_world.World> }
+  | EditRealized { result: product.spatial_world.WorldConstruction<product.spatial_world.World> }
 
 fn apply_edits(base: product.spatial_world.World, edits: List<RoomEdit>) -> EditOutcome {
   match edits_to_variant(base: base, edits: edits) {
     EditRefused { cause: c } => EditNotCompiled { cause: c }
-    EditReady { value: v } => EditRealized { result: realize_variant(v: v) }
+    EditReady { value: v } => EditRealized { result: product.spatial_world.realize_variant(v: v) }
   }
 }

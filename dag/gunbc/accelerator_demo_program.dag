@@ -56,9 +56,9 @@ fn program_ops(program: AcceleratorDemoProgram) -> List<ElementwiseArrayOp> {
 
 fn elementwise_op_code(op: ElementwiseArrayOp) -> Int {
   match op {
-    ElemwiseMul => elemwise_mul_wire_op_code
-    ElemwiseAdd => elemwise_add_wire_op_code
-    ElemwiseRelu => elemwise_relu_wire_op_code
+    ElemwiseMul => extdeps.languages.simd.kernel.elemwise_mul_wire_op_code
+    ElemwiseAdd => extdeps.languages.simd.kernel.elemwise_add_wire_op_code
+    ElemwiseRelu => extdeps.languages.simd.kernel.elemwise_relu_wire_op_code
   }
 }
 
@@ -90,7 +90,7 @@ fn int_list_eq(left: List<Int>, right: List<Int>) -> Bool {
             if l != r {
               false
             } else {
-              gunbc.accelerator_demo_program.int_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+              int_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
             }
           Absent => false
         }
@@ -100,7 +100,7 @@ fn int_list_eq(left: List<Int>, right: List<Int>) -> Bool {
 }
 
 fn relu_mul_add_op_codes_match(codes: List<Int>) -> Bool {
-  gunbc.accelerator_demo_program.int_list_eq(left: codes, right: relu_mul_add_wire_op_codes)
+  int_list_eq(left: codes, right: extdeps.languages.simd.kernel.relu_mul_add_wire_op_codes)
 }
 
 fn pure_elementwise_ops_shape_recognizable(ops: List<ElementwiseArrayOp>) -> Bool {
@@ -108,8 +108,8 @@ fn pure_elementwise_ops_shape_recognizable(ops: List<ElementwiseArrayOp>) -> Boo
 }
 
 fn witness_relu_mul_add_program_op_codes_are_authority() -> Bool {
-  gunbc.accelerator_demo_program.int_list_eq(
+  int_list_eq(
     left: program_op_codes(program: relu_mul_add_pure_program),
-    right: relu_mul_add_wire_op_codes
+    right: extdeps.languages.simd.kernel.relu_mul_add_wire_op_codes
   )
 }

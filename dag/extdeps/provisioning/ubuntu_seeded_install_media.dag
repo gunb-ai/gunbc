@@ -3,7 +3,7 @@ module extdeps.provisioning.ubuntu_seeded_install_media
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "canonical-subiquity.readthedocs-hosted.com/en/latest/tutorial/providing-autoinstall.html"
   }
 }
@@ -38,17 +38,17 @@ fn seeded_install_media_content_hash(
   grub_kernel_cmdline: std.types.NonEmptyStr,
   nocloud_dir_on_iso: std.types.NonEmptyStr,
 ) -> std.content_hash.ContentHash {
-  content_hash_tagged(
+  std.content_hash.content_hash_tagged(
     tag: "ubuntu-seeded-install-media/v2",
-    payload: content_hash_combine_structural(
-      content_hash_combine_structural(
-        content_hash_combine_structural(
-          content_hash_atom(value: stock_content_sha256),
-          content_hash_atom(value: autoinstall_user_data_body),
+    payload: std.content_hash.content_hash_combine_structural(
+      std.content_hash.content_hash_combine_structural(
+        std.content_hash.content_hash_combine_structural(
+          std.content_hash.content_hash_atom(value: stock_content_sha256),
+          std.content_hash.content_hash_atom(value: autoinstall_user_data_body),
         ),
-        content_hash_atom(value: grub_kernel_cmdline),
+        std.content_hash.content_hash_atom(value: grub_kernel_cmdline),
       ),
-      content_hash_atom(value: nocloud_dir_on_iso),
+      std.content_hash.content_hash_atom(value: nocloud_dir_on_iso),
     ),
   )
 }
@@ -67,7 +67,7 @@ fn ubuntu_seeded_install_media_filename(artifact: UbuntuSeededInstallMediaArtifa
 
 fn ubuntu_seeded_install_media_install_path(artifact: UbuntuSeededInstallMediaArtifactRow) -> std.types.NonEmptyStr {
   concat(
-    concat(ubuntu_install_media_artifacts_dir() as String, "/"),
+    concat(extdeps.provisioning.ubuntu_install_media.ubuntu_install_media_artifacts_dir() as String, "/"),
     ubuntu_seeded_install_media_filename(artifact: artifact) as String,
   ) as std.types.NonEmptyStr
 }

@@ -12,15 +12,15 @@ type ShardObservationSide
 type ShardDoorDisposition
   = DetailedCauseObserved {
       located_reason: v2.std.node.Symbol,
-      chain_length: v2.std.integer.Int,
-      symbols_differing_from_head: v2.std.integer.Int,
+      chain_length: Int,
+      symbols_differing_from_head: Int,
       first_differing_symbol: String
     }
-  | ClosureExceedsManifestCap { read_count: v2.std.integer.Int, cap: v2.std.integer.Int }
+  | ClosureExceedsManifestCap { read_count: Int, cap: Int }
 
 type SemanticFamilyShardRow {
   module_path: String
-  closure_reads: v2.std.integer.Int
+  closure_reads: Int
   side: ShardObservationSide
   disposition: ShardDoorDisposition
 }
@@ -86,12 +86,12 @@ data semantic_family_cap_finding_note: String = "The three shards above 64 reads
 
 data semantic_family_closure_drift_note: String = "OBSERVED DRIFT, reported and not acted on: the frontier roster records closure_reads 9 for use_site_verdict and 35 for materialization_carriers; discover_source_root_ingest measures 15 and 48 at this commit. The rows are the program lead's authority and are not edited from here. Stated precisely, because the two are different claims: what is established is that the closure sizes differ from the recorded ones at this commit, NOT that either row's blocker classification is wrong."
 
-fn shard_count() -> v2.std.integer.Int {
-  fold_list(xs: semantic_family_shard_rows, empty: 0, cons: fn(n, _r) { n + 1 })
+fn shard_count() -> Int {
+  v2.std.algebra.fold_list(xs: semantic_family_shard_rows, empty: 0, cons: fn(n, _r) { n + 1 })
 }
 
-fn measured_shard_count() -> v2.std.integer.Int {
-  fold_list(
+fn measured_shard_count() -> Int {
+  v2.std.algebra.fold_list(
     xs: semantic_family_shard_rows,
     empty: 0,
     cons: fn(n, r) {
@@ -108,8 +108,8 @@ fn measured_shard_count() -> v2.std.integer.Int {
   )
 }
 
-fn capped_shard_count() -> v2.std.integer.Int {
-  fold_list(
+fn capped_shard_count() -> Int {
+  v2.std.algebra.fold_list(
     xs: semantic_family_shard_rows,
     empty: 0,
     cons: fn(n, r) {
@@ -126,8 +126,8 @@ fn capped_shard_count() -> v2.std.integer.Int {
   )
 }
 
-fn shards_naming_body_lowering_beneath_the_mask() -> v2.std.integer.Int {
-  fold_list(
+fn shards_naming_body_lowering_beneath_the_mask() -> Int {
+  v2.std.algebra.fold_list(
     xs: semantic_family_shard_rows,
     empty: 0,
     cons: fn(n, r) {
@@ -145,8 +145,8 @@ fn shards_naming_body_lowering_beneath_the_mask() -> v2.std.integer.Int {
   )
 }
 
-fn every_capped_shard_exceeds_its_own_cap() -> v2.std.logic.Bool {
-  fold_list(
+fn every_capped_shard_exceeds_its_own_cap() -> Bool {
+  v2.std.algebra.fold_list(
     xs: semantic_family_shard_rows,
     empty: true,
     cons: fn(ok, r) {
@@ -163,8 +163,8 @@ fn every_capped_shard_exceeds_its_own_cap() -> v2.std.logic.Bool {
   )
 }
 
-fn every_measured_chain_is_non_uniform() -> v2.std.logic.Bool {
-  fold_list(
+fn every_measured_chain_is_non_uniform() -> Bool {
+  v2.std.algebra.fold_list(
     xs: semantic_family_shard_rows,
     empty: true,
     cons: fn(ok, r) {

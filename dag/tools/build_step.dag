@@ -1,7 +1,7 @@
 module tools.build_step
 
 
-// Shell text emission for build-artifact verification lives in v2.workflow.build_step_emit (grammar-row serializer via bash_command_fold_serialize.bash_fold_serialize_program). This module retains v2.std.node.Node stmt construction only.
+// Shell text emission for build-artifact verification lives in v2.workflow.build_step_emit (grammar-row serializer via bash_command_fold_serialize.bash_fold_serialize_program). This module retains Node stmt construction only.
 type BuildArtifact {
   path: v2.std.node.Node
   name: String

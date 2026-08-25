@@ -29,8 +29,8 @@ type PrimitiveFactBundle {
 fn primitive_fact_axis_unbound_diagnostic(axis: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^primitive_fact_axis_unbound_reason,
-    at: v2.std.diagnostic.Textual { file: axis, extent: WholeFile },
-    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
+    at: v2.std.diagnostic.Textual { file: axis, extent: v2.std.diagnostic.WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.UserInputBoundary }
   }
 }
 
@@ -80,8 +80,8 @@ fn field_partiality_decl() -> PartialitySemanticsDecl {
   PartialitySemanticsDecl {
     operations: [
       PartialOperationDecl {
-        operation: field_reciprocal_operation_node(),
-        precondition: field_reciprocal_nonzero_precondition_node(),
+        operation: v2.std.algebra.field_reciprocal_operation_node(),
+        precondition: v2.std.algebra.field_reciprocal_nonzero_precondition_node(),
         discharge: FailClosedAtBoundary { reason: ^field_reciprocal_operation }
       }
     ]
@@ -106,15 +106,15 @@ fn model_core_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn model_core_bool_fact_lookup(facts: v2.std.logic.BoolPrimitiveFacts, axis: v2.std.node.Symbol) -> Witness<v2.std.node.Node> {
   if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-    v2.std.witness.Holds { value: bool_width_fact_node(width: facts.width) }
+    v2.std.witness.Holds { value: v2.std.logic.bool_width_fact_node(width: facts.width) }
   } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-    v2.std.witness.Holds { value: bool_encoding_fact_node(encoding: facts.encoding) }
+    v2.std.witness.Holds { value: v2.std.logic.bool_encoding_fact_node(encoding: facts.encoding) }
   } else {
     v2.std.witness.Violates {
       diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
@@ -136,31 +136,31 @@ fn model_core_bool_spec_facts(facts: v2.std.logic.BoolPrimitiveFacts) -> Map<v2.
 
 fn model_core_bool_primitive_bundle() -> PrimitiveFactBundle {
   PrimitiveFactBundle {
-    substrate_carrier: bool_primitive_facts_node(facts: bool_primitive_facts),
-    spec_facts: model_core_bool_spec_facts(facts: bool_primitive_facts)
+    substrate_carrier: v2.std.logic.bool_primitive_facts_node(facts: v2.std.logic.bool_primitive_facts),
+    spec_facts: model_core_bool_spec_facts(facts: v2.std.logic.bool_primitive_facts)
   }
 }
 
 fn model_core_bool_inhabitance_witness() -> v2.std.node.Node {
-  bool_boolean_algebra_node()
+  v2.std.logic.bool_boolean_algebra_node()
 }
 
 fn model_core_bool_algebra_node() -> v2.std.node.Node {
-  bool_boolean_algebra_type_node()
+  v2.std.logic.bool_boolean_algebra_type_node()
 }
 
 fn model_core_bool_inhabitance() -> AlgebraInhabitanceDecl {
   let witness = model_core_bool_inhabitance_witness()
   AlgebraInhabitanceDecl {
     algebra: model_core_bool_algebra_node(),
-    inhabitant: bool_node(),
+    inhabitant: v2.std.logic.bool_node(),
     witness: witness
   }
 }
 
 fn model_core_law_node(key: ModelCoreBoolLawKey) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^model_core_law_field_subject },
@@ -175,7 +175,7 @@ fn model_core_law_node(key: ModelCoreBoolLawKey) -> v2.std.node.Node {
         target: model_core_atom(id: discriminant(v: key))
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -212,9 +212,9 @@ type PrimitiveBundleSubstrateHead
 
 fn model_core_empty_conj_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -225,7 +225,7 @@ fn primitive_fact_bundle_substrate(bundle: PrimitiveFactBundle) -> v2.std.node.N
 }
 
 fn primitive_fact_bundle_list_head_substrate(bundles: List<PrimitiveFactBundle>) -> v2.std.node.Node {
-  match fold_list(
+  match v2.std.algebra.fold_list(
     xs: bundles,
     empty: PrimitiveBundleSubstrateHeadMissing,
     cons: fn(acc, bundle) {

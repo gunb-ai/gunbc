@@ -461,17 +461,17 @@ type FidelityFeature
 fn feature_disposition(f: FidelityFeature) -> v2.extdeps.languages.fidelity.FidelityDisposition<FidelityFeature> {
   match f {
     StructuralCore => Modeled
-    SsaValueSpelling => v2.extdeps.languages.fidelity.DeclaredNormalized { feature: SsaValueSpelling }
-    BlockTextualOrder => v2.extdeps.languages.fidelity.DeclaredNormalized { feature: BlockTextualOrder }
-    LexicalTrivia => v2.extdeps.languages.fidelity.DeclaredNormalized { feature: LexicalTrivia }
-    TargetConfigToken => v2.extdeps.languages.fidelity.DeclaredNormalized { feature: TargetConfigToken }
-    AdvisoryMetadata => v2.extdeps.languages.fidelity.DeclaredNormalized { feature: AdvisoryMetadata }
-    UnmodeledInlineAsm => v2.extdeps.languages.fidelity.FailClosed { feature: UnmodeledInlineAsm }
-    UnmodeledSemanticAttribute => v2.extdeps.languages.fidelity.FailClosed { feature: UnmodeledSemanticAttribute }
-    UnmodeledType => v2.extdeps.languages.fidelity.FailClosed { feature: UnmodeledType }
-    UnmodeledInstruction => v2.extdeps.languages.fidelity.FailClosed { feature: UnmodeledInstruction }
-    UnmodeledConstExpr => v2.extdeps.languages.fidelity.FailClosed { feature: UnmodeledConstExpr }
-    MalformedStructure => v2.extdeps.languages.fidelity.FailClosed { feature: MalformedStructure }
+    SsaValueSpelling => DeclaredNormalized { feature: SsaValueSpelling }
+    BlockTextualOrder => DeclaredNormalized { feature: BlockTextualOrder }
+    LexicalTrivia => DeclaredNormalized { feature: LexicalTrivia }
+    TargetConfigToken => DeclaredNormalized { feature: TargetConfigToken }
+    AdvisoryMetadata => DeclaredNormalized { feature: AdvisoryMetadata }
+    UnmodeledInlineAsm => FailClosed { feature: UnmodeledInlineAsm }
+    UnmodeledSemanticAttribute => FailClosed { feature: UnmodeledSemanticAttribute }
+    UnmodeledType => FailClosed { feature: UnmodeledType }
+    UnmodeledInstruction => FailClosed { feature: UnmodeledInstruction }
+    UnmodeledConstExpr => FailClosed { feature: UnmodeledConstExpr }
+    MalformedStructure => FailClosed { feature: MalformedStructure }
   }
 }
 
@@ -694,11 +694,11 @@ fn llvm_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.lex
 }
 
 fn llvm_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
-  v2.std.grammar.Terminal { token_class: token_class, stamp: v2.std.grammar.StampClass }
+  Terminal { token_class: token_class, stamp: v2.std.grammar.StampClass }
 }
 
 fn llvm_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  v2.std.grammar.Sequence { left: left, right: right }
+  Sequence { left: left, right: right }
 }
 
 fn llvm_global_ident_pattern() -> v2.std.compilers.lexing.LexPattern {

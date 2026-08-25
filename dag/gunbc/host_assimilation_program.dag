@@ -31,10 +31,10 @@ data host_phase_prefix_participation_note: String = "Every PREFIX phase is CI-ru
 
 fn prefix_phase_participations(p: gunbc.host_standup.HostStandupPrefixPhase) -> List<FleetParticipation> {
   match p {
-    BmcCredentialConverge => [CiRunnerParticipation]
-    OsInstallMechanismResolved => [CiRunnerParticipation]
-    OsInstallActuated => [CiRunnerParticipation]
-    HostConvergePolicyDerived => [CiRunnerParticipation]
+    gunbc.host_standup.BmcCredentialConverge => [CiRunnerParticipation]
+    gunbc.host_standup.OsInstallMechanismResolved => [CiRunnerParticipation]
+    gunbc.host_standup.OsInstallActuated => [CiRunnerParticipation]
+    gunbc.host_standup.HostConvergePolicyDerived => [CiRunnerParticipation]
   }
 }
 
@@ -42,27 +42,27 @@ data host_phase_assimilation_participation_note: String = "HostIdentityConverge 
 
 fn assimilation_phase_participations(p: gunbc.host_standup.HostStandupAssimilationPhase) -> List<FleetParticipation> {
   match p {
-    HostIdentityConverge => [CiRunnerParticipation, InferenceServingParticipation]
-    ReachSecretsNetwork => [CiRunnerParticipation, InferenceServingParticipation]
-    RunnerDeploySlot => [CiRunnerParticipation]
-    BuildCacheProvision => [CiRunnerParticipation]
-    CodexRuntimeProvision => [CiRunnerParticipation]
-    ComputeFabricEnroll => [CiRunnerParticipation, InferenceServingParticipation]
-    GreenPlaceReadiness => [CiRunnerParticipation]
-    SessionPlacementEnrollment => [CiRunnerParticipation]
-    StandupAssimilationComplete => [CiRunnerParticipation, InferenceServingParticipation]
+    gunbc.host_standup.HostIdentityConverge => [CiRunnerParticipation, InferenceServingParticipation]
+    gunbc.host_standup.ReachSecretsNetwork => [CiRunnerParticipation, InferenceServingParticipation]
+    gunbc.host_standup.RunnerDeploySlot => [CiRunnerParticipation]
+    gunbc.host_standup.BuildCacheProvision => [CiRunnerParticipation]
+    gunbc.host_standup.CodexRuntimeProvision => [CiRunnerParticipation]
+    gunbc.host_standup.ComputeFabricEnroll => [CiRunnerParticipation, InferenceServingParticipation]
+    gunbc.host_standup.GreenPlaceReadiness => [CiRunnerParticipation]
+    gunbc.host_standup.SessionPlacementEnrollment => [CiRunnerParticipation]
+    gunbc.host_standup.StandupAssimilationComplete => [CiRunnerParticipation, InferenceServingParticipation]
   }
 }
 
 fn host_phase_participations(phase: gunbc.host_standup.HostStandupPhase) -> List<FleetParticipation> {
   match phase {
-    Prefix { phase: p } => prefix_phase_participations(p: p)
-    Assimilation { phase: p } => assimilation_phase_participations(p: p)
+    gunbc.host_standup.Prefix { phase: p } => prefix_phase_participations(p: p)
+    gunbc.host_standup.Assimilation { phase: p } => assimilation_phase_participations(p: p)
   }
 }
 
 fn participation_list_contains(ps: List<FleetParticipation>, wanted: FleetParticipation) -> Bool {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: ps,
     empty: false,
     cons: fn(acc, p) { if acc { true } else { fleet_participation_eq(a: p, b: wanted) } }
@@ -74,7 +74,7 @@ fn step_serves_participation(step: gunbc.host_standup.HostStandupStep, wanted: F
 }
 
 fn step_serves_any(step: gunbc.host_standup.HostStandupStep, wanted: List<FleetParticipation>) -> Bool {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: wanted,
     empty: false,
     cons: fn(acc, w) { if acc { true } else { step_serves_participation(step: step, wanted: w) } }
@@ -91,7 +91,7 @@ data host_assimilation_program_derivation_note: String = "The program is DERIVED
 fn assimilation_program_for(intent: HostEnrollmentIntent) -> HostAssimilationProgram {
   HostAssimilationProgram {
     identity: host_enrollment_program_identity(intent: intent),
-    steps: filter(host_standup_spine, s => step_serves_any(step: s, wanted: intent.participation)),
+    steps: filter(gunbc.host_standup.host_standup_spine, s => step_serves_any(step: s, wanted: intent.participation)),
   }
 }
 
@@ -145,14 +145,14 @@ fn assimilation_completion_input_list_contains(
   inputs: List<gunbc.host_standup.AssimilationCompleteInput>,
   wanted: gunbc.host_standup.AssimilationCompleteInput,
 ) -> Bool {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: inputs,
     empty: false,
     cons: fn(acc, r) {
       if acc {
         true
       } else {
-        assimilation_complete_input_eq(a: r, b: wanted)
+        gunbc.host_standup.assimilation_complete_input_eq(a: r, b: wanted)
       }
     }
   )
@@ -173,7 +173,7 @@ fn assimilation_completion_inputs_union(
   a: List<gunbc.host_standup.AssimilationCompleteInput>,
   b: List<gunbc.host_standup.AssimilationCompleteInput>,
 ) -> List<gunbc.host_standup.AssimilationCompleteInput> {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: b,
     empty: a,
     cons: fn(acc, wanted_input) {
@@ -185,13 +185,13 @@ fn assimilation_completion_inputs_union(
 data assimilation_completion_input_classification_note: String = "Completion obligations are derived from participation beside the phase classification tables above, not as fixed fields on AssimilationCompleteGate. CiRunnerParticipation requires all four AssimilationCompleteInput arms because a CI runner host must be node-registered, resources-present, green-place coherent via the gunbc gate (not merely P3 modeled), and runner-slot healthy. InferenceServingParticipation requires only NodeRegistered and ResourcesPresent: an inference appliance has no GitHub Actions runner slot to health-check and no dashboard green-place pin to coherence-check, so those inputs are not obligations and cannot be supplied without fabricating evidence. GreenPlacePinCoherent and RunnerSlotHealthy are CI-only because they gate facts about executing CI work (dashboard pin coherence, Actions slot enforcement), not generic host readiness."
 
 data shared_completion_inputs: List<gunbc.host_standup.AssimilationCompleteInput> = [
-  NodeRegistered,
-  ResourcesPresent,
+  gunbc.host_standup.NodeRegistered,
+  gunbc.host_standup.ResourcesPresent,
 ]
 
 data ci_runner_only_completion_inputs: List<gunbc.host_standup.AssimilationCompleteInput> = [
-  GreenPlacePinCoherent,
-  RunnerSlotHealthy,
+  gunbc.host_standup.GreenPlacePinCoherent,
+  gunbc.host_standup.RunnerSlotHealthy,
 ]
 
 fn assimilation_completion_inputs_for_one(p: FleetParticipation) -> List<gunbc.host_standup.AssimilationCompleteInput> {
@@ -206,7 +206,7 @@ fn assimilation_completion_inputs_for_one(p: FleetParticipation) -> List<gunbc.h
 data empty_assimilation_complete_input_list: List<gunbc.host_standup.AssimilationCompleteInput> = []
 
 fn assimilation_completion_inputs_for(participation: List<FleetParticipation>) -> List<gunbc.host_standup.AssimilationCompleteInput> {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: participation,
     empty: empty_assimilation_complete_input_list,
     cons: fn(acc, p) {
@@ -220,14 +220,14 @@ fn assimilation_completion_inputs_for(participation: List<FleetParticipation>) -
 
 fn default_unsatisfied_witness_for_input(input: gunbc.host_standup.AssimilationCompleteInput) -> gunbc.host_standup.AssimilationInputWitness {
   match input {
-    NodeRegistered =>
-      gunbc.host_standup.InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" }
-    ResourcesPresent =>
-      gunbc.host_standup.InputGap { input: ResourcesPresent, interim_realization: "ctrl:resources-present-unmodeled" }
-    GreenPlacePinCoherent =>
-      assimilation_input_witness_from_green_place(w: host_standup_p3_green_place_input_witness())
-    RunnerSlotHealthy =>
-      gunbc.host_standup.InputGap { input: RunnerSlotHealthy, interim_realization: "gunbc.runner_slot_enforcement until P1 converged" }
+    gunbc.host_standup.NodeRegistered =>
+      gunbc.host_standup.InputGap { input: gunbc.host_standup.NodeRegistered, interim_realization: "ctrl:node_registry.mjs" }
+    gunbc.host_standup.ResourcesPresent =>
+      gunbc.host_standup.InputGap { input: gunbc.host_standup.ResourcesPresent, interim_realization: "ctrl:resources-present-unmodeled" }
+    gunbc.host_standup.GreenPlacePinCoherent =>
+      gunbc.host_standup.assimilation_input_witness_from_green_place(w: gunbc.host_standup.host_standup_p3_green_place_input_witness())
+    gunbc.host_standup.RunnerSlotHealthy =>
+      gunbc.host_standup.InputGap { input: gunbc.host_standup.RunnerSlotHealthy, interim_realization: "gunbc.runner_slot_enforcement until P1 converged" }
   }
 }
 
@@ -250,14 +250,14 @@ fn host_standup_default_assimilation_gate_unsatisfied() -> gunbc.host_standup.As
 }
 
 fn host_standup_p3_fail_closed_blocks_complete() -> Bool {
-  !host_standup_p3_gunbc_pinned_tree_landed
-    && match assimilation_complete(
+  !gunbc.host_standup.host_standup_p3_gunbc_pinned_tree_landed
+    && match gunbc.host_standup.assimilation_complete(
       gate: host_standup_default_assimilation_gate_unsatisfied(),
       required: assimilation_completion_inputs_for(participation: ci_runner_enrollment_participation),
     ) {
-      AssimilationIncomplete { input: GreenPlacePinCoherent, reason: r } =>
+      gunbc.host_standup.AssimilationIncomplete { input: gunbc.host_standup.GreenPlacePinCoherent, reason: r } =>
         string_contains(s: r, pattern: "#5948")
-      AssimilationComplete => false
-      AssimilationIncomplete { input: _, reason: _ } => true
+      gunbc.host_standup.AssimilationComplete => false
+      gunbc.host_standup.AssimilationIncomplete { input: _, reason: _ } => true
     }
 }

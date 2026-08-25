@@ -4,7 +4,7 @@ module extdeps.dhcp.v4
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "datatracker.ietf.org/doc/html/rfc2132#section-3.14"
   }
 }
@@ -13,9 +13,9 @@ type MacAddress = std.types.NonEmptyStr where brand("MacAddress")
 
 data mac_address_anemic_brand_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.dhcp.v4", decl_name: "MacAddress"),
+    ref: std.decl_ref.decl_ref(module_path: "extdeps.dhcp.v4", decl_name: "MacAddress"),
     reason: "MacAddress is a branded NonEmptyStr hiding six grounded octets; deep-decompose to structured MAC carrier (e.g. MacAddress { octets: [UInt8; 6] }) at parse boundary",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")),
+    dissolution: std.dissolution.bound_dissolution(ref: std.decl_ref.decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")),
   )
 ]
 
@@ -48,11 +48,11 @@ type DhcpLeaseObservation
     }
 
 fn dhcp_lease_remaining_from_cited_minutes(minutes: std.nat.Nat) -> std.measure.Second {
-  second(minutes * 60)
+  std.measure.second(minutes * 60)
 }
 
 fn dhcp_lease_remaining_cited_minutes(remaining: std.measure.Second) -> std.nat.Nat {
-  second_count(remaining) / 60
+  std.measure.second_count(remaining) / 60
 }
 
 fn dhcp_mac_pinned_reservation_not_contradictory(
@@ -73,9 +73,9 @@ fn dhcp_mac_pinned_reservation_not_contradictory(
   }
 }
 
-fn parse_dhcp_client_hostname_option12(raw: String) -> Result<DhcpClientHostNameOption12, DomainNameParseError> {
-  match parse_host_name(raw: raw) {
-    Ok { value: host } => std.error_primitives.Ok { value: host }
-    Err { value: e } => std.error_primitives.Err { value: e }
+fn parse_dhcp_client_hostname_option12(raw: String) -> std.error_primitives.Result<DhcpClientHostNameOption12, extdeps.dns.domain_name.DomainNameParseError> {
+  match extdeps.dns.domain_name.parse_host_name(raw: raw) {
+    std.error_primitives.Ok { value: host } => std.error_primitives.Ok { value: host }
+    std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
   }
 }

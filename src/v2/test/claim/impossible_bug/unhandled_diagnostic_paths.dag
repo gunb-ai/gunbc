@@ -3,18 +3,18 @@ module v2.test.impossible_bug.unhandled_diagnostic_paths
 
 fn atom_node(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn safety_subject(op: v2.std.node.Symbol, witness: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: v2.std.node.Named { name: ^operation_field }, target: v2.test.impossible_bug.unhandled_diagnostic_paths.atom_node(s: op) },
-      v2.std.node.Edge { label: v2.std.node.Named { name: ^witness_field }, target: v2.test.impossible_bug.unhandled_diagnostic_paths.atom_node(s: witness) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^operation_field }, target: atom_node(s: op) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^witness_field }, target: atom_node(s: witness) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -28,62 +28,62 @@ data falsification_division_by_zero_unhandled: v2.std.node.Node = safety_subject
 
 data falsification_oob_index_unhandled: v2.std.node.Node = safety_subject(op: ^unchecked_index_symbol, witness: ^force_unwrap_symbol)
 
-data falsification_force_unwrap_survives: v2.std.node.Node = v2.test.impossible_bug.unhandled_diagnostic_paths.atom_node(s: ^force_unwrap_symbol)
+data falsification_force_unwrap_survives: v2.std.node.Node = atom_node(s: ^force_unwrap_symbol)
 
 data claim_division_by_zero_total_or_proven_safe: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "division uses total form when nonzero proof is present",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: total_division_input,
   expected_value: total_division_input,
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier2, layer: Unit }
 }
 
 data claim_oob_index_total_or_proven_safe: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "indexing uses total form when range proof is present",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: checked_index_input,
   expected_value: checked_index_input,
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier2, layer: Unit }
 }
 
 data claim_unproven_division_rejected: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "unproven divisor cannot lower as partial division",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: falsification_division_by_zero_unhandled,
-  expected_rejection: diagnostics_singleton(
+  expected_rejection: v2.std.diagnostic.diagnostics_singleton(
       d: v2.std.diagnostic.Diagnostic {
         reason: ^impossible_bug_reason_unhandled_division,
-        at: node_locus(node: falsification_division_by_zero_unhandled),
+        at: v2.std.diagnostic.node_locus(node: falsification_division_by_zero_unhandled),
         correction: v2.std.diagnostic.Suggested { node: total_division_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier2, layer: Unit }
 }
 
 data claim_unproven_oob_index_rejected: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "unproven index cannot lower as partial lookup",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: falsification_oob_index_unhandled,
-  expected_rejection: diagnostics_singleton(
+  expected_rejection: v2.std.diagnostic.diagnostics_singleton(
       d: v2.std.diagnostic.Diagnostic {
         reason: ^impossible_bug_reason_unhandled_index,
-        at: node_locus(node: falsification_oob_index_unhandled),
+        at: v2.std.diagnostic.node_locus(node: falsification_oob_index_unhandled),
         correction: v2.std.diagnostic.Suggested { node: checked_index_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier2, layer: Unit }
 }
 
 data claim_force_unwrap_count_zero: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "force unwrap does not survive outside user input boundary",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: falsification_force_unwrap_survives,
-  expected_rejection: diagnostics_singleton(
+  expected_rejection: v2.std.diagnostic.diagnostics_singleton(
       d: v2.std.diagnostic.Diagnostic {
         reason: ^impossible_bug_reason_force_unwrap,
-        at: node_locus(node: falsification_force_unwrap_survives),
+        at: v2.std.diagnostic.node_locus(node: falsification_force_unwrap_survives),
         correction: v2.std.diagnostic.Suggested { node: total_unwrap_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier2, layer: Unit }
 }

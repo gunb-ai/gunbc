@@ -1,27 +1,27 @@
 module test.claim.roadmap_program_view_live_corpus_receipt
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data live_corpus_receipt_note: String = "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822; oracle corrected per operator REQUEST_CHANGES): ONE receipt proving the live roadmap authority closure (declared_roadmap_nodes, projected_roadmap_dependency_edges_projection, roadmap_acceptance_receipts) projects through gunbc.roadmap_program_view without unresolved references — ProgramViewDerived, not tree-copied population literals. View cardinality is joined to the program spec authorities (v1_exit_finish_lines, v1_convergence_fronts), not numbers copied from today's tree. This is evidentiary integration wiring, not ordinary business logic; it rides the falsifier substrate long lane (gunbc.ci_layer_roots falsifier_substrate_long_lane_rows), excluded from per-PR discovery. Business algebra stays on planted fixtures in test.claim.roadmap_program_view_witness."
 
 test fn live_roadmap_program_view_corpus_projection_receipt() -> Bool {
-  match roadmap_acceptance_receipts() {
-    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
-    RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
-      match projected_roadmap_dependency_edges_projection() {
-        ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
-        ProjectedRoadmapDependencyEdgesProjected { edges: edges } =>
-          match v1_program_view(
-            nodes: declared_roadmap_nodes(),
+  match gunbc.roadmap_authority.roadmap_acceptance_receipts() {
+    gunbc.roadmap_authority.RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+    gunbc.roadmap_authority.RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
+      match gunbc.roadmap_authority.projected_roadmap_dependency_edges_projection() {
+        gunbc.roadmap_authority.ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
+        gunbc.roadmap_authority.ProjectedRoadmapDependencyEdgesProjected { edges: edges } =>
+          match gunbc.roadmap_program_view.v1_program_view(
+            nodes: gunbc.roadmap_authority.declared_roadmap_nodes(),
             edges: edges,
             receipts: receipts,
             in_flight: [],
           ) {
-            ProgramViewDerived { view } =>
-              count(view.finish_lines) == count(v1_exit_finish_lines())
-                && count(view.fronts) == count(v1_convergence_fronts())
-            ProgramViewRefused { causes: _ } => false
+            gunbc.roadmap_program_view.ProgramViewDerived { view } =>
+              count(view.finish_lines) == count(gunbc.v1_deletion_plan.v1_exit_finish_lines())
+                && count(view.fronts) == count(gunbc.roadmap_program_view.v1_convergence_fronts())
+            gunbc.roadmap_program_view.ProgramViewRefused { causes: _ } => false
           }
       }
   }

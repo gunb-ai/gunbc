@@ -10,8 +10,8 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data socat_pinned_version: extdeps.version.VersionConstraint = ">= 1.7.4"
 
-data socat_cli_tool: CliTool = CliTool {
+data socat_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "socat",
   min_version: Present { value: socat_pinned_version },
-  installable_via: [SourceApt { package: package_socat }],
+  installable_via: [extdeps.tools.SourceApt { package: extdeps.apt.package_socat }],
 }

@@ -1,5 +1,7 @@
 module v2.std.decl_facts_skeleton
 
+
+
 type OuterRecordConstructorLexeme = String
 
 type SkeletonMarshalAtomLexeme = String
@@ -16,9 +18,9 @@ type DeclFactQualifiedNameResolution
   | DeclFactResolvedAmbiguous { qualified_name: String, match_count: Int }
 
 fn decl_facts_matching_qualified_name(qn: String, facts: List<v2.std.decl_index.DeclFact>) -> List<v2.std.decl_index.DeclFact> {
-  v2.std.algebra.list_reverse(xs: fold(facts, init: Empty, f: fn(acc, fact) {
+  v2.std.algebra.list_reverse(xs: fold(facts, init: v2.std.algebra.Empty, f: fn(acc, fact) {
     if fact.qualified_name == qn {
-      std.algebra.Cons { head: fact, tail: acc }
+      Cons { head: fact, tail: acc }
     } else {
       acc
     }
@@ -37,52 +39,52 @@ fn resolve_decl_fact_by_qualified_name(
     DeclFactResolvedAmbiguous { qualified_name: qn, match_count: n }
   } else {
     match v2.std.algebra.list_head(xs: matches) {
-      HeadAbsent => DeclFactResolvedMissing { qualified_name: qn }
-      HeadFound { value: sole } => DeclFactResolvedUnique { fact: sole }
+      v2.std.algebra.HeadAbsent => DeclFactResolvedMissing { qualified_name: qn }
+      v2.std.algebra.HeadFound { value: sole } => DeclFactResolvedUnique { fact: sole }
     }
   }
 }
 
 fn skeleton_marshal_atom_lexeme_optional(node: v2.std.node.Node) -> SkeletonMarshalAtomLexeme? {
   match node.kind {
-    TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
-      v2.std.optional.Present { value: v2.std.compilers.lexing.symbol_lexeme(sym: sym) }
-    TypeNode { connective: v2.std.node.Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
+      v2.std.collection.Present { value: v2.std.compilers.lexing.symbol_lexeme(sym: sym) }
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       fold(
         v2.std.node_query.node_positional_child_targets(node: node),
-        init: v2.std.optional.Absent,
+        init: v2.std.collection.Absent,
         f: fn(acc, nested) {
           match acc {
-            Present { value: _ } => acc
-            Absent => skeleton_marshal_atom_lexeme_optional(node: nested)
+            v2.std.collection.Present { value: _ } => acc
+            v2.std.collection.Absent => skeleton_marshal_atom_lexeme_optional(node: nested)
           }
         }
       )
-    _ => v2.std.optional.Absent
+    _ => v2.std.collection.Absent
   }
 }
 
 fn node_skeleton_edge_targets(node: v2.std.node.Node) -> List<v2.std.node.Node> {
-  v2.std.algebra.list_reverse(xs: fold(node.children, init: Empty, f: fn(acc, e) {
-    std.algebra.Cons { head: e.target, tail: acc }
+  v2.std.algebra.list_reverse(xs: fold(node.children, init: v2.std.algebra.Empty, f: fn(acc, e) {
+    Cons { head: e.target, tail: acc }
   }))
 }
 
 fn node_skeleton_marshal_atom_lexemes(node: v2.std.node.Node) -> List<SkeletonMarshalAtomLexeme> {
   let child_lexemes = v2.std.algebra.fold_list_right(
     xs: node_skeleton_edge_targets(node: node),
-    empty: std.algebra.Empty,
+    empty: v2.std.algebra.Empty,
     snoc: fn(acc, child) {
       v2.std.algebra.fold_list_right(
         xs: node_skeleton_marshal_atom_lexemes(node: child),
         empty: acc,
-        snoc: fn(inner_acc, lex) { std.algebra.Cons { head: lex, tail: inner_acc } }
+        snoc: fn(inner_acc, lex) { Cons { head: lex, tail: inner_acc } }
       )
     }
   )
   match node.kind {
-    TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
-      std.algebra.Cons { head: v2.std.compilers.lexing.symbol_lexeme(sym: sym), tail: child_lexemes }
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
+      Cons { head: v2.std.compilers.lexing.symbol_lexeme(sym: sym), tail: child_lexemes }
     _ => child_lexemes
   }
 }
@@ -119,9 +121,9 @@ fn decl_fact_skeleton_for_resolution(
   resolution: DeclFactQualifiedNameResolution
 ) -> v2.std.node.Node? {
   match resolution {
-    DeclFactResolvedUnique { fact } => v2.std.optional.Present { value: fact.node }
-    DeclFactResolvedMissing { qualified_name: _ } => v2.std.optional.Absent
-    DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => v2.std.optional.Absent
+    DeclFactResolvedUnique { fact } => v2.std.collection.Present { value: fact.node }
+    DeclFactResolvedMissing { qualified_name: _ } => v2.std.collection.Absent
+    DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => v2.std.collection.Absent
   }
 }
 
@@ -160,16 +162,18 @@ type AtomLexemeCensus {
 
 fn skeleton_edge_is_construction_spelling(e: v2.std.node.Edge) -> Bool {
   match e.label {
-    Named { name: nm } => nm == ^record_construction_spelling
-    Positional => false
+    v2.std.node.Named { name: nm } => nm == ^record_construction_spelling
+    v2.std.node.Positional => false
   }
 }
 
 fn skeleton_atom_lexeme_census_fold(n: v2.std.node.Node) -> AtomLexemeCensus {
-  let alg: v2.std.node.NodeFold<AtomLexemeCensus> = v2.std.node.NodeFold {
+  v2.std.node.fold_node(
+    n: n,
+    algebra: v2.std.node.NodeFold {
       init: fn(n0) {
         match n0.kind {
-          TypeNode { connective: v2.std.node.Atom { identity: s } } =>
+          v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } } =>
             AtomLexemeCensus {
               all_atom_lexemes: [v2.std.compilers.lexing.symbol_lexeme(sym: s)],
               construction_spelling_lexemes: v2.std.algebra.Empty,
@@ -191,7 +195,7 @@ fn skeleton_atom_lexeme_census_fold(n: v2.std.node.Node) -> AtomLexemeCensus {
           construction_spelling_lexemes: concat(
             acc.construction_spelling_lexemes,
             if skeleton_edge_is_construction_spelling(e: e) && child.self_is_atom {
-              std.algebra.Cons { head: child.self_lexeme, tail: child.construction_spelling_lexemes }
+              Cons { head: child.self_lexeme, tail: child.construction_spelling_lexemes }
             } else {
               child.construction_spelling_lexemes
             }
@@ -201,7 +205,7 @@ fn skeleton_atom_lexeme_census_fold(n: v2.std.node.Node) -> AtomLexemeCensus {
         }
       }
     }
-  v2.std.node.fold_node(n: n, algebra: alg)
+  )
 }
 
 fn node_skeleton_authored_non_construction_atom_lexemes(node: v2.std.node.Node) -> List<SkeletonMarshalAtomLexeme> {

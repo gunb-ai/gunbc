@@ -5,12 +5,12 @@ module extdeps.crm.hubspot_lifecycle
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "knowledge.hubspot.com/records/use-lifecycle-stages"
   }
 }
 
-data hubspot_lifecycle_subject: Vendor<extdeps.securities.Securities> = hubspot
+data hubspot_lifecycle_subject: extdeps.vendor.Vendor<extdeps.securities.Securities> = extdeps.vendor.hubspot.hubspot
 
 data hubspot_lifecycle_provenance_note: String = "Vocabulary facts live-fetched 2026-08-01 from the HubSpot Knowledge Base page 'Use contact and company lifecycle stages' (the anchor): the eight default lifecycle stages in the vendor's own order, display labels and definition sentences verbatim. The stages apply to both contact and company records upstream (the page title says so). The cited page does NOT publish the internal API values for these stages, so no internal-value field exists on the row -- a plausible internal value from training data would be fabrication, and the field is minted only when a readable API-facing citation lands. These are vocabulary facts about the upstream product; no sales-process opinion lives in this module."
 

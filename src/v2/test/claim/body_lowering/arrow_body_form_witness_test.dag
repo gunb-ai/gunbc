@@ -4,42 +4,42 @@ module v2.test.claim.body_lowering.arrow_body_form_witness
 // ArrowBodyForm contract witnesses: classification matrix, structural admission,
 // eval-entry population, eval dispatch through call, and RED mirrors that delete
 // one classifier arm each. Per-PR value oracle: arrow_body_form_eval_value_vertical_holds
-// (fixture + v2.compiler.resolve.resolve path; no tokenize→parse→normalize module crossing). Batched
+// (fixture + resolve path; no tokenize→parse→normalize module crossing). Batched
 // ingested-module value rows live in stern-wren-884's atom_body_discriminator receipt
 // (#8248) — extended here only after that PR merges to main.
 
 fn arrow_body_form_fixture_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
-  node_synthetic(
+  v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: []
   )
 }
 
 fn arrow_body_form_fixture_arrow_with_body(body: v2.std.node.Node) -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Arrow },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
-      v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_domain) },
-      v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
-      v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_domain) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^arrow_body_edge }, target: body }
     ]
   )
 }
 
 fn arrow_body_form_id_arrow_fixture() -> v2.std.node.Node {
-  dag_arrow_with_body_node(
-    domain: node_synthetic(
-      kind: v2.std.node.TypeNode { connective: Conj },
+  v2.extdeps.languages.dag.dag_arrow_with_body_node(
+    domain: v2.std.node.node_synthetic(
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
       children: [
         v2.std.node.Edge {
           label: v2.std.node.Named { name: ^dag_binding_param_x },
-          target: dag_type_atom_node(identity: dag_int_type_binding())
+          target: v2.extdeps.languages.dag.dag_type_atom_node(identity: v2.extdeps.languages.dag.dag_int_type_binding())
         }
       ]
     ),
-    return_type_binding: dag_int_type_binding(),
-    body: node_synthetic(
+    return_type_binding: v2.extdeps.languages.dag.dag_int_type_binding(),
+    body: v2.std.node.node_synthetic(
       kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_param_x } },
       children: []
     )
@@ -47,70 +47,70 @@ fn arrow_body_form_id_arrow_fixture() -> v2.std.node.Node {
 }
 
 fn arrow_body_form_zero_arrow_fixture() -> v2.std.optional.Optional<v2.std.node.Node> {
-  match dag_int_literal_node_from_lexeme(lexeme: "0", occurrence_id: SyntheticOccurrence) {
-    Accepted { value: zero_lit, diagnostics: _ } =>
-      optional_present(
-        value: dag_arrow_with_body_node(
-          domain: node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: []),
-          return_type_binding: dag_int_type_binding(),
+  match v2.extdeps.languages.dag.dag_int_literal_node_from_lexeme(lexeme: "0", occurrence_id: v2.std.node.SyntheticOccurrence) {
+    v2.std.diagnostic.Accepted { value: zero_lit, diagnostics: _ } =>
+      v2.std.optional.optional_present(
+        value: v2.extdeps.languages.dag.dag_arrow_with_body_node(
+          domain: v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: []),
+          return_type_binding: v2.extdeps.languages.dag.dag_int_type_binding(),
           body: zero_lit
         )
       )
-    Rejected { diagnostics: _ } => v2.std.optional.Absent
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
-// The add-arrow fixture reaches `v2.compiler.resolve.resolve` through the admission door, never as a raw
-// `v2.std.node.Node`. `v2.compiler.resolve.resolve` declares `tree: NormalizedTree`, and BL-1 sealed that carrier so the
+// The add-arrow fixture reaches `resolve` through the admission door, never as a raw
+// `Node`. `resolve` declares `tree: NormalizedTree`, and BL-1 sealed that carrier so the
 // only way in is `admit_normalized_tree`; a fixture that reached past it would plant the
-// wrapper-payload conflation this witness population exists to keep out. The `v2.std.diagnostic.Rejected`
+// wrapper-payload conflation this witness population exists to keep out. The `Rejected`
 // arm FAILS the witness rather than skipping it — an unadmittable fixture is a defect in
 // the fixture, not a reason to report green.
 fn abf_admitted_add_arrow_tree() -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
-  admit_normalized_tree(root: dag_add_arrow_with_body_node(), diagnostics: v2.std.diagnostic.None)
+  v2.compiler.normalized_tree.admit_normalized_tree(root: v2.extdeps.languages.dag.dag_add_arrow_with_body_node(), diagnostics: v2.std.diagnostic.None)
 }
 
 test fn arrow_body_form_eval_value_vertical_holds() -> Bool {
-  let lm = dag_language_model()
+  let lm = v2.extdeps.languages.dag.dag_language_model()
   match arrow_body_form_zero_arrow_fixture() {
-    Absent => false
-    Present { value: zero_arrow } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: zero_arrow } =>
       match abf_admitted_add_arrow_tree() {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: admitted_tree, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: admitted_tree, diagnostics: _ } =>
           match v2.compiler.resolve.resolve(tree: admitted_tree, lm: lm) {
-            Accepted { value: add_arrow, diagnostics: _ } =>
-              arrow_body_form_eval_unary_int_holds(
+            v2.std.diagnostic.Accepted { value: add_arrow, diagnostics: _ } =>
+              v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_unary_int_holds(
                 callee: arrow_body_form_id_arrow_fixture(),
                 arg_lex: "7",
                 expected: 7
               )
-                && arrow_body_form_eval_nullary_int_holds(callee: zero_arrow, expected: 0)
-                && arrow_body_form_eval_binary_int_holds(
+                && v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_nullary_int_holds(callee: zero_arrow, expected: 0)
+                && v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_binary_int_holds(
                   callee: add_arrow,
                   left_lex: "2",
                   right_lex: "3",
                   expected: 5
                 )
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
       }
   }
 }
 
 test fn arrow_body_form_classify_direct_atom_holds() -> Bool {
-  match classify_arrow_body_form(
+  match v2.std.node.classify_arrow_body_form(
     target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_atom_body)
   ) {
-    DirectAtomBody => true
+    v2.std.node.DirectAtomBody => true
     _ => false
   }
 }
 
 test fn arrow_body_form_classify_record_construct_holds() -> Bool {
-  match classify_arrow_body_form(
-    target: node_synthetic(
-      kind: v2.std.node.TypeNode { connective: Conj },
+  match v2.std.node.classify_arrow_body_form(
+    target: v2.std.node.node_synthetic(
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
       children: [
         v2.std.node.Edge {
           label: v2.std.node.Named { name: ^arrow_body_form_record_field },
@@ -119,31 +119,31 @@ test fn arrow_body_form_classify_record_construct_holds() -> Bool {
       ]
     )
   ) {
-    RecordConstructBody => true
+    v2.std.node.RecordConstructBody => true
     _ => false
   }
 }
 
 test fn arrow_body_form_classify_computation_transform_holds() -> Bool {
-  match classify_arrow_body_form(
-    target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform }, children: [])
+  match v2.std.node.classify_arrow_body_form(
+    target: v2.std.node.node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform }, children: [])
   ) {
-    ComputationBody { behavior: v2.std.node.Transform } => true
+    v2.std.node.ComputationBody { behavior: v2.std.node.Transform } => true
     _ => false
   }
 }
 
 test fn arrow_body_form_classify_unsupported_holds() -> Bool {
-  match classify_arrow_body_form(
-    target: node_synthetic(kind: v2.std.node.TypeNode { connective: Disj }, children: [])
+  match v2.std.node.classify_arrow_body_form(
+    target: v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Disj }, children: [])
   ) {
-    UnsupportedArrowBody => true
+    v2.std.node.UnsupportedArrowBody => true
     _ => false
   }
 }
 
 test fn arrow_body_form_atom_arrow_well_formed_holds() -> Bool {
-  well_formed(
+  v2.std.node.well_formed(
     n: arrow_body_form_fixture_arrow_with_body(
       body: arrow_body_form_fixture_atom(identity: ^arrow_body_form_atom_body)
     )
@@ -151,128 +151,128 @@ test fn arrow_body_form_atom_arrow_well_formed_holds() -> Bool {
 }
 
 test fn arrow_body_form_unsupported_body_refused_well_formed_holds() -> Bool {
-  !well_formed(
+  !v2.std.node.well_formed(
     n: arrow_body_form_fixture_arrow_with_body(
-      body: node_synthetic(kind: v2.std.node.TypeNode { connective: Disj }, children: [])
+      body: v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Disj }, children: [])
     )
   )
 }
 
 test fn arrow_body_form_value_illegal_child_refused_well_formed_holds() -> Bool {
-  !well_formed(
+  !v2.std.node.well_formed(
     n: arrow_body_form_fixture_arrow_with_body(
-      body: node_synthetic(
-        kind: v2.std.node.ComputationNode { behavior: Value },
-        children: [v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_value_child) }]
+      body: v2.std.node.node_synthetic(
+        kind: v2.std.node.ComputationNode { behavior: v2.std.node.Value },
+        children: [v2.std.node.Edge { label: v2.std.node.Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_value_child) }]
       )
     )
   )
 }
 
 test fn arrow_body_form_atom_body_admitted_structurally_holds() -> Bool {
-  arrow_body_target_is_valid_realization(
+  v2.std.node.arrow_body_target_is_valid_realization(
     target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_atom_body)
   )
 }
 
 test fn arrow_body_form_transform_body_admitted_structurally_holds() -> Bool {
-  arrow_body_target_is_valid_realization(
-    target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform }, children: [])
+  v2.std.node.arrow_body_target_is_valid_realization(
+    target: v2.std.node.node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform }, children: [])
   )
 }
 
 test fn arrow_body_form_RED_no_direct_atom_refuses_atom_body_holds() -> Bool {
-  !arrow_body_form_admits_body_with_mirror(
+  !v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_admits_body_with_mirror(
     target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_atom_body),
-    mirror: ArrowBodyFormAdmissionRedNoDirectAtom
+    mirror: v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.ArrowBodyFormAdmissionRedNoDirectAtom
   )
 }
 
 test fn arrow_body_form_RED_no_computation_refuses_transform_body_holds() -> Bool {
-  !arrow_body_form_admits_body_with_mirror(
-    target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform }, children: []),
-    mirror: ArrowBodyFormAdmissionRedNoComputationBody
+  !v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_admits_body_with_mirror(
+    target: v2.std.node.node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform }, children: []),
+    mirror: v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.ArrowBodyFormAdmissionRedNoComputationBody
   )
 }
 
 test fn arrow_body_form_RED_no_computation_admits_atom_body_holds() -> Bool {
-  arrow_body_form_admits_body_with_mirror(
+  v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_admits_body_with_mirror(
     target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_atom_body),
-    mirror: ArrowBodyFormAdmissionRedNoComputationBody
+    mirror: v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.ArrowBodyFormAdmissionRedNoComputationBody
   )
 }
 
 test fn arrow_body_form_atom_admits_eval_entry_holds() -> Bool {
-  arrow_body_admits_eval_entry(form: DirectAtomBody)
+  v2.std.node.arrow_body_admits_eval_entry(form: v2.std.node.DirectAtomBody)
 }
 
 test fn arrow_body_form_transform_admits_eval_entry_holds() -> Bool {
-  arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: v2.std.node.Transform })
+  v2.std.node.arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: v2.std.node.Transform })
 }
 
 test fn arrow_body_form_dispatch_behaviors_admit_eval_entry_holds() -> Bool {
-  arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Branch })
-    && arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: v2.std.node.Bind })
-    && arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Loop })
+  v2.std.node.arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: v2.std.node.Branch })
+    && v2.std.node.arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: v2.std.node.Bind })
+    && v2.std.node.arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: v2.std.node.Loop })
 }
 
 test fn arrow_body_form_value_refused_eval_entry_holds() -> Bool {
-  !arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Value })
-    && !arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Match })
-    && !arrow_body_admits_eval_entry(form: RecordConstructBody)
-    && !arrow_body_admits_eval_entry(form: UnsupportedArrowBody)
+  !v2.std.node.arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: v2.std.node.Value })
+    && !v2.std.node.arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: v2.std.node.Match })
+    && !v2.std.node.arrow_body_admits_eval_entry(form: v2.std.node.RecordConstructBody)
+    && !v2.std.node.arrow_body_admits_eval_entry(form: v2.std.node.UnsupportedArrowBody)
 }
 
 test fn arrow_body_form_value_body_refused_eval_entry_holds() -> Bool {
-  !arrow_body_form_eval_call_does_not_reject_unsupported_callee(
-    call: arrow_body_form_eval_nullary_call_node(
+  !v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_call_does_not_reject_unsupported_callee(
+    call: v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_nullary_call_node(
       callee: arrow_body_form_fixture_arrow_with_body(
-        body: node_synthetic(kind: v2.std.node.ComputationNode { behavior: Value }, children: [])
+        body: v2.std.node.node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Value }, children: [])
       )
     )
   )
 }
 
 test fn arrow_body_form_atom_body_admits_eval_through_call_holds() -> Bool {
-  match arrow_body_form_eval_int_literal_optional(lexeme: "7") {
-    Present { value: arg } =>
-      arrow_body_form_eval_call_does_not_reject_unsupported_callee(
-        call: arrow_body_form_eval_unary_call_node(
+  match v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_int_literal_optional(lexeme: "7") {
+    v2.std.optional.Present { value: arg } =>
+      v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_call_does_not_reject_unsupported_callee(
+        call: v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_unary_call_node(
           callee: arrow_body_form_id_arrow_fixture(),
           arg: arg
         )
       )
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
 test fn arrow_body_form_transform_body_admits_eval_through_call_holds() -> Bool {
-  match arrow_body_form_eval_int_literal_optional(lexeme: "2") {
-    Present { value: left } =>
-      match arrow_body_form_eval_int_literal_optional(lexeme: "3") {
-        Present { value: right } =>
-          arrow_body_form_eval_call_does_not_reject_unsupported_callee(
-            call: arrow_body_form_eval_binary_call_node(
-              callee: dag_add_arrow_with_body_node(),
+  match v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_int_literal_optional(lexeme: "2") {
+    v2.std.optional.Present { value: left } =>
+      match v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_int_literal_optional(lexeme: "3") {
+        v2.std.optional.Present { value: right } =>
+          v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_call_does_not_reject_unsupported_callee(
+            call: v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_binary_call_node(
+              callee: v2.extdeps.languages.dag.dag_add_arrow_with_body_node(),
               left: left,
               right: right
             )
           )
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
 test fn arrow_body_form_match_body_refused_eval_entry_holds() -> Bool {
-  match arrow_body_form_eval_int_literal_optional(lexeme: "1") {
-    Present { value: arg } =>
-      !arrow_body_form_eval_call_does_not_reject_unsupported_callee(
-        call: arrow_body_form_eval_unary_call_node(
-          callee: dag_match_arrow_with_body_node(),
+  match v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_int_literal_optional(lexeme: "1") {
+    v2.std.optional.Present { value: arg } =>
+      !v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_call_does_not_reject_unsupported_callee(
+        call: v2.test.claim.body_lowering.arrow_body_form_semantic_helpers.arrow_body_form_eval_unary_call_node(
+          callee: v2.extdeps.languages.dag.dag_match_arrow_with_body_node(),
           arg: arg
         )
       )
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }

@@ -1,5 +1,6 @@
 module test.claim.jq_invocation_lowering_witness
 
+
 // WAVE 1B, LANDED. The semantic invocation the OpenBMC sensor projection makes, lowered to argv.
 // Not "will make": openbmc.JsonProjection.SensorIntegerValue is DELETED and
 // extdeps.bmc.openbmc_fan_control openbmc_sensor_integer_projection is the live consumer of this
@@ -25,13 +26,13 @@ fn sensor_invocation() -> extdeps.tools.jq.JqInvocation {
 
 fn argv_of(invocation: extdeps.tools.jq.JqInvocation) -> List<String> {
   match extdeps.tools.jq.jq_invocation_cli_arguments(invocation: invocation) {
-    Accepted { value: surface, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: surface, diagnostics: _ } =>
       v2.std.algebra.fold_list(
         xs: v2.std.compilers.cli_surface.cli_surface_arguments(surface: surface),
         empty: std.algebra.Empty,
         cons: fn(acc, a) { v2.std.algebra.list_snoc_item(xs: acc, item: v2.std.compilers.cli_surface.cli_argument_text(argument: a)) }
       )
-    Rejected { diagnostics: _ } => std.algebra.Empty
+    v2.std.diagnostic.Rejected { diagnostics: _ } => std.algebra.Empty
   }
 }
 
@@ -40,14 +41,14 @@ fn argv_of(invocation: extdeps.tools.jq.JqInvocation) -> List<String> {
 // contains spaces, quotes and parentheses.
 test fn sensor_invocation_lowers_to_exact_argv() -> Bool {
   match argv_of(invocation: sensor_invocation()) {
-    Empty => false
-    Cons { head: first, tail: rest } =>
+    std.algebra.Empty => false
+    std.algebra.Cons { head: first, tail: rest } =>
       match rest {
-        Empty => false
-        Cons { head: second, tail: after } =>
+        std.algebra.Empty => false
+        std.algebra.Cons { head: second, tail: after } =>
           match after {
-            Empty => (first == "--raw-output") && (second == sensor_program)
-            Cons { head: _, tail: _ } => false
+            std.algebra.Empty => (first == "--raw-output") && (second == sensor_program)
+            std.algebra.Cons { head: _, tail: _ } => false
           }
       }
   }
@@ -74,11 +75,11 @@ test fn exit_policy_perturbation_adds_the_exit_status_option() -> Bool {
     output_encoding: extdeps.tools.jq.JqRawOutput,
     exit_policy: extdeps.tools.jq.JqLastResultExit,
   }) {
-    Empty => false
-    Cons { head: first, tail: rest } =>
+    std.algebra.Empty => false
+    std.algebra.Cons { head: first, tail: rest } =>
       match rest {
-        Empty => false
-        Cons { head: second, tail: _ } =>
+        std.algebra.Empty => false
+        std.algebra.Cons { head: second, tail: _ } =>
           (first == "--raw-output") && (second == "--exit-status")
       }
   }
@@ -93,8 +94,8 @@ test fn unlowered_bindings_refuse() -> Bool {
     output_encoding: extdeps.tools.jq.JqRawOutput,
     exit_policy: extdeps.tools.jq.JqProgramExit,
   }) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
@@ -106,10 +107,11 @@ test fn unlowered_file_input_refuses() -> Bool {
     output_encoding: extdeps.tools.jq.JqRawOutput,
     exit_policy: extdeps.tools.jq.JqProgramExit,
   }) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
+
 
 // STDIN MUST SURVIVE, not merely stay out of argv.
 //
@@ -120,19 +122,19 @@ test fn unlowered_file_input_refuses() -> Bool {
 // alone distinguishes correct routing from total loss.
 test fn stdin_survives_lowering_into_the_process_plan() -> Bool {
   match extdeps.tools.jq.jq_invocation_process_plan(invocation: sensor_invocation()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: plan, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: plan, diagnostics: _ } =>
       match extdeps.tools.jq.jq_admitted_plan_input(plan: plan) {
-        JqProcessNoStdin => false
-        JqProcessStdin { content: carried } => carried == sensor_stdin
+        extdeps.tools.jq.JqProcessNoStdin => false
+        extdeps.tools.jq.JqProcessStdin { content: carried } => carried == sensor_stdin
       }
   }
 }
 
 test fn stdin_reaches_the_plan_without_entering_the_argument_vector() -> Bool {
   match extdeps.tools.jq.jq_invocation_process_plan(invocation: sensor_invocation()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: plan, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: plan, diagnostics: _ } =>
       v2.std.algebra.fold_list(
         xs: v2.std.compilers.cli_surface.cli_surface_arguments(surface: extdeps.tools.jq.jq_admitted_plan_surface(plan: plan)),
         empty: true,
@@ -142,7 +144,7 @@ test fn stdin_reaches_the_plan_without_entering_the_argument_vector() -> Bool {
 }
 
 // THE TWO UNLOWERED AXES ARE DISTINGUISHABLE. The refusal witnesses above assert only a generic
-// v2.std.diagnostic.Rejected, which one shared diagnostic identity would satisfy -- and did, while the cause was
+// Rejected, which one shared diagnostic identity would satisfy -- and did, while the cause was
 // prose the diagnostic never read.
 test fn the_two_unlowered_causes_carry_distinct_identities() -> Bool {
   extdeps.tools.jq.jq_lowering_refusal_identity(cause: extdeps.tools.jq.JqBindingLoweringUnwired)
@@ -157,11 +159,11 @@ test fn unlowered_bindings_refuse_with_the_binding_cause() -> Bool {
     output_encoding: extdeps.tools.jq.JqRawOutput,
     exit_policy: extdeps.tools.jq.JqProgramExit,
   }) {
-    JqLowered { plan: _ } => false
-    JqLoweringRefused { cause: cause } =>
+    extdeps.tools.jq.JqLowered { plan: _ } => false
+    extdeps.tools.jq.JqLoweringRefused { cause: cause } =>
       match cause {
-        JqBindingLoweringUnwired => true
-        JqFileInputLoweringUnwired => false
+        extdeps.tools.jq.JqBindingLoweringUnwired => true
+        extdeps.tools.jq.JqFileInputLoweringUnwired => false
       }
   }
 }
@@ -174,14 +176,15 @@ test fn unlowered_file_input_refuses_with_the_file_cause() -> Bool {
     output_encoding: extdeps.tools.jq.JqRawOutput,
     exit_policy: extdeps.tools.jq.JqProgramExit,
   }) {
-    JqLowered { plan: _ } => false
-    JqLoweringRefused { cause: cause } =>
+    extdeps.tools.jq.JqLowered { plan: _ } => false
+    extdeps.tools.jq.JqLoweringRefused { cause: cause } =>
       match cause {
-        JqBindingLoweringUnwired => false
-        JqFileInputLoweringUnwired => true
+        extdeps.tools.jq.JqBindingLoweringUnwired => false
+        extdeps.tools.jq.JqFileInputLoweringUnwired => true
       }
   }
 }
+
 
 // THE EXIT CODE MEANS DIFFERENT THINGS UNDER DIFFERENT POLICIES, and these four assertions are the
 // discriminating evidence for that. Each holds ONE observation fixed and varies only the exit
@@ -202,21 +205,21 @@ fn outcome_matches(outcome: extdeps.tools.jq.JqOutcome, expected: JqOutcomeExpec
   match expected {
     ExpectPresent =>
       match outcome {
-        JqOutputPresent { text: _ } => true
-        JqOutputAbsent => false
-        JqExecutionRefused { exit_code: _, stderr: _ } => false
+        extdeps.tools.jq.JqOutputPresent { text: _ } => true
+        extdeps.tools.jq.JqOutputAbsent => false
+        extdeps.tools.jq.JqExecutionRefused { exit_code: _, stderr: _ } => false
       }
     ExpectAbsent =>
       match outcome {
-        JqOutputPresent { text: _ } => false
-        JqOutputAbsent => true
-        JqExecutionRefused { exit_code: _, stderr: _ } => false
+        extdeps.tools.jq.JqOutputPresent { text: _ } => false
+        extdeps.tools.jq.JqOutputAbsent => true
+        extdeps.tools.jq.JqExecutionRefused { exit_code: _, stderr: _ } => false
       }
     ExpectRefused =>
       match outcome {
-        JqOutputPresent { text: _ } => false
-        JqOutputAbsent => false
-        JqExecutionRefused { exit_code: _, stderr: _ } => true
+        extdeps.tools.jq.JqOutputPresent { text: _ } => false
+        extdeps.tools.jq.JqOutputAbsent => false
+        extdeps.tools.jq.JqExecutionRefused { exit_code: _, stderr: _ } => true
       }
   }
 }
@@ -235,8 +238,8 @@ fn classifies_as(
     output_encoding: extdeps.tools.jq.JqRawOutput,
     exit_policy: policy,
   }) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: plan, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: plan, diagnostics: _ } =>
       outcome_matches(
         outcome: extdeps.tools.jq.jq_classify_observation(plan: plan, observation: observation),
         expected: expected,

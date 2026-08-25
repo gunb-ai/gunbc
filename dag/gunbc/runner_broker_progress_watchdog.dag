@@ -1,7 +1,7 @@
 module gunbc.runner_broker_progress_watchdog
 
 
-data runner_broker_progress_watchdog_authority_disposition: std.disposition.Disposition = SingleAuthority
+data runner_broker_progress_watchdog_authority_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 data runner_broker_progress_watchdog_provisioning_note: String = "PART OF PROVISIONING, NOT A SIBLING UTILITY (operator ruling 2026-08-06). The ctrl-side incident patch is FROZEN AND RETIRED — behavior must not accumulate there. Every slot provisioned through gunbc.runner_lifecycle installs release, directory, JIT wrapper, systemd template, memory drop-ins, watchdog executable, watchdog service/timer, local observation producer, remote registration observer, replacement effect, and independent readback together. srv3-06/07 and srv4-06/07 get the watchdog in the SAME application that creates them."
 
@@ -20,11 +20,11 @@ data runner_watchdog_incident_wedge_41_minutes_seconds: std.types.Duration = 246
 data runner_watchdog_incident_wedge_77_minutes_seconds: std.types.Duration = 4620
 
 data runner_watchdog_diagnostic_read_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.runner_lifecycle",
     decl_name: "runner_slot_add_steps_ordered",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 

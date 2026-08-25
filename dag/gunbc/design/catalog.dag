@@ -16,12 +16,12 @@ data island_pastel: gunbc.design.palette.SwatchSet = gunbc.design.palette.Swatch
   name: "island-pastel",
   provenance: gunbc.design.palette.InspiredByExternal { note: island_pastel_provenance_note },
   members: [
-    swatch_filed(sw: island_mint),
-    swatch_filed(sw: island_aqua),
-    swatch_filed(sw: island_ivory),
-    swatch_filed(sw: island_camel),
-    swatch_filed(sw: island_butter),
-    swatch_derived(
+    gunbc.design.palette.swatch_filed(sw: island_mint),
+    gunbc.design.palette.swatch_filed(sw: island_aqua),
+    gunbc.design.palette.swatch_filed(sw: island_ivory),
+    gunbc.design.palette.swatch_filed(sw: island_camel),
+    gunbc.design.palette.swatch_filed(sw: island_butter),
+    gunbc.design.palette.swatch_derived(
       sw: island_loam,
       anchor_name: "camel",
       note: "camel hue projected to ink depth oklch(0.45 0.085 73) -> #724d15",
@@ -30,27 +30,27 @@ data island_pastel: gunbc.design.palette.SwatchSet = gunbc.design.palette.Swatch
 }
 
 fn cited_rows_to_members(rows: List<extdeps.color.srgb.CitedColorRow>) -> List<gunbc.design.palette.SwatchMember> {
-  map(rows, row => swatch_filed(sw: gunbc.design.palette.Swatch { name: row.name, color: row.color }))
+  map(rows, row => gunbc.design.palette.swatch_filed(sw: gunbc.design.palette.Swatch { name: row.name, color: row.color }))
 }
 
 data okabe_ito: gunbc.design.palette.SwatchSet = gunbc.design.palette.SwatchSet {
   name: "okabe-ito",
-  provenance: gunbc.design.palette.CitedUpstream { authority: extdeps.color.okabe_ito.extdeps_external_authority_anchor, version: okabe_ito_version },
-  members: cited_rows_to_members(rows: okabe_ito_swatches),
+  provenance: gunbc.design.palette.CitedUpstream { authority: extdeps_external_authority_anchor, version: extdeps.color.okabe_ito.okabe_ito_version },
+  members: cited_rows_to_members(rows: extdeps.color.okabe_ito.okabe_ito_swatches),
 }
 
 data solarized: gunbc.design.palette.SwatchSet = gunbc.design.palette.SwatchSet {
   name: "solarized",
-  provenance: gunbc.design.palette.CitedUpstream { authority: extdeps.color.solarized.extdeps_external_authority_anchor, version: solarized_version },
-  members: cited_rows_to_members(rows: solarized_swatches),
+  provenance: gunbc.design.palette.CitedUpstream { authority: extdeps_external_authority_anchor, version: extdeps.color.solarized.solarized_version },
+  members: cited_rows_to_members(rows: extdeps.color.solarized.solarized_swatches),
 }
 
 data palette_catalog: List<gunbc.design.palette.SwatchSet> = [island_pastel, okabe_ito, solarized]
 
 fn catalog_admissible() -> Bool {
   palette_catalog.length() == 3
-    && all(palette_catalog, s => swatch_set_admissible(s: s))
+    && all(palette_catalog, s => gunbc.design.palette.swatch_set_admissible(s: s))
     && okabe_ito_swatches.length() == 8
     && solarized_swatches.length() == 16
-    && swatches_of(s: island_pastel).length() == 6
+    && gunbc.design.palette.swatches_of(s: island_pastel).length() == 6
 }

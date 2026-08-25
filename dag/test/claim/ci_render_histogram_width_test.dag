@@ -1,20 +1,20 @@
 module test.claim.ci_render_histogram_width
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn no_color_cap() -> std.render.RenderCapability {
-  std.render.RenderCapability { color: false, tier: Unicode, cursor_addressable: false }
+fn no_color_cap() -> RenderCapability {
+  RenderCapability { color: false, tier: Unicode, cursor_addressable: false }
 }
 
-fn sample_frame(width: Int) -> std.render.RenderFrame {
-  timing_histogram_frame(p50: 12, p90: 3400, p95: 56000, p99: 7800000, p100: 920000000, width: width)
+fn sample_frame(width: Int) -> RenderFrame {
+  gunbc.ci_render.timing_histogram_frame(p50: 12, p90: 3400, p95: 56000, p99: 7800000, p100: 920000000, width: width)
 }
 
 fn all_lines_have_width(width: Int) -> Bool {
   fold(sample_frame(width: width).lines,
     init: true,
-    f: (acc, line) => acc && (string_display_width(s: serialize_line(line: line, cap: no_color_cap())) == width)
+    f: (acc, line) => acc && (extdeps.unicode.display.string_display_width(s: serialize_line(line: line, cap: no_color_cap())) == width)
   )
 }
 
@@ -23,24 +23,24 @@ fn has_three_lines(width: Int) -> Bool {
 }
 
 fn exact_small_box() -> Bool {
-  render_percentile_box(title: "X", p50: 1, p90: 2, p95: 3, p99: 4, p100: 5, width: 30, color: false) ==
+  gunbc.ci_render.render_percentile_box(title: "X", p50: 1, p90: 2, p95: 3, p99: 4, p100: 5, width: 30, color: false) ==
   "┌─ X ────────────────────────┐\n│ p50: 1ns  p90: 2ns  p95: 3 │\n└────────────────────────────┘"
 }
 
-fn ascii_box(width: Int) -> std.render.RenderFrame {
-  percentiles_box_frame_ns(title: "X", p50: 1, p90: 2, p95: 3, p99: 4, p100: 5, width: width, tier: Ascii)
+fn ascii_box(width: Int) -> RenderFrame {
+  gunbc.ci_render.percentiles_box_frame_ns(title: "X", p50: 1, p90: 2, p95: 3, p99: 4, p100: 5, width: width, tier: Ascii)
 }
 
 fn ascii_width_holds() -> Bool {
   fold(ascii_box(width: 48).lines,
     init: true,
-    f: (acc, line) => acc && (string_display_width(s: serialize_line(line: line, cap: no_color_cap())) == 48)
+    f: (acc, line) => acc && (extdeps.unicode.display.string_display_width(s: serialize_line(line: line, cap: no_color_cap())) == 48)
   )
 }
 
 fn tier_swaps_glyphs() -> Bool {
   serialize_frame(frame: ascii_box(width: 48), cap: no_color_cap()) !=
-  serialize_frame(frame: timing_histogram_frame(p50: 1, p90: 2, p95: 3, p99: 4, p100: 5, width: 48), cap: no_color_cap())
+  serialize_frame(frame: gunbc.ci_render.timing_histogram_frame(p50: 1, p90: 2, p95: 3, p99: 4, p100: 5, width: 48), cap: no_color_cap())
 }
 
 test fn ci_render_histogram_width_witnesses() -> Bool {

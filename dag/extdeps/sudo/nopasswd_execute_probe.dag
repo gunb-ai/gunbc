@@ -3,7 +3,7 @@ module extdeps.sudo.nopasswd_execute_probe
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.sudo.ws/docs/man/sudo.man/"
   }
 }

@@ -4,7 +4,7 @@ module extdeps.render.terminal_capability
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/isatty.html"
   }
 }
@@ -38,11 +38,11 @@ fn color_for(env: TerminalEnvironment) -> Bool {
 
 fn tier_for(env: TerminalEnvironment) -> std.symbols.Tier {
   if env.dumb_term {
-    Ascii
+    std.symbols.Ascii
   } else if env.is_tty {
-    Unicode
+    std.symbols.Unicode
   } else {
-    Ascii
+    std.symbols.Ascii
   }
 }
 

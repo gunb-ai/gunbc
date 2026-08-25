@@ -8,59 +8,59 @@ data claude_agent_sdk_integrity: String = "sha512-glc7SdwPkOkLw8oxwLo9PKTdLJGqW/
 data claude_agent_sdk_integrity_hex: String = "82573b49dc0f90e90bc3ca31c0ba3d3ca4dd2c91aa5bf3c8478bab59716846d5fd625970a33b0455ce53735f84bcb4a47ebb313c9a905aa3a0a6350e4177f5a0"
 
 test fn codex_admits_measured_sha512_integrity() -> Bool {
-  match npm_decode_integrity(wire: test.claim.package_delivery_codex_integrity_witness_test.claude_agent_sdk_integrity) {
-    NpmSingleSha512Integrity { digest } =>
-      match npm_registry_integrity_from_decode(
+  match extdeps.npm.npm_decode_integrity(wire: claude_agent_sdk_integrity) {
+    extdeps.npm.NpmSingleSha512Integrity { digest } =>
+      match extdeps.npm.npm_registry_integrity_from_decode(
         decoded: extdeps.npm.NpmSingleSha512Integrity { digest: digest },
       ) {
-        NpmRegistryIntegrityAdmitted { integrity } =>
-          match codex_admit_npm_integrity(integrity: integrity) {
-            CodexNpmIntegrityAdmitted { digest: admitted } =>
-              (admitted.hex as String) == test.claim.package_delivery_codex_integrity_witness_test.claude_agent_sdk_integrity_hex
+        extdeps.npm.NpmRegistryIntegrityAdmitted { integrity } =>
+          match gunbc.package_delivery.codex_admit_npm_integrity(integrity: integrity) {
+            gunbc.package_delivery.CodexNpmIntegrityAdmitted { digest: admitted } =>
+              (admitted.hex as String) == claude_agent_sdk_integrity_hex
             _ => false
           }
-        NpmRegistryIntegrityWireRefused { cause: _ } => false
+        extdeps.npm.NpmRegistryIntegrityWireRefused { cause: _ } => false
       }
     _ => false
   }
 }
 
 test fn codex_profile_refuses_sha1_integrity() -> Bool {
-  match npm_decode_integrity(wire: "sha1-AAECAwQFBgcICQoLDA0ODxAREhM=") {
-    NpmSingleSha1Integrity { digest } =>
-      match npm_registry_integrity_from_decode(
+  match extdeps.npm.npm_decode_integrity(wire: "sha1-AAECAwQFBgcICQoLDA0ODxAREhM=") {
+    extdeps.npm.NpmSingleSha1Integrity { digest } =>
+      match extdeps.npm.npm_registry_integrity_from_decode(
         decoded: extdeps.npm.NpmSingleSha1Integrity { digest: digest },
       ) {
-        NpmRegistryIntegrityAdmitted { integrity } =>
-          match codex_admit_npm_integrity(integrity: integrity) {
-            CodexNpmIntegritySha1Unsupported { digest: _ } => true
+        extdeps.npm.NpmRegistryIntegrityAdmitted { integrity } =>
+          match gunbc.package_delivery.codex_admit_npm_integrity(integrity: integrity) {
+            gunbc.package_delivery.CodexNpmIntegritySha1Unsupported { digest: _ } => true
             _ => false
           }
-        NpmRegistryIntegrityWireRefused { cause: _ } => false
+        extdeps.npm.NpmRegistryIntegrityWireRefused { cause: _ } => false
       }
     _ => false
   }
 }
 
 test fn malformed_wire_never_reaches_codex_policy() -> Bool {
-  let decoded = npm_decode_integrity(wire: "sha512-!!!")
+  let decoded = extdeps.npm.npm_decode_integrity(wire: "sha512-!!!")
   match decoded {
-    NpmIntegrityMalformed { reason: _ } =>
-      match npm_registry_integrity_from_decode(decoded: decoded) {
-        NpmRegistryIntegrityWireRefused { cause: _ } => true
-        NpmRegistryIntegrityAdmitted { integrity: _ } => false
+    extdeps.npm.NpmIntegrityMalformed { reason: _ } =>
+      match extdeps.npm.npm_registry_integrity_from_decode(decoded: decoded) {
+        extdeps.npm.NpmRegistryIntegrityWireRefused { cause: _ } => true
+        extdeps.npm.NpmRegistryIntegrityAdmitted { integrity: _ } => false
       }
     _ => false
   }
 }
 
 test fn npm_registry_artifact_derives_exact_pin_from_native_integrity() -> Bool {
-  match npm_decode_integrity(wire: test.claim.package_delivery_codex_integrity_witness_test.claude_agent_sdk_integrity) {
-    NpmSingleSha512Integrity { digest } =>
-      match npm_registry_integrity_from_decode(
+  match extdeps.npm.npm_decode_integrity(wire: claude_agent_sdk_integrity) {
+    extdeps.npm.NpmSingleSha512Integrity { digest } =>
+      match extdeps.npm.npm_registry_integrity_from_decode(
         decoded: extdeps.npm.NpmSingleSha512Integrity { digest: digest },
       ) {
-        NpmRegistryIntegrityAdmitted { integrity } => {
+        extdeps.npm.NpmRegistryIntegrityAdmitted { integrity } => {
           let artifact = extdeps.npm.NpmRegistryArtifact {
             package: extdeps.package.PackageCoordinate {
               ecosystem: extdeps.npm.NpmRegistry { registry: "https://registry.npmjs.org/" as std.types.NonEmptyStr },
@@ -72,19 +72,19 @@ test fn npm_registry_artifact_derives_exact_pin_from_native_integrity() -> Bool 
             },
             expected_integrity: integrity,
           }
-          let pin = npm_registry_artifact_pin(artifact: artifact)
+          let pin = extdeps.npm.npm_registry_artifact_pin(artifact: artifact)
           match pin.selection {
-            ExactPin =>
+            extdeps.pin.ExactPin =>
               match pin.expected_identity {
-                Sha512Hash(pinned) =>
-                  (pinned.hex as String) == test.claim.package_delivery_codex_integrity_witness_test.claude_agent_sdk_integrity_hex
+                std.content_hash.Sha512Hash(pinned) =>
+                  (pinned.hex as String) == claude_agent_sdk_integrity_hex
                     && (pin.version as String) == "0.1.0"
                 _ => false
               }
             _ => false
           }
         }
-        NpmRegistryIntegrityWireRefused { cause: _ } => false
+        extdeps.npm.NpmRegistryIntegrityWireRefused { cause: _ } => false
       }
     _ => false
   }

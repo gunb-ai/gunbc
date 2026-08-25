@@ -16,6 +16,6 @@ data stage0_rust_honest_frontier_deferred_axes: List<RustHonestFrontierDeferredA
 
 fn honest_frontier_projection_witness_observation(
   extra_paths: List<String>
-) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
-  lifecycle_totality_witness_observation(extra_paths: extra_paths)
+) -> gunbc.stage0_rust_host_observation.RustManifestObserved {
+  gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_witness_observation(extra_paths: extra_paths)
 }

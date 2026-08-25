@@ -27,9 +27,9 @@ data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
       [WitnessFloorYamlArtifact, CorpusTypeJudgmentYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact],
-      map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
+      map(gunbc.os_install.fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
-    map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
+    map(gunbc.os_install.fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
   ),
   map(gunbc.plan_registry.all_plans, pl => PlanArtifact { plan: pl })
 )
@@ -64,7 +64,7 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     V1InterpreterDispatchGeneratedRsArtifact => "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs"
     AutoinstallUserDataArtifact { spec } => concat(concat("provisioning/", spec.host), "/user-data")
     ProxyDhcpDnsmasqArtifact { spec } => concat(concat("provisioning/", spec.host), "/dnsmasq.conf")
-    PlanArtifact { plan } => plan_path(p: plan)
+    PlanArtifact { plan } => gunbc.plan.plan_path(p: plan)
   }
 }
 

@@ -1,5 +1,6 @@
 module extdeps.accounting.encumbrance
 
+
 // Encumbrance accounting, the upstream this module models. In fund and
 // governmental accounting a commitment is recorded against an appropriation
 // BEFORE the cash moves: an appropriation authorizes a ceiling, an encumbrance
@@ -79,7 +80,7 @@ fn committed_total<Q, S>(ledger: EncumbranceLedger<Q, S>) -> std.measure.Measure
 }
 
 // Every refusal is typed and carries the two facts a reader needs to act on
-// it. None of them carries a computed headroom: std.nat.Nat subtraction is partial,
+// it. None of them carries a computed headroom: Nat subtraction is partial,
 // and a difference that underflows would have to fabricate a value at exactly
 // the moment the ledger is over its ceiling. The ceiling and the committed
 // total are both present, so the reader can compare them without the kernel

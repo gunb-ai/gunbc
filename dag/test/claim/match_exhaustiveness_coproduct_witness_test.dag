@@ -1,7 +1,7 @@
 module test.claim.match_exhaustiveness_coproduct_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data match_exhaustiveness_coproduct_witness_note: String = "Paired control for v1 coproduct match exhaustiveness via compile_dag_diagnostic_census. An exhaustive Trio match must observe zero NonExhaustiveMatch rows; a match omitting Blue must refuse with exactly one counted NonExhaustiveMatch diagnostic — not merely 'refuses', which would pass today when the checker lists the full declared roster. Precision of the missing variant list is pinned in infer_semantics_witness (check_match_exhaustiveness missing.len == 1)."
 
@@ -11,9 +11,9 @@ data missing_arm_coproduct_source: String = "module exhaust_missing\ntype Trio =
 
 fn non_exhaustive_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "NonExhaustiveMatch")))
-    CensusNotRunnable { cause: _ } => -1
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } =>
+      gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_blocking_rows(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: "NonExhaustiveMatch")))
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => -1
   }
 }
 

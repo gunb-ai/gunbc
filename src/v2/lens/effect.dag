@@ -9,55 +9,55 @@ fn effect_classify(
   tree: v2.compiler.inferred_tree.InferredTree,
   view: v2.std.dependency.DependencyView
 ) -> v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification> {
-  classify_dependency_view(classifier: effect_classifier, view: view)
+  v2.std.dependency.classify_dependency_view(classifier: v2.lens.common.algebraic_composition.effect_classifier, view: view)
 }
 
 fn effect_fact(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> EffectFact {
   EffectFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_snoc_item(xs: acc, item: effect_classify(tree: tree, view: view))
+      v2.std.algebra.list_snoc_item(xs: acc, item: effect_classify(tree: tree, view: view))
     })
   }
 }
 
 fn effect_usage_facts_witness(tree: v2.compiler.inferred_tree.InferredTree, source: v2.std.node.Node) -> Witness<v2.compiler.inferred_tree.InferredFacts> {
-  witness_from_optional(opt: tree.facts.lookup(source), absent: infer_facts_lookup_miss_diagnostic(key: source))
+  v2.std.witness.witness_from_optional(opt: tree.facts.lookup(source), absent: v2.compiler.infer.infer_facts_lookup_miss_diagnostic(key: source))
 }
 
 fn effect_first_upstream_diagnostic(
   tree: v2.compiler.inferred_tree.InferredTree,
   fact: EffectFact
 ) -> v2.std.optional.Optional<v2.std.diagnostic.Diagnostic> {
-  fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
-    optional_prefer_first_present(
+  fold(fact.dependencies, init: v2.std.optional.optional_absent(), f: fn(acc, dep) {
+    v2.std.optional.optional_prefer_first_present(
       left: acc,
       right: match effect_usage_facts_witness(tree: tree, source: dep.dependency.source) {
-        Violates { diagnostic: d } => optional_present(value: d)
-        Holds { value: _ } => optional_absent()
+        v2.std.witness.Violates { diagnostic: d } => v2.std.optional.optional_present(value: d)
+        v2.std.witness.Holds { value: _ } => v2.std.optional.optional_absent()
       }
     )
   })
 }
 
-fn effect_signature_deferred_unresolved(fact: EffectFact) -> v2.std.logic.Bool {
-  non_empty(xs: fact.dependencies)
+fn effect_signature_deferred_unresolved(fact: EffectFact) -> Bool {
+  v2.std.algebra.non_empty(xs: fact.dependencies)
 }
 
 fn effect_witness_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^effect_reason_unresolved_projection,
-    at: v2.std.diagnostic.Textual { file: ^effect_projection_virtual_file, extent: WholeFile },
-    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^effect_projection_virtual_file, extent: v2.std.diagnostic.WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
   }
 }
 
 fn effect_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<EffectFact> {
   let fact = effect_fact(tree: tree, dependencies: dependencies)
   let upstream = effect_first_upstream_diagnostic(tree: tree, fact: fact)
-  match optional_present_witness(opt: upstream) {
-    Holds { value: d } =>
+  match v2.std.collection.optional_present_witness(opt: upstream) {
+    v2.std.witness.Holds { value: d } =>
       v2.std.witness.Violates { diagnostic: d }
-    Violates { diagnostic: _ } =>
+    v2.std.witness.Violates { diagnostic: _ } =>
       if effect_signature_deferred_unresolved(fact: fact) {
         v2.std.witness.Violates { diagnostic: effect_witness_diagnostic() }
       } else {
@@ -66,21 +66,21 @@ fn effect_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencies: Li
   }
 }
 
-fn effect_classification_eq(a: v2.lens.common.algebraic_composition.EffectClassification, b: v2.lens.common.algebraic_composition.EffectClassification) -> v2.std.logic.Bool {
+fn effect_classification_eq(a: v2.lens.common.algebraic_composition.EffectClassification, b: v2.lens.common.algebraic_composition.EffectClassification) -> Bool {
   true
 }
 
 fn effect_classified_eq(
   a: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification>,
   b: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification>
-) -> v2.std.logic.Bool {
-  classified_dependency_view_eq(a: a, b: b, classification_eq: effect_classification_eq)
+) -> Bool {
+  v2.std.dependency.classified_dependency_view_eq(a: a, b: b, classification_eq: effect_classification_eq)
 }
 
-fn effect_fact_eq(a: EffectFact, b: EffectFact) -> v2.std.logic.Bool {
-  bag_eq(xs: a.dependencies, ys: b.dependencies, eq: effect_classified_eq)
+fn effect_fact_eq(a: EffectFact, b: EffectFact) -> Bool {
+  v2.std.algebra.bag_eq(xs: a.dependencies, ys: b.dependencies, eq: effect_classified_eq)
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority }
 }

@@ -1,7 +1,7 @@
 module gunbc.build_cache_ensure
 
 
-data build_cache_ensure_scope_disposition: std.disposition.Disposition = SingleAuthority
+data build_cache_ensure_scope_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 data ensure_effect_grain_migration_note: String = "WHY THE EFFECT GRAIN WAS WRONG, AND WHAT THIS PR DID AND DID NOT FIX. gunbc.host_effect's now-deleted ProvisionBuildCache carried a CacheInterfaceId, which names sccache's cache SEMANTICS and its pinned binary. It did not name a running daemon, and srv1 and srv2 each run TWO servers from that one catalog row — a CI server as ghrunner over /var/lib/ctrl/sccache-ci, and a session server as briansrls over /var/lib/ctrl/sccache with a 50G cap. So `provision the sccache_local catalog on this host` named NEITHER of them: it could not say which of the two to converge, and it could not express that one is correctly placed while the other is not. That was gunbc.build_cache_instance's grain note restated as an effect-layer defect.\n\nTHE SWAP LANDED (operator-cleared A5 un-defer, bounded to precisely the swap the census row specifies and nothing wider): HostEffect's constructible build-cache arm is now EnsureBuildCacheInstance { desired: BuildCacheInstance }, so the desired unit, principal, storage, capacity, endpoint and compile pool travel WITH the request instead of being guessed by a realizer. gunbc.host_build_cache_provision_script — the six hand-rolled *_body builders that used to answer the old arm — is DELETED; its shell-body construction (observe-stats, classify-failure, ensure-daemon, read-back) relocated into gunbc.host_effect_realize beside realize_provision_build_cache, which now matches on EnsureBuildCacheInstance and reads instance.implementation as the catalog gate key. Every consumer of the old arm (host_toolchain_ensure, host_build_cache_provision's model-only constructors, both design-witness and wet-execution test modules) was moved to the new shape in the same PR; no ProvisionBuildCache constructor remains reachable anywhere in the tree.\n\nPROVENANCE, TRACEABLE RATHER THAN ASSERTED: this note's own text is not the clearance, it is a record of one that exists elsewhere, because a clearance lifted by relay and never pointed at is indistinguishable from self-authorized dissolution (DESIGN's standing rule that a dissolution trigger is a lifecycle fact, not permission). The parent session (eager-crane-282) relayed the operator's instruction to open deferred srv* clusters at eager-crane-282's discretion of order, and dispatched build-cache first on the grounds it carries a live measured defect rather than only debt -- the un-defer of census row A5 for this cluster specifically. That same parent session then bounded the swap TWICE: an initial ruling to take the full arm-plus-render swap rather than a typed-argv-in-place relocation (rejecting relocation-counted-as-progress), followed by a narrower ruling that the swap's obligation is discharged by the arm and the render alone -- explicitly refusing to let the swap manufacture scope growth by wiring a consumer (admit_ensure_build_cache_instance) that does not yet exist in production. This PR's boundary -- arm renamed, bodies relocated behind render_build_cache_unit, admission left proven-but-unwired -- is that second, narrower ruling followed literally, not this PR's own inference from the first. The full exchange is on proud-swift-703's message thread with eager-crane-282, 2026-08-19 21:48 through 22:44 UTC, for a reviewer who wants the primary record rather than this summary.\n\nWHAT DID NOT LAND, STATED PLAINLY: RENDER IS NOT ADMIT. This PR's realize path still builds its shell script directly from the BuildCacheInstance travelling on the effect — via render_build_cache_unit for the unit body and the relocated *_body functions for the surrounding observe/classify/read-back shell — the same way the deleted script did. It does NOT construct or consume an EnsureBuildCacheAdmission from admit_ensure_build_cache_instance below: that function still takes a BuildCacheServerPlacement, an EndpointPathState and an ObservationCurrency that nothing in the realize path observes or threads today. Wiring the realize path through this module's admission — so the placement/path preflight this module already proves gates the daemon-ensure shell rather than being reasoned about only in tests — is real remaining work, not implied by this PR's title, and is explicitly out of this PR's scope per the same operator ruling that bounded the arm swap. It does not reach gunbc.host_build_cache_provision_script's own #5828 typed-argv dissolve-on trigger either: the shell body construction is relocated, not converted to typed ops.\n\nTHE NEXT CONSUMER NAMED ABOVE IS NOW THE ACTUAL CONSUMER (2026-08-21), and this paragraph is rewritten rather than annotated because a stale present-tense 'no production caller' in the carrier that exists to record reach is exactly the false claim it exists to prevent. realize_provision_build_cache_body in gunbc.host_effect_realize observes the target host through gunbc.build_cache_endpoint_observe -- the producer that did not exist when the paragraph above was written -- and routes through admit_ensure_build_cache_instance BEFORE it writes anything. EnsureAlreadyConverged returns converged with no unit written and no restart issued; EnsureBuildCacheRefused returns NotConverged carrying ensure_refusal_detail's located reason; only EnsureBuildCacheAdmitted reaches the daemon-ensure shell, and an EndpointClearedByUnlink preflight runs the admitted unlink as its own command first. What did NOT change is the shell body itself: the ensure step is still the relocated concat-built script, so #5828's typed-argv dissolve-on is untouched and this wiring is not it. All four clauses of the stale-socket observer contract ARE established by that producer, so EndpointStaleSocket is produced and the EndpointClearedByUnlink arm is reachable rather than dead. An earlier revision of this paragraph said the opposite -- that one clause needed a glob over /proc and a stale socket could therefore only ever refuse. That was a false capability claim, refuted by executing the walk as a single find argv, and it is corrected here rather than deleted because it had been written into several carriers as a reason not to try.\n\nAn earlier revision of this note said the replacement had not yet happened and pointed at the operator as its un-defer trigger. That trigger fired; the swap is in this tree; describing it as still deferred would now be the false present-tense claim this carrier exists to prevent."
 
@@ -24,7 +24,7 @@ type EnsureBuildCacheAdmission
   | EnsureBuildCacheAdmitted {
       desired: gunbc.build_cache_instance.BuildCacheInstance
       preflight: EndpointPreflight
-      unit_file: SystemdUnitFile
+      unit_file: extdeps.systemd.unit_file.SystemdUnitFile
     }
   | EnsureBuildCacheRefused { instance: gunbc.build_cache_instance.BuildCacheInstance, reason: EnsureRefusal }
 
@@ -43,9 +43,9 @@ fn endpoint_preflight_fold<R>(preflight: EndpointPreflight, fold: EndpointPrefli
 }
 
 type EnsureBuildCacheAdmissionFold<R> {
-  already_converged: fn(BuildCacheInstance, std.types.NonEmptyStr) -> R
-  admitted: fn(BuildCacheInstance, EndpointPreflight, SystemdUnitFile) -> R
-  refused: fn(BuildCacheInstance, EnsureRefusal) -> R
+  already_converged: fn(gunbc.build_cache_instance.BuildCacheInstance, std.types.NonEmptyStr) -> R
+  admitted: fn(gunbc.build_cache_instance.BuildCacheInstance, EndpointPreflight, extdeps.systemd.unit_file.SystemdUnitFile) -> R
+  refused: fn(gunbc.build_cache_instance.BuildCacheInstance, EnsureRefusal) -> R
 }
 
 fn ensure_build_cache_admission_fold<R>(
@@ -65,11 +65,11 @@ fn placement_already_converged(
   placement: gunbc.build_cache_instance.BuildCacheServerPlacement,
 ) -> Bool {
   match placement {
-    ServerManagedUnitOwned { unit: u } => (u as String) == (instance.intended_unit as String)
-    ServerRunnerOwned { slot: _, lifecycle: _ } => false
-    ServerUnsupervised { cgroup: _ } => false
-    ServerPlacementAbsent => false
-    ServerPlacementUnknown { detail: _ } => false
+    gunbc.build_cache_instance.ServerManagedUnitOwned { unit: u } => (u as String) == (instance.intended_unit as String)
+    gunbc.build_cache_instance.ServerRunnerOwned { slot: _, lifecycle: _ } => false
+    gunbc.build_cache_instance.ServerUnsupervised { cgroup: _ } => false
+    gunbc.build_cache_instance.ServerPlacementAbsent => false
+    gunbc.build_cache_instance.ServerPlacementUnknown { detail: _ } => false
   }
 }
 
@@ -83,60 +83,60 @@ fn admit_ensure_build_cache_instance(
     true => ensure_from_our_own_placement(desired: desired, observed_path: observed_path)
     false =>
       match placement {
-        ServerPlacementUnknown { detail: d } =>
+        gunbc.build_cache_instance.ServerPlacementUnknown { detail: d } =>
           EnsureBuildCacheRefused {
             instance: desired,
             reason: EnsurePlacementUnknown { detail: d },
           }
-        ServerManagedUnitOwned { unit: _ } => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
-        ServerRunnerOwned { slot: _, lifecycle: _ } => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
-        ServerUnsupervised { cgroup: _ } => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
-        ServerPlacementAbsent => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
+        gunbc.build_cache_instance.ServerManagedUnitOwned { unit: _ } => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
+        gunbc.build_cache_instance.ServerRunnerOwned { slot: _, lifecycle: _ } => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
+        gunbc.build_cache_instance.ServerUnsupervised { cgroup: _ } => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
+        gunbc.build_cache_instance.ServerPlacementAbsent => ensure_from_path(desired: desired, observed_path: observed_path, currency: currency)
       }
   }
 }
 
 fn ensure_from_our_own_placement(
-  desired: BuildCacheInstance,
-  observed_path: EndpointPathState,
+  desired: gunbc.build_cache_instance.BuildCacheInstance,
+  observed_path: gunbc.build_cache_endpoint_path.EndpointPathState,
 ) -> EnsureBuildCacheAdmission {
   match observed_path {
-    EndpointListening { owner: _ } =>
+    gunbc.build_cache_endpoint_path.EndpointListening { owner: _ } =>
       EnsureAlreadyConverged { desired: desired, unit: desired.intended_unit }
-    EndpointPathAbsent =>
+    gunbc.build_cache_endpoint_path.EndpointPathAbsent =>
       owned_but_not_serving(
         desired: desired,
-        detail: "the endpoint owner is our intended managed unit, but the configured endpoint path does not exist, so nothing can reach the server; the two reads disagree and a restart would evict a live process that owns in-flight compiles" as NonEmptyStr,
+        detail: "the endpoint owner is our intended managed unit, but the configured endpoint path does not exist, so nothing can reach the server; the two reads disagree and a restart would evict a live process that owns in-flight compiles" as std.types.NonEmptyStr,
       )
-    EndpointStaleSocket { detail: d } =>
+    gunbc.build_cache_endpoint_path.EndpointStaleSocket { detail: d } =>
       owned_but_not_serving(
         desired: desired,
         detail: concat(
           "the endpoint owner is our intended managed unit while the socket at the configured path reads as stale, which cannot both be true of one host; refusing rather than unlinking a path our own live unit may hold: ",
           d as String,
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       )
-    EndpointPathConflict { detail: d } =>
+    gunbc.build_cache_endpoint_path.EndpointPathConflict { detail: d } =>
       owned_but_not_serving(
         desired: desired,
         detail: concat(
           "the endpoint owner is our intended managed unit but it is NOT LISTENING on the configured endpoint, so the cache is unreachable while ownership looks correct: ",
           d as String,
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       )
-    EndpointPathObservationUnavailable { reason: _ } =>
+    gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable { reason: _ } =>
       EnsureBuildCacheRefused {
         instance: desired,
         reason: EnsureEndpointUnobservable {
-          detail: "the endpoint owner is our intended managed unit, but the endpoint path could not be read, so whether it is being served is unknown; refusing rather than reporting convergence from ownership alone" as NonEmptyStr,
+          detail: "the endpoint owner is our intended managed unit, but the endpoint path could not be read, so whether it is being served is unknown; refusing rather than reporting convergence from ownership alone" as std.types.NonEmptyStr,
         },
       }
   }
 }
 
 fn owned_but_not_serving(
-  desired: BuildCacheInstance,
-  detail: NonEmptyStr,
+  desired: gunbc.build_cache_instance.BuildCacheInstance,
+  detail: std.types.NonEmptyStr,
 ) -> EnsureBuildCacheAdmission {
   EnsureBuildCacheRefused {
     instance: desired,
@@ -154,35 +154,35 @@ fn ensure_from_path(
   currency: gunbc.build_cache_endpoint_path.ObservationCurrency,
 ) -> EnsureBuildCacheAdmission {
   match observed_path {
-    EndpointPathAbsent =>
+    gunbc.build_cache_endpoint_path.EndpointPathAbsent =>
       EnsureBuildCacheAdmitted {
         desired: desired,
         preflight: EndpointClearForBind,
-        unit_file: build_cache_unit_file(instance: desired),
+        unit_file: gunbc.build_cache_unit.build_cache_unit_file(instance: desired),
       }
-    EndpointListening { owner: o } =>
+    gunbc.build_cache_endpoint_path.EndpointListening { owner: o } =>
       EnsureBuildCacheRefused { instance: desired, reason: EnsureEndpointOccupied { owner: o } }
-    EndpointPathConflict { detail: d } =>
+    gunbc.build_cache_endpoint_path.EndpointPathConflict { detail: d } =>
       EnsureBuildCacheRefused { instance: desired, reason: EnsureEndpointPathConflict { detail: d } }
-    EndpointPathObservationUnavailable { reason: _ } =>
+    gunbc.build_cache_endpoint_path.EndpointPathObservationUnavailable { reason: _ } =>
       EnsureBuildCacheRefused {
         instance: desired,
         reason: EnsureEndpointUnobservable {
           detail: "the endpoint path could not be read, so whether a bind would succeed is unknown; refusing rather than writing and starting a unit into an unread state" as std.types.NonEmptyStr,
         },
       }
-    EndpointStaleSocket { detail: _ } =>
-      match admit_stale_socket_unlink(instance: desired, observed: observed_path, currency: currency) {
-        StaleSocketUnlinkRefused { instance: _, reason: r } =>
+    gunbc.build_cache_endpoint_path.EndpointStaleSocket { detail: _ } =>
+      match gunbc.build_cache_endpoint_path.admit_stale_socket_unlink(instance: desired, observed: observed_path, currency: currency) {
+        gunbc.build_cache_endpoint_path.StaleSocketUnlinkRefused { instance: _, reason: r } =>
           EnsureBuildCacheRefused {
             instance: desired,
-            reason: EnsureUnlinkRefused { detail: unlink_refusal_detail(reason: r) },
+            reason: EnsureUnlinkRefused { detail: gunbc.build_cache_endpoint_path.unlink_refusal_detail(reason: r) },
           }
-        StaleSocketUnlinkAdmitted { instance: _, stale_detail: sd, observed_at_boot: _ } =>
+        gunbc.build_cache_endpoint_path.StaleSocketUnlinkAdmitted { instance: _, stale_detail: sd, observed_at_boot: _ } =>
           EnsureBuildCacheAdmitted {
             desired: desired,
             preflight: EndpointClearedByUnlink { stale_detail: sd },
-            unit_file: build_cache_unit_file(instance: desired),
+            unit_file: gunbc.build_cache_unit.build_cache_unit_file(instance: desired),
           }
       }
   }
@@ -264,7 +264,7 @@ fn ensure_requires_unlink_first(admission: EnsureBuildCacheAdmission) -> Bool {
 
 data refusal_text_is_a_diagnostic_not_the_contract_note: String = "THE REFUSAL'S TEXT IS RENDERED HERE, BESIDE THE COPRODUCT IT RENDERS, so a consumer at a realization boundary reports the refusal without re-deciding what it means. gunbc.host_build_cache_provision provision_gate_consumes_the_fold_note already fixed the rule this follows: what a verdict CONTRACTUALLY says is its arm and its cause, and the located prose is a diagnostic payload. A realizer writing its own sentence per arm would be a second rendering of one fact that typechecks while it drifts, and would silently stop covering the day an arm is added -- so the rendering lives with the type and every consumer quotes it."
 
-fn ensure_refusal_detail(reason: EnsureRefusal) -> NonEmptyStr {
+fn ensure_refusal_detail(reason: EnsureRefusal) -> std.types.NonEmptyStr {
   match reason {
     EnsureEndpointOccupied { owner: o } =>
       concat(
@@ -273,7 +273,7 @@ fn ensure_refusal_detail(reason: EnsureRefusal) -> NonEmptyStr {
           concat(" under boot ", o.boot_id as String),
           ". Evicting a live owner strands the compiles that are its children, so ensure refuses rather than taking the socket; draining is a separate operation.",
         ),
-      ) as NonEmptyStr
+      ) as std.types.NonEmptyStr
     EnsureOwnedButNotServing { unit: u, detail: d } =>
       concat(
         concat("the intended managed unit ", u as String),
@@ -281,7 +281,7 @@ fn ensure_refusal_detail(reason: EnsureRefusal) -> NonEmptyStr {
           " owns the configured endpoint but is not observed serving it, so ownership is not convergence: ",
           concat(d as String, " Ensure refuses rather than restarting: replacing a live owner of in-flight compiles is an eviction, which is a separate operation from ensuring a unit exists."),
         ),
-      ) as NonEmptyStr
+      ) as std.types.NonEmptyStr
     EnsureEndpointPathConflict { detail: d } => d
     EnsureEndpointUnobservable { detail: d } => d
     EnsureUnlinkRefused { detail: d } => d
@@ -289,7 +289,7 @@ fn ensure_refusal_detail(reason: EnsureRefusal) -> NonEmptyStr {
       concat(
         "the endpoint owner's placement could not be observed, and writing plus restarting a unit on a host whose current state we failed to read is a host mutation decided on ignorance: ",
         d as String,
-      ) as NonEmptyStr
+      ) as std.types.NonEmptyStr
   }
 }
 

@@ -53,11 +53,11 @@ data github_wif_provider: extdeps.cloud.gcp.gcp.WifProvider = extdeps.cloud.gcp.
 }
 
 fn github_wif_provider_resource() -> String {
-  wif_provider_resource(project_number: fleet_secrets_project_number, provider: github_wif_provider)
+  extdeps.cloud.gcp.gcp.wif_provider_resource(project_number: fleet_secrets_project_number, provider: github_wif_provider)
 }
 
 fn github_wif_principal_set() -> String {
-  wif_principal_set_for_repo(
+  extdeps.cloud.gcp.gcp.wif_principal_set_for_repo(
     project_number: fleet_secrets_project_number,
     pool_id: github_wif_pool.name,
     repository: federated_github_repo

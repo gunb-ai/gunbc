@@ -5,7 +5,7 @@ data emitted_binary_effect_confinement_law: String = "Construction-time refusal 
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: v2.lens.common.construction_justification.WallNow {
-    mechanism: SingleAuthority,
+    mechanism: std.disposition.SingleAuthority,
     authority: std.decl_ref.DeclarationRef { module_path: "v2.std.host_transport", decl_name: "EmittedEffectFamily", field: std.decl_ref.WholeDeclaration }
   }
 }

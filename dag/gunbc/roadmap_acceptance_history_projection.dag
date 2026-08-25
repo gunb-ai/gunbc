@@ -12,10 +12,10 @@ fn project_roadmap_acceptance_event_history_from_authority_text(authority_text: 
 }
 
 data roadmap_acceptance_history_projection_seed_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.cli_run",
     decl_name: "project_roadmap_acceptance_event_history_from_authority_text_builtin",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }

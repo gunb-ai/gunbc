@@ -16,6 +16,8 @@ module std.durable_compare_and_set
 // half: the store-side check itself, whose refusal arm belongs to the store
 // rather than to a lock the caller happens to hold.
 
+
+
 type CasGeneration =
   Int where range(min: 1), brand("CasGeneration")
 
@@ -136,7 +138,7 @@ type CasOutcome<T>
   = CasCommitted { committed: CasSlotVersion<T> }
   | CasPreconditionFailed {
       expected: CasExpectation
-      observed: std.durable_compare_and_set.CasReadableSlot<T>
+      observed: CasReadableSlot<T>
     }
   | CasStoreRefused { cause: CasUnreadableSlot }
 
@@ -253,7 +255,7 @@ fn cas_decide<T>(
 // and `value`.
 //
 // It cannot be closed by construction in a pure generic fold: std.content_hash
-// exposes `content_hash_of_value(value: std.types.NonEmptyStr) -> std.content_hash.ContentHash`, which is
+// exposes `content_hash_of_value(value: NonEmptyStr) -> ContentHash`, which is
 // not generic over T, so no total hashing function over an arbitrary payload
 // exists to derive the digest from the value. Deriving it is therefore
 // unavailable rather than merely unwritten, and inventing a check here would
@@ -284,19 +286,4 @@ fn cas_decide_readable<T>(
   } else {
     CasPreconditionFailed { expected: attempt.expected, observed: readable }
   }
-}
-
-// Named constructors for CasReadableSlot's variants.
-//
-// A cross-module reference has to name the container, and naming a VARIANT of a
-// generic coproduct that way makes the owning module's own variant table fail to
-// resolve. Routing construction through the owning module keeps the variant
-// spelled bare where its parent type is in scope, which is where it belongs
-// anyway: the authority that declares the shape also offers the way to build it.
-fn cas_readable_present<T>(version: CasSlotVersion<T>) -> CasReadableSlot<T> {
-  CasReadablePresent { version: version }
-}
-
-fn cas_readable_absent<T>() -> CasReadableSlot<T> {
-  CasReadableAbsent
 }

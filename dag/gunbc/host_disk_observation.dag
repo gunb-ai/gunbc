@@ -1,7 +1,7 @@
 module gunbc.host_disk_observation
 
 
-data host_disk_observation_authority_disposition: std.disposition.Disposition = SingleAuthority
+data host_disk_observation_authority_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 // DISK FREE SPACE IS AN OBSERVATION AXIS, not a hand-authored width cap.
 // gunbc.runner_slot_allocation.host_disk_admitted_width admits width only for srv4 from a deploy row;
@@ -15,16 +15,16 @@ type HostDiskObservation
   | DiskUnobserved { reason: String }
 
 fn host_disk_observed_producer(host: product.placement_supply.HostIdentity) -> HostDiskObservation {
-  match fleet_shell_transport_observation(host: host) {
-    ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } =>
+  match gunbc.fleet_shell_transport_observation.fleet_shell_transport_observation(host: host) {
+    gunbc.fleet_shell_transport_observation.ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } =>
       DiskUnobserved {
         reason: "shell transport available but df/free-space read has no host_effect producer yet; dissolve-on HostEffectTransport",
       }
-    ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
+    gunbc.fleet_shell_transport_observation.ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
       DiskUnobserved {
         reason: concat("disk observation refused: shell transport failed: ", d as String),
       }
-    ShellTransportUnobserved { reason: r } =>
+    gunbc.fleet_shell_transport_observation.ShellTransportUnobserved { reason: r } =>
       DiskUnobserved { reason: concat("disk observation unobserved: ", r) }
   }
 }
@@ -34,10 +34,10 @@ fn host_disk_observation(host: product.placement_supply.HostIdentity) -> HostDis
 }
 
 data host_disk_observed_producer_dissolve_on: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }

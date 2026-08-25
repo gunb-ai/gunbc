@@ -25,47 +25,47 @@ type GrainProbe
   = GrainStageRejected
   | GrainTree { root: v2.std.node.Node }
 
-fn parse_grain_tree(source: String) -> v2.test.long.mandatory_tag_gate_witness.GrainProbe {
+fn parse_grain_tree(source: String) -> GrainProbe {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.tokenize.tokenize(text: source, file: ^mandatory_tag_gate_witness_file, rules: lm.lex) {
-    Rejected { diagnostics: _ } => GrainStageRejected
-    Accepted { value: ts, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => GrainStageRejected
+    v2.std.diagnostic.Accepted { value: ts, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => GrainStageRejected
-        Accepted { value: artifact, diagnostics: _ } => GrainTree { root: artifact.tree }
+        v2.std.diagnostic.Rejected { diagnostics: _ } => GrainStageRejected
+        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } => GrainTree { root: artifact.tree }
       }
   }
 }
 
-fn normalized_grain_tree(source: String) -> v2.test.long.mandatory_tag_gate_witness.GrainProbe {
+fn normalized_grain_tree(source: String) -> GrainProbe {
   match parse_grain_tree(source: source) {
     GrainStageRejected => GrainStageRejected
     GrainTree { root: parse_root } =>
       match v2.compiler.normalize.normalize(parse_tree: parse_root) {
-        Rejected { diagnostics: _ } => GrainStageRejected
-        Accepted { value: normalized, diagnostics: _ } => GrainTree { root: normalized }
+        v2.std.diagnostic.Rejected { diagnostics: _ } => GrainStageRejected
+        v2.std.diagnostic.Accepted { value: normalized, diagnostics: _ } => GrainTree { root: normalized }
       }
   }
 }
 
-fn gate_accepts_tree(probe: v2.test.long.mandatory_tag_gate_witness.GrainProbe) -> v2.std.logic.Bool {
+fn gate_accepts_tree(probe: GrainProbe) -> Bool {
   match probe {
     GrainStageRejected => false
     GrainTree { root: root } =>
       match v2.lens.mandatory_tag.mandatory_tag_compile_gate(node: root) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
   }
 }
 
-fn gate_rejects_tree_with(probe: v2.test.long.mandatory_tag_gate_witness.GrainProbe, reason: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn gate_rejects_tree_with(probe: GrainProbe, reason: v2.std.node.Symbol) -> Bool {
   match probe {
     GrainStageRejected => false
     GrainTree { root: root } =>
       match v2.lens.mandatory_tag.mandatory_tag_compile_gate(node: root) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           if d.head.reason == reason {
             true
           } else {
@@ -75,99 +75,92 @@ fn gate_rejects_tree_with(probe: v2.test.long.mandatory_tag_gate_witness.GrainPr
   }
 }
 
-test fn mandatory_tag_parse_grain_clean_accepts() -> v2.std.logic.Bool {
+test fn mandatory_tag_parse_grain_clean_accepts() -> Bool {
   gate_accepts_tree(probe: parse_grain_tree(source: src_clean))
 }
 
-test fn mandatory_tag_parse_grain_misnamed_rejects() -> v2.std.logic.Bool {
+test fn mandatory_tag_parse_grain_misnamed_rejects() -> Bool {
   gate_rejects_tree_with(
     probe: parse_grain_tree(source: src_misnamed),
     reason: ^mandatory_tag_missing_required_decl
   )
 }
 
-test fn mandatory_tag_parse_grain_missing_rejects() -> v2.std.logic.Bool {
+test fn mandatory_tag_parse_grain_missing_rejects() -> Bool {
   gate_rejects_tree_with(
     probe: parse_grain_tree(source: src_missing),
     reason: ^mandatory_tag_missing_required_decl
   )
 }
 
-test fn mandatory_tag_parse_grain_file_scheme_rejects() -> v2.std.logic.Bool {
+test fn mandatory_tag_parse_grain_file_scheme_rejects() -> Bool {
   gate_rejects_tree_with(
     probe: parse_grain_tree(source: src_file_scheme),
     reason: ^mandatory_tag_value_not_accepted
   )
 }
 
-test fn mandatory_tag_parse_grain_bogus_scheme_rejects() -> v2.std.logic.Bool {
+test fn mandatory_tag_parse_grain_bogus_scheme_rejects() -> Bool {
   gate_rejects_tree_with(
     probe: parse_grain_tree(source: src_bogus_scheme),
     reason: ^mandatory_tag_value_vocabulary_unreadable
   )
 }
 
-test fn mandatory_tag_parse_grain_wrong_type_rejects() -> v2.std.logic.Bool {
+test fn mandatory_tag_parse_grain_wrong_type_rejects() -> Bool {
   gate_rejects_tree_with(
     probe: parse_grain_tree(source: src_wrong_type),
     reason: ^mandatory_tag_required_decl_type_mismatch
   )
 }
 
-test fn mandatory_tag_parse_grain_off_region_accepts() -> v2.std.logic.Bool {
+test fn mandatory_tag_parse_grain_off_region_accepts() -> Bool {
   gate_accepts_tree(probe: parse_grain_tree(source: src_off_region))
 }
 
-test fn mandatory_tag_parse_grain_exempt_fixture_accepts() -> v2.std.logic.Bool {
+test fn mandatory_tag_parse_grain_exempt_fixture_accepts() -> Bool {
   gate_accepts_tree(probe: parse_grain_tree(source: src_exempt_fixture))
 }
 
-test fn mandatory_tag_normalized_grain_clean_accepts() -> v2.std.logic.Bool {
+test fn mandatory_tag_normalized_grain_clean_accepts() -> Bool {
   gate_accepts_tree(probe: normalized_grain_tree(source: src_clean))
 }
 
-test fn mandatory_tag_normalized_grain_missing_rejects() -> v2.std.logic.Bool {
+test fn mandatory_tag_normalized_grain_missing_rejects() -> Bool {
   gate_rejects_tree_with(
     probe: normalized_grain_tree(source: src_missing),
     reason: ^mandatory_tag_missing_required_decl
   )
 }
 
-test fn mandatory_tag_normalized_grain_misnamed_rejects() -> v2.std.logic.Bool {
+test fn mandatory_tag_normalized_grain_misnamed_rejects() -> Bool {
   gate_rejects_tree_with(
     probe: normalized_grain_tree(source: src_misnamed),
     reason: ^mandatory_tag_missing_required_decl
   )
 }
 
-fn any_tail_diagnostic_has_reason(
-  tail: std.algebra.FreeMonoid<v2.std.diagnostic.Diagnostic>,
-  reason: v2.std.node.Symbol,
-) -> v2.std.logic.Bool {
-  fold(tail, init: false, f: fn(acc2, diag) { acc2 || diag.reason == reason })
-}
-
-fn roster_rejects_with(probe: v2.test.long.mandatory_tag_gate_witness.GrainProbe, reason: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn roster_rejects_with(probe: GrainProbe, reason: v2.std.node.Symbol) -> Bool {
   match probe {
     GrainStageRejected => false
     GrainTree { root: root } =>
       let inferred = v2.compiler.inferred_tree.InferredTree { root: root, facts: v2.std.collection.empty_map() }
       fold(v2.compiler.compile.always_required_root_lenses(), init: false, f: fn(acc, lens) {
         acc
-          || match lens.gate(inferred) {
-            Accepted { value: _, diagnostics: _ } => false
-            Rejected { diagnostics: d } =>
+          || match gate(inferred) {
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               if d.head.reason == reason {
                 true
               } else {
-                any_tail_diagnostic_has_reason(tail: d.tail, reason: reason)
+                fold(d.tail, init: false, f: fn(acc2, diag) { acc2 || diag.reason == reason })
               }
           }
       })
   }
 }
 
-test fn mandatory_tag_enrolled_in_root_roster_rejects_violating_module() -> v2.std.logic.Bool {
+test fn mandatory_tag_enrolled_in_root_roster_rejects_violating_module() -> Bool {
   roster_rejects_with(
     probe: parse_grain_tree(source: src_missing),
     reason: ^mandatory_tag_missing_required_decl

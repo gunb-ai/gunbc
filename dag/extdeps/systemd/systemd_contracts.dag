@@ -3,12 +3,12 @@ module extdeps.systemd.systemd_contracts
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "man7.org/linux/man-pages/man1/systemctl.1.html#is-active"
   }
 }
 
 data systemd_unit_active_state_wire_contract: std.serialization.CoproductWireContract = {
-  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.systemd", decl_name: "SystemdUnitActiveState", field: WholeDeclaration },
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.systemd", decl_name: "SystemdUnitActiveState", field: std.decl_ref.WholeDeclaration },
   encoding: std.serialization.StringVariant { naming: std.serialization.SnakeCase }
 }

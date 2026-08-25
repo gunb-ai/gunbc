@@ -5,31 +5,31 @@ data roadmap_site_surface_observe_note: String = "THE SOLE LIVE OBSERVATION AUTH
 
 // producer_identity names the observe/render implementation that produced a bundle, distinct from subject_identity (which roadmap snapshot) and bundle_identity (which rendered artifact population).
 fn roadmap_site_surface_producer_identity() -> std.content_hash.Fnv1a64Structural {
-  content_hash_atom(value: "gunbc.roadmap_site_surface_observe/v1" as std.types.NonEmptyStr)
+  std.content_hash.content_hash_atom(value: "gunbc.roadmap_site_surface_observe/v1" as std.types.NonEmptyStr)
 }
 
 fn acceptance_identity_from_accepted(accepted: List<gunbc.roadmap_model.RoadmapNodeId>) -> std.content_hash.Fnv1a64Structural {
-  fold(accepted, init: content_hash_atom(value: "roadmap-acceptance-snapshot/v1" as std.types.NonEmptyStr), f: (acc, id) =>
-    content_hash_combine_structural(
+  fold(accepted, init: std.content_hash.content_hash_atom(value: "roadmap-acceptance-snapshot/v1" as std.types.NonEmptyStr), f: (acc, id) =>
+    std.content_hash.content_hash_combine_structural(
       left: acc,
-      right: content_hash_atom(value: id as std.types.NonEmptyStr),
+      right: std.content_hash.content_hash_atom(value: id as std.types.NonEmptyStr),
     )
   )
 }
 
 fn subject_identity_for_projection(proj: gunbc.roadmap_authority.RoadmapAuthorityProjection) -> std.content_hash.Fnv1a64Structural {
   match proj {
-    RoadmapAuthorityProjectionRefused { detail: detail } =>
-      content_hash_tagged_structural(
+    gunbc.roadmap_authority.RoadmapAuthorityProjectionRefused { detail: detail } =>
+      std.content_hash.content_hash_tagged_structural(
         tag: "roadmap-site-surface-subject-refused/v1" as std.types.NonEmptyStr,
-        payload: content_hash_atom(value: detail as std.types.NonEmptyStr),
+        payload: std.content_hash.content_hash_atom(value: detail as std.types.NonEmptyStr),
       )
-    RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
-      content_hash_combine_structural(
+    gunbc.roadmap_authority.RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
+      std.content_hash.content_hash_combine_structural(
         left: acceptance_identity_from_accepted(accepted: accepted),
-        right: content_hash_combine_structural(
-          left: site_artifact_digest(body: expected_roadmap_md_for_projection(proj: proj)),
-          right: site_artifact_digest(body: roadmap_dispatch_file_content_for_projection(proj: proj)),
+        right: std.content_hash.content_hash_combine_structural(
+          left: gunbc.roadmap_site_surface_render.site_artifact_digest(body: gunbc.roadmap_authority.expected_roadmap_md_for_projection(proj: proj)),
+          right: gunbc.roadmap_site_surface_render.site_artifact_digest(body: gunbc.roadmap_spawner.roadmap_dispatch_file_content_for_projection(proj: proj)),
         ),
       )
   }
@@ -44,49 +44,49 @@ fn bundle_identity_from_artifacts(
 ) -> std.content_hash.Fnv1a64Structural {
   fold(
     [roadmap.digest, dispatch.digest, daily.digest, full.digest, dispatch_js.digest],
-    init: content_hash_atom(value: "roadmap-site-surface-bundle/v1" as std.types.NonEmptyStr),
-    f: (acc, digest) => content_hash_combine_structural(left: acc, right: digest),
+    init: std.content_hash.content_hash_atom(value: "roadmap-site-surface-bundle/v1" as std.types.NonEmptyStr),
+    f: (acc, digest) => std.content_hash.content_hash_combine_structural(left: acc, right: digest),
   )
 }
 
 fn render_roadmap_site_surface_bundle_for_projection(proj: gunbc.roadmap_authority.RoadmapAuthorityProjection) -> gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle {
   let subject_identity = subject_identity_for_projection(proj: proj)
   let producer_identity = roadmap_site_surface_producer_identity()
-  let roadmap_body = expected_roadmap_md_for_projection(proj: proj)
-  let dispatch_body = roadmap_dispatch_file_content_for_projection(proj: proj)
-  let daily_body = served_page_body(
-    page: roadmap_daily_workspace_page_for_projection_observed(
+  let roadmap_body = gunbc.roadmap_authority.expected_roadmap_md_for_projection(proj: proj)
+  let dispatch_body = gunbc.roadmap_spawner.roadmap_dispatch_file_content_for_projection(proj: proj)
+  let daily_body = gunbc.roadmap_site_surface_render.served_page_body(
+    page: gunbc.roadmap_page.roadmap_daily_workspace_page_for_projection_observed(
       proj: proj,
       attempts: [],
       attempts_refused: none,
     )
   )
-  let full_body = served_page_body(page: roadmap_page_for_projection(proj: proj))
-  let js_body = dispatch_client_js_source()
+  let full_body = gunbc.roadmap_site_surface_render.served_page_body(page: gunbc.roadmap_page.roadmap_page_for_projection(proj: proj))
+  let js_body = gunbc.roadmap_component.dispatch_client_js_source()
   let roadmap = gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact {
-    url_path: roadmap_site_roadmap_url_path,
+    url_path: gunbc.roadmap_site_surface_render.roadmap_site_roadmap_url_path,
     body: roadmap_body,
-    digest: site_artifact_digest(body: roadmap_body),
+    digest: gunbc.roadmap_site_surface_render.site_artifact_digest(body: roadmap_body),
   }
   let dispatch = gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact {
-    url_path: roadmap_site_dispatch_url_path,
+    url_path: gunbc.roadmap_site_surface_render.roadmap_site_dispatch_url_path,
     body: dispatch_body,
-    digest: site_artifact_digest(body: dispatch_body),
+    digest: gunbc.roadmap_site_surface_render.site_artifact_digest(body: dispatch_body),
   }
   let daily = gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact {
-    url_path: roadmap_site_daily_url_path,
+    url_path: gunbc.roadmap_site_surface_render.roadmap_site_daily_url_path,
     body: daily_body,
-    digest: site_artifact_digest(body: daily_body),
+    digest: gunbc.roadmap_site_surface_render.site_artifact_digest(body: daily_body),
   }
   let full = gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact {
-    url_path: roadmap_site_full_url_path,
+    url_path: gunbc.roadmap_site_surface_render.roadmap_site_full_url_path,
     body: full_body,
-    digest: site_artifact_digest(body: full_body),
+    digest: gunbc.roadmap_site_surface_render.site_artifact_digest(body: full_body),
   }
   let dispatch_js = gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact {
-    url_path: roadmap_dispatch_asset_path as std.types.NonEmptyStr,
+    url_path: gunbc.roadmap_component.roadmap_dispatch_asset_path as std.types.NonEmptyStr,
     body: js_body,
-    digest: site_artifact_digest(body: js_body),
+    digest: gunbc.roadmap_site_surface_render.site_artifact_digest(body: js_body),
   }
   gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle {
     subject_identity: subject_identity,
@@ -103,7 +103,7 @@ fn render_roadmap_site_surface_bundle_for_projection(proj: gunbc.roadmap_authori
     daily_html: daily,
     full_html: full,
     dispatch_js: dispatch_js,
-    healthz_body: healthz_body_from_surface_artifacts(
+    healthz_body: gunbc.roadmap_site_surface_render.healthz_body_from_surface_artifacts(
       roadmap: roadmap,
       dispatch: dispatch,
       daily: daily,
@@ -114,7 +114,7 @@ fn render_roadmap_site_surface_bundle_for_projection(proj: gunbc.roadmap_authori
 }
 
 fn materialize_live_roadmap_site_surface_bundle() -> gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle {
-  render_roadmap_site_surface_bundle_for_projection(proj: roadmap_authority_projection())
+  render_roadmap_site_surface_bundle_for_projection(proj: gunbc.roadmap_authority.roadmap_authority_projection())
 }
 
 fn live_roadmap_site_surface_bundle() -> gunbc.roadmap_site_surface_types.LiveRoadmapSiteSurfaceBundle {

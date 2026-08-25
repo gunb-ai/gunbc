@@ -3,15 +3,15 @@ module gunbc.githooks_pre_push_fmt_transport_scaffold
 
 
 data githooks_pre_push_fmt_transport_hand_rust_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.pre_push",
     decl_name: "execute_cargo_fmt_gate",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: execute_cargo_fmt_gate + fmt_status_blocks + eval_fmt_recipe in src/v1/stage0/src/pre_push.rs — the seed-side transport that spawns cargo fmt, observes the exit status, and asks gunbc.githooks_pre_push_plan to render it. Counted interim HAND-Rust growth, NOT a census shrink (review 45175). It carries no policy: the clean/drift/could-not-run partition and every message live in gunbc.local_tidy_spec, and this Rust contributes only the observation, which is why the split could not be expressed as a .dag-only change — pre_push.rs is the process-spawn boundary. DISSOLVES WITH pre_push.rs itself on the lane gunbc.githooks_pre_push_cli already names: delete that module, gunbc.githooks_pre_push_plan, pre_push.rs and the --pre-push argv row together when the emitted crate partition lands (DESIGN open thread 'emitted crate partition'), or sooner if the on-demand runner is found to have no users, which is a census question. No new lane is opened here and no new seed entry point is added — the three functions replace an inline arm of the pre-existing execute_gate dispatch.")
+data githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: execute_cargo_fmt_gate + fmt_status_blocks + eval_fmt_recipe in src/v1/stage0/src/pre_push.rs — the seed-side transport that spawns cargo fmt, observes the exit status, and asks gunbc.githooks_pre_push_plan to render it. Counted interim HAND-Rust growth, NOT a census shrink (review 45175). It carries no policy: the clean/drift/could-not-run partition and every message live in gunbc.local_tidy_spec, and this Rust contributes only the observation, which is why the split could not be expressed as a .dag-only change — pre_push.rs is the process-spawn boundary. DISSOLVES WITH pre_push.rs itself on the lane gunbc.githooks_pre_push_cli already names: delete that module, gunbc.githooks_pre_push_plan, pre_push.rs and the --pre-push argv row together when the emitted crate partition lands (DESIGN open thread 'emitted crate partition'), or sooner if the on-demand runner is found to have no users, which is a census question. No new lane is opened here and no new seed entry point is added — the three functions replace an inline arm of the pre-existing execute_gate dispatch.")
 
 data githooks_pre_push_fmt_transport_hand_rust_loc_delta_net: Int = 57
 

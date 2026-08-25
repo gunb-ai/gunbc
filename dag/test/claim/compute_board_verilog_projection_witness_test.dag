@@ -1,29 +1,29 @@
 module test.claim.compute_board_verilog_projection_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_article_identity: std.types.NonEmptyStr = "witness fixture rev 0"
 
 data bad_interlock_bindings: List<product.compute_board.verilog_projection.VerilogBinding> = [
   product.compute_board.verilog_projection.VerilogBinding { signal: "bad_interlock" as product.compute_board.digital_control.SignalName, symbol: ^probe_bad_interlock, spelling: "bad_interlock" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: conditioned_good_signal, symbol: ^interlock_conditioned_good, spelling: "conditioned_good" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: fault_signal, symbol: ^interlock_fault, spelling: "fault" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.conditioned_good_signal, symbol: ^interlock_conditioned_good, spelling: "conditioned_good" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.fault_signal, symbol: ^interlock_fault, spelling: "fault" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
   product.compute_board.verilog_projection.VerilogBinding { signal: "never_declared" as product.compute_board.digital_control.SignalName, symbol: ^probe_never_declared, spelling: "never_declared" },
 ]
 
 fn project(intent: product.compute_board.digital_control.DigitalControlIntent, bindings: List<product.compute_board.verilog_projection.VerilogBinding>) -> product.compute_board.verilog_projection.VerilogProjection {
-  project_intent_to_verilog(article_identity: witness_article_identity, intent: intent, bindings: bindings)
+  product.compute_board.verilog_projection.project_intent_to_verilog(article_identity: witness_article_identity, intent: intent, bindings: bindings)
 }
 
 // A refusal yields the empty string here DELIBERATELY, and every claim below that compares
 // against expected bytes asserts non-emptiness first — otherwise a refusal would make an
 // inequality claim vacuously true, which is the absorbing arm one level up in the oracle.
 fn emitted_source(intent: product.compute_board.digital_control.DigitalControlIntent) -> String {
-  match test.claim.compute_board_verilog_projection_witness.project(intent: intent, bindings: power_interlock_verilog_bindings) {
-    VerilogModuleEmitted { receipt: r } => r.source
-    VerilogProjectionRefused { cause: _ } => ""
+  match project(intent: intent, bindings: product.compute_board.verilog_projection.power_interlock_verilog_bindings) {
+    product.compute_board.verilog_projection.VerilogModuleEmitted { receipt: r } => r.source
+    product.compute_board.verilog_projection.VerilogProjectionRefused { cause: _ } => ""
   }
 }
 
@@ -35,7 +35,7 @@ fn emitted_source(intent: product.compute_board.digital_control.DigitalControlIn
 data expected_interlock_verilog: String = "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n  assign power_permit = (conditioned_good & ~fault);\n  assign reset_release = (conditioned_good & power_permit);\nendmodule\n"
 
 test fn w_interlock_emits_exact_verilog_bytes() -> Bool {
-  emitted_source(intent: board_power_interlock_intent) == test.claim.compute_board_verilog_projection_witness.expected_interlock_verilog
+  emitted_source(intent: product.compute_board.digital_control.board_power_interlock_intent) == expected_interlock_verilog
 }
 
 // THE DIFFERENTIAL CONTROL the direction asks for: change the fault sense in the ARTICLE and
@@ -46,10 +46,10 @@ data active_low_fault_intent: product.compute_board.digital_control.DigitalContr
   signals: board_power_interlock_intent.signals,
   equations: [
     product.compute_board.digital_control.DigitalEquation {
-      driven: power_permit_signal,
+      driven: product.compute_board.digital_control.power_permit_signal,
       expression: product.compute_board.digital_control.Conjunction {
-        left: product.compute_board.digital_control.SignalRef { signal: conditioned_good_signal },
-        right: product.compute_board.digital_control.SignalRef { signal: fault_signal },
+        left: product.compute_board.digital_control.SignalRef { signal: product.compute_board.digital_control.conditioned_good_signal },
+        right: product.compute_board.digital_control.SignalRef { signal: product.compute_board.digital_control.fault_signal },
       },
     },
   ]
@@ -58,10 +58,10 @@ data active_low_fault_intent: product.compute_board.digital_control.DigitalContr
 test fn w_fault_polarity_change_changes_emitted_bytes() -> Bool {
   let flipped = emitted_source(intent: active_low_fault_intent)
   flipped != ""
-    && flipped != test.claim.compute_board_verilog_projection_witness.expected_interlock_verilog
+    && flipped != expected_interlock_verilog
     && string_contains(s: flipped, pattern: "assign power_permit = (conditioned_good & fault);")
     && !string_contains(s: flipped, pattern: "~fault")
-    && string_contains(s: emitted_source(intent: board_power_interlock_intent), pattern: "~fault")
+    && string_contains(s: emitted_source(intent: product.compute_board.digital_control.board_power_interlock_intent), pattern: "~fault")
 }
 
 // THE TWO ARTICLE-LEVEL REFUSALS THAT USED TO LIVE HERE ARE GONE, with the checks they exercised.
@@ -77,7 +77,7 @@ test fn w_fault_polarity_change_changes_emitted_bytes() -> Bool {
 // board — with the SPICE half asserted in its own witness against its own article.
 test fn w_digital_change_is_confined_to_the_digital_projection() -> Bool {
   emitted_source(intent: active_low_fault_intent) != ""
-    && emitted_source(intent: active_low_fault_intent) != emitted_source(intent: board_power_interlock_intent)
+    && emitted_source(intent: active_low_fault_intent) != emitted_source(intent: product.compute_board.digital_control.board_power_interlock_intent)
 }
 
 // LEXICAL ADMISSION, both directions. A logical signal is a nominal brand that validates
@@ -86,47 +86,47 @@ test fn w_digital_change_is_confined_to_the_digital_projection() -> Bool {
 // offending spelling so the diagnostic is located rather than a bare "invalid identifier".
 data reserved_word_bindings: List<product.compute_board.verilog_projection.VerilogBinding> = [
   product.compute_board.verilog_projection.VerilogBinding { signal: "board_power_interlock" as product.compute_board.digital_control.SignalName, symbol: ^interlock_module_name, spelling: "board_power_interlock" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: conditioned_good_signal, symbol: ^probe_reg, spelling: "reg" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: fault_signal, symbol: ^interlock_fault, spelling: "fault" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.conditioned_good_signal, symbol: ^probe_reg, spelling: "reg" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.fault_signal, symbol: ^interlock_fault, spelling: "fault" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
 ]
 
 data spaced_spelling_bindings: List<product.compute_board.verilog_projection.VerilogBinding> = [
   product.compute_board.verilog_projection.VerilogBinding { signal: "board_power_interlock" as product.compute_board.digital_control.SignalName, symbol: ^interlock_module_name, spelling: "board_power_interlock" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: conditioned_good_signal, symbol: ^probe_conditioned_good, spelling: "conditioned good" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: fault_signal, symbol: ^interlock_fault, spelling: "fault" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.conditioned_good_signal, symbol: ^probe_conditioned_good, spelling: "conditioned good" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.fault_signal, symbol: ^interlock_fault, spelling: "fault" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
 ]
 
 fn refused_with_spelling(intent: product.compute_board.digital_control.DigitalControlIntent, bindings: List<product.compute_board.verilog_projection.VerilogBinding>, expected: String) -> Bool {
-  match test.claim.compute_board_verilog_projection_witness.project(intent: intent, bindings: bindings) {
-    VerilogProjectionRefused { cause: c } =>
+  match project(intent: intent, bindings: bindings) {
+    product.compute_board.verilog_projection.VerilogProjectionRefused { cause: c } =>
       match c {
-        SignalSpellingNotAdmissible { signal: _, spelling: sp } => sp == expected
-        SignalSpellingUnbound { signal: _ } => false
-        DuplicateSignalBinding { signal: _ } => false
-        TargetEmissionRefused { reason: _ } => false
+        product.compute_board.verilog_projection.SignalSpellingNotAdmissible { signal: _, spelling: sp } => sp == expected
+        product.compute_board.verilog_projection.SignalSpellingUnbound { signal: _ } => false
+        product.compute_board.verilog_projection.DuplicateSignalBinding { signal: _ } => false
+        product.compute_board.verilog_projection.TargetEmissionRefused { reason: _ } => false
       }
-    VerilogModuleEmitted { receipt: _ } => false
+    product.compute_board.verilog_projection.VerilogModuleEmitted { receipt: _ } => false
   }
 }
 
 test fn w_reserved_word_spelling_refuses() -> Bool {
-  refused_with_spelling(intent: board_power_interlock_intent, bindings: reserved_word_bindings, expected: "reg")
+  refused_with_spelling(intent: product.compute_board.digital_control.board_power_interlock_intent, bindings: reserved_word_bindings, expected: "reg")
 }
 
 test fn w_spelling_with_a_forbidden_character_refuses() -> Bool {
-  refused_with_spelling(intent: board_power_interlock_intent, bindings: spaced_spelling_bindings, expected: "conditioned good")
+  refused_with_spelling(intent: product.compute_board.digital_control.board_power_interlock_intent, bindings: spaced_spelling_bindings, expected: "conditioned good")
 }
 
 // The POSITIVE control for the same mechanism: the production bindings are admissible, so the
 // refusals above are discriminating rather than a checker that rejects everything.
 test fn w_production_bindings_are_admitted() -> Bool {
-  match test.claim.compute_board_verilog_projection_witness.project(intent: board_power_interlock_intent, bindings: power_interlock_verilog_bindings) {
-    VerilogModuleEmitted { receipt: r } => r.source == test.claim.compute_board_verilog_projection_witness.expected_interlock_verilog
-    VerilogProjectionRefused { cause: _ } => false
+  match project(intent: product.compute_board.digital_control.board_power_interlock_intent, bindings: product.compute_board.verilog_projection.power_interlock_verilog_bindings) {
+    product.compute_board.verilog_projection.VerilogModuleEmitted { receipt: r } => r.source == expected_interlock_verilog
+    product.compute_board.verilog_projection.VerilogProjectionRefused { cause: _ } => false
   }
 }
 
@@ -136,32 +136,32 @@ test fn w_production_bindings_are_admitted() -> Bool {
 // because a lookup that still preferred a position would satisfy a single-order check.
 data doubly_spelled_bindings: List<product.compute_board.verilog_projection.VerilogBinding> = [
   product.compute_board.verilog_projection.VerilogBinding { signal: "board_power_interlock" as product.compute_board.digital_control.SignalName, symbol: ^interlock_module_name, spelling: "board_power_interlock" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: conditioned_good_signal, symbol: ^interlock_conditioned_good, spelling: "conditioned_good" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: conditioned_good_signal, symbol: ^probe_pg_ok, spelling: "pg_ok" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: fault_signal, symbol: ^interlock_fault, spelling: "fault" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.conditioned_good_signal, symbol: ^interlock_conditioned_good, spelling: "conditioned_good" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.conditioned_good_signal, symbol: ^probe_pg_ok, spelling: "pg_ok" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.fault_signal, symbol: ^interlock_fault, spelling: "fault" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
 ]
 
 data doubly_spelled_bindings_reversed: List<product.compute_board.verilog_projection.VerilogBinding> = [
   product.compute_board.verilog_projection.VerilogBinding { signal: "board_power_interlock" as product.compute_board.digital_control.SignalName, symbol: ^interlock_module_name, spelling: "board_power_interlock" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: conditioned_good_signal, symbol: ^probe_pg_ok, spelling: "pg_ok" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: conditioned_good_signal, symbol: ^interlock_conditioned_good, spelling: "conditioned_good" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: fault_signal, symbol: ^interlock_fault, spelling: "fault" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.conditioned_good_signal, symbol: ^probe_pg_ok, spelling: "pg_ok" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.conditioned_good_signal, symbol: ^interlock_conditioned_good, spelling: "conditioned_good" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.fault_signal, symbol: ^interlock_fault, spelling: "fault" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
 ]
 
 fn refuses_as_duplicate(bindings: List<product.compute_board.verilog_projection.VerilogBinding>) -> Bool {
-  match test.claim.compute_board_verilog_projection_witness.project(intent: board_power_interlock_intent, bindings: bindings) {
-    VerilogProjectionRefused { cause: c } =>
+  match project(intent: product.compute_board.digital_control.board_power_interlock_intent, bindings: bindings) {
+    product.compute_board.verilog_projection.VerilogProjectionRefused { cause: c } =>
       match c {
-        DuplicateSignalBinding { signal: s } => (s as String) == "conditioned_good"
-        SignalSpellingUnbound { signal: _ } => false
-        SignalSpellingNotAdmissible { signal: _, spelling: _ } => false
-        TargetEmissionRefused { reason: _ } => false
+        product.compute_board.verilog_projection.DuplicateSignalBinding { signal: s } => (s as String) == "conditioned_good"
+        product.compute_board.verilog_projection.SignalSpellingUnbound { signal: _ } => false
+        product.compute_board.verilog_projection.SignalSpellingNotAdmissible { signal: _, spelling: _ } => false
+        product.compute_board.verilog_projection.TargetEmissionRefused { reason: _ } => false
       }
-    VerilogModuleEmitted { receipt: _ } => false
+    product.compute_board.verilog_projection.VerilogModuleEmitted { receipt: _ } => false
   }
 }
 

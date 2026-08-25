@@ -3,37 +3,37 @@ module v2.test.claim.integer.value_set_decode_reason
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn conj_carrier(children: List<v2.std.node.Edge>) -> Node {
-  Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+fn conj_carrier(children: List<v2.std.node.Edge>) -> v2.std.node.Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: children,
     occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn named_edge(name: Symbol, target: Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: target }
+fn named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
-fn kind_edge(kind: Symbol) -> v2.std.node.Edge {
+fn kind_edge(kind: v2.std.node.Symbol) -> v2.std.node.Edge {
   named_edge(name: ^integer_value_set_field_kind, target: v2.std.integer_value_set.integer_value_set_atom(id: kind))
 }
 
-fn decode_reason(value_set: Node) -> Symbol {
+fn decode_reason(value_set: v2.std.node.Node) -> v2.std.node.Symbol {
   match v2.std.integer_value_set.integer_value_set_from_node(value_set: value_set) {
-    Accepted { value: _, diagnostics: _ } => ^decode_unexpectedly_accepted
-    Rejected { diagnostics: ds } => ds.head.reason
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => ^decode_unexpectedly_accepted
+    v2.std.diagnostic.Rejected { diagnostics: ds } => ds.head.reason
   }
 }
 
-fn decode_cause_count(value_set: Node) -> Int {
+fn decode_cause_count(value_set: v2.std.node.Node) -> Int {
   match v2.std.integer_value_set.integer_value_set_from_node(value_set: value_set) {
-    Accepted { value: _, diagnostics: _ } => 9
-    Rejected { diagnostics: ds } => count(ds.tail)
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => 9
+    v2.std.diagnostic.Rejected { diagnostics: ds } => count(ds.tail)
   }
 }
 
-data carrier_missing_kind_field: Node = conj_carrier(
+data carrier_missing_kind_field: v2.std.node.Node = conj_carrier(
   children: [
     named_edge(
       name: ^integer_value_set_field_interval,
@@ -42,11 +42,11 @@ data carrier_missing_kind_field: Node = conj_carrier(
   ]
 )
 
-data carrier_unrecognized_kind: Node = conj_carrier(
+data carrier_unrecognized_kind: v2.std.node.Node = conj_carrier(
   children: [kind_edge(kind: ^integer_value_set_kind_not_a_real_kind)]
 )
 
-data carrier_interval_field_missing: Node = conj_carrier(
+data carrier_interval_field_missing: v2.std.node.Node = conj_carrier(
   children: [
     kind_edge(kind: ^integer_value_set_kind_interval),
     named_edge(
@@ -56,11 +56,11 @@ data carrier_interval_field_missing: Node = conj_carrier(
   ]
 )
 
-data carrier_interval_spec_malformed: Node = v2.std.integer_value_set.integer_interval_value_set_node(
+data carrier_interval_spec_malformed: v2.std.node.Node = v2.std.integer_value_set.integer_interval_value_set_node(
   interval: v2.std.integer_value_set.integer_value_set_atom(id: ^not_an_interval_spec)
 )
 
-data carrier_unbounded_wrong_arity: Node = conj_carrier(
+data carrier_unbounded_wrong_arity: v2.std.node.Node = conj_carrier(
   children: [
     kind_edge(kind: ^integer_value_set_kind_unbounded),
     named_edge(name: ^integer_value_set_field_extra, target: v2.std.integer_value_set.integer_value_set_atom(id: ^extra))
@@ -69,8 +69,8 @@ data carrier_unbounded_wrong_arity: Node = conj_carrier(
 
 test fn well_formed_unbounded_carrier_still_decodes() -> Bool {
   match v2.std.integer_value_set.integer_value_set_from_node(value_set: v2.std.integer_value_set.integer_unbounded_value_set_node()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

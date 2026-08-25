@@ -1,87 +1,87 @@
 module test.claim.html_markup_xss_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_javascript_href_rejects() -> Bool {
-  match validate_href(url: "javascript:alert(1)") {
-    RejectedHref { reason: DangerousScheme { scheme: JavascriptScheme } } => true
+  match extdeps.uri_validation.validate_href(url: "javascript:alert(1)") {
+    extdeps.uri_validation.RejectedHref { reason: extdeps.uri_validation.DangerousScheme { scheme: extdeps.uri_validation.JavascriptScheme } } => true
     _ => false
   }
 }
 
 test fn witness_javascript_href_case_insensitive_rejects() -> Bool {
-  match validate_href(url: "  JAVASCRIPT:alert(1)") {
-    RejectedHref { reason: DangerousScheme { scheme: JavascriptScheme } } => true
+  match extdeps.uri_validation.validate_href(url: "  JAVASCRIPT:alert(1)") {
+    extdeps.uri_validation.RejectedHref { reason: extdeps.uri_validation.DangerousScheme { scheme: extdeps.uri_validation.JavascriptScheme } } => true
     _ => false
   }
 }
 
 test fn witness_data_href_rejects() -> Bool {
-  match validate_href(url: "data:text/html,<script>alert(1)</script>") {
-    RejectedHref { reason: DangerousScheme { scheme: DataScheme } } => true
+  match extdeps.uri_validation.validate_href(url: "data:text/html,<script>alert(1)</script>") {
+    extdeps.uri_validation.RejectedHref { reason: extdeps.uri_validation.DangerousScheme { scheme: extdeps.uri_validation.DataScheme } } => true
     _ => false
   }
 }
 
 test fn witness_protocol_relative_rejects() -> Bool {
-  match validate_href(url: "//evil.example/x") {
-    RejectedHref { reason: SchemeNotAllowlisted } => true
+  match extdeps.uri_validation.validate_href(url: "//evil.example/x") {
+    extdeps.uri_validation.RejectedHref { reason: extdeps.uri_validation.SchemeNotAllowlisted } => true
     _ => false
   }
 }
 
 test fn witness_mixed_case_javascript_rejects_fail_closed() -> Bool {
-  match validate_href(url: "JaVaScRiPt:alert(1)") {
-    RejectedHref { reason: SchemeNotAllowlisted } => true
+  match extdeps.uri_validation.validate_href(url: "JaVaScRiPt:alert(1)") {
+    extdeps.uri_validation.RejectedHref { reason: extdeps.uri_validation.SchemeNotAllowlisted } => true
     _ => false
   }
 }
 
 test fn witness_relative_href_accepted() -> Bool {
-  match validate_href(url: "/safe/path") {
-    SafeHref { url: u } => u == "/safe/path"
+  match extdeps.uri_validation.validate_href(url: "/safe/path") {
+    extdeps.uri_validation.SafeHref { url: u } => u == "/safe/path"
     _ => false
   }
 }
 
 test fn witness_https_href_accepted() -> Bool {
-  match validate_href(url: "https://example.com") {
-    SafeHref { url: u } => u == "https://example.com"
+  match extdeps.uri_validation.validate_href(url: "https://example.com") {
+    extdeps.uri_validation.SafeHref { url: u } => u == "https://example.com"
     _ => false
   }
 }
 
 test fn witness_http_href_accepted() -> Bool {
-  match validate_href(url: "http://example.com") {
-    SafeHref { url: u } => u == "http://example.com"
+  match extdeps.uri_validation.validate_href(url: "http://example.com") {
+    extdeps.uri_validation.SafeHref { url: u } => u == "http://example.com"
     _ => false
   }
 }
 
 test fn witness_mailto_href_accepted() -> Bool {
-  match validate_href(url: "mailto:user@example.com") {
-    SafeHref { url: u } => u == "mailto:user@example.com"
+  match extdeps.uri_validation.validate_href(url: "mailto:user@example.com") {
+    extdeps.uri_validation.SafeHref { url: u } => u == "mailto:user@example.com"
     _ => false
   }
 }
 
 fn javascript_link_node() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "a",
-    attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
+    attributes: [ std.markup.attr(name: "href", value: "javascript:alert(1)" ) ],
     children: [ std.markup.FragmentText { content: "x" } ],
   }
 }
 
 test fn witness_unsafe_href_blocks_serialization() -> Bool {
-  match try_serialize_html_source(node: javascript_link_node()) {
-    EmitRejected { reason: _ } => true
-    EmitOk { html: _ } => false
+  match extdeps.languages.html.try_serialize_html_source(node: javascript_link_node()) {
+    extdeps.languages.html.EmitRejected { reason: _ } => true
+    extdeps.languages.html.EmitOk { html: _ } => false
   }
 }
 
 test fn witness_escape_url_passes_javascript_scheme() -> Bool {
-  escape_url(s: "javascript:alert(1)") == "javascript:alert(1)"
+  std.markup.escape_url(s: "javascript:alert(1)") == "javascript:alert(1)"
 }
 

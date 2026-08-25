@@ -4,7 +4,7 @@ module extdeps.cache.materialization
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/cache"
   }
 }
@@ -26,22 +26,22 @@ type CatalogProjectionRefusalReason
 
 fn catalog_keying(kd: extdeps.cache.types.CatalogKeyDerivationFacts) -> std.materialization_ladder.CacheKeying {
   if kd.prefix_fallback_allowed {
-    ExistenceKeyed
+    std.materialization_ladder.ExistenceKeyed
   } else {
     match kd.key_inputs {
-      ContentAddressed => ContentKeyed
-      NativeInternal { cited_inputs: _ } => ContentKeyed
-      HandAuthored { cited_inputs: _ } => ExistenceKeyed
+      extdeps.cache.types.ContentAddressed => std.materialization_ladder.ContentKeyed
+      extdeps.cache.types.NativeInternal { cited_inputs: _ } => std.materialization_ladder.ContentKeyed
+      extdeps.cache.types.HandAuthored { cited_inputs: _ } => std.materialization_ladder.ExistenceKeyed
     }
   }
 }
 
 fn catalog_tier(p: extdeps.cache.catalog_placement.CacheInterfaceCatalogPlacement, keying: std.materialization_ladder.CacheKeying) -> std.materialization_ladder.ProviderTier {
   match p.locality {
-    InProcess => std.materialization_ladder.MemoTier { keying: keying }
-    PerRunnerFilesystem => std.materialization_ladder.ArtifactTier { keying: keying }
-    PerHostFilesystem => std.materialization_ladder.ArtifactTier { keying: keying }
-    CrossHostNetwork => std.materialization_ladder.CasTier { keying: keying }
+    std.cache_interface.InProcess => std.materialization_ladder.MemoTier { keying: keying }
+    std.cache_interface.PerRunnerFilesystem => std.materialization_ladder.ArtifactTier { keying: keying }
+    std.cache_interface.PerHostFilesystem => std.materialization_ladder.ArtifactTier { keying: keying }
+    std.cache_interface.CrossHostNetwork => std.materialization_ladder.CasTier { keying: keying }
   }
 }
 
@@ -72,7 +72,7 @@ fn provider_from_catalog(
 ) -> std.materialization_ladder.CacheProvider {
   let keying = catalog_keying(kd: facts.key_derivation)
   let tier = catalog_tier(p: facts.placement, keying: keying)
-  provider_row(
+  std.materialization_ladder.provider_row(
     id: facts.identity,
     scope: scope,
     coverage: coverage,
@@ -143,7 +143,7 @@ type RoleAdmission
 fn role_admits(role: CatalogProviderRole, r: std.cache_interface.ProviderRetention) -> RoleAdmission {
   match role {
     GrowthBoundedRole => growth_admission(r: r)
-    CapacityBoundedRole => extdeps.cache.materialization.capacity_admission(c: r.capacity)
+    CapacityBoundedRole => capacity_admission(c: r.capacity)
     ExactByteBudgetRole => exact_byte_admission(c: r.capacity)
   }
 }
@@ -152,17 +152,17 @@ fn role_admits(role: CatalogProviderRole, r: std.cache_interface.ProviderRetenti
 // growth over time whatever the capacity, otherwise a ceiling must exist.
 fn growth_admission(r: std.cache_interface.ProviderRetention) -> RoleAdmission {
   match r.release_policy {
-    ReleasedAtProviderScopeExit => RoleAdmitted
-    ReleasedNever => extdeps.cache.materialization.capacity_admission(c: r.capacity)
-    ReleasedManually => extdeps.cache.materialization.capacity_admission(c: r.capacity)
+    std.cache_interface.ReleasedAtProviderScopeExit => RoleAdmitted
+    std.cache_interface.ReleasedNever => capacity_admission(c: r.capacity)
+    std.cache_interface.ReleasedManually => capacity_admission(c: r.capacity)
   }
 }
 
 fn capacity_admission(c: std.cache_interface.CapacityPolicy) -> RoleAdmission {
   match c {
-    CapacityUnbounded => RoleRefused { reason: CapacityUnboundedForRole }
-    CapacityUnobserved => RoleRefused { reason: CapacityUnobservedForRole }
-    CapacityBounded { limit: _, at_capacity: _ } => RoleAdmitted
+    std.cache_interface.CapacityUnbounded => RoleRefused { reason: CapacityUnboundedForRole }
+    std.cache_interface.CapacityUnobserved => RoleRefused { reason: CapacityUnobservedForRole }
+    std.cache_interface.CapacityBounded { limit: _, at_capacity: _ } => RoleAdmitted
   }
 }
 
@@ -172,19 +172,19 @@ fn capacity_admission(c: std.cache_interface.CapacityPolicy) -> RoleAdmission {
 // unobserved value needs a citation.
 fn exact_byte_admission(c: std.cache_interface.CapacityPolicy) -> RoleAdmission {
   match c {
-    CapacityUnbounded => RoleRefused { reason: CapacityUnboundedForRole }
-    CapacityUnobserved => RoleRefused { reason: CapacityUnobservedForRole }
-    CapacityBounded { limit: l, at_capacity: _ } => exact_byte_limit_admission(l: l)
+    std.cache_interface.CapacityUnbounded => RoleRefused { reason: CapacityUnboundedForRole }
+    std.cache_interface.CapacityUnobserved => RoleRefused { reason: CapacityUnobservedForRole }
+    std.cache_interface.CapacityBounded { limit: l, at_capacity: _ } => exact_byte_limit_admission(l: l)
   }
 }
 
 fn exact_byte_limit_admission(l: std.cache_interface.CapacityLimit) -> RoleAdmission {
   match l {
-    EntryCountCapacity { limit: _ } => RoleRefused { reason: CapacityUnitMismatchForRole }
-    ByteCapacity { limit: v } => match v {
-      ExactLimit { value: _ } => RoleAdmitted
-      RuntimeDerivedLimit { authority: _ } => RoleRefused { reason: CapacityValueUnresolvedForRole }
-      EffectiveLimitUnobserved => RoleRefused { reason: CapacityValueUnobservedForRole }
+    std.cache_interface.EntryCountCapacity { limit: _ } => RoleRefused { reason: CapacityUnitMismatchForRole }
+    std.cache_interface.ByteCapacity { limit: v } => match v {
+      std.cache_interface.ExactLimit { value: _ } => RoleAdmitted
+      std.cache_interface.RuntimeDerivedLimit { authority: _ } => RoleRefused { reason: CapacityValueUnresolvedForRole }
+      std.cache_interface.EffectiveLimitUnobserved => RoleRefused { reason: CapacityValueUnobservedForRole }
     }
   }
 }

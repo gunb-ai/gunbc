@@ -21,13 +21,13 @@ data compile_pool_observe_scope_disposition: std.disposition.Disposition = std.d
 // permitted to be written is gunbc.compile_pool_ensure's and gunbc.host_compile_pool's judgement over this
 // value; this module only reports what the host said.
 
-fn compile_pool_reach_refusal(slice_unit: NonEmptyStr, what: String, why: String) -> gunbc.host_compile_pool.CompilePoolObservation {
+fn compile_pool_reach_refusal(slice_unit: std.types.NonEmptyStr, what: String, why: String) -> gunbc.host_compile_pool.CompilePoolObservation {
   gunbc.host_compile_pool.CompilePoolObservationUnavailable {
-    reason: ReachRefused {
+    reason: gunbc.build_cache_instance.ReachRefused {
       detail: join(
         ["compile-pool slice ", slice_unit as String, ": ", what, " -- ", why],
         "",
-      ) as NonEmptyStr,
+      ) as std.types.NonEmptyStr,
     },
   }
 }
@@ -64,7 +64,7 @@ type CompilePoolLimitRead
   | CompilePoolLimitRefused { observation: gunbc.host_compile_pool.CompilePoolObservation }
 
 fn compile_pool_limit_of_capture(
-  slice_unit: NonEmptyStr,
+  slice_unit: std.types.NonEmptyStr,
   property_name: String,
   capture: gunbc.systemctl_show_read.SystemdPropertyCapture,
 ) -> CompilePoolLimitRead {
@@ -95,7 +95,7 @@ fn compile_pool_limit_of_capture(
 }
 
 fn compile_pool_slice_limits_from_reads(
-  slice_unit: NonEmptyStr,
+  slice_unit: std.types.NonEmptyStr,
   max_read: gunbc.systemctl_show_read.SystemdPropertyCapture,
   high_read: gunbc.systemctl_show_read.SystemdPropertyCapture,
   current_read: gunbc.systemctl_show_read.SystemdPropertyCapture,
@@ -124,9 +124,9 @@ fn compile_pool_slice_limits_from_reads(
 
 fn observe_compile_pool_slice(
   transport: gunbc.host_effect.HostEffectTransport,
-  slice_unit: NonEmptyStr,
+  slice_unit: std.types.NonEmptyStr,
 ) -> gunbc.host_compile_pool.CompilePoolObservation {
-  match systemctl_show_load_state_read(transport: transport, unit: slice_unit) {
+  match gunbc.systemctl_show_read.systemctl_show_load_state_read(transport: transport, unit: slice_unit) {
     gunbc.systemctl_show_read.SystemdPropertyCaptureRefused { reason: why } =>
       compile_pool_reach_refusal(slice_unit: slice_unit, what: "could not read LoadState", why: why)
     gunbc.systemctl_show_read.SystemdPropertyCaptured { value: raw } =>

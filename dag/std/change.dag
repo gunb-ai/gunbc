@@ -7,7 +7,7 @@ type KeyedDiffHunk<K, V>
   | KeyedDiffModifiedHunk { hunk_key: K, from: V, to: V }
 
 type KeyedPatch<K, V> {
-  hunks: List<std.change.KeyedDiffHunk<K, V>>
+  hunks: List<KeyedDiffHunk<K, V>>
 }
 
 type KeyedLeafVerdict<V>
@@ -26,8 +26,8 @@ type KeyedLeafVerdictFold<V, R> {
 }
 
 fn keyed_leaf_verdict_fold<V, R>(
-  verdict: std.change.KeyedLeafVerdict<V>,
-  fold: std.change.KeyedLeafVerdictFold<V, R>,
+  verdict: KeyedLeafVerdict<V>,
+  fold: KeyedLeafVerdictFold<V, R>,
 ) -> R {
   match verdict {
     KeyedUnchanged => fold.unchanged
@@ -40,64 +40,64 @@ fn keyed_leaf_verdict_fold<V, R>(
 
 type KeyedThreeWayEntry<K, V> {
   entry_key: K
-  verdict: std.change.KeyedLeafVerdict<V>
+  verdict: KeyedLeafVerdict<V>
 }
 
 type KeyedThreeWayPatch<K, V> {
-  entries: List<std.change.KeyedThreeWayEntry<K, V>>
+  entries: List<KeyedThreeWayEntry<K, V>>
 }
 
 type KeyedThreeWayInsertAcc<K, V> {
   replaced: Bool
-  entries: List<std.change.KeyedThreeWayEntry<K, V>>
+  entries: List<KeyedThreeWayEntry<K, V>>
 }
 
-fn keyed_patch_empty<K, V>() -> std.change.KeyedPatch<K, V> {
+fn keyed_patch_empty<K, V>() -> KeyedPatch<K, V> {
   KeyedPatch { hunks: [] }
 }
 
-fn keyed_three_way_patch_empty<K, V>() -> std.change.KeyedThreeWayPatch<K, V> {
+fn keyed_three_way_patch_empty<K, V>() -> KeyedThreeWayPatch<K, V> {
   KeyedThreeWayPatch { entries: [] }
 }
 
 fn keyed_patch_append_hunk<K, V>(
-  patch: std.change.KeyedPatch<K, V>,
-  hunk: std.change.KeyedDiffHunk<K, V>,
-) -> std.change.KeyedPatch<K, V> {
+  patch: KeyedPatch<K, V>,
+  hunk: KeyedDiffHunk<K, V>,
+) -> KeyedPatch<K, V> {
   KeyedPatch { hunks: concat(patch.hunks, [hunk]) }
 }
 
 fn keyed_patch_append<K, V>(
-  left: std.change.KeyedPatch<K, V>,
-  right: std.change.KeyedPatch<K, V>,
-) -> std.change.KeyedPatch<K, V> {
+  left: KeyedPatch<K, V>,
+  right: KeyedPatch<K, V>,
+) -> KeyedPatch<K, V> {
   KeyedPatch { hunks: concat(left.hunks, right.hunks) }
 }
 
-fn keyed_patch_monoid<K, V>() -> std.algebra.Monoid<std.change.KeyedPatch<K, V>> {
+fn keyed_patch_monoid<K, V>() -> std.algebra.Monoid<KeyedPatch<K, V>> {
   std.algebra.Monoid {
     op: keyed_patch_append,
     identity: keyed_patch_empty(),
   }
 }
 
-fn keyed_patch_fold<K, V>(contributions: List<std.change.KeyedPatch<K, V>>) -> std.change.KeyedPatch<K, V> {
+fn keyed_patch_fold<K, V>(contributions: List<KeyedPatch<K, V>>) -> KeyedPatch<K, V> {
   let monoid = keyed_patch_monoid()
   fold(contributions, init: monoid.identity, f: fn(acc, patch) {
     monoid.op(acc, patch)
   })
 }
 
-fn keyed_patch_singleton<K, V>(hunk: std.change.KeyedDiffHunk<K, V>) -> std.change.KeyedPatch<K, V> {
+fn keyed_patch_singleton<K, V>(hunk: KeyedDiffHunk<K, V>) -> KeyedPatch<K, V> {
   KeyedPatch { hunks: [hunk] }
 }
 
 fn keyed_three_way_patch_append<K, V>(
-  left: std.change.KeyedThreeWayPatch<K, V>,
-  right: std.change.KeyedThreeWayPatch<K, V>,
+  left: KeyedThreeWayPatch<K, V>,
+  right: KeyedThreeWayPatch<K, V>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
-) -> std.change.KeyedThreeWayPatch<K, V> {
+) -> KeyedThreeWayPatch<K, V> {
   fold(right.entries, init: left, f: fn(acc, incoming) {
     keyed_three_way_patch_insert_entry(
       patch: acc,
@@ -109,12 +109,12 @@ fn keyed_three_way_patch_append<K, V>(
 }
 
 fn keyed_three_way_patch_insert_entry<K, V>(
-  patch: std.change.KeyedThreeWayPatch<K, V>,
-  entry: std.change.KeyedThreeWayEntry<K, V>,
+  patch: KeyedThreeWayPatch<K, V>,
+  entry: KeyedThreeWayEntry<K, V>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
-) -> std.change.KeyedThreeWayPatch<K, V> {
-  let acc = fold(patch.entries, init: std.change.KeyedThreeWayInsertAcc {
+) -> KeyedThreeWayPatch<K, V> {
+  let acc = fold(patch.entries, init: KeyedThreeWayInsertAcc {
     replaced: false,
     entries: [],
   }, f: fn(state, existing) {
@@ -147,7 +147,7 @@ fn keyed_three_way_patch_insert_entry<K, V>(
 fn keyed_three_way_patch_monoid<K, V>(
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
-) -> std.algebra.Monoid<std.change.KeyedThreeWayPatch<K, V>> {
+) -> std.algebra.Monoid<KeyedThreeWayPatch<K, V>> {
   std.algebra.Monoid {
     op: fn(left, right) {
       keyed_three_way_patch_append(
@@ -162,8 +162,8 @@ fn keyed_three_way_patch_monoid<K, V>(
 }
 
 fn keyed_three_way_patch_singleton<K, V>(
-  entry: std.change.KeyedThreeWayEntry<K, V>,
-) -> std.change.KeyedThreeWayPatch<K, V> {
+  entry: KeyedThreeWayEntry<K, V>,
+) -> KeyedThreeWayPatch<K, V> {
   KeyedThreeWayPatch { entries: [entry] }
 }
 
@@ -172,7 +172,7 @@ fn keyed_three_way_leaf<V>(
   observed: V,
   desired: V,
   equal: fn(V, V) -> Bool,
-) -> std.change.KeyedLeafVerdict<V> {
+) -> KeyedLeafVerdict<V> {
   if equal(observed, desired) {
     KeyedUnchanged
   } else { if equal(observed, base) {
@@ -183,10 +183,10 @@ fn keyed_three_way_leaf<V>(
 }
 
 fn keyed_leaf_verdict_join<V>(
-  a: std.change.KeyedLeafVerdict<V>,
-  b: std.change.KeyedLeafVerdict<V>,
+  a: KeyedLeafVerdict<V>,
+  b: KeyedLeafVerdict<V>,
   equal: fn(V, V) -> Bool,
-) -> std.change.KeyedLeafVerdict<V> {
+) -> KeyedLeafVerdict<V> {
   match a {
     KeyedUnchanged => b
     KeyedConflict => KeyedConflict
@@ -288,7 +288,7 @@ fn keyed_two_way_row<K, V>(
   right: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
-) -> std.change.KeyedDiffHunk<K, V>? {
+) -> KeyedDiffHunk<K, V>? {
   let l = std.keyed_row.keyed_row_find(rows: left, wanted_key: wanted_key, key_eq: key_eq)
   let r = std.keyed_row.keyed_row_find(rows: right, wanted_key: wanted_key, key_eq: key_eq)
   match l {
@@ -332,7 +332,7 @@ fn keyed_two_way_row_patch<K, V>(
   right: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
-) -> std.change.KeyedPatch<K, V> {
+) -> KeyedPatch<K, V> {
   match keyed_two_way_row(
     wanted_key: wanted_key,
     left: left,
@@ -350,7 +350,7 @@ fn keyed_two_way_diff<K, V>(
   right: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
-) -> std.change.KeyedPatch<K, V> {
+) -> KeyedPatch<K, V> {
   let keys = keyed_union_keys(a: left, b: right, key_eq: key_eq)
   let monoid = keyed_patch_monoid()
   fold(keys, init: monoid.identity, f: fn(acc, wanted_key) {
@@ -374,7 +374,7 @@ fn keyed_three_way_row_verdict<K, V>(
   desired: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
-) -> std.change.KeyedLeafVerdict<V> {
+) -> KeyedLeafVerdict<V> {
   let b = std.keyed_row.keyed_row_find(rows: base, wanted_key: wanted_key, key_eq: key_eq)
   let o = std.keyed_row.keyed_row_find(rows: observed, wanted_key: wanted_key, key_eq: key_eq)
   let d = std.keyed_row.keyed_row_find(rows: desired, wanted_key: wanted_key, key_eq: key_eq)
@@ -426,7 +426,7 @@ fn keyed_three_way_row_patch<K, V>(
   desired: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
-) -> std.change.KeyedThreeWayPatch<K, V> {
+) -> KeyedThreeWayPatch<K, V> {
   let verdict = keyed_three_way_row_verdict(
     wanted_key: wanted_key,
     base: base,
@@ -439,7 +439,7 @@ fn keyed_three_way_row_patch<K, V>(
     KeyedUnchanged => keyed_three_way_patch_empty()
     _ =>
       keyed_three_way_patch_singleton(
-        entry: std.change.KeyedThreeWayEntry { entry_key: wanted_key, verdict: verdict },
+        entry: KeyedThreeWayEntry { entry_key: wanted_key, verdict: verdict },
       )
   }
 }
@@ -450,7 +450,7 @@ fn keyed_three_way_fold<K, V>(
   desired: List<std.keyed_row.KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
-) -> std.change.KeyedThreeWayPatch<K, V> {
+) -> KeyedThreeWayPatch<K, V> {
   let keys = keyed_union_keys_three(a: base, b: observed, c: desired, key_eq: key_eq)
   let monoid = keyed_three_way_patch_monoid(key_eq: key_eq, value_eq: value_eq)
   fold(keys, init: monoid.identity, f: fn(acc, wanted_key) {
@@ -470,7 +470,7 @@ fn keyed_three_way_fold<K, V>(
 
 fn keyed_apply_row<K, V>(
   row: std.keyed_row.KeyedRow<K, V>,
-  hunk: std.change.KeyedDiffHunk<K, V>,
+  hunk: KeyedDiffHunk<K, V>,
 ) -> std.keyed_row.KeyedRow<K, V> {
   match hunk {
     KeyedDiffAddedHunk { hunk_key: _, to: v } =>
@@ -483,7 +483,7 @@ fn keyed_apply_row<K, V>(
 
 fn keyed_apply_patch<K, V>(
   rows: List<std.keyed_row.KeyedRow<K, V>>,
-  patch: std.change.KeyedPatch<K, V>,
+  patch: KeyedPatch<K, V>,
   key_eq: fn(K, K) -> Bool,
 ) -> List<std.keyed_row.KeyedRow<K, V>> {
   fold(patch.hunks, init: rows, f: fn(acc, hunk) {
@@ -508,7 +508,7 @@ fn keyed_apply_patch<K, V>(
   })
 }
 
-fn keyed_invert_hunk<K, V>(hunk: std.change.KeyedDiffHunk<K, V>) -> std.change.KeyedDiffHunk<K, V> {
+fn keyed_invert_hunk<K, V>(hunk: KeyedDiffHunk<K, V>) -> KeyedDiffHunk<K, V> {
   match hunk {
     KeyedDiffAddedHunk { hunk_key: k, to: v } =>
       KeyedDiffRemovedHunk { hunk_key: k, from: v }
@@ -519,23 +519,23 @@ fn keyed_invert_hunk<K, V>(hunk: std.change.KeyedDiffHunk<K, V>) -> std.change.K
   }
 }
 
-fn keyed_invert_patch<K, V>(patch: std.change.KeyedPatch<K, V>) -> std.change.KeyedPatch<K, V> {
+fn keyed_invert_patch<K, V>(patch: KeyedPatch<K, V>) -> KeyedPatch<K, V> {
   KeyedPatch {
     hunks: map(patch.hunks, fn(hunk) { keyed_invert_hunk(hunk: hunk) }),
   }
 }
 
-fn keyed_patch_hunk_count<K, V>(patch: std.change.KeyedPatch<K, V>) -> Int {
-  list_length(items: patch.hunks)
+fn keyed_patch_hunk_count<K, V>(patch: KeyedPatch<K, V>) -> Int {
+  std.types.list_length(items: patch.hunks)
 }
 
-fn keyed_three_way_entry_count<K, V>(patch: std.change.KeyedThreeWayPatch<K, V>) -> Int {
-  list_length(items: patch.entries)
+fn keyed_three_way_entry_count<K, V>(patch: KeyedThreeWayPatch<K, V>) -> Int {
+  std.types.list_length(items: patch.entries)
 }
 
 fn keyed_diff_hunks_equal<K, V>(
-  left: std.change.KeyedDiffHunk<K, V>,
-  right: std.change.KeyedDiffHunk<K, V>,
+  left: KeyedDiffHunk<K, V>,
+  right: KeyedDiffHunk<K, V>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> Bool {
@@ -561,8 +561,8 @@ fn keyed_diff_hunks_equal<K, V>(
 }
 
 fn keyed_patch_contains_hunk<K, V>(
-  patch: std.change.KeyedPatch<K, V>,
-  hunk: std.change.KeyedDiffHunk<K, V>,
+  patch: KeyedPatch<K, V>,
+  hunk: KeyedDiffHunk<K, V>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> Bool {
@@ -572,12 +572,12 @@ fn keyed_patch_contains_hunk<K, V>(
 }
 
 fn keyed_patches_equal<K, V>(
-  left: std.change.KeyedPatch<K, V>,
-  right: std.change.KeyedPatch<K, V>,
+  left: KeyedPatch<K, V>,
+  right: KeyedPatch<K, V>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> Bool {
-  list_length(items: left.hunks) == list_length(items: right.hunks)
+  std.types.list_length(items: left.hunks) == std.types.list_length(items: right.hunks)
     && fold(left.hunks, init: true, f: fn(ok, hunk) {
       ok && keyed_patch_contains_hunk(patch: right, hunk: hunk, key_eq: key_eq, value_eq: value_eq)
     })

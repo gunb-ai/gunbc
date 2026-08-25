@@ -6,30 +6,30 @@ data witness_note: String = "feature:content-hash-family-grounded Phase A — fa
 data witness_sha256_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 fn witness_sha256_row() -> std.content_hash.Sha256Digest {
-  std.content_hash.Sha256Digest { hex: test.claim.content_hash_family_grounded_witness.witness_sha256_hex as std.content_hash.Sha256DigestHex }
+  std.content_hash.Sha256Digest { hex: witness_sha256_hex as std.content_hash.Sha256DigestHex }
 }
 
 fn witness_oci_sha256_row() -> extdeps.container.oci.digest.OciContentDigest {
-  oci_content_digest_from_validated_sha256(
-    digest: std.content_hash.Sha256Digest { hex: test.claim.content_hash_family_grounded_witness.witness_sha256_hex as std.content_hash.Sha256DigestHex },
+  extdeps.container.oci.digest.oci_content_digest_from_validated_sha256(
+    digest: std.content_hash.Sha256Digest { hex: witness_sha256_hex as std.content_hash.Sha256DigestHex },
   )
 }
 data tool_pin_fixture: extdeps.pin.Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
   subject: extdeps.tools.CliTool {
     name: "cargo",
     min_version: Absent,
-    installable_via: [SourceApt],
+    installable_via: [extdeps.tools.SourceApt],
   },
   version: "1.93.0" as extdeps.version.VersionIdentity,
-  expected_identity: content_hash_of_value(value: "cargo-structural-identity" as std.types.NonEmptyStr),
-  selection: ExactPin,
+  expected_identity: std.content_hash.content_hash_of_value(value: "cargo-structural-identity" as std.types.NonEmptyStr),
+  selection: extdeps.pin.ExactPin,
 }
 
-data structural_a: std.content_hash.ContentHash = content_hash_of_value(value: "fp-a" as std.types.NonEmptyStr)
-data structural_b: std.content_hash.ContentHash = content_hash_of_value(value: "fp-b" as std.types.NonEmptyStr)
+data structural_a: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "fp-a" as std.types.NonEmptyStr)
+data structural_b: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "fp-b" as std.types.NonEmptyStr)
 
 test fn content_hash_from_structural_digest_refuses_non_fingerprint_labels() -> Bool {
-  match content_hash_from_structural_digest(digest: "hash_c") {
+  match std.content_hash.content_hash_from_structural_digest(digest: "hash_c") {
     Present { value: _ } => false
     Absent => true
   }
@@ -45,25 +45,25 @@ test fn content_hash_cited_sha256_literals_validate() -> Bool {
     && content_hash_cited_sha256_literal_validates(
       hex: "5e34d05421f9491747bc11c68b1a7f5029b0aefb18eb9166935ac52be45fb299",
     )
-    && content_hash_cited_sha256_literal_validates(hex: test.claim.content_hash_family_grounded_witness.witness_sha256_hex)
+    && content_hash_cited_sha256_literal_validates(hex: witness_sha256_hex)
 }
 
 fn content_hash_cited_sha256_literal_validates(hex: String) -> Bool {
-  match sha256_hex_digest(hex: hex) {
+  match std.content_hash.sha256_hex_digest(hex: hex) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
 test fn sha256_hex_digest_refuses_invalid_hex() -> Bool {
-  match sha256_hex_digest(hex: "x") {
+  match std.content_hash.sha256_hex_digest(hex: "x") {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn sha1_hex_digest_refuses_invalid_hex() -> Bool {
-  match sha1_hex_digest(hex: "x") {
+  match std.content_hash.sha1_hex_digest(hex: "x") {
     Present { value: _ } => false
     Absent => true
   }
@@ -71,7 +71,7 @@ test fn sha1_hex_digest_refuses_invalid_hex() -> Bool {
 
 test fn structural_family_eq_is_writable() -> Bool {
   match structural_a {
-    std.content_hash.Fnv1a64(a) => content_hash_eq_structural(left: a, right: a)
+    Fnv1a64(a) => std.content_hash.content_hash_eq_structural(left: a, right: a)
     Sha256Hash(_) => false
     Sha1Hash(_) => false
     Sha512Hash(_) => false
@@ -80,9 +80,9 @@ test fn structural_family_eq_is_writable() -> Bool {
 
 test fn structural_family_eq_distinguishes() -> Bool {
   match structural_a {
-    std.content_hash.Fnv1a64(a) =>
+    Fnv1a64(a) =>
       match structural_b {
-        std.content_hash.Fnv1a64(b) => !content_hash_eq_structural(left: a, right: b)
+        Fnv1a64(b) => !std.content_hash.content_hash_eq_structural(left: a, right: b)
         Sha256Hash(_) => false
         Sha1Hash(_) => false
         Sha512Hash(_) => false
@@ -94,7 +94,7 @@ test fn structural_family_eq_distinguishes() -> Bool {
 }
 
 test fn sha512_hex_digest_refuses_invalid_hex() -> Bool {
-  match sha512_hex_digest(hex: "x") {
+  match std.content_hash.sha512_hex_digest(hex: "x") {
     Present { value: _ } => false
     Absent => true
   }
@@ -102,17 +102,17 @@ test fn sha512_hex_digest_refuses_invalid_hex() -> Bool {
 
 test fn sha512_family_eq_is_writable() -> Bool {
   let hex = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-  match sha512_hex_digest(hex: hex) {
-    Present { value: row } => content_hash_eq_sha512(left: row, right: row)
+  match std.content_hash.sha512_hex_digest(hex: hex) {
+    Present { value: row } => std.content_hash.content_hash_eq_sha512(left: row, right: row)
     Absent => false
   }
 }
 
 test fn serialize_sha512_prefix_is_wire_form_not_discriminant() -> Bool {
   let hex = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-  match sha512_hex_digest(hex: hex) {
+  match std.content_hash.sha512_hex_digest(hex: hex) {
     Present { value: row } => {
-      let wire = serialize_content_hash(hash: as_content_hash_sha512(digest: row)) as String
+      let wire = std.content_hash.serialize_content_hash(hash: std.content_hash.as_content_hash_sha512(digest: row)) as String
       wire == concat("sha512:", hex)
     }
     Absent => false
@@ -121,13 +121,13 @@ test fn serialize_sha512_prefix_is_wire_form_not_discriminant() -> Bool {
 
 test fn content_hash_family_tags_sha512() -> Bool {
   let hex = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-  match sha512_hex_digest(hex: hex) {
+  match std.content_hash.sha512_hex_digest(hex: hex) {
     Present { value: row } =>
-      match content_hash_family(hash: as_content_hash_sha512(digest: row)) {
-        Sha512Family => true
-        Fnv1a64StructuralFamily => false
-        Sha256Family => false
-        Sha1Family => false
+      match std.content_hash.content_hash_family(hash: std.content_hash.as_content_hash_sha512(digest: row)) {
+        std.content_hash.Sha512Family => true
+        std.content_hash.Fnv1a64StructuralFamily => false
+        std.content_hash.Sha256Family => false
+        std.content_hash.Sha1Family => false
       }
     Absent => false
   }
@@ -135,14 +135,14 @@ test fn content_hash_family_tags_sha512() -> Bool {
 
 test fn sha256_family_eq_is_writable() -> Bool {
   let row = witness_sha256_row()
-  content_hash_eq_cryptographic(
+  std.content_hash.content_hash_eq_cryptographic(
     left: row,
     right: row,
   )
 }
 
 test fn sha256_digest_content_hash_refuses_invalid_hex() -> Bool {
-  match sha256_digest_content_hash(digest: sha256_digest(hex: "x")) {
+  match extdeps.crypto.hash.sha256_digest_content_hash(digest: extdeps.crypto.hash.sha256_digest(hex: "x")) {
     Present { value: _ } => false
     Absent => true
   }
@@ -150,19 +150,19 @@ test fn sha256_digest_content_hash_refuses_invalid_hex() -> Bool {
 
 test fn digest_to_content_hash_bridge_accepts_valid_sha256() -> Bool {
   let row = witness_sha256_row()
-  match sha256_digest_content_hash(
-    digest: sha256_digest(hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+  match extdeps.crypto.hash.sha256_digest_content_hash(
+    digest: extdeps.crypto.hash.sha256_digest(hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
   ) {
     Present { value: bridged } =>
       match bridged {
         Sha256Hash(d1) =>
-          match as_content_hash_cryptographic(digest: row) {
-            Sha256Hash(d2) => content_hash_eq_cryptographic(left: d1, right: d2)
-            std.content_hash.Fnv1a64(_) => false
+          match std.content_hash.as_content_hash_cryptographic(digest: row) {
+            Sha256Hash(d2) => std.content_hash.content_hash_eq_cryptographic(left: d1, right: d2)
+            Fnv1a64(_) => false
             Sha1Hash(_) => false
             Sha512Hash(_) => false
           }
-        std.content_hash.Fnv1a64(_) => false
+        Fnv1a64(_) => false
         Sha1Hash(_) => false
         Sha512Hash(_) => false
       }
@@ -171,69 +171,69 @@ test fn digest_to_content_hash_bridge_accepts_valid_sha256() -> Bool {
 }
 
 test fn pin_integrity_uses_structural_family() -> Bool {
-  match admit_pin_integrity(
+  match extdeps.pin.admit_pin_integrity(
     pin: tool_pin_fixture,
     observed_identity: tool_pin_fixture.expected_identity,
   ) {
-    PinIntegrityAdmitted { pin: _ } => true
+    extdeps.pin.PinIntegrityAdmitted { pin: _ } => true
     _ => false
   }
 }
 
 test fn oci_descriptor_accepts_sha256_digest() -> Bool {
-  match accept_descriptor(
+  match extdeps.container.oci.descriptor.accept_descriptor(
     d: extdeps.container.oci.descriptor.OciDescriptor {
       mediaType: extdeps.container.oci.media_types.media_type_oci_image_layer_v1_tar_gzip,
       digest: witness_oci_sha256_row(),
       size: 1,
     }
   ) {
-    DescriptorAccepted { value: _ } => true
+    extdeps.container.oci.descriptor.DescriptorAccepted { value: _ } => true
     _ => false
   }
 }
 
 test fn oci_content_digest_accepts_sha512_wire() -> Bool {
   let hex = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-  match parse_oci_content_digest_wire(raw: concat("sha512:", hex)) {
+  match extdeps.container.oci.digest.parse_oci_content_digest_wire(raw: concat("sha512:", hex)) {
     Present { value: d } =>
       match d {
-        OciSha512Digest(_) => true
-        OciSha256Digest(_) => false
-        OciOtherDigest(_) => false
+        extdeps.container.oci.digest.OciSha512Digest(_) => true
+        extdeps.container.oci.digest.OciSha256Digest(_) => false
+        extdeps.container.oci.digest.OciOtherDigest(_) => false
       }
     Absent => false
   }
 }
 
 test fn oci_content_digest_refuses_reserved_algorithm_in_other_arm() -> Bool {
-  match parse_oci_content_digest_wire(
+  match extdeps.container.oci.digest.parse_oci_content_digest_wire(
     raw: "sha256:88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986",
   ) {
     Present { value: d } =>
       match d {
-        OciSha256Digest(_) => true
-        OciSha512Digest(_) => false
-        OciOtherDigest(_) => false
+        extdeps.container.oci.digest.OciSha256Digest(_) => true
+        extdeps.container.oci.digest.OciSha512Digest(_) => false
+        extdeps.container.oci.digest.OciOtherDigest(_) => false
       }
     Absent => false
   }
 }
 
 test fn oci_content_digest_refuses_empty_algorithm_wire() -> Bool {
-  match parse_oci_content_digest_wire(raw: ":payload") {
+  match extdeps.container.oci.digest.parse_oci_content_digest_wire(raw: ":payload") {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn oci_content_digest_accepts_other_algorithm_wire() -> Bool {
-  match parse_oci_content_digest_wire(raw: "sha384:abc") {
+  match extdeps.container.oci.digest.parse_oci_content_digest_wire(raw: "sha384:abc") {
     Present { value: d } =>
       match d {
-        OciOtherDigest(body) => (body.algorithm as String) == "sha384"
-        OciSha256Digest(_) => false
-        OciSha512Digest(_) => false
+        extdeps.container.oci.digest.OciOtherDigest(body) => (body.algorithm as String) == "sha384"
+        extdeps.container.oci.digest.OciSha256Digest(_) => false
+        extdeps.container.oci.digest.OciSha512Digest(_) => false
       }
     Absent => false
   }
@@ -242,28 +242,28 @@ test fn oci_content_digest_accepts_other_algorithm_wire() -> Bool {
 data oci_other_digest_roundtrip_witness_note: String = "Operator review (2026-07-31) found that oci_content_digest_accepts_other_algorithm_wire above reads ONLY body.algorithm — it never reads body.encoded and never calls render_oci_content_digest_wire, so the entire encoded-carrier and render half of the OciOtherDigest path had no executing consumer. Two real defects hid in exactly that gap and shipped green: OciOtherDigestEncoded was declared as a NESTED refinement (NonEmptyStr where oci_other_digest_encoded), which is a carrier composition the emitter cannot lower, so the generated Rust carried panic!(\"unsupported cast from String to NonEmptyStr\") on the parse side and panic!(\"unsupported cast from NonEmptyStr to String\") on the render side. The first broke the build; the SECOND WAS MASKED BY THE FIRST and would have panicked at runtime whenever an accepted non-SHA OCI digest was rendered — a compiling build would still have paniced. The carrier is now a SINGLE refinement (String where oci_other_digest_encoded), which is not a weakening: oci_other_digest_encoded already establishes non-emptiness AND the OCI encoded grammar, so the NonEmptyStr layer was a second representation of a fact the predicate independently proves (DESIGN section 2 — one concept, one authority). This witness is the durable control for that whole path: wire String -> algorithm validation -> encoded validation -> refined carrier construction -> OciOtherDigestBody -> projection -> wire rendering. It reds on either panic reappearing and on any projection that fails to round-trip. dissolve-on: never — permanent regression alarm for the OciOtherDigest carrier and its emission."
 
 test fn oci_other_digest_wire_roundtrips() -> Bool {
-  match parse_oci_content_digest_wire(raw: "sha384:abc") {
-    Present { value: digest } => render_oci_content_digest_wire(d: digest) == "sha384:abc"
+  match extdeps.container.oci.digest.parse_oci_content_digest_wire(raw: "sha384:abc") {
+    Present { value: digest } => extdeps.container.oci.digest.render_oci_content_digest_wire(d: digest) == "sha384:abc"
     Absent => false
   }
 }
 
 test fn oci_content_digest_refuses_invalid_algorithm_charset_in_other_arm() -> Bool {
-  match parse_oci_content_digest_wire(raw: "!:payload") {
+  match extdeps.container.oci.digest.parse_oci_content_digest_wire(raw: "!:payload") {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn oci_content_digest_refuses_invalid_encoded_charset_in_other_arm() -> Bool {
-  match parse_oci_content_digest_wire(raw: "custom:!") {
+  match extdeps.container.oci.digest.parse_oci_content_digest_wire(raw: "custom:!") {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn oci_content_digest_refuses_empty_encoded_in_other_arm() -> Bool {
-  match parse_oci_content_digest_wire(raw: "custom:") {
+  match extdeps.container.oci.digest.parse_oci_content_digest_wire(raw: "custom:") {
     Present { value: _ } => false
     Absent => true
   }
@@ -271,58 +271,58 @@ test fn oci_content_digest_refuses_empty_encoded_in_other_arm() -> Bool {
 
 test fn serialize_sha256_prefix_is_wire_form_not_discriminant() -> Bool {
   let row = witness_sha256_row()
-  let wire = serialize_content_hash(hash: as_content_hash_cryptographic(digest: row))
+  let wire = std.content_hash.serialize_content_hash(hash: std.content_hash.as_content_hash_cryptographic(digest: row))
   (wire as String) == "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 }
 
 test fn content_hash_family_tags_cryptographic() -> Bool {
-  match content_hash_family(hash: as_content_hash_cryptographic(digest: witness_sha256_row())) {
-    Sha256Family => true
-    Fnv1a64StructuralFamily => false
-    Sha1Family => false
-    Sha512Family => false
+  match std.content_hash.content_hash_family(hash: std.content_hash.as_content_hash_cryptographic(digest: witness_sha256_row())) {
+    std.content_hash.Sha256Family => true
+    std.content_hash.Fnv1a64StructuralFamily => false
+    std.content_hash.Sha1Family => false
+    std.content_hash.Sha512Family => false
   }
 }
 
 test fn content_hash_family_tags_structural() -> Bool {
-  match content_hash_family(hash: structural_a) {
-    Fnv1a64StructuralFamily => true
-    Sha256Family => false
-    Sha1Family => false
-    Sha512Family => false
+  match std.content_hash.content_hash_family(hash: structural_a) {
+    std.content_hash.Fnv1a64StructuralFamily => true
+    std.content_hash.Sha256Family => false
+    std.content_hash.Sha1Family => false
+    std.content_hash.Sha512Family => false
   }
 }
 
 test fn compare_content_hash_tags_cross_family_incomparable() -> Bool {
-  match compare_content_hash(
+  match std.content_hash.compare_content_hash(
     left: structural_a,
-    right: as_content_hash_cryptographic(digest: witness_sha256_row()),
+    right: std.content_hash.as_content_hash_cryptographic(digest: witness_sha256_row()),
   ) {
-    ContentHashCrossFamilyIncomparable => true
-    ContentHashEqual => false
-    ContentHashDifferent => false
+    std.content_hash.ContentHashCrossFamilyIncomparable => true
+    std.content_hash.ContentHashEqual => false
+    std.content_hash.ContentHashDifferent => false
   }
 }
 
 test fn compare_content_hash_tags_same_family_different() -> Bool {
-  match compare_content_hash(left: structural_a, right: structural_b) {
-    ContentHashDifferent => true
-    ContentHashEqual => false
-    ContentHashCrossFamilyIncomparable => false
+  match std.content_hash.compare_content_hash(left: structural_a, right: structural_b) {
+    std.content_hash.ContentHashDifferent => true
+    std.content_hash.ContentHashEqual => false
+    std.content_hash.ContentHashCrossFamilyIncomparable => false
   }
 }
 
 test fn git_sha1_object_id_maps_to_sha1_family() -> Bool {
-  match git_sha1_object_id(hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904") {
+  match extdeps.git.object_store.git_sha1_object_id(hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904") {
     Present { value: oid } =>
-      match git_object_id_content_hash(oid: oid) {
-        Sha1Hash(d) => content_hash_eq_sha1(
+      match extdeps.git.object_store.git_object_id_content_hash(oid: oid) {
+        Sha1Hash(d) => std.content_hash.content_hash_eq_sha1(
           left: d,
           right: std.content_hash.Sha1Digest {
             hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" as std.content_hash.Sha1DigestHex,
           },
         )
-        std.content_hash.Fnv1a64(_) => false
+        Fnv1a64(_) => false
         Sha256Hash(_) => false
         Sha512Hash(_) => false
       }

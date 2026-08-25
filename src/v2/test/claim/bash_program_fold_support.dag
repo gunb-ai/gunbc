@@ -66,76 +66,76 @@ fn bash_program_fold_tag_with_redir(node: v2.std.node.Node) -> v2.workflow.bash_
 }
 
 fn bash_program_fold_tag_if_nodes(nodes: List<v2.std.node.Node>) -> List<v2.workflow.bash_emit.BashEmitSpecial> {
-  list_map(xs: nodes, f: fn(n) { bash_program_fold_tag_if(node: n) })
+  v2.std.algebra.list_map(xs: nodes, f: fn(n) { bash_program_fold_tag_if(node: n) })
 }
 
 fn bash_program_fold_test_not_executable_node(path: v2.std.node.Node) -> v2.std.node.Node {
-  bash_build_command_from_word_nodes(words: [
-    bash_build_word_lit(text: "["),
-    bash_build_word_lit(text: "!"),
-    bash_build_word_lit(text: "-x"),
+  v2.extdeps.languages.bash_build.bash_build_command_from_word_nodes(words: [
+    v2.extdeps.languages.bash_build.bash_build_word_lit(text: "["),
+    v2.extdeps.languages.bash_build.bash_build_word_lit(text: "!"),
+    v2.extdeps.languages.bash_build.bash_build_word_lit(text: "-x"),
     path,
-    bash_build_word_lit(text: "]")
+    v2.extdeps.languages.bash_build.bash_build_word_lit(text: "]")
   ])
 }
 
 fn bash_program_fixture_assign_root_node() -> v2.std.node.Node {
-  bash_build_assign(
+  v2.extdeps.languages.bash_build.bash_build_assign(
     name: "ROOT",
-    value: bash_build_word_cmdsubst(
-      body: bash_build_or_else(
-        left: bash_build_with_redir(
-          inner: bash_build_command_from_lits(lits: ["git", "rev-parse", "--show-toplevel"]),
+    value: v2.extdeps.languages.bash_build.bash_build_word_cmdsubst(
+      body: v2.extdeps.languages.bash_build.bash_build_or_else(
+        left: v2.extdeps.languages.bash_build.bash_build_with_redir(
+          inner: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["git", "rev-parse", "--show-toplevel"]),
           redir: ^bash_production_fold_redir_stderr_null
         ),
-        right: bash_build_command_from_lits(lits: ["pwd"])
+        right: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["pwd"])
       )
     )
   )
 }
 
 fn bash_program_fixture_build_bin_if_absent(bin_path: v2.std.node.Node, root: v2.std.node.Node, bin_name: String) -> v2.std.node.Node {
-  bash_build_if_from_stmts(
+  v2.extdeps.languages.bash_build.bash_build_if_from_stmts(
     cond: bash_program_fold_test_not_executable_node(path: bin_path),
     then_stmts: [
-      bash_build_or_else(
-        left: bash_build_subshell_from_stmts(stmts: [
-          bash_build_and_then(
-            left: bash_build_command_from_word_nodes(words: [
-              bash_build_word_lit(text: "cd"),
+      v2.extdeps.languages.bash_build.bash_build_or_else(
+        left: v2.extdeps.languages.bash_build.bash_build_subshell_from_stmts(stmts: [
+          v2.extdeps.languages.bash_build.bash_build_and_then(
+            left: v2.extdeps.languages.bash_build.bash_build_command_from_word_nodes(words: [
+              v2.extdeps.languages.bash_build.bash_build_word_lit(text: "cd"),
               root
             ]),
-            right: bash_build_command_from_lits(lits: [
+            right: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: [
               "cargo", "build", "-p", "v1-compiler", "--release", "--bin", bin_name
             ])
           )
         ]),
-        right: bash_build_exit(code: "1")
+        right: v2.extdeps.languages.bash_build.bash_build_exit(code: "1")
       )
     ]
   )
 }
 
 fn bash_program_fixture_ensure_bin_specials(var_name: String, bin_name: String) -> List<v2.workflow.bash_emit.BashEmitSpecial> {
-  let root = bash_build_word_var(name: "ROOT")
-  let bin = bash_build_word_var(name: var_name)
-  let bin_path = bash_build_word_concat_from_nodes(parts: [
+  let root = v2.extdeps.languages.bash_build.bash_build_word_var(name: "ROOT")
+  let bin = v2.extdeps.languages.bash_build.bash_build_word_var(name: var_name)
+  let bin_path = v2.extdeps.languages.bash_build.bash_build_word_concat_from_nodes(parts: [
     root,
-    bash_build_word_lit(text: concat("/target/release/", bin_name))
+    v2.extdeps.languages.bash_build.bash_build_word_lit(text: concat("/target/release/", bin_name))
   ])
   let verify_nodes = tools.build_step.emit_verifications(
     produces: [tools.build_step.BuildArtifact { path: bin_path, name: bin_name }]
   )
-  list_append(
+  v2.std.algebra.list_append(
     left: [
       bash_program_fold_tag_assign(node: bash_program_fixture_assign_root_node()),
       bash_program_fold_tag_assign(
-        node: bash_build_assign(
+        node: v2.extdeps.languages.bash_build.bash_build_assign(
           name: var_name,
-          value: bash_build_word_concat(
-            parts: bash_build_command_words_pair(
-              left: bash_build_command_words_single(word: root),
-              right: bash_build_word_lit(text: concat("/target/release/", bin_name))
+          value: v2.extdeps.languages.bash_build.bash_build_word_concat(
+            parts: v2.extdeps.languages.bash_build.bash_build_command_words_pair(
+              left: v2.extdeps.languages.bash_build.bash_build_command_words_single(word: root),
+              right: v2.extdeps.languages.bash_build.bash_build_word_lit(text: concat("/target/release/", bin_name))
             )
           )
         )
@@ -157,22 +157,22 @@ fn bash_program_fixture_witness_bin_specials(
   bin_name: String,
   args: List<String>
 ) -> List<v2.workflow.bash_emit.BashEmitSpecial> {
-  let root = bash_build_word_var(name: "ROOT")
-  let invoke = bash_build_word_var(name: var_name)
-  list_append(
+  let root = v2.extdeps.languages.bash_build.bash_build_word_var(name: "ROOT")
+  let invoke = v2.extdeps.languages.bash_build.bash_build_word_var(name: var_name)
+  v2.std.algebra.list_append(
     left: bash_program_fixture_ensure_bin_specials(var_name: var_name, bin_name: bin_name),
     right: [
       bash_program_fold_tag_command(
-        node: bash_build_command_from_word_nodes(words: [
-          bash_build_word_lit(text: "cd"),
+        node: v2.extdeps.languages.bash_build.bash_build_command_from_word_nodes(words: [
+          v2.extdeps.languages.bash_build.bash_build_word_lit(text: "cd"),
           root
         ])
       ),
       bash_program_fold_tag_command(
-        node: bash_build_command_from_word_nodes(
-          words: list_append(
+        node: v2.extdeps.languages.bash_build.bash_build_command_from_word_nodes(
+          words: v2.std.algebra.list_append(
             left: [invoke],
-            right: list_map(xs: args, f: fn(a) { bash_build_word_lit(text: a) })
+            right: v2.std.algebra.list_map(xs: args, f: fn(a) { v2.extdeps.languages.bash_build.bash_build_word_lit(text: a) })
           )
         )
       )
@@ -181,22 +181,22 @@ fn bash_program_fixture_witness_bin_specials(
 }
 
 fn bash_program_fixture_gunbc_claims_specials() -> List<v2.workflow.bash_emit.BashEmitSpecial> {
-  list_append(
+  v2.std.algebra.list_append(
     left: bash_program_fixture_ensure_bin_specials(var_name: "GUNBC", bin_name: "gunbc"),
     right: [
       bash_program_fold_tag_command(
-        node: bash_build_command_from_word_nodes(words: [
-          bash_build_word_var(name: "GUNBC"),
-          bash_build_word_lit(text: "run"),
-          bash_build_word_lit(text: "--source-root"),
-          bash_build_word_lit(text: "src/v2"),
-          bash_build_word_lit(text: "--source-root"),
-          bash_build_word_lit(text: "dag"),
-          bash_build_word_lit(text: "--entry"),
-          bash_build_word_lit(text: "src/v2/test/claim/bash_program_fold_test.dag"),
-          bash_build_word_lit(text: "--function"),
-          bash_build_word_lit(text: "bash_program_serialize_matches_golden_holds"),
-          bash_build_word_lit(text: "--claim-run")
+        node: v2.extdeps.languages.bash_build.bash_build_command_from_word_nodes(words: [
+          v2.extdeps.languages.bash_build.bash_build_word_var(name: "GUNBC"),
+          v2.extdeps.languages.bash_build.bash_build_word_lit(text: "run"),
+          v2.extdeps.languages.bash_build.bash_build_word_lit(text: "--source-root"),
+          v2.extdeps.languages.bash_build.bash_build_word_lit(text: "src/v2"),
+          v2.extdeps.languages.bash_build.bash_build_word_lit(text: "--source-root"),
+          v2.extdeps.languages.bash_build.bash_build_word_lit(text: "dag"),
+          v2.extdeps.languages.bash_build.bash_build_word_lit(text: "--entry"),
+          v2.extdeps.languages.bash_build.bash_build_word_lit(text: "src/v2/test/claim/bash_program_fold_test.dag"),
+          v2.extdeps.languages.bash_build.bash_build_word_lit(text: "--function"),
+          v2.extdeps.languages.bash_build.bash_build_word_lit(text: "bash_program_serialize_matches_golden_holds"),
+          v2.extdeps.languages.bash_build.bash_build_word_lit(text: "--claim-run")
         ])
       )
     ]

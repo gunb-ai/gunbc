@@ -1,7 +1,7 @@
 module v2.test.long.meta_exec_confinement_clean_tree
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data meta_exec_clean_tree_long_note: String = "Full-corpus meta_exec_confinement clean-tree receipt exceeds the per-PR 5s fast-lane eval budget once layer_import_facts_live unions reference_resolution_facts over witness_layer_roots. Fast-lane per-PR coverage: scanner/planted_leak_test.dag (fixture scan only) and roster_soundness_test.dag (the empty-roster construction wall). Excluded from discovery by test/claim/long/ dir grain."
 
@@ -11,26 +11,26 @@ data meta_exec_live_scan_non_degeneracy_note: String = "A live-scan receipt over
 
 data planted_stale_roster_entry: String = "dag/gunbc/_perturb_stale_meta_exec_roster.dag"
 
-test fn scanner_clean_tree_meta_exec_holds_on_rostered_corpus() -> v2.std.logic.Bool {
-  meta_exec_leak_count_live(scan_roots: meta_exec_consumer_scan_roots) == 0
+test fn scanner_clean_tree_meta_exec_holds_on_rostered_corpus() -> Bool {
+  v2.lens.meta_exec_confinement.meta_exec_leak_count_live(scan_roots: v2.lens.meta_exec_confinement.meta_exec_consumer_scan_roots) == 0
 }
 
-test fn meta_exec_live_scan_non_degenerate_holds() -> v2.std.logic.Bool {
-  is_empty(
-    xs: layer_import_facts_live(std_roots: meta_exec_consumer_scan_roots, extdeps_roots: [])
+test fn meta_exec_live_scan_non_degenerate_holds() -> Bool {
+  v2.std.algebra.is_empty(
+    xs: v2.std.layer.layer_import_facts_live(std_roots: v2.lens.meta_exec_confinement.meta_exec_consumer_scan_roots, extdeps_roots: [])
   ) == false
 }
 
-test fn meta_exec_roster_soundness_live_holds() -> v2.std.logic.Bool {
-  meta_exec_roster_stale_count_live(scan_roots: meta_exec_consumer_scan_roots) == 0
+test fn meta_exec_roster_soundness_live_holds() -> Bool {
+  v2.lens.meta_exec_confinement.meta_exec_roster_stale_count_live(scan_roots: v2.lens.meta_exec_confinement.meta_exec_consumer_scan_roots) == 0
 }
 
-test fn meta_exec_roster_soundness_live_planted_stale_red_holds() -> v2.std.logic.Bool {
-  meta_exec_roster_sound(
-    roster: list_append(
-      left: meta_exec_confinement_exception_paths(),
+test fn meta_exec_roster_soundness_live_planted_stale_red_holds() -> Bool {
+  v2.lens.meta_exec_confinement.meta_exec_roster_sound(
+    roster: v2.std.algebra.list_append(
+      left: v2.lens.meta_exec_confinement.meta_exec_confinement_exception_paths(),
       right: [planted_stale_roster_entry]
     ),
-    live_leak_paths: meta_exec_live_leak_candidate_paths(scan_roots: meta_exec_consumer_scan_roots)
+    live_leak_paths: v2.lens.meta_exec_confinement.meta_exec_live_leak_candidate_paths(scan_roots: v2.lens.meta_exec_confinement.meta_exec_consumer_scan_roots)
   ) == false
 }

@@ -27,7 +27,7 @@ type GenerationAxis
 // ArtifactMaterialized { digest: symbol_identity_digest(sym: ^anything) } typechecked
 // and required no build, no file and no observation. The one axis whose entire
 // purpose is to be filled from built bytes had no construction link to bytes. That is
-// the donor's authored compile_skipped v2.std.logic.Bool wearing a different field name: an
+// the donor's authored compile_skipped Bool wearing a different field name: an
 // asserted fingerprint standing where an observation was owed. Because admission
 // JOINS on this axis, a forged digest does not merely mislabel one generation — it
 // makes every downstream stale-axis check agree when it should refuse.
@@ -130,13 +130,13 @@ type RosterOrderVerdict
 type RosterScanAcc {
   verdict: RosterOrderVerdict
   previous: String
-  started: v2.std.logic.Bool
+  started: Bool
 }
 
 fn roster_scan_step(acc: RosterScanAcc, member: SourceClosureMember) -> RosterScanAcc {
   match acc.verdict {
     RosterCanonicallyOrdered =>
-      if string_is_empty(s: member.identity) {
+      if v2.std.text.string_is_empty(s: member.identity) {
         RosterScanAcc {
           verdict: RosterMemberIdentityEmpty,
           previous: member.identity,
@@ -189,7 +189,7 @@ fn roster_scan_step(acc: RosterScanAcc, member: SourceClosureMember) -> RosterSc
 }
 
 fn roster_order_verdict(roster: SourceClosureRoster) -> RosterOrderVerdict {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: roster.members,
     empty: RosterScanAcc {
       verdict: RosterCanonicallyOrdered,
@@ -201,11 +201,11 @@ fn roster_order_verdict(roster: SourceClosureRoster) -> RosterOrderVerdict {
 }
 
 fn member_identity_digest(identity: String) -> v2.std.node.Hash {
-  symbol_identity_digest(sym: identity)
+  v2.std.node.symbol_identity_digest(sym: identity)
 }
 
 fn source_closure_member_digest(member: SourceClosureMember) -> v2.std.node.Hash {
-  combine_hash(
+  v2.std.node.combine_hash(
     a: member_identity_digest(identity: member.identity),
     b: member.content
   )
@@ -214,11 +214,11 @@ fn source_closure_member_digest(member: SourceClosureMember) -> v2.std.node.Hash
 // Only reachable for a roster whose order verdict is canonical; the caller-facing
 // surface is source_closure_axis_digest, which refuses first.
 fn source_closure_roster_fold(roster: SourceClosureRoster) -> v2.std.node.Hash {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: roster.members,
-    empty: symbol_identity_digest(sym: ^source_closure_roster_empty),
+    empty: v2.std.node.symbol_identity_digest(sym: ^source_closure_roster_empty),
     cons: fn(acc, member) {
-      combine_hash(a: acc, b: source_closure_member_digest(member: member))
+      v2.std.node.combine_hash(a: acc, b: source_closure_member_digest(member: member))
     }
   )
 }
@@ -245,7 +245,7 @@ fn source_closure_axis_digest(roster: SourceClosureRoster) -> SourceClosureAxisO
 // observe either artifact" as "the artifacts agree" — the empty-observation narrow
 // DESIGN names beside the absorbing fallback. Admission refuses an unmaterialized
 // axis separately and by name.
-fn artifact_identity_agrees(left: GeneratedArtifactIdentity, right: GeneratedArtifactIdentity) -> v2.std.logic.Bool {
+fn artifact_identity_agrees(left: GeneratedArtifactIdentity, right: GeneratedArtifactIdentity) -> Bool {
   match left {
     ArtifactMaterialized { digest: l } =>
       match right {
@@ -265,7 +265,7 @@ fn generation_axis_agrees(
   left: GenerationIdentity,
   right: GenerationIdentity,
   axis: GenerationAxis
-) -> v2.std.logic.Bool {
+) -> Bool {
   match axis {
     ProducerCompilerAxis => left.producer_compiler == right.producer_compiler
     SourceClosureAxis => left.source_closure == right.source_closure
@@ -298,14 +298,14 @@ fn generation_identity_mismatched_axes(
   left: GenerationIdentity,
   right: GenerationIdentity
 ) -> List<GenerationAxis> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: generation_axes,
-    empty: freemonoid_empty(),
+    empty: v2.std.algebra.freemonoid_empty(),
     cons: fn(acc, axis) {
       if generation_axis_agrees(left: left, right: right, axis: axis) {
         acc
       } else {
-        list_snoc_item(xs: acc, item: axis)
+        v2.std.algebra.list_snoc_item(xs: acc, item: axis)
       }
     }
   )
@@ -325,16 +325,16 @@ fn generation_axis_symbol(axis: GenerationAxis) -> v2.std.node.Symbol {
 fn generation_axis_stale_diagnostic(axis: GenerationAxis) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: generation_axis_symbol(axis: axis),
-    at: port_locus(port: ^generation_identity_axis_port),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.port_locus(port: ^generation_identity_axis_port),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn generation_identity_agrees(
   left: GenerationIdentity,
   right: GenerationIdentity
-) -> v2.std.logic.Bool {
-  for_all(
+) -> Bool {
+  v2.std.algebra.for_all(
     xs: generation_axes,
     predicate: fn(axis) {
       generation_axis_agrees(left: left, right: right, axis: axis)

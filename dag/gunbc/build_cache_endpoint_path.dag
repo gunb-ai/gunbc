@@ -1,40 +1,41 @@
 module gunbc.build_cache_endpoint_path
 
-data build_cache_endpoint_path_scope_disposition: Disposition = SingleAuthority
+
+data build_cache_endpoint_path_scope_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 data endpoint_path_state_authority_note: String = "WHY THE ENDPOINT PATH NEEDS ITS OWN STATE MACHINE, AND WHY EndpointAbsent WAS NOT ENOUGH. gunbc.build_cache_instance's EndpointAbsent answers one question — is anybody listening — and that is the right question for PLACEMENT, because an endpoint with no listener has no owner whose cgroup could be classified. It is the wrong question for ACTUATION, and srv4 is the specimen that proves it. Observed 2026-08-01: no listener, no process, no unit, a server.sock file present on disk, and an error log whose entire contents are 'Address in use (os error 98)'. A server born inside a runner cgroup died with that cgroup without unlinking its socket, so every later server fails to bind and the whole cache tree holds one file. srv4 has been uncached since roughly 2026-07-26 for this reason alone.\n\nUnder EndpointAbsent, srv4 and a host that simply has no cache yet are the SAME state. They are not: one needs a unit started, the other needs a file removed FIRST and then a unit started, and starting the unit without removing the file reproduces error 98 forever. That is a state-space conflation of exactly the kind DESIGN's failure-mode list names, and its cost is measured rather than hypothetical — a host silently uncached for a week.\n\nSO THE PATH IS A SEPARATE AXIS FROM THE OWNER. EndpointPathState answers 'what is at this path', BuildCacheEndpointObservation answers 'who owns this endpoint'. They are not redundant readings of one fact: EndpointStaleSocket and EndpointPathAbsent both project to EndpointAbsent on the ownership axis, which is precisely the distinction the ownership axis is not built to carry."
 
 type EndpointPathState
   = EndpointPathAbsent
   | EndpointListening { owner: gunbc.build_cache_instance.ProcessIdentity }
-  | EndpointStaleSocket { detail: NonEmptyStr }
-  | EndpointPathConflict { detail: NonEmptyStr }
-  | EndpointPathObservationUnavailable { reason: EndpointObservationUnavailableReason }
+  | EndpointStaleSocket { detail: std.types.NonEmptyStr }
+  | EndpointPathConflict { detail: std.types.NonEmptyStr }
+  | EndpointPathObservationUnavailable { reason: gunbc.build_cache_instance.EndpointObservationUnavailableReason }
 
 // EndpointPathConflict IS NOT A STALE SOCKET AND MUST NEVER BE UNLINKED. It is the arm for a path that exists and is not a unix socket at all — a regular file, a directory, a symlink into somewhere else, a mount point. Nothing in this lane put it there, so removing it is destroying a stranger's data to make our own bind succeed, which is the widest possible failure arm. It refuses and stays refused; an operator decides what that path is. Keeping it distinct from EndpointStaleSocket is the entire reason the unlink admission can be safe, because 'the path exists but nobody is listening' is true of both and is the predicate an unconditional rm would be written against.
 type ObservationCurrency
-  = ObservationCurrent { observed_at_boot: NonEmptyStr }
-  | ObservationStale { detail: NonEmptyStr }
-  | ObservationCurrencyUnknown { detail: NonEmptyStr }
+  = ObservationCurrent { observed_at_boot: std.types.NonEmptyStr }
+  | ObservationStale { detail: std.types.NonEmptyStr }
+  | ObservationCurrencyUnknown { detail: std.types.NonEmptyStr }
 
 // AN UNLINK DECIDED FROM A STALE READ IS A RACE, NOT A DECISION. The four facts that make a socket stale are all observations, and every one of them can be falsified between the read and the write: a server can bind in that window, and the unlink then severs a LIVE server's socket, leaving a running process no client can reach and a cache that appears healthy from the inside. So currency is an input to the admission rather than an assumption of it, and it carries the boot id it was read under, because a reboot invalidates every pid, inode and socket fact at once. ObservationCurrencyUnknown refuses like ObservationStale does — not knowing whether a read is current is not weaker evidence than knowing it is old, it is the same evidence, and an arm that let Unknown through would be the absorbing fallback DESIGN section 5 forbids.
 type StaleSocketUnlinkRefusal
   = PathAlreadyAbsent
-  | PathIsNotASocket { detail: NonEmptyStr }
+  | PathIsNotASocket { detail: std.types.NonEmptyStr }
   | ListenerPresent { owner: gunbc.build_cache_instance.ProcessIdentity }
-  | PathStateUnavailable { detail: NonEmptyStr }
-  | ObservationNotCurrent { detail: NonEmptyStr }
-  | EndpointHasNoSocketPath { detail: NonEmptyStr }
+  | PathStateUnavailable { detail: std.types.NonEmptyStr }
+  | ObservationNotCurrent { detail: std.types.NonEmptyStr }
+  | EndpointHasNoSocketPath { detail: std.types.NonEmptyStr }
 
 // A TCP ENDPOINT CANNOT HAVE A STALE SOCKET, AND THAT IS A REFUSAL RATHER THAN AN UNREACHABLE CASE. SccacheServerEndpoint is a two-arm coproduct and only the unix-socket arm names a filesystem path, so an unlink admission over a TCP instance has nothing to unlink. The tempting shapes are both wrong: silently succeeding treats 'there is no file' as 'the file is gone', which is the PathAlreadyAbsent answer to a question that was never askable; and treating the arm as unreachable puts a partial function at an actuation boundary. It refuses positively, so an observer that produced EndpointStaleSocket for a TCP instance — which it should never do — is reported rather than absorbed. Note this refuses at ADMISSION rather than at command construction: deciding it later would mean an Admitted value existed for which no command can be built, and the whole point of the admitted arm is that it licenses the action.
 type StaleSocketUnlinkAdmission
   = StaleSocketUnlinkAdmitted {
-      instance: BuildCacheInstance
-      stale_detail: NonEmptyStr
-      observed_at_boot: NonEmptyStr
+      instance: gunbc.build_cache_instance.BuildCacheInstance
+      stale_detail: std.types.NonEmptyStr
+      observed_at_boot: std.types.NonEmptyStr
     }
   | StaleSocketUnlinkRefused {
-      instance: BuildCacheInstance
+      instance: gunbc.build_cache_instance.BuildCacheInstance
       reason: StaleSocketUnlinkRefusal
     }
 
@@ -44,7 +45,7 @@ data unlink_admission_construction_note: String = "THE ADMISSION IS DERIVED FROM
 //
 // The chain is the same non-mutating /proc walk the endpoint-owner observation already uses, and it deliberately invokes no sccache: extdeps.cache.sccache records by measurement that --show-stats does NOT start a server and answers plausibly with no server in existence, so it cannot establish absence, and a real compile WOULD start one, which is a mutation. Neither is admissible evidence here.
 fn admit_stale_socket_unlink(
-  instance: BuildCacheInstance,
+  instance: gunbc.build_cache_instance.BuildCacheInstance,
   observed: EndpointPathState,
   currency: ObservationCurrency,
 ) -> StaleSocketUnlinkAdmission {
@@ -58,20 +59,20 @@ fn admit_stale_socket_unlink(
     EndpointPathObservationUnavailable { reason: r } =>
       StaleSocketUnlinkRefused {
         instance: instance,
-        reason: PathStateUnavailable { detail: unavailable_reason_detail(reason: r) },
+        reason: PathStateUnavailable { detail: gunbc.build_cache_instance.unavailable_reason_detail(reason: r) },
       }
     EndpointStaleSocket { detail: d } =>
       match currency {
         ObservationCurrent { observed_at_boot: b } =>
           match instance.endpoint {
-            SccacheServerTcpPort { port: _ } =>
+            extdeps.cache.sccache.SccacheServerTcpPort { port: _ } =>
               StaleSocketUnlinkRefused {
                 instance: instance,
                 reason: EndpointHasNoSocketPath {
-                  detail: "this instance's endpoint is a TCP port, which names no filesystem path, so a stale unix socket is not a state it can be in" as NonEmptyStr,
+                  detail: "this instance's endpoint is a TCP port, which names no filesystem path, so a stale unix socket is not a state it can be in" as std.types.NonEmptyStr,
                 },
               }
-            SccacheServerUnixSocket { path: _ } =>
+            extdeps.cache.sccache.SccacheServerUnixSocket { path: _ } =>
               StaleSocketUnlinkAdmitted {
                 instance: instance,
                 stale_detail: d,
@@ -93,16 +94,16 @@ fn admit_stale_socket_unlink(
 }
 
 type StaleSocketUnlinkOutcome
-  = StaleSocketUnlinkCommandReady { command: ArgvCommand }
-  | StaleSocketUnlinkCommandRefused { reason: NonEmptyStr }
+  = StaleSocketUnlinkCommandReady { command: extdeps.exec.command.ArgvCommand }
+  | StaleSocketUnlinkCommandRefused { reason: std.types.NonEmptyStr }
 
-fn unlink_refusal_detail(reason: StaleSocketUnlinkRefusal) -> NonEmptyStr {
+fn unlink_refusal_detail(reason: StaleSocketUnlinkRefusal) -> std.types.NonEmptyStr {
   match reason {
     PathAlreadyAbsent =>
-      "endpoint path is already absent; there is nothing to unlink and a unit start needs no precondition here" as NonEmptyStr
+      "endpoint path is already absent; there is nothing to unlink and a unit start needs no precondition here" as std.types.NonEmptyStr
     PathIsNotASocket { detail: d } => d
     ListenerPresent { owner: _ } =>
-      "a listener holds this endpoint; unlinking would sever a live server's socket and leave it unreachable while it keeps running" as NonEmptyStr
+      "a listener holds this endpoint; unlinking would sever a live server's socket and leave it unreachable while it keeps running" as std.types.NonEmptyStr
     PathStateUnavailable { detail: d } => d
     ObservationNotCurrent { detail: d } => d
     EndpointHasNoSocketPath { detail: d } => d
@@ -115,13 +116,13 @@ fn stale_socket_unlink_command(admission: StaleSocketUnlinkAdmission) -> StaleSo
       StaleSocketUnlinkCommandRefused { reason: unlink_refusal_detail(reason: r) }
     StaleSocketUnlinkAdmitted { instance: i, stale_detail: _, observed_at_boot: _ } =>
       match i.endpoint {
-        SccacheServerUnixSocket { path: p } =>
+        extdeps.cache.sccache.SccacheServerUnixSocket { path: p } =>
           StaleSocketUnlinkCommandReady {
             command: extdeps.tools.gnu_coreutils.rm_force_command(path: p as String),
           }
-        SccacheServerTcpPort { port: _ } =>
+        extdeps.cache.sccache.SccacheServerTcpPort { port: _ } =>
           StaleSocketUnlinkCommandRefused {
-            reason: "admitted unlink over a TCP endpoint, which names no path; admit_stale_socket_unlink refuses this at admission, so reaching it here means an admitted value was hand-written rather than derived" as NonEmptyStr,
+            reason: "admitted unlink over a TCP endpoint, which names no path; admit_stale_socket_unlink refuses this at admission, so reaching it here means an admitted value was hand-written rather than derived" as std.types.NonEmptyStr,
           }
       }
   }
@@ -142,8 +143,8 @@ fn unconditional_unlink_sketch(observed: EndpointPathState) -> Bool {
 data unconditional_unlink_sketch_note: String = "THE RED CONTROL, KEPT LIVE RATHER THAN DESCRIBED. This is ExecStartPre=rm -f written as a predicate: it answers 'unlink?' with true in all five path states, because that is precisely what the shell line does. It exists so the witnesses can assert the DIFFERENCE between it and admit_stale_socket_unlink on the two states where the difference is destructive — EndpointListening and EndpointPathConflict — rather than asserting the admission's behaviour alone. An assertion that the admission refuses proves nothing about whether the refusal was needed; the contrast is what makes the wall discriminating. It is never called by production code and it is not a scaffold to dissolve: per DESIGN section 4b, a class's discriminating control stays enrolled as the executing evidence that the higher rung stays real."
 
 type StaleSocketUnlinkOutcomeFold<R> {
-  ready: fn(ArgvCommand) -> R
-  refused: fn(NonEmptyStr) -> R
+  ready: fn(extdeps.exec.command.ArgvCommand) -> R
+  refused: fn(std.types.NonEmptyStr) -> R
 }
 
 fn stale_socket_unlink_outcome_fold<R>(

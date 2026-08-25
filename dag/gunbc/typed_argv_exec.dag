@@ -57,23 +57,23 @@ fn typed_argv_shell_safe_refusal_token(token: String) -> String? {
 
 fn typed_argv_shell_safe_refusal_argv(argv: List<String>) -> String? {
   match v2.std.algebra.list_head(xs: argv) {
-    HeadFound { value: token } =>
+    v2.std.algebra.HeadFound { value: token } =>
       match typed_argv_shell_safe_refusal_token(token: token) {
         Present { value: why } => Present { value: why }
         Absent =>
           match v2.std.algebra.list_tail(xs: argv) {
-            TailFound { tail: rest } => typed_argv_shell_safe_refusal_argv(argv: rest)
-            TailAbsent => none
+            v2.std.algebra.TailFound { tail: rest } => typed_argv_shell_safe_refusal_argv(argv: rest)
+            v2.std.algebra.TailAbsent => none
           }
       }
-    HeadAbsent => none
+    v2.std.algebra.HeadAbsent => none
   }
 }
 
 fn typed_argv_exec_over_ssh(host: std.types.NonEmptyStr, argv: List<String>) -> TypedArgvExecOutcome {
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => TypedArgvExecRefused { reason: why }
-    Absent => TypedArgvExecConverged { result: ssh_session_exec_argv(host: host, argv: argv) }
+    Absent => TypedArgvExecConverged { result: extdeps.ssh.session.ssh_session_exec_argv(host: host, argv: argv) }
   }
 }
 
@@ -84,10 +84,10 @@ fn typed_argv_probe_over_ssh(host: std.types.NonEmptyStr, argv: List<String>) ->
       let result = ssh.Session.ExecArgv(
         host: host,
         argv: argv,
-        expect: OutcomeIsData,
+        expect: gunbc.output_policy.OutcomeIsData,
       )
       TypedArgvExecConverged {
-        result: ssh_session_exec_result_from_service(
+        result: extdeps.ssh.session.ssh_session_exec_result_from_service(
           exit_code: result.exit_code,
           success: result.success,
           stdout: result.stdout,
@@ -115,7 +115,7 @@ fn typed_argv_exec_over_fleet_ssh(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   argv: List<String>,
 ) -> TypedArgvExecOutcome {
-  match portable_remote_words(raws: argv) {
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: argv) {
     Absent => TypedArgvExecRefused {
       reason: concat(
         "remote words are not portable under the far-side shell re-parse, so the leg was NOT attempted for ",
@@ -123,8 +123,8 @@ fn typed_argv_exec_over_fleet_ssh(
       ),
     }
     Present { value: words } => TypedArgvExecConverged {
-      result: ssh_session_exec_portable_words(
-        client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
+      result: extdeps.ssh.session.ssh_session_exec_portable_words(
+        client_args: gunbc.fleet_known_hosts_anchor.shape_fleet_ssh_exec(context: context, target: target, words: words),
       ),
     }
   }

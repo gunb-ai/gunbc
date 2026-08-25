@@ -4,15 +4,15 @@ module extdeps.gpu.nvidia
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5090/"
   }
 }
 
 data rtx_5090_interconnect: extdeps.storage.types.PcieLink = extdeps.storage.types.PcieLink { generation: Gen5, lane_count: 16 }
 
-data rtx_5090_sm_shared_memory: std.measure.ByteSize = byte_size(count: 102400)
-data rtx_5090_sm_register_file: std.measure.ByteSize = byte_size(count: 262144)
+data rtx_5090_sm_shared_memory: std.measure.ByteSize = std.measure.byte_size(count: 102400)
+data rtx_5090_sm_register_file: std.measure.ByteSize = std.measure.byte_size(count: 262144)
 
 data rtx_5090_sm_cache_geometry: extdeps.gpu.types.GpuSmCacheGeometry = extdeps.gpu.types.GpuSmCacheGeometry {
   shared_memory_per_sm: rtx_5090_sm_shared_memory,
@@ -22,34 +22,34 @@ data rtx_5090_sm_cache_geometry: extdeps.gpu.types.GpuSmCacheGeometry = extdeps.
 data rtx_5090_sm_cache_citations: List<extdeps.cpu.types.CacheGeometryCitation> = [
   {
     field: "shared_memory_per_sm"
-    authority: cuda_compute_capabilities_authority
+    authority: extdeps.gpu.types.cuda_compute_capabilities_authority
   },
   {
     field: "register_file_per_sm"
-    authority: cuda_compute_capabilities_authority
+    authority: extdeps.gpu.types.cuda_compute_capabilities_authority
   },
 ]
 
 data nvidia_rtx_5090_catalog: extdeps.gpu.types.GpuModelCatalogRow = extdeps.gpu.types.GpuModelCatalogRow {
-  vendor: nvidia,
+  vendor: extdeps.vendor.nvidia.nvidia,
   model: "GeForce RTX 5090",
   microarchitecture: "Blackwell",
-  execution_lane_count: hardware_thread_count(21760),
+  execution_lane_count: std.measure.hardware_thread_count(21760),
   memory: extdeps.memory.types.MemoryFacts {
-    capacity: gibibyte_to_byte_size(g: gibibyte(count: 32)),
-    memory_kind: Dram,
+    capacity: std.measure.gibibyte_to_byte_size(g: std.measure.gibibyte(count: 32)),
+    memory_kind: extdeps.memory.types.Dram,
   },
-  memory_bandwidth: bandwidth(count: 1792000000000),
-  boost_clock: hertz(count: 2410000000),
-  tdp_watts: watt(count: 575),
+  memory_bandwidth: std.measure.bandwidth(count: 1792000000000),
+  boost_clock: std.measure.hertz(count: 2410000000),
+  tdp_watts: std.measure.watt(count: 575),
   compute_capability: Present {
     value: extdeps.gpu.types.GpuComputeCapability {
-      vendor: nvidia,
+      vendor: extdeps.vendor.nvidia.nvidia,
       major: 12,
       minor: 0,
     }
   },
-  supported_runtimes: [Cuda],
+  supported_runtimes: [extdeps.gpu.types.Cuda],
   interconnect: Present { value: rtx_5090_interconnect },
   sm_cache: Present { value: rtx_5090_sm_cache_geometry },
   sm_cache_citations: rtx_5090_sm_cache_citations,

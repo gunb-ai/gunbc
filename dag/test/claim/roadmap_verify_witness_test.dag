@@ -3,23 +3,23 @@ module test.claim.roadmap_verify_witness_test
 
 // THE DEFECT, STATED AS A CLAIM. verify_node called belt_exec — a local WitnessBin.Run — and never read instance.provision_transport, so selecting srv1_lab changed every path the command was built from and did not change which machine ran it. Verification of an srv1 instance executed on srv2.\n\nThis asserts the routing fact directly: the host a verification executes on is derived from the TRANSPORT, and srv1_lab's transport is ssh to srv1 while srv2_lab's is local. A verifier that ignored the transport would answer the same host for both, which is exactly what the old one did — so this claim goes red against the previous behaviour rather than merely describing the new one.\n\nThe two instances are chosen because they straddle the split: one remote, one local, both actuating. A claim written against only the local instance would pass under the broken code, since a locally-provisioned instance's correct host and the controller happen to coincide — which is precisely why the bug survived on srv2 and surfaced on srv1.
 test fn verification_host_follows_the_transport_not_the_controller() -> Bool {
-  let srv1_lab = srv1_lab_dashboard_instance()
-  let srv2_lab = srv2_lab_dashboard_instance()
-  let srv1_host = verification_execution_host(instance: srv1_lab) as String
-  let srv2_host = verification_execution_host(instance: srv2_lab) as String
+  let srv1_lab = gunbc.roadmap_dashboard_instance.srv1_lab_dashboard_instance()
+  let srv2_lab = gunbc.roadmap_dashboard_instance.srv2_lab_dashboard_instance()
+  let srv1_host = gunbc.roadmap_verify.verification_execution_host(instance: srv1_lab) as String
+  let srv2_host = gunbc.roadmap_verify.verification_execution_host(instance: srv2_lab) as String
   srv1_host == "srv1"
     && srv2_host == "srv2"
     && !(srv1_host == srv2_host)
 }
 
 test fn the_two_lab_instances_really_do_straddle_the_transport_split() -> Bool {
-  let remote = match srv1_lab_dashboard_instance().provision_transport {
-    DashboardSshProvision { host } => (host as String) == "srv1"
-    DashboardLocalProvision => false
+  let remote = match gunbc.roadmap_dashboard_instance.srv1_lab_dashboard_instance().provision_transport {
+    gunbc.roadmap_dashboard_instance.DashboardSshProvision { host } => (host as String) == "srv1"
+    gunbc.roadmap_dashboard_instance.DashboardLocalProvision => false
   }
-  let local = match srv2_lab_dashboard_instance().provision_transport {
-    DashboardSshProvision { host: _ } => false
-    DashboardLocalProvision => true
+  let local = match gunbc.roadmap_dashboard_instance.srv2_lab_dashboard_instance().provision_transport {
+    gunbc.roadmap_dashboard_instance.DashboardSshProvision { host: _ } => false
+    gunbc.roadmap_dashboard_instance.DashboardLocalProvision => true
   }
   remote && local
 }
@@ -31,74 +31,74 @@ fn empty_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContrac
 }
 
 fn one_validation_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
+  gunbc.roadmap_execution_contract.gunbc_claim_execution_contract(
     entry: "dag/test/claim/roadmap_verify_witness_test.dag" as std.types.FilePath,
     function: "roadmap_verify_keystone_holds" as std.types.NonEmptyStr,
   )
 }
 
 test fn empty_contract_closes_nothing_and_is_not_bound() -> Bool {
-  let closes_nothing = match contract_closure(contract: empty_contract()) {
-    ContractClosesNothing => true
+  let closes_nothing = match gunbc.roadmap_execution_contract.contract_closure(contract: empty_contract()) {
+    gunbc.roadmap_execution_contract.ContractClosesNothing => true
     _ => false
   }
-  let unspecified_is_distinct = match contract_closure(
-    contract: ExecutionContractUnspecified,
+  let unspecified_is_distinct = match gunbc.roadmap_execution_contract.contract_closure(
+    contract: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
   ) {
-    ContractDeclaresNoValidation => true
+    gunbc.roadmap_execution_contract.ContractDeclaresNoValidation => true
     _ => false
   }
   closes_nothing
     && unspecified_is_distinct
-    && !contract_has_closing_validation(contract: empty_contract())
-    && !contract_has_closing_validation(contract: ExecutionContractUnspecified)
+    && !gunbc.roadmap_execution_contract.contract_has_closing_validation(contract: empty_contract())
+    && !gunbc.roadmap_execution_contract.contract_has_closing_validation(contract: gunbc.roadmap_execution_contract.ExecutionContractUnspecified)
 }
 
 test fn a_real_contract_is_bound_and_carries_its_validations() -> Bool {
-  match contract_closure(contract: one_validation_contract()) {
-    ContractCloses { validations } =>
+  match gunbc.roadmap_execution_contract.contract_closure(contract: one_validation_contract()) {
+    gunbc.roadmap_execution_contract.ContractCloses { validations } =>
       count(validations) == 1
-        && contract_has_closing_validation(contract: one_validation_contract())
+        && gunbc.roadmap_execution_contract.contract_has_closing_validation(contract: one_validation_contract())
     _ => false
   }
 }
 
 // Both wet entries returned VerificationOutcome where a func must return ProcessExit, so the process boundary had no exit status to report and every outcome looked alike to a caller. These claims pin the mapping, and the arm that matters most is the refusal: a check that could not run exits FAILURE, because exiting success on an unanswered question is the absorbing fallback in its purest form.
 test fn passing_verification_exits_success() -> Bool {
-  match verification_process_exit(
+  match gunbc.roadmap_verify.verification_process_exit(
     outcome: gunbc.roadmap_verify.VerificationPassed { node_id: "n", validations_run: 1 },
   ) {
-    ExitSuccess => true
-    ExitFailure { code: _, reason: _ } => false
+    std.process.ExitSuccess => true
+    std.process.ExitFailure { code: _, reason: _ } => false
   }
 }
 
 test fn refusal_and_failure_and_unbound_all_exit_failure() -> Bool {
-  let refused = match verification_process_exit(
+  let refused = match gunbc.roadmap_verify.verification_process_exit(
     outcome: gunbc.roadmap_verify.VerificationRefused {
       node_id: "n",
       label: "gunbc-claim" as std.types.NonEmptyStr,
       reason: "transport refused",
     },
   ) {
-    ExitFailure { code: _, reason: _ } => true
-    ExitSuccess => false
+    std.process.ExitFailure { code: _, reason: _ } => true
+    std.process.ExitSuccess => false
   }
-  let failed = match verification_process_exit(
+  let failed = match gunbc.roadmap_verify.verification_process_exit(
     outcome: gunbc.roadmap_verify.VerificationFailed {
       node_id: "n",
       label: "gunbc-claim" as std.types.NonEmptyStr,
       detail: "exited 1",
     },
   ) {
-    ExitFailure { code: _, reason: _ } => true
-    ExitSuccess => false
+    std.process.ExitFailure { code: _, reason: _ } => true
+    std.process.ExitSuccess => false
   }
-  let unbound = match verification_process_exit(
+  let unbound = match gunbc.roadmap_verify.verification_process_exit(
     outcome: gunbc.roadmap_verify.VerificationUnbound { node_id: "n" },
   ) {
-    ExitFailure { code: _, reason: _ } => true
-    ExitSuccess => false
+    std.process.ExitFailure { code: _, reason: _ } => true
+    std.process.ExitSuccess => false
   }
   refused && failed && unbound
 }
@@ -120,7 +120,7 @@ fn sample_receipt() -> gunbc.roadmap_verify.LegacySingleValidationVerificationRe
 }
 
 test fn receipt_projection_carries_host_worktree_revision_and_command() -> Bool {
-  let j = legacy_single_validation_verification_receipt_json(receipt: sample_receipt())
+  let j = gunbc.roadmap_verify.legacy_single_validation_verification_receipt_json(receipt: sample_receipt())
   string_contains(s: j, pattern: "srv1")
     && string_contains(s: j, pattern: "/srv/attempts/shell-typed-invocation-aa1b2c3")
     && string_contains(s: j, pattern: "deadbeefcafe")
@@ -132,7 +132,7 @@ test fn receipt_projection_carries_host_worktree_revision_and_command() -> Bool 
 data unobserved_exit_note: String = "A process that never ran has no exit code, and zero is the wrong answer for it in the most dangerous direction. The receipt keeps the distinction as a coproduct, and this claim checks that the serialized form does not quietly render an unobserved exit as a success — a receipt reading exit 0 for a command the transport never delivered is the fabricated verdict the whole split exists to prevent."
 
 test fn unobserved_exit_never_serializes_as_zero() -> Bool {
-  let j = legacy_single_validation_verification_receipt_json(
+  let j = gunbc.roadmap_verify.legacy_single_validation_verification_receipt_json(
     receipt: gunbc.roadmap_verify.LegacySingleValidationVerificationReceipt {
       node_id: "n",
       attempt_key: "k",
@@ -152,31 +152,31 @@ test fn unobserved_exit_never_serializes_as_zero() -> Bool {
 
 // A refusal dispatches NOTHING, which the wrong-host defect made load-bearing rather than theoretical: an unreachable srv1 now lands in EnvironmentBlocked instead of arriving as a failure that reads as incomplete work and warrants an agent.
 test fn refusal_blocks_the_environment_and_does_not_warrant_dispatch() -> Bool {
-  let blocked = match dispatch_disposition_for(
+  let blocked = match gunbc.roadmap_verify.dispatch_disposition_for(
     outcome: gunbc.roadmap_verify.VerificationRefused {
       node_id: "n",
       label: "gunbc-claim" as std.types.NonEmptyStr,
       reason: "transport to srv1 refused",
     },
   ) {
-    EnvironmentBlocked { node_id: _, reason } =>
+    gunbc.roadmap_verify.EnvironmentBlocked { node_id: _, reason } =>
       string_contains(s: reason, pattern: "srv1")
     _ => false
   }
-  let warranted = match dispatch_disposition_for(
+  let warranted = match gunbc.roadmap_verify.dispatch_disposition_for(
     outcome: gunbc.roadmap_verify.VerificationFailed {
       node_id: "n",
       label: "gunbc-claim" as std.types.NonEmptyStr,
       detail: "exited 1",
     },
   ) {
-    DispatchWarranted { node_id: _, because: _ } => true
+    gunbc.roadmap_verify.DispatchWarranted { node_id: _, because: _ } => true
     _ => false
   }
-  let acceptance = match dispatch_disposition_for(
+  let acceptance = match gunbc.roadmap_verify.dispatch_disposition_for(
     outcome: gunbc.roadmap_verify.VerificationPassed { node_id: "n", validations_run: 2 },
   ) {
-    ReadyForAcceptance { node_id: _, validations_run } => validations_run == 2
+    gunbc.roadmap_verify.ReadyForAcceptance { node_id: _, validations_run } => validations_run == 2
     _ => false
   }
   blocked && warranted && acceptance

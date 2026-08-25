@@ -1,31 +1,31 @@
 module test.claim.access_iam_validation
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn decision_is_permit(d: std.access.AccessDecision) -> Bool {
-  match d { Permit => true  std.access.Deny { refusal: _ } => false }
+fn decision_is_permit(d: AccessDecision) -> Bool {
+  match d { Permit => true  Deny { refusal: _ } => false }
 }
 
-fn decision_is_deny(d: std.access.AccessDecision) -> Bool {
-  match d { std.access.Deny { refusal: _ } => true  Permit => false }
+fn decision_is_deny(d: AccessDecision) -> Bool {
+  match d { Deny { refusal: _ } => true  Permit => false }
 }
 
 type IamRequestContext {}
 type IamRequestEvidence {}
 
 type IamPrincipal {
-  arn: std.types.NonEmptyStr
-  source_locality: product.network_topology.NetworkLocality
+  arn: NonEmptyStr
+  source_locality: NetworkLocality
   mfa_present: Bool
 }
 
 type S3Action {
-  operation: std.types.NonEmptyStr
-  prefix: std.types.NonEmptyStr
+  operation: NonEmptyStr
+  prefix: NonEmptyStr
 }
 
-fn locality_is_internal(l: product.network_topology.NetworkLocality) -> Bool {
+fn locality_is_internal(l: NetworkLocality) -> Bool {
   match l {
     Internet => false
     Loopback => true
@@ -37,48 +37,48 @@ fn locality_is_internal(l: product.network_topology.NetworkLocality) -> Bool {
   }
 }
 
-fn iam_decide(request: std.access.AccessRequest<IamPrincipal, S3Action, std.types.NonEmptyStr, IamRequestContext, IamRequestEvidence>) -> std.access.AccessDecision {
+fn iam_decide(request: AccessRequest<IamPrincipal, S3Action, NonEmptyStr, IamRequestContext, IamRequestEvidence>) -> AccessDecision {
   if locality_is_internal(l: request.subject.source_locality)
      && request.action.prefix == "reports/"
      && request.subject.mfa_present {
-    std.access.Permit
+    Permit
   } else {
-    std.access.access_policy_refusal(profile: "iam", subject: request.subject.arn, action: request.action.operation, object: request.object, reason: "IAM condition not satisfied")
+    access_policy_refusal(profile: "iam", subject: request.subject.arn, action: request.action.operation, object: request.object, reason: "IAM condition not satisfied")
   }
 }
 
-data iam_access_policy: std.access.AccessPolicy<IamPrincipal, S3Action, std.types.NonEmptyStr, IamRequestContext, IamRequestEvidence> = {
+data iam_access_policy: AccessPolicy<IamPrincipal, S3Action, NonEmptyStr, IamRequestContext, IamRequestEvidence> = {
   decide: iam_decide
 }
 
 test fn iam_internal_prefix_mfa_permits() -> Bool {
-  test.claim.access_iam_validation.decision_is_permit(d: iam_decide(request: {
-    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: product.network_topology.Lan, mfa_present: true },
+  decision_is_permit(d: iam_decide(request: {
+    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: Lan, mfa_present: true },
     action: { operation: "s3:extdeps.object_storage.GetObject", prefix: "reports/" }, object: "arn:aws:s3:::bucket/reports/q3.csv",
-    context: std.access.AccessContext { value: IamRequestContext {} }, evidence: std.access.AccessEvidence { value: IamRequestEvidence {} }
+    context: AccessContext { value: IamRequestContext {} }, evidence: AccessEvidence { value: IamRequestEvidence {} }
   }))
 }
 
 test fn iam_external_source_denies() -> Bool {
-  test.claim.access_iam_validation.decision_is_deny(d: iam_decide(request: {
-    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: product.network_topology.Internet, mfa_present: true },
+  decision_is_deny(d: iam_decide(request: {
+    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: Internet, mfa_present: true },
     action: { operation: "s3:extdeps.object_storage.GetObject", prefix: "reports/" }, object: "arn:aws:s3:::bucket/reports/q3.csv",
-    context: std.access.AccessContext { value: IamRequestContext {} }, evidence: std.access.AccessEvidence { value: IamRequestEvidence {} }
+    context: AccessContext { value: IamRequestContext {} }, evidence: AccessEvidence { value: IamRequestEvidence {} }
   }))
 }
 
 test fn iam_wrong_prefix_denies() -> Bool {
-  test.claim.access_iam_validation.decision_is_deny(d: iam_decide(request: {
-    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: product.network_topology.Lan, mfa_present: true },
+  decision_is_deny(d: iam_decide(request: {
+    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: Lan, mfa_present: true },
     action: { operation: "s3:extdeps.object_storage.GetObject", prefix: "secrets/" }, object: "arn:aws:s3:::bucket/secrets/key.pem",
-    context: std.access.AccessContext { value: IamRequestContext {} }, evidence: std.access.AccessEvidence { value: IamRequestEvidence {} }
+    context: AccessContext { value: IamRequestContext {} }, evidence: AccessEvidence { value: IamRequestEvidence {} }
   }))
 }
 
 test fn iam_no_mfa_denies() -> Bool {
-  test.claim.access_iam_validation.decision_is_deny(d: iam_decide(request: {
-    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: product.network_topology.Lan, mfa_present: false },
+  decision_is_deny(d: iam_decide(request: {
+    subject: { arn: "arn:aws:iam::1:user/alice", source_locality: Lan, mfa_present: false },
     action: { operation: "s3:extdeps.object_storage.GetObject", prefix: "reports/" }, object: "arn:aws:s3:::bucket/reports/q3.csv",
-    context: std.access.AccessContext { value: IamRequestContext {} }, evidence: std.access.AccessEvidence { value: IamRequestEvidence {} }
+    context: AccessContext { value: IamRequestContext {} }, evidence: AccessEvidence { value: IamRequestEvidence {} }
   }))
 }

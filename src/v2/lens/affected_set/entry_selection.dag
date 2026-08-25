@@ -12,18 +12,18 @@ data entry_file_touched_grain_interim: std.disposition.Disposition = std.disposi
 
 data entry_file_touched_grain_interim_note: String = "DECLARED #6335 PARTIAL UNWIND (operator fork (c), 2026-07-10): the CI floor's entry_file_touched channel no longer consumes entry_affected_by_dependency_view — it is regrounded on the module-graph import-closure relation (v2.lens.module_graph.entry_affected_by_touched_paths; host realization entry_file_touched_via_import_closure in cli_run.rs, certified against this lens by the module-grain receipt harness on real merged diffs). Receipts for the unwind: (1) the Rust wrapper's substrate-not-whole-tree arm silently returned touched=true for EVERY row whenever any entry file was touched — an absorbing fallback that labeled itself fail-closed (probe 2026-07-10: substrate_is_whole_tree=FALSE -> touched=true, would_skip=false with empty frontier and no fn edits, on a pristine main clone with an empty real diff); (2) this module's edit loci are decl.OUTPUT nodes, so a touched file's test fns put the shared Bool node in the locus set and file_paths_for_frontier_nodes (decl.output == node) marks every Bool-returning module affected — decl identity conflated with output type. The fn-arrow DependencyView machinery here STAYS as the decl-level candidate for this channel's grain only: compile-clean scoping regrounded onto the same module-graph import-closure authority 2026-07-16 (channel 2 of this fork — see tools.dag_compile_clean_scope compile_clean_scope_import_closure_reground_note), so no live channel consumes entry_affected_by_dependency_view today. Dissolve-on: the namespace-only resolution terminal step (import grammar deleted; deps derived from container.member references) — the closure query is edge-source-agnostic and survives, and the file-grain-vs-decl-grain choice for entry_file_touched RE-DECIDES then, with the decl-level path viable only once edit loci are decl-identity nodes, never output types."
 
-fn string_eq(a: String, b: String) -> v2.std.logic.Bool {
+fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn decl_belongs_to_module(decl: v2.std.fn_index.FnArrowDecl, module: String) -> v2.std.logic.Bool {
+fn decl_belongs_to_module(decl: v2.std.fn_index.FnArrowDecl, module: String) -> Bool {
   starts_with(s: decl.qualified_name, prefix: concat(module, "."))
     || (decl.qualified_name == module)
 }
 
 fn module_path_for_decl(decl: v2.std.fn_index.FnArrowDecl, modules: List<v2.lens.module_graph.ModuleDeclarationFact>) -> v2.std.optional.Optional<String> {
   let best_module = fold(modules, init: "", f: fn(best, fact) {
-    if v2.lens.affected_set.entry_selection.decl_belongs_to_module(decl: decl, module: fact.module) {
+    if decl_belongs_to_module(decl: decl, module: fact.module) {
       if best == "" {
         fact.module
       } else if string_length(s: fact.module) > string_length(s: best) {
@@ -42,15 +42,15 @@ fn module_path_for_decl(decl: v2.std.fn_index.FnArrowDecl, modules: List<v2.lens
       acc
     }
   })
-  if string_is_empty(s: best_module) {
-    optional_absent()
+  if v2.std.text.string_is_empty(s: best_module) {
+    v2.std.optional.optional_absent()
   } else {
-    optional_present(value: best_path)
+    v2.std.optional.optional_present(value: best_path)
   }
 }
 
-fn path_excluded_by_substrings(path: String, exclude_substrings: List<String>) -> v2.std.logic.Bool {
-  any(xs: exclude_substrings, predicate: fn(sub) { string_contains(s: path, pattern: sub) })
+fn path_excluded_by_substrings(path: String, exclude_substrings: List<String>) -> Bool {
+  v2.std.algebra.any(xs: exclude_substrings, predicate: fn(sub) { string_contains(s: path, pattern: sub) })
 }
 
 fn modules_matching_touched_path(
@@ -59,12 +59,12 @@ fn modules_matching_touched_path(
   exclude_substrings: List<String>
 ) -> List<v2.lens.module_graph.ModuleDeclarationFact> {
   fold(
-    module_declaration_facts_live(pool_roots: pool_roots),
+    v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool_roots),
     init: [],
     f: fn(acc, fact) {
       if path_excluded_by_substrings(path: fact.path, exclude_substrings: exclude_substrings) {
         acc
-      } else if path_matches_touched(closure_path: fact.path, touched_path: touched_path) {
+      } else if v2.lens.module_graph.path_matches_touched(closure_path: fact.path, touched_path: touched_path) {
         concat(acc, [fact])
       } else {
         acc
@@ -78,8 +78,8 @@ fn edit_locus_nodes_for_module(
   decls: List<v2.std.fn_index.FnArrowDecl>
 ) -> List<v2.std.node.Node> {
   fold(decls, init: [], f: fn(acc, decl) {
-    if v2.lens.affected_set.entry_selection.decl_belongs_to_module(decl: decl, module: module) {
-      list_snoc_item(xs: acc, item: decl.output)
+    if decl_belongs_to_module(decl: decl, module: module) {
+      v2.std.algebra.list_snoc_item(xs: acc, item: decl.output)
     } else {
       acc
     }
@@ -91,7 +91,7 @@ fn edit_locus_nodes_for_touched_path(
   touched_path: String,
   exclude_substrings: List<String>
 ) -> List<v2.std.node.Node> {
-  let decls = fn_arrow_decl_facts_live()
+  let decls = v2.std.fn_index.fn_arrow_decl_facts_live()
   fold(
     modules_matching_touched_path(
       pool_roots: pool_roots,
@@ -104,10 +104,10 @@ fn edit_locus_nodes_for_touched_path(
         edit_locus_nodes_for_module(module: fact.module, decls: decls),
         init: acc,
         f: fn(nodes, node) {
-          if contains(xs: nodes, item: node, eq: fn(left, right) { left == right }) {
+          if v2.std.algebra.contains(xs: nodes, item: node, eq: fn(left, right) { left == right }) {
             nodes
           } else {
-            list_snoc_item(xs: nodes, item: node)
+            v2.std.algebra.list_snoc_item(xs: nodes, item: node)
           }
         }
       )
@@ -117,10 +117,10 @@ fn edit_locus_nodes_for_touched_path(
 
 fn merge_frontier_nodes(acc: List<v2.std.node.Node>, more: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   fold(more, init: acc, f: fn(nodes, node) {
-    if contains(xs: nodes, item: node, eq: fn(left, right) { left == right }) {
+    if v2.std.algebra.contains(xs: nodes, item: node, eq: fn(left, right) { left == right }) {
       nodes
     } else {
-      list_snoc_item(xs: nodes, item: node)
+      v2.std.algebra.list_snoc_item(xs: nodes, item: node)
     }
   })
 }
@@ -132,7 +132,7 @@ fn affected_frontier_for_edit_loci(
   fold(edit_loci, init: [], f: fn(frontier, locus) {
     merge_frontier_nodes(
       acc: frontier,
-      more: affected_set_closure(dependencies: dependencies, edit_locus: locus).frontier
+      more: v2.lens.affected_set.affected_set_closure(dependencies: dependencies, edit_locus: locus).frontier
     )
   })
 }
@@ -142,21 +142,21 @@ fn file_paths_for_frontier_nodes(
   pool_roots: List<String>,
   exclude_substrings: List<String>
 ) -> List<String> {
-  let decls = fn_arrow_decl_facts_live()
-  let modules = module_declaration_facts_live(pool_roots: pool_roots)
+  let decls = v2.std.fn_index.fn_arrow_decl_facts_live()
+  let modules = v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool_roots)
   fold(frontier, init: [], f: fn(paths, node) {
     fold(decls, init: paths, f: fn(acc, decl) {
       if decl.output == node {
         match module_path_for_decl(decl: decl, modules: modules) {
-          Present { value: path } =>
+          v2.std.optional.Present { value: path } =>
             if path_excluded_by_substrings(path: path, exclude_substrings: exclude_substrings) {
               acc
-            } else if contains(xs: acc, item: path, eq: v2.lens.affected_set.entry_selection.string_eq) {
+            } else if v2.std.algebra.contains(xs: acc, item: path, eq: string_eq) {
               acc
             } else {
-              list_snoc_item(xs: acc, item: path)
+              v2.std.algebra.list_snoc_item(xs: acc, item: path)
             }
-          Absent => acc
+          v2.std.optional.Absent => acc
         }
       } else {
         acc
@@ -170,7 +170,7 @@ fn affected_file_paths_for_touched_paths(
   touched_paths: List<String>,
   exclude_substrings: List<String>
 ) -> List<String> {
-  let dependencies = corpus_dependency_views_live()
+  let dependencies = v2.lens.affected_set.corpus_dependency_view.corpus_dependency_views_live()
   let frontier = fold(touched_paths, init: [], f: fn(acc, touched_path) {
     merge_frontier_nodes(
       acc: acc,
@@ -195,9 +195,9 @@ fn affected_file_paths_for_touched_paths(
 fn entry_path_in_affected_file_paths(
   entry_path: String,
   affected_paths: List<String>
-) -> v2.std.logic.Bool {
-  any(xs: affected_paths, predicate: fn(path) {
-    path_matches_touched(closure_path: path, touched_path: entry_path)
+) -> Bool {
+  v2.std.algebra.any(xs: affected_paths, predicate: fn(path) {
+    v2.lens.module_graph.path_matches_touched(closure_path: path, touched_path: entry_path)
   })
 }
 
@@ -206,10 +206,10 @@ fn entry_affected_by_dependency_view_excluding(
   pool_roots: List<String>,
   touched_paths: List<String>,
   exclude_substrings: List<String>
-) -> v2.std.logic.Bool {
+) -> Bool {
   if path_excluded_by_substrings(path: entry_path, exclude_substrings: exclude_substrings) {
     false
-  } else if corpus_dependency_view_per_pr_substrate_ready() {
+  } else if v2.lens.affected_set.corpus_dependency_view.corpus_dependency_view_per_pr_substrate_ready() {
     entry_path_in_affected_file_paths(
       entry_path: entry_path,
       affected_paths: affected_file_paths_for_touched_paths(
@@ -219,7 +219,7 @@ fn entry_affected_by_dependency_view_excluding(
       )
     )
   } else {
-    corpus_dependency_view_per_pr_substrate_refuse()
+    v2.lens.affected_set.corpus_dependency_view.corpus_dependency_view_per_pr_substrate_refuse()
   }
 }
 
@@ -227,11 +227,11 @@ fn entry_affected_by_dependency_view(
   entry_path: String,
   pool_roots: List<String>,
   touched_paths: List<String>
-) -> v2.std.logic.Bool {
+) -> Bool {
   entry_affected_by_dependency_view_excluding(
     entry_path: entry_path,
     pool_roots: pool_roots,
     touched_paths: touched_paths,
-    exclude_substrings: module_graph_exclude_substrings
+    exclude_substrings: v2.lens.module_graph.module_graph_exclude_substrings
   )
 }

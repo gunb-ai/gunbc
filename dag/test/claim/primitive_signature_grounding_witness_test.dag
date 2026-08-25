@@ -8,7 +8,7 @@ data primitive_signature_grounding_witness_note: String = "Executing evidence th
 // ---------------------------------------------------------------------------
 
 test fn w_every_algebra_grounded_contract_resolves_a_signature() -> Bool {
-  algebra_grounded_signatures_all_resolve()
+  std.primitive_identity.algebra_grounded_signatures_all_resolve()
 }
 
 // NON-VACUITY, WITHOUT A SNAPSHOT. A fold over zero rows is vacuously true, so the totality
@@ -20,7 +20,7 @@ test fn w_every_algebra_grounded_contract_resolves_a_signature() -> Bool {
 // population is exactly the template population, both sides read from the one authority, so a
 // new template row moves both and a derivation that dropped a profile reds it.
 test fn w_derived_population_is_exactly_the_algebra_template_population() -> Bool {
-  algebra_grounded_semantic_contract_count() == (std.algebra.all_algebra_field_templates() |> count)
+  std.primitive_identity.algebra_grounded_semantic_contract_count() == (std.algebra.all_algebra_field_templates() |> count)
 }
 
 // The non-vacuity anchor proper, as a CONTROLLED FIXTURE: input and expected population are
@@ -36,11 +36,11 @@ fn controlled_fixture_rows() -> List<std.algebra.AlgebraFieldTemplate> {
 }
 
 fn fixture_arity_label(name: String) -> String {
-  match algebra_signature_from_candidates(canonical_name: name as NonEmptyStr, candidates: controlled_fixture_rows()) {
-    SignatureResolved { parameters: ps, result: _ } => concat("arity:", v1.compiler.emit_core_support.to_string(ps |> count))
-    SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => "ambiguous"
-    SignatureAbsentFromProfile { canonical_name: _ } => "absent"
-    SignatureNotGrounded { reason: _ } => "not_grounded"
+  match std.primitive_identity.algebra_signature_from_candidates(canonical_name: name as std.types.NonEmptyStr, candidates: controlled_fixture_rows()) {
+    std.primitive_identity.SignatureResolved { parameters: ps, result: _ } => concat("arity:", to_string(ps |> count))
+    std.primitive_identity.SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => "ambiguous"
+    std.primitive_identity.SignatureAbsentFromProfile { canonical_name: _ } => "absent"
+    std.primitive_identity.SignatureNotGrounded { reason: _ } => "not_grounded"
   }
 }
 
@@ -58,7 +58,7 @@ test fn w_every_row_of_a_controlled_fixture_resolves_to_its_authored_arity() -> 
 // occurred in the wild: map_keys and map_values moved from PartialFunction to
 // FinitelySupportedFunction upstream, which turns any stale grounding into a silent Absent.
 test fn w_every_declared_grounding_still_resolves_or_says_ungrounded() -> Bool {
-  declared_definition_groundings_all_dispose()
+  std.primitive_identity.declared_definition_groundings_all_dispose()
 }
 
 // ---------------------------------------------------------------------------
@@ -73,23 +73,23 @@ test fn w_every_declared_grounding_still_resolves_or_says_ungrounded() -> Bool {
 
 fn second_param_label(profile: std.algebra.AlgebraProfile) -> String {
   let c = std.primitive_identity.PrimitiveSemanticContract {
-    canonical_name: "get" as NonEmptyStr,
-    signature: GroundedInAlgebraTemplate { profile: profile }
+    canonical_name: "get" as std.types.NonEmptyStr,
+    signature: std.primitive_identity.GroundedInAlgebraTemplate { profile: profile }
   }
-  match primitive_signature(contract: c) {
-    SignatureResolved { parameters: ps, result: _ } =>
-      match ps |> v2.std.algebra.skip(1) |> first {
-        Present { value: gunbc.plans.md_helpers.p } =>
-          match gunbc.plans.md_helpers.p {
+  match std.primitive_identity.primitive_signature(contract: c) {
+    std.primitive_identity.SignatureResolved { parameters: ps, result: _ } =>
+      match ps |> skip(1) |> first {
+        Present { value: p } =>
+          match p {
             std.algebra.NamedTemplate { name: n } => concat("named:", n)
             std.algebra.ReceiverKey => "receiver_key"
             _ => "other_template"
           }
         Absent => "missing"
       }
-    SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => "ambiguous"
-    SignatureAbsentFromProfile { canonical_name: _ } => "absent"
-    SignatureNotGrounded { reason: _ } => "not_grounded"
+    std.primitive_identity.SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => "ambiguous"
+    std.primitive_identity.SignatureAbsentFromProfile { canonical_name: _ } => "absent"
+    std.primitive_identity.SignatureNotGrounded { reason: _ } => "not_grounded"
   }
 }
 
@@ -102,8 +102,8 @@ test fn w_get_takes_an_index_on_a_list_and_a_key_on_a_map() -> Bool {
 // this pair exists to keep apart -- "no arity" and "arity zero" -- are compared as distinct
 // values rather than relying on how an Optional happens to compare.
 fn arity_label(contract: std.primitive_identity.PrimitiveSemanticContract) -> String {
-  match primitive_arity(contract: contract) {
-    Present { value: n } => concat("arity:", v1.compiler.emit_core_support.to_string(n))
+  match std.primitive_identity.primitive_arity(contract: contract) {
+    Present { value: n } => concat("arity:", to_string(n))
     Absent => "no_arity"
   }
 }
@@ -112,12 +112,12 @@ fn arity_label(contract: std.primitive_identity.PrimitiveSemanticContract) -> St
 // form of the same finding, and the one a name-keyed projection could not represent at all.
 test fn w_member_has_a_different_arity_on_each_profile() -> Bool {
   let boolean_member = std.primitive_identity.PrimitiveSemanticContract {
-    canonical_name: "member" as NonEmptyStr,
-    signature: GroundedInAlgebraTemplate { profile: std.algebra.FinitePowerSetProfile }
+    canonical_name: "member" as std.types.NonEmptyStr,
+    signature: std.primitive_identity.GroundedInAlgebraTemplate { profile: std.algebra.FinitePowerSetProfile }
   }
   let pointwise_member = std.primitive_identity.PrimitiveSemanticContract {
-    canonical_name: "member" as NonEmptyStr,
-    signature: GroundedInAlgebraTemplate { profile: std.algebra.PointwisePowerCollectionProfile }
+    canonical_name: "member" as std.types.NonEmptyStr,
+    signature: std.primitive_identity.GroundedInAlgebraTemplate { profile: std.algebra.PointwisePowerCollectionProfile }
   }
   arity_label(contract: boolean_member) == "arity:2"
     && arity_label(contract: pointwise_member) == "arity:1"
@@ -131,14 +131,14 @@ test fn w_member_has_a_different_arity_on_each_profile() -> Bool {
 // resolving to something. This is the RED behind the totality claim above.
 test fn w_a_name_absent_from_its_profile_refuses() -> Bool {
   let bogus = std.primitive_identity.PrimitiveSemanticContract {
-    canonical_name: "no_such_primitive" as NonEmptyStr,
-    signature: GroundedInAlgebraTemplate { profile: std.algebra.PartialFunctionProfile }
+    canonical_name: "no_such_primitive" as std.types.NonEmptyStr,
+    signature: std.primitive_identity.GroundedInAlgebraTemplate { profile: std.algebra.PartialFunctionProfile }
   }
-  match primitive_signature(contract: bogus) {
-    SignatureAbsentFromProfile { canonical_name: n } => n == bogus.canonical_name
-    SignatureResolved { parameters: _, result: _ } => false
-    SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => false
-    SignatureNotGrounded { reason: _ } => false
+  match std.primitive_identity.primitive_signature(contract: bogus) {
+    std.primitive_identity.SignatureAbsentFromProfile { canonical_name: n } => n == bogus.canonical_name
+    std.primitive_identity.SignatureResolved { parameters: _, result: _ } => false
+    std.primitive_identity.SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => false
+    std.primitive_identity.SignatureNotGrounded { reason: _ } => false
   }
 }
 
@@ -152,11 +152,11 @@ test fn w_two_templates_of_one_name_on_one_profile_refuse() -> Bool {
     { name: "dup", param_types: [std.algebra.ReceiverSelf], return_type: std.algebra.ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "dup", param_types: [std.algebra.ReceiverSelf, std.algebra.ReceiverSelf], return_type: std.algebra.ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
   ]
-  match algebra_signature_from_candidates(canonical_name: "dup" as NonEmptyStr, candidates: planted) {
-    SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: n } => n == 2
-    SignatureResolved { parameters: _, result: _ } => false
-    SignatureAbsentFromProfile { canonical_name: _ } => false
-    SignatureNotGrounded { reason: _ } => false
+  match std.primitive_identity.algebra_signature_from_candidates(canonical_name: "dup" as std.types.NonEmptyStr, candidates: planted) {
+    std.primitive_identity.SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: n } => n == 2
+    std.primitive_identity.SignatureResolved { parameters: _, result: _ } => false
+    std.primitive_identity.SignatureAbsentFromProfile { canonical_name: _ } => false
+    std.primitive_identity.SignatureNotGrounded { reason: _ } => false
   }
 }
 
@@ -166,11 +166,11 @@ test fn w_one_template_of_one_name_resolves() -> Bool {
   let planted: List<std.algebra.AlgebraFieldTemplate> = [
     { name: "dup", param_types: [std.algebra.ReceiverSelf, std.algebra.ReceiverSelf], return_type: std.algebra.ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
   ]
-  match algebra_signature_from_candidates(canonical_name: "dup" as NonEmptyStr, candidates: planted) {
-    SignatureResolved { parameters: ps, result: _ } => (ps |> count) == 2
-    SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => false
-    SignatureAbsentFromProfile { canonical_name: _ } => false
-    SignatureNotGrounded { reason: _ } => false
+  match std.primitive_identity.algebra_signature_from_candidates(canonical_name: "dup" as std.types.NonEmptyStr, candidates: planted) {
+    std.primitive_identity.SignatureResolved { parameters: ps, result: _ } => (ps |> count) == 2
+    std.primitive_identity.SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => false
+    std.primitive_identity.SignatureAbsentFromProfile { canonical_name: _ } => false
+    std.primitive_identity.SignatureNotGrounded { reason: _ } => false
   }
 }
 
@@ -185,15 +185,15 @@ test fn w_one_template_of_one_name_resolves() -> Bool {
 
 test fn w_an_ungrounded_contract_has_no_arity_not_zero() -> Bool {
   let ungrounded = std.primitive_identity.PrimitiveSemanticContract {
-    canonical_name: "fold_list" as NonEmptyStr,
-    signature: SignatureUngrounded { reason: "spelling fork" as NonEmptyStr }
+    canonical_name: "fold_list" as std.types.NonEmptyStr,
+    signature: std.primitive_identity.SignatureUngrounded { reason: "spelling fork" as std.types.NonEmptyStr }
   }
   arity_label(contract: ungrounded) == "no_arity"
-    && match primitive_signature(contract: ungrounded) {
-         SignatureNotGrounded { reason: _ } => true
-         SignatureResolved { parameters: _, result: _ } => false
-         SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => false
-         SignatureAbsentFromProfile { canonical_name: _ } => false
+    && match std.primitive_identity.primitive_signature(contract: ungrounded) {
+         std.primitive_identity.SignatureNotGrounded { reason: _ } => true
+         std.primitive_identity.SignatureResolved { parameters: _, result: _ } => false
+         std.primitive_identity.SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => false
+         std.primitive_identity.SignatureAbsentFromProfile { canonical_name: _ } => false
        }
 }
 
@@ -201,8 +201,8 @@ test fn w_an_ungrounded_contract_has_no_arity_not_zero() -> Bool {
 // above is a real absence rather than the resolver being unable to count.
 test fn w_a_nullary_primitive_reports_arity_zero() -> Bool {
   let ordered_zero = std.primitive_identity.PrimitiveSemanticContract {
-    canonical_name: "bottom" as NonEmptyStr,
-    signature: GroundedInAlgebraTemplate { profile: std.algebra.BooleanAlgebraProfile }
+    canonical_name: "bottom" as std.types.NonEmptyStr,
+    signature: std.primitive_identity.GroundedInAlgebraTemplate { profile: std.algebra.BooleanAlgebraProfile }
   }
   arity_label(contract: ordered_zero) == "arity:0"
 }

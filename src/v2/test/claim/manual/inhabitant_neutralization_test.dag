@@ -1,126 +1,126 @@
 module v2.test.manual.inhabitant_neutralization
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn inhabitant_neutralization_python_int_std_projection_holds() -> v2.std.logic.Bool {
-  match inhabitant_std_projection_symbol(inhabitant: python_int_inhabitant_node()) {
-    Accepted { value: proj, diagnostics: _ } => proj == ^std_projection_additive_numeric
-    Rejected { diagnostics: _ } => false
+fn inhabitant_neutralization_python_int_std_projection_holds() -> Bool {
+  match v2.std.inhabitant_neutralization.inhabitant_std_projection_symbol(inhabitant: v2.extdeps.languages.python.python_int_inhabitant_node()) {
+    v2.std.diagnostic.Accepted { value: proj, diagnostics: _ } => proj == ^std_projection_additive_numeric
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn inhabitant_neutralization_ts_target_lookup_holds() -> v2.std.logic.Bool {
-  match target_inhabitant_for_std_projection(
+fn inhabitant_neutralization_ts_target_lookup_holds() -> Bool {
+  match v2.std.inhabitant_neutralization.target_inhabitant_for_std_projection(
     std_projection: ^std_projection_additive_numeric,
-    target: ts_target_model()
+    target: v2.extdeps.languages.typescript.ts_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn inhabitant_neutralization_go_int64_std_projection_holds() -> v2.std.logic.Bool {
-  match inhabitant_std_projection_symbol(
-    inhabitant: go_int64_additive_numeric_inhabitant_node()
+fn inhabitant_neutralization_go_int64_std_projection_holds() -> Bool {
+  match v2.std.inhabitant_neutralization.inhabitant_std_projection_symbol(
+    inhabitant: v2.extdeps.languages.go.go_int64_additive_numeric_inhabitant_node()
   ) {
-    Accepted { value: proj, diagnostics: _ } => proj == ^std_projection_additive_numeric
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: proj, diagnostics: _ } => proj == ^std_projection_additive_numeric
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn inhabitant_neutralization_go_int_additive_numeric_std_projection_holds() -> v2.std.logic.Bool {
-  match inhabitant_std_projection_symbol(
-    inhabitant: go_int_additive_numeric_inhabitant_node()
+fn inhabitant_neutralization_go_int_additive_numeric_std_projection_holds() -> Bool {
+  match v2.std.inhabitant_neutralization.inhabitant_std_projection_symbol(
+    inhabitant: v2.extdeps.languages.go.go_int_additive_numeric_inhabitant_node()
   ) {
-    Accepted { value: proj, diagnostics: _ } => proj == ^std_projection_additive_numeric
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: proj, diagnostics: _ } => proj == ^std_projection_additive_numeric
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds() -> v2.std.logic.Bool {
-  match target_inhabitant_for_std_projection(
+fn inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds() -> Bool {
+  match v2.std.inhabitant_neutralization.target_inhabitant_for_std_projection(
     std_projection: ^std_projection_additive_numeric,
-    target: go_target_model()
+    target: v2.extdeps.languages.go.go_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn inhabitant_neutralization_go_additive_numeric_lookup_tiebreak_selects_platform_int_holds() -> v2.std.logic.Bool {
-  match target_inhabitant_for_std_projection(
+fn inhabitant_neutralization_go_additive_numeric_lookup_tiebreak_selects_platform_int_holds() -> Bool {
+  match v2.std.inhabitant_neutralization.target_inhabitant_for_std_projection(
     std_projection: ^std_projection_additive_numeric,
-    target: go_target_model()
+    target: v2.extdeps.languages.go.go_target_model()
   ) {
-    Accepted { value: selected, diagnostics: _ } =>
-      selected == go_int_additive_numeric_inhabitant_node()
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: selected, diagnostics: _ } =>
+      selected == v2.extdeps.languages.go.go_int_additive_numeric_inhabitant_node()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn inhabitant_neutralization_go_additive_numeric_lookup_policy_flip_selects_int64_holds() -> v2.std.logic.Bool {
-  match target_inhabitant_for_std_projection(
+test fn inhabitant_neutralization_go_additive_numeric_lookup_policy_flip_selects_int64_holds() -> Bool {
+  match v2.std.inhabitant_neutralization.target_inhabitant_for_std_projection(
     std_projection: ^std_projection_additive_numeric,
-    target: go_target_model_int64_selection_policy()
+    target: v2.extdeps.languages.go.go_target_model_int64_selection_policy()
   ) {
-    Accepted { value: selected, diagnostics: _ } =>
-      selected == go_int64_additive_numeric_inhabitant_node()
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: selected, diagnostics: _ } =>
+      selected == v2.extdeps.languages.go.go_int64_additive_numeric_inhabitant_node()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn inhabitant_neutralization_go_platform_std_projection_lookup_baseline_holds() -> v2.std.logic.Bool {
-  match target_inhabitant_for_std_projection(
+test fn inhabitant_neutralization_go_platform_std_projection_lookup_baseline_holds() -> Bool {
+  match v2.std.inhabitant_neutralization.target_inhabitant_for_std_projection(
     std_projection: go_facts_int.std_projection,
-    target: go_target_model()
+    target: v2.extdeps.languages.go.go_target_model()
   ) {
-    Accepted { value: selected, diagnostics: _ } =>
-      selected == go_int_inhabitant_node()
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: selected, diagnostics: _ } =>
+      selected == v2.extdeps.languages.go.go_int_inhabitant_node()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn inhabitant_neutralization_go_unqualified_std_projection_lookup_rejects_holds() -> v2.std.logic.Bool {
-  match target_inhabitant_for_std_projection(
+test fn inhabitant_neutralization_go_unqualified_std_projection_lookup_rejects_holds() -> Bool {
+  match v2.std.inhabitant_neutralization.target_inhabitant_for_std_projection(
     std_projection: go_facts_float64.std_projection,
-    target: go_target_model()
+    target: v2.extdeps.languages.go.go_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-fn inhabitant_neutralization_go_int64_to_ts_emit_refuses_underived_holds() -> v2.std.logic.Bool {
-  match neutralize_core_for_target(
-    core: go_int64_falsifier_emitted_add_fn_node(),
-    target: ts_target_model()
+fn inhabitant_neutralization_go_int64_to_ts_emit_refuses_underived_holds() -> Bool {
+  match v2.std.inhabitant_neutralization.neutralize_core_for_target(
+    core: v2.extdeps.languages.go.go_int64_falsifier_emitted_add_fn_node(),
+    target: v2.extdeps.languages.typescript.ts_target_model()
   ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
-          match v2.compiler.emit.emit(tree: inferred, target: ts_target_model()) {
-            Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: neutralized, diagnostics: _ } =>
+      match v2.compiler.infer.infer(tree: neutralized) {
+        v2.std.diagnostic.Accepted { value: inferred, diagnostics: _ } =>
+          match v2.compiler.emit.emit(tree: inferred, target: v2.extdeps.languages.typescript.ts_target_model()) {
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               d.head.reason == ^infer_grounding_not_derived
-            Accepted { value: _, diagnostics: _ } => false
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn inhabitant_neutralization_neutralize_python_to_go_holds() -> v2.std.logic.Bool {
-  match neutralize_core_for_target(
-    core: python_emitted_add_fn_node(),
-    target: go_target_model()
+fn inhabitant_neutralization_neutralize_python_to_go_holds() -> Bool {
+  match v2.std.inhabitant_neutralization.neutralize_core_for_target(
+    core: v2.extdeps.languages.python.python_emitted_add_fn_node(),
+    target: v2.extdeps.languages.go.go_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> v2.std.logic.Bool {
+test fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> Bool {
   inhabitant_neutralization_python_int_std_projection_holds()
     && inhabitant_neutralization_ts_target_lookup_holds()
     && inhabitant_neutralization_go_int64_std_projection_holds()
@@ -131,60 +131,60 @@ test fn inhabitant_neutralization_third_inhabitant_falsifier_holds() -> v2.std.l
     && inhabitant_neutralization_go_int64_to_ts_emit_refuses_underived_holds()
 }
 
-test fn inhabitant_neutralization_emit_after_neutralize_refuses_underived_holds() -> v2.std.logic.Bool {
-  match neutralize_core_for_target(
-    core: python_emitted_add_fn_node(),
-    target: ts_target_model()
+test fn inhabitant_neutralization_emit_after_neutralize_refuses_underived_holds() -> Bool {
+  match v2.std.inhabitant_neutralization.neutralize_core_for_target(
+    core: v2.extdeps.languages.python.python_emitted_add_fn_node(),
+    target: v2.extdeps.languages.typescript.ts_target_model()
   ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
-          match v2.compiler.emit.emit(tree: inferred, target: ts_target_model()) {
-            Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: neutralized, diagnostics: _ } =>
+      match v2.compiler.infer.infer(tree: neutralized) {
+        v2.std.diagnostic.Accepted { value: inferred, diagnostics: _ } =>
+          match v2.compiler.emit.emit(tree: inferred, target: v2.extdeps.languages.typescript.ts_target_model()) {
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               d.head.reason == ^infer_grounding_not_derived
-            Accepted { value: _, diagnostics: _ } => false
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn inhabitant_neutralization_raw_emit_still_fails_closed() -> v2.std.logic.Bool {
-  match infer(tree: python_emitted_add_fn_node()) {
-    Accepted { value: inferred, diagnostics: _ } =>
-      match v2.compiler.emit.emit(tree: inferred, target: ts_target_model()) {
-        Rejected { diagnostics: _ } => true
-        Accepted { value: _, diagnostics: _ } => false
+fn inhabitant_neutralization_raw_emit_still_fails_closed() -> Bool {
+  match v2.compiler.infer.infer(tree: v2.extdeps.languages.python.python_emitted_add_fn_node()) {
+    v2.std.diagnostic.Accepted { value: inferred, diagnostics: _ } =>
+      match v2.compiler.emit.emit(tree: inferred, target: v2.extdeps.languages.typescript.ts_target_model()) {
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn inhabitant_neutralization_same_language_cross_language_compile_unchanged_holds() -> v2.std.logic.Bool {
-  ingest_cross_language_compile_refuses_underived_holds()
+fn inhabitant_neutralization_same_language_cross_language_compile_unchanged_holds() -> Bool {
+  v2.test.manual.ingest_bridge.ingest_cross_language_compile_refuses_underived_holds()
 }
 
-fn inhabitant_neutralization_same_flavor_python_emit_refuses_underived_holds() -> v2.std.logic.Bool {
-  match neutralize_core_for_target(
-    core: python_emitted_add_fn_node(),
-    target: python_target_model()
+fn inhabitant_neutralization_same_flavor_python_emit_refuses_underived_holds() -> Bool {
+  match v2.std.inhabitant_neutralization.neutralize_core_for_target(
+    core: v2.extdeps.languages.python.python_emitted_add_fn_node(),
+    target: v2.extdeps.languages.python.python_target_model()
   ) {
-    Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
-        Accepted { value: inferred, diagnostics: _ } =>
-          match v2.compiler.emit.emit(tree: inferred, target: python_target_model()) {
-            Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: neutralized, diagnostics: _ } =>
+      match v2.compiler.infer.infer(tree: neutralized) {
+        v2.std.diagnostic.Accepted { value: inferred, diagnostics: _ } =>
+          match v2.compiler.emit.emit(tree: inferred, target: v2.extdeps.languages.python.python_target_model()) {
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               d.head.reason == ^infer_grounding_not_derived
-            Accepted { value: _, diagnostics: _ } => false
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn inhabitant_neutralization_03_ingest_regression_guard_holds() -> v2.std.logic.Bool {
+test fn inhabitant_neutralization_03_ingest_regression_guard_holds() -> Bool {
   inhabitant_neutralization_same_language_cross_language_compile_unchanged_holds()
     && inhabitant_neutralization_same_flavor_python_emit_refuses_underived_holds()
     && inhabitant_neutralization_raw_emit_still_fails_closed()
@@ -201,10 +201,10 @@ test fn inhabitant_neutralization_03_ingest_regression_guard_holds() -> v2.std.l
 
 data claim_inhabitant_neutralization_module_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/inhabitant_neutralization: module compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: python_emitted_add_fn_node(),
-  expected_value: python_emitted_add_fn_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+  input: v2.extdeps.languages.python.python_emitted_add_fn_node(),
+  expected_value: v2.extdeps.languages.python.python_emitted_add_fn_node(),
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
 

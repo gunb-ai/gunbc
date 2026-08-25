@@ -5,43 +5,43 @@ data cli_run_repo_grant_note: String = "P-B repo-tree grant authority (docs/plan
 
 data cli_run_repo_frame: std.materialization_ladder.Frame = std.materialization_ladder.Frame {
   name: "cli-run-repo",
-  kind: SharedStateFrame
+  kind: std.materialization_ladder.SharedStateFrame
 }
 
-data cli_run_repo_root: std.effect_grant.NamespacePosition = filesystem_position(path: ["repo"])
+data cli_run_repo_root: std.effect_grant.NamespacePosition = std.effect_grant.filesystem_position(path: ["repo"])
 
 fn cli_run_repo_envelope() -> std.effect_grant.Envelope {
   std.effect_grant.Envelope {
     frame: cli_run_repo_frame,
     grants: [
       std.effect_grant.Grant {
-        verb: Read,
+        verb: std.effect_grant.Read,
         root: cli_run_repo_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConstruction
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConstruction
       },
       std.effect_grant.Grant {
-        verb: Write,
+        verb: std.effect_grant.Write,
         root: cli_run_repo_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConstruction
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConstruction
       },
     ]
   }
 }
 
 fn cli_run_repo_path_admissible(rel: String, verb: std.effect_grant.Verb) -> std.access.AccessDecision {
-  admit_effect(
+  std.effect_grant.admit_effect(
     env: cli_run_repo_envelope(),
     verb: verb,
-    target: repo_rel_path_position(rel: rel)
+    target: std.filesystem_path_grant.repo_rel_path_position(rel: rel)
   )
 }
 
 fn cli_run_repo_write_admissible(rel: String) -> std.access.AccessDecision {
-  cli_run_repo_path_admissible(rel: rel, verb: Write)
+  cli_run_repo_path_admissible(rel: rel, verb: std.effect_grant.Write)
 }
 
 fn cli_run_repo_read_admissible(rel: String) -> std.access.AccessDecision {
-  cli_run_repo_path_admissible(rel: rel, verb: Read)
+  cli_run_repo_path_admissible(rel: rel, verb: std.effect_grant.Read)
 }

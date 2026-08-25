@@ -1,11 +1,12 @@
 module v2.test.lens_fact_density.hollow_alias_no_fact
 
+
 data hollow_alias_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^hollow_alias_int32_symbol } },
   children: [],
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn hollow_alias_no_fact_claim_holds() -> v2.std.logic.Bool {
+test fn hollow_alias_no_fact_claim_holds() -> Bool {
   v2.lens.fact_density.carrier_spec_fact(carrier: hollow_alias_input) == v2.lens.fact_density.NoFact
 }

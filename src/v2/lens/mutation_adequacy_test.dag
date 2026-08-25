@@ -1,6 +1,12 @@
 module v2.test.lens_mutation_adequacy.mutation_adequacy_test
 
 
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+fn node_a() -> v2.std.node.Node {
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^a } }, children: std.algebra.Empty)
+}
+
 fn node_b() -> v2.std.node.Node {
   v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^b } }, children: std.algebra.Empty)
 }
@@ -11,7 +17,7 @@ fn green_claim() -> v2.std.verification.TestClaim {
     anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
     input: node_a(),
     expected_value: node_a(),
-    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit }
+    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
   }
 }
 
@@ -27,11 +33,11 @@ fn red_claim() -> v2.std.verification.TestClaim {
         correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.UserInputBoundary }
       }
     ),
-    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit }
+    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
   }
 }
 
-test fn adequate_when_every_mutation_has_a_discriminating_witness() -> v2.std.logic.Bool {
+test fn adequate_when_every_mutation_has_a_discriminating_witness() -> Bool {
   let coverage = [
     v2.lens.mutation_adequacy.MutationCoverage {
       mutation: v2.lens.mutation_adequacy.StructureMutation { mutated: ^drop_input_edge },
@@ -41,7 +47,7 @@ test fn adequate_when_every_mutation_has_a_discriminating_witness() -> v2.std.lo
   return v2.lens.mutation_adequacy.is_adequate(coverage: coverage)
 }
 
-test fn surviving_mutation_is_inadequate() -> v2.std.logic.Bool {
+test fn surviving_mutation_is_inadequate() -> Bool {
   let coverage = [
     v2.lens.mutation_adequacy.MutationCoverage {
       mutation: v2.lens.mutation_adequacy.StructureMutation { mutated: ^drop_input_edge },

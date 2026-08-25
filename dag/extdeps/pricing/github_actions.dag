@@ -4,7 +4,7 @@ module extdeps.pricing.github_actions
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/billing/reference/actions-runner-pricing"
   }
 }
@@ -31,11 +31,11 @@ type GithubActionsRunnerPriceRow {
 data github_actions_linux_slim_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
   billing_sku: ActionsLinuxSlim,
   sku_wire_label: "actions_linux_slim",
-  vcpus: hardware_thread_count(1),
-  cpu_architecture: X86_64,
+  vcpus: std.measure.hardware_thread_count(1),
+  cpu_architecture: extdeps.toolchain.types.X86_64,
   per_minute: std.measure.MoneyPerMinute {
-    amount: money_amount_micro(count: 2000),
-    currency: Usd,
+    amount: std.measure.money_amount_micro(count: 2000),
+    currency: std.currency.Usd,
   },
   pricing_citation: "actions-runner-pricing#actions_linux_slim",
 }
@@ -43,11 +43,11 @@ data github_actions_linux_slim_price: GithubActionsRunnerPriceRow = GithubAction
 data github_actions_linux_2core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
   billing_sku: ActionsLinux,
   sku_wire_label: "actions_linux",
-  vcpus: hardware_thread_count(2),
-  cpu_architecture: X86_64,
+  vcpus: std.measure.hardware_thread_count(2),
+  cpu_architecture: extdeps.toolchain.types.X86_64,
   per_minute: std.measure.MoneyPerMinute {
-    amount: money_amount_micro(count: 6000),
-    currency: Usd,
+    amount: std.measure.money_amount_micro(count: 6000),
+    currency: std.currency.Usd,
   },
   pricing_citation: "actions-runner-pricing#actions_linux",
 }
@@ -55,11 +55,11 @@ data github_actions_linux_2core_price: GithubActionsRunnerPriceRow = GithubActio
 data github_actions_linux_arm_2core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
   billing_sku: ActionsLinuxArm,
   sku_wire_label: "actions_linux_arm",
-  vcpus: hardware_thread_count(2),
-  cpu_architecture: Aarch64,
+  vcpus: std.measure.hardware_thread_count(2),
+  cpu_architecture: extdeps.toolchain.types.Aarch64,
   per_minute: std.measure.MoneyPerMinute {
-    amount: money_amount_micro(count: 5000),
-    currency: Usd,
+    amount: std.measure.money_amount_micro(count: 5000),
+    currency: std.currency.Usd,
   },
   pricing_citation: "actions-runner-pricing#actions_linux_arm",
 }
@@ -67,11 +67,11 @@ data github_actions_linux_arm_2core_price: GithubActionsRunnerPriceRow = GithubA
 data github_actions_linux_4core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
   billing_sku: Linux4Core,
   sku_wire_label: "linux_4_core",
-  vcpus: hardware_thread_count(4),
-  cpu_architecture: X86_64,
+  vcpus: std.measure.hardware_thread_count(4),
+  cpu_architecture: extdeps.toolchain.types.X86_64,
   per_minute: std.measure.MoneyPerMinute {
-    amount: money_amount_micro(count: 12000),
-    currency: Usd,
+    amount: std.measure.money_amount_micro(count: 12000),
+    currency: std.currency.Usd,
   },
   pricing_citation: "actions-runner-pricing#linux_4_core",
 }
@@ -79,11 +79,11 @@ data github_actions_linux_4core_price: GithubActionsRunnerPriceRow = GithubActio
 data github_actions_linux_8core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
   billing_sku: Linux8Core,
   sku_wire_label: "linux_8_core",
-  vcpus: hardware_thread_count(8),
-  cpu_architecture: X86_64,
+  vcpus: std.measure.hardware_thread_count(8),
+  cpu_architecture: extdeps.toolchain.types.X86_64,
   per_minute: std.measure.MoneyPerMinute {
-    amount: money_amount_micro(count: 22000),
-    currency: Usd,
+    amount: std.measure.money_amount_micro(count: 22000),
+    currency: std.currency.Usd,
   },
   pricing_citation: "actions-runner-pricing#linux_8_core",
 }
@@ -91,11 +91,11 @@ data github_actions_linux_8core_price: GithubActionsRunnerPriceRow = GithubActio
 data github_actions_linux_16core_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
   billing_sku: Linux16Core,
   sku_wire_label: "linux_16_core",
-  vcpus: hardware_thread_count(16),
-  cpu_architecture: X86_64,
+  vcpus: std.measure.hardware_thread_count(16),
+  cpu_architecture: extdeps.toolchain.types.X86_64,
   per_minute: std.measure.MoneyPerMinute {
-    amount: money_amount_micro(count: 42000),
-    currency: Usd,
+    amount: std.measure.money_amount_micro(count: 42000),
+    currency: std.currency.Usd,
   },
   pricing_citation: "actions-runner-pricing#linux_16_core",
 }

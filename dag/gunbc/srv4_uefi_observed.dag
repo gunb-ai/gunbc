@@ -6,7 +6,7 @@ data srv4_uefi_observed_environment: extdeps.firmware.uefi_shell.UefiShellEnviro
     extdeps.firmware.uefi_shell.UefiDeviceMapping {
       fs_alias: "FS0",
       block_aliases: "HD0b;BLK1",
-      device_path: "PcieRoot(0x40000)/Pci(0x1,0x0)/Pci(0x0,0x0)/NVMe(0x1,04-4A-B4-81-58-38-25-00)/HD(1,GPT,3C65AC38-871A-4633-BE76-2F1FB65522D7,0x800,0x32000)" as std.types.NonEmptyStr,
+      device_path: "PcieRoot(0x40000)/Pci(0x1,0x0)/Pci(0x0,0x0)/NVMe(0x1,04-4A-B4-81-58-38-25-00)/HD(1,GPT,3C65AC38-871A-4633-BE76-2F1FB65522D7,0x800,0x32000)" as NonEmptyStr,
     },
   ],
   boot_options: [
@@ -26,9 +26,9 @@ data srv4_uefi_observed_environment: extdeps.firmware.uefi_shell.UefiShellEnviro
     },
   ],
   interfaces: [
-    extdeps.firmware.uefi_shell.UefiNetworkInterface { name: "eth0", media: MediaPresent, ipv4: "169.254.0.18" },
-    extdeps.firmware.uefi_shell.UefiNetworkInterface { name: "eth1", media: MediaDisconnected, ipv4: "0.0.0.0" },
-    extdeps.firmware.uefi_shell.UefiNetworkInterface { name: "eth2", media: MediaPresent, ipv4: "0.0.0.0" },
-    extdeps.firmware.uefi_shell.UefiNetworkInterface { name: "eth3", media: MediaDisconnected, ipv4: "0.0.0.0" },
+    extdeps.firmware.uefi_shell.UefiNetworkInterface { name: "eth0", media: extdeps.firmware.uefi_shell.MediaPresent, ipv4: "169.254.0.18" },
+    extdeps.firmware.uefi_shell.UefiNetworkInterface { name: "eth1", media: extdeps.firmware.uefi_shell.MediaDisconnected, ipv4: "0.0.0.0" },
+    extdeps.firmware.uefi_shell.UefiNetworkInterface { name: "eth2", media: extdeps.firmware.uefi_shell.MediaPresent, ipv4: "0.0.0.0" },
+    extdeps.firmware.uefi_shell.UefiNetworkInterface { name: "eth3", media: extdeps.firmware.uefi_shell.MediaDisconnected, ipv4: "0.0.0.0" },
   ],
 }

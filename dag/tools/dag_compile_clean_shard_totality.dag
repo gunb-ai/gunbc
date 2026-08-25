@@ -35,29 +35,29 @@ fn compile_clean_partition_totality_verdict_from(
     let orphans = filter(xs: glob_paths, predicate: fn(p) { !tools.dag_compile_clean_shard_roster.list_contains_path(xs: roster_paths, target: p) })
     let duplicated = duplicated_entry_paths(paths: roster_paths)
     let surplus = filter(xs: roster_paths, predicate: fn(p) { !tools.dag_compile_clean_shard_roster.list_contains_path(xs: glob_paths, target: p) })
-    if list_length(items: orphans) > 0 {
+    if std.types.list_length(items: orphans) > 0 {
       PartitionOrphan { unclaimed_paths: orphans }
-    } else if list_length(items: duplicated) > 0 {
+    } else if std.types.list_length(items: duplicated) > 0 {
       PartitionDuplicateClaim { duplicated_paths: duplicated }
-    } else if list_length(items: surplus) > 0 {
+    } else if std.types.list_length(items: surplus) > 0 {
       PartitionSurplusClaim { surplus_paths: surplus }
     } else {
-      PartitionTotal { module_count: list_length(items: roster_paths) }
+      PartitionTotal { module_count: std.types.list_length(items: roster_paths) }
     }
   }
 }
 
 fn compile_clean_partition_totality_verdict_live() -> PartitionTotalityVerdict {
-  let glob = run_live_dag_entry_glob()
-  match compile_clean_shard_entry_paths() {
-    CompileCleanShardEntryPathsBuilt { paths: roster_paths } =>
+  let glob = tools.dag_compile_clean_shard_totality_transport.run_live_dag_entry_glob()
+  match tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths() {
+    tools.dag_compile_clean_shard_roster.CompileCleanShardEntryPathsBuilt { paths: roster_paths } =>
       compile_clean_partition_totality_verdict_from(
         glob_success: glob.success,
         glob_stdout: glob.stdout,
         glob_stderr: glob.stderr,
         roster_paths: roster_paths,
       )
-    CompileCleanShardEntryPathsDuplicatePath { path: p, first: _, duplicate: _ } =>
+    tools.dag_compile_clean_shard_roster.CompileCleanShardEntryPathsDuplicatePath { path: p, first: _, duplicate: _ } =>
       PartitionDuplicateClaim { duplicated_paths: [p] }
   }
 }
@@ -86,7 +86,7 @@ fn witness_totality_reds_on_synthetic_orphan() -> Bool {
   )
   match verdict {
     PartitionOrphan { unclaimed_paths: paths } =>
-      list_length(items: paths) == 1 && paths.first() == "dag/std/orphan_not_in_roster.dag"
+      std.types.list_length(items: paths) == 1 && paths.first() == "dag/std/orphan_not_in_roster.dag"
     _ => false
   }
 }
@@ -100,7 +100,7 @@ fn witness_totality_reds_on_synthetic_double_claim() -> Bool {
   )
   match verdict {
     PartitionDuplicateClaim { duplicated_paths: paths } =>
-      list_length(items: paths) == 1 && paths.first() == "dag/std/logic.dag"
+      std.types.list_length(items: paths) == 1 && paths.first() == "dag/std/logic.dag"
     _ => false
   }
 }
@@ -115,7 +115,7 @@ fn witness_totality_reds_on_synthetic_surplus() -> Bool {
   )
   match verdict {
     PartitionSurplusClaim { surplus_paths: paths } =>
-      list_length(items: paths) == 1 && paths.first() == "dag/std/phantom_not_in_glob.dag"
+      std.types.list_length(items: paths) == 1 && paths.first() == "dag/std/phantom_not_in_glob.dag"
     _ => false
   }
 }

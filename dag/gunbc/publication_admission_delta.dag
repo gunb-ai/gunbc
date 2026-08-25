@@ -40,12 +40,12 @@ fn classify_subject_delta(
 ) -> ProjectionDeltaClass? {
   let included_now = match current {
     Absent => false
-    Present { value: plan } => public_projection_includes_subject(
+    Present { value: plan } => gunbc.public_projection.public_projection_includes_subject(
       plan: plan,
       subject_identity: subject.subject_identity,
     )
   }
-  let included_candidate = public_projection_includes_subject(
+  let included_candidate = gunbc.public_projection.public_projection_includes_subject(
     plan: candidate,
     subject_identity: subject.subject_identity,
   )
@@ -93,7 +93,7 @@ fn candidate_delta_subjects(
 fn admit_change_local_projection(
   request: ChangeLocalAdmissionRequest,
 ) -> ChangeLocalAdmissionOutcome {
-  let recomputed = projection_digest_from_subjects(subjects: request.candidate.included_subjects)
+  let recomputed = gunbc.public_projection.projection_digest_from_subjects(subjects: request.candidate.included_subjects)
   if recomputed != request.candidate.projection_digest {
     ChangeLocalRefused {
       cause: CandidateDigestInconsistent {

@@ -3,14 +3,14 @@ module extdeps.network.ipv6
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.rfc-editor.org/rfc/rfc4291",
   }
 }
 
 data ipv6_text_representation_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.rfc-editor.org/rfc/rfc5952",
   }
 }
@@ -19,9 +19,9 @@ data ipv6_grounding_note: String = "Structured IPv6 address (RFC 4291 §2.5): ei
 
 data ipv6_text_codec_staged_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.network.ipv6", decl_name: "Ipv6Address"),
+    ref: std.decl_ref.decl_ref(module_path: "extdeps.network.ipv6", decl_name: "Ipv6Address"),
     reason: "Ipv6Address has no RFC 5952 string parse/render yet; it reuses extdeps.numeric.base16 (render) and a reverse-fold over base16_digit_rows (parse), with :: compression",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.network.ipv6", decl_name: "parse_ipv6_address")),
+    dissolution: std.dissolution.bound_dissolution(ref: std.decl_ref.decl_ref(module_path: "extdeps.network.ipv6", decl_name: "parse_ipv6_address")),
   )
 ]
 

@@ -72,7 +72,7 @@ type OrderedRing<T> {
   zero: T
   negate: fn(T) -> T
   mul: fn(T, T) -> T
-  div: fn(T, T) -> Result<T, std.error_primitives.DivError>
+  div: fn(T, T) -> std.error_primitives.Result<T, std.error_primitives.DivError>
   one: T
   compare: fn(T, T) -> Ordering
   eq: fn(T, T) -> Bool
@@ -148,11 +148,11 @@ type FinitePowerSet<T> {
 
 type FreeMonoid<T>
   = Empty
-  | Cons { head: T, tail: std.algebra.FreeMonoid<T> }
+  | Cons { head: T, tail: FreeMonoid<T> }
 
 type FreeSemigroup<T> {
   head: T
-  tail: std.algebra.FreeMonoid<T>
+  tail: FreeMonoid<T>
 }
 
 // TWO AXES, THREE INHABITED CORNERS. The family below is a 2x2 space and the corpus lives in
@@ -199,10 +199,6 @@ type FinitelySupportedFunction<K, V> {
   lookup: fn(K) -> V?
   empty: FinitelySupportedFunction<K, V>
   get: fn(K) -> V?
-  insert: fn(K, V) -> PartialFunction<K, V>
-  merge: fn(PartialFunction<K, V>) -> PartialFunction<K, V>
-  map_keys: fn() -> std.algebra.FreeMonoid<K>
-  map_values: fn() -> std.algebra.FreeMonoid<V>
   insert: fn(K, V) -> FinitelySupportedFunction<K, V>
   merge: fn(FinitelySupportedFunction<K, V>) -> FinitelySupportedFunction<K, V>
   map_keys: fn() -> FreeMonoid<K>

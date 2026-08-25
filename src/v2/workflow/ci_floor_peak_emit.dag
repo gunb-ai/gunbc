@@ -18,17 +18,17 @@ data ci_floor_peak_cgroup_locate_vertical_note: String = "THE CGROUP LOCATE VERT
 data ci_floor_peak_path_model_refused_poison: String = "__GUNBC_PATH_INTENT_LOWERING_REFUSED__ floor-peak cgroup path-intent leaf lowering was rejected by v2.extdeps.languages.bash_orch_if; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red (DESIGN 5: refuse, never widen). WHY A POISON RATHER THAN EMPTY TEXT, on the measured facts rather than the intuitive ones: the Run.command seam is String-typed and cannot carry an Outcome, so the refusal arm has to be SOME string, and the sibling witness file's model-text helpers return \"\" there. An earlier draft of this row justified the poison by claiming an empty while-condition is an always-true loop that would spin forever. THAT IS FALSE, tested 2026-08-05 against /bin/sh, /bin/dash and /bin/bash: 'while ; do' is a SYNTAX ERROR in all three, so an empty leaf would fail loudly rather than hang. The real argument is smaller and survives the correction. An empty String is a well-typed, ordinary-looking value flowing through an untyped seam; it says nothing about which lowering refused or why, and its first observable symptom is a shell parse failure inside a generated workflow — attributed to ci.yml at CI runtime, several layers from the path model that actually refused. The poison carries the cause to the place the reader lands. In practice the drift gate catches either one, because both differ from the committed bytes; what the poison buys is a LOCATED refusal instead of an anonymous one, which is the half of DESIGN section 5 that a mere red does not supply."
 
 fn ci_floor_peak_assign_cgroup_dir_command() -> String {
-  let cmd = bash_nearest_ancestor_locate_assign_command(spec: ci_floor_peak_nearest_ancestor_spec)
+  let cmd = v2.extdeps.languages.bash_orch_if.bash_nearest_ancestor_locate_assign_command(spec: ci_floor_peak_nearest_ancestor_spec)
   if cmd == "" { ci_floor_peak_path_model_refused_poison } else { cmd }
 }
 
 fn ci_floor_peak_while_cond_command() -> String {
-  let cmd = bash_nearest_ancestor_locate_cond_command(spec: ci_floor_peak_nearest_ancestor_spec)
+  let cmd = v2.extdeps.languages.bash_orch_if.bash_nearest_ancestor_locate_cond_command(spec: ci_floor_peak_nearest_ancestor_spec)
   if cmd == "" { ci_floor_peak_path_model_refused_poison } else { cmd }
 }
 
 fn ci_floor_peak_while_body_command() -> String {
-  let cmd = bash_nearest_ancestor_locate_body_command(spec: ci_floor_peak_nearest_ancestor_spec)
+  let cmd = v2.extdeps.languages.bash_orch_if.bash_nearest_ancestor_locate_body_command(spec: ci_floor_peak_nearest_ancestor_spec)
   if cmd == "" { ci_floor_peak_path_model_refused_poison } else { cmd }
 }
 
@@ -115,13 +115,13 @@ fn ci_floor_peak_run(command: String) -> v2.std.orchestration.Run {
   v2.std.orchestration.Run {
     command: command,
     env: Empty,
-    redirect: v2.std.optional.Absent,
-    capture: v2.std.optional.Absent
+    redirect: v2.std.collection.Absent,
+    capture: v2.std.collection.Absent
   }
 }
 
 fn ci_floor_peak_do(command: String) -> v2.std.orchestration.PipelineStep {
-  Do { run: ci_floor_peak_run(command: command) }
+  v2.std.orchestration.Do { run: ci_floor_peak_run(command: command) }
 }
 
 fn ci_floor_peak_exit_zero(command: String) -> v2.std.orchestration.Predicate {
@@ -129,13 +129,13 @@ fn ci_floor_peak_exit_zero(command: String) -> v2.std.orchestration.Predicate {
 }
 
 fn ci_floor_peak_emit_pipeline(p: v2.std.orchestration.Pipeline) -> String {
-  match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: d } =>
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(p: p, medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       match d {
-        None => source.carried
-        Some { diagnostics: _ } => ci_floor_peak_emit_refused_poison
+        v2.std.diagnostic.None => source.carried
+        v2.std.diagnostic.Some { diagnostics: _ } => ci_floor_peak_emit_refused_poison
       }
-    Rejected { diagnostics: _ } => ci_floor_peak_emit_refused_poison
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ci_floor_peak_emit_refused_poison
   }
 }
 
@@ -148,7 +148,7 @@ fn ci_floor_peak_cgroup_locate_while() -> v2.std.orchestration.PipelineStep {
     },
     body: v2.std.orchestration.Pipeline {
       steps: [ci_floor_peak_do(command: ci_floor_peak_while_body_command())],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     }
   }
 }
@@ -170,7 +170,7 @@ fn ci_floor_peak_cgroup_locate_with_scaffold_steps() -> List<v2.std.orchestratio
 fn ci_floor_peak_cgroup_locate_pipeline() -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
     steps: ci_floor_peak_cgroup_locate_with_scaffold_steps(),
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
@@ -179,12 +179,12 @@ fn ci_floor_peak_pre_reset_inner_if() -> v2.std.orchestration.PipelineStep {
     cond: ci_floor_peak_exit_zero(command: ci_floor_peak_echo_reset_redirect_command),
     then_: v2.std.orchestration.Pipeline {
       steps: [ci_floor_peak_do(command: ci_floor_peak_pre_reset_ok_command)],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.optional.Present {
+    else_: v2.std.collection.Present {
       value: v2.std.orchestration.Pipeline {
         steps: [ci_floor_peak_do(command: ci_floor_peak_pre_reset_unsupported_command)],
-        on_failure: FailFast
+        on_failure: v2.std.orchestration.FailFast
       }
     }
   }
@@ -195,12 +195,12 @@ fn ci_floor_peak_pre_peak_if() -> v2.std.orchestration.PipelineStep {
     cond: ci_floor_peak_exit_zero(command: ci_floor_peak_test_f_memory_peak_command),
     then_: v2.std.orchestration.Pipeline {
       steps: [ci_floor_peak_pre_reset_inner_if()],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.optional.Present {
+    else_: v2.std.collection.Present {
       value: v2.std.orchestration.Pipeline {
         steps: [ci_floor_peak_do(command: ci_floor_peak_pre_unavailable_command)],
-        on_failure: FailFast
+        on_failure: v2.std.orchestration.FailFast
       }
     }
   }
@@ -209,7 +209,7 @@ fn ci_floor_peak_pre_peak_if() -> v2.std.orchestration.PipelineStep {
 fn ci_floor_peak_pre_pipeline() -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
     steps: concat(ci_floor_peak_cgroup_locate_with_scaffold_steps(), [ci_floor_peak_pre_peak_if()]),
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
@@ -218,12 +218,12 @@ fn ci_floor_peak_post_peak_if() -> v2.std.orchestration.PipelineStep {
     cond: ci_floor_peak_exit_zero(command: ci_floor_peak_test_f_memory_peak_command),
     then_: v2.std.orchestration.Pipeline {
       steps: [ci_floor_peak_do(command: ci_floor_peak_post_ok_command)],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.optional.Present {
+    else_: v2.std.collection.Present {
       value: v2.std.orchestration.Pipeline {
         steps: [ci_floor_peak_do(command: ci_floor_peak_post_unavailable_command)],
-        on_failure: FailFast
+        on_failure: v2.std.orchestration.FailFast
       }
     }
   }
@@ -237,12 +237,12 @@ fn ci_floor_phase_journal_if() -> v2.std.orchestration.PipelineStep {
         ci_floor_peak_do(command: ci_floor_phase_journal_header_command),
         ci_floor_peak_do(command: ci_floor_phase_journal_read_command)
       ],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.optional.Present {
+    else_: v2.std.collection.Present {
       value: v2.std.orchestration.Pipeline {
         steps: [ci_floor_peak_do(command: ci_floor_phase_journal_absent_command)],
-        on_failure: FailFast
+        on_failure: v2.std.orchestration.FailFast
       }
     }
   }
@@ -256,12 +256,12 @@ fn ci_floor_wet_witness_row_outcome_receipt_if() -> v2.std.orchestration.Pipelin
         ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_header_command),
         ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_read_command)
       ],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.optional.Present {
+    else_: v2.std.collection.Present {
       value: v2.std.orchestration.Pipeline {
         steps: [ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_absent_command)],
-        on_failure: FailFast
+        on_failure: v2.std.orchestration.FailFast
       }
     }
   }
@@ -278,7 +278,7 @@ fn ci_floor_peak_post_pipeline() -> v2.std.orchestration.Pipeline {
       ],
       concat(ci_floor_peak_cgroup_locate_with_scaffold_steps(), [ci_floor_peak_post_peak_if()])
     ),
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 

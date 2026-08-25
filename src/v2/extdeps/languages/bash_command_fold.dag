@@ -588,7 +588,7 @@ fn bash_fold_translation_rules_node_for_emitted(
   rule_name: v2.std.node.Symbol
 ) -> Witness<v2.std.node.Node> {
   match bash_fold_relation_row_witness(emitted: emitted, lhs: lhs) {
-    Holds { value: row } =>
+    v2.std.witness.Holds { value: row } =>
       v2.std.witness.Holds {
         value: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -607,7 +607,7 @@ fn bash_fold_translation_rules_node_for_emitted(
           occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -618,13 +618,13 @@ fn bash_fold_relation_row_witness(emitted: v2.std.node.Node, lhs: v2.std.node.Sy
     lhs: lhs,
     child: emitted
   ) {
-    Holds { value: production } =>
+    v2.std.witness.Holds { value: production } =>
       v2.std.grammar.derive_grammar_relation_row_node(
         production: production,
         productions: productions,
         emitted: emitted
       )
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -634,9 +634,9 @@ fn bash_fold_serialize_source_witness(
   production_binding: v2.std.node.Symbol
 ) -> Witness<v2.std.node.Node> {
   match bash_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
-    Holds { value: row } =>
+    v2.std.witness.Holds { value: row } =>
       match v2.std.node_query.find_named_child(root: row, name: ^grammar_relation_field_tokens) {
-        Accepted { value: tokens_root, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: tokens_root, diagnostics: _ } =>
           v2.std.witness.Holds {
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -657,9 +657,9 @@ fn bash_fold_serialize_source_witness(
               occurrence_id: v2.std.node.SyntheticOccurrence
             }
           }
-        Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+        v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -779,22 +779,22 @@ fn bash_fold_target_model_bundle_witness(
     source_literal: source_literal,
     production_binding: production_binding
   ) {
-    Holds { value: serialize_source } =>
+    v2.std.witness.Holds { value: serialize_source } =>
       match bash_fold_translation_rules_node_for_emitted(
         emitted: emitted,
         lhs: production_binding,
         rule_name: rule_name
       ) {
-        Holds { value: rules } =>
+        v2.std.witness.Holds { value: rules } =>
           v2.std.witness.Holds {
             value: v2.extdeps.languages.bash.bash_target_model_bundle(
               rules: rules,
               serialize_source: serialize_source
             )
           }
-        Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+        v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -811,7 +811,7 @@ fn bash_fold_target_model_for_emitted_witness(
     production_binding: production_binding,
     rule_name: rule_name
   ) {
-    Holds { value: bundle } =>
+    v2.std.witness.Holds { value: bundle } =>
       v2.std.witness.Holds {
         value: v2.std.compilers.target_model.target_model_make_with_emit_transforms(
           bundle: bundle,
@@ -822,7 +822,7 @@ fn bash_fold_target_model_for_emitted_witness(
           runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
         )
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 

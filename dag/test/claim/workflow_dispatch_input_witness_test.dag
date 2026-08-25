@@ -3,51 +3,51 @@ module test.claim.workflow_dispatch_input_witness
 
 fn value_is_expected_input(v: extdeps.languages.yaml.types.YamlValue) -> Bool {
   match v {
-    YamlMapping { entries } =>
+    extdeps.languages.yaml.types.YamlMapping { entries } =>
       fold(entries, init: false, f: fn(acc, entry) {
         acc || (entry.key == "inputs" && match entry.value {
-          YamlMapping { entries: inputs } =>
+          extdeps.languages.yaml.types.YamlMapping { entries: inputs } =>
             fold(inputs, init: false, f: fn(found, row) {
               found || (row.key == "expected_healed_sha" && match row.value {
-                YamlMapping { entries: fields } =>
+                extdeps.languages.yaml.types.YamlMapping { entries: fields } =>
                   fold(fields, init: false, f: fn(has_type, field) {
                     has_type || (field.key == "type" && match field.value {
-                      YamlString { value } => value == "string"
-                      YamlNull => false
-                      YamlBool { value: _ } => false
-                      YamlInt { lexeme: _ } => false
-                      YamlFloat { lexeme: _ } => false
-                      YamlSequence { elements: _ } => false
-                      YamlMapping { entries: _ } => false
+                      extdeps.languages.yaml.types.YamlString { value } => value == "string"
+                      extdeps.languages.yaml.types.YamlNull => false
+                      extdeps.languages.yaml.types.YamlBool { value: _ } => false
+                      extdeps.languages.yaml.types.YamlInt { lexeme: _ } => false
+                      extdeps.languages.yaml.types.YamlFloat { lexeme: _ } => false
+                      extdeps.languages.yaml.types.YamlSequence { elements: _ } => false
+                      extdeps.languages.yaml.types.YamlMapping { entries: _ } => false
                     })
                   })
-                YamlNull => false
-                YamlBool { value: _ } => false
-                YamlInt { lexeme: _ } => false
-                YamlFloat { lexeme: _ } => false
-                YamlString { value: _ } => false
-                YamlSequence { elements: _ } => false
+                extdeps.languages.yaml.types.YamlNull => false
+                extdeps.languages.yaml.types.YamlBool { value: _ } => false
+                extdeps.languages.yaml.types.YamlInt { lexeme: _ } => false
+                extdeps.languages.yaml.types.YamlFloat { lexeme: _ } => false
+                extdeps.languages.yaml.types.YamlString { value: _ } => false
+                extdeps.languages.yaml.types.YamlSequence { elements: _ } => false
               })
             })
-          YamlNull => false
-          YamlBool { value: _ } => false
-          YamlInt { lexeme: _ } => false
-          YamlFloat { lexeme: _ } => false
-          YamlString { value: _ } => false
-          YamlSequence { elements: _ } => false
+          extdeps.languages.yaml.types.YamlNull => false
+          extdeps.languages.yaml.types.YamlBool { value: _ } => false
+          extdeps.languages.yaml.types.YamlInt { lexeme: _ } => false
+          extdeps.languages.yaml.types.YamlFloat { lexeme: _ } => false
+          extdeps.languages.yaml.types.YamlString { value: _ } => false
+          extdeps.languages.yaml.types.YamlSequence { elements: _ } => false
         })
       })
-    YamlNull => false
-    YamlBool { value: _ } => false
-    YamlInt { lexeme: _ } => false
-    YamlFloat { lexeme: _ } => false
-    YamlString { value: _ } => false
-    YamlSequence { elements: _ } => false
+    extdeps.languages.yaml.types.YamlNull => false
+    extdeps.languages.yaml.types.YamlBool { value: _ } => false
+    extdeps.languages.yaml.types.YamlInt { lexeme: _ } => false
+    extdeps.languages.yaml.types.YamlFloat { lexeme: _ } => false
+    extdeps.languages.yaml.types.YamlString { value: _ } => false
+    extdeps.languages.yaml.types.YamlSequence { elements: _ } => false
   }
 }
 
 test fn workflow_dispatch_nonempty_inputs_are_realized_not_dropped() -> Bool {
-  let entry = workflow_trigger_entry(trigger: extdeps.github.actions.WorkflowDispatch {
+  let entry = extdeps.languages.yaml.gha_workflow.workflow_trigger_entry(trigger: extdeps.github.actions.WorkflowDispatch {
     inputs: [extdeps.github.actions.DispatchInput {
       name: "expected_healed_sha",
       description: Present { value: "immutable subject" },
@@ -60,29 +60,29 @@ test fn workflow_dispatch_nonempty_inputs_are_realized_not_dropped() -> Bool {
 }
 
 test fn workflow_dispatch_empty_inputs_preserve_null_projection() -> Bool {
-  match workflow_trigger_entry(trigger: extdeps.github.actions.WorkflowDispatch { inputs: [] }).value {
-    YamlNull => true
-    YamlBool { value: _ } => false
-    YamlInt { lexeme: _ } => false
-    YamlFloat { lexeme: _ } => false
-    YamlString { value: _ } => false
-    YamlSequence { elements: _ } => false
-    YamlMapping { entries: _ } => false
+  match extdeps.languages.yaml.gha_workflow.workflow_trigger_entry(trigger: extdeps.github.actions.WorkflowDispatch { inputs: [] }).value {
+    extdeps.languages.yaml.types.YamlNull => true
+    extdeps.languages.yaml.types.YamlBool { value: _ } => false
+    extdeps.languages.yaml.types.YamlInt { lexeme: _ } => false
+    extdeps.languages.yaml.types.YamlFloat { lexeme: _ } => false
+    extdeps.languages.yaml.types.YamlString { value: _ } => false
+    extdeps.languages.yaml.types.YamlSequence { elements: _ } => false
+    extdeps.languages.yaml.types.YamlMapping { entries: _ } => false
   }
 }
 
 fn mode_input_has_choice_options(v: extdeps.languages.yaml.types.YamlValue) -> Bool {
   match v {
-    YamlMapping { entries } =>
+    extdeps.languages.yaml.types.YamlMapping { entries } =>
       fold(entries, init: false, f: fn(acc, entry) {
         acc || (entry.key == "inputs" && match entry.value {
-          YamlMapping { entries: inputs } =>
+          extdeps.languages.yaml.types.YamlMapping { entries: inputs } =>
             fold(inputs, init: false, f: fn(found, row) {
               found || (row.key == "mode" && match row.value {
-                YamlMapping { entries: fields } =>
+                extdeps.languages.yaml.types.YamlMapping { entries: fields } =>
                   fold(fields, init: false, f: fn(has_opts, field) {
                     has_opts || (field.key == "options" && match field.value {
-                      YamlSequence { elements: opts } =>
+                      extdeps.languages.yaml.types.YamlSequence { elements: opts } =>
                         length(opts) == 7
                           && any(opts, o => match o { extdeps.languages.yaml.types.YamlString { value } => value == "plan"  _ => false })
                           && any(opts, o => match o { extdeps.languages.yaml.types.YamlString { value } => value == "apply"  _ => false })
@@ -91,41 +91,41 @@ fn mode_input_has_choice_options(v: extdeps.languages.yaml.types.YamlValue) -> B
                           && any(opts, o => match o { extdeps.languages.yaml.types.YamlString { value } => value == "spark_reboot"  _ => false })
                           && any(opts, o => match o { extdeps.languages.yaml.types.YamlString { value } => value == "spark_grants"  _ => false })
                           && any(opts, o => match o { extdeps.languages.yaml.types.YamlString { value } => value == "spark_durability"  _ => false })
-                      YamlNull => false
-                      YamlBool { value: _ } => false
-                      YamlInt { lexeme: _ } => false
-                      YamlFloat { lexeme: _ } => false
-                      YamlString { value: _ } => false
-                      YamlMapping { entries: _ } => false
+                      extdeps.languages.yaml.types.YamlNull => false
+                      extdeps.languages.yaml.types.YamlBool { value: _ } => false
+                      extdeps.languages.yaml.types.YamlInt { lexeme: _ } => false
+                      extdeps.languages.yaml.types.YamlFloat { lexeme: _ } => false
+                      extdeps.languages.yaml.types.YamlString { value: _ } => false
+                      extdeps.languages.yaml.types.YamlMapping { entries: _ } => false
                     })
                   })
-                YamlNull => false
-                YamlBool { value: _ } => false
-                YamlInt { lexeme: _ } => false
-                YamlFloat { lexeme: _ } => false
-                YamlString { value: _ } => false
-                YamlSequence { elements: _ } => false
+                extdeps.languages.yaml.types.YamlNull => false
+                extdeps.languages.yaml.types.YamlBool { value: _ } => false
+                extdeps.languages.yaml.types.YamlInt { lexeme: _ } => false
+                extdeps.languages.yaml.types.YamlFloat { lexeme: _ } => false
+                extdeps.languages.yaml.types.YamlString { value: _ } => false
+                extdeps.languages.yaml.types.YamlSequence { elements: _ } => false
               })
             })
-          YamlNull => false
-          YamlBool { value: _ } => false
-          YamlInt { lexeme: _ } => false
-          YamlFloat { lexeme: _ } => false
-          YamlString { value: _ } => false
-          YamlSequence { elements: _ } => false
+          extdeps.languages.yaml.types.YamlNull => false
+          extdeps.languages.yaml.types.YamlBool { value: _ } => false
+          extdeps.languages.yaml.types.YamlInt { lexeme: _ } => false
+          extdeps.languages.yaml.types.YamlFloat { lexeme: _ } => false
+          extdeps.languages.yaml.types.YamlString { value: _ } => false
+          extdeps.languages.yaml.types.YamlSequence { elements: _ } => false
         })
       })
-    YamlNull => false
-    YamlBool { value: _ } => false
-    YamlInt { lexeme: _ } => false
-    YamlFloat { lexeme: _ } => false
-    YamlString { value: _ } => false
-    YamlSequence { elements: _ } => false
+    extdeps.languages.yaml.types.YamlNull => false
+    extdeps.languages.yaml.types.YamlBool { value: _ } => false
+    extdeps.languages.yaml.types.YamlInt { lexeme: _ } => false
+    extdeps.languages.yaml.types.YamlFloat { lexeme: _ } => false
+    extdeps.languages.yaml.types.YamlString { value: _ } => false
+    extdeps.languages.yaml.types.YamlSequence { elements: _ } => false
   }
 }
 
 test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
-  let entry = workflow_trigger_entry(trigger: fleet_converge_workflow.on[0])
+  let entry = extdeps.languages.yaml.gha_workflow.workflow_trigger_entry(trigger: fleet_converge_workflow.on[0])
   entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
 }
 
@@ -137,9 +137,9 @@ test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
 }
 
 fn expected_fleet_converge_yml_content() -> String {
-  match expected_fleet_converge_yml() {
-    FleetConvergeYamlGenerated { content } => content
-    FleetConvergeYamlGenerationRefused { reason: _ } => ""
+  match gunbc.fleet_converge_workflow.expected_fleet_converge_yml() {
+    gunbc.fleet_converge_workflow.FleetConvergeYamlGenerated { content } => content
+    gunbc.fleet_converge_workflow.FleetConvergeYamlGenerationRefused { reason: _ } => ""
   }
 }
 
@@ -156,5 +156,5 @@ test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> 
       s: expected_fleet_converge_yml_content(),
       pattern: "EXPECTED=\"$\{\{ github.event.inputs.plan_artifact_hash \}\}\"",
     )
-    && string_contains(s: gunbc_ci_fleet_converge_apply_invoke(), pattern: "$\{EXPECTED_HASH:-\}")
+    && string_contains(s: gunbc.ci_spec.gunbc_ci_fleet_converge_apply_invoke(), pattern: "$\{EXPECTED_HASH:-\}")
 }

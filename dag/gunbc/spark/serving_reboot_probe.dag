@@ -48,7 +48,7 @@ type SparkServingRebootOutcome
 // the argv this actuator runs are one fact; writing `sudo -n systemctl reboot` a second time would
 // be the fork that lets the two drift until a rejected reboot looks like a host problem.
 fn spark_serving_reboot_argv() -> List<String> {
-  spark_managed_grant_argv(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost)
+  gunbc.spark.managed_access_bootstrap.spark_managed_grant_argv(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost)
 }
 
 // THE CONNECTION DYING IS THE EXPECTED OUTCOME AND IS NOT INTERPRETED HERE.
@@ -62,16 +62,16 @@ fn spark_serving_issue_reboot(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   host: product.placement_supply.HostIdentity,
 ) -> SparkServingRebootOutcome {
-  match run_typed_argv_transport(
+  match gunbc.host_effect_realize.run_typed_argv_transport(
     argv: spark_serving_reboot_argv(),
-    transport: fleet_locus_transport(context: context, host: host),
+    transport: gunbc.fleet_ssh_locus.fleet_locus_transport(context: context, host: host),
   ) {
-    TypedArgvExecRefused { reason: why } =>
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } =>
       SparkServingRebootNotAttempted {
         host: host,
         cause: join(["transport refused the reboot leg, it was never attempted: ", why], "") as std.types.NonEmptyStr,
       }
-    TypedArgvExecConverged { result: r } =>
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
       if spark_serving_reboot_was_rejected_outright(result: r) {
         SparkServingRebootRejected {
           host: host,
@@ -143,9 +143,9 @@ data spark_serving_reboot_receipt_path: String = "target/spark-serving-reboot-re
 data spark_serving_reboot_ci_attempt_raw: String = "spark-serving-reboot-ci"
 
 func spark_serving_reboot_ci_wet() -> std.process.ProcessExit {
-  match prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_reboot_ci_attempt_raw) {
-    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
-    FleetSshContextReady { context: context, receipt: context_receipt } =>
+  match gunbc.fleet_ssh_locus.prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_reboot_ci_attempt_raw) {
+    gunbc.fleet_ssh_locus.FleetSshContextRefused { cause: cause } => std.process.exit_failure(reason: cause)
+    gunbc.fleet_ssh_locus.FleetSshContextReady { context: context, receipt: context_receipt } =>
       spark_serving_reboot_with_context(context: context, context_receipt: context_receipt)
   }
 }
@@ -158,25 +158,25 @@ func spark_serving_reboot_with_context(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   context_receipt: String,
 ) -> std.process.ProcessExit {
-  let now = clock_now_probed_at()
-  match spark_converge_target_selection(execute_apply: true) {
-    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
-    SparkConvergeTargetAllObserveOnly =>
-      exit_failure(
+  let now = gunbc.clock_read.clock_now_probed_at()
+  match gunbc.fleet_multi_principal_probe.spark_converge_target_selection(execute_apply: true) {
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetRefused { reason: why } => std.process.exit_failure(reason: why)
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetAllObserveOnly =>
+      std.process.exit_failure(
         reason: "spark_serving_reboot_ci_wet: SPARK_CONVERGE_TARGET names no host, and a reboot must never fan out across the fleet from an unset variable",
       )
-    SparkConvergeTargetSingle { host: only } => {
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetSingle { host: only } => {
       let outcome = spark_serving_issue_reboot(context: context, host: only)
       let body = join([
-        "spark_serving_reboot_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n",
+        "spark_serving_reboot_ci_wet probed_at=", gunbc.clock_read.probed_at_word(reading: now) as String, "\n",
         context_receipt,
         spark_serving_reboot_outcome_wire(outcome: outcome),
       ], "")
-      let w = Filesystem.Write(path: spark_serving_reboot_receipt_path, content: body)
+      let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: spark_serving_reboot_receipt_path, content: body)
       if w.success == false {
-        exit_failure(reason: join(["reboot receipt write failed: ", w.error], ""))
+        std.process.exit_failure(reason: join(["reboot receipt write failed: ", w.error], ""))
       } else if spark_serving_reboot_was_attempted(outcome: outcome) == false {
-        exit_failure(reason: body)
+        std.process.exit_failure(reason: body)
       } else {
         std.process.ExitSuccess
       }

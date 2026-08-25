@@ -104,37 +104,37 @@ module v2.workflow.floor_non_verdict
 // exact non-verdict-minus-expected-red set keeps the 15 identities that can classify live debt;
 // enrolling the other 127 as expected-red instead would fabricate semantic verdicts.
 fn floor_non_verdict_roster() -> List<String> {
-  Cons {
+  std.algebra.Cons {
     head: "test.claim.host_phase_status.witness_reconcile_covers_upsert_teardown_and_noop",
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: "test.claim.host_phase_status.witness_remaining_work_counts_every_unfinished_cell",
-      tail: Cons {
+      tail: std.algebra.Cons {
         head: "test.claim.srv3_subsumption.comment_only_drift_is_one_change_not_remove_add",
-        tail: Cons {
+        tail: std.algebra.Cons {
           head: "test.claim.srv3_subsumption.reconcile_would_teardown_only_if_ownership_claimed_it",
-          tail: Cons {
+          tail: std.algebra.Cons {
             head: "test.claim.srv3_subsumption.srv3_and_srv4_disagree_on_convergence",
-            tail: Cons {
+            tail: std.algebra.Cons {
               head: "test.claim.srv3_subsumption.srv3_reconcile_adds_exactly_the_missing_fleet_key",
-              tail: Cons {
+              tail: std.algebra.Cons {
                 head: "test.claim.srv3_subsumption.srv3_reconcile_refuses_both_unowned_keys_never_teardown",
-                tail: Cons {
+                tail: std.algebra.Cons {
                   head: "test.claim.srv3_subsumption.srv4_reconcile_is_converged_empty_plan",
-                  tail: Cons {
+                  tail: std.algebra.Cons {
                     head: "v2.test.claim.staging.cached_stage_hit_skips_stage",
-                    tail: Cons {
+                    tail: std.algebra.Cons {
                       head: "v2.test.claim.staging.cached_stage_miss_runs_stage",
-                      tail: Cons {
+                      tail: std.algebra.Cons {
                         head: "v2.test.emit.produced_decl_support_preserved.produced_decl_support_survives_augmentation",
-                        tail: Cons {
+                        tail: std.algebra.Cons {
                           head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_content_hash_violates",
-                          tail: Cons {
+                          tail: std.algebra.Cons {
                             head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates",
-                            tail: Cons {
+                            tail: std.algebra.Cons {
                               head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds",
-                              tail: Cons {
+                              tail: std.algebra.Cons {
                                 head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_non_canonical_violates",
-                                tail: Empty {}
+                                tail: v2.std.algebra.Empty {}
                               }
                             }
                           }

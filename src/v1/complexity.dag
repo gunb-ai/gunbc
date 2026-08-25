@@ -160,7 +160,7 @@ fn set_has(m: Map<String, Bool>, key: String) -> Bool {
 
 fn strict_after_parser_witness(input: std.termination.DescentEvidence) -> std.termination.DescentEvidence {
   match input {
-    DescentUnknown => std.termination.DescentUnknown
+    std.termination.DescentUnknown => std.termination.DescentUnknown
     _ => std.termination.Strict
   }
 }
@@ -190,7 +190,7 @@ fn parser_state_param(params: List<v1.std.core.Node>, si: Map<String, v1.std.cor
 
 fn parser_state_base_var(expr: v1.std.core.Node, si: Map<String, v1.std.core.NewlineIndex>) -> String? {
   match expr.expr_data {
-    ExprFieldAccess =>
+    v1.std.core.ExprFieldAccess =>
       match expr.children |> first {
         Present { value: base } =>
           match base.expr_data {
@@ -258,7 +258,7 @@ fn parser_state_expr_progress(expr: v1.std.core.Node, state_param: ParserStatePa
         }
       }
 
-    ExprFieldAccess =>
+    v1.std.core.ExprFieldAccess =>
       if v1.std.core.field_access_field_at(texpr: expr, source_indices: si) == "state" {
         match parser_state_base_var(expr: expr, si: si) {
           Present { value: result_name } =>
@@ -291,7 +291,7 @@ fn parser_state_expr_progress(expr: v1.std.core.Node, state_param: ParserStatePa
         Absent => std.termination.DescentUnknown
       }
 
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let cond = v1.std.core.if_condition(texpr: expr)
       let then_consumed = match v1.compiler.parse.parser_progress_flag_var(expr: cond, source_indices: si) {
         Present { value: name } => map_insert(consumed_true_set, name, true)
@@ -317,7 +317,7 @@ fn parser_state_expr_progress(expr: v1.std.core.Node, state_param: ParserStatePa
       }
       std.termination.descent_evidence_lattice_meet(a: then_progress, b: else_progress)
 
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let next_env = parser_env_with_binding(
         name: v1.std.core.let_binding_name_at(texpr: expr, source_indices: si),
         value_expr: v1.std.core.let_value(texpr: expr),
@@ -338,7 +338,7 @@ fn parser_state_expr_progress(expr: v1.std.core.Node, state_param: ParserStatePa
         Absent => std.termination.DescentUnknown
       }
 
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let arm_progresses = v1.std.core.match_arm_nodes(texpr: expr) |> map(arm_node =>
         parser_state_expr_progress(
           expr: v1.std.core.arm_body(n: arm_node),
@@ -356,7 +356,7 @@ fn parser_state_expr_progress(expr: v1.std.core.Node, state_param: ParserStatePa
         Absent => std.termination.DescentUnknown
       }
 
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       parser_block_state_progress(
         stmts: expr.children,
         state_param: state_param,
@@ -376,7 +376,7 @@ fn parser_block_state_progress(stmts: List<v1.std.core.Node>, state_param: Parse
       let leading = stmts |> take(n: (stmts |> count) - 1)
       let final_env = leading |> fold(init: env, f: (acc_env, stmt) =>
         match stmt.expr_data {
-          ExprLet =>
+          v1.std.core.ExprLet =>
             match v1.std.core.let_body(texpr: stmt) {
               Absent =>
                 parser_env_with_binding(
@@ -417,19 +417,19 @@ fn parser_result_source_for_expr(expr: v1.std.core.Node, state_param: ParserStat
         Absent => std.termination.DescentUnknown
       }
       match v1.compiler.parse.parser_result_witness(expr: expr, source_indices: si) {
-        ParserWitnessAdvance => ParserResultAdvance { input: input_progress }
-        ParserWitnessExpect => ParserResultExpect { input: input_progress }
-        ParserWitnessEat => ParserResultEat { input: input_progress }
+        v1.compiler.parse.ParserWitnessAdvance => ParserResultAdvance { input: input_progress }
+        v1.compiler.parse.ParserWitnessExpect => ParserResultExpect { input: input_progress }
+        v1.compiler.parse.ParserWitnessEat => ParserResultEat { input: input_progress }
         v1.compiler.parse.ParserWitnessCall { callee: callee } =>
           match callee {
             v1.compiler.parse.ParserCallHelper { helper: _ } => ParserResultOpaque
             v1.compiler.parse.ParserCallFunction { name: name } =>
               match input_progress {
-                DescentUnknown => ParserResultOpaque
+                std.termination.DescentUnknown => ParserResultOpaque
                 _ => ParserResultCall { input: input_progress, callee: name }
               }
           }
-        ParserWitnessOpaque => ParserResultOpaque
+        v1.compiler.parse.ParserWitnessOpaque => ParserResultOpaque
       }
     _ =>
       let progress = parser_success_progress(
@@ -440,7 +440,7 @@ fn parser_result_source_for_expr(expr: v1.std.core.Node, state_param: ParserStat
         consumed_true_set: consumed_true_set,
       si: si)
       match progress {
-        DescentUnknown => ParserResultOpaque
+        std.termination.DescentUnknown => ParserResultOpaque
         _ => ParserResultDirectState { input: progress }
       }
   }
@@ -489,7 +489,7 @@ fn parser_call_edge_progress(call_node: v1.std.core.Node, state_param: ParserSta
 fn collect_parser_progress_block_edges(caller: String, stmts: List<v1.std.core.Node>, state_param: ParserStateParam, scc_name_set: Map<String, Bool>, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: Map<String, v1.std.core.NewlineIndex>) -> List<ParserProgressEdge> {
   let acc = stmts |> fold(init: ParserProgressAcc { edges: [], env: env }, f: (acc, stmt) =>
     match stmt.expr_data {
-      ExprLet =>
+      v1.std.core.ExprLet =>
         match v1.std.core.let_body(texpr: stmt) {
           Absent =>
             let value_expr = v1.std.core.let_value(texpr: stmt)
@@ -570,7 +570,7 @@ fn collect_parser_progress_edges(caller: String, body: v1.std.core.Node, state_p
       )
       concat(own_edges, child_edges)
 
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let cond = v1.std.core.if_condition(texpr: body)
       let cond_edges = collect_parser_progress_edges(
         caller: caller,
@@ -609,7 +609,7 @@ fn collect_parser_progress_edges(caller: String, body: v1.std.core.Node, state_p
       }
       concat(cond_edges, then_edges, else_edges)
 
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let value_expr = v1.std.core.let_value(texpr: body)
       let value_edges = collect_parser_progress_edges(
         caller: caller,
@@ -643,7 +643,7 @@ fn collect_parser_progress_edges(caller: String, body: v1.std.core.Node, state_p
       }
       concat(value_edges, body_edges)
 
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       collect_parser_progress_block_edges(
         caller: caller,
         stmts: body.children,
@@ -654,7 +654,7 @@ fn collect_parser_progress_edges(caller: String, body: v1.std.core.Node, state_p
         consumed_true_set: consumed_true_set,
       si: si)
 
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut_edges = collect_parser_progress_edges(
         caller: caller,
         body: v1.std.core.match_scrutinee(texpr: body),
@@ -698,14 +698,14 @@ fn parser_record_field_value(expr: v1.std.core.Node, field_name: String, si: Map
 
 fn parser_expr_is_none(expr: v1.std.core.Node) -> Bool {
   match expr.expr_data {
-    v1.std.core.ExprLiteral { value: v } => match v { LitNull => true, _ => false }
+    v1.std.core.ExprLiteral { value: v } => match v { std.syntax.LitNull => true, _ => false }
     _ => false
   }
 }
 
 fn parser_success_progress(expr: v1.std.core.Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, si: Map<String, v1.std.core.NewlineIndex>) -> std.termination.DescentEvidence {
   match expr.expr_data {
-    ExprReturn =>
+    v1.std.core.ExprReturn =>
       parser_success_progress(
         expr: v1.std.core.return_value(texpr: expr),
         state_param: state_param,
@@ -761,7 +761,7 @@ fn parser_success_progress(expr: v1.std.core.Node, state_param: ParserStateParam
         Absent => std.termination.DescentUnknown
       }
 
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let cond = v1.std.core.if_condition(texpr: expr)
       let then_consumed = match v1.compiler.parse.parser_progress_flag_var(expr: cond, source_indices: si) {
         Present { value: name } => map_insert(consumed_true_set, name, true)
@@ -787,7 +787,7 @@ fn parser_success_progress(expr: v1.std.core.Node, state_param: ParserStateParam
       }
       std.termination.descent_evidence_lattice_meet(a: then_progress, b: else_progress)
 
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let next_env = parser_env_with_binding(
         name: v1.std.core.let_binding_name_at(texpr: expr, source_indices: si),
         value_expr: v1.std.core.let_value(texpr: expr),
@@ -808,11 +808,11 @@ fn parser_success_progress(expr: v1.std.core.Node, state_param: ParserStateParam
         Absent => std.termination.DescentUnknown
       }
 
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       let prefix = expr.children |> reverse |> skip(1) |> reverse
       let acc = prefix |> fold(init: ParserProgressAcc { edges: [], env: env }, f: (acc, stmt) =>
         match stmt.expr_data {
-          ExprLet =>
+          v1.std.core.ExprLet =>
             match v1.std.core.let_body(texpr: stmt) {
               Absent =>
                 let next_env = parser_env_with_binding(
@@ -1072,13 +1072,13 @@ fn max_path_self_calls_with_cont(body: v1.std.core.Node, func_name: String, cont
       let arg_calls = body.children |> fold(init: 0, f: (acc, child) =>
         let val = v1.std.core.arg_value(n: child)
         match val.expr_data {
-          ExprLambda => acc + max_path_self_calls_with_cont(body: v1.std.core.lambda_body(texpr: val), func_name: func_name, continue_calls: 0, si: si)
+          v1.std.core.ExprLambda => acc + max_path_self_calls_with_cont(body: v1.std.core.lambda_body(texpr: val), func_name: func_name, continue_calls: 0, si: si)
           _ => acc + max_path_self_calls_with_cont(body: val, func_name: func_name, continue_calls: 0, si: si)
         }
       )
       own + arg_calls + continue_calls
 
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut_calls = max_path_self_calls_with_cont(body: v1.std.core.match_scrutinee(texpr: body), func_name: func_name, continue_calls: 0, si: si)
       let max_arm = v1.std.core.match_arm_nodes(texpr: body) |> fold(init: continue_calls, f: (acc, arm_node) =>
         let arm_calls = max_path_self_calls_with_cont(body: v1.std.core.arm_body(n: arm_node), func_name: func_name, continue_calls: continue_calls, si: si)
@@ -1086,7 +1086,7 @@ fn max_path_self_calls_with_cont(body: v1.std.core.Node, func_name: String, cont
       )
       scrut_calls + max_arm
 
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let cond_calls = max_path_self_calls_with_cont(body: v1.std.core.if_condition(texpr: body), func_name: func_name, continue_calls: 0, si: si)
       let then_calls = max_path_self_calls_with_cont(body: v1.std.core.if_then_branch(texpr: body), func_name: func_name, continue_calls: continue_calls, si: si)
       let else_calls = match v1.std.core.if_else_branch(texpr: body) {
@@ -1096,11 +1096,11 @@ fn max_path_self_calls_with_cont(body: v1.std.core.Node, func_name: String, cont
       let branch_max = if then_calls > else_calls { then_calls } else { else_calls }
       cond_calls + branch_max
 
-    ExprForEach =>
+    v1.std.core.ExprForEach =>
 
       max_path_self_calls_with_cont(body: v1.std.core.foreach_collection(texpr: body), func_name: func_name, continue_calls: 0, si: si) + continue_calls
 
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let val_calls = max_path_self_calls_with_cont(body: v1.std.core.let_value(texpr: body), func_name: func_name, continue_calls: 0, si: si)
       let body_calls = match v1.std.core.let_body(texpr: body) {
         Present { value: b } => max_path_self_calls_with_cont(body: b, func_name: func_name, continue_calls: continue_calls, si: si)
@@ -1108,7 +1108,7 @@ fn max_path_self_calls_with_cont(body: v1.std.core.Node, func_name: String, cont
       }
       val_calls + body_calls
 
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       body.children |> reverse |> fold(init: continue_calls, f: (acc, stmt) =>
         max_path_self_calls_with_cont(body: stmt, func_name: func_name, continue_calls: acc, si: si)
       )
@@ -1118,13 +1118,13 @@ fn max_path_self_calls_with_cont(body: v1.std.core.Node, func_name: String, cont
       let arg_calls = v1.std.core.method_arg_nodes(texpr: body) |> fold(init: 0, f: (acc, arg_node) =>
         let val = v1.std.core.arg_value(n: arg_node)
         match val.expr_data {
-          ExprLambda => acc + max_path_self_calls_with_cont(body: v1.std.core.lambda_body(texpr: val), func_name: func_name, continue_calls: 0, si: si)
+          v1.std.core.ExprLambda => acc + max_path_self_calls_with_cont(body: v1.std.core.lambda_body(texpr: val), func_name: func_name, continue_calls: 0, si: si)
           _ => acc + max_path_self_calls_with_cont(body: val, func_name: func_name, continue_calls: 0, si: si)
         }
       )
       recv_calls + arg_calls + continue_calls
 
-    ExprReturn =>
+    v1.std.core.ExprReturn =>
       max_path_self_calls_with_cont(body: v1.std.core.return_value(texpr: body), func_name: func_name, continue_calls: 0, si: si)
 
     _ =>
@@ -1167,7 +1167,7 @@ fn max_path_target_calls_with_cont(body: v1.std.core.Node, target_set: Map<Strin
       )
       own + arg_calls + continue_calls
 
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut_calls = max_path_target_calls_with_cont(body: v1.std.core.match_scrutinee(texpr: body), target_set: target_set, continue_calls: 0, si: si)
       let max_arm = v1.std.core.match_arm_nodes(texpr: body) |> fold(init: continue_calls, f: (acc, arm_node) =>
         let arm_calls = max_path_target_calls_with_cont(body: v1.std.core.arm_body(n: arm_node), target_set: target_set, continue_calls: continue_calls, si: si)
@@ -1175,7 +1175,7 @@ fn max_path_target_calls_with_cont(body: v1.std.core.Node, target_set: Map<Strin
       )
       scrut_calls + max_arm
 
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let cond_calls = max_path_target_calls_with_cont(body: v1.std.core.if_condition(texpr: body), target_set: target_set, continue_calls: 0, si: si)
       let then_calls = max_path_target_calls_with_cont(body: v1.std.core.if_then_branch(texpr: body), target_set: target_set, continue_calls: continue_calls, si: si)
       let else_calls = match v1.std.core.if_else_branch(texpr: body) {
@@ -1185,10 +1185,10 @@ fn max_path_target_calls_with_cont(body: v1.std.core.Node, target_set: Map<Strin
       let branch_max = if then_calls > else_calls { then_calls } else { else_calls }
       cond_calls + branch_max
 
-    ExprForEach =>
+    v1.std.core.ExprForEach =>
       max_path_target_calls_with_cont(body: v1.std.core.foreach_collection(texpr: body), target_set: target_set, continue_calls: 0, si: si) + continue_calls
 
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let val_calls = max_path_target_calls_with_cont(body: v1.std.core.let_value(texpr: body), target_set: target_set, continue_calls: 0, si: si)
       let body_calls = match v1.std.core.let_body(texpr: body) {
         Present { value: b } => max_path_target_calls_with_cont(body: b, target_set: target_set, continue_calls: continue_calls, si: si)
@@ -1196,7 +1196,7 @@ fn max_path_target_calls_with_cont(body: v1.std.core.Node, target_set: Map<Strin
       }
       val_calls + body_calls
 
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       body.children |> reverse |> fold(init: continue_calls, f: (acc, stmt) =>
         max_path_target_calls_with_cont(body: stmt, target_set: target_set, continue_calls: acc, si: si)
       )
@@ -1206,13 +1206,13 @@ fn max_path_target_calls_with_cont(body: v1.std.core.Node, target_set: Map<Strin
       let arg_calls = v1.std.core.method_arg_nodes(texpr: body) |> fold(init: 0, f: (acc, arg_node) =>
         let val = v1.std.core.arg_value(n: arg_node)
         match val.expr_data {
-          ExprLambda => acc + max_path_target_calls_with_cont(body: v1.std.core.lambda_body(texpr: val), target_set: target_set, continue_calls: 0, si: si)
+          v1.std.core.ExprLambda => acc + max_path_target_calls_with_cont(body: v1.std.core.lambda_body(texpr: val), target_set: target_set, continue_calls: 0, si: si)
           _ => acc + max_path_target_calls_with_cont(body: val, target_set: target_set, continue_calls: 0, si: si)
         }
       )
       recv_calls + arg_calls + continue_calls
 
-    ExprReturn =>
+    v1.std.core.ExprReturn =>
       max_path_target_calls_with_cont(body: v1.std.core.return_value(texpr: body), target_set: target_set, continue_calls: 0, si: si)
 
     _ =>
@@ -1290,8 +1290,8 @@ fn expr_descending_witness_source(expr: v1.std.core.Node, descending_witness_nam
       map_get(descending_witness_names, v1.std.core.expr_var_name_at(texpr: expr, source_indices: si))
     v1.std.core.ExprBinOp { op: op, algebra_field: _ } =>
       match op {
-        Sub => expr_descending_witness_source(expr: v1.std.core.binop_left(texpr: expr), descending_witness_names: descending_witness_names, si: si)
-        Div => expr_descending_witness_source(expr: v1.std.core.binop_left(texpr: expr), descending_witness_names: descending_witness_names, si: si)
+        std.syntax.Sub => expr_descending_witness_source(expr: v1.std.core.binop_left(texpr: expr), descending_witness_names: descending_witness_names, si: si)
+        std.syntax.Div => expr_descending_witness_source(expr: v1.std.core.binop_left(texpr: expr), descending_witness_names: descending_witness_names, si: si)
         _ => none
       }
 
@@ -1319,7 +1319,7 @@ fn recursive_measure_param_names(body: v1.std.core.Node, params: List<v1.std.cor
     map_insert(acc, v1.std.core.param_node_name_at(n: param, source_indices: si), v1.std.core.param_node_name_at(n: param, source_indices: si))
   )
   match body.expr_data {
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let then_names = recursive_measure_param_names(body: v1.std.core.if_then_branch(texpr: body), params: params, si: si)
       let else_names = match v1.std.core.if_else_branch(texpr: body) {
         Present { value: eb } => recursive_measure_param_names(body: eb, params: params, si: si)
@@ -1329,18 +1329,18 @@ fn recursive_measure_param_names(body: v1.std.core.Node, params: List<v1.std.cor
         condition_param_names(expr: v1.std.core.if_condition(texpr: body), param_set: param_set, si: si),
         then_names),
         else_names)
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut_names = condition_param_names(expr: v1.std.core.match_scrutinee(texpr: body), param_set: param_set, si: si)
       let arm_names = v1.std.core.match_arm_nodes(texpr: body) |> fold(init: empty_map(), f: (acc, arm_node) =>
         map_merge(acc, recursive_measure_param_names(body: v1.std.core.arm_body(n: arm_node), params: params, si: si))
       )
       map_merge(scrut_names, arm_names)
-    ExprLet =>
+    v1.std.core.ExprLet =>
       match v1.std.core.let_body(texpr: body) {
         Present { value: b } => recursive_measure_param_names(body: b, params: params, si: si)
         Absent => empty_map()
       }
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       body.children |> fold(init: empty_map(), f: (acc, stmt) =>
         map_merge(acc, recursive_measure_param_names(body: stmt, params: params, si: si))
       )
@@ -1363,8 +1363,8 @@ fn is_descending_expr(expr: v1.std.core.Node) -> Bool {
   match expr.expr_data {
     v1.std.core.ExprBinOp { op: op, algebra_field: _ } =>
       match op {
-        Sub => match v1.std.core.binop_left(texpr: expr).expr_data { v1.std.core.ExprVar { binding_kind: _ } => true  _ => false }
-        Div => match v1.std.core.binop_left(texpr: expr).expr_data { v1.std.core.ExprVar { binding_kind: _ } => true  _ => false }
+        std.syntax.Sub => match v1.std.core.binop_left(texpr: expr).expr_data { v1.std.core.ExprVar { binding_kind: _ } => true  _ => false }
+        std.syntax.Div => match v1.std.core.binop_left(texpr: expr).expr_data { v1.std.core.ExprVar { binding_kind: _ } => true  _ => false }
         _ => false
       }
     _ => false
@@ -1402,7 +1402,7 @@ fn is_accessor_of_param(expr: v1.std.core.Node, param_name: String, vars: Map<St
 
 fn is_children_of_param(expr: v1.std.core.Node, param_name: String, vars: Map<String, Bool>, si: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match expr.expr_data {
-    ExprFieldAccess =>
+    v1.std.core.ExprFieldAccess =>
       let base = v1.std.core.field_access_base(texpr: expr)
       let field = v1.std.core.field_access_field_at(texpr: expr, source_indices: si)
       v1.std.core.is_children_list_field(field_name: field)
@@ -1425,7 +1425,7 @@ fn is_children_of_param(expr: v1.std.core.Node, param_name: String, vars: Map<St
 fn is_structural_children(expr: v1.std.core.Node, param_name: String, vars: Map<String, Bool>, si: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   is_children_of_param(expr: expr, param_name: param_name, vars: vars, si: si)
   || match expr.expr_data {
-    ExprFieldAccess =>
+    v1.std.core.ExprFieldAccess =>
       let base = v1.std.core.field_access_base(texpr: expr)
       let field = v1.std.core.field_access_field_at(texpr: expr, source_indices: si)
       v1.std.core.is_children_list_field(field_name: field)
@@ -1578,7 +1578,7 @@ fn is_tokens_input_expr(expr: v1.std.core.Node, param_name: String, vars: Map<St
     v1.std.core.ExprVar { binding_kind: _ } =>
       let vname = v1.std.core.expr_var_name_at(texpr: expr, source_indices: si)
       vname == param_name || set_has(m: vars, key: vname)
-    ExprFieldAccess =>
+    v1.std.core.ExprFieldAccess =>
       let field = v1.std.core.field_access_field_at(texpr: expr, source_indices: si)
       if field == param_name { true }
       else {
@@ -1629,13 +1629,13 @@ fn expr_contains_descent(expr: v1.std.core.Node, param_name: String, vars: Map<S
     true
   } else {
     match expr.expr_data {
-      ExprIf =>
+      v1.std.core.ExprIf =>
         expr_contains_descent(expr: v1.std.core.if_then_branch(texpr: expr), param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
         && match v1.std.core.if_else_branch(texpr: expr) {
           Present { value: eb } => expr_contains_descent(expr: eb, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
           Absent => false
         }
-      ExprBlock =>
+      v1.std.core.ExprBlock =>
         match expr.children |> last {
           Present { value: last_stmt } => expr_contains_descent(expr: last_stmt, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
           Absent => false
@@ -1644,7 +1644,7 @@ fn expr_contains_descent(expr: v1.std.core.Node, param_name: String, vars: Map<S
       v1.std.core.ExprVar { binding_kind: _ } =>
         set_has(m: vars, key: v1.std.core.expr_var_name_at(texpr: expr, source_indices: si))
 
-      ExprFieldAccess =>
+      v1.std.core.ExprFieldAccess =>
         let field = v1.std.core.field_access_field_at(texpr: expr, source_indices: si)
         let base = v1.std.core.field_access_base(texpr: expr)
         v1.std.core.is_sub_value_field(field_name: field)
@@ -1681,14 +1681,14 @@ fn collect_field_binding_names(fb: v1.std.core.Node, vars: Map<String, Bool>) ->
 
 fn is_if_option_descent(val: v1.std.core.Node, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool, si: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match val.expr_data {
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let then_branch = v1.std.core.if_then_branch(texpr: val)
       let then_has_descent = expr_contains_descent(expr: then_branch, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       let else_is_none = match v1.std.core.if_else_branch(texpr: val) {
         Present { value: eb } =>
           match eb.expr_data {
             v1.std.core.ExprVar { binding_kind: _ } => v1.std.core.expr_var_name_at(texpr: eb, source_indices: si) == "none"
-            v1.std.core.ExprLiteral { value: v } => match v { LitNull => true, _ => false }
+            v1.std.core.ExprLiteral { value: v } => match v { std.syntax.LitNull => true, _ => false }
             _ => false
           }
         Absent => true
@@ -1700,7 +1700,7 @@ fn is_if_option_descent(val: v1.std.core.Node, param_name: String, vars: Map<Str
 
 fn is_match_option_descent(val: v1.std.core.Node, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool, si: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match val.expr_data {
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut = v1.std.core.match_scrutinee(texpr: val)
       let scrut_has_descent = expr_contains_descent(expr: scrut, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       if scrut_has_descent {
@@ -1734,7 +1734,7 @@ fn is_match_option_descent(val: v1.std.core.Node, param_name: String, vars: Map<
 
 fn collect_descent_vars(body: v1.std.core.Node, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool, si: Map<String, v1.std.core.NewlineIndex>) -> Map<String, Bool> {
   match body.expr_data {
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let val = v1.std.core.let_value(texpr: body)
       let is_direct_descent = (check_child && is_child_descent_expr(expr: val, param_name: param_name, vars: vars, si: si))
         || (check_list && is_list_shrink_expr(expr: val, param_name: param_name, si: si))
@@ -1774,7 +1774,7 @@ fn collect_descent_vars(body: v1.std.core.Node, param_name: String, vars: Map<St
       } else { false }
 
       let is_children_list = match val.expr_data {
-        ExprFieldAccess =>
+        v1.std.core.ExprFieldAccess =>
           let base = v1.std.core.field_access_base(texpr: val)
           let field = v1.std.core.field_access_field_at(texpr: val, source_indices: si)
           v1.std.core.is_children_list_field(field_name: field)
@@ -1810,7 +1810,7 @@ fn collect_descent_vars(body: v1.std.core.Node, param_name: String, vars: Map<St
         Present { value: b } => collect_descent_vars(body: b, param_name: param_name, vars: next_vars, check_child: check_child, check_list: check_list, si: si)
         Absent => next_vars
       }
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
 
       let scrut = v1.std.core.match_scrutinee(texpr: body)
       let scrut_is_descent = expr_contains_descent(expr: scrut, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
@@ -1838,7 +1838,7 @@ fn collect_descent_vars(body: v1.std.core.Node, param_name: String, vars: Map<St
         let arm_result = collect_descent_vars(body: v1.std.core.arm_body(n: arm_node), param_name: param_name, vars: with_patterns, check_child: check_child, check_list: check_list, si: si)
         map_merge(acc, arm_result)
       )
-    ExprIf =>
+    v1.std.core.ExprIf =>
 
       let then_vars = collect_descent_vars(body: v1.std.core.if_then_branch(texpr: body), param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       let else_vars = match v1.std.core.if_else_branch(texpr: body) {
@@ -1846,12 +1846,12 @@ fn collect_descent_vars(body: v1.std.core.Node, param_name: String, vars: Map<St
         Absent => vars
       }
       map_merge(then_vars, else_vars)
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       body.children |> fold(init: vars, f: (acc, stmt) =>
         collect_descent_vars(body: stmt, param_name: param_name, vars: acc, check_child: check_child, check_list: check_list, si: si)
       )
 
-    ExprReturn =>
+    v1.std.core.ExprReturn =>
       match body.children |> first {
         Present { value: inner } => collect_descent_vars(body: inner, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
         Absent => vars
@@ -1867,8 +1867,8 @@ fn all_self_calls_descend(body: v1.std.core.Node, func_name: String, param_name:
 fn all_self_calls_descend_inc(body: v1.std.core.Node, func_name: String, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool, si: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match body.expr_data {
 
-    ExprLambda => true
-    ExprLet =>
+    v1.std.core.ExprLambda => true
+    v1.std.core.ExprLet =>
       let val = v1.std.core.let_value(texpr: body)
       let val_ok = all_self_calls_descend_inc(body: val, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       let is_direct = (check_child && is_child_descent_expr(expr: val, param_name: param_name, vars: vars, si: si))
@@ -1880,7 +1880,7 @@ fn all_self_calls_descend_inc(body: v1.std.core.Node, func_name: String, param_n
       let is_option = is_if_option_descent(val: val, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
 
       let is_children_list = match val.expr_data {
-        ExprFieldAccess =>
+        v1.std.core.ExprFieldAccess =>
           let base = v1.std.core.field_access_base(texpr: val)
           let field = v1.std.core.field_access_field_at(texpr: val, source_indices: si)
           v1.std.core.is_children_list_field(field_name: field)
@@ -1900,7 +1900,7 @@ fn all_self_calls_descend_inc(body: v1.std.core.Node, func_name: String, param_n
         Absent => true
       }
       val_ok && body_ok
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut = v1.std.core.match_scrutinee(texpr: body)
       let scrut_ok = all_self_calls_descend_inc(body: scrut, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       let scrut_is_descent = expr_contains_descent(expr: scrut, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
@@ -1926,7 +1926,7 @@ fn all_self_calls_descend_inc(body: v1.std.core.Node, func_name: String, param_n
         all_self_calls_descend_inc(body: v1.std.core.arm_body(n: arm_node), func_name: func_name, param_name: param_name, vars: arm_vars, check_child: check_child, check_list: check_list, si: si)
       )
       scrut_ok && arms_ok
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let cond_ok = all_self_calls_descend_inc(body: v1.std.core.if_condition(texpr: body), func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       let then_ok = all_self_calls_descend_inc(body: v1.std.core.if_then_branch(texpr: body), func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
       let else_ok = match v1.std.core.if_else_branch(texpr: body) {
@@ -1934,7 +1934,7 @@ fn all_self_calls_descend_inc(body: v1.std.core.Node, func_name: String, param_n
         Absent => true
       }
       cond_ok && then_ok && else_ok
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       let result = body.children |> fold(init: DescentCheckAcc { ok: true, vars: vars }, f: (acc, stmt) =>
         if acc.ok == false { acc }
         else {
@@ -1969,7 +1969,7 @@ fn all_self_calls_descend_inc(body: v1.std.core.Node, func_name: String, param_n
         let args_ok = v1.std.core.method_arg_nodes(texpr: body) |> all(arg_node =>
           let arg_val = v1.std.core.arg_value(n: arg_node)
           match arg_val.expr_data {
-            ExprLambda =>
+            v1.std.core.ExprLambda =>
               match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
                 Present { value: iter_name } =>
                   let ext_vars = map_insert(vars, iter_name, true)
@@ -1994,13 +1994,13 @@ fn all_self_calls_descend_inc(body: v1.std.core.Node, func_name: String, param_n
 
 fn unwrap_to_match(body: v1.std.core.Node) -> v1.std.core.Node? {
   match body.expr_data {
-    ExprMatch => Present { value: body }
-    ExprLet =>
+    v1.std.core.ExprMatch => Present { value: body }
+    v1.std.core.ExprLet =>
       match v1.std.core.let_body(texpr: body) {
         Present { value: b } => unwrap_to_match(body: b)
         Absent => none
       }
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       match body.children |> last {
         Present { value: last_stmt } => unwrap_to_match(body: last_stmt)
         Absent => none
@@ -2014,7 +2014,7 @@ fn matches_on_sub_value_field(body: v1.std.core.Node, param_name: String, si: Ma
     Present { value: m } =>
       let scrut = v1.std.core.match_scrutinee(texpr: m)
       match scrut.expr_data {
-        ExprFieldAccess =>
+        v1.std.core.ExprFieldAccess =>
           let base = v1.std.core.field_access_base(texpr: scrut)
           let field = v1.std.core.field_access_field_at(texpr: scrut, source_indices: si)
           v1.std.core.is_sub_value_field(field_name: field)
@@ -2080,7 +2080,7 @@ fn classify_self_call_evidence(arg_expr: v1.std.core.Node, param_name: String, d
 
           let inner_ev = classify_self_call_evidence(arg_expr: extractor_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list, si: si)
           match inner_ev {
-            NonIncreasing => std.termination.Strict
+            std.termination.NonIncreasing => std.termination.Strict
             _ => inner_ev
           }
         } else if is_list_passthrough_call(expr: arg_expr, si: si) {
@@ -2092,7 +2092,7 @@ fn classify_self_call_evidence(arg_expr: v1.std.core.Node, param_name: String, d
           }
         } else { std.termination.DescentUnknown }
 
-      ExprFieldAccess =>
+      v1.std.core.ExprFieldAccess =>
         let base = v1.std.core.field_access_base(texpr: arg_expr)
         match base.expr_data {
           v1.std.core.ExprVar { binding_kind: _ } =>
@@ -2112,9 +2112,9 @@ fn classify_self_call_evidence(arg_expr: v1.std.core.Node, param_name: String, d
           let recv = v1.std.core.method_receiver(texpr: arg_expr)
           let recv_ev = classify_self_call_evidence(arg_expr: recv, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list, si: si)
           match recv_ev {
-            Strict => std.termination.Strict
-            NonIncreasing => std.termination.Strict
-            DescentUnknown => std.termination.DescentUnknown
+            std.termination.Strict => std.termination.Strict
+            std.termination.NonIncreasing => std.termination.Strict
+            std.termination.DescentUnknown => std.termination.DescentUnknown
           }
         } else { std.termination.DescentUnknown }
       _ => std.termination.DescentUnknown
@@ -2138,8 +2138,8 @@ fn merge_optional_evidence(a: std.termination.DescentEvidence?, b: std.terminati
 fn collect_evidence_incremental(body: v1.std.core.Node, func_name: String, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool, branching_only: Bool, si: Map<String, v1.std.core.NewlineIndex>) -> std.termination.DescentEvidence? {
   match body.expr_data {
 
-    ExprLambda => none
-    ExprLet =>
+    v1.std.core.ExprLambda => none
+    v1.std.core.ExprLet =>
       let val = v1.std.core.let_value(texpr: body)
       let val_ev = collect_evidence_incremental(body: val, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
       let is_direct = (check_child && is_child_descent_expr(expr: val, param_name: param_name, vars: vars, si: si))
@@ -2179,7 +2179,7 @@ fn collect_evidence_incremental(body: v1.std.core.Node, func_name: String, param
       } else { false }
 
       let is_children_list = match val.expr_data {
-        ExprFieldAccess =>
+        v1.std.core.ExprFieldAccess =>
           let base = v1.std.core.field_access_base(texpr: val)
           let field = v1.std.core.field_access_field_at(texpr: val, source_indices: si)
           v1.std.core.is_children_list_field(field_name: field)
@@ -2214,7 +2214,7 @@ fn collect_evidence_incremental(body: v1.std.core.Node, func_name: String, param
         Absent => none
       }
       merge_optional_evidence(a: val_ev, b: body_ev)
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut = v1.std.core.match_scrutinee(texpr: body)
       let scrut_ev = collect_evidence_incremental(body: scrut, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
       let scrut_is_descent = expr_contains_descent(expr: scrut, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
@@ -2248,7 +2248,7 @@ fn collect_evidence_incremental(body: v1.std.core.Node, func_name: String, param
         }
       )
       merge_optional_evidence(a: scrut_ev, b: arms_ev)
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let cond_ev = collect_evidence_incremental(body: v1.std.core.if_condition(texpr: body), func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
 
       let then_branch = v1.std.core.if_then_branch(texpr: body)
@@ -2283,7 +2283,7 @@ fn collect_evidence_incremental(body: v1.std.core.Node, func_name: String, param
         merge_optional_evidence(a: acc, b: ce)
       )
       merge_optional_evidence(a: own_evidence, b: child_evidence)
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       let result = body.children |> fold(init: EvidenceBlockAcc { evidence: none, vars: vars }, f: (acc, stmt) =>
         let stmt_ev = collect_evidence_incremental(body: stmt, func_name: func_name, param_name: param_name, vars: acc.vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
         let next_vars = collect_descent_vars(body: stmt, param_name: param_name, vars: acc.vars, check_child: check_child, check_list: check_list, si: si)
@@ -2300,7 +2300,7 @@ fn collect_evidence_incremental(body: v1.std.core.Node, func_name: String, param
         let args_ev = v1.std.core.method_arg_nodes(texpr: body) |> fold(init: none, f: (acc, arg_node) =>
           let arg_val = v1.std.core.arg_value(n: arg_node)
           let ev = match arg_val.expr_data {
-            ExprLambda =>
+            v1.std.core.ExprLambda =>
               match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
                 Present { value: iter_name } =>
                   let ext_vars = map_insert(vars, iter_name, true)
@@ -2328,17 +2328,17 @@ fn collect_evidence_incremental(body: v1.std.core.Node, func_name: String, param
 
 fn try_type_directed_dimension(body: v1.std.core.Node, func_name: String, param_name: String, dim: std.computation.IterationDimension, si: Map<String, v1.std.core.NewlineIndex>) -> std.termination.TerminationProof? {
   match dim {
-    TreeDescent =>
+    std.computation.TreeDescent =>
       match try_dimension_for_param(body: body, func_name: func_name, param_name: param_name, check_child: true, check_list: false, si: si) {
         Present { value: std.termination.Strict } => Present { value: std.termination.TerminationProof { dimensions: [std.termination.TreeSize { param: param_name }] } }
         _ => none
       }
-    CollectionFold =>
+    std.computation.CollectionFold =>
       match try_dimension_for_param(body: body, func_name: func_name, param_name: param_name, check_child: false, check_list: true, si: si) {
         Present { value: std.termination.Strict } => Present { value: std.termination.TerminationProof { dimensions: [std.termination.ListLength { param: param_name }] } }
         _ => none
       }
-    ArithmeticRepeat =>
+    std.computation.ArithmeticRepeat =>
       match try_dimension_for_param(body: body, func_name: func_name, param_name: param_name, check_child: false, check_list: false, si: si) {
         Present { value: std.termination.Strict } => Present { value: std.termination.TerminationProof { dimensions: [std.termination.ArithmeticValue { param: param_name }] } }
         _ => none
@@ -2689,7 +2689,7 @@ fn classify_scc_call_progress(arg_expr: v1.std.core.Node, param_name: String, de
 
           let inner_progress = classify_scc_call_progress(arg_expr: extractor_inner_arg(expr: arg_expr), param_name: param_name, descent_vars: descent_vars, si: si)
           match inner_progress {
-            NonIncreasing => std.termination.Strict
+            std.termination.NonIncreasing => std.termination.Strict
             _ => inner_progress
           }
         } else if is_list_passthrough_call(expr: arg_expr, si: si) {
@@ -2701,7 +2701,7 @@ fn classify_scc_call_progress(arg_expr: v1.std.core.Node, param_name: String, de
           }
         } else { std.termination.DescentUnknown }
 
-      ExprFieldAccess =>
+      v1.std.core.ExprFieldAccess =>
         let base = v1.std.core.field_access_base(texpr: arg_expr)
         match base.expr_data {
           v1.std.core.ExprVar { binding_kind: _ } =>
@@ -2721,9 +2721,9 @@ fn classify_scc_call_progress(arg_expr: v1.std.core.Node, param_name: String, de
           let recv = v1.std.core.method_receiver(texpr: arg_expr)
           let recv_progress = classify_scc_call_progress(arg_expr: recv, param_name: param_name, descent_vars: descent_vars, si: si)
           match recv_progress {
-            Strict => std.termination.Strict
-            NonIncreasing => std.termination.Strict
-            DescentUnknown => std.termination.DescentUnknown
+            std.termination.Strict => std.termination.Strict
+            std.termination.NonIncreasing => std.termination.Strict
+            std.termination.DescentUnknown => std.termination.DescentUnknown
           }
         } else { std.termination.DescentUnknown }
       _ => std.termination.DescentUnknown
@@ -2733,7 +2733,7 @@ fn classify_scc_call_progress(arg_expr: v1.std.core.Node, param_name: String, de
 
 fn collect_scc_child_edges(body: v1.std.core.Node, caller: String, param_name: String, descent_vars: Map<String, Bool>, target_set: Map<String, Bool>, check_child: Bool, check_list: Bool, scc_measure_params: Map<String, Map<String, String>>, si: Map<String, v1.std.core.NewlineIndex>) -> List<ParserProgressEdge> {
   match body.expr_data {
-    ExprLambda => []
+    v1.std.core.ExprLambda => []
     v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = v1.std.core.expr_call_func_at(texpr: body, source_indices: si)
       let own_edges = if set_has(m: target_set, key: callee) {
@@ -2752,9 +2752,9 @@ fn collect_scc_child_edges(body: v1.std.core.Node, caller: String, param_name: S
           if targets_measure {
             let arg_progress = classify_scc_call_progress(arg_expr: v1.std.core.arg_value(n: arg_node), param_name: param_name, descent_vars: descent_vars, si: si)
             match arg_progress {
-              Strict => std.termination.Strict
-              NonIncreasing => match acc { Strict => acc  _ => std.termination.NonIncreasing }
-              DescentUnknown => acc
+              std.termination.Strict => std.termination.Strict
+              std.termination.NonIncreasing => match acc { std.termination.Strict => acc  _ => std.termination.NonIncreasing }
+              std.termination.DescentUnknown => acc
             }
           } else { acc }
         )
@@ -2774,7 +2774,7 @@ fn collect_scc_child_edges(body: v1.std.core.Node, caller: String, param_name: S
         let args_edges = v1.std.core.method_arg_nodes(texpr: body) |> flat_map(arg_node =>
           let arg_val = v1.std.core.arg_value(n: arg_node)
           match arg_val.expr_data {
-            ExprLambda =>
+            v1.std.core.ExprLambda =>
               match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
                 Present { value: iter_name } =>
                   let ext_vars = map_insert(descent_vars, iter_name, true)
@@ -2791,7 +2791,7 @@ fn collect_scc_child_edges(body: v1.std.core.Node, caller: String, param_name: S
         )
       }
 
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let val = v1.std.core.let_value(texpr: body)
       let val_edges = collect_scc_child_edges(body: val, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
       let is_direct = (check_child && is_child_descent_expr(expr: val, param_name: param_name, vars: descent_vars, si: si))
@@ -2827,7 +2827,7 @@ fn collect_scc_child_edges(body: v1.std.core.Node, caller: String, param_name: S
         inner_d || inner_v || inner_p
       } else { false }
       let is_children_list = match val.expr_data {
-        ExprFieldAccess =>
+        v1.std.core.ExprFieldAccess =>
           let base = v1.std.core.field_access_base(texpr: val)
           let field = v1.std.core.field_access_field_at(texpr: val, source_indices: si)
           v1.std.core.is_children_list_field(field_name: field)
@@ -2863,7 +2863,7 @@ fn collect_scc_child_edges(body: v1.std.core.Node, caller: String, param_name: S
       }
       concat(val_edges, body_edges)
 
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut = v1.std.core.match_scrutinee(texpr: body)
       let scrut_edges = collect_scc_child_edges(body: scrut, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
       let arms_edges = v1.std.core.match_arm_nodes(texpr: body) |> flat_map(arm_node =>
@@ -2871,14 +2871,14 @@ fn collect_scc_child_edges(body: v1.std.core.Node, caller: String, param_name: S
       )
       concat(scrut_edges, arms_edges)
 
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       let result = body.children |> fold(init: SccEdgeBlockAcc { edges: [], vars: descent_vars }, f: (acc, stmt) =>
         let stmt_edges = collect_scc_child_edges(body: stmt, caller: caller, param_name: param_name, descent_vars: acc.vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
         let next_vars = collect_descent_vars(body: stmt, param_name: param_name, vars: acc.vars, check_child: check_child, check_list: check_list, si: si)
         SccEdgeBlockAcc { edges: concat(acc.edges, stmt_edges), vars: next_vars }
       )
       result.edges
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let cond_edges = collect_scc_child_edges(body: v1.std.core.if_condition(texpr: body), caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
       let then_branch = v1.std.core.if_then_branch(texpr: body)
       let else_opt = v1.std.core.if_else_branch(texpr: body)
@@ -3081,7 +3081,7 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
             let derived = self_evidence |> fold(init: std.termination.Strict, f: (worst, call_ev) =>
               let call_best = call_ev |> fold(init: std.termination.DescentUnknown, f: (best, rel) =>
                 let ev = std.induction.sub_value_to_evidence(relation: rel)
-                match ev { Strict => std.termination.Strict  _ => match best { Strict => std.termination.Strict  _ => ev } }
+                match ev { std.termination.Strict => std.termination.Strict  _ => match best { std.termination.Strict => std.termination.Strict  _ => ev } }
               )
               std.termination.descent_evidence_lattice_meet(a: worst, b: call_best)
             )
@@ -3185,7 +3185,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
 
         let lex_all_known = lex_edges |> all(e =>
           match e.evidence |> first {
-            Present { value: ev } => match ev { DescentUnknown => false  _ => true }
+            Present { value: ev } => match ev { std.termination.DescentUnknown => false  _ => true }
             Absent => false
           }
         )
@@ -3197,7 +3197,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
           let tree_parser_edges = collect_scc_tree_parser_dim_edges(members: members, func_index: func_index, scc_name_set: scc_name_set, si: si)
           let tp_all_known = tree_parser_edges |> all(e =>
             match e.evidence |> first {
-              Present { value: ev } => match ev { DescentUnknown => false  _ => true }
+              Present { value: ev } => match ev { std.termination.DescentUnknown => false  _ => true }
               Absent => false
             }
           )
@@ -3523,9 +3523,9 @@ fn method_preserves_collection_size(method_semantics: v1.std.core.MethodSemantic
 
 fn receiver_size_var(recv: v1.std.core.Node, si: Map<String, v1.std.core.NewlineIndex>) -> SizeExpr {
   match recv.expr_data {
-    ExprVar =>
+    v1.std.core.ExprVar =>
       SizeLen { collection: v1.std.core.expr_var_name_at(texpr: recv, source_indices: si) }
-    ExprFieldAccess =>
+    v1.std.core.ExprFieldAccess =>
       SizeLen { collection: v1.std.core.field_access_field_at(texpr: recv, source_indices: si) }
     v1.std.core.ExprMethodCall { method_semantics: method_semantics } =>
       let inner_recv = match recv.children |> first { Present { value: r } => r  Absent => recv }
@@ -3559,7 +3559,7 @@ fn resolve_callback_cost(lambda_arg: v1.std.core.Node?, recv_r: SummaryResult, f
   match lambda_arg {
     Present { value: la } =>
       match la.expr_data {
-        ExprVar =>
+        v1.std.core.ExprVar =>
           let fn_ref = v1.std.core.expr_var_name_at(texpr: la, source_indices: si)
           match map_get(func_index, fn_ref) {
             Present { value: _ } =>
@@ -3585,7 +3585,7 @@ fn resolve_callback_cost(lambda_arg: v1.std.core.Node?, recv_r: SummaryResult, f
 
 fn cost_of_method_by_shape(shape: std.algebra.CostShape, produces_collection: Bool, recv_r: SummaryResult, mc_args: List<v1.std.core.Node>, size: SizeExpr, binder: String, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>, parser_always_advancing: Map<String, Bool>, recursion_ctx: RecursionContext, si: Map<String, v1.std.core.NewlineIndex>) -> SummaryResult {
   match shape {
-    ShapeIterateBody =>
+    std.algebra.ShapeIterateBody =>
       let lambda_arg = resolve_lambda_arg(mc_arg_nodes: mc_args, si: si)
       let body_result = resolve_callback_cost(lambda_arg: lambda_arg, recv_r: recv_r, func_index: func_index, scc_index: scc_index, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
       let loop_work = cost_loop(binder: binder, iterations: size, body: body_result.summary.work)
@@ -3604,7 +3604,7 @@ fn cost_of_method_by_shape(shape: std.algebra.CostShape, produces_collection: Bo
         },
         table: body_result.table
       }
-    ShapeSortBody =>
+    std.algebra.ShapeSortBody =>
       let lambda_arg = resolve_lambda_arg(mc_arg_nodes: mc_args, si: si)
       let key_result = match lambda_arg {
         Present { value: la } =>
@@ -3636,7 +3636,7 @@ fn cost_of_method_by_shape(shape: std.algebra.CostShape, produces_collection: Bo
         },
         table: key_result.table
       }
-    ShapeLinearScan =>
+    std.algebra.ShapeLinearScan =>
       let loop_work = cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 })
       let scan_os = if produces_collection {
         seed_cost_map(key: "result", value: cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
@@ -3652,7 +3652,7 @@ fn cost_of_method_by_shape(shape: std.algebra.CostShape, produces_collection: Bo
         },
         table: recv_r.table
       }
-    ShapeConstant =>
+    std.algebra.ShapeConstant =>
       SummaryResult {
         summary: ComplexitySummary {
           work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
@@ -4088,7 +4088,7 @@ fn cost_of_expr(texpr: v1.std.core.Node, func_index: Map<String, FuncEntry>, scc
         table: table
       }
 
-    ExprVar =>
+    v1.std.core.ExprVar =>
       SummaryResult {
         summary: ComplexitySummary {
           work: CostConst { value: 1 },
@@ -4114,7 +4114,7 @@ fn cost_of_expr(texpr: v1.std.core.Node, func_index: Map<String, FuncEntry>, scc
         table: rr.table
       }
 
-    ExprCall =>
+    v1.std.core.ExprCall =>
       let fname = v1.std.core.expr_call_func_at(texpr: texpr, source_indices: si)
       let callee_result = match map_get(func_index, fname) {
         Present { value: entry } =>
@@ -4222,7 +4222,7 @@ fn cost_of_expr(texpr: v1.std.core.Node, func_index: Map<String, FuncEntry>, scc
         }
       }
 
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut = v1.std.core.match_scrutinee(texpr: texpr)
       let arm_nodes = v1.std.core.match_arm_nodes(texpr: texpr)
       let s_r = cost_of_expr(texpr: scrut, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
@@ -4262,7 +4262,7 @@ fn cost_of_expr(texpr: v1.std.core.Node, func_index: Map<String, FuncEntry>, scc
         table: arms_accum.result.table
       }
 
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let c = v1.std.core.if_condition(texpr: texpr)
       let t = v1.std.core.if_then_branch(texpr: texpr)
       let c_r = cost_of_expr(texpr: c, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
@@ -4295,7 +4295,7 @@ fn cost_of_expr(texpr: v1.std.core.Node, func_index: Map<String, FuncEntry>, scc
         table: e_result.table
       }
 
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let v = v1.std.core.let_value(texpr: texpr)
       let v_r = cost_of_expr(texpr: v, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
       match v1.std.core.let_body(texpr: texpr) {
@@ -4313,7 +4313,7 @@ fn cost_of_expr(texpr: v1.std.core.Node, func_index: Map<String, FuncEntry>, scc
         Absent => v_r
       }
 
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       texpr.children |> fold(init: SummaryResult {
         summary: ComplexitySummary {
           work: CostConst { value: 0 },
@@ -4335,7 +4335,7 @@ fn cost_of_expr(texpr: v1.std.core.Node, func_index: Map<String, FuncEntry>, scc
         }
       })
 
-    ExprForEach =>
+    v1.std.core.ExprForEach =>
       let c = v1.std.core.foreach_collection(texpr: texpr)
       let bd = v1.std.core.foreach_body(texpr: texpr)
       let c_r = cost_of_expr(texpr: c, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
@@ -4522,10 +4522,10 @@ fn derive_edge_evidence(all_calls: List<List<std.induction.SubValueRelation>>) -
     let call_best = call_ev |> fold(init: std.termination.DescentUnknown, f: (best, rel) =>
       let ev = std.induction.sub_value_to_evidence(relation: rel)
       match ev {
-        Strict => std.termination.Strict
+        std.termination.Strict => std.termination.Strict
         _ => match best {
-          Strict => std.termination.Strict
-          NonIncreasing => std.termination.NonIncreasing
+          std.termination.Strict => std.termination.Strict
+          std.termination.NonIncreasing => std.termination.NonIncreasing
           _ => ev
         }
       }
@@ -4553,12 +4553,12 @@ fn extract_shrink_factor(all_calls: List<List<std.induction.SubValueRelation>>, 
             match rel {
               std.induction.StrictSubValue { field: _, factor: f } =>
                 match prev {
-                  UnitShrink => Present { value: f }
+                  std.computation.UnitShrink => Present { value: f }
                   _ => if prev == f { acc } else { none }
                 }
               std.induction.ArithmeticDescent { param: _, factor: f } =>
                 match prev {
-                  UnitShrink => Present { value: f }
+                  std.computation.UnitShrink => Present { value: f }
                   _ => if prev == f { acc } else { none }
                 }
               _ => acc
@@ -4593,7 +4593,7 @@ fn max_path_descending(body: v1.std.core.Node, fn_name: String, param_index: Int
         acc + max_path_descending(body: child, fn_name: fn_name, param_index: param_index, si: si)
       )
       own + from_children
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let cond_count = max_path_descending(body: v1.std.core.if_condition(texpr: body), fn_name: fn_name, param_index: param_index, si: si)
       let then_count = max_path_descending(body: v1.std.core.if_then_branch(texpr: body), fn_name: fn_name, param_index: param_index, si: si)
       let else_branch = v1.std.core.if_else_branch(texpr: body)
@@ -4603,7 +4603,7 @@ fn max_path_descending(body: v1.std.core.Node, fn_name: String, param_index: Int
       }
       let branch_max = if then_count > else_count { then_count } else { else_count }
       cond_count + branch_max
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut_count = max_path_descending(body: v1.std.core.match_scrutinee(texpr: body), fn_name: fn_name, param_index: param_index, si: si)
       let arms = v1.std.core.match_arm_nodes(texpr: body)
       let arm_max = arms |> fold(init: 0, f: (acc, arm) =>
@@ -4643,14 +4643,14 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>, si: Map<String, v1.s
         let param_node = pair.second
         let evidence = merge_param_evidence(all_calls: all_calls, param_index: param_index)
         match evidence {
-          Strict =>
+          std.termination.Strict =>
             let param_name = v1.std.core.param_node_name_at(n: param_node, source_indices: si)
             let factor_opt = extract_shrink_factor(all_calls: all_calls, param_index: param_index)
             match factor_opt {
               Present { value: factor } =>
                 let branches = max_path_descending(body: entry.body, fn_name: entry.name, param_index: param_index, si: si)
                 let recurrence = match factor {
-                  UnitShrink =>
+                  std.computation.UnitShrink =>
                     let distinct_fields = distinct_descended_fields(all_calls: all_calls, param_index: param_index)
                     if branches <= distinct_fields {
                       std.induction.catamorphism_bound(param: param_name, nesting_depth: 1)

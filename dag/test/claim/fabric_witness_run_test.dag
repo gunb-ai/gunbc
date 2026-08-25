@@ -37,7 +37,7 @@ fn t_offer(
     quantity_bound: 1,
     ready_at: "2026-08-19T00:00:00Z",
     quote: quote,
-    billing_quantum: second(count: 0),
+    billing_quantum: std.measure.second(count: 0),
     evidence: ObservedSupply {
       observed_at: "2026-08-19T00:00:00Z",
       receipt: "gunbc.observation.fleet-1",
@@ -47,7 +47,7 @@ fn t_offer(
 
 fn t_offer_with_quantum(
   quote: OfferQuote,
-  quantum: Second,
+  quantum: std.measure.Second,
 ) -> SupplierOffer<NonEmptyStr> {
   SupplierOffer {
     id: FabricIdentity { principal: "gunbc", key: "offer-quantum" },
@@ -76,16 +76,16 @@ fn t_offer_with_quantum(
 // the waste is the modeled advantage of owned compute, and a rate comparison that cannot
 // see it ranks suppliers by the wrong number.
 test fn billing_quantum_separates_continuous_capacity_from_an_hourly_supplier() -> Bool {
-  let ninety = ExactGrantDuration { seconds: second(count: 90) }
+  let ninety = ExactGrantDuration { seconds: std.measure.second(count: 90) }
   let rate = QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd })
   let continuous = offer_affordability_for(
-    offer: t_offer_with_quantum(quote: rate, quantum: second(count: 0)),
+    offer: t_offer_with_quantum(quote: rate, quantum: std.measure.second(count: 0)),
     maximum_buy_order: money_amount_micro(count: 100),
     budget_currency: Usd,
     duration: ninety,
   )
   let hourly = offer_affordability_for(
-    offer: t_offer_with_quantum(quote: rate, quantum: second(count: 3600)),
+    offer: t_offer_with_quantum(quote: rate, quantum: std.measure.second(count: 3600)),
     maximum_buy_order: money_amount_micro(count: 100),
     budget_currency: Usd,
     duration: ninety,
@@ -443,7 +443,7 @@ test fn an_hourly_rate_priced_above_its_projected_total_still_refuses() -> Bool 
     ),
     maximum_buy_order: money_amount_micro(count: 9),
     budget_currency: Usd,
-    duration: ExactGrantDuration { seconds: second(count: 3600) },
+    duration: ExactGrantDuration { seconds: std.measure.second(count: 3600) },
   ))
 }
 
@@ -455,7 +455,7 @@ test fn an_hourly_rate_priced_above_its_projected_total_still_refuses() -> Bool 
 // refusing and one affordable, which is the erasure being gone rather than
 // merely relabelled.
 test fn per_second_and_per_hour_quotes_diverge_once_a_duration_is_supplied() -> Bool {
-  let duration = ExactGrantDuration { seconds: second(count: 3600) }
+  let duration = ExactGrantDuration { seconds: std.measure.second(count: 3600) }
   let per_second = offer_affordability_for(
     offer: t_offer(
       threads: hardware_thread_count(count: 128),

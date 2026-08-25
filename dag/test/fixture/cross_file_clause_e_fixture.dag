@@ -39,7 +39,7 @@ fn cross_file_clause_e_fixture_provider_transport() -> std.occurrence_identity.O
       std.occurrence_identity.DeclarationOccurrence {
         occurrence: helper,
         containment: helper_path,
-        category: LexicalValueOccurrence,
+        category: std.occurrence_identity.LexicalValueOccurrence,
         diagnostic_span: cross_file_clause_e_fixture_span(),
       },
     ],
@@ -64,13 +64,13 @@ fn cross_file_clause_e_fixture_consumer_transport() -> std.occurrence_identity.O
       std.occurrence_identity.ReferenceOccurrence {
         occurrence: ref_one,
         containment: ref_one_path,
-        category: LexicalValueOccurrence,
+        category: std.occurrence_identity.LexicalValueOccurrence,
         diagnostic_span: cross_file_clause_e_fixture_span(),
       },
       std.occurrence_identity.ReferenceOccurrence {
         occurrence: ref_two,
         containment: ref_two_path,
-        category: LexicalValueOccurrence,
+        category: std.occurrence_identity.LexicalValueOccurrence,
         diagnostic_span: cross_file_clause_e_fixture_span(),
       },
     ],
@@ -123,10 +123,10 @@ fn cross_file_clause_e_fixture_provider_row() -> std.occurrence_binding_candidat
       exposure_rows: [
         std.occurrence_binding_candidates.DeclarationExposureRow {
           occurrence: helper,
-          exposure: declaration_exposure_from_containment(
+          exposure: std.occurrence_binding_candidates.declaration_exposure_from_containment(
             module_path: provider_module,
             containment: helper_path,
-            grounding: CrossFileProviderExportedExposure,
+            grounding: std.occurrence_binding_candidates.CrossFileProviderExportedExposure,
           ),
         },
       ],
@@ -155,7 +155,7 @@ fn cross_file_clause_e_fixture_unrelated_loaded_provider_transport(
       std.occurrence_identity.DeclarationOccurrence {
         occurrence: decl,
         containment: decl_path,
-        category: LexicalValueOccurrence,
+        category: std.occurrence_identity.LexicalValueOccurrence,
         diagnostic_span: cross_file_clause_e_fixture_span(),
       },
     ],
@@ -183,10 +183,10 @@ fn cross_file_clause_e_fixture_unrelated_loaded_provider_row(
       exposure_rows: [
         std.occurrence_binding_candidates.DeclarationExposureRow {
           occurrence: decl,
-          exposure: declaration_exposure_from_containment(
+          exposure: std.occurrence_binding_candidates.declaration_exposure_from_containment(
             module_path: provider_module,
             containment: decl_path,
-            grounding: CrossFileProviderExportedExposure,
+            grounding: std.occurrence_binding_candidates.CrossFileProviderExportedExposure,
           ),
         },
       ],
@@ -198,7 +198,7 @@ fn cross_file_clause_e_fixture_unrelated_loaded_provider_row(
 }
 
 fn cross_file_clause_e_fixture_baseline_assembled_closure() -> std.occurrence_binding_candidates.AssembledCrossFileBindingClosure {
-  assemble_cross_file_binding_closure(
+  std.occurrence_binding_candidates.assemble_cross_file_binding_closure(
     consumer: cross_file_clause_e_fixture_consumer_row(),
     providers: [cross_file_clause_e_fixture_provider_row()],
   )
@@ -207,7 +207,7 @@ fn cross_file_clause_e_fixture_baseline_assembled_closure() -> std.occurrence_bi
 fn cross_file_clause_e_fixture_perturbed_assembled_closure(
   unrelated_loaded_provider: std.occurrence_binding_candidates.CrossFileBindingClosureRow,
 ) -> std.occurrence_binding_candidates.AssembledCrossFileBindingClosure {
-  assemble_cross_file_binding_closure(
+  std.occurrence_binding_candidates.assemble_cross_file_binding_closure(
     consumer: cross_file_clause_e_fixture_consumer_row(),
     providers: [
       cross_file_clause_e_fixture_provider_row(),

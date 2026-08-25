@@ -2,11 +2,11 @@ module tools.rust_gates_ci
 
 
 fn rust_gate_build_jobs_args() -> List<String> {
-  let jobs = ci_compile_jobs(
-    memory_budget: gunbc_ci_runner_slot_memory_max_live,
+  let jobs = gunbc.ci_compile_jobs.ci_compile_jobs(
+    memory_budget: gunbc.ci_floor_measurement.gunbc_ci_runner_slot_memory_max_live,
     force_serial: false
   )
-  cargo_nextest_build_jobs_flag(count: compile_jobs_count_or_serial(jobs: jobs))
+  extdeps.cargo_build.cargo_nextest_build_jobs_flag(count: gunbc.ci_compile_jobs.compile_jobs_count_or_serial(jobs: jobs))
 }
 
 fn gate_diag(check: String, stdout: String, stderr: String) -> String {
@@ -28,12 +28,12 @@ fn rust_gate_reason(
 func run_gates() -> std.process.ProcessExit {
   fmt = cargo.Build.Fmt(extra_args: ["--all", "--check"])
   test = cargo.Build.Nextest(extra_args: ["-p", "v1-compiler-tests"], build_jobs_args: rust_gate_build_jobs_args())
-  return if fmt.success && test.success {
+  return if fmt.success && success {
     std.process.ExitSuccess
   } else {
-    exit_failure(reason: rust_gate_reason(
+    std.process.exit_failure(reason: rust_gate_reason(
       fmt_success: fmt.success, fmt_stdout: fmt.stdout, fmt_stderr: fmt.stderr,
-      test_success: test.success, test_stdout: test.stdout, test_stderr: test.stderr
+      test_success: success, test_stdout: stdout, test_stderr: stderr
     ))
   }
 }
@@ -41,10 +41,10 @@ func run_gates() -> std.process.ProcessExit {
 func run_rust_monolith_gate() -> std.process.ProcessExit {
   let policy = gunbc_ci_spec.diff_policy
   let changed = match policy.mode {
-    DiffMergeBase => git.Core.DiffNameOnlyMerge(base: policy.base, head: policy.head)
-    DiffTwoDot => git.Core.DiffNameOnly(base: policy.base, head: policy.head)
+    gunbc.ci_spec.DiffMergeBase => git.Core.DiffNameOnlyMerge(base: policy.base, head: policy.head)
+    gunbc.ci_spec.DiffTwoDot => git.Core.DiffNameOnly(base: policy.base, head: policy.head)
   }
-  return if should_run_gates(paths: changed.paths, git_success: changed.success) {
+  return if tools.rust_stage0_gates.should_run_gates(paths: changed.paths, git_success: changed.success) {
     run_gates()
   } else {
     std.process.ExitSuccess

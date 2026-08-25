@@ -201,7 +201,7 @@ fn requirement_refusal(
   capabilities: SparkHostCapabilityObservation,
   requirement: ServingRequirement,
 ) -> ServingRequirementRefusal? {
-  match gunbc.spark.serving_realization.observation_for(capabilities: capabilities, requirement: requirement) {
+  match observation_for(capabilities: capabilities, requirement: requirement) {
     CapabilityPresent { evidence: _ } => none
     CapabilityRefused { cause: why } => Present {
       value: ServingRequirementRefusal {
@@ -276,7 +276,7 @@ fn identity_contract_refusal(
   let admissible = intent_admissible_process_identities(intent: intent)
   let intersects = fold(deliverable, init: false, f: fn(acc, d) {
     if acc { true } else {
-      fold(admissible, init: false, f: fn(inner, a) { if inner { true } else { gunbc.spark.serving_realization.process_identity_eq(left: d, right: a) } })
+      fold(admissible, init: false, f: fn(inner, a) { if inner { true } else { process_identity_eq(left: d, right: a) } })
     }
   })
   if intersects { none } else {
@@ -325,15 +325,15 @@ fn admit_realization(
 // what re-inventing an existing concept buys.
 fn list_head_of(xs: List<ServingRequirementRefusal>) -> ServingRequirementRefusal? {
   match v2.std.algebra.list_head(xs: xs) {
-    HeadFound { value: v } => Present { value: v }
-    HeadAbsent => none
+    v2.std.algebra.HeadFound { value: v } => Present { value: v }
+    v2.std.algebra.HeadAbsent => none
   }
 }
 
 fn list_tail_of(xs: List<ServingRequirementRefusal>) -> List<ServingRequirementRefusal> {
   match v2.std.algebra.list_tail(xs: xs) {
-    TailFound { tail: t } => t
-    TailAbsent => xs
+    v2.std.algebra.TailFound { tail: t } => t
+    v2.std.algebra.TailAbsent => xs
   }
 }
 
@@ -760,7 +760,7 @@ fn effect_mutation_subject(
     EnableSystemUnit => SystemUnitRegistry
     InstallRuntimePackage => PackageDatabase
     InstallOwnedRuntimeClosure => RuntimeArtifactStore { owner: actor }
-    GrantContainerRuntimeAccess => gunbc.spark.serving_realization.GroupMembership
+    GrantContainerRuntimeAccess => GroupMembership
     EnableLingerForOwnAccount => LingerState
     WriteUserUnitFile => UserUnitRegistry { owner: actor }
     ReloadUserManager => UserUnitRegistry { owner: actor }
@@ -980,14 +980,14 @@ fn escalation_shortfall(
           cause: join(["grant population was observed for principal ", op as String, " but authorizes ", principal_label(p: target.actor)], "") as std.types.NonEmptyStr,
         }
       } else {
-      match compare_content_hash(left: ok, right: expected_credential) {
-        ContentHashDifferent => ShortfallEvidenceMismatch {
+      match std.content_hash.compare_content_hash(left: ok, right: expected_credential) {
+        std.content_hash.ContentHashDifferent => ShortfallEvidenceMismatch {
           cause: "grant population was observed under a different credential than the one this plan authorizes" as std.types.NonEmptyStr,
         }
-        ContentHashCrossFamilyIncomparable => ShortfallEvidenceMismatch {
+        std.content_hash.ContentHashCrossFamilyIncomparable => ShortfallEvidenceMismatch {
           cause: "grant population credential identity is not comparable with the expected credential" as std.types.NonEmptyStr,
         }
-        ContentHashEqual => {
+        std.content_hash.ContentHashEqual => {
       let missing = fold(
         realization_escalated_commands(realization: realization, target: target),
         init: [],
@@ -997,10 +997,10 @@ fn escalation_shortfall(
         },
       )
       match v2.std.algebra.list_head(missing) {
-        HeadAbsent => NoNewPrivilegeRequired
-        HeadFound { value: f } => match v2.std.algebra.list_tail(missing) {
-          TailAbsent => NewPrivilegeRequired { first: f, more: [] }
-          TailFound { tail: t } => NewPrivilegeRequired { first: f, more: t }
+        v2.std.algebra.HeadAbsent => NoNewPrivilegeRequired
+        v2.std.algebra.HeadFound { value: f } => match v2.std.algebra.list_tail(missing) {
+          v2.std.algebra.TailAbsent => NewPrivilegeRequired { first: f, more: [] }
+          v2.std.algebra.TailFound { tail: t } => NewPrivilegeRequired { first: f, more: t }
         }
       }
         }

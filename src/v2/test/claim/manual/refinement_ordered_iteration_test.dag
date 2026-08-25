@@ -18,8 +18,8 @@ test fn witness_ordered_classifier_accepts() -> Bool {
     by: ordered_classifier_for_list_int(),
     at: test_locus()
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -29,7 +29,7 @@ test fn witness_unordered_classifier_rejects_with_naming_the_leak() -> Bool {
     by: unordered_classifier_for_list_int(),
     at: test_locus()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: diags } => diags.head.reason == ^naming_the_leak
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: diags } => diags.head.reason == ^naming_the_leak
   }
 }

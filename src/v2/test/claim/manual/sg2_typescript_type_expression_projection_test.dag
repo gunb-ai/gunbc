@@ -1,5 +1,6 @@
 module v2.test.manual.sg2_typescript_type_expression_projection
 
+
 data ts_sg2_fail_text: String = ""
 data ts_sg2_expected_instantiation_text: String = "FooBar<X, Y>"
 data ts_sg2_expected_arrow_text: String = "(X) => Y"
@@ -21,12 +22,12 @@ fn ts_sg2_project_instantiation_emitted() -> v2.std.node.Node {
     target: v2.extdeps.languages.typescript.ts_sg2_type_expr_target_model(),
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
-    Accepted { value: emitted, diagnostics: _ } => emitted
-    Rejected { diagnostics: _ } => ts_sg2_fail_node()
+    v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } => emitted
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ts_sg2_fail_node()
   }
 }
 
-test fn ts_sg2_projection_matches_golden() -> v2.std.logic.Bool {
+test fn ts_sg2_projection_matches_golden() -> Bool {
   v2.std.node.content_hash(n: ts_sg2_project_instantiation_emitted()) ==
     v2.std.node.content_hash(n: v2.extdeps.languages.typescript.ts_sg2_foobar_xy_emitted())
 }
@@ -37,8 +38,8 @@ fn ts_sg2_project_arrow_emitted() -> v2.std.node.Node {
     target: v2.extdeps.languages.typescript.ts_sg2_type_expr_target_model(),
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
-    Accepted { value: emitted, diagnostics: _ } => emitted
-    Rejected { diagnostics: _ } => ts_sg2_fail_node()
+    v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } => emitted
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ts_sg2_fail_node()
   }
 }
 
@@ -48,8 +49,8 @@ fn ts_sg2_project_conj_emitted() -> v2.std.node.Node {
     target: v2.extdeps.languages.typescript.ts_sg2_type_expr_target_model(),
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
-    Accepted { value: emitted, diagnostics: _ } => emitted
-    Rejected { diagnostics: _ } => ts_sg2_fail_node()
+    v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } => emitted
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ts_sg2_fail_node()
   }
 }
 
@@ -59,40 +60,40 @@ fn ts_sg2_project_disj_emitted() -> v2.std.node.Node {
     target: v2.extdeps.languages.typescript.ts_sg2_type_expr_target_model(),
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
-    Accepted { value: emitted, diagnostics: _ } => emitted
-    Rejected { diagnostics: _ } => ts_sg2_fail_node()
+    v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } => emitted
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ts_sg2_fail_node()
   }
 }
 
-test fn ts_sg2_binary_fn_projection_accepts() -> v2.std.logic.Bool {
+test fn ts_sg2_binary_fn_projection_accepts() -> Bool {
   match v2.compiler.translate.translate_type_expression_project(
     node: v2.extdeps.languages.typescript.ts_sg2_binary_fn_source_type_node(),
     target: v2.extdeps.languages.typescript.ts_sg2_type_expr_target_model(),
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ts_sg2_arrow_malformed_projection_rejects() -> v2.std.logic.Bool {
+test fn ts_sg2_arrow_malformed_projection_rejects() -> Bool {
   match v2.compiler.translate.translate_type_expression_project(
     node: v2.extdeps.languages.typescript.ts_sg2_arrow_malformed_source_type_node(),
     target: v2.extdeps.languages.typescript.ts_sg2_type_expr_target_model(),
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-fn ts_sg2_serialize_accepts(emitted: v2.std.node.Node) -> v2.std.logic.Bool {
+fn ts_sg2_serialize_accepts(emitted: v2.std.node.Node) -> Bool {
   match v2.compiler.translate.target_serialize_source_from_model(
     target: v2.extdeps.languages.typescript.ts_sg2_type_expr_target_model(),
     emitted: emitted
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -101,110 +102,110 @@ fn ts_sg2_serialized_text(emitted: v2.std.node.Node) -> String {
     target: v2.extdeps.languages.typescript.ts_sg2_type_expr_target_model(),
     emitted: emitted
   ) {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => ts_sg2_fail_text
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ts_sg2_fail_text
   }
 }
 
-test fn ts_sg2_serialize_matches_expected() -> v2.std.logic.Bool {
+test fn ts_sg2_serialize_matches_expected() -> Bool {
   ts_sg2_serialized_text(emitted: v2.extdeps.languages.typescript.ts_sg2_foobar_xy_emitted()) == ts_sg2_expected_instantiation_text
 }
 
-test fn ts_sg2_arrow_serialize_matches_expected() -> v2.std.logic.Bool {
+test fn ts_sg2_arrow_serialize_matches_expected() -> Bool {
   ts_sg2_serialized_text(emitted: v2.extdeps.languages.typescript.ts_sg2_arrow_xy_emitted()) == ts_sg2_expected_arrow_text
 }
 
-test fn ts_sg2_arrow_projected_serialize_matches_expected() -> v2.std.logic.Bool {
+test fn ts_sg2_arrow_projected_serialize_matches_expected() -> Bool {
   ts_sg2_serialized_text(emitted: ts_sg2_project_arrow_emitted()) == ts_sg2_expected_arrow_text
 }
 
-test fn ts_sg2_conj_projected_serialize_matches_expected() -> v2.std.logic.Bool {
+test fn ts_sg2_conj_projected_serialize_matches_expected() -> Bool {
   ts_sg2_serialized_text(emitted: ts_sg2_project_conj_emitted()) == ts_sg2_expected_conj_text
 }
 
-test fn ts_sg2_instantiation_projected_serialize_matches_expected() -> v2.std.logic.Bool {
+test fn ts_sg2_instantiation_projected_serialize_matches_expected() -> Bool {
   ts_sg2_serialized_text(emitted: ts_sg2_project_instantiation_emitted()) == ts_sg2_expected_instantiation_text
 }
 
-test fn ts_sg2_disj_projected_serialize_matches_expected() -> v2.std.logic.Bool {
+test fn ts_sg2_disj_projected_serialize_matches_expected() -> Bool {
   ts_sg2_serialized_text(emitted: ts_sg2_project_disj_emitted()) == ts_sg2_expected_disj_text
 }
 
-test fn ts_sg2_arrow_labeled_serialize_matches_expected() -> v2.std.logic.Bool {
+test fn ts_sg2_arrow_labeled_serialize_matches_expected() -> Bool {
   ts_sg2_serialized_text(emitted: v2.extdeps.languages.typescript.ts_sg2_arrow_labeled_xy_emitted()) ==
     ts_sg2_expected_arrow_labeled_text
 }
 
-test fn ts_sg2_arrow_positional_wire_shape() -> v2.std.logic.Bool {
+test fn ts_sg2_arrow_positional_wire_shape() -> Bool {
   match v2.std.compilers.target_model.target_type_expr_arrow_wire_shape(node: v2.extdeps.languages.typescript.ts_sg2_arrow_xy_emitted()) {
-    Accepted { value: v2.std.compilers.target_model.TargetTypeExprArrowPositionalWire, diagnostics: _ } => true
-    Accepted { value: v2.std.compilers.target_model.TargetTypeExprArrowLabeledWire, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: v2.std.compilers.target_model.TargetTypeExprArrowPositionalWire, diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: v2.std.compilers.target_model.TargetTypeExprArrowLabeledWire, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ts_sg2_arrow_labeled_wire_shape() -> v2.std.logic.Bool {
+test fn ts_sg2_arrow_labeled_wire_shape() -> Bool {
   match v2.std.compilers.target_model.target_type_expr_arrow_wire_shape(node: v2.extdeps.languages.typescript.ts_sg2_arrow_labeled_xy_emitted()) {
-    Accepted { value: v2.std.compilers.target_model.TargetTypeExprArrowLabeledWire, diagnostics: _ } => true
-    Accepted { value: v2.std.compilers.target_model.TargetTypeExprArrowPositionalWire, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: v2.std.compilers.target_model.TargetTypeExprArrowLabeledWire, diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: v2.std.compilers.target_model.TargetTypeExprArrowPositionalWire, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ts_sg2_arrow_mixed_wire_rejects() -> v2.std.logic.Bool {
+test fn ts_sg2_arrow_mixed_wire_rejects() -> Bool {
   match v2.std.compilers.target_model.target_type_expr_arrow_wire_shape(node: v2.extdeps.languages.typescript.ts_sg2_arrow_mixed_wire_emitted()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-test fn ts_sg2_arrow_mixed_wire_decode_rejects() -> v2.std.logic.Bool {
+test fn ts_sg2_arrow_mixed_wire_decode_rejects() -> Bool {
   match v2.std.compilers.target_model.target_type_expr_emitted_wire_decode(
     node: v2.extdeps.languages.typescript.ts_sg2_arrow_mixed_wire_emitted(),
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-test fn ts_sg2_arrow_mixed_wire_labeled_accessors_reject() -> v2.std.logic.Bool {
+test fn ts_sg2_arrow_mixed_wire_labeled_accessors_reject() -> Bool {
   match v2.std.compilers.target_model.target_type_expr_arrow_labeled_codomain(node: v2.extdeps.languages.typescript.ts_sg2_arrow_mixed_wire_emitted()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       match v2.std.compilers.target_model.target_type_expr_arrow_labeled_param_slots(node: v2.extdeps.languages.typescript.ts_sg2_arrow_mixed_wire_emitted()) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
   }
 }
 
-test fn ts_sg2_conj_serialize_matches_expected() -> v2.std.logic.Bool {
+test fn ts_sg2_conj_serialize_matches_expected() -> Bool {
   ts_sg2_serialized_text(emitted: v2.extdeps.languages.typescript.ts_sg2_conj_xy_emitted()) == ts_sg2_expected_conj_text
 }
 
-test fn ts_sg2_disj_serialize_matches_expected() -> v2.std.logic.Bool {
+test fn ts_sg2_disj_serialize_matches_expected() -> Bool {
   ts_sg2_serialized_text(emitted: v2.extdeps.languages.typescript.ts_sg2_sum_xy_emitted()) == ts_sg2_expected_disj_text
 }
 
-fn ts_sg2_wire_decode_accepts(emitted: v2.std.node.Node) -> v2.std.logic.Bool {
+fn ts_sg2_wire_decode_accepts(emitted: v2.std.node.Node) -> Bool {
   match v2.std.compilers.target_model.target_type_expr_emitted_wire_decode(
     node: emitted,
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ts_sg2_instantiation_delimiters_bidirectional() -> v2.std.logic.Bool {
+test fn ts_sg2_instantiation_delimiters_bidirectional() -> Bool {
   let row = v2.extdeps.languages.typescript.ts_type_expression_projection()
   row.instantiation_form.open == ^ts_token_lt &&
     row.instantiation_form.separator == ^ts_token_comma &&
     row.instantiation_form.close == ^ts_token_gt
 }
 
-test fn witness_ts_sg2_projected_serialize_holds() -> v2.std.logic.Bool {
+test fn witness_ts_sg2_projected_serialize_holds() -> Bool {
   ts_sg2_projection_matches_golden()
     && ts_sg2_arrow_projected_serialize_matches_expected()
     && ts_sg2_conj_projected_serialize_matches_expected()
@@ -212,18 +213,18 @@ test fn witness_ts_sg2_projected_serialize_holds() -> v2.std.logic.Bool {
     && ts_sg2_disj_projected_serialize_matches_expected()
 }
 
-test fn ts_sg2_arrow_projection_matches_golden() -> v2.std.logic.Bool {
+test fn ts_sg2_arrow_projection_matches_golden() -> Bool {
   v2.std.node.content_hash(n: ts_sg2_project_arrow_emitted()) == v2.std.node.content_hash(n: v2.extdeps.languages.typescript.ts_sg2_arrow_xy_emitted())
 }
 
-test fn ts_sg2_conj_projection_matches_golden() -> v2.std.logic.Bool {
+test fn ts_sg2_conj_projection_matches_golden() -> Bool {
   v2.std.node.content_hash(n: ts_sg2_project_conj_emitted()) == v2.std.node.content_hash(n: v2.extdeps.languages.typescript.ts_sg2_conj_xy_emitted())
 }
 
-test fn ts_sg2_disj_projection_matches_golden() -> v2.std.logic.Bool {
+test fn ts_sg2_disj_projection_matches_golden() -> Bool {
   v2.std.node.content_hash(n: ts_sg2_project_disj_emitted()) == v2.std.node.content_hash(n: v2.extdeps.languages.typescript.ts_sg2_sum_xy_emitted())
 }
 
-test fn ts_sg2_wire_decode_accepts_instantiation() -> v2.std.logic.Bool {
+test fn ts_sg2_wire_decode_accepts_instantiation() -> Bool {
   ts_sg2_wire_decode_accepts(emitted: v2.extdeps.languages.typescript.ts_sg2_foobar_xy_emitted())
 }

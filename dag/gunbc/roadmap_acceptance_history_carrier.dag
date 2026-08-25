@@ -26,7 +26,7 @@ fn load_roadmap_acceptance_event_history_from_carrier_text(text: String) -> Road
 }
 
 fn load_roadmap_acceptance_event_history(path: String) -> RoadmapAcceptanceEventHistoryLoad {
-  let read = Filesystem.Read(path: path)
+  let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path)
   if !read.success {
     RoadmapAcceptanceEventHistoryLoadRefused {
       detail: concat("carrier read refused: ", read.error),
@@ -37,10 +37,10 @@ fn load_roadmap_acceptance_event_history(path: String) -> RoadmapAcceptanceEvent
 }
 
 data roadmap_acceptance_event_history_jsonl_parser_seed_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.cli_run.roadmap_acceptance_history_carrier",
     decl_name: "parse_roadmap_acceptance_event_history_jsonl_builtin",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }

@@ -4,19 +4,19 @@ module v2.std.effect_plan
 
 type EffectPlanStep<E>
   = Do { effect: E }
-  | If { cond: v2.std.orchestration.Predicate, then_: v2.std.effect_plan.EffectPlan<E>, else_: v2.std.optional.Optional<EffectPlan<E>> }
-  | For { binder: v2.std.node.Symbol, over: v2.std.orchestration.ValueSource, body: v2.std.effect_plan.EffectPlan<E> }
-  | While { cond: v2.std.orchestration.Predicate, body: v2.std.effect_plan.EffectPlan<E> }
+  | If { cond: v2.std.orchestration.Predicate, then_: EffectPlan<E>, else_: v2.std.optional.Optional<EffectPlan<E>> }
+  | For { binder: v2.std.node.Symbol, over: v2.std.orchestration.ValueSource, body: EffectPlan<E> }
+  | While { cond: v2.std.orchestration.Predicate, body: EffectPlan<E> }
   | Retry {
-      body: v2.std.effect_plan.EffectPlan<E>,
-      escalations: FreeMonoid<v2.std.orchestration.EscalationLevel>,
-      on_exhausted: v2.std.effect_plan.EffectPlan<E>
+      body: EffectPlan<E>,
+      escalations: v2.std.algebra.FreeMonoid<v2.std.orchestration.EscalationLevel>,
+      on_exhausted: EffectPlan<E>
     }
   | Let { name: String, value: v2.std.orchestration.Expr }
   | Call { callee: String, args: List<String> }
 
 type EffectPlan<E> {
-  steps: FreeMonoid<EffectPlanStep<E>>
+  steps: v2.std.algebra.FreeMonoid<EffectPlanStep<E>>
   on_failure: v2.std.orchestration.FailurePolicy
 }
 

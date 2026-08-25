@@ -5,21 +5,21 @@ data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
 data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"
 
 data bmc_onboard_secret_on_disk_debt: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.filesystem.filesystem_io",
     decl_name: "Filesystem",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 
 data bmc_credential_length_chars_unit_debt: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.measure",
     decl_name: "Measure",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -30,24 +30,24 @@ fn netrc_content(host: String, account: String, password: String) -> String {
 }
 
 fn account_password_body(new_password: String) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "Password", value: json_string(s: new_password)),
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "Password", value: extdeps.languages.json.emit.json_string(s: new_password)),
   ]))
 }
 
 fn boot_override_body(target: String, enabled: String, mode: String) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "Boot", value: json_object(members: [
-      json_kv(key: "BootSourceOverrideTarget", value: json_string(s: target)),
-      json_kv(key: "BootSourceOverrideEnabled", value: json_string(s: enabled)),
-      json_kv(key: "BootSourceOverrideMode", value: json_string(s: mode)),
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "Boot", value: extdeps.languages.json.emit.json_object(members: [
+      extdeps.languages.json.emit.json_kv(key: "BootSourceOverrideTarget", value: extdeps.languages.json.emit.json_string(s: target)),
+      extdeps.languages.json.emit.json_kv(key: "BootSourceOverrideEnabled", value: extdeps.languages.json.emit.json_string(s: enabled)),
+      extdeps.languages.json.emit.json_kv(key: "BootSourceOverrideMode", value: extdeps.languages.json.emit.json_string(s: mode)),
     ])),
   ]))
 }
 
 fn reset_body(reset_type: String) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "ResetType", value: json_string(s: reset_type)),
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "ResetType", value: extdeps.languages.json.emit.json_string(s: reset_type)),
   ]))
 }
 
@@ -74,7 +74,7 @@ func bmc_rotate_credential(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, new_cre
   let account = plan.factory_login.username
 
   if write_netrc(host: host, account: account, password: plan.factory_login.published_password) == false {
-    return exit_failure(reason: "rotate: netrc write failed")
+    return std.process.exit_failure(reason: "rotate: netrc write failed")
   }
 
   let body = Filesystem.Write(
@@ -82,7 +82,7 @@ func bmc_rotate_credential(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, new_cre
     content: account_password_body(new_password: new_credential as String)
   )
   if body.success == false {
-    return exit_failure(reason: concat("rotate: password body write failed: ", body.error))
+    return std.process.exit_failure(reason: concat("rotate: password body write failed: ", body.error))
   }
 
   rot = redfish.Http.SetAccountPassword(
@@ -92,61 +92,61 @@ func bmc_rotate_credential(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, new_cre
     request_body_file: bmc_onboard_pwbody_path as std.types.NonEmptyStr
   )
   if rot.success == false {
-    return exit_failure(reason: rot.body)
+    return std.process.exit_failure(reason: rot.body)
   }
 
   verify = redfish.Http.GetSystem(bmc_host: host, username: account, password: new_credential)
   return if verify.success {
     std.process.ExitSuccess
   } else {
-    exit_failure(reason: concat("rotate: reauth with new credential rejected: ", verify.body))
+    std.process.exit_failure(reason: concat("rotate: reauth with new credential rejected: ", verify.body))
   }
 }
 
 func bmc_store_and_rotate(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, token_source: gunbc.auth.access_token_source.AccessTokenSource, credential: Secret) -> std.process.ProcessExit
   uses net: std.resources.Network
 {
-  let payload_b64 = encode_sm_access_version_payload_wire(credential: credential)
+  let payload_b64 = extdeps.cloud.gcp.secret_manager.encode_sm_access_version_payload_wire(credential: credential)
   let secret_id = onboarding_secret_id(plan: plan)
 
-  match ensure_access_token(source: token_source) {
-    AccessTokenUpsertRequired { plan: upsert_plan } =>
-      return exit_failure(
-        reason: access_token_upsert_required_reason(plan: upsert_plan),
+  match gunbc.auth.access_token_source.ensure_access_token(source: token_source) {
+    gunbc.auth.access_token_source.AccessTokenUpsertRequired { plan: upsert_plan } =>
+      return std.process.exit_failure(
+        reason: gunbc.auth.access_token_source.access_token_upsert_required_reason(plan: upsert_plan),
       )
-    AccessTokenEnsureRefused { reason: reason } =>
-      return exit_failure(reason: reason as String)
-    AccessTokenReady { token: token } => {
+    gunbc.auth.access_token_source.AccessTokenEnsureRefused { reason: reason } =>
+      return std.process.exit_failure(reason: reason as String)
+    gunbc.auth.access_token_source.AccessTokenReady { token: token } => {
       stored = gcp.SecretManager.AddVersion(
         access_token: token,
-        secret_name: gcp_secret_full_name(project: fleet_secrets_gcp_project, secret_id: secret_id),
+        secret_name: gcp_secret_full_name(project: gunbc.fleet_secrets_config.fleet_secrets_gcp_project, secret_id: secret_id),
         payload_b64: payload_b64
       )
       readback = gcp.SecretManager.AccessVersion(
         access_token: token,
-        project_id: fleet_secrets_gcp_project,
+        project_id: gunbc.fleet_secrets_config.fleet_secrets_gcp_project,
         secret: secret_id,
         version: "latest"
       )
-      let expected_payload = utf8_encode_bytes(s: credential as String)
-      let readback_ok = match decode_sm_access_version_payload_wire(data_b64: readback.data_b64) {
-        SmAccessVersionPayloadDecoded { payload: stored_payload } =>
+      let expected_payload = std.bytes.utf8_encode_bytes(s: credential as String)
+      let readback_ok = match extdeps.cloud.gcp.secret_manager.decode_sm_access_version_payload_wire(data_b64: readback.data_b64) {
+        extdeps.cloud.gcp.secret_manager.SmAccessVersionPayloadDecoded { payload: stored_payload } =>
           stored_payload == expected_payload
-        SmAccessVersionPayloadDecodeRefused { cause: _ } => false
+        extdeps.cloud.gcp.secret_manager.SmAccessVersionPayloadDecodeRefused { cause: _ } => false
       }
-      match decode_sm_resolved_version_identity_wire(name: stored.name as String) {
-        SmResolvedVersionIdentityDecoded { identity: stored_identity } =>
-          match decode_sm_resolved_version_identity_wire(name: readback.name as String) {
-            SmResolvedVersionIdentityDecoded { identity: readback_identity } => {
+      match extdeps.cloud.gcp.secret_manager.decode_sm_resolved_version_identity_wire(name: stored.name as String) {
+        extdeps.cloud.gcp.secret_manager.SmResolvedVersionIdentityDecoded { identity: stored_identity } =>
+          match extdeps.cloud.gcp.secret_manager.decode_sm_resolved_version_identity_wire(name: readback.name as String) {
+            extdeps.cloud.gcp.secret_manager.SmResolvedVersionIdentityDecoded { identity: readback_identity } => {
               if !readback_ok || stored_identity != readback_identity {
-                return exit_failure(reason: concat(concat(concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out ", plan.bmc.host), concat("); stored version ", stored_identity as String)), ""))
+                return std.process.exit_failure(reason: concat(concat(concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out ", plan.bmc.host), concat("); stored version ", stored_identity as String)), ""))
               }
             }
-            SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
-              return exit_failure(reason: "store: GCP read-back resolved version identity refused by wire decoder")
+            extdeps.cloud.gcp.secret_manager.SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
+              return std.process.exit_failure(reason: "store: GCP read-back resolved version identity refused by wire decoder")
           }
-        SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
-          return exit_failure(reason: "store: GCP AddVersion resolved version identity refused by wire decoder")
+        extdeps.cloud.gcp.secret_manager.SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
+          return std.process.exit_failure(reason: "store: GCP AddVersion resolved version identity refused by wire decoder")
       }
 
       return bmc_rotate_credential(plan: plan, new_credential: credential)
@@ -162,7 +162,7 @@ func bmc_assimilate_credential(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, tok
 
   root_resp = redfish.Http.GetServiceRoot(bmc_host: host)
   if root_resp.success == false {
-    return exit_failure(reason: concat("acquire: service root unreachable: ", root_resp.body))
+    return std.process.exit_failure(reason: concat("acquire: service root unreachable: ", root_resp.body))
   }
   acq = redfish.Http.GetSystem(
     bmc_host: host,
@@ -170,7 +170,7 @@ func bmc_assimilate_credential(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, tok
     password: plan.factory_login.published_password as Secret
   )
   if acq.success == false {
-    return exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
+    return std.process.exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
   }
 
   return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential())
@@ -188,35 +188,35 @@ func bmc_probe_credential_phase(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, to
     password: plan.factory_login.published_password as Secret
   )
   if factory_check.success {
-    return FactoryCredentialActive
+    return gunbc.bmc_onboarding.FactoryCredentialActive
   }
 
-  match ensure_access_token(source: token_source) {
-    AccessTokenUpsertRequired { plan: upsert_plan } =>
+  match gunbc.auth.access_token_source.ensure_access_token(source: token_source) {
+    gunbc.auth.access_token_source.AccessTokenUpsertRequired { plan: upsert_plan } =>
       return gunbc.bmc_onboarding.CredentialAccessUpsertRequired { plan: upsert_plan }
-    AccessTokenEnsureRefused { reason: reason } =>
+    gunbc.auth.access_token_source.AccessTokenEnsureRefused { reason: reason } =>
       return gunbc.bmc_onboarding.CredentialEnsureRefused { reason: reason }
-    AccessTokenReady { token: token } => {
+    gunbc.auth.access_token_source.AccessTokenReady { token: token } => {
       secret_resp = gcp.SecretManager.AccessVersion(
         access_token: token,
-        project_id: fleet_secrets_gcp_project,
+        project_id: gunbc.fleet_secrets_config.fleet_secrets_gcp_project,
         secret: onboarding_secret_id(plan: plan),
         version: "latest"
       )
-      match decode_sm_access_version_secret_wire(data_b64: secret_resp.data_b64) {
-        SmAccessVersionSecretDecoded { credential: password } => {
+      match extdeps.cloud.gcp.secret_manager.decode_sm_access_version_secret_wire(data_b64: secret_resp.data_b64) {
+        extdeps.cloud.gcp.secret_manager.SmAccessVersionSecretDecoded { credential: password } => {
           rotated_verify = redfish.Http.GetSystem(
             bmc_host: host,
             username: account,
             password: password
           )
           return if rotated_verify.success {
-            RotatedCredentialActive
+            gunbc.bmc_onboarding.RotatedCredentialActive
           } else {
             gunbc.bmc_onboarding.CredentialStateUnknown { reason: "stored credential rejected by BMC" }
           }
         }
-        SmAccessVersionSecretDecodeRefused { cause: _ } =>
+        extdeps.cloud.gcp.secret_manager.SmAccessVersionSecretDecodeRefused { cause: _ } =>
           gunbc.bmc_onboarding.CredentialStateUnknown { reason: "stored credential payload refused by wire decoder" }
       }
     }
@@ -228,38 +228,38 @@ func bmc_converge_credential(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, token
 {
   root_resp = redfish.Http.GetServiceRoot(bmc_host: plan.bmc.host)
   if root_resp.success == false {
-    return exit_failure(reason: concat("credential converge: BMC unreachable: ", root_resp.body))
+    return std.process.exit_failure(reason: concat("credential converge: BMC unreachable: ", root_resp.body))
   }
 
   probe = bmc_probe_credential_phase(plan: plan, token_source: token_source)
   match probe {
-    FactoryCredentialActive => return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential())
-    RotatedCredentialActive => return std.process.ExitSuccess
-    CredentialAccessUpsertRequired { plan: upsert_plan } =>
-      return exit_failure(
-        reason: access_token_upsert_required_reason(plan: upsert_plan),
+    gunbc.bmc_onboarding.FactoryCredentialActive => return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential())
+    gunbc.bmc_onboarding.RotatedCredentialActive => return std.process.ExitSuccess
+    gunbc.bmc_onboarding.CredentialAccessUpsertRequired { plan: upsert_plan } =>
+      return std.process.exit_failure(
+        reason: gunbc.auth.access_token_source.access_token_upsert_required_reason(plan: upsert_plan),
       )
-    CredentialEnsureRefused { reason: reason } =>
-      return exit_failure(reason: reason as String)
-    CredentialStateUnknown { reason: r } =>
-      return exit_failure(reason: concat("credential converge: unknown phase: ", r))
+    gunbc.bmc_onboarding.CredentialEnsureRefused { reason: reason } =>
+      return std.process.exit_failure(reason: reason as String)
+    gunbc.bmc_onboarding.CredentialStateUnknown { reason: r } =>
+      return std.process.exit_failure(reason: concat("credential converge: unknown phase: ", r))
   }
 }
 
 func srv3_probe_credential_phase() -> gunbc.bmc_onboarding.BmcCredentialProbeResult
   uses net: std.resources.Network
 {
-  bmc_probe_credential_phase(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
+  bmc_probe_credential_phase(plan: gunbc.bmc_onboarding.srv3_onboarding_plan, token_source: gunbc.auth.access_token_source.GcloudPrintToken)
 }
 
 func srv3_converge_credential() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
-  bmc_converge_credential(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
+  bmc_converge_credential(plan: gunbc.bmc_onboarding.srv3_onboarding_plan, token_source: gunbc.auth.access_token_source.GcloudPrintToken)
 }
 
 func srv4_converge_credential() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
-  bmc_converge_credential(plan: srv4_onboarding_plan, token_source: GcloudPrintToken)
+  bmc_converge_credential(plan: gunbc.bmc_onboarding.srv4_onboarding_plan, token_source: gunbc.auth.access_token_source.GcloudPrintToken)
 }

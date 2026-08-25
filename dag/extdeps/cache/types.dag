@@ -4,7 +4,7 @@ module extdeps.cache.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/cache"
   }
 }
@@ -48,10 +48,10 @@ type CatalogKeyDerivationFacts {
 
 fn invalidation_triggers_on_toolchain_change(triggers: List<std.cache_interface.InvalidationTrigger>) -> Bool {
   triggers |> any(trigger => match trigger {
-    ToolchainChange => true
-    TtlExpiry { window: _ } => false
-    ManualPurge => false
-    DependencyChange => false
+    std.cache_interface.ToolchainChange => true
+    std.cache_interface.TtlExpiry { window: _ } => false
+    std.cache_interface.ManualPurge => false
+    std.cache_interface.DependencyChange => false
   })
 }
 
@@ -73,9 +73,9 @@ fn catalog_inputs_considered(kd: CatalogKeyDerivationFacts) -> List<CatalogInput
 
 fn catalog_key_derivation_classification(kd: CatalogKeyDerivationFacts) -> std.cache_interface.KeyDerivationClass {
   match kd.key_inputs {
-    ContentAddressed => ContentAddressedByValue
-    NativeInternal { cited_inputs: _ } => NativeInternalHash
-    HandAuthored { cited_inputs: _ } => HandAuthoredString
+    ContentAddressed => std.cache_interface.ContentAddressedByValue
+    NativeInternal { cited_inputs: _ } => std.cache_interface.NativeInternalHash
+    HandAuthored { cited_inputs: _ } => std.cache_interface.HandAuthoredString
   }
 }
 
@@ -92,7 +92,7 @@ type CacheInterfaceCatalogFacts {
 type CatalogCachedArtifactReceipt<T> {
   artifact: std.cache_interface.ArtifactIdentity<T>
   backend_key: CatalogBackendCacheKey
-  producer: ProducerReceipt<T>
+  producer: std.cache_interface.ProducerReceipt<T>
   content_digest: std.content_hash.ContentHash
 }
 

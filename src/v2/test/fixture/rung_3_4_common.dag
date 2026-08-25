@@ -1,12 +1,13 @@
 module v2.test.rung_3_4_common
 
-data rung34_emit_host_rust_target_model: v2.std.compilers.target_model.TargetModel = rust_target_model_staging()
+
+data rung34_emit_host_rust_target_model: TargetModel = rust_target_model_staging()
 
 fn rung34_algebra_evidence_node() -> Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge {
+      Edge {
         label: Named { name: ^rung34_algebra_evidence_axis },
         target: claim_atom_node(s: ^rung34_inferred_algebra_symbol)
       }
@@ -15,19 +16,19 @@ fn rung34_algebra_evidence_node() -> Node {
   }
 }
 
-fn rung34_descent_witness() -> Witness<v2.std.cardinality.TerminationProof> {
+fn rung34_descent_witness() -> Witness<TerminationProof> {
   v2.std.witness.Holds {
-    value: v2.std.cardinality.TerminationProof {
+    value: TerminationProof {
       non_increasing: [],
-      strict: v2.std.cardinality.RankingDimension { measured: ^rung34_inferred_descent_symbol }
+      strict: RankingDimension { measured: ^rung34_inferred_descent_symbol }
     }
   }
 }
 
-fn rung34_inferred_tree(root: Node) -> v2.compiler.inferred_tree.InferredTree {
-  v2.compiler.inferred_tree.InferredTree {
+fn rung34_inferred_tree(root: Node) -> InferredTree {
+  InferredTree {
     root: root,
-    facts: std.algebra.PartialFunction {
+    facts: PartialFunction {
       lookup: fn(n) {
         Present {
           value: claim_inferred_facts_from_nodes(
@@ -42,10 +43,10 @@ fn rung34_inferred_tree(root: Node) -> v2.compiler.inferred_tree.InferredTree {
 }
 
 fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge {
+      Edge {
         label: Named { name: ^rung34_roundtrip_module_axis },
         target: fixture_subject
       }
@@ -54,7 +55,7 @@ fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
 }
 }
 
-fn rung34_test_claim_subject(claim: v2.std.verification.TestClaim, evaluator_input: Node) -> TestClaimEvalSubject<Node> {
+fn rung34_test_claim_subject(claim: TestClaim, evaluator_input: Node) -> TestClaimEvalSubject<Node> {
   eval_test_claim_subject(
     claim: claim,
     context: eval_context(),
@@ -63,7 +64,7 @@ fn rung34_test_claim_subject(claim: v2.std.verification.TestClaim, evaluator_inp
   )
 }
 
-fn rung34_roundtrip_run(claim: v2.std.verification.TestClaim, fixture_subject: Node) -> TestClaimRun<Node, RuntimeValue> {
+fn rung34_roundtrip_run(claim: TestClaim, fixture_subject: Node) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim(
     subject: rung34_test_claim_subject(
       claim: claim,
@@ -73,7 +74,7 @@ fn rung34_roundtrip_run(claim: v2.std.verification.TestClaim, fixture_subject: N
 }
 
 fn rung34_emit_vs_eval_run(
-  claim: v2.std.verification.TestClaim,
+  claim: TestClaim,
   fixture_subject: Node
 ) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(

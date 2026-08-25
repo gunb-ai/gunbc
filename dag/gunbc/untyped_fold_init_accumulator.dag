@@ -29,7 +29,7 @@ module gunbc.untyped_fold_init_accumulator
 // by which half of the closure the compiler points at.
 
 type UntypedFoldInitSite {
-  caller: DeclarationRef
+  caller: std.decl_ref.DeclarationRef
   init_expression: String
   emitted_init: String
   emitted_file: String
@@ -39,7 +39,7 @@ type UntypedFoldInitSite {
 
 data untyped_fold_init_sites: List<UntypedFoldInitSite> = [
   {
-    caller: decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_effect_apply_callee"),
+    caller: std.decl_ref.decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_effect_apply_callee"),
     init_expression: "empty_map()",
     emitted_init: "v1_rt::rc_empty_map::<_, _>()",
     emitted_file: "v2_std_compilers_target_model.rs",
@@ -270,10 +270,10 @@ data untyped_fold_init_population_basis: PopulationBasis = SweptCorpus {
 // distinct, and it belongs to neither the String declaration-site work nor the bare-name roster the
 // partition was originally filed under. A cause with its own repair earns its own row; a site does
 // not stop being a member of the set it was found in.
-data untyped_fold_init_surfaced_by: DeclarationRef = decl_ref(module_path: "gunbc.lambda_argument_typing_gate", decl_name: "lambda_typing_gate_sites")
+data untyped_fold_init_surfaced_by: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(module_path: "gunbc.lambda_argument_typing_gate", decl_name: "lambda_typing_gate_sites")
 
 // DISSOLUTION IS KEYED TO THE SITE COMPILING, NOT TO ANY PARTICULAR REPAIR. The sibling row learned
 // this the expensive way: its first trigger named a mechanism, that mechanism turned out to be inert,
 // and the trigger was therefore satisfiable by a change that fixed nothing -- a false trigger
 // disposes of the evidence, which is worse than a false cause misleading a reader.
-data untyped_fold_init_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: every site in untyped_fold_init_sites emits an initial accumulator whose type is determined without a caller-supplied annotation, and compiles with no inference-failure diagnostic at that position, established by execution against the emitted crate. Not satisfied by annotating the closure parameter at the call site -- that moves the obligation to the author rather than deriving it, and the .dag source already carries the accumulator's type at the fold's declared signature. The basis is now SweptCorpus, so a green on the listed site retires the class ACROSS THE SWEPT FRAME -- 56 of the 60 in-frame files, 179 of the 186 in-frame fold sites. It does not retire the four entries in coverage_gaps, whose 7 fold sites were never measured; those close by re-running the sweep's emit and check over them, not by anything that happens at the listed site.")
+data untyped_fold_init_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: every site in untyped_fold_init_sites emits an initial accumulator whose type is determined without a caller-supplied annotation, and compiles with no inference-failure diagnostic at that position, established by execution against the emitted crate. Not satisfied by annotating the closure parameter at the call site -- that moves the obligation to the author rather than deriving it, and the .dag source already carries the accumulator's type at the fold's declared signature. The basis is now SweptCorpus, so a green on the listed site retires the class ACROSS THE SWEPT FRAME -- 56 of the 60 in-frame files, 179 of the 186 in-frame fold sites. It does not retire the four entries in coverage_gaps, whose 7 fold sites were never measured; those close by re-running the sweep's emit and check over them, not by anything that happens at the listed site.")

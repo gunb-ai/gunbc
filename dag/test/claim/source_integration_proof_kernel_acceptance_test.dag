@@ -1,12 +1,12 @@
 module test.claim.source_integration_proof_kernel_acceptance
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data p1_acceptance_witness_note: String = "THE DISCRIMINATING CLOSING VALIDATION FOR roadmap node 2-scm-p1-proof-kernel. It is RED ON PURPOSE and enrolled QuarantineProbeExpectRed. The predicate is the node's complete bar, represented by the closed KernelAcceptanceCapability population: one public reconciliation fold, bounded candidate generation, occurrence dedup, context transport, commuting squares, batch-partition invariance, grounded/frame-preserving deltas, n-way invariants, order honesty, all seven semantic closure certificates, and data-only invariant extension. This first slice supplies only the bounded-candidate-generation receipt: the candidate fold derives finite combination classes and the receipt requires executing an admitted control plus proposal, delta, inference-round, and candidate-class bound refusals. KernelAcceptanceReceipt is sole-constructor, so no caller-authored Boolean can claim a capability. Generator completeness remains separately missing as KernelCandidateGenerationClosureExecutes. The derived frontier remains nonzero, cannot green on zero progress, and duplicate admissions cannot erase missing capabilities. Later slices add scenario-derived receipt constructors; they must not relax this predicate or manually decrement a count."
 
 data p1_acceptance_dissolution_note: String = "DISSOLVES BY GREENING, never deletion. When every closed capability has a passing executing scenario, this witness becomes green and the QuarantineProbeExpectRed exclusion plus known-red roster entry become wrong; the completing change must remove those two quarantine rows so this file joins ordinary DiscoverySelection as the permanent P1 regression wall. P2 capture, P3 target effects, and P0 primary projection are absent from the capability population by construction."
 
 test fn witness_p1_proof_kernel_acceptance_contract_holds() -> Bool {
-  kernel_closing_contract_holds(admissions: p1_first_slice_acceptance_admissions())
+  gunbc.source_integration_proof_kernel.kernel_closing_contract_holds(admissions: test.claim.source_integration_proof_kernel_model_witness.p1_first_slice_acceptance_admissions())
 }

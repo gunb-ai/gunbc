@@ -5,25 +5,25 @@ data witness_purpose_taxonomy_witness_note: String = "Slice C-a: stable WitnessP
 
 fn fixture_subject_hash() -> std.content_hash.ContentHash {
   std.content_hash.Fnv1a64(
-    structural_content_hash(digest: "deadbeefdeadbeef" as std.content_hash.Fnv1a64StructuralDigestHex)
+    std.content_hash.structural_content_hash(digest: "deadbeefdeadbeef" as std.content_hash.Fnv1a64StructuralDigestHex)
   )
 }
 
 fn fixture_population_ref() -> std.decl_ref.DeclarationRef {
-  decl_ref(
+  std.decl_ref.decl_ref(
     module_path: "dag.test.claim.witness_purpose_taxonomy_witness",
     decl_name: "witness_purpose_taxonomy_witness_note",
   )
 }
 
 test fn behavioral_discriminator_is_stable_purpose_arm() -> Bool {
-  let purpose = BehavioralDiscriminator
+  let purpose = std.witness_purpose.BehavioralDiscriminator
   match purpose {
-    BehavioralDiscriminator => true
-    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
-    PopulationTotality { population: _ } => false
-    ExternalFidelity { effect: _ } => false
-    ResourceContract { bound: _ } => false
+    std.witness_purpose.BehavioralDiscriminator => true
+    std.witness_purpose.BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    std.witness_purpose.PopulationTotality { population: _ } => false
+    std.witness_purpose.ExternalFidelity { effect: _ } => false
+    std.witness_purpose.ResourceContract { bound: _ } => false
   }
 }
 
@@ -33,86 +33,86 @@ test fn boundary_crossing_carries_modeled_boundary_and_chosen_input() -> Bool {
     chosen_input: fixture_subject_hash(),
   }
   match purpose {
-    BoundaryCrossing { modeled_boundary: boundary, chosen_input: hash } =>
+    std.witness_purpose.BoundaryCrossing { modeled_boundary: boundary, chosen_input: hash } =>
       boundary == fixture_population_ref()
         && hash == fixture_subject_hash()
-    BehavioralDiscriminator => false
-    PopulationTotality { population: _ } => false
-    ExternalFidelity { effect: _ } => false
-    ResourceContract { bound: _ } => false
+    std.witness_purpose.BehavioralDiscriminator => false
+    std.witness_purpose.PopulationTotality { population: _ } => false
+    std.witness_purpose.ExternalFidelity { effect: _ } => false
+    std.witness_purpose.ResourceContract { bound: _ } => false
   }
 }
 
 test fn population_totality_carries_population_ref() -> Bool {
   let purpose = std.witness_purpose.PopulationTotality { population: fixture_population_ref() }
   match purpose {
-    PopulationTotality { population: population } =>
+    std.witness_purpose.PopulationTotality { population: population } =>
       population == fixture_population_ref()
-    BehavioralDiscriminator => false
-    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
-    ExternalFidelity { effect: _ } => false
-    ResourceContract { bound: _ } => false
+    std.witness_purpose.BehavioralDiscriminator => false
+    std.witness_purpose.BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    std.witness_purpose.ExternalFidelity { effect: _ } => false
+    std.witness_purpose.ResourceContract { bound: _ } => false
   }
 }
 
 test fn external_fidelity_carries_effect_ref() -> Bool {
   let purpose = std.witness_purpose.ExternalFidelity { effect: fixture_population_ref() }
   match purpose {
-    ExternalFidelity { effect: effect } => effect == fixture_population_ref()
-    BehavioralDiscriminator => false
-    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
-    PopulationTotality { population: _ } => false
-    ResourceContract { bound: _ } => false
+    std.witness_purpose.ExternalFidelity { effect: effect } => effect == fixture_population_ref()
+    std.witness_purpose.BehavioralDiscriminator => false
+    std.witness_purpose.BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    std.witness_purpose.PopulationTotality { population: _ } => false
+    std.witness_purpose.ResourceContract { bound: _ } => false
   }
 }
 
 test fn resource_contract_wall_bound_is_millisecond() -> Bool {
   let purpose = std.witness_purpose.ResourceContract {
-    bound: std.witness_purpose.EvalWallTimeBound { bound: millisecond(count: 500) },
+    bound: std.witness_purpose.EvalWallTimeBound { bound: std.measure.millisecond(count: 500) },
   }
   match purpose {
-    ResourceContract { bound: bound } =>
+    std.witness_purpose.ResourceContract { bound: bound } =>
       match bound {
-        EvalWallTimeBound { bound: ms } => millisecond_count(m: ms) == 500
-        EvalThreadCpuBound { bound: _ } => false
-        PeakMemoryBound { bound: _ } => false
+        std.witness_purpose.EvalWallTimeBound { bound: ms } => std.measure.millisecond_count(m: ms) == 500
+        std.witness_purpose.EvalThreadCpuBound { bound: _ } => false
+        std.witness_purpose.PeakMemoryBound { bound: _ } => false
       }
-    BehavioralDiscriminator => false
-    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
-    PopulationTotality { population: _ } => false
-    ExternalFidelity { effect: _ } => false
+    std.witness_purpose.BehavioralDiscriminator => false
+    std.witness_purpose.BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    std.witness_purpose.PopulationTotality { population: _ } => false
+    std.witness_purpose.ExternalFidelity { effect: _ } => false
   }
 }
 
 test fn resource_contract_peak_memory_bound_is_byte_size() -> Bool {
   let purpose = std.witness_purpose.ResourceContract {
-    bound: std.witness_purpose.PeakMemoryBound { bound: byte_size(count: 1073741824) },
+    bound: std.witness_purpose.PeakMemoryBound { bound: std.measure.byte_size(count: 1073741824) },
   }
   match purpose {
-    ResourceContract { bound: bound } =>
+    std.witness_purpose.ResourceContract { bound: bound } =>
       match bound {
-        PeakMemoryBound { bound: bytes } => byte_size_count(b: bytes) == 1073741824
-        EvalWallTimeBound { bound: _ } => false
-        EvalThreadCpuBound { bound: _ } => false
+        std.witness_purpose.PeakMemoryBound { bound: bytes } => std.measure.byte_size_count(b: bytes) == 1073741824
+        std.witness_purpose.EvalWallTimeBound { bound: _ } => false
+        std.witness_purpose.EvalThreadCpuBound { bound: _ } => false
       }
-    BehavioralDiscriminator => false
-    BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
-    PopulationTotality { population: _ } => false
-    ExternalFidelity { effect: _ } => false
+    std.witness_purpose.BehavioralDiscriminator => false
+    std.witness_purpose.BoundaryCrossing { modeled_boundary: _, chosen_input: _ } => false
+    std.witness_purpose.PopulationTotality { population: _ } => false
+    std.witness_purpose.ExternalFidelity { effect: _ } => false
   }
 }
 
 test fn terminating_one_shot_unavailable_records_deadline_substrate_absent() -> Bool {
-  let frontier = TerminatingOneShotUnavailableDeadlineSubstrateAbsent
+  let frontier = std.witness_purpose.TerminatingOneShotUnavailableDeadlineSubstrateAbsent
   match frontier {
-    TerminatingOneShotUnavailableDeadlineSubstrateAbsent => true
-    TerminatingOneShotUnavailableCompletionSubstrateAbsent => false
+    std.witness_purpose.TerminatingOneShotUnavailableDeadlineSubstrateAbsent => true
+    std.witness_purpose.TerminatingOneShotUnavailableCompletionSubstrateAbsent => false
   }
 }
 
 test fn witness_purpose_has_five_stable_arms_only() -> Bool {
   let purposes = [
-    BehavioralDiscriminator,
+    std.witness_purpose.BehavioralDiscriminator,
     std.witness_purpose.BoundaryCrossing {
       modeled_boundary: fixture_population_ref(),
       chosen_input: fixture_subject_hash(),
@@ -120,7 +120,7 @@ test fn witness_purpose_has_five_stable_arms_only() -> Bool {
     std.witness_purpose.PopulationTotality { population: fixture_population_ref() },
     std.witness_purpose.ExternalFidelity { effect: fixture_population_ref() },
     std.witness_purpose.ResourceContract {
-      bound: std.witness_purpose.EvalThreadCpuBound { bound: millisecond(count: 1) },
+      bound: std.witness_purpose.EvalThreadCpuBound { bound: std.measure.millisecond(count: 1) },
     },
   ]
   length(xs: purposes) == 5

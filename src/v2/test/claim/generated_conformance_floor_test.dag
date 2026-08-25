@@ -3,9 +3,9 @@ module v2.test.claim.generated_conformance_floor
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn generated_claim_emitted(o: v2.std.diagnostic.Outcome<v2.std.verification.TestClaim>) -> Bool {
+fn generated_claim_emitted(o: Outcome<TestClaim>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -13,19 +13,19 @@ fn generated_claim_emitted(o: v2.std.diagnostic.Outcome<v2.std.verification.Test
 }
 
 test fn generated_algebra_law_sample_count_holds() -> Bool {
-  v2.test.generated.algebra_law_conformance.generated_algebra_law_sample_count_is_three()
+  generated_algebra_law_sample_count_is_three()
 }
 
 test fn generated_algebra_law_left_identity_emits() -> Bool {
-  generated_claim_emitted(o: v2.test.generated.algebra_law_conformance.generated_nat_add_left_identity_claim)
+  generated_claim_emitted(o: generated_nat_add_left_identity_claim)
 }
 
 test fn generated_algebra_law_associativity_emits() -> Bool {
-  generated_claim_emitted(o: v2.test.generated.algebra_law_conformance.generated_nat_add_associativity_claim)
+  generated_claim_emitted(o: generated_nat_add_associativity_claim)
 }
 
 test fn generated_algebra_law_annihilator_emits() -> Bool {
-  generated_claim_emitted(o: v2.test.generated.algebra_law_conformance.generated_nat_mul_annihilator_claim)
+  generated_claim_emitted(o: generated_nat_mul_annihilator_claim)
 }
 
 test fn generated_coproduct_exhaustiveness_is_diagnostic() -> Bool {
@@ -77,23 +77,23 @@ test fn generated_refinement_claim_emits() -> Bool {
 }
 
 test fn generated_lbe_conj_snapshot_passes() -> Bool {
-  witness_lbe_conj_snapshot_pass
+  v2.test.generated.language_behavior_equivalence.witness_lbe_conj_snapshot_pass
 }
 
 test fn generated_lbe_disj_snapshot_passes() -> Bool {
-  witness_lbe_disj_snapshot_pass
+  v2.test.generated.language_behavior_equivalence.witness_lbe_disj_snapshot_pass
 }
 
 test fn generated_lbe_transform_snapshot_passes() -> Bool {
-  witness_lbe_transform_snapshot_pass
+  v2.test.generated.language_behavior_equivalence.witness_lbe_transform_snapshot_pass
 }
 
 test fn generated_lbe_schedules_three_generators() -> Bool {
-  witness_testgen_schedules_three_lbe_generators
+  v2.test.generated.language_behavior_equivalence.witness_testgen_schedules_three_lbe_generators
 }
 
 test fn generated_lbe_dag_surface_language_identity() -> Bool {
-  witness_dag_surface_language_identity
+  v2.test.generated.language_behavior_equivalence.witness_dag_surface_language_identity
 }
 
 test fn generated_witness_validity_constraint_satisfaction_emits() -> Bool {
@@ -113,35 +113,35 @@ test fn generated_witness_validity_rule_not_realized_emits() -> Bool {
 }
 
 test fn generated_idempotent_label_only_skip_pins_rejection() -> Bool {
-  v2.test.generated.idempotent_operation_conformance.generated_label_only_skip_pins_rejection
+  generated_label_only_skip_pins_rejection
 }
 
 test fn generated_idempotent_read_run_non_pass() -> Bool {
-  v2.test.generated.idempotent_operation_conformance.witness_read_idempotent_operation_run_non_pass
+  witness_read_idempotent_operation_run_non_pass
 }
 
 test fn generated_idempotent_upsert_run_non_pass() -> Bool {
-  v2.test.generated.idempotent_operation_conformance.witness_upsert_idempotent_operation_run_non_pass
+  witness_upsert_idempotent_operation_run_non_pass
 }
 
 test fn generated_idempotent_delete_run_non_pass() -> Bool {
-  v2.test.generated.idempotent_operation_conformance.witness_delete_idempotent_operation_run_non_pass
+  witness_delete_idempotent_operation_run_non_pass
 }
 
 test fn generated_idempotent_create_if_absent_run_non_pass() -> Bool {
-  v2.test.generated.idempotent_operation_conformance.witness_create_if_absent_idempotent_operation_run_non_pass
+  witness_create_if_absent_idempotent_operation_run_non_pass
 }
 
 test fn generated_idempotent_sample_count_holds() -> Bool {
-  v2.test.generated.idempotent_operation_conformance.generated_idempotent_operation_sample_count_is_four()
+  generated_idempotent_operation_sample_count_is_four()
 }
 
 test fn generated_idempotent_scheduled_subject_count_holds() -> Bool {
-  v2.test.generated.idempotent_operation_conformance.generated_idempotent_operation_scheduled_subject_count_is_four()
+  generated_idempotent_operation_scheduled_subject_count_is_four()
 }
 
 test fn generated_idempotent_run_count_holds() -> Bool {
-  v2.test.generated.idempotent_operation_conformance.generated_idempotent_operation_run_count_is_four()
+  generated_idempotent_operation_run_count_is_four()
 }
 
 test fn generated_wishlist_pending_count_holds() -> Bool {

@@ -3,7 +3,7 @@ module extdeps.boot.emit
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html"
   }
 }
@@ -73,8 +73,8 @@ fn freestanding_pt_load_phdr(code_bytes: List<Int>) -> extdeps.formats.elf.segme
 fn emit_freestanding_elf64(code_bytes: List<Int>) -> List<Int> {
   append(
     append(
-      encode_elf64_ehdr(freestanding_elf64_ehdr(code_bytes)),
-      items: encode_elf64_phdr(freestanding_pt_load_phdr(code_bytes)),
+      extdeps.formats.elf.encode.encode_elf64_ehdr(freestanding_elf64_ehdr(code_bytes)),
+      items: extdeps.formats.elf.encode.encode_elf64_phdr(freestanding_pt_load_phdr(code_bytes)),
     ),
     items: code_bytes,
   )
@@ -88,7 +88,7 @@ fn emit_pixel_writer_payload() -> extdeps.boot.freestanding_payload.Freestanding
   let code = pixel_writer_code_bytes
   let bytes = emit_freestanding_elf64(code)
   let entry = freestanding_load_vaddr
-  extdeps.boot.freestanding_payload.EmittedPayload {
+  EmittedPayload {
     digest: freestanding_payload_digest(bytes, entry),
     entry: std.exec_format.EntryPoint { virtual_address: entry },
   }
@@ -99,9 +99,9 @@ fn witness_vga_base_matches_framebuffer_fact() -> Bool {
 }
 
 fn witness_pixel_writer_code_uses_vga_base() -> Bool {
-  byte_at_in_bounds(pixel_writer_code_bytes, 2) == 0
-    && byte_at_in_bounds(pixel_writer_code_bytes, 3) == 128
-    && byte_at_in_bounds(pixel_writer_code_bytes, 4) == 11
+  extdeps.formats.elf.types.byte_at_in_bounds(pixel_writer_code_bytes, 2) == 0
+    && extdeps.formats.elf.types.byte_at_in_bounds(pixel_writer_code_bytes, 3) == 128
+    && extdeps.formats.elf.types.byte_at_in_bounds(pixel_writer_code_bytes, 4) == 11
 }
 
 fn witness_emitted_file_size() -> Bool {
@@ -112,7 +112,7 @@ fn witness_emitted_file_size() -> Bool {
 fn witness_emitted_digest_non_empty() -> Bool {
   match emit_pixel_writer_payload() {
     EmittedPayload { digest: d, entry: _ } => d == pixel_writer_payload_digest_label
-    PrebuiltPayload { digest: _, entry: _ } => false
-    HollowPrebuiltInit { digest: _, entry: _ } => false
+    extdeps.boot.freestanding_payload.PrebuiltPayload { digest: _, entry: _ } => false
+    extdeps.boot.freestanding_payload.HollowPrebuiltInit { digest: _, entry: _ } => false
   }
 }

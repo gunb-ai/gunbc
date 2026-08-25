@@ -1,13 +1,13 @@
 module test.claim.commit_check_demand_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 fn demand_decl(module_path: String, decl_name: String) -> std.decl_ref.DeclarationRef {
   std.decl_ref.DeclarationRef {
     module_path: module_path as std.types.NonEmptyStr,
     decl_name: decl_name as std.types.NonEmptyStr,
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -33,8 +33,8 @@ fn synthetic_witness_check(
   gunbc.commit_workflow.CommitWitnessClaim {
     entry: entry,
     check_fns: check_fns,
-    kind: CorpusWitnessKind,
-    span: SpanUndeclared
+    kind: std.realization_schedule.CorpusWitnessKind,
+    span: std.realization_schedule.SpanUndeclared
   }
 }
 
@@ -44,34 +44,34 @@ fn synthetic_enrollment(check: gunbc.commit_workflow.CommitCheckKind) -> gunbc.c
 
 fn check_is_gate(check: gunbc.commit_workflow.CommitCheckKind) -> Bool {
   match check {
-    CommitSpecGate { gate: _ } => true
-    CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
-    CommitCargoFmtCheck => false
+    gunbc.commit_workflow.CommitSpecGate { gate: _ } => true
+    gunbc.commit_workflow.CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
+    gunbc.commit_workflow.CommitCargoFmtCheck => false
   }
 }
 
 fn check_is_witness(check: gunbc.commit_workflow.CommitCheckKind) -> Bool {
   match check {
-    CommitSpecGate { gate: _ } => false
-    CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => true
-    CommitCargoFmtCheck => false
+    gunbc.commit_workflow.CommitSpecGate { gate: _ } => false
+    gunbc.commit_workflow.CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => true
+    gunbc.commit_workflow.CommitCargoFmtCheck => false
   }
 }
 
 fn check_is_fmt(check: gunbc.commit_workflow.CommitCheckKind) -> Bool {
   match check {
-    CommitSpecGate { gate: _ } => false
-    CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
-    CommitCargoFmtCheck => true
+    gunbc.commit_workflow.CommitSpecGate { gate: _ } => false
+    gunbc.commit_workflow.CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
+    gunbc.commit_workflow.CommitCargoFmtCheck => true
   }
 }
 
 fn check_is_file_grain_witness(check: gunbc.commit_workflow.CommitCheckKind) -> Bool {
   match check {
-    CommitWitnessClaim { entry: _, check_fns, kind: _, span: _ } =>
+    gunbc.commit_workflow.CommitWitnessClaim { entry: _, check_fns, kind: _, span: _ } =>
       check_fns.count() == 0
-    CommitSpecGate { gate: _ } => false
-    CommitCargoFmtCheck => false
+    gunbc.commit_workflow.CommitSpecGate { gate: _ } => false
+    gunbc.commit_workflow.CommitCargoFmtCheck => false
   }
 }
 
@@ -160,9 +160,9 @@ fn discovery_entry_matches(
   entry: String,
 ) -> Bool {
   match discovery {
-    DiscoveryComplete { entry: candidate, module_path: _, declarations: _ } =>
+    gunbc.commit_workflow.DiscoveryComplete { entry: candidate, module_path: _, declarations: _ } =>
       candidate == entry
-    DiscoveryIncomplete { entry: candidate, cause: _ } => candidate == entry
+    gunbc.commit_workflow.DiscoveryIncomplete { entry: candidate, cause: _ } => candidate == entry
   }
 }
 
@@ -171,7 +171,7 @@ fn demand_row_matches_complete_discovery(
   discoveries: List<gunbc.commit_workflow.EntryDeclarationDiscovery>,
 ) -> Bool {
   match row.check {
-    CommitWitnessClaim { entry, check_fns: _, kind: _, span: _ } =>
+    gunbc.commit_workflow.CommitWitnessClaim { entry, check_fns: _, kind: _, span: _ } =>
       let matching = filter(
         discoveries,
         discovery => discovery_entry_matches(discovery: discovery, entry: entry)
@@ -180,20 +180,20 @@ fn demand_row_matches_complete_discovery(
         false
       } else {
         match matching.first() {
-          Absent => false
-          Present { value: discovery } =>
+          v2.std.optional.Absent => false
+          v2.std.optional.Present { value: discovery } =>
             match discovery {
-              DiscoveryIncomplete { entry: _, cause: _ } => false
-              DiscoveryComplete { entry: _, module_path: _, declarations } =>
-                declaration_ref_lists_eq(
+              gunbc.commit_workflow.DiscoveryIncomplete { entry: _, cause: _ } => false
+              gunbc.commit_workflow.DiscoveryComplete { entry: _, module_path: _, declarations } =>
+                gunbc.commit_workflow.declaration_ref_lists_eq(
                   left: row.declarations,
                   right: declarations
                 )
             }
         }
       }
-    CommitSpecGate { gate: _ } => false
-    CommitCargoFmtCheck => false
+    gunbc.commit_workflow.CommitSpecGate { gate: _ } => false
+    gunbc.commit_workflow.CommitCargoFmtCheck => false
   }
 }
 
@@ -212,28 +212,28 @@ fn qualified_rows_match_complete_discoveries(
 
 // `first()` answers an Optional and field access through it stays optional, so reading the name back
 // with `as String` compared the WRAPPER against the expected name: on an empty list the assertion
-// failed by comparing the literal text `v2.std.optional.Absent`, and on a differently-shaped one it could have
-// compared `v2.std.optional.Present { value: ... }`. The compiler now refuses that cast. The absent arms return a
+// failed by comparing the literal text `Absent`, and on a differently-shaped one it could have
+// compared `Present { value: ... }`. The compiler now refuses that cast. The absent arms return a
 // name no declaration can carry, so a shape mismatch still fails -- loudly, and for its own reason.
-fn nth_declaration_name(rows: List<EnrollmentWitnessDemand>, row: Int, declaration: Int) -> String {
+fn nth_declaration_name(rows: List<gunbc.commit_workflow.EnrollmentWitnessDemand>, row: Int, declaration: Int) -> String {
   match rows.skip(n: row).first() {
-    Absent => "(no such demand row)"
-    Present { value: demand } =>
+    v2.std.optional.Absent => "(no such demand row)"
+    v2.std.optional.Present { value: demand } =>
       match demand.declarations.skip(n: declaration).first() {
-        Absent => "(no such declaration)"
-        Present { value: decl } => decl.decl_name as String
+        v2.std.optional.Absent => "(no such declaration)"
+        v2.std.optional.Present { value: decl } => decl.decl_name as String
       }
   }
 }
 
 test fn commit_check_demand_live_roster_identities_are_unique_and_kind_partitioned() -> Bool {
-  match first_duplicate_commit_check(roster: commit_gate_roster) {
-    NoDuplicateCommitCheck => {
-      let gates = filter(commit_gate_roster, row => check_is_gate(check: row.check))
-      let witnesses = filter(commit_gate_roster, row => check_is_witness(check: row.check))
-      let fmt = filter(commit_gate_roster, row => check_is_fmt(check: row.check))
+  match gunbc.commit_workflow.first_duplicate_commit_check(roster: gunbc.commit_workflow.commit_gate_roster) {
+    gunbc.commit_workflow.NoDuplicateCommitCheck => {
+      let gates = filter(gunbc.commit_workflow.commit_gate_roster, row => check_is_gate(check: row.check))
+      let witnesses = filter(gunbc.commit_workflow.commit_gate_roster, row => check_is_witness(check: row.check))
+      let fmt = filter(gunbc.commit_workflow.commit_gate_roster, row => check_is_fmt(check: row.check))
       (gates.count() + witnesses.count() + fmt.count() == commit_gate_roster.count())
-        && fold(commit_gate_roster, init: true, f: fn(acc, row) {
+        && fold(gunbc.commit_workflow.commit_gate_roster, init: true, f: fn(acc, row) {
           let is_gate = check_is_gate(check: row.check)
           let is_witness = check_is_witness(check: row.check)
           let is_fmt = check_is_fmt(check: row.check)
@@ -244,50 +244,50 @@ test fn commit_check_demand_live_roster_identities_are_unique_and_kind_partition
             && !(is_witness && is_fmt)
         })
     }
-    DuplicateCommitCheckFound { check: _ } => false
+    gunbc.commit_workflow.DuplicateCommitCheckFound { check: _ } => false
   }
 }
 
 test fn commit_check_demand_canonical_roster_refuses_empty_or_truncated_discovery() -> Bool {
-  match project_enrollment_witness_demands(discoveries: []) {
-    DemandMissing { check: _, cause: _ } =>
-      match project_enrollment_witness_demands(
+  match gunbc.commit_workflow.project_enrollment_witness_demands(discoveries: []) {
+    gunbc.commit_workflow.DemandMissing { check: _, cause: _ } =>
+      match gunbc.commit_workflow.project_enrollment_witness_demands(
         discoveries: live_file_grain_discoveries()
       ) {
-        DemandMissing { check: _, cause: _ } => true
-        DemandQualified { rows: _ } => false
-        DemandAmbiguous { check: _, cause: _ } => false
-        DemandIncomplete { check: _, cause: _ } => false
-        DemandRosterAmbiguous { cause: _ } => false
+        gunbc.commit_workflow.DemandMissing { check: _, cause: _ } => true
+        gunbc.commit_workflow.DemandQualified { rows: _ } => false
+        gunbc.commit_workflow.DemandAmbiguous { check: _, cause: _ } => false
+        gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+        gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
       }
-    DemandQualified { rows: _ } => false
-    DemandAmbiguous { check: _, cause: _ } => false
-    DemandIncomplete { check: _, cause: _ } => false
-    DemandRosterAmbiguous { cause: _ } => false
+    gunbc.commit_workflow.DemandQualified { rows: _ } => false
+    gunbc.commit_workflow.DemandAmbiguous { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
 test fn commit_check_demand_all_six_file_grain_rows_expand_complete_discoveries() -> Bool {
   let roster = filter(
-    commit_gate_roster,
+    gunbc.commit_workflow.commit_gate_roster,
     row => check_is_file_grain_witness(check: row.check)
   )
   let discoveries = live_file_grain_discoveries()
   roster.count() == 6
-    && match project_enrollment_witness_demands_unchecked(
+    && match gunbc.commit_workflow.project_enrollment_witness_demands_unchecked(
       roster: roster,
       discoveries: discoveries
     ) {
-      DemandQualified { rows } =>
-        demand_rows_match_roster(roster: roster, rows: rows)
+      gunbc.commit_workflow.DemandQualified { rows } =>
+        gunbc.commit_workflow.demand_rows_match_roster(roster: roster, rows: rows)
           && qualified_rows_match_complete_discoveries(
             rows: rows,
             discoveries: discoveries
           )
-      DemandMissing { check: _, cause: _ } => false
-      DemandAmbiguous { check: _, cause: _ } => false
-      DemandIncomplete { check: _, cause: _ } => false
-      DemandRosterAmbiguous { cause: _ } => false
+      gunbc.commit_workflow.DemandMissing { check: _, cause: _ } => false
+      gunbc.commit_workflow.DemandAmbiguous { check: _, cause: _ } => false
+      gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+      gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
     }
 }
 
@@ -297,7 +297,7 @@ test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invari
     check_fns: ["beta_holds", "alpha_holds"]
   )
   let roster = [synthetic_enrollment(check: check)]
-  let first = project_enrollment_witness_demands_unchecked(
+  let first = gunbc.commit_workflow.project_enrollment_witness_demands_unchecked(
     roster: roster,
     discoveries: [
       complete_discovery(
@@ -307,7 +307,7 @@ test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invari
       )
     ]
   )
-  let permuted = project_enrollment_witness_demands_unchecked(
+  let permuted = gunbc.commit_workflow.project_enrollment_witness_demands_unchecked(
     roster: roster,
     discoveries: [
       complete_discovery(
@@ -318,53 +318,53 @@ test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invari
     ]
   )
   match first {
-    DemandQualified { rows: left } =>
+    gunbc.commit_workflow.DemandQualified { rows: left } =>
       match permuted {
-        DemandQualified { rows: right } =>
+        gunbc.commit_workflow.DemandQualified { rows: right } =>
           left.count() == 1
             && right.count() == 1
             && left.first().declarations.count() == 2
             && nth_declaration_name(rows: left, row: 0, declaration: 0) == "beta_holds"
             && nth_declaration_name(rows: left, row: 0, declaration: 1) == "alpha_holds"
-            && declaration_ref_lists_eq(
+            && gunbc.commit_workflow.declaration_ref_lists_eq(
               left: left.first().declarations,
               right: right.first().declarations
             )
-        DemandMissing { check: _, cause: _ } => false
-        DemandAmbiguous { check: _, cause: _ } => false
-        DemandIncomplete { check: _, cause: _ } => false
-        DemandRosterAmbiguous { cause: _ } => false
+        gunbc.commit_workflow.DemandMissing { check: _, cause: _ } => false
+        gunbc.commit_workflow.DemandAmbiguous { check: _, cause: _ } => false
+        gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+        gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
       }
-    DemandMissing { check: _, cause: _ } => false
-    DemandAmbiguous { check: _, cause: _ } => false
-    DemandIncomplete { check: _, cause: _ } => false
-    DemandRosterAmbiguous { cause: _ } => false
+    gunbc.commit_workflow.DemandMissing { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandAmbiguous { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
 test fn commit_check_demand_gate_and_fmt_rows_stay_typed_and_empty() -> Bool {
-  let gate = gunbc.commit_workflow.CommitSpecGate { gate: EmitHostGate }
-  let fmt = CommitCargoFmtCheck
+  let gate = gunbc.commit_workflow.CommitSpecGate { gate: gunbc.ci_gate.EmitHostGate }
+  let fmt = gunbc.commit_workflow.CommitCargoFmtCheck
   let roster = [
     synthetic_enrollment(check: gate),
     synthetic_enrollment(check: fmt)
   ]
-  match project_enrollment_witness_demands_unchecked(roster: roster, discoveries: []) {
-    DemandQualified { rows } =>
+  match gunbc.commit_workflow.project_enrollment_witness_demands_unchecked(roster: roster, discoveries: []) {
+    gunbc.commit_workflow.DemandQualified { rows } =>
       rows.count() == 2
         && rows.first().declarations.count() == 0
         && rows.skip(n: 1).first().declarations.count() == 0
-        && commit_check_kind_eq(a: rows.first().check, b: gate)
-        && commit_check_kind_eq(a: rows.skip(n: 1).first().check, b: fmt)
-    DemandMissing { check: _, cause: _ } => false
-    DemandAmbiguous { check: _, cause: _ } => false
-    DemandIncomplete { check: _, cause: _ } => false
-    DemandRosterAmbiguous { cause: _ } => false
+        && gunbc.commit_workflow.commit_check_kind_eq(a: rows.first().check, b: gate)
+        && gunbc.commit_workflow.commit_check_kind_eq(a: rows.skip(n: 1).first().check, b: fmt)
+    gunbc.commit_workflow.DemandMissing { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandAmbiguous { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
 test fn commit_check_demand_unowned_discovery_is_roster_ambiguous() -> Bool {
-  match project_enrollment_witness_demands(
+  match gunbc.commit_workflow.project_enrollment_witness_demands(
     discoveries: [
       complete_discovery(
         entry: "dag/test/claim/unowned_test.dag",
@@ -373,12 +373,12 @@ test fn commit_check_demand_unowned_discovery_is_roster_ambiguous() -> Bool {
       )
     ]
   ) {
-    DemandRosterAmbiguous { cause } =>
+    gunbc.commit_workflow.DemandRosterAmbiguous { cause } =>
       cause == ("declaration discovery has no owning witness enrollment" as std.types.NonEmptyStr)
-    DemandQualified { rows: _ } => false
-    DemandMissing { check: _, cause: _ } => false
-    DemandAmbiguous { check: _, cause: _ } => false
-    DemandIncomplete { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandQualified { rows: _ } => false
+    gunbc.commit_workflow.DemandMissing { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandAmbiguous { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
   }
 }
 
@@ -387,7 +387,7 @@ test fn commit_check_demand_absent_named_declaration_is_missing() -> Bool {
     entry: "dag/test/claim/missing_test.dag",
     check_fns: ["required_holds"]
   )
-  match project_enrollment_witness_demands_unchecked(
+  match gunbc.commit_workflow.project_enrollment_witness_demands_unchecked(
     roster: [synthetic_enrollment(check: check)],
     discoveries: [
       complete_discovery(
@@ -397,12 +397,12 @@ test fn commit_check_demand_absent_named_declaration_is_missing() -> Bool {
       )
     ]
   ) {
-    DemandMissing { check: failed, cause: _ } =>
-      commit_check_kind_eq(a: failed, b: check)
-    DemandQualified { rows: _ } => false
-    DemandAmbiguous { check: _, cause: _ } => false
-    DemandIncomplete { check: _, cause: _ } => false
-    DemandRosterAmbiguous { cause: _ } => false
+    gunbc.commit_workflow.DemandMissing { check: failed, cause: _ } =>
+      gunbc.commit_workflow.commit_check_kind_eq(a: failed, b: check)
+    gunbc.commit_workflow.DemandQualified { rows: _ } => false
+    gunbc.commit_workflow.DemandAmbiguous { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -411,7 +411,7 @@ test fn commit_check_demand_empty_complete_discovery_is_missing() -> Bool {
     entry: "dag/test/claim/empty_test.dag",
     check_fns: []
   )
-  match project_enrollment_witness_demands_unchecked(
+  match gunbc.commit_workflow.project_enrollment_witness_demands_unchecked(
     roster: [synthetic_enrollment(check: check)],
     discoveries: [
       complete_discovery(
@@ -421,13 +421,13 @@ test fn commit_check_demand_empty_complete_discovery_is_missing() -> Bool {
       )
     ]
   ) {
-    DemandMissing { check: failed, cause } =>
-      commit_check_kind_eq(a: failed, b: check)
+    gunbc.commit_workflow.DemandMissing { check: failed, cause } =>
+      gunbc.commit_workflow.commit_check_kind_eq(a: failed, b: check)
         && cause == ("complete witness discovery contains no declarations" as std.types.NonEmptyStr)
-    DemandQualified { rows: _ } => false
-    DemandAmbiguous { check: _, cause: _ } => false
-    DemandIncomplete { check: _, cause: _ } => false
-    DemandRosterAmbiguous { cause: _ } => false
+    gunbc.commit_workflow.DemandQualified { rows: _ } => false
+    gunbc.commit_workflow.DemandAmbiguous { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -436,7 +436,7 @@ test fn commit_check_demand_duplicate_discovery_entry_is_ambiguous() -> Bool {
     entry: "dag/test/claim/duplicate_entry_test.dag",
     check_fns: ["holds"]
   )
-  match project_enrollment_witness_demands_unchecked(
+  match gunbc.commit_workflow.project_enrollment_witness_demands_unchecked(
     roster: [synthetic_enrollment(check: check)],
     discoveries: [
       complete_discovery(
@@ -451,12 +451,12 @@ test fn commit_check_demand_duplicate_discovery_entry_is_ambiguous() -> Bool {
       )
     ]
   ) {
-    DemandAmbiguous { check: failed, cause: _ } =>
-      commit_check_kind_eq(a: failed, b: check)
-    DemandQualified { rows: _ } => false
-    DemandMissing { check: _, cause: _ } => false
-    DemandIncomplete { check: _, cause: _ } => false
-    DemandRosterAmbiguous { cause: _ } => false
+    gunbc.commit_workflow.DemandAmbiguous { check: failed, cause: _ } =>
+      gunbc.commit_workflow.commit_check_kind_eq(a: failed, b: check)
+    gunbc.commit_workflow.DemandQualified { rows: _ } => false
+    gunbc.commit_workflow.DemandMissing { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -469,7 +469,7 @@ test fn commit_check_demand_duplicate_module_is_ambiguous() -> Bool {
     entry: "dag/test/claim/module_b_test.dag",
     check_fns: ["b_holds"]
   )
-  match project_enrollment_witness_demands_unchecked(
+  match gunbc.commit_workflow.project_enrollment_witness_demands_unchecked(
     roster: [
       synthetic_enrollment(check: first),
       synthetic_enrollment(check: second)
@@ -487,13 +487,13 @@ test fn commit_check_demand_duplicate_module_is_ambiguous() -> Bool {
       )
     ]
   ) {
-    DemandAmbiguous { check: failed, cause: _ } =>
-      commit_check_kind_eq(a: failed, b: first)
-        || commit_check_kind_eq(a: failed, b: second)
-    DemandQualified { rows: _ } => false
-    DemandMissing { check: _, cause: _ } => false
-    DemandIncomplete { check: _, cause: _ } => false
-    DemandRosterAmbiguous { cause: _ } => false
+    gunbc.commit_workflow.DemandAmbiguous { check: failed, cause: _ } =>
+      gunbc.commit_workflow.commit_check_kind_eq(a: failed, b: first)
+        || gunbc.commit_workflow.commit_check_kind_eq(a: failed, b: second)
+    gunbc.commit_workflow.DemandQualified { rows: _ } => false
+    gunbc.commit_workflow.DemandMissing { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -502,7 +502,7 @@ test fn commit_check_demand_duplicate_declaration_is_ambiguous() -> Bool {
     entry: "dag/test/claim/duplicate_decl_test.dag",
     check_fns: ["same_holds"]
   )
-  match project_enrollment_witness_demands_unchecked(
+  match gunbc.commit_workflow.project_enrollment_witness_demands_unchecked(
     roster: [synthetic_enrollment(check: check)],
     discoveries: [
       complete_discovery(
@@ -512,12 +512,12 @@ test fn commit_check_demand_duplicate_declaration_is_ambiguous() -> Bool {
       )
     ]
   ) {
-    DemandAmbiguous { check: failed, cause: _ } =>
-      commit_check_kind_eq(a: failed, b: check)
-    DemandQualified { rows: _ } => false
-    DemandMissing { check: _, cause: _ } => false
-    DemandIncomplete { check: _, cause: _ } => false
-    DemandRosterAmbiguous { cause: _ } => false
+    gunbc.commit_workflow.DemandAmbiguous { check: failed, cause: _ } =>
+      gunbc.commit_workflow.commit_check_kind_eq(a: failed, b: check)
+    gunbc.commit_workflow.DemandQualified { rows: _ } => false
+    gunbc.commit_workflow.DemandMissing { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -526,7 +526,7 @@ test fn commit_check_demand_incomplete_discovery_stays_incomplete() -> Bool {
     entry: "dag/test/claim/incomplete_test.dag",
     check_fns: []
   )
-  match project_enrollment_witness_demands_unchecked(
+  match gunbc.commit_workflow.project_enrollment_witness_demands_unchecked(
     roster: [synthetic_enrollment(check: check)],
     discoveries: [
       gunbc.commit_workflow.DiscoveryIncomplete {
@@ -535,13 +535,13 @@ test fn commit_check_demand_incomplete_discovery_stays_incomplete() -> Bool {
       }
     ]
   ) {
-    DemandIncomplete { check: failed, cause } =>
-      commit_check_kind_eq(a: failed, b: check)
+    gunbc.commit_workflow.DemandIncomplete { check: failed, cause } =>
+      gunbc.commit_workflow.commit_check_kind_eq(a: failed, b: check)
         && cause == ("source scan refused" as std.types.NonEmptyStr)
-    DemandQualified { rows: _ } => false
-    DemandMissing { check: _, cause: _ } => false
-    DemandAmbiguous { check: _, cause: _ } => false
-    DemandRosterAmbiguous { cause: _ } => false
+    gunbc.commit_workflow.DemandQualified { rows: _ } => false
+    gunbc.commit_workflow.DemandMissing { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandAmbiguous { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -551,10 +551,10 @@ test fn commit_check_demand_duplicate_roster_identity_is_ambiguous() -> Bool {
     check_fns: ["holds"]
   )
   let row = synthetic_enrollment(check: check)
-  match first_duplicate_commit_check(roster: [row, row]) {
-    DuplicateCommitCheckFound { check: failed } =>
-      commit_check_kind_eq(a: failed, b: check)
-    NoDuplicateCommitCheck => false
+  match gunbc.commit_workflow.first_duplicate_commit_check(roster: [row, row]) {
+    gunbc.commit_workflow.DuplicateCommitCheckFound { check: failed } =>
+      gunbc.commit_workflow.commit_check_kind_eq(a: failed, b: check)
+    gunbc.commit_workflow.NoDuplicateCommitCheck => false
   }
 }
 
@@ -566,10 +566,10 @@ test fn commit_check_demand_overlapping_output_membership_is_ambiguous() -> Bool
   let second = gunbc.commit_workflow.CommitWitnessClaim {
     entry: "dag/test/claim/overlap_test.dag",
     check_fns: ["same_holds"],
-    kind: ExecutionWitnessKind,
-    span: SpanUndeclared
+    kind: std.realization_schedule.ExecutionWitnessKind,
+    span: std.realization_schedule.SpanUndeclared
   }
-  match project_enrollment_witness_demands_unchecked(
+  match gunbc.commit_workflow.project_enrollment_witness_demands_unchecked(
     roster: [
       synthetic_enrollment(check: first),
       synthetic_enrollment(check: second)
@@ -582,17 +582,17 @@ test fn commit_check_demand_overlapping_output_membership_is_ambiguous() -> Bool
       )
     ]
   ) {
-    DemandAmbiguous { check: _, cause: _ } => true
-    DemandQualified { rows: _ } => false
-    DemandMissing { check: _, cause: _ } => false
-    DemandIncomplete { check: _, cause: _ } => false
-    DemandRosterAmbiguous { cause: _ } => false
+    gunbc.commit_workflow.DemandAmbiguous { check: _, cause: _ } => true
+    gunbc.commit_workflow.DemandQualified { rows: _ } => false
+    gunbc.commit_workflow.DemandMissing { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
 test fn commit_check_demand_roster_and_expansion_set_equality_has_teeth() -> Bool {
-  let gate = gunbc.commit_workflow.CommitSpecGate { gate: EmitHostGate }
-  let fmt = CommitCargoFmtCheck
+  let gate = gunbc.commit_workflow.CommitSpecGate { gate: gunbc.ci_gate.EmitHostGate }
+  let fmt = gunbc.commit_workflow.CommitCargoFmtCheck
   let roster = [
     synthetic_enrollment(check: gate),
     synthetic_enrollment(check: fmt)
@@ -603,15 +603,15 @@ test fn commit_check_demand_roster_and_expansion_set_equality_has_teeth() -> Boo
     demand_decl(module_path: "test.claim.expansion", decl_name: "a_holds"),
     demand_decl(module_path: "test.claim.expansion", decl_name: "b_holds")
   ]
-  demand_rows_match_roster(roster: roster, rows: [gate_row, fmt_row])
-    && !demand_rows_match_roster(roster: roster, rows: [gate_row])
-    && !demand_rows_match_roster(roster: roster, rows: [gate_row, gate_row])
-    && !declaration_ref_lists_eq(left: complete, right: [complete.first()])
-    && !declaration_ref_lists_eq(
+  gunbc.commit_workflow.demand_rows_match_roster(roster: roster, rows: [gate_row, fmt_row])
+    && !gunbc.commit_workflow.demand_rows_match_roster(roster: roster, rows: [gate_row])
+    && !gunbc.commit_workflow.demand_rows_match_roster(roster: roster, rows: [gate_row, gate_row])
+    && !gunbc.commit_workflow.declaration_ref_lists_eq(left: complete, right: [complete.first()])
+    && !gunbc.commit_workflow.declaration_ref_lists_eq(
       left: complete,
       right: [complete.first(), complete.first()]
     )
-    && !declaration_ref_lists_eq(
+    && !gunbc.commit_workflow.declaration_ref_lists_eq(
       left: [complete.first(), complete.first(), complete.skip(n: 1).first()],
       right: [complete.first(), complete.skip(n: 1).first(), complete.skip(n: 1).first()]
     )
@@ -627,8 +627,8 @@ test fn commit_check_demand_rejects_non_whole_discovery() -> Bool {
     decl_name: "holds" as std.types.NonEmptyStr,
     field: std.decl_ref.NamedField { field_name: "body" as std.types.NonEmptyStr }
   }
-  declaration_ref_lists_eq(left: [wrong_field], right: [wrong_field])
-    && match project_enrollment_witness_demands_unchecked(
+  gunbc.commit_workflow.declaration_ref_lists_eq(left: [wrong_field], right: [wrong_field])
+    && match gunbc.commit_workflow.project_enrollment_witness_demands_unchecked(
     roster: [synthetic_enrollment(check: check)],
     discoveries: [
       gunbc.commit_workflow.DiscoveryComplete {
@@ -638,11 +638,11 @@ test fn commit_check_demand_rejects_non_whole_discovery() -> Bool {
       }
     ]
   ) {
-    DemandAmbiguous { check: _, cause: _ } => true
-    DemandQualified { rows: _ } => false
-    DemandMissing { check: _, cause: _ } => false
-    DemandIncomplete { check: _, cause: _ } => false
-    DemandRosterAmbiguous { cause: _ } => false
+    gunbc.commit_workflow.DemandAmbiguous { check: _, cause: _ } => true
+    gunbc.commit_workflow.DemandQualified { rows: _ } => false
+    gunbc.commit_workflow.DemandMissing { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
   }
 }
 
@@ -655,7 +655,7 @@ test fn commit_check_demand_rejects_wrong_module_discovery() -> Bool {
     module_path: "test.claim.other_module",
     decl_name: "holds"
   )
-  match project_enrollment_witness_demands_unchecked(
+  match gunbc.commit_workflow.project_enrollment_witness_demands_unchecked(
     roster: [synthetic_enrollment(check: check)],
     discoveries: [
       gunbc.commit_workflow.DiscoveryComplete {
@@ -665,10 +665,10 @@ test fn commit_check_demand_rejects_wrong_module_discovery() -> Bool {
       }
     ]
   ) {
-    DemandAmbiguous { check: _, cause: _ } => true
-    DemandQualified { rows: _ } => false
-    DemandMissing { check: _, cause: _ } => false
-    DemandIncomplete { check: _, cause: _ } => false
-    DemandRosterAmbiguous { cause: _ } => false
+    gunbc.commit_workflow.DemandAmbiguous { check: _, cause: _ } => true
+    gunbc.commit_workflow.DemandQualified { rows: _ } => false
+    gunbc.commit_workflow.DemandMissing { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    gunbc.commit_workflow.DemandRosterAmbiguous { cause: _ } => false
   }
 }

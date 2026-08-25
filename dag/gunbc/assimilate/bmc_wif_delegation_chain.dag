@@ -2,31 +2,31 @@ module gunbc.assimilate.bmc_wif_delegation_chain
 
 
 data bmc_srv3_admin_secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef = extdeps.cloud.gcp.secret_ref.SecretRef {
-  project: bmc_secrets_project_id,
-  secret: bmc_srv3_secret_name as std.types.NonEmptyStr,
+  project: gunbc.assimilate.bmc_token_federation.bmc_secrets_project_id,
+  secret: gunbc.assimilate.bmc_token_federation.bmc_srv3_secret_name as std.types.NonEmptyStr,
   version: "latest",
-  hash_state: HashPending
+  hash_state: extdeps.cloud.gcp.secret_ref.HashPending
 }
 
 data wif_canary_secret_name: std.types.NonEmptyStr = "wif-canary"
 
 data wif_canary_secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef = extdeps.cloud.gcp.secret_ref.SecretRef {
-  project: bmc_secrets_project_id,
+  project: gunbc.assimilate.bmc_token_federation.bmc_secrets_project_id,
   secret: wif_canary_secret_name,
   version: "latest",
-  hash_state: HashPending
+  hash_state: extdeps.cloud.gcp.secret_ref.HashPending
 }
 
 fn bmc_wif_designated_job_id() -> std.types.NonEmptyStr {
-  bmc_token_smoke_job().id as std.types.NonEmptyStr
+  gunbc.assimilate.bmc_token_federation.bmc_token_smoke_job().id as std.types.NonEmptyStr
 }
 
 fn bmc_wif_grant_principal() -> gunbc.auth.secret_access_grant.GrantPrincipal {
   gunbc.auth.secret_access_grant.GrantPrincipal {
-    service_account: bmc_assimilator_sa_email,
+    service_account: gunbc.assimilate.bmc_token_federation.bmc_assimilator_sa_email,
     condition: gunbc.auth.secret_access_grant.GrantPrincipalCondition {
       workflow_or_job: bmc_wif_designated_job_id(),
-      attribute_condition: bmc_wif_attribute_condition() as std.types.NonEmptyStr
+      attribute_condition: gunbc.assimilate.bmc_token_federation.bmc_wif_attribute_condition() as std.types.NonEmptyStr
     }
   }
 }
@@ -38,7 +38,7 @@ data bmc_wif_canary_grant: gunbc.auth.secret_access_grant.SecretAccessGrant = gu
   consumer: "bmc_token_smoke",
   justification: "prove the WIF chain resolves keylessly against a worthless value before any real secret is bound",
   signoff: gunbc.auth.secret_access_grant.Signed { signed_by: "operator", note: "canary-only, no sensitive value" },
-  provenance: DeclaredInModel
+  provenance: gunbc.auth.secret_access_grant.DeclaredInModel
 }
 
 data bmc_srv3_admin_access_grant: gunbc.auth.secret_access_grant.SecretAccessGrant = gunbc.auth.secret_access_grant.SecretAccessGrant {
@@ -48,7 +48,7 @@ data bmc_srv3_admin_access_grant: gunbc.auth.secret_access_grant.SecretAccessGra
   consumer: "bmc_assimilate_srv3",
   justification: "srv3 BMC admin credential readback for the assimilate/rotate flow",
   signoff: gunbc.auth.secret_access_grant.Unsigned,
-  provenance: DeclaredInModel
+  provenance: gunbc.auth.secret_access_grant.DeclaredInModel
 }
 
 data bmc_srv3_admin_legacy_binding: gunbc.auth.secret_access_grant.SecretAccessGrant = gunbc.auth.secret_access_grant.SecretAccessGrant {
@@ -74,11 +74,11 @@ data bmc_wif_legacy_grants: List<gunbc.auth.secret_access_grant.SecretAccessGran
 ]
 
 fn bmc_wif_signed_grants() -> List<gunbc.auth.secret_access_grant.SecretAccessGrant> {
-  signed_grants_only(grants: bmc_wif_all_grants)
+  gunbc.auth.secret_access_grant.signed_grants_only(grants: bmc_wif_all_grants)
 }
 
 fn bmc_wif_bootstrap_bindings() -> List<extdeps.cloud.gcp.iam.GcpBinding> {
-  signed_grant_bindings(grants: bmc_wif_all_grants)
+  gunbc.auth.secret_access_grant.signed_grant_bindings(grants: bmc_wif_all_grants)
 }
 
 type CredentialDelegationStep
@@ -95,16 +95,16 @@ fn bmc_wif_delegation_chain(secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef, 
   WifDelegationChain {
     steps: [
       GhaOidcIssuance {
-        audience: wif_provider_resource(project_number: bmc_secrets_project_number, provider: bmc_wif_provider) as std.types.NonEmptyStr,
+        audience: extdeps.cloud.gcp.gcp.wif_provider_resource(project_number: gunbc.assimilate.bmc_token_federation.bmc_secrets_project_number, provider: gunbc.assimilate.bmc_token_federation.bmc_wif_provider) as std.types.NonEmptyStr,
         designated_job: bmc_wif_designated_job_id()
       },
       WifTokenExchange {
-        pool: bmc_wif_pool,
-        provider: bmc_wif_provider,
-        attribute_condition: bmc_wif_attribute_condition() as std.types.NonEmptyStr
+        pool: gunbc.assimilate.bmc_token_federation.bmc_wif_pool,
+        provider: gunbc.assimilate.bmc_token_federation.bmc_wif_provider,
+        attribute_condition: gunbc.assimilate.bmc_token_federation.bmc_wif_attribute_condition() as std.types.NonEmptyStr
       },
       ServiceAccountImpersonation {
-        impersonated_sa: bmc_assimilator_sa_email,
+        impersonated_sa: gunbc.assimilate.bmc_token_federation.bmc_assimilator_sa_email,
         granted_roles: granted_roles
       },
       SecretVersionAccess { secret_ref: secret_ref }

@@ -3,15 +3,15 @@ module gunbc.roadmap_spawner
 
 fn element_nodes(e: gunbc.roadmap_model.SectionElement) -> List<gunbc.roadmap_model.RoadmapNode> {
   match e {
-    Prose { prose: _ } => []
-    Group { group } => group.nodes
+    gunbc.roadmap_model.Prose { prose: _ } => []
+    gunbc.roadmap_model.Group { group } => group.nodes
   }
 }
 
 fn element_edges(e: gunbc.roadmap_model.SectionElement) -> List<gunbc.roadmap_model.RoadmapEdge> {
   match e {
-    Prose { prose: _ } => []
-    Group { group } => group.edges
+    gunbc.roadmap_model.Prose { prose: _ } => []
+    gunbc.roadmap_model.Group { group } => group.edges
   }
 }
 
@@ -36,11 +36,11 @@ fn doc_all_edges(doc: gunbc.roadmap_document.RoadmapDocument) -> List<gunbc.road
 data roadmap_rendered_containment_note: String = "RENDERED IS CONTAINED IN DECLARED-OR-DERIVED, witnessed — membership is the WHOLE NODE VALUE, never the identity alone, and the traversal is doc_all_nodes, the one canonical document walker. The 2026-07-31 operator verdict on gunbc#7489 found the guarantee-ladder nodes rendered from a section-local list outside declared_roadmap_nodes() — a second roadmap universe: uncounted, receipt-unreachable, invisible to active_roadmap_nodes() and the identity/endpoint/acyclicity witnesses. The section was deleted and the nodes joined the declared graph; these predicates close the CLASS: every node any rendered document carries must be value-equal to a declared node or a projection-derived closing-contract task. Two refused first cuts are recorded because each was a review catch of this wall violating the laws it enforces: identity-only membership (review 45406 — an altered copy reusing a declared identity would pass as sanctioned while forking content, the drifting duplicate authority DESIGN 3 forbids) and a hand-rolled document walker beside doc_all_nodes (review 45412 — a traversal fork; the predicates live HERE, in the walker's module, because roadmap_spawner already imports roadmap_authority and the reverse import would cycle). Two RED probes, each a synthetic document the wall must red: a fresh-identity ghost, and an altered copy of a real declared node (same identity, one field changed — derived from the canonical node so the probe duplicates no literals). Neither probe node enters the declared graph; the altered-copy probe returns 0 if its anchor node disappears, failing its witness loudly rather than vacuously passing."
 
 fn roadmap_rendered_ghost_count(doc: gunbc.roadmap_document.RoadmapDocument) -> Int {
-  match closing_contract_task_pairs_projection() {
-    ClosingContractTaskPairsProjectionRefused { detail: _ } =>
+  match gunbc.roadmap_authority.closing_contract_task_pairs_projection() {
+    gunbc.roadmap_authority.ClosingContractTaskPairsProjectionRefused { detail: _ } =>
       count(doc_all_nodes(doc: doc))
-    ClosingContractTaskPairsProjected { pairs: pairs } =>
-      let sanctioned = concat(declared_roadmap_nodes(), pairs |> map(p => p.task))
+    gunbc.roadmap_authority.ClosingContractTaskPairsProjected { pairs: pairs } =>
+      let sanctioned = concat(gunbc.roadmap_authority.declared_roadmap_nodes(), pairs |> map(p => p.task))
       doc_all_nodes(doc: doc)
         |> filter(n => !any(sanctioned, s => s == n))
         |> count
@@ -48,25 +48,25 @@ fn roadmap_rendered_ghost_count(doc: gunbc.roadmap_document.RoadmapDocument) -> 
 }
 
 fn ghost_probe_document(ghost: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_document.RoadmapDocument {
-  let base = roadmap_authority_for(focus: NoFocus)
+  let base = gunbc.roadmap_authority.roadmap_authority_for(focus: gunbc.roadmap_focus.NoFocus)
   gunbc.roadmap_document.RoadmapDocument {
     preamble: base.preamble,
     lead_lanes: base.lead_lanes,
     sections: concat(base.sections, [gunbc.roadmap_document.RoadmapSection {
       title: "SYNTHETIC ghost section (test probe only)",
-      elements: [section_group(label: "", nodes: [ghost], edges: [])],
+      elements: [gunbc.roadmap_model.section_group(label: "", nodes: [ghost], edges: [])],
     }]),
   }
 }
 
 fn roadmap_ghost_node_red_probe_count() -> Int {
-  roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: active_sized(
+  roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: gunbc.roadmap_authority.active_sized(
     identity: "rn_GHOSTPROBEAAAAAAAAAAAAAAAA", id: "synthetic-ghost-probe",
     owner: "compiler-guarantee",
     path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-    intricacy: IntricacyLow,
-    volume: VolumeSmall,
-    t: fields(
+    intricacy: gunbc.roadmap_model.IntricacyLow,
+    volume: gunbc.roadmap_model.VolumeSmall,
+    t: gunbc.roadmap_authority.fields(
       headline: "SYNTHETIC: a rendered node that no declared authority carries",
       boundary: "Negative control for the containment witness — never declared, never rendered outside the probe.",
       displaced_cost: "None; this row exists to be caught.",
@@ -78,7 +78,7 @@ fn roadmap_ghost_node_red_probe_count() -> Int {
 }
 
 fn roadmap_altered_copy_red_probe_count() -> Int {
-  match declared_roadmap_nodes() |> filter(n => (n.node as String) == "ladder-claims-carrier") |> first {
+  match gunbc.roadmap_authority.declared_roadmap_nodes() |> filter(n => (n.node as String) == "ladder-claims-carrier") |> first {
     Absent => 0
     Present { value: n } => roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: gunbc.roadmap_model.RoadmapNode {
       identity: n.identity,
@@ -96,7 +96,7 @@ fn roadmap_altered_copy_red_probe_count() -> Int {
 data spawn_frontier_completion_note: String = "Work-item acceptance is separate from implementation evidence. A merged PR or authored/ticket checkbox moves the page status to review, but never completes the node, removes its dispatch action, or unblocks a dependent node. Only an accepting operator sign-off completes work. Supersession is a separate terminal disposition: it never enters the done bucket, but it closes dependency edges because the named successor owns the work. The same acceptance and dependency-closure predicates drive ready, upcoming, done, and unmet-parent projections."
 
 fn node_is_accepted(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
-  signoff_accepts(s: n.signoff)
+  gunbc.roadmap_status.signoff_accepts(s: n.signoff)
 }
 
 fn node_is_complete(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
@@ -104,7 +104,7 @@ fn node_is_complete(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
 }
 
 fn frontier_node_is_superseded(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
-  !(item_superseded_by(item: n.line) == "")
+  !(gunbc.roadmap_status.item_superseded_by(item: n.line) == "")
 }
 
 fn node_closes_dependency(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
@@ -112,14 +112,14 @@ fn node_closes_dependency(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
 }
 
 fn node_dep_done(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, id: gunbc.roadmap_model.RoadmapNodeId) -> Bool {
-  all(roadmap_parent_ids(edges: edges, node: id), pid =>
+  all(gunbc.roadmap_model.roadmap_parent_ids(edges: edges, node: id), pid =>
     any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
 }
 
 fn node_is_spawnable(n: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> Bool {
   match n.sizing {
-    Unsized => false
-    Sized { intricacy: _, volume: _, repo: _, acceptance: _ } =>
+    gunbc.roadmap_model.Unsized => false
+    gunbc.roadmap_model.Sized { intricacy: _, volume: _, repo: _, acceptance: _ } =>
       !node_is_complete(n: n)
         && !frontier_node_is_superseded(n: n)
         && node_dep_done(nodes: nodes, edges: edges, id: n.node)
@@ -134,8 +134,8 @@ fn next_spawnable(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>
 
 fn node_is_sized(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
   match n.sizing {
-    Unsized => false
-    Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => true
+    gunbc.roadmap_model.Unsized => false
+    gunbc.roadmap_model.Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => true
   }
 }
 
@@ -166,72 +166,72 @@ fn spawn_frontier(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>
     ready: next_spawnable(doc: doc, merged: merged),
     upcoming: nodes |> filter(n => node_is_upcoming(n: n, nodes: nodes, edges: edges)),
     done: nodes |> filter(n => node_is_frontier_done(n: n)),
-    superseded: nodes |> filter(n => !(item_superseded_by(item: n.line) == "")),
+    superseded: nodes |> filter(n => !(gunbc.roadmap_status.item_superseded_by(item: n.line) == "")),
   }
 }
 
 fn json_str(s: String) -> String {
-  quote_json_string(s: s)
+  extdeps.languages.json.emit.quote_json_string(s: s)
 }
 
 fn intricacy_str(i: gunbc.roadmap_model.Intricacy) -> String {
   match i {
-    IntricacyLow => "low"
-    IntricacyMedium => "medium"
-    IntricacyHigh => "high"
+    gunbc.roadmap_model.IntricacyLow => "low"
+    gunbc.roadmap_model.IntricacyMedium => "medium"
+    gunbc.roadmap_model.IntricacyHigh => "high"
   }
 }
 
 fn volume_str(v: gunbc.roadmap_model.Volume) -> String {
   match v {
-    VolumeSmall => "small"
-    VolumeMedium => "medium"
-    VolumeLarge => "large"
+    gunbc.roadmap_model.VolumeSmall => "small"
+    gunbc.roadmap_model.VolumeMedium => "medium"
+    gunbc.roadmap_model.VolumeLarge => "large"
   }
 }
 
 fn acceptance_json_value(a: gunbc.roadmap_model.Acceptance, line: gunbc.roadmap_status.RoadmapItem) -> extdeps.languages.json.emit.JsonValue {
   match a {
-    PrsMerged => match line {
-      DerivableLine { prs, title: _, description: _ } =>
-        json_object(members: [
-          json_kv(key: "kind", value: json_string(s: "prs_merged")),
-          json_kv(key: "prs", value: json_array(elements: prs |> map(n => json_int(n: n)))),
+    gunbc.roadmap_model.PrsMerged => match line {
+      gunbc.roadmap_status.DerivableLine { prs, title: _, description: _ } =>
+        extdeps.languages.json.emit.json_object(members: [
+          extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "prs_merged")),
+          extdeps.languages.json.emit.json_kv(key: "prs", value: extdeps.languages.json.emit.json_array(elements: prs |> map(n => extdeps.languages.json.emit.json_int(n: n)))),
         ])
-      AuthoredLine { done: _, content: _ } =>
-        json_object(members: [
-          json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
-          json_kv(key: "prs", value: json_array(elements: [])),
+      gunbc.roadmap_status.AuthoredLine { done: _, content: _ } =>
+        extdeps.languages.json.emit.json_object(members: [
+          extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "prs_merged_model_error")),
+          extdeps.languages.json.emit.json_kv(key: "prs", value: extdeps.languages.json.emit.json_array(elements: [])),
         ])
-      PlainLine { content: _ } =>
-        json_object(members: [
-          json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
-          json_kv(key: "prs", value: json_array(elements: [])),
+      gunbc.roadmap_status.PlainLine { content: _ } =>
+        extdeps.languages.json.emit.json_object(members: [
+          extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "prs_merged_model_error")),
+          extdeps.languages.json.emit.json_kv(key: "prs", value: extdeps.languages.json.emit.json_array(elements: [])),
         ])
-      SupersededLine { by: _, content: _ } =>
-        json_object(members: [
-          json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
-          json_kv(key: "prs", value: json_array(elements: [])),
+      gunbc.roadmap_status.SupersededLine { by: _, content: _ } =>
+        extdeps.languages.json.emit.json_object(members: [
+          extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "prs_merged_model_error")),
+          extdeps.languages.json.emit.json_kv(key: "prs", value: extdeps.languages.json.emit.json_array(elements: [])),
         ])
       TicketLine { done: _, ticket: _ } =>
-        json_object(members: [
-          json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
-          json_kv(key: "prs", value: json_array(elements: [])),
+        extdeps.languages.json.emit.json_object(members: [
+          extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "prs_merged_model_error")),
+          extdeps.languages.json.emit.json_kv(key: "prs", value: extdeps.languages.json.emit.json_array(elements: [])),
         ])
     }
-    ManualAcceptance =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "manual")),
+    gunbc.roadmap_model.ManualAcceptance =>
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "manual")),
       ])
   }
 }
 
 fn node_title(item: gunbc.roadmap_status.RoadmapItem) -> String {
   match item {
-    DerivableLine { prs: _, title, description: _ } => title
-    AuthoredLine { done: _, content } => content
-    PlainLine { content } => content
-    SupersededLine { by: _, content } => content
+    gunbc.roadmap_status.DerivableLine { prs: _, title, description: _ } => title
+    gunbc.roadmap_status.AuthoredLine { done: _, content } => content
+    gunbc.roadmap_status.PlainLine { content } => content
+    gunbc.roadmap_status.SupersededLine { by: _, content } => content
     TicketLine { done: _, ticket } => ticket.headline
   }
 }
@@ -239,49 +239,49 @@ fn node_title(item: gunbc.roadmap_status.RoadmapItem) -> String {
 fn node_plan_doc_json(carriers: List<gunbc.roadmap_model.Pointer>) -> extdeps.languages.json.emit.JsonValue {
   let plans = carriers |> filter(p => p.label == "plan")
   if count(plans) > 0 {
-    fold(plans, init: json_null(), f: (acc, p) => match acc {
-      JsonNull => json_string(s: p.path)
+    fold(plans, init: extdeps.languages.json.emit.json_null(), f: (acc, p) => match acc {
+      extdeps.languages.json.emit.JsonNull => extdeps.languages.json.emit.json_string(s: p.path)
       _ => acc
     })
   } else {
-    json_null()
+    extdeps.languages.json.emit.json_null()
   }
 }
 
 fn node_json_value(n: gunbc.roadmap_model.RoadmapNode, intricacy: gunbc.roadmap_model.Intricacy, volume: gunbc.roadmap_model.Volume, repo: String, acceptance: gunbc.roadmap_model.Acceptance, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> extdeps.languages.json.emit.JsonValue {
-  let parent_id_value = match roadmap_primary_parent(edges: edges, node: n.node) {
-    TopLevel => json_null()
-    UnderParent { parent: pid } => json_string(s: pid)
+  let parent_id_value = match gunbc.roadmap_model.roadmap_primary_parent(edges: edges, node: n.node) {
+    gunbc.roadmap_model.TopLevel => extdeps.languages.json.emit.json_null()
+    gunbc.roadmap_model.UnderParent { parent: pid } => extdeps.languages.json.emit.json_string(s: pid)
   }
-  let owner_value = if n.owner == "" { json_null() } else { json_string(s: n.owner) }
+  let owner_value = if n.owner == "" { extdeps.languages.json.emit.json_null() } else { extdeps.languages.json.emit.json_string(s: n.owner) }
   let title = node_title(item: n.line)
-  json_object(members: [
-    json_kv(key: "node_id", value: json_string(s: n.node)),
-    json_kv(key: "title", value: json_string(s: title)),
-    json_kv(key: "repo", value: json_string(s: repo)),
-    json_kv(key: "intricacy", value: json_string(s: intricacy_str(i: intricacy))),
-    json_kv(key: "volume", value: json_string(s: volume_str(v: volume))),
-    json_kv(key: "parent_node_id", value: parent_id_value),
-    json_kv(key: "parent_node_ids", value: json_array(elements: roadmap_parent_ids(edges: edges, node: n.node) |> map(id => json_string(s: id)))),
-    json_kv(key: "owner", value: owner_value),
-    json_kv(key: "plan_doc", value: node_plan_doc_json(carriers: n.carriers)),
-    json_kv(key: "acceptance", value: acceptance_json_value(a: acceptance, line: n.line)),
+  extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "node_id", value: extdeps.languages.json.emit.json_string(s: n.node)),
+    extdeps.languages.json.emit.json_kv(key: "title", value: extdeps.languages.json.emit.json_string(s: title)),
+    extdeps.languages.json.emit.json_kv(key: "repo", value: extdeps.languages.json.emit.json_string(s: repo)),
+    extdeps.languages.json.emit.json_kv(key: "intricacy", value: extdeps.languages.json.emit.json_string(s: intricacy_str(i: intricacy))),
+    extdeps.languages.json.emit.json_kv(key: "volume", value: extdeps.languages.json.emit.json_string(s: volume_str(v: volume))),
+    extdeps.languages.json.emit.json_kv(key: "parent_node_id", value: parent_id_value),
+    extdeps.languages.json.emit.json_kv(key: "parent_node_ids", value: extdeps.languages.json.emit.json_array(elements: gunbc.roadmap_model.roadmap_parent_ids(edges: edges, node: n.node) |> map(id => extdeps.languages.json.emit.json_string(s: id)))),
+    extdeps.languages.json.emit.json_kv(key: "owner", value: owner_value),
+    extdeps.languages.json.emit.json_kv(key: "plan_doc", value: node_plan_doc_json(carriers: n.carriers)),
+    extdeps.languages.json.emit.json_kv(key: "acceptance", value: acceptance_json_value(a: acceptance, line: n.line)),
   ])
 }
 
 fn node_json(n: gunbc.roadmap_model.RoadmapNode, intricacy: gunbc.roadmap_model.Intricacy, volume: gunbc.roadmap_model.Volume, repo: String, acceptance: gunbc.roadmap_model.Acceptance, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> String {
-  serialize_json(v: node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges))
+  extdeps.languages.json.emit.serialize_json(v: node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges))
 }
 
 fn node_unmet_parent_ids(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, id: gunbc.roadmap_model.RoadmapNodeId) -> List<gunbc.roadmap_model.RoadmapNodeId> {
-  roadmap_parent_ids(edges: edges, node: id)
+  gunbc.roadmap_model.roadmap_parent_ids(edges: edges, node: id)
     |> filter(pid => !any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
 }
 
 fn ready_array_json(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> String {
-  serialize_json(v: json_array(elements: nodes |> map(n => match n.sizing {
-    Unsized => json_object(members: [])
-    Sized { intricacy, volume, repo, acceptance } =>
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_array(elements: nodes |> map(n => match n.sizing {
+    gunbc.roadmap_model.Unsized => extdeps.languages.json.emit.json_object(members: [])
+    gunbc.roadmap_model.Sized { intricacy, volume, repo, acceptance } =>
       node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges)
   })))
 }
@@ -289,12 +289,12 @@ fn ready_array_json(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gu
 fn roadmap_spawn_request_json(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>, anchor_commit: String) -> String {
   let nodes = next_spawnable(doc: doc, merged: merged)
   let edges = doc_all_edges(doc: doc)
-  serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "roadmap-spawn-request/v1")),
-    json_kv(key: "anchor_commit", value: json_string(s: anchor_commit)),
-    json_kv(key: "ready", value: json_array(elements: nodes |> map(n => match n.sizing {
-      Unsized => json_object(members: [])
-      Sized { intricacy, volume, repo, acceptance } =>
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: "roadmap-spawn-request/v1")),
+    extdeps.languages.json.emit.json_kv(key: "anchor_commit", value: extdeps.languages.json.emit.json_string(s: anchor_commit)),
+    extdeps.languages.json.emit.json_kv(key: "ready", value: extdeps.languages.json.emit.json_array(elements: nodes |> map(n => match n.sizing {
+      gunbc.roadmap_model.Unsized => extdeps.languages.json.emit.json_object(members: [])
+      gunbc.roadmap_model.Sized { intricacy, volume, repo, acceptance } =>
         node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges)
     }))),
   ]))
@@ -302,25 +302,25 @@ fn roadmap_spawn_request_json(doc: gunbc.roadmap_document.RoadmapDocument, merge
 
 fn upcoming_node_json(n: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, merged: List<Int>) -> String {
   let unmet = node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node)
-  serialize_json(v: json_object(members: [
-    json_kv(key: "node_id", value: json_string(s: n.node)),
-    json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
-    json_kv(key: "unmet_parents", value: json_array(elements: unmet |> map(id => json_string(s: id)))),
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "node_id", value: extdeps.languages.json.emit.json_string(s: n.node)),
+    extdeps.languages.json.emit.json_kv(key: "title", value: extdeps.languages.json.emit.json_string(s: node_title(item: n.line))),
+    extdeps.languages.json.emit.json_kv(key: "unmet_parents", value: extdeps.languages.json.emit.json_array(elements: unmet |> map(id => extdeps.languages.json.emit.json_string(s: id)))),
   ]))
 }
 
 fn upcoming_array_json(frontier_upcoming: List<gunbc.roadmap_model.RoadmapNode>, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, merged: List<Int>) -> String {
-  serialize_json(v: json_array(elements: frontier_upcoming |> map(n =>
-    json_object(members: [
-      json_kv(key: "node_id", value: json_string(s: n.node)),
-      json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
-      json_kv(key: "unmet_parents", value: json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node) |> map(id => json_string(s: id)))),
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_array(elements: frontier_upcoming |> map(n =>
+    extdeps.languages.json.emit.json_object(members: [
+      extdeps.languages.json.emit.json_kv(key: "node_id", value: extdeps.languages.json.emit.json_string(s: n.node)),
+      extdeps.languages.json.emit.json_kv(key: "title", value: extdeps.languages.json.emit.json_string(s: node_title(item: n.line))),
+      extdeps.languages.json.emit.json_kv(key: "unmet_parents", value: extdeps.languages.json.emit.json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node) |> map(id => extdeps.languages.json.emit.json_string(s: id)))),
     ])
   )))
 }
 
 fn done_ids_json(frontier_done: List<gunbc.roadmap_model.RoadmapNode>) -> String {
-  json_str_list(items: frontier_done |> map(n => n.node))
+  extdeps.languages.json.emit.json_str_list(items: frontier_done |> map(n => n.node))
 }
 
 data dispatch_brief_template: String = "Node: <node_id>\nWhy now: <displaced cost / what it unblocks>\nNon-goals: <explicitly out of scope>\nM0 evidence: <prove current state / reproduce the gap>\nM1 smallest change: <first implementation slice>\nM2 RED control: <perturbation that goes red>\nM3 green receipt: <execution on the real path>\nStop and return if: <named hand-back conditions>\nFiles likely touched: <paths>\nCommands to run: <repro/verify commands>\nExpected artifact: <what comes back even if the fix does not land>"
@@ -329,51 +329,51 @@ fn roadmap_dispatch_json_value(doc: gunbc.roadmap_document.RoadmapDocument, merg
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   let frontier = spawn_frontier(doc: doc, merged: merged)
-  json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "roadmap-dispatch/v1")),
-    json_kv(key: "ready", value: json_array(elements: frontier.ready |> map(n => match n.sizing {
-      Unsized => json_object(members: [])
-      Sized { intricacy, volume, repo, acceptance } =>
+  extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: "roadmap-dispatch/v1")),
+    extdeps.languages.json.emit.json_kv(key: "ready", value: extdeps.languages.json.emit.json_array(elements: frontier.ready |> map(n => match n.sizing {
+      gunbc.roadmap_model.Unsized => extdeps.languages.json.emit.json_object(members: [])
+      gunbc.roadmap_model.Sized { intricacy, volume, repo, acceptance } =>
         node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges)
     }))),
-    json_kv(key: "upcoming", value: json_array(elements: frontier.upcoming |> map(n =>
-      json_object(members: [
-        json_kv(key: "node_id", value: json_string(s: n.node)),
-        json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
-        json_kv(key: "unmet_parents", value: json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node) |> map(id => json_string(s: id)))),
+    extdeps.languages.json.emit.json_kv(key: "upcoming", value: extdeps.languages.json.emit.json_array(elements: frontier.upcoming |> map(n =>
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "node_id", value: extdeps.languages.json.emit.json_string(s: n.node)),
+        extdeps.languages.json.emit.json_kv(key: "title", value: extdeps.languages.json.emit.json_string(s: node_title(item: n.line))),
+        extdeps.languages.json.emit.json_kv(key: "unmet_parents", value: extdeps.languages.json.emit.json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node) |> map(id => extdeps.languages.json.emit.json_string(s: id)))),
       ])
     ))),
-    json_kv(key: "done", value: json_array(elements: frontier.done |> map(n => json_string(s: n.node)))),
-    json_kv(key: "superseded", value: json_array(elements: frontier.superseded |> map(n =>
-      json_object(members: [
-        json_kv(key: "node_id", value: json_string(s: n.node)),
-        json_kv(key: "superseded_by", value: json_string(s: item_superseded_by(item: n.line))),
+    extdeps.languages.json.emit.json_kv(key: "done", value: extdeps.languages.json.emit.json_array(elements: frontier.done |> map(n => extdeps.languages.json.emit.json_string(s: n.node)))),
+    extdeps.languages.json.emit.json_kv(key: "superseded", value: extdeps.languages.json.emit.json_array(elements: frontier.superseded |> map(n =>
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "node_id", value: extdeps.languages.json.emit.json_string(s: n.node)),
+        extdeps.languages.json.emit.json_kv(key: "superseded_by", value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_status.item_superseded_by(item: n.line))),
       ])
     ))),
   ])
 }
 
 fn roadmap_dispatch_json(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>) -> String {
-  serialize_json(v: roadmap_dispatch_json_value(doc: doc, merged: merged))
+  extdeps.languages.json.emit.serialize_json(v: roadmap_dispatch_json_value(doc: doc, merged: merged))
 }
 
 fn roadmap_dispatch_file_content_for_projection(proj: gunbc.roadmap_authority.RoadmapAuthorityProjection) -> String {
   match proj {
-    RoadmapAuthorityProjectionRefused { detail: detail } =>
-      serialize_json(v: json_object(members: [
-        json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-file/v1")),
-        json_kv(key: "refused", value: json_bool(b: true)),
-        json_kv(key: "detail", value: json_string(s: detail)),
+    gunbc.roadmap_authority.RoadmapAuthorityProjectionRefused { detail: detail } =>
+      extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: "roadmap-dispatch-file/v1")),
+        extdeps.languages.json.emit.json_kv(key: "refused", value: json_bool(b: true)),
+        extdeps.languages.json.emit.json_kv(key: "detail", value: extdeps.languages.json.emit.json_string(s: detail)),
       ]))
-    RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
-      serialize_json(v: json_object(members: [
-        json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-file/v1")),
-        json_kv(key: "brief_template", value: json_string(s: dispatch_brief_template)),
-        json_kv(key: "dispatch", value: roadmap_dispatch_json_value(doc: doc, merged: authored_merged_prs())),
+    gunbc.roadmap_authority.RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
+      extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: "roadmap-dispatch-file/v1")),
+        extdeps.languages.json.emit.json_kv(key: "brief_template", value: extdeps.languages.json.emit.json_string(s: dispatch_brief_template)),
+        extdeps.languages.json.emit.json_kv(key: "dispatch", value: roadmap_dispatch_json_value(doc: doc, merged: gunbc.roadmap_authority.authored_merged_prs())),
       ]))
   }
 }
 
 fn roadmap_dispatch_file_content() -> String {
-  roadmap_dispatch_file_content_for_projection(proj: roadmap_authority_projection())
+  roadmap_dispatch_file_content_for_projection(proj: gunbc.roadmap_authority.roadmap_authority_projection())
 }

@@ -7,16 +7,16 @@ data expected_interlock_verilog: String = "module board_power_interlock (\n  inp
 
 fn emit_verilog(emitted: v2.std.node.Node) -> String {
   match v2.extdeps.languages.verilog.verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: emitted) {
-    Holds { value: row } =>
+    v2.std.grammar.Holds { value: row } =>
       match v2.compiler.translate.target_serialize_relation_row_from_model_bounded(
         4096,
         v2.extdeps.languages.verilog.verilog_target_model_with_single_row(row: row),
         emitted
       ) {
-        Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
-        Rejected { diagnostics: _ } => "EMISSION_REFUSED"
+        v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
+        v2.std.diagnostic.Rejected { diagnostics: _ } => "EMISSION_REFUSED"
       }
-    Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
+    v2.std.witness.Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
   }
 }
 
@@ -24,7 +24,7 @@ fn emit_verilog(emitted: v2.std.node.Node) -> String {
 // would pass on a module with a duplicated port, a missing assignment, or wrong indentation —
 // four different circuits' worth of difference — so the whole artifact is pinned at once.
 test fn w_interlock_emits_expected_bytes_through_the_generic_fold() -> Bool {
-  v2.test.claim.verilog_interlock_emission_test.emit_verilog(emitted: v2.extdeps.languages.verilog.verilog_interlock_emitted()) == v2.test.claim.verilog_interlock_emission_test.expected_interlock_verilog
+  emit_verilog(emitted: v2.extdeps.languages.verilog.verilog_interlock_emitted()) == expected_interlock_verilog
 }
 
 // EVERY ROW MUST DERIVE, which is what keeps the rules population honest. The population is built
@@ -33,8 +33,8 @@ test fn w_interlock_emits_expected_bytes_through_the_generic_fold() -> Bool {
 // asserts the fallback is UNREACHABLE rather than trusting that it is.
 fn row_derives(lhs: v2.std.node.Symbol, emitted: v2.std.node.Node) -> Bool {
   match v2.extdeps.languages.verilog.verilog_relation_row_for(lhs: lhs, emitted: emitted) {
-    Holds { value: _ } => true
-    Violates { diagnostic: _ } => false
+    v2.std.grammar.Holds { value: _ } => true
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
@@ -89,14 +89,14 @@ fn unnegated_module() -> v2.std.node.Node {
 }
 
 test fn w_expression_perturbation_changes_the_bytes() -> Bool {
-  v2.test.claim.verilog_interlock_emission_test.emit_verilog(emitted: unnegated_module()) != v2.test.claim.verilog_interlock_emission_test.expected_interlock_verilog
-    && string_contains(s: v2.test.claim.verilog_interlock_emission_test.emit_verilog(emitted: unnegated_module()), pattern: "(conditioned_good & fault)")
-    && !string_contains(s: v2.test.claim.verilog_interlock_emission_test.emit_verilog(emitted: unnegated_module()), pattern: "~")
+  emit_verilog(emitted: unnegated_module()) != expected_interlock_verilog
+    && string_contains(s: emit_verilog(emitted: unnegated_module()), pattern: "(conditioned_good & fault)")
+    && !string_contains(s: emit_verilog(emitted: unnegated_module()), pattern: "~")
 }
 
 test fn w_expression_perturbation_leaves_the_port_region_intact() -> Bool {
   string_contains(
-    s: v2.test.claim.verilog_interlock_emission_test.emit_verilog(emitted: unnegated_module()),
+    s: emit_verilog(emitted: unnegated_module()),
     pattern: "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n"
   )
 }
@@ -134,14 +134,14 @@ fn two_port_module() -> v2.std.node.Node {
 
 test fn w_port_population_changes_only_the_port_region() -> Bool {
   string_contains(
-    s: v2.test.claim.verilog_interlock_emission_test.emit_verilog(emitted: two_port_module()),
+    s: emit_verilog(emitted: two_port_module()),
     pattern: "module board_power_interlock (\n  input  wire conditioned_good,\n  output wire power_permit\n);\n"
   )
     && string_contains(
-      s: v2.test.claim.verilog_interlock_emission_test.emit_verilog(emitted: two_port_module()),
+      s: emit_verilog(emitted: two_port_module()),
       pattern: "  assign power_permit = (conditioned_good & ~fault);\n"
     )
-    && !string_contains(s: v2.test.claim.verilog_interlock_emission_test.emit_verilog(emitted: two_port_module()), pattern: "reset_release")
+    && !string_contains(s: emit_verilog(emitted: two_port_module()), pattern: "reset_release")
 }
 
 // NO PRODUCTION IS SELECTED BY POSITION. Deriving against the reversed population must produce
@@ -151,21 +151,21 @@ test fn w_port_population_changes_only_the_port_region() -> Bool {
 // tree it checks.
 fn emit_with(productions: List<v2.std.grammar.FormalProduction>, emitted: v2.std.node.Node) -> String {
   match v2.extdeps.languages.verilog.verilog_relation_row_for_productions(productions: productions, lhs: ^verilog_production_ansi_module_decl, emitted: emitted) {
-    Holds { value: row } =>
+    v2.std.grammar.Holds { value: row } =>
       match v2.compiler.translate.target_serialize_relation_row_from_model_bounded(
         4096,
         v2.extdeps.languages.verilog.verilog_target_model_with_single_row(row: row),
         emitted
       ) {
-        Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
-        Rejected { diagnostics: _ } => "EMISSION_REFUSED"
+        v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
+        v2.std.diagnostic.Rejected { diagnostics: _ } => "EMISSION_REFUSED"
       }
-    Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
+    v2.std.witness.Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
   }
 }
 
 test fn w_production_order_does_not_change_the_bytes() -> Bool {
-  emit_with(productions: v2.extdeps.languages.verilog.verilog_emission_formal_productions_reversed(), emitted: v2.extdeps.languages.verilog.verilog_interlock_emitted()) == v2.test.claim.verilog_interlock_emission_test.expected_interlock_verilog
+  emit_with(productions: v2.extdeps.languages.verilog.verilog_emission_formal_productions_reversed(), emitted: v2.extdeps.languages.verilog.verilog_interlock_emitted()) == expected_interlock_verilog
 }
 
 // THE GRAMMAR READ FORWARD. The same rows that render the module also recover it: taking the
@@ -181,23 +181,23 @@ test fn w_production_order_does_not_change_the_bytes() -> Bool {
 // sequence the row renders is the token sequence the grammar reads back to the same structure.
 fn module_row() -> v2.std.node.Node {
   match v2.extdeps.languages.verilog.verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: v2.extdeps.languages.verilog.verilog_interlock_emitted()) {
-    Holds { value: row } => row
-    Violates { diagnostic: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
+    v2.std.grammar.Holds { value: row } => row
+    v2.std.witness.Violates { diagnostic: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
   }
 }
 
 fn rebuilt_from_spine() -> v2.std.node.Node {
   match v2.compiler.ingest.row_token_spine_tokens(row: module_row()) {
-    Accepted { value: tokens, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
       match v2.compiler.ingest.grammar_relation_row_forward_token_selection(
         tokens: tokens,
         rules: v2.extdeps.languages.verilog.verilog_emission_rules_for_row(row: module_row()),
         start_lhs: ^verilog_production_ansi_module_decl
       ) {
-        Accepted { value: node, diagnostics: _ } => node
-        Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
+        v2.std.diagnostic.Accepted { value: node, diagnostics: _ } => node
+        v2.std.diagnostic.Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
       }
-    Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
   }
 }
 

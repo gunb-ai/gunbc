@@ -1,17 +1,17 @@
 module v2.test.manual.loop_demand_driven_eval
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn loop_eval_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: v2.std.node.SyntheticOccurrence,
     children: []
   }
 }
 
-fn loop_eval_byte() -> std.bit.Byte {
-  std.bit.Byte { bits: [true] }
+fn loop_eval_byte() -> v2.std.machine.Byte {
+  v2.std.machine.Byte { bits: [true] }
 }
 
 fn loop_eval_i64() -> v2.std.node.Node {
@@ -28,20 +28,20 @@ fn loop_eval_one_value() -> v2.std.runtime.RuntimeValue {
 }
 
 fn loop_eval_lit_one() -> v2.std.node.Node {
-  match v2.extdeps.languages.dag.dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
-    Accepted { value: n, diagnostics: _ } => n
-    Rejected { diagnostics: _ } =>
+  match v2.extdeps.languages.dag.dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: v2.std.node.SyntheticOccurrence) {
+    v2.std.diagnostic.Accepted { value: n, diagnostics: _ } => n
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^loop_eval_lit_one_lexeme_invalid } },
-        occurrence_id: SyntheticOccurrence,
+        occurrence_id: v2.std.node.SyntheticOccurrence,
         children: []
       }
   }
 }
 
 data loop_eval_divergent_value_node: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Value },
-  occurrence_id: SyntheticOccurrence,
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Value },
+  occurrence_id: v2.std.node.SyntheticOccurrence,
   children: []
 }
 
@@ -57,20 +57,20 @@ fn loop_eval_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^loop_eval_runtime_rejected,
     at: v2.std.diagnostic.node_locus(node: n),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn loop_eval_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if v2.extdeps.languages.dag.dag_node_is_int_literal_atom(node: node) {
     match v2.extdeps.languages.dag.dag_int_literal_magnitude_int_from_node(node: node) {
-      Accepted { value: mag, diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: mag, diagnostics: _ } =>
         if mag == 1 {
           v2.std.diagnostic.outcome_accepted(value: loop_eval_one_value())
         } else {
           v2.std.diagnostic.outcome_rejected(d: loop_eval_diagnostic(n: node))
         }
-      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else if node == loop_eval_divergent_value_node {
     v2.std.diagnostic.outcome_rejected(d: loop_eval_diagnostic(n: node))
@@ -104,7 +104,7 @@ fn loop_eval_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationEnvironment> {
-  v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
 }
 
 fn loop_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {
@@ -114,7 +114,7 @@ fn loop_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {
     branch: v2.std.runtime.BranchInterpreter { choose_branch: loop_eval_choose_branch, identity: ^loop_eval_choose_branch },
     loop: v2.std.runtime.LoopInterpreter { step_loop: loop_eval_step_loop_continue, identity: ^loop_eval_step_loop_continue },
     bind: v2.std.runtime.BindInterpreter { bind_value: loop_eval_bind_value, identity: ^loop_eval_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
@@ -124,7 +124,8 @@ fn loop_eval_interpretation_structure_witness() -> v2.std.runtime.Interpretation
     call_primitive: ^loop_eval_call_primitive,
     choose_branch: ^loop_eval_choose_branch,
     step_loop: ^loop_eval_step_loop_continue,
-    bind_value: ^loop_eval_bind_value,    choose_arm: ^runtime_reject_match_arm
+    bind_value: ^loop_eval_bind_value,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 
@@ -143,9 +144,9 @@ fn loop_eval_loop_termination_proof() -> v2.std.cardinality.TerminationProof {
   }
 }
 
-fn loop_eval_node_is_loop(node: v2.std.node.Node) -> v2.std.logic.Bool {
+fn loop_eval_node_is_loop(node: v2.std.node.Node) -> Bool {
   match node.kind {
-    ComputationNode { behavior: Loop } => true
+    v2.std.node.ComputationNode { behavior: v2.std.node.Loop } => true
     _ => false
   }
 }
@@ -172,10 +173,10 @@ fn loop_eval_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.
 
 fn loop_eval_loop_node(body: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.ComputationNode { behavior: Loop },
-    occurrence_id: SyntheticOccurrence,
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Loop },
+    occurrence_id: v2.std.node.SyntheticOccurrence,
     children: [
-      v2.std.node.Edge { label: Positional, target: body },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: body },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^loop_bound_edge }, target: loop_eval_measure() }
     ]
   }
@@ -184,26 +185,26 @@ fn loop_eval_loop_node(body: v2.std.node.Node) -> v2.std.node.Node {
 fn loop_eval_pick_call(callee: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
-    occurrence_id: SyntheticOccurrence,
-    children: [v2.std.node.Edge { label: Positional, target: callee }]
+    occurrence_id: v2.std.node.SyntheticOccurrence,
+    children: [v2.std.node.Edge { label: v2.std.node.Positional, target: callee }]
   }
 }
 
 fn loop_eval_arrow_with_body(body: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Arrow },
-    occurrence_id: SyntheticOccurrence,
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
+    occurrence_id: v2.std.node.SyntheticOccurrence,
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
-          kind: v2.std.node.TypeNode { connective: Conj },
-          occurrence_id: SyntheticOccurrence,
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+          occurrence_id: v2.std.node.SyntheticOccurrence,
           children: []
         }
       },
-      v2.std.node.Edge { label: Positional, target: loop_eval_i64() },
-      v2.std.node.Edge { label: Positional, target: loop_eval_i64() },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: loop_eval_i64() },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: loop_eval_i64() },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^arrow_body_edge }, target: body }
     ]
   }
@@ -211,8 +212,8 @@ fn loop_eval_arrow_with_body(body: v2.std.node.Node) -> v2.std.node.Node {
 
 fn loop_eval_tree_root(call: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
-    occurrence_id: SyntheticOccurrence,
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    occurrence_id: v2.std.node.SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^loop_eval_actual }, target: call },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^loop_eval_expected }, target: expected }
@@ -223,7 +224,7 @@ fn loop_eval_tree_root(call: v2.std.node.Node, expected: v2.std.node.Node) -> v2
 fn loop_eval_admitted_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.algebra.PartialFunction { lookup: loop_eval_facts_lookup }
+    facts: PartialFunction { lookup: loop_eval_facts_lookup }
   }
 }
 
@@ -237,10 +238,10 @@ fn loop_eval_run(body: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.d
       subject: v2.compiler.eval.TestClaimEvalSubject {
         claim: v2.std.verification.CompilesClaim {
           label: "manual/loop_demand_driven_eval: demand-driven Loop eval acceptance",
-          anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
+          anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
           input: call,
           expected_value: expected,
-          classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+          classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
         },
         context: loop_eval_context(),
         tree: tree,
@@ -253,18 +254,18 @@ fn loop_eval_run(body: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.d
   )
 }
 
-fn loop_eval_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>) -> v2.std.logic.Bool {
+fn loop_eval_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>) -> Bool {
   match run {
-    Accepted { value: r, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
       match v2.compiler.eval.test_claim_run_verdict(run: r) {
-        Pass => true
+        v2.std.verdict.Pass => true
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn loop_eval_divergent_body_step_loop_holds() -> v2.std.logic.Bool {
+fn loop_eval_divergent_body_step_loop_holds() -> Bool {
   loop_eval_run_passes(
     run: loop_eval_run(
       body: loop_eval_loop_node(body: loop_eval_divergent()),
@@ -275,7 +276,7 @@ fn loop_eval_divergent_body_step_loop_holds() -> v2.std.logic.Bool {
 
 data loop_demand_driven_eval_non_keystone_manuals_note: String = "lit_one / pick_call_direct / arrow_lit_one manuals were never on the enrolled keystone (main = divergent pole only). Umbrella-dissolution briefly folded them into the keystone and CI red them (run 30223338595). Deleted rather than if-false/Symbol-pin (review 43557). Dissolve-on: re-land as test fns only when claim_batch shows Bool(true) on CI hardware."
 
-test fn loop_demand_driven_eval_keystone_holds() -> v2.std.logic.Bool {
+test fn loop_demand_driven_eval_keystone_holds() -> Bool {
   loop_eval_divergent_body_step_loop_holds()
 }
 

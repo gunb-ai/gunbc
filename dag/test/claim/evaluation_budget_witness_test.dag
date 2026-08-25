@@ -6,93 +6,93 @@ data witness_entry: std.evaluation_budget.EvaluationEntryIdentity = std.evaluati
 }
 
 data limit_10ms: std.evaluation_budget.EvaluationLimit = std.evaluation_budget.LimitSet {
-  limit: positive_millisecond(count: positive_measure_count(predecessor: 9)),
+  limit: std.measure.positive_millisecond(count: std.measure.positive_measure_count(predecessor: 9)),
 }
 
 test fn witness_within_budget_is_within() -> Bool {
-  match evaluation_budget_verdict(
+  match std.evaluation_budget.evaluation_budget_verdict(
     entry: witness_entry,
-    clock: ThreadCpu,
-    elapsed: nanosecond(count: 5000000),
+    clock: std.evaluation_budget.ThreadCpu,
+    elapsed: std.measure.nanosecond(count: 5000000),
     limit: limit_10ms,
   ) {
-    EvaluationWithinBudget => true
-    EvaluationBudgetExceeded { entry: _, clock: _, elapsed: _, limit: _ } => false
+    std.evaluation_budget.EvaluationWithinBudget => true
+    std.evaluation_budget.EvaluationBudgetExceeded { entry: _, clock: _, elapsed: _, limit: _ } => false
   }
 }
 
 test fn witness_over_budget_exceeds_and_names_its_clock() -> Bool {
-  match evaluation_budget_verdict(
+  match std.evaluation_budget.evaluation_budget_verdict(
     entry: witness_entry,
-    clock: MonotonicWall,
-    elapsed: nanosecond(count: 11000000),
+    clock: std.evaluation_budget.MonotonicWall,
+    elapsed: std.measure.nanosecond(count: 11000000),
     limit: limit_10ms,
   ) {
-    EvaluationWithinBudget => false
-    EvaluationBudgetExceeded { entry: e, clock: c, elapsed: _, limit: _ } =>
+    std.evaluation_budget.EvaluationWithinBudget => false
+    std.evaluation_budget.EvaluationBudgetExceeded { entry: e, clock: c, elapsed: _, limit: _ } =>
       (e.entry as String) == "roadmap_serve_handle"
-        && (evaluation_clock_key(c: c) as String) == "monotonic_wall"
+        && (std.evaluation_budget.evaluation_clock_key(c: c) as String) == "monotonic_wall"
   }
 }
 
 data unset_limit_note: String = "THE DISCRIMINATING HALF. An elapsed value astronomically past any plausible budget must still be WITHIN budget when no limit is declared, because LimitUnset is a policy state rather than a missing number. If this returned exceeded, an unbounded caller would refuse every evaluation the moment the carrier was introduced — the exact regression that makes landing the mechanism unset-by-default unsafe."
 
 test fn witness_unset_limit_never_exceeds() -> Bool {
-  match evaluation_budget_verdict(
+  match std.evaluation_budget.evaluation_budget_verdict(
     entry: witness_entry,
-    clock: ThreadCpu,
-    elapsed: nanosecond(count: 999999999999),
-    limit: LimitUnset,
+    clock: std.evaluation_budget.ThreadCpu,
+    elapsed: std.measure.nanosecond(count: 999999999999),
+    limit: std.evaluation_budget.LimitUnset,
   ) {
-    EvaluationWithinBudget => true
-    EvaluationBudgetExceeded { entry: _, clock: _, elapsed: _, limit: _ } => false
+    std.evaluation_budget.EvaluationWithinBudget => true
+    std.evaluation_budget.EvaluationBudgetExceeded { entry: _, clock: _, elapsed: _, limit: _ } => false
   }
 }
 
 test fn witness_boundary_equal_elapsed_is_within() -> Bool {
-  match evaluation_budget_verdict(
+  match std.evaluation_budget.evaluation_budget_verdict(
     entry: witness_entry,
-    clock: ThreadCpu,
-    elapsed: nanosecond(count: 10000000),
+    clock: std.evaluation_budget.ThreadCpu,
+    elapsed: std.measure.nanosecond(count: 10000000),
     limit: limit_10ms,
   ) {
-    EvaluationWithinBudget => true
-    EvaluationBudgetExceeded { entry: _, clock: _, elapsed: _, limit: _ } => false
+    std.evaluation_budget.EvaluationWithinBudget => true
+    std.evaluation_budget.EvaluationBudgetExceeded { entry: _, clock: _, elapsed: _, limit: _ } => false
   }
 }
 
 data nesting_law_note: String = "EARLIEST-DEADLINE-WINS, ASSERTED IN BOTH DIRECTIONS. A one-sided check would pass against the seed's current inverted behavior: arm_eval_deadline overwrites with a fresh baseline, so an inner scope requesting a LONGER limit currently wins and extends its caller's bound. The second conjunct is what fails against that."
 
 test fn witness_nested_limit_takes_the_smaller() -> Bool {
-  effective_nested_limit_nanos(outer_remaining_nanos: 3000000, inner_limit_nanos: 9000000) == 3000000
-    && effective_nested_limit_nanos(outer_remaining_nanos: 9000000, inner_limit_nanos: 3000000) == 3000000
+  std.evaluation_budget.effective_nested_limit_nanos(outer_remaining_nanos: 3000000, inner_limit_nanos: 9000000) == 3000000
+    && std.evaluation_budget.effective_nested_limit_nanos(outer_remaining_nanos: 9000000, inner_limit_nanos: 3000000) == 3000000
 }
 
 test fn witness_refusal_code_is_stable() -> Bool {
-  (evaluation_budget_refusal_code() as String) == "evaluation_budget_exceeded"
+  (std.evaluation_budget.evaluation_budget_refusal_code() as String) == "evaluation_budget_exceeded"
 }
 
 data red_control_note: String = "THE DISCRIMINATION CONTROL, written in the holds-form this corpus uses: every `test fn` is enrolled as must-pass, so a control is expressed as the claim that the WRONG answer is not produced rather than as a test that must fail. Its subject is vacuity. The greens above all assert that some input lands on the arm it should; none of them would notice if `evaluation_budget_verdict` stopped reading its inputs and always answered `EvaluationBudgetExceeded`, because a constant-exceeded implementation still satisfies the over-budget claim. This asserts the other direction at the SAME comparison — an input an order of magnitude under the limit must not reach the exceeded arm, and must not do so under either clock, since a verdict keyed on the clock rather than the measurement would be the same defect wearing a different shape."
 
 test fn witness_red_control_within_budget_never_reaches_exceeded() -> Bool {
-  let cpu = evaluation_budget_verdict(
+  let cpu = std.evaluation_budget.evaluation_budget_verdict(
     entry: witness_entry,
-    clock: ThreadCpu,
-    elapsed: nanosecond(count: 1000000),
+    clock: std.evaluation_budget.ThreadCpu,
+    elapsed: std.measure.nanosecond(count: 1000000),
     limit: limit_10ms,
   )
-  let wall = evaluation_budget_verdict(
+  let wall = std.evaluation_budget.evaluation_budget_verdict(
     entry: witness_entry,
-    clock: MonotonicWall,
-    elapsed: nanosecond(count: 1000000),
+    clock: std.evaluation_budget.MonotonicWall,
+    elapsed: std.measure.nanosecond(count: 1000000),
     limit: limit_10ms,
   )
   match cpu {
-    EvaluationWithinBudget =>
+    std.evaluation_budget.EvaluationWithinBudget =>
       match wall {
-        EvaluationWithinBudget => true
-        EvaluationBudgetExceeded { entry: _, clock: _, elapsed: _, limit: _ } => false
+        std.evaluation_budget.EvaluationWithinBudget => true
+        std.evaluation_budget.EvaluationBudgetExceeded { entry: _, clock: _, elapsed: _, limit: _ } => false
       }
-    EvaluationBudgetExceeded { entry: _, clock: _, elapsed: _, limit: _ } => false
+    std.evaluation_budget.EvaluationBudgetExceeded { entry: _, clock: _, elapsed: _, limit: _ } => false
   }
 }

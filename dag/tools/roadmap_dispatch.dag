@@ -4,10 +4,10 @@ module tools.roadmap_dispatch
 data roadmap_dispatch_output_path: String = "target/roadmap-dispatch.json"
 
 func main() -> std.process.ProcessExit {
-  let w = Filesystem.Write(path: roadmap_dispatch_output_path, content: roadmap_dispatch_file_content())
+  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: roadmap_dispatch_output_path, content: gunbc.roadmap_spawner.roadmap_dispatch_file_content())
   if w.success {
     std.process.ExitSuccess
   } else {
-    exit_failure(reason: concat(concat("write failed for ", roadmap_dispatch_output_path), concat(": ", w.error)))
+    std.process.exit_failure(reason: concat(concat("write failed for ", roadmap_dispatch_output_path), concat(": ", w.error)))
   }
 }

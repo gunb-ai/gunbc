@@ -25,13 +25,13 @@ fn trait_derive_unit_kernel_type_node() -> v2.std.node.Node {
 
 fn repr_grounding_derive_elem_shape(elem: v2.std.node.Node) -> std.trait_derive_shape.ReprGroundingDeriveElemShape {
   match elem.kind {
-    TypeNode { connective: v2.std.node.Disj } =>
-      if coproduct_all_variants_nullary(edges: elem.children) {
+    v2.std.node.TypeNode { connective: v2.std.node.Disj } =>
+      if v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary(edges: elem.children) {
         std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy
       } else {
         std.trait_derive_shape.ReprDeriveElemPayloadCoproduct
       }
-    TypeNode { connective: v2.std.node.Atom { identity: id } } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
       if id == ^target_collection_kernel_string || id == ^symbol_kernel_type_atom {
         std.trait_derive_shape.ReprDeriveElemKernelString
       } else {
@@ -54,67 +54,67 @@ fn repr_grounding_derive_elem_shape(elem: v2.std.node.Node) -> std.trait_derive_
 }
 
 fn repr_grounding_derive_trait_satisfied(
-  derive_trait: RustCapability,
+  derive_trait: extdeps.languages.rust.capabilities.RustCapability,
   elem: v2.std.node.Node
-) -> v2.std.logic.Bool {
-  repr_grounding_derive_shape_has_trait(
-    table: rust_capability_shape_table(),
+) -> Bool {
+  std.trait_derive_shape.repr_grounding_derive_shape_has_trait(
+    table: extdeps.languages.rust.capabilities.rust_capability_shape_table(),
     shape: repr_grounding_derive_elem_shape(elem: elem),
     capability_key: derive_trait
   )
 }
 
 fn repr_grounding_derive_completeness_predicate_for_elem(
-  required: List<RustCapability>,
+  required: List<extdeps.languages.rust.capabilities.RustCapability>,
   elem: v2.std.node.Node
-) -> v2.std.logic.Bool {
-  repr_grounding_derive_completeness_predicate(
-    table: rust_capability_shape_table(),
+) -> Bool {
+  std.trait_derive_shape.repr_grounding_derive_completeness_predicate(
+    table: extdeps.languages.rust.capabilities.rust_capability_shape_table(),
     required: required,
     shape: repr_grounding_derive_elem_shape(elem: elem)
   )
 }
 
-data repr_grounding_derive_traits_ordering_capability: List<RustCapability> = [
-  RustOrd,
-  RustPartialOrd,
-  RustEq,
-  RustPartialEq,
-  RustClone
+data repr_grounding_derive_traits_ordering_capability: List<extdeps.languages.rust.capabilities.RustCapability> = [
+  extdeps.languages.rust.capabilities.RustOrd,
+  extdeps.languages.rust.capabilities.RustPartialOrd,
+  extdeps.languages.rust.capabilities.RustEq,
+  extdeps.languages.rust.capabilities.RustPartialEq,
+  extdeps.languages.rust.capabilities.RustClone
 ]
 
-data repr_grounding_derive_traits_equality_capability: List<RustCapability> = [
-  RustEq,
-  RustPartialEq,
-  RustClone
+data repr_grounding_derive_traits_equality_capability: List<extdeps.languages.rust.capabilities.RustCapability> = [
+  extdeps.languages.rust.capabilities.RustEq,
+  extdeps.languages.rust.capabilities.RustPartialEq,
+  extdeps.languages.rust.capabilities.RustClone
 ]
 
 fn repr_grounding_derive_traits_for_capability(
   capability_key: Symbol
-) -> v2.std.optional.Optional<List<RustCapability>> {
+) -> v2.std.optional.Optional<List<extdeps.languages.rust.capabilities.RustCapability>> {
   if capability_key == ^target_collection_trait_ord {
-    optional_present(value: repr_grounding_derive_traits_ordering_capability)
+    v2.std.optional.optional_present(value: repr_grounding_derive_traits_ordering_capability)
   } else {
     if capability_key == ^target_collection_trait_hash {
-      optional_present(value: repr_grounding_derive_traits_equality_capability)
+      v2.std.optional.optional_present(value: repr_grounding_derive_traits_equality_capability)
     } else {
       if capability_key == ^target_collection_trait_eq {
-        optional_present(value: repr_grounding_derive_traits_equality_capability)
+        v2.std.optional.optional_present(value: repr_grounding_derive_traits_equality_capability)
       } else {
-        optional_absent()
+        v2.std.optional.optional_absent()
       }
     }
   }
 }
 
 fn repr_grounding_derive_traits_for_collection_requirement(
-  requirement: TargetCapabilityRequirement
-) -> v2.std.optional.Optional<List<RustCapability>> {
+  requirement: v2.std.compilers.target_model.TargetCapabilityRequirement
+) -> v2.std.optional.Optional<List<extdeps.languages.rust.capabilities.RustCapability>> {
   repr_grounding_derive_traits_for_capability(capability_key: requirement.capability_key)
 }
 
 fn trait_derive_completeness_gate(
-  required: List<RustCapability>,
+  required: List<extdeps.languages.rust.capabilities.RustCapability>,
   elem: v2.std.node.Node
 ) -> TraitDeriveCompletenessGate {
   if repr_grounding_derive_completeness_predicate_for_elem(required: required, elem: elem) {
@@ -129,10 +129,10 @@ fn trait_derive_completeness_gate_for_collection_requirement(
   elem: v2.std.node.Node
 ) -> v2.std.optional.Optional<TraitDeriveCompletenessGate> {
   match repr_grounding_derive_traits_for_collection_requirement(requirement: requirement) {
-    Present { value: required } =>
-      optional_present(
+    v2.std.optional.Present { value: required } =>
+      v2.std.optional.optional_present(
         value: trait_derive_completeness_gate(required: required, elem: elem)
       )
-    Absent => optional_absent()
+    v2.std.optional.Absent => v2.std.optional.optional_absent()
   }
 }

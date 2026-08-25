@@ -20,24 +20,24 @@ type PositiveUpperBoundedNat {
 }
 fn nat_le_witness_lower(w: NatLeWitness) -> v2.std.nat.Nat {
   match w {
-    LeqZero { upper: _ } => v2.std.nat.Zero
-    LeqSucc { inner } => v2.std.nat.Succ { prev: nat_le_witness_lower(w: inner) }
+    LeqZero { upper: _ } => Zero
+    LeqSucc { inner } => Succ { prev: nat_le_witness_lower(w: inner) }
   }
 }
 fn nat_le_witness_upper(w: NatLeWitness) -> v2.std.nat.Nat {
   match w {
     LeqZero { upper } => upper
-    LeqSucc { inner } => v2.std.nat.Succ { prev: nat_le_witness_upper(w: inner) }
+    LeqSucc { inner } => Succ { prev: nat_le_witness_upper(w: inner) }
   }
 }
 fn positive_nat_le_witness_lower(w: PositiveNatLeWitness) -> v2.std.nat.Nat {
   match w {
-    PositiveLeqSucc { inner } => v2.std.nat.Succ { prev: nat_le_witness_lower(w: inner) }
+    PositiveLeqSucc { inner } => Succ { prev: nat_le_witness_lower(w: inner) }
   }
 }
 fn positive_nat_le_witness_upper(w: PositiveNatLeWitness) -> v2.std.nat.Nat {
   match w {
-    PositiveLeqSucc { inner } => v2.std.nat.Succ { prev: nat_le_witness_upper(w: inner) }
+    PositiveLeqSucc { inner } => Succ { prev: nat_le_witness_upper(w: inner) }
   }
 }
 fn upper_bounded_nat_value(b: UpperBoundedNat) -> v2.std.nat.Nat {
@@ -90,50 +90,50 @@ fn loop_bound_measure(bound: LoopBound) -> v2.std.node.Node {
 fn loop_bound_undeclared_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_undeclared,
-    at: node_locus(node: n),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: n),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn loop_bound_ambiguous_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_ambiguous,
-    at: node_locus(node: n),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: n),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn loop_bound_malformed_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_malformed,
-    at: node_locus(node: n),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: n),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn loop_bound_not_loop_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_loop_bound_not_loop,
-    at: node_locus(node: n),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: n),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn loop_measure_node(n: v2.std.node.Node) -> Witness<v2.std.node.Node> {
   match n.kind {
-    ComputationNode { behavior: Loop } => {
-      let bound_count = name_occurrences(name: ^loop_bound_edge, children: n.children)
+    v2.std.node.ComputationNode { behavior: v2.std.node.Loop } => {
+      let bound_count = v2.std.node.name_occurrences(name: ^loop_bound_edge, children: n.children)
       if bound_count == 0 {
         v2.std.witness.Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
       } else if bound_count > 1 {
         v2.std.witness.Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
-      } else if !loop_behavior_edges_conform(children: n.children) {
+      } else if !v2.std.node.loop_behavior_edges_conform(children: n.children) {
         v2.std.witness.Violates { diagnostic: loop_bound_malformed_diagnostic(n: n) }
       } else {
-        match loop_bound_measure_target(children: n.children) {
+        match v2.std.node.loop_bound_measure_target(children: n.children) {
           Found { target: measure } => v2.std.witness.Holds { value: measure }
           Ambiguous => v2.std.witness.Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
-          Absent => v2.std.witness.Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
+          v2.std.optional.Absent => v2.std.witness.Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
         }
       }
     }
@@ -168,22 +168,22 @@ fn multiplicity_termination_witness(n: v2.std.node.Node, m: Multiplicity) -> Wit
 
 fn connective_multiplicity(c: v2.std.node.Connective) -> Multiplicity {
   match c {
-    Atom { identity: _ } => Bounded
-    Conj => Bounded
-    Disj => Bounded
-    Arrow => Bounded
-    Cardinality => RequiresTerminationProof
-    Instantiation => Bounded
+    v2.std.node.Atom { identity: _ } => Bounded
+    v2.std.node.Conj => Bounded
+    v2.std.node.Disj => Bounded
+    v2.std.node.Arrow => Bounded
+    v2.std.node.Cardinality => RequiresTerminationProof
+    v2.std.node.Instantiation => Bounded
   }
 }
 
 fn behavior_multiplicity(b: v2.std.node.Behavior) -> Multiplicity {
   match b {
-    Value => Bounded
-    Transform => Bounded
-    Branch => Bounded
-    Loop => RequiresTerminationProof
-    Bind => Bounded
+    v2.std.node.Value => Bounded
+    v2.std.node.Transform => Bounded
+    v2.std.node.Branch => Bounded
+    v2.std.node.Loop => RequiresTerminationProof
+    v2.std.node.Bind => Bounded
     Match => Bounded
   }
 }
@@ -227,8 +227,8 @@ fn measure_descent_some(e: std.termination.DescentEvidence) -> v2.std.optional.O
 fn measure_descent_fact_for(registry: List<MeasureDescentFact>, s: v2.std.node.Symbol) -> v2.std.optional.Optional<std.termination.DescentEvidence> {
   fold(registry, init: v2.std.optional.Absent, f: fn(acc, row) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent =>
         if row.measure == s {
           measure_descent_some(e: row.evidence)
         } else {
@@ -240,8 +240,8 @@ fn measure_descent_fact_for(registry: List<MeasureDescentFact>, s: v2.std.node.S
 
 fn measure_descent_evidence_for_symbol(registry: List<MeasureDescentFact>, s: v2.std.node.Symbol) -> std.termination.DescentEvidence {
   match measure_descent_fact_for(registry: registry, s: s) {
-    Present { value: e } => e
-    Absent => DescentUnknown
+    v2.std.optional.Present { value: e } => e
+    v2.std.optional.Absent => std.termination.DescentUnknown
   }
 }
 
@@ -254,34 +254,34 @@ fn measure_dimension_unknown_rows() -> List<MeasureDimensionEvidence> {
   [
     MeasureDimensionEvidence {
       dimension: RankingDimension { measured: ^cardinality_measure_shape_unknown },
-      evidence: DescentUnknown
+      evidence: std.termination.DescentUnknown
     }
   ]
 }
 
 fn measure_dimension_rows(registry: List<MeasureDescentFact>, measure: v2.std.node.Node) -> List<MeasureDimensionEvidence> {
   match measure.kind {
-    TypeNode { connective: c } =>
+    v2.std.node.TypeNode { connective: c } =>
       match c {
-        Atom { identity: s } =>
+        v2.std.node.Atom { identity: s } =>
           [
             MeasureDimensionEvidence {
               dimension: RankingDimension { measured: s },
               evidence: measure_descent_evidence_for_symbol(registry: registry, s: s)
             }
           ]
-        Conj =>
+        v2.std.node.Conj =>
           fold(measure.children, init: std.algebra.Empty, f: fn(acc, e) {
             fold(measure_dimension_rows(registry: registry, measure: e.target), init: acc, f: fn(acc2, row) {
               std.algebra.Cons { head: row, tail: acc2 }
             })
           })
-        Disj => measure_dimension_unknown_rows()
-        Arrow => measure_dimension_unknown_rows()
-        Cardinality => measure_dimension_unknown_rows()
-        Instantiation => measure_dimension_unknown_rows()
+        v2.std.node.Disj => measure_dimension_unknown_rows()
+        v2.std.node.Arrow => measure_dimension_unknown_rows()
+        v2.std.node.Cardinality => measure_dimension_unknown_rows()
+        v2.std.node.Instantiation => measure_dimension_unknown_rows()
       }
-    ComputationNode { behavior: _ } => measure_dimension_unknown_rows()
+    v2.std.node.ComputationNode { behavior: _ } => measure_dimension_unknown_rows()
   }
 }
 
@@ -302,8 +302,8 @@ fn ranking_dimension_some(d: RankingDimension) -> v2.std.optional.Optional<Ranki
 fn first_strict_dimension(rows: List<MeasureDimensionEvidence>) -> v2.std.optional.Optional<RankingDimension> {
   fold(rows, init: v2.std.optional.Absent, f: fn(acc, row) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent =>
         if dimension_row_is_strict(row: row) {
           ranking_dimension_some(d: row.dimension)
         } else {
@@ -334,8 +334,8 @@ fn non_strict_dimensions_after_first(rows: List<MeasureDimensionEvidence>) -> Li
 
 fn lexicographic_multiplicity(rows: List<MeasureDimensionEvidence>) -> Multiplicity {
   match first_strict_dimension(rows: rows) {
-    Absent => RequiresTerminationProof
-    Present { value: strict_dim } =>
+    v2.std.optional.Absent => RequiresTerminationProof
+    v2.std.optional.Present { value: strict_dim } =>
       ProvenTermination {
         proof: TerminationProof {
           non_increasing: non_strict_dimensions_after_first(rows: rows),
@@ -350,17 +350,17 @@ fn loop_multiplicity_from_rows(rows: List<MeasureDimensionEvidence>) -> Multipli
     RequiresTerminationProof
   } else {
     match dimension_rows_meet(rows: rows) {
-      DescentUnknown => RequiresTerminationProof
-      NonIncreasing => lexicographic_multiplicity(rows: rows)
-      Strict => lexicographic_multiplicity(rows: rows)
+      std.termination.DescentUnknown => RequiresTerminationProof
+      std.termination.NonIncreasing => lexicographic_multiplicity(rows: rows)
+      std.termination.Strict => lexicographic_multiplicity(rows: rows)
     }
   }
 }
 
 fn loop_multiplicity_with(registry: List<MeasureDescentFact>, n: v2.std.node.Node) -> Multiplicity {
   match loop_measure_node(n: n) {
-    Violates { diagnostic: _ } => RequiresTerminationProof
-    Holds { value: measure } =>
+    v2.std.witness.Violates { diagnostic: _ } => RequiresTerminationProof
+    v2.std.witness.Holds { value: measure } =>
       loop_multiplicity_from_rows(rows: measure_dimension_rows(registry: registry, measure: measure))
   }
 }
@@ -372,14 +372,14 @@ fn loop_multiplicity(n: v2.std.node.Node) -> Multiplicity {
 // FLAG B (body-lowering design, operator-signed): Loop multiplicity is decided node-aware here while the other behaviors stay tag-only in behavior_multiplicity — a real distinction, not inconsistency: only Loop's termination depends on a node-level edge (the ^loop_bound_edge measure), which the Behavior tag structurally cannot carry. behavior_multiplicity(Loop) stays RequiresTerminationProof as the honest measure-less projection.
 fn node_multiplicity(n: v2.std.node.Node) -> Multiplicity {
   match n.kind {
-    TypeNode { connective: c } => connective_multiplicity(c: c)
-    ComputationNode { behavior: b } =>
+    v2.std.node.TypeNode { connective: c } => connective_multiplicity(c: c)
+    v2.std.node.ComputationNode { behavior: b } =>
       match b {
-        Value => behavior_multiplicity(b: b)
-        Transform => behavior_multiplicity(b: b)
-        Branch => behavior_multiplicity(b: b)
-        Loop => loop_multiplicity(n: n)
-        Bind => behavior_multiplicity(b: b)
+        v2.std.node.Value => behavior_multiplicity(b: b)
+        v2.std.node.Transform => behavior_multiplicity(b: b)
+        v2.std.node.Branch => behavior_multiplicity(b: b)
+        v2.std.node.Loop => loop_multiplicity(n: n)
+        v2.std.node.Bind => behavior_multiplicity(b: b)
         Match => behavior_multiplicity(b: b)
       }
   }
@@ -388,8 +388,8 @@ fn node_multiplicity(n: v2.std.node.Node) -> Multiplicity {
 fn cardinality_descent_not_proven_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cardinality_descent_not_proven,
-    at: node_locus(node: n),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: n),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -403,17 +403,17 @@ fn termination_proof_fold_step(
   child: Witness<TerminationProof>
 ) -> Witness<TerminationProof> {
   match acc {
-    Violates { diagnostic: _ } => acc
-    Holds { value: proof } =>
+    v2.std.witness.Violates { diagnostic: _ } => acc
+    v2.std.witness.Holds { value: proof } =>
       match child {
-        Violates { diagnostic: _ } => child
-        Holds { value: _ } => v2.std.witness.Holds { value: proof }
+        v2.std.witness.Violates { diagnostic: _ } => child
+        v2.std.witness.Holds { value: _ } => v2.std.witness.Holds { value: proof }
       }
   }
 }
 
 fn termination_proof_witness_for_node(n: v2.std.node.Node) -> Witness<TerminationProof> {
-  fold_node(
+  v2.std.node.fold_node(
     n: n,
     algebra: v2.std.node.NodeFold {
       init: fn(n0) {
@@ -428,13 +428,13 @@ fn termination_proof_witness_for_node(n: v2.std.node.Node) -> Witness<Terminatio
 
 fn loop_bound_witness_for_node(n: v2.std.node.Node) -> Witness<LoopBound> {
   match loop_measure_node(n: n) {
-    Holds { value: measure } =>
+    v2.std.witness.Holds { value: measure } =>
       v2.std.witness.Holds {
         value: LoopBound {
           measure: measure,
           termination: termination_proof_witness_for_node(n: n)
         }
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }

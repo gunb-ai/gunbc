@@ -3,14 +3,14 @@ module extdeps.languages.kotlin.subject
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "kotlinlang.org/spec/introduction.html"
   }
 }
 
 data kotlin_language_further_authority_1: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "github.com/Kotlin/kotlin-spec"
   }
 }
@@ -27,10 +27,10 @@ data kotlin_language_model_scope: extdeps.external_authority.ExternalModelScope 
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.languages.kotlin.subject",
       decl_name: "kotlin_language",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.languages.kotlin.subject.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [kotlin_language_further_authority_1]
 }
 

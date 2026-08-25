@@ -1,36 +1,36 @@
 module v2.test.manual.typescript_descriptor_node_run_support
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn typescript_descriptor_node_emit_host_fixture_inputs() -> v2.compiler.eval.Inputs {
-  inputs_for_emit_host(
+  v2.compiler.eval.inputs_for_emit_host(
     claim_input_root: v2.test.manual.connective_anchors.stub_empty_conj,
     expected_eval_root: v2.test.manual.connective_anchors.stub_empty_conj,
     claim_pin: ^typescript_descriptor_node_claim_pin
   )
 }
 
-fn typescript_descriptor_node_host_run_i32(target: v2.std.compilers.target_model.TargetModel, source: Medium<String>) -> Outcome<v2.std.integer.Int> {
-  match run_emit_host(
+fn typescript_descriptor_node_host_run_i32(target: v2.std.compilers.target_model.TargetModel, source: extdeps.communication.medium.Medium<String>) -> v2.std.diagnostic.Outcome<Int> {
+  match v2.compiler.emit_host.run_emit_host(
     target: target,
     source: source,
     fixture_inputs: typescript_descriptor_node_emit_host_fixture_inputs()
   ) {
-    Accepted { value: receipt, diagnostics: None } =>
+    v2.std.diagnostic.Accepted { value: receipt, diagnostics: v2.std.diagnostic.None } =>
       match receipt.logical_run {
-        Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
-          match runtime_value_parse(target: target, stdout: stdout) {
-            Accepted { value: rv, diagnostics: None } =>
-              runtime_value_signed_i32_le_as_int(value: rv)
-            Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+        v2.std.diagnostic.Accepted { value: v2.std.host_run.HostLogicalRun { stdout: stdout }, diagnostics: v2.std.diagnostic.None } =>
+          match v2.compiler.emit_host.runtime_value_parse(target: target, stdout: stdout) {
+            v2.std.diagnostic.Accepted { value: rv, diagnostics: v2.std.diagnostic.None } =>
+              v2.compiler.emit_host.runtime_value_signed_i32_le_as_int(value: rv)
+            v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
           }
         _ =>
           v2.std.diagnostic.Rejected {
-            diagnostics: diagnostics_singleton(d: emit_host_exit_not_ok_diagnostic())
+            diagnostics: v2.std.diagnostic.diagnostics_singleton(d: v2.compiler.emit_host.emit_host_exit_not_ok_diagnostic())
           }
       }
-    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 

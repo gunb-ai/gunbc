@@ -1,5 +1,6 @@
 module gunbc.host_effect_codex_supervised_turn
 
+
 data host_effect_codex_supervised_turn_bin_name: String = "codex_app_server_stdio_session"
 
 data host_effect_codex_supervised_turn_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: host_effect_codex_supervised_turn — typed WitnessBin argv transport for CodexSupervisedWorkerTurn (#8166). DISSOLVES WHEN session driver is a native host_effect builtin with no separate release bin.")
@@ -41,26 +42,26 @@ fn host_effect_codex_supervised_turn_apply_refused(
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> CodexSupervisedSessionApplyOutcome {
   match transport {
-    LocalShell => CodexSupervisedSessionApplyRefused {
+    gunbc.host_effect.LocalShell => CodexSupervisedSessionApplyRefused {
       reason: concat(
         "CodexSupervisedWorkerTurn requires LocalShell on the executor host; got unsupported transport",
       ),
     }
-    SshShell { ssh_host: h } =>
+    gunbc.host_effect.SshShell { ssh_host: h } =>
       CodexSupervisedSessionApplyRefused {
         reason: concat(
           "CodexSupervisedWorkerTurn app-server stdio session refused over ssh host=",
           concat(h, ": in-band coprocess must run on executor HostOs"),
         ),
       }
-    FleetSsh { target: t, context: _ } =>
+    gunbc.host_effect.FleetSsh { target: t, context: _ } =>
       CodexSupervisedSessionApplyRefused {
         reason: concat(
           "CodexSupervisedWorkerTurn app-server stdio session refused over fleet ssh endpoint=",
           concat(t.endpoint as String, ": in-band coprocess must run on executor HostOs"),
         ),
       }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       CodexSupervisedSessionApplyRefused {
         reason: "CodexSupervisedWorkerTurn app-server stdio session refused over EmitArtifactThenThinRun",
       }
@@ -101,7 +102,7 @@ fn host_effect_codex_supervised_turn_apply(
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> CodexSupervisedSessionApplyOutcome {
   match transport {
-    LocalShell => {
+    gunbc.host_effect.LocalShell => {
       let root = git.Inspect.Toplevel().path as String
       let bin_path = host_effect_codex_supervised_session_bin_path(root: root)
       if !gunbc.ci_release_bins.release_bin_is_enrolled(bin_name: host_effect_codex_supervised_turn_bin_name) {
@@ -126,7 +127,7 @@ fn host_effect_codex_supervised_turn_apply(
             ),
           }
         } else {
-          let run = gunbc.WitnessBin.Run(
+          let run = WitnessBin.Run(
             workdir: root,
             bin_path: bin_path,
             args: host_effect_codex_supervised_turn_session_argv(

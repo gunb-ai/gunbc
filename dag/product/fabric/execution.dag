@@ -1,5 +1,6 @@
 module product.fabric.execution
 
+
 // An Attempt is one concrete try at a Work. Retries create attempts; they never
 // create new Work and never mutate a failed attempt back into a pending one.
 
@@ -194,9 +195,9 @@ fn admit_receipt_for_grant<P>(r: Receipt<P>, g: ExecutionGrant<P>) -> ReceiptAdm
       left: r.lease.resource_fingerprint,
       right: g.context.lease.resource_fingerprint,
     ) {
-      ContentHashCrossFamilyIncomparable => ReceiptFingerprintIncomparable
-      ContentHashDifferent => ReceiptFromDifferentLease
-      ContentHashEqual =>
+      std.content_hash.ContentHashCrossFamilyIncomparable => ReceiptFingerprintIncomparable
+      std.content_hash.ContentHashDifferent => ReceiptFromDifferentLease
+      std.content_hash.ContentHashEqual =>
         if receipt_lease_generation(r: r) == grant_lease_generation(g: g) {
           ReceiptAdmissible
         } else {

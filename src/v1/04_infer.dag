@@ -224,7 +224,7 @@ fn classify_field_recursion(field_node: v1.std.core.Node, parent_name: String, r
   let field_type_name = v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)
   if field_type_name == parent_name {
     match field_node.return_cardinality {
-      CardOptional => Present { value: FieldRecursionResult { shape: std.induction.OptionalRecursion, element_type: parent_name } }
+      v1.std.core.CardOptional => Present { value: FieldRecursionResult { shape: std.induction.OptionalRecursion, element_type: parent_name } }
       _ => Present { value: FieldRecursionResult { shape: std.induction.DirectRecursion, element_type: parent_name } }
     }
   } else if std.types.is_container_type(name: field_type_name) {
@@ -249,7 +249,7 @@ fn classify_field_recursion(field_node: v1.std.core.Node, parent_name: String, r
     } else { none }
   } else if set_contains(recursive_type_set, field_type_name) {
     match field_node.return_cardinality {
-      CardOptional => Present { value: FieldRecursionResult { shape: std.induction.OptionalRecursion, element_type: field_type_name } }
+      v1.std.core.CardOptional => Present { value: FieldRecursionResult { shape: std.induction.OptionalRecursion, element_type: field_type_name } }
       _ => Present { value: FieldRecursionResult { shape: std.induction.DirectRecursion, element_type: field_type_name } }
     }
   } else { none }
@@ -268,11 +268,11 @@ fn collect_fields_inductive(fields: List<v1.std.core.Node>, parent_name: String,
 fn collect_item_inductive_fields(item: v1.std.core.Node, recursive_type_set: Set<String>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Map<String, List<std.induction.InductiveField>> {
   let item_name = v1.std.core.authored_name_at(source_indices: source_indices, node: item)
   match item.connective {
-    Disj =>
+    v1.std.core.Disj =>
       item.children |> fold(init: empty_map(), f: (variant_acc, variant_node) =>
         collect_fields_inductive(fields: variant_node.children, parent_name: item_name, variant_name: v1.std.core.authored_name_at(source_indices: source_indices, node: variant_node), recursive_type_set: recursive_type_set, acc: variant_acc, source_indices: source_indices)
       )
-    Conj =>
+    v1.std.core.Conj =>
       collect_fields_inductive(fields: item.children, parent_name: item_name, variant_name: "", recursive_type_set: recursive_type_set, acc: empty_map(), source_indices: source_indices)
     _ => empty_map()
   }
@@ -598,7 +598,7 @@ fn constructor_call_admission_diags(
             }
           Absent => []
         }
-      NotAdmissionBearingReference => []
+      v1.compiler.infer_lookup.NotAdmissionBearingReference => []
       v1.compiler.infer_lookup.AdmissionBearingDeclarationUnavailable { identity: identity, cause: cause } =>
         [
           inference_error(
@@ -676,8 +676,8 @@ data seed_node_traversal_frontier: String = "\u{1F7E1} dissolve-on: v1_seed_dele
 
 fn collect_explicit_return_values(n: v1.std.core.Node) -> List<v1.std.core.Node> {
   match n.expr_data {
-    ExprLambda => []
-    ExprReturn =>
+    v1.std.core.ExprLambda => []
+    v1.std.core.ExprReturn =>
       concat(
         [v1.std.core.return_value(texpr: n)],
         n.children |> flat_map(c => collect_explicit_return_values(n: c)))
@@ -1144,7 +1144,7 @@ fn type_expr_where_refinement_predicates(ty: v1.std.core.Node) -> List<v1.std.co
     match ty.type_annotation {
       Present { value: annot } =>
         match annot.connective {
-          Conj => annot.children
+          v1.std.core.Conj => annot.children
           _ => [annot]
         }
       Absent => []
@@ -1603,7 +1603,7 @@ fn where_refinement_diags_for_predicate(
 
 fn where_refinement_value_under_cast(value_expr: v1.std.core.Node) -> v1.std.core.Node {
   match value_expr.expr_data {
-    ExprCast => where_refinement_value_under_cast(value_expr: v1.std.core.cast_expr(texpr: value_expr))
+    v1.std.core.ExprCast => where_refinement_value_under_cast(value_expr: v1.std.core.cast_expr(texpr: value_expr))
     _ => value_expr
   }
 }
@@ -1660,7 +1660,7 @@ fn with_expected_where_refinement_diags(result: InferResult, expected: v1.std.co
   match expected {
     Present { value: expected_ty } =>
       match result.typed.expr_data {
-        ExprCast => result
+        v1.std.core.ExprCast => result
         _ =>
           InferResult {
             typed: result.typed,
@@ -2124,7 +2124,7 @@ fn structured_application_site_type_mismatch_with_peeled(
                 match formal_decl {
                   Present { value: decl } =>
                     match decl.connective {
-                      Disj =>
+                      v1.std.core.Disj =>
                         if v1.std.core.has_child_named(n: decl, name: lit_name, source_indices: source_indices) {
                           false
                         } else {
@@ -2137,7 +2137,7 @@ fn structured_application_site_type_mismatch_with_peeled(
                             Absent => true
                           }
                         }
-                      Conj =>
+                      v1.std.core.Conj =>
                         let decl_name = structured_application_structural_type_name(
                           type_name: v1.std.core.authored_name_at(source_indices: source_indices, node: decl), scope: scope)
                         !application_type_names_compatible(
@@ -3207,7 +3207,7 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
 
 fn scope_after_stmt_node(stmt: v1.std.core.Node, stmt_type: v1.std.core.Node, scope: InferScope) -> InferScope {
   match stmt.expr_data {
-    ExprLet =>
+    v1.std.core.ExprLet =>
       if stmt.children |> count <= 1 {
         let val = match stmt.children |> first {
           Present { value: v } => v
@@ -3223,7 +3223,7 @@ fn scope_after_stmt_node(stmt: v1.std.core.Node, stmt_type: v1.std.core.Node, sc
 
 fn derive_field_provenance(scope: InferScope, scrutinee_provenance: std.induction.SubValueRelation, scrutinee_subject: v1.compiler.infer_patterns.PatternSubject, variant_name: String, field_name: String) -> std.induction.SubValueRelation {
   match scrutinee_provenance {
-    SubValueUnknown => std.induction.SubValueUnknown
+    std.induction.SubValueUnknown => std.induction.SubValueUnknown
     _ =>
       let scrut_type_name = match scrutinee_subject {
         PatternResolved { node: n } => v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: n))
@@ -3244,7 +3244,7 @@ fn derive_field_provenance(scope: InferScope, scrutinee_provenance: std.inductio
 fn extend_scope_with_pattern_node(scope: InferScope, pattern: v1.std.core.MatchPattern, scrutinee_subject: v1.compiler.infer_patterns.PatternSubject, scrutinee_provenance: std.induction.SubValueRelation) -> PatternScopeResult {
   match pattern {
     v1.std.core.Bind { declaration: declaration } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: declaration.name, resolved: v1.compiler.infer_patterns.pattern_binding_type(subject: scrutinee_subject), provenance: scrutinee_provenance), diagnostics: [] }
-    Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
+    v1.std.core.Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     v1.std.core.VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
@@ -3302,12 +3302,12 @@ fn extract_fold_init_info(method_name: String?, method_args: List<v1.std.core.No
 fn derive_element_provenance(coll_expr: v1.std.core.Node, elem_type: v1.std.core.Node, scope: InferScope) -> std.induction.SubValueRelation {
   let coll_prov = classify_binding_provenance(val: coll_expr, scope: scope)
   match coll_prov {
-    SubValueUnknown => std.induction.SubValueUnknown
+    std.induction.SubValueUnknown => std.induction.SubValueUnknown
     _ =>
       if v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: elem_type) == "" { std.induction.SubValueUnknown }
       else {
         let ind_fields = v1.compiler.infer_env.inductive_fields_for(env: scope.type_env, type_name: v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: elem_type))
-        let list_field = ind_fields |> filter(f => match f.shape { ListRecursion => true, _ => false }) |> first
+        let list_field = ind_fields |> filter(f => match f.shape { std.induction.ListRecursion => true, _ => false }) |> first
         match list_field {
           Present { value: f } => std.induction.IteratedSubValue { field: f }
           Absent => std.induction.SubValueUnknown
@@ -3341,7 +3341,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<v1.std.co
       }
       let lam_value = v1.std.core.arg_value(n: a)
       let prov_map = match elem_provenance {
-        SubValueUnknown => empty_map()
+        std.induction.SubValueUnknown => empty_map()
         _ => map_insert(empty_map(), "elem", elem_provenance)
       }
       let fold_scope = InferScope {
@@ -3361,7 +3361,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<v1.std.co
     } else {
       let nf_lam_value = v1.std.core.arg_value(n: a)
       let nf_prov_map = match elem_provenance {
-        SubValueUnknown => empty_map()
+        std.induction.SubValueUnknown => empty_map()
         _ => map_insert(empty_map(), "elem", elem_provenance)
       }
       let nf_scope = if is_lambda_expr(e: nf_lam_value) {
@@ -3379,8 +3379,8 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<v1.std.co
         }
       } else { scope }
       match arg_contract {
-        MethodUnresolved => infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
-        ContractUnavailable =>
+        v1.compiler.infer_lookup.MethodUnresolved => infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+        v1.compiler.infer_lookup.ContractUnavailable =>
           let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
           let contract_diag = categorized_error(message: "no declared argument contract is available for this method call; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
           ArgInferResult { typed_arg: v1.std.core.make_arg_node(name: v1.std.core.arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
@@ -3399,7 +3399,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<v1.std.co
 
 fn is_lambda_expr(e: v1.std.core.Node) -> Bool {
   match e.expr_data {
-    ExprLambda => true
+    v1.std.core.ExprLambda => true
     _ => false
   }
 }
@@ -3486,7 +3486,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
     v1.std.core.ExprError { kind: kind, message: message } =>
       let span = texpr.span
       let diagnostics = match kind {
-        CensusHeadsBodyStripped =>
+        v1.std.core.CensusHeadsBodyStripped =>
           [inference_error(message: message, span: span, module_name: scope.module_name)]
         _ => []
       }
@@ -3550,7 +3550,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
                   }
             v1.compiler.infer_sigs.FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
               ambiguous_reference_refusal(name: name, candidates: v1.compiler.infer_sigs.callable_candidate_labels(candidates: ambiguous_fn_candidates), span: span, scope: scope)
-            FuncSigUnresolved =>
+            v1.compiler.infer_sigs.FuncSigUnresolved =>
               match v1.compiler.infer_env.lookup_binding_by_name(env: scope.type_env, name: name) {
                 Present { value: gbinding } =>
                   let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
@@ -3723,7 +3723,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
         Absent =>
       let sig = match call_sig_lookup {
         v1.compiler.infer_sigs.FuncSigResolved { sig: resolved_call_sig } => Present { value: resolved_call_sig }
-        FuncSigUnresolved => Absent
+        v1.compiler.infer_sigs.FuncSigUnresolved => Absent
         v1.compiler.infer_sigs.FuncSigAmbiguous { candidates: _ } => Absent
       }
       let sig_params = match sig {
@@ -4271,7 +4271,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
       }
       }
 
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let span = texpr.span
       let scrut = v1.std.core.match_scrutinee(texpr: texpr)
       let arm_nodes = v1.std.core.match_arm_nodes(texpr: texpr)
@@ -4392,7 +4392,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
         diagnostics: concat(scrut_diags, arm_diags, empty_arms_diags, exhaustiveness_diags)
       }
 
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let span = texpr.span
       let cond = v1.std.core.if_condition(texpr: texpr)
       let then_expr = v1.std.core.if_then_branch(texpr: texpr)
@@ -4452,7 +4452,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
           }
       }
 
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let let_name = v1.std.core.let_binding_name_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
       let val_expr = v1.std.core.let_value(texpr: texpr)
@@ -4499,7 +4499,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
       let field_inits = texpr.children
       infer_record_lit(type_name: v1.std.core.record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: v1.std.core.node_name_span(n: texpr), scope: scope, expected: expected)
 
-    ExprListLit =>
+    v1.std.core.ExprListLit =>
       let span = texpr.span
       let elements = texpr.children
       let elem_expected = match expected {
@@ -4572,8 +4572,8 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
       let operand_typed = operand_result.typed
       let operand_diags = operand_result.diagnostics
       let result_type = match op {
-        Not => v1.std.core.bool_type
-        Neg => resolved_type(n: operand_typed)
+        v1.std.core.Not => v1.std.core.bool_type
+        v1.std.core.Neg => resolved_type(n: operand_typed)
       }
       let uo_texpr = v1.std.core.make_expr_node(expr_data: v1.std.core.ExprUnaryOp { op: op }, children: [operand_typed], inferred: Present { value: v1.std.core.Resolved { node: result_type } }, span: span)
       InferResult {
@@ -4581,7 +4581,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
         diagnostics: operand_diags
       }
 
-    ExprLambda =>
+    v1.std.core.ExprLambda =>
       let span = texpr.span
       let lam_body = v1.std.core.lambda_body(texpr: texpr)
       let lam_params = v1.std.core.lambda_param_names_at(texpr: texpr, source_indices: scope.type_env.source_indices)
@@ -4675,7 +4675,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
         diagnostics: body_diags
       }
 
-    ExprStringInterp =>
+    v1.std.core.ExprStringInterp =>
       let span = texpr.span
       let typed_part_nodes = texpr.children |> map(part_node =>
         match part_node.expr_data {
@@ -4707,7 +4707,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
         diagnostics: interp_diags
       }
 
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       let span = texpr.span
       let stmts = texpr.children
       if count(stmts) > 0 {
@@ -4725,7 +4725,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
         ok_infer(texpr: v1.std.core.make_expr_node(expr_data: v1.std.core.ExprBlock, children: [], inferred: Present { value: v1.std.core.Resolved { node: v1.std.core.unit_type } }, span: span))
       }
 
-    ExprCast =>
+    v1.std.core.ExprCast =>
       let span = texpr.span
       let cast_inner = v1.std.core.cast_expr(texpr: texpr)
       let target_type = v1.std.core.cast_target(texpr: texpr)
@@ -4760,7 +4760,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
         diagnostics: concat(concat(concat(concat(inner_diags, cast_diags), cast_optional_diags), cast_sole_ctor_diags), cast_refinement_diags)
       }
 
-    ExprForEach =>
+    v1.std.core.ExprForEach =>
       let variable = v1.std.core.foreach_variable_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
       let coll = v1.std.core.foreach_collection(texpr: texpr)
@@ -4780,7 +4780,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
         diagnostics: concat(coll_diags, body_diags)
       }
 
-    ExprIndex =>
+    v1.std.core.ExprIndex =>
       let span = texpr.span
       let base_expr = v1.std.core.index_base(texpr: texpr)
       let idx_key = v1.std.core.index_expr(texpr: texpr)
@@ -4823,7 +4823,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
         diagnostics: concat(base_diags, index_diags, index_access_diags)
       }
 
-    ExprSlice =>
+    v1.std.core.ExprSlice =>
       let span = texpr.span
       let base_expr = v1.std.core.slice_base(texpr: texpr)
       let start_expr = v1.std.core.slice_start(texpr: texpr)
@@ -4879,7 +4879,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
         diagnostics: concat(base_diags, start_diags, end_diags, slice_access_diags)
       }
 
-    ExprReturn =>
+    v1.std.core.ExprReturn =>
       let span = texpr.span
       let inner_expr = v1.std.core.return_value(texpr: texpr)
       let inner_result = infer_expr(texpr: inner_expr, scope: scope, expected: expected)
@@ -5018,14 +5018,14 @@ fn peel_alias_once_for_field_access(n: v1.std.core.Node, env: v1.compiler.infer_
 
 fn structural_from_expanded_type(normed: v1.std.core.Node) -> v1.std.core.Node {
   match normed.connective {
-    Conj => normed
-    Disj => normed
+    v1.std.core.Conj => normed
+    v1.std.core.Disj => normed
     _ =>
       match normed.inferred {
         Present { value: v1.std.core.Resolved { node: target } } =>
           match target.connective {
-            Conj => target
-            Disj => target
+            v1.std.core.Conj => target
+            v1.std.core.Disj => target
             _ => normed
           }
         _ => normed
@@ -5767,7 +5767,7 @@ fn classify_collection_shrink(arg_expr: v1.std.core.Node, param_name: String, ct
 
                     v1.std.core.ExprBinOp { op: op, algebra_field: _ } =>
                       match op {
-                        Add =>
+                        std.syntax.Add =>
                           if mname == "skip" {
                             let left = v1.std.core.binop_left(texpr: arg_val)
                             let right = v1.std.core.binop_right(texpr: arg_val)
@@ -5780,7 +5780,7 @@ fn classify_collection_shrink(arg_expr: v1.std.core.Node, param_name: String, ct
                                 }
                             }
                           } else { std.induction.SubValueUnknown }
-                        Sub => std.induction.SubValueUnknown
+                        std.syntax.Sub => std.induction.SubValueUnknown
                         _ => std.induction.SubValueUnknown
                       }
                     _ => std.induction.SubValueUnknown
@@ -5816,7 +5816,7 @@ fn maybe_insert_composed_field_relation(acc: Map<String, std.induction.SubValueR
   match composed {
     Present { value: rel } =>
       match rel {
-        SubValueUnknown => acc
+        std.induction.SubValueUnknown => acc
         _ => map_insert(acc, fname, rel)
       }
     Absent => acc
@@ -5835,7 +5835,7 @@ fn maybe_insert_match_field_relation(fp_acc: Map<String, std.induction.SubValueR
   match scrut_rel {
     Present { value: rel } =>
       let lookup_type = match rel {
-        PreservedValue => match map_get(param_types, pname) { Present { value: t } => t  Absent => "" }
+        std.induction.PreservedValue => match map_get(param_types, pname) { Present { value: t } => t  Absent => "" }
         std.induction.StrictSubValue { field: f, factor: _ } => f.element_type
         std.induction.IteratedSubValue { field: f } => f.element_type
         _ => ""
@@ -5918,7 +5918,7 @@ fn resolve_collection_field(expr: v1.std.core.Node, ctx: DescentContext) -> std.
           if base_type != "" {
             v1.compiler.infer_env.inductive_fields_for(env: ctx.type_env, type_name: base_type)
               |> filter(f => f.field_name == fname)
-              |> filter(f => match f.shape { ListRecursion => true  _ => false })
+              |> filter(f => match f.shape { std.induction.ListRecursion => true  _ => false })
               |> first
           } else { none }
         _ => none
@@ -5929,9 +5929,9 @@ fn resolve_collection_field(expr: v1.std.core.Node, ctx: DescentContext) -> std.
         Present { value: rel } =>
           match rel {
             std.induction.StrictSubValue { field: f, factor: _ } =>
-              match f.shape { ListRecursion => Present { value: f }  _ => none }
+              match f.shape { std.induction.ListRecursion => Present { value: f }  _ => none }
             std.induction.IteratedSubValue { field: f } =>
-              match f.shape { ListRecursion => Present { value: f }  _ => none }
+              match f.shape { std.induction.ListRecursion => Present { value: f }  _ => none }
             _ => none
           }
         Absent => none
@@ -5984,7 +5984,7 @@ fn classify_let_value(val: v1.std.core.Node, ctx: DescentContext) -> std.inducti
       match map_get(ctx.scope_locals, vname) {
         Present { value: binding } =>
           match binding.provenance {
-            SubValueUnknown => none
+            std.induction.SubValueUnknown => none
             _ => Present { value: binding.provenance }
           }
         Absent => none
@@ -6059,7 +6059,7 @@ fn classify_let_value(val: v1.std.core.Node, ctx: DescentContext) -> std.inducti
                     }
                     if inner_type != "" {
                       let fields = v1.compiler.infer_env.inductive_fields_for(env: ctx.type_env, type_name: inner_type)
-                      let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
+                      let cf = fields |> filter(f => match f.shape { std.induction.ListRecursion => true  _ => false }) |> first
                       match cf {
                         Present { value: ind_field } => Present { value: std.induction.StrictSubValue { field: ind_field, factor: std.computation.UnitShrink } }
                         Absent => none
@@ -6081,7 +6081,7 @@ fn classify_let_value(val: v1.std.core.Node, ctx: DescentContext) -> std.inducti
             }
             if elem != "" && v1.compiler.infer_env.is_recursive_type_by_name(env: ctx.type_env, name: elem) {
               let fields = v1.compiler.infer_env.inductive_fields_for(env: ctx.type_env, type_name: elem)
-              let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
+              let cf = fields |> filter(f => match f.shape { std.induction.ListRecursion => true  _ => false }) |> first
               match cf {
                 Present { value: ind_field } => Present { value: std.induction.StrictSubValue { field: ind_field, factor: std.computation.UnitShrink } }
                 Absent => none
@@ -6098,7 +6098,7 @@ fn classify_let_value(val: v1.std.core.Node, ctx: DescentContext) -> std.inducti
       let left = v1.std.core.binop_left(texpr: val)
       let right = v1.std.core.binop_right(texpr: val)
       match op {
-        Sub =>
+        std.syntax.Sub =>
           match left.expr_data {
             v1.std.core.ExprVar { binding_kind: _ } =>
               let lname = v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)
@@ -6115,7 +6115,7 @@ fn classify_let_value(val: v1.std.core.Node, ctx: DescentContext) -> std.inducti
               } else { none }
             _ => none
           }
-        Div =>
+        std.syntax.Div =>
           let left_name = match left.expr_data {
             v1.std.core.ExprVar { binding_kind: _ } =>
               let lname = v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)
@@ -6141,7 +6141,7 @@ fn classify_let_value(val: v1.std.core.Node, ctx: DescentContext) -> std.inducti
               Absent => none
             }
           } else { none }
-        Add =>
+        std.syntax.Add =>
           none
         _ => none
       }
@@ -6289,7 +6289,7 @@ fn classify_argument(arg_expr: v1.std.core.Node, param_name: String, ctx: Descen
             std.induction.StrictSubValue { field: _, factor: _ } => inner_rel
             std.induction.IteratedSubValue { field: _ } => inner_rel
             std.induction.ArithmeticDescent { param: _, factor: _ } => inner_rel
-            PreservedValue =>
+            std.induction.PreservedValue =>
               let callee = v1.std.core.expr_call_func_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
               let from_provenance = match v1.compiler.infer_sigs.func_sig_for_derivation(lookup: v1.compiler.infer_lookup.lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
                 v1.compiler.infer_sigs.DerivedFromSig { sig: sig } =>
@@ -6306,7 +6306,7 @@ fn classify_argument(arg_expr: v1.std.core.Node, param_name: String, ctx: Descen
                   if v1.std.core.is_child_accessor_in_model(name: callee) || v1.std.core.is_tree_size_reducing(func_name: callee) {
                     let type_name = match map_get(ctx.param_names, param_name) { Present { value: t } => t  Absent => "" }
                     let fields = v1.compiler.infer_env.inductive_fields_for(env: ctx.type_env, type_name: type_name)
-                    let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
+                    let cf = fields |> filter(f => match f.shape { std.induction.ListRecursion => true  _ => false }) |> first
                     match cf {
                       Present { value: ind_field } => std.induction.StrictSubValue { field: ind_field, factor: std.computation.UnitShrink }
                       Absent => std.induction.PreservedValue
@@ -6315,10 +6315,10 @@ fn classify_argument(arg_expr: v1.std.core.Node, param_name: String, ctx: Descen
                     std.induction.ArithmeticDescent { param: param_name, factor: std.computation.ConstantShrink { steps: std.termination.OneStep } }
                   } else { std.induction.PreservedValue }
               }
-            NonIncreasingValue => std.induction.NonIncreasingValue
-            StrictAxisErased => std.induction.StrictAxisErased
-            MixedTop => std.induction.MixedTop
-            SubValueUnknown => std.induction.SubValueUnknown
+            std.induction.NonIncreasingValue => std.induction.NonIncreasingValue
+            std.induction.StrictAxisErased => std.induction.StrictAxisErased
+            std.induction.MixedTop => std.induction.MixedTop
+            std.induction.SubValueUnknown => std.induction.SubValueUnknown
           }
         Absent => std.induction.SubValueUnknown
       }
@@ -6329,7 +6329,7 @@ fn classify_argument(arg_expr: v1.std.core.Node, param_name: String, ctx: Descen
       let left = v1.std.core.binop_left(texpr: arg_expr)
       let right = v1.std.core.binop_right(texpr: arg_expr)
       match op {
-        Sub =>
+        std.syntax.Sub =>
           let left_is_param = match left.expr_data {
             v1.std.core.ExprVar { binding_kind: _ } => v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices) == param_name || map_get(ctx.sub_value_vars, v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)) != none
             _ => false
@@ -6348,7 +6348,7 @@ fn classify_argument(arg_expr: v1.std.core.Node, param_name: String, ctx: Descen
 
             std.induction.SubValueUnknown
           }
-        Div =>
+        std.syntax.Div =>
           let left_is_param = match left.expr_data {
             v1.std.core.ExprVar { binding_kind: _ } => v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices) == param_name || map_get(ctx.sub_value_vars, v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)) != none
             v1.std.core.ExprBinOp { op: std.syntax.Sub } =>
@@ -6370,36 +6370,36 @@ fn classify_argument(arg_expr: v1.std.core.Node, param_name: String, ctx: Descen
               Absent => std.induction.SubValueUnknown
             }
           } else { std.induction.SubValueUnknown }
-        Add =>
+        std.syntax.Add =>
           std.induction.SubValueUnknown
         _ => std.induction.SubValueUnknown
       }
 
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let arm_rels = v1.std.core.match_arm_nodes(texpr: arg_expr) |> map(arm =>
         classify_argument(arg_expr: v1.std.core.arm_body(n: arm), param_name: param_name, ctx: ctx)
       )
       merge_argument_relations(rels: arm_rels)
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let then_rel = classify_argument(arg_expr: v1.std.core.if_then_branch(texpr: arg_expr), param_name: param_name, ctx: ctx)
       let else_rel = match v1.std.core.if_else_branch(texpr: arg_expr) {
         Present { value: e } => classify_argument(arg_expr: e, param_name: param_name, ctx: ctx)
         Absent => std.induction.SubValueUnknown
       }
       merge_argument_relations(rels: [then_rel, else_rel])
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       match arg_expr.children |> last {
         Present { value: last_expr } => classify_argument(arg_expr: last_expr, param_name: param_name, ctx: ctx)
         Absent => std.induction.SubValueUnknown
       }
-    ExprLet =>
+    v1.std.core.ExprLet =>
       match v1.std.core.let_body(texpr: arg_expr) {
         Present { value: body } => classify_argument(arg_expr: body, param_name: param_name, ctx: ctx)
         Absent => std.induction.SubValueUnknown
       }
-    ExprCast =>
+    v1.std.core.ExprCast =>
       classify_argument(arg_expr: v1.std.core.cast_expr(texpr: arg_expr), param_name: param_name, ctx: ctx)
-    ExprReturn =>
+    v1.std.core.ExprReturn =>
       match arg_expr.children |> first {
         Present { value: inner } => classify_argument(arg_expr: inner, param_name: param_name, ctx: ctx)
         Absent => std.induction.SubValueUnknown
@@ -6415,7 +6415,7 @@ fn read_arg_provenance(arg_expr: v1.std.core.Node, param_name: String, ctx: Desc
       match map_get(ctx.scope_locals, vname) {
         Present { value: binding } =>
           match binding.provenance {
-            SubValueUnknown =>
+            std.induction.SubValueUnknown =>
               classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
             _ => binding.provenance
           }
@@ -6431,7 +6431,7 @@ fn read_arg_provenance(arg_expr: v1.std.core.Node, param_name: String, ctx: Desc
           match map_get(ctx.scope_locals, bname) {
             Present { value: binding } =>
               match binding.provenance {
-                SubValueUnknown =>
+                std.induction.SubValueUnknown =>
                   classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
                 _ =>
                   let fields = v1.compiler.infer_env.inductive_fields_for(env: ctx.type_env, type_name: v1.std.core.authored_name_at(source_indices: ctx.type_env.source_indices, node: binding.resolved))
@@ -6452,17 +6452,17 @@ fn read_arg_provenance(arg_expr: v1.std.core.Node, param_name: String, ctx: Desc
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
     v1.std.core.ExprBinOp { op: _ } =>
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
-    ExprIf =>
+    v1.std.core.ExprIf =>
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
-    ExprLet =>
+    v1.std.core.ExprLet =>
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
-    ExprCast =>
+    v1.std.core.ExprCast =>
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
-    ExprReturn =>
+    v1.std.core.ExprReturn =>
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
     _ => std.induction.SubValueUnknown
   }
@@ -6498,7 +6498,7 @@ fn descent_source_type(found: String, arg_node: v1.std.core.Node, ctx: DescentCo
   if found != "" { found }
   else {
     match v1.std.core.arg_value(n: arg_node).expr_data {
-      ExprLambda => found
+      v1.std.core.ExprLambda => found
       _ =>
         let arg_val = v1.std.core.arg_value(n: arg_node)
         match arg_val.expr_data {
@@ -6522,7 +6522,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
       let annotated_children = body.children |> map(child =>
         let arg_val = v1.std.core.arg_value(n: child)
         match arg_val.expr_data {
-          ExprLambda =>
+          v1.std.core.ExprLambda =>
             if source_type != "" {
               let lparams = v1.std.core.lambda_param_names_at(texpr: arg_val, source_indices: ctx.type_env.source_indices)
               let p1 = match lparams |> first { Present { value: n } => n  Absent => "" }
@@ -6535,7 +6535,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
                 param_order: ctx.param_order, type_env: ctx.type_env,
                 sub_value_vars: if p1 != "" {
                   let source_fields = v1.compiler.infer_env.inductive_fields_for(env: ctx.type_env, type_name: source_type)
-                  let cf = source_fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
+                  let cf = source_fields |> filter(f => match f.shape { std.induction.ListRecursion => true  _ => false }) |> first
                   let rel = match cf { Present { value: f } => std.induction.IteratedSubValue { field: f }  Absent => std.induction.PreservedValue }
                   if p2 != "" { map_insert(map_insert(ctx.sub_value_vars, p1, rel), p2, rel) }
                   else { map_insert(ctx.sub_value_vars, p1, rel) }
@@ -6562,7 +6562,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
         match_pattern: body.match_pattern,
         expr_data: v1.std.core.ExprCall { call_semantics: cs, descent_evidence: Present { value: evidence } }
       }
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut = v1.std.core.match_scrutinee(texpr: body)
       let scrut_type = match scrut.expr_data {
         v1.std.core.ExprVar { binding_kind: _ } =>
@@ -6747,7 +6747,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
         has_non_tail_self_call: body.has_non_tail_self_call,
         match_pattern: body.match_pattern, expr_data: body.expr_data
       }
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let val = v1.std.core.let_value(texpr: body)
       let binding_name = v1.std.core.let_binding_name_at(texpr: body, source_indices: ctx.type_env.source_indices)
       let val_relation = classify_let_value(val: val, ctx: ctx)
@@ -6799,11 +6799,11 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
         has_non_tail_self_call: body.has_non_tail_self_call,
         match_pattern: body.match_pattern, expr_data: body.expr_data
       }
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       let threaded = body.children |> fold(init: BlockAnnotateAcc { ctx: ctx, children: [] }, f: (acc, child) =>
         let annotated = annotate_descent(body: child, ctx: acc.ctx)
         let next_ctx = match child.expr_data {
-          ExprLet =>
+          v1.std.core.ExprLet =>
             let val = v1.std.core.let_value(texpr: child)
             let bname = v1.std.core.let_binding_name_at(texpr: child, source_indices: ctx.type_env.source_indices)
             let val_rel = classify_let_value(val: val, ctx: acc.ctx)
@@ -6895,9 +6895,9 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
               Present { value: rel } =>
                 match rel {
                   std.induction.StrictSubValue { field: f, factor: _ } =>
-                    match f.shape { ListRecursion => Present { value: f }  _ => none }
+                    match f.shape { std.induction.ListRecursion => Present { value: f }  _ => none }
                   std.induction.IteratedSubValue { field: f } =>
-                    match f.shape { ListRecursion => Present { value: f }  _ => none }
+                    match f.shape { std.induction.ListRecursion => Present { value: f }  _ => none }
                   _ => none
                 }
               Absent => none
@@ -6906,7 +6906,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
         }
         let method_args = v1.std.core.method_arg_nodes(texpr: body)
         let lambda_arg = method_args |> filter(a =>
-          match v1.std.core.arg_value(n: a).expr_data { ExprLambda => true  _ => false }
+          match v1.std.core.arg_value(n: a).expr_data { v1.std.core.ExprLambda => true  _ => false }
         ) |> first
         let lambda_elem_info = match lambda_arg {
           Present { value: la } =>
@@ -6946,7 +6946,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
         let annotated_receiver = annotate_descent(body: method_receiver(texpr: body), ctx: ctx)
         let annotated_args = v1.std.core.method_arg_nodes(texpr: body) |> map(arg_node =>
           let arg_val = v1.std.core.arg_value(n: arg_node)
-          let is_lambda = match arg_val.expr_data { ExprLambda => true  _ => false }
+          let is_lambda = match arg_val.expr_data { v1.std.core.ExprLambda => true  _ => false }
           if is_lambda {
             v1.std.core.make_arg_node(name: match v1.std.core.arg_name_at(n: arg_node, source_indices: ctx.type_env.source_indices) { Present { value: n } => Present { value: n }  Absent => none }, value: annotate_descent(body: arg_val, ctx: inner_ctx), span: arg_node.span, name_span: arg_node.span)
           } else {
@@ -6967,7 +6967,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
       } else {
         v1.std.core.map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
       }
-    ExprForEach =>
+    v1.std.core.ExprForEach =>
       let coll = v1.std.core.foreach_collection(texpr: body)
       let fe_body = v1.std.core.foreach_body(texpr: body)
       let fe_var = v1.std.core.foreach_variable_at(texpr: body, source_indices: ctx.type_env.source_indices)
@@ -7067,7 +7067,7 @@ fn classify_body_provenance(expr: v1.std.core.Node, param_names: List<String>, p
         match map_get(base_prov, pname) {
           Present { value: base_rel } =>
             let type_for_lookup = match base_rel {
-              PreservedValue => match map_get(param_types, pname) { Present { value: t } => t  Absent => "" }
+              std.induction.PreservedValue => match map_get(param_types, pname) { Present { value: t } => t  Absent => "" }
               std.induction.StrictSubValue { field: f, factor: _ } => f.element_type
               std.induction.IteratedSubValue { field: f } => f.element_type
               _ => ""
@@ -7121,7 +7121,7 @@ fn classify_body_provenance(expr: v1.std.core.Node, param_names: List<String>, p
         } else { empty_map() }
       }
 
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut = v1.std.core.match_scrutinee(texpr: expr)
       let scrut_prov = classify_body_provenance(expr: scrut, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       let arms = v1.std.core.match_arm_nodes(texpr: expr)
@@ -7150,7 +7150,7 @@ fn classify_body_provenance(expr: v1.std.core.Node, param_names: List<String>, p
       )
       meet_body_provenance_maps(provs: arm_provs)
 
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let then_prov = classify_body_provenance(expr: v1.std.core.if_then_branch(texpr: expr), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       match v1.std.core.if_else_branch(texpr: expr) {
         Present { value: else_expr } =>
@@ -7159,7 +7159,7 @@ fn classify_body_provenance(expr: v1.std.core.Node, param_names: List<String>, p
         Absent => then_prov
       }
 
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let value = v1.std.core.let_value(texpr: expr)
       let bname = v1.std.core.let_binding_name_at(texpr: expr, source_indices: type_env.source_indices)
       let value_prov = classify_body_provenance(expr: value, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
@@ -7170,10 +7170,10 @@ fn classify_body_provenance(expr: v1.std.core.Node, param_names: List<String>, p
         Absent => empty_map()
       }
 
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       let block_result = fold(expr.children, init: BlockProvFoldState { prov: let_prov, last: empty_prov_map() }, f: (state, stmt) =>
         match stmt.expr_data {
-          ExprLet =>
+          v1.std.core.ExprLet =>
             let bname = v1.std.core.let_binding_name_at(texpr: stmt, source_indices: type_env.source_indices)
             let value = v1.std.core.let_value(texpr: stmt)
             let value_prov = classify_body_provenance(expr: value, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: state.prov)
@@ -7190,10 +7190,10 @@ fn classify_body_provenance(expr: v1.std.core.Node, param_names: List<String>, p
       )
       block_result.last
 
-    ExprCast =>
+    v1.std.core.ExprCast =>
       classify_body_provenance(expr: v1.std.core.cast_expr(texpr: expr), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
 
-    ExprReturn =>
+    v1.std.core.ExprReturn =>
       match expr.children |> first {
         Present { value: inner } =>
           classify_body_provenance(expr: inner, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
@@ -7255,7 +7255,7 @@ fn compose_callee_provenance(callee: String, arg_by_name: Map<String, v1.std.cor
                       match map_get(arg_prov, pname) {
                         Present { value: arg_rel } =>
                           let composed = std.induction.compose_sub_value_relations(arg_rel: arg_rel, callee_rel: callee_rel)
-                          match composed { SubValueUnknown => inner  _ =>
+                          match composed { std.induction.SubValueUnknown => inner  _ =>
                             match map_get(inner, pname) {
                               Present { value: existing } => map_insert(inner, pname, std.induction.meet_sub_value(a: existing, b: composed))
                               Absent => map_insert(inner, pname, composed)
@@ -7288,7 +7288,7 @@ fn classify_terminal_per_field(expr: v1.std.core.Node, param_names: List<String>
       expr.children |> map(fi =>
         classify_body_provenance(expr: v1.std.core.field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       )
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let arm_results = v1.std.core.match_arm_nodes(texpr: expr) |> map(arm =>
         let arm_unwrapped = unwrap_body_terminal(expr: v1.std.core.arm_body(n: arm), let_prov: let_prov, type_env: type_env)
         match arm_unwrapped.expr.expr_data {
@@ -7300,7 +7300,7 @@ fn classify_terminal_per_field(expr: v1.std.core.Node, param_names: List<String>
         }
       )
       meet_per_field_results(results: arm_results)
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let then_unwrapped = unwrap_body_terminal(expr: v1.std.core.if_then_branch(texpr: expr), let_prov: let_prov, type_env: type_env)
       let then_result = match then_unwrapped.expr.expr_data {
         v1.std.core.ExprRecordLit { parent_enum: _ } =>
@@ -7333,7 +7333,7 @@ type BodyTerminal {
 
 fn unwrap_body_terminal(expr: v1.std.core.Node, let_prov: Map<String, Map<String, std.induction.SubValueRelation>>, type_env: v1.compiler.infer_env.TypeEnv) -> BodyTerminal {
   match expr.expr_data {
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       match expr.children |> last {
         Present { value: last_stmt } => BodyTerminal { expr: last_stmt, let_prov: let_prov }
         Absent => BodyTerminal { expr: expr, let_prov: let_prov }
@@ -7409,7 +7409,7 @@ fn arm_ctx_from_variant_provenance(arm_node: v1.std.core.Node, sig: v1.compiler.
                   let all_rels = map_keys(composed) |> map(k => match map_get(composed, k) { Present { value: r } => r  Absent => std.induction.SubValueUnknown })
                   let best = merge_argument_relations(rels: all_rels)
                   match best {
-                    SubValueUnknown => c
+                    std.induction.SubValueUnknown => c
                     _ => DescentContext { fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env, sub_value_vars: map_insert(c.sub_value_vars, bind_name, best), size_aliases: c.size_aliases, scope_locals: c.scope_locals, func_env: c.func_env, per_field_vars: c.per_field_vars }
                   }
                 Absent => c
@@ -7434,7 +7434,7 @@ fn compose_callee_param_map(callee_prov: Map<String, std.induction.SubValueRelat
               match map_get(arg_prov, pname) {
                 Present { value: arg_rel } =>
                   let composed = std.induction.compose_sub_value_relations(arg_rel: arg_rel, callee_rel: callee_rel)
-                  match composed { SubValueUnknown => inner  _ => map_insert(inner, pname, composed) }
+                  match composed { std.induction.SubValueUnknown => inner  _ => map_insert(inner, pname, composed) }
                 Absent => inner
               }
             )
@@ -7455,7 +7455,7 @@ fn compute_variant_provenance(body: v1.std.core.Node, return_type: v1.std.core.N
   match rt_def {
     Present { value: def_node } =>
       match def_node.connective {
-        Disj =>
+        v1.std.core.Disj =>
           let param_names = params |> map(p => v1.std.core.param_node_name_at(n: p, source_indices: type_env.source_indices))
           let param_types = fold(params, init: empty_map(), f: (acc, p) =>
             let pname = v1.std.core.param_node_name_at(n: p, source_indices: type_env.source_indices)
@@ -7521,18 +7521,18 @@ fn collect_variant_constructors(body: v1.std.core.Node, parent_enum: String, par
           } else { acc }
         v1.compiler.infer_sigs.NoDerivableSig { reason: _ } => acc
       }
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       v1.std.core.match_arm_nodes(texpr: body) |> fold(init: acc, f: (a, arm) =>
         collect_variant_constructors(body: v1.std.core.arm_body(n: arm), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov, acc: a)
       )
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let then_acc = collect_variant_constructors(body: v1.std.core.if_then_branch(texpr: body), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov, acc: acc)
       match v1.std.core.if_else_branch(texpr: body) {
         Present { value: eb } =>
           collect_variant_constructors(body: eb, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov, acc: then_acc)
         Absent => then_acc
       }
-    ExprLet =>
+    v1.std.core.ExprLet =>
       match v1.std.core.let_body(texpr: body) {
         Present { value: b } =>
           let bname = v1.std.core.let_binding_name_at(texpr: body, source_indices: type_env.source_indices)
@@ -7541,14 +7541,14 @@ fn collect_variant_constructors(body: v1.std.core.Node, parent_enum: String, par
           collect_variant_constructors(body: b, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: new_lp, acc: acc)
         Absent => acc
       }
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       let stmts = body.children
       let stmt_count = stmts |> count
       if stmt_count == 0 { acc }
       else {
         let final_lp = stmts |> take(stmt_count - 1) |> fold(init: let_prov, f: (lp, stmt) =>
           match stmt.expr_data {
-            ExprLet =>
+            v1.std.core.ExprLet =>
               let bname = v1.std.core.let_binding_name_at(texpr: stmt, source_indices: type_env.source_indices)
               let vprov = classify_body_provenance(expr: v1.std.core.let_value(texpr: stmt), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: lp)
               map_insert(lp, bname, vprov)
@@ -7620,7 +7620,7 @@ fn populate_output_provenance(typed_items: List<v1.std.core.Node>, func_env: v1.
             let ptype = resolved_type_name(n: first_param, source_indices: type_env.source_indices)
             if ptype != "" && pname != "" {
               let fields = v1.compiler.infer_env.inductive_fields_for(env: type_env, type_name: ptype)
-              let list_field = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
+              let list_field = fields |> filter(f => match f.shape { std.induction.ListRecursion => true  _ => false }) |> first
               match list_field {
                 Present { value: ind_field } =>
                   let relation = std.induction.StrictSubValue { field: ind_field, factor: std.computation.UnitShrink }
@@ -7797,11 +7797,11 @@ fn service_config_field_judgment(field: String) -> ServiceConfigFieldJudgment {
     Absent => FieldCarriesNoReference
     Present { value: known } =>
       match known {
-        SvcEndpoint => FieldJudged
-        SvcAuth => FieldJudged
-        SvcAuthSource => FieldJudged
-        SvcAuthInput => FieldDeferred { trigger: "the referent is a service-scoped input, and the binder authority carries no service or operation parameter kind to resolve it against; judged once that binder kind exists" }
-        SvcRateLimit => FieldDeferred { trigger: "the rate-limit atoms (`per`, `scope`) are bare identifiers with no declaration; judged once they are grounded as cited rows in the extdeps module that publishes the limit" }
+        v1.std.core.SvcEndpoint => FieldJudged
+        v1.std.core.SvcAuth => FieldJudged
+        v1.std.core.SvcAuthSource => FieldJudged
+        v1.std.core.SvcAuthInput => FieldDeferred { trigger: "the referent is a service-scoped input, and the binder authority carries no service or operation parameter kind to resolve it against; judged once that binder kind exists" }
+        v1.std.core.SvcRateLimit => FieldDeferred { trigger: "the rate-limit atoms (`per`, `scope`) are bare identifiers with no declaration; judged once they are grounded as cited rows in the extdeps module that publishes the limit" }
       }
   }
 }
@@ -8419,12 +8419,12 @@ fn interface_cache_from_module(cache: v1.compiler.infer_env.TypeEnvCache) -> v1.
 
 fn export_kind_of_item_kind(kind: v1.compiler.infer_items.ItemKind) -> std.interface_summary.ExportKind? {
   match kind {
-    FnItem => Present { value: std.interface_summary.ExportFn }
-    FuncItem => Present { value: std.interface_summary.ExportFn }
-    TypeItem => Present { value: std.interface_summary.ExportType }
-    DataItem => Present { value: std.interface_summary.ExportData }
-    ServiceItem => Present { value: std.interface_summary.ExportService }
-    OtherItem => Absent
+    v1.compiler.infer_items.FnItem => Present { value: std.interface_summary.ExportFn }
+    v1.compiler.infer_items.FuncItem => Present { value: std.interface_summary.ExportFn }
+    v1.compiler.infer_items.TypeItem => Present { value: std.interface_summary.ExportType }
+    v1.compiler.infer_items.DataItem => Present { value: std.interface_summary.ExportData }
+    v1.compiler.infer_items.ServiceItem => Present { value: std.interface_summary.ExportService }
+    v1.compiler.infer_items.OtherItem => Absent
   }
 }
 
@@ -8451,7 +8451,7 @@ fn export_entry_from_item(item: v1.std.core.Node, env: v1.compiler.infer_env.Typ
     Absent => Absent
     Present { value: kind } =>
       match kind {
-        ExportFn =>
+        std.interface_summary.ExportFn =>
           Present {
             value: std.interface_summary.ExportEntry {
               name: name,
@@ -8627,7 +8627,7 @@ fn disj_variant_name_count_inc(counts: Map<String, Int>, name: String) -> Map<St
 fn disj_variant_name_counts(items: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Map<String, Int> {
   fold(items, init: empty_map(), f: (counts, item) =>
     match item.connective {
-      Disj =>
+      v1.std.core.Disj =>
         fold(item.children, init: counts, f: (c, child) =>
           disj_variant_name_count_inc(counts: c, name: v1.std.core.authored_name_at(source_indices: source_indices, node: child))
         )
@@ -8646,7 +8646,7 @@ fn corpus_disj_variant_name_counts_nodes(module_nodes: List<v1.std.core.Node>, s
   fold(module_nodes, init: empty_map(), f: (counts, module_node) =>
     fold(v1.std.core.module_items(n: module_node), init: counts, f: (c, item) =>
       match item.connective {
-        Disj =>
+        v1.std.core.Disj =>
           fold(item.children, init: c, f: (c2, child) =>
             disj_variant_name_count_inc(counts: c2, name: v1.std.core.authored_name_at(source_indices: source_indices, node: child))
           )
@@ -8694,7 +8694,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
   let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
   fold(items, init: index, f: (acc, item) =>
     match item.connective {
-      Disj =>
+      v1.std.core.Disj =>
         let tname = v1.std.core.authored_name_at(source_indices: source_indices, node: item)
         fold(item.children, init: acc, f: (a2, child) =>
           let vname = v1.std.core.authored_name_at(source_indices: source_indices, node: child)
@@ -8910,10 +8910,10 @@ fn exposure_view_for_node(n: v1.std.core.Node, source_indices: Map<String, v1.st
     false => match n.type_annotation != none || (n.properties |> count) > 0 {
       true => v1.compiler.type_head_exposure.OpaqueTypeHead { type_identity: identity }
       false => match n.connective {
-        Arrow => v1.compiler.type_head_exposure.ExposedTypeHead { view: v1.compiler.type_head_exposure.CallableHead { type_identity: identity } }
-        Disj => v1.compiler.type_head_exposure.ExposedTypeHead { view: v1.compiler.type_head_exposure.CoproductHead { type_identity: identity } }
-        Conj => v1.compiler.type_head_exposure.ExposedTypeHead { view: v1.compiler.type_head_exposure.ProductHead { type_identity: identity } }
-        NoConnective => match (n.children |> count) > 0 {
+        v1.std.core.Arrow => v1.compiler.type_head_exposure.ExposedTypeHead { view: v1.compiler.type_head_exposure.CallableHead { type_identity: identity } }
+        v1.std.core.Disj => v1.compiler.type_head_exposure.ExposedTypeHead { view: v1.compiler.type_head_exposure.CoproductHead { type_identity: identity } }
+        v1.std.core.Conj => v1.compiler.type_head_exposure.ExposedTypeHead { view: v1.compiler.type_head_exposure.ProductHead { type_identity: identity } }
+        v1.std.core.NoConnective => match (n.children |> count) > 0 {
           true => {
             let constructor_name = v1.std.core.authored_name_at(source_indices: source_indices, node: n)
             match constructor_name == "" {
@@ -9287,7 +9287,7 @@ fn build_symbol_index_qualified_fill(modules: List<v1.std.core.Node>, source_ind
     let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
     fold(items, init: with_items, f: (acc, item) =>
       match item.connective {
-        Disj =>
+        v1.std.core.Disj =>
           fold(item.children, init: acc, f: (a2, child) =>
             let vname = v1.std.core.authored_name_at(source_indices: source_indices, node: child)
             match map_get(counts, vname) {
@@ -9648,7 +9648,7 @@ fn build_item_info(item: v1.std.core.Node, source_indices: Map<String, v1.std.co
   let res_names = item.uses |> map(u => v1.std.core.resource_use_name_at(n: u, source_indices: source_indices))
   let item_name_str = v1.std.core.authored_name_at(source_indices: source_indices, node: item)
   match kind {
-    FuncItem =>
+    v1.compiler.infer_items.FuncItem =>
       v1.compiler.infer_items.ItemInfo {
         name: item_name_str,
         module_name: module_name,
@@ -9659,7 +9659,7 @@ fn build_item_info(item: v1.std.core.Node, source_indices: Map<String, v1.std.co
         is_self_recursive: false,
         has_non_tail_self_call: false
       }
-    FnItem =>
+    v1.compiler.infer_items.FnItem =>
       v1.compiler.infer_items.ItemInfo {
         name: item_name_str,
         module_name: module_name,

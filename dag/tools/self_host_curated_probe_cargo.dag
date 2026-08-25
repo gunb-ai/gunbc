@@ -5,19 +5,19 @@ data curated_probe_cargo_scaffold_note: String = "SCAFFOLD — dissolve-on: dele
 
 fn curated_probe_write_cargo_toml_blob(path: String, content: String, label: String) -> std.process.ProcessExit {
   if content == "" {
-    exit_failure(reason: concat(label, ": refused empty export"))
+    std.process.exit_failure(reason: concat(label, ": refused empty export"))
   }
-  let w = Filesystem.Write(path: path, content: content)
+  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: path, content: content)
   if w.success {
     std.process.ExitSuccess
   } else {
-    exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
+    std.process.exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
   }
 }
 
 fn curated_probe_cargo_toml_write_from_cssl_authority(out_path: String) -> std.process.ProcessExit {
   let root = git.Inspect.Toplevel()
-  let content = cssl_v1_compiled_probe_lib_cargo_toml(root: root.path)
+  let content = tools.self_host_curated_seed_linked_harness.cssl_v1_compiled_probe_lib_cargo_toml(root: root.path)
   curated_probe_write_cargo_toml_blob(
     path: out_path,
     content: content,

@@ -2,13 +2,13 @@ module v2.test.extdeps_shape_transport_policy.corpus.cargo_doc_dead_param
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data cargo_doc_service: String = "cargo.Build"
 data cargo_doc_operation: String = "Doc"
 
 test fn corpus_cargo_doc_dead_param_defused_holds() -> Bool {
-  v2.lens.extdeps_shape_transport_policy.extdeps_live_module_dead_param_count_for_operation(
+  extdeps_live_module_dead_param_count_for_operation(
     module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_cargo_build_module,
     service: cargo_doc_service,
     operation: cargo_doc_operation

@@ -3,7 +3,7 @@ module extdeps.vendor.navepoint
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.navepoint.com"
   }
 }
@@ -13,11 +13,11 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.vendor.navepoint",
       decl_name: "navepoint",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.vendor.navepoint.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
-data navepoint: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "NavePoint" }
+data navepoint: extdeps.vendor.Vendor<extdeps.hardware.Hardware> = extdeps.vendor.Vendor { legal_name: "NavePoint" }

@@ -2,60 +2,60 @@ module test.claim.uri_path_match_witness
 
 
 fn tpl(raw: String) -> std.http_path.PathTemplate {
-  match parse_path_template(raw: raw) {
-    ParsedPathTemplate { template: t } => t
-    MalformedPathTemplate { raw: _, segment: _, reason: _ } => std.http_path.PathTemplate { tokens: [] }
+  match extdeps.uri_path.parse_path_template(raw: raw) {
+    extdeps.uri_path.ParsedPathTemplate { template: t } => t
+    extdeps.uri_path.MalformedPathTemplate { raw: _, segment: _, reason: _ } => std.http_path.PathTemplate { tokens: [] }
   }
 }
 
 fn matched(m: extdeps.uri_path.PathTemplateMatch) -> Bool {
   match m {
-    PathMatched { params: _ } => true
-    PathNotMatched => false
+    extdeps.uri_path.PathMatched { params: _ } => true
+    extdeps.uri_path.PathNotMatched => false
   }
 }
 
 fn param_value(m: extdeps.uri_path.PathTemplateMatch, name: String) -> String {
   match m {
-    PathNotMatched => ""
-    PathMatched { params: ps } =>
+    extdeps.uri_path.PathNotMatched => ""
+    extdeps.uri_path.PathMatched { params: ps } =>
       fold(ps, init: "", f: (acc, p) => if p.name == name { p.value } else { acc })
   }
 }
 
 test fn witness_literal_hit() -> Bool {
-  matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/roadmap"), path: "/roadmap"))
+  matched(m: extdeps.uri_path.match_path_template(template: tpl(raw: "/roadmap"), path: "/roadmap"))
 }
 
 test fn witness_param_binds_segment() -> Bool {
-  let m = match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/2-dispatch-actuator")
+  let m = extdeps.uri_path.match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/2-dispatch-actuator")
   matched(m: m) && param_value(m: m, name: "node_id") == "2-dispatch-actuator"
 }
 
 test fn witness_root_template_matches_only_root() -> Bool {
-  matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/"), path: "/"))
-    && !matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/"), path: "/roadmap"))
+  matched(m: extdeps.uri_path.match_path_template(template: tpl(raw: "/"), path: "/"))
+    && !matched(m: extdeps.uri_path.match_path_template(template: tpl(raw: "/"), path: "/roadmap"))
 }
 
 test fn witness_literal_miss_refuses() -> Bool {
-  !matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/roadmap"), path: "/healthz"))
+  !matched(m: extdeps.uri_path.match_path_template(template: tpl(raw: "/roadmap"), path: "/healthz"))
 }
 
 test fn witness_segment_count_miss_refuses() -> Bool {
-  !matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch"))
-    && !matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/a/b"))
+  !matched(m: extdeps.uri_path.match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch"))
+    && !matched(m: extdeps.uri_path.match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/a/b"))
 }
 
 test fn witness_trailing_slash_refuses_regex_parity() -> Bool {
-  !matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/roadmap"), path: "/roadmap/"))
+  !matched(m: extdeps.uri_path.match_path_template(template: tpl(raw: "/roadmap"), path: "/roadmap/"))
 }
 
 test fn witness_empty_segment_never_binds_regex_parity() -> Bool {
-  !matched(m: match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch//x"))
+  !matched(m: extdeps.uri_path.match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch//x"))
 }
 
 test fn witness_query_string_stripped() -> Bool {
-  let m = match_path_template(template: test.claim.uri_path_match_witness.tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/abc?force=1")
+  let m = extdeps.uri_path.match_path_template(template: tpl(raw: "/dispatch/\{node_id\}"), path: "/dispatch/abc?force=1")
   matched(m: m) && param_value(m: m, name: "node_id") == "abc"
 }
 

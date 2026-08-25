@@ -5,75 +5,75 @@ data witness_secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef = extdeps.cloud.
   project: "gunbc-dashboard" as extdeps.cloud.gcp.gcp.GcpProjectId,
   secret: "cursor-api-key" as std.types.NonEmptyStr,
   version: "7" as std.types.NonEmptyStr,
-  hash_state: HashPending,
+  hash_state: extdeps.cloud.gcp.secret_ref.HashPending,
 }
 
 data witness_key: std.types.NonEmptyStr = "synthetic-not-a-real-key" as std.types.NonEmptyStr
 
 test fn dispatch_secret_ref_admits_sdk_local_binding() -> Bool {
-  match cursor_sdk_local_credential_from_dispatch(
+  match gunbc.cursor_sdk_local_binding.cursor_sdk_local_credential_from_dispatch(
     credential: gunbc.dispatch_selection.CursorApiKeySecretRef { secret_ref: witness_secret_ref },
   ) {
-    CursorSdkLocalCredentialAdmitted { credential: _, materialization: _ } => true
-    CursorSdkLocalCredentialRefused { reason: _ } => false
+    gunbc.cursor_sdk_local_binding.CursorSdkLocalCredentialAdmitted { credential: _, materialization: _ } => true
+    gunbc.cursor_sdk_local_binding.CursorSdkLocalCredentialRefused { reason: _ } => false
   }
 }
 
 test fn dispatch_local_login_ref_refuses() -> Bool {
-  match cursor_sdk_local_credential_from_dispatch(credential: CursorLocalLoginRef) {
-    CursorSdkLocalCredentialRefused { reason } =>
+  match gunbc.cursor_sdk_local_binding.cursor_sdk_local_credential_from_dispatch(credential: gunbc.dispatch_selection.CursorLocalLoginRef) {
+    gunbc.cursor_sdk_local_binding.CursorSdkLocalCredentialRefused { reason } =>
       string_contains(s: reason as String, pattern: "SecretRef")
-    CursorSdkLocalCredentialAdmitted { credential: _, materialization: _ } => false
+    gunbc.cursor_sdk_local_binding.CursorSdkLocalCredentialAdmitted { credential: _, materialization: _ } => false
   }
 }
 
 test fn dispatch_secret_ref_materializes_via_secret_ref_arm() -> Bool {
-  match cursor_sdk_local_credential_from_dispatch(
+  match gunbc.cursor_sdk_local_binding.cursor_sdk_local_credential_from_dispatch(
     credential: gunbc.dispatch_selection.CursorApiKeySecretRef { secret_ref: witness_secret_ref },
   ) {
-    CursorSdkLocalCredentialAdmitted { credential: _, materialization } =>
-      cursor_sdk_materialization_uses_secret_ref(materialization: materialization)
-    CursorSdkLocalCredentialRefused { reason: _ } => false
+    gunbc.cursor_sdk_local_binding.CursorSdkLocalCredentialAdmitted { credential: _, materialization } =>
+      gunbc.cursor_sdk_local_binding.cursor_sdk_materialization_uses_secret_ref(materialization: materialization)
+    gunbc.cursor_sdk_local_binding.CursorSdkLocalCredentialRefused { reason: _ } => false
   }
 }
 
 test fn environment_materialization_consumes_cli_env_var() -> Bool {
-  match cursor_sdk_environment_api_key_materialization() {
-    CursorSdkApiKeyFromEnvironment { env_var } => env_var == cursor_api_key_env_var
+  match extdeps.llm.cursor_sdk.cursor_sdk_environment_api_key_materialization() {
+    extdeps.llm.cursor_sdk.CursorSdkApiKeyFromEnvironment { env_var } => env_var == extdeps.llm.cursor_cli.cursor_api_key_env_var
     _ => false
   }
 }
 
 test fn dispatch_binding_refuses_latest_secret_version() -> Bool {
-  match cursor_sdk_local_credential_from_dispatch(
+  match gunbc.cursor_sdk_local_binding.cursor_sdk_local_credential_from_dispatch(
     credential: gunbc.dispatch_selection.CursorApiKeySecretRef {
       secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef {
         project: "gunbc-dashboard" as extdeps.cloud.gcp.gcp.GcpProjectId,
         secret: "cursor-api-key" as std.types.NonEmptyStr,
         version: "latest" as std.types.NonEmptyStr,
-        hash_state: HashPending,
+        hash_state: extdeps.cloud.gcp.secret_ref.HashPending,
       },
     },
   ) {
-    CursorSdkLocalCredentialRefused { reason } =>
+    gunbc.cursor_sdk_local_binding.CursorSdkLocalCredentialRefused { reason } =>
       string_contains(s: reason as String, pattern: "never latest")
     _ => false
   }
 }
 
 test fn dispatch_binding_projection_keeps_argv_clean() -> Bool {
-  match cursor_sdk_local_credential_from_dispatch(
+  match gunbc.cursor_sdk_local_binding.cursor_sdk_local_credential_from_dispatch(
     credential: gunbc.dispatch_selection.CursorApiKeySecretRef { secret_ref: witness_secret_ref },
   ) {
-    CursorSdkLocalCredentialAdmitted { credential: _, materialization } =>
-      cursor_sdk_projection_argv_excludes_token(
-        projection: cursor_sdk_project_materialization(
+    gunbc.cursor_sdk_local_binding.CursorSdkLocalCredentialAdmitted { credential: _, materialization } =>
+      extdeps.llm.cursor_sdk.cursor_sdk_projection_argv_excludes_token(
+        projection: extdeps.llm.cursor_sdk.cursor_sdk_project_materialization(
           materialization: materialization,
-          environment_key_plaintext: test.claim.cursor_sdk_dispatch_bridge_witness_test.witness_key,
+          environment_key_plaintext: witness_key,
         ),
-        forbidden_token: test.claim.cursor_sdk_dispatch_bridge_witness_test.witness_key as String,
+        forbidden_token: witness_key as String,
       )
-    CursorSdkLocalCredentialRefused { reason: _ } => false
+    gunbc.cursor_sdk_local_binding.CursorSdkLocalCredentialRefused { reason: _ } => false
   }
 }
 

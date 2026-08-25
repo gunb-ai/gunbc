@@ -5,17 +5,17 @@ data systemd_property_directive_overlap_scope: std.disposition.Disposition = std
 
 // WHY THIS CARRIER EXISTS, AND WHY IT IS AN OBSERVATION RATHER THAN A REPAIR.
 //
-// systemd spells one cgroup knob the same way in both directions: `extdeps.systemd.MemoryMax=` written into a unit
-// file and `extdeps.systemd.MemoryMax` read back by `systemctl show --property=`. This repository models those two
-// directions in two places -- extdeps.systemd's extdeps.systemd.SystemdUnitProperty for the read, and
+// systemd spells one cgroup knob the same way in both directions: `MemoryMax=` written into a unit
+// file and `MemoryMax` read back by `systemctl show --property=`. This repository models those two
+// directions in two places -- extdeps.systemd's SystemdUnitProperty for the read, and
 // extdeps.systemd.unit_file's section-scoped directive types for the write -- and the names overlap
 // because the upstream names overlap.
 //
 // That looks like the DESIGN section 3 nicknaming this tree exists to remove, and the tempting repair
-// is to delete the write-side vocabulary and reuse extdeps.systemd.SystemdUnitProperty as the directive type. THAT
-// REPAIR IS WRONG, and the reason is the whole point of this row: extdeps.systemd.SystemdUnitProperty is not the
+// is to delete the write-side vocabulary and reuse SystemdUnitProperty as the directive type. THAT
+// REPAIR IS WRONG, and the reason is the whole point of this row: SystemdUnitProperty is not the
 // knob, it is the SHOW SURFACE. It carries settable knobs and read-only observations in one flat
-// coproduct, so using it as a directive type would make `extdeps.systemd.MemoryCurrent=` and `extdeps.systemd.ActiveState=` writable
+// coproduct, so using it as a directive type would make `MemoryCurrent=` and `ActiveState=` writable
 // into a unit file -- directives systemd rejects. It would buy reuse by making an invalid state
 // REPRESENTABLE, which is the exact inverse of what the per-section directive types are for
 // (DESIGN section 4b: construction over validation).
@@ -52,7 +52,7 @@ fn systemd_property_writability(property: extdeps.systemd.SystemdUnitProperty) -
   }
 }
 
-fn systemd_property_is_settable(property: extdeps.systemd.SystemdUnitProperty) -> std.types.Bool {
+fn systemd_property_is_settable(property: extdeps.systemd.SystemdUnitProperty) -> Bool {
   match systemd_property_writability(property: property) {
     SettableDirective => true
     ObservationOnly => false
@@ -105,7 +105,7 @@ fn observation_only_property_wires() -> List<String> {
 // not as `5 and 5`. A member added or removed upstream leaves this true, which is correct: the
 // conflation is unchanged by its population. It goes false exactly when the type stops mixing the
 // two, which is the same event this row's dissolution names.
-fn systemd_unit_property_mixes_writability() -> std.types.Bool {
+fn systemd_unit_property_mixes_writability() -> Bool {
   (settable_property_wires().count() > 0) && (observation_only_property_wires().count() > 0)
 }
 
@@ -113,7 +113,7 @@ fn systemd_unit_property_mixes_writability() -> std.types.Bool {
 //
 // The unification completes when the mixed coproduct is GONE -- not when some new symbol appears.
 // Naming a symbol nobody has declared would be the fabricated-citation class std.dissolution's own
-// header records as the reason DeclarationRetires exists; naming extdeps.systemd.SystemdUnitProperty binds this row
+// header records as the reason DeclarationRetires exists; naming SystemdUnitProperty binds this row
 // to a declaration that exists right now, so the reference is checkable at the moment it is written
 // and the trigger fires on the deletion that is the actual completion.
 data systemd_property_directive_overlap_dissolution: std.dissolution.DissolutionCondition = std.dissolution.retires_dissolution(

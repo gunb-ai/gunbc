@@ -5,93 +5,93 @@ fn claim_runner_environment() -> gunbc.roadmap_execution_contract.DispatchHostEn
   gunbc.roadmap_execution_contract.DispatchHostEnvironment {
     realizations: [
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: GitWorkspaceCapability,
+        capability: gunbc.roadmap_execution_contract.GitWorkspaceCapability,
         executable: "/usr/bin/git" as std.types.FilePath,
         identity_args: ["--version"],
         identity_contains: "git version" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
       gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: GunbcClaimRunnerCapability,
+        capability: gunbc.roadmap_execution_contract.GunbcClaimRunnerCapability,
         executable: "/opt/gunbc/bin/gunbc" as std.types.FilePath,
         identity_args: ["--help"],
         identity_contains: "A causal compiler" as std.types.NonEmptyStr,
-        ensure_policy: EnsureObserveOnly,
+        ensure_policy: gunbc.ensure.EnsureObserveOnly,
       },
     ],
   }
 }
 
 test fn dag_claim_derives_only_the_claim_runner() -> Bool {
-  let capabilities = execution_contract_required_capabilities(
-    contract: gunbc_claim_execution_contract(
+  let capabilities = gunbc.roadmap_execution_contract.execution_contract_required_capabilities(
+    contract: gunbc.roadmap_execution_contract.gunbc_claim_execution_contract(
       entry: "dag/test/claim/example_test.dag" as std.types.FilePath,
       function: "example_holds" as std.types.NonEmptyStr,
     ),
   )
   count(capabilities) == 1
-    && execution_capability_label(capability: capabilities.first().value) == "gunbc-claim-runner"
+    && gunbc.roadmap_execution_contract.execution_capability_label(capability: capabilities.first().value) == "gunbc-claim-runner"
 }
 
 test fn cargo_test_derives_cargo_and_rustc_once() -> Bool {
-  let capabilities = execution_contract_required_capabilities(
+  let capabilities = gunbc.roadmap_execution_contract.execution_contract_required_capabilities(
     contract: gunbc.roadmap_execution_contract.ExecutionContract {
       validations: [
         gunbc.roadmap_execution_contract.CargoTestValidation { filter: "one" as std.types.NonEmptyStr },
         gunbc.roadmap_execution_contract.CargoTestValidation { filter: "two" as std.types.NonEmptyStr },
       ],
-      extra_capabilities: [CargoCapability],
+      extra_capabilities: [gunbc.roadmap_execution_contract.CargoCapability],
     },
   )
   count(capabilities) == 2
     && any(
       capabilities,
-      cap => execution_capability_label(capability: cap) == "cargo",
+      cap => gunbc.roadmap_execution_contract.execution_capability_label(capability: cap) == "cargo",
     )
     && any(
       capabilities,
-      cap => execution_capability_label(capability: cap) == "rustc",
+      cap => gunbc.roadmap_execution_contract.execution_capability_label(capability: cap) == "rustc",
     )
 }
 
 test fn cargo_fmt_derives_cargo_and_rustfmt_not_rustc() -> Bool {
-  let caps = execution_contract_required_capabilities(
+  let caps = gunbc.roadmap_execution_contract.execution_contract_required_capabilities(
     contract: gunbc.roadmap_execution_contract.ExecutionContract {
-      validations: [CargoFmtValidation],
+      validations: [gunbc.roadmap_execution_contract.CargoFmtValidation],
       extra_capabilities: [],
     },
   )
   count(caps) == 2
     && count(caps |> filter(cap =>
-      execution_capability_label(capability: cap) == "cargo")) == 1
+      gunbc.roadmap_execution_contract.execution_capability_label(capability: cap) == "cargo")) == 1
     && count(caps |> filter(cap =>
-      execution_capability_label(capability: cap) == "rustfmt")) == 1
+      gunbc.roadmap_execution_contract.execution_capability_label(capability: cap) == "rustfmt")) == 1
     && count(caps |> filter(cap =>
-      execution_capability_label(capability: cap) == "rustc")) == 0
+      gunbc.roadmap_execution_contract.execution_capability_label(capability: cap) == "rustc")) == 0
 }
 
 test fn dispatch_platform_capabilities_join_at_admission_only() -> Bool {
-  let contract = gunbc_claim_execution_contract(
+  let contract = gunbc.roadmap_execution_contract.gunbc_claim_execution_contract(
     entry: "dag/test/claim/example_test.dag" as std.types.FilePath,
     function: "example_holds" as std.types.NonEmptyStr,
   )
-  let task = execution_contract_required_capabilities(contract: contract)
-  let platform = dispatch_platform_required_capabilities()
-  let dispatch = dispatch_required_capabilities(contract: contract)
+  let task = gunbc.roadmap_execution_contract.execution_contract_required_capabilities(contract: contract)
+  let platform = gunbc.roadmap_execution_contract.dispatch_platform_required_capabilities()
+  let dispatch = gunbc.roadmap_execution_contract.dispatch_required_capabilities(contract: contract)
   count(task) == 1
     && count(dispatch) == count(platform) + count(task)
     && any(
       dispatch,
-      cap => execution_capability_label(capability: cap) == "git-workspace",
+      cap => gunbc.roadmap_execution_contract.execution_capability_label(capability: cap) == "git-workspace",
     )
     && any(
       dispatch,
-      cap => execution_capability_label(capability: cap) == "gunbc-claim-runner",
+      cap => gunbc.roadmap_execution_contract.execution_capability_label(capability: cap) == "gunbc-claim-runner",
     )
 }
 
 test fn claim_validation_projects_exact_typed_argv() -> Bool {
-  match validation_operation_command(
+  match gunbc.roadmap_execution_contract.validation_operation_command(
     validation: gunbc.roadmap_execution_contract.GunbcClaimValidation {
       entry: "dag/test/claim/example_test.dag" as std.types.FilePath,
       function: "example_holds" as std.types.NonEmptyStr,
@@ -107,23 +107,23 @@ test fn claim_validation_projects_exact_typed_argv() -> Bool {
 
 // The 'unspecified is a refusal state' claim moved to where the decision lives: roadmap_dispatch_environment_witness_test proves ExecutionContractUnspecified and an empty-validation contract each refuse with their own located reason. Restating it here through the deleted execution_contract_is_specified predicate only re-asserted the coproduct's own shape, and rewriting it as a match of a literal against itself would have been vacuous. What is worth pinning here is the CONSTRUCTOR's output, which nothing else covers.
 test fn claim_contract_declares_exactly_one_claim_validation() -> Bool {
-  match gunbc_claim_execution_contract(
+  match gunbc.roadmap_execution_contract.gunbc_claim_execution_contract(
     entry: "dag/test/claim/example_test.dag" as std.types.FilePath,
     function: "example_holds" as std.types.NonEmptyStr,
   ) {
-    ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities } =>
+    gunbc.roadmap_execution_contract.ExecutionContractUnspecified => false
+    gunbc.roadmap_execution_contract.ExecutionContract { validations, extra_capabilities } =>
       count(validations) == 1
         && count(extra_capabilities) == 0
         && match validations.first() {
           Absent => false
           Present { value: v } =>
             match v {
-              GunbcClaimValidation { entry, function } =>
+              gunbc.roadmap_execution_contract.GunbcClaimValidation { entry, function } =>
                 (entry as String) == "dag/test/claim/example_test.dag"
                   && (function as String) == "example_holds"
-              CargoTestValidation { filter: _ } => false
-              CargoFmtValidation => false
+              gunbc.roadmap_execution_contract.CargoTestValidation { filter: _ } => false
+              gunbc.roadmap_execution_contract.CargoFmtValidation => false
             }
         }
   }

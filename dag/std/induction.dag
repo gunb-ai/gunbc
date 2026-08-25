@@ -38,7 +38,7 @@ fn inductive_field_eq(a: InductiveField, b: InductiveField) -> Bool {
 }
 
 fn inductive_field_to_dimension(field: InductiveField, param: String) -> std.termination.RankingDimension {
-  std.termination.TreeSize { param: param }
+  TreeSize { param: param }
 }
 
 type SubValueRelation
@@ -83,13 +83,13 @@ fn shrink_factor_eq(a: std.computation.ShrinkFactor, b: std.computation.ShrinkFa
     ConstantShrink { steps: sa } =>
       match b {
         ConstantShrink { steps: sb } =>
-          positive_descent_count(sa) == positive_descent_count(sb)
+          std.termination.positive_descent_count(sa) == std.termination.positive_descent_count(sb)
         _ => false
       }
     ProportionalShrink { divisor: da } =>
       match b {
         ProportionalShrink { divisor: db } =>
-          proportional_divisor_to_int(d: da) == proportional_divisor_to_int(d: db)
+          std.termination.proportional_divisor_to_int(d: da) == std.termination.proportional_divisor_to_int(d: db)
         _ => false
       }
   }
@@ -285,15 +285,15 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
 
 fn sub_value_to_call_pattern(relation: SubValueRelation) -> std.computation.CallPattern? {
   match relation {
-    StrictSubValue { field: f, factor: _ }    => Present { value: std.computation.ChildAccessorCall { accessor: f.field_name } }
-    IteratedSubValue { field: f }             => Present { value: std.computation.ChildAccessorCall { accessor: f.field_name } }
+    StrictSubValue { field: f, factor: _ }    => Present { value: ChildAccessorCall { accessor: f.field_name } }
+    IteratedSubValue { field: f }             => Present { value: ChildAccessorCall { accessor: f.field_name } }
     ArithmeticDescent { param: p, factor: f } =>
       match f {
         ConstantShrink { steps: steps } =>
-          Present { value: std.computation.ArithmeticSubtractCall { steps: steps, ring_param: p } }
+          Present { value: ArithmeticSubtractCall { steps: steps, ring_param: p } }
         ProportionalShrink { divisor: d } =>
-          Present { value: std.computation.ArithmeticDivideCall { divisor: d, ring_param: p } }
-        UnitShrink => Present { value: std.computation.ArithmeticSubtractCall { steps: OneStep, ring_param: p } }
+          Present { value: ArithmeticDivideCall { divisor: d, ring_param: p } }
+        UnitShrink => Present { value: ArithmeticSubtractCall { steps: OneStep, ring_param: p } }
       }
     PreservedValue                            => Present { value: SameArgumentCall }
 
@@ -309,21 +309,21 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> std.computation.L
     StrictSubValue { field: f, factor: fac } =>
       Present { value: std.computation.LoweringTarget {
         primitive: Descend,
-        bound: tree_size_bound(param: f.field_name),
+        bound: std.computation.tree_size_bound(param: f.field_name),
         evidence: Strict,
         factor: Present { value: fac }
       }}
     IteratedSubValue { field: f } =>
       Present { value: std.computation.LoweringTarget {
         primitive: Fold,
-        bound: std.computation.CollectionSize { param: f.field_name },
+        bound: CollectionSize { param: f.field_name },
         evidence: Strict,
         factor: none
       }}
     ArithmeticDescent { param: p, factor: fac } =>
       Present { value: std.computation.LoweringTarget {
         primitive: Repeat,
-        bound: std.computation.ArithmeticParam { param: p },
+        bound: ArithmeticParam { param: p },
         evidence: Strict,
         factor: Present { value: fac }
       }}
@@ -401,7 +401,7 @@ fn cost_poly(param: String, degree: Int) -> CostBound {
     if degree == 0 {
       AtomicBound { cost: PolyCost { param: param, exponent: IntegerExpZero } }
     } else {
-      match positive_descent_amount_from_positive_int(k: degree) {
+      match std.termination.positive_descent_amount_from_positive_int(k: degree) {
         Present { value: deg } =>
           AtomicBound { cost: PolyCost { param: param, exponent: IntegerExpPos { degree: deg } } }
         Absent => ErrorBound
@@ -412,7 +412,7 @@ fn cost_poly(param: String, degree: Int) -> CostBound {
 fn cost_root(param: String, k: Int) -> CostBound {
   if k <= 0 { ErrorBound }
   else {
-    match positive_descent_amount_from_positive_int(k: k) {
+    match std.termination.positive_descent_amount_from_positive_int(k: k) {
       Present { value: rw } =>
         AtomicBound { cost: PolyCost { param: param, exponent: FractionExp { numerator: OneStep, root: rw } } }
       Absent => ErrorBound
@@ -444,7 +444,7 @@ type RecurrenceForm {
 fn bounded_int_pow_exponent(k: Int) -> Int? {
   if k < 0 { none }
   else {
-    if k > peano_literal_materialization_cap() { none }
+    if k > std.termination.peano_literal_materialization_cap() { none }
     else { Present { value: k } }
   }
 }
@@ -526,7 +526,7 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
                 match d_ok {
                   0 => cost_log(param: n)
                   _ =>
-                    match positive_descent_amount_from_positive_int(k: d_ok) {
+                    match std.termination.positive_descent_amount_from_positive_int(k: d_ok) {
                       Present { value: deg } =>
                         ProductBound { factors: [PolyCost { param: n, exponent: IntegerExpPos { degree: deg } }, LogCost { param: n }] }
                       Absent => ErrorBound
@@ -534,9 +534,9 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
                 }
               } else {
 
-                match proportional_divisor_from_int_at_least_two(k: b) {
+                match std.termination.proportional_divisor_from_int_at_least_two(k: b) {
                   Present { value: baseW } =>
-                    match positive_descent_amount_from_positive_int(k: a) {
+                    match std.termination.positive_descent_amount_from_positive_int(k: a) {
                       Present { value: argW } =>
                         AtomicBound { cost: PolyCost { param: n, exponent: LogBasedExp { base: baseW, argument: argW } } }
                       Absent => ErrorBound
@@ -578,7 +578,7 @@ fn derive_bound(param: String, branches: Int, factor: std.computation.ShrinkFact
             else { ForeverBound }
 
           ProportionalShrink { divisor: d } =>
-            master_theorem(form: RecurrenceForm { param: param, branches: branches, divisor: proportional_divisor_to_int(d: d), work_exponent: work_exponent })
+            master_theorem(form: RecurrenceForm { param: param, branches: branches, divisor: std.termination.proportional_divisor_to_int(d: d), work_exponent: work_exponent })
         }
     }
   }
@@ -597,19 +597,19 @@ fn linear_scan_bound() -> CostBound {
 }
 
 fn binary_search_bound() -> CostBound {
-  derive_bound(param: "xs", branches: 1, factor: std.computation.ProportionalShrink { divisor: DivideByTwo }, work_exponent: 0)
+  derive_bound(param: "xs", branches: 1, factor: ProportionalShrink { divisor: DivideByTwo }, work_exponent: 0)
 }
 
 fn mergesort_bound() -> CostBound {
-  derive_bound(param: "xs", branches: 2, factor: std.computation.ProportionalShrink { divisor: DivideByTwo }, work_exponent: 1)
+  derive_bound(param: "xs", branches: 2, factor: ProportionalShrink { divisor: DivideByTwo }, work_exponent: 1)
 }
 
 fn karatsuba_bound() -> CostBound {
-  derive_bound(param: "digits", branches: 3, factor: std.computation.ProportionalShrink { divisor: DivideByTwo }, work_exponent: 1)
+  derive_bound(param: "digits", branches: 3, factor: ProportionalShrink { divisor: DivideByTwo }, work_exponent: 1)
 }
 
 fn strassen_bound() -> CostBound {
-  derive_bound(param: "n", branches: 7, factor: std.computation.ProportionalShrink { divisor: DivideByTwo }, work_exponent: 2)
+  derive_bound(param: "n", branches: 7, factor: ProportionalShrink { divisor: DivideByTwo }, work_exponent: 2)
 }
 
 fn trial_division_bound() -> CostBound { cost_sqrt(param: "n") }

@@ -3,7 +3,7 @@ module extdeps.provisioning.ubuntu_install_media
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS"
   }
 }
@@ -78,8 +78,8 @@ fn ubuntu_install_media_mirror_url(
   mirror: UbuntuInstallMediaMirrorRow,
 ) -> std.types.NonEmptyStr {
   let filename = ubuntu_install_media_filename(artifact: artifact)
-  uri_wire(uri: extdeps.uri.Uri {
-    scheme: Https,
+  extdeps.uri.uri_wire(uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https,
     locator: concat(
       concat(
         concat(mirror.locator as String, "/"),
@@ -129,13 +129,13 @@ fn ubuntu_install_media_part_path(install_path: std.types.NonEmptyStr) -> std.ty
 
 data noble_numbat_2404_3_live_server_arm64_sha256sums_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS"
   }
 }
 
 data noble_numbat_2404_3_live_server_arm64: UbuntuInstallMediaArtifactRow = UbuntuInstallMediaArtifactRow {
-  distribution: NobleNumbat2404Lts,
+  distribution: std.os.types.NobleNumbat2404Lts,
   point_release: "24.04.3",
   architecture: Aarch64,
   flavor: UbuntuLiveServer,

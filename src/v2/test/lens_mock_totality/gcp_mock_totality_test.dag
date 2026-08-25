@@ -1,51 +1,52 @@
 module v2.test.lens_mock_totality.gcp_mock_totality
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedGcpMock {
-  tag: v2.std.node.Symbol
+  tag: Symbol
 }
 
 data gcp_red_omit_keys: List<String> = ["gcp.SecretManager.AddVersion"]
 
-fn materialize_gcp_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedGcpMock> {
+fn materialize_gcp_mock(case: PublishedMockCase) -> Outcome<MaterializedGcpMock> {
   if case.operation_key == "gcloud.Auth.Login" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcloud_auth_login })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcloud_auth_login })
   } else if case.operation_key == "gcloud.Auth.ReadADC" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcloud_auth_read_adc })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcloud_auth_read_adc })
   } else if case.operation_key == "oauth2.Google.Refresh" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_oauth2_google_refresh })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_oauth2_google_refresh })
   } else if case.operation_key == "shell.GCloud.AuthPrintAccessToken" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_shell_gcloud_auth_print_access_token })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_shell_gcloud_auth_print_access_token })
   } else if case.operation_key == "gcp.IAM.GenerateAccessToken" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_iam_generate_access_token })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_iam_generate_access_token })
   } else if case.operation_key == "gcp.ResourceManager.GetIamPolicy" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_resource_manager_get_iam_policy })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_resource_manager_get_iam_policy })
   } else if case.operation_key == "gcp.ResourceManager.SetIamPolicy" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_resource_manager_set_iam_policy })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_resource_manager_set_iam_policy })
   } else if case.operation_key == "gcp.SecretManager.AccessVersion" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_secret_manager_access_version })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_secret_manager_access_version })
   } else if case.operation_key == "gcp.SecretManager.CreateSecret" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_secret_manager_create_secret })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_secret_manager_create_secret })
   } else if case.operation_key == "gcp.SecretManager.AddVersion" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_secret_manager_add_version })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_secret_manager_add_version })
   } else if case.operation_key == "gcp.STS.Exchange" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_sts_exchange })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_sts_exchange })
   } else if case.operation_key == "github.OIDC.GetToken" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_github_oidc_get_token })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_github_oidc_get_token })
   } else if case.operation_key == "gcp.Metadata.GetIdentityToken" {
-    outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_metadata_get_identity_token })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcp_metadata_get_identity_token })
   } else {
-    mock_unhandled_rejection()
+    v2.lens.mock_totality.mock_unhandled_rejection()
   }
 }
 
-fn gcp_real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  outcome_accepted_p(outcome: materialize_gcp_mock(case: case))
+fn gcp_real_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.outcome_accepted_p(outcome: materialize_gcp_mock(case: case))
 }
 
-fn gcp_omits_add_version_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  omit_consumer_handles(
+fn gcp_omits_add_version_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.omit_consumer_handles(
     case: case,
     omit_keys: gcp_red_omit_keys,
     total_consumer_handles: gcp_real_consumer_handles
@@ -53,14 +54,14 @@ fn gcp_omits_add_version_consumer_handles(case: std.hermetic_replay.PublishedMoc
 }
 
 test fn gcp_mock_consumer_is_total_holds() -> Bool {
-  mock_totality_green_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_green_holds(
     published: extdeps.cloud.gcp.mock_corpus.gcp_published_mock_corpus,
     consumer_handles: gcp_real_consumer_handles
   )
 }
 
 test fn gcp_mock_omitted_member_is_red_holds() -> Bool {
-  mock_totality_red_on_omission_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_red_on_omission_holds(
     published: extdeps.cloud.gcp.mock_corpus.gcp_published_mock_corpus,
     consumer_handles: gcp_omits_add_version_consumer_handles
   )

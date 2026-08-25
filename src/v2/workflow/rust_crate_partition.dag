@@ -64,7 +64,7 @@ data stage0_unit_v1_artifact: v2.std.compilers.compilation_unit.CompilationUnitI
 data stage0_unit_emit_core: v2.std.compilers.compilation_unit.CompilationUnitId = "stage0-unit-emit-core" as v2.std.compilers.compilation_unit.CompilationUnitId
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch }
 }
 
 type Stage0ModuleDagInterfaceGrounding
@@ -88,7 +88,7 @@ data rust_crate_partition_r4_by_value_type_cycle_note: String = "Rust R4 primary
 
 data stage0_grounding_target_repointed_note: String = "REPOINTED, and the old target was wrong before it was deleted. This debt's dissolution used to name v2.compiler.self_host.frontier compiler_frontier_roster, on the premise that the self-host roster would eventually carry each module's exports and type definitions. It never could: a roster row carried a module path and a self-host disposition and nothing else, so the pointer named an authority that was not going to supply the fact even in principle. The roster is deleted, which is what surfaced the mispointing rather than causing it.
 
-The real dependency is the path-module binding authority, which is where module identity is DERIVED at parse rather than authored — v2.compiler.source_authority module_storage_binding_authority_note states that the hand-authored qualified-module rows project from it, not the other way round. So the interface maps ground when stage0 module ingest supplies real Node-carrier exports through that index."
+The real dependency is the path-module binding authority, which is where module identity is DERIVED at parse rather than authored — source_authority module_storage_binding_authority_note states that the hand-authored qualified-module rows project from it, not the other way round. So the interface maps ground when stage0 module ingest supplies real v2.std.node.Node-carrier exports through that index."
 
 fn stage0_frontier_grounding_target() -> std.decl_ref.DeclarationRef {
   std.decl_ref.DeclarationRef {
@@ -118,15 +118,15 @@ fn stage0_module_dag_interface_grounding_is_debt() -> Bool {
 
 fn stage0_module_dag_exports_map() -> Map<v2.std.compilers.compilation_unit.ModuleId, List<v2.std.node.Node>> {
   stage0_all_partitioned_modules()
-    |> fold(init: empty_map(), f: fn(acc, basename) {
-      map_insert(acc, stage0_module_id(basename: basename), std.algebra.Empty)
+    |> fold(init: v2.std.collection.empty_map(), f: fn(acc, basename) {
+      v2.std.collection.map_insert(acc, stage0_module_id(basename: basename), std.algebra.Empty)
     })
 }
 
 fn stage0_module_dag_type_definitions_map() -> Map<v2.std.compilers.compilation_unit.ModuleId, List<v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow>> {
   stage0_all_partitioned_modules()
-    |> fold(init: empty_map(), f: fn(acc, basename) {
-      map_insert(acc, stage0_module_id(basename: basename), std.algebra.Empty)
+    |> fold(init: v2.std.collection.empty_map(), f: fn(acc, basename) {
+      v2.std.collection.map_insert(acc, stage0_module_id(basename: basename), std.algebra.Empty)
     })
 }
 
@@ -264,7 +264,7 @@ fn stage0_assign_modules_to_unit(
 ) -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   modules
     |> fold(init: assignment, f: fn(acc, basename) {
-      map_insert(acc, stage0_module_id(basename: basename), unit_id)
+      v2.std.collection.map_insert(acc, stage0_module_id(basename: basename), unit_id)
     })
 }
 
@@ -275,7 +275,7 @@ fn stage0_interim_explicit_assignment() -> Map<v2.std.compilers.compilation_unit
         assignment: stage0_assign_modules_to_unit(
           assignment: stage0_assign_modules_to_unit(
             assignment: stage0_assign_modules_to_unit(
-              assignment: empty_map(),
+              assignment: v2.std.collection.empty_map(),
               modules: stage0_runtime_modules(),
               unit_id: stage0_unit_runtime
             ),
@@ -305,7 +305,7 @@ fn stage0_partition_parameter() -> PartitionParameter {
 }
 
 fn stage0_partition_provenance() -> v2.std.compilers.compilation_unit.PartitionProvenance {
-  partition_provenance_hand_explicit()
+  v2.std.compilers.compilation_unit.partition_provenance_hand_explicit()
 }
 
 fn stage0_module_dag_edge(from: String, to: String) -> v2.std.compilers.compilation_unit.ModuleDagEdge {
@@ -409,10 +409,10 @@ fn stage0_partition_receipt_outcome() -> Stage0PartitionReceiptOutcome {
     module_dag: dag
   ) {
     ResolvePartitionOk { assignment: assignment } =>
-      match partition_fold_outcome(module_dag: dag, assignment: assignment) {
-        PartitionFoldOk { units: units } =>
+      match v2.std.compilers.compilation_unit.partition_fold_outcome(module_dag: dag, assignment: assignment) {
+        v2.std.compilers.compilation_unit.PartitionFoldOk { units: units } =>
           Stage0PartitionReceiptOk { units: units }
-        PartitionFoldRefused { cause: cause } =>
+        v2.std.compilers.compilation_unit.PartitionFoldRefused { cause: cause } =>
           Stage0PartitionReceiptFoldRefused { cause: cause }
       }
     ResolvePartitionRefused { cause: cause } =>
@@ -430,7 +430,7 @@ fn module_dag_reaches(
   } else {
     edges
       |> filter(edge => edge.from == from)
-      |> any(edge => module_dag_reaches(edges: edges, from: edge.to, to: to))
+      |> v2.std.algebra.any(edge => module_dag_reaches(edges: edges, from: edge.to, to: to))
   }
 }
 
@@ -448,21 +448,21 @@ fn assignment_has_scc_split(
   module_dag: v2.std.compilers.compilation_unit.ModuleDag,
   assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>
 ) -> Bool {
-  module_dag.modules |> any(left =>
-    module_dag.modules |> any(right => {
+  module_dag.modules |> v2.std.algebra.any(left =>
+    module_dag.modules |> v2.std.algebra.any(right => {
       if !module_pair_in_same_scc(edges: module_dag.edges, left: left, right: right) {
         false
       } else {
         match v2.std.collection.map_get(assignment, left) {
-          Accepted { value: v2.std.optional.Present { value: left_unit }, diagnostics: _ } =>
+          v2.std.diagnostic.Accepted { value: v2.std.optional.Present { value: left_unit }, diagnostics: _ } =>
             match v2.std.collection.map_get(assignment, right) {
-              Accepted { value: v2.std.optional.Present { value: right_unit }, diagnostics: _ } =>
+              v2.std.diagnostic.Accepted { value: v2.std.optional.Present { value: right_unit }, diagnostics: _ } =>
                 left_unit != right_unit
-              Rejected { diagnostics: _ } => false
-              Accepted { value: v2.std.optional.Absent, diagnostics: _ } => false
+              v2.std.diagnostic.Rejected { diagnostics: _ } => false
+              v2.std.diagnostic.Accepted { value: v2.std.optional.Absent, diagnostics: _ } => false
             }
-          Rejected { diagnostics: _ } => false
-          Accepted { value: v2.std.optional.Absent, diagnostics: _ } => false
+          v2.std.diagnostic.Rejected { diagnostics: _ } => false
+          v2.std.diagnostic.Accepted { value: v2.std.optional.Absent, diagnostics: _ } => false
         }
       }
     })
@@ -496,13 +496,13 @@ fn validate_partition_r4(
       cause: v2.std.compilers.compilation_unit.UnitGraphCycle { detail: "Rust R4: compilation-unit dependency graph is cyclic" }
     }
   } else {
-    PartitionR4Valid
+    v2.std.compilers.compilation_unit.PartitionR4Valid
   }
 }
 
 fn stage0_single_crate_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   stage0_assign_modules_to_unit(
-    assignment: empty_map(),
+    assignment: v2.std.collection.empty_map(),
     modules: stage0_all_partitioned_modules(),
     unit_id: stage0_unit_runtime
   )
@@ -510,7 +510,7 @@ fn stage0_single_crate_assignment() -> Map<v2.std.compilers.compilation_unit.Mod
 
 fn stage0_single_crate_fold_outcome() -> v2.std.compilers.compilation_unit.PartitionFoldOutcome {
   let dag = stage0_module_dag()
-  partition_fold_outcome(
+  v2.std.compilers.compilation_unit.partition_fold_outcome(
     module_dag: dag,
     assignment: stage0_single_crate_assignment()
   )
@@ -525,7 +525,7 @@ fn stage0_partition_member_coverage_consistent(
   right: Stage0PartitionReceiptOutcome
 ) -> Bool {
   match left {
-    PartitionFoldOk { units: left_units } =>
+    v2.std.compilers.compilation_unit.PartitionFoldOk { units: left_units } =>
       match right {
         Stage0PartitionReceiptOk { units: right_units } => {
           let left_count = compilation_unit_member_count(units: left_units)
@@ -535,7 +535,7 @@ fn stage0_partition_member_coverage_consistent(
         Stage0PartitionReceiptResolveRefused { cause: _ } => false
         Stage0PartitionReceiptFoldRefused { cause: _ } => false
       }
-    PartitionFoldRefused { cause: _ } => false
+    v2.std.compilers.compilation_unit.PartitionFoldRefused { cause: _ } => false
   }
 }
 
@@ -628,7 +628,7 @@ fn stage0_r3_emit_shell_crate_row() -> Stage0PartitionCrateRow {
   }
 }
 
-fn stage0_partition_crate_rows() -> List<v2.workflow.rust_crate_partition.Stage0PartitionCrateRow> {
+fn stage0_partition_crate_rows() -> List<Stage0PartitionCrateRow> {
   stage0_module_bearing_crate_rows()
     |> concat([stage0_r3_emit_shell_crate_row()])
 }
@@ -647,12 +647,12 @@ fn stage0_module_bearing_unit_count() -> Int {
 
 fn stage0_module_owner_resolved_in_module_bearing_rows(module_basename: String) -> Bool {
   stage0_module_bearing_crate_rows()
-    |> any(row => row.modules |> any(m => m == module_basename))
+    |> v2.std.algebra.any(row => row.modules |> v2.std.algebra.any(m => m == module_basename))
 }
 
 fn stage0_package_resolved_in_partition_rows(package_name: String) -> Bool {
   stage0_partition_crate_rows()
-    |> any(row => row.package_name == package_name)
+    |> v2.std.algebra.any(row => row.package_name == package_name)
 }
 
 fn stage0_partition_row_lookups_resolved() -> Bool {
@@ -677,13 +677,13 @@ fn stage0_partition_r4_valid() -> Bool {
     module_dag: dag
   ) {
     ResolvePartitionOk { assignment: assignment } =>
-      match partition_fold_outcome(module_dag: dag, assignment: assignment) {
-        PartitionFoldOk { units: units } =>
+      match v2.std.compilers.compilation_unit.partition_fold_outcome(module_dag: dag, assignment: assignment) {
+        v2.std.compilers.compilation_unit.PartitionFoldOk { units: units } =>
           match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
-            PartitionR4Valid => true
-            PartitionR4Refused { cause: _ } => false
+            v2.std.compilers.compilation_unit.PartitionR4Valid => true
+            v2.std.compilers.compilation_unit.PartitionR4Refused { cause: _ } => false
           }
-        PartitionFoldRefused { cause: _ } => false
+        v2.std.compilers.compilation_unit.PartitionFoldRefused { cause: _ } => false
       }
     ResolvePartitionRefused { cause: _ } => false
   }

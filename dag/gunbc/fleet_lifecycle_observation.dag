@@ -31,13 +31,13 @@ type ProcessReceipt {
 
 fn process_receipt(label: std.types.NonEmptyStr, exit_status: Int) -> ProcessReceipt {
   ProcessReceipt {
-    attempt: content_hash_atom(value: label),
+    attempt: std.content_hash.content_hash_atom(value: label),
     exit_status: exit_status,
   }
 }
 
 fn process_receipt_attempt_eq(left: ProcessReceipt, right: ProcessReceipt) -> Bool {
-  content_hash_eq_structural(left: left.attempt, right: right.attempt)
+  std.content_hash.content_hash_eq_structural(left: left.attempt, right: right.attempt)
 }
 
 // A STABLE identity of the physical device, for the cases where two observations must be proven to
@@ -157,12 +157,12 @@ fn select_unique_observation(
   candidates: List<FleetLifecycleObservation>,
 ) -> ObservationSelection {
   if count(candidates) == 0 {
-    gunbc.fleet_lifecycle_observation.ObservationMissing { subject: subject }
+    ObservationMissing { subject: subject }
   } else {
     if count(candidates) == 1 {
       fold(
         candidates,
-        init: gunbc.fleet_lifecycle_observation.ObservationMissing { subject: subject },
+        init: ObservationMissing { subject: subject },
         f: (_, o) => ObservationUnique { observation: o },
       )
     } else {

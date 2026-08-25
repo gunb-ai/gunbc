@@ -3,7 +3,7 @@ module extdeps.gpu.machine_shape
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities"
   }
 }
@@ -81,7 +81,7 @@ fn gpu_shape_from_catalog(input: ShapeFromCatalogInput) -> std.machine_shape.Mac
           domains: [
             std.machine_shape.ExecutionDomain {
               id: domain
-              execution: execution_shape_independent_lanes(lane_count: row.execution_lane_count)
+              execution: std.machine_shape.execution_shape_independent_lanes(lane_count: row.execution_lane_count)
               memory: memory_shape_from_gpu_catalog(
                 register_level: register_level,
                 shared_level: shared_level,

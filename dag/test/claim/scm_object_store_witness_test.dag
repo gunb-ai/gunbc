@@ -9,6 +9,9 @@ module test.claim.scm_object_store_witness
 // would pass round_trip_holds, and a refusal that fired unconditionally would pass the two refusal
 // claims. The controls are what make those two impossible.
 
+
+
+
 fn atom_node(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } }, children: [])
 }
@@ -108,8 +111,8 @@ type Put {
 
 fn put_node(store: gunbc.scm.object_store.ObjectStore, n: v2.std.node.Node) -> Put {
   match gunbc.scm.object_store.store_node(store: store, n: n) {
-    Stored { store: s, identity: i } => Put { store: s, identity: i, collided: false }
-    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+    gunbc.scm.object_store.Stored { store: s, identity: i } => Put { store: s, identity: i, collided: false }
+    gunbc.scm.object_store.LocatorCollision { identity: i, existing: _, incoming: _ } =>
       Put { store: gunbc.scm.object_store.empty_store(), identity: i, collided: true }
   }
 }
@@ -118,10 +121,10 @@ fn put_node(store: gunbc.scm.object_store.ObjectStore, n: v2.std.node.Node) -> P
 // located leaves the caller to rediscover what was missing, and the PR claims located refusal.
 fn refusal_names(store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm.checkout.Commit, expected: gunbc.scm.object_store.ObjectId) -> Bool {
   match gunbc.scm.checkout.checkout(store: store, commit: commit) {
-    CheckedOut { program: _ } => false
-    CheckoutRefused { cause: cause } =>
+    gunbc.scm.checkout.CheckedOut { program: _ } => false
+    gunbc.scm.checkout.CheckoutRefused { cause: cause } =>
       match cause {
-        MissingObject { identity: identity } => gunbc.scm.object_store.object_id_eq(left: identity, right: expected)
+        gunbc.scm.checkout.MissingObject { identity: identity } => gunbc.scm.object_store.object_id_eq(left: identity, right: expected)
       }
   }
 }
@@ -132,15 +135,15 @@ fn refusal_names(store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm.ch
 // substrate's identity preserves either.
 fn checkout_matches(store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm.checkout.Commit, expected: v2.std.node.Node) -> Bool {
   match gunbc.scm.checkout.checkout(store: store, commit: commit) {
-    CheckoutRefused { cause: _ } => false
-    CheckedOut { program: got } => structurally_same(left: got, right: expected)
+    gunbc.scm.checkout.CheckoutRefused { cause: _ } => false
+    gunbc.scm.checkout.CheckedOut { program: got } => structurally_same(left: got, right: expected)
   }
 }
 
 fn checkout_refuses(store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm.checkout.Commit) -> Bool {
   match gunbc.scm.checkout.checkout(store: store, commit: commit) {
-    CheckoutRefused { cause: _ } => true
-    CheckedOut { program: _ } => false
+    gunbc.scm.checkout.CheckoutRefused { cause: _ } => true
+    gunbc.scm.checkout.CheckedOut { program: _ } => false
   }
 }
 
@@ -150,9 +153,9 @@ fn checkout_refuses(store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm
 // fixture can be incomplete but cannot be dishonest.
 fn store_of_root_only(full: gunbc.scm.object_store.ObjectStore, root: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.ObjectStore {
   match gunbc.scm.object_store.copy_object(from: full, to: gunbc.scm.object_store.empty_store(), identity: root) {
-    Copied { store: store, identity: _ } => store
-    CopySourceAbsent { identity: _ } => gunbc.scm.object_store.empty_store()
-    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => gunbc.scm.object_store.empty_store()
+    gunbc.scm.object_store.Copied { store: store, identity: _ } => store
+    gunbc.scm.object_store.CopySourceAbsent { identity: _ } => gunbc.scm.object_store.empty_store()
+    gunbc.scm.object_store.CopyLocatorCollision { identity: _, existing: _, incoming: _ } => gunbc.scm.object_store.empty_store()
   }
 }
 
@@ -315,11 +318,11 @@ test fn checkout_is_independent_of_which_order_was_written_first() -> Bool {
   let a_then_b = put_node(store: put_node(store: gunbc.scm.object_store.empty_store(), n: alpha_first()).store, n: beta_first())
   let b_then_a = put_node(store: put_node(store: gunbc.scm.object_store.empty_store(), n: beta_first()).store, n: alpha_first())
   match gunbc.scm.checkout.checkout(store: a_then_b.store, commit: gunbc.scm.checkout.commit_of_root(root: a_then_b.identity)) {
-    CheckoutRefused { cause: _ } => false
-    CheckedOut { program: first } =>
+    gunbc.scm.checkout.CheckoutRefused { cause: _ } => false
+    gunbc.scm.checkout.CheckedOut { program: first } =>
       match gunbc.scm.checkout.checkout(store: b_then_a.store, commit: gunbc.scm.checkout.commit_of_root(root: b_then_a.identity)) {
-        CheckoutRefused { cause: _ } => false
-        CheckedOut { program: second } => structurally_same(left: first, right: second)
+        gunbc.scm.checkout.CheckoutRefused { cause: _ } => false
+        gunbc.scm.checkout.CheckedOut { program: second } => structurally_same(left: first, right: second)
       }
   }
 }
@@ -427,9 +430,9 @@ test fn the_oracle_distinguishes_node_kinds() -> Bool {
 test fn grafting_an_absent_object_refuses() -> Bool {
   let stored = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   match gunbc.scm.object_store.copy_object(from: gunbc.scm.object_store.empty_store(), to: gunbc.scm.object_store.empty_store(), identity: stored.identity) {
-    CopySourceAbsent { identity: identity } => gunbc.scm.object_store.object_id_eq(left: identity, right: stored.identity)
-    Copied { store: _, identity: _ } => false
-    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => false
+    gunbc.scm.object_store.CopySourceAbsent { identity: identity } => gunbc.scm.object_store.object_id_eq(left: identity, right: stored.identity)
+    gunbc.scm.object_store.Copied { store: _, identity: _ } => false
+    gunbc.scm.object_store.CopyLocatorCollision { identity: _, existing: _, incoming: _ } => false
   }
 }
 
@@ -438,9 +441,9 @@ test fn grafting_an_absent_object_refuses() -> Bool {
 test fn grafting_a_present_object_copies_it() -> Bool {
   let stored = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   match gunbc.scm.object_store.copy_object(from: stored.store, to: gunbc.scm.object_store.empty_store(), identity: stored.identity) {
-    Copied { store: store, identity: _ } => gunbc.scm.object_store.store_contains(store: store, identity: stored.identity)
-    CopySourceAbsent { identity: _ } => false
-    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => false
+    gunbc.scm.object_store.Copied { store: store, identity: _ } => gunbc.scm.object_store.store_contains(store: store, identity: stored.identity)
+    gunbc.scm.object_store.CopySourceAbsent { identity: _ } => false
+    gunbc.scm.object_store.CopyLocatorCollision { identity: _, existing: _, incoming: _ } => false
   }
 }
 
@@ -507,7 +510,7 @@ test fn the_recursive_oracle_still_distinguishes_nested_content() -> Bool {
 // Within its boundary it is discriminating by execution: reversing the child fold in the STORE path
 // only -- so the two paths genuinely diverge -- turns it red (DIVERGE_PROBE 1, "claim red").
 fn stored_identity_matches_content_hash(n: v2.std.node.Node) -> Bool {
-  object_id_eq(left: put_node(store: empty_store(), n: n).identity, right: content_hash(n: n))
+  gunbc.scm.object_store.object_id_eq(left: put_node(store: gunbc.scm.object_store.empty_store(), n: n).identity, right: v2.std.node.content_hash(n: n))
 }
 
 test fn store_node_identity_commutes_with_content_hash() -> Bool {

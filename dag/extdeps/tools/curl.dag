@@ -1,32 +1,33 @@
 module extdeps.tools.curl
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "curl.se/docs/manpage.html"
   }
 }
 
-data curl_pinned_version: VersionConstraint = ">= 7.68"
+data curl_pinned_version: extdeps.version.VersionConstraint = ">= 7.68"
 
-data curl_cli_tool: CliTool = CliTool {
+data curl_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "curl",
   min_version: Present { value: curl_pinned_version },
-  installable_via: [SourceApt { package: package_curl }],
+  installable_via: [extdeps.tools.SourceApt { package: extdeps.apt.package_curl }],
 }
 
-data curl_localhost_connect_timeout: Second = second(count: 2)
+data curl_localhost_connect_timeout: std.measure.Second = std.measure.second(count: 2)
 
-data curl_localhost_max_time: Second = second(count: 5)
+data curl_localhost_max_time: std.measure.Second = std.measure.second(count: 5)
 
-fn curl_bounded_get_flags(connect_timeout: Second, max_time: Second) -> String {
+fn curl_bounded_get_flags(connect_timeout: std.measure.Second, max_time: std.measure.Second) -> String {
   concat(
-    concat("--connect-timeout ", to_string(second_count(s: connect_timeout))),
-    concat(" --max-time ", to_string(second_count(s: max_time)))
+    concat("--connect-timeout ", to_string(std.measure.second_count(s: connect_timeout))),
+    concat(" --max-time ", to_string(std.measure.second_count(s: max_time)))
   )
 }
 
-fn curl_bounded_localhost_get_argv_prefix(connect_timeout: Second, max_time: Second) -> String {
+fn curl_bounded_localhost_get_argv_prefix(connect_timeout: std.measure.Second, max_time: std.measure.Second) -> String {
   concat("curl -sf ", curl_bounded_get_flags(connect_timeout: connect_timeout, max_time: max_time))
 }
 
@@ -46,8 +47,8 @@ fn curl_localhost_bounded_get_argv_prefix() -> String {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data curl_program: NonEmptyStr = "curl"
+data curl_program: std.types.NonEmptyStr = "curl"
 
-fn curl_download_command(url: String, destination: String) -> ArgvCommand {
-  argv_command(program: curl_program, arguments: ["-fsL", "-o", destination, url])
+fn curl_download_command(url: String, destination: String) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(program: curl_program, arguments: ["-fsL", "-o", destination, url])
 }

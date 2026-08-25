@@ -1,8 +1,9 @@
 module extdeps.languages.bash.invocation
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.gnu.org/software/bash/manual/bash.html"
   }
 }
@@ -20,13 +21,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data bash_program_name: NonEmptyStr = "bash"
+data bash_program_name: std.types.NonEmptyStr = "bash"
 
 // Same residual-class standing as the POSIX sibling: the script TEXT is modeling debt owned by the
 // shell -> dag lane, and this builder is not a route for spelling a program's argv inside a string.
 // One call site at the seal: gunbc.fleet_converge_plan_cli's locked apply script.
-fn bash_program_command(script: String) -> ArgvCommand {
-  argv_command(program: bash_program_name, arguments: ["-c", script])
+fn bash_program_command(script: String) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(program: bash_program_name, arguments: ["-c", script])
 }
 
 // A SCRIPT FILE IS NOT A SCRIPT STRING. `bash <path>` reads the program from a file, so nothing

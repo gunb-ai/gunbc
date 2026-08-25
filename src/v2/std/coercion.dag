@@ -34,15 +34,15 @@ fn coercion_not_realized_diagnostic(
 ) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: discriminant(v: kind),
-    at: node_locus(node: source.node),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: source.node),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 fn declared_candidates_for_algebra(
   target_model: v2.std.node.Node,
   algebra_instance: v2.std.node.Node,
 ) -> v2.std.diagnostic.Outcome<CoercionCandidateSet> {
-  outcome_rejected(
+  v2.std.diagnostic.outcome_rejected(
     coercion_not_realized_diagnostic(
       source: v2.std.constraints.CanonicalGrounding {
         node: algebra_instance,
@@ -68,15 +68,15 @@ fn declared_inhabitant_candidates(inhabitants_root: v2.std.node.Node) -> List<v2
 fn coercion_candidate_set_not_closed_diagnostic(inhabitants_root: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^coercion_mismatch_candidate_set_not_closed,
-    at: node_locus(node: inhabitants_root),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: inhabitants_root),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 fn coercion_candidate_set_from_declared_inhabitants(
   inhabitants_root: v2.std.node.Node,
   closedness_property: v2.std.node.Symbol,
 ) -> v2.std.diagnostic.Outcome<CoercionCandidateSet> {
-  if well_formed(n: inhabitants_root) {
+  if v2.std.node.well_formed(n: inhabitants_root) {
     v2.std.diagnostic.Accepted {
       value: CoercionCandidateSet {
         set: v2.std.find_witness.CandidateSet {
@@ -90,7 +90,7 @@ fn coercion_candidate_set_from_declared_inhabitants(
       diagnostics: v2.std.diagnostic.None
     }
   } else {
-    outcome_rejected(
+    v2.std.diagnostic.outcome_rejected(
       coercion_candidate_set_not_closed_diagnostic(inhabitants_root: inhabitants_root)
     )
   }
@@ -102,7 +102,7 @@ fn coercion_homomorphism_evidence_for_node(
   fw: v2.std.find_witness.FindWitnessResult,
 ) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^coercion_homomorphism_evidence_source }, target: source },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^coercion_homomorphism_evidence_candidate }, target: fw.candidate },
@@ -111,7 +111,7 @@ fn coercion_homomorphism_evidence_for_node(
         target: fw.witness.evidence
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -119,19 +119,19 @@ fn coercion_identity_from_target_model(
   source: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel,
 ) -> v2.std.diagnostic.Outcome<CoercionResult> {
-  bind_outcome(
-    o: target_model_declared_inhabitants(target: target),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.target_model_declared_inhabitants(target: target),
     f: fn(inhabitants_root) {
-      bind_outcome(
-        o: target_model_selection_priority(target: target),
+      v2.std.diagnostic.bind_outcome(
+        o: v2.std.compilers.target_model.target_model_selection_priority(target: target),
         f: fn(priority) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: coercion_candidate_set_from_declared_inhabitants(
               inhabitants_root: inhabitants_root,
               closedness_property: ^target_model_edge_declared_inhabitants
             ),
             f: fn(candidates) {
-              match find_witness(
+              match v2.std.find_witness.find_witness(
                 source_facts: source,
                 candidates: candidates.set,
                 predicate: v2.std.find_witness.PreservationPredicate {
@@ -142,7 +142,7 @@ fn coercion_identity_from_target_model(
                   policy: v2.std.find_witness.TargetDeclaredPriority { priority: priority }
                 }
               ) {
-                Accepted { value: fw, diagnostics: fw_d } =>
+                v2.std.diagnostic.Accepted { value: fw, diagnostics: fw_d } =>
                   v2.std.diagnostic.Accepted {
                     value: CoercionResult {
                       target: fw.candidate,
@@ -159,7 +159,7 @@ fn coercion_identity_from_target_model(
                     },
                     diagnostics: fw_d
                   }
-                Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
               }
             }
           )
@@ -183,8 +183,8 @@ fn coercion_find_witness_reason_unmapped_diagnostic(
 ) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^coercion_find_witness_reason_unmapped,
-    at: node_locus(node: source.node),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: source.node),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 fn find_witness_rejection_kind_from_reason(
@@ -200,7 +200,7 @@ fn find_witness_rejection_kind_from_reason(
   } else if reason == ^find_witness_reason_invalid_witness {
     v2.std.diagnostic.Accepted { value: FindWitnessInvalidWitness, diagnostics: v2.std.diagnostic.None }
   } else {
-    outcome_rejected(
+    v2.std.diagnostic.outcome_rejected(
       coercion_find_witness_reason_unmapped_diagnostic(source: source)
     )
   }
@@ -223,23 +223,23 @@ fn coercion_wrap_find_witness_rejection(
     source: source,
     reason: upstream.head.reason
   ) {
-    Accepted { value: fw_kind, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: fw_kind, diagnostics: _ } =>
       v2.std.diagnostic.Accepted {
         value: v2.std.diagnostic.NonEmptyDiagnostics {
           head: coercion_not_realized_diagnostic(
             source: source,
             kind: coercion_mismatch_kind_for_find_witness_rejection_kind(kind: fw_kind)
           ),
-          tail: list_append(
-            left: list_snoc_item(xs: std.algebra.Empty, item: upstream.head),
+          tail: v2.std.algebra.list_append(
+            left: v2.std.algebra.list_snoc_item(xs: std.algebra.Empty, item: upstream.head),
             right: upstream.tail
           )
         },
         diagnostics: v2.std.diagnostic.None
       }
-    Rejected { diagnostics: coerce_r } =>
+    v2.std.diagnostic.Rejected { diagnostics: coerce_r } =>
       v2.std.diagnostic.Rejected {
-        diagnostics: non_empty_diagnostics_append(a: upstream, b: coerce_r)
+        diagnostics: v2.std.diagnostic.non_empty_diagnostics_append(a: upstream, b: coerce_r)
       }
   }
 }
@@ -252,8 +252,8 @@ fn coercion_wrap_find_witness_rejection_with_refinement_algebra(
     v2.std.diagnostic.Accepted {
       value: v2.std.diagnostic.NonEmptyDiagnostics {
         head: coercion_not_realized_diagnostic(source: source, kind: WouldLoseInformation),
-        tail: list_append(
-          left: list_snoc_item(xs: std.algebra.Empty, item: upstream.head),
+        tail: v2.std.algebra.list_append(
+          left: v2.std.algebra.list_snoc_item(xs: std.algebra.Empty, item: upstream.head),
           right: upstream.tail
         )
       },
@@ -274,7 +274,7 @@ fn coercion_fold_exact_structural(
   candidates: CoercionCandidateSet,
   policy: v2.std.find_witness.TargetSelectionPolicy,
 ) -> v2.std.diagnostic.Outcome<CoercionResult> {
-  match find_witness(
+  match v2.std.find_witness.find_witness(
     source_facts: source.node,
     candidates: candidates.set,
     predicate: v2.std.find_witness.PreservationPredicate {
@@ -283,7 +283,7 @@ fn coercion_fold_exact_structural(
     },
     multiplicity_policy: v2.std.find_witness.TargetSelection { policy: policy }
   ) {
-    Accepted { value: fw, diagnostics: fw_d } =>
+    v2.std.diagnostic.Accepted { value: fw, diagnostics: fw_d } =>
       v2.std.diagnostic.Accepted {
         value: CoercionResult {
           target: fw.candidate,
@@ -297,11 +297,11 @@ fn coercion_fold_exact_structural(
         },
         diagnostics: fw_d
       }
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       match coercion_wrap_find_witness_rejection(source: source, upstream: r) {
-        Accepted { value: wrapped, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: wrapped, diagnostics: _ } =>
           v2.std.diagnostic.Rejected { diagnostics: wrapped }
-        Rejected { diagnostics: wrap_r } => v2.std.diagnostic.Rejected { diagnostics: wrap_r }
+        v2.std.diagnostic.Rejected { diagnostics: wrap_r } => v2.std.diagnostic.Rejected { diagnostics: wrap_r }
       }
   }
 }
@@ -322,13 +322,13 @@ fn coercion_fold_refinement_widening(
   policy: v2.std.find_witness.TargetSelectionPolicy,
   predicate: v2.std.find_witness.PreservationPredicate,
 ) -> v2.std.diagnostic.Outcome<CoercionResult> {
-  match find_witness(
+  match v2.std.find_witness.find_witness(
     source_facts: source.node,
     candidates: candidates.set,
     predicate: predicate,
     multiplicity_policy: v2.std.find_witness.TargetSelection { policy: policy }
   ) {
-    Accepted { value: fw, diagnostics: fw_d } =>
+    v2.std.diagnostic.Accepted { value: fw, diagnostics: fw_d } =>
       v2.std.diagnostic.Accepted {
         value: CoercionResult {
           target: fw.candidate,
@@ -342,15 +342,15 @@ fn coercion_fold_refinement_widening(
         },
         diagnostics: fw_d
       }
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       match coercion_wrap_find_witness_rejection_with_refinement_algebra(
         source: source,
         upstream: r,
         refinement_algebra: predicate.algebra
       ) {
-        Accepted { value: wrapped, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: wrapped, diagnostics: _ } =>
           v2.std.diagnostic.Rejected { diagnostics: wrapped }
-        Rejected { diagnostics: wrap_r } => v2.std.diagnostic.Rejected { diagnostics: wrap_r }
+        v2.std.diagnostic.Rejected { diagnostics: wrap_r } => v2.std.diagnostic.Rejected { diagnostics: wrap_r }
       }
   }
 }

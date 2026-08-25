@@ -4,67 +4,67 @@ module test.claim.ollama_model_resolution_witness
 // The join that makes the repin real rather than declared: desired state's artifact identity IS the
 // resolution's resolved identity, not a second copy of the same hex that could drift from it.
 test fn desired_model_identity_is_the_resolved_identity() -> Bool {
-  match compare_content_hash(
-    left: spark_serving_desired_model_artifact().identity,
-    right: gpt_oss_20b_resolution().resolved_identity,
+  match std.content_hash.compare_content_hash(
+    left: gunbc.spark.serving_desired.spark_serving_desired_model_artifact().identity,
+    right: gunbc.ollama_model_resolution.gpt_oss_20b_resolution().resolved_identity,
   ) {
-    ContentHashEqual => true
-    ContentHashDifferent => false
-    ContentHashCrossFamilyIncomparable => false
+    std.content_hash.ContentHashEqual => true
+    std.content_hash.ContentHashDifferent => false
+    std.content_hash.ContentHashCrossFamilyIncomparable => false
   }
 }
 
 // The discriminating negative: the superseded 2026-08-12 identity is a DIFFERENT identity, so the
 // claim above is not passing because every content hash compares equal.
 test fn the_superseded_identity_is_not_the_desired_one() -> Bool {
-  match compare_content_hash(
-    left: spark_serving_desired_model_artifact().identity,
-    right: as_content_hash_cryptographic(digest: gpt_oss_20b_manifest_digest_2026_08_12),
+  match std.content_hash.compare_content_hash(
+    left: gunbc.spark.serving_desired.spark_serving_desired_model_artifact().identity,
+    right: std.content_hash.as_content_hash_cryptographic(digest: gunbc.ollama_model_resolution.gpt_oss_20b_manifest_digest_2026_08_12),
   ) {
-    ContentHashDifferent => true
-    ContentHashEqual => false
-    ContentHashCrossFamilyIncomparable => false
+    std.content_hash.ContentHashDifferent => true
+    std.content_hash.ContentHashEqual => false
+    std.content_hash.ContentHashCrossFamilyIncomparable => false
   }
 }
 
 // Three readings: the registry selection plus two independent srv6 confirmations. The count is the
 // cheapest thing that reds if a future edit drops a confirmation into prose.
 test fn the_resolution_carries_three_evidence_readings() -> Bool {
-  gpt_oss_20b_resolution_evidence_count() == 3
-    && length(tracked_reference_resolution_evidence(resolution: gpt_oss_20b_resolution())) == 3
+  gunbc.ollama_model_resolution.gpt_oss_20b_resolution_evidence_count() == 3
+    && length(extdeps.pin.tracked_reference_resolution_evidence(resolution: gunbc.ollama_model_resolution.gpt_oss_20b_resolution())) == 3
 }
 
 // The registry is the SELECTION authority and therefore the required first evidence; the host
 // readings confirm. A resolution whose primary evidence was a host reading would be circular -- it
 // would prove srv6 holds what srv6 holds.
 test fn the_primary_evidence_is_the_registry_not_a_host() -> Bool {
-  string_contains(gpt_oss_20b_resolution().first_evidence.authority as String, "registry.ollama.ai")
-    && !string_contains(gpt_oss_20b_resolution().first_evidence.authority as String, "srv6")
+  string_contains(gunbc.ollama_model_resolution.gpt_oss_20b_resolution().first_evidence.authority as String, "registry.ollama.ai")
+    && !string_contains(gunbc.ollama_model_resolution.gpt_oss_20b_resolution().first_evidence.authority as String, "srv6")
 }
 
 // Every reading agrees with the resolved identity. A resolution recording evidence that disagrees
 // with what it resolved to would be worse than none, because the disagreement would read as support.
 test fn every_reading_agrees_with_the_resolved_identity() -> Bool {
-  (gpt_oss_20b_resolution().first_evidence.observed_identity.hex as String)
+  (gunbc.ollama_model_resolution.gpt_oss_20b_resolution().first_evidence.observed_identity.hex as String)
       == (gpt_oss_20b_manifest_digest_2026_08_19.hex as String)
     && length(filter(
-      gpt_oss_20b_resolution().further_evidence,
+      gunbc.ollama_model_resolution.gpt_oss_20b_resolution().further_evidence,
       r => (r.observed_identity.hex as String) == (gpt_oss_20b_manifest_digest_2026_08_19.hex as String),
     )) == 2
 }
 
 // The wire carries the account, not only the answer: reference, identity, when, and on what.
 test fn the_resolution_wire_carries_reference_identity_and_evidence() -> Bool {
-  string_contains(gpt_oss_20b_resolution_wire(), "gpt-oss:20b")
-    && string_contains(gpt_oss_20b_resolution_wire(), "17052f91a42e9793")
-    && string_contains(gpt_oss_20b_resolution_wire(), "2026-08-19")
-    && string_contains(gpt_oss_20b_resolution_wire(), "registry.ollama.ai")
+  string_contains(gunbc.ollama_model_resolution.gpt_oss_20b_resolution_wire(), "gpt-oss:20b")
+    && string_contains(gunbc.ollama_model_resolution.gpt_oss_20b_resolution_wire(), "17052f91a42e9793")
+    && string_contains(gunbc.ollama_model_resolution.gpt_oss_20b_resolution_wire(), "2026-08-19")
+    && string_contains(gunbc.ollama_model_resolution.gpt_oss_20b_resolution_wire(), "registry.ollama.ai")
 }
 
 // Provenance survives the new minting door: the artifact is still a pulled stock artifact carrying
 // its upstream reference as a LABEL, which is what distinguishes it from a tuned one.
 test fn the_resolved_artifact_is_still_stock_with_its_reference_as_provenance() -> Bool {
-  string_contains(model_artifact_provenance_label(artifact: spark_serving_desired_model_artifact()), "pulled")
-    && string_contains(model_artifact_provenance_label(artifact: spark_serving_desired_model_artifact()), "gpt-oss:20b")
-    && (spark_serving_desired_model_artifact().serving_label as String) == "gpt-oss:20b"
+  string_contains(gunbc.model_artifact.model_artifact_provenance_label(artifact: gunbc.spark.serving_desired.spark_serving_desired_model_artifact()), "pulled")
+    && string_contains(gunbc.model_artifact.model_artifact_provenance_label(artifact: gunbc.spark.serving_desired.spark_serving_desired_model_artifact()), "gpt-oss:20b")
+    && (gunbc.spark.serving_desired.spark_serving_desired_model_artifact().serving_label as String) == "gpt-oss:20b"
 }

@@ -1,13 +1,14 @@
 module extdeps.languages.rust.types
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "doc.rust-lang.org/reference/types.html"
   }
 }
 
-data rust_type_checkpoints: List<TypeCheckpoint> = [
+data rust_type_checkpoints: List<std.coercion.TypeCheckpoint> = [
   { dag_name: "Int",    target_type: "i64", grounding_type: "i64",    default_expr: "0",              is_copy: true,  literal_suffix: none },
   { dag_name: "Float",  target_type: "f64", grounding_type: "f64",    default_expr: "0.0",            is_copy: true,  literal_suffix: none },
   { dag_name: "Bool",   target_type: "bool", grounding_type: "bool",   default_expr: "false",          is_copy: true,  literal_suffix: none },
@@ -28,7 +29,7 @@ data rust_checkpoint_scalar_arity_note: String = "A TypeCheckpoint row states on
 // authority for how a Rust primitive is spelled is `extdeps.languages.rust.primitives`
 // `rust_grounding_primitives`, through its `target_name` rows. A name list here would be
 // a second spelling authority for one fact.
-data rust_algebra_inhabitants: List<InhabitantDecl> = [
+data rust_algebra_inhabitants: List<std.coercion.InhabitantDecl> = [
 
   { algebra: "FreeMonoid",
     template: "Vec<\{0\}>",
@@ -84,7 +85,7 @@ data rust_optional_template: String = "Option<\{0\}>"
 data rust_none_expr: String = "None"
 data rust_some_template: String = "Some(\{0\})"
 
-data rust_callable: CallableRepr = CallableRepr {
+data rust_callable: std.coercion.CallableRepr = std.coercion.CallableRepr {
   template: "fn(\{params\}) -> \{return\}",
   param_separator: ", ",
   return_separator: " -> ",
@@ -118,7 +119,7 @@ data common_trait_bounds: List<String> = [
 data where_clause_template: String = "where\n    \{constraints\}"
 data trait_bound_template: String = "\{type\}: \{bound\}"
 
-data rust_cast_syntax: CastSyntax = {
+data rust_cast_syntax: std.coercion.CastSyntax = {
   template: "\{expr\} as \{type\}",
   cast_rules: [
 
@@ -136,3 +137,4 @@ data rust_cast_syntax: CastSyntax = {
 
 data serde_enum_tag_attribute: String = "#[serde(tag = \"_variant\")]"
 data serde_rename_template: String = "#[serde(rename = \"\{key\}\")]"
+

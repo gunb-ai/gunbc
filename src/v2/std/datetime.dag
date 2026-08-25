@@ -2,31 +2,31 @@ module v2.std.datetime
 
 
 type Year {
-  value: Refined<v2.std.nat.Nat>
+  value: v2.std.refinement.Refined<v2.std.nat.Nat>
 }
 
 type MonthOrdinal {
-  value: Refined<v2.std.nat.Nat>
+  value: v2.std.refinement.Refined<v2.std.nat.Nat>
 }
 
 type DayOrdinal {
-  value: Refined<v2.std.nat.Nat>
+  value: v2.std.refinement.Refined<v2.std.nat.Nat>
 }
 
 type HourOfDay {
-  value: Refined<v2.std.nat.Nat>
+  value: v2.std.refinement.Refined<v2.std.nat.Nat>
 }
 
 type MinuteOfHour {
-  value: Refined<v2.std.nat.Nat>
+  value: v2.std.refinement.Refined<v2.std.nat.Nat>
 }
 
 type SecondOfMinute {
-  value: Refined<v2.std.nat.Nat>
+  value: v2.std.refinement.Refined<v2.std.nat.Nat>
 }
 
 type SecfracDigit {
-  value: Refined<v2.std.nat.Nat>
+  value: v2.std.refinement.Refined<v2.std.nat.Nat>
 }
 
 type SecfracDigits {
@@ -43,11 +43,11 @@ type TzOffsetSign
   | TzOffsetMinus
 
 type TzOffsetHour {
-  value: Refined<v2.std.nat.Nat>
+  value: v2.std.refinement.Refined<v2.std.nat.Nat>
 }
 
 type TzOffsetMinute {
-  value: Refined<v2.std.nat.Nat>
+  value: v2.std.refinement.Refined<v2.std.nat.Nat>
 }
 
 type NumericTzOffset {
@@ -67,7 +67,7 @@ type CalendarDateFields {
 }
 
 type CalendarDateValidity {
-  refined: Refined<CalendarDateFields>
+  refined: v2.std.refinement.Refined<CalendarDateFields>
 }
 
 type CalendarDate {
@@ -82,7 +82,7 @@ type ClockTimeFields {
 }
 
 type ClockTimeValidity {
-  refined: Refined<ClockTimeFields>
+  refined: v2.std.refinement.Refined<ClockTimeFields>
 }
 
 type ClockTime {
@@ -118,7 +118,7 @@ type LeapSecondInsertionOccurrenceFields {
 }
 
 type LeapSecondInsertionOccurrenceValidity {
-  refined: Refined<LeapSecondInsertionOccurrenceFields>
+  refined: v2.std.refinement.Refined<LeapSecondInsertionOccurrenceFields>
 }
 
 type LeapSecondInsertionOccurrence {
@@ -157,15 +157,15 @@ type LeapSecondOffsetDateTimeFields {
 }
 
 type OrdinaryInstantValidity {
-  refined: Refined<OrdinaryInstantFields>
+  refined: v2.std.refinement.Refined<OrdinaryInstantFields>
 }
 
 type LeapSecondInstantValidity {
-  refined: Refined<LeapSecondInstantFields>
+  refined: v2.std.refinement.Refined<LeapSecondInstantFields>
 }
 
 type LeapSecondOffsetDateTimeValidity {
-  refined: Refined<LeapSecondOffsetDateTimeFields>
+  refined: v2.std.refinement.Refined<LeapSecondOffsetDateTimeFields>
 }
 
 type Instant
@@ -209,39 +209,39 @@ data positive_utc_leap_second_insertions: LeapSecondInsertionTable = LeapSecondI
 }
 
 fn year_value(year: Year) -> v2.std.nat.Nat {
-  refined_base(r: year.value)
+  v2.std.refinement.refined_base(r: year.value)
 }
 
 fn month_value(month: MonthOrdinal) -> v2.std.nat.Nat {
-  refined_base(r: month.value)
+  v2.std.refinement.refined_base(r: month.value)
 }
 
 fn day_value(day: DayOrdinal) -> v2.std.nat.Nat {
-  refined_base(r: day.value)
+  v2.std.refinement.refined_base(r: day.value)
 }
 
 fn second_value(second: SecondOfMinute) -> v2.std.nat.Nat {
-  refined_base(r: second.value)
+  v2.std.refinement.refined_base(r: second.value)
 }
 
 fn minute_value(minute: MinuteOfHour) -> v2.std.nat.Nat {
-  refined_base(r: minute.value)
+  v2.std.refinement.refined_base(r: minute.value)
 }
 
 fn hour_value(hour: HourOfDay) -> v2.std.nat.Nat {
-  refined_base(r: hour.value)
+  v2.std.refinement.refined_base(r: hour.value)
 }
 
 fn tz_offset_hour_value(hour: TzOffsetHour) -> v2.std.nat.Nat {
-  refined_base(r: hour.value)
+  v2.std.refinement.refined_base(r: hour.value)
 }
 
 fn tz_offset_minute_value(minute: TzOffsetMinute) -> v2.std.nat.Nat {
-  refined_base(r: minute.value)
+  v2.std.refinement.refined_base(r: minute.value)
 }
 
 fn secfrac_digit_value(digit: SecfracDigit) -> v2.std.nat.Nat {
-  refined_base(r: digit.value)
+  v2.std.refinement.refined_base(r: digit.value)
 }
 
 fn leap_second_insertion_date(year: v2.std.nat.Nat, month: v2.std.nat.Nat, day: v2.std.nat.Nat) -> LeapSecondInsertionDate {
@@ -331,11 +331,11 @@ fn calendar_date_admits(fields: CalendarDateFields) -> Bool {
 }
 
 fn calendar_date_fields(date: CalendarDate) -> CalendarDateFields {
-  refined_base(r: date.validity.refined)
+  v2.std.refinement.refined_base(r: date.validity.refined)
 }
 
 fn clock_time_fields(time: ClockTime) -> ClockTimeFields {
-  refined_base(r: time.validity.refined)
+  v2.std.refinement.refined_base(r: time.validity.refined)
 }
 
 fn leap_second_insertion_date_matches(fields: CalendarDateFields, date: LeapSecondInsertionDate) -> Bool {
@@ -345,7 +345,7 @@ fn leap_second_insertion_date_matches(fields: CalendarDateFields, date: LeapSeco
 }
 
 fn leap_second_announced_insertion_date(fields: CalendarDateFields) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: positive_utc_leap_second_insertions.dates,
     empty: false,
     cons: fn(acc, date) {
@@ -400,7 +400,7 @@ fn leap_second_insertion_occurrence_admits(fields: LeapSecondInsertionOccurrence
 }
 
 fn leap_second_insertion_occurrence_fields(occurrence: LeapSecondInsertionOccurrence) -> LeapSecondInsertionOccurrenceFields {
-  refined_base(r: occurrence.validity.refined)
+  v2.std.refinement.refined_base(r: occurrence.validity.refined)
 }
 
 fn leap_second_insertion_occurrence_announcement(occurrence: LeapSecondInsertionOccurrence) -> LeapSecondAnnouncement {
@@ -469,120 +469,120 @@ fn leap_second_offset_datetime_admits(fields: LeapSecondOffsetDateTimeFields) ->
     && leap_second_local_matches_utc(announcement: announcement, fields: fields)
 }
 
-data year_validation: Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
+data year_validation: v2.std.refinement.Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
   reason: ^year_out_of_range,
   admits: year_admits
 }
 
-data month_validation: Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
+data month_validation: v2.std.refinement.Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
   reason: ^month_out_of_range,
   admits: month_admits
 }
 
-data day_validation: Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
+data day_validation: v2.std.refinement.Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
   reason: ^day_out_of_range,
   admits: day_admits
 }
 
-data hour_validation: Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
+data hour_validation: v2.std.refinement.Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
   reason: ^hour_out_of_range,
   admits: hour_admits
 }
 
-data minute_validation: Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
+data minute_validation: v2.std.refinement.Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
   reason: ^minute_out_of_range,
   admits: minute_admits
 }
 
-data second_validation: Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
+data second_validation: v2.std.refinement.Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
   reason: ^second_out_of_range,
   admits: second_admits
 }
 
-data secfrac_digit_validation: Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
+data secfrac_digit_validation: v2.std.refinement.Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
   reason: ^secfrac_digit_out_of_range,
   admits: secfrac_digit_admits
 }
 
-data tz_offset_hour_validation: Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
+data tz_offset_hour_validation: v2.std.refinement.Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
   reason: ^tz_offset_hour_out_of_range,
   admits: tz_offset_hour_admits
 }
 
-data tz_offset_minute_validation: Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
+data tz_offset_minute_validation: v2.std.refinement.Validation<v2.std.nat.Nat> = v2.std.refinement.Validation {
   reason: ^tz_offset_minute_out_of_range,
   admits: tz_offset_minute_admits
 }
 
-data calendar_date_validation: Validation<CalendarDateFields> = v2.std.refinement.Validation {
+data calendar_date_validation: v2.std.refinement.Validation<CalendarDateFields> = v2.std.refinement.Validation {
   reason: ^calendar_date_invalid,
   admits: calendar_date_admits
 }
 
-data clock_time_validation: Validation<ClockTimeFields> = v2.std.refinement.Validation {
+data clock_time_validation: v2.std.refinement.Validation<ClockTimeFields> = v2.std.refinement.Validation {
   reason: ^clock_time_fields_invalid,
   admits: clock_time_fields_admits
 }
 
-data leap_second_insertion_occurrence_validation: Validation<LeapSecondInsertionOccurrenceFields> = v2.std.refinement.Validation {
+data leap_second_insertion_occurrence_validation: v2.std.refinement.Validation<LeapSecondInsertionOccurrenceFields> = v2.std.refinement.Validation {
   reason: ^leap_second_insertion_occurrence_invalid,
   admits: leap_second_insertion_occurrence_admits
 }
 
-data ordinary_instant_validation: Validation<OrdinaryInstantFields> = v2.std.refinement.Validation {
+data ordinary_instant_validation: v2.std.refinement.Validation<OrdinaryInstantFields> = v2.std.refinement.Validation {
   reason: ^ordinary_instant_invalid,
   admits: ordinary_instant_admits
 }
 
-data leap_second_instant_validation: Validation<LeapSecondInstantFields> = v2.std.refinement.Validation {
+data leap_second_instant_validation: v2.std.refinement.Validation<LeapSecondInstantFields> = v2.std.refinement.Validation {
   reason: ^leap_second_instant_invalid,
   admits: leap_second_instant_admits
 }
 
-data leap_second_offset_datetime_validation: Validation<LeapSecondOffsetDateTimeFields> = v2.std.refinement.Validation {
+data leap_second_offset_datetime_validation: v2.std.refinement.Validation<LeapSecondOffsetDateTimeFields> = v2.std.refinement.Validation {
   reason: ^leap_second_offset_datetime_invalid,
   admits: leap_second_offset_datetime_admits
 }
 
-fn make_year(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> Outcome<Year> {
-  bind_outcome(o: refine(base: value, by: year_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: Year { value: refined })
+fn make_year(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Year> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: value, by: year_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: Year { value: refined })
   })
 }
 
-fn make_month_ordinal(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> Outcome<MonthOrdinal> {
-  bind_outcome(o: refine(base: value, by: month_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: MonthOrdinal { value: refined })
+fn make_month_ordinal(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<MonthOrdinal> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: value, by: month_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: MonthOrdinal { value: refined })
   })
 }
 
-fn make_day_ordinal(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> Outcome<DayOrdinal> {
-  bind_outcome(o: refine(base: value, by: day_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: DayOrdinal { value: refined })
+fn make_day_ordinal(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<DayOrdinal> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: value, by: day_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: DayOrdinal { value: refined })
   })
 }
 
-fn make_hour_of_day(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> Outcome<HourOfDay> {
-  bind_outcome(o: refine(base: value, by: hour_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: HourOfDay { value: refined })
+fn make_hour_of_day(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<HourOfDay> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: value, by: hour_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: HourOfDay { value: refined })
   })
 }
 
-fn make_minute_of_hour(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> Outcome<MinuteOfHour> {
-  bind_outcome(o: refine(base: value, by: minute_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: MinuteOfHour { value: refined })
+fn make_minute_of_hour(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<MinuteOfHour> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: value, by: minute_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: MinuteOfHour { value: refined })
   })
 }
 
-fn make_second_of_minute(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> Outcome<SecondOfMinute> {
-  bind_outcome(o: refine(base: value, by: second_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: SecondOfMinute { value: refined })
+fn make_second_of_minute(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<SecondOfMinute> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: value, by: second_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: SecondOfMinute { value: refined })
   })
 }
 
-fn make_secfrac_digit(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> Outcome<SecfracDigit> {
-  bind_outcome(o: refine(base: value, by: secfrac_digit_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: SecfracDigit { value: refined })
+fn make_secfrac_digit(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<SecfracDigit> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: value, by: secfrac_digit_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: SecfracDigit { value: refined })
   })
 }
 
@@ -590,62 +590,62 @@ fn make_subsecond(digits: SecfracDigits) -> Subsecond {
   FractionalSecond { digits: digits }
 }
 
-fn make_tz_offset_hour(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> Outcome<TzOffsetHour> {
-  bind_outcome(o: refine(base: value, by: tz_offset_hour_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: TzOffsetHour { value: refined })
+fn make_tz_offset_hour(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<TzOffsetHour> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: value, by: tz_offset_hour_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: TzOffsetHour { value: refined })
   })
 }
 
-fn make_tz_offset_minute(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> Outcome<TzOffsetMinute> {
-  bind_outcome(o: refine(base: value, by: tz_offset_minute_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: TzOffsetMinute { value: refined })
+fn make_tz_offset_minute(value: v2.std.nat.Nat, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<TzOffsetMinute> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: value, by: tz_offset_minute_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: TzOffsetMinute { value: refined })
   })
 }
 
-fn make_calendar_date(fields: CalendarDateFields, at: v2.std.diagnostic.Locus) -> Outcome<CalendarDate> {
-  bind_outcome(o: refine(base: fields, by: calendar_date_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: CalendarDate { validity: CalendarDateValidity { refined: refined } })
+fn make_calendar_date(fields: CalendarDateFields, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<CalendarDate> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: fields, by: calendar_date_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: CalendarDate { validity: CalendarDateValidity { refined: refined } })
   })
 }
 
-fn make_clock_time(fields: ClockTimeFields, at: v2.std.diagnostic.Locus) -> Outcome<ClockTime> {
-  bind_outcome(o: refine(base: fields, by: clock_time_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: ClockTime { validity: ClockTimeValidity { refined: refined } })
+fn make_clock_time(fields: ClockTimeFields, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<ClockTime> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: fields, by: clock_time_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: ClockTime { validity: ClockTimeValidity { refined: refined } })
   })
 }
 
 fn make_leap_second_insertion_occurrence(
   fields: LeapSecondInsertionOccurrenceFields,
   at: v2.std.diagnostic.Locus
-) -> Outcome<LeapSecondInsertionOccurrence> {
-  bind_outcome(o: refine(base: fields, by: leap_second_insertion_occurrence_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: LeapSecondInsertionOccurrence { validity: LeapSecondInsertionOccurrenceValidity { refined: refined } })
+) -> v2.std.diagnostic.Outcome<LeapSecondInsertionOccurrence> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: fields, by: leap_second_insertion_occurrence_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: LeapSecondInsertionOccurrence { validity: LeapSecondInsertionOccurrenceValidity { refined: refined } })
   })
 }
 
-fn make_ordinary_instant(fields: OrdinaryInstantFields, at: v2.std.diagnostic.Locus) -> Outcome<Instant> {
-  bind_outcome(o: refine(base: fields, by: ordinary_instant_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: OrdinaryInstant { validity: OrdinaryInstantValidity { refined: refined } })
+fn make_ordinary_instant(fields: OrdinaryInstantFields, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Instant> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: fields, by: ordinary_instant_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: OrdinaryInstant { validity: OrdinaryInstantValidity { refined: refined } })
   })
 }
 
-fn make_leap_second_instant(fields: LeapSecondInstantFields, at: v2.std.diagnostic.Locus) -> Outcome<Instant> {
-  bind_outcome(o: refine(base: fields, by: leap_second_instant_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: LeapSecondInstant { validity: LeapSecondInstantValidity { refined: refined } })
+fn make_leap_second_instant(fields: LeapSecondInstantFields, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Instant> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: fields, by: leap_second_instant_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: LeapSecondInstant { validity: LeapSecondInstantValidity { refined: refined } })
   })
 }
 
-fn make_ordinary_offset_datetime(fields: OrdinaryInstantFields, offset: TzOffset, at: v2.std.diagnostic.Locus) -> Outcome<OffsetDateTime> {
-  bind_outcome(o: refine(base: fields, by: ordinary_instant_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: OrdinaryOffsetDateTime { instant: OrdinaryInstantValidity { refined: refined }, offset: offset })
+fn make_ordinary_offset_datetime(fields: OrdinaryInstantFields, offset: TzOffset, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<OffsetDateTime> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: fields, by: ordinary_instant_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: OrdinaryOffsetDateTime { instant: OrdinaryInstantValidity { refined: refined }, offset: offset })
   })
 }
 
 fn make_leap_second_offset_datetime(
   fields: LeapSecondOffsetDateTimeFields,
   at: v2.std.diagnostic.Locus
-) -> Outcome<OffsetDateTime> {
-  bind_outcome(o: refine(base: fields, by: leap_second_offset_datetime_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: LeapSecondOffsetDateTime { validity: LeapSecondOffsetDateTimeValidity { refined: refined } })
+) -> v2.std.diagnostic.Outcome<OffsetDateTime> {
+  v2.std.diagnostic.bind_outcome(o: v2.std.refinement.refine(base: fields, by: leap_second_offset_datetime_validation, at: at), f: fn(refined) {
+    v2.std.diagnostic.outcome_accepted(value: LeapSecondOffsetDateTime { validity: LeapSecondOffsetDateTimeValidity { refined: refined } })
   })
 }

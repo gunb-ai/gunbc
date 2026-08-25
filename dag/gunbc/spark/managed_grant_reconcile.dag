@@ -82,16 +82,16 @@ fn spark_managed_grant_standing_from_outcome(
   outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome,
 ) -> SparkManagedGrantStanding {
   match outcome {
-    GrantEnumerated { listing: l } =>
+    gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: l } =>
       if spark_grant_listing_names_command(
            listing: l,
-           command: spark_managed_grant_sudoers_command(grant: grant) as String,
+           command: gunbc.spark.managed_access_bootstrap.spark_managed_grant_sudoers_command(grant: grant) as String,
          ) {
         GrantHeld { grant: grant }
       } else {
         GrantNotHeld { grant: grant }
       }
-    GrantAbsent { detail: d } =>
+    gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: d } =>
       if spark_grant_listing_reports_no_passwordless_grant(detail: d) {
         GrantNotHeld { grant: grant }
       } else {
@@ -100,7 +100,7 @@ fn spark_managed_grant_standing_from_outcome(
           cause: join(["sudo -n -l failed for a reason other than the password demand: ", d], "") as std.types.NonEmptyStr,
         }
       }
-    GrantProbeRefused { cause: c } =>
+    gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: c } =>
       GrantStandingUnobserved {
         grant: grant,
         cause: join(["the grant probe leg never ran: ", c], "") as std.types.NonEmptyStr,
@@ -109,7 +109,7 @@ fn spark_managed_grant_standing_from_outcome(
 }
 
 fn spark_managed_grant_standings(outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome) -> List<SparkManagedGrantStanding> {
-  map(spark_managed_grant_population, g =>
+  map(gunbc.spark.managed_access_bootstrap.spark_managed_grant_population, g =>
     spark_managed_grant_standing_from_outcome(grant: g, outcome: outcome))
 }
 
@@ -154,8 +154,8 @@ fn spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.
 // whose second run differs from its first is not a reconcile.
 fn spark_managed_grant_dropin_name(grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant) -> std.types.NonEmptyStr {
   match grant {
-    EnableLingerForOwnAccount { subject: _ } => "gunbc-enable-linger" as std.types.NonEmptyStr
-    RebootThisHost => "gunbc-reboot" as std.types.NonEmptyStr
+    gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount { subject: _ } => "gunbc-enable-linger" as std.types.NonEmptyStr
+    gunbc.spark.managed_access_bootstrap.RebootThisHost => "gunbc-reboot" as std.types.NonEmptyStr
   }
 }
 
@@ -168,23 +168,23 @@ fn spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.S
 // the effect needs, and the population exists precisely so that widening is never the cheap move.
 fn spark_managed_grant_sudoers_content(grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant) -> String {
   join([
-    spark_managed_executor_login, " ALL=(root) NOPASSWD: ",
-    spark_managed_grant_sudoers_command(grant: grant) as String, "\n",
+    gunbc.spark.managed_access_bootstrap.spark_managed_executor_login, " ALL=(root) NOPASSWD: ",
+    gunbc.spark.managed_access_bootstrap.spark_managed_grant_sudoers_command(grant: grant) as String, "\n",
   ], "")
 }
 
 fn spark_managed_grant_standing_wire(standing: SparkManagedGrantStanding) -> String {
   match standing {
     GrantHeld { grant: g } =>
-      join(["  grant=", spark_managed_grant_wire(grant: g) as String, " standing=held\n"], "")
+      join(["  grant=", gunbc.spark.managed_access_bootstrap.spark_managed_grant_wire(grant: g) as String, " standing=held\n"], "")
     GrantNotHeld { grant: g } =>
       join([
-        "  grant=", spark_managed_grant_wire(grant: g) as String,
+        "  grant=", gunbc.spark.managed_access_bootstrap.spark_managed_grant_wire(grant: g) as String,
         " standing=not-held install=", spark_managed_grant_dropin_path(grant: g) as String, "\n",
       ], "")
     GrantStandingUnobserved { grant: g, cause: c } =>
       join([
-        "  grant=", spark_managed_grant_wire(grant: g) as String,
+        "  grant=", gunbc.spark.managed_access_bootstrap.spark_managed_grant_wire(grant: g) as String,
         " standing=unobserved cause=", c as String, "\n",
       ], "")
   }

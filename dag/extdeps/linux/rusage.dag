@@ -3,23 +3,23 @@ module extdeps.linux.rusage
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "man7.org/linux/man-pages/man2/getrusage.2.html"
   }
 }
 
 data linux_maxrss_unit_note: String = "Linux answers the unit POSIX leaves open: getrusage.2's NOTES state ru_maxrss is the maximum resident set size in KILOBYTES. This row exists so that number has a home in the implementation that produces it rather than as a branch inside a portable helper — the same reason extdeps.linux.proc_meminfo owns /proc/meminfo's fields instead of a generic memory module owning them.\n\nDeliberately narrow: this module speaks only for ru_maxrss's unit on Linux. It does NOT re-model getrusage's shape, which is POSIX's and is owned by extdeps.posix.rusage, and it does not claim the value is measured any better or worse here than elsewhere. One implementation fact, cited to the implementation's own manual."
 
-data linux_rusage_maxrss_unit: extdeps.posix.rusage.RusageMaxrssUnit = MaxrssKibibytes
+data linux_rusage_maxrss_unit: extdeps.posix.rusage.RusageMaxrssUnit = extdeps.posix.rusage.MaxrssKibibytes
 
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
   subject: extdeps.external_authority.ExternalSubjectRef {
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.linux.rusage",
       decl_name: "linux_rusage_maxrss_unit",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.linux.rusage.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

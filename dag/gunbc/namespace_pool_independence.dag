@@ -43,23 +43,23 @@ fn bound_reference_population_eq(
   right: std.occurrence_binding_candidates.BoundReferencePopulation,
 ) -> Bool {
   match left {
-    AllReferencesBound { providers: left_providers } =>
+    std.occurrence_binding_candidates.AllReferencesBound { providers: left_providers } =>
       match right {
-        AllReferencesBound { providers: right_providers } =>
-          match lists_agree_at(
+        std.occurrence_binding_candidates.AllReferencesBound { providers: right_providers } =>
+          match gunbc.namespace_clause_e_projection_law.lists_agree_at(
             left: left_providers,
             right: right_providers,
             agree: bound_reference_provider_eq,
           ) {
-            ListsAgree => true
+            gunbc.namespace_clause_e_projection_law.ListsAgree => true
             _ => false
           }
-        ReferencePopulationRefused { first_failure: _, more_failures: _ } => false
+        std.occurrence_binding_candidates.ReferencePopulationRefused { first_failure: _, more_failures: _ } => false
       }
-    ReferencePopulationRefused { first_failure: left_first, more_failures: left_more } =>
+    std.occurrence_binding_candidates.ReferencePopulationRefused { first_failure: left_first, more_failures: left_more } =>
       match right {
-        AllReferencesBound { providers: _ } => false
-        ReferencePopulationRefused {
+        std.occurrence_binding_candidates.AllReferencesBound { providers: _ } => false
+        std.occurrence_binding_candidates.ReferencePopulationRefused {
           first_failure: right_first,
           more_failures: right_more,
         } =>
@@ -72,12 +72,12 @@ fn reference_occurrence_lists_agree(
   left: List<std.occurrence_binding_candidates.BoundReferenceProvider>,
   right: List<std.occurrence_binding_candidates.BoundReferenceProvider>,
 ) -> Bool {
-  match lists_agree_at(
+  match gunbc.namespace_clause_e_projection_law.lists_agree_at(
     left: left,
     right: right,
     agree: (a, b) => a.reference_occurrence == b.reference_occurrence,
   ) {
-    ListsAgree => true
+    gunbc.namespace_clause_e_projection_law.ListsAgree => true
     _ => false
   }
 }
@@ -86,12 +86,12 @@ fn declaration_occurrence_lists_agree(
   left: List<std.occurrence_binding_candidates.BoundReferenceProvider>,
   right: List<std.occurrence_binding_candidates.BoundReferenceProvider>,
 ) -> Bool {
-  match lists_agree_at(
+  match gunbc.namespace_clause_e_projection_law.lists_agree_at(
     left: left,
     right: right,
     agree: (a, b) => a.declaration_occurrence == b.declaration_occurrence,
   ) {
-    ListsAgree => true
+    gunbc.namespace_clause_e_projection_law.ListsAgree => true
     _ => false
   }
 }
@@ -100,12 +100,12 @@ fn provenance_lists_agree(
   left: List<std.occurrence_binding_candidates.CrossFileBindingProvenance>,
   right: List<std.occurrence_binding_candidates.CrossFileBindingProvenance>,
 ) -> Bool {
-  match lists_agree_at(
+  match gunbc.namespace_clause_e_projection_law.lists_agree_at(
     left: left,
     right: right,
     agree: cross_file_binding_provenance_eq,
   ) {
-    ListsAgree => true
+    gunbc.namespace_clause_e_projection_law.ListsAgree => true
     _ => false
   }
 }
@@ -152,9 +152,9 @@ fn pool_independence_compare_ready_fields(
     }
   } else {
     match baseline_population {
-      AllReferencesBound { providers: baseline_providers } =>
+      std.occurrence_binding_candidates.AllReferencesBound { providers: baseline_providers } =>
         match perturbed_population {
-          AllReferencesBound { providers: perturbed_providers } =>
+          std.occurrence_binding_candidates.AllReferencesBound { providers: perturbed_providers } =>
             if !reference_occurrence_lists_agree(
               left: baseline_providers,
               right: perturbed_providers,
@@ -175,15 +175,15 @@ fn pool_independence_compare_ready_fields(
             ) {
               PoolIndependenceRefused { failure: BindingProvenanceMismatch }
             } else {
-              match direct_file_dependency_lists_eq(
+              match gunbc.namespace_clause_e_projection_law.direct_file_dependency_lists_eq(
                 left: baseline_dependencies,
                 right: perturbed_dependencies,
               ) {
-                ListStructureBroken =>
+                gunbc.namespace_clause_e_projection_law.ListStructureBroken =>
                   PoolIndependenceRefused { failure: FileDependencyMismatch }
-                ListsDisagree =>
+                gunbc.namespace_clause_e_projection_law.ListsDisagree =>
                   PoolIndependenceRefused { failure: FileDependencyMismatch }
-                ListsAgree =>
+                gunbc.namespace_clause_e_projection_law.ListsAgree =>
                   if bound_reference_population_eq(
                     left: baseline_population,
                     right: perturbed_population,
@@ -196,12 +196,12 @@ fn pool_independence_compare_ready_fields(
                   }
               }
             }
-          ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
+          std.occurrence_binding_candidates.ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
             PoolIndependenceRefused {
               failure: BoundReferencePopulationMismatch,
             }
         }
-      ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
+      std.occurrence_binding_candidates.ReferencePopulationRefused { first_failure: _, more_failures: _ } =>
         PoolIndependenceRefused {
           failure: BoundReferencePopulationMismatch,
         }
@@ -215,13 +215,13 @@ fn assess_pool_independent_projection_equality(
   perturbed: std.occurrence_binding_candidates.ReferenceDerivedDependencyProjection,
 ) -> PoolIndependenceVerdict {
   match baseline {
-    ReferenceDerivedDependencyProjectionReady {
+    std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionReady {
       binding_provenance: baseline_provenances,
       file_dependencies: baseline_dependencies,
       bound_population: baseline_population,
     } =>
       match perturbed {
-        ReferenceDerivedDependencyProjectionReady {
+        std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionReady {
           binding_provenance: perturbed_provenances,
           file_dependencies: perturbed_dependencies,
           bound_population: perturbed_population,
@@ -235,17 +235,17 @@ fn assess_pool_independent_projection_equality(
             perturbed_dependencies: perturbed_dependencies,
             perturbed_population: perturbed_population,
           )
-        ReferenceDerivedDependencyProjectionBindingRefused { population: _ } =>
+        std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionBindingRefused { population: _ } =>
           PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
-        ReferenceDerivedDependencyProjectionFileRefused {
+        std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionFileRefused {
           first_failure: _,
           more_failures: _,
         } =>
           PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
       }
-    ReferenceDerivedDependencyProjectionBindingRefused { population: baseline_population } =>
+    std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionBindingRefused { population: baseline_population } =>
       match perturbed {
-        ReferenceDerivedDependencyProjectionBindingRefused {
+        std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionBindingRefused {
           population: perturbed_population,
         } =>
           if bound_reference_population_eq(
@@ -260,12 +260,12 @@ fn assess_pool_independent_projection_equality(
           }
         _ => PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
       }
-    ReferenceDerivedDependencyProjectionFileRefused {
+    std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionFileRefused {
       first_failure: baseline_first,
       more_failures: baseline_more,
     } =>
       match perturbed {
-        ReferenceDerivedDependencyProjectionFileRefused {
+        std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionFileRefused {
           first_failure: perturbed_first,
           more_failures: perturbed_more,
         } =>
@@ -284,22 +284,22 @@ fn assess_file_dependencies_only_equality(
   perturbed: std.occurrence_binding_candidates.ReferenceDerivedDependencyProjection,
 ) -> Bool {
   match baseline {
-    ReferenceDerivedDependencyProjectionReady {
+    std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionReady {
       file_dependencies: baseline_dependencies,
       binding_provenance: _,
       bound_population: _,
     } =>
       match perturbed {
-        ReferenceDerivedDependencyProjectionReady {
+        std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionReady {
           file_dependencies: perturbed_dependencies,
           binding_provenance: _,
           bound_population: _,
         } =>
-          match direct_file_dependency_lists_eq(
+          match gunbc.namespace_clause_e_projection_law.direct_file_dependency_lists_eq(
             left: baseline_dependencies,
             right: perturbed_dependencies,
           ) {
-            ListsAgree => true
+            gunbc.namespace_clause_e_projection_law.ListsAgree => true
             _ => false
           }
         _ => false

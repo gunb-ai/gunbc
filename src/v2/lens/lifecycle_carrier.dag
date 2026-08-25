@@ -1,16 +1,16 @@
 module v2.lens.lifecycle_carrier
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // Membership is DECIDABLE -- a field's name and declared type are both readable
-// off the v2.std.node.Node tree -- so this is not RatchetForever. It is not a wall today
+// off the Node tree -- so this is not RatchetForever. It is not a wall today
 // because the substrate has no way to mandate that a field with a given name
 // carry a given carrier type; the field stays writable and this gate is what
 // refuses it. It dissolves into SubstrateMandatoryTag when that capability
 // exists, at which point the raw form has no constructor and the gate deletes.
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SubstrateMandatoryTag }
 }
 
 // The field-name class this wall holds at zero. These are the spellings the
@@ -36,7 +36,7 @@ data lifecycle_field_name_rows: List<v2.std.node.Symbol> = [
 // reached per field edge corpus-wide -- so the map's O(1) lookup is bought with
 // eight inserts per query and is a pure loss at this size (DESIGN 6, bare
 // minimum cost: a proven cost-shape defect is fixed regardless of realized n).
-fn name_is_lifecycle_field(name: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn name_is_lifecycle_field(name: v2.std.node.Symbol) -> Bool {
   fold(lifecycle_field_name_rows, init: false, f: fn(acc, nm) {
     acc || (nm == name)
   })
@@ -49,23 +49,23 @@ fn name_is_lifecycle_field(name: v2.std.node.Symbol) -> v2.std.logic.Bool {
 // (`pin_refresh_window_positivity_note_dissolve_on`). A second roster spelled for
 // declarations would be precisely the nickname the field predicate above exists to prevent,
 // and it would drift silently -- a new spelling would have to be remembered twice.
-fn decl_name_is_lifecycle_carrier(name: String) -> v2.std.logic.Bool {
+fn decl_name_is_lifecycle_carrier(name: String) -> Bool {
   fold(lifecycle_field_name_rows, init: false, f: fn(acc, nm) {
-    let spelling = symbol_lexeme(sym: nm)
+    let spelling = v2.std.compilers.lexing.symbol_lexeme(sym: nm)
     acc || (name == spelling) || ends_with(s: name, suffix: concat("_", spelling))
   })
 }
 
-fn type_is_bare_string(target: v2.std.node.Node) -> v2.std.logic.Bool {
-  let nm = edge_field_type_name(target: target)
+fn type_is_bare_string(target: v2.std.node.Node) -> Bool {
+  let nm = v2.std.node_query.edge_field_type_name(target: target)
   (nm == ^String) || (nm == ^NonEmptyStr)
 }
 
 fn lifecycle_carrier_diagnostic(carrier: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^lifecycle_carrier_raw_prose_field,
-    at: node_locus(node: carrier),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: carrier),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -75,32 +75,32 @@ fn lifecycle_carrier_diagnostic(carrier: v2.std.node.Node) -> v2.std.diagnostic.
 // fields ever reach the walk.
 fn field_lifecycle_violation(carrier: v2.std.node.Node, edge: v2.std.node.Edge) -> v2.std.optional.Optional<v2.std.diagnostic.Diagnostic> {
   match edge.label {
-    Named { name: nm } =>
+    v2.std.node.Named { name: nm } =>
       if type_is_bare_string(target: edge.target) && name_is_lifecycle_field(name: nm) {
-        optional_present(value: lifecycle_carrier_diagnostic(carrier: carrier))
+        v2.std.optional.optional_present(value: lifecycle_carrier_diagnostic(carrier: carrier))
       } else {
-        optional_absent()
+        v2.std.optional.optional_absent()
       }
-    Positional => optional_absent()
+    v2.std.node.Positional => v2.std.optional.optional_absent()
   }
 }
 
 fn carrier_first_lifecycle_violation(carrier: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.diagnostic.Diagnostic> {
   match carrier.kind {
-    TypeNode { connective: _ } =>
-      fold(carrier.children, init: optional_absent(), f: fn(acc, edge) {
-        optional_prefer_first_present(left: acc, right: field_lifecycle_violation(carrier: carrier, edge: edge))
+    v2.std.node.TypeNode { connective: _ } =>
+      fold(carrier.children, init: v2.std.optional.optional_absent(), f: fn(acc, edge) {
+        v2.std.optional.optional_prefer_first_present(left: acc, right: field_lifecycle_violation(carrier: carrier, edge: edge))
       })
-    ComputationNode { behavior: _ } => v2.std.optional.Absent
+    v2.std.node.ComputationNode { behavior: _ } => v2.std.optional.Absent
   }
 }
 
-// v2.std.node.Node-local, same grain as unit_modeling_gate: reads only the node's direct
+// Node-local, same grain as unit_modeling_gate: reads only the node's direct
 // children so it does not stack with run_required_lens_gates_on_subtree's
 // fold_node into O(n^2).
-fn lifecycle_carrier_gate(node: v2.std.node.Node) -> Outcome<Witness<v2.std.node.Node>> {
+fn lifecycle_carrier_gate(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   match carrier_first_lifecycle_violation(carrier: node) {
-    Present { value: d } => outcome_rejected(d)
-    Absent => outcome_accepted(value: v2.std.witness.Holds { value: node })
+    v2.std.optional.Present { value: d } => v2.std.diagnostic.outcome_rejected(d)
+    v2.std.optional.Absent => v2.std.diagnostic.outcome_accepted(value: v2.std.witness.Holds { value: node })
   }
 }

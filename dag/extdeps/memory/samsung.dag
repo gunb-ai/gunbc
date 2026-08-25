@@ -1,25 +1,26 @@
 module extdeps.memory.samsung
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/DDR4_SDRAM"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.memory.samsung",
       decl_name: "m386a4g40dm0_cpb_catalog",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
-data stick_capacity_bytes_32g: ByteSize = byte_size(34359738368)
+data stick_capacity_bytes_32g: std.measure.ByteSize = std.measure.byte_size(34359738368)
 
 // PROVENANCE, SPLIT BY WHAT ACTUALLY SUPPORTS EACH FACT, because the module scope binds its
 // citation to this exact declaration and a generic DDR4 reference cannot carry a vendor SKU.
@@ -44,21 +45,21 @@ data stick_capacity_bytes_32g: ByteSize = byte_size(34359738368)
 // ONE PRECISION, since the derived count reads as a package count and is not one: at x4 with
 // ECC the module carries 18 dies per rank and 72 across four ranks, which this part reaches
 // as 36 dual-die packages. dram_chips_per_rank counts DIES, the unit that determines density.
-data m386a4g40dm0_cpb_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
+data m386a4g40dm0_cpb_catalog: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
   part_number: "M386A4G40DM0-CPB",
-  manufacturer: samsung,
-  generation: dram_generation_ddr4,
+  manufacturer: extdeps.vendor.samsung.samsung,
+  generation: extdeps.memory.types.dram_generation_ddr4,
   capacity_bytes: stick_capacity_bytes_32g,
   data_rate_mts: 2133,
   ecc: true,
   buffering: LoadReduced,
-  die_stacking: MonolithicDie,
-  chip_width: bit_width(4),
+  die_stacking: extdeps.memory.types.MonolithicDie,
+  chip_width: std.measure.bit_width(4),
 
   rank_count: 4,
 }
 
-data stick_capacity_bytes_64g: ByteSize = byte_size(68719476736)
+data stick_capacity_bytes_64g: std.measure.ByteSize = std.measure.byte_size(68719476736)
 
 // PROVENANCE, AND IT IS THE SAME STANDING AS THE ROW ABOVE RATHER THAN A STRONGER ONE.
 // No first-party Samsung datasheet for M393A8G40D40-CRB0Q was reachable (checked 2026-08-22):
@@ -85,16 +86,16 @@ data stick_capacity_bytes_64g: ByteSize = byte_size(68719476736)
 // dram_module_required_die_density passes at BOTH 8 (4 Gbit/die) and 2 (16 Gbit/die, exactly
 // the DDR4 monolithic ceiling), so a wrong rank_count here lands silently. The value is settled
 // by the OEM description, not by the wall.
-data m393a8g40d40_crb0q_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
+data m393a8g40d40_crb0q_catalog: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
   part_number: "M393A8G40D40-CRB0Q",
-  manufacturer: samsung,
-  generation: dram_generation_ddr4,
+  manufacturer: extdeps.vendor.samsung.samsung,
+  generation: extdeps.memory.types.dram_generation_ddr4,
   capacity_bytes: stick_capacity_bytes_64g,
   data_rate_mts: 2133,
   ecc: true,
   buffering: Registered,
-  die_stacking: ThreeDimensionalStacked,
-  chip_width: bit_width(4),
+  die_stacking: extdeps.memory.types.ThreeDimensionalStacked,
+  chip_width: std.measure.bit_width(4),
 
   rank_count: 8,
 }

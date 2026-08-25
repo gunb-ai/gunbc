@@ -75,7 +75,7 @@ fn markdown_inline_to_fragments(inline: MarkdownInline) -> List<std.markup.Fragm
       [ std.markup.Element {
         tag: "a",
         attributes: [
-          std.markup.Attribute { name: "href", ctx: UrlContext, value: url },
+          std.markup.Attribute { name: "href", ctx: std.markup.UrlContext, value: url },
         ],
         children: markdown_inlines_to_fragments(inlines: inlines),
       } ]
@@ -83,8 +83,8 @@ fn markdown_inline_to_fragments(inline: MarkdownInline) -> List<std.markup.Fragm
       [ std.markup.Element {
         tag: "img",
         attributes: [
-          std.markup.Attribute { name: "src", ctx: UrlContext, value: url },
-          std.markup.Attribute { name: "alt", ctx: AttributeContext, value: alt },
+          std.markup.Attribute { name: "src", ctx: std.markup.UrlContext, value: url },
+          std.markup.Attribute { name: "alt", ctx: std.markup.AttributeContext, value: alt },
         ],
         children: [],
       } ]

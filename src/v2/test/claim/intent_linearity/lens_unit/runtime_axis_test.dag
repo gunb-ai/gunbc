@@ -1,15 +1,15 @@
 module v2.test.intent_linearity.lens_unit.runtime_axis
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn transform_leaf() -> v2.std.node.Node {
-  node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform }, children: [])
+  v2.std.node.node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform }, children: [])
 }
 fn cardinality_over(child: v2.std.node.Node) -> v2.std.node.Node {
-  node_synthetic(
+  v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
-    children: [ v2.std.node.Edge { label: Positional, target: child } ]
+    children: [ v2.std.node.Edge { label: v2.std.node.Positional, target: child } ]
   )
 }
 
@@ -19,23 +19,23 @@ data flat_loop: v2.std.node.Node = cardinality_over(child: transform_leaf())
 data nested_chain: List<v2.std.node.Node> = [ nested_loop ]
 data flat_chain: List<v2.std.node.Node> = [ flat_loop ]
 
-test fn nested_loop_cost_is_lowerable() -> v2.std.logic.Bool {
-  chain_has_lowerable_cost(steps: nested_chain)
+test fn nested_loop_cost_is_lowerable() -> Bool {
+  v2.lens.intent_linearity.chain_has_lowerable_cost(steps: nested_chain)
 }
-test fn flat_loop_cost_not_lowerable() -> v2.std.logic.Bool {
-  !chain_has_lowerable_cost(steps: flat_chain)
-}
-
-test fn nested_loop_is_runtime_candidate() -> v2.std.logic.Bool {
-  chain_has_runtime_lowering_candidate(steps: nested_chain)
-}
-test fn flat_loop_not_runtime_candidate() -> v2.std.logic.Bool {
-  !chain_has_runtime_lowering_candidate(steps: flat_chain)
+test fn flat_loop_cost_not_lowerable() -> Bool {
+  !v2.lens.intent_linearity.chain_has_lowerable_cost(steps: flat_chain)
 }
 
-test fn nested_loop_not_changetime_redundant() -> v2.std.logic.Bool {
-  !chain_is_redundant(steps: nested_chain)
+test fn nested_loop_is_runtime_candidate() -> Bool {
+  v2.lens.intent_linearity.chain_has_runtime_lowering_candidate(steps: nested_chain)
 }
-test fn flat_loop_is_linear() -> v2.std.logic.Bool {
-  level_is_linear(level: flat_chain)
+test fn flat_loop_not_runtime_candidate() -> Bool {
+  !v2.lens.intent_linearity.chain_has_runtime_lowering_candidate(steps: flat_chain)
+}
+
+test fn nested_loop_not_changetime_redundant() -> Bool {
+  !v2.lens.intent_linearity.chain_is_redundant(steps: nested_chain)
+}
+test fn flat_loop_is_linear() -> Bool {
+  v2.lens.intent_linearity.level_is_linear(level: flat_chain)
 }

@@ -5,7 +5,7 @@ data interaction_note: String = "Layer 2 interaction machinery (lifted from gunb
 
 data machine_side_verb_note: String = "Approach, Enter, StepBack, Copy, Traverse and Dispatch are all things a PERSON does to a control. Await and Accept are things the MACHINE does to it, and they are on the same axis rather than a parallel one because the axis was never 'user gesture' — it is the event class a control answers, and a control does not care whose event it was. The analog reading is the whole justification: a physical control left in an actuated position while a request is in flight, and then released into a new detent when the answer arrives, is one continuous mechanical story, and splitting it across two vocabularies would mean the register could describe the press but not the release.
 
-The consequence that matters is coverage: because these are ordinary verbs, an element declaring them is subject to the same total-assignment law as one declaring hover, so a machine-caused state with no declared response is a counted gap exactly like a dead hover. What they cannot use is a person-caused InteractionCause — nothing a hand does corresponds to 'the server said yes' — which is why they arrive as ObservedStateEntered and realize through StateRule."
+The consequence that matters is coverage: because these are ordinary verbs, an element declaring them is subject to the same total-assignment law as one declaring hover, so a machine-caused state with no declared response is a counted gap exactly like a dead hover. What they cannot use is a person-caused gunbc.design.interaction_cause.InteractionCause — nothing a hand does corresponds to 'the server said yes' — which is why they arrive as gunbc.design.interaction_cause.ObservedStateEntered and realize through StateRule."
 
 type InteractionVerb
   = Approach
@@ -151,19 +151,19 @@ data house_pointer_detents_note: String = "The three positions every control sha
 
 fn house_pointer_detents(rest_state: String, hover_state: String, pressed_state: String) -> List<Detent> {
   [
-    Detent { state: rest_state, reach: AtRest, travel: NoTravel, scale_per_mille: rest_scale_per_mille, turn_deg: 0 },
+    Detent { state: rest_state, reach: AtRest, travel: NoTravel, scale_per_mille: gunbc.design.material.rest_scale_per_mille, turn_deg: 0 },
     Detent {
       state: hover_state,
-      reach: ByTrigger { cause: PointerApproach },
-      travel: Travel { token: travel_lift },
-      scale_per_mille: rest_scale_per_mille,
+      reach: ByTrigger { cause: gunbc.design.interaction_cause.PointerApproach },
+      travel: Travel { token: gunbc.design.scale.travel_lift },
+      scale_per_mille: gunbc.design.material.rest_scale_per_mille,
       turn_deg: 0,
     },
     Detent {
       state: pressed_state,
-      reach: ByTrigger { cause: PressEngaged },
-      travel: Travel { token: travel_press },
-      scale_per_mille: press_scale_per_mille,
+      reach: ByTrigger { cause: gunbc.design.interaction_cause.PressEngaged },
+      travel: Travel { token: gunbc.design.scale.travel_press },
+      scale_per_mille: gunbc.design.material.press_scale_per_mille,
       turn_deg: 0,
     },
   ]
@@ -188,9 +188,9 @@ type DetentEdgeDefect {
 
 fn detent_transform_wire(d: Detent) -> String {
   let base = match d.travel {
-    NoTravel => scale_transform_wire(per_mille: d.scale_per_mille)
+    NoTravel => gunbc.design.material.scale_transform_wire(per_mille: d.scale_per_mille)
     Travel { token } =>
-      travel_scale_transform_wire(travel_var: scale_var(t: token), per_mille: d.scale_per_mille)
+      gunbc.design.material.travel_scale_transform_wire(travel_var: gunbc.design.scale.scale_var(t: token), per_mille: d.scale_per_mille)
   }
   if d.turn_deg == 0 {
     base

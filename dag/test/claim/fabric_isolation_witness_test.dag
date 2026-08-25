@@ -1,5 +1,6 @@
 module test.claim.fabric_isolation_witness_test
 
+
 // A SHARED-KERNEL SANDBOX CANNOT SATISFY A DEDICATED-KERNEL REQUIREMENT, AND THE REFUSAL NAMES
 // EXACTLY THAT ONE GUARANTEE.
 //
@@ -8,25 +9,25 @@ module test.claim.fabric_isolation_witness_test
 // remedies -- find a microVM supplier, versus fix this host. The assertion is that the missing
 // list is exactly [DedicatedKernel], not merely non-empty.
 test fn a_shared_kernel_offer_fails_only_the_dedicated_kernel_guarantee() -> Bool {
-  let missing = unsatisfied_isolation_guarantees(
-    required: dedicated_kernel_sandbox_profile(),
-    provided: shared_kernel_sandbox_profile(),
+  let missing = product.fabric.isolation.unsatisfied_isolation_guarantees(
+    required: product.fabric.isolation.dedicated_kernel_sandbox_profile(),
+    provided: product.fabric.isolation.shared_kernel_sandbox_profile(),
   )
   (missing |> count) == 1
-    && unsatisfied_isolation_wire(missing: missing) == "dedicated-kernel"
+    && product.fabric.isolation.unsatisfied_isolation_wire(missing: missing) == "dedicated-kernel"
 }
 
 // THE SAME OFFER SATISFIES EVERYTHING A SHARED-KERNEL TENANT ASKS FOR.
 // The positive control: without it the witness above would pass against a match that refuses
 // everything.
 test fn a_shared_kernel_offer_satisfies_a_shared_kernel_requirement() -> Bool {
-  isolation_profile_satisfies(
-    required: shared_kernel_sandbox_profile(),
-    provided: shared_kernel_sandbox_profile(),
+  product.fabric.isolation.isolation_profile_satisfies(
+    required: product.fabric.isolation.shared_kernel_sandbox_profile(),
+    provided: product.fabric.isolation.shared_kernel_sandbox_profile(),
   )
-    && !isolation_profile_satisfies(
-      required: dedicated_kernel_sandbox_profile(),
-      provided: shared_kernel_sandbox_profile(),
+    && !product.fabric.isolation.isolation_profile_satisfies(
+      required: product.fabric.isolation.dedicated_kernel_sandbox_profile(),
+      provided: product.fabric.isolation.shared_kernel_sandbox_profile(),
     )
 }
 
@@ -43,14 +44,14 @@ test fn a_shared_kernel_offer_satisfies_a_shared_kernel_requirement() -> Bool {
 // green today; measuring the fleet against the floor's requirement would report a gap that does
 // not exist. The tenant requirement is the one the fleet genuinely cannot meet.
 test fn todays_slots_could_not_host_a_tenant_workload() -> Bool {
-  let missing = unsatisfied_isolation_guarantees(
-    required: tenant_workload_isolation_requirement(),
-    provided: current_runner_slot_profile(),
+  let missing = product.fabric.isolation.unsatisfied_isolation_guarantees(
+    required: product.fabric.isolation.tenant_workload_isolation_requirement(),
+    provided: product.fabric.isolation.current_runner_slot_profile(),
   )
   (missing |> count) == 4
-    && !isolation_profile_satisfies(
-      required: tenant_workload_isolation_requirement(),
-      provided: current_runner_slot_profile(),
+    && !product.fabric.isolation.isolation_profile_satisfies(
+      required: product.fabric.isolation.tenant_workload_isolation_requirement(),
+      provided: product.fabric.isolation.current_runner_slot_profile(),
     )
 }
 
@@ -58,9 +59,9 @@ test fn todays_slots_could_not_host_a_tenant_workload() -> Bool {
 // FROM BEING A UNIVERSAL "NOTHING IS ELIGIBLE". Without it, a match that refused every pairing
 // would satisfy the gap witness and look like a working model.
 test fn todays_slots_still_satisfy_our_own_floor() -> Bool {
-  isolation_profile_satisfies(
-    required: floor_isolation_requirement(),
-    provided: current_runner_slot_profile(),
+  product.fabric.isolation.isolation_profile_satisfies(
+    required: gunbc.fabric_witness_run.floor_isolation_requirement(),
+    provided: product.fabric.isolation.current_runner_slot_profile(),
   )
 }
 
@@ -71,10 +72,10 @@ test fn todays_slots_still_satisfy_our_own_floor() -> Bool {
 // thing. Asserted as distinctness across the whole closed set rather than by spot-checking one.
 test fn the_seven_guarantees_do_not_share_a_wire_word() -> Bool {
   let all = [
-    FreshWritableRoot, PrivateProcessNamespace, PrivateNetworkNamespace,
-    PrivateUserNamespace, AttemptScopedSecrets, DefaultDenyEgress, DedicatedKernel,
+    product.fabric.isolation.FreshWritableRoot, product.fabric.isolation.PrivateProcessNamespace, product.fabric.isolation.PrivateNetworkNamespace,
+    product.fabric.isolation.PrivateUserNamespace, product.fabric.isolation.AttemptScopedSecrets, product.fabric.isolation.DefaultDenyEgress, product.fabric.isolation.DedicatedKernel,
   ]
-  let labels = map(all, g => isolation_guarantee_label(g: g))
+  let labels = map(all, g => product.fabric.isolation.isolation_guarantee_label(g: g))
   (all |> count) == 7
     && (labels |> count) == 7
     && !any(labels, a => (filter(labels, b => b == a) |> count) > 1)
@@ -87,8 +88,8 @@ test fn the_seven_guarantees_do_not_share_a_wire_word() -> Bool {
 // required guarantee was found -- if it could also mean the question failed, every unsatisfiable
 // offer in the fleet would read as fungible.
 test fn requiring_nothing_is_satisfied_rather_than_unanswerable() -> Bool {
-  isolation_profile_satisfies(
-    required: IsolationProfile { guarantees: [] },
-    provided: current_runner_slot_profile(),
+  product.fabric.isolation.isolation_profile_satisfies(
+    required: product.fabric.isolation.IsolationProfile { guarantees: [] },
+    provided: product.fabric.isolation.current_runner_slot_profile(),
   )
 }

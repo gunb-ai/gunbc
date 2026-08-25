@@ -28,13 +28,13 @@ fn spark_serving_admit_portable_remote_argv(
   identity: std.types.NonEmptyStr,
   raws: List<String>,
 ) -> SparkServingInstallRemoteCommandsVerdict {
-  match portable_remote_words(raws: raws) {
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: raws) {
     Present { value: words } =>
       SparkServingInstallRemoteCommandsPresent {
         steps: [
           spark_serving_step(
             identity: identity,
-            operation: gunbc.remote_operation.RemoteArgv { argv: portable_remote_words_strings(words: words) },
+            operation: gunbc.remote_operation.RemoteArgv { argv: gunbc.fleet_known_hosts_anchor.portable_remote_words_strings(words: words) },
           ),
         ],
       }
@@ -83,14 +83,14 @@ fn spark_serving_reload_user_manager_remote_argv() -> SparkServingInstallRemoteC
 fn spark_serving_enable_user_unit_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
   spark_serving_admit_portable_remote_argv(
     identity: "enable-user-unit" as std.types.NonEmptyStr,
-    raws: systemctl_user_enable_argv(unit: spark_serving_unit_name as std.types.NonEmptyStr),
+    raws: extdeps.systemd.systemctl.systemctl_user_enable_argv(unit: gunbc.spark.serving_unit_identity.spark_serving_unit_name as std.types.NonEmptyStr),
   )
 }
 
 fn spark_serving_start_user_unit_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
   spark_serving_admit_portable_remote_argv(
     identity: "start-user-unit" as std.types.NonEmptyStr,
-    raws: systemctl_user_start_argv(unit: spark_serving_unit_name as std.types.NonEmptyStr),
+    raws: extdeps.systemd.systemctl.systemctl_user_start_argv(unit: gunbc.spark.serving_unit_identity.spark_serving_unit_name as std.types.NonEmptyStr),
   )
 }
 
@@ -173,11 +173,11 @@ fn spark_serving_start_user_unit_remote_argv() -> SparkServingInstallRemoteComma
 // `Measure<Time, One, Nat>`, so a caller cannot pass a microsecond count where seconds are meant, and
 // the one place that needs the word asks for the word.
 fn spark_serving_api_readiness_connect_timeout() -> std.measure.Second {
-  second(count: 5)
+  std.measure.second(count: 5)
 }
 
 fn spark_serving_api_readiness_connect_timeout_word() -> String {
-  to_string(second_count(spark_serving_api_readiness_connect_timeout()))
+  to_string(std.measure.second_count(spark_serving_api_readiness_connect_timeout()))
 }
 
 fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemoteCommandsVerdict {
@@ -186,49 +186,49 @@ fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemote
       [
         spark_serving_admit_portable_remote_argv(
           identity: "ensure-readiness-scratch" as std.types.NonEmptyStr,
-          raws: ["mkdir", "-p", spark_serving_readiness_scratch_root() as String],
+          raws: ["mkdir", "-p", gunbc.spark.serving_install_paths.spark_serving_readiness_scratch_root() as String],
         ),
         spark_serving_admit_portable_remote_argv(
           identity: "ensure-model-blobs-dir" as std.types.NonEmptyStr,
-          raws: ["mkdir", "-p", spark_serving_desired_model_blobs_dir() as String],
+          raws: ["mkdir", "-p", gunbc.spark.serving_install_paths.spark_serving_desired_model_blobs_dir() as String],
         ),
         spark_serving_admit_portable_remote_argv(
           identity: "fetch-manifest-by-reference" as std.types.NonEmptyStr,
           raws: [
             "curl", "-fsSL", "--connect-timeout", spark_serving_api_readiness_connect_timeout_word(),
-            "-o", spark_serving_staged_manifest_path() as String,
-            spark_serving_registry_manifest_url(),
+            "-o", gunbc.spark.serving_install_paths.spark_serving_staged_manifest_path() as String,
+            gunbc.spark.serving_install_paths.spark_serving_registry_manifest_url(),
           ],
         ),
         spark_serving_admit_typed_file_step(
           identity: "declare-manifest-checksum" as std.types.NonEmptyStr,
-          path: spark_serving_manifest_checksum_path(),
+          path: gunbc.spark.serving_install_paths.spark_serving_manifest_checksum_path(),
           content: spark_serving_checksum_line(
             hex: gpt_oss_20b_manifest_digest_2026_08_19.hex,
-            path: spark_serving_staged_manifest_path() as String,
+            path: gunbc.spark.serving_install_paths.spark_serving_staged_manifest_path() as String,
           ),
         ),
         spark_serving_admit_portable_remote_argv(
           identity: "verify-manifest-identity" as std.types.NonEmptyStr,
           raws: [
             "sha256sum", "--check", "--status",
-            spark_serving_manifest_checksum_path() as String,
+            gunbc.spark.serving_install_paths.spark_serving_manifest_checksum_path() as String,
           ],
         ),
       ],
-      flat_map(gpt_oss_20b_blob_closure, b => spark_serving_materialize_blob_steps(blob: b)),
+      flat_map(gunbc.ollama_model_resolution.gpt_oss_20b_blob_closure, b => spark_serving_materialize_blob_steps(blob: b)),
     ),
     [
       spark_serving_admit_portable_remote_argv(
         identity: "ensure-manifest-dir" as std.types.NonEmptyStr,
-        raws: ["mkdir", "-p", spark_serving_desired_model_manifest_dir() as String],
+        raws: ["mkdir", "-p", gunbc.spark.serving_install_paths.spark_serving_desired_model_manifest_dir() as String],
       ),
       spark_serving_admit_portable_remote_argv(
         identity: "publish-manifest" as std.types.NonEmptyStr,
         raws: [
           "mv", "-f",
-          spark_serving_staged_manifest_path() as String,
-          spark_serving_desired_model_manifest_path() as String,
+          gunbc.spark.serving_install_paths.spark_serving_staged_manifest_path() as String,
+          gunbc.spark.serving_install_paths.spark_serving_desired_model_manifest_path() as String,
         ],
       ),
     ],
@@ -247,31 +247,31 @@ fn spark_serving_materialize_blob_steps(blob: gunbc.ollama_model_resolution.Olla
       identity: concat("fetch-blob-", blob.hex as String) as std.types.NonEmptyStr,
       raws: [
         "curl", "-fsSL", "--connect-timeout", spark_serving_api_readiness_connect_timeout_word(),
-        "-o", spark_serving_staged_blob_path(hex: blob.hex) as String,
-        spark_serving_registry_blob_url(hex: blob.hex),
+        "-o", gunbc.spark.serving_install_paths.spark_serving_staged_blob_path(hex: blob.hex) as String,
+        gunbc.spark.serving_install_paths.spark_serving_registry_blob_url(hex: blob.hex),
       ],
     ),
     spark_serving_admit_typed_file_step(
       identity: concat("declare-checksum-blob-", blob.hex as String) as std.types.NonEmptyStr,
-      path: spark_serving_blob_checksum_path(hex: blob.hex),
+      path: gunbc.spark.serving_install_paths.spark_serving_blob_checksum_path(hex: blob.hex),
       content: spark_serving_checksum_line(
         hex: blob.hex,
-        path: spark_serving_staged_blob_path(hex: blob.hex) as String,
+        path: gunbc.spark.serving_install_paths.spark_serving_staged_blob_path(hex: blob.hex) as String,
       ),
     ),
     spark_serving_admit_portable_remote_argv(
       identity: concat("verify-blob-", blob.hex as String) as std.types.NonEmptyStr,
       raws: [
         "sha256sum", "--check", "--status",
-        spark_serving_blob_checksum_path(hex: blob.hex) as String,
+        gunbc.spark.serving_install_paths.spark_serving_blob_checksum_path(hex: blob.hex) as String,
       ],
     ),
     spark_serving_admit_portable_remote_argv(
       identity: concat("publish-blob-", blob.hex as String) as std.types.NonEmptyStr,
       raws: [
         "mv", "-f",
-        spark_serving_staged_blob_path(hex: blob.hex) as String,
-        spark_serving_published_blob_path(hex: blob.hex) as String,
+        gunbc.spark.serving_install_paths.spark_serving_staged_blob_path(hex: blob.hex) as String,
+        gunbc.spark.serving_install_paths.spark_serving_published_blob_path(hex: blob.hex) as String,
       ],
     ),
   ]
@@ -323,18 +323,18 @@ fn spark_serving_checksum_line(hex: std.types.NonEmptyStr, path: String) -> Stri
 // it idempotent, which matters because this effect re-runs on every converge until the unit member
 // reports converged.
 fn spark_serving_write_user_unit_operation() -> SparkServingInstallRemoteCommandsVerdict {
-  match typed_remote_file_write_seal(
-    path: spark_serving_user_unit_path(),
-    content: spark_serving_desired_user_unit_text(),
-    allowed_scope: gunbc.file_access.FileTreeScope { root_path: spark_serving_executor_home as std.types.NonEmptyStr },
+  match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
+    path: gunbc.spark.serving_install_paths.spark_serving_user_unit_path(),
+    content: gunbc.spark.serving_unit_render.spark_serving_desired_user_unit_text(),
+    allowed_scope: gunbc.file_access.FileTreeScope { root_path: gunbc.spark.serving_runtime_receipt.spark_serving_executor_home as std.types.NonEmptyStr },
   ) {
-    TypedRemoteFileWriteAdmissionRefused { cause: why } =>
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: why } =>
       SparkServingInstallRemoteCommandsRefused {
         reason: join(["spark_serving_converge_realize: WriteUserUnitFile refused — ", why as String], ""),
       }
-    TypedRemoteFileWriteAdmitted { write: w } =>
-      match portable_remote_words(
-        raws: ["mkdir", "-p", spark_serving_user_unit_dir() as String],
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } =>
+      match gunbc.fleet_known_hosts_anchor.portable_remote_words(
+        raws: ["mkdir", "-p", gunbc.spark.serving_install_paths.spark_serving_user_unit_dir() as String],
       ) {
         Absent =>
           SparkServingInstallRemoteCommandsRefused {
@@ -345,7 +345,7 @@ fn spark_serving_write_user_unit_operation() -> SparkServingInstallRemoteCommand
             steps: [
               spark_serving_step(
                 identity: "ensure-user-unit-dir" as std.types.NonEmptyStr,
-                operation: gunbc.remote_operation.RemoteArgv { argv: portable_remote_words_strings(words: words) },
+                operation: gunbc.remote_operation.RemoteArgv { argv: gunbc.fleet_known_hosts_anchor.portable_remote_words_strings(words: words) },
               ),
               spark_serving_step(
                 identity: "write-user-unit-file" as std.types.NonEmptyStr,
@@ -396,12 +396,12 @@ fn spark_serving_write_user_unit_operation() -> SparkServingInstallRemoteCommand
 // and the tree being removed is by construction one nothing is serving from. That precondition is not
 // left to reading: `a_complete_runtime_plans_no_install_steps` fails if reconcile ever emits it.
 fn spark_serving_install_owned_runtime_closure_steps() -> SparkServingInstallRemoteCommandsVerdict {
-  let workspace = spark_serving_required_runtime_workspace_root() as String
-  let staging = spark_serving_required_runtime_staging_root() as String
-  let archive = spark_serving_required_runtime_staged_archive_path() as String
-  let manifest = spark_serving_required_runtime_checksum_manifest_path() as String
-  let staged_exe = spark_serving_required_runtime_staged_executable_path() as String
-  let final_root = spark_serving_required_runtime_root() as String
+  let workspace = gunbc.spark.serving_install_paths.spark_serving_required_runtime_workspace_root() as String
+  let staging = gunbc.spark.serving_install_paths.spark_serving_required_runtime_staging_root() as String
+  let archive = gunbc.spark.serving_install_paths.spark_serving_required_runtime_staged_archive_path() as String
+  let manifest = gunbc.spark.serving_install_paths.spark_serving_required_runtime_checksum_manifest_path() as String
+  let staged_exe = gunbc.spark.serving_install_paths.spark_serving_required_runtime_staged_executable_path() as String
+  let final_root = gunbc.spark.serving_install_paths.spark_serving_required_runtime_root() as String
   match spark_serving_runtime_checksum_manifest_write() {
     SparkServingInstallRemoteCommandsRefused { reason: why } =>
       SparkServingInstallRemoteCommandsRefused { reason: why }
@@ -413,7 +413,7 @@ fn spark_serving_install_owned_runtime_closure_steps() -> SparkServingInstallRem
           spark_serving_concat_step_verdicts(verdicts: [
             spark_serving_admit_portable_remote_argv(
               identity: "ensure-runtimes-parent" as std.types.NonEmptyStr,
-              raws: ["mkdir", "-p", spark_serving_runtimes_parent() as String],
+              raws: ["mkdir", "-p", gunbc.spark.serving_install_paths.spark_serving_runtimes_parent() as String],
             ),
             spark_serving_admit_portable_remote_argv(
               identity: "reset-attempt-workspace" as std.types.NonEmptyStr,
@@ -427,7 +427,7 @@ fn spark_serving_install_owned_runtime_closure_steps() -> SparkServingInstallRem
               identity: "download-archive" as std.types.NonEmptyStr,
               raws: [
                 "curl", "-fsSL", "-o", archive,
-                ollama_binary_release_download_locator(binary_release: ollama_required_release) as String,
+                extdeps.ollama.binary_release.ollama_binary_release_download_locator(binary_release: extdeps.ollama.binary_release.ollama_required_release) as String,
               ],
             ),
             SparkServingInstallRemoteCommandsPresent { steps: manifest_steps },
@@ -474,12 +474,12 @@ fn spark_serving_runtime_extract_argv(
   staging: String,
 ) -> SparkServingInstallRemoteCommandsVerdict {
   match ollama_required_release.archive_format.codec {
-    Zstd =>
+    extdeps.archive.format.Zstd =>
       spark_serving_admit_portable_remote_argv(
         identity: "extract-archive" as std.types.NonEmptyStr,
         raws: ["tar", "--zstd", "-xf", archive, "-C", staging],
       )
-    Gzip =>
+    extdeps.archive.format.Gzip =>
       spark_serving_admit_portable_remote_argv(
         identity: "extract-archive" as std.types.NonEmptyStr,
         raws: ["tar", "-xzf", archive, "-C", staging],
@@ -494,14 +494,14 @@ fn spark_serving_runtime_checksum_manifest_content() -> String {
   join([
     ollama_required_release.digest.hex as String,
     "  ",
-    spark_serving_required_runtime_staged_archive_path() as String,
+    gunbc.spark.serving_install_paths.spark_serving_required_runtime_staged_archive_path() as String,
   ], "")
 }
 
 fn spark_serving_runtime_checksum_manifest_write() -> SparkServingInstallRemoteCommandsVerdict {
   spark_serving_admit_typed_file_step(
     identity: "write-checksum-manifest" as std.types.NonEmptyStr,
-    path: spark_serving_required_runtime_checksum_manifest_path(),
+    path: gunbc.spark.serving_install_paths.spark_serving_required_runtime_checksum_manifest_path(),
     content: spark_serving_runtime_checksum_manifest_content(),
   )
 }
@@ -511,8 +511,8 @@ fn spark_serving_runtime_checksum_manifest_write() -> SparkServingInstallRemoteC
 fn spark_serving_runtime_receipt_write() -> SparkServingInstallRemoteCommandsVerdict {
   spark_serving_admit_typed_file_step(
     identity: "write-materialization-receipt" as std.types.NonEmptyStr,
-    path: spark_serving_required_runtime_staged_receipt_path(),
-    content: ollama_runtime_materialization_identity_for_required_release().digest as String,
+    path: gunbc.spark.serving_install_paths.spark_serving_required_runtime_staged_receipt_path(),
+    content: gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release().digest as String,
   )
 }
 
@@ -523,18 +523,18 @@ fn spark_serving_admit_typed_file_step(
   path: std.types.FilePath,
   content: String,
 ) -> SparkServingInstallRemoteCommandsVerdict {
-  match typed_remote_file_write_seal(
+  match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
     path: path,
     content: content,
-    allowed_scope: gunbc.file_access.FileTreeScope { root_path: spark_serving_executor_home as std.types.NonEmptyStr },
+    allowed_scope: gunbc.file_access.FileTreeScope { root_path: gunbc.spark.serving_runtime_receipt.spark_serving_executor_home as std.types.NonEmptyStr },
   ) {
-    TypedRemoteFileWriteAdmissionRefused { cause: why } =>
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: why } =>
       SparkServingInstallRemoteCommandsRefused {
         reason: join([
           "spark_serving_converge_realize: ", identity as String, " refused — ", why as String,
         ], ""),
       }
-    TypedRemoteFileWriteAdmitted { write: w } =>
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } =>
       SparkServingInstallRemoteCommandsPresent {
         steps: [
           spark_serving_step(
@@ -570,35 +570,35 @@ fn realize_spark_serving_install_effect_command(
   executor_login: std.types.NonEmptyStr,
 ) -> SparkServingInstallRemoteCommandsVerdict {
   match effect {
-    EnableLingerForOwnAccount =>
+    gunbc.spark.serving_realization.EnableLingerForOwnAccount =>
       spark_serving_enable_linger_remote_argv(login: executor_login)
-    ReloadUserManager => spark_serving_reload_user_manager_remote_argv()
-    EnableUserUnit => spark_serving_enable_user_unit_remote_argv()
-    StartUserUnit => spark_serving_start_user_unit_remote_argv()
-    WriteSystemUnitFile =>
+    gunbc.spark.serving_realization.ReloadUserManager => spark_serving_reload_user_manager_remote_argv()
+    gunbc.spark.serving_realization.EnableUserUnit => spark_serving_enable_user_unit_remote_argv()
+    gunbc.spark.serving_realization.StartUserUnit => spark_serving_start_user_unit_remote_argv()
+    gunbc.spark.serving_realization.WriteSystemUnitFile =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: WriteSystemUnitFile is not implemented in the Spark serving slice",
       }
-    ReloadSystemManager =>
+    gunbc.spark.serving_realization.ReloadSystemManager =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: ReloadSystemManager is not implemented in the Spark serving slice",
       }
-    EnableSystemUnit =>
+    gunbc.spark.serving_realization.EnableSystemUnit =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: EnableSystemUnit is not implemented in the Spark serving slice",
       }
-    WriteUserUnitFile => spark_serving_write_user_unit_operation()
-    InstallRuntimePackage =>
+    gunbc.spark.serving_realization.WriteUserUnitFile => spark_serving_write_user_unit_operation()
+    gunbc.spark.serving_realization.InstallRuntimePackage =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: InstallRuntimePackage is not implemented in the Spark serving slice",
       }
-    InstallOwnedRuntimeClosure => spark_serving_install_owned_runtime_closure_steps()
-    MaterializeModelArtifact => spark_serving_materialize_model_artifact_steps()
-    GrantContainerRuntimeAccess =>
+    gunbc.spark.serving_realization.InstallOwnedRuntimeClosure => spark_serving_install_owned_runtime_closure_steps()
+    gunbc.spark.serving_realization.MaterializeModelArtifact => spark_serving_materialize_model_artifact_steps()
+    gunbc.spark.serving_realization.GrantContainerRuntimeAccess =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: GrantContainerRuntimeAccess is not implemented in the Spark serving slice",
       }
-    RunContainerAsOwnUser =>
+    gunbc.spark.serving_realization.RunContainerAsOwnUser =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: RunContainerAsOwnUser is not implemented in the Spark serving slice",
       }
@@ -643,7 +643,7 @@ fn spark_serving_install_remote_commands_refused(v: SparkServingInstallRemoteCom
 }
 
 fn spark_serving_default_executor_login() -> std.types.NonEmptyStr {
-  spark_serving_automation_principal_login()
+  gunbc.spark.serving_desired.spark_serving_automation_principal_login()
 }
 
 // Compares ONE command against the single command the linger effect realizes. A caller holding
@@ -656,7 +656,7 @@ fn spark_serving_enable_linger_argv_matches_expected(argv: List<String>) -> Bool
   ) {
     SparkServingInstallRemoteCommandsPresent { steps: expected } =>
       if expected.length() == 1 {
-        match remote_operation_argv(operation: expected.first().operation) {
+        match gunbc.remote_operation.remote_operation_argv(operation: expected.first().operation) {
           Present { value: words } => join(argv, "\0") == join(words, "\0")
           Absent => false
         }

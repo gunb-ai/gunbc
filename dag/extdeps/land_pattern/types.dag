@@ -10,7 +10,7 @@ module extdeps.land_pattern.types
 // and why no function in this module takes a body dimension set and returns a pattern.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "shop.ipc.org/ipc-7351/ipc-7351-standard-only/Revision-b/english"
   }
 }
@@ -138,7 +138,7 @@ type TerminalIndexingObligation {
 // what a footprint realization may consume — only the admitted form below is.
 type PartMechanicalCandidate {
   ordering_part_number: std.types.NonEmptyStr
-  vendor: Vendor<extdeps.hardware.Hardware>
+  vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   body: PackageBodyDimensions
   land_pattern: VendorRecommendedLandPattern
   terminal_indexing: TerminalIndexingObligation
@@ -150,7 +150,7 @@ type PartMechanicalCandidate {
 // citable whether or not anyone here has read it; what is unestablished is the geometry.
 type CatalogPartIdentity {
   ordering_part_number: std.types.NonEmptyStr
-  vendor: Vendor<extdeps.hardware.Hardware>
+  vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   board_pattern: MountingPatternObligation
 }
 
@@ -180,7 +180,7 @@ fn land_pattern_disagreements(p: PartMechanicalCandidate) -> List<LandPatternDis
       terminals: p.body.terminal_count,
     }]
   }
-  let pitch_cause = if micrometer_count(m: land_pattern_pitch(g: p.land_pattern.geometry)) == micrometer_count(m: p.body.terminal_pitch) {
+  let pitch_cause = if std.measure.micrometer_count(m: land_pattern_pitch(g: p.land_pattern.geometry)) == std.measure.micrometer_count(m: p.body.terminal_pitch) {
     []
   } else {
     [LandPitchDiffersFromTerminalPitch {
@@ -240,9 +240,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.land_pattern.types",
       decl_name: "land_pattern_note",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.land_pattern.types.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

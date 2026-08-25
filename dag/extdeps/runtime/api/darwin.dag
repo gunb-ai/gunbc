@@ -4,7 +4,7 @@ module extdeps.runtime.api.darwin
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "developer.apple.com/documentation/macos-release-notes/macos-15-release-notes"
   }
 }
@@ -43,7 +43,7 @@ fn witness_libsystem_read_module() -> Bool {
 
 fn witness_macos_libsystem_exports_include_read() -> Bool {
   match macos_15_library_api_surface {
-    LibraryApiBoundarySurface { boundary: b } => b.exports == macos_libsystem_exports
+    std.os.invocation.LibraryApiBoundarySurface { boundary: b } => b.exports == macos_libsystem_exports
     _ => false
   }
 }

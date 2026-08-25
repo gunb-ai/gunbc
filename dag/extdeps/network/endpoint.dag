@@ -3,7 +3,7 @@ module extdeps.network.endpoint
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.rfc-editor.org/rfc/rfc3986#section-3.2.2",
   }
 }
@@ -19,13 +19,13 @@ fn host_by_name(name: extdeps.dns.domain_name.HostName) -> NetworkHost {
 }
 
 fn host_by_ipv4(addr: extdeps.network.ipv4.Ipv4Address) -> NetworkHost {
-  HostByAddress { address: ip_v4(addr: addr) }
+  HostByAddress { address: extdeps.network.address.ip_v4(addr: addr) }
 }
 
 fn render_network_host(host: NetworkHost) -> std.types.NonEmptyStr? {
   match host {
-    HostByName { name: n } => Present { value: domain_name_wire(name: n.name) as std.types.NonEmptyStr }
-    HostByAddress { address: a } => render_ip_address(addr: a)
+    HostByName { name: n } => Present { value: extdeps.dns.domain_name.domain_name_wire(name: n.name) as std.types.NonEmptyStr }
+    HostByAddress { address: a } => extdeps.network.address.render_ip_address(addr: a)
   }
 }
 

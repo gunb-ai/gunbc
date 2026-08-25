@@ -3,24 +3,24 @@ module test.claim.witness_row_cost_migration_disclosure
 
 // Executing consumer for the mandatory-migration disclosure (gunbc.witness_row_cost). THE PAIR IS THE PROOF, per the drift comparator's own discipline: a synthetic row at-or-above the derived threshold MUST produce MandatoryMigration, and a row comfortably below MUST NOT — either alone is satisfiable by a broken comparator. The derivation itself is pinned so the 500ms figure can never silently drift from the fast-lane authority: this test asserts the threshold IS gunbc_ci_fast_lane_eval_budget_ms()/10, never a hand-typed 500 literal.
 fn derived_threshold_is_500ms_holds() -> Bool {
-  witness_row_cost_migration_threshold_ms() == 500
+  gunbc.witness_row_cost.witness_row_cost_migration_threshold_ms() == 500
 }
 
 fn at_threshold_is_mandatory_migration_holds() -> Bool {
-  let v = witness_row_cost_migration_verdict(observed: millisecond(count: witness_row_cost_migration_threshold_ms()))
+  let v = gunbc.witness_row_cost.witness_row_cost_migration_verdict(observed: std.measure.millisecond(count: gunbc.witness_row_cost.witness_row_cost_migration_threshold_ms()))
   match v {
-    MandatoryMigration { observed: o, threshold: t } =>
-      millisecond_count(m: o) == witness_row_cost_migration_threshold_ms() &&
-      millisecond_count(m: t) == witness_row_cost_migration_threshold_ms()
-    BelowMigrationThreshold => false
+    gunbc.witness_row_cost.MandatoryMigration { observed: o, threshold: t } =>
+      std.measure.millisecond_count(m: o) == gunbc.witness_row_cost.witness_row_cost_migration_threshold_ms() &&
+      std.measure.millisecond_count(m: t) == gunbc.witness_row_cost.witness_row_cost_migration_threshold_ms()
+    gunbc.witness_row_cost.BelowMigrationThreshold => false
   }
 }
 
 fn just_below_threshold_is_not_mandatory_holds() -> Bool {
-  let v = witness_row_cost_migration_verdict(observed: millisecond(count: witness_row_cost_migration_threshold_ms() - 1))
+  let v = gunbc.witness_row_cost.witness_row_cost_migration_verdict(observed: std.measure.millisecond(count: gunbc.witness_row_cost.witness_row_cost_migration_threshold_ms() - 1))
   match v {
-    BelowMigrationThreshold => true
-    MandatoryMigration { observed: _, threshold: _ } => false
+    gunbc.witness_row_cost.BelowMigrationThreshold => true
+    gunbc.witness_row_cost.MandatoryMigration { observed: _, threshold: _ } => false
   }
 }
 
@@ -28,19 +28,19 @@ fn sample_decl(name: String) -> std.decl_ref.DeclarationRef {
   std.decl_ref.DeclarationRef {
     module_path: "test.claim.witness_row_cost_migration_disclosure" as std.types.NonEmptyStr,
     decl_name: name as std.types.NonEmptyStr,
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 fn sample_row(name: String, eval_ms: std.nat.Nat) -> gunbc.witness_row_cost.WitnessCostReceiptRow {
   gunbc.witness_row_cost.WitnessCostReceiptRow {
     entry: "dag/test/claim/witness_row_cost_migration_disclosure_witness_test.dag" as std.types.NonEmptyStr,
-    declaration: test.claim.witness_row_cost_migration_disclosure.sample_decl(name: name),
-    eval: observation_durations_wall(
-      elapsed: millisecond_to_nanosecond(m: millisecond(count: eval_ms))
+    declaration: sample_decl(name: name),
+    eval: std.observation.observation_durations_wall(
+      elapsed: std.measure.millisecond_to_nanosecond(m: std.measure.millisecond(count: eval_ms))
     ),
-    resolve: millisecond_to_nanosecond(m: millisecond(count: 1)),
-    warm: millisecond_to_nanosecond(m: millisecond(count: eval_ms + 1)),
+    resolve: std.measure.millisecond_to_nanosecond(m: std.measure.millisecond(count: 1)),
+    warm: std.measure.millisecond_to_nanosecond(m: std.measure.millisecond(count: eval_ms + 1)),
     outcome: std.observation.Done
   }
 }
@@ -51,15 +51,15 @@ fn rows_filter_and_count_agree_and_are_located_holds() -> Bool {
     sample_row(name: "slow_row", eval_ms: 2500),
     sample_row(name: "at_cap_row", eval_ms: 5000)
   ]
-  let mandatory = witness_row_cost_mandatory_migration_rows(rows: rows)
-  witness_row_cost_mandatory_migration_count(rows: rows) == 2 &&
+  let mandatory = gunbc.witness_row_cost.witness_row_cost_mandatory_migration_rows(rows: rows)
+  gunbc.witness_row_cost.witness_row_cost_mandatory_migration_count(rows: rows) == 2 &&
     v2.std.algebra.count_where(xs: mandatory, predicate: row => true) == 2 &&
     v2.std.algebra.for_all(xs: mandatory, predicate: row => row.declaration.decl_name != ("fast_row" as std.types.NonEmptyStr))
 }
 
 fn zero_over_threshold_rows_counts_zero_holds() -> Bool {
   let rows: List<gunbc.witness_row_cost.WitnessCostReceiptRow> = [sample_row(name: "fast_row", eval_ms: 12)]
-  witness_row_cost_mandatory_migration_count(rows: rows) == 0
+  gunbc.witness_row_cost.witness_row_cost_mandatory_migration_count(rows: rows) == 0
 }
 
 test fn witness_row_cost_migration_disclosure_holds() -> Bool {

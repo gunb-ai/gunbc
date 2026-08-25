@@ -1,53 +1,53 @@
 module v2.test.manual.python_add_emit_translate
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 data python_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
-data python_add_int_inhabitant: v2.std.node.Node = python_int_inhabitant_node()
+data python_add_int_inhabitant: v2.std.node.Node = v2.extdeps.languages.python.python_int_inhabitant_node()
 
 data python_add_emitted_root: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Arrow },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
   children: [
-    v2.std.node.Edge { label: Positional, target: python_add_int_inhabitant },
-    v2.std.node.Edge { label: Positional, target: python_add_int_inhabitant },
-    v2.std.node.Edge { label: Positional, target: python_add_int_inhabitant }
+    v2.std.node.Edge { label: v2.std.node.Positional, target: python_add_int_inhabitant },
+    v2.std.node.Edge { label: v2.std.node.Positional, target: python_add_int_inhabitant },
+    v2.std.node.Edge { label: v2.std.node.Positional, target: python_add_int_inhabitant }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data python_add_int_facts_node: v2.std.node.Node = python_integer_facts_node(facts: python_facts_int)
+data python_add_int_facts_node: v2.std.node.Node = v2.extdeps.languages.python.python_integer_facts_node(facts: v2.extdeps.languages.python.python_facts_int)
 
-data python_add_target_model: v2.std.compilers.target_model.TargetModel = python_target_model()
+data python_add_target_model: v2.std.compilers.target_model.TargetModel = v2.extdeps.languages.python.python_target_model()
 
 data python_add_poisoned_authority_target_model: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
-  produced_decl_support: ProducedDeclUnwired,
-  bundle: python_target_model_node(),
-  lex: python_lex(),
-  binding_spellings: python_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+  produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
+  bundle: v2.extdeps.languages.python.python_target_model_node(),
+  lex: v2.extdeps.languages.python.python_lex(),
+  binding_spellings: v2.extdeps.languages.python.python_binding_spellings(),
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
   authority_source_text: python_add_forbidden_authority_source_text,
-  runtime_row: target_emit_host_runtime_row_unconfigured
+  runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
 }
 
 data python_add_empty_translation_rules_bundle: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data python_add_missing_translation_rules_target: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
-  produced_decl_support: ProducedDeclUnwired,
+  produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
   bundle: python_add_empty_translation_rules_bundle,
-  lex: python_lex(),
-  binding_spellings: empty_map(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+  lex: v2.extdeps.languages.python.python_lex(),
+  binding_spellings: v2.std.collection.empty_map(),
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
   authority_source_text: "",
-  runtime_row: target_emit_host_runtime_row_unconfigured
+  runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
 }
 
 fn anchor_python_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  target_serialize_source_from_model(
+  v2.compiler.translate.target_serialize_source_from_model(
     target: python_add_missing_translation_rules_target,
     emitted: python_add_emitted_root
   )
@@ -57,8 +57,8 @@ data python_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<extdeps.comm
 
 test fn python_add_serialize_reject_receipt_holds() -> Bool {
   match python_add_serialize_reject_receipt {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
@@ -97,7 +97,7 @@ fn python_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.
         algebra: python_add_int_facts_node
       )
     }
-  } else if node == python_inhabitant_atom(id: ^python_inhabitant_int) {
+  } else if node == v2.extdeps.languages.python.python_inhabitant_atom(id: ^python_inhabitant_int) {
     v2.std.witness.Holds {
       value: python_add_canonical_grounding(
         node: node,
@@ -111,21 +111,21 @@ fn python_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.
         algebra: node
       )
     }
-  } else if node == python_inhabitant_atom(id: ^python_surface_spelling_int) {
+  } else if node == v2.extdeps.languages.python.python_inhabitant_atom(id: ^python_surface_spelling_int) {
     v2.std.witness.Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_facts_node
       )
     }
-  } else if node == python_inhabitant_atom(id: ^python_repr_int_arbitrary_precision) {
+  } else if node == v2.extdeps.languages.python.python_inhabitant_atom(id: ^python_repr_int_arbitrary_precision) {
     v2.std.witness.Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_facts_node
       )
     }
-  } else if node == python_inhabitant_atom(id: ^std_projection_additive_numeric) {
+  } else if node == v2.extdeps.languages.python.python_inhabitant_atom(id: ^std_projection_additive_numeric) {
     v2.std.witness.Holds {
       value: python_add_canonical_grounding(
         node: node,
@@ -136,8 +136,8 @@ fn python_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.
     v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^python_add_grounding_miss,
-        at: node_locus(node: node),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.node_locus(node: node),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
     }
   }
@@ -145,12 +145,12 @@ fn python_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.
 
 fn python_add_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match python_add_canonical_grounding_for(node: node) {
-    Violates { diagnostic: d } => optional_absent()
-    Holds { value: grounding } =>
-      match termination_proof_witness_for_node(n: node) {
-        Violates { diagnostic: d } => optional_absent()
-        Holds { value: proof } =>
-          optional_present(value: claim_inferred_facts_witness(
+    v2.std.witness.Violates { diagnostic: d } => v2.std.optional.optional_absent()
+    v2.std.witness.Holds { value: grounding } =>
+      match v2.std.cardinality.termination_proof_witness_for_node(n: node) {
+        v2.std.witness.Violates { diagnostic: d } => v2.std.optional.optional_absent()
+        v2.std.witness.Holds { value: proof } =>
+          v2.std.optional.optional_present(value: v2.test.lens_common.infer_fixture.claim_inferred_facts_witness(
               grounding: grounding,
               descent: v2.std.witness.Holds { value: proof }
             ))
@@ -164,7 +164,7 @@ fn python_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2
 
 data python_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: python_add_emitted_root,
-  facts: std.algebra.PartialFunction {
+  facts: PartialFunction {
     lookup: python_add_facts_lookup
   }
 }
@@ -174,7 +174,7 @@ fn anchor_python_add_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communi
 }
 
 fn anchor_python_add_compile_inferred_accepts() -> v2.std.diagnostic.Outcome<v2.compiler.compile.CompileOutput> {
-  compile_inferred(
+  v2.compiler.compile.compile_inferred(
     inferred: python_add_inferred_tree,
     mode: v2.compiler.compile.TranslateTo { target: python_add_poisoned_authority_target_model }
   )
@@ -184,9 +184,9 @@ data python_add_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.me
 
 test fn python_add_emit_add_fn_accepts_holds() -> Bool {
   match python_add_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == python_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried == v2.extdeps.languages.python.python_source_text) && (d == v2.std.diagnostic.None)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -194,8 +194,8 @@ data python_add_compile_inferred_receipt: v2.std.diagnostic.Outcome<v2.compiler.
 
 test fn python_add_compile_inferred_receipt_holds() -> Bool {
   match python_add_compile_inferred_receipt {
-    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

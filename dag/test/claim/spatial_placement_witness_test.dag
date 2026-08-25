@@ -1,7 +1,7 @@
 module test.claim.spatial_placement
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // SPATIAL-0 green-by-execution proofs for product.placement_supply and
 // gunbc.fleet_physical_inventory: RackResidence/same_rack (exact RackIdentity only; unobserved is
@@ -29,7 +29,7 @@ data host_far: product.placement_supply.HostIdentity = "far-host" as product.pla
 
 data seed_rack_a_residence: product.placement_supply.RackResidence = product.placement_supply.RackMounted {
   rack: rack_a,
-  position: RackPositionUnobserved,
+  position: product.placement_supply.RackPositionUnobserved,
 }
 
 data next_rack_a_residence: product.placement_supply.RackResidence = product.placement_supply.RackShelfResident {
@@ -39,7 +39,7 @@ data next_rack_a_residence: product.placement_supply.RackResidence = product.pla
 
 data far_rack_b_residence: product.placement_supply.RackResidence = product.placement_supply.RackMounted {
   rack: rack_b,
-  position: RackPositionUnobserved,
+  position: product.placement_supply.RackPositionUnobserved,
 }
 
 data spatial_fixture_facts: List<product.placement_supply.HostSpatialFacts> = [
@@ -49,26 +49,26 @@ data spatial_fixture_facts: List<product.placement_supply.HostSpatialFacts> = [
     residence: seed_rack_a_residence,
     wireless: product.placement_supply.WirelessAdapterPresent {
       interface: "wlan0" as std.types.NonEmptyStr,
-      station_mode: StationModeUnobserved,
+      station_mode: product.placement_supply.StationModeUnobserved,
     },
-    relay: RelayProvisioned,
-    bootstrap_need: BootstrapNotNeeded,
+    relay: product.placement_supply.RelayProvisioned,
+    bootstrap_need: product.placement_supply.BootstrapNotNeeded,
   },
   product.placement_supply.HostSpatialFacts {
     host: host_next,
     asset: asset_next,
     residence: next_rack_a_residence,
-    wireless: WirelessAdapterUnobserved,
-    relay: RelayIncapable,
-    bootstrap_need: BootstrapNeeded,
+    wireless: product.placement_supply.WirelessAdapterUnobserved,
+    relay: product.placement_supply.RelayIncapable,
+    bootstrap_need: product.placement_supply.BootstrapNeeded,
   },
   product.placement_supply.HostSpatialFacts {
     host: host_far,
     asset: asset_far,
     residence: far_rack_b_residence,
-    wireless: WirelessAdapterUnobserved,
-    relay: RelayIncapable,
-    bootstrap_need: BootstrapNeeded,
+    wireless: product.placement_supply.WirelessAdapterUnobserved,
+    relay: product.placement_supply.RelayIncapable,
+    bootstrap_need: product.placement_supply.BootstrapNeeded,
   },
 ]
 
@@ -80,27 +80,27 @@ data seed_to_next_association: product.placement_supply.WirelessReachStanding = 
 }
 
 test fn site_contains_declared_racks_holds() -> Bool {
-  site_contains_rack(site: synthetic_site, rack: rack_a)
-    && site_contains_rack(site: synthetic_site, rack: rack_b)
-    && site_contains_rack(site: operator_physical_site, rack: rack_01)
+  product.placement_supply.site_contains_rack(site: synthetic_site, rack: rack_a)
+    && product.placement_supply.site_contains_rack(site: synthetic_site, rack: rack_b)
+    && product.placement_supply.site_contains_rack(site: gunbc.fleet_physical_inventory.operator_physical_site, rack: gunbc.fleet_physical_inventory.rack_01)
 }
 
 test fn same_rack_exact_identity_holds_for_co_residents() -> Bool {
-  match same_rack(a: seed_rack_a_residence, b: next_rack_a_residence) {
+  match product.placement_supply.same_rack(a: seed_rack_a_residence, b: next_rack_a_residence) {
     Present { value: same } => same
     Absent => false
   }
 }
 
 test fn same_rack_different_racks_is_false_not_unknown() -> Bool {
-  match same_rack(a: seed_rack_a_residence, b: far_rack_b_residence) {
+  match product.placement_supply.same_rack(a: seed_rack_a_residence, b: far_rack_b_residence) {
     Present { value: same } => !same
     Absent => false
   }
 }
 
 test fn same_rack_unobserved_is_absent_not_false() -> Bool {
-  match same_rack(a: RackResidenceUnobserved, b: seed_rack_a_residence) {
+  match product.placement_supply.same_rack(a: product.placement_supply.RackResidenceUnobserved, b: seed_rack_a_residence) {
     Absent => true
     Present { value: _ } => false
   }
@@ -111,13 +111,13 @@ test fn same_rack_unobserved_is_absent_not_false() -> Bool {
 // BootstrapNeedUnobserved to false made an unlooked-at target report "does not need
 // bootstrap", so a witness asserting Present{value:false} on the third arm must fail.
 test fn bootstrap_need_discriminates_unobserved_from_not_needed() -> Bool {
-  match wifi_target_needs_bootstrap(need: BootstrapNeeded) {
+  match product.placement_supply.wifi_target_needs_bootstrap(need: product.placement_supply.BootstrapNeeded) {
     Absent => false
     Present { value: needed } =>
-      match wifi_target_needs_bootstrap(need: BootstrapNotNeeded) {
+      match product.placement_supply.wifi_target_needs_bootstrap(need: product.placement_supply.BootstrapNotNeeded) {
         Absent => false
         Present { value: not_needed } =>
-          match wifi_target_needs_bootstrap(need: BootstrapNeedUnobserved) {
+          match product.placement_supply.wifi_target_needs_bootstrap(need: product.placement_supply.BootstrapNeedUnobserved) {
             Present { value: _ } => false
             Absent => needed && !not_needed
           }
@@ -126,25 +126,25 @@ test fn bootstrap_need_discriminates_unobserved_from_not_needed() -> Bool {
 }
 
 test fn wireless_standing_discriminates_present_vs_absent() -> Bool {
-  match wireless_adapter_can_associate(
+  match product.placement_supply.wireless_adapter_can_associate(
     standing: product.placement_supply.WirelessAdapterPresent {
       interface: "wlan0" as std.types.NonEmptyStr,
-      station_mode: StationModeUnobserved,
+      station_mode: product.placement_supply.StationModeUnobserved,
     },
   ) {
     Absent => false
     Present { value: present_can } =>
-      match wireless_adapter_can_associate(standing: WirelessAdapterAbsent) {
+      match product.placement_supply.wireless_adapter_can_associate(standing: product.placement_supply.WirelessAdapterAbsent) {
         Absent => false
         Present { value: absent_can } =>
-          match wireless_adapter_can_associate(standing: WirelessAdapterUnobserved) {
+          match product.placement_supply.wireless_adapter_can_associate(standing: product.placement_supply.WirelessAdapterUnobserved) {
             Present { value: _ } => false
             Absent =>
-              match wifi_relay_can_bootstrap(
-                relay: RelayProvisioned,
+              match product.placement_supply.wifi_relay_can_bootstrap(
+                relay: product.placement_supply.RelayProvisioned,
                 wireless: product.placement_supply.WirelessAdapterPresent {
                   interface: "wlan0" as std.types.NonEmptyStr,
-                  station_mode: StationModeUnobserved,
+                  station_mode: product.placement_supply.StationModeUnobserved,
                 },
               ) {
                 Absent => false
@@ -157,35 +157,35 @@ test fn wireless_standing_discriminates_present_vs_absent() -> Bool {
 }
 
 test fn srv1_measured_adapter_absent_specimen() -> Bool {
-  match host_spatial_facts_for(facts: fleet_host_spatial_facts, host: operator_host_srv1) {
+  match product.placement_supply.host_spatial_facts_for(facts: gunbc.fleet_physical_inventory.fleet_host_spatial_facts, host: gunbc.fleet_intent_network.operator_host_srv1) {
     Present { value: srv1 } =>
       match srv1.wireless {
-        WirelessAdapterAbsent =>
-          match wireless_adapter_can_associate(standing: srv1.wireless) {
+        product.placement_supply.WirelessAdapterAbsent =>
+          match product.placement_supply.wireless_adapter_can_associate(standing: srv1.wireless) {
             Present { value: can } => !can
             Absent => false
           }
-        WirelessAdapterPresent { interface: _, station_mode: _ } => false
-        WirelessAdapterUnobserved => false
+        product.placement_supply.WirelessAdapterPresent { interface: _, station_mode: _ } => false
+        product.placement_supply.WirelessAdapterUnobserved => false
       }
     Absent => false
   }
-    && srv1_measured_wireless_note != ""
+    && gunbc.fleet_physical_inventory.srv1_measured_wireless_note != ""
 }
 
 test fn same_rack_makes_probe_candidate_without_establishing_reach() -> Bool {
-  match wifi_probe_is_candidate(
+  match product.placement_supply.wifi_probe_is_candidate(
     bootstrapper_residence: seed_rack_a_residence,
     target_residence: next_rack_a_residence,
     bootstrapper_wireless: product.placement_supply.WirelessAdapterPresent {
       interface: "wlan0" as std.types.NonEmptyStr,
-      station_mode: StationModeUnobserved,
+      station_mode: product.placement_supply.StationModeUnobserved,
     },
   ) {
     Absent => false
     Present { value: is_candidate } => is_candidate
   }
-    && !wireless_reach_established(
+    && !product.placement_supply.wireless_reach_established(
       bootstrapper: host_seed,
       target: host_next,
       standings: [],
@@ -193,51 +193,51 @@ test fn same_rack_makes_probe_candidate_without_establishing_reach() -> Bool {
 }
 
 test fn same_rack_without_receipt_refuses_bootstrap() -> Bool {
-  match wifi_bootstrap_step_admissible(
+  match product.placement_supply.wifi_bootstrap_step_admissible(
     step: product.placement_supply.WifiBootstrapStep { bootstrapper: host_seed, target: host_next },
     facts: spatial_fixture_facts,
     reach_standings: [],
   ) {
-    WifiBootstrapRefused { cause: c } => c == "wireless_reach_unobserved"
-    WifiBootstrapAdmissible => false
+    product.placement_supply.WifiBootstrapRefused { cause: c } => c == "wireless_reach_unobserved"
+    product.placement_supply.WifiBootstrapAdmissible => false
   }
 }
 
 test fn association_receipt_establishes_reach_and_admits_bootstrap() -> Bool {
-  wireless_reach_established(
+  product.placement_supply.wireless_reach_established(
     bootstrapper: host_seed,
     target: host_next,
     standings: [seed_to_next_association],
   )
-    && match wifi_bootstrap_step_admissible(
+    && match product.placement_supply.wifi_bootstrap_step_admissible(
       step: product.placement_supply.WifiBootstrapStep { bootstrapper: host_seed, target: host_next },
       facts: spatial_fixture_facts,
       reach_standings: [seed_to_next_association],
     ) {
-      WifiBootstrapAdmissible => true
-      WifiBootstrapRefused { cause: _ } => false
+      product.placement_supply.WifiBootstrapAdmissible => true
+      product.placement_supply.WifiBootstrapRefused { cause: _ } => false
     }
 }
 
 test fn synthetic_second_rack_refuses_probe_and_bootstrap() -> Bool {
-  match wifi_probe_is_candidate(
+  match product.placement_supply.wifi_probe_is_candidate(
     bootstrapper_residence: seed_rack_a_residence,
     target_residence: far_rack_b_residence,
     bootstrapper_wireless: product.placement_supply.WirelessAdapterPresent {
       interface: "wlan0" as std.types.NonEmptyStr,
-      station_mode: StationModeUnobserved,
+      station_mode: product.placement_supply.StationModeUnobserved,
     },
   ) {
     Absent => false
     Present { value: is_candidate } => !is_candidate
   }
-    && match wifi_bootstrap_step_admissible(
+    && match product.placement_supply.wifi_bootstrap_step_admissible(
       step: product.placement_supply.WifiBootstrapStep { bootstrapper: host_seed, target: host_far },
       facts: spatial_fixture_facts,
       reach_standings: [seed_to_next_association],
     ) {
-      WifiBootstrapRefused { cause: c } => c == "wifi_probe_not_candidate"
-      WifiBootstrapAdmissible => false
+      product.placement_supply.WifiBootstrapRefused { cause: c } => c == "wifi_probe_not_candidate"
+      product.placement_supply.WifiBootstrapAdmissible => false
     }
 }
 
@@ -247,16 +247,16 @@ test fn wifi_bootstrap_chain_one_hop_with_receipt_holds() -> Bool {
       product.placement_supply.WifiBootstrapStep { bootstrapper: host_seed, target: host_next },
     ],
   }
-  match wifi_bootstrap_chain_admissible(
+  match product.placement_supply.wifi_bootstrap_chain_admissible(
     chain: chain,
     facts: spatial_fixture_facts,
     reach_standings: [seed_to_next_association],
   ) {
-    WifiBootstrapAdmissible => true
-    WifiBootstrapRefused { cause: _ } => false
+    product.placement_supply.WifiBootstrapAdmissible => true
+    product.placement_supply.WifiBootstrapRefused { cause: _ } => false
   }
 }
 
 test fn fleet_nominal_rackmount_arithmetic_witness_holds() -> Bool {
-  fleet_nominal_rackmount_arithmetic_holds()
+  gunbc.fleet_physical_inventory.fleet_nominal_rackmount_arithmetic_holds()
 }

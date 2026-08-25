@@ -1,27 +1,27 @@
 module v2.workflow.ci_v1_compiler_tests_compile_gate_emit_test
 
 
-fn gate_materialized_render(plan: EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>) -> String {
-  ci_v1_compiler_tests_compile_gate_render(plan: plan)
+fn gate_materialized_render(plan: v2.std.effect_plan.EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>) -> String {
+  v2.workflow.ci_v1_compiler_tests_compile_gate_emit.ci_v1_compiler_tests_compile_gate_render(plan: plan)
 }
 
-fn gate_plan_refuses(plan: EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>) -> Bool {
-  match effect_plan_bash_materialize(plan: plan) {
-    EffectPlanBashMaterialized { source: _ } => false
-    EffectPlanBashMaterializationRefused { refusal: _ } => true
+fn gate_plan_refuses(plan: v2.std.effect_plan.EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>) -> Bool {
+  match v2.workflow.effect_plan_bash_materialize.effect_plan_bash_materialize(plan: plan) {
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterialized { source: _ } => false
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: _ } => true
   }
 }
 
 test fn ci_v1_compiler_tests_compile_gate_shell_emit_is_scaffold_holds() -> Bool {
-  match ci_v1_compiler_tests_compile_gate_shell_emit_scaffold {
-    Scaffold { dissolves_to: _, bind: _ } => true
+  match v2.workflow.ci_v1_compiler_tests_compile_gate_emit.ci_v1_compiler_tests_compile_gate_shell_emit_scaffold {
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
     _ => false
   }
 }
 
 test fn ci_v1_compiler_tests_compile_gate_emit_carries_dissolve_marker_holds() -> Bool {
   string_contains(
-    s: ci_v1_compiler_tests_compile_gate_script(),
+    s: v2.workflow.ci_v1_compiler_tests_compile_gate_emit.ci_v1_compiler_tests_compile_gate_script(),
     pattern: "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script"
   )
 }
@@ -30,18 +30,18 @@ test fn ci_v1_compiler_tests_compile_gate_script_is_typed_plan_plus_marker() -> 
   let expected = concat(
     concat(
       "# ",
-      concat(std.dissolution.dissolution_description(condition: ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger), "\n")
+      concat(std.dissolution.dissolution_description(condition: v2.workflow.ci_v1_compiler_tests_compile_gate_emit.ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger), "\n")
     ),
     concat(
-      ci_v1_compiler_tests_compile_gate_command(),
+      v2.workflow.ci_v1_compiler_tests_compile_gate_emit.ci_v1_compiler_tests_compile_gate_command(),
       "\n"
     )
   )
-  ci_v1_compiler_tests_compile_gate_script() == expected
+  v2.workflow.ci_v1_compiler_tests_compile_gate_emit.ci_v1_compiler_tests_compile_gate_script() == expected
 }
 
 test fn ci_v1_compiler_tests_compile_gate_uses_cargo_bin_and_test_args() -> Bool {
-  let script = ci_v1_compiler_tests_compile_gate_script()
+  let script = v2.workflow.ci_v1_compiler_tests_compile_gate_emit.ci_v1_compiler_tests_compile_gate_script()
   string_contains(s: script, pattern: "\"$CARGO_BIN\"")
     && string_contains(s: script, pattern: "'test'")
     && string_contains(s: script, pattern: "'-p'")
@@ -54,37 +54,37 @@ test fn ci_v1_compiler_tests_compile_gate_uses_cargo_bin_and_test_args() -> Bool
 
 test fn ci_v1_compiler_tests_compile_gate_RED_continue_policy_refuses() -> Bool {
   let refused_plan = v2.std.effect_plan.EffectPlan {
-    steps: [v2.std.effect_plan.Do { effect: ci_v1_compiler_tests_compile_gate_check_step() }],
-    on_failure: Continue
+    steps: [v2.std.effect_plan.Do { effect: v2.workflow.ci_v1_compiler_tests_compile_gate_emit.ci_v1_compiler_tests_compile_gate_check_step() }],
+    on_failure: v2.std.orchestration.Continue
   }
   gate_plan_refuses(plan: refused_plan)
     && string_contains(
       s: gate_materialized_render(plan: refused_plan),
-      pattern: ci_v1_compiler_tests_compile_gate_refusal_prefix
+      pattern: v2.workflow.ci_v1_compiler_tests_compile_gate_emit.ci_v1_compiler_tests_compile_gate_refusal_prefix
     )
 }
 
 test fn ci_v1_compiler_tests_compile_gate_RED_missing_operation_refuses() -> Bool {
-  let bad_step = bash_bind_operation_invocation(
+  let bad_step = v2.workflow.effect_plan_bash_materialize.bash_bind_operation_invocation(
     at: v2.std.operation_argv.OperationRef {
       path: "dag/extdeps/rust/cargo_build.dag",
       service: "cargo.Build",
       operation: "NoSuchCheck"
     },
     bindings: [
-      operation_argv_bind_text_list(
+      v2.std.operation_argv.operation_argv_bind_text_list(
         name: "extra_args",
-        items: ci_v1_compiler_tests_compile_gate_extra_args
+        items: v2.workflow.ci_v1_compiler_tests_compile_gate_emit.ci_v1_compiler_tests_compile_gate_extra_args
       )
     ]
   )
   let refused_plan = v2.std.effect_plan.EffectPlan {
     steps: [v2.std.effect_plan.Do { effect: bad_step }],
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
   gate_plan_refuses(plan: refused_plan)
     && string_contains(
       s: gate_materialized_render(plan: refused_plan),
-      pattern: ci_v1_compiler_tests_compile_gate_refusal_prefix
+      pattern: v2.workflow.ci_v1_compiler_tests_compile_gate_emit.ci_v1_compiler_tests_compile_gate_refusal_prefix
     )
 }

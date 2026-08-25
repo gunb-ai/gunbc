@@ -1,5 +1,6 @@
 module v2.test.claim.effect_plan_bash_materialize_test
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data effect_plan_bash_materialize_test_note: String = "Model-only Wave A executable model surface. These witnesses read real extdeps operation declarations, encode actual Bash grammar Nodes, and emit those Nodes through the grammar serializer. No production workflow imports the materializer. The poison cases live only here and discriminate every refusal arm requested by the charter."
@@ -51,7 +52,7 @@ fn show_property_invocation(bindings: List<v2.std.operation_argv.OperationInputB
   )
 }
 
-fn fail_fast_plan(steps: List<v2.std.effect_plan.EffectPlanStep<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>>) -> v2.std.effect_plan.EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation> {
+fn fail_fast_plan(steps: List<EffectPlanStep<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>>) -> v2.std.effect_plan.EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation> {
   v2.std.effect_plan.EffectPlan { steps: steps, on_failure: v2.std.orchestration.FailFast }
 }
 
@@ -64,8 +65,8 @@ fn emitted_source_is(
   expected: String
 ) -> Bool {
   match v2.workflow.effect_plan_bash_materialize.effect_plan_bash_materialize(plan: plan) {
-    EffectPlanBashMaterialized { source: source } => source == expected
-    EffectPlanBashMaterializationRefused { refusal: _ } => false
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterialized { source: source } => source == expected
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: _ } => false
   }
 }
 
@@ -74,13 +75,13 @@ fn emitted_sources_differ(
   right: v2.std.effect_plan.EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>
 ) -> Bool {
   match v2.workflow.effect_plan_bash_materialize.effect_plan_bash_materialize(plan: left) {
-    EffectPlanBashMaterialized { source: left_source } =>
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterialized { source: left_source } =>
       match v2.workflow.effect_plan_bash_materialize.effect_plan_bash_materialize(plan: right) {
-        EffectPlanBashMaterialized { source: right_source } =>
+        v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterialized { source: right_source } =>
           left_source != right_source
-        EffectPlanBashMaterializationRefused { refusal: _ } => false
+        v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: _ } => false
       }
-    EffectPlanBashMaterializationRefused { refusal: _ } => false
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: _ } => false
   }
 }
 
@@ -91,9 +92,9 @@ fn operation_locus_is(
   operation: String
 ) -> Bool {
   match locus {
-    Present { value: at } =>
+    v2.std.optional.Present { value: at } =>
       at.path == path && at.service == service && at.operation == operation
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
@@ -105,7 +106,7 @@ test fn effect_plan_bash_two_declared_operations_encode_and_emit_through_carrier
     ]
   )
   let encoded = match v2.workflow.effect_plan_bash_materialize.effect_plan_bash_encode(plan: plan) {
-    EffectPlanBashEncodingAccepted {
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashEncodingAccepted {
       encoding: v2.workflow.effect_plan_bash_materialize.EffectPlanBashEncoded { statement: _ }
     } => true
     _ => false
@@ -200,7 +201,7 @@ test fn effect_plan_bash_RED_nul_is_located_and_refused() -> Bool {
     bindings: [v2.std.operation_argv.operation_argv_bind_text(name: "user", text: concat("a", concat(nul, "b")))]
   )))
   let third_holds = match third_argument {
-    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: refusal } =>
       refusal.step_index == 0
         && operation_locus_is(
           locus: refusal.operation,
@@ -209,13 +210,13 @@ test fn effect_plan_bash_RED_nul_is_located_and_refused() -> Bool {
           operation: "IsFile"
         )
         && match refusal.cause {
-          ArgumentContainsNul { argument_index: index } => index == 2
+          v2.workflow.effect_plan_bash_materialize.ArgumentContainsNul { argument_index: index } => index == 2
           _ => false
         }
     _ => false
   }
   let second_holds = match second_argument {
-    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: refusal } =>
       refusal.step_index == 0
         && operation_locus_is(
           locus: refusal.operation,
@@ -224,7 +225,7 @@ test fn effect_plan_bash_RED_nul_is_located_and_refused() -> Bool {
           operation: "Lookup"
         )
         && match refusal.cause {
-          ArgumentContainsNul { argument_index: index } => index == 1
+          v2.workflow.effect_plan_bash_materialize.ArgumentContainsNul { argument_index: index } => index == 1
           _ => false
         }
     _ => false
@@ -235,7 +236,7 @@ test fn effect_plan_bash_RED_nul_is_located_and_refused() -> Bool {
       path: "/tmp/a\\u{0000}b"
     ))
   ) {
-    EffectPlanBashMaterialized { source: _ } => true
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterialized { source: _ } => true
     _ => false
   }
   third_holds && second_holds && literal_escape_text_is_not_nul
@@ -248,7 +249,7 @@ test fn effect_plan_bash_RED_missing_operation_is_typed_and_located() -> Bool {
     operation: "Missing",
     bindings: []
   ))) {
-    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: refusal } =>
       refusal.step_index == 0
         && operation_locus_is(
           locus: refusal.operation,
@@ -257,7 +258,7 @@ test fn effect_plan_bash_RED_missing_operation_is_typed_and_located() -> Bool {
           operation: "Missing"
         )
         && match refusal.cause {
-          OperationArgvRefused { cause: v2.std.operation_argv.OperationNotFound } => true
+          v2.workflow.effect_plan_bash_materialize.OperationArgvRefused { cause: v2.std.operation_argv.OperationNotFound } => true
           _ => false
         }
     _ => false
@@ -271,7 +272,7 @@ test fn effect_plan_bash_RED_reference_perturbation_refuses_instead_of_falling_b
     operation: "Uid",
     bindings: []
   ))) {
-    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: refusal } =>
       refusal.step_index == 0
         && operation_locus_is(
           locus: refusal.operation,
@@ -280,7 +281,7 @@ test fn effect_plan_bash_RED_reference_perturbation_refuses_instead_of_falling_b
           operation: "Uid"
         )
         && match refusal.cause {
-          OperationArgvRefused { cause: v2.std.operation_argv.OperationNotFound } => true
+          v2.workflow.effect_plan_bash_materialize.OperationArgvRefused { cause: v2.std.operation_argv.OperationNotFound } => true
           _ => false
         }
     _ => false
@@ -302,7 +303,7 @@ test fn effect_plan_bash_RED_undeclared_duplicate_and_unbound_inputs_discriminat
     v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: "gunbc.service")
   ])))
   let undeclared_holds = match undeclared {
-    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: refusal } =>
       refusal.step_index == 0
         && operation_locus_is(
           locus: refusal.operation,
@@ -311,13 +312,13 @@ test fn effect_plan_bash_RED_undeclared_duplicate_and_unbound_inputs_discriminat
           operation: "ShowProperty"
         )
         && match refusal.cause {
-          OperationArgvRefused { cause: v2.std.operation_argv.UndeclaredInputBound { name: name } } => name == "bin"
+          v2.workflow.effect_plan_bash_materialize.OperationArgvRefused { cause: v2.std.operation_argv.UndeclaredInputBound { name: name } } => name == "bin"
           _ => false
         }
     _ => false
   }
   let duplicate_holds = match duplicate {
-    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: refusal } =>
       refusal.step_index == 0
         && operation_locus_is(
           locus: refusal.operation,
@@ -326,13 +327,13 @@ test fn effect_plan_bash_RED_undeclared_duplicate_and_unbound_inputs_discriminat
           operation: "ShowProperty"
         )
         && match refusal.cause {
-          OperationArgvRefused { cause: v2.std.operation_argv.DuplicateInputBinding { name: name } } => name == "unit"
+          v2.workflow.effect_plan_bash_materialize.OperationArgvRefused { cause: v2.std.operation_argv.DuplicateInputBinding { name: name } } => name == "unit"
           _ => false
         }
     _ => false
   }
   let unbound_holds = match unbound {
-    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: refusal } =>
       refusal.step_index == 0
         && operation_locus_is(
           locus: refusal.operation,
@@ -341,7 +342,7 @@ test fn effect_plan_bash_RED_undeclared_duplicate_and_unbound_inputs_discriminat
           operation: "ShowProperty"
         )
         && match refusal.cause {
-          OperationArgvRefused { cause: v2.std.operation_argv.DeclaredInputUnbound { name: name } } => name == "property"
+          v2.workflow.effect_plan_bash_materialize.OperationArgvRefused { cause: v2.std.operation_argv.DeclaredInputUnbound { name: name } } => name == "property"
           _ => false
         }
     _ => false
@@ -361,7 +362,7 @@ test fn effect_plan_bash_RED_unsupported_argv_expression_preserves_operation_loc
     ]
   ))
   match v2.workflow.effect_plan_bash_materialize.effect_plan_bash_materialize(plan: plan) {
-    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: refusal } =>
       refusal.step_index == 0
         && operation_locus_is(
           locus: refusal.operation,
@@ -370,7 +371,7 @@ test fn effect_plan_bash_RED_unsupported_argv_expression_preserves_operation_loc
           operation: "DiffUnified0"
         )
         && match refusal.cause {
-          OperationArgvRefused {
+          v2.workflow.effect_plan_bash_materialize.OperationArgvRefused {
             cause: v2.std.operation_argv.ArgvExpressionUnsupported { detail: _ }
           } => true
           _ => false
@@ -384,11 +385,11 @@ test fn effect_plan_bash_RED_continue_policy_is_typed_before_any_step() -> Bool 
     steps: [v2.std.effect_plan.Do { effect: id_invocation(operation: "Uid") }],
     on_failure: v2.std.orchestration.Continue
   }) {
-    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: refusal } =>
       refusal.step_index == -1
         && refusal.operation == v2.std.optional.Absent
         && match refusal.cause {
-          UnsupportedFailurePolicy { policy: v2.std.orchestration.Continue } => true
+          v2.workflow.effect_plan_bash_materialize.UnsupportedFailurePolicy { policy: v2.std.orchestration.Continue } => true
           _ => false
         }
     _ => false
@@ -400,15 +401,15 @@ fn empty_plan() -> v2.std.effect_plan.EffectPlan<v2.workflow.effect_plan_bash_ma
 }
 
 fn unsupported_step_refuses(
-  step: v2.std.effect_plan.EffectPlanStep<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>,
-  expected: v2.workflow.effect_plan_bash_materialize.EffectPlanBashUnsupportedStep
+  step: EffectPlanStep<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>,
+  expected: EffectPlanBashUnsupportedStep
 ) -> Bool {
   match v2.workflow.effect_plan_bash_materialize.effect_plan_bash_materialize(plan: fail_fast_plan(steps: [step])) {
-    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: refusal } =>
       refusal.step_index == 0
         && refusal.operation == v2.std.optional.Absent
         && match refusal.cause {
-          UnsupportedEffectPlanStep { kind: actual } => actual == expected
+          v2.workflow.effect_plan_bash_materialize.UnsupportedEffectPlanStep { kind: actual } => actual == expected
           _ => false
         }
     _ => false

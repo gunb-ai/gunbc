@@ -1,6 +1,10 @@
 module gunbc.live_deploy.apply
 
+
+
+
 data single_deployment_note: String = "ONE DEPLOYMENT, ONE PORT. Blue/green was deleted at the root on 2026-08-19 by operator directive, and the reason is the one its own predecessor note recorded against itself: blue/green is sound for a STATELESS server, and this dashboard is stateful. The compromise it reached -- the slot owns source, binary, unit and port while dispatch worktrees, attempt evidence and the tmux server stay host-shared -- is a two-copy deployment that is only half two copies, and it cost more to reason about than the zero-downtime swap was worth for a single-operator dashboard.\n\nWHAT WENT, AS ONE POPULATION: the slot selection coproduct and its Tailscale-status read, the deploy-idle-then-flip-then-retire fold, the slot/route/retiring spec projections, and the second HostDashboardInstance. What replaces them is this: apply converges deployment_spec_srv1 IN PLACE, members in declared order, and the Tailscale mapping is an ordinary member pointing at the one port rather than a route flipped between two.\n\nWHAT IS HONESTLY LOST is the property blue/green existed to buy: a failed candidate can no longer be discovered on an idle slot while the old process keeps serving. A bad deploy now restarts the one service, and the readiness gate refuses AFTER the restart rather than before a flip -- so the failure mode is downtime, not a silent bad cutover. That trade is the point of the directive, not an oversight, and the mitigation is that every member is idempotent and a retract remains available.\n\nTHE HAZARD THIS ALSO CLOSES: two slots meant two belt timers, both enabled, sharing one dispatch-worktree root and one attempt-state root. Nothing prevented a collision except that both belts happened to be crashing; with one deployment there is one belt and the prepare/activate split it would have needed is no longer owed.\n\nA SECOND ORDERING CONSEQUENCE, named because the loss above is not the only one. Under the deleted cutover fold the route write ran AFTER the candidate slot converged, readiness gate included. The mapping is now an ordinary member, last in deployment_owned_steps and inside the mutation, so the route is asserted BEFORE live_deploy_apply_readiness_gate runs -- which is, in shape, the pre-blue/green ordering that blue_green_spec_partition_note recorded as having recreated a 502 window. It is not that defect here, because with one port the write is an idempotent re-assert of the same endpoint-to-8080 mapping rather than a redirection to an unverified process, so it opens no window beyond the restart downtime already accepted above. The residual is bounded by the realization: if the Tailscale mapping is ever applied as remove-then-add rather than as a replace, the route is briefly ABSENT while the service is unverified. That is a property of extdeps.tailscale.serve, not of this fold, and it is stated here so the ordering is a known quantity rather than something a later reader rediscovers as a surprise."
+
 
 fn live_deploy_preflight_intent(access: gunbc.ci_deploy_access.DeployAccess) -> gunbc.host_effect.HostEffectIntent {
   gunbc.host_effect.HostEffectIntent {
@@ -25,7 +29,7 @@ fn live_deploy_mutation_denied(
       effect: effect,
       evidence: gunbc.host_effect.host_effect_identity_evidence,
       transport: transport,
-      privilege_denial: Present { value: gate },
+      privilege_denial: v2.std.collection.Present { value: gate },
     },
   }
 }
@@ -45,14 +49,14 @@ fn live_deploy_fold(
     fixture_host: fixture_host
   )
   match gate {
-    Deny { refusal: _ } =>
+    std.access.Deny { refusal: _ } =>
       live_deploy_mutation_denied(
         target: target,
         effect: effect,
         transport: transport,
         gate: gate
       )
-    Permit =>
+    std.access.Permit =>
       gunbc.host_effect_realize.host_effect_apply_gated(
         access: access,
         target: target,
@@ -75,8 +79,8 @@ fn live_deploy_ensure_dependency(
     effect: gunbc.host_effect.LiveDeployEnsureDependency { dep: dep },
     transport: transport,
     access: access,
-    fixture_actor: Absent,
-    fixture_host: Absent
+    fixture_actor: v2.std.collection.Absent,
+    fixture_host: v2.std.collection.Absent
   )
 }
 
@@ -91,8 +95,8 @@ fn live_deploy_apply_mutation_via_transport(
     effect: gunbc.host_effect.LiveDeployApply { spec: spec, candidate: candidate },
     transport: transport,
     access: access,
-    fixture_actor: Absent,
-    fixture_host: Absent
+    fixture_actor: v2.std.collection.Absent,
+    fixture_host: v2.std.collection.Absent
   )
 }
 
@@ -125,14 +129,14 @@ fn live_deploy_apply_readiness_gate_with_readiness(
       mutation
     } else {
       match readiness {
-        NotConverged { reason: why, applied: _ } =>
+        std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
           match mutation {
-            Converged { evidence: _, applied: intent } =>
+            std.realization_reconcile.Converged { evidence: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
-            NotConverged { reason: _, applied: intent } =>
+            std.realization_reconcile.NotConverged { reason: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
           }
-        Converged { evidence: _, applied: _ } => mutation
+        std.realization_reconcile.Converged { evidence: _, applied: _ } => mutation
       }
     }
   }
@@ -148,8 +152,8 @@ fn live_deploy_apply_digest_readback_via_transport(
     effect: gunbc.host_effect.LiveDeployDigestReadback { port: gunbc.live_deploy.spec.deployment_plan_listen_port(spec: spec) },
     transport: transport,
     access: access,
-    fixture_actor: Absent,
-    fixture_host: Absent
+    fixture_actor: v2.std.collection.Absent,
+    fixture_host: v2.std.collection.Absent
   )
 }
 
@@ -184,14 +188,14 @@ fn live_deploy_apply_via_transport(
       gated
     } else {
       match digest {
-        NotConverged { reason: why, applied: _ } =>
+        std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
           match gated {
-            Converged { evidence: _, applied: intent } =>
+            std.realization_reconcile.Converged { evidence: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
-            NotConverged { reason: _, applied: intent } =>
+            std.realization_reconcile.NotConverged { reason: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
           }
-        Converged { evidence: _, applied: _ } => gated
+        std.realization_reconcile.Converged { evidence: _, applied: _ } => gated
       }
     }
   }
@@ -207,8 +211,8 @@ fn live_deploy_retract_via_transport(
     effect: gunbc.host_effect.LiveDeployRetract { spec: spec },
     transport: transport,
     access: access,
-    fixture_actor: Absent,
-    fixture_host: Absent
+    fixture_actor: v2.std.collection.Absent,
+    fixture_host: v2.std.collection.Absent
   )
 }
 
@@ -223,11 +227,11 @@ fn live_deploy_access_preflight_for(access: gunbc.ci_deploy_access.DeployAccess)
   } else {
     let gate = gunbc.ci_deploy_access_observe.deploy_mutation_gate(
       access: access,
-      fixture_actor: Absent,
-      fixture_host: Absent
+      fixture_actor: v2.std.collection.Absent,
+      fixture_host: v2.std.collection.Absent
     )
     match gate {
-      Permit =>
+      std.access.Permit =>
         std.realization_reconcile.Converged {
           evidence: gunbc.host_effect.ShellEffectApplied {
             exit_code: 0,
@@ -236,7 +240,7 @@ fn live_deploy_access_preflight_for(access: gunbc.ci_deploy_access.DeployAccess)
           },
           applied: intent,
         }
-      Deny { refusal: _ } =>
+      std.access.Deny { refusal: _ } =>
         std.realization_reconcile.NotConverged {
           reason: gunbc.ci_deploy_access.deploy_access_decision_reason(d: gate),
           applied: gunbc.host_effect.HostEffectIntent {
@@ -244,7 +248,7 @@ fn live_deploy_access_preflight_for(access: gunbc.ci_deploy_access.DeployAccess)
             effect: intent.effect,
             evidence: intent.evidence,
             transport: intent.transport,
-            privilege_denial: Present { value: gate },
+            privilege_denial: v2.std.collection.Present { value: gate },
           },
         }
     }
@@ -292,8 +296,8 @@ fn live_deploy_reconciliation_exit(r: std.realization_reconcile.Reconciliation<g
     std.process.ExitSuccess
   } else {
     match r {
-      NotConverged { reason: why, applied: _ } => std.process.exit_failure(reason: why)
-      Converged { evidence: _, applied: _ } => std.process.ExitSuccess
+      std.realization_reconcile.NotConverged { reason: why, applied: _ } => std.process.exit_failure(reason: why)
+      std.realization_reconcile.Converged { evidence: _, applied: _ } => std.process.ExitSuccess
     }
   }
 }
@@ -302,9 +306,9 @@ data live_deploy_candidate_observed_at_launcher_note: String = "THE ONE OBSERVAT
 
 fn live_deploy_wet_with_access(access: gunbc.ci_deploy_access.DeployAccess) -> std.process.ProcessExit {
   match gunbc.live_deploy.candidate.observe_candidate_release() {
-    CandidateUnobservable { cause: why } =>
+    gunbc.live_deploy.candidate.CandidateUnobservable { cause: why } =>
       std.process.exit_failure(reason: gunbc.live_deploy.candidate.candidate_unobservable_detail(cause: why))
-    CandidateObserved { candidate: candidate } => {
+    gunbc.live_deploy.candidate.CandidateObserved { candidate: candidate } => {
       let preflight = live_deploy_access_preflight_for(access: access)
       if !std.realization_reconcile.reconciliation_converged(r: preflight) {
         live_deploy_reconciliation_exit(r: preflight)

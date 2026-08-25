@@ -3,14 +3,14 @@ module v2.workflow.legacy_test_inflow_audit
 
 // THE LIVE HALF, kept in its own module so the kernel stays pure. gunbc.legacy_test_inflow observes nothing: it folds diff TEXT, which is why its witnesses are synthetic fixtures that plant the arrivals they assert. This module supplies the one live input by reusing the floor's existing diff observation (v2.workflow.floor_diff_observe, already the affected-set authority and already carrying its own baseline resolution and witnesses) rather than opening a second git surface for the same fact. The baseline is therefore whatever the floor resolved for the change — merge-target on a pull request, push-before SHA on a push event, default-branch parent on workflow_dispatch/merge_group/schedule/local-bootstrap, operator override when GUNBC_CI_DIFF_BASE is set — so this counter measures arrivals over exactly the window the affected set was computed over, never a window of its own choosing. AUDIT MODE: this reports; it refuses no change. A failed observation reaches InflowRefused through the kernel, so a broken git read cannot read as zero arrivals.
 fn legacy_test_inflow_observe_live() -> gunbc.legacy_test_inflow.LegacyTestInflowObservation {
-  match floor_observe_git_diff_unified_for_ci() {
-    UnifiedDiffOk { text } =>
+  match v2.workflow.floor_diff_observe.floor_observe_git_diff_unified_for_ci() {
+    v2.workflow.floor_diff_observe.UnifiedDiffOk { text } =>
       gunbc.legacy_test_inflow.inflow_observation_of_unified_diff_result(
         observed: true,
         diff_text: text,
         failure_reason: "",
       )
-    UnifiedDiffFail { reason } =>
+    v2.workflow.floor_diff_observe.UnifiedDiffFail { reason } =>
       gunbc.legacy_test_inflow.inflow_observation_of_unified_diff_result(
         observed: false,
         diff_text: "",

@@ -15,22 +15,22 @@ type HonestFrontierIntegrationReceipt
 fn exact_hand_maintained_product_reachable_paths(
   verdicts: List<gunbc.stage0_rust_product_reachability.RustProductReachabilityVerdict>
 ) -> List<String> {
-  let hand_paths = derived_hand_maintained_disposition_repo_paths()
-  let product_reachable = exact_product_reachable_paths_from_verdicts(verdicts: verdicts)
-  filter(
+  let hand_paths = gunbc.stage0_rust_source_lifecycle_scaffold.derived_hand_maintained_disposition_repo_paths()
+  let product_reachable = gunbc.stage0_rust_product_reachability.exact_product_reachable_paths_from_verdicts(verdicts: verdicts)
+  v2.std.algebra.filter(
     xs: hand_paths,
-    predicate: fn(path) { path_in_list(path: path, paths: product_reachable) }
+    predicate: fn(path) { gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: path, paths: product_reachable) }
   )
 }
 
 fn exact_hand_maintained_reachability_refused_paths(
   verdicts: List<gunbc.stage0_rust_product_reachability.RustProductReachabilityVerdict>
 ) -> List<String> {
-  let hand_paths = derived_hand_maintained_disposition_repo_paths()
-  let refused = exact_reachability_refused_paths_from_verdicts(verdicts: verdicts)
-  filter(
+  let hand_paths = gunbc.stage0_rust_source_lifecycle_scaffold.derived_hand_maintained_disposition_repo_paths()
+  let refused = gunbc.stage0_rust_product_reachability.exact_reachability_refused_paths_from_verdicts(verdicts: verdicts)
+  v2.std.algebra.filter(
     xs: hand_paths,
-    predicate: fn(path) { path_in_list(path: path, paths: refused) }
+    predicate: fn(path) { gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: path, paths: refused) }
   )
 }
 
@@ -38,13 +38,13 @@ fn honest_frontier_integration_receipt(
   observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation
 ) -> HonestFrontierIntegrationReceipt {
   match observation {
-    RustManifestReadRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: detail } =>
       HonestFrontierIntegrationRefused { detail: detail }
-    RustManifestParseRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: detail } =>
       HonestFrontierIntegrationRefused { detail: detail }
-    GitObservationRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.GitObservationRefused { detail: detail } =>
       HonestFrontierIntegrationRefused { detail: detail }
-    RustManifestObserved {
+    gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: revision,
       manifest_content_identity: manifest_content_identity,
       tracked_rust_repo_paths: tracked_rust_repo_paths,
@@ -57,12 +57,12 @@ fn honest_frontier_integration_receipt(
           detail: "observed manifest missing repository_revision"
         }
       } else {
-        let lifecycle = lifecycle_totality_receipt(observation: observation)
-        let reachability = product_reachability_receipt(observation: observation)
+        let lifecycle = gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_receipt(observation: observation)
+        let reachability = gunbc.stage0_rust_product_reachability.product_reachability_receipt(observation: observation)
         match lifecycle {
-          LifecycleTotalityObservationRefused =>
+          gunbc.stage0_rust_lifecycle_totality.LifecycleTotalityObservationRefused =>
             HonestFrontierIntegrationRefused { detail: "lifecycle totality refused" }
-          LifecycleTotalityDerived {
+          gunbc.stage0_rust_lifecycle_totality.LifecycleTotalityDerived {
             tracked_paths: tracked_paths,
             generated_paths: generated_paths,
             maintenance_disposition_paths: maintenance_disposition_paths,
@@ -76,9 +76,9 @@ fn honest_frontier_integration_receipt(
             ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
           } =>
             match reachability {
-              ProductReachabilityObservationRefused =>
+              gunbc.stage0_rust_product_reachability.ProductReachabilityObservationRefused =>
                 HonestFrontierIntegrationRefused { detail: "product reachability refused" }
-              ProductReachabilityDerived {
+              gunbc.stage0_rust_product_reachability.ProductReachabilityDerived {
                 cargo_root_paths: cargo_root_paths,
                 verdicts: verdicts
               } => {
@@ -114,13 +114,13 @@ fn tracked_rust_unclassified_projection(
   match honest_frontier_integration_receipt(observation: observation) {
     HonestFrontierIntegrationRefused { detail: detail } =>
       match observation {
-        GitObservationRefused { detail: git_detail } =>
+        gunbc.stage0_rust_host_observation.GitObservationRefused { detail: git_detail } =>
           TrackedRustProjectionGitRefused { detail: git_detail }
-        RustManifestParseRefused { detail: parse_detail } =>
+        gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: parse_detail } =>
           TrackedRustProjectionParseRefused { detail: parse_detail }
-        RustManifestReadRefused { detail: read_detail } =>
+        gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: read_detail } =>
           TrackedRustProjectionReadRefused { detail: read_detail }
-        RustManifestObserved {
+        gunbc.stage0_rust_host_observation.RustManifestObserved {
           repository_revision: repository_revision,
           manifest_content_identity: manifest_content_identity,
           tracked_rust_repo_paths: tracked_rust_repo_paths,
@@ -136,7 +136,7 @@ fn tracked_rust_unclassified_projection(
       hand_maintained_reachability_refused_paths: hand_maintained_reachability_refused_paths
     } =>
       match lifecycle {
-        LifecycleTotalityDerived {
+        gunbc.stage0_rust_lifecycle_totality.LifecycleTotalityDerived {
           tracked_paths: tracked_paths,
           generated_paths: generated_paths,
           maintenance_disposition_paths: maintenance_disposition_paths,
@@ -150,16 +150,16 @@ fn tracked_rust_unclassified_projection(
           ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
         } =>
           TrackedRustUnclassifiedPaths { paths: paths }
-        LifecycleTotalityObservationRefused =>
+        gunbc.stage0_rust_lifecycle_totality.LifecycleTotalityObservationRefused =>
           TrackedRustProjectionObservationRefused { detail: "lifecycle totality refused" }
       }
   }
 }
 
 fn honest_frontier_discovery_complete(observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation) -> Bool {
-  let receipt = lifecycle_totality_receipt(observation: observation)
+  let receipt = gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_receipt(observation: observation)
   match receipt {
-    LifecycleTotalityDerived {
+    gunbc.stage0_rust_lifecycle_totality.LifecycleTotalityDerived {
       tracked_paths: tracked_paths,
       generated_paths: generated_paths,
       maintenance_disposition_paths: maintenance_disposition_paths,
@@ -171,15 +171,15 @@ fn honest_frontier_discovery_complete(observation: gunbc.stage0_rust_host_observ
       cross_axis_overlap_paths: cross_axis_overlap_paths,
       role_without_disposition_paths: role_without_disposition_paths,
       ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
-    } => lifecycle_discovery_complete(receipt: receipt)
-    LifecycleTotalityObservationRefused => false
+    } => gunbc.stage0_rust_lifecycle_totality.lifecycle_discovery_complete(receipt: receipt)
+    gunbc.stage0_rust_lifecycle_totality.LifecycleTotalityObservationRefused => false
   }
 }
 
 fn honest_frontier_decision_complete(observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation) -> Bool {
-  let receipt = lifecycle_totality_receipt(observation: observation)
+  let receipt = gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_receipt(observation: observation)
   match receipt {
-    LifecycleTotalityDerived {
+    gunbc.stage0_rust_lifecycle_totality.LifecycleTotalityDerived {
       tracked_paths: tracked_paths,
       generated_paths: generated_paths,
       maintenance_disposition_paths: maintenance_disposition_paths,
@@ -191,7 +191,7 @@ fn honest_frontier_decision_complete(observation: gunbc.stage0_rust_host_observa
       cross_axis_overlap_paths: cross_axis_overlap_paths,
       role_without_disposition_paths: role_without_disposition_paths,
       ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
-    } => lifecycle_decision_complete(receipt: receipt)
-    LifecycleTotalityObservationRefused => false
+    } => gunbc.stage0_rust_lifecycle_totality.lifecycle_decision_complete(receipt: receipt)
+    gunbc.stage0_rust_lifecycle_totality.LifecycleTotalityObservationRefused => false
   }
 }

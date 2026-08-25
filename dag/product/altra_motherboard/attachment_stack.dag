@@ -134,7 +134,7 @@ data processor_package_standing: AttachmentLayerStanding = AttachmentLayerStandi
     subject: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cpu.ampere_altra_package",
       decl_name: "altra_fclga_socket",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     },
   },
   carriage: NormalizedFactsMayBeCarried,
@@ -192,22 +192,22 @@ data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLaye
 // could never carry is not a fact merely waiting behind a gate.
 fn board_land_pattern_fact_from_obligation(standing: extdeps.cpu_attachment.ilm4926.DesignationResolutionStanding) -> FactAuthorityStanding {
   match standing {
-    DesignationFactEstablished { value: _, authority: a } =>
+    extdeps.cpu_attachment.ilm4926.DesignationFactEstablished { value: _, authority: a } =>
       FactEstablished {
         authority: a,
         subject: std.decl_ref.DeclarationRef {
           module_path: "extdeps.cpu_attachment.ilm4926",
           decl_name: "ilm4926_attachment_standing",
-          field: WholeDeclaration
+          field: std.decl_ref.WholeDeclaration
         },
       }
-    DesignationFactUnresolved { reason: r, next_authority_to_consult: next } =>
+    extdeps.cpu_attachment.ilm4926.DesignationFactUnresolved { reason: r, next_authority_to_consult: next } =>
       match next {
         Present { value: a } =>
-          if a == ampere_customer_reference_boards_authority {
+          if a == extdeps.vendor.ampere.ampere_customer_reference_boards_authority {
             FactAccessGated {
               subject: "Altra PCB Layout Guidelines — a candidate collateral package whose socket contents are unverified; the public platform specification names it from sections 4.2.2 and 4.3.2, both of which are voltage-regulator reference layouts",
-              access_route: ampere_customer_reference_boards_authority,
+              access_route: extdeps.vendor.ampere.ampere_customer_reference_boards_authority,
             }
           } else {
             FactUnresolved { what_is_missing: r }
@@ -256,7 +256,7 @@ fn carriage_for_board_land_pattern_fact(fact: FactAuthorityStanding) -> Reposito
 }
 
 fn board_land_pattern_standing_row() -> AttachmentLayerStanding {
-  let fact = board_land_pattern_fact_from_obligation(standing: attachment_board_land_pattern(a: ilm4926_attachment_standing))
+  let fact = board_land_pattern_fact_from_obligation(standing: extdeps.cpu_attachment.ilm4926.attachment_board_land_pattern(a: extdeps.cpu_attachment.ilm4926.ilm4926_attachment_standing))
   AttachmentLayerStanding {
     layer: BoardLandPatternLayer,
     fact: fact,
@@ -290,17 +290,17 @@ data mounting_standing: AttachmentLayerStanding = AttachmentLayerStanding {
 // The projection exists because this module's AuthorityStanding is the vocabulary its six layers
 // share — so the boundary arrives as a value in that vocabulary rather than as a parallel claim.
 fn reference_board_collateral_standing() -> FactAuthorityStanding {
-  match altra_reference_board_collateral_standing() {
-    ReferenceBoardCollateralAvailable =>
+  match extdeps.cpu.ampere_altra_package.altra_reference_board_collateral_standing() {
+    extdeps.cpu.ampere_altra_package.ReferenceBoardCollateralAvailable =>
       FactEstablished {
-        authority: ampere_customer_reference_boards_authority,
+        authority: extdeps.vendor.ampere.ampere_customer_reference_boards_authority,
         subject: std.decl_ref.DeclarationRef {
           module_path: "extdeps.cpu.ampere_altra_package",
           decl_name: "altra_reference_board_collateral_standing",
-          field: WholeDeclaration
+          field: std.decl_ref.WholeDeclaration
         },
       }
-    ReferenceBoardCollateralUnderNda { subject: s, access_route: route } =>
+    extdeps.cpu.ampere_altra_package.ReferenceBoardCollateralUnderNda { subject: s, access_route: route } =>
       FactAccessGated { subject: s, access_route: route }
   }
 }
@@ -481,10 +481,10 @@ fn open_blockers() -> List<LayerBlocker> {
 // The contact COUNT is shared and is deliberately the only thing that crosses: however the socket
 // terminates, a 4926-contact processor needs 4926 board-side terminations, so the population is a
 // join key between the two layers even though the geometry is not.
-fn board_side_termination_population() -> std.integer.Int {
-  altra_declared_contact_count()
+fn board_side_termination_population() -> Int {
+  extdeps.cpu.ampere_altra_package.altra_declared_contact_count()
 }
 
 fn processor_socket() -> extdeps.cpu.types.CpuSocket {
-  altra_fclga_socket
+  extdeps.cpu.ampere_altra_package.altra_fclga_socket
 }

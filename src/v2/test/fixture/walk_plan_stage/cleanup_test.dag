@@ -7,8 +7,8 @@ fn walk_plan_stage_remove_path(path: String) -> Bool {
 
 test fn walk_plan_stage_cleanup_holds() -> Bool {
   walk_plan_stage_remove_path(path: "target/walk_plan_stage_overlap")
-    && walk_plan_stage_remove_path(path: walk_plan_stage_stage2_marker_path)
-    && walk_plan_stage_remove_path(path: walk_plan_stage_stage1_receipt_path)
-    && walk_plan_stage_remove_path(path: walk_plan_stage_stage2_receipt_path)
+    && walk_plan_stage_remove_path(path: v2.test.fixture.walk_plan_stage.common.walk_plan_stage_stage2_marker_path)
+    && walk_plan_stage_remove_path(path: v2.test.fixture.walk_plan_stage.common.walk_plan_stage_stage1_receipt_path)
+    && walk_plan_stage_remove_path(path: v2.test.fixture.walk_plan_stage.common.walk_plan_stage_stage2_receipt_path)
     && walk_plan_stage_remove_path(path: "target/floor-on-success-receipt.txt")
 }

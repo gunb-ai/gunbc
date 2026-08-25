@@ -2,20 +2,20 @@ module gunbc.auth.patterns
 
 
 type AuthRuntime
-  = GitHubActions { runtime: extdeps.github.actions.GitHubActionsRuntime }
-  | GcpMetadata { runtime: extdeps.cloud.gcp.sts.MetadataRuntime }
-  | LocalDev { runtime: extdeps.runtime.local.LocalDevRuntime }
+  = GitHubActions { runtime: GitHubActionsRuntime }
+  | GcpMetadata { runtime: MetadataRuntime }
+  | LocalDev { runtime: LocalDevRuntime }
 
 type CredentialChainOutcome
-  = CredentialChainReady { token: std.types.AccessToken }
+  = CredentialChainReady { token: AccessToken }
   | CredentialChainWireDecodeRefused {
-      identity_cause: extdeps.cloud.gcp.secret_manager.SmResolvedVersionIdentityRefusal?
-      payload_cause: extdeps.cloud.gcp.secret_manager.SmAccessVersionPayloadRefusal?
+      identity_cause: SmResolvedVersionIdentityRefusal?
+      payload_cause: SmAccessVersionPayloadRefusal?
     }
 
 pattern acquire_subject_token(
   runtime: AuthRuntime,
-  audience: std.types.NonEmptyStr
+  audience: NonEmptyStr
 ) -> { token: Secret } {
   node token = match runtime {
     GitHubActions { runtime: github_actions } => github_oidc(audience: audience, runtime: github_actions)
@@ -25,22 +25,22 @@ pattern acquire_subject_token(
   return { token: token.token }
 }
 
-fn build_token(payload: Secret, scheme: std.types.AuthScheme, header_name: String, source_id: String, required_scopes: List<String>) -> std.types.AccessToken {
+fn build_token(payload: Secret, scheme: AuthScheme, header_name: String, source_id: String, required_scopes: List<String>) -> AccessToken {
   { token: payload, scheme: scheme, expires_at: none }
 }
 
 pattern credential_chain(
   runtime: AuthRuntime,
-  audience: std.types.NonEmptyStr,
-  service_account: extdeps.cloud.gcp.gcp.ServiceAccountEmail?,
-  secret_name: std.types.NonEmptyStr,
-  project_id: extdeps.cloud.gcp.gcp.GcpProjectId,
+  audience: NonEmptyStr,
+  service_account: ServiceAccountEmail?,
+  secret_name: NonEmptyStr,
+  project_id: GcpProjectId,
   header_name: String?,
-  source_id: std.types.NonEmptyStr,
+  source_id: NonEmptyStr,
   required_scopes: List<String>,
   lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
 ) -> CredentialChainOutcome
-  uses net: std.resources.Network
+  uses net: Network
 
 {
   node subject: acquire_subject_token(runtime: runtime, audience: audience)
@@ -62,21 +62,21 @@ pattern credential_chain(
     secret: secret_name
   )
 
-  return match decode_sm_access_version_wire_response(
+  return match extdeps.cloud.gcp.secret_manager.decode_sm_access_version_wire_response(
     name: secret.name as String,
     data_b64: secret.data_b64
   ) {
-    SmAccessVersionWireDecoded { identity: _, payload: payload } =>
+    extdeps.cloud.gcp.secret_manager.SmAccessVersionWireDecoded { identity: _, payload: payload } =>
       CredentialChainReady {
         token: build_token(
-          payload: utf8_secret_from_access_payload(payload: payload),
+          payload: extdeps.cloud.gcp.secret_manager.utf8_secret_from_access_payload(payload: payload),
           scheme: Bearer,
           header_name: header_name,
           source_id: source_id,
           required_scopes: required_scopes
         ),
       }
-    SmAccessVersionWireDecodeRefused { identity_cause: identity_cause, payload_cause: payload_cause } =>
+    extdeps.cloud.gcp.secret_manager.SmAccessVersionWireDecodeRefused { identity_cause: identity_cause, payload_cause: payload_cause } =>
       CredentialChainWireDecodeRefused {
         identity_cause: identity_cause,
         payload_cause: payload_cause,
@@ -84,8 +84,8 @@ pattern credential_chain(
   }
 }
 
-func github_oidc(audience: String, runtime: extdeps.github.actions.GitHubActionsRuntime) -> { token: Secret }
-  uses net: std.resources.Network
+func github_oidc(audience: String, runtime: GitHubActionsRuntime) -> { token: Secret }
+  uses net: Network
 {
   url = shell.Env.Get(name: runtime.oidc_request_url_env)
   auth = shell.Env.Get(name: runtime.oidc_request_token_env)
@@ -99,7 +99,7 @@ func github_oidc(audience: String, runtime: extdeps.github.actions.GitHubActions
 }
 
 func metadata_oidc(audience: String) -> { token: Secret }
-  uses net: std.resources.Network
+  uses net: Network
 {
   response = gcp.Metadata.GetIdentityToken(audience: audience)
   return { token: response.subject_token as String }

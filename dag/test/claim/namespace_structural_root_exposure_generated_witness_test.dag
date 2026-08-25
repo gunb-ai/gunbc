@@ -1,8 +1,8 @@
 module test.claim.namespace_structural_root_exposure_generated_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 test fn namespace_structural_root_exposure_generated_witness_holds() -> Bool {
-  run_namespace_structural_root_exposure_generated_witness()
+  tools.namespace_structural_root_exposure_generated_witness_transport.run_namespace_structural_root_exposure_generated_witness()
 }

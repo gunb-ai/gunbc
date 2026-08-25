@@ -263,7 +263,7 @@ fn list_contains_node_superset_field(
   xs: List<NodeSupersetField>,
   field: NodeSupersetField
 ) -> Bool {
-  xs |> any(f => node_superset_field_eq(left: f, right: field))
+  xs |> v2.std.algebra.any(f => node_superset_field_eq(left: f, right: field))
 }
 
 fn dedup_node_superset_fields(xs: List<NodeSupersetField>) -> List<NodeSupersetField> {
@@ -382,7 +382,7 @@ fn minimal_node_superset_field_unused_by_kind(
 ) -> Bool {
   !(
     minimal_node_kind_placed_fields(kind: kind)
-      |> any(f => node_superset_field_eq(left: f, right: field))
+      |> v2.std.algebra.any(f => node_superset_field_eq(left: f, right: field))
   )
 }
 

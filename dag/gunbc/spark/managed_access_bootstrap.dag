@@ -99,10 +99,10 @@ data spark_operator_bootstrap_login: String = "briansrls"
 fn derive_spark_managed_access_standing(
   host: product.placement_supply.HostIdentity,
   observations: List<PrincipalReachObservation>,
-) -> gunbc.spark.managed_access_bootstrap.SparkManagedAccessStanding {
+) -> SparkManagedAccessStanding {
   let managed = gunbc.fleet_posix_accounts.PosixAccountOccurrence { host: host, principal: gunbc.fleet_posix_accounts.FleetAccountAutomation }
   let bootstrap = gunbc.fleet_posix_accounts.PosixAccountOccurrence { host: host, principal: gunbc.fleet_posix_accounts.FleetAccountOperator }
-  match gunbc.spark.managed_access_bootstrap.observation_for(observations: observations, host: host, login: spark_managed_executor_login as std.types.NonEmptyStr) {
+  match observation_for(observations: observations, host: host, login: spark_managed_executor_login as std.types.NonEmptyStr) {
     Present { value: m } =>
       if m.authenticated {
         ManagedAccessGrounded { occurrence: managed }
@@ -110,7 +110,7 @@ fn derive_spark_managed_access_standing(
         ManagedAccessBootstrapRequired { host: host, missing: managed, bootstrap_transport: bootstrap }
       }
     Absent =>
-      match gunbc.spark.managed_access_bootstrap.observation_for(observations: observations, host: host, login: spark_operator_bootstrap_login as std.types.NonEmptyStr) {
+      match observation_for(observations: observations, host: host, login: spark_operator_bootstrap_login as std.types.NonEmptyStr) {
         Present { value: b } =>
           if b.authenticated {
             ManagedAccessBootstrapRequired { host: host, missing: managed, bootstrap_transport: bootstrap }
@@ -202,7 +202,7 @@ type SparkGrantOutcome
 // question the model can be asked. This change does not ask it -- it stops the question being
 // unaskable.
 type SparkManagedGrant
-  = EnableLingerForOwnAccount { subject: NonEmptyStr }
+  = EnableLingerForOwnAccount { subject: std.types.NonEmptyStr }
   | RebootThisHost
 
 // THIS FUNCTION AND THE ARGV BELOW WERE A FORK, and it was live: this one emitted
@@ -222,8 +222,8 @@ type SparkManagedGrant
 // authority for both, because that is one binary rendered for two consumers and not two facts.
 fn spark_managed_grant_sudoers_command(grant: SparkManagedGrant) -> std.types.NonEmptyStr {
   match grant {
-    EnableLingerForOwnAccount { subject: s } => loginctl_enable_linger_command(subject: s)
-    RebootThisHost => systemctl_reboot_command()
+    EnableLingerForOwnAccount { subject: s } => extdeps.systemd.loginctl.loginctl_enable_linger_command(subject: s)
+    RebootThisHost => extdeps.systemd.systemctl.systemctl_reboot_command()
   }
 }
 
@@ -233,8 +233,8 @@ fn spark_managed_grant_argv(grant: SparkManagedGrant) -> List<String> {
   concat(
     ["sudo", "-n"],
     match grant {
-      EnableLingerForOwnAccount { subject: s } => loginctl_enable_linger_argv(subject: s)
-      RebootThisHost => systemctl_reboot_argv()
+      EnableLingerForOwnAccount { subject: s } => extdeps.systemd.loginctl.loginctl_enable_linger_argv(subject: s)
+      RebootThisHost => extdeps.systemd.systemctl.systemctl_reboot_argv()
     },
   )
 }
@@ -252,7 +252,7 @@ data spark_managed_grant_population: List<SparkManagedGrant> = [
 ]
 
 fn derive_spark_bootstrap_plan(
-  standing: gunbc.spark.managed_access_bootstrap.SparkManagedAccessStanding,
+  standing: SparkManagedAccessStanding,
   fleet_public_material_identity: std.content_hash.ContentHash,
 ) -> SparkBootstrapPlan? {
   match standing {
@@ -268,7 +268,7 @@ fn derive_spark_bootstrap_plan(
           ProveKeyOnlyAuthentication { occurrence: m },
           InstallNarrowPrivilegeGrant {
             occurrence: m,
-            grant: EnableLingerForOwnAccount { subject: spark_managed_executor_login as NonEmptyStr },
+            grant: EnableLingerForOwnAccount { subject: spark_managed_executor_login as std.types.NonEmptyStr },
           },
           InstallNarrowPrivilegeGrant { occurrence: m, grant: RebootThisHost },
           CreateNoLoginServiceIdentity {
@@ -312,16 +312,16 @@ fn authorize_spark_bootstrap(plan: SparkBootstrapPlan) -> SparkBootstrapAuthoriz
 }
 
 fn list_head_of_effects(effects: List<SparkBootstrapEffect>) -> SparkBootstrapEffect? {
-  match list_head(effects) {
-    HeadFound { value: e } => Present { value: e }
-    HeadAbsent => none
+  match v2.std.algebra.list_head(effects) {
+    v2.std.algebra.HeadFound { value: e } => Present { value: e }
+    v2.std.algebra.HeadAbsent => none
   }
 }
 
 fn list_tail_of_effects(effects: List<SparkBootstrapEffect>) -> List<SparkBootstrapEffect> {
-  match list_tail(effects) {
-    TailFound { tail: t } => t
-    TailAbsent => []
+  match v2.std.algebra.list_tail(effects) {
+    v2.std.algebra.TailFound { tail: t } => t
+    v2.std.algebra.TailAbsent => []
   }
 }
 
@@ -329,7 +329,7 @@ fn spark_bootstrap_effect_label(effect: SparkBootstrapEffect) -> String {
   match effect {
     CreateManagedAccount { occurrence: _, login: l } => join(["create-managed-account login=", l as String], "")
     InstallFleetAuthorizedKey { occurrence: _, public_material_identity: i } =>
-      join(["install-fleet-authorized-key public_material_identity=", serialize_content_hash(hash: i) as String], "")
+      join(["install-fleet-authorized-key public_material_identity=", std.content_hash.serialize_content_hash(hash: i) as String], "")
     ProveKeyOnlyAuthentication { occurrence: _ } => "prove-key-only-authentication"
     InstallNarrowPrivilegeGrant { occurrence: _, grant: g } =>
       join([

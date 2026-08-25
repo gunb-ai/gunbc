@@ -16,7 +16,7 @@ type FixtureBehaviorReceipt {
   emitted_source_identity: v2.std.node.Hash
   fixture_lane_tag: String
   qualifications: List<FixtureEmissionQualification>
-  build_green: v2.std.logic.Bool
+  build_green: Bool
 }
 
 type SyntheticEmittedArtifact {
@@ -46,7 +46,7 @@ fn fixture_emitted_source_identity_for_medium(source: extdeps.communication.medi
 fn fixture_emission_qualification_eq(
   left: FixtureEmissionQualification,
   right: FixtureEmissionQualification
-) -> v2.std.logic.Bool {
+) -> Bool {
   match left {
     FixtureSourceProduced =>
       match right {
@@ -72,8 +72,8 @@ fn fixture_emission_qualification_eq(
 fn fixture_emission_qualifications_list_contains(
   xs: List<FixtureEmissionQualification>,
   wanted: FixtureEmissionQualification
-) -> v2.std.logic.Bool {
-  any(
+) -> Bool {
+  v2.std.algebra.any(
     xs: xs,
     predicate: fn(q) {
       fixture_emission_qualification_eq(left: q, right: wanted)
@@ -99,7 +99,7 @@ fn mint_fixture_behavior_receipt(
 
 fn fixture_behavior_receipt_admits_cargo_green_advance(
   receipt: FixtureBehaviorReceipt
-) -> v2.std.logic.Bool {
+) -> Bool {
   fixture_emission_qualifications_list_contains(
     xs: receipt.qualifications,
     wanted: FixtureSourceProduced
@@ -116,13 +116,13 @@ fn fixture_behavior_receipt_admits_cargo_green_advance(
 
 fn advance_fixture_behavior_receipt_cargo_green(
   prior: FixtureBehaviorReceipt,
-  cargo_green: v2.std.logic.Bool
+  cargo_green: Bool
 ) -> Optional<FixtureBehaviorReceipt> {
   if !cargo_green
     || !fixture_behavior_receipt_admits_cargo_green_advance(receipt: prior) {
-    optional_absent()
+    v2.std.optional.optional_absent()
   } else {
-    optional_present(
+    v2.std.optional.optional_present(
       value: FixtureBehaviorReceipt {
         module_path: prior.module_path,
         emitted_source_identity: prior.emitted_source_identity,
@@ -140,10 +140,10 @@ fn mint_synthetic_emitted_artifact_from_fixture_inferred(
   module_path: String,
   fixture_lane_tag: String
 ) -> v2.std.diagnostic.Outcome<SyntheticEmittedArtifact> {
-  bind_outcome(
-    o: generate_rust_emission_candidate(inferred: inferred, target: target),
+  v2.std.diagnostic.bind_outcome(
+    o: v2.compiler.self_host.candidate_generation.generate_rust_emission_candidate(inferred: inferred, target: target),
     f: fn(candidate) {
-      outcome_accepted(
+      v2.std.diagnostic.outcome_accepted(
         value: SyntheticEmittedArtifact {
           source: candidate.source,
           emitted: candidate.emitted,
@@ -165,7 +165,7 @@ fn mint_written_synthetic_emitted_artifact_from_fixture_inferred(
   workspace_dir: String,
   fixture_lane_tag: String
 ) -> v2.std.diagnostic.Outcome<WrittenSyntheticEmittedArtifact> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: mint_synthetic_emitted_artifact_from_fixture_inferred(
       inferred: inferred,
       target: target,
@@ -173,10 +173,10 @@ fn mint_written_synthetic_emitted_artifact_from_fixture_inferred(
       fixture_lane_tag: fixture_lane_tag
     ),
     f: fn(artifact) {
-      outcome_accepted(
+      v2.std.diagnostic.outcome_accepted(
         value: WrittenSyntheticEmittedArtifact {
           artifact: artifact,
-          write: write_rust_workspace(
+          write: v2.compiler.self_host.candidate_generation.write_rust_workspace(
             workspace_dir: workspace_dir,
             source: artifact.source
           )
@@ -188,14 +188,14 @@ fn mint_written_synthetic_emitted_artifact_from_fixture_inferred(
 
 fn advance_written_synthetic_emitted_artifact_cargo_green(
   written: WrittenSyntheticEmittedArtifact,
-  cargo_green: v2.std.logic.Bool
+  cargo_green: Bool
 ) -> Optional<WrittenSyntheticEmittedArtifact> {
   match advance_fixture_behavior_receipt_cargo_green(
     prior: written.artifact.fixture_receipt,
     cargo_green: cargo_green
   ) {
-    Present { value: receipt } =>
-      optional_present(
+    v2.std.optional.Present { value: receipt } =>
+      v2.std.optional.optional_present(
         value: WrittenSyntheticEmittedArtifact {
           artifact: SyntheticEmittedArtifact {
             source: written.artifact.source,
@@ -205,19 +205,19 @@ fn advance_written_synthetic_emitted_artifact_cargo_green(
           write: written.write
         }
       )
-    Absent => optional_absent()
+    v2.std.optional.Absent => v2.std.optional.optional_absent()
   }
 }
 
 fn written_synthetic_emitted_artifact_ok(
   written: WrittenSyntheticEmittedArtifact
-) -> v2.std.logic.Bool {
+) -> Bool {
   written.write.manifest_write_ok && written.write.main_write_ok
 }
 
 fn written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
   written: WrittenSyntheticEmittedArtifact
-) -> v2.std.logic.Bool {
+) -> Bool {
   fixture_emission_qualifications_list_contains(
     xs: written.artifact.fixture_receipt.qualifications,
     wanted: FixtureCargoGreen
@@ -226,7 +226,7 @@ fn written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
 
 fn written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification(
   written: WrittenSyntheticEmittedArtifact
-) -> v2.std.logic.Bool {
+) -> Bool {
   fixture_emission_qualifications_list_contains(
     xs: written.artifact.fixture_receipt.qualifications,
     wanted: FixtureBehaviorallyEquivalent
@@ -235,7 +235,7 @@ fn written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualif
 
 fn synthetic_emitted_artifact_has_fixture_source_produced_only(
   artifact: SyntheticEmittedArtifact
-) -> v2.std.logic.Bool {
+) -> Bool {
   fixture_emission_qualifications_list_contains(
     xs: artifact.fixture_receipt.qualifications,
     wanted: FixtureSourceProduced

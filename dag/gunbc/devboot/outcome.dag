@@ -100,7 +100,7 @@ type SubjectMatch
   | SubjectDiffers
 
 fn record_matches_request(record: StoredArtifactRecord, requested: gunbc.devboot.subject.BuildSubject) -> SubjectMatch {
-  if build_subject_equal(left: record.subject, right: requested) {
+  if gunbc.devboot.subject.build_subject_equal(left: record.subject, right: requested) {
     SubjectMatches
   } else {
     SubjectDiffers
@@ -134,7 +134,7 @@ fn reuse_decision_from_match(
         SubjectDiffers =>
           ReuseSubjectMismatch {
             candidate_digest: digest,
-            requested_digest: build_subject_digest(subject: requested),
+            requested_digest: gunbc.devboot.subject.build_subject_digest(subject: requested),
           }
         SubjectMatches =>
           match availability {

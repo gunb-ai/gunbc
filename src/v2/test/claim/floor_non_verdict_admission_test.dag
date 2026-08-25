@@ -1,7 +1,7 @@
 module v2.test.claim.floor_non_verdict_admission_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data roster_fixture: List<String> = std.algebra.Cons { head: "m.a", tail: std.algebra.Cons { head: "m.b", tail: std.algebra.Cons { head: "m.c", tail: v2.std.algebra.Empty {} } } }
 
@@ -26,13 +26,13 @@ data observed_grown: List<String> = std.algebra.Cons { head: "m.a", tail: std.al
 data observed_swapped: List<String> = std.algebra.Cons { head: "m.a", tail: std.algebra.Cons { head: "m.b", tail: std.algebra.Cons { head: "m.d", tail: v2.std.algebra.Empty {} } } }
 
 test fn unchanged_population_is_admitted() -> Bool {
-  non_verdict_admits(observed: observed_unchanged, roster: roster_fixture)
+  v2.workflow.floor_non_verdict_admission.non_verdict_admits(observed: observed_unchanged, roster: roster_fixture)
 }
 
 test fn repayment_that_leaves_the_row_behind_refuses_and_is_reported_per_identity() -> Bool {
-  !non_verdict_admits(observed: observed_repaid, roster: roster_fixture)
-    && v2.std.algebra.length(xs: non_verdict_repaid(observed: observed_repaid, roster: roster_fixture)) == 2
-    && v2.std.algebra.length(xs: non_verdict_added(observed: observed_repaid, roster: roster_fixture)) == 0
+  !v2.workflow.floor_non_verdict_admission.non_verdict_admits(observed: observed_repaid, roster: roster_fixture)
+    && v2.std.algebra.length(xs: v2.workflow.floor_non_verdict_admission.non_verdict_repaid(observed: observed_repaid, roster: roster_fixture)) == 2
+    && v2.std.algebra.length(xs: v2.workflow.floor_non_verdict_admission.non_verdict_added(observed: observed_repaid, roster: roster_fixture)) == 0
 }
 
 // AND THE REPAIR ITSELF IS ADMITTED, which is the control that keeps the row above from reading as
@@ -41,14 +41,14 @@ test fn repayment_that_leaves_the_row_behind_refuses_and_is_reported_per_identit
 // one. Without this control the pair would not discriminate between "stale rows refuse" and
 // "repayment refuses", which are opposite rules.
 test fn repayment_with_the_row_deleted_is_admitted() -> Bool {
-  non_verdict_admits(observed: observed_repaid, roster: observed_repaid)
-    && v2.std.algebra.length(xs: non_verdict_repaid(observed: observed_repaid, roster: observed_repaid)) == 0
-    && v2.std.algebra.length(xs: non_verdict_added(observed: observed_repaid, roster: observed_repaid)) == 0
+  v2.workflow.floor_non_verdict_admission.non_verdict_admits(observed: observed_repaid, roster: observed_repaid)
+    && v2.std.algebra.length(xs: v2.workflow.floor_non_verdict_admission.non_verdict_repaid(observed: observed_repaid, roster: observed_repaid)) == 0
+    && v2.std.algebra.length(xs: v2.workflow.floor_non_verdict_admission.non_verdict_added(observed: observed_repaid, roster: observed_repaid)) == 0
 }
 
 test fn growth_refuses() -> Bool {
-  !non_verdict_admits(observed: observed_grown, roster: roster_fixture)
-    && v2.std.algebra.length(xs: non_verdict_added(observed: observed_grown, roster: roster_fixture)) == 1
+  !v2.workflow.floor_non_verdict_admission.non_verdict_admits(observed: observed_grown, roster: roster_fixture)
+    && v2.std.algebra.length(xs: v2.workflow.floor_non_verdict_admission.non_verdict_added(observed: observed_grown, roster: roster_fixture)) == 1
 }
 
 // THE EVIDENCE THAT THE IDENTITY-GRAIN DECISION WAS REAL, not the plumbing test. The swapped
@@ -57,7 +57,7 @@ test fn growth_refuses() -> Bool {
 // discrimination cannot be read as an artifact of the sizes differing.
 test fn a_swap_that_leaves_the_count_unmoved_still_refuses() -> Bool {
   v2.std.algebra.length(xs: observed_swapped) == v2.std.algebra.length(xs: roster_fixture)
-    && !non_verdict_admits(observed: observed_swapped, roster: roster_fixture)
-    && v2.std.algebra.length(xs: non_verdict_added(observed: observed_swapped, roster: roster_fixture)) == 1
-    && v2.std.algebra.length(xs: non_verdict_repaid(observed: observed_swapped, roster: roster_fixture)) == 1
+    && !v2.workflow.floor_non_verdict_admission.non_verdict_admits(observed: observed_swapped, roster: roster_fixture)
+    && v2.std.algebra.length(xs: v2.workflow.floor_non_verdict_admission.non_verdict_added(observed: observed_swapped, roster: roster_fixture)) == 1
+    && v2.std.algebra.length(xs: v2.workflow.floor_non_verdict_admission.non_verdict_repaid(observed: observed_swapped, roster: roster_fixture)) == 1
 }

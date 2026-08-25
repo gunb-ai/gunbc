@@ -10,7 +10,7 @@ module extdeps.programmable_logic.ice40.subject
 // while the reader is structural.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/iCE/FPGA-DS-02029-4-3-iCE40-LP-HX-Family-Data-Sheet.ashx?document_id=49312"
   }
 }
@@ -36,10 +36,10 @@ type Ice40Device {
 // A package is a physical carrier with a footprint a board must reproduce. Dimensions are
 // Micrometer — the shared Length quantity at one finer decimal step — because a half-millimetre
 // pitch is not expressible in whole millimetres and the board that places this part is drawn at
-// that grain. An earlier revision spelled these as plain std.nat.Nat with the unit in the field NAME,
+// that grain. An earlier revision spelled these as plain Nat with the unit in the field NAME,
 // which is the fork this repository refuses: a unit written in a name is a unit no consumer can
 // read, so a micrometre and a millimetre become the same type and adding them typechecks. The
-// contact COUNT stays std.nat.Nat, and correctly: it is a cardinality, not a length.
+// contact COUNT stays Nat, and correctly: it is a cardinality, not a length.
 type Ice40Package {
   designator: std.types.NonEmptyStr
   body_width: std.measure.Micrometer
@@ -91,9 +91,9 @@ data ice40_hx1k: Ice40Device = Ice40Device {
 
 data ice40_tq144_package: Ice40Package = Ice40Package {
   designator: "TQ144",
-  body_width: micrometer(count: 20000),
-  body_height: micrometer(count: 20000),
-  contact_pitch: micrometer(count: 500),
+  body_width: std.measure.micrometer(count: 20000),
+  body_height: std.measure.micrometer(count: 20000),
+  contact_pitch: std.measure.micrometer(count: 500),
   contact_count: 144,
 }
 
@@ -201,13 +201,13 @@ data ice40_family_model_scope: extdeps.external_authority.ExternalModelScope = e
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.programmable_logic.ice40.subject",
       decl_name: "ice40_hx1k",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.programmable_logic.ice40.subject.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
-data ice40_vendor: Vendor<extdeps.hardware.Hardware> = lattice_semiconductor_vendor
+data ice40_vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware> = extdeps.vendor.lattice_semiconductor.lattice_semiconductor_vendor
 
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = ice40_family_model_scope

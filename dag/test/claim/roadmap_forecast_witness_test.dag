@@ -1,14 +1,14 @@
 module test.claim.roadmap_forecast_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn assumptions_with_cap(max_concurrent: Int) -> gunbc.roadmap_forecast.ScheduleForecastAssumptions {
   gunbc.roadmap_forecast.ScheduleForecastAssumptions {
     worker_concurrency_cap: gunbc.roadmap_belt.BeltCapacity { max_concurrent: max_concurrent },
-    review_cycle_count: gunbc.roadmap_forecast.ReviewCycleCount { count: positive_measure_count(predecessor: 0) },
-    operator_merge_latency: gunbc.roadmap_forecast.OperatorMergeLatencyAssumption { duration: millisecond(count: 5) },
-    belt_slot_occupancy: end_to_end_belt_slot_occupancy_assumption,
+    review_cycle_count: gunbc.roadmap_forecast.ReviewCycleCount { count: std.measure.positive_measure_count(predecessor: 0) },
+    operator_merge_latency: gunbc.roadmap_forecast.OperatorMergeLatencyAssumption { duration: std.measure.millisecond(count: 5) },
+    belt_slot_occupancy: gunbc.roadmap_forecast.end_to_end_belt_slot_occupancy_assumption,
   }
 }
 
@@ -30,22 +30,22 @@ fn sized_node(id: String, cell: gunbc.roadmap_forecast.SizingCell) -> gunbc.road
       intricacy: cell.intricacy,
       volume: cell.volume,
       repo: "gunbc",
-      acceptance: ManualAcceptance,
+      acceptance: gunbc.roadmap_model.ManualAcceptance,
     },
-    execution: ExecutionContractUnspecified,
+    execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "fixture",
     signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
 fn unsized_node(id: String) -> gunbc.roadmap_model.RoadmapNode {
-  let base = sized_node(id: id, cell: gunbc.roadmap_forecast.SizingCell { intricacy: IntricacyLow, volume: VolumeSmall })
+  let base = sized_node(id: id, cell: gunbc.roadmap_forecast.SizingCell { intricacy: gunbc.roadmap_model.IntricacyLow, volume: gunbc.roadmap_model.VolumeSmall })
   gunbc.roadmap_model.RoadmapNode {
     identity: base.identity,
     node: base.node,
     line: base.line,
     carriers: base.carriers,
-    sizing: Unsized,
+    sizing: gunbc.roadmap_model.Unsized,
     execution: base.execution,
     owner: base.owner,
     signoff: base.signoff,
@@ -57,159 +57,159 @@ fn observation(id: String, cell: gunbc.roadmap_forecast.SizingCell, duration_ms:
     node: id as gunbc.roadmap_model.RoadmapNodeId,
     sizing_cell: cell,
     pull_number: duration_ms,
-    cycle_time: millisecond(count: duration_ms),
+    cycle_time: std.measure.millisecond(count: duration_ms),
     accepted_on: "2026-08-01",
     source_url: "https://github.com/gunb-ai/gunbc/pull/1",
-    provenance: AcceptedRoadmapNodePullHistory,
+    provenance: gunbc.roadmap_forecast.AcceptedRoadmapNodePullHistory,
   }
 }
 
 fn fixture_cell() -> gunbc.roadmap_forecast.SizingCell {
-  gunbc.roadmap_forecast.SizingCell { intricacy: IntricacyMedium, volume: VolumeMedium }
+  gunbc.roadmap_forecast.SizingCell { intricacy: gunbc.roadmap_model.IntricacyMedium, volume: gunbc.roadmap_model.VolumeMedium }
 }
 
 fn fixture_observations() -> List<gunbc.roadmap_forecast.CycleTimeObservation> {
   [
-    test.claim.roadmap_forecast_witness.observation(id: "history-a", cell: fixture_cell(), duration_ms: 10),
-    test.claim.roadmap_forecast_witness.observation(id: "history-b", cell: fixture_cell(), duration_ms: 20),
-    test.claim.roadmap_forecast_witness.observation(id: "history-c", cell: fixture_cell(), duration_ms: 30),
+    observation(id: "history-a", cell: fixture_cell(), duration_ms: 10),
+    observation(id: "history-b", cell: fixture_cell(), duration_ms: 20),
+    observation(id: "history-c", cell: fixture_cell(), duration_ms: 30),
   ]
 }
 
 test fn witness_cited_acceptance_pr_history_joins_without_refusal() -> Bool {
-  let builds = roadmap_cycle_time_observation_builds()
+  let builds = gunbc.roadmap_forecast.roadmap_cycle_time_observation_builds()
   count(builds) == 10
-    && count(accepted_cycle_time_observations(builds: builds)) == 4
-    && count(cycle_time_history_refusals(builds: builds)) == 0
-    && count(cycle_time_population_exclusions(builds: builds)) == 2
-    && all(accepted_cycle_time_observations(builds: builds), observation =>
-      millisecond_count(m: observation.cycle_time) > 0
+    && count(gunbc.roadmap_forecast.accepted_cycle_time_observations(builds: builds)) == 4
+    && count(gunbc.roadmap_forecast.cycle_time_history_refusals(builds: builds)) == 0
+    && count(gunbc.roadmap_forecast.cycle_time_population_exclusions(builds: builds)) == 2
+    && all(gunbc.roadmap_forecast.accepted_cycle_time_observations(builds: builds), observation =>
+      std.measure.millisecond_count(m: observation.cycle_time) > 0
         && string_contains(observation.source_url as String, "https://github.com/gunb-ai/gunbc/pull/")
     )
-    && all(cycle_time_population_exclusions(builds: builds), exclusion => match exclusion {
-      BundledPullDelivery { pull_number: _, nodes } => count(nodes) > 1
+    && all(gunbc.roadmap_forecast.cycle_time_population_exclusions(builds: builds), exclusion => match exclusion {
+      gunbc.roadmap_forecast.BundledPullDelivery { pull_number: _, nodes } => count(nodes) > 1
     })
 }
 
 test fn witness_live_calibration_keeps_small_sample_intervals() -> Bool {
-  let observations = accepted_cycle_time_observations(builds: roadmap_cycle_time_observation_builds())
-  let low_small = calibrate_cell(
-    cell: gunbc.roadmap_forecast.SizingCell { intricacy: IntricacyLow, volume: VolumeSmall },
+  let observations = gunbc.roadmap_forecast.accepted_cycle_time_observations(builds: gunbc.roadmap_forecast.roadmap_cycle_time_observation_builds())
+  let low_small = gunbc.roadmap_forecast.calibrate_cell(
+    cell: gunbc.roadmap_forecast.SizingCell { intricacy: gunbc.roadmap_model.IntricacyLow, volume: gunbc.roadmap_model.VolumeSmall },
     observations: observations,
   )
-  let medium_medium = calibrate_cell(
-    cell: gunbc.roadmap_forecast.SizingCell { intricacy: IntricacyMedium, volume: VolumeMedium },
+  let medium_medium = gunbc.roadmap_forecast.calibrate_cell(
+    cell: gunbc.roadmap_forecast.SizingCell { intricacy: gunbc.roadmap_model.IntricacyMedium, volume: gunbc.roadmap_model.VolumeMedium },
     observations: observations,
   )
-  let high_medium = calibrate_cell(
-    cell: gunbc.roadmap_forecast.SizingCell { intricacy: IntricacyHigh, volume: VolumeMedium },
+  let high_medium = gunbc.roadmap_forecast.calibrate_cell(
+    cell: gunbc.roadmap_forecast.SizingCell { intricacy: gunbc.roadmap_model.IntricacyHigh, volume: gunbc.roadmap_model.VolumeMedium },
     observations: observations,
   )
   match low_small {
-    CalibrationRefusedNoSample { cell: _ } => false
-    Calibrated { interval: l } =>
+    gunbc.roadmap_forecast.CalibrationRefusedNoSample { cell: _ } => false
+    gunbc.roadmap_forecast.Calibrated { interval: l } =>
       l.sample_count == 1
-        && millisecond_count(m: l.minimum) == 7721000
-        && millisecond_count(m: l.median) == 7721000
-        && millisecond_count(m: l.maximum) == 7721000
+        && std.measure.millisecond_count(m: l.minimum) == 7721000
+        && std.measure.millisecond_count(m: l.median) == 7721000
+        && std.measure.millisecond_count(m: l.maximum) == 7721000
         && match medium_medium {
-          CalibrationRefusedNoSample { cell: _ } => false
-          Calibrated { interval: m } =>
+          gunbc.roadmap_forecast.CalibrationRefusedNoSample { cell: _ } => false
+          gunbc.roadmap_forecast.Calibrated { interval: m } =>
             m.sample_count == 1
-              && millisecond_count(m: m.minimum) == 2570000
-              && millisecond_count(m: m.median) == 2570000
-              && millisecond_count(m: m.maximum) == 2570000
+              && std.measure.millisecond_count(m: m.minimum) == 2570000
+              && std.measure.millisecond_count(m: m.median) == 2570000
+              && std.measure.millisecond_count(m: m.maximum) == 2570000
               && match high_medium {
-                CalibrationRefusedNoSample { cell: _ } => false
-                Calibrated { interval: h } =>
+                gunbc.roadmap_forecast.CalibrationRefusedNoSample { cell: _ } => false
+                gunbc.roadmap_forecast.Calibrated { interval: h } =>
                   h.sample_count == 2
-                    && millisecond_count(m: h.minimum) == 4396000
-                    && millisecond_count(m: h.median) == 21652000
-                    && millisecond_count(m: h.maximum) == 38908000
+                    && std.measure.millisecond_count(m: h.minimum) == 4396000
+                    && std.measure.millisecond_count(m: h.median) == 21652000
+                    && std.measure.millisecond_count(m: h.maximum) == 38908000
               }
         }
   }
 }
 
 test fn witness_live_graph_refuses_with_located_counted_calibration_gaps() -> Bool {
-  let result = live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor())
-  let derived_gap_count = no_calibration_gap_count(result: result)
+  let result = gunbc.roadmap_forecast.live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor())
+  let derived_gap_count = gunbc.roadmap_forecast.no_calibration_gap_count(result: result)
   derived_gap_count > 0
     && match result {
-      ScheduleForecastKnown { forecast: _ } => false
-      ScheduleForecastRefused { refusals } =>
+      gunbc.roadmap_forecast.ScheduleForecastKnown { forecast: _ } => false
+      gunbc.roadmap_forecast.ScheduleForecastRefused { refusals } =>
         count(refusals) == 1
           && match first(refusals) {
             Absent => false
             Present { value: refusal } => match refusal {
-              NoCalibrationSample { gaps, population_exclusions, assumptions: declared, scenario_adjustment: adjustment } =>
+              gunbc.roadmap_forecast.NoCalibrationSample { gaps, population_exclusions, assumptions: declared, scenario_adjustment: adjustment } =>
                 count(gaps) == derived_gap_count
                   && count(population_exclusions) == 2
-                  && millisecond_count(m: declared.operator_merge_latency.duration) == 5
+                  && std.measure.millisecond_count(m: declared.operator_merge_latency.duration) == 5
                   && match adjustment {
-                    AdjustmentUnavailable { causes } =>
+                    gunbc.roadmap_forecast.AdjustmentUnavailable { causes } =>
                       count(causes) == 2
                         && any(causes, cause => match cause {
-                          ReviewCycleDurationUnobserved { declared_count: _ } => true
-                          OperatorMergeLatencyUnobserved { declared_latency: _ } => false
+                          gunbc.roadmap_forecast.ReviewCycleDurationUnobserved { declared_count: _ } => true
+                          gunbc.roadmap_forecast.OperatorMergeLatencyUnobserved { declared_latency: _ } => false
                         })
                         && any(causes, cause => match cause {
-                          ReviewCycleDurationUnobserved { declared_count: _ } => false
-                          OperatorMergeLatencyUnobserved { declared_latency } => millisecond_count(m: declared_latency) == 5
+                          gunbc.roadmap_forecast.ReviewCycleDurationUnobserved { declared_count: _ } => false
+                          gunbc.roadmap_forecast.OperatorMergeLatencyUnobserved { declared_latency } => std.measure.millisecond_count(m: declared_latency) == 5
                         })
                   }
                   && all(gaps, gap => count(gap.nodes) > 0)
-              DependencyCycle { nodes: _ } => false
-              ForecastGraphEmpty => false
-              DependencyEndpointUnknown { nodes: _ } => false
-              NodeUnsized { nodes: _ } => false
-              CycleTimeObservationNonPositive { nodes: _ } => false
-              WorkerConcurrencyCapInvalid { declared_cap: _ } => false
-              CalibrationHistoryRefused { refusals: _ } => false
-              ForecastRoadmapAuthorityRefused { detail: _ } => false
-              ForecastBuildRefused { node: _ } => false
+              gunbc.roadmap_forecast.DependencyCycle { nodes: _ } => false
+              gunbc.roadmap_forecast.ForecastGraphEmpty => false
+              gunbc.roadmap_forecast.DependencyEndpointUnknown { nodes: _ } => false
+              gunbc.roadmap_forecast.NodeUnsized { nodes: _ } => false
+              gunbc.roadmap_forecast.CycleTimeObservationNonPositive { nodes: _ } => false
+              gunbc.roadmap_forecast.WorkerConcurrencyCapInvalid { declared_cap: _ } => false
+              gunbc.roadmap_forecast.CalibrationHistoryRefused { refusals: _ } => false
+              gunbc.roadmap_forecast.ForecastRoadmapAuthorityRefused { detail: _ } => false
+              gunbc.roadmap_forecast.ForecastBuildRefused { node: _ } => false
             }
           }
     }
 }
 
 test fn witness_live_graph_gap_count_matches_refusal_rows() -> Bool {
-  let result = live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor())
-  let derived_gap_count = no_calibration_gap_count(result: result)
+  let result = gunbc.roadmap_forecast.live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor())
+  let derived_gap_count = gunbc.roadmap_forecast.no_calibration_gap_count(result: result)
   derived_gap_count > 0
     && match result {
-      ScheduleForecastKnown { forecast: _ } => false
-      ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
-        NoCalibrationSample { gaps, population_exclusions: _, assumptions: _, scenario_adjustment: _ } =>
+      gunbc.roadmap_forecast.ScheduleForecastKnown { forecast: _ } => false
+      gunbc.roadmap_forecast.ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
+        gunbc.roadmap_forecast.NoCalibrationSample { gaps, population_exclusions: _, assumptions: _, scenario_adjustment: _ } =>
           count(gaps) == derived_gap_count && all(gaps, gap => count(gap.nodes) > 0)
-        ForecastGraphEmpty => false
-        DependencyCycle { nodes: _ } => false
-        DependencyEndpointUnknown { nodes: _ } => false
-        NodeUnsized { nodes: _ } => false
-        CycleTimeObservationNonPositive { nodes: _ } => false
-        WorkerConcurrencyCapInvalid { declared_cap: _ } => false
-        CalibrationHistoryRefused { refusals: _ } => false
-        ForecastRoadmapAuthorityRefused { detail: _ } => false
-        ForecastBuildRefused { node: _ } => false
+        gunbc.roadmap_forecast.ForecastGraphEmpty => false
+        gunbc.roadmap_forecast.DependencyCycle { nodes: _ } => false
+        gunbc.roadmap_forecast.DependencyEndpointUnknown { nodes: _ } => false
+        gunbc.roadmap_forecast.NodeUnsized { nodes: _ } => false
+        gunbc.roadmap_forecast.CycleTimeObservationNonPositive { nodes: _ } => false
+        gunbc.roadmap_forecast.WorkerConcurrencyCapInvalid { declared_cap: _ } => false
+        gunbc.roadmap_forecast.CalibrationHistoryRefused { refusals: _ } => false
+        gunbc.roadmap_forecast.ForecastRoadmapAuthorityRefused { detail: _ } => false
+        gunbc.roadmap_forecast.ForecastBuildRefused { node: _ } => false
       })
     }
 }
 
 test fn witness_live_graph_refusal_is_only_calibration() -> Bool {
-  match live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor()) {
-    ScheduleForecastKnown { forecast: _ } => false
-    ScheduleForecastRefused { refusals } =>
+  match gunbc.roadmap_forecast.live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor()) {
+    gunbc.roadmap_forecast.ScheduleForecastKnown { forecast: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastRefused { refusals } =>
       count(refusals) == 1 && any(refusals, refusal => match refusal {
-        NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => true
-        ForecastGraphEmpty => false
-        DependencyCycle { nodes: _ } => false
-        DependencyEndpointUnknown { nodes: _ } => false
-        NodeUnsized { nodes: _ } => false
-        CycleTimeObservationNonPositive { nodes: _ } => false
-        WorkerConcurrencyCapInvalid { declared_cap: _ } => false
-        CalibrationHistoryRefused { refusals: _ } => false
-        ForecastRoadmapAuthorityRefused { detail: _ } => false
-        ForecastBuildRefused { node: _ } => false
+        gunbc.roadmap_forecast.NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => true
+        gunbc.roadmap_forecast.ForecastGraphEmpty => false
+        gunbc.roadmap_forecast.DependencyCycle { nodes: _ } => false
+        gunbc.roadmap_forecast.DependencyEndpointUnknown { nodes: _ } => false
+        gunbc.roadmap_forecast.NodeUnsized { nodes: _ } => false
+        gunbc.roadmap_forecast.CycleTimeObservationNonPositive { nodes: _ } => false
+        gunbc.roadmap_forecast.WorkerConcurrencyCapInvalid { declared_cap: _ } => false
+        gunbc.roadmap_forecast.CalibrationHistoryRefused { refusals: _ } => false
+        gunbc.roadmap_forecast.ForecastRoadmapAuthorityRefused { detail: _ } => false
+        gunbc.roadmap_forecast.ForecastBuildRefused { node: _ } => false
       })
   }
 }
@@ -218,7 +218,7 @@ test fn witness_fully_calibrated_graph_derives_three_point_critical_path() -> Bo
   let a = sized_node(id: "a", cell: fixture_cell())
   let b = sized_node(id: "b", cell: fixture_cell())
   let c = sized_node(id: "c", cell: fixture_cell())
-  let result = schedule_forecast(
+  let result = gunbc.roadmap_forecast.schedule_forecast(
     nodes: [a, b, c],
     edges: [gunbc.roadmap_model.RoadmapEdge { child: b.node, parent: a.node }],
     observations: fixture_observations(),
@@ -228,24 +228,24 @@ test fn witness_fully_calibrated_graph_derives_three_point_critical_path() -> Bo
     anchor: anchor(),
   )
   match result {
-    ScheduleForecastRefused { refusals: _ } => false
-    ScheduleForecastKnown { forecast } =>
+    gunbc.roadmap_forecast.ScheduleForecastRefused { refusals: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastKnown { forecast } =>
       forecast.critical_path == [a.node, b.node]
         && count(forecast.nodes) == 3
         && forecast.completion_lower_bound.earliest.epoch_ms == 1020
         && forecast.completion_lower_bound.median.epoch_ms == 1040
         && forecast.completion_lower_bound.latest.epoch_ms == 1060
-        && millisecond_count(m: forecast.lower_bounds.total_work.duration.median) == 60
-        && millisecond_count(m: forecast.lower_bounds.critical_path_minimum.duration.median) == 40
-        && millisecond_count(m: forecast.lower_bounds.capacity_constrained_minimum.duration.median) == 40
-        && millisecond_count(m: forecast.lower_bounds.parallelism_headroom.ratio.median.num) == 60
-        && millisecond_count(m: forecast.lower_bounds.parallelism_headroom.ratio.median.denom) == 40
+        && std.measure.millisecond_count(m: forecast.lower_bounds.total_work.duration.median) == 60
+        && std.measure.millisecond_count(m: forecast.lower_bounds.critical_path_minimum.duration.median) == 40
+        && std.measure.millisecond_count(m: forecast.lower_bounds.capacity_constrained_minimum.duration.median) == 40
+        && std.measure.millisecond_count(m: forecast.lower_bounds.parallelism_headroom.ratio.median.num) == 60
+        && std.measure.millisecond_count(m: forecast.lower_bounds.parallelism_headroom.ratio.median.denom) == 40
         && count(forecast.calibration_population_exclusions) == 0
         && match forecast.scenario_adjustment {
-          AdjustmentUnavailable { causes } => count(causes) == 2
+          gunbc.roadmap_forecast.AdjustmentUnavailable { causes } => count(causes) == 2
         }
         && forecast.assumptions.worker_concurrency_cap.max_concurrent == 3
-        && millisecond_count(m: forecast.assumptions.operator_merge_latency.duration) == 5
+        && std.measure.millisecond_count(m: forecast.assumptions.operator_merge_latency.duration) == 5
   }
 }
 
@@ -253,7 +253,7 @@ test fn witness_worker_cap_changes_completion_lower_bound() -> Bool {
   let a = sized_node(id: "capacity-a", cell: fixture_cell())
   let b = sized_node(id: "capacity-b", cell: fixture_cell())
   let c = sized_node(id: "capacity-c", cell: fixture_cell())
-  let one_worker = schedule_forecast(
+  let one_worker = gunbc.roadmap_forecast.schedule_forecast(
     nodes: [a, b, c],
     edges: [],
     observations: fixture_observations(),
@@ -262,7 +262,7 @@ test fn witness_worker_cap_changes_completion_lower_bound() -> Bool {
     assumptions: assumptions_with_cap(max_concurrent: 1),
     anchor: anchor(),
   )
-  let three_workers = schedule_forecast(
+  let three_workers = gunbc.roadmap_forecast.schedule_forecast(
     nodes: [a, b, c],
     edges: [],
     observations: fixture_observations(),
@@ -272,15 +272,15 @@ test fn witness_worker_cap_changes_completion_lower_bound() -> Bool {
     anchor: anchor(),
   )
   match one_worker {
-    ScheduleForecastRefused { refusals: _ } => false
-    ScheduleForecastKnown { forecast: serialized_bound } => match three_workers {
-      ScheduleForecastRefused { refusals: _ } => false
-      ScheduleForecastKnown { forecast: parallel_bound } =>
+    gunbc.roadmap_forecast.ScheduleForecastRefused { refusals: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastKnown { forecast: serialized_bound } => match three_workers {
+      gunbc.roadmap_forecast.ScheduleForecastRefused { refusals: _ } => false
+      gunbc.roadmap_forecast.ScheduleForecastKnown { forecast: parallel_bound } =>
         serialized_bound.completion_lower_bound.median.epoch_ms == 1060
           && parallel_bound.completion_lower_bound.median.epoch_ms == 1020
-          && millisecond_count(m: serialized_bound.lower_bounds.total_work.duration.median) == 60
-          && millisecond_count(m: serialized_bound.lower_bounds.critical_path_minimum.duration.median) == 20
-          && millisecond_count(m: serialized_bound.lower_bounds.capacity_constrained_minimum.duration.median) == 60
+          && std.measure.millisecond_count(m: serialized_bound.lower_bounds.total_work.duration.median) == 60
+          && std.measure.millisecond_count(m: serialized_bound.lower_bounds.critical_path_minimum.duration.median) == 20
+          && std.measure.millisecond_count(m: serialized_bound.lower_bounds.capacity_constrained_minimum.duration.median) == 60
           && serialized_bound.completion_lower_bound.median.epoch_ms > parallel_bound.completion_lower_bound.median.epoch_ms
     }
   }
@@ -288,7 +288,7 @@ test fn witness_worker_cap_changes_completion_lower_bound() -> Bool {
 
 test fn witness_invalid_worker_cap_refuses() -> Bool {
   let n = sized_node(id: "invalid-cap", cell: fixture_cell())
-  match schedule_forecast(
+  match gunbc.roadmap_forecast.schedule_forecast(
     nodes: [n],
     edges: [],
     observations: fixture_observations(),
@@ -297,51 +297,51 @@ test fn witness_invalid_worker_cap_refuses() -> Bool {
     assumptions: assumptions_with_cap(max_concurrent: 0),
     anchor: anchor(),
   ) {
-    ScheduleForecastKnown { forecast: _ } => false
-    ScheduleForecastRefused { refusals } => count(refusals) == 1 && any(refusals, refusal => match refusal {
-      WorkerConcurrencyCapInvalid { declared_cap } => declared_cap == 0
-      ForecastGraphEmpty => false
-      DependencyCycle { nodes: _ } => false
-      DependencyEndpointUnknown { nodes: _ } => false
-      NodeUnsized { nodes: _ } => false
-      CycleTimeObservationNonPositive { nodes: _ } => false
-      NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
-      CalibrationHistoryRefused { refusals: _ } => false
-      ForecastRoadmapAuthorityRefused { detail: _ } => false
-      ForecastBuildRefused { node: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastKnown { forecast: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastRefused { refusals } => count(refusals) == 1 && any(refusals, refusal => match refusal {
+      gunbc.roadmap_forecast.WorkerConcurrencyCapInvalid { declared_cap } => declared_cap == 0
+      gunbc.roadmap_forecast.ForecastGraphEmpty => false
+      gunbc.roadmap_forecast.DependencyCycle { nodes: _ } => false
+      gunbc.roadmap_forecast.DependencyEndpointUnknown { nodes: _ } => false
+      gunbc.roadmap_forecast.NodeUnsized { nodes: _ } => false
+      gunbc.roadmap_forecast.CycleTimeObservationNonPositive { nodes: _ } => false
+      gunbc.roadmap_forecast.NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
+      gunbc.roadmap_forecast.CalibrationHistoryRefused { refusals: _ } => false
+      gunbc.roadmap_forecast.ForecastRoadmapAuthorityRefused { detail: _ } => false
+      gunbc.roadmap_forecast.ForecastBuildRefused { node: _ } => false
     })
   }
 }
 
 test fn witness_zero_cycle_time_observation_refuses_before_headroom() -> Bool {
   let n = sized_node(id: "zero-cycle", cell: fixture_cell())
-  match schedule_forecast(
+  match gunbc.roadmap_forecast.schedule_forecast(
     nodes: [n],
     edges: [],
-    observations: [test.claim.roadmap_forecast_witness.observation(id: n.node, cell: fixture_cell(), duration_ms: 0)],
+    observations: [observation(id: n.node, cell: fixture_cell(), duration_ms: 0)],
     history_refusals: [],
     population_exclusions: [],
     assumptions: assumptions(),
     anchor: anchor(),
   ) {
-    ScheduleForecastKnown { forecast: _ } => false
-    ScheduleForecastRefused { refusals } => count(refusals) == 1 && any(refusals, refusal => match refusal {
-      CycleTimeObservationNonPositive { nodes } => nodes == [n.node]
-      ForecastGraphEmpty => false
-      DependencyCycle { nodes: _ } => false
-      DependencyEndpointUnknown { nodes: _ } => false
-      NodeUnsized { nodes: _ } => false
-      NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
-      WorkerConcurrencyCapInvalid { declared_cap: _ } => false
-      CalibrationHistoryRefused { refusals: _ } => false
-      ForecastRoadmapAuthorityRefused { detail: _ } => false
-      ForecastBuildRefused { node: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastKnown { forecast: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastRefused { refusals } => count(refusals) == 1 && any(refusals, refusal => match refusal {
+      gunbc.roadmap_forecast.CycleTimeObservationNonPositive { nodes } => nodes == [n.node]
+      gunbc.roadmap_forecast.ForecastGraphEmpty => false
+      gunbc.roadmap_forecast.DependencyCycle { nodes: _ } => false
+      gunbc.roadmap_forecast.DependencyEndpointUnknown { nodes: _ } => false
+      gunbc.roadmap_forecast.NodeUnsized { nodes: _ } => false
+      gunbc.roadmap_forecast.NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
+      gunbc.roadmap_forecast.WorkerConcurrencyCapInvalid { declared_cap: _ } => false
+      gunbc.roadmap_forecast.CalibrationHistoryRefused { refusals: _ } => false
+      gunbc.roadmap_forecast.ForecastRoadmapAuthorityRefused { detail: _ } => false
+      gunbc.roadmap_forecast.ForecastBuildRefused { node: _ } => false
     })
   }
 }
 
 test fn witness_empty_graph_refuses() -> Bool {
-  match schedule_forecast(
+  match gunbc.roadmap_forecast.schedule_forecast(
     nodes: [],
     edges: [],
     observations: fixture_observations(),
@@ -350,14 +350,14 @@ test fn witness_empty_graph_refuses() -> Bool {
     assumptions: assumptions(),
     anchor: anchor(),
   ) {
-    ScheduleForecastKnown { forecast: _ } => false
-    ScheduleForecastRefused { refusals } => refusals == [ForecastGraphEmpty]
+    gunbc.roadmap_forecast.ScheduleForecastKnown { forecast: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastRefused { refusals } => refusals == [gunbc.roadmap_forecast.ForecastGraphEmpty]
   }
 }
 
 test fn witness_unsized_node_refuses() -> Bool {
   let n = unsized_node(id: "unsized")
-  match schedule_forecast(
+  match gunbc.roadmap_forecast.schedule_forecast(
     nodes: [n],
     edges: [],
     observations: fixture_observations(),
@@ -366,18 +366,18 @@ test fn witness_unsized_node_refuses() -> Bool {
     assumptions: assumptions(),
     anchor: anchor(),
   ) {
-    ScheduleForecastKnown { forecast: _ } => false
-    ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
-      NodeUnsized { nodes } => nodes == [n.node]
-      CycleTimeObservationNonPositive { nodes: _ } => false
-      ForecastGraphEmpty => false
-      DependencyCycle { nodes: _ } => false
-      DependencyEndpointUnknown { nodes: _ } => false
-      NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
-      WorkerConcurrencyCapInvalid { declared_cap: _ } => false
-      CalibrationHistoryRefused { refusals: _ } => false
-      ForecastRoadmapAuthorityRefused { detail: _ } => false
-      ForecastBuildRefused { node: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastKnown { forecast: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
+      gunbc.roadmap_forecast.NodeUnsized { nodes } => nodes == [n.node]
+      gunbc.roadmap_forecast.CycleTimeObservationNonPositive { nodes: _ } => false
+      gunbc.roadmap_forecast.ForecastGraphEmpty => false
+      gunbc.roadmap_forecast.DependencyCycle { nodes: _ } => false
+      gunbc.roadmap_forecast.DependencyEndpointUnknown { nodes: _ } => false
+      gunbc.roadmap_forecast.NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
+      gunbc.roadmap_forecast.WorkerConcurrencyCapInvalid { declared_cap: _ } => false
+      gunbc.roadmap_forecast.CalibrationHistoryRefused { refusals: _ } => false
+      gunbc.roadmap_forecast.ForecastRoadmapAuthorityRefused { detail: _ } => false
+      gunbc.roadmap_forecast.ForecastBuildRefused { node: _ } => false
     })
   }
 }
@@ -385,9 +385,9 @@ test fn witness_unsized_node_refuses() -> Bool {
 test fn witness_empty_calibration_cell_refuses() -> Bool {
   let n = sized_node(
     id: "missing-cell",
-    cell: gunbc.roadmap_forecast.SizingCell { intricacy: IntricacyHigh, volume: VolumeSmall },
+    cell: gunbc.roadmap_forecast.SizingCell { intricacy: gunbc.roadmap_model.IntricacyHigh, volume: gunbc.roadmap_model.VolumeSmall },
   )
-  match schedule_forecast(
+  match gunbc.roadmap_forecast.schedule_forecast(
     nodes: [n],
     edges: [],
     observations: fixture_observations(),
@@ -396,18 +396,18 @@ test fn witness_empty_calibration_cell_refuses() -> Bool {
     assumptions: assumptions(),
     anchor: anchor(),
   ) {
-    ScheduleForecastKnown { forecast: _ } => false
-    ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
-      NoCalibrationSample { gaps, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => count(gaps) == 1 && first(gaps).nodes == [n.node]
-      ForecastGraphEmpty => false
-      DependencyCycle { nodes: _ } => false
-      DependencyEndpointUnknown { nodes: _ } => false
-      NodeUnsized { nodes: _ } => false
-      CycleTimeObservationNonPositive { nodes: _ } => false
-      WorkerConcurrencyCapInvalid { declared_cap: _ } => false
-      CalibrationHistoryRefused { refusals: _ } => false
-      ForecastRoadmapAuthorityRefused { detail: _ } => false
-      ForecastBuildRefused { node: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastKnown { forecast: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
+      gunbc.roadmap_forecast.NoCalibrationSample { gaps, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => count(gaps) == 1 && first(gaps).nodes == [n.node]
+      gunbc.roadmap_forecast.ForecastGraphEmpty => false
+      gunbc.roadmap_forecast.DependencyCycle { nodes: _ } => false
+      gunbc.roadmap_forecast.DependencyEndpointUnknown { nodes: _ } => false
+      gunbc.roadmap_forecast.NodeUnsized { nodes: _ } => false
+      gunbc.roadmap_forecast.CycleTimeObservationNonPositive { nodes: _ } => false
+      gunbc.roadmap_forecast.WorkerConcurrencyCapInvalid { declared_cap: _ } => false
+      gunbc.roadmap_forecast.CalibrationHistoryRefused { refusals: _ } => false
+      gunbc.roadmap_forecast.ForecastRoadmapAuthorityRefused { detail: _ } => false
+      gunbc.roadmap_forecast.ForecastBuildRefused { node: _ } => false
     })
   }
 }
@@ -415,7 +415,7 @@ test fn witness_empty_calibration_cell_refuses() -> Bool {
 test fn witness_dependency_cycle_refuses() -> Bool {
   let a = sized_node(id: "cycle-a", cell: fixture_cell())
   let b = sized_node(id: "cycle-b", cell: fixture_cell())
-  match schedule_forecast(
+  match gunbc.roadmap_forecast.schedule_forecast(
     nodes: [a, b],
     edges: [
       gunbc.roadmap_model.RoadmapEdge { child: a.node, parent: b.node },
@@ -427,18 +427,18 @@ test fn witness_dependency_cycle_refuses() -> Bool {
     assumptions: assumptions(),
     anchor: anchor(),
   ) {
-    ScheduleForecastKnown { forecast: _ } => false
-    ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
-      DependencyCycle { nodes } => count(nodes) == 2
-      ForecastGraphEmpty => false
-      DependencyEndpointUnknown { nodes: _ } => false
-      NodeUnsized { nodes: _ } => false
-      CycleTimeObservationNonPositive { nodes: _ } => false
-      NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
-      WorkerConcurrencyCapInvalid { declared_cap: _ } => false
-      CalibrationHistoryRefused { refusals: _ } => false
-      ForecastRoadmapAuthorityRefused { detail: _ } => false
-      ForecastBuildRefused { node: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastKnown { forecast: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
+      gunbc.roadmap_forecast.DependencyCycle { nodes } => count(nodes) == 2
+      gunbc.roadmap_forecast.ForecastGraphEmpty => false
+      gunbc.roadmap_forecast.DependencyEndpointUnknown { nodes: _ } => false
+      gunbc.roadmap_forecast.NodeUnsized { nodes: _ } => false
+      gunbc.roadmap_forecast.CycleTimeObservationNonPositive { nodes: _ } => false
+      gunbc.roadmap_forecast.NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
+      gunbc.roadmap_forecast.WorkerConcurrencyCapInvalid { declared_cap: _ } => false
+      gunbc.roadmap_forecast.CalibrationHistoryRefused { refusals: _ } => false
+      gunbc.roadmap_forecast.ForecastRoadmapAuthorityRefused { detail: _ } => false
+      gunbc.roadmap_forecast.ForecastBuildRefused { node: _ } => false
     })
   }
 }
@@ -446,7 +446,7 @@ test fn witness_dependency_cycle_refuses() -> Bool {
 test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
   let a = sized_node(id: "projection-a", cell: fixture_cell())
   let observed: gunbc.roadmap_forecast.CycleTimeObservation = first(fixture_observations())
-  match schedule_forecast(
+  match gunbc.roadmap_forecast.schedule_forecast(
     nodes: [a],
     edges: [],
     observations: fixture_observations(),
@@ -455,10 +455,10 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
     assumptions: assumptions(),
     anchor: anchor(),
   ) {
-    ScheduleForecastRefused { refusals: _ } => false
-    ScheduleForecastKnown { forecast } => {
+    gunbc.roadmap_forecast.ScheduleForecastRefused { refusals: _ } => false
+    gunbc.roadmap_forecast.ScheduleForecastKnown { forecast } => {
       let projected: gunbc.roadmap_forecast.ScheduleForecast = forecast
-      millisecond_count(m: observed.cycle_time) == 10
+      std.measure.millisecond_count(m: observed.cycle_time) == 10
         && projected.anchor.observed_at == anchor().observed_at
     }
   }

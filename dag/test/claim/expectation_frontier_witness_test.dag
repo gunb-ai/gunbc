@@ -1,7 +1,7 @@
 module test.claim.expectation_frontier_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data expectation_frontier_note: String = "EXECUTING CONSUMER for the expectation frontier (v1_interpreter ExpectationDeclaration). The boundary no longer manufactures an expectation when a call site declares none — absence is the value UntracedDefault, which still resolves to ExpectSuccess (no behaviour change, and no floor-time refusal per the operator guardrail) but is COUNTED at its located service.op and emitted as [expectation-frontier]. That receipt is the entire difference between a declared interim frontier and the fail-open it replaced: an absorbed default that is tallied can be prioritised and shrunk, one that is not has frequency zero by construction and never ranks for fixing (DESIGN §5). A COUNTER THAT IS NEVER READ IS THE SAME LIE AS NO COUNTER, so this witness reads it from a real child run rather than trusting the mechanism. THE PAIR IS THE PROOF: an entry whose effects are undeclared MUST emit the line, and an entry whose effects all declare their arm MUST NOT. Either claim alone is satisfiable by a broken counter — one that always fires passes the first, one that never fires passes the second — so neither is dropped even when it looks redundant."
 
@@ -11,19 +11,19 @@ data frontier_marker: String = "[expectation-frontier]"
 
 fn claim_batch_path() -> String {
   let root = git.Inspect.Toplevel()
-  witness_bin_release_path(root: root.path, bin_name: "claim_batch")
+  tools.host_prelude.witness_bin_release_path(root: root.path, bin_name: "claim_batch")
 }
 
 fn run_entry_capturing_stderr(entry: String, function: String) -> String {
   let root = git.Inspect.Toplevel()
-  let result = gunbc.WitnessBin.Run(
+  let result = WitnessBin.Run(
     workdir: root.path,
-    bin_path: test.claim.expectation_frontier_witness.claim_batch_path(),
-    args: claim_batch_claims_argv(
+    bin_path: claim_batch_path(),
+    args: tools.host_prelude.claim_batch_claims_argv(
       source_roots: gunbc.ci_layer_roots.witness_layer_roots,
       claims: [tools.host_prelude.ClaimRun { entry: entry, function: function }]
     ),
-    expect: ExpectSuccess
+    expect: gunbc.output_policy.ExpectSuccess
   )
   result.stderr
 }

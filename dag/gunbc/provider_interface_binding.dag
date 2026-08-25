@@ -29,11 +29,11 @@ fn project_codex_app_server_stdio_binding(
   ProviderInterfaceResolved {
     binding: ProviderInterfaceBinding {
       interface: CodexAppServer {},
-      transport: CodexAppServerStdio,
+      transport: extdeps.llm.codex_app_server.CodexAppServerStdio,
       executable: extdeps.llm.codex_app_server.CodexAppServerExecutable {
-        path: codex_bundle_executable_path(bundle: bundle),
+        path: gunbc.codex_runtime_bundle.codex_bundle_executable_path(bundle: bundle),
       },
-      runtime_identity: codex_bundle_identity(bundle: bundle),
+      runtime_identity: gunbc.codex_runtime_bundle.codex_bundle_identity(bundle: bundle),
       protocol_schema_identity: bundle.receipt.protocol_schema_identity,
     },
   }

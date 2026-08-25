@@ -1,6 +1,6 @@
 module test.claim.scm_compatibility_shape_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 type SyntheticFourthReceipt {
   target: std.types.NonEmptyStr
@@ -21,7 +21,7 @@ fn synthetic_fourth_handler(
           cause: "synthetic R0 intentionally has no conditional advance",
         },
         fidelity: gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
-          endpoint_state: CompatibilityFidelityPreserved,
+          endpoint_state: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
           upstream_change_evidence: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
             cause: "synthetic fixture carries endpoint state only",
           },
@@ -56,7 +56,7 @@ fn synthetic_projection(
   target: std.types.NonEmptyStr,
   generation: std.types.NonEmptyStr,
 ) -> gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
-  compatibility_projection_from_handler(
+  gunbc.scm_compatibility_shape.compatibility_projection_from_handler(
     handler: synthetic_fourth_handler(),
     receipt: SyntheticFourthReceipt {
       target: target,
@@ -66,45 +66,45 @@ fn synthetic_projection(
 }
 
 test fn witness_fourth_realization_adds_handler_without_primary_edit() -> Bool {
-  let original = native_scm_receipt_for(
-    scenario: TwoIndependentChangesLand,
+  let original = test.claim.native_scm_interaction_scenario_fixture.native_scm_receipt_for(
+    scenario: test.claim.native_scm_interaction_scenario_fixture.TwoIndependentChangesLand,
   )
   let projected = synthetic_projection(
     target: "main",
     generation: "synthetic-generation-1",
   )
-  let attached = native_scm_attach_projection(
+  let attached = gunbc.native_scm_interaction_contract.native_scm_attach_projection(
     receipt: original,
     projection: projected,
   )
   attached.identity == original.identity
     && attached.transition == original.transition
     && attached.primary == original.primary
-    && native_scm_primary_label(primary: attached.primary) == "Landed"
+    && gunbc.native_scm_interaction_contract.native_scm_primary_label(primary: attached.primary) == "Landed"
     && count(attached.projections.realizations) == 1
     && attached.projections.realizations
       |> any(row => row.realization == "synthetic-fourth-r0")
 }
 
 test fn witness_projection_attachment_is_idempotent_per_realization_target() -> Bool {
-  let original = native_scm_receipt_for(
-    scenario: TwoIndependentChangesLand,
+  let original = test.claim.native_scm_interaction_scenario_fixture.native_scm_receipt_for(
+    scenario: test.claim.native_scm_interaction_scenario_fixture.TwoIndependentChangesLand,
   )
-  let first = native_scm_attach_projection(
+  let first = gunbc.native_scm_interaction_contract.native_scm_attach_projection(
     receipt: original,
     projection: synthetic_projection(
       target: "main",
       generation: "synthetic-generation-1",
     ),
   )
-  let replaced = native_scm_attach_projection(
+  let replaced = gunbc.native_scm_interaction_contract.native_scm_attach_projection(
     receipt: first,
     projection: synthetic_projection(
       target: "main",
       generation: "synthetic-generation-2",
     ),
   )
-  let second_target = native_scm_attach_projection(
+  let second_target = gunbc.native_scm_interaction_contract.native_scm_attach_projection(
     receipt: replaced,
     projection: synthetic_projection(
       target: "review",
@@ -122,46 +122,46 @@ test fn witness_projection_attachment_is_idempotent_per_realization_target() -> 
 }
 
 test fn witness_one_c0_fixture_accepts_three_realization_receipts() -> Bool {
-  let original = native_scm_receipt_for(
-    scenario: TwoIndependentChangesLand,
+  let original = test.claim.native_scm_interaction_scenario_fixture.native_scm_receipt_for(
+    scenario: test.claim.native_scm_interaction_scenario_fixture.TwoIndependentChangesLand,
   )
-  match git_fixture_binding() {
-    GitCompatibilityBindingRefused { cause: _ } => false
-    GitCompatibilityBound { receipt: git_receipt } => {
-      let git_projection = compatibility_projection_from_handler(
-        handler: git_compatibility_projection_handler(),
+  match test.claim.scm_compatibility_git_witness.git_fixture_binding() {
+    gunbc.scm_compatibility.git.GitCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.git.GitCompatibilityBound { receipt: git_receipt } => {
+      let git_projection = gunbc.scm_compatibility_shape.compatibility_projection_from_handler(
+        handler: gunbc.scm_compatibility.git.git_compatibility_projection_handler(),
         receipt: git_receipt,
       )
-      let with_git = native_scm_attach_projection(
+      let with_git = gunbc.native_scm_interaction_contract.native_scm_attach_projection(
         receipt: original,
         projection: git_projection,
       )
-      match mercurial_fixture_binding() {
-        MercurialCompatibilityBindingRefused { cause: _ } => false
-        MercurialCompatibilityBound { receipt: mercurial_receipt } => {
-          let mercurial_projection = compatibility_projection_from_handler(
-            handler: mercurial_compatibility_projection_handler(),
+      match test.claim.scm_compatibility_mercurial_witness.mercurial_fixture_binding() {
+        gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingRefused { cause: _ } => false
+        gunbc.scm_compatibility.mercurial.MercurialCompatibilityBound { receipt: mercurial_receipt } => {
+          let mercurial_projection = gunbc.scm_compatibility_shape.compatibility_projection_from_handler(
+            handler: gunbc.scm_compatibility.mercurial.mercurial_compatibility_projection_handler(),
             receipt: mercurial_receipt,
           )
-          let with_mercurial = native_scm_attach_projection(
+          let with_mercurial = gunbc.native_scm_interaction_contract.native_scm_attach_projection(
             receipt: with_git,
             projection: mercurial_projection,
           )
-          match pijul_fixture_binding() {
-            PijulCompatibilityBindingRefused { cause: _ } => false
-            PijulCompatibilityBound { receipt: pijul_receipt } => {
-              let pijul_projection = compatibility_projection_from_handler(
-                handler: pijul_compatibility_projection_handler(),
+          match test.claim.scm_compatibility_pijul_witness.pijul_fixture_binding() {
+            gunbc.scm_compatibility.pijul.PijulCompatibilityBindingRefused { cause: _ } => false
+            gunbc.scm_compatibility.pijul.PijulCompatibilityBound { receipt: pijul_receipt } => {
+              let pijul_projection = gunbc.scm_compatibility_shape.compatibility_projection_from_handler(
+                handler: gunbc.scm_compatibility.pijul.pijul_compatibility_projection_handler(),
                 receipt: pijul_receipt,
               )
-              let with_all = native_scm_attach_projection(
+              let with_all = gunbc.native_scm_interaction_contract.native_scm_attach_projection(
                 receipt: with_mercurial,
                 projection: pijul_projection,
               )
               with_all.identity == original.identity
                 && with_all.transition == original.transition
                 && with_all.primary == original.primary
-                && native_scm_primary_label(primary: with_all.primary) == "Landed"
+                && gunbc.native_scm_interaction_contract.native_scm_primary_label(primary: with_all.primary) == "Landed"
                 && count(with_all.projections.realizations) == 3
                 && git_projection.realization == "git-r0"
                 && git_projection.target == "refs/heads/main"
@@ -179,9 +179,9 @@ test fn witness_one_c0_fixture_accepts_three_realization_receipts() -> Bool {
 
 test fn witness_r1_acceptance_contract_holds() -> Bool {
   witness_one_c0_fixture_accepts_three_realization_receipts()
-    && witness_git_modeled_advance_refuses_different_guarantee()
-    && witness_mercurial_missing_advance_refuses_required_capability()
-    && witness_pijul_missing_advance_refuses_required_capability()
-    && witness_git_readback_mismatch_refuses_binding()
+    && test.claim.scm_compatibility_git_witness.witness_git_modeled_advance_refuses_different_guarantee()
+    && test.claim.scm_compatibility_mercurial_witness.witness_mercurial_missing_advance_refuses_required_capability()
+    && test.claim.scm_compatibility_pijul_witness.witness_pijul_missing_advance_refuses_required_capability()
+    && test.claim.scm_compatibility_git_witness.witness_git_readback_mismatch_refuses_binding()
     && witness_fourth_realization_adds_handler_without_primary_edit()
 }

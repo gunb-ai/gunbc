@@ -27,16 +27,16 @@ fn audition_emission(i: AuditionIntensity) -> AuditionEmission {
     AuditionRestrained => AuditionNoEmission
     AuditionExpressive => AuditionEmits {
       spec: gunbc.design.salience.EmissionSpec {
-        core_radius: css_px(4),
-        corona_radius: css_px(20),
+        core_radius: extdeps.languages.css.values.css_px(4),
+        corona_radius: extdeps.languages.css.values.css_px(20),
         core_alpha_pct: 60,
         corona_alpha_pct: 10,
       },
     }
     AuditionHero => AuditionEmits {
       spec: gunbc.design.salience.EmissionSpec {
-        core_radius: css_px(6),
-        corona_radius: css_px(48),
+        core_radius: extdeps.languages.css.values.css_px(6),
+        corona_radius: extdeps.languages.css.values.css_px(48),
         core_alpha_pct: 80,
         corona_alpha_pct: 25,
       },
@@ -54,8 +54,8 @@ fn audition_attraction(i: AuditionIntensity) -> AuditionAttraction {
     AuditionExpressive => AuditionNoAttraction
     AuditionHero => AuditionAttracts {
       field: gunbc.design.salience.AttractionField {
-        activation_radius: css_px(attraction_activation_min_px),
-        max_travel: css_px(focal_attraction_headroom_px(p: audition_instrument(i: AuditionHero))),
+        activation_radius: extdeps.languages.css.values.css_px(gunbc.design.salience.attraction_activation_min_px),
+        max_travel: extdeps.languages.css.values.css_px(gunbc.design.instrument_physical.focal_attraction_headroom_px(p: audition_instrument(i: AuditionHero))),
         settle: focal_attraction.settle,
       },
     }
@@ -64,9 +64,9 @@ fn audition_attraction(i: AuditionIntensity) -> AuditionAttraction {
 
 fn audition_instrument(i: AuditionIntensity) -> gunbc.design.instrument_physical.InstrumentPreference {
   match i {
-    AuditionRestrained => preference_still
-    AuditionExpressive => preference_default
-    AuditionHero => preference_default
+    AuditionRestrained => gunbc.design.instrument_physical.preference_still
+    AuditionExpressive => gunbc.design.instrument_physical.preference_default
+    AuditionHero => gunbc.design.instrument_physical.preference_default
   }
 }
 
@@ -78,7 +78,7 @@ fn focal_discriminator(subject_key: String) -> String {
 
 data hero_travel_is_derived_note: String = "Hero used to request the register's full attraction travel while the enclosure independently carried its own six pixels, and both gates passed because neither saw the other — the review's composed-envelope finding. Its travel is now DERIVED from what the enclosure left unspent, so the loudest audition variant is by construction the largest one that still fits the single envelope.
 
-COMPOSING THE ENVELOPE CHANGED THE AUDITION, WHICH IS THE POINT. Expressive used to borrow the register's canonical focal_attraction — activation 150, travel 12 — and under one envelope that no longer fits: 12 of the register's 14 declared pixels are already spent by the canonical field, so an enclosure carrying any character at all cannot also grant it. Rather than shrink the canonical field or inflate the envelope, the three variants now differ by exactly one channel each: restrained has neither emission nor attraction, expressive adds emission, hero adds the attraction the enclosure left affordable. That ordering is more useful for an audition than three variants differing on everything at once, and it surfaces the real constraint instead of hiding it — the register's own focal field is expensive enough that instrument character and canonical attraction are alternatives, not companions. If that trade is wrong, the number to revisit is attraction_travel_max_px, in the register, deliberately."
+COMPOSING THE ENVELOPE CHANGED THE AUDITION, WHICH IS THE POINT. Expressive used to borrow the register's canonical gunbc.design.salience.focal_attraction — activation 150, travel 12 — and under one envelope that no longer fits: 12 of the register's 14 declared pixels are already spent by the canonical field, so an enclosure carrying any character at all cannot also grant it. Rather than shrink the canonical field or inflate the envelope, the three variants now differ by exactly one channel each: restrained has neither emission nor attraction, expressive adds emission, hero adds the attraction the enclosure left affordable. That ordering is more useful for an audition than three variants differing on everything at once, and it surfaces the real constraint instead of hiding it — the register's own focal field is expensive enough that instrument character and canonical attraction are alternatives, not companions. If that trade is wrong, the number to revisit is gunbc.design.salience.attraction_travel_max_px, in the register, deliberately."
 
 data audition_admission_note: String = "One admission per intensity, and every arm of it is the register's existing gate rather than a local re-check. A restrained variant is admitted with no emission grant to inspect; the other two must pass emission_for AT THE FOCAL ROLE, which is the point where an audition that tried to glow a Supporting subject would refuse. Instrument displacement is admitted separately because it is a property of the enclosure and not of the control, and both must hold for the variant to be renderable."
 
@@ -103,7 +103,7 @@ fn attraction_travel_of(a: AuditionAttraction) -> Int {
 fn attraction_admissible(a: AuditionAttraction) -> Bool {
   match a {
     AuditionNoAttraction => true
-    AuditionAttracts { field } => attraction_envelope(f: field)
+    AuditionAttracts { field } => gunbc.design.salience.attraction_envelope(f: field)
   }
 }
 
@@ -121,7 +121,7 @@ fn audition_emission_outcome(
   match audition_emission(i: i) {
     AuditionNoEmission => NoEmissionRequested
     AuditionEmits { spec } => EmissionResolved {
-      grant: emission_for(
+      grant: gunbc.design.salience.emission_for(
         role: role,
         spec: spec,
         discriminator: focal_discriminator(subject_key: subject_key),
@@ -132,11 +132,11 @@ fn audition_emission_outcome(
 
 fn emission_granted(g: gunbc.design.salience.EmissionGrant) -> Bool {
   match g {
-    EmissionGranted { spec, discriminator } => true
-    EmissionRefusedForRole { role } => false
-    EmissionOutsideEnvelope { corona_alpha_pct, corona_radius_px } => false
-    EmissionUnitNotComparable { core_unit, corona_unit } => false
-    EmissionSoleDiscriminatorRefused => false
+    gunbc.design.salience.EmissionGranted { spec, discriminator } => true
+    gunbc.design.salience.EmissionRefusedForRole { role } => false
+    gunbc.design.salience.EmissionOutsideEnvelope { corona_alpha_pct, corona_radius_px } => false
+    gunbc.design.salience.EmissionUnitNotComparable { core_unit, corona_unit } => false
+    gunbc.design.salience.EmissionSoleDiscriminatorRefused => false
   }
 }
 
@@ -146,15 +146,15 @@ fn admit_enclosure(i: AuditionIntensity) -> AuditionAdmission {
   if !attraction_admissible(a: attraction) {
     AuditionAttractionOutsideEnvelope { intensity: key }
   } else {
-    match admit_composed_displacement(d: compose_displacement(
+    match gunbc.design.instrument_physical.admit_composed_displacement(d: gunbc.design.instrument_physical.compose_displacement(
       p: audition_instrument(i: i),
       focal_attraction_px: attraction_travel_of(a: attraction),
     )) {
-      DisplacementOverBudget { total_px, max_px } =>
+      gunbc.design.instrument_physical.DisplacementOverBudget { total_px, max_px } =>
         AuditionDisplacementOverBudget { intensity: key, total_px: total_px, max_px: max_px }
-      EnclosureCharacterReachesResponseTravel { character_px, max_px } =>
+      gunbc.design.instrument_physical.EnclosureCharacterReachesResponseTravel { character_px, max_px } =>
         AuditionDisplacementOverBudget { intensity: key, total_px: character_px, max_px: max_px }
-      DisplacementAdmitted { total_px } => AuditionAdmitted {
+      gunbc.design.instrument_physical.DisplacementAdmitted { total_px } => AuditionAdmitted {
         intensity: key,
         emission: audition_emission(i: i),
         attraction: attraction,
@@ -200,8 +200,8 @@ data no_workable_frontier_reason: String = "no workable frontier remains in the 
 
 fn constraint_kind_key(k: gunbc.roadmap_program_view.ConstraintKind) -> String {
   match k {
-    ImplementationConstraint => "implementation"
-    ContractConstraint => "contract"
+    gunbc.roadmap_program_view.ImplementationConstraint => "implementation"
+    gunbc.roadmap_program_view.ContractConstraint => "contract"
   }
 }
 
@@ -231,18 +231,18 @@ type SubjectDepth
 fn read_line_view(lv: gunbc.roadmap_program_view.FinishLineView, camera: gunbc.design.instrument_camera.ProgramCamera, d: SubjectDepth) -> ProgramReading {
   match d {
     SubjectOutcome => match camera.mode {
-      ModeStatus => ReadingOutcomeStatus {
+      gunbc.design.instrument_camera.ModeStatus => ReadingOutcomeStatus {
         name: lv.name,
         node: lv.node as String,
         accepted: lv.accepted,
         open_fronts: lv.remaining.open_fronts,
       }
-      ModeRemaining => ReadingOutcomeRemaining { name: lv.name, remaining: lv.remaining }
-      ModeWhy => read_constraint(subject_key: lv.key, c: lv.constraint, accepted: lv.accepted)
+      gunbc.design.instrument_camera.ModeRemaining => ReadingOutcomeRemaining { name: lv.name, remaining: lv.remaining }
+      gunbc.design.instrument_camera.ModeWhy => read_constraint(subject_key: lv.key, c: lv.constraint, accepted: lv.accepted)
     }
     SubjectNode => read_constraint(subject_key: lv.key, c: lv.constraint, accepted: lv.accepted)
     SubjectEvidence => ReadingUnavailable {
-      mode: program_mode_key(m: camera.mode),
+      mode: gunbc.design.instrument_camera.program_mode_key(m: camera.mode),
       subject_key: lv.key,
       cause: evidence_grain_cause,
     }
@@ -254,7 +254,7 @@ data front_grain_note: String = "At front depth the camera shows the contributin
 FIRST IS ENFORCED BY THE FOLD, NOT PROMISED BY THIS PARAGRAPH (review finding 48579, 2026-08-05). The first cut folded the contributing fronts with a step that ignored its accumulator, so the LAST match won while this note said first — and it was not hypothetical: the exemplar subject contributes to namespace-pderive and then v2-generation, so the study rendered the wrong front. A fold whose step drops acc is a last-wins selection wearing a first-wins comment, and nothing caught it because no witness read the front grain at all. Selection is now a separate take-first over the list, so the reading step cannot express a preference between candidates, and witness_the_front_grain_shows_the_first_contributing_front reads the rendered key."
 
 fn front_view_for(lv: gunbc.roadmap_program_view.FinishLineView, fronts: List<gunbc.roadmap_program_view.FrontView>) -> List<gunbc.roadmap_program_view.FrontView> {
-  fronts |> filter(fv => lv.contributing_fronts |> any(f => program_front_key(front: f) == fv.key))
+  fronts |> filter(fv => lv.contributing_fronts |> any(f => gunbc.roadmap_program_view.program_front_key(front: f) == fv.key))
 }
 
 fn first_front_view(lv: gunbc.roadmap_program_view.FinishLineView, fronts: List<gunbc.roadmap_program_view.FrontView>) -> List<gunbc.roadmap_program_view.FrontView> {
@@ -264,15 +264,15 @@ fn first_front_view(lv: gunbc.roadmap_program_view.FinishLineView, fronts: List<
 
 fn read_front_view(fv: gunbc.roadmap_program_view.FrontView, camera: gunbc.design.instrument_camera.ProgramCamera) -> ProgramReading {
   match camera.mode {
-    ModeStatus => ReadingFront {
+    gunbc.design.instrument_camera.ModeStatus => ReadingFront {
       key: fv.key,
       name: fv.name,
       closed: fv.closed,
       gates_accepted: fv.gates_accepted,
       gates_total: fv.gates_total,
     }
-    ModeRemaining => ReadingOutcomeRemaining { name: fv.name, remaining: fv.remaining }
-    ModeWhy => read_constraint(subject_key: fv.key, c: fv.constraint, accepted: fv.closed)
+    gunbc.design.instrument_camera.ModeRemaining => ReadingOutcomeRemaining { name: fv.name, remaining: fv.remaining }
+    gunbc.design.instrument_camera.ModeWhy => read_constraint(subject_key: fv.key, c: fv.constraint, accepted: fv.closed)
   }
 }
 
@@ -280,7 +280,7 @@ data no_contributing_front_cause: String = "no convergence front contributes to 
 
 fn read_front(lv: gunbc.roadmap_program_view.FinishLineView, camera: gunbc.design.instrument_camera.ProgramCamera) -> ProgramReading {
   ReadingUnavailable {
-    mode: program_mode_key(m: camera.mode),
+    mode: gunbc.design.instrument_camera.program_mode_key(m: camera.mode),
     subject_key: lv.key,
     cause: no_contributing_front_cause,
   }
@@ -299,9 +299,9 @@ fn first_line_view(view: gunbc.roadmap_program_view.V1DeletionProgramView, subje
 
 fn read_program_depth(view: gunbc.roadmap_program_view.V1DeletionProgramView, camera: gunbc.design.instrument_camera.ProgramCamera) -> ProgramReading {
   match camera.mode {
-    ModeRemaining => ReadingProgramShape { remaining: view.remaining }
-    ModeStatus => ReadingProgramShape { remaining: view.remaining }
-    ModeWhy => ReadingUnavailable {
+    gunbc.design.instrument_camera.ModeRemaining => ReadingProgramShape { remaining: view.remaining }
+    gunbc.design.instrument_camera.ModeStatus => ReadingProgramShape { remaining: view.remaining }
+    gunbc.design.instrument_camera.ModeWhy => ReadingUnavailable {
       mode: "why",
       subject_key: "v1-deletion-program",
       cause: no_workable_frontier_reason,
@@ -311,17 +311,17 @@ fn read_program_depth(view: gunbc.roadmap_program_view.V1DeletionProgramView, ca
 
 fn read_camera(camera: gunbc.design.instrument_camera.ProgramCamera, view: gunbc.roadmap_program_view.V1DeletionProgramView) -> ProgramReading {
   match camera.focus {
-    NoSubjectSelected => match camera.depth {
-      DepthProgram => read_program_depth(view: view, camera: camera)
-      DepthOutcome => ReadingNoSubject
-      DepthFront => ReadingNoSubject
-      DepthNode => ReadingNoSubject
-      DepthEvidence => ReadingNoSubject
+    gunbc.design.instrument_camera.NoSubjectSelected => match camera.depth {
+      gunbc.design.instrument_camera.DepthProgram => read_program_depth(view: view, camera: camera)
+      gunbc.design.instrument_camera.DepthOutcome => ReadingNoSubject
+      gunbc.design.instrument_camera.DepthFront => ReadingNoSubject
+      gunbc.design.instrument_camera.DepthNode => ReadingNoSubject
+      gunbc.design.instrument_camera.DepthEvidence => ReadingNoSubject
     }
-    FinishLineFocused { line_key } => fold(
+    gunbc.design.instrument_camera.FinishLineFocused { line_key } => fold(
       first_line_view(view: view, subject_key: line_key),
       init: ReadingUnavailable {
-        mode: program_mode_key(m: camera.mode),
+        mode: gunbc.design.instrument_camera.program_mode_key(m: camera.mode),
         subject_key: line_key,
         cause: unresolved_subject_cause,
       },
@@ -332,15 +332,15 @@ fn read_camera(camera: gunbc.design.instrument_camera.ProgramCamera, view: gunbc
 
 fn read_camera_at(lv: gunbc.roadmap_program_view.FinishLineView, camera: gunbc.design.instrument_camera.ProgramCamera, view: gunbc.roadmap_program_view.V1DeletionProgramView) -> ProgramReading {
   match camera.depth {
-    DepthFront => fold(
+    gunbc.design.instrument_camera.DepthFront => fold(
       first_front_view(lv: lv, fronts: view.fronts),
       init: read_front(lv: lv, camera: camera),
       f: (acc, fv) => read_front_view(fv: fv, camera: camera),
     )
-    DepthProgram => read_program_depth(view: view, camera: camera)
-    DepthOutcome => read_line_view(lv: lv, camera: camera, d: SubjectOutcome)
-    DepthNode => read_line_view(lv: lv, camera: camera, d: SubjectNode)
-    DepthEvidence => read_line_view(lv: lv, camera: camera, d: SubjectEvidence)
+    gunbc.design.instrument_camera.DepthProgram => read_program_depth(view: view, camera: camera)
+    gunbc.design.instrument_camera.DepthOutcome => read_line_view(lv: lv, camera: camera, d: SubjectOutcome)
+    gunbc.design.instrument_camera.DepthNode => read_line_view(lv: lv, camera: camera, d: SubjectNode)
+    gunbc.design.instrument_camera.DepthEvidence => read_line_view(lv: lv, camera: camera, d: SubjectEvidence)
   }
 }
 

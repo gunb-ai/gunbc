@@ -184,9 +184,9 @@ fn is_lexicographic_descent(evidence: List<std.termination.DescentEvidence>) -> 
     Absent => false
     Present { value: e } =>
       match e {
-        Strict => true
-        NonIncreasing => is_lexicographic_descent(evidence: evidence |> skip(1))
-        DescentUnknown => false
+        std.termination.Strict => true
+        std.termination.NonIncreasing => is_lexicographic_descent(evidence: evidence |> skip(1))
+        std.termination.DescentUnknown => false
       }
   }
 }

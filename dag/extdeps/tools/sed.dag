@@ -1,21 +1,22 @@
 module extdeps.tools.sed
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.gnu.org/software/sed/manual/sed.html"
   }
 }
 
-data sed_cli_tool: CliTool = CliTool {
+data sed_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "sed",
   min_version: none,
-  installable_via: [SourceCoreutils],
+  installable_via: [extdeps.tools.SourceCoreutils],
 }
 
 service sed.Sed {
   operation InPlaceSubstitute {
-    input { expression: NonEmptyStr, path: NonEmptyStr }
+    input { expression: std.types.NonEmptyStr, path: std.types.NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["sed", "-i", "{expression}", "{path}"] }
     exit {
@@ -32,8 +33,8 @@ service sed.Sed {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data sed_program: NonEmptyStr = "sed"
+data sed_program: std.types.NonEmptyStr = "sed"
 
-fn sed_in_place_command(expression: String, path: String) -> ArgvCommand {
-  argv_command(program: sed_program, arguments: ["-i", expression, path])
+fn sed_in_place_command(expression: String, path: String) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(program: sed_program, arguments: ["-i", expression, path])
 }

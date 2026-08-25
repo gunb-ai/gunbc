@@ -12,14 +12,14 @@ type Plan {
   retirement: PlanRetirement,
 }
 
-fn plan_h1(text: String) -> std.markdown.MarkdownBlock { std.markdown.HeadingBlock { level: H1, inlines: [std.markdown.TextInline { text: text }] } }
-fn plan_h2(text: String) -> std.markdown.MarkdownBlock { std.markdown.HeadingBlock { level: H2, inlines: [std.markdown.TextInline { text: text }] } }
+fn plan_h1(text: String) -> std.markdown.MarkdownBlock { std.markdown.HeadingBlock { level: std.markdown.H1, inlines: [std.markdown.TextInline { text: text }] } }
+fn plan_h2(text: String) -> std.markdown.MarkdownBlock { std.markdown.HeadingBlock { level: std.markdown.H2, inlines: [std.markdown.TextInline { text: text }] } }
 fn plan_p(text: String) -> std.markdown.MarkdownBlock { std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: text }] } }
 
 fn plan_retirement_blocks(p: Plan) -> List<std.markdown.MarkdownBlock> {
   match p.retirement {
     PlanRetiresWhen { condition } =>
-      [plan_h2(text: "Dissolution trigger (DESIGN §6)"), plan_p(text: dissolution_description(condition: condition))]
+      [plan_h2(text: "Dissolution trigger (DESIGN §6)"), plan_p(text: std.dissolution.dissolution_description(condition: condition))]
     PlanHasNoRetirement => []
   }
 }
@@ -39,7 +39,7 @@ fn plan_to_document(p: Plan) -> std.markdown.MarkdownDocument {
 // when nonliteral refinement enforcement is real, not before.
 fn plan_has_retirement(p: Plan) -> Bool {
   match p.retirement {
-    PlanRetiresWhen { condition: c } => dissolution_description(condition: c).length() > 0
+    PlanRetiresWhen { condition: c } => std.dissolution.dissolution_description(condition: c).length() > 0
     PlanHasNoRetirement => false
   }
 }

@@ -1,18 +1,18 @@
 module test.claim.ice40_supply_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn admits(r: extdeps.programmable_logic.ice40.supply.RailRequirement, mv: std.integer.Int) -> Bool {
-  requirement_admits(r: r, v: millivolt(count: mv))
+fn admits(r: extdeps.programmable_logic.ice40.supply.RailRequirement, mv: Int) -> Bool {
+  extdeps.programmable_logic.ice40.supply.requirement_admits(r: r, v: std.measure.millivolt(count: mv))
 }
 
-fn mode_admits(m: extdeps.programmable_logic.ice40.supply.Ice40ConfigurationMode, mv: std.integer.Int) -> Bool {
-  test.claim.ice40_supply_witness.admits(r: nvcm_supply_requirement(m: m), mv: mv)
+fn mode_admits(m: extdeps.programmable_logic.ice40.supply.Ice40ConfigurationMode, mv: Int) -> Bool {
+  admits(r: extdeps.programmable_logic.ice40.supply.nvcm_supply_requirement(m: m), mv: mv)
 }
 
 fn window_of(r: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail) -> extdeps.programmable_logic.ice40.supply.RailRequirement? {
-  rail_requirement(r: r)
+  extdeps.programmable_logic.ice40.supply.rail_requirement(r: r)
 }
 
 // THE CORE WINDOW IS WHY THE MILLIVOLT EXISTS. 1.14 V to 1.26 V is a 120 mV band; at volt grain
@@ -20,14 +20,14 @@ fn window_of(r: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail) -> extd
 // discriminates in both directions, which is the property the finer carrier bought — a nominal
 // 1.2 V rail is admitted and a 1.0 V one is refused.
 test fn w_the_core_window_discriminates_below_volt_grain() -> Bool {
-  match window_of(r: CoreSupply) {
+  match window_of(r: extdeps.programmable_logic.ice40.supply.CoreSupply) {
     Absent => false
     Present { value: w } =>
-      test.claim.ice40_supply_witness.admits(r: w, mv: 1200)
-        && test.claim.ice40_supply_witness.admits(r: w, mv: 1140)
-        && test.claim.ice40_supply_witness.admits(r: w, mv: 1260)
-        && !test.claim.ice40_supply_witness.admits(r: w, mv: 1000)
-        && !test.claim.ice40_supply_witness.admits(r: w, mv: 1300)
+      admits(r: w, mv: 1200)
+        && admits(r: w, mv: 1140)
+        && admits(r: w, mv: 1260)
+        && !admits(r: w, mv: 1000)
+        && !admits(r: w, mv: 1300)
   }
 }
 
@@ -35,7 +35,7 @@ test fn w_the_core_window_discriminates_below_volt_grain() -> Bool {
 // VPP_2V5 must supply without saying how the board configures returns nothing rather than the
 // widest window — because the widest window would admit 1.71 V, which master SPI refuses.
 test fn w_the_nvcm_rail_refuses_a_mode_free_question() -> Bool {
-  match window_of(r: NvcmProgrammingSupply) {
+  match window_of(r: extdeps.programmable_logic.ice40.supply.NvcmProgrammingSupply) {
     Absent => true
     Present { value: _ } => false
   }
@@ -46,12 +46,12 @@ test fn w_the_nvcm_rail_refuses_a_mode_free_question() -> Bool {
 // is legal for configuration and illegal while NVCM is being programmed. Both directions are
 // asserted, so a table collapsed to one window could not pass this.
 test fn w_the_configuration_mode_changes_the_admitted_window() -> Bool {
-  mode_admits(m: SlaveSpiConfiguration, mv: 1710)
-    && !mode_admits(m: MasterSpiConfiguration, mv: 1710)
-    && !mode_admits(m: NvcmConfiguration, mv: 1710)
-    && mode_admits(m: MasterSpiConfiguration, mv: 3460)
-    && !mode_admits(m: NvcmProgramming, mv: 3460)
-    && mode_admits(m: NvcmProgramming, mv: 3000)
+  mode_admits(m: extdeps.programmable_logic.ice40.supply.SlaveSpiConfiguration, mv: 1710)
+    && !mode_admits(m: extdeps.programmable_logic.ice40.supply.MasterSpiConfiguration, mv: 1710)
+    && !mode_admits(m: extdeps.programmable_logic.ice40.supply.NvcmConfiguration, mv: 1710)
+    && mode_admits(m: extdeps.programmable_logic.ice40.supply.MasterSpiConfiguration, mv: 3460)
+    && !mode_admits(m: extdeps.programmable_logic.ice40.supply.NvcmProgramming, mv: 3460)
+    && mode_admits(m: extdeps.programmable_logic.ice40.supply.NvcmProgramming, mv: 3000)
 }
 
 // A PIN THAT MUST BE LEFT UNCONNECTED ADMITS NO VOLTAGE AT ALL. The failure this prevents is a
@@ -59,12 +59,12 @@ test fn w_the_configuration_mode_changes_the_admitted_window() -> Bool {
 // this" — so the arm is asserted to refuse a voltage that would sit comfortably inside every
 // other rail's window on this device.
 test fn w_the_unconnected_pin_admits_no_voltage() -> Bool {
-  match window_of(r: FastProgrammingSupply) {
+  match window_of(r: extdeps.programmable_logic.ice40.supply.FastProgrammingSupply) {
     Absent => false
     Present { value: w } =>
       match w {
-        MustBeLeftUnconnected => !test.claim.ice40_supply_witness.admits(r: w, mv: 2500) && !test.claim.ice40_supply_witness.admits(r: w, mv: 0)
-        OperatingWindow { minimum: _, maximum: _ } => false
+        extdeps.programmable_logic.ice40.supply.MustBeLeftUnconnected => !admits(r: w, mv: 2500) && !admits(r: w, mv: 0)
+        extdeps.programmable_logic.ice40.supply.OperatingWindow { minimum: _, maximum: _ } => false
       }
   }
 }
@@ -74,14 +74,14 @@ test fn w_the_unconnected_pin_admits_no_voltage() -> Bool {
 // legal bank voltage and an illegal one for that standard. A design checked only against the rail
 // would pass while its outputs were out of spec.
 test fn w_the_io_standard_is_tighter_than_the_bank_rail() -> Bool {
-  match window_of(r: BankIoSupply) {
+  match window_of(r: extdeps.programmable_logic.ice40.supply.BankIoSupply) {
     Absent => false
     Present { value: rail } =>
-      test.claim.ice40_supply_witness.admits(r: rail, mv: 1800)
-        && millivolt_count(v: ice40_lvcmos33_supply.minimum) > 1800
-        && millivolt_count(v: ice40_lvcmos33_supply.minimum) == 3140
-        && millivolt_count(v: ice40_lvcmos18_supply.typical) == 1800
-        && millivolt_count(v: ice40_lvcmos18_supply.maximum) < millivolt_count(v: ice40_lvcmos33_supply.minimum)
+      admits(r: rail, mv: 1800)
+        && std.measure.millivolt_count(v: ice40_lvcmos33_supply.minimum) > 1800
+        && std.measure.millivolt_count(v: ice40_lvcmos33_supply.minimum) == 3140
+        && std.measure.millivolt_count(v: ice40_lvcmos18_supply.typical) == 1800
+        && std.measure.millivolt_count(v: ice40_lvcmos18_supply.maximum) < std.measure.millivolt_count(v: ice40_lvcmos33_supply.minimum)
   }
 }
 
@@ -89,26 +89,26 @@ test fn w_the_io_standard_is_tighter_than_the_bank_rail() -> Bool {
 // any single rail and a per-rail record would have to drop them. Each of the three is asserted to
 // be present and distinguishable, so collapsing them into one "see the notes" row would red.
 test fn w_the_inter_rail_constraints_are_distinguishable() -> Bool {
-  let shared = fold(ice40_inter_rail_constraints, init: false, f: fn(acc, c) {
+  let shared = fold(extdeps.programmable_logic.ice40.supply.ice40_inter_rail_constraints, init: false, f: fn(acc, c) {
     acc || match c {
-      LikeVoltageRailsShareOneSupply { left: l, right: r } =>
-        (supply_rail_symbol(r: l) as String) == "VCCIO" && (supply_rail_symbol(r: r) as String) == "VCC_SPI"
-      UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: _ } => false
-      PinLeftUnconnected { rail: _ } => false
+      extdeps.programmable_logic.ice40.supply.LikeVoltageRailsShareOneSupply { left: l, right: r } =>
+        (extdeps.programmable_logic.ice40.supply.supply_rail_symbol(r: l) as String) == "VCCIO" && (extdeps.programmable_logic.ice40.supply.supply_rail_symbol(r: r) as String) == "VCC_SPI"
+      extdeps.programmable_logic.ice40.supply.UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: _ } => false
+      extdeps.programmable_logic.ice40.supply.PinLeftUnconnected { rail: _ } => false
     }
   })
-  let unused = fold(ice40_inter_rail_constraints, init: false, f: fn(acc, c) {
+  let unused = fold(extdeps.programmable_logic.ice40.supply.ice40_inter_rail_constraints, init: false, f: fn(acc, c) {
     acc || match c {
-      UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: cr } => (supply_rail_symbol(r: cr) as String) == "VCC"
-      LikeVoltageRailsShareOneSupply { left: _, right: _ } => false
-      PinLeftUnconnected { rail: _ } => false
+      extdeps.programmable_logic.ice40.supply.UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: cr } => (extdeps.programmable_logic.ice40.supply.supply_rail_symbol(r: cr) as String) == "VCC"
+      extdeps.programmable_logic.ice40.supply.LikeVoltageRailsShareOneSupply { left: _, right: _ } => false
+      extdeps.programmable_logic.ice40.supply.PinLeftUnconnected { rail: _ } => false
     }
   })
-  let floating = fold(ice40_inter_rail_constraints, init: false, f: fn(acc, c) {
+  let floating = fold(extdeps.programmable_logic.ice40.supply.ice40_inter_rail_constraints, init: false, f: fn(acc, c) {
     acc || match c {
-      PinLeftUnconnected { rail: pr } => (supply_rail_symbol(r: pr) as String) == "VPP_FAST"
-      LikeVoltageRailsShareOneSupply { left: _, right: _ } => false
-      UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: _ } => false
+      extdeps.programmable_logic.ice40.supply.PinLeftUnconnected { rail: pr } => (extdeps.programmable_logic.ice40.supply.supply_rail_symbol(r: pr) as String) == "VPP_FAST"
+      extdeps.programmable_logic.ice40.supply.LikeVoltageRailsShareOneSupply { left: _, right: _ } => false
+      extdeps.programmable_logic.ice40.supply.UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: _ } => false
     }
   })
   shared && unused && floating
@@ -117,14 +117,14 @@ test fn w_the_inter_rail_constraints_are_distinguishable() -> Bool {
 // The PLL rail is the core window, not the bank window, and the two are far apart. A design that
 // fed VCCPLL from a 3.3 V bank supply would be feeding a 1.2 V pin nearly three times its maximum.
 test fn w_the_pll_rail_follows_the_core_not_the_banks() -> Bool {
-  match window_of(r: PllSupply) {
+  match window_of(r: extdeps.programmable_logic.ice40.supply.PllSupply) {
     Absent => false
     Present { value: pll } =>
-      test.claim.ice40_supply_witness.admits(r: pll, mv: 1200)
-        && !test.claim.ice40_supply_witness.admits(r: pll, mv: 3300)
-        && match window_of(r: ConfigurationBankSupply) {
+      admits(r: pll, mv: 1200)
+        && !admits(r: pll, mv: 3300)
+        && match window_of(r: extdeps.programmable_logic.ice40.supply.ConfigurationBankSupply) {
           Absent => false
-          Present { value: spi } => test.claim.ice40_supply_witness.admits(r: spi, mv: 3300)
+          Present { value: spi } => admits(r: spi, mv: 3300)
         }
   }
 }
@@ -135,14 +135,14 @@ test fn w_the_pll_rail_follows_the_core_not_the_banks() -> Bool {
 // The earlier form compared display names, where a copy-edit to documentation could do the fusing;
 // this is the failure that replaced it, and unlike the first it is decidable by execution.
 test fn w_rail_and_mode_discriminants_are_distinct() -> Bool {
-  let rails_distinct = fold(all_supply_rails, init: true, f: fn(acc, a) {
-    acc && fold(all_supply_rails, init: 0, f: fn(n, b) {
-      if supply_rails_equal(a: a, b: b) { n + 1 } else { n }
+  let rails_distinct = fold(extdeps.programmable_logic.ice40.supply.all_supply_rails, init: true, f: fn(acc, a) {
+    acc && fold(extdeps.programmable_logic.ice40.supply.all_supply_rails, init: 0, f: fn(n, b) {
+      if extdeps.programmable_logic.ice40.supply.supply_rails_equal(a: a, b: b) { n + 1 } else { n }
     }) == 1
   })
-  let modes_distinct = fold(all_configuration_modes, init: true, f: fn(acc, a) {
-    acc && fold(all_configuration_modes, init: 0, f: fn(n, b) {
-      if configuration_modes_equal(a: a, b: b) { n + 1 } else { n }
+  let modes_distinct = fold(extdeps.programmable_logic.ice40.supply.all_configuration_modes, init: true, f: fn(acc, a) {
+    acc && fold(extdeps.programmable_logic.ice40.supply.all_configuration_modes, init: 0, f: fn(n, b) {
+      if extdeps.programmable_logic.ice40.supply.configuration_modes_equal(a: a, b: b) { n + 1 } else { n }
     }) == 1
   })
   rails_distinct && modes_distinct
@@ -152,10 +152,10 @@ test fn w_rail_and_mode_discriminants_are_distinct() -> Bool {
 // core's symbol, and the two modes that both configure from NVCM, are the pairs a name-minded
 // comparison is most likely to fuse.
 test fn w_rail_and_mode_equality_ignore_the_display_prose() -> Bool {
-  !supply_rails_equal(a: CoreSupply, b: PllSupply)
-    && !supply_rails_equal(a: BankIoSupply, b: ConfigurationBankSupply)
-    && supply_rails_equal(a: CoreSupply, b: CoreSupply)
-    && !configuration_modes_equal(a: NvcmConfiguration, b: NvcmProgramming)
-    && supply_rail_tag(r: NvcmProgrammingSupply) != supply_rail_tag(r: FastProgrammingSupply)
-    && configuration_mode_tag(m: SlaveSpiConfiguration) != configuration_mode_tag(m: MasterSpiConfiguration)
+  !extdeps.programmable_logic.ice40.supply.supply_rails_equal(a: extdeps.programmable_logic.ice40.supply.CoreSupply, b: extdeps.programmable_logic.ice40.supply.PllSupply)
+    && !extdeps.programmable_logic.ice40.supply.supply_rails_equal(a: extdeps.programmable_logic.ice40.supply.BankIoSupply, b: extdeps.programmable_logic.ice40.supply.ConfigurationBankSupply)
+    && extdeps.programmable_logic.ice40.supply.supply_rails_equal(a: extdeps.programmable_logic.ice40.supply.CoreSupply, b: extdeps.programmable_logic.ice40.supply.CoreSupply)
+    && !extdeps.programmable_logic.ice40.supply.configuration_modes_equal(a: extdeps.programmable_logic.ice40.supply.NvcmConfiguration, b: extdeps.programmable_logic.ice40.supply.NvcmProgramming)
+    && extdeps.programmable_logic.ice40.supply.supply_rail_tag(r: extdeps.programmable_logic.ice40.supply.NvcmProgrammingSupply) != extdeps.programmable_logic.ice40.supply.supply_rail_tag(r: extdeps.programmable_logic.ice40.supply.FastProgrammingSupply)
+    && extdeps.programmable_logic.ice40.supply.configuration_mode_tag(m: extdeps.programmable_logic.ice40.supply.SlaveSpiConfiguration) != extdeps.programmable_logic.ice40.supply.configuration_mode_tag(m: extdeps.programmable_logic.ice40.supply.MasterSpiConfiguration)
 }

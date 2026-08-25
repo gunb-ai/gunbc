@@ -200,14 +200,14 @@ fn string_in_list(items: List<String>, wanted: String) -> Bool {
 fn string_lists_identity_join(expected: List<String>, observed: List<String>) -> Bool {
   !(string_list_has_duplicate(items: expected))
     && !(string_list_has_duplicate(items: observed))
-    && expected |> all(e => gunbc.source_admission_selection.string_in_list(items: observed, wanted: e))
-    && observed |> all(o => gunbc.source_admission_selection.string_in_list(items: expected, wanted: o))
+    && expected |> all(e => string_in_list(items: observed, wanted: e))
+    && observed |> all(o => string_in_list(items: expected, wanted: o))
 }
 
 fn active_source_identity_eq(left: ActiveSourceIdentity, right: ActiveSourceIdentity) -> Bool {
   left.module_path == right.module_path
     && left.path == right.path
-    && content_hash_eq_structural(left: left.content_digest, right: right.content_digest)
+    && std.content_hash.content_hash_eq_structural(left: left.content_digest, right: right.content_digest)
 }
 
 fn active_source_in_list(
@@ -252,7 +252,7 @@ fn computed_mechanism_identity_eq(
   right: ComputedMechanismIdentity
 ) -> Bool {
   executing_admission_realization_eq(left: left.executing, right: right.executing)
-    && content_hash_eq_structural(left: left.digest, right: right.digest)
+    && std.content_hash.content_hash_eq_structural(left: left.digest, right: right.digest)
 }
 
 fn source_pool_file_as_identity(file: SourcePoolFile) -> ActiveSourceIdentity {
@@ -404,7 +404,7 @@ fn mint_annotation_corpus_admitted(
 fn production_annotation_mechanism_identity() -> AnnotationMechanismIdentity {
   MechanismIdentityUnobservable {
     cause: MechanismIdentityUnobservableCause {
-      modeled_trigger: P2aStructuralCandidateProducer7515,
+      modeled_trigger: gunbc.namespace_reference_derived_closure_admission.P2aStructuralCandidateProducer7515,
       seed_standing: SeedDeclarationClosureUnavailable,
     },
   }
@@ -447,9 +447,9 @@ fn hunk_admission_rows(
   hunk: std.change.KeyedDiffHunk<String, ActiveSourceIdentity>
 ) -> List<ActiveSourceIdentity> {
   match hunk {
-    KeyedDiffAddedHunk { hunk_key: _, to: row } => [row]
-    KeyedDiffModifiedHunk { hunk_key: _, from: _, to: row } => [row]
-    KeyedDiffRemovedHunk { hunk_key: _, from: _ } => []
+    std.change.KeyedDiffAddedHunk { hunk_key: _, to: row } => [row]
+    std.change.KeyedDiffModifiedHunk { hunk_key: _, from: _, to: row } => [row]
+    std.change.KeyedDiffRemovedHunk { hunk_key: _, from: _ } => []
   }
 }
 
@@ -459,7 +459,7 @@ fn select_from_observed_manifests(
   base_rows: NonEmptyActiveSourceIdentities,
   head_rows: NonEmptyActiveSourceIdentities
 ) -> SourceAdmissionSelection {
-  let patch = keyed_two_way_diff(
+  let patch = std.change.keyed_two_way_diff(
     left: map(nonempty_active_sources_all(rows: base_rows), r =>
       std.keyed_row.KeyedRow { row_key: r.module_path, value: r }
     ),
@@ -511,7 +511,7 @@ fn select_source_admission(
                   head_tree: head_tree,
                 )
               Present { value: receipt } =>
-                if git_object_id_eq(left: receipt.tree, right: base_tree) == false {
+                if extdeps.git.object_store.git_object_id_eq(left: receipt.tree, right: base_tree) == false {
                   refused_selection(
                     cause: BaseReceiptTreeMismatch,
                     base_tree: base_tree,
@@ -590,7 +590,7 @@ fn incremental_changed_module_paths(sel: SourceAdmissionSelection) -> List<Strin
 }
 
 fn fixture_content_digest(label: String) -> std.content_hash.Fnv1a64Structural {
-  content_hash_atom(value: label as std.types.NonEmptyStr)
+  std.content_hash.content_hash_atom(value: label as std.types.NonEmptyStr)
 }
 
 fn fixture_source(

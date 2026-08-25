@@ -1,55 +1,55 @@
 module test.claim.build_cache_latency_probe_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_subject_is_the_derivation_note: String = "THESE ROWS TEST THE DERIVATION, NOT THE FLEET, and the distinction is the 2026-08-01 test-oracle ruling applied to a probe. A witness asserting 'srv1 is currently slow' would compare a live population to a number read off that same population — a change detector whose entire content is whoever last updated the literal, and one that would go red the moment the defect is FIXED, which is the opposite of what a fix should do to a test.\n\nSo the fixtures below are CONTROLLED: populations authored here with known answers, exercising the median selection, the even/odd split, the empty refusal, and both sides of the policy ratio. The one row that touches recorded data asserts only INTERNAL CONSISTENCY of the 2026-08-05 receipt — that its stored verdict equals what the derivation produces from its stored samples — which stays true forever regardless of what the fleet does next, and would red only if someone edited the receipt's numbers without re-deriving its verdict."
 
 data odd_population: gunbc.build_cache_latency_probe.BuildLatencyPopulation = gunbc.build_cache_latency_probe.BuildLatencyPopulation {
-  host: operator_host_srv2,
+  host: gunbc.fleet_intent_network.operator_host_srv2,
   observation_window: "controlled fixture: five samples, unsorted, median is 300",
   durations: [
-    millisecond(count: 500),
-    millisecond(count: 100),
-    millisecond(count: 300),
-    millisecond(count: 900),
-    millisecond(count: 200),
+    std.measure.millisecond(count: 500),
+    std.measure.millisecond(count: 100),
+    std.measure.millisecond(count: 300),
+    std.measure.millisecond(count: 900),
+    std.measure.millisecond(count: 200),
   ],
 }
 
 data even_population: gunbc.build_cache_latency_probe.BuildLatencyPopulation = gunbc.build_cache_latency_probe.BuildLatencyPopulation {
-  host: operator_host_srv2,
+  host: gunbc.fleet_intent_network.operator_host_srv2,
   observation_window: "controlled fixture: four samples, lower median is 200",
   durations: [
-    millisecond(count: 400),
-    millisecond(count: 100),
-    millisecond(count: 200),
-    millisecond(count: 800),
+    std.measure.millisecond(count: 400),
+    std.measure.millisecond(count: 100),
+    std.measure.millisecond(count: 200),
+    std.measure.millisecond(count: 800),
   ],
 }
 
 data empty_population: gunbc.build_cache_latency_probe.BuildLatencyPopulation = gunbc.build_cache_latency_probe.BuildLatencyPopulation {
-  host: operator_host_srv2,
+  host: gunbc.fleet_intent_network.operator_host_srv2,
   observation_window: "controlled fixture: no successful build jobs observed",
   durations: [],
 }
 
 test fn median_selects_the_middle_of_an_unsorted_population() -> Bool {
-  match population_median(p: odd_population) {
-    Present { value: m } => measure_count(m: m) == 300
+  match gunbc.build_cache_latency_probe.population_median(p: odd_population) {
+    Present { value: m } => std.measure.measure_count(m: m) == 300
     Absent => false
   }
 }
 
 test fn median_of_even_population_is_the_lower_middle_sample() -> Bool {
-  match population_median(p: even_population) {
-    Present { value: m } => measure_count(m: m) == 200
+  match gunbc.build_cache_latency_probe.population_median(p: even_population) {
+    Present { value: m } => std.measure.measure_count(m: m) == 200
     Absent => false
   }
 }
 
 test fn median_of_empty_population_is_absent() -> Bool {
-  match population_median(p: empty_population) {
+  match gunbc.build_cache_latency_probe.population_median(p: empty_population) {
     Present { value: _ } => false
     Absent => true
   }
@@ -57,49 +57,49 @@ test fn median_of_empty_population_is_absent() -> Bool {
 
 // A host with no samples must NOT read as converged, and this is the arm most likely to be got wrong by a fold that treats 'nothing exceeded the threshold' as passing. A quarantined host, or one whose every build failed, produces an empty population — and reporting it healthy is precisely how a host drops out of the fleet's attention while broken. Refusal is the only honest verdict on no evidence, and it is asserted as NOT-diverged AND NOT-converged, because a check for either alone would be satisfied by the wrong arm.
 test fn empty_population_refuses_rather_than_passing() -> Bool {
-  let v = build_latency_verdict(
+  let v = gunbc.build_cache_latency_probe.build_latency_verdict(
     p: empty_population,
-    reference: millisecond(count: 238000),
-    policy: gunbc_build_latency_divergence_policy
+    reference: std.measure.millisecond(count: 238000),
+    policy: gunbc.build_cache_latency_probe.gunbc_build_latency_divergence_policy
   )
   match v {
-    BuildLatencyUnmeasured { host: _, reason: _ } => true
-    BuildLatencyConverged { host: _, host_median: _, reference: _ } => false
-    BuildLatencyDiverged { host: _, host_median: _, reference: _ } => false
+    gunbc.build_cache_latency_probe.BuildLatencyUnmeasured { host: _, reason: _ } => true
+    gunbc.build_cache_latency_probe.BuildLatencyConverged { host: _, host_median: _, reference: _ } => false
+    gunbc.build_cache_latency_probe.BuildLatencyDiverged { host: _, host_median: _, reference: _ } => false
   }
-    && !build_latency_verdict_is_diverged(v: v)
+    && !gunbc.build_cache_latency_probe.build_latency_verdict_is_diverged(v: v)
 }
 
 data policy_boundary_note: String = "THE DISCRIMINATING PAIR for the ratio, straddling it by one millisecond on either side so the boundary is pinned rather than approximated. At exactly 2x the reference the verdict is CONVERGED — the policy reads 'more than 2x diverges', so equality passes — and one millisecond above it diverges. A witness that only tested a wildly-divergent population would pass against a policy of 10x, or 100x, or any ratio at all, which would make the declared budget decorative."
 
 data at_exactly_two_x: gunbc.build_cache_latency_probe.BuildLatencyPopulation = gunbc.build_cache_latency_probe.BuildLatencyPopulation {
-  host: operator_host_srv2,
+  host: gunbc.fleet_intent_network.operator_host_srv2,
   observation_window: "controlled fixture: single sample at exactly 2x the 100 reference",
-  durations: [millisecond(count: 200)],
+  durations: [std.measure.millisecond(count: 200)],
 }
 
 data just_over_two_x: gunbc.build_cache_latency_probe.BuildLatencyPopulation = gunbc.build_cache_latency_probe.BuildLatencyPopulation {
-  host: operator_host_srv2,
+  host: gunbc.fleet_intent_network.operator_host_srv2,
   observation_window: "controlled fixture: single sample one millisecond over 2x the 100 reference",
-  durations: [millisecond(count: 201)],
+  durations: [std.measure.millisecond(count: 201)],
 }
 
 test fn ratio_boundary_converges_at_exactly_two_x() -> Bool {
-  !build_latency_verdict_is_diverged(
-    v: build_latency_verdict(
+  !gunbc.build_cache_latency_probe.build_latency_verdict_is_diverged(
+    v: gunbc.build_cache_latency_probe.build_latency_verdict(
       p: at_exactly_two_x,
-      reference: millisecond(count: 100),
-      policy: gunbc_build_latency_divergence_policy
+      reference: std.measure.millisecond(count: 100),
+      policy: gunbc.build_cache_latency_probe.gunbc_build_latency_divergence_policy
     )
   )
 }
 
 test fn RED_ratio_boundary_diverges_one_millisecond_over() -> Bool {
-  build_latency_verdict_is_diverged(
-    v: build_latency_verdict(
+  gunbc.build_cache_latency_probe.build_latency_verdict_is_diverged(
+    v: gunbc.build_cache_latency_probe.build_latency_verdict(
       p: just_over_two_x,
-      reference: millisecond(count: 100),
-      policy: gunbc_build_latency_divergence_policy
+      reference: std.measure.millisecond(count: 100),
+      policy: gunbc.build_cache_latency_probe.gunbc_build_latency_divergence_policy
     )
   )
 }
@@ -107,17 +107,17 @@ test fn RED_ratio_boundary_diverges_one_millisecond_over() -> Bool {
 data receipt_internal_consistency_note: String = "The recorded 2026-08-05 receipt is checked for INTERNAL CONSISTENCY only: its stored verdict must equal the verdict its stored samples derive. That claim is time-invariant — it is about the receipt, not about srv1 — so it does not go red when the fleet is repaired, and it is not a snapshot pin. What it catches is the failure mode a hand-collected receipt actually has: someone editing the durations, or the reference, or the policy, without re-deriving the verdict beside them, leaving a row whose conclusion no longer follows from its own evidence."
 
 test fn recorded_receipt_verdict_follows_from_its_own_samples() -> Bool {
-  let rederived = build_latency_verdict(
-    p: srv1_build_latency,
-    reference: peer_combined_median,
-    policy: gunbc_build_latency_divergence_policy
+  let rederived = gunbc.build_cache_latency_probe.build_latency_verdict(
+    p: gunbc.build_cache_latency_probe.srv1_build_latency,
+    reference: gunbc.build_cache_latency_probe.peer_combined_median,
+    policy: gunbc.build_cache_latency_probe.gunbc_build_latency_divergence_policy
   )
-  build_latency_verdict_is_diverged(v: rederived) == build_latency_verdict_is_diverged(v: srv1_verdict_2026_08_05)
+  gunbc.build_cache_latency_probe.build_latency_verdict_is_diverged(v: rederived) == gunbc.build_cache_latency_probe.build_latency_verdict_is_diverged(v: gunbc.build_cache_latency_probe.srv1_verdict_2026_08_05)
 }
 
 test fn recorded_srv1_population_is_nonempty_and_ordered_derivation_works() -> Bool {
-  match population_median(p: srv1_build_latency) {
-    Present { value: m } => measure_count(m: m) > 0 && (srv1_build_latency.durations |> length) == 44
+  match gunbc.build_cache_latency_probe.population_median(p: gunbc.build_cache_latency_probe.srv1_build_latency) {
+    Present { value: m } => std.measure.measure_count(m: m) > 0 && (srv1_build_latency.durations |> length) == 44
     Absent => false
   }
 }

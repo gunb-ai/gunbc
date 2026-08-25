@@ -4,7 +4,7 @@ module extdeps.cache.github_actions
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows"
   }
 }
@@ -14,15 +14,15 @@ data gha_actions_cache_id: std.cache_identity.CacheInterfaceId = "gha_actions_ca
 data gha_actions_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: gha_actions_cache_id
   backing_surface: "github-actions-cache-api"
-  transport_encoding: CatalogOpaqueStringEncoding
+  transport_encoding: extdeps.cache.types.CatalogOpaqueStringEncoding
   key_derivation: {
 
-    key_inputs: extdeps.cache.types.HandAuthored { cited_inputs: [UpsertSubject, FilePaths] }
+    key_inputs: extdeps.cache.types.HandAuthored { cited_inputs: [extdeps.cache.types.UpsertSubject, extdeps.cache.types.FilePaths] }
     overwritable: true
     prefix_fallback_allowed: true
     content_verified_on_read: false
-    visibility_scope: Repo
-    invalidation_triggers: [ManualPurge, ToolchainChange, DependencyChange]
+    visibility_scope: std.cache_interface.Repo
+    invalidation_triggers: [std.cache_interface.ManualPurge, std.cache_interface.ToolchainChange, std.cache_interface.DependencyChange]
   }
   io: {
     lookup_semantics: std.cache_interface.PrefixFallback {
@@ -33,17 +33,17 @@ data gha_actions_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
         "runner-scoped",
       ]
     }
-    write_semantics: OverwriteAllowed
-    miss_semantics: MissThenCreate
+    write_semantics: std.cache_interface.OverwriteAllowed
+    miss_semantics: std.cache_interface.MissThenCreate
   }
   placement: {
-    value_shape: TarArchive
-    locality: CrossHostNetwork
-    retention: { release_policy: ReleasedNever, capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: EffectiveLimitUnobserved }, at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed } } }
-    atomicity: WriteThenCommit
+    value_shape: std.cache_interface.TarArchive
+    locality: std.cache_interface.CrossHostNetwork
+    retention: { release_policy: std.cache_interface.ReleasedNever, capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.EffectiveLimitUnobserved }, at_capacity: std.cache_interface.ReplaceExisting { strategy: std.cache_interface.LeastRecentlyUsed } } }
+    atomicity: std.cache_interface.WriteThenCommit
     auth: std.cache_interface.ApiKey
-    read_latency: WanTensMs
-    consistency: Eventual
+    read_latency: std.cache_interface.WanTensMs
+    consistency: std.cache_interface.Eventual
   }
   evidence: [
     {

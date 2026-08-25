@@ -1,11 +1,11 @@
 module v2.test.manual.typescript_field_access_emit
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn field_access_binding_spellings() -> Map<v2.std.node.Symbol, String> {
-  map_insert(
-    map_insert(empty_map(), ^field_access_binding_object, "o"),
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(v2.std.collection.empty_map(), ^field_access_binding_object, "o"),
     ^field_access_binding_field,
     "x"
   )
@@ -13,33 +13,33 @@ fn field_access_binding_spellings() -> Map<v2.std.node.Symbol, String> {
 
 fn field_access_target_model() -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
-    bundle: ts_target_model_node(),
-    lex: ts_fn_add_lex(),
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
+    bundle: v2.extdeps.languages.typescript.ts_target_model_node(),
+    lex: v2.extdeps.languages.typescript.ts_fn_add_lex(),
     binding_spellings: field_access_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
     authority_source_text: "",
-    runtime_row: target_emit_host_runtime_row_unconfigured
+    runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
   }
 }
 
 fn ts_field_access_expr() -> v2.std.compilers.target_model.TargetValueExpression {
-  target_value_expression_field_access(
-    base: target_value_expression_binding_ref(binding: ^field_access_binding_object),
+  v2.std.compilers.target_model.target_value_expression_field_access(
+    base: v2.std.compilers.target_model.target_value_expression_binding_ref(binding: ^field_access_binding_object),
     field_name: ^field_access_binding_field
   )
 }
 
 fn ts_field_access_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  bind_outcome(
-    o: target_value_expression_to_concrete_tokens(
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.target_value_expression_to_concrete_tokens(
       expr: ts_field_access_expr(),
-      projection: ts_value_expression_projection(),
-      catalog: ts_operator_realizations_catalog_node()
+      projection: v2.extdeps.languages.typescript.ts_value_expression_projection(),
+      catalog: v2.extdeps.languages.typescript.ts_operator_realizations_catalog_node()
     ),
     f: fn(tokens) {
-      serialize_concrete_syntax_tokens_to_source(
-        target: v2.test.manual.typescript_field_access_emit.field_access_target_model(),
+      v2.compiler.translate.serialize_concrete_syntax_tokens_to_source(
+        target: field_access_target_model(),
         tokens: tokens
       )
     }
@@ -48,8 +48,8 @@ fn ts_field_access_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communica
 
 fn ts_field_access_emit_source() -> String {
   match ts_field_access_emit_accepts() {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "FIELD_ACCESS_EMIT_REJECTED"
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "FIELD_ACCESS_EMIT_REJECTED"
   }
 }
 
@@ -58,9 +58,9 @@ test fn ts_field_access_emit_source_holds() -> Bool {
 }
 
 fn ts_add_emit_source() -> String {
-  match anchor_typescript_add_emit_accepts() {
-    Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "ADD_EMIT_REJECTED"
+  match v2.test.manual.typescript_add_emit_translate.anchor_typescript_add_emit_accepts() {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.carried
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "ADD_EMIT_REJECTED"
   }
 }
 

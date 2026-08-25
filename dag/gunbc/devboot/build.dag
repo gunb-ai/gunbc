@@ -1,5 +1,6 @@
 module gunbc.devboot.build
 
+
 // GUNBC BUILD RETURNS ONE EXACT EXECUTABLE TO A REMOTE AGENT.
 //
 // This module is the whole of what a caller sees. It takes a program name and returns either an executable file on disk whose bytes are bound to a digest, or a refusal that says which step refused and why. It does not return a lease, a ref, a store path, a provider, a token or a host, and none of those words appear in BuildOutcome -- they are how the operation works, not what it means, and a product interface that leaks its mechanism has to keep leaking it forever.
@@ -23,12 +24,13 @@ data produced_refusal_entry: String = "refusal"
 
 data produced_host_entry: String = "host"
 
+
 fn request_ref_of(token: String) -> String {
-  join([request_ref_namespace, token], "")
+  join([gunbc.devboot.lease.request_ref_namespace, token], "")
 }
 
 fn produced_ref_of(token: String) -> String {
-  join([produced_ref_namespace, token], "")
+  join([gunbc.devboot.lease.produced_ref_namespace, token], "")
 }
 
 // THE ARTIFACT NEVER TRAVELS THROUGH A PIPE. An earlier shape of this read the built binary with cat-file and carried it as a string: the transport strips a trailing newline and a string is not a byte sequence, so a 24-megabyte executable arriving that way is silently truncated or re-encoded and the digest check then fails for a reason that has nothing to do with the store. Every blob that is bytes rather than text is materialized by checkout-index straight to a file, and only the small text entries -- a digest, a rendered subject, a refusal sentence -- are ever read as strings.
@@ -43,15 +45,15 @@ fn exchange_index_path(work_root: String, token: String) -> String {
 fn materialize_ref_tree(repo_root: String, work_root: String, token: String, ref_name: String) -> Bool {
   let out_dir = exchange_out_dir(work_root: work_root, token: token)
   let index_path = exchange_index_path(work_root: work_root, token: token)
-  let fresh = devboot_witness_run(
-    site: retained_devboot_rm_rf,
+  let fresh = gunbc.devboot.transport.devboot_witness_run(
+    site: gunbc.devboot.transport.retained_devboot_rm_rf,
     workdir: repo_root,
     bin_path: "rm",
     args: ["-rf", out_dir, index_path],
   )
-  let made = devboot_ensure_directory(repo_root: repo_root, path: out_dir)
+  let made = gunbc.devboot.transport.devboot_ensure_directory(repo_root: repo_root, path: out_dir)
   let loaded = git.Plumbing.ReadTreeIntoIndex(
-    address: devboot_repo_address(repo_root: repo_root),
+    address: gunbc.devboot.transport.devboot_repo_address(repo_root: repo_root),
     index: index_path as std.types.FilePath,
     treeish: join([ref_name, "^\{tree}"], ""),
   )
@@ -59,7 +61,7 @@ fn materialize_ref_tree(repo_root: String, work_root: String, token: String, ref
     false
   } else {
     git.Plumbing.CheckoutIndexToPrefix(
-      address: devboot_repo_address(repo_root: repo_root),
+      address: gunbc.devboot.transport.devboot_repo_address(repo_root: repo_root),
       index: index_path as std.types.FilePath,
       prefix: join([out_dir, "/"], ""),
     ).exit_code == 0
@@ -74,7 +76,7 @@ type TextFileReadOutcome
 fn read_text_file(repo_root: String, path: String) -> TextFileReadOutcome {
   let read = Filesystem.Read(path: path)
   if read.success {
-    TextFilePresent { text: std.algebra.trim(s: read.content) }
+    TextFilePresent { text: trim(s: read.content) }
   } else {
     if read.error == "" {
       TextFileAbsent
@@ -98,40 +100,40 @@ fn digest_field(acc: DigestScan, part: String) -> DigestScan {
 }
 
 type FileSha256Outcome
-  = FileSha256Present { digest: Sha256Digest }
+  = FileSha256Present { digest: std.content_hash.Sha256Digest }
   | FileSha256CommandFailed { exit_code: Int, stderr: String }
   | FileSha256PathUnreadable { path: String }
 
 fn file_sha256(repo_root: String, path: String) -> FileSha256Outcome {
-  let hashed = devboot_witness_run(
-    site: retained_devboot_sha256sum,
+  let hashed = gunbc.devboot.transport.devboot_witness_run(
+    site: gunbc.devboot.transport.retained_devboot_sha256sum,
     workdir: repo_root,
     bin_path: "sha256sum",
     args: [path],
   )
   if !hashed.success {
-    FileSha256CommandFailed { exit_code: hashed.exit_code, stderr: std.algebra.trim(s: hashed.stderr) }
+    FileSha256CommandFailed { exit_code: hashed.exit_code, stderr: trim(s: hashed.stderr) }
   } else {
     let hex = fold(
-      split(s: std.algebra.trim(s: hashed.stdout), sep: " "),
+      split(s: trim(s: hashed.stdout), sep: " "),
       init: DigestScan { index: 0, found: "" },
       f: (acc, part) => digest_field(acc: acc, part: part),
     ).found
-    match sha256_hex_digest(hex: hex) {
+    match std.content_hash.sha256_hex_digest(hex: hex) {
       Absent => FileSha256PathUnreadable { path: path }
       Present { value: digest } => FileSha256Present { digest: digest }
     }
   }
 }
 
-fn render_sha256_digest(digest: Sha256Digest) -> String {
+fn render_sha256_digest(digest: std.content_hash.Sha256Digest) -> String {
   digest.hex as String
 }
 
 // WHAT A CALLER RECEIVES. An artifact is a path plus the digest that binds it, and both are present or the outcome is a refusal -- there is no arm carrying a path whose bytes were never checked, because that arm is how a stale binary passed for a produced one once already.
 type BuiltArtifact {
   path: String
-  sha256: Sha256Digest
+  sha256: std.content_hash.Sha256Digest
 }
 
 // THE RECEIPT IS WHERE PROCESS IDENTITY LIVES. Which host produced the bytes, which executable did it, what the invocation was: all of it is real and worth keeping, and none of it may reach the artifact's identity. A key that carries the producing host means the same tree built on two machines is two subjects, so the second caller rebuilds what the first already produced and the dedup this service exists for silently stops happening. So these facts are reported and never keyed.
@@ -143,16 +145,16 @@ type BuildReceipt {
 
 type BuildRefusal
   = ProgramNotBuildable { program: String, offered: String }
-  | WorktreeNotSnapshotted { refusal: SnapshotRefused }
-  | ToolchainNotObserved { refusal: ToolchainObservationRefused }
+  | WorktreeNotSnapshotted { refusal: gunbc.devboot.produce.SnapshotRefused }
+  | ToolchainNotObserved { refusal: gunbc.devboot.produce.ToolchainObservationRefused }
   | SourceTreeOidUnusable { hex: String }
-  | SubjectNotAdmitted { cause: BuildSubjectRefusalCause }
+  | SubjectNotAdmitted { cause: gunbc.devboot.subject.BuildSubjectRefusalCause }
   | ProducerUnreachable { detail: String }
-  | ProducerDidNotAnswer { waited: Second }
+  | ProducerDidNotAnswer { waited: std.measure.Second }
   | ProducerRefusedRequest { detail: String }
   | SubjectMismatch { requested: String, produced: String }
   | ArtifactNotRetrievable { detail: String }
-  | ArtifactDigestMismatch { expected: Sha256Digest, observed: Sha256Digest }
+  | ArtifactDigestMismatch { expected: std.content_hash.Sha256Digest, observed: std.content_hash.Sha256Digest }
 
 type BuildOutcome
   = Built { program_subject: String, artifact: BuiltArtifact, receipt: BuildReceipt }
@@ -162,16 +164,16 @@ fn build_refusal_sentence(cause: BuildRefusal) -> String {
   match cause {
     ProgramNotBuildable { program, offered } =>
       join(["no program named ", program, " is offered (offered: ", offered, ")"], "")
-    WorktreeNotSnapshotted { refusal: SnapshotRefused { detail } } =>
+    WorktreeNotSnapshotted { refusal: gunbc.devboot.produce.SnapshotRefused { detail } } =>
       join(["the working tree could not be snapshotted: ", detail], "")
-    ToolchainNotObserved { refusal: ToolchainObservationRefused { detail } } =>
+    ToolchainNotObserved { refusal: gunbc.devboot.produce.ToolchainObservationRefused { detail } } =>
       join(["the local toolchain could not be observed: ", detail], "")
     SourceTreeOidUnusable { hex } => join(["unusable tree oid: ", hex], "")
     SubjectNotAdmitted { cause: subject_cause } =>
-      join(["the build subject was refused: ", build_subject_refusal_reason(cause: subject_cause)], "")
+      join(["the build subject was refused: ", gunbc.devboot.produce.build_subject_refusal_reason(cause: subject_cause)], "")
     ProducerUnreachable { detail } => join(["the producer could not be reached: ", detail], "")
     ProducerDidNotAnswer { waited } =>
-      join(["the producer did not answer within ", to_string(second_count(waited)), " seconds"], "")
+      join(["the producer did not answer within ", to_string(std.measure.second_count(waited)), " seconds"], "")
     ProducerRefusedRequest { detail } => join(["the producer refused: ", detail], "")
     SubjectMismatch { requested, produced } =>
       join(["the producer built a different subject than the one requested\nrequested:\n", requested, "\nproduced:\n", produced], "")
@@ -209,12 +211,12 @@ fn poll_settled(acc: PollState) -> Bool {
 }
 
 // THE POLL INTERVAL IS A DURATION, not a number that happens to be counted in seconds. A scale unit living in a name rather than in the type is the conflation this repository treats as a hard block, and leaving it here while the producer's wait was migrated to Second in this same change would have been worse than either choice alone: two representations of one concept, one file apart from the authority that already models it.
-fn poll_interval() -> Second {
-  second(count: 5)
+fn poll_interval() -> std.measure.Second {
+  std.measure.second(count: 5)
 }
 
 fn poll_interval_argv() -> String {
-  to_string(second_count(poll_interval()))
+  to_string(std.measure.second_count(poll_interval()))
 }
 
 fn poll_tick_unit() -> List<Int> {
@@ -225,8 +227,8 @@ fn poll_attempts() -> List<Int> {
   fold([1, 2, 3, 4, 5, 6], init: [], f: (acc, outer) => concat(acc, poll_tick_unit()))
 }
 
-fn poll_budget() -> Second {
-  second(count: (poll_attempts() |> count) * second_count(poll_interval()))
+fn poll_budget() -> std.measure.Second {
+  std.measure.second(count: (poll_attempts() |> count) * std.measure.second_count(poll_interval()))
 }
 
 fn poll_once(repo_root: String, endpoint: String, ref_name: String) -> PollState {
@@ -241,7 +243,7 @@ fn poll_once(repo_root: String, endpoint: String, ref_name: String) -> PollState
     if string_contains(s: fetched.stderr, pattern: "couldn't find remote ref") {
       PollWaiting
     } else {
-      PollUnreachable { detail: std.algebra.trim(s: fetched.stderr) }
+      PollUnreachable { detail: trim(s: fetched.stderr) }
     }
   }
 }
@@ -250,8 +252,8 @@ fn poll_step(acc: PollState, repo_root: String, endpoint: String, ref_name: Stri
   if poll_settled(acc: acc) {
     acc
   } else {
-    let slept = devboot_witness_run(
-      site: retained_devboot_sleep,
+    let slept = gunbc.devboot.transport.devboot_witness_run(
+      site: gunbc.devboot.transport.retained_devboot_sleep,
       workdir: repo_root,
       bin_path: "sleep",
       args: [poll_interval_argv()],
@@ -274,9 +276,9 @@ fn client_repo_dir(work_root: String) -> String {
 }
 
 fn ensure_client_repo(repo_root: String, work_root: String) -> Bool {
-  let made = devboot_ensure_directory(repo_root: repo_root, path: client_repo_dir(work_root: work_root))
+  let made = gunbc.devboot.transport.devboot_ensure_directory(repo_root: repo_root, path: client_repo_dir(work_root: work_root))
   git.Plumbing.InitAt(
-    address: devboot_repo_address(repo_root: repo_root),
+    address: gunbc.devboot.transport.devboot_repo_address(repo_root: repo_root),
     path: client_repo_dir(work_root: work_root) as std.types.FilePath,
   ).exit_code == 0
 }
@@ -297,19 +299,19 @@ fn stage_text_blob(repo_root: String, path: String, text: String) -> GitOidOutco
 
 fn hash_blob_file(repo_root: String, path: String) -> GitOidOutcome {
   let hashed = git.Plumbing.HashObjectWrite(
-    address: devboot_repo_address(repo_root: repo_root),
+    address: gunbc.devboot.transport.devboot_repo_address(repo_root: repo_root),
     path: path as std.types.FilePath,
   )
   if !(hashed.exit_code == 0) {
-    GitOidCommandFailed { exit_code: hashed.exit_code, stderr: std.algebra.trim(s: hashed.stderr) }
+    GitOidCommandFailed { exit_code: hashed.exit_code, stderr: trim(s: hashed.stderr) }
   } else {
-    GitOidPresent { oid: std.algebra.trim(s: hashed.oid) }
+    GitOidPresent { oid: trim(s: hashed.oid) }
   }
 }
 
 fn stage_blob_entry(repo_root: String, index_path: String, oid: String, entry: String, mode: String) -> Bool {
   git.Plumbing.UpdateIndexCacheInfo(
-    address: devboot_repo_address(repo_root: repo_root),
+    address: gunbc.devboot.transport.devboot_repo_address(repo_root: repo_root),
     index: index_path as std.types.FilePath,
     mode: mode,
     oid: oid,
@@ -323,13 +325,13 @@ type GitTreeOutcome
 
 fn write_staged_tree(repo_root: String, index_path: String) -> GitTreeOutcome {
   let written = git.Plumbing.WriteTreeFromIndex(
-    address: devboot_repo_address(repo_root: repo_root),
+    address: gunbc.devboot.transport.devboot_repo_address(repo_root: repo_root),
     index: index_path as std.types.FilePath,
   )
   if !(written.exit_code == 0) {
-    GitTreeCommandFailed { exit_code: written.exit_code, stderr: std.algebra.trim(s: written.stderr) }
+    GitTreeCommandFailed { exit_code: written.exit_code, stderr: trim(s: written.stderr) }
   } else {
-    GitTreePresent { tree_hex: std.algebra.trim(s: written.tree) }
+    GitTreePresent { tree_hex: trim(s: written.tree) }
   }
 }
 
@@ -339,15 +341,15 @@ type GitCommitOutcome
 
 fn commit_tree_parentless(repo_root: String, tree_hex: String, message: String) -> GitCommitOutcome {
   let committed = git.Plumbing.CommitTree(
-    address: devboot_repo_address(repo_root: repo_root),
+    address: gunbc.devboot.transport.devboot_repo_address(repo_root: repo_root),
     tree: tree_hex,
-    parents: GitNoParents,
+    parents: extdeps.git.plumbing.GitNoParents,
     message: message,
   )
   if !(committed.exit_code == 0) {
-    GitCommitCommandFailed { exit_code: committed.exit_code, stderr: std.algebra.trim(s: committed.stderr) }
+    GitCommitCommandFailed { exit_code: committed.exit_code, stderr: trim(s: committed.stderr) }
   } else {
-    GitCommitPresent { commit_hex: std.algebra.trim(s: committed.commit) }
+    GitCommitPresent { commit_hex: trim(s: committed.commit) }
   }
 }
 
@@ -366,13 +368,13 @@ fn publish_request(
 ) -> RequestPublication {
   let staging = join([work_root, "/", token, "/request"], "")
   let index_path = join([work_root, "/", token, "/request.index"], "")
-  let fresh = devboot_witness_run(
-    site: retained_devboot_rm_rf,
+  let fresh = gunbc.devboot.transport.devboot_witness_run(
+    site: gunbc.devboot.transport.retained_devboot_rm_rf,
     workdir: repo_root,
     bin_path: "rm",
     args: ["-rf", staging, index_path],
   )
-  let made = devboot_ensure_directory(repo_root: repo_root, path: staging)
+  let made = gunbc.devboot.transport.devboot_ensure_directory(repo_root: repo_root, path: staging)
   let subject_path = join([staging, "/subject"], "")
   let program_path = join([staging, "/program"], "")
   match stage_text_blob(repo_root: repo_root, path: subject_path, text: subject_text) {
@@ -384,14 +386,14 @@ fn publish_request(
           RequestPublicationRefused { detail: join(["could not stage the requested program: ", stderr], "") }
         GitOidPresent { oid: program_oid } =>
           let loaded = git.Plumbing.ReadTreeIntoIndexPrefixed(
-            address: devboot_repo_address(repo_root: repo_root),
+            address: gunbc.devboot.transport.devboot_repo_address(repo_root: repo_root),
             index: index_path as std.types.FilePath,
             prefix: request_source_entry,
             treeish: tree_hex,
           )
           if !(loaded.exit_code == 0) {
             RequestPublicationRefused {
-              detail: snapshot_step_refusal(step: "read-tree --prefix=source", exit_code: loaded.exit_code, stderr: loaded.stderr),
+              detail: gunbc.devboot.produce.snapshot_step_refusal(step: "read-tree --prefix=source", exit_code: loaded.exit_code, stderr: loaded.stderr),
             }
           } else {
             let staged_subject = stage_blob_entry(repo_root: repo_root, index_path: index_path, oid: subject_oid, entry: request_subject_entry, mode: "100644")
@@ -414,7 +416,7 @@ fn publish_request(
                       )
                       if !(pushed.exit_code == 0) {
                         RequestPublicationRefused {
-                          detail: join(["push to the producer failed: ", std.algebra.trim(s: pushed.stderr)], ""),
+                          detail: join(["push to the producer failed: ", trim(s: pushed.stderr)], ""),
                         }
                       } else {
                         RequestPublished { token: token }
@@ -435,26 +437,26 @@ fn devboot_build(
   endpoint: String,
   out_path: String,
 ) -> BuildOutcome {
-  match select_program(program: program) {
-    ProgramNotOffered { program: unknown } =>
+  match gunbc.devboot.program.select_program(program: program) {
+    gunbc.devboot.program.ProgramNotOffered { program: unknown } =>
       BuildRefused {
-        cause: ProgramNotBuildable { program: unknown, offered: offered_programs_rendering() },
+        cause: ProgramNotBuildable { program: unknown, offered: gunbc.devboot.program.offered_programs_rendering() },
       }
-    ProgramSelected { package, cargo_target, bin_name } =>
-      match devboot_snapshot(repo_root: repo_root, work_root: work_root) {
-        SnapshotRefused { detail } => BuildRefused { cause: WorktreeNotSnapshotted { refusal: SnapshotRefused { detail: detail } } }
-        SnapshotTaken { tree_hex } =>
-          match observe_toolchain(repo_root: repo_root) {
-            ToolchainObservationRefused { detail } =>
+    gunbc.devboot.program.ProgramSelected { package, cargo_target, bin_name } =>
+      match gunbc.devboot.produce.devboot_snapshot(repo_root: repo_root, work_root: work_root) {
+        gunbc.devboot.produce.SnapshotRefused { detail } => BuildRefused { cause: WorktreeNotSnapshotted { refusal: gunbc.devboot.produce.SnapshotRefused { detail: detail } } }
+        gunbc.devboot.produce.SnapshotTaken { tree_hex } =>
+          match gunbc.devboot.produce.observe_toolchain(repo_root: repo_root) {
+            gunbc.devboot.produce.ToolchainObservationRefused { detail } =>
               BuildRefused {
-                cause: ToolchainNotObserved { refusal: ToolchainObservationRefused { detail: detail } },
+                cause: ToolchainNotObserved { refusal: gunbc.devboot.produce.ToolchainObservationRefused { detail: detail } },
               }
-            ToolchainObserved { toolchain, host } =>
-              match git_object_id_from_untagged_hex(hex: tree_hex) {
+            gunbc.devboot.produce.ToolchainObserved { toolchain, host } =>
+              match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: tree_hex) {
                 Absent =>
                   BuildRefused { cause: SourceTreeOidUnusable { hex: tree_hex } }
                 Present { value: tree_oid } =>
-                  match admit_build_subject(
+                  match gunbc.devboot.subject.admit_build_subject(
                     tree_oid: tree_oid,
                     package: package,
                     cargo_target: cargo_target,
@@ -466,11 +468,11 @@ fn devboot_build(
                     linker: none,
                     sysroot: none,
                     cargo_config: [],
-                    platform_c_library: observe_platform_c_library(repo_root: repo_root),
+                    platform_c_library: gunbc.devboot.produce.observe_platform_c_library(repo_root: repo_root),
                   ) {
-                    SubjectRefused { cause } =>
+                    gunbc.devboot.subject.SubjectRefused { cause } =>
                       BuildRefused { cause: SubjectNotAdmitted { cause: cause } }
-                    SubjectAdmitted { subject } =>
+                    gunbc.devboot.subject.SubjectAdmitted { subject } =>
                       devboot_build_admitted(
                         program: bin_name,
                         repo_root: repo_root,
@@ -479,7 +481,7 @@ fn devboot_build(
                         out_path: out_path,
                         tree_hex: tree_hex,
                         subject: subject,
-                        token: content_hash_ref_token(hash: build_subject_digest(subject: subject)),
+                        token: gunbc.devboot.lease.content_hash_ref_token(hash: gunbc.devboot.subject.build_subject_digest(subject: subject)),
                       )
                   }
               }
@@ -495,10 +497,10 @@ fn devboot_build_admitted(
   endpoint: String,
   out_path: String,
   tree_hex: String,
-  subject: BuildSubject,
+  subject: gunbc.devboot.subject.BuildSubject,
   token: String,
 ) -> BuildOutcome {
-  let subject_text = render_build_subject(subject: subject)
+  let subject_text = gunbc.devboot.subject.render_build_subject(subject: subject)
   let prepared = ensure_client_repo(repo_root: repo_root, work_root: work_root)
   let exchange_repo = client_repo_dir(work_root: work_root)
   if !prepared {
@@ -598,8 +600,8 @@ fn devboot_receive_answer_subject(
   produced_subject: String,
   subject_text: String,
 ) -> BuildOutcome {
-  if !(produced_subject == std.algebra.trim(s: subject_text)) {
-    BuildRefused { cause: SubjectMismatch { requested: std.algebra.trim(s: subject_text), produced: produced_subject } }
+  if !(produced_subject == trim(s: subject_text)) {
+    BuildRefused { cause: SubjectMismatch { requested: trim(s: subject_text), produced: produced_subject } }
   } else {
     let artifact_path = join([out_dir, "/", produced_artifact_entry], "")
     match read_text_file(repo_root: exchange_repo, path: join([out_dir, "/", produced_digest_entry], "")) {
@@ -608,7 +610,7 @@ fn devboot_receive_answer_subject(
       TextFileAbsent =>
         BuildRefused { cause: ArtifactNotRetrievable { detail: "the expected digest entry is absent" } }
       TextFilePresent { text: expected_hex } =>
-        match sha256_hex_digest(hex: expected_hex) {
+        match std.content_hash.sha256_hex_digest(hex: expected_hex) {
           Absent =>
             BuildRefused { cause: ArtifactNotRetrievable { detail: join(["the expected digest is invalid: ", expected_hex], "") } }
           Present { value: expected } =>
@@ -622,17 +624,17 @@ fn devboot_receive_answer_subject(
               FileSha256PathUnreadable { path } =>
                 BuildRefused { cause: ArtifactNotRetrievable { detail: join(["the delivered artifact could not be read at ", path], "") } }
               FileSha256Present { digest: observed } =>
-                if !content_hash_eq_cryptographic(left: expected, right: observed) {
+                if !std.content_hash.content_hash_eq_cryptographic(left: expected, right: observed) {
                   BuildRefused { cause: ArtifactDigestMismatch { expected: expected, observed: observed } }
                 } else {
-                  let installed = devboot_witness_run(
-                    site: retained_devboot_cp,
+                  let installed = gunbc.devboot.transport.devboot_witness_run(
+                    site: gunbc.devboot.transport.retained_devboot_cp,
                     workdir: exchange_repo,
                     bin_path: "cp",
                     args: [artifact_path, out_path],
                   )
-                  let executable = devboot_witness_run(
-                    site: retained_devboot_chmod,
+                  let executable = gunbc.devboot.transport.devboot_witness_run(
+                    site: gunbc.devboot.transport.retained_devboot_chmod,
                     workdir: exchange_repo,
                     bin_path: "chmod",
                     args: ["+x", out_path],
@@ -677,7 +679,7 @@ type ProducerHome {
 }
 
 type ServeReport
-  = ServeProduced { token: String, sha256: Sha256Digest }
+  = ServeProduced { token: String, sha256: std.content_hash.Sha256Digest }
   | ServeRefused { token: String, detail: String }
 
 type RequestEntryOutcome
@@ -687,17 +689,17 @@ type RequestEntryOutcome
 
 fn read_request_entry(repo_root: String, ref_name: String, entry: String) -> RequestEntryOutcome {
   let shown = git.Plumbing.CatFileBlob(
-    address: devboot_repo_address(repo_root: repo_root),
+    address: gunbc.devboot.transport.devboot_repo_address(repo_root: repo_root),
     object: join([ref_name, ":", entry], ""),
   )
   if !(shown.exit_code == 0) {
     if string_contains(s: shown.stderr, pattern: "Not a valid object name") {
       RequestEntryAbsent
     } else {
-      RequestEntryReadFailed { exit_code: shown.exit_code, stderr: std.algebra.trim(s: shown.stderr) }
+      RequestEntryReadFailed { exit_code: shown.exit_code, stderr: trim(s: shown.stderr) }
     }
   } else {
-    RequestEntryPresent { text: std.algebra.trim(s: shown.content) }
+    RequestEntryPresent { text: trim(s: shown.content) }
   }
 }
 
@@ -709,25 +711,25 @@ type SourceTreeOutcome
 fn read_request_source_tree(repo_root: String, ref_name: String) -> SourceTreeOutcome {
   let resolved = git.Core.RevParseInRepo(
     repo: repo_root as std.types.FilePath,
-    target: join([ref_name, ":", request_source_entry], "") as GitRef,
+    target: join([ref_name, ":", request_source_entry], "") as std.types.GitRef,
   )
   if !(resolved.exit_code == 0) {
     if string_contains(s: resolved.stderr, pattern: "not a git repository")
-      || resolved.exit_code == git_repository_unusable_exit_code
+      || resolved.exit_code == extdeps.git.git_repository_unusable_exit_code
         && !string_contains(s: resolved.stderr, pattern: "does not exist in")
         && !string_contains(s: resolved.stderr, pattern: "invalid object name")
         && !string_contains(s: resolved.stderr, pattern: "Not a valid object name") {
-      SourceTreeResolveFailed { exit_code: resolved.exit_code, stderr: std.algebra.trim(s: resolved.stderr) }
-    } else if resolved.exit_code == git_ref_missing_exit_code
+      SourceTreeResolveFailed { exit_code: resolved.exit_code, stderr: trim(s: resolved.stderr) }
+    } else if resolved.exit_code == extdeps.git.git_ref_missing_exit_code
       || string_contains(s: resolved.stderr, pattern: "does not exist in")
       || string_contains(s: resolved.stderr, pattern: "invalid object name")
       || string_contains(s: resolved.stderr, pattern: "Not a valid object name") {
       SourceTreeAbsent
     } else {
-      SourceTreeResolveFailed { exit_code: resolved.exit_code, stderr: std.algebra.trim(s: resolved.stderr) }
+      SourceTreeResolveFailed { exit_code: resolved.exit_code, stderr: trim(s: resolved.stderr) }
     }
   } else {
-    SourceTreePresent { tree_hex: std.algebra.trim(s: resolved.revision) }
+    SourceTreePresent { tree_hex: trim(s: resolved.revision) }
   }
 }
 
@@ -752,28 +754,28 @@ fn produced_publication_refused(detail: String) -> ProducedPublication {
 }
 
 fn publish_answer_ref(repo_root: String, token: String, produced_commit: String) -> ProducedPublication {
-  match git_object_id_from_untagged_hex(hex: produced_commit) {
+  match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: produced_commit) {
     Absent =>
       produced_publication_refused(
         detail: join(["commit-tree returned an object id this build cannot decode: ", produced_commit], ""),
       )
     Present { value: commit_oid } =>
-      let mutation = GitCreateRefIfAbsent {
-        name: produced_ref_of(token: token) as GitRefName,
+      let mutation = extdeps.git.plumbing.GitCreateRefIfAbsent {
+        name: produced_ref_of(token: token) as extdeps.git.object_store.GitRefName,
         new: commit_oid,
       }
       let attempted = git.Plumbing.CreateRefIfAbsent(
-        address: devboot_repo_address(repo_root: repo_root),
+        address: gunbc.devboot.transport.devboot_repo_address(repo_root: repo_root),
         ref_name: produced_ref_of(token: token),
         new: produced_commit,
       )
-      let outcome = git_ref_mutation_outcome(
+      let outcome = extdeps.git.plumbing.git_ref_mutation_outcome(
         mutation: mutation,
         exit_code: attempted.exit_code,
-        stderr: std.algebra.trim(s: attempted.stderr),
-        observed_after: devboot_observe_ref(repo_root: repo_root, ref_name: produced_ref_of(token: token)),
+        stderr: trim(s: attempted.stderr),
+        observed_after: gunbc.devboot.transport.devboot_observe_ref(repo_root: repo_root, ref_name: produced_ref_of(token: token)),
       )
-      if git_ref_mutation_applied(outcome: outcome) {
+      if extdeps.git.plumbing.git_ref_mutation_applied(outcome: outcome) {
         ProducedPublished
       } else {
         produced_publication_refused(detail: render_ref_mutation_refusal(outcome: outcome, token: token))
@@ -781,7 +783,7 @@ fn publish_answer_ref(repo_root: String, token: String, produced_commit: String)
   }
 }
 
-fn render_ref_mutation_refusal(outcome: GitRefMutationOutcome, token: String) -> String {
+fn render_ref_mutation_refusal(outcome: extdeps.git.plumbing.GitRefMutationOutcome, token: String) -> String {
   match outcome {
     GitRefMutationApplied { mutation } => join(["the answer ref for ", token, " was published"], "")
     GitRefMutationPreconditionNotHeld { mutation, observed } =>
@@ -801,18 +803,18 @@ fn publish_produced_tree(
   token: String,
   subject_text: String,
   artifact_path: String,
-  artifact_sha256: Sha256Digest?,
+  artifact_sha256: std.content_hash.Sha256Digest?,
   refusal_text: String,
 ) -> ProducedPublication {
   let staging = join([work_root, "/", token, "/produced"], "")
   let index_path = join([work_root, "/", token, "/produced.index"], "")
-  let fresh = devboot_witness_run(
-    site: retained_devboot_rm_rf,
+  let fresh = gunbc.devboot.transport.devboot_witness_run(
+    site: gunbc.devboot.transport.retained_devboot_rm_rf,
     workdir: repo_root,
     bin_path: "rm",
     args: ["-rf", staging, index_path],
   )
-  let made = devboot_ensure_directory(repo_root: repo_root, path: staging)
+  let made = gunbc.devboot.transport.devboot_ensure_directory(repo_root: repo_root, path: staging)
   match stage_text_blob(repo_root: repo_root, path: join([staging, "/subject"], ""), text: subject_text) {
     GitOidCommandFailed { exit_code, stderr } =>
       produced_publication_refused(detail: join(["could not stage the produced subject: ", stderr], ""))
@@ -907,21 +909,21 @@ fn devboot_serve_request(
             SourceTreeAbsent =>
               serve_refusal(repo_root: repo_root, work_root: work_root, token: token, subject_text: "", detail: "the request carried no source tree")
             SourceTreePresent { tree_hex: source_tree } =>
-              match select_program(program: requested_program) {
-                ProgramNotOffered { program: unknown } =>
+              match gunbc.devboot.program.select_program(program: requested_program) {
+                gunbc.devboot.program.ProgramNotOffered { program: unknown } =>
                   serve_refusal(
                     repo_root: repo_root,
                     work_root: work_root,
                     token: token,
                     subject_text: "",
-                    detail: join(["no program named ", unknown, " is offered (offered: ", offered_programs_rendering(), ")"], ""),
+                    detail: join(["no program named ", unknown, " is offered (offered: ", gunbc.devboot.program.offered_programs_rendering(), ")"], ""),
                   )
-                ProgramSelected { package, cargo_target, bin_name } =>
-                  match observe_toolchain(repo_root: repo_root) {
-                    ToolchainObservationRefused { detail } =>
+                gunbc.devboot.program.ProgramSelected { package, cargo_target, bin_name } =>
+                  match gunbc.devboot.produce.observe_toolchain(repo_root: repo_root) {
+                    gunbc.devboot.produce.ToolchainObservationRefused { detail } =>
                       serve_refusal(repo_root: repo_root, work_root: work_root, token: token, subject_text: "", detail: detail)
-                    ToolchainObserved { toolchain, host } =>
-                      match git_object_id_from_untagged_hex(hex: source_tree) {
+                    gunbc.devboot.produce.ToolchainObserved { toolchain, host } =>
+                      match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: source_tree) {
                         Absent =>
                           serve_refusal(
                             repo_root: repo_root,
@@ -931,7 +933,7 @@ fn devboot_serve_request(
                             detail: concat("unusable source tree oid: ", source_tree),
                           )
                         Present { value: tree_oid } =>
-                          match admit_build_subject(
+                          match gunbc.devboot.subject.admit_build_subject(
                             tree_oid: tree_oid,
                             package: package,
                             cargo_target: cargo_target,
@@ -943,17 +945,17 @@ fn devboot_serve_request(
                             linker: none,
                             sysroot: none,
                             cargo_config: [],
-                            platform_c_library: observe_platform_c_library(repo_root: repo_root),
+                            platform_c_library: gunbc.devboot.produce.observe_platform_c_library(repo_root: repo_root),
                           ) {
-                            SubjectRefused { cause } =>
+                            gunbc.devboot.subject.SubjectRefused { cause } =>
                               serve_refusal(
                                 repo_root: repo_root,
                                 work_root: work_root,
                                 token: token,
                                 subject_text: "",
-                                detail: build_subject_refusal_reason(cause: cause),
+                                detail: gunbc.devboot.produce.build_subject_refusal_reason(cause: cause),
                               )
-                            SubjectAdmitted { subject } =>
+                            gunbc.devboot.subject.SubjectAdmitted { subject } =>
                               devboot_serve_admitted(
                                 repo_root: repo_root,
                                 work_root: work_root,
@@ -980,25 +982,25 @@ fn devboot_serve_admitted(
   home: ProducerHome,
   token: String,
   requested_subject: String,
-  subject: BuildSubject,
+  subject: gunbc.devboot.subject.BuildSubject,
   source_tree: String,
   package: String,
   bin_name: String,
 ) -> ServeReport {
-  let produced_subject = std.algebra.trim(s: render_build_subject(subject: subject))
-  if !(produced_subject == std.algebra.trim(s: requested_subject)) {
+  let produced_subject = trim(s: gunbc.devboot.subject.render_build_subject(subject: subject))
+  if !(produced_subject == trim(s: requested_subject)) {
     serve_refusal(
       repo_root: repo_root,
       work_root: work_root,
       token: token,
       subject_text: produced_subject,
-      detail: join(["this producer builds a different subject than the one requested\nrequested:\n", std.algebra.trim(s: requested_subject), "\nthis producer:\n", produced_subject], ""),
+      detail: join(["this producer builds a different subject than the one requested\nrequested:\n", trim(s: requested_subject), "\nthis producer:\n", produced_subject], ""),
     )
   } else {
-    match devboot_materialize_source(repo_root: repo_root, work_root: work_root, token: token, tree_hex: source_tree) {
-      SourceMaterializationRefused { detail } =>
+    match gunbc.devboot.produce.devboot_materialize_source(repo_root: repo_root, work_root: work_root, token: token, tree_hex: source_tree) {
+      gunbc.devboot.produce.SourceMaterializationRefused { detail } =>
         serve_refusal(repo_root: repo_root, work_root: work_root, token: token, subject_text: produced_subject, detail: detail)
-      SourceMaterialized { source_dir } =>
+      gunbc.devboot.produce.SourceMaterialized { source_dir } =>
         devboot_serve_built(
           repo_root: repo_root,
           work_root: work_root,
@@ -1023,18 +1025,18 @@ fn devboot_serve_built(
   package: String,
   bin_name: String,
 ) -> ServeReport {
-  let target_dir = devboot_target_dir(work_root: work_root, token: token)
-  let built = devboot_witness_run(
-    site: retained_devboot_cargo_build,
+  let target_dir = gunbc.devboot.produce.devboot_target_dir(work_root: work_root, token: token)
+  let built = gunbc.devboot.transport.devboot_witness_run(
+    site: gunbc.devboot.transport.retained_devboot_cargo_build,
     workdir: source_dir,
-    bin_path: env_path_resolved_program as String,
-    args: env_prefixed_args(
+    bin_path: extdeps.tools.env.env_path_resolved_program as String,
+    args: extdeps.tools.env.env_prefixed_args(
       bindings: [
-        EnvSet { name: rustup_home_env_name as String, value: home.rustup_home },
-        EnvSet { name: cargo_environment_variable_name(variable: CargoHomeEnv) as String, value: home.cargo_home },
-        EnvSet { name: cargo_environment_variable_name(variable: CargoTargetDirEnv) as String, value: target_dir },
-        EnvSet { name: cargo_environment_variable_name(variable: CargoBuildJobsEnv) as String, value: home.build_jobs },
-        EnvSet { name: cargo_environment_variable_name(variable: RustcWrapperEnv) as String, value: "" },
+        v2.std.orchestration.EnvSet { name: extdeps.rustup.rustup_home_env_name as String, value: home.rustup_home },
+        v2.std.orchestration.EnvSet { name: extdeps.cargo.cargo_environment_variable_name(variable: extdeps.cargo.CargoHomeEnv) as String, value: home.cargo_home },
+        v2.std.orchestration.EnvSet { name: extdeps.cargo.cargo_environment_variable_name(variable: extdeps.cargo.CargoTargetDirEnv) as String, value: target_dir },
+        v2.std.orchestration.EnvSet { name: extdeps.cargo.cargo_environment_variable_name(variable: extdeps.cargo.CargoBuildJobsEnv) as String, value: home.build_jobs },
+        v2.std.orchestration.EnvSet { name: extdeps.cargo.cargo_environment_variable_name(variable: extdeps.cargo.RustcWrapperEnv) as String, value: "" },
       ],
       command_argv: [
         home.cargo_bin,
@@ -1053,7 +1055,7 @@ fn devboot_serve_built(
       work_root: work_root,
       token: token,
       subject_text: produced_subject,
-      detail: join(["the build failed (cargo exit ", to_string(built.exit_code), "): ", std.algebra.trim(s: built.stderr)], ""),
+      detail: join(["the build failed (cargo exit ", to_string(built.exit_code), "): ", trim(s: built.stderr)], ""),
     )
   } else {
     let artifact_path = join([target_dir, "/release/", bin_name], "")
@@ -1093,13 +1095,13 @@ fn devboot_serve_built(
 
 // THE PRODUCING HOST IS OBSERVED WHERE IT IS TRUE. The producer knows which machine it is; the caller does not, and a caller-side guess would be a fabricated fact in a receipt whose purpose is to record what actually happened. So the host travels with the answer as an ordinary entry, and it lands in the receipt rather than anywhere near the subject.
 fn observed_producer_host(repo_root: String) -> String {
-  let named = devboot_witness_run(
-    site: retained_devboot_uname,
+  let named = gunbc.devboot.transport.devboot_witness_run(
+    site: gunbc.devboot.transport.retained_devboot_uname,
     workdir: repo_root,
     bin_path: "uname",
     args: ["-n"],
   )
-  if !named.success { "unknown-host" } else { std.algebra.trim(s: named.stdout) }
+  if !named.success { "unknown-host" } else { trim(s: named.stdout) }
 }
 
 // THE ENTRY POINTS RETURN PROCESS EXIT CODES, NOT SENTENCES. gunbc run treats a non-ProcessExit return as a refusal, so a String-returning entry that had genuinely built an executable exited nonzero and printed BUILT underneath REFUSED -- success reported as failure (DESIGN section 5). The typed outcome is decided first; prose is written to the receipt file; the shell reads the exit code.
@@ -1116,10 +1118,10 @@ fn render_build_outcome(outcome: BuildOutcome) -> String {
   }
 }
 
-fn build_outcome_exit(outcome: BuildOutcome) -> ProcessExit {
+fn build_outcome_exit(outcome: BuildOutcome) -> std.process.ProcessExit {
   match outcome {
-    Built { program_subject, artifact, receipt } => ExitSuccess
-    BuildRefused { cause } => exit_failure(reason: build_refusal_sentence(cause: cause))
+    Built { program_subject, artifact, receipt } => std.process.ExitSuccess
+    BuildRefused { cause } => std.process.exit_failure(reason: build_refusal_sentence(cause: cause))
   }
 }
 
@@ -1131,10 +1133,10 @@ fn render_serve_report(report: ServeReport) -> String {
   }
 }
 
-fn serve_report_exit(report: ServeReport) -> ProcessExit {
+fn serve_report_exit(report: ServeReport) -> std.process.ProcessExit {
   match report {
-    ServeProduced { token, sha256 } => ExitSuccess
-    ServeRefused { token, detail } => exit_failure(reason: detail)
+    ServeProduced { token, sha256 } => std.process.ExitSuccess
+    ServeRefused { token, detail } => std.process.exit_failure(reason: detail)
   }
 }
 
@@ -1146,7 +1148,7 @@ fn devboot_build_entry(
   endpoint: String,
   out_path: String,
   receipt_path: String,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   let outcome = devboot_build(
     program: program,
     repo_root: repo_root,
@@ -1159,7 +1161,7 @@ fn devboot_build_entry(
     content: render_build_outcome(outcome: outcome),
   )
   if !written.success {
-    receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
+    gunbc.devboot.produce.receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
   } else {
     build_outcome_exit(outcome: outcome)
   }
@@ -1174,7 +1176,7 @@ fn devboot_serve_entry(
   cargo_home: String,
   build_jobs: String,
   receipt_path: String,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   let report = devboot_serve_request(
     repo_root: repo_root,
     work_root: work_root,
@@ -1191,7 +1193,7 @@ fn devboot_serve_entry(
     content: render_serve_report(report: report),
   )
   if !written.success {
-    receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
+    gunbc.devboot.produce.receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
   } else {
     serve_report_exit(report: report)
   }
@@ -1199,19 +1201,19 @@ fn devboot_serve_entry(
 
 // A BISECTION PROBE kept because the failure it found is a real one and a future change can reintroduce it: this walks the operation's front half and reports which stage it reached, so a fault between snapshot and request publication is located to a stage rather than to the whole entry.
 fn devboot_subject_probe(program: String, repo_root: String, work_root: String) -> String {
-  match select_program(program: program) {
-    ProgramNotOffered { program: unknown } => "stage=select: refused"
-    ProgramSelected { package, cargo_target, bin_name } =>
-      match devboot_snapshot(repo_root: repo_root, work_root: work_root) {
-        SnapshotRefused { detail } => join(["stage=snapshot: refused: ", detail], "")
-        SnapshotTaken { tree_hex } =>
-          match observe_toolchain(repo_root: repo_root) {
-            ToolchainObservationRefused { detail } => join(["stage=toolchain: refused: ", detail], "")
-            ToolchainObserved { toolchain, host } =>
-              match git_object_id_from_untagged_hex(hex: tree_hex) {
+  match gunbc.devboot.program.select_program(program: program) {
+    gunbc.devboot.program.ProgramNotOffered { program: unknown } => "stage=select: refused"
+    gunbc.devboot.program.ProgramSelected { package, cargo_target, bin_name } =>
+      match gunbc.devboot.produce.devboot_snapshot(repo_root: repo_root, work_root: work_root) {
+        gunbc.devboot.produce.SnapshotRefused { detail } => join(["stage=snapshot: refused: ", detail], "")
+        gunbc.devboot.produce.SnapshotTaken { tree_hex } =>
+          match gunbc.devboot.produce.observe_toolchain(repo_root: repo_root) {
+            gunbc.devboot.produce.ToolchainObservationRefused { detail } => join(["stage=toolchain: refused: ", detail], "")
+            gunbc.devboot.produce.ToolchainObserved { toolchain, host } =>
+              match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: tree_hex) {
                 Absent => join(["stage=oid: unusable ", tree_hex], "")
                 Present { value: tree_oid } =>
-                  match admit_build_subject(
+                  match gunbc.devboot.subject.admit_build_subject(
                     tree_oid: tree_oid,
                     package: package,
                     cargo_target: cargo_target,
@@ -1223,13 +1225,13 @@ fn devboot_subject_probe(program: String, repo_root: String, work_root: String) 
                     linker: none,
                     sysroot: none,
                     cargo_config: [],
-                    platform_c_library: observe_platform_c_library(repo_root: repo_root),
+                    platform_c_library: gunbc.devboot.produce.observe_platform_c_library(repo_root: repo_root),
                   ) {
-                    SubjectRefused { cause } => join(["stage=subject: refused: ", build_subject_refusal_reason(cause: cause)], "")
-                    SubjectAdmitted { subject } =>
+                    gunbc.devboot.subject.SubjectRefused { cause } => join(["stage=subject: refused: ", gunbc.devboot.produce.build_subject_refusal_reason(cause: cause)], "")
+                    gunbc.devboot.subject.SubjectAdmitted { subject } =>
                       join([
                         "stage=token tree=", tree_hex,
-                        " token=", content_hash_ref_token(hash: build_subject_digest(subject: subject)),
+                        " token=", gunbc.devboot.lease.content_hash_ref_token(hash: gunbc.devboot.subject.build_subject_digest(subject: subject)),
                       ], "")
                   }
               }
@@ -1237,3 +1239,6 @@ fn devboot_subject_probe(program: String, repo_root: String, work_root: String) 
       }
   }
 }
+
+
+

@@ -1,7 +1,7 @@
 module gunbc.tools.body_lowering_population_probe
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data body_lowering_population_probe_note: String = "BL-2 REPRODUCTION INSTRUMENT, homed outside a *_test.dag module for the same reason gunbc.tools.frontier_ingestion_probe is: what it reports is a revision-scoped OBSERVATION of the present frontier, and enrolling that as a test declaration would make an assertion that goes RED on the repair and GREEN on a regression. It reuses take_census_over and classify_source rather than reproducing them, so there is one stage classifier in the repository and not two.\n\nWHY IT EXISTS. The body-lowering wall cannot be scheduled against an unmeasured population. normalize today returns Accepted for a tree whose diagnostics carry wrapper-retention, and resolve consumes it, so retention is kept out of resolve by propagation rather than by construction. Making retention unconstructible is the right wall and it CHANGES WHICH MODULES NORMALIZE ACCEPTS — so the population that would newly refuse has to be known before the wall lands, not discovered from a red tree afterwards.\n\nWHAT THE SUBJECTS ARE is body_lowering_subject_roster's to say, and this note deliberately does not restate it — an earlier revision carried the population as a prose sentence beside a shorter roster, and the two disagreeing is the defect that produced this rewrite. What holds here is only the scope: the subjects are deliberately NOT the whole corpus — a per-file census over every module is a different and much larger instrument — so anything read off this module is a reading over THOSE subjects and carries no claim about the rest.\n\nWHAT A READER MAY NOT DO WITH IT. The per-member stage is the observation. There is no aggregate pass/fail, because the population is the finding and a Boolean over it would be a verdict on subjects that have not all been separately established."
 
@@ -51,7 +51,7 @@ data body_lowering_batch_selection: List<v2.std.node.Symbol> = [
   ^optional,
 ]
 
-fn is_selected(label: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn is_selected(label: v2.std.node.Symbol) -> Bool {
   v2.std.algebra.fold_list(xs: body_lowering_batch_selection, empty: false, cons: fn(acc, sel) { acc || (sel == label) })
 }
 
@@ -70,7 +70,7 @@ fn body_lowering_execution_batch() -> List<gunbc.tools.frontier_ingestion_probe.
 }
 
 fn take_body_lowering_population_census() -> gunbc.tools.frontier_ingestion_probe.FrontendCensusReceipt {
-  take_census_over(rows: body_lowering_execution_batch())
+  gunbc.tools.frontier_ingestion_probe.take_census_over(rows: body_lowering_execution_batch())
 }
 
 fn standing_of(s: BodyLoweringSubject, obs: List<gunbc.tools.frontier_ingestion_probe.MemberObservation>) -> BodyLoweringObservationStanding {
@@ -106,12 +106,12 @@ type ObservedReading
 
 fn reading_of_stage(s: gunbc.tools.frontier_ingestion_probe.FrontendStage) -> ObservedReading {
   match s {
-    NormalizeAccepted => ObservedClean
-    NormalizeOther => ObservedRefusedCauseUnclassified
-    NormalizeRetained => ObservedRefusedCauseNamed
-    NormalizeGraftRefused => ObservedRefusedCauseNamed
-    LexRefused => ObservedRefusedCauseNamed
-    ParseRefused => ObservedRefusedCauseNamed
+    gunbc.tools.frontier_ingestion_probe.NormalizeAccepted => ObservedClean
+    gunbc.tools.frontier_ingestion_probe.NormalizeOther => ObservedRefusedCauseUnclassified
+    gunbc.tools.frontier_ingestion_probe.NormalizeRetained => ObservedRefusedCauseNamed
+    gunbc.tools.frontier_ingestion_probe.NormalizeGraftRefused => ObservedRefusedCauseNamed
+    gunbc.tools.frontier_ingestion_probe.LexRefused => ObservedRefusedCauseNamed
+    gunbc.tools.frontier_ingestion_probe.ParseRefused => ObservedRefusedCauseNamed
   }
 }
 
@@ -155,31 +155,31 @@ fn all_subjects_unmeasured(cause: v2.std.node.Symbol) -> List<BodyLoweringSubjec
 
 fn body_lowering_program_receipt() -> List<BodyLoweringSubjectStanding> {
   match take_body_lowering_population_census() {
-    CensusRefusedAtWorld => all_subjects_unmeasured(cause: ^census_refused_at_world)
-    CensusRefusedAtReconciliation { cause: _ } => all_subjects_unmeasured(cause: ^census_refused_at_reconciliation)
-    CensusTaken { roster_identity: _, observations: obs } => standings_from(obs: obs)
+    gunbc.tools.frontier_ingestion_probe.CensusRefusedAtWorld => all_subjects_unmeasured(cause: ^census_refused_at_world)
+    gunbc.tools.frontier_ingestion_probe.CensusRefusedAtReconciliation { cause: _ } => all_subjects_unmeasured(cause: ^census_refused_at_reconciliation)
+    gunbc.tools.frontier_ingestion_probe.CensusTaken { roster_identity: _, observations: obs } => standings_from(obs: obs)
   }
 }
 
 data body_lowering_prior_standing_note: String = "THE PRIOR STANDINGS ARE A CITED HISTORICAL RECEIPT, not this run's observation, and they are declared separately so the two can never be read as one measurement. Every row here comes from the executed table in docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md at head c03be069687. This is also where SubjectInterrupted has its producer: node is the NOT RE-OBSERVED row, and recording it as interrupted-with-a-bound rather than unmeasured is what keeps its 900s lower bound attached to the subject it was measured on.\n\nA READER MAY NOT TRANSFER THESE TO THE PRESENT HEAD. They were taken on a different tree; the first executed reading of this instrument already contradicted one of them at the shard grain, which is exactly why a historical value may not be filled in for a subject this run did not execute."
 
 data body_lowering_prior_standing: List<BodyLoweringSubjectStanding> = [
-  BodyLoweringSubjectStanding { label: ^logic, standing: SubjectObserved { stage: NormalizeRetained } },
-  BodyLoweringSubjectStanding { label: ^optional, standing: SubjectObserved { stage: NormalizeRetained } },
-  BodyLoweringSubjectStanding { label: ^diagnostic, standing: SubjectObserved { stage: NormalizeRetained } },
-  BodyLoweringSubjectStanding { label: ^occurrence_identity, standing: SubjectObserved { stage: NormalizeRetained } },
+  BodyLoweringSubjectStanding { label: ^logic, standing: SubjectObserved { stage: gunbc.tools.frontier_ingestion_probe.NormalizeRetained } },
+  BodyLoweringSubjectStanding { label: ^optional, standing: SubjectObserved { stage: gunbc.tools.frontier_ingestion_probe.NormalizeRetained } },
+  BodyLoweringSubjectStanding { label: ^diagnostic, standing: SubjectObserved { stage: gunbc.tools.frontier_ingestion_probe.NormalizeRetained } },
+  BodyLoweringSubjectStanding { label: ^occurrence_identity, standing: SubjectObserved { stage: gunbc.tools.frontier_ingestion_probe.NormalizeRetained } },
   BodyLoweringSubjectStanding { label: ^node, standing: SubjectInterrupted { receipt: "probe exceeded its 900s budget at head c03be069687; interruption plus a lower bound on cost, never a stage verdict" } },
 ]
 
 fn observation_line(o: gunbc.tools.frontier_ingestion_probe.MemberObservation) -> String {
-  concat(v2.std.compilers.lexing.symbol_lexeme(sym: o.label), concat(" ", frontend_stage_label(s: o.stage)))
+  concat(v2.std.compilers.lexing.symbol_lexeme(sym: o.label), concat(" ", gunbc.tools.frontier_ingestion_probe.frontend_stage_label(s: o.stage)))
 }
 
 fn census_report() -> String {
   match take_body_lowering_population_census() {
-    CensusRefusedAtWorld => "REFUSED_AT_WORLD"
-    CensusRefusedAtReconciliation { cause: _ } => "REFUSED_AT_RECONCILIATION"
-    CensusTaken { roster_identity: _, observations: obs } =>
+    gunbc.tools.frontier_ingestion_probe.CensusRefusedAtWorld => "REFUSED_AT_WORLD"
+    gunbc.tools.frontier_ingestion_probe.CensusRefusedAtReconciliation { cause: _ } => "REFUSED_AT_RECONCILIATION"
+    gunbc.tools.frontier_ingestion_probe.CensusTaken { roster_identity: _, observations: obs } =>
       v2.std.algebra.fold_list(
         xs: obs,
         empty: "",

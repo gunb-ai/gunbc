@@ -1,5 +1,6 @@
 module gunbc.floor_component_receipt
 
+
 data floor_component_receipt_note: String = "The floor's per-COMPONENT receipt, machine-readable, written on every exit path including a red one. WHY IT EXISTS, priced: .github/workflows/falsifier-alert.yml read only the overall workflow conclusion and hardcoded one causal story for every failure — 'affected-set cold control is dark, per-PR selection UNVERIFIED, Gate-1 receipts do not execute'. On run 30509024051 all three clauses were FALSE: the predict-only affected-set control concluded Done over 5217 witnesses and the expect_red batches produced their receipts; the single failing component was the silent-pick gate, killed at its whole-receipt wall budget. An overall-red composite that erases the green state of its completed children is a state-space conflation (DESIGN section 5), and it misdirects triage every time it fires. This module is the projection that makes the alert read state instead of inferring it. THE RECORD IS NOT NEW: each component is one batch-grain Concluded std.observation.ObservationEvent — the same authority gunbc.witness_row_cost names as THE record ('not a TSV schema') — so Refused stays distinct from Failed and a budget kill is TimedOut with its budget and elapsed, not a flattened red. A bespoke status schema here would have been a second representation of that record (DESIGN section 3)."
 
 data floor_component_receipt_role_note: String = "Components are identified by STRUCTURAL ROLE, never by batch index. Indices are not stable: gunbc_falsifier_batches composes conditionally on enrollment flags (falsifier_self_host_wet_batch_enrolled and siblings), so one flag flip shifts every later index — which is why the silent-pick gate reports as batch 4 today while sitting fifth in source order. An alert keyed on 'batch 1' would relocate the hardcoded assumption rather than remove it. The affected-set cold control is instead identified by the property that DEFINES it: node_frontier_selection = SelectionPredictOnly, reusing the std.realization_schedule authority (the per-PR corpus counterpart is SelectionApplied). Ambiguity fails closed: zero predict-only components yields ControlAbsent and two or more yields ControlAmbiguous, never a guess."
@@ -42,7 +43,7 @@ fn floor_component_subject(run_id: std.types.NonEmptyStr, index: std.nat.Nat, la
 // This function reconstructs an outcome from a TAG plus the fields the tag lost. That is a lossy
 // projection followed by re-supply, and it is structurally the same defect the frontier note
 // describes one layer down: ClaimOutcome::RuntimeError flattened the typed budget pair into a
-// formatted String, so the executor could not fill std.observation.TimedOut's fields without re-parsing its own
+// formatted String, so the executor could not fill TimedOut's fields without re-parsing its own
 // prose. The String form was deleted at the seam (2026-08-18); the tag form is the residue of
 // the same shape.
 //
@@ -80,34 +81,34 @@ fn floor_component_outcome_of_tag(
 data floor_component_failure_mode_note: String = "The seed's failure-mode vocabulary (claim_executor falsifier_failure_mode: BudgetExceeded | Infra | WitnessRed, plus the no-failures case) mapped onto ObservationOutcome HERE rather than in Rust, so the classification sits under a witness and the seed transport carries no judgment of its own. BudgetExceeded becomes Refused, not Failed: a kill at a declared ceiling is the deliberate, located stop observation_refused_distinct_note defines Refused to mean, and its remedy (re-basis the dated ceiling, or fix the row's cost) differs from a broken witness's. UNKNOWN MODE REFUSES. The first version of this mapping lived in the seed with a `_ => failed` catch-all, which would have absorbed a newly added mode into `failed` silently — a widen with no diagnostic, exactly the absorbing fallback DESIGN section 5 forbids. Here an unmodelled mode returns absent, the row cannot be built, and the walk fails closed with the mode named."
 
 fn floor_component_outcome_of_failure_mode(mode: std.types.NonEmptyStr, detail: std.types.NonEmptyStr) -> std.observation.ObservationOutcome? {
-  match floor_component_failure_mode_of(mode: mode) {
+  match gunbc.floor_component_receipt_document.floor_component_failure_mode_of(mode: mode) {
     Absent => none
-    Present { value: m } => floor_component_outcome_of_mode(m: m, detail: detail)
+    Present { value: m } => gunbc.floor_component_receipt_document.floor_component_outcome_of_mode(m: m, detail: detail)
   }
 }
 
 fn floor_component_outcome_members(o: std.observation.ObservationOutcome) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   match o {
-    Done => []
-    Refused { diagnostic: d } => [json_kv(key: "diagnostic", value: json_string(s: d as String))]
-    Failed { error: e, output: out } => [
-      json_kv(key: "error", value: json_string(s: e as String)),
-      json_kv(key: "output", value: json_string(s: out))
+    std.observation.Done => []
+    std.observation.Refused { diagnostic: d } => [extdeps.languages.json.emit.json_kv(key: "diagnostic", value: extdeps.languages.json.emit.json_string(s: d as String))]
+    std.observation.Failed { error: e, output: out } => [
+      extdeps.languages.json.emit.json_kv(key: "error", value: extdeps.languages.json.emit.json_string(s: e as String)),
+      extdeps.languages.json.emit.json_kv(key: "output", value: extdeps.languages.json.emit.json_string(s: out))
     ]
-    TimedOut { basis: _, budget: b, elapsed: el } => [
-      json_kv(key: "budget_ms", value: json_int(n: millisecond_count(m: b))),
-      json_kv(key: "elapsed_ms", value: json_int(n: millisecond_count(m: el)))
+    std.observation.TimedOut { basis: _, budget: b, elapsed: el } => [
+      extdeps.languages.json.emit.json_kv(key: "budget_ms", value: extdeps.languages.json.emit.json_int(n: std.measure.millisecond_count(m: b))),
+      extdeps.languages.json.emit.json_kv(key: "elapsed_ms", value: extdeps.languages.json.emit.json_int(n: std.measure.millisecond_count(m: el)))
     ]
-    Skipped { reason: r } => [json_kv(key: "reason", value: json_string(s: r as String))]
-    Final { shown_failures: n } => [json_kv(key: "shown_failures", value: json_int(n: n))]
+    std.observation.Skipped { reason: r } => [extdeps.languages.json.emit.json_kv(key: "reason", value: extdeps.languages.json.emit.json_string(s: r as String))]
+    std.observation.Final { shown_failures: n } => [extdeps.languages.json.emit.json_kv(key: "shown_failures", value: extdeps.languages.json.emit.json_int(n: n))]
   }
 }
 
 fn floor_component_transition_outcome(t: std.observation.ObservationTransition) -> std.observation.ObservationOutcome? {
   match t {
-    Begin => none
-    Step { k: _, n: _ } => none
-    Concluded { outcome: o } => Present { value: o }
+    std.observation.Begin => none
+    std.observation.Step { k: _, n: _ } => none
+    std.observation.Concluded { outcome: o } => Present { value: o }
   }
 }
 
@@ -124,7 +125,7 @@ fn floor_component_row_of(
     event: std.observation.ObservationEvent {
       subject: floor_component_subject(run_id: run_id, index: index, label: label),
       transition: std.observation.Concluded { outcome: outcome },
-      durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: wall)),
+      durations: std.observation.observation_durations_wall(elapsed: std.measure.millisecond_to_nanosecond(m: wall)),
       rss: std.observation.MeasuredUnavailable { cause: "per-component RSS not sampled by the floor walk" as std.types.NonEmptyStr }
     },
     witnesses: witnesses,
@@ -162,7 +163,7 @@ fn floor_component_row(
         witnesses: witnesses,
         outcome: outcome,
         wall: wall,
-        failure_mode: ModeUnrecorded
+        failure_mode: gunbc.floor_component_receipt_document.ModeUnrecorded
       )
     }
   }
@@ -177,10 +178,10 @@ fn floor_component_row_of_failure_mode(
   detail: std.types.NonEmptyStr,
   wall: std.measure.Millisecond
 ) -> FloorComponentRow? {
-  match floor_component_failure_mode_of(mode: failure_mode) {
+  match gunbc.floor_component_receipt_document.floor_component_failure_mode_of(mode: failure_mode) {
     Absent => none
     Present { value: mode } =>
-      match floor_component_outcome_of_mode(m: mode, detail: detail) {
+      match gunbc.floor_component_receipt_document.floor_component_outcome_of_mode(m: mode, detail: detail) {
         Absent => none
         Present { value: outcome } => Present {
           value: floor_component_row_of(
@@ -204,15 +205,15 @@ fn floor_component_row_not_concluded(
   failure_mode: std.types.NonEmptyStr,
   detail: std.types.NonEmptyStr
 ) -> FloorComponentRow? {
-  match floor_component_failure_mode_of(mode: failure_mode) {
+  match gunbc.floor_component_receipt_document.floor_component_failure_mode_of(mode: failure_mode) {
     Absent => none
     Present { value: mode } => Present {
       value: FloorComponentRow {
         event: std.observation.ObservationEvent {
           subject: floor_component_subject(run_id: run_id, index: index, label: label),
-          transition: Begin,
-          durations: observation_durations_wall(
-            elapsed: millisecond_to_nanosecond(m: millisecond(count: 0))
+          transition: std.observation.Begin,
+          durations: std.observation.observation_durations_wall(
+            elapsed: std.measure.millisecond_to_nanosecond(m: std.measure.millisecond(count: 0))
           ),
           rss: std.observation.MeasuredUnavailable {
             cause: "per-component RSS not sampled by the floor walk" as std.types.NonEmptyStr
@@ -228,35 +229,35 @@ fn floor_component_row_not_concluded(
 fn floor_component_row_index(row: FloorComponentRow) -> std.nat.Nat {
   fold(row.event.subject.segments, init: 0, f: (acc, seg) =>
     match seg {
-      RunSegment { id: _ } => acc
-      BatchSegment { index: i, label: _ } => i
-      EntrySegment { source_path: _ } => acc
-      ModuleSegment { module_path: _ } => acc
-      DeclarationSegment { declaration: _ } => acc
-      PhaseSegment { name: _ } => acc
+      std.observation.RunSegment { id: _ } => acc
+      std.observation.BatchSegment { index: i, label: _ } => i
+      std.observation.EntrySegment { source_path: _ } => acc
+      std.observation.ModuleSegment { module_path: _ } => acc
+      std.observation.DeclarationSegment { declaration: _ } => acc
+      std.observation.PhaseSegment { name: _ } => acc
     })
 }
 
 fn floor_component_row_label(row: FloorComponentRow) -> String {
   fold(row.event.subject.segments, init: "", f: (acc, seg) =>
     match seg {
-      RunSegment { id: _ } => acc
-      BatchSegment { index: _, label: l } => l as String
-      EntrySegment { source_path: _ } => acc
-      ModuleSegment { module_path: _ } => acc
-      DeclarationSegment { declaration: _ } => acc
-      PhaseSegment { name: _ } => acc
+      std.observation.RunSegment { id: _ } => acc
+      std.observation.BatchSegment { index: _, label: l } => l as String
+      std.observation.EntrySegment { source_path: _ } => acc
+      std.observation.ModuleSegment { module_path: _ } => acc
+      std.observation.DeclarationSegment { declaration: _ } => acc
+      std.observation.PhaseSegment { name: _ } => acc
     })
 }
 
 fn floor_component_wall_members(w: std.observation.Measured<std.measure.Nanosecond>) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   match w {
-    MeasuredValue { value: ns } => [
-      json_kv(key: "wall_ms", value: json_int(n: nanosecond_count(n: ns) / 1000000))
+    std.observation.MeasuredValue { value: ns } => [
+      extdeps.languages.json.emit.json_kv(key: "wall_ms", value: extdeps.languages.json.emit.json_int(n: std.measure.nanosecond_count(n: ns) / 1000000))
     ]
-    MeasuredUnavailable { cause: c } => [
-      json_kv(key: "wall_ms", value: json_null()),
-      json_kv(key: "wall_unavailable_cause", value: json_string(s: c as String))
+    std.observation.MeasuredUnavailable { cause: c } => [
+      extdeps.languages.json.emit.json_kv(key: "wall_ms", value: extdeps.languages.json.emit.json_null()),
+      extdeps.languages.json.emit.json_kv(key: "wall_unavailable_cause", value: extdeps.languages.json.emit.json_string(s: c as String))
     ]
   }
 }
@@ -268,35 +269,35 @@ fn floor_component_row_is_done(row: FloorComponentRow) -> Bool {
     Absent => false
     Present { value: o } =>
       match o {
-        Done => true
-        Refused { diagnostic: _ } => false
-        Failed { error: _, output: _ } => false
-        TimedOut { basis: _, budget: _, elapsed: _ } => false
-        Skipped { reason: _ } => false
-        Final { shown_failures: n } => n == 0
+        std.observation.Done => true
+        std.observation.Refused { diagnostic: _ } => false
+        std.observation.Failed { error: _, output: _ } => false
+        std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => false
+        std.observation.Skipped { reason: _ } => false
+        std.observation.Final { shown_failures: n } => n == 0
       }
   }
 }
 
 fn floor_component_row_json(row: FloorComponentRow) -> extdeps.languages.json.emit.JsonValue {
   match floor_component_transition_outcome(t: row.event.transition) {
-    Absent => json_object(members: [
-      json_kv(key: "index", value: json_int(n: floor_component_row_index(row: row))),
-      json_kv(key: "label", value: json_string(s: floor_component_row_label(row: row))),
-      json_kv(key: "outcome", value: json_string(s: floor_component_outcome_wire_tag(r: ComponentNotConcluded))),
-      json_kv(key: "failure_mode", value: json_string(s: floor_component_failure_mode_tag(m: row.failure_mode)))
+    Absent => extdeps.languages.json.emit.json_object(members: [
+      extdeps.languages.json.emit.json_kv(key: "index", value: extdeps.languages.json.emit.json_int(n: floor_component_row_index(row: row))),
+      extdeps.languages.json.emit.json_kv(key: "label", value: extdeps.languages.json.emit.json_string(s: floor_component_row_label(row: row))),
+      extdeps.languages.json.emit.json_kv(key: "outcome", value: extdeps.languages.json.emit.json_string(s: gunbc.floor_component_receipt_document.floor_component_outcome_wire_tag(r: gunbc.floor_component_receipt_document.ComponentNotConcluded))),
+      extdeps.languages.json.emit.json_kv(key: "failure_mode", value: extdeps.languages.json.emit.json_string(s: gunbc.floor_component_receipt_document.floor_component_failure_mode_tag(m: row.failure_mode)))
     ])
-    Present { value: o } => json_object(members: concat(
+    Present { value: o } => extdeps.languages.json.emit.json_object(members: concat(
       [
-        json_kv(key: "index", value: json_int(n: floor_component_row_index(row: row))),
-        json_kv(key: "label", value: json_string(s: floor_component_row_label(row: row))),
-          json_kv(key: "witnesses", value: json_int(n: row.witnesses)),
-        json_kv(key: "outcome", value: json_string(s: floor_component_outcome_wire_tag(r: gunbc.floor_component_receipt_document.ComponentConcluded { outcome: o }))),
-        json_kv(key: "failure_mode", value: json_string(s: floor_component_failure_mode_tag(m: row.failure_mode)))
+        extdeps.languages.json.emit.json_kv(key: "index", value: extdeps.languages.json.emit.json_int(n: floor_component_row_index(row: row))),
+        extdeps.languages.json.emit.json_kv(key: "label", value: extdeps.languages.json.emit.json_string(s: floor_component_row_label(row: row))),
+          extdeps.languages.json.emit.json_kv(key: "witnesses", value: extdeps.languages.json.emit.json_int(n: row.witnesses)),
+        extdeps.languages.json.emit.json_kv(key: "outcome", value: extdeps.languages.json.emit.json_string(s: gunbc.floor_component_receipt_document.floor_component_outcome_wire_tag(r: gunbc.floor_component_receipt_document.ComponentConcluded { outcome: o }))),
+        extdeps.languages.json.emit.json_kv(key: "failure_mode", value: extdeps.languages.json.emit.json_string(s: gunbc.floor_component_receipt_document.floor_component_failure_mode_tag(m: row.failure_mode)))
       ],
       concat(
         floor_component_outcome_members(o: o),
-        floor_component_wall_members(w: observation_wall(event: row.event))
+        floor_component_wall_members(w: std.observation.observation_wall(event: row.event))
       )
     ))
   }
@@ -312,11 +313,11 @@ fn floor_run_terminal_json(
   concluded_count: std.nat.Nat,
   pending_from_index: std.nat.Nat
 ) -> extdeps.languages.json.emit.JsonValue {
-  json_object(members: [
-    json_kv(key: "disposition", value: json_string(s: disposition as String)),
-    json_kv(key: "cause", value: json_string(s: cause as String)),
-    json_kv(key: "concluded_count", value: json_int(n: concluded_count)),
-    json_kv(key: "pending_from_index", value: json_int(n: pending_from_index))
+  extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "disposition", value: extdeps.languages.json.emit.json_string(s: disposition as String)),
+    extdeps.languages.json.emit.json_kv(key: "cause", value: extdeps.languages.json.emit.json_string(s: cause as String)),
+    extdeps.languages.json.emit.json_kv(key: "concluded_count", value: extdeps.languages.json.emit.json_int(n: concluded_count)),
+    extdeps.languages.json.emit.json_kv(key: "pending_from_index", value: extdeps.languages.json.emit.json_int(n: pending_from_index))
   ])
 }
 
@@ -332,22 +333,22 @@ fn floor_component_receipt_json_value(
   pending_from_index: std.nat.Nat
 ) -> extdeps.languages.json.emit.JsonValue {
   let base = [
-    json_kv(key: receipt_member_schema, value: json_string(s: floor_component_receipt_schema)),
-    json_kv(key: receipt_member_workflow_name, value: json_string(s: workflow_name as String)),
-    json_kv(key: receipt_member_run_id, value: json_string(s: run_id as String)),
-    json_kv(key: receipt_member_head_sha, value: json_string(s: head_sha as String)),
-    json_kv(key: receipt_member_component_count, value: json_int(n: count(rows))),
-    json_kv(key: receipt_member_unsuccessful_components, value: json_array(
+    extdeps.languages.json.emit.json_kv(key: gunbc.floor_component_receipt_document.receipt_member_schema, value: extdeps.languages.json.emit.json_string(s: floor_component_receipt_schema)),
+    extdeps.languages.json.emit.json_kv(key: gunbc.floor_component_receipt_document.receipt_member_workflow_name, value: extdeps.languages.json.emit.json_string(s: workflow_name as String)),
+    extdeps.languages.json.emit.json_kv(key: gunbc.floor_component_receipt_document.receipt_member_run_id, value: extdeps.languages.json.emit.json_string(s: run_id as String)),
+    extdeps.languages.json.emit.json_kv(key: gunbc.floor_component_receipt_document.receipt_member_head_sha, value: extdeps.languages.json.emit.json_string(s: head_sha as String)),
+    extdeps.languages.json.emit.json_kv(key: gunbc.floor_component_receipt_document.receipt_member_component_count, value: extdeps.languages.json.emit.json_int(n: count(rows))),
+    extdeps.languages.json.emit.json_kv(key: gunbc.floor_component_receipt_document.receipt_member_unsuccessful_components, value: extdeps.languages.json.emit.json_array(
       elements: floor_unsuccessful_component_rows(rows: rows) |> map(r => floor_component_row_json(row: r))
     )),
-    json_kv(key: receipt_member_components, value: json_array(
+    extdeps.languages.json.emit.json_kv(key: gunbc.floor_component_receipt_document.receipt_member_components, value: extdeps.languages.json.emit.json_array(
       elements: rows |> map(r => floor_component_row_json(row: r))
     ))
   ]
   if run_terminal_present {
-    json_object(members: concat(base, [
-      json_kv(
-        key: receipt_member_run_terminal,
+    extdeps.languages.json.emit.json_object(members: concat(base, [
+      extdeps.languages.json.emit.json_kv(
+        key: gunbc.floor_component_receipt_document.receipt_member_run_terminal,
         value: floor_run_terminal_json(
           disposition: run_terminal_disposition,
           cause: run_terminal_cause,
@@ -357,8 +358,8 @@ fn floor_component_receipt_json_value(
       )
     ]))
   } else {
-    json_object(members: concat(base, [
-      json_kv(key: receipt_member_run_terminal, value: json_null())
+    extdeps.languages.json.emit.json_object(members: concat(base, [
+      extdeps.languages.json.emit.json_kv(key: gunbc.floor_component_receipt_document.receipt_member_run_terminal, value: extdeps.languages.json.emit.json_null())
     ]))
   }
 }
@@ -371,7 +372,7 @@ fn floor_component_receipt_document(
   head_sha: std.types.CommitSha,
   rows: List<FloorComponentRow>
 ) -> String {
-  serialize_json(v: floor_component_receipt_json_value(
+  extdeps.languages.json.emit.serialize_json(v: floor_component_receipt_json_value(
     workflow_name: workflow_name,
     run_id: run_id,
     head_sha: head_sha,
@@ -393,7 +394,7 @@ fn floor_component_receipt_document_incomplete(
   concluded_count: std.nat.Nat,
   pending_from_index: std.nat.Nat
 ) -> String {
-  serialize_json(v: floor_component_receipt_json_value(
+  extdeps.languages.json.emit.serialize_json(v: floor_component_receipt_json_value(
     workflow_name: workflow_name,
     run_id: run_id,
     head_sha: head_sha,

@@ -1,5 +1,7 @@
 module v2.test.lens_fact_density.hollow_alias_blocked_via_always_required_lenses
 
+
+
 data hollow_alias_ar_root: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^hollow_alias_ar_subject } },
   children: [],
@@ -19,12 +21,12 @@ fn hollow_alias_ar_tree() -> v2.compiler.inferred_tree.InferredTree {
   )
 }
 
-test fn hollow_alias_blocked_via_always_required_lenses_holds() -> v2.std.logic.Bool {
-  match run_required_lens_gates(
+test fn hollow_alias_blocked_via_always_required_lenses_holds() -> Bool {
+  match v2.compiler.compile.run_required_lens_gates(
     inferred: hollow_alias_ar_tree(),
-    lenses: always_required_lenses()
+    lenses: v2.compiler.compile.always_required_lenses()
   ) {
-    Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }

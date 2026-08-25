@@ -6,27 +6,27 @@ data srv3_os_install_actuator_toolchain_ensure_scaffold: std.disposition.Disposi
 }
 
 data os_install_actuator_toolchain_ensure_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect_realize",
     decl_name: "realize_os_install_actuator_toolchain_ensure",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 func srv3_os_install_actuator_toolchain_ensure() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
-  host_toolchain_ensure(host: operator_host_srv3, kind: OsInstallActuator)
+  gunbc.host_toolchain_ensure.host_toolchain_ensure(host: gunbc.fleet_intent_network.operator_host_srv3, kind: gunbc.host_toolchain_ensure.OsInstallActuator)
 }
 
 fn os_install_actuator_toolchain_ensure_routes_through_host_effect_apply() -> Bool {
   match os_install_actuator_toolchain_ensure_dissolution_trigger {
-    Scaffold {
-      dissolves_to: RealizationDispatch,
-      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
+    std.disposition.Scaffold {
+      dissolves_to: std.disposition.RealizationDispatch,
+      bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
       m == "gunbc.host_effect_realize" && n == "realize_os_install_actuator_toolchain_ensure"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }

@@ -1,16 +1,16 @@
 module v2.test.workflow.frontier_probe_closure_readthrough
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 fn fp_readthrough_closure_subject_matching_digest(
   refs: List<v2.compiler.source_authority.SourceRef>,
   ingest_read_count: Int,
   entry: v2.compiler.source_authority.SourceRef
 ) -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  frontier_probe_discovered_closure_subject_for_matrix(
-    closure: frontier_probe_discovered_closure_seal(refs: refs, entry: entry),
-    coverage: SourceRootCoverageComplete,
+  v2.compiler.self_host.frontier_probe.frontier_probe_discovered_closure_subject_for_matrix(
+    closure: v2.compiler.source_authority.frontier_probe_discovered_closure_seal(refs: refs, entry: entry),
+    coverage: v2.compiler.source_authority.SourceRootCoverageComplete,
     ingest_read_count: ingest_read_count
   )
 }
@@ -18,8 +18,8 @@ fn fp_readthrough_closure_subject_matching_digest(
 fn fp_readthrough_missing_path_ref() -> v2.compiler.source_authority.SourceRef {
   v2.compiler.source_authority.SourceRef {
     path: "dag/nonexistent_fp_matrix_probe_path.dag",
-    source_root: DagTree,
-    content_hash: std.content_hash.content_hash_of_value(value: "missing-path" as std.types.NonEmptyStr)
+    source_root: v2.std.cross_tree.import_model.DagTree,
+    content_hash: std.content_hash.content_hash_of_value(value: "missing-path" as NonEmptyStr)
   }
 }
 
@@ -37,8 +37,8 @@ fn fp_readthrough_read_failure_subject() -> v2.compiler.self_host.frontier_probe
 fn fp_readthrough_wrong_hash_ref() -> v2.compiler.source_authority.SourceRef {
   v2.compiler.source_authority.SourceRef {
     path: "dag/std/algebra.dag",
-    source_root: DagTree,
-    content_hash: std.content_hash.content_hash_of_value(value: "wrong-hash-bytes" as std.types.NonEmptyStr)
+    source_root: v2.std.cross_tree.import_model.DagTree,
+    content_hash: std.content_hash.content_hash_of_value(value: "wrong-hash-bytes" as NonEmptyStr)
   }
 }
 
@@ -53,41 +53,41 @@ fn fp_readthrough_hash_mismatch_subject() -> v2.compiler.self_host.frontier_prob
   )
 }
 
-test fn frontier_probe_read_failure_detail_refused_holds() -> v2.std.logic.Bool {
-  match frontier_probe_receipt_for_subject(
+test fn frontier_probe_read_failure_detail_refused_holds() -> Bool {
+  match v2.compiler.self_host.frontier_probe.frontier_probe_receipt_for_subject(
     subject: fp_readthrough_read_failure_subject(),
     fixture_module_path: ""
   ).detail {
-    SourceRefReadRefused { source_ref: _, error: _ } => true
+    v2.compiler.self_host.frontier_probe_types.SourceRefReadRefused { source_ref: _, error: _ } => true
     _ => false
   }
 }
 
-test fn frontier_probe_hash_mismatch_detail_carries_observed_holds() -> v2.std.logic.Bool {
-  match frontier_probe_receipt_for_subject(
+test fn frontier_probe_hash_mismatch_detail_carries_observed_holds() -> Bool {
+  match v2.compiler.self_host.frontier_probe.frontier_probe_receipt_for_subject(
     subject: fp_readthrough_hash_mismatch_subject(),
     fixture_module_path: ""
   ).detail {
-    SourceRefContentHashMismatch { source_ref: _, expected: _, observed: _ } => true
+    v2.compiler.self_host.frontier_probe_types.SourceRefContentHashMismatch { source_ref: _, expected: _, observed: _ } => true
     _ => false
   }
 }
 
-test fn frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds() -> v2.std.logic.Bool {
+test fn frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds() -> Bool {
   let ingest_count = frontier_probe_elision_boundary_coverage_receipt.ingest_read_count
   if ingest_count <= 64 {
     false
   } else {
     match frontier_probe_elision_boundary_coverage_receipt.coverage {
-      SourceRootManifestElided { read_count: elided_reads, cap: cap } =>
+      v2.compiler.source_authority.SourceRootManifestElided { read_count: elided_reads, cap: cap } =>
         if elided_reads > cap && elided_reads == ingest_count {
-          match frontier_probe_coverage_gate(
+          match v2.compiler.self_host.frontier_probe.frontier_probe_coverage_gate(
             coverage: frontier_probe_elision_boundary_coverage_receipt.coverage,
-            refs: frontier_probe_elision_boundary_closure_refs,
+            refs: v2.test.fixture.frontier_probe_elision_boundary_overlay.frontier_probe_elision_boundary_closure_refs,
             ingest_read_count: ingest_count
           ) {
-            FrontierProbeCoveragePermitted =>
-              length(xs: frontier_probe_elision_boundary_closure_refs) == elided_reads
+            v2.compiler.self_host.frontier_probe.FrontierProbeCoveragePermitted =>
+              v2.std.algebra.length(xs: v2.test.fixture.frontier_probe_elision_boundary_overlay.frontier_probe_elision_boundary_closure_refs) == elided_reads
             _ => false
           }
         } else {

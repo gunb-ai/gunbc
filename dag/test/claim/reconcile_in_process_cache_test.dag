@@ -2,76 +2,76 @@ module test.claim.reconcile_in_process_cache
 
 // Same repair as hermetic_fixture_realization_test: the partial import list is the defect.
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data shared_subject_digest: std.content_hash.ContentHash = content_hash_of_value(value: "reconcile-in-process-witness-shared-subject-digest")
+data shared_subject_digest: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "reconcile-in-process-witness-shared-subject-digest")
 test fn witness_parse_cache_is_in_process_hand_authored() -> Bool {
-  let row = cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.parse_cache_facts)
-  (catalog_key_derivation_classification(kd: extdeps.realization.reconcile_in_process.parse_cache_facts.key_derivation) == HandAuthoredString)
+  let row = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.parse_cache_facts)
+  (extdeps.cache.types.catalog_key_derivation_classification(kd: parse_cache_facts.key_derivation) == std.cache_interface.HandAuthoredString)
     && !row.key_derivation.content_verified_on_read
-    && (row.locality == InProcess)
-    && (row.value_shape == StructuredArtifact)
-    && (row.miss_semantics == MissThenCreate)
+    && (row.locality == std.cache_interface.InProcess)
+    && (row.value_shape == std.cache_interface.StructuredArtifact)
+    && (row.miss_semantics == std.cache_interface.MissThenCreate)
 }
 
 test fn witness_typed_module_cache_is_in_process_native_internal() -> Bool {
-  let row = cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.typed_module_cache_facts)
-  (catalog_key_derivation_classification(kd: extdeps.realization.reconcile_in_process.typed_module_cache_facts.key_derivation) == NativeInternalHash)
+  let row = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.typed_module_cache_facts)
+  (extdeps.cache.types.catalog_key_derivation_classification(kd: typed_module_cache_facts.key_derivation) == std.cache_interface.NativeInternalHash)
     && !row.key_derivation.content_verified_on_read
-    && (row.locality == InProcess)
-    && (row.value_shape == StructuredArtifact)
-    && (row.miss_semantics == MissThenCreate)
+    && (row.locality == std.cache_interface.InProcess)
+    && (row.value_shape == std.cache_interface.StructuredArtifact)
+    && (row.miss_semantics == std.cache_interface.MissThenCreate)
 }
 
 test fn witness_disk_sibling_is_content_addressed() -> Bool {
-  let disk = cache_interface_facts_from_catalog(row: extdeps.realization.resolved_graph.resolved_graph_cache_facts)
-  (catalog_key_derivation_classification(kd: extdeps.realization.resolved_graph.resolved_graph_cache_facts.key_derivation) == ContentAddressedByValue)
+  let disk = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.resolved_graph.resolved_graph_cache_facts)
+  (extdeps.cache.types.catalog_key_derivation_classification(kd: resolved_graph_cache_facts.key_derivation) == std.cache_interface.ContentAddressedByValue)
     && disk.key_derivation.content_verified_on_read
-    && (disk.locality == PerHostFilesystem)
+    && (disk.locality == std.cache_interface.PerHostFilesystem)
 }
 
 test fn witness_in_process_siblings_share_locality_not_key_class() -> Bool {
-  let parse = cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.parse_cache_facts)
-  let typed = cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.typed_module_cache_facts)
-  let disk = cache_interface_facts_from_catalog(row: extdeps.realization.resolved_graph.resolved_graph_cache_facts)
+  let parse = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.parse_cache_facts)
+  let typed = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.typed_module_cache_facts)
+  let disk = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.resolved_graph.resolved_graph_cache_facts)
   (parse.locality == typed.locality)
-    && (parse.locality == InProcess)
+    && (parse.locality == std.cache_interface.InProcess)
     && !(disk.locality == parse.locality)
-    && (catalog_key_derivation_classification(kd: extdeps.realization.reconcile_in_process.parse_cache_facts.key_derivation) == HandAuthoredString)
-    && (catalog_key_derivation_classification(kd: extdeps.realization.reconcile_in_process.typed_module_cache_facts.key_derivation) == NativeInternalHash)
-    && (catalog_key_derivation_classification(kd: extdeps.realization.resolved_graph.resolved_graph_cache_facts.key_derivation) == ContentAddressedByValue)
+    && (extdeps.cache.types.catalog_key_derivation_classification(kd: parse_cache_facts.key_derivation) == std.cache_interface.HandAuthoredString)
+    && (extdeps.cache.types.catalog_key_derivation_classification(kd: typed_module_cache_facts.key_derivation) == std.cache_interface.NativeInternalHash)
+    && (extdeps.cache.types.catalog_key_derivation_classification(kd: resolved_graph_cache_facts.key_derivation) == std.cache_interface.ContentAddressedByValue)
 }
 
 test fn witness_parse_source_routes_to_parse_cache_backend() -> Bool {
   let id = std.cache_interface.ArtifactIdentity {
     subject_digest: shared_subject_digest,
-    artifact_kind: parse_source_artifact_kind,
+    artifact_kind: std.cache_identity.parse_source_artifact_kind,
   }
-  let key = cache_key_projection_transport(artifact: id, backend: extdeps.realization.reconcile_in_process.parse_cache_facts)
+  let key = extdeps.cache.cache_key_projection_transport(artifact: id, backend: extdeps.realization.reconcile_in_process.parse_cache_facts)
   key.store == extdeps.realization.reconcile_in_process.parse_cache_id
 }
 
 test fn witness_typed_module_routes_to_typed_module_cache_backend() -> Bool {
   let id = std.cache_interface.ArtifactIdentity {
     subject_digest: shared_subject_digest,
-    artifact_kind: typed_module_artifact_kind,
+    artifact_kind: std.cache_identity.typed_module_artifact_kind,
   }
-  let key = cache_key_projection_transport(artifact: id, backend: extdeps.realization.reconcile_in_process.typed_module_cache_facts)
-  key.store == typed_module_cache_id
+  let key = extdeps.cache.cache_key_projection_transport(artifact: id, backend: extdeps.realization.reconcile_in_process.typed_module_cache_facts)
+  key.store == extdeps.realization.reconcile_in_process.typed_module_cache_id
 }
 
 test fn witness_resolved_graph_routes_to_disk_backend() -> Bool {
   let id = std.cache_interface.ArtifactIdentity {
     subject_digest: shared_subject_digest,
-    artifact_kind: resolved_graph_artifact_kind,
+    artifact_kind: std.cache_identity.resolved_graph_artifact_kind,
   }
-  let key = cache_key_projection_transport(artifact: id, backend: extdeps.realization.resolved_graph.resolved_graph_cache_facts)
-  key.store == resolved_graph_cache_id
+  let key = extdeps.cache.cache_key_projection_transport(artifact: id, backend: extdeps.realization.resolved_graph.resolved_graph_cache_facts)
+  key.store == extdeps.realization.resolved_graph.resolved_graph_cache_id
 }
 
 test fn witness_reconcile_family_backends_are_distinct() -> Bool {
-  !(extdeps.realization.reconcile_in_process.parse_cache_id == typed_module_cache_id)
-    && !(extdeps.realization.reconcile_in_process.parse_cache_id == resolved_graph_cache_id)
-    && !(typed_module_cache_id == resolved_graph_cache_id)
+  !(extdeps.realization.reconcile_in_process.parse_cache_id == extdeps.realization.reconcile_in_process.typed_module_cache_id)
+    && !(extdeps.realization.reconcile_in_process.parse_cache_id == extdeps.realization.resolved_graph.resolved_graph_cache_id)
+    && !(extdeps.realization.reconcile_in_process.typed_module_cache_id == extdeps.realization.resolved_graph.resolved_graph_cache_id)
 }
 

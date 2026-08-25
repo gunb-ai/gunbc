@@ -1,5 +1,7 @@
 module gunbc.repo_local_git_config
 
+
+
 data repo_local_git_config_authority_note: String = "Repository-local Git configuration desired state for gunbc integration-policy projections (generated-file conflict policy charter, lane 2). The merge-driver definition for merge=generated-artifact and core.hooksPath are modeled facts reconciled against observed read-back — a documented manual git config command with no read-back is declared-but-unrealized configuration and does not satisfy the lane. merge.generated-artifact.driver no longer answers `true`. `true` took the ours side and exited 0, so git recorded a CLEAN merge while the other side's authority-derived bytes were dropped with no signal — the DESIGN section 5 absorbing fallback at the integration boundary, measured twice on PR #7836 against the stage0 seed. The binding now names the emitted refusing driver (gunbc.generated_artifact_merge_driver), which leaves the ours side in the worktree verbatim with no conflict markers, marks the path unmerged, and exits nonzero with the located regeneration recipe. Git invokes a low-level merge driver only when BOTH sides changed the path relative to the merge base, so the refusal fires exactly where taking either side drops the other side and adds no stop to a merge that was previously correct. It raises the class to mechanically preventable, not to structural: commit-writer admission plus regeneration receipts remain the boundary a writer cannot pass. Bindings are Ensured: reconcile upserts drift, never tears down a binding absent from desired. Read-back uses git config --local --get so a matching global/system value cannot fabricate convergence. Hook install argv and git.Core.ConfigLocal\{Get,Set\}\{,InRepo\} transport both derive from extdeps.git shape_git_config_local_* — one executable authority, cwd-relative for generated hooks and -C repo for the actuator."
 
 type RepoLocalGitConfigMemberAt = String
@@ -20,7 +22,7 @@ type RepoLocalGitConfigConvergedEvidence {
 }
 
 data generated_artifact_merge_driver_key: String = "merge.generated-artifact.driver"
-data generated_artifact_merge_driver_value: String = generated_artifact_merge_driver_config_value()
+data generated_artifact_merge_driver_value: String = gunbc.generated_artifact_merge_driver.generated_artifact_merge_driver_config_value()
 data core_hooks_path_key: String = "core.hooksPath"
 data core_hooks_path_value: String = ".githooks"
 
@@ -48,16 +50,16 @@ fn binding_key_eq(a: String, b: String) -> Bool { a == b }
 fn binding_value_eq(a: RepoLocalGitConfigBinding, b: RepoLocalGitConfigBinding) -> Bool {
   a.value == b.value
 }
-fn binding_ownership(_: RepoLocalGitConfigBinding) -> Ownership? {
-  Present { value: Ensured }
+fn binding_ownership(_: RepoLocalGitConfigBinding) -> gunbc.ownership.Ownership? {
+  Present { value: gunbc.ownership.Ensured }
 }
 
 fn repo_local_git_config_reconcile(
   desired: List<RepoLocalGitConfigBinding>,
   observed: List<RepoLocalGitConfigBinding>,
-) -> MembershipPlan<RepoLocalGitConfigBinding, RepoLocalGitConfigMemberAt> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
+) -> gunbc.membership_reconcile.MembershipPlan<RepoLocalGitConfigBinding, RepoLocalGitConfigMemberAt> {
+  gunbc.membership_reconcile.membership_plan_admitting_outcome(
+    outcome: gunbc.membership_reconcile.membership_reconcile(
       desired: desired,
       observed: observed,
       key_of: binding_key,
@@ -69,19 +71,19 @@ fn repo_local_git_config_reconcile(
 }
 
 fn reconcile_install_argv(binding: RepoLocalGitConfigBinding) -> List<String> {
-  shape_git_config_local_argv(key: binding.key, value: binding.value)
+  extdeps.git.shape_git_config_local_argv(key: binding.key, value: binding.value)
 }
 
 // THE COMMAND FORM OF THE SAME INSTALL. The hook emitter renders one command to text and the
 // actuator hands words to a transport; both now derive from extdeps.git git_config_local_set_args,
 // so neither re-spells --local. The emitter previously wrapped this argv in a hand-written
 // ArgvCommand record, which is the construction extdeps.exec.command's seal removes.
-fn reconcile_install_command(binding: RepoLocalGitConfigBinding) -> ArgvCommand {
-  git_config_local_set_command(key: binding.key, value: binding.value)
+fn reconcile_install_command(binding: RepoLocalGitConfigBinding) -> extdeps.exec.command.ArgvCommand {
+  extdeps.git.git_config_local_set_command(key: binding.key, value: binding.value)
 }
 
 fn reconcile_read_back_argv(binding: RepoLocalGitConfigBinding) -> List<String> {
-  shape_git_config_local_get_argv(key: binding.key)
+  extdeps.git.shape_git_config_local_get_argv(key: binding.key)
 }
 
 fn binding_read_back_matches(binding: RepoLocalGitConfigBinding, observed_value: String) -> Bool {
@@ -99,15 +101,15 @@ fn observed_binding(key: String, value: String) -> RepoLocalGitConfigBinding {
 }
 
 fn repo_local_git_config_converged(observed: List<RepoLocalGitConfigBinding>) -> Bool {
-  membership_write_count(plan: repo_local_git_config_reconcile(
+  gunbc.membership_reconcile.membership_write_count(plan: repo_local_git_config_reconcile(
     desired: desired_repo_local_git_config_bindings(),
     observed: observed,
   )) == 0
-    && membership_removal_count(plan: repo_local_git_config_reconcile(
+    && gunbc.membership_reconcile.membership_removal_count(plan: repo_local_git_config_reconcile(
       desired: desired_repo_local_git_config_bindings(),
       observed: observed,
     )) == 0
-    && membership_refusal_count(plan: repo_local_git_config_reconcile(
+    && gunbc.membership_reconcile.membership_refusal_count(plan: repo_local_git_config_reconcile(
       desired: desired_repo_local_git_config_bindings(),
       observed: observed,
     )) == 0
@@ -142,14 +144,14 @@ fn observe_repo_local_git_config_bindings_at_repo(repo: std.types.FilePath) -> L
 fn apply_repo_local_git_config_action_at_repo(
   repo: std.types.FilePath,
   acc: RepoLocalGitConfigApplyReceipt,
-  action: MemberAction<RepoLocalGitConfigBinding, RepoLocalGitConfigMemberAt>,
+  action: gunbc.membership_reconcile.MemberAction<RepoLocalGitConfigBinding, RepoLocalGitConfigMemberAt>,
 ) -> RepoLocalGitConfigApplyReceipt {
   if !acc.all_success {
     acc
   } else {
     match action {
-      MemberAdded { at: _, to: binding } => apply_repo_local_git_config_binding(repo: repo, binding: binding, acc: acc)
-      MemberChanged { at: _, from: _, to: binding } => apply_repo_local_git_config_binding(repo: repo, binding: binding, acc: acc)
+      gunbc.membership_reconcile.MemberAdded { at: _, to: binding } => apply_repo_local_git_config_binding(repo: repo, binding: binding, acc: acc)
+      gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: binding } => apply_repo_local_git_config_binding(repo: repo, binding: binding, acc: acc)
       _ => acc
     }
   }
@@ -178,7 +180,7 @@ fn apply_repo_local_git_config_binding(
 
 fn apply_repo_local_git_config_plan_at_repo(
   repo: std.types.FilePath,
-  plan: MembershipPlan<RepoLocalGitConfigBinding, RepoLocalGitConfigMemberAt>,
+  plan: gunbc.membership_reconcile.MembershipPlan<RepoLocalGitConfigBinding, RepoLocalGitConfigMemberAt>,
 ) -> RepoLocalGitConfigApplyReceipt {
   fold(
     plan.actions,
@@ -191,29 +193,29 @@ fn apply_repo_local_git_config_plan_at_repo(
 
 fn repo_local_git_config_converge_actuate_at(
   repo: std.types.FilePath,
-) -> Reconciliation<List<RepoLocalGitConfigBinding>, RepoLocalGitConfigConvergedEvidence> {
+) -> std.realization_reconcile.Reconciliation<List<RepoLocalGitConfigBinding>, RepoLocalGitConfigConvergedEvidence> {
   let desired = desired_repo_local_git_config_bindings()
   let observed_before = observe_repo_local_git_config_bindings_at_repo(repo: repo)
   let plan = repo_local_git_config_reconcile(desired: desired, observed: observed_before)
-  let refusals = membership_refusal_count(plan: plan)
+  let refusals = gunbc.membership_reconcile.membership_refusal_count(plan: plan)
   if refusals > 0 {
-    NotConverged {
+    std.realization_reconcile.NotConverged {
       reason: "repo local git config reconcile emitted refusals",
       applied: desired,
     }
   } else {
-    let writes = membership_write_count(plan: plan)
+    let writes = gunbc.membership_reconcile.membership_write_count(plan: plan)
     let applied = if writes > 0 {
       apply_repo_local_git_config_plan_at_repo(repo: repo, plan: plan)
     } else {
       RepoLocalGitConfigApplyReceipt { all_success: true, first_failure: "" }
     }
     if !applied.all_success {
-      NotConverged { reason: applied.first_failure, applied: desired }
+      std.realization_reconcile.NotConverged { reason: applied.first_failure, applied: desired }
     } else {
       let observed_after = observe_repo_local_git_config_bindings_at_repo(repo: repo)
       if repo_local_git_config_converged(observed: observed_after) {
-        Converged {
+        std.realization_reconcile.Converged {
           evidence: RepoLocalGitConfigConvergedEvidence {
             upserts_applied: writes,
             observed_bindings: observed_after,
@@ -221,7 +223,7 @@ fn repo_local_git_config_converge_actuate_at(
           applied: observed_after,
         }
       } else {
-        NotConverged {
+        std.realization_reconcile.NotConverged {
           reason: "repo local git config read-back failed after apply — local bindings absent or mismatched",
           applied: observed_after,
         }
@@ -230,15 +232,15 @@ fn repo_local_git_config_converge_actuate_at(
   }
 }
 
-fn repo_local_git_config_converge_actuate() -> Reconciliation<List<RepoLocalGitConfigBinding>, RepoLocalGitConfigConvergedEvidence> {
+fn repo_local_git_config_converge_actuate() -> std.realization_reconcile.Reconciliation<List<RepoLocalGitConfigBinding>, RepoLocalGitConfigConvergedEvidence> {
   let root = git.Inspect.Toplevel()
   repo_local_git_config_converge_actuate_at(repo: root.path)
 }
 
-func converge() -> ProcessExit {
+func converge() -> std.process.ProcessExit {
   match repo_local_git_config_converge_actuate() {
-    Converged { evidence: _, applied: _ } => ExitSuccess
-    NotConverged { reason: r, applied: _ } =>
-      exit_failure(reason: concat("repo local git config converge refused: ", r))
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => std.process.ExitSuccess
+    std.realization_reconcile.NotConverged { reason: r, applied: _ } =>
+      std.process.exit_failure(reason: concat("repo local git config converge refused: ", r))
   }
 }

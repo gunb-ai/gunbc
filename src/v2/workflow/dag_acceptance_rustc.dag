@@ -7,24 +7,24 @@ data rustc_missing_exit_code: Int = 127
 
 data rustc_observation_partition_note: String = "FOUR OBSERVED FACTS, PARTITIONED BY WHAT THEY ARE FACTS ABOUT, and the order of the arms is the whole content of this function. A zero exit is the candidate accepted. Exit 127 is the shell's own not-found status — a fact about THIS MACHINE, never about the candidate, so it can never read as a rejection. Output carrying an error marker is the candidate rejected, and it is reported through the EXISTING TargetCompileVerdict authority rather than a second vocabulary; the diagnostic code names the marker that was matched, because nothing here splits the toolchain stream into individual diagnostics and a count nobody computed would be a fabricated measurement. Everything else is a run that failed and told us nothing we can read, which is IGNORANCE and gets the undecided arm rather than being rounded toward the nearer verdict."
 
-fn rustc_target_compile_observation(source: String) -> TargetCompileObservation {
+fn rustc_target_compile_observation(source: String) -> v2.workflow.dag_acceptance.TargetCompileObservation {
   let result = rustc.Check.CheckSourceText(source: source, edition: "2021")
   if result.success {
-    TargetCompileDecided { verdict: TargetCompileAccepted }
+    v2.workflow.dag_acceptance.TargetCompileDecided { verdict: v2.std.leaf_model_verification.TargetCompileAccepted }
   } else if result.exit_code == rustc_missing_exit_code {
-    TargetCompilerUnavailable { cause: "rustc is not executable on this host" }
+    v2.workflow.dag_acceptance.TargetCompilerUnavailable { cause: "rustc is not executable on this host" }
   } else if string_contains(s: result.stderr, needle: "error") {
-    TargetCompileDecided {
-      verdict: TargetCompileRejected { diagnostic_code: ^rustc_diagnostic_stream_error_marker }
+    v2.workflow.dag_acceptance.TargetCompileDecided {
+      verdict: v2.std.leaf_model_verification.TargetCompileRejected { diagnostic_code: ^rustc_diagnostic_stream_error_marker }
     }
   } else {
-    TargetCompileFailedUnparsed {
+    v2.workflow.dag_acceptance.TargetCompileFailedUnparsed {
       exit_code: result.exit_code,
       stderr_length: string_length(s: result.stderr)
     }
   }
 }
 
-fn rustc_target_compile_executor() -> TargetCompileExecutor {
-  TargetCompileExecutor { compile_target_source: rustc_target_compile_observation }
+fn rustc_target_compile_executor() -> v2.workflow.dag_acceptance.TargetCompileExecutor {
+  v2.workflow.dag_acceptance.TargetCompileExecutor { compile_target_source: rustc_target_compile_observation }
 }

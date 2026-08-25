@@ -53,12 +53,12 @@ fn readback_non_independent_evidence_verdict(
   observed: std.upsert_decision.ObservationVerdict,
 ) -> std.upsert_decision.ObservationVerdict {
   match observed {
-    Converged => UnknownRefused
-    Absent => std.upsert_decision.Absent
-    Drifted => std.upsert_decision.Drifted
-    Conflict => Conflict
-    Inaccessible => Inaccessible
-    UnknownRefused => UnknownRefused
+    std.upsert_decision.Converged => std.upsert_decision.UnknownRefused
+    std.upsert_decision.Absent => std.upsert_decision.Absent
+    std.upsert_decision.Drifted => std.upsert_decision.Drifted
+    std.upsert_decision.Conflict => std.upsert_decision.Conflict
+    std.upsert_decision.Inaccessible => std.upsert_decision.Inaccessible
+    std.upsert_decision.UnknownRefused => std.upsert_decision.UnknownRefused
   }
 }
 
@@ -91,12 +91,12 @@ fn readback_evidence_trusting_widen_sketch(
 
 fn readback_verdict_is_converged(v: std.upsert_decision.ObservationVerdict) -> Bool {
   match v {
-    Converged => true
-    Absent => false
-    Drifted => false
-    Conflict => false
-    Inaccessible => false
-    UnknownRefused => false
+    std.upsert_decision.Converged => true
+    std.upsert_decision.Absent => false
+    std.upsert_decision.Drifted => false
+    std.upsert_decision.Conflict => false
+    std.upsert_decision.Inaccessible => false
+    std.upsert_decision.UnknownRefused => false
   }
 }
 
@@ -112,7 +112,7 @@ fn readback_evidence_gate_accepts(p: ReadBackProbe, verdict: std.upsert_decision
   )
 }
 
-// The lane's real probes, classified. This roster is a small honest inventory and not a claim of completeness — it covers the transports this lane has actually reasoned about, and a probe absent from it is unclassified, which the criterion already treats as non-independent. sccache_show_stats is the cited instance and the reason the module exists, and it is the ProbeAnswersWithoutSubject exemplar rather than a ProbeMayEstablish one. systemd_show_property and systemd_is_active are the ones that make the criterion non-vacuous in the other direction: `systemctl show` and `systemctl is-active` read the manager's recorded state and start nothing, so they are genuinely inert and their std.upsert_decision.Converged results survive — a criterion that refused every probe would be the absorbing fallback wearing a safety badge. proc_swaps_read is classified inert on the same reasoning: reading /proc/swaps enumerates active swap areas and cannot activate one, unlike `swapon` whose ensure shape would establish the very backing a query is supposed to find.
+// The lane's real probes, classified. This roster is a small honest inventory and not a claim of completeness — it covers the transports this lane has actually reasoned about, and a probe absent from it is unclassified, which the criterion already treats as non-independent. sccache_show_stats is the cited instance and the reason the module exists, and it is the ProbeAnswersWithoutSubject exemplar rather than a ProbeMayEstablish one. systemd_show_property and systemd_is_active are the ones that make the criterion non-vacuous in the other direction: `systemctl show` and `systemctl is-active` read the manager's recorded state and start nothing, so they are genuinely inert and their Converged results survive — a criterion that refused every probe would be the absorbing fallback wearing a safety badge. proc_swaps_read is classified inert on the same reasoning: reading /proc/swaps enumerates active swap areas and cannot activate one, unlike `swapon` whose ensure shape would establish the very backing a query is supposed to find.
 data sccache_show_stats_probe: ReadBackProbe = ReadBackProbe {
   label: "sccache --show-stats",
   subject: "sccache daemon is running under the modeled unit",

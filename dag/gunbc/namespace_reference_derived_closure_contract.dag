@@ -7,12 +7,12 @@ data namespace_reference_derived_closure_contract_dissolution_note: String = "DI
 
 fn reference_derived_closure_required_capabilities() -> List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureCapability> {
   [
-    SameFileEarlierNeighbourVisible,
-    SiblingDecisionBranchExcluded,
-    LaterDeclarationExcluded,
-    DistinctSameSpelledDeclarationsPreserved,
-    RepeatedMentionsCollapseDependency,
-    UnrelatedLoadedFileExcluded,
+    gunbc.namespace_reference_derived_closure_admission.SameFileEarlierNeighbourVisible,
+    gunbc.namespace_reference_derived_closure_admission.SiblingDecisionBranchExcluded,
+    gunbc.namespace_reference_derived_closure_admission.LaterDeclarationExcluded,
+    gunbc.namespace_reference_derived_closure_admission.DistinctSameSpelledDeclarationsPreserved,
+    gunbc.namespace_reference_derived_closure_admission.RepeatedMentionsCollapseDependency,
+    gunbc.namespace_reference_derived_closure_admission.UnrelatedLoadedFileExcluded,
   ]
 }
 
@@ -22,14 +22,14 @@ fn reference_derived_closure_missing_capabilities(
   reference_derived_closure_required_capabilities()
     |> filter(required =>
       !(admissions |> any(admission => match admission {
-        ReferenceDerivedClosureEstablished { receipt } => receipt.capability == required
-        ReferenceDerivedClosureRefused { capability: _, failure: _ } => false
-        ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => false
+        gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureEstablished { receipt } => receipt.capability == required
+        gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureRefused { capability: _, failure: _ } => false
+        gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => false
       }))
         || admissions |> any(admission => match admission {
-          ReferenceDerivedClosureEstablished { receipt: _ } => false
-          ReferenceDerivedClosureRefused { capability, failure: _ } => capability == required
-          ReferenceDerivedClosureUnavailable { capability, trigger: _ } => capability == required
+          gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureEstablished { receipt: _ } => false
+          gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureRefused { capability, failure: _ } => capability == required
+          gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable { capability, trigger: _ } => capability == required
         })
     )
 }
@@ -49,28 +49,28 @@ fn reference_derived_closure_closing_contract_holds(
 fn namespace_reference_derived_closure_acceptance_admissions() -> List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> {
   [
     gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
-      capability: SameFileEarlierNeighbourVisible,
-      trigger: P2aStructuralCandidateProducer7515,
+      capability: gunbc.namespace_reference_derived_closure_admission.SameFileEarlierNeighbourVisible,
+      trigger: gunbc.namespace_reference_derived_closure_admission.P2aStructuralCandidateProducer7515,
     },
     gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
-      capability: SiblingDecisionBranchExcluded,
-      trigger: P2aStructuralCandidateProducer7515,
+      capability: gunbc.namespace_reference_derived_closure_admission.SiblingDecisionBranchExcluded,
+      trigger: gunbc.namespace_reference_derived_closure_admission.P2aStructuralCandidateProducer7515,
     },
     gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
-      capability: LaterDeclarationExcluded,
-      trigger: P2aStructuralCandidateProducer7515,
+      capability: gunbc.namespace_reference_derived_closure_admission.LaterDeclarationExcluded,
+      trigger: gunbc.namespace_reference_derived_closure_admission.P2aStructuralCandidateProducer7515,
     },
     gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
-      capability: DistinctSameSpelledDeclarationsPreserved,
-      trigger: P2aStructuralCandidateProducer7515,
+      capability: gunbc.namespace_reference_derived_closure_admission.DistinctSameSpelledDeclarationsPreserved,
+      trigger: gunbc.namespace_reference_derived_closure_admission.P2aStructuralCandidateProducer7515,
     },
     gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
-      capability: RepeatedMentionsCollapseDependency,
-      trigger: P2aReferenceDependencyProjection7515,
+      capability: gunbc.namespace_reference_derived_closure_admission.RepeatedMentionsCollapseDependency,
+      trigger: gunbc.namespace_reference_derived_closure_admission.P2aReferenceDependencyProjection7515,
     },
     gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
-      capability: UnrelatedLoadedFileExcluded,
-      trigger: P2aPoolIndependentDependencyProjection7515,
+      capability: gunbc.namespace_reference_derived_closure_admission.UnrelatedLoadedFileExcluded,
+      trigger: gunbc.namespace_reference_derived_closure_admission.P2aPoolIndependentDependencyProjection7515,
     },
   ]
 }

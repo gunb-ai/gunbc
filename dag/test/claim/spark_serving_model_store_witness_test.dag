@@ -50,9 +50,9 @@ fn present_listing() -> String {
 }
 
 fn subject_release() -> gunbc.spark.serving_release.SparkServingRelease? {
-  match spark_serving_desired_admission {
-    SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
-    SparkServingDesiredRefused { cause: _ } => none
+  match gunbc.spark.serving_desired.spark_serving_desired_admission {
+    gunbc.spark.serving_desired.SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
+    gunbc.spark.serving_desired.SparkServingDesiredRefused { cause: _ } => none
   }
 }
 
@@ -64,11 +64,11 @@ fn subject_release() -> gunbc.spark.serving_release.SparkServingRelease? {
 //
 // This is the claim that was false while everything else was green.
 test fn an_exact_store_carries_the_desired_identity() -> Bool {
-  match test.claim.spark_serving_model_store_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } => {
-      let desired = serialize_content_hash(hash: r.model.identity) as String
-      match model_store_state_digest(
+      let desired = std.content_hash.serialize_content_hash(hash: r.model.identity) as String
+      match gunbc.ollama_runtime_bundle.model_store_state_digest(
         observation: gunbc.ollama_runtime_bundle.ModelStoreComplete {
           manifest_identity: desired as std.types.NonEmptyStr,
           blob_closure_count: 3,
@@ -100,12 +100,12 @@ test fn an_exact_store_carries_the_desired_identity() -> Bool {
 // DECLARED MODEL converges has to read the declaration, or it is asserting that a host holding one
 // particular historical model converges.
 test fn a_host_holding_the_declared_model_reconciles_as_converged() -> Bool {
-  match test.claim.spark_serving_model_store_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } => {
-      let desired = serialize_content_hash(hash: r.model.identity) as String
-      let hex = strip_sha256_prefix(text: desired)
-      match spark_serving_classify_model_store(
+      let desired = std.content_hash.serialize_content_hash(hash: r.model.identity) as String
+      let hex = extdeps.ollama.api.strip_sha256_prefix(text: desired)
+      match gunbc.spark.serving_observe.spark_serving_classify_model_store(
         manifest_body: join([
           "{\"config\":{\"digest\":\"sha256:",
           "1111111111111111111111111111111111111111111111111111111111111111",
@@ -120,13 +120,13 @@ test fn a_host_holding_the_declared_model_reconciles_as_converged() -> Bool {
         ], ""),
         blob_digest_stdout: intact_blob_digests(),
       ) {
-        ModelStoreAbsent => false
-        ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
-        ModelStoreObservationRefused { cause: _ } => false
-        ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-        ModelStoreComplete { manifest_identity: _, blob_closure_count: n } =>
-          match model_store_state_digest(
-            observation: spark_serving_classify_model_store(
+        gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
+        gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+        gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: _ } => false
+        gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+        gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: n } =>
+          match gunbc.ollama_runtime_bundle.model_store_state_digest(
+            observation: gunbc.spark.serving_observe.spark_serving_classify_model_store(
               manifest_body: join([
                 "{\"config\":{\"digest\":\"sha256:",
                 "1111111111111111111111111111111111111111111111111111111111111111",
@@ -153,11 +153,11 @@ test fn a_host_holding_the_declared_model_reconciles_as_converged() -> Bool {
 // A HOST MISSING ONE BLOB IS NOT CONVERGED, over the same classifier and the same manifest. Without
 // this, the claim above is satisfied by a classifier that reports complete unconditionally.
 test fn a_host_missing_a_blob_does_not_reconcile_as_converged() -> Bool {
-  match test.claim.spark_serving_model_store_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } => {
-      let desired = serialize_content_hash(hash: r.model.identity) as String
-      match spark_serving_classify_model_store(
+      let desired = std.content_hash.serialize_content_hash(hash: r.model.identity) as String
+      match gunbc.spark.serving_observe.spark_serving_classify_model_store(
         manifest_body: join([
           "{\"config\":{\"digest\":\"sha256:",
           "1111111111111111111111111111111111111111111111111111111111111111",
@@ -169,12 +169,12 @@ test fn a_host_missing_a_blob_does_not_reconcile_as_converged() -> Bool {
         blobs_listing: "sha256-1111111111111111111111111111111111111111111111111111111111111111",
         blob_digest_stdout: intact_blob_digests(),
       ) {
-        ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
-        ModelStoreAbsent => false
-        ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
-        ModelStoreObservationRefused { cause: _ } => false
-        ModelStoreIncomplete { manifest_identity: _, first_missing_blob: b, further_missing_blobs: rest } =>
-          match model_store_state_digest(
+        gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+        gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
+        gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+        gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: _ } => false
+        gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: b, further_missing_blobs: rest } =>
+          match gunbc.ollama_runtime_bundle.model_store_state_digest(
             observation: gunbc.ollama_runtime_bundle.ModelStoreIncomplete {
               manifest_identity: "sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05" as std.types.NonEmptyStr,
               first_missing_blob: b,
@@ -196,11 +196,11 @@ test fn a_host_missing_a_blob_does_not_reconcile_as_converged() -> Bool {
 // not accidentally agree. Asserting equality alone would pass against a digest function that
 // returned a constant.
 test fn a_different_store_does_not_carry_the_desired_identity() -> Bool {
-  match test.claim.spark_serving_model_store_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } => {
-      let desired = serialize_content_hash(hash: r.model.identity) as String
-      match model_store_state_digest(
+      let desired = std.content_hash.serialize_content_hash(hash: r.model.identity) as String
+      match gunbc.ollama_runtime_bundle.model_store_state_digest(
         observation: gunbc.ollama_runtime_bundle.ModelStoreComplete {
           manifest_identity: "sha256:0000000000000000000000000000000000000000000000000000000000000000" as std.types.NonEmptyStr,
           blob_closure_count: 3,
@@ -226,13 +226,13 @@ test fn an_incomplete_store_is_observed_and_absent_is_not() -> Bool {
     first_missing_blob: "aaaa" as std.types.NonEmptyStr,
     further_missing_blobs: [],
   }
-  match model_store_state_digest(observation: incomplete) {
+  match gunbc.ollama_runtime_bundle.model_store_state_digest(observation: incomplete) {
     Absent => false
     Present { value: _ } =>
-      match model_store_state_digest(observation: gunbc.ollama_runtime_bundle.ModelStoreAbsent) {
+      match gunbc.ollama_runtime_bundle.model_store_state_digest(observation: gunbc.ollama_runtime_bundle.ModelStoreAbsent) {
         Present { value: _ } => false
-        Absent => model_store_was_observed(observation: incomplete)
-          && model_store_was_observed(observation: gunbc.ollama_runtime_bundle.ModelStoreAbsent)
+        Absent => gunbc.ollama_runtime_bundle.model_store_was_observed(observation: incomplete)
+          && gunbc.ollama_runtime_bundle.model_store_was_observed(observation: gunbc.ollama_runtime_bundle.ModelStoreAbsent)
       }
   }
 }
@@ -242,7 +242,7 @@ test fn an_incomplete_store_is_observed_and_absent_is_not() -> Bool {
 // fail-open shape, since the manifest is the cheap half and the blobs are the whole payload.
 test fn an_incomplete_store_differs_from_a_complete_one_with_the_same_manifest() -> Bool {
   let ident = "sha256:2222222222222222222222222222222222222222222222222222222222222222" as std.types.NonEmptyStr
-  match model_store_state_digest(
+  match gunbc.ollama_runtime_bundle.model_store_state_digest(
     observation: gunbc.ollama_runtime_bundle.ModelStoreIncomplete {
       manifest_identity: ident,
       first_missing_blob: "bbbb" as std.types.NonEmptyStr,
@@ -251,7 +251,7 @@ test fn an_incomplete_store_differs_from_a_complete_one_with_the_same_manifest()
   ) {
     Absent => false
     Present { value: partial } =>
-      match model_store_state_digest(
+      match gunbc.ollama_runtime_bundle.model_store_state_digest(
         observation: gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: ident, blob_closure_count: 2 },
       ) {
         Absent => false
@@ -267,21 +267,21 @@ test fn an_incomplete_store_differs_from_a_complete_one_with_the_same_manifest()
 // strength of a failed probe.
 test fn a_refused_store_is_not_observed() -> Bool {
   let refused = gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: "ssh leg did not run" as std.types.NonEmptyStr }
-  model_store_was_observed(observation: refused) == false
-    && model_store_was_observed(observation: gunbc.ollama_runtime_bundle.ModelStoreAbsent) == true
+  gunbc.ollama_runtime_bundle.model_store_was_observed(observation: refused) == false
+    && gunbc.ollama_runtime_bundle.model_store_was_observed(observation: gunbc.ollama_runtime_bundle.ModelStoreAbsent) == true
 }
 
 // The completeness bit reaches the empty-replan bar, so a plan built without ever looking at the
 // model cannot report convergence.
 test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
-  match test.claim.spark_serving_model_store_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } => {
-      let with_store = spark_serving_observed_members(
-        host: test.claim.spark_serving_model_store_witness_test.subject_host,
+      let with_store = gunbc.spark.serving_observed_members.spark_serving_observed_members(
+        host: subject_host,
         runtime: complete_runtime_stub(),
         store: gunbc.ollama_runtime_bundle.ModelStoreComplete {
-          manifest_identity: serialize_content_hash(hash: r.model.identity) as std.types.NonEmptyStr,
+          manifest_identity: std.content_hash.serialize_content_hash(hash: r.model.identity) as std.types.NonEmptyStr,
           blob_closure_count: 1,
         },
         unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: "u" as std.types.NonEmptyStr },
@@ -289,8 +289,8 @@ test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
         activity: gunbc.spark.serving_observed_members.UnitActivityRunning,
         linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
       )
-      let without = spark_serving_observed_members(
-        host: test.claim.spark_serving_model_store_witness_test.subject_host,
+      let without = gunbc.spark.serving_observed_members.spark_serving_observed_members(
+        host: subject_host,
         runtime: complete_runtime_stub(),
         store: gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: "leg did not run" as std.types.NonEmptyStr },
         unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: "u" as std.types.NonEmptyStr },
@@ -298,8 +298,8 @@ test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
         activity: gunbc.spark.serving_observed_members.UnitActivityRunning,
         linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
       )
-      spark_serving_projection_supports_empty_replan(projection: with_store)
-        && spark_serving_projection_supports_empty_replan(projection: without) == false
+      gunbc.spark.serving_observed_members.spark_serving_projection_supports_empty_replan(projection: with_store)
+        && gunbc.spark.serving_observed_members.spark_serving_projection_supports_empty_replan(projection: without) == false
     }
   }
 }
@@ -310,32 +310,32 @@ test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
 // classifier that answered "names no blob digests" to an unparseable file -- and an operator reading
 // that would go looking for a manifest that named nothing, when the file is not JSON at all.
 test fn an_unparseable_manifest_says_so() -> Bool {
-  match spark_serving_classify_model_store(
+  match gunbc.spark.serving_observe.spark_serving_classify_model_store(
     manifest_body: "not json at all",
     manifest_digest_stdout: "aa  /p",
     blobs_listing: "",
     blob_digest_stdout: "",
   ) {
-    ModelStoreObservationRefused { cause: c } => string_contains(c as String, "not parseable")
-    ModelStoreAbsent => false
-    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
-    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: c } => string_contains(c as String, "not parseable")
+    gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
+    gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
   }
 }
 
 test fn a_manifest_whose_layer_has_no_digest_says_malformed() -> Bool {
-  match spark_serving_classify_model_store(
+  match gunbc.spark.serving_observe.spark_serving_classify_model_store(
     manifest_body: "{\"layers\":[{\"size\":1}]}",
     manifest_digest_stdout: "aa  /p",
     blobs_listing: "",
     blob_digest_stdout: "",
   ) {
-    ModelStoreObservationRefused { cause: c } => string_contains(c as String, "malformed")
-    ModelStoreAbsent => false
-    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
-    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: c } => string_contains(c as String, "malformed")
+    gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
+    gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
   }
 }
 
@@ -343,23 +343,23 @@ test fn a_manifest_whose_layer_has_no_digest_says_malformed() -> Bool {
 // make every host complete by construction -- zero required blobs, zero missing, converged -- which
 // is the emptiest possible fail-open and would report a bare srv6 as holding the model.
 test fn a_manifest_naming_no_blobs_refuses_rather_than_reporting_complete() -> Bool {
-  match spark_serving_classify_model_store(
+  match gunbc.spark.serving_observe.spark_serving_classify_model_store(
     manifest_body: "{\"layers\":[]}",
     manifest_digest_stdout: "aa  /p",
     blobs_listing: "",
     blob_digest_stdout: "",
   ) {
-    ModelStoreObservationRefused { cause: c } => string_contains(c as String, "names no blob digests")
-    ModelStoreAbsent => false
-    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
-    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: c } => string_contains(c as String, "names no blob digests")
+    gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
+    gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
   }
 }
 
 fn complete_runtime_stub() -> gunbc.ollama_runtime_bundle.RuntimeMaterializationObservation {
   gunbc.ollama_runtime_bundle.RuntimeMaterializationComplete {
-    identity: ollama_runtime_materialization_identity_for_required_release(),
+    identity: gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release(),
   }
 }
 
@@ -373,46 +373,46 @@ fn complete_runtime_stub() -> gunbc.ollama_runtime_bundle.RuntimeMaterialization
 // Same manifest, same listing, same everything except the bytes. Only the digest leg can tell them
 // apart, which is why it is worth hashing gigabytes to ask.
 test fn a_corrupt_blob_is_not_a_complete_store() -> Bool {
-  match spark_serving_classify_model_store(
+  match gunbc.spark.serving_observe.spark_serving_classify_model_store(
     manifest_body: two_layer_manifest(),
     manifest_digest_stdout: "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05  /m",
     blobs_listing: present_listing(),
     blob_digest_stdout: corrupt_blob_digests(),
   ) {
-    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: b } =>
+    gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: b } =>
       (b as String) == "2222222222222222222222222222222222222222222222222222222222222222"
-    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
-    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-    ModelStoreAbsent => false
-    ModelStoreObservationRefused { cause: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
+    gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: _ } => false
   }
 }
 
 // THE POSITIVE CONTROL ON THE SAME FIXTURE. Without it, the claim above passes on a classifier that
 // calls every store corrupt -- which would suppress nothing and repull forever.
 test fn the_same_store_with_intact_blobs_is_complete() -> Bool {
-  match spark_serving_classify_model_store(
+  match gunbc.spark.serving_observe.spark_serving_classify_model_store(
     manifest_body: two_layer_manifest(),
     manifest_digest_stdout: "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05  /m",
     blobs_listing: present_listing(),
     blob_digest_stdout: intact_blob_digests(),
   ) {
-    ModelStoreComplete { manifest_identity: _, blob_closure_count: n } => n == 2
-    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
-    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-    ModelStoreAbsent => false
-    ModelStoreObservationRefused { cause: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: n } => n == 2
+    gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
+    gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: _ } => false
   }
 }
 
 // A CORRUPT STORE MUST NOT WEAR THE DESIRED IDENTITY, or it converges and the pull is suppressed --
 // the arm name alone changes nothing if reconcile still sees a matching digest.
 test fn a_corrupt_store_does_not_carry_the_desired_identity() -> Bool {
-  match test.claim.spark_serving_model_store_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } => {
-      let desired = serialize_content_hash(hash: r.model.identity) as String
-      match model_store_state_digest(
+      let desired = std.content_hash.serialize_content_hash(hash: r.model.identity) as String
+      match gunbc.ollama_runtime_bundle.model_store_state_digest(
         observation: gunbc.ollama_runtime_bundle.ModelStoreCorrupt {
           manifest_identity: desired as std.types.NonEmptyStr,
           first_corrupt_blob: "2222" as std.types.NonEmptyStr,
@@ -428,7 +428,7 @@ test fn a_corrupt_store_does_not_carry_the_desired_identity() -> Bool {
 // The digest argv names every required blob under the blobs directory, so the leg actually reads the
 // files the manifest requires rather than whatever happens to be lying there.
 test fn the_blob_digest_leg_names_every_required_blob() -> Bool {
-  let argv = spark_serving_model_blob_digest_argv(
+  let argv = gunbc.spark.serving_observe.spark_serving_model_blob_digest_argv(
     digest_hexes: [
       "1111111111111111111111111111111111111111111111111111111111111111" as std.types.NonEmptyStr,
       "2222222222222222222222222222222222222222222222222222222222222222" as std.types.NonEmptyStr,

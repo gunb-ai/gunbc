@@ -166,7 +166,7 @@ data legacy_test_inflow_tally_note: String = "THE PROJECTION CANNOT ERASE THE RE
 fn inflow_observation_tally(observation: LegacyTestInflowObservation) -> LegacyTestInflowTally {
   match observation {
     InflowMeasured { additions } => {
-      let ids = additions |> map(a => legacy_test_behavior_id(behavior: a))
+      let ids = additions |> map(a => gunbc.legacy_test_behavior_disposition.legacy_test_behavior_id(behavior: a))
       InflowCountMeasured { count: count(ids), ids: ids }
     }
     InflowRefused { reason } => InflowCountUnavailable { reason: reason }

@@ -3,9 +3,9 @@ module extdeps.github.github_contracts
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/rest"
   }
 }
 
-data wire_contract: std.serialization.VariantEncoding = std.serialization.StringVariant { naming: AsAuthored }
+data wire_contract: std.serialization.VariantEncoding = std.serialization.StringVariant { naming: std.serialization.AsAuthored }

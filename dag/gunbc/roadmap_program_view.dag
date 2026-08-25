@@ -187,7 +187,7 @@ fn program_accepted_ids(
   receipts
     |> filter(r =>
       match program_find_node_indexed(index: node_index, id: r.node) {
-        Present { value: n } => receipt_matches_node(r: r, rn: n)
+        Present { value: n } => gunbc.roadmap_model.receipt_matches_node(r: r, rn: n)
         Absent => false
       })
     |> map(r => r.node as String)
@@ -196,7 +196,7 @@ fn program_accepted_ids(
 fn program_node_headline_map(nodes: List<gunbc.roadmap_model.RoadmapNode>) -> Map<String, String> {
   nodes |> fold(init: empty_map(), f: (acc, n) => {
     let id = n.node as String
-    let headline = match line_ticket(item: n.line) {
+    let headline = match gunbc.roadmap_status.line_ticket(item: n.line) {
       Present { value: t } => t.headline
       Absent => id
     }
@@ -227,7 +227,7 @@ fn program_node_standing(
     if count(unmet) > 0 {
       ObligationDependencyHeld { unmet: unmet }
     } else {
-      if contract_has_closing_validation(contract: n.execution) {
+      if gunbc.roadmap_execution_contract.contract_has_closing_validation(contract: n.execution) {
         ObligationStartable
       } else {
         ObligationContractHeld
@@ -342,7 +342,7 @@ fn program_reverse_reachable_members(
   reverse_adj: Map<String, List<String>>,
   start: String,
 ) -> List<String> {
-  let reached = dfs_collect_component(
+  let reached = std.graph.dfs_collect_component(
     node: start,
     adjacency: reverse_adj,
     acc: std.graph.SccComponentAcc { visited: empty_set(), members: [] },
@@ -620,7 +620,7 @@ fn program_view(
   let ids = nodes |> map(n => n.node as String)
   let line_causes = lines
     |> filter(l => !(ids |> any(id => id == (l.node as String))))
-    |> map(l => FinishLineNodeUnresolved { line_key: v1_finish_line_key(l: l.line), node: l.node })
+    |> map(l => FinishLineNodeUnresolved { line_key: gunbc.v1_deletion_plan.v1_finish_line_key(l: l.line), node: l.node })
   let gate_causes = fold(fronts, init: [], f: (acc, fs) => concat(acc,
     fs.gates
       |> filter(g => !(ids |> any(id => id == (g as String))))
@@ -633,8 +633,8 @@ fn program_view(
     ProgramViewRefused { causes: causes }
   } else {
     let node_index = node_acc.by_id
-    let graph = roadmap_dependency_graph(edges: edges)
-    let reverse_adj = reverse_adjacency(names: ids, graph: graph)
+    let graph = gunbc.roadmap_focus.roadmap_dependency_graph(edges: edges)
+    let reverse_adj = std.graph.reverse_adjacency(names: ids, graph: graph)
     let parent_index = program_parent_index(edges: edges)
     let accepted = program_accepted_ids(node_index: node_index, receipts: receipts)
     let accepted_map = program_member_map(ids: accepted)
@@ -758,7 +758,7 @@ fn program_finish_line_view(
   let line_accepted = program_map_member(map: accepted_map, id: l.node as String)
   FinishLineView {
     line: l.line,
-    key: v1_finish_line_key(l: l.line),
+    key: gunbc.v1_deletion_plan.v1_finish_line_key(l: l.line),
     name: l.name,
     claim: l.claim,
     node: l.node,
@@ -790,7 +790,7 @@ fn v1_program_view(
   in_flight: List<String>,
 ) -> V1ProgramViewResult {
   program_view(
-    lines: v1_exit_finish_lines(),
+    lines: gunbc.v1_deletion_plan.v1_exit_finish_lines(),
     fronts: v1_convergence_fronts(),
     nodes: nodes,
     edges: edges,

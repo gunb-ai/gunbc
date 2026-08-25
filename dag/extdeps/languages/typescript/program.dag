@@ -3,7 +3,7 @@ module extdeps.languages.typescript.program
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.typescriptlang.org/docs/handbook/2/basic-types.html"
   }
 }
@@ -183,7 +183,7 @@ fn escape_backtick(s: String) -> String {
 fn serialize_string_literal(value: String, quote: TsStringQuote) -> String {
   match quote {
     SingleQuote => concat("'", concat(escape_single_quoted(s: value), "'"))
-    DoubleQuote => concat("\"", concat(extdeps.languages.typescript.program.escape_double_quoted(s: value), "\""))
+    DoubleQuote => concat("\"", concat(escape_double_quoted(s: value), "\""))
     Backtick => concat("`", concat(escape_backtick(s: value), "`"))
   }
 }

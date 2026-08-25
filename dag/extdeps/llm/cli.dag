@@ -1,22 +1,24 @@
 module extdeps.llm.cli
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "github.com/openai/codex"
   }
 }
 
-data codex_noninteractive_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data codex_noninteractive_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "learn.chatgpt.com/docs/non-interactive-mode"
   }
 }
 
-data claude_cli_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data claude_cli_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "docs.claude.com/en/docs/claude-code/cli-reference"
   }
 }
@@ -42,24 +44,24 @@ fn claude_trust_key_token(project_path: String) -> String {
 }
 
 fn claude_trust_entry_slice(config_text: String, i_after_key: Int) -> String {
-  let i_colon = json_text_skip_ws(s: config_text, i: i_after_key)
-  if !json_text_starts_with_at(s: config_text, i: i_colon, lit: ":") {
+  let i_colon = extdeps.languages.json.grammar.json_text_skip_ws(s: config_text, i: i_after_key)
+  if !extdeps.languages.json.grammar.json_text_starts_with_at(s: config_text, i: i_colon, lit: ":") {
     ""
   } else {
-    let v_start = json_text_skip_ws(s: config_text, i: i_colon + 1)
-    match json_text_parse_value(s: config_text, i: v_start) {
-      JsonTextParseOk { end: end } => substring(s: config_text, start: v_start, end: end)
-      JsonTextParseFail { end: _ } => ""
+    let v_start = extdeps.languages.json.grammar.json_text_skip_ws(s: config_text, i: i_colon + 1)
+    match extdeps.languages.json.grammar.json_text_parse_value(s: config_text, i: v_start) {
+      extdeps.languages.json.grammar.JsonTextParseOk { end: end } => substring(s: config_text, start: v_start, end: end)
+      extdeps.languages.json.grammar.JsonTextParseFail { end: _ } => ""
     }
   }
 }
 
 fn claude_trust_flag_true_after(rest: String) -> Bool {
-  let j = json_text_skip_ws(s: rest, i: 0)
-  if !json_text_starts_with_at(s: rest, i: j, lit: ":") {
+  let j = extdeps.languages.json.grammar.json_text_skip_ws(s: rest, i: 0)
+  if !extdeps.languages.json.grammar.json_text_starts_with_at(s: rest, i: j, lit: ":") {
     false
   } else {
-    json_text_starts_with_at(s: rest, i: json_text_skip_ws(s: rest, i: j + 1), lit: "true")
+    extdeps.languages.json.grammar.json_text_starts_with_at(s: rest, i: extdeps.languages.json.grammar.json_text_skip_ws(s: rest, i: j + 1), lit: "true")
   }
 }
 
@@ -221,10 +223,10 @@ data codex_device_prompt_input_contract_note: String = "WHAT codex EMITS IS A co
 
 type CodexDeviceLoginPrompt
   = CodexDeviceLoginReady {
-      verification_url: NonEmptyStr,
-      user_code: NonEmptyStr,
+      verification_url: std.types.NonEmptyStr,
+      user_code: std.types.NonEmptyStr,
     }
-  | CodexDeviceLoginPromptUnavailable { reason: NonEmptyStr }
+  | CodexDeviceLoginPromptUnavailable { reason: std.types.NonEmptyStr }
 
 data codex_device_prompt_marker_url: String = "https://auth.openai.com/codex/device"
 data codex_device_prompt_marker_code_line: String = "Enter this one-time code"
@@ -252,26 +254,26 @@ fn codex_device_prompt_code_scan(lines: List<String>) -> CodexCodeScan {
   })
 }
 
-fn codex_device_prompt_parse(pane: RenderedTerminalText) -> CodexDeviceLoginPrompt {
+fn codex_device_prompt_parse(pane: std.types.RenderedTerminalText) -> CodexDeviceLoginPrompt {
   let lines = split(s: pane as String, delimiter: "\n") |> map(l => std.algebra.trim(l))
   let url_hit = lines
     |> filter(l => string_contains(s: l, pattern: codex_device_prompt_marker_url))
     |> first
   match url_hit {
     Absent => CodexDeviceLoginPromptUnavailable {
-      reason: "no verification url in pane" as NonEmptyStr,
+      reason: "no verification url in pane" as std.types.NonEmptyStr,
     }
     Present { value: url_line } =>
       match codex_device_prompt_code_scan(lines: lines) {
         CodeScanSeeking => CodexDeviceLoginPromptUnavailable {
-          reason: "verification url present but no one-time code line" as NonEmptyStr,
+          reason: "verification url present but no one-time code line" as std.types.NonEmptyStr,
         }
         CodeScanAfterMarker => CodexDeviceLoginPromptUnavailable {
-          reason: "one-time code line present but code not yet rendered" as NonEmptyStr,
+          reason: "one-time code line present but code not yet rendered" as std.types.NonEmptyStr,
         }
         CodeScanFound { code } => CodexDeviceLoginReady {
-          verification_url: url_line as NonEmptyStr,
-          user_code: code as NonEmptyStr,
+          verification_url: url_line as std.types.NonEmptyStr,
+          user_code: code as std.types.NonEmptyStr,
         }
       }
   }
@@ -286,7 +288,7 @@ fn shape_codex_exec_argv_for_program(
   spec: CodexExecSpec,
 ) -> List<String> {
   shape_codex_exec_argv_for_programs(
-    env_program: env_path_resolved_program as String,
+    env_program: extdeps.tools.env.env_path_resolved_program as String,
     program: program,
     codex_home: codex_home,
     cwd: cwd,

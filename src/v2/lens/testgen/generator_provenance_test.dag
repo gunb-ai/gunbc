@@ -1,8 +1,8 @@
 module v2.test.lens_testgen.generator_provenance
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-test fn lens_testgen_scheduled_generators_carry_provenance_holds() -> v2.std.logic.Bool {
-  scheduled_generators_carry_provenance()
+test fn lens_testgen_scheduled_generators_carry_provenance_holds() -> Bool {
+  v2.lens.testgen.scheduled_generators_carry_provenance()
 }

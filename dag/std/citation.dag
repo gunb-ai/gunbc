@@ -16,11 +16,11 @@ data citation_sha256_pin_rung_note: String = "citation_exact_pin accepts Sha256D
 type CitedRepresentationIdentity {
   source: extdeps.external_authority.ExternalSubjectRef
   access_route: extdeps.uri.Uri
-  byte_domain: std.citation.RepresentationByteDomain
+  byte_domain: RepresentationByteDomain
 }
 
 type CitationTarget<Selector> {
-  expected_pin: extdeps.pin.Pin<std.citation.CitedRepresentationIdentity>
+  expected_pin: extdeps.pin.Pin<CitedRepresentationIdentity>
   selector: Selector?
 }
 
@@ -32,7 +32,7 @@ type RepresentationByteDomain
 
 // Names WHICH BYTES are hashed — not which algorithm. RawResponseBody is the exact octet sequence received after transfer decoding and before interpretation. Later domains (DecodedContent, RenderedText, ExtractedPageContent) are reserved for CIT-1+ profiles; CIT-0 admits the type names only.
 type ObservedCitedRepresentation {
-  identity: std.citation.CitedRepresentationIdentity
+  identity: CitedRepresentationIdentity
   media_type: extdeps.http.server.MediaType
   observed_identity: std.content_hash.Sha256Digest
 }
@@ -41,8 +41,8 @@ type CitationRepresentationReconciliation
   = RepresentationMatch
   | RepresentationMismatch { expected: std.content_hash.Sha256Digest, observed: std.content_hash.Sha256Digest }
   | RepresentationIdentityIncomparable {
-      expected: std.citation.CitedRepresentationIdentity,
-      observed: std.citation.CitedRepresentationIdentity,
+      expected: CitedRepresentationIdentity,
+      observed: CitedRepresentationIdentity,
     }
   | ObservationMissing
 
@@ -50,33 +50,33 @@ type CitationVerificationRefusalCause
   = RequestLocatorMismatch { expected: extdeps.uri.Uri, observed: extdeps.uri.Uri }
   | HttpStatusNotSuccessful { status: std.types.HttpStatus }
   | ResponseObservedWithoutRepresentationObservation {
-      observation: std.citation.CitationRetrievalObservation,
+      observation: CitationRetrievalObservation,
     }
-  | CitationAccessRefusedObservation { observation: std.citation.CitationRetrievalObservation }
-  | CitationUnreachableObservation { observation: std.citation.CitationRetrievalObservation }
-  | CitationRateLimitedObservation { observation: std.citation.CitationRetrievalObservation }
+  | CitationAccessRefusedObservation { observation: CitationRetrievalObservation }
+  | CitationUnreachableObservation { observation: CitationRetrievalObservation }
+  | CitationRateLimitedObservation { observation: CitationRetrievalObservation }
 
 type CitationVerificationOutcome<Selector>
   = CitationRepresentationVerified {
-      receipt: std.citation.CitationVerificationReceipt<Selector>,
+      receipt: CitationVerificationReceipt<Selector>,
     }
   | CitationRepresentationMismatch {
-      receipt: std.citation.CitationVerificationReceipt<Selector>,
+      receipt: CitationVerificationReceipt<Selector>,
     }
   | CitationRepresentationIdentityIncomparable {
-      receipt: std.citation.CitationVerificationReceipt<Selector>,
+      receipt: CitationVerificationReceipt<Selector>,
     }
   | CitationRepresentationObservationMissing {
-      receipt: std.citation.CitationVerificationReceipt<Selector>,
+      receipt: CitationVerificationReceipt<Selector>,
     }
   | CitationVerificationRefused {
-      cause: std.citation.CitationVerificationRefusalCause,
+      cause: CitationVerificationRefusalCause,
     }
 
 type CitationVerificationReceipt<Selector> {
-  target: std.citation.CitationTarget<Selector>
-  observation: std.citation.CitationRetrievalObservation
-  reconciliation: std.citation.CitationRepresentationReconciliation
+  target: CitationTarget<Selector>
+  observation: CitationRetrievalObservation
+  reconciliation: CitationRepresentationReconciliation
 }
 
 type FragmentSelector {
@@ -121,13 +121,13 @@ type CitationSelector
 
 type CitationSelectorConstruction
   = CitationSelectorConstructed(CitationSelector)
-  | CitationSelectorRefused { cause: std.citation.SelectorRefusalCause }
+  | CitationSelectorRefused { cause: SelectorRefusalCause }
 
 fn cited_representation_identity(
   source: extdeps.external_authority.ExternalSubjectRef,
   access_route: extdeps.uri.Uri,
-  byte_domain: std.citation.RepresentationByteDomain,
-) -> std.citation.CitedRepresentationIdentity {
+  byte_domain: RepresentationByteDomain,
+) -> CitedRepresentationIdentity {
   CitedRepresentationIdentity {
     source: source,
     access_route: access_route,
@@ -136,10 +136,10 @@ fn cited_representation_identity(
 }
 
 fn cited_representation_identity_eq(
-  left: std.citation.CitedRepresentationIdentity,
-  right: std.citation.CitedRepresentationIdentity,
+  left: CitedRepresentationIdentity,
+  right: CitedRepresentationIdentity,
 ) -> Bool {
-  external_subject_ref_eq(a: left.source, b: right.source)
+  extdeps.external_authority.external_subject_ref_eq(a: left.source, b: right.source)
     && left.access_route == right.access_route
     && left.byte_domain == right.byte_domain
 }
@@ -151,10 +151,10 @@ fn http_status_is_success(status: std.types.HttpStatus) -> Bool {
 fn citation_exact_pin(
   source: extdeps.external_authority.ExternalSubjectRef,
   access_route: extdeps.uri.Uri,
-  byte_domain: std.citation.RepresentationByteDomain,
+  byte_domain: RepresentationByteDomain,
   version: extdeps.version.VersionIdentity,
   expected_identity: std.content_hash.Sha256Digest,
-) -> extdeps.pin.Pin<std.citation.CitedRepresentationIdentity> {
+) -> extdeps.pin.Pin<CitedRepresentationIdentity> {
   extdeps.pin.Pin {
     subject: cited_representation_identity(
       source: source,
@@ -162,23 +162,23 @@ fn citation_exact_pin(
       byte_domain: byte_domain,
     ),
     version: version,
-    expected_identity: as_content_hash_cryptographic(digest: expected_identity),
-    selection: ExactPin,
+    expected_identity: std.content_hash.as_content_hash_cryptographic(digest: expected_identity),
+    selection: extdeps.pin.ExactPin,
   }
 }
 
-fn citation_pin_expected_sha256(pin: extdeps.pin.Pin<std.citation.CitedRepresentationIdentity>) -> std.content_hash.Sha256Digest? {
+fn citation_pin_expected_sha256(pin: extdeps.pin.Pin<CitedRepresentationIdentity>) -> std.content_hash.Sha256Digest? {
   match pin.expected_identity {
-    Sha256Hash(digest) => Present { value: digest }
+    std.content_hash.Sha256Hash(digest) => Present { value: digest }
     _ => none
   }
 }
 
 fn observed_cited_representation(
-  identity: std.citation.CitedRepresentationIdentity,
+  identity: CitedRepresentationIdentity,
   media_type: extdeps.http.server.MediaType,
   observed_identity: std.content_hash.Sha256Digest,
-) -> std.citation.ObservedCitedRepresentation {
+) -> ObservedCitedRepresentation {
   ObservedCitedRepresentation {
     identity: identity,
     media_type: media_type,
@@ -187,9 +187,9 @@ fn observed_cited_representation(
 }
 
 fn reconcile_citation_representation(
-  expected_pin: extdeps.pin.Pin<std.citation.CitedRepresentationIdentity>,
-  observed: std.citation.ObservedCitedRepresentation?,
-) -> std.citation.CitationRepresentationReconciliation {
+  expected_pin: extdeps.pin.Pin<CitedRepresentationIdentity>,
+  observed: ObservedCitedRepresentation?,
+) -> CitationRepresentationReconciliation {
   match observed {
     Absent => ObservationMissing
     Present { value: o } =>
@@ -206,7 +206,7 @@ fn reconcile_citation_representation(
               observed: o.identity,
             }
           Present { value: expected } =>
-            if content_hash_eq_cryptographic(left: expected, right: o.observed_identity) {
+            if std.content_hash.content_hash_eq_cryptographic(left: expected, right: o.observed_identity) {
               RepresentationMatch
             } else {
               RepresentationMismatch {
@@ -219,7 +219,7 @@ fn reconcile_citation_representation(
   }
 }
 
-fn fragment_selector(conforms_to: extdeps.external_authority.ExternalAuthority, value: std.types.NonEmptyStr) -> std.citation.CitationSelectorConstruction {
+fn fragment_selector(conforms_to: extdeps.external_authority.ExternalAuthority, value: std.types.NonEmptyStr) -> CitationSelectorConstruction {
   CitationSelectorConstructed(FragmentSelectorVariant(FragmentSelector {
     conforms_to: conforms_to,
     value: value,
@@ -230,7 +230,7 @@ fn text_quote_selector(
   exact: std.types.NonEmptyStr,
   prefix: std.types.NonEmptyStr?,
   suffix: std.types.NonEmptyStr?,
-) -> std.citation.CitationSelectorConstruction {
+) -> CitationSelectorConstruction {
   CitationSelectorConstructed(TextQuoteSelectorVariant(TextQuoteSelector {
     exact: exact,
     prefix: prefix,
@@ -238,9 +238,9 @@ fn text_quote_selector(
   }))
 }
 
-fn text_position_selector(start: std.integer.NonNegativeInt, end: std.integer.NonNegativeInt) -> std.citation.CitationSelectorConstruction {
+fn text_position_selector(start: std.integer.NonNegativeInt, end: std.integer.NonNegativeInt) -> CitationSelectorConstruction {
   match std.nat.nat_compare(a: end, b: start) {
-    Less =>
+    std.algebra.Less =>
       CitationSelectorRefused {
         cause: TextPositionEndBeforeStart { start: start, end: end },
       }
@@ -253,9 +253,9 @@ fn text_position_selector(start: std.integer.NonNegativeInt, end: std.integer.No
 }
 
 fn citation_target<Selector>(
-  expected_pin: extdeps.pin.Pin<std.citation.CitedRepresentationIdentity>,
+  expected_pin: extdeps.pin.Pin<CitedRepresentationIdentity>,
   selector: Selector?,
-) -> std.citation.CitationTarget<Selector> {
+) -> CitationTarget<Selector> {
   CitationTarget {
     expected_pin: expected_pin,
     selector: selector,
@@ -268,37 +268,37 @@ type CitationRetrievalRequest {
 
 type CitationRetrievalObservation
   = RepresentationRetrieved {
-      request: std.citation.CitationRetrievalRequest,
+      request: CitationRetrievalRequest,
       observed_at: std.types.EpochMs,
       http_status: std.types.HttpStatus,
-      observed: std.citation.ObservedCitedRepresentation,
+      observed: ObservedCitedRepresentation,
     }
   | ResponseObservedWithoutRepresentation {
-      request: std.citation.CitationRetrievalRequest,
+      request: CitationRetrievalRequest,
       observed_at: std.types.EpochMs,
       http_status: std.types.HttpStatus,
     }
   | CitationAccessRefused {
-      request: std.citation.CitationRetrievalRequest,
+      request: CitationRetrievalRequest,
       observed_at: std.types.EpochMs,
-      cause: std.citation.CitationAccessRefusalCause,
+      cause: CitationAccessRefusalCause,
     }
   | CitationUnreachable {
-      request: std.citation.CitationRetrievalRequest,
+      request: CitationRetrievalRequest,
       observed_at: std.types.EpochMs,
-      cause: std.citation.CitationUnreachableCause,
+      cause: CitationUnreachableCause,
     }
   | CitationRateLimited {
-      request: std.citation.CitationRetrievalRequest,
+      request: CitationRetrievalRequest,
       observed_at: std.types.EpochMs,
       retry_after: std.measure.Second?,
     }
 
 fn citation_verification_outcome_from_reconciliation<Selector>(
-  target: std.citation.CitationTarget<Selector>,
-  observation: std.citation.CitationRetrievalObservation,
-  reconciliation: std.citation.CitationRepresentationReconciliation,
-) -> std.citation.CitationVerificationOutcome<Selector> {
+  target: CitationTarget<Selector>,
+  observation: CitationRetrievalObservation,
+  reconciliation: CitationRepresentationReconciliation,
+) -> CitationVerificationOutcome<Selector> {
   let receipt = CitationVerificationReceipt {
     target: target,
     observation: observation,
@@ -315,9 +315,9 @@ fn citation_verification_outcome_from_reconciliation<Selector>(
 }
 
 fn verify_citation_representation<Selector>(
-  target: std.citation.CitationTarget<Selector>,
-  observation: std.citation.CitationRetrievalObservation,
-) -> std.citation.CitationVerificationOutcome<Selector> {
+  target: CitationTarget<Selector>,
+  observation: CitationRetrievalObservation,
+) -> CitationVerificationOutcome<Selector> {
   let expected_route = target.expected_pin.subject.access_route
   match observation {
     RepresentationRetrieved {
@@ -413,9 +413,9 @@ type CitationLayerAdmission
   | CitationLayerRefusedUpstreamObservation
 
 fn admit_citation_retrieval_observation(
-  layer: std.citation.CitationArtifactLayer,
-  observation: std.citation.CitationRetrievalObservation,
-) -> std.citation.CitationLayerAdmission {
+  layer: CitationArtifactLayer,
+  observation: CitationRetrievalObservation,
+) -> CitationLayerAdmission {
   match layer {
     ObservingProductLayer => CitationLayerAdmitted
     UpstreamModuleLayer { module_path: _ } =>
@@ -434,40 +434,40 @@ fn admit_citation_retrieval_observation(
   }
 }
 
-data citation_cit1_pdf_profile_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+data citation_cit1_pdf_profile_scaffold: std.disposition.Disposition = Scaffold {
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.standards.rfc_8118",
     decl_name: "extdeps_external_authority_anchor",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
 }
 
-data citation_cit2_mediawiki_provider_observation_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+data citation_cit2_mediawiki_provider_observation_scaffold: std.disposition.Disposition = Scaffold {
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.mediawiki",
     decl_name: "extdeps_external_authority_anchor",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
 }
 
 type CitationRecordedFact<Selector> {
-  cited: std.citation.CitationTarget<Selector>
+  cited: CitationTarget<Selector>
 }
 
 fn citation_recorded_fact<Selector>(
   id: std.claim_evidence.RecordedFactId,
-  cited: std.citation.CitationTarget<Selector>,
-) -> RecordedFact<std.citation.CitationRecordedFact<Selector>> {
+  cited: CitationTarget<Selector>,
+) -> std.claim_evidence.RecordedFact<CitationRecordedFact<Selector>> {
   std.claim_evidence.RecordedFact {
     id: id,
-    value: std.citation.CitationRecordedFact { cited: cited },
+    value: CitationRecordedFact { cited: cited },
   }
 }
 
 data citation_evidence_interface_note: String = "CitationRecordedFact is the provenance payload consumed by std.claim_evidence EvidenceLink — same authority, provenance, maximum_conclusion, fidelity, supporting/challenging, insufficiency, and EvidenceAdmissionPolicy machinery. Rich citations do not form a competing evidence system."
 
-data citation_cit1_pdf_profile_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: citation_cit1_pdf_profile — ordered RFC 8118 fragment sequence, safe profile (page, nameddest, structelem), navigable URL projection, and one real versioned PDF consumer land in CIT-1 after CIT-0 sign-off.")
+data citation_cit1_pdf_profile_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: citation_cit1_pdf_profile — ordered RFC 8118 fragment sequence, safe profile (page, nameddest, structelem), navigable URL projection, and one real versioned PDF consumer land in CIT-1 after CIT-0 sign-off.")
 
-data citation_cit2_mediawiki_provider_observation_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: citation_cit2_mediawiki_provider_observation — provider-bound revision lookup outcomes land in CIT-2 beside generic extdeps MediaWiki protocol shapes separate from site realizations.")
+data citation_cit2_mediawiki_provider_observation_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: citation_cit2_mediawiki_provider_observation — provider-bound revision lookup outcomes land in CIT-2 beside generic extdeps MediaWiki protocol shapes separate from site realizations.")

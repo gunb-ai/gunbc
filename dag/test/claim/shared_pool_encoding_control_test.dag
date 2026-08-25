@@ -1,7 +1,7 @@
 module test.claim.shared_pool_encoding_control
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // THE OWNER-SWAP REPRESENTATION CONTROL, executed before any GB10 derivation is attempted.
 // Question: can std.machine_shape give ONE canonical identity to a pool that is genuinely shared,
@@ -37,7 +37,7 @@ data pool_bytes: std.nat.Nat = 137438953472
 fn pool() -> std.machine_shape.MemoryLevel {
   std.machine_shape.MemoryLevel {
     id: pool_level,
-    capacity: byte_size(count: pool_bytes),
+    capacity: std.measure.byte_size(count: pool_bytes),
     transfer_grain: none,
     bandwidth: none,
     latency: none,
@@ -45,7 +45,7 @@ fn pool() -> std.machine_shape.MemoryLevel {
 }
 
 fn lanes(n: std.nat.Nat) -> std.machine_shape.ExecutionShape {
-  std.machine_shape.ExecutionShape { lane_count: hardware_thread_count(count: n), grouping: IndependentLanes }
+  std.machine_shape.ExecutionShape { lane_count: std.measure.hardware_thread_count(count: n), grouping: std.machine_shape.IndependentLanes }
 }
 
 fn domain(id: std.machine_shape.DomainId, n: std.nat.Nat, mem: List<std.machine_shape.MemoryLevel>) -> std.machine_shape.ExecutionDomain {
@@ -80,16 +80,16 @@ fn encoding_pool_duplicated() -> std.machine_shape.MachineShape {
 }
 
 fn shape_validates(s: std.machine_shape.MachineShape) -> Bool {
-  match machine_shape_validate(shape: s) {
-    MachineShapeOk { shape: _ } => true
-    MachineShapeRefused { cause: _ } => false
+  match std.machine_shape.machine_shape_validate(shape: s) {
+    std.machine_shape.MachineShapeOk { shape: _ } => true
+    std.machine_shape.MachineShapeRefused { cause: _ } => false
   }
 }
 
 // The naive summation a capacity consumer reaches for: total installed memory across domains.
 fn summed_capacity_bytes(s: std.machine_shape.MachineShape) -> std.nat.Nat {
   fold(s.domains, init: 0, f: (acc, d) =>
-    fold(d.memory, init: acc, f: (inner, m) => inner + byte_size_count(b: m.capacity)))
+    fold(d.memory, init: acc, f: (inner, m) => inner + std.measure.byte_size_count(b: m.capacity)))
 }
 
 // CONTROL 1: both orientations of one shared pool are accepted. If this holds, the carrier admits

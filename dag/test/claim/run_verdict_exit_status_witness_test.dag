@@ -22,7 +22,7 @@ CORRECTED BY MEASUREMENT 2026-08-16, and the correction is the point of this row
 
 WHAT THE COST ACTUALLY IS: each invocation is a separate `gunbc run` process, and each pays build_both_closure_edge_index — a CORPUS-wide edge index whose cost DESIGN records as size-independent (measured there at 51.24s on a 159-module closure against 50.98s on a 504-module one, 44.96-77.11s across runs). So the dominant term is fixed per process and is not a function of this fixture at all; shrinking the fixture further would move these numbers by nothing. Three rows, three processes, three edge indices.
 
-A STRUCTURAL FINDING ABOUT SOURCE-ROOT GRANULARITY, recorded because it is the reason the cost cannot be reduced rather than a dead end. The obvious fix for a corpus-wide per-process cost is to hand each process a narrower corpus. That option does not exist here: the fixture imports only std.process, so its true semantic closure is two modules — but std lives under the SAME dag root as the fixture, and a source root is a directory. There is no directory that contains dag/std/process.dag and dag/test/claim/run_verdict_exit_status_fixture.dag and not the rest of dag. So the granularity at which cost is charged (the source root, a storage fact) is coarser than the granularity at which dependency is declared (the import, a semantic fact), and a witness pays for the former while needing only the latter. Any witness invoking the seed as a subprocess pays this, not just these three. Dissolve-on: the module-identity-vs-storage lane, where a module's identity stops being its path — at which point a process can be handed a declared closure instead of a directory.
+A STRUCTURAL FINDING ABOUT SOURCE-ROOT GRANULARITY, recorded because it is the reason the cost cannot be reduced rather than a dead end. The obvious fix for a corpus-wide per-process cost is to hand each process a narrower corpus. That option does not exist here: the fixture imports only process, so its true semantic closure is two modules — but std lives under the SAME dag root as the fixture, and a source root is a directory. There is no directory that contains dag/std/process.dag and dag/test/claim/run_verdict_exit_status_fixture.dag and not the rest of dag. So the granularity at which cost is charged (the source root, a storage fact) is coarser than the granularity at which dependency is declared (the import, a semantic fact), and a witness pays for the former while needing only the latter. Any witness invoking the seed as a subprocess pays this, not just these three. Dissolve-on: the module-identity-vs-storage lane, where a module's identity stops being its path — at which point a process can be handed a declared closure instead of a directory.
 
 CONSEQUENCE FOR ENROLMENT, stated rather than left to be discovered: bin_witness_wet_per_row_wall_budget_seconds is 60. All three rows are UNDER it, which is the declared criterion for BinWitnessWet, so that is where they are enrolled. But 56185ms is a 6% margin, measured on one host under this session's load, and a CI runner under contention is the environment where a 6% margin is spent. The re-home precedent is explicit and cheap: excl_no_fake_anomalies_reason records rows moving to FalsifierRehomedBinWet at ~85-90s. If a measured CI run puts any of these three over 60s, the correct response is that flip — not shrinking the fixture, which cannot reach a corpus-wide fixed cost, and not raising the budget."
 
@@ -32,7 +32,7 @@ THE GENERAL RULE THIS ROW EXISTS UNDER: never assert == false over a call whose 
 
 MEASURED, not hypothetical. An earlier revision of the failure row called run_witness_bin and asserted == false. Executed through claim_batch, which runs HERMETIC, it PASSED WITHOUT EXECUTING A SUBPROCESS: hermetic mode refused IsExecutable, the refusal read as false, and the row answered yes on nothing. The two positive rows FAILED loudly in that same run ('hermetic mode: no mock_response for operation IsExecutable — refusing to fabricate Unit'), which is what kept the set honest while the individual row was not.
 
-THE FIX IS THE UNCONFLATED ROUTE, already in the tree: the failure row now calls gunbc.WitnessBin.Run directly and reads result.success from a RECORD. A hermetic context cannot satisfy it — the operation refuses and the witness fails loudly — so the row can no longer answer yes on nothing. The precedent is typed_witness_bin_run_loud_failure_red_control_holds in test.claim.typed_witness_invocation, whose own note records that this route replaced a cheaper one to keep exactly this discrimination.
+THE FIX IS THE UNCONFLATED ROUTE, already in the tree: the failure row now calls WitnessBin.Run directly and reads result.success from a RECORD. A hermetic context cannot satisfy it — the operation refuses and the witness fails loudly — so the row can no longer answer yes on nothing. The precedent is typed_witness_bin_run_loud_failure_red_control_holds in typed_witness_invocation, whose own note records that this route replaced a cheaper one to keep exactly this discrimination.
 
 DISSOLVE-ON: run_witness_bin returns a result that distinguishes an unexecuted invocation from a nonzero exit, at which point rows may use the helper without the polarity hazard. Rewriting an assertion does not discharge this; changing the return type does.
 
@@ -49,7 +49,7 @@ THE DIAGNOSTIC THAT FOUND IT, worth keeping because it is cheap and general: aft
 // returning true, the driver is reporting success for a run that declared failure.
 test fn run_failure_verdict_reaches_nonzero_exit() -> Bool {
   let toplevel = git.Inspect.Toplevel()
-  let result = gunbc.WitnessBin.Run(
+  let result = WitnessBin.Run(
     workdir: toplevel.path,
     bin_path: concat(toplevel.path, "/target/release/gunbc"),
     args: [
@@ -75,7 +75,7 @@ test fn run_failure_verdict_reaches_nonzero_exit() -> Bool {
 // self-evidencing property the other two have.
 test fn run_success_verdict_reaches_zero_exit() -> Bool {
   let toplevel = git.Inspect.Toplevel()
-  let result = gunbc.WitnessBin.Run(
+  let result = WitnessBin.Run(
     workdir: toplevel.path,
     bin_path: concat(toplevel.path, "/target/release/gunbc"),
     args: [
@@ -100,7 +100,7 @@ test fn run_success_verdict_reaches_zero_exit() -> Bool {
 // one. Writing the rule is not applying it; the note was correct and the row was not.
 test fn run_non_process_exit_return_refuses() -> Bool {
   let toplevel = git.Inspect.Toplevel()
-  let result = gunbc.WitnessBin.Run(
+  let result = WitnessBin.Run(
     workdir: toplevel.path,
     bin_path: concat(toplevel.path, "/target/release/gunbc"),
     args: [

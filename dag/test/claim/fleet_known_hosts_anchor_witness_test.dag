@@ -5,7 +5,7 @@ module test.claim.fleet_known_hosts_anchor_witness_test
 // distinguishable sentinel rather than a plausible-looking default keeps a construction failure from
 // silently becoming a passing comparison between two identical fallbacks.
 fn attempt(raw: String) -> gunbc.fleet_known_hosts_anchor.FleetSshAttemptIdentity {
-  match fleet_ssh_attempt_identity(raw: raw) {
+  match gunbc.fleet_known_hosts_anchor.fleet_ssh_attempt_identity(raw: raw) {
     Present { value: a } => a
     Absent => "REFUSED-UNSAFE-ATTEMPT-ID" as gunbc.fleet_known_hosts_anchor.FleetSshAttemptIdentity
   }
@@ -26,21 +26,21 @@ fn row(host: String, endpoint: String, key: String) -> gunbc.fleet_host_key_enro
 // registry -- and before canonicalization they were two, because the identity was a function of the
 // list's traversal rather than of the enrollments it denotes.
 fn forward_rows() -> List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow> {
-  [test.claim.fleet_known_hosts_anchor_witness_test.row(host: "a", endpoint: "alpha", key: "AAAA"), test.claim.fleet_known_hosts_anchor_witness_test.row(host: "b", endpoint: "bravo", key: "BBBB"), test.claim.fleet_known_hosts_anchor_witness_test.row(host: "c", endpoint: "charlie", key: "CCCC")]
+  [row(host: "a", endpoint: "alpha", key: "AAAA"), row(host: "b", endpoint: "bravo", key: "BBBB"), row(host: "c", endpoint: "charlie", key: "CCCC")]
 }
 
 fn reversed_rows() -> List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow> {
-  [test.claim.fleet_known_hosts_anchor_witness_test.row(host: "c", endpoint: "charlie", key: "CCCC"), test.claim.fleet_known_hosts_anchor_witness_test.row(host: "b", endpoint: "bravo", key: "BBBB"), test.claim.fleet_known_hosts_anchor_witness_test.row(host: "a", endpoint: "alpha", key: "AAAA")]
+  [row(host: "c", endpoint: "charlie", key: "CCCC"), row(host: "b", endpoint: "bravo", key: "BBBB"), row(host: "a", endpoint: "alpha", key: "AAAA")]
 }
 
 fn identities_agree(left: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>, right: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> Bool {
-  match compare_content_hash(
-    left: canonical_known_hosts_identity(rows: left),
-    right: canonical_known_hosts_identity(rows: right),
+  match std.content_hash.compare_content_hash(
+    left: gunbc.fleet_known_hosts_anchor.canonical_known_hosts_identity(rows: left),
+    right: gunbc.fleet_known_hosts_anchor.canonical_known_hosts_identity(rows: right),
   ) {
-    ContentHashEqual => true
-    ContentHashDifferent => false
-    ContentHashCrossFamilyIncomparable => false
+    std.content_hash.ContentHashEqual => true
+    std.content_hash.ContentHashDifferent => false
+    std.content_hash.ContentHashCrossFamilyIncomparable => false
   }
 }
 
@@ -50,7 +50,7 @@ fn identities_agree(left: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>,
 // certify bytes it did not describe, and the anchor's whole claim is that its identity IS its
 // content.
 test fn w_reordered_registry_is_the_same_registry() -> Bool {
-  identities_agree(left: forward_rows(), right: reversed_rows()) && canonical_known_hosts_fragment(rows: forward_rows()) == canonical_known_hosts_fragment(rows: reversed_rows())
+  identities_agree(left: forward_rows(), right: reversed_rows()) && gunbc.fleet_known_hosts_anchor.canonical_known_hosts_fragment(rows: forward_rows()) == gunbc.fleet_known_hosts_anchor.canonical_known_hosts_fragment(rows: reversed_rows())
 }
 
 // POSITIVE CONTROL, without which the reversal claim is satisfiable by a constant. A registry that
@@ -58,7 +58,7 @@ test fn w_reordered_registry_is_the_same_registry() -> Bool {
 test fn w_a_different_registry_is_a_different_registry() -> Bool {
   !identities_agree(
     left: forward_rows(),
-    right: [test.claim.fleet_known_hosts_anchor_witness_test.row(host: "a", endpoint: "alpha", key: "DDDD"), test.claim.fleet_known_hosts_anchor_witness_test.row(host: "b", endpoint: "bravo", key: "BBBB"), test.claim.fleet_known_hosts_anchor_witness_test.row(host: "c", endpoint: "charlie", key: "CCCC")],
+    right: [row(host: "a", endpoint: "alpha", key: "DDDD"), row(host: "b", endpoint: "bravo", key: "BBBB"), row(host: "c", endpoint: "charlie", key: "CCCC")],
   )
 }
 
@@ -67,9 +67,9 @@ test fn w_a_different_registry_is_a_different_registry() -> Bool {
 // as if it pinned one key. Refusing is the only honest arm -- hashing it would mint an anchor
 // certifying a widened trust set.
 test fn w_duplicate_endpoint_refuses() -> Bool {
-  match known_hosts_endpoint_conflict(rows: [
-    test.claim.fleet_known_hosts_anchor_witness_test.row(host: "a", endpoint: "alpha", key: "AAAA"),
-    test.claim.fleet_known_hosts_anchor_witness_test.row(host: "impostor", endpoint: "alpha", key: "EVIL"),
+  match gunbc.fleet_known_hosts_anchor.known_hosts_endpoint_conflict(rows: [
+    row(host: "a", endpoint: "alpha", key: "AAAA"),
+    row(host: "impostor", endpoint: "alpha", key: "EVIL"),
   ]) {
     Present { value: _ } => true
     Absent => false
@@ -79,7 +79,7 @@ test fn w_duplicate_endpoint_refuses() -> Bool {
 // The refusal must not fire on a registry that is merely varied -- otherwise the arm above would
 // pass by refusing everything, and the live six-row registry could never materialize.
 test fn red_control_distinct_endpoints_do_not_conflict() -> Bool {
-  match known_hosts_endpoint_conflict(rows: forward_rows()) {
+  match gunbc.fleet_known_hosts_anchor.known_hosts_endpoint_conflict(rows: forward_rows()) {
     Absent => true
     Present { value: _ } => false
   }
@@ -93,14 +93,14 @@ test fn red_control_distinct_endpoints_do_not_conflict() -> Bool {
 // must therefore still receive different paths, which is exactly what this asserts and what the old
 // derivation could not satisfy.
 test fn w_two_attempts_do_not_share_one_anchor_path() -> Bool {
-  fleet_known_hosts_anchor_path(attempt: attempt(raw: "attempt-a")) != fleet_known_hosts_anchor_path(attempt: attempt(raw: "attempt-b"))
+  gunbc.fleet_known_hosts_anchor.fleet_known_hosts_anchor_path(attempt: attempt(raw: "attempt-a")) != gunbc.fleet_known_hosts_anchor.fleet_known_hosts_anchor_path(attempt: attempt(raw: "attempt-b"))
 }
 
 // POSITIVE CONTROL: the digest half still does its work. One attempt asking twice must land on one
 // path -- otherwise the claim above is satisfiable by any per-call unique name, and the filename
 // would stop being a claim about content that the readback checks.
 test fn w_one_attempt_derives_one_stable_path() -> Bool {
-  fleet_known_hosts_anchor_path(attempt: attempt(raw: "attempt-a")) == fleet_known_hosts_anchor_path(attempt: attempt(raw: "attempt-a"))
+  gunbc.fleet_known_hosts_anchor.fleet_known_hosts_anchor_path(attempt: attempt(raw: "attempt-a")) == gunbc.fleet_known_hosts_anchor.fleet_known_hosts_anchor_path(attempt: attempt(raw: "attempt-a"))
 }
 
 // THE OWNERSHIP BOUNDARY IS THE POINT OF THE SEGMENT, so an id that would escape it must refuse
@@ -108,7 +108,7 @@ test fn w_one_attempt_derives_one_stable_path() -> Bool {
 // outside its own directory -- which is exactly the shared-mutable-path failure the attempt scoping
 // exists to close, reintroduced through the identity instead of the path.
 test fn w_unsafe_attempt_identity_refuses() -> Bool {
-  match fleet_ssh_attempt_identity(raw: "../escape") {
+  match gunbc.fleet_known_hosts_anchor.fleet_ssh_attempt_identity(raw: "../escape") {
     Absent => true
     Present { value: _ } => false
   }
@@ -117,7 +117,7 @@ test fn w_unsafe_attempt_identity_refuses() -> Bool {
 // Positive control: the refusal is discriminating, not total. Without it the claim above passes by
 // refusing every id and no anchor could ever be materialized.
 test fn w_ordinary_attempt_identity_is_admitted() -> Bool {
-  match fleet_ssh_attempt_identity(raw: "run-31469703605-attempt-1") {
+  match gunbc.fleet_known_hosts_anchor.fleet_ssh_attempt_identity(raw: "run-31469703605-attempt-1") {
     Present { value: _ } => true
     Absent => false
   }

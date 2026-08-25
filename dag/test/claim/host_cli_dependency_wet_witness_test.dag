@@ -1,26 +1,26 @@
 module test.claim.host_cli_dependency_wet_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data echo_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "echo" as std.types.NonEmptyStr,
   min_version: none,
-  installable_via: [SourceCoreutils],
+  installable_via: [extdeps.tools.SourceCoreutils],
 }
 
 data witness_note: String = "WET EXECUTION: observe_host_cli_dependency must not match shell.PosixCommandV.Check.path (Optional straddle; migrated off shell.Which.Check, crisp-wren-896, PR #8590). Present and absent are both successful typed observations — only a runtime error is RED."
 
 test fn observe_echo_wet_posix_command_v_check_does_not_crash() -> Bool {
-  match observe_host_cli_dependency(tool: echo_cli_tool) {
-    HostCliDependencyPresent => true
-    HostCliDependencyAbsent { tool: _, hint: _ } => true
+  match gunbc.host_cli_dependency.observe_host_cli_dependency(tool: echo_cli_tool) {
+    gunbc.host_cli_dependency.HostCliDependencyPresent => true
+    gunbc.host_cli_dependency.HostCliDependencyAbsent { tool: _, hint: _ } => true
   }
 }
 
 test fn observe_npm_wet_posix_command_v_check_does_not_crash() -> Bool {
-  match observe_host_cli_dependency(tool: npm_cli_tool) {
-    HostCliDependencyPresent => true
-    HostCliDependencyAbsent { tool: _, hint: _ } => true
+  match gunbc.host_cli_dependency.observe_host_cli_dependency(tool: extdeps.tools.npm.npm_cli_tool) {
+    gunbc.host_cli_dependency.HostCliDependencyPresent => true
+    gunbc.host_cli_dependency.HostCliDependencyAbsent { tool: _, hint: _ } => true
   }
 }

@@ -18,7 +18,7 @@ data memory_cap_plan_row_kind_guard_note: String = "memory_cap_plan_row_is_per_s
 
 fn memory_cap_plan_row_is_per_slot_memory_cap(knob: gunbc.host_converge.ConvergeKnob) -> Bool {
   match knob.target {
-    PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: _, bytes_value: _ } => true
+    gunbc.host_converge.PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: _, bytes_value: _ } => true
     _ => false
   }
 }
@@ -29,17 +29,17 @@ fn memory_cap_dropin_stanza(property: String, bytes_value: String) -> String {
 
 fn memory_cap_plan_row_fields(host: product.placement_supply.HostIdentity, knob: gunbc.host_converge.ConvergeKnob) -> List<std.languages.SerialField> {
   match knob.target {
-    PerSlotMemoryCap { dropin_path: path, instance_glob: glob, property: prop, bytes_value: bytes } =>
+    gunbc.host_converge.PerSlotMemoryCap { dropin_path: path, instance_glob: glob, property: prop, bytes_value: bytes } =>
       [
-        serial_field(key: "host", value: serial_scalar(text: host as String)),
-        serial_field(key: "knob_name", value: serial_scalar(text: knob.name)),
-        serial_field(key: "dropin_path", value: serial_scalar(text: path)),
-        serial_field(key: "property", value: serial_scalar(text: prop)),
-        serial_field(key: "bytes_value", value: serial_scalar(text: bytes)),
-        serial_field(key: "instance_glob", value: serial_scalar(text: glob)),
-        serial_field(
+        std.serialize.serial_field(key: "host", value: std.serialize.serial_scalar(text: host as String)),
+        std.serialize.serial_field(key: "knob_name", value: std.serialize.serial_scalar(text: knob.name)),
+        std.serialize.serial_field(key: "dropin_path", value: std.serialize.serial_scalar(text: path)),
+        std.serialize.serial_field(key: "property", value: std.serialize.serial_scalar(text: prop)),
+        std.serialize.serial_field(key: "bytes_value", value: std.serialize.serial_scalar(text: bytes)),
+        std.serialize.serial_field(key: "instance_glob", value: std.serialize.serial_scalar(text: glob)),
+        std.serialize.serial_field(
           key: "dropin_stanza",
-          value: serial_scalar(text: memory_cap_dropin_stanza(property: prop, bytes_value: bytes))
+          value: std.serialize.serial_scalar(text: memory_cap_dropin_stanza(property: prop, bytes_value: bytes))
         ),
       ]
     _ => []
@@ -48,28 +48,28 @@ fn memory_cap_plan_row_fields(host: product.placement_supply.HostIdentity, knob:
 
 fn memory_cap_plan_row_doc(host: product.placement_supply.HostIdentity, knob: gunbc.host_converge.ConvergeKnob) -> std.layout.Doc {
   if memory_cap_plan_row_is_per_slot_memory_cap(knob: knob) {
-    doc_concat(parts: [
-      doc_text(text: "runner-memory-cap-plan "),
-      serialize_fields_doc(knobs: runner_memory_cap_plan_record_knobs, fields: memory_cap_plan_row_fields(host: host, knob: knob)),
-      DocLine,
+    std.layout.doc_concat(parts: [
+      std.layout.doc_text(text: "runner-memory-cap-plan "),
+      std.serialize.serialize_fields_doc(knobs: runner_memory_cap_plan_record_knobs, fields: memory_cap_plan_row_fields(host: host, knob: knob)),
+      std.layout.DocLine,
     ])
   } else {
-    doc_line_of(text: concat("runner-memory-cap-plan UNSOUND: knob ", concat(knob.name, " is not PerSlotMemoryCap")))
+    std.layout.doc_line_of(text: concat("runner-memory-cap-plan UNSOUND: knob ", concat(knob.name, " is not PerSlotMemoryCap")))
   }
 }
 
 fn project_runner_memory_cap_plan_doc(host: product.placement_supply.HostIdentity) -> std.layout.Doc {
-  match runner_memory_host_converge(host: host) {
+  match gunbc.host_runner_memory_provision.runner_memory_host_converge(host: host) {
     Present { value: hc } =>
-      doc_concat(parts: append(
+      std.layout.doc_concat(parts: append(
         [
-          doc_line_of(text: runner_memory_cap_plan_emit_disclaimer),
-          doc_line_of(text: ""),
+          std.layout.doc_line_of(text: runner_memory_cap_plan_emit_disclaimer),
+          std.layout.doc_line_of(text: ""),
         ],
-        items: map(runner_memory_knobs_from(host: hc), knob => memory_cap_plan_row_doc(host: host, knob: knob))
+        items: map(gunbc.host_runner_memory_provision.runner_memory_knobs_from(host: hc), knob => memory_cap_plan_row_doc(host: host, knob: knob))
       ))
     Absent =>
-      doc_line_of(
+      std.layout.doc_line_of(
         text: concat(
           "runner-memory-cap-plan UNSOUND: memory-cap converge knobs absent from fleet_converge_policy for ",
           host as String

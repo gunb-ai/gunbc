@@ -7,22 +7,22 @@ data v2_emitter_direct_rust_door_contract_dissolution_note: String = "DISSOLVES 
 
 data direct_rust_door_execution_receipt_ceiling_note: String = "HONEST CEILING on what the SCHEDULER learns, stated so no roster prose overclaims it. The group value retains every child outcome — which leaf refused, which stage a LeafNotReached names — but the only scheduled root returns Bool, so the executor receipt carries FAIL and nothing else. What is established today: the typed located observation exists and is inspectable by any consumer holding the group. What is NOT established: that the scheduled red receipt itself names the stage. Those are different claims and only the first is true. Dissolve-on: the witness-lifecycle pointwise expectation/evidence work preserves the group observation in the execution receipt; until then a red here is located by re-running the root locally, not by reading the falsifier receipt."
 
-data direct_rust_door_emitted_root: v2.std.node.Node = rust_fixture_emitted_add_fn
+data direct_rust_door_emitted_root: v2.std.node.Node = v2.extdeps.languages.rust.rust_fixture_emitted_add_fn
 
 data direct_rust_door_missing_rules_bundle: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence,
+  occurrence_id: v2.std.node.SyntheticOccurrence,
 }
 
 data direct_rust_door_missing_rules_target: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
-  produced_decl_support: ProducedDeclUnwired,
+  produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
   bundle: direct_rust_door_missing_rules_bundle,
-  lex: rust_fn_add_lex(),
-  binding_spellings: empty_map(),
-  token_class_emit_transforms: target_model_emit_transforms_empty,
+  lex: v2.extdeps.languages.rust.rust_fn_add_lex(),
+  binding_spellings: v2.std.collection.empty_map(),
+  token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
   authority_source_text: "",
-  runtime_row: target_emit_host_runtime_row_unconfigured,
+  runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured,
 }
 
 type DirectRustDoorScenarioFailure
@@ -44,17 +44,17 @@ fn refused(failure: DirectRustDoorScenarioFailure) -> DirectRustDoorAdmission {
 }
 
 fn assess_missing_translation_rule_refuses() -> DirectRustDoorAdmission {
-  match target_serialize_source_from_model(
+  match v2.compiler.translate.target_serialize_source_from_model(
     target: direct_rust_door_missing_rules_target,
     emitted: direct_rust_door_emitted_root,
   ) {
-    Accepted { value: _, diagnostics: _ } =>
-      v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleAcceptedDespiteGap)
-    Rejected { diagnostics: r } =>
-      match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
-        Present { value: TargetBundleMalformed } => DirectRustDoorEstablished
-        Present { value: _ } => v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleWrongDiagnostic)
-        Absent => v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleDiagnosticAbsent)
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+      refused(failure: MissingRuleAcceptedDespiteGap)
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
+      match v2.compiler.translate.translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
+        v2.std.optional.Present { value: v2.compiler.translate.TargetBundleMalformed } => DirectRustDoorEstablished
+        v2.std.optional.Present { value: _ } => refused(failure: MissingRuleWrongDiagnostic)
+        v2.std.optional.Absent => refused(failure: MissingRuleDiagnosticAbsent)
       }
   }
 }
@@ -99,10 +99,10 @@ fn direct_rust_door_group_from_observations(
 
 fn direct_rust_door_production_group() -> DirectRustDoorProductionGroup {
   direct_rust_door_group_from_observations(
-    emission: observe_provenanced_rust_emission_from_ingest(
-      ingest: direct_rust_door_ingest(),
-      admission: direct_rust_door_admission(),
-      target: direct_rust_door_target_model(),
+    emission: v2.compiler.self_host.candidate_generation.observe_provenanced_rust_emission_from_ingest(
+      ingest: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_ingest(),
+      admission: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_admission(),
+      target: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_target_model(),
       module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path
     ),
     missing_rule: assess_missing_translation_rule_refuses()
@@ -116,7 +116,7 @@ type DirectRustDoorArtifactLeafResult
 
 fn direct_rust_door_artifact_assessment(
   artifact: v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact,
-  holds: fn(v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact) -> v2.std.logic.Bool,
+  holds: fn(v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact) -> Bool,
   refusal_cause: v2.std.node.Symbol
 ) -> DirectRustDoorArtifactLeafResult {
   if holds(artifact) {
@@ -131,7 +131,7 @@ fn direct_rust_door_source_fidelity_assessment(
 ) -> DirectRustDoorArtifactLeafResult {
   direct_rust_door_artifact_assessment(
     artifact: artifact,
-    holds: fn(a) { a.source.carried == direct_rust_door_expected_source },
+    holds: fn(a) { a.source.carried == v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_expected_source },
     refusal_cause: direct_rust_door_source_mismatch_cause
   )
 }
@@ -141,7 +141,7 @@ fn direct_rust_door_producer_identity_assessment(
 ) -> DirectRustDoorArtifactLeafResult {
   direct_rust_door_artifact_assessment(
     artifact: artifact,
-    holds: fn(a) { provenanced_rust_artifact_producer_is_v2_interpreted(artifact: a) },
+    holds: fn(a) { v2.compiler.self_host.candidate_generation.provenanced_rust_artifact_producer_is_v2_interpreted(artifact: a) },
     refusal_cause: direct_rust_door_wrong_producer_cause
   )
 }
@@ -151,7 +151,7 @@ fn direct_rust_door_seed_emitter_absence_assessment(
 ) -> DirectRustDoorArtifactLeafResult {
   direct_rust_door_artifact_assessment(
     artifact: artifact,
-    holds: fn(a) { provenanced_rust_artifact_seed_emitter_unreachable(artifact: a) },
+    holds: fn(a) { v2.compiler.self_host.candidate_generation.provenanced_rust_artifact_seed_emitter_unreachable(artifact: a) },
     refusal_cause: direct_rust_door_declared_closure_seed_cause
   )
 }
@@ -162,9 +162,9 @@ fn direct_rust_door_source_produced_assessment(
   direct_rust_door_artifact_assessment(
     artifact: artifact,
     holds: fn(a) {
-      emission_qualifications_list_contains(
+      v2.compiler.self_host.emitter_producer_provenance.emission_qualifications_list_contains(
         xs: a.producer_receipt.qualifications,
-        wanted: SourceProduced
+        wanted: v2.compiler.self_host.emitter_producer_provenance.SourceProduced
       )
     },
     refusal_cause: direct_rust_door_source_produced_missing_cause
@@ -176,18 +176,18 @@ fn direct_rust_door_artifact_leaf(
   assess: fn(v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact) -> DirectRustDoorArtifactLeafResult
 ) -> DirectRustDoorLeafResult {
   match emission {
-    ArtifactProduced { artifact: a } =>
+    v2.compiler.self_host.candidate_generation.ArtifactProduced { artifact: a } =>
       match assess(a) {
         ArtifactLeafEstablished => LeafEstablished
         ArtifactLeafRefused { cause: c } => LeafRefused { cause: c }
       }
-    AssemblyRejected { diagnostics: _ } =>
+    v2.compiler.self_host.candidate_generation.AssemblyRejected { diagnostics: _ } =>
       LeafNotReached { cause: direct_rust_door_leaf_not_reached_assembly }
-    InferenceRejected { diagnostics: _ } =>
+    v2.compiler.self_host.candidate_generation.InferenceRejected { diagnostics: _ } =>
       LeafNotReached { cause: direct_rust_door_leaf_not_reached_inference }
-    EmissionRejected { diagnostics: _ } =>
+    v2.compiler.self_host.candidate_generation.EmissionRejected { diagnostics: _ } =>
       LeafNotReached { cause: direct_rust_door_leaf_not_reached_emission }
-    ProducerReceiptRejected { diagnostics: _ } =>
+    v2.compiler.self_host.candidate_generation.ProducerReceiptRejected { diagnostics: _ } =>
       LeafNotReached { cause: direct_rust_door_leaf_not_reached_receipt }
   }
 }
@@ -254,9 +254,9 @@ fn direct_rust_door_group_leaves(
 
 fn direct_rust_door_production_group_holds(
   group: DirectRustDoorProductionGroup
-) -> v2.std.logic.Bool {
+) -> Bool {
   !(direct_rust_door_group_leaves(group: group)
-    |> any(leaf => match leaf {
+    |> v2.std.algebra.any(leaf => match leaf {
       LeafEstablished => false
       LeafRefused { cause: _ } => true
       LeafNotReached { cause: _ } => true

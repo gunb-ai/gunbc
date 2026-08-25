@@ -5,14 +5,14 @@ module v2.lens.affected_set_examples
 data affected_set_example_hash: v2.std.node.Hash = affected_set_example_hash
 
 data affected_set_example_node: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 data affected_set_claim_failure_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^affected_set_claim_failure_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data affected_set_example_path: v2.std.node.Path = v2.std.node.Path { steps: [^affected_set_example_path_symbol] }
@@ -24,8 +24,8 @@ data affected_set_example_edit: v2.std.node.Edit = v2.std.node.Edit {
 
 data affected_set_example_invalid_edit_diagnostic: v2.std.diagnostic.Diagnostic = v2.std.diagnostic.Diagnostic {
   reason: ^affected_set_example_reason,
-  at: node_locus(node: affected_set_example_node),
-  correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+  at: v2.std.diagnostic.node_locus(node: affected_set_example_node),
+  correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
 }
 
 data expected_affected_set_boundary_prune: v2.lens.affected_set.ReExecFrontier = v2.lens.affected_set.ChangedSubgraphFrontier {
@@ -45,7 +45,7 @@ data expected_affected_set_dimension_seed: v2.lens.affected_set.ReExecFrontier =
   decisions: map_insert(
     empty_map(),
     v2.lens.affected_set.ExclusionKey { at: affected_set_example_node, dimension: ^affected_set_example_dimension },
-    Rerun
+    v2.lens.affected_set.Rerun
   )
 }
 
@@ -75,18 +75,18 @@ data expected_affected_set_unknown_fail_closed: v2.lens.affected_set.ReExecFront
 
 data expected_affected_set_rejected_edit_fail_closed: v2.lens.affected_set.ReExecFrontier = v2.lens.affected_set.FailClosed {
   reason: v2.lens.affected_set.ReasonDiagnostics {
-    diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
+    diagnostics: v2.std.diagnostic.diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
   }
 }
 
 data expected_affected_set_whole_dag_absorbs_later_unknown: v2.lens.affected_set.ReExecFrontier = v2.lens.affected_set.FailClosed {
   reason: v2.lens.affected_set.ReasonDiagnostics {
-    diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
+    diagnostics: v2.std.diagnostic.diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
   }
 }
 
 fn affected_set_example_boundary_hash_receipt(dag: v2.lens.affected_set.Dag, path: v2.std.node.Path, replacement: v2.std.node.Node) -> v2.lens.affected_set.HashReceipt {
-  HashChanged
+  v2.lens.affected_set.HashChanged
 }
 
 fn affected_set_example_changed_dimension_receipt(dag: v2.lens.affected_set.Dag, edit: v2.std.node.Edit) -> v2.lens.affected_set.ChangedDimensionReceipt {
@@ -105,7 +105,7 @@ fn affected_set_example_propagation_receipt(
   edit_dimension: v2.lens.affected_set.EditDimension,
   dependency: v2.std.dependency.DependencyView
 ) -> v2.lens.affected_set.PropagationReceipt {
-  Propagates
+  v2.lens.affected_set.Propagates
 }
 
 data affected_set_example_read: v2.lens.affected_set.AffectedSetRead = v2.lens.affected_set.AffectedSetRead {
@@ -128,7 +128,7 @@ fn affected_set_example_post_edit_accepts(dag: v2.lens.affected_set.Dag, edit: v
 fn affected_set_example_post_edit_rejects(dag: v2.lens.affected_set.Dag, edit: v2.std.node.Edit) -> v2.lens.affected_set.AffectedPostEditDagRead {
   v2.lens.affected_set.AffectedPostEditDagRead {
     outcome: v2.std.diagnostic.Rejected {
-      diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
+      diagnostics: v2.std.diagnostic.diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
     }
   }
 }
@@ -138,5 +138,5 @@ data affected_set_example_two_edit_diff: v2.std.node.Diff = v2.std.node.Diff {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority }
 }

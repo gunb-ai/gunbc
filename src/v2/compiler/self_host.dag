@@ -1,17 +1,17 @@
-module v2.std.node.v2.compiler.self_host
+module v2.compiler.self_host
 
 
-// `type CoreNode = v2.std.node.Node` WAS DECLARED HERE AND IS DELETED. The identical alias, onto the identical
-// target, was also declared in v2.std.node.v2.compiler.compile, and v2.std.node.v2.compiler.ingest already imports it from
+// `type CoreNode = Node` WAS DECLARED HERE AND IS DELETED. The identical alias, onto the identical
+// target, was also declared in v2.compiler.compile, and v2.compiler.ingest already imports it from
 // there -- so one concept had two authorities, which DESIGN 3 forbids independently of anything
 // downstream. This module now asks the same authority ingest does.
 //
 // WHAT THE DUPLICATE COST, measured rather than asserted: v1's direct-call argument-type judgment
 // resolves a nominal type by NAME, and a name declared in two modules is census-AMBIGUOUS, so the
 // transparent-alias identity relation (gunbc#8873) excludes it conservatively and cannot decide
-// that v2.compiler.compile.CoreNode and v2.std.node.Node are the same type. Deleting the v2.std.node.v2.* argument-type exemption over the
+// that CoreNode and Node are the same type. Deleting the v2.* argument-type exemption over the
 // corpus left 67 blocking diagnostics, and 48 of them -- 72% -- were this one duplicate, as
-// `expected Primitive(v2.compiler.compile.CoreNode), got Product(v2.std.node.Node)` and its reverse across 05_eval.dag,
+// `expected Primitive(CoreNode), got Product(Node)` and its reverse across 05_eval.dag,
 // self_host_fixed_point_test.dag, 00_compile.dag and this file.
 //
 // TO BE EXACT ABOUT WHAT THIS DOES AND DOES NOT FIX: it removes this SPECIMEN, not the class. A
@@ -21,8 +21,8 @@ module v2.std.node.v2.compiler.self_host
 // one makes an illegitimate duplicate not exist.
 
 type SourceModels {
-  stage1_committed_seed_source: extdeps.communication.medium.Medium<v2.std.text.String>
-  stage2_regen_emitted_source: extdeps.communication.medium.Medium<v2.std.text.String>
+  stage1_committed_seed_source: extdeps.communication.medium.Medium<String>
+  stage2_regen_emitted_source: extdeps.communication.medium.Medium<String>
 }
 
 // WHAT THIS SYMBOL ACTUALLY GATES, renamed to say so.
@@ -36,14 +36,14 @@ type SourceModels {
 // was not.
 //
 // The machinery underneath was never the problem, and is NOT retired here. Its one
-// production consumer is `v2.std.node.v2.workflow.self_host_realized_comparison_claims`
+// production consumer is `v2.workflow.self_host_realized_comparison_claims`
 // `self_host_realized_comparison_staleness_gate_holds`, which compares committed regen
 // output against freshly emitted regen output — a staleness gate, the same shape as the
 // ci.yml drift gate, and a fact worth gating on bytes because bytes are exactly what
 // went stale. Two different facts were fused under one name: what regen drift means,
 // and what self-hosting means. Only the second was wrong.
 //
-// Self-host equality now lives in `v2.std.node.v2.compiler.self_host.promotion_admission`, which
+// Self-host equality now lives in `v2.compiler.self_host.promotion_admission`, which
 // imports no filesystem surface and cannot read source bytes at all, so the two
 // authorities cannot be confused again by reaching for whichever is nearer.
 //
@@ -60,7 +60,7 @@ data regen_staleness_authority: v2.std.node.Symbol = ^canonical_emitted_bytes
 
 type SelfHostStageEmission {
   node: v2.compiler.compile.CoreNode
-  source: extdeps.communication.medium.Medium<v2.std.text.String>
+  source: extdeps.communication.medium.Medium<String>
   digest: v2.std.node.Hash
 }
 
@@ -110,11 +110,11 @@ fn self_host_fixpoint_digest_mismatch_diagnostic(
   }
 }
 
-fn source_text_code_unit_digest(text: v2.std.text.String) -> v2.std.node.Hash {
+fn source_text_code_unit_digest(text: String) -> v2.std.node.Hash {
   v2.std.node.symbol_identity_digest(sym: text)
 }
 
-fn canonical_emitted_bytes_digest(source: extdeps.communication.medium.Medium<v2.std.text.String>) -> v2.std.node.Hash {
+fn canonical_emitted_bytes_digest(source: extdeps.communication.medium.Medium<String>) -> v2.std.node.Hash {
   v2.std.node.combine_hash(
     a: v2.std.node.symbol_identity_digest(sym: ^canonical_emitted_bytes),
     b: source_text_code_unit_digest(text: source.carried)
@@ -123,7 +123,7 @@ fn canonical_emitted_bytes_digest(source: extdeps.communication.medium.Medium<v2
 
 fn self_host_stage_emission(
   node: v2.compiler.compile.CoreNode,
-  source: extdeps.communication.medium.Medium<v2.std.text.String>
+  source: extdeps.communication.medium.Medium<String>
 ) -> SelfHostStageEmission {
   SelfHostStageEmission {
     node: node,
@@ -146,7 +146,7 @@ fn self_host_fixpoint_equal(
 fn self_host_snake_closes(
   stage1: SelfHostStageEmission,
   stage2: SelfHostStageEmission
-) -> v2.std.logic.Bool {
+) -> Bool {
   stage1.digest == stage2.digest
 }
 
@@ -168,7 +168,7 @@ fn self_host_fixpoint_witness(
   }
 }
 
-fn source_models_regen_byte_pair_ready(models: SourceModels) -> v2.std.logic.Bool {
+fn source_models_regen_byte_pair_ready(models: SourceModels) -> Bool {
   !v2.std.text.string_is_empty(s: models.stage1_committed_seed_source.carried)
     && !v2.std.text.string_is_empty(s: models.stage2_regen_emitted_source.carried)
 }
@@ -238,7 +238,7 @@ fn self_host_fixed_point_digests_match(
   stage1_node: v2.compiler.compile.CoreNode,
   stage2_node: v2.compiler.compile.CoreNode,
   source_models: SourceModels
-) -> v2.std.logic.Bool {
+) -> Bool {
   self_host_snake_closes(
     stage1: self_host_stage_emission(
       node: stage1_node,
@@ -279,16 +279,16 @@ fn stage_emission_equality(
   }
 }
 
-fn boundary_tag_bytes(filename: v2.std.text.String, content: v2.std.text.String) -> v2.std.text.String {
+fn boundary_tag_bytes(filename: String, content: String) -> String {
   concat(filename, concat("\n", content))
 }
 
-fn read_roster_manifest(manifest_path: v2.std.text.String) -> List<v2.std.text.String> {
+fn read_roster_manifest(manifest_path: String) -> List<String> {
   let raw = filesystem_read(path: manifest_path).content
   v2.std.algebra.filter(xs: raw.split("\n"), predicate: fn(s) { !v2.std.text.string_is_empty(s: s) })
 }
 
-fn fold_side_bytes(root: v2.std.text.String, roster: List<v2.std.text.String>) -> v2.std.text.String {
+fn fold_side_bytes(root: String, roster: List<String>) -> String {
   v2.std.algebra.fold_list(
     xs: roster,
     empty: "",
@@ -301,9 +301,9 @@ fn fold_side_bytes(root: v2.std.text.String, roster: List<v2.std.text.String>) -
 }
 
 fn source_models_from_roster_and_roots(
-  committed_root: v2.std.text.String,
-  emitted_root: v2.std.text.String,
-  roster: List<v2.std.text.String>
+  committed_root: String,
+  emitted_root: String,
+  roster: List<String>
 ) -> SourceModels {
   SourceModels {
     stage1_committed_seed_source: extdeps.communication.medium.Medium {
@@ -318,9 +318,9 @@ fn source_models_from_roster_and_roots(
 }
 
 fn source_models_from_manifest_and_roots(
-  committed_root: v2.std.text.String,
-  emitted_root: v2.std.text.String,
-  manifest_path: v2.std.text.String
+  committed_root: String,
+  emitted_root: String,
+  manifest_path: String
 ) -> SourceModels {
   source_models_from_roster_and_roots(
     committed_root: committed_root,

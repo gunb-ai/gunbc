@@ -3,7 +3,7 @@ module extdeps.firmware.kernel_cmdline
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.kernel.org/doc/html/latest/admin-guide/kernel-parameters.html"
   }
 }

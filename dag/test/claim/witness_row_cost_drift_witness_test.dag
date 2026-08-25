@@ -6,87 +6,87 @@ data witness_row_cost_drift_note: String = "Executing consumer for the per-witne
 fn dated_basis(clock: std.measure.ClockBasis, eval_ms: std.nat.Nat, run_ref: String) -> gunbc.witness_row_cost.WitnessRowCostDatedBasis {
   gunbc.witness_row_cost.WitnessRowCostDatedBasis {
     clock: clock,
-    eval: millisecond(count: eval_ms),
+    eval: std.measure.millisecond(count: eval_ms),
     run_ref: run_ref,
   }
 }
 
 fn drift_red_control_exceeds_basis_holds() -> Bool {
-  let v = witness_row_cost_verdict(
-    observed: millisecond(count: 21),
-    observed_clock: WallClock,
-    basis: v2.std.optional.Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-red") },
+  let v = gunbc.witness_row_cost.witness_row_cost_verdict(
+    observed: std.measure.millisecond(count: 21),
+    observed_clock: std.measure.WallClock,
+    basis: v2.std.optional.Present { value: dated_basis(clock: std.measure.WallClock, eval_ms: 10, run_ref: "synthetic-red") },
   )
   match v {
-    DriftExceeded { observed: o, basis: b } =>
-      millisecond_count(m: o) == 21 && millisecond_count(m: b) == 10
-    WithinBasis => false
-    BasisAbsent => false
-    BasisClockMismatch { observed: _, basis: _ } => false
+    gunbc.witness_row_cost.DriftExceeded { observed: o, basis: b } =>
+      std.measure.millisecond_count(m: o) == 21 && std.measure.millisecond_count(m: b) == 10
+    gunbc.witness_row_cost.WithinBasis => false
+    gunbc.witness_row_cost.BasisAbsent => false
+    gunbc.witness_row_cost.BasisClockMismatch { observed: _, basis: _ } => false
   }
 }
 
 fn within_basis_control_does_not_drift_holds() -> Bool {
-  let v = witness_row_cost_verdict(
-    observed: millisecond(count: 20),
-    observed_clock: WallClock,
-    basis: v2.std.optional.Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-within") },
+  let v = gunbc.witness_row_cost.witness_row_cost_verdict(
+    observed: std.measure.millisecond(count: 20),
+    observed_clock: std.measure.WallClock,
+    basis: v2.std.optional.Present { value: dated_basis(clock: std.measure.WallClock, eval_ms: 10, run_ref: "synthetic-within") },
   )
   match v {
-    WithinBasis => true
-    DriftExceeded { observed: _, basis: _ } => false
-    BasisAbsent => false
-    BasisClockMismatch { observed: _, basis: _ } => false
+    gunbc.witness_row_cost.WithinBasis => true
+    gunbc.witness_row_cost.DriftExceeded { observed: _, basis: _ } => false
+    gunbc.witness_row_cost.BasisAbsent => false
+    gunbc.witness_row_cost.BasisClockMismatch { observed: _, basis: _ } => false
   }
 }
 
 fn basis_absent_control_holds() -> Bool {
-  let v = witness_row_cost_verdict(
-    observed: millisecond(count: 999),
-    observed_clock: WallClock,
+  let v = gunbc.witness_row_cost.witness_row_cost_verdict(
+    observed: std.measure.millisecond(count: 999),
+    observed_clock: std.measure.WallClock,
     basis: v2.std.optional.Absent,
   )
   match v {
-    BasisAbsent => true
-    WithinBasis => false
-    DriftExceeded { observed: _, basis: _ } => false
-    BasisClockMismatch { observed: _, basis: _ } => false
+    gunbc.witness_row_cost.BasisAbsent => true
+    gunbc.witness_row_cost.WithinBasis => false
+    gunbc.witness_row_cost.DriftExceeded { observed: _, basis: _ } => false
+    gunbc.witness_row_cost.BasisClockMismatch { observed: _, basis: _ } => false
   }
 }
 
 fn cross_clock_comparison_refuses_rather_than_answering_holds() -> Bool {
-  let v = witness_row_cost_verdict(
-    observed: millisecond(count: 21),
-    observed_clock: CpuClock,
-    basis: v2.std.optional.Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-cross-clock") },
+  let v = gunbc.witness_row_cost.witness_row_cost_verdict(
+    observed: std.measure.millisecond(count: 21),
+    observed_clock: std.measure.CpuClock,
+    basis: v2.std.optional.Present { value: dated_basis(clock: std.measure.WallClock, eval_ms: 10, run_ref: "synthetic-cross-clock") },
   )
   match v {
-    BasisClockMismatch { observed: o, basis: b } =>
-      clock_basis_eq(a: o, b: CpuClock) && clock_basis_eq(a: b, b: WallClock)
-    DriftExceeded { observed: _, basis: _ } => false
-    WithinBasis => false
-    BasisAbsent => false
+    gunbc.witness_row_cost.BasisClockMismatch { observed: o, basis: b } =>
+      std.measure.clock_basis_eq(a: o, b: std.measure.CpuClock) && std.measure.clock_basis_eq(a: b, b: std.measure.WallClock)
+    gunbc.witness_row_cost.DriftExceeded { observed: _, basis: _ } => false
+    gunbc.witness_row_cost.WithinBasis => false
+    gunbc.witness_row_cost.BasisAbsent => false
   }
 }
 
 fn cross_clock_refusal_is_not_reachable_by_the_within_arm_holds() -> Bool {
-  let v = witness_row_cost_verdict(
-    observed: millisecond(count: 20),
-    observed_clock: CpuClock,
-    basis: v2.std.optional.Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-cross-clock-within") },
+  let v = gunbc.witness_row_cost.witness_row_cost_verdict(
+    observed: std.measure.millisecond(count: 20),
+    observed_clock: std.measure.CpuClock,
+    basis: v2.std.optional.Present { value: dated_basis(clock: std.measure.WallClock, eval_ms: 10, run_ref: "synthetic-cross-clock-within") },
   )
   match v {
-    BasisClockMismatch { observed: _, basis: _ } => true
-    WithinBasis => false
-    DriftExceeded { observed: _, basis: _ } => false
-    BasisAbsent => false
+    gunbc.witness_row_cost.BasisClockMismatch { observed: _, basis: _ } => true
+    gunbc.witness_row_cost.WithinBasis => false
+    gunbc.witness_row_cost.DriftExceeded { observed: _, basis: _ } => false
+    gunbc.witness_row_cost.BasisAbsent => false
   }
 }
 
 fn boundary_at_exactly_twice_is_not_drift_holds() -> Bool {
-  !witness_row_cost_exceeds_basis(
-    observed: millisecond(count: 20),
-    basis: millisecond(count: 10),
+  !gunbc.witness_row_cost.witness_row_cost_exceeds_basis(
+    observed: std.measure.millisecond(count: 20),
+    basis: std.measure.millisecond(count: 10),
   )
 }
 

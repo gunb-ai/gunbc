@@ -48,10 +48,10 @@ fn occurrence_binding_inputs_from_module_transport(
         concat([
           std.occurrence_binding_candidates.DeclarationExposureRow {
             occurrence: declaration.occurrence,
-            exposure: declaration_exposure_from_containment(
+            exposure: std.occurrence_binding_candidates.declaration_exposure_from_containment(
               module_path: module_path,
               containment: declaration.containment,
-              grounding: NamespaceStructuralRootExposure,
+              grounding: std.occurrence_binding_candidates.NamespaceStructuralRootExposure,
             ),
           },
         ], acc),
@@ -60,7 +60,7 @@ fn occurrence_binding_inputs_from_module_transport(
       transport.index.entries,
       init: [],
       f: (acc, entry) =>
-        concat([gunbc.type_reference_binding_context.authored_order_row_from_entry(entry: entry)], acc),
+        concat([authored_order_row_from_entry(entry: entry)], acc),
     )),
   }
 }

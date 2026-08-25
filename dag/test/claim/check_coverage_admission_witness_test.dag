@@ -1,14 +1,14 @@
 module test.claim.check_coverage_admission_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data required_head: std.types.CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 data prior_head: std.types.CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-data required_roster: std.content_hash.ContentHash = content_hash_of_value(value: "check-coverage-required-roster")
-data prior_roster: std.content_hash.ContentHash = content_hash_of_value(value: "check-coverage-prior-roster")
-data gate_a: std.content_hash.ContentHash = content_hash_of_value(value: "check-coverage-gate-a")
-data gate_b: std.content_hash.ContentHash = content_hash_of_value(value: "check-coverage-gate-b")
+data required_roster: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "check-coverage-required-roster")
+data prior_roster: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "check-coverage-prior-roster")
+data gate_a: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "check-coverage-gate-a")
+data gate_b: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "check-coverage-gate-b")
 data required_gates: List<std.content_hash.ContentHash> = [gate_a, gate_b]
 
 fn passed(gate: std.content_hash.ContentHash) -> gunbc.merge_admission.CoveredGateConclusion {
@@ -20,7 +20,7 @@ fn failed(gate: std.content_hash.ContentHash) -> gunbc.merge_admission.CoveredGa
 }
 
 fn admits(coverage: gunbc.merge_admission.CheckCoverage) -> Bool {
-  check_coverage_admits(
+  gunbc.merge_admission.check_coverage_admits(
     coverage: coverage,
     required_head: required_head,
     required_roster: required_roster,
@@ -29,7 +29,7 @@ fn admits(coverage: gunbc.merge_admission.CheckCoverage) -> Bool {
 }
 
 test fn complete_exact_head_roster_and_population_admits() -> Bool {
-  test.claim.check_coverage_admission_witness.admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
+  admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
     head: required_head,
     roster: required_roster,
     conclusions: [passed(gate: gate_a), passed(gate: gate_b)]
@@ -37,14 +37,14 @@ test fn complete_exact_head_roster_and_population_admits() -> Bool {
 }
 
 test fn absent_coverage_refuses_instead_of_vacuously_passing() -> Bool {
-  !test.claim.check_coverage_admission_witness.admits(coverage: gunbc.merge_admission.CheckCoverageAbsent {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageAbsent {
     required_head: required_head,
     required_roster: required_roster
   })
 }
 
 test fn running_coverage_refuses() -> Bool {
-  !test.claim.check_coverage_admission_witness.admits(coverage: gunbc.merge_admission.CheckCoverageRunning {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageRunning {
     head: required_head,
     roster: required_roster,
     run: "run-123"
@@ -52,7 +52,7 @@ test fn running_coverage_refuses() -> Bool {
 }
 
 test fn stopped_coverage_preserves_unexecuted_population_and_cause() -> Bool {
-  match classify_check_coverage_admission(
+  match gunbc.merge_admission.classify_check_coverage_admission(
     coverage: gunbc.merge_admission.CheckCoverageStopped {
       head: required_head,
       roster: required_roster,
@@ -64,7 +64,7 @@ test fn stopped_coverage_preserves_unexecuted_population_and_cause() -> Bool {
     required_roster: required_roster,
     required_gates: required_gates
   ) {
-    CheckCoverageDeniedStopped { head, roster, completed, unexecuted, cause } =>
+    gunbc.merge_admission.CheckCoverageDeniedStopped { head, roster, completed, unexecuted, cause } =>
       head == required_head
         && roster == required_roster
         && length(completed) == 1
@@ -72,22 +72,22 @@ test fn stopped_coverage_preserves_unexecuted_population_and_cause() -> Bool {
         && length(unexecuted) == 1
         && unexecuted.first() == gate_b
         && cause == "batch-1 generated-artifact drift stopped dependent witness batches"
-    CheckCoverageAdmitted => false
-    CheckCoverageDeniedAbsent { required_head: _, required_roster: _ } => false
-    CheckCoverageDeniedRunning { head: _, roster: _, run: _ } => false
-    CheckCoverageDeniedStale { observed_head: _, required_head: _, observed_roster: _, required_roster: _ } => false
-    CheckCoverageDeniedHeadMismatch { observed: _, required: _ } => false
-    CheckCoverageDeniedRosterMismatch { observed: _, required: _ } => false
-    CheckCoverageDeniedEmptyRequiredPopulation => false
-    CheckCoverageDeniedDuplicateRequiredGate { gate: _ } => false
-    CheckCoverageDeniedExecutionCardinality { gate: _, observed_count: _ } => false
-    CheckCoverageDeniedGateFailed { gate: _, conclusion: _ } => false
+    gunbc.merge_admission.CheckCoverageAdmitted => false
+    gunbc.merge_admission.CheckCoverageDeniedAbsent { required_head: _, required_roster: _ } => false
+    gunbc.merge_admission.CheckCoverageDeniedRunning { head: _, roster: _, run: _ } => false
+    gunbc.merge_admission.CheckCoverageDeniedStale { observed_head: _, required_head: _, observed_roster: _, required_roster: _ } => false
+    gunbc.merge_admission.CheckCoverageDeniedHeadMismatch { observed: _, required: _ } => false
+    gunbc.merge_admission.CheckCoverageDeniedRosterMismatch { observed: _, required: _ } => false
+    gunbc.merge_admission.CheckCoverageDeniedEmptyRequiredPopulation => false
+    gunbc.merge_admission.CheckCoverageDeniedDuplicateRequiredGate { gate: _ } => false
+    gunbc.merge_admission.CheckCoverageDeniedExecutionCardinality { gate: _, observed_count: _ } => false
+    gunbc.merge_admission.CheckCoverageDeniedGateFailed { gate: _, conclusion: _ } => false
   }
 }
 
 test fn stale_coverage_refuses() -> Bool {
-  !test.claim.check_coverage_admission_witness.admits(coverage: gunbc.merge_admission.CheckCoverageStale {
-    observed_head: test.claim.check_coverage_admission_witness.prior_head,
+  !admits(coverage: gunbc.merge_admission.CheckCoverageStale {
+    observed_head: prior_head,
     required_head: required_head,
     observed_roster: prior_roster,
     required_roster: required_roster
@@ -95,15 +95,15 @@ test fn stale_coverage_refuses() -> Bool {
 }
 
 test fn complete_old_head_refuses() -> Bool {
-  !test.claim.check_coverage_admission_witness.admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
-    head: test.claim.check_coverage_admission_witness.prior_head,
+  !admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
+    head: prior_head,
     roster: required_roster,
     conclusions: [passed(gate: gate_a), passed(gate: gate_b)]
   })
 }
 
 test fn complete_old_roster_refuses() -> Bool {
-  !test.claim.check_coverage_admission_witness.admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
     head: required_head,
     roster: prior_roster,
     conclusions: [passed(gate: gate_a), passed(gate: gate_b)]
@@ -111,7 +111,7 @@ test fn complete_old_roster_refuses() -> Bool {
 }
 
 test fn empty_required_population_refuses() -> Bool {
-  !check_coverage_admits(
+  !gunbc.merge_admission.check_coverage_admits(
     coverage: gunbc.merge_admission.CheckCoverageComplete {
       head: required_head,
       roster: required_roster,
@@ -124,7 +124,7 @@ test fn empty_required_population_refuses() -> Bool {
 }
 
 test fn missing_required_gate_refuses() -> Bool {
-  !test.claim.check_coverage_admission_witness.admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
     head: required_head,
     roster: required_roster,
     conclusions: [passed(gate: gate_a)]
@@ -132,7 +132,7 @@ test fn missing_required_gate_refuses() -> Bool {
 }
 
 test fn duplicate_required_population_refuses() -> Bool {
-  !check_coverage_admits(
+  !gunbc.merge_admission.check_coverage_admits(
     coverage: gunbc.merge_admission.CheckCoverageComplete {
       head: required_head,
       roster: required_roster,
@@ -145,7 +145,7 @@ test fn duplicate_required_population_refuses() -> Bool {
 }
 
 test fn duplicate_required_gate_refuses() -> Bool {
-  !test.claim.check_coverage_admission_witness.admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
     head: required_head,
     roster: required_roster,
     conclusions: [passed(gate: gate_a), passed(gate: gate_a), passed(gate: gate_b)]
@@ -153,7 +153,7 @@ test fn duplicate_required_gate_refuses() -> Bool {
 }
 
 test fn required_gate_failure_refuses() -> Bool {
-  !test.claim.check_coverage_admission_witness.admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
+  !admits(coverage: gunbc.merge_admission.CheckCoverageComplete {
     head: required_head,
     roster: required_roster,
     conclusions: [passed(gate: gate_a), failed(gate: gate_b)]

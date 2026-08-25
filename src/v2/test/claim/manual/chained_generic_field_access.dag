@@ -1,5 +1,6 @@
 module v2.test.manual.chained_generic_field_access
 
+
 type Inner<S> { value: S }
 type Middle<S> { inner: Inner<S> }
 type Outer<S> { middle: Middle<S> }
@@ -10,21 +11,21 @@ fn chained_field<S>(o: Outer<S>) -> S {
 }
 
 fn use_chained() -> Int {
-  v2.test.manual.chained_generic_field_access.chained_field(o: Outer { middle: Middle { inner: Inner { value: Rec { v: 9 } } } }).v
+  chained_field(o: Outer { middle: Middle { inner: Inner { value: Rec { v: 9 } } } }).v
 }
 
-data witness_chained_generic_field: Bool = v2.test.manual.chained_generic_field_access.use_chained() == 9
+data witness_chained_generic_field: Bool = use_chained() == 9
 
 data chained_generic_field_claim_payload: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data claim_chained_generic_field_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/chained_generic_field_access: chained o.middle.inner.value compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: chained_generic_field_claim_payload,
   expected_value: chained_generic_field_claim_payload,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }

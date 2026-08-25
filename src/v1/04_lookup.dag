@@ -159,8 +159,8 @@ fn declared_candidate_rivals_the_builtin(candidate: v1.compiler.infer_sigs.Calla
       ) {
         Present { value: row } =>
           match row.fidelity {
-            HostRealizedSeam => false
-            ModeledProjection => false
+            std.primitive_projection.HostRealizedSeam => false
+            std.primitive_projection.ModeledProjection => false
             std.primitive_projection.DivergentProjection { divergence: _ } => true
           }
         Absent => false
@@ -256,7 +256,7 @@ fn callable_lookup_over_candidates(
       match v1.compiler.infer_sigs.decide_callable_candidates(candidates: admissible) {
         v1.compiler.infer_sigs.FuncSigResolved { sig: sig } => v1.compiler.infer_sigs.FuncSigResolved { sig: sig }
         v1.compiler.infer_sigs.FuncSigAmbiguous { candidates: cands } => v1.compiler.infer_sigs.FuncSigAmbiguous { candidates: cands }
-        FuncSigUnresolved =>
+        v1.compiler.infer_sigs.FuncSigUnresolved =>
           if (admissible |> count) == 0 {
             func_sig_from_global_bare(type_env: type_env, name: name)
           } else {
@@ -282,7 +282,7 @@ fn lookup_func_sig(func_env: v1.compiler.infer_sigs.ResolvedFuncEnv, type_env: v
       match v1.compiler.infer_sigs.lookup_resolved_sig(env: func_env, name: name) {
         v1.compiler.infer_sigs.FuncSigResolved { sig: sig } => v1.compiler.infer_sigs.FuncSigResolved { sig: sig }
         v1.compiler.infer_sigs.FuncSigAmbiguous { candidates: cands } => v1.compiler.infer_sigs.FuncSigAmbiguous { candidates: cands }
-        FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
+        v1.compiler.infer_sigs.FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
       }
     }
   }
@@ -790,7 +790,7 @@ fn declared_arg_types_for_method(receiver_type: v1.std.core.Node, method_name: S
       match mfr.algebra_template {
         Present { value: t } =>
           let first_is_self = match t.param_types |> first {
-            Present { value: tp } => match tp { ReceiverSelf => true  _ => false }
+            Present { value: tp } => match tp { std.algebra.ReceiverSelf => true  _ => false }
             Absent => false
           }
           let non_receiver_templates = if first_is_self { t.param_types |> skip(1) } else { t.param_types }

@@ -4,11 +4,11 @@ module test.claim.retained_shell_script_witness
 data srvn_takeover_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.plans.fleet_subsumption_manual_gaps",
   decl_name: "fleet_subsumption_manual_gaps_plan",
-  field: WholeDeclaration,
+  field: std.decl_ref.WholeDeclaration,
 }
 
 test fn witness_retained_transport_mints_from_record() -> Bool {
-  let t = retained_transport(
+  let t = gunbc.retained_shell_script.retained_transport(
     body: "echo hi",
     reason: "witness: retained_transport mints through the sealed transport_script_seal",
     dissolves_to: srvn_takeover_ref,
@@ -22,6 +22,6 @@ test fn witness_converter_preserves_body() -> Bool {
     reason: "witness: record -> transport",
     dissolves_to: srvn_takeover_ref,
   }
-  retained_shell_script_to_transport(rss: rss).body == "systemctl daemon-reload"
+  gunbc.retained_shell_script.retained_shell_script_to_transport(rss: rss).body == "systemctl daemon-reload"
 }
 

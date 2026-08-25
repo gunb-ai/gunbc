@@ -7,7 +7,7 @@ data merge_admission_subject_defusion_note: String = "WalkAttemptId, TestedSubje
 type WalkAttemptId = std.types.PathSegment where brand("WalkAttemptId")
 
 fn walk_attempt_id(raw: String) -> WalkAttemptId? {
-  if path_segment_is_safe(raw: raw) {
+  if std.types.path_segment_is_safe(raw: raw) {
     Present { value: raw as WalkAttemptId }
   } else {
     none
@@ -48,7 +48,7 @@ type TestedSubject {
 
 data tested_subject_note: String = "THE SUBJECT THE FLOOR TESTED, captured by a typed claim subprocess before the ordinary floor — before any substantive floor work — and bound into the receipt by the stamp. The child address space dies before batch 1, structurally reclaiming its evaluator arena while preserving the exact wire bytes. The stamp must NOT re-read HEAD or re-observe the merge target at stamp time: main can advance during a floor that runs for tens of minutes, and a receipt binding post-floor observations would claim the floor tested a tree it never saw. The gate then fetches the CURRENT target and classifies tested_base_commit_sha against it — two base facts with different jobs, never one observation doing both (the deleted single pre-floor fetch was exactly that fusion, and the freshness hole it left is what the old separate gate step's own fresh fetch existed to catch). The classified operand is the base COMMIT, not its tree: the merge base is fixed by ancestry, which a tree does not carry, so a base that returns to the same tree at a different commit changes the merge result while a tree comparison passes."
 
-data merge_admission_merge_base_ref: String = gunbc_merge_target_ref as String
+data merge_admission_merge_base_ref: String = gunbc.repo_identity.gunbc_merge_target_ref as String
 // SCHEMA BUMPED v1 -> v2 WITH THE ADDED FIELD, per the rule gunbc.merge_admission_produce
 // wire_exact_arity_note states: "adding a field means bumping the schema tag, not silently
 // appending a line older readers ignore". The arity check below moves 5 -> 6 in the same step, so a
@@ -86,8 +86,8 @@ fn compose_explicit_walk_attempt_id(explicit: String) -> WalkAttemptId? {
 
 fn render_git_object_id_wire(oid: extdeps.git.object_store.GitObjectId) -> String {
   match oid {
-    GitSha1ObjectId { digest: _ } => concat("sha1:", git_object_id_wire_hex(oid: oid) as String)
-    GitSha256ObjectId { digest: _ } => concat("sha256:", git_object_id_wire_hex(oid: oid) as String)
+    extdeps.git.object_store.GitSha1ObjectId { digest: _ } => concat("sha1:", extdeps.git.object_store.git_object_id_wire_hex(oid: oid) as String)
+    extdeps.git.object_store.GitSha256ObjectId { digest: _ } => concat("sha256:", extdeps.git.object_store.git_object_id_wire_hex(oid: oid) as String)
   }
 }
 
@@ -95,9 +95,9 @@ fn parse_git_object_id_wire(raw: String) -> extdeps.git.object_store.GitObjectId
   if !(length(split(s: raw, delimiter: ":")) == 2) {
     none
   } else if split(s: raw, delimiter: ":").first() == "sha1" {
-    git_sha1_object_id(hex: split(s: raw, delimiter: ":").skip(n: 1).first())
+    extdeps.git.object_store.git_sha1_object_id(hex: split(s: raw, delimiter: ":").skip(n: 1).first())
   } else if split(s: raw, delimiter: ":").first() == "sha256" {
-    git_sha256_object_id(hex: split(s: raw, delimiter: ":").skip(n: 1).first())
+    extdeps.git.object_store.git_sha256_object_id(hex: split(s: raw, delimiter: ":").skip(n: 1).first())
   } else {
     none
   }

@@ -3,21 +3,21 @@ module extdeps.instrument.pip_boy_3000_mk_v
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.thewandcompany.com/fallout-pip-boy/"
   }
 }
 
 data pip_boy_mk_v_manual_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.thewandcompany.com/pip-boy-manual/"
   }
 }
 
 data pip_boy_mk_v_retail_listing_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.amazon.com/dp/B0CWPNXHQ4"
   }
 }
@@ -32,10 +32,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.instrument.pip_boy_3000_mk_v",
       decl_name: "pip_boy_3000_mk_v",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.instrument.pip_boy_3000_mk_v.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [
     pip_boy_mk_v_manual_authority,
     pip_boy_mk_v_retail_listing_authority
@@ -44,7 +44,7 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
 
 data manufacturer_edge_note: String = "THE SHARED MANUFACTURER IS A TYPED EDGE, NOT A SENTENCE (review finding 48251, 2026-08-04: the vendor row was standalone and nothing read it). Both products are manufactured by the same company, and an earlier revision stated that only in the separation notes — a claim about a real entity, asserted in prose, where the graph could carry it. The edge points at the one cited vendor declaration, so 'same manufacturer, different subjects' becomes a fact a consumer can derive instead of a sentence two modules each restate. This is the same axis the SEC issuer corpus settled: the folder says which authority produced the facts, a typed edge says which entity they are about."
 
-data pip_boy_mk_v_manufacturer: Vendor<extdeps.hardware.Hardware> = extdeps.vendor.the_wand_company.the_wand_company
+data pip_boy_mk_v_manufacturer: extdeps.vendor.Vendor<extdeps.hardware.Hardware> = extdeps.vendor.the_wand_company.the_wand_company
 
 data subject_separation_note: String = "This module models the Fallout TV series Pip-Boy 3000 Mk V ONLY, and it carries only what THIS product's own manual grounds. The Fallout 3 / New Vegas Pip-Boy 3000 is a separate independently governed product with its own module. They share a manufacturer and a family name; neither makes them one subject. DESIGN section 3 'External upstream decomposition'."
 

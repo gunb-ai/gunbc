@@ -121,17 +121,17 @@ fn privileged_leg(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   host: String,
   admin_principal: String,
-  admin_credential: std.types.Secret,
+  admin_credential: Secret,
   script: String,
 ) -> SparkApplyOutcome {
-  match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
-    Absent => gunbc.spark.managed_access_apply.ApplyRefused { cause: "the privileged invocation is not expressible as portable remote words" }
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
+    Absent => ApplyRefused { cause: "the privileged invocation is not expressible as portable remote words" }
     Present { value: words } => {
-      let r = ssh_session_exec_portable_words_with_stdin(
-        client_args: shape_fleet_ssh_exec(
+      let r = extdeps.ssh.session.ssh_session_exec_portable_words_with_stdin(
+        client_args: gunbc.fleet_known_hosts_anchor.shape_fleet_ssh_exec(
           context: context,
           target: gunbc.fleet_known_hosts_anchor.SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host) as std.types.NonEmptyStr,
+            endpoint: gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: host) as std.types.NonEmptyStr,
             principal: admin_principal as std.types.NonEmptyStr,
           },
           words: words,
@@ -141,7 +141,7 @@ fn privileged_leg(
       if r.success {
         ApplyConverged { detail: std.algebra.trim(s: r.stdout) }
       } else {
-        gunbc.spark.managed_access_apply.ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr)], "") }
+        ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr)], "") }
       }
     }
   }
@@ -164,14 +164,14 @@ fn managed_principal_leg(
   managed_principal: String,
   raw_words: List<String>,
 ) -> SparkApplyOutcome {
-  match portable_remote_words(raws: raw_words) {
-    Absent => gunbc.spark.managed_access_apply.ApplyRefused { cause: "non-portable remote word" }
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: raw_words) {
+    Absent => ApplyRefused { cause: "non-portable remote word" }
     Present { value: words } => {
-      let r = ssh_session_exec_portable_words_with_stdin(
-        client_args: shape_fleet_ssh_exec(
+      let r = extdeps.ssh.session.ssh_session_exec_portable_words_with_stdin(
+        client_args: gunbc.fleet_known_hosts_anchor.shape_fleet_ssh_exec(
           context: context,
           target: gunbc.fleet_known_hosts_anchor.SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host) as std.types.NonEmptyStr,
+            endpoint: gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: host) as std.types.NonEmptyStr,
             principal: managed_principal as std.types.NonEmptyStr,
           },
           words: words,
@@ -181,7 +181,7 @@ fn managed_principal_leg(
       if r.success {
         ApplyConverged { detail: std.algebra.trim(s: r.stdout) }
       } else {
-        gunbc.spark.managed_access_apply.ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr)], "") }
+        ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr)], "") }
       }
     }
   }
@@ -260,7 +260,7 @@ fn create_inference_identity_script(admitted: gunbc.fleet_known_hosts_anchor.Por
 // The authorized-key install, by exact-line presence so a repeat appends nothing.
 fn install_authorized_key_script(admitted: gunbc.fleet_known_hosts_anchor.PortableRemoteWord, key_line: String) -> String {
   let login = admitted.value as String
-  let quoted_key_line = shell_quote(arg: key_line)
+  let quoted_key_line = extdeps.exec.command.shell_quote(arg: key_line)
   join([
     "set -e\n",
     "H=$(getent passwd ", login, " | cut -d: -f6)\n",
@@ -307,13 +307,13 @@ fn install_authorized_key_script(admitted: gunbc.fleet_known_hosts_anchor.Portab
 // construction extdeps.ssh already owns, which additionally hardcoded the algorithm token that same
 // module serializes (review 51659). gunbc.fleet_host_key_enrollment carried the identical fork.
 fn fleet_authorized_key_line() -> String {
-  ssh_public_key_line(k: fleet_automation_ssh_key)
+  extdeps.ssh.ssh_public_key_line(k: fleet_automation_ssh_key)
 }
 
 data spark_apply_receipt_path: String = "target/spark-managed-access-apply-receipt.txt"
 
 // THE PROCESS EXIT REPORTS THE APPLY, not the receipt write. An earlier revision returned
-// std.process.ExitSuccess whenever the receipt file was written, which is a fail-open of the worst kind because
+// ExitSuccess whenever the receipt file was written, which is a fail-open of the worst kind because
 // it is invisible from the outside: it HAPPENED in this session, when the first apply attempt was
 // refused at all five effects by the portable-word wall and the process still exited 0. A caller
 // scheduling this -- a timer, a CI step, a convergence loop -- would have recorded a successful
@@ -331,23 +331,23 @@ data spark_apply_receipt_path: String = "target/spark-managed-access-apply-recei
 fn spark_managed_access_apply_with_resolved_credentials(
   attempt_raw: String,
   host: String,
-  admin_credential: std.types.Secret,
+  admin_credential: Secret,
   credential_binding: gunbc.fleet_known_hosts_anchor.FleetSshCredentialBinding,
 ) -> SparkApplyReport {
-  match fleet_ssh_attempt_identity(raw: attempt_raw) {
+  match gunbc.fleet_known_hosts_anchor.fleet_ssh_attempt_identity(raw: attempt_raw) {
     Absent => ApplyNotAttempted { cause: "attempt identity is not a safe path segment" }
     Present { value: attempt } => {
-      let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
-      match fleet_ssh_execution_context_of(outcome: materialization, credential: credential_binding) {
+      let materialization = gunbc.fleet_known_hosts_anchor.materialize_fleet_known_hosts_anchor(attempt: attempt)
+      match gunbc.fleet_known_hosts_anchor.fleet_ssh_execution_context_of(outcome: materialization, credential: credential_binding) {
         Absent => ApplyNotAttempted {
-          cause: join(["trust could not be established, so no ssh leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""),
+          cause: join(["trust could not be established, so no ssh leg ran: ", gunbc.fleet_known_hosts_anchor.known_hosts_materialization_receipt(outcome: materialization)], ""),
         }
-        Present { value: context } => match portable_remote_word(raw: spark_managed_login) {
+        Present { value: context } => match gunbc.fleet_known_hosts_anchor.portable_remote_word(raw: spark_managed_login) {
           Absent => ApplyNotAttempted { cause: "the managed login is not a portable word, so no script may name it" }
-          Present { value: managed_word } => match portable_remote_word(raw: spark_inference_login) {
+          Present { value: managed_word } => match gunbc.fleet_known_hosts_anchor.portable_remote_word(raw: spark_inference_login) {
             Absent => ApplyNotAttempted { cause: "the inference login is not a portable word, so no script may name it" }
             Present { value: inference_word } => {
-          let admin_principal = spark_operator_bootstrap_login
+          let admin_principal = gunbc.spark.managed_access_bootstrap.spark_operator_bootstrap_login
           let create = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
             admin_credential: admin_credential,
@@ -387,13 +387,13 @@ fn spark_managed_access_apply_with_resolved_credentials(
 func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> std.process.ProcessExit
   uses net: std.resources.Network
 {
-  let now = clock_now_probed_at()
+  let now = gunbc.clock_read.clock_now_probed_at()
   let token_source = gunbc.auth.access_token_source.GcloudPrintToken
-  match resolve_spark_administrator_credential(token_source: token_source) {
-    SparkAdministratorCredentialRefused { reason: reason } =>
-      exit_failure(reason: reason as String)
-    SparkAdministratorCredentialResolved { credential: administrator } =>
-      run_with_materialized_fleet_ssh_binding(
+  match gunbc.spark.credential_workflow.resolve_spark_administrator_credential(token_source: token_source) {
+    gunbc.spark.credential_workflow.SparkAdministratorCredentialRefused { reason: reason } =>
+      std.process.exit_failure(reason: reason as String)
+    gunbc.spark.credential_workflow.SparkAdministratorCredentialResolved { credential: administrator } =>
+      gunbc.spark.credential_workflow.run_with_materialized_fleet_ssh_binding(
         attempt_raw: attempt_raw,
         token_source: token_source,
         body: fn(binding) {
@@ -404,22 +404,22 @@ func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> std.pr
             credential_binding: binding,
           )
           let body = join([
-            "spark managed-access apply host=", host, " at=", probed_at_word(reading: now) as String,
-            " credential_identity=", serialize_content_hash(hash: binding.credential_identity) as String, "\n",
+            "spark managed-access apply host=", host, " at=", gunbc.clock_read.probed_at_word(reading: now) as String,
+            " credential_identity=", std.content_hash.serialize_content_hash(hash: binding.credential_identity) as String, "\n",
             spark_apply_report_text(report: report),
           ], "")
-          let w = Filesystem.Write(path: spark_apply_receipt_path, content: body)
+          let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: spark_apply_receipt_path, content: body)
           if !w.success {
-            exit_failure(reason: join(["spark apply receipt write failed: ", w.error], ""))
+            std.process.exit_failure(reason: join(["spark apply receipt write failed: ", w.error], ""))
           } else {
             if spark_apply_converged(report: report) {
               std.process.ExitSuccess
             } else {
               match spark_apply_first_refusal(report: report) {
                 Present { value: why } =>
-                  exit_failure(reason: join(["spark managed-access apply did not converge -- ", why], ""))
+                  std.process.exit_failure(reason: join(["spark managed-access apply did not converge -- ", why], ""))
                 Absent =>
-                  exit_failure(reason: "spark managed-access apply did not converge and produced no refusal, which is a contradiction in the report")
+                  std.process.exit_failure(reason: "spark managed-access apply did not converge and produced no refusal, which is a contradiction in the report")
               }
             }
           }

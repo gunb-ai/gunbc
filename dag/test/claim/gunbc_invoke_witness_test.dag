@@ -1,5 +1,6 @@
 module test.claim.gunbc_invoke_witness
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data gunbc_invoke_deploy_srv1_pre_migration_golden_note: String = "Hand-frozen pre-Phase-3a bytes from origin/main gunbc_ci_deploy_invoke(gunbc_ci_deploy_srv1_stage) before gunbc.cli_invoke consolidation. Independent of gunbc_run_shell so a helper drift cannot green both sides (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
@@ -31,7 +32,7 @@ test fn gunbc_invoke_scheduler_matches_modeled_shell_holds() -> Bool {
     source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     plan_entry: "src/v2/workflow/ci_floor_plan.dag",
     plan_function: gunbc.cli_invoke.CiFloorPlan,
-    notice_title: v2.std.optional.Present { value: gunbc.ci_spec.gunbc_ci_spec.notice_title },
+    notice_title: v2.std.collection.Present { value: gunbc_ci_spec.notice_title },
     rooted: true
   )
   gunbc.ci_spec.scheduler_invoke(spec: gunbc.ci_spec.gunbc_ci_spec) == modeled
@@ -60,7 +61,7 @@ test fn gunbc_invoke_empty_notice_title_omits_flag_holds() -> Bool {
     source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     plan_entry: "src/v2/workflow/ci_floor_plan.dag",
     plan_function: gunbc.cli_invoke.CiFloorPlan,
-    notice_title: v2.std.optional.Present { value: "" },
+    notice_title: v2.std.collection.Present { value: "" },
     rooted: true
   )
   !string_contains(s: shell, pattern: "--notice-title")
@@ -75,14 +76,14 @@ test fn gunbc_invoke_transport_argv_empty_notice_title_omits_flag_holds() -> Boo
     source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     plan_entry: "src/v2/workflow/ci_floor_plan.dag",
     plan_function: gunbc.cli_invoke.CiFloorPlan,
-    notice_title: v2.std.optional.Present { value: "" }
+    notice_title: v2.std.collection.Present { value: "" }
   )
   !transport_argv_contains_flag(argv: argv, flag: "--notice-title")
     && gunbc.cli_invoke.claim_executor_run_plan_transport_argv(
       source_roots: gunbc.ci_layer_roots.witness_layer_roots,
       plan_entry: "src/v2/workflow/ci_floor_plan.dag",
       plan_function: gunbc.cli_invoke.CiFloorPlan,
-      notice_title: v2.std.optional.Absent
+      notice_title: v2.std.collection.Absent
     ) == argv
 }
 

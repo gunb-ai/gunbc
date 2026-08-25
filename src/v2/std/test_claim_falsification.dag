@@ -15,6 +15,6 @@ type FalsificationReceipt<Subj, A> {
   subject: Subj
   expected: A
   actual: A
-  divergence: ValueDiff<A>
+  divergence: v2.std.host_run.ValueDiff<A>
   evidence: ExecutionEvidence
 }

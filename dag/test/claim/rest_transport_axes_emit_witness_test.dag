@@ -1,7 +1,7 @@
 module test.claim.rest_transport_axes_emit_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn w_tls_insecure_emits_danger_accept() -> Bool {
   compile_dag_rust_emit_check(

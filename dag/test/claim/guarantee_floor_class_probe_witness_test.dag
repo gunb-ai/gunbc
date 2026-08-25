@@ -1,6 +1,7 @@
 module test.claim.guarantee_floor_class_probe_witness
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data guarantee_floor_class_probe_execution_status_note: String = "READ THIS BEFORE THE SCOPE NOTE BELOW. THIS FILE DOES NOT RUN IN CI. It declares ReadsLiveTree -- truthfully, because compile_dag_diagnostic_census resolves its synthetic sources against the live checkout -- and the required floor DECLINES every ReadsLiveTree module before the fold sees it (v2.workflow.required_floor DeclinedLiveTree). So every probe here is AUTHORED evidence, green under a local gunbc run --claim-run on 2026-08-22 and executing nowhere else. That is strictly weaker than enrolment and the six gap-analysis rows it serves say so in line. The distinction is not pedantry in this file of all files: a witness that cannot execute is exactly the defect these probes exist to count, and it applies to them first. DISSOLVES with the DeclinedLiveTree arm deletion (gap analysis section 11 item 28), at which point these become executing evidence with no further authorship. Do NOT dissolve it by relabelling this file SubstrateInputsOnly."
 
@@ -10,71 +11,71 @@ data guarantee_floor_class_probe_instrument_note: String = "THE INSTRUMENT THAT 
 
 data guarantee_floor_class_probe_measurement_note: String = "MEASURED 2026-08-22 on this harness, full dag + src/v2 pool, before these probes were authored -- the numbers the rows below encode. generic-instantiation hole 0 rows; monomorphic control 1 blocking TypeMismatch; generic green 0. field-through-generics hole 0 rows; declared-record control 1 blocking InternalError; green 0. exhaustiveness type-variable hole 0 rows. record completeness red 1 blocking MissingField; green 0. parse list separator hole 0 rows; doubled-separator control 1 blocking ParseError; green 0. THE InternalError ROW IS PINNED AS OBSERVED, NOT AS ENDORSED: a field access naming no declared field refuses, which is the property the control exists to establish, but it refuses under a class name that says nothing about what went wrong. That is its own diagnostic-quality defect and it is recorded here rather than laundered into a nicer-sounding assertion; improving the class is a change that reds this probe, which is the correct place for the conversation to happen."
 
-fn census_of(source: String) -> CompileDiagnosticCensus {
+fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
-fn measured_v1_compile_harness_source() -> NonEmptyStr {
-  fold_list(
-    xs: v1_compile_harness_source_paths(),
-    empty: "guarantee-floor-class-harness-source" as NonEmptyStr,
+fn measured_v1_compile_harness_source() -> std.types.NonEmptyStr {
+  v2.std.algebra.fold_list(
+    xs: gunbc.guarantee_probe_corpus.v1_compile_harness_source_paths(),
+    empty: "guarantee-floor-class-harness-source" as std.types.NonEmptyStr,
     cons: fn(acc, path) {
       let read = filesystem_read(path: path)
       concat(
         concat(concat(acc as String, "\n=== "), path as String),
         concat(" ===\n", read.content as String),
-      ) as NonEmptyStr
+      ) as std.types.NonEmptyStr
     },
   )
 }
 
-fn witness_harness_revision(probe: GuaranteeProbeId) -> MeasurementRevision {
+fn witness_harness_revision(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> gunbc.guarantee_measurement.MeasurementRevision {
   let harness_source = measured_v1_compile_harness_source()
-  match active_probe_row(probe: probe) {
-    Present { value: row } =>
-      v1_compile_harness_revision(
+  match gunbc.guarantee_probe_corpus.active_probe_row(probe: probe) {
+    v2.std.optional.Present { value: row } =>
+      gunbc.guarantee_probe_corpus.v1_compile_harness_revision(
         probe: probe,
         expectation: row.expectation,
         harness_source: harness_source,
       )
-    Absent =>
-      v1_compile_harness_revision(
+    v2.std.optional.Absent =>
+      gunbc.guarantee_probe_corpus.v1_compile_harness_revision(
         probe: probe,
-        expectation: ExpectBlockingRefusal { diagnostic_class: "witness-harness-row-absent" as NonEmptyStr },
+        expectation: gunbc.guarantee_probe_corpus.ExpectBlockingRefusal { diagnostic_class: "witness-harness-row-absent" as std.types.NonEmptyStr },
         harness_source: harness_source,
       )
   }
 }
 
-fn total_row_count_is_zero(census: CompileDiagnosticCensus) -> Bool {
+fn total_row_count_is_zero(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus) -> Bool {
   match census {
-    CensusObserved { rows: rows } => count(rows) == 0
-    CensusNotRunnable { cause: _ } => false
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } => count(rows) == 0
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => false
   }
 }
 
-fn row_holds(probe: GuaranteeProbeId, source: String) -> Bool {
-  match active_probe_row(probe: probe) {
-    Present { value: row } => probe_row_expectation_holds(census: census_of(source: source), row: row)
-    Absent => false
+fn row_holds(probe: gunbc.guarantee_measurement.GuaranteeProbeId, source: String) -> Bool {
+  match gunbc.guarantee_probe_corpus.active_probe_row(probe: probe) {
+    v2.std.optional.Present { value: row } => gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: source), row: row)
+    v2.std.optional.Absent => false
   }
 }
 
-fn silent_hole_holds(probe: GuaranteeProbeId, source: String) -> Bool {
+fn silent_hole_holds(probe: gunbc.guarantee_measurement.GuaranteeProbeId, source: String) -> Bool {
   let census = census_of(source: source)
-  match active_probe_row(probe: probe) {
-    Present { value: row } =>
-      probe_expectation_is_below_floor_hole(e: row.expectation)
-        && probe_row_expectation_holds(census: census, row: row)
+  match gunbc.guarantee_probe_corpus.active_probe_row(probe: probe) {
+    v2.std.optional.Present { value: row } =>
+      gunbc.guarantee_probe_corpus.probe_expectation_is_below_floor_hole(e: row.expectation)
+        && gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
         && total_row_count_is_zero(census: census)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
 fn blocking_count(source: String, wanted: String) -> Int {
-  match census_blocking_count_for_class(census: census_of(source: source), wanted: wanted) {
-    Present { value: n } => n
-    Absent => -1
+  match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census_of(source: source), wanted: wanted) {
+    v2.std.optional.Present { value: n } => n
+    v2.std.optional.Absent => -1
   }
 }
 
@@ -95,113 +96,114 @@ data parse_list_separator_hole_source: String = "module probe_floor_list_sep\nty
 data parse_list_separator_double_source: String = "module probe_floor_list_sep_double\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, , Cell { n: 3 } ] }\n"
 data parse_list_separator_green_source: String = "module probe_floor_list_sep_green\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, Cell { n: 2 }, Cell { n: 3 } ] }\n"
 
+
 test fn floor_generic_instantiation_is_still_silently_accepted() -> Bool {
-  silent_hole_holds(probe: floor_generic_instantiation_hole_probe, source: generic_instantiation_hole_source)
+  silent_hole_holds(probe: gunbc.guarantee_probe_corpus.floor_generic_instantiation_hole_probe, source: generic_instantiation_hole_source)
 }
 
 test fn floor_generic_instantiation_monomorphic_control_refuses() -> Bool {
-  row_holds(probe: floor_generic_instantiation_monomorphic_control_probe, source: generic_instantiation_monomorphic_source)
+  row_holds(probe: gunbc.guarantee_probe_corpus.floor_generic_instantiation_monomorphic_control_probe, source: generic_instantiation_monomorphic_source)
     && blocking_count(source: generic_instantiation_monomorphic_source, wanted: "TypeMismatch") == 1
 }
 
 test fn floor_generic_instantiation_green_control_is_clean() -> Bool {
-  row_holds(probe: floor_generic_instantiation_green_probe, source: generic_instantiation_green_source)
+  row_holds(probe: gunbc.guarantee_probe_corpus.floor_generic_instantiation_green_probe, source: generic_instantiation_green_source)
     && total_row_count_is_zero(census: census_of(source: generic_instantiation_green_source))
 }
 
 test fn floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control() -> Bool {
-  match active_probe_row(probe: floor_generic_instantiation_monomorphic_control_probe) {
-    Present { value: control_row } =>
-      !probe_row_expectation_holds(census: census_of(source: generic_instantiation_hole_source), row: control_row)
-    Absent => false
+  match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.floor_generic_instantiation_monomorphic_control_probe) {
+    v2.std.optional.Present { value: control_row } =>
+      !gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: generic_instantiation_hole_source), row: control_row)
+    v2.std.optional.Absent => false
   }
 }
 
 test fn floor_field_through_generics_is_still_silently_accepted() -> Bool {
-  silent_hole_holds(probe: floor_field_through_generics_hole_probe, source: field_through_generics_hole_source)
+  silent_hole_holds(probe: gunbc.guarantee_probe_corpus.floor_field_through_generics_hole_probe, source: field_through_generics_hole_source)
 }
 
 test fn floor_field_through_generics_declared_record_control_refuses() -> Bool {
-  row_holds(probe: floor_field_through_generics_record_control_probe, source: field_through_generics_record_source)
+  row_holds(probe: gunbc.guarantee_probe_corpus.floor_field_through_generics_record_control_probe, source: field_through_generics_record_source)
     && blocking_count(source: field_through_generics_record_source, wanted: "InternalError") == 1
 }
 
 test fn floor_field_through_generics_green_control_is_clean() -> Bool {
-  row_holds(probe: floor_field_through_generics_green_probe, source: field_through_generics_green_source)
+  row_holds(probe: gunbc.guarantee_probe_corpus.floor_field_through_generics_green_probe, source: field_through_generics_green_source)
     && total_row_count_is_zero(census: census_of(source: field_through_generics_green_source))
 }
 
 test fn floor_exhaustiveness_on_a_type_variable_scrutinee_is_still_silent() -> Bool {
-  silent_hole_holds(probe: floor_exhaustiveness_type_variable_hole_probe, source: exhaustiveness_type_variable_hole_source)
+  silent_hole_holds(probe: gunbc.guarantee_probe_corpus.floor_exhaustiveness_type_variable_hole_probe, source: exhaustiveness_type_variable_hole_source)
     && blocking_count(source: exhaustiveness_type_variable_hole_source, wanted: "NonExhaustiveMatch") == 0
 }
 
 test fn floor_record_completeness_missing_field_refuses_blocking() -> Bool {
-  row_holds(probe: floor_record_completeness_red_probe, source: record_completeness_red_source)
+  row_holds(probe: gunbc.guarantee_probe_corpus.floor_record_completeness_red_probe, source: record_completeness_red_source)
     && blocking_count(source: record_completeness_red_source, wanted: "MissingField") == 1
 }
 
 test fn floor_record_completeness_green_control_is_clean() -> Bool {
-  row_holds(probe: floor_record_completeness_green_probe, source: record_completeness_green_source)
+  row_holds(probe: gunbc.guarantee_probe_corpus.floor_record_completeness_green_probe, source: record_completeness_green_source)
     && total_row_count_is_zero(census: census_of(source: record_completeness_green_source))
 }
 
 test fn floor_parse_list_separator_omission_is_still_silent() -> Bool {
-  silent_hole_holds(probe: floor_parse_list_separator_hole_probe, source: parse_list_separator_hole_source)
+  silent_hole_holds(probe: gunbc.guarantee_probe_corpus.floor_parse_list_separator_hole_probe, source: parse_list_separator_hole_source)
     && blocking_count(source: parse_list_separator_hole_source, wanted: "ParseError") == 0
 }
 
 test fn floor_parse_list_separator_doubled_separator_control_refuses() -> Bool {
-  row_holds(probe: floor_parse_list_separator_control_probe, source: parse_list_separator_double_source)
+  row_holds(probe: gunbc.guarantee_probe_corpus.floor_parse_list_separator_control_probe, source: parse_list_separator_double_source)
     && blocking_count(source: parse_list_separator_double_source, wanted: "ParseError") == 1
 }
 
 test fn floor_parse_list_separator_green_control_is_clean() -> Bool {
-  row_holds(probe: floor_parse_list_separator_green_probe, source: parse_list_separator_green_source)
+  row_holds(probe: gunbc.guarantee_probe_corpus.floor_parse_list_separator_green_probe, source: parse_list_separator_green_source)
     && total_row_count_is_zero(census: census_of(source: parse_list_separator_green_source))
 }
 
 test fn floor_record_completeness_receipt_joins_its_v1_compile_path() -> Bool {
-  match active_v1_compile_probe_row(probe: floor_record_completeness_red_probe) {
-    Present { value: row } =>
-      let receipt = build_v1_compile_receipt(
+  match gunbc.guarantee_probe_corpus.active_v1_compile_probe_row(probe: gunbc.guarantee_probe_corpus.floor_record_completeness_red_probe) {
+    v2.std.optional.Present { value: row } =>
+      let receipt = gunbc.guarantee_probe_corpus.build_v1_compile_receipt(
         row: row,
         census: census_of(source: record_completeness_red_source),
-        subject_revision: synthetic_program_subject_revision(source: record_completeness_red_source),
+        subject_revision: gunbc.guarantee_probe_corpus.synthetic_program_subject_revision(source: record_completeness_red_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
-      receipt_joins_v1_compile_path(receipt: receipt)
-        && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
-        && observed_is_verdict(o: receipt.observed)
-        && observation_refused_count(o: receipt.observed) == 1
-        && (receipt.path as String) == (v1_compile_rust_path_id as String)
-    Absent => false
+      gunbc.guarantee_probe_corpus.receipt_joins_v1_compile_path(receipt: receipt)
+        && gunbc.guarantee_probe_corpus.receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
+        && gunbc.guarantee_measurement.observed_is_verdict(o: receipt.observed)
+        && gunbc.guarantee_probe_corpus.observation_refused_count(o: receipt.observed) == 1
+        && (receipt.path as String) == (gunbc.guarantee_probe_corpus.v1_compile_rust_path_id as String)
+    v2.std.optional.Absent => false
   }
 }
 
 test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
-  match active_v1_compile_probe_row(probe: floor_generic_instantiation_hole_probe) {
-    Present { value: row } =>
-      let receipt = build_v1_compile_receipt(
+  match gunbc.guarantee_probe_corpus.active_v1_compile_probe_row(probe: gunbc.guarantee_probe_corpus.floor_generic_instantiation_hole_probe) {
+    v2.std.optional.Present { value: row } =>
+      let receipt = gunbc.guarantee_probe_corpus.build_v1_compile_receipt(
         row: row,
         census: census_of(source: generic_instantiation_hole_source),
-        subject_revision: synthetic_program_subject_revision(source: generic_instantiation_hole_source),
+        subject_revision: gunbc.guarantee_probe_corpus.synthetic_program_subject_revision(source: generic_instantiation_hole_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
-      observation_is_clean(o: receipt.observed)
-        && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
-    Absent => false
+      gunbc.guarantee_probe_corpus.observation_is_clean(o: receipt.observed)
+        && gunbc.guarantee_probe_corpus.receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
+    v2.std.optional.Absent => false
   }
 }
 
 test fn every_below_floor_hole_row_is_one_of_the_four_declared_holes() -> Bool {
   let declared = [
-    floor_exhaustiveness_type_variable_hole_probe as String,
-    floor_field_through_generics_hole_probe as String,
-    floor_generic_instantiation_hole_probe as String,
-    floor_parse_list_separator_hole_probe as String,
+    gunbc.guarantee_probe_corpus.floor_exhaustiveness_type_variable_hole_probe as String,
+    gunbc.guarantee_probe_corpus.floor_field_through_generics_hole_probe as String,
+    gunbc.guarantee_probe_corpus.floor_generic_instantiation_hole_probe as String,
+    gunbc.guarantee_probe_corpus.floor_parse_list_separator_hole_probe as String,
   ]
-  let hole_ids = guarantee_probe_below_floor_hole_rows() |> map(row => row.probe as String)
+  let hole_ids = gunbc.guarantee_probe_corpus.guarantee_probe_below_floor_hole_rows() |> map(row => row.probe as String)
   let every_hole_declared = fold(hole_ids, init: true, f: (acc, id) => acc && (declared |> filter(d => d == id) |> count) == 1
   )
   let every_declared_is_a_hole = fold(declared, init: true, f: (acc, id) => acc && (hole_ids |> filter(h => h == id) |> count) == 1
@@ -211,12 +213,12 @@ test fn every_below_floor_hole_row_is_one_of_the_four_declared_holes() -> Bool {
 
 test fn every_declared_floor_class_has_registry_rows() -> Bool {
   let classes = [
-    floor_closed_match_exhaustiveness_class as String,
-    floor_field_through_generics_class as String,
-    floor_generic_instantiation_class as String,
-    floor_parse_list_separator_class as String,
-    floor_record_field_completeness_class as String,
+    gunbc.guarantee_probe_corpus.floor_closed_match_exhaustiveness_class as String,
+    gunbc.guarantee_probe_corpus.floor_field_through_generics_class as String,
+    gunbc.guarantee_probe_corpus.floor_generic_instantiation_class as String,
+    gunbc.guarantee_probe_corpus.floor_parse_list_separator_class as String,
+    gunbc.guarantee_probe_corpus.floor_record_field_completeness_class as String,
   ]
-  let rows = guarantee_probe_rows()
+  let rows = gunbc.guarantee_probe_corpus.guarantee_probe_rows()
   fold(classes, init: true, f: (acc, cls) => acc && count(rows |> filter(row => (row.class as String) == cls)) >= 1)
 }

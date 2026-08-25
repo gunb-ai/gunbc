@@ -3,12 +3,12 @@ module extdeps.storage.western_digital
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.westerndigital.com/products/internal-drives/wd-black-sn850x-nvme-ssd"
   }
 }
 
-data wd_black_sn850x_2tb_capacity: std.measure.ByteSize = byte_size(2000398934016)
+data wd_black_sn850x_2tb_capacity: std.measure.ByteSize = std.measure.byte_size(2000398934016)
 
 data wd_black_sn850x_2tb_catalog: extdeps.storage.types.NvmeDeviceCatalogRow = extdeps.storage.types.NvmeDeviceCatalogRow {
   part_number: "WDS200T2X0E",
@@ -16,6 +16,6 @@ data wd_black_sn850x_2tb_catalog: extdeps.storage.types.NvmeDeviceCatalogRow = e
   capacity_bytes: wd_black_sn850x_2tb_capacity,
   pcie_link: extdeps.storage.types.PcieLink { generation: Gen4, lane_count: 4 },
   form_factor: M2_2280,
-  sequential_read: bandwidth(7300000000),
-  sequential_write: bandwidth(6300000000),
+  sequential_read: std.measure.bandwidth(7300000000),
+  sequential_write: std.measure.bandwidth(6300000000),
 }

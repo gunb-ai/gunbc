@@ -21,7 +21,7 @@ module gunbc.fleet_workflow_steps
 
 
 fn ci_checkout_step() -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Checkout" },
     id: none,
     uses: extdeps.github.actions.checkout_action,
@@ -48,7 +48,7 @@ fn ci_checkout_step() -> extdeps.github.actions.Step {
 // would be the fork the closure exists to close, reintroduced as its own fix.
 type FleetPreludeBoundStep {
   step: extdeps.github.actions.Step
-  role: StepCapabilityRole
+  role: gunbc.workflow_capability_closure.StepCapabilityRole
   step_name: String
 }
 
@@ -60,7 +60,7 @@ fn ci_prelude_bound_steps_with_checkout(
     [
       FleetPreludeBoundStep {
         step: checkout,
-        role: capability_neutral,
+        role: gunbc.workflow_capability_closure.capability_neutral,
         step_name: "Checkout",
       },
     ],
@@ -70,7 +70,7 @@ fn ci_prelude_bound_steps_with_checkout(
         f: fn(st) {
           FleetPreludeBoundStep {
             step: st,
-            role: capability_neutral,
+            role: gunbc.workflow_capability_closure.capability_neutral,
             step_name: "Exact-head preflight",
           }
         },
@@ -78,29 +78,29 @@ fn ci_prelude_bound_steps_with_checkout(
       [
         FleetPreludeBoundStep {
           step: ci_isolate_toolchain_step(),
-          role: capability_neutral,
+          role: gunbc.workflow_capability_closure.capability_neutral,
           step_name: "Isolate toolchain dirs",
         },
         FleetPreludeBoundStep {
           step: ci_setup_rust_step(),
-          role: provides_only(
-            capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability],
+          role: gunbc.workflow_capability_closure.provides_only(
+            capabilities: [gunbc.roadmap_execution_contract.CargoCapability, gunbc.roadmap_execution_contract.RustcCapability, gunbc.roadmap_execution_contract.RustfmtCapability, gunbc.roadmap_execution_contract.RustupCapability],
           ),
           step_name: "Setup Rust",
         },
         FleetPreludeBoundStep {
           step: ci_native_cache_root_step(),
-          role: consumes_only(capabilities: [RustcCapability]),
+          role: gunbc.workflow_capability_closure.consumes_only(capabilities: [gunbc.roadmap_execution_contract.RustcCapability]),
           step_name: "Derive native-cache root",
         },
         FleetPreludeBoundStep {
           step: ci_pin_rustup_default_step(),
-          role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+          role: gunbc.workflow_capability_closure.consumes_only(capabilities: [gunbc.roadmap_execution_contract.RustupCapability, gunbc.roadmap_execution_contract.CargoCapability]),
           step_name: "Pin rustup default",
         },
         FleetPreludeBoundStep {
           step: ci_cache_cargo_step(),
-          role: capability_neutral,
+          role: gunbc.workflow_capability_closure.capability_neutral,
           step_name: "Cache Cargo",
         },
       ],
@@ -111,34 +111,34 @@ fn ci_prelude_bound_steps_with_checkout(
 fn ci_prelude_annotations_with_checkout(
   checkout: extdeps.github.actions.Step,
   exact_head_preflight: List<extdeps.github.actions.Step>,
-) -> List<CapabilityAnnotatedStep> {
+) -> List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> {
   list_map(
     xs: ci_prelude_bound_steps_with_checkout(
       checkout: checkout,
       exact_head_preflight: exact_head_preflight,
     ),
-    f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+    f: fn(b) { gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
   )
 }
 
-fn ci_prelude_annotations() -> List<CapabilityAnnotatedStep> {
+fn ci_prelude_annotations() -> List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> {
   ci_prelude_annotations_with_checkout(checkout: ci_checkout_step(), exact_head_preflight: [])
 }
 
 fn ci_setup_rust_step() -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Setup Rust" },
     id: none,
-    uses: setup_rust_action,
+    uses: extdeps.github.actions.setup_rust_action,
     with: Present {
       value: [
-        kv(key: "components", value: yaml_string(s: "rustfmt")),
-        kv(key: "cache", value: yaml_bool(b: false)),
-        kv(key: "rustflags", value: yaml_string(s: ""))
+        extdeps.languages.yaml.types.kv(key: "components", value: extdeps.languages.yaml.types.yaml_string(s: "rustfmt")),
+        extdeps.languages.yaml.types.kv(key: "cache", value: extdeps.languages.yaml.types.yaml_bool(b: false)),
+        extdeps.languages.yaml.types.kv(key: "rustflags", value: extdeps.languages.yaml.types.yaml_string(s: ""))
       ]
     },
     env: Present {
-      value: [kv(key: "HOME", value: yaml_string(s: ci_setup_rust_home()))]
+      value: [extdeps.languages.yaml.types.kv(key: "HOME", value: extdeps.languages.yaml.types.yaml_string(s: gunbc.ci_workflow_expressions.ci_setup_rust_home()))]
     },
     if_condition: none,
     continue_on_error: none,
@@ -147,10 +147,10 @@ fn ci_setup_rust_step() -> extdeps.github.actions.Step {
 }
 
 fn ci_pin_rustup_default_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
     id: none,
-    run: ci_pin_rustup_default_script(),
+    run: v2.workflow.ci_workflow_run_emit.ci_pin_rustup_default_script(),
     shell: none,
     env: none,
     working_directory: none,
@@ -161,15 +161,15 @@ fn ci_pin_rustup_default_step() -> extdeps.github.actions.Step {
 }
 
 fn ci_cache_cargo_step() -> extdeps.github.actions.Step {
-  UsesStep {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Cache Cargo" },
     id: none,
-    uses: cache_action,
+    uses: extdeps.github.actions.cache_action,
     with: Present {
       value: [
-        kv(key: "path", value: yaml_string(s: ci_cache_path())),
-        kv(key: "key", value: yaml_string(s: ci_cache_key())),
-        kv(key: "restore-keys", value: yaml_string(s: ci_cache_restore_keys()))
+        extdeps.languages.yaml.types.kv(key: "path", value: extdeps.languages.yaml.types.yaml_string(s: gunbc.ci_workflow_expressions.ci_cache_path())),
+        extdeps.languages.yaml.types.kv(key: "key", value: extdeps.languages.yaml.types.yaml_string(s: gunbc.ci_workflow_expressions.ci_cache_key())),
+        extdeps.languages.yaml.types.kv(key: "restore-keys", value: extdeps.languages.yaml.types.yaml_string(s: gunbc.ci_workflow_expressions.ci_cache_restore_keys()))
       ]
     },
     env: none,
@@ -340,8 +340,8 @@ fn ci_fleet_wif_auth_step() -> extdeps.github.actions.Step {
     uses: extdeps.github.actions.google_auth_action,
     with: Present {
       value: [
-        extdeps.languages.yaml.types.kv(key: "workload_identity_provider", value: extdeps.languages.yaml.types.yaml_string(s: gunbc.fleet_host_key_enrollment.probe_identity_secret_access_requirement.wif_provider_resource)),
-        extdeps.languages.yaml.types.kv(key: "service_account", value: extdeps.languages.yaml.types.yaml_string(s: gunbc.fleet_host_key_enrollment.probe_identity_secret_access_requirement.service_account)),
+        extdeps.languages.yaml.types.kv(key: "workload_identity_provider", value: extdeps.languages.yaml.types.yaml_string(s: probe_identity_secret_access_requirement.wif_provider_resource)),
+        extdeps.languages.yaml.types.kv(key: "service_account", value: extdeps.languages.yaml.types.yaml_string(s: probe_identity_secret_access_requirement.service_account)),
         extdeps.languages.yaml.types.kv(key: "token_format", value: extdeps.languages.yaml.types.yaml_string(s: "access_token")),
         extdeps.languages.yaml.types.kv(key: "create_credentials_file", value: extdeps.languages.yaml.types.yaml_bool(b: false))
       ]
@@ -392,7 +392,7 @@ data ci_native_cache_prelude_order_bridge_note: String = "Adjacency-as-proxy ord
 data ci_release_bins_artifact_name: String = "release-bins"
 
 
-data gunbc_ci_aux_step_timeout_minutes: Duration = 5
+data gunbc_ci_aux_step_timeout_minutes: std.types.Duration = 5
 
 data gunbc_ci_spark_serving_step_timeout_minutes: std.types.Duration = 60
 
@@ -410,21 +410,21 @@ data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: std.types.Duration
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests retained-kernel execution gate step budget. Originally a compile-contract gate (operator ruling 2026-08-05, PR A / fierce-heron-177): reordered after the release build and switched to cargo test --release --no-run so v1-compiler compiles once per job. --no-run removed 2026-08-11 with the suite cutover; the crate shrank from 98 modules / 740 tests to the 9 declared retained modules / 30 tests, which execute rather than only compile. Warm runs should complete in seconds once the release artifact is warm; 15m retains the prior cold-host envelope without raising the cap."
 
-data gunbc_ci_stage0_partition_compile_gate_timeout_minutes: Duration = 15
+data gunbc_ci_stage0_partition_compile_gate_timeout_minutes: std.types.Duration = 15
 
 data gunbc_ci_stage0_partition_compile_gate_timeout_note: String = "stage0 partition compile gate step budget (sharp-fox-403 C1): seven sequential cargo check -p v1-stage0-* partition crates enrolled as the build-job compile backstop over stage0_partition_crate_rows. Cold-host envelope matches v1-compiler-tests compile gate until a dedicated receipt exists; warm partition crates are smaller than the monolith test crate."
 
-data gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes: Duration = 10
+data gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes: std.types.Duration = 10
 
 data gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_note: String = "v1-compiler test-targets compile gate step budget. 10 minutes against 67s MEASURED for this step's exact argv (cargo check -p v1-compiler --all-targets, cold, remote runner, on the repaired tree after gunbc#8167 / gunbc#8173 landed the lib-test compile fix). The earlier figure recorded here was 99s from cargo check --workspace --all-targets, which was an upper BOUND rather than this step's cost — it was all that could be measured while main's lib test target did not compile, and it is superseded rather than kept beside the real number. Deliberately BELOW the 15m carried by the v1-compiler-tests and partition gates rather than copied from them: those two inherited a cold-host envelope with no dedicated receipt, and repeating a number nobody measured is how an unmeasured envelope becomes precedent. The gate runs AFTER the release build for the same reason the retained-kernel gate does — v1-compiler is already compiled in release with the shared feature set, so the check reuses that artifact instead of forcing a second compile. Raising this needs a measurement, not a round number."
 
-data gunbc_ci_artifact_transfer_step_timeout_minutes: Duration = 10
+data gunbc_ci_artifact_transfer_step_timeout_minutes: std.types.Duration = 10
 
 data gunbc_ci_artifact_transfer_step_note: String = "Cross-job handoff of the release bins (operator job-split ruling 2026-07-11): the build job packs ci_floor_required_artifact_names into one tgz (tar preserves the executable bits a raw artifact zip would drop) and uploads it; the ci floor job downloads, unpacks into target/release, and re-verifies via claim_executor --verify-build-artifacts before any step consumes a bin (fail-closed: a missing or truncated artifact reds the job at the verify, never as a mid-floor bin fallback). 10m is the transfer envelope for a ~200MB archive under fleet pressure; upload uses if-no-files-found: error so an empty pack is loud."
 
-data gunbc_ci_prelude_allowance_minutes: Duration = 5
+data gunbc_ci_prelude_allowance_minutes: std.types.Duration = 5
 
-data gunbc_ci_release_build_step_timeout_minutes: Duration = 45
+data gunbc_ci_release_build_step_timeout_minutes: std.types.Duration = 45
 
 data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
 data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
@@ -450,10 +450,10 @@ type JobTimeoutBudget
 data checked_job_timeout_minutes_note: String = "Consumes extdeps.github.actions max_job_timeout_minutes by construction (operator review, bright-ferret-335, gunbc#8782): a computed backstop that would exceed GitHub Actions' platform ceiling must refuse rather than emit a timeout-minutes value the platform will reject or silently clamp — clamping is the fabricated-plausible-output failure one layer up, since the job would then die at the clamped cap while the model believed it had the computed value. This is a wall on any future per-tier raise, not evidence the current backstop is at risk: see gunbc_ci_fleet_job_backstop_timeout_note for why the honest worst-case-single-run total sits well under the ceiling today."
 
 fn checked_job_timeout_minutes(computed: Int) -> JobTimeoutBudget {
-  if computed <= max_job_timeout_minutes {
+  if computed <= extdeps.github.actions.max_job_timeout_minutes {
     JobTimeoutWithinCeiling { minutes: computed }
   } else {
-    JobTimeoutExceedsCeiling { minutes: computed, ceiling: max_job_timeout_minutes }
+    JobTimeoutExceedsCeiling { minutes: computed, ceiling: extdeps.github.actions.max_job_timeout_minutes }
   }
 }
 

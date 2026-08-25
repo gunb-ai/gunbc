@@ -1,6 +1,7 @@
 module test.claim.runner_capacity_realize_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // THIS ASKED FOR TWO ADDITIONS PER HOST AT REQUESTED 7 AND WAS THE THIRD COPY OF ONE FALSE CLAIM.
 // Slots 06 AND 07 on hosts whose committed width is 6 -- a seventh slot on a six-wide host, the
@@ -27,16 +28,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and a count alone could not have caught the dense-prefix subtraction defect -- which is stated
 // here so a future reader does not mistake this row for coverage of that class.
 test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() -> Bool {
-  let plan = runner_capacity_plan(
+  let plan = gunbc.runner_capacity_plan.runner_capacity_plan(
     srv3_width: 6,
     srv4_width: 6,
-    roster: organization_runner_roster_evidence(),
+    roster: gunbc.fleet_runner_connectivity.organization_runner_roster_evidence(),
   )
   match plan {
-    PlanReady { hosts: _ } =>
-      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 1
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 2
-    PlanRefused { reason: _ } => false
+    gunbc.runner_capacity_plan.PlanReady { hosts: _ } =>
+      gunbc.runner_capacity_plan.runner_capacity_add_count(plan: plan, host: gunbc.fleet_intent_network.operator_host_srv3) == 1
+        && gunbc.runner_capacity_plan.runner_capacity_add_count(plan: plan, host: gunbc.fleet_intent_network.operator_host_srv4) == 2
+    gunbc.runner_capacity_plan.PlanRefused { reason: _ } => false
   }
 }
 
@@ -52,29 +53,29 @@ test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() ->
 // "not width 5" clause is the original point of the row and is untouched: the refusal must name the
 // real requested width rather than silently reporting the retired srv4 five-slot disk row-pin.
 test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
-  let plan = runner_capacity_plan(
+  let plan = gunbc.runner_capacity_plan.runner_capacity_plan(
     srv3_width: 6,
     srv4_width: 6,
-    roster: organization_runner_roster_materialized_slots_online_evidence(),
+    roster: gunbc.fleet_runner_connectivity.organization_runner_roster_materialized_slots_online_evidence(),
   )
-  match runner_capacity_apply_plan(plan: plan) {
-    RunnerCapacityApplyCompleted { hosts: _ } =>
-      match runner_capacity_host_apply_receipt(
-        outcome: runner_capacity_apply_plan(plan: plan),
-        host: operator_host_srv4,
+  match gunbc.runner_capacity_realize.runner_capacity_apply_plan(plan: plan) {
+    gunbc.runner_capacity_realize.RunnerCapacityApplyCompleted { hosts: _ } =>
+      match gunbc.runner_capacity_realize.runner_capacity_host_apply_receipt(
+        outcome: gunbc.runner_capacity_realize.runner_capacity_apply_plan(plan: plan),
+        host: gunbc.fleet_intent_network.operator_host_srv4,
       ) {
         Present { value: r } =>
           match r.outcome {
-            HostApplyRefused { reason: reason } =>
+            gunbc.runner_capacity_realize.HostApplyRefused { reason: reason } =>
               string_contains(s: reason, pattern: "disk unobservable")
                 && string_contains(s: reason, pattern: "6")
                 && string_contains(s: reason, pattern: "srv4")
                 && (string_contains(s: reason, pattern: "width 5") == false)
-            HostApplySucceeded { add_actions_executed: _ } => false
+            gunbc.runner_capacity_realize.HostApplySucceeded { add_actions_executed: _ } => false
           }
         Absent => false
       }
-    RunnerCapacityApplyRefused { reason: _ } => false
+    gunbc.runner_capacity_realize.RunnerCapacityApplyRefused { reason: _ } => false
   }
 }
 
@@ -91,33 +92,33 @@ test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
 // wrong rather than quietly deleted, because it is the plausible story and the next reader will
 // reach for it too.
 test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool {
-  let outcome = runner_capacity_apply_plan(
-    plan: runner_capacity_plan(
+  let outcome = gunbc.runner_capacity_realize.runner_capacity_apply_plan(
+    plan: gunbc.runner_capacity_plan.runner_capacity_plan(
       srv3_width: 6,
       srv4_width: 6,
-      roster: organization_runner_roster_evidence(),
+      roster: gunbc.fleet_runner_connectivity.organization_runner_roster_evidence(),
     ),
   )
   match outcome {
-    RunnerCapacityApplyCompleted { hosts: hs } =>
+    gunbc.runner_capacity_realize.RunnerCapacityApplyCompleted { hosts: hs } =>
       hs.length() == 2
-        && match runner_capacity_host_apply_receipt(outcome: outcome, host: operator_host_srv3) {
+        && match gunbc.runner_capacity_realize.runner_capacity_host_apply_receipt(outcome: outcome, host: gunbc.fleet_intent_network.operator_host_srv3) {
           Present { value: srv3 } =>
-            match runner_capacity_host_apply_receipt(outcome: outcome, host: operator_host_srv4) {
+            match gunbc.runner_capacity_realize.runner_capacity_host_apply_receipt(outcome: outcome, host: gunbc.fleet_intent_network.operator_host_srv4) {
               Present { value: srv4 } =>
                 match srv3.outcome {
-                  HostApplyRefused { reason: _ } => true
-                  HostApplySucceeded { add_actions_executed: _ } => false
+                  gunbc.runner_capacity_realize.HostApplyRefused { reason: _ } => true
+                  gunbc.runner_capacity_realize.HostApplySucceeded { add_actions_executed: _ } => false
                 }
                   && match srv4.outcome {
-                    HostApplyRefused { reason: _ } => true
-                    HostApplySucceeded { add_actions_executed: _ } => false
+                    gunbc.runner_capacity_realize.HostApplyRefused { reason: _ } => true
+                    gunbc.runner_capacity_realize.HostApplySucceeded { add_actions_executed: _ } => false
                   }
               Absent => false
             }
           Absent => false
         }
-    RunnerCapacityApplyRefused { reason: _ } => false
+    gunbc.runner_capacity_realize.RunnerCapacityApplyRefused { reason: _ } => false
   }
 }
 
@@ -126,22 +127,22 @@ test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool {
 // equality rather than a count reaching a number -- a host holding {01,02,04,05} has count four and
 // is not converged at width five. The fixture now hands whole populations.
 test fn replay_apply_is_a_no_op_on_a_converged_population() -> Bool {
-  runner_capacity_reapply_plans_zero_additions(
+  gunbc.runner_capacity_realize.runner_capacity_reapply_plans_zero_additions(
     srv3_width: 5,
     srv4_width: 5,
-    observed_srv3: committed_slot_identities(host: operator_host_srv3),
-    observed_srv4: committed_slot_identities(host: operator_host_srv4),
+    observed_srv3: gunbc.runner_slot_allocation.committed_slot_identities(host: gunbc.fleet_intent_network.operator_host_srv3),
+    observed_srv4: gunbc.runner_slot_allocation.committed_slot_identities(host: gunbc.fleet_intent_network.operator_host_srv4),
   )
 }
 
 // THE NON-VACUITY CONTROL, without which the row above is satisfied by a planner that never plans
 // anything. One member removed from srv3's population must produce work.
 test fn a_population_with_one_member_missing_is_not_a_no_op() -> Bool {
-  !runner_capacity_reapply_plans_zero_additions(
+  !gunbc.runner_capacity_realize.runner_capacity_reapply_plans_zero_additions(
     srv3_width: 5,
     srv4_width: 5,
     observed_srv3: [],
-    observed_srv4: committed_slot_identities(host: operator_host_srv4),
+    observed_srv4: gunbc.runner_slot_allocation.committed_slot_identities(host: gunbc.fleet_intent_network.operator_host_srv4),
   )
 }
 
@@ -164,17 +165,17 @@ test fn a_population_with_one_member_missing_is_not_a_no_op() -> Bool {
 // width. Minting converged_six_* beside it was a second name for one concept, which is the fork this
 // module's own authority note forbids -- caught by trying to make it green rather than by review.
 test fn converged_roster_plans_zero_additions_and_apply_succeeds() -> Bool {
-  let plan = runner_capacity_plan(
+  let plan = gunbc.runner_capacity_plan.runner_capacity_plan(
     srv3_width: 5,
     srv4_width: 5,
-    roster: organization_runner_roster_materialized_slots_online_evidence(),
+    roster: gunbc.fleet_runner_connectivity.organization_runner_roster_materialized_slots_online_evidence(),
   )
   match plan {
-    PlanReady { hosts: _ } =>
-      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 0
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 0
-        && match runner_capacity_apply_plan(plan: plan) {
-          RunnerCapacityApplyCompleted { hosts: hs } =>
+    gunbc.runner_capacity_plan.PlanReady { hosts: _ } =>
+      gunbc.runner_capacity_plan.runner_capacity_add_count(plan: plan, host: gunbc.fleet_intent_network.operator_host_srv3) == 0
+        && gunbc.runner_capacity_plan.runner_capacity_add_count(plan: plan, host: gunbc.fleet_intent_network.operator_host_srv4) == 0
+        && match gunbc.runner_capacity_realize.runner_capacity_apply_plan(plan: plan) {
+          gunbc.runner_capacity_realize.RunnerCapacityApplyCompleted { hosts: hs } =>
             hs.length() == 2
               && fold(
                 hs,
@@ -182,12 +183,12 @@ test fn converged_roster_plans_zero_additions_and_apply_succeeds() -> Bool {
                 f: (ok, r) =>
                   ok
                     && match r.outcome {
-                      HostApplySucceeded { add_actions_executed: n } => n == 0
-                      HostApplyRefused { reason: _ } => false
+                      gunbc.runner_capacity_realize.HostApplySucceeded { add_actions_executed: n } => n == 0
+                      gunbc.runner_capacity_realize.HostApplyRefused { reason: _ } => false
                     },
               )
-          RunnerCapacityApplyRefused { reason: _ } => false
+          gunbc.runner_capacity_realize.RunnerCapacityApplyRefused { reason: _ } => false
         }
-    PlanRefused { reason: _ } => false
+    gunbc.runner_capacity_plan.PlanRefused { reason: _ } => false
   }
 }

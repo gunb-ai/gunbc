@@ -1,7 +1,7 @@
 module v2.test.claim.determinism_contract_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn example_root() -> std.decl_ref.DeclarationRef {
   std.decl_ref.DeclarationRef {
@@ -11,32 +11,32 @@ fn example_root() -> std.decl_ref.DeclarationRef {
   }
 }
 
-fn det_is_deterministic(c: std.determinism.Determinism) -> v2.std.logic.Bool {
+fn det_is_deterministic(c: std.determinism.Determinism) -> Bool {
   match c {
-    Deterministic => true
-    NonDeterministic { source: _ } => false
+    std.determinism.Deterministic => true
+    std.determinism.NonDeterministic { source: _ } => false
   }
 }
 
-test fn determinism_perturbation_consistent_is_deterministic() -> v2.std.logic.Bool {
+test fn determinism_perturbation_consistent_is_deterministic() -> Bool {
   det_is_deterministic(
     c: std.determinism.determinism_from_perturbation(verdict: std.perturbation.ResponseConsistent, reached: example_root())
   )
 }
 
-test fn determinism_perturbation_violation_is_nondeterministic() -> v2.std.logic.Bool {
+test fn determinism_perturbation_violation_is_nondeterministic() -> Bool {
   !det_is_deterministic(
     c: std.determinism.determinism_from_perturbation(verdict: std.perturbation.ResponseViolation, reached: example_root())
   )
 }
 
-test fn determinism_compose_det_det_is_deterministic() -> v2.std.logic.Bool {
+test fn determinism_compose_det_det_is_deterministic() -> Bool {
   det_is_deterministic(
     c: std.determinism.determinism_compose(outer: std.determinism.Deterministic, inner: std.determinism.Deterministic)
   )
 }
 
-test fn determinism_compose_nondet_left_propagates() -> v2.std.logic.Bool {
+test fn determinism_compose_nondet_left_propagates() -> Bool {
   !det_is_deterministic(
     c: std.determinism.determinism_compose(
       outer: std.determinism.NonDeterministic { source: example_root() },
@@ -45,7 +45,7 @@ test fn determinism_compose_nondet_left_propagates() -> v2.std.logic.Bool {
   )
 }
 
-test fn determinism_compose_nondet_right_propagates() -> v2.std.logic.Bool {
+test fn determinism_compose_nondet_right_propagates() -> Bool {
   !det_is_deterministic(
     c: std.determinism.determinism_compose(
       outer: std.determinism.Deterministic,
@@ -54,11 +54,11 @@ test fn determinism_compose_nondet_right_propagates() -> v2.std.logic.Bool {
   )
 }
 
-test fn determinism_fact_binds_signature_and_classification() -> v2.std.logic.Bool {
+test fn determinism_fact_binds_signature_and_classification() -> Bool {
   let fact = v2.std.determinism.DeterminismFact {
     signature: ^emit_export_set,
     classification: std.determinism.Deterministic
   }
-  det_is_deterministic(c: determinism_fact_classification(fact: fact))
-    && (determinism_fact_signature(fact: fact) == ^emit_export_set)
+  det_is_deterministic(c: v2.std.determinism.determinism_fact_classification(fact: fact))
+    && (v2.std.determinism.determinism_fact_signature(fact: fact) == ^emit_export_set)
 }

@@ -7,7 +7,7 @@ module extdeps.ollama.api
 // must not widen a central product enum -- each is its own module citing its own API.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/ollama/ollama/blob/main/docs/api.md"
   }
 }
@@ -21,10 +21,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ollama.api",
       decl_name: "OllamaEndpoint",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.ollama.api.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -101,7 +101,7 @@ type OllamaModelDigest {
 // unparseable digest yields Absent rather than a zero or a placeholder, because a model identity
 // that is wrong is worse than one that is missing.
 fn ollama_model_digest_from_wire(ref: OllamaModelRef, hex: String) -> OllamaModelDigest? {
-  match sha256_hex_digest(hex: strip_sha256_prefix(text: hex)) {
+  match std.content_hash.sha256_hex_digest(hex: strip_sha256_prefix(text: hex)) {
     Present { value: d } => Present { value: OllamaModelDigest { ref: ref, digest: d } }
     Absent => none
   }
@@ -119,5 +119,5 @@ fn strip_sha256_prefix(text: String) -> String {
 }
 
 fn ollama_model_content_hash(digest: OllamaModelDigest) -> std.content_hash.ContentHash {
-  as_content_hash_cryptographic(digest: digest.digest)
+  std.content_hash.as_content_hash_cryptographic(digest: digest.digest)
 }

@@ -10,75 +10,75 @@ fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
 fn tuner_control_rules() -> List<gunbc.design.material.BuildRule> {
   [
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_instrument_tuner.cls(name: instrument_depth_btn_class),
+      selector: cls(name: gunbc.roadmap_component.instrument_depth_btn_class),
       decls: [
-        decl(prop: FontFamily, value: scale_var(t: font_mono)),
-        decl(prop: FontSize, value: scale_var(t: text_12)),
-        decl(prop: Padding, value: scale_var(t: space_4)),
-        decl(prop: Border, value: join(["1px solid ", role_var(r: BorderRole)], "")),
-        decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-        decl(prop: Background, value: role_var(r: SurfaceRole)),
-        decl(prop: Color, value: role_var(r: TextRole)),
-        decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontSize, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.text_12)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Padding, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_4)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Border, value: join(["1px solid ", gunbc.design.theme.role_var(r: gunbc.design.theme.BorderRole)], "")),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.BorderRadius, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.radius_3)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Background, value: gunbc.design.theme.role_var(r: gunbc.design.theme.SurfaceRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Color, value: gunbc.design.theme.role_var(r: gunbc.design.theme.TextRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_instrument_tuner.cls(name: join([instrument_depth_btn_class, ".is-active"], "")),
+      selector: cls(name: join([gunbc.roadmap_component.instrument_depth_btn_class, ".is-active"], "")),
       decls: [
-        decl(prop: Border, value: join(["1px solid ", role_var(r: FocusRole)], "")),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Border, value: join(["1px solid ", gunbc.design.theme.role_var(r: gunbc.design.theme.FocusRole)], "")),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_instrument_tuner.cls(name: instrument_mode_btn_class),
+      selector: cls(name: gunbc.roadmap_component.instrument_mode_btn_class),
       decls: [
-        decl(prop: FontFamily, value: scale_var(t: font_mono)),
-        decl(prop: FontSize, value: scale_var(t: text_12)),
-        decl(prop: Padding, value: scale_var(t: space_4)),
-        decl(prop: Border, value: join(["1px solid ", role_var(r: BorderRole)], "")),
-        decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-        decl(prop: Background, value: role_var(r: SurfaceRole)),
-        decl(prop: Color, value: role_var(r: TextRole)),
-        decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontSize, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.text_12)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Padding, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_4)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Border, value: join(["1px solid ", gunbc.design.theme.role_var(r: gunbc.design.theme.BorderRole)], "")),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.BorderRadius, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.radius_3)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Background, value: gunbc.design.theme.role_var(r: gunbc.design.theme.SurfaceRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Color, value: gunbc.design.theme.role_var(r: gunbc.design.theme.TextRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_instrument_tuner.cls(name: join([instrument_mode_btn_class, ".is-active"], "")),
+      selector: cls(name: join([gunbc.roadmap_component.instrument_mode_btn_class, ".is-active"], "")),
       decls: [
-        decl(prop: Border, value: join(["1px solid ", role_var(r: FocusRole)], "")),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Border, value: join(["1px solid ", gunbc.design.theme.role_var(r: gunbc.design.theme.FocusRole)], "")),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_instrument_tuner.cls(name: instrument_subject_class),
+      selector: cls(name: gunbc.roadmap_component.instrument_subject_class),
       decls: [
-        decl(prop: Display, value: "flex"),
-        decl(prop: Gap, value: scale_var(t: space_6)),
-        decl(prop: Padding, value: scale_var(t: space_2)),
-        decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Display, value: "flex"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Gap, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_6)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Padding, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_2)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_instrument_tuner.cls(name: join([instrument_subject_class, ".instrument-subject-selected"], "")),
+      selector: cls(name: join([gunbc.roadmap_component.instrument_subject_class, ".instrument-subject-selected"], "")),
       decls: [
-        decl(prop: Border, value: join(["1px solid ", role_var(r: FocusRole)], "")),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Border, value: join(["1px solid ", gunbc.design.theme.role_var(r: gunbc.design.theme.FocusRole)], "")),
       ],
     },
   ]
 }
 
 fn instrument_tuner_css() -> String {
-  join([instrument_css(), serialize_rules(rules: tuner_control_rules())], "\n")
+  join([gunbc.roadmap_instrument_sandbox.instrument_css(), gunbc.design.material.serialize_rules(rules: tuner_control_rules())], "\n")
 }
 
 fn all_focus_subjects() -> List<gunbc.design.instrument_camera.FocusSubject> {
   concat(
-    [NoSubjectSelected],
-    v1_exit_finish_lines() |> map(s => focus_finish_line(l: s.line)),
+    [gunbc.design.instrument_camera.NoSubjectSelected],
+    gunbc.v1_deletion_plan.v1_exit_finish_lines() |> map(s => gunbc.design.instrument_camera.focus_finish_line(l: s.line)),
   )
 }
 
 fn cameras_for_focus(f: gunbc.design.instrument_camera.FocusSubject) -> List<gunbc.design.instrument_camera.ProgramCamera> {
-  flat_map(program_depths(), d =>
-    map(program_modes(), m => gunbc.design.instrument_camera.ProgramCamera { depth: d, mode: m, focus: f }))
+  flat_map(gunbc.design.instrument_camera.program_depths(), d =>
+    map(gunbc.design.instrument_camera.program_modes(), m => gunbc.design.instrument_camera.ProgramCamera { depth: d, mode: m, focus: f }))
 }
 
 fn all_cameras() -> List<gunbc.design.instrument_camera.ProgramCamera> {
@@ -86,8 +86,8 @@ fn all_cameras() -> List<gunbc.design.instrument_camera.ProgramCamera> {
 }
 
 fn instrument_tuner_camera_population_joined() -> Bool {
-  count(all_cameras()) == count(program_depths()) * count(program_modes()) * count(all_focus_subjects())
-    && count(all_focus_subjects()) == 1 + count(v1_exit_finish_lines())
+  count(all_cameras()) == count(gunbc.design.instrument_camera.program_depths()) * count(gunbc.design.instrument_camera.program_modes()) * count(all_focus_subjects())
+    && count(all_focus_subjects()) == 1 + count(gunbc.v1_deletion_plan.v1_exit_finish_lines())
 }
 
 fn remaining_text(r: gunbc.roadmap_program_view.RemainingShape) -> String {
@@ -103,114 +103,114 @@ fn remaining_text(r: gunbc.roadmap_program_view.RemainingShape) -> String {
 
 fn render_reading(label: String, r: gunbc.design.instrument_audition.ProgramReading) -> std.markup.Fragment {
   match r {
-    ReadingNoSubject => fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "no subject selected") ])
-    ReadingProgramShape { remaining } =>
-      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "whole program"), fragment_cell(s: gunbc.roadmap_instrument_tuner.remaining_text(r: remaining)) ])
-    ReadingOutcomeStatus { name, node, accepted, open_fronts } => fragment_row(cells: [
-      fragment_cell(s: label),
-      fragment_cell(s: name),
-      fragment_cell(s: node),
-      fragment_cell(s: if accepted { "accepted" } else { "not accepted" }),
-      fragment_cell(s: join([to_string(open_fronts), " open fronts"], "")),
+    gunbc.design.instrument_audition.ReadingNoSubject => gunbc.roadmap_instrument_sandbox.fragment_row(cells: [ gunbc.roadmap_instrument_sandbox.fragment_cell(s: label), gunbc.roadmap_instrument_sandbox.fragment_cell(s: "no subject selected") ])
+    gunbc.design.instrument_audition.ReadingProgramShape { remaining } =>
+      gunbc.roadmap_instrument_sandbox.fragment_row(cells: [ gunbc.roadmap_instrument_sandbox.fragment_cell(s: label), gunbc.roadmap_instrument_sandbox.fragment_cell(s: "whole program"), gunbc.roadmap_instrument_sandbox.fragment_cell(s: remaining_text(r: remaining)) ])
+    gunbc.design.instrument_audition.ReadingOutcomeStatus { name, node, accepted, open_fronts } => gunbc.roadmap_instrument_sandbox.fragment_row(cells: [
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: label),
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: name),
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: node),
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: if accepted { "accepted" } else { "not accepted" }),
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: join([to_string(open_fronts), " open fronts"], "")),
     ])
-    ReadingOutcomeRemaining { name, remaining } =>
-      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: name), fragment_cell(s: gunbc.roadmap_instrument_tuner.remaining_text(r: remaining)) ])
-    ReadingConstraint { subject, kind, headline, in_flight, depth } => fragment_row(cells: [
-      fragment_cell(s: label),
-      fragment_cell(s: join([kind, " constraint"], "")),
-      fragment_cell(s: subject),
-      fragment_cell(s: headline),
-      fragment_cell(s: if in_flight { "work observed" } else { "no work observed" }),
+    gunbc.design.instrument_audition.ReadingOutcomeRemaining { name, remaining } =>
+      gunbc.roadmap_instrument_sandbox.fragment_row(cells: [ gunbc.roadmap_instrument_sandbox.fragment_cell(s: label), gunbc.roadmap_instrument_sandbox.fragment_cell(s: name), gunbc.roadmap_instrument_sandbox.fragment_cell(s: remaining_text(r: remaining)) ])
+    gunbc.design.instrument_audition.ReadingConstraint { subject, kind, headline, in_flight, depth } => gunbc.roadmap_instrument_sandbox.fragment_row(cells: [
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: label),
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: join([kind, " constraint"], "")),
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: subject),
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: headline),
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: if in_flight { "work observed" } else { "no work observed" }),
     ])
-    ReadingNoConstraint { subject_key, reason } =>
-      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: subject_key), fragment_cell(s: reason) ])
-    ReadingFront { key, name, closed, gates_accepted, gates_total } => fragment_row(cells: [
-      fragment_cell(s: label),
-      fragment_cell(s: name),
-      fragment_cell(s: join([to_string(gates_accepted), " of ", to_string(gates_total), " gates accepted"], "")),
-      fragment_cell(s: if closed { "closed" } else { "open" }),
+    gunbc.design.instrument_audition.ReadingNoConstraint { subject_key, reason } =>
+      gunbc.roadmap_instrument_sandbox.fragment_row(cells: [ gunbc.roadmap_instrument_sandbox.fragment_cell(s: label), gunbc.roadmap_instrument_sandbox.fragment_cell(s: subject_key), gunbc.roadmap_instrument_sandbox.fragment_cell(s: reason) ])
+    gunbc.design.instrument_audition.ReadingFront { key, name, closed, gates_accepted, gates_total } => gunbc.roadmap_instrument_sandbox.fragment_row(cells: [
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: label),
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: name),
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: join([to_string(gates_accepted), " of ", to_string(gates_total), " gates accepted"], "")),
+      gunbc.roadmap_instrument_sandbox.fragment_cell(s: if closed { "closed" } else { "open" }),
     ])
-    ReadingUnavailable { mode, subject_key, cause } =>
-      el_class("div", instrument_refusal_class, [
-        txt(join([label, " · ", subject_key, " — unavailable: ", cause], "")),
+    gunbc.design.instrument_audition.ReadingUnavailable { mode, subject_key, cause } =>
+      gunbc.site.markup.el_class("div", gunbc.roadmap_instrument_sandbox.instrument_refusal_class, [
+        gunbc.site.markup.txt(join([label, " · ", subject_key, " — unavailable: ", cause], "")),
       ])
   }
 }
 
 fn reading_row(view: gunbc.roadmap_program_view.V1DeletionProgramView, camera: gunbc.design.instrument_camera.ProgramCamera) -> std.markup.Fragment {
-  let key = camera_wire(c: camera)
-  let label = join([program_depth_key(d: camera.depth), " / ", program_mode_key(m: camera.mode)], "")
-  let initial = camera_wire(c: camera_initial) == key
-  el_attrs("div", concat(
+  let key = gunbc.design.instrument_camera.camera_wire(c: camera)
+  let label = join([gunbc.design.instrument_camera.program_depth_key(d: camera.depth), " / ", gunbc.design.instrument_camera.program_mode_key(m: camera.mode)], "")
+  let initial = gunbc.design.instrument_camera.camera_wire(c: gunbc.design.instrument_camera.camera_initial) == key
+  gunbc.site.markup.el_attrs("div", concat(
     [
-      attr(name: "class", value: instrument_reading_class),
-      attr(name: "data-reading-key", value: key),
+      std.markup.attr(name: "class", value: gunbc.roadmap_component.instrument_reading_class),
+      std.markup.attr(name: "data-reading-key", value: key),
     ],
-    if initial { [] } else { [ attr(name: "hidden", value: "") ] },
+    if initial { [] } else { [ std.markup.attr(name: "hidden", value: "") ] },
   ), [
-    gunbc.roadmap_instrument_tuner.render_reading(
+    render_reading(
       label: label,
-      r: read_camera(camera: camera, view: view),
+      r: gunbc.design.instrument_audition.read_camera(camera: camera, view: view),
     ),
   ])
 }
 
 fn depth_button(d: gunbc.design.instrument_camera.ProgramDepth) -> std.markup.Fragment {
-  el_attrs("button", [
-    attr(name: "type", value: "button"),
-    attr(name: "class", value: instrument_depth_btn_class),
-    attr(name: "data-depth", value: program_depth_key(d: d)),
-  ], [ txt(join([to_string(program_depth_index(d: d)), " · ", program_depth_key(d: d)], "")) ])
+  gunbc.site.markup.el_attrs("button", [
+    std.markup.attr(name: "type", value: "button"),
+    std.markup.attr(name: "class", value: gunbc.roadmap_component.instrument_depth_btn_class),
+    std.markup.attr(name: "data-depth", value: gunbc.design.instrument_camera.program_depth_key(d: d)),
+  ], [ gunbc.site.markup.txt(join([to_string(gunbc.design.instrument_camera.program_depth_index(d: d)), " · ", gunbc.design.instrument_camera.program_depth_key(d: d)], "")) ])
 }
 
 fn mode_button(m: gunbc.design.instrument_camera.ProgramMode) -> std.markup.Fragment {
-  el_attrs("button", [
-    attr(name: "type", value: "button"),
-    attr(name: "class", value: instrument_mode_btn_class),
-    attr(name: "data-mode", value: program_mode_key(m: m)),
-  ], [ txt(program_mode_key(m: m)) ])
+  gunbc.site.markup.el_attrs("button", [
+    std.markup.attr(name: "type", value: "button"),
+    std.markup.attr(name: "class", value: gunbc.roadmap_component.instrument_mode_btn_class),
+    std.markup.attr(name: "data-mode", value: gunbc.design.instrument_camera.program_mode_key(m: m)),
+  ], [ gunbc.site.markup.txt(gunbc.design.instrument_camera.program_mode_key(m: m)) ])
 }
 
 fn subject_row(spec: gunbc.v1_deletion_plan.V1FinishLineSpec) -> std.markup.Fragment {
-  let key = v1_finish_line_key(l: spec.line)
-  el_attrs("li", [
-    attr(name: "class", value: instrument_subject_class),
-    attr(name: "tabindex", value: "0"),
-    attr(name: "data-subject-key", value: key),
+  let key = gunbc.v1_deletion_plan.v1_finish_line_key(l: spec.line)
+  gunbc.site.markup.el_attrs("li", [
+    std.markup.attr(name: "class", value: gunbc.roadmap_component.instrument_subject_class),
+    std.markup.attr(name: "tabindex", value: "0"),
+    std.markup.attr(name: "data-subject-key", value: key),
   ], [
-    fragment_cell(s: spec.name),
-    fragment_cell(s: key),
-    fragment_cell(s: spec.claim),
+    gunbc.roadmap_instrument_sandbox.fragment_cell(s: spec.name),
+    gunbc.roadmap_instrument_sandbox.fragment_cell(s: key),
+    gunbc.roadmap_instrument_sandbox.fragment_cell(s: spec.claim),
   ])
 }
 
 fn controls_section() -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("camera controls") ]),
-    instrument_note(s: "Wheel and arrow keys admit one detent per threshold crossing; distant depth labels decompose into adjacent steps. Mode buttons switch reading projection."),
-    el_class("div", instrument_row_class, map(instrument_user_depths(), d => depth_button(d: d))),
-    el_class("div", instrument_row_class, map(program_modes(), m => mode_button(m: m))),
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("camera controls") ]),
+    gunbc.roadmap_instrument_sandbox.instrument_note(s: "Wheel and arrow keys admit one detent per threshold crossing; distant depth labels decompose into adjacent steps. Mode buttons switch reading projection."),
+    gunbc.site.markup.el_class("div", gunbc.roadmap_instrument_sandbox.instrument_row_class, map(gunbc.design.instrument_camera.instrument_user_depths(), d => depth_button(d: d))),
+    gunbc.site.markup.el_class("div", gunbc.roadmap_instrument_sandbox.instrument_row_class, map(gunbc.design.instrument_camera.program_modes(), m => mode_button(m: m))),
   ])
 }
 
 fn subjects_section() -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("finish lines") ]),
-    instrument_note(s: "Selection follows the production roadmap: click the row, keyboard focus with focus-visible, re-select to clear, Escape clears. Controls on the row do not move selection."),
-    el("ul", map(v1_exit_finish_lines(), s => subject_row(spec: s))),
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("finish lines") ]),
+    gunbc.roadmap_instrument_sandbox.instrument_note(s: "Selection follows the production roadmap: click the row, keyboard focus with focus-visible, re-select to clear, Escape clears. Controls on the row do not move selection."),
+    gunbc.site.markup.el("ul", map(gunbc.v1_deletion_plan.v1_exit_finish_lines(), s => subject_row(spec: s))),
   ])
 }
 
 fn readings_section(view: gunbc.roadmap_program_view.V1DeletionProgramView) -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("reading") ]),
-    instrument_note(s: "One row per camera state, pre-rendered from the live derived world. The client program reveals the row that matches the persistent camera."),
-    el("div", map(all_cameras(), c => reading_row(view: view, camera: c))),
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("reading") ]),
+    gunbc.roadmap_instrument_sandbox.instrument_note(s: "One row per camera state, pre-rendered from the live derived world. The client program reveals the row that matches the persistent camera."),
+    gunbc.site.markup.el("div", map(all_cameras(), c => reading_row(view: view, camera: c))),
   ])
 }
 
 fn tuner_main(view: gunbc.roadmap_program_view.V1DeletionProgramView) -> std.markup.Fragment {
-  el_class("main", instrument_tuner_root_class, [
+  gunbc.site.markup.el_class("main", gunbc.roadmap_component.instrument_tuner_root_class, [
     controls_section(),
     subjects_section(),
     readings_section(view: view),
@@ -218,55 +218,55 @@ fn tuner_main(view: gunbc.roadmap_program_view.V1DeletionProgramView) -> std.mar
 }
 
 fn tuner_refusal_page(causes: List<String>) -> std.markup.Fragment {
-  el_class("main", instrument_tuner_root_class, concat(
-    [ el_class("div", instrument_refusal_class, [ txt("program view refused — the tuner draws nothing rather than a smaller program") ]) ],
-    map(causes, c => el_class("div", instrument_refusal_class, [ txt(c) ])),
+  gunbc.site.markup.el_class("main", gunbc.roadmap_component.instrument_tuner_root_class, concat(
+    [ gunbc.site.markup.el_class("div", gunbc.roadmap_instrument_sandbox.instrument_refusal_class, [ gunbc.site.markup.txt("program view refused — the tuner draws nothing rather than a smaller program") ]) ],
+    map(causes, c => gunbc.site.markup.el_class("div", gunbc.roadmap_instrument_sandbox.instrument_refusal_class, [ gunbc.site.markup.txt(c) ])),
   ))
 }
 
 fn instrument_tuner_page() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "html",
-    attributes: [ attr(name: "lang", value: "en") ],
+    attributes: [ std.markup.attr(name: "lang", value: "en") ],
     children: [
-      el("head", [
-        std.markup.Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8") ], children: [] },
+      gunbc.site.markup.el("head", [
+        std.markup.Element { tag: "meta", attributes: [ std.markup.attr(name: "charset", value: "utf-8") ], children: [] },
         std.markup.Element {
           tag: "meta",
           attributes: [
-            attr(name: "name", value: "viewport"),
-            attr(name: "content", value: "width=device-width, initial-scale=1"),
+            std.markup.attr(name: "name", value: "viewport"),
+            std.markup.attr(name: "content", value: "width=device-width, initial-scale=1"),
           ],
           children: [],
         },
-        el("style", [ txt(instrument_tuner_css()) ]),
-        el("title", [ txt("gunbc — v1-deletion tuner") ]),
+        gunbc.site.markup.el("style", [ gunbc.site.markup.txt(instrument_tuner_css()) ]),
+        gunbc.site.markup.el("title", [ gunbc.site.markup.txt("gunbc — v1-deletion tuner") ]),
       ]),
-      el("body", [
-        el("header", [
-          el_class("div", "header-inner", [
-            el_class("span", "wordmark", [ txt("gunbc") ]),
-            el("h1", [ txt("v1-deletion tuner") ]),
-            el_attrs("a", [ attr(name: "href", value: instrument_motion_page_path) ], [ txt("motion lab") ]),
-            el_attrs("button", [
-              attr(name: "class", value: "sound-toggle"),
-              attr(name: "type", value: "button"),
-            ], [ txt("sound") ]),
-            el_attrs("button", [
-              attr(name: "class", value: "theme-toggle"),
-              attr(name: "type", value: "button"),
-            ], [ txt("theme · auto") ]),
+      gunbc.site.markup.el("body", [
+        gunbc.site.markup.el("header", [
+          gunbc.site.markup.el_class("div", "header-inner", [
+            gunbc.site.markup.el_class("span", "wordmark", [ gunbc.site.markup.txt("gunbc") ]),
+            gunbc.site.markup.el("h1", [ gunbc.site.markup.txt("v1-deletion tuner") ]),
+            gunbc.site.markup.el_attrs("a", [ std.markup.attr(name: "href", value: gunbc.roadmap_component.instrument_motion_page_path) ], [ gunbc.site.markup.txt("motion lab") ]),
+            gunbc.site.markup.el_attrs("button", [
+              std.markup.attr(name: "class", value: "sound-toggle"),
+              std.markup.attr(name: "type", value: "button"),
+            ], [ gunbc.site.markup.txt("sound") ]),
+            gunbc.site.markup.el_attrs("button", [
+              std.markup.attr(name: "class", value: "theme-toggle"),
+              std.markup.attr(name: "type", value: "button"),
+            ], [ gunbc.site.markup.txt("theme · auto") ]),
           ]),
         ]),
-        match live_program_view_result() {
-          LiveViewRefused { causes } => tuner_refusal_page(causes: causes)
-          LiveViewDerived { view } => tuner_main(view: view)
+        match gunbc.roadmap_instrument_sandbox.live_program_view_result() {
+          gunbc.roadmap_instrument_sandbox.LiveViewRefused { causes } => tuner_refusal_page(causes: causes)
+          gunbc.roadmap_instrument_sandbox.LiveViewDerived { view } => tuner_main(view: view)
         },
         std.markup.Element {
           tag: "script",
           attributes: [
-            attr(name: "src", value: instrument_tuner_asset_path),
-            attr(name: "defer", value: ""),
+            std.markup.attr(name: "src", value: gunbc.roadmap_component.instrument_tuner_asset_path),
+            std.markup.attr(name: "defer", value: ""),
           ],
           children: [],
         },

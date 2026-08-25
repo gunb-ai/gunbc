@@ -1,74 +1,74 @@
 module v2.test.manual.cpp_add_emit_translate
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 data cpp_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
 data cpp_add_target_profile: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^cpp_add_target_profile_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data cpp_add_int_primitive_facts: v2.extdeps.languages.cpp.CppIntegerPrimitiveFacts = cpp_signed_integer_facts(
-  spelling: v2.extdeps.languages.cpp.Int,
+data cpp_add_int_primitive_facts: v2.extdeps.languages.cpp.CppIntegerPrimitiveFacts = v2.extdeps.languages.cpp.cpp_signed_integer_facts(
+  spelling: Int,
   surface_spelling: ^cpp_surface_spelling_int,
-  target_profile: cpp_target_profile
+  target_profile: v2.extdeps.languages.cpp.cpp_target_profile
 )
 
-data cpp_add_int_inhabitant: v2.std.node.Node = cpp_int_inhabitant_node(target_profile: cpp_target_profile)
+data cpp_add_int_inhabitant: v2.std.node.Node = v2.extdeps.languages.cpp.cpp_int_inhabitant_node(target_profile: v2.extdeps.languages.cpp.cpp_target_profile)
 
-data cpp_add_emitted_root: v2.std.node.Node = cpp_emitted_add_fn_node(target_profile: cpp_target_profile)
+data cpp_add_emitted_root: v2.std.node.Node = v2.extdeps.languages.cpp.cpp_emitted_add_fn_node(target_profile: v2.extdeps.languages.cpp.cpp_target_profile)
 
-data cpp_add_int_facts_node: v2.std.node.Node = cpp_integer_facts_node(facts: cpp_add_int_primitive_facts)
+data cpp_add_int_facts_node: v2.std.node.Node = v2.extdeps.languages.cpp.cpp_integer_facts_node(facts: cpp_add_int_primitive_facts)
 
-data cpp_add_int_scalar_node: v2.std.node.Node = cpp_integer_scalar_fact_node(facts: cpp_add_int_primitive_facts)
+data cpp_add_int_scalar_node: v2.std.node.Node = v2.extdeps.languages.cpp.cpp_integer_scalar_fact_node(facts: cpp_add_int_primitive_facts)
 
 data cpp_add_int_width_node: v2.std.node.Node = cpp_add_int_primitive_facts.width_fact
 
-data cpp_add_int_spelling_node: v2.std.node.Node = cpp_signed_integer_spelling_node(spelling: v2.extdeps.languages.cpp.Int)
+data cpp_add_int_spelling_node: v2.std.node.Node = v2.extdeps.languages.cpp.cpp_signed_integer_spelling_node(spelling: Int)
 
-data cpp_add_target_model: v2.std.compilers.target_model.TargetModel = cpp_target_model()
+data cpp_add_target_model: v2.std.compilers.target_model.TargetModel = v2.extdeps.languages.cpp.cpp_target_model()
 
 data cpp_add_poisoned_authority_target_model: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
-  produced_decl_support: ProducedDeclUnwired,
-  bundle: cpp_target_model_node(target_profile: cpp_target_profile),
-  lex: cpp_lex(),
-  binding_spellings: cpp_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+  produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
+  bundle: v2.extdeps.languages.cpp.cpp_target_model_node(target_profile: v2.extdeps.languages.cpp.cpp_target_profile),
+  lex: v2.extdeps.languages.cpp.cpp_lex(),
+  binding_spellings: v2.extdeps.languages.cpp.cpp_binding_spellings(),
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
   authority_source_text: cpp_add_forbidden_authority_source_text,
-  runtime_row: target_emit_host_runtime_row_unconfigured
+  runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
 }
 
 data cpp_add_empty_translation_rules_bundle: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data cpp_add_missing_translation_rules_target: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
-  produced_decl_support: ProducedDeclUnwired,
+  produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
   bundle: cpp_add_empty_translation_rules_bundle,
-  lex: cpp_lex(),
-  binding_spellings: empty_map(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+  lex: v2.extdeps.languages.cpp.cpp_lex(),
+  binding_spellings: v2.std.collection.empty_map(),
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
   authority_source_text: "",
-  runtime_row: target_emit_host_runtime_row_unconfigured
+  runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
 }
 
-fn anchor_cpp_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnostic.Outcome<Medium<String>> {
-  target_serialize_source_from_model(
+fn anchor_cpp_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
+  v2.compiler.translate.target_serialize_source_from_model(
     target: cpp_add_missing_translation_rules_target,
     emitted: cpp_add_emitted_root
   )
 }
 
-data cpp_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_cpp_add_serialize_rejects_missing_translation_rules()
+data cpp_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_cpp_add_serialize_rejects_missing_translation_rules()
 
 test fn cpp_add_serialize_reject_receipt_holds() -> Bool {
   match cpp_add_serialize_reject_receipt {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
@@ -107,7 +107,7 @@ fn cpp_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.con
         algebra: cpp_add_int_facts_node
       )
     }
-  } else if node == cpp_atom(id: ^cpp_inhabitant_int) {
+  } else if node == v2.extdeps.languages.cpp.cpp_atom(id: ^cpp_inhabitant_int) {
     v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
@@ -121,7 +121,7 @@ fn cpp_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.con
         algebra: node
       )
     }
-  } else if node == cpp_atom(id: ^cpp_surface_spelling_int) {
+  } else if node == v2.extdeps.languages.cpp.cpp_atom(id: ^cpp_surface_spelling_int) {
     v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
@@ -135,7 +135,7 @@ fn cpp_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.con
         algebra: cpp_add_int_facts_node
       )
     }
-  } else if node == cpp_atom(id: ^cpp_tag_signed_integer) {
+  } else if node == v2.extdeps.languages.cpp.cpp_atom(id: ^cpp_tag_signed_integer) {
     v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
@@ -149,7 +149,7 @@ fn cpp_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.con
         algebra: cpp_add_int_scalar_node
       )
     }
-  } else if node == cpp_atom(id: ^cpp_tag_width_selection) {
+  } else if node == v2.extdeps.languages.cpp.cpp_atom(id: ^cpp_tag_width_selection) {
     v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
@@ -163,21 +163,21 @@ fn cpp_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.con
         algebra: cpp_add_int_width_node
       )
     }
-  } else if node == cpp_target_profile {
+  } else if node == v2.extdeps.languages.cpp.cpp_target_profile {
     v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: cpp_add_int_width_node
       )
     }
-  } else if node == cpp_atom(id: ^cpp_tag_twos_complement) {
+  } else if node == v2.extdeps.languages.cpp.cpp_atom(id: ^cpp_tag_twos_complement) {
     v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
         algebra: cpp_add_int_scalar_node
       )
     }
-  } else if node == cpp_atom(id: ^cpp_tag_representable_result_required) {
+  } else if node == v2.extdeps.languages.cpp.cpp_atom(id: ^cpp_tag_representable_result_required) {
     v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
         node: node,
@@ -188,8 +188,8 @@ fn cpp_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.con
     v2.std.witness.Violates {
       diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^cpp_add_grounding_miss,
-        at: node_locus(node: node),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.node_locus(node: node),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
     }
   }
@@ -197,12 +197,12 @@ fn cpp_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.con
 
 fn cpp_add_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match cpp_add_canonical_grounding_for(node: node) {
-    Violates { diagnostic: d } => optional_absent()
-    Holds { value: grounding } =>
-      match termination_proof_witness_for_node(n: node) {
-        Violates { diagnostic: d } => optional_absent()
-        Holds { value: proof } =>
-          optional_present(value: claim_inferred_facts_witness(
+    v2.std.witness.Violates { diagnostic: d } => v2.std.optional.optional_absent()
+    v2.std.witness.Holds { value: grounding } =>
+      match v2.std.cardinality.termination_proof_witness_for_node(n: node) {
+        v2.std.witness.Violates { diagnostic: d } => v2.std.optional.optional_absent()
+        v2.std.witness.Holds { value: proof } =>
+          v2.std.optional.optional_present(value: v2.test.lens_common.infer_fixture.claim_inferred_facts_witness(
               grounding: grounding,
               descent: v2.std.witness.Holds { value: proof }
             ))
@@ -216,28 +216,28 @@ fn cpp_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.co
 
 data cpp_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: cpp_add_emitted_root,
-  facts: std.algebra.PartialFunction {
+  facts: PartialFunction {
     lookup: cpp_add_facts_lookup
   }
 }
 
-fn anchor_cpp_add_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
+fn anchor_cpp_add_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   v2.compiler.emit.emit(tree: cpp_add_inferred_tree, target: cpp_add_target_model)
 }
 
 fn anchor_cpp_add_compile_inferred_accepts() -> v2.std.diagnostic.Outcome<v2.compiler.compile.CompileOutput> {
-  compile_inferred(
+  v2.compiler.compile.compile_inferred(
     inferred: cpp_add_inferred_tree,
     mode: v2.compiler.compile.TranslateTo { target: cpp_add_poisoned_authority_target_model }
   )
 }
 
-data cpp_add_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_cpp_add_emit_accepts()
+data cpp_add_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_cpp_add_emit_accepts()
 
 test fn cpp_add_emit_receipt_holds() -> Bool {
   match cpp_add_emit_receipt {
-    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -245,8 +245,8 @@ data cpp_add_compile_inferred_receipt: v2.std.diagnostic.Outcome<v2.compiler.com
 
 test fn cpp_add_compile_inferred_receipt_holds() -> Bool {
   match cpp_add_compile_inferred_receipt {
-    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

@@ -30,7 +30,7 @@ data declared_class_precedence: List<ClassificationAxis> = [EffectAxis, Interpre
 data declared_class_precedence_note: std.types.NonEmptyStr = "Exclusivity by DECLARED precedence (operator ask, msg_f9334d68): where one witness fits two descriptions — it reads the live tree AND crosses a lowering gap, or performs an effect AND is an interpreter subject — the winning class comes from this declared order, never from code order. Justification, first to last: an effect obligation is an obligation about the WORLD (plan -> execute -> independent readback), so no other description can demote it; an interpreter-subject test executed natively would test the wrong implementation, so it outranks both native axes; a live-tree reader's receipt must bind the observed subject even when the body is otherwise carriable, so observation outranks carriage; carriage (NativeRequired vs NativeBlocked) is last because it is a fact about the EMITTER, not the witness. classify_witness DERIVES its result from this list (a first-applicable fold over declared_class_precedence — reordering the data row alone changes classification; review 50672 caught the earlier hardcoded chain as a second authority), and axis_rank composed with axis_of_class plus the dual-description witnesses assert the realization against this declaration — an undeclared tie-break is the same silent authority this classification exists to kill."
 
 fn axis_rank(axis: ClassificationAxis) -> Int {
-  let scanned = v2.std.algebra.fold_list(xs: declared_class_precedence, empty: AxisRankScan { index: 0, found: 0 - 1 }, cons: fn(acc, candidate) {
+  let scanned = fold_list(xs: declared_class_precedence, empty: AxisRankScan { index: 0, found: 0 - 1 }, cons: fn(acc, candidate) {
     AxisRankScan {
       index: acc.index + 1,
       found: if (acc.found < 0) && (candidate == axis) { acc.index } else { acc.found }
@@ -79,11 +79,11 @@ fn axis_applies(
     EffectAxis => effect_obligation
     InterpreterSubjectAxis => interpreter_subject
     LiveObservationAxis => match disposition {
-      Present { value: d } => match d {
-        ReadsLiveTree => true
-        SubstrateInputsOnly => false
+      v2.std.optional.Present { value: d } => match d {
+        v2.std.live_tree.ReadsLiveTree => true
+        v2.std.live_tree.SubstrateInputsOnly => false
       }
-      Absent => true
+      v2.std.optional.Absent => true
     }
     CarriageAxis => true
   }
@@ -107,10 +107,10 @@ fn classify_witness(
   interpreter_subject: Bool,
   carriage: EmitterCarriage
 ) -> WitnessExecutionClass {
-  let winner = v2.std.algebra.fold_list(xs: declared_class_precedence, empty: v2.std.optional.Absent, cons: fn(acc, axis) {
+  let winner = fold_list(xs: declared_class_precedence, empty: v2.std.optional.Absent, cons: fn(acc, axis) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent =>
         match axis_applies(axis: axis, disposition: disposition, effect_obligation: effect_obligation, interpreter_subject: interpreter_subject) {
           true => v2.std.optional.Present { value: axis }
           false => v2.std.optional.Absent
@@ -118,8 +118,8 @@ fn classify_witness(
     }
   })
   match winner {
-    Present { value: axis } => class_for_axis(axis: axis, carriage: carriage)
-    Absent => class_for_axis(axis: CarriageAxis, carriage: carriage)
+    v2.std.optional.Present { value: axis } => class_for_axis(axis: axis, carriage: carriage)
+    v2.std.optional.Absent => class_for_axis(axis: CarriageAxis, carriage: carriage)
   }
 }
 
@@ -154,17 +154,17 @@ fn census_add(c: WitnessClassCensus, class: WitnessExecutionClass) -> WitnessCla
 }
 
 fn census_of(rows: List<WitnessClassRow>) -> WitnessClassCensus {
-  v2.std.algebra.fold_list(xs: rows, empty: census_zero(), cons: fn(acc, row) { census_add(c: acc, class: row.class) })
+  fold_list(xs: rows, empty: census_zero(), cons: fn(acc, row) { census_add(c: acc, class: row.class) })
 }
 
 fn census_accounts_for_every_row(rows: List<WitnessClassRow>) -> Bool {
-  let c = gunbc.witness_execution_class.census_of(rows: rows)
+  let c = census_of(rows: rows)
   c.total == length_of(rows)
     && c.native_required + c.native_live_observation + c.effect_obligation + c.interpreter_subject + c.native_blocked == c.total
 }
 
 fn length_of(rows: List<WitnessClassRow>) -> Int {
-  v2.std.algebra.fold_list(xs: rows, empty: 0, cons: fn(acc, _row) { acc + 1 })
+  fold_list(xs: rows, empty: 0, cons: fn(acc, _row) { acc + 1 })
 }
 
 fn row_identity(row: WitnessClassRow) -> String {
@@ -179,7 +179,7 @@ type IdentityScanState {
 
 fn duplicate_identity_count(rows: List<WitnessClassRow>) -> Int {
   let sorted = map(rows, row => row_identity(row: row)) |> sort_by(identity => identity)
-  let scanned = v2.std.algebra.fold_list(xs: sorted, empty: IdentityScanState { prev: "", has_prev: false, duplicates: 0 }, cons: fn(acc, identity) {
+  let scanned = fold_list(xs: sorted, empty: IdentityScanState { prev: "", has_prev: false, duplicates: 0 }, cons: fn(acc, identity) {
     if acc.has_prev && acc.prev == identity {
       IdentityScanState { prev: identity, has_prev: true, duplicates: acc.duplicates + 1 }
     } else {

@@ -1,11 +1,11 @@
 module test.claim.compute_board_readiness_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
   }
 }
@@ -19,7 +19,7 @@ fn list_count<T>(xs: List<T>) -> Int {
 }
 
 fn contact(designator: std.types.NonEmptyStr) -> extdeps.cpu.ampere_altra_package.PackageContact {
-  extdeps.cpu.ampere_altra_package.PackageContact { designator: designator, function: FunctionUnstated }
+  extdeps.cpu.ampere_altra_package.PackageContact { designator: designator, function: extdeps.cpu.ampere_altra_package.FunctionUnstated }
 }
 
 // A THREE-CONTACT FIXTURE, DELIBERATELY. The subject under proof is the count-and-identity
@@ -28,23 +28,23 @@ fn contact(designator: std.types.NonEmptyStr) -> extdeps.cpu.ampere_altra_packag
 // test's name.
 fn three_contact_map() -> extdeps.cpu.ampere_altra_package.PackageContactMap {
   extdeps.cpu.ampere_altra_package.PackageContactMap {
-    socket: altra_fclga_socket,
+    socket: extdeps.cpu.ampere_altra_package.altra_fclga_socket,
     contacts: [contact(designator: "A1"), contact(designator: "A2"), contact(designator: "A3")],
-    authority: test.claim.compute_board_readiness_witness.witness_authority,
+    authority: witness_authority,
   }
 }
 
 fn duplicated_contact_map() -> extdeps.cpu.ampere_altra_package.PackageContactMap {
   extdeps.cpu.ampere_altra_package.PackageContactMap {
-    socket: altra_fclga_socket,
+    socket: extdeps.cpu.ampere_altra_package.altra_fclga_socket,
     contacts: [contact(designator: "A1"), contact(designator: "A2"), contact(designator: "A1")],
-    authority: test.claim.compute_board_readiness_witness.witness_authority,
+    authority: witness_authority,
   }
 }
 
 fn standing_is_admitted(s: extdeps.cpu.ampere_altra_package.PackageContactMapStanding) -> Bool {
   match s {
-    PackageContactMapAdmitted { resolved: _ } => true
+    extdeps.cpu.ampere_altra_package.PackageContactMapAdmitted { resolved: _ } => true
     _ => false
   }
 }
@@ -52,18 +52,18 @@ fn standing_is_admitted(s: extdeps.cpu.ampere_altra_package.PackageContactMapSta
 // POSITIVE CONTROL. Without this, every refusal claim below is satisfied by a function that
 // refuses unconditionally, which would establish nothing at all.
 test fn w_exact_population_admits() -> Bool {
-  standing_is_admitted(s: admit_package_contact_map(map: three_contact_map(), expected: 3))
+  standing_is_admitted(s: extdeps.cpu.ampere_altra_package.admit_package_contact_map(map: three_contact_map(), expected: 3))
 }
 
 // THE DISCRIMINATING RED FOR THE COMPLETENESS JOIN: the same map that admits at 3 must refuse
 // against the real declared package population, and the refusal must carry both numbers so the
 // reader learns the size of the gap rather than only that one exists.
 test fn w_stub_population_refuses_against_declared_package_count() -> Bool {
-  match admit_package_contact_map(
+  match extdeps.cpu.ampere_altra_package.admit_package_contact_map(
     map: three_contact_map(),
-    expected: altra_declared_contact_count()
+    expected: extdeps.cpu.ampere_altra_package.altra_declared_contact_count()
   ) {
-    ContactPopulationIncomplete { expected: e, resolved: r } => e == 4926 && r == 3
+    extdeps.cpu.ampere_altra_package.ContactPopulationIncomplete { expected: e, resolved: r } => e == 4926 && r == 3
     _ => false
   }
 }
@@ -72,19 +72,19 @@ test fn w_stub_population_refuses_against_declared_package_count() -> Bool {
 // arm that a pure count check cannot catch: this map has exactly three entries and would pass
 // a count-only join while naming only two distinct lands.
 test fn w_duplicate_designator_refuses_at_correct_count() -> Bool {
-  match admit_package_contact_map(map: duplicated_contact_map(), expected: 3) {
-    DuplicateContactDesignator { designator: d } => d == "A1"
+  match extdeps.cpu.ampere_altra_package.admit_package_contact_map(map: duplicated_contact_map(), expected: 3) {
+    extdeps.cpu.ampere_altra_package.DuplicateContactDesignator { designator: d } => d == "A1"
     _ => false
   }
 }
 
 test fn w_incomplete_differential_polarity_projects_to_design_refusal() -> Bool {
-  let projected = project_contact_map_standing(
+  let projected = product.compute_board.composition.project_contact_map_standing(
     standing: extdeps.cpu.ampere_altra_package.IncompleteDifferentialPolarity { pair: "DDR4_CLK_0" }
   )
   list_count(xs: projected.design) == 1
     && list_is_empty(xs: projected.collateral)
-    && !board_is_ready(r: projected)
+    && !product.compute_board.composition.board_is_ready(r: projected)
 }
 
 // GAP-0's live claim, CORRECTED TWICE. The Altra pin map is public (Rev A1 datasheet Issue
@@ -92,10 +92,10 @@ test fn w_incomplete_differential_polarity_projects_to_design_refusal() -> Bool 
 // named the standing as 'published and not yet ingested'. ALTRA-CONTACTS-0 completes that
 // ingestion, so the live standing is now admitted at the declared package population.
 test fn w_altra_contact_map_is_published_and_lands_in_design_family() -> Bool {
-  match altra_contact_map_standing() {
-    PackageContactMapAdmitted { resolved: n } => {
-      let contact_only = project_contact_map_standing(standing: altra_contact_map_standing())
-      n == altra_declared_contact_count()
+  match extdeps.cpu.ampere_altra_package_contact_map.altra_contact_map_standing() {
+    extdeps.cpu.ampere_altra_package.PackageContactMapAdmitted { resolved: n } => {
+      let contact_only = product.compute_board.composition.project_contact_map_standing(standing: extdeps.cpu.ampere_altra_package_contact_map.altra_contact_map_standing())
+      n == extdeps.cpu.ampere_altra_package.altra_declared_contact_count()
         && list_is_empty(xs: contact_only.collateral)
         && list_is_empty(xs: contact_only.design)
     }
@@ -112,20 +112,20 @@ test fn w_altra_contact_map_is_published_and_lands_in_design_family() -> Bool {
 // it at all, so the NDA blocker read as ready on the one surface the module documents as the
 // answer. A claim about a fold has to travel the fold.
 test fn w_reference_board_collateral_reaches_the_readiness_fold() -> Bool {
-  let blocked = board_readiness(
-    intent: narrow_compute_node_intent,
+  let blocked = product.compute_board.composition.board_readiness(
+    intent: product.compute_board.intent.narrow_compute_node_intent,
     components: [],
     contact_standing: extdeps.cpu.ampere_altra_package.PackageContactMapAdmitted { resolved: 4926 },
-    reference_board_standing: altra_reference_board_collateral_standing()
+    reference_board_standing: extdeps.cpu.ampere_altra_package.altra_reference_board_collateral_standing()
   )
-  let clear = board_readiness(
-    intent: narrow_compute_node_intent,
+  let clear = product.compute_board.composition.board_readiness(
+    intent: product.compute_board.intent.narrow_compute_node_intent,
     components: [],
     contact_standing: extdeps.cpu.ampere_altra_package.PackageContactMapAdmitted { resolved: 4926 },
-    reference_board_standing: ReferenceBoardCollateralAvailable
+    reference_board_standing: extdeps.cpu.ampere_altra_package.ReferenceBoardCollateralAvailable
   )
   list_count(xs: blocked.collateral) == 1
-    && !board_is_ready(r: blocked)
+    && !product.compute_board.composition.board_is_ready(r: blocked)
     && list_is_empty(xs: clear.collateral)
 }
 
@@ -133,21 +133,21 @@ test fn w_reference_board_collateral_reaches_the_readiness_fold() -> Bool {
 // which is the same total the product brief prints independently. Two documents agreeing is
 // what makes this a completeness authority rather than a transcribed number.
 test fn w_pin_summary_cross_foots_to_declared_package_count() -> Bool {
-  altra_pin_summary_total() == altra_declared_contact_count()
+  extdeps.cpu.ampere_altra_package.altra_pin_summary_total() == extdeps.cpu.ampere_altra_package.altra_declared_contact_count()
 }
 
 // An empty board leaves every contract capability unsatisfied. Ten requirements, ten holes:
 // the count is the contract's, so a requirement added without a component would move it.
 test fn w_empty_board_leaves_every_capability_unsatisfied() -> Bool {
-  list_count(xs: unsatisfied_board_capabilities(intent: narrow_compute_node_intent, components: [])) == list_count(xs: narrow_compute_node_intent.requirements)
+  list_count(xs: product.compute_board.composition.unsatisfied_board_capabilities(intent: product.compute_board.intent.narrow_compute_node_intent, components: [])) == list_count(xs: narrow_compute_node_intent.requirements)
 }
 
 fn cpu_component() -> product.compute_board.composition.ComponentInstance {
   product.compute_board.composition.ComponentInstance {
     designator: "U1",
     part: "processor",
-    justifications: [product.compute_board.composition.DischargesCapability { capability: Compute }],
-    provisions: [product.compute_board.composition.ProvidesCores { cores: hardware_thread_count(128) }],
+    justifications: [product.compute_board.composition.DischargesCapability { capability: product.compute_board.intent.Compute }],
+    provisions: [product.compute_board.composition.ProvidesCores { cores: std.measure.hardware_thread_count(128) }],
   }
 }
 
@@ -155,8 +155,8 @@ fn undersized_cpu_component() -> product.compute_board.composition.ComponentInst
   product.compute_board.composition.ComponentInstance {
     designator: "U1",
     part: "processor",
-    justifications: [product.compute_board.composition.DischargesCapability { capability: Compute }],
-    provisions: [product.compute_board.composition.ProvidesCores { cores: hardware_thread_count(127) }],
+    justifications: [product.compute_board.composition.DischargesCapability { capability: product.compute_board.intent.Compute }],
+    provisions: [product.compute_board.composition.ProvidesCores { cores: std.measure.hardware_thread_count(127) }],
   }
 }
 
@@ -168,7 +168,7 @@ fn decoupling_component() -> product.compute_board.composition.ComponentInstance
       product.compute_board.composition.ImposedByComponent {
         by: "U1",
         requirement: "supply decoupling required by the processor's power delivery specification",
-        authority: test.claim.compute_board_readiness_witness.witness_authority,
+        authority: witness_authority,
       }
     ],
     provisions: [],
@@ -180,8 +180,8 @@ fn unjustified_component() -> product.compute_board.composition.ComponentInstanc
 }
 
 test fn w_discharging_component_satisfies_its_capability() -> Bool {
-  capability_satisfied(components: [cpu_component()], cap: Compute)
-    && !capability_satisfied(components: [cpu_component()], cap: MemorySubsystem)
+  product.compute_board.composition.capability_satisfied(components: [cpu_component()], cap: product.compute_board.intent.Compute)
+    && !product.compute_board.composition.capability_satisfied(components: [cpu_component()], cap: product.compute_board.intent.MemorySubsystem)
 }
 
 // THE SEPARATION THAT MATTERS MOST HERE: a component earned by another component's imposed
@@ -189,12 +189,12 @@ test fn w_discharging_component_satisfies_its_capability() -> Bool {
 // two facts were one field, a board could appear to satisfy its contract entirely through
 // support parts that discharge nothing the workload asked for.
 test fn w_imposed_component_is_earned_but_discharges_no_capability() -> Bool {
-  list_is_empty(xs: unearned_components(components: [decoupling_component()]))
-    && !capability_satisfied(components: [decoupling_component()], cap: Compute)
+  list_is_empty(xs: product.compute_board.composition.unearned_components(components: [decoupling_component()]))
+    && !product.compute_board.composition.capability_satisfied(components: [decoupling_component()], cap: product.compute_board.intent.Compute)
 }
 
 test fn w_unjustified_component_is_unearned() -> Bool {
-  let unearned = unearned_components(components: [cpu_component(), unjustified_component()])
+  let unearned = product.compute_board.composition.unearned_components(components: [cpu_component(), unjustified_component()])
   list_count(xs: unearned) == 1 && fold(unearned, init: false, f: fn(acc, c) { acc || c.designator == "J9" })
 }
 
@@ -202,19 +202,19 @@ test fn w_unjustified_component_is_unearned() -> Bool {
 // only the manufacturing family is non-empty. Written because a fold that consulted just the
 // design list would pass every other claim in this file.
 test fn w_manufacturing_refusal_alone_blocks_readiness() -> Bool {
-  !board_is_ready(r: product.compute_board.composition.BoardReadiness {
+  !product.compute_board.composition.board_is_ready(r: product.compute_board.composition.BoardReadiness {
     collateral: [],
     design: [],
     manufacturing: [product.compute_board.composition.FabricatorStackupUnconfirmed { fabricator: "unselected" }],
   })
-    && board_is_ready(r: product.compute_board.composition.BoardReadiness { collateral: [], design: [], manufacturing: [] })
+    && product.compute_board.composition.board_is_ready(r: product.compute_board.composition.BoardReadiness { collateral: [], design: [], manufacturing: [] })
 }
 
 fn carriage_of(rows: List<extdeps.ipc.dpmx.FormatSemanticRow>, semantic: extdeps.ipc.dpmx.ManufacturingSemantic) -> extdeps.ipc.dpmx.SemanticCarriage {
-  fold(rows, init: NotCarried, f: fn(acc, row) {
+  fold(rows, init: extdeps.ipc.dpmx.NotCarried, f: fn(acc, row) {
     match row.semantic {
-      NetlistConnectivity => match semantic {
-        NetlistConnectivity => row.carriage
+      extdeps.ipc.dpmx.NetlistConnectivity => match semantic {
+        extdeps.ipc.dpmx.NetlistConnectivity => row.carriage
         _ => acc
       }
       _ => acc
@@ -224,7 +224,7 @@ fn carriage_of(rows: List<extdeps.ipc.dpmx.FormatSemanticRow>, semantic: extdeps
 
 fn carriage_is_in_format(c: extdeps.ipc.dpmx.SemanticCarriage) -> Bool {
   match c {
-    CarriedInFormat => true
+    extdeps.ipc.dpmx.CarriedInFormat => true
     _ => false
   }
 }
@@ -235,10 +235,10 @@ fn carriage_is_in_format(c: extdeps.ipc.dpmx.SemanticCarriage) -> Bool {
 // emitter is green' can never mean 'the manufacturer has been told what the board is'.
 test fn w_connectivity_survives_dpmx_and_not_gerber() -> Bool {
   carriage_is_in_format(
-    c: carriage_of(rows: ipc_dpmx_semantic_carriage, semantic: NetlistConnectivity)
+    c: carriage_of(rows: extdeps.ipc.dpmx.ipc_dpmx_semantic_carriage, semantic: extdeps.ipc.dpmx.NetlistConnectivity)
   )
     && !carriage_is_in_format(
-      c: carriage_of(rows: extdeps.ucamco.gerber.gerber_semantic_carriage, semantic: NetlistConnectivity)
+      c: carriage_of(rows: extdeps.ucamco.gerber.gerber_semantic_carriage, semantic: extdeps.ipc.dpmx.NetlistConnectivity)
     )
 }
 
@@ -248,8 +248,8 @@ test fn w_connectivity_survives_dpmx_and_not_gerber() -> Bool {
 // the contract's quantity was read when the requirement was authored and discarded when it was
 // checked. One core is the smallest specimen that crosses the boundary.
 test fn w_cores_requirement_compares_quantity_not_capability_tag() -> Bool {
-  !requirement_met(components: [undersized_cpu_component()], r: product.compute_board.intent.ComputeCores { minimum_cores: hardware_thread_count(128) })
-    && requirement_met(components: [cpu_component()], r: product.compute_board.intent.ComputeCores { minimum_cores: hardware_thread_count(128) })
+  !product.compute_board.composition.requirement_met(components: [undersized_cpu_component()], r: product.compute_board.intent.ComputeCores { minimum_cores: std.measure.hardware_thread_count(128) })
+    && product.compute_board.composition.requirement_met(components: [cpu_component()], r: product.compute_board.intent.ComputeCores { minimum_cores: std.measure.hardware_thread_count(128) })
 }
 
 // The boolean-shaped requirements demand every declared sub-facility, not merely a provision of
@@ -259,15 +259,15 @@ test fn w_management_requirement_demands_every_declared_sub_facility() -> Bool {
   let partial = product.compute_board.composition.ComponentInstance {
     designator: "U2",
     part: "management controller",
-    justifications: [product.compute_board.composition.DischargesCapability { capability: Management }],
+    justifications: [product.compute_board.composition.DischargesCapability { capability: product.compute_board.intent.Management }],
     provisions: [product.compute_board.composition.ProvidesManagement { power_control: true, console: true, recovery: false }],
   }
   let complete = product.compute_board.composition.ComponentInstance {
     designator: "U2",
     part: "management controller",
-    justifications: [product.compute_board.composition.DischargesCapability { capability: Management }],
+    justifications: [product.compute_board.composition.DischargesCapability { capability: product.compute_board.intent.Management }],
     provisions: [product.compute_board.composition.ProvidesManagement { power_control: true, console: true, recovery: true }],
   }
-  !requirement_met(components: [partial], r: product.compute_board.intent.RemoteManagement { power_control: true, console: true, recovery: true })
-    && requirement_met(components: [complete], r: product.compute_board.intent.RemoteManagement { power_control: true, console: true, recovery: true })
+  !product.compute_board.composition.requirement_met(components: [partial], r: product.compute_board.intent.RemoteManagement { power_control: true, console: true, recovery: true })
+    && product.compute_board.composition.requirement_met(components: [complete], r: product.compute_board.intent.RemoteManagement { power_control: true, console: true, recovery: true })
 }

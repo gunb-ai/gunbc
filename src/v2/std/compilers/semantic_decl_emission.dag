@@ -52,23 +52,23 @@ type TargetSemanticDeclEmission {
 fn semantic_decl_emission_bundle_malformed_diagnostic(bundle: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^semantic_decl_emission_bundle_malformed,
-    at: node_locus(node: bundle),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: bundle),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn semantic_decl_string_to_bundle_node(s: String) -> v2.std.node.Node {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: s,
-    empty: target_model_type_atom_node(identity: ^free_monoid_variant_empty),
+    empty: v2.std.compilers.target_model.target_model_type_atom_node(identity: ^free_monoid_variant_empty),
     cons: fn(tail, c) {
-      target_model_type_conj_node(
+      v2.std.compilers.target_model.target_model_type_conj_node(
         children: [
-          target_model_named_edge(
+          v2.std.compilers.target_model.target_model_named_edge(
             name: ^free_monoid_field_head,
-            target: target_model_type_atom_node(identity: c)
+            target: v2.std.compilers.target_model.target_model_type_atom_node(identity: c)
           ),
-          target_model_named_edge(
+          v2.std.compilers.target_model.target_model_named_edge(
             name: ^free_monoid_field_tail,
             target: tail
           )
@@ -78,32 +78,32 @@ fn semantic_decl_string_to_bundle_node(s: String) -> v2.std.node.Node {
   )
 }
 
-fn semantic_decl_string_from_bundle_node(bundle: v2.std.node.Node) -> Outcome<String> {
+fn semantic_decl_string_from_bundle_node(bundle: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match bundle.kind {
-    TypeNode { connective: Atom { identity: id } } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
       if id == ^free_monoid_variant_empty {
-        outcome_accepted(value: "")
+        v2.std.diagnostic.outcome_accepted(value: "")
       } else {
-        outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
+        v2.std.diagnostic.outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
         )
       }
-    TypeNode { connective: Conj } =>
-      bind_outcome(
-        o: find_named_child(root: bundle, name: ^free_monoid_field_head),
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
+      v2.std.diagnostic.bind_outcome(
+        o: v2.std.node_query.find_named_child(root: bundle, name: ^free_monoid_field_head),
         f: fn(head) {
-          bind_outcome(
-            o: find_named_child(root: bundle, name: ^free_monoid_field_tail),
+          v2.std.diagnostic.bind_outcome(
+            o: v2.std.node_query.find_named_child(root: bundle, name: ^free_monoid_field_tail),
             f: fn(tail) {
               match head.kind {
-                TypeNode { connective: Atom { identity: c } } =>
-                  bind_outcome(
+                v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: c } } =>
+                  v2.std.diagnostic.bind_outcome(
                     o: semantic_decl_string_from_bundle_node(bundle: tail),
                     f: fn(rest) {
-                      outcome_accepted(value: concat(rest, from_code_point(cp: c)))
+                      v2.std.diagnostic.outcome_accepted(value: concat(rest, from_code_point(cp: c)))
                     }
                   )
                 _ =>
-                  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
+                  v2.std.diagnostic.outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
                   )
               }
             }
@@ -111,34 +111,34 @@ fn semantic_decl_string_from_bundle_node(bundle: v2.std.node.Node) -> Outcome<St
         }
       )
     _ =>
-      outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
+      v2.std.diagnostic.outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
       )
   }
 }
 
 fn semantic_decl_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
   v2.std.compilers.lexing.SequencePattern {
-    left: v2.std.compilers.lexing.CharClassPattern { class: IdentStartChar },
-    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } }
+    left: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentContinueChar } }
   }
 }
 
 fn semantic_decl_whitespace_trivia_pattern() -> v2.std.compilers.lexing.LexPattern {
-  v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } }
+  v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.WhitespaceChar } }
 }
 
 fn semantic_decl_lex_literal_row(token_class: v2.std.node.Symbol, text: String) -> v2.std.node.Node {
-  target_model_type_conj_node(
+  v2.std.compilers.target_model.target_model_type_conj_node(
     children: [
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_lex_row_field_pattern_kind,
-        target: target_model_type_atom_node(identity: ^semantic_decl_lex_pattern_literal)
+        target: v2.std.compilers.target_model.target_model_type_atom_node(identity: ^semantic_decl_lex_pattern_literal)
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_lex_row_field_token_class,
-        target: target_model_type_atom_node(identity: token_class)
+        target: v2.std.compilers.target_model.target_model_type_atom_node(identity: token_class)
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_lex_row_field_text,
         target: semantic_decl_string_to_bundle_node(s: text)
       )
@@ -147,67 +147,67 @@ fn semantic_decl_lex_literal_row(token_class: v2.std.node.Symbol, text: String) 
 }
 
 fn semantic_decl_lex_ident_row(token_class: v2.std.node.Symbol) -> v2.std.node.Node {
-  target_model_type_conj_node(
+  v2.std.compilers.target_model.target_model_type_conj_node(
     children: [
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_lex_row_field_pattern_kind,
-        target: target_model_type_atom_node(identity: ^semantic_decl_lex_pattern_ident)
+        target: v2.std.compilers.target_model.target_model_type_atom_node(identity: ^semantic_decl_lex_pattern_ident)
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_lex_row_field_token_class,
-        target: target_model_type_atom_node(identity: token_class)
+        target: v2.std.compilers.target_model.target_model_type_atom_node(identity: token_class)
       )
     ]
   )
 }
 
 fn semantic_decl_lex_whitespace_trivia_row() -> v2.std.node.Node {
-  target_model_type_conj_node(
+  v2.std.compilers.target_model.target_model_type_conj_node(
     children: [
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_lex_row_field_pattern_kind,
-        target: target_model_type_atom_node(identity: ^semantic_decl_lex_pattern_whitespace_trivia)
+        target: v2.std.compilers.target_model.target_model_type_atom_node(identity: ^semantic_decl_lex_pattern_whitespace_trivia)
       )
     ]
   )
 }
 
 fn semantic_decl_lex_rules_catalog(rows: List<v2.std.node.Node>) -> v2.std.node.Node {
-  target_model_type_conj_node(
-    children: fold_list(
+  v2.std.compilers.target_model.target_model_type_conj_node(
+    children: v2.std.algebra.fold_list(
       xs: rows,
       empty: std.algebra.Empty,
       cons: fn(acc, row) {
-        list_snoc_item(
+        v2.std.algebra.list_snoc_item(
           xs: acc,
-          item: v2.std.node.Edge { label: Positional, target: row }
+          item: v2.std.node.Edge { label: v2.std.node.Positional, target: row }
         )
       }
     )
   )
 }
 
-fn decode_semantic_decl_lex_rule_row(row: v2.std.node.Node) -> Outcome<v2.std.compilers.lexing.LexRule> {
-  bind_outcome(
-    o: projection_bundle_symbol_field(
+fn decode_semantic_decl_lex_rule_row(row: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.LexRule> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.projection_bundle_symbol_field(
       bundle: row,
       field: ^semantic_decl_lex_row_field_pattern_kind
     ),
     f: fn(pattern_kind) {
       if pattern_kind == ^semantic_decl_lex_pattern_literal {
-        bind_outcome(
-          o: projection_bundle_symbol_field(
+        v2.std.diagnostic.bind_outcome(
+          o: v2.std.compilers.target_model.projection_bundle_symbol_field(
             bundle: row,
             field: ^semantic_decl_lex_row_field_token_class
           ),
           f: fn(token_class) {
-            bind_outcome(
-              o: find_named_child(root: row, name: ^semantic_decl_lex_row_field_text),
+            v2.std.diagnostic.bind_outcome(
+              o: v2.std.node_query.find_named_child(root: row, name: ^semantic_decl_lex_row_field_text),
               f: fn(text_node) {
-                bind_outcome(
+                v2.std.diagnostic.bind_outcome(
                   o: semantic_decl_string_from_bundle_node(bundle: text_node),
                   f: fn(text) {
-                    outcome_accepted(
+                    v2.std.diagnostic.outcome_accepted(
                       value: v2.std.compilers.lexing.TokenRule {
                         token_class: token_class,
                         pattern: v2.std.compilers.lexing.LiteralPattern { text: text }
@@ -220,13 +220,13 @@ fn decode_semantic_decl_lex_rule_row(row: v2.std.node.Node) -> Outcome<v2.std.co
           }
         )
       } else if pattern_kind == ^semantic_decl_lex_pattern_ident {
-        bind_outcome(
-          o: projection_bundle_symbol_field(
+        v2.std.diagnostic.bind_outcome(
+          o: v2.std.compilers.target_model.projection_bundle_symbol_field(
             bundle: row,
             field: ^semantic_decl_lex_row_field_token_class
           ),
           f: fn(token_class) {
-            outcome_accepted(
+            v2.std.diagnostic.outcome_accepted(
               value: v2.std.compilers.lexing.TokenRule {
                 token_class: token_class,
                 pattern: semantic_decl_ident_lex_pattern()
@@ -235,32 +235,32 @@ fn decode_semantic_decl_lex_rule_row(row: v2.std.node.Node) -> Outcome<v2.std.co
           }
         )
       } else if pattern_kind == ^semantic_decl_lex_pattern_whitespace_trivia {
-        outcome_accepted(
+        v2.std.diagnostic.outcome_accepted(
           value: v2.std.compilers.lexing.TriviaRule { pattern: semantic_decl_whitespace_trivia_pattern() }
         )
       } else {
-        outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: row)
+        v2.std.diagnostic.outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: row)
         )
       }
     }
   )
 }
 
-fn semantic_decl_lex_rule_rows_from_catalog(catalog: v2.std.node.Node) -> Outcome<List<v2.std.node.Node>> {
+fn semantic_decl_lex_rule_rows_from_catalog(catalog: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   match catalog.kind {
-    TypeNode { connective: Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       fold(
         catalog.children,
-        init: outcome_accepted(value: std.algebra.Empty),
+        init: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
         f: fn(acc_o, edge) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: acc_o,
             f: fn(acc) {
               match edge.label {
-                Positional =>
-                  outcome_accepted(value: list_snoc_item(xs: acc, item: edge.target))
+                v2.std.node.Positional =>
+                  v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_snoc_item(xs: acc, item: edge.target))
                 _ =>
-                  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+                  v2.std.diagnostic.outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
                   )
               }
             }
@@ -268,24 +268,24 @@ fn semantic_decl_lex_rule_rows_from_catalog(catalog: v2.std.node.Node) -> Outcom
         }
       )
     _ =>
-      outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+      v2.std.diagnostic.outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
       )
   }
 }
 
-fn semantic_decl_lex_rules_from_rows(rows: List<v2.std.node.Node>) -> Outcome<v2.std.compilers.lexing.LexRules> {
-  bind_outcome(
-    o: fold_list(
+fn semantic_decl_lex_rules_from_rows(rows: List<v2.std.node.Node>) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.LexRules> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.algebra.fold_list(
       xs: rows,
-      empty: outcome_accepted(value: std.algebra.Empty),
+      empty: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
       cons: fn(acc_o, row) {
-        bind_outcome(
+        v2.std.diagnostic.bind_outcome(
           o: acc_o,
           f: fn(acc) {
-            bind_outcome(
+            v2.std.diagnostic.bind_outcome(
               o: decode_semantic_decl_lex_rule_row(row: row),
               f: fn(rule) {
-                outcome_accepted(value: list_snoc_item(xs: acc, item: rule))
+                v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_snoc_item(xs: acc, item: rule))
               }
             )
           }
@@ -293,15 +293,15 @@ fn semantic_decl_lex_rules_from_rows(rows: List<v2.std.node.Node>) -> Outcome<v2
       }
     ),
     f: fn(rules) {
-      outcome_accepted(
+      v2.std.diagnostic.outcome_accepted(
         value: v2.std.compilers.lexing.ModeledLexRules { root: v2.std.compilers.lexing.LexRuleSet { rules: rules } }
       )
     }
   )
 }
 
-fn semantic_decl_lex_rules_from_catalog(catalog: v2.std.node.Node) -> Outcome<v2.std.compilers.lexing.LexRules> {
-  bind_outcome(
+fn semantic_decl_lex_rules_from_catalog(catalog: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.LexRules> {
+  v2.std.diagnostic.bind_outcome(
     o: semantic_decl_lex_rule_rows_from_catalog(catalog: catalog),
     f: fn(rows) {
       semantic_decl_lex_rules_from_rows(rows: rows)
@@ -310,13 +310,13 @@ fn semantic_decl_lex_rules_from_catalog(catalog: v2.std.node.Node) -> Outcome<v2
 }
 
 fn semantic_decl_binding_spelling_row(binding: v2.std.node.Symbol, spelling: String) -> v2.std.node.Node {
-  target_model_type_conj_node(
+  v2.std.compilers.target_model.target_model_type_conj_node(
     children: [
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_spelling_row_field_binding,
-        target: target_model_type_atom_node(identity: binding)
+        target: v2.std.compilers.target_model.target_model_type_atom_node(identity: binding)
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_spelling_row_field_text,
         target: semantic_decl_string_to_bundle_node(s: spelling)
       )
@@ -325,31 +325,31 @@ fn semantic_decl_binding_spelling_row(binding: v2.std.node.Symbol, spelling: Str
 }
 
 fn semantic_decl_binding_spellings_catalog(rows: List<v2.std.node.Node>) -> v2.std.node.Node {
-  target_model_type_conj_node(
-    children: fold_list(
+  v2.std.compilers.target_model.target_model_type_conj_node(
+    children: v2.std.algebra.fold_list(
       xs: rows,
       empty: std.algebra.Empty,
       cons: fn(acc, row) {
-        list_snoc_item(
+        v2.std.algebra.list_snoc_item(
           xs: acc,
-          item: v2.std.node.Edge { label: Positional, target: row }
+          item: v2.std.node.Edge { label: v2.std.node.Positional, target: row }
         )
       }
     )
   )
 }
 
-fn decode_semantic_decl_binding_spelling_row(row: v2.std.node.Node) -> Outcome<SemanticDeclBindingSpellingRow> {
-  bind_outcome(
-    o: projection_bundle_symbol_field(bundle: row, field: ^semantic_decl_spelling_row_field_binding),
+fn decode_semantic_decl_binding_spelling_row(row: v2.std.node.Node) -> v2.std.diagnostic.Outcome<SemanticDeclBindingSpellingRow> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.projection_bundle_symbol_field(bundle: row, field: ^semantic_decl_spelling_row_field_binding),
     f: fn(binding) {
-      bind_outcome(
-        o: find_named_child(root: row, name: ^semantic_decl_spelling_row_field_text),
+      v2.std.diagnostic.bind_outcome(
+        o: v2.std.node_query.find_named_child(root: row, name: ^semantic_decl_spelling_row_field_text),
         f: fn(text_node) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: semantic_decl_string_from_bundle_node(bundle: text_node),
             f: fn(spelling) {
-              outcome_accepted(
+              v2.std.diagnostic.outcome_accepted(
                 value: SemanticDeclBindingSpellingRow {
                   binding: binding,
                   spelling: spelling
@@ -363,26 +363,26 @@ fn decode_semantic_decl_binding_spelling_row(row: v2.std.node.Node) -> Outcome<S
   )
 }
 
-fn semantic_decl_binding_spelling_rows_from_catalog(catalog: v2.std.node.Node) -> Outcome<List<SemanticDeclBindingSpellingRow>> {
+fn semantic_decl_binding_spelling_rows_from_catalog(catalog: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<SemanticDeclBindingSpellingRow>> {
   match catalog.kind {
-    TypeNode { connective: Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       fold(
         catalog.children,
-        init: outcome_accepted(value: std.algebra.Empty),
+        init: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
         f: fn(acc_o, edge) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: acc_o,
             f: fn(acc) {
               match edge.label {
-                Positional =>
-                  bind_outcome(
+                v2.std.node.Positional =>
+                  v2.std.diagnostic.bind_outcome(
                     o: decode_semantic_decl_binding_spelling_row(row: edge.target),
                     f: fn(row) {
-                      outcome_accepted(value: list_snoc_item(xs: acc, item: row))
+                      v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_snoc_item(xs: acc, item: row))
                     }
                   )
                 _ =>
-                  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+                  v2.std.diagnostic.outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
                   )
               }
             }
@@ -390,7 +390,7 @@ fn semantic_decl_binding_spelling_rows_from_catalog(catalog: v2.std.node.Node) -
         }
       )
     _ =>
-      outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+      v2.std.diagnostic.outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
       )
   }
 }
@@ -398,11 +398,11 @@ fn semantic_decl_binding_spelling_rows_from_catalog(catalog: v2.std.node.Node) -
 fn semantic_decl_binding_spellings_from_rows(
   rows: List<SemanticDeclBindingSpellingRow>
 ) -> Map<v2.std.node.Symbol, String> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: rows,
-    empty: empty_map(),
+    empty: v2.std.collection.empty_map(),
     cons: fn(acc, row) {
-      map_insert(m: acc, key: row.binding, value: row.spelling)
+      v2.std.collection.map_insert(m: acc, key: row.binding, value: row.spelling)
     }
   )
 }
@@ -410,22 +410,22 @@ fn semantic_decl_binding_spellings_from_rows(
 fn semantic_decl_binding_spelling_not_found_diagnostic(binding: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^semantic_decl_binding_spelling_not_found,
-    at: port_locus(port: binding),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.port_locus(port: binding),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn semantic_decl_binding_spelling_from_rows(
   rows: List<SemanticDeclBindingSpellingRow>,
   binding: v2.std.node.Symbol
-) -> Outcome<String> {
-  fold_list(
+) -> v2.std.diagnostic.Outcome<String> {
+  v2.std.algebra.fold_list(
     xs: rows,
-    empty: outcome_rejected(d: semantic_decl_binding_spelling_not_found_diagnostic(binding: binding)
+    empty: v2.std.diagnostic.outcome_rejected(d: semantic_decl_binding_spelling_not_found_diagnostic(binding: binding)
     ),
     cons: fn(acc, row) {
       if row.binding == binding {
-        outcome_accepted(value: row.spelling)
+        v2.std.diagnostic.outcome_accepted(value: row.spelling)
       } else {
         acc
       }
@@ -435,18 +435,18 @@ fn semantic_decl_binding_spelling_from_rows(
 
 fn semantic_decl_binding_spelling_rows_from_row_nodes(
   rows: List<v2.std.node.Node>
-) -> Outcome<List<SemanticDeclBindingSpellingRow>> {
-  fold_list(
+) -> v2.std.diagnostic.Outcome<List<SemanticDeclBindingSpellingRow>> {
+  v2.std.algebra.fold_list(
     xs: rows,
-    empty: outcome_accepted(value: std.algebra.Empty),
+    empty: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc_o, row) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: acc_o,
         f: fn(acc) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: decode_semantic_decl_binding_spelling_row(row: row),
             f: fn(decoded) {
-              outcome_accepted(value: list_snoc_item(xs: acc, item: decoded))
+              v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_snoc_item(xs: acc, item: decoded))
             }
           )
         }
@@ -457,19 +457,19 @@ fn semantic_decl_binding_spelling_rows_from_row_nodes(
 
 fn semantic_decl_profile_lex_rules(
   profile: TargetSemanticDeclSerializeProfile
-) -> Outcome<v2.std.compilers.lexing.LexRules> {
+) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.LexRules> {
   semantic_decl_lex_rules_from_rows(rows: profile.lex_rule_rows)
 }
 
 fn semantic_decl_profile_binding_spellings(
   profile: TargetSemanticDeclSerializeProfile
-) -> Outcome<Map<v2.std.node.Symbol, String>> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<Map<v2.std.node.Symbol, String>> {
+  v2.std.diagnostic.bind_outcome(
     o: semantic_decl_binding_spelling_rows_from_row_nodes(
       rows: profile.binding_spelling_rows
     ),
     f: fn(rows) {
-      outcome_accepted(value: semantic_decl_binding_spellings_from_rows(rows: rows))
+      v2.std.diagnostic.outcome_accepted(value: semantic_decl_binding_spellings_from_rows(rows: rows))
     }
   )
 }
@@ -477,11 +477,11 @@ fn semantic_decl_profile_binding_spellings(
 fn semantic_decl_binding_spelling_lookup(
   profile: TargetSemanticDeclSerializeProfile,
   binding: v2.std.node.Symbol
-) -> Outcome<String> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<String> {
+  v2.std.diagnostic.bind_outcome(
     o: semantic_decl_profile_binding_spellings(profile: profile),
     f: fn(binding_spellings) {
-      bound_spelling_from_map(binding_spellings: binding_spellings, binding: binding)
+      v2.std.compilers.target_model.bound_spelling_from_map(binding_spellings: binding_spellings, binding: binding)
     }
   )
 }
@@ -489,34 +489,34 @@ fn semantic_decl_binding_spelling_lookup(
 fn semantic_decl_bound_tokens_source_text(
   profile: TargetSemanticDeclSerializeProfile,
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> Outcome<v2.std.compilers.target_model.TargetText> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetText> {
+  v2.std.diagnostic.bind_outcome(
     o: semantic_decl_profile_lex_rules(profile: profile),
     f: fn(lex) {
-      fold_list(
+      v2.std.algebra.fold_list(
         xs: tokens,
-        empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
+        empty: Accepted { value: v2.std.compilers.target_model.target_text_empty, diagnostics: v2.std.diagnostic.None },
         cons: fn(acc, token) {
           match acc {
-            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: partial, diagnostics: ad } =>
               match token {
-                FixedToken { token_class: tc } =>
-                  bind_outcome(
-                    o: lex_rules_literal_for_class(rules: lex, token_class: tc),
+                v2.std.compilers.target_model.FixedToken { token_class: tc } =>
+                  v2.std.diagnostic.bind_outcome(
+                    o: v2.std.compilers.target_model.lex_rules_literal_for_class(rules: lex, token_class: tc),
                     f: fn(spelling) {
-                      v2.std.diagnostic.Accepted {
-                        value: target_text_seq(acc: partial, next: text_atom(lexeme: spelling)),
+                      Accepted {
+                        value: v2.std.compilers.target_model.target_text_seq(acc: partial, next: v2.std.compilers.target_model.text_atom(lexeme: spelling)),
                         diagnostics: ad
                       }
                     }
                   )
-                BoundToken { token_class: _, binding: b } =>
-                  bind_outcome(
+                v2.std.compilers.target_model.BoundToken { token_class: _, binding: b } =>
+                  v2.std.diagnostic.bind_outcome(
                     o: semantic_decl_binding_spelling_lookup(profile: profile, binding: b),
                     f: fn(spelling) {
-                      v2.std.diagnostic.Accepted {
-                        value: target_text_seq(acc: partial, next: text_atom(lexeme: spelling)),
+                      Accepted {
+                        value: v2.std.compilers.target_model.target_text_seq(acc: partial, next: v2.std.compilers.target_model.text_atom(lexeme: spelling)),
                         diagnostics: ad
                       }
                     }
@@ -532,11 +532,11 @@ fn semantic_decl_bound_tokens_source_text(
 fn semantic_decl_tokens_to_source_text(
   profile: TargetSemanticDeclSerializeProfile,
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> Outcome<String> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<String> {
+  v2.std.diagnostic.bind_outcome(
     o: semantic_decl_bound_tokens_source_text(profile: profile, tokens: tokens),
     f: fn(t) {
-      outcome_accepted(value: render_target_text(t: t))
+      v2.std.diagnostic.outcome_accepted(value: v2.std.compilers.target_model.render_target_text(t: t))
     }
   )
 }
@@ -544,19 +544,19 @@ fn semantic_decl_tokens_to_source_text(
 fn semantic_decl_serialize_target(
   profile: TargetSemanticDeclSerializeProfile,
   rules: v2.std.node.Node
-) -> Outcome<v2.std.compilers.target_model.TargetModel> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
+  v2.std.diagnostic.bind_outcome(
     o: semantic_decl_profile_lex_rules(profile: profile),
     f: fn(lex) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: semantic_decl_profile_binding_spellings(profile: profile),
         f: fn(binding_spellings) {
-          outcome_accepted(
+          v2.std.diagnostic.outcome_accepted(
             value: v2.std.compilers.target_model.TargetModel {
-              produced_decl_support: ProducedDeclUnwired,
-              bundle: target_model_type_conj_node(
+              produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
+              bundle: v2.std.compilers.target_model.target_model_type_conj_node(
                 children: [
-                  target_model_named_edge(
+                  v2.std.compilers.target_model.target_model_named_edge(
                     name: ^target_model_edge_translation_rules,
                     target: rules
                   )
@@ -564,9 +564,9 @@ fn semantic_decl_serialize_target(
               ),
               lex: lex,
               binding_spellings: binding_spellings,
-              token_class_emit_transforms: target_model_emit_transforms_empty,
+              token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
               authority_source_text: "",
-              runtime_row: target_emit_host_runtime_row_unconfigured
+              runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
             }
           )
         }
@@ -575,11 +575,11 @@ fn semantic_decl_serialize_target(
   )
 }
 
-fn semantic_decl_binding_spellings_from_catalog(catalog: v2.std.node.Node) -> Outcome<Map<v2.std.node.Symbol, String>> {
-  bind_outcome(
+fn semantic_decl_binding_spellings_from_catalog(catalog: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Map<v2.std.node.Symbol, String>> {
+  v2.std.diagnostic.bind_outcome(
     o: semantic_decl_binding_spelling_rows_from_catalog(catalog: catalog),
     f: fn(rows) {
-      outcome_accepted(value: semantic_decl_binding_spellings_from_rows(rows: rows))
+      v2.std.diagnostic.outcome_accepted(value: semantic_decl_binding_spellings_from_rows(rows: rows))
     }
   )
 }
@@ -588,13 +588,13 @@ fn semantic_decl_serialize_profile_bundle(
   lex_rows: List<v2.std.node.Node>,
   spelling_rows: List<v2.std.node.Node>
 ) -> v2.std.node.Node {
-  target_model_type_conj_node(
+  v2.std.compilers.target_model.target_model_type_conj_node(
     children: [
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_profile_field_lex_rules,
         target: semantic_decl_lex_rules_catalog(rows: lex_rows)
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_profile_field_binding_spellings,
         target: semantic_decl_binding_spellings_catalog(rows: spelling_rows)
       )
@@ -610,29 +610,29 @@ fn semantic_decl_emission_bundle(
   struct_serialize_profile: v2.std.node.Node,
   surface: TargetSemanticDeclSurfaceProjection
 ) -> v2.std.node.Node {
-  target_model_type_conj_node(
+  v2.std.compilers.target_model.target_model_type_conj_node(
     children: [
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_emission_field_identity,
-        target: target_model_type_atom_node(identity: identity)
+        target: v2.std.compilers.target_model.target_model_type_atom_node(identity: identity)
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_emission_field_enum_translation_rules,
         target: enum_translation_rules
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_emission_field_struct_translation_rules,
         target: struct_translation_rules
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_emission_field_enum_serialize_profile,
         target: enum_serialize_profile
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_emission_field_struct_serialize_profile,
         target: struct_serialize_profile
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_emission_field_surface_projection,
         target: semantic_decl_surface_projection_bundle(projection: surface)
       )
@@ -641,11 +641,11 @@ fn semantic_decl_emission_bundle(
 }
 
 fn semantic_decl_decoration_line_row(line: TargetSemanticDeclDecorationLine) -> v2.std.node.Node {
-  target_model_type_conj_node(
+  v2.std.compilers.target_model.target_model_type_conj_node(
     children: [
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_decoration_line_field_surface_binding,
-        target: target_model_type_atom_node(identity: line.surface_binding)
+        target: v2.std.compilers.target_model.target_model_type_atom_node(identity: line.surface_binding)
       )
     ]
   )
@@ -654,15 +654,15 @@ fn semantic_decl_decoration_line_row(line: TargetSemanticDeclDecorationLine) -> 
 fn semantic_decl_decoration_lines_catalog_from_lines(
   lines: List<TargetSemanticDeclDecorationLine>
 ) -> v2.std.node.Node {
-  target_model_type_conj_node(
-    children: fold_list(
+  v2.std.compilers.target_model.target_model_type_conj_node(
+    children: v2.std.algebra.fold_list(
       xs: lines,
       empty: std.algebra.Empty,
       cons: fn(acc, line) {
-        list_snoc_item(
+        v2.std.algebra.list_snoc_item(
           xs: acc,
           item: v2.std.node.Edge {
-            label: Positional,
+            label: v2.std.node.Positional,
             target: semantic_decl_decoration_line_row(line: line)
           }
         )
@@ -671,40 +671,40 @@ fn semantic_decl_decoration_lines_catalog_from_lines(
   )
 }
 
-fn decode_semantic_decl_decoration_line_row(row: v2.std.node.Node) -> Outcome<TargetSemanticDeclDecorationLine> {
-  bind_outcome(
-    o: projection_bundle_symbol_field(
+fn decode_semantic_decl_decoration_line_row(row: v2.std.node.Node) -> v2.std.diagnostic.Outcome<TargetSemanticDeclDecorationLine> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.projection_bundle_symbol_field(
       bundle: row,
       field: ^semantic_decl_decoration_line_field_surface_binding
     ),
     f: fn(surface_binding) {
-      outcome_accepted(
+      v2.std.diagnostic.outcome_accepted(
         value: TargetSemanticDeclDecorationLine { surface_binding: surface_binding }
       )
     }
   )
 }
 
-fn semantic_decl_decoration_lines_from_catalog(catalog: v2.std.node.Node) -> Outcome<List<TargetSemanticDeclDecorationLine>> {
+fn semantic_decl_decoration_lines_from_catalog(catalog: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<TargetSemanticDeclDecorationLine>> {
   match catalog.kind {
-    TypeNode { connective: Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       fold(
         catalog.children,
-        init: outcome_accepted(value: std.algebra.Empty),
+        init: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
         f: fn(acc_o, edge) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: acc_o,
             f: fn(acc) {
               match edge.label {
-                Positional =>
-                  bind_outcome(
+                v2.std.node.Positional =>
+                  v2.std.diagnostic.bind_outcome(
                     o: decode_semantic_decl_decoration_line_row(row: edge.target),
                     f: fn(line) {
-                      outcome_accepted(value: list_snoc_item(xs: acc, item: line))
+                      v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_snoc_item(xs: acc, item: line))
                     }
                   )
                 _ =>
-                  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+                  v2.std.diagnostic.outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
                   )
               }
             }
@@ -712,19 +712,19 @@ fn semantic_decl_decoration_lines_from_catalog(catalog: v2.std.node.Node) -> Out
         }
       )
     _ =>
-      outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+      v2.std.diagnostic.outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
       )
   }
 }
 
 fn semantic_decl_coproduct_decoration_rule_row(rule: TargetSemanticDeclCoproductDecorationRule) -> v2.std.node.Node {
-  target_model_type_conj_node(
+  v2.std.compilers.target_model.target_model_type_conj_node(
     children: [
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_coproduct_rule_field_shape_key,
-        target: target_model_type_atom_node(identity: rule.shape_key)
+        target: v2.std.compilers.target_model.target_model_type_atom_node(identity: rule.shape_key)
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^semantic_decl_coproduct_rule_field_decoration_lines,
         target: semantic_decl_decoration_lines_catalog_from_lines(lines: rule.decoration_lines)
       )
@@ -735,15 +735,15 @@ fn semantic_decl_coproduct_decoration_rule_row(rule: TargetSemanticDeclCoproduct
 fn semantic_decl_coproduct_decoration_rules_catalog(
   rules: List<TargetSemanticDeclCoproductDecorationRule>
 ) -> v2.std.node.Node {
-  target_model_type_conj_node(
-    children: fold_list(
+  v2.std.compilers.target_model.target_model_type_conj_node(
+    children: v2.std.algebra.fold_list(
       xs: rules,
       empty: std.algebra.Empty,
       cons: fn(acc, rule) {
-        list_snoc_item(
+        v2.std.algebra.list_snoc_item(
           xs: acc,
           item: v2.std.node.Edge {
-            label: Positional,
+            label: v2.std.node.Positional,
             target: semantic_decl_coproduct_decoration_rule_row(rule: rule)
           }
         )
@@ -754,23 +754,23 @@ fn semantic_decl_coproduct_decoration_rules_catalog(
 
 fn decode_semantic_decl_coproduct_decoration_rule_row(
   row: v2.std.node.Node
-) -> Outcome<TargetSemanticDeclCoproductDecorationRule> {
-  bind_outcome(
-    o: projection_bundle_symbol_field(
+) -> v2.std.diagnostic.Outcome<TargetSemanticDeclCoproductDecorationRule> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.projection_bundle_symbol_field(
       bundle: row,
       field: ^semantic_decl_coproduct_rule_field_shape_key
     ),
     f: fn(shape_key) {
-      bind_outcome(
-        o: find_named_child(
+      v2.std.diagnostic.bind_outcome(
+        o: v2.std.node_query.find_named_child(
           root: row,
           name: ^semantic_decl_coproduct_rule_field_decoration_lines
         ),
         f: fn(lines_catalog) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: semantic_decl_decoration_lines_from_catalog(catalog: lines_catalog),
             f: fn(decoration_lines) {
-              outcome_accepted(
+              v2.std.diagnostic.outcome_accepted(
                 value: TargetSemanticDeclCoproductDecorationRule {
                   shape_key: shape_key,
                   decoration_lines: decoration_lines
@@ -786,26 +786,26 @@ fn decode_semantic_decl_coproduct_decoration_rule_row(
 
 fn semantic_decl_coproduct_decoration_rules_from_catalog(
   catalog: v2.std.node.Node
-) -> Outcome<List<TargetSemanticDeclCoproductDecorationRule>> {
+) -> v2.std.diagnostic.Outcome<List<TargetSemanticDeclCoproductDecorationRule>> {
   match catalog.kind {
-    TypeNode { connective: Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       fold(
         catalog.children,
-        init: outcome_accepted(value: std.algebra.Empty),
+        init: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
         f: fn(acc_o, edge) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: acc_o,
             f: fn(acc) {
               match edge.label {
-                Positional =>
-                  bind_outcome(
+                v2.std.node.Positional =>
+                  v2.std.diagnostic.bind_outcome(
                     o: decode_semantic_decl_coproduct_decoration_rule_row(row: edge.target),
                     f: fn(rule) {
-                      outcome_accepted(value: list_snoc_item(xs: acc, item: rule))
+                      v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_snoc_item(xs: acc, item: rule))
                     }
                   )
                 _ =>
-                  outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+                  v2.std.diagnostic.outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
                   )
               }
             }
@@ -813,7 +813,7 @@ fn semantic_decl_coproduct_decoration_rules_from_catalog(
         }
       )
     _ =>
-      outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
+      v2.std.diagnostic.outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: catalog)
       )
   }
 }
@@ -821,22 +821,22 @@ fn semantic_decl_coproduct_decoration_rules_from_catalog(
 fn semantic_decl_surface_projection_bundle(
   projection: TargetSemanticDeclSurfaceProjection
 ) -> v2.std.node.Node {
-  target_model_type_conj_node(
-    children: list_append(
+  v2.std.compilers.target_model.target_model_type_conj_node(
+    children: v2.std.algebra.list_append(
       left: [
-        target_model_named_edge(
+        v2.std.compilers.target_model.target_model_named_edge(
           name: ^semantic_decl_surface_field_record_decoration_lines,
           target: semantic_decl_decoration_lines_catalog_from_lines(
             lines: projection.record_decoration_lines
           )
         ),
-        target_model_named_edge(
+        v2.std.compilers.target_model.target_model_named_edge(
           name: ^semantic_decl_surface_field_coproduct_decoration_rules,
           target: semantic_decl_coproduct_decoration_rules_catalog(
             rules: projection.coproduct_decoration_rules
           )
         ),
-        target_model_named_edge(
+        v2.std.compilers.target_model.target_model_named_edge(
           name: ^semantic_decl_surface_field_type_before_name,
           target: semantic_decl_surface_projection_bool_flag_node(
             enabled: projection.field_type_before_name,
@@ -844,7 +844,7 @@ fn semantic_decl_surface_projection_bundle(
             false_id: ^semantic_decl_field_type_before_name_false
           )
         ),
-        target_model_named_edge(
+        v2.std.compilers.target_model.target_model_named_edge(
           name: ^semantic_decl_surface_field_type_expr_field_scope,
           target: semantic_decl_surface_projection_bool_flag_node(
             enabled: projection.type_expr_field_scope,
@@ -852,7 +852,7 @@ fn semantic_decl_surface_projection_bundle(
             false_id: ^semantic_decl_type_expr_field_scope_false
           )
         ),
-        target_model_named_edge(
+        v2.std.compilers.target_model.target_model_named_edge(
           name: ^semantic_decl_surface_field_struct_typedef_name_after_fields,
           target: semantic_decl_surface_projection_bool_flag_node(
             enabled: projection.struct_typedef_name_after_fields,
@@ -860,7 +860,7 @@ fn semantic_decl_surface_projection_bundle(
             false_id: ^semantic_decl_struct_typedef_name_after_fields_false
           )
         ),
-        target_model_named_edge(
+        v2.std.compilers.target_model.target_model_named_edge(
           name: ^semantic_decl_surface_field_enum_name_after_variants,
           target: semantic_decl_surface_projection_bool_flag_node(
             enabled: projection.enum_name_after_variants,
@@ -868,7 +868,7 @@ fn semantic_decl_surface_projection_bundle(
             false_id: ^semantic_decl_enum_name_after_variants_false
           )
         ),
-        target_model_named_edge(
+        v2.std.compilers.target_model.target_model_named_edge(
           name: ^semantic_decl_surface_field_type_permit_only_int,
           target: semantic_decl_surface_projection_bool_flag_node(
             enabled: projection.field_type_permit_only_int,
@@ -876,7 +876,7 @@ fn semantic_decl_surface_projection_bundle(
             false_id: ^semantic_decl_field_type_permit_only_int_false
           )
         ),
-        target_model_named_edge(
+        v2.std.compilers.target_model.target_model_named_edge(
           name: ^semantic_decl_surface_field_coproduct_layout_kind,
           target: semantic_decl_surface_projection_coproduct_layout_kind_node(
             layout: projection.coproduct_layout
@@ -895,9 +895,9 @@ fn semantic_decl_surface_projection_coproduct_layout_kind_node(
 ) -> v2.std.node.Node {
   match layout {
     TargetSemanticDeclCoproductEnumSurface =>
-      target_model_type_atom_node(identity: ^semantic_decl_coproduct_layout_enum)
+      v2.std.compilers.target_model.target_model_type_atom_node(identity: ^semantic_decl_coproduct_layout_enum)
     TargetSemanticDeclCoproductTaggedUnionSurface { tag_field: _, union_field: _ } =>
-      target_model_type_atom_node(identity: ^semantic_decl_coproduct_layout_tagged_union)
+      v2.std.compilers.target_model.target_model_type_atom_node(identity: ^semantic_decl_coproduct_layout_tagged_union)
   }
 }
 
@@ -908,13 +908,13 @@ fn semantic_decl_surface_projection_coproduct_layout_extra_edges(
     TargetSemanticDeclCoproductEnumSurface => std.algebra.Empty
     TargetSemanticDeclCoproductTaggedUnionSurface { tag_field: tag_field, union_field: union_field } =>
       [
-        target_model_named_edge(
+        v2.std.compilers.target_model.target_model_named_edge(
           name: ^semantic_decl_surface_field_tagged_union_tag_field,
-          target: target_model_type_atom_node(identity: tag_field)
+          target: v2.std.compilers.target_model.target_model_type_atom_node(identity: tag_field)
         ),
-        target_model_named_edge(
+        v2.std.compilers.target_model.target_model_named_edge(
           name: ^semantic_decl_surface_field_tagged_union_union_field,
-          target: target_model_type_atom_node(identity: union_field)
+          target: v2.std.compilers.target_model.target_model_type_atom_node(identity: union_field)
         )
       ]
   }
@@ -925,7 +925,7 @@ fn semantic_decl_surface_projection_bool_flag_node(
   true_id: v2.std.node.Symbol,
   false_id: v2.std.node.Symbol
 ) -> v2.std.node.Node {
-  target_model_type_atom_node(identity: if enabled { true_id } else { false_id })
+  v2.std.compilers.target_model.target_model_type_atom_node(identity: if enabled { true_id } else { false_id })
 }
 
 fn decode_semantic_decl_surface_projection_bool_flag(
@@ -933,23 +933,23 @@ fn decode_semantic_decl_surface_projection_bool_flag(
   field: v2.std.node.Symbol,
   true_id: v2.std.node.Symbol,
   false_id: v2.std.node.Symbol
-) -> Outcome<Bool> {
-  bind_outcome(
-    o: find_named_child(root: bundle, name: field),
+) -> v2.std.diagnostic.Outcome<Bool> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.node_query.find_named_child(root: bundle, name: field),
     f: fn(flag) {
       match flag.kind {
-        TypeNode { connective: Atom { identity: id } } =>
+        v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
           if id == true_id {
-            outcome_accepted(value: true)
+            v2.std.diagnostic.outcome_accepted(value: true)
           } else if id == false_id {
-            outcome_accepted(value: false)
+            v2.std.diagnostic.outcome_accepted(value: false)
           } else {
-            outcome_rejected(
+            v2.std.diagnostic.outcome_rejected(
               d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
             )
           }
         _ =>
-          outcome_rejected(
+          v2.std.diagnostic.outcome_rejected(
             d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
           )
       }
@@ -959,31 +959,31 @@ fn decode_semantic_decl_surface_projection_bool_flag(
 
 fn decode_semantic_decl_surface_projection_coproduct_layout(
   bundle: v2.std.node.Node
-) -> Outcome<TargetSemanticDeclCoproductSurfaceLayout> {
-  bind_outcome(
-    o: find_named_child(
+) -> v2.std.diagnostic.Outcome<TargetSemanticDeclCoproductSurfaceLayout> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.node_query.find_named_child(
       root: bundle,
       name: ^semantic_decl_surface_field_coproduct_layout_kind
     ),
     f: fn(kind_node) {
       match kind_node.kind {
-        TypeNode { connective: Atom { identity: id } } =>
+        v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
           if id == ^semantic_decl_coproduct_layout_enum {
-            outcome_accepted(value: TargetSemanticDeclCoproductEnumSurface)
+            v2.std.diagnostic.outcome_accepted(value: TargetSemanticDeclCoproductEnumSurface)
           } else if id == ^semantic_decl_coproduct_layout_tagged_union {
-            bind_outcome(
-              o: projection_bundle_symbol_field(
+            v2.std.diagnostic.bind_outcome(
+              o: v2.std.compilers.target_model.projection_bundle_symbol_field(
                 bundle: bundle,
                 field: ^semantic_decl_surface_field_tagged_union_tag_field
               ),
               f: fn(tag_field) {
-                bind_outcome(
-                  o: projection_bundle_symbol_field(
+                v2.std.diagnostic.bind_outcome(
+                  o: v2.std.compilers.target_model.projection_bundle_symbol_field(
                     bundle: bundle,
                     field: ^semantic_decl_surface_field_tagged_union_union_field
                   ),
                   f: fn(union_field) {
-                    outcome_accepted(
+                    v2.std.diagnostic.outcome_accepted(
                       value: TargetSemanticDeclCoproductTaggedUnionSurface {
                         tag_field: tag_field,
                         union_field: union_field
@@ -994,12 +994,12 @@ fn decode_semantic_decl_surface_projection_coproduct_layout(
               }
             )
           } else {
-            outcome_rejected(
+            v2.std.diagnostic.outcome_rejected(
               d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
             )
           }
         _ =>
-          outcome_rejected(
+          v2.std.diagnostic.outcome_rejected(
             d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
           )
       }
@@ -1009,26 +1009,26 @@ fn decode_semantic_decl_surface_projection_coproduct_layout(
 
 fn decode_semantic_decl_surface_projection_bundle(
   bundle: v2.std.node.Node
-) -> Outcome<TargetSemanticDeclSurfaceProjection> {
-  bind_outcome(
-    o: find_named_child(
+) -> v2.std.diagnostic.Outcome<TargetSemanticDeclSurfaceProjection> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.node_query.find_named_child(
       root: bundle,
       name: ^semantic_decl_surface_field_record_decoration_lines
     ),
     f: fn(record_catalog) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: semantic_decl_decoration_lines_from_catalog(catalog: record_catalog),
         f: fn(record_decoration_lines) {
-          bind_outcome(
-            o: find_named_child(
+          v2.std.diagnostic.bind_outcome(
+            o: v2.std.node_query.find_named_child(
               root: bundle,
               name: ^semantic_decl_surface_field_coproduct_decoration_rules
             ),
             f: fn(rules_catalog) {
-              bind_outcome(
+              v2.std.diagnostic.bind_outcome(
                 o: semantic_decl_coproduct_decoration_rules_from_catalog(catalog: rules_catalog),
                 f: fn(coproduct_decoration_rules) {
-                  bind_outcome(
+                  v2.std.diagnostic.bind_outcome(
                     o: decode_semantic_decl_surface_projection_bool_flag(
                       bundle: bundle,
                       field: ^semantic_decl_surface_field_type_before_name,
@@ -1036,7 +1036,7 @@ fn decode_semantic_decl_surface_projection_bundle(
                       false_id: ^semantic_decl_field_type_before_name_false
                     ),
                     f: fn(field_type_before_name) {
-                      bind_outcome(
+                      v2.std.diagnostic.bind_outcome(
                         o: decode_semantic_decl_surface_projection_bool_flag(
                           bundle: bundle,
                           field: ^semantic_decl_surface_field_type_expr_field_scope,
@@ -1044,7 +1044,7 @@ fn decode_semantic_decl_surface_projection_bundle(
                           false_id: ^semantic_decl_type_expr_field_scope_false
                         ),
                         f: fn(type_expr_field_scope) {
-                          bind_outcome(
+                          v2.std.diagnostic.bind_outcome(
                             o: decode_semantic_decl_surface_projection_bool_flag(
                               bundle: bundle,
                               field: ^semantic_decl_surface_field_struct_typedef_name_after_fields,
@@ -1052,7 +1052,7 @@ fn decode_semantic_decl_surface_projection_bundle(
                               false_id: ^semantic_decl_struct_typedef_name_after_fields_false
                             ),
                             f: fn(struct_typedef_name_after_fields) {
-                              bind_outcome(
+                              v2.std.diagnostic.bind_outcome(
                                 o: decode_semantic_decl_surface_projection_bool_flag(
                                   bundle: bundle,
                                   field: ^semantic_decl_surface_field_enum_name_after_variants,
@@ -1060,7 +1060,7 @@ fn decode_semantic_decl_surface_projection_bundle(
                                   false_id: ^semantic_decl_enum_name_after_variants_false
                                 ),
                                 f: fn(enum_name_after_variants) {
-                                  bind_outcome(
+                                  v2.std.diagnostic.bind_outcome(
                                     o: decode_semantic_decl_surface_projection_bool_flag(
                                       bundle: bundle,
                                       field: ^semantic_decl_surface_field_type_permit_only_int,
@@ -1068,12 +1068,12 @@ fn decode_semantic_decl_surface_projection_bundle(
                                       false_id: ^semantic_decl_field_type_permit_only_int_false
                                     ),
                                     f: fn(field_type_permit_only_int) {
-                                      bind_outcome(
+                                      v2.std.diagnostic.bind_outcome(
                                         o: decode_semantic_decl_surface_projection_coproduct_layout(
                                           bundle: bundle
                                         ),
                                         f: fn(coproduct_layout) {
-                                          outcome_accepted(
+                                          v2.std.diagnostic.outcome_accepted(
                                             TargetSemanticDeclSurfaceProjection {
                                               record_decoration_lines: record_decoration_lines,
                                               coproduct_decoration_rules: coproduct_decoration_rules,
@@ -1109,23 +1109,23 @@ fn decode_semantic_decl_surface_projection_bundle(
 
 fn decode_semantic_decl_serialize_profile_bundle(
   bundle: v2.std.node.Node
-) -> Outcome<TargetSemanticDeclSerializeProfile> {
-  bind_outcome(
-    o: find_named_child(root: bundle, name: ^semantic_decl_profile_field_lex_rules),
+) -> v2.std.diagnostic.Outcome<TargetSemanticDeclSerializeProfile> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.node_query.find_named_child(root: bundle, name: ^semantic_decl_profile_field_lex_rules),
     f: fn(lex_catalog) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: semantic_decl_lex_rule_rows_from_catalog(catalog: lex_catalog),
         f: fn(lex_rule_rows) {
-          bind_outcome(
-            o: find_named_child(
+          v2.std.diagnostic.bind_outcome(
+            o: v2.std.node_query.find_named_child(
               root: bundle,
               name: ^semantic_decl_profile_field_binding_spellings
             ),
             f: fn(spellings_catalog) {
-              bind_outcome(
+              v2.std.diagnostic.bind_outcome(
                 o: semantic_decl_lex_rule_rows_from_catalog(catalog: spellings_catalog),
                 f: fn(binding_spelling_rows) {
-                  outcome_accepted(
+                  v2.std.diagnostic.outcome_accepted(
                     TargetSemanticDeclSerializeProfile {
                       lex_rule_rows: lex_rule_rows,
                       binding_spelling_rows: binding_spelling_rows
@@ -1141,57 +1141,57 @@ fn decode_semantic_decl_serialize_profile_bundle(
   )
 }
 
-fn decode_semantic_decl_emission_bundle(bundle: v2.std.node.Node) -> Outcome<TargetSemanticDeclEmission> {
-  bind_outcome(
-    o: projection_bundle_symbol_field(
+fn decode_semantic_decl_emission_bundle(bundle: v2.std.node.Node) -> v2.std.diagnostic.Outcome<TargetSemanticDeclEmission> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.projection_bundle_symbol_field(
       bundle: bundle,
       field: ^semantic_decl_emission_field_identity
     ),
     f: fn(identity) {
-      bind_outcome(
-        o: find_named_child(
+      v2.std.diagnostic.bind_outcome(
+        o: v2.std.node_query.find_named_child(
           root: bundle,
           name: ^semantic_decl_emission_field_enum_translation_rules
         ),
         f: fn(enum_rules) {
-          bind_outcome(
-            o: find_named_child(
+          v2.std.diagnostic.bind_outcome(
+            o: v2.std.node_query.find_named_child(
               root: bundle,
               name: ^semantic_decl_emission_field_struct_translation_rules
             ),
             f: fn(struct_rules) {
-              bind_outcome(
-                o: find_named_child(
+              v2.std.diagnostic.bind_outcome(
+                o: v2.std.node_query.find_named_child(
                   root: bundle,
                   name: ^semantic_decl_emission_field_enum_serialize_profile
                 ),
                 f: fn(enum_profile_bundle) {
-                  bind_outcome(
+                  v2.std.diagnostic.bind_outcome(
                     o: decode_semantic_decl_serialize_profile_bundle(bundle: enum_profile_bundle),
                     f: fn(enum_profile) {
-                      bind_outcome(
-                        o: find_named_child(
+                      v2.std.diagnostic.bind_outcome(
+                        o: v2.std.node_query.find_named_child(
                           root: bundle,
                           name: ^semantic_decl_emission_field_struct_serialize_profile
                         ),
                         f: fn(struct_profile_bundle) {
-                          bind_outcome(
+                          v2.std.diagnostic.bind_outcome(
                             o: decode_semantic_decl_serialize_profile_bundle(
                               bundle: struct_profile_bundle
                             ),
                             f: fn(struct_profile) {
-                              bind_outcome(
-                                o: find_named_child(
+                              v2.std.diagnostic.bind_outcome(
+                                o: v2.std.node_query.find_named_child(
                                   root: bundle,
                                   name: ^semantic_decl_emission_field_surface_projection
                                 ),
                                 f: fn(surface_bundle) {
-                                  bind_outcome(
+                                  v2.std.diagnostic.bind_outcome(
                                     o: decode_semantic_decl_surface_projection_bundle(
                                       bundle: surface_bundle
                                     ),
                                     f: fn(surface) {
-                                      outcome_accepted(
+                                      v2.std.diagnostic.outcome_accepted(
                                         TargetSemanticDeclEmission {
                                           identity: identity,
                                           enum_translation_rules: enum_rules,
@@ -1221,9 +1221,9 @@ fn decode_semantic_decl_emission_bundle(bundle: v2.std.node.Node) -> Outcome<Tar
   )
 }
 
-fn semantic_decl_emission_from_target(target: v2.std.compilers.target_model.TargetModel) -> Outcome<TargetSemanticDeclEmission> {
-  bind_outcome(
-    o: projection_bundle_child(
+fn semantic_decl_emission_from_target(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<TargetSemanticDeclEmission> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.projection_bundle_child(
       bundle: target.bundle,
       name: ^target_model_edge_semantic_decl_emission
     ),
@@ -1234,14 +1234,14 @@ fn semantic_decl_emission_from_target(target: v2.std.compilers.target_model.Targ
 }
 
 fn target_semantic_decl_surface_pos(target: v2.std.node.Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Positional, target: target }
+  v2.std.node.Edge { label: v2.std.node.Positional, target: target }
 }
 
 fn target_semantic_decl_surface_conj(children: List<v2.std.node.Edge>) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: children,
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -1249,7 +1249,7 @@ fn target_semantic_decl_surface_atom(id: v2.std.node.Symbol) -> v2.std.node.Node
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -1267,7 +1267,7 @@ fn target_semantic_decl_surface_cell(item: v2.std.node.Node, rest: v2.std.node.N
 }
 
 fn target_semantic_decl_surface_cons_list(items: List<v2.std.node.Node>) -> v2.std.node.Node {
-  fold_list_right(
+  v2.std.algebra.fold_list_right(
     xs: items,
     empty: target_semantic_decl_surface_nil(),
     snoc: fn(acc, item) {
@@ -1340,19 +1340,19 @@ fn target_semantic_decl_surface_field(
 fn target_semantic_decl_field_surface_from_edge(
   edge: v2.std.node.Edge,
   projection: TargetSemanticDeclSurfaceProjection
-) -> Outcome<v2.std.node.Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match edge.label {
-    Named { name: fname } =>
+    v2.std.node.Named { name: fname } =>
       match edge.target.kind {
-        TypeNode { connective: Atom { identity: tid } } =>
+        v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: tid } } =>
           if projection.field_type_permit_only_int && tid != ^Int {
-            outcome_rejected(d: v2.std.diagnostic.Diagnostic {
+            v2.std.diagnostic.outcome_rejected(d: v2.std.diagnostic.Diagnostic {
                   reason: ^target_semantic_decl_field_type_primitive_unsupported,
-                  at: node_locus(node: edge.target),
-                  correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+                  at: v2.std.diagnostic.node_locus(node: edge.target),
+                  correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
                 })
           } else {
-            outcome_accepted(
+            v2.std.diagnostic.outcome_accepted(
               value: target_semantic_decl_surface_field(
                 name: fname,
                 t: tid,
@@ -1362,17 +1362,17 @@ fn target_semantic_decl_field_surface_from_edge(
             )
           }
         _ =>
-          outcome_rejected(d: v2.std.diagnostic.Diagnostic {
+          v2.std.diagnostic.outcome_rejected(d: v2.std.diagnostic.Diagnostic {
                 reason: ^target_semantic_decl_field_type_not_atom,
-                at: node_locus(node: edge.target),
-                correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+                at: v2.std.diagnostic.node_locus(node: edge.target),
+                correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
               })
       }
-    Positional =>
-      outcome_rejected(d: v2.std.diagnostic.Diagnostic {
+    v2.std.node.Positional =>
+      v2.std.diagnostic.outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^target_semantic_decl_field_not_named,
-            at: node_locus(node: edge.target),
-            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+            at: v2.std.diagnostic.node_locus(node: edge.target),
+            correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
           })
   }
 }
@@ -1396,11 +1396,11 @@ fn target_semantic_decl_surface_decoration_line(binding: v2.std.node.Symbol) -> 
 fn target_semantic_decl_surface_decoration_pos_edges(
   lines: List<TargetSemanticDeclDecorationLine>
 ) -> List<v2.std.node.Edge> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: lines,
     empty: std.algebra.Empty,
     cons: fn(acc, line) {
-      list_snoc_item(
+      v2.std.algebra.list_snoc_item(
         xs: acc,
         item: target_semantic_decl_surface_pos(
           target: target_semantic_decl_surface_decoration_line(binding: line.surface_binding)
@@ -1435,7 +1435,7 @@ fn target_semantic_decl_surface_struct_nongeneric(
   struct_typedef_name_after_fields: Bool
 ) -> v2.std.node.Node {
   target_semantic_decl_surface_conj(
-    children: list_append(
+    children: v2.std.algebra.list_append(
       left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
       right: target_semantic_decl_surface_struct_name_field_edges(
         name: name,
@@ -1453,7 +1453,7 @@ fn target_semantic_decl_surface_struct_generic(
   fields: List<v2.std.node.Node>
 ) -> v2.std.node.Node {
   target_semantic_decl_surface_conj(
-    children: list_append(
+    children: v2.std.algebra.list_append(
       left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
       right: [
         target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
@@ -1472,7 +1472,7 @@ fn target_semantic_decl_surface_enum_name_variant_edges(
   enum_name_after_variants: Bool
 ) -> List<v2.std.node.Edge> {
   if enum_name_after_variants {
-    list_append(
+    v2.std.algebra.list_append(
       left: [
         target_semantic_decl_surface_pos(
           target: target_semantic_decl_surface_variant_block(variants: variants)
@@ -1483,7 +1483,7 @@ fn target_semantic_decl_surface_enum_name_variant_edges(
       ]
     )
   } else {
-    list_append(
+    v2.std.algebra.list_append(
       left: [
         target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
       ],
@@ -1503,7 +1503,7 @@ fn target_semantic_decl_surface_enum_nongeneric(
   enum_name_after_variants: Bool
 ) -> v2.std.node.Node {
   target_semantic_decl_surface_conj(
-    children: list_append(
+    children: v2.std.algebra.list_append(
       left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
       right: target_semantic_decl_surface_enum_name_variant_edges(
         name: name,
@@ -1523,8 +1523,8 @@ fn target_semantic_decl_surface_enum_generic(
 ) -> v2.std.node.Node {
   if enum_name_after_variants {
     target_semantic_decl_surface_conj(
-      children: list_append(
-        left: list_append(
+      children: v2.std.algebra.list_append(
+        left: v2.std.algebra.list_append(
           left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
           right: [
             target_semantic_decl_surface_pos(
@@ -1541,7 +1541,7 @@ fn target_semantic_decl_surface_enum_generic(
     )
   } else {
     target_semantic_decl_surface_conj(
-      children: list_append(
+      children: v2.std.algebra.list_append(
         left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
         right: [
           target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
@@ -1630,7 +1630,7 @@ fn target_semantic_decl_surface_tagged_union_nongeneric(
   variants: List<v2.std.node.Node>
 ) -> v2.std.node.Node {
   target_semantic_decl_surface_conj(
-    children: list_append(
+    children: v2.std.algebra.list_append(
       left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
       right: target_semantic_decl_surface_struct_name_field_edges(
         name: name,
@@ -1674,10 +1674,10 @@ fn target_semantic_decl_surface_generic_params(params: List<v2.std.node.Symbol>)
     children: [
       target_semantic_decl_surface_pos(
         target: target_semantic_decl_surface_cons_list(
-          items: fold_list(
+          items: v2.std.algebra.fold_list(
             xs: params,
             empty: std.algebra.Empty,
-            cons: fn(acc, p) { list_snoc_item(xs: acc, item: target_semantic_decl_surface_atom(id: p)) }
+            cons: fn(acc, p) { v2.std.algebra.list_snoc_item(xs: acc, item: target_semantic_decl_surface_atom(id: p)) }
           )
         )
       )
@@ -1694,21 +1694,21 @@ fn semantic_decl_coproduct_shape_key_unsupported_connective_diagnostic(
 ) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^semantic_decl_coproduct_shape_key_unsupported_connective,
-    at: node_locus(node: coproduct),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: coproduct),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
-fn target_semantic_decl_coproduct_shape_key(coproduct: v2.std.node.Node) -> Outcome<v2.std.node.Symbol> {
+fn target_semantic_decl_coproduct_shape_key(coproduct: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   match coproduct.kind {
-    TypeNode { connective: Disj } =>
-      if coproduct_all_variants_nullary(edges: coproduct.children) {
-        outcome_accepted(value: ^semantic_decl_coproduct_shape_all_variants_nullary)
+    v2.std.node.TypeNode { connective: v2.std.node.Disj } =>
+      if v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary(edges: coproduct.children) {
+        v2.std.diagnostic.outcome_accepted(value: ^semantic_decl_coproduct_shape_all_variants_nullary)
       } else {
-        outcome_accepted(value: ^semantic_decl_coproduct_shape_default)
+        v2.std.diagnostic.outcome_accepted(value: ^semantic_decl_coproduct_shape_default)
       }
     _ =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         d: semantic_decl_coproduct_shape_key_unsupported_connective_diagnostic(coproduct: coproduct)
       )
   }
@@ -1719,7 +1719,7 @@ fn target_semantic_decl_coproduct_rule_decoration_lines_if_shape(
   wanted_shape: v2.std.node.Symbol,
   acc: List<TargetSemanticDeclDecorationLine>
 ) -> List<TargetSemanticDeclDecorationLine> {
-  if is_empty(xs: acc) && rule.shape_key == wanted_shape {
+  if v2.std.algebra.is_empty(xs: acc) && rule.shape_key == wanted_shape {
     rule.decoration_lines
   } else {
     acc
@@ -1730,7 +1730,7 @@ fn target_semantic_decl_decoration_lines_for_shape(
   rules: List<TargetSemanticDeclCoproductDecorationRule>,
   shape_key: v2.std.node.Symbol
 ) -> List<TargetSemanticDeclDecorationLine> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: rules,
     empty: std.algebra.Empty,
     cons: fn(acc, rule) {
@@ -1749,8 +1749,8 @@ fn semantic_decl_coproduct_decoration_shape_unmatched_diagnostic(
 ) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^semantic_decl_coproduct_decoration_shape_unmatched,
-    at: node_locus(node: coproduct),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: coproduct),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -1765,7 +1765,7 @@ fn target_semantic_decl_coproduct_has_shape_rule(
   rules: List<TargetSemanticDeclCoproductDecorationRule>,
   shape_key: v2.std.node.Symbol
 ) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: rules,
     empty: false,
     cons: fn(acc, rule) {
@@ -1781,25 +1781,25 @@ fn target_semantic_decl_coproduct_has_shape_rule(
 fn target_semantic_decl_coproduct_decoration_lines(
   projection: TargetSemanticDeclSurfaceProjection,
   coproduct: v2.std.node.Node
-) -> Outcome<List<TargetSemanticDeclDecorationLine>> {
-  if is_empty(xs: projection.coproduct_decoration_rules) {
-    outcome_accepted(value: std.algebra.Empty)
+) -> v2.std.diagnostic.Outcome<List<TargetSemanticDeclDecorationLine>> {
+  if v2.std.algebra.is_empty(xs: projection.coproduct_decoration_rules) {
+    v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
   } else {
-    bind_outcome(
+    v2.std.diagnostic.bind_outcome(
       o: target_semantic_decl_coproduct_shape_key(coproduct: coproduct),
       f: fn(shape_key) {
         if target_semantic_decl_coproduct_has_shape_rule(
           rules: projection.coproduct_decoration_rules,
           shape_key: shape_key
         ) {
-          outcome_accepted(
+          v2.std.diagnostic.outcome_accepted(
             value: target_semantic_decl_decoration_lines_for_shape(
               rules: projection.coproduct_decoration_rules,
               shape_key: shape_key
             )
           )
         } else {
-          outcome_rejected(d: semantic_decl_coproduct_decoration_shape_unmatched_diagnostic(
+          v2.std.diagnostic.outcome_rejected(d: semantic_decl_coproduct_decoration_shape_unmatched_diagnostic(
                 coproduct: coproduct,
                 shape_key: shape_key)
           )
@@ -1811,21 +1811,21 @@ fn target_semantic_decl_coproduct_decoration_lines(
 fn target_semantic_decl_field_surfaces(
   edges: List<v2.std.node.Edge>,
   projection: TargetSemanticDeclSurfaceProjection
-) -> Outcome<List<v2.std.node.Node>> {
-  fold_list(
+) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
+  v2.std.algebra.fold_list(
     xs: edges,
-    empty: outcome_accepted(value: std.algebra.Empty),
+    empty: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc_o, edge) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: acc_o,
         f: fn(acc) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: target_semantic_decl_field_surface_from_edge(
               edge: edge,
               projection: projection
             ),
             f: fn(fnode) {
-              outcome_accepted(value: list_snoc_item(xs: acc, item: fnode))
+              v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_snoc_item(xs: acc, item: fnode))
             }
           )
         }
@@ -1837,17 +1837,17 @@ fn target_semantic_decl_field_surfaces(
 fn target_semantic_decl_tagged_union_variant_surface_from_edge(
   edge: v2.std.node.Edge,
   projection: TargetSemanticDeclSurfaceProjection
-) -> Outcome<v2.std.node.Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match edge.label {
-    Named { name: vname } =>
-      if coproduct_variant_edge_has_payload(edge: edge) {
-        bind_outcome(
+    v2.std.node.Named { name: vname } =>
+      if v2.std.compilers.coproduct_variant_shape.coproduct_variant_edge_has_payload(edge: edge) {
+        v2.std.diagnostic.bind_outcome(
           o: target_semantic_decl_field_surfaces(
             edges: edge.target.children,
             projection: projection
           ),
           f: fn(fields) {
-            outcome_accepted(
+            v2.std.diagnostic.outcome_accepted(
               value: target_semantic_decl_surface_union_member_payload(
                 name: vname,
                 fields: fields
@@ -1856,13 +1856,13 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
           }
         )
       } else {
-        outcome_accepted(value: target_semantic_decl_surface_variant_nullary(name: vname))
+        v2.std.diagnostic.outcome_accepted(value: target_semantic_decl_surface_variant_nullary(name: vname))
       }
-    Positional =>
-      outcome_rejected(d: v2.std.diagnostic.Diagnostic {
+    v2.std.node.Positional =>
+      v2.std.diagnostic.outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^target_semantic_decl_variant_not_named,
-            at: node_locus(node: edge.target),
-            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+            at: v2.std.diagnostic.node_locus(node: edge.target),
+            correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
           })
   }
 }
@@ -1870,21 +1870,21 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
 fn target_semantic_decl_tagged_union_variant_surfaces(
   edges: List<v2.std.node.Edge>,
   projection: TargetSemanticDeclSurfaceProjection
-) -> Outcome<List<v2.std.node.Node>> {
-  fold_list(
+) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
+  v2.std.algebra.fold_list(
     xs: edges,
-    empty: outcome_accepted(value: std.algebra.Empty),
+    empty: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc_o, edge) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: acc_o,
         f: fn(acc) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: target_semantic_decl_tagged_union_variant_surface_from_edge(
               edge: edge,
               projection: projection
             ),
             f: fn(vnode) {
-              outcome_accepted(value: list_snoc_item(xs: acc, item: vnode))
+              v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_snoc_item(xs: acc, item: vnode))
             }
           )
         }
@@ -1896,29 +1896,29 @@ fn target_semantic_decl_tagged_union_variant_surfaces(
 fn target_semantic_decl_variant_surface_from_edge(
   edge: v2.std.node.Edge,
   projection: TargetSemanticDeclSurfaceProjection
-) -> Outcome<v2.std.node.Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match edge.label {
-    Named { name: vname } =>
-      if coproduct_variant_edge_has_payload(edge: edge) {
-        bind_outcome(
+    v2.std.node.Named { name: vname } =>
+      if v2.std.compilers.coproduct_variant_shape.coproduct_variant_edge_has_payload(edge: edge) {
+        v2.std.diagnostic.bind_outcome(
           o: target_semantic_decl_field_surfaces(
             edges: edge.target.children,
             projection: projection
           ),
           f: fn(fields) {
-            outcome_accepted(
+            v2.std.diagnostic.outcome_accepted(
               value: target_semantic_decl_surface_variant_payload(name: vname, fields: fields)
             )
           }
         )
       } else {
-        outcome_accepted(value: target_semantic_decl_surface_variant_nullary(name: vname))
+        v2.std.diagnostic.outcome_accepted(value: target_semantic_decl_surface_variant_nullary(name: vname))
       }
-    Positional =>
-      outcome_rejected(d: v2.std.diagnostic.Diagnostic {
+    v2.std.node.Positional =>
+      v2.std.diagnostic.outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^target_semantic_decl_variant_not_named,
-            at: node_locus(node: edge.target),
-            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+            at: v2.std.diagnostic.node_locus(node: edge.target),
+            correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
           })
   }
 }
@@ -1926,21 +1926,21 @@ fn target_semantic_decl_variant_surface_from_edge(
 fn target_semantic_decl_variant_surfaces(
   edges: List<v2.std.node.Edge>,
   projection: TargetSemanticDeclSurfaceProjection
-) -> Outcome<List<v2.std.node.Node>> {
-  fold_list(
+) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
+  v2.std.algebra.fold_list(
     xs: edges,
-    empty: outcome_accepted(value: std.algebra.Empty),
+    empty: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc_o, edge) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: acc_o,
         f: fn(acc) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: target_semantic_decl_variant_surface_from_edge(
               edge: edge,
               projection: projection
             ),
             f: fn(vnode) {
-              outcome_accepted(value: list_snoc_item(xs: acc, item: vnode))
+              v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_snoc_item(xs: acc, item: vnode))
             }
           )
         }
@@ -1961,9 +1961,9 @@ fn target_semantic_decl_coproduct_uses_tagged_union_layout(
 fn target_semantic_decl_variant_surfaces_for_coproduct(
   projection: TargetSemanticDeclSurfaceProjection,
   coproduct: v2.std.node.Node
-) -> Outcome<List<v2.std.node.Node>> {
+) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
   if target_semantic_decl_coproduct_uses_tagged_union_layout(layout: projection.coproduct_layout)
-    && !coproduct_all_variants_nullary(edges: coproduct.children)
+    && !v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary(edges: coproduct.children)
   {
     target_semantic_decl_tagged_union_variant_surfaces(
       edges: coproduct.children,
@@ -1982,16 +1982,16 @@ fn target_semantic_enum_surface_from_coproduct(
   name: v2.std.node.Symbol,
   params: List<v2.std.node.Symbol>,
   coproduct: v2.std.node.Node
-) -> Outcome<v2.std.node.Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match coproduct.kind {
-    TypeNode { connective: Disj } =>
-      bind_outcome(
+    v2.std.node.TypeNode { connective: v2.std.node.Disj } =>
+      v2.std.diagnostic.bind_outcome(
         o: target_semantic_decl_coproduct_decoration_lines(
           projection: projection,
           coproduct: coproduct
         ),
         f: fn(decoration_lines) {
-          bind_outcome(
+          v2.std.diagnostic.bind_outcome(
             o: target_semantic_decl_variant_surfaces_for_coproduct(
               projection: projection,
               coproduct: coproduct
@@ -2000,10 +2000,10 @@ fn target_semantic_enum_surface_from_coproduct(
               if target_semantic_decl_coproduct_uses_tagged_union_layout(
                     layout: projection.coproduct_layout
                   )
-                && !coproduct_all_variants_nullary(edges: coproduct.children)
+                && !v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary(edges: coproduct.children)
               {
-                if is_empty(xs: params) {
-                  outcome_accepted(
+                if v2.std.algebra.is_empty(xs: params) {
+                  v2.std.diagnostic.outcome_accepted(
                     value: target_semantic_decl_surface_tagged_union_nongeneric(
                       name: name,
                       decoration_lines: decoration_lines,
@@ -2012,14 +2012,14 @@ fn target_semantic_enum_surface_from_coproduct(
                     )
                   )
                 } else {
-                  outcome_rejected(d: v2.std.diagnostic.Diagnostic {
+                  v2.std.diagnostic.outcome_rejected(d: v2.std.diagnostic.Diagnostic {
                         reason: ^target_semantic_decl_tagged_union_generic_unsupported,
-                        at: node_locus(node: coproduct),
-                        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+                        at: v2.std.diagnostic.node_locus(node: coproduct),
+                        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
                       })
                 }
-              } else if is_empty(xs: params) {
-                outcome_accepted(
+              } else if v2.std.algebra.is_empty(xs: params) {
+                v2.std.diagnostic.outcome_accepted(
                   value: target_semantic_decl_surface_enum_nongeneric(
                     name: name,
                     decoration_lines: decoration_lines,
@@ -2028,7 +2028,7 @@ fn target_semantic_enum_surface_from_coproduct(
                   )
                 )
               } else {
-                outcome_accepted(
+                v2.std.diagnostic.outcome_accepted(
                   value: target_semantic_decl_surface_enum_generic(
                     name: name,
                     decoration_lines: decoration_lines,
@@ -2043,10 +2043,10 @@ fn target_semantic_enum_surface_from_coproduct(
         }
       )
     _ =>
-      outcome_rejected(d: v2.std.diagnostic.Diagnostic {
+      v2.std.diagnostic.outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^target_semantic_decl_enum_source_not_coproduct,
-            at: node_locus(node: coproduct),
-            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+            at: v2.std.diagnostic.node_locus(node: coproduct),
+            correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
           })
   }
 }
@@ -2056,17 +2056,17 @@ fn target_semantic_struct_surface_from_record(
   name: v2.std.node.Symbol,
   params: List<v2.std.node.Symbol>,
   record: v2.std.node.Node
-) -> Outcome<v2.std.node.Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match record.kind {
-    TypeNode { connective: Conj } =>
-      bind_outcome(
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
+      v2.std.diagnostic.bind_outcome(
         o: target_semantic_decl_field_surfaces(
           edges: record.children,
           projection: projection
         ),
         f: fn(fields) {
-          if is_empty(xs: params) {
-            outcome_accepted(
+          if v2.std.algebra.is_empty(xs: params) {
+            v2.std.diagnostic.outcome_accepted(
               value: target_semantic_decl_surface_struct_nongeneric(
                 name: name,
                 decoration_lines: projection.record_decoration_lines,
@@ -2076,13 +2076,13 @@ fn target_semantic_struct_surface_from_record(
             )
           } else {
             if projection.struct_typedef_name_after_fields {
-              outcome_rejected(d: v2.std.diagnostic.Diagnostic {
+              v2.std.diagnostic.outcome_rejected(d: v2.std.diagnostic.Diagnostic {
                     reason: ^target_semantic_decl_struct_generic_unsupported,
-                    at: node_locus(node: record),
-                    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+                    at: v2.std.diagnostic.node_locus(node: record),
+                    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
                   })
             } else {
-              outcome_accepted(
+              v2.std.diagnostic.outcome_accepted(
                 value: target_semantic_decl_surface_struct_generic(
                   name: name,
                   decoration_lines: projection.record_decoration_lines,
@@ -2095,10 +2095,10 @@ fn target_semantic_struct_surface_from_record(
         }
       )
     _ =>
-      outcome_rejected(d: v2.std.diagnostic.Diagnostic {
+      v2.std.diagnostic.outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^target_semantic_decl_struct_source_not_record,
-            at: node_locus(node: record),
-            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+            at: v2.std.diagnostic.node_locus(node: record),
+            correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
           })
   }
 }

@@ -66,35 +66,35 @@ module gunbc.generic_binder_field_projection_deficit
 // gunbc.list_membership_operation_gap's own header records for its first attempt.
 
 type GenericBinderProjectionSite {
-  site: DeclarationRef
-  index_coverage: CitationIndexCoverage
-  scrutinee_type: NonEmptyStr
-  projected_field: NonEmptyStr
+  site: std.decl_ref.DeclarationRef
+  index_coverage: std.decl_ref.CitationIndexCoverage
+  scrutinee_type: std.types.NonEmptyStr
+  projected_field: std.types.NonEmptyStr
 }
 
 data generic_binder_field_projection_sites: List<GenericBinderProjectionSite> = [
   GenericBinderProjectionSite {
-    site: decl_ref(
+    site: std.decl_ref.decl_ref(
       module_path: "v2.test.claim.fold_lowering",
       decl_name: "lowered_loop_binds_carrier_binder"
     ),
-    index_coverage: OutsideDeclIndexTestWitnessModule,
+    index_coverage: std.decl_ref.OutsideDeclIndexTestWitnessModule,
     scrutinee_type: "Optional<Node>",
     projected_field: "children"
   },
   GenericBinderProjectionSite {
-    site: decl_ref(
+    site: std.decl_ref.decl_ref(
       module_path: "v2.test.claim.fold_lowering",
       decl_name: "duplicate_carrier_edge_is_malformed"
     ),
-    index_coverage: OutsideDeclIndexTestWitnessModule,
+    index_coverage: std.decl_ref.OutsideDeclIndexTestWitnessModule,
     scrutinee_type: "Optional<Node>",
     projected_field: "children"
   }
 ]
 
-fn generic_binder_field_projection_dissolution() -> DissolutionCondition {
-  unbound_dissolution(
+fn generic_binder_field_projection_dissolution() -> std.dissolution.DissolutionCondition {
+  std.dissolution.unbound_dissolution(
     description: "v2 inference resolves a generic coproduct's type argument into the arm binder, so a field projection off that binder checks against the instantiated type. At that point the carrier_binder_of / with_duplicate_carrier_edge helpers in v2.test.claim.fold_lowering fold back into their match arms, the annotation that names this deficit deletes with them, and this module deletes with the sites."
   )
 }

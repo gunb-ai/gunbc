@@ -5,14 +5,14 @@ type DomainId = std.types.NonEmptyStr where brand("DomainId")
 type LevelId = std.types.NonEmptyStr where brand("LevelId")
 
 type MemoryLevel {
-  id: std.machine_shape.LevelId
+  id: LevelId
   capacity: std.measure.ByteSize
   transfer_grain: std.measure.ByteSize?
   bandwidth: std.measure.Bandwidth?
   latency: std.measure.Nanosecond?
 }
 
-type MemoryShape = List<std.machine_shape.MemoryLevel>
+type MemoryShape = List<MemoryLevel>
 
 type LaneGrouping
   = IndependentLanes
@@ -20,13 +20,13 @@ type LaneGrouping
 
 type ExecutionShape {
   lane_count: std.measure.HardwareThreadCount
-  grouping: std.machine_shape.LaneGrouping
+  grouping: LaneGrouping
 }
 
 type ExecutionDomain {
-  id: std.machine_shape.DomainId
-  execution: std.machine_shape.ExecutionShape
-  memory: List<std.machine_shape.MemoryLevel>
+  id: DomainId
+  execution: ExecutionShape
+  memory: MemoryShape
 }
 
 type InterconnectLink {
@@ -35,44 +35,44 @@ type InterconnectLink {
 }
 
 type InterconnectEdge
-  = LinkEdge { from: std.machine_shape.DomainId, to: std.machine_shape.DomainId, link: std.machine_shape.InterconnectLink }
-  | SharedLevelEdge { owner: std.machine_shape.DomainId, sharer: std.machine_shape.DomainId, level: std.machine_shape.LevelId }
+  = LinkEdge { from: DomainId, to: DomainId, link: InterconnectLink }
+  | SharedLevelEdge { owner: DomainId, sharer: DomainId, level: LevelId }
 
 type MachineShape {
-  domains: List<std.machine_shape.ExecutionDomain>
-  edges: List<std.machine_shape.InterconnectEdge>
+  domains: List<ExecutionDomain>
+  edges: List<InterconnectEdge>
 }
 
 type MachineShapeRefusalCause
-  = UnknownDomain { id: std.machine_shape.DomainId }
-  | UnknownLevel { owner: std.machine_shape.DomainId, level: std.machine_shape.LevelId }
+  = UnknownDomain { id: DomainId }
+  | UnknownLevel { owner: DomainId, level: LevelId }
 
 type MachineShapeConstruction
-  = MachineShapeOk { shape: std.machine_shape.MachineShape }
-  | MachineShapeRefused { cause: std.machine_shape.MachineShapeRefusalCause }
+  = MachineShapeOk { shape: MachineShape }
+  | MachineShapeRefused { cause: MachineShapeRefusalCause }
 
 type MachineShapeValidationIndex {
-  domain_ids: Map<std.machine_shape.DomainId, Bool>
-  owner_levels: Map<std.machine_shape.DomainId, Map<std.machine_shape.LevelId, Bool>>
+  domain_ids: Map<DomainId, Bool>
+  owner_levels: Map<DomainId, Map<LevelId, Bool>>
 }
 
-fn execution_shape_independent_lanes(lane_count: std.measure.HardwareThreadCount) -> std.machine_shape.ExecutionShape {
+fn execution_shape_independent_lanes(lane_count: std.measure.HardwareThreadCount) -> ExecutionShape {
   ExecutionShape { lane_count: lane_count, grouping: IndependentLanes }
 }
 
-fn memory_level_id_index(levels: List<std.machine_shape.MemoryLevel>) -> Map<std.machine_shape.LevelId, Bool> {
+fn memory_level_id_index(levels: List<MemoryLevel>) -> Map<LevelId, Bool> {
   fold(levels, init: empty_map(), f: (acc, level) => map_insert(acc, level.id, true))
 }
 
-fn machine_shape_build_validation_index(domains: List<std.machine_shape.ExecutionDomain>) -> std.machine_shape.MachineShapeValidationIndex {
-  fold(domains, init: std.machine_shape.MachineShapeValidationIndex { domain_ids: empty_map(), owner_levels: empty_map() }, f: (acc, domain) =>
+fn machine_shape_build_validation_index(domains: List<ExecutionDomain>) -> MachineShapeValidationIndex {
+  fold(domains, init: MachineShapeValidationIndex { domain_ids: empty_map(), owner_levels: empty_map() }, f: (acc, domain) =>
     MachineShapeValidationIndex {
       domain_ids: map_insert(acc.domain_ids, domain.id, true)
       owner_levels: map_insert(acc.owner_levels, domain.id, memory_level_id_index(levels: domain.memory))
     })
 }
 
-fn machine_shape_validate_edge(index: std.machine_shape.MachineShapeValidationIndex, edge: std.machine_shape.InterconnectEdge) -> std.machine_shape.MachineShapeConstruction? {
+fn machine_shape_validate_edge(index: MachineShapeValidationIndex, edge: InterconnectEdge) -> MachineShapeConstruction? {
   match edge {
     LinkEdge { from: from_id, to: to_id, link: _ } =>
       if !map_contains_key(index.domain_ids, from_id) {
@@ -102,7 +102,7 @@ fn machine_shape_validate_edge(index: std.machine_shape.MachineShapeValidationIn
   }
 }
 
-fn machine_shape_validate(shape: std.machine_shape.MachineShape) -> std.machine_shape.MachineShapeConstruction {
+fn machine_shape_validate(shape: MachineShape) -> MachineShapeConstruction {
   let index = machine_shape_build_validation_index(domains: shape.domains)
   match fold(shape.edges, init: none, f: (refused, edge) =>
     match refused {
@@ -114,11 +114,11 @@ fn machine_shape_validate(shape: std.machine_shape.MachineShape) -> std.machine_
   }
 }
 
-fn machine_shape_is_single_domain(shape: std.machine_shape.MachineShape) -> Bool {
-  list_length(items: shape.domains) == 1
+fn machine_shape_is_single_domain(shape: MachineShape) -> Bool {
+  std.types.list_length(items: shape.domains) == 1
 }
 
-fn machine_shape_domain_lane_count(shape: std.machine_shape.MachineShape) -> std.measure.HardwareThreadCount? {
+fn machine_shape_domain_lane_count(shape: MachineShape) -> std.measure.HardwareThreadCount? {
   fold(shape.domains, init: Absent, f: (found, d) =>
     match found {
       Present { value: _ } => found
@@ -126,7 +126,7 @@ fn machine_shape_domain_lane_count(shape: std.machine_shape.MachineShape) -> std
     })
 }
 
-fn first_memory_level_capacity(levels: List<std.machine_shape.MemoryLevel>) -> std.measure.ByteSize? {
+fn first_memory_level_capacity(levels: List<MemoryLevel>) -> std.measure.ByteSize? {
   fold(levels, init: Absent, f: (lvl_found, m) =>
     match lvl_found {
       Present { value: _ } => lvl_found
@@ -134,7 +134,7 @@ fn first_memory_level_capacity(levels: List<std.machine_shape.MemoryLevel>) -> s
     })
 }
 
-fn first_memory_level_bandwidth(levels: List<std.machine_shape.MemoryLevel>) -> std.measure.Bandwidth? {
+fn first_memory_level_bandwidth(levels: List<MemoryLevel>) -> std.measure.Bandwidth? {
   fold(levels, init: Absent, f: (lvl_found, m) =>
     match lvl_found {
       Present { value: _ } => lvl_found
@@ -142,7 +142,7 @@ fn first_memory_level_bandwidth(levels: List<std.machine_shape.MemoryLevel>) -> 
     })
 }
 
-fn machine_shape_device_level_capacity(shape: std.machine_shape.MachineShape) -> std.measure.ByteSize? {
+fn machine_shape_device_level_capacity(shape: MachineShape) -> std.measure.ByteSize? {
   fold(shape.domains, init: Absent, f: (found, d) =>
     match found {
       Present { value: _ } => found
@@ -150,7 +150,7 @@ fn machine_shape_device_level_capacity(shape: std.machine_shape.MachineShape) ->
     })
 }
 
-fn machine_shape_device_level_bandwidth(shape: std.machine_shape.MachineShape) -> std.measure.Bandwidth? {
+fn machine_shape_device_level_bandwidth(shape: MachineShape) -> std.measure.Bandwidth? {
   fold(shape.domains, init: Absent, f: (found, d) =>
     match found {
       Present { value: _ } => found

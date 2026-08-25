@@ -1,24 +1,24 @@
 module test.claim.covering_grant_witness_test
 
 
-// Discriminating witnesses for covering_grant (the P-C per-grant-binding primitive) and for admit_effect projecting EffectRequest into the one std.access kernel. An envelope carries a Read grant bound RealTransport under repo and a Write grant bound Replay (carrying a fixture_store) under scratch. covering_grant returns the COVERING grant so dispatch can read its binding: the Read target resolves to the RealTransport grant, the Write target to the Replay grant carrying its own fixture_store. An uncovered target is typed NoCoveringGrant evidence consumed by effect_grant_policy. The same cases Permit or return a located std.access.Deny through std.access, proving the migration preserves the reach wall without a second decision carrier.
-data cg_frame: std.materialization_ladder.Frame = std.materialization_ladder.Frame { name: "covering-grant-witness", kind: SharedStateFrame }
+// Discriminating witnesses for covering_grant (the P-C per-grant-binding primitive) and for admit_effect projecting EffectRequest into the one std.access kernel. An envelope carries a Read grant bound RealTransport under repo and a Write grant bound Replay (carrying a fixture_store) under scratch. covering_grant returns the COVERING grant so dispatch can read its binding: the Read target resolves to the RealTransport grant, the Write target to the Replay grant carrying its own fixture_store. An uncovered target is typed NoCoveringGrant evidence consumed by effect_grant_policy. The same cases Permit or return a located Deny through std.access, proving the migration preserves the reach wall without a second decision carrier.
+data cg_frame: std.materialization_ladder.Frame = std.materialization_ladder.Frame { name: "covering-grant-witness", kind: std.materialization_ladder.SharedStateFrame }
 
 fn cg_envelope() -> std.effect_grant.Envelope {
   std.effect_grant.Envelope {
     frame: cg_frame,
     grants: [
       std.effect_grant.Grant {
-        verb: Read,
-        root: filesystem_position(path: ["repo"]),
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
+        verb: std.effect_grant.Read,
+        root: std.effect_grant.filesystem_position(path: ["repo"]),
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConvention
       },
       std.effect_grant.Grant {
-        verb: Write,
-        root: filesystem_position(path: ["scratch"]),
+        verb: std.effect_grant.Write,
+        root: std.effect_grant.filesystem_position(path: ["scratch"]),
         binding: std.effect_grant.Replay { fixture_store: "fx" },
-        lifecycle: LifecycleByConvention
+        lifecycle: std.effect_grant.LifecycleByConvention
       },
     ]
   }
@@ -26,49 +26,49 @@ fn cg_envelope() -> std.effect_grant.Envelope {
 
 fn covered_binding_is_real(cg: std.effect_grant.CoveringGrant) -> Bool {
   match cg {
-    CoveredBy { grant: g } =>
+    std.effect_grant.CoveredBy { grant: g } =>
       match g.binding {
-        RealTransport => true
-        Replay { fixture_store: s } => false
+        std.effect_grant.RealTransport => true
+        std.effect_grant.Replay { fixture_store: s } => false
       }
-    NoCoveringGrant { verb: v, target: t, frame: f } => false
+    std.effect_grant.NoCoveringGrant { verb: v, target: t, frame: f } => false
   }
 }
 
 fn covered_binding_replay_store(cg: std.effect_grant.CoveringGrant, store: String) -> Bool {
   match cg {
-    CoveredBy { grant: g } =>
+    std.effect_grant.CoveredBy { grant: g } =>
       match g.binding {
-        Replay { fixture_store: s } => s == store
-        RealTransport => false
+        std.effect_grant.Replay { fixture_store: s } => s == store
+        std.effect_grant.RealTransport => false
       }
-    NoCoveringGrant { verb: v, target: t, frame: f } => false
+    std.effect_grant.NoCoveringGrant { verb: v, target: t, frame: f } => false
   }
 }
 
 fn is_no_covering(cg: std.effect_grant.CoveringGrant) -> Bool {
   match cg {
-    NoCoveringGrant { verb: v, target: t, frame: f } => true
-    CoveredBy { grant: g } => false
+    std.effect_grant.NoCoveringGrant { verb: v, target: t, frame: f } => true
+    std.effect_grant.CoveredBy { grant: g } => false
   }
 }
 
 test fn covering_grant_read_selects_real_transport() -> Bool {
   covered_binding_is_real(
-    cg: covering_grant(
+    cg: std.effect_grant.covering_grant(
       env: cg_envelope(),
-      verb: Read,
-      target: filesystem_position(path: ["repo", "x"])
+      verb: std.effect_grant.Read,
+      target: std.effect_grant.filesystem_position(path: ["repo", "x"])
     )
   )
 }
 
 test fn covering_grant_write_selects_replay_with_store() -> Bool {
   covered_binding_replay_store(
-    cg: covering_grant(
+    cg: std.effect_grant.covering_grant(
       env: cg_envelope(),
-      verb: Write,
-      target: filesystem_position(path: ["scratch", "y"])
+      verb: std.effect_grant.Write,
+      target: std.effect_grant.filesystem_position(path: ["scratch", "y"])
     ),
     store: "fx"
   )
@@ -76,32 +76,32 @@ test fn covering_grant_write_selects_replay_with_store() -> Bool {
 
 test fn covering_grant_uncovered_is_no_covering() -> Bool {
   is_no_covering(
-    cg: covering_grant(
+    cg: std.effect_grant.covering_grant(
       env: cg_envelope(),
-      verb: Read,
-      target: filesystem_position(path: ["elsewhere"])
+      verb: std.effect_grant.Read,
+      target: std.effect_grant.filesystem_position(path: ["elsewhere"])
     )
   )
 }
 
 test fn admit_effect_projection_admits_covered() -> Bool {
-  match admit_effect(
+  match std.effect_grant.admit_effect(
     env: cg_envelope(),
-    verb: Read,
-    target: filesystem_position(path: ["repo", "x"])
+    verb: std.effect_grant.Read,
+    target: std.effect_grant.filesystem_position(path: ["repo", "x"])
   ) {
-    Permit => true
-    Deny { refusal: refusal } => false
+    std.access.Permit => true
+    std.access.Deny { refusal: refusal } => false
   }
 }
 
 test fn admit_effect_projection_refuses_uncovered() -> Bool {
-  match admit_effect(
+  match std.effect_grant.admit_effect(
     env: cg_envelope(),
-    verb: Read,
-    target: filesystem_position(path: ["elsewhere"])
+    verb: std.effect_grant.Read,
+    target: std.effect_grant.filesystem_position(path: ["elsewhere"])
   ) {
-    Deny { refusal: refusal } => refusal.location.object == "elsewhere"
-    Permit => false
+    std.access.Deny { refusal: refusal } => refusal.location.object == "elsewhere"
+    std.access.Permit => false
   }
 }

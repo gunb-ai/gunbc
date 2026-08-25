@@ -2,7 +2,7 @@ module test.claim.compile_diagnostic_census_witness
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data census_live_tree_note: String = "ReadsLiveTree, and the divergence from the sibling is deliberate. compile_dag_diagnostic_census resolves the synthetic source against build_module_path_index_from_witness_roots, which walks the live tree - so the read is real. RESOLVED 2026-08-19 (FIRSTTOUCH-1, dashboard adhoc-c5b4375f-4cb): dag/test/claim/transport_script_wall_compile_red_test.dag previously declared SubstrateInputsOnly while calling compile_dag_rust_emit_check, which takes the SAME build_module_path_index_from_witness_roots host path as this file; that was flagged here as 'either a latent mis-declaration or a judgment call' pending the falsifier cadence, which is since deleted (2026-08-15 floor cut, DESIGN.md CI section) and never adjudicated it. Tracing the call confirmed it reads the live tree, so it was the mis-declaration, not a judgment call; that file now declares ReadsLiveTree. This file does not copy claims it cannot verify: undeclared is ReadsLiveTree by the fail-closed default and the honest declaration costs only selection-eligibility."
 
@@ -19,33 +19,33 @@ data clean_call_source: String = "module census_clean\nfn sub(a: Int, b: Int) ->
 data twice_mislabeled_call_source: String = "module census_mislabel_twice\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\nfn g() -> Int { sub(a: 1, cc: 2) }\n"
 
 test fn census_names_the_class_that_fired() -> Bool {
-  match test.claim.compile_diagnostic_census_witness.census_of(source: mislabeled_call_source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "CallArgumentNameUnknown")) >= 1
-    CensusNotRunnable { cause: _ } => false
+  match census_of(source: mislabeled_call_source) {
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } =>
+      gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: "CallArgumentNameUnknown")) >= 1
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => false
   }
 }
 
 test fn census_reports_blocking_severity_as_data() -> Bool {
-  match test.claim.compile_diagnostic_census_witness.census_of(source: mislabeled_call_source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: "CallArgumentNameUnknown")) >= 1
-    CensusNotRunnable { cause: _ } => false
+  match census_of(source: mislabeled_call_source) {
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } =>
+      gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: gunbc.compile_diagnostic_census.census_blocking_rows(rows: rows), wanted: "CallArgumentNameUnknown")) >= 1
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => false
   }
 }
 
 test fn census_clean_source_observes_zero_rows() -> Bool {
-  match test.claim.compile_diagnostic_census_witness.census_of(source: clean_call_source) {
-    CensusObserved { rows: rows } => count(rows) == 0
-    CensusNotRunnable { cause: _ } => false
+  match census_of(source: clean_call_source) {
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } => count(rows) == 0
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => false
   }
 }
 
 fn mislabel_count(source: String) -> Int {
-  match test.claim.compile_diagnostic_census_witness.census_of(source: source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "CallArgumentNameUnknown"))
-    CensusNotRunnable { cause: _ } => 0 - 1
+  match census_of(source: source) {
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } =>
+      gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: "CallArgumentNameUnknown"))
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
@@ -58,9 +58,9 @@ test fn census_counts_occurrences_not_merely_presence() -> Bool {
 data where_refinement_source: String = "module census_advisory_probe\nimport std.types { String, NonEmptyStr }\nfn tighten(s: String) -> NonEmptyStr { s as NonEmptyStr }\n"
 
 test fn census_reports_advisory_severity_as_data() -> Bool {
-  match test.claim.compile_diagnostic_census_witness.census_of(source: where_refinement_source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_advisory_rows(rows: rows)) >= 1
-    CensusNotRunnable { cause: _ } => false
+  match census_of(source: where_refinement_source) {
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_advisory_rows(rows: rows)) >= 1
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => false
   }
 }
 
@@ -68,12 +68,12 @@ test fn census_not_runnable_is_not_an_empty_observation() -> Bool {
   let not_runnable = gunbc.compile_diagnostic_census.CensusNotRunnable { cause: "synthetic could-not-measure" as std.types.NonEmptyStr }
   let empty_observed = gunbc.compile_diagnostic_census.CensusObserved { rows: [] }
   let cause_readable = match not_runnable {
-    CensusNotRunnable { cause: c } => (c as String) != ""
-    CensusObserved { rows: _ } => false
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: c } => (c as String) != ""
+    gunbc.compile_diagnostic_census.CensusObserved { rows: _ } => false
   }
   let observed_is_empty = match empty_observed {
-    CensusObserved { rows: rows } => count(rows) == 0
-    CensusNotRunnable { cause: _ } => false
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } => count(rows) == 0
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => false
   }
   not_runnable != empty_observed && cause_readable && observed_is_empty
 }
@@ -81,10 +81,10 @@ test fn census_not_runnable_is_not_an_empty_observation() -> Bool {
 data scaffold_trigger_citation_note: String = "THE SCAFFOLD'S TRIGGER IS ITSELF CHECKED, because a dissolution trigger that nobody executes rots exactly like any other prose claim (DESIGN 3: a cited name is decidable, so decide it). This asserts the hand-Rust dissolve-trigger row names the concrete roadmap row it defers to, so an edit that reopens the trigger into an unevaluable disjunction reds here rather than passing review twice. The precedent is stage0_rust_source_lifecycle_scaffold_witness_test scaffold_note_cites_zero_hand_maintained_rust_roadmap_row, which is where the convention comes from. ONE DELIBERATE DIVERGENCE from that precedent: it also asserts the note contains the literal ROADMAP.md:24, and this file does NOT copy that half. A line offset into a generated artifact is the positional citation DESIGN 3 rules out - it decays silently when anything above line 24 changes, and nothing about the roadmap row moving would red it. The row id is the symbol the namespace already names, so the id alone is asserted here."
 
 test fn scaffold_trigger_cites_the_concrete_roadmap_row() -> Bool {
-  string_contains(s: dissolution_description(condition: compile_diagnostic_census_hand_rust_dissolve_trigger), pattern: "v1-zero-hand-maintained-rust")
+  string_contains(s: std.dissolution.dissolution_description(condition: gunbc.compile_diagnostic_census.compile_diagnostic_census_hand_rust_dissolve_trigger), pattern: "v1-zero-hand-maintained-rust")
 }
 
 test fn scaffold_trigger_is_singular_not_an_open_disjunction() -> Bool {
-  string_contains(s: dissolution_description(condition: compile_diagnostic_census_hand_rust_dissolve_trigger), pattern: "TRIGGER, one and checkable")
-    && string_contains(s: dissolution_description(condition: compile_diagnostic_census_hand_rust_dissolve_trigger), pattern: "EARLIER REMOVAL IS PERMITTED AND EXPECTED, but it is not the trigger")
+  string_contains(s: std.dissolution.dissolution_description(condition: gunbc.compile_diagnostic_census.compile_diagnostic_census_hand_rust_dissolve_trigger), pattern: "TRIGGER, one and checkable")
+    && string_contains(s: std.dissolution.dissolution_description(condition: gunbc.compile_diagnostic_census.compile_diagnostic_census_hand_rust_dissolve_trigger), pattern: "EARLIER REMOVAL IS PERMITTED AND EXPECTED, but it is not the trigger")
 }

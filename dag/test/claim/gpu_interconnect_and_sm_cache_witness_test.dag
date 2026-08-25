@@ -1,45 +1,45 @@
 module test.claim.gpu_interconnect_and_sm_cache_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data rtx_5090_pcie_lane_count: std.nat.Nat = 16
 data rtx_5090_sm_shared_memory_bytes: std.nat.Nat = 102400
 data rtx_5090_sm_register_file_bytes: std.nat.Nat = 262144
 
 test fn w_rtx_5090_interconnect_is_the_shared_pcie_authority() -> Bool {
-  match extdeps.gpu.nvidia.nvidia_rtx_5090_catalog.interconnect {
+  match nvidia_rtx_5090_catalog.interconnect {
     Present { value: link } =>
       link.generation == Gen5
         && link.lane_count == rtx_5090_pcie_lane_count
-        && link == rtx_5090_interconnect
-        && bandwidth_count(b: pcie_link_bandwidth(link: link)) > 0
+        && link == extdeps.gpu.nvidia.rtx_5090_interconnect
+        && std.measure.bandwidth_count(b: extdeps.storage.types.pcie_link_bandwidth(link: link)) > 0
     Absent => false
   }
 }
 
 test fn w_rtx_5090_sm_cache_geometry_matches_cuda_docs() -> Bool {
-  match extdeps.gpu.nvidia.nvidia_rtx_5090_catalog.sm_cache {
+  match nvidia_rtx_5090_catalog.sm_cache {
     Present { value: geometry } =>
-      byte_size_count(b: geometry.shared_memory_per_sm) == rtx_5090_sm_shared_memory_bytes
-        && byte_size_count(b: geometry.register_file_per_sm) == rtx_5090_sm_register_file_bytes
-        && geometry == rtx_5090_sm_cache_geometry
+      std.measure.byte_size_count(b: geometry.shared_memory_per_sm) == rtx_5090_sm_shared_memory_bytes
+        && std.measure.byte_size_count(b: geometry.register_file_per_sm) == rtx_5090_sm_register_file_bytes
+        && geometry == extdeps.gpu.nvidia.rtx_5090_sm_cache_geometry
     Absent => false
   }
 }
 
 test fn w_rtx_5090_sm_cache_citations_cover_both_fields() -> Bool {
   let citations = extdeps.gpu.nvidia.rtx_5090_sm_cache_citations
-  list_length(items: citations) == 2
-    && citations.first().authority == cuda_compute_capabilities_authority
+  std.types.list_length(items: citations) == 2
+    && citations.first().authority == extdeps.gpu.types.cuda_compute_capabilities_authority
 }
 
 test fn w_apple_m5_gpu_leaves_unified_soc_facts_unfabricated() -> Bool {
-  match extdeps.gpu.apple.apple_m5_gpu_catalog.interconnect {
+  match apple_m5_gpu_catalog.interconnect {
     Absent => true
     Present { value: _ } => false
   }
-    && match extdeps.gpu.apple.apple_m5_gpu_catalog.sm_cache {
+    && match apple_m5_gpu_catalog.sm_cache {
       Absent => true
       Present { value: _ } => false
     }

@@ -1,5 +1,7 @@
 module v2.std.compilers.cli_surface
 
+
+
 // WHY THIS EXISTS.
 //
 // CliArgumentSyntax preserves the GROUPING a tool's CLI projection selected. Fragments concatenate
@@ -67,6 +69,7 @@ fn cli_long_option_spelling(name: std.types.NonEmptyStr) -> std.types.NonEmptySt
   concat("--", name)
 }
 
+
 type CliArgument sole_constructor { text: String }
 
 type CliSurface sole_constructor { arguments: List<CliArgument> }
@@ -109,14 +112,15 @@ fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_capture"),
   ]
   = CliSurface {
-    arguments: fold_list(
+    arguments: v2.std.algebra.fold_list(
       xs: words,
       empty: std.algebra.Empty,
-      cons: fn(acc, word) { list_snoc_item(xs: acc, item: CliArgument { text: word }) }
+      cons: fn(acc, word) { v2.std.algebra.list_snoc_item(xs: acc, item: CliArgument { text: word }) }
     )
   }
 
-fn cli_surface_arguments(surface: CliSurface) -> List<CliArgument> {  surface.arguments
+fn cli_surface_arguments(surface: CliSurface) -> List<CliArgument> {
+  surface.arguments
 }
 
 fn cli_argument_text(argument: CliArgument) -> String {
@@ -208,11 +212,11 @@ fn required_bound_spelling(
   binding: v2.std.node.Symbol
 ) -> v2.std.diagnostic.Outcome<String> {
   match v2.std.collection.map_get(binding_spellings, binding) {
-    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
-    Accepted { value: found, diagnostics: pending } =>
+    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    v2.std.diagnostic.Accepted { value: found, diagnostics: pending } =>
       match found {
-        Present { value: spelling } => v2.std.diagnostic.Accepted { value: spelling, diagnostics: pending }
-        Absent => v2.std.diagnostic.outcome_rejected(cli_binding_spelling_missing_diagnostic(binding: binding))
+        v2.std.optional.Present { value: spelling } => v2.std.diagnostic.Accepted { value: spelling, diagnostics: pending }
+        v2.std.optional.Absent => v2.std.diagnostic.outcome_rejected(cli_binding_spelling_missing_diagnostic(binding: binding))
       }
   }
 }
@@ -235,9 +239,9 @@ fn cli_fragment_spelling(
   binding_spellings: Map<v2.std.node.Symbol, String>
 ) -> v2.std.diagnostic.Outcome<String> {
   match fragment {
-    FixedToken { token_class: tc } =>
+    v2.std.compilers.target_model.FixedToken { token_class: tc } =>
       v2.std.compilers.target_model.lex_rules_literal_for_class(rules: lex, token_class: tc)
-    BoundToken { token_class: _, binding: b } =>
+    v2.std.compilers.target_model.BoundToken { token_class: _, binding: b } =>
       required_bound_spelling(binding_spellings: binding_spellings, binding: b)
   }
 }

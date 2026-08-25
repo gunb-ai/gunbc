@@ -5,16 +5,16 @@ data fixture_head: std.types.CommitSha = "cafecafecafecafecafecafecafecafecafeca
 
 data fixture_other_head: std.types.CommitSha = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" as std.types.CommitSha
 
-data fixture_window_w1: std.content_hash.Fnv1a64Structural = git_diff_window_absent_identity()
+data fixture_window_w1: std.content_hash.Fnv1a64Structural = gunbc.git_diff_change_window.git_diff_window_absent_identity()
 
-data fixture_window_w2: std.content_hash.Fnv1a64Structural = content_hash_atom(
+data fixture_window_w2: std.content_hash.Fnv1a64Structural = std.content_hash.content_hash_atom(
   value: "recut-a-window-two-fixture" as std.types.NonEmptyStr,
 )
 
 fn fixture_subject(window: std.content_hash.Fnv1a64Structural) -> gunbc.roadmap_verification_receipt.VerificationSubject {
   gunbc.roadmap_verification_receipt.VerificationSubject {
     node_identity: "rnfx-recut-a" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeIdentity,
-    criteria_digest: content_hash_atom(value: "recut-a-criteria"),
+    criteria_digest: std.content_hash.content_hash_atom(value: "recut-a-criteria"),
     attempt_key: "feedfacefeedface",
     branch: "dispatch/recut-a-afeedfacefeedface" as std.types.NonEmptyStr,
     head_sha: fixture_head,
@@ -28,59 +28,59 @@ fn fixture_receipt(
 ) -> gunbc.roadmap_verification_receipt.VerificationReceipt {
   gunbc.roadmap_verification_receipt.VerificationReceipt {
     subject: fixture_subject(window: window),
-    oracle_identity: content_hash_of_value(value: "oracle-fixture"),
+    oracle_identity: std.content_hash.content_hash_of_value(value: "oracle-fixture"),
     executions: [],
     verdict: verdict,
   }
 }
 
 fn v1_legacy_receipt_text() -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(
       key: "schema",
-      value: json_string(s: verification_receipt_schema_v1 as String),
+      value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_verification_receipt.verification_receipt_schema_v1 as String),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "subject",
-      value: json_object(members: [
-        json_kv(key: "node_identity", value: json_string(s: "rnfx-recut-a")),
-        json_kv(
+      value: extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "node_identity", value: extdeps.languages.json.emit.json_string(s: "rnfx-recut-a")),
+        extdeps.languages.json.emit.json_kv(
           key: "criteria_digest",
-          value: json_string(
-            s: serialize_content_hash(
-              hash: as_content_hash_structural(
-                structural: content_hash_atom(value: "recut-a-criteria"),
+          value: extdeps.languages.json.emit.json_string(
+            s: std.content_hash.serialize_content_hash(
+              hash: std.content_hash.as_content_hash_structural(
+                structural: std.content_hash.content_hash_atom(value: "recut-a-criteria"),
               ),
             ) as String,
           ),
         ),
-        json_kv(key: "attempt_key", value: json_string(s: "feedfacefeedface")),
-        json_kv(
+        extdeps.languages.json.emit.json_kv(key: "attempt_key", value: extdeps.languages.json.emit.json_string(s: "feedfacefeedface")),
+        extdeps.languages.json.emit.json_kv(
           key: "branch",
-          value: json_string(s: "dispatch/recut-a-afeedfacefeedface"),
+          value: extdeps.languages.json.emit.json_string(s: "dispatch/recut-a-afeedfacefeedface"),
         ),
-        json_kv(key: "head_sha", value: json_string(s: fixture_head as String)),
+        extdeps.languages.json.emit.json_kv(key: "head_sha", value: extdeps.languages.json.emit.json_string(s: fixture_head as String)),
       ]),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "oracle_identity",
-      value: json_string(
-        s: serialize_content_hash(
-          hash: content_hash_of_value(value: "oracle-fixture"),
+      value: extdeps.languages.json.emit.json_string(
+        s: std.content_hash.serialize_content_hash(
+          hash: std.content_hash.content_hash_of_value(value: "oracle-fixture"),
         ) as String,
       ),
     ),
-    json_kv(key: "executions", value: json_array(elements: [])),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(key: "executions", value: extdeps.languages.json.emit.json_array(elements: [])),
+    extdeps.languages.json.emit.json_kv(
       key: "verdict",
-      value: json_object(members: [
-        json_kv(key: "key", value: json_string(s: "passed")),
-        json_kv(key: "command", value: json_string(s: "fixture-command")),
-        json_kv(
+      value: extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "key", value: extdeps.languages.json.emit.json_string(s: "passed")),
+        extdeps.languages.json.emit.json_kv(key: "command", value: extdeps.languages.json.emit.json_string(s: "fixture-command")),
+        extdeps.languages.json.emit.json_kv(
           key: "oracle_identity",
-          value: json_string(
-            s: serialize_content_hash(
-              hash: content_hash_of_value(value: "oracle-fixture"),
+          value: extdeps.languages.json.emit.json_string(
+            s: std.content_hash.serialize_content_hash(
+              hash: std.content_hash.content_hash_of_value(value: "oracle-fixture"),
             ) as String,
           ),
         ),
@@ -90,77 +90,77 @@ fn v1_legacy_receipt_text() -> String {
 }
 
 fn v1_receipt_with_one_execution_text() -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(
       key: "schema",
-      value: json_string(s: verification_receipt_schema_v1 as String),
+      value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_verification_receipt.verification_receipt_schema_v1 as String),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "subject",
-      value: json_object(members: [
-        json_kv(key: "node_identity", value: json_string(s: "rnfx-recut-a")),
-        json_kv(
+      value: extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "node_identity", value: extdeps.languages.json.emit.json_string(s: "rnfx-recut-a")),
+        extdeps.languages.json.emit.json_kv(
           key: "criteria_digest",
-          value: json_string(
-            s: serialize_content_hash(
-              hash: as_content_hash_structural(
-                structural: content_hash_atom(value: "recut-a-criteria"),
+          value: extdeps.languages.json.emit.json_string(
+            s: std.content_hash.serialize_content_hash(
+              hash: std.content_hash.as_content_hash_structural(
+                structural: std.content_hash.content_hash_atom(value: "recut-a-criteria"),
               ),
             ) as String,
           ),
         ),
-        json_kv(key: "attempt_key", value: json_string(s: "feedfacefeedface")),
-        json_kv(
+        extdeps.languages.json.emit.json_kv(key: "attempt_key", value: extdeps.languages.json.emit.json_string(s: "feedfacefeedface")),
+        extdeps.languages.json.emit.json_kv(
           key: "branch",
-          value: json_string(s: "dispatch/recut-a-afeedfacefeedface"),
+          value: extdeps.languages.json.emit.json_string(s: "dispatch/recut-a-afeedfacefeedface"),
         ),
-        json_kv(key: "head_sha", value: json_string(s: fixture_head as String)),
+        extdeps.languages.json.emit.json_kv(key: "head_sha", value: extdeps.languages.json.emit.json_string(s: fixture_head as String)),
       ]),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "oracle_identity",
-      value: json_string(
-        s: serialize_content_hash(
-          hash: content_hash_of_value(value: "oracle-fixture"),
+      value: extdeps.languages.json.emit.json_string(
+        s: std.content_hash.serialize_content_hash(
+          hash: std.content_hash.content_hash_of_value(value: "oracle-fixture"),
         ) as String,
       ),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "executions",
-      value: json_array(elements: [
-        json_object(members: [
-          json_kv(
+      value: extdeps.languages.json.emit.json_array(elements: [
+        extdeps.languages.json.emit.json_object(members: [
+          extdeps.languages.json.emit.json_kv(
             key: "validation",
-            value: json_object(members: [
-              json_kv(key: "kind", value: json_string(s: "cargo-fmt")),
+            value: extdeps.languages.json.emit.json_object(members: [
+              extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "cargo-fmt")),
             ]),
           ),
-          json_kv(
+          extdeps.languages.json.emit.json_kv(
             key: "command",
-            value: json_object(members: [
-              json_kv(key: "label", value: json_string(s: "cargo fmt")),
-              json_kv(key: "program", value: json_string(s: "/usr/bin/cargo")),
-              json_kv(key: "args", value: json_array(elements: [
-                json_string(s: "fmt"),
+            value: extdeps.languages.json.emit.json_object(members: [
+              extdeps.languages.json.emit.json_kv(key: "label", value: extdeps.languages.json.emit.json_string(s: "cargo fmt")),
+              extdeps.languages.json.emit.json_kv(key: "program", value: extdeps.languages.json.emit.json_string(s: "/usr/bin/cargo")),
+              extdeps.languages.json.emit.json_kv(key: "args", value: extdeps.languages.json.emit.json_array(elements: [
+                extdeps.languages.json.emit.json_string(s: "fmt"),
               ])),
             ]),
           ),
-          json_kv(key: "exit_code", value: json_int(n: 0)),
-          json_kv(key: "stdout", value: json_string(s: "")),
-          json_kv(key: "stderr", value: json_string(s: "")),
+          extdeps.languages.json.emit.json_kv(key: "exit_code", value: extdeps.languages.json.emit.json_int(n: 0)),
+          extdeps.languages.json.emit.json_kv(key: "stdout", value: extdeps.languages.json.emit.json_string(s: "")),
+          extdeps.languages.json.emit.json_kv(key: "stderr", value: extdeps.languages.json.emit.json_string(s: "")),
         ]),
       ]),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "verdict",
-      value: json_object(members: [
-        json_kv(key: "key", value: json_string(s: "passed")),
-        json_kv(key: "command", value: json_string(s: "cargo fmt")),
-        json_kv(
+      value: extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "key", value: extdeps.languages.json.emit.json_string(s: "passed")),
+        extdeps.languages.json.emit.json_kv(key: "command", value: extdeps.languages.json.emit.json_string(s: "cargo fmt")),
+        extdeps.languages.json.emit.json_kv(
           key: "oracle_identity",
-          value: json_string(
-            s: serialize_content_hash(
-              hash: content_hash_of_value(value: "oracle-fixture"),
+          value: extdeps.languages.json.emit.json_string(
+            s: std.content_hash.serialize_content_hash(
+              hash: std.content_hash.content_hash_of_value(value: "oracle-fixture"),
             ) as String,
           ),
         ),
@@ -180,12 +180,12 @@ fn fixture_roadmap_node() -> gunbc.roadmap_model.RoadmapNode {
     line: gunbc.roadmap_status.DerivableLine { prs: [1], title: "recut-a", description: "" },
     carriers: [],
     sizing: gunbc.roadmap_model.Sized {
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
+      intricacy: gunbc.roadmap_model.IntricacyHigh,
+      volume: gunbc.roadmap_model.VolumeMedium,
       repo: "gunbc",
-      acceptance: PrsMerged,
+      acceptance: gunbc.roadmap_model.PrsMerged,
     },
-    execution: ExecutionContractUnspecified,
+    execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
     signoff: gunbc.roadmap_status.Unsigned,
   }
@@ -195,10 +195,10 @@ fn verify_segment_state(
   evidence: gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence,
   expected_state: String,
 ) -> Bool {
-  let progress = workflow_attempt_progress(evidence: evidence)
+  let progress = gunbc.roadmap_workflow_progress.workflow_attempt_progress(evidence: evidence)
   fold(progress.segments, init: false, f: fn(acc, segment) {
-    if workflow_segment_kind_key(kind: segment.kind) == "verify" {
-      workflow_segment_state_key(state: segment.state) == expected_state
+    if gunbc.roadmap_workflow_stage.workflow_segment_kind_key(kind: segment.kind) == "verify" {
+      gunbc.roadmap_workflow_stage.workflow_segment_state_key(state: segment.state) == expected_state
     } else {
       acc
     }
@@ -207,7 +207,7 @@ fn verify_segment_state(
 
 fn fixture_evidence(
   selection: gunbc.roadmap_verification_receipt.CurrentVerificationSelectionObservation,
-  subject: gunbc.roadmap_verification_receipt.VerificationSubjectObservation,
+  subject: VerificationSubjectObservation,
   source: gunbc.roadmap_verification_receipt.VerificationReceiptFileSource,
 ) -> gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
   gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
@@ -243,27 +243,27 @@ fn fixture_evidence(
         expected_head: fixture_head,
       },
     },
-    publication_source: ReceiptSourceAbsent,
+    publication_source: gunbc.roadmap_publish.ReceiptSourceAbsent,
   }
 }
 
 fn live_verify_progress_state(
   selection: gunbc.roadmap_verification_receipt.CurrentVerificationSelectionObservation,
 ) -> String {
-  let subject = belt_verification_subject_from_selection(
+  let subject = gunbc.roadmap_belt_actuate.belt_verification_subject_from_selection(
     node: fixture_roadmap_node(),
     attempt_key: "feedfacefeedface",
     branch: "dispatch/recut-a-afeedfacefeedface",
     head: fixture_head,
     selection: selection,
   )
-  let source = belt_verification_receipt_source(
-    instance: srv1_live_dashboard_instance(),
+  let source = gunbc.roadmap_belt_actuate.belt_verification_receipt_source(
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     node_id: fixture_node_id(),
     attempt_key: "feedfacefeedface",
     selection: selection,
   )
-  let progress = workflow_attempt_progress(
+  let progress = gunbc.roadmap_workflow_progress.workflow_attempt_progress(
     evidence: fixture_evidence(
       selection: selection,
       subject: subject,
@@ -271,8 +271,8 @@ fn live_verify_progress_state(
     ),
   )
   fold(progress.segments, init: "", f: fn(acc, segment) {
-    if workflow_segment_kind_key(kind: segment.kind) == "verify" {
-      workflow_segment_state_key(state: segment.state)
+    if gunbc.roadmap_workflow_stage.workflow_segment_kind_key(kind: segment.kind) == "verify" {
+      gunbc.roadmap_workflow_stage.workflow_segment_state_key(state: segment.state)
     } else {
       acc
     }
@@ -280,51 +280,51 @@ fn live_verify_progress_state(
 }
 
 test fn unreadable_exact_receipt_is_evidence_unreadable_not_refuse() -> Bool {
-  match belt_verification_decision(
+  match gunbc.roadmap_verification_receipt.belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
     source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptUnreadable {
       detail: "the exact verification receipt was listed and then could not be read",
     },
   ) {
-    BeltVerificationEvidenceUnreadable { reason: _ } => true
-    BeltVerificationRun => false
-    BeltVerificationDefer { reason: _ } => false
-    BeltVerificationRefuse { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationEvidenceUnreadable { reason: _ } => true
+    gunbc.roadmap_verification_receipt.BeltVerificationRun => false
+    gunbc.roadmap_verification_receipt.BeltVerificationDefer { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationRefuse { reason: _ } => false
   }
 }
 
 test fn absent_exact_receipt_runs_once() -> Bool {
-  match belt_verification_decision(
+  match gunbc.roadmap_verification_receipt.belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
-    source: ExactVerificationReceiptAbsent,
+    source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptAbsent,
   ) {
-    BeltVerificationRun => true
-    BeltVerificationDefer { reason: _ } => false
-    BeltVerificationRefuse { reason: _ } => false
-    BeltVerificationEvidenceUnreadable { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationRun => true
+    gunbc.roadmap_verification_receipt.BeltVerificationDefer { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationRefuse { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationEvidenceUnreadable { reason: _ } => false
   }
 }
 
 test fn two_window_identities_use_distinct_receipt_basenames() -> Bool {
-  exact_verification_receipt_basename(
+  gunbc.roadmap_verification_receipt.exact_verification_receipt_basename(
     head_sha: fixture_head as String,
-    window_identity_hex: git_diff_window_identity_hex(identity: fixture_window_w1),
-  ) != exact_verification_receipt_basename(
+    window_identity_hex: gunbc.git_diff_change_window.git_diff_window_identity_hex(identity: fixture_window_w1),
+  ) != gunbc.roadmap_verification_receipt.exact_verification_receipt_basename(
     head_sha: fixture_head as String,
-    window_identity_hex: git_diff_window_identity_hex(identity: fixture_window_w2),
+    window_identity_hex: gunbc.git_diff_change_window.git_diff_window_identity_hex(identity: fixture_window_w2),
   )
 }
 
 test fn current_selection_points_to_w2_not_w1_basename() -> Bool {
-  let w1 = exact_verification_receipt_basename(
+  let w1 = gunbc.roadmap_verification_receipt.exact_verification_receipt_basename(
     head_sha: fixture_head as String,
-    window_identity_hex: git_diff_window_identity_hex(identity: fixture_window_w1),
+    window_identity_hex: gunbc.git_diff_change_window.git_diff_window_identity_hex(identity: fixture_window_w1),
   )
-  let w2 = exact_verification_receipt_basename(
+  let w2 = gunbc.roadmap_verification_receipt.exact_verification_receipt_basename(
     head_sha: fixture_head as String,
-    window_identity_hex: git_diff_window_identity_hex(identity: fixture_window_w2),
+    window_identity_hex: gunbc.git_diff_change_window.git_diff_window_identity_hex(identity: fixture_window_w2),
   )
-  let selection_name = current_verification_selection_basename(
+  let selection_name = gunbc.roadmap_verification_receipt.current_verification_selection_basename(
     head_sha: fixture_head as String,
   )
   w1 != w2
@@ -337,11 +337,11 @@ test fn current_selection_points_to_w2_not_w1_basename() -> Bool {
 test fn no_current_selection_projects_verify_pending() -> Bool {
   verify_segment_state(
     evidence: fixture_evidence(
-      selection: SelectionAbsent,
+      selection: gunbc.roadmap_verification_receipt.SelectionAbsent,
       subject: gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved {
         reason: "the belt has not selected a verification window for this head yet",
       },
-      source: VerificationReceiptAbsent,
+      source: gunbc.roadmap_verification_receipt.VerificationReceiptAbsent,
     ),
     expected_state: "pending",
   )
@@ -356,69 +356,69 @@ test fn unobservable_worktree_head_projects_verify_refused() -> Bool {
 }
 
 test fn selection_document_for_expected_head_naming_another_head_is_malformed() -> Bool {
-  match current_verification_selection_decode_document(
+  match gunbc.roadmap_verification_receipt.current_verification_selection_decode_document(
     selection_path: join(
       [
         "/attempt/recut-a/verification/",
-        current_verification_selection_basename(head_sha: fixture_head as String),
+        gunbc.roadmap_verification_receipt.current_verification_selection_basename(head_sha: fixture_head as String),
       ],
       "",
     ),
     expected_head_sha: fixture_head as String,
-    content: current_verification_selection_json(
+    content: gunbc.roadmap_verification_receipt.current_verification_selection_json(
       selection: gunbc.roadmap_verification_receipt.CurrentVerificationSelection {
         head_sha: fixture_other_head,
         change_window_identity: fixture_window_w1,
       },
     ),
   ) {
-    SelectionMalformed { cause } =>
+    gunbc.roadmap_verification_receipt.SelectionMalformed { cause } =>
       string_contains(s: cause, pattern: "different head")
-    SelectionObserved { head: _, window_identity: _ } => false
-    SelectionAbsent => false
-    SelectionUnreadable { cause: _ } => false
-    SelectionUnaddressable { cause: _ } => false
+    gunbc.roadmap_verification_receipt.SelectionObserved { head: _, window_identity: _ } => false
+    gunbc.roadmap_verification_receipt.SelectionAbsent => false
+    gunbc.roadmap_verification_receipt.SelectionUnreadable { cause: _ } => false
+    gunbc.roadmap_verification_receipt.SelectionUnaddressable { cause: _ } => false
   }
 }
 
 test fn mismatched_selection_cannot_address_the_other_heads_receipt() -> Bool {
-  let selection = current_verification_selection_decode_document(
+  let selection = gunbc.roadmap_verification_receipt.current_verification_selection_decode_document(
     selection_path: join(
       [
         "/attempt/recut-a/verification/",
-        current_verification_selection_basename(head_sha: fixture_head as String),
+        gunbc.roadmap_verification_receipt.current_verification_selection_basename(head_sha: fixture_head as String),
       ],
       "",
     ),
     expected_head_sha: fixture_head as String,
-    content: current_verification_selection_json(
+    content: gunbc.roadmap_verification_receipt.current_verification_selection_json(
       selection: gunbc.roadmap_verification_receipt.CurrentVerificationSelection {
         head_sha: fixture_other_head,
         change_window_identity: fixture_window_w2,
       },
     ),
   )
-  let other_receipt_basename = exact_verification_receipt_basename(
+  let other_receipt_basename = gunbc.roadmap_verification_receipt.exact_verification_receipt_basename(
     head_sha: fixture_other_head as String,
-    window_identity_hex: git_diff_window_identity_hex(identity: fixture_window_w2),
+    window_identity_hex: gunbc.git_diff_change_window.git_diff_window_identity_hex(identity: fixture_window_w2),
   )
   match selection {
-    SelectionMalformed { cause: _ } =>
-      match belt_verification_receipt_source(
-        instance: srv1_live_dashboard_instance(),
+    gunbc.roadmap_verification_receipt.SelectionMalformed { cause: _ } =>
+      match gunbc.roadmap_belt_actuate.belt_verification_receipt_source(
+        instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
         node_id: fixture_node_id(),
         attempt_key: "feedfacefeedface",
         selection: selection,
       ) {
-        VerificationReceiptUnreadable { detail } =>
+        gunbc.roadmap_verification_receipt.VerificationReceiptUnreadable { detail } =>
           !string_contains(s: detail, pattern: other_receipt_basename)
-        VerificationReceiptAbsent => false
-        VerificationReceiptPresent { text: _ } => false
+        gunbc.roadmap_verification_receipt.VerificationReceiptAbsent => false
+        gunbc.roadmap_verification_receipt.VerificationReceiptPresent { text: _ } => false
       }
-    SelectionObserved { head: _, window_identity: _ } => false
-    SelectionAbsent => false
-    SelectionUnreadable { cause: _ } => false
-    SelectionUnaddressable { cause: _ } => false
+    gunbc.roadmap_verification_receipt.SelectionObserved { head: _, window_identity: _ } => false
+    gunbc.roadmap_verification_receipt.SelectionAbsent => false
+    gunbc.roadmap_verification_receipt.SelectionUnreadable { cause: _ } => false
+    gunbc.roadmap_verification_receipt.SelectionUnaddressable { cause: _ } => false
   }
 }
 
@@ -444,66 +444,66 @@ test fn listing_failure_with_not_found_text_is_unreadable_not_absent() -> Bool {
 }
 
 test fn live_assembly_unreadable_selection_never_addresses_receipt_as_absent() -> Bool {
-  match belt_verification_receipt_source(
-    instance: srv1_live_dashboard_instance(),
+  match gunbc.roadmap_belt_actuate.belt_verification_receipt_source(
+    instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
     node_id: fixture_node_id(),
     attempt_key: "feedfacefeedface",
     selection: gunbc.roadmap_verification_receipt.SelectionUnreadable {
       cause: "the current verification selection was listed and then could not be read",
     },
   ) {
-    VerificationReceiptUnreadable { detail: _ } => true
-    VerificationReceiptAbsent => false
-    VerificationReceiptPresent { text: _ } => false
+    gunbc.roadmap_verification_receipt.VerificationReceiptUnreadable { detail: _ } => true
+    gunbc.roadmap_verification_receipt.VerificationReceiptAbsent => false
+    gunbc.roadmap_verification_receipt.VerificationReceiptPresent { text: _ } => false
   }
 }
 
 test fn v1_at_exact_path_refuses_v2_subject() -> Bool {
-  match belt_verification_decision(
+  match gunbc.roadmap_verification_receipt.belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
     source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptPresent {
       text: v1_legacy_receipt_text(),
     },
   ) {
-    BeltVerificationRefuse { reason } =>
+    gunbc.roadmap_verification_receipt.BeltVerificationRefuse { reason } =>
       string_contains(
         s: reason,
         pattern: "change_window_identity",
       )
-    BeltVerificationRun => false
-    BeltVerificationDefer { reason: _ } => false
-    BeltVerificationEvidenceUnreadable { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationRun => false
+    gunbc.roadmap_verification_receipt.BeltVerificationDefer { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationEvidenceUnreadable { reason: _ } => false
   }
 }
 
 test fn selected_v2_receipt_is_read_exactly() -> Bool {
-  match belt_verification_decision(
+  match gunbc.roadmap_verification_receipt.belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w2),
     source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptPresent {
-      text: verification_receipt_json(
+      text: gunbc.roadmap_verification_receipt.verification_receipt_json(
         receipt: fixture_receipt(
           window: fixture_window_w2,
           verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
             command: "fixture-command",
-            oracle_identity: content_hash_of_value(value: "oracle-fixture"),
+            oracle_identity: std.content_hash.content_hash_of_value(value: "oracle-fixture"),
           },
         ),
       ),
     },
   ) {
-    BeltVerificationDefer { reason: _ } => true
-    BeltVerificationRun => false
-    BeltVerificationRefuse { reason: _ } => false
-    BeltVerificationEvidenceUnreadable { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationDefer { reason: _ } => true
+    gunbc.roadmap_verification_receipt.BeltVerificationRun => false
+    gunbc.roadmap_verification_receipt.BeltVerificationRefuse { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationEvidenceUnreadable { reason: _ } => false
   }
 }
 
 test fn exact_verification_address_coheres_basename_and_path() -> Bool {
-  let address = exact_verification_address_for(
+  let address = gunbc.roadmap_verification_receipt.exact_verification_address_for(
     attempt_dir: "/attempt/recut-a",
     verification_dir: "/attempt/recut-a/verification",
     head_sha: fixture_head as String,
-    window_identity_hex: git_diff_window_identity_hex(identity: fixture_window_w1),
+    window_identity_hex: gunbc.git_diff_change_window.git_diff_window_identity_hex(identity: fixture_window_w1),
   )
   let receipt_path = join(
     ["/attempt/recut-a/verification/", address.receipt_basename],
@@ -518,55 +518,55 @@ test fn exact_verification_address_coheres_basename_and_path() -> Bool {
 }
 
 test fn new_window_identity_does_not_match_old_passed_receipt() -> Bool {
-  match belt_verification_decision(
+  match gunbc.roadmap_verification_receipt.belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w2),
     source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptPresent {
-      text: verification_receipt_json(
+      text: gunbc.roadmap_verification_receipt.verification_receipt_json(
         receipt: fixture_receipt(
           window: fixture_window_w1,
           verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
             command: "fixture-command",
-            oracle_identity: content_hash_of_value(value: "oracle-fixture"),
+            oracle_identity: std.content_hash.content_hash_of_value(value: "oracle-fixture"),
           },
         ),
       ),
     },
   ) {
-    BeltVerificationRefuse { reason: _ } => true
-    BeltVerificationRun => false
-    BeltVerificationDefer { reason: _ } => false
-    BeltVerificationEvidenceUnreadable { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationRefuse { reason: _ } => true
+    gunbc.roadmap_verification_receipt.BeltVerificationRun => false
+    gunbc.roadmap_verification_receipt.BeltVerificationDefer { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationEvidenceUnreadable { reason: _ } => false
   }
 }
 
 test fn final_exact_receipt_defers_without_rerun() -> Bool {
-  match belt_verification_decision(
+  match gunbc.roadmap_verification_receipt.belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
     source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptPresent {
-      text: verification_receipt_json(
+      text: gunbc.roadmap_verification_receipt.verification_receipt_json(
         receipt: fixture_receipt(
           window: fixture_window_w1,
           verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
             command: "fixture-command",
-            oracle_identity: content_hash_of_value(value: "oracle-fixture"),
+            oracle_identity: std.content_hash.content_hash_of_value(value: "oracle-fixture"),
           },
         ),
       ),
     },
   ) {
-    BeltVerificationDefer { reason } =>
+    gunbc.roadmap_verification_receipt.BeltVerificationDefer { reason } =>
       string_contains(
         s: reason,
-        pattern: validation_verdict_key(
+        pattern: gunbc.roadmap_validation_oracle.validation_verdict_key(
           verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
             command: "fixture-command",
-            oracle_identity: content_hash_of_value(value: "oracle-fixture"),
+            oracle_identity: std.content_hash.content_hash_of_value(value: "oracle-fixture"),
           },
         ),
       )
-    BeltVerificationRun => false
-    BeltVerificationRefuse { reason: _ } => false
-    BeltVerificationEvidenceUnreadable { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationRun => false
+    gunbc.roadmap_verification_receipt.BeltVerificationRefuse { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationEvidenceUnreadable { reason: _ } => false
   }
 }
 
@@ -579,82 +579,82 @@ test fn wrong_subject_document_at_exact_path_refuses() -> Bool {
     head_sha: fixture_head,
     change_window_identity: fixture_window_w1,
   }
-  match belt_verification_decision(
+  match gunbc.roadmap_verification_receipt.belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
     source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptPresent {
-      text: verification_receipt_json(
+      text: gunbc.roadmap_verification_receipt.verification_receipt_json(
         receipt: gunbc.roadmap_verification_receipt.VerificationReceipt {
           subject: wrong_branch,
-          oracle_identity: as_content_hash_structural(
-            structural: content_hash_atom(value: "oracle-fixture"),
+          oracle_identity: std.content_hash.as_content_hash_structural(
+            structural: std.content_hash.content_hash_atom(value: "oracle-fixture"),
           ),
           executions: [],
           verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
             command: "fixture-command",
-            oracle_identity: content_hash_of_value(value: "oracle-fixture"),
+            oracle_identity: std.content_hash.content_hash_of_value(value: "oracle-fixture"),
           },
         },
       ),
     },
   ) {
-    BeltVerificationRefuse { reason } =>
+    gunbc.roadmap_verification_receipt.BeltVerificationRefuse { reason } =>
       string_contains(s: reason, pattern: "will not be overwritten")
-    BeltVerificationRun => false
-    BeltVerificationDefer { reason: _ } => false
-    BeltVerificationEvidenceUnreadable { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationRun => false
+    gunbc.roadmap_verification_receipt.BeltVerificationDefer { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationEvidenceUnreadable { reason: _ } => false
   }
 }
 
 test fn not_run_migration_receipt_runs() -> Bool {
-  match belt_verification_decision(
+  match gunbc.roadmap_verification_receipt.belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
     source: gunbc.roadmap_verification_receipt.ExactVerificationReceiptPresent {
-      text: verification_receipt_json(
+      text: gunbc.roadmap_verification_receipt.verification_receipt_json(
         receipt: fixture_receipt(
           window: fixture_window_w1,
-          verdict: ValidationNotRun,
+          verdict: gunbc.roadmap_validation_oracle.ValidationNotRun,
         ),
       ),
     },
   ) {
-    BeltVerificationRun => true
-    BeltVerificationDefer { reason: _ } => false
-    BeltVerificationRefuse { reason: _ } => false
-    BeltVerificationEvidenceUnreadable { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationRun => true
+    gunbc.roadmap_verification_receipt.BeltVerificationDefer { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationRefuse { reason: _ } => false
+    gunbc.roadmap_verification_receipt.BeltVerificationEvidenceUnreadable { reason: _ } => false
   }
 }
 
 test fn v1_decode_preserves_execution_rows() -> Bool {
-  match verification_receipt_v1_decode(receipt: v1_receipt_with_one_execution_text()) {
+  match gunbc.roadmap_verification_receipt.verification_receipt_v1_decode(receipt: v1_receipt_with_one_execution_text()) {
     Present { value: legacy } => count(legacy.executions) == 1
     Absent => false
   }
 }
 
 test fn belt_verification_refuse_projects_belt_pass_refused() -> Bool {
-  match belt_verify_pass_outcome_from(outcomes: [
+  match gunbc.roadmap_belt_actuate.belt_verify_pass_outcome_from(outcomes: [
     gunbc.roadmap_belt_actuate.VerifyRefused {
       node_id: "recut-a",
       cause: "a v1 exact-head receipt at this path lacks change_window_identity",
     },
   ]) {
-    BeltPassRefused { reason: _ } => true
-    BeltPassFailed { reason: _ } => false
-    BeltPassRecorded => false
-    BeltPassDeferred { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassRefused { reason: _ } => true
+    gunbc.roadmap_belt_actuate.BeltPassFailed { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassRecorded => false
+    gunbc.roadmap_belt_actuate.BeltPassDeferred { reason: _ } => false
   }
 }
 
 test fn belt_verification_evidence_unreadable_projects_belt_pass_failed() -> Bool {
-  match belt_verify_pass_outcome_from(outcomes: [
+  match gunbc.roadmap_belt_actuate.belt_verify_pass_outcome_from(outcomes: [
     gunbc.roadmap_belt_actuate.VerifyEvidenceUnreadable {
       node_id: "recut-a",
       detail: "the exact verification receipt was listed and then could not be read",
     },
   ]) {
-    BeltPassFailed { reason: _ } => true
-    BeltPassRefused { reason: _ } => false
-    BeltPassRecorded => false
-    BeltPassDeferred { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassFailed { reason: _ } => true
+    gunbc.roadmap_belt_actuate.BeltPassRefused { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassRecorded => false
+    gunbc.roadmap_belt_actuate.BeltPassDeferred { reason: _ } => false
   }
 }

@@ -4,7 +4,7 @@ module extdeps.vendor.arm
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Arm_Holdings"
   }
 }
@@ -14,12 +14,12 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.vendor.arm",
       decl_name: "arm",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.vendor.arm.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
 
-data arm: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "Arm Holdings plc" }
+data arm: extdeps.vendor.Vendor<extdeps.hardware.Hardware> = extdeps.vendor.Vendor { legal_name: "Arm Holdings plc" }

@@ -43,86 +43,86 @@ data fixture_scope_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> =
 ]
 
 fn verdict_of(closure: List<String>) -> v2.std.live_read.LiveReadClassification {
-  v2.lens.live_read_classification.live_read_classification(closure_modules: closure, carrier_homes: v2.test.claim.long.live_read_classification_test.fixture_carriers)
+  v2.lens.live_read_classification.live_read_classification(closure_modules: closure, carrier_homes: fixture_carriers)
 }
 
-test fn unit_closure_is_local_read() -> v2.std.logic.Bool {
-  v2.lens.live_read_classification.classification_is_local(classification: v2.test.claim.long.live_read_classification_test.verdict_of(closure: v2.test.claim.long.live_read_classification_test.fixture_unit_closure))
+test fn unit_closure_is_local_read() -> Bool {
+  v2.lens.live_read_classification.classification_is_local(classification: verdict_of(closure: fixture_unit_closure))
 }
 
-test fn two_hop_decl_facts_carrier_is_runtime_read() -> v2.std.logic.Bool {
-  v2.lens.live_read_classification.classification_has_runtime_read(classification: v2.test.claim.long.live_read_classification_test.verdict_of(closure: fixture_two_hop_closure))
-    && v2.lens.live_read_classification.classification_has_corpus_scan_carrier(classification: v2.test.claim.long.live_read_classification_test.verdict_of(closure: fixture_two_hop_closure))
+test fn two_hop_decl_facts_carrier_is_runtime_read() -> Bool {
+  v2.lens.live_read_classification.classification_has_runtime_read(classification: verdict_of(closure: fixture_two_hop_closure))
+    && v2.lens.live_read_classification.classification_has_corpus_scan_carrier(classification: verdict_of(closure: fixture_two_hop_closure))
 }
 
-test fn roster_gate_import_is_filesystem_runtime_read() -> v2.std.logic.Bool {
-  v2.lens.live_read_classification.classification_has_filesystem_read_carrier(classification: v2.test.claim.long.live_read_classification_test.verdict_of(closure: fixture_roster_gate_closure))
-    && !v2.lens.live_read_classification.classification_has_corpus_scan_carrier(classification: v2.test.claim.long.live_read_classification_test.verdict_of(closure: fixture_roster_gate_closure))
+test fn roster_gate_import_is_filesystem_runtime_read() -> Bool {
+  v2.lens.live_read_classification.classification_has_filesystem_read_carrier(classification: verdict_of(closure: fixture_roster_gate_closure))
+    && !v2.lens.live_read_classification.classification_has_corpus_scan_carrier(classification: verdict_of(closure: fixture_roster_gate_closure))
 }
 
-test fn compile_scope_import_is_corpus_scan_runtime_read() -> v2.std.logic.Bool {
-  v2.lens.live_read_classification.classification_has_corpus_scan_carrier(classification: v2.test.claim.long.live_read_classification_test.verdict_of(closure: fixture_scope_closure))
+test fn compile_scope_import_is_corpus_scan_runtime_read() -> Bool {
+  v2.lens.live_read_classification.classification_has_corpus_scan_carrier(classification: verdict_of(closure: fixture_scope_closure))
 }
 
-test fn two_hop_facts_classify_as_runtime_read() -> v2.std.logic.Bool {
+test fn two_hop_facts_classify_as_runtime_read() -> Bool {
   v2.lens.live_read_classification.classification_has_runtime_read(
     classification: v2.lens.live_read_classification.live_read_classification_from_facts(
       entry_module: "fix.entry",
-      facts: v2.test.claim.long.live_read_classification_test.fixture_two_hop_facts,
-      carrier_homes: v2.test.claim.long.live_read_classification_test.fixture_carriers
+      facts: fixture_two_hop_facts,
+      carrier_homes: fixture_carriers
     )
   )
 }
 
-test fn severed_mid_hop_is_local_read() -> v2.std.logic.Bool {
+test fn severed_mid_hop_is_local_read() -> Bool {
   v2.lens.live_read_classification.classification_is_local(
     classification: v2.lens.live_read_classification.live_read_classification_from_facts(
       entry_module: "fix.entry",
-      facts: v2.test.claim.long.live_read_classification_test.fixture_severed_facts,
-      carrier_homes: v2.test.claim.long.live_read_classification_test.fixture_carriers
+      facts: fixture_severed_facts,
+      carrier_homes: fixture_carriers
     )
   )
 }
 
-test fn roster_gate_facts_classify_filesystem_carrier() -> v2.std.logic.Bool {
+test fn roster_gate_facts_classify_filesystem_carrier() -> Bool {
   let c = v2.lens.live_read_classification.live_read_classification_from_facts(
     entry_module: "fix.witness",
     facts: fixture_roster_gate_facts,
-    carrier_homes: v2.test.claim.long.live_read_classification_test.fixture_carriers
+    carrier_homes: fixture_carriers
   )
   v2.lens.live_read_classification.classification_has_filesystem_read_carrier(classification: c)
 }
 
-test fn red_control_roster_gate_severed_is_local() -> v2.std.logic.Bool {
+test fn red_control_roster_gate_severed_is_local() -> Bool {
   v2.lens.live_read_classification.classification_is_local(
     classification: v2.lens.live_read_classification.live_read_classification_from_facts(
       entry_module: "fix.witness",
       facts: fixture_roster_gate_severed_facts,
-      carrier_homes: v2.test.claim.long.live_read_classification_test.fixture_carriers
+      carrier_homes: fixture_carriers
     )
   )
 }
 
-test fn scope_facts_classify_module_declaration_scan() -> v2.std.logic.Bool {
+test fn scope_facts_classify_module_declaration_scan() -> Bool {
   v2.lens.live_read_classification.classification_has_corpus_scan_carrier(
     classification: v2.lens.live_read_classification.live_read_classification_from_facts(
       entry_module: "fix.lever_entry",
       facts: fixture_scope_facts,
-      carrier_homes: v2.test.claim.long.live_read_classification_test.fixture_carriers
+      carrier_homes: fixture_carriers
     )
   )
 }
 
-test fn g1_runtime_read_touched_by_nonempty_path() -> v2.std.logic.Bool {
+test fn g1_runtime_read_touched_by_nonempty_path() -> Bool {
   v2.lens.live_read_classification.runtime_read_touched_by_path_g1(
-    classification: v2.test.claim.long.live_read_classification_test.verdict_of(closure: fixture_roster_gate_closure),
+    classification: verdict_of(closure: fixture_roster_gate_closure),
     touched_path: "dag/std/logic.dag"
   )
 }
 
-test fn g1_local_read_not_touched() -> v2.std.logic.Bool {
+test fn g1_local_read_not_touched() -> Bool {
   !v2.lens.live_read_classification.runtime_read_touched_by_path_g1(
-    classification: v2.test.claim.long.live_read_classification_test.verdict_of(closure: v2.test.claim.long.live_read_classification_test.fixture_unit_closure),
+    classification: verdict_of(closure: fixture_unit_closure),
     touched_path: "dag/std/logic.dag"
   )
 }
@@ -133,7 +133,7 @@ data fixture_v0_two_hop_facts: List<v2.lens.witness_cost_locality.ModuleImportFa
   v2.lens.witness_cost_locality.ModuleImportFact { module: "v2.std.decl_index", imports: [] }
 ]
 
-test fn v0_registry_two_hop_decl_index_runtime_read() -> v2.std.logic.Bool {
+test fn v0_registry_two_hop_decl_index_runtime_read() -> Bool {
   v2.lens.live_read_classification.classification_has_runtime_read(
     classification: v2.lens.live_read_classification.live_read_classification_from_facts_v0(
       entry_module: "fix.entry",
@@ -194,7 +194,7 @@ fn roster_gate_g2_live_classification() -> v2.std.live_read.LiveReadClassificati
   )
 }
 
-test fn g2_roster_gate_live_integration_holds() -> v2.std.logic.Bool {
+test fn g2_roster_gate_live_integration_holds() -> Bool {
   let c = roster_gate_g2_live_classification()
   v2.lens.live_read_classification.classification_has_filesystem_read_carrier(classification: c)
     && v2.lens.live_read_classification.classification_has_literal_path(
@@ -213,11 +213,11 @@ test fn g2_roster_gate_live_integration_holds() -> v2.std.logic.Bool {
     && v2.test.claim.complexity.accumulator_copy_roster_gate.accumulator_copy_roster_gate_entry_live_tree_disposition() == v2.std.live_tree.ReadsLiveTree
 }
 
-test fn g2_unknown_path_pattern_fail_closed_touched() -> v2.std.logic.Bool {
+test fn g2_unknown_path_pattern_fail_closed_touched() -> Bool {
   let c = v2.lens.live_read_classification.live_read_classification_from_facts(
     entry_module: "fix.witness",
     facts: fixture_roster_gate_facts,
-    carrier_homes: v2.test.claim.long.live_read_classification_test.fixture_carriers
+    carrier_homes: fixture_carriers
   )
   match c {
     RuntimeRead { carriers: carriers } =>
@@ -230,10 +230,10 @@ test fn g2_unknown_path_pattern_fail_closed_touched() -> v2.std.logic.Bool {
 }
 
 
-test fn g2_fn_arrow_marshal_host_scaffold_receipt_is_checkable() -> v2.std.logic.Bool {
+test fn g2_fn_arrow_marshal_host_scaffold_receipt_is_checkable() -> Bool {
   match v2.std.fn_index.fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
@@ -292,29 +292,29 @@ fn selection_projection_over(decls: List<v2.std.fn_index.FnArrowDecl>) -> v2.std
   )
 }
 
-fn projection_is_refused(p: v2.std.live_read.LiveReadSelectionProjection) -> v2.std.logic.Bool {
+fn projection_is_refused(p: v2.std.live_read.LiveReadSelectionProjection) -> Bool {
   match p {
-    LiveReadSelectionRefused { cause: c } => !string_is_empty(s: c)
-    LiveReadSelectionClassified { classification: k } => v2.lens.live_read_classification.classification_is_local(classification: k) && false
+    v2.std.live_read.LiveReadSelectionRefused { cause: c } => !string_is_empty(s: c)
+    v2.std.live_read.LiveReadSelectionClassified { classification: k } => v2.lens.live_read_classification.classification_is_local(classification: k) && false
   }
 }
 
-fn projection_classification_is_local(p: v2.std.live_read.LiveReadSelectionProjection) -> v2.std.logic.Bool {
+fn projection_classification_is_local(p: v2.std.live_read.LiveReadSelectionProjection) -> Bool {
   match p {
-    LiveReadSelectionRefused { cause: _ } => false
-    LiveReadSelectionClassified { classification: c } => v2.lens.live_read_classification.classification_is_local(classification: c)
+    v2.std.live_read.LiveReadSelectionRefused { cause: _ } => false
+    v2.std.live_read.LiveReadSelectionClassified { classification: c } => v2.lens.live_read_classification.classification_is_local(classification: c)
   }
 }
 
-fn projection_classification_has_runtime_read(p: v2.std.live_read.LiveReadSelectionProjection) -> v2.std.logic.Bool {
+fn projection_classification_has_runtime_read(p: v2.std.live_read.LiveReadSelectionProjection) -> Bool {
   match p {
-    LiveReadSelectionRefused { cause: _ } => false
-    LiveReadSelectionClassified { classification: c } =>
+    v2.std.live_read.LiveReadSelectionRefused { cause: _ } => false
+    v2.std.live_read.LiveReadSelectionClassified { classification: c } =>
       v2.lens.live_read_classification.classification_has_runtime_read(classification: c)
   }
 }
 
-test fn g2_complete_facts_reachable_home_without_carrier_call_is_local() -> v2.std.logic.Bool {
+test fn g2_complete_facts_reachable_home_without_carrier_call_is_local() -> Bool {
   projection_classification_is_local(
     p: selection_projection_over(
       decls: [
@@ -327,11 +327,11 @@ test fn g2_complete_facts_reachable_home_without_carrier_call_is_local() -> v2.s
 
 
 
-test fn g2_missing_carrier_home_facts_refuse_rather_than_local() -> v2.std.logic.Bool {
+test fn g2_missing_carrier_home_facts_refuse_rather_than_local() -> Bool {
   projection_is_refused(p: selection_projection_over(decls: [ selection_entry_seed_decl() ]))
 }
 
-test fn g2_reachable_carrier_call_with_unknown_argument_is_runtime_read() -> v2.std.logic.Bool {
+test fn g2_reachable_carrier_call_with_unknown_argument_is_runtime_read() -> Bool {
   projection_classification_has_runtime_read(
     p: selection_projection_over(
       decls: [

@@ -1,41 +1,42 @@
 module v2.test.lens_mock_totality.github_mock_totality
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedGithubMock {
-  tag: v2.std.node.Symbol
+  tag: Symbol
 }
 
 data github_red_omit_keys: List<String> = ["github.Pulls.ListReviews"]
 
-fn materialize_github_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedGithubMock> {
+fn materialize_github_mock(case: PublishedMockCase) -> Outcome<MaterializedGithubMock> {
   if case.operation_key == "github.Gist.Create" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_gist_create })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_gist_create })
   } else if case.operation_key == "github.Pulls.List" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_list })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_list })
   } else if case.operation_key == "github.Pulls.Get" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_get })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_get })
   } else if case.operation_key == "github.Pulls.Diff" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_diff })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_diff })
   } else if case.operation_key == "github.Issues.CreateComment" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_issues_create_comment })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_issues_create_comment })
   } else if case.operation_key == "github.Pulls.ListReviews" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_list_reviews })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_list_reviews })
   } else if case.operation_key == "github.Pulls.CreateReview" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_create_review })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_create_review })
   } else if case.operation_key == "github.Pulls.ListComments" {
-    outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_list_comments })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedGithubMock { tag: ^materialized_pulls_list_comments })
   } else {
-    mock_unhandled_rejection()
+    v2.lens.mock_totality.mock_unhandled_rejection()
   }
 }
 
-fn github_real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  outcome_accepted_p(outcome: materialize_github_mock(case: case))
+fn github_real_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.outcome_accepted_p(outcome: materialize_github_mock(case: case))
 }
 
-fn github_omits_list_reviews_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  omit_consumer_handles(
+fn github_omits_list_reviews_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.omit_consumer_handles(
     case: case,
     omit_keys: github_red_omit_keys,
     total_consumer_handles: github_real_consumer_handles
@@ -43,14 +44,14 @@ fn github_omits_list_reviews_consumer_handles(case: std.hermetic_replay.Publishe
 }
 
 test fn github_mock_consumer_is_total_holds() -> Bool {
-  mock_totality_green_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_green_holds(
     published: extdeps.github.mock_corpus.github_published_mock_corpus,
     consumer_handles: github_real_consumer_handles
   )
 }
 
 test fn github_mock_omitted_member_is_red_holds() -> Bool {
-  mock_totality_red_on_omission_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_red_on_omission_holds(
     published: extdeps.github.mock_corpus.github_published_mock_corpus,
     consumer_handles: github_omits_list_reviews_consumer_handles
   )

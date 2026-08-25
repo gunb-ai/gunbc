@@ -2,11 +2,11 @@ module v2.test.extdeps_shape_transport_policy.lens_unit.module_path_rename
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn module_path_rename_resolves_by_qn_not_filepath_holds() -> Bool {
-  v2.lens.extdeps_shape_transport_policy.extdeps_module_identity_resolves(module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_cargo_build_module)
-    && v2.lens.extdeps_shape_transport_policy.extdeps_live_module_dead_param_count_for_operation(
+  extdeps_module_identity_resolves(module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_cargo_build_module)
+    && extdeps_live_module_dead_param_count_for_operation(
       module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_cargo_build_module,
       service: "cargo.Build",
       operation: "Clippy"
@@ -14,5 +14,5 @@ test fn module_path_rename_resolves_by_qn_not_filepath_holds() -> Bool {
 }
 
 test fn module_path_rename_unknown_qn_does_not_resolve_holds() -> Bool {
-  !v2.lens.extdeps_shape_transport_policy.extdeps_module_identity_resolves(module: v2.lens.extdeps_shape_transport_policy.module_refs.bogus_extdeps_module)
+  !extdeps_module_identity_resolves(module: v2.lens.extdeps_shape_transport_policy.module_refs.bogus_extdeps_module)
 }

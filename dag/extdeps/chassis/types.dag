@@ -3,7 +3,7 @@ module extdeps.chassis.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Computer_case"
   }
 }
@@ -13,10 +13,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.chassis.types",
       decl_name: "ChassisCatalogRow",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.chassis.types.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -24,7 +24,7 @@ type MotherboardFormFactor = Atx | MicroAtx | MiniItx
 
 type ChassisCatalogRow {
   model: std.types.NonEmptyStr
-  manufacturer: Vendor<extdeps.hardware.Hardware>
+  manufacturer: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   rack_units: std.measure.RackUnit
   motherboard_support: List<MotherboardFormFactor>
   internal_35_bay_count: Int

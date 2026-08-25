@@ -2,54 +2,54 @@ module v2.test.extdeps_shape_transport_policy.lens_unit.clean_git_diff
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data clean_git_diff_service: String = "git.Core"
 data clean_git_diff_operation: String = "Diff"
 
-data clean_git_diff_argv_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact> = [
-  v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact {
+data clean_git_diff_argv_facts: List<ExtdepsTransportArgvFact> = [
+  ExtdepsTransportArgvFact {
     module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
-    transport_kind: v2.lens.extdeps_shape_transport_policy.Shell,
+    transport_kind: Shell,
     argv_index: 0,
     argv_token: "git"
   },
-  v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact {
+  ExtdepsTransportArgvFact {
     module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
-    transport_kind: v2.lens.extdeps_shape_transport_policy.Shell,
+    transport_kind: Shell,
     argv_index: 1,
     argv_token: "diff"
   },
-  v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact {
+  ExtdepsTransportArgvFact {
     module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
-    transport_kind: v2.lens.extdeps_shape_transport_policy.Shell,
+    transport_kind: Shell,
     argv_index: 2,
     argv_token: "\{base\}"
   },
-  v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact {
+  ExtdepsTransportArgvFact {
     module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
-    transport_kind: v2.lens.extdeps_shape_transport_policy.Shell,
+    transport_kind: Shell,
     argv_index: 3,
     argv_token: "\{head\}"
   }
 ]
 
-data clean_git_diff_input_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsOperationInputFact> = [
-  v2.lens.extdeps_shape_transport_policy.ExtdepsOperationInputFact {
+data clean_git_diff_input_facts: List<ExtdepsOperationInputFact> = [
+  ExtdepsOperationInputFact {
     module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
     param_name: "base"
   },
-  v2.lens.extdeps_shape_transport_policy.ExtdepsOperationInputFact {
+  ExtdepsOperationInputFact {
     module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation,
@@ -57,17 +57,17 @@ data clean_git_diff_input_facts: List<v2.lens.extdeps_shape_transport_policy.Ext
   }
 ]
 
-data clean_git_diff_fusion_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsTransportFusionFact> = []
+data clean_git_diff_fusion_facts: List<ExtdepsTransportFusionFact> = []
 
 test fn clean_git_diff_is_green_holds() -> Bool {
-  v2.lens.extdeps_shape_transport_policy.extdeps_shape_transport_policy_violation_count_for_operation(
+  extdeps_shape_transport_policy_violation_count_for_operation(
     argv_facts: clean_git_diff_argv_facts,
     fusion_facts: clean_git_diff_fusion_facts,
     module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_git_module,
     service: clean_git_diff_service,
     operation: clean_git_diff_operation
   ) == 0
-    && v2.lens.extdeps_shape_transport_policy.extdeps_shape_transport_policy_dead_param_count_for_operation(
+    && extdeps_shape_transport_policy_dead_param_count_for_operation(
       argv_facts: clean_git_diff_argv_facts,
       input_facts: clean_git_diff_input_facts,
       module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_git_module,

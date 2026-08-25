@@ -32,15 +32,15 @@ type CrossTreeAdmissionVerdict
   = CrossTreeAdmitted
   | CrossTreeDenied { reason: CrossTreeDenialReason }
 
-fn source_root_ref_eq(a: SourceRootRef, b: SourceRootRef) -> v2.std.logic.Bool {
+fn source_root_ref_eq(a: SourceRootRef, b: SourceRootRef) -> Bool {
   match a {
     V2Tree => match b { V2Tree => true, DagTree => false }
     DagTree => match b { V2Tree => false, DagTree => true }
   }
 }
 
-fn source_root_set_contains(roots: SourceRootSet, r: SourceRootRef) -> v2.std.logic.Bool {
-  contains(xs: roots, item: r, eq: source_root_ref_eq)
+fn source_root_set_contains(roots: SourceRootSet, r: SourceRootRef) -> Bool {
+  v2.std.algebra.contains(xs: roots, item: r, eq: source_root_ref_eq)
 }
 
 fn cross_tree_import_admitted(
@@ -71,7 +71,7 @@ fn cross_tree_import_closure_admitted(
   roots: SourceRootSet,
   order: TreeFundamentalityOrder
 ) -> CrossTreeAdmissionVerdict {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: closure,
     empty: CrossTreeAdmitted,
     cons: fn(verdict, edge) {

@@ -1,9 +1,11 @@
 module v2.test.lens_mock_totality.sec_edgar_mock_totality
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedSecEdgarMock {
-  tag: v2.std.node.Symbol
+  tag: Symbol
 }
 
 data sec_edgar_red_omit_keys: List<String> = [
@@ -11,37 +13,37 @@ data sec_edgar_red_omit_keys: List<String> = [
   "sec.Edgar.GetCompanyConcept",
 ]
 
-fn materialize_sec_edgar_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedSecEdgarMock> {
+fn materialize_sec_edgar_mock(case: PublishedMockCase) -> Outcome<MaterializedSecEdgarMock> {
   if case.operation_key == "sec.Edgar.GetCompanyFacts" {
-    outcome_accepted(value: MaterializedSecEdgarMock { tag: ^materialized_get_company_facts })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedSecEdgarMock { tag: ^materialized_get_company_facts })
   } else if case.operation_key == "sec.Edgar.GetCompanyConcept" {
-    outcome_accepted(value: MaterializedSecEdgarMock { tag: ^materialized_get_company_concept })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedSecEdgarMock { tag: ^materialized_get_company_concept })
   } else {
-    mock_unhandled_rejection()
+    v2.lens.mock_totality.mock_unhandled_rejection()
   }
 }
 
-fn real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  outcome_accepted_p(outcome: materialize_sec_edgar_mock(case: case))
+fn real_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.outcome_accepted_p(outcome: materialize_sec_edgar_mock(case: case))
 }
 
-fn omits_edgar_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  omit_consumer_handles(
+fn omits_edgar_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.omit_consumer_handles(
     case: case,
     omit_keys: sec_edgar_red_omit_keys,
-    total_consumer_handles: v2.test.lens_mock_totality.sec_edgar_mock_totality.real_consumer_handles
+    total_consumer_handles: real_consumer_handles
   )
 }
 
 test fn sec_edgar_mock_consumer_is_total_holds() -> Bool {
-  mock_totality_green_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_green_holds(
     published: extdeps.sec.mock_corpus.sec_edgar_published_mock_corpus,
-    consumer_handles: v2.test.lens_mock_totality.sec_edgar_mock_totality.real_consumer_handles
+    consumer_handles: real_consumer_handles
   )
 }
 
 test fn sec_edgar_mock_omitted_member_is_red_holds() -> Bool {
-  mock_totality_red_on_omission_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_red_on_omission_holds(
     published: extdeps.sec.mock_corpus.sec_edgar_published_mock_corpus,
     consumer_handles: omits_edgar_consumer_handles
   )

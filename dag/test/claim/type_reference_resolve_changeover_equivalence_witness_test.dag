@@ -1,7 +1,7 @@
 module test.claim.type_reference_resolve_changeover_equivalence_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data type_reference_resolve_changeover_equivalence_witness_note: String = "PR-B equivalence receipt scaffold (quiet-hawk-219 hardening condition 1): cross-module production corpus where legacy masked-leaf resolve and containment-switched resolve both run and agree. Disagreement arms must be enumerated — each explained as a fixed defect of the old path (pool-membership coincidence, Product(<anon>) peel). Cross-module required: provider module exposes type via containment root exposure; consumer references without import reachability; pool-present homonym in unrelated module must not decide binding. Fail-closed (condition 2): new path refuses — never silent lookup_type_for fallback. Emit path (item_registry leaf-key) is OUT OF SCOPE — see type_reference_binding_context_path_scope_note. DISSOLVE-ON: resolve_node_bounded changeover lands and both-path compile equivalence holds on this corpus — then promote from scaffold to enrolled regression control."
 
@@ -10,15 +10,15 @@ fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosti
 }
 
 fn unresolved_blocking_count(source: String) -> Int {
-  match test.claim.type_reference_resolve_changeover_equivalence_witness_test.census_of(source: source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(
-        rows: census_rows_of_class(
-          rows: census_blocking_rows(rows: rows),
+  match census_of(source: source) {
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } =>
+      gunbc.compile_diagnostic_census.census_total_count(
+        rows: gunbc.compile_diagnostic_census.census_rows_of_class(
+          rows: gunbc.compile_diagnostic_census.census_blocking_rows(rows: rows),
           wanted: "UnresolvedType"
         )
       )
-    CensusNotRunnable { cause: _ } => 0 - 1
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
@@ -31,18 +31,18 @@ data cross_module_pool_homonym_consumer_source: String = "module equiv_consumer_
 data irrelevant_import_control_source: String = "module equiv_irrelevant_import\n\nimport std.types { String }\n\nfn use_type(x: std.content_hash.ContentHash) -> std.content_hash.ContentHash { x }\n"
 
 test fn cross_module_import_reachable_stays_green() -> Bool {
-  test.claim.type_reference_resolve_changeover_equivalence_witness_test.unresolved_blocking_count(source: cross_module_consumer_import_reachable_source) == 0
+  unresolved_blocking_count(source: cross_module_consumer_import_reachable_source) == 0
 }
 
 test fn cross_module_pool_homonym_without_import_is_fail_closed_red() -> Bool {
-  test.claim.type_reference_resolve_changeover_equivalence_witness_test.unresolved_blocking_count(source: cross_module_pool_homonym_consumer_source) >= 1
+  unresolved_blocking_count(source: cross_module_pool_homonym_consumer_source) >= 1
 }
 
 test fn irrelevant_import_does_not_rescue_pool_homonym_red() -> Bool {
-  test.claim.type_reference_resolve_changeover_equivalence_witness_test.unresolved_blocking_count(source: irrelevant_import_control_source) >= 1
+  unresolved_blocking_count(source: irrelevant_import_control_source) >= 1
 }
 
 test fn pr_b_hardening_note_carries_equivalence_and_fail_closed_obligations() -> Bool {
-  type_reference_binding_context_pr_b_hardening_note != "" &&
-  type_reference_binding_context_path_scope_note != ""
+  gunbc.type_reference_binding_context.type_reference_binding_context_pr_b_hardening_note != "" &&
+  gunbc.type_reference_binding_context.type_reference_binding_context_path_scope_note != ""
 }

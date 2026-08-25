@@ -1,13 +1,13 @@
 module test.claim.bmc_fan_converge_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data cleanup_debt_test_digest: extdeps.crypto.hash.Digest = sha256_digest(
+data cleanup_debt_test_digest: extdeps.crypto.hash.Digest = extdeps.crypto.hash.sha256_digest(
   hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 )
 
-data cleanup_debt_test_manifest: gunbc.bmc_fan_converge.BmcFanBackupManifest = bmc_fan_backup_manifest(
+data cleanup_debt_test_manifest: gunbc.bmc_fan_converge.BmcFanBackupManifest = gunbc.bmc_fan_converge.bmc_fan_backup_manifest(
   target: srv4_host.identity,
   stable_bmc_identity: "srv4-bmc-machine-id",
   firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
@@ -25,40 +25,40 @@ data cleanup_debt_test_applied_receipt: gunbc.bmc_fan_converge.BmcFanAppliedRece
   post_restart_active_digest: cleanup_debt_test_digest,
   monitoring: gunbc.bmc_fan_monitor.BmcFanMonitoringReceipt {
     sample_count: 12,
-    elapsed: second(360),
-    required_elapsed: second(360),
-    maximum_sample_gap: second(30),
+    elapsed: std.measure.second(360),
+    required_elapsed: std.measure.second(360),
+    maximum_sample_gap: std.measure.second(30),
   },
 }
 
 test fn duty_curve_cannot_fall_after_reaching_emergency_full_duty() -> Bool {
-  match validate_bmc_fan_curve(
+  match extdeps.bmc.types.validate_bmc_fan_curve(
     curve: extdeps.bmc.types.BmcFanCurve {
       control_sensor: "TEMP_SOC",
       steps: [
-        extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(90), duty: percent(100) },
-        extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(95), duty: percent(30) },
+        extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(90), duty: std.measure.percent(100) },
+        extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(95), duty: std.measure.percent(30) },
       ],
-      minimum_duty: percent(30),
-      sensor_unavailable_duty: percent(100),
-      zone_failsafe_duty: percent(100),
-      positive_hysteresis: celsius_delta(1),
-      negative_hysteresis: celsius_delta(1),
+      minimum_duty: std.measure.percent(30),
+      sensor_unavailable_duty: std.measure.percent(100),
+      zone_failsafe_duty: std.measure.percent(100),
+      positive_hysteresis: std.measure.celsius_delta(1),
+      negative_hysteresis: std.measure.celsius_delta(1),
     },
   ) {
-    BmcFanCurveInvalid { cause: _ } => true
+    extdeps.bmc.types.BmcFanCurveInvalid { cause: _ } => true
     _ => false
   }
 }
 
 test fn successful_effect_survives_cleanup_failure_as_cleanup_debt() -> Bool {
-  match bmc_fan_record_cleanup_debt(
+  match gunbc.bmc_fan_converge.bmc_fan_record_cleanup_debt(
     result: gunbc.bmc_fan_converge.BmcFanAppliedAndVerified {
       receipt: cleanup_debt_test_applied_receipt,
     },
     cleanup_debt: "remote stage removal failed",
   ) {
-    BmcFanAppliedWithCleanupDebt {
+    gunbc.bmc_fan_converge.BmcFanAppliedWithCleanupDebt {
       cleanup_debt,
       receipt,
     } => cleanup_debt == "remote stage removal failed"
@@ -68,10 +68,10 @@ test fn successful_effect_survives_cleanup_failure_as_cleanup_debt() -> Bool {
 }
 
 test fn digest_mismatched_backup_manifest_is_not_admitted() -> Bool {
-  let different_digest = sha256_digest(
+  let different_digest = extdeps.crypto.hash.sha256_digest(
     hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   )
-  let mismatched = bmc_fan_backup_manifest(
+  let mismatched = gunbc.bmc_fan_converge.bmc_fan_backup_manifest(
     target: srv4_host.identity,
     stable_bmc_identity: "srv4-bmc-machine-id",
     firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
@@ -81,7 +81,7 @@ test fn digest_mismatched_backup_manifest_is_not_admitted() -> Bool {
     creation_generation: 1,
     created_at: 1,
   )
-  !bmc_fan_backup_manifest_matches_request(
+  !gunbc.bmc_fan_converge.bmc_fan_backup_manifest_matches_request(
     manifest: mismatched,
     target: srv4_host.identity,
     stable_bmc_identity: "srv4-bmc-machine-id",
@@ -93,7 +93,7 @@ test fn digest_mismatched_backup_manifest_is_not_admitted() -> Bool {
 }
 
 test fn stale_backup_manifest_generation_is_not_admitted() -> Bool {
-  !bmc_fan_backup_manifest_matches_request(
+  !gunbc.bmc_fan_converge.bmc_fan_backup_manifest_matches_request(
     manifest: cleanup_debt_test_manifest,
     target: srv4_host.identity,
     stable_bmc_identity: "srv4-bmc-machine-id",
@@ -107,18 +107,18 @@ test fn stale_backup_manifest_generation_is_not_admitted() -> Bool {
 fn backup_manifest_identity_differs(
   changed: gunbc.bmc_fan_converge.BmcFanBackupManifest,
 ) -> Bool {
-  let baseline_identity = bmc_fan_backup_manifest_identity(
+  let baseline_identity = gunbc.bmc_fan_converge.bmc_fan_backup_manifest_identity(
     manifest: cleanup_debt_test_manifest,
   )
-  let changed_identity = bmc_fan_backup_manifest_identity(manifest: changed)
+  let changed_identity = gunbc.bmc_fan_converge.bmc_fan_backup_manifest_identity(manifest: changed)
   baseline_identity != changed_identity
 }
 
 test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool {
-  let different_digest = sha256_digest(
+  let different_digest = extdeps.crypto.hash.sha256_digest(
     hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   )
-  backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+  backup_manifest_identity_differs(changed: gunbc.bmc_fan_converge.bmc_fan_backup_manifest(
     target: srv3_host.identity,
     stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
     firmware: cleanup_debt_test_manifest.firmware,
@@ -128,7 +128,7 @@ test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool 
     creation_generation: cleanup_debt_test_manifest.creation_generation,
     created_at: cleanup_debt_test_manifest.created_at,
   ))
-    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+    && backup_manifest_identity_differs(changed: gunbc.bmc_fan_converge.bmc_fan_backup_manifest(
       target: cleanup_debt_test_manifest.target,
       stable_bmc_identity: "different-bmc-machine-id",
       firmware: cleanup_debt_test_manifest.firmware,
@@ -138,12 +138,12 @@ test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool 
       creation_generation: cleanup_debt_test_manifest.creation_generation,
       created_at: cleanup_debt_test_manifest.created_at,
     ))
-    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+    && backup_manifest_identity_differs(changed: gunbc.bmc_fan_converge.bmc_fan_backup_manifest(
       target: cleanup_debt_test_manifest.target,
       stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
       firmware: extdeps.bmc.capability.BmcFirmwareVersion {
-        family: OpenBmc,
-        version: firmware_semantic_version(
+        family: std.bmc.OpenBmc,
+        version: extdeps.firmware.types.firmware_semantic_version(
           major: cleanup_debt_test_manifest.firmware.version.major + 1,
           minor: cleanup_debt_test_manifest.firmware.version.minor,
           patch: cleanup_debt_test_manifest.firmware.version.patch,
@@ -155,7 +155,7 @@ test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool 
       creation_generation: cleanup_debt_test_manifest.creation_generation,
       created_at: cleanup_debt_test_manifest.created_at,
     ))
-    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+    && backup_manifest_identity_differs(changed: gunbc.bmc_fan_converge.bmc_fan_backup_manifest(
       target: cleanup_debt_test_manifest.target,
       stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
       firmware: cleanup_debt_test_manifest.firmware,
@@ -165,7 +165,7 @@ test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool 
       creation_generation: cleanup_debt_test_manifest.creation_generation,
       created_at: cleanup_debt_test_manifest.created_at,
     ))
-    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+    && backup_manifest_identity_differs(changed: gunbc.bmc_fan_converge.bmc_fan_backup_manifest(
       target: cleanup_debt_test_manifest.target,
       stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
       firmware: cleanup_debt_test_manifest.firmware,
@@ -175,7 +175,7 @@ test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool 
       creation_generation: cleanup_debt_test_manifest.creation_generation,
       created_at: cleanup_debt_test_manifest.created_at,
     ))
-    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+    && backup_manifest_identity_differs(changed: gunbc.bmc_fan_converge.bmc_fan_backup_manifest(
       target: cleanup_debt_test_manifest.target,
       stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
       firmware: cleanup_debt_test_manifest.firmware,
@@ -185,7 +185,7 @@ test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool 
       creation_generation: cleanup_debt_test_manifest.creation_generation,
       created_at: cleanup_debt_test_manifest.created_at,
     ))
-    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+    && backup_manifest_identity_differs(changed: gunbc.bmc_fan_converge.bmc_fan_backup_manifest(
       target: cleanup_debt_test_manifest.target,
       stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
       firmware: cleanup_debt_test_manifest.firmware,
@@ -195,7 +195,7 @@ test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool 
       creation_generation: cleanup_debt_test_manifest.creation_generation + 1,
       created_at: cleanup_debt_test_manifest.created_at,
     ))
-    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+    && backup_manifest_identity_differs(changed: gunbc.bmc_fan_converge.bmc_fan_backup_manifest(
       target: cleanup_debt_test_manifest.target,
       stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
       firmware: cleanup_debt_test_manifest.firmware,
@@ -208,20 +208,20 @@ test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool 
 }
 
 test fn identical_bmc_on_wrong_endpoint_is_not_exact_target() -> Bool {
-  !bmc_fan_exact_target_admission_matches(
+  !gunbc.bmc_fan_converge.bmc_fan_exact_target_admission_matches(
     target: srv4_host.identity,
     admission_target: srv3_host.identity,
   )
 }
 
 test fn sub_threshold_tach_is_a_discriminating_refusal() -> Bool {
-  match bmc_fan_first_unhealthy_tach(
+  match gunbc.bmc_fan_converge.bmc_fan_first_unhealthy_tach(
     health: [
       extdeps.bmc.openbmc_fan_control.OpenBmcTachBelowThreshold {
         sensor: "FAN4",
-        reading_rpm: rpm(899),
-        minimum_rpm: rpm(900),
-        source: OpenBmcWarningLowThreshold,
+        reading_rpm: std.measure.rpm(899),
+        minimum_rpm: std.measure.rpm(900),
+        source: extdeps.bmc.openbmc_fan_control.OpenBmcWarningLowThreshold,
       },
     ],
     required: ["FAN4"],
@@ -232,13 +232,13 @@ test fn sub_threshold_tach_is_a_discriminating_refusal() -> Bool {
 }
 
 test fn threshold_satisfied_tach_is_not_refused() -> Bool {
-  match bmc_fan_first_unhealthy_tach(
+  match gunbc.bmc_fan_converge.bmc_fan_first_unhealthy_tach(
     health: [
       extdeps.bmc.openbmc_fan_control.OpenBmcTachAtOrAboveThreshold {
         sensor: "FAN4",
-        reading_rpm: rpm(900),
-        minimum_rpm: rpm(900),
-        source: OpenBmcWarningLowThreshold,
+        reading_rpm: std.measure.rpm(900),
+        minimum_rpm: std.measure.rpm(900),
+        source: extdeps.bmc.openbmc_fan_control.OpenBmcWarningLowThreshold,
       },
     ],
     required: ["FAN4"],
@@ -249,106 +249,106 @@ test fn threshold_satisfied_tach_is_not_refused() -> Bool {
 }
 
 test fn semantically_equal_but_digest_different_config_is_not_live_exact() -> Bool {
-  let admitted = sha256_digest(
+  let admitted = extdeps.crypto.hash.sha256_digest(
     hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   )
-  let live = sha256_digest(
+  let live = extdeps.crypto.hash.sha256_digest(
     hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   )
   admitted != live
-    && !bmc_fan_live_digest_matches(
+    && !gunbc.bmc_fan_converge.bmc_fan_live_digest_matches(
       live_digest: live,
       admitted_digest: admitted,
     )
 }
 
 test fn delayed_temperature_rise_is_seen_inside_the_bounded_window() -> Bool {
-  match bmc_fan_assess_monitoring_samples(
+  match gunbc.bmc_fan_monitor.bmc_fan_assess_monitoring_samples(
     samples: [
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(60), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(30), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(60), safety_refusal: none },
       gunbc.bmc_fan_monitor.BmcFanMonitoringSample {
-        elapsed: second(90),
+        elapsed: std.measure.second(90),
         safety_refusal: Present { value: "TEMP_SOC crossed rollback threshold" },
       },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(360), safety_refusal: none },
     ],
-    required_elapsed: second(360),
-    maximum_sample_gap: second(30),
+    required_elapsed: std.measure.second(360),
+    maximum_sample_gap: std.measure.second(30),
   ) {
-    BmcFanMonitoringRefused { reason: _, receipt } =>
-      receipt.sample_count == 3 && second_count(receipt.elapsed) == 90
-    BmcFanMonitoringCompleted { receipt: _ } => false
+    gunbc.bmc_fan_monitor.BmcFanMonitoringRefused { reason: _, receipt } =>
+      receipt.sample_count == 3 && std.measure.second_count(receipt.elapsed) == 90
+    gunbc.bmc_fan_monitor.BmcFanMonitoringCompleted { receipt: _ } => false
   }
 }
 
 test fn short_monitoring_window_cannot_claim_completion() -> Bool {
-  match bmc_fan_assess_monitoring_samples(
+  match gunbc.bmc_fan_monitor.bmc_fan_assess_monitoring_samples(
     samples: [
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(60), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(30), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(60), safety_refusal: none },
     ],
-    required_elapsed: second(360),
-    maximum_sample_gap: second(30),
+    required_elapsed: std.measure.second(360),
+    maximum_sample_gap: std.measure.second(30),
   ) {
-    BmcFanMonitoringRefused { reason: _, receipt } =>
-      receipt.sample_count == 2 && second_count(receipt.elapsed) == 60
-    BmcFanMonitoringCompleted { receipt: _ } => false
+    gunbc.bmc_fan_monitor.BmcFanMonitoringRefused { reason: _, receipt } =>
+      receipt.sample_count == 2 && std.measure.second_count(receipt.elapsed) == 60
+    gunbc.bmc_fan_monitor.BmcFanMonitoringCompleted { receipt: _ } => false
   }
 }
 
 test fn empty_monitoring_window_cannot_claim_completion() -> Bool {
-  match bmc_fan_assess_monitoring_samples(
+  match gunbc.bmc_fan_monitor.bmc_fan_assess_monitoring_samples(
     samples: [],
-    required_elapsed: second(360),
-    maximum_sample_gap: second(30),
+    required_elapsed: std.measure.second(360),
+    maximum_sample_gap: std.measure.second(30),
   ) {
-    BmcFanMonitoringRefused { reason: _, receipt } =>
-      receipt.sample_count == 0 && second_count(receipt.elapsed) == 0
-    BmcFanMonitoringCompleted { receipt: _ } => false
+    gunbc.bmc_fan_monitor.BmcFanMonitoringRefused { reason: _, receipt } =>
+      receipt.sample_count == 0 && std.measure.second_count(receipt.elapsed) == 0
+    gunbc.bmc_fan_monitor.BmcFanMonitoringCompleted { receipt: _ } => false
   }
 }
 
 test fn bounded_monitoring_completion_carries_the_admitted_bound() -> Bool {
-  match bmc_fan_assess_monitoring_samples(
+  match gunbc.bmc_fan_monitor.bmc_fan_assess_monitoring_samples(
     samples: [
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(60), safety_refusal: none },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(90), safety_refusal: none },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(120), safety_refusal: none },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(150), safety_refusal: none },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(180), safety_refusal: none },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(210), safety_refusal: none },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(240), safety_refusal: none },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(270), safety_refusal: none },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(300), safety_refusal: none },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(330), safety_refusal: none },
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(30), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(60), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(90), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(120), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(150), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(180), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(210), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(240), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(270), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(300), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(330), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(360), safety_refusal: none },
     ],
-    required_elapsed: second(360),
-    maximum_sample_gap: second(30),
+    required_elapsed: std.measure.second(360),
+    maximum_sample_gap: std.measure.second(30),
   ) {
-    BmcFanMonitoringCompleted { receipt } =>
+    gunbc.bmc_fan_monitor.BmcFanMonitoringCompleted { receipt } =>
       receipt.sample_count == 12
-        && second_count(receipt.elapsed) == 360
-        && second_count(receipt.required_elapsed) == 360
-        && second_count(receipt.maximum_sample_gap) == 30
-    BmcFanMonitoringRefused { reason: _, receipt: _ } => false
+        && std.measure.second_count(receipt.elapsed) == 360
+        && std.measure.second_count(receipt.required_elapsed) == 360
+        && std.measure.second_count(receipt.maximum_sample_gap) == 30
+    gunbc.bmc_fan_monitor.BmcFanMonitoringRefused { reason: _, receipt: _ } => false
   }
 }
 
 test fn one_late_sample_cannot_claim_monitoring_coverage() -> Bool {
-  match bmc_fan_assess_monitoring_samples(
+  match gunbc.bmc_fan_monitor.bmc_fan_assess_monitoring_samples(
     samples: [
-      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: std.measure.second(360), safety_refusal: none },
     ],
-    required_elapsed: second(360),
-    maximum_sample_gap: second(30),
+    required_elapsed: std.measure.second(360),
+    maximum_sample_gap: std.measure.second(30),
   ) {
-    BmcFanMonitoringRefused { reason, receipt } =>
+    gunbc.bmc_fan_monitor.BmcFanMonitoringRefused { reason, receipt } =>
       reason == "post-restart monitoring sample gap exceeded its admitted cadence"
         && receipt.sample_count == 1
-        && second_count(receipt.elapsed) == 360
-    BmcFanMonitoringCompleted { receipt: _ } => false
+        && std.measure.second_count(receipt.elapsed) == 360
+    gunbc.bmc_fan_monitor.BmcFanMonitoringCompleted { receipt: _ } => false
   }
 }

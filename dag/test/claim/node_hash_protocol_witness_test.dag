@@ -1,5 +1,7 @@
 module test.claim.node_hash_protocol_witness
 
+
+
 // FNV1A64-STRUCTURAL-NODE-PROTOCOL-0 -- the conformance corpus for the node identity rule.
 //
 // WHY THIS EXISTS. `content_hash` decides what two programs ARE: it is the identity behind object
@@ -63,29 +65,29 @@ fn positional(target: v2.std.node.Node) -> v2.std.node.Edge {
 // FROZEN VECTORS -- exhaustive over the protocol's closed branches.
 //
 // The expected digest for each arm comes from a MATCH over the coproduct, not a list of claims. That
-// is the point: adding a `v2.std.node.Connective` or `Behavior` arm makes these matches non-exhaustive and the
+// is the point: adding a `Connective` or `Behavior` arm makes these matches non-exhaustive and the
 // module stops compiling until the new arm is given a vector. Coverage of the current protocol is
 // therefore structural rather than a roster someone must remember to extend.
 
 fn expected_childless_connective_digest(c: v2.std.node.Connective) -> String {
   match c {
-    Conj => "c56b5515d62d08bf"
-    Disj => "d18c6b0885dc88e2"
-    Arrow => "cddb68d14dfd306e"
-    Cardinality => "dbe6cb930047e16f"
-    Instantiation => "4d19a656f5ebd992"
-    Atom { identity: _ } => "8a32b46ce830ef4c"
+    v2.std.node.Conj => "c56b5515d62d08bf"
+    v2.std.node.Disj => "d18c6b0885dc88e2"
+    v2.std.node.Arrow => "cddb68d14dfd306e"
+    v2.std.node.Cardinality => "dbe6cb930047e16f"
+    v2.std.node.Instantiation => "4d19a656f5ebd992"
+    v2.std.node.Atom { identity: _ } => "8a32b46ce830ef4c"
   }
 }
 
 fn expected_childless_behavior_digest(b: v2.std.node.Behavior) -> String {
   match b {
-    Value => "985af5d2060f85ca"
-    Transform => "1381ca3dff032667"
-    Branch => "b3d4fb128d8a0e0f"
-    Loop => "c61f8557ca6645ac"
-    Bind => "662cad8d0032d8ee"
-    Match => "9b19b7f9a41ec60a"
+    v2.std.node.Value => "985af5d2060f85ca"
+    v2.std.node.Transform => "1381ca3dff032667"
+    v2.std.node.Branch => "b3d4fb128d8a0e0f"
+    v2.std.node.Loop => "c61f8557ca6645ac"
+    v2.std.node.Bind => "662cad8d0032d8ee"
+    v2.std.node.Match => "9b19b7f9a41ec60a"
   }
 }
 
@@ -97,7 +99,7 @@ fn behavior_vector_holds(b: v2.std.node.Behavior) -> Bool {
   digest_of(n: comp(b: b, children: [])) == expected_childless_behavior_digest(b: b)
 }
 
-// Every v2.std.node.Connective arm. The Atom vector uses ^alpha, the symbol its expected value was derived for.
+// Every Connective arm. The Atom vector uses ^alpha, the symbol its expected value was derived for.
 test fn every_connective_matches_its_frozen_vector() -> Bool {
   connective_vector_holds(c: v2.std.node.Conj)
     && connective_vector_holds(c: v2.std.node.Disj)
@@ -265,7 +267,7 @@ test fn named_edge_label_is_not_erased() -> Bool {
 
 // The positional order axis. This is the counterpart to the named-order quotient law: named order is
 // erased, positional order is PRESERVED, and a canonicalizer that sorted everything uniformly would
-// satisfy the quotient laws while destroying this. v2.std.node.Cardinality takes PositionalEdges.
+// satisfy the quotient laws while destroying this. Cardinality takes PositionalEdges.
 test fn positional_order_is_not_erased() -> Bool {
   digest_of(n: ty(c: v2.std.node.Cardinality, children: [
     positional(target: atom_node(identity: ^a)),

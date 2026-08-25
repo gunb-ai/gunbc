@@ -3,7 +3,7 @@ module extdeps.bmc.webui.nbd_proxy_serve
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/openbmc/jsnbd"
   }
 }
@@ -13,11 +13,11 @@ data bmcweb_session_token_env_ref: std.types.NonEmptyStr = concat("$", "BMCWEB_S
 data srv3_nbd_proxy_local_port: Int = 10809
 
 data nbd_proxy_serve_systemd_realization_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.bmc.webui.nbd_proxy_serve",
     decl_name: "nbd_proxy_serve_websocat_argv",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -56,7 +56,7 @@ fn nbd_proxy_serve_intent_of_virtual_media(vm: extdeps.bmc.virtual_media.Virtual
     bmc_host: vm.bmc_host,
     session_token: params.session_token,
     ws_path: params.ws_path,
-    iso_path: virtual_media_source_iso(intent: vm),
+    iso_path: extdeps.bmc.virtual_media.virtual_media_source_iso(intent: vm),
     local_nbd_port: params.local_nbd_port,
   }
 }
@@ -125,7 +125,7 @@ fn nbd_proxy_serve_websocat_argv(intent: NbdProxyServeTransportIntent) -> List<S
   let auth_header = concat("Authorization: Token ", intent.session_token)
   let socat_bridge = concat("tcp:127.0.0.1:", port)
   [
-    websocat_install_path as String,
+    extdeps.tools.websocat.websocat_install_path as String,
     "--insecure",
     "--text",
     concat("--header=\"", concat(auth_header, "\"")),
@@ -139,7 +139,7 @@ fn nbd_proxy_serve_websocat_argv_leading_tool_is_websocat(intent: NbdProxyServeT
     nbd_proxy_serve_websocat_argv(intent: intent),
     init: "",
     f: (acc, word) => if acc != "" { acc } else { word },
-  ) == websocat_install_path as String
+  ) == extdeps.tools.websocat.websocat_install_path as String
 }
 
 fn nbd_proxy_serve_nbdkit_argv_includes_iso(intent: NbdProxyServeTransportIntent) -> Bool {
@@ -180,5 +180,5 @@ fn nbd_proxy_serve_has_no_shell_supervision_grammar(intent: NbdProxyServeTranspo
 }
 
 fn nbd_proxy_serve_requires_host_as_nbd_server() -> Bool {
-  nbd_proxy_role_assignment.host_program_role == NbdServer
+  nbd_proxy_role_assignment.host_program_role == extdeps.bmc.webui.nbd_proxy.NbdServer
 }

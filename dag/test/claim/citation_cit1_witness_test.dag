@@ -2,58 +2,58 @@ module test.claim.citation_cit1_witness
 
 
 data witness_pdf_base_uri: extdeps.uri.Uri = extdeps.uri.Uri {
-  scheme: Https,
+  scheme: extdeps.uri.Https,
   locator: "example.test/fixture.pdf",
 }
 
 test fn rfc_8118_anchor_cites_current_standard_not_3778() -> Bool {
-  extdeps.standards.rfc_8118.extdeps_model_scope.first_citation.uri.locator == rfc_8118_section_3_locator && string_contains(s: rfc_8118_normative_relationship_note, pattern: "OBSOLETES RFC 3778") && string_contains(s: rfc_8118_normative_relationship_note, pattern: "gunbc.citation.pdf_safe_profile")
+  extdeps_model_scope.first_citation.uri.locator == extdeps.standards.rfc_8118.rfc_8118_section_3_locator && string_contains(s: extdeps.standards.rfc_8118.rfc_8118_normative_relationship_note, pattern: "OBSOLETES RFC 3778") && string_contains(s: extdeps.standards.rfc_8118.rfc_8118_normative_relationship_note, pattern: "gunbc.citation.pdf_safe_profile")
 }
 
 test fn iso_32000_2_is_further_citation() -> Bool {
-  extdeps.standards.rfc_8118.extdeps_model_scope.further_citations |> any(c => c.uri.locator == iso_32000_2_authority.uri.locator)
+  extdeps_model_scope.further_citations |> any(c => c.uri.locator == iso_32000_2_authority.uri.locator)
 }
 
 test fn rfc_pdf_open_page_admits_positive_one() -> Bool {
-  match pdf_open_page(page: 1) {
-    ParameterConstructed(extdeps.standards.rfc_8118.OpenPage(PdfOpenPage { page: p })) => p == 1
+  match extdeps.standards.rfc_8118.pdf_open_page(page: 1) {
+    extdeps.standards.rfc_8118.ParameterConstructed(extdeps.standards.rfc_8118.OpenPage(extdeps.standards.rfc_8118.PdfOpenPage { page: p })) => p == 1
     _ => false
   }
 }
 
 test fn rfc_pdf_open_zoom_is_upstream_constructed_not_refused() -> Bool {
-  match pdf_open_zoom(scale_percent: 100) {
-    ParameterConstructed(OpenZoom(zoom)) => zoom.scale_percent == 100
+  match extdeps.standards.rfc_8118.pdf_open_zoom(scale_percent: 100) {
+    extdeps.standards.rfc_8118.ParameterConstructed(OpenZoom(zoom)) => zoom.scale_percent == 100
     _ => false
   }
 }
 
 test fn gunbc_safe_profile_refuses_zoom() -> Bool {
-  match pdf_safe_parameter_sequence(constructions: [pdf_open_zoom(scale_percent: 100)]) {
-    SafeSequenceConstructionRefused { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom } } => true
+  match gunbc.citation.pdf_safe_profile.pdf_safe_parameter_sequence(constructions: [extdeps.standards.rfc_8118.pdf_open_zoom(scale_percent: 100)]) {
+    gunbc.citation.pdf_safe_profile.SafeSequenceConstructionRefused { cause: gunbc.citation.pdf_safe_profile.ParameterOutsideCit1SafeProfile { parameter: gunbc.citation.pdf_safe_profile.PdfParameterZoom } } => true
     _ => false
   }
 }
 
 test fn gunbc_safe_profile_admits_page_only_sequence() -> Bool {
-  match pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
-    SafeSequenceConstructed(sequence) => pdf_safe_parameters_include_page(sequence, 1)
+  match gunbc.citation.pdf_safe_profile.pdf_safe_parameter_sequence(constructions: [extdeps.standards.rfc_8118.pdf_open_page(page: 1)]) {
+    gunbc.citation.pdf_safe_profile.SafeSequenceConstructed(sequence) => gunbc.citation.pdf_safe_profile.pdf_safe_parameters_include_page(sequence, 1)
     _ => false
   }
 }
 
 test fn pdf_safe_parameters_include_page_red_wrong_page() -> Bool {
-  match pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
-    SafeSequenceConstructed(sequence) => !pdf_safe_parameters_include_page(sequence, 99)
+  match gunbc.citation.pdf_safe_profile.pdf_safe_parameter_sequence(constructions: [extdeps.standards.rfc_8118.pdf_open_page(page: 1)]) {
+    gunbc.citation.pdf_safe_profile.SafeSequenceConstructed(sequence) => !gunbc.citation.pdf_safe_profile.pdf_safe_parameters_include_page(sequence, 99)
     _ => false
   }
 }
 
 test fn project_navigable_uri_appends_ordered_fragment() -> Bool {
-  match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
-    SequenceConstructed(sequence) =>
-      match project_navigable_uri(base: witness_pdf_base_uri, sequence: sequence) {
-        NavigableUriProjected { uri: u } => u.locator == "example.test/fixture.pdf#page=1"
+  match extdeps.standards.rfc_8118.rfc_pdf_open_parameter_sequence(constructions: [extdeps.standards.rfc_8118.pdf_open_page(page: 1)]) {
+    extdeps.standards.rfc_8118.SequenceConstructed(sequence) =>
+      match extdeps.standards.rfc_8118.project_navigable_uri(base: witness_pdf_base_uri, sequence: sequence) {
+        extdeps.standards.rfc_8118.NavigableUriProjected { uri: u } => u.locator == "example.test/fixture.pdf#page=1"
         _ => false
       }
     _ => false
@@ -61,14 +61,14 @@ test fn project_navigable_uri_appends_ordered_fragment() -> Bool {
 }
 
 test fn project_navigable_uri_safe_refuses_when_base_carries_fragment() -> Bool {
-  match pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
-    SafeSequenceConstructed(_) =>
-      match project_navigable_uri_safe(
-        base: extdeps.standards.rfc_8118.extdeps_external_authority_anchor.uri,
-        construction: pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]),
+  match gunbc.citation.pdf_safe_profile.pdf_safe_parameter_sequence(constructions: [extdeps.standards.rfc_8118.pdf_open_page(page: 1)]) {
+    gunbc.citation.pdf_safe_profile.SafeSequenceConstructed(_) =>
+      match gunbc.citation.pdf_safe_profile.project_navigable_uri_safe(
+        base: extdeps_external_authority_anchor.uri,
+        construction: gunbc.citation.pdf_safe_profile.pdf_safe_parameter_sequence(constructions: [extdeps.standards.rfc_8118.pdf_open_page(page: 1)]),
       ) {
-        NavigableUriSafeRefused { cause: BaseLocatorAlreadyCarriesFragmentFromRfc { locator: l } } =>
-          l == rfc_8118_section_3_locator
+        gunbc.citation.pdf_safe_profile.NavigableUriSafeRefused { cause: gunbc.citation.pdf_safe_profile.BaseLocatorAlreadyCarriesFragmentFromRfc { locator: l } } =>
+          l == extdeps.standards.rfc_8118.rfc_8118_section_3_locator
         _ => false
       }
     _ => false
@@ -76,20 +76,20 @@ test fn project_navigable_uri_safe_refuses_when_base_carries_fragment() -> Bool 
 }
 
 test fn project_navigable_uri_safe_refuses_mixed_admitted_and_refused_parameters() -> Bool {
-  match project_navigable_uri_safe(
+  match gunbc.citation.pdf_safe_profile.project_navigable_uri_safe(
     base: witness_pdf_base_uri,
-    construction: pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1), pdf_open_zoom(scale_percent: 100)]),
+    construction: gunbc.citation.pdf_safe_profile.pdf_safe_parameter_sequence(constructions: [extdeps.standards.rfc_8118.pdf_open_page(page: 1), extdeps.standards.rfc_8118.pdf_open_zoom(scale_percent: 100)]),
   ) {
-    NavigableUriSafeRefused { cause: SafeParameterConstructionRefusedInSequence { cause: ParameterOutsideCit1SafeProfile { parameter: PdfParameterZoom } } } => true
+    gunbc.citation.pdf_safe_profile.NavigableUriSafeRefused { cause: gunbc.citation.pdf_safe_profile.SafeParameterConstructionRefusedInSequence { cause: gunbc.citation.pdf_safe_profile.ParameterOutsideCit1SafeProfile { parameter: gunbc.citation.pdf_safe_profile.PdfParameterZoom } } } => true
     _ => false
   }
 }
 
 test fn pdf_profile_parameter_wire_encodes_ampersand_in_nameddest() -> Bool {
-  match pdf_open_nameddest(name: "a&b" as std.types.NonEmptyStr) {
-    ParameterConstructed(parameter) =>
-      match pdf_profile_parameter_wire(parameter: parameter) {
-        PdfProfileParameterWired { wire: w } => w == "nameddest=a%26b"
+  match extdeps.standards.rfc_8118.pdf_open_nameddest(name: "a&b" as std.types.NonEmptyStr) {
+    extdeps.standards.rfc_8118.ParameterConstructed(parameter) =>
+      match extdeps.standards.rfc_8118.pdf_profile_parameter_wire(parameter: parameter) {
+        extdeps.standards.rfc_8118.PdfProfileParameterWired { wire: w } => w == "nameddest=a%26b"
         _ => false
       }
     _ => false
@@ -97,10 +97,10 @@ test fn pdf_profile_parameter_wire_encodes_ampersand_in_nameddest() -> Bool {
 }
 
 test fn pdf_profile_parameter_wire_encodes_hash_in_structelem() -> Bool {
-  match pdf_open_structelem(struct_id: "id#1" as std.types.NonEmptyStr) {
-    ParameterConstructed(parameter) =>
-      match pdf_profile_parameter_wire(parameter: parameter) {
-        PdfProfileParameterWired { wire: w } => w == "structelem=id%231"
+  match extdeps.standards.rfc_8118.pdf_open_structelem(struct_id: "id#1" as std.types.NonEmptyStr) {
+    extdeps.standards.rfc_8118.ParameterConstructed(parameter) =>
+      match extdeps.standards.rfc_8118.pdf_profile_parameter_wire(parameter: parameter) {
+        extdeps.standards.rfc_8118.PdfProfileParameterWired { wire: w } => w == "structelem=id%231"
         _ => false
       }
     _ => false
@@ -108,10 +108,10 @@ test fn pdf_profile_parameter_wire_encodes_hash_in_structelem() -> Bool {
 }
 
 test fn pdf_profile_parameter_wire_encodes_equals_in_nameddest() -> Bool {
-  match pdf_open_nameddest(name: "a=b" as std.types.NonEmptyStr) {
-    ParameterConstructed(parameter) =>
-      match pdf_profile_parameter_wire(parameter: parameter) {
-        PdfProfileParameterWired { wire: w } => w == "nameddest=a%3Db"
+  match extdeps.standards.rfc_8118.pdf_open_nameddest(name: "a=b" as std.types.NonEmptyStr) {
+    extdeps.standards.rfc_8118.ParameterConstructed(parameter) =>
+      match extdeps.standards.rfc_8118.pdf_profile_parameter_wire(parameter: parameter) {
+        extdeps.standards.rfc_8118.PdfProfileParameterWired { wire: w } => w == "nameddest=a%3Db"
         _ => false
       }
     _ => false
@@ -119,10 +119,10 @@ test fn pdf_profile_parameter_wire_encodes_equals_in_nameddest() -> Bool {
 }
 
 test fn pdf_profile_parameter_wire_encodes_percent_in_nameddest() -> Bool {
-  match pdf_open_nameddest(name: "100%25" as std.types.NonEmptyStr) {
-    ParameterConstructed(parameter) =>
-      match pdf_profile_parameter_wire(parameter: parameter) {
-        PdfProfileParameterWired { wire: w } => w == "nameddest=100%2525"
+  match extdeps.standards.rfc_8118.pdf_open_nameddest(name: "100%25" as std.types.NonEmptyStr) {
+    extdeps.standards.rfc_8118.ParameterConstructed(parameter) =>
+      match extdeps.standards.rfc_8118.pdf_profile_parameter_wire(parameter: parameter) {
+        extdeps.standards.rfc_8118.PdfProfileParameterWired { wire: w } => w == "nameddest=100%2525"
         _ => false
       }
     _ => false
@@ -130,10 +130,10 @@ test fn pdf_profile_parameter_wire_encodes_percent_in_nameddest() -> Bool {
 }
 
 test fn pdf_profile_parameter_wire_encodes_space_in_nameddest() -> Bool {
-  match pdf_open_nameddest(name: "a b" as std.types.NonEmptyStr) {
-    ParameterConstructed(parameter) =>
-      match pdf_profile_parameter_wire(parameter: parameter) {
-        PdfProfileParameterWired { wire: w } => w == "nameddest=a%20b"
+  match extdeps.standards.rfc_8118.pdf_open_nameddest(name: "a b" as std.types.NonEmptyStr) {
+    extdeps.standards.rfc_8118.ParameterConstructed(parameter) =>
+      match extdeps.standards.rfc_8118.pdf_profile_parameter_wire(parameter: parameter) {
+        extdeps.standards.rfc_8118.PdfProfileParameterWired { wire: w } => w == "nameddest=a%20b"
         _ => false
       }
     _ => false
@@ -141,25 +141,25 @@ test fn pdf_profile_parameter_wire_encodes_space_in_nameddest() -> Bool {
 }
 
 test fn uri_percent_encode_component_round_trip_unreserved() -> Bool {
-  match uri_percent_encode_component(value: "page-1_ok" as std.types.NonEmptyStr) {
-    UriPercentComponentEncoded(encoded) => encoded == ("page-1_ok" as std.types.NonEmptyStr)
-    UriPercentComponentRefused { cause: _ } => false
+  match extdeps.uri.uri_percent_encode_component(value: "page-1_ok" as std.types.NonEmptyStr) {
+    extdeps.uri.UriPercentComponentEncoded(encoded) => encoded == ("page-1_ok" as std.types.NonEmptyStr)
+    extdeps.uri.UriPercentComponentRefused { cause: _ } => false
   }
 }
 
 test fn uri_hex_nibble_construction_refuses_out_of_range_digit() -> Bool {
-  match uri_hex_nibble_construction(d: 16) {
-    UriHexNibbleOutOfRange { digit: 16 } => true
+  match extdeps.uri.uri_hex_nibble_construction(d: 16) {
+    extdeps.uri.UriHexNibbleOutOfRange { digit: 16 } => true
     _ => false
   }
 }
 
 test fn pdf_open_fragment_selector_conforms_to_rfc_8118() -> Bool {
-  match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
-    SequenceConstructed(sequence) =>
-      match pdf_open_fragment_selector(sequence: sequence) {
-        PdfOpenFragmentSelectorConstructed(std.citation.FragmentSelectorVariant(s)) =>
-          s.conforms_to.uri.locator == extdeps.standards.rfc_8118.extdeps_external_authority_anchor.uri.locator
+  match extdeps.standards.rfc_8118.rfc_pdf_open_parameter_sequence(constructions: [extdeps.standards.rfc_8118.pdf_open_page(page: 1)]) {
+    extdeps.standards.rfc_8118.SequenceConstructed(sequence) =>
+      match extdeps.standards.rfc_8118.pdf_open_fragment_selector(sequence: sequence) {
+        extdeps.standards.rfc_8118.PdfOpenFragmentSelectorConstructed(FragmentSelectorVariant(s)) =>
+          s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
             && s.value == ("page=1" as std.types.NonEmptyStr)
         _ => false
       }
@@ -170,23 +170,23 @@ test fn pdf_open_fragment_selector_conforms_to_rfc_8118() -> Bool {
 data witness_unencodable_scalar_code_points: List<Int> = [1114112]
 
 test fn uri_percent_encode_component_refuses_code_point_beyond_unicode_max() -> Bool {
-  match uri_percent_encode_code_points(code_points: test.claim.citation_cit1_witness.witness_unencodable_scalar_code_points) {
-    UriPercentComponentRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 } } => true
+  match extdeps.uri.uri_percent_encode_code_points(code_points: witness_unencodable_scalar_code_points) {
+    extdeps.uri.UriPercentComponentRefused { cause: extdeps.uri.UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 } } => true
     _ => false
   }
 }
 
 test fn project_navigable_uri_refuses_unencodable_nameddest_value() -> Bool {
-  match pdf_open_nameddest_wire_from_scalar_code_points(
+  match extdeps.standards.rfc_8118.pdf_open_nameddest_wire_from_scalar_code_points(
     name: "plant" as std.types.NonEmptyStr,
-    code_points: test.claim.citation_cit1_witness.witness_unencodable_scalar_code_points,
+    code_points: witness_unencodable_scalar_code_points,
   ) {
     PdfProfileParameterWireRefused { parameter: p, cause: cause } =>
-      match navigable_uri_projection_from_sequence_wire(
+      match extdeps.standards.rfc_8118.navigable_uri_projection_from_sequence_wire(
         base: witness_pdf_base_uri,
         sequence_wire: extdeps.standards.rfc_8118.PdfOpenParameterSequenceWireRefused { parameter: p, cause: cause },
       ) {
-        NavigableUriRefused { cause: PdfOpenParameterPercentEncodeRefused { parameter: _, cause: _ } } => true
+        extdeps.standards.rfc_8118.NavigableUriRefused { cause: extdeps.standards.rfc_8118.PdfOpenParameterPercentEncodeRefused { parameter: _, cause: _ } } => true
         _ => false
       }
     _ => false
@@ -194,10 +194,10 @@ test fn project_navigable_uri_refuses_unencodable_nameddest_value() -> Bool {
 }
 
 test fn pdf_open_parameter_sequence_wire_joins_multi_parameter_sequence_without_concat_fold() -> Bool {
-  match rfc_pdf_open_parameter_sequence(constructions: [pdf_open_page(page: 1), pdf_open_nameddest(name: "a" as std.types.NonEmptyStr)]) {
-    SequenceConstructed(sequence) =>
-      match pdf_open_parameter_sequence_wire(sequence: sequence) {
-        PdfOpenParameterSequenceWired { wire: w } => w == "page=1&nameddest=a"
+  match extdeps.standards.rfc_8118.rfc_pdf_open_parameter_sequence(constructions: [extdeps.standards.rfc_8118.pdf_open_page(page: 1), extdeps.standards.rfc_8118.pdf_open_nameddest(name: "a" as std.types.NonEmptyStr)]) {
+    extdeps.standards.rfc_8118.SequenceConstructed(sequence) =>
+      match extdeps.standards.rfc_8118.pdf_open_parameter_sequence_wire(sequence: sequence) {
+        extdeps.standards.rfc_8118.PdfOpenParameterSequenceWired { wire: w } => w == "page=1&nameddest=a"
         _ => false
       }
     _ => false
@@ -205,6 +205,6 @@ test fn pdf_open_parameter_sequence_wire_joins_multi_parameter_sequence_without_
 }
 
 test fn citation_cit1_witness_split_names_homonym_accommodation() -> Bool {
-  string_contains(s: citation_cit1_witness_split_note, pattern: "homonym shadowing")
-    && string_contains(s: citation_cit1_witness_split_note, pattern: "namespace-only resolution")
+  string_contains(s: extdeps.standards.rfc_8118.citation_cit1_witness_split_note, pattern: "homonym shadowing")
+    && string_contains(s: extdeps.standards.rfc_8118.citation_cit1_witness_split_note, pattern: "namespace-only resolution")
 }

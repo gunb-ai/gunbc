@@ -4,25 +4,25 @@ module v2.test.claim.module_resolution_plan_witness
 data module_fixture_a_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^module_fixture_a } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data module_fixture_b_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^module_fixture_b } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data module_fixture_c_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^module_fixture_c } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data module_fixture_d_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^module_fixture_d } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data module_fixture_declarations: List<v2.lens.module_graph.ModuleDeclarationFact> = [
@@ -55,48 +55,48 @@ data module_fixture_nodes: List<v2.std.node.Node> = [
 ]
 
 fn module_fixture_diamond_views() -> List<v2.std.dependency.DependencyView> {
-  match module_dependency_views(
-    edges: module_import_edges(
+  match v2.workflow.module_resolution_plan.module_dependency_views(
+    edges: v2.workflow.module_resolution_plan.module_import_edges(
       imports: module_fixture_diamond_imports,
       declarations: module_fixture_declarations
     ),
     bindings: module_fixture_bindings
   ) {
-    ModuleDependencyViews { views: views } => views
-    ModuleNodeBindingMissing { module: _ } => []
+    v2.workflow.module_resolution_plan.ModuleDependencyViews { views: views } => views
+    v2.workflow.module_resolution_plan.ModuleNodeBindingMissing { module: _ } => []
   }
 }
 
 test fn witness_dangling_import_is_not_an_edge() -> Bool {
-  let edges = module_import_edges(
+  let edges = v2.workflow.module_resolution_plan.module_import_edges(
     imports: module_fixture_diamond_imports,
     declarations: module_fixture_declarations
   )
-  length(xs: edges) == 4
+  v2.std.algebra.length(xs: edges) == 4
 }
 
 test fn witness_diamond_schedules_as_antichain_levels() -> Bool {
-  match module_resolution_schedule(
+  match v2.workflow.module_resolution_plan.module_resolution_schedule(
     nodes: module_fixture_nodes,
     dependencies: module_fixture_diamond_views()
   ) {
-    RunnerScheduleComplete { batches: batches, store: store } =>
-      (runner_schedule_batch_count(batches: batches) == 3)
-        && runner_schedule_contains_batch(batches: batches, batch: v2.workflow.executor.ExecutorBatch {
-             jobs: [executor_job_for_node(node: module_fixture_a_node)]
+    v2.workflow.realization_runner.RunnerScheduleComplete { batches: batches, store: store } =>
+      (v2.workflow.realization_runner.runner_schedule_batch_count(batches: batches) == 3)
+        && v2.workflow.realization_runner.runner_schedule_contains_batch(batches: batches, batch: v2.workflow.executor.ExecutorBatch {
+             jobs: [v2.workflow.executor.executor_job_for_node(node: module_fixture_a_node)]
            })
-        && runner_schedule_contains_batch(batches: batches, batch: v2.workflow.executor.ExecutorBatch {
+        && v2.workflow.realization_runner.runner_schedule_contains_batch(batches: batches, batch: v2.workflow.executor.ExecutorBatch {
              jobs: [
-               executor_job_for_node(node: module_fixture_b_node),
-               executor_job_for_node(node: module_fixture_c_node)
+               v2.workflow.executor.executor_job_for_node(node: module_fixture_b_node),
+               v2.workflow.executor.executor_job_for_node(node: module_fixture_c_node)
              ]
            })
-        && runner_schedule_contains_batch(batches: batches, batch: v2.workflow.executor.ExecutorBatch {
-             jobs: [executor_job_for_node(node: module_fixture_d_node)]
+        && v2.workflow.realization_runner.runner_schedule_contains_batch(batches: batches, batch: v2.workflow.executor.ExecutorBatch {
+             jobs: [v2.workflow.executor.executor_job_for_node(node: module_fixture_d_node)]
            })
-        && runner_schedule_store_covers_nodes(store: store, nodes: module_fixture_nodes)
-        && (node_keyed_store_node_count(store: store) == 4)
-    RunnerScheduleBlocked { evidence: _ } => false
+        && v2.workflow.realization_runner.runner_schedule_store_covers_nodes(store: store, nodes: module_fixture_nodes)
+        && (v2.workflow.realization_runner.node_keyed_store_node_count(store: store) == 4)
+    v2.workflow.realization_runner.RunnerScheduleBlocked { evidence: _ } => false
   }
 }
 
@@ -106,22 +106,22 @@ data module_fixture_cycle_imports: List<v2.lens.module_graph.ImportResolutionFac
 ]
 
 test fn witness_cycle_refuses_never_partially_schedules() -> Bool {
-  match module_dependency_views(
-    edges: module_import_edges(
+  match v2.workflow.module_resolution_plan.module_dependency_views(
+    edges: v2.workflow.module_resolution_plan.module_import_edges(
       imports: module_fixture_cycle_imports,
       declarations: module_fixture_declarations
     ),
     bindings: module_fixture_bindings
   ) {
-    ModuleDependencyViews { views: views } =>
-      match module_resolution_schedule(
+    v2.workflow.module_resolution_plan.ModuleDependencyViews { views: views } =>
+      match v2.workflow.module_resolution_plan.module_resolution_schedule(
         nodes: [module_fixture_a_node, module_fixture_b_node],
         dependencies: views
       ) {
-        RunnerScheduleBlocked { evidence: _ } => true
-        RunnerScheduleComplete { batches: _, store: _ } => false
+        v2.workflow.realization_runner.RunnerScheduleBlocked { evidence: _ } => true
+        v2.workflow.realization_runner.RunnerScheduleComplete { batches: _, store: _ } => false
       }
-    ModuleNodeBindingMissing { module: _ } => false
+    v2.workflow.module_resolution_plan.ModuleNodeBindingMissing { module: _ } => false
   }
 }
 
@@ -132,15 +132,15 @@ data module_fixture_bindings_without_d: List<v2.workflow.module_resolution_plan.
 ]
 
 test fn witness_missing_binding_refuses_with_the_module_named() -> Bool {
-  match module_dependency_views(
-    edges: module_import_edges(
+  match v2.workflow.module_resolution_plan.module_dependency_views(
+    edges: v2.workflow.module_resolution_plan.module_import_edges(
       imports: module_fixture_diamond_imports,
       declarations: module_fixture_declarations
     ),
     bindings: module_fixture_bindings_without_d
   ) {
-    ModuleNodeBindingMissing { module: module } => module == "fixture.d"
-    ModuleDependencyViews { views: _ } => false
+    v2.workflow.module_resolution_plan.ModuleNodeBindingMissing { module: module } => module == "fixture.d"
+    v2.workflow.module_resolution_plan.ModuleDependencyViews { views: _ } => false
   }
 }
 

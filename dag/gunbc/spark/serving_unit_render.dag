@@ -24,7 +24,7 @@ module gunbc.spark.serving_unit_render
 // path, and then started from the wrong one, with nothing comparing the two.
 fn spark_serving_exec_start_command(spec: gunbc.spark.serving_install_paths.SparkServingUserUnitSpec) -> std.types.NonEmptyStr {
   join([
-    spark_serving_required_runtime_executable_path() as String,
+    gunbc.spark.serving_install_paths.spark_serving_required_runtime_executable_path() as String,
     " ",
     spec.exec_subcommand as String,
   ], "") as std.types.NonEmptyStr
@@ -40,11 +40,11 @@ fn spark_serving_user_unit_file(spec: gunbc.spark.serving_install_paths.SparkSer
     ],
     service: [
       extdeps.systemd.unit_file.ServiceType { mode: spec.service_type },
-      extdeps.systemd.unit_file.Environment { assignment: ollama_host_env_assignment(bind: spec.bind_host_port) },
+      extdeps.systemd.unit_file.Environment { assignment: extdeps.ollama.server_env.ollama_host_env_assignment(bind: spec.bind_host_port) },
       extdeps.systemd.unit_file.Environment {
-        assignment: ollama_models_env_assignment(root: spark_serving_models_root() as std.types.NonEmptyStr),
+        assignment: extdeps.ollama.server_env.ollama_models_env_assignment(root: gunbc.spark.serving_install_paths.spark_serving_models_root() as std.types.NonEmptyStr),
       },
-      extdeps.systemd.unit_file.WorkingDirectory { path: spark_serving_required_runtime_root() as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.WorkingDirectory { path: gunbc.spark.serving_install_paths.spark_serving_required_runtime_root() as std.types.NonEmptyStr },
       extdeps.systemd.unit_file.ExecStart { command: spark_serving_exec_start_command(spec: spec) },
       extdeps.systemd.unit_file.Restart { policy: spec.restart },
     ],
@@ -56,13 +56,13 @@ fn spark_serving_user_unit_file(spec: gunbc.spark.serving_install_paths.SparkSer
 // write side and the observe side cannot drift into two renderings of one spec -- which would make
 // every host report a permanent MemberChanged against itself.
 fn spark_serving_user_unit_text(spec: gunbc.spark.serving_install_paths.SparkServingUserUnitSpec) -> String {
-  serialize_systemd_unit_file(file: spark_serving_user_unit_file(spec: spec))
+  extdeps.systemd.unit_file.serialize_systemd_unit_file(file: spark_serving_user_unit_file(spec: spec))
 }
 
 fn spark_serving_desired_user_unit_text() -> String {
   spark_serving_user_unit_text(
-    spec: spark_serving_user_unit_spec(
-      bind_host_port: spark_serving_desired_bind_host_port() as std.types.NonEmptyStr,
+    spec: gunbc.spark.serving_install_paths.spark_serving_user_unit_spec(
+      bind_host_port: gunbc.spark.serving_desired.spark_serving_desired_bind_host_port() as std.types.NonEmptyStr,
     ),
   )
 }
@@ -87,8 +87,8 @@ fn spark_serving_desired_user_unit_text() -> String {
 // state a verdict relative to desired, which would have put the identity in a different domain
 // whenever desired state changed; this keeps one domain.
 fn spark_serving_user_unit_content_identity(wire_base64: String) -> std.types.NonEmptyStr {
-  serialize_content_hash(
-    hash: content_hash_of_value(
+  std.content_hash.serialize_content_hash(
+    hash: std.content_hash.content_hash_of_value(
       value: join(["unit-content:", wire_base64], "") as std.types.NonEmptyStr,
     ),
   ) as std.types.NonEmptyStr
@@ -97,9 +97,9 @@ fn spark_serving_user_unit_content_identity(wire_base64: String) -> std.types.No
 // The desired side's wire form, encoded here so the two sides cannot drift into different encodings
 // of one spec -- the same reason spark_serving_user_unit_text is one function.
 fn spark_serving_user_unit_content_wire(text: String) -> String {
-  base64_encode(
-    octets: bytes_octets(b: utf8_encode_bytes(s: text)),
-    variant: Standard,
+  std.encoding.base64_encode(
+    octets: std.bytes.bytes_octets(b: std.bytes.utf8_encode_bytes(s: text)),
+    variant: std.encoding.Standard,
   )
 }
 

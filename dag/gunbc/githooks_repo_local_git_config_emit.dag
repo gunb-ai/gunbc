@@ -1,34 +1,36 @@
 module gunbc.githooks_repo_local_git_config_emit
 
+
+
 data githooks_repo_local_git_config_emit_note: String = "Self-healing carrier for repository-local Git integration bindings (generated-file conflict policy charter, lane 2, review 46518 / crisp-bat-830). Generated pre-commit and pre-push hooks run idempotent local binding installs derived from reconcile_install_argv — the same cited argv shapes the actuator uses — on every hook invocation once core.hooksPath is set. The one-time manual seed remains only core.hooksPath itself (DESIGN Building & checks); these hooks then converge merge.generated-artifact.driver and re-assert hooksPath. Clones that never set hooksPath degrade to vanilla git text-merge for generated-artifact paths (safe degradation: drift gate still guards at CI); the merge-driver binding is not self-healed until hooks run."
 
-data githooks_repo_local_git_config_emit_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+data githooks_repo_local_git_config_emit_shell_emit_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.RealizationDispatch,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.githooks_repo_local_git_config_emit",
     decl_name: "emit_repo_local_git_config_converge_shell",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data githooks_repo_local_git_config_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: githooks_repo_local_git_config_emit_shell — hook-emitted git config argv lines are the foreign-executor interim for a runtime-absent site; DISSOLVES WHEN shell→intent bash grammar rows read forward emit the converge block from the same reconcile_install_argv authority without concat-built medium strings (DESIGN §4 one-grammar-both-directions; githooks_pre_push_emit medium disposition family).")
+data githooks_repo_local_git_config_emit_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: githooks_repo_local_git_config_emit_shell — hook-emitted git config argv lines are the foreign-executor interim for a runtime-absent site; DISSOLVES WHEN shell→intent bash grammar rows read forward emit the converge block from the same reconcile_install_argv authority without concat-built medium strings (DESIGN §4 one-grammar-both-directions; githooks_pre_push_emit medium disposition family).")
 
 data githooks_repo_local_git_config_emit_quoting_note: String = "THE EMITTED LINE QUOTES EVERY TOKEN, AND THE DEFECT THAT FORCED IT WAS REACHABLE, NOT HYPOTHETICAL. This emitter formerly rendered the install argv through extdeps.git git_shell_join_argv, which joins already-spelled words with single spaces and — by that module's own standing ruling (git_pathspec_exclude_note) — is a join and must never become a quoter, because quoting belongs to the emitting realization, the only layer that knows the target shell. Nothing quoted here, so the rendering was correct only while every binding value happened to be one shell word. The moment merge.generated-artifact.driver stopped being the single word `true` and became a driver invocation with placeholders, the emitted hook line degenerated into `git config --local merge.generated-artifact.driver bash .githooks/generated-artifact-merge %O %A %B %P` — seven arguments where git expects two, so the self-healing converge block would have failed on every hook invocation while looking entirely ordinary in the diff. Rendering through extdeps.exec.command shell_command_render fixes the class rather than this value: every token is single-quoted with embedded apostrophes escaped (witnessed in test.claim.argv_command_render), so a value carrying spaces, quotes, or shell metacharacters is emitted correctly by construction and no future binding can reintroduce the defect by being multi-word."
 
-fn emit_install_binding_line(binding: RepoLocalGitConfigBinding) -> String {
+fn emit_install_binding_line(binding: gunbc.repo_local_git_config.RepoLocalGitConfigBinding) -> String {
   concat(
     concat("# repo-local git config: ", binding.key),
-    concat("\n", concat(shell_command_render(command: reconcile_install_command(binding: binding)), "\n"))
+    concat("\n", concat(extdeps.exec.command.shell_command_render(command: gunbc.repo_local_git_config.reconcile_install_command(binding: binding)), "\n"))
   )
 }
 
 fn emit_repo_local_git_config_converge_shell() -> String {
   concat(
-    concat("# ", concat(dissolution_description(condition: githooks_repo_local_git_config_emit_dissolution_trigger), "\n")),
+    concat("# ", concat(std.dissolution.dissolution_description(condition: githooks_repo_local_git_config_emit_dissolution_trigger), "\n")),
     concat(
       "# Idempotent repository-local Git integration bindings (gunbc.repo_local_git_config).\n",
       fold(
-        desired_repo_local_git_config_bindings(),
+        gunbc.repo_local_git_config.desired_repo_local_git_config_bindings(),
         init: "",
         f: fn(acc, binding) { concat(acc, emit_install_binding_line(binding: binding)) }
       )

@@ -8,27 +8,27 @@ data unit_suboptimal_complexity: List<v2.std.verification.TestClaim> = [
 
 data unit_nested_optional_flatten: List<v2.std.verification.TestClaim> = [
   v2.test.impossible_bug.nested_optional_flatten.claim_optional_chaining_no_double_unwrap,
-  claim_optional_double_unwrap_rejected
+  v2.test.impossible_bug.nested_optional_flatten.claim_optional_double_unwrap_rejected
 ]
 
 data unit_transport_type_drift: List<v2.std.verification.TestClaim> = [
-  claim_shared_declaration_compiles_both_sides,
+  v2.test.impossible_bug.transport_type_drift.claim_shared_declaration_compiles_both_sides,
   v2.test.impossible_bug.transport_type_drift.claim_target_contract_drift_impossible
 ]
 
 data unit_idempotency_contract: List<v2.std.verification.TestClaim> = [
-  claim_idempotent_inhabitant_passes,
-  claim_repeated_append_in_idempotent_position_caught
+  v2.test.impossible_bug.idempotency_contract.claim_idempotent_inhabitant_passes,
+  v2.test.impossible_bug.idempotency_contract.claim_repeated_append_in_idempotent_position_caught
 ]
 
 data unit_unenumerated_effects: List<v2.std.verification.TestClaim> = [
-  claim_explicit_reread_passes,
-  claim_redundant_read_caught
+  v2.test.impossible_bug.unenumerated_effects.claim_explicit_reread_passes,
+  v2.test.impossible_bug.unenumerated_effects.claim_redundant_read_caught
 ]
 
 data unit_unhandled_diagnostic_paths: List<v2.std.verification.TestClaim> = [
-  claim_division_by_zero_total_or_proven_safe,
-  claim_unproven_division_rejected
+  v2.test.impossible_bug.unhandled_diagnostic_paths.claim_division_by_zero_total_or_proven_safe,
+  v2.test.impossible_bug.unhandled_diagnostic_paths.claim_unproven_division_rejected
 ]
 
 fn discrimination_subject_rows() -> List<List<v2.std.verification.TestClaim>> {
@@ -46,22 +46,22 @@ data all_positive_control_unit: List<v2.std.verification.TestClaim> = [
   v2.test.impossible_bug.suboptimal_complexity.claim_within_structural_bound_passes
 ]
 
-test fn negative_control_correctly_rejected() -> v2.std.logic.Bool {
-  !unit_is_discriminating(unit: all_positive_control_unit)
+test fn negative_control_correctly_rejected() -> Bool {
+  !v2.lens.discrimination.unit_is_discriminating(unit: all_positive_control_unit)
 }
 
 data non_perturbed_red_over_green_input: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "non-perturbation control: red asserted over the SAME input the positive accepts",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: within_bound_input,
-  expected_rejection: diagnostics_singleton(
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+  input: v2.test.impossible_bug.suboptimal_complexity.within_bound_input,
+  expected_rejection: v2.std.diagnostic.diagnostics_singleton(
     d: v2.std.diagnostic.Diagnostic {
       reason: ^discrimination_control_non_perturbed_reason,
-      at: v2.std.diagnostic.Textual { file: ^discrimination_gate_virtual_file, extent: WholeFile },
-      correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
+      at: v2.std.diagnostic.Textual { file: ^discrimination_gate_virtual_file, extent: v2.std.diagnostic.WholeFile },
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.UserInputBoundary }
     }
   ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
 data non_perturbed_control_unit: List<v2.std.verification.TestClaim> = [
@@ -69,8 +69,8 @@ data non_perturbed_control_unit: List<v2.std.verification.TestClaim> = [
   non_perturbed_red_over_green_input
 ]
 
-test fn non_perturbed_control_correctly_rejected() -> v2.std.logic.Bool {
-  !unit_is_discriminating(unit: non_perturbed_control_unit)
+test fn non_perturbed_control_correctly_rejected() -> Bool {
+  !v2.lens.discrimination.unit_is_discriminating(unit: non_perturbed_control_unit)
 }
 
 data mixed_input_non_perturbed_control_unit: List<v2.std.verification.TestClaim> = [
@@ -79,23 +79,23 @@ data mixed_input_non_perturbed_control_unit: List<v2.std.verification.TestClaim>
   non_perturbed_red_over_green_input
 ]
 
-test fn mixed_input_non_perturbed_control_correctly_rejected() -> v2.std.logic.Bool {
-  !unit_is_discriminating(unit: mixed_input_non_perturbed_control_unit)
+test fn mixed_input_non_perturbed_control_correctly_rejected() -> Bool {
+  !v2.lens.discrimination.unit_is_discriminating(unit: mixed_input_non_perturbed_control_unit)
 }
 
-fn all_rows_discriminating(rows: List<List<v2.std.verification.TestClaim>>) -> v2.std.logic.Bool {
-  fold_list(
+fn all_rows_discriminating(rows: List<List<v2.std.verification.TestClaim>>) -> Bool {
+  v2.std.algebra.fold_list(
     xs: rows,
     empty: true,
     cons: fn(acc, unit) {
-      acc && unit_is_discriminating(unit: unit)
+      acc && v2.lens.discrimination.unit_is_discriminating(unit: unit)
     }
   )
 }
 
-fn discrimination_family_gate() -> v2.std.logic.Bool {
+fn discrimination_family_gate() -> Bool {
   let rows = discrimination_subject_rows()
-  if is_empty(xs: rows) {
+  if v2.std.algebra.is_empty(xs: rows) {
     false
   } else {
     all_rows_discriminating(rows: rows)

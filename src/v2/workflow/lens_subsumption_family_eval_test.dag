@@ -1,18 +1,18 @@
 module v2.test.workflow.lens_subsumption_family_eval
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn subsumption_row_is_mechanical(row: v2.lens.subsumption.DissolutionSubsumption) -> v2.std.logic.Bool {
+fn subsumption_row_is_mechanical(row: v2.lens.subsumption.DissolutionSubsumption) -> Bool {
   match row.verification {
-    MechanicalReverification { test_claim: _ } => true
-    ProducerStageDerivation { derivation_path: _ } => false
+    v2.lens.subsumption.MechanicalReverification { test_claim: _ } => true
+    v2.lens.subsumption.ProducerStageDerivation { derivation_path: _ } => false
   }
 }
 
-fn lens_subsumption_family_gate() -> v2.std.logic.Bool {
-  subsumption_row_is_mechanical(row: rust_language_model_emit_subsumption)
-    && subsumption_row_is_mechanical(row: affected_set_irt1_subsumption)
+fn lens_subsumption_family_gate() -> Bool {
+  subsumption_row_is_mechanical(row: v2.lens.subsumption.rust_language_model_emit_subsumption)
+    && subsumption_row_is_mechanical(row: v2.lens.subsumption.affected_set_irt1_subsumption)
     && rust_language_model_emit_subsumption.subsumed_fixes.member(
          v2.lens.subsumption.DiffId { id: ^emit_rust_template_leaf_fix }
        )
@@ -24,4 +24,4 @@ fn lens_subsumption_family_gate() -> v2.std.logic.Bool {
        )
 }
 
-test data witness_lens_subsumption_family_gate_closed: v2.std.logic.Bool = lens_subsumption_family_gate()
+test data witness_lens_subsumption_family_gate_closed: Bool = lens_subsumption_family_gate()

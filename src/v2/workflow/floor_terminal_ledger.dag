@@ -1,5 +1,6 @@
 module v2.workflow.floor_terminal_ledger
 
+
 // THE FLOOR'S TERMINAL EVIDENCE, OWNED BY v2, TO BE SERIALIZED BY THE SEED.
 //
 // The v2 self-host program claims candidate-bound witnesses executed and matched their
@@ -85,7 +86,7 @@ module v2.workflow.floor_terminal_ledger
 type ClaimAttemptTerminal
   = Returned { observation: ClaimObservation }
   | RuntimeErrored { message: String }
-  | BudgetRefused { safety: ClaimSafetyOutcome }
+  | BudgetRefused { safety: v2.workflow.required_floor.ClaimSafetyOutcome }
   | HostToolUnresolved { name: String, probed: List<String> }
   | RouteGap { route: String }
 
@@ -96,7 +97,7 @@ type ClaimAttemptTerminal
 // witness where the truth is a witness whose answer was never in a readable shape.
 type ClaimObservation
   = ObservedVerdict { holds: Bool }
-  | ObservationUnrepresentable { reason: Symbol }
+  | ObservationUnrepresentable { reason: v2.std.node.Symbol }
 
 // WHAT THE ROSTER EXPECTED OF THIS IDENTITY, which is an input to the projection and never an
 // output of it. Held separately from the observation precisely so that "the witness answered
@@ -119,7 +120,7 @@ type ClaimExpectation
 // than being caught by a validator. Truncation is still caught, by the footer count against the
 // planned population, which is implemented and tested.
 type ClaimTerminalRow {
-  identity: WitnessIdentity
+  identity: v2.workflow.floor2_prepared_subject.WitnessIdentity
   expectation: ClaimExpectation
   terminal: ClaimAttemptTerminal
 }
@@ -158,7 +159,7 @@ type ClaimTerminalRow {
 // this purpose. Minting a `RepositoryRef` beside it would be the §3 nicknaming violation
 // committed inside a change whose subject is single authority.
 type RepositorySnapshot
-  = PublishedCommit { commit: GitObjectId }
+  = PublishedCommit { commit: extdeps.git.object_store.GitObjectId }
   | UnpublishedWorkingTree
 
 // THE REF AND THE DIGEST ARE TWO FACTS, NOT ONE, so they are two fields. The ref says WHICH
@@ -183,7 +184,7 @@ type RepositorySnapshot
 // being caught by a check (§5).
 type LedgerBinding {
   repository_snapshot: RepositorySnapshot
-  prepared_subject: Fnv1a64Structural
+  prepared_subject: std.content_hash.Fnv1a64Structural
 }
 
 fn ledger_is_candidate_bound(binding: LedgerBinding) -> Bool {
@@ -270,14 +271,14 @@ fn claim_disposition(row: ClaimTerminalRow) -> ClaimDisposition {
   match row.terminal {
     BudgetRefused { safety: s } =>
       match s {
-        SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } =>
+        v2.workflow.required_floor.SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } =>
           BudgetRefusedBeforeVerdict
-        CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } =>
+        v2.workflow.required_floor.CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } =>
           match row.expectation {
             ExpectedToHold => PassedOverBudget
             ExpectedRed => KnownRedNowPassing
           }
-        CompletedWithinSafetyLimits => BudgetTerminalWithoutSafetyCause
+        v2.workflow.required_floor.CompletedWithinSafetyLimits => BudgetTerminalWithoutSafetyCause
       }
     RuntimeErrored { message: _ } => RuntimeErroredBeforeVerdict
     HostToolUnresolved { name: _, probed: _ } => HostToolUnresolvedBeforeVerdict
@@ -307,9 +308,9 @@ fn claim_disposition(row: ClaimTerminalRow) -> ClaimDisposition {
 // and cancel in the totals. Completeness is all three being empty, which the swap above fails in
 // two places at once while no count moves.
 type LedgerReconciliation {
-  planned_without_terminal: List<WitnessIdentity>
-  terminal_without_planned: List<WitnessIdentity>
-  terminal_duplicated: List<WitnessIdentity>
+  planned_without_terminal: List<v2.workflow.floor2_prepared_subject.WitnessIdentity>
+  terminal_without_planned: List<v2.workflow.floor2_prepared_subject.WitnessIdentity>
+  terminal_duplicated: List<v2.workflow.floor2_prepared_subject.WitnessIdentity>
 }
 
 fn ledger_is_complete(r: LedgerReconciliation) -> Bool {
@@ -336,7 +337,7 @@ fn ledger_is_complete(r: LedgerReconciliation) -> Bool {
 // optional exactly when it fails, which is the failure arm that widens instead of refusing.
 type LedgerPublication
   = LedgerFinalized { row_count: Int, digest: String }
-  | LedgerPartial { reason: Symbol }
+  | LedgerPartial { reason: v2.std.node.Symbol }
 
 // GREEN ADMISSION IS A TYPED OUTCOME, NOT A Bool, because a Bool cannot say WHY evidence was
 // refused and the three reasons have three different remedies: the fold lost rows, something
@@ -360,16 +361,16 @@ type LedgerPublication
 // say what happened to the claim, so completeness over it is completeness in name.
 type LedgerGreenAdmission
   = EvidenceComplete
-  | EvidenceUnfinalized { reason: Symbol }
+  | EvidenceUnfinalized { reason: v2.std.node.Symbol }
   | EvidenceReconciliationFailed { reconciliation: LedgerReconciliation }
   | EvidenceFooterCountDisagrees { footer_rows: Int, planned_rows: Int }
-  | EvidenceCarriesIncoherentRow { rows: List<WitnessIdentity> }
+  | EvidenceCarriesIncoherentRow { rows: List<v2.workflow.floor2_prepared_subject.WitnessIdentity> }
 
 // THE ROWS WHOSE DISPOSITION IS THE CONTRADICTORY PAIRING, keyed by identity. A fold over the
 // SAME `claim_disposition` every other consumer reads, so this cannot disagree with the ledger's
 // own projection -- asking a second question of the row here would be a second authority over the
 // fact the disposition already answers.
-fn incoherent_ledger_rows(rows: List<ClaimTerminalRow>) -> List<WitnessIdentity> {
+fn incoherent_ledger_rows(rows: List<ClaimTerminalRow>) -> List<v2.workflow.floor2_prepared_subject.WitnessIdentity> {
   map(
     filter(rows, r => claim_disposition(row: r) == BudgetTerminalWithoutSafetyCause),
     r => r.identity
@@ -383,7 +384,7 @@ fn incoherent_ledger_rows(rows: List<ClaimTerminalRow>) -> List<WitnessIdentity>
 fn ledger_green_admission(
   ledger: TerminalLedger,
   reconciliation: LedgerReconciliation,
-  planned: List<WitnessIdentity>,
+  planned: List<v2.workflow.floor2_prepared_subject.WitnessIdentity>,
 ) -> LedgerGreenAdmission {
   match ledger.publication {
     LedgerPartial { reason: r } => EvidenceUnfinalized { reason: r }

@@ -62,46 +62,46 @@ fn full_corpus_subject_harvest() -> FullCorpusSubjectHarvest {
 }
 
 fn build_wall() -> std.measure.Millisecond {
-  millisecond(count: 237000)
+  std.measure.millisecond(count: 237000)
 }
 
 fn regen_wall() -> std.measure.Millisecond {
-  millisecond(count: 510000)
+  std.measure.millisecond(count: 510000)
 }
 
 fn ci_job_wall() -> std.measure.Millisecond {
-  millisecond(count: 2509000)
+  std.measure.millisecond(count: 2509000)
 }
 
 fn pipeline_sum_wall() -> std.measure.Millisecond {
-  measure_add(a: measure_add(a: build_wall(), b: regen_wall()), b: ci_job_wall())
+  std.measure.measure_add(a: std.measure.measure_add(a: build_wall(), b: regen_wall()), b: ci_job_wall())
 }
 
 fn capture_wall() -> std.measure.Millisecond {
-  millisecond(count: 110820)
+  std.measure.millisecond(count: 110820)
 }
 
 fn discovery_resolve_wall() -> std.measure.Millisecond {
-  millisecond(count: 431122)
+  std.measure.millisecond(count: 431122)
 }
 
 fn discovery_eval_wall() -> std.measure.Millisecond {
-  millisecond(count: 65016)
+  std.measure.millisecond(count: 65016)
 }
 
 fn classified_ci_wall() -> std.measure.Millisecond {
-  measure_add(
-    a: measure_add(a: capture_wall(), b: discovery_resolve_wall()),
+  std.measure.measure_add(
+    a: std.measure.measure_add(a: capture_wall(), b: discovery_resolve_wall()),
     b: discovery_eval_wall()
   )
 }
 
 fn unattributed_ci_wall() -> std.measure.Millisecond {
-  millisecond(count: millisecond_count(m: ci_job_wall()) - millisecond_count(m: classified_ci_wall()))
+  std.measure.millisecond(count: std.measure.millisecond_count(m: ci_job_wall()) - std.measure.millisecond_count(m: classified_ci_wall()))
 }
 
 fn cold_admission_baseline_wall() -> std.measure.Millisecond {
-  millisecond(count: 197130)
+  std.measure.millisecond(count: 197130)
 }
 
 fn selected_entry_groups() -> std.nat.Nat {
@@ -125,11 +125,11 @@ fn discovery_witness_deferred() -> std.nat.Nat {
 }
 
 fn floor_drain_peak_rss() -> std.measure.ByteSize {
-  byte_size(count: 8513646592)
+  std.measure.byte_size(count: 8513646592)
 }
 
 fn calibration_floor_peak_rss() -> std.measure.ByteSize {
-  byte_size(count: 10821181440)
+  std.measure.byte_size(count: 10821181440)
 }
 
 fn capture_swap_after() -> std.nat.Nat {
@@ -137,23 +137,23 @@ fn capture_swap_after() -> std.nat.Nat {
 }
 
 fn assembly_symbol_index_merge_wall() -> std.measure.Millisecond {
-  millisecond(count: 65161)
+  std.measure.millisecond(count: 65161)
 }
 
 fn assembly_root_symbol_index_wall() -> std.measure.Millisecond {
-  millisecond(count: 32084)
+  std.measure.millisecond(count: 32084)
 }
 
 fn assembly_rewire_import_str_wall() -> std.measure.Millisecond {
-  millisecond(count: 164938)
+  std.measure.millisecond(count: 164938)
 }
 
 fn assembly_symbol_index_wall() -> std.measure.Millisecond {
-  millisecond(count: 43675)
+  std.measure.millisecond(count: 43675)
 }
 
 fn assembly_root_variant_base_wall() -> std.measure.Millisecond {
-  millisecond(count: 14178)
+  std.measure.millisecond(count: 14178)
 }
 
 fn admission_settle() -> AdmissionSettle {
@@ -191,19 +191,19 @@ fn compiler_next_measured_target() -> CompilerNextMeasuredTarget {
 }
 
 fn ci_job_wall_reconciles() -> Bool {
-  let job = millisecond_count(m: ci_job_wall())
-  let parts = millisecond_count(m: classified_ci_wall()) + millisecond_count(m: unattributed_ci_wall())
+  let job = std.measure.millisecond_count(m: ci_job_wall())
+  let parts = std.measure.millisecond_count(m: classified_ci_wall()) + std.measure.millisecond_count(m: unattributed_ci_wall())
   job == parts
 }
 
 fn pipeline_sum_reconciles() -> Bool {
-  let sum = millisecond_count(m: pipeline_sum_wall())
-  let parts = millisecond_count(m: build_wall()) + millisecond_count(m: regen_wall()) + millisecond_count(m: ci_job_wall())
+  let sum = std.measure.millisecond_count(m: pipeline_sum_wall())
+  let parts = std.measure.millisecond_count(m: build_wall()) + std.measure.millisecond_count(m: regen_wall()) + std.measure.millisecond_count(m: ci_job_wall())
   sum == parts
 }
 
 fn classified_equals_capture_resolve_eval() -> Bool {
-  let classified = millisecond_count(m: classified_ci_wall())
-  let parts = millisecond_count(m: capture_wall()) + millisecond_count(m: discovery_resolve_wall()) + millisecond_count(m: discovery_eval_wall())
+  let classified = std.measure.millisecond_count(m: classified_ci_wall())
+  let parts = std.measure.millisecond_count(m: capture_wall()) + std.measure.millisecond_count(m: discovery_resolve_wall()) + std.measure.millisecond_count(m: discovery_eval_wall())
   classified == parts
 }

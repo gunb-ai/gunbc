@@ -3,9 +3,9 @@ module test.claim.build_cache_instance_readiness
 
 fn owner_fixture() -> gunbc.build_cache_instance.ProcessIdentity {
   gunbc.build_cache_instance.ProcessIdentity {
-    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
+    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr,
     pid: 3975946,
-    start_time: "79870020" as NonEmptyStr,
+    start_time: "79870020" as std.types.NonEmptyStr,
   }
 }
 
@@ -46,11 +46,11 @@ fn ready_pool() -> gunbc.runner_activation.HostCompilePoolReady {
   }
 }
 
-fn endpoint_for(instance: gunbc.build_cache_instance.BuildCacheInstance, cgroup: NonEmptyStr) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
+fn endpoint_for(instance: gunbc.build_cache_instance.BuildCacheInstance, cgroup: std.types.NonEmptyStr) -> BuildCacheEndpointObservation {
   gunbc.build_cache_instance.EndpointOwnerObserved {
     instance: instance,
     owner: owner_fixture(),
-    executable: extdeps.cache.sccache.sccache_installed_binary_path as NonEmptyStr,
+    executable: extdeps.cache.sccache.sccache_installed_binary_path as std.types.NonEmptyStr,
     principal: instance.intended_principal,
     owner_context: gunbc.build_cache_instance.OwnerInSystemdUnit { unit: instance.intended_unit, observed_cgroup: cgroup },
     memory_limits: none,
@@ -58,7 +58,7 @@ fn endpoint_for(instance: gunbc.build_cache_instance.BuildCacheInstance, cgroup:
   }
 }
 
-fn storage_for(instance: gunbc.build_cache_instance.BuildCacheInstance) -> gunbc.build_cache_instance.BuildCacheStorageObservation {
+fn storage_for(instance: gunbc.build_cache_instance.BuildCacheInstance) -> BuildCacheStorageObservation {
   gunbc.build_cache_instance.BuildCacheStorageObserved {
     instance: instance,
     owner: owner_fixture(),
@@ -66,7 +66,7 @@ fn storage_for(instance: gunbc.build_cache_instance.BuildCacheInstance) -> gunbc
   }
 }
 
-fn capacity_for(instance: gunbc.build_cache_instance.BuildCacheInstance) -> gunbc.build_cache_instance.BuildCacheCapacityObservation {
+fn capacity_for(instance: gunbc.build_cache_instance.BuildCacheInstance) -> BuildCacheCapacityObservation {
   gunbc.build_cache_instance.BuildCacheCapacityObserved {
     instance: instance,
     owner: owner_fixture(),
@@ -76,78 +76,78 @@ fn capacity_for(instance: gunbc.build_cache_instance.BuildCacheInstance) -> gunb
 
 test fn exact_observations_mint_the_proof_receipt() -> Bool {
   let instance = declared_session_instance()
-  match derive_build_cache_instance_readiness(
-    endpoint: endpoint_for(instance: instance, cgroup: "/gunbc-compile-pool.slice/gunbc-build-cache-session.service" as NonEmptyStr),
+  match gunbc.build_cache_instance_readiness.derive_build_cache_instance_readiness(
+    endpoint: endpoint_for(instance: instance, cgroup: "/gunbc-compile-pool.slice/gunbc-build-cache-session.service" as std.types.NonEmptyStr),
     storage: storage_for(instance: instance),
     capacity: capacity_for(instance: instance),
     pool: ready_pool(),
   ) {
-    BuildCacheInstanceObservedReady { receipt: r } =>
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservedReady { receipt: r } =>
       r.instance == instance && r.owner == owner_fixture()
-    BuildCacheInstanceObservedNotReady { reason: _ } => false
-    BuildCacheInstanceObservationUnavailable { reason: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservedNotReady { reason: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservationUnavailable { reason: _ } => false
   }
 }
 
 test fn a_ready_slice_beside_the_server_does_not_verify_nesting() -> Bool {
   let instance = declared_session_instance()
-  match derive_build_cache_instance_readiness(
-    endpoint: endpoint_for(instance: instance, cgroup: "/system.slice/gunbc-build-cache-session.service" as NonEmptyStr),
+  match gunbc.build_cache_instance_readiness.derive_build_cache_instance_readiness(
+    endpoint: endpoint_for(instance: instance, cgroup: "/system.slice/gunbc-build-cache-session.service" as std.types.NonEmptyStr),
     storage: storage_for(instance: instance),
     capacity: capacity_for(instance: instance),
     pool: ready_pool(),
   ) {
-    BuildCacheInstanceObservedNotReady { reason: CacheOwnerOutsidePool } => true
-    BuildCacheInstanceObservedReady { receipt: _ } => false
-    BuildCacheInstanceObservedNotReady { reason: _ } => false
-    BuildCacheInstanceObservationUnavailable { reason: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservedNotReady { reason: gunbc.build_cache_instance_readiness.CacheOwnerOutsidePool } => true
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservedReady { receipt: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservedNotReady { reason: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservationUnavailable { reason: _ } => false
   }
 }
 
 test fn unavailable_dominates_a_positive_mismatch() -> Bool {
   let instance = declared_session_instance()
-  match derive_build_cache_instance_readiness(
-    endpoint: endpoint_for(instance: instance, cgroup: "/system.slice/wrong.service" as NonEmptyStr),
+  match gunbc.build_cache_instance_readiness.derive_build_cache_instance_readiness(
+    endpoint: endpoint_for(instance: instance, cgroup: "/system.slice/wrong.service" as std.types.NonEmptyStr),
     storage: gunbc.build_cache_instance.BuildCacheStorageObservationUnavailable {
       instance: instance,
       owner: owner_fixture(),
-      detail: "/proc owner environment read failed" as NonEmptyStr,
+      detail: "/proc owner environment read failed" as std.types.NonEmptyStr,
     },
     capacity: capacity_for(instance: instance),
     pool: ready_pool(),
   ) {
-    BuildCacheInstanceObservationUnavailable { reason: CacheStorageObservationUnavailable { detail: d } } =>
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservationUnavailable { reason: gunbc.build_cache_instance_readiness.CacheStorageObservationUnavailable { detail: d } } =>
       (d as String).contains("environment")
-    BuildCacheInstanceObservedReady { receipt: _ } => false
-    BuildCacheInstanceObservedNotReady { reason: _ } => false
-    BuildCacheInstanceObservationUnavailable { reason: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservedReady { receipt: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservedNotReady { reason: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservationUnavailable { reason: _ } => false
   }
 }
 
 test fn foreign_unavailable_observation_cannot_classify_this_instance() -> Bool {
   let instance = declared_session_instance()
-  match derive_build_cache_instance_readiness(
-    endpoint: endpoint_for(instance: instance, cgroup: "/gunbc-compile-pool.slice/gunbc-build-cache-session.service" as NonEmptyStr),
+  match gunbc.build_cache_instance_readiness.derive_build_cache_instance_readiness(
+    endpoint: endpoint_for(instance: instance, cgroup: "/gunbc-compile-pool.slice/gunbc-build-cache-session.service" as std.types.NonEmptyStr),
     storage: gunbc.build_cache_instance.BuildCacheStorageObservationUnavailable {
       instance: declared_ci_instance(),
       owner: owner_fixture(),
-      detail: "/proc owner environment read failed" as NonEmptyStr,
+      detail: "/proc owner environment read failed" as std.types.NonEmptyStr,
     },
     capacity: capacity_for(instance: instance),
     pool: ready_pool(),
   ) {
-    BuildCacheInstanceObservedNotReady { reason: CacheObservationSubjectMismatch { axis: a } } =>
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservedNotReady { reason: gunbc.build_cache_instance_readiness.CacheObservationSubjectMismatch { axis: a } } =>
       (a as String) == "storage"
-    BuildCacheInstanceObservedReady { receipt: _ } => false
-    BuildCacheInstanceObservedNotReady { reason: _ } => false
-    BuildCacheInstanceObservationUnavailable { reason: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservedReady { receipt: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservedNotReady { reason: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservationUnavailable { reason: _ } => false
   }
 }
 
 test fn absent_capacity_intent_is_not_vacuously_verified() -> Bool {
   let instance = declared_ci_instance()
-  match derive_build_cache_instance_readiness(
-    endpoint: endpoint_for(instance: instance, cgroup: "/gunbc-compile-pool.slice/gunbc-build-cache-ci.service" as NonEmptyStr),
+  match gunbc.build_cache_instance_readiness.derive_build_cache_instance_readiness(
+    endpoint: endpoint_for(instance: instance, cgroup: "/gunbc-compile-pool.slice/gunbc-build-cache-ci.service" as std.types.NonEmptyStr),
     storage: storage_for(instance: instance),
     capacity: gunbc.build_cache_instance.BuildCacheCapacityObserved {
       instance: instance,
@@ -156,9 +156,9 @@ test fn absent_capacity_intent_is_not_vacuously_verified() -> Bool {
     },
     pool: ready_pool(),
   ) {
-    BuildCacheInstanceObservedNotReady { reason: CacheCapacityIntentUndeclared } => true
-    BuildCacheInstanceObservedReady { receipt: _ } => false
-    BuildCacheInstanceObservedNotReady { reason: _ } => false
-    BuildCacheInstanceObservationUnavailable { reason: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservedNotReady { reason: gunbc.build_cache_instance_readiness.CacheCapacityIntentUndeclared } => true
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservedReady { receipt: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservedNotReady { reason: _ } => false
+    gunbc.build_cache_instance_readiness.BuildCacheInstanceObservationUnavailable { reason: _ } => false
   }
 }

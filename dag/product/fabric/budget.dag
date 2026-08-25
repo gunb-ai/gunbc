@@ -1,5 +1,6 @@
 module product.fabric.budget
 
+
 // The fabric's money binding over the generic encumbrance kernel. Everything
 // about reserve-settle-release lives upstream; what is added here is the one
 // fact the generic kernel cannot carry, and the reason it cannot.
@@ -124,8 +125,8 @@ fn account_with_lease(a: MoneyAccount, lease: MoneyLease) -> MoneyAccount {
 
 fn project_outcome(a: MoneyAccount, outcome: extdeps.accounting.encumbrance.EncumbranceOutcome<std.measure.Currency, std.measure.Micro>) -> MoneyOutcome {
   match outcome {
-    LedgerAdvanced { ledger: l } => AccountAdvanced { account: account_with_ledger(a: a, ledger: l) }
-    EncumbranceRefused { refusal: r } =>
+    extdeps.accounting.encumbrance.LedgerAdvanced { ledger: l } => AccountAdvanced { account: account_with_ledger(a: a, ledger: l) }
+    extdeps.accounting.encumbrance.EncumbranceRefused { refusal: r } =>
       MoneyRefused { refusal: LedgerRefused { account: a.account, refusal: r } }
   }
 }

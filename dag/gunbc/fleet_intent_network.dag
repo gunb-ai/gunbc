@@ -1,125 +1,126 @@
 module gunbc.fleet_intent_network
 
-data operator_host_srv1: HostIdentity = "srv1"
-data operator_host_srv2: HostIdentity = "srv2"
-data operator_host_srv3: HostIdentity = "srv3"
-data operator_host_srv4: HostIdentity = "srv4"
+
+data operator_host_srv1: product.placement_supply.HostIdentity = "srv1"
+data operator_host_srv2: product.placement_supply.HostIdentity = "srv2"
+data operator_host_srv3: product.placement_supply.HostIdentity = "srv3"
+data operator_host_srv4: product.placement_supply.HostIdentity = "srv4"
 
 // SPARK-LANE-A (2026-08-06). srv5/srv6 are the operator's HostIdentity slots for the two ordered NVIDIA DGX Spark units (gunbc.spark.dgx_procurement). They live here because HostIdentity naming is this module's single authority — SPARK-0 minted `srv5_reserved`/`srv6_reserved` privately inside the procurement module only because this file was mid-refactor and out of scope, which was a §3 fork of one concept (a host's fleet identity) across two homes; those private rows are deleted and the procurement module imports these. NAMING AN IDENTITY IS NOT ENROLLMENT, and that distinction is carried structurally rather than by this prose: enrollment is membership in `fleet_intent_network.endpoints` (and in gunbc.fleet_intent's ComputeHost list), and srv5/srv6 appear in neither. Updated 2026-08-07 for the arrived state: both units are now live on the LAN and the operator has authored two static reservations for them (spark-a3ee 192.168.1.222 and spark-3bd5 192.168.1.223, both MACs ARP-confirmed), so the missing fact is no longer the addresses. CORRECTED 2026-08-23: THE SLOT ASSIGNMENT IS ALSO NO LONGER MISSING, AND THIS NOTE WENT ON ASSERTING THAT IT WAS. It read that the operator "supplied the router table but never stated the assignment", so authoring an address here would be a 50/50 guess and thus the fabricated-plausible-output failure DESIGN §5 forbids. The decision exists and is one import away: gunbc.spark.dgx_procurement `dgx_spark_router_binding_operator_allocation` records srv5 taking spark-a3ee and srv6 taking spark-3bd5, decided 2026-08-07 under an explicit operator delegation, on an ascending-address-order basis kept precisely so the tie-break is attributable rather than looking like a measurement; `srv5_router_binding` and `srv6_router_binding` are both SlotAssigned carrying it. The two notes are the same date — the stated blocker was resolved the day it was written. THE DOCTRINE WAS INVOKED AGAINST THE WRONG TARGET, which is why this is a correction and not a refresh: §5 forbids fabricating an OBSERVATION, and an attributable ALLOCATION with a decider, a date and a basis is not one. This is the stale-citation class in its expensive form — a rotted REASON rather than a rotted line number — and it propagated: a lane read it, believed Spark work was blocked on an operator fact, and reported that upward before anyone opened the procurement carrier. WHAT IS STILL TRUE, and is why no endpoint row is added here: srv5/srv6 remain absent from `endpoints` and from gunbc.fleet_intent's ComputeHost list, because in this module that membership IS enrollment — authoring the rows would enroll them, not merely describe them — and there is nothing to enroll into while the units are unplugged and the converge timer is retired. A PROJECTED ENDPOINT ALSO CANNOT LIVE HERE, and that is structural rather than a preference: gunbc.spark.dgx_procurement imports THIS module for operator_host_srv5/srv6, so the reverse import is refused by the import graph's one law — measured, not inferred, by adding it and compiling: `circular dependency detected: gunbc.fleet_intent_network -> gunbc.spark.dgx_procurement`. Anyone who later wants the endpoints projected from the binding starts from that constraint. Until enrollment genuinely happens, the address authority stays single because there is only ever one — the reservation rows in the procurement module.
-data operator_host_srv5: HostIdentity = "srv5"
-data operator_host_srv6: HostIdentity = "srv6"
+data operator_host_srv5: product.placement_supply.HostIdentity = "srv5"
+data operator_host_srv6: product.placement_supply.HostIdentity = "srv6"
 
 data network_endpoint_address_grounding_residual_note: String = "🟡 dissolve-on: the NetworkEndpoint.address / NetworkSegment.cidr / gateway literals in this file are still bare `\"192.168.1.x\"` / CIDR strings even though this same lane grounded the address leaves (extdeps.network.ipv4 Ipv4Address = 4 bounded Octets, extdeps.network.address IpAddress = IpV4|IpV6, and the DHCP lease rows migrated to the ipv4_address constructor). The octet decomposition is half-consumed here: product.network_topology.NetworkEndpoint.address is typed String, so grounding these sites means re-typing that field to extdeps.network.address.IpAddress (and cidr/gateway to their grounded carriers) and migrating every NetworkEndpoint/NetworkSegment consumer — a product-layer field change, not a gunbc-local edit, so it is deliberately deferred rather than half-done. DISSOLVES WHEN NetworkEndpoint.address re-grounds onto IpAddress; until then these literals are the §3 residual the reach lane closes, tracked here so the loop is visible rather than silently forked. The grounded rows the reach lane already built — gunbc.fleet_reach.srv2_lan_ipv4 / srv3_lan_ipv4 (extdeps.network.ipv4.Ipv4Address, consumed by srv3_reach) — are the CONVERGENCE TARGET these bare strings dissolve onto, not an independent second grounding: srv2/srv3's address becomes those rows when the field re-types, so the transitional dual representation is marked debt heading toward one authority, not a permanent fork."
 
-data operator_lan_segment: NetworkSegment = NetworkSegment {
+data operator_lan_segment: product.network_topology.NetworkSegment = product.network_topology.NetworkSegment {
   cidr: "192.168.1.0/24",
   gateway: Present { value: "192.168.1.1" },
-  locality: Lan,
+  locality: product.network_topology.Lan,
 }
 
-data operator_docker_bridge_default_segment: NetworkSegment = NetworkSegment {
+data operator_docker_bridge_default_segment: product.network_topology.NetworkSegment = product.network_topology.NetworkSegment {
   cidr: "172.17.0.0/16",
   gateway: none,
-  locality: DockerBridge,
+  locality: product.network_topology.DockerBridge,
 }
 
-data operator_docker_bridge_secondary_srv1_segment: NetworkSegment = NetworkSegment {
+data operator_docker_bridge_secondary_srv1_segment: product.network_topology.NetworkSegment = product.network_topology.NetworkSegment {
   cidr: "172.18.0.0/16",
   gateway: none,
-  locality: DockerBridge,
+  locality: product.network_topology.DockerBridge,
 }
 
-data srv1_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+data srv1_host_lan_endpoint: product.network_topology.NetworkEndpoint = product.network_topology.NetworkEndpoint {
   label: "srv1-host-lan",
   host: Present { value: operator_host_srv1 },
   address: "192.168.1.185",
-  role: HostOperatingSystem,
-  locality: Lan,
+  role: product.network_topology.HostOperatingSystem,
+  locality: product.network_topology.Lan,
 }
 
-data srv2_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+data srv2_host_lan_endpoint: product.network_topology.NetworkEndpoint = product.network_topology.NetworkEndpoint {
   label: "srv2-host-lan",
   host: Present { value: operator_host_srv2 },
   address: "192.168.1.188",
-  role: HostOperatingSystem,
-  locality: Lan,
+  role: product.network_topology.HostOperatingSystem,
+  locality: product.network_topology.Lan,
 }
 
-data srv1_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+data srv1_bmc_endpoint: product.network_topology.NetworkEndpoint = product.network_topology.NetworkEndpoint {
   label: "srv1-bmc",
   host: Present { value: operator_host_srv1 },
   address: "192.168.1.183",
-  role: BmcOutOfBand,
-  locality: Lan,
+  role: product.network_topology.BmcOutOfBand,
+  locality: product.network_topology.Lan,
 }
 
-data srv2_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+data srv2_bmc_endpoint: product.network_topology.NetworkEndpoint = product.network_topology.NetworkEndpoint {
   label: "srv2-bmc",
   host: Present { value: operator_host_srv2 },
   address: "192.168.1.184",
-  role: BmcOutOfBand,
-  locality: Lan,
+  role: product.network_topology.BmcOutOfBand,
+  locality: product.network_topology.Lan,
 }
 
-data srv3_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+data srv3_bmc_endpoint: product.network_topology.NetworkEndpoint = product.network_topology.NetworkEndpoint {
   label: "srv3-bmc",
   host: Present { value: operator_host_srv3 },
   address: "192.168.1.192",
-  role: BmcOutOfBand,
-  locality: Lan,
+  role: product.network_topology.BmcOutOfBand,
+  locality: product.network_topology.Lan,
 }
 
-data srv4_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+data srv4_bmc_endpoint: product.network_topology.NetworkEndpoint = product.network_topology.NetworkEndpoint {
   label: "srv4-bmc",
   host: Present { value: operator_host_srv4 },
   address: "192.168.1.195",
-  role: BmcOutOfBand,
-  locality: Lan,
+  role: product.network_topology.BmcOutOfBand,
+  locality: product.network_topology.Lan,
 }
 
-data srv4_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+data srv4_host_lan_endpoint: product.network_topology.NetworkEndpoint = product.network_topology.NetworkEndpoint {
   label: "srv4-host-lan",
   host: Present { value: operator_host_srv4 },
   address: "192.168.1.196",
-  role: HostOperatingSystem,
-  locality: Lan,
+  role: product.network_topology.HostOperatingSystem,
+  locality: product.network_topology.Lan,
 }
 
 data srv3_host_lan_endpoint_note: String = "srv3's HOST OS endpoint, absent from this topology until 2026-07-24 — only srv3_bmc_endpoint (192.168.1.192) was modeled, so the model could name srv3's out-of-band controller but not the machine itself. Observed live from the operator's DHCP table (192.168.1.221, MAC 48:21:0B:81:C7:1D) and confirmed addressable by probe (sshd answers on :22). REACHABLE via the srv2 hop (corrected 2026-07-25): ubuntu@srv3 runs commands today authenticated by srv2's local node-orch key (proven live — hostname=srv3, aarch64, 128 cores). What is NOT yet present is the FLEET identity: the fleet-automation-ssh-key is authorized for no user on srv3 (born Jul 13 with ssh.authorized-keys EMPTY, hand-keyed post-install with node-orch@srv2 / briansrls@srv1 / macbook only), the B2 runner-user + A1 secret-materialization gap in gunbc.plans.fleet_subsumption_manual_gaps — a one-time host_authorized_keys_reconcile upsert over the working node-orch hop, not a networking fact and not an unreachable host. LEASE STATUS: as of 2026-07-24 the operator converted this to a STATIC reservation (192.168.1.221 ↔ MAC 48:21:0B:81:C7:1D), so the literal is now a fact rather than a lease-lifetime observation — matching the srv1/srv2 hosts and the srv1/srv2/srv3 BMCs. STILL DYNAMIC and therefore provisional: srv4's host (192.168.1.196) and srv4's BMC (192.168.1.195); those two literals remain only as stable as their leases until the operator reserves them. The DHCP-reservation act itself is an unmodeled manual step for srv1..4 — a static-lease intent (MAC ↔ address binding on the operator's router) has no carrier for those hosts; see gunbc.plans.fleet_subsumption_manual_gaps for where that gap is tracked. PARTIAL CLOSURE (SPARK-LANE-A, 2026-08-07): gunbc.spark.dgx_procurement's DgxSparkRouterBinding is that carrier for srv5/srv6, holding the cited extdeps.router.verizon_cr1000a reservation row Optionally and refusing deployment admission while it is Absent — and the two reservations the operator authored for the DGX Spark units ARE modeled there as observed router rows, held apart from the slot bindings until the operator states which box serves which slot. It is deliberately NOT retrofitted to srv1..4 in the same change: those four hosts are already reserved and enrolled, so a binding row for them would be authored from the live router rather than ahead of arrival, and that is a read-transport question (the cr1000a lease-table transport is itself an open extdeps frontier row) rather than the pre-arrival intent question srv5/srv6 pose."
 
-data srv3_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+data srv3_host_lan_endpoint: product.network_topology.NetworkEndpoint = product.network_topology.NetworkEndpoint {
   label: "srv3-host-lan",
   host: Present { value: operator_host_srv3 },
   address: "192.168.1.221",
-  role: HostOperatingSystem,
-  locality: Lan,
+  role: product.network_topology.HostOperatingSystem,
+  locality: product.network_topology.Lan,
 }
 
-data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
+data srv1_tailscale_endpoint: product.network_topology.NetworkEndpoint = product.network_topology.NetworkEndpoint {
   label: "srv1-tailscale",
   host: Present { value: operator_host_srv1 },
   address: "100.69.18.126",
-  role: TailscaleEndpoint,
-  locality: TailscaleOverlay,
+  role: product.network_topology.TailscaleEndpoint,
+  locality: product.network_topology.TailscaleOverlay,
 }
 
-data srv2_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
+data srv2_tailscale_endpoint: product.network_topology.NetworkEndpoint = product.network_topology.NetworkEndpoint {
   label: "srv2-tailscale",
   host: Present { value: operator_host_srv2 },
   address: "100.73.169.40",
-  role: TailscaleEndpoint,
-  locality: TailscaleOverlay,
+  role: product.network_topology.TailscaleEndpoint,
+  locality: product.network_topology.TailscaleOverlay,
 }
 
-data operator_lan_gateway_endpoint: NetworkEndpoint = NetworkEndpoint {
+data operator_lan_gateway_endpoint: product.network_topology.NetworkEndpoint = product.network_topology.NetworkEndpoint {
   label: "operator-lan-gateway",
   host: none,
   address: "192.168.1.1",
-  role: LanGateway,
-  locality: Lan,
+  role: product.network_topology.LanGateway,
+  locality: product.network_topology.Lan,
 }
 
-data fleet_intent_network: NetworkTopology = NetworkTopology {
+data fleet_intent_network: product.network_topology.NetworkTopology = product.network_topology.NetworkTopology {
   tailnet_domain: Present { value: "tailecbe08.ts.net" },
   segments: [
     operator_lan_segment,
@@ -141,6 +142,6 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
   ],
 }
 
-fn fleet_intent_network_topology() -> NetworkTopology {
+fn fleet_intent_network_topology() -> product.network_topology.NetworkTopology {
   fleet_intent_network
 }

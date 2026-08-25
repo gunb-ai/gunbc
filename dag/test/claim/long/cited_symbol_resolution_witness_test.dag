@@ -84,11 +84,11 @@ test fn cited_symbol_planted_ambiguous_control_refuses_via_resolver() -> Bool {
     facts: v2.lens.cited_symbol_resolution.cited_symbol_planted_ambiguous_control_facts,
     modules: cited_symbol_long_witness_layer_modules
   ) {
-    DeclarationRefAmbiguous { reference: _, candidates: c } => length(xs: c) == 2
-    DeclarationRefResolved { declaration_identity: _ } => false
-    DeclarationRefModuleAbsent { reference: _ } => false
-    DeclarationRefDeclarationAbsent { reference: _ } => false
-    DeclarationRefFieldAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefAmbiguous { reference: _, candidates: c } => length(xs: c) == 2
+    v2.std.decl_ref_resolution.DeclarationRefResolved { declaration_identity: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefModuleAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefDeclarationAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefFieldAbsent { reference: _ } => false
   }
 }
 
@@ -106,11 +106,11 @@ test fn cited_symbol_resolves_node_kind_authority() -> Bool {
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules
   ) {
-    DeclarationRefResolved { declaration_identity: id } => id.qualified_name == "std.node.NodeKind"
-    DeclarationRefModuleAbsent { reference: _ } => false
-    DeclarationRefDeclarationAbsent { reference: _ } => false
-    DeclarationRefFieldAbsent { reference: _ } => false
-    DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefResolved { declaration_identity: id } => id.qualified_name == "std.node.NodeKind"
+    v2.std.decl_ref_resolution.DeclarationRefModuleAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefDeclarationAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefFieldAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefAmbiguous { reference: _, candidates: _ } => false
   }
 }
 
@@ -120,11 +120,11 @@ test fn cited_symbol_resolves_decl_ref_constructor() -> Bool {
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules
   ) {
-    DeclarationRefResolved { declaration_identity: _ } => true
-    DeclarationRefModuleAbsent { reference: _ } => false
-    DeclarationRefDeclarationAbsent { reference: _ } => false
-    DeclarationRefFieldAbsent { reference: _ } => false
-    DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefResolved { declaration_identity: _ } => true
+    v2.std.decl_ref_resolution.DeclarationRefModuleAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefDeclarationAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefFieldAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefAmbiguous { reference: _, candidates: _ } => false
   }
 }
 
@@ -138,11 +138,11 @@ test fn cited_symbol_refuses_module_absent() -> Bool {
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules
   ) {
-    DeclarationRefModuleAbsent { reference: _ } => true
-    DeclarationRefResolved { declaration_identity: _ } => false
-    DeclarationRefDeclarationAbsent { reference: _ } => false
-    DeclarationRefFieldAbsent { reference: _ } => false
-    DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefModuleAbsent { reference: _ } => true
+    v2.std.decl_ref_resolution.DeclarationRefResolved { declaration_identity: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefDeclarationAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefFieldAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefAmbiguous { reference: _, candidates: _ } => false
   }
 }
 
@@ -156,11 +156,11 @@ test fn cited_symbol_refuses_declaration_absent() -> Bool {
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules
   ) {
-    DeclarationRefDeclarationAbsent { reference: _ } => true
-    DeclarationRefResolved { declaration_identity: _ } => false
-    DeclarationRefModuleAbsent { reference: _ } => false
-    DeclarationRefFieldAbsent { reference: _ } => false
-    DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefDeclarationAbsent { reference: _ } => true
+    v2.std.decl_ref_resolution.DeclarationRefResolved { declaration_identity: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefModuleAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefFieldAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefAmbiguous { reference: _, candidates: _ } => false
   }
 }
 
@@ -190,11 +190,11 @@ test fn cited_symbol_refuses_ambiguous_binding() -> Bool {
     facts: facts,
     modules: cited_symbol_long_witness_layer_modules
   ) {
-    DeclarationRefAmbiguous { reference: _, candidates: c } => length(xs: c) == 2
-    DeclarationRefResolved { declaration_identity: _ } => false
-    DeclarationRefModuleAbsent { reference: _ } => false
-    DeclarationRefDeclarationAbsent { reference: _ } => false
-    DeclarationRefFieldAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefAmbiguous { reference: _, candidates: c } => length(xs: c) == 2
+    v2.std.decl_ref_resolution.DeclarationRefResolved { declaration_identity: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefModuleAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefDeclarationAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefFieldAbsent { reference: _ } => false
   }
 }
 
@@ -208,11 +208,11 @@ test fn cited_symbol_refuses_named_field_absent() -> Bool {
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules
   ) {
-    DeclarationRefFieldAbsent { reference: _ } => true
-    DeclarationRefResolved { declaration_identity: _ } => false
-    DeclarationRefModuleAbsent { reference: _ } => false
-    DeclarationRefDeclarationAbsent { reference: _ } => false
-    DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefFieldAbsent { reference: _ } => true
+    v2.std.decl_ref_resolution.DeclarationRefResolved { declaration_identity: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefModuleAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefDeclarationAbsent { reference: _ } => false
+    v2.std.decl_ref_resolution.DeclarationRefAmbiguous { reference: _, candidates: _ } => false
   }
 }
 
@@ -258,36 +258,36 @@ data instance_gap_outside_index_witness_note: String = "THE OUTSIDE-INDEX DISPOS
 data instance_gap_carrier_ref_witness_note: String = "The instance-gap carriers joined this lens's production population because their entire content is DeclarationRefs and nothing resolved any of them: rename a cited declaration and the row goes quietly false while every required check stays green (cited_symbol_instance_gap_carrier_widening_note, v2.lens.cited_symbol_resolution). These witnesses are that widening's evidence and they are a PAIR by DESIGN 4b(1). The greens measure the live carriers; the red plants the exact defect the widening exists to catch — a site whose caller names a declaration that does not exist — so a green cannot pass by measuring an empty population or a resolver that resolves everything. The red is CONSTRUCTED rather than drawn from either carrier, so it stays discriminating after every live row resolves, and it does not retire when production goes green (4b(4)). Both carriers are enrolled together deliberately: two carriers of one shape with only one enrolled is the same one-class-enforced-adjacent-class-exempt asymmetry that motivated the generated-document widening."
 
 test fn instance_gap_carrier_declaration_refs_all_resolve() -> Bool {
-  let pool = hand_authored_works_resolution_pool_roots()
-  cited_declaration_ref_refusal_count(
-    refs: concat(lambda_typing_gate_declaration_refs(), list_membership_gap_declaration_refs()),
-    facts: decl_facts(pool_roots: pool),
-    modules: module_declaration_facts_live(pool_roots: pool)
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
+  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
+    refs: concat(gunbc.lambda_argument_typing_gate.lambda_typing_gate_declaration_refs(), gunbc.list_membership_operation_gap.list_membership_gap_declaration_refs()),
+    facts: v2.std.decl_index.decl_facts(pool_roots: pool),
+    modules: v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
   ) == 0
 }
 
 test fn instance_gap_carrier_ref_population_is_not_empty() -> Bool {
-  length(xs: lambda_typing_gate_declaration_refs()) == length(xs: lambda_typing_gate_citable_sites())
-    && length(xs: list_membership_gap_declaration_refs()) == length(xs: list_membership_gap_citable_sites())
-    && length(xs: lambda_typing_gate_sites) >= 3
-    && length(xs: list_membership_gap_sites) >= 5
-    && length(xs: list_membership_gap_declaration_refs()) >= 3
+  length(xs: gunbc.lambda_argument_typing_gate.lambda_typing_gate_declaration_refs()) == length(xs: gunbc.lambda_argument_typing_gate.lambda_typing_gate_citable_sites())
+    && length(xs: gunbc.list_membership_operation_gap.list_membership_gap_declaration_refs()) == length(xs: gunbc.list_membership_operation_gap.list_membership_gap_citable_sites())
+    && length(xs: gunbc.lambda_argument_typing_gate.lambda_typing_gate_sites) >= 3
+    && length(xs: gunbc.list_membership_operation_gap.list_membership_gap_sites) >= 5
+    && length(xs: gunbc.list_membership_operation_gap.list_membership_gap_declaration_refs()) >= 3
 }
 
 test fn instance_gap_outside_index_population_is_counted() -> Bool {
-  lambda_typing_gate_outside_index_count() == 0
-    && list_membership_gap_outside_index_count() == 2
-    && length(xs: list_membership_gap_citable_sites()) + list_membership_gap_outside_index_count()
-         == length(xs: list_membership_gap_sites)
+  gunbc.lambda_argument_typing_gate.lambda_typing_gate_outside_index_count() == 0
+    && gunbc.list_membership_operation_gap.list_membership_gap_outside_index_count() == 2
+    && length(xs: gunbc.list_membership_operation_gap.list_membership_gap_citable_sites()) + gunbc.list_membership_operation_gap.list_membership_gap_outside_index_count()
+         == length(xs: gunbc.list_membership_operation_gap.list_membership_gap_sites)
 }
 
 test fn instance_gap_outside_index_refs_really_do_refuse() -> Bool {
-  let pool = hand_authored_works_resolution_pool_roots()
-  cited_declaration_ref_refusal_count(
-    refs: list_membership_gap_outside_index_refs(),
-    facts: decl_facts(pool_roots: pool),
-    modules: module_declaration_facts_live(pool_roots: pool)
-  ) == list_membership_gap_outside_index_count()
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
+  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
+    refs: gunbc.list_membership_operation_gap.list_membership_gap_outside_index_refs(),
+    facts: v2.std.decl_index.decl_facts(pool_roots: pool),
+    modules: v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
+  ) == gunbc.list_membership_operation_gap.list_membership_gap_outside_index_count()
 }
 
 // THE PLANTED REDS ARE MARKED CitableThroughDeclIndex DELIBERATELY. Both name modules the index
@@ -305,43 +305,43 @@ test fn instance_gap_outside_index_refs_really_do_refuse() -> Bool {
 // that refusal is the mechanism working.
 test fn instance_gap_carrier_dangling_caller_red_control_refuses() -> Bool {
   let planted = [
-    LambdaTypingGateSite {
-      caller: decl_ref(
+    gunbc.lambda_argument_typing_gate.LambdaTypingGateSite {
+      caller: std.decl_ref.decl_ref(
         module_path: "v2.compiler.parse",
         decl_name: "G1_planted_instance_gap_caller_control_RED"
       ),
       callee_spelled: "fold_list",
-      miss: AbsentFromRoster,
-      index_coverage: CitableThroughDeclIndex,
-      cause: SiteCauseUnmeasured,
-      cause_receipt: NotYetProbed,
+      miss: gunbc.lambda_argument_typing_gate.AbsentFromRoster,
+      index_coverage: std.decl_ref.CitableThroughDeclIndex,
+      cause: gunbc.lambda_argument_typing_gate.SiteCauseUnmeasured,
+      cause_receipt: gunbc.lambda_argument_typing_gate.NotYetProbed,
     },
   ]
-  let pool = hand_authored_works_resolution_pool_roots()
-  cited_declaration_ref_refusal_count(
-    refs: lambda_typing_gate_declaration_refs_from(sites: planted),
-    facts: decl_facts(pool_roots: pool),
-    modules: module_declaration_facts_live(pool_roots: pool)
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
+  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
+    refs: gunbc.lambda_argument_typing_gate.lambda_typing_gate_declaration_refs_from(sites: planted),
+    facts: v2.std.decl_index.decl_facts(pool_roots: pool),
+    modules: v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
   ) == 1
 }
 
 test fn instance_gap_membership_dangling_producer_red_control_refuses() -> Bool {
   let planted = [
-    ListMembershipGapSite {
-      collection_producer: decl_ref(
+    gunbc.list_membership_operation_gap.ListMembershipGapSite {
+      collection_producer: std.decl_ref.decl_ref(
         module_path: "gunbc.publication_policy",
         decl_name: "G1_planted_instance_gap_producer_control_RED"
       ),
       element_type: "String",
       occurrences: 1,
-      argument_shape: PositionalPair,
-      index_coverage: CitableThroughDeclIndex,
+      argument_shape: gunbc.list_membership_operation_gap.PositionalPair,
+      index_coverage: std.decl_ref.CitableThroughDeclIndex,
     },
   ]
-  let pool = hand_authored_works_resolution_pool_roots()
-  cited_declaration_ref_refusal_count(
-    refs: list_membership_gap_declaration_refs_from(sites: planted),
-    facts: decl_facts(pool_roots: pool),
-    modules: module_declaration_facts_live(pool_roots: pool)
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
+  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
+    refs: gunbc.list_membership_operation_gap.list_membership_gap_declaration_refs_from(sites: planted),
+    facts: v2.std.decl_index.decl_facts(pool_roots: pool),
+    modules: v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
   ) == 1
 }

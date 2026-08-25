@@ -3,28 +3,28 @@ module extdeps.boards.asrock_rack
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf"
   }
 }
 
 data asrock_altrad8ud_download_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T"
   }
 }
 
 data asrock_altrad8ud_bmc_manual_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "download.asrock.com/Manual/BMC/ALTRAD8UD-1L2T.pdf"
   }
 }
 
 data asrock_altrad8ud_srv3_nbd_proxy_ws_dry_run_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/blob/main/docs/runbooks/srv3-nbd-proxy-ws-upgrade-dry-run.md"
   }
 }
@@ -61,7 +61,7 @@ data altrad8ud_openbmc_2_07_00_serial_console_probe: std.types.NonEmptyStr = "Hi
 data asrock_altrad8ud_openbmc_2_07_00_capabilities: extdeps.bmc.capability.BmcFirmwareCapabilityRow = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
   firmware: extdeps.bmc.capability.BmcFirmwareVersion {
     family: OpenBmc,
-    version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
+    version: extdeps.firmware.types.firmware_semantic_version(major: 2, minor: 7, patch: 0),
   },
   capabilities: altrad8ud_openbmc_2_07_00_capabilities_list,
 }
@@ -69,7 +69,7 @@ data asrock_altrad8ud_openbmc_2_07_00_capabilities: extdeps.bmc.capability.BmcFi
 data asrock_altrad8ud_openbmc_3_06_00_capabilities: extdeps.bmc.capability.BmcFirmwareCapabilityRow = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
   firmware: extdeps.bmc.capability.BmcFirmwareVersion {
     family: OpenBmc,
-    version: firmware_semantic_version(major: 3, minor: 6, patch: 0),
+    version: extdeps.firmware.types.firmware_semantic_version(major: 3, minor: 6, patch: 0),
   },
   capabilities: altrad8ud_openbmc_base_capabilities,
 }
@@ -79,7 +79,7 @@ data asrock_altrad8ud_openbmc_3_06_00_catalog_authority: extdeps.external_author
 data asrock_altrad8ud_openbmc_3_22_00_capabilities: extdeps.bmc.capability.BmcFirmwareCapabilityRow = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
   firmware: extdeps.bmc.capability.BmcFirmwareVersion {
     family: OpenBmc,
-    version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
+    version: extdeps.firmware.types.firmware_semantic_version(major: 3, minor: 22, patch: 0),
   },
   capabilities: altrad8ud_openbmc_base_capabilities,
 }
@@ -98,16 +98,16 @@ data asrock_altrad8ud_shipped_bmc_firmware_capabilities: extdeps.bmc.capability.
 data asrock_altrad8ud_openbmc_2_07_00_redfish_surface: extdeps.bmc.types.BmcRedfishSurfaceRow = extdeps.bmc.types.BmcRedfishSurfaceRow {
   firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
   shape: extdeps.bmc.types.BmcRedfishSurfaceShape {
-    thermal_surface: RedfishThermalSubsystemSensorCollection,
-    fan_control_surface: RedfishFanControlResourceAbsent,
+    thermal_surface: extdeps.bmc.types.RedfishThermalSubsystemSensorCollection,
+    fan_control_surface: extdeps.bmc.types.RedfishFanControlResourceAbsent,
   },
 }
 
 data asrock_altrad8ud_openbmc_3_22_00_redfish_surface: extdeps.bmc.types.BmcRedfishSurfaceRow = extdeps.bmc.types.BmcRedfishSurfaceRow {
   firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
   shape: extdeps.bmc.types.BmcRedfishSurfaceShape {
-    thermal_surface: RedfishLegacyChassisThermal,
-    fan_control_surface: RedfishInitialDutyControlResource,
+    thermal_surface: extdeps.bmc.types.RedfishLegacyChassisThermal,
+    fan_control_surface: extdeps.bmc.types.RedfishInitialDutyControlResource,
   },
 }
 
@@ -119,34 +119,34 @@ data asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog: List<extdeps.bmc.types.B
 data asrock_altrad8ud_redfish_surface_catalog_note: String = "Each row is the surface an OpenBMC build for this board serves, keyed by version alone, because that is what decides it: bmcweb's compiled resource set is a property of the image. The 3.22.00 row was MEASURED on both fleet hosts simultaneously on 2026-08-12 by authenticated BMC SSH and loopback Redfish, which is what makes it a catalog row rather than a per-host note — srv3 (192.168.1.192) and srv4 (192.168.1.195), independently flashed on different days, returned legacy Chassis Thermal 200, ThermalSubsystem 404, ThermalSubsystem/Fans 404, a 9-member Sensors collection, and a byte-identical Thermal key shape (12974 and 12975 bytes, differing only in a reading value). Two independently-arrived-at hosts agreeing on every axis is the evidence that the shape is a function of the image; one host would only have established what that host does. The 2.07.00 row is the historical pre-upgrade snapshot for srv3 and is retained because the catalog must still answer for an un-upgraded host, not because any fleet member currently runs it."
 
 data asrock_altrad8ud_factory_temp_soc_fan_curve_steps: List<extdeps.bmc.types.BmcFanCurveStep> = [
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(75), duty: percent(75) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(40), duty: std.measure.percent(30) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(55), duty: std.measure.percent(40) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(65), duty: std.measure.percent(50) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(75), duty: std.measure.percent(75) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(85), duty: std.measure.percent(100) },
 ]
 
 data asrock_altrad8ud_factory_temp_soc_fan_curve: extdeps.bmc.types.BmcFanCurve = extdeps.bmc.types.BmcFanCurve {
   control_sensor: "TEMP_SOC",
   steps: asrock_altrad8ud_factory_temp_soc_fan_curve_steps,
-  minimum_duty: percent(30),
-  sensor_unavailable_duty: percent(75),
-  zone_failsafe_duty: percent(30),
-  positive_hysteresis: positive_celsius_delta(
-    count: positive_measure_count(predecessor: 0),
+  minimum_duty: std.measure.percent(30),
+  sensor_unavailable_duty: std.measure.percent(75),
+  zone_failsafe_duty: std.measure.percent(30),
+  positive_hysteresis: std.measure.positive_celsius_delta(
+    count: std.measure.positive_measure_count(predecessor: 0),
   ),
-  negative_hysteresis: positive_celsius_delta(
-    count: positive_measure_count(predecessor: 0),
+  negative_hysteresis: std.measure.positive_celsius_delta(
+    count: std.measure.positive_measure_count(predecessor: 0),
   ),
 }
 
-data asrock_altrad8ud_factory_fan_config_digest: extdeps.crypto.hash.Digest = sha256_digest(
+data asrock_altrad8ud_factory_fan_config_digest: extdeps.crypto.hash.Digest = extdeps.crypto.hash.sha256_digest(
   hex: "d8bfd424085001709228abdd5c19decb53e7da36f51001200b4ff5519dcc6d02",
 )
 
 data asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation: extdeps.bmc.types.BmcFanPolicyObservation = extdeps.bmc.types.BmcFanPolicyObservation {
   firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
-  evidence_scope: HistoricalEvidenceSnapshot,
+  evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
   curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
   active_config_digest: asrock_altrad8ud_factory_fan_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
@@ -172,7 +172,7 @@ data asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation: extdeps.bmc.types.
 
 data asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation: extdeps.bmc.types.BmcFanPolicyObservation = extdeps.bmc.types.BmcFanPolicyObservation {
   firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
-  evidence_scope: HistoricalEvidenceSnapshot,
+  evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
   curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
   active_config_digest: asrock_altrad8ud_factory_fan_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
@@ -188,9 +188,9 @@ data asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation: extdeps.bmc.types.
 
 data asrock_altrad8ud_fan_policy_observation_note: String = "Authenticated read-only observations on srv3 (OpenBMC 2.07.00) and srv4 (OpenBMC 3.22.00), 2026-07-27: both select /usr/share/swampd/config-asrr.json through /usr/share/swampd/config.json and run /usr/bin/swampd under phosphor-pid-control.service. Both factory images carried the same TEMP_SOC curve. That curve is an observation owned here, not fleet intent. What changed between versions is the PID-entry topology and Redfish resource shape, not the five factory points. The 3.22 web UI /Managers/bmc/FanControl resource exposes InitialDuty; it does not own these thermal curve points."
 
-data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint: extdeps.bmc.webui.nbd_proxy.BmcwebNbdProxyEndpointVariant = VmSlotIndexEndpoint
+data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint: extdeps.bmc.webui.nbd_proxy.BmcwebNbdProxyEndpointVariant = extdeps.bmc.webui.nbd_proxy.VmSlotIndexEndpoint
 
-data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints: List<extdeps.bmc.webui.nbd_proxy.BmcwebNbdProxyEndpointVariant> = [NbdSlotEndpoint]
+data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints: List<extdeps.bmc.webui.nbd_proxy.BmcwebNbdProxyEndpointVariant> = [extdeps.bmc.webui.nbd_proxy.NbdSlotEndpoint]
 
 type BmcReadOnlyProbeVerdict = ProbePresent | ProbeAbsent | ProbeInconclusive
 
@@ -240,7 +240,7 @@ data asrock_srv3_live_readonly_probe_rows: List<BmcLiveReadOnlyProbeRow> = [
   },
 ]
 
-data asrock_srv3_live_probe_firmware_version: extdeps.firmware.types.FirmwareSemanticVersion = firmware_semantic_version(
+data asrock_srv3_live_probe_firmware_version: extdeps.firmware.types.FirmwareSemanticVersion = extdeps.firmware.types.firmware_semantic_version(
   major: 2,
   minor: 7,
   patch: 0,
@@ -284,7 +284,7 @@ fn live_probe_confirms_nbd_proxy_vm_slot_ws_present() -> Bool {
     locator: "/vm/0/0 ws-upgrade" as std.types.NonEmptyStr,
     verdict: ProbePresent
   )
-    && asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == VmSlotIndexEndpoint
+    && asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == extdeps.bmc.webui.nbd_proxy.VmSlotIndexEndpoint
 }
 
 fn live_probe_confirms_nbd_slot_ws_absent() -> Bool {
@@ -300,45 +300,45 @@ fn live_probe_confirms_nbd_slot_ws_absent() -> Bool {
 // boot, so "this host is on the current firmware" is not a single fact.
 data asrock_altrad8ud_bios_3_10_instant_flash_release: extdeps.firmware.types.FirmwareReleaseRow = extdeps.firmware.types.FirmwareReleaseRow {
   board: AsrockRackAltrad8ud1l2t,
-  target: HostBios,
-  version: firmware_semantic_version(major: 3, minor: 10, patch: 0),
+  target: extdeps.firmware.types.HostBios,
+  version: extdeps.firmware.types.firmware_semantic_version(major: 3, minor: 10, patch: 0),
   released_on: 1776124800000,
-  image_kind: InstantFlashRom,
+  image_kind: extdeps.firmware.types.InstantFlashRom,
   image_uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "download.asrock.com/BIOS/Server/ALTRAD8UD-1L2T(3.10)ROM.zip"
   },
-  image_bytes: byte_size(count: 5359089),
-  image_digest: Present {
-    value: sha256_digest(
+  image_bytes: std.measure.byte_size(count: 5359089),
+  image_digest: v2.std.optional.Present {
+    value: extdeps.crypto.hash.sha256_digest(
       hex: "4338f8f23c86ca8fe1a27267153739893b3c27d72f6c09c7af8fbfd22347a223",
     ),
   },
   release_notes: "1. Updated RC to 0ACRB_021  2. Enhanced system compatibility",
-  prerequisite: NoFirmwarePrerequisite,
+  prerequisite: extdeps.firmware.types.NoFirmwarePrerequisite,
   authority: asrock_altrad8ud_download_authority,
 }
 
 data asrock_altrad8ud_bios_3_10_openbmc_release: extdeps.firmware.types.FirmwareReleaseRow = extdeps.firmware.types.FirmwareReleaseRow {
   board: AsrockRackAltrad8ud1l2t,
-  target: HostBios,
-  version: firmware_semantic_version(major: 3, minor: 10, patch: 0),
+  target: extdeps.firmware.types.HostBios,
+  version: extdeps.firmware.types.firmware_semantic_version(major: 3, minor: 10, patch: 0),
   released_on: 1776124800000,
   image_kind: OpenBmcWebUiTar,
   image_uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "download.asrock.com/BIOS/Server/ALTRAD8UD-1L2T(3.10)TAR.zip"
   },
-  image_bytes: byte_size(count: 5359341),
-  image_digest: Present {
-    value: sha256_digest(
+  image_bytes: std.measure.byte_size(count: 5359341),
+  image_digest: v2.std.optional.Present {
+    value: extdeps.crypto.hash.sha256_digest(
       hex: "7693421cd665dd674f919856b1d3a46ecdbd80df2626665dcf0376f9cb7b7eb4",
     ),
   },
   release_notes: "1. Updated RC to 0ACRB_021  2. Enhanced system compatibility",
   prerequisite: extdeps.firmware.types.RequiresMinimumTargetFirmware {
     target: extdeps.firmware.types.BmcController,
-    minimum: firmware_semantic_version(major: 3, minor: 22, patch: 0),
+    minimum: extdeps.firmware.types.firmware_semantic_version(major: 3, minor: 22, patch: 0),
   },
   authority: asrock_altrad8ud_download_authority,
 }
@@ -350,9 +350,9 @@ data asrock_altrad8ud_bios_3_10_openbmc_release: extdeps.firmware.types.Firmware
 // (or the raw .ROM) to the UpdateService is a different act from pushing this.
 data asrock_altrad8ud_bios_3_10_obmc_push_artifact_name: std.types.NonEmptyStr = "obmc-bios-altrad8ud-1l2t-3.10.all.tar"
 
-data asrock_altrad8ud_bios_3_10_obmc_push_artifact_bytes: std.measure.ByteSize = byte_size(count: 33566720)
+data asrock_altrad8ud_bios_3_10_obmc_push_artifact_bytes: std.measure.ByteSize = std.measure.byte_size(count: 33566720)
 
-data asrock_altrad8ud_bios_3_10_obmc_push_artifact_digest: extdeps.crypto.hash.Digest = sha256_digest(
+data asrock_altrad8ud_bios_3_10_obmc_push_artifact_digest: extdeps.crypto.hash.Digest = extdeps.crypto.hash.sha256_digest(
   hex: "e3bb2a26b863f24045e9e3bc950a89cbe3f8a86d7dc1c6c7a243f3afe35416ec",
 )
 
@@ -363,17 +363,17 @@ data asrock_altrad8ud_bios_3_10_obmc_manifest_machine_name: std.types.NonEmptySt
 data asrock_altrad8ud_bmc_3_22_00_release: extdeps.firmware.types.FirmwareReleaseRow = extdeps.firmware.types.FirmwareReleaseRow {
   board: AsrockRackAltrad8ud1l2t,
   target: extdeps.firmware.types.BmcController,
-  version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
+  version: extdeps.firmware.types.firmware_semantic_version(major: 3, minor: 22, patch: 0),
   released_on: 1776124800000,
   image_kind: OpenBmcWebUiTar,
   image_uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T"
   },
-  image_bytes: byte_size(count: 29056000),
-  image_digest: Absent,
+  image_bytes: std.measure.byte_size(count: 29056000),
+  image_digest: v2.std.optional.Absent,
   release_notes: "1. A password change is enforced upon the first login to the WebUI  2. Improved BMC web information  3. Enhanced BMC system compatibility",
-  prerequisite: NoFirmwarePrerequisite,
+  prerequisite: extdeps.firmware.types.NoFirmwarePrerequisite,
   authority: asrock_altrad8ud_download_authority,
 }
 
@@ -383,7 +383,7 @@ data asrock_altrad8ud_firmware_release_catalog: List<extdeps.firmware.types.Firm
   asrock_altrad8ud_bmc_3_22_00_release,
 ]
 
-data asrock_altrad8ud_firmware_release_note: String = "Cited from the ALTRAD8UD-1L2T product download table; all rows dated 2026-04-14. The BIOS rows are the load-bearing ones for the 2026-08-11 fleet incident: 'Updated RC to 0ACRB_021' is the MEMORY REFERENCE CODE, and srv3 fails DDR training on Samsung M386A4G40DM0-CPB 32GB 4Rx4 LRDIMMs while running DRAM FW 220414 (2022) under BL1 built 2023-05-17, emitting per-controller WRLVL errors and 'DDR initialization failure. Can't fall back!' on all eight controllers. ONE RELEASE, TWO PACKAGINGS, and they are not interchangeable: the ROM zip carries a bare 33554432-byte ALTRAD8UD-1L2TROM applied from BIOS setup by Instant Flash, which is unreachable on a host that cannot POST; the TAR zip carries obmc-bios-altrad8ud-1l2t-3.10.all.tar, whose MANIFEST declares purpose=...VersionPurpose.Host, version=3.10, MachineName=altrad8ud-1l2t, Type=bios, and which is what the BMC UpdateService consumes out-of-band. Every byte count and digest here was MEASURED on 2026-08-11 by acquiring the artifact and hashing it, never transcribed: the ROM zip at 5359089 bytes, the TAR zip at 5359341, the inner push tar at 33566720. The TAR locator was not published on the product page — it was found by probing the vendor download host and confirmed by HTTP 200 plus successful extraction, so it is weaker provenance than a page-published link and should be re-derived if the vendor reorganizes. The BMC 03.22.00 row remains digest-Absent with an unobserved locator: its image_bytes is the page's stated 27.71MB converted, NOT a Content-Length, so it must not be treated as a fetchable artifact until its own locator is observed."
+data asrock_altrad8ud_firmware_release_note: String = "Cited from the ALTRAD8UD-1L2T product download table; all rows dated 2026-04-14. The BIOS rows are the load-bearing ones for the 2026-08-11 fleet incident: 'Updated RC to 0ACRB_021' is the MEMORY REFERENCE CODE, and srv3 fails DDR training on Samsung M386A4G40DM0-CPB 32GB 4Rx4 LRDIMMs while running DRAM FW 220414 (2022) under BL1 built 2023-05-17, emitting per-controller WRLVL errors and 'DDR initialization failure. Can't fall back!' on all eight controllers. ONE RELEASE, TWO PACKAGINGS, and they are not interchangeable: the ROM zip carries a bare 33554432-byte ALTRAD8UD-1L2T_3.10.ROM applied from BIOS setup by Instant Flash, which is unreachable on a host that cannot POST; the TAR zip carries obmc-bios-altrad8ud-1l2t-3.10.all.tar, whose MANIFEST declares purpose=...VersionPurpose.Host, version=3.10, MachineName=altrad8ud-1l2t, Type=bios, and which is what the BMC UpdateService consumes out-of-band. Every byte count and digest here was MEASURED on 2026-08-11 by acquiring the artifact and hashing it, never transcribed: the ROM zip at 5359089 bytes, the TAR zip at 5359341, the inner push tar at 33566720. The TAR locator was not published on the product page — it was found by probing the vendor download host and confirmed by HTTP 200 plus successful extraction, so it is weaker provenance than a page-published link and should be re-derived if the vendor reorganizes. The BMC 03.22.00 row remains digest-Absent with an unobserved locator: its image_bytes is the page's stated 27.71MB converted, NOT a Content-Length, so it must not be treated as a fetchable artifact until its own locator is observed."
 
 // THE EXECUTED PAIR that establishes the BIOS-tar prerequisite. Same 33566720
 // bytes, two hosts of this board model, opposite outcomes — which is what makes
@@ -391,10 +391,10 @@ data asrock_altrad8ud_firmware_release_note: String = "Cited from the ALTRAD8UD-
 // states no such dependency at all).
 data asrock_altrad8ud_bios_310_push_refused_at_bmc_207: extdeps.firmware.types.FirmwarePrerequisiteObservation = extdeps.firmware.types.FirmwarePrerequisiteObservation {
   board: AsrockRackAltrad8ud1l2t,
-  subject: HostBios,
+  subject: extdeps.firmware.types.HostBios,
   image_kind: OpenBmcWebUiTar,
   gating_target: extdeps.firmware.types.BmcController,
-  gating_version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
+  gating_version: extdeps.firmware.types.firmware_semantic_version(major: 2, minor: 7, patch: 0),
   outcome: extdeps.firmware.types.PushRefusedByTarget {
     diagnostic: "Invalid ExtendedVersion: primary-all. Please check MANIFEST file!",
   },
@@ -403,11 +403,11 @@ data asrock_altrad8ud_bios_310_push_refused_at_bmc_207: extdeps.firmware.types.F
 
 data asrock_altrad8ud_bios_310_push_accepted_at_bmc_322: extdeps.firmware.types.FirmwarePrerequisiteObservation = extdeps.firmware.types.FirmwarePrerequisiteObservation {
   board: AsrockRackAltrad8ud1l2t,
-  subject: HostBios,
+  subject: extdeps.firmware.types.HostBios,
   image_kind: OpenBmcWebUiTar,
   gating_target: extdeps.firmware.types.BmcController,
-  gating_version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
-  outcome: PushAcceptedByTarget,
+  gating_version: extdeps.firmware.types.firmware_semantic_version(major: 3, minor: 22, patch: 0),
+  outcome: extdeps.firmware.types.PushAcceptedByTarget,
   observed_at: 1786582800000,
 }
 
@@ -423,13 +423,13 @@ data asrock_altrad8ud_bios_openbmc_prerequisite_receipt: String = "Irreducible r
 // modules installed in it — note in particular that the four-module
 // population is A1+B1+E1+F1 and is NOT one module per channel.
 data asrock_altrad8ud_documented_dimm_populations: List<extdeps.boards.types.DimmPopulation> = [
-  extdeps.boards.types.DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1"], authority: extdeps.boards.asrock_rack.extdeps_external_authority_anchor },
-  extdeps.boards.types.DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1", "E1"], authority: extdeps.boards.asrock_rack.extdeps_external_authority_anchor },
-  extdeps.boards.types.DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1", "B1", "E1", "F1"], authority: extdeps.boards.asrock_rack.extdeps_external_authority_anchor },
+  extdeps.boards.types.DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1"], authority: extdeps_external_authority_anchor },
+  extdeps.boards.types.DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1", "E1"], authority: extdeps_external_authority_anchor },
+  extdeps.boards.types.DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1", "B1", "E1", "F1"], authority: extdeps_external_authority_anchor },
   extdeps.boards.types.DimmPopulation {
     board: AsrockRackAltrad8ud1l2t,
     slots: ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"],
-    authority: extdeps.boards.asrock_rack.extdeps_external_authority_anchor,
+    authority: extdeps_external_authority_anchor,
   },
 ]
 
@@ -456,7 +456,7 @@ data asrock_altrad8ud_mechanical_model_scope: extdeps.external_authority.Externa
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.boards.asrock_rack",
       decl_name: "asrock_altrad8ud_1l2t_mechanical",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: asrock_altrad8ud_download_authority,
@@ -483,11 +483,11 @@ data asrock_altrad8ud_1l2t_mechanical: AsrockAltrad8ud1l2tMechanical = AsrockAlt
   board_label: "ASRock Rack ALTRAD8UD-1L2T",
   form_factor_label: "deep micro-ATX (9.6 x 10.5 in)",
   processor_socket_count: 1,
-  socket: ampere_lga4926_socket,
+  socket: extdeps.cpu.ampere.ampere_lga4926_socket,
   processor_support_label: "LGA 4926, Ampere Altra / Altra Max",
   dimm_slots_total: 8,
   dimms_per_channel: 1,
-  ddr4_max_data_rate: megatransfers_per_second(count: 3200),
+  ddr4_max_data_rate: std.measure.megatransfers_per_second(count: 3200),
   network_label: "2x 10GbE (Intel X550) + 1x 1GbE (Intel i210) per the vendor page",
   citation: "asrockrack.com product page for ALTRAD8UD-1L2T, read 2026-08-18",
 }

@@ -1,5 +1,6 @@
 module gunbc.host_hygiene_liveness_observe
 
+
 data gunbc_host_hygiene_liveness_observe_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "The OBSERVE half of the liveness vertical (brief: split observe from mutate). Runs LocalShell only: unit enumeration reuses gunbc.systemctl_list_units's all-states seam (the same one-op, different-binding move the reaper observe module uses — a listener slot is worth checking whether active, inactive, or failed, since a failed slot is exactly the outage this exists to catch), and the journal read goes through the new extdeps.systemd.Journalctl.UnitLog typed op rather than a piped `journalctl | grep | tail` shell body. Marker-matching (last 'Listening for Jobs' line) and freshness (age against extdeps.clock's typed Clock.UnixMillis read) are pure .dag folds over one typed stdout read, replacing what the deleted host_hygiene_liveness_script.dag did as one hand-written pipeline in a single shell body."
 }
@@ -7,7 +8,7 @@ data gunbc_host_hygiene_liveness_observe_scope_disposition: std.disposition.Disp
 data host_hygiene_listening_marker: String = "Listening for Jobs"
 
 fn host_hygiene_journal_lines(stdout: String) -> List<String> {
-  filter(map(split(s: std.algebra.trim(stdout), delimiter: "\n"), l => std.algebra.trim(l)), l => l != "")
+  filter(map(split(s: trim(stdout), delimiter: "\n"), l => trim(l)), l => l != "")
 }
 
 fn host_hygiene_journal_matching_lines(stdout: String) -> List<String> {
@@ -18,7 +19,7 @@ fn host_hygiene_journal_matching_lines(stdout: String) -> List<String> {
 // whitespace field is the epoch stamp; the fractional part is dropped the same way the
 // deleted script's `last_int=$\{last%%.*}` did.
 fn host_hygiene_line_epoch_field(line: String) -> String {
-  split(s: std.algebra.trim(line), delimiter: " ").first()
+  split(s: trim(line), delimiter: " ").first()
 }
 
 fn host_hygiene_epoch_field_whole_seconds(field: String) -> Int? {
@@ -69,8 +70,8 @@ type FleetListeningObserveReceipt
 
 fn observe_all_slot_listening() -> FleetListeningObserveReceipt {
   match extdeps.clock.clock_unix_millis_read() {
-    ClockUnixMillisRefused { detail: d } => FleetListeningObserveRefused { cause: concat("clock read refused: ", d) }
-    ClockUnixMillisObserved { millis: now_ms } =>
+    extdeps.clock.ClockUnixMillisRefused { detail: d } => FleetListeningObserveRefused { cause: concat("clock read refused: ", d) }
+    extdeps.clock.ClockUnixMillisObserved { millis: now_ms } =>
       match gunbc.systemctl_list_units.systemctl_list_units_all_states(instance_glob: host_hygiene_liveness_instance_glob) {
         Absent => FleetListeningObserveRefused { cause: "unit enumeration refused (systemctl list-units transport)" }
         Present { value: units } =>

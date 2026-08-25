@@ -1,7 +1,7 @@
 module test.claim.host_reach_identity_probe_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn fixture_subject() -> gunbc.host_assimilation_program.HostEnrollmentIntent {
   fleet_subsumption_enrollments.first()
@@ -11,20 +11,20 @@ fn fixture_subject() -> gunbc.host_assimilation_program.HostEnrollmentIntent {
 // unclassifiable failure is TransportUnavailable with the cause preserved, never a
 // fabricated Reachable.
 test fn probe_wire_classifies_four_distinct_outcomes() -> Bool {
-  match classify_reach_probe_wire(success: true, stdout: "srv1\n", stderr: "") {
-    ProbeReachable { observed_short_hostname: h, observed_principal: _ } => h == "srv1"
+  match gunbc.host_reach_identity_probe.classify_reach_probe_wire(success: true, stdout: "srv1\n", stderr: "") {
+    gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: h, observed_principal: _ } => h == "srv1"
     _ => false
   }
-    && match classify_reach_probe_wire(success: false, stdout: "", stderr: "briansrls@srv5: Permission denied (publickey).") {
-      ProbeAuthenticationRefused { cause: _ } => true
+    && match gunbc.host_reach_identity_probe.classify_reach_probe_wire(success: false, stdout: "", stderr: "briansrls@srv5: Permission denied (publickey).") {
+      gunbc.host_reach_identity_probe.ProbeAuthenticationRefused { cause: _ } => true
       _ => false
     }
-    && match classify_reach_probe_wire(success: false, stdout: "", stderr: "Host key verification failed.") {
-      ProbeHostKeyUnenrolled { transport_diagnostic: _ } => true
+    && match gunbc.host_reach_identity_probe.classify_reach_probe_wire(success: false, stdout: "", stderr: "Host key verification failed.") {
+      gunbc.host_reach_identity_probe.ProbeHostKeyUnenrolled { transport_diagnostic: _ } => true
       _ => false
     }
-    && match classify_reach_probe_wire(success: false, stdout: "", stderr: "ssh: connect to host srv5 port 22: Connection timed out") {
-      ProbeTransportUnavailable { cause: _ } => true
+    && match gunbc.host_reach_identity_probe.classify_reach_probe_wire(success: false, stdout: "", stderr: "ssh: connect to host srv5 port 22: Connection timed out") {
+      gunbc.host_reach_identity_probe.ProbeTransportUnavailable { cause: _ } => true
       _ => false
     }
 }
@@ -32,8 +32,8 @@ test fn probe_wire_classifies_four_distinct_outcomes() -> Bool {
 // RED-shaped fail-closed control: empty stderr on failure is still TransportUnavailable
 // (unknown never widens to Reachable), and a success wire never lands in a failure arm.
 test fn probe_wire_unknown_failure_is_transport_unavailable_never_reachable() -> Bool {
-  match classify_reach_probe_wire(success: false, stdout: "srv1\n", stderr: "") {
-    ProbeTransportUnavailable { cause: _ } => true
+  match gunbc.host_reach_identity_probe.classify_reach_probe_wire(success: false, stdout: "srv1\n", stderr: "") {
+    gunbc.host_reach_identity_probe.ProbeTransportUnavailable { cause: _ } => true
     _ => false
   }
 }
@@ -41,76 +41,76 @@ test fn probe_wire_unknown_failure_is_transport_unavailable_never_reachable() ->
 // Reach verdict projection: transport-unavailable and authentication-refused stay
 // DISTINCT outcome arms even though both project Inaccessible — the distinction lives on
 // the receipt, and this witness pins that both arms exist separately AND project the
-// same fail-closed verdict (neither is ever std.upsert_decision.Converged or Absent).
+// same fail-closed verdict (neither is ever Converged or Absent).
 test fn reach_projection_covers_all_arms() -> Bool {
-  reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: "srv1", observed_principal: "gunbc-fleet" }) == std.upsert_decision.Converged
-    && reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeTransportUnavailable { cause: "timeout" }) == Inaccessible
-    && reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeAuthenticationRefused { cause: "denied" }) == Inaccessible
-    && reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeHostKeyMismatch { expected_fingerprint: "a", observed_fingerprint: "b" }) == Conflict
-    && reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeHostKeyUnenrolled { transport_diagnostic: "Host key verification failed." }) == Inaccessible
+  gunbc.host_reach_identity_probe.reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: "srv1", observed_principal: "gunbc-fleet" }) == std.upsert_decision.Converged
+    && gunbc.host_reach_identity_probe.reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeTransportUnavailable { cause: "timeout" }) == std.upsert_decision.Inaccessible
+    && gunbc.host_reach_identity_probe.reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeAuthenticationRefused { cause: "denied" }) == std.upsert_decision.Inaccessible
+    && gunbc.host_reach_identity_probe.reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeHostKeyMismatch { expected_fingerprint: "a", observed_fingerprint: "b" }) == std.upsert_decision.Conflict
+    && gunbc.host_reach_identity_probe.reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeHostKeyUnenrolled { transport_diagnostic: "Host key verification failed." }) == std.upsert_decision.Inaccessible
 }
 
 // Identity deduction: reachable-and-matching converges; reachable-but-different is
-// std.upsert_decision.Drifted (the divergence SetHostnameCas corrects); unreachable/unauthenticated cannot
+// Drifted (the divergence SetHostnameCas corrects); unreachable/unauthenticated cannot
 // say (Inaccessible); a host-key mismatch is Conflict — the machine answering may not be
 // the enrolled host, so its hostname must never launder into an identity observation.
 test fn identity_projection_discriminates_match_drift_and_wrong_machine() -> Bool {
-  let desired = host_identity_desired_short_hostname(host: operator_host_srv1)
-  identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: desired, observed_principal: "gunbc-fleet" }) == std.upsert_decision.Converged
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: "altrad8ud-1l2t-1", observed_principal: "gunbc-fleet" }) == std.upsert_decision.Drifted
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: desired, observed_principal: "root" }) == std.upsert_decision.Drifted
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeTransportUnavailable { cause: "x" }) == Inaccessible
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeAuthenticationRefused { cause: "x" }) == Inaccessible
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeHostKeyMismatch { expected_fingerprint: "a", observed_fingerprint: "b" }) == Conflict
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeHostKeyUnenrolled { transport_diagnostic: "x" }) == Inaccessible
-    && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeTargetUnobserved { cause: "x" }) == Inaccessible
+  let desired = gunbc.host_reach_identity_probe.host_identity_desired_short_hostname(host: gunbc.fleet_intent_network.operator_host_srv1)
+  gunbc.host_reach_identity_probe.identity_verdict_from_outcome(host: gunbc.fleet_intent_network.operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: desired, observed_principal: "gunbc-fleet" }) == std.upsert_decision.Converged
+    && gunbc.host_reach_identity_probe.identity_verdict_from_outcome(host: gunbc.fleet_intent_network.operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: "altrad8ud-1l2t-1", observed_principal: "gunbc-fleet" }) == std.upsert_decision.Drifted
+    && gunbc.host_reach_identity_probe.identity_verdict_from_outcome(host: gunbc.fleet_intent_network.operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: desired, observed_principal: "root" }) == std.upsert_decision.Drifted
+    && gunbc.host_reach_identity_probe.identity_verdict_from_outcome(host: gunbc.fleet_intent_network.operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeTransportUnavailable { cause: "x" }) == std.upsert_decision.Inaccessible
+    && gunbc.host_reach_identity_probe.identity_verdict_from_outcome(host: gunbc.fleet_intent_network.operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeAuthenticationRefused { cause: "x" }) == std.upsert_decision.Inaccessible
+    && gunbc.host_reach_identity_probe.identity_verdict_from_outcome(host: gunbc.fleet_intent_network.operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeHostKeyMismatch { expected_fingerprint: "a", observed_fingerprint: "b" }) == std.upsert_decision.Conflict
+    && gunbc.host_reach_identity_probe.identity_verdict_from_outcome(host: gunbc.fleet_intent_network.operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeHostKeyUnenrolled { transport_diagnostic: "x" }) == std.upsert_decision.Inaccessible
+    && gunbc.host_reach_identity_probe.identity_verdict_from_outcome(host: gunbc.fleet_intent_network.operator_host_srv1, requested_principal: "gunbc-fleet", o: gunbc.host_reach_identity_probe.ProbeTargetUnobserved { cause: "x" }) == std.upsert_decision.Inaccessible
 }
 
 // Join 4 (operator verdict): the executed probe run's receipts ARE the registry now —
 // the producers answer Present for a probed host, and the verdicts REFLECT the run:
 // srv1 crossed command reach on run 31333011288 (gunbc-fleet principal), so its cells
-// read std.upsert_decision.Converged from the SAME receipt; coverage GREW from the executed run, not from
+// read Converged from the SAME receipt; coverage GREW from the executed run, not from
 // wiring. A host outside the registry still answers none.
 test fn committed_probe_receipts_feed_producers_and_grow_coverage() -> Bool {
-  match host_reach_identity_probe_receipt_for(host: operator_host_srv1) {
+  match gunbc.host_reach_identity_probe.host_reach_identity_probe_receipt_for(host: gunbc.fleet_intent_network.operator_host_srv1) {
     Present { value: r } =>
       match r.outcome {
-        ProbeReachable { observed_short_hostname: h, observed_principal: _ } => h == "srv1"
+        gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: h, observed_principal: _ } => h == "srv1"
         _ => false
       }
     _ => false
   }
-    && match observe_reach_secrets_network(host: operator_host_srv1) {
+    && match gunbc.host_reach_identity_probe.observe_reach_secrets_network(host: gunbc.fleet_intent_network.operator_host_srv1) {
       Present { value: v } => v == std.upsert_decision.Converged
       _ => false
     }
-    && match observe_host_phase(subject: test.claim.host_reach_identity_probe_witness.fixture_subject(), host: operator_host_srv1, phase_label: "P0:reach-secrets-network") {
+    && match gunbc.host_phase_status.observe_host_phase(subject: fixture_subject(), host: gunbc.fleet_intent_network.operator_host_srv1, phase_label: "P0:reach-secrets-network") {
       Present { value: v } => v == std.upsert_decision.Converged
       _ => false
     }
-    && match host_reach_identity_probe_receipt_for(host: "no-such-host" as product.placement_supply.HostIdentity) {
+    && match gunbc.host_reach_identity_probe.host_reach_identity_probe_receipt_for(host: "no-such-host" as product.placement_supply.HostIdentity) {
       Present { value: _ } => false
       _ => true
     }
-    && host_phase_observation_coverage_count(enrollments: fleet_subsumption_enrollments) > 1
+    && gunbc.host_phase_status.host_phase_observation_coverage_count(enrollments: gunbc.host_phase_status.fleet_subsumption_enrollments) > 1
 }
 
 // The canonical seam routes each label to its producer and answers none for a label with
 // no producer row; the srv3 lease producer is preserved and still host-scoped.
 test fn observe_host_phase_routes_by_label_and_stays_fail_closed() -> Bool {
-  match observe_host_phase(subject: test.claim.host_reach_identity_probe_witness.fixture_subject(), host: operator_host_srv3, phase_label: "prefix:os-install-actuated") {
+  match gunbc.host_phase_status.observe_host_phase(subject: fixture_subject(), host: gunbc.fleet_intent_network.operator_host_srv3, phase_label: "prefix:os-install-actuated") {
     Present { value: _ } => true
     _ => false
   }
-    && match observe_host_phase(subject: test.claim.host_reach_identity_probe_witness.fixture_subject(), host: operator_host_srv1, phase_label: "prefix:os-install-actuated") {
+    && match gunbc.host_phase_status.observe_host_phase(subject: fixture_subject(), host: gunbc.fleet_intent_network.operator_host_srv1, phase_label: "prefix:os-install-actuated") {
       Present { value: _ } => false
       _ => true
     }
-    && match observe_host_phase(subject: test.claim.host_reach_identity_probe_witness.fixture_subject(), host: operator_host_srv1, phase_label: "P1:runner-deploy-slot") {
+    && match gunbc.host_phase_status.observe_host_phase(subject: fixture_subject(), host: gunbc.fleet_intent_network.operator_host_srv1, phase_label: "P1:runner-deploy-slot") {
       Present { value: _ } => false
       _ => true
     }
-    && match observe_host_phase(subject: test.claim.host_reach_identity_probe_witness.fixture_subject(), host: operator_host_srv1, phase_label: "P0:host-identity-converge") {
+    && match gunbc.host_phase_status.observe_host_phase(subject: fixture_subject(), host: gunbc.fleet_intent_network.operator_host_srv1, phase_label: "P0:host-identity-converge") {
       Present { value: v } => v == std.upsert_decision.Converged
       _ => false
     }
@@ -121,13 +121,13 @@ test fn observe_host_phase_routes_by_label_and_stays_fail_closed() -> Bool {
 // distinguishable at the receipt's outcome grain.
 test fn one_receipt_feeds_both_cells() -> Bool {
   let r = gunbc.host_reach_identity_probe.HostReachIdentityProbeReceipt {
-    host: operator_host_srv1,
+    host: gunbc.fleet_intent_network.operator_host_srv1,
     probed_at: "witness-fixture" as std.types.NonEmptyStr,
     requested_principal: "gunbc-fleet",
-    outcome: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: host_identity_desired_short_hostname(host: operator_host_srv1), observed_principal: "gunbc-fleet" },
+    outcome: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: gunbc.host_reach_identity_probe.host_identity_desired_short_hostname(host: gunbc.fleet_intent_network.operator_host_srv1), observed_principal: "gunbc-fleet" },
   }
-  reach_verdict_from_outcome(o: r.outcome) == std.upsert_decision.Converged
-    && identity_verdict_from_outcome(host: r.host, requested_principal: r.requested_principal, o: r.outcome) == std.upsert_decision.Converged
+  gunbc.host_reach_identity_probe.reach_verdict_from_outcome(o: r.outcome) == std.upsert_decision.Converged
+    && gunbc.host_reach_identity_probe.identity_verdict_from_outcome(host: r.host, requested_principal: r.requested_principal, o: r.outcome) == std.upsert_decision.Converged
 }
 
 // Operator verdict join 7 (supersedes the review 50695 Optional shape): "no enrollment to
@@ -138,20 +138,20 @@ test fn one_receipt_feeds_both_cells() -> Bool {
 // wrapper PROMOTES it to Mismatch exactly when an enrolled fingerprint is Present, and
 // never fabricates an expected value.
 test fn mismatch_expectation_threads_without_fabrication() -> Bool {
-  match classify_reach_probe_wire(success: false, stdout: "", stderr: "Host key verification failed.") {
-    ProbeHostKeyUnenrolled { transport_diagnostic: d } => string_contains(s: d, pattern: "Host key verification failed")
+  match gunbc.host_reach_identity_probe.classify_reach_probe_wire(success: false, stdout: "", stderr: "Host key verification failed.") {
+    gunbc.host_reach_identity_probe.ProbeHostKeyUnenrolled { transport_diagnostic: d } => string_contains(s: d, pattern: "Host key verification failed")
     _ => false
   }
-    && match classify_reach_probe_wire_with_expectation(success: false, stdout: "", stderr: "Host key verification failed.", expected_fingerprint: Present { value: "SHA256:abc" }) {
-      ProbeHostKeyMismatch { expected_fingerprint: e2, observed_fingerprint: _ } => e2 == "SHA256:abc"
+    && match gunbc.host_reach_identity_probe.classify_reach_probe_wire_with_expectation(success: false, stdout: "", stderr: "Host key verification failed.", expected_fingerprint: Present { value: "SHA256:abc" }) {
+      gunbc.host_reach_identity_probe.ProbeHostKeyMismatch { expected_fingerprint: e2, observed_fingerprint: _ } => e2 == "SHA256:abc"
       _ => false
     }
-    && match classify_reach_probe_wire_with_expectation(success: false, stdout: "", stderr: "Host key verification failed.", expected_fingerprint: none) {
-      ProbeHostKeyUnenrolled { transport_diagnostic: _ } => true
+    && match gunbc.host_reach_identity_probe.classify_reach_probe_wire_with_expectation(success: false, stdout: "", stderr: "Host key verification failed.", expected_fingerprint: none) {
+      gunbc.host_reach_identity_probe.ProbeHostKeyUnenrolled { transport_diagnostic: _ } => true
       _ => false
     }
-    && match classify_reach_probe_wire_with_expectation(success: true, stdout: "srv5\n", stderr: "", expected_fingerprint: Present { value: "SHA256:abc" }) {
-      ProbeReachable { observed_short_hostname: h, observed_principal: _ } => h == "srv5"
+    && match gunbc.host_reach_identity_probe.classify_reach_probe_wire_with_expectation(success: true, stdout: "srv5\n", stderr: "", expected_fingerprint: Present { value: "SHA256:abc" }) {
+      gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: h, observed_principal: _ } => h == "srv5"
       _ => false
     }
 }
@@ -160,7 +160,7 @@ test fn mismatch_expectation_threads_without_fabrication() -> Bool {
 // reservation address — 'srv5'/'srv6' are not published names anywhere — while
 // name-resolvable hosts pass through unchanged. Identity stays the receipt key.
 test fn spark_probe_targets_are_modeled_addresses_not_names() -> Bool {
-  fleet_probe_endpoint_for(host: "srv5") == "192.168.1.222"
-    && fleet_probe_endpoint_for(host: "srv6") == "192.168.1.223"
-    && fleet_probe_endpoint_for(host: "srv1") == "srv1"
+  gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: "srv5") == "192.168.1.222"
+    && gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: "srv6") == "192.168.1.223"
+    && gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: "srv1") == "srv1"
 }

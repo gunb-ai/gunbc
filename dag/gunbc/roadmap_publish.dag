@@ -386,7 +386,7 @@ type RoadmapPublicationSubject {
 }
 
 fn publication_subject_remote(subject: RoadmapPublicationSubject) -> std.types.NonEmptyStr {
-  github_https_clone_url(repo: subject.repository)
+  extdeps.github.github.github_https_clone_url(repo: subject.repository)
 }
 
 data publication_subject_observation_note: String = "THE CONSUMER CANNOT CHECK A RECEIPT AGAINST A SUBJECT IT DOES NOT HAVE, so not having one is a state and gets a name. The exact head of an attempt is READ from the attempt's worktree, and that read can fail: the worktree may be gone, git may refuse, the attempt may exist only as a branch name. Under those conditions a consumer holds a receipt and nothing to compare it to.\\n\\nTHE ARM THAT MATTERS IS UNOBSERVED, and it must not resolve to `treat the receipt as evidence`. That is the exact move this whole module was rewritten to eliminate, arriving through the back door: a projection that cannot establish its subject and paints from the document anyway has looked the answer up by path, which is the branch lookup with a file name standing in for the branch. So an unobserved subject REFUSES, and the refusal names what could not be read.\\n\\nIt is deliberately not an Optional. `no subject` and `subject present` are the two cases, but the reason the subject is missing is what a reader acts on, and an Optional discards it at the moment it is known."
@@ -496,87 +496,87 @@ data publication_receipt_schema_v2_note: String = "v2, not v1, because the v1 sh
 fn publication_receipt_outcome_json(outcome: PublicationReceiptOutcome) -> extdeps.languages.json.emit.JsonValue {
   match outcome {
     ReceiptBound { pr_number, url, draft } =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "publication-bound")),
-        json_kv(key: "pr_number", value: json_int(n: pr_number)),
-        json_kv(key: "url", value: json_string(s: url as String)),
-        json_kv(key: "draft", value: extdeps.languages.json.emit.json_bool(b: draft)),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "publication-bound")),
+        extdeps.languages.json.emit.json_kv(key: "pr_number", value: extdeps.languages.json.emit.json_int(n: pr_number)),
+        extdeps.languages.json.emit.json_kv(key: "url", value: extdeps.languages.json.emit.json_string(s: url as String)),
+        extdeps.languages.json.emit.json_kv(key: "draft", value: extdeps.languages.json.emit.json_bool(b: draft)),
       ])
     ReceiptHeadDiverged { pr_number, pr_head, url } =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "publication-head-diverged")),
-        json_kv(key: "pr_number", value: json_int(n: pr_number)),
-        json_kv(key: "pr_head", value: json_string(s: pr_head as String)),
-        json_kv(key: "url", value: json_string(s: url as String)),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "publication-head-diverged")),
+        extdeps.languages.json.emit.json_kv(key: "pr_number", value: extdeps.languages.json.emit.json_int(n: pr_number)),
+        extdeps.languages.json.emit.json_kv(key: "pr_head", value: extdeps.languages.json.emit.json_string(s: pr_head as String)),
+        extdeps.languages.json.emit.json_kv(key: "url", value: extdeps.languages.json.emit.json_string(s: url as String)),
       ])
     ReceiptBindingAmbiguous { pr_numbers } =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "publication-binding-ambiguous")),
-        json_kv(
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "publication-binding-ambiguous")),
+        extdeps.languages.json.emit.json_kv(
           key: "pr_numbers",
-          value: json_array(elements: map(pr_numbers, n => json_int(n: n))),
+          value: extdeps.languages.json.emit.json_array(elements: map(pr_numbers, n => extdeps.languages.json.emit.json_int(n: n))),
         ),
       ])
     ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha } =>
-      json_object(members: [
-        json_kv(
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(
           key: "kind",
-          value: json_string(s: "remote-branch-at-expected-head-without-pull-request"),
+          value: extdeps.languages.json.emit.json_string(s: "remote-branch-at-expected-head-without-pull-request"),
         ),
-        json_kv(key: "head_sha", value: json_string(s: head_sha as String)),
+        extdeps.languages.json.emit.json_kv(key: "head_sha", value: extdeps.languages.json.emit.json_string(s: head_sha as String)),
       ])
     ReceiptRemoteBranchHeadDiverged { remote_head } =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "remote-branch-head-diverged")),
-        json_kv(key: "remote_head", value: json_string(s: remote_head as String)),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "remote-branch-head-diverged")),
+        extdeps.languages.json.emit.json_kv(key: "remote_head", value: extdeps.languages.json.emit.json_string(s: remote_head as String)),
       ])
     ReceiptRemoteBranchBindingAmbiguous { refs_matched } =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "remote-branch-binding-ambiguous")),
-        json_kv(key: "refs_matched", value: json_int(n: refs_matched)),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "remote-branch-binding-ambiguous")),
+        extdeps.languages.json.emit.json_kv(key: "refs_matched", value: extdeps.languages.json.emit.json_int(n: refs_matched)),
       ])
     ReceiptBranchNotPublished { remote_branches_seen } =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "branch-not-published")),
-        json_kv(key: "remote_branches_seen", value: json_int(n: remote_branches_seen)),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "branch-not-published")),
+        extdeps.languages.json.emit.json_kv(key: "remote_branches_seen", value: extdeps.languages.json.emit.json_int(n: remote_branches_seen)),
       ])
     ReceiptObservationRefused { detail } =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: "publication-observation-refused")),
-        json_kv(key: "detail", value: json_string(s: detail)),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "publication-observation-refused")),
+        extdeps.languages.json.emit.json_kv(key: "detail", value: extdeps.languages.json.emit.json_string(s: detail)),
       ])
   }
 }
 
 fn publication_repository_json(repo: extdeps.github.github.Repository) -> extdeps.languages.json.emit.JsonValue {
-  json_object(members: [
-    json_kv(key: "owner", value: json_string(s: repo.owner)),
-    json_kv(key: "name", value: json_string(s: repo.name)),
-    json_kv(key: "full_name", value: json_string(s: repo.full_name)),
-    json_kv(key: "private", value: extdeps.languages.json.emit.json_bool(b: repo.private)),
-    json_kv(key: "default_branch", value: json_string(s: repo.default_branch)),
+  extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "owner", value: extdeps.languages.json.emit.json_string(s: repo.owner)),
+    extdeps.languages.json.emit.json_kv(key: "name", value: extdeps.languages.json.emit.json_string(s: repo.name)),
+    extdeps.languages.json.emit.json_kv(key: "full_name", value: extdeps.languages.json.emit.json_string(s: repo.full_name)),
+    extdeps.languages.json.emit.json_kv(key: "private", value: extdeps.languages.json.emit.json_bool(b: repo.private)),
+    extdeps.languages.json.emit.json_kv(key: "default_branch", value: extdeps.languages.json.emit.json_string(s: repo.default_branch)),
   ])
 }
 
 fn publication_subject_json(subject: RoadmapPublicationSubject) -> extdeps.languages.json.emit.JsonValue {
-  json_object(members: [
-    json_kv(key: "node_id", value: json_string(s: subject.node_id)),
-    json_kv(key: "attempt_key", value: json_string(s: subject.attempt_key)),
-    json_kv(
+  extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "node_id", value: extdeps.languages.json.emit.json_string(s: subject.node_id)),
+    extdeps.languages.json.emit.json_kv(key: "attempt_key", value: extdeps.languages.json.emit.json_string(s: subject.attempt_key)),
+    extdeps.languages.json.emit.json_kv(
       key: "repository",
       value: publication_repository_json(repo: subject.repository),
     ),
-    json_kv(key: "branch", value: json_string(s: subject.branch as String)),
-    json_kv(key: "expected_base", value: json_string(s: subject.expected_base as String)),
-    json_kv(key: "expected_head", value: json_string(s: subject.expected_head as String)),
+    extdeps.languages.json.emit.json_kv(key: "branch", value: extdeps.languages.json.emit.json_string(s: subject.branch as String)),
+    extdeps.languages.json.emit.json_kv(key: "expected_base", value: extdeps.languages.json.emit.json_string(s: subject.expected_base as String)),
+    extdeps.languages.json.emit.json_kv(key: "expected_head", value: extdeps.languages.json.emit.json_string(s: subject.expected_head as String)),
   ])
 }
 
 fn publication_receipt_json(receipt: PublicationReceipt) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: publication_receipt_schema as String)),
-    json_kv(key: "subject", value: publication_subject_json(subject: receipt.subject)),
-    json_kv(
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: publication_receipt_schema as String)),
+    extdeps.languages.json.emit.json_kv(key: "subject", value: publication_subject_json(subject: receipt.subject)),
+    extdeps.languages.json.emit.json_kv(
       key: "outcome",
       value: publication_receipt_outcome_json(outcome: receipt.outcome),
     ),
@@ -588,23 +588,23 @@ type PublicationReceiptMember
   | ReceiptMemberUnreadable { reason: String }
 
 fn publication_receipt_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> PublicationReceiptMember {
-  match json_object_unique_member(v: doc, key: key) {
-    JsonMemberNotAnObject =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       ReceiptMemberUnreadable { reason: "publication receipt is not a JSON object" }
-    JsonMemberAbsent =>
+    extdeps.languages.json.parse.JsonMemberAbsent =>
       ReceiptMemberUnreadable {
         reason: join(["publication receipt has no ", key, " member"], ""),
       }
-    JsonMemberDuplicated { count: n } =>
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: n } =>
       ReceiptMemberUnreadable {
         reason: join([
           "publication receipt carries ", to_string(n), " ", key,
           " members, so which one it means is not established",
         ], ""),
       }
-    JsonMemberFound { value: v } =>
+    extdeps.languages.json.parse.JsonMemberFound { value: v } =>
       match v {
-        JsonString { value: s } => ReceiptMemberRead { value: s }
+        extdeps.languages.json.emit.JsonString { value: s } => ReceiptMemberRead { value: s }
         _ =>
           ReceiptMemberUnreadable {
             reason: join(["publication receipt ", key, " member is not a string"], ""),
@@ -621,10 +621,10 @@ type PublicationReceiptDecode
 
 // A REFUSAL THAT DOES NOT NAME WHAT WAS WRONG IS A TYPED SHRUG. The first cut of these decoders returned Optionals, so five different situations - not an object, member absent, member present with the wrong JSON type, an outcome kind nobody writes, a kind whose own fields are missing - all arrived as `none` and were rendered by the caller as one sentence about `a required member`. Whoever read that sentence had to open the document and diff it against the encoder by hand, which is the work the decoder had already done and thrown away.\n\nSO EACH DECODER RETURNS ITS OWN COPRODUCT and the reason names the member, and for an outcome the KIND as well - because `publication-bound is missing pr_number` and `nobody writes published-ok` send a reader to different places. The reason is built where the fact is known, not reconstructed by the caller.
 fn publication_receipt_int_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> Int? {
-  match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value: v } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
+    extdeps.languages.json.parse.JsonMemberFound { value: v } =>
       match v {
-        JsonNumber { lexeme: lx } => parse_int(s: lx as String)
+        extdeps.languages.json.emit.JsonNumber { lexeme: lx } => parse_int(s: lx as String)
         _ => none
       }
     _ => none
@@ -632,10 +632,10 @@ fn publication_receipt_int_member(doc: extdeps.languages.json.emit.JsonValue, ke
 }
 
 fn publication_receipt_bool_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> Bool? {
-  match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value: v } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
+    extdeps.languages.json.parse.JsonMemberFound { value: v } =>
       match v {
-        JsonBool { value: b } => Present { value: b }
+        extdeps.languages.json.emit.JsonBool { value: b } => Present { value: b }
         _ => none
       }
     _ => none
@@ -645,12 +645,12 @@ fn publication_receipt_bool_member(doc: extdeps.languages.json.emit.JsonValue, k
 data pr_numbers_survive_the_round_trip_note: String = "THE AMBIGUOUS SET IS DECODED, NOT REPLACED BY AN EMPTY ONE. An earlier cut of this decoder answered `publication-binding-ambiguous` with `pr_numbers: []`, discarding the very list the encoder had just written - so a receipt recording that four pull requests matched decoded to one recording that none did, while reporting the same outcome kind and passing every claim that only checked the kind. An ambiguity whose members are gone is not an ambiguity anyone can resolve."
 
 fn publication_receipt_int_array_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> List<Int>? {
-  match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value: v } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
+    extdeps.languages.json.parse.JsonMemberFound { value: v } =>
       match v {
         JsonArray { elements } => {
           let parsed = map(elements, e => match e {
-            JsonNumber { lexeme: lx } => parse_int(s: lx as String)
+            extdeps.languages.json.emit.JsonNumber { lexeme: lx } => parse_int(s: lx as String)
             _ => none
           })
           let readable = filter(parsed, n => match n {
@@ -837,8 +837,8 @@ fn publication_subject_decode(doc: extdeps.languages.json.emit.JsonValue) -> Pub
       match publication_receipt_member(doc: doc, key: "attempt_key") {
         ReceiptMemberUnreadable { reason: _ } => subject_member_missing(member: "attempt_key")
         ReceiptMemberRead { value: attempt_key } =>
-          match json_object_unique_member(v: doc, key: "repository") {
-            JsonMemberFound { value: repo_doc } =>
+          match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: "repository") {
+            extdeps.languages.json.parse.JsonMemberFound { value: repo_doc } =>
               match publication_repository_decode(doc: repo_doc) {
                 Absent => subject_member_missing(member: "repository")
                 Present { value: repository } =>
@@ -886,13 +886,13 @@ fn publication_receipt_decode_document(doc: extdeps.languages.json.emit.JsonValu
           ], ""),
         }
       } else {
-        match json_object_unique_member(v: doc, key: "subject") {
-          JsonMemberFound { value: subject_doc } =>
+        match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: "subject") {
+          extdeps.languages.json.parse.JsonMemberFound { value: subject_doc } =>
             match publication_subject_decode(doc: subject_doc) {
               SubjectUndecodable { reason: r } => ReceiptUndecodable { reason: r }
               SubjectDecoded { subject } =>
-                match json_object_unique_member(v: doc, key: "outcome") {
-                  JsonMemberFound { value: outcome_doc } =>
+                match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: "outcome") {
+                  extdeps.languages.json.parse.JsonMemberFound { value: outcome_doc } =>
                     match publication_receipt_outcome_decode(doc: outcome_doc) {
                       OutcomeUndecodable { reason: r } => ReceiptUndecodable { reason: r }
                       OutcomeDecoded { outcome } =>
@@ -919,7 +919,7 @@ fn publication_receipt_decode_document(doc: extdeps.languages.json.emit.JsonValu
 }
 
 fn publication_receipt_decode(receipt: String) -> PublicationReceiptDecode {
-  match parse_json(s: receipt) {
+  match extdeps.languages.json.parse.parse_json(s: receipt) {
     Absent =>
       ReceiptUndecodable { reason: "publication receipt is not one complete JSON value" }
     Present { value: doc } => publication_receipt_decode_document(doc: doc)

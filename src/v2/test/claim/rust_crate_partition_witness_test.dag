@@ -22,31 +22,31 @@ fn witness_triangle_scc_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
     ],
-    exports: empty_map(),
-    type_definitions: empty_map(),
+    exports: v2.std.collection.empty_map(),
+    type_definitions: v2.std.collection.empty_map(),
   }
 }
 
 fn witness_forced_scc_split_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
-  empty_map()
-    |> map_insert(witness_mod_a, witness_unit_x)
-    |> map_insert(witness_mod_b, witness_unit_x)
-    |> map_insert(witness_mod_c, witness_unit_y)
+  v2.std.collection.empty_map()
+    |> v2.std.collection.map_insert(witness_mod_a, witness_unit_x)
+    |> v2.std.collection.map_insert(witness_mod_b, witness_unit_x)
+    |> v2.std.collection.map_insert(witness_mod_c, witness_unit_y)
 }
 
 test fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
   let dag = witness_triangle_scc_dag()
   let assignment = witness_forced_scc_split_assignment()
-  let units = match partition_fold_outcome(module_dag: dag, assignment: assignment) {
-    PartitionFoldOk { units: units } => units
-    PartitionFoldRefused { cause: _ } => []
+  let units = match v2.std.compilers.compilation_unit.partition_fold_outcome(module_dag: dag, assignment: assignment) {
+    v2.std.compilers.compilation_unit.PartitionFoldOk { units: units } => units
+    v2.std.compilers.compilation_unit.PartitionFoldRefused { cause: _ } => []
   }
-  match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
-    PartitionR4Refused { cause: SccSplit { detail: _ } } => true
-    PartitionR4Refused { cause: UnitGraphCycle { detail: _ } } => false
-    PartitionR4Refused { cause: LinkageCycle { detail: _ } } => false
-    PartitionR4Refused { cause: ByValueTypeCycle { detail: _ } } => false
-    PartitionR4Valid => false
+  match v2.workflow.rust_crate_partition.validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
+    v2.std.compilers.compilation_unit.PartitionR4Refused { cause: v2.std.compilers.compilation_unit.SccSplit { detail: _ } } => true
+    v2.std.compilers.compilation_unit.PartitionR4Refused { cause: v2.std.compilers.compilation_unit.UnitGraphCycle { detail: _ } } => false
+    v2.std.compilers.compilation_unit.PartitionR4Refused { cause: v2.std.compilers.compilation_unit.LinkageCycle { detail: _ } } => false
+    v2.std.compilers.compilation_unit.PartitionR4Refused { cause: v2.std.compilers.compilation_unit.ByValueTypeCycle { detail: _ } } => false
+    v2.std.compilers.compilation_unit.PartitionR4Valid => false
   }
 }
 
@@ -54,15 +54,15 @@ fn witness_acyclic_module_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
   v2.std.compilers.compilation_unit.ModuleDag {
     modules: [witness_mod_p, witness_mod_q],
     edges: [v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_p, to: witness_mod_q }],
-    exports: empty_map(),
-    type_definitions: empty_map(),
+    exports: v2.std.collection.empty_map(),
+    type_definitions: v2.std.collection.empty_map(),
   }
 }
 
 fn witness_two_unit_assignment_no_scc_split() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
-  empty_map()
-    |> map_insert(witness_mod_p, witness_unit_p)
-    |> map_insert(witness_mod_q, witness_unit_q)
+  v2.std.collection.empty_map()
+    |> v2.std.collection.map_insert(witness_mod_p, witness_unit_p)
+    |> v2.std.collection.map_insert(witness_mod_q, witness_unit_q)
 }
 
 fn witness_cyclic_unit_graph() -> List<v2.std.compilers.compilation_unit.CompilationUnit> {
@@ -86,19 +86,19 @@ test fn witness_r4_refuses_unit_graph_cycle_holds() -> Bool {
   let dag = witness_acyclic_module_dag()
   let assignment = witness_two_unit_assignment_no_scc_split()
   let units = witness_cyclic_unit_graph()
-  match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
-    PartitionR4Refused { cause: UnitGraphCycle { detail: _ } } => true
-    PartitionR4Refused { cause: SccSplit { detail: _ } } => false
-    PartitionR4Refused { cause: LinkageCycle { detail: _ } } => false
-    PartitionR4Refused { cause: ByValueTypeCycle { detail: _ } } => false
-    PartitionR4Valid => false
+  match v2.workflow.rust_crate_partition.validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
+    v2.std.compilers.compilation_unit.PartitionR4Refused { cause: v2.std.compilers.compilation_unit.UnitGraphCycle { detail: _ } } => true
+    v2.std.compilers.compilation_unit.PartitionR4Refused { cause: v2.std.compilers.compilation_unit.SccSplit { detail: _ } } => false
+    v2.std.compilers.compilation_unit.PartitionR4Refused { cause: v2.std.compilers.compilation_unit.LinkageCycle { detail: _ } } => false
+    v2.std.compilers.compilation_unit.PartitionR4Refused { cause: v2.std.compilers.compilation_unit.ByValueTypeCycle { detail: _ } } => false
+    v2.std.compilers.compilation_unit.PartitionR4Valid => false
   }
 }
 
 test fn witness_partition_perturbation_member_coverage_holds() -> Bool {
-  let coverage_same = stage0_partition_member_coverage_consistent(
-    left: stage0_single_crate_fold_outcome(),
-    right: stage0_partition_receipt_outcome()
+  let coverage_same = v2.workflow.rust_crate_partition.stage0_partition_member_coverage_consistent(
+    left: v2.workflow.rust_crate_partition.stage0_single_crate_fold_outcome(),
+    right: v2.workflow.rust_crate_partition.stage0_partition_receipt_outcome()
   )
   std.perturbation.perturbation_consistent(
     reading: std.perturbation.ForwardSameInSameOut,
@@ -107,110 +107,110 @@ test fn witness_partition_perturbation_member_coverage_holds() -> Bool {
 }
 
 test fn witness_interim_physical_crate_count_holds() -> Bool {
-  stage0_physical_crate_count() == rust_crate_partition_declared_core_target
+  v2.workflow.rust_crate_partition.stage0_physical_crate_count() == v2.workflow.rust_crate_partition.rust_crate_partition_declared_core_target
 }
 
 test fn witness_interim_module_bearing_unit_count_holds() -> Bool {
-  stage0_module_bearing_unit_count() == rust_crate_partition_module_bearing_unit_target
+  v2.workflow.rust_crate_partition.stage0_module_bearing_unit_count() == v2.workflow.rust_crate_partition.rust_crate_partition_module_bearing_unit_target
 }
 
 test fn witness_policy_partition_refuses_holds() -> Bool {
-  let dag = stage0_module_dag()
-  match resolve_partition_outcome(
+  let dag = v2.workflow.rust_crate_partition.stage0_module_dag()
+  match v2.workflow.rust_crate_partition.resolve_partition_outcome(
     parameter: v2.workflow.rust_crate_partition.PolicyPartitionParam {
-      policy: v2.workflow.rust_crate_partition.PartitionPolicy { target_crate_count: rust_crate_partition_declared_core_target }
+      policy: v2.workflow.rust_crate_partition.PartitionPolicy { target_crate_count: v2.workflow.rust_crate_partition.rust_crate_partition_declared_core_target }
     },
     module_dag: dag
   ) {
-    ResolvePartitionRefused { cause: PolicyResolverUnimplemented { policy: _ } } => true
-    ResolvePartitionOk { assignment: _ } => false
+    v2.workflow.rust_crate_partition.ResolvePartitionRefused { cause: v2.workflow.rust_crate_partition.PolicyResolverUnimplemented { policy: _ } } => true
+    v2.workflow.rust_crate_partition.ResolvePartitionOk { assignment: _ } => false
   }
 }
 
 test fn witness_interim_provenance_is_hand_explicit_holds() -> Bool {
-  match stage0_partition_provenance() {
-    HandExplicit => true
-    PolicyDerived { policy: _ } => false
+  match v2.workflow.rust_crate_partition.stage0_partition_provenance() {
+    v2.std.compilers.compilation_unit.HandExplicit => true
+    v2.std.compilers.compilation_unit.PolicyDerived { policy: _ } => false
   }
 }
 
 test fn witness_provenance_distinct_from_policy_derived_holds() -> Bool {
-  let explicit = partition_provenance_hand_explicit()
-  let derived = partition_provenance_policy_derived(
+  let explicit = v2.std.compilers.compilation_unit.partition_provenance_hand_explicit()
+  let derived = v2.std.compilers.compilation_unit.partition_provenance_policy_derived(
     policy: std.decl_ref.DeclarationRef {
       module_path: "v2.workflow.rust_crate_partition" as std.types.NonEmptyStr,
       decl_name: "resolve_partition" as std.types.NonEmptyStr,
       field: std.decl_ref.WholeDeclaration,
     }
   )
-  !partition_provenance_eq(left: explicit, right: derived)
+  !v2.std.compilers.compilation_unit.partition_provenance_eq(left: explicit, right: derived)
 }
 
 test fn witness_runtime_unit_members_holds() -> Bool {
-  match stage0_partition_receipt_outcome() {
-    Stage0PartitionReceiptOk { units: units } =>
-      match partition_unit_by_id(units: units, unit_id: stage0_unit_runtime) {
-        Present { value: unit } =>
+  match v2.workflow.rust_crate_partition.stage0_partition_receipt_outcome() {
+    v2.workflow.rust_crate_partition.Stage0PartitionReceiptOk { units: units } =>
+      match v2.std.compilers.compilation_unit.partition_unit_by_id(units: units, unit_id: v2.workflow.rust_crate_partition.stage0_unit_runtime) {
+        v2.std.collection.Present { value: unit } =>
           (unit.members |> count) == 1
-        Absent => false
+        v2.std.collection.Absent => false
       }
-    Stage0PartitionReceiptResolveRefused { cause: _ } => false
-    Stage0PartitionReceiptFoldRefused { cause: _ } => false
+    v2.workflow.rust_crate_partition.Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    v2.workflow.rust_crate_partition.Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }
 }
 
 test fn witness_v1_infer_unit_members_holds() -> Bool {
-  match stage0_partition_receipt_outcome() {
-    Stage0PartitionReceiptOk { units: units } =>
-      match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_infer) {
-        Present { value: unit } =>
+  match v2.workflow.rust_crate_partition.stage0_partition_receipt_outcome() {
+    v2.workflow.rust_crate_partition.Stage0PartitionReceiptOk { units: units } =>
+      match v2.std.compilers.compilation_unit.partition_unit_by_id(units: units, unit_id: v2.workflow.rust_crate_partition.stage0_unit_v1_infer) {
+        v2.std.collection.Present { value: unit } =>
           (unit.members |> count) == 7
-        Absent => false
+        v2.std.collection.Absent => false
       }
-    Stage0PartitionReceiptResolveRefused { cause: _ } => false
-    Stage0PartitionReceiptFoldRefused { cause: _ } => false
+    v2.workflow.rust_crate_partition.Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    v2.workflow.rust_crate_partition.Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }
 }
 
 test fn witness_v1_artifact_unit_members_holds() -> Bool {
-  match stage0_partition_receipt_outcome() {
-    Stage0PartitionReceiptOk { units: units } =>
-      match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_artifact) {
-        Present { value: unit } =>
+  match v2.workflow.rust_crate_partition.stage0_partition_receipt_outcome() {
+    v2.workflow.rust_crate_partition.Stage0PartitionReceiptOk { units: units } =>
+      match v2.std.compilers.compilation_unit.partition_unit_by_id(units: units, unit_id: v2.workflow.rust_crate_partition.stage0_unit_v1_artifact) {
+        v2.std.collection.Present { value: unit } =>
           (unit.members |> count) == 2
-        Absent => false
+        v2.std.collection.Absent => false
       }
-    Stage0PartitionReceiptResolveRefused { cause: _ } => false
-    Stage0PartitionReceiptFoldRefused { cause: _ } => false
+    v2.workflow.rust_crate_partition.Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    v2.workflow.rust_crate_partition.Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }
 }
 
 test fn witness_partition_fold_unit_count_holds() -> Bool {
-  stage0_partition_fold_ok()
+  v2.workflow.rust_crate_partition.stage0_partition_fold_ok()
 }
 
 test fn witness_partition_r4_valid_on_interim_holds() -> Bool {
-  stage0_partition_r4_valid()
+  v2.workflow.rust_crate_partition.stage0_partition_r4_valid()
 }
 
 test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
-  let dag = stage0_module_dag()
-  match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: dag) {
-    ResolvePartitionOk { assignment: resolved } => {
-      let expected = stage0_interim_explicit_assignment()
+  let dag = v2.workflow.rust_crate_partition.stage0_module_dag()
+  match v2.workflow.rust_crate_partition.resolve_partition_outcome(parameter: v2.workflow.rust_crate_partition.stage0_partition_parameter(), module_dag: dag) {
+    v2.workflow.rust_crate_partition.ResolvePartitionOk { assignment: resolved } => {
+      let expected = v2.workflow.rust_crate_partition.stage0_interim_explicit_assignment()
       (resolved |> count) == (expected |> count)
     }
-    ResolvePartitionRefused { cause: _ } => false
+    v2.workflow.rust_crate_partition.ResolvePartitionRefused { cause: _ } => false
   }
 }
 
 test fn witness_stage0_partition_row_lookups_resolved_holds() -> Bool {
-  stage0_partition_row_lookups_resolved()
+  v2.workflow.rust_crate_partition.stage0_partition_row_lookups_resolved()
 }
 
 
 test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> Bool {
-  stage0_module_dag_interface_grounding_is_debt()
+  v2.workflow.rust_crate_partition.stage0_module_dag_interface_grounding_is_debt()
 }
 
 

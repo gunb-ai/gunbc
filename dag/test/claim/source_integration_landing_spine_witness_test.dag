@@ -1,7 +1,7 @@
 module test.claim.source_integration_landing_spine_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn p0_claim(
   id: std.types.NonEmptyStr,
@@ -50,7 +50,7 @@ fn p0_proposal_with(
     modifies_frame: ["source-worker", "source-callers"],
     ensures_guarantees: guarantees,
     dependencies: [],
-    atomicity: LandingWholeProposalAtomic,
+    atomicity: gunbc.source_integration_landing_spine.LandingWholeProposalAtomic,
     submit_authority: "fixture-author",
     submitted_at: submitted_at,
   }
@@ -75,7 +75,7 @@ fn p0_fact_claim(
 }
 
 fn p0_rule_claim(
-  rule: std.claim_evidence.InferenceRuleId,
+  rule: InferenceRuleId,
   claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   rule == "p0-observation-supports-exact-guarantee"
@@ -83,7 +83,7 @@ fn p0_rule_claim(
 }
 
 fn p0_authority_claim(
-  authority: gunbc.source_integration_landing_spine.LandingEvidenceAuthorityHandle,
+  authority: LandingEvidenceAuthorityHandle,
   claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   authority == "p0-independent-validator"
@@ -95,7 +95,7 @@ fn p0_provenance_claim(
   claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   provenance.agent == "p0-validator"
-    && claim.bound == (p0_proposal().attempt as gunbc.source_integration_landing_spine.LandingClaimBound)
+    && claim.bound == (p0_proposal().attempt as LandingClaimBound)
 }
 
 fn p0_freshness_claim(
@@ -106,7 +106,7 @@ fn p0_freshness_claim(
 }
 
 fn p0_fidelity_claim(
-  fidelity: std.claim_evidence.EvidenceFidelity<gunbc.source_integration_landing_spine.LandingFidelityBoundaryHandle>,
+  fidelity: std.claim_evidence.EvidenceFidelity<LandingFidelityBoundaryHandle>,
   claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   fidelity.boundary == "p0-lossless-guarantee"
@@ -115,13 +115,13 @@ fn p0_fidelity_claim(
 }
 
 fn p0_independence_claim(
-  independence: gunbc.source_integration_landing_spine.LandingEvidenceIndependenceHandle,
+  independence: LandingEvidenceIndependenceHandle,
   claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
-  direction: std.claim_evidence.EvidenceDirection,
+  direction: EvidenceDirection,
 ) -> Bool {
   independence == "p0-independent-probe"
     && claim.target == p0_proposal().target
-    && (direction == EvidenceSupports || direction == EvidenceChallenges)
+    && (direction == std.claim_evidence.EvidenceSupports || direction == std.claim_evidence.EvidenceChallenges)
 }
 
 fn p0_link_relation(
@@ -147,12 +147,12 @@ fn p0_admission_policy() -> gunbc.source_integration_landing_spine.LandingEviden
 
 fn p0_link(
   claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
-  direction: std.claim_evidence.EvidenceDirection,
+  direction: EvidenceDirection,
   authority: std.types.NonEmptyStr,
 ) -> gunbc.source_integration_landing_spine.LandingEvidenceLink {
-  std.claim_evidence.EvidenceLink {
+  EvidenceLink {
     fact: std.claim_evidence.RecordedFact {
-      id: concat("fact-", claim.id as String) as std.claim_evidence.RecordedFactId,
+      id: concat("fact-", claim.id as String) as RecordedFactId,
       value: gunbc.source_integration_landing_spine.LandingEvidenceFact {
         proposal: p0_proposal().occurrence,
         observation: concat("observed-", claim.id as String),
@@ -182,7 +182,7 @@ fn p0_link(
 fn p0_support(claim: gunbc.source_integration_landing_spine.LandingRequiredClaim) -> gunbc.source_integration_landing_spine.LandingEvidenceLink {
   p0_link(
     claim: claim,
-    direction: EvidenceSupports,
+    direction: std.claim_evidence.EvidenceSupports,
     authority: "p0-independent-validator",
   )
 }
@@ -190,13 +190,13 @@ fn p0_support(claim: gunbc.source_integration_landing_spine.LandingRequiredClaim
 fn p0_challenge(claim: gunbc.source_integration_landing_spine.LandingRequiredClaim) -> gunbc.source_integration_landing_spine.LandingEvidenceLink {
   p0_link(
     claim: claim,
-    direction: EvidenceChallenges,
+    direction: std.claim_evidence.EvidenceChallenges,
     authority: "p0-independent-validator",
   )
 }
 
 fn p0_ready_evidence() -> gunbc.source_integration_landing_spine.LandingReadyEvidenceReceipt {
-  match landing_evidence_readiness(
+  match gunbc.source_integration_landing_spine.landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
     admission: p0_admission_policy(),
@@ -205,8 +205,8 @@ fn p0_ready_evidence() -> gunbc.source_integration_landing_spine.LandingReadyEvi
       p0_support(claim: p0_behavior_claim()),
     ],
   ) {
-    LandingEvidenceReady { receipt } => receipt
-    LandingEvidenceBlocking {
+    gunbc.source_integration_landing_spine.LandingEvidenceReady { receipt } => receipt
+    gunbc.source_integration_landing_spine.LandingEvidenceBlocking {
       proposal: _,
       policy: _,
       readiness: _,
@@ -239,12 +239,12 @@ fn p0_refusal(
     plain_reason: reason,
     responsible_party: "workspace owner",
     next_action: "update the requested outcome and submit again",
-    receipt: content_hash_of_value(value: "p0-refusal-receipt"),
+    receipt: std.content_hash.content_hash_of_value(value: "p0-refusal-receipt"),
   }
 }
 
 fn p0_continuation(
-  kind: gunbc.source_integration_landing_spine.LandingMachineContinuationKind,
+  kind: LandingMachineContinuationKind,
   status: std.types.NonEmptyStr,
 ) -> gunbc.source_integration_landing_spine.LandingMachineContinuation {
   gunbc.source_integration_landing_spine.LandingMachineContinuation {
@@ -257,31 +257,31 @@ fn p0_continuation(
 fn p0_closure_evidence() -> gunbc.source_integration_landing_spine.LandingClosureEvidence {
   gunbc.source_integration_landing_spine.LandingClosureEvidence {
     capture_completeness: gunbc.source_integration_landing_spine.LandingCaptureCompletenessReceipt {
-      receipt: content_hash_of_value(value: "capture-completeness-receipt"),
+      receipt: std.content_hash.content_hash_of_value(value: "capture-completeness-receipt"),
     },
     affected_scope: gunbc.source_integration_landing_spine.LandingAffectedScopeReceipt {
-      receipt: content_hash_of_value(value: "affected-scope-receipt"),
+      receipt: std.content_hash.content_hash_of_value(value: "affected-scope-receipt"),
     },
     rule_closure: gunbc.source_integration_landing_spine.LandingRuleClosureReceipt {
-      receipt: content_hash_of_value(value: "rule-closure-receipt"),
+      receipt: std.content_hash.content_hash_of_value(value: "rule-closure-receipt"),
     },
     candidate_generation: gunbc.source_integration_landing_spine.LandingCandidateGenerationReceipt {
-      receipt: content_hash_of_value(value: "candidate-generation-receipt"),
+      receipt: std.content_hash.content_hash_of_value(value: "candidate-generation-receipt"),
     },
     admissibility: gunbc.source_integration_landing_spine.LandingAdmissibilityReceipt {
-      receipt: content_hash_of_value(value: "admissibility-receipt"),
+      receipt: std.content_hash.content_hash_of_value(value: "admissibility-receipt"),
     },
     equivalence_quotient: gunbc.source_integration_landing_spine.LandingEquivalenceQuotientReceipt {
-      receipt: content_hash_of_value(value: "equivalence-quotient-receipt"),
+      receipt: std.content_hash.content_hash_of_value(value: "equivalence-quotient-receipt"),
     },
     multiplicity: gunbc.source_integration_landing_spine.LandingMultiplicityReceipt {
-      receipt: content_hash_of_value(value: "multiplicity-receipt"),
+      receipt: std.content_hash.content_hash_of_value(value: "multiplicity-receipt"),
     },
   }
 }
 
 fn p0_closed_receipt(
-  candidates: gunbc.source_integration_landing_spine.LandingCandidateSpace,
+  candidates: LandingCandidateSpace,
 ) -> gunbc.source_integration_landing_spine.LandingClosedResultSpaceReceipt {
   gunbc.source_integration_landing_spine.LandingClosedResultSpaceReceipt {
     subject: gunbc.source_integration_landing_spine.LandingClosureSubject {
@@ -291,7 +291,7 @@ fn p0_closed_receipt(
         observer: "independent-read-back",
         admission_contract: "p0-admission-contract",
         established_by: "fixture-admission-authority",
-        receipt: content_hash_of_value(value: "read-back-authority-receipt"),
+        receipt: std.content_hash.content_hash_of_value(value: "read-back-authority-receipt"),
       },
       equivalence: "p0-declared-equivalence",
       candidates: candidates,
@@ -300,44 +300,44 @@ fn p0_closed_receipt(
   }
 }
 
-fn p0_closed_one() -> gunbc.source_integration_landing_spine.LandingClosedOneReceipt {
+fn p0_closed_one() -> LandingClosedOneReceipt {
   let result = p0_result(
     handle: "unique-result-42",
     preview: "Worker was renamed and its callers were updated.",
   )
-  match landing_closed_result_space(
+  match gunbc.source_integration_landing_spine.landing_closed_result_space(
     attempt: gunbc.source_integration_landing_spine.LandingClosureComplete {
       receipt: p0_closed_receipt(
         candidates: gunbc.source_integration_landing_spine.LandingOneResultClass { result: result },
       ),
     },
     zero_refusal: p0_refusal(
-      kind: LandingSemanticRequirementsIncompatible,
+      kind: gunbc.source_integration_landing_spine.LandingSemanticRequirementsIncompatible,
       reason: "The requested guarantees cannot all hold.",
     ),
     continuation: p0_continuation(
-      kind: LandingContinueInvestigation,
+      kind: gunbc.source_integration_landing_spine.LandingContinueInvestigation,
       status: "checking the result before it lands",
     ),
   ) {
-    LandingClosedOne { receipt } => receipt
+    gunbc.source_integration_landing_spine.LandingClosedOne { receipt } => receipt
     _ => p0_closed_one()
   }
 }
 
 fn p0_admitted() -> gunbc.source_integration_landing_spine.LandingAdmittedResult {
   let semantic = p0_closed_one()
-  match landing_admitted_result(
+  match gunbc.source_integration_landing_spine.landing_admitted_result(
     admission: gunbc.source_integration_landing_spine.LandingAdmitted {
       receipt: gunbc.source_integration_landing_spine.LandingAdmissionReceipt {
         semantic: semantic,
         authority: "fixture-author",
-        receipt: content_hash_of_value(value: "admission-receipt-42"),
+        receipt: std.content_hash.content_hash_of_value(value: "admission-receipt-42"),
       },
     },
   ) {
-    LandingAdmissionAdvanced { admitted } => admitted
-    LandingAdmissionNotAdvanced { decision: _ } => p0_admitted()
+    gunbc.source_integration_landing_spine.LandingAdmissionAdvanced { admitted } => admitted
+    gunbc.source_integration_landing_spine.LandingAdmissionNotAdvanced { decision: _ } => p0_admitted()
   }
 }
 
@@ -370,7 +370,7 @@ test fn witness_p0_same_claim_id_different_target_and_bound_blocks() -> Bool {
     target: "another-target",
     bound: "another-attempt",
   )
-  match landing_evidence_readiness(
+  match gunbc.source_integration_landing_spine.landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
     admission: p0_admission_policy(),
@@ -379,11 +379,11 @@ test fn witness_p0_same_claim_id_different_target_and_bound_blocks() -> Bool {
       p0_support(claim: p0_behavior_claim()),
     ],
   ) {
-    LandingEvidenceBlocking {
+    gunbc.source_integration_landing_spine.LandingEvidenceBlocking {
       proposal: _,
       policy: _,
       readiness: _,
-      first_blocking: LandingMissingEvidence { claim },
+      first_blocking: gunbc.source_integration_landing_spine.LandingMissingEvidence { claim },
       remaining_blocking: _,
     } =>
       claim.id == p0_builds_claim().id
@@ -399,13 +399,13 @@ test fn witness_p0_unrelated_satisfied_claim_blocks() -> Bool {
     target: "accepted-main",
     bound: "proposal-50-agent-fixture-attempt-1",
   )
-  match landing_evidence_readiness(
+  match gunbc.source_integration_landing_spine.landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
     admission: p0_admission_policy(),
     links: [p0_support(claim: unrelated)],
   ) {
-    LandingEvidenceBlocking {
+    gunbc.source_integration_landing_spine.LandingEvidenceBlocking {
       proposal: _,
       policy: _,
       readiness: _,
@@ -418,17 +418,17 @@ test fn witness_p0_unrelated_satisfied_claim_blocks() -> Bool {
 }
 
 test fn witness_p0_omitted_guarantee_blocks() -> Bool {
-  match landing_evidence_readiness(
+  match gunbc.source_integration_landing_spine.landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
     admission: p0_admission_policy(),
     links: [p0_support(claim: p0_builds_claim())],
   ) {
-    LandingEvidenceBlocking {
+    gunbc.source_integration_landing_spine.LandingEvidenceBlocking {
       proposal: _,
       policy: _,
       readiness: _,
-      first_blocking: LandingMissingEvidence { claim },
+      first_blocking: gunbc.source_integration_landing_spine.LandingMissingEvidence { claim },
       remaining_blocking: _,
     } =>
       claim.id == p0_behavior_claim().id
@@ -446,17 +446,17 @@ test fn witness_p0_duplicate_requirement_blocks() -> Bool {
       remaining: [p0_builds_claim()],
     },
   )
-  match landing_evidence_readiness(
+  match gunbc.source_integration_landing_spine.landing_evidence_readiness(
     proposal: duplicate,
     policy: "p0-exact-guarantee-policy",
     admission: p0_admission_policy(),
     links: [p0_support(claim: p0_builds_claim())],
   ) {
-    LandingEvidenceBlocking {
+    gunbc.source_integration_landing_spine.LandingEvidenceBlocking {
       proposal: _,
       policy: _,
       readiness: _,
-      first_blocking: LandingDuplicateRequirement { claim },
+      first_blocking: gunbc.source_integration_landing_spine.LandingDuplicateRequirement { claim },
       remaining_blocking: _,
     } =>
       claim == p0_builds_claim()
@@ -467,10 +467,10 @@ test fn witness_p0_duplicate_requirement_blocks() -> Bool {
 test fn witness_p0_forged_readiness_without_evidence_admission_blocks() -> Bool {
   let forged = p0_link(
     claim: p0_builds_claim(),
-    direction: EvidenceSupports,
+    direction: std.claim_evidence.EvidenceSupports,
     authority: "caller-authored-untrusted-authority",
   )
-  let refused_only = landing_evidence_readiness(
+  let refused_only = gunbc.source_integration_landing_spine.landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
     admission: p0_admission_policy(),
@@ -479,7 +479,7 @@ test fn witness_p0_forged_readiness_without_evidence_admission_blocks() -> Bool 
       p0_support(claim: p0_behavior_claim()),
     ],
   )
-  let mixed = landing_evidence_readiness(
+  let mixed = gunbc.source_integration_landing_spine.landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
     admission: p0_admission_policy(),
@@ -487,28 +487,28 @@ test fn witness_p0_forged_readiness_without_evidence_admission_blocks() -> Bool 
       p0_support(claim: p0_builds_claim()),
       p0_link(
         claim: p0_builds_claim(),
-        direction: EvidenceChallenges,
+        direction: std.claim_evidence.EvidenceChallenges,
         authority: "caller-authored-untrusted-authority",
       ),
       p0_support(claim: p0_behavior_claim()),
     ],
   )
   match refused_only {
-    LandingEvidenceBlocking {
+    gunbc.source_integration_landing_spine.LandingEvidenceBlocking {
       proposal: _,
       policy: _,
       readiness: _,
-      first_blocking: LandingEvidenceRefused { claim, refusals },
+      first_blocking: gunbc.source_integration_landing_spine.LandingEvidenceRefused { claim, refusals },
       remaining_blocking: _,
     } =>
       claim == p0_builds_claim()
-        && any(refusals, refusal => refusal == EvidenceAuthorityRefused)
+        && any(refusals, refusal => refusal == std.claim_evidence.EvidenceAuthorityRefused)
         && match mixed {
-          LandingEvidenceBlocking {
+          gunbc.source_integration_landing_spine.LandingEvidenceBlocking {
             proposal: _,
             policy: _,
             readiness: _,
-            first_blocking: LandingEvidenceRefused {
+            first_blocking: gunbc.source_integration_landing_spine.LandingEvidenceRefused {
               claim: mixed_claim,
               refusals: mixed_refusals,
             },
@@ -517,7 +517,7 @@ test fn witness_p0_forged_readiness_without_evidence_admission_blocks() -> Bool 
             mixed_claim == p0_builds_claim()
               && any(
                 mixed_refusals,
-                refusal => refusal == EvidenceAuthorityRefused,
+                refusal => refusal == std.claim_evidence.EvidenceAuthorityRefused,
               )
           _ => false
         }
@@ -526,7 +526,7 @@ test fn witness_p0_forged_readiness_without_evidence_admission_blocks() -> Bool 
 }
 
 test fn witness_p0_challenge_neither_and_both_remain_distinct() -> Bool {
-  let challenged = landing_evidence_readiness(
+  let challenged = gunbc.source_integration_landing_spine.landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
     admission: p0_admission_policy(),
@@ -535,13 +535,13 @@ test fn witness_p0_challenge_neither_and_both_remain_distinct() -> Bool {
       p0_support(claim: p0_behavior_claim()),
     ],
   )
-  let neither = landing_evidence_readiness(
+  let neither = gunbc.source_integration_landing_spine.landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
     admission: p0_admission_policy(),
     links: [],
   )
-  let both = landing_evidence_readiness(
+  let both = gunbc.source_integration_landing_spine.landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
     admission: p0_admission_policy(),
@@ -552,27 +552,27 @@ test fn witness_p0_challenge_neither_and_both_remain_distinct() -> Bool {
     ],
   )
   match challenged {
-    LandingEvidenceBlocking {
+    gunbc.source_integration_landing_spine.LandingEvidenceBlocking {
       proposal: _,
       policy: _,
       readiness: _,
-      first_blocking: LandingClaimChallenged { claim: _, challenging: _ },
+      first_blocking: gunbc.source_integration_landing_spine.LandingClaimChallenged { claim: _, challenging: _ },
       remaining_blocking: _,
     } =>
       match neither {
-        LandingEvidenceBlocking {
+        gunbc.source_integration_landing_spine.LandingEvidenceBlocking {
           proposal: _,
           policy: _,
           readiness: _,
-          first_blocking: LandingMissingEvidence { claim: _ },
+          first_blocking: gunbc.source_integration_landing_spine.LandingMissingEvidence { claim: _ },
           remaining_blocking: _,
         } =>
           match both {
-            LandingEvidenceBlocking {
+            gunbc.source_integration_landing_spine.LandingEvidenceBlocking {
               proposal: _,
               policy: _,
               readiness: _,
-              first_blocking: LandingEvidenceConflicted {
+              first_blocking: gunbc.source_integration_landing_spine.LandingEvidenceConflicted {
                 claim: _,
                 supporting: _,
                 challenging: _,
@@ -589,7 +589,7 @@ test fn witness_p0_challenge_neither_and_both_remain_distinct() -> Bool {
 }
 
 test fn witness_p0_block_disposition_is_not_boolean_laundered() -> Bool {
-  let challenged = landing_evidence_readiness(
+  let challenged = gunbc.source_integration_landing_spine.landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
     admission: p0_admission_policy(),
@@ -598,35 +598,35 @@ test fn witness_p0_block_disposition_is_not_boolean_laundered() -> Bool {
       p0_support(claim: p0_behavior_claim()),
     ],
   )
-  let semantic = landing_blocked_evidence_result(
+  let semantic = gunbc.source_integration_landing_spine.landing_blocked_evidence_result(
     readiness: challenged,
     partial_results: [],
     continuation: p0_continuation(
-      kind: LandingContinueInvestigation,
+      kind: gunbc.source_integration_landing_spine.LandingContinueInvestigation,
       status: "gathering missing observations",
     ),
     conflict_continuation: p0_continuation(
-      kind: LandingResolveEvidenceConflict,
+      kind: gunbc.source_integration_landing_spine.LandingResolveEvidenceConflict,
       status: "resolving conflicting observations",
     ),
     terminal_refusal: p0_refusal(
-      kind: LandingEvidenceAdmissionDenied,
+      kind: gunbc.source_integration_landing_spine.LandingEvidenceAdmissionDenied,
       reason: "An independent check contradicts a required guarantee.",
     ),
   )
   match semantic {
-    LandingUnclosed {
+    gunbc.source_integration_landing_spine.LandingUnclosed {
       proposal: _,
-      cause: LandingEvidenceNotReady { first: _, remaining: _ },
+      cause: gunbc.source_integration_landing_spine.LandingEvidenceNotReady { first: _, remaining: _ },
       partial_results: _,
-      disposition: LandingUnclosedTerminal { refusal },
+      disposition: gunbc.source_integration_landing_spine.LandingUnclosedTerminal { refusal },
     } =>
-      refusal.kind == LandingEvidenceAdmissionDenied
-        && match landing_user_boundary(
+      refusal.kind == gunbc.source_integration_landing_spine.LandingEvidenceAdmissionDenied
+        && match gunbc.source_integration_landing_spine.landing_user_boundary(
           receipt: gunbc.source_integration_landing_spine.LandingSemanticSpine { result: semantic },
         ) {
-          LandingTerminal {
-            outcome: NativeScmTerminalCouldNotLand { refusal: presented },
+          gunbc.source_integration_landing_spine.LandingTerminal {
+            outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalCouldNotLand { refusal: presented },
           } =>
             presented.plain_reason == "An independent check contradicts a required guarantee."
           _ => false
@@ -642,25 +642,25 @@ test fn witness_p0_closed_zero_is_closure_qualified() -> Bool {
       counterexample: "the public call changes behavior",
     },
   )
-  match landing_closed_result_space(
+  match gunbc.source_integration_landing_spine.landing_closed_result_space(
     attempt: gunbc.source_integration_landing_spine.LandingClosureComplete { receipt: receipt },
     zero_refusal: p0_refusal(
-      kind: LandingSemanticRequirementsIncompatible,
+      kind: gunbc.source_integration_landing_spine.LandingSemanticRequirementsIncompatible,
       reason: "The requested guarantees cannot all hold.",
     ),
     continuation: p0_continuation(
-      kind: LandingContinueInvestigation,
+      kind: gunbc.source_integration_landing_spine.LandingContinueInvestigation,
       status: "checking the result space",
     ),
   ) {
-    LandingClosedZero {
+    gunbc.source_integration_landing_spine.LandingClosedZero {
       closed_space,
       incompatible_core: _,
       counterexample: _,
       disposition: _,
     } =>
       closed_space.subject.ready_evidence.policy == "p0-exact-guarantee-policy"
-        && closed_space.closure.multiplicity.receipt == content_hash_of_value(
+        && closed_space.closure.multiplicity.receipt == std.content_hash.content_hash_of_value(
           value: "multiplicity-receipt",
         )
     _ => false
@@ -691,7 +691,7 @@ test fn witness_p0_closed_many_owns_material_alternatives() -> Bool {
     },
     additional_options: [],
   }
-  match landing_closed_result_space(
+  match gunbc.source_integration_landing_spine.landing_closed_result_space(
     attempt: gunbc.source_integration_landing_spine.LandingClosureComplete {
       receipt: p0_closed_receipt(
         candidates: gunbc.source_integration_landing_spine.LandingManyResultClasses {
@@ -701,63 +701,63 @@ test fn witness_p0_closed_many_owns_material_alternatives() -> Bool {
       ),
     },
     zero_refusal: p0_refusal(
-      kind: LandingSemanticRequirementsIncompatible,
+      kind: gunbc.source_integration_landing_spine.LandingSemanticRequirementsIncompatible,
       reason: "No result can satisfy the request.",
     ),
     continuation: p0_continuation(
-      kind: LandingContinueInvestigation,
+      kind: gunbc.source_integration_landing_spine.LandingContinueInvestigation,
       status: "checking the result space",
     ),
   ) {
-    LandingClosedMany { receipt } =>
+    gunbc.source_integration_landing_spine.LandingClosedMany { receipt } =>
       p0_primary_message_is_plain(message: receipt.question.question)
-        && match landing_resolve_question(
+        && match gunbc.source_integration_landing_spine.landing_resolve_question(
         prior: receipt,
-        choice: NativeScmFirstContinuationOption,
+        choice: gunbc.native_scm_interaction_contract.NativeScmFirstContinuationOption,
       ) {
-        LandingChoiceAdvanced { continuation } =>
-          continuation.selected.identity.choice == NativeScmFirstContinuationOption
+        gunbc.source_integration_landing_spine.LandingChoiceAdvanced { continuation } =>
+          continuation.selected.identity.choice == gunbc.native_scm_interaction_contract.NativeScmFirstContinuationOption
             && match continuation.processing {
-              LandingSelectedResultProcessing { result } =>
+              gunbc.source_integration_landing_spine.LandingSelectedResultProcessing { result } =>
                 result.result == "first-result"
               _ => false
             }
-        LandingChoiceNotOffered { prior: _, choice: _ } => false
+        gunbc.source_integration_landing_spine.LandingChoiceNotOffered { prior: _, choice: _ } => false
       }
-        && match landing_resolve_question(
+        && match gunbc.source_integration_landing_spine.landing_resolve_question(
         prior: receipt,
-        choice: NativeScmSecondContinuationOption,
+        choice: gunbc.native_scm_interaction_contract.NativeScmSecondContinuationOption,
       ) {
-        LandingChoiceAdvanced { continuation } =>
-          continuation.selected.identity.choice == NativeScmSecondContinuationOption
+        gunbc.source_integration_landing_spine.LandingChoiceAdvanced { continuation } =>
+          continuation.selected.identity.choice == gunbc.native_scm_interaction_contract.NativeScmSecondContinuationOption
             && continuation.selected.option.resume_token == "same-non-authoritative-hint"
             && continuation.prior.closed_space == receipt.closed_space
             && match continuation.processing {
-              LandingSelectedResultProcessing { result } =>
+              gunbc.source_integration_landing_spine.LandingSelectedResultProcessing { result } =>
                 result.result == "second-result"
               _ => false
             }
-        LandingChoiceNotOffered { prior: _, choice: _ } => false
+        gunbc.source_integration_landing_spine.LandingChoiceNotOffered { prior: _, choice: _ } => false
       }
         && match receipt.closed_space.subject.candidates {
-          LandingManyResultClasses { question: _, options: stored } =>
+          gunbc.source_integration_landing_spine.LandingManyResultClasses { question: _, options: stored } =>
             stored.first_option.alternative != stored.second_option.alternative
           _ => false
         }
-        && match landing_resolve_question(
+        && match gunbc.source_integration_landing_spine.landing_resolve_question(
           prior: receipt,
           choice: gunbc.native_scm_interaction_contract.NativeScmAdditionalContinuationOption { index: 3 },
         ) {
-          LandingChoiceNotOffered { prior: _, choice } =>
+          gunbc.source_integration_landing_spine.LandingChoiceNotOffered { prior: _, choice } =>
             choice == gunbc.native_scm_interaction_contract.NativeScmAdditionalContinuationOption { index: 3 }
-          LandingChoiceAdvanced { continuation: _ } => false
+          gunbc.source_integration_landing_spine.LandingChoiceAdvanced { continuation: _ } => false
         }
     _ => false
   }
 }
 
 fn p0_incomplete_closure_stays_machine_owned(
-  missing: gunbc.source_integration_landing_spine.LandingClosureCertificateKind,
+  missing: LandingClosureCertificateKind,
 ) -> Bool {
   let subject = gunbc.source_integration_landing_spine.LandingClosureSubject {
     ready_evidence: p0_ready_evidence(),
@@ -766,7 +766,7 @@ fn p0_incomplete_closure_stays_machine_owned(
       observer: "independent-read-back",
       admission_contract: "p0-admission-contract",
       established_by: "fixture-admission-authority",
-      receipt: content_hash_of_value(value: "read-back-authority-receipt"),
+      receipt: std.content_hash.content_hash_of_value(value: "read-back-authority-receipt"),
     },
     equivalence: "p0-declared-equivalence",
     candidates: gunbc.source_integration_landing_spine.LandingOneResultClass {
@@ -776,38 +776,38 @@ fn p0_incomplete_closure_stays_machine_owned(
       ),
     },
   }
-  let semantic = landing_closed_result_space(
+  let semantic = gunbc.source_integration_landing_spine.landing_closed_result_space(
     attempt: gunbc.source_integration_landing_spine.LandingClosureIncomplete {
       subject: subject,
       missing: missing,
       cause: "one required closure receipt is absent",
     },
     zero_refusal: p0_refusal(
-      kind: LandingSemanticRequirementsIncompatible,
+      kind: gunbc.source_integration_landing_spine.LandingSemanticRequirementsIncompatible,
       reason: "No result can satisfy the request.",
     ),
     continuation: p0_continuation(
-      kind: LandingContinueInvestigation,
+      kind: gunbc.source_integration_landing_spine.LandingContinueInvestigation,
       status: "checking the result space",
     ),
   )
   match semantic {
-    LandingUnclosed {
+    gunbc.source_integration_landing_spine.LandingUnclosed {
       proposal: _,
-      cause: LandingClosureCertificateMissing {
+      cause: gunbc.source_integration_landing_spine.LandingClosureCertificateMissing {
         certificate,
         cause: _,
       },
       partial_results: _,
-      disposition: LandingInvestigationContinues { continuation: _ },
+      disposition: gunbc.source_integration_landing_spine.LandingInvestigationContinues { continuation: _ },
     } =>
       certificate == missing
-        && match landing_user_boundary(
+        && match gunbc.source_integration_landing_spine.landing_user_boundary(
         receipt: gunbc.source_integration_landing_spine.LandingSemanticSpine { result: semantic },
       ) {
-        LandingMachineOwned { status, continuation: _ } =>
+        gunbc.source_integration_landing_spine.LandingMachineOwned { status, continuation: _ } =>
           status == "checking the result space"
-        LandingTerminal { outcome: _ } => false
+        gunbc.source_integration_landing_spine.LandingTerminal { outcome: _ } => false
       }
     _ => false
   }
@@ -815,13 +815,13 @@ fn p0_incomplete_closure_stays_machine_owned(
 
 test fn witness_p0_incomplete_closure_stays_machine_owned() -> Bool {
   all([
-    LandingCaptureCompletenessCertificate,
-    LandingAffectedScopeCertificate,
-    LandingRuleClosureCertificate,
-    LandingCandidateGenerationCertificate,
-    LandingAdmissibilityCertificate,
-    LandingEquivalenceQuotientCertificate,
-    LandingMultiplicityCertificate,
+    gunbc.source_integration_landing_spine.LandingCaptureCompletenessCertificate,
+    gunbc.source_integration_landing_spine.LandingAffectedScopeCertificate,
+    gunbc.source_integration_landing_spine.LandingRuleClosureCertificate,
+    gunbc.source_integration_landing_spine.LandingCandidateGenerationCertificate,
+    gunbc.source_integration_landing_spine.LandingAdmissibilityCertificate,
+    gunbc.source_integration_landing_spine.LandingEquivalenceQuotientCertificate,
+    gunbc.source_integration_landing_spine.LandingMultiplicityCertificate,
   ], missing => p0_incomplete_closure_stays_machine_owned(missing: missing))
 }
 
@@ -843,29 +843,29 @@ test fn witness_p0_cross_paired_read_back_refuses() -> Bool {
     identity: "transition-42",
     result: "state-42",
   )
-  match landing_independent_read_back(
+  match gunbc.source_integration_landing_spine.landing_independent_read_back(
     observation: gunbc.source_integration_landing_spine.LandingReadBackObservation {
       transition: transition,
       observed_state: "state-from-another-transition",
       authority: "independent-read-back",
     },
   ) {
-    LandingReadBackMismatched { observation } =>
+    gunbc.source_integration_landing_spine.LandingReadBackMismatched { observation } =>
       observation.transition.identity == "transition-42"
-    LandingReadBackMatched { receipt: _ } => false
-    LandingReadBackAuthorityRefused { observation: _ } => false
+    gunbc.source_integration_landing_spine.LandingReadBackMatched { receipt: _ } => false
+    gunbc.source_integration_landing_spine.LandingReadBackAuthorityRefused { observation: _ } => false
   }
-    && match landing_independent_read_back(
+    && match gunbc.source_integration_landing_spine.landing_independent_read_back(
       observation: gunbc.source_integration_landing_spine.LandingReadBackObservation {
         transition: transition,
         observed_state: "state-42",
         authority: "caller-invented-different-reader",
       },
     ) {
-      LandingReadBackAuthorityRefused { observation } =>
+      gunbc.source_integration_landing_spine.LandingReadBackAuthorityRefused { observation } =>
         observation.authority != observation.transition.admitted.admission.semantic.closed_space.subject.read_back_authority.observer
-      LandingReadBackMatched { receipt: _ } => false
-      LandingReadBackMismatched { observation: _ } => false
+      gunbc.source_integration_landing_spine.LandingReadBackMatched { receipt: _ } => false
+      gunbc.source_integration_landing_spine.LandingReadBackMismatched { observation: _ } => false
     }
 }
 
@@ -875,24 +875,24 @@ test fn witness_p0_cross_paired_projection_refuses() -> Bool {
     identity: "transition-42",
     result: "state-42",
   )
-  match git_fixture_binding() {
-    GitCompatibilityBindingRefused { cause: _ } => false
-    GitCompatibilityBound { receipt } => {
-      let projection = compatibility_projection_from_handler(
-        handler: git_compatibility_projection_handler(),
+  match test.claim.scm_compatibility_git_witness.git_fixture_binding() {
+    gunbc.scm_compatibility.git.GitCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.git.GitCompatibilityBound { receipt } => {
+      let projection = gunbc.scm_compatibility_shape.compatibility_projection_from_handler(
+        handler: gunbc.scm_compatibility.git.git_compatibility_projection_handler(),
         receipt: receipt,
       )
-      match landing_projection_of_transition(
+      match gunbc.source_integration_landing_spine.landing_projection_of_transition(
         transition: transition,
         binding: gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding {
           semantic_target: "another-semantic-target",
           native_target: projection.target,
-          receipt: content_hash_of_value(value: "semantic-native-target-binding"),
+          receipt: std.content_hash.content_hash_of_value(value: "semantic-native-target-binding"),
         },
         projection: projection,
       ) {
-        LandingProjectionBindingRefused { cause: _ } => true
-        LandingProjectionBound { receipt: _ } => false
+        gunbc.source_integration_landing_spine.LandingProjectionBindingRefused { cause: _ } => true
+        gunbc.source_integration_landing_spine.LandingProjectionBound { receipt: _ } => false
       }
     }
   }
@@ -915,38 +915,38 @@ test fn witness_p0_projection_from_another_transition_refuses_commit() -> Bool {
     observed_state: "state-first",
     authority: "independent-read-back",
   }
-  match git_fixture_binding() {
-    GitCompatibilityBindingRefused { cause: _ } => false
-    GitCompatibilityBound { receipt } => {
-      let projection = compatibility_projection_from_handler(
-        handler: git_compatibility_projection_handler(),
+  match test.claim.scm_compatibility_git_witness.git_fixture_binding() {
+    gunbc.scm_compatibility.git.GitCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.git.GitCompatibilityBound { receipt } => {
+      let projection = gunbc.scm_compatibility_shape.compatibility_projection_from_handler(
+        handler: gunbc.scm_compatibility.git.git_compatibility_projection_handler(),
         receipt: receipt,
       )
-      match landing_projection_of_transition(
+      match gunbc.source_integration_landing_spine.landing_projection_of_transition(
         transition: second,
         binding: gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding {
           semantic_target: "accepted-main",
           native_target: projection.target,
-          receipt: content_hash_of_value(value: "semantic-native-target-binding"),
+          receipt: std.content_hash.content_hash_of_value(value: "semantic-native-target-binding"),
         },
         projection: projection,
       ) {
-        LandingProjectionBindingRefused { cause: _ } => false
-        LandingProjectionBound { receipt: bound } =>
-          match landing_user_boundary(
+        gunbc.source_integration_landing_spine.LandingProjectionBindingRefused { cause: _ } => false
+        gunbc.source_integration_landing_spine.LandingProjectionBound { receipt: bound } =>
+          match gunbc.source_integration_landing_spine.landing_user_boundary(
             receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
               transition: gunbc.source_integration_landing_spine.LandingCommitObserved {
                 observation: observation,
                 projections: [gunbc.source_integration_landing_spine.LandingProjected { receipt: bound }],
                 continuation: p0_continuation(
-                  kind: LandingRetryCurrentTarget,
+                  kind: gunbc.source_integration_landing_spine.LandingRetryCurrentTarget,
                   status: "rechecking transition relations",
                 ),
               },
             },
           ) {
-            LandingMachineOwned { status: _, continuation: _ } => true
-            LandingTerminal { outcome: _ } => false
+            gunbc.source_integration_landing_spine.LandingMachineOwned { status: _, continuation: _ } => true
+            gunbc.source_integration_landing_spine.LandingTerminal { outcome: _ } => false
           }
       }
     }
@@ -964,38 +964,38 @@ test fn witness_p0_unique_admitted_commit_lands_with_bound_git_projection() -> B
     observed_state: "state-42",
     authority: "independent-read-back",
   }
-  match git_fixture_binding() {
-    GitCompatibilityBindingRefused { cause: _ } => false
-    GitCompatibilityBound { receipt } => {
-      let projection = compatibility_projection_from_handler(
-        handler: git_compatibility_projection_handler(),
+  match test.claim.scm_compatibility_git_witness.git_fixture_binding() {
+    gunbc.scm_compatibility.git.GitCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.git.GitCompatibilityBound { receipt } => {
+      let projection = gunbc.scm_compatibility_shape.compatibility_projection_from_handler(
+        handler: gunbc.scm_compatibility.git.git_compatibility_projection_handler(),
         receipt: receipt,
       )
-      match landing_projection_of_transition(
+      match gunbc.source_integration_landing_spine.landing_projection_of_transition(
         transition: transition,
         binding: gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding {
           semantic_target: "accepted-main",
           native_target: projection.target,
-          receipt: content_hash_of_value(value: "semantic-native-target-binding"),
+          receipt: std.content_hash.content_hash_of_value(value: "semantic-native-target-binding"),
         },
         projection: projection,
       ) {
-        LandingProjectionBindingRefused { cause: _ } => false
-        LandingProjectionBound { receipt: bound } =>
-          match landing_user_boundary(
+        gunbc.source_integration_landing_spine.LandingProjectionBindingRefused { cause: _ } => false
+        gunbc.source_integration_landing_spine.LandingProjectionBound { receipt: bound } =>
+          match gunbc.source_integration_landing_spine.landing_user_boundary(
             receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
               transition: gunbc.source_integration_landing_spine.LandingCommitObserved {
                 observation: observation,
                 projections: [gunbc.source_integration_landing_spine.LandingProjected { receipt: bound }],
                 continuation: p0_continuation(
-                  kind: LandingRetryCurrentTarget,
+                  kind: gunbc.source_integration_landing_spine.LandingRetryCurrentTarget,
                   status: "rechecking transition relations",
                 ),
               },
             },
           ) {
-            LandingTerminal {
-              outcome: NativeScmTerminalLanded { result_preview },
+            gunbc.source_integration_landing_spine.LandingTerminal {
+              outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalLanded { result_preview },
             } =>
               result_preview == "Worker was renamed and its callers were updated."
                 && p0_primary_message_is_plain(message: result_preview)
@@ -1023,24 +1023,24 @@ test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
     target: gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding {
       semantic_target: "accepted-main",
       native_target: "refs/heads/main",
-      receipt: content_hash_of_value(value: "semantic-native-target-binding"),
+      receipt: std.content_hash.content_hash_of_value(value: "semantic-native-target-binding"),
     },
     cause: "the compatibility view will be retried",
   }
-  match landing_user_boundary(
+  match gunbc.source_integration_landing_spine.landing_user_boundary(
     receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
       transition: gunbc.source_integration_landing_spine.LandingCommitObserved {
         observation: observation,
         projections: [failed],
         continuation: p0_continuation(
-          kind: LandingRetryCurrentTarget,
+          kind: gunbc.source_integration_landing_spine.LandingRetryCurrentTarget,
           status: "repairing the compatibility projection",
         ),
       },
     },
   ) {
-    LandingTerminal {
-      outcome: NativeScmTerminalLanded { result_preview: _ },
+    gunbc.source_integration_landing_spine.LandingTerminal {
+      outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalLanded { result_preview: _ },
     } =>
       true
     _ => false
@@ -1049,17 +1049,17 @@ test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
 
 test fn witness_p0_refused_admission_cannot_advance() -> Bool {
   let semantic = p0_closed_one()
-  match landing_admitted_result(
+  match gunbc.source_integration_landing_spine.landing_admitted_result(
     admission: gunbc.source_integration_landing_spine.LandingUnauthorized {
       semantic: semantic,
       refusal: p0_refusal(
-        kind: LandingAuthorizationDenied,
+        kind: gunbc.source_integration_landing_spine.LandingAuthorizationDenied,
         reason: "You are not allowed to change this target.",
       ),
     },
   ) {
-    LandingAdmissionNotAdvanced {
-      decision: LandingUnauthorized {
+    gunbc.source_integration_landing_spine.LandingAdmissionNotAdvanced {
+      decision: gunbc.source_integration_landing_spine.LandingUnauthorized {
         semantic: retained,
         refusal: _,
       },
@@ -1070,59 +1070,59 @@ test fn witness_p0_refused_admission_cannot_advance() -> Bool {
 }
 
 test fn witness_p0_stale_parent_retries_inside_machine() -> Bool {
-  match landing_user_boundary(
+  match gunbc.source_integration_landing_spine.landing_user_boundary(
     receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
       transition: gunbc.source_integration_landing_spine.LandingRetryStaleParent {
         admitted: p0_admitted(),
         continuation: p0_continuation(
-          kind: LandingRetryCurrentTarget,
+          kind: gunbc.source_integration_landing_spine.LandingRetryCurrentTarget,
           status: "updating the change against the current target",
         ),
       },
     },
   ) {
-    LandingMachineOwned { status, continuation } =>
+    gunbc.source_integration_landing_spine.LandingMachineOwned { status, continuation } =>
       status == "updating the change against the current target"
-        && continuation.kind == LandingRetryCurrentTarget
-    LandingTerminal { outcome: _ } => false
+        && continuation.kind == gunbc.source_integration_landing_spine.LandingRetryCurrentTarget
+    gunbc.source_integration_landing_spine.LandingTerminal { outcome: _ } => false
   }
 }
 
 test fn witness_p0_terminal_surface_excludes_machine_progress() -> Bool {
-  let machine = landing_user_boundary(
+  let machine = gunbc.source_integration_landing_spine.landing_user_boundary(
     receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
       transition: gunbc.source_integration_landing_spine.LandingRetryStaleParent {
         admitted: p0_admitted(),
         continuation: p0_continuation(
-          kind: LandingRetryCurrentTarget,
+          kind: gunbc.source_integration_landing_spine.LandingRetryCurrentTarget,
           status: "updating the change against the current target",
         ),
       },
     },
   )
-  let refused = landing_user_boundary(
+  let refused = gunbc.source_integration_landing_spine.landing_user_boundary(
     receipt: gunbc.source_integration_landing_spine.LandingAdmissionSpine {
       admission: gunbc.source_integration_landing_spine.LandingSelfAmendmentRefused {
         semantic: p0_closed_one(),
         refusal: p0_refusal(
-          kind: LandingSelfAmendmentDenied,
+          kind: gunbc.source_integration_landing_spine.LandingSelfAmendmentDenied,
           reason: "This change cannot approve itself.",
         ),
       },
     },
   )
-  let unauthorized = landing_user_boundary(
+  let unauthorized = gunbc.source_integration_landing_spine.landing_user_boundary(
     receipt: gunbc.source_integration_landing_spine.LandingAdmissionSpine {
       admission: gunbc.source_integration_landing_spine.LandingUnauthorized {
         semantic: p0_closed_one(),
         refusal: p0_refusal(
-          kind: LandingAuthorizationDenied,
+          kind: gunbc.source_integration_landing_spine.LandingAuthorizationDenied,
           reason: "You are not allowed to change this target.",
         ),
       },
     },
   )
-  let exhausted = landing_user_boundary(
+  let exhausted = gunbc.source_integration_landing_spine.landing_user_boundary(
     receipt: gunbc.source_integration_landing_spine.LandingSemanticSpine {
       result: gunbc.source_integration_landing_spine.LandingUnclosed {
         proposal: p0_proposal(),
@@ -1132,44 +1132,44 @@ test fn witness_p0_terminal_surface_excludes_machine_progress() -> Bool {
         partial_results: [],
         disposition: gunbc.source_integration_landing_spine.LandingUnclosedTerminal {
           refusal: p0_refusal(
-            kind: LandingBoundExhausted,
+            kind: gunbc.source_integration_landing_spine.LandingBoundExhausted,
             reason: "This change is outside the supported search limit.",
           ),
         },
       },
     },
   )
-  let permanent = landing_user_boundary(
+  let permanent = gunbc.source_integration_landing_spine.landing_user_boundary(
     receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
       transition: gunbc.source_integration_landing_spine.LandingEffectFailed {
         admitted: p0_admitted(),
         refusal: p0_refusal(
-          kind: LandingPermanentEffectFailure,
+          kind: gunbc.source_integration_landing_spine.LandingPermanentEffectFailure,
           reason: "The target permanently rejected this update.",
         ),
       },
     },
   )
   match machine {
-    LandingMachineOwned { status: _, continuation: _ } =>
+    gunbc.source_integration_landing_spine.LandingMachineOwned { status: _, continuation: _ } =>
       match refused {
-        LandingTerminal {
-          outcome: NativeScmTerminalCouldNotLand { refusal },
+        gunbc.source_integration_landing_spine.LandingTerminal {
+          outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalCouldNotLand { refusal },
         } =>
           refusal.plain_reason == "This change cannot approve itself."
             && match unauthorized {
-              LandingTerminal {
-                outcome: NativeScmTerminalCouldNotLand { refusal: denied },
+              gunbc.source_integration_landing_spine.LandingTerminal {
+                outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalCouldNotLand { refusal: denied },
               } =>
                 denied.plain_reason == "You are not allowed to change this target."
                   && match exhausted {
-                    LandingTerminal {
-                      outcome: NativeScmTerminalCouldNotLand { refusal: bounded },
+                    gunbc.source_integration_landing_spine.LandingTerminal {
+                      outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalCouldNotLand { refusal: bounded },
                     } =>
                       bounded.plain_reason == "This change is outside the supported search limit."
                         && match permanent {
-                          LandingTerminal {
-                            outcome: NativeScmTerminalCouldNotLand { refusal: effect },
+                          gunbc.source_integration_landing_spine.LandingTerminal {
+                            outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalCouldNotLand { refusal: effect },
                           } =>
                             effect.plain_reason == "The target permanently rejected this update."
                           _ => false
@@ -1180,7 +1180,7 @@ test fn witness_p0_terminal_surface_excludes_machine_progress() -> Bool {
             }
         _ => false
       }
-    LandingTerminal { outcome: _ } => false
+    gunbc.source_integration_landing_spine.LandingTerminal { outcome: _ } => false
   }
 }
 
@@ -1204,16 +1204,16 @@ fn p0_primary_message_is_plain(message: String) -> Bool {
 
 test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool {
   let refusal = gunbc.source_integration_landing_spine.LandingRefusal {
-    kind: LandingPermanentEffectFailure,
+    kind: gunbc.source_integration_landing_spine.LandingPermanentEffectFailure,
     locus: "private-node-42",
     occurrences: 1,
     internal_cause: "locked node private-node-42 contradicted solver proof edge 7",
     plain_reason: "The target rejected this update.",
     responsible_party: "workspace owner",
     next_action: "review the target policy",
-    receipt: content_hash_of_value(value: "private-refusal-receipt"),
+    receipt: std.content_hash.content_hash_of_value(value: "private-refusal-receipt"),
   }
-  match landing_user_boundary(
+  match gunbc.source_integration_landing_spine.landing_user_boundary(
     receipt: gunbc.source_integration_landing_spine.LandingTransitionSpine {
       transition: gunbc.source_integration_landing_spine.LandingEffectFailed {
         admitted: p0_admitted(),
@@ -1221,8 +1221,8 @@ test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool
       },
     },
   ) {
-    LandingTerminal {
-      outcome: NativeScmTerminalCouldNotLand { refusal: presented },
+    gunbc.source_integration_landing_spine.LandingTerminal {
+      outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalCouldNotLand { refusal: presented },
     } =>
       presented.plain_reason == "The target rejected this update."
         && p0_primary_message_is_plain(message: presented.plain_reason)
@@ -1249,13 +1249,13 @@ fn p0_timestamps_are_inert_and_stress_is_explicit() -> Bool {
       remaining: [p0_behavior_claim()],
     },
   )
-  let stress: gunbc.source_integration_landing_spine.LandingStressProfile = gunbc_landing_stress_profile
+  let stress: gunbc.source_integration_landing_spine.LandingStressProfile = gunbc.source_integration_landing_spine.gunbc_landing_stress_profile
   early.occurrence == late.occurrence
     && early.target == late.target
     && early.submitted_at != late.submitted_at
     && stress.agents_per_developer == 50
     && stress.overlapping_proposals == 10
-    && minute_count(stress.validation_path) == 30
+    && std.measure.minute_count(stress.validation_path) == 30
 }
 
 test fn witness_p0_roadmap_acceptance_contract_holds() -> Bool {

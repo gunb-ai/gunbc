@@ -3,14 +3,14 @@ module extdeps.languages.json.subject
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.rfc-editor.org/rfc/rfc8259.html"
   }
 }
 
 data json_format_further_authority_1: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.ecma-international.org/publications-and-standards/standards/ecma-404/"
   }
 }
@@ -27,10 +27,10 @@ data json_format_model_scope: extdeps.external_authority.ExternalModelScope = ex
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.languages.json.subject",
       decl_name: "json_format",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.languages.json.subject.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [json_format_further_authority_1]
 }
 

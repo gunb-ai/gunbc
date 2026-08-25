@@ -37,13 +37,13 @@ fn partition_witness_entry_routing_roster(
             interpreted_retained: part.interpreted_retained,
             emit_ineligible: part.emit_ineligible
           }
-        InterpretedRetained { reason: _, dissolution: _ } =>
+        v2.std.witness_execution_routing.InterpretedRetained { reason: _, dissolution: _ } =>
           WitnessEntryRoutingPartition {
             native_routed: part.native_routed,
             interpreted_retained: std.algebra.Cons { head: row, tail: part.interpreted_retained },
             emit_ineligible: part.emit_ineligible
           }
-        EmitIneligible { cause: _, detail: _ } =>
+        v2.std.witness_execution_routing.EmitIneligible { cause: _, detail: _ } =>
           WitnessEntryRoutingPartition {
             native_routed: part.native_routed,
             interpreted_retained: part.interpreted_retained,
@@ -58,49 +58,49 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/determinism_contract_test.dag",
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: BulkFlipPendingCensusIncomplete,
+      reason: v2.std.witness_execution_routing.BulkFlipPendingCensusIncomplete,
       dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/ci_floor_plan_witness_test.dag",
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: BulkFlipPendingCensusIncomplete,
+      reason: v2.std.witness_execution_routing.BulkFlipPendingCensusIncomplete,
       dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/long/effect_reach_test.dag",
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: HostFedCeiling,
+      reason: v2.std.witness_execution_routing.HostFedCeiling,
       dissolution: std.dissolution.unbound_dissolution(description: "native host-effect transport lane delivers typed host_effect_apply execution for this entry's sink class (deliberately uncoupled from bulk flip per ROADMAP 2a)")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: EmitOnDemandFamilyGrain,
+      reason: v2.std.witness_execution_routing.EmitOnDemandFamilyGrain,
       dissolution: std.dissolution.unbound_dissolution(description: "native_routing_frontier flips the owning family to NativeRouted with a warm per-PR agreement receipt; entry-grain row then derives NativeRouted from family membership")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/witness_admission_test.dag",
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: BulkFlipPendingCensusIncomplete,
+      reason: v2.std.witness_execution_routing.BulkFlipPendingCensusIncomplete,
       dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   },
   WitnessEntryRoutingRow {
     entry: "dag/test/claim/roadmap_gate_test.dag",
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: BulkFlipPendingCensusIncomplete,
+      reason: v2.std.witness_execution_routing.BulkFlipPendingCensusIncomplete,
       dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/long/mandatory_tag_gate_witness_test.dag",
     disposition: v2.std.witness_execution_routing.EmitIneligible {
-      cause: LongLaneScheduled,
+      cause: v2.std.witness_execution_routing.LongLaneScheduled,
       detail: "exceeds per-PR 5s fast-lane eval budget; scheduled falsifier/long-lane consumer only"
     }
   },
@@ -114,42 +114,42 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/enforcement/lens_module_gate_witness_test.dag",
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: RetainedReadsLiveTreeCarrier,
+      reason: v2.std.witness_execution_routing.RetainedReadsLiveTreeCarrier,
       dissolution: std.dissolution.unbound_dissolution(description: "module_graph pure/live split lands and the witness row's live_tree_disposition is derived, not hand-stamped")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/execution/emit_on_demand_kernel_witness_test.dag",
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: EmitOnDemandFamilyGrain,
+      reason: v2.std.witness_execution_routing.EmitOnDemandFamilyGrain,
       dissolution: std.dissolution.unbound_dissolution(description: "native_routing_frontier flips the owning family to NativeRouted with a warm per-PR agreement receipt; entry-grain row then derives NativeRouted from family membership")
     }
   },
   WitnessEntryRoutingRow {
     entry: "dag/test/claim/uri_witness_test.dag",
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: HostFedCeiling,
+      reason: v2.std.witness_execution_routing.HostFedCeiling,
       dissolution: std.dissolution.unbound_dissolution(description: "native host-effect transport lane delivers typed host_effect_apply execution for this entry's sink class (deliberately uncoupled from bulk flip per ROADMAP 2a)")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/manual/integer_census_stage_receipt.dag",
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: BulkFlipPendingCensusIncomplete,
+      reason: v2.std.witness_execution_routing.BulkFlipPendingCensusIncomplete,
       dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   },
   WitnessEntryRoutingRow {
     entry: "dag/test/claim/access_validation_test.dag",
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: BulkFlipPendingCensusIncomplete,
+      reason: v2.std.witness_execution_routing.BulkFlipPendingCensusIncomplete,
       dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/self_host/native_routing_frontier_test.dag",
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: BulkFlipPendingCensusIncomplete,
+      reason: v2.std.witness_execution_routing.BulkFlipPendingCensusIncomplete,
       dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   }
@@ -165,7 +165,7 @@ fn retained_pending_long_lane(entry: String) -> WitnessEntryRoutingRow {
   WitnessEntryRoutingRow {
     entry: entry,
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: RetainedPendingLongLane,
+      reason: v2.std.witness_execution_routing.RetainedPendingLongLane,
       dissolution: std.dissolution.unbound_dissolution(description: "eval budget under 5s per-PR fast lane OR native execution makes the long-lane wall clock negligible; row re-classified after measurement")
     }
   }
@@ -175,7 +175,7 @@ fn retained_pending_offline_recipe(entry: String) -> WitnessEntryRoutingRow {
   WitnessEntryRoutingRow {
     entry: entry,
     disposition: v2.std.witness_execution_routing.InterpretedRetained {
-      reason: RetainedPendingOfflineRecipe,
+      reason: v2.std.witness_execution_routing.RetainedPendingOfflineRecipe,
       dissolution: std.dissolution.unbound_dissolution(description: "witness_admission consumer classification derives OfflineLocalRecipe without a parallel exclusion substring row")
     }
   }
@@ -196,19 +196,19 @@ fn emit_ineligible_entry_rows() -> List<WitnessEntryRoutingRow> {
 }
 
 fn routing_row_for_entry(entry: String) -> List<WitnessEntryRoutingRow> {
-  filter(
+  v2.std.algebra.filter(
     xs: witness_bulk_routing_sample_roster,
     predicate: fn(row) { row.entry == entry }
   )
 }
 
-fn witness_bulk_routing_total_holds() -> v2.std.logic.Bool {
+fn witness_bulk_routing_total_holds() -> Bool {
   let part = witness_bulk_routing_sample_partition
-  let roster_len = length(xs: witness_bulk_routing_sample_roster)
-  let split_total = length(xs: part.native_routed) + length(xs: part.interpreted_retained) + length(xs: part.emit_ineligible)
+  let roster_len = v2.std.algebra.length(xs: witness_bulk_routing_sample_roster)
+  let split_total = v2.std.algebra.length(xs: part.native_routed) + v2.std.algebra.length(xs: part.interpreted_retained) + v2.std.algebra.length(xs: part.emit_ineligible)
   split_total == roster_len
 }
 
-fn witness_bulk_routing_zero_native_at_landing_holds() -> v2.std.logic.Bool {
-  length(xs: witness_bulk_routing_sample_partition.native_routed) == 0
+fn witness_bulk_routing_zero_native_at_landing_holds() -> Bool {
+  v2.std.algebra.length(xs: witness_bulk_routing_sample_partition.native_routed) == 0
 }

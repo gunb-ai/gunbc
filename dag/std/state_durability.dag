@@ -23,35 +23,35 @@ type SoftwareReplacementScope
 
 type StateDurabilityBoundary
   = ServiceRestartBoundary
-  | ControlPlaneRestartBoundary { mode: std.state_durability.LifecycleRestartMode }
-  | HostRestartBoundary { mode: std.state_durability.LifecycleRestartMode }
-  | PowerLossBoundary { scope: std.state_durability.PowerLossScope }
-  | SoftwareReplacementBoundary { scope: std.state_durability.SoftwareReplacementScope }
+  | ControlPlaneRestartBoundary { mode: LifecycleRestartMode }
+  | HostRestartBoundary { mode: LifecycleRestartMode }
+  | PowerLossBoundary { scope: PowerLossScope }
+  | SoftwareReplacementBoundary { scope: SoftwareReplacementScope }
   | FactoryResetBoundary
 
 type StateDurabilityIntent
   = DurabilityUnspecified
   | RuntimeLifetimeOnly
-  | DurableAcross { boundaries: std.state_durability.StateDurabilityBoundaryRequirements }
+  | DurableAcross { boundaries: StateDurabilityBoundaryRequirements }
 
 type StateDurabilityBoundaryRequirements {
-  first: std.state_durability.StateDurabilityBoundary
-  additional_unique: List<std.state_durability.StateDurabilityBoundary>
+  first: StateDurabilityBoundary
+  additional_unique: List<StateDurabilityBoundary>
 }
 
 data state_durability_boundary_uniqueness_scaffold_note: String = "🟡 dissolve-on: docs/plans/hollow-alias-construction-wall.md makes refinement/bodyless declarations construction-enforced after its lens-first corpus proof. Nonemptiness is already unwritable through first + additional_unique. Uniqueness is decidable but remains a typed, reachable, counted refusal because .dag record literals are public and refinements are not construction-enforced; Set is the non-enumerable PointwisePower while durability qualification must enumerate every boundary. This is a corpus-wide language gap also visible in bare proof wrappers such as ValidatedGrammarRoot and ValidatedBmcFanCurve, not a license for a Map-as-set or bitset nickname."
 
 type StateDurabilityBoundaryRequirementBuild {
-  ordered: List<std.state_durability.StateDurabilityBoundary>
+  ordered: List<StateDurabilityBoundary>
 }
 
 fn state_durability_boundary_requirements(
-  first: std.state_durability.StateDurabilityBoundary,
-  additional: List<std.state_durability.StateDurabilityBoundary>,
-) -> std.state_durability.StateDurabilityBoundaryRequirements {
+  first: StateDurabilityBoundary,
+  additional: List<StateDurabilityBoundary>,
+) -> StateDurabilityBoundaryRequirements {
   let built = fold(
     additional,
-    init: std.state_durability.StateDurabilityBoundaryRequirementBuild {
+    init: StateDurabilityBoundaryRequirementBuild {
       ordered: [first],
     },
     f: (acc, boundary) =>
@@ -70,8 +70,8 @@ fn state_durability_boundary_requirements(
 }
 
 fn state_durability_boundary_requirement_list(
-  requirements: std.state_durability.StateDurabilityBoundaryRequirements,
-) -> List<std.state_durability.StateDurabilityBoundary> {
+  requirements: StateDurabilityBoundaryRequirements,
+) -> List<StateDurabilityBoundary> {
   append([requirements.first], items: requirements.additional_unique)
 }
 
@@ -81,14 +81,14 @@ type DurabilityCommitBarrier
 
 type StateRealizationIdentity {
   realization_id: std.types.NonEmptyStr
-  definition_linkages: std.state_durability.StateRealizationDefinitionLinkages
+  definition_linkages: StateRealizationDefinitionLinkages
 }
 
 // Authored ONCE and projected through every row. The condition is one fact
 // about the whole class -- caller-asserted linkage retires when the namespace
 // lane lands its content-addressed SymbolIndex subtree digest -- so copying the
 // sentence per row would be the same prose duplication this migration removes.
-data symbol_index_subtree_digest_dissolution: std.dissolution.DissolutionCondition = unbound_dissolution(description: "namespace content-addressed SymbolIndex subtree digest")
+data symbol_index_subtree_digest_dissolution: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "namespace content-addressed SymbolIndex subtree digest")
 
 type StateDefinitionLinkage
   = CallerAssertedDefinitionLinkage {
@@ -105,46 +105,46 @@ type StateDefinitionRole
   | DurabilityCapabilityDefinition
 
 type StateDefinitionCallerAssertion {
-  role: std.state_durability.StateDefinitionRole
+  role: StateDefinitionRole
   reason: std.types.NonEmptyStr
   dissolution: std.dissolution.DissolutionCondition
 }
 
 type StateRealizationDefinitionLinkages {
-  projection: std.state_durability.StateDefinitionLinkage
-  verifier: std.state_durability.StateDefinitionLinkage
-  observer: std.state_durability.StateDefinitionLinkage
-  transport: std.state_durability.StateDefinitionLinkage
-  actuator: std.state_durability.StateDefinitionLinkage
+  projection: StateDefinitionLinkage
+  verifier: StateDefinitionLinkage
+  observer: StateDefinitionLinkage
+  transport: StateDefinitionLinkage
+  actuator: StateDefinitionLinkage
 }
 
 data state_definition_linkage_frontier_note: String = "🟡 dissolve-on: the namespace-only resolution lane lands its content-addressed SymbolIndex containment tree. Until then, every realization and capability definition is CallerAssertedDefinitionLinkage and durable qualification refuses with typed, located, counted assertions. The future mechanically-hashed arm MUST carry an opaque subtree-digest type whose only constructor is the SymbolIndex subtree-hashing operation; a bare ContentHash field is forbidden because callers could forge it from a label and recreate the lie this frontier removes."
 
 type StateDefinitionLinkageVerdict
   = StateDefinitionLinkageEvidence {
-      role: std.state_durability.StateDefinitionRole,
+      role: StateDefinitionRole,
     }
   | StateDefinitionLinkageUnavailable {
-      assertion: std.state_durability.StateDefinitionCallerAssertion,
+      assertion: StateDefinitionCallerAssertion,
     }
 
 type StateDefinitionLinkageAdmissionVerdict
   = StateDefinitionLinkageAdmissionPermitted
   | StateDefinitionLinkageAdmissionBlocked {
-      assertions: List<std.state_durability.StateDefinitionCallerAssertion>,
+      assertions: List<StateDefinitionCallerAssertion>,
     }
 
 fn state_definition_linkage_verdict(
-  role: std.state_durability.StateDefinitionRole,
-  linkage: std.state_durability.StateDefinitionLinkage,
-) -> std.state_durability.StateDefinitionLinkageVerdict {
+  role: StateDefinitionRole,
+  linkage: StateDefinitionLinkage,
+) -> StateDefinitionLinkageVerdict {
   match linkage {
     CallerAssertedDefinitionLinkage {
       reason: reason,
       dissolution: dissolution,
     } =>
       StateDefinitionLinkageUnavailable {
-        assertion: std.state_durability.StateDefinitionCallerAssertion {
+        assertion: StateDefinitionCallerAssertion {
           role: role,
           reason: reason,
           dissolution: dissolution,
@@ -154,8 +154,8 @@ fn state_definition_linkage_verdict(
 }
 
 fn state_durability_definition_linkage_verdicts<Target, ReadbackSubject>(
-  admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-) -> List<std.state_durability.StateDefinitionLinkageVerdict> {
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+) -> List<StateDefinitionLinkageVerdict> {
   [
     state_definition_linkage_verdict(
       role: RealizationProjectionDefinition,
@@ -185,8 +185,8 @@ fn state_durability_definition_linkage_verdicts<Target, ReadbackSubject>(
 }
 
 fn state_durability_definition_linkage_unavailable_assertions(
-  verdicts: List<std.state_durability.StateDefinitionLinkageVerdict>,
-) -> List<std.state_durability.StateDefinitionCallerAssertion> {
+  verdicts: List<StateDefinitionLinkageVerdict>,
+) -> List<StateDefinitionCallerAssertion> {
   fold(
     verdicts,
     init: [],
@@ -200,12 +200,12 @@ fn state_durability_definition_linkage_unavailable_assertions(
 }
 
 fn state_durability_definition_linkage_admission_verdict(
-  verdicts: List<std.state_durability.StateDefinitionLinkageVerdict>,
-) -> std.state_durability.StateDefinitionLinkageAdmissionVerdict {
+  verdicts: List<StateDefinitionLinkageVerdict>,
+) -> StateDefinitionLinkageAdmissionVerdict {
   let unavailable = state_durability_definition_linkage_unavailable_assertions(
     verdicts: verdicts,
   )
-  if list_length(unavailable) > 0 {
+  if std.types.list_length(unavailable) > 0 {
     StateDefinitionLinkageAdmissionBlocked {
       assertions: unavailable,
     }
@@ -215,8 +215,8 @@ fn state_durability_definition_linkage_admission_verdict(
 }
 
 fn state_durability_definition_linkage_refusal<Target, ReadbackSubject>(
-  admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-) -> std.state_durability.StateDurabilityRefusal<Target, ReadbackSubject>? {
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+) -> StateDurabilityRefusal<Target, ReadbackSubject>? {
   match state_durability_definition_linkage_admission_verdict(
     verdicts: state_durability_definition_linkage_verdicts(admission: admission),
   ) {
@@ -226,7 +226,7 @@ fn state_durability_definition_linkage_refusal<Target, ReadbackSubject>(
           realization: admission.realization,
           capability: admission.capability_version,
           assertions: assertions,
-          count: list_length(assertions),
+          count: std.types.list_length(assertions),
         },
       }
     StateDefinitionLinkageAdmissionPermitted => none
@@ -235,7 +235,7 @@ fn state_durability_definition_linkage_refusal<Target, ReadbackSubject>(
 
 type StateDurabilityCapabilityVersion {
   version: std.types.NonEmptyStr
-  definition_linkage: std.state_durability.StateDefinitionLinkage
+  definition_linkage: StateDefinitionLinkage
 }
 
 type StatePerturbationGeneration =
@@ -246,24 +246,24 @@ type StateDurabilityInstant = std.types.EpochMs
 type StateDurabilityAdmission<Target, ReadbackSubject> {
   target: Target
   desired_state_digest: extdeps.crypto.hash.Digest
-  realization: std.state_durability.StateRealizationIdentity
-  capability_version: std.state_durability.StateDurabilityCapabilityVersion
-  perturbation_generation: std.state_durability.StatePerturbationGeneration
+  realization: StateRealizationIdentity
+  capability_version: StateDurabilityCapabilityVersion
+  perturbation_generation: StatePerturbationGeneration
   readback_subject: ReadbackSubject
 }
 
 type StateDurabilityCapability {
-  realization: std.state_durability.StateRealizationIdentity
-  capability_version: std.state_durability.StateDurabilityCapabilityVersion
-  supported_boundaries: List<std.state_durability.StateDurabilityBoundary>
-  commit_barrier: std.state_durability.DurabilityCommitBarrier
+  realization: StateRealizationIdentity
+  capability_version: StateDurabilityCapabilityVersion
+  supported_boundaries: List<StateDurabilityBoundary>
+  commit_barrier: DurabilityCommitBarrier
 }
 
 type StatePerturbationReceipt<Target> {
   receipt_id: std.types.NonEmptyStr
   target: Target
-  boundary: std.state_durability.StateDurabilityBoundary
-  generation: std.state_durability.StatePerturbationGeneration
+  boundary: StateDurabilityBoundary
+  generation: StatePerturbationGeneration
   started_after_before_readback: std.measure.PositiveMillisecond
   duration: std.measure.PositiveMillisecond
 }
@@ -273,7 +273,7 @@ type StateBeforeReadbackReceipt<Target, ReadbackSubject> {
   target: Target
   subject: ReadbackSubject
   state_digest: extdeps.crypto.hash.Digest
-  observed_at: std.state_durability.StateDurabilityInstant
+  observed_at: StateDurabilityInstant
 }
 
 type StateAfterReadbackReceipt<Target, ReadbackSubject> {
@@ -285,37 +285,37 @@ type StateAfterReadbackReceipt<Target, ReadbackSubject> {
 }
 
 fn state_durability_perturbation_started_at<Target, ReadbackSubject>(
-  before: std.state_durability.StateBeforeReadbackReceipt<Target, ReadbackSubject>,
-  perturbation: std.state_durability.StatePerturbationReceipt<Target>,
-) -> std.state_durability.StateDurabilityInstant {
-  let instant = before.observed_at + positive_millisecond_count(
+  before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+  perturbation: StatePerturbationReceipt<Target>,
+) -> StateDurabilityInstant {
+  let instant = before.observed_at + std.measure.positive_millisecond_count(
     m: perturbation.started_after_before_readback,
   )
   instant
 }
 
 fn state_durability_perturbation_completed_at<Target, ReadbackSubject>(
-  before: std.state_durability.StateBeforeReadbackReceipt<Target, ReadbackSubject>,
-  perturbation: std.state_durability.StatePerturbationReceipt<Target>,
-) -> std.state_durability.StateDurabilityInstant {
+  before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+  perturbation: StatePerturbationReceipt<Target>,
+) -> StateDurabilityInstant {
   let instant = state_durability_perturbation_started_at(
     before: before,
     perturbation: perturbation,
-  ) + positive_millisecond_count(
+  ) + std.measure.positive_millisecond_count(
     m: perturbation.duration,
   )
   instant
 }
 
 fn state_durability_after_readback_at<Target, ReadbackSubject>(
-  before: std.state_durability.StateBeforeReadbackReceipt<Target, ReadbackSubject>,
-  perturbation: std.state_durability.StatePerturbationReceipt<Target>,
-  after: std.state_durability.StateAfterReadbackReceipt<Target, ReadbackSubject>,
-) -> std.state_durability.StateDurabilityInstant {
+  before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+  perturbation: StatePerturbationReceipt<Target>,
+  after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
+) -> StateDurabilityInstant {
   let instant = state_durability_perturbation_completed_at(
     before: before,
     perturbation: perturbation,
-  ) + positive_millisecond_count(
+  ) + std.measure.positive_millisecond_count(
     m: after.observed_after_perturbation_completion,
   )
   instant
@@ -326,34 +326,34 @@ type StateActivationReceipt<Target, ReadbackSubject> {
   target: Target
   subject: ReadbackSubject
   desired_state_digest: extdeps.crypto.hash.Digest
-  realization: std.state_durability.StateRealizationIdentity
-  capability_version: std.state_durability.StateDurabilityCapabilityVersion
-  perturbation_generation: std.state_durability.StatePerturbationGeneration
+  realization: StateRealizationIdentity
+  capability_version: StateDurabilityCapabilityVersion
+  perturbation_generation: StatePerturbationGeneration
 }
 
 type StateActivationEvidence<Target, ReadbackSubject>
   = ActivationVerified {
-      receipt: std.state_durability.StateActivationReceipt<Target, ReadbackSubject>,
+      receipt: StateActivationReceipt<Target, ReadbackSubject>,
     }
   | ActivationUnverified { reason: String }
 
 type StatePreservationOutcome<Target, ReadbackSubject>
   = StatePreserved {
-      before: std.state_durability.StateBeforeReadbackReceipt<Target, ReadbackSubject>,
-      after: std.state_durability.StateAfterReadbackReceipt<Target, ReadbackSubject>,
-      activation: std.state_durability.StateActivationEvidence<Target, ReadbackSubject>,
+      before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+      after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
+      activation: StateActivationEvidence<Target, ReadbackSubject>,
     }
   | StateLost {
-      before: std.state_durability.StateBeforeReadbackReceipt<Target, ReadbackSubject>,
-      after: std.state_durability.StateAfterReadbackReceipt<Target, ReadbackSubject>,
+      before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+      after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
       reason: String,
     }
   | StatePreservationObservationRefused { reason: String }
 
 type StateDurabilityEvidence<Target, ReadbackSubject> {
-  admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>
-  perturbation: std.state_durability.StatePerturbationReceipt<Target>
-  outcome: std.state_durability.StatePreservationOutcome<Target, ReadbackSubject>
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>
+  perturbation: StatePerturbationReceipt<Target>
+  outcome: StatePreservationOutcome<Target, ReadbackSubject>
 }
 
 type StateReadbackPosition
@@ -363,36 +363,36 @@ type StateReadbackPosition
 type StateDurabilityRefusal<Target, ReadbackSubject>
   = DurabilityIntentUnspecified
   | DurabilityRequirementDuplicate {
-      boundary: std.state_durability.StateDurabilityBoundary,
+      boundary: StateDurabilityBoundary,
       count: Int,
     }
   | DurabilityCapabilityMissing
   | DurabilityDefinitionLinkageUnavailable {
-      realization: std.state_durability.StateRealizationIdentity,
-      capability: std.state_durability.StateDurabilityCapabilityVersion,
-      assertions: List<std.state_durability.StateDefinitionCallerAssertion>,
+      realization: StateRealizationIdentity,
+      capability: StateDurabilityCapabilityVersion,
+      assertions: List<StateDefinitionCallerAssertion>,
       count: Int,
     }
   | DurabilityCapabilityAdmissionMismatch {
-      expected_realization: std.state_durability.StateRealizationIdentity,
-      observed_realization: std.state_durability.StateRealizationIdentity,
-      expected_capability_version: std.state_durability.StateDurabilityCapabilityVersion,
-      observed_capability_version: std.state_durability.StateDurabilityCapabilityVersion,
+      expected_realization: StateRealizationIdentity,
+      observed_realization: StateRealizationIdentity,
+      expected_capability_version: StateDurabilityCapabilityVersion,
+      observed_capability_version: StateDurabilityCapabilityVersion,
     }
   | DurabilityCommitBarrierMissing {
-      realization: std.state_durability.StateRealizationIdentity,
+      realization: StateRealizationIdentity,
     }
   | DurabilityBoundaryUnsupported {
-      realization: std.state_durability.StateRealizationIdentity,
-      boundary: std.state_durability.StateDurabilityBoundary,
+      realization: StateRealizationIdentity,
+      boundary: StateDurabilityBoundary,
     }
   | DurabilityEvidenceMissing {
-      admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-      boundary: std.state_durability.StateDurabilityBoundary,
+      admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+      boundary: StateDurabilityBoundary,
     }
   | DurabilityEvidenceAmbiguous {
-      admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-      boundary: std.state_durability.StateDurabilityBoundary,
+      admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+      boundary: StateDurabilityBoundary,
       count: Int,
     }
   | DurabilityPerturbationTargetMismatch {
@@ -400,25 +400,25 @@ type StateDurabilityRefusal<Target, ReadbackSubject>
       observed: Target,
     }
   | DurabilityPerturbationBoundaryMismatch {
-      expected: std.state_durability.StateDurabilityBoundary,
-      observed: std.state_durability.StateDurabilityBoundary,
+      expected: StateDurabilityBoundary,
+      observed: StateDurabilityBoundary,
     }
   | DurabilityPerturbationGenerationMismatch {
-      expected: std.state_durability.StatePerturbationGeneration,
-      observed: std.state_durability.StatePerturbationGeneration,
+      expected: StatePerturbationGeneration,
+      observed: StatePerturbationGeneration,
     }
   | DurabilityReadbackReceiptLinkMismatch {
-      position: std.state_durability.StateReadbackPosition,
+      position: StateReadbackPosition,
       expected_receipt_id: std.types.NonEmptyStr,
       observed_receipt_id: std.types.NonEmptyStr,
     }
   | DurabilityReadbackTargetMismatch {
-      position: std.state_durability.StateReadbackPosition,
+      position: StateReadbackPosition,
       expected: Target,
       observed: Target,
     }
   | DurabilityReadbackSubjectMismatch {
-      position: std.state_durability.StateReadbackPosition,
+      position: StateReadbackPosition,
       expected: ReadbackSubject,
       observed: ReadbackSubject,
     }
@@ -432,66 +432,66 @@ type StateDurabilityRefusal<Target, ReadbackSubject>
       observed_receipt_id: std.types.NonEmptyStr,
     }
   | DurabilityActivationScopeMismatch {
-      expected: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-      observed: std.state_durability.StateActivationReceipt<Target, ReadbackSubject>,
+      expected: StateDurabilityAdmission<Target, ReadbackSubject>,
+      observed: StateActivationReceipt<Target, ReadbackSubject>,
     }
   | DurabilityActivationUnverified { reason: String }
   | DurabilityStateLost {
-      before: std.state_durability.StateBeforeReadbackReceipt<Target, ReadbackSubject>,
-      after: std.state_durability.StateAfterReadbackReceipt<Target, ReadbackSubject>,
+      before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+      after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
       reason: String,
     }
   | DurabilityObservationRefused { reason: String }
 
 type StateDurabilityQualification<Target, ReadbackSubject>
   = RuntimeLifetimeQualification {
-      admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
+      admission: StateDurabilityAdmission<Target, ReadbackSubject>,
     }
   | DurableLifetimeQualification {
-      admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-      capability: std.state_durability.StateDurabilityCapability,
-      boundaries: std.state_durability.StateDurabilityBoundaryRequirements,
-      evidence: List<std.state_durability.StateDurabilityEvidence<Target, ReadbackSubject>>,
+      admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+      capability: StateDurabilityCapability,
+      boundaries: StateDurabilityBoundaryRequirements,
+      evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
     }
 
 type StateDurabilityVerdict<Target, ReadbackSubject>
   = StateDurabilityQualified {
-      qualification: std.state_durability.StateDurabilityQualification<Target, ReadbackSubject>,
+      qualification: StateDurabilityQualification<Target, ReadbackSubject>,
     }
   | StateDurabilityRefused {
-      cause: std.state_durability.StateDurabilityRefusal<Target, ReadbackSubject>,
+      cause: StateDurabilityRefusal<Target, ReadbackSubject>,
     }
 
 type StateDurabilityEvidenceCardinality<Target, ReadbackSubject>
   = NoMatchingDurabilityEvidence
   | OneMatchingDurabilityEvidence {
-      evidence: std.state_durability.StateDurabilityEvidence<Target, ReadbackSubject>,
+      evidence: StateDurabilityEvidence<Target, ReadbackSubject>,
     }
   | MultipleMatchingDurabilityEvidence { count: Int }
 
 type StateDurabilityEvidenceVerdict<Target, ReadbackSubject>
   = StateDurabilityEvidenceAccepted {
-      evidence: List<std.state_durability.StateDurabilityEvidence<Target, ReadbackSubject>>,
+      evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
     }
   | StateDurabilityEvidenceRefused {
-      cause: std.state_durability.StateDurabilityRefusal<Target, ReadbackSubject>,
+      cause: StateDurabilityRefusal<Target, ReadbackSubject>,
     }
 
 type StateDurabilityBoundaryUniquenessFold {
-  seen: List<std.state_durability.StateDurabilityBoundary>
-  duplicate: std.state_durability.StateDurabilityBoundary?
+  seen: List<StateDurabilityBoundary>
+  duplicate: StateDurabilityBoundary?
   duplicate_count: Int
 }
 
 fn state_durability_boundary_requirements_refusal<Target, ReadbackSubject>(
-  requirements: std.state_durability.StateDurabilityBoundaryRequirements,
-) -> std.state_durability.StateDurabilityRefusal<Target, ReadbackSubject>? {
+  requirements: StateDurabilityBoundaryRequirements,
+) -> StateDurabilityRefusal<Target, ReadbackSubject>? {
   let boundaries = state_durability_boundary_requirement_list(
     requirements: requirements,
   )
   let folded = fold(
     boundaries,
-    init: std.state_durability.StateDurabilityBoundaryUniquenessFold {
+    init: StateDurabilityBoundaryUniquenessFold {
       seen: [],
       duplicate: none,
       duplicate_count: 0,
@@ -537,8 +537,8 @@ fn state_durability_boundary_requirements_refusal<Target, ReadbackSubject>(
 }
 
 fn state_durability_admission_eq<Target, ReadbackSubject>(
-  a: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-  b: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
+  a: StateDurabilityAdmission<Target, ReadbackSubject>,
+  b: StateDurabilityAdmission<Target, ReadbackSubject>,
 ) -> Bool {
   a.target == b.target
     && a.desired_state_digest == b.desired_state_digest
@@ -549,18 +549,18 @@ fn state_durability_admission_eq<Target, ReadbackSubject>(
 }
 
 fn state_durability_capability_matches_admission<Target, ReadbackSubject>(
-  capability: std.state_durability.StateDurabilityCapability,
-  admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
+  capability: StateDurabilityCapability,
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
 ) -> Bool {
   capability.realization == admission.realization
     && capability.capability_version == admission.capability_version
 }
 
 fn state_durability_evidence_cardinality<Target, ReadbackSubject>(
-  evidence: List<std.state_durability.StateDurabilityEvidence<Target, ReadbackSubject>>,
-  admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-  boundary: std.state_durability.StateDurabilityBoundary,
-) -> std.state_durability.StateDurabilityEvidenceCardinality<Target, ReadbackSubject> {
+  evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+  boundary: StateDurabilityBoundary,
+) -> StateDurabilityEvidenceCardinality<Target, ReadbackSubject> {
   fold(
     evidence,
     init: NoMatchingDurabilityEvidence,
@@ -584,9 +584,9 @@ fn state_durability_evidence_cardinality<Target, ReadbackSubject>(
 }
 
 fn state_durability_admission_evidence_cardinality<Target, ReadbackSubject>(
-  evidence: List<std.state_durability.StateDurabilityEvidence<Target, ReadbackSubject>>,
-  admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-) -> std.state_durability.StateDurabilityEvidenceCardinality<Target, ReadbackSubject> {
+  evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+) -> StateDurabilityEvidenceCardinality<Target, ReadbackSubject> {
   fold(
     evidence,
     init: NoMatchingDurabilityEvidence,
@@ -610,10 +610,10 @@ fn state_durability_admission_evidence_cardinality<Target, ReadbackSubject>(
 }
 
 fn state_durability_evidence_refusal<Target, ReadbackSubject>(
-  admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-  boundary: std.state_durability.StateDurabilityBoundary,
-  evidence: std.state_durability.StateDurabilityEvidence<Target, ReadbackSubject>,
-) -> std.state_durability.StateDurabilityRefusal<Target, ReadbackSubject>? {
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+  boundary: StateDurabilityBoundary,
+  evidence: StateDurabilityEvidence<Target, ReadbackSubject>,
+) -> StateDurabilityRefusal<Target, ReadbackSubject>? {
   if evidence.perturbation.target != admission.target {
     Present {
       value: DurabilityPerturbationTargetMismatch {
@@ -751,11 +751,11 @@ fn state_durability_evidence_refusal<Target, ReadbackSubject>(
 }
 
 fn state_durability_boundary_evidence_verdict<Target, ReadbackSubject>(
-  boundary: std.state_durability.StateDurabilityBoundary,
-  admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-  capability: std.state_durability.StateDurabilityCapability,
-  evidence: List<std.state_durability.StateDurabilityEvidence<Target, ReadbackSubject>>,
-) -> std.state_durability.StateDurabilityEvidenceVerdict<Target, ReadbackSubject> {
+  boundary: StateDurabilityBoundary,
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+  capability: StateDurabilityCapability,
+  evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
+) -> StateDurabilityEvidenceVerdict<Target, ReadbackSubject> {
   if !any(
     capability.supported_boundaries,
     supported => supported == boundary,
@@ -827,22 +827,22 @@ fn state_durability_boundary_evidence_verdict<Target, ReadbackSubject>(
 }
 
 type StateDurabilityEvidenceFold<Target, ReadbackSubject> {
-  refusal: std.state_durability.StateDurabilityRefusal<Target, ReadbackSubject>?
-  accepted: List<std.state_durability.StateDurabilityEvidence<Target, ReadbackSubject>>
+  refusal: StateDurabilityRefusal<Target, ReadbackSubject>?
+  accepted: List<StateDurabilityEvidence<Target, ReadbackSubject>>
 }
 
 fn state_durability_boundaries_evidence_verdict<Target, ReadbackSubject>(
-  required: std.state_durability.StateDurabilityBoundaryRequirements,
-  admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-  capability: std.state_durability.StateDurabilityCapability,
-  evidence: List<std.state_durability.StateDurabilityEvidence<Target, ReadbackSubject>>,
-) -> std.state_durability.StateDurabilityEvidenceVerdict<Target, ReadbackSubject> {
+  required: StateDurabilityBoundaryRequirements,
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+  capability: StateDurabilityCapability,
+  evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
+) -> StateDurabilityEvidenceVerdict<Target, ReadbackSubject> {
   let required_list = state_durability_boundary_requirement_list(
     requirements: required,
   )
   let folded = fold(
     required_list,
-    init: std.state_durability.StateDurabilityEvidenceFold {
+    init: StateDurabilityEvidenceFold {
       refusal: none,
       accepted: [],
     },
@@ -880,11 +880,11 @@ fn state_durability_boundaries_evidence_verdict<Target, ReadbackSubject>(
 }
 
 fn state_durability_verdict<Target, ReadbackSubject>(
-  intent: std.state_durability.StateDurabilityIntent,
-  admission: std.state_durability.StateDurabilityAdmission<Target, ReadbackSubject>,
-  capability: std.state_durability.StateDurabilityCapability?,
-  evidence: List<std.state_durability.StateDurabilityEvidence<Target, ReadbackSubject>>,
-) -> std.state_durability.StateDurabilityVerdict<Target, ReadbackSubject> {
+  intent: StateDurabilityIntent,
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+  capability: StateDurabilityCapability?,
+  evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
+) -> StateDurabilityVerdict<Target, ReadbackSubject> {
   match intent {
     DurabilityUnspecified =>
       StateDurabilityRefused { cause: DurabilityIntentUnspecified }

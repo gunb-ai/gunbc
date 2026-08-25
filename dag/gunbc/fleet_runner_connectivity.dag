@@ -1,6 +1,7 @@
 module gunbc.fleet_runner_connectivity
 
-data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
+
+data fleet_runner_connectivity_authority_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."
 }
 
@@ -9,7 +10,7 @@ data organization_roster_is_one_org_read_note: String = "THE ROSTER IS ONE CENTR
 data achieved_widths_are_orthogonal_to_desired_width_note: String = "THE ACHIEVED AXES HERE ARE ORTHOGONAL TO gunbc.runner_slot_allocation's desired-side widths (#7930 candidate/actuatable/observed). registered_width counts GitHub org roster rows; connected_width counts status == online; schedulable_width counts online AND NOT busy; executing_width counts online AND busy. desired_width is INTENT from gunbc_runner_slots_per_host and does NOT reconcile down when connected collapses during an outage. materialized_width and unit_active_width are LOCAL incarnation facts pinned from the incident corpus until the local producer grounds them."
 
 type OrganizationRunnerRosterEvidence
-  = RosterObserved { observed_on: NonEmptyStr, registrations: List<GitHubSelfHostedRunnerRegistration> }
+  = RosterObserved { observed_on: std.types.NonEmptyStr, registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> }
   | RosterReadUnavailable { reason: String }
 
 type FleetAchievedRunnerWidths
@@ -22,8 +23,8 @@ type FleetAchievedRunnerWidths
   | AchievedWidthsUnobserved { reason: String }
 
 type RegistrationSlotDecoding
-  = RegistrationNamesCommittedSlot { slot: RunnerSlotIdentity }
-  | RegistrationNamesNoCommittedSlot { registration_name: NonEmptyStr }
+  = RegistrationNamesCommittedSlot { slot: gunbc.build_cache_instance.RunnerSlotIdentity }
+  | RegistrationNamesNoCommittedSlot { registration_name: std.types.NonEmptyStr }
 
 // THE DECODER DOES NOT PARSE. Splitting "srv3-06" back into a host and an index would be a SECOND
 // naming authority read in the opposite direction from the first, and the two could disagree without
@@ -53,15 +54,15 @@ type RegistrationSlotDecoding
 // builds its own expected name inline. That is not a missed site: a witness that computes its
 // expectation by calling the production function proves only that the function equals itself. Its
 // pad is an independent oracle and consolidating it would convert a check into a tautology.
-fn fleet_committed_slot_identities() -> List<RunnerSlotIdentity> {
+fn fleet_committed_slot_identities() -> List<gunbc.build_cache_instance.RunnerSlotIdentity> {
   fold(
     fleet_hosts(),
     init: [],
-    f: (acc, h) => concat(acc, committed_slot_identities(host: h))
+    f: (acc, h) => concat(acc, gunbc.runner_slot_allocation.committed_slot_identities(host: h))
   )
 }
 
-fn decode_registration_slot(reg: GitHubSelfHostedRunnerRegistration) -> RegistrationSlotDecoding {
+fn decode_registration_slot(reg: extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration) -> RegistrationSlotDecoding {
   match fold(
     fleet_committed_slot_identities(),
     init: none,
@@ -69,7 +70,7 @@ fn decode_registration_slot(reg: GitHubSelfHostedRunnerRegistration) -> Registra
       match acc {
         Present { value: v } => Present { value: v }
         Absent =>
-          if runner_slot_instance_name(slot: id) == (reg.name as String) {
+          if gunbc.build_cache_instance.runner_slot_instance_name(slot: id) == (reg.name as String) {
             Present { value: id }
           } else {
             none
@@ -82,13 +83,13 @@ fn decode_registration_slot(reg: GitHubSelfHostedRunnerRegistration) -> Registra
 }
 
 type RunnerSlotConnectivityVerdict
-  = SlotConnectivityHealthy { slot: RunnerSlotIdentity, registration_id: std.nat.Nat }
-  | SlotConnectivityDetached { slot: RunnerSlotIdentity, registration_id: std.nat.Nat }
-  | SlotConnectivityOrphaned { slot: RunnerSlotIdentity }
-  | SlotConnectivityUnknown { slot: RunnerSlotIdentity, reason: String }
+  = SlotConnectivityHealthy { slot: gunbc.build_cache_instance.RunnerSlotIdentity, registration_id: std.nat.Nat }
+  | SlotConnectivityDetached { slot: gunbc.build_cache_instance.RunnerSlotIdentity, registration_id: std.nat.Nat }
+  | SlotConnectivityOrphaned { slot: gunbc.build_cache_instance.RunnerSlotIdentity }
+  | SlotConnectivityUnknown { slot: gunbc.build_cache_instance.RunnerSlotIdentity, reason: String }
   | SlotConnectivityUnexpectedRegistration {
       registration_id: std.nat.Nat
-      registration_name: NonEmptyStr
+      registration_name: std.types.NonEmptyStr
       decoded: RegistrationSlotDecoding
     }
 
@@ -115,87 +116,87 @@ data incident_2026_08_06_roster_note: String = "PINNED ACCEPTANCE CORPUS from th
 
 data incident_srv4_committed_width_at_outage: Int = 5
 
-data incident_runner_version: NonEmptyStr = "2.334.0"
+data incident_runner_version: std.types.NonEmptyStr = "2.334.0"
 
-data incident_runner_labels: List<NonEmptyStr> = [
-  "self-hosted" as NonEmptyStr,
-  "linux" as NonEmptyStr,
-  "arm64" as NonEmptyStr,
-  "gunbc-heavy" as NonEmptyStr,
+data incident_runner_labels: List<std.types.NonEmptyStr> = [
+  "self-hosted" as std.types.NonEmptyStr,
+  "linux" as std.types.NonEmptyStr,
+  "arm64" as std.types.NonEmptyStr,
+  "gunbc-heavy" as std.types.NonEmptyStr,
 ]
 
-fn github_organization_ref() -> GitHubOrganizationRef {
-  GitHubOrganizationRef { login: gunbai_ci_declared.owner_login }
+fn github_organization_ref() -> extdeps.github.effect.GitHubOrganizationRef {
+  extdeps.github.effect.GitHubOrganizationRef { login: gunbai_ci_declared.owner_login }
 }
 
 fn incident_registration(
   id: std.nat.Nat,
-  name: NonEmptyStr,
-  status: GitHubRunnerRegistrationStatus,
+  name: std.types.NonEmptyStr,
+  status: extdeps.github.ci_runner.GitHubRunnerRegistrationStatus,
   busy: Bool,
-) -> GitHubSelfHostedRunnerRegistration {
-  GitHubSelfHostedRunnerRegistration {
+) -> extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration {
+  extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration {
     id: id,
     name: name,
     status: status,
     busy: busy,
     ephemeral: true,
     version: incident_runner_version,
-    os: "Linux" as NonEmptyStr,
+    os: "Linux" as std.types.NonEmptyStr,
     labels: incident_runner_labels,
   }
 }
 
-data incident_2026_08_06_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 1, name: "srv1-01", status: GitHubRunnerOnline, busy: true),
-  incident_registration(id: 2, name: "srv1-02", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 3, name: "srv1-03", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 4, name: "srv1-04", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 5, name: "srv1-05", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 6, name: "srv2-01", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 7, name: "srv2-02", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 8, name: "srv2-05", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 9, name: "srv3-01", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 10, name: "srv3-02", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 11, name: "srv3-04", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 12, name: "srv3-05", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 13, name: "srv4-01", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 14, name: "srv4-02", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 15, name: "srv4-04", status: GitHubRunnerOffline, busy: false),
-  incident_registration(id: 16, name: "srv4-05", status: GitHubRunnerOffline, busy: false),
+data incident_2026_08_06_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 1, name: "srv1-01", status: extdeps.github.ci_runner.GitHubRunnerOnline, busy: true),
+  incident_registration(id: 2, name: "srv1-02", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 3, name: "srv1-03", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 4, name: "srv1-04", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 5, name: "srv1-05", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 6, name: "srv2-01", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 7, name: "srv2-02", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 8, name: "srv2-05", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 9, name: "srv3-01", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 10, name: "srv3-02", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 11, name: "srv3-04", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 12, name: "srv3-05", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 13, name: "srv4-01", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 14, name: "srv4-02", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 15, name: "srv4-04", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
+  incident_registration(id: 16, name: "srv4-05", status: extdeps.github.ci_runner.GitHubRunnerOffline, busy: false),
 ]
 
 fn organization_runner_roster_evidence() -> OrganizationRunnerRosterEvidence {
   RosterObserved {
-    observed_on: "2026-08-06" as NonEmptyStr,
+    observed_on: "2026-08-06" as std.types.NonEmptyStr,
     registrations: incident_2026_08_06_registrations,
   }
 }
 
-data organization_runner_roster_producer_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+data organization_runner_roster_producer_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.fleet_runner_connectivity",
     decl_name: "organization_runner_roster_show_effective_read",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
-data organization_runner_roster_show_effective_read: ShowEffectiveRead<OrganizationRunnerRosterEvidence> = ReadAbsent {
+data organization_runner_roster_show_effective_read: std.realization_reconcile.ShowEffectiveRead<OrganizationRunnerRosterEvidence> = std.realization_reconcile.ReadAbsent {
   reason: "no live org-level GET /orgs/gunb-ai/actions/runners has executed through the gunbai-ci GitHub App yet; the incident fixture in organization_runner_roster_evidence is the pinned acceptance corpus until this read binds ReadObserved"
 }
 
 fn registration_matches_name(
-  reg: GitHubSelfHostedRunnerRegistration,
-  name: NonEmptyStr,
+  reg: extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration,
+  name: std.types.NonEmptyStr,
 ) -> Bool {
   (reg.name as String) == (name as String)
 }
 
 fn find_registration_by_name(
-  registrations: List<GitHubSelfHostedRunnerRegistration>,
-  name: NonEmptyStr,
-) -> GitHubSelfHostedRunnerRegistration? {
+  registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>,
+  name: std.types.NonEmptyStr,
+) -> extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration? {
   fold(
     registrations,
     init: none,
@@ -210,36 +211,37 @@ fn find_registration_by_name(
 
 data incident_local_materialized_width_note: String = "ACTIVATED WIDTH vs INSTALL-TREE COUNT (operator correction 2026-08-07): counts ACTIVATED units, not install trees. srv1: 50 trees / 5 active; srv3: 8 materialized trees (includes 08) / 5 active — committed width 7 is memory ceiling, not materialization cap. Dormant trees are SlotMaterializedNotActive; stale .runner does not block ADD."
 
-fn materialized_width_for_host(host: HostIdentity) -> Int {
-  if (host as String) == (operator_host_srv1 as String) {
+fn materialized_width_for_host(host: product.placement_supply.HostIdentity) -> Int {
+  if (host as String) == (gunbc.fleet_intent_network.operator_host_srv1 as String) {
     5
-  } else if (host as String) == (operator_host_srv2 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv2 as String) {
     5
-  } else if (host as String) == (operator_host_srv3 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv3 as String) {
     5
-  } else if (host as String) == (operator_host_srv4 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv4 as String) {
     5
   } else {
     0
   }
 }
 
-fn unit_active_width_for_host(host: HostIdentity) -> Int {
+fn unit_active_width_for_host(host: product.placement_supply.HostIdentity) -> Int {
   materialized_width_for_host(host: host)
 }
 
-fn host_registration_name_for_slot(host: HostIdentity, slot_index: std.nat.Nat) -> NonEmptyStr {
-  join([host as String, "-", runner_slot_index_suffix(index: slot_index)], "") as NonEmptyStr
+
+fn host_registration_name_for_slot(host: product.placement_supply.HostIdentity, slot_index: std.nat.Nat) -> std.types.NonEmptyStr {
+  join([host as String, "-", gunbc.build_cache_instance.runner_slot_index_suffix(index: slot_index)], "") as std.types.NonEmptyStr
 }
 
 fn slot_indices_for_managed_width(width: Int) -> List<std.nat.Nat> {
-  nat_range_inclusive(lo: 1, hi: width)
+  std.nat.nat_range_inclusive(lo: 1, hi: width)
 }
 
 fn count_host_registrations_at_width(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   width: Int,
-  registrations: List<GitHubSelfHostedRunnerRegistration>,
+  registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>,
 ) -> Int {
   fold(
     slot_indices_for_managed_width(width: width),
@@ -256,9 +258,9 @@ fn count_host_registrations_at_width(
 }
 
 fn count_host_online_at_width(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   width: Int,
-  registrations: List<GitHubSelfHostedRunnerRegistration>,
+  registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>,
 ) -> Int {
   fold(
     slot_indices_for_managed_width(width: width),
@@ -269,7 +271,7 @@ fn count_host_online_at_width(
         name: host_registration_name_for_slot(host: host, slot_index: slot_index),
       ) {
         Present { value: reg } =>
-          if github_runner_registration_is_online(reg: reg) {
+          if extdeps.github.ci_runner.github_runner_registration_is_online(reg: reg) {
             n + 1
           } else {
             n
@@ -286,56 +288,56 @@ fn count_host_online_at_width(
 // same concept authored once: both managed hosts registered 01-05 and online, converged at the
 // materialized width. Keeping the seven-wide rows beside it would have been a second name for a
 // fleet state, and a test fixture is not exempt from that.
-data width_five_online_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 301, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 302, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 303, name: "srv3-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 304, name: "srv3-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 305, name: "srv3-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+data width_five_online_srv3_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 301, name: "srv3-01" as std.types.NonEmptyStr, status: extdeps.github.ci_runner.GitHubRunnerOnline, busy: false),
+  incident_registration(id: 302, name: "srv3-02" as std.types.NonEmptyStr, status: extdeps.github.ci_runner.GitHubRunnerOnline, busy: false),
+  incident_registration(id: 303, name: "srv3-03" as std.types.NonEmptyStr, status: extdeps.github.ci_runner.GitHubRunnerOnline, busy: false),
+  incident_registration(id: 304, name: "srv3-04" as std.types.NonEmptyStr, status: extdeps.github.ci_runner.GitHubRunnerOnline, busy: false),
+  incident_registration(id: 305, name: "srv3-05" as std.types.NonEmptyStr, status: extdeps.github.ci_runner.GitHubRunnerOnline, busy: false),
 ]
 
-data width_five_online_srv4_registrations: List<GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 401, name: "srv4-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 402, name: "srv4-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 403, name: "srv4-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 404, name: "srv4-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 405, name: "srv4-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+data width_five_online_srv4_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 401, name: "srv4-01" as std.types.NonEmptyStr, status: extdeps.github.ci_runner.GitHubRunnerOnline, busy: false),
+  incident_registration(id: 402, name: "srv4-02" as std.types.NonEmptyStr, status: extdeps.github.ci_runner.GitHubRunnerOnline, busy: false),
+  incident_registration(id: 403, name: "srv4-03" as std.types.NonEmptyStr, status: extdeps.github.ci_runner.GitHubRunnerOnline, busy: false),
+  incident_registration(id: 404, name: "srv4-04" as std.types.NonEmptyStr, status: extdeps.github.ci_runner.GitHubRunnerOnline, busy: false),
+  incident_registration(id: 405, name: "srv4-05" as std.types.NonEmptyStr, status: extdeps.github.ci_runner.GitHubRunnerOnline, busy: false),
 ]
 
-data width_five_online_managed_registrations: List<GitHubSelfHostedRunnerRegistration> = concat(
+data width_five_online_managed_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = concat(
   width_five_online_srv3_registrations,
   width_five_online_srv4_registrations,
 )
 
 fn organization_runner_roster_materialized_slots_online_evidence() -> OrganizationRunnerRosterEvidence {
   RosterObserved {
-    observed_on: "2026-08-07" as NonEmptyStr,
+    observed_on: "2026-08-07" as std.types.NonEmptyStr,
     registrations: width_five_online_managed_registrations,
   }
 }
 
-fn local_incarnations_for_host(host: HostIdentity, width: Int) -> List<LocalRunnerSlotIncarnation> {
+fn local_incarnations_for_host(host: product.placement_supply.HostIdentity, width: Int) -> List<gunbc.runner_incarnation.LocalRunnerSlotIncarnation> {
   map(
     slot_indices_for_managed_width(width: width),
-    i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true),
+    i => gunbc.runner_incarnation.runner_slot_incarnation(host: host, slot_index: i, unit_active: true),
   )
 }
 
-fn local_runner_slot_incarnations() -> List<LocalRunnerSlotIncarnation> {
+fn local_runner_slot_incarnations() -> List<gunbc.runner_incarnation.LocalRunnerSlotIncarnation> {
   concat(
-    local_incarnations_for_host(host: operator_host_srv1, width: materialized_width_for_host(host: operator_host_srv1)),
+    local_incarnations_for_host(host: gunbc.fleet_intent_network.operator_host_srv1, width: materialized_width_for_host(host: gunbc.fleet_intent_network.operator_host_srv1)),
     concat(
-      local_incarnations_for_host(host: operator_host_srv2, width: materialized_width_for_host(host: operator_host_srv2)),
+      local_incarnations_for_host(host: gunbc.fleet_intent_network.operator_host_srv2, width: materialized_width_for_host(host: gunbc.fleet_intent_network.operator_host_srv2)),
       concat(
-        local_incarnations_for_host(host: operator_host_srv3, width: materialized_width_for_host(host: operator_host_srv3)),
-        local_incarnations_for_host(host: operator_host_srv4, width: materialized_width_for_host(host: operator_host_srv4))
+        local_incarnations_for_host(host: gunbc.fleet_intent_network.operator_host_srv3, width: materialized_width_for_host(host: gunbc.fleet_intent_network.operator_host_srv3)),
+        local_incarnations_for_host(host: gunbc.fleet_intent_network.operator_host_srv4, width: materialized_width_for_host(host: gunbc.fleet_intent_network.operator_host_srv4))
       )
     )
   )
 }
 
 fn runner_slot_connectivity_verdict_for_incarnation(
-  incarnation: LocalRunnerSlotIncarnation,
+  incarnation: gunbc.runner_incarnation.LocalRunnerSlotIncarnation,
   roster: OrganizationRunnerRosterEvidence,
 ) -> RunnerSlotConnectivityVerdict {
   if !incarnation.unit_active {
@@ -352,9 +354,9 @@ fn runner_slot_connectivity_verdict_for_incarnation(
           Absent => SlotConnectivityOrphaned { slot: incarnation.slot }
           Present { value: reg } =>
             match reg.status {
-              GitHubRunnerOnline =>
+              extdeps.github.ci_runner.GitHubRunnerOnline =>
                 SlotConnectivityHealthy { slot: incarnation.slot, registration_id: reg.id }
-              GitHubRunnerOffline =>
+              extdeps.github.ci_runner.GitHubRunnerOffline =>
                 SlotConnectivityDetached { slot: incarnation.slot, registration_id: reg.id }
             }
         }
@@ -362,7 +364,7 @@ fn runner_slot_connectivity_verdict_for_incarnation(
   }
 }
 
-fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity) -> RunnerSlotConnectivityVerdict {
+fn runner_slot_connectivity_verdict(slot: gunbc.build_cache_instance.RunnerSlotIdentity) -> RunnerSlotConnectivityVerdict {
   let roster = organization_runner_roster_evidence()
   let incarnations = local_runner_slot_incarnations()
   match fold(
@@ -386,32 +388,32 @@ fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity) -> RunnerSlotConne
   }
 }
 
-fn count_online_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
+fn count_online_registrations(registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>) -> Int {
   fold(
     registrations,
     init: 0,
-    f: (n, reg) => if github_runner_registration_is_online(reg: reg) { n + 1 } else { n }
+    f: (n, reg) => if extdeps.github.ci_runner.github_runner_registration_is_online(reg: reg) { n + 1 } else { n }
   )
 }
 
-fn count_schedulable_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
+fn count_schedulable_registrations(registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>) -> Int {
   fold(
     registrations,
     init: 0,
-    f: (n, reg) => if github_runner_registration_is_schedulable(reg: reg) { n + 1 } else { n }
+    f: (n, reg) => if extdeps.github.ci_runner.github_runner_registration_is_schedulable(reg: reg) { n + 1 } else { n }
   )
 }
 
-fn count_executing_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
+fn count_executing_registrations(registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>) -> Int {
   fold(
     registrations,
     init: 0,
-    f: (n, reg) => if github_runner_registration_is_online(reg: reg) && reg.busy { n + 1 } else { n }
+    f: (n, reg) => if extdeps.github.ci_runner.github_runner_registration_is_online(reg: reg) && reg.busy { n + 1 } else { n }
   )
 }
 
-fn fleet_hosts() -> List<HostIdentity> {
-  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
+fn fleet_hosts() -> List<product.placement_supply.HostIdentity> {
+  [gunbc.fleet_intent_network.operator_host_srv1, gunbc.fleet_intent_network.operator_host_srv2, gunbc.fleet_intent_network.operator_host_srv3, gunbc.fleet_intent_network.operator_host_srv4]
 }
 
 data incident_pinned_widths_note: String = "THE 2026-08-06 CORPUS IS PINNED ON EVERY HOST, NOT JUST srv4, AND THAT IS THE WHOLE POINT OF IT. This fold previously pinned srv4 alone and read gunbc_runner_slots_per_host live for srv1-srv3, so a historical incident total silently tracked present-day allocation. The 2026-08-17 16GiB ruling moved srv3 from 7 to 6 and the outage total would have become 21 while incident_2026_08_06_roster_note and its witness both say 22 — a pinned corpus contradicting itself because it was only half pinned.\n\nDESIGN section 5's test-oracle discipline is the authority: a historical measurement compared against a literal is legitimate only when the measurement is independently fixed, and half of this one was live. The widths below are what the fleet committed ON 2026-08-06 (srv1 5, srv2 5, srv3 7, srv4 5 with its then-live disk row-pin), summing to the 22 the roster note records. They are frozen by date and must never be updated to follow an allocation ruling; a future ruling changes what the fleet desires TODAY, not what it desired during that outage."
@@ -422,14 +424,14 @@ data incident_srv2_committed_width_at_outage: Int = 5
 
 data incident_srv3_committed_width_at_outage: Int = 7
 
-fn incident_committed_width_at_outage_for(host: HostIdentity) -> Int {
-  if (host as String) == (operator_host_srv1 as String) {
+fn incident_committed_width_at_outage_for(host: product.placement_supply.HostIdentity) -> Int {
+  if (host as String) == (gunbc.fleet_intent_network.operator_host_srv1 as String) {
     incident_srv1_committed_width_at_outage
-  } else if (host as String) == (operator_host_srv2 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv2 as String) {
     incident_srv2_committed_width_at_outage
-  } else if (host as String) == (operator_host_srv3 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv3 as String) {
     incident_srv3_committed_width_at_outage
-  } else if (host as String) == (operator_host_srv4 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv4 as String) {
     incident_srv4_committed_width_at_outage
   } else {
     0
@@ -448,7 +450,7 @@ fn fleet_desired_width_total() -> Int {
   fold(
     fleet_hosts(),
     init: 0,
-    f: (n, h) => n + gunbc_runner_slots_per_host(host: h)
+    f: (n, h) => n + gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: h)
   )
 }
 

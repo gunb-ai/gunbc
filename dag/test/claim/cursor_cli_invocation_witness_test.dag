@@ -11,9 +11,9 @@ fn witness_invocation(auth: extdeps.llm.cursor_cli.CursorAuth) -> extdeps.llm.cu
   extdeps.llm.cursor_cli.CursorInvocation {
     auth: auth,
     model: extdeps.llm.cursor_cli.cursor_model_auto,
-    mode: CursorDefaultEditMode,
-    sandbox: CursorSandboxEnabled,
-    output_format: CursorStreamJson,
+    mode: extdeps.llm.cursor_cli.CursorDefaultEditMode,
+    sandbox: extdeps.llm.cursor_cli.CursorSandboxEnabled,
+    output_format: extdeps.llm.cursor_cli.CursorStreamJson,
     force: false,
     trust_workspace: true,
     workspace: "/srv/attempt" as std.types.FilePath,
@@ -22,31 +22,31 @@ fn witness_invocation(auth: extdeps.llm.cursor_cli.CursorAuth) -> extdeps.llm.cu
 }
 
 test fn environment_arm_binds_the_variable_and_keeps_argv_clean() -> Bool {
-  let shaped = shape_cursor_invocation(
-    inv: test.claim.cursor_cli_invocation_witness_test.witness_invocation(auth: extdeps.llm.cursor_cli.CursorApiKeyEnvironment { key: witness_key }),
+  let shaped = extdeps.llm.cursor_cli.shape_cursor_invocation(
+    inv: witness_invocation(auth: extdeps.llm.cursor_cli.CursorApiKeyEnvironment { key: witness_key }),
   )
-  cursor_invocation_binds_env(shaped: shaped, name: cursor_api_key_env_var)
-    && !cursor_argv_contains(argv: shaped.argv, token: witness_key as String)
-    && !cursor_argv_contains(argv: shaped.argv, token: "--api-key")
+  extdeps.llm.cursor_cli.cursor_invocation_binds_env(shaped: shaped, name: extdeps.llm.cursor_cli.cursor_api_key_env_var)
+    && !extdeps.llm.cursor_cli.cursor_argv_contains(argv: shaped.argv, token: witness_key as String)
+    && !extdeps.llm.cursor_cli.cursor_argv_contains(argv: shaped.argv, token: "--api-key")
     && count(shaped.environment) == 1
 }
 
 test fn argument_arm_places_the_key_in_argv_and_binds_nothing() -> Bool {
-  let shaped = shape_cursor_invocation(
-    inv: test.claim.cursor_cli_invocation_witness_test.witness_invocation(auth: extdeps.llm.cursor_cli.CursorApiKeyArgument { key: witness_key }),
+  let shaped = extdeps.llm.cursor_cli.shape_cursor_invocation(
+    inv: witness_invocation(auth: extdeps.llm.cursor_cli.CursorApiKeyArgument { key: witness_key }),
   )
-  cursor_argv_contains(argv: shaped.argv, token: witness_key as String)
-    && cursor_argv_contains(argv: shaped.argv, token: "--api-key")
+  extdeps.llm.cursor_cli.cursor_argv_contains(argv: shaped.argv, token: witness_key as String)
+    && extdeps.llm.cursor_cli.cursor_argv_contains(argv: shaped.argv, token: "--api-key")
     && count(shaped.environment) == 0
 }
 
 // The direct statement of the defect: the two arms produce different processes. Under the auth-blind shaper this claim was false — not subtly, but exactly false, because the function never looked at the field that distinguishes them.
 test fn the_two_auth_arms_produce_different_processes() -> Bool {
-  let env_shaped = shape_cursor_invocation(
-    inv: test.claim.cursor_cli_invocation_witness_test.witness_invocation(auth: extdeps.llm.cursor_cli.CursorApiKeyEnvironment { key: witness_key }),
+  let env_shaped = extdeps.llm.cursor_cli.shape_cursor_invocation(
+    inv: witness_invocation(auth: extdeps.llm.cursor_cli.CursorApiKeyEnvironment { key: witness_key }),
   )
-  let arg_shaped = shape_cursor_invocation(
-    inv: test.claim.cursor_cli_invocation_witness_test.witness_invocation(auth: extdeps.llm.cursor_cli.CursorApiKeyArgument { key: witness_key }),
+  let arg_shaped = extdeps.llm.cursor_cli.shape_cursor_invocation(
+    inv: witness_invocation(auth: extdeps.llm.cursor_cli.CursorApiKeyArgument { key: witness_key }),
   )
   !(count(env_shaped.argv) == count(arg_shaped.argv))
     && !(count(env_shaped.environment) == count(arg_shaped.environment))
@@ -54,32 +54,32 @@ test fn the_two_auth_arms_produce_different_processes() -> Bool {
 
 // The automation path cannot reach the leaky arm, because it has no parameter that selects one. This asserts the property through the shaped output rather than by matching the auth field, so it stays true of what the process actually receives rather than of how the value was labelled.
 test fn automation_constructor_only_materializes_into_the_env_var() -> Bool {
-  let shaped = shape_cursor_invocation(
-    inv: cursor_automation_invocation(
+  let shaped = extdeps.llm.cursor_cli.shape_cursor_invocation(
+    inv: extdeps.llm.cursor_cli.cursor_automation_invocation(
       key: witness_key,
       model: extdeps.llm.cursor_cli.cursor_model_auto,
-      mode: CursorDefaultEditMode,
-      sandbox: CursorSandboxEnabled,
-      output_format: CursorStreamJson,
+      mode: extdeps.llm.cursor_cli.CursorDefaultEditMode,
+      sandbox: extdeps.llm.cursor_cli.CursorSandboxEnabled,
+      output_format: extdeps.llm.cursor_cli.CursorStreamJson,
       force: false,
       trust_workspace: true,
       workspace: "/srv/attempt" as std.types.FilePath,
       prompt: "do the work" as std.types.NonEmptyStr,
     ),
   )
-  cursor_invocation_binds_env(shaped: shaped, name: cursor_api_key_env_var)
-    && !cursor_argv_contains(argv: shaped.argv, token: witness_key as String)
-    && shaped.program == cursor_cli_program
+  extdeps.llm.cursor_cli.cursor_invocation_binds_env(shaped: shaped, name: extdeps.llm.cursor_cli.cursor_api_key_env_var)
+    && !extdeps.llm.cursor_cli.cursor_argv_contains(argv: shaped.argv, token: witness_key as String)
+    && shaped.program == extdeps.llm.cursor_cli.cursor_cli_program
 }
 
 test fn headless_flags_survive_both_arms() -> Bool {
-  let shaped = shape_cursor_invocation(
-    inv: test.claim.cursor_cli_invocation_witness_test.witness_invocation(auth: extdeps.llm.cursor_cli.CursorApiKeyEnvironment { key: witness_key }),
+  let shaped = extdeps.llm.cursor_cli.shape_cursor_invocation(
+    inv: witness_invocation(auth: extdeps.llm.cursor_cli.CursorApiKeyEnvironment { key: witness_key }),
   )
-  cursor_argv_contains(argv: shaped.argv, token: "--print")
-    && cursor_argv_contains(argv: shaped.argv, token: "--trust")
-    && cursor_argv_contains(argv: shaped.argv, token: "stream-json")
-    && cursor_argv_contains(argv: shaped.argv, token: "/srv/attempt")
+  extdeps.llm.cursor_cli.cursor_argv_contains(argv: shaped.argv, token: "--print")
+    && extdeps.llm.cursor_cli.cursor_argv_contains(argv: shaped.argv, token: "--trust")
+    && extdeps.llm.cursor_cli.cursor_argv_contains(argv: shaped.argv, token: "stream-json")
+    && extdeps.llm.cursor_cli.cursor_argv_contains(argv: shaped.argv, token: "/srv/attempt")
 }
 
 test fn cursor_cli_invocation_keystone_holds() -> Bool {

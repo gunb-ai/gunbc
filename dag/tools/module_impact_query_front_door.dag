@@ -17,12 +17,12 @@ data front_door_dogfooding_cost_receipt_note: String = "MEASURED COST OF CONSUMI
 
 data front_door_admissions: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> = [
   gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
-    capability: UnrelatedLoadedFileExcluded,
-    trigger: P2aPoolIndependentDependencyProjection7515
+    capability: gunbc.namespace_reference_derived_closure_admission.UnrelatedLoadedFileExcluded,
+    trigger: gunbc.namespace_reference_derived_closure_admission.P2aPoolIndependentDependencyProjection7515
   },
   gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
-    capability: RepeatedMentionsCollapseDependency,
-    trigger: P2aReferenceDependencyProjection7515
+    capability: gunbc.namespace_reference_derived_closure_admission.RepeatedMentionsCollapseDependency,
+    trigger: gunbc.namespace_reference_derived_closure_admission.P2aReferenceDependencyProjection7515
   },
 ]
 
@@ -81,28 +81,28 @@ fn dependents_of_path(path: String) -> v2.lens.module_impact_query.ImpactReading
 
 fn render_standing(reading: v2.lens.module_impact_query.ImpactReading) -> String {
   match reading.standing {
-    ExactForGraphSubject => "ExactForGraphSubject"
-    ProvisionalForObservedPool => "ProvisionalForObservedPool — observed pool only; pool independence not established"
-    Incomplete { causes: _ } => "Incomplete — see causes below"
-    PoolIndependentProjectionUnavailable { trigger: _ } =>
+    v2.lens.module_impact_query.ExactForGraphSubject => "ExactForGraphSubject"
+    v2.lens.module_impact_query.ProvisionalForObservedPool => "ProvisionalForObservedPool — observed pool only; pool independence not established"
+    v2.lens.module_impact_query.Incomplete { causes: _ } => "Incomplete — see causes below"
+    v2.lens.module_impact_query.PoolIndependentProjectionUnavailable { trigger: _ } =>
       "PoolIndependentProjectionUnavailable — the observed pool may contain SPURIOUS as well as missing edges, so this reading is neither an upper nor a lower bound. Trigger: P2a pool-independent dependency projection (namespace lane)."
   }
 }
 
 fn render_cause(cause: v2.lens.module_impact_query.ImpactStandingCause) -> String {
   match cause {
-    UndeclaredTargetModule { dependent_module, target_module } =>
+    v2.lens.module_impact_query.UndeclaredTargetModule { dependent_module, target_module } =>
       "    undeclared-target  {dependent_module.name} -> {target_module}"
-    DeclaredTargetAbsentFromPool { dependent_module, target_module } =>
+    v2.lens.module_impact_query.DeclaredTargetAbsentFromPool { dependent_module, target_module } =>
       "    declared-but-absent-from-pool  {dependent_module.name} -> {target_module}"
   }
 }
 
 fn render_cycle(cycle: v2.lens.module_impact_query.ImpactCycle) -> String {
   match cycle {
-    ImpactImportAcyclicityViolation { members } =>
+    v2.lens.module_impact_query.ImpactImportAcyclicityViolation { members } =>
       "    IMPORT-ACYCLICITY VIOLATION: {render_modules(modules: members)}"
-    ImpactCycleReferenceAdmissible { members } =>
+    v2.lens.module_impact_query.ImpactCycleReferenceAdmissible { members } =>
       "    reference-admissible cycle: {render_modules(modules: members)}"
   }
 }
@@ -196,7 +196,7 @@ data front_door_default_subject: String = "v2.lens.module_graph"
 data front_door_render_cost_note: String = "front_door_nodes() is evaluated ONCE per report and threaded into render_reading. An earlier draft called it inside the per-reached-module fold, which recomputed the live module-declaration facts once per reached module - the copied-accumulator cost shape DESIGN 6 forbids regardless of realized n, and on a corpus-sized reading that is hundreds of live fact scans for one report."
 
 fn dependents_of_module_graph_report() -> String {
-  tools.module_impact_query_front_door.render_reading(
+  render_reading(
     subject: front_door_default_subject,
     reading: dependents_of_module(module_name: front_door_default_subject),
     nodes: front_door_nodes()
@@ -204,7 +204,7 @@ fn dependents_of_module_graph_report() -> String {
 }
 
 fn dependents_of_path_report() -> String {
-  tools.module_impact_query_front_door.render_reading(
+  render_reading(
     subject: "src/v2/lens/module_graph.dag",
     reading: dependents_of_path(path: "src/v2/lens/module_graph.dag"),
     nodes: front_door_nodes()
@@ -214,7 +214,7 @@ fn dependents_of_path_report() -> String {
 data changed_surface_front_door_note: String = "CAPSULE 2 applied consumer, reworked under the operator ruling 2026-08-08. Changed paths AND departed paths both come from v2.workflow.floor_diff_observe, the existing single authority for the CI diff observation - this adds no second diff producer. Deletions are no longer discarded: a departed path becomes a ResolveInBase subject, which cannot resolve against the head population and therefore lands as a typed BaseGraphUnavailable unresolved subject, contaminating the outcome to Partial. A diff-observation FAILURE refuses with the observation's own reason and computes NO impact - it never widens to the whole corpus. Run: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/module_impact_query_front_door.dag --function changed_surface_impact_report"
 
 fn render_changed_path_seeds(row: v2.lens.module_impact_query.ChangedPathSeeds) -> String {
-  if any(xs: row.seeds, predicate: fn(_) { true }) {
+  if v2.std.algebra.any(xs: row.seeds, predicate: fn(_) { true }) {
     "    {row.path}  ->  {render_modules(modules: row.seeds)}"
   } else {
     "    {row.path}  ->  (unresolved)"
@@ -223,24 +223,24 @@ fn render_changed_path_seeds(row: v2.lens.module_impact_query.ChangedPathSeeds) 
 
 fn render_unresolved_subject(subject: v2.lens.module_impact_query.UnresolvedSubject) -> String {
   match subject.cause {
-    NoModuleDeclaredAtPath =>
+    v2.lens.module_impact_query.NoModuleDeclaredAtPath =>
       "    {subject.path}  —  no module declared at this path in the observed pool"
-    BaseGraphUnavailable =>
+    v2.lens.module_impact_query.BaseGraphUnavailable =>
       "    {subject.path}  —  DELETED: needs the BASE population, which no revision-scoped fact producer can supply today"
   }
 }
 
 fn render_skip_authority(authority: v2.lens.module_impact_query.SkipAuthority) -> String {
   match authority {
-    SkipAuthorityGranted { affected: _ } =>
+    v2.lens.module_impact_query.SkipAuthorityGranted { affected: _ } =>
       "GRANTED — the answer is exact and whole for this subject"
-    SkipAuthorityWithheld { cause } =>
+    v2.lens.module_impact_query.SkipAuthorityWithheld { cause } =>
       match cause {
-        SkipWithheldUnresolvedSubjects =>
+        v2.lens.module_impact_query.SkipWithheldUnresolvedSubjects =>
           "WITHHELD — the outcome is Partial (unresolved subjects); a partial answer may never authorize skipping work"
-        SkipWithheldObservationRefused =>
+        v2.lens.module_impact_query.SkipWithheldObservationRefused =>
           "WITHHELD — the diff observation refused"
-        SkipWithheldStandingNotExact =>
+        v2.lens.module_impact_query.SkipWithheldStandingNotExact =>
           "WITHHELD — the reading is pool-relative, not exact"
       }
   }
@@ -248,9 +248,9 @@ fn render_skip_authority(authority: v2.lens.module_impact_query.SkipAuthority) -
 
 fn render_outcome(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutcome) -> String {
   match outcome {
-    ChangedSurfaceRefused { reason } =>
+    v2.lens.module_impact_query.ChangedSurfaceRefused { reason } =>
       "change impact REFUSED — no impact computed and NOTHING widened to the whole corpus. reason: {reason}"
-    ChangedSurfaceComplete { reading } =>
+    v2.lens.module_impact_query.ChangedSurfaceComplete { reading } =>
       render_lines(lines: [
         "change impact — outcome: COMPLETE",
         "  standing: {render_standing(reading: reading)}",
@@ -263,7 +263,7 @@ fn render_outcome(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutco
           cons: fn(acc, c) { std.algebra.Cons { head: render_cause(cause: c), tail: acc } }
         ))),
       ])
-    ChangedSurfacePartial { reading, unresolved_subjects } =>
+    v2.lens.module_impact_query.ChangedSurfacePartial { reading, unresolved_subjects } =>
       render_lines(lines: [
         "change impact — outcome: PARTIAL (the answer is NOT whole; unresolved subjects below)",
         "  standing: {render_standing(reading: reading)}",
@@ -287,8 +287,8 @@ fn render_outcome(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutco
 
 fn front_door_changed_surface_outcome() -> v2.lens.module_impact_query.ChangedSurfaceImpactOutcome {
   match v2.workflow.floor_diff_observe.floor_observe_git_diff_name_status_for_ci() {
-    NameStatusDiffFail { reason } => v2.lens.module_impact_query.ChangedSurfaceRefused { reason: reason }
-    NameStatusDiffOk { changed_paths, departed_paths } =>
+    v2.workflow.floor_diff_observe.NameStatusDiffFail { reason } => v2.lens.module_impact_query.ChangedSurfaceRefused { reason: reason }
+    v2.workflow.floor_diff_observe.NameStatusDiffOk { changed_paths, departed_paths } =>
       v2.lens.module_impact_query.changed_surface_impact_outcome(
         changed_paths: changed_paths,
         departed_paths: departed_paths,

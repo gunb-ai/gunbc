@@ -1,24 +1,24 @@
 module v2.test.lens_synthesis.polynomial_dominates_linear
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 data synthesis_poly_x: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^synthesis_poly_x_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data synthesis_poly_y: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^synthesis_poly_y_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn polynomial_dominates_linear_claim_holds() -> v2.std.logic.Bool {
-  symbolic_cost_dominates(
+test fn polynomial_dominates_linear_claim_holds() -> Bool {
+  v2.lens.cost.symbolic_cost_dominates(
     a: v2.lens.cost.PolynomialCost {
       variable: v2.lens.cost.SizeVariable { source: synthesis_poly_x },
-      degree: v2.lens.cost.PolynomialDegree { predecessor_after_linear: v2.std.cardinality.NonZeroNat { prev: Zero } }
+      degree: v2.lens.cost.PolynomialDegree { predecessor_after_linear: v2.std.cardinality.NonZeroNat { prev: v2.std.nat.Zero } }
     },
     b: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: synthesis_poly_y } }
   )

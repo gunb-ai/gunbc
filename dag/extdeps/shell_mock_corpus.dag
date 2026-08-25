@@ -8,7 +8,8 @@ data shell_find_mock_case_list_dirs: std.hermetic_replay.PublishedMockCase = std
   case_id: 0
 }
 
-data shell_exec_mock_case_run: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {  operation_key: "shell.Exec.Run",
+data shell_exec_mock_case_run: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
+  operation_key: "shell.Exec.Run",
   service: "shell.Exec",
   operation: "Run",
   case_id: 0

@@ -44,26 +44,26 @@ fn pijul_compatibility_bind(
   target: extdeps.pijul.PijulChannelName,
   read_back: extdeps.pijul.PijulReadBackObservation,
 ) -> PijulCompatibilityBindingOutcome {
-  match pijul_decode_projection(projection: projection) {
-    PijulDecodeRefused { cause } =>
+  match extdeps.pijul.pijul_decode_projection(projection: projection) {
+    extdeps.pijul.PijulDecodeRefused { cause } =>
       PijulCompatibilityBindingRefused {
         cause: PijulCompatibilityDecodeRejected { cause: cause },
       }
-    PijulDecoded { repository } =>
-      match pijul_find_channel(
+    extdeps.pijul.PijulDecoded { repository } =>
+      match extdeps.pijul.pijul_find_channel(
         channels: repository.state.channels,
         name: target,
       ) {
-        Absent =>
+        v2.std.optional.Absent =>
           PijulCompatibilityBindingRefused {
             cause: PijulCompatibilityTargetMissing { target: target },
           }
-        Present { value: channel } =>
-          match pijul_assess_read_back(
+        v2.std.optional.Present { value: channel } =>
+          match extdeps.pijul.pijul_assess_read_back(
             expected: projection,
             observation: read_back,
           ) {
-            PijulReadBackMatches { observation: _ } =>
+            extdeps.pijul.PijulReadBackMatches { observation: _ } =>
               PijulCompatibilityBound {
                 receipt: PijulCompatibilityReceipt {
                   target: target,
@@ -71,14 +71,14 @@ fn pijul_compatibility_bind(
                   repository: repository,
                   projection: projection,
                   read_back: read_back,
-                  advance: pijul_r0_conditional_advance(),
+                  advance: extdeps.pijul.pijul_r0_conditional_advance(),
                 },
               }
-            PijulReadBackMismatch { axis } =>
+            extdeps.pijul.PijulReadBackMismatch { axis } =>
               PijulCompatibilityBindingRefused {
                 cause: PijulCompatibilityReadBackMismatch { axis: axis },
               }
-            PijulReadBackInvalid { cause } =>
+            extdeps.pijul.PijulReadBackInvalid { cause } =>
               PijulCompatibilityBindingRefused {
                 cause: PijulCompatibilityReadBackInvalid { cause: cause },
               }
@@ -89,19 +89,19 @@ fn pijul_compatibility_bind(
 
 fn pijul_compatibility_fidelity() -> gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
   gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
-    endpoint_state: CompatibilityFidelityPreserved,
-    upstream_change_evidence: CompatibilityFidelityPreserved,
+    endpoint_state: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
+    upstream_change_evidence: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
     native_proposal_contract: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
       cause: "Pijul recorded changes retain upstream operations and dependencies, not the native proposal's full reads/frame/ensures contract",
     },
-    history: CompatibilityFidelityPreserved,
+    history: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
     publication: gunbc.scm_compatibility_shape.CompatibilityFidelityDowngraded {
       cause: "a Pijul channel is retained as native state, not promoted into the product publication policy",
     },
-    conflict_facts: CompatibilityFidelityPreserved,
-    path_and_mode: CompatibilityFidelityPreserved,
-    availability: CompatibilityFidelityPreserved,
-    native_identity: CompatibilityFidelityPreserved,
+    conflict_facts: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
+    path_and_mode: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
+    availability: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
+    native_identity: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
   }
 }
 
@@ -130,11 +130,11 @@ fn pijul_compatibility_octets_identity(
   tag: std.types.NonEmptyStr,
   octets: List<std.integer.UInt8>,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: tag,
     members: octets
       |> map(octet =>
-        compatibility_identity_text(
+        gunbc.scm_compatibility_shape.compatibility_identity_text(
           tag: "octet",
           value: to_string(octet),
         )
@@ -148,7 +148,7 @@ fn pijul_compatibility_bytes_identity(
 ) -> std.content_hash.Fnv1a64Structural {
   pijul_compatibility_octets_identity(
     tag: tag,
-    octets: bytes_octets(b: bytes),
+    octets: std.bytes.bytes_octets(b: bytes),
   )
 }
 
@@ -166,14 +166,14 @@ fn pijul_compatibility_vertex_identity(
   tag: std.types.NonEmptyStr,
   vertex: extdeps.pijul.PijulVertexId,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: tag,
     members: [
-      compatibility_identity_text(
+      gunbc.scm_compatibility_shape.compatibility_identity_text(
         tag: "introduced-by",
         value: vertex.introduced_by as String,
       ),
-      compatibility_identity_text(
+      gunbc.scm_compatibility_shape.compatibility_identity_text(
         tag: "position",
         value: to_string(vertex.position.value),
       ),
@@ -184,7 +184,7 @@ fn pijul_compatibility_vertex_identity(
 fn pijul_compatibility_graph_vertex_identity(
   vertex: extdeps.pijul.PijulGraphVertex,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: "pijul-graph-vertex",
     members: [
       pijul_compatibility_vertex_identity(
@@ -203,10 +203,10 @@ fn pijul_compatibility_edge_disposition_identity(
   disposition: extdeps.pijul.PijulEdgeDisposition,
 ) -> std.content_hash.Fnv1a64Structural {
   let label = match disposition {
-    PijulAliveEdge => "alive"
-    PijulDeletedEdge => "deleted"
+    extdeps.pijul.PijulAliveEdge => "alive"
+    extdeps.pijul.PijulDeletedEdge => "deleted"
   }
-  compatibility_identity_text(
+  gunbc.scm_compatibility_shape.compatibility_identity_text(
     tag: "pijul-edge-disposition",
     value: label,
   )
@@ -215,7 +215,7 @@ fn pijul_compatibility_edge_disposition_identity(
 fn pijul_compatibility_graph_edge_identity(
   edge: extdeps.pijul.PijulGraphEdge,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: "pijul-graph-edge",
     members: [
       pijul_compatibility_vertex_identity(
@@ -226,7 +226,7 @@ fn pijul_compatibility_graph_edge_identity(
         tag: "target",
         vertex: edge.target,
       ),
-      compatibility_identity_text(
+      gunbc.scm_compatibility_shape.compatibility_identity_text(
         tag: "introduced-by",
         value: edge.introduced_by as String,
       ),
@@ -241,11 +241,11 @@ fn pijul_compatibility_change_hashes_identity(
   tag: std.types.NonEmptyStr,
   changes: List<extdeps.pijul.PijulChangeHash>,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: tag,
     members: changes
       |> map(change =>
-        compatibility_identity_text(
+        gunbc.scm_compatibility_shape.compatibility_identity_text(
           tag: "change",
           value: change as String,
         )
@@ -257,7 +257,7 @@ fn pijul_compatibility_vertices_identity(
   tag: std.types.NonEmptyStr,
   vertices: List<extdeps.pijul.PijulVertexId>,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: tag,
     members: vertices
       |> map(vertex =>
@@ -273,7 +273,7 @@ fn pijul_compatibility_paths_identity(
   tag: std.types.NonEmptyStr,
   paths: List<extdeps.pijul.PijulPath>,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: tag,
     members: paths
       |> map(path =>
@@ -288,18 +288,18 @@ fn pijul_compatibility_paths_identity(
 fn pijul_compatibility_conflict_identity(
   conflict: extdeps.pijul.PijulConflictFact,
 ) -> std.content_hash.Fnv1a64Structural {
-  pijul_conflict_fact_fold(
+  extdeps.pijul.pijul_conflict_fact_fold(
     conflict: conflict,
     fold: extdeps.pijul.PijulConflictFactFold {
       order: fn(left, right, at) {
-        compatibility_identity_sequence(
+        gunbc.scm_compatibility_shape.compatibility_identity_sequence(
           tag: "pijul-order-conflict",
           members: [
-            compatibility_identity_text(
+            gunbc.scm_compatibility_shape.compatibility_identity_text(
               tag: "left",
               value: left as String,
             ),
-            compatibility_identity_text(
+            gunbc.scm_compatibility_shape.compatibility_identity_text(
               tag: "right",
               value: right as String,
             ),
@@ -311,7 +311,7 @@ fn pijul_compatibility_conflict_identity(
         )
       },
       cycle: fn(changes, vertices) {
-        compatibility_identity_sequence(
+        gunbc.scm_compatibility_shape.compatibility_identity_sequence(
           tag: "pijul-cycle-conflict",
           members: [
             pijul_compatibility_change_hashes_identity(
@@ -326,10 +326,10 @@ fn pijul_compatibility_conflict_identity(
         )
       },
       zombie: fn(introduced_by, vertex) {
-        compatibility_identity_sequence(
+        gunbc.scm_compatibility_shape.compatibility_identity_sequence(
           tag: "pijul-zombie-conflict",
           members: [
-            compatibility_identity_text(
+            gunbc.scm_compatibility_shape.compatibility_identity_text(
               tag: "introduced-by",
               value: introduced_by as String,
             ),
@@ -341,14 +341,14 @@ fn pijul_compatibility_conflict_identity(
         )
       },
       name: fn(left, right, path) {
-        compatibility_identity_sequence(
+        gunbc.scm_compatibility_shape.compatibility_identity_sequence(
           tag: "pijul-name-conflict",
           members: [
-            compatibility_identity_text(
+            gunbc.scm_compatibility_shape.compatibility_identity_text(
               tag: "left",
               value: left as String,
             ),
-            compatibility_identity_text(
+            gunbc.scm_compatibility_shape.compatibility_identity_text(
               tag: "right",
               value: right as String,
             ),
@@ -360,14 +360,14 @@ fn pijul_compatibility_conflict_identity(
         )
       },
       move: fn(changes, inode, paths) {
-        compatibility_identity_sequence(
+        gunbc.scm_compatibility_shape.compatibility_identity_sequence(
           tag: "pijul-move-conflict",
           members: [
             pijul_compatibility_change_hashes_identity(
               tag: "changes",
               changes: changes,
             ),
-            compatibility_identity_text(
+            gunbc.scm_compatibility_shape.compatibility_identity_text(
               tag: "inode",
               value: inode as String,
             ),
@@ -386,11 +386,11 @@ fn pijul_compatibility_tree_entry_kind_identity(
   kind: extdeps.pijul.PijulTreeEntryKind,
 ) -> std.content_hash.Fnv1a64Structural {
   let label = match kind {
-    PijulDirectoryEntry => "directory"
-    PijulFileEntry => "file"
-    PijulSymlinkEntry => "symlink"
+    extdeps.pijul.PijulDirectoryEntry => "directory"
+    extdeps.pijul.PijulFileEntry => "file"
+    extdeps.pijul.PijulSymlinkEntry => "symlink"
   }
-  compatibility_identity_text(
+  gunbc.scm_compatibility_shape.compatibility_identity_text(
     tag: "pijul-tree-entry-kind",
     value: label,
   )
@@ -399,10 +399,10 @@ fn pijul_compatibility_tree_entry_kind_identity(
 fn pijul_compatibility_tree_entry_identity(
   entry: extdeps.pijul.PijulTreeEntry,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: "pijul-tree-entry",
     members: [
-      compatibility_identity_text(
+      gunbc.scm_compatibility_shape.compatibility_identity_text(
         tag: "inode",
         value: entry.inode as String,
       ),
@@ -411,7 +411,7 @@ fn pijul_compatibility_tree_entry_identity(
         path: entry.path,
       ),
       pijul_compatibility_tree_entry_kind_identity(kind: entry.kind),
-      compatibility_identity_text(
+      gunbc.scm_compatibility_shape.compatibility_identity_text(
         tag: "introduced-by",
         value: entry.introduced_by as String,
       ),
@@ -423,11 +423,11 @@ fn pijul_compatibility_working_copy_disposition_identity(
   disposition: extdeps.pijul.PijulWorkingCopyDisposition,
 ) -> std.content_hash.Fnv1a64Structural {
   let label = match disposition {
-    PijulWorkingCopyClean => "clean"
-    PijulWorkingCopyModified => "modified"
-    PijulWorkingCopyUntracked => "untracked"
+    extdeps.pijul.PijulWorkingCopyClean => "clean"
+    extdeps.pijul.PijulWorkingCopyModified => "modified"
+    extdeps.pijul.PijulWorkingCopyUntracked => "untracked"
   }
-  compatibility_identity_text(
+  gunbc.scm_compatibility_shape.compatibility_identity_text(
     tag: "pijul-working-copy-disposition",
     value: label,
   )
@@ -436,7 +436,7 @@ fn pijul_compatibility_working_copy_disposition_identity(
 fn pijul_compatibility_working_copy_entry_identity(
   entry: extdeps.pijul.PijulWorkingCopyEntry,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: "pijul-working-copy-entry",
     members: [
       pijul_compatibility_path_identity(
@@ -457,14 +457,14 @@ fn pijul_compatibility_working_copy_entry_identity(
 fn pijul_compatibility_channel_identity(
   channel: extdeps.pijul.PijulChannel,
 ) -> std.content_hash.Fnv1a64Structural {
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: "pijul-channel",
     members: [
-      compatibility_identity_text(
+      gunbc.scm_compatibility_shape.compatibility_identity_text(
         tag: "name",
         value: channel.name as String,
       ),
-      compatibility_identity_text(
+      gunbc.scm_compatibility_shape.compatibility_identity_text(
         tag: "state",
         value: channel.state_identity.state as String,
       ),
@@ -481,17 +481,17 @@ fn pijul_compatibility_availability_identity(
   availability: extdeps.pijul.PijulDecodedAvailability,
 ) -> std.content_hash.Fnv1a64Structural {
   match availability {
-    PijulDecodedComplete =>
-      compatibility_identity_sequence(
+    extdeps.pijul.PijulDecodedComplete =>
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "pijul-complete",
         members: [],
       )
-    PijulDecodedPartial {
+    extdeps.pijul.PijulDecodedPartial {
       missing_changes,
       missing_vertices,
       missing_paths,
     } =>
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "pijul-partial",
         members: [
           pijul_compatibility_change_hashes_identity(
@@ -515,55 +515,55 @@ fn pijul_compatibility_observed_state_identity(
   repository: extdeps.pijul.PijulDecodedRepository,
 ) -> std.content_hash.Fnv1a64Structural {
   let state = repository.state
-  compatibility_identity_sequence(
+  gunbc.scm_compatibility_shape.compatibility_identity_sequence(
     tag: "pijul-readback-state-v1",
     members: [
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "changes",
         members: state.changes
           |> map(change =>
-            compatibility_identity_text(
+            gunbc.scm_compatibility_shape.compatibility_identity_text(
               tag: "change",
               value: change.identity.hash as String,
             )
           ),
       ),
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "vertices",
         members: state.pristine.vertices
           |> map(vertex =>
             pijul_compatibility_graph_vertex_identity(vertex: vertex)
           ),
       ),
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "edges",
         members: state.pristine.edges
           |> map(edge =>
             pijul_compatibility_graph_edge_identity(edge: edge)
           ),
       ),
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "conflicts",
         members: state.pristine.conflicts
           |> map(conflict =>
             pijul_compatibility_conflict_identity(conflict: conflict)
           ),
       ),
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "tree",
         members: state.tree.entries
           |> map(entry =>
             pijul_compatibility_tree_entry_identity(entry: entry)
           ),
       ),
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "working-copy",
         members: state.working_copy.entries
           |> map(entry =>
             pijul_compatibility_working_copy_entry_identity(entry: entry)
           ),
       ),
-      compatibility_identity_sequence(
+      gunbc.scm_compatibility_shape.compatibility_identity_sequence(
         tag: "channels",
         members: state.channels
           |> map(channel =>
@@ -571,7 +571,7 @@ fn pijul_compatibility_observed_state_identity(
           )
           |> sort_by(identity => identity as String),
       ),
-      compatibility_identity_text(
+      gunbc.scm_compatibility_shape.compatibility_identity_text(
         tag: "current-channel",
         value: state.current_channel as String,
       ),
@@ -590,16 +590,16 @@ fn pijul_compatibility_projection_receipt(
     repository: receipt.repository,
   )
   match receipt.advance {
-    PijulConditionalAdvanceUnavailable { reason } =>
+    extdeps.pijul.PijulConditionalAdvanceUnavailable { reason } =>
       gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
         realization: "pijul-r0",
         target: receipt.target as std.types.NonEmptyStr,
         generation_evidence: generation,
-        projection: compatibility_projection_handle(
+        projection: gunbc.scm_compatibility_shape.compatibility_projection_handle(
           realization: "pijul-r0",
           state: state,
         ),
-        read_back: compatibility_read_back_handle(
+        read_back: gunbc.scm_compatibility_shape.compatibility_read_back_handle(
           realization: "pijul-r0",
           producer: pijul_compatibility_version_text(
             version: receipt.read_back.pijul_version,
@@ -613,7 +613,7 @@ fn pijul_compatibility_projection_receipt(
 }
 
 fn pijul_compatibility_projection_handler(
-) -> CompatibilityProjectionHandler<PijulCompatibilityReceipt> {
+) -> gunbc.scm_compatibility_shape.CompatibilityProjectionHandler<PijulCompatibilityReceipt> {
   gunbc.scm_compatibility_shape.CompatibilityProjectionHandler {
     project: fn(receipt) {
       pijul_compatibility_projection_receipt(receipt: receipt)

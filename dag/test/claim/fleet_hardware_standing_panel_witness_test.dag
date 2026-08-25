@@ -1,7 +1,8 @@
 module test.claim.fleet_hardware_standing_panel_witness_test
 
-fn a_host() -> HostIdentity { "srv3" }
-fn other_host() -> HostIdentity { "srv4" }
+
+fn a_host() -> product.placement_supply.HostIdentity { "srv3" }
+fn other_host() -> product.placement_supply.HostIdentity { "srv4" }
 
 // THE PROCESSOR AXIS IS UNREAD ON EVERY HOST, AND THE PANEL MUST SAY SO RATHER THAN CONFIRM IT.
 //
@@ -12,10 +13,10 @@ fn other_host() -> HostIdentity { "srv4" }
 // their machines. The distinction between "read and agreed" and "never read" is the entire reason
 // HardwareStanding has a third value.
 test fn every_processor_row_is_unread_and_none_is_confirmed() -> Bool {
-  let standings = fleet_processor_standings()
+  let standings = gunbc.fleet_hardware_standing_panel.fleet_processor_standings()
   (standings |> count) == 4
-    && standing_count(standings: standings, wanted: HardwareUnread) == 4
-    && standing_count(standings: standings, wanted: HardwareConfirmed) == 0
+    && gunbc.fleet_hardware_standing_panel.standing_count(standings: standings, wanted: gunbc.fleet_hardware_standing_panel.HardwareUnread) == 4
+    && gunbc.fleet_hardware_standing_panel.standing_count(standings: standings, wanted: gunbc.fleet_hardware_standing_panel.HardwareConfirmed) == 0
 }
 
 // THE POSITIVE CONTROL ON THE SAME AXIS PAIR: memory IS read, and IS confirmed.
@@ -24,10 +25,10 @@ test fn every_processor_row_is_unread_and_none_is_confirmed() -> Bool {
 // which would be just as wrong, in the direction that makes a healthy fleet look unmeasured. The
 // two axes disagreeing is what proves the mapping discriminates rather than answering a constant.
 test fn the_memory_axis_is_confirmed_on_every_host() -> Bool {
-  let standings = fleet_dimm_standings()
+  let standings = gunbc.fleet_hardware_standing_panel.fleet_dimm_standings()
   (standings |> count) == 4
-    && standing_count(standings: standings, wanted: HardwareConfirmed) == 4
-    && standing_count(standings: standings, wanted: HardwareUnread) == 0
+    && gunbc.fleet_hardware_standing_panel.standing_count(standings: standings, wanted: gunbc.fleet_hardware_standing_panel.HardwareConfirmed) == 4
+    && gunbc.fleet_hardware_standing_panel.standing_count(standings: standings, wanted: gunbc.fleet_hardware_standing_panel.HardwareUnread) == 0
 }
 
 // EACH VERDICT VARIANT MAPS TO ITS OWN STANDING, PROVEN ON AUTHORED VERDICTS.
@@ -36,24 +37,24 @@ test fn the_memory_axis_is_confirmed_on_every_host() -> Bool {
 // Refused into Misfiled would pass every assertion above. These verdicts are authored here rather
 // than read from the fleet precisely so the two unoccupied arms are still discriminated.
 test fn the_four_verdict_shapes_map_to_four_distinct_standings() -> Bool {
-  let confirmed = dimm_standing(verdict: DimmPopulationConfirmed { host: a_host(), stick_count: 8 })
-  let refused = dimm_standing(verdict: DimmPopulationRefused {
+  let confirmed = gunbc.fleet_hardware_standing_panel.dimm_standing(verdict: product.installed_bom_reconcile.DimmPopulationConfirmed { host: a_host(), stick_count: 8 })
+  let refused = gunbc.fleet_hardware_standing_panel.dimm_standing(verdict: product.installed_bom_reconcile.DimmPopulationRefused {
     host: a_host(),
     discrepancies: [],
-    count: DimmCountDiffers { expected: 8, observed: 6 },
+    count: product.installed_bom_reconcile.DimmCountDiffers { expected: 8, observed: 6 },
   })
-  let misfiled = dimm_standing(verdict: DimmObservationHostMismatch {
+  let misfiled = gunbc.fleet_hardware_standing_panel.dimm_standing(verdict: product.installed_bom_reconcile.DimmObservationHostMismatch {
     expectation_host: a_host(),
     observation_host: other_host(),
   })
-  let unread = dimm_standing(verdict: DimmPopulationUnconfirmed {
+  let unread = gunbc.fleet_hardware_standing_panel.dimm_standing(verdict: product.installed_bom_reconcile.DimmPopulationUnconfirmed {
     host: a_host(),
-    cause: "no reading taken" as NonEmptyStr,
+    cause: "no reading taken" as std.types.NonEmptyStr,
   })
-  confirmed == HardwareConfirmed
-    && refused == HardwareRefused
-    && misfiled == HardwareMisfiled
-    && unread == HardwareUnread
+  confirmed == gunbc.fleet_hardware_standing_panel.HardwareConfirmed
+    && refused == gunbc.fleet_hardware_standing_panel.HardwareRefused
+    && misfiled == gunbc.fleet_hardware_standing_panel.HardwareMisfiled
+    && unread == gunbc.fleet_hardware_standing_panel.HardwareUnread
     && (confirmed != refused) && (refused != misfiled) && (misfiled != unread)
 }
 
@@ -61,8 +62,8 @@ test fn the_four_verdict_shapes_map_to_four_distinct_standings() -> Bool {
 // A label function collapsing two still renders a plausible row, and the collapse would surface
 // only as an operator acting on the wrong remedy.
 test fn the_four_standings_do_not_share_a_wire_word() -> Bool {
-  let all = [HardwareConfirmed, HardwareRefused, HardwareUnread, HardwareMisfiled]
-  let labels = map(all, s => hardware_standing_label(standing: s))
+  let all = [gunbc.fleet_hardware_standing_panel.HardwareConfirmed, gunbc.fleet_hardware_standing_panel.HardwareRefused, gunbc.fleet_hardware_standing_panel.HardwareUnread, gunbc.fleet_hardware_standing_panel.HardwareMisfiled]
+  let labels = map(all, s => gunbc.fleet_hardware_standing_panel.hardware_standing_label(standing: s))
   (labels |> count) == 4
     && !any(labels, a => (filter(labels, b => b == a) |> count) > 1)
 }
@@ -73,10 +74,10 @@ test fn the_four_standings_do_not_share_a_wire_word() -> Bool {
 // verdict separates them, so the detail line must not fold them into one number -- an operator told
 // only "3 discrepancies" does not know whether sticks are missing.
 test fn a_refusal_detail_carries_the_count_and_the_discrepancy_tally() -> Bool {
-  let detail = dimm_detail(verdict: DimmPopulationRefused {
+  let detail = gunbc.fleet_hardware_standing_panel.dimm_detail(verdict: product.installed_bom_reconcile.DimmPopulationRefused {
     host: a_host(),
     discrepancies: [],
-    count: DimmCountDiffers { expected: 8, observed: 6 },
+    count: product.installed_bom_reconcile.DimmCountDiffers { expected: 8, observed: 6 },
   })
   string_contains(s: detail, pattern: "expected 8")
     && string_contains(s: detail, pattern: "read 6")
@@ -89,7 +90,7 @@ test fn a_refusal_detail_carries_the_count_and_the_discrepancy_tally() -> Bool {
 // Memory is fully read; the processor axis has never been measured once. Those are a solved problem
 // beside an unstarted one, and averaging them hides both.
 test fn the_summary_reports_each_axis_separately_and_never_one_fraction() -> Bool {
-  let line = fleet_hardware_summary_line()
+  let line = gunbc.fleet_hardware_standing_panel.fleet_hardware_summary_line()
   string_contains(s: line, pattern: "4 of 4 memory confirmed")
     && string_contains(s: line, pattern: "0 of 4 processor confirmed")
     && !string_contains(s: line, pattern: "of 8")
@@ -99,8 +100,8 @@ test fn the_summary_reports_each_axis_separately_and_never_one_fraction() -> Boo
 // Authored rather than read from the fleet: the live rosters are all-confirmed and all-unread, so
 // a mixed population is the only input that separates counting confirmations from counting members.
 test fn an_axis_summary_counts_confirmations_not_members() -> Bool {
-  let mixed = [HardwareConfirmed, HardwareUnread, HardwareRefused, HardwareConfirmed]
-  let line = hardware_axis_summary(axis: "memory", standings: mixed)
+  let mixed = [gunbc.fleet_hardware_standing_panel.HardwareConfirmed, gunbc.fleet_hardware_standing_panel.HardwareUnread, gunbc.fleet_hardware_standing_panel.HardwareRefused, gunbc.fleet_hardware_standing_panel.HardwareConfirmed]
+  let line = gunbc.fleet_hardware_standing_panel.hardware_axis_summary(axis: "memory", standings: mixed)
   string_contains(s: line, pattern: "2 of 4 memory confirmed")
 }
 
@@ -111,11 +112,12 @@ test fn an_axis_summary_counts_confirmations_not_members() -> Bool {
 // reading nobody took, and treating an unmeasured axis as a contradiction would put the panel in a
 // permanent alarm state that the operator cannot clear by fixing anything.
 test fn no_outstanding_line_while_nothing_contradicts_and_unread_does_not_count() -> Bool {
-  match fleet_hardware_outstanding_line() {
+  match gunbc.fleet_hardware_standing_panel.fleet_hardware_outstanding_line() {
     Present { value: _ } => false
-    Absent => standing_count(standings: fleet_processor_standings(), wanted: HardwareUnread) == 4
+    Absent => gunbc.fleet_hardware_standing_panel.standing_count(standings: gunbc.fleet_hardware_standing_panel.fleet_processor_standings(), wanted: gunbc.fleet_hardware_standing_panel.HardwareUnread) == 4
   }
 }
+
 
 // EACH COLUMN RESERVES ITS OWN POPULATION, WHICH IS THE DEFECT REVIEW 55065 CAUGHT.
 //
@@ -129,9 +131,9 @@ test fn no_outstanding_line_while_nothing_contradicts_and_unread_does_not_count(
 // labels" would be measure() == measure(); this asserts the two reservations DIFFER and that the
 // subject population genuinely cannot hold the axis one, which is what makes the swap detectable.
 test fn each_column_reserves_its_own_population() -> Bool {
-  let longest_axis = hardware_longest_len(labels: hardware_axis_labels())
-  let longest_host = hardware_longest_len(labels: map(fleet_dimm_verdicts, v => dimm_verdict_host(verdict: v) as String))
+  let longest_axis = gunbc.fleet_hardware_standing_panel.hardware_longest_len(labels: gunbc.fleet_hardware_standing_panel.hardware_axis_labels())
+  let longest_host = gunbc.fleet_hardware_standing_panel.hardware_longest_len(labels: map(fleet_dimm_verdicts, v => gunbc.fleet_hardware_standing_panel.dimm_verdict_host(verdict: v) as String))
   longest_axis > longest_host
-    && hardware_axis_reserved_width() != hardware_subject_reserved_width()
-    && (hardware_axis_labels() |> count) == 2
+    && gunbc.fleet_hardware_standing_panel.hardware_axis_reserved_width() != gunbc.fleet_hardware_standing_panel.hardware_subject_reserved_width()
+    && (gunbc.fleet_hardware_standing_panel.hardware_axis_labels() |> count) == 2
 }

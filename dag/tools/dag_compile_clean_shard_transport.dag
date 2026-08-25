@@ -5,17 +5,17 @@ data shard_a_exemplar_entry_path: String = "dag/std/logic.dag"
 
 fn single_module_shard_compile_typed(entry_rel_path: String) -> Bool {
   let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
+  if tools.dag_compile_clean_transport.dcc_gunbc_ready(root: root.path) {
     let stage = shell.Mktemp.Dir()
     if stage.success {
       let staged = shell.Copy.File(
         source: concat(root.path, concat("/", entry_rel_path)),
         destination: stage.path
       )
-      let compile = gunbc.WitnessBin.Run(
+      let compile = WitnessBin.Run(
         workdir: root.path,
-        bin_path: dcc_gunbc_path(root: root.path),
-        args: dcc_fixture_only_compile_args(tmp: stage.path)
+        bin_path: tools.dag_compile_clean_transport.dcc_gunbc_path(root: root.path),
+        args: tools.dag_compile_clean_transport.dcc_fixture_only_compile_args(tmp: stage.path)
       )
       let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
       staged.success && compile.success && cleaned_stage.success

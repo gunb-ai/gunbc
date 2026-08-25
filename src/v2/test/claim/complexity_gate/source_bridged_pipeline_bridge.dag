@@ -4,16 +4,16 @@ module v2.test.complexity_gate.source_bridged_pipeline_bridge
 fn source_bridged_resolved_root(
   source_text: String,
   file: v2.std.node.Symbol
-) -> Outcome<v2.std.node.Node> {
-  let lm = dag_language_model()
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  let lm = v2.extdeps.languages.dag.dag_language_model()
+  v2.std.diagnostic.bind_outcome(
     o: v2.compiler.tokenize.tokenize(text: source_text, file: file, rules: lm.lex),
     f: fn(token_stream) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: v2.compiler.parse.parse_module(tokens: token_stream, grammar: lm.grammar),
         f: fn(artifact) {
-          bind_outcome(
-            o: normalize(parse_tree: artifact.tree),
+          v2.std.diagnostic.bind_outcome(
+            o: v2.compiler.normalize.normalize(parse_tree: artifact.tree),
             f: fn(normalized) {
               v2.compiler.resolve.resolve(tree: normalized, lm: lm)
             }

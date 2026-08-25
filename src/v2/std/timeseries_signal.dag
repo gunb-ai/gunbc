@@ -1,77 +1,77 @@
 module v2.std.timeseries_signal
 
 
-type Voltage = std.measure.Measure<std.measure.ElectricPotential, std.measure.Micro, v2.std.integer.Int>
-type Current = std.measure.Measure<std.measure.ElectricCurrent, std.measure.Micro, v2.std.integer.Int>
-type ResistanceMicro = std.measure.Measure<std.measure.Resistance, std.measure.Micro, v2.std.integer.Int>
-type CapacitanceMicro = std.measure.Measure<std.measure.Capacitance, std.measure.Micro, v2.std.integer.Int>
-type InductanceMicro = std.measure.Measure<std.measure.Inductance, std.measure.Micro, v2.std.integer.Int>
-type ChargeMicro = std.measure.Measure<std.measure.ElectricCharge, std.measure.Micro, v2.std.integer.Int>
-type FluxMicro = std.measure.Measure<std.measure.MagneticFlux, std.measure.Micro, v2.std.integer.Int>
+type Voltage = std.measure.Measure<std.measure.ElectricPotential, std.measure.Micro, Int>
+type Current = std.measure.Measure<std.measure.ElectricCurrent, std.measure.Micro, Int>
+type ResistanceMicro = std.measure.Measure<std.measure.Resistance, std.measure.Micro, Int>
+type CapacitanceMicro = std.measure.Measure<std.measure.Capacitance, std.measure.Micro, Int>
+type InductanceMicro = std.measure.Measure<std.measure.Inductance, std.measure.Micro, Int>
+type ChargeMicro = std.measure.Measure<std.measure.ElectricCharge, std.measure.Micro, Int>
+type FluxMicro = std.measure.Measure<std.measure.MagneticFlux, std.measure.Micro, Int>
 
-type DurationMicro = std.measure.Measure<std.measure.Time, std.measure.Micro, v2.std.integer.Int>
+type DurationMicro = std.measure.Measure<std.measure.Time, std.measure.Micro, Int>
 
-fn voltage(n: v2.std.integer.Int) -> Voltage {
+fn voltage(n: Int) -> Voltage {
   Voltage { count: n }
 }
 
-fn voltage_count(v: Voltage) -> v2.std.integer.Int {
+fn voltage_count(v: Voltage) -> Int {
   v.count
 }
 
-fn current(n: v2.std.integer.Int) -> Current {
+fn current(n: Int) -> Current {
   Current { count: n }
 }
 
-fn current_count(c: Current) -> v2.std.integer.Int {
+fn current_count(c: Current) -> Int {
   c.count
 }
 
-fn resistance_micro(n: v2.std.integer.Int) -> ResistanceMicro {
+fn resistance_micro(n: Int) -> ResistanceMicro {
   ResistanceMicro { count: n }
 }
 
-fn resistance_micro_count(r: ResistanceMicro) -> v2.std.integer.Int {
+fn resistance_micro_count(r: ResistanceMicro) -> Int {
   r.count
 }
 
-fn capacitance_micro(n: v2.std.integer.Int) -> CapacitanceMicro {
+fn capacitance_micro(n: Int) -> CapacitanceMicro {
   CapacitanceMicro { count: n }
 }
 
-fn capacitance_micro_count(c: CapacitanceMicro) -> v2.std.integer.Int {
+fn capacitance_micro_count(c: CapacitanceMicro) -> Int {
   c.count
 }
 
-fn inductance_micro(n: v2.std.integer.Int) -> InductanceMicro {
+fn inductance_micro(n: Int) -> InductanceMicro {
   InductanceMicro { count: n }
 }
 
-fn inductance_micro_count(l: InductanceMicro) -> v2.std.integer.Int {
+fn inductance_micro_count(l: InductanceMicro) -> Int {
   l.count
 }
 
-fn charge_micro(n: v2.std.integer.Int) -> ChargeMicro {
+fn charge_micro(n: Int) -> ChargeMicro {
   ChargeMicro { count: n }
 }
 
-fn charge_micro_count(q: ChargeMicro) -> v2.std.integer.Int {
+fn charge_micro_count(q: ChargeMicro) -> Int {
   q.count
 }
 
-fn flux_micro(n: v2.std.integer.Int) -> FluxMicro {
+fn flux_micro(n: Int) -> FluxMicro {
   FluxMicro { count: n }
 }
 
-fn flux_micro_count(phi: FluxMicro) -> v2.std.integer.Int {
+fn flux_micro_count(phi: FluxMicro) -> Int {
   phi.count
 }
 
-fn duration_micro(n: v2.std.integer.Int) -> DurationMicro {
+fn duration_micro(n: Int) -> DurationMicro {
   DurationMicro { count: n }
 }
 
-fn duration_micro_count(t: DurationMicro) -> v2.std.integer.Int {
+fn duration_micro_count(t: DurationMicro) -> Int {
   t.count
 }
 
@@ -138,7 +138,7 @@ type PassiveComponentSpec
 fn potential_reference_eq(
   left: PotentialReference,
   right: PotentialReference
-) -> v2.std.logic.Bool {
+) -> Bool {
   match left {
     GroundReference => match right {
       GroundReference => true
@@ -182,7 +182,7 @@ fn absolute_potential_from_named(
 fn absolute_potential_from_named_preserves_reference(
   named: NamedAffineVoltage,
   magnitude: Voltage
-) -> v2.std.logic.Bool {
+) -> Bool {
   let absolute = absolute_potential_from_named(named: named, magnitude: magnitude)
   potential_reference_eq(
     left: potential_reference_of_named(named: named),
@@ -236,7 +236,7 @@ fn time_series_append(
   signal: TimeSeriesSignal,
   sample: TimeSeriesSample,
 ) -> TimeSeriesSignal {
-  fold_list_right(
+  v2.std.algebra.fold_list_right(
     xs: signal,
     empty: std.algebra.Cons { head: sample, tail: std.algebra.Empty },
     snoc: fn(acc, item) { std.algebra.Cons { head: item, tail: acc } }
@@ -259,7 +259,7 @@ fn resistor_map_voltage(
   StepBranchVoltage {
     difference: StepPotentialDifference {
       microvolts: voltage(
-        int_mul(
+        v2.std.integer.int_mul(
           a: resistance_micro_count(element.rating.microohms),
           b: current_count(current.microamperes),
         )
@@ -287,21 +287,21 @@ fn capacitor_fold_step(
   state: CapacitorState,
   current: StepCurrent,
   dt: TimeStep,
-) -> Outcome<CapacitorState> {
-  let charge_delta = int_mul(
+) -> v2.std.diagnostic.Outcome<CapacitorState> {
+  let charge_delta = v2.std.integer.int_mul(
     a: current_count(current.microamperes),
     b: duration_micro_count(dt.dt_microseconds),
   )
-  let new_charge = int_add(
+  let new_charge = v2.std.integer.int_add(
     a: charge_micro_count(state.charge_microcoulombs),
     b: charge_delta,
   )
-  match int_div(
+  match v2.std.integer.int_div(
     a: new_charge,
     b: capacitance_micro_count(element.rating.microfarads),
-    at: port_locus(port: timeseries_passive_fold_step_locus),
+    at: v2.std.diagnostic.port_locus(port: timeseries_passive_fold_step_locus),
   ) {
-    Accepted { value: v, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: v, diagnostics: _ } =>
       v2.std.diagnostic.Accepted {
         value: CapacitorState {
           voltage: StepPotentialDifference {
@@ -311,7 +311,7 @@ fn capacitor_fold_step(
         }
         diagnostics: v2.std.diagnostic.None
       }
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -320,20 +320,20 @@ fn fold_capacitor_transient(
   initial: CapacitorState,
   currents: List<StepCurrent>,
   dt: TimeStep,
-) -> Outcome<CapacitorState> {
-  fold_list(
+) -> v2.std.diagnostic.Outcome<CapacitorState> {
+  v2.std.algebra.fold_list(
     xs: currents,
     empty: v2.std.diagnostic.Accepted { value: initial, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, current) {
       match acc {
-        Accepted { value: state, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: state, diagnostics: _ } =>
           capacitor_fold_step(
             element: element,
             state: state,
             current: current,
             dt: dt,
           )
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
     }
   )
@@ -358,21 +358,21 @@ fn inductor_fold_step(
   state: InductorState,
   voltage: StepBranchVoltage,
   dt: TimeStep,
-) -> Outcome<InductorState> {
-  let flux_delta = int_mul(
+) -> v2.std.diagnostic.Outcome<InductorState> {
+  let flux_delta = v2.std.integer.int_mul(
     a: voltage_count(voltage.difference.microvolts),
     b: duration_micro_count(dt.dt_microseconds),
   )
-  let new_flux = int_add(
+  let new_flux = v2.std.integer.int_add(
     a: flux_micro_count(state.flux_microwebers),
     b: flux_delta,
   )
-  match int_div(
+  match v2.std.integer.int_div(
     a: new_flux,
     b: inductance_micro_count(element.rating.microhenries),
-    at: port_locus(port: timeseries_passive_fold_step_locus),
+    at: v2.std.diagnostic.port_locus(port: timeseries_passive_fold_step_locus),
   ) {
-    Accepted { value: i, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: i, diagnostics: _ } =>
       v2.std.diagnostic.Accepted {
         value: InductorState {
           current: StepCurrent {
@@ -382,6 +382,6 @@ fn inductor_fold_step(
         }
         diagnostics: v2.std.diagnostic.None
       }
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

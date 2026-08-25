@@ -16,7 +16,7 @@ fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
 }
 
 fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
-  std.dissolution.unbound_dissolution(description: v2.test.claim.roster_registry_test.synthetic_nonliteral_text(text: text))
+  std.dissolution.unbound_dissolution(description: synthetic_nonliteral_text(text: text))
 }
 
 fn synthetic_registration(membership: gunbc.roster_registry.GroupMembership) -> gunbc.roster_registry.RosterRegistration {
@@ -34,12 +34,12 @@ fn nickname_registration() -> gunbc.roster_registry.RosterRegistration {
   )
 }
 
-test fn roster_registry_standard_holds_live() -> v2.std.logic.Bool {
-  roster_registry_standard_holds() && (roster_registry_nonstandard_count() == 0)
+test fn roster_registry_standard_holds_live() -> Bool {
+  v2.lens.roster_registry.roster_registry_standard_holds() && (v2.lens.roster_registry.roster_registry_nonstandard_count() == 0)
 }
 
-test fn roster_registry_enrolls_known_rosters() -> v2.std.logic.Bool {
-  length(xs: gunbc.roster_registry.roster_registry) >= 26
+test fn roster_registry_enrolls_known_rosters() -> Bool {
+  v2.std.algebra.length(xs: gunbc.roster_registry.roster_registry) >= 26
 }
 
 
@@ -47,7 +47,7 @@ fn empty_trigger_registration() -> gunbc.roster_registry.RosterRegistration {
   synthetic_registration(
     membership: gunbc.roster_registry.DeclaredFrontier {
       reason: "a reason without a trigger is not a frontier row",
-      dissolution: v2.test.claim.roster_registry_test.synthetic_empty_condition(text: "")
+      dissolution: synthetic_empty_condition(text: "")
     }
   )
 }
@@ -55,17 +55,17 @@ fn empty_trigger_registration() -> gunbc.roster_registry.RosterRegistration {
 // Restored alongside the production guard, for the same reason: an empty
 // condition is still constructible, so this is the executing evidence that the
 // restored check refuses it.
-test fn roster_registry_red_control_empty_trigger_reds() -> v2.std.logic.Bool {
-  roster_registry_nonstandard_count_from(
+test fn roster_registry_red_control_empty_trigger_reds() -> Bool {
+  v2.lens.roster_registry.roster_registry_nonstandard_count_from(
     registrations: [empty_trigger_registration()]
   ) == 1
 }
 
-test fn roster_registry_red_control_nickname_reds() -> v2.std.logic.Bool {
-  let findings = nonstandard_registrations_from(
+test fn roster_registry_red_control_nickname_reds() -> Bool {
+  let findings = v2.lens.roster_registry.nonstandard_registrations_from(
     registrations: [nickname_registration()]
   )
-  (length(xs: findings) == 1)
+  (v2.std.algebra.length(xs: findings) == 1)
     && fold(
       findings,
       init: true,
@@ -73,10 +73,10 @@ test fn roster_registry_red_control_nickname_reds() -> v2.std.logic.Bool {
     )
 }
 
-test fn roster_registry_green_control_standard_forms_pass() -> v2.std.logic.Bool {
-  roster_registry_nonstandard_count_from(
+test fn roster_registry_green_control_standard_forms_pass() -> Bool {
+  v2.lens.roster_registry.roster_registry_nonstandard_count_from(
     registrations: [
-      synthetic_registration(membership: ByContainment),
+      synthetic_registration(membership: gunbc.roster_registry.ByContainment),
       synthetic_registration(
         membership: gunbc.roster_registry.ByDerivation {
           predicate: gunbc.roster_registry.roster_decl(module_path: "v2.test.synthetic", decl_name: "derivation_fn")

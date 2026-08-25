@@ -24,10 +24,10 @@ fn absolute_command_path_segments(path: std.types.NonEmptyStr) -> List<String> {
 
 fn posix_sudo_grant_to_effect_grant(g: PosixSudoGrant) -> std.effect_grant.Grant {
   std.effect_grant.Grant {
-    verb: verb_of_effect_shape(shape: ExecuteEffect),
-    root: filesystem_position(path: absolute_command_path_segments(path: g.command_path)),
-    binding: RealTransport,
-    lifecycle: LifecycleByConstruction,
+    verb: std.effect_grant.verb_of_effect_shape(shape: std.effects.ExecuteEffect),
+    root: std.effect_grant.filesystem_position(path: absolute_command_path_segments(path: g.command_path)),
+    binding: std.effect_grant.RealTransport,
+    lifecycle: std.effect_grant.LifecycleByConstruction,
   }
 }
 
@@ -150,7 +150,7 @@ fn fleet_posix_operator_sudo_grant_is_hostnamectl_only() -> Bool {
 // path remains for converge on the operator account.
 // Precedent: fleet_posix_ci_runner_sudo_grants already carries both binaries for ghrunner —
 // that is a finding, not automatic justification for the operator account.
-// gunbc.design.interaction.Receipt publication: gunbc.host_layout fleet_converge_receipt_atomic_publish_note.
+// Receipt publication: gunbc.host_layout fleet_converge_receipt_atomic_publish_note.
 data fleet_converge_operator_privilege_hold_note: String = "b1 moved gunbc-roadmap-fleet-converge.service to User=briansrls. Whole-binary NOPASSWD install/systemctl on the operator roster is held — root-equivalent. MemoryMax is deploy-time only (gunbc.host_axis_caps); converge does not assert MemoryMax via set-property."
 
 data fleet_apt_get_binary_path: std.types.NonEmptyStr = "/usr/bin/apt-get"
@@ -462,7 +462,7 @@ fn fleet_posix_automation_sudo_grants() -> List<PosixSudoGrant> {
   [
     PosixSudoGrant {
       command_path: gunbc_deploy_privileged_helper_path,
-      probe: NopasswdGrantListCheck,
+      probe: extdeps.sudo.nopasswd_execute_probe.NopasswdGrantListCheck,
     },
   ]
 }
@@ -846,7 +846,7 @@ data fleet_posix_account_exists_predicate_disposition: std.disposition.Dispositi
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.fleet_posix_accounts",
     decl_name: "fleet_posix_account_from_name",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
@@ -881,7 +881,7 @@ type ReportedAccountContradiction {
   modeled_gid: Int
   reported_uid: Int
   reported_gid: Int
-  reported_shell: extdeps.access.posix.PosixLoginShell
+  reported_shell: PosixLoginShell
   hosts: List<product.placement_supply.HostIdentity>
   source: std.types.NonEmptyStr
 }
@@ -893,7 +893,7 @@ fn fleet_ci_runner_reported_contradiction() -> ReportedAccountContradiction {
     modeled_gid: 1001,
     reported_uid: 999,
     reported_gid: 987,
-    reported_shell: extdeps.access.posix.LoginShellObserved { path: "/usr/sbin/nologin" },
+    reported_shell: LoginShellObserved { path: "/usr/sbin/nologin" },
     hosts: ["srv1", "srv2"],
     source: "witty-raven-412 msg_051d4971; live getent on srv1 and srv2; not verified by this session"
   }
@@ -958,7 +958,7 @@ data fleet_automation_user: extdeps.access.posix.PosixUser = extdeps.access.posi
   name: "gunbc-fleet",
   uid: 1001,
   gid: 1001,
-  shell: extdeps.access.posix.LoginShellObserved { path: "/bin/bash" },
+  shell: LoginShellObserved { path: "/bin/bash" },
 }
 
 fn fleet_automation_allocations() -> List<FleetAutomationAllocationStanding> {

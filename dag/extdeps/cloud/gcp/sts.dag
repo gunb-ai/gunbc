@@ -3,7 +3,7 @@ module extdeps.cloud.gcp.sts
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "cloud.google.com/iam/docs/reference/sts/rest"
   }
 }
@@ -54,7 +54,7 @@ service gcp.STS {
     }
 
     idempotent
-    transport rest { method: POST, path: "/v1/token" }
+    transport rest { method: v2.std.network.POST, path: "/v1/token" }
     response {
       200 => StsTokenResponse
       400 => GcpOAuth2ErrorShape
@@ -76,7 +76,7 @@ service github.OIDC {
     }
     output { subject_token: Secret from "value" }
     readonly
-    transport rest { method: GET, path: "/\{audience\}" }
+    transport rest { method: v2.std.network.GET, path: "/\{audience\}" }
     response {
       200 => GitHubOidcToken200Body
       401 => GitHubErrorShape
@@ -94,7 +94,7 @@ service gcp.Metadata {
     output { subject_token: Secret }
 
     readonly
-    transport rest { method: GET, path: "/computeMetadata/v1/instance/service-accounts/default/identity?audience=\{audience\}" }
+    transport rest { method: v2.std.network.GET, path: "/computeMetadata/v1/instance/service-accounts/default/identity?audience=\{audience\}" }
     response {
       200 => String
       404 => GcpErrorShape

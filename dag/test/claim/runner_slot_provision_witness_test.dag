@@ -1,10 +1,11 @@
 module test.claim.runner_slot_provision
 
+
 test fn witness_actions_runner_release_cites_github_digest() -> Bool {
-  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+  match extdeps.github.actions_runner.actions_runner_binary_artifact_for_arch(binary_release: extdeps.github.actions_runner.actions_runner_release_2_334_0, arch: extdeps.toolchain.types.Aarch64) {
     Present { value: artifact } =>
       string_contains(
-        s: actions_runner_download_url(artifact: artifact),
+        s: extdeps.github.actions_runner.actions_runner_download_url(artifact: artifact),
         pattern: "github.com/actions/runner/releases/download/v2.334.0/actions-runner-linux-arm64-2.334.0.tar.gz",
       )
     Absent => false
@@ -12,9 +13,9 @@ test fn witness_actions_runner_release_cites_github_digest() -> Bool {
 }
 
 test fn witness_runner_count_not_in_installer_argv() -> Bool {
-  let rendered = shell_command_render(
-    command: runner_host_installer_command_argv(
-      deploy: srv3_runner_host_deploy,
+  let rendered = extdeps.exec.command.shell_command_render(
+    command: gunbc.runner_host_deploy.runner_host_installer_command_argv(
+      deploy: gunbc.runner_host_deploy.srv3_runner_host_deploy,
       installer_path: "/tmp/install-actions-runner.sh",
       pem_src_path: "/tmp/app.pem",
     ),
@@ -36,10 +37,10 @@ test fn witness_runner_count_not_in_installer_argv() -> Bool {
 // long as the row says it is, it is one-based, and it is zero-padded. Width itself is asserted where
 // width is decided, not restated here.
 test fn witness_srv3_deploy_row_names_its_declared_slots() -> Bool {
-  let names = runner_instance_names(deploy: srv3_runner_host_deploy)
-  list_length(items: names) == srv3_runner_host_deploy.runner_count
+  let names = gunbc.runner_host_deploy.runner_instance_names(deploy: gunbc.runner_host_deploy.srv3_runner_host_deploy)
+  std.types.list_length(items: names) == srv3_runner_host_deploy.runner_count
     && string_contains(s: names.first(), pattern: "srv3-01")
-    && list_length(items: names) > 1
+    && std.types.list_length(items: names) > 1
     && roster_names_are_distinct(names: names)
 }
 
@@ -48,51 +49,51 @@ test fn witness_srv3_deploy_row_names_its_declared_slots() -> Bool {
 // authored beside a known input — not a restatement of whatever width the
 // fleet happens to declare. srv3's real width is asserted separately, by
 // witness_srv3_deploy_row_names_its_declared_slots.
-fn fixture_five_slot_deploy() -> RunnerHostDeploy {
-  RunnerHostDeploy {
+fn fixture_five_slot_deploy() -> gunbc.runner_host_deploy.RunnerHostDeploy {
+  gunbc.runner_host_deploy.RunnerHostDeploy {
     host_label: "wfix",
     ssh_target: "fixture@invalid.example",
     runner_user: "fixture",
     job_user: "fixture",
-    app: gunbc_ci_github_app,
+    app: gunbc.runner_host_deploy.gunbc_ci_github_app,
     runner_count: 5,
   }
 }
 
 test fn witness_membership_reconcile_adds_delta_slots() -> Bool {
-  let observed: List<RunnerSlotMember> = [
-    RunnerSlotMember {
-      instance_name: "wfix-01" as NonEmptyStr,
-      slot_dir: "/opt/actions-runner/wfix-01" as NonEmptyStr,
+  let observed: List<gunbc.runner_slot_provision.RunnerSlotMember> = [
+    gunbc.runner_slot_provision.RunnerSlotMember {
+      instance_name: "wfix-01" as std.types.NonEmptyStr,
+      slot_dir: "/opt/actions-runner/wfix-01" as std.types.NonEmptyStr,
     },
-    RunnerSlotMember {
-      instance_name: "wfix-02" as NonEmptyStr,
-      slot_dir: "/opt/actions-runner/wfix-02" as NonEmptyStr,
+    gunbc.runner_slot_provision.RunnerSlotMember {
+      instance_name: "wfix-02" as std.types.NonEmptyStr,
+      slot_dir: "/opt/actions-runner/wfix-02" as std.types.NonEmptyStr,
     },
   ]
-  let plan = runner_slot_membership_reconcile(
-    desired: desired_runner_slot_members(deploy: fixture_five_slot_deploy()),
+  let plan = gunbc.runner_slot_provision.runner_slot_membership_reconcile(
+    desired: gunbc.runner_slot_provision.desired_runner_slot_members(deploy: fixture_five_slot_deploy()),
     observed: observed,
   )
-  membership_added_count(plan: plan) == 3
+  gunbc.membership_reconcile.membership_added_count(plan: plan) == 3
 }
 
 test fn witness_provision_plan_extracts_only_upserts() -> Bool {
-  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+  match extdeps.github.actions_runner.actions_runner_binary_artifact_for_arch(binary_release: extdeps.github.actions_runner.actions_runner_release_2_334_0, arch: extdeps.toolchain.types.Aarch64) {
     Present { value: artifact } =>
-      let observed: List<RunnerSlotMember> = [
-        RunnerSlotMember {
-          instance_name: "wfix-01" as NonEmptyStr,
-          slot_dir: "/opt/actions-runner/wfix-01" as NonEmptyStr,
+      let observed: List<gunbc.runner_slot_provision.RunnerSlotMember> = [
+        gunbc.runner_slot_provision.RunnerSlotMember {
+          instance_name: "wfix-01" as std.types.NonEmptyStr,
+          slot_dir: "/opt/actions-runner/wfix-01" as std.types.NonEmptyStr,
         },
       ]
-      let plan = runner_slot_provision_plan(
+      let plan = gunbc.runner_slot_provision.runner_slot_provision_plan(
         deploy: fixture_five_slot_deploy(),
         artifact: artifact,
         observed: observed,
       )
-      runner_slot_provision_has_width_increase(plan: plan)
-        && list_length(items: plan.upsert_extract_scripts) == 4
+      gunbc.runner_slot_provision.runner_slot_provision_has_width_increase(plan: plan)
+        && std.types.list_length(items: plan.upsert_extract_scripts) == 4
         && string_contains(s: plan.base_dir_script, pattern: "/opt/actions-runner")
         && string_contains(s: plan.upsert_extract_scripts.first(), pattern: "sha256sum -c")
     Absent => false
@@ -100,19 +101,19 @@ test fn witness_provision_plan_extracts_only_upserts() -> Bool {
 }
 
 test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
-  let observed: List<RunnerSlotMember> = [
-    RunnerSlotMember {
-      instance_name: "srv3-01" as NonEmptyStr,
-      slot_dir: "/opt/actions-runner/srv3-01" as NonEmptyStr,
+  let observed: List<gunbc.runner_slot_provision.RunnerSlotMember> = [
+    gunbc.runner_slot_provision.RunnerSlotMember {
+      instance_name: "srv3-01" as std.types.NonEmptyStr,
+      slot_dir: "/opt/actions-runner/srv3-01" as std.types.NonEmptyStr,
     },
   ]
-  match runner_slot_enumeration_postcondition(host: operator_host_srv3, observed: observed) {
-    RunnerSlotEnumerationMismatch { host: h, declared_count: d, observed_count: o } =>
-      h == operator_host_srv3
-        && d == declared_runner_count_for(host: operator_host_srv3)
+  match gunbc.runner_slot_provision.runner_slot_enumeration_postcondition(host: gunbc.fleet_intent_network.operator_host_srv3, observed: observed) {
+    gunbc.runner_slot_provision.RunnerSlotEnumerationMismatch { host: h, declared_count: d, observed_count: o } =>
+      h == gunbc.fleet_intent_network.operator_host_srv3
+        && d == gunbc.fleet_host_budget.declared_runner_count_for(host: gunbc.fleet_intent_network.operator_host_srv3)
         && o == 1
         && d > o
-    RunnerSlotEnumerationMatched => false
+    gunbc.runner_slot_provision.RunnerSlotEnumerationMatched => false
   }
 }
 
@@ -120,8 +121,8 @@ test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
 // so it measured the tree rather than checking a relation. The relation it was reaching for is that
 // the instance roster and the declared count cannot disagree, which holds at any width.
 test fn witness_srv4_instance_roster_matches_its_declared_count() -> Bool {
-  let names = runner_instance_names(deploy: srv4_runner_host_deploy)
-  list_length(items: names) == srv4_runner_host_deploy.runner_count
+  let names = gunbc.runner_host_deploy.runner_instance_names(deploy: gunbc.runner_host_deploy.srv4_runner_host_deploy)
+  std.types.list_length(items: names) == srv4_runner_host_deploy.runner_count
     && roster_names_are_distinct(names: names)
 }
 
@@ -135,7 +136,7 @@ test fn witness_srv4_instance_roster_matches_its_declared_count() -> Bool {
 // does NOT cover before shipping. Kept as a named function rather than inlined because it belongs
 // beside every length claim, not just this one.
 fn roster_names_are_distinct(names: List<String>) -> Bool {
-  !any(names, a => list_length(items: filter(names, b => b == a)) > 1)
+  !any(names, a => std.types.list_length(items: filter(names, b => b == a)) > 1)
 }
 
 // THE INDEXING CONTRACT, PINNED ON GROUND THAT CANNOT MOVE.
@@ -155,18 +156,18 @@ fn roster_names_are_distinct(names: List<String>) -> Bool {
 // Measured discriminating rather than assumed: under a planted one-off in runner_instance_names
 // (mapping over runner_count - 1) this row returns false, as do the two length rows above
 // (silent-bear-842).
-data authored_three_slot_deploy: RunnerHostDeploy = RunnerHostDeploy {
+data authored_three_slot_deploy: gunbc.runner_host_deploy.RunnerHostDeploy = gunbc.runner_host_deploy.RunnerHostDeploy {
   host_label: "fixture-host",
   ssh_target: "fixture@203.0.113.1",
   runner_user: "fixture",
   job_user: "fixturejob",
-  app: gunbc_ci_github_app,
+  app: gunbc.runner_host_deploy.gunbc_ci_github_app,
   runner_count: 3,
 }
 
 test fn an_authored_count_enumerates_exactly_that_many_indexed_names() -> Bool {
-  let names = runner_instance_names(deploy: authored_three_slot_deploy)
-  list_length(items: names) == 3
+  let names = gunbc.runner_host_deploy.runner_instance_names(deploy: authored_three_slot_deploy)
+  std.types.list_length(items: names) == 3
     && string_contains(s: names.first(), pattern: "fixture-host-01")
     && string_contains(s: names.skip(n: 2).first(), pattern: "fixture-host-03")
     && roster_names_are_distinct(names: names)
@@ -176,14 +177,14 @@ test fn an_authored_count_enumerates_exactly_that_many_indexed_names() -> Bool {
 
 data converge_seam_witness_note: String = "THESE FOUR ROWS EXIST BECAUSE THE REFUSAL ARM IS THE ENTIRE POINT OF THE SEAM. An observation type with an Unobserved arm that nothing can drive is a decoration -- permanently green by construction and worse than absent, because it gets cited as coverage. The fixture below authors the unobserved state directly, so the arm has a RED that a fixture may produce, and the planned control beside it stops the refusal being satisfied by refusing always."
 
-data unobserved_fixture: RunnerSlotObservation = RunnerSlotsUnobserved {
-  reason: "FIXTURE: the base-directory listing refused" as NonEmptyStr,
+data unobserved_fixture: gunbc.runner_slot_provision.RunnerSlotObservation = gunbc.runner_slot_provision.RunnerSlotsUnobserved {
+  reason: "FIXTURE: the base-directory listing refused" as std.types.NonEmptyStr,
 }
 
-data observed_two_fixture: RunnerSlotObservation = RunnerSlotsObserved {
+data observed_two_fixture: gunbc.runner_slot_provision.RunnerSlotObservation = gunbc.runner_slot_provision.RunnerSlotsObserved {
   members: [
-    runner_slot_member_from_instance_name(instance_name: "srv1-01"),
-    runner_slot_member_from_instance_name(instance_name: "srv1-02"),
+    gunbc.runner_slot_provision.runner_slot_member_from_instance_name(instance_name: "srv1-01"),
+    gunbc.runner_slot_provision.runner_slot_member_from_instance_name(instance_name: "srv1-02"),
   ],
 }
 
@@ -191,17 +192,17 @@ data observed_two_fixture: RunnerSlotObservation = RunnerSlotsObserved {
 // unread population proposes installing every desired slot onto a machine whose real state nobody
 // saw. This is the arm that turns a silent overwrite into a stop.
 test fn an_unobserved_host_refuses_instead_of_planning() -> Bool {
-  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+  match extdeps.github.actions_runner.actions_runner_binary_artifact_for_arch(binary_release: extdeps.github.actions_runner.actions_runner_release_2_334_0, arch: extdeps.toolchain.types.Aarch64) {
     Absent => false
     Present { value: artifact } =>
-      match runner_slot_converge_verdict(
-        host: operator_host_srv1,
-        deploy: srv1_runner_host_deploy,
+      match gunbc.runner_slot_provision.runner_slot_converge_verdict(
+        host: gunbc.fleet_intent_network.operator_host_srv1,
+        deploy: gunbc.runner_host_deploy.srv1_runner_host_deploy,
         artifact: artifact,
         observation: unobserved_fixture,
       ) {
-        RunnerSlotConvergeRefused { host: h, reason: _ } => (h as String) == (operator_host_srv1 as String)
-        RunnerSlotConvergePlanned { host: _, plan: _ } => false
+        gunbc.runner_slot_provision.RunnerSlotConvergeRefused { host: h, reason: _ } => (h as String) == (gunbc.fleet_intent_network.operator_host_srv1 as String)
+        gunbc.runner_slot_provision.RunnerSlotConvergePlanned { host: _, plan: _ } => false
       }
   }
 }
@@ -210,19 +211,19 @@ test fn an_unobserved_host_refuses_instead_of_planning() -> Bool {
 // srv1 commits twenty-one and two slots are observed, so a plan must be produced AND must propose
 // adding the nineteen that are missing.
 test fn an_observed_host_plans_the_missing_slots() -> Bool {
-  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+  match extdeps.github.actions_runner.actions_runner_binary_artifact_for_arch(binary_release: extdeps.github.actions_runner.actions_runner_release_2_334_0, arch: extdeps.toolchain.types.Aarch64) {
     Absent => false
     Present { value: artifact } =>
-      match runner_slot_converge_verdict(
-        host: operator_host_srv1,
-        deploy: srv1_runner_host_deploy,
+      match gunbc.runner_slot_provision.runner_slot_converge_verdict(
+        host: gunbc.fleet_intent_network.operator_host_srv1,
+        deploy: gunbc.runner_host_deploy.srv1_runner_host_deploy,
         artifact: artifact,
         observation: observed_two_fixture,
       ) {
-        RunnerSlotConvergePlanned { host: _, plan: p } =>
-          runner_slot_provision_has_width_increase(plan: p)
-            && membership_added_count(plan: p.membership) == (srv1_runner_host_deploy.runner_count - 2)
-        RunnerSlotConvergeRefused { host: _, reason: _ } => false
+        gunbc.runner_slot_provision.RunnerSlotConvergePlanned { host: _, plan: p } =>
+          gunbc.runner_slot_provision.runner_slot_provision_has_width_increase(plan: p)
+            && gunbc.membership_reconcile.membership_added_count(plan: p.membership) == (srv1_runner_host_deploy.runner_count - 2)
+        gunbc.runner_slot_provision.RunnerSlotConvergeRefused { host: _, reason: _ } => false
       }
   }
 }
@@ -232,10 +233,10 @@ test fn an_observed_host_plans_the_missing_slots() -> Bool {
 // act on it.
 test fn every_enrolled_host_has_a_deploy_row() -> Bool {
   all(
-    [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
-    h => match runner_host_deploy_for(host: h) {
-      RunnerHostDeployFound { deploy: d } => (d.host_label as String) == (h as String)
-      RunnerHostDeployUnmodeled { host: _ } => false
+    [gunbc.fleet_intent_network.operator_host_srv1, gunbc.fleet_intent_network.operator_host_srv2, gunbc.fleet_intent_network.operator_host_srv3, gunbc.fleet_intent_network.operator_host_srv4],
+    h => match gunbc.runner_host_deploy.runner_host_deploy_for(host: h) {
+      gunbc.runner_host_deploy.RunnerHostDeployFound { deploy: d } => (d.host_label as String) == (h as String)
+      gunbc.runner_host_deploy.RunnerHostDeployUnmodeled { host: _ } => false
     }
   )
 }
@@ -243,9 +244,9 @@ test fn every_enrolled_host_has_a_deploy_row() -> Bool {
 // AND AN UNMODELED HOST REFUSES RATHER THAN BORROWING A NEIGHBOUR'S ROW -- the arm that stops a
 // fifth machine being provisioned against srv4's ssh_target and slot count.
 test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
-  match runner_host_deploy_for(host: "srv-does-not-exist" as HostIdentity) {
-    RunnerHostDeployUnmodeled { host: h } => (h as String) == "srv-does-not-exist"
-    RunnerHostDeployFound { deploy: _ } => false
+  match gunbc.runner_host_deploy.runner_host_deploy_for(host: "srv-does-not-exist" as HostIdentity) {
+    gunbc.runner_host_deploy.RunnerHostDeployUnmodeled { host: h } => (h as String) == "srv-does-not-exist"
+    gunbc.runner_host_deploy.RunnerHostDeployFound { deploy: _ } => false
   }
 }
 
@@ -264,11 +265,12 @@ test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
 // memory admission fails here -- and it does not collapse into f(x) == f(x).
 test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
   all(
-    fleet_runner_host_deploys,
-    d => d.runner_count <= declared_runner_count_for(host: d.host_label as HostIdentity)
+    gunbc.runner_host_deploy.fleet_runner_host_deploys,
+    d => d.runner_count <= gunbc.fleet_host_budget.declared_runner_count_for(host: d.host_label as HostIdentity)
       && d.runner_count > 0
   )
 }
+
 
 // --- the fabric carve reaches the provisioning target --------------------------------------------
 
@@ -280,7 +282,7 @@ test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
 // refusal anywhere. The width says how many slots exist; it does not say what they are for.
 test fn the_fabric_slot_is_not_a_provisioning_target() -> Bool {
   let names = map(
-    desired_runner_slot_members(deploy: srv3_runner_host_deploy),
+    gunbc.runner_slot_provision.desired_runner_slot_members(deploy: gunbc.runner_host_deploy.srv3_runner_host_deploy),
     m => runner_slot_member_key(m: m) as String,
   )
   (any(names, n => n == "srv3-06") == false)
@@ -292,11 +294,11 @@ test fn the_fabric_slot_is_not_a_provisioning_target() -> Bool {
 // that is simply too small. srv3 gives up exactly one slot to the fabric; every other host carries
 // no fabric member and loses nothing.
 test fn only_the_fabric_host_loses_a_provisioning_target() -> Bool {
-  list_length(items: desired_runner_slot_members(deploy: srv3_runner_host_deploy))
-    == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
-    && host_fabric_slot_count(host: operator_host_srv3) == 1
-    && list_length(items: desired_runner_slot_members(deploy: srv4_runner_host_deploy))
-         == gunbc_runner_slots_per_host(host: operator_host_srv4)
-    && list_length(items: desired_runner_slot_members(deploy: srv1_runner_host_deploy))
-         == gunbc_runner_slots_per_host(host: operator_host_srv1)
+  std.types.list_length(items: gunbc.runner_slot_provision.desired_runner_slot_members(deploy: gunbc.runner_host_deploy.srv3_runner_host_deploy))
+    == gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: gunbc.fleet_intent_network.operator_host_srv3) - 1
+    && gunbc.runner_slot_allocation.host_fabric_slot_count(host: gunbc.fleet_intent_network.operator_host_srv3) == 1
+    && std.types.list_length(items: gunbc.runner_slot_provision.desired_runner_slot_members(deploy: gunbc.runner_host_deploy.srv4_runner_host_deploy))
+         == gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: gunbc.fleet_intent_network.operator_host_srv4)
+    && std.types.list_length(items: gunbc.runner_slot_provision.desired_runner_slot_members(deploy: gunbc.runner_host_deploy.srv1_runner_host_deploy))
+         == gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: gunbc.fleet_intent_network.operator_host_srv1)
 }

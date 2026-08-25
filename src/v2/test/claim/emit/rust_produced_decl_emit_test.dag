@@ -1,40 +1,40 @@
 module v2.test.emit.rust_produced_decl_emit
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data rust_produced_add_golden: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 data rust_produced_add2_golden: String = "fn add2(x: i32, y: i32) -> i32 { x + y }"
 
 fn rust_produced_decl_text(fn_name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<String> {
-  match table_fixture_add_decl_node(fn_name: fn_name) {
-    Accepted { value: decl, diagnostics: _ } =>
-      match emit_produced_decl(decl: decl, target: rust_target_model()) {
-        Accepted { value: medium, diagnostics: _ } =>
+  match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_decl_node(fn_name: fn_name) {
+    v2.std.diagnostic.Accepted { value: decl, diagnostics: _ } =>
+      match v2.compiler.emit_produced.emit_produced_decl(decl: decl, target: v2.extdeps.languages.rust.rust_target_model()) {
+        v2.std.diagnostic.Accepted { value: medium, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn rust_produced_decl_matches(fn_name: v2.std.node.Symbol, golden: String) -> v2.std.logic.Bool {
+fn rust_produced_decl_matches(fn_name: v2.std.node.Symbol, golden: String) -> Bool {
   match rust_produced_decl_text(fn_name: fn_name) {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_produced_decl_emits_named_add() -> v2.std.logic.Bool {
+test fn rust_produced_decl_emits_named_add() -> Bool {
   rust_produced_decl_matches(fn_name: ^rust_binding_fn_add, golden: rust_produced_add_golden)
 }
 
-test fn rust_produced_decl_emits_named_add2() -> v2.std.logic.Bool {
+test fn rust_produced_decl_emits_named_add2() -> Bool {
   rust_produced_decl_matches(fn_name: ^rust_binding_fn_add2, golden: rust_produced_add2_golden)
 }
 
-test fn rust_produced_decl_name_discriminates() -> v2.std.logic.Bool {
+test fn rust_produced_decl_name_discriminates() -> Bool {
   rust_produced_decl_emits_named_add()
     && rust_produced_decl_emits_named_add2()
     && !rust_produced_decl_matches(fn_name: ^rust_binding_fn_add2, golden: rust_produced_add_golden)

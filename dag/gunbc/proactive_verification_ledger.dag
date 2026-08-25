@@ -55,7 +55,7 @@ data proactive_verification_spine_rows: List<SpineVerificationLedgerRow> = [
     title: "Whole-corpus cold v1-vs-v2 witness parity (falsifier predict-only batch)",
     execution: FalsifierPredictOnlyBatch,
     disposition: BlockedOnCiFloorCutover,
-    dissolution: unbound_dissolution(description: "ci_floor_cutover; falsifier cold sweep records zero unexplained divergence rows")
+    dissolution: std.dissolution.unbound_dissolution(description: "ci_floor_cutover; falsifier cold sweep records zero unexplained divergence rows")
   },
   SpineVerificationLedgerRow {
     id: ^compile_clean_parity,
@@ -63,7 +63,7 @@ data proactive_verification_spine_rows: List<SpineVerificationLedgerRow> = [
     title: "Compile-clean parity (whole-tree --target dag gate)",
     execution: CompileCleanGate,
     disposition: BlockedOnCiFloorCutover,
-    dissolution: unbound_dissolution(description: "ci_floor_cutover; whole-tree compile-clean gate green on v2-emitted execution path")
+    dissolution: std.dissolution.unbound_dissolution(description: "ci_floor_cutover; whole-tree compile-clean gate green on v2-emitted execution path")
   },
   SpineVerificationLedgerRow {
     id: ^regen_behavioral_fixed_point,
@@ -71,7 +71,7 @@ data proactive_verification_spine_rows: List<SpineVerificationLedgerRow> = [
     title: "Regen behavioral fixed point (claim_executor --required-regen fold)",
     execution: RequiredRegenGate,
     disposition: BlockedOnCiFloorCutover,
-    dissolution: unbound_dissolution(description: "required_regen fold green by execution; first_generation_equal and fixed_point_equal both true")
+    dissolution: std.dissolution.unbound_dissolution(description: "required_regen fold green by execution; first_generation_equal and fixed_point_equal both true")
   }
 ]
 
@@ -83,7 +83,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
       function: "emit_host_add_equals_eval_holds"
     },
-    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
+    dissolution: std.dissolution.unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_match,
@@ -92,7 +92,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
       function: "emit_host_match_equals_eval_holds"
     },
-    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
+    dissolution: std.dissolution.unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_loop,
@@ -101,7 +101,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
       function: "emit_host_loop_equals_eval_holds"
     },
-    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
+    dissolution: std.dissolution.unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_classical_not_ingested,
@@ -110,7 +110,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",
       function: "emit_host_classical_not_ingested_equals_eval_holds"
     },
-    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
+    dissolution: std.dissolution.unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_field_access,
@@ -119,7 +119,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
       function: "emit_host_field_access_equals_eval_holds"
     },
-    dissolution: unbound_dissolution(description: "explicit_witness_admission row deletes on green (swift-stag-662)")
+    dissolution: std.dissolution.unbound_dissolution(description: "explicit_witness_admission row deletes on green (swift-stag-662)")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_complement,
@@ -128,7 +128,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag",
       function: "emit_host_complement_equals_eval_holds"
     },
-    dissolution: unbound_dissolution(description: "explicit_witness_admission row deletes on green (swift-stag-662)")
+    dissolution: std.dissolution.unbound_dissolution(description: "explicit_witness_admission row deletes on green (swift-stag-662)")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_meet_join,
@@ -137,7 +137,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
       function: "emit_host_meet_equals_eval_holds"
     },
-    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
+    dissolution: std.dissolution.unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_join,
@@ -146,7 +146,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
       function: "emit_host_join_equals_eval_holds"
     },
-    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
+    dissolution: std.dissolution.unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_variant_construct,
@@ -155,7 +155,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
       function: "emit_host_variant_construct_equals_eval_holds"
     },
-    dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
+    dissolution: std.dissolution.unbound_dissolution(description: "ledger all-green at v1_delete")
   },
   FamilyVerificationLedgerRow {
     id: ^family_equals_fold_closure,
@@ -164,7 +164,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
       entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
       function: "emit_host_fold_closure_equals_eval_holds"
     },
-    dissolution: unbound_dissolution(description: "explicit_witness_admission row deletes on green (jolly-dove-581)")
+    dissolution: std.dissolution.unbound_dissolution(description: "explicit_witness_admission row deletes on green (jolly-dove-581)")
   }
 ]
 
@@ -181,16 +181,16 @@ fn schedule_contains_entry(
   entry: String,
   function: String
 ) -> Bool {
-  any(
+  v2.std.algebra.any(
     xs: xs,
-    predicate: fn(w) { gunbc.proactive_verification_ledger.schedule_row_matches(w: w, entry: entry, function: function) }
+    predicate: fn(w) { schedule_row_matches(w: w, entry: entry, function: function) }
   )
 }
 
 fn family_row_has_live_probe_red(row: FamilyVerificationLedgerRow) -> Bool {
   match row.execution {
     ClaimWitness { entry: e, function: f } =>
-      gunbc.proactive_verification_ledger.schedule_contains_entry(xs: gunbc.ci_layer_roots.known_red_probe_roster(), entry: e, function: f)
+      schedule_contains_entry(xs: gunbc.ci_layer_roots.known_red_probe_roster(), entry: e, function: f)
     FalsifierPredictOnlyBatch => false
     CompileCleanGate => false
     RequiredRegenGate => false
@@ -214,11 +214,11 @@ fn family_row_disposition_is(row: FamilyVerificationLedgerRow, d: VerificationDi
 }
 
 fn ledger_spine_row_count() -> Int {
-  length(xs: proactive_verification_spine_rows)
+  v2.std.algebra.length(xs: proactive_verification_spine_rows)
 }
 
 fn ledger_family_row_count() -> Int {
-  length(xs: proactive_verification_family_rows)
+  v2.std.algebra.length(xs: proactive_verification_family_rows)
 }
 
 fn ledger_total_row_count() -> Int {
@@ -226,21 +226,21 @@ fn ledger_total_row_count() -> Int {
 }
 
 fn ledger_executable_now_count() -> Int {
-  length(xs: filter(
+  v2.std.algebra.length(xs: v2.std.algebra.filter(
     xs: proactive_verification_family_rows,
     predicate: fn(row) { family_row_disposition_is(row: row, d: ExecutableNow) }
   ))
 }
 
 fn ledger_known_red_count() -> Int {
-  length(xs: filter(
+  v2.std.algebra.length(xs: v2.std.algebra.filter(
     xs: proactive_verification_family_rows,
     predicate: fn(row) { family_row_disposition_is(row: row, d: KnownRedPendingUnquarantine) }
   ))
 }
 
 fn ledger_blocked_count() -> Int {
-  length(xs: filter(
+  v2.std.algebra.length(xs: v2.std.algebra.filter(
     xs: proactive_verification_spine_rows,
     predicate: fn(row) { spine_row_disposition_is(row: row, d: BlockedOnCiFloorCutover) }
   ))
@@ -265,7 +265,7 @@ fn ledger_all_spine_kinds_present() -> Bool {
 }
 
 fn ledger_executable_family_rows() -> List<FamilyVerificationLedgerRow> {
-  filter(
+  v2.std.algebra.filter(
     xs: proactive_verification_family_rows,
     predicate: fn(row) { family_row_disposition_is(row: row, d: ExecutableNow) }
   )

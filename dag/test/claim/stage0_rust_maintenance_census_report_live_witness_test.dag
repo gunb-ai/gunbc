@@ -1,13 +1,13 @@
 module test.claim.stage0_rust_maintenance_census_report_live_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data maintenance_census_report_live_split_note: String = "SPLIT OUT OF stage0_rust_maintenance_census_report_witness_test.dag SO THE HERMETIC DISCOVERY CORPUS CAN RUN (found 2026-08-06, PR #7894 CI red, run 31069215347). maintenance_census_report_positive_control_derives_from_current_head calls current_rust_maintenance_census_report(), which calls current_stage0_rust_source_observation() and therefore reaches git.Inspect.HeadCommit without mock_response -- the same class stage0_rust_host_observation.dag's host_observation_invocation_note and this repo's stage0_rust_host_observation_live_witness_test.dag / roadmap_receipt_continuity_live_witness_test.dag exclusion rows already document: a refusing hermetic discovery member fails its whole batch (CI receipt: batch 3 discovery-corpus, 7298-row corpus). Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/stage0_rust_maintenance_census_report_live_witness_test.dag --functions maintenance_census_report_positive_control_derives_from_current_head"
 
 test fn maintenance_census_report_positive_control_derives_from_current_head() -> Bool {
-  match current_rust_maintenance_census_report() {
-    RustMaintenanceCensusDerived {
+  match gunbc.stage0_rust_maintenance_census_report.current_rust_maintenance_census_report() {
+    gunbc.stage0_rust_maintenance_census_report.RustMaintenanceCensusDerived {
       pinned_repository_revision: revision,
       tracked_rust_paths: tracked_rust_paths,
       generated_paths: generated_paths,
@@ -20,7 +20,7 @@ test fn maintenance_census_report_positive_control_derives_from_current_head() -
       duplicate_disposition_paths: duplicate_disposition_paths,
       cross_axis_overlap_paths: cross_axis_overlap_paths,
       role_without_disposition_paths: role_without_disposition_paths
-    } => revision != "" && length(xs: tracked_rust_paths) > 0
-    RustMaintenanceCensusObservationRefused { detail: detail } => false
+    } => revision != "" && v2.std.algebra.length(xs: tracked_rust_paths) > 0
+    gunbc.stage0_rust_maintenance_census_report.RustMaintenanceCensusObservationRefused { detail: detail } => false
   }
 }

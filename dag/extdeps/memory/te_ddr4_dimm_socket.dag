@@ -6,7 +6,7 @@ module extdeps.memory.te_ddr4_dimm_socket
 // the representative base product part number for that product line.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Specification+Or+Standard%7F114-115012%7FA%7Fpdf%7FEnglish%7FENG_SS_114-115012_A.pdf%7F2308107-5"
   }
 }
@@ -15,7 +15,7 @@ data te_ddr4_dimm_socket_note: String = "A PRODUCT FAMILY, NOT A SELECTED PART, 
 
 type DimmSocketCatalogRow {
   base_part_number: std.types.NonEmptyStr
-  vendor: Vendor<extdeps.hardware.Hardware>
+  vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   position_count: std.nat.Nat
   contact_pitch: std.measure.Micrometer
   attachment: extdeps.land_pattern.types.BoardAttachmentStyle
@@ -26,8 +26,8 @@ data ddr4_dimm_socket_solder_tail_288_family: DimmSocketCatalogRow = DimmSocketC
   base_part_number: "2308107",
   vendor: extdeps.vendor.tyco_electronics.tyco_electronics,
   position_count: 288,
-  contact_pitch: micrometer(count: 800),
-  attachment: ThroughHoleSolderTail,
+  contact_pitch: std.measure.micrometer(count: 800),
+  attachment: extdeps.land_pattern.types.ThroughHoleSolderTail,
   board_pattern: extdeps.land_pattern.types.MountingPatternObligation {
     what_is_missing: "the plated-hole pattern this socket requires, which application specification 114-115012 publishes as Figure 3 and which the per-part customer drawing governs where the two conflict. No plated-hole geometry is transcribed here, and this repository carries no plated-hole geometry carrier for one to inhabit",
   },
@@ -38,9 +38,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.memory.te_ddr4_dimm_socket",
       decl_name: "ddr4_dimm_socket_solder_tail_288_family",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.memory.te_ddr4_dimm_socket.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

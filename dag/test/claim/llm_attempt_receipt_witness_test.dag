@@ -1,7 +1,7 @@
 module test.claim.llm_attempt_receipt_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data fixture_substrate: gunbc.econ.llm_attempt_receipt.SubstrateIdentity = gunbc.econ.llm_attempt_receipt.SubstrateIdentity {
   compiler_revision: "4b7a13d73b1" as std.types.NonEmptyStr,
@@ -14,9 +14,9 @@ data fixture_concurrency: gunbc.econ.llm_attempt_receipt.ConcurrencyObservation 
 }
 
 data fixture_usage: gunbc.econ.llm_attempt_receipt.LlmTokenUsage = gunbc.econ.llm_attempt_receipt.LlmTokenUsage {
-  input: token_count(count: 32000),
-  cached_input: token_count(count: 30000),
-  output: token_count(count: 1000),
+  input: std.measure.token_count(count: 32000),
+  cached_input: std.measure.token_count(count: 30000),
+  output: std.measure.token_count(count: 1000),
 }
 
 fn review_receipt(
@@ -27,7 +27,7 @@ fn review_receipt(
 ) -> gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt {
   gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt {
     attempt_identity: identity,
-    task_class: DagReview,
+    task_class: gunbc.econ.llm_attempt_receipt.DagReview,
     prompt_policy_identity: "review-policy-v1" as std.types.NonEmptyStr,
     context_policy_identity: "closure-context-v1" as std.types.NonEmptyStr,
     substrate: fixture_substrate,
@@ -37,7 +37,7 @@ fn review_receipt(
     serving_runtime_identity: "vllm-arm64-cuda" as std.types.NonEmptyStr,
     machine_opportunity_identity: "dgx-spark-01" as std.types.NonEmptyStr,
     concurrency: fixture_concurrency,
-    prefix_cache: gunbc.econ.llm_attempt_receipt.PrefixCacheHit { reused: token_count(count: 30000) },
+    prefix_cache: gunbc.econ.llm_attempt_receipt.PrefixCacheHit { reused: std.measure.token_count(count: 30000) },
     usage: usage,
     durations: durations,
     wall_energy: none,
@@ -46,9 +46,9 @@ fn review_receipt(
 }
 
 data one_second_decode: gunbc.econ.llm_attempt_receipt.AttemptPhaseDurations = gunbc.econ.llm_attempt_receipt.AttemptPhaseDurations {
-  queue: Present { value: nanosecond(count: 500000000) },
-  prefill: Present { value: nanosecond(count: 54000000000) },
-  decode: Present { value: nanosecond(count: 1000000000) },
+  queue: Present { value: std.measure.nanosecond(count: 500000000) },
+  prefill: Present { value: std.measure.nanosecond(count: 54000000000) },
+  decode: Present { value: std.measure.nanosecond(count: 1000000000) },
 }
 
 data decode_unobserved: gunbc.econ.llm_attempt_receipt.AttemptPhaseDurations = gunbc.econ.llm_attempt_receipt.AttemptPhaseDurations {
@@ -60,14 +60,14 @@ data decode_unobserved: gunbc.econ.llm_attempt_receipt.AttemptPhaseDurations = g
 data zero_decode: gunbc.econ.llm_attempt_receipt.AttemptPhaseDurations = gunbc.econ.llm_attempt_receipt.AttemptPhaseDurations {
   queue: none,
   prefill: none,
-  decode: Present { value: nanosecond(count: 0) },
+  decode: Present { value: std.measure.nanosecond(count: 0) },
 }
 
 data accepted_attempt: gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt = review_receipt(
   identity: "attempt-accepted" as std.types.NonEmptyStr,
   usage: gunbc.econ.llm_attempt_receipt.LlmUsageObserved { usage: fixture_usage },
   durations: one_second_decode,
-  disposition: ReviewAccepted,
+  disposition: gunbc.econ.llm_attempt_receipt.ReviewAccepted,
 )
 
 data rejected_attempt: gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt = review_receipt(
@@ -88,21 +88,21 @@ data usage_unobserved_attempt: gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt 
   identity: "attempt-usage-unobserved" as std.types.NonEmptyStr,
   usage: gunbc.econ.llm_attempt_receipt.LlmUsageUnobserved { reason: "provider reported no usage block" as std.types.NonEmptyStr },
   durations: one_second_decode,
-  disposition: ReviewAccepted,
+  disposition: gunbc.econ.llm_attempt_receipt.ReviewAccepted,
 )
 
 data decode_unobserved_attempt: gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt = review_receipt(
   identity: "attempt-decode-unobserved" as std.types.NonEmptyStr,
   usage: gunbc.econ.llm_attempt_receipt.LlmUsageObserved { usage: fixture_usage },
   durations: decode_unobserved,
-  disposition: ReviewAccepted,
+  disposition: gunbc.econ.llm_attempt_receipt.ReviewAccepted,
 )
 
 data zero_decode_attempt: gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt = review_receipt(
   identity: "attempt-zero-decode" as std.types.NonEmptyStr,
   usage: gunbc.econ.llm_attempt_receipt.LlmUsageObserved { usage: fixture_usage },
   durations: zero_decode,
-  disposition: ReviewAccepted,
+  disposition: gunbc.econ.llm_attempt_receipt.ReviewAccepted,
 )
 
 data mixed_roster: List<gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt> = [
@@ -113,92 +113,92 @@ data mixed_roster: List<gunbc.econ.llm_attempt_receipt.LlmAttemptReceipt> = [
 ]
 
 test fn decode_throughput_derives_from_counts_and_duration() -> Bool {
-  match derive_decode_throughput(receipt: accepted_attempt) {
-    DecodeThroughputDerived { throughput: t } => t.num == 1000 && t.denom == 1000000000
-    DecodeThroughputRefused { cause: _ } => false
+  match gunbc.econ.llm_attempt_receipt.derive_decode_throughput(receipt: accepted_attempt) {
+    gunbc.econ.llm_attempt_receipt.DecodeThroughputDerived { throughput: t } => t.num == 1000 && t.denom == 1000000000
+    gunbc.econ.llm_attempt_receipt.DecodeThroughputRefused { cause: _ } => false
   }
 }
 
 test fn decode_throughput_floor_projects_tokens_per_second() -> Bool {
-  match derive_decode_throughput(receipt: accepted_attempt) {
-    DecodeThroughputDerived { throughput: t } =>
-      match throughput_per_second_floor(t: t) {
+  match gunbc.econ.llm_attempt_receipt.derive_decode_throughput(receipt: accepted_attempt) {
+    gunbc.econ.llm_attempt_receipt.DecodeThroughputDerived { throughput: t } =>
+      match gunbc.econ.llm_attempt_receipt.throughput_per_second_floor(t: t) {
         Present { value: v } => v == 1000
         none => false
       }
-    DecodeThroughputRefused { cause: _ } => false
+    gunbc.econ.llm_attempt_receipt.DecodeThroughputRefused { cause: _ } => false
   }
 }
 
 test fn unobserved_usage_refuses_throughput_without_refusing_the_attempt() -> Bool {
-  let refused = match derive_decode_throughput(receipt: usage_unobserved_attempt) {
-    DecodeThroughputRefused { cause: ThroughputUsageUnobserved } => true
+  let refused = match gunbc.econ.llm_attempt_receipt.derive_decode_throughput(receipt: usage_unobserved_attempt) {
+    gunbc.econ.llm_attempt_receipt.DecodeThroughputRefused { cause: gunbc.econ.llm_attempt_receipt.ThroughputUsageUnobserved } => true
     _ => false
   }
-  refused && attempt_is_accepted(d: usage_unobserved_attempt.disposition)
+  refused && gunbc.econ.llm_attempt_receipt.attempt_is_accepted(d: usage_unobserved_attempt.disposition)
 }
 
 test fn absent_decode_duration_refuses_rather_than_fabricating() -> Bool {
-  match derive_decode_throughput(receipt: decode_unobserved_attempt) {
-    DecodeThroughputRefused { cause: DecodeDurationUnobserved } => true
+  match gunbc.econ.llm_attempt_receipt.derive_decode_throughput(receipt: decode_unobserved_attempt) {
+    gunbc.econ.llm_attempt_receipt.DecodeThroughputRefused { cause: gunbc.econ.llm_attempt_receipt.DecodeDurationUnobserved } => true
     _ => false
   }
 }
 
 test fn zero_decode_duration_refuses_rather_than_fabricating() -> Bool {
-  match derive_decode_throughput(receipt: zero_decode_attempt) {
-    DecodeThroughputRefused { cause: ZeroDecodeDuration } => true
+  match gunbc.econ.llm_attempt_receipt.derive_decode_throughput(receipt: zero_decode_attempt) {
+    gunbc.econ.llm_attempt_receipt.DecodeThroughputRefused { cause: gunbc.econ.llm_attempt_receipt.ZeroDecodeDuration } => true
     _ => false
   }
 }
 
 test fn zero_denominator_floor_projection_returns_none() -> Bool {
-  match throughput_per_second_floor(t: std.algebra.FieldOfFractions { num: 1000, denom: 0 }) {
+  match gunbc.econ.llm_attempt_receipt.throughput_per_second_floor(t: std.algebra.FieldOfFractions { num: 1000, denom: 0 }) {
     none => true
     Present { value: _ } => false
   }
 }
 
 test fn goodput_counts_accepted_attempts_only() -> Bool {
-  accepted_attempt_count(receipts: mixed_roster) == 2
-    && escalated_attempt_count(receipts: mixed_roster) == 1
+  gunbc.econ.llm_attempt_receipt.accepted_attempt_count(receipts: mixed_roster) == 2
+    && gunbc.econ.llm_attempt_receipt.escalated_attempt_count(receipts: mixed_roster) == 1
 }
 
 test fn accepted_goodput_derives_over_the_observation_window() -> Bool {
-  match derive_accepted_goodput(receipts: mixed_roster, window: nanosecond(count: 4000000000)) {
-    AcceptedGoodputDerived { goodput: g } => g.num == 2 && g.denom == 4000000000
-    AcceptedGoodputRefused { cause: _ } => false
+  match gunbc.econ.llm_attempt_receipt.derive_accepted_goodput(receipts: mixed_roster, window: std.measure.nanosecond(count: 4000000000)) {
+    gunbc.econ.llm_attempt_receipt.AcceptedGoodputDerived { goodput: g } => g.num == 2 && g.denom == 4000000000
+    gunbc.econ.llm_attempt_receipt.AcceptedGoodputRefused { cause: _ } => false
   }
 }
 
 test fn empty_roster_refuses_goodput() -> Bool {
-  match derive_accepted_goodput(receipts: [], window: nanosecond(count: 4000000000)) {
-    AcceptedGoodputRefused { cause: EmptyAttemptRoster } => true
+  match gunbc.econ.llm_attempt_receipt.derive_accepted_goodput(receipts: [], window: std.measure.nanosecond(count: 4000000000)) {
+    gunbc.econ.llm_attempt_receipt.AcceptedGoodputRefused { cause: gunbc.econ.llm_attempt_receipt.EmptyAttemptRoster } => true
     _ => false
   }
 }
 
 test fn zero_window_refuses_goodput() -> Bool {
-  match derive_accepted_goodput(receipts: mixed_roster, window: nanosecond(count: 0)) {
-    AcceptedGoodputRefused { cause: ZeroObservationWindow } => true
+  match gunbc.econ.llm_attempt_receipt.derive_accepted_goodput(receipts: mixed_roster, window: std.measure.nanosecond(count: 0)) {
+    gunbc.econ.llm_attempt_receipt.AcceptedGoodputRefused { cause: gunbc.econ.llm_attempt_receipt.ZeroObservationWindow } => true
     _ => false
   }
 }
 
 test fn escalation_fraction_is_exact_over_the_roster() -> Bool {
-  match derive_escalation_fraction(receipts: mixed_roster) {
-    EscalationFractionDerived { fraction: f } => f.num == 1 && f.denom == 4
-    EscalationFractionRefused { cause: _ } => false
+  match gunbc.econ.llm_attempt_receipt.derive_escalation_fraction(receipts: mixed_roster) {
+    gunbc.econ.llm_attempt_receipt.EscalationFractionDerived { fraction: f } => f.num == 1 && f.denom == 4
+    gunbc.econ.llm_attempt_receipt.EscalationFractionRefused { cause: _ } => false
   }
 }
 
 test fn empty_roster_refuses_escalation_fraction() -> Bool {
-  match derive_escalation_fraction(receipts: []) {
-    EscalationFractionRefused { cause: EmptyAttemptRoster } => true
+  match gunbc.econ.llm_attempt_receipt.derive_escalation_fraction(receipts: []) {
+    gunbc.econ.llm_attempt_receipt.EscalationFractionRefused { cause: gunbc.econ.llm_attempt_receipt.EmptyAttemptRoster } => true
     _ => false
   }
 }
 
 test fn token_count_round_trips_its_magnitude() -> Bool {
-  token_count_value(t: token_count(count: 32000)) == 32000
+  std.measure.token_count_value(t: std.measure.token_count(count: 32000)) == 32000
 }

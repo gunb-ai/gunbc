@@ -3,7 +3,7 @@ module extdeps.tcgplayer.store
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.tcgplayer.com/reference/stores_updatestoreskuprice-1"
   }
 }
@@ -45,10 +45,10 @@ service tcgplayer.Store {
     }
     response {
       200 => StoreInventoryUpdateResponse
-      401 => TcgplayerErrorEnvelope
-      403 => TcgplayerErrorEnvelope
-      404 => TcgplayerErrorEnvelope
-      5xx => TcgplayerErrorEnvelope
+      401 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      403 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      404 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      5xx => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
     }
   }
 
@@ -70,16 +70,16 @@ service tcgplayer.Store {
     }
     response {
       200 => StoreInventoryUpdateResponse
-      401 => TcgplayerErrorEnvelope
-      403 => TcgplayerErrorEnvelope
-      404 => TcgplayerErrorEnvelope
-      5xx => TcgplayerErrorEnvelope
+      401 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      403 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      404 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      5xx => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
     }
   }
 }
 
 data tcgplayer_store_money_measure_grounding_disposition: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.tcgplayer.store",
     decl_name: "UpdateSkuPrice",

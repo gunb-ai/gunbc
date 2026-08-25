@@ -1,58 +1,56 @@
 module test.claim.replacement_cut_witness
 
-// Arrived on main carrying explicit imports, stripped on merge into the
-// namespace cut. The rationale they carried -- that a module this new is in
-// nobody else's closure, so bare references would not bind -- is exactly the
-// pool-membership coincidence this lane removes: the closure is now derived
-// from the references themselves, so a reference IS the dependency edge.
+// Imported from the definer rather than left as bare references, per the
+// accidental-coverage class the import-strip diagnosis names: a module this
+// new is in nobody else's closure, so bare references would not bind.
 
 fn nes(s: String) -> std.types.NonEmptyStr { s as std.types.NonEmptyStr }
 
 fn covered_consumer() -> gunbc.replacement_cut.BoundaryConsumer {
   gunbc.replacement_cut.BoundaryConsumer {
-    consumer: test.claim.replacement_cut_witness.nes(s: "surviving external interface"),
+    consumer: nes(s: "surviving external interface"),
     disposition: gunbc.replacement_cut.RetainSameContract {
-      justification: test.claim.replacement_cut_witness.nes(s: "supported public surface"),
-      coverage: gunbc.replacement_cut.Covered { by: test.claim.replacement_cut_witness.nes(s: "new fold root") },
+      justification: nes(s: "supported public surface"),
+      coverage: gunbc.replacement_cut.Covered { by: nes(s: "new fold root") },
     },
   }
 }
 
 fn open_consumer() -> gunbc.replacement_cut.BoundaryConsumer {
   gunbc.replacement_cut.BoundaryConsumer {
-    consumer: test.claim.replacement_cut_witness.nes(s: "surviving invariant consumer"),
+    consumer: nes(s: "surviving invariant consumer"),
     disposition: gunbc.replacement_cut.RetainChangedContract {
-      terminal_contract: test.claim.replacement_cut_witness.nes(s: "narrowed terminal contract"),
-      justification: test.claim.replacement_cut_witness.nes(s: "invariant survives with narrower surface"),
+      terminal_contract: nes(s: "narrowed terminal contract"),
+      justification: nes(s: "invariant survives with narrower surface"),
       coverage: gunbc.replacement_cut.CoverageOpen,
     },
   }
 }
 
 fn undecided_consumer() -> gunbc.replacement_cut.BoundaryConsumer {
-  gunbc.replacement_cut.BoundaryConsumer { consumer: test.claim.replacement_cut_witness.nes(s: "undispositioned caller"), disposition: gunbc.replacement_cut.Undecided }
+  gunbc.replacement_cut.BoundaryConsumer { consumer: nes(s: "undispositioned caller"), disposition: gunbc.replacement_cut.Undecided }
 }
 
 fn retired_consumer() -> gunbc.replacement_cut.BoundaryConsumer {
   gunbc.replacement_cut.BoundaryConsumer {
-    consumer: test.claim.replacement_cut_witness.nes(s: "workaround built to compensate for x"),
-    disposition: gunbc.replacement_cut.Retire { reason: test.claim.replacement_cut_witness.nes(s: "only justification was x itself") },
+    consumer: nes(s: "workaround built to compensate for x"),
+    disposition: gunbc.replacement_cut.Retire { reason: nes(s: "only justification was x itself") },
   }
 }
 
 fn replaced_consumer() -> gunbc.replacement_cut.BoundaryConsumer {
   gunbc.replacement_cut.BoundaryConsumer {
-    consumer: test.claim.replacement_cut_witness.nes(s: "old dispatch client"),
-    disposition: gunbc.replacement_cut.ReplacedByY { new_authority: test.claim.replacement_cut_witness.nes(s: "y boundary authority") },
+    consumer: nes(s: "old dispatch client"),
+    disposition: gunbc.replacement_cut.ReplacedByY { new_authority: nes(s: "y boundary authority") },
   }
 }
 
 fn evidence_consumer() -> gunbc.replacement_cut.BoundaryConsumer {
   gunbc.replacement_cut.BoundaryConsumer {
-    consumer: test.claim.replacement_cut_witness.nes(s: "discriminating refusal witness"),
+    consumer: nes(s: "discriminating refusal witness"),
     disposition: gunbc.replacement_cut.EvidenceOnly {
-      surviving_claim: test.claim.replacement_cut_witness.nes(s: "refusal y still claims"),
-      reenrolled_witness: test.claim.replacement_cut_witness.nes(s: "witness re-enrolled against y"),
+      surviving_claim: nes(s: "refusal y still claims"),
+      reenrolled_witness: nes(s: "witness re-enrolled against y"),
     },
   }
 }
@@ -60,13 +58,13 @@ fn evidence_consumer() -> gunbc.replacement_cut.BoundaryConsumer {
 fn dispositioned_evidence() -> List<gunbc.replacement_cut.EvidenceDisposition> {
   [
     gunbc.replacement_cut.ReenrollAgainstY {
-      evidence: test.claim.replacement_cut_witness.nes(s: "surviving discriminating witness"),
-      surviving_claim: test.claim.replacement_cut_witness.nes(s: "refusal y still claims"),
+      evidence: nes(s: "surviving discriminating witness"),
+      surviving_claim: nes(s: "refusal y still claims"),
     },
     gunbc.replacement_cut.RetireEvidence {
-      evidence: test.claim.replacement_cut_witness.nes(s: "witness whose only subject was retired behavior"),
-      retired_subject: test.claim.replacement_cut_witness.nes(s: "behavior deliberately rejected by y"),
-      retirement_reason: test.claim.replacement_cut_witness.nes(s: "the subject claim is retired with the behavior"),
+      evidence: nes(s: "witness whose only subject was retired behavior"),
+      retired_subject: nes(s: "behavior deliberately rejected by y"),
+      retirement_reason: nes(s: "the subject claim is retired with the behavior"),
     },
   ]
 }
@@ -75,7 +73,7 @@ fn typed_oracle() -> gunbc.replacement_cut.ExternalXAnswer {
   gunbc.replacement_cut.ExternalXRoles { roles: [gunbc.replacement_cut.ExternalDifferentialOracle, gunbc.replacement_cut.HistoricalMeasurementSource] }
 }
 
-fn two_region() -> List<std.types.NonEmptyStr> { [test.claim.replacement_cut_witness.nes(s: "x root module"), test.claim.replacement_cut_witness.nes(s: "x internal helper")] }
+fn two_region() -> List<std.types.NonEmptyStr> { [nes(s: "x root module"), nes(s: "x internal helper")] }
 
 fn cut_full(
   consumers: List<gunbc.replacement_cut.BoundaryConsumer>,
@@ -86,10 +84,10 @@ fn cut_full(
 ) -> gunbc.replacement_cut.ReplacementCut {
   gunbc.replacement_cut.ReplacementCut {
     identity: "cut-fixture" as gunbc.replacement_cut.ReplacementCutId,
-    old_root_consumer: test.claim.replacement_cut_witness.nes(s: "old floor step"),
-    subject: test.claim.replacement_cut_witness.nes(s: "exact subject population"),
-    contract: test.claim.replacement_cut_witness.nes(s: "complete contract including refusals"),
-    new_root: test.claim.replacement_cut_witness.nes(s: new_root),
+    old_root_consumer: nes(s: "old floor step"),
+    subject: nes(s: "exact subject population"),
+    contract: nes(s: "complete contract including refusals"),
+    new_root: nes(s: new_root),
     why_not_higher: gunbc.replacement_cut.OutermostBoundary,
     covered_region: region,
     boundary_census: gunbc.replacement_cut.ConsumersEnumerated { consumers: consumers },
@@ -108,26 +106,26 @@ fn cut_with(
 
 fn causes_of(admission: gunbc.replacement_cut.PlanAdmission) -> List<gunbc.replacement_cut.CutRefusalCause> {
   match admission {
-    PlanAdmitted { admitted: _ } => []
-    PlanRefused { causes: cs } => cs
+    gunbc.replacement_cut.PlanAdmitted { admitted: _ } => []
+    gunbc.replacement_cut.PlanRefused { causes: cs } => cs
   }
 }
 
 fn cause_matches(c: gunbc.replacement_cut.CutRefusalCause, tag: String, subject: String) -> Bool {
   match c {
-    UndispositionedConsumer { consumer: w } => tag == "undispositioned-consumer" && (w as String) == subject
-    UncoveredSurvivingConsumer { consumer: w } => tag == "uncovered-surviving" && (w as String) == subject
-    UndispositionedEvidence { evidence: w } => tag == "undispositioned-evidence" && (w as String) == subject
-    CoveredByOldRoot { consumer: w } => tag == "covered-by-old-root" && (w as String) == subject
-    ReplacementNamesOldRoot { consumer: w } => tag == "replacement-names-old-root" && (w as String) == subject
-    ConsumerDuplicated { consumer: w } => tag == "consumer-duplicated" && (w as String) == subject
-    EvidenceDuplicated { evidence: w } => tag == "evidence-duplicated" && (w as String) == subject
-    RegionMemberDuplicated { member: w } => tag == "region-member-duplicated" && (w as String) == subject
-    EnumeratedCensusEmpty => tag == "enumerated-census-empty" && subject == ""
-    ExternalRolesEnumeratedEmpty => tag == "external-roles-enumerated-empty" && subject == ""
-    EmptyCoveredRegion => tag == "empty-covered-region" && subject == ""
-    NewRootEqualsOldRoot => tag == "new-root-equals-old-root" && subject == ""
-    SelfReferentialDescent => tag == "self-referential-descent" && subject == ""
+    gunbc.replacement_cut.UndispositionedConsumer { consumer: w } => tag == "undispositioned-consumer" && (w as String) == subject
+    gunbc.replacement_cut.UncoveredSurvivingConsumer { consumer: w } => tag == "uncovered-surviving" && (w as String) == subject
+    gunbc.replacement_cut.UndispositionedEvidence { evidence: w } => tag == "undispositioned-evidence" && (w as String) == subject
+    gunbc.replacement_cut.CoveredByOldRoot { consumer: w } => tag == "covered-by-old-root" && (w as String) == subject
+    gunbc.replacement_cut.ReplacementNamesOldRoot { consumer: w } => tag == "replacement-names-old-root" && (w as String) == subject
+    gunbc.replacement_cut.ConsumerDuplicated { consumer: w } => tag == "consumer-duplicated" && (w as String) == subject
+    gunbc.replacement_cut.EvidenceDuplicated { evidence: w } => tag == "evidence-duplicated" && (w as String) == subject
+    gunbc.replacement_cut.RegionMemberDuplicated { member: w } => tag == "region-member-duplicated" && (w as String) == subject
+    gunbc.replacement_cut.EnumeratedCensusEmpty => tag == "enumerated-census-empty" && subject == ""
+    gunbc.replacement_cut.ExternalRolesEnumeratedEmpty => tag == "external-roles-enumerated-empty" && subject == ""
+    gunbc.replacement_cut.EmptyCoveredRegion => tag == "empty-covered-region" && subject == ""
+    gunbc.replacement_cut.NewRootEqualsOldRoot => tag == "new-root-equals-old-root" && subject == ""
+    gunbc.replacement_cut.SelfReferentialDescent => tag == "self-referential-descent" && subject == ""
   }
 }
 
@@ -137,15 +135,15 @@ fn causes_include(causes: List<gunbc.replacement_cut.CutRefusalCause>, tag: Stri
 
 test fn fully_dispositioned_cut_admits_with_exact_counts() -> Bool {
   let admission = gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
-    consumers: [covered_consumer(), replaced_consumer(), test.claim.replacement_cut_witness.evidence_consumer(), retired_consumer()],
+    consumers: [covered_consumer(), replaced_consumer(), evidence_consumer(), retired_consumer()],
     region: two_region(),
     evidence: dispositioned_evidence(),
   ))
   match admission {
-    PlanAdmitted { admitted: a } =>
+    gunbc.replacement_cut.PlanAdmitted { admitted: a } =>
       a.retained_count == 1 && a.replaced_count == 1 && a.evidence_only_count == 1
         && a.retired_count == 1 && a.covered_region_count == 2
-    PlanRefused { causes: _ } => false
+    gunbc.replacement_cut.PlanRefused { causes: _ } => false
   }
 }
 
@@ -161,14 +159,14 @@ test fn admitted_verdict_is_bound_to_the_plan_it_judged() -> Bool {
     evidence: [],
   )
   match gunbc.replacement_cut.admit_replacement_cut_plan(cut: plan) {
-    PlanAdmitted { admitted: a } =>
+    gunbc.replacement_cut.PlanAdmitted { admitted: a } =>
       gunbc.replacement_cut.admitted_matches_plan(admitted: a, cut: plan) && !gunbc.replacement_cut.admitted_matches_plan(admitted: a, cut: mutated)
-    PlanRefused { causes: _ } => false
+    gunbc.replacement_cut.PlanRefused { causes: _ } => false
   }
 }
 
 test fn undecided_consumer_blocks_the_cut() -> Bool {
-  let causes = test.claim.replacement_cut_witness.causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
+  let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer(), undecided_consumer()],
     region: two_region(),
     evidence: dispositioned_evidence(),
@@ -178,7 +176,7 @@ test fn undecided_consumer_blocks_the_cut() -> Bool {
 }
 
 test fn surviving_consumer_without_coverage_refuses() -> Bool {
-  let causes = test.claim.replacement_cut_witness.causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
+  let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [open_consumer()],
     region: two_region(),
     evidence: dispositioned_evidence(),
@@ -188,10 +186,10 @@ test fn surviving_consumer_without_coverage_refuses() -> Bool {
 }
 
 test fn undecided_evidence_blocks_the_cut() -> Bool {
-  let causes = test.claim.replacement_cut_witness.causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
+  let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer()],
     region: two_region(),
-    evidence: [gunbc.replacement_cut.EvidenceUndecided { evidence: test.claim.replacement_cut_witness.nes(s: "parked witness") }],
+    evidence: [gunbc.replacement_cut.EvidenceUndecided { evidence: nes(s: "parked witness") }],
   )))
   std.types.list_length(items: causes) == 1
     && causes_include(causes: causes, tag: "undispositioned-evidence", subject: "parked witness")
@@ -204,14 +202,14 @@ test fn retired_consumer_needs_no_coverage() -> Bool {
     evidence: dispositioned_evidence(),
   ))
   match admission {
-    PlanAdmitted { admitted: a } =>
+    gunbc.replacement_cut.PlanAdmitted { admitted: a } =>
       a.retained_count == 0 && a.replaced_count == 0 && a.evidence_only_count == 0 && a.retired_count == 1
-    PlanRefused { causes: _ } => false
+    gunbc.replacement_cut.PlanRefused { causes: _ } => false
   }
 }
 
 test fn a_cut_that_deletes_nothing_is_not_a_cut() -> Bool {
-  let causes = test.claim.replacement_cut_witness.causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
+  let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer()],
     region: [],
     evidence: dispositioned_evidence(),
@@ -221,10 +219,10 @@ test fn a_cut_that_deletes_nothing_is_not_a_cut() -> Bool {
 }
 
 test fn every_cause_is_counted_not_first_wins() -> Bool {
-  let causes = test.claim.replacement_cut_witness.causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
+  let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [undecided_consumer(), open_consumer()],
     region: [],
-    evidence: [gunbc.replacement_cut.EvidenceUndecided { evidence: test.claim.replacement_cut_witness.nes(s: "parked witness") }],
+    evidence: [gunbc.replacement_cut.EvidenceUndecided { evidence: nes(s: "parked witness") }],
   )))
   std.types.list_length(items: causes) == 4
     && causes_include(causes: causes, tag: "undispositioned-consumer", subject: "undispositioned caller")
@@ -234,7 +232,7 @@ test fn every_cause_is_counted_not_first_wins() -> Bool {
 }
 
 test fn new_root_equal_to_old_root_refuses() -> Bool {
-  let causes = test.claim.replacement_cut_witness.causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_full(
+  let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_full(
     consumers: [covered_consumer()],
     region: two_region(),
     evidence: dispositioned_evidence(),
@@ -246,13 +244,13 @@ test fn new_root_equal_to_old_root_refuses() -> Bool {
 
 test fn coverage_by_the_old_root_is_fallback_wearing_a_disposition() -> Bool {
   let fallback_consumer = gunbc.replacement_cut.BoundaryConsumer {
-    consumer: test.claim.replacement_cut_witness.nes(s: "consumer leaning on x"),
+    consumer: nes(s: "consumer leaning on x"),
     disposition: gunbc.replacement_cut.RetainSameContract {
-      justification: test.claim.replacement_cut_witness.nes(s: "claims retention"),
-      coverage: gunbc.replacement_cut.Covered { by: test.claim.replacement_cut_witness.nes(s: "old floor step") },
+      justification: nes(s: "claims retention"),
+      coverage: gunbc.replacement_cut.Covered { by: nes(s: "old floor step") },
     },
   }
-  let causes = test.claim.replacement_cut_witness.causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
+  let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [fallback_consumer],
     region: two_region(),
     evidence: dispositioned_evidence(),
@@ -263,10 +261,10 @@ test fn coverage_by_the_old_root_is_fallback_wearing_a_disposition() -> Bool {
 
 test fn replacement_naming_the_old_root_refuses() -> Bool {
   let circular = gunbc.replacement_cut.BoundaryConsumer {
-    consumer: test.claim.replacement_cut_witness.nes(s: "circular client"),
-    disposition: gunbc.replacement_cut.ReplacedByY { new_authority: test.claim.replacement_cut_witness.nes(s: "old floor step") },
+    consumer: nes(s: "circular client"),
+    disposition: gunbc.replacement_cut.ReplacedByY { new_authority: nes(s: "old floor step") },
   }
-  let causes = test.claim.replacement_cut_witness.causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
+  let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [circular],
     region: two_region(),
     evidence: dispositioned_evidence(),
@@ -276,7 +274,7 @@ test fn replacement_naming_the_old_root_refuses() -> Bool {
 }
 
 test fn duplicate_consumer_refuses_even_when_dispositions_agree() -> Bool {
-  let causes = test.claim.replacement_cut_witness.causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
+  let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [retired_consumer(), retired_consumer()],
     region: two_region(),
     evidence: dispositioned_evidence(),
@@ -286,15 +284,15 @@ test fn duplicate_consumer_refuses_even_when_dispositions_agree() -> Bool {
 }
 
 test fn duplicate_evidence_subject_refuses() -> Bool {
-  let causes = test.claim.replacement_cut_witness.causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
+  let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer()],
     region: two_region(),
     evidence: [
-      gunbc.replacement_cut.ReenrollAgainstY { evidence: test.claim.replacement_cut_witness.nes(s: "one witness"), surviving_claim: test.claim.replacement_cut_witness.nes(s: "claim a") },
+      gunbc.replacement_cut.ReenrollAgainstY { evidence: nes(s: "one witness"), surviving_claim: nes(s: "claim a") },
       gunbc.replacement_cut.RetireEvidence {
-        evidence: test.claim.replacement_cut_witness.nes(s: "one witness"),
-        retired_subject: test.claim.replacement_cut_witness.nes(s: "claim a"),
-        retirement_reason: test.claim.replacement_cut_witness.nes(s: "contradicts the reenroll row"),
+        evidence: nes(s: "one witness"),
+        retired_subject: nes(s: "claim a"),
+        retirement_reason: nes(s: "contradicts the reenroll row"),
       },
     ],
   )))
@@ -303,9 +301,9 @@ test fn duplicate_evidence_subject_refuses() -> Bool {
 }
 
 test fn duplicate_region_member_refuses() -> Bool {
-  let causes = test.claim.replacement_cut_witness.causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
+  let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer()],
-    region: [test.claim.replacement_cut_witness.nes(s: "x root module"), test.claim.replacement_cut_witness.nes(s: "x root module")],
+    region: [nes(s: "x root module"), nes(s: "x root module")],
     evidence: dispositioned_evidence(),
   )))
   std.types.list_length(items: causes) == 1
@@ -320,20 +318,20 @@ test fn enumerated_empty_census_refuses_but_declared_empty_admits() -> Bool {
   ))
   let declared = gunbc.replacement_cut.ReplacementCut {
     identity: "cut-dead-region" as gunbc.replacement_cut.ReplacementCutId,
-    old_root_consumer: test.claim.replacement_cut_witness.nes(s: "old floor step"),
-    subject: test.claim.replacement_cut_witness.nes(s: "exact subject population"),
-    contract: test.claim.replacement_cut_witness.nes(s: "complete contract including refusals"),
-    new_root: test.claim.replacement_cut_witness.nes(s: "new fold root"),
+    old_root_consumer: nes(s: "old floor step"),
+    subject: nes(s: "exact subject population"),
+    contract: nes(s: "complete contract including refusals"),
+    new_root: nes(s: "new fold root"),
     why_not_higher: gunbc.replacement_cut.OutermostBoundary,
     covered_region: two_region(),
-    boundary_census: gunbc.replacement_cut.BoundaryDeclaredEmpty { basis: test.claim.replacement_cut_witness.nes(s: "no live consumer reaches this region; census by execution") },
-    external_x: gunbc.replacement_cut.NoExternalOracleRequired { justification: test.claim.replacement_cut_witness.nes(s: "dead region needs no differential oracle") },
+    boundary_census: gunbc.replacement_cut.BoundaryDeclaredEmpty { basis: nes(s: "no live consumer reaches this region; census by execution") },
+    external_x: gunbc.replacement_cut.NoExternalOracleRequired { justification: nes(s: "dead region needs no differential oracle") },
     evidence_dispositions: [],
   }
-  causes_include(causes: test.claim.replacement_cut_witness.causes_of(admission: ambiguous), tag: "enumerated-census-empty", subject: "")
+  causes_include(causes: causes_of(admission: ambiguous), tag: "enumerated-census-empty", subject: "")
     && (match gunbc.replacement_cut.admit_replacement_cut_plan(cut: declared) {
-      PlanAdmitted { admitted: a } => a.retained_count == 0 && a.covered_region_count == 2
-      PlanRefused { causes: _ } => false
+      gunbc.replacement_cut.PlanAdmitted { admitted: a } => a.retained_count == 0 && a.covered_region_count == 2
+      gunbc.replacement_cut.PlanRefused { causes: _ } => false
     })
 }
 
@@ -350,45 +348,45 @@ test fn empty_external_role_list_refuses_but_justified_no_oracle_admits() -> Boo
     region: two_region(),
     evidence: dispositioned_evidence(),
     new_root: "new fold root",
-    oracle: gunbc.replacement_cut.NoExternalOracleRequired { justification: test.claim.replacement_cut_witness.nes(s: "boundary compared by construction, no differential run") },
+    oracle: gunbc.replacement_cut.NoExternalOracleRequired { justification: nes(s: "boundary compared by construction, no differential run") },
   ))
-  causes_include(causes: test.claim.replacement_cut_witness.causes_of(admission: ambiguous), tag: "external-roles-enumerated-empty", subject: "")
-    && std.types.list_length(items: test.claim.replacement_cut_witness.causes_of(admission: ambiguous)) == 1
+  causes_include(causes: causes_of(admission: ambiguous), tag: "external-roles-enumerated-empty", subject: "")
+    && std.types.list_length(items: causes_of(admission: ambiguous)) == 1
     && (match justified {
-      PlanAdmitted { admitted: a } => a.covered_region_count == 2
-      PlanRefused { causes: _ } => false
+      gunbc.replacement_cut.PlanAdmitted { admitted: a } => a.covered_region_count == 2
+      gunbc.replacement_cut.PlanRefused { causes: _ } => false
     })
 }
 
 test fn self_referential_descent_refuses() -> Bool {
   let cut = gunbc.replacement_cut.ReplacementCut {
     identity: "cut-self" as gunbc.replacement_cut.ReplacementCutId,
-    old_root_consumer: test.claim.replacement_cut_witness.nes(s: "b0 boundary"),
-    subject: test.claim.replacement_cut_witness.nes(s: "exact subject population"),
-    contract: test.claim.replacement_cut_witness.nes(s: "complete contract including refusals"),
-    new_root: test.claim.replacement_cut_witness.nes(s: "b1"),
+    old_root_consumer: nes(s: "b0 boundary"),
+    subject: nes(s: "exact subject population"),
+    contract: nes(s: "complete contract including refusals"),
+    new_root: nes(s: "b1"),
     why_not_higher: gunbc.replacement_cut.DescendedFromRefusedCut {
       parent_cut: "cut-self" as gunbc.replacement_cut.ReplacementCutId,
-      refusal_summary: test.claim.replacement_cut_witness.nes(s: "claims its own refusal as license"),
+      refusal_summary: nes(s: "claims its own refusal as license"),
     },
     covered_region: two_region(),
     boundary_census: gunbc.replacement_cut.ConsumersEnumerated { consumers: [covered_consumer()] },
     external_x: typed_oracle(),
     evidence_dispositions: [],
   }
-  causes_include(causes: test.claim.replacement_cut_witness.causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut)), tag: "self-referential-descent", subject: "")
+  causes_include(causes: causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut)), tag: "self-referential-descent", subject: "")
 }
 
 test fn descended_cut_names_its_parent_by_typed_identity() -> Bool {
   let cut = gunbc.replacement_cut.ReplacementCut {
     identity: "cut-b0" as gunbc.replacement_cut.ReplacementCutId,
-    old_root_consumer: test.claim.replacement_cut_witness.nes(s: "b0 boundary"),
-    subject: test.claim.replacement_cut_witness.nes(s: "exact subject population"),
-    contract: test.claim.replacement_cut_witness.nes(s: "complete contract including refusals"),
-    new_root: test.claim.replacement_cut_witness.nes(s: "b1"),
+    old_root_consumer: nes(s: "b0 boundary"),
+    subject: nes(s: "exact subject population"),
+    contract: nes(s: "complete contract including refusals"),
+    new_root: nes(s: "b1"),
     why_not_higher: gunbc.replacement_cut.DescendedFromRefusedCut {
       parent_cut: "cut-a0" as gunbc.replacement_cut.ReplacementCutId,
-      refusal_summary: test.claim.replacement_cut_witness.nes(s: "escaping consumer q0 uncovered"),
+      refusal_summary: nes(s: "escaping consumer q0 uncovered"),
     },
     covered_region: two_region(),
     boundary_census: gunbc.replacement_cut.ConsumersEnumerated { consumers: [covered_consumer()] },
@@ -396,27 +394,27 @@ test fn descended_cut_names_its_parent_by_typed_identity() -> Bool {
     evidence_dispositions: [],
   }
   match cut.why_not_higher {
-    DescendedFromRefusedCut { parent_cut: p, refusal_summary: r } =>
+    gunbc.replacement_cut.DescendedFromRefusedCut { parent_cut: p, refusal_summary: r } =>
       (p as String) == "cut-a0" && (r as String) == "escaping consumer q0 uncovered"
-    OutermostBoundary => false
-    DescentParentUnauthored { intended_parent_boundary: _, basis: _ } => false
+    gunbc.replacement_cut.OutermostBoundary => false
+    gunbc.replacement_cut.DescentParentUnauthored { intended_parent_boundary: _, basis: _ } => false
   }
 }
 
 fn is_admitted(a: gunbc.replacement_cut.PlanAdmission) -> Bool {
   match a {
-    PlanAdmitted { admitted: _ } => true
-    PlanRefused { causes: _ } => false
+    gunbc.replacement_cut.PlanAdmitted { admitted: _ } => true
+    gunbc.replacement_cut.PlanRefused { causes: _ } => false
   }
 }
 
 fn cut_answering(identity: String, answer: gunbc.replacement_cut.HigherBoundaryAnswer) -> gunbc.replacement_cut.ReplacementCut {
   gunbc.replacement_cut.ReplacementCut {
     identity: identity as gunbc.replacement_cut.ReplacementCutId,
-    old_root_consumer: test.claim.replacement_cut_witness.nes(s: "b0 boundary"),
-    subject: test.claim.replacement_cut_witness.nes(s: "exact subject population"),
-    contract: test.claim.replacement_cut_witness.nes(s: "complete contract including refusals"),
-    new_root: test.claim.replacement_cut_witness.nes(s: "b1"),
+    old_root_consumer: nes(s: "b0 boundary"),
+    subject: nes(s: "exact subject population"),
+    contract: nes(s: "complete contract including refusals"),
+    new_root: nes(s: "b1"),
     why_not_higher: answer,
     covered_region: two_region(),
     boundary_census: gunbc.replacement_cut.ConsumersEnumerated { consumers: [covered_consumer()] },
@@ -432,27 +430,27 @@ test fn unauthored_parent_boundary_admits_without_naming_an_id() -> Bool {
   let cut = cut_answering(
     identity: "cut-interpreter",
     answer: gunbc.replacement_cut.DescentParentUnauthored {
-      intended_parent_boundary: test.claim.replacement_cut_witness.nes(s: "the engine cut through the v1 driver region"),
-      basis: test.claim.replacement_cut_witness.nes(s: "no cut authored at that boundary by any lane"),
+      intended_parent_boundary: nes(s: "the engine cut through the v1 driver region"),
+      basis: nes(s: "no cut authored at that boundary by any lane"),
     },
   )
-  test.claim.replacement_cut_witness.is_admitted(a: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut))
+  is_admitted(a: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut))
     && match cut.why_not_higher {
-      DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
+      gunbc.replacement_cut.DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
         (b as String) == "the engine cut through the v1 driver region"
-      OutermostBoundary => false
-      DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
+      gunbc.replacement_cut.OutermostBoundary => false
+      gunbc.replacement_cut.DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
     }
 }
 
 // The new arm's self-reference: naming your own old root as the boundary above
 // you is the same incoherence SelfReferentialDescent already names.
 test fn descent_parent_unauthored_naming_its_own_root_refuses() -> Bool {
-  let causes = test.claim.replacement_cut_witness.causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_answering(
+  let causes = causes_of(admission: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_answering(
     identity: "cut-self-boundary",
     answer: gunbc.replacement_cut.DescentParentUnauthored {
-      intended_parent_boundary: test.claim.replacement_cut_witness.nes(s: "b0 boundary"),
-      basis: test.claim.replacement_cut_witness.nes(s: "claims the boundary it is cutting is also the boundary above it"),
+      intended_parent_boundary: nes(s: "b0 boundary"),
+      basis: nes(s: "claims the boundary it is cutting is also the boundary above it"),
     },
   )))
   std.types.list_length(items: causes) == 1
@@ -460,9 +458,9 @@ test fn descent_parent_unauthored_naming_its_own_root_refuses() -> Bool {
 }
 
 // POSITIVE CONTROL for the two declared-gap probes below: admission is not
-// vacuous. Without this,  132  carries no information.
+// vacuous. Without this, "it admits" carries no information.
 test fn probe_control_refuses_undecided() -> Bool {
-  !test.claim.replacement_cut_witness.is_admitted(a: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
+  !is_admitted(a: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_with(
     consumers: [undecided_consumer()],
     region: two_region(),
     evidence: dispositioned_evidence(),
@@ -474,11 +472,11 @@ test fn probe_control_refuses_undecided() -> Bool {
 // test asserts the gap. It goes RED when a cut registry makes the reference
 // joinable -- which is the next-rung trigger firing, not a regression.
 test fn probe_admits_nonexistent_parent() -> Bool {
-  test.claim.replacement_cut_witness.is_admitted(a: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_answering(
+  is_admitted(a: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_answering(
     identity: "cut-b0",
     answer: gunbc.replacement_cut.DescendedFromRefusedCut {
       parent_cut: "cut-that-exists-nowhere-in-any-tree-zzz" as gunbc.replacement_cut.ReplacementCutId,
-      refusal_summary: test.claim.replacement_cut_witness.nes(s: "a parent never authored cannot have refused anything"),
+      refusal_summary: nes(s: "a parent never authored cannot have refused anything"),
     },
   )))
 }
@@ -487,7 +485,7 @@ test fn probe_admits_nonexistent_parent() -> Bool {
 // coherence, never the world, so a well-formed OutermostBoundary claim admits
 // whether or not a higher boundary exists in fact.
 test fn probe_admits_outermost_claim() -> Bool {
-  test.claim.replacement_cut_witness.is_admitted(a: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_answering(
+  is_admitted(a: gunbc.replacement_cut.admit_replacement_cut_plan(cut: cut_answering(
     identity: "cut-outermost",
     answer: gunbc.replacement_cut.OutermostBoundary,
   )))

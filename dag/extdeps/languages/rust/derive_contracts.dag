@@ -3,7 +3,7 @@ module extdeps.languages.rust.derive_contracts
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.rs/crate/im/15.1.0/source/src/vector/mod.rs#1701"
   }
 }
@@ -109,23 +109,23 @@ type RustVecSupplementalGenericBoundRow {
 
 data rust_vec_freemonoid_supplemental_generic_bound_rows: List<RustVecSupplementalGenericBoundRow> = [
   RustVecSupplementalGenericBoundRow {
-    derive_trait: RustDebug
-    required: RustClone
+    derive_trait: extdeps.languages.rust.capabilities.RustDebug
+    required: extdeps.languages.rust.capabilities.RustClone
     authority: im_15_1_0_vector_debug_impl_authority
   },
   RustVecSupplementalGenericBoundRow {
-    derive_trait: RustPartialEq
-    required: RustClone
+    derive_trait: extdeps.languages.rust.capabilities.RustPartialEq
+    required: extdeps.languages.rust.capabilities.RustClone
     authority: im_15_1_0_vector_partial_eq_impl_authority
   },
   RustVecSupplementalGenericBoundRow {
-    derive_trait: RustSerialize
-    required: RustClone
+    derive_trait: extdeps.languages.rust.capabilities.RustSerialize
+    required: extdeps.languages.rust.capabilities.RustClone
     authority: im_15_1_0_vector_serialize_impl_authority
   },
   RustVecSupplementalGenericBoundRow {
-    derive_trait: RustDeserialize
-    required: RustClone
+    derive_trait: extdeps.languages.rust.capabilities.RustDeserialize
+    required: extdeps.languages.rust.capabilities.RustClone
     authority: im_15_1_0_vector_deserialize_impl_authority
   },
 ]
@@ -134,33 +134,33 @@ data rust_btree_set_supplemental_generic_bound_rows_note: String = "SINGLE AUTHO
 
 data rust_btree_set_supplemental_generic_bound_rows: List<RustVecSupplementalGenericBoundRow> = [
   RustVecSupplementalGenericBoundRow {
-    derive_trait: RustDebug
-    required: RustOrd
+    derive_trait: extdeps.languages.rust.capabilities.RustDebug
+    required: extdeps.languages.rust.capabilities.RustOrd
     authority: im_15_1_0_ord_set_debug_impl_authority
   },
   RustVecSupplementalGenericBoundRow {
-    derive_trait: RustPartialEq
-    required: RustOrd
+    derive_trait: extdeps.languages.rust.capabilities.RustPartialEq
+    required: extdeps.languages.rust.capabilities.RustOrd
     authority: im_15_1_0_ord_set_partial_eq_impl_authority
   },
   RustVecSupplementalGenericBoundRow {
-    derive_trait: RustSerialize
-    required: RustOrd
+    derive_trait: extdeps.languages.rust.capabilities.RustSerialize
+    required: extdeps.languages.rust.capabilities.RustOrd
     authority: im_15_1_0_ord_set_serialize_impl_authority
   },
   RustVecSupplementalGenericBoundRow {
-    derive_trait: RustSerialize
-    required: RustClone
+    derive_trait: extdeps.languages.rust.capabilities.RustSerialize
+    required: extdeps.languages.rust.capabilities.RustClone
     authority: im_15_1_0_ord_set_serialize_impl_authority
   },
   RustVecSupplementalGenericBoundRow {
-    derive_trait: RustDeserialize
-    required: RustOrd
+    derive_trait: extdeps.languages.rust.capabilities.RustDeserialize
+    required: extdeps.languages.rust.capabilities.RustOrd
     authority: im_15_1_0_ord_set_deserialize_impl_authority
   },
   RustVecSupplementalGenericBoundRow {
-    derive_trait: RustDeserialize
-    required: RustClone
+    derive_trait: extdeps.languages.rust.capabilities.RustDeserialize
+    required: extdeps.languages.rust.capabilities.RustClone
     authority: im_15_1_0_ord_set_deserialize_impl_authority
   },
 ]

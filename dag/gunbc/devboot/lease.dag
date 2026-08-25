@@ -36,18 +36,18 @@ data produced_ref_namespace: String = "refs/devboot/produced/"
 fn content_hash_ref_token(hash: std.content_hash.ContentHash) -> String {
   match hash {
     std.content_hash.Fnv1a64(s) => join(["fnv1a64-", s.digest as String], "")
-    Sha256Hash(d) => join(["sha256-", d.hex as String], "")
-    Sha1Hash(d) => join(["sha1-", d.hex as String], "")
-    Sha512Hash(d) => join(["sha512-", d.hex as String], "")
+    std.content_hash.Sha256Hash(d) => join(["sha256-", d.hex as String], "")
+    std.content_hash.Sha1Hash(d) => join(["sha1-", d.hex as String], "")
+    std.content_hash.Sha512Hash(d) => join(["sha512-", d.hex as String], "")
   }
 }
 
 fn lease_ref_for_subject(subject: gunbc.devboot.subject.BuildSubject) -> extdeps.git.object_store.GitRefName {
-  join([lease_ref_namespace, content_hash_ref_token(hash: build_subject_digest(subject: subject))], "") as std.types.NonEmptyStr as extdeps.git.object_store.GitRefName
+  join([lease_ref_namespace, content_hash_ref_token(hash: gunbc.devboot.subject.build_subject_digest(subject: subject))], "") as std.types.NonEmptyStr as extdeps.git.object_store.GitRefName
 }
 
 fn artifact_ref_for_subject(subject: gunbc.devboot.subject.BuildSubject) -> extdeps.git.object_store.GitRefName {
-  join([artifact_ref_namespace, content_hash_ref_token(hash: build_subject_digest(subject: subject))], "") as std.types.NonEmptyStr as extdeps.git.object_store.GitRefName
+  join([artifact_ref_namespace, content_hash_ref_token(hash: gunbc.devboot.subject.build_subject_digest(subject: subject))], "") as std.types.NonEmptyStr as extdeps.git.object_store.GitRefName
 }
 
 // THE ONLY THREE THINGS A REQUESTER MAY LEARN, and the middle one is why this type exists at all. It won the lease and must build; it lost to a producer that already holds it and must attach to that producer; or the attempt refused for a reason that is neither, and it must not build.
@@ -76,23 +76,23 @@ type LeaseOutcome
 // dissolve-on: the upstream object store gains an exact create-only transition (expected-old absent, refusing when the ref exists). At that point this arm is deleted and the absent case becomes a real LeaseAcquired -- the arm is not permanent, and naming its trigger is what separates a staged gap from an accepted one.
 fn lease_outcome_from_ref_transition(outcome: extdeps.git.object_store.GitUpdateRefOutcome) -> LeaseOutcome {
   match outcome {
-    GitRefTransitionModeled { repository, transition } =>
+    extdeps.git.object_store.GitRefTransitionModeled { repository, transition } =>
       LeaseAcquired { name: transition.advanced_name, holder: transition.new }
-    GitRefAdvanceStale { repository, name, expected_old, observed } =>
+    extdeps.git.object_store.GitRefAdvanceStale { repository, name, expected_old, observed } =>
       LeaseLostToProducer { name: name, holder: observed }
-    GitRefAdvanceMissing { repository, name } =>
+    extdeps.git.object_store.GitRefAdvanceMissing { repository, name } =>
       LeaseRefused { cause: LeaseCreateNotModeled { name: name } }
-    GitRefAdvanceRepositoryInvalid { repository, cause } =>
+    extdeps.git.object_store.GitRefAdvanceRepositoryInvalid { repository, cause } =>
       LeaseRefused { cause: LeaseStoreInvalid { detail: "artifact store did not decode as a repository" } }
-    GitRefAdvanceDuplicate { repository, name, count } =>
+    extdeps.git.object_store.GitRefAdvanceDuplicate { repository, name, count } =>
       LeaseRefused { cause: LeaseRefNameAmbiguous { name: name } }
-    GitRefAdvanceSymbolicCycle { repository, name, chain } =>
+    extdeps.git.object_store.GitRefAdvanceSymbolicCycle { repository, name, chain } =>
       LeaseRefused { cause: LeaseRefSymbolicCycle { name: name } }
-    GitRefAdvanceFormatMismatch { repository, repository_format, oid } =>
+    extdeps.git.object_store.GitRefAdvanceFormatMismatch { repository, repository_format, oid } =>
       LeaseRefused { cause: LeaseObjectFormatMismatch { oid: oid } }
-    GitRefAdvanceTargetUnavailable { repository, oid, lookup } =>
+    extdeps.git.object_store.GitRefAdvanceTargetUnavailable { repository, oid, lookup } =>
       LeaseRefused { cause: LeaseTargetUnavailable { oid: oid } }
-    GitRefAdvanceTargetKindRefused { repository, name, oid, object_type } =>
+    extdeps.git.object_store.GitRefAdvanceTargetKindRefused { repository, name, oid, object_type } =>
       LeaseRefused { cause: LeaseTargetKindRefused { oid: oid } }
   }
 }
@@ -107,7 +107,7 @@ fn acquire_producer_lease(
   claim: extdeps.git.object_store.GitObjectId,
 ) -> LeaseOutcome {
   lease_outcome_from_ref_transition(
-    outcome: git_model_update_ref_exact(
+    outcome: extdeps.git.object_store.git_model_update_ref_exact(
       repo: store,
       name: lease_ref_for_subject(subject: subject),
       new_oid: claim,

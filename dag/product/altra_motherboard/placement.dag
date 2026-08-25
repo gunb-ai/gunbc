@@ -68,7 +68,7 @@ fn role_tag(r: BoardComponentRole) -> std.types.NonEmptyStr {
 // directly and carried eleven nested wildcard arms over a closed coproduct. The third replaced
 // both with a projected key record whose discriminator was a bare Int.
 // NO KEY RECORD, BECAUSE A KEY RECORD IS A WRITABLE ILLEGAL STATE. An earlier revision projected
-// each role to RoleKey { kind: std.integer.Int, slot }, and the std.integer.Int was an in-band discriminator: kind 99 was
+// each role to RoleKey { kind: Int, slot }, and the Int was an in-band discriminator: kind 99 was
 // constructible, the numbers were arbitrary (ProcessorPackage ended up 12 because it was added
 // last, which is the "pick another magic number" hazard showing itself), and the record carried
 // the bad state around. The ordinal below is not stored anywhere -- it exists only inside the
@@ -81,7 +81,7 @@ fn role_tag(r: BoardComponentRole) -> std.types.NonEmptyStr {
 // missing it, with no arm to update and no failure pointing here. Two total projections give the
 // same guarantee at twelve arms each: neither has a wildcard, so a thirteenth role fails to
 // compile in both until someone decides its ordinal and whether it carries a slot.
-fn role_ordinal(r: BoardComponentRole) -> std.integer.Int {
+fn role_ordinal(r: BoardComponentRole) -> Int {
   match r {
     MemoryModuleSlot { slot: _ } => 1
     ProcessorSocket => 2
@@ -129,7 +129,7 @@ fn slots_equal(sa: product.altra_motherboard.minimal_design.DdrSlotIdentity?, sb
   match sa {
     Present { value: x } =>
       match sb {
-        Present { value: y } => ddr_slot_identity_eq(a: x, b: y)
+        Present { value: y } => product.altra_motherboard.minimal_design.ddr_slot_identity_eq(a: x, b: y)
         Absent => false
       }
     Absent =>
@@ -186,7 +186,7 @@ type PlacementRefusal
   | RequiredRoleUnfilled { role: BoardComponentRole }
   | ComponentFillsNoRequiredRole { component: std.types.NonEmptyStr, role_named: std.types.NonEmptyStr }
   | PlannedIdentityRepeated { component: std.types.NonEmptyStr }
-  | RoleFilledMoreThanOnce { role: BoardComponentRole, fills: std.integer.Int }
+  | RoleFilledMoreThanOnce { role: BoardComponentRole, fills: Int }
   | PlanWasBuiltFromADifferentDesign { plan_design: std.decl_ref.DeclarationRef, admitted_against: std.decl_ref.DeclarationRef }
   | RequiredFunctionWithoutJustifiedPartOnBoard { requirement: product.altra_motherboard.realization.BoardRequirementIdentity }
 
@@ -211,7 +211,7 @@ type BoardPlacementPlan {
 }
 
 fn altra_1p_minimum_ref() -> std.decl_ref.DeclarationRef {
-  decl_ref(module_path: "product.altra_motherboard.minimal_design", decl_name: "altra_1p_minimum")
+  std.decl_ref.decl_ref(module_path: "product.altra_motherboard.minimal_design", decl_name: "altra_1p_minimum")
 }
 
 // THE REQUIRED POPULATION IS DERIVED FROM THE DESIGN, never listed beside it. A hand-written
@@ -235,14 +235,14 @@ fn plan_component_identities(plan: BoardPlacementPlan) -> List<std.types.NonEmpt
 
 fn realization_placement_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   fold(
-    population_realization_refusals(
-      roster: altra_1p_requirement_part_realizations,
+    product.altra_motherboard.realization.population_realization_refusals(
+      roster: product.altra_motherboard.realization.altra_1p_requirement_part_realizations,
       plan_identities: plan_component_identities(plan: plan),
     ),
     init: [],
     f: fn(acc, r) {
       match r {
-        RequiredFunctionWithoutJustifiedPart { requirement: req } =>
+        product.altra_motherboard.realization.RequiredFunctionWithoutJustifiedPart { requirement: req } =>
           concat(acc, [RequiredFunctionWithoutJustifiedPartOnBoard { requirement: req }])
       }
     }
@@ -363,7 +363,7 @@ fn every_non_slot_role() -> List<BoardComponentRole> {
 }
 
 fn required_roles(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> List<BoardComponentRole> {
-  let slots = fold(topology_slot_identities(t: d.memory.topology), init: [], f: fn(acc, s) {
+  let slots = fold(product.altra_motherboard.minimal_design.topology_slot_identities(t: d.memory.topology), init: [], f: fn(acc, s) {
     concat(acc, [MemoryModuleSlot { slot: s }])
   })
   let gated = fold(every_non_slot_role(), init: [], f: fn(acc, r) {
@@ -372,7 +372,7 @@ fn required_roles(d: product.altra_motherboard.minimal_design.AltraMinimalMother
   concat(gated, slots)
 }
 
-fn role_fill_count(plan: BoardPlacementPlan, r: BoardComponentRole) -> std.integer.Int {
+fn role_fill_count(plan: BoardPlacementPlan, r: BoardComponentRole) -> Int {
   fold(plan.components, init: 0, f: fn(acc, c) { if roles_equal(a: c.role, b: r) { acc + 1 } else { acc } })
 }
 
@@ -431,7 +431,7 @@ fn envelope_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   })
 }
 
-fn planned_identity_occurrences(cs: List<PlannedComponent>, id: std.types.NonEmptyStr) -> std.integer.Int {
+fn planned_identity_occurrences(cs: List<PlannedComponent>, id: std.types.NonEmptyStr) -> Int {
   fold(cs, init: 0, f: fn(acc, c) { if (c.identity as String) == (id as String) { acc + 1 } else { acc } })
 }
 
@@ -465,7 +465,7 @@ fn identity_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
 // unjustified slots, which is what a board with four spare connectors would report, and the reader
 // fixes the wrong thing. Naming the mismatch says the two are not comparable at all.
 fn design_refusals(d_ref: std.decl_ref.DeclarationRef, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
-  if declaration_ref_eq(a: plan.design, b: d_ref) {
+  if std.decl_ref.declaration_ref_eq(a: plan.design, b: d_ref) {
     []
   } else {
     [PlanWasBuiltFromADifferentDesign { plan_design: plan.design, admitted_against: d_ref }]
@@ -490,7 +490,7 @@ fn placement_causes(d: product.altra_motherboard.minimal_design.AltraMinimalMoth
   )
 }
 
-fn placement_refusal_count(cs: List<PlacementRefusal>) -> std.integer.Int {
+fn placement_refusal_count(cs: List<PlacementRefusal>) -> Int {
   fold(cs, init: 0, f: fn(acc, _c) { acc + 1 })
 }
 
@@ -527,11 +527,11 @@ fn placeable_components(plan: BoardPlacementPlan) -> List<product.pcb.physical.C
   })
 }
 
-fn established_envelope_count(plan: BoardPlacementPlan) -> std.integer.Int {
+fn established_envelope_count(plan: BoardPlacementPlan) -> Int {
   fold(placeable_components(plan: plan), init: 0, f: fn(acc, _c) { acc + 1 })
 }
 
-fn outstanding_obligation_count(plan: BoardPlacementPlan) -> std.integer.Int {
+fn outstanding_obligation_count(plan: BoardPlacementPlan) -> Int {
   placement_refusal_count(cs: envelope_refusals(plan: plan))
 }
 
@@ -545,12 +545,12 @@ fn outstanding_obligation_count(plan: BoardPlacementPlan) -> std.integer.Int {
 // the same spelling would compare equal while registering different quanta. The board's frame is
 // registered by its consumer with a micrometre quantum, which is what physical.dag's sub-millimetre
 // requirement checks — a half-millimetre package pitch is not expressible in whole millimetres.
-fn altra_board_frame() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 21) }
+fn altra_board_frame() -> std.coordinate_frame.CoordinateFrameIdentity { std.coordinate_frame.coordinate_frame_identity(occurrence: 21) }
 
 fn altra_board_outline() -> std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_geometry.AxisAlignedRectangle2> {
-  axis_aligned_rectangle2(
-    min: point2(frame: altra_board_frame(), x: 0, y: 0),
-    max: point2(frame: altra_board_frame(), x: 305000, y: 267000)
+  std.orthogonal_geometry.axis_aligned_rectangle2(
+    min: std.affine_space.point2(frame: altra_board_frame(), x: 0, y: 0),
+    max: std.affine_space.point2(frame: altra_board_frame(), x: 305000, y: 267000)
   )
 }
 
@@ -568,17 +568,17 @@ fn envelope_from_package_body(b: extdeps.land_pattern.types.PackageBodyDimension
 
 data host_phy_envelope: ComponentEnvelopeStanding = envelope_from_package_body(
   b: extdeps.network.ti_dp83867.dp83867_rgz0048b_body,
-  source: decl_ref(module_path: "extdeps.network.ti_dp83867", decl_name: "dp83867_rgz0048b_body"),
+  source: std.decl_ref.decl_ref(module_path: "extdeps.network.ti_dp83867", decl_name: "dp83867_rgz0048b_body"),
 )
 
 data power_stage_envelope: ComponentEnvelopeStanding = envelope_from_package_body(
   b: extdeps.power.ti_tps53688.tps53688_rsb0040a_body,
-  source: decl_ref(module_path: "extdeps.power.ti_tps53688", decl_name: "tps53688_rsb0040a_body"),
+  source: std.decl_ref.decl_ref(module_path: "extdeps.power.ti_tps53688", decl_name: "tps53688_rsb0040a_body"),
 )
 
 data power_good_envelope: ComponentEnvelopeStanding = envelope_from_package_body(
   b: extdeps.power.ti_tps3808.tps3808_dbv0006a_body,
-  source: decl_ref(module_path: "extdeps.power.ti_tps3808", decl_name: "tps3808_dbv0006a_body"),
+  source: std.decl_ref.decl_ref(module_path: "extdeps.power.ti_tps3808", decl_name: "tps3808_dbv0006a_body"),
 )
 
 // THE ONE ESTABLISHED ENVELOPE. The board-control CPLD is an iCE40 in TQ144, whose body dimensions
@@ -586,8 +586,8 @@ data power_good_envelope: ComponentEnvelopeStanding = envelope_from_package_body
 // rather than retyped — so a correction there moves this placement instead of leaving it agreeing
 // with a number that has changed.
 data board_control_envelope: ComponentEnvelopeStanding = EnvelopeEstablished {
-  envelope: body_envelope_of_ice40_package(p: ice40_tq144_package),
-  source: decl_ref(module_path: "extdeps.programmable_logic.ice40.subject", decl_name: "ice40_tq144_package"),
+  envelope: product.pcb.physical.body_envelope_of_ice40_package(p: extdeps.programmable_logic.ice40.subject.ice40_tq144_package),
+  source: std.decl_ref.decl_ref(module_path: "extdeps.programmable_logic.ice40.subject", decl_name: "ice40_tq144_package"),
 }
 
 // THE FIRST ENVELOPE THIS BOARD ESTABLISHES FROM A CITED AUTHORITY RATHER THAN OWING. Every other
@@ -604,11 +604,11 @@ data board_control_envelope: ComponentEnvelopeStanding = EnvelopeEstablished {
 // other — the distinction this PR's root defect erased.
 data processor_package_envelope: ComponentEnvelopeStanding = EnvelopeEstablished {
   envelope: product.pcb.physical.PackageBodyEnvelope {
-    package_designator: altra_package_body_designator,
-    body_width: altra_package_body_width,
-    body_height: altra_package_body_height,
+    package_designator: extdeps.cpu.ampere_altra_package.altra_package_body_designator,
+    body_width: extdeps.cpu.ampere_altra_package.altra_package_body_width,
+    body_height: extdeps.cpu.ampere_altra_package.altra_package_body_height,
   },
-  source: decl_ref(module_path: "extdeps.cpu.ampere_altra_package", decl_name: "altra_package_body_width"),
+  source: std.decl_ref.decl_ref(module_path: "extdeps.cpu.ampere_altra_package", decl_name: "altra_package_body_width"),
 }
 
 // THE SOCKET IS NOT THE PACKAGE. Binding the socket role to processor_package_standing was this
@@ -625,7 +625,7 @@ data processor_package_envelope: ComponentEnvelopeStanding = EnvelopeEstablished
 // blocker would report an established subject as blocked, which is the fabricated plausible output
 // pointed the other way.
 fn socket_envelope_blocker() -> product.altra_motherboard.attachment_stack.FactAuthorityBlocker {
-  match subject_blocker(fact: socket_standing.fact, carriage: socket_standing.carriage) {
+  match product.altra_motherboard.attachment_stack.subject_blocker(fact: socket_standing.fact, carriage: socket_standing.carriage) {
     Present { value: b } => b
     Absent =>
       product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument {
@@ -634,12 +634,12 @@ fn socket_envelope_blocker() -> product.altra_motherboard.attachment_stack.FactA
   }
 }
 
-fn obligation(g: product.altra_motherboard.attachment_stack.FactAuthorityBlocker, id: std.types.NonEmptyStr, r: BoardComponentRole, x: std.integer.Int, y: std.integer.Int) -> PlannedComponent {
+fn obligation(g: product.altra_motherboard.attachment_stack.FactAuthorityBlocker, id: std.types.NonEmptyStr, r: BoardComponentRole, x: Int, y: Int) -> PlannedComponent {
   PlannedComponent {
     identity: id,
     role: r,
     envelope: EnvelopeNotEstablished { gap: g },
-    origin: point2(frame: altra_board_frame(), x: x, y: y),
+    origin: std.affine_space.point2(frame: altra_board_frame(), x: x, y: y),
   }
 }
 
@@ -648,9 +648,9 @@ fn obligation(g: product.altra_motherboard.attachment_stack.FactAuthorityBlocker
 // refusal above exists to catch -- but only once their envelopes land, and by then the board is
 // drawn. Naming them fully means the collision cannot be authored in the first place.
 fn memory_slot_obligations(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> List<PlannedComponent> {
-  fold(topology_slot_identities(t: d.memory.topology), init: [], f: fn(acc, s) {
-    let ch = ddr_channel_ordinal(c: s.channel)
-    let pos = dimm_slot_position_ordinal(p: s.position)
+  fold(product.altra_motherboard.minimal_design.topology_slot_identities(t: d.memory.topology), init: [], f: fn(acc, s) {
+    let ch = product.altra_motherboard.minimal_design.ddr_channel_ordinal(c: s.channel)
+    let pos = product.altra_motherboard.minimal_design.dimm_slot_position_ordinal(p: s.position)
     concat(acc, [obligation(
       g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the MemoryModuleSlot role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" },
       id: "dimm_ddr{ch}_slot{pos}",
@@ -677,7 +677,7 @@ fn altra_reference_plan() -> std.orthogonal_geometry.OrthogonalConstruction<Boar
       identity: "board_control_cpld",
       role: BoardControlCpld,
       envelope: board_control_envelope,
-      origin: point2(frame: altra_board_frame(), x: 240000, y: 200000),
+      origin: std.affine_space.point2(frame: altra_board_frame(), x: 240000, y: 200000),
     },
     obligation(
       g: socket_envelope_blocker(),
@@ -687,7 +687,7 @@ fn altra_reference_plan() -> std.orthogonal_geometry.OrthogonalConstruction<Boar
       identity: "processor_package",
       role: ProcessorPackage,
       envelope: processor_package_envelope,
-      origin: point2(frame: altra_board_frame(), x: 60000, y: 90000),
+      origin: std.affine_space.point2(frame: altra_board_frame(), x: 60000, y: 90000),
     },
     obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the BootFirmwareEeprom role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "boot_eeprom", r: BootFirmwareEeprom, x: 250000, y: 40000),
     obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the FirmwareFlash role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "spi_nor", r: FirmwareFlash, x: 260000, y: 60000),
@@ -697,33 +697,33 @@ fn altra_reference_plan() -> std.orthogonal_geometry.OrthogonalConstruction<Boar
       identity: "power_stage",
       role: ProcessorPowerStage,
       envelope: power_stage_envelope,
-      origin: point2(frame: altra_board_frame(), x: 40000, y: 220000),
+      origin: std.affine_space.point2(frame: altra_board_frame(), x: 40000, y: 220000),
     },
     PlannedComponent {
       identity: "power_good",
       role: ProcessorPowerGoodSupervisor,
       envelope: power_good_envelope,
-      origin: point2(frame: altra_board_frame(), x: 50000, y: 220000),
+      origin: std.affine_space.point2(frame: altra_board_frame(), x: 50000, y: 220000),
     },
     PlannedComponent {
       identity: "host_phy",
       role: HostNetworkPhy,
       envelope: host_phy_envelope,
-      origin: point2(frame: altra_board_frame(), x: 270000, y: 120000),
+      origin: std.affine_space.point2(frame: altra_board_frame(), x: 270000, y: 120000),
     },
     obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "management network connectivity is not established: reference precedent names a BMC plus PHY path on a dual-socket reference board, not a selected management population for this single-socket design" }, id: "mgmt_net", r: ManagementNetworkPath, x: 280000, y: 120000),
     obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the StorageEndpoint role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "nvme_conn", r: StorageEndpoint, x: 280000, y: 90000),
     obligation(g: product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the DebugConnector role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "debug_hdr", r: DebugConnector, x: 200000, y: 250000),
   ]
   match altra_board_outline() {
-    OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
-    OrthogonalReady { value: o } =>
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
+    std.orthogonal_geometry.OrthogonalReady { value: o } =>
       std.orthogonal_geometry.OrthogonalReady {
         value: BoardPlacementPlan {
           frame: altra_board_frame(),
           outline: o,
           design: altra_1p_minimum_ref(),
-          components: concat(fixed, memory_slot_obligations(d: altra_1p_minimum)),
+          components: concat(fixed, memory_slot_obligations(d: product.altra_motherboard.minimal_design.altra_1p_minimum)),
         }
       }
   }
@@ -745,10 +745,10 @@ type AltraFrameRegistryStanding
   | FrameRegistryRefused { cause: std.spatial_frame.FrameRegistrationRefusal }
 
 fn altra_frame_registry() -> AltraFrameRegistryStanding {
-  let r0 = empty_frame_registry()
-  match register_frame(r: r0, identity: altra_board_frame(), length_scale: Micro) {
-    FrameRegistered { frame: f } => FrameRegistryEstablished { registry: registry_with(r: r0, f: f) }
-    FrameRegistrationRefused { cause: c } => FrameRegistryRefused { cause: c }
+  let r0 = std.spatial_frame.empty_frame_registry()
+  match std.spatial_frame.register_frame(r: r0, identity: altra_board_frame(), length_scale: std.measure.Micro) {
+    std.spatial_frame.FrameRegistered { frame: f } => FrameRegistryEstablished { registry: std.spatial_frame.registry_with(r: r0, f: f) }
+    std.spatial_frame.FrameRegistrationRefused { cause: c } => FrameRegistryRefused { cause: c }
   }
 }
 
@@ -767,7 +767,7 @@ fn board_article(plan: BoardPlacementPlan) -> product.pcb.physical.BoardPhysical
 // have cited bodies on the plan — those parts were checked geometrically, so they do not belong
 // in this count. The other placement refusals describe parts that ARE present and are defects in
 // what was checked rather than gaps in what was not.
-fn parts_not_geometrically_checked(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: BoardPlacementPlan) -> std.integer.Int {
+fn parts_not_geometrically_checked(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: BoardPlacementPlan) -> Int {
   fold(placement_causes(d: d, d_ref: d_ref, plan: plan), init: 0, f: fn(acc, c) {
     match c {
       RequiredRoleUnfilled { role: _ } => acc + 1
@@ -794,14 +794,14 @@ fn parts_not_geometrically_checked(d: product.altra_motherboard.minimal_design.A
 // arm has no constructor reachable while anything is owed.
 type BoardBodyLayoutStanding
   = BodyLayoutAdmittedOverEveryRequiredPart { article: product.pcb.physical.BoardPhysicalArticle }
-  | BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: std.integer.Int, geometry: product.pcb.physical.PhysicalAdmission }
+  | BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: Int, geometry: product.pcb.physical.PhysicalAdmission }
   | BodyLayoutRefused { causes: product.pcb.physical.PhysicalRefusalSet }
 
 fn board_body_layout_standing(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: BoardPlacementPlan) -> BoardBodyLayoutStanding {
   let owed = parts_not_geometrically_checked(d: d, d_ref: d_ref, plan: plan)
   let geometry = match altra_frame_registry() {
     FrameRegistryEstablished { registry: r } =>
-      admit_body_envelopes(registry: r, article: board_article(plan: plan))
+      product.pcb.physical.admit_body_envelopes(registry: r, article: board_article(plan: plan))
     FrameRegistryRefused { cause: c } =>
       product.pcb.physical.PhysicallyRefused { causes: product.pcb.physical.PhysicalRefusalSet {
         first: product.pcb.physical.BoardFrameRegistrationRefused { cause: c },
@@ -812,8 +812,8 @@ fn board_body_layout_standing(d: product.altra_motherboard.minimal_design.AltraM
     BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: owed, geometry: geometry }
   } else {
     match geometry {
-      BodyEnvelopesAdmitted { article: a } => BodyLayoutAdmittedOverEveryRequiredPart { article: a }
-      PhysicallyRefused { causes: cs } => BodyLayoutRefused { causes: cs }
+      product.pcb.physical.BodyEnvelopesAdmitted { article: a } => BodyLayoutAdmittedOverEveryRequiredPart { article: a }
+      product.pcb.physical.PhysicallyRefused { causes: cs } => BodyLayoutRefused { causes: cs }
     }
   }
 }

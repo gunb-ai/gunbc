@@ -1,7 +1,7 @@
 module v2.workflow.orchestration_tier2_emit_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data orch_tier2_golden_note: String = "Goldens below are hand-authored bytes from fleet_converge_emit.dag converge_gunbc_pinned_tree fresh_standup arm ONLY (docs/plans/shell-to-dag-residual-census-and-arc-completion.md §1B frontier rows). Ubuntu-media for/heredoc sites are EXCLUDED per purity-trap fence (FLAG B1). Each test compares emit against its golden independently of the grammar rows."
 
@@ -20,13 +20,13 @@ fn fresh_standup_cmdsubst_assign_golden() -> String {
 }
 
 test fn orch_tier2_fresh_standup_cmdsubst_assign_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: fresh_standup_cmdsubst_assign_intent(),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: src, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_cmdsubst_assign_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -42,13 +42,13 @@ fn fresh_standup_decide_verdict_call_golden() -> String {
 }
 
 test fn orch_tier2_fresh_standup_procedure_call_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: fresh_standup_decide_verdict_call_intent(),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: src, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_decide_verdict_call_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -64,13 +64,13 @@ fn fresh_standup_read_pin_call_golden() -> String {
 }
 
 test fn orch_tier2_fresh_standup_read_pin_call_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: fresh_standup_read_pin_call_intent(),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: src, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_read_pin_call_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -83,13 +83,13 @@ fn fresh_standup_verdict_absent_let_golden() -> String {
 }
 
 test fn orch_tier2_fresh_standup_verdict_absent_let_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: fresh_standup_verdict_absent_let_intent(),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: src, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_verdict_absent_let_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -102,13 +102,13 @@ fn fresh_standup_effective_var_let_golden() -> String {
 }
 
 test fn orch_tier2_fresh_standup_effective_var_let_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: fresh_standup_effective_var_let_intent(),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: src, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_effective_var_let_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -121,13 +121,13 @@ fn fresh_standup_dag_pin_empty_let_golden() -> String {
 }
 
 test fn orch_tier2_fresh_standup_dag_pin_empty_let_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: fresh_standup_dag_pin_empty_let_intent(),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: src, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_dag_pin_empty_let_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -138,12 +138,12 @@ fn decide_verdict_procedure_body() -> v2.std.orchestration.Pipeline {
         cond: v2.std.orchestration.StrEmpty { operand: "\"$1\"" },
         then_: v2.std.orchestration.Pipeline {
           steps: [v2.std.orchestration.Let { name: "verdict", value: v2.std.orchestration.ExprLit { spelling: "absent" } }],
-          on_failure: FailFast
+          on_failure: v2.std.orchestration.FailFast
         },
-        else_: v2.std.optional.Absent
+        else_: v2.std.collection.Absent
       }
     ],
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
@@ -156,23 +156,23 @@ fn decide_verdict_procedure_partial_golden() -> String {
 }
 
 test fn orch_tier2_procedure_definition_band_holds() -> Bool {
-  match orch_emit_procedure(
+  match v2.compiler.emit_orchestration.orch_emit_procedure(
     proc: decide_verdict_procedure_intent(),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: src, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: src, diagnostics: dg } =>
       (src.carried == decide_verdict_procedure_partial_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn orch_tier2_cmdsubst_assign_has_teeth_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: fresh_standup_cmdsubst_assign_intent(),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: src, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: src, diagnostics: _ } =>
       src.carried != "dag_pin=\"$(converge_read_gunbc_host_pin \"$ctrl_pin\")\""
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

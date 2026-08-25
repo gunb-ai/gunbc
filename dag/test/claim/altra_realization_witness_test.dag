@@ -1,53 +1,53 @@
 module test.claim.altra_realization_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn plan_identities_from_reference() -> List<std.types.NonEmptyStr> {
-  match altra_reference_plan() {
-    OrthogonalReady { value: p } =>
+  match product.altra_motherboard.placement.altra_reference_plan() {
+    std.orthogonal_geometry.OrthogonalReady { value: p } =>
       fold(p.components, init: [], f: fn(acc, c) { concat(acc, [c.identity]) })
-    OrthogonalRefused { cause: _ } => []
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => []
   }
 }
 
 test fn w_realization_roster_has_three_distinct_justification_arms() -> Bool {
-  let roster = altra_1p_requirement_part_realizations
+  let roster = product.altra_motherboard.realization.altra_1p_requirement_part_realizations
   let has_precedent = fold(roster, init: false, f: fn(acc, row) {
     acc || match row.justification {
-      ReferenceDesignPrecedent { reference_design: _, authority: _ } => true
-      RequirementsDerived { requirements: _, evidence: _ } => false
-      CandidateCompatibilityOnly { candidate: _, obligations: _ } => false
+      product.altra_motherboard.realization.ReferenceDesignPrecedent { reference_design: _, authority: _ } => true
+      product.altra_motherboard.realization.RequirementsDerived { requirements: _, evidence: _ } => false
+      product.altra_motherboard.realization.CandidateCompatibilityOnly { candidate: _, obligations: _ } => false
     }
   })
   let has_derived = fold(roster, init: false, f: fn(acc, row) {
     acc || match row.justification {
-      ReferenceDesignPrecedent { reference_design: _, authority: _ } => false
-      RequirementsDerived { requirements: _, evidence: _ } => true
-      CandidateCompatibilityOnly { candidate: _, obligations: _ } => false
+      product.altra_motherboard.realization.ReferenceDesignPrecedent { reference_design: _, authority: _ } => false
+      product.altra_motherboard.realization.RequirementsDerived { requirements: _, evidence: _ } => true
+      product.altra_motherboard.realization.CandidateCompatibilityOnly { candidate: _, obligations: _ } => false
     }
   })
   let has_candidate = fold(roster, init: false, f: fn(acc, row) {
     acc || match row.justification {
-      ReferenceDesignPrecedent { reference_design: _, authority: _ } => false
-      RequirementsDerived { requirements: _, evidence: _ } => false
-      CandidateCompatibilityOnly { candidate: _, obligations: _ } => true
+      product.altra_motherboard.realization.ReferenceDesignPrecedent { reference_design: _, authority: _ } => false
+      product.altra_motherboard.realization.RequirementsDerived { requirements: _, evidence: _ } => false
+      product.altra_motherboard.realization.CandidateCompatibilityOnly { candidate: _, obligations: _ } => true
     }
   })
   has_precedent && has_derived && has_candidate
 }
 
 test fn w_management_network_cites_reference_design_not_part_selection() -> Bool {
-  fold(altra_1p_requirement_part_realizations, init: false, f: fn(acc, row) {
+  fold(product.altra_motherboard.realization.altra_1p_requirement_part_realizations, init: false, f: fn(acc, row) {
     if acc {
       true
     } else {
-      if row_covers_requirement(row: row, req: ManagementNetworkConnectivity) {
+      if product.altra_motherboard.realization.row_covers_requirement(row: row, req: product.altra_motherboard.realization.ManagementNetworkConnectivity) {
         match row.justification {
-          ReferenceDesignPrecedent { reference_design: d, authority: _ } =>
-            declaration_ref_eq(a: d, b: mt_jade_reference_platform_ref())
-          RequirementsDerived { requirements: _, evidence: _ } => false
-          CandidateCompatibilityOnly { candidate: _, obligations: _ } => false
+          product.altra_motherboard.realization.ReferenceDesignPrecedent { reference_design: d, authority: _ } =>
+            std.decl_ref.declaration_ref_eq(a: d, b: product.altra_motherboard.realization.mt_jade_reference_platform_ref())
+          product.altra_motherboard.realization.RequirementsDerived { requirements: _, evidence: _ } => false
+          product.altra_motherboard.realization.CandidateCompatibilityOnly { candidate: _, obligations: _ } => false
         }
       } else {
         false
@@ -57,16 +57,16 @@ test fn w_management_network_cites_reference_design_not_part_selection() -> Bool
 }
 
 test fn w_host_network_phy_is_candidate_only_not_reference_selection() -> Bool {
-  fold(altra_1p_requirement_part_realizations, init: false, f: fn(acc, row) {
+  fold(product.altra_motherboard.realization.altra_1p_requirement_part_realizations, init: false, f: fn(acc, row) {
     if acc {
       true
     } else {
-      if row_covers_requirement(row: row, req: HostNetworkConnectivity) {
+      if product.altra_motherboard.realization.row_covers_requirement(row: row, req: product.altra_motherboard.realization.HostNetworkConnectivity) {
         match row.justification {
-          CandidateCompatibilityOnly { candidate: c, obligations: _ } =>
-            declaration_ref_eq(a: c, b: dp83867_candidate_ref())
-          ReferenceDesignPrecedent { reference_design: _, authority: _ } => false
-          RequirementsDerived { requirements: _, evidence: _ } => false
+          product.altra_motherboard.realization.CandidateCompatibilityOnly { candidate: c, obligations: _ } =>
+            std.decl_ref.declaration_ref_eq(a: c, b: product.altra_motherboard.realization.dp83867_candidate_ref())
+          product.altra_motherboard.realization.ReferenceDesignPrecedent { reference_design: _, authority: _ } => false
+          product.altra_motherboard.realization.RequirementsDerived { requirements: _, evidence: _ } => false
         }
       } else {
         false
@@ -76,13 +76,13 @@ test fn w_host_network_phy_is_candidate_only_not_reference_selection() -> Bool {
 }
 
 test fn w_clock_requirements_have_no_physical_providers() -> Bool {
-  fold(altra_1p_requirement_part_realizations, init: true, f: fn(acc, row) {
+  fold(product.altra_motherboard.realization.altra_1p_requirement_part_realizations, init: true, f: fn(acc, row) {
     if !acc {
       false
     } else {
-      if row_covers_requirement(row: row, req: ClockReferenceGeneration)
-        || row_covers_requirement(row: row, req: ClockReferenceDistribution) {
-        list_length(items: row.providers) == 0
+      if product.altra_motherboard.realization.row_covers_requirement(row: row, req: product.altra_motherboard.realization.ClockReferenceGeneration)
+        || product.altra_motherboard.realization.row_covers_requirement(row: row, req: product.altra_motherboard.realization.ClockReferenceDistribution) {
+        std.types.list_length(items: row.providers) == 0
       } else {
         true
       }
@@ -92,37 +92,37 @@ test fn w_clock_requirements_have_no_physical_providers() -> Bool {
 
 test fn w_the_reference_plan_carries_all_realization_providers() -> Bool {
   let ids = plan_identities_from_reference()
-  fold(altra_1p_realization_provider_identities(), init: true, f: fn(acc, id) {
+  fold(product.altra_motherboard.realization.altra_1p_realization_provider_identities(), init: true, f: fn(acc, id) {
     acc && fold(ids, init: false, f: fn(seen, x) { seen || (x as String) == (id as String) })
   })
 }
 
 test fn w_candidate_only_rows_do_not_discharge_with_providers_on_plan() -> Bool {
-  let cs = population_realization_refusals(
-    roster: altra_1p_requirement_part_realizations,
+  let cs = product.altra_motherboard.realization.population_realization_refusals(
+    roster: product.altra_motherboard.realization.altra_1p_requirement_part_realizations,
     plan_identities: plan_identities_from_reference(),
   )
-  population_realization_refusal_count(cs: cs) == 3
+  product.altra_motherboard.realization.population_realization_refusal_count(cs: cs) == 3
     && fold(cs, init: true, f: fn(acc, r) {
       acc && match r {
-        RequiredFunctionWithoutJustifiedPart { requirement: req } =>
+        product.altra_motherboard.realization.RequiredFunctionWithoutJustifiedPart { requirement: req } =>
           match req {
-            HostNetworkConnectivity => true
-            ProcessorPowerStageControl => true
-            ProcessorPowerGoodSupervision => true
-            ManagementNetworkConnectivity => false
-            ProcessorRailEnableSequencing => false
-            ClockReferenceGeneration => false
-            ClockReferenceDistribution => false
-            BootFirmwareRetention => false
-            HostFirmwareStorage => false
-            ResetSupervision => false
-            NvmeConnectorPopulation => false
-            BoardControlLogic => false
-            DebugAccess => false
-            ProcessorSocketMount => false
-            ProcessorPackageFit => false
-            MemoryModuleSocketPopulation { slot: _ } => false
+            product.altra_motherboard.realization.HostNetworkConnectivity => true
+            product.altra_motherboard.realization.ProcessorPowerStageControl => true
+            product.altra_motherboard.realization.ProcessorPowerGoodSupervision => true
+            product.altra_motherboard.realization.ManagementNetworkConnectivity => false
+            product.altra_motherboard.realization.ProcessorRailEnableSequencing => false
+            product.altra_motherboard.realization.ClockReferenceGeneration => false
+            product.altra_motherboard.realization.ClockReferenceDistribution => false
+            product.altra_motherboard.realization.BootFirmwareRetention => false
+            product.altra_motherboard.realization.HostFirmwareStorage => false
+            product.altra_motherboard.realization.ResetSupervision => false
+            product.altra_motherboard.realization.NvmeConnectorPopulation => false
+            product.altra_motherboard.realization.BoardControlLogic => false
+            product.altra_motherboard.realization.DebugAccess => false
+            product.altra_motherboard.realization.ProcessorSocketMount => false
+            product.altra_motherboard.realization.ProcessorPackageFit => false
+            product.altra_motherboard.realization.MemoryModuleSocketPopulation { slot: _ } => false
           }
       }
     })
@@ -137,28 +137,28 @@ test fn w_removing_host_phy_refuses_host_network_requirement() -> Bool {
     }
   })
   fold(
-    population_realization_refusals(roster: altra_1p_requirement_part_realizations, plan_identities: ids),
+    product.altra_motherboard.realization.population_realization_refusals(roster: product.altra_motherboard.realization.altra_1p_requirement_part_realizations, plan_identities: ids),
     init: false,
     f: fn(acc, r) {
       acc || match r {
-        RequiredFunctionWithoutJustifiedPart { requirement: req } =>
+        product.altra_motherboard.realization.RequiredFunctionWithoutJustifiedPart { requirement: req } =>
           match req {
-            HostNetworkConnectivity => true
-            ManagementNetworkConnectivity => false
-            ProcessorRailEnableSequencing => false
-            ProcessorPowerStageControl => false
-            ProcessorPowerGoodSupervision => false
-            ClockReferenceGeneration => false
-            ClockReferenceDistribution => false
-            BootFirmwareRetention => false
-            HostFirmwareStorage => false
-            ResetSupervision => false
-            NvmeConnectorPopulation => false
-            BoardControlLogic => false
-            DebugAccess => false
-            ProcessorSocketMount => false
-            ProcessorPackageFit => false
-            MemoryModuleSocketPopulation { slot: _ } => false
+            product.altra_motherboard.realization.HostNetworkConnectivity => true
+            product.altra_motherboard.realization.ManagementNetworkConnectivity => false
+            product.altra_motherboard.realization.ProcessorRailEnableSequencing => false
+            product.altra_motherboard.realization.ProcessorPowerStageControl => false
+            product.altra_motherboard.realization.ProcessorPowerGoodSupervision => false
+            product.altra_motherboard.realization.ClockReferenceGeneration => false
+            product.altra_motherboard.realization.ClockReferenceDistribution => false
+            product.altra_motherboard.realization.BootFirmwareRetention => false
+            product.altra_motherboard.realization.HostFirmwareStorage => false
+            product.altra_motherboard.realization.ResetSupervision => false
+            product.altra_motherboard.realization.NvmeConnectorPopulation => false
+            product.altra_motherboard.realization.BoardControlLogic => false
+            product.altra_motherboard.realization.DebugAccess => false
+            product.altra_motherboard.realization.ProcessorSocketMount => false
+            product.altra_motherboard.realization.ProcessorPackageFit => false
+            product.altra_motherboard.realization.MemoryModuleSocketPopulation { slot: _ } => false
           }
       }
     }
@@ -166,45 +166,45 @@ test fn w_removing_host_phy_refuses_host_network_requirement() -> Bool {
 }
 
 test fn w_host_and_management_network_are_separate_requirements() -> Bool {
-  (requirement_name(r: HostNetworkConnectivity) as String) == "host network connectivity"
-    && (requirement_name(r: ManagementNetworkConnectivity) as String) == "management network connectivity"
+  (product.altra_motherboard.realization.requirement_name(r: product.altra_motherboard.realization.HostNetworkConnectivity) as String) == "host network connectivity"
+    && (product.altra_motherboard.realization.requirement_name(r: product.altra_motherboard.realization.ManagementNetworkConnectivity) as String) == "management network connectivity"
 }
 
 test fn w_power_is_decomposed_into_rail_stage_and_supervisor_requirements() -> Bool {
-  (requirement_name(r: ProcessorRailEnableSequencing) as String) == "processor rail enable sequencing"
-    && (requirement_name(r: ProcessorPowerStageControl) as String) == "processor power stage control"
-    && (requirement_name(r: ProcessorPowerGoodSupervision) as String) == "processor power good supervision"
+  (product.altra_motherboard.realization.requirement_name(r: product.altra_motherboard.realization.ProcessorRailEnableSequencing) as String) == "processor rail enable sequencing"
+    && (product.altra_motherboard.realization.requirement_name(r: product.altra_motherboard.realization.ProcessorPowerStageControl) as String) == "processor power stage control"
+    && (product.altra_motherboard.realization.requirement_name(r: product.altra_motherboard.realization.ProcessorPowerGoodSupervision) as String) == "processor power good supervision"
 }
 
 test fn w_candidate_justifications_name_ti_mechanical_rows() -> Bool {
-  fold(altra_1p_requirement_part_realizations, init: true, f: fn(acc, row) {
+  fold(product.altra_motherboard.realization.altra_1p_requirement_part_realizations, init: true, f: fn(acc, row) {
     if !acc {
       false
     } else {
       match row.justification {
-        CandidateCompatibilityOnly { candidate: c, obligations: _ } =>
-          declaration_ref_eq(a: c, b: dp83867_candidate_ref())
-            || declaration_ref_eq(a: c, b: tps53688_candidate_ref())
-            || declaration_ref_eq(a: c, b: tps3808_candidate_ref())
-            || declaration_ref_eq(a: c, b: cdce913_candidate_ref())
-        ReferenceDesignPrecedent { reference_design: _, authority: _ } => true
-        RequirementsDerived { requirements: _, evidence: _ } => true
+        product.altra_motherboard.realization.CandidateCompatibilityOnly { candidate: c, obligations: _ } =>
+          std.decl_ref.declaration_ref_eq(a: c, b: product.altra_motherboard.realization.dp83867_candidate_ref())
+            || std.decl_ref.declaration_ref_eq(a: c, b: product.altra_motherboard.realization.tps53688_candidate_ref())
+            || std.decl_ref.declaration_ref_eq(a: c, b: product.altra_motherboard.realization.tps3808_candidate_ref())
+            || std.decl_ref.declaration_ref_eq(a: c, b: product.altra_motherboard.realization.cdce913_candidate_ref())
+        product.altra_motherboard.realization.ReferenceDesignPrecedent { reference_design: _, authority: _ } => true
+        product.altra_motherboard.realization.RequirementsDerived { requirements: _, evidence: _ } => true
       }
     }
   })
 }
 
 test fn w_rail_sequencing_derives_from_cited_enable_order() -> Bool {
-  fold(altra_1p_requirement_part_realizations, init: false, f: fn(acc, row) {
+  fold(product.altra_motherboard.realization.altra_1p_requirement_part_realizations, init: false, f: fn(acc, row) {
     if acc {
       true
     } else {
-      if row_covers_requirement(row: row, req: ProcessorRailEnableSequencing) {
+      if product.altra_motherboard.realization.row_covers_requirement(row: row, req: product.altra_motherboard.realization.ProcessorRailEnableSequencing) {
         match row.justification {
-          RequirementsDerived { requirements: r, evidence: _ } =>
-            declaration_ref_eq(a: r, b: processor_power_rail_order_ref())
-          ReferenceDesignPrecedent { reference_design: _, authority: _ } => false
-          CandidateCompatibilityOnly { candidate: _, obligations: _ } => false
+          product.altra_motherboard.realization.RequirementsDerived { requirements: r, evidence: _ } =>
+            std.decl_ref.declaration_ref_eq(a: r, b: product.altra_motherboard.realization.processor_power_rail_order_ref())
+          product.altra_motherboard.realization.ReferenceDesignPrecedent { reference_design: _, authority: _ } => false
+          product.altra_motherboard.realization.CandidateCompatibilityOnly { candidate: _, obligations: _ } => false
         }
       } else {
         false
@@ -214,39 +214,39 @@ test fn w_rail_sequencing_derives_from_cited_enable_order() -> Bool {
 }
 
 test fn w_realization_refusals_surface_through_placement_admission() -> Bool {
-  match altra_reference_plan() {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: p } =>
+  match product.altra_motherboard.placement.altra_reference_plan() {
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: p } =>
       fold(
-        placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p),
+        product.altra_motherboard.placement.placement_causes(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: p),
         init: 0,
         f: fn(acc, r) {
           match r {
-            RequiredFunctionWithoutJustifiedPartOnBoard { requirement: req } =>
+            product.altra_motherboard.placement.RequiredFunctionWithoutJustifiedPartOnBoard { requirement: req } =>
               match req {
-                HostNetworkConnectivity => acc + 1
-                ProcessorPowerStageControl => acc + 1
-                ProcessorPowerGoodSupervision => acc + 1
-                ManagementNetworkConnectivity => acc + 100
-                ProcessorRailEnableSequencing => acc + 100
-                ClockReferenceGeneration => acc + 100
-                ClockReferenceDistribution => acc + 100
-                BootFirmwareRetention => acc + 100
-                HostFirmwareStorage => acc + 100
-                ResetSupervision => acc + 100
-                NvmeConnectorPopulation => acc + 100
-                BoardControlLogic => acc + 100
-                DebugAccess => acc + 100
-                ProcessorSocketMount => acc + 100
-                ProcessorPackageFit => acc + 100
-                MemoryModuleSocketPopulation { slot: _ } => acc + 100
+                product.altra_motherboard.realization.HostNetworkConnectivity => acc + 1
+                product.altra_motherboard.realization.ProcessorPowerStageControl => acc + 1
+                product.altra_motherboard.realization.ProcessorPowerGoodSupervision => acc + 1
+                product.altra_motherboard.realization.ManagementNetworkConnectivity => acc + 100
+                product.altra_motherboard.realization.ProcessorRailEnableSequencing => acc + 100
+                product.altra_motherboard.realization.ClockReferenceGeneration => acc + 100
+                product.altra_motherboard.realization.ClockReferenceDistribution => acc + 100
+                product.altra_motherboard.realization.BootFirmwareRetention => acc + 100
+                product.altra_motherboard.realization.HostFirmwareStorage => acc + 100
+                product.altra_motherboard.realization.ResetSupervision => acc + 100
+                product.altra_motherboard.realization.NvmeConnectorPopulation => acc + 100
+                product.altra_motherboard.realization.BoardControlLogic => acc + 100
+                product.altra_motherboard.realization.DebugAccess => acc + 100
+                product.altra_motherboard.realization.ProcessorSocketMount => acc + 100
+                product.altra_motherboard.realization.ProcessorPackageFit => acc + 100
+                product.altra_motherboard.realization.MemoryModuleSocketPopulation { slot: _ } => acc + 100
               }
-            ComponentEnvelopeNotEstablished { component: _, gap: _ } => acc
-            RequiredRoleUnfilled { role: _ } => acc
-            ComponentFillsNoRequiredRole { component: _, role_named: _ } => acc
-            PlannedIdentityRepeated { component: _ } => acc
-            RoleFilledMoreThanOnce { role: _, fills: _ } => acc
-            PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => acc
+            product.altra_motherboard.placement.ComponentEnvelopeNotEstablished { component: _, gap: _ } => acc
+            product.altra_motherboard.placement.RequiredRoleUnfilled { role: _ } => acc
+            product.altra_motherboard.placement.ComponentFillsNoRequiredRole { component: _, role_named: _ } => acc
+            product.altra_motherboard.placement.PlannedIdentityRepeated { component: _ } => acc
+            product.altra_motherboard.placement.RoleFilledMoreThanOnce { role: _, fills: _ } => acc
+            product.altra_motherboard.placement.PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => acc
           }
         }
       ) == 3
@@ -254,30 +254,30 @@ test fn w_realization_refusals_surface_through_placement_admission() -> Bool {
 }
 
 test fn w_clock_obligations_name_outstanding_compatibility_not_selection() -> Bool {
-  (functional_obligation_text(r: ClockReferenceGeneration) as String) !=
-    (functional_obligation_text(r: ClockReferenceDistribution) as String)
+  (product.altra_motherboard.realization.functional_obligation_text(r: product.altra_motherboard.realization.ClockReferenceGeneration) as String) !=
+    (product.altra_motherboard.realization.functional_obligation_text(r: product.altra_motherboard.realization.ClockReferenceDistribution) as String)
 }
 
 test fn w_board_functional_obligations_include_physical_population_gaps() -> Bool {
-  list_length(items: board_functional_obligations()) == 7
-    && fold(board_functional_obligations(), init: true, f: fn(acc, r) {
+  std.types.list_length(items: product.altra_motherboard.realization.board_functional_obligations()) == 7
+    && fold(product.altra_motherboard.realization.board_functional_obligations(), init: true, f: fn(acc, r) {
       acc && match r {
-        HostNetworkConnectivity => true
-        ManagementNetworkConnectivity => true
-        ProcessorRailEnableSequencing => true
-        ProcessorPowerStageControl => true
-        ProcessorPowerGoodSupervision => true
-        ClockReferenceGeneration => true
-        ClockReferenceDistribution => true
-        BootFirmwareRetention => false
-        HostFirmwareStorage => false
-        ResetSupervision => false
-        NvmeConnectorPopulation => false
-        BoardControlLogic => false
-        DebugAccess => false
-        ProcessorSocketMount => false
-        ProcessorPackageFit => false
-        MemoryModuleSocketPopulation { slot: _ } => false
+        product.altra_motherboard.realization.HostNetworkConnectivity => true
+        product.altra_motherboard.realization.ManagementNetworkConnectivity => true
+        product.altra_motherboard.realization.ProcessorRailEnableSequencing => true
+        product.altra_motherboard.realization.ProcessorPowerStageControl => true
+        product.altra_motherboard.realization.ProcessorPowerGoodSupervision => true
+        product.altra_motherboard.realization.ClockReferenceGeneration => true
+        product.altra_motherboard.realization.ClockReferenceDistribution => true
+        product.altra_motherboard.realization.BootFirmwareRetention => false
+        product.altra_motherboard.realization.HostFirmwareStorage => false
+        product.altra_motherboard.realization.ResetSupervision => false
+        product.altra_motherboard.realization.NvmeConnectorPopulation => false
+        product.altra_motherboard.realization.BoardControlLogic => false
+        product.altra_motherboard.realization.DebugAccess => false
+        product.altra_motherboard.realization.ProcessorSocketMount => false
+        product.altra_motherboard.realization.ProcessorPackageFit => false
+        product.altra_motherboard.realization.MemoryModuleSocketPopulation { slot: _ } => false
       }
     })
 }

@@ -1,26 +1,26 @@
 module test.claim.runner_connectivity_repair_plan_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn act_ts(s: String) -> std.types.Timestamp {
   s as std.types.Timestamp
 }
 
 fn fixture_slot() -> gunbc.build_cache_instance.RunnerSlotIdentity {
-  gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
+  gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv1, slot_index: 1 }
 }
 
 fn wedged_snapshot(act: std.types.Timestamp) -> gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
-  let slot = test.claim.runner_connectivity_repair_plan_witness.fixture_slot()
+  let slot = fixture_slot()
   let inc = gunbc.runner_connectivity_recovery.RunnerLocalIncarnation {
     slot: slot,
     process: gunbc.build_cache_instance.ProcessIdentity {
-      boot_id: "boot-a" as std.types.NonEmptyStr,
+      boot_id: "boot-a" as NonEmptyStr,
       pid: 4242,
-      start_time: "80000000" as std.types.NonEmptyStr,
+      start_time: "80000000" as NonEmptyStr,
     },
-    unit: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
+    unit: "actions-runner@srv1-01.service" as NonEmptyStr,
   }
   gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
@@ -31,18 +31,18 @@ fn wedged_snapshot(act: std.types.Timestamp) -> gunbc.runner_connectivity_recove
     },
     remote: gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
       evidence: gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
-        registration: RunnerRemoteOffline,
+        registration: gunbc.runner_broker_progress_watchdog.RunnerRemoteOffline,
         registration_id: "",
-        grade: ObservedEvidence,
+        grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
       },
       observed_at: act,
       control_plane_error_burst: false,
     },
     broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
-      silence_seconds: runner_broker_progress_silence_bound_seconds,
-      grade: ObservedEvidence,
+      silence_seconds: gunbc.runner_broker_progress_watchdog.runner_broker_progress_silence_bound_seconds,
+      grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
     },
-    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
+    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence },
     registration_grace_elapsed: true,
     confirmed_at: act,
     last_restart_at: Absent,
@@ -50,60 +50,60 @@ fn wedged_snapshot(act: std.types.Timestamp) -> gunbc.runner_connectivity_recove
 }
 
 test fn replace_action_projects_five_step_repair_sequence() -> Bool {
-  let act = test.claim.runner_connectivity_repair_plan_witness.act_ts(s: "2026-08-06T20:00:00Z")
-  let snap = test.claim.runner_connectivity_repair_plan_witness.wedged_snapshot(act: act)
-  let action = decide_runner_connectivity_action_for_snapshot(
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let snap = wedged_snapshot(act: act)
+  let action = gunbc.runner_connectivity_recovery.decide_runner_connectivity_action_for_snapshot(
     snap: snap,
     prior: snap,
     act_at: act,
-    reach: HostReachAdmitted,
+    reach: gunbc.runner_broker_progress_watchdog.HostReachAdmitted,
     allow_replace: true,
   )
-  let plan = project_connectivity_action_to_repair_plan(action: action)
-  repair_plan_is_execute(plan: plan)
-    && repair_execute_step_count(plan: plan) == 5
+  let plan = gunbc.runner_connectivity_repair_plan.project_connectivity_action_to_repair_plan(action: action)
+  gunbc.runner_connectivity_repair_plan.repair_plan_is_execute(plan: plan)
+    && gunbc.runner_connectivity_repair_plan.repair_execute_step_count(plan: plan) == 5
     && match plan {
-         RepairExecute { slot: _, steps: steps } =>
-           list_length(items: steps) == 5
+         gunbc.runner_connectivity_repair_plan.RepairExecute { slot: _, steps: steps } =>
+           std.types.list_length(items: steps) == 5
              && match steps.first() {
-                  ObserveRunnerLocalState { slot: _ } => true
+                  gunbc.runner_connectivity_repair_plan.ObserveRunnerLocalState { slot: _ } => true
                   _ => false
                 }
              && match steps.skip(n: 1).first() {
-                  ObserveGitHubRunnerRegistration { slot: _ } => true
+                  gunbc.runner_connectivity_repair_plan.ObserveGitHubRunnerRegistration { slot: _ } => true
                   _ => false
                 }
              && match steps.skip(n: 2).first() {
-                  ReplaceRunnerIncarnation { slot: _, from: _, unit: _ } => true
+                  gunbc.runner_connectivity_repair_plan.ReplaceRunnerIncarnation { slot: _, from: _, unit: _ } => true
                   _ => false
                 }
              && match steps.skip(n: 3).first() {
-                  ObserveRunnerLocalState { slot: _ } => true
+                  gunbc.runner_connectivity_repair_plan.ObserveRunnerLocalState { slot: _ } => true
                   _ => false
                 }
              && match steps.skip(n: 4).first() {
-                  ObserveGitHubRunnerRegistration { slot: _ } => true
+                  gunbc.runner_connectivity_repair_plan.ObserveGitHubRunnerRegistration { slot: _ } => true
                   _ => false
                 }
-         RepairNoop { reason: _ } => false
-         RepairRefusedPlan { slot: _, reason: _ } => false
+         gunbc.runner_connectivity_repair_plan.RepairNoop { reason: _ } => false
+         gunbc.runner_connectivity_repair_plan.RepairRefusedPlan { slot: _, reason: _ } => false
        }
 }
 
 test fn noop_action_projects_empty_repair_plan() -> Bool {
-  let act = test.claim.runner_connectivity_repair_plan_witness.act_ts(s: "2026-08-06T20:00:00Z")
-  let snap = test.claim.runner_connectivity_repair_plan_witness.wedged_snapshot(act: act)
+  let act = act_ts(s: "2026-08-06T20:00:00Z")
+  let snap = wedged_snapshot(act: act)
   let connected = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: snap.slot,
     local: snap.local,
     remote: gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
       evidence: gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
         registration: gunbc.runner_broker_progress_watchdog.RunnerRemoteOnline {
-          runner_name: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
+          runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
           labels: ["self-hosted"],
         },
         registration_id: "reg-1",
-        grade: ObservedEvidence,
+        grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
       },
       observed_at: act,
       control_plane_error_burst: false,
@@ -114,16 +114,16 @@ test fn noop_action_projects_empty_repair_plan() -> Bool {
     confirmed_at: act,
     last_restart_at: Absent,
   }
-  let action = decide_runner_connectivity_action_for_snapshot(
+  let action = gunbc.runner_connectivity_recovery.decide_runner_connectivity_action_for_snapshot(
     snap: connected,
     prior: connected,
     act_at: act,
-    reach: HostReachAdmitted,
+    reach: gunbc.runner_broker_progress_watchdog.HostReachAdmitted,
     allow_replace: true,
   )
-  match project_connectivity_action_to_repair_plan(action: action) {
-    RepairNoop { reason: _ } => true
-    RepairExecute { slot: _, steps: _ } => false
-    RepairRefusedPlan { slot: _, reason: _ } => false
+  match gunbc.runner_connectivity_repair_plan.project_connectivity_action_to_repair_plan(action: action) {
+    gunbc.runner_connectivity_repair_plan.RepairNoop { reason: _ } => true
+    gunbc.runner_connectivity_repair_plan.RepairExecute { slot: _, steps: _ } => false
+    gunbc.runner_connectivity_repair_plan.RepairRefusedPlan { slot: _, reason: _ } => false
   }
 }

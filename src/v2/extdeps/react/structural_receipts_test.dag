@@ -2,7 +2,7 @@ module v2.test.extdeps_react.structural_receipts
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 data react_probe_cross_decl_ref: v2.extdeps.frameworks.react.ReactCrossDeclRef = react_probe_cross_decl_ref
 
 fn react_probe_props_site() -> v2.extdeps.frameworks.react.ReactPropsSite {
@@ -15,24 +15,24 @@ fn react_probe_props_site() -> v2.extdeps.frameworks.react.ReactPropsSite {
 fn react_probe_hook_use_effect() -> v2.extdeps.frameworks.react.ReactHookSite {
   v2.extdeps.frameworks.react.UseEffect {
     setup_ref: react_probe_cross_decl_ref,
-    dependencies: DependenciesArgOmitted,
-    cleanup: NoCleanup
+    dependencies: v2.extdeps.frameworks.react.DependenciesArgOmitted,
+    cleanup: v2.extdeps.frameworks.react.NoCleanup
   }
 }
 
 fn react_probe_hook_use_layout_effect() -> v2.extdeps.frameworks.react.ReactHookSite {
   v2.extdeps.frameworks.react.UseLayoutEffect {
     setup_ref: react_probe_cross_decl_ref,
-    dependencies: DependenciesArgOmitted,
-    cleanup: NoCleanup
+    dependencies: v2.extdeps.frameworks.react.DependenciesArgOmitted,
+    cleanup: v2.extdeps.frameworks.react.NoCleanup
   }
 }
 
 fn react_probe_hook_use_insertion_effect() -> v2.extdeps.frameworks.react.ReactHookSite {
   v2.extdeps.frameworks.react.UseInsertionEffect {
     setup_ref: react_probe_cross_decl_ref,
-    dependencies: DependenciesArgOmitted,
-    cleanup: NoCleanup
+    dependencies: v2.extdeps.frameworks.react.DependenciesArgOmitted,
+    cleanup: v2.extdeps.frameworks.react.NoCleanup
   }
 }
 
@@ -53,8 +53,8 @@ fn react_probe_hook_use_callback() -> v2.extdeps.frameworks.react.ReactHookSite 
 fn react_probe_host_element() -> v2.extdeps.frameworks.react.ReactHostElement {
   v2.extdeps.frameworks.react.ReactHostElement {
     tag_ref: react_probe_cross_decl_ref,
-    key: KeyAbsent,
-    ref: RefAbsent,
+    key: v2.extdeps.frameworks.react.KeyAbsent,
+    ref: v2.extdeps.frameworks.react.RefAbsent,
     props: react_probe_props_site(),
     children: std.algebra.Empty
   }
@@ -63,8 +63,8 @@ fn react_probe_host_element() -> v2.extdeps.frameworks.react.ReactHostElement {
 fn react_probe_composite_element() -> v2.extdeps.frameworks.react.ReactCompositeElement {
   v2.extdeps.frameworks.react.ReactCompositeElement {
     component_ref: react_probe_cross_decl_ref,
-    key: KeyAbsent,
-    ref: RefAbsent,
+    key: v2.extdeps.frameworks.react.KeyAbsent,
+    ref: v2.extdeps.frameworks.react.RefAbsent,
     props: react_probe_props_site(),
     children: std.algebra.Empty
   }
@@ -75,7 +75,7 @@ fn react_probe_react_element_host() -> v2.extdeps.frameworks.react.ReactElement 
 }
 
 fn react_probe_react_element_fragment() -> v2.extdeps.frameworks.react.ReactElement {
-  std.markup.Fragment { key: KeyAbsent, children: std.algebra.Empty }
+  v2.extdeps.frameworks.react.Fragment { key: v2.extdeps.frameworks.react.KeyAbsent, children: std.algebra.Empty }
 }
 
 fn react_probe_create_element_child_text() -> v2.extdeps.frameworks.react.ReactCreateElementChild {
@@ -83,14 +83,14 @@ fn react_probe_create_element_child_text() -> v2.extdeps.frameworks.react.ReactC
 }
 
 fn react_probe_create_element_child_element() -> v2.extdeps.frameworks.react.ReactCreateElementChild {
-  extdeps.browser.Element { element: react_probe_react_element_host() }
+  v2.extdeps.frameworks.react.Element { element: react_probe_react_element_host() }
 }
 
 fn react_probe_host_element_with_typed_children() -> v2.extdeps.frameworks.react.ReactHostElement {
   v2.extdeps.frameworks.react.ReactHostElement {
     tag_ref: react_probe_cross_decl_ref,
-    key: KeyAbsent,
-    ref: RefAbsent,
+    key: v2.extdeps.frameworks.react.KeyAbsent,
+    ref: v2.extdeps.frameworks.react.RefAbsent,
     props: react_probe_props_site(),
     children: std.algebra.Cons { head: react_probe_create_element_child_text(), tail: std.algebra.Empty }
   }
@@ -99,26 +99,26 @@ fn react_probe_host_element_with_typed_children() -> v2.extdeps.frameworks.react
 fn react_probe_composite_element_with_typed_children() -> v2.extdeps.frameworks.react.ReactCompositeElement {
   v2.extdeps.frameworks.react.ReactCompositeElement {
     component_ref: react_probe_cross_decl_ref,
-    key: KeyAbsent,
-    ref: RefAbsent,
+    key: v2.extdeps.frameworks.react.KeyAbsent,
+    ref: v2.extdeps.frameworks.react.RefAbsent,
     props: react_probe_props_site(),
     children: std.algebra.Cons { head: react_probe_create_element_child_text(), tail: std.algebra.Empty }
   }
 }
 
 fn react_probe_react_element_fragment_with_typed_children() -> v2.extdeps.frameworks.react.ReactElement {
-  std.markup.Fragment {
-    key: KeyAbsent,
+  v2.extdeps.frameworks.react.Fragment {
+    key: v2.extdeps.frameworks.react.KeyAbsent,
     children: std.algebra.Cons { head: react_probe_create_element_child_text(), tail: std.algebra.Empty }
   }
 }
 
-test fn extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds() -> v2.std.logic.Bool {
+test fn extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds() -> Bool {
   let expected = std.algebra.Cons { head: react_probe_cross_decl_ref, tail: std.algebra.Empty }
   match react_probe_hook_use_memo() {
-    UseMemo { factory_ref: _, dependencies: memo_deps } =>
+    v2.extdeps.frameworks.react.UseMemo { factory_ref: _, dependencies: memo_deps } =>
       match react_probe_hook_use_callback() {
-        UseCallback { callback_ref: _, dependencies: callback_deps } =>
+        v2.extdeps.frameworks.react.UseCallback { callback_ref: _, dependencies: callback_deps } =>
           memo_deps == expected && callback_deps == expected
         _ => false
       }
@@ -126,13 +126,13 @@ test fn extdeps_react_use_memo_use_callback_dependencies_are_required_lists_hold
   }
 }
 
-test fn extdeps_react_effect_hooks_require_setup_ref_holds() -> v2.std.logic.Bool {
+test fn extdeps_react_effect_hooks_require_setup_ref_holds() -> Bool {
   match react_probe_hook_use_effect() {
-    UseEffect { setup_ref: effect_setup, dependencies: _, cleanup: _ } =>
+    v2.extdeps.frameworks.react.UseEffect { setup_ref: effect_setup, dependencies: _, cleanup: _ } =>
       match react_probe_hook_use_layout_effect() {
-        UseLayoutEffect { setup_ref: layout_setup, dependencies: _, cleanup: _ } =>
+        v2.extdeps.frameworks.react.UseLayoutEffect { setup_ref: layout_setup, dependencies: _, cleanup: _ } =>
           match react_probe_hook_use_insertion_effect() {
-            UseInsertionEffect { setup_ref: insertion_setup, dependencies: _, cleanup: _ } =>
+            v2.extdeps.frameworks.react.UseInsertionEffect { setup_ref: insertion_setup, dependencies: _, cleanup: _ } =>
               effect_setup == react_probe_cross_decl_ref
                 && layout_setup == react_probe_cross_decl_ref
                 && insertion_setup == react_probe_cross_decl_ref
@@ -144,57 +144,57 @@ test fn extdeps_react_effect_hooks_require_setup_ref_holds() -> v2.std.logic.Boo
   }
 }
 
-fn extdeps_react_host_element_key_ref_coproduct_holds(key: v2.extdeps.frameworks.react.ReactOptKey, ref: v2.extdeps.frameworks.react.ReactOptRef) -> v2.std.logic.Bool {
+fn extdeps_react_host_element_key_ref_coproduct_holds(key: v2.extdeps.frameworks.react.ReactOptKey, ref: v2.extdeps.frameworks.react.ReactOptRef) -> Bool {
   match key {
-    KeyAbsent =>
+    v2.extdeps.frameworks.react.KeyAbsent =>
       match ref {
-        RefAbsent => true
-        RefPresent { ref: _ } => false
+        v2.extdeps.frameworks.react.RefAbsent => true
+        v2.extdeps.frameworks.react.RefPresent { ref: _ } => false
       }
-    KeyPresent { key_ref: _ } => false
+    v2.extdeps.frameworks.react.KeyPresent { key_ref: _ } => false
   }
 }
 
-test fn extdeps_react_host_element_declares_key_and_ref_holds() -> v2.std.logic.Bool {
+test fn extdeps_react_host_element_declares_key_and_ref_holds() -> Bool {
   match react_probe_host_element() {
-    ReactHostElement { tag_ref: tr, key: k, ref: r, props: _, children: _ } =>
+    v2.extdeps.frameworks.react.ReactHostElement { tag_ref: tr, key: k, ref: r, props: _, children: _ } =>
       tr == react_probe_cross_decl_ref
         && extdeps_react_host_element_key_ref_coproduct_holds(key: k, ref: r)
   }
 }
 
-test fn extdeps_react_composite_element_declares_key_and_ref_holds() -> v2.std.logic.Bool {
+test fn extdeps_react_composite_element_declares_key_and_ref_holds() -> Bool {
   match react_probe_composite_element() {
-    ReactCompositeElement { component_ref: cr, key: k, ref: r, props: _, children: _ } =>
+    v2.extdeps.frameworks.react.ReactCompositeElement { component_ref: cr, key: k, ref: r, props: _, children: _ } =>
       cr == react_probe_cross_decl_ref
         && extdeps_react_host_element_key_ref_coproduct_holds(key: k, ref: r)
   }
 }
 
-test fn extdeps_react_fragment_arm_declares_key_holds() -> v2.std.logic.Bool {
+test fn extdeps_react_fragment_arm_declares_key_holds() -> Bool {
   match react_probe_react_element_fragment() {
-    Fragment { key: k, children: _ } =>
+    v2.extdeps.frameworks.react.Fragment { key: k, children: _ } =>
       match k {
-        KeyAbsent => true
-        KeyPresent { key_ref: _ } => false
+        v2.extdeps.frameworks.react.KeyAbsent => true
+        v2.extdeps.frameworks.react.KeyPresent { key_ref: _ } => false
       }
-    Host { host: _ } => false
-    Composite { composite: _ } => false
+    v2.extdeps.frameworks.react.Host { host: _ } => false
+    v2.extdeps.frameworks.react.Composite { composite: _ } => false
   }
 }
 
-test fn extdeps_react_element_children_are_list_create_element_child_holds() -> v2.std.logic.Bool {
+test fn extdeps_react_element_children_are_list_create_element_child_holds() -> Bool {
   match react_probe_host_element_with_typed_children() {
-    ReactHostElement { tag_ref: _, key: _, ref: _, props: _, children: host_children } =>
+    v2.extdeps.frameworks.react.ReactHostElement { tag_ref: _, key: _, ref: _, props: _, children: host_children } =>
       match react_probe_composite_element_with_typed_children() {
-        ReactCompositeElement { component_ref: _, key: _, ref: _, props: _, children: composite_children } =>
+        v2.extdeps.frameworks.react.ReactCompositeElement { component_ref: _, key: _, ref: _, props: _, children: composite_children } =>
           match react_probe_react_element_fragment_with_typed_children() {
-            Fragment { key: _, children: fragment_children } =>
-              length(xs: host_children) == 1
-                && length(xs: composite_children) == 1
-                && length(xs: fragment_children) == 1
-            Host { host: _ } => false
-            Composite { composite: _ } => false
+            v2.extdeps.frameworks.react.Fragment { key: _, children: fragment_children } =>
+              v2.std.algebra.length(xs: host_children) == 1
+                && v2.std.algebra.length(xs: composite_children) == 1
+                && v2.std.algebra.length(xs: fragment_children) == 1
+            v2.extdeps.frameworks.react.Host { host: _ } => false
+            v2.extdeps.frameworks.react.Composite { composite: _ } => false
           }
         _ => false
       }
@@ -202,14 +202,14 @@ test fn extdeps_react_element_children_are_list_create_element_child_holds() -> 
   }
 }
 
-test fn extdeps_react_create_element_child_element_arm_wraps_react_element_holds() -> v2.std.logic.Bool {
+test fn extdeps_react_create_element_child_element_arm_wraps_react_element_holds() -> Bool {
   match react_probe_create_element_child_element() {
-    Element { element: el } =>
+    v2.extdeps.frameworks.react.Element { element: el } =>
       match el {
-        Host { host: _ } => true
-        Composite { composite: _ } => false
-        Fragment { key: _, children: _ } => false
+        v2.extdeps.frameworks.react.Host { host: _ } => true
+        v2.extdeps.frameworks.react.Composite { composite: _ } => false
+        v2.extdeps.frameworks.react.Fragment { key: _, children: _ } => false
       }
-    Text { text_value_ref: _ } => false
+    v2.extdeps.frameworks.react.Text { text_value_ref: _ } => false
   }
 }

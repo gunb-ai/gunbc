@@ -1,5 +1,6 @@
 module v2.test.manual.posix_output_capture
 
+
 data empty_captured_pipes: v2.extdeps.posix.CapturedOutputPipes = v2.extdeps.posix.CapturedOutputPipes {
   stdout: Empty,
   stderr: Empty

@@ -1,39 +1,39 @@
 module test.claim.fleet_runner_connectivity_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data acceptance_corpus_note: String = "These rows pin the 2026-08-06 broker-session incident exactly. Fifteen registrations are offline, one is online and busy, and local systemd units stayed active throughout — the wedge shape PR B's repair loop must not misread as detached on a roster API blip."
 
 test fn srv1_01_is_healthy_while_busy() -> Bool {
-  match runner_slot_connectivity_verdict(
-    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
+  match gunbc.fleet_runner_connectivity.runner_slot_connectivity_verdict(
+    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv1, slot_index: 1 }
   ) {
-    SlotConnectivityHealthy { slot: _, registration_id: id } => id == 1
+    gunbc.fleet_runner_connectivity.SlotConnectivityHealthy { slot: _, registration_id: id } => id == 1
     _ => false
   }
 }
 
 test fn active_offline_registration_is_detached_not_healthy() -> Bool {
-  match runner_slot_connectivity_verdict(
-    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv1, slot_index: 2 }
+  match gunbc.fleet_runner_connectivity.runner_slot_connectivity_verdict(
+    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv1, slot_index: 2 }
   ) {
-    SlotConnectivityDetached { slot: _, registration_id: _ } => true
+    gunbc.fleet_runner_connectivity.SlotConnectivityDetached { slot: _, registration_id: _ } => true
     _ => false
   }
 }
 
 test fn active_without_registration_is_orphaned() -> Bool {
-  match runner_slot_connectivity_verdict(
-    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv2, slot_index: 3 }
+  match gunbc.fleet_runner_connectivity.runner_slot_connectivity_verdict(
+    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv2, slot_index: 3 }
   ) {
-    SlotConnectivityOrphaned { slot: _ } => true
+    gunbc.fleet_runner_connectivity.SlotConnectivityOrphaned { slot: _ } => true
     _ => false
   }
-    && match runner_slot_connectivity_verdict(
-      slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv3, slot_index: 3 }
+    && match gunbc.fleet_runner_connectivity.runner_slot_connectivity_verdict(
+      slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv3, slot_index: 3 }
     ) {
-      SlotConnectivityOrphaned { slot: _ } => true
+      gunbc.fleet_runner_connectivity.SlotConnectivityOrphaned { slot: _ } => true
       _ => false
     }
 }
@@ -42,86 +42,86 @@ data roster_unavailable_is_unknown_not_detached_note: String = "THE FAIL-CLOSED 
 
 test fn roster_unavailable_yields_unknown_on_every_active_slot() -> Bool {
   let roster = gunbc.fleet_runner_connectivity.RosterReadUnavailable { reason: "GitHub org runners API returned 503" }
-  roster_unavailable_yields_unknown_not_detached(roster: roster)
+  gunbc.fleet_runner_connectivity.roster_unavailable_yields_unknown_not_detached(roster: roster)
     && all(
-      connectivity_verdicts_for_active_incarnations(roster: roster),
-      v => connectivity_verdict_is_unknown(v: v)
+      gunbc.fleet_runner_connectivity.connectivity_verdicts_for_active_incarnations(roster: roster),
+      v => gunbc.fleet_runner_connectivity.connectivity_verdict_is_unknown(v: v)
     )
 }
 
 test fn roster_unavailable_does_not_fabricate_zero_achieved_widths() -> Bool {
-  let snapshot = fleet_runner_capacity_width_snapshot_from_roster(
+  let snapshot = gunbc.fleet_runner_connectivity.fleet_runner_capacity_width_snapshot_from_roster(
     roster: gunbc.fleet_runner_connectivity.RosterReadUnavailable { reason: "GitHub org runners API returned 503" }
   )
   match snapshot.achieved {
-    AchievedWidthsUnobserved { reason: _ } => true
-    AchievedWidthsObserved { registered_width: _, connected_width: _, schedulable_width: _, executing_width: _ } => false
+    gunbc.fleet_runner_connectivity.AchievedWidthsUnobserved { reason: _ } => true
+    gunbc.fleet_runner_connectivity.AchievedWidthsObserved { registered_width: _, connected_width: _, schedulable_width: _, executing_width: _ } => false
   }
 }
 
 test fn incident_registered_sixteen_does_not_imply_connected_sixteen() -> Bool {
-  let snapshot = fleet_runner_capacity_width_snapshot()
+  let snapshot = gunbc.fleet_runner_connectivity.fleet_runner_capacity_width_snapshot()
   match snapshot.achieved {
-    AchievedWidthsObserved {
+    gunbc.fleet_runner_connectivity.AchievedWidthsObserved {
       registered_width: r,
       connected_width: c,
       schedulable_width: s,
       executing_width: e,
     } => r == 16 && c == 1 && s == 0 && e == 1 && r != c
-    AchievedWidthsUnobserved { reason: _ } => false
+    gunbc.fleet_runner_connectivity.AchievedWidthsUnobserved { reason: _ } => false
   }
 }
 
 test fn desired_width_stays_twenty_two_while_connected_is_one() -> Bool {
-  let snapshot = fleet_runner_capacity_width_snapshot()
+  let snapshot = gunbc.fleet_runner_connectivity.fleet_runner_capacity_width_snapshot()
   snapshot.desired_width == 22
     && match snapshot.achieved {
-      AchievedWidthsObserved { registered_width: _, connected_width: c, schedulable_width: _, executing_width: _ } =>
+      gunbc.fleet_runner_connectivity.AchievedWidthsObserved { registered_width: _, connected_width: c, schedulable_width: _, executing_width: _ } =>
         c == 1
-      AchievedWidthsUnobserved { reason: _ } => false
+      gunbc.fleet_runner_connectivity.AchievedWidthsUnobserved { reason: _ } => false
     }
 }
 
 test fn materialized_and_unit_active_widths_are_twenty_not_desired() -> Bool {
-  let snapshot = fleet_runner_capacity_width_snapshot()
+  let snapshot = gunbc.fleet_runner_connectivity.fleet_runner_capacity_width_snapshot()
   snapshot.materialized_width == 20
     && snapshot.unit_active_width == 20
     && snapshot.desired_width > snapshot.materialized_width
 }
 
 test fn detached_count_matches_offline_registrations_on_active_slots() -> Bool {
-  let roster = organization_runner_roster_evidence()
-  let verdicts = connectivity_verdicts_for_active_incarnations(roster: roster)
-  test.claim.fleet_runner_connectivity_witness.count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_detached(v: v)) == 15
+  let roster = gunbc.fleet_runner_connectivity.organization_runner_roster_evidence()
+  let verdicts = gunbc.fleet_runner_connectivity.connectivity_verdicts_for_active_incarnations(roster: roster)
+  count_matching(verdicts: verdicts, matched: v => gunbc.fleet_runner_connectivity.connectivity_verdict_is_detached(v: v)) == 15
 }
 
 test fn healthy_count_is_one_and_orphaned_count_is_four() -> Bool {
-  let roster = organization_runner_roster_evidence()
-  let verdicts = connectivity_verdicts_for_active_incarnations(roster: roster)
-  test.claim.fleet_runner_connectivity_witness.count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_healthy(v: v)) == 1
-    && test.claim.fleet_runner_connectivity_witness.count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_orphaned(v: v)) == 4
+  let roster = gunbc.fleet_runner_connectivity.organization_runner_roster_evidence()
+  let verdicts = gunbc.fleet_runner_connectivity.connectivity_verdicts_for_active_incarnations(roster: roster)
+  count_matching(verdicts: verdicts, matched: v => gunbc.fleet_runner_connectivity.connectivity_verdict_is_healthy(v: v)) == 1
+    && count_matching(verdicts: verdicts, matched: v => gunbc.fleet_runner_connectivity.connectivity_verdict_is_orphaned(v: v)) == 4
 }
 
 test fn local_incarnation_observation_covers_twenty_active_units() -> Bool {
-  local_runner_slot_incarnations().length() == 20
+  gunbc.fleet_runner_connectivity.local_runner_slot_incarnations().length() == 20
     && all(
-      local_runner_slot_incarnations(),
+      gunbc.fleet_runner_connectivity.local_runner_slot_incarnations(),
       inc => inc.unit_active
     )
 }
 
 test fn fleet_runner_connectivity_RED_orphaned_slot_must_not_read_detached() -> Bool {
-  match runner_slot_connectivity_verdict(
-    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv4, slot_index: 3 }
+  match gunbc.fleet_runner_connectivity.runner_slot_connectivity_verdict(
+    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv4, slot_index: 3 }
   ) {
-    SlotConnectivityOrphaned { slot: _ } => true
-    SlotConnectivityDetached { slot: _, registration_id: _ } => false
+    gunbc.fleet_runner_connectivity.SlotConnectivityOrphaned { slot: _ } => true
+    gunbc.fleet_runner_connectivity.SlotConnectivityDetached { slot: _, registration_id: _ } => false
     _ => false
   }
 }
 
 fn count_matching(
-  verdicts: List<gunbc.fleet_runner_connectivity.RunnerSlotConnectivityVerdict>,
+  verdicts: List<RunnerSlotConnectivityVerdict>,
   matched: fn(RunnerSlotConnectivityVerdict) -> Bool,
 ) -> Int {
   fold(

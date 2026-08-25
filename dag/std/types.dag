@@ -1,5 +1,6 @@
 module std.types
 
+
 data kernel_type_set: Map<String, Bool> = {
   "String": true, "Int": true, "Bool": true, "Float": true,
   "Secret": true, "Json": true, "Unit": true, "Bytes": true
@@ -23,7 +24,7 @@ fn is_kernel_type(name: String) -> Bool {
 // It is the one hand-authored row left in this map, and it is the reason the memberships in
 // `std.algebra` are declared rather than derived from the profile -- grounding `Witness` as a
 // carrier is that class's next-rung trigger.
-data container_type_arity: Map<String, Int> = map_insert(carrier_container_arity_rows(), "Witness", 1)
+data container_type_arity: Map<String, Int> = map_insert(std.algebra.carrier_container_arity_rows(), "Witness", 1)
 
 fn is_container_type(name: String) -> Bool {
   match container_expected_arity(name: name) {
@@ -40,8 +41,8 @@ fn container_param_names_for(kind_name: String) -> List<String> {
   if kind_name == "Witness" {
     ["T"]
   } else {
-    match map_get(kernel_algebra_profile, kind_name) {
-      Present { value: p } => algebra_type_param_names(profile: p)
+    match map_get(std.algebra.kernel_algebra_profile, kind_name) {
+      Present { value: p } => std.algebra.algebra_type_param_names(profile: p)
       Absent => []
     }
   }
@@ -74,9 +75,9 @@ fn is_ordered_element_collection(name: String) -> Bool {
 //
 // A self-mapping row is not a nickname: the value is the ALGEBRA and the key is a SPELLING that
 // resolves to it, which is why `List` and `Set` are keys at all.
-data container_template_algebra_rows: Map<String, String> = carrier_container_algebra_rows()
+data container_template_algebra_rows: Map<String, String> = std.algebra.carrier_container_algebra_rows()
 
-data container_template_alias_rows: Map<String, String> = carrier_container_alias_rows()
+data container_template_alias_rows: Map<String, String> = std.algebra.carrier_container_alias_rows()
 
 fn container_template_algebra(name: String) -> String? {
   map_get(container_template_algebra_rows, name)
@@ -95,7 +96,7 @@ fn container_template_alias_algebra(name: String) -> String? {
 // `sorted_map_keys` gives the same ASCII order the hand-written literal held, and `Witness` is
 // appended for the reason `container_type_arity` above states: it is not an algebra carrier.
 fn canonical_container_names() -> List<String> {
-  sorted_map_keys(map_insert(carrier_container_roster_map(), "Witness", true))
+  sorted_map_keys(map_insert(std.algebra.carrier_container_roster_map(), "Witness", true))
 }
 
 type Bool = True | False
@@ -107,7 +108,7 @@ type Bytes
 
 type Char = Int where unicode_scalar, brand("Char")
 
-type List<element> = FreeMonoid<element>
+type List<element> = std.algebra.FreeMonoid<element>
 // BOTH ALIASES NAME THE FINITE CARRIER, and this is the motion the predicate-half change
 // (`PointwisePower`, landed separately) was waiting for. A `Set` or a `Map` in a declaration
 // position has always LOWERED to a finite container -- `im::OrdSet` and `HashMap` in Rust, and the
@@ -146,8 +147,8 @@ type List<element> = FreeMonoid<element>
 // closed the predicate half: no `Set { member: .. }` literal survives in `src/v2`, so the Set side
 // of the fork is a spelling question only. Its stated NEXT-RUNG TRIGGER was the Map-side
 // decomposition landing, after which both rows retarget in one motion. That is this row.
-type Set<element> = FinitePowerSet<element>
-type Map<key, value> = FinitelySupportedFunction<key, value>
+type Set<element> = std.algebra.FinitePowerSet<element>
+type Map<key, value> = std.algebra.FinitelySupportedFunction<key, value>
 
 fn list_length<T>(items: List<T>) -> Int {
   fold(items, init: 0, f: (acc, _) => acc + 1)
@@ -183,7 +184,7 @@ type PathSegment   = NonEmptyStr where brand("PathSegment")
 
 data path_segment_safety_note: String = "WHAT MAKES A STRING SAFE TO USE AS ONE PATH SEGMENT — the law, held once, so every branded id that becomes a directory name tests the same thing. The brand alone never carried it: a branded NonEmptyStr accepts \"..\", \"a/b\", and an embedded newline, so a value that typechecked as a segment could still escape its parent directory, alias a sibling, or split a line-oriented file written under that name. The refused set is exactly the characters that change what a concatenated path MEANS — `/` and `\\` introduce a level, `.` and `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL terminates the string at the syscall boundary. Callers REFUSE on false rather than sanitizing, because a sanitized segment silently denotes something other than what the caller named (§5: a failure arm must refuse, never widen). Percent- or hex-encoding is the reversible alternative and is deliberately not offered until a caller needs a segment it cannot rename.
 
-This is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (gunbc.merge_admission_subject.walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what §3 asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today."
+This is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what §3 asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today."
 
 fn path_segment_is_safe(raw: String) -> Bool {
   !((raw == "")

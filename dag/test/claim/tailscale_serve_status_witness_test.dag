@@ -2,12 +2,12 @@ module test.claim.tailscale_serve_status_witness
 
 
 test fn tailscale_serve_status_root_proxy_is_structurally_projected() -> Bool {
-  tailscale_serve_status_proxy_targets(
+  extdeps.tailscale.serve.tailscale_serve_status_proxy_targets(
     status_json: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:8080\"}}}}}",
-    mount: ServeRootMount,
+    mount: extdeps.tailscale.serve.ServeRootMount,
   ) == ["http://127.0.0.1:8080"]
 }
 
 test fn tailscale_serve_status_malformed_json_has_no_plausible_proxy() -> Bool {
-  count(tailscale_serve_status_proxy_targets(status_json: "not-json", mount: ServeRootMount)) == 0
+  count(extdeps.tailscale.serve.tailscale_serve_status_proxy_targets(status_json: "not-json", mount: extdeps.tailscale.serve.ServeRootMount)) == 0
 }

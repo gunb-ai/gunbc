@@ -4,12 +4,12 @@ module extdeps.sec.issuer.chemed_facts
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "data.sec.gov/api/xbrl/companyfacts/CIK0000019584.json"
   }
 }
 
-data chemed_facts_subject: extdeps.sec.types.IssuerCatalogRow = chemed_issuer_catalog
+data chemed_facts_subject: extdeps.sec.types.IssuerCatalogRow = extdeps.sec.issuer.chemed.chemed_issuer_catalog
 
 data chemed_facts_provenance_note: String = "Every amount is a live pull from data.sec.gov companyfacts (2026-07-21, session snappy-carp-882). CIK 0000019584 verified against the SEC company_tickers.json ticker-to-CIK map and the EDGAR submissions API (tickers: [\"CHE\"], exchanges: [\"NYSE\"]). Fiscal year ended 2025-12-31, form 10-K, accession 0001562762-26-000020, filed 2026-02-27. Chemed's FY2025 10-K does not tag GrossProfit or CostOfRevenue on the us-gaap axis (same element-substitution case as Rollins) — it tags CostOfGoodsAndServicesSold instead, so the profitability witness below derives operating margin rather than gross margin."
 
@@ -19,32 +19,32 @@ data chemed_fy2025_citation: extdeps.sec.facts.FiledFactCitation = extdeps.sec.f
   accession: "0001562762-26-000020",
   fiscal_year: 2025,
   fiscal_period: "FY",
-  form: AnnualReport,
-  period: extdeps.sec.facts.FiledDuration { start: "2025-01-01", end: "2025-12-31" },
+  form: extdeps.sec.types.AnnualReport,
+  period: FiledDuration { start: "2025-01-01", end: "2025-12-31" },
   filed_date: "2026-02-27",
 }
 
 data chemed_fy2025_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: extdeps.sec.us_gaap.us_gaap_revenues,
-  amount: Filed { amount: usd_whole_dollars(count: 2529978000) },
+  amount: Filed { amount: extdeps.sec.facts.usd_whole_dollars(count: 2529978000) },
   citation: chemed_fy2025_citation,
 }
 
 data chemed_fy2025_cost_of_goods_and_services: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: extdeps.sec.us_gaap.us_gaap_cost_of_goods_and_services_sold,
-  amount: Filed { amount: usd_whole_dollars(count: 1706794000) },
+  amount: Filed { amount: extdeps.sec.facts.usd_whole_dollars(count: 1706794000) },
   citation: chemed_fy2025_citation,
 }
 
 data chemed_fy2025_sga: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_selling_general_and_administrative_expense,
-  amount: Filed { amount: usd_whole_dollars(count: 417188000) },
+  element: extdeps.sec.us_gaap.us_gaap_selling_general_and_administrative_expense,
+  amount: Filed { amount: extdeps.sec.facts.usd_whole_dollars(count: 417188000) },
   citation: chemed_fy2025_citation,
 }
 
 data chemed_fy2025_operating_income: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: extdeps.sec.us_gaap.us_gaap_operating_income_loss,
-  amount: Filed { amount: usd_whole_dollars(count: 338246000) },
+  amount: Filed { amount: extdeps.sec.facts.usd_whole_dollars(count: 338246000) },
   citation: chemed_fy2025_citation,
 }
 

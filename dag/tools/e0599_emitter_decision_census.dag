@@ -71,7 +71,7 @@ data e0599_im_vector_clone_impl: E0599ExternalAuthority = E0599ExternalAuthority
   impl_site: "im::vector impl<A: Clone> Clone for Vector<A>",
   impl_bound: "impl<A: Clone> Clone for Vector<A>",
   member_site: "im::vector Clone::clone",
-  cited_upstream: v2.std.optional.Present { value: im_15_1_0_vector_clone_impl_authority },
+  cited_upstream: v2.std.optional.Present { value: extdeps.languages.rust.derive_contracts.im_15_1_0_vector_clone_impl_authority },
 }
 
 data e0599_rust_clone_trait: E0599ExternalAuthority = E0599ExternalAuthority {
@@ -178,8 +178,8 @@ fn e0599_receiver_is_deref_wrapped(receiver_expr: String) -> Bool {
 
 fn e0599_receiver_last_segment(receiver_expr: String) -> String {
   match receiver_expr |> split(delimiter: ".") |> last {
-    Present { value: seg } => seg
-    Absent => ""
+    v2.std.optional.Present { value: seg } => seg
+    v2.std.optional.Absent => ""
   }
 }
 
@@ -254,8 +254,8 @@ fn e0599_row_for_operation(operation: E0599LoweringOperation) -> v2.std.optional
 fn e0599_cause_for(method: String, receiver_expr: String) -> E0599RequirementCause {
   let operation = e0599_lowering_operation_for(method: method, receiver_expr: receiver_expr)
   match e0599_row_for_operation(operation: operation) {
-    Present { value: row } => row.cause
-    Absent =>
+    v2.std.optional.Present { value: row } => row.cause
+    v2.std.optional.Absent =>
       UnresolvedCause {
         method: method,
         receiver_expr: receiver_expr,
@@ -281,25 +281,25 @@ fn e0599_classification_line(method: String, receiver_expr: String) -> String {
   let operation = e0599_lowering_operation_for(method: method, receiver_expr: receiver_expr)
   let cause = e0599_cause_for(method: method, receiver_expr: receiver_expr)
   let source_construct = match e0599_row_for_operation(operation: operation) {
-    Present { value: row } => row.source_construct
-    Absent => ""
+    v2.std.optional.Present { value: row } => row.source_construct
+    v2.std.optional.Absent => ""
   }
   let ownership_alternative = match e0599_row_for_operation(operation: operation) {
-    Present { value: row } => row.ownership_alternative
-    Absent => ""
+    v2.std.optional.Present { value: row } => row.ownership_alternative
+    v2.std.optional.Absent => ""
   }
   let required_trait = match e0599_row_for_operation(operation: operation) {
-    Present { value: row } => row.required_trait
-    Absent => ""
+    v2.std.optional.Present { value: row } => row.required_trait
+    v2.std.optional.Absent => ""
   }
   let emitter_authority = match e0599_row_for_operation(operation: operation) {
-    Present { value: row } => row.emitter_authority
-    Absent => ""
+    v2.std.optional.Present { value: row } => row.emitter_authority
+    v2.std.optional.Absent => ""
   }
   let external_authority = match e0599_row_for_operation(operation: operation) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       concat(row.authority.crate_name, concat(" ", concat(row.authority.crate_version, concat(" ", row.authority.impl_site))))
-    Absent => ""
+    v2.std.optional.Absent => ""
   }
   concat(
     e0599_lowering_operation_label(operation: operation),
@@ -314,17 +314,17 @@ fn e0599_classification_line(method: String, receiver_expr: String) -> String {
 
 fn e0599_classify_tuple_line(line: String) -> std.error_primitives.Result<String, E0599CensusParseError> {
   let parts = line |> split(delimiter: "\t")
-  let field_count = list_length(items: parts)
+  let field_count = std.types.list_length(items: parts)
   if field_count != 2 {
     std.error_primitives.Err { value: MalformedCensusLine { line: line, field_count: field_count } }
   } else {
     let method = match parts |> first {
-      Present { value: v } => v
-      Absent => ""
+      v2.std.optional.Present { value: v } => v
+      v2.std.optional.Absent => ""
     }
     let receiver_expr = match parts |> skip(n: 1) |> first {
-      Present { value: v } => v
-      Absent => ""
+      v2.std.optional.Present { value: v } => v
+      v2.std.optional.Absent => ""
     }
     std.error_primitives.Ok { value: e0599_classification_line(method: method, receiver_expr: receiver_expr) }
   }
@@ -334,11 +334,11 @@ fn e0599_classify_from_blob(blob: String) -> std.error_primitives.Result<String,
   let lines = if blob == "" { [] } else { blob |> split(delimiter: "\n") }
   fold(lines, init: std.error_primitives.Ok { value: "" }, f: fn(acc, line) {
     match acc {
-      Err { value: e } => std.error_primitives.Err { value: e }
-      Ok { value: prior } =>
+      std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
+      std.error_primitives.Ok { value: prior } =>
         match e0599_classify_tuple_line(line: line) {
-          Err { value: e } => std.error_primitives.Err { value: e }
-          Ok { value: out } =>
+          std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
+          std.error_primitives.Ok { value: out } =>
             if prior == "" {
               std.error_primitives.Ok { value: out }
             } else {
@@ -391,11 +391,11 @@ fn e0599_write_rollup_cause_labels_blob(out_path: String) -> std.process.Process
 }
 
 fn e0599_probe_preamble_blob() -> String {
-  concat("#patterns\n", concat(e0599_message_pattern_rows_blob(),
-  concat("\n#roster\n", concat(e0599_canonical_seven_module_log_labels_blob(),
-  concat("\n#scope\n", concat(e0599_mechanistic_root_family_labels_blob(),
+  concat("#patterns\n", concat(tools.e0599_probe_census.e0599_message_pattern_rows_blob(),
+  concat("\n#roster\n", concat(tools.e0599_probe_census.e0599_canonical_seven_module_log_labels_blob(),
+  concat("\n#scope\n", concat(tools.e0599_probe_census.e0599_mechanistic_root_family_labels_blob(),
   concat("\n#causes\n", concat(e0599_rollup_cause_labels_blob(),
-  concat("\n#roster_count\n", concat(to_string(e0599_canonical_seven_module_count()),
+  concat("\n#roster_count\n", concat(to_string(tools.e0599_probe_census.e0599_canonical_seven_module_count()),
   concat("\n#producer\n", e0599_producer_blob())))))))))))
 }
 
@@ -409,23 +409,23 @@ fn e0599_write_probe_preamble_blob(out_path: String) -> std.process.ProcessExit 
 
 fn e0599_write_census_blob(path: String, content: String, label: String) -> std.process.ProcessExit {
   if content == "" {
-    exit_failure(reason: concat(label, ": refused empty export"))
+    std.process.exit_failure(reason: concat(label, ": refused empty export"))
   }
-  let w = Filesystem.Write(path: path, content: content)
+  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: path, content: content)
   if w.success {
     std.process.ExitSuccess
   } else {
-    exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
+    std.process.exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
   }
 }
 
 fn e0599_write_classify_from_blob(blob: String, out_path: String) -> std.process.ProcessExit {
   if blob == "" {
-    exit_failure(reason: "e0599_classify_from_blob: refused empty input blob")
+    std.process.exit_failure(reason: "e0599_classify_from_blob: refused empty input blob")
   }
   match e0599_classify_from_blob(blob: blob) {
-    Err { value: e } => exit_failure(reason: e0599_census_parse_error_message(err: e))
-    Ok { value: out } =>
+    std.error_primitives.Err { value: e } => std.process.exit_failure(reason: e0599_census_parse_error_message(err: e))
+    std.error_primitives.Ok { value: out } =>
       e0599_write_census_blob(path: out_path, content: out, label: "e0599_classify_from_blob")
   }
 }

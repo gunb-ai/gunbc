@@ -2,8 +2,8 @@ module v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence_test
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn extdeps_shape_transport_policy_coverage_domain_equivalence_holds() -> Bool {
-  v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence.coverage_domain_equivalence_argument_holds()
+  coverage_domain_equivalence_argument_holds()
 }

@@ -3,7 +3,7 @@ module extdeps.rack.navepoint
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.navepoint.com"
   }
 }
@@ -13,7 +13,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 data navepoint_18u_open_frame_catalog: extdeps.rack.types.RackCatalogRow = extdeps.rack.types.RackCatalogRow {
   model: "18U 4-post open-frame rack",
   manufacturer: extdeps.vendor.navepoint.navepoint,
-  rack_units: rack_unit(18),
+  rack_units: std.measure.rack_unit(18),
   post_count: 4,
   open_frame: true,
 }
@@ -23,9 +23,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.rack.navepoint",
       decl_name: "navepoint_18u_open_frame_catalog",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.rack.navepoint.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

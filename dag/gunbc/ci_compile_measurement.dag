@@ -6,7 +6,7 @@ type CompileJobMeasurement
   | CompileJobUnmeasured
 
 data gunbc_ci_compile_measurement: CompileJobMeasurement = CompileJobMeasured {
-  per_rustc_peak: byte_size(3221225472),
+  per_rustc_peak: std.measure.byte_size(3221225472),
   procs_per_job: 256,
   pids_budget: 16384,
 }

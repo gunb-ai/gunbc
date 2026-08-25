@@ -4,23 +4,23 @@ module test.claim.commit_writer_admission_witness
 data commit_writer_admission_witness_note: String = "Executable reproduction for commit 218dea61248d plus complete-population controls. The unmerged index carries Base/Ours/Theirs. The independent stage-0 observation carries the exact three committed marker blocks and refuses at their line locations. Every normal index entry must have exactly one observed blob, no extra or duplicate blob may appear, the index/object/content identities must agree, and decode/classification must be available. Artifact classification is projected from ModuleStorageIndex and bound to the same GitPath and indexed object; a naked or mismatched TestClaimArtifact cannot exempt source text. Isolated and out-of-order marker tokens admit, while the effective per-path conflict-marker-size fact drives the real begin/separator/end grammar."
 
 fn publication_grant_path() -> extdeps.git.object_store.GitPath {
-  match git_decode_path_octets(octets: [
+  match extdeps.git.object_store.git_decode_path_octets(octets: [
     100, 97, 103, 47, 103, 117, 110, 98, 99, 47, 112, 117, 98, 108, 105, 99,
     97, 116, 105, 111, 110, 95, 103, 114, 97, 110, 116, 46, 100, 97, 103,
   ]) {
-    GitPathDecoded { path } => path
-    GitPathDecodeRefused { cause: _ } => test.claim.commit_writer_admission_witness.fallback_path()
+    extdeps.git.object_store.GitPathDecoded { path } => path
+    extdeps.git.object_store.GitPathDecodeRefused { cause: _ } => fallback_path()
   }
 }
 
 fn fixture_path() -> extdeps.git.object_store.GitPath {
-  match git_decode_path_octets(octets: [
+  match extdeps.git.object_store.git_decode_path_octets(octets: [
     100, 97, 103, 47, 116, 101, 115, 116, 47, 99, 108, 97, 105, 109, 47,
     99, 111, 110, 102, 108, 105, 99, 116, 95, 109, 97, 114, 107, 101, 114,
     95, 102, 105, 120, 116, 117, 114, 101, 46, 100, 97, 103,
   ]) {
-    GitPathDecoded { path } => path
-    GitPathDecodeRefused { cause: _ } => test.claim.commit_writer_admission_witness.fallback_path()
+    extdeps.git.object_store.GitPathDecoded { path } => path
+    extdeps.git.object_store.GitPathDecodeRefused { cause: _ } => fallback_path()
   }
 }
 
@@ -67,20 +67,20 @@ fn module_storage_for(artifact: v2.std.artifact.Artifact) -> List<v2.compiler.so
       artifact: artifact,
       span_index: v2.std.provenance.span_index_empty(),
     },
-    source_root: DagTree,
+    source_root: v2.std.cross_tree.import_model.DagTree,
   }]
 }
 
-fn marker_grammar(size: std.integer.PositiveInt) -> extdeps.git.object_store.GitEffectiveConflictMarkerGrammar {
+fn marker_grammar(size: PositiveInt) -> extdeps.git.object_store.GitEffectiveConflictMarkerGrammar {
   extdeps.git.object_store.GitEffectiveConflictMarkerGrammar { size: size }
 }
 
 fn normal_index_entry(path: extdeps.git.object_store.GitPath, oid: extdeps.git.object_store.GitObjectId) -> extdeps.git.object_store.GitIndexEntry {
   extdeps.git.object_store.GitIndexEntry {
     path: path,
-    mode: GitRegularBlobMode,
+    mode: extdeps.git.object_store.GitRegularBlobMode,
     oid: oid,
-    stage: GitIndexStageNormal,
+    stage: extdeps.git.object_store.GitIndexStageNormal,
   }
 }
 
@@ -96,20 +96,20 @@ fn classified_text_blob(
   artifact: v2.std.artifact.Artifact,
   module_storage: List<v2.compiler.source_authority.ModuleStorageBinding>,
 ) -> gunbc.commit_workflow.CommitWriterStagedBlobObservation {
-  let classification = match commit_writer_classify_artifact(
+  let classification = match gunbc.commit_workflow.commit_writer_classify_artifact(
     module_storage: module_storage,
     path: path,
     indexed_oid: oid,
     artifact: artifact,
   ) {
-    CommitWriterArtifactClassified { receipt } =>
-      commit_writer_text_classification_receipt(
+    gunbc.commit_workflow.CommitWriterArtifactClassified { receipt } =>
+      gunbc.commit_workflow.commit_writer_text_classification_receipt(
         text: text,
         marker_grammar: grammar,
         artifact: receipt,
       )
-    CommitWriterArtifactClassificationRefused { cause } =>
-      commit_writer_refused_artifact_classification_receipt(cause: cause)
+    gunbc.commit_workflow.CommitWriterArtifactClassificationRefused { cause } =>
+      gunbc.commit_workflow.commit_writer_refused_artifact_classification_receipt(cause: cause)
   }
   gunbc.commit_workflow.CommitWriterStagedBlobObservation {
     path: path,
@@ -136,47 +136,47 @@ fn source_observation(text: String) -> gunbc.commit_workflow.CompleteStagedCommi
 }
 
 fn admission_is_clean(writer: gunbc.commit_workflow.CommitWriter) -> Bool {
-  match admit_commit_writer(
+  match gunbc.commit_workflow.admit_commit_writer(
     writer: writer,
     observation: source_observation(
       text: "data public_file_publish_grants: List<PublicFilePublishGrant> = []\n",
     ),
   ) {
-    CommitWriterAdmitted { writer: _, coverage } =>
+    gunbc.commit_workflow.CommitWriterAdmitted { writer: _, coverage } =>
       (coverage.normal_index_entry_count == 1)
         && (coverage.staged_blob_observation_count == 1)
-    CommitWriterRefused { writer: _, refusals: _ } => false
+    gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals: _ } => false
   }
 }
 
 test fn clean_tree_admits_every_commit_writer() -> Bool {
-  admission_is_clean(writer: HumanGitCommit)
-    && admission_is_clean(writer: DashboardAutocommit)
-    && admission_is_clean(writer: HealAutocommit)
-    && admission_is_clean(writer: IntegrationCommit)
+  admission_is_clean(writer: gunbc.commit_workflow.HumanGitCommit)
+    && admission_is_clean(writer: gunbc.commit_workflow.DashboardAutocommit)
+    && admission_is_clean(writer: gunbc.commit_workflow.HealAutocommit)
+    && admission_is_clean(writer: gunbc.commit_workflow.IntegrationCommit)
 }
 
 test fn missing_writer_bindings_are_two_owned_triggered_work_rows() -> Bool {
-  (count(commit_writer_binding_work) == 2)
-    && match first(commit_writer_binding_work) {
+  (count(gunbc.commit_workflow.commit_writer_binding_work) == 2)
+    && match first(gunbc.commit_workflow.commit_writer_binding_work) {
       Present { value: first_work } =>
-        (first_work.site == CommitWriterHealSkewConflictArm)
-          && (first_work.writer == HealAutocommit)
-          && (first_work.owner == CommitWriterHealOrchestrationLaneOwner)
+        (first_work.site == gunbc.commit_workflow.CommitWriterHealSkewConflictArm)
+          && (first_work.writer == gunbc.commit_workflow.HealAutocommit)
+          && (first_work.owner == gunbc.commit_workflow.CommitWriterHealOrchestrationLaneOwner)
           && match first_work.trigger {
-            CommitWriterBindAfterDependencyLands { dependency } =>
-              dependency == commit_writer_complete_staged_index_blob_observation_transport
+            gunbc.commit_workflow.CommitWriterBindAfterDependencyLands { dependency } =>
+              dependency == gunbc.commit_workflow.commit_writer_complete_staged_index_blob_observation_transport
           }
       Absent => false
     }
     && match first(commit_writer_binding_work.skip(n: 1)) {
       Present { value: second_work } =>
-        (second_work.site == CommitWriterDashboardAutocommitDaemon)
-          && (second_work.writer == DashboardAutocommit)
-          && (second_work.owner == CommitWriterDashboardInfrastructureOperatorOwner)
+        (second_work.site == gunbc.commit_workflow.CommitWriterDashboardAutocommitDaemon)
+          && (second_work.writer == gunbc.commit_workflow.DashboardAutocommit)
+          && (second_work.owner == gunbc.commit_workflow.CommitWriterDashboardInfrastructureOperatorOwner)
           && match second_work.trigger {
-            CommitWriterBindAfterDependencyLands { dependency } =>
-              dependency == commit_writer_complete_staged_index_blob_observation_transport
+            gunbc.commit_workflow.CommitWriterBindAfterDependencyLands { dependency } =>
+              dependency == gunbc.commit_workflow.commit_writer_complete_staged_index_blob_observation_transport
           }
       Absent => false
     }
@@ -186,21 +186,21 @@ test fn unmerged_index_218dea6_shape_refuses_typed_and_located() -> Bool {
   let path = publication_grant_path()
   let observation = gunbc.commit_workflow.CompleteStagedCommitObservation {
     index: [
-      extdeps.git.object_store.GitIndexEntry { path: path, mode: GitRegularBlobMode, oid: blob_oid(), stage: GitIndexStageBase },
-      extdeps.git.object_store.GitIndexEntry { path: path, mode: GitRegularBlobMode, oid: blob_oid(), stage: GitIndexStageOurs },
-      extdeps.git.object_store.GitIndexEntry { path: path, mode: GitRegularBlobMode, oid: other_blob_oid(), stage: GitIndexStageTheirs },
+      extdeps.git.object_store.GitIndexEntry { path: path, mode: extdeps.git.object_store.GitRegularBlobMode, oid: blob_oid(), stage: extdeps.git.object_store.GitIndexStageBase },
+      extdeps.git.object_store.GitIndexEntry { path: path, mode: extdeps.git.object_store.GitRegularBlobMode, oid: blob_oid(), stage: extdeps.git.object_store.GitIndexStageOurs },
+      extdeps.git.object_store.GitIndexEntry { path: path, mode: extdeps.git.object_store.GitRegularBlobMode, oid: other_blob_oid(), stage: extdeps.git.object_store.GitIndexStageTheirs },
     ],
     blobs: [],
     module_storage: module_storage_for(artifact: source_artifact()),
   }
-  match admit_commit_writer(writer: HealAutocommit, observation: observation) {
-    CommitWriterAdmitted { writer: _ } => false
-    CommitWriterRefused { writer: _, refusals } => match first(refusals) {
+  match gunbc.commit_workflow.admit_commit_writer(writer: gunbc.commit_workflow.HealAutocommit, observation: observation) {
+    gunbc.commit_workflow.CommitWriterAdmitted { writer: _ } => false
+    gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals } => match first(refusals) {
       Absent => false
       Present { value: refusal } => match refusal {
-        CommitWriterUnmergedIndexRefusal { path: refused_path, stages } =>
+        gunbc.commit_workflow.CommitWriterUnmergedIndexRefusal { path: refused_path, stages } =>
           (refused_path == path)
-            && (stages == [GitIndexStageBase, GitIndexStageOurs, GitIndexStageTheirs])
+            && (stages == [extdeps.git.object_store.GitIndexStageBase, extdeps.git.object_store.GitIndexStageOurs, extdeps.git.object_store.GitIndexStageTheirs])
         _ => false
       }
     }
@@ -208,16 +208,16 @@ test fn unmerged_index_218dea6_shape_refuses_typed_and_located() -> Bool {
 }
 
 test fn staged_marker_text_218dea6_shape_refuses_typed_and_located() -> Bool {
-  match admit_commit_writer(
-    writer: DashboardAutocommit,
+  match gunbc.commit_workflow.admit_commit_writer(
+    writer: gunbc.commit_workflow.DashboardAutocommit,
     observation: source_observation(text: staged_marker_218dea6_text()),
   ) {
-    CommitWriterAdmitted { writer: _ } => false
-    CommitWriterRefused { writer: _, refusals } =>
+    gunbc.commit_workflow.CommitWriterAdmitted { writer: _ } => false
+    gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals } =>
       (count(refusals) == 3) && match first(refusals) {
         Absent => false
         Present { value: refusal } => match refusal {
-          CommitWriterConflictMarkerTextRefusal { location } =>
+          gunbc.commit_workflow.CommitWriterConflictMarkerTextRefusal { location } =>
             (location.path == publication_grant_path())
               && (location.begin_line == 3)
               && (location.separator_line == 5)
@@ -229,21 +229,21 @@ test fn staged_marker_text_218dea6_shape_refuses_typed_and_located() -> Bool {
 }
 
 test fn isolated_and_out_of_order_marker_controls_admit() -> Bool {
-  match admit_commit_writer(
-    writer: HumanGitCommit,
+  match gunbc.commit_workflow.admit_commit_writer(
+    writer: gunbc.commit_workflow.HumanGitCommit,
     observation: source_observation(
       text: "mention <<<<<<< HEAD without a separator and end\n",
     ),
   ) {
-    CommitWriterRefused { writer: _, refusals: _ } => false
-    CommitWriterAdmitted { writer: _ } => match admit_commit_writer(
-      writer: HumanGitCommit,
+    gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals: _ } => false
+    gunbc.commit_workflow.CommitWriterAdmitted { writer: _ } => match gunbc.commit_workflow.admit_commit_writer(
+      writer: gunbc.commit_workflow.HumanGitCommit,
       observation: source_observation(
         text: "<<<<<<< HEAD\nleft\n>>>>>>> origin/main\n=======\nright\n",
       ),
     ) {
-      CommitWriterAdmitted { writer: _ } => true
-      CommitWriterRefused { writer: _, refusals: _ } => false
+      gunbc.commit_workflow.CommitWriterAdmitted { writer: _ } => true
+      gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals: _ } => false
     }
   }
 }
@@ -262,18 +262,18 @@ test fn non_default_git_conflict_marker_size_refuses() -> Bool {
     )],
     module_storage: storage,
   }
-  match admit_commit_writer(writer: HumanGitCommit, observation: observation) {
-    CommitWriterAdmitted { writer: _ } => false
-    CommitWriterRefused { writer: _, refusals } => count(refusals) == 1
+  match gunbc.commit_workflow.admit_commit_writer(writer: gunbc.commit_workflow.HumanGitCommit, observation: observation) {
+    gunbc.commit_workflow.CommitWriterAdmitted { writer: _ } => false
+    gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals } => count(refusals) == 1
   }
 }
 
 test fn tracked_test_fixture_bound_to_same_path_and_blob_admits() -> Bool {
   let storage = module_storage_for(artifact: fixture_artifact())
   let observation = gunbc.commit_workflow.CompleteStagedCommitObservation {
-    index: [normal_index_entry(path: test.claim.commit_writer_admission_witness.fixture_path(), oid: blob_oid())],
+    index: [normal_index_entry(path: fixture_path(), oid: blob_oid())],
     blobs: [classified_text_blob(
-      path: test.claim.commit_writer_admission_witness.fixture_path(),
+      path: fixture_path(),
       oid: blob_oid(),
       text: "<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> origin/main\n",
       grammar: marker_grammar(size: 7),
@@ -282,9 +282,9 @@ test fn tracked_test_fixture_bound_to_same_path_and_blob_admits() -> Bool {
     )],
     module_storage: storage,
   }
-  match admit_commit_writer(writer: HumanGitCommit, observation: observation) {
-    CommitWriterAdmitted { writer: _ } => true
-    CommitWriterRefused { writer: _, refusals: _ } => false
+  match gunbc.commit_workflow.admit_commit_writer(writer: gunbc.commit_workflow.HumanGitCommit, observation: observation) {
+    gunbc.commit_workflow.CommitWriterAdmitted { writer: _ } => true
+    gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals: _ } => false
   }
 }
 
@@ -307,10 +307,10 @@ test fn source_path_with_test_claim_refuses() -> Bool {
     )],
     module_storage: authority,
   }
-  match admit_commit_writer(writer: HumanGitCommit, observation: observation) {
-    CommitWriterAdmitted { writer: _ } => false
-    CommitWriterRefused { writer: _, refusals } => match first(refusals) {
-      Present { value: CommitWriterArtifactUntrackedRefusal { path, artifact: _ } } =>
+  match gunbc.commit_workflow.admit_commit_writer(writer: gunbc.commit_workflow.HumanGitCommit, observation: observation) {
+    gunbc.commit_workflow.CommitWriterAdmitted { writer: _ } => false
+    gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals } => match first(refusals) {
+      Present { value: gunbc.commit_workflow.CommitWriterArtifactUntrackedRefusal { path, artifact: _ } } =>
         path == publication_grant_path()
       _ => false
     }
@@ -336,10 +336,10 @@ test fn mismatched_provenance_file_path_refuses() -> Bool {
     )],
     module_storage: authority,
   }
-  match admit_commit_writer(writer: HumanGitCommit, observation: observation) {
-    CommitWriterAdmitted { writer: _ } => false
-    CommitWriterRefused { writer: _, refusals } => match first(refusals) {
-      Present { value: CommitWriterArtifactPathMismatchRefusal { path, provenance_file_path } } =>
+  match gunbc.commit_workflow.admit_commit_writer(writer: gunbc.commit_workflow.HumanGitCommit, observation: observation) {
+    gunbc.commit_workflow.CommitWriterAdmitted { writer: _ } => false
+    gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals } => match first(refusals) {
+      Present { value: gunbc.commit_workflow.CommitWriterArtifactPathMismatchRefusal { path, provenance_file_path } } =>
         (path == publication_grant_path())
           && (provenance_file_path == "dag/test/claim/conflict_marker_fixture.dag")
       _ => false
@@ -366,10 +366,10 @@ test fn fabricated_matching_artifact_refuses() -> Bool {
     )],
     module_storage: authority,
   }
-  match admit_commit_writer(writer: HumanGitCommit, observation: observation) {
-    CommitWriterAdmitted { writer: _ } => false
-    CommitWriterRefused { writer: _, refusals } => match first(refusals) {
-      Present { value: CommitWriterArtifactUntrackedRefusal { path, artifact: _ } } =>
+  match gunbc.commit_workflow.admit_commit_writer(writer: gunbc.commit_workflow.HumanGitCommit, observation: observation) {
+    gunbc.commit_workflow.CommitWriterAdmitted { writer: _ } => false
+    gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals } => match first(refusals) {
+      Present { value: gunbc.commit_workflow.CommitWriterArtifactUntrackedRefusal { path, artifact: _ } } =>
         path == publication_grant_path()
       _ => false
     }
@@ -386,28 +386,28 @@ test fn incomplete_population_refuses_each_shape() -> Bool {
     artifact: source_artifact(),
     module_storage: storage,
   )
-  let missing = admit_commit_writer(
-    writer: HumanGitCommit,
+  let missing = gunbc.commit_workflow.admit_commit_writer(
+    writer: gunbc.commit_workflow.HumanGitCommit,
     observation: gunbc.commit_workflow.CompleteStagedCommitObservation {
       index: [normal_index_entry(path: publication_grant_path(), oid: blob_oid())],
       blobs: [],
       module_storage: storage,
     },
   )
-  let extra = admit_commit_writer(
-    writer: HumanGitCommit,
+  let extra = gunbc.commit_workflow.admit_commit_writer(
+    writer: gunbc.commit_workflow.HumanGitCommit,
     observation: gunbc.commit_workflow.CompleteStagedCommitObservation { index: [], blobs: [blob], module_storage: storage },
   )
-  let duplicate_blob = admit_commit_writer(
-    writer: HumanGitCommit,
+  let duplicate_blob = gunbc.commit_workflow.admit_commit_writer(
+    writer: gunbc.commit_workflow.HumanGitCommit,
     observation: gunbc.commit_workflow.CompleteStagedCommitObservation {
       index: [normal_index_entry(path: publication_grant_path(), oid: blob_oid())],
       blobs: [blob, blob],
       module_storage: storage,
     },
   )
-  let duplicate_index = admit_commit_writer(
-    writer: HumanGitCommit,
+  let duplicate_index = gunbc.commit_workflow.admit_commit_writer(
+    writer: gunbc.commit_workflow.HumanGitCommit,
     observation: gunbc.commit_workflow.CompleteStagedCommitObservation {
       index: [
         normal_index_entry(path: publication_grant_path(), oid: blob_oid()),
@@ -418,18 +418,18 @@ test fn incomplete_population_refuses_each_shape() -> Bool {
     },
   )
   match missing {
-    CommitWriterRefused { writer: _, refusals: missing_refusals } => match first(missing_refusals) {
-      Present { value: CommitWriterMissingBlobObservationRefusal { path: _, indexed_oid: _ } } => match extra {
-        CommitWriterRefused { writer: _, refusals } => match first(refusals) {
-        Present { value: CommitWriterExtraBlobObservationRefusal { path: _, indexed_oid: _ } } => match duplicate_blob {
-          CommitWriterRefused { writer: _, refusals: duplicate_blob_refusals } =>
+    gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals: missing_refusals } => match first(missing_refusals) {
+      Present { value: gunbc.commit_workflow.CommitWriterMissingBlobObservationRefusal { path: _, indexed_oid: _ } } => match extra {
+        gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals } => match first(refusals) {
+        Present { value: gunbc.commit_workflow.CommitWriterExtraBlobObservationRefusal { path: _, indexed_oid: _ } } => match duplicate_blob {
+          gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals: duplicate_blob_refusals } =>
             count(filter(duplicate_blob_refusals, refusal => match refusal {
-              CommitWriterDuplicateBlobObservationRefusal { path: _, count: _ } => true
+              gunbc.commit_workflow.CommitWriterDuplicateBlobObservationRefusal { path: _, count: _ } => true
               _ => false
             })) > 0 && match duplicate_index {
-              CommitWriterRefused { writer: _, refusals: duplicate_index_refusals } =>
+              gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals: duplicate_index_refusals } =>
                 count(filter(duplicate_index_refusals, refusal => match refusal {
-                  CommitWriterDuplicateNormalIndexEntryRefusal { path: _, count: _ } => true
+                  gunbc.commit_workflow.CommitWriterDuplicateNormalIndexEntryRefusal { path: _, count: _ } => true
                   _ => false
                 })) == 1
               _ => false
@@ -456,16 +456,16 @@ test fn identity_content_and_classification_fail_closed() -> Bool {
     artifact: source_artifact(),
     module_storage: storage,
   )
-  let identity_mismatch = admit_commit_writer(
-    writer: HumanGitCommit,
+  let identity_mismatch = gunbc.commit_workflow.admit_commit_writer(
+    writer: gunbc.commit_workflow.HumanGitCommit,
     observation: gunbc.commit_workflow.CompleteStagedCommitObservation {
       index: [normal_index_entry(path: publication_grant_path(), oid: other_blob_oid())],
       blobs: [good],
       module_storage: storage,
     },
   )
-  let content_mismatch = admit_commit_writer(
-    writer: HumanGitCommit,
+  let content_mismatch = gunbc.commit_workflow.admit_commit_writer(
+    writer: gunbc.commit_workflow.HumanGitCommit,
     observation: gunbc.commit_workflow.CompleteStagedCommitObservation {
       index: [normal_index_entry(path: publication_grant_path(), oid: blob_oid())],
       blobs: [gunbc.commit_workflow.CommitWriterStagedBlobObservation {
@@ -477,15 +477,15 @@ test fn identity_content_and_classification_fail_closed() -> Bool {
       module_storage: storage,
     },
   )
-  let unavailable = admit_commit_writer(
-    writer: HumanGitCommit,
+  let unavailable = gunbc.commit_workflow.admit_commit_writer(
+    writer: gunbc.commit_workflow.HumanGitCommit,
     observation: gunbc.commit_workflow.CompleteStagedCommitObservation {
       index: [normal_index_entry(path: publication_grant_path(), oid: blob_oid())],
       blobs: [gunbc.commit_workflow.CommitWriterStagedBlobObservation {
         path: publication_grant_path(),
         indexed_oid: blob_oid(),
         content_oid: blob_oid(),
-        classification: commit_writer_unavailable_classification_receipt(
+        classification: gunbc.commit_workflow.commit_writer_unavailable_classification_receipt(
           cause: "staged blob decode unavailable",
         ),
       }],
@@ -493,12 +493,12 @@ test fn identity_content_and_classification_fail_closed() -> Bool {
     },
   )
   match identity_mismatch {
-    CommitWriterRefused { writer: _, refusals } => match first(refusals) {
-      Present { value: CommitWriterIndexBlobIdentityMismatchRefusal { path: _, index_oid: _, observed_index_oid: _ } } => match content_mismatch {
-        CommitWriterRefused { writer: _, refusals: content_refusals } => match first(content_refusals) {
-          Present { value: CommitWriterBlobContentMismatchRefusal { path: _, indexed_oid: _, content_oid: _ } } => match unavailable {
-            CommitWriterRefused { writer: _, refusals: unavailable_refusals } => match first(unavailable_refusals) {
-              Present { value: CommitWriterBlobClassificationUnavailableRefusal { path: _, cause } } =>
+    gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals } => match first(refusals) {
+      Present { value: gunbc.commit_workflow.CommitWriterIndexBlobIdentityMismatchRefusal { path: _, index_oid: _, observed_index_oid: _ } } => match content_mismatch {
+        gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals: content_refusals } => match first(content_refusals) {
+          Present { value: gunbc.commit_workflow.CommitWriterBlobContentMismatchRefusal { path: _, indexed_oid: _, content_oid: _ } } => match unavailable {
+            gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals: unavailable_refusals } => match first(unavailable_refusals) {
+              Present { value: gunbc.commit_workflow.CommitWriterBlobClassificationUnavailableRefusal { path: _, cause } } =>
                 cause == "staged blob decode unavailable"
               _ => false
             }
@@ -530,22 +530,22 @@ test fn extra_population_and_content_mismatch_refusals_accumulate() -> Bool {
     content_oid: other_blob_oid(),
     classification: good.classification,
   }
-  match admit_commit_writer(
-    writer: HumanGitCommit,
+  match gunbc.commit_workflow.admit_commit_writer(
+    writer: gunbc.commit_workflow.HumanGitCommit,
     observation: gunbc.commit_workflow.CompleteStagedCommitObservation {
       index: [],
       blobs: [mismatched],
       module_storage: storage,
     },
   ) {
-    CommitWriterAdmitted { writer: _, coverage: _ } => false
-    CommitWriterRefused { writer: _, refusals } =>
+    gunbc.commit_workflow.CommitWriterAdmitted { writer: _, coverage: _ } => false
+    gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals } =>
       (count(filter(refusals, refusal => match refusal {
-        CommitWriterExtraBlobObservationRefusal { path: _, indexed_oid: _ } => true
+        gunbc.commit_workflow.CommitWriterExtraBlobObservationRefusal { path: _, indexed_oid: _ } => true
         _ => false
       })) == 1)
         && (count(filter(refusals, refusal => match refusal {
-          CommitWriterBlobContentMismatchRefusal { path: _, indexed_oid: _, content_oid: _ } => true
+          gunbc.commit_workflow.CommitWriterBlobContentMismatchRefusal { path: _, indexed_oid: _, content_oid: _ } => true
           _ => false
         })) == 1)
   }

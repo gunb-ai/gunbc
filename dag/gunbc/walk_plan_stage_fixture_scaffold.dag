@@ -3,15 +3,15 @@ module gunbc.walk_plan_stage_fixture_scaffold
 
 
 data walk_plan_stage_fixture_hand_rust_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.test.fixture.walk_plan_stage.plan",
     decl_name: "walk_plan_stage_overlap_barrier_recipe",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data walk_plan_stage_fixture_hand_rust_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: src/v1/stage0/tests/walk_plan_stage_fixture.rs — seed subprocess transport that drives plan.dag recipes through claim_executor for cold production-path controls (~7m each, #[ignore]). The behavioral contract lives in v2.test.fixture.walk_plan_stage.\{plan,common\}.dag; Rust materializes harness env from common.dag (walk_plan_stage_materialize_harness_authority_holds) and must not fork attempt/receipt/path literals. DISSOLVES WHEN ROADMAP.md v1-materialization-kernel (Compute things once and reuse the result — docs/plans/witness-realization-plan.md) lands a typed host-effect transport for plan-driven walks OR the controls run exclusively via documented plan.dag recipes without a parallel Rust authority fork — same dissolution family as std.realization_schedule walk_plan_run_stage_claim_executor_seed_deferral.")
+data walk_plan_stage_fixture_hand_rust_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: src/v1/stage0/tests/walk_plan_stage_fixture.rs — seed subprocess transport that drives plan.dag recipes through claim_executor for cold production-path controls (~7m each, #[ignore]). The behavioral contract lives in v2.test.fixture.walk_plan_stage.\{plan,common\}.dag; Rust materializes harness env from common.dag (walk_plan_stage_materialize_harness_authority_holds) and must not fork attempt/receipt/path literals. DISSOLVES WHEN ROADMAP.md v1-materialization-kernel (Compute things once and reuse the result — docs/plans/witness-realization-plan.md) lands a typed host-effect transport for plan-driven walks OR the controls run exclusively via documented plan.dag recipes without a parallel Rust authority fork — same dissolution family as std.realization_schedule walk_plan_run_stage_claim_executor_seed_deferral.")
 
 data walk_plan_stage_fixture_hand_rust_loc_delta_net: Int = 1
 

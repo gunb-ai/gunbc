@@ -3,14 +3,14 @@ module extdeps.languages.riscv.subject
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "riscv.org/technical/specifications/"
   }
 }
 
 data riscv_isa_further_authority_1: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "docs.riscv.org/"
   }
 }
@@ -27,10 +27,10 @@ data riscv_isa_model_scope: extdeps.external_authority.ExternalModelScope = extd
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.languages.riscv.subject",
       decl_name: "riscv_isa",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.languages.riscv.subject.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [riscv_isa_further_authority_1]
 }
 

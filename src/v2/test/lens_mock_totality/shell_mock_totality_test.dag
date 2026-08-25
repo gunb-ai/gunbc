@@ -1,31 +1,32 @@
 module v2.test.lens_mock_totality.shell_mock_totality
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedShellMock {
-  tag: v2.std.node.Symbol
+  tag: Symbol
 }
 
 data shell_red_omit_keys: List<String> = ["shell.Exec.Run"]
 
-fn materialize_shell_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedShellMock> {
+fn materialize_shell_mock(case: PublishedMockCase) -> Outcome<MaterializedShellMock> {
   if case.operation_key == "shell.Find.ListDirs" {
-    outcome_accepted(value: MaterializedShellMock { tag: ^materialized_find_list_dirs })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedShellMock { tag: ^materialized_find_list_dirs })
   } else if case.operation_key == "shell.Exec.Run" {
-    outcome_accepted(value: MaterializedShellMock { tag: ^materialized_exec_run })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedShellMock { tag: ^materialized_exec_run })
   } else if case.operation_key == "shell.Exec.Check" {
-    outcome_accepted(value: MaterializedShellMock { tag: ^materialized_exec_check })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedShellMock { tag: ^materialized_exec_check })
   } else {
-    mock_unhandled_rejection()
+    v2.lens.mock_totality.mock_unhandled_rejection()
   }
 }
 
-fn shell_real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  outcome_accepted_p(outcome: materialize_shell_mock(case: case))
+fn shell_real_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.outcome_accepted_p(outcome: materialize_shell_mock(case: case))
 }
 
-fn shell_omits_exec_run_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  omit_consumer_handles(
+fn shell_omits_exec_run_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.omit_consumer_handles(
     case: case,
     omit_keys: shell_red_omit_keys,
     total_consumer_handles: shell_real_consumer_handles
@@ -33,14 +34,14 @@ fn shell_omits_exec_run_consumer_handles(case: std.hermetic_replay.PublishedMock
 }
 
 test fn shell_mock_consumer_is_total_holds() -> Bool {
-  mock_totality_green_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_green_holds(
     published: extdeps.shell.mock_corpus.shell_published_mock_corpus,
     consumer_handles: shell_real_consumer_handles
   )
 }
 
 test fn shell_mock_omitted_member_is_red_holds() -> Bool {
-  mock_totality_red_on_omission_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_red_on_omission_holds(
     published: extdeps.shell.mock_corpus.shell_published_mock_corpus,
     consumer_handles: shell_omits_exec_run_consumer_handles
   )

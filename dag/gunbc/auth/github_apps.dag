@@ -23,10 +23,10 @@ data gunbai_ci_declared: DeclaredGitHubApp = DeclaredGitHubApp {
 }
 
 data gunbai_ci_app_pem_secret: extdeps.cloud.gcp.secret_ref.SecretRef = extdeps.cloud.gcp.secret_ref.SecretRef {
-  project: fleet_secrets_gcp_project,
+  project: gunbc.fleet_secrets_config.fleet_secrets_gcp_project,
   secret: "ci-github-app-private-key",
   version: "latest",
-  hash_state: HashPending,
+  hash_state: extdeps.cloud.gcp.secret_ref.HashPending,
 }
 
 data gunbai_ci_declared_installation_id: extdeps.github.app.GitHubAppInstallationId = extdeps.github.app.GitHubAppInstallationId { value: 104134109 }
@@ -41,12 +41,12 @@ type ManagedGitHubAppKey {
 }
 
 data gunbai_bot_declared_key: ManagedGitHubAppKey = ManagedGitHubAppKey {
-  fingerprint: sha256_base64_key_fingerprint(digest: "B+ANMzYq0nhBn6L7STPkdsEw07QkdXXvbj0gjxvt5BQ="),
+  fingerprint: extdeps.github.app.sha256_base64_key_fingerprint(digest: "B+ANMzYq0nhBn6L7STPkdsEw07QkdXXvbj0gjxvt5BQ="),
   role: ActiveSigningKey,
 }
 
 fn app_settings_permissions_locator(app: DeclaredGitHubApp) -> extdeps.uri.Uri {
-  uri_https(
+  extdeps.uri.uri_https(
     locator: concat(
       concat(concat("github.com/organizations/", app.owner_login), "/settings/apps/"),
       concat(app.slug, "/permissions")
@@ -80,7 +80,7 @@ type SignerCustody
   | SignerReadbackFailed { cause: SignerSealFailure }
 
 fn app_key_settings_locator(app: DeclaredGitHubApp) -> extdeps.uri.Uri {
-  uri_https(
+  extdeps.uri.uri_https(
     locator: concat(
       concat(concat("github.com/organizations/", app.owner_login), "/settings/apps/"),
       app.slug
@@ -101,7 +101,7 @@ fn signer_seal_failure(
         declared_app_id: app.app_id
       }
     }
-  } else if !key_fingerprint_eq(a: signer.derived_public_fingerprint, b: signer.github_registered_fingerprint) {
+  } else if !extdeps.github.app.key_fingerprint_eq(a: signer.derived_public_fingerprint, b: signer.github_registered_fingerprint) {
     Present {
       value: SignerFingerprintNotRegistered {
         derived: signer.derived_public_fingerprint,
@@ -160,16 +160,16 @@ fn registration_missing_permissions(
   requested: List<extdeps.github.app.ObservedGitHubPermission>,
   required: List<extdeps.github.app.GitHubAppPermission>
 ) -> List<extdeps.github.app.GitHubAppPermission> {
-  filter(required, r => match observed_access_for(perms: requested, axis: r.name) {
+  filter(required, r => match extdeps.github.app.observed_access_for(perms: requested, axis: r.name) {
     Absent => true
-    Present { value: held } => !permission_access_at_least(held: held, requested: r.access)
+    Present { value: held } => !extdeps.github.app.permission_access_at_least(held: held, requested: r.access)
   })
 }
 
 fn installation_holds(installation: extdeps.github.app.GitHubAppInstallation, required: extdeps.github.app.GitHubAppPermission) -> Bool {
-  match observed_access_for(perms: installation.permissions, axis: required.name) {
+  match extdeps.github.app.observed_access_for(perms: installation.permissions, axis: required.name) {
     Absent => false
-    Present { value: held } => permission_access_at_least(held: held, requested: required.access)
+    Present { value: held } => extdeps.github.app.permission_access_at_least(held: held, requested: required.access)
   }
 }
 
@@ -181,9 +181,9 @@ fn installation_missing_permissions(
 }
 
 fn permission_set_duplicate(perms: List<extdeps.github.app.GitHubAppPermission>) -> extdeps.github.app.GitHubPermissionAxis? {
-  match admit_permission_set(perms: perms) {
-    PermissionSetAdmitted { permissions: _ } => none
-    PermissionSetDuplicateName { name } => Present { value: name }
+  match extdeps.github.app.admit_permission_set(perms: perms) {
+    extdeps.github.app.PermissionSetAdmitted { permissions: _ } => none
+    extdeps.github.app.PermissionSetDuplicateName { name } => Present { value: name }
   }
 }
 
@@ -191,7 +191,7 @@ fn registration_duplicate_observed_name(registration: ObservedAppRegistration) -
   match registration {
     AppRegistrationReadbackUnavailable => none
     AppRegistrationReadback { app_id: _, requested_permissions } =>
-      first_duplicated_observed_permission(perms: requested_permissions)
+      extdeps.github.app.first_duplicated_observed_permission(perms: requested_permissions)
   }
 }
 
@@ -199,7 +199,7 @@ fn installation_duplicate_observed_name(observed: ObservedInstallation) -> extde
   match observed {
     InstallationReadbackUnavailable { cause: _ } => none
     InstallationReadback { installation } =>
-      first_duplicated_observed_permission(perms: installation.permissions)
+      extdeps.github.app.first_duplicated_observed_permission(perms: installation.permissions)
   }
 }
 
@@ -209,7 +209,7 @@ fn first_duplicate_permission_name(
   required: List<extdeps.github.app.GitHubAppPermission>
 ) -> extdeps.github.app.ObservedGitHubPermissionName? {
   match permission_set_duplicate(perms: required) {
-    Present { value: axis } => Present { value: observed_permission_name(axis: axis) }
+    Present { value: axis } => Present { value: extdeps.github.app.observed_permission_name(axis: axis) }
     Absent => match registration_duplicate_observed_name(registration: registration) {
       Present { value: n } => Present { value: n }
       Absent => installation_duplicate_observed_name(observed: observed)
@@ -453,5 +453,5 @@ fn next_action_owner(action: GitHubAppNextAction) -> ActionOwner {
 }
 
 fn key_fingerprint_matches(declared: ManagedGitHubAppKey, observed: ManagedGitHubAppKey) -> Bool {
-  key_fingerprint_eq(a: observed.fingerprint, b: declared.fingerprint)
+  extdeps.github.app.key_fingerprint_eq(a: observed.fingerprint, b: declared.fingerprint)
 }

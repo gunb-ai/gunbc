@@ -68,7 +68,7 @@ fn deployed_tree_remote_read_back(
   previous: extdeps.git.GitRemoteUrlObservation,
 ) -> DeployedTreeRemoteOutcome {
   match observe_deployed_tree_remote(at: desired.at) {
-    GitRemoteUrlObserved { member: observed } => {
+    extdeps.git.GitRemoteUrlObserved { member: observed } => {
       let seen = observed.url as String
       let want = desired.url as String
       if seen == want {
@@ -81,10 +81,10 @@ fn deployed_tree_remote_read_back(
         }
       }
     }
-    GitRemoteUrlAbsent { at: at } => RemoteReadBackAbsent { at: at }
-    GitRemoteUrlRepositoryUnusable { at: at, exit_code: c, stderr: e } =>
+    extdeps.git.GitRemoteUrlAbsent { at: at } => RemoteReadBackAbsent { at: at }
+    extdeps.git.GitRemoteUrlRepositoryUnusable { at: at, exit_code: c, stderr: e } =>
       RemoteRepositoryUnusable { at: at, exit_code: c, stderr: e }
-    GitRemoteUrlReadRefused { at: at, exit_code: c, stderr: e } =>
+    extdeps.git.GitRemoteUrlReadRefused { at: at, exit_code: c, stderr: e } =>
       RemoteReadBackRefused { at: at, exit_code: c, stderr: e }
   }
 }
@@ -113,7 +113,7 @@ fn ensure_deployed_tree_remote(repository_path: std.types.FilePath) -> DeployedT
   let desired = deployed_tree_remote_desired(repository_path: repository_path)
   let observed = observe_deployed_tree_remote(at: desired.at)
   match observed {
-    GitRemoteUrlObserved { member: current } => {
+    extdeps.git.GitRemoteUrlObserved { member: current } => {
       let seen = current.url as String
       let want = desired.url as String
       if seen == want {
@@ -122,10 +122,10 @@ fn ensure_deployed_tree_remote(repository_path: std.types.FilePath) -> DeployedT
         deployed_tree_remote_write(desired: desired, previous: observed)
       }
     }
-    GitRemoteUrlAbsent { at: _ } => deployed_tree_remote_write(desired: desired, previous: observed)
-    GitRemoteUrlRepositoryUnusable { at: at, exit_code: c, stderr: e } =>
+    extdeps.git.GitRemoteUrlAbsent { at: _ } => deployed_tree_remote_write(desired: desired, previous: observed)
+    extdeps.git.GitRemoteUrlRepositoryUnusable { at: at, exit_code: c, stderr: e } =>
       RemoteRepositoryUnusable { at: at, exit_code: c, stderr: e }
-    GitRemoteUrlReadRefused { at: at, exit_code: c, stderr: e } =>
+    extdeps.git.GitRemoteUrlReadRefused { at: at, exit_code: c, stderr: e } =>
       RemoteReadBackRefused { at: at, exit_code: c, stderr: e }
   }
 }

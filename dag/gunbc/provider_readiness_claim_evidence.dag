@@ -24,13 +24,13 @@ type ProviderReadinessEvidenceInference = std.claim_evidence.EvidenceInference<P
 data provider_login_status_probe: gunbc.readback_independence.ReadBackProbe = gunbc.readback_independence.ReadBackProbe {
   label: "codex login status",
   subject: "credential material is recorded for one provider instance",
-  effect_on_subject: ProbeInert,
+  effect_on_subject: gunbc.readback_independence.ProbeInert,
 }
 
 data provider_live_request_probe: gunbc.readback_independence.ReadBackProbe = gunbc.readback_independence.ReadBackProbe {
   label: "one live provider model request",
   subject: "the provider accepts or refuses one request for this instance",
-  effect_on_subject: ProbeInert,
+  effect_on_subject: gunbc.readback_independence.ProbeInert,
 }
 
 fn provider_credential_recorded_claim(
@@ -41,7 +41,7 @@ fn provider_credential_recorded_claim(
     id: "provider-credential-recorded",
     subject: provider,
     target: provider,
-    proposition: ProviderCredentialsRecordedUnverified,
+    proposition: extdeps.llm.cli_lifecycle.ProviderCredentialsRecordedUnverified,
     scope: provider.kind,
     bound: bound,
   }
@@ -55,7 +55,7 @@ fn provider_ready_claim(
     id: "provider-live-request-ready",
     subject: provider,
     target: provider,
-    proposition: ProviderAuthenticated,
+    proposition: extdeps.llm.cli_lifecycle.ProviderAuthenticated,
     scope: provider.kind,
     bound: bound,
   }
@@ -90,7 +90,7 @@ fn provider_observation_insufficient(
   probe: gunbc.readback_independence.ReadBackProbe,
   reason: std.types.NonEmptyStr,
 ) -> ProviderReadinessEvidenceInference {
-  insufficient_evidence_inference(
+  std.claim_evidence.insufficient_evidence_inference(
     insufficiency: std.claim_evidence.EvidenceInsufficiency {
       fact: fact,
       claim: claim,
@@ -105,11 +105,11 @@ fn provider_login_status_support(
   fact: std.claim_evidence.RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,
 ) -> ProviderReadinessEvidenceInference {
-  infer_probe_evidence(
+  gunbc.claim_evidence_probe_rule.infer_probe_evidence(
     fact: fact,
-    direction: EvidenceSupports,
+    direction: std.claim_evidence.EvidenceSupports,
     inference_rule: "provider-login-status-records-credential-only",
-    authority: codex_cli_auth_external_authority,
+    authority: extdeps.llm.cli_lifecycle.codex_cli_auth_external_authority,
     provenance: std.claim_evidence.EvidenceProvenance {
       entity: "provider-login-status-output",
       activity: "provider-login-status-request",
@@ -120,7 +120,7 @@ fn provider_login_status_support(
       basis: "captured inside the named provider attempt",
     },
     fidelity: std.claim_evidence.EvidenceFidelity {
-      boundary: ProviderCredentialsRecordedUnverified,
+      boundary: extdeps.llm.cli_lifecycle.ProviderCredentialsRecordedUnverified,
       losses: [
         "refresh acceptance is not exercised",
         "live model request capability is not exercised",
@@ -135,11 +135,11 @@ fn provider_live_request_challenge(
   claim: ProviderReadinessClaim,
   reason: std.types.NonEmptyStr,
 ) -> ProviderReadinessEvidenceInference {
-  infer_probe_evidence(
+  gunbc.claim_evidence_probe_rule.infer_probe_evidence(
     fact: fact,
-    direction: EvidenceChallenges,
+    direction: std.claim_evidence.EvidenceChallenges,
     inference_rule: "provider-live-request-refresh-refusal",
-    authority: codex_cli_auth_external_authority,
+    authority: extdeps.llm.cli_lifecycle.codex_cli_auth_external_authority,
     provenance: std.claim_evidence.EvidenceProvenance {
       entity: "provider-live-request-refusal",
       activity: "provider-model-request",
@@ -161,11 +161,11 @@ fn provider_live_request_support(
   fact: std.claim_evidence.RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,
 ) -> ProviderReadinessEvidenceInference {
-  infer_probe_evidence(
+  gunbc.claim_evidence_probe_rule.infer_probe_evidence(
     fact: fact,
-    direction: EvidenceSupports,
+    direction: std.claim_evidence.EvidenceSupports,
     inference_rule: "provider-live-request-succeeded",
-    authority: codex_cli_auth_external_authority,
+    authority: extdeps.llm.cli_lifecycle.codex_cli_auth_external_authority,
     provenance: std.claim_evidence.EvidenceProvenance {
       entity: "provider-live-request-success",
       activity: "provider-model-request",
@@ -176,7 +176,7 @@ fn provider_live_request_support(
       basis: "provider response belongs to the named request attempt",
     },
     fidelity: std.claim_evidence.EvidenceFidelity {
-      boundary: ProviderAuthenticated,
+      boundary: extdeps.llm.cli_lifecycle.ProviderAuthenticated,
       losses: [],
     },
     probe: provider_live_request_probe,
@@ -322,17 +322,17 @@ fn provider_readiness_rule_claim(
   claim: ProviderReadinessClaim,
 ) -> Bool {
   (rule == "provider-login-status-records-credential-only"
-      && claim.proposition == ProviderCredentialsRecordedUnverified)
+      && claim.proposition == extdeps.llm.cli_lifecycle.ProviderCredentialsRecordedUnverified)
     || ((rule == "provider-live-request-refresh-refusal"
         || rule == "provider-live-request-succeeded")
-      && claim.proposition == ProviderAuthenticated)
+      && claim.proposition == extdeps.llm.cli_lifecycle.ProviderAuthenticated)
 }
 
 fn provider_readiness_authority_claim(
   authority: extdeps.external_authority.ExternalAuthority,
   _: ProviderReadinessClaim,
 ) -> Bool {
-  authority == codex_cli_auth_external_authority
+  authority == extdeps.llm.cli_lifecycle.codex_cli_auth_external_authority
 }
 
 fn provider_readiness_provenance_claim(
@@ -362,9 +362,9 @@ fn provider_readiness_fidelity_claim(
   _: ProviderReadinessClaim,
 ) -> Bool {
   match fidelity.boundary {
-    ProviderCredentialsRecordedUnverified => fidelity.losses.length() == 2
-    ProviderAuthenticated => fidelity.losses.length() == 0
-    ProviderRefreshFailed { reason: _ } => fidelity.losses.length() == 0
+    extdeps.llm.cli_lifecycle.ProviderCredentialsRecordedUnverified => fidelity.losses.length() == 2
+    extdeps.llm.cli_lifecycle.ProviderAuthenticated => fidelity.losses.length() == 0
+    extdeps.llm.cli_lifecycle.ProviderRefreshFailed { reason: _ } => fidelity.losses.length() == 0
     _ => false
   }
 }
@@ -374,14 +374,14 @@ fn provider_readiness_independence_claim(
   _: ProviderReadinessClaim,
   _: std.claim_evidence.EvidenceDirection,
 ) -> Bool {
-  readback_probe_is_independent(p: probe)
+  gunbc.readback_independence.readback_probe_is_independent(p: probe)
 }
 
 fn provider_readiness_link_relation(
   link: ProviderReadinessEvidenceLink,
   claim: ProviderReadinessClaim,
 ) -> Bool {
-  let supports = evidence_direction_fold(
+  let supports = std.claim_evidence.evidence_direction_fold(
     direction: link.direction,
     fold: std.claim_evidence.EvidenceDirectionFold {
       supports: true,
@@ -396,7 +396,7 @@ fn provider_readiness_link_relation(
           provider: link.fact.value.provider,
           bound: link.fact.value.bound,
         )
-        && link.fidelity.boundary == ProviderCredentialsRecordedUnverified
+        && link.fidelity.boundary == extdeps.llm.cli_lifecycle.ProviderCredentialsRecordedUnverified
     ProviderLiveRefreshRefused { reason } =>
       !supports
         && link.inference_rule == "provider-live-request-refresh-refusal"
@@ -412,13 +412,13 @@ fn provider_readiness_link_relation(
           provider: link.fact.value.provider,
           bound: link.fact.value.bound,
         )
-        && link.fidelity.boundary == ProviderAuthenticated
+        && link.fidelity.boundary == extdeps.llm.cli_lifecycle.ProviderAuthenticated
     _ => false
   }
 }
 
 fn provider_readiness_evidence_admission_policy(
-) -> EvidenceAdmissionPolicy<ProviderReadinessObservation, ProviderReadinessClaim, ExternalAuthority, ProviderReadiness, ReadBackProbe> {
+) -> std.claim_evidence.EvidenceAdmissionPolicy<ProviderReadinessObservation, ProviderReadinessClaim, extdeps.external_authority.ExternalAuthority, extdeps.llm.cli_lifecycle.ProviderReadiness, gunbc.readback_independence.ReadBackProbe> {
   std.claim_evidence.EvidenceAdmissionPolicy {
     fact_claim: provider_readiness_fact_claim,
     inference_rule_claim: provider_readiness_rule_claim,

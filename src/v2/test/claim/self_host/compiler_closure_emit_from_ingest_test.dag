@@ -1,5 +1,6 @@
 module v2.test.self_host.compiler_closure_emit_from_ingest
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 
@@ -46,7 +47,7 @@ fn gap4_ingest_probe_step(
     Gap4IngestProbeSourceReadFailed => state
     Gap4IngestProbePending =>
       match v2.compiler.tokenize.tokenize(text: read.source.carried, file: read.compilation_unit, rules: lm.lex) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           Gap4IngestProbeFound {
             path: read.artifact.file_path,
             reason: d.head.reason,
@@ -57,28 +58,28 @@ fn gap4_ingest_probe_step(
             remain_start: v2.std.optional.Absent,
             remain_end: v2.std.optional.Absent,
           }
-        Accepted { value: ts, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: ts, diagnostics: _ } =>
           match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
-            Rejected { diagnostics: d } =>
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               gap4_probe_found_from_parse_reject(
                 path: read.artifact.file_path,
                 reason: d.head.reason,
                 at: d.head.at
               )
-            Accepted { value: artifact, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
               match v2.compiler.normalize.normalize(parse_tree: artifact.tree) {
-                Rejected { diagnostics: d } =>
+                v2.std.diagnostic.Rejected { diagnostics: d } =>
                   Gap4IngestProbeFound {
                     path: read.artifact.file_path,
                     reason: d.head.reason,
-                    stage: ^normalize,
+                    stage: ^v2.compiler.normalize.normalize,
                     at: d.head.at,
                     remain_class: v2.std.optional.Absent,
                     remain_lexeme: v2.std.optional.Absent,
                     remain_start: v2.std.optional.Absent,
                     remain_end: v2.std.optional.Absent,
                   }
-                Accepted { value: _, diagnostics: _ } => Gap4IngestProbePending
+                v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => Gap4IngestProbePending
               }
           }
       }
@@ -87,8 +88,8 @@ fn gap4_ingest_probe_step(
 
 fn gap4_probe_first_ingest_reject() -> Gap4IngestProbeState {
   match v2.compiler.source_authority.source_root_ingest_build_from_source_refs(refs: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs) {
-    SourceRootIngestBuildReadFailed { result: _ } => Gap4IngestProbeSourceReadFailed
-    SourceRootIngestBuildOk { ingest: ingest } =>
+    v2.compiler.source_authority.SourceRootIngestBuildReadFailed { result: _ } => Gap4IngestProbeSourceReadFailed
+    v2.compiler.source_authority.SourceRootIngestBuildOk { ingest: ingest } =>
       v2.std.algebra.fold_list(
         xs: ingest,
         empty: Gap4IngestProbePending,
@@ -99,11 +100,11 @@ fn gap4_probe_first_ingest_reject() -> Gap4IngestProbeState {
   }
 }
 
-fn list_contains_str(xs: List<String>, target: String) -> v2.std.logic.Bool {
+fn list_contains_str(xs: List<String>, target: String) -> Bool {
   v2.std.algebra.fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == target) })
 }
 
-test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> v2.std.logic.Bool {
+test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Bool {
   (v2.std.algebra.length(xs: v2.compiler.self_host.closure_witness_layer_roots.self_host_closure_witness_layer_roots) == v2.std.algebra.length(xs: gunbc.ci_layer_roots.witness_layer_roots))
     && v2.std.algebra.fold_list(
       xs: v2.compiler.self_host.closure_witness_layer_roots.self_host_closure_witness_layer_roots,
@@ -116,7 +117,7 @@ test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> v2.
 
 data closure_receipt_describes_carrier_note: String = "The gate's live assertion after capless closure-ref transport landed. produced_row_count must equal the closure-ref row count the manifest actually carries, and consumers read through those refs with hash verification at consumption time. Inline Lossless source text is no longer emitted; host_source_root_ingest stays Empty while host_source_root_closure_refs carries the full closure. Past manifest_inline_list_max the inline carrier reports SourceRootManifestElided (typed read_count/cap) while the ref population stays complete — overflow must never render as zero rows and an empty ingest."
 
-test fn compiler_closure_ingest_receipt_describes_carrier_holds() -> v2.std.logic.Bool {
+test fn compiler_closure_ingest_receipt_describes_carrier_holds() -> Bool {
   v2.compiler.source_authority.source_root_overflow_never_empty_population_holds(
     receipt: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt,
     refs: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs
@@ -125,10 +126,10 @@ test fn compiler_closure_ingest_receipt_describes_carrier_holds() -> v2.std.logi
       receipt: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt,
       refs: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs
     )
-    && (v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
+    && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
 }
 
-test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> v2.std.logic.Bool {
+test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> Bool {
   let receipt = v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt
   let refs = v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs
   let n = receipt.ingest_read_count
@@ -143,7 +144,7 @@ test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> v2.std.logic.B
     }
 }
 
-test fn compiler_closure_ingest_overflow_refuses_never_empty_holds() -> v2.std.logic.Bool {
+test fn compiler_closure_ingest_overflow_refuses_never_empty_holds() -> Bool {
   let receipt = v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt
   let refs = v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs
   let n = receipt.ingest_read_count
@@ -154,14 +155,14 @@ test fn compiler_closure_ingest_overflow_refuses_never_empty_holds() -> v2.std.l
       && (receipt.produced_row_count == n)
       && (v2.std.algebra.length(xs: refs) == n)
       && match receipt.coverage {
-        SourceRootManifestElided { read_count: elided_reads, cap: cap } =>
+        v2.compiler.source_authority.SourceRootManifestElided { read_count: elided_reads, cap: cap } =>
           (elided_reads == n) && (cap == v2.compiler.source_authority.manifest_inline_list_max)
         _ => false
       }
   }
 }
 
-test fn gap4_probe_all_ingest_reads_accept_holds() -> v2.std.logic.Bool {
+test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
   match gap4_probe_first_ingest_reject() {
     Gap4IngestProbePending => true
     Gap4IngestProbeSourceReadFailed => false
@@ -182,27 +183,27 @@ test fn gap4_probe_all_ingest_reads_accept_holds() -> v2.std.logic.Bool {
 // over zero rows fails here. On a real host overlay it requires a POSITIVE
 // read count as well as the identity join, so the equality can no longer be
 // satisfied at zero.
-test fn compiler_closure_scoped_ingest_parses_holds() -> v2.std.logic.Bool {
+test fn compiler_closure_scoped_ingest_parses_holds() -> Bool {
   match v2.compiler.self_host.compiler_closure_emit_driver.closure_emit_population_admission(
     refs: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs,
     receipt: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt
   ) {
-    ClosureEmitPopulationRefused { reason: _ } =>
-      match v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt.coverage {
-        SourceRootManifestAbsent => true
-        SourceRootCoverageComplete => false
-        SourceRootManifestElided { read_count: _, cap: _ } => false
-        SourceRootRowsMissing { read_count: _, produced_row_count: _ } => false
+    v2.compiler.self_host.compiler_closure_emit_driver.ClosureEmitPopulationRefused { reason: _ } =>
+      match host_source_root_ingest_coverage_receipt.coverage {
+        v2.compiler.source_authority.SourceRootManifestAbsent => true
+        v2.compiler.source_authority.SourceRootCoverageComplete => false
+        v2.compiler.source_authority.SourceRootManifestElided { read_count: _, cap: _ } => false
+        v2.compiler.source_authority.SourceRootRowsMissing { read_count: _, produced_row_count: _ } => false
       }
-    ClosureEmitPopulationAdmitted { ingest: ingest } =>
+    v2.compiler.self_host.compiler_closure_emit_driver.ClosureEmitPopulationAdmitted { ingest: ingest } =>
       match v2.compiler.program_assembly.module_roots_from_source_root_ingest(
         ingest: ingest,
         lm: v2.extdeps.languages.dag.dag_language_model()
       ) {
-        Accepted { value: roots, diagnostics: _ } =>
-          (v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
-            && (v2.std.algebra.length(xs: roots) == v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt.ingest_read_count)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: roots, diagnostics: _ } =>
+          (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
+            && (v2.std.algebra.length(xs: roots) == host_source_root_ingest_coverage_receipt.ingest_read_count)
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
   }
 }

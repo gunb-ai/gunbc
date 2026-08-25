@@ -11,9 +11,9 @@ module extdeps.systems.nvidia_dgx_spark_setup
 // gunbc.spark.dgx_procurement, and what is observed of them in gunbc.spark.serving_observe.
 // This clause used to name gunbc.spark.provisioning, which was deleted as an unconsumed
 // model whose subject completed by another route; the boundary it states is unchanged.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "docs.nvidia.com/dgx/dgx-spark/first-boot.html"
   }
 }
@@ -33,8 +33,8 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
       field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.systems.nvidia_dgx_spark_setup.extdeps_external_authority_anchor,
-  further_citations: [extdeps.systems.nvidia_dgx_spark_setup.dgx_spark_pxe_boot_authority]
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [dgx_spark_pxe_boot_authority]
 }
 
 // The bootstrap network the device raises for itself at first boot. The credential is

@@ -30,10 +30,10 @@ fn frontier_row_decl(ref: std.decl_ref.DeclarationRef, reason: String, dissoluti
 fn frontier_row_well_formed(row: FrontierRow) -> Bool {
   !(row.reason as String == "")
     && match row.dissolution {
-      BoundDissolution { trigger: t } =>
-        !(dissolution_trigger_ref(trigger: t).module_path == "")
-          && !(dissolution_trigger_ref(trigger: t).decl_name == "")
-      UnboundDissolution { description: d } => !(d as String == "")
+      std.dissolution.BoundDissolution { trigger: t } =>
+        !(std.dissolution.dissolution_trigger_ref(trigger: t).module_path == "")
+          && !(std.dissolution.dissolution_trigger_ref(trigger: t).decl_name == "")
+      std.dissolution.UnboundDissolution { description: d } => !(d as String == "")
     }
     && match row.subject {
       PathSubject { path: p } => !(p == "")
@@ -52,7 +52,7 @@ fn frontier_subject_eq(a: FrontierSubject, b: FrontierSubject) -> Bool {
 fn frontier_subject_key(subject: FrontierSubject) -> String {
   match subject {
     PathSubject { path: p } => p
-    DeclSubject { ref: r } => declaration_ref_display_key(ref: r)
+    DeclSubject { ref: r } => std.decl_ref.declaration_ref_display_key(ref: r)
   }
 }
 
@@ -93,20 +93,20 @@ fn fold_frontier_expiry(
     rows,
     init: FrontierExpiryReport { unbound_count: 0, pending_count: 0, fired_still_present_count: 0 },
     f: fn(acc, row) {
-      match dissolution_status(condition: row.dissolution, present_decls: present_decls) {
-        DissolutionUnbound =>
+      match std.dissolution.dissolution_status(condition: row.dissolution, present_decls: present_decls) {
+        std.dissolution.DissolutionUnbound =>
           FrontierExpiryReport {
             unbound_count: acc.unbound_count + 1,
             pending_count: acc.pending_count,
             fired_still_present_count: acc.fired_still_present_count,
           }
-        DissolutionPending =>
+        std.dissolution.DissolutionPending =>
           FrontierExpiryReport {
             unbound_count: acc.unbound_count,
             pending_count: acc.pending_count + 1,
             fired_still_present_count: acc.fired_still_present_count,
           }
-        DissolutionFired =>
+        std.dissolution.DissolutionFired =>
           FrontierExpiryReport {
             unbound_count: acc.unbound_count,
             pending_count: acc.pending_count,

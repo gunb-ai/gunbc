@@ -5,52 +5,52 @@ module std.occurrence_binding
 data occurrence_binding_staged_adoption_scaffold_note: String = "STAGED ADOPTION: v1 and v2 execute over distinct Node algebras, so their shared occurrence-binding semantics must land here before either concrete Node instantiation. The next consumers are #7306/P1's fresh-successor v1 declaration-backed resolver instantiation, followed by the v2 resolver instantiation and its DependencyView BindsTo projection. LexicalLookup is not an interim consumer: it has no exact reference-occurrence Node or occurrence containment identity, so binding it here would fabricate the relation this carrier preserves."
 
 type ContainmentPath<N> {
-  ancestors: FreeMonoid<N>
+  ancestors: std.algebra.FreeMonoid<N>
   terminal: N
 }
 
 type BindingOccurrence<N> {
-  containment: std.occurrence_binding.ContainmentPath<N>
+  containment: ContainmentPath<N>
 }
 
 type BindingCandidate<N> {
-  containment: std.occurrence_binding.ContainmentPath<N>
+  containment: ContainmentPath<N>
 }
 
 type OccurrenceBinding<N> {
-  occurrence: std.occurrence_binding.BindingOccurrence<N>
-  candidate: std.occurrence_binding.BindingCandidate<N>
+  occurrence: BindingOccurrence<N>
+  candidate: BindingCandidate<N>
 }
 
 type AmbiguousBindingCandidates<N> {
-  first: std.occurrence_binding.BindingCandidate<N>
-  second: std.occurrence_binding.BindingCandidate<N>
-  rest: FreeMonoid<std.occurrence_binding.BindingCandidate<N>>
+  first: BindingCandidate<N>
+  second: BindingCandidate<N>
+  rest: std.algebra.FreeMonoid<BindingCandidate<N>>
 }
 
 type OccurrenceBindingResult<N>
-  = OccurrenceBound { binding: std.occurrence_binding.OccurrenceBinding<N> }
-  | OccurrenceUnbound { occurrence: std.occurrence_binding.BindingOccurrence<N> }
+  = OccurrenceBound { binding: OccurrenceBinding<N> }
+  | OccurrenceUnbound { occurrence: BindingOccurrence<N> }
   | OccurrenceAmbiguous {
-      occurrence: std.occurrence_binding.BindingOccurrence<N>
-      candidates: std.occurrence_binding.AmbiguousBindingCandidates<N>
+      occurrence: BindingOccurrence<N>
+      candidates: AmbiguousBindingCandidates<N>
     }
 
 type OccurrenceBindingFoldState<N>
   = OccurrenceBindingFoldZero
   | OccurrenceBindingFoldOne {
-      first: std.occurrence_binding.BindingCandidate<N>
+      first: BindingCandidate<N>
     }
   | OccurrenceBindingFoldMany {
-      first: std.occurrence_binding.BindingCandidate<N>
-      second: std.occurrence_binding.BindingCandidate<N>
-      rest_reversed: FreeMonoid<std.occurrence_binding.BindingCandidate<N>>
+      first: BindingCandidate<N>
+      second: BindingCandidate<N>
+      rest_reversed: std.algebra.FreeMonoid<BindingCandidate<N>>
     }
 
 fn occurrence_binding_from_candidates<N>(
-  occurrence: std.occurrence_binding.BindingOccurrence<N>,
-  candidates: FreeMonoid<std.occurrence_binding.BindingCandidate<N>>
-) -> std.occurrence_binding.OccurrenceBindingResult<N> {
+  occurrence: BindingOccurrence<N>,
+  candidates: std.algebra.FreeMonoid<BindingCandidate<N>>
+) -> OccurrenceBindingResult<N> {
   let state = fold(
     candidates,
     init: OccurrenceBindingFoldZero,
@@ -87,7 +87,7 @@ fn occurrence_binding_from_candidates<N>(
       }
     OccurrenceBindingFoldOne { first: first } =>
       OccurrenceBound {
-        binding: std.occurrence_binding.OccurrenceBinding {
+        binding: OccurrenceBinding {
           occurrence: occurrence,
           candidate: first,
         },
@@ -99,7 +99,7 @@ fn occurrence_binding_from_candidates<N>(
     } =>
       OccurrenceAmbiguous {
         occurrence: occurrence,
-        candidates: std.occurrence_binding.AmbiguousBindingCandidates {
+        candidates: AmbiguousBindingCandidates {
           first: first,
           second: second,
           rest: reverse(rest_reversed),
@@ -108,4 +108,4 @@ fn occurrence_binding_from_candidates<N>(
   }
 }
 
-data occurrence_binding_staged_adoption_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: both production resolver paths consume OccurrenceBindingResult by execution — v1 emits declaration-backed occurrence bindings, and v2 emits the same result and derives DependencyView BindsTo from OccurrenceBound — then delete this staged-adoption scaffold note and this dissolution row.")
+data occurrence_binding_staged_adoption_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: both production resolver paths consume OccurrenceBindingResult by execution — v1 emits declaration-backed occurrence bindings, and v2 emits the same result and derives DependencyView BindsTo from OccurrenceBound — then delete this staged-adoption scaffold note and this dissolution row.")

@@ -3,7 +3,7 @@ module extdeps.cooling.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Computer_cooling"
   }
 }
@@ -13,10 +13,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cooling.types",
       decl_name: "CpuCoolerCatalogRow",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.cooling.types.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -28,7 +28,7 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
 // decomposed here at its first consumer, product.cooling_qualification.
 type CpuCoolerCatalogRow {
   model: std.types.NonEmptyStr
-  manufacturer: Vendor<extdeps.hardware.Hardware>
+  manufacturer: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   socket: extdeps.cpu.types.CpuSocket
   active_passive_switchable: Bool
   minimum_rack_units: std.measure.RackUnit

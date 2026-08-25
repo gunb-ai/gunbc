@@ -21,59 +21,59 @@ fn occurrence_category_binding_verdict(
   declaration: std.occurrence_identity.OccurrenceCategory
 ) -> OccurrenceCategoryBindingVerdict {
   match reference {
-    TypeOccurrence =>
+    std.occurrence_identity.TypeOccurrence =>
       match declaration {
-        TypeOccurrence => OccurrenceCategoryBindingAdmissible
+        std.occurrence_identity.TypeOccurrence => OccurrenceCategoryBindingAdmissible
         _ => OccurrenceCategoryBindingInadmissible {
           reference: reference,
           declaration: declaration,
         }
       }
-    LexicalValueOccurrence =>
+    std.occurrence_identity.LexicalValueOccurrence =>
       match declaration {
-        LexicalValueOccurrence => OccurrenceCategoryBindingAdmissible
-        CallableOccurrence => OccurrenceCategoryBindingAdmissible
-        ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
+        std.occurrence_identity.LexicalValueOccurrence => OccurrenceCategoryBindingAdmissible
+        std.occurrence_identity.CallableOccurrence => OccurrenceCategoryBindingAdmissible
+        std.occurrence_identity.ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
         _ => OccurrenceCategoryBindingInadmissible {
           reference: reference,
           declaration: declaration,
         }
       }
-    CallableOccurrence =>
+    std.occurrence_identity.CallableOccurrence =>
       match declaration {
-        CallableOccurrence => OccurrenceCategoryBindingAdmissible
+        std.occurrence_identity.CallableOccurrence => OccurrenceCategoryBindingAdmissible
         _ => OccurrenceCategoryBindingInadmissible {
           reference: reference,
           declaration: declaration,
         }
       }
-    ConstructorOccurrence =>
+    std.occurrence_identity.ConstructorOccurrence =>
       match declaration {
-        ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
+        std.occurrence_identity.ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
         _ => OccurrenceCategoryBindingInadmissible {
           reference: reference,
           declaration: declaration,
         }
       }
-    FieldOccurrence =>
+    std.occurrence_identity.FieldOccurrence =>
       match declaration {
-        FieldOccurrence => OccurrenceCategoryBindingAdmissible
+        std.occurrence_identity.FieldOccurrence => OccurrenceCategoryBindingAdmissible
         _ => OccurrenceCategoryBindingInadmissible {
           reference: reference,
           declaration: declaration,
         }
       }
-    MethodOccurrence =>
+    std.occurrence_identity.MethodOccurrence =>
       match declaration {
-        MethodOccurrence => OccurrenceCategoryBindingAdmissible
+        std.occurrence_identity.MethodOccurrence => OccurrenceCategoryBindingAdmissible
         _ => OccurrenceCategoryBindingInadmissible {
           reference: reference,
           declaration: declaration,
         }
       }
-    NamespaceSegmentOccurrence =>
+    std.occurrence_identity.NamespaceSegmentOccurrence =>
       match declaration {
-        NamespaceSegmentOccurrence => OccurrenceCategoryBindingAdmissible
+        std.occurrence_identity.NamespaceSegmentOccurrence => OccurrenceCategoryBindingAdmissible
         _ => OccurrenceCategoryBindingInadmissible {
           reference: reference,
           declaration: declaration,
@@ -84,7 +84,7 @@ fn occurrence_category_binding_verdict(
 
 fn occurrence_containment_to_binding_path(
   path: std.occurrence_identity.OccurrenceContainmentPath
-) -> ContainmentPath<std.occurrence_identity.OccurrenceId> {
+) -> std.occurrence_binding.ContainmentPath<std.occurrence_identity.OccurrenceId> {
   std.occurrence_binding.ContainmentPath {
     ancestors: path.ancestors,
     terminal: path.terminal,
@@ -93,7 +93,7 @@ fn occurrence_containment_to_binding_path(
 
 fn binding_occurrence_from_reference(
   reference: std.occurrence_identity.ReferenceOccurrence
-) -> BindingOccurrence<std.occurrence_identity.OccurrenceId> {
+) -> std.occurrence_binding.BindingOccurrence<std.occurrence_identity.OccurrenceId> {
   std.occurrence_binding.BindingOccurrence {
     containment: occurrence_containment_to_binding_path(
       path: reference.containment,
@@ -103,7 +103,7 @@ fn binding_occurrence_from_reference(
 
 fn binding_candidate_from_declaration(
   declaration: std.occurrence_identity.DeclarationOccurrence
-) -> BindingCandidate<std.occurrence_identity.OccurrenceId> {
+) -> std.occurrence_binding.BindingCandidate<std.occurrence_identity.OccurrenceId> {
   std.occurrence_binding.BindingCandidate {
     containment: occurrence_containment_to_binding_path(
       path: declaration.containment,
@@ -112,7 +112,7 @@ fn binding_candidate_from_declaration(
 }
 
 type OccurrenceCandidatePopulationBuild {
-  candidates: FreeMonoid<BindingCandidate<std.occurrence_identity.OccurrenceId>>
+  candidates: std.algebra.FreeMonoid<std.occurrence_binding.BindingCandidate<std.occurrence_identity.OccurrenceId>>
   seen_candidate_ids: Map<Int, std.occurrence_identity.OccurrenceId>
   refusal: std.occurrence_identity.OccurrenceTransportRefusal?
 }
@@ -180,8 +180,8 @@ fn binding_candidates_from_supplied_declarations(
                             refusal: Present {
                               value: std.occurrence_identity.WrongOccurrenceRole {
                                 occurrence: candidate_occurrence,
-                                expected: DeclarationRole,
-                                observed: ReferenceRole,
+                                expected: std.occurrence_identity.DeclarationRole,
+                                observed: std.occurrence_identity.ReferenceRole,
                                 diagnostic_span: observed_reference.diagnostic_span,
                               },
                             },
@@ -237,7 +237,7 @@ fn binding_candidates_from_supplied_declarations(
 
 type OccurrenceReferenceBindingOutcome
   = OccurrenceReferenceBindingDecided {
-      result: OccurrenceBindingResult<std.occurrence_identity.OccurrenceId>,
+      result: std.occurrence_binding.OccurrenceBindingResult<std.occurrence_identity.OccurrenceId>,
     }
   | OccurrenceReferenceBindingTransportRefused {
       refusal: std.occurrence_identity.OccurrenceTransportRefusal,
@@ -277,8 +277,8 @@ fn resolve_reference_occurrence_binding_validated(
               OccurrenceReferenceBindingTransportRefused {
                 refusal: std.occurrence_identity.WrongOccurrenceRole {
                   occurrence: occurrence,
-                  expected: ReferenceRole,
-                  observed: DeclarationRole,
+                  expected: std.occurrence_identity.ReferenceRole,
+                  observed: std.occurrence_identity.DeclarationRole,
                   diagnostic_span: observed_declaration.diagnostic_span,
                 },
               }
@@ -302,7 +302,7 @@ fn resolve_reference_occurrence_binding_validated(
               }
             Absent =>
               OccurrenceReferenceBindingDecided {
-                result: occurrence_binding_from_candidates(
+                result: std.occurrence_binding.occurrence_binding_from_candidates(
                   occurrence: binding_occurrence_from_reference(
                     reference: reference,
                   ),
@@ -319,10 +319,10 @@ fn resolve_reference_occurrence_binding(
   occurrence: std.occurrence_identity.OccurrenceId,
   supplied_candidates: List<std.occurrence_identity.OccurrenceId>
 ) -> OccurrenceReferenceBindingOutcome {
-  match occurrence_transport_validate(transport: transport) {
-    OccurrenceTransportRefused { refusal: refusal } =>
+  match std.occurrence_identity.occurrence_transport_validate(transport: transport) {
+    std.occurrence_identity.OccurrenceTransportRefused { refusal: refusal } =>
       OccurrenceReferenceBindingTransportRefused { refusal: refusal }
-    OccurrenceTransportValidated { transport: validated } =>
+    std.occurrence_identity.OccurrenceTransportValidated { transport: validated } =>
       resolve_reference_occurrence_binding_validated(
         validated: validated,
         occurrence: occurrence,

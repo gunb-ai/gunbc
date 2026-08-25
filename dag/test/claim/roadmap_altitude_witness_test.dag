@@ -1,81 +1,81 @@
 module test.claim.roadmap_altitude_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data roadmap_altitude_witness_note: String = "Composition slice 3's receipts: the attention law's derivations proven total and fail-closed, the fold/open decision proven over RENDERED fixtures (a routine section folds, one working member holds it open), the counts wire pinned, and the client expand chain proven derived — each by execution, with the REDs planted as fixtures the same predicates must refuse."
 
 // The law's arms, pinned: finished work is routine, the working set holds, fail and loud expand — and the fail-closed arms are load-bearing, so they are asserted as REDs would be: an unmodeled status and an unmodeled band key must be anomalies, never quietly routine (the absorbing-fallback shape, refused).
 fn attention_key(a: gunbc.roadmap_altitude.RowAttention) -> String {
   match a {
-    RowRoutine => "routine"
-    RowWorking => "working"
-    RowAnomaly => "anomaly"
+    gunbc.roadmap_altitude.RowRoutine => "routine"
+    gunbc.roadmap_altitude.RowWorking => "working"
+    gunbc.roadmap_altitude.RowAnomaly => "anomaly"
   }
 }
 
 fn density_key(d: gunbc.roadmap_altitude.RowDensity) -> String {
   match d {
-    RowCollapses => "collapses"
-    RowHolds => "holds"
-    RowExpands => "expands"
+    gunbc.roadmap_altitude.RowCollapses => "collapses"
+    gunbc.roadmap_altitude.RowHolds => "holds"
+    gunbc.roadmap_altitude.RowExpands => "expands"
   }
 }
 
 test fn altitude_status_derivation_holds() -> Bool {
-  return attention_key(a: status_attention(status: "done")) == "routine"
-    && attention_key(a: status_attention(status: "superseded")) == "routine"
-    && attention_key(a: status_attention(status: "open")) == "working"
-    && attention_key(a: status_attention(status: "review")) == "working"
-    && attention_key(a: status_attention(status: "zombie")) == "anomaly"
+  return attention_key(a: gunbc.roadmap_altitude.status_attention(status: "done")) == "routine"
+    && attention_key(a: gunbc.roadmap_altitude.status_attention(status: "superseded")) == "routine"
+    && attention_key(a: gunbc.roadmap_altitude.status_attention(status: "open")) == "working"
+    && attention_key(a: gunbc.roadmap_altitude.status_attention(status: "review")) == "working"
+    && attention_key(a: gunbc.roadmap_altitude.status_attention(status: "zombie")) == "anomaly"
 }
 
 test fn altitude_band_derivation_holds() -> Bool {
-  return band_expands(band_key: "fail")
-    && band_expands(band_key: "loud")
-    && !band_expands(band_key: "ok")
-    && !band_expands(band_key: "invite")
-    && !band_expands(band_key: "in-progress")
-    && band_expands(band_key: "never-heard-of-it")
-    && density_key(d: attention_density(a: RowRoutine)) == "collapses"
-    && density_key(d: attention_density(a: RowWorking)) == "holds"
-    && density_key(d: attention_density(a: RowAnomaly)) == "expands"
+  return gunbc.roadmap_altitude.band_expands(band_key: "fail")
+    && gunbc.roadmap_altitude.band_expands(band_key: "loud")
+    && !gunbc.roadmap_altitude.band_expands(band_key: "ok")
+    && !gunbc.roadmap_altitude.band_expands(band_key: "invite")
+    && !gunbc.roadmap_altitude.band_expands(band_key: "in-progress")
+    && gunbc.roadmap_altitude.band_expands(band_key: "never-heard-of-it")
+    && density_key(d: gunbc.roadmap_altitude.attention_density(a: gunbc.roadmap_altitude.RowRoutine)) == "collapses"
+    && density_key(d: gunbc.roadmap_altitude.attention_density(a: gunbc.roadmap_altitude.RowWorking)) == "holds"
+    && density_key(d: gunbc.roadmap_altitude.attention_density(a: gunbc.roadmap_altitude.RowAnomaly)) == "expands"
 }
 
 test fn altitude_counts_wire_holds() -> Bool {
-  let c = section_counts(statuses: ["open", "open", "review", "done", "weird"])
-  return section_counts_wire(c: c) == "2 open · 1 review · 1 done · 1 unknown"
-    && section_counts_wire(c: section_counts(statuses: ["done"])) == "1 done"
-    && statuses_all_routine(statuses: ["done", "superseded"])
-    && !statuses_all_routine(statuses: ["done", "open"])
-    && !statuses_all_routine(statuses: ["done", "zombie"])
+  let c = gunbc.roadmap_altitude.section_counts(statuses: ["open", "open", "review", "done", "weird"])
+  return gunbc.roadmap_altitude.section_counts_wire(c: c) == "2 open · 1 review · 1 done · 1 unknown"
+    && gunbc.roadmap_altitude.section_counts_wire(c: gunbc.roadmap_altitude.section_counts(statuses: ["done"])) == "1 done"
+    && gunbc.roadmap_altitude.statuses_all_routine(statuses: ["done", "superseded"])
+    && !gunbc.roadmap_altitude.statuses_all_routine(statuses: ["done", "open"])
+    && !gunbc.roadmap_altitude.statuses_all_routine(statuses: ["done", "zombie"])
 }
 
 fn doc_html(nodes: List<gunbc.roadmap_model.RoadmapNode>) -> String {
-  let sec = gunbc.roadmap_document.RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: nodes, edges: []) ] }
+  let sec = gunbc.roadmap_document.RoadmapSection { title: "Belt", elements: [ gunbc.roadmap_model.section_group(label: "", nodes: nodes, edges: []) ] }
   let doc = gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  match try_serialize_html_source(node: roadmap_page(doc: doc, merged: [])) {
+  match try_serialize_html_source(node: gunbc.roadmap_page.roadmap_page(doc: doc, merged: [])) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
 }
 
 fn done_signed_node() -> gunbc.roadmap_model.RoadmapNode {
-  let base = authored(identity: "rnfx_WA4EZDD0ZGMCQMTKQA21", id: "alt-done", done: true, content: "finished work")
+  let base = gunbc.roadmap_authority.authored(identity: "rnfx_WA4EZDD0ZGMCQMTKQA21", id: "alt-done", done: true, content: "finished work")
   gunbc.roadmap_model.RoadmapNode {
-    identity: "rnfx_2K15QJ1CVZY55K15AHJK" as gunbc.roadmap_model.RoadmapNodeIdentity,
+    identity: "rnfx_2K15QJ1CVZY55K15AHJK" as RoadmapNodeIdentity,
     node: base.node,
     line: base.line,
     carriers: base.carriers,
     sizing: base.sizing,
     execution: base.execution,
     owner: base.owner,
-    signoff: signed(by: "op", works: gunbc.roadmap_status.RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: gunbc.roadmap_status.HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
+    signoff: gunbc.roadmap_authority.signed(by: "op", works: gunbc.roadmap_status.RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: gunbc.roadmap_status.HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
   }
 }
 
 fn open_node() -> gunbc.roadmap_model.RoadmapNode {
-  authored(identity: "rnfx_140ZV0QZTY3R9PTENK99", id: "alt-open", done: false, content: "working item")
+  gunbc.roadmap_authority.authored(identity: "rnfx_140ZV0QZTY3R9PTENK99", id: "alt-open", done: false, content: "working item")
 }
 
 data fold_by_statuses_note: String = "The fold decision proven over the RENDERED page, not the predicate alone: an all-routine section serializes its details WITHOUT the open attribute (folded — the summary band still carries the counts, so nothing is hidden silently), and adding one working member to the same section flips the SAME serialization to open. The two fixtures differ by exactly that member, so the discrimination is located in the status data — hand-curation has no input to reach. Fixture lesson, kept: a done-but-UNSIGNED node renders review (the sign-off gate), and review is WORKING under the law — the operator's pending gesture holds a section open, which is the attention law agreeing with the sign-off discipline rather than a coincidence. Routine therefore requires the signed fixture."
@@ -94,20 +94,20 @@ test fn altitude_working_member_holds_section_open() -> Bool {
 }
 
 test fn altitude_unsigned_done_holds_section_open() -> Bool {
-  let unsigned_done = doc_html(nodes: [authored(identity: "rnfx_0A9N7HZG1Q9HRP760WD7", id: "alt-unsigned", done: true, content: "done but unsigned")])
+  let unsigned_done = doc_html(nodes: [gunbc.roadmap_authority.authored(identity: "rnfx_0A9N7HZG1Q9HRP760WD7", id: "alt-unsigned", done: true, content: "done but unsigned")])
   return string_contains(s: unsigned_done, pattern: "<details class=\"section-fold\" open=\"\">")
     && string_contains(s: unsigned_done, pattern: "1 review")
 }
 
 // The client chain proven derived, both directions: the derived key set is exactly the anomaly bands (order from the wire rows), the emitted asset carries the chain over those keys plus the disclosure flip, and the negative arm pins that no non-expanding band appears in an expand test — the exact defect a hand-authored chain would plant.
 test fn altitude_expand_keys_derive_from_the_law() -> Bool {
-  let keys = dispatch_expand_band_keys()
+  let keys = gunbc.roadmap_component.dispatch_expand_band_keys()
   return count(keys) == 2
-    && all(keys, k => band_expands(band_key: k))
+    && all(keys, k => gunbc.roadmap_altitude.band_expands(band_key: k))
 }
 
 test fn altitude_client_carries_the_derived_chain() -> Bool {
-  let js = dispatch_client_js_source()
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
   return string_contains(s: js, pattern: "const expandRow = false || band === 'fail' || band === 'loud';")
     && string_contains(s: js, pattern: "details.item-detail")
     && string_contains(s: js, pattern: "dt.open = true")

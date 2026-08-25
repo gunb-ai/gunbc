@@ -3,67 +3,67 @@ module extdeps.boot.freestanding_witness
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/contents.html"
   }
 }
 
 fn witness_emitted_ehdr_is_et_exec_x86_64() -> Bool {
-  let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
-  match decode_elf64_ehdr(bytes) {
+  let bytes = extdeps.boot.emit.emit_freestanding_elf64(pixel_writer_code_bytes)
+  match extdeps.formats.elf.types.decode_elf64_ehdr(bytes) {
     ElfDecoded { value: hdr } =>
       hdr.file_type == EtExec
         && hdr.machine == EmX86_64
         && hdr.phoff == freestanding_phoff
         && hdr.phnum == 1
         && hdr.shnum == 0
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_emitted_ehdr_no_section_headers() -> Bool {
-  let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
-  match decode_elf64_ehdr(bytes) {
+  let bytes = extdeps.boot.emit.emit_freestanding_elf64(pixel_writer_code_bytes)
+  match extdeps.formats.elf.types.decode_elf64_ehdr(bytes) {
     ElfDecoded { value: hdr } =>
       hdr.shnum == 0
         && hdr.shentsize == 0
         && hdr.shoff == 0
         && hdr.shstrndx == 0
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_emitted_entry_point() -> Bool {
-  let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
-  match decode_elf64_ehdr(bytes) {
+  let bytes = extdeps.boot.emit.emit_freestanding_elf64(pixel_writer_code_bytes)
+  match extdeps.formats.elf.types.decode_elf64_ehdr(bytes) {
     ElfDecoded { value: hdr } =>
       elf64_ehdr_entry_point(hdr).virtual_address == freestanding_load_vaddr
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_emitted_first_phdr_is_pt_load_rx() -> Bool {
-  let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
-  match decode_elf64_phdr(bytes, freestanding_phoff) {
+  let bytes = extdeps.boot.emit.emit_freestanding_elf64(pixel_writer_code_bytes)
+  match extdeps.formats.elf.segments.decode_elf64_phdr(bytes, freestanding_phoff) {
     ElfDecoded { value: phdr } =>
       phdr.segment_type == PtLoad
         && phdr.flags == pf_r + pf_x
         && phdr.offset == freestanding_code_file_offset
         && phdr.vaddr == freestanding_load_vaddr
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_emitted_load_segment_carries_code() -> Bool {
-  let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
-  match decode_elf64_phdr(bytes, freestanding_phoff) {
+  let bytes = extdeps.boot.emit.emit_freestanding_elf64(pixel_writer_code_bytes)
+  match extdeps.formats.elf.segments.decode_elf64_phdr(bytes, freestanding_phoff) {
     ElfDecoded { value: phdr } =>
-      let seg = elf64_phdr_to_load_segment(phdr)
+      let seg = extdeps.formats.elf.segments.elf64_phdr_to_load_segment(phdr)
       seg.file_size == count(pixel_writer_code_bytes)
         && seg.permissions.readable == true
         && seg.permissions.writable == false
         && seg.permissions.executable == true
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
@@ -76,7 +76,7 @@ fn int_lists_equal_at_offset(
 ) -> Bool {
   if n <= 0 {
     true
-  } else if byte_at_in_bounds(left, left_offset) != byte_at_in_bounds(right, right_offset) {
+  } else if extdeps.formats.elf.types.byte_at_in_bounds(left, left_offset) != extdeps.formats.elf.types.byte_at_in_bounds(right, right_offset) {
     false
   } else {
     int_lists_equal_at_offset(
@@ -90,7 +90,7 @@ fn int_lists_equal_at_offset(
 }
 
 fn witness_emitted_code_bytes_at_offset() -> Bool {
-  let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
+  let bytes = extdeps.boot.emit.emit_freestanding_elf64(pixel_writer_code_bytes)
   int_lists_equal_at_offset(
     bytes,
     pixel_writer_code_bytes,
@@ -101,77 +101,77 @@ fn witness_emitted_code_bytes_at_offset() -> Bool {
 }
 
 fn witness_shared_encode_roundtrips_hello_static_ehdr() -> Bool {
-  witness_encode_decode_roundtrip_ehdr(static_hello_elf64_ehdr_bytes)
+  extdeps.formats.elf.encode.witness_encode_decode_roundtrip_ehdr(static_hello_elf64_ehdr_bytes)
 }
 
 fn witness_shared_encode_roundtrips_hello_static_phdr() -> Bool {
-  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+  match extdeps.formats.elf.segments.decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
     ElfDecoded { value: phdr } =>
-      let out = encode_elf64_phdr(phdr)
-      count(out) == elf64_phdr_size && int_lists_equal(static_hello_first_phdr_bytes, out)
-    ElfRejected { reason: _ } => false
+      let out = extdeps.formats.elf.encode.encode_elf64_phdr(phdr)
+      count(out) == elf64_phdr_size && extdeps.formats.elf.encode.int_lists_equal(static_hello_first_phdr_bytes, out)
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_emitted_ehdr_encode_decode_roundtrip() -> Bool {
-  let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
-  match decode_elf64_ehdr(bytes) {
+  let bytes = extdeps.boot.emit.emit_freestanding_elf64(pixel_writer_code_bytes)
+  match extdeps.formats.elf.types.decode_elf64_ehdr(bytes) {
     ElfDecoded { value: hdr } =>
-      let out = encode_elf64_ehdr(hdr)
+      let out = extdeps.formats.elf.encode.encode_elf64_ehdr(hdr)
       count(out) == elf64_ehdr_size
-        && int_lists_equal_at(bytes, out, i: 0, n: elf64_ehdr_size)
-    ElfRejected { reason: _ } => false
+        && extdeps.formats.elf.encode.int_lists_equal_at(bytes, out, i: 0, n: elf64_ehdr_size)
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_emitted_payload_entry_matches_ehdr() -> Bool {
-  match emit_pixel_writer_payload() {
-    EmittedPayload { digest: _, entry: EntryPoint { virtual_address: entry } } =>
+  match extdeps.boot.emit.emit_pixel_writer_payload() {
+    EmittedPayload { digest: _, entry: std.exec_format.EntryPoint { virtual_address: entry } } =>
       entry == freestanding_load_vaddr
-    PrebuiltPayload { digest: _, entry: _ } => false
-    HollowPrebuiltInit { digest: _, entry: _ } => false
+    extdeps.boot.freestanding_payload.PrebuiltPayload { digest: _, entry: _ } => false
+    extdeps.boot.freestanding_payload.HollowPrebuiltInit { digest: _, entry: _ } => false
   }
 }
 
 fn witness_boot_image_accepts_emitted_init() -> Bool {
-  match emit_pixel_writer_payload() {
+  match extdeps.boot.emit.emit_pixel_writer_payload() {
     EmittedPayload { digest: d, entry: e } =>
-      match accept_linux_x86_boot_image(extdeps.boot.linux_x86_boot.LinuxX86BootImage {
+      match extdeps.boot.linux_x86_boot.accept_linux_x86_boot_image(extdeps.boot.linux_x86_boot.LinuxX86BootImage {
         kernel_digest: slice_05_kernel_digest_placeholder,
         cmdline: [],
-        init: extdeps.boot.freestanding_payload.EmittedPayload { digest: d, entry: e },
+        init: EmittedPayload { digest: d, entry: e },
       }) {
         BootImageAccepted { value: _ } => true
-        BootImageRejected { reason: _ } => false
+        extdeps.boot.linux_x86_boot.BootImageRejected { reason: _ } => false
       }
-    PrebuiltPayload { digest: _, entry: _ } => false
-    HollowPrebuiltInit { digest: _, entry: _ } => false
+    extdeps.boot.freestanding_payload.PrebuiltPayload { digest: _, entry: _ } => false
+    extdeps.boot.freestanding_payload.HollowPrebuiltInit { digest: _, entry: _ } => false
   }
 }
 
 data slice_05_kernel_digest_placeholder: std.types.NonEmptyStr = "slice-0.5-kernel-placeholder"
 
 fn witness_reencode_preserves_decode() -> Bool {
-  let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)
-  match decode_elf64_ehdr(bytes) {
+  let bytes = extdeps.boot.emit.emit_freestanding_elf64(pixel_writer_code_bytes)
+  match extdeps.formats.elf.types.decode_elf64_ehdr(bytes) {
     ElfDecoded { value: hdr } =>
-      match decode_elf64_ehdr(encode_elf64_ehdr(hdr)) {
+      match extdeps.formats.elf.types.decode_elf64_ehdr(extdeps.formats.elf.encode.encode_elf64_ehdr(hdr)) {
         ElfDecoded { value: hdr2 } =>
           hdr2.entry == hdr.entry
             && hdr2.phoff == hdr.phoff
             && hdr2.phnum == hdr.phnum
             && hdr2.file_type == hdr.file_type
-        ElfRejected { reason: _ } => false
+        extdeps.formats.elf.types.ElfRejected { reason: _ } => false
       }
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn main() -> Bool {
-  witness_vga_base_matches_framebuffer_fact()
-    && witness_pixel_writer_code_uses_vga_base()
-    && witness_emitted_file_size()
-    && witness_emitted_digest_non_empty()
+  extdeps.boot.emit.witness_vga_base_matches_framebuffer_fact()
+    && extdeps.boot.emit.witness_pixel_writer_code_uses_vga_base()
+    && extdeps.boot.emit.witness_emitted_file_size()
+    && extdeps.boot.emit.witness_emitted_digest_non_empty()
     && witness_emitted_ehdr_is_et_exec_x86_64()
     && witness_emitted_ehdr_no_section_headers()
     && witness_emitted_entry_point()

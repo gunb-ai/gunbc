@@ -1,32 +1,32 @@
 module test.claim.session_residency_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_note: String = "These rows pin WHICH hosts owe a sessions reservation. They are cheap and they exist because the previous derivation of this same fact was a correlation that survived only as long as an unrelated file stayed unchanged — see gunbc.session_residency why_this_is_not_derived_from_the_build_cache_roster_note. A wrong answer here does not fail loudly; it silently removes the largest non-runner claim from a host's conservation sum."
 
 test fn session_hosts_are_srv1_and_srv2() -> Bool {
-  host_carries_interactive_sessions(host: operator_host_srv1)
-    && host_carries_interactive_sessions(host: operator_host_srv2)
+  gunbc.session_residency.host_carries_interactive_sessions(host: gunbc.fleet_intent_network.operator_host_srv1)
+    && gunbc.session_residency.host_carries_interactive_sessions(host: gunbc.fleet_intent_network.operator_host_srv2)
 }
 
 test fn managed_hosts_carry_no_sessions() -> Bool {
-  !host_carries_interactive_sessions(host: operator_host_srv3)
-    && !host_carries_interactive_sessions(host: operator_host_srv4)
+  !gunbc.session_residency.host_carries_interactive_sessions(host: gunbc.fleet_intent_network.operator_host_srv3)
+    && !gunbc.session_residency.host_carries_interactive_sessions(host: gunbc.fleet_intent_network.operator_host_srv4)
 }
 
 // The unclassified arm is asserted to CHARGE, not exempt, and this is the row that would catch someone 'fixing' it to match the refuse-by-default convention used elsewhere in this lane. That convention is right where refusing is available; here the consumer needs a Bool to size a budget, so the choice is between two wrong answers. Charging a host that has no sessions wastes runner slots on that host — visible and recoverable. Exempting a host that HAS sessions overcommits the machine — the srv4 OOM shape. The expensive direction is the safe one.
 test fn unclassified_host_is_charged_not_exempted() -> Bool {
-  host_carries_interactive_sessions(host: "srv-not-yet-enrolled")
+  gunbc.session_residency.host_carries_interactive_sessions(host: "srv-not-yet-enrolled")
 }
 
 test fn residency_and_bool_projection_agree() -> Bool {
   all(
-    [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
+    [gunbc.fleet_intent_network.operator_host_srv1, gunbc.fleet_intent_network.operator_host_srv2, gunbc.fleet_intent_network.operator_host_srv3, gunbc.fleet_intent_network.operator_host_srv4],
     h =>
-      match host_session_residency(host: h) {
-        HostsInteractiveSessions => host_carries_interactive_sessions(host: h)
-        NoInteractiveSessions => !host_carries_interactive_sessions(host: h)
+      match gunbc.session_residency.host_session_residency(host: h) {
+        gunbc.session_residency.HostsInteractiveSessions => gunbc.session_residency.host_carries_interactive_sessions(host: h)
+        gunbc.session_residency.NoInteractiveSessions => !gunbc.session_residency.host_carries_interactive_sessions(host: h)
       }
   )
 }
@@ -35,14 +35,14 @@ data observation_supports_the_positive_rows_note: String = "The recorded contain
 
 test fn observed_present_arms_carry_a_positive_count() -> Bool {
   all(
-    [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
+    [gunbc.fleet_intent_network.operator_host_srv1, gunbc.fleet_intent_network.operator_host_srv2, gunbc.fleet_intent_network.operator_host_srv3, gunbc.fleet_intent_network.operator_host_srv4],
     h =>
-      match host_session_evidence(host: h) {
-        SessionsObservedPresent { observed_on: _, container_count: n } =>
-          n > 0 && host_carries_interactive_sessions(host: h)
-        SessionsObservedAbsent { observed_on: _ } => !host_carries_interactive_sessions(host: h)
-        SessionsOperatorDeclaredAbsent { reason: _ } => !host_carries_interactive_sessions(host: h)
-        SessionsUnobserved { reason: _ } => host_carries_interactive_sessions(host: h)
+      match gunbc.session_residency.host_session_evidence(host: h) {
+        gunbc.session_residency.SessionsObservedPresent { observed_on: _, container_count: n } =>
+          n > 0 && gunbc.session_residency.host_carries_interactive_sessions(host: h)
+        gunbc.session_residency.SessionsObservedAbsent { observed_on: _ } => !gunbc.session_residency.host_carries_interactive_sessions(host: h)
+        gunbc.session_residency.SessionsOperatorDeclaredAbsent { reason: _ } => !gunbc.session_residency.host_carries_interactive_sessions(host: h)
+        gunbc.session_residency.SessionsUnobserved { reason: _ } => gunbc.session_residency.host_carries_interactive_sessions(host: h)
       }
   )
 }
@@ -50,9 +50,9 @@ test fn observed_present_arms_carry_a_positive_count() -> Bool {
 data evidence_grade_of_the_capacity_granting_rows_note: String = "THE TWO ROWS THAT GRANT CAPACITY ARE ASSERTED TO BE OPERATOR-DECLARED, NOT OBSERVED, and this witness exists so that the distinction cannot quietly change in either direction. srv3 and srv4 are classified session-free, which is what admits them seven runner slots instead of five; that classification rests on the operator's statement plus fleet history, because neither host was reachable from the session that wrote it (srv3 refused a key login, srv4 failed host-key verification).\n\nIf someone upgrades those rows to SessionsObservedAbsent without an actual observation, this reds — which is the point, since a fabricated receipt is worse than an honest declaration. If a real observation lands and the count drops to zero, this also reds, and that failure is the scaffold gunbc.session_residency session_residency_negative_rows_dissolve_on telling its owner to dissolve it."
 
 test fn managed_host_absence_is_declared_not_observed() -> Bool {
-  host_absence_is_operator_declared(host: operator_host_srv3)
-    && host_absence_is_operator_declared(host: operator_host_srv4)
-    && !host_absence_is_operator_declared(host: operator_host_srv1)
-    && !host_absence_is_operator_declared(host: operator_host_srv2)
-    && operator_declared_absent_host_count() == 2
+  gunbc.session_residency.host_absence_is_operator_declared(host: gunbc.fleet_intent_network.operator_host_srv3)
+    && gunbc.session_residency.host_absence_is_operator_declared(host: gunbc.fleet_intent_network.operator_host_srv4)
+    && !gunbc.session_residency.host_absence_is_operator_declared(host: gunbc.fleet_intent_network.operator_host_srv1)
+    && !gunbc.session_residency.host_absence_is_operator_declared(host: gunbc.fleet_intent_network.operator_host_srv2)
+    && gunbc.session_residency.operator_declared_absent_host_count() == 2
 }

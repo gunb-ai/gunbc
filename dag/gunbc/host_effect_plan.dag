@@ -17,7 +17,7 @@ fn host_effect_plan_placeholder_effect() -> gunbc.host_effect.HostEffect {
 
 fn host_effect_plan_unsupported_step_refusal(
   ctx: HostEffectPlanContext,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   std.realization_reconcile.NotConverged {
     reason: host_effect_plan_unsupported_step_reason,
     applied: gunbc.host_effect.HostEffectIntent {
@@ -33,10 +33,10 @@ fn host_effect_plan_unsupported_step_refusal(
 fn host_effect_plan_apply_step(
   step: v2.std.effect_plan.EffectPlanStep<gunbc.host_effect.HostEffect>,
   ctx: HostEffectPlanContext,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match step {
-    Do { effect: e } =>
-      host_effect_apply(
+    v2.std.effect_plan.Do { effect: e } =>
+      gunbc.host_effect_realize.host_effect_apply(
         target: ctx.target,
         effect: e,
         evidence: ctx.evidence,
@@ -58,21 +58,21 @@ fn host_effect_plan_apply_step(
 }
 
 fn host_effect_plan_apply_rest(
-  head_result: Reconciliation<HostEffectIntent, HostEffectEvidence>,
-  rest: FreeMonoid<v2.std.effect_plan.EffectPlanStep<gunbc.host_effect.HostEffect>>,
+  head_result: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>,
+  rest: std.algebra.FreeMonoid<v2.std.effect_plan.EffectPlanStep<gunbc.host_effect.HostEffect>>,
   ctx: HostEffectPlanContext,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  if !reconciliation_converged(r: head_result) {
+) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
+  if !std.realization_reconcile.reconciliation_converged(r: head_result) {
     head_result
   } else {
     match v2.std.algebra.list_head(xs: rest) {
-      HeadAbsent => head_result
-      HeadFound { value: next } =>
+      v2.std.algebra.HeadAbsent => head_result
+      v2.std.algebra.HeadFound { value: next } =>
         host_effect_plan_apply_rest(
           head_result: host_effect_plan_apply_step(step: next, ctx: ctx),
           rest: match v2.std.algebra.list_tail(xs: rest) {
-            TailFound { tail: t } => t
-            TailAbsent => v2.std.algebra.freemonoid_empty()
+            v2.std.algebra.TailFound { tail: t } => t
+            v2.std.algebra.TailAbsent => v2.std.algebra.freemonoid_empty()
           },
           ctx: ctx,
         )
@@ -83,9 +83,9 @@ fn host_effect_plan_apply_rest(
 fn host_effect_plan_apply(
   plan: HostEffectPlan,
   ctx: HostEffectPlanContext,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match v2.std.algebra.list_head(xs: plan.steps) {
-    HeadAbsent =>
+    v2.std.algebra.HeadAbsent =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_plan_apply: empty plan has no effect to apply",
         applied: gunbc.host_effect.HostEffectIntent {
@@ -96,12 +96,12 @@ fn host_effect_plan_apply(
           privilege_denial: none,
         },
       }
-    HeadFound { value: first } =>
+    v2.std.algebra.HeadFound { value: first } =>
       host_effect_plan_apply_rest(
         head_result: host_effect_plan_apply_step(step: first, ctx: ctx),
         rest: match v2.std.algebra.list_tail(xs: plan.steps) {
-          TailFound { tail: t } => t
-          TailAbsent => v2.std.algebra.freemonoid_empty()
+          v2.std.algebra.TailFound { tail: t } => t
+          v2.std.algebra.TailAbsent => v2.std.algebra.freemonoid_empty()
         },
         ctx: ctx,
       )

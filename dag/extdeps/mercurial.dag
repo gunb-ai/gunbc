@@ -3,49 +3,49 @@ module extdeps.mercurial
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/glossary.txt"
   }
 }
 
 data mercurial_revisions_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/revisions.txt"
   }
 }
 
 data mercurial_manifest_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/commands.py:hg-manifest"
   }
 }
 
 data mercurial_phases_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/phases.txt"
   }
 }
 
 data mercurial_evolution_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/evolution.txt"
   }
 }
 
 data mercurial_subrepositories_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/subrepos.txt"
   }
 }
 
 data mercurial_closed_branch_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/commands.py:hg-commit-close-branch"
   }
 }
@@ -213,7 +213,7 @@ fn mercurial_node_id_text(
   node: MercurialNodeId,
 ) -> String {
   mercurial_node_id_octets(node: node)
-    |> map(octet => byte_hex_lower(v: octet))
+    |> map(octet => extdeps.numeric.base16.byte_hex_lower(v: octet))
     |> join(separator: "")
 }
 
@@ -563,8 +563,8 @@ fn mercurial_repository_projection_fold<R>(
 }
 
 fn mercurial_projection_map_contents(
-  projection: extdeps.mercurial.MercurialRepositoryProjection,
-  map_contents: fn(extdeps.mercurial.MercurialRepositoryProjectionContents) -> extdeps.mercurial.MercurialRepositoryProjectionContents,
+  projection: MercurialRepositoryProjection,
+  map_contents: fn(MercurialRepositoryProjectionContents) -> MercurialRepositoryProjectionContents,
 ) -> MercurialRepositoryProjection {
   mercurial_repository_projection_fold(
     projection: projection,
@@ -1061,7 +1061,7 @@ fn mercurial_first_cycle_node(
   graph: std.graph.CallGraph,
 ) -> MercurialNodeId? {
   let names = nodes |> map(node => mercurial_node_id_text(node: node))
-  match graph_cycle_members(
+  match std.graph.graph_cycle_members(
     names: names,
     graph: graph,
   ) |> first {
@@ -1210,7 +1210,7 @@ fn mercurial_derived_open_branch_heads(
   )
   changesets
     |> filter(candidate => {
-      let descendants = graph_reverse_reachable_members(
+      let descendants = std.graph.graph_reverse_reachable_members(
         names: names,
         graph: graph,
         start: mercurial_node_id_text(node: candidate.node),

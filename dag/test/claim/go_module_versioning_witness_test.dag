@@ -1,9 +1,10 @@
 module test.claim.go_module_versioning_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_go_manifest_file() -> Bool {
-  go_manifest_file == "go.mod"
+  extdeps.languages.go.emit.go_manifest_file == "go.mod"
 }
 
 test fn w_major_v0_or_v1_suffix_is_empty() -> Bool {
@@ -11,63 +12,63 @@ test fn w_major_v0_or_v1_suffix_is_empty() -> Bool {
 }
 
 test fn w_major_v2_suffix() -> Bool {
-  go_major_suffix_str(suffix: extdeps.languages.go.module.MajorV2Plus { major: 2 }) == "/v2"
+  go_major_suffix_str(suffix: MajorV2Plus { major: 2 }) == "/v2"
 }
 
 test fn w_major_v3_suffix() -> Bool {
-  go_major_suffix_str(suffix: extdeps.languages.go.module.MajorV2Plus { major: 3 }) == "/v3"
+  go_major_suffix_str(suffix: MajorV2Plus { major: 3 }) == "/v3"
 }
 
 test fn w_suffixes_are_distinct() -> Bool {
-  go_major_suffix_str(suffix: extdeps.languages.go.module.MajorV2Plus { major: 2 }) != go_major_suffix_str(suffix: MajorV0OrV1)
+  go_major_suffix_str(suffix: MajorV2Plus { major: 2 }) != go_major_suffix_str(suffix: MajorV0OrV1)
 }
 
 test fn w_semver_release_label() -> Bool {
-  go_semver_label(v: extdeps.languages.go.module.GoSemVer {
+  go_semver_label(v: GoSemVer {
     major: 1, minor: 2, patch: 3,
     prerelease: none, build: none
   }) == "v1.2.3"
 }
 
 test fn w_semver_v0_label() -> Bool {
-  go_semver_label(v: extdeps.languages.go.module.GoSemVer {
+  go_semver_label(v: GoSemVer {
     major: 0, minor: 1, patch: 0,
     prerelease: none, build: none
   }) == "v0.1.0"
 }
 
 test fn w_semver_prerelease_label() -> Bool {
-  go_semver_label(v: extdeps.languages.go.module.GoSemVer {
+  go_semver_label(v: GoSemVer {
     major: 1, minor: 0, patch: 0,
     prerelease: Present { value: "alpha.1" }, build: none
   }) == "v1.0.0-alpha.1"
 }
 
 test fn w_semver_build_label() -> Bool {
-  go_semver_label(v: extdeps.languages.go.module.GoSemVer {
+  go_semver_label(v: GoSemVer {
     major: 1, minor: 0, patch: 0,
     prerelease: none, build: Present { value: "build.42" }
   }) == "v1.0.0+build.42"
 }
 
 test fn w_semver_prerelease_and_build_label() -> Bool {
-  go_semver_label(v: extdeps.languages.go.module.GoSemVer {
+  go_semver_label(v: GoSemVer {
     major: 2, minor: 0, patch: 0,
     prerelease: Present { value: "rc.1" }, build: Present { value: "exp" }
   }) == "v2.0.0-rc.1+exp"
 }
 
 test fn w_semver_labels_distinct() -> Bool {
-  go_semver_label(v: extdeps.languages.go.module.GoSemVer {
+  go_semver_label(v: GoSemVer {
     major: 1, minor: 2, patch: 3,
     prerelease: none, build: none
-  }) != go_semver_label(v: extdeps.languages.go.module.GoSemVer {
+  }) != go_semver_label(v: GoSemVer {
     major: 1, minor: 2, patch: 4,
     prerelease: none, build: none
   })
 }
 
-fn mvs_property_count(ps: List<extdeps.languages.go.module.GoMvsProperty>) -> Int {
+fn mvs_property_count(ps: List<GoMvsProperty>) -> Int {
   fold(ps, init: 0, f: (acc, _p) => acc + 1)
 }
 
@@ -76,15 +77,15 @@ test fn w_go_mvs_has_three_properties() -> Bool {
 }
 
 test fn w_go_semver_to_version_identity() -> Bool {
-  go_semver_to_version_identity(v: extdeps.languages.go.module.GoSemVer {
+  go_semver_to_version_identity(v: GoSemVer {
     major: 1, minor: 2, patch: 3, prerelease: none, build: none
   }) == "v1.2.3"
 }
 
 test fn w_go_semver_compare_major_less() -> Bool {
   match go_semver_compare(
-    a: extdeps.languages.go.module.GoSemVer { major: 1, minor: 0, patch: 0, prerelease: none, build: none },
-    b: extdeps.languages.go.module.GoSemVer { major: 2, minor: 0, patch: 0, prerelease: none, build: none }
+    a: GoSemVer { major: 1, minor: 0, patch: 0, prerelease: none, build: none },
+    b: GoSemVer { major: 2, minor: 0, patch: 0, prerelease: none, build: none }
   ) {
     Less => true
     Equal => false
@@ -94,8 +95,8 @@ test fn w_go_semver_compare_major_less() -> Bool {
 
 test fn w_go_semver_compare_patch_greater() -> Bool {
   match go_semver_compare(
-    a: extdeps.languages.go.module.GoSemVer { major: 1, minor: 0, patch: 5, prerelease: none, build: none },
-    b: extdeps.languages.go.module.GoSemVer { major: 1, minor: 0, patch: 2, prerelease: none, build: none }
+    a: GoSemVer { major: 1, minor: 0, patch: 5, prerelease: none, build: none },
+    b: GoSemVer { major: 1, minor: 0, patch: 2, prerelease: none, build: none }
   ) {
     Less => false
     Equal => false
@@ -105,8 +106,8 @@ test fn w_go_semver_compare_patch_greater() -> Bool {
 
 test fn w_go_semver_compare_equal() -> Bool {
   match go_semver_compare(
-    a: extdeps.languages.go.module.GoSemVer { major: 1, minor: 2, patch: 3, prerelease: none, build: none },
-    b: extdeps.languages.go.module.GoSemVer { major: 1, minor: 2, patch: 3, prerelease: none, build: none }
+    a: GoSemVer { major: 1, minor: 2, patch: 3, prerelease: none, build: none },
+    b: GoSemVer { major: 1, minor: 2, patch: 3, prerelease: none, build: none }
   ) {
     Less => false
     Equal => true
@@ -116,8 +117,8 @@ test fn w_go_semver_compare_equal() -> Bool {
 
 test fn w_go_semver_compare_no_pre_beats_pre() -> Bool {
   match go_semver_compare(
-    a: extdeps.languages.go.module.GoSemVer { major: 1, minor: 0, patch: 0, prerelease: none, build: none },
-    b: extdeps.languages.go.module.GoSemVer { major: 1, minor: 0, patch: 0, prerelease: Present { value: "alpha.1" }, build: none }
+    a: GoSemVer { major: 1, minor: 0, patch: 0, prerelease: none, build: none },
+    b: GoSemVer { major: 1, minor: 0, patch: 0, prerelease: Present { value: "alpha.1" }, build: none }
   ) {
     Less => false
     Equal => false

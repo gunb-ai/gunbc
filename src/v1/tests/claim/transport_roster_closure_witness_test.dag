@@ -1,19 +1,20 @@
 module v1.tests.claim.transport_roster_closure_witness_test
 
+
 data transport_roster_closure_witness_note: String = "EXECUTING-ON-DEMAND evidence that the transport roster is closed, that its precedence has ONE authority, and that a transport matching no member is refused rather than absorbed.\n\nWHERE THIS RUNS, STATED FIRST AND WITHOUT FLATTERY, BECAUSE THE FILE BESIDE THIS ONE GETS IT WRONG. THIS WITNESS IS NOT DISCOVERED BY CI. gunbc.ci_layer_roots witness_discovery_scan_dirs is [dag/test/claim, src/v2/test/claim/manual, src/v2/test/claim/emit] -- src/v1/tests/claim is not in it -- and the required run invokes claim_executor with --source-root dag --source-root src/v2, which could not resolve this file's `import v1.std.core` even if it were discovered. Zero witnesses under dag/test/claim import v1.* today, so there is currently NO executing home for evidence over v1 compiler internals. The rows below were run directly during authoring and PASS; direct execution is evidence the assertions HOLD, never evidence that CI runs them, and conflating those two is the error this file refuses to repeat. NEXT-RUNG TRIGGER: a discovery scope that admits src/v1 witnesses under a source-root envelope that includes src/v1, at which point this row deletes and the enrollment is stated instead.\n\nAND THE NEIGHBOUR IS NOW FALSE, WHICH IS WHY THE PARAGRAPH ABOVE IS WORDED THAT WAY. src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag states at length that it executes via `gunbc.ci_layer_roots v1_claim_scoped_witness_entries`, consumed by `v1_claim_scoped_witness_batch`. That roster does not exist: v1_claim_scoped_witness_entries appears nowhere in dag/gunbc/ci_layer_roots.dag, and the batch died with the 2026-08-15 floor cut. So a file whose entire purpose was to repair a rung-inflation defect -- assertions that were authored, plausible, type-correct and never executed -- now carries the same defect in its own execution claim. Not repaired here because it is not this change's to repair; recorded so the next reader of that file does not inherit the claim.\n\nWHAT CHANGED AND WHY IT NEEDED EVIDENCE. is_local_transport was DEFINED as `not rest and not shell and not file`, so `local` absorbed every transport the other three predicates declined. The consequence was not local's: it made emit_unified_transport_dispatch's final arm, `unrecognized transport kind`, unreachable BY CONSTRUCTION -- no input of any shape could arrive there, because local claimed them all first. A check whose red is unreachable is a decoration, permanently green and cited as coverage (DESIGN, the reachability-read-as-occupancy class), and it is worse than absent because a reader counts it. classify_transport replaces four hand-copies of the precedence with one authority and makes local a POSITIVE test over the node local_transport_node actually builds.\n\nWHAT THIS PROVES AND WHAT IT DOES NOT. It proves the arm is REACHABLE: unrecognized_transport_matches_no_roster_member constructs a transport node carrying a property under no recognized key and shows classify_transport answers Absent for it. It does NOT prove the arm FIRES on any source spelling, and no row here claims that. A REACHABLE WALL AND A WALL THAT FIRES ARE DIFFERENT PROPERTIES. Both parse_file_fields and parse_rest_fields substitute an empty string literal when their key is omitted rather than producing a keyless transport node, so every transport the PARSER builds still lands in a roster member and the arm's occupancy is zero. That is a parser fact and the open next step; it is named here so the reachability claim is not read as the stronger one. It is also why no source-level witness could carry these rows: the state under test is unauthorable from .dag source, which is the same fact as the arm being unoccupied.\n\nTHE DISCRIMINATING ROW IS unrecognized_transport_is_not_local. Under the old negative definition it answered TRUE -- the keyless node WAS local, by exclusion -- and the emitted realization for it was a direct function call fabricated by omission. It answers false only because the predicate is positive. Restoring the negative definition turns this row red and nothing else in the corpus would notice.\n\nrest_wins_over_a_file_key_on_the_same_transport is the precedence row. A transport carrying both base_url and base_path is claimed by the FIRST arm, and that ordering used to be restated in four places that agreed by coincidence. It is asserted here so the single authority is pinned to an answer rather than merely being singular."
 
-fn str_expr(s: String) -> Node {
-  make_expr_node(expr_data: ExprLiteral { value: LitStr { value: s } }, children: [], inferred: none, span: no_span())
+fn str_expr(s: String) -> v1.std.core.Node {
+  v1.std.core.make_expr_node(expr_data: v1.std.core.ExprLiteral { value: std.syntax.LitStr { value: s } }, children: [], inferred: none, span: v1.std.core.no_span())
 }
 
 // Compared as a name rather than by structural equality on the coproduct, so the rows assert the
 // CLASSIFICATION and never accidentally assert that TransportKind derives ==.
-fn kind_name(t: Node) -> String {
-  match classify_transport(t: t, source_indices: empty_map()) {
-    Present { value: RestTransport } => "rest"
-    Present { value: ShellTransport } => "shell"
-    Present { value: FileTransport } => "file"
-    Present { value: LocalTransport } => "local"
+fn kind_name(t: v1.std.core.Node) -> String {
+  match v1.std.core.classify_transport(t: t, source_indices: empty_map()) {
+    Present { value: v1.std.core.RestTransport } => "rest"
+    Present { value: v1.std.core.ShellTransport } => "shell"
+    Present { value: v1.std.core.FileTransport } => "file"
+    Present { value: v1.std.core.LocalTransport } => "local"
     Absent => "no-roster-member"
   }
 }
@@ -23,32 +24,32 @@ fn kind_name(t: Node) -> String {
 // ---------------------------------------------------------------------------
 
 test fn rest_transport_classifies_as_rest() -> Bool {
-  kind_name(t: rest_transport_node(base_url: str_expr(s: "https://example.invalid"), auth_props: [], headers: [], method: none, path: none, query: none, request_body: none, response_format: none, span: no_span()))
+  kind_name(t: v1.std.core.rest_transport_node(base_url: str_expr(s: "https://example.invalid"), auth_props: [], headers: [], method: none, path: none, query: none, request_body: none, response_format: none, span: v1.std.core.no_span()))
     == "rest"
 }
 
 test fn shell_transport_classifies_as_shell() -> Bool {
-  kind_name(t: shell_transport_node(argv: [str_expr(s: "ls")], env: [], stdin: none, span: no_span()))
+  kind_name(t: v1.std.core.shell_transport_node(argv: [str_expr(s: "ls")], env: [], stdin: none, span: v1.std.core.no_span()))
     == "shell"
 }
 
 test fn file_transport_classifies_as_file() -> Bool {
-  kind_name(t: file_transport_node(base_path: str_expr(s: "/tmp/x"), verb: none, span: no_span()))
+  kind_name(t: v1.std.core.file_transport_node(base_path: str_expr(s: "/tmp/x"), verb: none, span: v1.std.core.no_span()))
     == "file"
 }
 
 test fn bare_transport_classifies_as_local() -> Bool {
-  kind_name(t: local_transport_node(span: no_span())) == "local"
+  kind_name(t: v1.std.core.local_transport_node(span: v1.std.core.no_span())) == "local"
 }
 
 // ---------------------------------------------------------------------------
 // The arm that could not be reached before.
 // ---------------------------------------------------------------------------
 
-fn keyless_transport() -> Node {
-  make_transport_node(
-    properties: [make_field_init_node(name: "unrecognized_key", value: str_expr(s: "v"), span: no_span(), name_span: no_span())],
-    children: [], body: none, span: no_span())
+fn keyless_transport() -> v1.std.core.Node {
+  v1.std.core.make_transport_node(
+    properties: [v1.std.core.make_field_init_node(name: "unrecognized_key", value: str_expr(s: "v"), span: v1.std.core.no_span(), name_span: v1.std.core.no_span())],
+    children: [], body: none, span: v1.std.core.no_span())
 }
 
 test fn unrecognized_transport_matches_no_roster_member() -> Bool {
@@ -57,13 +58,13 @@ test fn unrecognized_transport_matches_no_roster_member() -> Bool {
 
 // THE discriminating row: true under the old definition-by-exclusion, false now.
 test fn unrecognized_transport_is_not_local() -> Bool {
-  is_local_transport(t: keyless_transport(), source_indices: empty_map()) == false
+  v1.std.core.is_local_transport(t: keyless_transport(), source_indices: empty_map()) == false
 }
 
 // Positive control. Without it every refusal row above is satisfiable by a
 // classify_transport that answers none unconditionally.
 test fn the_bare_node_is_still_local_positive_control() -> Bool {
-  is_local_transport(t: local_transport_node(span: no_span()), source_indices: empty_map()) == true
+  v1.std.core.is_local_transport(t: v1.std.core.local_transport_node(span: v1.std.core.no_span()), source_indices: empty_map()) == true
 }
 
 // ---------------------------------------------------------------------------
@@ -71,10 +72,10 @@ test fn the_bare_node_is_still_local_positive_control() -> Bool {
 // ---------------------------------------------------------------------------
 
 test fn rest_wins_over_a_file_key_on_the_same_transport() -> Bool {
-  kind_name(t: make_transport_node(
+  kind_name(t: v1.std.core.make_transport_node(
     properties: [
-      make_field_init_node(name: "base_url", value: str_expr(s: "https://example.invalid"), span: no_span(), name_span: no_span()),
-      make_field_init_node(name: "base_path", value: str_expr(s: "/tmp/x"), span: no_span(), name_span: no_span())
+      v1.std.core.make_field_init_node(name: "base_url", value: str_expr(s: "https://example.invalid"), span: v1.std.core.no_span(), name_span: v1.std.core.no_span()),
+      v1.std.core.make_field_init_node(name: "base_path", value: str_expr(s: "/tmp/x"), span: v1.std.core.no_span(), name_span: v1.std.core.no_span())
     ],
-    children: [], body: none, span: no_span())) == "rest"
+    children: [], body: none, span: v1.std.core.no_span())) == "rest"
 }

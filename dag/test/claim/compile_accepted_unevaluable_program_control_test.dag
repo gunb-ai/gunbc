@@ -1,5 +1,6 @@
 module test.claim.compile_accepted_unevaluable_program_control
 
+
 // WHY THIS FILE EXISTS. Required-floor run 32633501354 (main, head 907f19c2cc) reported
 // `known_red_runtime_errored=164`: 164 identities the compiler ACCEPTED and the interpreter could
 // not evaluate. That counter is the class's only observer, and it goes to zero as the 164 are
@@ -29,7 +30,7 @@ module test.claim.compile_accepted_unevaluable_program_control
 // is a compile-observation surface that resolves names by the witness loader's rule.
 data compile_accepted_unevaluable_program_note: String = "The subject is the v1 compile path reached through compile_dag_rust_emit_check, which returns false on any hard diagnostic. Each RED below asserts REFUSAL of a program the host will refuse at evaluation anyway, so the assertion is that the refusal moves from evaluation to compile — not that the program changes meaning. All three RED rows return false today and are enrolled in v2.workflow.floor_expected_red; when the argument contract for host primitives is checked at compile they PASS, the enrolled-but-passing arm reds the build naming them, and they stay here afterwards as the regression control that the wall is still real (DESIGN 4b(4): the climb deletes the redundant production handling, never the evidence)."
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data live_tree_note: String = "ReadsLiveTree, for the same reason the two sibling files on this surface declare it: compile_dag_rust_emit_check resolves its virtual source against build_module_path_index_from_witness_roots, which walks the live tree. The declaration is honest rather than convenient — it costs floor admission under the DeclinedLiveTree arm rather than buying it, and that arm's deletion (gunbc#8977, gunbc#8982) is what admits this file to execution."
 

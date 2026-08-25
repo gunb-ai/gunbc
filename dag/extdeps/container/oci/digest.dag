@@ -3,7 +3,7 @@ module extdeps.container.oci.digest
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/opencontainers/image-spec/blob/main/descriptor.md"
   }
 }
@@ -13,10 +13,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.container.oci.digest",
       decl_name: "OciContentDigest",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.container.oci.digest.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -177,12 +177,12 @@ fn parse_oci_content_digest_wire(raw: String) -> OciContentDigest? {
   match oci_wire_digest_parts(raw: raw) {
     Present { value: parts } =>
       if parts.algorithm == "sha256" {
-        match sha256_hex_digest(hex: parts.encoded) {
+        match std.content_hash.sha256_hex_digest(hex: parts.encoded) {
           Present { value: digest } => Present { value: OciSha256Digest(digest) }
           Absent => none
         }
       } else if parts.algorithm == "sha512" {
-        match sha512_hex_digest(hex: parts.encoded) {
+        match std.content_hash.sha512_hex_digest(hex: parts.encoded) {
           Present { value: digest } => Present { value: OciSha512Digest(digest) }
           Absent => none
         }
@@ -207,7 +207,7 @@ fn parse_oci_content_digest_wire(raw: String) -> OciContentDigest? {
 }
 
 fn oci_sha256_content_digest(hex: String) -> OciContentDigest? {
-  match sha256_hex_digest(hex: hex) {
+  match std.content_hash.sha256_hex_digest(hex: hex) {
     Present { value: digest } =>
       Present {
         value: oci_content_digest_from_validated_sha256(digest: digest)

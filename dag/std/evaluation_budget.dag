@@ -31,7 +31,7 @@ type EvaluationLimit
 data evaluation_limit_unset_is_a_state_not_a_default_note: String = "LimitUnset IS A DECLARED POLICY STATE, NOT A MISSING VALUE, and separating it from a sentinel is what keeps this from becoming the absorbing fallback DESIGN section 5 forbids. Unset means this caller has declared that it does not bound this clock — today's serve behavior, stated rather than implied. It is NOT the same fact as a limit that could not be read, which would be a refusal; and it is not spelled as a zero or a very large number, because both of those are answers wearing the shape of an absence. A consumer matching on this coproduct cannot silently treat unbounded as bounded."
 
 fn evaluation_limit_nanos(limit: std.measure.PositiveMillisecond) -> Int {
-  positive_millisecond_count(m: limit) * nanoseconds_per_millisecond()
+  std.measure.positive_millisecond_count(m: limit) * std.measure.nanoseconds_per_millisecond()
 }
 
 type EvaluationBudgetPolicy {
@@ -58,7 +58,7 @@ fn evaluation_budget_verdict(
   match limit {
     LimitUnset => EvaluationWithinBudget
     LimitSet { limit: l } =>
-      if nanosecond_count(n: elapsed) > evaluation_limit_nanos(limit: l) {
+      if std.measure.nanosecond_count(n: elapsed) > evaluation_limit_nanos(limit: l) {
         EvaluationBudgetExceeded {
           entry: entry,
           clock: clock,

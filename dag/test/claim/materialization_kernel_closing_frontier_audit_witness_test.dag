@@ -4,20 +4,20 @@ module test.claim.materialization_kernel_closing_frontier_audit_witness
 data materialization_kernel_closing_frontier_audit_witness_note: String = "Discriminating RED for the v1-materialization-kernel closing-frontier audit (brief origin: parent session still-bat-561, Lane F; RENAMED from materialization_kernel_closing_contract_witness per still-bat-561 operator ruling 2026-08-02, msg_9609b3a3 — this module audits the frontier, it is not the roadmap node's closing contract). materialization_kernel_audit_not_all_delivered_today is an EXPECT-RED control (DESIGN §4b): it asserts the AND-fold is false over the seven audited clauses, proving the audit summary can genuinely read false rather than being a vacuous always-true wrapper. It stays enrolled after any clause climbs to Delivered — a later regression that silently reverts a clause to NotDelivered is caught by this same assertion flipping true, not by a fresh test someone forgot to add."
 
 test fn materialization_kernel_audit_not_all_delivered_today() -> Bool {
-  materialization_kernel_all_clauses_delivered(clauses: closing_frontier_clauses()) == false
+  gunbc.materialization_kernel_closing_frontier_audit.materialization_kernel_all_clauses_delivered(clauses: gunbc.materialization_kernel_closing_frontier_audit.closing_frontier_clauses()) == false
 }
 
 test fn materialization_kernel_seven_clauses_enrolled() -> Bool {
-  materialization_kernel_clause_count(clauses: closing_frontier_clauses()) == 7
-    && length(xs: closing_frontier_clauses()) == 7
+  gunbc.materialization_kernel_closing_frontier_audit.materialization_kernel_clause_count(clauses: gunbc.materialization_kernel_closing_frontier_audit.closing_frontier_clauses()) == 7
+    && v2.std.algebra.length(xs: gunbc.materialization_kernel_closing_frontier_audit.closing_frontier_clauses()) == 7
 }
 
 data materialization_kernel_progress_pin_note: String = "No count literal here (review 47541, DESIGN §5 — a measurement copied from the same hand-authored clause list is not an independent oracle; drop == 4 rather than let editing a verdict row require editing this pin too). The exact-count fact this test previously duplicated is already established at identity grain by the per-id clause_delivered_by_id tests below (as of 2026-08-11: contract_exists and hand_rust_tracking Delivered; warm_hit, refusal and eviction demoted to NotDelivered with their evidence withdrawn; lookup_reorder and production_invocation not delivered) — DESIGN §5's own rule: completeness is an identity join, not a count equality. This test keeps only the two derived properties an id-grain test cannot state: progress is nonzero, and progress has not yet reached the clause count."
 
 test fn materialization_kernel_progress_is_nonzero_and_incomplete() -> Bool {
-  materialization_kernel_progress_count(clauses: closing_frontier_clauses()) > 0
-    && materialization_kernel_progress_count(clauses: closing_frontier_clauses()) <
-      materialization_kernel_clause_count(clauses: closing_frontier_clauses())
+  gunbc.materialization_kernel_closing_frontier_audit.materialization_kernel_progress_count(clauses: gunbc.materialization_kernel_closing_frontier_audit.closing_frontier_clauses()) > 0
+    && gunbc.materialization_kernel_closing_frontier_audit.materialization_kernel_progress_count(clauses: gunbc.materialization_kernel_closing_frontier_audit.closing_frontier_clauses()) <
+      gunbc.materialization_kernel_closing_frontier_audit.materialization_kernel_clause_count(clauses: gunbc.materialization_kernel_closing_frontier_audit.closing_frontier_clauses())
 }
 
 fn find_clause(clauses: List<gunbc.materialization_kernel_closing_frontier_audit.FrontierClause>, id: String) -> gunbc.materialization_kernel_closing_frontier_audit.FrontierClause? {
@@ -33,40 +33,40 @@ fn find_clause(clauses: List<gunbc.materialization_kernel_closing_frontier_audit
 
 fn clause_delivered_by_id(clauses: List<gunbc.materialization_kernel_closing_frontier_audit.FrontierClause>, id: String) -> Bool {
   match find_clause(clauses: clauses, id: id) {
-    Present { value: c } => clause_delivered(c: c)
+    Present { value: c } => gunbc.materialization_kernel_closing_frontier_audit.clause_delivered(c: c)
     Absent => false
   }
 }
 
 test fn contract_exists_clause_delivered() -> Bool {
-  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "contract-exists-and-can-fail")
+  clause_delivered_by_id(clauses: gunbc.materialization_kernel_closing_frontier_audit.closing_frontier_clauses(), id: "contract-exists-and-can-fail")
 }
 
 data warm_hit_clause_delivered_note: String = "FLIPPED TO NOT-DELIVERED 2026-08-11 (gunbc#8146, review 51152). The three assertions below asserted Delivered while the carrier was demoted to NotDelivered in the same PR — they would have failed on execution, which is the review finding. They are FLIPPED rather than deleted: per DESIGN §4b(4) the control stays enrolled, so each now REQUIRES the demoted state and reds if a clause silently returns to Delivered without its evidence executing again. HISTORY — renamed from warm_hit_clause_partially_delivered_not_falsely_green (DESIGN §4b(4) — an expecting-red probe that greens when its wall lands flips to a permanent regression control, it does not retire). cross_process_hit_skips_semantic_recompute now lands and greens (v1_compiler_tests.resolve_cross_process_cache_test), so the clause reached Delivered; this test's assertion flips from false to true and the test itself becomes the regression control catching a future silent revert."
 
 test fn warm_hit_clause_not_delivered_evidence_withdrawn() -> Bool {
-  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "warm-hit-skips-semantic-recompute") == false
+  clause_delivered_by_id(clauses: gunbc.materialization_kernel_closing_frontier_audit.closing_frontier_clauses(), id: "warm-hit-skips-semantic-recompute") == false
 }
 
 test fn refusal_clause_not_delivered_evidence_withdrawn() -> Bool {
   clause_delivered_by_id(
-    clauses: closing_frontier_clauses(),
+    clauses: gunbc.materialization_kernel_closing_frontier_audit.closing_frontier_clauses(),
     id: "corruption-identity-completeness-overcap-refuse"
   ) == false
 }
 
 test fn eviction_clause_not_delivered_evidence_withdrawn() -> Bool {
-  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "bounded-eviction-and-full-store") == false
+  clause_delivered_by_id(clauses: gunbc.materialization_kernel_closing_frontier_audit.closing_frontier_clauses(), id: "bounded-eviction-and-full-store") == false
 }
 
 test fn lookup_reorder_clause_not_delivered() -> Bool {
-  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "lookup-ahead-of-index-construction") == false
+  clause_delivered_by_id(clauses: gunbc.materialization_kernel_closing_frontier_audit.closing_frontier_clauses(), id: "lookup-ahead-of-index-construction") == false
 }
 
 test fn production_invocation_clause_not_delivered() -> Bool {
-  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "real-production-invocation") == false
+  clause_delivered_by_id(clauses: gunbc.materialization_kernel_closing_frontier_audit.closing_frontier_clauses(), id: "real-production-invocation") == false
 }
 
 test fn hand_rust_tracking_clause_delivered() -> Bool {
-  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "hand-rust-growth-tracked-live")
+  clause_delivered_by_id(clauses: gunbc.materialization_kernel_closing_frontier_audit.closing_frontier_clauses(), id: "hand-rust-growth-tracked-live")
 }

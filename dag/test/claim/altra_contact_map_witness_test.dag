@@ -1,11 +1,11 @@
 module test.claim.altra_contact_map_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn w_ingested_contact_map_admits_at_declared_population() -> Bool {
-  match altra_contact_map_standing() {
-    PackageContactMapAdmitted { resolved: n } => n == altra_declared_contact_count()
+  match extdeps.cpu.ampere_altra_package_contact_map.altra_contact_map_standing() {
+    extdeps.cpu.ampere_altra_package.PackageContactMapAdmitted { resolved: n } => n == extdeps.cpu.ampere_altra_package.altra_declared_contact_count()
     _ => false
   }
 }
@@ -13,17 +13,17 @@ test fn w_ingested_contact_map_admits_at_declared_population() -> Bool {
 // THE TABLE-5 JOIN: classified rows from the ingested map must cross-foot the pin-summary
 // authority carried beside them, not merely share the same total.
 test fn w_classified_population_cross_foots_pin_summary() -> Bool {
-  let contacts = altra_package_contacts()
-  classified_signal_pin_count(contacts: contacts) == altra_signal_pin_count
-    && classified_power_and_ground_pin_count(contacts: contacts) == altra_power_and_ground_pin_count
-    && classified_reserved_pin_count(contacts: contacts) == altra_reserved_pin_count
-    && altra_pin_summary_total() == altra_declared_contact_count()
+  let contacts = extdeps.cpu.ampere_altra_package_contacts.altra_package_contacts()
+  extdeps.cpu.ampere_altra_package.classified_signal_pin_count(contacts: contacts) == extdeps.cpu.ampere_altra_package.altra_signal_pin_count
+    && extdeps.cpu.ampere_altra_package.classified_power_and_ground_pin_count(contacts: contacts) == extdeps.cpu.ampere_altra_package.altra_power_and_ground_pin_count
+    && extdeps.cpu.ampere_altra_package.classified_reserved_pin_count(contacts: contacts) == extdeps.cpu.ampere_altra_package.altra_reserved_pin_count
+    && extdeps.cpu.ampere_altra_package.altra_pin_summary_total() == extdeps.cpu.ampere_altra_package.altra_declared_contact_count()
 }
 
 test fn w_differential_pairs_are_complete_in_the_ingested_map() -> Bool {
-  match differential_pair_standing(contacts: altra_package_contact_map().contacts) {
-    AllDifferentialPairsComplete => true
-    IncompleteDifferentialPair { pair: _, member_count: _ } => false
+  match extdeps.cpu.ampere_altra_package.differential_pair_standing(contacts: extdeps.cpu.ampere_altra_package_contact_map.altra_package_contact_map().contacts) {
+    extdeps.cpu.ampere_altra_package.AllDifferentialPairsComplete => true
+    extdeps.cpu.ampere_altra_package.IncompleteDifferentialPair { pair: _, member_count: _ } => false
   }
 }
 
@@ -32,9 +32,9 @@ test fn w_dropped_differential_leg_surfaces_incomplete_polarity() -> Bool {
   let rows: List<extdeps.cpu.ampere_altra_package.Table4PinRow> = [
     extdeps.cpu.ampere_altra_package.Table4PinRow { designator: "Z1", signal_name: "DDR4_CLK_0_P" },
   ]
-  match differential_pair_standing(contacts: contacts_from_table4(rows: rows)) {
-    IncompleteDifferentialPair { pair: _, member_count: _ } => true
-    AllDifferentialPairsComplete => false
+  match extdeps.cpu.ampere_altra_package.differential_pair_standing(contacts: extdeps.cpu.ampere_altra_package.contacts_from_table4(rows: rows)) {
+    extdeps.cpu.ampere_altra_package.IncompleteDifferentialPair { pair: _, member_count: _ } => true
+    extdeps.cpu.ampere_altra_package.AllDifferentialPairsComplete => false
   }
 }
 
@@ -43,14 +43,14 @@ test fn w_active_low_n_suffix_stays_single_ended() -> Bool {
   let rows: List<extdeps.cpu.ampere_altra_package.Table4PinRow> = [
     extdeps.cpu.ampere_altra_package.Table4PinRow { designator: "Z2", signal_name: "DDR4_ADDR_14_WE_N" },
   ]
-  let contacts = contacts_from_table4(rows: rows)
-  match differential_pair_standing(contacts: contacts) {
-    AllDifferentialPairsComplete => fold(contacts, init: true, f: fn(ok, c) {
+  let contacts = extdeps.cpu.ampere_altra_package.contacts_from_table4(rows: rows)
+  match extdeps.cpu.ampere_altra_package.differential_pair_standing(contacts: contacts) {
+    extdeps.cpu.ampere_altra_package.AllDifferentialPairsComplete => fold(contacts, init: true, f: fn(ok, c) {
       ok && match c.function {
-        SingleEndedSignalContact => true
+        extdeps.cpu.ampere_altra_package.SingleEndedSignalContact => true
         _ => false
       }
     })
-    IncompleteDifferentialPair { pair: _, member_count: _ } => false
+    extdeps.cpu.ampere_altra_package.IncompleteDifferentialPair { pair: _, member_count: _ } => false
   }
 }

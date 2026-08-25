@@ -3,7 +3,7 @@ module extdeps.container.oci.runtime_config
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/opencontainers/runtime-spec/blob/main/config.md"
   }
 }
@@ -74,8 +74,8 @@ fn accept_runtime_linux(c: RuntimeBundleConfig) -> RuntimeConfigOutcome {
   match c.linux {
     null => RuntimeConfigAccepted { value: c }
     linux =>
-      match accept_linux_platform(linux) {
-        LinuxPlatformRejected { reason: _ } =>
+      match extdeps.container.oci.linux.accept_linux_platform(linux) {
+        extdeps.container.oci.linux.LinuxPlatformRejected { reason: _ } =>
           RuntimeConfigRejected { reason: LinuxPlatformInvalid { detail: "linux" } }
         LinuxPlatformAccepted { value: _ } =>
           RuntimeConfigAccepted { value: c }

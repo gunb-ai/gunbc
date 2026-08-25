@@ -1,5 +1,6 @@
 module test.claim.host_effect_plan_witness
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data hermetic_witness_home_doc: String = "Hermetic-safe Wave A2 host_effect_plan_apply witnesses: control-flow and empty-plan refusal arms only (no shell.Exec.Run). Shell converge/failure/sequential poles live in host_effect_plan_real_execution_witness_test.dag (Wet bin batch)."
@@ -17,7 +18,7 @@ fn witness_plan_ctx() -> gunbc.host_effect_plan.HostEffectPlanContext {
 }
 
 fn witness_empty_plan() -> gunbc.host_effect_plan.HostEffectPlan {
-  v2.std.effect_plan.EffectPlan { steps: std.algebra.Empty, on_failure: v2.std.orchestration.FailFast }
+  v2.std.effect_plan.EffectPlan { steps: Empty, on_failure: v2.std.orchestration.FailFast }
 }
 
 fn witness_if_control_flow_plan() -> gunbc.host_effect_plan.HostEffectPlan {
@@ -25,10 +26,10 @@ fn witness_if_control_flow_plan() -> gunbc.host_effect_plan.HostEffectPlan {
     steps: [
       v2.std.effect_plan.If {
         cond: v2.std.orchestration.ExitZero {
-          run: v2.std.orchestration.Run { command: "true", env: Empty, redirect: v2.std.optional.Absent, capture: v2.std.optional.Absent }
+          run: v2.std.orchestration.Run { command: "true", env: Empty, redirect: v2.std.collection.Absent, capture: v2.std.collection.Absent }
         },
         then_: v2.std.effect_plan.EffectPlan { steps: [], on_failure: v2.std.orchestration.FailFast },
-        else_: v2.std.optional.Absent,
+        else_: v2.std.collection.Absent,
       },
     ],
     on_failure: v2.std.orchestration.FailFast,

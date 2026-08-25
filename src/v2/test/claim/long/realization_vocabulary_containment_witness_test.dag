@@ -1,17 +1,17 @@
 module v2.test.long.realization_vocabulary_containment_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data realization_vocab_long_witness_note: String = "Full-corpus realization_vocabulary_containment live-tree receipt: irreducible live-tree census over realization_vocab_consumer_scan_roots verifying every current leak edge is grandfathered and containment holds corpus-wide. Enrolled on the falsifier substrate long lane for its corpus/integration role, not because per-PR discovery is the right admission surface. One layer_import_facts_live scan per eval checks clean-tree containment and grandfathered-edge roster soundness together. Fast-lane per-PR coverage (explicit commit_gate_roster rows): lens_unit/discriminators_test.dag synthetic predicate receipts, scanner/planted_leak_test.dag fixture scan, roster_soundness_test.dag stale-grandfathered-edge RED and roster-key distinctness, no_new_debt_gate_test.dag TS-0 exact-edge receipts. Excluded from per-PR discovery by test/claim/long/ dir grain (gunbc.ci_layer_roots witness_exclusion_substrings). Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag --function realization_vocab_live_corpus_receipt_holds."
 
-test fn realization_vocab_live_corpus_receipt_holds() -> v2.std.logic.Bool {
-  let facts = layer_import_facts_live(
-    std_roots: realization_vocab_consumer_scan_roots,
+test fn realization_vocab_live_corpus_receipt_holds() -> Bool {
+  let facts = v2.std.layer.layer_import_facts_live(
+    std_roots: v2.lens.realization_vocabulary_containment.realization_vocab_consumer_scan_roots,
     extdeps_roots: []
   )
-  realization_vocab_leak_count(facts: facts) == 0
-    && realization_vocab_roster_sound(
-      live_leak_edges: realization_vocab_live_leak_edges_from_facts(facts: facts)
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count(facts: facts) == 0
+    && v2.lens.realization_vocabulary_containment.realization_vocab_roster_sound(
+      live_leak_edges: v2.lens.realization_vocabulary_containment.realization_vocab_live_leak_edges_from_facts(facts: facts)
     )
 }

@@ -22,7 +22,7 @@ type CollectedHostReceipt
 
 // Forward grammar lives in converge_cli_receipt_line; this is the backward read of the
 // SAME line shape: "converge-receipt host=H applied=N drifted=N verdict=V". A missing
-// prefix, missing field, or unknown verdict label refuses (gunbc.host_converge.Absent), never guesses.
+// prefix, missing field, or unknown verdict label refuses (Absent), never guesses.
 fn parse_converge_receipt_line(line: String) -> gunbc.fleet_converge_cli.ConvergeCliReceipt? {
   let tokens = split(s: std.algebra.trim(s: line), delimiter: " ")
   if length(tokens) == 5
@@ -46,15 +46,15 @@ fn parse_converge_receipt_line(line: String) -> gunbc.fleet_converge_cli.Converg
                             reason: none,
                           },
                         }
-                      Absent => none
+                      gunbc.host_converge.Absent => none
                     }
-                  Absent => none
+                  gunbc.host_converge.Absent => none
                 }
-              Absent => none
+              gunbc.host_converge.Absent => none
             }
-          Absent => none
+          gunbc.host_converge.Absent => none
         }
-      Absent => none
+      gunbc.host_converge.Absent => none
     }
   } else {
     none
@@ -74,7 +74,7 @@ fn receipt_field(tokens: List<String>, key: String) -> String? {
 fn receipt_field_or_empty(tokens: List<String>, key: String) -> String {
   match receipt_field(tokens: tokens, key: key) {
     Present { value: v } => v
-    Absent => ""
+    gunbc.host_converge.Absent => ""
   }
 }
 
@@ -84,8 +84,8 @@ fn drop_prefix(s: String, prefix: String) -> String {
 
 // Review 50817: decode each label to ITS verdict constructor directly. An earlier
 // revision routed drifted/absent through converge_verdict(effective: "", expected:
-// label), which returns gunbc.host_converge.Absent whenever effective is empty — silently re-classifying a
-// published gunbc.host_converge.Drifted as gunbc.host_converge.Absent on collection, exactly the state-space conflation the
+// label), which returns Absent whenever effective is empty — silently re-classifying a
+// published Drifted as Absent on collection, exactly the state-space conflation the
 // header forbids (different remedies: run the converge vs build the observation).
 fn parse_converge_verdict_label(label: String) -> gunbc.host_converge.ConvergeVerdict? {
   if label == "converged" {
@@ -104,30 +104,30 @@ fn parse_converge_verdict_label(label: String) -> gunbc.host_converge.ConvergeVe
 }
 
 // One host's collection: cat the published receipt over the typed argv seam at the
-// modeled endpoint. Wire refusal or transport failure -> gunbc.host_converge.Absent with the cause; a first
+// modeled endpoint. Wire refusal or transport failure -> Absent with the cause; a first
 // line that does not decode -> Unparseable carrying the exact bytes.
-fn collect_host_receipt(host: String) -> gunbc.fleet_receipt_collector.CollectedHostReceipt {
+fn collect_host_receipt(host: String) -> CollectedHostReceipt {
   match gunbc.fleet_reach_endpoint.fleet_probe_target_for(host: host) {
-    ProbeTargetRefused { host: _, cause: c } =>
+    gunbc.fleet_reach_endpoint.ProbeTargetRefused { host: _, cause: c } =>
       ReceiptAbsent {
         host: host,
         cause: match c {
-          PrincipalUnobserved { note: n } => join(["principal unobserved (no SSH attempted): ", n], "")
-          EndpointUnobserved { note: n } => join(["endpoint unobserved (no SSH attempted): ", n], "")
+          gunbc.fleet_reach_endpoint.PrincipalUnobserved { note: n } => join(["principal unobserved (no SSH attempted): ", n], "")
+          gunbc.fleet_reach_endpoint.EndpointUnobserved { note: n } => join(["endpoint unobserved (no SSH attempted): ", n], "")
         },
       }
-    ProbeTargetReady { host: _, endpoint: e, remote_principal: p } =>
+    gunbc.fleet_reach_endpoint.ProbeTargetReady { host: _, endpoint: e, remote_principal: p } =>
   match gunbc.typed_argv_exec.typed_argv_probe_over_ssh(
     host: gunbc.fleet_reach_endpoint.fleet_probe_ready_ssh_target(t_host: host, endpoint: e, remote_principal: p) as std.types.NonEmptyStr,
     argv: ["cat", gunbc.fleet_converge_cli.fleet_converge_receipt_path(host: host)],
   ) {
-    TypedArgvExecConverged { result: r } =>
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
       if r.success {
         classify_receipt_stdout(host: host, raw: r.stdout)
       } else {
         ReceiptAbsent { host: host, cause: std.algebra.trim(s: r.stderr) }
       }
-    TypedArgvExecRefused { reason: why } => ReceiptAbsent { host: host, cause: why }
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => ReceiptAbsent { host: host, cause: why }
   }
   }
 }
@@ -135,7 +135,7 @@ fn collect_host_receipt(host: String) -> gunbc.fleet_receipt_collector.Collected
 fn receipt_first_line(raw: String) -> String? {
   match split(s: raw, delimiter: "\n").first() {
     Present { value: l } => if std.algebra.trim(s: l) == "" { none } else { Present { value: std.algebra.trim(s: l) } }
-    Absent => none
+    gunbc.host_converge.Absent => none
   }
 }
 
@@ -143,26 +143,26 @@ fn receipt_first_line(raw: String) -> String? {
 // b1 converged-must-be-backed discriminator is testable hermetically with synthetic bytes.
 // A converged line-1 verdict is admitted as Collected ONLY when the receipt also carries an
 // observed revision cell; otherwise it is ConvergedUnbacked (refused from the fold), never
-// laundered into the registry as converged. gunbc.host_converge.Drifted/absent verdicts do not require the
-// observed cell (they are not claiming convergence). Empty stdout -> gunbc.host_converge.Absent; an undecodable
+// laundered into the registry as converged. Drifted/absent verdicts do not require the
+// observed cell (they are not claiming convergence). Empty stdout -> Absent; an undecodable
 // first line -> Unparseable (contradiction-shaped, never absence).
-fn classify_receipt_stdout(host: String, raw: String) -> gunbc.fleet_receipt_collector.CollectedHostReceipt {
+fn classify_receipt_stdout(host: String, raw: String) -> CollectedHostReceipt {
   match receipt_first_line(raw: raw) {
     Present { value: line } =>
       match parse_converge_receipt_line(line: line) {
         Present { value: receipt } =>
           match receipt.verdict {
-            VerdictConverged =>
+            gunbc.host_converge.VerdictConverged =>
               match converge_revision_observed_hex(raw: raw) {
                 Present { value: _ } => ReceiptCollected { host: host, receipt: receipt }
-                Absent => ReceiptConvergedUnbacked { host: host, line: line }
+                gunbc.host_converge.Absent => ReceiptConvergedUnbacked { host: host, line: line }
               }
-            Drifted => ReceiptCollected { host: host, receipt: receipt }
-            Absent => ReceiptCollected { host: host, receipt: receipt }
+            gunbc.host_converge.Drifted => ReceiptCollected { host: host, receipt: receipt }
+            gunbc.host_converge.Absent => ReceiptCollected { host: host, receipt: receipt }
           }
-        Absent => ReceiptUnparseable { host: host, line: line }
+        gunbc.host_converge.Absent => ReceiptUnparseable { host: host, line: line }
       }
-    Absent => ReceiptAbsent { host: host, cause: "receipt file empty" }
+    gunbc.host_converge.Absent => ReceiptAbsent { host: host, cause: "receipt file empty" }
   }
 }
 
@@ -183,7 +183,7 @@ fn converge_revision_observed_hex(raw: String) -> String? {
     if match tokens.first() { Present { value: t } => t == "converge-revision" gunbc.host_converge.Absent => false } {
       match receipt_field(tokens: tokens, key: "observed=") {
         Present { value: hex } => Present { value: hex }
-        Absent => acc
+        gunbc.host_converge.Absent => acc
       }
     } else {
       acc
@@ -191,7 +191,7 @@ fn converge_revision_observed_hex(raw: String) -> String? {
   })
 }
 
-fn collected_receipts_only(collected: List<gunbc.fleet_receipt_collector.CollectedHostReceipt>) -> List<gunbc.fleet_converge_cli.ConvergeCliReceipt> {
+fn collected_receipts_only(collected: List<CollectedHostReceipt>) -> List<gunbc.fleet_converge_cli.ConvergeCliReceipt> {
   collected.flat_map(c => match c {
     ReceiptCollected { host: _, receipt: r } => [r]
     ReceiptAbsent { host: _, cause: _ } => []
@@ -200,7 +200,7 @@ fn collected_receipts_only(collected: List<gunbc.fleet_receipt_collector.Collect
   })
 }
 
-fn collected_line(c: gunbc.fleet_receipt_collector.CollectedHostReceipt) -> String {
+fn collected_line(c: CollectedHostReceipt) -> String {
   match c {
     ReceiptCollected { host: h, receipt: _ } => join(["collect host=", h, " outcome=collected"], "")
     ReceiptAbsent { host: h, cause: why } => join(["collect host=", h, " outcome=absent cause=", why], "")
@@ -233,11 +233,11 @@ func collect_fleet_convergence_wet() -> std.process.ProcessExit {
     receipts: collected_receipts_only(collected: collected),
   )
   let verdict_line = match verdict {
-    FleetConverged { host_count: n } => concat("fleet-verdict converged hosts=", to_string(n))
-    FleetNotConverged { standings: s } => concat("fleet-verdict not-converged standings=", to_string(length(s)))
+    gunbc.fleet_convergence_verdict.FleetConverged { host_count: n } => concat("fleet-verdict converged hosts=", to_string(n))
+    gunbc.fleet_convergence_verdict.FleetNotConverged { standings: s } => concat("fleet-verdict not-converged standings=", to_string(length(s)))
   }
   let body = join([enroll_lines, join(map(collected, c => collected_line(c: c)), "\n"), "\n", verdict_line, "\n"], "")
-  let w = Filesystem.Write(path: fleet_collect_receipt_path, content: body)
+  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: fleet_collect_receipt_path, content: body)
   if w.success {
     std.process.ExitSuccess
   } else {

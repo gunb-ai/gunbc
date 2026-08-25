@@ -1,7 +1,7 @@
 module v2.test.claim.enforcement.lens_module_gate_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data lens_module_gate_fixture_facts: List<v2.lens.module_graph.ModuleDeclarationFact> = [
   v2.lens.module_graph.ModuleDeclarationFact { module: "v2.lens.alpha_fixture", path: "src/v2/lens/alpha_fixture.dag" },
@@ -13,90 +13,90 @@ data lens_module_gate_fixture_bound: List<String> = ["v2.lens.alpha_fixture"]
 data lens_module_gate_fixture_surfaces: List<v2.lens.enforcement.lens_module_gate.LensInvariantSurface> = [
   v2.lens.enforcement.lens_module_gate.LensInvariantSurface {
     module: "v2.lens.alpha_fixture",
-    projection: ProjectionNodeDag,
-    verdict_authority: VerdictLensVerdict,
-    remedy: RemedyShare,
-    admission: GenuinelyNewInvariant
+    projection: v2.lens.enforcement.lens_module_gate.ProjectionNodeDag,
+    verdict_authority: v2.lens.enforcement.lens_module_gate.VerdictLensVerdict,
+    remedy: v2.lens.enforcement.lens_module_gate.RemedyShare,
+    admission: v2.lens.enforcement.lens_module_gate.GenuinelyNewInvariant
   },
   v2.lens.enforcement.lens_module_gate.LensInvariantSurface {
     module: "v2.lens.synthetic_redundant_lens",
-    projection: ProjectionNodeDag,
-    verdict_authority: VerdictLensVerdict,
-    remedy: RemedyShare,
-    admission: GenuinelyNewInvariant
+    projection: v2.lens.enforcement.lens_module_gate.ProjectionNodeDag,
+    verdict_authority: v2.lens.enforcement.lens_module_gate.VerdictLensVerdict,
+    remedy: v2.lens.enforcement.lens_module_gate.RemedyShare,
+    admission: v2.lens.enforcement.lens_module_gate.GenuinelyNewInvariant
   }
 ]
 
 data lens_module_gate_genuinely_new_surface: List<v2.lens.enforcement.lens_module_gate.LensInvariantSurface> = [
   v2.lens.enforcement.lens_module_gate.LensInvariantSurface {
     module: "v2.lens.alpha_fixture",
-    projection: ProjectionNodeDag,
-    verdict_authority: VerdictVacuityEvidence,
-    remedy: RemedyIndependentOracle,
-    admission: GenuinelyNewInvariant
+    projection: v2.lens.enforcement.lens_module_gate.ProjectionNodeDag,
+    verdict_authority: v2.lens.enforcement.lens_module_gate.VerdictVacuityEvidence,
+    remedy: v2.lens.enforcement.lens_module_gate.RemedyIndependentOracle,
+    admission: v2.lens.enforcement.lens_module_gate.GenuinelyNewInvariant
   }
 ]
 
-test fn lens_closure_question_zero_holds_live() -> v2.std.logic.Bool {
-  lens_closure_question_zero_holds_live()
+test fn v2.workflow.enforcement_live.lens_closure_question_zero_holds_live() -> Bool {
+  v2.workflow.enforcement_live.lens_closure_question_zero_holds_live()
 }
 
-test fn lens_module_gate_holds_live() -> v2.std.logic.Bool {
-  lens_module_gate_holds()
+test fn lens_module_gate_holds_live() -> Bool {
+  v2.lens.enforcement.lens_module_gate.lens_module_gate_holds()
 }
 
-test fn red_control_unenrolled_lens_refused() -> v2.std.logic.Bool {
-  lens_module_gate_unenrolled_count_from_facts(
+test fn red_control_unenrolled_lens_refused() -> Bool {
+  v2.lens.enforcement.lens_module_gate.lens_module_gate_unenrolled_count_from_facts(
     facts: lens_module_gate_fixture_facts,
     bound_module_paths: lens_module_gate_fixture_bound
   ) > 0
 }
 
-test fn red_control_redundant_verdict_remedy_refused() -> v2.std.logic.Bool {
-  lens_module_gate_redundant_blocking_count_from_surfaces(
+test fn red_control_redundant_verdict_remedy_refused() -> Bool {
+  v2.lens.enforcement.lens_module_gate.lens_module_gate_redundant_blocking_count_from_surfaces(
     surfaces: lens_module_gate_fixture_surfaces
   ) > 0
 }
 
-test fn red_control_genuinely_new_distinct_surface_passes() -> v2.std.logic.Bool {
-  lens_module_gate_redundant_blocking_count_from_surfaces(
+test fn red_control_genuinely_new_distinct_surface_passes() -> Bool {
+  v2.lens.enforcement.lens_module_gate.lens_module_gate_redundant_blocking_count_from_surfaces(
     surfaces: lens_module_gate_genuinely_new_surface
   ) == 0
 }
 
-test fn red_control_fully_authorized_fixture_clean() -> v2.std.logic.Bool {
-  lens_module_gate_unenrolled_count_from_facts(
+test fn red_control_fully_authorized_fixture_clean() -> Bool {
+  v2.lens.enforcement.lens_module_gate.lens_module_gate_unenrolled_count_from_facts(
     facts: lens_module_gate_fixture_facts,
     bound_module_paths: ["v2.lens.alpha_fixture", "v2.lens.synthetic_redundant_lens"]
   ) == 0
-    && lens_module_gate_unjustified_count_from_facts(
+    && v2.lens.enforcement.lens_module_gate.lens_module_gate_unjustified_count_from_facts(
       facts: lens_module_gate_fixture_facts,
       surfaces: lens_module_gate_fixture_surfaces
     ) == 0
 }
 
-test fn question_zero_verdict_live_holds() -> v2.std.logic.Bool {
-  let v = lens_closure_question_zero_verdict(
-    intent: standing_intent_lens_closure_question_zero,
+test fn question_zero_verdict_live_holds() -> Bool {
+  let v = v2.lens.enforcement.gate.lens_closure_question_zero_verdict(
+    intent: v2.lens.enforcement.standing_intent.standing_intent_lens_closure_question_zero,
     facts: [],
-    bound_module_paths: lens_registry_completeness_bound_module_paths(),
-    surfaces: lens_module_gate_surfaces()
+    bound_module_paths: v2.lens.registry.completeness.lens_registry_completeness_bound_module_paths(),
+    surfaces: v2.lens.enforcement.lens_module_gate.lens_module_gate_surfaces()
   )
-  question_zero_verdict_holds(v: v)
-    && leg_holds(l: v.unenrolled)
-    && leg_holds(l: v.unjustified)
-    && leg_holds(l: v.redundant_claim)
-    && leg_holds(l: v.audit_residue_counted)
+  v2.lens.enforcement.gate.question_zero_verdict_holds(v: v)
+    && v2.lens.enforcement.gate.leg_holds(l: v.unenrolled)
+    && v2.lens.enforcement.gate.leg_holds(l: v.unjustified)
+    && v2.lens.enforcement.gate.leg_holds(l: v.redundant_claim)
+    && v2.lens.enforcement.gate.leg_holds(l: v.audit_residue_counted)
 }
 
-test fn audit_residue_counted_for_known_pending_fork() -> v2.std.logic.Bool {
-  lens_module_gate_audit_residue_count_from_surfaces(surfaces: lens_module_gate_surfaces()) > 0
+test fn audit_residue_counted_for_known_pending_fork() -> Bool {
+  v2.lens.enforcement.lens_module_gate.lens_module_gate_audit_residue_count_from_surfaces(surfaces: v2.lens.enforcement.lens_module_gate.lens_module_gate_surfaces()) > 0
 }
 
-test fn question_zero_fixture_redundant_leg_fails() -> v2.std.logic.Bool {
-  leg_fails(
-    l: lens_closure_question_zero_verdict(
-      intent: standing_intent_lens_closure_question_zero,
+test fn question_zero_fixture_redundant_leg_fails() -> Bool {
+  v2.lens.enforcement.gate.leg_fails(
+    l: v2.lens.enforcement.gate.lens_closure_question_zero_verdict(
+      intent: v2.lens.enforcement.standing_intent.standing_intent_lens_closure_question_zero,
       facts: lens_module_gate_fixture_facts,
       bound_module_paths: lens_module_gate_fixture_bound,
       surfaces: lens_module_gate_fixture_surfaces
@@ -104,6 +104,6 @@ test fn question_zero_fixture_redundant_leg_fails() -> v2.std.logic.Bool {
   )
 }
 
-test fn lens_closure_question_zero_live_matches_gate() -> v2.std.logic.Bool {
-  lens_closure_question_zero_holds() == lens_module_gate_blocking_holds()
+test fn lens_closure_question_zero_live_matches_gate() -> Bool {
+  v2.lens.enforcement.gate.lens_closure_question_zero_holds() == v2.lens.enforcement.lens_module_gate.lens_module_gate_blocking_holds()
 }

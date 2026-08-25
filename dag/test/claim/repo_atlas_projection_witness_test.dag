@@ -4,10 +4,10 @@ module test.claim.repo_atlas_projection_witness
 data repo_atlas_witness_note: String = "THE FIXTURES ARE AUTHORED, THE POPULATIONS ARE CONTROLLED, AND THE ORACLES ARE INDEPENDENT OF THE MEASUREMENT. Every count asserted below comes from a planted input — one planted collision, one path planted at two modules, one departed path — not from measuring the live tree and pinning what it happened to say (DESIGN 5, the test-oracle ruling). The live corpus appears in exactly one claim, and there the subject IS the live population's breadth, which is the one case that ruling admits."
 
 fn atlas_fixture_comparison() -> gunbc.repo_atlas_projection.AtlasComparison {
-  gunbc.repo_atlas_projection.AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot }
+  gunbc.repo_atlas_projection.AtlasComparison { base: "HEAD^", head: "HEAD", relation: extdeps.git.TwoDot }
 }
 
-fn atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusParseOutcome) -> gunbc.repo_atlas_projection.AtlasChangeObservation {
+fn atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusParseOutcome) -> AtlasChangeObservation {
   gunbc.repo_atlas_projection.AtlasComparisonObserved { comparison: atlas_fixture_comparison(), diff: diff }
 }
 
@@ -34,9 +34,9 @@ fn atlas_multi_seed_pool() -> List<v2.lens.module_graph.ModuleDeclarationFact> {
 }
 
 test fn atlas_address_is_a_pure_function_of_identity() -> Bool {
-  let once = atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
-  let twice = atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
-  atlas_address_eq(a: once, b: twice)
+  let once = gunbc.repo_atlas_projection.atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
+  let twice = gunbc.repo_atlas_projection.atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
+  gunbc.repo_atlas_projection.atlas_address_eq(a: once, b: twice)
 }
 
 data atlas_shuffle_note: String = "ACCEPTANCE 2. The same three identities in two different input orders must produce identical addresses. This is the discriminating claim for the whole stability property: a layout pass, a probing collision scheme, or any address that read the population would break here, and nothing else in the suite would notice."
@@ -48,30 +48,30 @@ test fn atlas_address_is_invariant_under_input_order() -> Bool {
       v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" },
       v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" },
     ],
-    m => atlas_address_of_module(identity: m))
+    m => gunbc.repo_atlas_projection.atlas_address_of_module(identity: m))
   let reversed = map(
     [
       v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" },
       v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" },
       v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" },
     ],
-    m => atlas_address_of_module(identity: m))
-  let a = atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
-  let g = atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" })
+    m => gunbc.repo_atlas_projection.atlas_address_of_module(identity: m))
+  let a = gunbc.repo_atlas_projection.atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
+  let g = gunbc.repo_atlas_projection.atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" })
   forward.length() == 3
     && reversed.length() == 3
-    && atlas_address_eq(a: a, b: atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" }))
-    && atlas_address_eq(a: g, b: atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" }))
+    && gunbc.repo_atlas_projection.atlas_address_eq(a: a, b: gunbc.repo_atlas_projection.atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" }))
+    && gunbc.repo_atlas_projection.atlas_address_eq(a: g, b: gunbc.repo_atlas_projection.atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" }))
 }
 
 data atlas_unrelated_addition_note: String = "ACCEPTANCE 3. Adding an unrelated module to the population must move no existing module. Asserted by computing an address from a one-module world and again from a three-module world: the address function never receives the population at all, so this holds by construction — and the claim exists so that a future refactor which STARTS passing the population reds here instead of silently re-addressing the atlas."
 
 test fn adding_an_unrelated_module_moves_no_existing_module() -> Bool {
-  let alone = atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
-  let crowded_cells = atlas_cells_of_modules(
-    identities: atlas_module_identities(nodes: atlas_fixture_pool()))
-  let still = atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
-  atlas_address_eq(a: alone, b: still) && crowded_cells.length() > 0
+  let alone = gunbc.repo_atlas_projection.atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
+  let crowded_cells = gunbc.repo_atlas_projection.atlas_cells_of_modules(
+    identities: gunbc.repo_atlas_projection.atlas_module_identities(nodes: atlas_fixture_pool()))
+  let still = gunbc.repo_atlas_projection.atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
+  gunbc.repo_atlas_projection.atlas_address_eq(a: alone, b: still) && crowded_cells.length() > 0
 }
 
 data atlas_collision_note: String = "ACCEPTANCE 4, REBUILT. The first version of this claim was conditional — it asserted a collision if the two planted names happened to collide and otherwise accepted two separate cells, so it could pass while proving nothing. Its companion drove the accumulator with the SAME identity twice, which is a duplicate fact and not a collision between distinct modules at all.
@@ -84,14 +84,14 @@ data atlas_collide_right: String = "v2.test.manual.generic_instantiation_runtime
 test fn two_distinct_identities_colliding_share_one_cell() -> Bool {
   let left = v2.lens.module_impact_query.ModuleIdentity { name: atlas_collide_left }
   let right = v2.lens.module_impact_query.ModuleIdentity { name: atlas_collide_right }
-  let cells = atlas_cells_of_modules(identities: [left, right])
+  let cells = gunbc.repo_atlas_projection.atlas_cells_of_modules(identities: [left, right])
   atlas_collide_left != atlas_collide_right
-    && atlas_cell_index(identity: left) == atlas_cell_index(identity: right)
+    && gunbc.repo_atlas_projection.atlas_cell_index(identity: left) == gunbc.repo_atlas_projection.atlas_cell_index(identity: right)
     && cells.length() == 1
     && all(cells, c =>
-         atlas_cell_carries_module(cell: c, identity: left)
-           && atlas_cell_carries_module(cell: c, identity: right)
-           && atlas_cell_occupant_count(cell: c) == 2)
+         gunbc.repo_atlas_projection.atlas_cell_carries_module(cell: c, identity: left)
+           && gunbc.repo_atlas_projection.atlas_cell_carries_module(cell: c, identity: right)
+           && gunbc.repo_atlas_projection.atlas_cell_occupant_count(cell: c) == 2)
 }
 
 data atlas_duplicate_fact_note: String = "THE SEPARATE DUPLICATE-FACT QUESTION, decided and recorded rather than left implicit. Two ModuleDeclarationFact rows naming the SAME ModuleIdentity are one semantic subject observed twice, not two subjects, so they must not raise a cell's occupant count and make the dot read denser. atlas_module_identities deduplicates by identity before cells are built, and this claim pins that: the same identity twice yields one occupant, while the two DISTINCT colliding identities above yield two."
@@ -101,74 +101,74 @@ test fn a_duplicated_module_fact_does_not_inflate_density() -> Bool {
     atlas_fixture_module(name: "fixture.alpha", path: "dag/fixture/alpha.dag"),
     atlas_fixture_module(name: "fixture.alpha", path: "dag/fixture/alpha_other.dag"),
   ]
-  let cells = atlas_cells_of_modules(identities: atlas_module_identities(nodes: dup_nodes))
+  let cells = gunbc.repo_atlas_projection.atlas_cells_of_modules(identities: gunbc.repo_atlas_projection.atlas_module_identities(nodes: dup_nodes))
   cells.length() == 1
-    && all(cells, c => atlas_cell_occupant_count(cell: c) == 1)
+    && all(cells, c => gunbc.repo_atlas_projection.atlas_cell_occupant_count(cell: c) == 1)
 }
 
 data atlas_not_observed_note: String = "THE ARM THAT WAS MISSING. An authored empty diff used to be indistinguishable from no comparison at all; both produced a projection with zero marks. These two claims assert the arms differ, which is the only way the page can honestly say changes not observed."
 
 test fn no_observation_is_not_the_same_state_as_an_empty_comparison() -> Bool {
-  let unobserved = atlas_change_overlay(
-    observation: AtlasChangesNotObserved,
+  let unobserved = gunbc.repo_atlas_projection.atlas_change_overlay(
+    observation: gunbc.repo_atlas_projection.AtlasChangesNotObserved,
     nodes: atlas_fixture_pool())
-  let empty_comparison = atlas_change_overlay(
+  let empty_comparison = gunbc.repo_atlas_projection.atlas_change_overlay(
     observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [] }),
     nodes: atlas_fixture_pool())
   let a = match unobserved {
-    AtlasChangeNotObserved => true
-    AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
-    AtlasChangeOverlayRefused { cause: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => true
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: _ } => false
   }
   let b = match empty_comparison {
-    AtlasChangesProjected { comparison: _, marks: marks, unprojected: _ } => marks.length() == 0
-    AtlasChangeNotObserved => false
-    AtlasChangeOverlayRefused { cause: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: marks, unprojected: _ } => marks.length() == 0
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: _ } => false
   }
   a && b
 }
 
 test fn an_unbound_head_refuses_the_overlay_with_a_located_cause() -> Bool {
-  let overlay = atlas_change_overlay(
+  let overlay = gunbc.repo_atlas_projection.atlas_change_overlay(
     observation: gunbc.repo_atlas_projection.AtlasComparisonUnavailable {
       cause: gunbc.repo_atlas_projection.ComparisonHeadUnbound { detail: "dirty tree" }
     },
     nodes: atlas_fixture_pool())
   match overlay {
-    AtlasChangeOverlayRefused { cause: cause } => match cause {
-      ComparisonHeadUnbound { detail: d } => d == "dirty tree"
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: cause } => match cause {
+      gunbc.repo_atlas_projection.ComparisonHeadUnbound { detail: d } => d == "dirty tree"
       _ => false
     }
-    AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
-    AtlasChangeNotObserved => false
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
   }
 }
 
 data atlas_comparison_identity_claim_note: String = "A projected overlay must carry the endpoints it was computed from, so the readout can print exact provenance rather than the phrase a named revision."
 
 test fn a_projected_overlay_carries_its_comparison_endpoints() -> Bool {
-  let overlay = atlas_change_overlay(
+  let overlay = gunbc.repo_atlas_projection.atlas_change_overlay(
     observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
-      extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
     ] }),
     nodes: atlas_fixture_pool())
   match overlay {
-    AtlasChangesProjected { comparison: c, marks: _, unprojected: _ } =>
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: c, marks: _, unprojected: _ } =>
       c.base == "HEAD^" && c.head == "HEAD"
-    AtlasChangeOverlayRefused { cause: _ } => false
-    AtlasChangeNotObserved => false
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
   }
 }
 
 test fn every_module_joins_exactly_one_cell() -> Bool {
-  let identities = atlas_module_identities(nodes: atlas_fixture_pool())
-  let cells = atlas_cells_of_modules(identities: identities)
-  let total = fold(cells, init: 0, f: (acc, c) => acc + atlas_cell_occupant_count(cell: c))
+  let identities = gunbc.repo_atlas_projection.atlas_module_identities(nodes: atlas_fixture_pool())
+  let cells = gunbc.repo_atlas_projection.atlas_cells_of_modules(identities: identities)
+  let total = fold(cells, init: 0, f: (acc, c) => acc + gunbc.repo_atlas_projection.atlas_cell_occupant_count(cell: c))
   total == identities.length()
 }
 
 test fn ring_table_sums_to_the_declared_cell_space() -> Bool {
-  atlas_total_cells() == 3392
+  gunbc.repo_atlas_projection.atlas_total_cells() == 3392
 }
 
 test fn every_address_falls_inside_the_ring_table() -> Bool {
@@ -181,137 +181,137 @@ test fn every_address_falls_inside_the_ring_table() -> Bool {
       v2.lens.module_impact_query.ModuleIdentity { name: "gunbc.roadmap_component" },
       v2.lens.module_impact_query.ModuleIdentity { name: "std.markup" },
     ],
-    m => atlas_address_of_module(identity: m))
+    m => gunbc.repo_atlas_projection.atlas_address_of_module(identity: m))
   all(addresses, a => a.ring >= 0 && a.ring < 16 && a.slot >= 0)
 }
 
 data atlas_multi_seed_claim_note: String = "ACCEPTANCE 5. One changed path resolving to SEVERAL modules marks ALL of them. The pool plants two modules at one path; a first-wins projection would mark one and this reds."
 
 test fn one_path_resolving_to_several_modules_marks_all_of_them() -> Bool {
-  let overlay = atlas_change_overlay(
+  let overlay = gunbc.repo_atlas_projection.atlas_change_overlay(
     observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
-      extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: atlas_shared_path, old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffModifiedStatus, path: atlas_shared_path, old_path: Absent },
     ] }),
     nodes: atlas_multi_seed_pool())
   match overlay {
-    AtlasChangesProjected { comparison: _, marks: marks, unprojected: unprojected } =>
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: marks, unprojected: unprojected } =>
       marks.length() == 2
         && unprojected.length() == 0
-        && atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.first_of_shared" })
-        && atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.second_of_shared" })
-    AtlasChangeOverlayRefused { cause: _ } => false
-    AtlasChangeNotObserved => false
+        && gunbc.repo_atlas_projection.atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.first_of_shared" })
+        && gunbc.repo_atlas_projection.atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.second_of_shared" })
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
   }
 }
 
 data atlas_departed_claim_note: String = "ACCEPTANCE 6. A deleted path, and a renamed entry's OLD path, are never resolved against the head. The renamed case is the sharper one: its new path legitimately projects while its old path must land in the readout, so a claim asserting only 'nothing was marked' would pass on a projection that dropped the rename entirely."
 
 test fn a_deleted_path_is_never_resolved_against_the_head() -> Bool {
-  let overlay = atlas_change_overlay(
+  let overlay = gunbc.repo_atlas_projection.atlas_change_overlay(
     observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry {
-        status: DiffDeletedStatus,
+        status: extdeps.git.DiffDeletedStatus,
         path: "dag/fixture/alpha.dag",
         old_path: Absent
       },
     ] }),
     nodes: atlas_fixture_pool())
   match overlay {
-    AtlasChangesProjected { comparison: _, marks: marks, unprojected: unprojected } =>
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: marks, unprojected: unprojected } =>
       marks.length() == 0
         && unprojected.length() == 1
         && all(unprojected, u => match u {
-             DepartedPathPriorIdentityUnavailable { path: p, status: _ } => p == "dag/fixture/alpha.dag"
-             PathDeclaresNoModule { path: _, status: _ } => false
+             gunbc.repo_atlas_projection.DepartedPathPriorIdentityUnavailable { path: p, status: _ } => p == "dag/fixture/alpha.dag"
+             gunbc.repo_atlas_projection.PathDeclaresNoModule { path: _, status: _ } => false
            })
-    AtlasChangeOverlayRefused { cause: _ } => false
-    AtlasChangeNotObserved => false
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
   }
 }
 
 test fn a_renamed_old_path_departs_while_its_new_path_projects() -> Bool {
-  let overlay = atlas_change_overlay(
+  let overlay = gunbc.repo_atlas_projection.atlas_change_overlay(
     observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry {
-        status: extdeps.git.DiffRenamedStatus { similarity: percent(count: 96) },
+        status: extdeps.git.DiffRenamedStatus { similarity: std.measure.percent(count: 96) },
         path: "dag/fixture/beta.dag",
         old_path: Present { value: "dag/fixture/departed.dag" }
       },
     ] }),
     nodes: atlas_fixture_pool())
   match overlay {
-    AtlasChangesProjected { comparison: _, marks: marks, unprojected: unprojected } =>
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: marks, unprojected: unprojected } =>
       marks.length() == 1
-        && atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" })
+        && gunbc.repo_atlas_projection.atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" })
         && unprojected.length() == 1
         && all(unprojected, u => match u {
-             DepartedPathPriorIdentityUnavailable { path: p, status: _ } => p == "dag/fixture/departed.dag"
-             PathDeclaresNoModule { path: _, status: _ } => false
+             gunbc.repo_atlas_projection.DepartedPathPriorIdentityUnavailable { path: p, status: _ } => p == "dag/fixture/departed.dag"
+             gunbc.repo_atlas_projection.PathDeclaresNoModule { path: _, status: _ } => false
            })
-    AtlasChangeOverlayRefused { cause: _ } => false
-    AtlasChangeNotObserved => false
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
   }
 }
 
 test fn a_path_declaring_no_module_is_counted_not_dropped() -> Bool {
-  let overlay = atlas_change_overlay(
+  let overlay = gunbc.repo_atlas_projection.atlas_change_overlay(
     observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
-      extdeps.git.GitDiffStatusEntry { status: DiffAddedStatus, path: "README.md", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffAddedStatus, path: "README.md", old_path: Absent },
     ] }),
     nodes: atlas_fixture_pool())
   match overlay {
-    AtlasChangesProjected { comparison: _, marks: marks, unprojected: unprojected } =>
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: marks, unprojected: unprojected } =>
       marks.length() == 0
         && unprojected.length() == 1
         && all(unprojected, u => match u {
-             PathDeclaresNoModule { path: p, status: _ } => p == "README.md"
-             DepartedPathPriorIdentityUnavailable { path: _, status: _ } => false
+             gunbc.repo_atlas_projection.PathDeclaresNoModule { path: p, status: _ } => p == "README.md"
+             gunbc.repo_atlas_projection.DepartedPathPriorIdentityUnavailable { path: _, status: _ } => false
            })
-    AtlasChangeOverlayRefused { cause: _ } => false
-    AtlasChangeNotObserved => false
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
   }
 }
 
 data atlas_refusal_claim_note: String = "ACCEPTANCE 7. Each untrustworthy observation refuses the WHOLE overlay. Every claim below plants the bad entry BESIDE a good one, so a projection that dropped the bad entry and drew the rest would produce AtlasChangesProjected with one mark — visibly different from the refusal asserted here. Without the good neighbour these would pass against an implementation that simply produced an empty projection."
 
 test fn an_unmerged_entry_refuses_the_whole_overlay() -> Bool {
-  let overlay = atlas_change_overlay(
+  let overlay = gunbc.repo_atlas_projection.atlas_change_overlay(
     observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
-      extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
-      extdeps.git.GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/beta.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffUnmergedStatus, path: "dag/fixture/beta.dag", old_path: Absent },
     ] }),
     nodes: atlas_fixture_pool())
   match overlay {
-    AtlasChangeOverlayRefused { cause: cause } => match cause {
-      UnmergedEntryPresent { path: p } => p == "dag/fixture/beta.dag"
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: cause } => match cause {
+      gunbc.repo_atlas_projection.UnmergedEntryPresent { path: p } => p == "dag/fixture/beta.dag"
       _ => false
     }
-    AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
-    AtlasChangeNotObserved => false
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
   }
 }
 
 test fn a_pairing_broken_entry_refuses_the_whole_overlay() -> Bool {
-  let overlay = atlas_change_overlay(
+  let overlay = gunbc.repo_atlas_projection.atlas_change_overlay(
     observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
-      extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
-      extdeps.git.GitDiffStatusEntry { status: DiffPairingBrokenStatus, path: "dag/fixture/gamma.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffPairingBrokenStatus, path: "dag/fixture/gamma.dag", old_path: Absent },
     ] }),
     nodes: atlas_fixture_pool())
   match overlay {
-    AtlasChangeOverlayRefused { cause: cause } => match cause {
-      PairingBrokenEntryPresent { path: p } => p == "dag/fixture/gamma.dag"
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: cause } => match cause {
+      gunbc.repo_atlas_projection.PairingBrokenEntryPresent { path: p } => p == "dag/fixture/gamma.dag"
       _ => false
     }
-    AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
-    AtlasChangeNotObserved => false
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
   }
 }
 
 test fn an_unknown_status_refuses_the_whole_overlay() -> Bool {
-  let overlay = atlas_change_overlay(
+  let overlay = gunbc.repo_atlas_projection.atlas_change_overlay(
     observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
-      extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
       extdeps.git.GitDiffStatusEntry {
         status: extdeps.git.DiffUnknownGitStatus { raw: "Z9" },
         path: "dag/fixture/gamma.dag",
@@ -320,55 +320,55 @@ test fn an_unknown_status_refuses_the_whole_overlay() -> Bool {
     ] }),
     nodes: atlas_fixture_pool())
   match overlay {
-    AtlasChangeOverlayRefused { cause: cause } => match cause {
-      UnknownGitStatusPresent { path: _, raw: raw } => raw == "Z9"
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: cause } => match cause {
+      gunbc.repo_atlas_projection.UnknownGitStatusPresent { path: _, raw: raw } => raw == "Z9"
       _ => false
     }
-    AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
-    AtlasChangeNotObserved => false
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
   }
 }
 
 test fn a_truncated_diff_observation_refuses_the_whole_overlay() -> Bool {
-  let overlay = atlas_change_overlay(
+  let overlay = gunbc.repo_atlas_projection.atlas_change_overlay(
     observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusTruncated {
-      pending: extdeps.git.AwaitingSinglePath { status: DiffModifiedStatus },
+      pending: extdeps.git.AwaitingSinglePath { status: extdeps.git.DiffModifiedStatus },
       entries: [
-        extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+        extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
       ]
     }),
     nodes: atlas_fixture_pool())
   match overlay {
-    AtlasChangeOverlayRefused { cause: cause } => match cause {
-      DiffObservationTruncated => true
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: cause } => match cause {
+      gunbc.repo_atlas_projection.DiffObservationTruncated => true
       _ => false
     }
-    AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
-    AtlasChangeNotObserved => false
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
   }
 }
 
 data atlas_ordinary_statuses_note: String = "The refusal arms above are only honest if the ORDINARY statuses still project. Copied and type-changed are the two that carry no dedicated arm in the projection, so they are the ones a totality mistake would silently swallow."
 
 test fn copied_and_type_changed_entries_still_project() -> Bool {
-  let overlay = atlas_change_overlay(
+  let overlay = gunbc.repo_atlas_projection.atlas_change_overlay(
     observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
       extdeps.git.GitDiffStatusEntry {
-        status: extdeps.git.DiffCopiedStatus { similarity: percent(count: 80) },
+        status: extdeps.git.DiffCopiedStatus { similarity: std.measure.percent(count: 80) },
         path: "dag/fixture/alpha.dag",
         old_path: Present { value: "dag/fixture/beta.dag" }
       },
-      extdeps.git.GitDiffStatusEntry { status: DiffTypeChangedStatus, path: "dag/fixture/gamma.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffTypeChangedStatus, path: "dag/fixture/gamma.dag", old_path: Absent },
     ] }),
     nodes: atlas_fixture_pool())
   match overlay {
-    AtlasChangesProjected { comparison: _, marks: marks, unprojected: unprojected } =>
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: marks, unprojected: unprojected } =>
       marks.length() == 2
         && unprojected.length() == 0
-        && atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
-        && atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" })
-    AtlasChangeOverlayRefused { cause: _ } => false
-    AtlasChangeNotObserved => false
+        && gunbc.repo_atlas_projection.atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
+        && gunbc.repo_atlas_projection.atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" })
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
   }
 }
 
@@ -388,23 +388,23 @@ fn atlas_fixture_reading(standing_is_exact: Bool) -> v2.lens.module_impact_query
 }
 
 test fn no_module_is_impacted_when_no_reading_was_computed() -> Bool {
-  atlas_module_is_impacted(
-    overlay: AtlasImpactNotComputed,
+  gunbc.repo_atlas_projection.atlas_module_is_impacted(
+    overlay: gunbc.repo_atlas_projection.AtlasImpactNotComputed,
     identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" }) == false
-    && atlas_impact_is_exact(overlay: AtlasImpactNotComputed) == false
+    && gunbc.repo_atlas_projection.atlas_impact_is_exact(overlay: gunbc.repo_atlas_projection.AtlasImpactNotComputed) == false
 }
 
 test fn a_reading_marks_exactly_its_reached_set() -> Bool {
-  let overlay = atlas_impact_from_reading(reading: atlas_fixture_reading(standing_is_exact: true))
-  atlas_module_is_impacted(overlay: overlay, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" })
-    && atlas_module_is_impacted(overlay: overlay, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" }) == false
+  let overlay = gunbc.repo_atlas_projection.atlas_impact_from_reading(reading: atlas_fixture_reading(standing_is_exact: true))
+  gunbc.repo_atlas_projection.atlas_module_is_impacted(overlay: overlay, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" })
+    && gunbc.repo_atlas_projection.atlas_module_is_impacted(overlay: overlay, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" }) == false
 }
 
 test fn a_provisional_reading_cannot_render_as_exact() -> Bool {
-  let provisional = atlas_impact_from_reading(reading: atlas_fixture_reading(standing_is_exact: false))
-  let exact = atlas_impact_from_reading(reading: atlas_fixture_reading(standing_is_exact: true))
-  atlas_impact_is_exact(overlay: provisional) == false
-    && atlas_impact_is_exact(overlay: exact)
+  let provisional = gunbc.repo_atlas_projection.atlas_impact_from_reading(reading: atlas_fixture_reading(standing_is_exact: false))
+  let exact = gunbc.repo_atlas_projection.atlas_impact_from_reading(reading: atlas_fixture_reading(standing_is_exact: true))
+  gunbc.repo_atlas_projection.atlas_impact_is_exact(overlay: provisional) == false
+    && gunbc.repo_atlas_projection.atlas_impact_is_exact(overlay: exact)
 }
 
 data atlas_empty_reached_note: String = "The discriminating pair for the empty-observation narrow: a reading whose reached set is empty is NOT the same state as no reading at all. Both mark nothing, so a Bool-only consumer cannot tell them apart — which is exactly why the arms are distinct and why this claim asserts the ARM rather than the marking."
@@ -418,36 +418,36 @@ test fn an_empty_reached_set_is_not_the_same_state_as_no_reading() -> Bool {
     standing: v2.lens.module_impact_query.ExactForGraphSubject,
     causes: []
   }
-  let computed = atlas_impact_from_reading(reading: empty_reading)
-  let absent = AtlasImpactNotComputed
+  let computed = gunbc.repo_atlas_projection.atlas_impact_from_reading(reading: empty_reading)
+  let absent = gunbc.repo_atlas_projection.AtlasImpactNotComputed
   let computed_is_computed = match computed {
-    AtlasImpactComputed { reached: reached, standing: _ } => reached.length() == 0
-    AtlasImpactNotComputed => false
+    gunbc.repo_atlas_projection.AtlasImpactComputed { reached: reached, standing: _ } => reached.length() == 0
+    gunbc.repo_atlas_projection.AtlasImpactNotComputed => false
   }
   let absent_is_absent = match absent {
-    AtlasImpactNotComputed => true
-    AtlasImpactComputed { reached: _, standing: _ } => false
+    gunbc.repo_atlas_projection.AtlasImpactNotComputed => true
+    gunbc.repo_atlas_projection.AtlasImpactComputed { reached: _, standing: _ } => false
   }
   computed_is_computed && absent_is_absent
 }
 
 test fn a_snapshot_composes_the_four_facts_without_substitution() -> Bool {
-  let snapshot = repo_atlas_snapshot(
-    subject: AtlasSubjectUnobserved,
+  let snapshot = gunbc.repo_atlas_projection.repo_atlas_snapshot(
+    subject: gunbc.repo_atlas_projection.AtlasSubjectUnobserved,
     nodes: atlas_fixture_pool(),
     observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
-      extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
     ] }),
-    impact: AtlasImpactNotComputed)
-  let structure_present = atlas_snapshot_occupant_total(snapshot: snapshot) == 3
+    impact: gunbc.repo_atlas_projection.AtlasImpactNotComputed)
+  let structure_present = gunbc.repo_atlas_projection.atlas_snapshot_occupant_total(snapshot: snapshot) == 3
   let changes_present = match snapshot.changes {
-    AtlasChangesProjected { comparison: _, marks: marks, unprojected: _ } => marks.length() == 1
-    AtlasChangeOverlayRefused { cause: _ } => false
-    AtlasChangeNotObserved => false
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: marks, unprojected: _ } => marks.length() == 1
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
   }
   let impact_absent = match snapshot.impact {
-    AtlasImpactNotComputed => true
-    AtlasImpactComputed { reached: _, standing: _ } => false
+    gunbc.repo_atlas_projection.AtlasImpactNotComputed => true
+    gunbc.repo_atlas_projection.AtlasImpactComputed { reached: _, standing: _ } => false
   }
   structure_present && changes_present && impact_absent
 }
@@ -455,17 +455,17 @@ test fn a_snapshot_composes_the_four_facts_without_substitution() -> Bool {
 data atlas_refusal_does_not_erase_structure_note: String = "A refused change overlay must not take the STRUCTURE plane down with it. The four facts are independent, so an untrustworthy diff leaves the atlas drawable with no change marks — which is the honest presentation — rather than blanking the page."
 
 test fn a_refused_overlay_leaves_the_structure_plane_intact() -> Bool {
-  let snapshot = repo_atlas_snapshot(
-    subject: AtlasSubjectUnobserved,
+  let snapshot = gunbc.repo_atlas_projection.repo_atlas_snapshot(
+    subject: gunbc.repo_atlas_projection.AtlasSubjectUnobserved,
     nodes: atlas_fixture_pool(),
     observation: atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusComplete { entries: [
-      extdeps.git.GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: extdeps.git.DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
     ] }),
-    impact: AtlasImpactNotComputed)
+    impact: gunbc.repo_atlas_projection.AtlasImpactNotComputed)
   let refused = match snapshot.changes {
-    AtlasChangeOverlayRefused { cause: _ } => true
-    AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
-    AtlasChangeNotObserved => false
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: _ } => true
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: _, marks: _, unprojected: _ } => false
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => false
   }
-  refused && atlas_snapshot_occupant_total(snapshot: snapshot) == 3
+  refused && gunbc.repo_atlas_projection.atlas_snapshot_occupant_total(snapshot: snapshot) == 3
 }

@@ -3,7 +3,7 @@ module extdeps.cpu.ampere_altra_package
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
   }
 }
@@ -43,7 +43,7 @@ fn altra_pin_summary_total() -> Int {
 // specific product of the other family. The value was correct, which is exactly why it survived:
 // both families are LGA4926, so every witness passed and nothing could have caught it by
 // execution. It now reads the family authority, which is what it always meant.
-data altra_fclga_socket: extdeps.cpu.types.CpuSocket = ampere_lga4926_socket
+data altra_fclga_socket: extdeps.cpu.types.CpuSocket = extdeps.cpu.ampere.ampere_lga4926_socket
 
 fn altra_declared_contact_count() -> Int {
   altra_fclga_socket.contact_count
@@ -62,18 +62,18 @@ fn altra_declared_contact_count() -> Int {
 // this module's sibling attachment stack exists to keep them apart. What it legitimately bounds is
 // the volume the processor occupies once seated, which is a real constraint on keepout and on
 // neighbouring component clearance even while the socket part remains unselected.
-data altra_package_body_width: std.measure.Micrometer = micrometer(count: 77080)
+data altra_package_body_width: std.measure.Micrometer = std.measure.micrometer(count: 77080)
 
-data altra_package_body_height: std.measure.Micrometer = micrometer(count: 67000)
+data altra_package_body_height: std.measure.Micrometer = std.measure.micrometer(count: 67000)
 
 // THE LAND PITCH BELONGS TO THE PACKAGE, NOT TO WHICHEVER DOCUMENT TRANSCRIBED IT FIRST. The
 // datasheet's package mechanical drawing states e = 0.87 BASIC and f = 0.50 BASIC on the same
 // figure as the body extent and the 4926-contact identity, so the hexagonal pitch pair is a
 // property of the part. It was previously authored only in the platform-specification module, and
 // a fact's ABSENCE from its subject's authority is not what makes it belong somewhere else.
-data altra_package_pad_pitch_dx: std.measure.Micrometer = micrometer(count: 870)
+data altra_package_pad_pitch_dx: std.measure.Micrometer = std.measure.micrometer(count: 870)
 
-data altra_package_pad_pitch_dy: std.measure.Micrometer = micrometer(count: 500)
+data altra_package_pad_pitch_dy: std.measure.Micrometer = std.measure.micrometer(count: 500)
 
 data altra_package_body_designator: std.types.NonEmptyStr = "FCLGA4926"
 
@@ -450,7 +450,7 @@ type ReferenceBoardCollateralStanding
 fn altra_reference_board_collateral_standing() -> ReferenceBoardCollateralStanding {
   ReferenceBoardCollateralUnderNda {
     subject: "Ampere reference motherboard design packages (Mt. Jade, Mt. Collins, Mt. Bonnell, Mt. Snow) with UEFI, OpenBMC and CPLD source",
-    access_route: ampere_customer_reference_boards_authority,
+    access_route: extdeps.vendor.ampere.ampere_customer_reference_boards_authority,
   }
 }
 
@@ -459,11 +459,11 @@ data ampere_altra_package_model_scope: extdeps.external_authority.ExternalModelS
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cpu.ampere_altra_package",
       decl_name: "altra_fclga_socket",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.cpu.ampere_altra_package.extdeps_external_authority_anchor,
-  further_citations: [ampere_altra_rev_a1_datasheet_authority, ampere_customer_reference_boards_authority]
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [extdeps.cpu.ampere.ampere_altra_rev_a1_datasheet_authority, extdeps.vendor.ampere.ampere_customer_reference_boards_authority]
 }
 
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = ampere_altra_package_model_scope

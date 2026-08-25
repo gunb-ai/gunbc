@@ -5,49 +5,49 @@ data floor_resolve_realization_witness_note: String = "Eight required controls f
 
 fn cold_main_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
   [
-    cold_realization(id: CompileAnchorWholeTree, nanos: 1),
-    cold_realization(id: NativeBundleEscapingEntry, nanos: 1),
+    gunbc.ci_materialization.cold_realization(id: gunbc.ci_materialization.CompileAnchorWholeTree, nanos: 1),
+    gunbc.ci_materialization.cold_realization(id: gunbc.ci_materialization.NativeBundleEscapingEntry, nanos: 1),
   ]
 }
 
 fn warm_pr_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
   [
-    cold_realization(id: CompileAnchorWholeTree, nanos: 1),
-    warm_realization(id: NativeBundleEscapingEntry),
+    gunbc.ci_materialization.cold_realization(id: gunbc.ci_materialization.CompileAnchorWholeTree, nanos: 1),
+    gunbc.ci_materialization.warm_realization(id: gunbc.ci_materialization.NativeBundleEscapingEntry),
   ]
 }
 
 fn missing_native_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
-  [cold_realization(id: CompileAnchorWholeTree, nanos: 1)]
+  [gunbc.ci_materialization.cold_realization(id: gunbc.ci_materialization.CompileAnchorWholeTree, nanos: 1)]
 }
 
 fn duplicate_anchor_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
   [
-    cold_realization(id: CompileAnchorWholeTree, nanos: 1),
-    warm_realization(id: CompileAnchorWholeTree),
+    gunbc.ci_materialization.cold_realization(id: gunbc.ci_materialization.CompileAnchorWholeTree, nanos: 1),
+    gunbc.ci_materialization.warm_realization(id: gunbc.ci_materialization.CompileAnchorWholeTree),
   ]
 }
 
 fn unknown_third_obligation_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
   [
-    cold_realization(id: CompileAnchorWholeTree, nanos: 1),
-    cold_realization(id: NativeBundleEscapingEntry, nanos: 1),
+    gunbc.ci_materialization.cold_realization(id: gunbc.ci_materialization.CompileAnchorWholeTree, nanos: 1),
+    gunbc.ci_materialization.cold_realization(id: gunbc.ci_materialization.NativeBundleEscapingEntry, nanos: 1),
     gunbc.ci_materialization.ColdResolvePerformed {
       obligation: gunbc.ci_materialization.ResolveObligation {
-        identity: NativeBundleEscapingEntry,
+        identity: gunbc.ci_materialization.NativeBundleEscapingEntry,
         subject: gunbc.ci_materialization.ResolveObligationSubject {
           entry: "dag/test/claim/unknown_escaping_entry.dag",
           function: "unknown_escaping_function",
         },
       },
-      receipt: gunbc.ci_materialization.ResolveColdReceipt { resolve_nanos: nanosecond(count: 1) },
+      receipt: gunbc.ci_materialization.ResolveColdReceipt { resolve_nanos: std.measure.nanosecond(count: 1) },
     },
   ]
 }
 
 fn broken_warm_native_realization() -> gunbc.ci_materialization.ResolveRealization {
   gunbc.ci_materialization.SatisfiedFromSharedPool {
-    obligation: expected_obligation(id: NativeBundleEscapingEntry),
+    obligation: gunbc.ci_materialization.expected_obligation(id: gunbc.ci_materialization.NativeBundleEscapingEntry),
     provider: gunbc.ci_materialization.ResolveSharedPoolProvider { provider_id: "" },
     receipt: gunbc.ci_materialization.ResolveSharedPoolReceipt { provider_id: gunbc.floor_materialization.floor_entry_walk_memo_provider_id },
   }
@@ -55,97 +55,97 @@ fn broken_warm_native_realization() -> gunbc.ci_materialization.ResolveRealizati
 
 fn warm_without_provider_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
   [
-    cold_realization(id: CompileAnchorWholeTree, nanos: 1),
+    gunbc.ci_materialization.cold_realization(id: gunbc.ci_materialization.CompileAnchorWholeTree, nanos: 1),
     broken_warm_native_realization(),
   ]
 }
 
 fn cold_without_resolve_receipt_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
   [
-    cold_realization(id: CompileAnchorWholeTree, nanos: 1),
-    cold_realization(id: NativeBundleEscapingEntry, nanos: 0),
+    gunbc.ci_materialization.cold_realization(id: gunbc.ci_materialization.CompileAnchorWholeTree, nanos: 1),
+    gunbc.ci_materialization.cold_realization(id: gunbc.ci_materialization.NativeBundleEscapingEntry, nanos: 0),
   ]
 }
 
 fn broken_cold_native_realization() -> gunbc.ci_materialization.ResolveRealization {
-  cold_realization(id: NativeBundleEscapingEntry, nanos: 0)
+  gunbc.ci_materialization.cold_realization(id: gunbc.ci_materialization.NativeBundleEscapingEntry, nanos: 0)
 }
 
-test fn witness_admit_anchor_cold_and_native_cold() -> v2.std.logic.Bool {
-  resolve_realization_finalization_holds(
+test fn witness_admit_anchor_cold_and_native_cold() -> Bool {
+  gunbc.ci_materialization.resolve_realization_finalization_holds(
     realizations: cold_main_realizations(),
     unattributed_physical_resolves: 0,
   )
-    && cold_resolves_performed(realizations: cold_main_realizations()) == 2
+    && gunbc.ci_materialization.cold_resolves_performed(realizations: cold_main_realizations()) == 2
 }
 
-test fn witness_admit_anchor_cold_and_native_warm() -> v2.std.logic.Bool {
-  resolve_realization_finalization_holds(
+test fn witness_admit_anchor_cold_and_native_warm() -> Bool {
+  gunbc.ci_materialization.resolve_realization_finalization_holds(
     realizations: warm_pr_realizations(),
     unattributed_physical_resolves: 0,
   )
-    && cold_resolves_performed(realizations: warm_pr_realizations()) == 1
+    && gunbc.ci_materialization.cold_resolves_performed(realizations: warm_pr_realizations()) == 1
 }
 
-test fn witness_declared_count_derives_from_roster() -> v2.std.logic.Bool {
-  ci_floor_declared_resolve_count() == ci_floor_expected_resolve_obligation_count()
-    && ci_floor_declared_resolve_count() == 2
+test fn witness_declared_count_derives_from_roster() -> Bool {
+  gunbc.ci_materialization.ci_floor_declared_resolve_count() == gunbc.ci_materialization.ci_floor_expected_resolve_obligation_count()
+    && gunbc.ci_materialization.ci_floor_declared_resolve_count() == 2
 }
 
 fn anchor_only_obligations() -> List<gunbc.ci_materialization.ResolveObligation> {
-  [expected_obligation(id: CompileAnchorWholeTree)]
+  [gunbc.ci_materialization.expected_obligation(id: gunbc.ci_materialization.CompileAnchorWholeTree)]
 }
 
-test fn witness_forked_obligation_population_reds_against_declared_count() -> v2.std.logic.Bool {
-  ci_floor_declared_resolve_count() != (anchor_only_obligations() |> count)
+test fn witness_forked_obligation_population_reds_against_declared_count() -> Bool {
+  gunbc.ci_materialization.ci_floor_declared_resolve_count() != (anchor_only_obligations() |> count)
 }
 
-test fn witness_refuse_native_obligation_absent() -> v2.std.logic.Bool {
-  native_obligation_absent(realizations: missing_native_realizations())
-    && !resolve_realization_finalization_holds(
+test fn witness_refuse_native_obligation_absent() -> Bool {
+  gunbc.ci_materialization.native_obligation_absent(realizations: missing_native_realizations())
+    && !gunbc.ci_materialization.resolve_realization_finalization_holds(
       realizations: missing_native_realizations(),
       unattributed_physical_resolves: 0,
     )
 }
 
-test fn witness_refuse_unknown_third_obligation() -> v2.std.logic.Bool {
-  unknown_obligation_appeared(realizations: unknown_third_obligation_realizations())
-    && !resolve_realization_finalization_holds(
+test fn witness_refuse_unknown_third_obligation() -> Bool {
+  gunbc.ci_materialization.unknown_obligation_appeared(realizations: unknown_third_obligation_realizations())
+    && !gunbc.ci_materialization.resolve_realization_finalization_holds(
       realizations: unknown_third_obligation_realizations(),
       unattributed_physical_resolves: 0,
     )
 }
 
-test fn witness_refuse_same_obligation_realized_twice() -> v2.std.logic.Bool {
-  same_obligation_realized_twice(realizations: duplicate_anchor_realizations())
-    && !resolve_realization_finalization_holds(
+test fn witness_refuse_same_obligation_realized_twice() -> Bool {
+  gunbc.ci_materialization.same_obligation_realized_twice(realizations: duplicate_anchor_realizations())
+    && !gunbc.ci_materialization.resolve_realization_finalization_holds(
       realizations: duplicate_anchor_realizations(),
       unattributed_physical_resolves: 0,
     )
 }
 
-test fn witness_refuse_warm_without_provider_receipt() -> v2.std.logic.Bool {
-  warm_without_provider_receipt(r: broken_warm_native_realization())
-    && !resolve_realization_finalization_holds(
+test fn witness_refuse_warm_without_provider_receipt() -> Bool {
+  gunbc.ci_materialization.warm_without_provider_receipt(r: broken_warm_native_realization())
+    && !gunbc.ci_materialization.resolve_realization_finalization_holds(
       realizations: warm_without_provider_realizations(),
       unattributed_physical_resolves: 0,
     )
 }
 
-test fn witness_refuse_cold_without_resolve_receipt() -> v2.std.logic.Bool {
-  cold_without_resolve_receipt(r: broken_cold_native_realization())
-    && !resolve_realization_finalization_holds(
+test fn witness_refuse_cold_without_resolve_receipt() -> Bool {
+  gunbc.ci_materialization.cold_without_resolve_receipt(r: broken_cold_native_realization())
+    && !gunbc.ci_materialization.resolve_realization_finalization_holds(
       realizations: cold_without_resolve_receipt_realizations(),
       unattributed_physical_resolves: 0,
     )
 }
 
-test fn witness_refuse_unattributed_physical_resolve() -> v2.std.logic.Bool {
-  resolve_realization_finalization_holds(
+test fn witness_refuse_unattributed_physical_resolve() -> Bool {
+  gunbc.ci_materialization.resolve_realization_finalization_holds(
     realizations: cold_main_realizations(),
     unattributed_physical_resolves: 0,
   )
-    && !resolve_realization_finalization_holds(
+    && !gunbc.ci_materialization.resolve_realization_finalization_holds(
       realizations: cold_main_realizations(),
       unattributed_physical_resolves: 1,
     )

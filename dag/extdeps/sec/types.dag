@@ -4,7 +4,7 @@ module extdeps.sec.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.sec.gov/edgar/searchedgar/companysearch"
   }
 }
@@ -120,5 +120,5 @@ type IssuerCatalogRow {
   registrant_name: std.types.NonEmptyStr
   primary_ticker: StockTicker
   exchange: StockExchange
-  vendor: Vendor<extdeps.securities.Securities>
+  vendor: extdeps.vendor.Vendor<extdeps.securities.Securities>
 }

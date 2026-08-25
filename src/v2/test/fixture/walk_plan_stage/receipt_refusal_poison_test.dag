@@ -6,7 +6,7 @@ test fn walk_plan_stage_receipt_refusal_poison_holds() -> Bool {
   if !target_ready.success {
     false
   } else {
-    let _cleared = shell.Remove.RecursiveForce(path: walk_plan_stage_stage1_receipt_path)
-    shell.Mkdir.Parents(path: walk_plan_stage_stage1_receipt_path).success
+    let _cleared = shell.Remove.RecursiveForce(path: v2.test.fixture.walk_plan_stage.common.walk_plan_stage_stage1_receipt_path)
+    shell.Mkdir.Parents(path: v2.test.fixture.walk_plan_stage.common.walk_plan_stage_stage1_receipt_path).success
   }
 }

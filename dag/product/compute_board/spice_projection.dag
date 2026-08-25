@@ -43,17 +43,17 @@ fn component_node(
   positive: Bool
 ) -> v2.extdeps.formats.spice.NodeRef {
   let t = if positive {
-    terminal_ref(component: component_identity(c: c), terminal: component_positive_terminal(c: c))
+    product.electrical.connectivity.terminal_ref(component: product.compute_board.analog.component_identity(c: c), terminal: product.compute_board.analog.component_positive_terminal(c: c))
   } else {
-    terminal_ref(component: component_identity(c: c), terminal: component_negative_terminal(c: c))
+    product.electrical.connectivity.terminal_ref(component: product.compute_board.analog.component_identity(c: c), terminal: product.compute_board.analog.component_negative_terminal(c: c))
   }
-  match net_of_terminal(intent: intent, t: t) {
-    Absent => Ground
+  match product.compute_board.analog.net_of_terminal(intent: intent, t: t) {
+    Absent => v2.extdeps.formats.spice.Ground
     Present { value: n } =>
-      if net_identity_eq(a: n, b: reference) {
-        Ground
+      if product.electrical.connectivity.net_identity_eq(a: n, b: reference) {
+        v2.extdeps.formats.spice.Ground
       } else {
-        v2.extdeps.formats.spice.Named { node: v2.extdeps.formats.spice.NamedNode { name: net_local_label(n: n) as String } }
+        v2.extdeps.formats.spice.Named { node: v2.extdeps.formats.spice.NamedNode { name: product.electrical.connectivity.net_local_label(n: n) as String } }
       }
   }
 }
@@ -65,14 +65,14 @@ fn spice_component(
 ) -> v2.extdeps.formats.spice.Component {
   let plus = component_node(intent: intent, reference: reference, c: c, positive: true)
   let minus = component_node(intent: intent, reference: reference, c: c, positive: false)
-  let name = component_local_label(c: component_identity(c: c)) as String
+  let name = product.electrical.connectivity.component_local_label(c: product.compute_board.analog.component_identity(c: c)) as String
   match c {
-    ResistorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, resistance: m } =>
-      v2.extdeps.formats.spice.Resistor { name: name, n_plus: plus, n_minus: minus, value: v2.extdeps.formats.spice.spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: v2.extdeps.formats.spice.SpiceKilo) }
-    CapacitorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, capacitance: m } =>
-      v2.extdeps.formats.spice.Capacitor { name: name, n_plus: plus, n_minus: minus, value: v2.extdeps.formats.spice.spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: v2.extdeps.formats.spice.SpiceNano) }
-    IndependentVoltageSourceInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, potential_difference: m } =>
-      v2.extdeps.formats.spice.VoltageSource { name: name, n_plus: plus, n_minus: minus, value: v2.extdeps.formats.spice.spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: v2.extdeps.formats.spice.SpiceUnitScale) }
+    product.compute_board.analog.ResistorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, resistance: m } =>
+      v2.extdeps.formats.spice.Resistor { name: name, n_plus: plus, n_minus: minus, value: v2.extdeps.formats.spice.spice_scaled_value(magnitude: to_string(std.measure.measure_count(m)), suffix: v2.extdeps.formats.spice.SpiceKilo) }
+    product.compute_board.analog.CapacitorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, capacitance: m } =>
+      v2.extdeps.formats.spice.Capacitor { name: name, n_plus: plus, n_minus: minus, value: v2.extdeps.formats.spice.spice_scaled_value(magnitude: to_string(std.measure.measure_count(m)), suffix: v2.extdeps.formats.spice.SpiceNano) }
+    product.compute_board.analog.IndependentVoltageSourceInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, potential_difference: m } =>
+      v2.extdeps.formats.spice.VoltageSource { name: name, n_plus: plus, n_minus: minus, value: v2.extdeps.formats.spice.spice_scaled_value(magnitude: to_string(std.measure.measure_count(m)), suffix: v2.extdeps.formats.spice.SpiceUnitScale) }
   }
 }
 
@@ -90,7 +90,7 @@ fn binding_for(bindings: List<product.compute_board.analog.ComponentModelBinding
     match acc {
       Present { value: v } => Present { value: v }
       Absent =>
-        if component_identity_eq(a: b.component, b: component_identity(c: c)) { Present { value: b.standing } } else { none }
+        if product.electrical.connectivity.component_identity_eq(a: b.component, b: product.compute_board.analog.component_identity(c: c)) { Present { value: b.standing } } else { none }
     }
   })
 }
@@ -102,17 +102,17 @@ fn binding_for(bindings: List<product.compute_board.analog.ComponentModelBinding
 // and is refused rather than resolved.
 fn binding_count(bindings: List<product.compute_board.analog.ComponentModelBinding>, c: product.compute_board.analog.ElectricalComponentInstance) -> std.nat.Nat {
   fold(bindings, init: 0, f: fn(acc, b) {
-    if component_identity_eq(a: b.component, b: component_identity(c: c)) { acc + 1 } else { acc }
+    if product.electrical.connectivity.component_identity_eq(a: b.component, b: product.compute_board.analog.component_identity(c: c)) { acc + 1 } else { acc }
   })
 }
 
 fn standing_refusal(c: product.compute_board.analog.ElectricalComponentInstance, s: product.compute_board.analog.ElectricalModelStanding) -> SpiceProjectionRefusal? {
   match s {
-    ElectricalModelAbsent => Present { value: ElectricalModelUnavailable { part: component_part(c: c) } }
-    ElectricalModelCited { model_card: mc, fidelity: f } =>
+    product.compute_board.analog.ElectricalModelAbsent => Present { value: ElectricalModelUnavailable { part: product.compute_board.analog.component_part(c: c) } }
+    product.compute_board.analog.ElectricalModelCited { model_card: mc, fidelity: f } =>
       match f {
-        IdealLumped => none
-        VendorSubcircuit => Present { value: ModelFidelityNotEmittable { part: component_part(c: c), model_card: mc } }
+        product.compute_board.analog.IdealLumped => none
+        product.compute_board.analog.VendorSubcircuit => Present { value: ModelFidelityNotEmittable { part: product.compute_board.analog.component_part(c: c), model_card: mc } }
       }
   }
 }
@@ -129,11 +129,11 @@ fn terminal_netting_refusal(
   c: product.compute_board.analog.ElectricalComponentInstance,
   t: product.electrical.connectivity.ElectricalTerminalRef
 ) -> SpiceProjectionRefusal? {
-  let n = net_membership_count(intent: intent, t: t)
+  let n = product.compute_board.analog.net_membership_count(intent: intent, t: t)
   if n == 0 {
-    Present { value: TerminalOnNoNet { part: component_part(c: c) } }
+    Present { value: TerminalOnNoNet { part: product.compute_board.analog.component_part(c: c) } }
   } else {
-    if n == 1 { none } else { Present { value: TerminalOnMultipleNets { part: component_part(c: c) } } }
+    if n == 1 { none } else { Present { value: TerminalOnMultipleNets { part: product.compute_board.analog.component_part(c: c) } } }
   }
 }
 
@@ -141,7 +141,7 @@ fn terminals_netting_refusal(
   intent: product.compute_board.analog.AnalogCircuitIntent,
   c: product.compute_board.analog.ElectricalComponentInstance
 ) -> SpiceProjectionRefusal? {
-  fold(component_terminals(c: c), init: none, f: fn(acc, t) {
+  fold(product.compute_board.analog.component_terminals(c: c), init: none, f: fn(acc, t) {
     match acc {
       Present { value: r } => Present { value: r }
       Absent => terminal_netting_refusal(intent: intent, c: c, t: t)
@@ -155,10 +155,10 @@ fn component_refusal(
   c: product.compute_board.analog.ElectricalComponentInstance
 ) -> SpiceProjectionRefusal? {
   if binding_count(bindings: bindings, c: c) > 1 {
-    Present { value: DuplicateModelBinding { component: component_local_label(c: component_identity(c: c)) } }
+    Present { value: DuplicateModelBinding { component: product.electrical.connectivity.component_local_label(c: product.compute_board.analog.component_identity(c: c)) } }
   } else {
     match binding_for(bindings: bindings, c: c) {
-      Absent => Present { value: ComponentModelBindingMissing { part: component_part(c: c) } }
+      Absent => Present { value: ComponentModelBindingMissing { part: product.compute_board.analog.component_part(c: c) } }
       Present { value: s } =>
         match standing_refusal(c: c, s: s) {
           Present { value: r } => Present { value: r }
@@ -185,10 +185,10 @@ fn first_refusal(
 // so the refusal has to happen here, before a line is built, or a component silently loses its
 // name and the deck describes a different circuit.
 fn spelling_refusal(c: product.compute_board.analog.ElectricalComponentInstance) -> SpiceProjectionRefusal? {
-  if v2.extdeps.formats.spice.spice_identifier_is_admissible(spelling: component_local_label(c: component_identity(c: c)) as String) {
+  if v2.extdeps.formats.spice.spice_identifier_is_admissible(spelling: product.electrical.connectivity.component_local_label(c: product.compute_board.analog.component_identity(c: c)) as String) {
     none
   } else {
-    Present { value: IdentityNotSpellableInTarget { component: component_local_label(c: component_identity(c: c)) } }
+    Present { value: IdentityNotSpellableInTarget { component: product.electrical.connectivity.component_local_label(c: product.compute_board.analog.component_identity(c: c)) } }
   }
 }
 
@@ -197,10 +197,10 @@ fn net_spelling_refusal(intent: product.compute_board.analog.AnalogCircuitIntent
     match acc {
       Present { value: r } => Present { value: r }
       Absent =>
-        if net_identity_eq(a: net.identity, b: reference) || v2.extdeps.formats.spice.spice_identifier_is_admissible(spelling: net_local_label(n: net.identity) as String) {
+        if product.electrical.connectivity.net_identity_eq(a: net.identity, b: reference) || v2.extdeps.formats.spice.spice_identifier_is_admissible(spelling: product.electrical.connectivity.net_local_label(n: net.identity) as String) {
           none
         } else {
-          Present { value: NetNotSpellableInTarget { net: net_local_label(n: net.identity) } }
+          Present { value: NetNotSpellableInTarget { net: product.electrical.connectivity.net_local_label(n: net.identity) } }
         }
     }
   })
@@ -218,7 +218,7 @@ fn first_refusal_or_net_spelling(
 ) -> SpiceProjectionRefusal? {
   match net_spelling_refusal(intent: intent, reference: reference) {
     Present { value: r } => Present { value: r }
-    Absent => product.compute_board.spice_projection.first_refusal(intent: intent, bindings: bindings)
+    Absent => first_refusal(intent: intent, bindings: bindings)
   }
 }
 

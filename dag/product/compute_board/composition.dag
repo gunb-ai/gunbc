@@ -15,8 +15,8 @@ type ComponentJustification
 // Core counts ride std.measure's HardwareThreadCount on BOTH sides of the comparison, because
 // a core count is a hardware thread count and that carrier already exists — extdeps.cpu.types
 // CpuModelCatalogRow.threads is typed with it. An earlier revision typed the requirement as a
-// bare std.nat.Nat and the provision as a bare Int, which was the parallel representation §3 forbids
-// AND admitted a negative core count that then summed against a std.nat.Nat minimum. Paths are std.nat.Nat for
+// bare Nat and the provision as a bare Int, which was the parallel representation §3 forbids
+// AND admitted a negative core count that then summed against a Nat minimum. Paths are Nat for
 // the same reason on the smaller scale: there is no negative number of network paths.
 //
 // WHAT A COMPONENT SUPPLIES, held separately from WHY IT IS HERE. An earlier revision fused
@@ -53,7 +53,7 @@ type ComponentInstance {
 
 fn provision_cores(p: CapabilityProvision) -> std.nat.Nat {
   match p {
-    ProvidesCores { cores: c } => hardware_thread_count_value(t: c)
+    ProvidesCores { cores: c } => std.measure.hardware_thread_count_value(t: c)
     ProvidesMemoryCapacity { capacity: _ } => 0
     ProvidesNetworkPaths { paths: _ } => 0
     ProvidesBootStoragePaths { paths: _ } => 0
@@ -68,7 +68,7 @@ fn provision_cores(p: CapabilityProvision) -> std.nat.Nat {
 
 fn provision_memory_bytes(p: CapabilityProvision) -> std.nat.Nat {
   match p {
-    ProvidesMemoryCapacity { capacity: c } => byte_size_count(b: c)
+    ProvidesMemoryCapacity { capacity: c } => std.measure.byte_size_count(b: c)
     ProvidesCores { cores: _ } => 0
     ProvidesNetworkPaths { paths: _ } => 0
     ProvidesBootStoragePaths { paths: _ } => 0
@@ -138,44 +138,44 @@ fn any_provision(components: List<ComponentInstance>, pred: fn(CapabilityProvisi
 // for recovery.
 fn requirement_met(components: List<ComponentInstance>, r: product.compute_board.intent.CapabilityRequirement) -> Bool {
   match r {
-    ComputeCores { minimum_cores: n } =>
-      sum_over_components(components: components, f: provision_cores) >= hardware_thread_count_value(t: n)
-    MemoryCapacity { minimum_capacity: cap } =>
-      total_memory_bytes(components: components) >= byte_size_count(b: cap)
-    NetworkPaths { minimum_paths: n } =>
+    product.compute_board.intent.ComputeCores { minimum_cores: n } =>
+      sum_over_components(components: components, f: provision_cores) >= std.measure.hardware_thread_count_value(t: n)
+    product.compute_board.intent.MemoryCapacity { minimum_capacity: cap } =>
+      total_memory_bytes(components: components) >= std.measure.byte_size_count(b: cap)
+    product.compute_board.intent.NetworkPaths { minimum_paths: n } =>
       sum_over_components(components: components, f: provision_network_paths) >= n
-    BootStoragePaths { minimum_paths: n } =>
+    product.compute_board.intent.BootStoragePaths { minimum_paths: n } =>
       sum_over_components(components: components, f: provision_boot_paths) >= n
-    RemoteManagement { power_control: pc, console: cons, recovery: rec } =>
+    product.compute_board.intent.RemoteManagement { power_control: pc, console: cons, recovery: rec } =>
       any_provision(components: components, pred: p => match p {
         ProvidesManagement { power_control: a, console: b, recovery: c } =>
           (!pc || a) && (!cons || b) && (!rec || c)
         _ => false
       })
-    PowerInputBoundary { boundary: _ } =>
+    product.compute_board.intent.PowerInputBoundary { boundary: _ } =>
       any_provision(components: components, pred: p => match p { ProvidesPowerBoundary => true, _ => false })
-    CoolingBoundary { boundary: _ } =>
+    product.compute_board.intent.CoolingBoundary { boundary: _ } =>
       any_provision(components: components, pred: p => match p { ProvidesCoolingContract => true, _ => false })
-    FirmwareInterfaceSurface { boot_flash: bf, write_protect: wp, recovery_path: rp } =>
+    product.compute_board.intent.FirmwareInterfaceSurface { boot_flash: bf, write_protect: wp, recovery_path: rp } =>
       any_provision(components: components, pred: p => match p {
         ProvidesFirmwareInterface { boot_flash: a, write_protect: b, recovery_path: c } =>
           (!bf || a) && (!wp || b) && (!rp || c)
         _ => false
       })
-    ManufactureAndBringUp { programming_surface: ps, test_access: ta } =>
+    product.compute_board.intent.ManufactureAndBringUp { programming_surface: ps, test_access: ta } =>
       any_provision(components: components, pred: p => match p {
         ProvidesManufactureAndBringUp { programming_surface: a, test_access: b } =>
           (!ps || a) && (!ta || b)
         _ => false
       })
-    MechanicalEnvelope { envelope: _ } =>
+    product.compute_board.intent.MechanicalEnvelope { envelope: _ } =>
       any_provision(components: components, pred: p => match p { ProvidesMechanicalEnvelope => true, _ => false })
   }
 }
 
 fn justification_discharges(j: ComponentJustification, cap: product.compute_board.intent.BoardCapability) -> Bool {
   match j {
-    DischargesCapability { capability: c } => capability_eq(a: c, b: cap)
+    DischargesCapability { capability: c } => product.compute_board.intent.capability_eq(a: c, b: cap)
     ImposedByComponent { by: _, requirement: _, authority: _ } => false
   }
 }
@@ -198,7 +198,7 @@ fn unsatisfied_board_capabilities(
 ) -> List<product.compute_board.intent.BoardCapability> {
   intent.requirements
     |> filter(r => !requirement_met(components: components, r: r))
-    |> map(r => requirement_capability(r: r))
+    |> map(r => product.compute_board.intent.requirement_capability(r: r))
 }
 
 fn justification_count(c: ComponentInstance) -> std.nat.Nat {
@@ -263,27 +263,27 @@ fn project_contact_map_standing(
   standing: extdeps.cpu.ampere_altra_package.PackageContactMapStanding
 ) -> BoardReadiness {
   match standing {
-    PackageContactMapAdmitted { resolved: _ } =>
+    extdeps.cpu.ampere_altra_package.PackageContactMapAdmitted { resolved: _ } =>
       BoardReadiness { collateral: [], design: [], manufacturing: [] }
-    ContactMapPubliclyAvailableNotIngested { document: d, authority: _ } =>
+    extdeps.cpu.ampere_altra_package.ContactMapPubliclyAvailableNotIngested { document: d, authority: _ } =>
       BoardReadiness {
         collateral: [],
         design: [PublishedAuthorityNotIngested { document: d }],
         manufacturing: [],
       }
-    ContactPopulationIncomplete { expected: e, resolved: r } =>
+    extdeps.cpu.ampere_altra_package.ContactPopulationIncomplete { expected: e, resolved: r } =>
       BoardReadiness {
         collateral: [],
         design: [PackageContactPopulationIncomplete { expected: e, resolved: r }],
         manufacturing: [],
       }
-    DuplicateContactDesignator { designator: d } =>
+    extdeps.cpu.ampere_altra_package.DuplicateContactDesignator { designator: d } =>
       BoardReadiness {
         collateral: [],
         design: [DuplicatePackageContact { designator: d }],
         manufacturing: [],
       }
-    IncompleteDifferentialPolarity { pair: p } =>
+    extdeps.cpu.ampere_altra_package.IncompleteDifferentialPolarity { pair: p } =>
       BoardReadiness {
         collateral: [],
         design: [IncompleteDifferentialPolarityPair { pair: p }],
@@ -296,9 +296,9 @@ fn project_contact_map_standing(
 // subjects reach readiness by separate routes and neither can render as the other.
 fn project_reference_board_standing(standing: extdeps.cpu.ampere_altra_package.ReferenceBoardCollateralStanding) -> BoardReadiness {
   match standing {
-    ReferenceBoardCollateralAvailable =>
+    extdeps.cpu.ampere_altra_package.ReferenceBoardCollateralAvailable =>
       BoardReadiness { collateral: [], design: [], manufacturing: [] }
-    ReferenceBoardCollateralUnderNda { subject: s, access_route: _ } =>
+    extdeps.cpu.ampere_altra_package.ReferenceBoardCollateralUnderNda { subject: s, access_route: _ } =>
       BoardReadiness {
         collateral: [ReferenceBoardCollateralUnavailable { subject: s }],
         design: [],

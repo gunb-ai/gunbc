@@ -1,5 +1,6 @@
 module v2.test.lens_application.substitute_at_ambiguous_duplicate_name
 
+
 data substitute_ambiguous_leaf_a: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^substitute_ambiguous_leaf_a_symbol } },
   children: [],
@@ -33,13 +34,13 @@ data substitute_ambiguous_duplicate_name_root: v2.std.node.Node = v2.std.node.No
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn substitute_at_ambiguous_duplicate_name_claim_holds() -> v2.std.logic.Bool {
+test fn substitute_at_ambiguous_duplicate_name_claim_holds() -> Bool {
   match v2.lens.application.substitute_at(
     root: substitute_ambiguous_duplicate_name_root,
     path: v2.std.node.Path { steps: [^substitute_ambiguous_dup_step] },
     replacement: substitute_ambiguous_replacement
   ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }

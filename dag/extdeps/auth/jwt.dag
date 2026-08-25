@@ -6,7 +6,7 @@ module extdeps.auth.jwt
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "datatracker.ietf.org/doc/html/rfc7519"
   }
 }
@@ -78,7 +78,7 @@ fn numeric_date_lifetime(
           if until < from {
             LifetimeExpiryPrecedesIssuance { issued_at: from, expires_at: until }
           } else {
-            LifetimeWholeSeconds { seconds: second(count: until - from) }
+            LifetimeWholeSeconds { seconds: std.measure.second(count: until - from) }
           }
       }
   }

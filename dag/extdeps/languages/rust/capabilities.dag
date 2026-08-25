@@ -7,7 +7,7 @@ fn rust_capability_shape_table() -> std.trait_derive_shape.TargetCapabilityShape
   std.trait_derive_shape.TargetCapabilityShapeTable {
     rows: [
       std.trait_derive_shape.TargetCapabilityShapeRow {
-        shape: ReprDeriveElemKernelString,
+        shape: std.trait_derive_shape.ReprDeriveElemKernelString,
         capabilities: [
           RustDebug,
           RustClone,
@@ -21,7 +21,7 @@ fn rust_capability_shape_table() -> std.trait_derive_shape.TargetCapabilityShape
         ]
       },
       std.trait_derive_shape.TargetCapabilityShapeRow {
-        shape: ReprDeriveElemKernelInt,
+        shape: std.trait_derive_shape.ReprDeriveElemKernelInt,
         capabilities: [
           RustDebug,
           RustClone,
@@ -42,7 +42,7 @@ fn rust_capability_shape_table() -> std.trait_derive_shape.TargetCapabilityShape
         ]
       },
       std.trait_derive_shape.TargetCapabilityShapeRow {
-        shape: ReprDeriveElemKernelBool,
+        shape: std.trait_derive_shape.ReprDeriveElemKernelBool,
         capabilities: [
           RustDebug,
           RustClone,
@@ -57,7 +57,7 @@ fn rust_capability_shape_table() -> std.trait_derive_shape.TargetCapabilityShape
         ]
       },
       std.trait_derive_shape.TargetCapabilityShapeRow {
-        shape: ReprDeriveElemKernelUnit,
+        shape: std.trait_derive_shape.ReprDeriveElemKernelUnit,
         capabilities: [
           RustDebug,
           RustClone,
@@ -72,7 +72,7 @@ fn rust_capability_shape_table() -> std.trait_derive_shape.TargetCapabilityShape
         ]
       },
       std.trait_derive_shape.TargetCapabilityShapeRow {
-        shape: ReprDeriveElemNullaryEnumCopy,
+        shape: std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy,
         capabilities: [
           RustDebug,
           RustClone,
@@ -87,7 +87,7 @@ fn rust_capability_shape_table() -> std.trait_derive_shape.TargetCapabilityShape
         ]
       },
       std.trait_derive_shape.TargetCapabilityShapeRow {
-        shape: ReprDeriveElemSymbolWrappedOrdCarrier,
+        shape: std.trait_derive_shape.ReprDeriveElemSymbolWrappedOrdCarrier,
         capabilities: [
           RustDebug,
           RustClone,
@@ -101,7 +101,7 @@ fn rust_capability_shape_table() -> std.trait_derive_shape.TargetCapabilityShape
         ]
       },
       std.trait_derive_shape.TargetCapabilityShapeRow {
-        shape: ReprDeriveElemPayloadCoproduct,
+        shape: std.trait_derive_shape.ReprDeriveElemPayloadCoproduct,
         capabilities: [
           RustDebug,
           RustClone,
@@ -113,7 +113,7 @@ fn rust_capability_shape_table() -> std.trait_derive_shape.TargetCapabilityShape
         ]
       },
       std.trait_derive_shape.TargetCapabilityShapeRow {
-        shape: ReprDeriveElemUnknown,
+        shape: std.trait_derive_shape.ReprDeriveElemUnknown,
         capabilities: []
       }
     ]

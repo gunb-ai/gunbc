@@ -80,7 +80,7 @@ fn spark_credential_kind_eq(a: SparkCredentialKind, b: SparkCredentialKind) -> B
 // honest arm. Authoring four plausible ids here would be exactly the fabrication the naming law
 // forbids: a name nobody allocated, asserted as though it referred to something.
 type SparkSecretAllocation
-  = SparkSecretAllocated { occurrence: SparkCredentialOccurrence, handle: std.types.NonEmptyStr }
+  = SparkSecretAllocated { occurrence: SparkCredentialOccurrence, handle: NonEmptyStr }
   | SparkSecretAllocationPending { occurrence: SparkCredentialOccurrence }
 
 fn spark_secret_allocation(occurrence: SparkCredentialOccurrence) -> SparkSecretAllocation {
@@ -98,7 +98,7 @@ fn spark_secret_allocation(occurrence: SparkCredentialOccurrence) -> SparkSecret
 // They are not edited or deleted from here. Retirement runs through the same convergence workflow
 // once the four correct resources exist and no consumer references these.
 type SparkLegacyContainerStanding
-  = ObservedLegacyUnbound { handle: std.types.NonEmptyStr }
+  = ObservedLegacyUnbound { handle: NonEmptyStr }
 
 data spark_legacy_hotspot_container: SparkLegacyContainerStanding = ObservedLegacyUnbound { handle: "spark-hotspot-password" }
 
@@ -207,8 +207,8 @@ fn no_principal_can_both_grant_and_read(principal: FleetCloudPrincipalKey) -> Bo
 
 type FleetCloudPrincipalAllocationStanding
   = CloudPrincipalUnallocated { principal: FleetCloudPrincipalKey }
-  | CloudPrincipalReported { principal: FleetCloudPrincipalKey, reported_member: String, source: std.types.NonEmptyStr }
-  | CloudPrincipalAllocated { principal: FleetCloudPrincipalKey, member: String, readback: std.types.NonEmptyStr }
+  | CloudPrincipalReported { principal: FleetCloudPrincipalKey, reported_member: String, source: NonEmptyStr }
+  | CloudPrincipalAllocated { principal: FleetCloudPrincipalKey, member: String, readback: NonEmptyStr }
 
 // GROUNDED 2026-08-09 by execution, not by report. A read-only GitHub OIDC -> WIF job on this
 // branch obtained a token as this service account with no key, no pasted credential and no gcloud,
@@ -272,16 +272,16 @@ fn sm_operation_eq(a: SecretManagerOperation, b: SecretManagerOperation) -> Bool
 // identity it was granted against, so a scope whose roster no longer matches the live population is
 // a detectable condition rather than a silent widening.
 type SparkRosterIdentity {
-  roster: std.types.NonEmptyStr
-  revision: std.types.NonEmptyStr
+  roster: NonEmptyStr
+  revision: NonEmptyStr
 }
 
 type AccessScopeEvolution
   = FrozenAtGrant { frozen_at: SparkRosterIdentity }
-  | TracksNamespaceMembership { roster: std.types.NonEmptyStr }
+  | TracksNamespaceMembership { roster: NonEmptyStr }
 
 type SparkCloudScope {
-  resources: List<std.types.NonEmptyStr>
+  resources: List<NonEmptyStr>
   evolution: AccessScopeEvolution
 }
 
@@ -292,14 +292,14 @@ type SparkCloudScope {
 // be about operation and resource. These are context, not evidence: they describe the request, and
 // what proves the request was really made under them is the evidence side.
 type SparkGrantApproval
-  = GrantApprovedBy { approver: std.types.NonEmptyStr, receipt: std.types.NonEmptyStr }
-  | GrantApprovalPending { requested_from: std.types.NonEmptyStr }
+  = GrantApprovedBy { approver: NonEmptyStr, receipt: NonEmptyStr }
+  | GrantApprovalPending { requested_from: NonEmptyStr }
   | GrantApprovalNotSought
 
 type SparkCloudContext {
-  workflow: std.types.NonEmptyStr
-  revision: std.types.NonEmptyStr
-  purpose: std.types.NonEmptyStr
+  workflow: NonEmptyStr
+  revision: NonEmptyStr
+  purpose: NonEmptyStr
   duration: std.measure.Second
   max_uses: Int
   approval: SparkGrantApproval
@@ -316,7 +316,7 @@ type SparkCloudGrant {
 // profile supplies the request shape and std.access the decision, so nothing about admission is
 // re-invented here -- the profile is a type application, not a parallel access system.
 type SparkCloudRequest =
-  std.authorization_profile.EffectRequest<FleetCloudPrincipalKey, SecretManagerOperation, std.types.NonEmptyStr, SparkCloudContext, WifCredentialIssuanceStanding>
+  std.authorization_profile.EffectRequest<FleetCloudPrincipalKey, SecretManagerOperation, NonEmptyStr, SparkCloudContext, WifCredentialIssuanceStanding>
 
 fn spark_cloud_request(
   grant: SparkCloudGrant,
@@ -338,8 +338,8 @@ fn spark_cloud_access_request(
   grant: SparkCloudGrant,
   cell: AccessGrantCell,
   evidence: WifCredentialIssuanceStanding
-) -> std.access.AccessRequest<FleetCloudPrincipalKey, std.authorization_profile.EffectAuthorizationAction<SecretManagerOperation>, std.types.NonEmptyStr, SparkCloudContext, WifCredentialIssuanceStanding> {
-  effect_access_request(request: spark_cloud_request(grant: grant, cell: cell, evidence: evidence))
+) -> std.access.AccessRequest<FleetCloudPrincipalKey, std.authorization_profile.EffectAuthorizationAction<SecretManagerOperation>, NonEmptyStr, SparkCloudContext, WifCredentialIssuanceStanding> {
+  std.authorization_profile.effect_access_request(request: spark_cloud_request(grant: grant, cell: cell, evidence: evidence))
 }
 
 // An exact cell: one principal, one operation, one resource. Replaces a global present/absent
@@ -347,7 +347,7 @@ fn spark_cloud_access_request(
 // bound" read as coverage while naming nothing.
 type AccessGrantCell {
   operation: SecretManagerOperation
-  resource: std.types.NonEmptyStr
+  resource: NonEmptyStr
 }
 
 type AccessGrantCellStanding
@@ -355,7 +355,7 @@ type AccessGrantCellStanding
   | GrantCellAbsent { cell: AccessGrantCell }
   | GrantCellUnobserved { cell: AccessGrantCell }
 
-fn spark_scope_admits(scope: SparkCloudScope, resource: std.types.NonEmptyStr) -> Bool {
+fn spark_scope_admits(scope: SparkCloudScope, resource: NonEmptyStr) -> Bool {
   fold(scope.resources, init: false, f: (acc, r) => acc || r == resource)
 }
 
@@ -434,7 +434,7 @@ fn spark_actuation_decision(
   grant: SparkCloudGrant,
   cell: AccessGrantCell
 ) -> std.access.AccessDecision {
-  decision_meet(
+  std.access.decision_meet(
     a: spark_principal_decision(standing: standing),
     b: spark_cloud_grant_decision(grant: grant, cell: cell))
 }
@@ -446,8 +446,8 @@ data spark_access_adapter_note: String = "This module is an ADAPTER, not an acce
 // path; the second is about a permission on a resource. Fusing them let a single run stand for
 // both, which is how "the workflow authenticated" would come to mean "the access is understood".
 type WifCredentialIssuanceStanding
-  = WifIssuanceObserved { principal: std.types.NonEmptyStr, workflow: std.types.NonEmptyStr, revision: std.types.NonEmptyStr, receipt: std.types.NonEmptyStr }
-  | WifIssuanceUnobserved { cause: std.types.NonEmptyStr }
+  = WifIssuanceObserved { principal: NonEmptyStr, workflow: NonEmptyStr, revision: NonEmptyStr, receipt: NonEmptyStr }
+  | WifIssuanceUnobserved { cause: NonEmptyStr }
 
 fn spark_wif_issuance_standing() -> WifCredentialIssuanceStanding {
   WifIssuanceObserved {
@@ -475,9 +475,9 @@ type EffectiveAccessStanding
   | EffectiveAccessPartiallyObserved {
       positively_observed: List<AccessGrantCell>
       requested_but_not_returned: List<AccessGrantCell>
-      overbreadth_unobserved_cause: std.types.NonEmptyStr
+      overbreadth_unobserved_cause: NonEmptyStr
     }
-  | EffectiveAccessUnobserved { cause: std.types.NonEmptyStr }
+  | EffectiveAccessUnobserved { cause: NonEmptyStr }
 
 // The ONE cell the run positively established. A returned permission is a real observation; it is
 // the only kind this probe produced.
@@ -577,14 +577,14 @@ data spark_convergence_shape_note: String = "observe container (Get before Creat
 
 type SparkContainerObservation
   = SparkContainerAbsent
-  | SparkContainerPresent { handle: std.types.NonEmptyStr, version_count: Int }
-  | SparkContainerUnreadable { cause: std.types.NonEmptyStr }
+  | SparkContainerPresent { handle: NonEmptyStr, version_count: Int }
+  | SparkContainerUnreadable { cause: NonEmptyStr }
 
 type SparkContainerVerdict
   = SparkContainerCreateRequired
-  | SparkContainerConverged { handle: std.types.NonEmptyStr }
-  | SparkContainerConflicted { handle: std.types.NonEmptyStr, cause: std.types.NonEmptyStr }
-  | SparkContainerRefused { cause: std.types.NonEmptyStr }
+  | SparkContainerConverged { handle: NonEmptyStr }
+  | SparkContainerConflicted { handle: NonEmptyStr, cause: NonEmptyStr }
+  | SparkContainerRefused { cause: NonEmptyStr }
 
 // A container that ALREADY carries a version is Conflicted, not Converged. Writing into it would
 // make this run's credential a SECOND version of something nobody in this run authored, and
@@ -644,15 +644,15 @@ type SparkIamDelta {
 // locally; once the same mechanism landed in extdeps.cloud.gcp.iam for the BMC callers, keeping
 // these was a second semantics for one concept -- exactly the fork this lane exists to remove.
 fn spark_condition_eq(a: extdeps.cloud.gcp.iam.IamCondition?, b: extdeps.cloud.gcp.iam.IamCondition?) -> Bool {
-  gcp_condition_eq(a: a, b: b)
+  extdeps.cloud.gcp.iam.gcp_condition_eq(a: a, b: b)
 }
 
 fn spark_cell_eq(a: extdeps.cloud.gcp.iam.GcpIamBindingCell, b: extdeps.cloud.gcp.iam.GcpIamBindingCell) -> Bool {
-  gcp_cell_eq(a: a, b: b)
+  extdeps.cloud.gcp.iam.gcp_cell_eq(a: a, b: b)
 }
 
 fn spark_cell_in(c: extdeps.cloud.gcp.iam.GcpIamBindingCell, xs: List<extdeps.cloud.gcp.iam.GcpIamBindingCell>) -> Bool {
-  gcp_cell_in(c: c, xs: xs)
+  extdeps.cloud.gcp.iam.gcp_cell_in(c: c, xs: xs)
 }
 
 // Ownership is asked at CELL grain too. A model that owns (member M, role accessor) does not
@@ -674,12 +674,12 @@ fn spark_iam_delta(
 // The etag is not politeness. Without the observed etag a concurrent update is overwritten with no
 // signal, so a write that cannot name the policy it read REFUSES rather than proceeding.
 type SparkObservedEtag
-  = SparkEtagObserved { etag: std.types.NonEmptyStr }
+  = SparkEtagObserved { etag: NonEmptyStr }
   | SparkEtagMissing
 
 type SparkIamWriteAdmission
-  = SparkIamWriteAdmitted { etag: std.types.NonEmptyStr, delta: SparkIamDelta }
-  | SparkIamWriteRefused { cause: std.types.NonEmptyStr }
+  = SparkIamWriteAdmitted { etag: NonEmptyStr, delta: SparkIamDelta }
+  | SparkIamWriteRefused { cause: NonEmptyStr }
 
 fn admit_spark_iam_write(observed_etag: SparkObservedEtag, delta: SparkIamDelta) -> SparkIamWriteAdmission {
   match observed_etag {
@@ -700,8 +700,8 @@ fn admit_spark_iam_write(observed_etag: SparkObservedEtag, delta: SparkIamDelta)
 // a value printed on the device, so there is nothing to generate and nothing to fetch it from. Its
 // only honest source is an operator observation entering through the sensitive-input boundary.
 type SparkMaterializationSource
-  = GeneratedInRun { recipe: std.types.NonEmptyStr }
-  | ObservedFromDevice { note: std.types.NonEmptyStr }
+  = GeneratedInRun { recipe: NonEmptyStr }
+  | ObservedFromDevice { note: NonEmptyStr }
 
 // A generated factory credential is a fabricated observation of physical hardware -- the value
 // would be a plausible string that is not what is printed on the device, and every downstream
@@ -709,7 +709,7 @@ type SparkMaterializationSource
 // documented.
 type SparkSourceAdmission
   = SparkSourceAdmitted { source: SparkMaterializationSource }
-  | SparkSourceRefused { cause: std.types.NonEmptyStr }
+  | SparkSourceRefused { cause: NonEmptyStr }
 
 fn admit_spark_material_source(kind: SparkCredentialKind, source: SparkMaterializationSource) -> SparkSourceAdmission {
   match kind {
@@ -725,18 +725,18 @@ fn admit_spark_material_source(kind: SparkCredentialKind, source: SparkMateriali
 
 type SparkMaterializationIdentity {
   occurrence: SparkCredentialOccurrence
-  payload_identity: std.types.NonEmptyStr
+  payload_identity: NonEmptyStr
 }
 
 type SparkReadbackVerdict
-  = SparkReadbackMatched { version: std.types.NonEmptyStr }
-  | SparkReadbackMismatched { version: std.types.NonEmptyStr }
-  | SparkReadbackUnavailable { cause: std.types.NonEmptyStr }
+  = SparkReadbackMatched { version: NonEmptyStr }
+  | SparkReadbackMismatched { version: NonEmptyStr }
+  | SparkReadbackUnavailable { cause: NonEmptyStr }
 
 type SparkMaterializationReceipt {
   identity: SparkMaterializationIdentity
-  handle: std.types.NonEmptyStr
-  exact_version: std.types.NonEmptyStr
+  handle: NonEmptyStr
+  exact_version: NonEmptyStr
   readback: SparkReadbackVerdict
 }
 
@@ -754,9 +754,9 @@ type SparkAttemptRecord
 
 type SparkMaterializationDecision
   = SparkMaterializeOnce { identity: SparkMaterializationIdentity }
-  | SparkMaterializeNoop { exact_version: std.types.NonEmptyStr }
+  | SparkMaterializeNoop { exact_version: NonEmptyStr }
   | SparkMaterializeObserveStore { identity: SparkMaterializationIdentity }
-  | SparkMaterializeRefused { cause: std.types.NonEmptyStr }
+  | SparkMaterializeRefused { cause: NonEmptyStr }
 
 // THE ONLY producer of a materialization decision. A public spark_materialize_once existed here and
 // is deleted: it let any caller mint SparkMaterializeOnce without consulting the attempt record,
@@ -792,10 +792,10 @@ fn decide_spark_materialization(record: SparkAttemptRecord) -> SparkMaterializat
 // and it is not sufficient, so admission and matching are now two operations and this one can only
 // ever yield an address.
 type SparkVersionAddressAdmission
-  = SparkVersionAddressAdmitted { version: std.types.NonEmptyStr }
-  | SparkVersionAddressRefused { cause: std.types.NonEmptyStr }
+  = SparkVersionAddressAdmitted { version: NonEmptyStr }
+  | SparkVersionAddressRefused { cause: NonEmptyStr }
 
-fn admit_spark_readback_version(version: std.types.NonEmptyStr) -> SparkVersionAddressAdmission {
+fn admit_spark_readback_version(version: NonEmptyStr) -> SparkVersionAddressAdmission {
   if (version as String) == "latest" {
     SparkVersionAddressRefused { cause: "readback named the moving alias latest rather than an exact version; it cannot witness which version this run wrote" }
   } else {
@@ -808,8 +808,8 @@ fn admit_spark_readback_version(version: std.types.NonEmptyStr) -> SparkVersionA
 // assumed, and no arm produces Matched without them agreeing.
 fn compare_spark_readback(
   address: SparkVersionAddressAdmission,
-  expected_identity: std.types.NonEmptyStr,
-  observed_identity: std.types.NonEmptyStr
+  expected_identity: NonEmptyStr,
+  observed_identity: NonEmptyStr
 ) -> SparkReadbackVerdict {
   match address {
     SparkVersionAddressRefused { cause: c } => SparkReadbackUnavailable { cause: c }
@@ -834,11 +834,11 @@ fn compare_spark_readback(
 // One cell per (selected invocation, required permission). The resource comes from the effect, so
 // it is exactly the one that effect touches.
 type ExternalAccessDemand {
-  source_effect: std.types.NonEmptyStr
+  source_effect: NonEmptyStr
   executor: FleetCloudPrincipalKey
   invocation: v2.std.operation_argv.OperationRef
-  permission: std.types.NonEmptyStr
-  resource: std.types.NonEmptyStr
+  permission: NonEmptyStr
+  resource: NonEmptyStr
   context: SparkCloudContext
 }
 
@@ -849,7 +849,7 @@ data no_access_demand: List<ExternalAccessDemand> = []
 // with a step a reader can find, rather than leaving the cell to be justified by the roster it
 // came from.
 type SelectedSparkEffect {
-  step: std.types.NonEmptyStr
+  step: NonEmptyStr
   effect: extdeps.cloud.gcp.secret_manager.SecretManagerEffect
 }
 
@@ -858,17 +858,17 @@ type SelectedSparkEffect {
 // grant at all, which is the fail-open an empty list quietly performs.
 type DemandProjection
   = DemandDerived { cells: List<ExternalAccessDemand> }
-  | DemandIncomplete { step: std.types.NonEmptyStr, operation: v2.std.operation_argv.OperationRef, cause: std.types.NonEmptyStr }
+  | DemandIncomplete { step: NonEmptyStr, operation: v2.std.operation_argv.OperationRef, cause: NonEmptyStr }
 
 fn spark_demand_for_selected(
   selected: SelectedSparkEffect,
   executor: FleetCloudPrincipalKey,
   context: SparkCloudContext
 ) -> DemandProjection {
-  let op = secret_manager_effect_operation(e: selected.effect)
-  let perms = secret_manager_effect_required_permissions(e: selected.effect)
+  let op = extdeps.cloud.gcp.secret_manager.secret_manager_effect_operation(e: selected.effect)
+  let perms = extdeps.cloud.gcp.secret_manager.secret_manager_effect_required_permissions(e: selected.effect)
   if count(perms) == 0 {
-    gunbc.spark.bootstrap_provision.DemandIncomplete {
+    DemandIncomplete {
       step: selected.step,
       operation: op,
       cause: "no extdeps permission mapping for this operation; actuation is blocked rather than admitted with an empty requirement"
@@ -880,8 +880,8 @@ fn spark_demand_for_selected(
           source_effect: selected.step,
           executor: executor,
           invocation: op,
-          permission: p as std.types.NonEmptyStr,
-          resource: secret_manager_effect_resource(e: selected.effect),
+          permission: p as NonEmptyStr,
+          resource: extdeps.cloud.gcp.secret_manager.secret_manager_effect_resource(e: selected.effect),
           context: context
         }))
     }
@@ -898,10 +898,10 @@ fn spark_plan_demand(
 ) -> DemandProjection {
   fold(selected, init: DemandDerived { cells: no_access_demand }, f: (acc, sel) =>
     match acc {
-      DemandIncomplete { step: st, operation: o, cause: c } => gunbc.spark.bootstrap_provision.DemandIncomplete { step: st, operation: o, cause: c }
+      DemandIncomplete { step: st, operation: o, cause: c } => DemandIncomplete { step: st, operation: o, cause: c }
       DemandDerived { cells: got } =>
         match spark_demand_for_selected(selected: sel, executor: executor, context: context) {
-          DemandIncomplete { step: st, operation: o, cause: c } => gunbc.spark.bootstrap_provision.DemandIncomplete { step: st, operation: o, cause: c }
+          DemandIncomplete { step: st, operation: o, cause: c } => DemandIncomplete { step: st, operation: o, cause: c }
           DemandDerived { cells: more } =>
             DemandDerived { cells: fold(more, init: got, f: (inner, c) => inner |> list_push(c)) }
         }
@@ -1015,15 +1015,15 @@ fn principal_role_admits_operation_ref(principal: FleetCloudPrincipalKey, op: v2
 // no routine grant -- it is retained for recovery, retired, or unobserved, and each of those is a
 // different standing with a different remedy.
 type SecretConsumer {
-  consumer: std.types.NonEmptyStr
+  consumer: NonEmptyStr
   operation: v2.std.operation_argv.OperationRef
 }
 
 type SecretDemandStanding
-  = SecretDemandActive { secret: std.types.NonEmptyStr, consumers: List<SecretConsumer> }
-  | SecretDemandRetainedForRecovery { secret: std.types.NonEmptyStr, recovery_consumer: std.types.NonEmptyStr }
-  | SecretDemandRetiredAfterOobe { secret: std.types.NonEmptyStr, reason: std.types.NonEmptyStr }
-  | SecretDemandUnobserved { secret: std.types.NonEmptyStr, cause: std.types.NonEmptyStr }
+  = SecretDemandActive { secret: NonEmptyStr, consumers: List<SecretConsumer> }
+  | SecretDemandRetainedForRecovery { secret: NonEmptyStr, recovery_consumer: NonEmptyStr }
+  | SecretDemandRetiredAfterOobe { secret: NonEmptyStr, reason: NonEmptyStr }
+  | SecretDemandUnobserved { secret: NonEmptyStr, cause: NonEmptyStr }
 
 // Only an ACTIVE standing yields routine access demand. Retained-for-recovery is deliberately not
 // active: a recovery credential is reachable by an explicit recovery workflow, not by the standing
@@ -1055,7 +1055,7 @@ data spark_secret_demand_note: String = "Demand is derived from named consumers 
 // out-of-band human step the workflow path exists to eliminate. Stated as a consequence, that
 // upgrade is visibly a change to the OBSERVATION -- it requires granting privilege first.
 type HostPrivilegeObservation {
-  host: std.types.NonEmptyStr
+  host: NonEmptyStr
   passwordless_sudo: Bool
   container_socket_admits_principal: Bool
 }
@@ -1065,10 +1065,10 @@ type HostPrivilegeObservation {
 // different states with different remedies -- collapsing them would let an unmeasured host default
 // into user scope and read as derived when nothing was observed.
 type ServiceInstallScope
-  = SystemUnitScope { host: std.types.NonEmptyStr }
-  | ContainerScope { host: std.types.NonEmptyStr }
-  | UserUnitScope { host: std.types.NonEmptyStr, ground: std.types.NonEmptyStr }
-  | InstallScopeUnobserved { host: std.types.NonEmptyStr, cause: std.types.NonEmptyStr }
+  = SystemUnitScope { host: NonEmptyStr }
+  | ContainerScope { host: NonEmptyStr }
+  | UserUnitScope { host: NonEmptyStr, ground: NonEmptyStr }
+  | InstallScopeUnobserved { host: NonEmptyStr, cause: NonEmptyStr }
 
 fn derive_install_scope(observation: HostPrivilegeObservation) -> ServiceInstallScope {
   if observation.passwordless_sudo {
@@ -1079,7 +1079,7 @@ fn derive_install_scope(observation: HostPrivilegeObservation) -> ServiceInstall
     } else {
       UserUnitScope {
         host: observation.host,
-        ground: "passwordless sudo refused and container socket refused the admitted principal; both closures share one cause, so user scope is what remains" as std.types.NonEmptyStr,
+        ground: "passwordless sudo refused and container socket refused the admitted principal; both closures share one cause, so user scope is what remains" as NonEmptyStr,
       }
     }
   }
@@ -1090,7 +1090,7 @@ fn derive_install_scope(observation: HostPrivilegeObservation) -> ServiceInstall
 // scope from the same function, which is the point of deriving rather than declaring.
 fn srv5_privilege_observation() -> HostPrivilegeObservation {
   HostPrivilegeObservation {
-    host: "srv5" as std.types.NonEmptyStr,
+    host: "srv5" as NonEmptyStr,
     passwordless_sudo: false,
     container_socket_admits_principal: false,
   }

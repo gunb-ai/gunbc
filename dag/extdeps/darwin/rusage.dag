@@ -3,23 +3,23 @@ module extdeps.darwin.rusage
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/getrusage.2.html"
   }
 }
 
 data darwin_maxrss_unit_note: String = "Darwin answers the unit POSIX leaves open differently from Linux: ru_maxrss is the maximum resident set size in BYTES, inherited from the BSD lineage. CORROBORATED BY EXECUTION on the operator's macOS 15 machine rather than read off the manual alone (2026-08-05): getrusage(RUSAGE_SELF).ru_maxrss returned 15417344 for a bare python3 interpreter. Read as bytes that is 14.7 MiB, which is an ordinary interpreter footprint; read as kibibytes it would be 14.7 GiB, which is absurd on a 16 GiB machine and would have been caught by nothing. The discriminating check was the magnitude, and it is recorded because the two readings differ by 1024x in the direction that looks survivable.\n\nWHY THIS MATTERS BEYOND TIDINESS: the same divergence is what makes a single hardwired transport unsafe. A portable getrusage call that assumed one unit would silently mis-scale every peak-residency fact on half the fleet — and peak residency is exactly the input the memory governor sizes admission against."
 
-data darwin_rusage_maxrss_unit: extdeps.posix.rusage.RusageMaxrssUnit = MaxrssBytes
+data darwin_rusage_maxrss_unit: extdeps.posix.rusage.RusageMaxrssUnit = extdeps.posix.rusage.MaxrssBytes
 
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
   subject: extdeps.external_authority.ExternalSubjectRef {
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.darwin.rusage",
       decl_name: "darwin_rusage_maxrss_unit",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.darwin.rusage.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

@@ -68,8 +68,8 @@ fn sugar_key_matches(key: SugarKey, rule_key: SugarKey) -> Bool {
 fn sugar_rule_for_key(key: SugarKey) -> SugarRule? {
   fold(sugar_rules(), init: no_sugar_rule(), f: fn(acc, rule) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
+      v2.std.collection.Present { value: _ } => acc
+      v2.std.collection.Absent =>
         if sugar_key_matches(key: key, rule_key: rule.key) {
           v2.std.optional.optional_present(value: rule)
         } else {
@@ -83,7 +83,7 @@ fn sugar_malformed_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnost
   v2.std.diagnostic.Diagnostic {
     reason: ^sugar_reason_malformed,
     at: v2.std.diagnostic.node_locus(node: n),
-    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.UserInputBoundary }
+    correction: Unavailable { reason: v2.std.diagnostic.UserInputBoundary }
   }
 }
 
@@ -98,13 +98,13 @@ fn sugar_type_node(connective: v2.std.node.Connective, children: List<v2.std.nod
 fn sugar_positional_unwrap_child(children: List<v2.std.node.Edge>) -> v2.std.node.Node? {
   if count(children) == 1 {
     match children |> first {
-      Present { value: e0 } =>
+      v2.std.collection.Present { value: e0 } =>
         if v2.std.node.is_positional(e: e0) {
           v2.std.optional.optional_present(value: e0.target)
         } else {
           v2.std.optional.optional_absent()
         }
-      Absent => v2.std.optional.optional_absent()
+      v2.std.collection.Absent => v2.std.optional.optional_absent()
     }
   } else {
     v2.std.optional.optional_absent()
@@ -113,8 +113,8 @@ fn sugar_positional_unwrap_child(children: List<v2.std.node.Edge>) -> v2.std.nod
 
 fn sugar_named_child_optional(root: v2.std.node.Node, name: v2.std.node.Symbol) -> v2.std.node.Node? {
   match v2.std.node_query.find_named_child(root: root, name: name) {
-    Accepted { value: child, diagnostics: _ } => v2.std.optional.optional_present(value: child)
-    Rejected { diagnostics: _ } => v2.std.optional.optional_absent()
+    v2.std.diagnostic.Accepted { value: child, diagnostics: _ } => v2.std.optional.optional_present(value: child)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.optional_absent()
   }
 }
 
@@ -125,20 +125,20 @@ type SugarSequencePair {
 
 fn sugar_sequence_pair_optional(node: v2.std.node.Node) -> SugarSequencePair? {
   match sugar_named_child_optional(root: node, name: ^grammar_sequence_left_node_projection) {
-    Present { value: left } =>
+    v2.std.collection.Present { value: left } =>
       match sugar_named_child_optional(root: node, name: ^grammar_sequence_right_node_projection) {
-        Present { value: right } =>
+        v2.std.collection.Present { value: right } =>
           v2.std.optional.optional_present(value: SugarSequencePair { left: left, right: right })
-        Absent => v2.std.optional.optional_absent()
+        v2.std.collection.Absent => v2.std.optional.optional_absent()
       }
-    Absent => v2.std.optional.optional_absent()
+    v2.std.collection.Absent => v2.std.optional.optional_absent()
   }
 }
 
 fn sugar_pipe_sequence_variant_optional(node: v2.std.node.Node) -> v2.std.node.Node? {
   match sugar_sequence_pair_optional(node: node) {
-    Present { value: pair } => v2.std.optional.optional_present(value: pair.right)
-    Absent => v2.std.optional.optional_present(value: node)
+    v2.std.collection.Present { value: pair } => v2.std.optional.optional_present(value: pair.right)
+    v2.std.collection.Absent => v2.std.optional.optional_present(value: node)
   }
 }
 
@@ -147,24 +147,24 @@ fn sugar_collect_pipe_chain_variants(spine: v2.std.node.Node) -> std.algebra.Fre
     std.algebra.Empty
   } else {
     match sugar_sequence_pair_optional(node: spine) {
-      Present { value: pair } =>
+      v2.std.collection.Present { value: pair } =>
         match sugar_pipe_sequence_variant_optional(node: pair.left) {
-          Present { value: variant } =>
+          v2.std.collection.Present { value: variant } =>
             v2.std.algebra.list_snoc_item(
               xs: sugar_collect_pipe_chain_variants(spine: pair.right),
               item: variant
             )
-          Absent => sugar_collect_pipe_chain_variants(spine: pair.right)
+          v2.std.collection.Absent => sugar_collect_pipe_chain_variants(spine: pair.right)
         }
-      Absent => std.algebra.Empty
+      v2.std.collection.Absent => std.algebra.Empty
     }
   }
 }
 
 fn sugar_all_coproduct_variants(captured: v2.std.node.Node) -> std.algebra.FreeMonoid<v2.std.node.Node> {
   match sugar_sequence_pair_optional(node: captured) {
-    Absent => std.algebra.Empty
-    Present { value: pair } =>
+    v2.std.collection.Absent => std.algebra.Empty
+    v2.std.collection.Present { value: pair } =>
       v2.std.algebra.list_append(
         left: std.algebra.Cons { head: pair.left, tail: std.algebra.Empty },
         right: sugar_collect_pipe_chain_variants(spine: pair.right)
@@ -174,23 +174,23 @@ fn sugar_all_coproduct_variants(captured: v2.std.node.Node) -> std.algebra.FreeM
 
 fn sugar_unwrap_production_shell(node: v2.std.node.Node) -> v2.std.node.Node {
   match sugar_named_child_optional(root: node, name: ^grammar_production_captured_node_projection) {
-    Present { value: captured } => sugar_unwrap_production_shell(node: captured)
-    Absent => node
+    v2.std.collection.Present { value: captured } => sugar_unwrap_production_shell(node: captured)
+    v2.std.collection.Absent => node
   }
 }
 
 fn sugar_first_atom_identity_optional(node: v2.std.node.Node) -> v2.std.node.Symbol? {
   let stripped = sugar_unwrap_production_shell(node: node)
   match v2.std.grammar.node_atom_identity_optional(node: stripped) {
-    Present { value: sym } => v2.std.optional.optional_present(value: sym)
-    Absent =>
+    v2.std.collection.Present { value: sym } => v2.std.optional.optional_present(value: sym)
+    v2.std.collection.Absent =>
       fold(
         stripped.children,
         init: v2.std.optional.optional_absent(),
         f: fn(acc, e) {
           match acc {
-            Present { value: _ } => acc
-            Absent => sugar_first_atom_identity_optional(node: e.target)
+            v2.std.collection.Present { value: _ } => acc
+            v2.std.collection.Absent => sugar_first_atom_identity_optional(node: e.target)
           }
         }
       )
@@ -200,12 +200,12 @@ fn sugar_first_atom_identity_optional(node: v2.std.node.Node) -> v2.std.node.Sym
 fn sugar_variant_to_disj_edge(variant_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Edge> {
   let variant = sugar_unwrap_production_shell(node: variant_node)
   match sugar_first_atom_identity_optional(node: variant) {
-    Present { value: name } =>
+    v2.std.collection.Present { value: name } =>
       v2.std.diagnostic.Accepted {
         value: v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: variant },
         diagnostics: v2.std.diagnostic.None
       }
-    Absent =>
+    v2.std.collection.Absent =>
       v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: sugar_malformed_diagnostic(n: variant_node)) }
   }
 }
@@ -230,7 +230,7 @@ fn sugar_fold_coproduct_pipe_chain(captured: v2.std.node.Node, shell: v2.std.nod
     v2.std.diagnostic.Accepted { value: captured, diagnostics: v2.std.diagnostic.None }
   } else {
     match sugar_variants_to_disj_edges(variants: variants) {
-      Accepted { value: edges, diagnostics: d } =>
+      v2.std.diagnostic.Accepted { value: edges, diagnostics: d } =>
         if v2.std.node.edges_conform(children: edges, d: v2.std.node.LabeledEdges) {
           v2.std.diagnostic.Accepted {
             value: sugar_type_node(connective: v2.std.node.Disj, children: edges, n: shell),
@@ -239,7 +239,7 @@ fn sugar_fold_coproduct_pipe_chain(captured: v2.std.node.Node, shell: v2.std.nod
         } else {
           v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
         }
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   }
 }
@@ -257,25 +257,25 @@ fn apply_sugar(rule: SugarRule, n: v2.std.node.Node, folded: v2.std.node.Node) -
       }
     SugarUnwrapPositionalChild {} =>
       match sugar_positional_unwrap_child(children: folded.children) {
-        Present { value: child } =>
+        v2.std.collection.Present { value: child } =>
           v2.std.diagnostic.Accepted { value: child, diagnostics: v2.std.diagnostic.None }
-        Absent =>
+        v2.std.collection.Absent =>
           v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
       }
     SugarFoldCoproductPipeChain {} =>
       match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
-        Present { value: captured } =>
+        v2.std.collection.Present { value: captured } =>
           match sugar_fold_coproduct_pipe_chain(captured: captured, shell: n) {
-            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-            Accepted { value: result, diagnostics: d } =>
+            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            v2.std.diagnostic.Accepted { value: result, diagnostics: d } =>
               match result.kind {
-                TypeNode { connective: v2.std.node.Disj } =>
+                v2.std.node.TypeNode { connective: v2.std.node.Disj } =>
                   v2.std.diagnostic.Accepted { value: result, diagnostics: d }
                 _ =>
                   v2.std.diagnostic.Accepted { value: folded, diagnostics: v2.std.diagnostic.None }
               }
           }
-        Absent =>
+        v2.std.collection.Absent =>
           v2.std.diagnostic.Accepted { value: folded, diagnostics: v2.std.diagnostic.None }
       }
   }

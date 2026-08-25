@@ -1,8 +1,10 @@
 module extdeps.pricing.ubicloud
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.ubicloud.com/docs/about/pricing"
   }
 }
@@ -12,48 +14,48 @@ data ubicloud_pricing_provenance_note: String = "Per-minute managed-runner price
 type UbicloudRunnerPricingTier = PremiumX64 | Arm64
 
 type UbicloudRunnerPriceRow {
-  catalog: UbicloudRunnerCatalogRow
+  catalog: extdeps.cloud.ubicloud.UbicloudRunnerCatalogRow
   tier: UbicloudRunnerPricingTier
-  per_minute: MoneyPerMinute
-  pricing_citation: NonEmptyStr
+  per_minute: std.measure.MoneyPerMinute
+  pricing_citation: std.types.NonEmptyStr
 }
 
 data ubicloud_premium_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
-  catalog: ubicloud_standard_2_catalog,
+  catalog: extdeps.cloud.ubicloud.ubicloud_standard_2_catalog,
   tier: PremiumX64,
-  per_minute: MoneyPerMinute {
-    amount: money_amount_micro(count: 2000),
-    currency: Usd,
+  per_minute: std.measure.MoneyPerMinute {
+    amount: std.measure.money_amount_micro(count: 2000),
+    currency: std.currency.Usd,
   },
   pricing_citation: "ubicloud-pricing#premium-x64/ubicloud-standard-2",
 }
 
 data ubicloud_premium_standard_16_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
-  catalog: ubicloud_standard_16_catalog,
+  catalog: extdeps.cloud.ubicloud.ubicloud_standard_16_catalog,
   tier: PremiumX64,
-  per_minute: MoneyPerMinute {
-    amount: money_amount_micro(count: 16000),
-    currency: Usd,
+  per_minute: std.measure.MoneyPerMinute {
+    amount: std.measure.money_amount_micro(count: 16000),
+    currency: std.currency.Usd,
   },
   pricing_citation: "ubicloud-pricing#premium-x64/ubicloud-standard-16",
 }
 
 data ubicloud_arm_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
-  catalog: ubicloud_standard_2_arm_catalog,
+  catalog: extdeps.cloud.ubicloud.ubicloud_standard_2_arm_catalog,
   tier: Arm64,
-  per_minute: MoneyPerMinute {
-    amount: money_amount_micro(count: 1250),
-    currency: Usd,
+  per_minute: std.measure.MoneyPerMinute {
+    amount: std.measure.money_amount_micro(count: 1250),
+    currency: std.currency.Usd,
   },
   pricing_citation: "ubicloud-pricing#arm64/ubicloud-standard-2-arm",
 }
 
 data ubicloud_arm_standard_16_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
-  catalog: ubicloud_standard_16_arm_catalog,
+  catalog: extdeps.cloud.ubicloud.ubicloud_standard_16_arm_catalog,
   tier: Arm64,
-  per_minute: MoneyPerMinute {
-    amount: money_amount_micro(count: 10000),
-    currency: Usd,
+  per_minute: std.measure.MoneyPerMinute {
+    amount: std.measure.money_amount_micro(count: 10000),
+    currency: std.currency.Usd,
   },
   pricing_citation: "ubicloud-pricing#arm64/ubicloud-standard-16-arm",
 }

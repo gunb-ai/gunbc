@@ -1,16 +1,18 @@
 module extdeps.storage.nbd
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
+
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https,
     locator: "manpages.debian.org/bookworm/nbd-server/nbd-server.5.en.html",
   }
 }
 
 type NbdExport {
-  export_name: NonEmptyStr
-  backing_path: NonEmptyStr
-  port: Port
+  export_name: std.types.NonEmptyStr
+  backing_path: std.types.NonEmptyStr
+  port: std.types.Port
   read_only: Bool
 }
 
@@ -23,8 +25,8 @@ type NbdExport {
 // `nbd_server_config_text` is deleted rather than edited. The trigger names that
 // declaration, so the obligation is answered by the corpus rather than by reading this
 // paragraph.
-data nbd_server_config_render_dissolution_trigger: DissolutionCondition = retires_dissolution(
-  ref: decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_server_config_text")
+data nbd_server_config_render_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.retires_dissolution(
+  ref: std.decl_ref.decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_server_config_text")
 )
 
 fn nbd_bool_word(b: Bool) -> String {
@@ -52,22 +54,22 @@ fn nbd_server_config_text(export: NbdExport) -> String {
 // This repository has read neither filesystem. An absolute path for either would be a guess whose
 // failure mode is a hard spawn error on hardware nobody is watching, so the spelling stays exactly
 // what the call sites used before this conversion and the not-knowing stays visible.
-data nbd_server_program: NonEmptyStr = "nbd-server"
-data nbd_client_program: NonEmptyStr = "nbd-client"
+data nbd_server_program: std.types.NonEmptyStr = "nbd-server"
+data nbd_client_program: std.types.NonEmptyStr = "nbd-client"
 
-fn nbd_server_command(config_path: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: nbd_server_program, arguments: ["-C", config_path as String])
+fn nbd_server_command(config_path: std.types.NonEmptyStr) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(program: nbd_server_program, arguments: ["-C", config_path as String])
 }
 
 type NbdClientAttach {
-  server: NonEmptyStr
-  port: Port
-  export_name: NonEmptyStr
-  device: NonEmptyStr
+  server: std.types.NonEmptyStr
+  port: std.types.Port
+  export_name: std.types.NonEmptyStr
+  device: std.types.NonEmptyStr
 }
 
-fn nbd_client_attach_command(attach: NbdClientAttach) -> ArgvCommand {
-  argv_command(
+fn nbd_client_attach_command(attach: NbdClientAttach) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(
     program: nbd_client_program,
     arguments: [
       "-N", attach.export_name as String,
@@ -78,6 +80,6 @@ fn nbd_client_attach_command(attach: NbdClientAttach) -> ArgvCommand {
   )
 }
 
-fn nbd_client_disconnect_command(device: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: nbd_client_program, arguments: ["-d", device as String])
+fn nbd_client_disconnect_command(device: std.types.NonEmptyStr) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(program: nbd_client_program, arguments: ["-d", device as String])
 }

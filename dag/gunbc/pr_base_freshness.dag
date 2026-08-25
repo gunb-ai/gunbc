@@ -124,9 +124,9 @@ fn base_freshness_label(f: BaseFreshness) -> String {
 // A MERGE COMMIT'S FIRST PARENT IS THE BASE IT WAS MERGED INTO. `Absent` is not a formality: a
 // commit with no parents is a root commit, which is a real object and simply not a test-merge, so
 // the caller gets a state it must decide about rather than a fabricated sha.
-fn first_parent(parents: List<CommitParentRef>) -> std.types.CommitSha? {
+fn first_parent(parents: List<extdeps.github.commits.CommitParentRef>) -> std.types.CommitSha? {
   match parents {
-    std.algebra.Cons { head, tail: _ } => Present { value: head.sha }
+    Cons { head, tail: _ } => Present { value: head.sha }
     Empty {} => Absent {}
   }
 }
@@ -167,7 +167,7 @@ fn tested_base_provenance_from_timestamps(
 // pull request as current.
 fn classify_base_freshness(
   provenance: TestedBaseProvenance,
-  status: ComparisonStatus,
+  status: extdeps.github.commits.ComparisonStatus,
   ahead_by: Int,
 ) -> BaseFreshness {
   match provenance {
@@ -175,10 +175,10 @@ fn classify_base_freshness(
       BaseUnknown { reason: MergeRefRecomputed { observed_base: observed_base } }
     TestedBaseRecovered { base: _ } =>
       match status {
-        Identical => BaseAtTarget
-        Ahead => BaseBehind { commits: ahead_by }
-        Behind => BaseAheadOfTarget
-        Diverged => BaseDiverged
+        extdeps.github.commits.Identical => BaseAtTarget
+        extdeps.github.commits.Ahead => BaseBehind { commits: ahead_by }
+        extdeps.github.commits.Behind => BaseAheadOfTarget
+        extdeps.github.commits.Diverged => BaseDiverged
       }
   }
 }
@@ -207,11 +207,11 @@ fn pull_request_run_started_at(owner: String, repo: String, head_sha: std.types.
   let runs = github.WorkflowRuns.ListForRef(
     auth_token: "",
     owner: owner,
-    repo: gunbc.tools.review_codex.repo,
+    repo: repo,
     head_sha: head_sha,
   )
   match runs.runs.workflow_runs {
-    std.algebra.Cons { head, tail: _ } => Present { value: head.created_at }
+    Cons { head, tail: _ } => Present { value: head.created_at }
     Empty {} => Absent {}
   }
 }
@@ -230,10 +230,10 @@ fn observe_pull_request_base_freshness(
   let pr = github.Pulls.Get(
     auth_token: "",
     owner: owner,
-    repo: gunbc.tools.review_codex.repo,
+    repo: repo,
     pull_number: pull_number,
   )
-  match pull_request_run_started_at(owner: owner, repo: gunbc.tools.review_codex.repo, head_sha: pr.pr.head.sha) {
+  match pull_request_run_started_at(owner: owner, repo: repo, head_sha: pr.pr.head.sha) {
     Absent {} => BaseUnknown { reason: NoRunForHead }
     Present { value: run_started_at } =>
   match pr.pr.merge_commit_sha {
@@ -242,7 +242,7 @@ fn observe_pull_request_base_freshness(
       let detail = github.Commits.Get(
         auth_token: "",
         owner: owner,
-        repo: gunbc.tools.review_codex.repo,
+        repo: repo,
         ref: merge_commit as String,
       )
       match first_parent(parents: detail.detail.parents) {
@@ -251,10 +251,10 @@ fn observe_pull_request_base_freshness(
           let comparison = github.Commits.Compare(
             auth_token: "",
             owner: owner,
-            repo: gunbc.tools.review_codex.repo,
+            repo: repo,
             basehead: join([tested_base as String, "...", merge_target as String], ""),
           )
-          match parse_comparison_status(raw: comparison.comparison.status) {
+          match extdeps.github.commits.parse_comparison_status(raw: comparison.comparison.status) {
             Absent {} =>
               BaseUnknown {
                 reason: UnrecognizedComparisonStatus { raw: comparison.comparison.status }
@@ -303,12 +303,12 @@ fn main(
 ) -> std.process.ProcessExit {
   let freshness = observe_pull_request_base_freshness(
     owner: owner,
-    repo: gunbc.tools.review_codex.repo,
+    repo: repo,
     pull_number: pull_number,
     merge_target: merge_target as std.types.CommitSha,
   )
   match freshness {
-    BaseAtTarget => ExitSuccess
+    BaseAtTarget => std.process.ExitSuccess
     BaseBehind { commits: _ } => merge_target_failure(f: freshness, merge_target: merge_target)
     BaseAheadOfTarget => merge_target_failure(f: freshness, merge_target: merge_target)
     BaseDiverged => merge_target_failure(f: freshness, merge_target: merge_target)

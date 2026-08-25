@@ -121,8 +121,8 @@ fn scan_checkout_status_field(acc: CheckoutStatusScan, field: String) -> Checkou
       CheckoutStatusScan {
         staged: acc.staged,
         tracked: acc.tracked,
-        untracked: if path_is_deployed(path: path) {
-          v2.std.algebra.list_append(acc.untracked, [path])
+        untracked: if gunbc.live_deploy.deployed_tree_scope.path_is_deployed(path: path) {
+          list_append(acc.untracked, [path])
         } else {
           acc.untracked
         },
@@ -131,8 +131,8 @@ fn scan_checkout_status_field(acc: CheckoutStatusScan, field: String) -> Checkou
       }
     } else {
       CheckoutStatusScan {
-        staged: if x != " " { v2.std.algebra.list_append(acc.staged, [path]) } else { acc.staged },
-        tracked: if y != " " { v2.std.algebra.list_append(acc.tracked, [path]) } else { acc.tracked },
+        staged: if x != " " { list_append(acc.staged, [path]) } else { acc.staged },
+        tracked: if y != " " { list_append(acc.tracked, [path]) } else { acc.tracked },
         untracked: acc.untracked,
         expect_rename_source: x == "R" || x == "C",
         malformed: acc.malformed,
@@ -160,13 +160,13 @@ fn scan_ignored_deployed_paths(paths_nul: String) -> List<String> {
     split(s: paths_nul, delimiter: from_code_point(0)),
     init: [],
     f: (acc, path) =>
-      if path != "" && path_is_deployed(path: path) { v2.std.algebra.list_append(acc, [path]) } else { acc },
+      if path != "" && gunbc.live_deploy.deployed_tree_scope.path_is_deployed(path: path) { list_append(acc, [path]) } else { acc },
   )
 }
 
 fn observe_candidate_checkout() -> CandidateCheckoutObservation {
-  let status = git.Inspect.WorkingTreeStatus(expect: ExpectSuccess)
-  let ignored = git.Inspect.IgnoredFiles(expect: ExpectSuccess)
+  let status = git.Inspect.WorkingTreeStatus(expect: gunbc.output_policy.ExpectSuccess)
+  let ignored = git.Inspect.IgnoredFiles(expect: gunbc.output_policy.ExpectSuccess)
   if !status.success {
     CandidateCheckoutUnobservable {
       detail: join(["git status did not answer for the deploying checkout: ", status.stderr], ""),
@@ -203,12 +203,12 @@ fn observe_candidate_checkout() -> CandidateCheckoutObservation {
 }
 
 fn observe_candidate_release() -> CandidateObservation {
-  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  let head = git.Inspect.HeadCommit(expect: gunbc.output_policy.ExpectSuccess)
   if !head.success {
     CandidateUnobservable { cause: CandidateHeadCommitRefused }
   } else if (head.sha as String) == "" {
     CandidateUnobservable { cause: CandidateRevisionEmpty }
-  } else if !release_revision_text_valid(text: head.sha as String) {
+  } else if !gunbc.running_release_identity.release_revision_text_valid(text: head.sha as String) {
     CandidateUnobservable { cause: CandidateRevisionMalformed { text: head.sha as String } }
   } else {
     match observe_candidate_checkout() {
@@ -232,7 +232,7 @@ fn observe_candidate_release() -> CandidateObservation {
         CandidateObserved {
           candidate: CandidateRelease {
             revision: head.sha,
-            expected_surface_identity: materialize_live_roadmap_site_surface_bundle().bundle_identity,
+            expected_surface_identity: gunbc.roadmap_site_surface_observe.materialize_live_roadmap_site_surface_bundle().bundle_identity,
           },
         }
     }
@@ -282,8 +282,8 @@ fn candidate_release_matches_identity(
   candidate: CandidateRelease,
   identity: gunbc.running_release_identity.RunningReleaseIdentity,
 ) -> Bool {
-  running_release_revision_equals(identity: identity, expected: candidate.revision)
-    && running_release_surface_equals(identity: identity, expected: candidate.expected_surface_identity)
+  gunbc.running_release_identity.running_release_revision_equals(identity: identity, expected: candidate.revision)
+    && gunbc.running_release_identity.running_release_surface_equals(identity: identity, expected: candidate.expected_surface_identity)
 }
 
 data candidate_release_matches_identity_note: String = "THE CONJUNCTION EXISTS AS A CONVENIENCE FOR CALLERS THAT NEED BOTH, AND IT IS DELIBERATELY NOT THE ONLY SURFACE. running_release_revision_equals and running_release_surface_equals stay separately callable because a deploy must be able to say WHICH half failed — right revision with a stale surface means the graph did not rebind, right surface at an unexpected revision means another candidate won the route, and the two have different remedies. Consumers that must locate the failure call the halves and construct a typed cause; only a consumer that genuinely needs the single 'is this the release I admitted' bit calls this."

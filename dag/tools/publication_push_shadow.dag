@@ -28,7 +28,7 @@ fn shadow_push_admission(
   current: gunbc.public_projection.PublicProjectionPlan?,
   observed: ObservedPublicPush,
 ) -> tools.publication_publisher.PublicWriteAdmission {
-  admit_public_write(
+  tools.publication_publisher.admit_public_write(
     session: observed.session,
     current: current,
     candidate: observed.candidate,
@@ -43,13 +43,13 @@ fn shadow_push_ledger_entry(
 ) -> ShadowPushLedgerEntry {
   let admission = shadow_push_admission(current: current, observed: observed)
   match admission {
-    PublicWriteAdmitted { authority: _ } =>
+    tools.publication_publisher.PublicWriteAdmitted { authority: _ } =>
       ShadowPushWouldAdmit {
         session: observed.session,
         head: observed.head,
         push: observed.push,
       }
-    PublicWriteRefused { session: session, cause: cause } =>
+    tools.publication_publisher.PublicWriteRefused { session: session, cause: cause } =>
       ShadowPushWouldRefuse {
         session: session,
         head: observed.head,
@@ -83,16 +83,16 @@ fn shadow_would_refuse_ordinary_session(
     ShadowPushWouldAdmit { session: _, head: _, push: _ } => false
     ShadowPushWouldRefuse { session: _, head: _, push: _, admission: admission } =>
       match admission {
-        PublicWriteRefused { session: _, cause: cause } =>
+        tools.publication_publisher.PublicWriteRefused { session: _, cause: cause } =>
           match cause {
-            NotTheSolePublisher { session: _, sole_publisher: _ } => true
-            ProjectionNotAdmitted { session: _, detail: _ } => false
-            DecisionReceiptMissing { session: _, subject_identity: _ } => false
-            DecisionReceiptNotAuthorizing { session: _, subject_identity: _, detail: _ } => false
-            UnauthorizedPublicPush { session: _, local_ref: _, local_sha: _, detail: _ } => false
-            NoPushedRefsPresented { session: _ } => false
+            tools.publication_publisher.NotTheSolePublisher { session: _, sole_publisher: _ } => true
+            tools.publication_publisher.ProjectionNotAdmitted { session: _, detail: _ } => false
+            tools.publication_publisher.DecisionReceiptMissing { session: _, subject_identity: _ } => false
+            tools.publication_publisher.DecisionReceiptNotAuthorizing { session: _, subject_identity: _, detail: _ } => false
+            tools.publication_publisher.UnauthorizedPublicPush { session: _, local_ref: _, local_sha: _, detail: _ } => false
+            tools.publication_publisher.NoPushedRefsPresented { session: _ } => false
           }
-        PublicWriteAdmitted { authority: _ } => false
+        tools.publication_publisher.PublicWriteAdmitted { authority: _ } => false
       }
   }
 }

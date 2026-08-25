@@ -4,7 +4,7 @@ module extdeps.boards.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Motherboard"
   }
 }
@@ -14,7 +14,7 @@ type BaseboardModel = | AsrockRackAltrad8ud1l2t
 type BaseboardCatalogRow {
   model: BaseboardModel
   model_label: std.types.NonEmptyStr
-  vendor: Vendor<extdeps.hardware.Hardware>
+  vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   bmc_firmware: std.bmc.BmcFirmwareFamily
 }
 

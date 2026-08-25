@@ -1,5 +1,6 @@
 module v2.workflow.floor2_prepared_subject
 
+
 // FLOOR2 — the floor as ONE prepared subject and N claims against it, modeled
 // here rather than in the runner. The seed retains exactly two host primitives:
 // build an evaluable context from a source set, and evaluate one qualified name
@@ -59,7 +60,7 @@ type WitnessSite {
   entry: String
   function: String
   module_path: String
-  reads_live_tree: v2.std.logic.Bool
+  reads_live_tree: Bool
 }
 
 // WITNESS IDENTITY IS `module.function`, NEVER the bare function name.
@@ -122,7 +123,7 @@ fn floor_execution_key(
   }
 }
 
-fn floor_execution_key_is_one_prepared_subject(key: FloorExecutionKey) -> v2.std.logic.Bool {
+fn floor_execution_key_is_one_prepared_subject(key: FloorExecutionKey) -> Bool {
   match key {
     OnePreparedSubjectKey { subject: _ } => true
     EntryMajorUntilFrontierRetires => false

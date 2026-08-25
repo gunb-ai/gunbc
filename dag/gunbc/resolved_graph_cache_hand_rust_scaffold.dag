@@ -3,15 +3,15 @@ module gunbc.resolved_graph_cache_hand_rust_scaffold
 
 
 data resolved_graph_cache_hand_rust_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.resolved_graph_cache",
     decl_name: "lookup_verified_probe",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data resolved_graph_cache_hand_rust_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: Dispatch G hand-Rust lane (review 46990 census). Scaffold bind: src/v1/stage0/src/resolved_graph_cache.rs lookup_verified_probe — FORMAT v3 cross-process codec (bounded header, per-part digests, TOCTOU seam, legacy v1→v3 migration). resolved_graph_cache_hand_rust_paths enrolls every Rust file touched by #7534; materialization_provider_consumer.rs + its test defer to gunbc.materialization_provider_consumer_scaffold (paired witness below). cli_run.rs carries cross-process tier integration wiring under the same cli_run_hollowing_plan area 2.6 dissolve trigger. DISSOLVES WHEN gunbc.plans.cli_run_hollowing_plan area 2.6 typed module cache / memo subsumes resolved_graph_cache integration into std.materialize duplicate-work identity lattice OR witness-realization lands typed host-effect transport for provider_serve lookups (docs/plans/witness-realization-plan.md).")
+data resolved_graph_cache_hand_rust_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: Dispatch G hand-Rust lane (review 46990 census). Scaffold bind: src/v1/stage0/src/resolved_graph_cache.rs lookup_verified_probe — FORMAT v3 cross-process codec (bounded header, per-part digests, TOCTOU seam, legacy v1→v3 migration). resolved_graph_cache_hand_rust_paths enrolls every Rust file touched by #7534; materialization_provider_consumer.rs + its test defer to gunbc.materialization_provider_consumer_scaffold (paired witness below). cli_run.rs carries cross-process tier integration wiring under the same cli_run_hollowing_plan area 2.6 dissolve trigger. DISSOLVES WHEN gunbc.plans.cli_run_hollowing_plan area 2.6 typed module cache / memo subsumes resolved_graph_cache integration into std.materialize duplicate-work identity lattice OR witness-realization lands typed host-effect transport for provider_serve lookups (docs/plans/witness-realization-plan.md).")
 
 data resolved_graph_cache_hand_rust_loc_delta_net: Int = 1256
 

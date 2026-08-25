@@ -2,7 +2,7 @@ module tools.dag_collect_fingerprint_witness_transport
 
 
 fn run_dag_collect_fingerprint_witness() -> Bool {
-  run_witness_bin(
+  tools.host_prelude.run_witness_bin(
     var_name: "DAG_COLLECT_FINGERPRINT_WITNESS",
     bin_name: "dag_collect_fingerprint_witness",
     args: []

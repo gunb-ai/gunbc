@@ -39,17 +39,17 @@ fn role_key(r: ThemeRole) -> String {
 
 fn role_area(r: ThemeRole) -> gunbc.design.material.AreaClass {
   match r {
-    CanvasRole => FieldArea
-    SurfaceRole => FieldArea
-    BorderRole => HairlineArea
-    TextRole => TextArea
-    TextDimRole => TextArea
-    FigureRole => PointArea
-    FigureLitRole => PointArea
-    FigureHaloRole => PointArea
-    FigureEdgeRole => HairlineArea
-    FocusRole => PointArea
-    BoundaryRole => HairlineArea
+    CanvasRole => gunbc.design.material.FieldArea
+    SurfaceRole => gunbc.design.material.FieldArea
+    BorderRole => gunbc.design.material.HairlineArea
+    TextRole => gunbc.design.material.TextArea
+    TextDimRole => gunbc.design.material.TextArea
+    FigureRole => gunbc.design.material.PointArea
+    FigureLitRole => gunbc.design.material.PointArea
+    FigureHaloRole => gunbc.design.material.PointArea
+    FigureEdgeRole => gunbc.design.material.HairlineArea
+    FocusRole => gunbc.design.material.PointArea
+    BoundaryRole => gunbc.design.material.HairlineArea
   }
 }
 
@@ -77,27 +77,27 @@ fn assign_alpha(role: ThemeRole, material: gunbc.design.material.Material, alpha
   RoleAssignment { role: role, material: material, alpha_pct: alpha_pct }
 }
 
-data night_canvas: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-canvas", hue: 226, sat_pct: 30, light_pct: 7, area: FieldArea }
-data night_surface: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-surface", hue: 226, sat_pct: 24, light_pct: 10, area: FieldArea }
-data night_border: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-border", hue: 224, sat_pct: 18, light_pct: 32, area: HairlineArea }
-data night_text: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-text", hue: 35, sat_pct: 14, light_pct: 78, area: TextArea }
-data night_text_dim: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-text-dim", hue: 35, sat_pct: 9, light_pct: 55, area: TextArea }
-data warm_starlight: gunbc.design.material.Material = gunbc.design.material.Material { name: "warm-starlight", hue: 45, sat_pct: 26, light_pct: 87, area: PointArea }
-data warm_starlight_lit: gunbc.design.material.Material = gunbc.design.material.Material { name: "warm-starlight-lit", hue: 45, sat_pct: 34, light_pct: 96, area: PointArea }
-data starlight_edge: gunbc.design.material.Material = gunbc.design.material.Material { name: "starlight-edge", hue: 45, sat_pct: 14, light_pct: 64, area: HairlineArea }
-data night_brass: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-brass", hue: 42, sat_pct: 48, light_pct: 62, area: PointArea }
-data night_clay: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-clay", hue: 8, sat_pct: 52, light_pct: 56, area: HairlineArea }
+data night_canvas: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-canvas", hue: 226, sat_pct: 30, light_pct: 7, area: gunbc.design.material.FieldArea }
+data night_surface: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-surface", hue: 226, sat_pct: 24, light_pct: 10, area: gunbc.design.material.FieldArea }
+data night_border: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-border", hue: 224, sat_pct: 18, light_pct: 32, area: gunbc.design.material.HairlineArea }
+data night_text: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-text", hue: 35, sat_pct: 14, light_pct: 78, area: gunbc.design.material.TextArea }
+data night_text_dim: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-text-dim", hue: 35, sat_pct: 9, light_pct: 55, area: gunbc.design.material.TextArea }
+data warm_starlight: gunbc.design.material.Material = gunbc.design.material.Material { name: "warm-starlight", hue: 45, sat_pct: 26, light_pct: 87, area: gunbc.design.material.PointArea }
+data warm_starlight_lit: gunbc.design.material.Material = gunbc.design.material.Material { name: "warm-starlight-lit", hue: 45, sat_pct: 34, light_pct: 96, area: gunbc.design.material.PointArea }
+data starlight_edge: gunbc.design.material.Material = gunbc.design.material.Material { name: "starlight-edge", hue: 45, sat_pct: 14, light_pct: 64, area: gunbc.design.material.HairlineArea }
+data night_brass: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-brass", hue: 42, sat_pct: 48, light_pct: 62, area: gunbc.design.material.PointArea }
+data night_clay: gunbc.design.material.Material = gunbc.design.material.Material { name: "night-clay", hue: 8, sat_pct: 52, light_pct: 56, area: gunbc.design.material.HairlineArea }
 
-data day_canvas: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-canvas", hue: 40, sat_pct: 32, light_pct: 95, area: FieldArea }
-data day_surface: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-surface", hue: 40, sat_pct: 28, light_pct: 91, area: FieldArea }
-data day_border: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-border", hue: 40, sat_pct: 12, light_pct: 45, area: HairlineArea }
-data day_ink: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-ink", hue: 230, sat_pct: 14, light_pct: 22, area: TextArea }
-data day_ink_dim: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-ink-dim", hue: 230, sat_pct: 8, light_pct: 42, area: TextArea }
-data ink_star: gunbc.design.material.Material = gunbc.design.material.Material { name: "ink-star", hue: 226, sat_pct: 44, light_pct: 30, area: PointArea }
-data ink_star_lit: gunbc.design.material.Material = gunbc.design.material.Material { name: "ink-star-lit", hue: 226, sat_pct: 58, light_pct: 20, area: PointArea }
-data ink_edge: gunbc.design.material.Material = gunbc.design.material.Material { name: "ink-edge", hue: 226, sat_pct: 22, light_pct: 45, area: HairlineArea }
-data day_brass: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-brass", hue: 42, sat_pct: 52, light_pct: 38, area: PointArea }
-data day_clay: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-clay", hue: 8, sat_pct: 56, light_pct: 44, area: HairlineArea }
+data day_canvas: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-canvas", hue: 40, sat_pct: 32, light_pct: 95, area: gunbc.design.material.FieldArea }
+data day_surface: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-surface", hue: 40, sat_pct: 28, light_pct: 91, area: gunbc.design.material.FieldArea }
+data day_border: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-border", hue: 40, sat_pct: 12, light_pct: 45, area: gunbc.design.material.HairlineArea }
+data day_ink: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-ink", hue: 230, sat_pct: 14, light_pct: 22, area: gunbc.design.material.TextArea }
+data day_ink_dim: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-ink-dim", hue: 230, sat_pct: 8, light_pct: 42, area: gunbc.design.material.TextArea }
+data ink_star: gunbc.design.material.Material = gunbc.design.material.Material { name: "ink-star", hue: 226, sat_pct: 44, light_pct: 30, area: gunbc.design.material.PointArea }
+data ink_star_lit: gunbc.design.material.Material = gunbc.design.material.Material { name: "ink-star-lit", hue: 226, sat_pct: 58, light_pct: 20, area: gunbc.design.material.PointArea }
+data ink_edge: gunbc.design.material.Material = gunbc.design.material.Material { name: "ink-edge", hue: 226, sat_pct: 22, light_pct: 45, area: gunbc.design.material.HairlineArea }
+data day_brass: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-brass", hue: 42, sat_pct: 52, light_pct: 38, area: gunbc.design.material.PointArea }
+data day_clay: gunbc.design.material.Material = gunbc.design.material.Material { name: "day-clay", hue: 8, sat_pct: 56, light_pct: 44, area: gunbc.design.material.HairlineArea }
 
 data night_theme: Theme = Theme { name: "night", scheme: "dark", assignments: [
   assign(role: CanvasRole, material: night_canvas),
@@ -148,34 +148,34 @@ fn theme_total(t: Theme, roles: List<ThemeRole>) -> Bool {
 
 fn theme_area_coherent(t: Theme) -> Bool {
   all(t.assignments, a =>
-    area_key(area: a.material.area) == area_key(area: role_area(r: a.role)))
+    gunbc.design.material.area_key(area: a.material.area) == gunbc.design.material.area_key(area: role_area(r: a.role)))
 }
 
 fn theme_materials_admissible(t: Theme) -> Bool {
-  all(t.assignments, a => chroma_admissible(m: a.material))
+  all(t.assignments, a => gunbc.design.material.chroma_admissible(m: a.material))
 }
 
 fn assignment_material(t: Theme, r: ThemeRole) -> gunbc.design.material.Material {
-  fold(t.assignments, init: gunbc.design.material.Material { name: "", hue: 0, sat_pct: 0, light_pct: 0, area: FieldArea },
+  fold(t.assignments, init: gunbc.design.material.Material { name: "", hue: 0, sat_pct: 0, light_pct: 0, area: gunbc.design.material.FieldArea },
     f: (acc, a) => if role_eq(a: a.role, b: r) { a.material } else { acc })
 }
 
 fn roles_clear_wcag(t: Theme, fg: ThemeRole, bg: ThemeRole, threshold_hundredths: Int) -> Bool {
   let f = assignment_material(t: t, r: fg)
   let b = assignment_material(t: t, r: bg)
-  hsl_contrast_at_least(
+  extdeps.accessibility.wcag_contrast.hsl_contrast_at_least(
     hue_a: f.hue, sat_a: f.sat_pct, light_a: f.light_pct,
     hue_b: b.hue, sat_b: b.sat_pct, light_b: b.light_pct,
     threshold_hundredths: threshold_hundredths)
 }
 
 fn theme_contrast_ok(t: Theme) -> Bool {
-  roles_clear_wcag(t: t, fg: TextRole, bg: CanvasRole, threshold_hundredths: wcag_aa_normal_text_hundredths)
-    && roles_clear_wcag(t: t, fg: TextRole, bg: SurfaceRole, threshold_hundredths: wcag_aa_normal_text_hundredths)
-    && roles_clear_wcag(t: t, fg: TextDimRole, bg: CanvasRole, threshold_hundredths: wcag_aa_normal_text_hundredths)
-    && roles_clear_wcag(t: t, fg: TextDimRole, bg: SurfaceRole, threshold_hundredths: wcag_aa_normal_text_hundredths)
-    && roles_clear_wcag(t: t, fg: FigureRole, bg: CanvasRole, threshold_hundredths: wcag_aa_large_text_and_graphics_hundredths)
-    && roles_clear_wcag(t: t, fg: FocusRole, bg: CanvasRole, threshold_hundredths: wcag_aa_large_text_and_graphics_hundredths)
+  roles_clear_wcag(t: t, fg: TextRole, bg: CanvasRole, threshold_hundredths: extdeps.accessibility.wcag_contrast.wcag_aa_normal_text_hundredths)
+    && roles_clear_wcag(t: t, fg: TextRole, bg: SurfaceRole, threshold_hundredths: extdeps.accessibility.wcag_contrast.wcag_aa_normal_text_hundredths)
+    && roles_clear_wcag(t: t, fg: TextDimRole, bg: CanvasRole, threshold_hundredths: extdeps.accessibility.wcag_contrast.wcag_aa_normal_text_hundredths)
+    && roles_clear_wcag(t: t, fg: TextDimRole, bg: SurfaceRole, threshold_hundredths: extdeps.accessibility.wcag_contrast.wcag_aa_normal_text_hundredths)
+    && roles_clear_wcag(t: t, fg: FigureRole, bg: CanvasRole, threshold_hundredths: extdeps.accessibility.wcag_contrast.wcag_aa_large_text_and_graphics_hundredths)
+    && roles_clear_wcag(t: t, fg: FocusRole, bg: CanvasRole, threshold_hundredths: extdeps.accessibility.wcag_contrast.wcag_aa_large_text_and_graphics_hundredths)
 }
 
 fn theme_coherent(t: Theme, roles: List<ThemeRole>) -> Bool {
@@ -191,9 +191,9 @@ fn themes_coherent(themes: List<Theme>, roles: List<ThemeRole>) -> Bool {
 
 fn assignment_paint(a: RoleAssignment) -> String {
   if a.alpha_pct >= 100 {
-    paint(m: a.material)
+    gunbc.design.material.paint(m: a.material)
   } else {
-    paint_alpha(m: a.material, alpha_pct: a.alpha_pct)
+    gunbc.design.material.paint_alpha(m: a.material, alpha_pct: a.alpha_pct)
   }
 }
 
@@ -203,21 +203,21 @@ fn role_decl(prop: extdeps.languages.css.properties.CssPropertyName, r: ThemeRol
 
 fn theme_var_decls(t: Theme) -> List<gunbc.design.material.CssDecl> {
   concat(
-    map(t.assignments, a => decl(prop: extdeps.languages.css.properties.CustomProperty { name: role_key(r: a.role) }, value: assignment_paint(a: a))),
-    [decl(prop: ColorScheme, value: t.scheme)])
+    map(t.assignments, a => gunbc.design.material.decl(prop: CustomProperty { name: role_key(r: a.role) }, value: assignment_paint(a: a))),
+    [gunbc.design.material.decl(prop: ColorScheme, value: t.scheme)])
 }
 
 data theme_scoped_blocks_note: String = "ONE THEME-SELECTOR GRAMMAR, N VAR FAMILIES. The three-block shape below — :root for the base theme, :root[data-theme=NAME] for the alternate, and the same alternate again under prefers-color-scheme for readers who never touched the toggle — is what makes a theme switchable at all, and it was written out longhand once here for role vars and again in gunbc.roadmap_style band_root_css for band vars. A second copy of a selector grammar is a second place for the toggle to break in only one of them, which is precisely the failure a reader would never think to look for: the day/night switch would keep working for colors and silently stop working for bands. The family of declarations is now a parameter, so theme_root_css is the role-var instantiation, band_root_css is the band-var instantiation, and the instrument's emission vars are a third — one grammar, three families, and emission is unchanged in all of them."
 
-fn theme_scoped_blocks(base: Theme, alternate: Theme, decls_for: fn(Theme) -> List<CssDecl>) -> String {
+fn theme_scoped_blocks(base: Theme, alternate: Theme, decls_for: fn(Theme) -> List<gunbc.design.material.CssDecl>) -> String {
   join([
-    css_block(selector: ":root", decls: decls_for(base)),
-    css_block(
+    gunbc.design.material.css_block(selector: ":root", decls: decls_for(base)),
+    gunbc.design.material.css_block(
       selector: join([":root[data-theme=\"", alternate.name, "\"]"], ""),
       decls: decls_for(alternate)),
     join([
       "@media (prefers-color-scheme: ", alternate.scheme, ") { ",
-      css_block(selector: ":root:not([data-theme])", decls: decls_for(alternate)),
+      gunbc.design.material.css_block(selector: ":root:not([data-theme])", decls: decls_for(alternate)),
       " }",
     ], ""),
   ], "\n")

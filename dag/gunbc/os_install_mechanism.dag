@@ -11,12 +11,12 @@ fn solve_install_mechanism(
   current: extdeps.bmc.capability.BmcFirmwareCapabilityRow,
   catalog: List<extdeps.bmc.capability.BmcFirmwareCapabilityRow>
 ) -> OsInstallMechanism {
-  if firmware_has_capability(row: current, cap: CapabilityVirtualMedia) {
+  if extdeps.bmc.capability.firmware_has_capability(row: current, cap: extdeps.bmc.capability.CapabilityVirtualMedia) {
     VirtualMediaInstall
-  } else if firmware_has_capability(row: current, cap: CapabilityNbdProxyVirtualMedia) {
+  } else if extdeps.bmc.capability.firmware_has_capability(row: current, cap: extdeps.bmc.capability.CapabilityNbdProxyVirtualMedia) {
     NbdProxyVirtualMediaInstall
-  } else if firmware_has_capability(row: current, cap: CapabilityFirmwareUpdate)
-         && catalog_has_vm_capable_firmware(catalog: catalog) {
+  } else if extdeps.bmc.capability.firmware_has_capability(row: current, cap: extdeps.bmc.capability.CapabilityFirmwareUpdate)
+         && extdeps.bmc.capability.catalog_has_vm_capable_firmware(catalog: catalog) {
     FirmwareUpdateThenVirtualMedia
   } else {
     PxeHttpInstall
@@ -116,16 +116,16 @@ fn solve_delivery_from_capability_row(
   network_boot: NetworkBootDeliveryStanding,
   firmware_transition: FirmwareTransitionStanding,
 ) -> OsInstallMechanismSolution {
-  if firmware_has_capability(row: row, cap: CapabilityBootSourceOverride) == false {
+  if extdeps.bmc.capability.firmware_has_capability(row: row, cap: extdeps.bmc.capability.CapabilityBootSourceOverride) == false {
     OsInstallMechanismRefused {
       cause: InstallNoBootSourceOverride { firmware: row.firmware },
     }
-  } else if firmware_has_capability(row: row, cap: CapabilityVirtualMedia) {
+  } else if extdeps.bmc.capability.firmware_has_capability(row: row, cap: extdeps.bmc.capability.CapabilityVirtualMedia) {
     OsInstallMechanismSelected { mechanism: VirtualMediaInstall }
-  } else if firmware_has_capability(row: row, cap: CapabilityNbdProxyVirtualMedia) {
+  } else if extdeps.bmc.capability.firmware_has_capability(row: row, cap: extdeps.bmc.capability.CapabilityNbdProxyVirtualMedia) {
     OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall }
-  } else if firmware_has_capability(row: row, cap: CapabilityFirmwareUpdate)
-         && catalog_has_vm_capable_firmware(catalog: catalog) {
+  } else if extdeps.bmc.capability.firmware_has_capability(row: row, cap: extdeps.bmc.capability.CapabilityFirmwareUpdate)
+         && extdeps.bmc.capability.catalog_has_vm_capable_firmware(catalog: catalog) {
     match firmware_transition {
       FirmwareTransitionEstablished { from: _, to: _, artifact: _ } =>
         OsInstallMechanismSelected { mechanism: FirmwareUpdateThenVirtualMedia }
@@ -164,19 +164,19 @@ fn solve_install_mechanism_from_evidence(
   network_boot: NetworkBootDeliveryStanding,
   firmware_transition: FirmwareTransitionStanding,
 ) -> OsInstallMechanismSolution {
-  match bmc_firmware_capability_standing(evidence: evidence, catalog: catalog) {
-    BmcFirmwareCapabilityResolved { row: r } =>
+  match gunbc.fleet_bmc_firmware_evidence.bmc_firmware_capability_standing(evidence: evidence, catalog: catalog) {
+    gunbc.fleet_bmc_firmware_evidence.BmcFirmwareCapabilityResolved { row: r } =>
       solve_delivery_from_capability_row(
         row: r,
         catalog: catalog,
         network_boot: network_boot,
         firmware_transition: firmware_transition,
       )
-    BmcFirmwareCapabilityEvidenceAbsent { endpoint: e } =>
+    gunbc.fleet_bmc_firmware_evidence.BmcFirmwareCapabilityEvidenceAbsent { endpoint: e } =>
       OsInstallMechanismRefused { cause: InstallFirmwareEvidenceAbsent { endpoint: e } }
-    BmcFirmwareCapabilityVersionUncatalogued { firmware: fw } =>
+    gunbc.fleet_bmc_firmware_evidence.BmcFirmwareCapabilityVersionUncatalogued { firmware: fw } =>
       OsInstallMechanismRefused { cause: InstallFirmwareVersionUncatalogued { firmware: fw } }
-    BmcFirmwareCapabilityVersionAmbiguous { firmware: fw, count: n } =>
+    gunbc.fleet_bmc_firmware_evidence.BmcFirmwareCapabilityVersionAmbiguous { firmware: fw, count: n } =>
       OsInstallMechanismRefused {
         cause: InstallFirmwareVersionAmbiguous { firmware: fw, count: n },
       }
@@ -234,21 +234,21 @@ data srv4_network_boot_standing: NetworkBootDeliveryStanding = NetworkBootDelive
 }
 
 data srv1_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
-  evidence: srv1_bmc_firmware_evidence,
+  evidence: gunbc.fleet_bmc_firmware_evidence.srv1_bmc_firmware_evidence,
   catalog: srv3_firmware_catalog,
   network_boot: srv1_network_boot_standing,
   firmware_transition: fleet_firmware_transition_standing
 )
 
 data srv2_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
-  evidence: srv2_bmc_firmware_evidence,
+  evidence: gunbc.fleet_bmc_firmware_evidence.srv2_bmc_firmware_evidence,
   catalog: srv3_firmware_catalog,
   network_boot: srv2_network_boot_standing,
   firmware_transition: fleet_firmware_transition_standing
 )
 
 data srv3_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
-  evidence: srv3_bmc_firmware_evidence,
+  evidence: gunbc.fleet_bmc_firmware_evidence.srv3_bmc_firmware_evidence,
   catalog: srv3_firmware_catalog,
   network_boot: srv3_network_boot_standing,
   firmware_transition: fleet_firmware_transition_standing
@@ -260,7 +260,7 @@ data srv3_install_mechanism_solution: OsInstallMechanismSolution = solve_install
 // board-default read below would have answered NbdProxyVirtualMediaInstall for this host —
 // a delivery mechanism its BMC firmware does not implement.
 data srv4_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
-  evidence: srv4_bmc_firmware_evidence,
+  evidence: gunbc.fleet_bmc_firmware_evidence.srv4_bmc_firmware_evidence,
   catalog: srv3_firmware_catalog,
   network_boot: srv4_network_boot_standing,
   firmware_transition: fleet_firmware_transition_standing
@@ -275,10 +275,10 @@ data srv3_install_mechanism: OsInstallMechanism = solve_install_mechanism(
 
 fn install_boot_target_for(mechanism: OsInstallMechanism) -> extdeps.bmc.types.RedfishBootSourceOverrideTarget {
   match mechanism {
-    VirtualMediaInstall => BootTargetCd
-    NbdProxyVirtualMediaInstall => BootTargetCd
-    PxeHttpInstall => BootTargetPxe
-    FirmwareUpdateThenVirtualMedia => BootTargetCd
+    VirtualMediaInstall => extdeps.bmc.types.BootTargetCd
+    NbdProxyVirtualMediaInstall => extdeps.bmc.types.BootTargetCd
+    PxeHttpInstall => extdeps.bmc.types.BootTargetPxe
+    FirmwareUpdateThenVirtualMedia => extdeps.bmc.types.BootTargetCd
   }
 }
 

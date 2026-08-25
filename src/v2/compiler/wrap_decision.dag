@@ -17,23 +17,23 @@ fn wrap_decision_bundle_child_lookup_step(
     WrapDecisionBundleChildDuplicate => acc
     WrapDecisionBundleChildMissing =>
       match e.label {
-        Named { name: n } =>
+        v2.std.node.Named { name: n } =>
           if n == edge_name {
             WrapDecisionBundleChildFound { value: e.target }
           } else {
             acc
           }
-        Positional => WrapDecisionBundleChildInvalidEdge
+        v2.std.node.Positional => WrapDecisionBundleChildInvalidEdge
       }
     WrapDecisionBundleChildFound { value: _ } =>
       match e.label {
-        Named { name: n } =>
+        v2.std.node.Named { name: n } =>
           if n == edge_name {
             WrapDecisionBundleChildDuplicate
           } else {
             acc
           }
-        Positional => WrapDecisionBundleChildInvalidEdge
+        v2.std.node.Positional => WrapDecisionBundleChildInvalidEdge
       }
   }
 }
@@ -43,7 +43,7 @@ fn wrap_decision_bundle_optional_child(
   edge_name: v2.std.node.Symbol
 ) -> v2.std.diagnostic.Outcome<v2.std.optional.Optional<v2.std.node.Node>> {
   match target.bundle.kind {
-    TypeNode { connective: Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       match fold(
         target.bundle.children,
         init: WrapDecisionBundleChildMissing,
@@ -56,32 +56,32 @@ fn wrap_decision_bundle_optional_child(
         }
       ) {
         WrapDecisionBundleChildFound { value: child } =>
-          outcome_accepted(optional_present(value: child))
+          v2.std.diagnostic.outcome_accepted(v2.std.optional.optional_present(value: child))
         WrapDecisionBundleChildMissing =>
-          outcome_accepted(optional_absent())
+          v2.std.diagnostic.outcome_accepted(v2.std.optional.optional_absent())
         WrapDecisionBundleChildDuplicate =>
-          outcome_rejected(
+          v2.std.diagnostic.outcome_rejected(
             v2.std.diagnostic.Diagnostic {
               reason: ^wrap_decision_bundle_duplicate_edge,
-              at: node_locus(node: target.bundle),
-              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+              at: v2.std.diagnostic.node_locus(node: target.bundle),
+              correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
             }
           )
         WrapDecisionBundleChildInvalidEdge =>
-          outcome_rejected(
+          v2.std.diagnostic.outcome_rejected(
             v2.std.diagnostic.Diagnostic {
               reason: ^wrap_decision_bundle_malformed,
-              at: node_locus(node: target.bundle),
-              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+              at: v2.std.diagnostic.node_locus(node: target.bundle),
+              correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
             }
           )
       }
     _ =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         v2.std.diagnostic.Diagnostic {
           reason: ^wrap_decision_bundle_malformed,
-          at: node_locus(node: target.bundle),
-          correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+          at: v2.std.diagnostic.node_locus(node: target.bundle),
+          correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
         }
       )
   }
@@ -92,20 +92,20 @@ fn wrap_decision_bundle_edge_present(
   edge_name: v2.std.node.Symbol
 ) -> v2.std.diagnostic.Outcome<Bool> {
   match wrap_decision_bundle_optional_child(target: target, edge_name: edge_name) {
-    Accepted { value: optional_child, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: optional_child, diagnostics: _ } =>
       match optional_child {
-        Absent => outcome_accepted(false)
-        Present { value: _ } => outcome_accepted(true)
+        v2.std.optional.Absent => v2.std.diagnostic.outcome_accepted(false)
+        v2.std.optional.Present { value: _ } => v2.std.diagnostic.outcome_accepted(true)
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn wrap_decision_sg_rc_bundle_partial_diagnostic(source_carrier: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^wrap_decision_sg_rc_bundle_partial,
-    at: node_locus(node: source_carrier),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: source_carrier),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -113,8 +113,8 @@ fn wrap_decision_sg_rc_bundle_partial_diagnostic(source_carrier: v2.std.node.Nod
 fn wrap_decision_position_disagreement_diagnostic(source_carrier: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^wrap_decision_position_disagreement,
-    at: node_locus(node: source_carrier),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: source_carrier),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -123,30 +123,30 @@ fn wrap_decision_gates_agree(
   consumer: v2.std.compilers.target_model.WrapDecisionGate
 ) -> Bool {
   match producer {
-    WrapGateInapplicable =>
+    v2.std.compilers.target_model.WrapGateInapplicable =>
       match consumer {
-        WrapGateInapplicable => true
-        WrapGateDecided { decision: _ } => false
+        v2.std.compilers.target_model.WrapGateInapplicable => true
+        v2.std.compilers.target_model.WrapGateDecided { decision: _ } => false
       }
-    WrapGateDecided { decision: p } =>
+    v2.std.compilers.target_model.WrapGateDecided { decision: p } =>
       match consumer {
-        WrapGateInapplicable => false
-        WrapGateDecided { decision: c } => wrap_decisions_equal(a: p, c: c)
+        v2.std.compilers.target_model.WrapGateInapplicable => false
+        v2.std.compilers.target_model.WrapGateDecided { decision: c } => wrap_decisions_equal(a: p, c: c)
       }
   }
 }
 
 fn wrap_decisions_equal(a: v2.std.compilers.target_model.WrapDecision, c: v2.std.compilers.target_model.WrapDecision) -> Bool {
   match a {
-    WrapByValue =>
+    v2.std.compilers.target_model.WrapByValue =>
       match c {
-        WrapByValue => true
-        WrapByReference { layer: _ } => false
+        v2.std.compilers.target_model.WrapByValue => true
+        v2.std.compilers.target_model.WrapByReference { layer: _ } => false
       }
-    WrapByReference { layer: al } =>
+    v2.std.compilers.target_model.WrapByReference { layer: al } =>
       match c {
-        WrapByValue => false
-        WrapByReference { layer: cl } => al == cl
+        v2.std.compilers.target_model.WrapByValue => false
+        v2.std.compilers.target_model.WrapByReference { layer: cl } => al == cl
       }
   }
 }
@@ -191,14 +191,14 @@ fn wrap_decision_flow_gate(
   producer_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
   consumer_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.WrapDecisionGate> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: wrap_decision_gate(
       target: target,
       source_carrier: source_carrier,
       use_site: producer_site
     ),
     f: fn(producer_gate) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: wrap_decision_gate(
           target: target,
           source_carrier: source_carrier,
@@ -209,9 +209,9 @@ fn wrap_decision_flow_gate(
             producer: producer_gate,
             consumer: consumer_gate
           ) {
-            outcome_accepted(producer_gate)
+            v2.std.diagnostic.outcome_accepted(producer_gate)
           } else {
-            outcome_rejected(
+            v2.std.diagnostic.outcome_rejected(
               wrap_decision_position_disagreement_diagnostic(
                 source_carrier: source_carrier
               )
@@ -227,25 +227,25 @@ fn wrap_decision_sg_rc_bundle_apply_disposition(
   target: v2.std.compilers.target_model.TargetModel,
   source_carrier: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<Bool> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: wrap_decision_bundle_edge_present(
       target: target,
       edge_name: ^target_model_edge_use_site_ownership_realizations
     ),
     f: fn(has_catalog) {
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: wrap_decision_bundle_edge_present(
           target: target,
           edge_name: ^target_model_edge_reference_layer_tokens
         ),
         f: fn(has_tokens) {
           if has_catalog == false && has_tokens == false {
-            outcome_accepted(false)
+            v2.std.diagnostic.outcome_accepted(false)
           } else {
             if has_catalog && has_tokens {
-              outcome_accepted(true)
+              v2.std.diagnostic.outcome_accepted(true)
             } else {
-              outcome_rejected(
+              v2.std.diagnostic.outcome_rejected(
                 wrap_decision_sg_rc_bundle_partial_diagnostic(
                   source_carrier: source_carrier
                 )
@@ -267,43 +267,43 @@ fn wrap_decision_gate(
     target: target,
     source_carrier: source_carrier
   ) {
-    Accepted { value: false, diagnostics: _ } =>
-      outcome_accepted(WrapGateInapplicable)
-    Accepted { value: true, diagnostics: _ } =>
-      bind_outcome(
+    v2.std.diagnostic.Accepted { value: false, diagnostics: _ } =>
+      v2.std.diagnostic.outcome_accepted(v2.std.compilers.target_model.WrapGateInapplicable)
+    v2.std.diagnostic.Accepted { value: true, diagnostics: _ } =>
+      v2.std.diagnostic.bind_outcome(
         o: wrap_decision_bundle_optional_child(
           target: target,
           edge_name: ^target_model_edge_use_site_ownership_realizations
         ),
         f: fn(optional_catalog) {
           match optional_catalog {
-            Absent =>
-              outcome_rejected(
+            v2.std.optional.Absent =>
+              v2.std.diagnostic.outcome_rejected(
                 wrap_decision_sg_rc_bundle_partial_diagnostic(
                   source_carrier: source_carrier
                 )
               )
-            Present { value: catalog_node } =>
-              bind_outcome(
+            v2.std.optional.Present { value: catalog_node } =>
+              v2.std.diagnostic.bind_outcome(
                 o: wrap_decision_bundle_optional_child(
                   target: target,
                   edge_name: ^target_model_edge_value_semantics_carriers
                 ),
                 f: fn(optional_carriers) {
                   let value_semantics_carriers = match optional_carriers {
-                    Absent => std.algebra.Empty
-                    Present { value: node } =>
-                      target_value_semantics_carriers_from_node(node: node)
+                    v2.std.optional.Absent => std.algebra.Empty
+                    v2.std.optional.Present { value: node } =>
+                      v2.std.compilers.target_model.target_value_semantics_carriers_from_node(node: node)
                   }
-                  bind_outcome(
-                    o: wrap_decision_lookup_in_catalog_node(
+                  v2.std.diagnostic.bind_outcome(
+                    o: v2.std.compilers.target_model.wrap_decision_lookup_in_catalog_node(
                       catalog: catalog_node,
                       value_semantics_carriers: value_semantics_carriers,
                       source_carrier: source_carrier,
                       use_site: use_site
                     ),
                     f: fn(decision) {
-                      outcome_accepted(
+                      v2.std.diagnostic.outcome_accepted(
                         v2.std.compilers.target_model.WrapGateDecided { decision: decision }
                       )
                     }
@@ -313,6 +313,6 @@ fn wrap_decision_gate(
           }
         }
       )
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }

@@ -1,7 +1,7 @@
 module test.claim.cross_file_binding_assembly_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data cfba_witness_note: String = "N3-B0 acceptance witness: one exposure authority (DeclarationExposureGrounding, all three variants pairwise-discriminated across module-root and single-ancestor containment shapes) plus the collision-free cross-file assembly substrate (assemble_cross_file_binding_closure) in std.occurrence_binding_candidates. Structural controls at the bottom prove the two former duplicate helpers (gunbc.type_reference_binding_context's local exposure walk, v1.gunbc.occurrence_binding_parser_walk's local exposure walk + StructuralBindingWalk copy) are deleted from their old homes and the single authority is present where claimed."
 
@@ -51,12 +51,12 @@ fn cfba_reference(occurrence: std.occurrence_identity.OccurrenceId, containment:
 test fn module_local_member_exposure_at_module_root_holds() -> Bool {
   let decl = std.occurrence_identity.OccurrenceId { value: 10 }
   let path = cfba_containment(ancestors: [], terminal: decl)
-  match declaration_exposure_from_containment(
+  match std.occurrence_binding_candidates.declaration_exposure_from_containment(
     module_path: cfba_path(dotted: "extdeps.a"),
     containment: path,
-    grounding: ModuleLocalMemberExposure,
+    grounding: std.occurrence_binding_candidates.ModuleLocalMemberExposure,
   ) {
-    ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.a")
+    std.occurrence_binding_candidates.ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.a")
     _ => false
   }
 }
@@ -64,12 +64,12 @@ test fn module_local_member_exposure_at_module_root_holds() -> Bool {
 test fn cross_file_provider_exported_exposure_at_module_root_upgrades_to_root_holds() -> Bool {
   let decl = std.occurrence_identity.OccurrenceId { value: 11 }
   let path = cfba_containment(ancestors: [], terminal: decl)
-  match declaration_exposure_from_containment(
+  match std.occurrence_binding_candidates.declaration_exposure_from_containment(
     module_path: cfba_path(dotted: "extdeps.a"),
     containment: path,
-    grounding: CrossFileProviderExportedExposure,
+    grounding: std.occurrence_binding_candidates.CrossFileProviderExportedExposure,
   ) {
-    RootExposure => true
+    std.occurrence_binding_candidates.RootExposure => true
     _ => false
   }
 }
@@ -78,12 +78,12 @@ test fn module_local_member_exposure_at_direct_child_stays_module_exposure_holds
   let outer = std.occurrence_identity.OccurrenceId { value: 1 }
   let decl = std.occurrence_identity.OccurrenceId { value: 20 }
   let path = cfba_containment(ancestors: [outer], terminal: decl)
-  match declaration_exposure_from_containment(
+  match std.occurrence_binding_candidates.declaration_exposure_from_containment(
     module_path: cfba_path(dotted: "extdeps.b"),
     containment: path,
-    grounding: ModuleLocalMemberExposure,
+    grounding: std.occurrence_binding_candidates.ModuleLocalMemberExposure,
   ) {
-    ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.b")
+    std.occurrence_binding_candidates.ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.b")
     _ => false
   }
 }
@@ -92,12 +92,12 @@ test fn cross_file_provider_exported_exposure_at_direct_child_upgrades_to_root_h
   let outer = std.occurrence_identity.OccurrenceId { value: 1 }
   let decl = std.occurrence_identity.OccurrenceId { value: 21 }
   let path = cfba_containment(ancestors: [outer], terminal: decl)
-  match declaration_exposure_from_containment(
+  match std.occurrence_binding_candidates.declaration_exposure_from_containment(
     module_path: cfba_path(dotted: "extdeps.b"),
     containment: path,
-    grounding: CrossFileProviderExportedExposure,
+    grounding: std.occurrence_binding_candidates.CrossFileProviderExportedExposure,
   ) {
-    RootExposure => true
+    std.occurrence_binding_candidates.RootExposure => true
     _ => false
   }
 }
@@ -106,12 +106,12 @@ test fn namespace_structural_root_exposure_at_direct_child_stays_module_exposure
   let outer = std.occurrence_identity.OccurrenceId { value: 1 }
   let decl = std.occurrence_identity.OccurrenceId { value: 22 }
   let path = cfba_containment(ancestors: [outer], terminal: decl)
-  match declaration_exposure_from_containment(
+  match std.occurrence_binding_candidates.declaration_exposure_from_containment(
     module_path: cfba_path(dotted: "extdeps.c"),
     containment: path,
-    grounding: NamespaceStructuralRootExposure,
+    grounding: std.occurrence_binding_candidates.NamespaceStructuralRootExposure,
   ) {
-    ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.c")
+    std.occurrence_binding_candidates.ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.c")
     _ => false
   }
 }
@@ -144,7 +144,7 @@ fn cfba_single_occurrence_closure_row(
 
 fn cfba_exposure_module_matches(exposure: std.occurrence_binding_candidates.DeclarationExposure, module_path: std.types.NonEmptyStr) -> Bool {
   match exposure {
-    ModuleExposure { module: module } => module == module_path
+    std.occurrence_binding_candidates.ModuleExposure { module: module } => module == module_path
     _ => false
   }
 }
@@ -247,30 +247,30 @@ test fn colliding_raw_ids_assemble_to_distinct_closure_ids_with_joins_intact_hol
     module_path: consumer_module,
     file_path: "extdeps/consumer.dag",
     name: "ConsumerDecl",
-    category: TypeOccurrence,
+    category: std.occurrence_identity.TypeOccurrence,
   )
   let provider = cfba_provider_with_reference_closure_row(
     module_path: provider_module,
     file_path: "extdeps/provider.dag",
     decl_name: "ProviderDecl",
-    decl_category: CallableOccurrence,
+    decl_category: std.occurrence_identity.CallableOccurrence,
     ref_name: "ProviderRef",
-    ref_category: TypeOccurrence,
+    ref_category: std.occurrence_identity.TypeOccurrence,
   )
   let pre_assembly_raw_ids_collide =
     (consumer.transport.declarations |> any(d => d.occurrence.value == 0))
       && (provider.transport.declarations |> any(d => d.occurrence.value == 0))
-  match assemble_cross_file_binding_closure(consumer: consumer, providers: [provider]) {
-    AssembledCrossFileBindingClosureReady { transport: transport, inputs: inputs, module_files: _, consumer_file: consumer_file } => {
+  match std.occurrence_binding_candidates.assemble_cross_file_binding_closure(consumer: consumer, providers: [provider]) {
+    std.occurrence_binding_candidates.AssembledCrossFileBindingClosureReady { transport: transport, inputs: inputs, module_files: _, consumer_file: consumer_file } => {
       let consumer_id = cfba_closure_id_by_name(entries: transport.index.entries, name: "ConsumerDecl")
       let provider_decl_id = cfba_closure_id_by_name(entries: transport.index.entries, name: "ProviderDecl")
       let provider_ref_id = cfba_closure_id_by_name(entries: transport.index.entries, name: "ProviderRef")
       let consumer_joined =
-        cfba_joined_at(transport: transport, inputs: inputs, value: consumer_id, module_path: consumer_module, name: "ConsumerDecl", category: TypeOccurrence)
+        cfba_joined_at(transport: transport, inputs: inputs, value: consumer_id, module_path: consumer_module, name: "ConsumerDecl", category: std.occurrence_identity.TypeOccurrence)
       let provider_decl_joined =
-        cfba_joined_at(transport: transport, inputs: inputs, value: provider_decl_id, module_path: provider_module, name: "ProviderDecl", category: CallableOccurrence)
+        cfba_joined_at(transport: transport, inputs: inputs, value: provider_decl_id, module_path: provider_module, name: "ProviderDecl", category: std.occurrence_identity.CallableOccurrence)
       let provider_ref_joined =
-        cfba_reference_joined_at(transport: transport, inputs: inputs, value: provider_ref_id, module_path: provider_module, name: "ProviderRef", category: TypeOccurrence)
+        cfba_reference_joined_at(transport: transport, inputs: inputs, value: provider_ref_id, module_path: provider_module, name: "ProviderRef", category: std.occurrence_identity.TypeOccurrence)
       let all_closure_ids_distinct =
         consumer_id != provider_decl_id
           && consumer_id != provider_ref_id
@@ -288,7 +288,7 @@ test fn colliding_raw_ids_assemble_to_distinct_closure_ids_with_joins_intact_hol
         && all_closure_ids_distinct
         && (consumer_file as String) == "extdeps/consumer.dag"
     }
-    AssembledCrossFileBindingClosureRefused { refusal: _ } => false
+    std.occurrence_binding_candidates.AssembledCrossFileBindingClosureRefused { refusal: _ } => false
   }
 }
 
@@ -305,7 +305,7 @@ test fn lexical_exposure_scope_rekeys_to_same_closure_id_as_its_index_entry_hold
           cfba_index_entry(occurrence: binder, name: "Binder", containment: binder_path),
         ],
       },
-      declarations: [cfba_declaration(occurrence: binder, containment: binder_path, category: CallableOccurrence)],
+      declarations: [cfba_declaration(occurrence: binder, containment: binder_path, category: std.occurrence_identity.CallableOccurrence)],
       references: [],
     },
     inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
@@ -321,14 +321,14 @@ test fn lexical_exposure_scope_rekeys_to_same_closure_id_as_its_index_entry_hold
     module_path: cfba_path(dotted: "extdeps.lexical"),
     file_path: "extdeps/lexical.dag" as std.types.FilePath,
   }
-  match assemble_cross_file_binding_closure(consumer: consumer, providers: []) {
-    AssembledCrossFileBindingClosureReady { transport: transport, inputs: inputs, module_files: _, consumer_file: _ } => {
+  match std.occurrence_binding_candidates.assemble_cross_file_binding_closure(consumer: consumer, providers: []) {
+    std.occurrence_binding_candidates.AssembledCrossFileBindingClosureReady { transport: transport, inputs: inputs, module_files: _, consumer_file: _ } => {
       let entries = transport.index.entries
       let outer_reused_by_scope =
         inputs.exposure_rows
         |> any(r =>
           match r.exposure {
-            LexicalExposure { exposing_scope: scope } =>
+            std.occurrence_binding_candidates.LexicalExposure { exposing_scope: scope } =>
               entries |> any(e => e.projection.authored_name == "Outer" && e.projection.occurrence.value == scope.terminal.value)
             _ => false
           }
@@ -340,29 +340,29 @@ test fn lexical_exposure_scope_rekeys_to_same_closure_id_as_its_index_entry_hold
         )
       outer_reused_by_scope && binder_and_declaration_agree
     }
-    AssembledCrossFileBindingClosureRefused { refusal: _ } => false
+    std.occurrence_binding_candidates.AssembledCrossFileBindingClosureRefused { refusal: _ } => false
   }
 }
 
 // --- ModulePathFileRow refusal: duplicate-same vs conflict, distinct typed variants ---
 
 test fn module_path_file_duplicate_same_rows_refuse_distinctly_holds() -> Bool {
-  match module_path_file_index_from_rows(rows: [
+  match std.occurrence_binding_candidates.module_path_file_index_from_rows(rows: [
     std.occurrence_binding_candidates.ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as std.types.FilePath },
     std.occurrence_binding_candidates.ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as std.types.FilePath },
   ]) {
-    ModulePathFileIndexRefused { refusal: ModulePathFileDuplicateSame { module_path: module_path, file_path: file_path } } =>
+    std.occurrence_binding_candidates.ModulePathFileIndexRefused { refusal: std.occurrence_binding_candidates.ModulePathFileDuplicateSame { module_path: module_path, file_path: file_path } } =>
       module_path == cfba_path(dotted: "extdeps.a") && (file_path as String) == "extdeps/a.dag"
     _ => false
   }
 }
 
 test fn module_path_file_conflicting_rows_refuse_distinctly_holds() -> Bool {
-  match module_path_file_index_from_rows(rows: [
+  match std.occurrence_binding_candidates.module_path_file_index_from_rows(rows: [
     std.occurrence_binding_candidates.ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a.dag" as std.types.FilePath },
     std.occurrence_binding_candidates.ModulePathFileRow { module_path: cfba_path(dotted: "extdeps.a"), file_path: "extdeps/a_moved.dag" as std.types.FilePath },
   ]) {
-    ModulePathFileIndexRefused { refusal: ModulePathFileConflict { module_path: module_path, first_file: first_file, second_file: second_file } } =>
+    std.occurrence_binding_candidates.ModulePathFileIndexRefused { refusal: std.occurrence_binding_candidates.ModulePathFileConflict { module_path: module_path, first_file: first_file, second_file: second_file } } =>
       module_path == cfba_path(dotted: "extdeps.a")
         && (first_file as String) == "extdeps/a.dag"
         && (second_file as String) == "extdeps/a_moved.dag"
@@ -375,18 +375,18 @@ test fn assembly_refuses_when_provider_conflicts_consumer_module_path_holds() ->
     module_path: cfba_path(dotted: "extdeps.shared"),
     file_path: "extdeps/shared.dag",
     name: "ConsumerDecl",
-    category: TypeOccurrence,
+    category: std.occurrence_identity.TypeOccurrence,
   )
   let provider = cfba_single_occurrence_closure_row(
     module_path: cfba_path(dotted: "extdeps.shared"),
     file_path: "extdeps/shared_other.dag",
     name: "ProviderDecl",
-    category: CallableOccurrence,
+    category: std.occurrence_identity.CallableOccurrence,
   )
-  match assemble_cross_file_binding_closure(consumer: consumer, providers: [provider]) {
-    AssembledCrossFileBindingClosureRefused {
-      refusal: AssembledCrossFileBindingClosureModulePathFileRefused {
-        refusal: ModulePathFileConflict { module_path: module_path, first_file: _, second_file: _ },
+  match std.occurrence_binding_candidates.assemble_cross_file_binding_closure(consumer: consumer, providers: [provider]) {
+    std.occurrence_binding_candidates.AssembledCrossFileBindingClosureRefused {
+      refusal: std.occurrence_binding_candidates.AssembledCrossFileBindingClosureModulePathFileRefused {
+        refusal: std.occurrence_binding_candidates.ModulePathFileConflict { module_path: module_path, first_file: _, second_file: _ },
       },
     } => module_path == cfba_path(dotted: "extdeps.shared")
     _ => false

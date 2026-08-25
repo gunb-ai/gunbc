@@ -37,7 +37,7 @@ fn runtime_run_append_receipt(
   result: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 ) -> RuntimeRunLog {
   RuntimeRunLog {
-    entries: list_snoc_item(
+    entries: v2.std.algebra.list_snoc_item(
       xs: log.entries,
       item: RuntimeRunReceipt { node: node, result: result }
     )
@@ -50,14 +50,14 @@ fn runtime_run_eval_node(
   tree: v2.compiler.inferred_tree.InferredTree,
   context: v2.compiler.eval.EvalContext
 ) -> RuntimeRunState {
-  let result = eval_with_context(
+  let result = v2.compiler.eval.eval_with_context(
     tree: tree,
     context: context,
-    inputs: inputs_root_only(root: node)
+    inputs: v2.compiler.eval.inputs_root_only(root: node)
   )
   RuntimeRunState {
     log: runtime_run_append_receipt(log: state.log, node: node, result: result),
-    scheduled: scheduler_append_node_once(nodes: state.scheduled, node: node)
+    scheduled: v2.workflow.scheduler.scheduler_append_node_once(nodes: state.scheduled, node: node)
   }
 }
 
@@ -79,12 +79,12 @@ fn runtime_run_step_state(
   context: v2.compiler.eval.EvalContext,
   state: RuntimeRunState
 ) -> RuntimeRunState {
-  let frontier = runnable_frontier_from_dependencies(
+  let frontier = v2.workflow.scheduler.runnable_frontier_from_dependencies(
     nodes: nodes,
     dependencies: dependencies,
     scheduled: state.scheduled
   )
-  if non_empty(xs: frontier.ready) {
+  if v2.std.algebra.non_empty(xs: frontier.ready) {
     runtime_run_step_from_frontier(
       frontier: frontier,
       state: state,
@@ -101,15 +101,15 @@ fn runtime_run_result_from_state(
   dependencies: List<v2.std.dependency.DependencyView>,
   state: RuntimeRunState
 ) -> RuntimeRunResult {
-  let remaining = scheduler_remaining_nodes(nodes: nodes, scheduled: state.scheduled)
-  if is_empty(xs: remaining) {
+  let remaining = v2.workflow.scheduler.scheduler_remaining_nodes(nodes: nodes, scheduled: state.scheduled)
+  if v2.std.algebra.is_empty(xs: remaining) {
     RuntimeRunComplete {
       log: state.log,
       scheduled: state.scheduled
     }
   } else {
     RuntimeRunBlocked {
-      evidence: scheduler_blocked_evidence(),
+      evidence: v2.workflow.scheduler.scheduler_blocked_evidence(),
       log: state.log,
       scheduled: state.scheduled,
       remaining: remaining

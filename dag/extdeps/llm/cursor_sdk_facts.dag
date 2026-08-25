@@ -3,14 +3,14 @@ module extdeps.llm.cursor_sdk_facts
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "cursor.com/docs/sdk/typescript"
   }
 }
 
 data cursor_sdk_probe_receipt_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "registry.npmjs.org/@cursor/sdk"
   }
 }
@@ -20,10 +20,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.llm.cursor_sdk_facts",
       decl_name: "CursorSdkPackageClosure",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.llm.cursor_sdk_facts.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [cursor_sdk_probe_receipt_authority]
 }
 
@@ -45,7 +45,7 @@ type CursorSdkPackageClosure {
 }
 
 fn cursor_sdk_local_package_closure() -> CursorSdkPackageClosure {
-  let receipt = provider_interface_acquisition_cursor_sdk_closure_receipt()
+  let receipt = extdeps.probes.provider_interface_acquisition.provider_interface_acquisition_cursor_sdk_closure_receipt()
   CursorSdkPackageClosure {
     package_name: receipt.package_name,
     exact_version: receipt.exact_version,
@@ -56,7 +56,7 @@ fn cursor_sdk_local_package_closure() -> CursorSdkPackageClosure {
     install_script_count: receipt.install_script_count,
     node_toolchain_version: receipt.node_toolchain_version,
     npm_toolchain_version: receipt.npm_toolchain_version,
-    module_export: provider_interface_acquisition_cursor_sdk_package_name,
+    module_export: extdeps.probes.provider_interface_acquisition.provider_interface_acquisition_cursor_sdk_package_name,
   }
 }
 

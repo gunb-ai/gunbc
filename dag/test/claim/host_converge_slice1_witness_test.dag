@@ -1,15 +1,15 @@
 module test.claim.host_converge_slice1_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn witness_slice1_knob_is_per_slot_memory_max_on_srv1() -> Bool {
-  match host_converge_slice1_srv1_per_slot_memory_max_knob() {
+  match gunbc.host_converge_slice1.host_converge_slice1_srv1_per_slot_memory_max_knob() {
     Present { value: knob } =>
-      knob.name == host_converge_slice1_knob_name
+      knob.name == gunbc.host_converge_slice1.host_converge_slice1_knob_name
         && match knob.target {
-          PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: p, bytes_value: b } =>
-            p == systemd_memory_max_property && b == knob.desired
+          gunbc.host_converge.PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: p, bytes_value: b } =>
+            p == extdeps.systemd.systemd_memory_max_property && b == knob.desired
           _ => false
         }
     Absent => false
@@ -17,18 +17,18 @@ test fn witness_slice1_knob_is_per_slot_memory_max_on_srv1() -> Bool {
 }
 
 test fn witness_fixture_infinity_drifts_against_model_desired() -> Bool {
-  match host_converge_slice1_fixture_receipt() {
+  match gunbc.host_converge_slice1.host_converge_slice1_fixture_receipt() {
     Present { value: receipt } =>
-      receipt.host == operator_host_srv1
-        && receipt.unit == host_converge_slice1_probe_unit
+      receipt.host == gunbc.fleet_intent_network.operator_host_srv1
+        && receipt.unit == gunbc.host_converge_slice1.host_converge_slice1_probe_unit
         && receipt.verdict == gunbc.host_converge.Drifted
     Absent => false
   }
 }
 
 test fn witness_stdout_parse_grounds_memory_max() -> Bool {
-  match runner_unit_live_read_row_from_stdout(
-    unit: host_converge_slice1_probe_unit,
+  match gunbc.fleet_show_effective_read.runner_unit_live_read_row_from_stdout(
+    unit: gunbc.host_converge_slice1.host_converge_slice1_probe_unit,
     stdout: "infinity\n0\ninfinity\n",
     probed_at: "2026-07-16",
   ) {
@@ -38,8 +38,8 @@ test fn witness_stdout_parse_grounds_memory_max() -> Bool {
 }
 
 test fn witness_short_stdout_is_read_absent() -> Bool {
-  match runner_unit_memory_live_read_from_stdout(
-    unit: host_converge_slice1_probe_unit,
+  match gunbc.fleet_show_effective_read.runner_unit_memory_live_read_from_stdout(
+    unit: gunbc.host_converge_slice1.host_converge_slice1_probe_unit,
     stdout: "infinity\n",
     probed_at: "2026-07-16",
   ) {
@@ -49,15 +49,15 @@ test fn witness_short_stdout_is_read_absent() -> Bool {
 }
 
 test fn witness_verdict_uses_converge_target_not_string_flatten() -> Bool {
-  match host_converge_slice1_srv1_per_slot_memory_max_knob() {
+  match gunbc.host_converge_slice1.host_converge_slice1_srv1_per_slot_memory_max_knob() {
     Present { value: knob } =>
-      match host_converge_slice1_memory_cap_verdict(
-        read: runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture),
+      match gunbc.host_converge_slice1.host_converge_slice1_memory_cap_verdict(
+        read: gunbc.runner_unit_live_read.runner_unit_live_read_typed(row: gunbc.runner_unit_live_read.gunbc_srv1_runner_unit_live_read_fixture),
         knob: knob,
       ) {
         Present { value: gunbc.host_converge.Drifted } =>
-          match per_slot_memory_cap_verdict_from_unit_read(
-            read: runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture),
+          match gunbc.fleet_show_effective_read.per_slot_memory_cap_verdict_from_unit_read(
+            read: gunbc.runner_unit_live_read.runner_unit_live_read_typed(row: gunbc.runner_unit_live_read.gunbc_srv1_runner_unit_live_read_fixture),
             target: knob.target,
           ) {
             Present { value: gunbc.host_converge.Drifted } => true
@@ -70,28 +70,28 @@ test fn witness_verdict_uses_converge_target_not_string_flatten() -> Bool {
 }
 
 fn witness_slice1_show_property_local_read_holds() -> Bool {
-  match systemctl_show_property_read(transport: LocalShell, unit: host_converge_slice1_probe_unit, property: MemoryMax) {
-    SystemdPropertyCaptured { value: v } => v == "8589934592"
-    SystemdPropertyCaptureRefused { reason: _ } => false
+  match gunbc.systemctl_show_read.systemctl_show_property_read(transport: gunbc.host_effect.LocalShell, unit: gunbc.host_converge_slice1.host_converge_slice1_probe_unit, property: extdeps.systemd.MemoryMax) {
+    gunbc.systemctl_show_read.SystemdPropertyCaptured { value: v } => v == "8589934592"
+    gunbc.systemctl_show_read.SystemdPropertyCaptureRefused { reason: _ } => false
   }
 }
 
 test fn witness_transport_reads_use_show_property_authority() -> Bool {
-  systemctl_show_property_operation_argv_matches_transport(
-    unit: host_converge_slice1_probe_unit,
-    property: MemoryMax,
+  gunbc.systemctl_show_read.systemctl_show_property_operation_argv_matches_transport(
+    unit: gunbc.host_converge_slice1.host_converge_slice1_probe_unit,
+    property: extdeps.systemd.MemoryMax,
   )
     && witness_slice1_show_property_local_read_holds()
 }
 
 test fn witness_list_units_line_parser_takes_first_field_only() -> Bool {
-  systemctl_list_units_line_as_unit(
+  gunbc.systemctl_list_units.systemctl_list_units_line_as_unit(
     line: "actions-runner@srv3-01.service loaded active running GitHub Actions Runner",
   ) == "actions-runner@srv3-01.service" as std.types.NonEmptyStr
 }
 
 test fn witness_enumerate_units_uses_typed_list_units_op() -> Bool {
-  match systemctl_list_units_active_services(instance_glob: "actions-runner@srv3-*.service" as std.types.NonEmptyStr) {
+  match gunbc.systemctl_list_units.systemctl_list_units_active_services(instance_glob: "actions-runner@srv3-*.service" as std.types.NonEmptyStr) {
     Present { value: units } =>
       length(units) == 2
         && units.first() == "actions-runner@srv3-01.service" as std.types.NonEmptyStr
@@ -102,21 +102,21 @@ test fn witness_enumerate_units_uses_typed_list_units_op() -> Bool {
 
 test fn witness_cross_check_allows_under_count_for_width_increase() -> Bool {
   let empty_units: List<std.types.NonEmptyStr> = []
-  match host_converge_slice1_cross_check_enumeration(host: operator_host_srv3, units: empty_units) {
+  match gunbc.host_converge_slice1.host_converge_slice1_cross_check_enumeration(host: gunbc.fleet_intent_network.operator_host_srv3, units: empty_units) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn witness_cross_check_refuses_observed_exceeds_declared() -> Bool {
-  let declared = declared_runner_count_for(host: operator_host_srv3)
+  let declared = gunbc.fleet_host_budget.declared_runner_count_for(host: gunbc.fleet_intent_network.operator_host_srv3)
   let excess_units: List<std.types.NonEmptyStr> = map(
-    runner_index_seq(n: declared + 1),
+    gunbc.runner_host_deploy.runner_index_seq(n: declared + 1),
     i => join(["actions-runner@srv3-", if i < 10 { join(["0", to_string(i)], "") } else { to_string(i) }, ".service"], "") as std.types.NonEmptyStr,
   )
-  match host_converge_slice1_cross_check_enumeration(host: operator_host_srv3, units: excess_units) {
+  match gunbc.host_converge_slice1.host_converge_slice1_cross_check_enumeration(host: gunbc.fleet_intent_network.operator_host_srv3, units: excess_units) {
     Present { value: mismatch } =>
-      mismatch.host == operator_host_srv3
+      mismatch.host == gunbc.fleet_intent_network.operator_host_srv3
         && mismatch.declared_count == declared
         && length(mismatch.observed_units) == declared + 1
     Absent => false
@@ -129,19 +129,19 @@ test fn witness_cross_check_refuses_observed_exceeds_declared() -> Bool {
 // of the arm (gunbc.host_effect_realize converge_in_process_apply_withdrawn_reason).
 
 // --- TasksMax knob (second knob on the slice1 circuit; desired = 16384, the incident
-// repair value — 512 is the diagnosed EAGAIN outage value and must read gunbc.host_converge.Drifted) ---
+// repair value — 512 is the diagnosed EAGAIN outage value and must read Drifted) ---
 
 test fn witness_tasks_knob_is_per_slot_tasks_max_on_srv1_and_srv3() -> Bool {
-  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+  match gunbc.host_converge_slice1.host_converge_slice1_tasks_knob(host: gunbc.fleet_intent_network.operator_host_srv1) {
     Present { value: knob } =>
-      knob.name == host_converge_slice1_tasks_knob_name
+      knob.name == gunbc.host_converge_slice1.host_converge_slice1_tasks_knob_name
         && knob.desired == "16384"
         && match knob.target {
-          PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: p, bytes_value: b } =>
-            p == (systemd_tasks_max_property as String) && b == knob.desired
+          gunbc.host_converge.PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: p, bytes_value: b } =>
+            p == (extdeps.systemd.systemd_tasks_max_property as String) && b == knob.desired
           _ => false
         }
-        && match host_converge_slice1_tasks_knob(host: operator_host_srv3) {
+        && match gunbc.host_converge_slice1.host_converge_slice1_tasks_knob(host: gunbc.fleet_intent_network.operator_host_srv3) {
           Present { value: k3 } => k3.desired == "16384"
           Absent => false
         }
@@ -151,54 +151,54 @@ test fn witness_tasks_knob_is_per_slot_tasks_max_on_srv1_and_srv3() -> Bool {
 
 // TasksMax=512 is the diagnosed EAGAIN/process-creation outage value (operator ruling on
 // PR 8045, restoring the 2026-06-21 repair 16384); the discriminating claim is that the
-// outage value reads gunbc.host_converge.Drifted against the repaired desired, never Converged — a converge
+// outage value reads Drifted against the repaired desired, never Converged — a converge
 // circuit that would re-apply 512 is the outage made reproducible by construction.
 test fn witness_tasks_verdict_outage_512_drifts() -> Bool {
-  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+  match gunbc.host_converge_slice1.host_converge_slice1_tasks_knob(host: gunbc.fleet_intent_network.operator_host_srv1) {
     Present { value: knob } =>
-      host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "512"), knob: knob) == gunbc.host_converge.Drifted
-        && host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "infinity"), knob: knob) == gunbc.host_converge.Drifted
+      gunbc.host_converge_slice1.host_converge_slice1_tasks_verdict(limit: extdeps.systemd.parse_systemd_task_limit_show(raw: "512"), knob: knob) == gunbc.host_converge.Drifted
+        && gunbc.host_converge_slice1.host_converge_slice1_tasks_verdict(limit: extdeps.systemd.parse_systemd_task_limit_show(raw: "infinity"), knob: knob) == gunbc.host_converge.Drifted
     Absent => false
   }
 }
 
 test fn witness_tasks_verdict_desired_count_converges_and_offbyone_drifts() -> Bool {
-  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+  match gunbc.host_converge_slice1.host_converge_slice1_tasks_knob(host: gunbc.fleet_intent_network.operator_host_srv1) {
     Present { value: knob } =>
-      host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "16384"), knob: knob) == VerdictConverged
-        && host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "16383"), knob: knob) == gunbc.host_converge.Drifted
+      gunbc.host_converge_slice1.host_converge_slice1_tasks_verdict(limit: extdeps.systemd.parse_systemd_task_limit_show(raw: "16384"), knob: knob) == gunbc.host_converge.VerdictConverged
+        && gunbc.host_converge_slice1.host_converge_slice1_tasks_verdict(limit: extdeps.systemd.parse_systemd_task_limit_show(raw: "16383"), knob: knob) == gunbc.host_converge.Drifted
     Absent => false
   }
 }
 
 test fn witness_tasks_parse_empty_or_junk_is_absent_verdict() -> Bool {
-  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+  match gunbc.host_converge_slice1.host_converge_slice1_tasks_knob(host: gunbc.fleet_intent_network.operator_host_srv1) {
     Present { value: knob } =>
-      host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: ""), knob: knob) == Absent
-        && host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "not-a-count"), knob: knob) == Absent
+      gunbc.host_converge_slice1.host_converge_slice1_tasks_verdict(limit: extdeps.systemd.parse_systemd_task_limit_show(raw: ""), knob: knob) == Absent
+        && gunbc.host_converge_slice1.host_converge_slice1_tasks_verdict(limit: extdeps.systemd.parse_systemd_task_limit_show(raw: "not-a-count"), knob: knob) == Absent
     Absent => false
   }
 }
 
 test fn witness_tasks_outcome_routes_to_tasks_legacy_arm_preserving_applied() -> Bool {
-  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+  match gunbc.host_converge_slice1.host_converge_slice1_tasks_knob(host: gunbc.fleet_intent_network.operator_host_srv1) {
     Present { value: knob } => {
-      let receipt = host_converge_slice1_tasks_receipt(
-        host: operator_host_srv1,
-        unit: host_converge_slice1_probe_unit,
+      let receipt = gunbc.host_converge_slice1.host_converge_slice1_tasks_receipt(
+        host: gunbc.fleet_intent_network.operator_host_srv1,
+        unit: gunbc.host_converge_slice1.host_converge_slice1_probe_unit,
         knob: knob,
-        limit: parse_systemd_task_limit_show(raw: "16384"),
+        limit: extdeps.systemd.parse_systemd_task_limit_show(raw: "16384"),
         probed_at: "witness-fixture" as std.types.NonEmptyStr,
         applied: true,
         read_back_converged: true,
         reapply_noop: true,
       )
-      host_converge_slice1_tasks_receipt_is_valid(receipt: receipt)
-        && match host_converge_slice1_unit_outcome_to_legacy_result(
-             gunbc.host_converge_slice1.HostConvergeSlice1UnitTasksConverged { unit: host_converge_slice1_probe_unit, applied: true, receipt: receipt }
+      gunbc.host_converge_slice1.host_converge_slice1_tasks_receipt_is_valid(receipt: receipt)
+        && match gunbc.host_converge_slice1.host_converge_slice1_unit_outcome_to_legacy_result(
+             gunbc.host_converge_slice1.HostConvergeSlice1UnitTasksConverged { unit: gunbc.host_converge_slice1.host_converge_slice1_probe_unit, applied: true, receipt: receipt }
            ) {
-          HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r } =>
-            n == 1 && r.verdict == VerdictConverged
+          gunbc.host_converge_slice1.HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r } =>
+            n == 1 && r.verdict == gunbc.host_converge.VerdictConverged
           _ => false
         }
     }
@@ -210,19 +210,19 @@ test fn witness_tasks_outcome_routes_to_tasks_legacy_arm_preserving_applied() ->
 // validity gate even when the boolean flags claim success — the verdict is derived from
 // the read, never from the flags.
 test fn witness_tasks_receipt_invalid_when_read_still_drifted() -> Bool {
-  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+  match gunbc.host_converge_slice1.host_converge_slice1_tasks_knob(host: gunbc.fleet_intent_network.operator_host_srv1) {
     Present { value: knob } => {
-      let receipt = host_converge_slice1_tasks_receipt(
-        host: operator_host_srv1,
-        unit: host_converge_slice1_probe_unit,
+      let receipt = gunbc.host_converge_slice1.host_converge_slice1_tasks_receipt(
+        host: gunbc.fleet_intent_network.operator_host_srv1,
+        unit: gunbc.host_converge_slice1.host_converge_slice1_probe_unit,
         knob: knob,
-        limit: parse_systemd_task_limit_show(raw: "512"),
+        limit: extdeps.systemd.parse_systemd_task_limit_show(raw: "512"),
         probed_at: "witness-fixture" as std.types.NonEmptyStr,
         applied: true,
         read_back_converged: true,
         reapply_noop: true,
       )
-      !host_converge_slice1_tasks_receipt_is_valid(receipt: receipt)
+      !gunbc.host_converge_slice1.host_converge_slice1_tasks_receipt_is_valid(receipt: receipt)
     }
     Absent => false
   }
@@ -230,7 +230,7 @@ test fn witness_tasks_receipt_invalid_when_read_still_drifted() -> Bool {
 
 // Guard boundary: equality is zero headroom and refuses; one below the cap admits.
 test fn witness_tasks_guard_boundary_equality_refuses() -> Bool {
-  host_converge_slice1_tasks_headroom_refuses(current: 16384, target: 16384)
-    && host_converge_slice1_tasks_headroom_refuses(current: 16385, target: 16384)
-    && !host_converge_slice1_tasks_headroom_refuses(current: 16383, target: 16384)
+  gunbc.host_converge_slice1.host_converge_slice1_tasks_headroom_refuses(current: 16384, target: 16384)
+    && gunbc.host_converge_slice1.host_converge_slice1_tasks_headroom_refuses(current: 16385, target: 16384)
+    && !gunbc.host_converge_slice1.host_converge_slice1_tasks_headroom_refuses(current: 16383, target: 16384)
 }

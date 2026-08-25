@@ -1,21 +1,21 @@
 module test.claim.live_deploy.service_ready
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn witness_service_ready_unit_authority() -> Bool {
-  live_deploy_service_ready_unit_authority == gunbc_roadmap_unit_name
+  gunbc.live_deploy.service_ready.live_deploy_service_ready_unit_authority == gunbc.live_deploy.spec.gunbc_roadmap_unit_name
 }
 
 test fn witness_service_ready_endpoint_authority() -> Bool {
-  live_deploy_service_ready_endpoint_authority == roadmap_site_health_path
+  gunbc.live_deploy.service_ready.live_deploy_service_ready_endpoint_authority == gunbc.roadmap_site_surface_render.roadmap_site_health_path
 }
 
 test fn witness_service_not_ready_reason_is_located() -> Bool {
-  let reason = service_not_ready_reason(refusal: gunbc.live_deploy.service_ready.ServiceNotReady {
-    unit: gunbc_roadmap_unit_name,
-    endpoint: roadmap_site_health_path,
-    waited: second(count: 1),
+  let reason = gunbc.live_deploy.service_ready.service_not_ready_reason(refusal: gunbc.live_deploy.service_ready.ServiceNotReady {
+    unit: gunbc.live_deploy.spec.gunbc_roadmap_unit_name,
+    endpoint: gunbc.roadmap_site_surface_render.roadmap_site_health_path,
+    waited: std.measure.second(count: 1),
     last_probe: "connection refused",
     unit_diagnosis: gunbc.live_deploy.service_ready.UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code)" },
   })
@@ -27,56 +27,56 @@ test fn witness_service_not_ready_reason_is_located() -> Bool {
 }
 
 test fn witness_readiness_poll_bound_grounded_on_std_measure_second() -> Bool {
-  live_deploy_readiness_poll_bound_is_positive()
-    && second_count(s: live_deploy_readiness_poll_bound_seconds()) == 120
+  gunbc.live_deploy.service_ready.live_deploy_readiness_poll_bound_is_positive()
+    && std.measure.second_count(s: gunbc.live_deploy.service_ready.live_deploy_readiness_poll_bound_seconds()) == 120
 }
 
 test fn witness_poll_bound_strictly_exceeds_expected_startup() -> Bool {
-  let expected = second_count(s: live_deploy_roadmap_unit_expected_startup)
-  let bound = second_count(s: live_deploy_service_ready_poll_bound)
+  let expected = std.measure.second_count(s: gunbc.live_deploy.service_ready.live_deploy_roadmap_unit_expected_startup)
+  let bound = std.measure.second_count(s: gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_bound)
   bound > expected
-    && live_deploy_service_ready_poll_bound_margin_factor > 1
-    && bound == expected * live_deploy_service_ready_poll_bound_margin_factor
+    && gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_bound_margin_factor > 1
+    && bound == expected * gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_bound_margin_factor
 }
 
 test fn witness_expected_startup_covers_measured_srv1_observations() -> Bool {
-  let expected = second_count(s: live_deploy_roadmap_unit_expected_startup)
+  let expected = std.measure.second_count(s: gunbc.live_deploy.service_ready.live_deploy_roadmap_unit_expected_startup)
   expected >= 39
 }
 
 test fn witness_health_probe_path_matches_service_ready_endpoint() -> Bool {
-  live_deploy_service_ready_endpoint_authority == roadmap_site_health_path
+  gunbc.live_deploy.service_ready.live_deploy_service_ready_endpoint_authority == gunbc.roadmap_site_surface_render.roadmap_site_health_path
 }
 
 test fn witness_scaffold_dissolution_trigger_binds_readiness_poll() -> Bool {
-  match live_deploy_service_ready_scaffold_dissolution_trigger {
-    Scaffold {
-      dissolves_to: RealizationDispatch,
-      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
+  match gunbc.live_deploy.service_ready.live_deploy_service_ready_scaffold_dissolution_trigger {
+    std.disposition.Scaffold {
+      dissolves_to: std.disposition.RealizationDispatch,
+      bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: std.decl_ref.WholeDeclaration },
     } =>
       m == "gunbc.live_deploy.readiness" && n == "live_deploy_poll_until_service_ready"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
 test fn witness_scaffold_carries_named_dissolution_trigger() -> Bool {
-  match live_deploy_service_ready_scaffold {
-    Scaffold {
-      dissolves_to: RealizationDispatch,
-      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
+  match gunbc.live_deploy.service_ready.live_deploy_service_ready_scaffold {
+    std.disposition.Scaffold {
+      dissolves_to: std.disposition.RealizationDispatch,
+      bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: std.decl_ref.WholeDeclaration },
     } =>
       m == "gunbc.live_deploy.service_ready"
         && n == "live_deploy_service_ready_scaffold_dissolution_trigger"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
 test fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
-  let refusal = service_not_ready_refusal_at_poll_bound(
+  let refusal = gunbc.live_deploy.service_ready.service_not_ready_refusal_at_poll_bound(
     last_probe: "health probe never succeeded",
     unit_diagnosis: gunbc.live_deploy.service_ready.UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code) Main PID: 4242 (code=exited, status=1/FAILURE)" }
   )
-  let reason = service_not_ready_reason(refusal: refusal)
+  let reason = gunbc.live_deploy.service_ready.service_not_ready_reason(refusal: refusal)
   string_contains(s: reason, pattern: "ServiceNotReady")
     && string_contains(s: reason, pattern: "waited_s=120")
     && string_contains(s: reason, pattern: "health probe never succeeded")
@@ -86,16 +86,16 @@ test fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
 }
 
 test fn witness_refusal_locates_unit_state_distinctly_from_probe() -> Bool {
-  let probe_only = service_not_ready_refusal_at_poll_bound(
+  let probe_only = gunbc.live_deploy.service_ready.service_not_ready_refusal_at_poll_bound(
     last_probe: "connection refused",
-    unit_diagnosis: UnitDiagnosisUnavailable
+    unit_diagnosis: gunbc.live_deploy.service_ready.UnitDiagnosisUnavailable
   )
-  let located = service_not_ready_refusal_at_poll_bound(
+  let located = gunbc.live_deploy.service_ready.service_not_ready_refusal_at_poll_bound(
     last_probe: "connection refused",
     unit_diagnosis: gunbc.live_deploy.service_ready.UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code) error: failed to bind 0.0.0.0:8080: Address already in use" }
   )
-  let probe_only_reason = service_not_ready_reason(refusal: probe_only)
-  let located_reason = service_not_ready_reason(refusal: located)
+  let probe_only_reason = gunbc.live_deploy.service_ready.service_not_ready_reason(refusal: probe_only)
+  let located_reason = gunbc.live_deploy.service_ready.service_not_ready_reason(refusal: located)
   string_contains(s: probe_only_reason, pattern: "connection refused")
     && !string_contains(s: probe_only_reason, pattern: "Address already in use")
     && string_contains(s: located_reason, pattern: "connection refused")
@@ -104,21 +104,21 @@ test fn witness_refusal_locates_unit_state_distinctly_from_probe() -> Bool {
 }
 
 test fn witness_host_sleep_frontier_trigger_binds_srv3_consumer() -> Bool {
-  match live_deploy_host_sleep_generalization_dissolution_trigger {
-    Scaffold {
-      dissolves_to: RealizationDispatch,
-      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
+  match gunbc.live_deploy.service_ready.live_deploy_host_sleep_generalization_dissolution_trigger {
+    std.disposition.Scaffold {
+      dissolves_to: std.disposition.RealizationDispatch,
+      bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: std.decl_ref.WholeDeclaration },
     } =>
       m == "gunbc.host_effect" && n == "Srv3BootOnceReadBackSleep"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
 test fn witness_poll_max_attempts_is_thirty() -> Bool {
-  live_deploy_service_ready_poll_max_attempts() == 120
+  gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_max_attempts() == 120
 }
 
 test fn witness_poll_max_attempts_tracks_cadence() -> Bool {
-  live_deploy_service_ready_poll_max_attempts() == measure_fit_count_floor(capacity: live_deploy_service_ready_poll_bound, each: live_deploy_service_ready_poll_cadence)
+  gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_max_attempts() == std.measure.measure_fit_count_floor(capacity: gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_bound, each: gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_cadence)
 }
 

@@ -1362,7 +1362,7 @@ fn expr_is_any_literal(expr: Node) -> Bool {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
       match lit {
-        LitNull => false
+        std.syntax.LitNull => false
         _ => true
       }
     ExprUnaryOp { op: Neg } => expr_is_any_literal(expr: unaryop_operand(texpr: expr))

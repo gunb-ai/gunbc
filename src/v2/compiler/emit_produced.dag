@@ -4,35 +4,35 @@ module v2.compiler.emit_produced
 fn emit_produced_decl_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: node_locus(node: node),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: node),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
-fn emit_produced_decl_inner_arrow(decl: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
+fn emit_produced_decl_inner_arrow(decl: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match decl.kind {
-    TypeNode { connective: Conj } =>
-      match list_at_optional(xs: decl.children, index: 0) {
-        Present { value: edge } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
+      match v2.std.collection.list_at_optional(xs: decl.children, index: 0) {
+        v2.std.collection.Present { value: edge } =>
           match edge.label {
-            Named { name: _ } => v2.std.diagnostic.Accepted { value: edge.target, diagnostics: v2.std.diagnostic.None }
-            Positional =>
+            v2.std.node.Named { name: _ } => v2.std.diagnostic.Accepted { value: edge.target, diagnostics: v2.std.diagnostic.None }
+            v2.std.node.Positional =>
               v2.std.diagnostic.Rejected {
-                diagnostics: diagnostics_singleton(
+                diagnostics: v2.std.diagnostic.diagnostics_singleton(
                   d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_unnamed, node: decl)
                 )
               }
           }
-        Absent =>
+        v2.std.collection.Absent =>
           v2.std.diagnostic.Rejected {
-            diagnostics: diagnostics_singleton(
+            diagnostics: v2.std.diagnostic.diagnostics_singleton(
               d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_empty, node: decl)
             )
           }
       }
     _ =>
       v2.std.diagnostic.Rejected {
-        diagnostics: diagnostics_singleton(
+        diagnostics: v2.std.diagnostic.diagnostics_singleton(
           d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
         )
       }
@@ -42,14 +42,14 @@ fn emit_produced_decl_inner_arrow(decl: v2.std.node.Node) -> Outcome<v2.std.node
 fn emit_produced_decl_with_target(
   decl: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<extdeps.communication.medium.Medium<String>> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
+  v2.std.diagnostic.bind_outcome(
     o: emit_produced_decl_inner_arrow(decl: decl),
     f: fn(arrow) {
-      bind_outcome(
-        o: target_serialize_bodied_arrow_from_model(target: target, emitted: arrow),
+      v2.std.diagnostic.bind_outcome(
+        o: v2.compiler.translate.target_serialize_bodied_arrow_from_model(target: target, emitted: arrow),
         f: fn(text) {
-          target_source_medium(text: render_target_text(t: text), target: target)
+          v2.compiler.target_carriers.target_source_medium(text: v2.std.compilers.target_model.render_target_text(t: text), target: target)
         }
       )
     }
@@ -62,23 +62,23 @@ fn emit_produced_decl_with_target(
 // exists, or how the declaration closes -- all of that is the renderer's. A target
 // that registered no renderer refuses with a typed, located produced_decl_target_unwired:
 // never a widen, never a fabricated default (DESIGN section 5).
-fn emit_produced_decl(decl: v2.std.node.Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<extdeps.communication.medium.Medium<String>> {
+fn emit_produced_decl(decl: v2.std.node.Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   match target.produced_decl_support {
-    ProducedDeclUnwired =>
-      outcome_rejected(
+    v2.std.compilers.target_model.ProducedDeclUnwired =>
+      v2.std.diagnostic.outcome_rejected(
         d: emit_produced_decl_diagnostic(reason: ^produced_decl_target_unwired, node: decl)
       )
-    ProducedDeclWired {
+    v2.std.compilers.target_model.ProducedDeclWired {
       render: render,
       scaffold_relation_rule_name: rule_name,
       scaffold_base_row: base_row
     } =>
-      bind_outcome(
+      v2.std.diagnostic.bind_outcome(
         o: render(decl),
         f: fn(scaffold) {
           emit_produced_decl_with_target(
             decl: decl,
-            target: target_model_with_produced_scaffold(
+            target: v2.std.compilers.target_model.target_model_with_produced_scaffold(
               target: target,
               rule_name: rule_name,
               base_row: base_row,
@@ -94,14 +94,14 @@ fn emit_produced_module_append(
   partial: String,
   decl: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<String> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<String> {
+  v2.std.diagnostic.bind_outcome(
     o: emit_produced_decl(decl: decl, target: target),
     f: fn(medium) {
       v2.std.diagnostic.Accepted {
-        value: list_append(
-          left: list_append(left: partial, right: medium.carried),
-          right: emit_module_decl_separator
+        value: v2.std.algebra.list_append(
+          left: v2.std.algebra.list_append(left: partial, right: medium.carried),
+          right: v2.compiler.emit_module.emit_module_decl_separator
         ),
         diagnostics: v2.std.diagnostic.None
       }
@@ -110,11 +110,11 @@ fn emit_produced_module_append(
 }
 
 fn emit_produced_module_step(
-  acc: Outcome<String>,
+  acc: v2.std.diagnostic.Outcome<String>,
   decl: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<String> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<String> {
+  v2.std.diagnostic.bind_outcome(
     o: acc,
     f: fn(partial) {
       emit_produced_module_append(partial: partial, decl: decl, target: target)
@@ -122,13 +122,13 @@ fn emit_produced_module_step(
   )
 }
 
-fn emit_produced_module(decls: List<v2.std.node.Node>, target: v2.std.compilers.target_model.TargetModel) -> Outcome<extdeps.communication.medium.Medium<String>> {
-  bind_outcome(
-    o: fold_list(
+fn emit_produced_module(decls: List<v2.std.node.Node>, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.algebra.fold_list(
       xs: decls,
       empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
       cons: fn(acc, decl) { emit_produced_module_step(acc: acc, decl: decl, target: target) }
     ),
-    f: fn(joined) { target_source_medium(text: joined, target: target) }
+    f: fn(joined) { v2.compiler.target_carriers.target_source_medium(text: joined, target: target) }
   )
 }

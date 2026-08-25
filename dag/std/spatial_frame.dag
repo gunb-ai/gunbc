@@ -17,7 +17,7 @@ module std.spatial_frame
 // question about clearance or collision is then asked of a shape that has already collapsed.
 //
 // WHY THE SCALE IS A VALUE HERE AND NOT A TYPE ARGUMENT. Measure carries its scale as a type
-// argument, so Measure<Length, Milli, std.integer.Int> and Measure<Length, Micro, std.integer.Int> are the honest static
+// argument, so Measure<Length, Milli, Int> and Measure<Length, Micro, Int> are the honest static
 // spelling — and making the affine types generic over that argument is exactly the repair this
 // layer already tried and measured as false. std.coordinate_frame records it: the v1 seed's
 // argument-position judge compares nominal HEAD NAMES and discards applied type arguments, which
@@ -54,29 +54,29 @@ data spatial_frame_note: String = "std.spatial_frame registers what a coordinate
 // else entirely.
 fn length_scale_is_decimal(s: std.measure.Scale) -> Bool {
   match s {
-    Atto  => true
-    Femto => true
-    Pico  => true
-    Nano  => true
-    Micro => true
-    Milli => true
-    One   => true
-    Kilo  => true
-    Mega  => true
-    Giga  => true
-    Tera  => true
-    Peta  => true
-    Exa   => true
-    Kibi  => false
-    Mebi  => false
-    Gibi  => false
-    Tebi  => false
-    ArcsecondAngle => false
-    DegreeAngle    => false
-    TurnAngle      => false
-    Sixty          => false
-    RackUnitHeight => false
-    SquareFootArea => false
+    std.measure.Atto  => true
+    std.measure.Femto => true
+    std.measure.Pico  => true
+    std.measure.Nano  => true
+    std.measure.Micro => true
+    std.measure.Milli => true
+    std.measure.One   => true
+    std.measure.Kilo  => true
+    std.measure.Mega  => true
+    std.measure.Giga  => true
+    std.measure.Tera  => true
+    std.measure.Peta  => true
+    std.measure.Exa   => true
+    std.measure.Kibi  => false
+    std.measure.Mebi  => false
+    std.measure.Gibi  => false
+    std.measure.Tebi  => false
+    std.measure.ArcsecondAngle => false
+    std.measure.DegreeAngle    => false
+    std.measure.TurnAngle      => false
+    std.measure.Sixty          => false
+    std.measure.RackUnitHeight => false
+    std.measure.SquareFootArea => false
   }
 }
 
@@ -103,7 +103,7 @@ fn empty_frame_registry() -> SpatialFrameRegistry {
 
 fn registry_holds(r: SpatialFrameRegistry, identity: std.coordinate_frame.CoordinateFrameIdentity) -> Bool {
   fold(r.frames, init: false, f: fn(acc, f) {
-    acc || coordinate_frame_identity_eq(a: f.identity, b: identity)
+    acc || std.coordinate_frame.coordinate_frame_identity_eq(a: f.identity, b: identity)
   })
 }
 
@@ -134,16 +134,16 @@ fn frame_length_scale(r: SpatialFrameRegistry, identity: std.coordinate_frame.Co
   fold(r.frames, init: none, f: fn(acc, f) {
     match acc {
       Present { value: v } => Present { value: v }
-      Absent => if coordinate_frame_identity_eq(a: f.identity, b: identity) { Present { value: f.length_scale } } else { none }
+      Absent => if std.coordinate_frame.coordinate_frame_identity_eq(a: f.identity, b: identity) { Present { value: f.length_scale } } else { none }
     }
   })
 }
 
 fn scales_agree(a: std.measure.Scale, b: std.measure.Scale) -> Bool {
-  match scale_exponent(s: a) {
+  match std.measure.scale_exponent(s: a) {
     Absent => false
     Present { value: ea } =>
-      match scale_exponent(s: b) {
+      match std.measure.scale_exponent(s: b) {
         Absent => false
         Present { value: eb } => ea == eb
       }
@@ -179,18 +179,18 @@ type LengthProjection<T>
 // the caller who wants one should say so at a place that names the factor rather than receiving it
 // as a side effect of asking what something measures.
 fn frame_length_as_millimeter(l: FrameLength) -> LengthProjection<std.measure.Millimeter> {
-  if scales_agree(a: l.scale, b: Milli) {
+  if scales_agree(a: l.scale, b: std.measure.Milli) {
     LengthProjected { value: std.measure.Measure { count: l.count } }
   } else {
-    LengthProjectionRefused { cause: LengthScaleMismatch { held: l.scale, requested: Milli } }
+    LengthProjectionRefused { cause: LengthScaleMismatch { held: l.scale, requested: std.measure.Milli } }
   }
 }
 
 fn frame_length_as_micrometer(l: FrameLength) -> LengthProjection<std.measure.Micrometer> {
-  if scales_agree(a: l.scale, b: Micro) {
+  if scales_agree(a: l.scale, b: std.measure.Micro) {
     LengthProjected { value: std.measure.Measure { count: l.count } }
   } else {
-    LengthProjectionRefused { cause: LengthScaleMismatch { held: l.scale, requested: Micro } }
+    LengthProjectionRefused { cause: LengthScaleMismatch { held: l.scale, requested: std.measure.Micro } }
   }
 }
 

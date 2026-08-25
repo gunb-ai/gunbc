@@ -18,9 +18,9 @@ type DeployTargetHostObservation {
 }
 
 fn deploy_target_host_observed_hostname() -> String {
-  match hostname_short_read(transport: LocalShell) {
-    HostnameShortCaptured { value: name } => name
-    HostnameShortCaptureRefused { reason: _ } => ""
+  match gunbc.hostname_read.hostname_short_read(transport: gunbc.host_effect.LocalShell) {
+    gunbc.hostname_read.HostnameShortCaptured { value: name } => name
+    gunbc.hostname_read.HostnameShortCaptureRefused { reason: _ } => ""
   }
 }
 
@@ -41,8 +41,8 @@ fn deploy_target_host_observed() -> DeployTargetHostObservation {
 
 fn deploy_target_host_decision_reason(d: std.access.AccessDecision) -> String {
   match d {
-    Permit => ""
-    Deny { refusal: refusal } => access_refusal_reason(refusal: refusal)
+    std.access.Permit => ""
+    std.access.Deny { refusal: refusal } => std.access.access_refusal_reason(refusal: refusal)
   }
 }
 
@@ -51,18 +51,18 @@ fn deploy_target_host_check(
   observed: DeployTargetHostObservation
 ) -> std.access.AccessDecision {
   if !deploy_target_ssh_proof_structurally_valid(proof: proof) {
-    access_policy_refusal(profile: "deploy-target-host", subject: "runner", action: "deploy", object: "target-host", reason: deploy_target_host_refusal_ssh)
+    std.access.access_policy_refusal(profile: "deploy-target-host", subject: "runner", action: "deploy", object: "target-host", reason: deploy_target_host_refusal_ssh)
   } else {
     if deploy_target_host_apply_permitted(
       proof: proof,
       observed_hostname: observed.hostname,
       observed_runner_name: observed.runner_name
     ) {
-      Permit
+      std.access.Permit
     } else {
       match proof {
         RunnerIdentityOnHost { host: id } =>
-          access_policy_refusal(
+          std.access.access_policy_refusal(
             profile: "deploy-target-host", subject: observed.runner_name, action: "deploy", object: id,
             reason: concat(
                 concat(
@@ -79,7 +79,7 @@ fn deploy_target_host_check(
               ),
           )
         SshExplicitHost { host: id, ssh_host: h } =>
-          access_policy_refusal(
+          std.access.access_policy_refusal(
             profile: "deploy-target-host", subject: observed.runner_name, action: "deploy", object: id,
             reason: concat(
                 concat(deploy_target_host_refusal_prefix, " — "),
@@ -107,13 +107,13 @@ fn deploy_target_host_fixture_observation(
 
 fn deploy_target_proof(host: product.placement_supply.HostIdentity, transport: gunbc.host_effect.HostEffectTransport) -> DeployTargetHostProof {
   match transport {
-    LocalShell =>
+    gunbc.host_effect.LocalShell =>
       RunnerIdentityOnHost { host: host }
-    SshShell { ssh_host: h } =>
+    gunbc.host_effect.SshShell { ssh_host: h } =>
       SshExplicitHost { host: host, ssh_host: h }
     FleetSsh { target: t, context: _ } =>
       SshExplicitHost { host: host, ssh_host: t.endpoint }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       RunnerIdentityOnHost { host: host }
   }
 }
@@ -166,38 +166,38 @@ fn deploy_local_apply_refused_for_observed_host(
 ) -> Bool {
   let proof = deploy_target_proof(host: host, transport: transport)
   match transport {
-    LocalShell =>
+    gunbc.host_effect.LocalShell =>
       !deploy_target_host_apply_permitted(
         proof: proof,
         observed_hostname: observed_hostname,
         observed_runner_name: observed_runner_name
       )
-    SshShell { ssh_host: _ } =>
+    gunbc.host_effect.SshShell { ssh_host: _ } =>
       !deploy_target_ssh_proof_structurally_valid(proof: proof)
     FleetSsh { target: _, context: _ } =>
       !deploy_target_ssh_proof_structurally_valid(proof: proof)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => true
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => true
   }
 }
 
 fn host_pinned_runner_spec(offer: gunbc.ci_fleet.ComputeOffer, host: product.placement_supply.HostIdentity) -> extdeps.github.actions.RunnerSpec {
-  match runner_spec_from_offer(offer: offer) {
-    SelfHosted { labels: labels } =>
+  match gunbc.runner_spec_from_offer.runner_spec_from_offer(offer: offer) {
+    extdeps.github.actions.SelfHosted { labels: labels } =>
       extdeps.github.actions.SelfHosted { labels: concat(labels, [host]) }
     other => other
   }
 }
 
 fn gunbc_ci_deploy_srv1_runner_spec() -> extdeps.github.actions.RunnerSpec {
-  host_pinned_runner_spec(offer: srv1_offer, host: operator_host_srv1)
+  host_pinned_runner_spec(offer: gunbc.ci_fleet.srv1_offer, host: gunbc.fleet_intent_network.operator_host_srv1)
 }
 
 data deploy_target_host_preflight_shell_disposition: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.emit",
     decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

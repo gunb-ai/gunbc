@@ -1,5 +1,6 @@
 module test.claim.operation_admit_callers_inert_witness
 
+
 // ADMIT_CALLERS ON A SERVICE OPERATION IS ACCEPTED AND INERT.
 //
 // THE CLASS. `admit_callers` is the repository's construction wall: a declaration names who may
@@ -69,8 +70,8 @@ test fn fn_form_admission_refuses_unadmitted_caller() -> Bool {
     census: admit_census_of(source: admit_fn_form_source),
     wanted: "ConstructorCallAdmissionRefused"
   ) {
-    Present { value: n } => n >= 1
-    Absent => false
+    v2.std.optional.Present { value: n } => n >= 1
+    v2.std.optional.Absent => false
   }
 }
 
@@ -85,7 +86,7 @@ test fn operation_form_admission_refuses_unadmitted_caller() -> Bool {
     census: admit_census_of(source: admit_op_form_source),
     wanted: "ConstructorCallAdmissionRefused"
   ) {
-    Present { value: n } => n >= 1
-    Absent => false
+    v2.std.optional.Present { value: n } => n >= 1
+    v2.std.optional.Absent => false
   }
 }

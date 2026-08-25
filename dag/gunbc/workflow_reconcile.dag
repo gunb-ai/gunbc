@@ -387,7 +387,7 @@ fn workflow_reconcile_fold_action(
   action: gunbc.membership_reconcile.MemberAction<WorkflowFactMember, WorkflowFactMemberAt>,
 ) -> WorkflowReconcileFold {
   match action {
-    MemberAdded { at: _, to: member } =>
+    gunbc.membership_reconcile.MemberAdded { at: _, to: member } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals,
@@ -397,7 +397,7 @@ fn workflow_reconcile_fold_action(
           acc.first_missing
         },
       }
-    MemberChanged { at: _, from: _, to: member } =>
+    gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: member } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals,
@@ -407,7 +407,7 @@ fn workflow_reconcile_fold_action(
           acc.first_missing
         },
       }
-    MemberRemoved { at: _, from: member } =>
+    gunbc.membership_reconcile.MemberRemoved { at: _, from: member } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals + 1,
@@ -417,7 +417,7 @@ fn workflow_reconcile_fold_action(
           acc.first_missing
         },
       }
-    MemberRemovalRefused { from: member, cause: _ } =>
+    gunbc.membership_reconcile.MemberRemovalRefused { from: member, cause: _ } =>
       WorkflowReconcileFold {
         remaining: acc.remaining + 1,
         plan_refusals: acc.plan_refusals + 1,
@@ -470,7 +470,7 @@ fn workflow_reconcile_report(
   )
   let observed_verdict = workflow_fact_forest_verdict(forest: observed)
   let verdict = match observed_verdict {
-    Unknown { missing: _ } => observed_verdict
+    std.reducible.Unknown { missing: _ } => observed_verdict
     _ =>
       if folded.remaining == 0 {
         observed_verdict
@@ -502,7 +502,7 @@ fn workflow_reconcile_status_key(
     "not_converged"
   } else {
     match report.verdict {
-      Unknown { missing: _ } => "refused"
+      std.reducible.Unknown { missing: _ } => "refused"
       _ => "converged"
     }
   }

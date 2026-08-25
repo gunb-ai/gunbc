@@ -145,7 +145,7 @@ fn guarantee_probe_ids_unique(ids: List<GuaranteeProbeId>) -> Bool {
 data probe_set_digest_note: String = "Content address of the exact probe set a receipt ran under, folded in the caller's list order: canonical ordering is the PROBE stage's obligation (it owns the probe roster and its canonical enumeration), so this fn is deterministic exactly when the caller's order is - stated rather than silently sorted here, because a sort would need an order authority this stage does not own and a host-order sort would be the determinism leak std.determinism refuses."
 
 fn probe_set_digest(probe_ids: List<GuaranteeProbeId>) -> std.content_hash.Fnv1a64Structural {
-  fold(probe_ids, init: content_hash_atom(value: "guarantee-probe-set" as std.types.NonEmptyStr), f: fn(acc, id) {
-    content_hash_combine_structural(left: acc, right: content_hash_tagged_structural(tag: "probe" as std.types.NonEmptyStr, payload: content_hash_atom(value: id as std.types.NonEmptyStr)))
+  fold(probe_ids, init: std.content_hash.content_hash_atom(value: "guarantee-probe-set" as std.types.NonEmptyStr), f: fn(acc, id) {
+    std.content_hash.content_hash_combine_structural(left: acc, right: std.content_hash.content_hash_tagged_structural(tag: "probe" as std.types.NonEmptyStr, payload: std.content_hash.content_hash_atom(value: id as std.types.NonEmptyStr)))
   })
 }

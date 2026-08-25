@@ -1,53 +1,53 @@
 module v2.test.manual.bash_emit_command
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn bash_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_absent()
+  v2.std.optional.optional_absent()
 }
 
 fn bash_arrow_emitted_red_fixture() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bash_word_git } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       },
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bash_word_rev_parse } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       },
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bash_word_show_toplevel } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn bash_lhs_exact_arrow_emitted_rejects() -> Bool {
-  match bash_lhs_exact_relation_row_witness(
+  match v2.extdeps.languages.bash.bash_lhs_exact_relation_row_witness(
     lhs: ^bash_production_command,
-    tokens: bash_concrete_tokens(),
+    tokens: v2.extdeps.languages.bash.bash_concrete_tokens(),
     emitted: bash_arrow_emitted_red_fixture()
   ) {
-    Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
-    Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: d } => d.reason == ^grammar_relation_emitted_not_conj
+    v2.std.witness.Holds { value: _ } => false
   }
 }
 
@@ -56,46 +56,46 @@ test fn bash_emit_lhs_exact_arrow_emitted_rejects_holds() -> Bool {
 }
 
 data bash_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
-  root: bash_emitted_command,
-  facts: std.algebra.PartialFunction {
+  root: v2.extdeps.languages.bash.bash_emitted_command,
+  facts: PartialFunction {
     lookup: bash_facts_lookup
   }
 }
 
 fn anchor_bash_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  v2.compiler.emit.emit(tree: bash_emit_inferred_tree, target: bash_target_model())
+  v2.compiler.emit.emit(tree: bash_emit_inferred_tree, target: v2.extdeps.languages.bash.bash_target_model())
 }
 
 data bash_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_bash_emit_accepts()
 
 test fn bash_emit_command_accepts_holds() -> Bool {
   match bash_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == bash_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried == v2.extdeps.languages.bash.bash_source_text) && (d == v2.std.diagnostic.None)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 data bash_empty_bundle: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data bash_missing_rules_target: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
-  produced_decl_support: ProducedDeclUnwired,
+  produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
   bundle: bash_empty_bundle,
-  lex: bash_lex(),
-  binding_spellings: empty_map(),
-  token_class_emit_transforms: target_model_emit_transforms_empty,
+  lex: v2.extdeps.languages.bash.bash_lex(),
+  binding_spellings: v2.std.collection.empty_map(),
+  token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
   authority_source_text: "",
-  runtime_row: target_emit_host_runtime_row_unconfigured
+  runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
 }
 
 fn anchor_bash_serialize_rejects_missing_rules() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  target_serialize_source_from_model(
+  v2.compiler.translate.target_serialize_source_from_model(
     target: bash_missing_rules_target,
-    emitted: bash_emitted_command
+    emitted: v2.extdeps.languages.bash.bash_emitted_command
   )
 }
 
@@ -103,56 +103,56 @@ data bash_serialize_reject_receipt: v2.std.diagnostic.Outcome<extdeps.communicat
 
 test fn bash_emit_missing_rules_rejects_holds() -> Bool {
   match bash_serialize_reject_receipt {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
 data bash_bound_words_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
-  root: bash_bound_words_emitted_command,
-  facts: std.algebra.PartialFunction {
+  root: v2.extdeps.languages.bash.bash_bound_words_emitted_command,
+  facts: PartialFunction {
     lookup: bash_facts_lookup
   }
 }
 
 fn anchor_bash_bound_words_emit() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  v2.compiler.emit.emit(tree: bash_bound_words_emit_inferred_tree, target: bash_bound_words_target_model())
+  v2.compiler.emit.emit(tree: bash_bound_words_emit_inferred_tree, target: v2.extdeps.languages.bash.bash_bound_words_target_model())
 }
 
 data bash_bound_words_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_bash_bound_words_emit()
 
 test fn bash_emit_bound_words_holds() -> Bool {
   match bash_bound_words_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == bash_bound_words_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried == v2.extdeps.languages.bash.bash_bound_words_source_text) && (d == v2.std.diagnostic.None)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 data bash_embedded_quote_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
-  root: bash_embedded_quote_emitted_command,
-  facts: std.algebra.PartialFunction {
+  root: v2.extdeps.languages.bash.bash_embedded_quote_emitted_command,
+  facts: PartialFunction {
     lookup: bash_facts_lookup
   }
 }
 
 fn anchor_bash_embedded_quote_emit() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  v2.compiler.emit.emit(tree: bash_embedded_quote_emit_inferred_tree, target: bash_embedded_quote_target_model())
+  v2.compiler.emit.emit(tree: bash_embedded_quote_emit_inferred_tree, target: v2.extdeps.languages.bash.bash_embedded_quote_target_model())
 }
 
 data bash_embedded_quote_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_bash_embedded_quote_emit()
 
 test fn bash_emit_embedded_quote_holds() -> Bool {
   match bash_embedded_quote_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == bash_embedded_quote_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried == v2.extdeps.languages.bash.bash_embedded_quote_source_text) && (d == v2.std.diagnostic.None)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 data bash_source_root_ingest_gate_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
-  root: bash_source_root_ingest_gate_emitted_command,
-  facts: std.algebra.PartialFunction {
+  root: v2.extdeps.languages.bash.bash_source_root_ingest_gate_emitted_command,
+  facts: PartialFunction {
     lookup: bash_facts_lookup
   }
 }
@@ -160,7 +160,7 @@ data bash_source_root_ingest_gate_emit_inferred_tree: v2.compiler.inferred_tree.
 fn anchor_bash_source_root_ingest_gate_emit() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   v2.compiler.emit.emit(
     tree: bash_source_root_ingest_gate_emit_inferred_tree,
-    target: bash_source_root_ingest_gate_target_model()
+    target: v2.extdeps.languages.bash.bash_source_root_ingest_gate_target_model()
   )
 }
 
@@ -168,9 +168,9 @@ data bash_source_root_ingest_gate_emit_receipt: v2.std.diagnostic.Outcome<extdep
 
 test fn bash_emit_source_root_ingest_gate_holds() -> Bool {
   match bash_source_root_ingest_gate_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == bash_source_root_ingest_gate_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried == v2.extdeps.languages.bash.bash_source_root_ingest_gate_source_text) && (d == v2.std.diagnostic.None)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -181,115 +181,115 @@ fn bash_emit_slice4_holds(
 ) -> Bool {
   let tree = v2.compiler.inferred_tree.InferredTree {
     root: emitted,
-    facts: std.algebra.PartialFunction { lookup: bash_facts_lookup }
+    facts: PartialFunction { lookup: bash_facts_lookup }
   }
   match v2.compiler.emit.emit(tree: tree, target: target) {
-    Accepted { value: source, diagnostics: d } => (source.carried == source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } => (source.carried == source_text) && (d == v2.std.diagnostic.None)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn bash_emit_and_then_holds() -> Bool {
   bash_emit_slice4_holds(
-    emitted: bash_and_then_emitted,
-    source_text: bash_and_then_source_text,
-    target: bash_and_then_target_model()
+    emitted: v2.extdeps.languages.bash.bash_and_then_emitted,
+    source_text: v2.extdeps.languages.bash.bash_and_then_source_text,
+    target: v2.extdeps.languages.bash.bash_and_then_target_model()
   )
 }
 
 test fn bash_emit_or_else_holds() -> Bool {
   bash_emit_slice4_holds(
-    emitted: bash_or_else_emitted,
-    source_text: bash_or_else_source_text,
-    target: bash_or_else_target_model()
+    emitted: v2.extdeps.languages.bash.bash_or_else_emitted,
+    source_text: v2.extdeps.languages.bash.bash_or_else_source_text,
+    target: v2.extdeps.languages.bash.bash_or_else_target_model()
   )
 }
 
 test fn bash_emit_with_redir_stderr_null_holds() -> Bool {
   bash_emit_slice4_holds(
-    emitted: bash_with_redir_stderr_null_emitted,
-    source_text: bash_with_redir_stderr_null_source_text,
-    target: bash_with_redir_stderr_null_target_model()
+    emitted: v2.extdeps.languages.bash.bash_with_redir_stderr_null_emitted,
+    source_text: v2.extdeps.languages.bash.bash_with_redir_stderr_null_source_text,
+    target: v2.extdeps.languages.bash.bash_with_redir_stderr_null_target_model()
   )
 }
 
 test fn bash_emit_pipe_holds() -> Bool {
   bash_emit_slice4_holds(
-    emitted: bash_pipe_emitted,
-    source_text: bash_pipe_source_text,
-    target: bash_pipe_target_model()
+    emitted: v2.extdeps.languages.bash.bash_pipe_emitted,
+    source_text: v2.extdeps.languages.bash.bash_pipe_source_text,
+    target: v2.extdeps.languages.bash.bash_pipe_target_model()
   )
 }
 
 test fn bash_emit_or_else_with_redir_holds() -> Bool {
   bash_emit_slice4_holds(
-    emitted: bash_or_else_with_redir_emitted,
-    source_text: bash_or_else_with_redir_source_text,
-    target: bash_or_else_with_redir_target_model()
+    emitted: v2.extdeps.languages.bash.bash_or_else_with_redir_emitted,
+    source_text: v2.extdeps.languages.bash.bash_or_else_with_redir_source_text,
+    target: v2.extdeps.languages.bash.bash_or_else_with_redir_target_model()
   )
 }
 
 test fn bash_emit_subshell_true_holds() -> Bool {
   bash_emit_slice4_holds(
-    emitted: bash_subshell_true_emitted,
-    source_text: bash_subshell_true_source_text,
-    target: bash_subshell_true_target_model()
+    emitted: v2.extdeps.languages.bash.bash_subshell_true_emitted,
+    source_text: v2.extdeps.languages.bash.bash_subshell_true_source_text,
+    target: v2.extdeps.languages.bash.bash_subshell_true_target_model()
   )
 }
 
 test fn bash_emit_if_true_then_false_holds() -> Bool {
   bash_emit_slice4_holds(
-    emitted: bash_if_true_then_false_emitted,
-    source_text: bash_if_true_then_false_source_text,
-    target: bash_if_true_then_false_target_model()
+    emitted: v2.extdeps.languages.bash.bash_if_true_then_false_emitted,
+    source_text: v2.extdeps.languages.bash.bash_if_true_then_false_source_text,
+    target: v2.extdeps.languages.bash.bash_if_true_then_false_target_model()
   )
 }
 
 test fn bash_emit_heredoc_simple_holds() -> Bool {
   bash_emit_slice4_holds(
-    emitted: bash_heredoc_simple_emitted,
-    source_text: bash_heredoc_simple_source_text,
-    target: bash_heredoc_simple_target_model()
+    emitted: v2.extdeps.languages.bash.bash_heredoc_simple_emitted,
+    source_text: v2.extdeps.languages.bash.bash_heredoc_simple_source_text,
+    target: v2.extdeps.languages.bash.bash_heredoc_simple_target_model()
   )
 }
 
 test fn bash_emit_subshell_and_or_nested_holds() -> Bool {
   bash_emit_slice4_holds(
-    emitted: bash_subshell_and_or_nested_emitted,
-    source_text: bash_subshell_and_or_nested_source_text,
-    target: bash_subshell_and_or_nested_target_model()
+    emitted: v2.extdeps.languages.bash.bash_subshell_and_or_nested_emitted,
+    source_text: v2.extdeps.languages.bash.bash_subshell_and_or_nested_source_text,
+    target: v2.extdeps.languages.bash.bash_subshell_and_or_nested_target_model()
   )
 }
 
 test fn bash_emit_pipe_and_or_brace_grouped_holds() -> Bool {
   bash_emit_slice4_holds(
-    emitted: bash_pipe_and_or_brace_grouped_emitted,
-    source_text: bash_pipe_and_or_brace_grouped_source_text,
-    target: bash_pipe_and_or_brace_grouped_target_model()
+    emitted: v2.extdeps.languages.bash.bash_pipe_and_or_brace_grouped_emitted,
+    source_text: v2.extdeps.languages.bash.bash_pipe_and_or_brace_grouped_source_text,
+    target: v2.extdeps.languages.bash.bash_pipe_and_or_brace_grouped_target_model()
   )
 }
 
 test fn bash_emit_pipe_and_or_flat_ne_brace_grouped_holds() -> Bool {
-  bash_pipe_and_or_flat_wrong_source_text != bash_pipe_and_or_brace_grouped_source_text
+  v2.extdeps.languages.bash.bash_pipe_and_or_flat_wrong_source_text != v2.extdeps.languages.bash.bash_pipe_and_or_brace_grouped_source_text
 }
 
 test fn bash_emit_pipe_and_or_flat_wrong_model_holds() -> Bool {
   bash_emit_slice4_holds(
-    emitted: bash_pipe_and_or_flat_wrong_emitted,
-    source_text: bash_pipe_and_or_flat_wrong_source_text,
-    target: bash_pipe_and_or_flat_wrong_target_model()
+    emitted: v2.extdeps.languages.bash.bash_pipe_and_or_flat_wrong_emitted,
+    source_text: v2.extdeps.languages.bash.bash_pipe_and_or_flat_wrong_source_text,
+    target: v2.extdeps.languages.bash.bash_pipe_and_or_flat_wrong_target_model()
   )
 }
 
 fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects() -> Bool {
   let tree = v2.compiler.inferred_tree.InferredTree {
-    root: bash_pipe_and_or_brace_grouped_emitted,
-    facts: std.algebra.PartialFunction { lookup: bash_facts_lookup }
+    root: v2.extdeps.languages.bash.bash_pipe_and_or_brace_grouped_emitted,
+    facts: PartialFunction { lookup: bash_facts_lookup }
   }
-  match v2.compiler.emit.emit(tree: tree, target: bash_pipe_and_or_flat_wrong_target_model()) {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried != bash_pipe_and_or_brace_grouped_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => true
+  match v2.compiler.emit.emit(tree: tree, target: v2.extdeps.languages.bash.bash_pipe_and_or_flat_wrong_target_model()) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried != v2.extdeps.languages.bash.bash_pipe_and_or_brace_grouped_source_text) && (d == v2.std.diagnostic.None)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

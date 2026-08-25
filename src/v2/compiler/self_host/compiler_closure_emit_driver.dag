@@ -1,5 +1,6 @@
 module v2.compiler.self_host.compiler_closure_emit_driver
 
+
 // WHY THIS EXISTS, and why it is not a second path beside the emitter.
 //
 // emit_compiler_import_closure_from_ingest is total over whatever ingest it is
@@ -37,7 +38,7 @@ fn closure_emit_driver_refusal(
 fn closure_emit_driver_population_agrees(
   receipt: v2.compiler.source_authority.SourceRootProvenanceCoverageReceipt,
   refs: List<v2.compiler.source_authority.SourceRef>
-) -> v2.std.logic.Bool {
+) -> Bool {
   v2.compiler.source_authority.discovered_source_refs_digest_eq(
     left: receipt.discovered_source_refs_digest,
     right: v2.compiler.source_authority.discovered_source_refs_digest_for_refs(refs: refs)
@@ -74,11 +75,11 @@ fn closure_emit_population_admission(
           }
         } else {
           match v2.compiler.source_authority.source_root_ingest_build_from_source_refs(refs: refs) {
-            SourceRootIngestBuildReadFailed { result: _ } =>
+            v2.compiler.source_authority.SourceRootIngestBuildReadFailed { result: _ } =>
               ClosureEmitPopulationRefused {
                 reason: ^closure_emit_driver_source_read_failed
               }
-            SourceRootIngestBuildOk { ingest: ingest } =>
+            v2.compiler.source_authority.SourceRootIngestBuildOk { ingest: ingest } =>
               if v2.std.algebra.length(xs: ingest) != receipt.ingest_read_count {
                 ClosureEmitPopulationRefused {
                   reason: ^closure_emit_driver_ingest_row_shortfall

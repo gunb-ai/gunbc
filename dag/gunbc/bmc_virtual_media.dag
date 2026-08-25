@@ -25,7 +25,7 @@ data srv4_virtual_media_intent: extdeps.bmc.virtual_media.VirtualMediaIntent = e
 
 data srv4_configfs_params: extdeps.bmc.virtual_media.ConfigfsGadgetParams = extdeps.bmc.virtual_media.ConfigfsGadgetParams {
   nbd_server_host: srv1_host_lan_endpoint.address,
-  nbd_port: srv3_nbd_proxy_local_port,
+  nbd_port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port,
   export_name: "srv4iso",
   nbd_device: "/dev/nbd0",
   udc: "1e6a0000.usb-vhub:p3",
@@ -93,25 +93,25 @@ fn plan_vm_gadget(plan: BmcVirtualMediaPlan) -> extdeps.linux.usb_gadget.UsbGadg
 }
 
 fn srv4_nbd_server_config_text() -> String {
-  nbd_server_config_text(export: plan_nbd_export(plan: srv4_bmc_virtual_media_plan))
+  extdeps.storage.nbd.nbd_server_config_text(export: plan_nbd_export(plan: srv4_bmc_virtual_media_plan))
 }
 
 fn srv4_nbd_server_command_text() -> String {
-  shell_command_render(command: nbd_server_command(config_path: srv4_bmc_virtual_media_plan.nbd_config_path))
+  extdeps.exec.command.shell_command_render(command: extdeps.storage.nbd.nbd_server_command(config_path: srv4_bmc_virtual_media_plan.nbd_config_path))
 }
 
 fn srv4_nbd_client_attach_command_text() -> String {
-  shell_command_render(command: nbd_client_attach_command(attach: plan_nbd_client_attach(plan: srv4_bmc_virtual_media_plan)))
+  extdeps.exec.command.shell_command_render(command: extdeps.storage.nbd.nbd_client_attach_command(attach: plan_nbd_client_attach(plan: srv4_bmc_virtual_media_plan)))
 }
 
 fn srv4_vm_gadget_setup_ops() -> List<extdeps.linux.usb_gadget.ConfigfsOp> {
-  usb_gadget_setup_ops(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
+  extdeps.linux.usb_gadget.usb_gadget_setup_ops(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
 }
 
 fn srv4_vm_gadget_setup_script() -> String {
-  usb_gadget_setup_script(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
+  extdeps.linux.usb_gadget.usb_gadget_setup_script(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
 }
 
 fn srv4_vm_gadget_teardown_script() -> String {
-  usb_gadget_teardown_script(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
+  extdeps.linux.usb_gadget.usb_gadget_teardown_script(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
 }

@@ -3,14 +3,14 @@ module extdeps.version.semver
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "semver.org/"
   }
 }
 
-type SemVerIdentity = VersionIdentity
+type SemVerIdentity = extdeps.version.VersionIdentity
 
-type SemVerConstraint = VersionConstraint
+type SemVerConstraint = extdeps.version.VersionConstraint
 
 type SemVerIdentifier
   = SemVerNumericIdentifier { value: std.integer.NonNegativeInt }
@@ -33,24 +33,24 @@ fn semver_compare_identifier(a: SemVerIdentifier, b: SemVerIdentifier) -> std.al
     SemVerNumericIdentifier { value: av } => match b {
       SemVerNumericIdentifier { value: bv } =>
         semver_compare_non_negative_int(a: av, b: bv)
-      SemVerAlphanumericIdentifier { label: _ } => Less
+      SemVerAlphanumericIdentifier { label: _ } => std.algebra.Less
     }
     SemVerAlphanumericIdentifier { label: al } => match b {
-      SemVerNumericIdentifier { value: _ } => Greater
+      SemVerNumericIdentifier { value: _ } => std.algebra.Greater
       SemVerAlphanumericIdentifier { label: bl } =>
-        if al < bl { Less } else { if al > bl { Greater } else { Equal } }
+        if al < bl { std.algebra.Less } else { if al > bl { std.algebra.Greater } else { std.algebra.Equal } }
     }
   }
 }
 
 fn semver_compare_identifiers(a: List<SemVerIdentifier>, b: List<SemVerIdentifier>) -> std.algebra.Ordering {
-  if a.count() == 0 && b.count() == 0 { Equal }
+  if a.count() == 0 && b.count() == 0 { std.algebra.Equal }
 
-  else if a.count() == 0 { Less }
-  else if b.count() == 0 { Greater }
+  else if a.count() == 0 { std.algebra.Less }
+  else if b.count() == 0 { std.algebra.Greater }
   else {
     match semver_compare_identifier(a: a.first(), b: b.first()) {
-      Equal =>
+      std.algebra.Equal =>
         semver_compare_identifiers(
           a: a.skip(n: 1),
           b: b.skip(n: 1)
@@ -61,19 +61,19 @@ fn semver_compare_identifiers(a: List<SemVerIdentifier>, b: List<SemVerIdentifie
 }
 
 fn semver_compare_pre_release(a: List<SemVerIdentifier>, b: List<SemVerIdentifier>) -> std.algebra.Ordering {
-  if a.count() == 0 && b.count() == 0 { Equal }
-  else if a.count() == 0 { Greater }
-  else if b.count() == 0 { Less }
+  if a.count() == 0 && b.count() == 0 { std.algebra.Equal }
+  else if a.count() == 0 { std.algebra.Greater }
+  else if b.count() == 0 { std.algebra.Less }
   else { semver_compare_identifiers(a: a, b: b) }
 }
 
 fn semver_compare(a: SemVerVersion, b: SemVerVersion) -> std.algebra.Ordering {
   match semver_compare_non_negative_int(a: a.major, b: b.major) {
-    Equal =>
+    std.algebra.Equal =>
       match semver_compare_non_negative_int(a: a.minor, b: b.minor) {
-        Equal =>
+        std.algebra.Equal =>
           match semver_compare_non_negative_int(a: a.patch, b: b.patch) {
-            Equal => semver_compare_pre_release(a: a.pre_release, b: b.pre_release)
+            std.algebra.Equal => semver_compare_pre_release(a: a.pre_release, b: b.pre_release)
             other => other
           }
         other => other
@@ -115,7 +115,7 @@ fn semver_to_version_identity(v: SemVerVersion) -> extdeps.version.VersionIdenti
 }
 
 fn semver_identity_compare(a: extdeps.version.VersionIdentity, b: extdeps.version.VersionIdentity) -> std.algebra.Ordering {
-  if a == b { Equal } else { if a < b { Less } else { Greater } }
+  if a == b { std.algebra.Equal } else { if a < b { std.algebra.Less } else { std.algebra.Greater } }
 }
 
 data semver_scheme: extdeps.version.VersionScheme = {

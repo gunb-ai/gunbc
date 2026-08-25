@@ -17,7 +17,7 @@ test fn schedule_retention_drain_line_claims_no_execution() -> Bool {
 
 test fn schedule_retention_policy_is_fail_closed() -> Bool {
   gunbc.executor_schedule_retention.schedule_retention_grain_is_per_module
-    && schedule_retention_heads_stay_resident
-    && schedule_retention_retain_on_unknown
-    && schedule_retention_underflow_refuses
+    && gunbc.executor_schedule_retention.schedule_retention_heads_stay_resident
+    && gunbc.executor_schedule_retention.schedule_retention_retain_on_unknown
+    && gunbc.executor_schedule_retention.schedule_retention_underflow_refuses
 }

@@ -8,10 +8,10 @@ fn refinement_widening_predicate_algebra(
     source: source,
     candidate: candidate,
     source_value_set: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^refinement_value_set_unknown } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: v2.std.node.SyntheticOccurrence
 },
     candidate_value_set: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^refinement_value_set_unknown } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: v2.std.node.SyntheticOccurrence
 }
   )
 }
@@ -22,7 +22,7 @@ fn refinement_widening_predicate_algebra_for_value_sets(
   candidate_value_set: v2.std.node.Node,
 ) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^refinement_widening_field_source },
@@ -45,31 +45,31 @@ fn refinement_widening_predicate_algebra_for_value_sets(
         target: candidate_value_set
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn refinement_widening_value_sets_hold(algebra: v2.std.node.Node) -> Bool {
-  match find_named_child(root: algebra, name: ^refinement_widening_field_source_value_set) {
-    Accepted { value: source_value_set, diagnostics: _ } =>
-      match find_named_child(root: algebra, name: ^refinement_widening_field_candidate_value_set) {
-        Accepted { value: candidate_value_set, diagnostics: _ } =>
+  match v2.std.node_query.find_named_child(root: algebra, name: ^refinement_widening_field_source_value_set) {
+    v2.std.diagnostic.Accepted { value: source_value_set, diagnostics: _ } =>
+      match v2.std.node_query.find_named_child(root: algebra, name: ^refinement_widening_field_candidate_value_set) {
+        v2.std.diagnostic.Accepted { value: candidate_value_set, diagnostics: _ } =>
           v2.std.integer_value_set.integer_value_set_strictly_contains(container: candidate_value_set, contained: source_value_set)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn refinement_widening_is_strict_coarsening(algebra: v2.std.node.Node) -> Bool {
-  match find_named_child(root: algebra, name: ^refinement_widening_field_source_value_set) {
-    Accepted { value: source_value_set, diagnostics: _ } =>
-      match find_named_child(root: algebra, name: ^refinement_widening_field_candidate_value_set) {
-        Accepted { value: candidate_value_set, diagnostics: _ } =>
+  match v2.std.node_query.find_named_child(root: algebra, name: ^refinement_widening_field_source_value_set) {
+    v2.std.diagnostic.Accepted { value: source_value_set, diagnostics: _ } =>
+      match v2.std.node_query.find_named_child(root: algebra, name: ^refinement_widening_field_candidate_value_set) {
+        v2.std.diagnostic.Accepted { value: candidate_value_set, diagnostics: _ } =>
           v2.std.integer_value_set.integer_value_set_strictly_contains(container: source_value_set, contained: candidate_value_set)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -78,22 +78,22 @@ fn refinement_widening_bundle_holds(
   candidate: v2.std.node.Node,
   algebra: v2.std.node.Node,
 ) -> Bool {
-  match find_named_child(root: algebra, name: ^refinement_widening_field_source) {
-    Accepted { value: bundled_source, diagnostics: _ } =>
-      match find_named_child(root: algebra, name: ^refinement_widening_field_candidate) {
-        Accepted { value: bundled_candidate, diagnostics: _ } =>
-          match find_named_child(root: algebra, name: ^refinement_widening_field_source_facts) {
-            Accepted { value: bundled_source_facts, diagnostics: _ } =>
+  match v2.std.node_query.find_named_child(root: algebra, name: ^refinement_widening_field_source) {
+    v2.std.diagnostic.Accepted { value: bundled_source, diagnostics: _ } =>
+      match v2.std.node_query.find_named_child(root: algebra, name: ^refinement_widening_field_candidate) {
+        v2.std.diagnostic.Accepted { value: bundled_candidate, diagnostics: _ } =>
+          match v2.std.node_query.find_named_child(root: algebra, name: ^refinement_widening_field_source_facts) {
+            v2.std.diagnostic.Accepted { value: bundled_source_facts, diagnostics: _ } =>
               (bundled_source == source_facts)
                 && (bundled_candidate == candidate)
                 && (bundled_source_facts == source_facts)
                 && (source_facts != candidate)
                 && refinement_widening_value_sets_hold(algebra: algebra)
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -102,9 +102,9 @@ fn refinement_widening_preservation_holds(
   candidate: v2.std.node.Node,
   algebra: v2.std.node.Node,
 ) -> Bool {
-  well_formed(n: source_facts)
-    && well_formed(n: algebra)
-    && well_formed(n: candidate)
+  v2.std.node.well_formed(n: source_facts)
+    && v2.std.node.well_formed(n: algebra)
+    && v2.std.node.well_formed(n: candidate)
     && refinement_widening_bundle_holds(
       source_facts: source_facts,
       candidate: candidate,

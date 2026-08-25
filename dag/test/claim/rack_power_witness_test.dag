@@ -1,7 +1,7 @@
 module test.claim.rack_power_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn host_a() -> product.placement_supply.PhysicalAssetIdentity { ("srv-chassis-1" as product.placement_supply.PhysicalAssetIdentity) }
 fn host_b() -> product.placement_supply.PhysicalAssetIdentity { ("srv-chassis-2" as product.placement_supply.PhysicalAssetIdentity) }
@@ -12,35 +12,35 @@ fn mount(asset: product.placement_supply.PhysicalAssetIdentity, lowest: Int) -> 
 }
 
 fn rack_of(mounts: List<product.rack_mount.ChassisMount>) -> product.rack_mount.RackInstance? {
-  match rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: mounts) {
-    MountRefused { cause: _ } => none
-    MountReady { value: r } => v2.std.optional.Present { value: r }
+  match product.rack_mount.rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: mounts) {
+    product.rack_mount.MountRefused { cause: _ } => none
+    product.rack_mount.MountReady { value: r } => v2.std.optional.Present { value: r }
   }
 }
 
-fn two_host_rack() -> product.rack_mount.RackInstance? { test.claim.rack_power_witness.rack_of(mounts: [mount(asset: host_a(), lowest: 1), mount(asset: host_b(), lowest: 5)]) }
+fn two_host_rack() -> product.rack_mount.RackInstance? { rack_of(mounts: [mount(asset: host_a(), lowest: 1), mount(asset: host_b(), lowest: 5)]) }
 
 fn feed() -> product.rack_power.PowerFeed {
-  power_feed(identity: ("pdu-01" as product.placement_supply.PhysicalAssetIdentity), catalog: extdeps.power.eaton_tripp_lite.eaton_tripp_lite_rs_1215_family_catalog)
+  product.rack_power.power_feed(identity: ("pdu-01" as product.placement_supply.PhysicalAssetIdentity), catalog: extdeps.power.eaton_tripp_lite.eaton_tripp_lite_rs_1215_family_catalog)
 }
 
 fn pf(percent: Int) -> product.rack_power.DeclaredPowerFactor? {
-  match declared_power_factor(percent: percent) {
-    PowerRefused { cause: _ } => none
-    PowerReady { value: f } => v2.std.optional.Present { value: f }
+  match product.rack_power.declared_power_factor(percent: percent) {
+    product.rack_power.PowerRefused { cause: _ } => none
+    product.rack_power.PowerReady { value: f } => v2.std.optional.Present { value: f }
   }
 }
 
 fn budget(rack: product.rack_mount.RackInstance?, loads: List<product.rack_power.AssetLoad>, percent: Int) -> product.rack_power.PowerBudget? {
   match rack {
-    Absent => none
-    Present { value: r } =>
+    v2.std.optional.Absent => none
+    v2.std.optional.Present { value: r } =>
       match pf(percent: percent) {
-        Absent => none
-        Present { value: factor } =>
-          match rack_power_budget(rack: r, feed: feed(), loads: loads, power_factor: factor) {
-            PowerRefused { cause: _ } => none
-            PowerReady { value: b } => v2.std.optional.Present { value: b }
+        v2.std.optional.Absent => none
+        v2.std.optional.Present { value: factor } =>
+          match product.rack_power.rack_power_budget(rack: r, feed: feed(), loads: loads, power_factor: factor) {
+            product.rack_power.PowerRefused { cause: _ } => none
+            product.rack_power.PowerReady { value: b } => v2.std.optional.Present { value: b }
           }
       }
   }
@@ -48,14 +48,14 @@ fn budget(rack: product.rack_mount.RackInstance?, loads: List<product.rack_power
 
 fn refusal_of(rack: product.rack_mount.RackInstance?, loads: List<product.rack_power.AssetLoad>, percent: Int) -> product.rack_power.PowerRefusal? {
   match rack {
-    Absent => none
-    Present { value: r } =>
+    v2.std.optional.Absent => none
+    v2.std.optional.Present { value: r } =>
       match pf(percent: percent) {
-        Absent => none
-        Present { value: factor } =>
-          match rack_power_budget(rack: r, feed: feed(), loads: loads, power_factor: factor) {
-            PowerReady { value: _ } => none
-            PowerRefused { cause: c } => v2.std.optional.Present { value: c }
+        v2.std.optional.Absent => none
+        v2.std.optional.Present { value: factor } =>
+          match product.rack_power.rack_power_budget(rack: r, feed: feed(), loads: loads, power_factor: factor) {
+            product.rack_power.PowerReady { value: _ } => none
+            product.rack_power.PowerRefused { cause: c } => v2.std.optional.Present { value: c }
           }
       }
   }
@@ -65,21 +65,21 @@ fn refusal_of(rack: product.rack_mount.RackInstance?, loads: List<product.rack_p
 // volt-amperes. It is derived from the two datasheet figures rather than authored, so no third
 // number can disagree with them.
 test fn the_feed_capacity_is_the_product_of_the_two_cited_figures() -> Bool {
-  volt_ampere_count(v: feed_capacity(f: feed())) == 1800
+  std.measure.volt_ampere_count(v: product.rack_power.feed_capacity(f: feed())) == 1800
 }
 
 test fn two_measured_hosts_inside_the_rating_produce_a_budget() -> Bool {
   match budget(
     rack: two_host_rack(),
-    loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(400) }],
+    loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: std.measure.watt(400) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: std.measure.watt(400) }],
     percent: 95,
   ) {
-    Absent => false
-    Present { value: b } =>
-      watt_count(w: budget_real_load(b: b)) == 800
-        && volt_ampere_count(v: budget_apparent_load(b: b)) == 0
-        && budget_outlets_used(b: b) == 2
-        && volt_ampere_count(v: budget_capacity(b: b)) == 1800
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: b } =>
+      std.measure.watt_count(w: product.rack_power.budget_real_load(b: b)) == 800
+        && std.measure.volt_ampere_count(v: product.rack_power.budget_apparent_load(b: b)) == 0
+        && product.rack_power.budget_outlets_used(b: b) == 2
+        && std.measure.volt_ampere_count(v: product.rack_power.budget_capacity(b: b)) == 1800
   }
 }
 
@@ -87,21 +87,21 @@ test fn two_measured_hosts_inside_the_rating_produce_a_budget() -> Bool {
 // watts at a factor of 100 is 1700 volt-amperes and fits; the SAME load at 90 needs about 1889 and
 // does not. A module that quietly assumed unity would admit both.
 test fn the_declared_power_factor_decides_a_marginal_load() -> Bool {
-  match budget(rack: two_host_rack(), loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(1700) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(0) }], percent: 100) {
-    Absent => false
-    Present { value: _ } =>
-      match refusal_of(rack: two_host_rack(), loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(1700) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(0) }], percent: 90) {
-        Absent => false
-        Present { value: c } =>
+  match budget(rack: two_host_rack(), loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: std.measure.watt(1700) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: std.measure.watt(0) }], percent: 100) {
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: _ } =>
+      match refusal_of(rack: two_host_rack(), loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: std.measure.watt(1700) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: std.measure.watt(0) }], percent: 90) {
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: c } =>
           match c {
-            FeedCapacityExceeded { real_load: r, apparent_load: _, capacity: cap } =>
-              watt_count(w: r) == 1700 && volt_ampere_count(v: cap) == 1800
-            PowerFactorOutOfRange { supplied: _ } => false
-            LoadNotObserved { asset: _ } => false
-            LoadDeclaredTwice { asset: _ } => false
-            LoadDeclaredForUnmountedAsset { asset: _ } => false
-            MountedAssetHasNoLoad { asset: _ } => false
-            OutletsExhausted { required: _, available: _ } => false
+            product.rack_power.FeedCapacityExceeded { real_load: r, apparent_load: _, capacity: cap } =>
+              std.measure.watt_count(w: r) == 1700 && std.measure.volt_ampere_count(v: cap) == 1800
+            product.rack_power.PowerFactorOutOfRange { supplied: _ } => false
+            product.rack_power.LoadNotObserved { asset: _ } => false
+            product.rack_power.LoadDeclaredTwice { asset: _ } => false
+            product.rack_power.LoadDeclaredForUnmountedAsset { asset: _ } => false
+            product.rack_power.MountedAssetHasNoLoad { asset: _ } => false
+            product.rack_power.OutletsExhausted { required: _, available: _ } => false
           }
       }
   }
@@ -113,29 +113,29 @@ test fn the_declared_power_factor_decides_a_marginal_load() -> Bool {
 test fn a_nameplate_load_is_counted_as_apparent_power_unconverted() -> Bool {
   match budget(
     rack: two_host_rack(),
-    loads: [product.rack_power.DeclaredApparentPower { asset: host_a(), draw: volt_ampere(1000) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(400) }],
+    loads: [product.rack_power.DeclaredApparentPower { asset: host_a(), draw: std.measure.volt_ampere(1000) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: std.measure.watt(400) }],
     percent: 50,
   ) {
-    Absent => false
-    Present { value: b } =>
-      volt_ampere_count(v: budget_apparent_load(b: b)) == 1000 && watt_count(w: budget_real_load(b: b)) == 400
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: b } =>
+      std.measure.volt_ampere_count(v: product.rack_power.budget_apparent_load(b: b)) == 1000 && std.measure.watt_count(w: product.rack_power.budget_real_load(b: b)) == 400
   }
 }
 
 // An unmeasured machine is not a machine drawing nothing. This is the arm that keeps an unmeasured
 // rack from reporting comfortable headroom.
 test fn an_unobserved_load_refuses_rather_than_counting_as_zero() -> Bool {
-  match refusal_of(rack: two_host_rack(), loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) }, product.rack_power.LoadUnobserved { asset: host_b() }], percent: 95) {
-    Absent => false
-    Present { value: c } =>
+  match refusal_of(rack: two_host_rack(), loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: std.measure.watt(400) }, product.rack_power.LoadUnobserved { asset: host_b() }], percent: 95) {
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: c } =>
       match c {
-        LoadNotObserved { asset: a } => (a as String) == "srv-chassis-2"
-        PowerFactorOutOfRange { supplied: _ } => false
-        LoadDeclaredTwice { asset: _ } => false
-        LoadDeclaredForUnmountedAsset { asset: _ } => false
-        MountedAssetHasNoLoad { asset: _ } => false
-        OutletsExhausted { required: _, available: _ } => false
-        FeedCapacityExceeded { real_load: _, apparent_load: _, capacity: _ } => false
+        product.rack_power.LoadNotObserved { asset: a } => (a as String) == "srv-chassis-2"
+        product.rack_power.PowerFactorOutOfRange { supplied: _ } => false
+        product.rack_power.LoadDeclaredTwice { asset: _ } => false
+        product.rack_power.LoadDeclaredForUnmountedAsset { asset: _ } => false
+        product.rack_power.MountedAssetHasNoLoad { asset: _ } => false
+        product.rack_power.OutletsExhausted { required: _, available: _ } => false
+        product.rack_power.FeedCapacityExceeded { real_load: _, apparent_load: _, capacity: _ } => false
       }
   }
 }
@@ -146,19 +146,19 @@ test fn an_unobserved_load_refuses_rather_than_counting_as_zero() -> Bool {
 test fn two_rows_for_one_asset_do_not_stand_in_for_the_other() -> Bool {
   match refusal_of(
     rack: two_host_rack(),
-    loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) }, product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) }],
+    loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: std.measure.watt(400) }, product.rack_power.ObservedRealPower { asset: host_a(), draw: std.measure.watt(400) }],
     percent: 95,
   ) {
-    Absent => false
-    Present { value: c } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: c } =>
       match c {
-        MountedAssetHasNoLoad { asset: a } => (a as String) == "srv-chassis-2"
-        LoadDeclaredTwice { asset: a } => (a as String) == "srv-chassis-1"
-        PowerFactorOutOfRange { supplied: _ } => false
-        LoadNotObserved { asset: _ } => false
-        LoadDeclaredForUnmountedAsset { asset: _ } => false
-        OutletsExhausted { required: _, available: _ } => false
-        FeedCapacityExceeded { real_load: _, apparent_load: _, capacity: _ } => false
+        product.rack_power.MountedAssetHasNoLoad { asset: a } => (a as String) == "srv-chassis-2"
+        product.rack_power.LoadDeclaredTwice { asset: a } => (a as String) == "srv-chassis-1"
+        product.rack_power.PowerFactorOutOfRange { supplied: _ } => false
+        product.rack_power.LoadNotObserved { asset: _ } => false
+        product.rack_power.LoadDeclaredForUnmountedAsset { asset: _ } => false
+        product.rack_power.OutletsExhausted { required: _, available: _ } => false
+        product.rack_power.FeedCapacityExceeded { real_load: _, apparent_load: _, capacity: _ } => false
       }
   }
 }
@@ -169,45 +169,45 @@ test fn a_load_for_an_unmounted_asset_refuses() -> Bool {
   match refusal_of(
     rack: two_host_rack(),
     loads: [
-      product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) },
-      product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(400) },
-      product.rack_power.ObservedRealPower { asset: absent_host(), draw: watt(400) },
+      product.rack_power.ObservedRealPower { asset: host_a(), draw: std.measure.watt(400) },
+      product.rack_power.ObservedRealPower { asset: host_b(), draw: std.measure.watt(400) },
+      product.rack_power.ObservedRealPower { asset: absent_host(), draw: std.measure.watt(400) },
     ],
     percent: 95,
   ) {
-    Absent => false
-    Present { value: c } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: c } =>
       match c {
-        LoadDeclaredForUnmountedAsset { asset: a } => (a as String) == "srv-chassis-99"
-        PowerFactorOutOfRange { supplied: _ } => false
-        LoadNotObserved { asset: _ } => false
-        LoadDeclaredTwice { asset: _ } => false
-        MountedAssetHasNoLoad { asset: _ } => false
-        OutletsExhausted { required: _, available: _ } => false
-        FeedCapacityExceeded { real_load: _, apparent_load: _, capacity: _ } => false
+        product.rack_power.LoadDeclaredForUnmountedAsset { asset: a } => (a as String) == "srv-chassis-99"
+        product.rack_power.PowerFactorOutOfRange { supplied: _ } => false
+        product.rack_power.LoadNotObserved { asset: _ } => false
+        product.rack_power.LoadDeclaredTwice { asset: _ } => false
+        product.rack_power.MountedAssetHasNoLoad { asset: _ } => false
+        product.rack_power.OutletsExhausted { required: _, available: _ } => false
+        product.rack_power.FeedCapacityExceeded { real_load: _, apparent_load: _, capacity: _ } => false
       }
   }
 }
 
 test fn a_power_factor_outside_its_range_is_not_a_power_factor() -> Bool {
-  match declared_power_factor(percent: 0) {
-    PowerReady { value: _ } => false
-    PowerRefused { cause: c } =>
+  match product.rack_power.declared_power_factor(percent: 0) {
+    product.rack_power.PowerReady { value: _ } => false
+    product.rack_power.PowerRefused { cause: c } =>
       match c {
-        PowerFactorOutOfRange { supplied: s } => s == 0
-        LoadNotObserved { asset: _ } => false
-        LoadDeclaredTwice { asset: _ } => false
-        LoadDeclaredForUnmountedAsset { asset: _ } => false
-        MountedAssetHasNoLoad { asset: _ } => false
-        OutletsExhausted { required: _, available: _ } => false
-        FeedCapacityExceeded { real_load: _, apparent_load: _, capacity: _ } => false
+        product.rack_power.PowerFactorOutOfRange { supplied: s } => s == 0
+        product.rack_power.LoadNotObserved { asset: _ } => false
+        product.rack_power.LoadDeclaredTwice { asset: _ } => false
+        product.rack_power.LoadDeclaredForUnmountedAsset { asset: _ } => false
+        product.rack_power.MountedAssetHasNoLoad { asset: _ } => false
+        product.rack_power.OutletsExhausted { required: _, available: _ } => false
+        product.rack_power.FeedCapacityExceeded { real_load: _, apparent_load: _, capacity: _ } => false
       }
   }
 }
 
 test fn a_power_factor_above_unity_is_refused_too() -> Bool {
-  match declared_power_factor(percent: 101) {
-    PowerReady { value: _ } => false
-    PowerRefused { cause: _ } => true
+  match product.rack_power.declared_power_factor(percent: 101) {
+    product.rack_power.PowerReady { value: _ } => false
+    product.rack_power.PowerRefused { cause: _ } => true
   }
 }

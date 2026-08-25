@@ -48,8 +48,8 @@ fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosti
 
 fn blocking_count_for(source: String, wanted: String) -> Int {
   match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census_of(source: source), wanted: wanted) {
-    Present { value: n } => n
-    Absent => 0 - 1
+    v2.std.optional.Present { value: n } => n
+    v2.std.optional.Absent => 0 - 1
   }
 }
 
@@ -62,8 +62,8 @@ fn blocking_count_for(source: String, wanted: String) -> Int {
 // harness that stops working cannot masquerade as either verdict.
 fn blocking_ambiguous_reference_count(source: String) -> Int {
   match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census_of(source: source), wanted: "AmbiguousReference") {
-    Present { value: n } => n
-    Absent => 0 - 1
+    v2.std.optional.Present { value: n } => n
+    v2.std.optional.Absent => 0 - 1
   }
 }
 

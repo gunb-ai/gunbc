@@ -1,7 +1,7 @@
 module gunbc.build_cache_instance
 
 
-data build_cache_instance_scope_disposition: std.disposition.Disposition = SingleAuthority
+data build_cache_instance_scope_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 data build_cache_instance_grain_note: String = "CATALOG IDENTITY IS NOT DEPLOYED-INSTANCE IDENTITY, and conflating them is why a host carrying two differently-configured uses of one implementation could not be described. gunbc.host_build_cache_provision speaks of provisioning `the sccache_local catalog` on a host; extdeps.cache.sccache.sccache_local_id names sccache's cache SEMANTICS and its pinned binary. Neither identifies a running daemon. srv1 and srv2 each run TWO sccache servers from that one catalog row — a CI server (principal ghrunner, /var/lib/ctrl/sccache-ci, endpoint /var/lib/ctrl/sccache-ci/server.sock) and a session server (principal briansrls, /var/lib/ctrl/sccache, 50G, endpoint /var/lib/ctrl/sccache/server.sock) — so 'provision the catalog on this host' names neither of them and cannot express that one is correctly placed while the other is not. BuildCacheInstance is the deployed grain: one row per (host, consumer class, instance name), carrying the endpoint and the INTENDED unit, principal, storage, capacity and compile pool that an observation is checked against. One concept with multiple data rows, never a second provisioning mechanism per use (DESIGN section 2 horizontal)."
 
@@ -29,7 +29,7 @@ type BuildCacheInstance {
 data build_cache_configuration_observation_note: String = "STORAGE ROOT AND CAPACITY ARE TWO OBSERVED CONFIGURATION AXES, and each observation is bound to both the exact deployed BuildCacheInstance and the ProcessIdentity whose environment was read. A path or byte count without both subjects could be replayed across hosts, across the CI and session instances that share one sccache implementation, or across two processes after pid reuse. The owner is the process already proven to hold the instance endpoint; a unit file would answer what systemd WOULD start, not how the live server is configured, and every host in the incident population currently runs a server systemd did not start.\n\nUNSET AND READ UNAVAILABLE ARE DIFFERENT OBSERVATIONS WITH DIFFERENT REMEDIES. Unset means the owner environment was read and carries no assignment; unavailable means the read did not answer, and must never narrow to unset. Endpoint or owner absence does not appear as a third arm here: without the prerequisite endpoint-owner observation there is no configuration subject, so these carriers are not constructed at all. That is not-applicability at the join rather than malformed configuration.\n\nCAPACITY ALSO RETAINS CONFIGURED TEXT THAT CANNOT YET BE GROUNDED AS BYTES. gunbc.build_cache_unit emits a plain decimal byte count, which has one exact decoding. sccache also accepts suffixed text such as its documented 10G default, but this repository has no cited rule deciding whether G denotes 10^9 or 2^30. Choosing either would fabricate a magnitude whose seven-percent difference could silently pass or refuse convergence. BuildCacheCapacityConfiguredUngrounded therefore carries the text verbatim; it narrows when extdeps.cache.sccache cites and models the accepted size grammar. The instance itself retains whether capacity intent is declared, so gunbc.build_cache_instance_readiness refuses intended_capacity Absent rather than freezing a vendor default as a decision.\n\nThese carriers are consumed by gunbc.build_cache_instance_readiness, whose producer preserves unavailable separately from observed mismatch and is the only function that mints the proof-shaped BuildCacheInstanceReady receipt."
 
 type BuildCacheStorageConfiguration
-  = BuildCacheStorageRootConfigured { root: NonEmptyStr }
+  = BuildCacheStorageRootConfigured { root: std.types.NonEmptyStr }
   | BuildCacheStorageRootUnset
 
 type BuildCacheStorageObservation
@@ -41,12 +41,12 @@ type BuildCacheStorageObservation
   | BuildCacheStorageObservationUnavailable {
       instance: BuildCacheInstance
       owner: ProcessIdentity
-      detail: NonEmptyStr
+      detail: std.types.NonEmptyStr
     }
 
 type BuildCacheCapacityConfiguration
-  = BuildCacheCapacityConfigured { capacity: ByteSize }
-  | BuildCacheCapacityConfiguredUngrounded { configured_text: NonEmptyStr }
+  = BuildCacheCapacityConfigured { capacity: std.measure.ByteSize }
+  | BuildCacheCapacityConfiguredUngrounded { configured_text: std.types.NonEmptyStr }
   | BuildCacheCapacityUnset
 
 type BuildCacheCapacityObservation
@@ -58,7 +58,7 @@ type BuildCacheCapacityObservation
   | BuildCacheCapacityObservationUnavailable {
       instance: BuildCacheInstance
       owner: ProcessIdentity
-      detail: NonEmptyStr
+      detail: std.types.NonEmptyStr
     }
 
 data process_identity_note: String = "A BARE PID IS NOT AN IDENTITY: the kernel reuses pids, so a pid recorded in one observation and re-read in the next may name a different process, and a receipt that says 'pid 3975946 is the endpoint owner' is only true relative to a boot and a start time. boot_id distinguishes across reboots; start_time (the process's own start, monotonic within a boot) distinguishes across pid reuse within one. The triple is what makes two consecutive observations comparable, which is exactly what the non-mutation control asserts."
@@ -267,13 +267,13 @@ fn ci_cache_instance(host: product.placement_supply.HostIdentity) -> BuildCacheI
       consumer_class: ContinuousIntegrationCompiles,
       instance_name: "sccache-ci" as std.types.NonEmptyStr,
     },
-    implementation: sccache_local_id,
+    implementation: extdeps.cache.sccache.sccache_local_id,
     endpoint: extdeps.cache.sccache.SccacheServerUnixSocket { path: "/var/lib/ctrl/sccache-ci/server.sock" as std.types.NonEmptyStr },
     intended_unit: "gunbc-build-cache-ci.service" as std.types.NonEmptyStr,
     intended_principal: "ghrunner" as std.types.NonEmptyStr,
     intended_storage: "/var/lib/ctrl/sccache-ci" as std.types.NonEmptyStr,
     intended_capacity: none,
-    intended_compile_pool: gunbc_compile_pool_placement,
+    intended_compile_pool: gunbc.host_layout.gunbc_compile_pool_placement,
   }
 }
 
@@ -284,23 +284,23 @@ fn session_cache_instance(host: product.placement_supply.HostIdentity) -> BuildC
       consumer_class: InteractiveSessionCompiles,
       instance_name: "sccache-session" as std.types.NonEmptyStr,
     },
-    implementation: sccache_local_id,
+    implementation: extdeps.cache.sccache.sccache_local_id,
     endpoint: extdeps.cache.sccache.SccacheServerUnixSocket { path: "/var/lib/ctrl/sccache/server.sock" as std.types.NonEmptyStr },
     intended_unit: "gunbc-build-cache-session.service" as std.types.NonEmptyStr,
     intended_principal: "briansrls" as std.types.NonEmptyStr,
     intended_storage: "/var/lib/ctrl/sccache" as std.types.NonEmptyStr,
-    intended_capacity: Present { value: gibibyte_to_byte_size(g: gibibyte(50)) },
-    intended_compile_pool: gunbc_compile_pool_placement,
+    intended_capacity: Present { value: std.measure.gibibyte_to_byte_size(g: std.measure.gibibyte(50)) },
+    intended_compile_pool: gunbc.host_layout.gunbc_compile_pool_placement,
   }
 }
 
 data build_cache_desired_instances: List<BuildCacheInstance> = [
-  ci_cache_instance(host: operator_host_srv1),
-  session_cache_instance(host: operator_host_srv1),
-  ci_cache_instance(host: operator_host_srv2),
-  session_cache_instance(host: operator_host_srv2),
-  ci_cache_instance(host: operator_host_srv3),
-  ci_cache_instance(host: operator_host_srv4),
+  ci_cache_instance(host: gunbc.fleet_intent_network.operator_host_srv1),
+  session_cache_instance(host: gunbc.fleet_intent_network.operator_host_srv1),
+  ci_cache_instance(host: gunbc.fleet_intent_network.operator_host_srv2),
+  session_cache_instance(host: gunbc.fleet_intent_network.operator_host_srv2),
+  ci_cache_instance(host: gunbc.fleet_intent_network.operator_host_srv3),
+  ci_cache_instance(host: gunbc.fleet_intent_network.operator_host_srv4),
 ]
 
 data srv4_desired_instance_admission_note: String = "srv4 JOINED THE DESIRED ROSTER ON AN OBSERVATION, and the sequence is the argument for the row. When this authority first landed, srv4 was unreachable (ssh returned Permission denied (publickey)) and it appeared in this module only as diagnostic prose — so the fleet's intent was silently four-fifths stated, and a typed unavailability had no SUBJECT to attach to. That is the state-space conflation one level up: a host absent from the desired roster is indistinguishable from a host with nothing desired on it, and only one of those was true.\n\nThe reachability was never the blocker it looked like. srv4 carries exactly the two declared fleet keys and deliberately NOT the session-bootstrap keys other hosts were hand-keyed with, so it is the CONVERGED control of gunbc.host_authorized_keys_reconcile, not a mis-keyed host; the missing piece was materializing the fleet-automation private key for a session, which is the A1 gap in gunbc.plans.fleet_subsumption_manual_gaps. Once the operator supplied it the read took under a minute over the ordinary route.\n\nWHAT THAT READ FOUND, recorded because it is the reason this row is not a formality: srv4 holds NO listener on its configured endpoint, runs no sccache process and has no unit, yet a STALE server.sock remains on disk and its error log's entire contents are one line, Address in use (os error 98). A server born in a runner cgroup died with that cgroup without unlinking its socket, so every later server fails to bind and every compile since has run uncached — the whole cache tree holds one file. Its placement therefore derives ServerPlacementAbsent and refuses, which is correct, but the CAUSE is a distinct defect from srv1's stranded owner and the managed unit must clear a stale endpoint on start or it will inherit the same trap."

@@ -1,59 +1,59 @@
 module test.claim.v1_interpreter_primitive_dispatch_authority_acceptance
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data closing_contract_note: String = "THE CLOSING CHECK FOR v1-interpreter-primitive-dispatch-authority. R1 inverts the roster: gunbc.v1_interpreter_primitive_surface v1_interpreter_authored_roster_arms is the canonical authority; generated lookup in v1_interpreter_dispatch_generated.rs routes spellings to typed arm identities derived from arm identity, and the interpreter dispatch macros consult that lookup before matching handler bodies. The checks here are structural properties that survive roster growth -- not population pins.\n\nCOMPILE-TIME EXHAUSTIVENESS IS NOW UNIFORM ACROSS EVERY SITE. Every InterpreterPrimitiveDispatchArm names its own dispatch_emit_site, a closed InterpreterDispatchEmitSite field -- there is no prefix-convention parsing and no parallel hand-authored validator left to drift from it. eval_call_bridge is no longer one shared enum spanning nine v4 bridge families: each family (keyed by its own module, EvalCallBridgeFamilySite { module }) gets its own generated enum and lookup_* function, so a roster row added to one family without a matching handler body fails a non-exhaustive inner match on THAT family's generated enum at cargo build -- no unreachable! wildcard, no runtime degradation. eval_call_native_intercept was already single-family and already exhaustive; it only lost its dead per-arm spelling literal. VARIANT COLLISION refuses generation when two distinct arm identities within one emit site collapse to the same PascalCase enum name. SPELLING COLLISION refuses generation when two distinct arm identities within one emit site share one authored_spelling -- Rust's own unreachable-pattern lint is not a substitute for this refusal, and cross-site spelling reuse (lookup, dispatched both by the eval_method_call short-circuit and by the algebra arm it shadows) remains legal because the check is scoped per site. POSITIVE CONTROLS: dispatch_emit_succeeds_on_live_roster and src/v1/stage0/tests/interpreter_dispatch_authority.rs lookup coverage per site -- the latter calls each bridge family's own generated lookup_eval_call_bridge_<module> function by name (lookup_eval_call_bridge_std_node, lookup_eval_call_bridge_std_compilers_lexing) rather than one shared lookup_eval_call_bridge, and its distinctness assertions compare variants within one family's generated enum, never across two now-distinct enum types. DISCRIMINATING REDS ENROLLED HERE: bridge_family_sites_are_split_per_family_red_control, rust_variant_collision_synthetic_red_control, and spelling_collision_synthetic_red_control. THAT FIRST CONTROL WAS A POPULATION PIN UNTIL 2026-08-11, contradicting this note's own opening claim that the checks here are structural properties rather than population pins: it asserted distinct_bridge_family_site_count() == 9, a literal copied from whatever the roster happened to contain. gunbc#8141 deleted the v2.lens.inert_lens bridge family and the pin redded on a population change rather than on a defect -- a change detector behaving exactly as DESIGN.md section 5 predicts, and the same class #7615 removed from the census witnesses. It is now DERIVED: the count of distinct emit-site keys must equal the count of distinct modules named by the bridge rows themselves, and that count must exceed one. This is not a tautology, because the two sides come from different places -- the left from dispatch_emit_site_key's keying, the right from each row's own module field -- so collapsing the families onto one shared key reds it (1 != N) while adding or removing a family does not. The clause now measures what its name claims and survives roster growth in both directions.\n\nWHAT MAKES THIS ABLE TO FAIL. Reintroducing a hand-authored per-arm spelling literal, collapsing the nine bridge families back onto one shared site key, dropping a declared residual row's dissolution trigger, removing the generated lookup path, or allowing variant- or spelling-colliding identities within one site each reds a clause. Reverting a row's provenance away from AuthoredInRoster or DeclaredHere is no longer even expressible: R1 closeout item SEVEN deleted the legacy DerivedFromDispatch variant from ArmEnumeration once the pre-R1 derivation model it marked was fully retired, so that invalid state climbed from a witness RED control to structurally impossible -- roster_rows_are_authored_in_roster_not_transcribed_from_rust and declared_residual_rows_retain_independent_dispositions below remain the exhaustive positive control over the two variants that do exist."
 
 fn roster_rows_are_authored_in_roster_not_transcribed_from_rust() -> Bool {
-  count(v1_interpreter_authored_roster_arms()) > 0
-    && (v1_interpreter_authored_roster_arms() |> all(r => r.enumeration == AuthoredInRoster))
+  count(gunbc.v1_interpreter_primitive_surface.v1_interpreter_authored_roster_arms()) > 0
+    && (gunbc.v1_interpreter_primitive_surface.v1_interpreter_authored_roster_arms() |> all(r => r.enumeration == gunbc.v1_interpreter_primitive_surface.AuthoredInRoster))
 }
 
 fn self_reading_bridge_arm_is_deleted() -> Bool {
-  !v1_interpreter_free_call_arms()
+  !gunbc.v1_interpreter_primitive_surface.v1_interpreter_free_call_arms()
     |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows")
 }
 
 fn declared_residual_rows_retain_independent_dispositions() -> Bool {
   let expected = ["eval_method_call", "eval_service_call"]
-  let actual = v1_interpreter_declared_arms() |> map(r => r.dispatch_symbol)
+  let actual = gunbc.v1_interpreter_primitive_surface.v1_interpreter_declared_arms() |> map(r => r.dispatch_symbol)
   count(actual |> filter(s => !expected |> any(e => e == s))) == 0
     && count(expected |> filter(e => !actual |> any(s => s == e))) == 0
-    && (v1_interpreter_declared_arms() |> all(r =>
+    && (gunbc.v1_interpreter_primitive_surface.v1_interpreter_declared_arms() |> all(r =>
       match r.enumeration {
-        DeclaredHere => arm_is_declared_here(arm: r)
+        gunbc.v1_interpreter_primitive_surface.DeclaredHere => gunbc.v1_interpreter_primitive_surface.arm_is_declared_here(arm: r)
         _ => false
       }))
-    && (v1_interpreter_declared_arms() |> any(r => r.form == gunbc.v1_interpreter_primitive_surface.MethodCall))
-    && (v1_interpreter_declared_arms() |> any(r => r.form == ServiceDispatch))
+    && (gunbc.v1_interpreter_primitive_surface.v1_interpreter_declared_arms() |> any(r => r.form == gunbc.v1_interpreter_primitive_surface.MethodCall))
+    && (gunbc.v1_interpreter_primitive_surface.v1_interpreter_declared_arms() |> any(r => r.form == gunbc.v1_interpreter_primitive_surface.ServiceDispatch))
 }
 
 fn handler_body_scaffold_names_remaining_residue() -> Bool {
-  let scaffold = v1_interpreter_roster_seed_scaffold()
+  let scaffold = gunbc.v1_interpreter_primitive_surface.v1_interpreter_roster_seed_scaffold()
   scaffold.target_roadmap_node == "v1-interpreter-primitive-dispatch-authority"
     && string_contains(s: scaffold.deletion_condition, pattern: "v1_interpreter_primitive_surface.dag")
     && string_contains(s: scaffold.deletion_condition, pattern: "arm identity")
 }
 
 fn dispatch_emit_succeeds_on_live_roster() -> Bool {
-  match expected_v1_interpreter_dispatch_generated_rs() {
-    V1InterpreterDispatchGenerated { content: _ } => true
-    V1InterpreterDispatchGenerationRefused { reason: _ } => false
+  match gunbc.v1_interpreter_dispatch_emit.expected_v1_interpreter_dispatch_generated_rs() {
+    gunbc.v1_interpreter_dispatch_emit.V1InterpreterDispatchGenerated { content: _ } => true
+    gunbc.v1_interpreter_dispatch_emit.V1InterpreterDispatchGenerationRefused { reason: _ } => false
   }
 }
 
 fn distinct_bridge_family_site_count() -> Int {
-  count(gunbc.v1_interpreter_dispatch_emit.distinct_strings(xs: v1_interpreter_authored_roster_arms()
-    |> filter(r => match r.dispatch_emit_site { EvalCallBridgeFamilySite { module: _ } => true, _ => false })
-    |> map(r => dispatch_emit_site_key(site: r.dispatch_emit_site))))
+  count(gunbc.v1_interpreter_dispatch_emit.distinct_strings(xs: gunbc.v1_interpreter_primitive_surface.v1_interpreter_authored_roster_arms()
+    |> filter(r => match r.dispatch_emit_site { gunbc.v1_interpreter_primitive_surface.EvalCallBridgeFamilySite { module: _ } => true, _ => false })
+    |> map(r => gunbc.v1_interpreter_dispatch_emit.dispatch_emit_site_key(site: r.dispatch_emit_site))))
 }
 
 fn bridge_family_modules() -> List<String> {
-  v1_interpreter_authored_roster_arms()
-    |> filter(r => match r.dispatch_emit_site { EvalCallBridgeFamilySite { module: _ } => true, _ => false })
+  gunbc.v1_interpreter_primitive_surface.v1_interpreter_authored_roster_arms()
+    |> filter(r => match r.dispatch_emit_site { gunbc.v1_interpreter_primitive_surface.EvalCallBridgeFamilySite { module: _ } => true, _ => false })
     |> map(r => match r.dispatch_emit_site {
-        EvalCallBridgeFamilySite { module: m } => v2.std.qualified_name.qualified_name_to_dotted_string(qn: m),
+        gunbc.v1_interpreter_primitive_surface.EvalCallBridgeFamilySite { module: m } => v2.std.qualified_name.qualified_name_to_dotted_string(qn: m),
         _ => ""
       })
 }
@@ -63,21 +63,21 @@ fn distinct_bridge_family_module_count() -> Int {
 }
 
 fn bridge_family_sites_are_split_per_family_red_control() -> Bool {
-  let node_key = dispatch_emit_site_key(site: gunbc.v1_interpreter_primitive_surface.EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.node") })
-  let lexing_key = dispatch_emit_site_key(site: gunbc.v1_interpreter_primitive_surface.EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.compilers.lexing") })
+  let node_key = gunbc.v1_interpreter_dispatch_emit.dispatch_emit_site_key(site: gunbc.v1_interpreter_primitive_surface.EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.node") })
+  let lexing_key = gunbc.v1_interpreter_dispatch_emit.dispatch_emit_site_key(site: gunbc.v1_interpreter_primitive_surface.EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.compilers.lexing") })
   distinct_bridge_family_module_count() > 1
     && distinct_bridge_family_site_count() == distinct_bridge_family_module_count()
     && node_key != lexing_key
 }
 
 fn live_roster_has_no_rust_variant_collisions() -> Bool {
-  count(v1_interpreter_authored_roster_arms()) > 0
-    && !any_roster_site_has_rust_variant_collision(rows: v1_interpreter_authored_roster_arms())
+  count(gunbc.v1_interpreter_primitive_surface.v1_interpreter_authored_roster_arms()) > 0
+    && !gunbc.v1_interpreter_dispatch_emit.any_roster_site_has_rust_variant_collision(rows: gunbc.v1_interpreter_primitive_surface.v1_interpreter_authored_roster_arms())
 }
 
 fn live_roster_has_no_spelling_collisions() -> Bool {
-  count(v1_interpreter_authored_roster_arms()) > 0
-    && !any_roster_site_has_spelling_collision(rows: v1_interpreter_authored_roster_arms())
+  count(gunbc.v1_interpreter_primitive_surface.v1_interpreter_authored_roster_arms()) > 0
+    && !gunbc.v1_interpreter_dispatch_emit.any_roster_site_has_spelling_collision(rows: gunbc.v1_interpreter_primitive_surface.v1_interpreter_authored_roster_arms())
 }
 
 test fn v1_interpreter_primitive_dispatch_authority_acceptance_contract_holds() -> Bool {
@@ -89,6 +89,6 @@ test fn v1_interpreter_primitive_dispatch_authority_acceptance_contract_holds() 
     && live_roster_has_no_rust_variant_collisions()
     && live_roster_has_no_spelling_collisions()
     && dispatch_emit_succeeds_on_live_roster()
-    && rust_variant_collision_synthetic_red_control()
-    && spelling_collision_synthetic_red_control()
+    && gunbc.v1_interpreter_dispatch_emit.rust_variant_collision_synthetic_red_control()
+    && gunbc.v1_interpreter_dispatch_emit.spelling_collision_synthetic_red_control()
 }

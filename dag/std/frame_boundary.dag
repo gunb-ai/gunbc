@@ -22,8 +22,8 @@ type BoundaryAdmission
 
 fn boundary_grade_meet(a: std.effect_grant.LifecycleGrade, b: std.effect_grant.LifecycleGrade) -> std.effect_grant.LifecycleGrade {
   match a {
-    LifecycleByConvention => LifecycleByConvention
-    LifecycleByConstruction => b
+    std.effect_grant.LifecycleByConvention => std.effect_grant.LifecycleByConvention
+    std.effect_grant.LifecycleByConstruction => b
   }
 }
 
@@ -34,7 +34,7 @@ fn tree_coverage(closures: List<BoundaryClosure>, tree: std.effect_grant.Namespa
     f: (acc, c) => match acc {
       Covered { grade: g } => acc
       Uncovered =>
-        if namespace_tree_eq(a: c.tree, b: tree) {
+        if std.effect_grant.namespace_tree_eq(a: c.tree, b: tree) {
           Covered { grade: c.grade }
         } else {
           Uncovered
@@ -65,7 +65,7 @@ fn boundary_admits(
 ) -> BoundaryAdmission {
   fold(
     required_trees,
-    init: BoundaryMaterialized { grade: LifecycleByConstruction },
+    init: BoundaryMaterialized { grade: std.effect_grant.LifecycleByConstruction },
     f: (acc, tree) => boundary_admit_tree(acc: acc, tree: tree, provided: provided)
   )
 }

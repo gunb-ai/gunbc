@@ -1,7 +1,7 @@
 module gunbc.runner_connectivity_recovery
 
 
-data runner_connectivity_recovery_scope_disposition: std.disposition.Disposition = SingleAuthority
+data runner_connectivity_recovery_scope_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 data runner_connectivity_watchdog_note: String = "PORTS the incident ctrl watchdog into gunbc (operator ruling 2026-08-06). Replace eligibility is the CONJUNCTION: remote registration offline/absent AND broker progress silent beyond the derived ten-minute bound AND no Runner.Worker alive AND registration grace elapsed. Offline-alone and quiet-locally-alone are both unsafe single-signal policies; only the conjunction is safe. Re-read immediately before mutation; fanout is canary-first with per-host cooldown. systemctl restart exit 0 is NOT success."
 
@@ -115,11 +115,11 @@ data runner_connectivity_max_replacements_per_host_per_tick: Int = 2
 data runner_connectivity_replacement_jitter_basis_note: String = "LIMIT FANOUT (operator ruling 2026-08-06): every host independently restarting several slots on the same two-minute timer boundary would amplify the next incident. Per-host replacement cap is enforced in plan_fleet_connectivity_repair; schedule jitter is a realization concern on the watchdog timer — offsets derive from slot_key hash modulo the tick interval, not a modeled random draw."
 
 data runner_connectivity_rebind_healthy_note: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_standup",
     decl_name: "RunnerSlotHealthy",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
@@ -147,15 +147,15 @@ fn process_identity_eq(a: gunbc.build_cache_instance.ProcessIdentity, b: gunbc.b
 }
 
 fn remote_observation_registration(obs: RunnerRemoteObservation) -> gunbc.runner_broker_progress_watchdog.RunnerRemoteRegistration? {
-  remote_evidence_registration(ev: obs.evidence)
+  gunbc.runner_broker_progress_watchdog.remote_evidence_registration(ev: obs.evidence)
 }
 
 fn remote_registration_id_from_evidence(ev: gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence) -> String {
   match ev {
-    RemoteRegistrationObserved { registration_id: id, registration: _, grade: _ } => id
-    RemoteRegistrationOperatorDeclared { registration: _, reason: _ } => ""
-    RemoteRegistrationUnobserved { reason: _ } => ""
-    RemoteRegistrationRefused { reason: _ } => ""
+    gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved { registration_id: id, registration: _, grade: _ } => id
+    gunbc.runner_broker_progress_watchdog.RemoteRegistrationOperatorDeclared { registration: _, reason: _ } => ""
+    gunbc.runner_broker_progress_watchdog.RemoteRegistrationUnobserved { reason: _ } => ""
+    gunbc.runner_broker_progress_watchdog.RemoteRegistrationRefused { reason: _ } => ""
   }
 }
 
@@ -189,10 +189,10 @@ fn replacement_cause_for_watchdog(
   silence_seconds: std.types.Duration,
 ) -> RecoveryRunnerReplacementCause {
   if match reg {
-    RunnerRemoteOffline => true
-    RunnerRemoteAbsent => true
-    RunnerRemoteOnline { runner_name: _, labels: _ } => false
-    RunnerRemoteBusy { detail: _ } => false
+    gunbc.runner_broker_progress_watchdog.RunnerRemoteOffline => true
+    gunbc.runner_broker_progress_watchdog.RunnerRemoteAbsent => true
+    gunbc.runner_broker_progress_watchdog.RunnerRemoteOnline { runner_name: _, labels: _ } => false
+    gunbc.runner_broker_progress_watchdog.RunnerRemoteBusy { detail: _ } => false
   } {
     replacement_cause_for_remote(reg: reg)
   } else {
@@ -202,10 +202,10 @@ fn replacement_cause_for_watchdog(
 
 fn replacement_cause_for_remote(reg: gunbc.runner_broker_progress_watchdog.RunnerRemoteRegistration) -> RecoveryRunnerReplacementCause {
   match reg {
-    RunnerRemoteOffline => RemoteRegistrationOfflineWhileLocalAlive
-    RunnerRemoteAbsent => RemoteRegistrationAbsentWhileLocalAlive
-    RunnerRemoteOnline { runner_name: _, labels: _ } => AcquireJobWedgeSessionDead
-    RunnerRemoteBusy { detail: _ } => AcquireJobWedgeSessionDead
+    gunbc.runner_broker_progress_watchdog.RunnerRemoteOffline => RemoteRegistrationOfflineWhileLocalAlive
+    gunbc.runner_broker_progress_watchdog.RunnerRemoteAbsent => RemoteRegistrationAbsentWhileLocalAlive
+    gunbc.runner_broker_progress_watchdog.RunnerRemoteOnline { runner_name: _, labels: _ } => AcquireJobWedgeSessionDead
+    gunbc.runner_broker_progress_watchdog.RunnerRemoteBusy { detail: _ } => AcquireJobWedgeSessionDead
   }
 }
 
@@ -242,13 +242,13 @@ fn classify_control_plane_standing(
   snapshots: List<RunnerSlotConnectivitySnapshot>,
   degraded_threshold_percent: Int,
 ) -> RunnerControlPlaneStanding {
-  let total = list_length(items: snapshots)
+  let total = std.types.list_length(items: snapshots)
   let offline = fold(
     snapshots,
     init: 0,
     f: (acc, s) =>
       if match remote_observation_registration(obs: s.remote) {
-           Present { value: reg } => remote_registration_needs_repair(reg: reg)
+           Present { value: reg } => gunbc.runner_broker_progress_watchdog.remote_registration_needs_repair(reg: reg)
            Absent => false
          } {
         acc + 1
@@ -281,17 +281,17 @@ fn decide_runner_connectivity_action(
   allow_replace: Bool,
 ) -> RunnerConnectivityAction {
   let slot = snap.slot
-  let verdict = classify_runner_watchdog_verdict(
+  let verdict = gunbc.runner_broker_progress_watchdog.classify_runner_watchdog_verdict(
     remote: watchdog.remote,
     broker: watchdog.broker,
     worker: watchdog.worker,
   )
   match watchdog.remote {
-    RemoteRegistrationRefused { reason: r } =>
+    gunbc.runner_broker_progress_watchdog.RemoteRegistrationRefused { reason: r } =>
       RunnerRepairRefused { slot: slot, cause: RemoteEvidenceRefused { reason: r } }
-    RemoteRegistrationUnobserved { reason: r } =>
+    gunbc.runner_broker_progress_watchdog.RemoteRegistrationUnobserved { reason: r } =>
       RunnerRepairRefused { slot: slot, cause: RemoteEvidenceUnobserved { reason: r } }
-    RemoteRegistrationObserved { registration: _, registration_id: _, grade: _ } =>
+    gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved { registration: _, registration_id: _, grade: _ } =>
       decide_runner_connectivity_for_verdict(
         snap: snap,
         prior: prior,
@@ -300,7 +300,7 @@ fn decide_runner_connectivity_action(
         allow_replace: allow_replace,
         verdict: verdict,
       )
-    RemoteRegistrationOperatorDeclared { registration: _, reason: _ } =>
+    gunbc.runner_broker_progress_watchdog.RemoteRegistrationOperatorDeclared { registration: _, reason: _ } =>
       decide_runner_connectivity_for_verdict(
         snap: snap,
         prior: prior,
@@ -322,8 +322,8 @@ fn decide_runner_connectivity_for_verdict(
 ) -> RunnerConnectivityAction {
   let slot = snap.slot
   match verdict {
-    WatchdogHealthy =>
-      match remote_evidence_registration(ev: watchdog.remote) {
+    gunbc.runner_broker_progress_watchdog.WatchdogHealthy =>
+      match gunbc.runner_broker_progress_watchdog.remote_evidence_registration(ev: watchdog.remote) {
         Present { value: reg } =>
           RunnerConnectedNoop { local: snap.local.incarnation, remote: reg }
         Absent =>
@@ -334,16 +334,16 @@ fn decide_runner_connectivity_for_verdict(
             },
           }
       }
-    WatchdogBusy =>
+    gunbc.runner_broker_progress_watchdog.WatchdogBusy =>
       RunnerRepairRefused { slot: slot, cause: RepairBlockedByRunnerWorker }
-    WatchdogRetrying { silence_seconds: s } =>
+    gunbc.runner_broker_progress_watchdog.WatchdogRetrying { silence_seconds: s } =>
       RunnerRepairRefused {
         slot: slot,
         cause: BrokerProgressStillRecent { silence_seconds: s },
       }
-    WatchdogRefused { reason: r } =>
+    gunbc.runner_broker_progress_watchdog.WatchdogRefused { reason: r } =>
       RunnerRepairRefused { slot: slot, cause: RemoteEvidenceRefused { reason: r } }
-    WatchdogWedged { silence_seconds: s } =>
+    gunbc.runner_broker_progress_watchdog.WatchdogWedged { silence_seconds: s } =>
       decide_wedged_runner_connectivity_action(
         snap: snap,
         prior: prior,
@@ -366,7 +366,7 @@ fn decide_wedged_runner_connectivity_action(
   let slot = snap.slot
   if !watchdog.registration_grace_elapsed {
     RunnerRepairRefused { slot: slot, cause: RegistrationGraceNotElapsed }
-  } else if !gunbc.runner_connectivity_recovery.process_identity_eq(
+  } else if !process_identity_eq(
     a: snap.local.incarnation.process,
     b: prior.local.incarnation.process,
   ) {
@@ -387,20 +387,20 @@ fn decide_wedged_runner_connectivity_action(
       cause: ObservationStale { observed_at: snap.confirmed_at, act_at: act_at },
     }
   } else if match remote_observation_registration(obs: snap.remote) {
-         Present { value: reg } => remote_registration_is_busy(reg: reg)
+         Present { value: reg } => gunbc.runner_broker_progress_watchdog.remote_registration_is_busy(reg: reg)
          Absent => false
        } {
     RunnerRepairRefused { slot: slot, cause: RunnerRemotelyBusy }
   } else if !snap.local.systemd_active {
     RunnerRepairRefused { slot: slot, cause: LocalProcessNotActive }
   } else if match watchdog.reach {
-         HostReachRefused { host: _, reason: r } => true
-         HostReachAdmitted => false
+         gunbc.runner_broker_progress_watchdog.HostReachRefused { host: _, reason: r } => true
+         gunbc.runner_broker_progress_watchdog.HostReachAdmitted => false
        } {
     match watchdog.reach {
-      HostReachRefused { host: _, reason: r } =>
+      gunbc.runner_broker_progress_watchdog.HostReachRefused { host: _, reason: r } =>
         RunnerRepairRefused { slot: slot, cause: HostReachAdmissionRefused { reason: r } }
-      HostReachAdmitted =>
+      gunbc.runner_broker_progress_watchdog.HostReachAdmitted =>
         RunnerRepairRefused {
           slot: slot,
           cause: RemoteEvidenceRefused {
@@ -413,7 +413,7 @@ fn decide_wedged_runner_connectivity_action(
       slot: slot,
       cause: RestartCooldownActive { seconds_remaining: runner_connectivity_restart_cooldown_seconds },
     }
-  } else if !watchdog_replace_predicate_holds(
+  } else if !gunbc.runner_broker_progress_watchdog.watchdog_replace_predicate_holds(
     remote: watchdog.remote,
     broker: watchdog.broker,
     worker: watchdog.worker,
@@ -424,11 +424,11 @@ fn decide_wedged_runner_connectivity_action(
       cause: BrokerProgressStillRecent { silence_seconds: silence_seconds },
     }
   } else if !match remote_observation_registration(obs: prior.remote) {
-         Present { value: reg } => remote_registration_needs_repair(reg: reg)
+         Present { value: reg } => gunbc.runner_broker_progress_watchdog.remote_registration_needs_repair(reg: reg)
          Absent => false
        } {
     RunnerRepairRefused { slot: slot, cause: ConditionNotPersistentAcrossReobservation }
-  } else if reobservation_refuses_mutation(
+  } else if gunbc.runner_broker_progress_watchdog.reobservation_refuses_mutation(
     receipt: repair_decision_receipt_from_prior(prior: prior, act_at: act_at),
     fresh_local_process: snap.local.incarnation.process,
     fresh_remote: watchdog.remote,
@@ -445,7 +445,7 @@ fn decide_wedged_runner_connectivity_action(
   } else if !allow_replace {
     RunnerRepairRefused { slot: slot, cause: CanaryAwaitingVerification }
   } else {
-    match remote_evidence_registration(ev: snap.remote.evidence) {
+    match gunbc.runner_broker_progress_watchdog.remote_evidence_registration(ev: snap.remote.evidence) {
       Present { value: reg } =>
         RunnerIncarnationReplace {
           slot: slot,
@@ -546,7 +546,7 @@ fn verify_incarnation_replace_postcondition(
   after_remote: RunnerRemoteObservation,
   expected_labels: List<String>,
 ) -> IncarnationReplacePostcondition {
-  if gunbc.runner_connectivity_recovery.process_identity_eq(a: prior.process, b: after_local.incarnation.process) {
+  if process_identity_eq(a: prior.process, b: after_local.incarnation.process) {
     ReplacePostconditionFailed {
       slot: slot,
       reason: "prior local process identity still present after restart" as std.types.NonEmptyStr,
@@ -557,10 +557,10 @@ fn verify_incarnation_replace_postcondition(
       reason: "successor local process not active after restart" as std.types.NonEmptyStr,
     }
   } else {
-    match remote_evidence_registration(ev: after_remote.evidence) {
+    match gunbc.runner_broker_progress_watchdog.remote_evidence_registration(ev: after_remote.evidence) {
       Present { value: reg } =>
         match reg {
-          RunnerRemoteOnline { runner_name: name, labels: labels } =>
+          gunbc.runner_broker_progress_watchdog.RunnerRemoteOnline { runner_name: name, labels: labels } =>
             if labels == expected_labels {
               ReplaceVerified {
                 slot: slot,
@@ -574,17 +574,17 @@ fn verify_incarnation_replace_postcondition(
                 reason: "remote registration online but labels do not match intent" as std.types.NonEmptyStr,
               }
             }
-          RunnerRemoteOffline =>
+          gunbc.runner_broker_progress_watchdog.RunnerRemoteOffline =>
             ReplacePostconditionFailed {
               slot: slot,
               reason: "remote registration still offline after restart" as std.types.NonEmptyStr,
             }
-          RunnerRemoteAbsent =>
+          gunbc.runner_broker_progress_watchdog.RunnerRemoteAbsent =>
             ReplacePostconditionFailed {
               slot: slot,
               reason: "remote registration still absent after restart" as std.types.NonEmptyStr,
             }
-          RunnerRemoteBusy { detail: _ } =>
+          gunbc.runner_broker_progress_watchdog.RunnerRemoteBusy { detail: _ } =>
             ReplacePostconditionFailed {
               slot: slot,
               reason: "remote registration busy after restart" as std.types.NonEmptyStr,
@@ -600,14 +600,14 @@ fn verify_incarnation_replace_postcondition(
 }
 
 fn host_reach_admission_for_fleet_host(host: product.placement_supply.HostIdentity) -> gunbc.runner_broker_progress_watchdog.HostReachAdmission {
-  if (host as String) == (operator_host_srv3 as String)
-    || (host as String) == (operator_host_srv4 as String) {
+  if (host as String) == (gunbc.fleet_intent_network.operator_host_srv3 as String)
+    || (host as String) == (gunbc.fleet_intent_network.operator_host_srv4 as String) {
     gunbc.runner_broker_progress_watchdog.HostReachRefused {
       host: host,
       reason: "host key login unavailable; located reach refusal while siblings continue" as std.types.NonEmptyStr,
     }
   } else {
-    HostReachAdmitted
+    gunbc.runner_broker_progress_watchdog.HostReachAdmitted
   }
 }
 
@@ -633,13 +633,13 @@ fn initial_per_host_replace_budget(cap: Int) -> PerHostReplaceBudgetState {
 }
 
 fn host_budget_remaining(state: PerHostReplaceBudgetState, host: product.placement_supply.HostIdentity) -> Int {
-  if (host as String) == (operator_host_srv1 as String) {
+  if (host as String) == (gunbc.fleet_intent_network.operator_host_srv1 as String) {
     state.srv1
-  } else if (host as String) == (operator_host_srv2 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv2 as String) {
     state.srv2
-  } else if (host as String) == (operator_host_srv3 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv3 as String) {
     state.srv3
-  } else if (host as String) == (operator_host_srv4 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv4 as String) {
     state.srv4
   } else {
     0
@@ -650,28 +650,28 @@ fn decrement_host_budget(
   state: PerHostReplaceBudgetState,
   host: product.placement_supply.HostIdentity,
 ) -> PerHostReplaceBudgetState {
-  if (host as String) == (operator_host_srv1 as String) {
+  if (host as String) == (gunbc.fleet_intent_network.operator_host_srv1 as String) {
     PerHostReplaceBudgetState {
       srv1: state.srv1 - 1,
       srv2: state.srv2,
       srv3: state.srv3,
       srv4: state.srv4,
     }
-  } else if (host as String) == (operator_host_srv2 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv2 as String) {
     PerHostReplaceBudgetState {
       srv1: state.srv1,
       srv2: state.srv2 - 1,
       srv3: state.srv3,
       srv4: state.srv4,
     }
-  } else if (host as String) == (operator_host_srv3 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv3 as String) {
     PerHostReplaceBudgetState {
       srv1: state.srv1,
       srv2: state.srv2,
       srv3: state.srv3 - 1,
       srv4: state.srv4,
     }
-  } else if (host as String) == (operator_host_srv4 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv4 as String) {
     PerHostReplaceBudgetState {
       srv1: state.srv1,
       srv2: state.srv2,
@@ -765,7 +765,7 @@ fn plan_fleet_connectivity_repair(
   let canary = match first_snapshot_canary_slot(snapshots: snapshots) {
     Present { value: slot } => slot
     Absent =>
-      gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
+      gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv1, slot_index: 1 }
   }
   let raw_actions = fold(
     snapshots,

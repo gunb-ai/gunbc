@@ -44,11 +44,11 @@ fn spark_bootstrap_credential_lease(
 ) -> OperatorBootstrapCredentialLease {
   OperatorBootstrapCredentialLease {
     host: host,
-    bootstrap_principal: spark_operator_bootstrap_login as std.types.NonEmptyStr,
+    bootstrap_principal: gunbc.spark.managed_access_bootstrap.spark_operator_bootstrap_login as std.types.NonEmptyStr,
     administrator: administrator,
     authorized_purpose: join([
-      "install the narrow sudoers grant '", spark_managed_grant_wire(grant: grant) as String,
-      "' (", spark_managed_grant_sudoers_command(grant: grant) as String,
+      "install the narrow sudoers grant '", gunbc.spark.managed_access_bootstrap.spark_managed_grant_wire(grant: grant) as String,
+      "' (", gunbc.spark.managed_access_bootstrap.spark_managed_grant_sudoers_command(grant: grant) as String,
       ") on ", host as String,
       " -- one-time, through the modeled secret boundary, not retained",
     ], "") as std.types.NonEmptyStr,
@@ -61,8 +61,8 @@ fn spark_bootstrap_credential_lease(
 // from the remedy for "the enrolled one was rejected".
 fn lease_secret_resource(lease: OperatorBootstrapCredentialLease) -> String? {
   match lease.administrator {
-    CredentialMaterializationPending => none
-    CredentialMaterialized { ref: r } => Present { value: secret_ref_secret_resource(ref: r) }
+    gunbc.spark.bootstrap_credential.CredentialMaterializationPending => none
+    gunbc.spark.bootstrap_credential.CredentialMaterialized { ref: r } => Present { value: extdeps.cloud.gcp.secret_ref.secret_ref_secret_resource(ref: r) }
   }
 }
 
@@ -221,8 +221,8 @@ data spark_grant_credential_path_env: std.types.NonEmptyStr = "GUNBC_SPARK_BOOTS
 // fetching a different secret than the lease authorized is unwritable rather than merely unlikely.
 fn lease_secret_version_resource(lease: OperatorBootstrapCredentialLease) -> String? {
   match lease.administrator {
-    CredentialMaterializationPending => none
-    CredentialMaterialized { ref: r } => Present { value: secret_ref_version_resource(ref: r) }
+    gunbc.spark.bootstrap_credential.CredentialMaterializationPending => none
+    gunbc.spark.bootstrap_credential.CredentialMaterialized { ref: r } => Present { value: extdeps.cloud.gcp.secret_ref.secret_ref_version_resource(ref: r) }
   }
 }
 
@@ -230,8 +230,8 @@ fn lease_secret_version_resource(lease: OperatorBootstrapCredentialLease) -> Str
 // cannot name different versions.
 fn lease_secret_access_url(lease: OperatorBootstrapCredentialLease) -> String? {
   match lease.administrator {
-    CredentialMaterializationPending => none
-    CredentialMaterialized { ref: r } => Present { value: secret_ref_access_url(ref: r) }
+    gunbc.spark.bootstrap_credential.CredentialMaterializationPending => none
+    gunbc.spark.bootstrap_credential.CredentialMaterialized { ref: r } => Present { value: extdeps.cloud.gcp.secret_ref.secret_ref_access_url(ref: r) }
   }
 }
 
@@ -322,7 +322,7 @@ func read_bootstrap_credential() -> BootstrapCredentialMaterialization {
           ], "") as std.types.NonEmptyStr,
         }
       } else {
-        let read = Filesystem.Read(path: path)
+        let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path)
         classify_credential_read(success: read.success, error: read.error, content: read.content)
       }
     }
@@ -345,13 +345,13 @@ func run_privileged_step(
   uses net: std.resources.Network
 {
   match lease.administrator {
-    CredentialMaterializationPending => CredentialNotEnrolled { lease: lease }
-    CredentialMaterialized { ref: _ } =>
+    gunbc.spark.bootstrap_credential.CredentialMaterializationPending => CredentialNotEnrolled { lease: lease }
+    gunbc.spark.bootstrap_credential.CredentialMaterialized { ref: _ } =>
       match read_bootstrap_credential() {
         BootstrapCredentialNotMaterialized { cause: why } =>
           CredentialNotMaterialized { lease: lease, cause: why }
         BootstrapCredentialReady { secret: secret } =>
-          match portable_remote_words(raws: admitted_root_argv_words(command: command)) {
+          match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: admitted_root_argv_words(command: command)) {
             Absent =>
               PrivilegedCommandFailed {
                 command: command,
@@ -359,11 +359,11 @@ func run_privileged_step(
                 stderr: "the admitted root argv is not portable under the far-side shell re-parse",
               }
             Present { value: words } => {
-              let result = ssh_session_exec_portable_words_with_stdin(
-                client_args: shape_fleet_ssh_exec(
+              let result = extdeps.ssh.session.ssh_session_exec_portable_words_with_stdin(
+                client_args: gunbc.fleet_known_hosts_anchor.shape_fleet_ssh_exec(
                   context: context,
                   target: gunbc.fleet_known_hosts_anchor.SshTarget {
-                    endpoint: fleet_probe_endpoint_for(host: host as String) as std.types.NonEmptyStr,
+                    endpoint: gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: host as String) as std.types.NonEmptyStr,
                     principal: lease.bootstrap_principal,
                   },
                   words: words,

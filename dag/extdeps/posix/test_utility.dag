@@ -1,8 +1,9 @@
 module extdeps.posix.test_utility
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/test.html"
   }
 }
@@ -16,12 +17,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data test_program: NonEmptyStr = "test"
+data test_program: std.types.NonEmptyStr = "test"
 
 // -f IS "EXISTS AND IS A REGULAR FILE", which is a stronger claim than -e ("exists"): a directory, a
 // socket or a dangling symlink at that path answers false here and true under -e. The two are not
 // interchangeable and this builder commits to the one its callers mean -- a unit file that turned
 // out to be a directory is not present, it is broken.
-fn test_regular_file_command(path: String) -> ArgvCommand {
-  argv_command(program: test_program, arguments: ["-f", path])
+fn test_regular_file_command(path: String) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(program: test_program, arguments: ["-f", path])
 }

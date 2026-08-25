@@ -1,68 +1,68 @@
 module v2.test.lens_cost.copied_port_derivation
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data copied_port_derivation_test_note: String = "Wave 1 Gate 1 C1 green-by-execution: per-op copied-port indices derive from cost lens over cited combiner Arrow ^arrow_body_edge bodies — matching the retired hand registry (list_append/left=0, list_snoc_item/left=0, map_merge/overlay=1). Discriminating RED: unpriceable combiner lookup yields Absent; multi-linear ambiguous body yields Absent (no tiebreak); citation-retained frontier count is 3."
 
-test fn derived_list_append_copied_port_index_is_zero() -> v2.std.logic.Bool {
-  match derive_copied_port_index_from_arrow(
+test fn derived_list_append_copied_port_index_is_zero() -> Bool {
+  match v2.lens.cost.copied_port_derivation.derive_copied_port_index_from_arrow(
     arrow: copied_port_citation_list_append.arrow
   ) {
-    Present { value: idx } => idx == 0
-    Absent => false
+    v2.std.collection.Present { value: idx } => idx == 0
+    v2.std.collection.Absent => false
   }
 }
 
-test fn derived_list_snoc_copied_port_index_is_zero() -> v2.std.logic.Bool {
-  match derive_copied_port_index_from_arrow(
+test fn derived_list_snoc_copied_port_index_is_zero() -> Bool {
+  match v2.lens.cost.copied_port_derivation.derive_copied_port_index_from_arrow(
     arrow: copied_port_citation_list_snoc_item.arrow
   ) {
-    Present { value: idx } => idx == 0
-    Absent => false
+    v2.std.collection.Present { value: idx } => idx == 0
+    v2.std.collection.Absent => false
   }
 }
 
-test fn derived_map_merge_copied_port_index_is_one() -> v2.std.logic.Bool {
-  match derive_copied_port_index_from_arrow(
+test fn derived_map_merge_copied_port_index_is_one() -> Bool {
+  match v2.lens.cost.copied_port_derivation.derive_copied_port_index_from_arrow(
     arrow: copied_port_citation_map_merge.arrow
   ) {
-    Present { value: idx } => idx == 1
-    Absent => false
+    v2.std.collection.Present { value: idx } => idx == 1
+    v2.std.collection.Absent => false
   }
 }
 
-test fn derived_registry_lookup_matches_hand_retired_indices() -> v2.std.logic.Bool {
-  match copied_port_index_of(combiner: ^list_append) {
-    Present { value: a } =>
-      match copied_port_index_of(combiner: ^list_snoc_item) {
-        Present { value: b } =>
-          match copied_port_index_of(combiner: ^map_merge) {
-            Present { value: c } => (a == 0) && (b == 0) && (c == 1)
-            Absent => false
+test fn derived_registry_lookup_matches_hand_retired_indices() -> Bool {
+  match v2.lens.cost.copied_port_citations.copied_port_index_of(combiner: ^list_append) {
+    v2.std.collection.Present { value: a } =>
+      match v2.lens.cost.copied_port_citations.copied_port_index_of(combiner: ^list_snoc_item) {
+        v2.std.collection.Present { value: b } =>
+          match v2.lens.cost.copied_port_citations.copied_port_index_of(combiner: ^map_merge) {
+            v2.std.collection.Present { value: c } => (a == 0) && (b == 0) && (c == 1)
+            v2.std.collection.Absent => false
           }
-        Absent => false
+        v2.std.collection.Absent => false
       }
-    Absent => false
+    v2.std.collection.Absent => false
   }
 }
 
-test fn unpriceable_combiner_lookup_refuses_red_control() -> v2.std.logic.Bool {
-  wave1_gate1_c1_unregistered_combiner_lookup_refuses_holds()
+test fn unpriceable_combiner_lookup_refuses_red_control() -> Bool {
+  v2.test.claim.body_lowering.wave1_gate1_c1_copied_port_helpers.wave1_gate1_c1_unregistered_combiner_lookup_refuses_holds()
 }
 
-test fn multi_linear_ambiguous_derivation_refuses_red_control() -> v2.std.logic.Bool {
-  match derive_copied_port_index_from_arrow(
-    arrow: citation_arrow_multi_linear_ambiguous(
+test fn multi_linear_ambiguous_derivation_refuses_red_control() -> Bool {
+  match v2.lens.cost.copied_port_derivation.derive_copied_port_index_from_arrow(
+    arrow: v2.lens.cost.copied_port_citations.citation_arrow_multi_linear_ambiguous(
       left_sym: ^copied_port_derivation_test_multi_linear_left,
       right_sym: ^copied_port_derivation_test_multi_linear_right
     )
   ) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.collection.Absent => true
+    v2.std.collection.Present { value: _ } => false
   }
 }
 
-test fn citation_retained_frontier_count_is_three() -> v2.std.logic.Bool {
-  copied_port_citation_retained_count() == 3
+test fn citation_retained_frontier_count_is_three() -> Bool {
+  v2.lens.cost.copied_port_citations.copied_port_citation_retained_count() == 3
 }

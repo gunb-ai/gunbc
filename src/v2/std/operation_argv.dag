@@ -15,7 +15,7 @@ type OperationRef {
   operation: String
 }
 
-fn operation_ref_label(at: v2.std.operation_argv.OperationRef) -> String {
+fn operation_ref_label(at: OperationRef) -> String {
   join([at.service, ".", at.operation], "")
 }
 
@@ -31,14 +31,14 @@ type OperationInputBinding {
 }
 
 type BoundOperationInvocation {
-  at: v2.std.operation_argv.OperationRef
+  at: OperationRef
   bindings: List<OperationInputBinding>
 }
 
 data bound_operation_invocation_authority_note: String = "A bound operation invocation is exactly an existing OperationRef paired with the existing declaration-owned OperationInputBinding vocabulary. It carries no argv, process, target-language, registry, or path-alias fact: argv remains derived from the referenced extdeps declaration by shell_materialize_operation_argv, and a realization chooses whether/how to transport it."
 
 fn bind_operation_invocation(
-  at: v2.std.operation_argv.OperationRef,
+  at: OperationRef,
   bindings: List<OperationInputBinding>
 ) -> BoundOperationInvocation {
   BoundOperationInvocation {
@@ -63,7 +63,7 @@ type ArgvMaterialization
   | ArgvMaterializationRefused { at: OperationRef, cause: ArgvRefusalCause }
 
 type ShellTransportOperationRow {
-  at: v2.std.operation_argv.OperationRef
+  at: OperationRef
   declared_inputs: List<String>
   argv_input_refs: List<String>
 }
@@ -126,7 +126,7 @@ fn operation_argv_cause_label(cause: ArgvRefusalCause) -> String {
   }
 }
 
-fn operation_argv_ref_label(at: v2.std.operation_argv.OperationRef) -> String {
+fn operation_argv_ref_label(at: OperationRef) -> String {
   concat(concat(concat(concat(at.path, " "), at.service), "."), at.operation)
 }
 
@@ -154,7 +154,7 @@ fn operation_argv_row_binding_for_input(name: String) -> OperationInputBinding {
 }
 
 fn operation_argv_row_bindings(row: ShellTransportOperationRow) -> List<OperationInputBinding> {
-  list_map(
+  v2.std.algebra.list_map(
     xs: row.declared_inputs,
     f: fn(n) { operation_argv_row_binding_for_input(name: n) }
   )

@@ -3,60 +3,60 @@ module gunbc.plans.format_model_reconciliation
 
 fn format_model_reconciliation_body() -> List<std.markdown.MarkdownBlock> {
   [
-    std.markdown.BlockquoteBlock { blocks: [p(text: "Record-spelling reconciliation: one concept — how a format spells records — was historically forked across three models. The live tree has dissolved the two legacy models into `ConfigFormat`, `CommentSyntax`, `LayoutProtocol`, and `SerializationKnobs`; this tracker now owns only the remaining emitter migrations. DESIGN refs: §2 (one concept every scale), §3 (single authority), §5 (execution-grounded swap test), §6 (complementary to [regime-2 shared emission fold](regime2-shared-emission-fold.md), not a parallel ledger).")] },
-    p(text: "**Status:** implementation tail · **`.dag` carrier is authority** (§6). Carrier facts re-verified against the live tree 2026-07-31."),
-    h2(text: "1. The historical fork and its live resolution"),
-    p(text: "Layout (line/indent/newline) is [regime-2 shared emission fold](regime2-shared-emission-fold.md). **This doc owns record spelling** — how key/value, assign, quoting, and nesting render into text or JSON:"),
+    std.markdown.BlockquoteBlock { blocks: [gunbc.plans.md_helpers.p(text: "Record-spelling reconciliation: one concept — how a format spells records — was historically forked across three models. The live tree has dissolved the two legacy models into `ConfigFormat`, `CommentSyntax`, `LayoutProtocol`, and `SerializationKnobs`; this tracker now owns only the remaining emitter migrations. DESIGN refs: §2 (one concept every scale), §3 (single authority), §5 (execution-grounded swap test), §6 (complementary to [regime-2 shared emission fold](regime2-shared-emission-fold.md), not a parallel ledger).")] },
+    gunbc.plans.md_helpers.p(text: "**Status:** implementation tail · **`.dag` carrier is authority** (§6). Carrier facts re-verified against the live tree 2026-07-31."),
+    gunbc.plans.md_helpers.h2(text: "1. The historical fork and its live resolution"),
+    gunbc.plans.md_helpers.p(text: "Layout (line/indent/newline) is [regime-2 shared emission fold](regime2-shared-emission-fold.md). **This doc owns record spelling** — how key/value, assign, quoting, and nesting render into text or JSON:"),
     std.markdown.TableBlock {
-      header: gunbc.plans.md_helpers.row(cells: [cell(text: "model"), cell(text: "where"), cell(text: "role"), cell(text: "verdict")]),
-      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      header: gunbc.plans.md_helpers.row(cells: [gunbc.plans.md_helpers.cell(text: "model"), gunbc.plans.md_helpers.cell(text: "where"), gunbc.plans.md_helpers.cell(text: "role"), gunbc.plans.md_helpers.cell(text: "verdict")]),
+      alignments: [std.markdown.AlignNone, std.markdown.AlignNone, std.markdown.AlignNone, std.markdown.AlignNone],
       rows: [
-        gunbc.plans.md_helpers.row(cells: [cell(text: "`ConfigFormat`"), cell(text: "`std.languages` `ConfigFormat`"), cell(text: "format identity plus optional record knobs"), cell(text: "**live authority**")]),
-        gunbc.plans.md_helpers.row(cells: [cell(text: "`FormatModel`"), cell(text: "absent from the live tree"), cell(text: "legacy layout scaffold"), cell(text: "**deleted**")]),
-        gunbc.plans.md_helpers.row(cells: [cell(text: "`OutputFormat`"), cell(text: "absent from the live tree"), cell(text: "legacy mixed layout/record knobs"), cell(text: "**deleted and decomposed**")]),
+        gunbc.plans.md_helpers.row(cells: [gunbc.plans.md_helpers.cell(text: "`ConfigFormat`"), gunbc.plans.md_helpers.cell(text: "`std.languages` `ConfigFormat`"), gunbc.plans.md_helpers.cell(text: "format identity plus optional record knobs"), gunbc.plans.md_helpers.cell(text: "**live authority**")]),
+        gunbc.plans.md_helpers.row(cells: [gunbc.plans.md_helpers.cell(text: "`FormatModel`"), gunbc.plans.md_helpers.cell(text: "absent from the live tree"), gunbc.plans.md_helpers.cell(text: "legacy layout scaffold"), gunbc.plans.md_helpers.cell(text: "**deleted**")]),
+        gunbc.plans.md_helpers.row(cells: [gunbc.plans.md_helpers.cell(text: "`OutputFormat`"), gunbc.plans.md_helpers.cell(text: "absent from the live tree"), gunbc.plans.md_helpers.cell(text: "legacy mixed layout/record knobs"), gunbc.plans.md_helpers.cell(text: "**deleted and decomposed**")]),
       ],
     },
-    p(text: "`std.languages` `SerializationKnobs` and `std.serialize` `serialize_record_doc` now carry record spelling. `gunbc.runner_deploy_emit` routes manifest and JSON projections through them; remaining boutique emitters are scoped below."),
-    h2(text: "2. The decomposition — map each field to its single authority (§3)"),
-    p(text: "The deleted `OutputFormat` was decomposed field-by-field onto existing carriers; the irreducible residue is the record-spelling knobs only:"),
-    ul(items: [
-      li(text: "`name` → `ConfigFormat` (identity already lives there)"),
-      li(text: "`comment_prefix` → `CommentSyntax.line_prefix` (derive `#` from format comment, never duplicate)"),
-      li(text: "`indent_unit`, `trailing_newline` → `std.layout.LayoutProtocol` (line-layout half; owned by regime-2)"),
-      li(text: "**Residue → `SerializationKnobs`** in `std.languages`: assign separator, entry separator, open/close delimiters, quoting policy — a comment-free record-spelling value"),
+    gunbc.plans.md_helpers.p(text: "`std.languages` `SerializationKnobs` and `std.serialize` `serialize_record_doc` now carry record spelling. `gunbc.runner_deploy_emit` routes manifest and JSON projections through them; remaining boutique emitters are scoped below."),
+    gunbc.plans.md_helpers.h2(text: "2. The decomposition — map each field to its single authority (§3)"),
+    gunbc.plans.md_helpers.p(text: "The deleted `OutputFormat` was decomposed field-by-field onto existing carriers; the irreducible residue is the record-spelling knobs only:"),
+    gunbc.plans.md_helpers.ul(items: [
+      gunbc.plans.md_helpers.li(text: "`name` → `ConfigFormat` (identity already lives there)"),
+      gunbc.plans.md_helpers.li(text: "`comment_prefix` → `CommentSyntax.line_prefix` (derive `#` from format comment, never duplicate)"),
+      gunbc.plans.md_helpers.li(text: "`indent_unit`, `trailing_newline` → `std.layout.LayoutProtocol` (line-layout half; owned by regime-2)"),
+      gunbc.plans.md_helpers.li(text: "**Residue → `SerializationKnobs`** in `std.languages`: assign separator, entry separator, open/close delimiters, quoting policy — a comment-free record-spelling value"),
     ]),
-    p(text: "**Live pipeline:** `std.serialize` `serialize_record_doc` produces `std.layout` `Doc` recursively; compose it with `std.layout` `render` for the line half."),
+    gunbc.plans.md_helpers.p(text: "**Live pipeline:** `std.serialize` `serialize_record_doc` produces `std.layout` `Doc` recursively; compose it with `std.layout` `render` for the line half."),
     std.markdown.CodeBlock { code: "doc = serialize_record(record, knobs)   // record half (this doc)\ntext = render(doc, layout_protocol)     // line half (regime-2)\n" },
-    h3(text: "The swap test (acid test)"),
-    p(text: "`test.claim.config_record_emit_witness` and `test.claim.runner_placement_witness` exercise the same record projection with manifest and JSON knob values. This is the execution-grounded substrate for JSON-as-first-class under §6 cross-media."),
-    h3(text: "Relationship to regime-2 (complementary, not duplicate)"),
-    ul(items: [
-      li(text: "[regime-2 shared emission fold](regime2-shared-emission-fold.md) — **line-layout half**: one `render(doc, protocol)` fold over `std.layout.Doc` for yaml/gitignore/runner-deploy/ci.yml projections."),
-      li(text: "**This doc — record-spelling half**: `serialize_record` → `Doc`, then regime-2 renders. Cross-reference only; do not merge the plans."),
+    gunbc.plans.md_helpers.h3(text: "The swap test (acid test)"),
+    gunbc.plans.md_helpers.p(text: "`test.claim.config_record_emit_witness` and `test.claim.runner_placement_witness` exercise the same record projection with manifest and JSON knob values. This is the execution-grounded substrate for JSON-as-first-class under §6 cross-media."),
+    gunbc.plans.md_helpers.h3(text: "Relationship to regime-2 (complementary, not duplicate)"),
+    gunbc.plans.md_helpers.ul(items: [
+      gunbc.plans.md_helpers.li(text: "[regime-2 shared emission fold](regime2-shared-emission-fold.md) — **line-layout half**: one `render(doc, protocol)` fold over `std.layout.Doc` for yaml/gitignore/runner-deploy/ci.yml projections."),
+      gunbc.plans.md_helpers.li(text: "**This doc — record-spelling half**: `serialize_record` → `Doc`, then regime-2 renders. Cross-reference only; do not merge the plans."),
     ]),
-    h2(text: "3. Boundary — `std.render` kv helpers are presentation utilities"),
-    p(text: "`std.render` `kv_pair` and `kv_block` correctly render caller-supplied separators, but they do not carry format-owned `SerializationKnobs` or recursive record structure. Keep them for presentation-only key/value lists; record emitters such as manifest and JSON projections route through `std.serialize` `serialize_record_doc`."),
-    h2(text: "4. Ordered scope (completed foundation, then remaining tail)"),
-    ol(items: [
-      li(text: "**C1 complete:** `std.languages` `SerializationKnobs` + recursive `std.serialize` `serialize_record_doc` → `Doc`; `FormatModel` deleted; `gunbc.runner_deploy_emit` manifest fields migrated byte-identically."),
-      li(text: "**C2 complete (folded into C1):** runner manifest + JSON are the first proving instance, witnessed by `test.claim.config_record_emit_witness` and `test.claim.runner_placement_witness`."),
-      li(text: "**C3 complete:** `OutputFormat` and the orphan gitignore renderer are absent. `gunbc.gitignore_emit` derives comments from `std.languages` `gitignore_format` and renders a `Doc` with its `gitignore_protocol`; because gitignore is a line-list rather than a record, it does not acquire fake `SerializationKnobs`."),
-      li(text: "**C4 complete at the honest boundary:** `extdeps.formats.dnsmasq` projects directives to `Doc` with `dnsmasq_protocol`; its positional micro-syntax remains explicit rather than being forced into a key/value record."),
-      li(text: "**C5 (low):** classify digest/accelerator key/value blocks (`gunbc.digest_render` and `gunbc.accelerator_demo_render`) by semantic grain: presentation-only lists stay on the correct `std.render` helpers; true record projections route through `std.serialize` `serialize_record_doc` with byte-identical witnesses."),
-      li(text: "**C6 complete:** `gunbc.roadmap_style` now uses typed `CssDecl` rows on shared `BuildRule` machinery; the old `css_rule_props_scaffold` remains only as historical text in its dissolution note."),
+    gunbc.plans.md_helpers.h2(text: "3. Boundary — `std.render` kv helpers are presentation utilities"),
+    gunbc.plans.md_helpers.p(text: "`std.render` `kv_pair` and `kv_block` correctly render caller-supplied separators, but they do not carry format-owned `SerializationKnobs` or recursive record structure. Keep them for presentation-only key/value lists; record emitters such as manifest and JSON projections route through `std.serialize` `serialize_record_doc`."),
+    gunbc.plans.md_helpers.h2(text: "4. Ordered scope (completed foundation, then remaining tail)"),
+    gunbc.plans.md_helpers.ol(items: [
+      gunbc.plans.md_helpers.li(text: "**C1 complete:** `std.languages` `SerializationKnobs` + recursive `std.serialize` `serialize_record_doc` → `Doc`; `FormatModel` deleted; `gunbc.runner_deploy_emit` manifest fields migrated byte-identically."),
+      gunbc.plans.md_helpers.li(text: "**C2 complete (folded into C1):** runner manifest + JSON are the first proving instance, witnessed by `test.claim.config_record_emit_witness` and `test.claim.runner_placement_witness`."),
+      gunbc.plans.md_helpers.li(text: "**C3 complete:** `OutputFormat` and the orphan gitignore renderer are absent. `gunbc.gitignore_emit` derives comments from `std.languages` `gitignore_format` and renders a `Doc` with its `gitignore_protocol`; because gitignore is a line-list rather than a record, it does not acquire fake `SerializationKnobs`."),
+      gunbc.plans.md_helpers.li(text: "**C4 complete at the honest boundary:** `extdeps.formats.dnsmasq` projects directives to `Doc` with `dnsmasq_protocol`; its positional micro-syntax remains explicit rather than being forced into a key/value record."),
+      gunbc.plans.md_helpers.li(text: "**C5 (low):** classify digest/accelerator key/value blocks (`gunbc.digest_render` and `gunbc.accelerator_demo_render`) by semantic grain: presentation-only lists stay on the correct `std.render` helpers; true record projections route through `std.serialize` `serialize_record_doc` with byte-identical witnesses."),
+      gunbc.plans.md_helpers.li(text: "**C6 complete:** `gunbc.roadmap_style` now uses typed `CssDecl` rows on shared `BuildRule` machinery; the old `css_rule_props_scaffold` remains only as historical text in its dissolution note."),
     ]),
-    h2(text: "5. Audit receipts (live tree 2026-07-31)"),
-    ul(items: [
-      li(text: "No `FormatModel`, `OutputFormat`, `gitignore_output_format`, or `gitignore_render` declaration remains in the live tree."),
-      li(text: "`std.languages` `ConfigFormat.record` carries optional `SerializationKnobs`; `json_record_knobs` is a live instance."),
-      li(text: "`std.serialize` `serialize_record_doc` is the recursive record-spelling fold; `gunbc.runner_deploy_emit` is its live manifest/JSON consumer."),
-      li(text: "`v2.lens.languages_consumer_census` baselines: `languages_consumer_census_data_decl_baseline`, `languages_consumer_census_per_language_row_baseline`, `languages_consumer_census_format_row_baseline`."),
+    gunbc.plans.md_helpers.h2(text: "5. Audit receipts (live tree 2026-07-31)"),
+    gunbc.plans.md_helpers.ul(items: [
+      gunbc.plans.md_helpers.li(text: "No `FormatModel`, `OutputFormat`, `gitignore_output_format`, or `gitignore_render` declaration remains in the live tree."),
+      gunbc.plans.md_helpers.li(text: "`std.languages` `ConfigFormat.record` carries optional `SerializationKnobs`; `json_record_knobs` is a live instance."),
+      gunbc.plans.md_helpers.li(text: "`std.serialize` `serialize_record_doc` is the recursive record-spelling fold; `gunbc.runner_deploy_emit` is its live manifest/JSON consumer."),
+      gunbc.plans.md_helpers.li(text: "`v2.lens.languages_consumer_census` baselines: `languages_consumer_census_data_decl_baseline`, `languages_consumer_census_per_language_row_baseline`, `languages_consumer_census_format_row_baseline`."),
     ]),
-    h2(text: "6. Open / boundaries"),
-    ul(items: [
-      li(text: "The remaining work is emitter migration, not another model declaration."),
-      li(text: "Regime-1 grammar-inverse language emit stays out of scope (v2 `TargetModel` rows)."),
-      li(text: "Language-emission `import_grouping` stays outside `SerializationKnobs`."),
+    gunbc.plans.md_helpers.h2(text: "6. Open / boundaries"),
+    gunbc.plans.md_helpers.ul(items: [
+      gunbc.plans.md_helpers.li(text: "The remaining work is emitter migration, not another model declaration."),
+      gunbc.plans.md_helpers.li(text: "Regime-1 grammar-inverse language emit stays out of scope (v2 `TargetModel` rows)."),
+      gunbc.plans.md_helpers.li(text: "Language-emission `import_grouping` stays outside `SerializationKnobs`."),
     ]),
   ]
 }
@@ -65,6 +65,6 @@ data format_model_reconciliation_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "format-model-reconciliation",
   title: "Format-model reconciliation — record spelling onto single authority",
   body: format_model_reconciliation_body(),
-  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this doc when the C5 digest/accelerator tail is classified by semantic grain and every true record projection routes through `std.serialize` `serialize_record_doc` with byte-identical witnesses; presentation-only lists explicitly remain on `std.render`. The legacy FormatModel/OutputFormat collapse, runner manifest/JSON swap, gitignore line-layout de-fork, dnsmasq boundary, and CSS typed-row migration are already complete.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "Delete this doc when the C5 digest/accelerator tail is classified by semantic grain and every true record projection routes through `std.serialize` `serialize_record_doc` with byte-identical witnesses; presentation-only lists explicitly remain on `std.render`. The legacy FormatModel/OutputFormat collapse, runner manifest/JSON swap, gitignore line-layout de-fork, dnsmasq boundary, and CSS typed-row migration are already complete.")
   }
 }

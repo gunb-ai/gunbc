@@ -1,5 +1,6 @@
 module gunbc.commit_workflow
 
+
 data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_witness_test.dag"
 
 type CommitWriter
@@ -154,9 +155,9 @@ fn commit_writer_classify_artifact(
   } else if count(flat_map(
     module_storage,
     binding => match binding.provenance {
-      ParsedFromSource { artifact: tracked, span_index: _ } =>
+      v2.compiler.source_authority.ParsedFromSource { artifact: tracked, span_index: _ } =>
         if tracked == artifact { [tracked] } else { [] }
-      ProducedByBehavior { producer: _ } => []
+      v2.compiler.source_authority.ProducedByBehavior { producer: _ } => []
     },
   )) > 0 {
     CommitWriterArtifactClassified {
@@ -235,7 +236,7 @@ type CommitWriterBindingOwner
   | CommitWriterDashboardInfrastructureOperatorOwner
 
 type CommitWriterBindingDependency {
-  capability: v2.std.node.Symbol
+  capability: Symbol
 }
 
 data commit_writer_complete_staged_index_blob_observation_transport: CommitWriterBindingDependency = CommitWriterBindingDependency {
@@ -412,10 +413,10 @@ fn commit_writer_normal_index_entries_for_path(
   flat_map(
     commit_writer_index_entries_for_path(index: index, path: path),
     entry => match entry.stage {
-      GitIndexStageNormal => [entry]
-      GitIndexStageBase => []
-      GitIndexStageOurs => []
-      GitIndexStageTheirs => []
+      extdeps.git.object_store.GitIndexStageNormal => [entry]
+      extdeps.git.object_store.GitIndexStageBase => []
+      extdeps.git.object_store.GitIndexStageOurs => []
+      extdeps.git.object_store.GitIndexStageTheirs => []
     },
   )
 }
@@ -436,10 +437,10 @@ fn commit_writer_prior_unmerged_stage_count(
     index.take(n: before),
     entry => if entry.path == path {
       match entry.stage {
-        GitIndexStageNormal => []
-        GitIndexStageBase => [entry]
-        GitIndexStageOurs => [entry]
-        GitIndexStageTheirs => [entry]
+        extdeps.git.object_store.GitIndexStageNormal => []
+        extdeps.git.object_store.GitIndexStageBase => [entry]
+        extdeps.git.object_store.GitIndexStageOurs => [entry]
+        extdeps.git.object_store.GitIndexStageTheirs => [entry]
       }
     } else {
       []
@@ -459,8 +460,8 @@ fn commit_writer_unmerged_index_refusals_at(
       Present { value: entry } => {
         let tail = commit_writer_unmerged_index_refusals_at(index: index, at: at + 1)
         match entry.stage {
-      GitIndexStageNormal => tail
-      GitIndexStageBase =>
+      extdeps.git.object_store.GitIndexStageNormal => tail
+      extdeps.git.object_store.GitIndexStageBase =>
         if commit_writer_prior_unmerged_stage_count(index: index, path: entry.path, before: at) > 0 {
           tail
         } else {
@@ -472,7 +473,7 @@ fn commit_writer_unmerged_index_refusals_at(
             items: tail,
           )
         }
-      GitIndexStageOurs =>
+      extdeps.git.object_store.GitIndexStageOurs =>
         if commit_writer_prior_unmerged_stage_count(index: index, path: entry.path, before: at) > 0 {
           tail
         } else {
@@ -484,7 +485,7 @@ fn commit_writer_unmerged_index_refusals_at(
             items: tail,
           )
         }
-      GitIndexStageTheirs =>
+      extdeps.git.object_store.GitIndexStageTheirs =>
         if commit_writer_prior_unmerged_stage_count(index: index, path: entry.path, before: at) > 0 {
           tail
         } else {
@@ -511,10 +512,10 @@ fn commit_writer_prior_normal_stage_count(
     index.take(n: before),
     entry => if entry.path == path {
       match entry.stage {
-        GitIndexStageNormal => [entry]
-        GitIndexStageBase => []
-        GitIndexStageOurs => []
-        GitIndexStageTheirs => []
+        extdeps.git.object_store.GitIndexStageNormal => [entry]
+        extdeps.git.object_store.GitIndexStageBase => []
+        extdeps.git.object_store.GitIndexStageOurs => []
+        extdeps.git.object_store.GitIndexStageTheirs => []
       }
     } else {
       []
@@ -534,7 +535,7 @@ fn commit_writer_duplicate_normal_index_refusals_at(
       Present { value: entry } => {
         let tail = commit_writer_duplicate_normal_index_refusals_at(index: index, at: at + 1)
         match entry.stage {
-      GitIndexStageNormal =>
+      extdeps.git.object_store.GitIndexStageNormal =>
         if commit_writer_prior_normal_stage_count(
           index: index,
           path: entry.path,
@@ -558,9 +559,9 @@ fn commit_writer_duplicate_normal_index_refusals_at(
             tail
           }
         }
-      GitIndexStageBase => tail
-      GitIndexStageOurs => tail
-      GitIndexStageTheirs => tail
+      extdeps.git.object_store.GitIndexStageBase => tail
+      extdeps.git.object_store.GitIndexStageOurs => tail
+      extdeps.git.object_store.GitIndexStageTheirs => tail
         }
       }
     }
@@ -648,9 +649,9 @@ fn commit_writer_artifact_refusals(
       items: if count(flat_map(
         module_storage,
         binding => match binding.provenance {
-          ParsedFromSource { artifact: tracked, span_index: _ } =>
+          v2.compiler.source_authority.ParsedFromSource { artifact: tracked, span_index: _ } =>
             if tracked == receipt.artifact { [tracked] } else { [] }
-          ProducedByBehavior { producer: _ } => []
+          v2.compiler.source_authority.ProducedByBehavior { producer: _ } => []
         },
       )) > 0 {
         []
@@ -694,7 +695,7 @@ fn commit_writer_blob_classification_refusals(
           module_storage: module_storage,
         ),
         items: match artifact.artifact.kind {
-          TestClaimArtifact => []
+          v2.std.artifact.TestClaimArtifact => []
           _ => commit_writer_text_marker_refusals(
             path: blob.path,
             text: text,
@@ -764,7 +765,7 @@ fn commit_writer_missing_blob_refusals(
   flat_map(
     observation.index,
     entry => match entry.stage {
-      GitIndexStageNormal =>
+      extdeps.git.object_store.GitIndexStageNormal =>
         if count(commit_writer_blobs_for_path(blobs: observation.blobs, path: entry.path)) == 0 {
           [CommitWriterMissingBlobObservationRefusal {
             path: entry.path,
@@ -773,9 +774,9 @@ fn commit_writer_missing_blob_refusals(
         } else {
           []
         }
-      GitIndexStageBase => []
-      GitIndexStageOurs => []
-      GitIndexStageTheirs => []
+      extdeps.git.object_store.GitIndexStageBase => []
+      extdeps.git.object_store.GitIndexStageOurs => []
+      extdeps.git.object_store.GitIndexStageTheirs => []
     },
   )
 }
@@ -807,10 +808,10 @@ fn admit_commit_writer(
         normal_index_entry_count: count(flat_map(
           observation.index,
           entry => match entry.stage {
-            GitIndexStageNormal => [entry]
-            GitIndexStageBase => []
-            GitIndexStageOurs => []
-            GitIndexStageTheirs => []
+            extdeps.git.object_store.GitIndexStageNormal => [entry]
+            extdeps.git.object_store.GitIndexStageBase => []
+            extdeps.git.object_store.GitIndexStageOurs => []
+            extdeps.git.object_store.GitIndexStageTheirs => []
           },
         )),
         staged_blob_observation_count: count(observation.blobs),
@@ -830,13 +831,13 @@ fn commit_writer_candidate_artifacts_for_path(
   flat_map(
     module_storage,
     binding => match binding.provenance {
-      ParsedFromSource { artifact, span_index: _ } =>
+      v2.compiler.source_authority.ParsedFromSource { artifact, span_index: _ } =>
         if std.bytes.bytes_octets(b: std.bytes.utf8_encode_bytes(s: artifact.file_path)) == extdeps.git.object_store.git_path_octets(path: path) {
           [artifact]
         } else {
           []
         }
-      ProducedByBehavior { producer: _ } => []
+      v2.compiler.source_authority.ProducedByBehavior { producer: _ } => []
     },
   )
 }
@@ -900,11 +901,11 @@ fn commit_writer_observe_staged_blobs(
   flat_map(
     index,
     entry => match entry.stage {
-      GitIndexStageNormal =>
+      extdeps.git.object_store.GitIndexStageNormal =>
         [commit_writer_observe_staged_blob(repo: repo, module_storage: module_storage, entry: entry)]
-      GitIndexStageBase => []
-      GitIndexStageOurs => []
-      GitIndexStageTheirs => []
+      extdeps.git.object_store.GitIndexStageBase => []
+      extdeps.git.object_store.GitIndexStageOurs => []
+      extdeps.git.object_store.GitIndexStageTheirs => []
     },
   )
 }
@@ -925,11 +926,11 @@ fn observe_complete_staged_commit(repo: std.types.FilePath, writer: CommitWriter
     }
   } else {
     match extdeps.git.object_store.git_decode_ls_files_stage_z(payload: std.bytes.utf8_encode_bytes(s: ls_files.raw), format: extdeps.git.object_store.GitObjectFormatSha1) {
-      GitLsFilesStageZRefused { cause: _ } =>
+      extdeps.git.object_store.GitLsFilesStageZRefused { cause: _ } =>
         CommitWriterTransportRefused {
           reason: "commit writer heal admission transport: staged index decode refused"
         }
-      GitLsFilesStageZDecoded { entries } =>
+      extdeps.git.object_store.GitLsFilesStageZDecoded { entries } =>
         CommitWriterTransportObserved {
           observation: CompleteStagedCommitObservation {
             index: entries,
@@ -1757,14 +1758,14 @@ fn enrollment_has_surface(e: CommitCheckEnrollment, surface: CommitWorkflowSurfa
 
 fn gate_eq(a: gunbc.ci_gate.Gate, b: gunbc.ci_gate.Gate) -> Bool {
   match a {
-    EmitHostGate => match b { gunbc.ci_gate.EmitHostGate => true  _ => false }
-    CheapClaimPoolGate => match b { gunbc.ci_gate.CheapClaimPoolGate => true  _ => false }
-    ExtdepsExternalAuthorityGate => match b { gunbc.ci_gate.ExtdepsExternalAuthorityGate => true  _ => false }
-    DagCompileCleanGate => match b { gunbc.ci_gate.DagCompileCleanGate => true  _ => false }
-    GeneratedArtifactDriftGate => match b { gunbc.ci_gate.GeneratedArtifactDriftGate => true  _ => false }
-    ExtdepsScopePlacementGate => match b { gunbc.ci_gate.ExtdepsScopePlacementGate => true  _ => false }
-    ProseRowIntroductionGate => match b { gunbc.ci_gate.ProseRowIntroductionGate => true  _ => false }
-    SourceRootIngestGate => match b { gunbc.ci_gate.SourceRootIngestGate => true  _ => false }
+    gunbc.ci_gate.EmitHostGate => match b { gunbc.ci_gate.EmitHostGate => true  _ => false }
+    gunbc.ci_gate.CheapClaimPoolGate => match b { gunbc.ci_gate.CheapClaimPoolGate => true  _ => false }
+    gunbc.ci_gate.ExtdepsExternalAuthorityGate => match b { gunbc.ci_gate.ExtdepsExternalAuthorityGate => true  _ => false }
+    gunbc.ci_gate.DagCompileCleanGate => match b { gunbc.ci_gate.DagCompileCleanGate => true  _ => false }
+    gunbc.ci_gate.GeneratedArtifactDriftGate => match b { gunbc.ci_gate.GeneratedArtifactDriftGate => true  _ => false }
+    gunbc.ci_gate.ExtdepsScopePlacementGate => match b { gunbc.ci_gate.ExtdepsScopePlacementGate => true  _ => false }
+    gunbc.ci_gate.ProseRowIntroductionGate => match b { gunbc.ci_gate.ProseRowIntroductionGate => true  _ => false }
+    gunbc.ci_gate.SourceRootIngestGate => match b { gunbc.ci_gate.SourceRootIngestGate => true  _ => false }
   }
 }
 
@@ -1914,8 +1915,8 @@ fn witness_seam_lists_eq(left: List<std.realization_schedule.WitnessSeam>, right
 
 fn witness_cost_basis_eq(a: std.realization_schedule.WitnessCostBasis, b: std.realization_schedule.WitnessCostBasis) -> Bool {
   match a {
-    MeasuredAtExactSubject { clock, duration, receipt } => match b {
-      MeasuredAtExactSubject {
+    std.realization_schedule.MeasuredAtExactSubject { clock, duration, receipt } => match b {
+      std.realization_schedule.MeasuredAtExactSubject {
         clock: clock2,
         duration: duration2,
         receipt: receipt2
@@ -1923,11 +1924,11 @@ fn witness_cost_basis_eq(a: std.realization_schedule.WitnessCostBasis, b: std.re
         std.measure.clock_basis_eq(a: clock, b: clock2)
           && (std.measure.millisecond_count(m: duration) == std.measure.millisecond_count(m: duration2))
           && (receipt == receipt2)
-      EstimatedFromSiblingClass { clock: _, source_witness: _, basis: _ } => false
+      std.realization_schedule.EstimatedFromSiblingClass { clock: _, source_witness: _, basis: _ } => false
     }
-    EstimatedFromSiblingClass { clock, source_witness, basis } => match b {
-      MeasuredAtExactSubject { clock: _, duration: _, receipt: _ } => false
-      EstimatedFromSiblingClass {
+    std.realization_schedule.EstimatedFromSiblingClass { clock, source_witness, basis } => match b {
+      std.realization_schedule.MeasuredAtExactSubject { clock: _, duration: _, receipt: _ } => false
+      std.realization_schedule.EstimatedFromSiblingClass {
         clock: clock2,
         source_witness: source_witness2,
         basis: basis2
@@ -1949,9 +1950,9 @@ fn scheduled_witness_envelope_eq(a: std.realization_schedule.ScheduledWitnessEnv
 
 fn witness_cost_basis_wellformed(basis: std.realization_schedule.WitnessCostBasis) -> Bool {
   match basis {
-    MeasuredAtExactSubject { clock: _, duration, receipt } =>
+    std.realization_schedule.MeasuredAtExactSubject { clock: _, duration, receipt } =>
       std.measure.millisecond_count(m: duration) > 0 && receipt != ""
-    EstimatedFromSiblingClass { clock: _, source_witness, basis } =>
+    std.realization_schedule.EstimatedFromSiblingClass { clock: _, source_witness, basis } =>
       source_witness != "" && basis != ""
   }
 }
@@ -1962,20 +1963,20 @@ fn scheduled_witness_envelope_wellformed(envelope: std.realization_schedule.Sche
 
 fn witness_span_eq(a: std.realization_schedule.WitnessSpan, b: std.realization_schedule.WitnessSpan) -> Bool {
   match a {
-    SpanUndeclared => match b {
-      SpanUndeclared => true
-      SpanSeams { seams: _ } => false
-      SpanEnrolled { seams: _, cost_basis: _, envelope: _ } => false
+    std.realization_schedule.SpanUndeclared => match b {
+      std.realization_schedule.SpanUndeclared => true
+      std.realization_schedule.SpanSeams { seams: _ } => false
+      std.realization_schedule.SpanEnrolled { seams: _, cost_basis: _, envelope: _ } => false
     }
-    SpanSeams { seams } => match b {
-      SpanUndeclared => false
-      SpanSeams { seams: other } => witness_seam_lists_eq(left: seams, right: other)
-      SpanEnrolled { seams: _, cost_basis: _, envelope: _ } => false
+    std.realization_schedule.SpanSeams { seams } => match b {
+      std.realization_schedule.SpanUndeclared => false
+      std.realization_schedule.SpanSeams { seams: other } => witness_seam_lists_eq(left: seams, right: other)
+      std.realization_schedule.SpanEnrolled { seams: _, cost_basis: _, envelope: _ } => false
     }
-    SpanEnrolled { seams, cost_basis, envelope } => match b {
-      SpanUndeclared => false
-      SpanSeams { seams: _ } => false
-      SpanEnrolled {
+    std.realization_schedule.SpanEnrolled { seams, cost_basis, envelope } => match b {
+      std.realization_schedule.SpanUndeclared => false
+      std.realization_schedule.SpanSeams { seams: _ } => false
+      std.realization_schedule.SpanEnrolled {
         seams: other_seams,
         cost_basis: other_basis,
         envelope: other_envelope
@@ -2018,8 +2019,8 @@ fn commit_check_kind_eq(a: CommitCheckKind, b: CommitCheckKind) -> Bool {
 
 fn declaration_field_is_whole(field: std.decl_ref.DeclField) -> Bool {
   match field {
-    WholeDeclaration => true
-    NamedField { field_name: _ } => false
+    std.decl_ref.WholeDeclaration => true
+    std.decl_ref.NamedField { field_name: _ } => false
   }
 }
 
@@ -2272,7 +2273,7 @@ fn demand_row_overlaps(
 ) -> Bool {
   fold(row.declarations, init: false, f: fn(overlaps, declaration) {
     overlaps || fold(rows, init: false, f: fn(found, other) {
-      found || declaration_ref_in_list(
+      found || std.decl_ref.declaration_ref_in_list(
         target: declaration,
         refs: other.declarations
       )
@@ -2383,9 +2384,9 @@ fn seams_wellformed_and_distinct(seams: List<std.realization_schedule.WitnessSea
 
 fn witness_span_wellformed(span: std.realization_schedule.WitnessSpan) -> Bool {
   match span {
-    SpanUndeclared => true
-    SpanSeams { seams } => seams.count() > 0 && seams_wellformed_and_distinct(seams: seams)
-    SpanEnrolled { seams, cost_basis, envelope } =>
+    std.realization_schedule.SpanUndeclared => true
+    std.realization_schedule.SpanSeams { seams } => seams.count() > 0 && seams_wellformed_and_distinct(seams: seams)
+    std.realization_schedule.SpanEnrolled { seams, cost_basis, envelope } =>
       seams.count() > 0
         && seams_wellformed_and_distinct(seams: seams)
         && witness_cost_basis_wellformed(basis: cost_basis)

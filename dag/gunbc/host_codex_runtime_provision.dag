@@ -1,16 +1,16 @@
 module gunbc.host_codex_runtime_provision
 
 
-data host_codex_runtime_provision_scope_disposition: std.disposition.Disposition = SingleAuthority
+data host_codex_runtime_provision_scope_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 data host_codex_runtime_provision_converge_cadence_note: String = "Assimilation (host_standup P1c) plus recurring reconcile: fleet_converge_policy registers codex_runtime_bundle on every fleet compute host, and gunbc.fleet_converge_cli converge_provider_runtime_codex_receipt runs ProvisionCodexRuntime on every `gunbc converge` for srv1–srv4 after slice1/knob-frontier work (converge_cli_run_host_knobs) and before converge-receipt publication. Standup alone would not heal already-assimilated hosts; the converge adjunct closes that hole."
 
 data host_codex_runtime_provision_realize_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect_realize",
     decl_name: "realize_provision_codex_runtime",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
@@ -22,39 +22,39 @@ data codex_runtime_provision_argv_note: String = "The observe/read-back argv bui
 
 fn provision_codex_runtime_routes_through_host_effect_apply() -> Bool {
   match host_codex_runtime_provision_realize_scaffold {
-    Scaffold {
-      dissolves_to: RealizationDispatch,
-      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
+    std.disposition.Scaffold {
+      dissolves_to: std.disposition.RealizationDispatch,
+      bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
       m == "gunbc.host_effect_realize" && n == "realize_provision_codex_runtime"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
 fn committed_admitted_codex_runtime_source() -> gunbc.package_delivery.AdmittedCodexRuntimeSource {
   gunbc.package_delivery.AdmittedCodexRuntimeSource {
-    manifest_bytes: filesystem_read(path: codex_runtime_manifest_path as String).content,
-    lock_bytes: filesystem_read(path: codex_runtime_lock_path as String).content,
+    manifest_bytes: filesystem_read(path: gunbc.package_delivery.codex_runtime_manifest_path as String).content,
+    lock_bytes: filesystem_read(path: gunbc.package_delivery.codex_runtime_lock_path as String).content,
   }
 }
 
 func materialize_codex_runtime_on_local_host() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
-  match provider_runtime_placement_for_host(host: "srv1" as product.placement_supply.HostIdentity) {
+  match gunbc.host_layout.provider_runtime_placement_for_host(host: "srv1" as product.placement_supply.HostIdentity) {
     Absent =>
-      exit_failure(
+      std.process.exit_failure(
         reason: "host_codex_runtime_provision: materialize_codex_runtime_on_local_host requires a fleet compute placement row",
       )
     Present { value: placement } =>
-      match materialize_codex_runtime_bundle(
-        source: gunbc.host_codex_runtime_provision.committed_admitted_codex_runtime_source(),
+      match gunbc.package_delivery.materialize_codex_runtime_bundle(
+        source: committed_admitted_codex_runtime_source(),
         release_parent: placement.runtime_release_root,
       ) {
-        CodexRuntimeMaterialized { bundle: _ } => std.process.ExitSuccess
+        gunbc.package_delivery.CodexRuntimeMaterialized { bundle: _ } => std.process.ExitSuccess
         other =>
-          exit_failure(
-            reason: match codex_runtime_materialization_refusal_reason(outcome: other) {
+          std.process.exit_failure(
+            reason: match gunbc.package_delivery.codex_runtime_materialization_refusal_reason(outcome: other) {
               Present { value: why } => why as String
               Absent => "host_codex_runtime_provision: codex runtime materialization refused"
             },
@@ -66,5 +66,5 @@ func materialize_codex_runtime_on_local_host() -> std.process.ProcessExit
 func provision_codex_runtime(host: product.placement_supply.HostIdentity) -> std.process.ProcessExit
   uses net: std.resources.Network
 {
-  host_toolchain_ensure(host: host, kind: CodexRuntime)
+  gunbc.host_toolchain_ensure.host_toolchain_ensure(host: host, kind: gunbc.host_toolchain_ensure.CodexRuntime)
 }

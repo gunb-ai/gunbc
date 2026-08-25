@@ -1,5 +1,6 @@
 module v2.workflow.required_floor
 
+
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
 // Every discovered site gets exactly one `RequiredFloorDisposition`, keyed by its qualified
@@ -80,15 +81,15 @@ type LongHomeStorageAgreement =
   | LongPathButExecutingModule
   | ShortPathButDeclinedModule
 
-fn long_home_storage_agreement(path_is_long: v2.std.logic.Bool, module_is_long: v2.std.logic.Bool) -> LongHomeStorageAgreement {
+fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> LongHomeStorageAgreement {
   match path_is_long {
-    True => match module_is_long {
-      True => LongPathAndLongModule {}
-      False => LongPathButExecutingModule {}
+    v2.std.logic.True => match module_is_long {
+      v2.std.logic.True => LongPathAndLongModule {}
+      v2.std.logic.False => LongPathButExecutingModule {}
     }
-    False => match module_is_long {
-      True => ShortPathButDeclinedModule {}
-      False => ShortPathAndShortModule {}
+    v2.std.logic.False => match module_is_long {
+      v2.std.logic.True => ShortPathButDeclinedModule {}
+      v2.std.logic.False => ShortPathAndShortModule {}
     }
   }
 }
@@ -165,7 +166,7 @@ fn long_home_prefixes() -> List<String> {
       head: "v2.test.long.",
       tail: std.algebra.Cons {
         head: "v2.test.claim.long.",
-        tail: std.algebra.Empty {}
+        tail: v2.std.algebra.Empty {}
       }
     }
   }
@@ -218,7 +219,7 @@ fn long_home_prefixes() -> List<String> {
 // that does not require one, this roster empties and the arm goes with it. There is no
 // empty-roster refusal here, for the same reason `long_home_prefixes` has none.
 fn fixture_home_prefixes() -> List<String> {
-  Cons {
+  std.algebra.Cons {
     head: "v2.test.fixture.walk_plan_stage.",
     tail: v2.std.algebra.Empty {}
   }
@@ -330,7 +331,7 @@ fn fixture_home_prefixes() -> List<String> {
 // (test.claim.transport_script_wall_compile_red.wall_red_string_join_into_retained_record_refuses)
 // under whole-corpus pressure while the per-witness median remains ~1ms — 1552ms is
 // measured-max plus one scheduler-quantum, retained as calibration evidence only.
-fn required_floor_claim_cost_line_ms() -> v2.std.integer.Int {
+fn required_floor_claim_cost_line_ms() -> Int {
   1552
 }
 
@@ -340,7 +341,7 @@ fn required_floor_claim_cost_line_ms() -> v2.std.integer.Int {
 // pure in-process claim running away on the CPU clock, and the wall limit below is deliberately
 // looser so that ordinary host scheduling delay cannot itself trip an interrupt on a
 // computation that is still within its CPU envelope.
-fn required_floor_claim_cpu_safety_limit_ms() -> v2.std.integer.Int {
+fn required_floor_claim_cpu_safety_limit_ms() -> Int {
   5000
 }
 
@@ -352,7 +353,7 @@ fn required_floor_claim_cpu_safety_limit_ms() -> v2.std.integer.Int {
 // that would wrongly read as a runaway if judged on the CPU-tight figure; 10000ms gives that
 // headroom while still catching a claim that is genuinely blocked or stuck. Also a restoration
 // envelope, not a re-founded permanent ceiling.
-fn required_floor_claim_wall_safety_limit_ms() -> v2.std.integer.Int {
+fn required_floor_claim_wall_safety_limit_ms() -> Int {
   10000
 }
 
@@ -417,14 +418,14 @@ type ClaimPreemptionReachability =
 fn opaque_host_call_grandfather_population() -> List<String> {
   std.algebra.Cons {
     head: "compile_dag_rust_emit_check",
-    tail: std.algebra.Empty {}
+    tail: v2.std.algebra.Empty {}
   }
 }
 
-fn string_in_grandfather_population(needle: String, population: List<String>) -> v2.std.logic.Bool {
+fn string_in_grandfather_population(needle: String, population: List<String>) -> Bool {
   match population {
-    Empty {} => false
-    Cons { head: h, tail: t } =>
+    v2.std.algebra.Empty {} => false
+    std.algebra.Cons { head: h, tail: t } =>
       if needle == h {
         true
       } else {
@@ -442,7 +443,7 @@ fn string_in_grandfather_population(needle: String, population: List<String>) ->
 // population that admits it -- it derives `OpaqueHostCallUnbounded` rather than a fictitious
 // hard-bound standing (see `claim_safety_outcome` below), never a refusal, because refusing it
 // today would refuse the whole corpus of claims that already, honestly, exercise it.
-fn claim_preemption_admission(preemption: ClaimPreemptionReachability) -> v2.std.logic.Bool {
+fn claim_preemption_admission(preemption: ClaimPreemptionReachability) -> Bool {
   match preemption {
     CooperativelyPollable => true
     OpaqueHostCallUnbounded { operation: op } =>
@@ -462,12 +463,12 @@ type ClaimSafetyOutcome =
     CompletedWithinSafetyLimits
   | SafetyInterrupted {
       raised_by: String
-      elapsed_cpu_at_least: v2.std.integer.Int
-      elapsed_wall_at_least: v2.std.integer.Int
+      elapsed_cpu_at_least: Int
+      elapsed_wall_at_least: Int
     }
   | CompletedPastSafetyLimit {
-      observed_cpu: v2.std.integer.Int
-      observed_wall: v2.std.integer.Int
+      observed_cpu: Int
+      observed_wall: Int
       preemption: ClaimPreemptionReachability
     }
 
@@ -477,9 +478,9 @@ type ClaimSafetyOutcome =
 // on the merits and matches this repository's own sibling precedent: `std.evaluation_budget`
 // (the caller-agnostic kernel this module's constants already cite) carries the identical
 // domain -- a cooperative deadline observed in milliseconds -- through `std.measure`
-// `Nanosecond`/`PositiveMillisecond`, never a bare `_ms: v2.std.integer.Int`. It is not fixed inline here
+// `Nanosecond`/`PositiveMillisecond`, never a bare `_ms: Int`. It is not fixed inline here
 // because `std.measure` `Millisecond = Measure<Time, Milli, std.nat.Nat>` is built on v1's
-// host-backed `Nat`, while this module's own `v2.std.integer.Int`/`Nat` (`v2.std.integer`, `v2.std.nat`) are
+// host-backed `Nat`, while this module's own `Int`/`Nat` (`v2.std.integer`, `v2.std.nat`) are
 // v2's inductive Peano tower (`Nat = Zero | Succ { prev: Nat }`, verified in
 // `src/v2/std/nat.dag`) -- and no bridge between the two numeric towers is established anywhere
 // in this corpus today. Converting these four fields under an unrelated CI-fix pass would mean
@@ -498,11 +499,11 @@ data flat_scalar_millisecond_fields_dissolve_on: std.dissolution.DissolutionCond
 // reachability fact and the trigger are observed at the interpreter boundary this module does
 // not itself reach into) rather than guessed here.
 fn claim_safety_outcome(
-  reached_verdict: v2.std.logic.Bool,
-  observed_cpu_ms: v2.std.integer.Int,
-  observed_wall_ms: v2.std.integer.Int,
-  cpu_limit_ms: v2.std.integer.Int,
-  wall_limit_ms: v2.std.integer.Int,
+  reached_verdict: Bool,
+  observed_cpu_ms: Int,
+  observed_wall_ms: Int,
+  cpu_limit_ms: Int,
+  wall_limit_ms: Int,
   raised_by: String,
   preemption: ClaimPreemptionReachability,
 ) -> ClaimSafetyOutcome {
@@ -570,7 +571,7 @@ fn claim_safety_outcome(
 // consumer that only checks for `SafetyInterrupted` before deciding admission reproduces the
 // silent-completion defect this whole model exists to close. This predicate is the one place
 // that fact is asserted, so a caller cannot rediscover it (or get it wrong) per call site.
-fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> v2.std.logic.Bool {
+fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
   match outcome {
     CompletedWithinSafetyLimits => false
     SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => true
@@ -578,19 +579,6 @@ fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> v2.std.logic.Bool
   }
 }
 
-// The host evaluates the roster in THIS module's frame, and a frame's scope is the
-// module's closure. With the import statement gone, a comment naming the roster is
-// not an edge -- only a reference is. This delegating function is that reference,
-// and it is the exact shape the note above contemplates ("called through the policy
-// module's own delegating edge rather than by reaching across the graph"). It adds
-// no second authority: it produces nothing and forwards to the roster that does.
-fn required_floor_expected_red_roster() -> List<String> {
-  v2.workflow.floor_expected_red.floor_expected_red_roster()
-}
-
-fn required_floor_route_gap_roster() -> List<String> {
-  v2.workflow.floor_route_gap.floor_route_gap_roster()
-}
 // ── SHARED PREPARATION BUILDS: A SECOND UNIT OF COST, WITH ITS OWN WALL ───────────────────
 //
 // THE LAW THIS SECTION ENCODES: THE COMPUTATION THAT FIRST TRIGGERS A SHARED ARTIFACT IS NOT
@@ -765,7 +753,7 @@ fn floor_preparation_outcome(
 // wrong: they are NOT EXECUTED, and a run that refuses here must produce no per-witness sheet at
 // all. Reporting a roster of zero-cost claims beside a refused preparation would be a fabricated
 // plausible output -- rows that read as measured and passing while nothing ever ran them.
-fn floor_preparation_outcome_blocks(outcome: FloorPreparationOutcome) -> v2.std.logic.Bool {
+fn floor_preparation_outcome_blocks(outcome: FloorPreparationOutcome) -> Bool {
   match outcome {
     PreparationWithinLimits { phase: _, observed_cpu: _, observed_wall: _, observed_rss_growth: _ } => false
     FloorPreparationRefused { phase: _, observed_cpu: _, observed_wall: _, observed_rss_growth: _ } => true
@@ -810,7 +798,7 @@ type FloorRunCost {
 fn floor_run_blocks(
   preparation: FloorPreparationOutcome,
   claim: ClaimSafetyOutcome,
-) -> v2.std.logic.Bool {
+) -> Bool {
   floor_preparation_outcome_blocks(outcome: preparation)
     || claim_safety_outcome_blocks(outcome: claim)
 }

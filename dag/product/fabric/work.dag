@@ -1,5 +1,7 @@
 module product.fabric.work
 
+
+
 // Work is WHAT is computed, and it is provider-neutral by construction: no field
 // here can name a repository, a pull request, a branch or a commit, because those
 // are facts about who asked and where to report, which live on Demand.
@@ -26,15 +28,15 @@ module product.fabric.work
 // facts - a source content manifest and a provenance receipt - and Work always
 // consumes the manifest, consuming provenance only where provenance is a
 // declared input.
-type ProgramRef = NonEmptyStr where brand("ProgramRef")
+type ProgramRef = std.types.NonEmptyStr where brand("ProgramRef")
 
-type ArtifactManifestRef = NonEmptyStr where brand("ArtifactManifestRef")
+type ArtifactManifestRef = std.types.NonEmptyStr where brand("ArtifactManifestRef")
 
-type EffectContractRef = NonEmptyStr where brand("EffectContractRef")
+type EffectContractRef = std.types.NonEmptyStr where brand("EffectContractRef")
 
-type OutputContractRef = NonEmptyStr where brand("OutputContractRef")
+type OutputContractRef = std.types.NonEmptyStr where brand("OutputContractRef")
 
-type SourceManifestRef = NonEmptyStr where brand("SourceManifestRef")
+type SourceManifestRef = std.types.NonEmptyStr where brand("SourceManifestRef")
 
 // Resumability is a property of what a step DECLARES, never of the fabric. A step
 // whose effects are undeclared cannot be resumed by any mechanism, so the tier is
@@ -59,11 +61,11 @@ type SourceManifestRef = NonEmptyStr where brand("SourceManifestRef")
 // proof the step completed.
 type ResumabilityTier
   = ReceiptSatisfiable
-  | IdempotentUnderKey { idempotency_key: ContentHash }
-  | OpaqueEffects { reason: NonEmptyStr }
+  | IdempotentUnderKey { idempotency_key: std.content_hash.ContentHash }
+  | OpaqueEffects { reason: std.types.NonEmptyStr }
 
 type WorkStep {
-  step_id: NonEmptyStr
+  step_id: std.types.NonEmptyStr
   resumability: ResumabilityTier
 }
 
@@ -89,9 +91,9 @@ type WorkContract {
 // the comparison need a coercion, and a coercion between two spellings of one
 // concept is where the divergence starts.
 
-type CapabilityManifestRef = NonEmptyStr where brand("CapabilityManifestRef")
+type CapabilityManifestRef = std.types.NonEmptyStr where brand("CapabilityManifestRef")
 
-type TrustDomainRef = NonEmptyStr where brand("TrustDomainRef")
+type TrustDomainRef = std.types.NonEmptyStr where brand("TrustDomainRef")
 
 // Shape and HardRequirements moved here when product.compute_fabric was deleted at
 // the root. They are the only load-bearing content that module had: what a WorkSpec
@@ -101,7 +103,7 @@ type TrustDomainRef = NonEmptyStr where brand("TrustDomainRef")
 // ComputeNeed, Opportunity, Connection, connect -- had no decision consumer and was
 // deleted rather than moved.
 
-type HardRequirements { threads: HardwareThreadCount }
+type HardRequirements { threads: std.measure.HardwareThreadCount }
 
 // A SHAPE CARRIED ONLY A THREAD COUNT, AND THAT MADE FUNGIBILITY GIVE WRONG ANSWERS.
 //
@@ -118,17 +120,17 @@ type HardRequirements { threads: HardwareThreadCount }
 // (moved there from gunbc.fleet_container, which now consumes it too), so threads keep their own
 // cited home in HardRequirements while every other axis arrives through the one envelope authority
 // rather than growing this record an axis at a time.
-type Shape { hard: HardRequirements, envelope: ResourceEnvelope }
+type Shape { hard: HardRequirements, envelope: product.fabric.envelope.ResourceEnvelope }
 
 type ExecutionRequirements {
   shape: Shape
   capabilities: CapabilityManifestRef
   trust_domain: TrustDomainRef
-  isolation: IsolationProfile
+  isolation: product.fabric.isolation.IsolationProfile
 }
 
 type Work<P> {
-  id: FabricIdentity<P, WorkKey>
+  id: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>
   contract: WorkContract
   requirements: ExecutionRequirements
 }
@@ -149,7 +151,7 @@ type Work<P> {
 // discipline. Requirements are included because a Work that needs a different
 // architecture or trust domain does not promise the same answer.
 
-fn work_identity_material(contract: WorkContract, requirements: ExecutionRequirements) -> NonEmptyStr {
+fn work_identity_material(contract: WorkContract, requirements: ExecutionRequirements) -> std.types.NonEmptyStr {
   concat(
     contract.program, "\u{1f}",
     work_steps_material(steps: contract.steps), "\u{1f}",
@@ -181,8 +183,8 @@ fn work_identity_material(contract: WorkContract, requirements: ExecutionRequire
 // collapsing two different requirements onto one identity -- and the constructors in
 // product.fabric.isolation all emit a fixed order, so no production caller can currently reach it.
 // Sorting wants a total order on the coproduct, which is a separate carrier.
-fn isolation_material(profile: IsolationProfile) -> NonEmptyStr {
-  concat("isolation:", join(map(profile.guarantees, g => isolation_guarantee_label(g: g)), ","))
+fn isolation_material(profile: product.fabric.isolation.IsolationProfile) -> std.types.NonEmptyStr {
+  concat("isolation:", join(map(profile.guarantees, g => product.fabric.isolation.isolation_guarantee_label(g: g)), ","))
 }
 
 // The shape feeds the digest, and leaving it out was a real divergence rather
@@ -197,10 +199,10 @@ fn isolation_material(profile: IsolationProfile) -> NonEmptyStr {
 // record, so a shape that grows an axis fails to compile here instead of
 // silently dropping the new axis out of the identity.
 
-fn shape_material(shape: Shape) -> NonEmptyStr {
+fn shape_material(shape: Shape) -> std.types.NonEmptyStr {
   concat(
     "threads:",
-    to_string(hardware_thread_count_value(t: shape.hard.threads)),
+    to_string(std.measure.hardware_thread_count_value(t: shape.hard.threads)),
     "\u{1f}",
     envelope_material(envelope: shape.envelope)
   )
@@ -223,20 +225,20 @@ fn shape_material(shape: Shape) -> NonEmptyStr {
 // collapse them. Only the axes fungibility actually compares are rendered; adding an axis to the
 // comparison without adding it here would re-open the identity/matching divergence, which is the
 // obligation the note above records and which no mechanism currently enforces.
-fn envelope_axis_material(label: NonEmptyStr, value: NonEmptyStr?) -> NonEmptyStr {
+fn envelope_axis_material(label: std.types.NonEmptyStr, value: std.types.NonEmptyStr?) -> std.types.NonEmptyStr {
   match value {
     Present { value: v } => concat(label, ":", v)
     Absent => concat(label, ":unstated")
   }
 }
 
-fn envelope_material(envelope: ResourceEnvelope) -> NonEmptyStr {
+fn envelope_material(envelope: product.fabric.envelope.ResourceEnvelope) -> std.types.NonEmptyStr {
   concat(
     envelope_axis_material(
       label: "min-threads",
       value: match envelope.cpu {
         Present { value: c } =>
-          Present { value: to_string(hardware_thread_count_value(t: c.min_threads)) as NonEmptyStr }
+          Present { value: to_string(std.measure.hardware_thread_count_value(t: c.min_threads)) as std.types.NonEmptyStr }
         Absent => none
       },
     ),
@@ -246,7 +248,7 @@ fn envelope_material(envelope: ResourceEnvelope) -> NonEmptyStr {
       value: match envelope.cpu {
         Present { value: c } =>
           match c.architecture {
-            Present { value: a } => Present { value: architecture_diagnostic_name(arch: a) }
+            Present { value: a } => Present { value: extdeps.toolchain.types.architecture_diagnostic_name(arch: a) }
             Absent => none
           }
         Absent => none
@@ -257,27 +259,27 @@ fn envelope_material(envelope: ResourceEnvelope) -> NonEmptyStr {
       label: "min-memory",
       value: match envelope.memory {
         Present { value: m } =>
-          Present { value: to_string(byte_size_count(b: m.min_bytes)) as NonEmptyStr }
+          Present { value: to_string(std.measure.byte_size_count(b: m.min_bytes)) as std.types.NonEmptyStr }
         Absent => none
       },
     )
   )
 }
 
-fn work_step_material(step: WorkStep) -> NonEmptyStr {
+fn work_step_material(step: WorkStep) -> std.types.NonEmptyStr {
   concat(step.step_id, "\u{1e}", resumability_material(tier: step.resumability))
 }
 
-fn resumability_material(tier: ResumabilityTier) -> NonEmptyStr {
+fn resumability_material(tier: ResumabilityTier) -> std.types.NonEmptyStr {
   match tier {
     ReceiptSatisfiable => "receipt-satisfiable"
     IdempotentUnderKey { idempotency_key: k } =>
-      concat("idempotent-under-key:", serialize_content_hash(hash: k))
+      concat("idempotent-under-key:", std.content_hash.serialize_content_hash(hash: k))
     OpaqueEffects { reason: _ } => "opaque-effects"
   }
 }
 
-fn work_steps_material(steps: List<WorkStep>) -> NonEmptyStr {
+fn work_steps_material(steps: List<WorkStep>) -> std.types.NonEmptyStr {
   fold(
     steps,
     init: "steps",
@@ -285,9 +287,9 @@ fn work_steps_material(steps: List<WorkStep>) -> NonEmptyStr {
   )
 }
 
-fn derive_work_key(contract: WorkContract, requirements: ExecutionRequirements) -> WorkKey {
-  serialize_content_hash(
-    hash: content_hash_of_value(
+fn derive_work_key(contract: WorkContract, requirements: ExecutionRequirements) -> product.fabric.identity.WorkKey {
+  std.content_hash.serialize_content_hash(
+    hash: std.content_hash.content_hash_of_value(
       value: work_identity_material(contract: contract, requirements: requirements)
     )
   )
@@ -298,7 +300,7 @@ fn derive_work_key(contract: WorkContract, requirements: ExecutionRequirements) 
 
 fn work_for<P>(principal: P, contract: WorkContract, requirements: ExecutionRequirements) -> Work<P> {
   Work {
-    id: FabricIdentity {
+    id: product.fabric.identity.FabricIdentity {
       principal: principal,
       key: derive_work_key(contract: contract, requirements: requirements),
     },
@@ -321,3 +323,4 @@ fn work_for<P>(principal: P, contract: WorkContract, requirements: ExecutionRequ
 fn work_contract_source(contract: WorkContract) -> SourceManifestRef {
   contract.source
 }
+

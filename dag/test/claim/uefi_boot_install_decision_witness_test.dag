@@ -2,29 +2,29 @@ module test.claim.uefi_boot_install_decision
 
 
 test fn srv4_diagnoses_network_needs_dhcp_and_acts() -> Bool {
-  let sit = diagnose_boot_install(env: gunbc.srv4_uefi_observed.srv4_uefi_observed_environment)
+  let sit = gunbc.uefi_boot_install_decision.diagnose_boot_install(env: gunbc.srv4_uefi_observed.srv4_uefi_observed_environment)
   let is_needs_dhcp = match sit {
-    NetworkUpNeedsDhcp { interface: i } => i == "eth2"
+    gunbc.uefi_boot_install_decision.NetworkUpNeedsDhcp { interface: i } => i == "eth2"
     InstallMediaReady { boot_file: _ } => false
     NetworkReady { interface: _ } => false
     NoBootSourceAvailable { reason: _ } => false
   }
-  let action = decide_boot_install(situation: sit, goal: InstalledFleetNode)
-  let cmds_have_dhcp = match boot_install_commands(action: action) {
-    Present { value: cs } => string_contains(s: uefi_shell_script(commands: cs), pattern: "ifconfig -s eth2 dhcp")
+  let action = gunbc.uefi_boot_install_decision.decide_boot_install(situation: sit, goal: gunbc.uefi_boot_install_decision.InstalledFleetNode)
+  let cmds_have_dhcp = match gunbc.uefi_boot_install_decision.boot_install_commands(action: action) {
+    Present { value: cs } => string_contains(s: extdeps.firmware.uefi_shell.uefi_shell_script(commands: cs), pattern: "ifconfig -s eth2 dhcp")
     Absent => false
   }
-  let not_refused = match action { RefuseNoSource { reason: _ } => false, _ => true }
+  let not_refused = match action { gunbc.uefi_boot_install_decision.RefuseNoSource { reason: _ } => false, _ => true }
   is_needs_dhcp && cmds_have_dhcp && not_refused
 }
 
 test fn srv4_never_dhcps_the_link_local_nic() -> Bool {
-  let action = decide_boot_install(
-    situation: diagnose_boot_install(env: gunbc.srv4_uefi_observed.srv4_uefi_observed_environment),
-    goal: InstalledFleetNode,
+  let action = gunbc.uefi_boot_install_decision.decide_boot_install(
+    situation: gunbc.uefi_boot_install_decision.diagnose_boot_install(env: gunbc.srv4_uefi_observed.srv4_uefi_observed_environment),
+    goal: gunbc.uefi_boot_install_decision.InstalledFleetNode,
   )
-  match boot_install_commands(action: action) {
-    Present { value: cs } => !string_contains(s: uefi_shell_script(commands: cs), pattern: "ifconfig -s eth0 dhcp")
+  match gunbc.uefi_boot_install_decision.boot_install_commands(action: action) {
+    Present { value: cs } => !string_contains(s: extdeps.firmware.uefi_shell.uefi_shell_script(commands: cs), pattern: "ifconfig -s eth0 dhcp")
     Absent => false
   }
 }
@@ -33,17 +33,17 @@ data no_source_env: extdeps.firmware.uefi_shell.UefiShellEnvironment = extdeps.f
   mappings: [],
   boot_options: [],
   interfaces: [
-    extdeps.firmware.uefi_shell.UefiNetworkInterface { name: "eth0", media: MediaDisconnected, ipv4: "0.0.0.0" },
+    extdeps.firmware.uefi_shell.UefiNetworkInterface { name: "eth0", media: extdeps.firmware.uefi_shell.MediaDisconnected, ipv4: "0.0.0.0" },
   ],
 }
 
 test fn no_source_fails_closed() -> Bool {
-  let sit = diagnose_boot_install(env: no_source_env)
-  let action = decide_boot_install(situation: sit, goal: InstalledFleetNode)
-  let no_commands = match boot_install_commands(action: action) {
+  let sit = gunbc.uefi_boot_install_decision.diagnose_boot_install(env: no_source_env)
+  let action = gunbc.uefi_boot_install_decision.decide_boot_install(situation: sit, goal: gunbc.uefi_boot_install_decision.InstalledFleetNode)
+  let no_commands = match gunbc.uefi_boot_install_decision.boot_install_commands(action: action) {
     Present { value: _ } => false
     Absent => true
   }
-  let is_refused = match action { RefuseNoSource { reason: _ } => true, _ => false }
+  let is_refused = match action { gunbc.uefi_boot_install_decision.RefuseNoSource { reason: _ } => true, _ => false }
   is_refused && no_commands
 }

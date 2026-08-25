@@ -3,12 +3,12 @@ module extdeps.container.oci.ctrl_session_witness
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/opencontainers/image-spec/blob/main/manifest.md"
   }
 }
 
-data ctrl_session_config_digest: extdeps.container.oci.digest.OciContentDigest = oci_content_digest_from_validated_sha256(
+data ctrl_session_config_digest: extdeps.container.oci.digest.OciContentDigest = extdeps.container.oci.digest.oci_content_digest_from_validated_sha256(
   digest: std.content_hash.Sha256Digest {
     hex: "88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986" as std.content_hash.Sha256DigestHex,
   },
@@ -16,7 +16,7 @@ data ctrl_session_config_digest: extdeps.container.oci.digest.OciContentDigest =
 
 data ctrl_session_config_size: Int = 34025
 
-data ctrl_session_layer0_digest: extdeps.container.oci.digest.OciContentDigest = oci_content_digest_from_validated_sha256(
+data ctrl_session_layer0_digest: extdeps.container.oci.digest.OciContentDigest = extdeps.container.oci.digest.oci_content_digest_from_validated_sha256(
   digest: std.content_hash.Sha256Digest {
     hex: "402614bd39aaec1e4bdcf25aa67f88588fc8d93997a2551c4e130e6ed2b06c7a" as std.content_hash.Sha256DigestHex,
   },
@@ -24,17 +24,17 @@ data ctrl_session_layer0_digest: extdeps.container.oci.digest.OciContentDigest =
 
 data ctrl_session_layer0_size: Int = 28122307
 
-data ctrl_session_first_diff_id: extdeps.container.oci.digest.OciContentDigest = oci_content_digest_from_validated_sha256(
+data ctrl_session_first_diff_id: extdeps.container.oci.digest.OciContentDigest = extdeps.container.oci.digest.oci_content_digest_from_validated_sha256(
   digest: std.content_hash.Sha256Digest {
     hex: "5e34d05421f9491747bc11c68b1a7f5029b0aefb18eb9166935ac52be45fb299" as std.content_hash.Sha256DigestHex,
   },
 )
 
 data ctrl_session_manifest: extdeps.container.oci.manifest.ImageManifest = {
-  schemaVersion: oci_image_schema_version,
-  mediaType: media_type_oci_image_manifest_v1,
+  schemaVersion: extdeps.container.oci.media_types.oci_image_schema_version,
+  mediaType: extdeps.container.oci.media_types.media_type_oci_image_manifest_v1,
   config: {
-    mediaType: media_type_oci_image_config_v1,
+    mediaType: extdeps.container.oci.media_types.media_type_oci_image_config_v1,
     digest: ctrl_session_config_digest,
     size: ctrl_session_config_size,
   },
@@ -48,7 +48,7 @@ data ctrl_session_manifest: extdeps.container.oci.manifest.ImageManifest = {
 }
 
 data ctrl_session_image_config: extdeps.container.oci.image_config.ImageConfiguration = {
-  architecture: extdeps.toolchain.types.Aarch64,
+  architecture: extdeps.container.oci.types.Aarch64,
   os: extdeps.toolchain.types.Linux,
   config: {
     User: null,
@@ -64,7 +64,7 @@ data ctrl_session_image_config: extdeps.container.oci.image_config.ImageConfigur
     ],
     Cmd: null,
     WorkingDir: null,
-    ExposedPorts: [extdeps.container.oci.types.ContainerExposedPort { port: 7681, protocol: Tcp }],
+    ExposedPorts: [extdeps.container.oci.types.ContainerExposedPort { port: 7681, protocol: extdeps.container.oci.types.Tcp }],
   },
   rootfs: extdeps.container.oci.image_config.RootfsLayers { diff_ids: [ctrl_session_first_diff_id] },
 }
@@ -92,18 +92,18 @@ data ctrl_session_runtime_config: extdeps.container.oci.runtime_config.RuntimeBu
     {
       destination: "/tmp",
       source: extdeps.container.oci.types.MountSymbolicSource { label: "tmpfs" },
-      mount_type: RuntimeMountTmpfs,
+      mount_type: extdeps.container.oci.types.RuntimeMountTmpfs,
       options: ["nosuid", "strictatime", "mode=755", "size=65536k"],
     },
   ],
   linux: {
     namespaces: [
-      { namespace_type: LinuxNsPid, path: null },
-      { namespace_type: LinuxNsNetwork, path: null },
-      { namespace_type: LinuxNsMount, path: null },
-      { namespace_type: LinuxNsIpc, path: null },
-      { namespace_type: LinuxNsUts, path: null },
-      { namespace_type: LinuxNsCgroup, path: null },
+      { namespace_type: extdeps.container.oci.linux.LinuxNsPid, path: null },
+      { namespace_type: extdeps.container.oci.linux.LinuxNsNetwork, path: null },
+      { namespace_type: extdeps.container.oci.linux.LinuxNsMount, path: null },
+      { namespace_type: extdeps.container.oci.linux.LinuxNsIpc, path: null },
+      { namespace_type: extdeps.container.oci.linux.LinuxNsUts, path: null },
+      { namespace_type: extdeps.container.oci.linux.LinuxNsCgroup, path: null },
     ],
     resources: {
       memory: {
@@ -116,108 +116,108 @@ data ctrl_session_runtime_config: extdeps.container.oci.runtime_config.RuntimeBu
 
 data bad_manifest_schema: extdeps.container.oci.manifest.ImageManifest = {
   schemaVersion: 1,
-  mediaType: media_type_oci_image_manifest_v1,
+  mediaType: extdeps.container.oci.media_types.media_type_oci_image_manifest_v1,
   config: ctrl_session_manifest.config,
   layers: ctrl_session_manifest.layers,
 }
 
 data bad_descriptor: extdeps.container.oci.descriptor.OciDescriptor = {
-  mediaType: media_type_oci_image_config_v1,
+  mediaType: extdeps.container.oci.media_types.media_type_oci_image_config_v1,
   digest: ctrl_session_config_digest,
   size: -1,
 }
 
 data duplicate_namespace_linux: extdeps.container.oci.linux.LinuxPlatform = {
   namespaces: [
-    { namespace_type: LinuxNsPid, path: null },
-    { namespace_type: LinuxNsPid, path: null },
+    { namespace_type: extdeps.container.oci.linux.LinuxNsPid, path: null },
+    { namespace_type: extdeps.container.oci.linux.LinuxNsPid, path: null },
   ],
   resources: null,
 }
 
 fn witness_manifest_accepts() -> Bool {
-  match accept_image_manifest(ctrl_session_manifest) {
-    ManifestAccepted { value: m } =>
-      manifest_config_size(m) == ctrl_session_config_size
+  match extdeps.container.oci.manifest.accept_image_manifest(ctrl_session_manifest) {
+    extdeps.container.oci.manifest.ManifestAccepted { value: m } =>
+      extdeps.container.oci.manifest.manifest_config_size(m) == ctrl_session_config_size
         && m.config.digest == ctrl_session_config_digest
-    ManifestRejected { reason: _ } => false
+    extdeps.container.oci.manifest.ManifestRejected { reason: _ } => false
   }
 }
 
 fn witness_manifest_rejects_bad_schema() -> Bool {
-  match accept_image_manifest(bad_manifest_schema) {
-    ManifestRejected { reason: _ } => true
-    ManifestAccepted { value: _ } => false
+  match extdeps.container.oci.manifest.accept_image_manifest(bad_manifest_schema) {
+    extdeps.container.oci.manifest.ManifestRejected { reason: _ } => true
+    extdeps.container.oci.manifest.ManifestAccepted { value: _ } => false
   }
 }
 
 fn witness_descriptor_rejects_negative_size() -> Bool {
-  match accept_descriptor(bad_descriptor) {
-    DescriptorRejected { reason: _ } => true
+  match extdeps.container.oci.descriptor.accept_descriptor(bad_descriptor) {
+    extdeps.container.oci.descriptor.DescriptorRejected { reason: _ } => true
     _ => false
   }
 }
 
 fn witness_image_config_accepts() -> Bool {
-  match accept_image_configuration(ctrl_session_image_config) {
-    ImageConfigAccepted { value: c } =>
-      c.architecture == extdeps.toolchain.types.Aarch64
+  match extdeps.container.oci.image_config.accept_image_configuration(ctrl_session_image_config) {
+    extdeps.container.oci.image_config.ImageConfigAccepted { value: c } =>
+      c.architecture == extdeps.container.oci.types.Aarch64
         && c.os == extdeps.toolchain.types.Linux
-        && image_config_has_exposed_port(c: c, expected_port: 7681, protocol: Tcp)
-        && count(image_config_entrypoint(c)) == 4
-    ImageConfigRejected { reason: _ } => false
+        && extdeps.container.oci.image_config.image_config_has_exposed_port(c: c, expected_port: 7681, protocol: extdeps.container.oci.types.Tcp)
+        && count(extdeps.container.oci.image_config.image_config_entrypoint(c)) == 4
+    extdeps.container.oci.image_config.ImageConfigRejected { reason: _ } => false
   }
 }
 
 fn witness_goarch_parses_arm64_wire() -> Bool {
-  match parse_image_config_goarch("arm64") {
-    ImageConfigGoarchKnown { value: arch } => arch == extdeps.toolchain.types.Aarch64
-    ImageConfigGoarchUnknown { wire: _ } => false
+  match extdeps.container.oci.types.parse_image_config_goarch("arm64") {
+    extdeps.container.oci.types.ImageConfigGoarchKnown { value: arch } => arch == extdeps.container.oci.types.Aarch64
+    extdeps.container.oci.types.ImageConfigGoarchUnknown { wire: _ } => false
   }
 }
 
 fn witness_goarch_rejects_unknown_wire() -> Bool {
-  match parse_image_config_goarch("plan9") {
-    ImageConfigGoarchUnknown { wire: _ } => true
-    ImageConfigGoarchKnown { value: _ } => false
+  match extdeps.container.oci.types.parse_image_config_goarch("plan9") {
+    extdeps.container.oci.types.ImageConfigGoarchUnknown { wire: _ } => true
+    extdeps.container.oci.types.ImageConfigGoarchKnown { value: _ } => false
   }
 }
 
 fn witness_goos_rejects_unknown_wire() -> Bool {
-  match parse_image_config_goos("plan9") {
-    ImageConfigGoosUnknown { wire: _ } => true
-    ImageConfigGoosKnown { value: _ } => false
+  match extdeps.container.oci.types.parse_image_config_goos("plan9") {
+    extdeps.container.oci.types.ImageConfigGoosUnknown { wire: _ } => true
+    extdeps.container.oci.types.ImageConfigGoosKnown { value: _ } => false
   }
 }
 
 fn witness_goarch_label_roundtrips_known() -> Bool {
-  match image_config_goarch_label(Aarch64) {
-    ImageConfigGoarchWireLabel { wire: w } => w == "arm64"
-    ImageConfigGoarchUnrepresentable => false
+  match extdeps.container.oci.types.image_config_goarch_label(extdeps.container.oci.types.Aarch64) {
+    extdeps.container.oci.types.ImageConfigGoarchWireLabel { wire: w } => w == "arm64"
+    extdeps.container.oci.types.ImageConfigGoarchUnrepresentable => false
   }
 }
 
 fn witness_goarch_label_unrepresentable_armv7() -> Bool {
-  match image_config_goarch_label(Armv7) {
-    ImageConfigGoarchUnrepresentable => true
-    ImageConfigGoarchWireLabel { wire: _ } => false
+  match extdeps.container.oci.types.image_config_goarch_label(extdeps.toolchain.types.Armv7) {
+    extdeps.container.oci.types.ImageConfigGoarchUnrepresentable => true
+    extdeps.container.oci.types.ImageConfigGoarchWireLabel { wire: _ } => false
   }
 }
 
 fn witness_media_type_other_accepts_extension() -> Bool {
-  match parse_oci_media_type("application/vnd.custom.example+json") {
-    OciMediaTypeOther { raw: r } => r == "application/vnd.custom.example+json"
+  match extdeps.container.oci.types.parse_oci_media_type("application/vnd.custom.example+json") {
+    extdeps.container.oci.types.OciMediaTypeOther { raw: r } => r == "application/vnd.custom.example+json"
     _ => false
   }
 }
 
 fn witness_runtime_config_accepts() -> Bool {
-  match accept_runtime_bundle_config(ctrl_session_runtime_config) {
-    RuntimeConfigAccepted { value: c } =>
+  match extdeps.container.oci.runtime_config.accept_runtime_bundle_config(ctrl_session_runtime_config) {
+    extdeps.container.oci.runtime_config.RuntimeConfigAccepted { value: c } =>
       c.ociVersion == "1.2.0"
-        && runtime_mount_count(c) == 1
+        && extdeps.container.oci.runtime_config.runtime_mount_count(c) == 1
         && c.root.path == "rootfs"
-    RuntimeConfigRejected { reason: _ } => false
+    extdeps.container.oci.runtime_config.RuntimeConfigRejected { reason: _ } => false
   }
 }
 
@@ -225,8 +225,8 @@ fn witness_linux_namespaces_count() -> Bool {
   match ctrl_session_runtime_config.linux {
     null => false
     linux =>
-      match accept_linux_platform(linux) {
-        LinuxPlatformAccepted { value: p } => linux_namespace_count(p) == 6
+      match extdeps.container.oci.linux.accept_linux_platform(linux) {
+        extdeps.container.oci.linux.LinuxPlatformAccepted { value: p } => extdeps.container.oci.linux.linux_namespace_count(p) == 6
         _ => false
       }
   }
@@ -236,7 +236,7 @@ fn witness_linux_memory_limit() -> Bool {
   match ctrl_session_runtime_config.linux {
     null => false
     linux =>
-      match linux_memory_limit(linux) {
+      match extdeps.container.oci.linux.linux_memory_limit(linux) {
         null => false
         limit => limit == 8589934592
       }
@@ -244,15 +244,15 @@ fn witness_linux_memory_limit() -> Bool {
 }
 
 fn witness_linux_rejects_duplicate_namespace() -> Bool {
-  match accept_linux_platform(duplicate_namespace_linux) {
-    LinuxPlatformRejected { reason: _ } => true
-    LinuxPlatformAccepted { value: _ } => false
+  match extdeps.container.oci.linux.accept_linux_platform(duplicate_namespace_linux) {
+    extdeps.container.oci.linux.LinuxPlatformRejected { reason: _ } => true
+    extdeps.container.oci.linux.LinuxPlatformAccepted { value: _ } => false
   }
 }
 
 fn witness_layer_manifest_rootfs_consistent() -> Bool {
-  let manifest_layers = manifest_layer_count(ctrl_session_manifest)
-  let rootfs_layers = image_config_layer_count(ctrl_session_image_config)
+  let manifest_layers = extdeps.container.oci.manifest.manifest_layer_count(ctrl_session_manifest)
+  let rootfs_layers = extdeps.container.oci.image_config.image_config_layer_count(ctrl_session_image_config)
   manifest_layers == rootfs_layers && manifest_layers == 1
 }
 

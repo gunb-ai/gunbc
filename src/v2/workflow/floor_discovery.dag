@@ -161,23 +161,23 @@ fn floor_discovery_request_bind(
 
 fn floor_discovery_execution_mode_identity(mode: std.execution_mode.ExecutionMode) -> String {
   match mode {
-    Hermetic => "Hermetic"
-    Wet => "Wet"
-    Record => "Record"
+    std.execution_mode.Hermetic => "Hermetic"
+    std.execution_mode.Wet => "Wet"
+    std.execution_mode.Record => "Record"
   }
 }
 
 fn floor_discovery_tree_identity(tree: FloorDiscoveryTreeId) -> String {
   match tree.object_id {
-    GitSha1ObjectId { digest: d } => concat("sha1:", d.hex)
-    GitSha256ObjectId { digest: d } => concat("sha256:", d.hex)
+    extdeps.git.object_store.GitSha1ObjectId { digest: d } => concat("sha1:", d.hex)
+    extdeps.git.object_store.GitSha256ObjectId { digest: d } => concat("sha256:", d.hex)
   }
 }
 
 fn floor_discovery_commit_identity(commit: FloorDiscoveryCommitId) -> String {
   match commit.object_id {
-    GitSha1ObjectId { digest: d } => d.hex
-    GitSha256ObjectId { digest: d } => d.hex
+    extdeps.git.object_store.GitSha1ObjectId { digest: d } => d.hex
+    extdeps.git.object_store.GitSha256ObjectId { digest: d } => d.hex
   }
 }
 
@@ -258,28 +258,28 @@ type FloorDiscoverySidecarViolation {
 }
 
 fn floor_discovery_test_decl_sidecar_violation(entry_path: String) -> v2.std.optional.Optional<FloorDiscoverySidecarViolation> {
-  if floor_test_marked_decl_allowed_in_entry(entry_path: entry_path) {
-    optional_absent()
+  if v2.workflow.floor_naming_hygiene.floor_test_marked_decl_allowed_in_entry(entry_path: entry_path) {
+    v2.std.optional.optional_absent()
   } else {
-    optional_present(
+    v2.std.optional.optional_present(
       value: FloorDiscoverySidecarViolation {
         entry_path: entry_path,
         kind: TestMarkedDecl,
-        required_suffix: floor_test_sidecar_suffix
+        required_suffix: v2.workflow.floor_naming_hygiene.floor_test_sidecar_suffix
       }
     )
   }
 }
 
 fn floor_discovery_wire_contract_sidecar_violation(entry_path: String) -> v2.std.optional.Optional<FloorDiscoverySidecarViolation> {
-  if floor_wire_contract_decl_allowed_in_entry(entry_path: entry_path) {
-    optional_absent()
+  if v2.workflow.floor_naming_hygiene.floor_wire_contract_decl_allowed_in_entry(entry_path: entry_path) {
+    v2.std.optional.optional_absent()
   } else {
-    optional_present(
+    v2.std.optional.optional_present(
       value: FloorDiscoverySidecarViolation {
         entry_path: entry_path,
         kind: WireContractDecl,
-        required_suffix: floor_wire_contract_sidecar_suffix
+        required_suffix: v2.workflow.floor_naming_hygiene.floor_wire_contract_sidecar_suffix
       }
     )
   }

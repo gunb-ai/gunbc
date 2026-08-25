@@ -20,7 +20,7 @@ fn literal_fingerprint_str_content(content: String) -> String {
   concat("str:\"", concat(content, "\""))
 }
 
-fn lexeme_matches_literal_fp(lexeme: String, literal_fp: String) -> v2.std.logic.Bool {
+fn lexeme_matches_literal_fp(lexeme: String, literal_fp: String) -> Bool {
   (literal_fp == literal_fingerprint_num_lexeme(lexeme: lexeme))
     || (literal_fp == literal_fingerprint_bool_lexeme(lexeme: lexeme))
     || (literal_fp == literal_fingerprint_str_content(content: lexeme))

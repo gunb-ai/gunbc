@@ -59,7 +59,7 @@ fn all_forks_rejoin(nodes: List<MarkNode>, edges: List<MarkEdge>, source: String
 }
 
 fn svg_el(tag: String, attributes: List<std.markup.Attribute>) -> std.markup.Fragment {
-  extdeps.browser.Element { tag: tag, attributes: attributes, children: [] }
+  std.markup.Element { tag: tag, attributes: attributes, children: [] }
 }
 
 fn node_class(n: MarkNode) -> String {
@@ -75,12 +75,12 @@ fn mark_edge_lines(nodes: List<MarkNode>, edges: List<MarkEdge>) -> List<std.mar
     let from = node_by_key(nodes: nodes, key: e.from_key)
     let to = node_by_key(nodes: nodes, key: e.to_key)
     svg_el(tag: "line", attributes: [
-      attr(name: "x1", value: to_string(from.x)),
-      attr(name: "y1", value: to_string(from.y)),
-      attr(name: "x2", value: to_string(to.x)),
-      attr(name: "y2", value: to_string(to.y)),
-      attr(name: "class", value: "mark-edge"),
-      attr(name: "stroke-width", value: "1"),
+      std.markup.attr(name: "x1", value: to_string(from.x)),
+      std.markup.attr(name: "y1", value: to_string(from.y)),
+      std.markup.attr(name: "x2", value: to_string(to.x)),
+      std.markup.attr(name: "y2", value: to_string(to.y)),
+      std.markup.attr(name: "class", value: "mark-edge"),
+      std.markup.attr(name: "stroke-width", value: "1"),
     ])
   })
 }
@@ -88,33 +88,33 @@ fn mark_edge_lines(nodes: List<MarkNode>, edges: List<MarkEdge>) -> List<std.mar
 fn mark_node_halos(nodes: List<MarkNode>) -> List<std.markup.Fragment> {
   map(nodes, n =>
     svg_el(tag: "circle", attributes: [
-      attr(name: "cx", value: to_string(n.x)),
-      attr(name: "cy", value: to_string(n.y)),
-      attr(name: "r", value: "9"),
-      attr(name: "class", value: halo_class(n: n)),
+      std.markup.attr(name: "cx", value: to_string(n.x)),
+      std.markup.attr(name: "cy", value: to_string(n.y)),
+      std.markup.attr(name: "r", value: "9"),
+      std.markup.attr(name: "class", value: halo_class(n: n)),
     ]))
 }
 
 fn mark_node_points(nodes: List<MarkNode>) -> List<std.markup.Fragment> {
   map(nodes, n =>
     svg_el(tag: "circle", attributes: [
-      attr(name: "cx", value: to_string(n.x)),
-      attr(name: "cy", value: to_string(n.y)),
-      attr(name: "r", value: "3"),
-      attr(name: "class", value: node_class(n: n)),
+      std.markup.attr(name: "cx", value: to_string(n.x)),
+      std.markup.attr(name: "cy", value: to_string(n.y)),
+      std.markup.attr(name: "r", value: "3"),
+      std.markup.attr(name: "class", value: node_class(n: n)),
     ]))
 }
 
 fn render_mark(depth: Int) -> std.markup.Fragment {
   let edges = if depth >= 1 { mark_edge_lines(nodes: mark_nodes, edges: mark_edges) } else { [] }
   let halos = if depth >= 3 { mark_node_halos(nodes: mark_nodes) } else { [] }
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "svg",
     attributes: [
-      attr(name: "viewBox", value: "0 0 120 72"),
-      attr(name: "class", value: concat("mark mark-d", to_string(depth))),
-      attr(name: "aria-label", value: "gunb.ai mark: confluence"),
-      attr(name: "role", value: "img"),
+      std.markup.attr(name: "viewBox", value: "0 0 120 72"),
+      std.markup.attr(name: "class", value: concat("mark mark-d", to_string(depth))),
+      std.markup.attr(name: "aria-label", value: "gunb.ai mark: confluence"),
+      std.markup.attr(name: "role", value: "img"),
     ],
     children: concat(halos, concat(edges, mark_node_points(nodes: mark_nodes))),
   }

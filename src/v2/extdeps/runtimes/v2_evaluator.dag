@@ -12,20 +12,20 @@ fn v2_eval_unit_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^v2_eval_unit_type_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 data v2_eval_bool_literal_pin: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^v2_eval_bool_literal_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data v2_eval_unit_literal_pin: v2.std.node.Node = v2_eval_unit_type_node()
 
-fn v2_eval_bool_true_byte() -> std.bit.Byte {
-  std.bit.Byte { bits: [true] }
+fn v2_eval_bool_true_byte() -> v2.std.machine.Byte {
+  v2.std.machine.Byte { bits: [true] }
 }
 
 fn v2_eval_bool_true_primitive() -> v2.std.runtime.RuntimeValue {
@@ -49,7 +49,7 @@ fn v2_eval_boundary_operation_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^v2_eval_boundary_operation_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -57,7 +57,7 @@ fn v2_eval_effect_signature_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^v2_eval_boundary_effect_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -65,7 +65,7 @@ fn v2_eval_runtime_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagn
   v2.std.diagnostic.Diagnostic {
     reason: ^v2_eval_semantics_deferred,
     at: v2.std.diagnostic.node_locus(node: node),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -74,13 +74,13 @@ fn v2_eval_binding_lookup_miss(_key: v2.std.runtime.EnvironmentBindingKey) -> Wi
     diagnostic: v2.std.diagnostic.Diagnostic {
       reason: ^v2_eval_binding_miss,
       at: v2.std.diagnostic.port_locus(port: ^v2_eval_binding_miss),
-      correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
     }
   }
 }
 
-fn v2_eval_empty_bindings() -> std.algebra.PartialFunction<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
-  std.algebra.PartialFunction {
+fn v2_eval_empty_bindings() -> PartialFunction<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
+  PartialFunction {
     lookup: v2_eval_binding_lookup_miss
   }
 }
@@ -102,11 +102,11 @@ fn v2_eval_int_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn v2_eval_int_runtime_value(value: v2.std.integer.Int) -> v2.std.runtime.RuntimeValue {
+fn v2_eval_int_runtime_value(value: Int) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: v2_eval_int_type_node(),
@@ -115,21 +115,21 @@ fn v2_eval_int_runtime_value(value: v2.std.integer.Int) -> v2.std.runtime.Runtim
   }
 }
 
-fn v2_eval_bool_runtime_value(is_true: v2.std.logic.Bool) -> v2.std.runtime.RuntimeValue {
+fn v2_eval_bool_runtime_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: v2_eval_bool_literal_pin,
       bytes: if is_true {
-        [std.bit.Byte { bits: [true, false, false, false, false, false, false, false] }]
+        [v2.std.machine.Byte { bits: [true, false, false, false, false, false, false, false] }]
       } else {
-        [std.bit.Byte { bits: [false, false, false, false, false, false, false, false] }]
+        [v2.std.machine.Byte { bits: [false, false, false, false, false, false, false, false] }]
       }
     }
   }
 }
 
 // 🟢 Terminal (FLAG D): v2_eval_is_literal_shaped_node is the sole admission predicate for eval_type_node_atom Atom literal-vs-binding dispatch; v2_eval_represent_literal routes through it before allocate dispatch — one surface, not a parallel entry guard. Atom rows project dag_node_is_eval_literal_atom (dag.dag single authority); magnitudes are supplied by the interpretation algebra allocate_literal hook, not by this runtime. Non-Atom TypeNodes (Conj record/variant constructs) route to allocate_literal in eval_type_node_atom directly.
-fn v2_eval_is_literal_shaped_node(node: v2.std.node.Node) -> v2.std.logic.Bool {
+fn v2_eval_is_literal_shaped_node(node: v2.std.node.Node) -> Bool {
   if node == v2_eval_bool_literal_pin {
     true
   } else if node == v2_eval_unit_literal_pin {
@@ -157,7 +157,7 @@ fn v2_eval_represent_literal(node: v2.std.node.Node, _env: v2.std.runtime.Evalua
     )
   } else {
     match node.kind {
-      TypeNode { connective: Atom { identity: id } } =>
+      v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
         if id == ^dag_token_kw_true {
           v2.std.diagnostic.outcome_accepted(value: v2_eval_bool_runtime_value(is_true: true))
         } else if id == ^dag_token_kw_false {
@@ -184,9 +184,9 @@ fn v2_eval_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.Evaluati
   }
 }
 
-fn v2_eval_runtime_value_as_int(value: v2.std.runtime.RuntimeValue) -> v2.std.diagnostic.Outcome<v2.std.integer.Int> {
+fn v2_eval_runtime_value_as_int(value: v2.std.runtime.RuntimeValue) -> v2.std.diagnostic.Outcome<Int> {
   match value {
-    RuntimePrimitive { value: p } =>
+    v2.std.runtime.RuntimePrimitive { value: p } =>
       if p.primitive_type == v2_eval_int_type_node() {
         v2.std.integer.integer_signed_i32_le_bytes_to_int(bytes: p.bytes)
       } else {
@@ -198,13 +198,13 @@ fn v2_eval_runtime_value_as_int(value: v2.std.runtime.RuntimeValue) -> v2.std.di
 
 data v2_eval_runtime_bool_predicate_dissolution_note: String = "🟡 dissolve-on: v2_eval_runtime_bool_is_true and v2_eval_runtime_bool_is_false are coproduct RuntimeValue→Bool predicates (RuntimePrimitive bool-literal pin, one arm true / others false) — parallel to lazy_arm_runtime_bool_true/false in branch_lazy_arm_eval_acceptance_test.dag; NFR roster listing alone is not a predicate-dissolution receipt. DISSOLVES WHEN std/runtime carries canonical RuntimeValue bool decode/eq (single authority for branch condition discrimination) and v2_evaluator branch dispatch routes through it instead of hand-rolled byte probes."
 
-fn v2_eval_runtime_bool_is_true(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
+fn v2_eval_runtime_bool_is_true(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: p } =>
+    v2.std.runtime.RuntimePrimitive { value: p } =>
       if p.primitive_type == v2_eval_bool_literal_pin {
         match v2.std.collection.list_at_optional(xs: p.bytes, index: 0) {
-          Present { value: b } => v2.std.integer.integer_byte_bit_at(b: b, shift: 0) == 1
-          Absent => false
+          v2.std.collection.Present { value: b } => v2.std.integer.integer_byte_bit_at(b: b, shift: 0) == 1
+          v2.std.collection.Absent => false
         }
       } else {
         false
@@ -213,31 +213,31 @@ fn v2_eval_runtime_bool_is_true(value: v2.std.runtime.RuntimeValue) -> v2.std.lo
   }
 }
 
-fn v2_eval_runtime_bool_is_false(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
+fn v2_eval_runtime_bool_is_false(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: p } =>
+    v2.std.runtime.RuntimePrimitive { value: p } =>
       p.primitive_type == v2_eval_bool_literal_pin && !v2_eval_runtime_bool_is_true(value: value)
     _ => false
   }
 }
 
-fn v2_eval_nth_child_target(node: v2.std.node.Node, wanted: v2.std.integer.Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+fn v2_eval_nth_child_target(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
-    Present { value: child } =>
+    v2.std.collection.Present { value: child } =>
       match child {
-        Edge { label: _, target: arm } =>
-          v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
+        v2.std.node.Edge { label: _, target: arm } =>
+          v2.std.diagnostic.outcome_accepted(value: arm)
       }
-    Absent =>
+    v2.std.collection.Absent =>
       v2.std.diagnostic.outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
   }
 }
 
-fn v2_eval_transform_is_int_add(node: v2.std.node.Node) -> v2.std.logic.Bool {
+fn v2_eval_transform_is_int_add(node: v2.std.node.Node) -> Bool {
   match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: node), index: 0) {
-    Present { value: op_node } =>
+    v2.std.collection.Present { value: op_node } =>
       match op_node.kind {
-        TypeNode { connective: Atom { identity: id } } =>
+        v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
           id == ^dag_token_plus
             || v2.std.compilers.target_model.canonical_operation_wire_matches_operation(
               wire: op_node,
@@ -245,7 +245,7 @@ fn v2_eval_transform_is_int_add(node: v2.std.node.Node) -> v2.std.logic.Bool {
             )
         _ => false
       }
-    Absent => false
+    v2.std.collection.Absent => false
   }
 }
 
@@ -258,9 +258,9 @@ fn v2_eval_call_primitive(
   if v2_eval_transform_is_int_add(node: node) {
     if count(args) == 2 {
       match v2.std.collection.list_at_optional(xs: args, index: 0) {
-        Present { value: left } =>
+        v2.std.collection.Present { value: left } =>
           match v2.std.collection.list_at_optional(xs: args, index: 1) {
-            Present { value: right } =>
+            v2.std.collection.Present { value: right } =>
               v2.std.diagnostic.bind_outcome(
                 o: v2_eval_runtime_value_as_int(value: left),
                 f: fn(l) {
@@ -274,10 +274,10 @@ fn v2_eval_call_primitive(
                   )
                 }
               )
-            Absent =>
+            v2.std.collection.Absent =>
               v2.std.diagnostic.outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
           }
-        Absent =>
+        v2.std.collection.Absent =>
           v2.std.diagnostic.outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
       }
     } else {
@@ -341,31 +341,31 @@ fn v2_eval_return_value(value: v2.std.runtime.RuntimeValue, _frame: v2.std.runti
 
 fn v2_eval_transfer(control: v2.std.runtime.ControlTransfer, frame: v2.std.runtime.EvaluationFrame) -> v2.std.diagnostic.Outcome<v2.std.runtime.EvaluationFrame> {
   match control {
-    Continue { value: v } =>
+    v2.std.runtime.Continue { value: v } =>
       v2.std.diagnostic.outcome_rejected(d: v2_eval_runtime_diagnostic(node: v2.std.runtime.runtime_value_resolved_type(value: v)))
-    Return { value: v } =>
+    v2.std.runtime.Return { value: v } =>
       v2.std.diagnostic.outcome_rejected(d: v2_eval_runtime_diagnostic(node: v2.std.runtime.runtime_value_resolved_type(value: v)))
-    Raise { diagnostic: d } =>
+    v2.std.runtime.Raise { diagnostic: d } =>
       v2.std.diagnostic.outcome_rejected(d: d)
-    Suspend { continuation: c } =>
+    v2.std.runtime.Suspend { continuation: c } =>
       v2.std.diagnostic.outcome_rejected(d: v2_eval_runtime_diagnostic(node: c.current))
   }
 }
 
 fn v2_eval_terminal_value(control: v2.std.runtime.ControlTransfer, frame: v2.std.runtime.EvaluationFrame) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match control {
-    Continue { value: v } =>
+    v2.std.runtime.Continue { value: v } =>
       v2.std.diagnostic.Accepted { value: v, diagnostics: v2.std.diagnostic.None }
-    Return { value: v } =>
+    v2.std.runtime.Return { value: v } =>
       v2.std.diagnostic.Accepted { value: v, diagnostics: v2.std.diagnostic.None }
-    Raise { diagnostic: d } =>
+    v2.std.runtime.Raise { diagnostic: d } =>
       v2.std.diagnostic.outcome_rejected(d: d)
-    Suspend { continuation: c } =>
+    v2.std.runtime.Suspend { continuation: c } =>
       v2.std.diagnostic.outcome_rejected(d: v2_eval_runtime_diagnostic(node: c.current))
   }
 }
 
-fn v2_eval_boundary_allowance(allowed: v2.std.logic.Bool) -> v2.std.runtime.BoundaryAllowance {
+fn v2_eval_boundary_allowance(allowed: Bool) -> v2.std.runtime.BoundaryAllowance {
   v2.std.runtime.BoundaryAllowance {
     operation: v2.std.model_core.PrimitiveOperationRef {
       operation: v2_eval_boundary_operation_node(),
@@ -425,7 +425,8 @@ fn v2_evaluator_interpretation() -> v2.std.runtime.InterpretationAlgebra {
     },
     match: v2.std.runtime.MatchInterpreter {
       choose_arm: v2.std.runtime.runtime_reject_match_arm,
-      identity: ^runtime_reject_match_arm    }
+      identity: ^v2.std.runtime.runtime_reject_match_arm
+    }
   }
 }
 
@@ -435,7 +436,8 @@ fn v2_evaluator_interpretation_structure_witness() -> v2.std.runtime.Interpretat
     call_primitive: ^v2_eval_call_primitive,
     choose_branch: ^v2_eval_choose_branch,
     step_loop: ^v2_eval_step_loop,
-    bind_value: ^v2_eval_bind_value,    choose_arm: ^runtime_reject_match_arm
+    bind_value: ^v2_eval_bind_value,
+    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
   }
 }
 

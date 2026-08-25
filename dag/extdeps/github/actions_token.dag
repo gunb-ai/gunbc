@@ -3,49 +3,49 @@ module extdeps.github.actions_token
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions"
   }
 }
 
 data automatic_token_citation: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/actions/concepts/security/github_token"
   }
 }
 
 data app_permissions_citation: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/rest/authentication/permissions-required-for-github-apps"
   }
 }
 
 fn axis_actions_permissions_key(axis: extdeps.github.app.GitHubPermissionAxis) -> std.types.NonEmptyStr? {
   match axis {
-    ActionsAxis => Present { value: "actions" }
-    ArtifactMetadataAxis => Present { value: "artifact-metadata" }
-    AttestationsAxis => Present { value: "attestations" }
-    ChecksAxis => Present { value: "checks" }
-    CodeQualityAxis => Present { value: "code-quality" }
-    ContentsAxis => Present { value: "contents" }
-    DeploymentsAxis => Present { value: "deployments" }
-    DiscussionsAxis => Present { value: "discussions" }
-    IdTokenAxis => Present { value: "id-token" }
-    IssuesAxis => Present { value: "issues" }
-    MetadataAxis => none
-    ModelsAxis => Present { value: "models" }
-    PackagesAxis => Present { value: "packages" }
-    PagesAxis => Present { value: "pages" }
-    PullRequestsAxis => Present { value: "pull-requests" }
-    RepositoryProjectsAxis => none
-    SecurityEventsAxis => Present { value: "security-events" }
-    StatusesAxis => Present { value: "statuses" }
-    VulnerabilityAlertsAxis => Present { value: "vulnerability-alerts" }
-    WorkflowsAxis => none
-    AdministrationAxis => none
-    OrganizationSelfHostedRunnersAxis => none
+    extdeps.github.app.ActionsAxis => Present { value: "actions" }
+    extdeps.github.app.ArtifactMetadataAxis => Present { value: "artifact-metadata" }
+    extdeps.github.app.AttestationsAxis => Present { value: "attestations" }
+    extdeps.github.app.ChecksAxis => Present { value: "checks" }
+    extdeps.github.app.CodeQualityAxis => Present { value: "code-quality" }
+    extdeps.github.app.ContentsAxis => Present { value: "contents" }
+    extdeps.github.app.DeploymentsAxis => Present { value: "deployments" }
+    extdeps.github.app.DiscussionsAxis => Present { value: "discussions" }
+    extdeps.github.app.IdTokenAxis => Present { value: "id-token" }
+    extdeps.github.app.IssuesAxis => Present { value: "issues" }
+    extdeps.github.app.MetadataAxis => none
+    extdeps.github.app.ModelsAxis => Present { value: "models" }
+    extdeps.github.app.PackagesAxis => Present { value: "packages" }
+    extdeps.github.app.PagesAxis => Present { value: "pages" }
+    extdeps.github.app.PullRequestsAxis => Present { value: "pull-requests" }
+    extdeps.github.app.RepositoryProjectsAxis => none
+    extdeps.github.app.SecurityEventsAxis => Present { value: "security-events" }
+    extdeps.github.app.StatusesAxis => Present { value: "statuses" }
+    extdeps.github.app.VulnerabilityAlertsAxis => Present { value: "vulnerability-alerts" }
+    extdeps.github.app.WorkflowsAxis => none
+    extdeps.github.app.AdministrationAxis => none
+    extdeps.github.app.OrganizationSelfHostedRunnersAxis => none
   }
 }
 
@@ -68,28 +68,28 @@ type IntrinsicTokenGrant
 
 fn axis_intrinsic_token_grant(axis: extdeps.github.app.GitHubPermissionAxis) -> IntrinsicTokenGrant {
   match axis {
-    MetadataAxis => IntrinsicTokenGrantRead
-    ActionsAxis => IntrinsicTokenGrantAbsent
-    ArtifactMetadataAxis => IntrinsicTokenGrantAbsent
-    AttestationsAxis => IntrinsicTokenGrantAbsent
-    ChecksAxis => IntrinsicTokenGrantAbsent
-    CodeQualityAxis => IntrinsicTokenGrantAbsent
-    ContentsAxis => IntrinsicTokenGrantAbsent
-    DeploymentsAxis => IntrinsicTokenGrantAbsent
-    DiscussionsAxis => IntrinsicTokenGrantAbsent
-    IdTokenAxis => IntrinsicTokenGrantAbsent
-    IssuesAxis => IntrinsicTokenGrantAbsent
-    ModelsAxis => IntrinsicTokenGrantAbsent
-    PackagesAxis => IntrinsicTokenGrantAbsent
-    PagesAxis => IntrinsicTokenGrantAbsent
-    PullRequestsAxis => IntrinsicTokenGrantAbsent
-    RepositoryProjectsAxis => IntrinsicTokenGrantAbsent
-    SecurityEventsAxis => IntrinsicTokenGrantAbsent
-    StatusesAxis => IntrinsicTokenGrantAbsent
-    VulnerabilityAlertsAxis => IntrinsicTokenGrantAbsent
-    WorkflowsAxis => IntrinsicTokenGrantAbsent
-    AdministrationAxis => IntrinsicTokenGrantAbsent
-    OrganizationSelfHostedRunnersAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.MetadataAxis => IntrinsicTokenGrantRead
+    extdeps.github.app.ActionsAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.ArtifactMetadataAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.AttestationsAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.ChecksAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.CodeQualityAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.ContentsAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.DeploymentsAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.DiscussionsAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.IdTokenAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.IssuesAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.ModelsAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.PackagesAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.PagesAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.PullRequestsAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.RepositoryProjectsAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.SecurityEventsAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.StatusesAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.VulnerabilityAlertsAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.WorkflowsAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.AdministrationAxis => IntrinsicTokenGrantAbsent
+    extdeps.github.app.OrganizationSelfHostedRunnersAxis => IntrinsicTokenGrantAbsent
   }
 }
 
@@ -101,28 +101,28 @@ type ActionsAccessSet
 
 fn axis_allowed_actions_access(axis: extdeps.github.app.GitHubPermissionAxis) -> ActionsAccessSet {
   match axis {
-    ActionsAxis => ActionsAccessReadOrWrite
-    ArtifactMetadataAxis => ActionsAccessReadOrWrite
-    AttestationsAxis => ActionsAccessReadOrWrite
-    ChecksAxis => ActionsAccessReadOrWrite
-    CodeQualityAxis => ActionsAccessReadOrWrite
-    ContentsAxis => ActionsAccessReadOrWrite
-    DeploymentsAxis => ActionsAccessReadOrWrite
-    DiscussionsAxis => ActionsAccessReadOrWrite
-    IdTokenAxis => ActionsAccessWriteOnly
-    IssuesAxis => ActionsAccessReadOrWrite
-    MetadataAxis => ActionsAccessNotAvailable
-    ModelsAxis => ActionsAccessReadOnly
-    PackagesAxis => ActionsAccessReadOrWrite
-    PagesAxis => ActionsAccessReadOrWrite
-    PullRequestsAxis => ActionsAccessReadOrWrite
-    RepositoryProjectsAxis => ActionsAccessNotAvailable
-    SecurityEventsAxis => ActionsAccessReadOrWrite
-    StatusesAxis => ActionsAccessReadOrWrite
-    VulnerabilityAlertsAxis => ActionsAccessReadOnly
-    WorkflowsAxis => ActionsAccessNotAvailable
-    AdministrationAxis => ActionsAccessNotAvailable
-    OrganizationSelfHostedRunnersAxis => ActionsAccessNotAvailable
+    extdeps.github.app.ActionsAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.ArtifactMetadataAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.AttestationsAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.ChecksAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.CodeQualityAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.ContentsAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.DeploymentsAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.DiscussionsAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.IdTokenAxis => ActionsAccessWriteOnly
+    extdeps.github.app.IssuesAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.MetadataAxis => ActionsAccessNotAvailable
+    extdeps.github.app.ModelsAxis => ActionsAccessReadOnly
+    extdeps.github.app.PackagesAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.PagesAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.PullRequestsAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.RepositoryProjectsAxis => ActionsAccessNotAvailable
+    extdeps.github.app.SecurityEventsAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.StatusesAxis => ActionsAccessReadOrWrite
+    extdeps.github.app.VulnerabilityAlertsAxis => ActionsAccessReadOnly
+    extdeps.github.app.WorkflowsAxis => ActionsAccessNotAvailable
+    extdeps.github.app.AdministrationAxis => ActionsAccessNotAvailable
+    extdeps.github.app.OrganizationSelfHostedRunnersAxis => ActionsAccessNotAvailable
   }
 }
 
@@ -130,16 +130,16 @@ fn actions_access_set_admits(set: ActionsAccessSet, access: extdeps.github.app.G
   match set {
     ActionsAccessNotAvailable => false
     ActionsAccessReadOrWrite => match access {
-      AppAccessRead => true
-      AppAccessWrite => true
+      extdeps.github.app.AppAccessRead => true
+      extdeps.github.app.AppAccessWrite => true
     }
     ActionsAccessWriteOnly => match access {
-      AppAccessRead => false
-      AppAccessWrite => true
+      extdeps.github.app.AppAccessRead => false
+      extdeps.github.app.AppAccessWrite => true
     }
     ActionsAccessReadOnly => match access {
-      AppAccessRead => true
-      AppAccessWrite => false
+      extdeps.github.app.AppAccessRead => true
+      extdeps.github.app.AppAccessWrite => false
     }
   }
 }
@@ -160,7 +160,7 @@ fn actions_token_may_declare_permission(name: extdeps.github.app.GitHubPermissio
   }
 }
 
-data workflows_permission_name: extdeps.github.app.GitHubPermissionAxis = WorkflowsAxis
+data workflows_permission_name: extdeps.github.app.GitHubPermissionAxis = extdeps.github.app.WorkflowsAxis
 
 // Declarability is sufficient here because an intrinsic grant is read-only by
 // construction (IntrinsicTokenGrant has no write variant), so no intrinsic
@@ -214,63 +214,63 @@ type EffectiveActionsJobGrant {
 
 fn permission_level_access(level: extdeps.github.actions.PermissionLevel) -> extdeps.github.app.GitHubAppPermissionAccess? {
   match level {
-    PermRead => Present { value: AppAccessRead }
-    PermWrite => Present { value: AppAccessWrite }
-    PermNone => none
+    extdeps.github.actions.PermRead => Present { value: extdeps.github.app.AppAccessRead }
+    extdeps.github.actions.PermWrite => Present { value: extdeps.github.app.AppAccessWrite }
+    extdeps.github.actions.PermNone => none
   }
 }
 
 fn axis_modeled_by_workflow_permissions(axis: extdeps.github.app.GitHubPermissionAxis) -> Bool {
   match axis {
-    ActionsAxis => true
-    ContentsAxis => true
-    IdTokenAxis => true
-    IssuesAxis => true
-    PullRequestsAxis => true
-    ArtifactMetadataAxis => false
-    AttestationsAxis => false
-    ChecksAxis => false
-    CodeQualityAxis => false
-    DeploymentsAxis => false
-    DiscussionsAxis => false
-    MetadataAxis => false
-    ModelsAxis => false
-    PackagesAxis => false
-    PagesAxis => false
-    RepositoryProjectsAxis => false
-    SecurityEventsAxis => false
-    StatusesAxis => false
-    VulnerabilityAlertsAxis => false
-    WorkflowsAxis => false
-    AdministrationAxis => false
-    OrganizationSelfHostedRunnersAxis => false
+    extdeps.github.app.ActionsAxis => true
+    extdeps.github.app.ContentsAxis => true
+    extdeps.github.app.IdTokenAxis => true
+    extdeps.github.app.IssuesAxis => true
+    extdeps.github.app.PullRequestsAxis => true
+    extdeps.github.app.ArtifactMetadataAxis => false
+    extdeps.github.app.AttestationsAxis => false
+    extdeps.github.app.ChecksAxis => false
+    extdeps.github.app.CodeQualityAxis => false
+    extdeps.github.app.DeploymentsAxis => false
+    extdeps.github.app.DiscussionsAxis => false
+    extdeps.github.app.MetadataAxis => false
+    extdeps.github.app.ModelsAxis => false
+    extdeps.github.app.PackagesAxis => false
+    extdeps.github.app.PagesAxis => false
+    extdeps.github.app.RepositoryProjectsAxis => false
+    extdeps.github.app.SecurityEventsAxis => false
+    extdeps.github.app.StatusesAxis => false
+    extdeps.github.app.VulnerabilityAlertsAxis => false
+    extdeps.github.app.WorkflowsAxis => false
+    extdeps.github.app.AdministrationAxis => false
+    extdeps.github.app.OrganizationSelfHostedRunnersAxis => false
   }
 }
 
 fn declared_level_for_axis(perms: extdeps.github.actions.WorkflowPermissions, axis: extdeps.github.app.GitHubPermissionAxis) -> extdeps.github.actions.PermissionLevel? {
   match axis {
-    ActionsAxis => perms.actions
-    ContentsAxis => perms.contents
-    IdTokenAxis => perms.id_token
-    IssuesAxis => perms.issues
-    PullRequestsAxis => perms.pull_requests
-    ArtifactMetadataAxis => none
-    AttestationsAxis => none
-    ChecksAxis => none
-    CodeQualityAxis => none
-    DeploymentsAxis => none
-    DiscussionsAxis => none
-    MetadataAxis => none
-    ModelsAxis => none
-    PackagesAxis => none
-    PagesAxis => none
-    RepositoryProjectsAxis => none
-    SecurityEventsAxis => none
-    StatusesAxis => none
-    VulnerabilityAlertsAxis => none
-    WorkflowsAxis => none
-    AdministrationAxis => none
-    OrganizationSelfHostedRunnersAxis => none
+    extdeps.github.app.ActionsAxis => perms.actions
+    extdeps.github.app.ContentsAxis => perms.contents
+    extdeps.github.app.IdTokenAxis => perms.id_token
+    extdeps.github.app.IssuesAxis => perms.issues
+    extdeps.github.app.PullRequestsAxis => perms.pull_requests
+    extdeps.github.app.ArtifactMetadataAxis => none
+    extdeps.github.app.AttestationsAxis => none
+    extdeps.github.app.ChecksAxis => none
+    extdeps.github.app.CodeQualityAxis => none
+    extdeps.github.app.DeploymentsAxis => none
+    extdeps.github.app.DiscussionsAxis => none
+    extdeps.github.app.MetadataAxis => none
+    extdeps.github.app.ModelsAxis => none
+    extdeps.github.app.PackagesAxis => none
+    extdeps.github.app.PagesAxis => none
+    extdeps.github.app.RepositoryProjectsAxis => none
+    extdeps.github.app.SecurityEventsAxis => none
+    extdeps.github.app.StatusesAxis => none
+    extdeps.github.app.VulnerabilityAlertsAxis => none
+    extdeps.github.app.WorkflowsAxis => none
+    extdeps.github.app.AdministrationAxis => none
+    extdeps.github.app.OrganizationSelfHostedRunnersAxis => none
   }
 }
 
@@ -310,9 +310,9 @@ fn fork_write_verdict(grant: EffectiveActionsJobGrant) -> ForkWriteVerdict {
 
 fn resolve_declared_write(grant: EffectiveActionsJobGrant) -> ActionsGrantResolution {
   match fork_write_verdict(grant: grant) {
-    ForkWriteNotApplicable => ActionsGrantResolved { access: AppAccessWrite }
-    ForkWriteAllowed => ActionsGrantResolved { access: AppAccessWrite }
-    ForkWriteDowngradedToRead => ActionsGrantResolved { access: AppAccessRead }
+    ForkWriteNotApplicable => ActionsGrantResolved { access: extdeps.github.app.AppAccessWrite }
+    ForkWriteAllowed => ActionsGrantResolved { access: extdeps.github.app.AppAccessWrite }
+    ForkWriteDowngradedToRead => ActionsGrantResolved { access: extdeps.github.app.AppAccessRead }
     ForkWritePolicyUnobserved => ActionsGrantForkPolicyUnobserved
   }
 }
@@ -330,8 +330,8 @@ fn resolve_declared_access(
     }
   } else {
     match declared {
-      AppAccessRead => ActionsGrantResolved { access: AppAccessRead }
-      AppAccessWrite => resolve_declared_write(grant: grant)
+      extdeps.github.app.AppAccessRead => ActionsGrantResolved { access: extdeps.github.app.AppAccessRead }
+      extdeps.github.app.AppAccessWrite => resolve_declared_write(grant: grant)
     }
   }
 }
@@ -343,7 +343,7 @@ fn effective_actions_grant(
   match axis_actions_permissions_key(axis: name) {
     Absent => match axis_intrinsic_token_grant(axis: name) {
       IntrinsicTokenGrantAbsent => ActionsGrantScopeUnavailable
-      IntrinsicTokenGrantRead => ActionsGrantResolved { access: AppAccessRead }
+      IntrinsicTokenGrantRead => ActionsGrantResolved { access: extdeps.github.app.AppAccessRead }
     }
     Present { value: _ } =>
       if !axis_modeled_by_workflow_permissions(axis: name) {
@@ -366,12 +366,12 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.actions_token",
       decl_name: "EffectiveActionsJobGrant",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.github.actions_token.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [
-    extdeps.github.actions_token.automatic_token_citation,
-    extdeps.github.actions_token.app_permissions_citation
+    automatic_token_citation,
+    app_permissions_citation
   ]
 }

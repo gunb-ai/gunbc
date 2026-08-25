@@ -1,54 +1,54 @@
 module test.claim.altra_memory_controller_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // THE CENTRAL CLAIM, and the one the board-down question turns on: every module class this
 // controller admits carries a register or a buffer, and NONE is unbuffered. Asserted over the
 // whole admitted list rather than by naming the three, so a fourth class added later must also
 // satisfy it or red here.
 test fn w_every_admitted_module_class_is_buffered() -> Bool {
-  fold(altra_admitted_module_classes, init: true, f: fn(acc, c) {
+  fold(extdeps.cpu.ampere_altra_memory_controller.altra_admitted_module_classes, init: true, f: fn(acc, c) {
     acc && match c.buffering {
-      Registered => true
-      LoadReduced => true
-      Unbuffered => false
+      extdeps.memory.types.Registered => true
+      extdeps.memory.types.LoadReduced => true
+      extdeps.memory.types.Unbuffered => false
     }
   })
-    && list_length(items: altra_admitted_module_classes) == 3
+    && std.types.list_length(items: extdeps.cpu.ampere_altra_memory_controller.altra_admitted_module_classes) == 3
 }
 
 // AND THE DISCRIMINATING CONTROL: an unbuffered class is genuinely refused, not merely absent
 // from a list nothing checks. Without this the claim above is satisfied by any list.
 test fn w_an_unbuffered_module_class_is_refused() -> Bool {
-  !altra_admits_module_class(c: extdeps.memory.types.DramModuleClass { buffering: Unbuffered, stacking: MonolithicDie })
-    && !altra_admits_module_class(c: extdeps.memory.types.DramModuleClass { buffering: Unbuffered, stacking: ThreeDimensionalStacked })
-    && altra_admits_module_class(c: extdeps.memory.types.DramModuleClass { buffering: Registered, stacking: MonolithicDie })
+  !extdeps.cpu.ampere_altra_memory_controller.altra_admits_module_class(c: extdeps.memory.types.DramModuleClass { buffering: extdeps.memory.types.Unbuffered, stacking: extdeps.memory.types.MonolithicDie })
+    && !extdeps.cpu.ampere_altra_memory_controller.altra_admits_module_class(c: extdeps.memory.types.DramModuleClass { buffering: extdeps.memory.types.Unbuffered, stacking: extdeps.memory.types.ThreeDimensionalStacked })
+    && extdeps.cpu.ampere_altra_memory_controller.altra_admits_module_class(c: extdeps.memory.types.DramModuleClass { buffering: extdeps.memory.types.Registered, stacking: extdeps.memory.types.MonolithicDie })
 }
 
 // THE STACKING AXIS EARNS ITS EXISTENCE HERE. A registered monolithic module and a registered 3DS
 // module are both admitted and are DIFFERENT values — which is unrepresentable if 3DS is folded
 // into the buffering enum. This is the regression control for that collapse.
 test fn w_stacking_is_independent_of_buffering() -> Bool {
-  let reg_mono = extdeps.memory.types.DramModuleClass { buffering: Registered, stacking: MonolithicDie }
-  let reg_3ds = extdeps.memory.types.DramModuleClass { buffering: Registered, stacking: ThreeDimensionalStacked }
-  !dram_module_class_eq(a: reg_mono, b: reg_3ds)
-    && altra_admits_module_class(c: reg_mono)
-    && altra_admits_module_class(c: reg_3ds)
-    && !altra_admits_module_class(c: extdeps.memory.types.DramModuleClass { buffering: LoadReduced, stacking: ThreeDimensionalStacked })
+  let reg_mono = extdeps.memory.types.DramModuleClass { buffering: extdeps.memory.types.Registered, stacking: extdeps.memory.types.MonolithicDie }
+  let reg_3ds = extdeps.memory.types.DramModuleClass { buffering: extdeps.memory.types.Registered, stacking: extdeps.memory.types.ThreeDimensionalStacked }
+  !extdeps.memory.types.dram_module_class_eq(a: reg_mono, b: reg_3ds)
+    && extdeps.cpu.ampere_altra_memory_controller.altra_admits_module_class(c: reg_mono)
+    && extdeps.cpu.ampere_altra_memory_controller.altra_admits_module_class(c: reg_3ds)
+    && !extdeps.cpu.ampere_altra_memory_controller.altra_admits_module_class(c: extdeps.memory.types.DramModuleClass { buffering: extdeps.memory.types.LoadReduced, stacking: extdeps.memory.types.ThreeDimensionalStacked })
 }
 
 // THE WITHDRAWAL IS THE STANDING, not a missing entry. A board-down proposal must land on the
 // arm that says the nearest class was taken away, because that routes differently from "nobody
 // has established it" — one stops the proposal, the other invites a test campaign.
 test fn w_board_down_reports_the_withdrawal_not_an_absence() -> Bool {
-  match altra_board_down_dram_standing(topology: BoardProvidesNoRegisterOrBuffer) {
-    BoardDownNearestClassWithdrawn { authority: _, withdrawal: w } =>
+  match extdeps.cpu.ampere_altra_memory_controller.altra_board_down_dram_standing(topology: extdeps.cpu.ampere_altra_memory_controller.BoardProvidesNoRegisterOrBuffer) {
+    extdeps.cpu.ampere_altra_memory_controller.BoardDownNearestClassWithdrawn { authority: _, withdrawal: w } =>
       (w.withdrawn_in_issue as String) == "1.50"
-        && match w.buffering { Unbuffered => true  Registered => false  LoadReduced => false }
-    BoardDownAdmitted { authority: _ } => false
-    BoardDownNotAdmittedByController { authority: _, because: _ } => false
-    BoardDownSupportUnestablished { required_authority: _ } => false
+        && match w.buffering { extdeps.memory.types.Unbuffered => true  extdeps.memory.types.Registered => false  extdeps.memory.types.LoadReduced => false }
+    extdeps.cpu.ampere_altra_memory_controller.BoardDownAdmitted { authority: _ } => false
+    extdeps.cpu.ampere_altra_memory_controller.BoardDownNotAdmittedByController { authority: _, because: _ } => false
+    extdeps.cpu.ampere_altra_memory_controller.BoardDownSupportUnestablished { required_authority: _ } => false
   }
 }
 
@@ -58,11 +58,11 @@ test fn w_board_down_reports_the_withdrawal_not_an_absence() -> Bool {
 // asserts the standing is Unestablished specifically, not merely "not withdrawn", so answering
 // this topology with Admitted or NotAdmitted also reds: nothing read so far establishes either.
 test fn w_a_buffered_soldered_topology_is_unestablished_not_withdrawn() -> Bool {
-  match altra_board_down_dram_standing(topology: BoardProvidesRegisterOrBuffer) {
-    BoardDownSupportUnestablished { required_authority: _ } => true
-    BoardDownNearestClassWithdrawn { authority: _, withdrawal: _ } => false
-    BoardDownAdmitted { authority: _ } => false
-    BoardDownNotAdmittedByController { authority: _, because: _ } => false
+  match extdeps.cpu.ampere_altra_memory_controller.altra_board_down_dram_standing(topology: extdeps.cpu.ampere_altra_memory_controller.BoardProvidesRegisterOrBuffer) {
+    extdeps.cpu.ampere_altra_memory_controller.BoardDownSupportUnestablished { required_authority: _ } => true
+    extdeps.cpu.ampere_altra_memory_controller.BoardDownNearestClassWithdrawn { authority: _, withdrawal: _ } => false
+    extdeps.cpu.ampere_altra_memory_controller.BoardDownAdmitted { authority: _ } => false
+    extdeps.cpu.ampere_altra_memory_controller.BoardDownNotAdmittedByController { authority: _, because: _ } => false
   }
 }
 
@@ -73,46 +73,46 @@ test fn w_a_buffered_soldered_topology_is_unestablished_not_withdrawn() -> Bool 
 // it survives a JEDEC revision raising the ceiling, and reds if this module ever admits a density
 // the generation cannot physically carry.
 test fn w_admitted_densities_respect_the_jedec_monolithic_ceiling() -> Bool {
-  let ceiling = byte_size_count(b: extdeps.memory.jedec.ddr4_generation_catalog.max_monolithic_die_density)
-  fold(altra_admitted_device_densities, init: true, f: fn(acc, d) {
-    acc && (byte_size_count(b: d) <= ceiling)
+  let ceiling = std.measure.byte_size_count(b: ddr4_generation_catalog.max_monolithic_die_density)
+  fold(extdeps.cpu.ampere_altra_memory_controller.altra_admitted_device_densities, init: true, f: fn(acc, d) {
+    acc && (std.measure.byte_size_count(b: d) <= ceiling)
   })
-    && byte_size_count(b: altra_admitted_device_densities.last()) == ceiling
+    && std.measure.byte_size_count(b: altra_admitted_device_densities.last()) == ceiling
 }
 
 // THE PRODUCTION/BRING-UP SPLIT, over the closed coproduct. The engineering-debug qualifier is
 // the point: a two-channel population must NOT read as production-qualified. What this witness no
 // longer has to assert is that 3, 5 and 7 are unsupported -- they have no representation in
 // ActiveDdrChannelCount at all, so that claim moved from a runtime check to unwritability, which
-// is why the std.integer.Int-list classifier this replaced could be deleted rather than re-homed.
+// is why the Int-list classifier this replaced could be deleted rather than re-homed.
 test fn w_production_qualification_separates_bringup_from_production() -> Bool {
-  channel_count_is_production_qualified(c: EightChannels)
-    && channel_count_is_production_qualified(c: SixChannels)
-    && channel_count_is_production_qualified(c: FourChannels)
-    && !channel_count_is_production_qualified(c: TwoChannels)
-    && !channel_count_is_production_qualified(c: OneChannel)
-    && active_channel_count(c: EightChannels) == 8
-    && active_channel_count(c: TwoChannels) == 2
+  extdeps.cpu.ampere_altra_memory_controller.channel_count_is_production_qualified(c: extdeps.cpu.ampere_altra_memory_controller.EightChannels)
+    && extdeps.cpu.ampere_altra_memory_controller.channel_count_is_production_qualified(c: extdeps.cpu.ampere_altra_memory_controller.SixChannels)
+    && extdeps.cpu.ampere_altra_memory_controller.channel_count_is_production_qualified(c: extdeps.cpu.ampere_altra_memory_controller.FourChannels)
+    && !extdeps.cpu.ampere_altra_memory_controller.channel_count_is_production_qualified(c: extdeps.cpu.ampere_altra_memory_controller.TwoChannels)
+    && !extdeps.cpu.ampere_altra_memory_controller.channel_count_is_production_qualified(c: extdeps.cpu.ampere_altra_memory_controller.OneChannel)
+    && extdeps.cpu.ampere_altra_memory_controller.active_channel_count(c: extdeps.cpu.ampere_altra_memory_controller.EightChannels) == 8
+    && extdeps.cpu.ampere_altra_memory_controller.active_channel_count(c: extdeps.cpu.ampere_altra_memory_controller.TwoChannels) == 2
 }
 
 // Device organization, both axes, against the datasheet's stated values. Densities are asserted
 // in bytes at the exact 2^30-bits-per-Gb conversion the carrier declares, so a silent
 // re-denomination reds rather than rounding.
 test fn w_device_organization_matches_the_datasheet() -> Bool {
-  list_length(items: altra_admitted_device_widths) == 2
-    && bit_width_count(b: altra_admitted_device_widths.first()) == 4
-    && bit_width_count(b: altra_admitted_device_widths.last()) == 8
-    && list_length(items: altra_admitted_device_densities) == 2
-    && byte_size_count(b: altra_admitted_device_densities.first()) == 1073741824
-    && byte_size_count(b: altra_admitted_device_densities.last()) == 2147483648
+  std.types.list_length(items: extdeps.cpu.ampere_altra_memory_controller.altra_admitted_device_widths) == 2
+    && std.measure.bit_width_count(b: altra_admitted_device_widths.first()) == 4
+    && std.measure.bit_width_count(b: altra_admitted_device_widths.last()) == 8
+    && std.types.list_length(items: extdeps.cpu.ampere_altra_memory_controller.altra_admitted_device_densities) == 2
+    && std.measure.byte_size_count(b: altra_admitted_device_densities.first()) == 1073741824
+    && std.measure.byte_size_count(b: altra_admitted_device_densities.last()) == 2147483648
 }
 
 // The channel facts, and the aggregate DERIVED from them rather than authored beside them.
 test fn w_channel_geometry_derives_the_total_width() -> Bool {
-  altra_ddr4_channel_count == 8
-    && bit_width_count(b: altra_memory_channel_width) == 72
-    && dimms_per_channel_count(topology: altra_memory_max_dimms_per_channel_topology) == 2
-    && bit_width_count(b: altra_total_memory_data_width()) == 576
+  extdeps.cpu.ampere_altra_package.altra_ddr4_channel_count == 8
+    && std.measure.bit_width_count(b: extdeps.cpu.ampere_altra_memory_controller.altra_memory_channel_width) == 72
+    && extdeps.cpu.ampere_altra_platform_hw_design.platform.dimms_per_channel_count(topology: extdeps.cpu.ampere_altra_memory_controller.altra_memory_max_dimms_per_channel_topology) == 2
+    && std.measure.bit_width_count(b: extdeps.cpu.ampere_altra_memory_controller.altra_total_memory_data_width()) == 576
 }
 
 // THE DE-FORK, ASSERTED IN THE DIRECTION THAT WOULD HAVE CAUGHT IT. Both product rows and the
@@ -120,8 +120,8 @@ test fn w_channel_geometry_derives_the_total_width() -> Bool {
 // already true while the fork existed and is why nothing failed. Identity through one authority
 // is the property; equality is the symptom it happens to produce.
 test fn w_one_socket_authority_serves_both_families() -> Bool {
-  altra_fclga_socket == ampere_lga4926_socket
-    && altra_max_m12830_catalog.socket == ampere_lga4926_socket
-    && altra_q6430_catalog.socket == ampere_lga4926_socket
-    && altra_declared_contact_count() == 4926
+  extdeps.cpu.ampere_altra_package.altra_fclga_socket == extdeps.cpu.ampere.ampere_lga4926_socket
+    && altra_max_m12830_catalog.socket == extdeps.cpu.ampere.ampere_lga4926_socket
+    && altra_q6430_catalog.socket == extdeps.cpu.ampere.ampere_lga4926_socket
+    && extdeps.cpu.ampere_altra_package.altra_declared_contact_count() == 4926
 }

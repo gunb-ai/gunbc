@@ -1,20 +1,20 @@
 module test.claim.compile_pool_ensure
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn derived_size() -> std.measure.ByteSize {
+fn derived_size() -> ByteSize {
   byte_size(17179869184)
 }
 
-fn sized() -> gunbc.fleet_host_budget.CompilePoolResolution {
-  gunbc.fleet_host_budget.CompilePoolDerived { bytes: derived_size() }
+fn sized() -> CompilePoolResolution {
+  CompilePoolDerived { bytes: derived_size() }
 }
 
-fn observed_converged() -> gunbc.host_compile_pool.CompilePoolObservation {
-  gunbc.host_compile_pool.CompilePoolSliceObserved {
+fn observed_converged() -> CompilePoolObservation {
+  CompilePoolSliceObserved {
     slice_unit: gunbc_managed_compile_pool_slice,
-    limits: gunbc.build_cache_instance.CgroupMemoryLimits {
+    limits: CgroupMemoryLimits {
       memory_max: derived_size(),
       memory_high: derived_size(),
       memory_current: byte_size(0),
@@ -23,11 +23,11 @@ fn observed_converged() -> gunbc.host_compile_pool.CompilePoolObservation {
 }
 
 fn ensure_for(
-  topology: gunbc.host_layout.CompilePoolPlacement,
-  sizing: gunbc.fleet_host_budget.CompilePoolResolution,
-  cache_placement: gunbc.build_cache_instance.BuildCacheServerPlacement,
-  observed: gunbc.host_compile_pool.CompilePoolObservation,
-) -> gunbc.compile_pool_ensure.EnsureCompilePoolAdmission {
+  topology: CompilePoolPlacement,
+  sizing: CompilePoolResolution,
+  cache_placement: BuildCacheServerPlacement,
+  observed: CompilePoolObservation,
+) -> EnsureCompilePoolAdmission {
   admit_ensure_compile_pool_slice(
     topology: topology,
     sizing: sizing,
@@ -37,31 +37,31 @@ fn ensure_for(
 }
 
 test fn witness_undeclared_topology_refuses() -> Bool {
-  let a = test.claim.compile_pool_ensure.ensure_for(
+  let a = ensure_for(
     topology: CompilePoolInRunnerSlots,
-    sizing: test.claim.compile_pool_ensure.sized(),
+    sizing: sized(),
     cache_placement: ServerPlacementAbsent,
-    observed: gunbc.host_compile_pool.CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
+    observed: CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
   )
-  (ensure_yields_slice(admission: a) == false) && (compile_pool_ensure_is_converged(admission: a) == false)
+  (ensure_yields_slice(admission: a) == false) && (gunbc.compile_pool_ensure.compile_pool_ensure_is_converged(admission: a) == false)
 }
 
 test fn witness_unknown_cache_placement_refuses_before_slice_mutation() -> Bool {
-  let a = test.claim.compile_pool_ensure.ensure_for(
-    topology: gunbc.host_layout.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: test.claim.compile_pool_ensure.sized(),
-    cache_placement: gunbc.build_cache_instance.ServerPlacementUnknown { detail: "owner cgroup unclassifiable" as std.types.NonEmptyStr },
-    observed: gunbc.host_compile_pool.CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
+  let a = ensure_for(
+    topology: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    sizing: sized(),
+    cache_placement: ServerPlacementUnknown { detail: "owner cgroup unclassifiable" as NonEmptyStr },
+    observed: CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
   )
-  (ensure_yields_slice(admission: a) == false) && (compile_pool_ensure_is_converged(admission: a) == false)
+  (ensure_yields_slice(admission: a) == false) && (gunbc.compile_pool_ensure.compile_pool_ensure_is_converged(admission: a) == false)
 }
 
 test fn witness_an_absent_slice_is_admitted_with_rendered_lines() -> Bool {
-  let a = test.claim.compile_pool_ensure.ensure_for(
-    topology: gunbc.host_layout.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: test.claim.compile_pool_ensure.sized(),
+  let a = ensure_for(
+    topology: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    sizing: sized(),
     cache_placement: ServerPlacementAbsent,
-    observed: gunbc.host_compile_pool.CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
+    observed: CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
   )
   ensure_yields_slice(admission: a)
     && unit_declares_line(
@@ -75,23 +75,23 @@ test fn witness_an_absent_slice_is_admitted_with_rendered_lines() -> Bool {
 }
 
 test fn witness_a_matching_slice_is_converged_and_emits_nothing() -> Bool {
-  let a = test.claim.compile_pool_ensure.ensure_for(
-    topology: gunbc.host_layout.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: test.claim.compile_pool_ensure.sized(),
-    cache_placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: "gunbc-build-cache-ci.service" as std.types.NonEmptyStr },
+  let a = ensure_for(
+    topology: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    sizing: sized(),
+    cache_placement: ServerManagedUnitOwned { unit: "gunbc-build-cache-ci.service" as NonEmptyStr },
     observed: observed_converged(),
   )
-  compile_pool_ensure_is_converged(admission: a) && (ensure_yields_slice(admission: a) == false)
+  gunbc.compile_pool_ensure.compile_pool_ensure_is_converged(admission: a) && (ensure_yields_slice(admission: a) == false)
 }
 
 test fn witness_an_undersized_observed_slice_is_admitted_for_resize() -> Bool {
-  let a = test.claim.compile_pool_ensure.ensure_for(
-    topology: gunbc.host_layout.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: test.claim.compile_pool_ensure.sized(),
+  let a = ensure_for(
+    topology: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    sizing: sized(),
     cache_placement: ServerPlacementAbsent,
-    observed: gunbc.host_compile_pool.CompilePoolSliceObserved {
+    observed: CompilePoolSliceObserved {
       slice_unit: gunbc_managed_compile_pool_slice,
-      limits: gunbc.build_cache_instance.CgroupMemoryLimits {
+      limits: CgroupMemoryLimits {
         memory_max: byte_size(512),
         memory_high: byte_size(512),
         memory_current: byte_size(0),
@@ -102,13 +102,13 @@ test fn witness_an_undersized_observed_slice_is_admitted_for_resize() -> Bool {
 }
 
 test fn witness_a_differently_named_slice_refuses() -> Bool {
-  let a = test.claim.compile_pool_ensure.ensure_for(
-    topology: gunbc.host_layout.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: test.claim.compile_pool_ensure.sized(),
+  let a = ensure_for(
+    topology: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    sizing: sized(),
     cache_placement: ServerPlacementAbsent,
-    observed: gunbc.host_compile_pool.CompilePoolSliceObserved {
-      slice_unit: "other.slice" as std.types.NonEmptyStr,
-      limits: gunbc.build_cache_instance.CgroupMemoryLimits {
+    observed: CompilePoolSliceObserved {
+      slice_unit: "other.slice" as NonEmptyStr,
+      limits: CgroupMemoryLimits {
         memory_max: derived_size(),
         memory_high: derived_size(),
         memory_current: byte_size(0),
@@ -119,11 +119,11 @@ test fn witness_a_differently_named_slice_refuses() -> Bool {
 }
 
 test fn witness_unresolved_sizing_refuses() -> Bool {
-  let a = test.claim.compile_pool_ensure.ensure_for(
-    topology: gunbc.host_layout.CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
-    sizing: gunbc.fleet_host_budget.CompilePoolUnresolved { reason: "jobserver config citation absent" },
+  let a = ensure_for(
+    topology: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    sizing: CompilePoolUnresolved { reason: "jobserver config citation absent" },
     cache_placement: ServerPlacementAbsent,
-    observed: gunbc.host_compile_pool.CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
+    observed: CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
   )
   ensure_yields_slice(admission: a) == false
 }

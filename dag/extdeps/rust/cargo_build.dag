@@ -3,7 +3,7 @@ module extdeps.cargo_build
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "doc.rust-lang.org/cargo/commands/cargo-build.html"
   }
 }

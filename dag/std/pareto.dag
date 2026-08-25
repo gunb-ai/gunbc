@@ -170,7 +170,7 @@ type PairStanding
 
 fn reading_matches(e: ParetoEntry, wanted: std.decl_ref.DeclarationRef) -> Int {
   fold(e.readings, init: 0, f: fn(acc, r) {
-    if declaration_ref_eq(a: r.axis, b: wanted) { acc + 1 } else { acc }
+    if std.decl_ref.declaration_ref_eq(a: r.axis, b: wanted) { acc + 1 } else { acc }
   })
 }
 
@@ -184,7 +184,7 @@ fn reading_for(e: ParetoEntry, wanted: std.decl_ref.DeclarationRef) -> ReadingLo
         ReadingFound { value_micro } => acc,
         ReadingDuplicated { duplicated_axis } => acc,
         ReadingAbsent { absent_axis } =>
-          if declaration_ref_eq(a: r.axis, b: absent_axis) { ReadingFound { value_micro: r.value_micro } } else { acc },
+          if std.decl_ref.declaration_ref_eq(a: r.axis, b: absent_axis) { ReadingFound { value_micro: r.value_micro } } else { acc },
       }
     })
   }
@@ -209,7 +209,7 @@ fn one_axis_id(id: std.decl_ref.DeclarationRef) -> List<std.decl_ref.Declaration
 
 fn accum_refusal(acc: PairAccum, axis: SelectionAxis, defect: std.types.NonEmptyStr) -> PairAccum {
   PairAccum {
-    refusal_causes: concat(acc.refusal_causes, one_name(name: join(["axis ", declaration_ref_display_key(ref: axis.identity), " ", defect], ""))),
+    refusal_causes: concat(acc.refusal_causes, one_name(name: join(["axis ", std.decl_ref.declaration_ref_display_key(ref: axis.identity), " ", defect], ""))),
     a_worse_somewhere: acc.a_worse_somewhere,
     winning_axes: acc.winning_axes,
   }
@@ -279,7 +279,7 @@ fn compare_pair(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> Pa
 // twice REFUSES the whole selection, because the fold would otherwise resolve the collision
 // silently (first-reading-wins for axes, skipped-as-self for candidates).
 fn count_axis_identity(axes: List<SelectionAxis>, id: std.decl_ref.DeclarationRef) -> Int {
-  fold(axes, init: 0, f: fn(acc, ax) { if declaration_ref_eq(a: ax.identity, b: id) { acc + 1 } else { acc } })
+  fold(axes, init: 0, f: fn(acc, ax) { if std.decl_ref.declaration_ref_eq(a: ax.identity, b: id) { acc + 1 } else { acc } })
 }
 
 fn axes_have_duplicate_identity(axes: List<SelectionAxis>) -> Bool {
@@ -287,7 +287,7 @@ fn axes_have_duplicate_identity(axes: List<SelectionAxis>) -> Bool {
 }
 
 fn count_entry_identity(field: List<ParetoEntry>, id: std.decl_ref.DeclarationRef) -> Int {
-  fold(field, init: 0, f: fn(acc, e) { if declaration_ref_eq(a: e.identity, b: id) { acc + 1 } else { acc } })
+  fold(field, init: 0, f: fn(acc, e) { if std.decl_ref.declaration_ref_eq(a: e.identity, b: id) { acc + 1 } else { acc } })
 }
 
 fn field_has_duplicate_identity(field: List<ParetoEntry>) -> Bool {
@@ -297,7 +297,7 @@ fn field_has_duplicate_identity(field: List<ParetoEntry>) -> Bool {
 // A challenger participates only when it is a DIFFERENT candidate (by identity, never by
 // label) that declares complete inputs.
 fn challenger_applies(subject: ParetoEntry, other: ParetoEntry) -> Bool {
-  !declaration_ref_eq(a: other.identity, b: subject.identity) && count(other.missing_inputs) == 0
+  !std.decl_ref.declaration_ref_eq(a: other.identity, b: subject.identity) && count(other.missing_inputs) == 0
 }
 
 // The field accumulator: every refusal and every dominator is collected, so the derived
@@ -318,7 +318,7 @@ fn field_step(subject: ParetoEntry, other: ParetoEntry, axes: List<SelectionAxis
       },
       PairNoDominance => acc,
       PairRefused { cause } => FieldAccum {
-        refusal_causes: concat(acc.refusal_causes, one_name(name: join(["comparison against ", declaration_ref_display_key(ref: other.identity), " refused - ", cause, " - a field entry lacking a funded-axis reading while declaring complete inputs is a projector contradiction, and no standing in its field is computable until it is fixed"], ""))),
+        refusal_causes: concat(acc.refusal_causes, one_name(name: join(["comparison against ", std.decl_ref.declaration_ref_display_key(ref: other.identity), " refused - ", cause, " - a field entry lacking a funded-axis reading while declaring complete inputs is a projector contradiction, and no standing in its field is computable until it is fixed"], ""))),
         dominators: acc.dominators,
       },
     }
@@ -359,7 +359,7 @@ fn entry_standing(subject: ParetoEntry, field: List<ParetoEntry>, axes: List<Sel
 }
 
 fn dominator_names(dominators: List<Domination>) -> List<std.types.NonEmptyStr> {
-  fold(dominators, init: no_names, f: fn(acc, d) { concat(acc, one_name(name: declaration_ref_display_key(ref: d.candidate))) })
+  fold(dominators, init: no_names, f: fn(acc, d) { concat(acc, one_name(name: std.decl_ref.declaration_ref_display_key(ref: d.candidate))) })
 }
 
 fn pareto_label(s: ParetoStanding) -> std.types.NonEmptyStr {

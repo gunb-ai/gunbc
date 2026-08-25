@@ -3,7 +3,7 @@ module extdeps.test.http_pilot
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "jsonplaceholder.typicode.com/posts"
   }
 }
@@ -15,7 +15,7 @@ type HttpPilotPost {
   body: String
 }
 
-service test.HttpPilot {
+service HttpPilot {
   config {
     endpoint: "https://jsonplaceholder.typicode.com"
   }

@@ -3,7 +3,7 @@ module extdeps.languages.css.properties
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.w3.org/Style/CSS/all-properties.en.html"
   }
 }

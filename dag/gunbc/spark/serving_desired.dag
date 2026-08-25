@@ -2,8 +2,8 @@ module gunbc.spark.serving_desired
 
 
 data spark_serving_desired_hosts: List<product.placement_supply.HostIdentity> = [
-  operator_host_srv5,
-  operator_host_srv6,
+  gunbc.fleet_intent_network.operator_host_srv5,
+  gunbc.fleet_intent_network.operator_host_srv6,
 ]
 
 data spark_serving_desired_note: String = "OPERATOR DECLARATION (2026-08-12): LAN boundary, ollama runtime, gpt-oss:20b model, executor-owned serving process under gunbc-automation. Runtime closure identity derives from extdeps.ollama.binary_release cited digest — materialization binds through gunbc.package_delivery (#8225), not a parallel install path. Model identity is the manifest digest from /api/tags, not the serving label."
@@ -14,11 +14,11 @@ data spark_serving_desired_runtime: gunbc.spark.serving_release.SparkServingRunt
 
 data spark_serving_desired_bind_listen: gunbc.spark.serving_release.SparkServingBindListen = gunbc.spark.serving_release.SparkServingBindListen {
   host: "0.0.0.0" as std.types.NonEmptyStr,
-  port: ollama_default_port,
+  port: extdeps.ollama.api.ollama_default_port,
 }
 
 fn spark_serving_desired_bind_host_port() -> String {
-  spark_serving_bind_listen_wire(bind: spark_serving_desired_bind_listen)
+  gunbc.spark.serving_release.spark_serving_bind_listen_wire(bind: spark_serving_desired_bind_listen)
 }
 
 // A LISTEN ADDRESS IS NOT A CONNECT ADDRESS, and the two were one string.
@@ -39,16 +39,16 @@ fn spark_serving_local_probe_host_port() -> String {
 // "/api/version" would be a second spelling of a fact the cited endpoint model already owns, and the
 // two would drift silently the first time upstream moved it.
 fn spark_serving_local_endpoint_url(endpoint: extdeps.ollama.api.OllamaEndpoint) -> String {
-  join(["http://", spark_serving_local_probe_host_port(), ollama_endpoint_path(endpoint: endpoint)], "")
+  join(["http://", spark_serving_local_probe_host_port(), extdeps.ollama.api.ollama_endpoint_path(endpoint: endpoint)], "")
 }
 
 fn spark_serving_local_api_version_url() -> String {
   spark_serving_local_endpoint_url(endpoint: extdeps.ollama.api.ApiVersion)
 }
 
-data spark_serving_desired_endpoint_intent: gunbc.spark.serving_realization.ServingEndpointIntent = UnauthenticatedEndpoint
+data spark_serving_desired_endpoint_intent: gunbc.spark.serving_realization.ServingEndpointIntent = gunbc.spark.serving_realization.UnauthenticatedEndpoint
 
-data spark_serving_desired_model_ref: extdeps.ollama.api.OllamaModelRef = ollama_gpt_oss_20b_model_ref
+data spark_serving_desired_model_ref: extdeps.ollama.api.OllamaModelRef = extdeps.ollama.capability.ollama_gpt_oss_20b_model_ref
 
 // DESIRED MODEL IDENTITY IS A RESOLUTION, NOT A LITERAL.
 //
@@ -79,33 +79,33 @@ type SparkServingDesiredAdmission
   | SparkServingDesiredRefused { cause: std.types.NonEmptyStr }
 
 fn spark_serving_desired_model_artifact() -> gunbc.model_artifact.ModelArtifact {
-  model_artifact_from_resolution(
+  gunbc.model_artifact.model_artifact_from_resolution(
     publisher: "ollama" as std.types.NonEmptyStr,
-    resolution: gpt_oss_20b_resolution(),
+    resolution: gunbc.ollama_model_resolution.gpt_oss_20b_resolution(),
   )
 }
 
 fn spark_serving_desired_release_admission() -> SparkServingDesiredAdmission {
-  match ollama_runtime_model_compatibility_verdict(
-    binary_release: ollama_required_release,
-    platform: OllamaNvidiaGb10Spark,
-    architecture: OllamaLinuxArm64,
+  match extdeps.ollama.capability.ollama_runtime_model_compatibility_verdict(
+    binary_release: extdeps.ollama.binary_release.ollama_required_release,
+    platform: extdeps.ollama.capability.OllamaNvidiaGb10Spark,
+    architecture: extdeps.ollama.binary_release.OllamaLinuxArm64,
     model: spark_serving_desired_model_ref,
   ) {
-    OllamaPlatformSupportApplicable =>
+    extdeps.ollama.capability.OllamaPlatformSupportApplicable =>
       SparkServingDesiredAdmitted {
         serving_release: gunbc.spark.serving_release.SparkServingRelease {
           runtime: gunbc.spark.serving_release.RuntimeArtifactIdentity {
-            closure_digest: ollama_runtime_materialization_identity_for_required_release().digest as std.types.NonEmptyStr,
+            closure_digest: gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release().digest as std.types.NonEmptyStr,
           },
           model: spark_serving_desired_model_artifact(),
         },
       }
-    OllamaPlatformSupportUnmet { cause: c } =>
+    extdeps.ollama.capability.OllamaPlatformSupportUnmet { cause: c } =>
       SparkServingDesiredRefused { cause: c }
-    OllamaPlatformSupportUnobserved { cause: c } =>
+    extdeps.ollama.capability.OllamaPlatformSupportUnobserved { cause: c } =>
       SparkServingDesiredRefused { cause: c }
-    OllamaPlatformSupportUncatalogued { cause: c } =>
+    extdeps.ollama.capability.OllamaPlatformSupportUncatalogued { cause: c } =>
       SparkServingDesiredRefused { cause: c }
   }
 }
@@ -119,7 +119,7 @@ type SparkServingFleetDesired
 fn spark_serving_occurrence(host: product.placement_supply.HostIdentity, serving_release: gunbc.spark.serving_release.SparkServingRelease) -> gunbc.spark.serving_release.SparkServingOccurrence {
   gunbc.spark.serving_release.SparkServingOccurrence {
     host: host,
-    release_identity: spark_serving_release_identity(spec: serving_release),
+    release_identity: gunbc.spark.serving_release.spark_serving_release_identity(spec: serving_release),
     serving_policy: spark_serving_desired_serving_policy(),
   }
 }
@@ -142,7 +142,7 @@ data spark_serving_fleet_desired: SparkServingFleetDesired = spark_serving_fleet
 
 fn spark_serving_desired_serving_policy() -> gunbc.spark.serving_release.SparkServingServingPolicy {
   gunbc.spark.serving_release.SparkServingServingPolicy {
-    serving_configuration: spark_serving_configuration_identity(
+    serving_configuration: gunbc.spark.serving_release.spark_serving_configuration_identity(
       runtime: spark_serving_desired_runtime,
       model_ref: spark_serving_desired_model_ref,
       bind: spark_serving_desired_bind_listen,
@@ -150,19 +150,19 @@ fn spark_serving_desired_serving_policy() -> gunbc.spark.serving_release.SparkSe
     ),
     capacity: gunbc.spark.serving_release.InferenceCapacityPolicy {
       max_model_len: 8192,
-      shared_memory_budget_bytes: byte_size(120000000000),
+      shared_memory_budget_bytes: std.measure.byte_size(120000000000),
     },
   }
 }
 
 fn spark_serving_terminal_intent() -> gunbc.spark.serving_realization.SparkServingIntent {
   gunbc.spark.serving_realization.SparkServingIntent {
-    lifecycle: SurvivesReboot,
-    availability: RestartsOnFailure,
-    authority: ManagedConvergenceOwned,
+    lifecycle: gunbc.spark.serving_realization.SurvivesReboot,
+    availability: gunbc.spark.serving_realization.RestartsOnFailure,
+    authority: gunbc.spark.serving_realization.ManagedConvergenceOwned,
     service_identity: gunbc.spark.serving_realization.ExecutorOwnedIdentity,
     endpoint: spark_serving_desired_endpoint_intent,
-    observability: IndependentlyObservable,
+    observability: gunbc.spark.serving_realization.IndependentlyObservable,
   }
 }
 
@@ -170,6 +170,6 @@ fn spark_serving_automation_principal_login() -> std.types.NonEmptyStr {
   "gunbc-automation" as std.types.NonEmptyStr
 }
 
-fn spark_serving_automation_principal() -> NamedPrincipal {
-  NamedPrincipal { login: spark_serving_automation_principal_login() }
+fn spark_serving_automation_principal() -> gunbc.spark.serving_realization.NamedPrincipal {
+  gunbc.spark.serving_realization.NamedPrincipal { login: spark_serving_automation_principal_login() }
 }

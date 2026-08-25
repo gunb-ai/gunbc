@@ -4,7 +4,7 @@ module std.unicode.types
 data unicode_scalar_max_code_point: Int = 1114111
 data unicode_surrogate_first_code_point: Int = 55296
 data unicode_surrogate_last_code_point: Int = 57343
-data unicode_scalar_authority_note: String = "Unicode Standard 17.0 Core Specification section 3.9, definition D76 (https://www.unicode.org/versions/U0/core-spec/chapter-3/#G7404): scalar values are U+0000..U+D7FF and U+E000..U+10FFFF inclusive. Therefore U+10FFFF is the maximum and the surrogate code points U+D800..U+DFFF are excluded."
+data unicode_scalar_authority_note: String = "Unicode Standard 17.0 Core Specification section 3.9, definition D76 (https://www.unicode.org/versions/Unicode17.0.0/core-spec/chapter-3/#G7404): scalar values are U+0000..U+D7FF and U+E000..U+10FFFF inclusive. Therefore U+10FFFF is the maximum and the surrogate code points U+D800..U+DFFF are excluded."
 
 fn unicode_scalar(code_point: Int) -> Bool {
   code_point >= 0

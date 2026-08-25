@@ -1,5 +1,6 @@
 module test.claim.fabric_capacity_class_gap_witness_test
 
+
 // THE THREE MEASUREMENTS ARE THREE DIFFERENT CLAIMS, AND THE ROW IS ONLY A FINDING WITH ALL THREE.
 //
 // Any one alone is answerable. "No capacity class exists" invites "then add a field". "The carrier
@@ -9,22 +10,22 @@ module test.claim.fabric_capacity_class_gap_witness_test
 // of a seam nothing crosses. This asserts the carrier keeps all three rather than collapsing to
 // whichever one a later reader finds most convincing.
 test fn the_finding_keeps_all_three_measurements() -> Bool {
-  let n = fabric_capacity_class_evidence |> count
+  let n = gunbc.fabric_capacity_class_gap.fabric_capacity_class_evidence |> count
   n == 3
-    && any(fabric_capacity_class_evidence, e => match e {
-         NoClassCarrierAnywhere { searched_modules: _, vocabulary_hits: _, hit_disposition: _ } => true
-         PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => false
-         ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: _, unreached_layer: _ } => false
+    && any(gunbc.fabric_capacity_class_gap.fabric_capacity_class_evidence, e => match e {
+         gunbc.fabric_capacity_class_gap.NoClassCarrierAnywhere { searched_modules: _, vocabulary_hits: _, hit_disposition: _ } => true
+         gunbc.fabric_capacity_class_gap.PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => false
+         gunbc.fabric_capacity_class_gap.ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: _, unreached_layer: _ } => false
        })
-    && any(fabric_capacity_class_evidence, e => match e {
-         NoClassCarrierAnywhere { searched_modules: _, vocabulary_hits: _, hit_disposition: _ } => false
-         PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => true
-         ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: _, unreached_layer: _ } => false
+    && any(gunbc.fabric_capacity_class_gap.fabric_capacity_class_evidence, e => match e {
+         gunbc.fabric_capacity_class_gap.NoClassCarrierAnywhere { searched_modules: _, vocabulary_hits: _, hit_disposition: _ } => false
+         gunbc.fabric_capacity_class_gap.PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => true
+         gunbc.fabric_capacity_class_gap.ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: _, unreached_layer: _ } => false
        })
-    && any(fabric_capacity_class_evidence, e => match e {
-         NoClassCarrierAnywhere { searched_modules: _, vocabulary_hits: _, hit_disposition: _ } => false
-         PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => false
-         ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: _, unreached_layer: _ } => true
+    && any(gunbc.fabric_capacity_class_gap.fabric_capacity_class_evidence, e => match e {
+         gunbc.fabric_capacity_class_gap.NoClassCarrierAnywhere { searched_modules: _, vocabulary_hits: _, hit_disposition: _ } => false
+         gunbc.fabric_capacity_class_gap.PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => false
+         gunbc.fabric_capacity_class_gap.ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: _, unreached_layer: _ } => true
        })
 }
 
@@ -34,13 +35,13 @@ test fn the_finding_keeps_all_three_measurements() -> Bool {
 // careless. "One hit, in prose, here is why it does not count" survives the re-run and is the
 // stronger statement. This pins that the carrier reports the hit rather than a flattering zero.
 test fn the_single_prose_hit_is_carried_not_swallowed() -> Bool {
-  match no_class_carrier {
-    NoClassCarrierAnywhere { searched_modules: m, vocabulary_hits: h, hit_disposition: d } =>
+  match gunbc.fabric_capacity_class_gap.no_class_carrier {
+    gunbc.fabric_capacity_class_gap.NoClassCarrierAnywhere { searched_modules: m, vocabulary_hits: h, hit_disposition: d } =>
       h == 1
         && (m |> count) == 4
         && string_contains(s: d as String, pattern: "prose comment")
-    PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => false
-    ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: _, unreached_layer: _ } => false
+    gunbc.fabric_capacity_class_gap.PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => false
+    gunbc.fabric_capacity_class_gap.ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: _, unreached_layer: _ } => false
   }
 }
 
@@ -50,11 +51,11 @@ test fn the_single_prose_hit_is_carried_not_swallowed() -> Bool {
 // into something a reader can go and re-derive: these are the importers, none is under product/,
 // therefore the arrow the reader assumed does not exist.
 test fn the_protection_names_the_consumers_it_does_have() -> Bool {
-  match protection_has_no_reach {
-    ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: c, unreached_layer: u } =>
+  match gunbc.fabric_capacity_class_gap.protection_has_no_reach {
+    gunbc.fabric_capacity_class_gap.ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: c, unreached_layer: u } =>
       (c |> count) == 2 && string_contains(s: u as String, pattern: "product.fabric")
-    NoClassCarrierAnywhere { searched_modules: _, vocabulary_hits: _, hit_disposition: _ } => false
-    PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => false
+    gunbc.fabric_capacity_class_gap.NoClassCarrierAnywhere { searched_modules: _, vocabulary_hits: _, hit_disposition: _ } => false
+    gunbc.fabric_capacity_class_gap.PlausibleCarrierIsUntyped { carrier: _, representation: _, why_insufficient: _ } => false
   }
 }
 
@@ -66,9 +67,9 @@ test fn the_protection_names_the_consumers_it_does_have() -> Bool {
 // Keeping them refused-with-reason is what makes the ruling durable instead of a preference someone
 // re-litigates.
 test fn one_remedy_is_ruled_in_and_the_cheap_ones_stay_refused() -> Bool {
-  remedy_is_ruled_in(remedy: capacity_class_ruled_remedy)
-    && (capacity_class_refused_remedies |> count) == 2
-    && !any(capacity_class_refused_remedies, r => remedy_is_ruled_in(remedy: r))
+  gunbc.fabric_capacity_class_gap.remedy_is_ruled_in(remedy: gunbc.fabric_capacity_class_gap.capacity_class_ruled_remedy)
+    && (gunbc.fabric_capacity_class_gap.capacity_class_refused_remedies |> count) == 2
+    && !any(gunbc.fabric_capacity_class_gap.capacity_class_refused_remedies, r => gunbc.fabric_capacity_class_gap.remedy_is_ruled_in(remedy: r))
 }
 
 // THE REFUSAL REASONS ARE DISTINCT, BECAUSE THEY REFUSE FOR UNRELATED REASONS.
@@ -78,10 +79,10 @@ test fn one_remedy_is_ruled_in_and_the_cheap_ones_stay_refused() -> Bool {
 // question. A single shared "not ruled in" would lose exactly the distinction that stops someone
 // arguing the second is fine once the first is addressed.
 test fn the_two_refused_remedies_do_not_share_one_reason() -> Bool {
-  let reasons = map(capacity_class_refused_remedies, r => match r {
-    ClassOnWorkShape { rationale: x } => x as String
-    ClassOnSupplierOffer { rationale: x } => x as String
-    ClassEncodedInTrustDomain { rationale: x } => x as String
+  let reasons = map(gunbc.fabric_capacity_class_gap.capacity_class_refused_remedies, r => match r {
+    gunbc.fabric_capacity_class_gap.ClassOnWorkShape { rationale: x } => x as String
+    gunbc.fabric_capacity_class_gap.ClassOnSupplierOffer { rationale: x } => x as String
+    gunbc.fabric_capacity_class_gap.ClassEncodedInTrustDomain { rationale: x } => x as String
   })
   (reasons |> count) == 2
     && !any(reasons, a => (filter(reasons, b => b == a) |> count) > 1)

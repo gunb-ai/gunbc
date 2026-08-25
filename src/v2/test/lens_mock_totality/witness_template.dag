@@ -1,6 +1,7 @@
 module v2.test.lens_mock_totality.witness_template
 
-fn published_mock_case_eq(a: std.hermetic_replay.PublishedMockCase, b: std.hermetic_replay.PublishedMockCase) -> Bool {
+
+fn published_mock_case_eq(a: PublishedMockCase, b: PublishedMockCase) -> Bool {
   a.operation_key == b.operation_key && a.case_id == b.case_id
 }
 
@@ -8,12 +9,12 @@ fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn operation_key_in_omit_set(case: std.hermetic_replay.PublishedMockCase, omit_keys: List<String>) -> Bool {
-  contains(xs: omit_keys, item: case.operation_key, eq: v2.test.lens_mock_totality.witness_template.string_eq)
+fn operation_key_in_omit_set(case: PublishedMockCase, omit_keys: List<String>) -> Bool {
+  contains(xs: omit_keys, item: case.operation_key, eq: string_eq)
 }
 
 fn omit_consumer_handles(
-  case: std.hermetic_replay.PublishedMockCase,
+  case: PublishedMockCase,
   omit_keys: List<String>,
   total_consumer_handles: fn(PublishedMockCase) -> Bool
 ) -> Bool {
@@ -24,7 +25,7 @@ fn omit_consumer_handles(
   }
 }
 
-fn outcome_accepted_p<M>(outcome: v2.std.diagnostic.Outcome<M>) -> Bool {
+fn outcome_accepted_p<M>(outcome: Outcome<M>) -> Bool {
   match outcome {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -32,17 +33,17 @@ fn outcome_accepted_p<M>(outcome: v2.std.diagnostic.Outcome<M>) -> Bool {
 }
 
 fn mock_totality_handled_by(
-  published: List<std.hermetic_replay.PublishedMockCase>,
+  published: List<PublishedMockCase>,
   consumer_handles: fn(PublishedMockCase) -> Bool
-) -> List<std.hermetic_replay.PublishedMockCase> {
+) -> List<PublishedMockCase> {
   filter(xs: published, predicate: consumer_handles)
 }
 
 fn mock_totality_green_holds(
-  published: List<std.hermetic_replay.PublishedMockCase>,
+  published: List<PublishedMockCase>,
   consumer_handles: fn(PublishedMockCase) -> Bool
 ) -> Bool {
-  match mock_totality_lens(
+  match v2.lens.mock_totality.mock_totality_lens(
     published: published,
     handled: mock_totality_handled_by(published: published, consumer_handles: consumer_handles),
     eq: published_mock_case_eq
@@ -53,10 +54,10 @@ fn mock_totality_green_holds(
 }
 
 fn mock_totality_red_on_omission_holds(
-  published: List<std.hermetic_replay.PublishedMockCase>,
+  published: List<PublishedMockCase>,
   consumer_handles: fn(PublishedMockCase) -> Bool
 ) -> Bool {
-  match mock_totality_lens(
+  match v2.lens.mock_totality.mock_totality_lens(
     published: published,
     handled: mock_totality_handled_by(published: published, consumer_handles: consumer_handles),
     eq: published_mock_case_eq

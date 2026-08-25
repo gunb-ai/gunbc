@@ -3,8 +3,8 @@ module v2.lens.cost.expr
 
 type SizeExpr
   = SizeConst { value: v2.std.nat.Nat }
-  | SizeOf { variable: SizeVariable }
-  | SizeLength { of: SizeVariable }
+  | SizeOf { variable: v2.lens.cost.SizeVariable }
+  | SizeLength { of: v2.lens.cost.SizeVariable }
   | SizeAdd { left: SizeExpr, right: SizeExpr }
   | SizeMax { left: SizeExpr, right: SizeExpr }
 
@@ -13,14 +13,14 @@ type CostExprRefusalCause
   | UngroundedLogArgument { argument: SizeExpr, at: v2.std.diagnostic.Locus }
   | InvalidLogBase { base: v2.std.nat.Nat, at: v2.std.diagnostic.Locus }
   | UnmodeledEffect { operation: std.decl_ref.DeclarationRef, at: v2.std.diagnostic.Locus }
-  | UnresolvedSize { variable: SizeVariable, at: v2.std.diagnostic.Locus }
+  | UnresolvedSize { variable: v2.lens.cost.SizeVariable, at: v2.std.diagnostic.Locus }
 
 type CostExpr
   = CostConst { value: v2.std.nat.Nat }
   | CostAdd { left: CostExpr, right: CostExpr }
   | CostMul { left: CostExpr, right: CostExpr }
   | CostMax { left: CostExpr, right: CostExpr }
-  | CostSum { binder: SizeVariable, upper: SizeExpr, body: CostExpr }
+  | CostSum { binder: v2.lens.cost.SizeVariable, upper: SizeExpr, body: CostExpr }
   | CostLog { base: v2.std.nat.Nat, argument: SizeExpr }
   | CostEffect { operation: std.decl_ref.DeclarationRef }
   | CostRefused { cause: CostExprRefusalCause }
@@ -29,11 +29,11 @@ fn size_const(value: v2.std.nat.Nat) -> SizeExpr {
   SizeConst { value: value }
 }
 
-fn size_of(variable: SizeVariable) -> SizeExpr {
+fn size_of(variable: v2.lens.cost.SizeVariable) -> SizeExpr {
   SizeOf { variable: variable }
 }
 
-fn size_length(of: SizeVariable) -> SizeExpr {
+fn size_length(of: v2.lens.cost.SizeVariable) -> SizeExpr {
   SizeLength { of: of }
 }
 
@@ -43,10 +43,10 @@ fn cost_const(value: v2.std.nat.Nat) -> CostExpr {
 
 fn cost_expr_seq(a: CostExpr, b: CostExpr) -> CostExpr {
   match a {
-    CostConst { value: Zero } => b
+    CostConst { value: v2.std.nat.Zero } => b
     _ =>
       match b {
-        CostConst { value: Zero } => a
+        CostConst { value: v2.std.nat.Zero } => a
         _ => CostAdd { left: a, right: b }
       }
   }
@@ -54,10 +54,10 @@ fn cost_expr_seq(a: CostExpr, b: CostExpr) -> CostExpr {
 
 fn cost_expr_par(a: CostExpr, b: CostExpr) -> CostExpr {
   match a {
-    CostConst { value: Zero } => b
+    CostConst { value: v2.std.nat.Zero } => b
     _ =>
       match b {
-        CostConst { value: Zero } => a
+        CostConst { value: v2.std.nat.Zero } => a
         _ => CostMax { left: a, right: b }
       }
   }
@@ -68,7 +68,7 @@ fn cost_log_expr(base: v2.std.nat.Nat, argument: SizeExpr) -> CostExpr {
 }
 
 fn cost_expr_authority_locus() -> v2.std.diagnostic.Locus {
-  textual_whole_file_locus(file: ^cost_expr_authority_virtual_file)
+  v2.std.diagnostic.textual_whole_file_locus(file: ^cost_expr_authority_virtual_file)
 }
 
 fn cost_expr_refusal_diagnostic(cause: CostExprRefusalCause) -> v2.std.diagnostic.Diagnostic {
@@ -77,89 +77,89 @@ fn cost_expr_refusal_diagnostic(cause: CostExprRefusalCause) -> v2.std.diagnosti
       v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_unbounded_iteration,
         at: loc,
-        correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
       }
     UngroundedLogArgument { argument: _, at: loc } =>
       v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_ungrounded_log_argument,
         at: loc,
-        correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
       }
     InvalidLogBase { base: _, at: loc } =>
       v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_invalid_log_base,
         at: loc,
-        correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
       }
     UnmodeledEffect { operation: _, at: loc } =>
       v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_unmodeled_effect,
         at: loc,
-        correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
       }
     UnresolvedSize { variable: _, at: loc } =>
       v2.std.diagnostic.Diagnostic {
         reason: ^cost_expr_refusal_unresolved_size,
         at: loc,
-        correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
       }
   }
 }
 
-fn cost_loop_expr(binder: SizeVariable, iterations: SizeExpr, body: CostExpr) -> CostExpr {
+fn cost_loop_expr(binder: v2.lens.cost.SizeVariable, iterations: SizeExpr, body: CostExpr) -> CostExpr {
   match body {
-    CostConst { value: Zero } => CostConst { value: Zero }
+    CostConst { value: v2.std.nat.Zero } => CostConst { value: v2.std.nat.Zero }
     _ => CostSum { binder: binder, upper: iterations, body: body }
   }
 }
 
-fn normalize_size_expr_to_bound(size: SizeExpr) -> SymbolicCost {
+fn normalize_size_expr_to_bound(size: SizeExpr) -> v2.lens.cost.SymbolicCost {
   match size {
-    SizeConst { value: Zero } => zero_cost()
-    SizeConst { value: Succ { prev: Zero } } => unit_cost()
-    SizeConst { value: _ } => unit_cost()
-    SizeOf { variable: v } => LinearCost { variable: v }
-    SizeLength { of: v } => LinearCost { variable: v }
+    SizeConst { value: v2.std.nat.Zero } => v2.lens.cost.zero_cost()
+    SizeConst { value: v2.std.nat.Succ { prev: v2.std.nat.Zero } } => v2.lens.cost.unit_cost()
+    SizeConst { value: _ } => v2.lens.cost.unit_cost()
+    SizeOf { variable: v } => v2.lens.cost.LinearCost { variable: v }
+    SizeLength { of: v } => v2.lens.cost.LinearCost { variable: v }
     SizeAdd { left: l, right: r } =>
-      symbolic_sequential(
+      v2.lens.cost.symbolic_sequential(
         a: normalize_size_expr_to_bound(size: l),
         b: normalize_size_expr_to_bound(size: r)
       )
     SizeMax { left: l, right: r } =>
-      symbolic_max(
+      v2.lens.cost.symbolic_max(
         a: normalize_size_expr_to_bound(size: l),
         b: normalize_size_expr_to_bound(size: r)
       )
   }
 }
 
-fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
+fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> v2.lens.cost.SymbolicCost {
   match expr {
-    CostConst { value: Zero } => zero_cost()
-    CostConst { value: Succ { prev: Zero } } => unit_cost()
-    CostConst { value: v } => constant_cost(value: v)
+    CostConst { value: v2.std.nat.Zero } => v2.lens.cost.zero_cost()
+    CostConst { value: v2.std.nat.Succ { prev: v2.std.nat.Zero } } => v2.lens.cost.unit_cost()
+    CostConst { value: v } => v2.lens.cost.constant_cost(value: v)
     CostAdd { left: l, right: r } =>
-      symbolic_sequential(
+      v2.lens.cost.symbolic_sequential(
         a: normalize_cost_expr_to_symbolic(expr: l),
         b: normalize_cost_expr_to_symbolic(expr: r)
       )
     CostMul { left: l, right: r } =>
-      symbolic_product(
+      v2.lens.cost.symbolic_product(
         a: normalize_cost_expr_to_symbolic(expr: l),
         b: normalize_cost_expr_to_symbolic(expr: r)
       )
     CostMax { left: l, right: r } =>
-      symbolic_max(
+      v2.lens.cost.symbolic_max(
         a: normalize_cost_expr_to_symbolic(expr: l),
         b: normalize_cost_expr_to_symbolic(expr: r)
       )
     CostSum { binder: _, upper: u, body: bd } =>
-      symbolic_product(
+      v2.lens.cost.symbolic_product(
         a: normalize_size_expr_to_bound(size: u),
         b: normalize_cost_expr_to_symbolic(expr: bd)
       )
     CostLog { base: b, argument: a } =>
-      if nat_lte(a: b, b: v2.std.nat.Succ { prev: Zero }) {
+      if v2.std.nat.nat_lte(a: b, b: v2.std.nat.Succ { prev: v2.std.nat.Zero }) {
         normalize_cost_expr_to_symbolic(
           expr: CostRefused {
             cause: InvalidLogBase {
@@ -192,6 +192,6 @@ fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
         }
       )
     CostRefused { cause: c } =>
-      UnknownCost { diagnostic: cost_expr_refusal_diagnostic(cause: c) }
+      v2.lens.cost.UnknownCost { diagnostic: cost_expr_refusal_diagnostic(cause: c) }
   }
 }

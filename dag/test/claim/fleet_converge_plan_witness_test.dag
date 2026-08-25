@@ -1,24 +1,25 @@
 module test.claim.fleet_converge_plan_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_host_srv1: NonEmptyStr = "srv1" as NonEmptyStr
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data witness_host_srv2: NonEmptyStr = "srv2" as NonEmptyStr
+data witness_host_srv1: std.types.NonEmptyStr = "srv1" as std.types.NonEmptyStr
+
+data witness_host_srv2: std.types.NonEmptyStr = "srv2" as std.types.NonEmptyStr
 
 test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
-  let foreign = CapMember {
-    dropin_path: "/etc/systemd/system/foo.service.d/99-foreign.conf" as NonEmptyStr,
+  let foreign = gunbc.host_axis_caps.CapMember {
+    dropin_path: "/etc/systemd/system/foo.service.d/99-foreign.conf" as std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=1\n",
   }
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [foreign],
     observed_spark: [],
     observed_slots: [],
-    observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL cap ")
@@ -29,40 +30,40 @@ test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
 
 test fn timer_retirement_plan_lists_removed_legacy_timer() -> Bool {
   let observed = [
-    TimerRetirementMember { unit_name: "ctrl-fleet-converge.timer" as NonEmptyStr },
+    gunbc.fleet_converge_plan.TimerRetirementMember { unit_name: "ctrl-fleet-converge.timer" as std.types.NonEmptyStr },
   ]
-  let plan = timer_retirement_plan(observed: observed)
-  any(plan.actions, a => match a { MemberRemoved { at: _, from: m } => m.unit_name as String == "ctrl-fleet-converge.timer"  _ => false })
+  let plan = gunbc.fleet_converge_plan.timer_retirement_plan(observed: observed)
+  any(plan.actions, a => match a { gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => m.unit_name as String == "ctrl-fleet-converge.timer"  _ => false })
 }
 
 test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
-  let observed_cap = CapMember {
-    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+  let observed_cap = gunbc.host_axis_caps.CapMember {
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 3,
     observed_timers: [],
     observed_caps: [observed_cap],
     observed_spark: [],
     observed_slots: [],
-    observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
   ) {
     Present { value: a1 } =>
-      match fleet_converge_plan_artifact(
+      match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
         host: witness_host_srv1,
         prior_generation: 3,
         observed_timers: [],
         observed_caps: [observed_cap],
         observed_spark: [],
         observed_slots: [],
-        observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+        observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
       ) {
         Present { value: a2 } =>
-          match fleet_converge_plan_artifact_hash(artifact: a1) {
+          match gunbc.fleet_converge_plan.fleet_converge_plan_artifact_hash(artifact: a1) {
             Present { value: h1 } =>
-              match fleet_converge_plan_artifact_hash(artifact: a2) {
+              match gunbc.fleet_converge_plan.fleet_converge_plan_artifact_hash(artifact: a2) {
                 Present { value: h2 } => h1 == h2
                 Absent => false
               }
@@ -75,32 +76,32 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
 }
 
 test fn observed_baseline_cas_refuses_after_drift() -> Bool {
-  let observed_cap = CapMember {
-    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+  let observed_cap = gunbc.host_axis_caps.CapMember {
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
     observed_spark: [],
     observed_slots: [],
-    observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
   ) {
     Present { value: artifact } => {
-      let drifted = CapMember {
-        dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+      let drifted = gunbc.host_axis_caps.CapMember {
+        dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
         content: "[Service]\nMemoryMax=17179869184\n",
       }
-      !fleet_converge_observed_baseline_matches(
+      !gunbc.fleet_converge_plan.fleet_converge_observed_baseline_matches(
         host: witness_host_srv1,
         observed_baseline_hex: artifact.observed_baseline_hex,
         observed_timers: [],
         observed_caps: [drifted],
         observed_spark: [],
         observed_slots: [],
-        observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+        observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
       )
     }
     Absent => false
@@ -108,14 +109,14 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
 }
 
 test fn plan_body_names_subject_host_and_generation() -> Bool {
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 4,
     observed_timers: [],
     observed_caps: [],
     observed_spark: [],
     observed_slots: [],
-    observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "subject_host:srv1")
@@ -128,61 +129,61 @@ test fn plan_body_names_subject_host_and_generation() -> Bool {
 }
 
 test fn cross_host_apply_refuses_subject_identity() -> Bool {
-  let observed_cap = CapMember {
-    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+  let observed_cap = gunbc.host_axis_caps.CapMember {
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
     observed_spark: [],
     observed_slots: [],
-    observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
   ) {
     Present { value: artifact } =>
-      !fleet_converge_apply_subject_admits(
+      !gunbc.fleet_converge_plan.fleet_converge_apply_subject_admits(
         planned_subject: artifact.subject,
         observed_host: witness_host_srv2,
         observed_timers: [],
         observed_caps: [observed_cap],
         observed_spark: [],
         observed_slots: [],
-        observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+        observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
       )
     Absent => false
   }
 }
 
 test fn same_host_different_generation_changes_plan_hash() -> Bool {
-  let observed_cap = CapMember {
-    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+  let observed_cap = gunbc.host_axis_caps.CapMember {
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
     observed_spark: [],
     observed_slots: [],
-    observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
   ) {
     Present { value: gen0 } =>
-      match fleet_converge_plan_artifact(
+      match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
         host: witness_host_srv1,
         prior_generation: 1,
         observed_timers: [],
         observed_caps: [observed_cap],
         observed_spark: [],
         observed_slots: [],
-        observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+        observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
       ) {
         Present { value: gen1 } =>
-          match fleet_converge_plan_artifact_hash(artifact: gen0) {
+          match gunbc.fleet_converge_plan.fleet_converge_plan_artifact_hash(artifact: gen0) {
             Present { value: h0 } =>
-              match fleet_converge_plan_artifact_hash(artifact: gen1) {
+              match gunbc.fleet_converge_plan.fleet_converge_plan_artifact_hash(artifact: gen1) {
                 Present { value: h1 } => h0 != h1
                 Absent => false
               }
@@ -197,38 +198,38 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
 test fn second_concurrent_apply_refuses_generation_gate() -> Bool {
   let prior = 5
   let planned = 6
-  fleet_converge_apply_generation_admits(prior_generation: prior, store_generation: prior)
-    && !fleet_converge_apply_generation_admits(prior_generation: prior, store_generation: planned)
-    && fleet_converge_apply_generation_stale(planned_generation: planned, store_generation: planned)
+  gunbc.fleet_converge_plan.fleet_converge_apply_generation_admits(prior_generation: prior, store_generation: prior)
+    && !gunbc.fleet_converge_plan.fleet_converge_apply_generation_admits(prior_generation: prior, store_generation: planned)
+    && gunbc.fleet_converge_plan.fleet_converge_apply_generation_stale(planned_generation: planned, store_generation: planned)
 }
 
 test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
-  let observed_cap = CapMember {
-    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+  let observed_cap = gunbc.host_axis_caps.CapMember {
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
     observed_spark: [],
     observed_slots: [],
-    observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
   ) {
     Present { value: artifact } => {
-      let drifted = CapMember {
-        dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+      let drifted = gunbc.host_axis_caps.CapMember {
+        dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
         content: "[Service]\nMemoryMax=17179869184\n",
       }
-      !fleet_converge_member_set_fingerprint_matches(
-        planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+      !gunbc.fleet_converge_plan.fleet_converge_member_set_fingerprint_matches(
+        planned_fingerprint_text: std.content_hash.serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
         host: witness_host_srv1,
         observed_timers: [],
         observed_caps: [drifted],
         observed_spark: [],
         observed_slots: [],
-        observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+        observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
       )
     }
     Absent => false
@@ -236,39 +237,39 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
 }
 
 test fn plan_content_hash_path_is_apply_interlock_sidecar() -> Bool {
-  fleet_converge_plan_content_hash_path == "/tmp/fleet-converge-plan/plan_content.hex"
+  gunbc.fleet_converge_plan.fleet_converge_plan_content_hash_path == "/tmp/fleet-converge-plan/plan_content.hex"
 }
 
 test fn plan_cli_surfaces_content_hash_for_apply_dispatch() -> Bool {
-  string_contains(s: fleet_converge_plan_cli_note, pattern: "plan_content.hex")
-    && string_contains(s: fleet_converge_plan_cli_note, pattern: "plan_artifact_hash")
-    && string_contains(s: fleet_converge_plan_cli_note, pattern: "apply.sh")
+  string_contains(s: gunbc.fleet_converge_plan_cli.fleet_converge_plan_cli_note, pattern: "plan_content.hex")
+    && string_contains(s: gunbc.fleet_converge_plan_cli.fleet_converge_plan_cli_note, pattern: "plan_artifact_hash")
+    && string_contains(s: gunbc.fleet_converge_plan_cli.fleet_converge_plan_cli_note, pattern: "apply.sh")
 }
 
 test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
     observed_spark: [],
     observed_slots: [],
-    observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
   ) {
     Present { value: artifact } =>
-      match fleet_converge_plan_bundle_digest_hex(
+      match gunbc.fleet_converge_plan.fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,
         apply_shell: artifact.apply_shell,
         spark_typed_actions_wire: "",
       ) {
         Present { value: hex } =>
-          fleet_converge_plan_bundle_matches(
+          gunbc.fleet_converge_plan.fleet_converge_plan_bundle_matches(
             plan_body: artifact.plan_body,
             apply_shell: artifact.apply_shell,
             spark_typed_actions_wire: "",
             claimed_hex: hex as String,
           )
-            && !fleet_converge_plan_bundle_matches(
+            && !gunbc.fleet_converge_plan.fleet_converge_plan_bundle_matches(
               plan_body: artifact.plan_body,
               apply_shell: concat(artifact.apply_shell, "# tamper"),
               spark_typed_actions_wire: "",
@@ -281,19 +282,19 @@ test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
 }
 
 test fn parse_nonneg_generation_refuses_corrupt_and_negative() -> Bool {
-  match fleet_converge_parse_nonneg_generation_text(content: "42") {
+  match gunbc.fleet_converge_plan.fleet_converge_parse_nonneg_generation_text(content: "42") {
     Present { value: n } => n == 42
     Absent => false
   }
-    && match fleet_converge_parse_nonneg_generation_text(content: "") {
+    && match gunbc.fleet_converge_plan.fleet_converge_parse_nonneg_generation_text(content: "") {
       Absent => true
       Present { value: _ } => false
     }
-    && match fleet_converge_parse_nonneg_generation_text(content: "-1") {
+    && match gunbc.fleet_converge_plan.fleet_converge_parse_nonneg_generation_text(content: "-1") {
       Absent => true
       Present { value: _ } => false
     }
-    && match fleet_converge_parse_nonneg_generation_text(content: "abc") {
+    && match gunbc.fleet_converge_plan.fleet_converge_parse_nonneg_generation_text(content: "abc") {
       Absent => true
       Present { value: _ } => false
     }
@@ -304,16 +305,16 @@ test fn parse_nonneg_generation_refuses_corrupt_and_negative() -> Bool {
 // answer was a number. Here they are different variants, and neither of the not-observed ones
 // carries a generation at all.
 test fn generation_observation_separates_absent_from_unreadable() -> Bool {
-  match fleet_converge_generation_observation(store_present: false, content: "") {
-    GenerationStoreAbsent => true
+  match gunbc.fleet_converge_plan.fleet_converge_generation_observation(store_present: false, content: "") {
+    gunbc.fleet_converge_plan.GenerationStoreAbsent => true
     _ => false
   }
-    && match fleet_converge_generation_observation(store_present: true, content: "garbage") {
-      GenerationUnobserved { reason: _ } => true
+    && match gunbc.fleet_converge_plan.fleet_converge_generation_observation(store_present: true, content: "garbage") {
+      gunbc.fleet_converge_plan.GenerationUnobserved { reason: _ } => true
       _ => false
     }
-    && match fleet_converge_generation_observation(store_present: true, content: "7") {
-      GenerationObserved { generation: n } => n == 7
+    && match gunbc.fleet_converge_plan.fleet_converge_generation_observation(store_present: true, content: "7") {
+      gunbc.fleet_converge_plan.GenerationObserved { generation: n } => n == 7
       _ => false
     }
 }
@@ -321,42 +322,42 @@ test fn generation_observation_separates_absent_from_unreadable() -> Bool {
 // The decision, not the read, is where "no store yet" becomes a number — and an unreadable store
 // never becomes one.
 test fn generation_admission_admits_absent_as_first_and_refuses_unreadable() -> Bool {
-  match fleet_converge_generation_admission(
-    observation: fleet_converge_generation_observation(store_present: false, content: ""),
+  match gunbc.fleet_converge_plan.fleet_converge_generation_admission(
+    observation: gunbc.fleet_converge_plan.fleet_converge_generation_observation(store_present: false, content: ""),
   ) {
-    GenerationAdmitted { generation: n } => n == fleet_converge_first_generation
-    GenerationAdmissionRefused { reason: _ } => false
+    gunbc.fleet_converge_plan.GenerationAdmitted { generation: n } => n == gunbc.fleet_converge_plan.fleet_converge_first_generation
+    gunbc.fleet_converge_plan.GenerationAdmissionRefused { reason: _ } => false
   }
-    && match fleet_converge_generation_admission(
-      observation: fleet_converge_generation_observation(store_present: true, content: "garbage"),
+    && match gunbc.fleet_converge_plan.fleet_converge_generation_admission(
+      observation: gunbc.fleet_converge_plan.fleet_converge_generation_observation(store_present: true, content: "garbage"),
     ) {
-      GenerationAdmissionRefused { reason: _ } => true
-      GenerationAdmitted { generation: _ } => false
+      gunbc.fleet_converge_plan.GenerationAdmissionRefused { reason: _ } => true
+      gunbc.fleet_converge_plan.GenerationAdmitted { generation: _ } => false
     }
-    && match fleet_converge_generation_admission(
-      observation: fleet_converge_generation_observation(store_present: true, content: "9"),
+    && match gunbc.fleet_converge_plan.fleet_converge_generation_admission(
+      observation: gunbc.fleet_converge_plan.fleet_converge_generation_observation(store_present: true, content: "9"),
     ) {
-      GenerationAdmitted { generation: n } => n == 9
-      GenerationAdmissionRefused { reason: _ } => false
+      gunbc.fleet_converge_plan.GenerationAdmitted { generation: n } => n == 9
+      gunbc.fleet_converge_plan.GenerationAdmissionRefused { reason: _ } => false
     }
 }
 
 test fn locked_apply_script_serializes_generation_under_flock() -> Bool {
-  let script = fleet_converge_locked_apply_script(
+  let script = gunbc.fleet_converge_plan.fleet_converge_locked_apply_script(
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
   )
-  let inner = fleet_converge_locked_apply_inner_script(
+  let inner = gunbc.fleet_converge_plan.fleet_converge_locked_apply_inner_script(
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
   )
   string_contains(s: script, pattern: "flock")
     && string_contains(s: script, pattern: "LeaseGenerationStale")
-    && string_contains(s: script, pattern: fleet_converge_plan_apply_shell_path)
-    && inner != fleet_converge_locked_apply_emit_refused_poison
-    && script != fleet_converge_locked_apply_emit_refused_poison
+    && string_contains(s: script, pattern: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path)
+    && inner != gunbc.fleet_converge_plan.fleet_converge_locked_apply_emit_refused_poison
+    && script != gunbc.fleet_converge_plan.fleet_converge_locked_apply_emit_refused_poison
 }
 
 // THE INNER PROGRAM ENTERS THE OUTER ONE AS A WORD, NOT AS SPLICED TEXT, and that is what these
@@ -365,17 +366,17 @@ test fn locked_apply_script_serializes_generation_under_flock() -> Bool {
 // have produced — is NOT a substring of the emitted script. That second clause is the RED: it
 // fails the moment anyone reintroduces the splice.
 test fn locked_apply_inner_program_is_quoted_not_spliced() -> Bool {
-  let inner = fleet_converge_locked_apply_inner_script(
+  let inner = gunbc.fleet_converge_plan.fleet_converge_locked_apply_inner_script(
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
   )
-  let script = fleet_converge_locked_apply_script(
+  let script = gunbc.fleet_converge_plan.fleet_converge_locked_apply_script(
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
   )
-  string_contains(s: script, pattern: posix_single_quote(spelling: inner))
+  string_contains(s: script, pattern: extdeps.posix.shell_command_language.posix_single_quote(spelling: inner))
     && !string_contains(s: script, pattern: concat("'", concat(inner, "'")))
 }
 
@@ -384,49 +385,49 @@ test fn locked_apply_inner_program_is_quoted_not_spliced() -> Bool {
 // generation zero; the default now comes from fleet_converge_first_generation and the store is
 // read only where it exists.
 test fn locked_apply_guard_does_not_coerce_an_unreadable_store_to_zero() -> Bool {
-  let inner = fleet_converge_locked_apply_inner_script(
+  let inner = gunbc.fleet_converge_plan.fleet_converge_locked_apply_inner_script(
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
   )
   !string_contains(s: inner, pattern: "|| echo 0")
     && !string_contains(s: inner, pattern: "2>/dev/null")
     && string_contains(s: inner, pattern: "-e")
-    && string_contains(s: inner, pattern: to_string(fleet_converge_first_generation))
+    && string_contains(s: inner, pattern: to_string(gunbc.fleet_converge_plan.fleet_converge_first_generation))
 }
 
 // The operands the emitted comparison uses are the modelled ones. The comparison is still spelled
 // twice (see fleet_converge_locked_apply_current_var's note); this witness is what keeps the two
 // spellings from drifting apart silently.
 test fn locked_apply_guard_compares_the_modelled_prior_generation() -> Bool {
-  let inner = fleet_converge_locked_apply_inner_script(
+  let inner = gunbc.fleet_converge_plan.fleet_converge_locked_apply_inner_script(
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
   )
   string_contains(s: inner, pattern: to_string(4))
     && string_contains(s: inner, pattern: "planned=5")
-    && !fleet_converge_apply_generation_admits(prior_generation: 4, store_generation: 5)
-    && fleet_converge_apply_generation_admits(prior_generation: 4, store_generation: 4)
+    && !gunbc.fleet_converge_plan.fleet_converge_apply_generation_admits(prior_generation: 4, store_generation: 5)
+    && gunbc.fleet_converge_plan.fleet_converge_apply_generation_admits(prior_generation: 4, store_generation: 4)
 }
 
 test fn subject_host_matches_same_host() -> Bool {
-  fleet_converge_apply_subject_host_matches(planned_host: witness_host_srv1, observed_host: witness_host_srv1)
+  gunbc.fleet_converge_plan.fleet_converge_apply_subject_host_matches(planned_host: witness_host_srv1, observed_host: witness_host_srv1)
 }
 
 test fn subject_host_matches_refuses_cross_host() -> Bool {
-  !fleet_converge_apply_subject_host_matches(planned_host: witness_host_srv1, observed_host: witness_host_srv2)
+  !gunbc.fleet_converge_plan.fleet_converge_apply_subject_host_matches(planned_host: witness_host_srv1, observed_host: witness_host_srv2)
 }
 
 test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
     observed_spark: [],
     observed_slots: [],
-    observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.apply_shell, pattern: "dissolve-on: fleet_converge_apply_shell")
@@ -443,14 +444,15 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
 // arguments it renders `observed= 4`, which reads as an empty observation followed by a
 // number — precisely the confusion this PR removes from the guard itself (review 54519).
 test fn locked_apply_stale_diagnostic_keeps_observed_value_in_one_word() -> Bool {
-  let inner = fleet_converge_locked_apply_inner_script(
+  let inner = gunbc.fleet_converge_plan.fleet_converge_locked_apply_inner_script(
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
   )
   !string_contains(s: inner, pattern: "observed= ")
     && string_contains(s: inner, pattern: "observed=")
 }
+
 
 // --- the slot family: the third member family joins plan and apply -----------------------------
 
@@ -458,13 +460,13 @@ test fn locked_apply_stale_diagnostic_keeps_observed_value_in_one_word() -> Bool
 // discriminating RED for the arm: an empty section reads to a reviewer as "this axis is converged",
 // which is the exact opposite of what an unresolvable host means.
 test fn an_unmodeled_host_refuses_in_the_slot_section() -> Bool {
-  let lines = fleet_converge_slot_lines(
-    host: "srv-nonexistent" as NonEmptyStr,
+  let lines = gunbc.fleet_converge_plan.fleet_converge_slot_lines(
+    host: "srv-nonexistent" as std.types.NonEmptyStr,
     observed_slots: [],
   )
   any(lines, l => string_contains(s: l, pattern: "REFUSED-UNMODELED-HOST runner-slot"))
-    && fleet_converge_slot_refusal_count(
-         host: "srv-nonexistent" as NonEmptyStr,
+    && gunbc.fleet_converge_plan.fleet_converge_slot_refusal_count(
+         host: "srv-nonexistent" as std.types.NonEmptyStr,
          observed_slots: [],
        ) == 1
 }
@@ -472,7 +474,7 @@ test fn an_unmodeled_host_refuses_in_the_slot_section() -> Bool {
 // THE POSITIVE CONTROL, without which the row above is satisfied by a family that refuses always.
 // srv1 is modeled and carries a committed width, so an empty observation must propose ADDs.
 test fn a_modeled_host_proposes_the_slots_it_is_missing() -> Bool {
-  let lines = fleet_converge_slot_lines(host: witness_host_srv1, observed_slots: [])
+  let lines = gunbc.fleet_converge_plan.fleet_converge_slot_lines(host: witness_host_srv1, observed_slots: [])
   any(lines, l => string_contains(s: l, pattern: "ADD runner-slot srv1-01"))
     && (any(lines, l => string_contains(s: l, pattern: "REFUSED-UNMODELED-HOST")) == false)
 }
@@ -482,9 +484,9 @@ test fn a_modeled_host_proposes_the_slots_it_is_missing() -> Bool {
 // Absent and reconcile must produce MemberRemovalRefused. A plan that silently emitted REMOVE here
 // would delete a stranger's directory on apply.
 test fn an_unowned_observed_slot_is_refused_removal_not_removed() -> Bool {
-  let lines = fleet_converge_slot_lines(
+  let lines = gunbc.fleet_converge_plan.fleet_converge_slot_lines(
     host: witness_host_srv1,
-    observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv1-99")],
+    observed_slots: [gunbc.runner_slot_provision.runner_slot_member_from_instance_name(instance_name: "srv1-99")],
   )
   any(lines, l => string_contains(s: l, pattern: "REFUSED-REMOVAL runner-slot srv1-99"))
     && (any(lines, l => string_contains(s: l, pattern: "REMOVE runner-slot srv1-99")) == false)
@@ -495,14 +497,14 @@ test fn an_unowned_observed_slot_is_refused_removal_not_removed() -> Bool {
 // in it, and the plan body must name the same axis, so a reviewer approving plan.txt is approving
 // what apply runs.
 test fn a_slot_add_reaches_the_emitted_apply_script() -> Bool {
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
     observed_spark: [],
     observed_slots: [],
-    observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "ADD runner-slot srv1-01")
@@ -517,33 +519,33 @@ test fn a_slot_add_reaches_the_emitted_apply_script() -> Bool {
 // between plan and apply fails the member-set gate instead of applying a stale plan. Without this
 // the slot family would be rendered in the plan and unprotected by the CAS that guards the others.
 test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
-  match fleet_converge_plan_artifact(
+  match gunbc.fleet_converge_plan.fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
     observed_spark: [],
     observed_slots: [],
-    observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
   ) {
     Present { value: artifact } =>
-      fleet_converge_member_set_fingerprint_matches(
-        planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+      gunbc.fleet_converge_plan.fleet_converge_member_set_fingerprint_matches(
+        planned_fingerprint_text: std.content_hash.serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
         host: witness_host_srv1,
         observed_timers: [],
         observed_caps: [],
         observed_spark: [],
         observed_slots: [],
-        observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+        observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
       )
-      && (fleet_converge_member_set_fingerprint_matches(
-        planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+      && (gunbc.fleet_converge_plan.fleet_converge_member_set_fingerprint_matches(
+        planned_fingerprint_text: std.content_hash.serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
         host: witness_host_srv1,
         observed_timers: [],
         observed_caps: [],
         observed_spark: [],
-        observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv1-01")],
-        observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+        observed_slots: [gunbc.runner_slot_provision.runner_slot_member_from_instance_name(instance_name: "srv1-01")],
+        observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
       ) == false)
     Absent => false
   }
@@ -558,8 +560,8 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
 // patterns through the same quoting authority the emitter uses.
 fn sudo_n_word(spelling: String) -> String {
   concat(
-    posix_single_quote(spelling: "sudo"),
-    concat(" ", concat(posix_single_quote(spelling: "-n"), concat(" ", posix_single_quote(spelling: spelling)))),
+    extdeps.posix.shell_command_language.posix_single_quote(spelling: "sudo"),
+    concat(" ", concat(extdeps.posix.shell_command_language.posix_single_quote(spelling: "-n"), concat(" ", extdeps.posix.shell_command_language.posix_single_quote(spelling: spelling)))),
   )
 }
 
@@ -571,28 +573,28 @@ fn sudo_n_word(spelling: String) -> String {
 // restatement of the closed vocabulary, because these emitters build words from strings and the
 // vocabulary can only constrain the ones routed through its accessor.
 test fn lease_guard_sudoes_only_granted_binaries() -> Bool {
-  let script = fleet_converge_locked_apply_script(
+  let script = gunbc.fleet_converge_plan.fleet_converge_locked_apply_script(
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: gunbc.fleet_converge_plan.fleet_converge_plan_apply_shell_path,
   )
-  string_contains(s: script, pattern: sudo_n_word(spelling: ci_runner_sudo_binary_path(b: SudoInstall) as String))
+  string_contains(s: script, pattern: sudo_n_word(spelling: gunbc.fleet_posix_accounts.ci_runner_sudo_binary_path(b: gunbc.fleet_posix_accounts.SudoInstall) as String))
     && !string_contains(s: script, pattern: sudo_n_word(spelling: "mkdir"))
     && !string_contains(s: script, pattern: sudo_n_word(spelling: "flock"))
-    && string_contains(s: script, pattern: posix_single_quote(spelling: "flock"))
+    && string_contains(s: script, pattern: extdeps.posix.shell_command_language.posix_single_quote(spelling: "flock"))
 }
 
 // PRIVILEGE IS SPENT ONCE AND ON OWNERSHIP. The RED here is the pair of ungranted verbs; the
 // positive control is that the directory is created already owned by the job principal, which is
 // what makes the extract and the cleanup after it unprivileged rather than merely un-sudo-ed.
 test fn slot_extract_sudoes_only_granted_binaries() -> Bool {
-  let sc = actions_runner_slot_extract_script(
-    artifact: ActionsRunnerBinaryArtifact {
-      binary_release: actions_runner_release_2_334_0,
-      arch: ActionsRunnerLinuxArm64,
+  let sc = extdeps.github.actions_runner.actions_runner_slot_extract_script(
+    artifact: extdeps.github.actions_runner.ActionsRunnerBinaryArtifact {
+      binary_release: extdeps.github.actions_runner.actions_runner_release_2_334_0,
+      arch: extdeps.github.actions_runner.ActionsRunnerLinuxArm64,
     },
-    slot_dir: "/opt/actions-runner/srv3-09" as NonEmptyStr,
-    job_user: "ghrunner" as NonEmptyStr,
+    slot_dir: "/opt/actions-runner/srv3-09" as std.types.NonEmptyStr,
+    job_user: "ghrunner" as std.types.NonEmptyStr,
   )
   !string_contains(s: sc, pattern: "sudo tar")
     && !string_contains(s: sc, pattern: "sudo chown")
@@ -603,11 +605,11 @@ test fn slot_extract_sudoes_only_granted_binaries() -> Bool {
 // THE ROSTER ITSELF STAYS DERIVED. Six members, each carrying the path its vocabulary member
 // names -- so a grant authored beside the vocabulary instead of from it goes red here.
 test fn ci_runner_grants_derive_from_the_closed_vocabulary() -> Bool {
-  let grants = fleet_posix_ci_runner_sudo_grants()
+  let grants = gunbc.fleet_posix_accounts.fleet_posix_ci_runner_sudo_grants()
   length(xs: grants) == 6
-    && any(xs: grants, predicate: fn(g) { g.command_path == ci_runner_sudo_binary_path(b: SudoInstall) })
-    && any(xs: grants, predicate: fn(g) { g.command_path == ci_runner_sudo_binary_path(b: SudoRm) })
-    && any(xs: grants, predicate: fn(g) { g.command_path == ci_runner_sudo_binary_path(b: SudoSystemctl) })
+    && any(xs: grants, predicate: fn(g) { g.command_path == gunbc.fleet_posix_accounts.ci_runner_sudo_binary_path(b: gunbc.fleet_posix_accounts.SudoInstall) })
+    && any(xs: grants, predicate: fn(g) { g.command_path == gunbc.fleet_posix_accounts.ci_runner_sudo_binary_path(b: gunbc.fleet_posix_accounts.SudoRm) })
+    && any(xs: grants, predicate: fn(g) { g.command_path == gunbc.fleet_posix_accounts.ci_runner_sudo_binary_path(b: gunbc.fleet_posix_accounts.SudoSystemctl) })
 }
 
 
@@ -616,8 +618,8 @@ test fn ci_runner_grants_derive_from_the_closed_vocabulary() -> Bool {
 // than merely threaded through it.
 // ---------------------------------------------------------------------------------------------
 
-fn fabric_witness_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
+fn fabric_witness_slot() -> gunbc.build_cache_instance.RunnerSlotIdentity {
+  gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv3, slot_index: 6 }
 }
 
 // THESE POPULATIONS ARE OBSERVED THROUGH THE FOLD, NOT ASSERTED BY LITERAL, AND THE CHANGE IS THE
@@ -627,30 +629,30 @@ fn fabric_witness_slot() -> RunnerSlotIdentity {
 // from "not read", asserted for free by the test that is supposed to prove the separation holds.
 // `FabricCellObservedMembers` is now `sole_constructor`, so this module CANNOT write that literal;
 // both fixtures below build a real `FabricCellReadback` and run the same fold production runs.
-fn fabric_cell_readback_all_absent() -> FabricCellReadback {
-  FabricCellReadback {
+fn fabric_cell_readback_all_absent() -> gunbc.fabric_cell_converge.FabricCellReadback {
+  gunbc.fabric_cell_converge.FabricCellReadback {
     slot: fabric_witness_slot(),
     observations: map(
-      fabric_cell_resource_addresses(),
-      a => AddressAbsent { slot: fabric_witness_slot(), address: a },
+      gunbc.fabric_cell_converge.fabric_cell_resource_addresses(),
+      a => gunbc.fabric_cell_converge.AddressAbsent { slot: fabric_witness_slot(), address: a },
     ),
   }
 }
 
-fn fabric_cell_readback_all_present() -> FabricCellReadback {
-  FabricCellReadback {
+fn fabric_cell_readback_all_present() -> gunbc.fabric_cell_converge.FabricCellReadback {
+  gunbc.fabric_cell_converge.FabricCellReadback {
     slot: fabric_witness_slot(),
     observations: map(
-      fabric_cell_desired_members(host: operator_host_srv3),
-      m => AddressObserved { member: m },
+      gunbc.fabric_cell_converge.fabric_cell_desired_members(host: gunbc.fleet_intent_network.operator_host_srv3),
+      m => gunbc.fabric_cell_converge.AddressObserved { member: m },
     ),
   }
 }
 
-fn fabric_cells_observed_converged() -> FabricCellPopulation {
-  fabric_cell_population(
-    readback: FabricCellHostReadback {
-      host: operator_host_srv3,
+fn fabric_cells_observed_converged() -> gunbc.fabric_cell_converge.FabricCellPopulation {
+  gunbc.fabric_cell_converge.fabric_cell_population(
+    readback: gunbc.fabric_cell_converge.FabricCellHostReadback {
+      host: gunbc.fleet_intent_network.operator_host_srv3,
       cell_readbacks: [fabric_cell_readback_all_present()],
     }
   )
@@ -660,19 +662,19 @@ fn fabric_cells_observed_converged() -> FabricCellPopulation {
 // the only route to observed-empty. Contrast the zero-observation readback, which is
 // ObservationRefused and covered by witness_fabric_cell_empty_readback_is_observation_refused in
 // the model suite: read-and-empty plans every member, unread plans nothing.
-fn fabric_cells_observed_empty() -> FabricCellPopulation {
-  fabric_cell_population(
-    readback: FabricCellHostReadback {
-      host: operator_host_srv3,
+fn fabric_cells_observed_empty() -> gunbc.fabric_cell_converge.FabricCellPopulation {
+  gunbc.fabric_cell_converge.fabric_cell_population(
+    readback: gunbc.fabric_cell_converge.FabricCellHostReadback {
+      host: gunbc.fleet_intent_network.operator_host_srv3,
       cell_readbacks: [fabric_cell_readback_all_absent()],
     }
   )
 }
 
-fn fabric_fingerprint_with(population: FabricCellPopulation) -> String {
-  serialize_content_hash(
-    hash: fleet_converge_member_set_fingerprint(
-      host: "srv3" as NonEmptyStr,
+fn fabric_fingerprint_with(population: gunbc.fabric_cell_converge.FabricCellPopulation) -> String {
+  std.content_hash.serialize_content_hash(
+    hash: gunbc.fleet_converge_plan.fleet_converge_member_set_fingerprint(
+      host: "srv3" as std.types.NonEmptyStr,
       observed_timers: [],
       observed_caps: [],
       observed_spark: [],
@@ -725,17 +727,17 @@ test fn witness_fabric_cell_population_moves_the_member_set_fingerprint() -> Boo
 // member set, and a plan would refuse to admit against a substrate that had not moved. A real
 // observer walking a directory offers no order guarantee, so this property is needed BEFORE the
 // observer lands, not after it starts producing permutations.
-fn fabric_cell_readback_all_present_reversed() -> FabricCellReadback {
-  FabricCellReadback {
+fn fabric_cell_readback_all_present_reversed() -> gunbc.fabric_cell_converge.FabricCellReadback {
+  gunbc.fabric_cell_converge.FabricCellReadback {
     slot: fabric_witness_slot(),
     observations: reverse(fabric_cell_readback_all_present().observations),
   }
 }
 
-fn fabric_cells_observed_converged_reversed() -> FabricCellPopulation {
-  fabric_cell_population(
-    readback: FabricCellHostReadback {
-      host: operator_host_srv3,
+fn fabric_cells_observed_converged_reversed() -> gunbc.fabric_cell_converge.FabricCellPopulation {
+  gunbc.fabric_cell_converge.fabric_cell_population(
+    readback: gunbc.fabric_cell_converge.FabricCellHostReadback {
+      host: gunbc.fleet_intent_network.operator_host_srv3,
       cell_readbacks: [fabric_cell_readback_all_present_reversed()],
     }
   )
@@ -755,7 +757,7 @@ test fn witness_fabric_cell_fingerprint_is_stable_under_observation_order() -> B
 // approved under one admits under the other. The refused arm contributes its own baseline row
 // precisely so this comparison can fail.
 test fn witness_fabric_cell_unreadable_population_is_not_an_empty_one() -> Bool {
-  fabric_fingerprint_with(population: fabric_cell_population_unobserved(host: operator_host_srv3))
+  fabric_fingerprint_with(population: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3))
     != fabric_fingerprint_with(population: fabric_cells_observed_empty())
 }
 
@@ -771,26 +773,26 @@ test fn witness_fabric_cell_unreadable_population_is_not_an_empty_one() -> Bool 
 // provisioning; one answering clean ADDs it cannot perform is the fabricated plausible output at the
 // actuation seam.
 test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool {
-  let refused_lines = fleet_converge_fabric_cell_lines(
-    host: "srv3" as NonEmptyStr,
-    observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+  let refused_lines = gunbc.fleet_converge_plan.fleet_converge_fabric_cell_lines(
+    host: "srv3" as std.types.NonEmptyStr,
+    observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
   )
-  let empty_lines = fleet_converge_fabric_cell_lines(
-    host: "srv3" as NonEmptyStr,
+  let empty_lines = gunbc.fleet_converge_plan.fleet_converge_fabric_cell_lines(
+    host: "srv3" as std.types.NonEmptyStr,
     observed_fabric_cells: fabric_cells_observed_empty(),
   )
-  list_length(items: refused_lines) == 1
-    && list_length(items: empty_lines) == 3
-    && fleet_converge_fabric_cell_refusal_count(
-        host: "srv3" as NonEmptyStr,
-        observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+  std.types.list_length(items: refused_lines) == 1
+    && std.types.list_length(items: empty_lines) == 3
+    && gunbc.fleet_converge_plan.fleet_converge_fabric_cell_refusal_count(
+        host: "srv3" as std.types.NonEmptyStr,
+        observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3),
       ) == 1
-    && fleet_converge_fabric_cell_refusal_count(
-        host: "srv3" as NonEmptyStr,
+    && gunbc.fleet_converge_plan.fleet_converge_fabric_cell_refusal_count(
+        host: "srv3" as std.types.NonEmptyStr,
         observed_fabric_cells: fabric_cells_observed_converged(),
       ) == 0
-    && fleet_converge_fabric_cell_refusal_count(
-        host: "srv3" as NonEmptyStr,
+    && gunbc.fleet_converge_plan.fleet_converge_fabric_cell_refusal_count(
+        host: "srv3" as std.types.NonEmptyStr,
         observed_fabric_cells: fabric_cells_observed_empty(),
       ) == 3
 }
@@ -798,9 +800,9 @@ test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool
 // A CONVERGED CELL PRODUCES NO ACTION. Without this row the family could be answering "add
 // everything" unconditionally and every other row here would still pass.
 test fn witness_fabric_cell_converged_population_plans_nothing() -> Bool {
-  list_length(
-    items: fleet_converge_fabric_cell_lines(
-      host: "srv3" as NonEmptyStr,
+  std.types.list_length(
+    items: gunbc.fleet_converge_plan.fleet_converge_fabric_cell_lines(
+      host: "srv3" as std.types.NonEmptyStr,
       observed_fabric_cells: fabric_cells_observed_converged(),
     )
   ) == 0
@@ -816,25 +818,25 @@ test fn witness_fabric_cell_converged_population_plans_nothing() -> Bool {
 // absent and srv4's three as extras, so the plan was a full install plus a full teardown against a
 // host nobody read, with nothing refused and a refusal count that counted the actions as ordinary
 // work. The count assertion below is what separates "refused" from "planned six things".
-fn fabric_cells_observed_on_srv4() -> FabricCellPopulation {
-  fabric_cell_population(
-    readback: FabricCellHostReadback {
-      host: operator_host_srv4,
+fn fabric_cells_observed_on_srv4() -> gunbc.fabric_cell_converge.FabricCellPopulation {
+  gunbc.fabric_cell_converge.fabric_cell_population(
+    readback: gunbc.fabric_cell_converge.FabricCellHostReadback {
+      host: gunbc.fleet_intent_network.operator_host_srv4,
       cell_readbacks: [],
     }
   )
 }
 
 test fn witness_fabric_cell_population_from_another_host_is_refused_not_reconciled() -> Bool {
-  let lines = fleet_converge_fabric_cell_lines(
-    host: "srv3" as NonEmptyStr,
+  let lines = gunbc.fleet_converge_plan.fleet_converge_fabric_cell_lines(
+    host: "srv3" as std.types.NonEmptyStr,
     observed_fabric_cells: fabric_cells_observed_on_srv4(),
   )
-  let count = fleet_converge_fabric_cell_refusal_count(
-    host: "srv3" as NonEmptyStr,
+  let count = gunbc.fleet_converge_plan.fleet_converge_fabric_cell_refusal_count(
+    host: "srv3" as std.types.NonEmptyStr,
     observed_fabric_cells: fabric_cells_observed_on_srv4(),
   )
-  list_length(items: lines) == 1
+  std.types.list_length(items: lines) == 1
     && count == 1
     && fabric_fingerprint_with(population: fabric_cells_observed_on_srv4())
         != fabric_fingerprint_with(population: fabric_cells_observed_empty())
@@ -856,35 +858,35 @@ test fn witness_fabric_cell_population_from_another_host_is_refused_not_reconcil
 // fingerprint would also be satisfied by dropping the whole row, which would make every refused
 // address hash identically and lose the property an earlier review asked for. Two DIFFERENT
 // addresses refusing must still differ.
-fn refused_root_readback(cause: String) -> FabricCellReadback {
-  FabricCellReadback {
+fn refused_root_readback(cause: String) -> gunbc.fabric_cell_converge.FabricCellReadback {
+  gunbc.fabric_cell_converge.FabricCellReadback {
     slot: fabric_witness_slot(),
     observations: [
-      AddressObservationRefused {
+      gunbc.fabric_cell_converge.AddressObservationRefused {
         slot: fabric_witness_slot(),
-        address: FabricCellRootAddress,
+        address: gunbc.fabric_cell_converge.FabricCellRootAddress,
         cause: cause,
       }
     ],
   }
 }
 
-fn refused_boundary_readback(cause: String) -> FabricCellReadback {
-  FabricCellReadback {
+fn refused_boundary_readback(cause: String) -> gunbc.fabric_cell_converge.FabricCellReadback {
+  gunbc.fabric_cell_converge.FabricCellReadback {
     slot: fabric_witness_slot(),
     observations: [
-      AddressObservationRefused {
+      gunbc.fabric_cell_converge.AddressObservationRefused {
         slot: fabric_witness_slot(),
-        address: FabricCellResourceBoundaryAddress,
+        address: gunbc.fabric_cell_converge.FabricCellResourceBoundaryAddress,
         cause: cause,
       }
     ],
   }
 }
 
-fn fabric_population_of(entries: List<FabricCellReadback>) -> FabricCellPopulation {
-  fabric_cell_population(
-    readback: FabricCellHostReadback { host: operator_host_srv3, cell_readbacks: entries }
+fn fabric_population_of(entries: List<gunbc.fabric_cell_converge.FabricCellReadback>) -> gunbc.fabric_cell_converge.FabricCellPopulation {
+  gunbc.fabric_cell_converge.fabric_cell_population(
+    readback: gunbc.fabric_cell_converge.FabricCellHostReadback { host: gunbc.fleet_intent_network.operator_host_srv3, cell_readbacks: entries }
   )
 }
 

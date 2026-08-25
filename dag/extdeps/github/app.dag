@@ -3,21 +3,21 @@ module extdeps.github.app
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/rest/apps/apps"
   }
 }
 
 data installation_auth_citation: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation"
   }
 }
 
 data private_key_citation: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/managing-private-keys-for-github-apps"
   }
 }
@@ -100,7 +100,7 @@ fn permission_axis_wire_name(axis: GitHubPermissionAxis) -> std.types.NonEmptySt
 }
 
 fn permission_axis_from_wire(name: std.types.NonEmptyStr) -> GitHubPermissionAxis? {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: all_permission_axes,
     empty: none,
     cons: fn(found, axis) {
@@ -204,7 +204,7 @@ fn permission_name_occurrences(
   perms: List<GitHubAppPermission>,
   name: GitHubPermissionAxis
 ) -> Int {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: perms,
     empty: 0,
     cons: fn(n, p) { if permission_name_eq(a: p.name, b: name) { n + 1 } else { n } }
@@ -212,7 +212,7 @@ fn permission_name_occurrences(
 }
 
 fn first_duplicated_permission(perms: List<GitHubAppPermission>) -> GitHubAppPermission? {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: perms,
     empty: none,
     cons: fn(found, p) {
@@ -281,7 +281,7 @@ fn requested_permissions(
 }
 
 fn authored_subset_of(perms: List<ObservedGitHubPermission>) -> AuthoredPermissionProjection {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: perms,
     empty: AuthoredPermissions { permissions: [] },
     cons: fn(acc, p) {
@@ -304,7 +304,7 @@ fn permission_access_in(
   perms: List<GitHubAppPermission>,
   name: GitHubPermissionAxis
 ) -> GitHubAppPermissionAccess? {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: perms,
     empty: none,
     cons: fn(found, p) {
@@ -329,7 +329,7 @@ fn permission_narrowing_verdict(
     UnknownPermissionWireName { wire_name } =>
       NarrowingUnverifiable { unknown_wire_name: wire_name }
     AuthoredPermissions { permissions } =>
-      v2.std.algebra.fold_list(
+      fold_list(
         xs: permissions,
         empty: NarrowingWithinInstallation,
         cons: fn(verdict, r) {
@@ -383,15 +383,15 @@ fn sha256_base64_key_fingerprint(digest: std.types.NonEmptyStr) -> GitHubAppPubl
 
 fn key_fingerprint_eq(a: GitHubAppPublicKeyFingerprint, b: GitHubAppPublicKeyFingerprint) -> Bool {
   match a.algorithm {
-    Sha256 => match b.algorithm {
-      Sha256 => match a.encoding {
+    extdeps.crypto.hash.Sha256 => match b.algorithm {
+      extdeps.crypto.hash.Sha256 => match a.encoding {
         FingerprintBase64 => match b.encoding {
           FingerprintBase64 => a.digest == b.digest
         }
       }
-      Sha512 => false
+      extdeps.crypto.hash.Sha512 => false
     }
-    Sha512 => false
+    extdeps.crypto.hash.Sha512 => false
   }
 }
 
@@ -400,12 +400,12 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.app",
       decl_name: "GitHubAppRegistration",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.github.app.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [
-    extdeps.github.app.installation_auth_citation,
-    extdeps.github.app.private_key_citation
+    installation_auth_citation,
+    private_key_citation
   ]
 }

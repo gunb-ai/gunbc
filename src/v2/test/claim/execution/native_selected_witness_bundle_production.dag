@@ -7,18 +7,18 @@ fn selected_logic_process_spec_for(
   plan: std.selected_witness_bundle.SelectedWitnessPlan,
   members: List<v2.compiler.emit_module.EmitFamilyMember>,
   primary: Bool
-) -> Outcome<v2.compiler.native_selected_bundle_process.NativeSelectedBundleProcessSpec> {
-  let target = rust_logic_selected_bundle_target_model_staging()
-  match emit_family(members: members, transport_target: target) {
-    Accepted { value: source, diagnostics: _ } => match runtime_row_from_target(target: target) {
-      Accepted { value: row, diagnostics: _ } => match build_invocation_argvs(
+) -> v2.std.diagnostic.Outcome<v2.compiler.native_selected_bundle_process.NativeSelectedBundleProcessSpec> {
+  let target = v2.extdeps.languages.rust_test.rust_logic_selected_bundle_target_model_staging()
+  match v2.compiler.emit_module.emit_family(members: members, transport_target: target) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => match v2.std.compilers.target_model.runtime_row_from_target(target: target) {
+      v2.std.diagnostic.Accepted { value: row, diagnostics: _ } => match v2.compiler.emit_host.build_invocation_argvs(
         builds: row.transport.build
       ) {
-        Accepted { value: builds, diagnostics: _ } => match invocation_argv(
+        v2.std.diagnostic.Accepted { value: builds, diagnostics: _ } => match v2.compiler.emit_host.invocation_argv(
           inv: row.transport.run
         ) {
-          Accepted { value: run, diagnostics: _ } => {
-            let files = emit_host_materialized_workspace_files(
+          v2.std.diagnostic.Accepted { value: run, diagnostics: _ } => {
+            let files = v2.compiler.emit_host.emit_host_materialized_workspace_files(
               workspace: row.transport.workspace,
               emitted: source.carried
             )
@@ -27,14 +27,14 @@ fn selected_logic_process_spec_for(
               structural: bundle.identity.structural_fingerprint
             )
             let workspace_root = extdeps.realization.emit_on_demand_host.native_cache_workspace_root(
-              cache_root: selected_logic_bundle_cache_root,
+              cache_root: v2.test.execution.native_selected_witness_bundle.selected_logic_bundle_cache_root,
               key: bundle_key
             )
             v2.std.diagnostic.Accepted {
               value: v2.compiler.native_selected_bundle_process.NativeSelectedBundleProcessSpec {
                 workspace_dir: extdeps.realization.emit_on_demand_host.native_cache_realization_workspace_root(
                   workspace_root: workspace_root,
-                  realization_digest: emit_host_input_realization_digest(
+                  realization_digest: v2.compiler.emit_host.emit_host_input_realization_digest(
                     files: files,
                     builds: builds
                   )
@@ -46,45 +46,45 @@ fn selected_logic_process_spec_for(
                 files: files
                 build: builds
                 run: run
-                expected_stdout_octets: selected_logic_expected_stdout_octets(primary: primary)
+                expected_stdout_octets: v2.test.execution.native_selected_witness_bundle.selected_logic_expected_stdout_octets(primary: primary)
               },
               diagnostics: v2.std.diagnostic.None
             }
           }
-          Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+          v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
         }
-        Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
       }
-      Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
     }
-    Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
-fn native_selected_logic_production_spec() -> Outcome<v2.compiler.native_selected_bundle_process.NativeSelectedBundleProcessSpec> {
+fn native_selected_logic_production_spec() -> v2.std.diagnostic.Outcome<v2.compiler.native_selected_bundle_process.NativeSelectedBundleProcessSpec> {
   selected_logic_process_spec_for(
-    plan: selected_logic_primary_plan(),
-    members: family_crate_members(),
+    plan: v2.test.execution.native_selected_witness_bundle.selected_logic_primary_plan(),
+    members: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_members(),
     primary: true
   )
 }
 
-fn native_selected_logic_planted_red_spec() -> Outcome<v2.compiler.native_selected_bundle_process.NativeSelectedBundleProcessSpec> {
+fn native_selected_logic_planted_red_spec() -> v2.std.diagnostic.Outcome<v2.compiler.native_selected_bundle_process.NativeSelectedBundleProcessSpec> {
   selected_logic_process_spec_for(
-    plan: selected_logic_alt_plan(),
-    members: family_crate_alt_members(),
+    plan: v2.test.execution.native_selected_witness_bundle.selected_logic_alt_plan(),
+    members: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_alt_members(),
     primary: false
   )
 }
 
 fn native_selected_logic_interpreter_oracle_holds() -> Bool {
-  native_selected_witness_bundle_interpreter_meet_green_holds()
-    && native_selected_witness_bundle_interpreter_join_green_holds()
-    && native_selected_witness_bundle_interpreter_complement_green_holds()
+  v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_meet_green_holds()
+    && v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_join_green_holds()
+    && v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_complement_green_holds()
 }
 
 fn native_selected_logic_planted_red_oracle_holds() -> Bool {
-  native_selected_witness_bundle_interpreter_meet_wrong_body_oracle_holds()
-    && native_selected_witness_bundle_interpreter_join_wrong_body_oracle_holds()
-    && native_selected_witness_bundle_interpreter_complement_wrong_body_oracle_holds()
+  v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_meet_wrong_body_oracle_holds()
+    && v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_join_wrong_body_oracle_holds()
+    && v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_complement_wrong_body_oracle_holds()
 }

@@ -1,6 +1,7 @@
 module test.claim.map_key_derive_requirement_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // Executing floor witness for the USAGE-DERIVED half of v1.compiler.trait_derive_emit derive selection
 // (v1.compiler.trait_derive_emit v1_with_map_key_requirement). compile_dag_rust_emit_check is the

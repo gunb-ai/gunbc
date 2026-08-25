@@ -3,14 +3,14 @@ module extdeps.auth.oidc
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "openid.net/specs/openid-connect-core-1_0.html"
   }
 }
 
 data oidc_amr_external_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "datatracker.ietf.org/doc/html/rfc8176"
   }
 }
@@ -52,14 +52,14 @@ fn oidc_amr_of_wire(raw: std.types.NonEmptyStr) -> OidcAmrDecode {
   } else if s == amr_otp_wire {
     AmrDecoded { method: AmrOneTimePassword }
   } else {
-    match jwt_string_or_uri_of_wire(raw: raw) {
-      StringOrUriRefused { raw: bad, reason } =>
+    match extdeps.auth.jwt.jwt_string_or_uri_of_wire(raw: raw) {
+      extdeps.auth.jwt.StringOrUriRefused { raw: bad, reason } =>
         AmrRefused { raw: bad, reason: reason }
-      StringOrUriDecoded { value } =>
+      extdeps.auth.jwt.StringOrUriDecoded { value } =>
         match value {
-          JwtBareString { value: name } =>
+          extdeps.auth.jwt.JwtBareString { value: name } =>
             AmrDecoded { method: AmrUnregisteredName { name: name } }
-          JwtUriString { value: _, scheme: _ } =>
+          extdeps.auth.jwt.JwtUriString { value: _, scheme: _ } =>
             AmrDecoded { method: AmrUriValuedMethod { value: value } }
         }
     }

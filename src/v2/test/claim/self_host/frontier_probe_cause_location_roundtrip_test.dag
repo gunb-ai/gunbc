@@ -4,21 +4,21 @@ module v2.test.claim.self_host.frontier_probe_cause_location_roundtrip
 data frontier_probe_cause_location_roundtrip_note: String = "RELOAD half of the emit-reload round trip. The fixture beside this file is verbatim survey-bin output; these claims prove that output parses, typechecks against the live carrier, and still carries the location after a front-end round trip. Emitting a location the manifest cannot reload is worse than dropping it, because it fails at reload rather than at the edit — that is the exact defect this pair exists to catch."
 
 fn roundtrip_extent_start() -> Int {
-  match v2.test.fixture.frontier_probe_cause_location_manifest_fixture.frontier_probe_cause_location_emitted_receipt.assemble_detail {
-    NoFrontierProbeDetail => 0 - 1
-    AssembleRejectionDetail { rejection_chain: _, cause: _, at: a } =>
+  match frontier_probe_cause_location_emitted_receipt.assemble_detail {
+    v2.compiler.self_host.frontier_probe_types.NoFrontierProbeDetail => 0 - 1
+    v2.compiler.self_host.frontier_probe_types.AssembleRejectionDetail { rejection_chain: _, cause: _, at: a } =>
       match a {
-        CauseLocationTextual { file: _, extent: e } =>
+        v2.compiler.self_host.frontier_probe_types.CauseLocationTextual { file: _, extent: e } =>
           match e {
-            WholeFile => 0 - 3
-            ByteRange { start: s, end: _ } => s
+            v2.std.diagnostic.WholeFile => 0 - 3
+            v2.std.diagnostic.ByteRange { start: s, end: _ } => s
           }
-        CauseLocationPort { port: _ } => 0 - 4
-        CauseLocationNodeNotSerializable => 0 - 5
+        v2.compiler.self_host.frontier_probe_types.CauseLocationPort { port: _ } => 0 - 4
+        v2.compiler.self_host.frontier_probe_types.CauseLocationNodeNotSerializable => 0 - 5
       }
   }
 }
 
-test fn emitted_manifest_reloads_with_its_location_intact_holds() -> v2.std.logic.Bool {
+test fn emitted_manifest_reloads_with_its_location_intact_holds() -> Bool {
   roundtrip_extent_start() == 28138
 }

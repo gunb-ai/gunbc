@@ -1,12 +1,12 @@
 module v2.test.workflow.lens_unused_parameters_family_eval
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn lens_unused_parameters_family_gate() -> v2.std.logic.Bool {
-  unused_parameters_binds_to_edge_claim_passes
-    && unused_parameters_non_use_edges_claim_passes
-    && unused_parameters_rollup_claim_passes
+fn lens_unused_parameters_family_gate() -> Bool {
+  v2.test.lens_unused_parameters.binds_to_edge.unused_parameters_binds_to_edge_claim_passes
+    && v2.test.lens_unused_parameters.non_use_edges.unused_parameters_non_use_edges_claim_passes
+    && v2.test.lens_unused_parameters.rollup_unused_declaration.unused_parameters_rollup_claim_passes
 }
 
-test data witness_lens_unused_parameters_family_gate_closed: v2.std.logic.Bool = lens_unused_parameters_family_gate()
+test data witness_lens_unused_parameters_family_gate_closed: Bool = lens_unused_parameters_family_gate()

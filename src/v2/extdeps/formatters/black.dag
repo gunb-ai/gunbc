@@ -35,7 +35,7 @@ type BlackUnstableFeature
   | BlackUnstablePyiBlankLineBeforeDecoratedClass
 
 type BlackConfig {
-  line_length: Outcome<v2.std.refinement.PositiveInt>
+  line_length: v2.std.diagnostic.Outcome<v2.std.refinement.PositiveInt>
   target_version: BlackTargetVersionPolicy
   required_version: BlackRequiredVersionPolicy
   pyi: Bool
@@ -54,7 +54,7 @@ type BlackConfig {
 }
 
 data black_defaults: BlackConfig = BlackConfig {
-  line_length: positive_int_authoritative_literal(value: 88),
+  line_length: v2.std.refinement.positive_int_authoritative_literal(value: 88),
   target_version: BlackTargetVersionAbsent,
   required_version: BlackRequiredVersionAbsent,
   pyi: false,
@@ -75,5 +75,5 @@ data black_defaults: BlackConfig = BlackConfig {
 type BlackConfigPatch = v2.std.patch.ConfigPatchRecord<BlackConfig>
 
 fn black_layer(base: BlackConfig, patch: BlackConfigPatch) -> BlackConfig {
-  config_patch_layer(base: base, patch: patch)
+  v2.std.patch.config_patch_layer(base: base, patch: patch)
 }

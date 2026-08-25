@@ -1,57 +1,57 @@
 module v2.test.workflow.lens_leaf_model_verification_family_eval
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn leaf_model_pair_happy_accepts(pair: v2.std.leaf_model_verification.LeafModelFixturePair) -> v2.std.logic.Bool {
+fn leaf_model_pair_happy_accepts(pair: v2.std.leaf_model_verification.LeafModelFixturePair) -> Bool {
   match pair.expected_happy_verdict {
-    TargetCompileAccepted => true
-    TargetCompileRejected { diagnostic_code: _ } => false
+    v2.std.leaf_model_verification.TargetCompileAccepted => true
+    v2.std.leaf_model_verification.TargetCompileRejected { diagnostic_code: _ } => false
   }
 }
 
-fn leaf_model_pair_falsification_rejects(pair: v2.std.leaf_model_verification.LeafModelFixturePair) -> v2.std.logic.Bool {
+fn leaf_model_pair_falsification_rejects(pair: v2.std.leaf_model_verification.LeafModelFixturePair) -> Bool {
   match pair.falsification.expected_verdict {
-    TargetCompileRejected { diagnostic_code: _ } => true
-    TargetCompileAccepted => false
+    v2.std.leaf_model_verification.TargetCompileRejected { diagnostic_code: _ } => true
+    v2.std.leaf_model_verification.TargetCompileAccepted => false
   }
 }
 
-fn leaf_model_pair_compile_discriminates(pair: v2.std.leaf_model_verification.LeafModelFixturePair) -> v2.std.logic.Bool {
+fn leaf_model_pair_compile_discriminates(pair: v2.std.leaf_model_verification.LeafModelFixturePair) -> Bool {
   leaf_model_pair_happy_accepts(pair: pair)
     && leaf_model_pair_falsification_rejects(pair: pair)
 }
 
 fn leaf_model_compile_discriminated_pairs() -> List<v2.std.leaf_model_verification.LeafModelFixturePair> {
   [
-    rust_r1_fixture_pair(),
-    rust_r2a_fixture_pair(),
-    rust_r3_external_fixture_pair()
+    v2.lens.leaf_model_verification.rust_r1_fixture_pair(),
+    v2.lens.leaf_model_verification.rust_r2a_fixture_pair(),
+    v2.lens.leaf_model_verification.rust_r3_external_fixture_pair()
   ]
 }
 
 fn leaf_model_all_rust_pairs() -> List<v2.std.leaf_model_verification.LeafModelFixturePair> {
   [
-    rust_r1_fixture_pair(),
-    rust_r2a_fixture_pair(),
-    rust_r2b_debug_fixture_pair(),
-    rust_r2b_release_fixture_pair(),
-    rust_r3_external_fixture_pair()
+    v2.lens.leaf_model_verification.rust_r1_fixture_pair(),
+    v2.lens.leaf_model_verification.rust_r2a_fixture_pair(),
+    v2.lens.leaf_model_verification.rust_r2b_debug_fixture_pair(),
+    v2.lens.leaf_model_verification.rust_r2b_release_fixture_pair(),
+    v2.lens.leaf_model_verification.rust_r3_external_fixture_pair()
   ]
 }
 
-fn lens_leaf_model_verification_family_gate() -> v2.std.logic.Bool {
+fn lens_leaf_model_verification_family_gate() -> Bool {
   let compile_pairs = leaf_model_compile_discriminated_pairs()
   let all_pairs = leaf_model_all_rust_pairs()
-  if is_empty(xs: compile_pairs) {
+  if v2.std.algebra.is_empty(xs: compile_pairs) {
     false
   } else {
-    fold_list(
+    v2.std.algebra.fold_list(
       xs: compile_pairs,
       empty: true,
       cons: fn(acc, pair) { acc && leaf_model_pair_compile_discriminates(pair: pair) }
     )
-    && fold_list(
+    && v2.std.algebra.fold_list(
       xs: all_pairs,
       empty: true,
       cons: fn(acc, pair) { acc && leaf_model_pair_happy_accepts(pair: pair) }
@@ -59,4 +59,4 @@ fn lens_leaf_model_verification_family_gate() -> v2.std.logic.Bool {
   }
 }
 
-test data witness_lens_leaf_model_verification_family_gate_closed: v2.std.logic.Bool = lens_leaf_model_verification_family_gate()
+test data witness_lens_leaf_model_verification_family_gate_closed: Bool = lens_leaf_model_verification_family_gate()

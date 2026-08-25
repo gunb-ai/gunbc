@@ -1,7 +1,7 @@
 module test.claim.generated_artifact_merge_driver_real_execution
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data real_execution_home_doc: String = "Wet execution witness for the merge=generated-artifact driver. It builds a real throwaway git repository, binds merge.generated-artifact.driver to a real driver value, drives a real three-way merge, and reads the real index and worktree back — shell.Mktemp.Dir, Filesystem.Write/Read, shell.Remove.RecursiveForce, and the git.Core integration operations have no mock_response, so this file is excluded from hermetic discovery (gunbc.ci_layer_roots witness_exclusion_frontier) and re-enrolled in bin_witness_wet_entries. THE DRIVER TEXT IS NOT COPIED: the temp repository's script is written from expected_generated_artifact_merge_driver_sh, the same emitter the committed .githooks artifact projects, and its config value from the same generated_artifact_merge_driver_config_value_at shaping, so a change to the emitted script is a change to what this witness executes. THE PAIR IS THE POINT. divergent_generated_artifact_merge_refuses is the positive claim. divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control is the discriminating RED: it is the SAME reproduction with the retired driver value `true`, and it asserts the defect — merge exit 0, no unmerged stage, theirs' content gone — so it fails the moment someone restores take-ours, and it is the executed evidence that the refusal, not the setup, is what makes the divergence loud. one_sided_generated_artifact_change_merges_clean is the non-widen control: with the refusing driver bound, a merge that changed the artifact on one side only must still merge clean and carry the changed content, because git reaches a low-level driver only when both sides moved."
 
@@ -26,7 +26,7 @@ fn witness_repo_file(repo: std.types.FilePath, name: String) -> String {
 }
 
 fn write_witness_generated_projection(repo: std.types.FilePath, content: String) -> Bool {
-  Filesystem.Write(path: test.claim.generated_artifact_merge_driver_real_execution.witness_repo_file(repo: repo, name: witness_generated_path), content: content).success
+  Filesystem.Write(path: witness_repo_file(repo: repo, name: witness_generated_path), content: content).success
 }
 
 fn seed_witness_repository(repo: std.types.FilePath, driver_value: String) -> Bool {
@@ -35,15 +35,15 @@ fn seed_witness_repository(repo: std.types.FilePath, driver_value: String) -> Bo
   let name = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.name", value: "gunbc merge driver witness").success
   let driver = git.Core.ConfigLocalSetInRepo(
     repo: repo,
-    key: generated_artifact_merge_driver_key,
+    key: gunbc.repo_local_git_config.generated_artifact_merge_driver_key,
     value: driver_value,
   ).success
   let script = Filesystem.Write(
-    path: test.claim.generated_artifact_merge_driver_real_execution.witness_repo_file(repo: repo, name: witness_driver_script_name),
-    content: expected_generated_artifact_merge_driver_sh(regen_command: ci_heal_author_commit_regen_command),
+    path: witness_repo_file(repo: repo, name: witness_driver_script_name),
+    content: gunbc.generated_artifact_merge_driver.expected_generated_artifact_merge_driver_sh(regen_command: gunbc.ci_spec.ci_heal_author_commit_regen_command),
   ).success
   let attributes = Filesystem.Write(
-    path: test.claim.generated_artifact_merge_driver_real_execution.witness_repo_file(repo: repo, name: ".gitattributes"),
+    path: witness_repo_file(repo: repo, name: ".gitattributes"),
     content: witness_gitattributes,
   ).success
   let seeded = write_witness_generated_projection(repo: repo, content: witness_base_content)
@@ -63,18 +63,18 @@ fn commit_witness_side(repo: std.types.FilePath, branch: String, start_point: st
 }
 
 fn observe_witness_merge(repo: std.types.FilePath, ours_touches_artifact: Bool) -> MergeDivergenceObservation {
-  let theirs = test.claim.generated_artifact_merge_driver_real_execution.commit_witness_side(repo: repo, branch: "theirs", start_point: "base" as std.types.GitRef, content: witness_theirs_content)
+  let theirs = commit_witness_side(repo: repo, branch: "theirs", start_point: "base" as std.types.GitRef, content: witness_theirs_content)
   let ours_branch = git.Core.CheckoutNewBranchAtInRepo(repo: repo, branch: "ours", start_point: "base" as std.types.GitRef).exit_code
   let ours_written = if ours_touches_artifact {
     write_witness_generated_projection(repo: repo, content: witness_ours_content)
   } else {
-    Filesystem.Write(path: test.claim.generated_artifact_merge_driver_real_execution.witness_repo_file(repo: repo, name: "unrelated.txt"), content: witness_ours_content).success
+    Filesystem.Write(path: witness_repo_file(repo: repo, name: "unrelated.txt"), content: witness_ours_content).success
   }
   let ours_staged = git.Core.AddAllInRepo(repo: repo).exit_code
   let ours_committed = git.Core.CommitInRepo(repo: repo, message: "ours").exit_code
-  let merged = git.Core.MergeNoEditInRepo(repo: repo, branch: "theirs", expect: OutcomeIsData)
+  let merged = git.Core.MergeNoEditInRepo(repo: repo, branch: "theirs", expect: gunbc.output_policy.OutcomeIsData)
   let unmerged = git.Core.LsFilesUnmergedInRepo(repo: repo, path: witness_generated_path)
-  let after = Filesystem.Read(path: test.claim.generated_artifact_merge_driver_real_execution.witness_repo_file(repo: repo, name: witness_generated_path))
+  let after = Filesystem.Read(path: witness_repo_file(repo: repo, name: witness_generated_path))
   MergeDivergenceObservation {
     merge_exit_code: merged.exit_code,
     unmerged_stage_count: count(unmerged.entries),
@@ -86,7 +86,7 @@ fn observe_witness_merge(repo: std.types.FilePath, ours_touches_artifact: Bool) 
 fn observe_generated_artifact_merge(driver_value: String, ours_touches_artifact: Bool) -> MergeDivergenceObservation {
   let dir = shell.Mktemp.Dir()
   let repo = dir.path
-  let seeded = test.claim.generated_artifact_merge_driver_real_execution.seed_witness_repository(repo: repo, driver_value: driver_value)
+  let seeded = seed_witness_repository(repo: repo, driver_value: driver_value)
   let observed = observe_witness_merge(repo: repo, ours_touches_artifact: ours_touches_artifact)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   MergeDivergenceObservation {
@@ -98,7 +98,7 @@ fn observe_generated_artifact_merge(driver_value: String, ours_touches_artifact:
 }
 
 fn witness_refusing_driver_value() -> String {
-  generated_artifact_merge_driver_config_value_at(script_path: witness_driver_script_name)
+  gunbc.generated_artifact_merge_driver.generated_artifact_merge_driver_config_value_at(script_path: witness_driver_script_name)
 }
 
 data witness_retired_take_ours_driver_value: String = "true"

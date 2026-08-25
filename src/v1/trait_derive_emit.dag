@@ -133,7 +133,7 @@ fn v1_type_expr_keyed_map_verdict(type_expr: v1.std.core.Node, source_indices: M
       KeyedMapUndecidable { name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr) }
     v1.std.core.ContainerSpellingDeclared { arity: _ } =>
       v1_keyed_map_verdict_from_algebra(type_expr: type_expr, source_indices: source_indices)
-    NotAContainerSpelling =>
+    v1.std.core.NotAContainerSpelling =>
       v1_keyed_map_verdict_from_algebra(type_expr: type_expr, source_indices: source_indices)
   }
 }
@@ -328,10 +328,10 @@ type V1FreeMonoidSupplementalRoute
 
 fn v1_freemonoid_row_route(row: extdeps.languages.rust.derive_contracts.RustVecSupplementalGenericBoundRow) -> V1FreeMonoidSupplementalRoute? {
   match row.derive_trait {
-    RustDebug => Present { value: FreeMonoidHandWrittenImpl }
-    RustPartialEq => Present { value: FreeMonoidHandWrittenImpl }
-    RustSerialize => Present { value: FreeMonoidSerdeBoundAttr }
-    RustDeserialize => Present { value: FreeMonoidSerdeBoundAttr }
+    extdeps.languages.rust.capabilities.RustDebug => Present { value: FreeMonoidHandWrittenImpl }
+    extdeps.languages.rust.capabilities.RustPartialEq => Present { value: FreeMonoidHandWrittenImpl }
+    extdeps.languages.rust.capabilities.RustSerialize => Present { value: FreeMonoidSerdeBoundAttr }
+    extdeps.languages.rust.capabilities.RustDeserialize => Present { value: FreeMonoidSerdeBoundAttr }
     _ => Absent
   }
 }
@@ -937,7 +937,7 @@ fn v1_emit_enum_derives(
   let payload_traits = v1_with_map_key_requirement(base: extdeps.languages.rust.capabilities.payload_coproduct_derive_traits(), map_key_required: map_key_required)
   let set_row_refusal = if (set_params |> count) > 0 { v1_set_unroutable_row_refusal() } else { "" }
   match shape {
-    ReprDeriveElemNullaryEnumCopy =>
+    std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy =>
       if std.trait_derive_shape.repr_grounding_derive_completeness_predicate(extdeps.languages.rust.capabilities.rust_capability_shape_table(), nullary_traits, shape) {
         let derived_traits = if (set_params |> count) > 0 { v1_set_filter_hand_written(traits: nullary_traits) } else { nullary_traits }
         concat(
@@ -948,7 +948,7 @@ fn v1_emit_enum_derives(
       } else {
         v1_trait_derive_refuse("trait_derive_emit: nullary coproduct derive completeness refused")
       }
-    ReprDeriveElemPayloadCoproduct =>
+    std.trait_derive_shape.ReprDeriveElemPayloadCoproduct =>
       if std.trait_derive_shape.repr_grounding_derive_completeness_predicate(extdeps.languages.rust.capabilities.rust_capability_shape_table(), payload_traits, shape) {
         let derived_traits = if (set_params |> count) > 0 { v1_set_filter_hand_written(traits: payload_traits) } else { payload_traits }
         concat(

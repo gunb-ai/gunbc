@@ -1,25 +1,25 @@
 module v2.test.manual.node_minimal_representation_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn substrate_v2_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^node_minimal_probe } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn witness_expr_leaf_field_count_below_superset() -> Bool {
-  minimal_node_kind_live_field_count(kind: MnkSurfaceExprLeaf) < node_superset_field_count()
+  v2.std.node_minimal.minimal_node_kind_live_field_count(kind: v2.std.node_minimal.MnkSurfaceExprLeaf) < v2.std.node_minimal.node_superset_field_count()
 }
 
 fn witness_expr_leaf_drops_connective_and_params() -> Bool {
-  if minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfConnective) {
-    if minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfParams) {
-      if minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfUses) {
-        minimal_node_superset_field_unused_by_kind(kind: MnkSurfaceExprLeaf, field: NsfBody)
+  if v2.std.node_minimal.minimal_node_superset_field_unused_by_kind(kind: v2.std.node_minimal.MnkSurfaceExprLeaf, field: v2.std.node_minimal.NsfConnective) {
+    if v2.std.node_minimal.minimal_node_superset_field_unused_by_kind(kind: v2.std.node_minimal.MnkSurfaceExprLeaf, field: v2.std.node_minimal.NsfParams) {
+      if v2.std.node_minimal.minimal_node_superset_field_unused_by_kind(kind: v2.std.node_minimal.MnkSurfaceExprLeaf, field: v2.std.node_minimal.NsfUses) {
+        v2.std.node_minimal.minimal_node_superset_field_unused_by_kind(kind: v2.std.node_minimal.MnkSurfaceExprLeaf, field: v2.std.node_minimal.NsfBody)
       } else {
         false
       }
@@ -32,11 +32,11 @@ fn witness_expr_leaf_drops_connective_and_params() -> Bool {
 }
 
 fn witness_substrate_kind_round_trips_v2_node() -> Bool {
-  match minimal_substrate_node_from_v2(node: substrate_v2_node()) {
-    MrnSubstrateGraph {
-      kind: TypeNode { connective: Atom { identity: sym } },
+  match v2.std.node_minimal.minimal_substrate_node_from_v2(node: substrate_v2_node()) {
+    v2.std.node_minimal.MrnSubstrateGraph {
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
       children: c,
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
     } => (sym == ^node_minimal_probe) && (c |> count == 0)
     MrnSurfaceExprLeaf { expr: _, provenance: _, inference: _ } => false
     MrnSurfaceExprParent { expr: _, provenance: _, children: _, inference: _ } => false
@@ -47,13 +47,13 @@ fn witness_substrate_kind_round_trips_v2_node() -> Bool {
 }
 
 fn witness_substrate_kind_has_zero_superset_fields() -> Bool {
-  minimal_node_kind_live_field_count(kind: MnkSubstrateGraph) == 0
+  v2.std.node_minimal.minimal_node_kind_live_field_count(kind: v2.std.node_minimal.MnkSubstrateGraph) == 0
 }
 
 fn witness_minimal_node_kind_of_expr_leaf() -> Bool {
-  match minimal_node_kind_of(node: minimal_expr_leaf_example()) {
-    MnkSurfaceExprLeaf => true
-    MnkSubstrateGraph => false
+  match v2.std.node_minimal.minimal_node_kind_of(node: v2.std.node_minimal.minimal_expr_leaf_example()) {
+    v2.std.node_minimal.MnkSurfaceExprLeaf => true
+    v2.std.node_minimal.MnkSubstrateGraph => false
     MnkSurfaceExprParent => false
     MnkSurfaceConnective => false
     MnkSurfaceNamedDecl => false
@@ -62,15 +62,15 @@ fn witness_minimal_node_kind_of_expr_leaf() -> Bool {
 }
 
 fn witness_placed_bucket_count() -> Bool {
-  count(minimal_kind_placed_fields_union()) == 12
+  count(v2.std.node_minimal.minimal_kind_placed_fields_union()) == 12
 }
 
 fn witness_owed_bucket_count() -> Bool {
-  count(minimal_kind_owed_placement) == 3
+  count(v2.std.node_minimal.minimal_kind_owed_placement) == 3
 }
 
 fn witness_migrated_bucket_count() -> Bool {
-  count(minimal_kind_migrated_to_facts) == 3
+  count(v2.std.node_minimal.minimal_kind_migrated_to_facts) == 3
 }
 
 data witness_node_minimal_expr_leaf_field_count: Bool = witness_expr_leaf_field_count_below_superset()
@@ -83,7 +83,7 @@ data witness_node_minimal_substrate_zero_superset: Bool = witness_substrate_kind
 
 data witness_node_minimal_kind_of_expr_leaf: Bool = witness_minimal_node_kind_of_expr_leaf()
 
-data witness_node_minimal_partition_covers_superset: Bool = witness_partition_covers_superset()
+data witness_node_minimal_partition_covers_superset: Bool = v2.std.node_minimal.witness_partition_covers_superset()
 
 data witness_node_minimal_placed_bucket_count: Bool = witness_placed_bucket_count()
 
@@ -129,8 +129,8 @@ test fn node_minimal_migrated_bucket_count_holds() -> Bool {
 
 data claim_node_minimal_representation_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/node_minimal_representation: per-kind MinimalResolvedNode model sketch compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: substrate_v2_node(),
   expected_value: substrate_v2_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }

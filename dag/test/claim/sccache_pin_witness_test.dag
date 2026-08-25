@@ -1,19 +1,19 @@
 module test.claim.sccache_pin_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data sccache_aarch64_artifact: extdeps.cache.sccache.SccacheBinaryArtifact = extdeps.cache.sccache.SccacheBinaryArtifact {
-  binary_release: sccache_release_0_15_0,
-  arch: SccacheMuslAarch64,
+  binary_release: extdeps.cache.sccache.sccache_release_0_15_0,
+  arch: extdeps.cache.sccache.SccacheMuslAarch64,
 }
 
 data sccache_x86_64_artifact: extdeps.cache.sccache.SccacheBinaryArtifact = extdeps.cache.sccache.SccacheBinaryArtifact {
-  binary_release: sccache_release_0_15_0,
-  arch: SccacheMuslX86_64,
+  binary_release: extdeps.cache.sccache.sccache_release_0_15_0,
+  arch: extdeps.cache.sccache.SccacheMuslX86_64,
 }
 
-data sccache_aarch64_pin: SubjectProjectedPin<extdeps.cache.sccache.SccacheBinaryArtifact> = sccache_binary_artifact_pin(artifact: sccache_aarch64_artifact)
+data sccache_aarch64_pin: extdeps.pin.SubjectProjectedPin<extdeps.cache.sccache.SccacheBinaryArtifact> = extdeps.cache.pin.sccache_binary_artifact_pin(artifact: sccache_aarch64_artifact)
 
 data sccache_pin_grain_family_note: String = "Discriminating witness for feature:pin-artifact-grain. SubjectProjectedPin<SccacheBinaryArtifact> pins ONE cited musl tarball per row with no restated expected_identity field — identity projected via sha256_digest_content_hash bridge (review 44999). RED CONTROL reconcile_bridge_projects_identity_and_version fails if subject_projected_pin_as_pin does not project both ContentHash and VersionIdentity onto Pin."
 
@@ -22,9 +22,9 @@ test fn sccache_pin_subject_carries_release_version() -> Bool {
 }
 
 test fn reconcile_bridge_projects_identity_and_version() -> Bool {
-  match sccache_binary_artifact_subject_projected_pin_as_pin(pin: sccache_aarch64_pin) {
+  match extdeps.cache.pin.sccache_binary_artifact_subject_projected_pin_as_pin(pin: sccache_aarch64_pin) {
     Present { value: bridged } =>
-      match sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact) {
+      match extdeps.cache.sccache.sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact) {
         Present { value: expected } =>
           (bridged.expected_identity == expected)
             && ((bridged.version as String) == (sccache_release_0_15_0.version as String))
@@ -38,19 +38,19 @@ test fn sccache_pin_key_stable_across_release_version_bump() -> Bool {
   let bumped_art = extdeps.cache.sccache.SccacheBinaryArtifact {
     binary_release: extdeps.cache.sccache.SccacheBinaryRelease {
       version: "v0.16.0",
-      digest_aarch64: sha256_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-      digest_x86_64: sha256_digest(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+      digest_aarch64: extdeps.crypto.hash.sha256_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+      digest_x86_64: extdeps.crypto.hash.sha256_digest(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
     },
-    arch: SccacheMuslAarch64,
+    arch: extdeps.cache.sccache.SccacheMuslAarch64,
   }
-  let bumped_pin = sccache_binary_artifact_pin(artifact: bumped_art)
-  ((sccache_binary_artifact_pin_key_of(pin: sccache_aarch64_pin) as String) == (sccache_binary_artifact_pin_key_of(pin: bumped_pin) as String))
+  let bumped_pin = extdeps.cache.pin.sccache_binary_artifact_pin(artifact: bumped_art)
+  ((extdeps.cache.pin.sccache_binary_artifact_pin_key_of(pin: sccache_aarch64_pin) as String) == (extdeps.cache.pin.sccache_binary_artifact_pin_key_of(pin: bumped_pin) as String))
 }
 
 test fn sccache_aarch64_and_x86_64_identities_differ() -> Bool {
-  match sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact) {
+  match extdeps.cache.sccache.sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact) {
     Present { value: aarch64 } =>
-      match sccache_binary_artifact_content_identity(artifact: sccache_x86_64_artifact) {
+      match extdeps.cache.sccache.sccache_binary_artifact_content_identity(artifact: sccache_x86_64_artifact) {
         Present { value: x86_64 } => aarch64 != x86_64
         Absent => false
       }
@@ -59,12 +59,12 @@ test fn sccache_aarch64_and_x86_64_identities_differ() -> Bool {
 }
 
 test fn unsupported_arch_cannot_construct_artifact() -> Bool {
-  match sccache_published_musl_arch_of(arch: Riscv64) {
+  match extdeps.cache.sccache.sccache_published_musl_arch_of(arch: extdeps.toolchain.types.Riscv64) {
     Absent => true
     Present { value: _ } => false
-  } && match sccache_binary_artifact_for_arch(
-    binary_release: sccache_release_0_15_0,
-    arch: Riscv64,
+  } && match extdeps.cache.sccache.sccache_binary_artifact_for_arch(
+    binary_release: extdeps.cache.sccache.sccache_release_0_15_0,
+    arch: extdeps.toolchain.types.Riscv64,
   ) {
     Absent => true
     Present { value: _ } => false
@@ -72,30 +72,30 @@ test fn unsupported_arch_cannot_construct_artifact() -> Bool {
 }
 
 test fn sccache_aarch64_pin_admits_matching_observation() -> Bool {
-  match sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact) {
+  match extdeps.cache.sccache.sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact) {
     Present { value: observed } =>
-      match admit_sccache_binary_artifact_pin_integrity(
+      match extdeps.cache.pin.admit_sccache_binary_artifact_pin_integrity(
         pin: sccache_aarch64_pin,
         observed_identity: observed,
       ) {
-        SubjectProjectedPinIntegrityAdmitted { pin: p } => p.subject.arch == SccacheMuslAarch64
-        SubjectProjectedPinRefused { subject: _, cause: _ } => false
+        extdeps.pin.SubjectProjectedPinIntegrityAdmitted { pin: p } => p.subject.arch == extdeps.cache.sccache.SccacheMuslAarch64
+        extdeps.pin.SubjectProjectedPinRefused { subject: _, cause: _ } => false
       }
     Absent => false
   }
 }
 
 test fn sccache_aarch64_pin_refuses_x86_64_observation() -> Bool {
-  match sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact) {
+  match extdeps.cache.sccache.sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact) {
     Present { value: expected } =>
-      match sccache_binary_artifact_content_identity(artifact: sccache_x86_64_artifact) {
+      match extdeps.cache.sccache.sccache_binary_artifact_content_identity(artifact: sccache_x86_64_artifact) {
         Present { value: x86_identity } =>
-          match admit_sccache_binary_artifact_pin_integrity(pin: sccache_aarch64_pin, observed_identity: x86_identity) {
-            SubjectProjectedPinIntegrityAdmitted { pin: _ } => false
-            SubjectProjectedPinRefused { subject: subj, cause: c } =>
-              (subj.arch == SccacheMuslAarch64)
+          match extdeps.cache.pin.admit_sccache_binary_artifact_pin_integrity(pin: sccache_aarch64_pin, observed_identity: x86_identity) {
+            extdeps.pin.SubjectProjectedPinIntegrityAdmitted { pin: _ } => false
+            extdeps.pin.SubjectProjectedPinRefused { subject: subj, cause: c } =>
+              (subj.arch == extdeps.cache.sccache.SccacheMuslAarch64)
                 && match c {
-                     ObservedIdentityMismatch { expected: e, observed: o } =>
+                     extdeps.pin.ObservedIdentityMismatch { expected: e, observed: o } =>
                        (e == expected) && (o == x86_identity)
                      _ => false
                    }
@@ -109,28 +109,28 @@ test fn sccache_aarch64_pin_refuses_x86_64_observation() -> Bool {
 data sccache_invalid_digest_artifact: extdeps.cache.sccache.SccacheBinaryArtifact = extdeps.cache.sccache.SccacheBinaryArtifact {
   binary_release: extdeps.cache.sccache.SccacheBinaryRelease {
     version: "v0.15.0",
-    digest_aarch64: sha256_digest(hex: "not-valid-hex"),
-    digest_x86_64: sha256_digest(hex: "782d2b5dd7ae0a55ebe368ab258114d0928d019ac2d949ab85d5d02f3926709e"),
+    digest_aarch64: extdeps.crypto.hash.sha256_digest(hex: "not-valid-hex"),
+    digest_x86_64: extdeps.crypto.hash.sha256_digest(hex: "782d2b5dd7ae0a55ebe368ab258114d0928d019ac2d949ab85d5d02f3926709e"),
   },
-  arch: SccacheMuslAarch64,
+  arch: extdeps.cache.sccache.SccacheMuslAarch64,
 }
 
 test fn sccache_invalid_cited_digest_refuses_identity_projection() -> Bool {
-  match sccache_binary_artifact_content_identity(artifact: sccache_invalid_digest_artifact) {
+  match extdeps.cache.sccache.sccache_binary_artifact_content_identity(artifact: sccache_invalid_digest_artifact) {
     Absent => true
     Present { value: _ } => false
   }
 }
 
 test fn sccache_invalid_cited_digest_refuses_pin_integrity() -> Bool {
-  let bad_pin = sccache_binary_artifact_pin(artifact: sccache_invalid_digest_artifact)
-  match admit_sccache_binary_artifact_pin_integrity(
+  let bad_pin = extdeps.cache.pin.sccache_binary_artifact_pin(artifact: sccache_invalid_digest_artifact)
+  match extdeps.cache.pin.admit_sccache_binary_artifact_pin_integrity(
     pin: bad_pin,
-    observed_identity: as_content_hash_structural(
-      structural: content_hash_atom(value: "any-observed-identity" as std.types.NonEmptyStr),
+    observed_identity: std.content_hash.as_content_hash_structural(
+      structural: std.content_hash.content_hash_atom(value: "any-observed-identity" as std.types.NonEmptyStr),
     ),
   ) {
-    SubjectProjectedPinRefused { subject: _, cause: CitedDigestIdentityUnprojectable } => true
-    SubjectProjectedPinIntegrityAdmitted { pin: _ } => false
+    extdeps.pin.SubjectProjectedPinRefused { subject: _, cause: extdeps.pin.CitedDigestIdentityUnprojectable } => true
+    extdeps.pin.SubjectProjectedPinIntegrityAdmitted { pin: _ } => false
   }
 }

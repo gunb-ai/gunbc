@@ -3,7 +3,7 @@ module extdeps.tcgplayer.pricing
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.tcgplayer.com/reference/pricing_getproductprices-1"
   }
 }
@@ -19,11 +19,11 @@ type ProductPriceRow {
 }
 
 data tcgplayer_pricing_money_measure_grounding_disposition: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.tcgplayer.pricing",
     decl_name: "ProductPriceRow",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -61,9 +61,9 @@ service tcgplayer.Pricing {
     }
     response {
       200 => ProductPricesResponse
-      401 => TcgplayerErrorEnvelope
-      404 => TcgplayerErrorEnvelope
-      5xx => TcgplayerErrorEnvelope
+      401 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      404 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      5xx => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
     }
   }
 }

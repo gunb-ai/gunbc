@@ -5,19 +5,19 @@ module test.claim.orthogonal_topology_witness
 // The rooms this witness builds are millimetre-framed, which is what makes reading their heights
 // as millimetres true rather than assumed.
 fn mm_registry() -> std.spatial_frame.SpatialFrameRegistry {
-  match register_frame(r: empty_frame_registry(), identity: test.claim.orthogonal_topology_witness.room(), length_scale: Milli) {
-    FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
-    FrameRegistrationRefused { cause: _ } => empty_frame_registry()
+  match std.spatial_frame.register_frame(r: std.spatial_frame.empty_frame_registry(), identity: room(), length_scale: std.measure.Milli) {
+    std.spatial_frame.FrameRegistered { frame: f } => std.spatial_frame.registry_with(r: std.spatial_frame.empty_frame_registry(), f: f)
+    std.spatial_frame.FrameRegistrationRefused { cause: _ } => std.spatial_frame.empty_frame_registry()
   }
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn room() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
-fn building() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
+fn room() -> std.coordinate_frame.CoordinateFrameIdentity { std.coordinate_frame.coordinate_frame_identity(occurrence: 1) }
+fn building() -> std.coordinate_frame.CoordinateFrameIdentity { std.coordinate_frame.coordinate_frame_identity(occurrence: 2) }
 
-fn p2(x: Int, y: Int) -> std.affine_space.Point2 { point2(frame: test.claim.orthogonal_topology_witness.room(), x: x, y: y) }
-fn p3(x: Int, y: Int, z: Int) -> std.affine_space.Point3 { point3(frame: test.claim.orthogonal_topology_witness.room(), x: x, y: y, z: z) }
+fn p2(x: Int, y: Int) -> std.affine_space.Point2 { std.affine_space.point2(frame: room(), x: x, y: y) }
+fn p3(x: Int, y: Int, z: Int) -> std.affine_space.Point3 { std.affine_space.point3(frame: room(), x: x, y: y, z: z) }
 
 // FIXTURES ARE THREADED AS CONSTRUCTIONS, never unwrapped through a fallback. An unwrap helper
 // needs something to return when the mint refuses, and every candidate is a fabrication: a
@@ -25,12 +25,12 @@ fn p3(x: Int, y: Int, z: Int) -> std.affine_space.Point3 { point3(frame: test.cl
 // recursive retry would hang. So the constructions travel and every claim matches them - a fixture
 // that stops minting reds the witness at the fixture, which is the honest failure.
 fn space_ctor(vertices: List<std.affine_space.Point2>, low: Int, high: Int) -> std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace> {
-  match orthogonal_loop2(vertices: vertices) {
-    OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
-    OrthogonalReady { value: l } =>
-      match orthogonal_prism3(footprint: l, low: low, high: high) {
-        OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
-        OrthogonalReady { value: pr } => std.orthogonal_geometry.OrthogonalReady { value: enclosed_space(shell: closed_shell_of_prism(prism: pr)) }
+  match std.orthogonal_geometry.orthogonal_loop2(vertices: vertices) {
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
+    std.orthogonal_geometry.OrthogonalReady { value: l } =>
+      match std.orthogonal_geometry.orthogonal_prism3(footprint: l, low: low, high: high) {
+        std.orthogonal_geometry.OrthogonalRefused { cause: c } => std.orthogonal_geometry.OrthogonalRefused { cause: c }
+        std.orthogonal_geometry.OrthogonalReady { value: pr } => std.orthogonal_geometry.OrthogonalReady { value: std.orthogonal_topology.enclosed_space(shell: std.orthogonal_topology.closed_shell_of_prism(prism: pr)) }
       }
   }
 }
@@ -38,16 +38,16 @@ fn space_ctor(vertices: List<std.affine_space.Point2>, low: Int, high: Int) -> s
 fn sequence_spaces(cs: List<std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>>) -> std.orthogonal_geometry.OrthogonalConstruction<List<std.orthogonal_topology.EnclosedSpace>> {
   let folded = fold(cs, init: std.orthogonal_geometry.OrthogonalReady { value: [] }, f: (acc, c) =>
     match acc {
-      OrthogonalRefused { cause: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
-      OrthogonalReady { value: got } =>
+      std.orthogonal_geometry.OrthogonalRefused { cause: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
+      std.orthogonal_geometry.OrthogonalReady { value: got } =>
         match c {
-          OrthogonalRefused { cause: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
-          OrthogonalReady { value: s } => std.orthogonal_geometry.OrthogonalReady { value: concat([s], got) }
+          std.orthogonal_geometry.OrthogonalRefused { cause: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
+          std.orthogonal_geometry.OrthogonalReady { value: s } => std.orthogonal_geometry.OrthogonalReady { value: concat([s], got) }
         }
     })
   match folded {
-    OrthogonalRefused { cause: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
-    OrthogonalReady { value: got } => std.orthogonal_geometry.OrthogonalReady { value: reverse(got) }
+    std.orthogonal_geometry.OrthogonalRefused { cause: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
+    std.orthogonal_geometry.OrthogonalReady { value: got } => std.orthogonal_geometry.OrthogonalReady { value: reverse(got) }
   }
 }
 
@@ -55,35 +55,35 @@ fn sequence_spaces(cs: List<std.orthogonal_geometry.OrthogonalConstruction<std.o
 // Every claim below uses this rather than a rectangle deliberately - a rectangle's area agrees with
 // its bounding box, so it cannot tell a derived area from an authored width-times-depth.
 fn l_shape() -> List<std.affine_space.Point2> {
-  [test.claim.orthogonal_topology_witness.p2(x: 0, y: 0), test.claim.orthogonal_topology_witness.p2(x: 4000, y: 0), test.claim.orthogonal_topology_witness.p2(x: 4000, y: 2000), test.claim.orthogonal_topology_witness.p2(x: 2000, y: 2000), test.claim.orthogonal_topology_witness.p2(x: 2000, y: 3000), test.claim.orthogonal_topology_witness.p2(x: 0, y: 3000)]
+  [p2(x: 0, y: 0), p2(x: 4000, y: 0), p2(x: 4000, y: 2000), p2(x: 2000, y: 2000), p2(x: 2000, y: 3000), p2(x: 0, y: 3000)]
 }
 
-fn l_space() -> std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace> { space_ctor(vertices: test.claim.orthogonal_topology_witness.l_shape(), low: 0, high: 2400) }
+fn l_space() -> std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace> { space_ctor(vertices: l_shape(), low: 0, high: 2400) }
 
 fn rect_ctor(x0: Int, y0: Int, x1: Int, y1: Int, low: Int, high: Int) -> std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace> {
-  space_ctor(vertices: [test.claim.orthogonal_topology_witness.p2(x: x0, y: y0), test.claim.orthogonal_topology_witness.p2(x: x1, y: y0), test.claim.orthogonal_topology_witness.p2(x: x1, y: y1), test.claim.orthogonal_topology_witness.p2(x: x0, y: y1)], low: low, high: high)
+  space_ctor(vertices: [p2(x: x0, y: y0), p2(x: x1, y: y0), p2(x: x1, y: y1), p2(x: x0, y: y1)], low: low, high: high)
 }
 
 // Every projection below answers -1 on a refusal rather than a plausible number, so a claim can
 // never pass because a fixture or an operation refused - the two outcomes are distinguishable.
 fn area_of(c: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>) -> Int {
   match c {
-    OrthogonalRefused { cause: _ } => 0 - 1
-    OrthogonalReady { value: s } =>
-      match space_floor_area(registry: test.claim.orthogonal_topology_witness.mm_registry(), s: s) {
-        OrthogonalReady { value: a } => square_millimeter_count(m: a)
-        OrthogonalRefused { cause: _ } => 0 - 1
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => 0 - 1
+    std.orthogonal_geometry.OrthogonalReady { value: s } =>
+      match std.orthogonal_topology.space_floor_area(registry: mm_registry(), s: s) {
+        std.orthogonal_geometry.OrthogonalReady { value: a } => std.measure.square_millimeter_count(m: a)
+        std.orthogonal_geometry.OrthogonalRefused { cause: _ } => 0 - 1
       }
   }
 }
 
 fn volume_of(c: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>) -> Int {
   match c {
-    OrthogonalRefused { cause: _ } => 0 - 1
-    OrthogonalReady { value: s } =>
-      match space_volume(registry: test.claim.orthogonal_topology_witness.mm_registry(), s: s) {
-        OrthogonalReady { value: v } => cubic_millimeter_count(m: v)
-        OrthogonalRefused { cause: _ } => 0 - 1
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => 0 - 1
+    std.orthogonal_geometry.OrthogonalReady { value: s } =>
+      match std.orthogonal_topology.space_volume(registry: mm_registry(), s: s) {
+        std.orthogonal_geometry.OrthogonalReady { value: v } => std.measure.cubic_millimeter_count(m: v)
+        std.orthogonal_geometry.OrthogonalRefused { cause: _ } => 0 - 1
       }
   }
 }
@@ -93,44 +93,44 @@ fn volume_of(c: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_to
 // meaning - a height nobody can state is as much a failure as a space that would not construct.
 fn height_of(c: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>) -> Int {
   match c {
-    OrthogonalRefused { cause: _ } => 0 - 1
-    OrthogonalReady { value: s } =>
-      match space_height(registry: test.claim.orthogonal_topology_witness.mm_registry(), s: s) {
-        ExtentInFrame { length: l } =>
-          match frame_length_as_millimeter(l: l) {
-            LengthProjected { value: mm } => millimeter_count(m: mm)
-            LengthProjectionRefused { cause: _ } => 0 - 1
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => 0 - 1
+    std.orthogonal_geometry.OrthogonalReady { value: s } =>
+      match std.orthogonal_topology.space_height(registry: mm_registry(), s: s) {
+        std.spatial_frame.ExtentInFrame { length: l } =>
+          match std.spatial_frame.frame_length_as_millimeter(l: l) {
+            std.spatial_frame.LengthProjected { value: mm } => std.measure.millimeter_count(m: mm)
+            std.spatial_frame.LengthProjectionRefused { cause: _ } => 0 - 1
           }
-        ExtentFrameUnregistered { identity: _ } => 0 - 1
+        std.spatial_frame.ExtentFrameUnregistered { identity: _ } => 0 - 1
       }
   }
 }
 
 fn wall_count(c: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>) -> Int {
   match c {
-    OrthogonalRefused { cause: _ } => 0 - 1
-    OrthogonalReady { value: s } => length(space_walls(s: s))
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => 0 - 1
+    std.orthogonal_geometry.OrthogonalReady { value: s } => length(std.orthogonal_topology.space_walls(s: s))
   }
 }
 
 fn face_count(c: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>) -> Int {
   match c {
-    OrthogonalRefused { cause: _ } => 0 - 1
-    OrthogonalReady { value: s } => shell_face_count(s: space_shell(s: s))
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => 0 - 1
+    std.orthogonal_geometry.OrthogonalReady { value: s } => std.orthogonal_topology.shell_face_count(s: std.orthogonal_topology.space_shell(s: s))
   }
 }
 
 fn located(c: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>, p: std.affine_space.Point3) -> Int {
   match c {
-    OrthogonalRefused { cause: _ } => 0 - 1
-    OrthogonalReady { value: s } =>
-      match space_locate_point(s: s, p: p) {
-        OrthogonalRefused { cause: _ } => 0 - 2
-        OrthogonalReady { value: loc } =>
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => 0 - 1
+    std.orthogonal_geometry.OrthogonalReady { value: s } =>
+      match std.orthogonal_topology.space_locate_point(s: s, p: p) {
+        std.orthogonal_geometry.OrthogonalRefused { cause: _ } => 0 - 2
+        std.orthogonal_geometry.OrthogonalReady { value: loc } =>
           match loc {
-            PointInsideSpace => 1
-            PointOnSpaceBoundary => 2
-            PointOutsideSpace => 3
+            std.orthogonal_topology.PointInsideSpace => 1
+            std.orthogonal_topology.PointOnSpaceBoundary => 2
+            std.orthogonal_topology.PointOutsideSpace => 3
           }
       }
   }
@@ -138,14 +138,14 @@ fn located(c: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topo
 
 fn pairwise(ca: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>, cb: std.orthogonal_geometry.OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>, want_adjacency: Bool) -> Int {
   match ca {
-    OrthogonalRefused { cause: _ } => 0 - 1
-    OrthogonalReady { value: a } =>
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => 0 - 1
+    std.orthogonal_geometry.OrthogonalReady { value: a } =>
       match cb {
-        OrthogonalRefused { cause: _ } => 0 - 1
-        OrthogonalReady { value: b } =>
-          match if want_adjacency { spaces_are_adjacent(a: a, b: b) } else { spaces_interpenetrate(a: a, b: b) } {
-            OrthogonalRefused { cause: _ } => 0 - 2
-            OrthogonalReady { value: v } => if v { 1 } else { 0 }
+        std.orthogonal_geometry.OrthogonalRefused { cause: _ } => 0 - 1
+        std.orthogonal_geometry.OrthogonalReady { value: b } =>
+          match if want_adjacency { std.orthogonal_topology.spaces_are_adjacent(a: a, b: b) } else { std.orthogonal_topology.spaces_interpenetrate(a: a, b: b) } {
+            std.orthogonal_geometry.OrthogonalRefused { cause: _ } => 0 - 2
+            std.orthogonal_geometry.OrthogonalReady { value: v } => if v { 1 } else { 0 }
           }
       }
   }
@@ -166,7 +166,7 @@ test fn area_is_derived_from_the_boundary_not_the_extents() -> Bool {
 }
 
 test fn volume_is_area_times_height_and_agrees_with_the_footprint() -> Bool {
-  height_of(c: l_space()) == 2400 && test.claim.orthogonal_topology_witness.volume_of(c: l_space()) == 10000000 * 2400
+  height_of(c: l_space()) == 2400 && volume_of(c: l_space()) == 10000000 * 2400
 }
 
 // Two spaces with the SAME bounding box and the same height whose volumes differ. Nothing authored
@@ -174,7 +174,7 @@ test fn volume_is_area_times_height_and_agrees_with_the_footprint() -> Bool {
 // claim stated as an executable difference rather than as a property of a type name.
 test fn same_extents_different_boundaries_have_different_volumes() -> Bool {
   let rect = rect_ctor(x0: 0, y0: 0, x1: 4000, y1: 3000, low: 0, high: 2400)
-  test.claim.orthogonal_topology_witness.volume_of(c: rect) == 12000000 * 2400 && test.claim.orthogonal_topology_witness.volume_of(c: l_space()) < test.claim.orthogonal_topology_witness.volume_of(c: rect)
+  volume_of(c: rect) == 12000000 * 2400 && volume_of(c: l_space()) < volume_of(c: rect)
 }
 
 test fn face_count_is_walls_plus_floor_and_ceiling() -> Bool {
@@ -191,23 +191,23 @@ test fn face_count_is_walls_plus_floor_and_ceiling() -> Bool {
 // are counted twice and the parity flips. An earlier revision of this witness omitted them and a
 // mutation to the rule stayed green, so the rule was untested while looking tested.
 test fn containment_distinguishes_inside_boundary_and_the_notch() -> Bool {
-  located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 1000, y: 1000, z: 1200)) == 1
-    && located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 3000, y: 2500, z: 1200)) == 3
-    && located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 0, y: 1000, z: 1200)) == 2
-    && located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 1000, y: 1000, z: 0)) == 2
-    && located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 1000, y: 1000, z: 2500)) == 3
-    && located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 1000, y: 2000, z: 1200)) == 1
-    && located(c: l_space(), p: test.claim.orthogonal_topology_witness.p3(x: 3000, y: 2000, z: 1200)) == 2
+  located(c: l_space(), p: p3(x: 1000, y: 1000, z: 1200)) == 1
+    && located(c: l_space(), p: p3(x: 3000, y: 2500, z: 1200)) == 3
+    && located(c: l_space(), p: p3(x: 0, y: 1000, z: 1200)) == 2
+    && located(c: l_space(), p: p3(x: 1000, y: 1000, z: 0)) == 2
+    && located(c: l_space(), p: p3(x: 1000, y: 1000, z: 2500)) == 3
+    && located(c: l_space(), p: p3(x: 1000, y: 2000, z: 1200)) == 1
+    && located(c: l_space(), p: p3(x: 3000, y: 2000, z: 1200)) == 2
 }
 
 test fn containment_refuses_across_frames() -> Bool {
   match l_space() {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: s } =>
-      match space_locate_point(s: s, p: point3(frame: test.claim.orthogonal_topology_witness.building(), x: 1000, y: 1000, z: 1200)) {
-        OrthogonalReady { value: _ } => false
-        OrthogonalRefused { cause: c } =>
-          match c { OrthogonalFrameMismatch { expected: _, observed: _ } => true  _ => false }
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: s } =>
+      match std.orthogonal_topology.space_locate_point(s: s, p: std.affine_space.point3(frame: building(), x: 1000, y: 1000, z: 1200)) {
+        std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+        std.orthogonal_geometry.OrthogonalRefused { cause: c } =>
+          match c { std.orthogonal_geometry.OrthogonalFrameMismatch { expected: _, observed: _ } => true  _ => false }
       }
   }
 }
@@ -227,7 +227,7 @@ test fn genuinely_overlapping_spaces_interpenetrate() -> Bool {
 // Stacked floors share a slab plane and must not count as interpenetrating: the vertical ranges
 // touch at one coordinate, and touching is adjacency, not overlap.
 test fn stacked_floors_touch_without_interpenetrating() -> Bool {
-  overlaps(ca: l_space(), cb: space_ctor(vertices: test.claim.orthogonal_topology_witness.l_shape(), low: 2400, high: 4800)) == 0
+  overlaps(ca: l_space(), cb: space_ctor(vertices: l_shape(), low: 2400, high: 4800)) == 0
 }
 
 // TWO SPACES AT THE SAME PLACE. This is the case the first version of the overlap predicate got
@@ -238,11 +238,11 @@ test fn stacked_floors_touch_without_interpenetrating() -> Bool {
 test fn identical_spaces_interpenetrate() -> Bool {
   overlaps(ca: l_space(), cb: l_space()) == 1
     && match sequence_spaces(cs: [l_space(), l_space()]) {
-         OrthogonalRefused { cause: _ } => false
-         OrthogonalReady { value: spaces } =>
-           match space_complex(spaces: spaces) {
-             OrthogonalReady { value: _ } => false
-             OrthogonalRefused { cause: c } => match c { SpacesInterpenetrate => true  _ => false }
+         std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+         std.orthogonal_geometry.OrthogonalReady { value: spaces } =>
+           match std.orthogonal_topology.space_complex(spaces: spaces) {
+             std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+             std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.SpacesInterpenetrate => true  _ => false }
            }
        }
 }
@@ -278,15 +278,15 @@ test fn complex_admits_disjoint_spaces_and_sums_their_volumes() -> Bool {
     rect_ctor(x0: 0, y0: 0, x1: 3000, y1: 3000, low: 0, high: 2400),
     rect_ctor(x0: 3000, y0: 0, x1: 6000, y1: 3000, low: 0, high: 2400),
   ]) {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: spaces } =>
-      match space_complex(spaces: spaces) {
-        OrthogonalRefused { cause: _ } => false
-        OrthogonalReady { value: c } =>
-          complex_space_count(c: c) == 2
-            && match complex_total_volume(registry: test.claim.orthogonal_topology_witness.mm_registry(), c: c) {
-                 OrthogonalReady { value: v } => cubic_millimeter_count(m: v) == 2 * 9000000 * 2400
-                 OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: spaces } =>
+      match std.orthogonal_topology.space_complex(spaces: spaces) {
+        std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+        std.orthogonal_geometry.OrthogonalReady { value: c } =>
+          std.orthogonal_topology.complex_space_count(c: c) == 2
+            && match std.orthogonal_topology.complex_total_volume(registry: mm_registry(), c: c) {
+                 std.orthogonal_geometry.OrthogonalReady { value: v } => std.measure.cubic_millimeter_count(m: v) == 2 * 9000000 * 2400
+                 std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
                }
       }
   }
@@ -294,11 +294,11 @@ test fn complex_admits_disjoint_spaces_and_sums_their_volumes() -> Bool {
 
 test fn complex_refuses_interpenetrating_members() -> Bool {
   match sequence_spaces(cs: [l_space(), rect_ctor(x0: 1000, y0: 1000, x1: 3000, y1: 1500, low: 1000, high: 2000)]) {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: spaces } =>
-      match space_complex(spaces: spaces) {
-        OrthogonalReady { value: _ } => false
-        OrthogonalRefused { cause: c } => match c { SpacesInterpenetrate => true  _ => false }
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: spaces } =>
+      match std.orthogonal_topology.space_complex(spaces: spaces) {
+        std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+        std.orthogonal_geometry.OrthogonalRefused { cause: c } => match c { std.orthogonal_geometry.SpacesInterpenetrate => true  _ => false }
       }
   }
 }
@@ -306,21 +306,21 @@ test fn complex_refuses_interpenetrating_members() -> Bool {
 test fn complex_refuses_members_in_different_frames() -> Bool {
   let elsewhere = space_ctor(
     vertices: [
-      point2(frame: test.claim.orthogonal_topology_witness.building(), x: 0, y: 0),
-      point2(frame: test.claim.orthogonal_topology_witness.building(), x: 3000, y: 0),
-      point2(frame: test.claim.orthogonal_topology_witness.building(), x: 3000, y: 3000),
-      point2(frame: test.claim.orthogonal_topology_witness.building(), x: 0, y: 3000),
+      std.affine_space.point2(frame: building(), x: 0, y: 0),
+      std.affine_space.point2(frame: building(), x: 3000, y: 0),
+      std.affine_space.point2(frame: building(), x: 3000, y: 3000),
+      std.affine_space.point2(frame: building(), x: 0, y: 3000),
     ],
     low: 0,
     high: 2400,
   )
   match sequence_spaces(cs: [rect_ctor(x0: 0, y0: 0, x1: 3000, y1: 3000, low: 0, high: 2400), elsewhere]) {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: spaces } =>
-      match space_complex(spaces: spaces) {
-        OrthogonalReady { value: _ } => false
-        OrthogonalRefused { cause: c } =>
-          match c { OrthogonalFrameMismatch { expected: _, observed: _ } => true  _ => false }
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: spaces } =>
+      match std.orthogonal_topology.space_complex(spaces: spaces) {
+        std.orthogonal_geometry.OrthogonalReady { value: _ } => false
+        std.orthogonal_geometry.OrthogonalRefused { cause: c } =>
+          match c { std.orthogonal_geometry.OrthogonalFrameMismatch { expected: _, observed: _ } => true  _ => false }
       }
   }
 }
@@ -332,9 +332,9 @@ test fn complex_refuses_members_in_different_frames() -> Bool {
 // million, from arithmetic that is right. The millimetre frame is the positive control on the
 // same space, so the frame decides the outcome rather than the fold refusing everything.
 fn micro_registry() -> std.spatial_frame.SpatialFrameRegistry {
-  match register_frame(r: empty_frame_registry(), identity: test.claim.orthogonal_topology_witness.room(), length_scale: Micro) {
-    FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
-    FrameRegistrationRefused { cause: _ } => empty_frame_registry()
+  match std.spatial_frame.register_frame(r: std.spatial_frame.empty_frame_registry(), identity: room(), length_scale: std.measure.Micro) {
+    std.spatial_frame.FrameRegistered { frame: f } => std.spatial_frame.registry_with(r: std.spatial_frame.empty_frame_registry(), f: f)
+    std.spatial_frame.FrameRegistrationRefused { cause: _ } => std.spatial_frame.empty_frame_registry()
   }
 }
 
@@ -347,42 +347,42 @@ fn micro_registry() -> std.spatial_frame.SpatialFrameRegistry {
 // the height projection refuses, and the module records that those arms are defensive.
 test fn w_metric_folds_refuse_a_frame_they_cannot_label() -> Bool {
   match l_space() {
-    OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: s } => {
-      let area_refused = match space_floor_area(registry: test.claim.orthogonal_topology_witness.micro_registry(), s: s) {
-        OrthogonalRefused { cause: c } =>
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
+    std.orthogonal_geometry.OrthogonalReady { value: s } => {
+      let area_refused = match std.orthogonal_topology.space_floor_area(registry: micro_registry(), s: s) {
+        std.orthogonal_geometry.OrthogonalRefused { cause: c } =>
           match c {
             MillimetreFrameRequiredForMetric { frame: _ } => true
             SegmentEndpointsCoincide => false
             SegmentNotAxisAligned => false
             ExtentNotPositive { axis: _ } => false
-            OrthogonalFrameMismatch { expected: _, observed: _ } => false
+            std.orthogonal_geometry.OrthogonalFrameMismatch { expected: _, observed: _ } => false
             LoopTooFewVertices { supplied: _ } => false
             LoopEdgeNotAxisAligned => false
             LoopEdgesNotPerpendicular => false
             LoopSelfIntersects => false
             ShellArithmeticRefused { cause: _ } => false
-            SpacesInterpenetrate => false
+            std.orthogonal_geometry.SpacesInterpenetrate => false
             RotationAxesParallel => false
             BoundingBoxHasNoPoints => false
           }
-        OrthogonalReady { value: _ } => false
+        std.orthogonal_geometry.OrthogonalReady { value: _ } => false
       }
-      let area_answered = match space_floor_area(registry: test.claim.orthogonal_topology_witness.mm_registry(), s: s) {
-        OrthogonalReady { value: _ } => true
-        OrthogonalRefused { cause: _ } => false
+      let area_answered = match std.orthogonal_topology.space_floor_area(registry: mm_registry(), s: s) {
+        std.orthogonal_geometry.OrthogonalReady { value: _ } => true
+        std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
       }
-      let height_unregistered = match space_height(registry: empty_frame_registry(), s: s) {
-        ExtentFrameUnregistered { identity: _ } => true
-        ExtentInFrame { length: _ } => false
+      let height_unregistered = match std.orthogonal_topology.space_height(registry: std.spatial_frame.empty_frame_registry(), s: s) {
+        std.spatial_frame.ExtentFrameUnregistered { identity: _ } => true
+        std.spatial_frame.ExtentInFrame { length: _ } => false
       }
-      let volume_refused = match space_volume(registry: test.claim.orthogonal_topology_witness.micro_registry(), s: s) {
-        OrthogonalRefused { cause: _ } => true
-        OrthogonalReady { value: _ } => false
+      let volume_refused = match std.orthogonal_topology.space_volume(registry: micro_registry(), s: s) {
+        std.orthogonal_geometry.OrthogonalRefused { cause: _ } => true
+        std.orthogonal_geometry.OrthogonalReady { value: _ } => false
       }
-      let volume_answered = match space_volume(registry: test.claim.orthogonal_topology_witness.mm_registry(), s: s) {
-        OrthogonalReady { value: v } => cubic_millimeter_count(m: v) > 0
-        OrthogonalRefused { cause: _ } => false
+      let volume_answered = match std.orthogonal_topology.space_volume(registry: mm_registry(), s: s) {
+        std.orthogonal_geometry.OrthogonalReady { value: v } => std.measure.cubic_millimeter_count(m: v) > 0
+        std.orthogonal_geometry.OrthogonalRefused { cause: _ } => false
       }
       area_refused && area_answered && height_unregistered && volume_refused && volume_answered
     }

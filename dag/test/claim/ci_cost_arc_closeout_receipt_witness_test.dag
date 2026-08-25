@@ -2,108 +2,108 @@ module test.claim.ci_cost_arc_closeout_receipt_witness
 
 
 test fn witness_subject_is_hand_harvested_affected() -> Bool {
-  let s = affected_ci_cost_audit_subject()
+  let s = gunbc.ci_cost_arc_closeout_receipt.affected_ci_cost_audit_subject()
   match s.harvest {
-    HandHarvestedDatedAudit {} => true
+    gunbc.ci_cost_arc_closeout_receipt.HandHarvestedDatedAudit {} => true
   }
     && s.github_actions_run_id == 30863019228
     && match s.selection {
-      SelectionApplied => true
+      gunbc.ci_cost_arc_closeout_receipt.SelectionApplied => true
       _ => false
     }
 }
 
 test fn witness_full_corpus_not_harvested() -> Bool {
-  match full_corpus_subject_harvest() {
-    NotHarvested {} => true
+  match gunbc.ci_cost_arc_closeout_receipt.full_corpus_subject_harvest() {
+    gunbc.ci_cost_arc_closeout_receipt.NotHarvested {} => true
   }
 }
 
 test fn witness_ci_job_reconciles() -> Bool {
-  ci_job_wall_reconciles()
-    && millisecond_count(m: unattributed_ci_wall()) == 1902042
-    && millisecond_count(m: classified_ci_wall()) == 606958
-    && millisecond_count(m: ci_job_wall()) == 2509000
+  gunbc.ci_cost_arc_closeout_receipt.ci_job_wall_reconciles()
+    && std.measure.millisecond_count(m: gunbc.ci_cost_arc_closeout_receipt.unattributed_ci_wall()) == 1902042
+    && std.measure.millisecond_count(m: gunbc.ci_cost_arc_closeout_receipt.classified_ci_wall()) == 606958
+    && std.measure.millisecond_count(m: gunbc.ci_cost_arc_closeout_receipt.ci_job_wall()) == 2509000
 }
 
 test fn witness_pipeline_reconciles() -> Bool {
-  pipeline_sum_reconciles()
-    && millisecond_count(m: pipeline_sum_wall()) == 3256000
-    && millisecond_count(m: build_wall()) == 237000
-    && millisecond_count(m: regen_wall()) == 510000
+  gunbc.ci_cost_arc_closeout_receipt.pipeline_sum_reconciles()
+    && std.measure.millisecond_count(m: gunbc.ci_cost_arc_closeout_receipt.pipeline_sum_wall()) == 3256000
+    && std.measure.millisecond_count(m: gunbc.ci_cost_arc_closeout_receipt.build_wall()) == 237000
+    && std.measure.millisecond_count(m: gunbc.ci_cost_arc_closeout_receipt.regen_wall()) == 510000
 }
 
 test fn witness_classified_is_capture_resolve_eval() -> Bool {
-  classified_equals_capture_resolve_eval()
-    && millisecond_count(m: capture_wall()) == 110820
-    && millisecond_count(m: discovery_resolve_wall()) == 431122
-    && millisecond_count(m: discovery_eval_wall()) == 65016
+  gunbc.ci_cost_arc_closeout_receipt.classified_equals_capture_resolve_eval()
+    && std.measure.millisecond_count(m: gunbc.ci_cost_arc_closeout_receipt.capture_wall()) == 110820
+    && std.measure.millisecond_count(m: gunbc.ci_cost_arc_closeout_receipt.discovery_resolve_wall()) == 431122
+    && std.measure.millisecond_count(m: gunbc.ci_cost_arc_closeout_receipt.discovery_eval_wall()) == 65016
 }
 
 test fn witness_selection_counts() -> Bool {
-  selected_entry_groups() == 297
-    && total_entry_groups() == 916
-    && discovery_witness_total() == 6610
-    && discovery_witness_skipped() == 4174
-    && discovery_witness_deferred() == 1020
+  gunbc.ci_cost_arc_closeout_receipt.selected_entry_groups() == 297
+    && gunbc.ci_cost_arc_closeout_receipt.total_entry_groups() == 916
+    && gunbc.ci_cost_arc_closeout_receipt.discovery_witness_total() == 6610
+    && gunbc.ci_cost_arc_closeout_receipt.discovery_witness_skipped() == 4174
+    && gunbc.ci_cost_arc_closeout_receipt.discovery_witness_deferred() == 1020
 }
 
 test fn witness_memory_peaks() -> Bool {
-  byte_size_count(b: floor_drain_peak_rss()) == 8513646592
-    && byte_size_count(b: calibration_floor_peak_rss()) == 10821181440
-    && capture_swap_after() == 0
+  std.measure.byte_size_count(b: gunbc.ci_cost_arc_closeout_receipt.floor_drain_peak_rss()) == 8513646592
+    && std.measure.byte_size_count(b: gunbc.ci_cost_arc_closeout_receipt.calibration_floor_peak_rss()) == 10821181440
+    && gunbc.ci_cost_arc_closeout_receipt.capture_swap_after() == 0
 }
 
 test fn witness_cold_baseline() -> Bool {
-  millisecond_count(m: cold_admission_baseline_wall()) == 197130
+  std.measure.millisecond_count(m: gunbc.ci_cost_arc_closeout_receipt.cold_admission_baseline_wall()) == 197130
 }
 
 test fn witness_admission_net_open() -> Bool {
-  match admission_settle() {
-    CaptureMeasuredNetOpen {} => true
+  match gunbc.ci_cost_arc_closeout_receipt.admission_settle() {
+    gunbc.ci_cost_arc_closeout_receipt.CaptureMeasuredNetOpen {} => true
   }
 }
 
 test fn witness_native_fleet_rate_open() -> Bool {
-  match native_fleet_settle() {
-    EnrollmentLandedFleetRateOpen {} => true
+  match gunbc.ci_cost_arc_closeout_receipt.native_fleet_settle() {
+    gunbc.ci_cost_arc_closeout_receipt.EnrollmentLandedFleetRateOpen {} => true
   }
 }
 
 data witness_warm_hit_skip_proof_landed_note: String = "UPDATED 2026-08-11 (gunbc#8146): warm_hit_settle now reads SkipProofWithdrawn, because the module carrying cross_process_hit_skips_semantic_recompute was executed for the first time and reports 3 failures in 1321s, so the skip proof has no executing consumer. The assertion below tracks the withdrawal EXPLICITLY rather than being deleted — per DESIGN §4b(4) the control stays enrolled, and it must flip back to ClosedSkipProofLanded only when the evidence executes again. HISTORY — renamed from witness_warm_hit_partial (DESIGN §4b(4) — a probe that expected an open state and then closed flips to a permanent regression control, it does not retire): cross_process_hit_skips_semantic_recompute (v1_compiler_tests.resolve_cross_process_cache_test) now asserts TYPECHECK_COMPUTE_COUNT stays 0 on a warm cross-process disk-tier hit, green by execution. warm_hit_settle therefore reads ClosedSkipProofLanded, not PartiallyDeliveredSkipProofOpen. A future regression that reopens the skip-proof gap (or reverts this settle without re-landing the counter proof) must flip this assertion back, which is exactly the signal this test now exists to catch."
 
 test fn witness_warm_hit_skip_proof_landed() -> Bool {
-  match warm_hit_settle() {
-    ClosedSkipProofLanded {} => false
-    SkipProofWithdrawn { reason: r } => !(r == "")
+  match gunbc.ci_cost_arc_closeout_receipt.warm_hit_settle() {
+    gunbc.ci_cost_arc_closeout_receipt.ClosedSkipProofLanded {} => false
+    gunbc.ci_cost_arc_closeout_receipt.SkipProofWithdrawn { reason: r } => !(r == "")
   }
 }
 
 test fn witness_closed_lanes() -> Bool {
-  match retention_settle() {
-    ClosedReject {} => true
+  match gunbc.ci_cost_arc_closeout_receipt.retention_settle() {
+    gunbc.ci_cost_arc_closeout_receipt.ClosedReject {} => true
   }
-    && match union_settle() {
-      ClosedNoRepeatedTypecheck {} => true
+    && match gunbc.ci_cost_arc_closeout_receipt.union_settle() {
+      gunbc.ci_cost_arc_closeout_receipt.ClosedNoRepeatedTypecheck {} => true
     }
-    && match selection_honesty_settle() {
-      Landed {} => true
+    && match gunbc.ci_cost_arc_closeout_receipt.selection_honesty_settle() {
+      gunbc.ci_cost_arc_closeout_receipt.Landed {} => true
     }
 }
 
 test fn witness_residual_vs_compiler_next_target() -> Bool {
-  match end_to_end_residual() {
-    UnattributedCiJobWall {} => true
+  match gunbc.ci_cost_arc_closeout_receipt.end_to_end_residual() {
+    gunbc.ci_cost_arc_closeout_receipt.UnattributedCiJobWall {} => true
   }
-    && match compiler_next_measured_target() {
-      PerEntryAssembly {} => true
+    && match gunbc.ci_cost_arc_closeout_receipt.compiler_next_measured_target() {
+      gunbc.ci_cost_arc_closeout_receipt.PerEntryAssembly {} => true
     }
 }
 
 test fn red_unattributed_must_not_be_zero() -> Bool {
-  !(millisecond_count(m: unattributed_ci_wall()) == 0)
+  !(std.measure.millisecond_count(m: gunbc.ci_cost_arc_closeout_receipt.unattributed_ci_wall()) == 0)
 }
 
 test fn red_ci_job_must_not_silently_equal_classified() -> Bool {
-  !(millisecond_count(m: ci_job_wall()) == millisecond_count(m: classified_ci_wall()))
+  !(std.measure.millisecond_count(m: gunbc.ci_cost_arc_closeout_receipt.ci_job_wall()) == std.measure.millisecond_count(m: gunbc.ci_cost_arc_closeout_receipt.classified_ci_wall()))
 }

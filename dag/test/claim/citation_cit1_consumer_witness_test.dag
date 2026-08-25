@@ -6,24 +6,24 @@ data witness_unencodable_scalar_code_points: List<Int> = [1114112]
 data witness_malformed_receipt_hex: String = "not-a-valid-sha256-hex"
 
 test fn x86_64_abi_pdf_pin_reports_independent_expected_pin_unavailable() -> Bool {
-  match x86_64_abi_pdf_pin_construction {
-    X86_64AbiPdfPinRefused { cause: IndependentExpectedPinUnavailable } => true
+  match gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_pdf_pin_construction {
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfPinRefused { cause: gunbc.citation.x86_64_abi_pdf_consumer.IndependentExpectedPinUnavailable } => true
     _ => false
   }
 }
 
 test fn x86_64_abi_syscall_citation_below_digest_matched_rung() -> Bool {
-  witness_syscall_citation_below_digest_matched_rung()
-    && match x86_64_abi_syscall_citation_rung_disposition {
-      BelowDigestMatchedRung { cause: IndependentExpectedPinUnavailable } => true
+  gunbc.citation.x86_64_abi_pdf_consumer.witness_syscall_citation_below_digest_matched_rung()
+    && match gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_syscall_citation_rung_disposition {
+      gunbc.citation.x86_64_abi_pdf_consumer.BelowDigestMatchedRung { cause: gunbc.citation.x86_64_abi_pdf_consumer.IndependentExpectedPinUnavailable } => true
     }
 }
 
 test fn x86_64_abi_syscall_citation_fact_refused_without_digest_matched_rung_RED() -> Bool {
-  match x86_64_abi_syscall_convention_citation_fact_construction {
-    X86_64AbiCitationFactConstructed(_) => false
-    X86_64AbiCitationFactRefused {
-      pin: X86_64AbiPdfPinRefused { cause: IndependentExpectedPinUnavailable },
+  match gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_syscall_convention_citation_fact_construction {
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiCitationFactConstructed(_) => false
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiCitationFactRefused {
+      pin: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfPinRefused { cause: gunbc.citation.x86_64_abi_pdf_consumer.IndependentExpectedPinUnavailable },
       selector: _,
     } => true
     _ => false
@@ -31,70 +31,70 @@ test fn x86_64_abi_syscall_citation_fact_refused_without_digest_matched_rung_RED
 }
 
 test fn x86_64_abi_syscall_evidence_link_refused_without_digest_matched_rung_RED() -> Bool {
-  match x86_64_abi_syscall_evidence_link_construction() {
-    X86_64AbiEvidenceLinkRefused {
-      fact: X86_64AbiCitationFactRefused {
-        pin: X86_64AbiPdfPinRefused { cause: IndependentExpectedPinUnavailable },
+  match gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_syscall_evidence_link_construction() {
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiEvidenceLinkRefused {
+      fact: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiCitationFactRefused {
+        pin: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfPinRefused { cause: gunbc.citation.x86_64_abi_pdf_consumer.IndependentExpectedPinUnavailable },
         selector: _,
       },
     } => true
-    X86_64AbiEvidenceLinkConstructed(_) => false
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiEvidenceLinkConstructed(_) => false
     _ => false
   }
 }
 
 test fn x86_64_abi_malformed_receipt_hex_refuses_locally_not_http_RED() -> Bool {
-  match x86_64_abi_pdf_retrieval_observation_from_hex(hex: witness_malformed_receipt_hex) {
-    X86_64AbiPdfRetrievalDigestHexRefused {
+  match gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_pdf_retrieval_observation_from_hex(hex: witness_malformed_receipt_hex) {
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfRetrievalDigestHexRefused {
       hex: _,
-      cause: WetReceiptHexMalformed { hex: _ },
+      cause: gunbc.citation.x86_64_abi_pdf_consumer.WetReceiptHexMalformed { hex: _ },
     } => true
-    X86_64AbiPdfRetrievalObserved(CitationAccessRefused { cause: HttpAccessRefused { status: _ }, request: _, observed_at: _ }) => false
-    X86_64AbiPdfRetrievalObserved(_) => false
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfRetrievalObserved(std.citation.CitationAccessRefused { cause: std.citation.HttpAccessRefused { status: _ }, request: _, observed_at: _ }) => false
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfRetrievalObserved(_) => false
     _ => false
   }
 }
 
 test fn x86_64_abi_syscall_page_125_is_authoritative() -> Bool {
-  x86_64_abi_syscall_citation_page_is_authoritative(page: x86_64_abi_syscall_convention_authoritative_page)
+  gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_syscall_citation_page_is_authoritative(page: extdeps.runtime.abi.sysv_amd64.x86_64_abi_syscall_convention_authoritative_page)
 }
 
 test fn x86_64_abi_syscall_page_28_does_not_authorize_convention_claim_RED() -> Bool {
-  !x86_64_abi_syscall_citation_page_is_authoritative(page: 28)
+  !gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_syscall_citation_page_is_authoritative(page: 28)
 }
 
 test fn x86_64_abi_pdf_draft_edition_is_0_99_6() -> Bool {
-  x86_64_abi_pdf_draft_version == ("0.99.6" as extdeps.version.VersionIdentity)
+  extdeps.runtime.abi.sysv_amd64.x86_64_abi_pdf_draft_version == ("0.99.6" as extdeps.version.VersionIdentity)
 }
 
 test fn x86_64_abi_version_cover_uri_uses_page_one() -> Bool {
-  match x86_64_abi_pdf_version_navigable_uri_projection() {
-    X86_64AbiPdfNavigableUriProjected { uri: u } =>
+  match gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_pdf_version_navigable_uri_projection() {
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfNavigableUriProjected { uri: u } =>
       u.locator == "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf#page=1"
     _ => false
   }
 }
 
 test fn x86_64_abi_authority_locator_is_refspecs() -> Bool {
-  x86_64_abi_pdf_base_locator_probe() == ("refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf" as std.types.NonEmptyStr)
+  gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_pdf_base_locator_probe() == ("refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf" as std.types.NonEmptyStr)
 }
 test fn x86_64_abi_syscall_convention_uri_uses_physical_page_125() -> Bool {
-  match x86_64_abi_pdf_syscall_navigable_uri_projection() {
-    X86_64AbiPdfNavigableUriProjected { uri: u } =>
+  match gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_pdf_syscall_navigable_uri_projection() {
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfNavigableUriProjected { uri: u } =>
       u.locator == "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf#page=125"
     _ => false
   }
 }
 
 test fn x86_64_abi_consumer_refuses_unencodable_nameddest_navigable_uri() -> Bool {
-  match x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
+  match gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
     name: "plant" as std.types.NonEmptyStr,
-    code_points: test.claim.citation_cit1_consumer_witness.witness_unencodable_scalar_code_points,
+    code_points: witness_unencodable_scalar_code_points,
   ) {
-    X86_64AbiPdfNavigableUriRefused {
-      cause: PdfOpenParameterPercentEncodeRefusedFromSafe {
-        parameter: OpenNamedDest(_),
-        cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 },
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfNavigableUriRefused {
+      cause: gunbc.citation.pdf_safe_profile.PdfOpenParameterPercentEncodeRefusedFromSafe {
+        parameter: extdeps.standards.rfc_8118.OpenNamedDest(_),
+        cause: extdeps.uri.UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 },
       },
     } => true
     _ => false
@@ -102,42 +102,42 @@ test fn x86_64_abi_consumer_refuses_unencodable_nameddest_navigable_uri() -> Boo
 }
 
 test fn x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118() -> Bool {
-  match x86_64_abi_pdf_syscall_fragment_selector() {
-    X86_64AbiPdfCitationSelectorConstructed(std.citation.FragmentSelectorVariant(s)) =>
+  match gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_pdf_syscall_fragment_selector() {
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
       s.value == ("page=125" as std.types.NonEmptyStr)
-        && s.conforms_to.uri.locator == extdeps.standards.rfc_8118.extdeps_external_authority_anchor.uri.locator
-        && s.conforms_to.uri.locator != extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri.locator
+        && s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
+        && s.conforms_to.uri.locator != locator
     _ => false
   }
 }
 
 test fn x86_64_abi_syscall_selector_value_is_page_125() -> Bool {
-  match x86_64_abi_pdf_syscall_fragment_selector() {
-    X86_64AbiPdfCitationSelectorConstructed(std.citation.FragmentSelectorVariant(s)) =>
+  match gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_pdf_syscall_fragment_selector() {
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
       s.value == ("page=125" as std.types.NonEmptyStr)
     _ => false
   }
 }
 
 test fn x86_64_abi_syscall_selector_conforms_to_rfc_anchor() -> Bool {
-  match x86_64_abi_pdf_syscall_fragment_selector() {
-    X86_64AbiPdfCitationSelectorConstructed(std.citation.FragmentSelectorVariant(s)) =>
-      s.conforms_to.uri.locator == extdeps.standards.rfc_8118.extdeps_external_authority_anchor.uri.locator
+  match gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_pdf_syscall_fragment_selector() {
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
+      s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
     _ => false
   }
 }
 
 test fn x86_64_abi_syscall_selector_conforms_not_abi_pdf_locator() -> Bool {
-  match x86_64_abi_pdf_syscall_fragment_selector() {
-    X86_64AbiPdfCitationSelectorConstructed(std.citation.FragmentSelectorVariant(s)) =>
-      s.conforms_to.uri.locator != extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri.locator
+  match gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_pdf_syscall_fragment_selector() {
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
+      s.conforms_to.uri.locator != locator
     _ => false
   }
 }
 
 test fn x86_64_abi_syscall_page_28_selector_does_not_match_authoritative_claim_RED() -> Bool {
-  match x86_64_abi_pdf_fragment_selector_from_page(page: 28) {
-    X86_64AbiPdfCitationSelectorConstructed(std.citation.FragmentSelectorVariant(s)) =>
+  match gunbc.citation.x86_64_abi_pdf_consumer.x86_64_abi_pdf_fragment_selector_from_page(page: 28) {
+    gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
       s.value != ("page=125" as std.types.NonEmptyStr)
     _ => false
   }

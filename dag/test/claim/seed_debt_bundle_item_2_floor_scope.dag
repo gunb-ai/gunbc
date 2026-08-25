@@ -1,11 +1,12 @@
 module test.claim.seed_debt_bundle_item_2_floor_scope
 
+
 fn seed_debt_witness_entries() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   [
     std.realization_schedule.ScheduleWitnessEntry {
       entry: "dag/test/claim/compile_source_model_witness_test.dag",
       function: "",
-      kind: CorpusWitnessKind
+      kind: std.realization_schedule.CorpusWitnessKind
     }
   ]
 }
@@ -18,11 +19,11 @@ fn seed_debt_floor_scope_batches() -> List<List<std.realization_schedule.Runnabl
       explicit_entries: seed_debt_witness_entries(),
       exclude_substrings: [],
       discovery_scope_dirs: [],
-      profile: runnable_resource_profile_negligible()
+      profile: std.realization_schedule.runnable_resource_profile_negligible()
     }
   ]]
 }
 
 fn seed_debt_floor_scope_spawn_width() -> std.measure.HardwareThreadCount {
-  hardware_thread_count(count: 1)
+  std.measure.hardware_thread_count(count: 1)
 }

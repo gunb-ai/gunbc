@@ -1,15 +1,15 @@
 module v2.test.lens_testgen.dag_input_surface
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn language_behavior_generator_uses_conj_dag_input(g: v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>) -> v2.std.logic.Bool {
+fn language_behavior_generator_uses_conj_dag_input(g: v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
   match g.slot {
-    LanguageBehaviorEquivalence { subject, mock } =>
-      subject == lbe_subject_conj_dag_surface() &&
+    v2.lens.testgen.LanguageBehaviorEquivalence { subject, mock } =>
+      subject == v2.lens.testgen.lbe_subject_conj_dag_surface() &&
         subject.language == ^dag_language_model_surface_id &&
-        mock == lbe_io_mock_conj_dag_surface() &&
-        mock.snapshot == lbe_frozen_snapshot_conj_dag_surface() &&
+        mock == v2.lens.testgen.lbe_io_mock_conj_dag_surface() &&
+        mock.snapshot == v2.lens.testgen.lbe_frozen_snapshot_conj_dag_surface() &&
         mock.snapshot.language == ^dag_language_model_surface_id &&
         mock.snapshot.input_node == v2.test.manual.connective_anchors.stub_empty_conj &&
         mock.snapshot.expected_value == v2.test.manual.connective_anchors.stub_empty_conj
@@ -17,69 +17,69 @@ fn language_behavior_generator_uses_conj_dag_input(g: v2.lens.testgen.Generator<
   }
 }
 
-fn language_behavior_generator_uses_disj_dag_input(g: v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>) -> v2.std.logic.Bool {
+fn language_behavior_generator_uses_disj_dag_input(g: v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
   match g.slot {
-    LanguageBehaviorEquivalence { subject, mock } =>
-      subject == lbe_subject_disj_dag_surface() &&
+    v2.lens.testgen.LanguageBehaviorEquivalence { subject, mock } =>
+      subject == v2.lens.testgen.lbe_subject_disj_dag_surface() &&
         subject.language == ^dag_language_model_surface_id &&
-        mock == lbe_io_mock_disj_dag_surface() &&
-        mock.snapshot == lbe_frozen_snapshot_disj_dag_surface() &&
+        mock == v2.lens.testgen.lbe_io_mock_disj_dag_surface() &&
+        mock.snapshot == v2.lens.testgen.lbe_frozen_snapshot_disj_dag_surface() &&
         mock.snapshot.language == ^dag_language_model_surface_id &&
-        mock.snapshot.input_node == stub_empty_disj &&
-        mock.snapshot.expected_value == stub_empty_disj
+        mock.snapshot.input_node == v2.test.manual.connective_anchors.stub_empty_disj &&
+        mock.snapshot.expected_value == v2.test.manual.connective_anchors.stub_empty_disj
     _ => false
   }
 }
 
-fn language_behavior_generator_uses_transform_dag_input(g: v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>) -> v2.std.logic.Bool {
+fn language_behavior_generator_uses_transform_dag_input(g: v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
   match g.slot {
-    LanguageBehaviorEquivalence { subject, mock } =>
-      subject == lbe_subject_transform_dag_surface() &&
+    v2.lens.testgen.LanguageBehaviorEquivalence { subject, mock } =>
+      subject == v2.lens.testgen.lbe_subject_transform_dag_surface() &&
         subject.language == ^dag_language_model_surface_id &&
-        mock == lbe_io_mock_transform_dag_surface() &&
-        mock.snapshot == lbe_frozen_snapshot_transform_dag_surface() &&
+        mock == v2.lens.testgen.lbe_io_mock_transform_dag_surface() &&
+        mock.snapshot == v2.lens.testgen.lbe_frozen_snapshot_transform_dag_surface() &&
         mock.snapshot.language == ^dag_language_model_surface_id &&
-        mock.snapshot.input_node == stub_empty_transform &&
-        mock.snapshot.expected_value == stub_empty_transform
+        mock.snapshot.input_node == v2.test.manual.connective_anchors.stub_empty_transform &&
+        mock.snapshot.expected_value == v2.test.manual.connective_anchors.stub_empty_transform
     _ => false
   }
 }
 
-fn language_behavior_generator_uses_dag_input(g: v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>) -> v2.std.logic.Bool {
+fn language_behavior_generator_uses_dag_input(g: v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
   language_behavior_generator_uses_conj_dag_input(g: g) ||
     language_behavior_generator_uses_disj_dag_input(g: g) ||
     language_behavior_generator_uses_transform_dag_input(g: g)
 }
 
-test fn scheduled_language_behavior_generators_cover_dag_inputs() -> v2.std.logic.Bool {
-  let scheduled = testgen_scheduled_language_behavior_generators()
-  length(xs: scheduled) == 3 &&
-    for_all(
+test fn scheduled_language_behavior_generators_cover_dag_inputs() -> Bool {
+  let scheduled = v2.lens.testgen.testgen_scheduled_language_behavior_generators()
+  v2.std.algebra.length(xs: scheduled) == 3 &&
+    v2.std.algebra.for_all(
       xs: scheduled,
       predicate: fn(g) { language_behavior_generator_uses_dag_input(g: g) }
     ) &&
-    any(
+    v2.std.algebra.any(
       xs: scheduled,
       predicate: fn(g) { language_behavior_generator_uses_conj_dag_input(g: g) }
     ) &&
-    any(
+    v2.std.algebra.any(
       xs: scheduled,
       predicate: fn(g) { language_behavior_generator_uses_disj_dag_input(g: g) }
     ) &&
-    any(
+    v2.std.algebra.any(
       xs: scheduled,
       predicate: fn(g) { language_behavior_generator_uses_transform_dag_input(g: g) }
     )
 }
 
-test fn bootstrap_generator_has_conj_dag_input_surface() -> v2.std.logic.Bool {
-  match bootstrap_claim_generator_for_manual_anchor(key: ManualLbeConjDagSurface) {
-    Accepted { value: g, diagnostics: _ } =>
-      g.kind == TestClaimCompilesClaimVariant &&
-        g.classification == v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit } &&
-        g.anchor == manual_claim_anchor(anchor: ManualLbeConjDagSurface) &&
+test fn bootstrap_generator_has_conj_dag_input_surface() -> Bool {
+  match v2.lens.testgen.bootstrap_claim_generator_for_manual_anchor(key: v2.std.verification.ManualLbeConjDagSurface) {
+    v2.std.diagnostic.Accepted { value: g, diagnostics: _ } =>
+      g.kind == v2.std.verification.TestClaimCompilesClaimVariant &&
+        g.classification == v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit } &&
+        g.anchor == v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualLbeConjDagSurface) &&
         language_behavior_generator_uses_conj_dag_input(g: g)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

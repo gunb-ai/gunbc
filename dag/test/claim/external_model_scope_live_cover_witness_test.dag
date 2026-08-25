@@ -1,17 +1,17 @@
 module test.claim.external_model_scope_live_cover_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data live_cover_witness_note: String = "The WET half of the ExternalModelScope enrollment wall (split out of external_model_scope_witness_test after the d4bef96 floor red: hermetic discovery executed these fns against the mock corpus, where Filesystem.List directory walks and git.Core.DiffNameStatus have no published operations, so they refused — correct hermetic behavior, wrong lane). This file performs genuinely live host effects (a real directory walk of dag/extdeps; a real git diff freeze..HEAD) and is discovery-excluded via the gunbc.ci_layer_roots wet-integration posture with a documented local recipe. The pure decision fns it executes (scope_cover_holds, manifest_freeze_holds) live on gunbc.extdeps_scope_frontier and keep their hermetic RED controls discovery-enrolled in external_model_scope_witness_test, where the carrier-content check (filesystem_read carve-out, hermetic-safe) also stays per-PR — the discriminating logic runs per-PR; only the live observations (directory walk, git diff) run on the wet lane."
 
 fn read_manifest_rows_live() -> List<String> {
-  let r = filesystem_read(path: legacy_extdeps_scope_frontier_manifest_path)
-  parse_frontier_manifest(content: r.content)
+  let r = filesystem_read(path: gunbc.extdeps_scope_frontier.legacy_extdeps_scope_frontier_manifest_path)
+  gunbc.extdeps_scope_frontier.parse_frontier_manifest(content: r.content)
 }
 
 fn scope_roster_union_live() -> List<String> {
-  concat(scope_carrier_paths, concat(scope_machinery_exempt_paths, read_manifest_rows_live()))
+  concat(gunbc.extdeps_scope_frontier.scope_carrier_paths, concat(gunbc.extdeps_scope_frontier.scope_machinery_exempt_paths, read_manifest_rows_live()))
 }
 
 type ScopeCoverWalk {
@@ -48,10 +48,10 @@ test fn red_cover_walker_refuses_missing_root() -> Bool {
 test fn frontier_cover_of_live_extdeps_tree_holds() -> Bool {
   let w = scope_cover_walk(path: "dag/extdeps")
   w.walk_failures == 0
-    && scope_cover_holds(walked: w.files, union: scope_roster_union_live())
+    && gunbc.extdeps_scope_frontier.scope_cover_holds(walked: w.files, union: scope_roster_union_live())
     && (w.files |> count) > 150
 }
 
 test fn manifest_rows_all_predate_freeze_sha() -> Bool {
-  manifest_freeze_holds(manifest: read_manifest_rows_live(), observation: scope_placement_added_paths())
+  gunbc.extdeps_scope_frontier.manifest_freeze_holds(manifest: read_manifest_rows_live(), observation: tools.extdeps_scope_placement_gate.scope_placement_added_paths())
 }

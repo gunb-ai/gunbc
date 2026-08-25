@@ -1,7 +1,7 @@
 module test.claim.string_family_cast
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn string_to_secret(s: String) -> Secret {
   s as Secret

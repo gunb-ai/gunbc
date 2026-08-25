@@ -55,7 +55,7 @@ type OrthogonalRefusal
   | SegmentNotAxisAligned
   | ExtentNotPositive { axis: std.euclidean_geometry.Axis3 }
   | OrthogonalFrameMismatch { expected: std.coordinate_frame.CoordinateFrameIdentity, observed: std.coordinate_frame.CoordinateFrameIdentity }
-  | LoopTooFewVertices { supplied: std.integer.Int }
+  | LoopTooFewVertices { supplied: Int }
   | LoopEdgeNotAxisAligned
   | LoopEdgesNotPerpendicular
   | LoopSelfIntersects
@@ -99,17 +99,17 @@ type OrthogonalRotation3 sole_constructor {
 // caught it, which is the whole reason that control asserts a derived value rather than only that
 // construction succeeded.
 fn perpendicular_axis_cross(a: std.euclidean_geometry.AxisDirection3, b: std.euclidean_geometry.AxisDirection3) -> std.euclidean_geometry.AxisDirection3 {
-  let ia = axis3_index(a: axis_direction_axis(d: a))
-  let ib = axis3_index(a: axis_direction_axis(d: b))
+  let ia = std.euclidean_geometry.axis3_index(a: std.euclidean_geometry.axis_direction_axis(d: a))
+  let ib = std.euclidean_geometry.axis3_index(a: std.euclidean_geometry.axis_direction_axis(d: b))
   let third = 3 - ia - ib
   let cyclic = ((ib - ia) + 3) % 3 == 1
-  let operand_signs_disagree = axis_direction_is_negative(d: a) != axis_direction_is_negative(d: b)
-  let third_axis = if third == 0 { Axis3X } else { if third == 1 { Axis3Y } else { Axis3Z } }
-  axis_direction_of(axis: third_axis, negative: operand_signs_disagree == cyclic)
+  let operand_signs_disagree = std.euclidean_geometry.axis_direction_is_negative(d: a) != std.euclidean_geometry.axis_direction_is_negative(d: b)
+  let third_axis = if third == 0 { std.euclidean_geometry.Axis3X } else { if third == 1 { std.euclidean_geometry.Axis3Y } else { std.euclidean_geometry.Axis3Z } }
+  std.euclidean_geometry.axis_direction_of(axis: third_axis, negative: operand_signs_disagree == cyclic)
 }
 
 fn orthogonal_rotation3(x_image: std.euclidean_geometry.AxisDirection3, y_image: std.euclidean_geometry.AxisDirection3) -> OrthogonalConstruction<OrthogonalRotation3> {
-  if axis3_eq(a: axis_direction_axis(d: x_image), b: axis_direction_axis(d: y_image)) {
+  if std.euclidean_geometry.axis3_eq(a: std.euclidean_geometry.axis_direction_axis(d: x_image), b: std.euclidean_geometry.axis_direction_axis(d: y_image)) {
     OrthogonalRefused { cause: RotationAxesParallel }
   } else {
     OrthogonalReady { value: OrthogonalRotation3 { x_image: x_image, y_image: y_image } }
@@ -144,11 +144,11 @@ type AxisAlignedSegment2 sole_constructor {
 }
 
 fn axis_aligned_segment2(start: std.affine_space.Point2, end: std.affine_space.Point2) -> OrthogonalConstruction<AxisAlignedSegment2> {
-  if !coordinate_frame_identity_eq(a: start.frame, b: end.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: start.frame, b: end.frame) {
     OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: start.frame, observed: end.frame } }
   } else {
-    let dx = signed_frame_component_count(c: end.x) - signed_frame_component_count(c: start.x)
-    let dy = signed_frame_component_count(c: end.y) - signed_frame_component_count(c: start.y)
+    let dx = std.affine_space.signed_frame_component_count(c: end.x) - std.affine_space.signed_frame_component_count(c: start.x)
+    let dy = std.affine_space.signed_frame_component_count(c: end.y) - std.affine_space.signed_frame_component_count(c: start.y)
     if (dx == 0 && dy == 0) {
       OrthogonalRefused { cause: SegmentEndpointsCoincide }
     } else if (dx != 0 && dy != 0) {
@@ -182,10 +182,10 @@ fn segment2_frame(s: AxisAlignedSegment2) -> std.coordinate_frame.CoordinateFram
 // and is now DERIVED: frame_length_as_millimeter over this, which refuses when the frame is not a
 // millimetre frame instead of truncating into one.
 fn segment2_extent(registry: std.spatial_frame.SpatialFrameRegistry, s: AxisAlignedSegment2) -> std.spatial_frame.FrameExtent {
-  let dx = signed_frame_component_count(c: s.end.x) - signed_frame_component_count(c: s.start.x)
-  let dy = signed_frame_component_count(c: s.end.y) - signed_frame_component_count(c: s.start.y)
+  let dx = std.affine_space.signed_frame_component_count(c: s.end.x) - std.affine_space.signed_frame_component_count(c: s.start.x)
+  let dy = std.affine_space.signed_frame_component_count(c: s.end.y) - std.affine_space.signed_frame_component_count(c: s.start.y)
   let d = dx + dy
-  extent_in_frame(registry: registry, identity: s.frame, count: if d < 0 { 0 - d } else { d })
+  std.spatial_frame.extent_in_frame(registry: registry, identity: s.frame, count: if d < 0 { 0 - d } else { d })
 }
 
 // AN AXIS-ALIGNED RECTANGLE, held as its two extreme corners rather than as an origin plus a width
@@ -204,12 +204,12 @@ type AxisAlignedRectangle2 sole_constructor {
 }
 
 fn axis_aligned_rectangle2(min: std.affine_space.Point2, max: std.affine_space.Point2) -> OrthogonalConstruction<AxisAlignedRectangle2> {
-  if !coordinate_frame_identity_eq(a: min.frame, b: max.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: min.frame, b: max.frame) {
     OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: min.frame, observed: max.frame } }
-  } else if signed_frame_component_count(c: max.x) <= signed_frame_component_count(c: min.x) {
-    OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3X } }
-  } else if signed_frame_component_count(c: max.y) <= signed_frame_component_count(c: min.y) {
-    OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3Y } }
+  } else if std.affine_space.signed_frame_component_count(c: max.x) <= std.affine_space.signed_frame_component_count(c: min.x) {
+    OrthogonalRefused { cause: ExtentNotPositive { axis: std.euclidean_geometry.Axis3X } }
+  } else if std.affine_space.signed_frame_component_count(c: max.y) <= std.affine_space.signed_frame_component_count(c: min.y) {
+    OrthogonalRefused { cause: ExtentNotPositive { axis: std.euclidean_geometry.Axis3Y } }
   } else {
     OrthogonalReady { value: AxisAlignedRectangle2 { frame: min.frame, min: min, max: max } }
   }
@@ -225,15 +225,15 @@ fn axis_aligned_rectangle2(min: std.affine_space.Point2, max: std.affine_space.P
 // is drawn in a plane, and lifting every footprint into a degenerate box to reuse the 3D test
 // would invent a Z extent no authority supplies, then compare on it.
 fn rectangle2_contains_point(r: AxisAlignedRectangle2, p: std.affine_space.Point2) -> Bool {
-  coordinate_frame_identity_eq(a: r.frame, b: p.frame)
-    && signed_frame_component_count(c: p.x) >= signed_frame_component_count(c: r.min.x)
-    && signed_frame_component_count(c: p.x) <= signed_frame_component_count(c: r.max.x)
-    && signed_frame_component_count(c: p.y) >= signed_frame_component_count(c: r.min.y)
-    && signed_frame_component_count(c: p.y) <= signed_frame_component_count(c: r.max.y)
+  std.coordinate_frame.coordinate_frame_identity_eq(a: r.frame, b: p.frame)
+    && std.affine_space.signed_frame_component_count(c: p.x) >= std.affine_space.signed_frame_component_count(c: r.min.x)
+    && std.affine_space.signed_frame_component_count(c: p.x) <= std.affine_space.signed_frame_component_count(c: r.max.x)
+    && std.affine_space.signed_frame_component_count(c: p.y) >= std.affine_space.signed_frame_component_count(c: r.min.y)
+    && std.affine_space.signed_frame_component_count(c: p.y) <= std.affine_space.signed_frame_component_count(c: r.max.y)
 }
 
 fn rectangle2_contains_rectangle(outer: AxisAlignedRectangle2, inner: AxisAlignedRectangle2) -> OrthogonalConstruction<Bool> {
-  if !coordinate_frame_identity_eq(a: outer.frame, b: inner.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: outer.frame, b: inner.frame) {
     OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: outer.frame, observed: inner.frame } }
   } else {
     OrthogonalReady {
@@ -243,13 +243,13 @@ fn rectangle2_contains_rectangle(outer: AxisAlignedRectangle2, inner: AxisAligne
 }
 
 fn rectangle2_overlaps(a: AxisAlignedRectangle2, b: AxisAlignedRectangle2) -> OrthogonalConstruction<Bool> {
-  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
     OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: a.frame, observed: b.frame } }
   } else {
-    let overlaps_x = signed_frame_component_count(c: a.min.x) < signed_frame_component_count(c: b.max.x)
-      && signed_frame_component_count(c: b.min.x) < signed_frame_component_count(c: a.max.x)
-    let overlaps_y = signed_frame_component_count(c: a.min.y) < signed_frame_component_count(c: b.max.y)
-      && signed_frame_component_count(c: b.min.y) < signed_frame_component_count(c: a.max.y)
+    let overlaps_x = std.affine_space.signed_frame_component_count(c: a.min.x) < std.affine_space.signed_frame_component_count(c: b.max.x)
+      && std.affine_space.signed_frame_component_count(c: b.min.x) < std.affine_space.signed_frame_component_count(c: a.max.x)
+    let overlaps_y = std.affine_space.signed_frame_component_count(c: a.min.y) < std.affine_space.signed_frame_component_count(c: b.max.y)
+      && std.affine_space.signed_frame_component_count(c: b.min.y) < std.affine_space.signed_frame_component_count(c: a.max.y)
     OrthogonalReady { value: overlaps_x && overlaps_y }
   }
 }
@@ -259,18 +259,18 @@ fn rectangle2_max(r: AxisAlignedRectangle2) -> std.affine_space.Point2 { r.max }
 fn rectangle2_frame(r: AxisAlignedRectangle2) -> std.coordinate_frame.CoordinateFrameIdentity { r.frame }
 
 fn rectangle2_width(registry: std.spatial_frame.SpatialFrameRegistry, r: AxisAlignedRectangle2) -> std.spatial_frame.FrameExtent {
-  extent_in_frame(
+  std.spatial_frame.extent_in_frame(
     registry: registry,
     identity: r.frame,
-    count: signed_frame_component_count(c: r.max.x) - signed_frame_component_count(c: r.min.x)
+    count: std.affine_space.signed_frame_component_count(c: r.max.x) - std.affine_space.signed_frame_component_count(c: r.min.x)
   )
 }
 
 fn rectangle2_height(registry: std.spatial_frame.SpatialFrameRegistry, r: AxisAlignedRectangle2) -> std.spatial_frame.FrameExtent {
-  extent_in_frame(
+  std.spatial_frame.extent_in_frame(
     registry: registry,
     identity: r.frame,
-    count: signed_frame_component_count(c: r.max.y) - signed_frame_component_count(c: r.min.y)
+    count: std.affine_space.signed_frame_component_count(c: r.max.y) - std.affine_space.signed_frame_component_count(c: r.min.y)
   )
 }
 
@@ -285,25 +285,25 @@ type Plane3 sole_constructor {
   offset: std.affine_space.SignedFrameComponent
 }
 
-fn plane3(frame: std.coordinate_frame.CoordinateFrameIdentity, normal_axis: std.euclidean_geometry.Axis3, offset: std.integer.Int) -> Plane3 {
-  Plane3 { frame: frame, normal_axis: normal_axis, offset: signed_frame_component(count: offset) }
+fn plane3(frame: std.coordinate_frame.CoordinateFrameIdentity, normal_axis: std.euclidean_geometry.Axis3, offset: Int) -> Plane3 {
+  Plane3 { frame: frame, normal_axis: normal_axis, offset: std.affine_space.signed_frame_component(count: offset) }
 }
 
 fn plane3_frame(p: Plane3) -> std.coordinate_frame.CoordinateFrameIdentity { p.frame }
 fn plane3_normal_axis(p: Plane3) -> std.euclidean_geometry.Axis3 { p.normal_axis }
 fn plane3_offset(p: Plane3) -> std.affine_space.SignedFrameComponent { p.offset }
 
-fn point3_component_on_axis(p: std.affine_space.Point3, axis: std.euclidean_geometry.Axis3) -> std.integer.Int {
+fn point3_component_on_axis(p: std.affine_space.Point3, axis: std.euclidean_geometry.Axis3) -> Int {
   match axis {
-    Axis3X => signed_frame_component_count(c: p.x)
-    Axis3Y => signed_frame_component_count(c: p.y)
-    Axis3Z => signed_frame_component_count(c: p.z)
+    std.euclidean_geometry.Axis3X => std.affine_space.signed_frame_component_count(c: p.x)
+    std.euclidean_geometry.Axis3Y => std.affine_space.signed_frame_component_count(c: p.y)
+    std.euclidean_geometry.Axis3Z => std.affine_space.signed_frame_component_count(c: p.z)
   }
 }
 
 fn plane3_contains_point(plane: Plane3, p: std.affine_space.Point3) -> Bool {
-  coordinate_frame_identity_eq(a: plane.frame, b: p.frame)
-    && point3_component_on_axis(p: p, axis: plane.normal_axis) == signed_frame_component_count(c: plane.offset)
+  std.coordinate_frame.coordinate_frame_identity_eq(a: plane.frame, b: p.frame)
+    && point3_component_on_axis(p: p, axis: plane.normal_axis) == std.affine_space.signed_frame_component_count(c: plane.offset)
 }
 
 // AN AXIS-ALIGNED BOX, the 3D sibling of the rectangle and refused on the same grounds in three
@@ -316,14 +316,14 @@ type AxisAlignedBox3 sole_constructor {
 }
 
 fn axis_aligned_box3(min: std.affine_space.Point3, max: std.affine_space.Point3) -> OrthogonalConstruction<AxisAlignedBox3> {
-  if !coordinate_frame_identity_eq(a: min.frame, b: max.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: min.frame, b: max.frame) {
     OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: min.frame, observed: max.frame } }
-  } else if signed_frame_component_count(c: max.x) <= signed_frame_component_count(c: min.x) {
-    OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3X } }
-  } else if signed_frame_component_count(c: max.y) <= signed_frame_component_count(c: min.y) {
-    OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3Y } }
-  } else if signed_frame_component_count(c: max.z) <= signed_frame_component_count(c: min.z) {
-    OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3Z } }
+  } else if std.affine_space.signed_frame_component_count(c: max.x) <= std.affine_space.signed_frame_component_count(c: min.x) {
+    OrthogonalRefused { cause: ExtentNotPositive { axis: std.euclidean_geometry.Axis3X } }
+  } else if std.affine_space.signed_frame_component_count(c: max.y) <= std.affine_space.signed_frame_component_count(c: min.y) {
+    OrthogonalRefused { cause: ExtentNotPositive { axis: std.euclidean_geometry.Axis3Y } }
+  } else if std.affine_space.signed_frame_component_count(c: max.z) <= std.affine_space.signed_frame_component_count(c: min.z) {
+    OrthogonalRefused { cause: ExtentNotPositive { axis: std.euclidean_geometry.Axis3Z } }
   } else {
     OrthogonalReady { value: AxisAlignedBox3 { frame: min.frame, min: min, max: max } }
   }
@@ -334,13 +334,13 @@ fn box3_max(b: AxisAlignedBox3) -> std.affine_space.Point3 { b.max }
 fn box3_frame(b: AxisAlignedBox3) -> std.coordinate_frame.CoordinateFrameIdentity { b.frame }
 
 fn box3_contains_point(b: AxisAlignedBox3, p: std.affine_space.Point3) -> Bool {
-  coordinate_frame_identity_eq(a: b.frame, b: p.frame)
-    && signed_frame_component_count(c: p.x) >= signed_frame_component_count(c: b.min.x)
-    && signed_frame_component_count(c: p.x) <= signed_frame_component_count(c: b.max.x)
-    && signed_frame_component_count(c: p.y) >= signed_frame_component_count(c: b.min.y)
-    && signed_frame_component_count(c: p.y) <= signed_frame_component_count(c: b.max.y)
-    && signed_frame_component_count(c: p.z) >= signed_frame_component_count(c: b.min.z)
-    && signed_frame_component_count(c: p.z) <= signed_frame_component_count(c: b.max.z)
+  std.coordinate_frame.coordinate_frame_identity_eq(a: b.frame, b: p.frame)
+    && std.affine_space.signed_frame_component_count(c: p.x) >= std.affine_space.signed_frame_component_count(c: b.min.x)
+    && std.affine_space.signed_frame_component_count(c: p.x) <= std.affine_space.signed_frame_component_count(c: b.max.x)
+    && std.affine_space.signed_frame_component_count(c: p.y) >= std.affine_space.signed_frame_component_count(c: b.min.y)
+    && std.affine_space.signed_frame_component_count(c: p.y) <= std.affine_space.signed_frame_component_count(c: b.max.y)
+    && std.affine_space.signed_frame_component_count(c: p.z) >= std.affine_space.signed_frame_component_count(c: b.min.z)
+    && std.affine_space.signed_frame_component_count(c: p.z) <= std.affine_space.signed_frame_component_count(c: b.max.z)
 }
 
 // TWO BOXES OVERLAP IFF THEY OVERLAP ON ALL THREE AXES, and touching faces do NOT overlap. That
@@ -348,15 +348,15 @@ fn box3_contains_point(b: AxisAlignedBox3, p: std.affine_space.Point3) -> Bool {
 // wall plane are adjacent, not intersecting, and a containment test that called them intersecting
 // would report every neighbour as a collision.
 fn box3_overlaps(a: AxisAlignedBox3, b: AxisAlignedBox3) -> OrthogonalConstruction<Bool> {
-  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
     OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: a.frame, observed: b.frame } }
   } else {
-    let overlaps_x = signed_frame_component_count(c: a.min.x) < signed_frame_component_count(c: b.max.x)
-      && signed_frame_component_count(c: b.min.x) < signed_frame_component_count(c: a.max.x)
-    let overlaps_y = signed_frame_component_count(c: a.min.y) < signed_frame_component_count(c: b.max.y)
-      && signed_frame_component_count(c: b.min.y) < signed_frame_component_count(c: a.max.y)
-    let overlaps_z = signed_frame_component_count(c: a.min.z) < signed_frame_component_count(c: b.max.z)
-      && signed_frame_component_count(c: b.min.z) < signed_frame_component_count(c: a.max.z)
+    let overlaps_x = std.affine_space.signed_frame_component_count(c: a.min.x) < std.affine_space.signed_frame_component_count(c: b.max.x)
+      && std.affine_space.signed_frame_component_count(c: b.min.x) < std.affine_space.signed_frame_component_count(c: a.max.x)
+    let overlaps_y = std.affine_space.signed_frame_component_count(c: a.min.y) < std.affine_space.signed_frame_component_count(c: b.max.y)
+      && std.affine_space.signed_frame_component_count(c: b.min.y) < std.affine_space.signed_frame_component_count(c: a.max.y)
+    let overlaps_z = std.affine_space.signed_frame_component_count(c: a.min.z) < std.affine_space.signed_frame_component_count(c: b.max.z)
+      && std.affine_space.signed_frame_component_count(c: b.min.z) < std.affine_space.signed_frame_component_count(c: a.max.z)
     OrthogonalReady { value: overlaps_x && overlaps_y && overlaps_z }
   }
 }
@@ -376,8 +376,8 @@ type BoundingBox3 sole_constructor {
   max: std.affine_space.Point3
 }
 
-fn min_int(a: std.integer.Int, b: std.integer.Int) -> std.integer.Int { if a < b { a } else { b } }
-fn max_int(a: std.integer.Int, b: std.integer.Int) -> std.integer.Int { if a > b { a } else { b } }
+fn min_int(a: Int, b: Int) -> Int { if a < b { a } else { b } }
+fn max_int(a: Int, b: Int) -> Int { if a > b { a } else { b } }
 
 fn bounding_box3(points: List<std.affine_space.Point3>) -> OrthogonalConstruction<BoundingBox3> {
   match points |> first {
@@ -386,22 +386,22 @@ fn bounding_box3(points: List<std.affine_space.Point3>) -> OrthogonalConstructio
       let frame_mismatch = fold(points, init: none, f: (acc, p) =>
         match acc {
           Present { value: _ } => acc
-          Absent => if coordinate_frame_identity_eq(a: head.frame, b: p.frame) { none } else { Present { value: p.frame } }
+          Absent => if std.coordinate_frame.coordinate_frame_identity_eq(a: head.frame, b: p.frame) { none } else { Present { value: p.frame } }
         })
       match frame_mismatch {
         Present { value: other } =>
           OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: head.frame, observed: other } }
         Absent =>
-          let lo_x = fold(points, init: signed_frame_component_count(c: head.x), f: (acc, p) => min_int(a: acc, b: signed_frame_component_count(c: p.x)))
-          let lo_y = fold(points, init: signed_frame_component_count(c: head.y), f: (acc, p) => min_int(a: acc, b: signed_frame_component_count(c: p.y)))
-          let lo_z = fold(points, init: signed_frame_component_count(c: head.z), f: (acc, p) => min_int(a: acc, b: signed_frame_component_count(c: p.z)))
-          let hi_x = fold(points, init: signed_frame_component_count(c: head.x), f: (acc, p) => max_int(a: acc, b: signed_frame_component_count(c: p.x)))
-          let hi_y = fold(points, init: signed_frame_component_count(c: head.y), f: (acc, p) => max_int(a: acc, b: signed_frame_component_count(c: p.y)))
-          let hi_z = fold(points, init: signed_frame_component_count(c: head.z), f: (acc, p) => max_int(a: acc, b: signed_frame_component_count(c: p.z)))
+          let lo_x = fold(points, init: std.affine_space.signed_frame_component_count(c: head.x), f: (acc, p) => min_int(a: acc, b: std.affine_space.signed_frame_component_count(c: p.x)))
+          let lo_y = fold(points, init: std.affine_space.signed_frame_component_count(c: head.y), f: (acc, p) => min_int(a: acc, b: std.affine_space.signed_frame_component_count(c: p.y)))
+          let lo_z = fold(points, init: std.affine_space.signed_frame_component_count(c: head.z), f: (acc, p) => min_int(a: acc, b: std.affine_space.signed_frame_component_count(c: p.z)))
+          let hi_x = fold(points, init: std.affine_space.signed_frame_component_count(c: head.x), f: (acc, p) => max_int(a: acc, b: std.affine_space.signed_frame_component_count(c: p.x)))
+          let hi_y = fold(points, init: std.affine_space.signed_frame_component_count(c: head.y), f: (acc, p) => max_int(a: acc, b: std.affine_space.signed_frame_component_count(c: p.y)))
+          let hi_z = fold(points, init: std.affine_space.signed_frame_component_count(c: head.z), f: (acc, p) => max_int(a: acc, b: std.affine_space.signed_frame_component_count(c: p.z)))
           OrthogonalReady { value: BoundingBox3 {
             frame: head.frame,
-            min: point3(frame: head.frame, x: lo_x, y: lo_y, z: lo_z),
-            max: point3(frame: head.frame, x: hi_x, y: hi_y, z: hi_z),
+            min: std.affine_space.point3(frame: head.frame, x: lo_x, y: lo_y, z: lo_z),
+            max: std.affine_space.point3(frame: head.frame, x: hi_x, y: hi_y, z: hi_z),
           } }
       }
   }
@@ -433,8 +433,8 @@ type OrthogonalLoop2 sole_constructor {
   vertices: List<std.affine_space.Point2>
 }
 
-fn point2_x(p: std.affine_space.Point2) -> std.integer.Int { signed_frame_component_count(c: p.x) }
-fn point2_y(p: std.affine_space.Point2) -> std.integer.Int { signed_frame_component_count(c: p.y) }
+fn point2_x(p: std.affine_space.Point2) -> Int { std.affine_space.signed_frame_component_count(c: p.x) }
+fn point2_y(p: std.affine_space.Point2) -> Int { std.affine_space.signed_frame_component_count(c: p.y) }
 
 fn point2_same_position(a: std.affine_space.Point2, b: std.affine_space.Point2) -> Bool {
   point2_x(p: a) == point2_x(p: b) && point2_y(p: a) == point2_y(p: b)
@@ -465,7 +465,7 @@ fn axis2_eq(a: Axis2, b: Axis2) -> Bool {
 // band restricts itself to axis-aligned geometry: the general segment-intersection predicate needs
 // cross products and a degeneracy analysis, and this one is four integer comparisons. Endpoints
 // count (closed ranges) because two non-adjacent edges of a simple loop must not even touch.
-fn ranges_overlap(a_lo: std.integer.Int, a_hi: std.integer.Int, b_lo: std.integer.Int, b_hi: std.integer.Int) -> Bool {
+fn ranges_overlap(a_lo: Int, a_hi: Int, b_lo: Int, b_hi: Int) -> Bool {
   min_int(a: a_lo, b: a_hi) <= max_int(a: b_lo, b: b_hi)
     && min_int(a: b_lo, b: b_hi) <= max_int(a: a_lo, b: a_hi)
 }
@@ -478,7 +478,7 @@ fn segments_touch(a1: std.affine_space.Point2, a2: std.affine_space.Point2, b1: 
 // Adjacency is MODULAR: edge i neighbours i-1 and i+1, and edge 0 neighbours edge n-1 across the
 // implicit closure - exactly the pair a non-modular comparison forgets, admitting a loop whose
 // closing edge lies along its first.
-fn edges_are_adjacent(i: std.integer.Int, j: std.integer.Int, n: std.integer.Int) -> Bool {
+fn edges_are_adjacent(i: Int, j: Int, n: Int) -> Bool {
   i == j || ((i + 1) % n) == j || ((j + 1) % n) == i
 }
 
@@ -492,7 +492,7 @@ fn any_repeated_vertex(vertices: List<std.affine_space.Point2>) -> Bool {
     })
 }
 
-fn any_nonadjacent_edges_touch(edges: List<LoopEdge>, n: std.integer.Int) -> Bool {
+fn any_nonadjacent_edges_touch(edges: List<LoopEdge>, n: Int) -> Bool {
   fold(edges |> enumerate, init: false, f: (acc, a_pair) =>
     if acc {
       true
@@ -600,7 +600,7 @@ fn orthogonal_loop2(vertices: List<std.affine_space.Point2>) -> OrthogonalConstr
         let frame_mismatch = fold(vertices, init: none, f: (acc, p) =>
           match acc {
             Present { value: _ } => acc
-            Absent => if coordinate_frame_identity_eq(a: head.frame, b: p.frame) { none } else { Present { value: p.frame } }
+            Absent => if std.coordinate_frame.coordinate_frame_identity_eq(a: head.frame, b: p.frame) { none } else { Present { value: p.frame } }
           })
         match frame_mismatch {
           Present { value: other } =>
@@ -657,9 +657,9 @@ type AxisAlignedSurface3 sole_constructor {
 // refusal that no arm can produce - the same rung inflation on the shape that the deleted
 // LoopNotClosed and SurfaceNotInPlane arms were on the sum. Every caller stops paying a match for
 // an arm that cannot arrive.
-fn axis_aligned_surface3(offset: std.integer.Int, extent: AxisAlignedRectangle2) -> AxisAlignedSurface3 {
+fn axis_aligned_surface3(offset: Int, extent: AxisAlignedRectangle2) -> AxisAlignedSurface3 {
   AxisAlignedSurface3 {
-    plane: plane3(frame: rectangle2_frame(r: extent), normal_axis: Axis3Z, offset: offset),
+    plane: plane3(frame: rectangle2_frame(r: extent), normal_axis: std.euclidean_geometry.Axis3Z, offset: offset),
     extent: extent,
   }
 }
@@ -688,14 +688,14 @@ type OrthogonalPrism3 sole_constructor {
 // and the field is the construction fix; refusing a non-Z argument would have been the validation
 // one (DESIGN section 5). Same dissolve-on as the surface above: a plane-carrying 2D loop is what
 // would make a genuinely X- or Y-extruded prism representable.
-fn orthogonal_prism3(footprint: OrthogonalLoop2, low: std.integer.Int, high: std.integer.Int) -> OrthogonalConstruction<OrthogonalPrism3> {
+fn orthogonal_prism3(footprint: OrthogonalLoop2, low: Int, high: Int) -> OrthogonalConstruction<OrthogonalPrism3> {
   if high <= low {
-    OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3Z } }
+    OrthogonalRefused { cause: ExtentNotPositive { axis: std.euclidean_geometry.Axis3Z } }
   } else {
     OrthogonalReady { value: OrthogonalPrism3 {
       footprint: footprint,
-      low: signed_frame_component(count: low),
-      high: signed_frame_component(count: high),
+      low: std.affine_space.signed_frame_component(count: low),
+      high: std.affine_space.signed_frame_component(count: high),
     } }
   }
 }
@@ -713,9 +713,9 @@ fn prism3_high(p: OrthogonalPrism3) -> std.affine_space.SignedFrameComponent { p
 // It now answers in the frame, exactly as rectangle2_width and rectangle2_height do, so an
 // unregistered frame yields ExtentFrameUnregistered rather than a number nobody can read.
 fn prism3_height(registry: std.spatial_frame.SpatialFrameRegistry, p: OrthogonalPrism3) -> std.spatial_frame.FrameExtent {
-  extent_in_frame(
+  std.spatial_frame.extent_in_frame(
     registry: registry,
     identity: p.footprint.frame,
-    count: signed_frame_component_count(c: p.high) - signed_frame_component_count(c: p.low)
+    count: std.affine_space.signed_frame_component_count(c: p.high) - std.affine_space.signed_frame_component_count(c: p.low)
   )
 }

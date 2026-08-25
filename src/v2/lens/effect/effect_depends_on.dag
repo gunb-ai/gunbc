@@ -8,13 +8,13 @@ data effect_root: v2.std.node.Node = v2.std.node.Node {
   children: [
     v2.std.node.Edge { label: v2.std.node.Named { name: ^effect_edge_symbol }, target: effect_child }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data effect_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: effect_root,
   dependent: effect_child,
-  kind: EffectDependsOn,
+  kind: v2.std.dependency.EffectDependsOn,
   usage_site: effect_child
 }
 
@@ -49,9 +49,9 @@ data effect_depends_on_claim: LensEffectClaim = LensEffectClaim {
   actual: v2.lens.effect.effect_witness(tree: effect_claim_tree(), dependencies: [effect_dependency])
 }
 
-fn effect_depends_on_claim_holds() -> v2.std.logic.Bool {
+fn effect_depends_on_claim_holds() -> Bool {
   match effect_depends_on_claim.actual {
-    Violates { diagnostic: _ } =>
+    v2.std.witness.Violates { diagnostic: _ } =>
       v2.lens.effect.effect_fact_eq(
         a: v2.lens.effect.effect_fact(
           tree: effect_depends_on_claim.input,
@@ -63,18 +63,18 @@ fn effect_depends_on_claim_holds() -> v2.std.logic.Bool {
   }
 }
 
-data effect_depends_on_claim_passes: v2.std.logic.Bool = effect_depends_on_claim_holds()
+data effect_depends_on_claim_passes: Bool = effect_depends_on_claim_holds()
 
 fn lens_effect_marker_node(marker: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.ComputationNode { behavior: Value },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Value },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: marker },
         target: effect_root
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -147,7 +147,7 @@ fn effect_interpretation() -> v2.std.runtime.InterpretationAlgebra {
     branch: v2.std.runtime.BranchInterpreter { choose_branch: effect_choose_branch, identity: ^effect_choose_branch },
     loop: v2.std.runtime.LoopInterpreter { step_loop: effect_step_loop, identity: ^effect_step_loop },
     bind: v2.std.runtime.BindInterpreter { bind_value: effect_bind_value, identity: ^effect_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
@@ -157,7 +157,8 @@ fn effect_interpretation_structure_witness() -> v2.std.runtime.InterpretationStr
     call_primitive: ^effect_call_primitive,
     choose_branch: ^effect_choose_branch,
     step_loop: ^effect_step_loop,
-    bind_value: ^effect_bind_value,    choose_arm: ^runtime_reject_match_arm
+    bind_value: ^effect_bind_value,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 
@@ -171,10 +172,10 @@ fn effect_context() -> v2.compiler.eval.EvalContext {
 
 data claim_lens_effect_depends_on_runtime_verdict: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "lens_effect/effect_depends_on routes through run_test_claim",
-  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: lens_effect_marker_node(marker: ^effect_claim_pass_symbol),
   rhs: effect_depends_on_claim_expected_node(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
 data subject_lens_effect_depends_on_runtime_verdict: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> = v2.compiler.eval.eval_test_claim_subject(

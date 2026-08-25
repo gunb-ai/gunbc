@@ -2,7 +2,7 @@ module gunbc.gunbhub_serve_html
 
 
 fn sample_html_page() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "p",
     attributes: [],
     children: [ std.markup.FragmentText { content: "gunbhub" } ],
@@ -10,9 +10,9 @@ fn sample_html_page() -> std.markup.Fragment {
 }
 
 fn witness_html_consumer_serializes() -> Bool {
-  match try_serialize_html_source(node: sample_html_page()) {
-    EmitOk { html: h } => h == "<p>gunbhub</p>"
-    EmitRejected { reason: _ } => false
+  match extdeps.languages.html.try_serialize_html_source(node: sample_html_page()) {
+    extdeps.languages.html.EmitOk { html: h } => h == "<p>gunbhub</p>"
+    extdeps.languages.html.EmitRejected { reason: _ } => false
   }
 }
 

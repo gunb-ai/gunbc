@@ -1,5 +1,6 @@
 module test.claim.roadmap_dashboard_instance_witness
 
+
 test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {
   let lab = gunbc.roadmap_dashboard_instance.srv1_lab_dashboard_instance()
   gunbc.roadmap_dashboard_instance.dashboard_instance_paths_are_owned(instance: lab)
@@ -40,13 +41,13 @@ test fn dashboard_tmux_server_is_namespaced_off_production() -> Bool {
 
 fn instance_anchor_ref(i: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> String {
   match i.source_seed {
-    DashboardGitBundle {
+    gunbc.roadmap_dashboard_instance.DashboardGitBundle {
       controller_repo: _,
       staged_bundle: _,
       anchor_ref,
       history_remote: _,
     } => anchor_ref as String
-    DashboardExistingRepo { anchor_ref } => anchor_ref as String
+    gunbc.roadmap_dashboard_instance.DashboardExistingRepo { anchor_ref } => anchor_ref as String
   }
 }
 
@@ -55,26 +56,26 @@ fn plan_binds_instance_paths(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> Bool {
   let source_bound = any(plan, op => match op {
-    DashboardEnsureSourceRepo { origin, repo, anchor_ref: _ } =>
+    gunbc.roadmap_dashboard_instance.DashboardEnsureSourceRepo { origin, repo, anchor_ref: _ } =>
       origin == instance.local_origin_root && repo == instance.repo_root
     _ => false
   })
   let attempts_bound = any(plan, op => match op {
-    DashboardEnsureDirectory { path } => path == gunbc.roadmap_dashboard_instance.dashboard_instance_dispatch_worktree_root(instance: instance)
+    gunbc.roadmap_dashboard_instance.DashboardEnsureDirectory { path } => path == gunbc.roadmap_dashboard_instance.dashboard_instance_dispatch_worktree_root(instance: instance)
     _ => false
   })
   let attempt_state_bound = any(plan, op => match op {
-    DashboardEnsureDirectory { path } => path == gunbc.roadmap_dashboard_instance.dashboard_instance_dispatch_attempt_state_root(instance: instance)
+    gunbc.roadmap_dashboard_instance.DashboardEnsureDirectory { path } => path == gunbc.roadmap_dashboard_instance.dashboard_instance_dispatch_attempt_state_root(instance: instance)
     _ => false
   })
   let marker_bound = any(plan, op => match op {
-    DashboardEnsureOwnershipMarker { path, instance_id } =>
+    gunbc.roadmap_dashboard_instance.DashboardEnsureOwnershipMarker { path, instance_id } =>
       path == gunbc.roadmap_dashboard_instance.dashboard_instance_ownership_marker_path(instance: instance)
         && instance_id == instance.instance_id
     _ => false
   })
   let auth_bound = any(plan, op => match op {
-    DashboardVerifyProviderAuth { executable, state_root } =>
+    gunbc.roadmap_dashboard_instance.DashboardVerifyProviderAuth { executable, state_root } =>
       state_root == gunbc.roadmap_dashboard_instance.dashboard_instance_provider_state_root(instance: instance)
         && gunbc.roadmap_dashboard_instance.dashboard_instance_provider_executable_matches(
           executable: executable,
@@ -83,7 +84,7 @@ fn plan_binds_instance_paths(
     _ => false
   })
   let runtime_bound = any(plan, op => match op {
-    DashboardVerifyProviderRuntime { executable, state_root } =>
+    gunbc.roadmap_dashboard_instance.DashboardVerifyProviderRuntime { executable, state_root } =>
       state_root == gunbc.roadmap_dashboard_instance.dashboard_instance_provider_state_root(instance: instance)
         && gunbc.roadmap_dashboard_instance.dashboard_instance_provider_executable_matches(
           executable: executable,
@@ -92,7 +93,7 @@ fn plan_binds_instance_paths(
     _ => false
   })
   let service_bound = any(plan, op => match op {
-    DashboardEnsureService {
+    gunbc.roadmap_dashboard_instance.DashboardEnsureService {
       instance_id,
       binary,
       workdir,
@@ -123,7 +124,7 @@ fn plan_binds_source_ref_translation(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> Bool {
   any(plan, op => match op {
-    DashboardEnsureLocalOrigin {
+    gunbc.roadmap_dashboard_instance.DashboardEnsureLocalOrigin {
       bundle: _,
       origin,
       source_ref,
@@ -135,7 +136,7 @@ fn plan_binds_source_ref_translation(
     _ => false
   })
     && any(plan, op => match op {
-      DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref } =>
+      gunbc.roadmap_dashboard_instance.DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref } =>
         anchor_ref == instance.dispatch_base_ref
       _ => false
     })
@@ -196,7 +197,7 @@ test fn dashboard_reconcile_converges_only_after_independent_readback() -> Bool 
       health_current: true,
     ),
   ) {
-    DashboardInstanceConverged => true
+    gunbc.roadmap_dashboard_instance.DashboardInstanceConverged => true
     _ => false
   }
 }
@@ -212,7 +213,7 @@ test fn dashboard_reconcile_plans_missing_health_without_claiming_convergence() 
       health_current: false,
     ),
   ) {
-    DashboardInstanceApply { plan } => count(plan) > 0
+    gunbc.roadmap_dashboard_instance.DashboardInstanceApply { plan } => count(plan) > 0
     _ => false
   }
 }
@@ -228,7 +229,7 @@ test fn dashboard_reconcile_refuses_production_overlap() -> Bool {
       health_current: false,
     ),
   ) {
-    DashboardInstanceRefused { reason } => reason == "production isolation read-back failed"
+    gunbc.roadmap_dashboard_instance.DashboardInstanceRefused { reason } => reason == "production isolation read-back failed"
     _ => false
   }
 }
@@ -244,7 +245,7 @@ test fn dashboard_reconcile_refuses_destructive_source_replacement() -> Bool {
       health_current: false,
     ),
   ) {
-    DashboardInstanceRefused { reason } =>
+    gunbc.roadmap_dashboard_instance.DashboardInstanceRefused { reason } =>
       reason == "source repo exists at a different anchor; replacement is destructive and must be adjudicated"
     _ => false
   }
@@ -261,7 +262,7 @@ test fn dashboard_reconcile_refreshes_owned_clean_stale_revision() -> Bool {
       health_current: true,
     ),
   ) {
-    DashboardInstanceApply { plan } => count(plan) > 0
+    gunbc.roadmap_dashboard_instance.DashboardInstanceApply { plan } => count(plan) > 0
     _ => false
   }
 }
@@ -277,7 +278,7 @@ test fn dashboard_reconcile_refuses_unreadable_source_revision() -> Bool {
       health_current: true,
     ),
   ) {
-    DashboardInstanceRefused { reason } =>
+    gunbc.roadmap_dashboard_instance.DashboardInstanceRefused { reason } =>
       string_contains(s: reason as String, pattern: "source revision read-back refused")
     _ => false
   }
@@ -309,7 +310,7 @@ test fn dashboard_bundle_is_required_for_convergence() -> Bool {
     instance: gunbc.roadmap_dashboard_instance.srv1_lab_dashboard_instance(),
     observed: observed,
   ) {
-    DashboardInstanceApply { plan } => count(plan) > 0
+    gunbc.roadmap_dashboard_instance.DashboardInstanceApply { plan } => count(plan) > 0
     _ => false
   }
 }
@@ -318,7 +319,7 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
   let lab = gunbc.roadmap_dashboard_instance.srv1_lab_dashboard_instance()
   let plan = gunbc.roadmap_dashboard_instance.dashboard_instance_provision_plan(instance: lab)
   any(plan, op => match op {
-    DashboardHydrateControllerHistory {
+    gunbc.roadmap_dashboard_instance.DashboardHydrateControllerHistory {
       controller_repo,
       history_remote,
     } =>
@@ -327,7 +328,7 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
     _ => false
   })
     && any(plan, op => match op {
-    DashboardPrepareGitBundle {
+    gunbc.roadmap_dashboard_instance.DashboardPrepareGitBundle {
       controller_repo,
       anchor_ref,
     } =>
@@ -336,7 +337,7 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
     _ => false
   })
     && any(plan, op => match op {
-      DashboardStageGitBundle {
+      gunbc.roadmap_dashboard_instance.DashboardStageGitBundle {
         controller_repo,
         staged_bundle,
       } =>
@@ -372,7 +373,7 @@ test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool {
     instance: gunbc.roadmap_dashboard_instance.srv1_lab_dashboard_instance(),
     observed: observed,
   ) {
-    DashboardInstanceRefused { reason } =>
+    gunbc.roadmap_dashboard_instance.DashboardInstanceRefused { reason } =>
       string_contains(s: reason as String, pattern: "ownership marker")
     _ => false
   }
@@ -384,25 +385,25 @@ fn retract_plan_is_safe(
 ) -> Bool {
   count(plan) == 5
     && any(plan, op => match op {
-      DashboardStopService { instance_id, tmux_server: _ } =>
+      gunbc.roadmap_dashboard_instance.DashboardStopService { instance_id, tmux_server: _ } =>
         instance_id == instance.instance_id
       _ => false
     })
     && any(plan, op => match op {
-      DashboardRefuseUnlessAttemptsEmpty { path } =>
+      gunbc.roadmap_dashboard_instance.DashboardRefuseUnlessAttemptsEmpty { path } =>
         path == gunbc.roadmap_dashboard_instance.dashboard_instance_dispatch_worktree_root(instance: instance)
       _ => false
     })
     && any(plan, op => match op {
-      DashboardRemoveSourceRepo { path } => path == instance.repo_root
+      gunbc.roadmap_dashboard_instance.DashboardRemoveSourceRepo { path } => path == instance.repo_root
       _ => false
     })
     && any(plan, op => match op {
-      DashboardRemoveLocalOrigin { path } => path == instance.local_origin_root
+      gunbc.roadmap_dashboard_instance.DashboardRemoveLocalOrigin { path } => path == instance.local_origin_root
       _ => false
     })
     && any(plan, op => match op {
-      DashboardPreserveSourceBundle { path } =>
+      gunbc.roadmap_dashboard_instance.DashboardPreserveSourceBundle { path } =>
         string_contains(s: path as String, pattern: "/inbox/source.bundle")
       _ => false
     })
@@ -411,23 +412,23 @@ fn retract_plan_is_safe(
 test fn dashboard_retract_preserves_recovery_anchor_and_provider_state() -> Bool {
   let lab = gunbc.roadmap_dashboard_instance.srv1_lab_dashboard_instance()
   match gunbc.roadmap_dashboard_instance.dashboard_instance_retract_plan(instance: lab) {
-    DashboardInstanceRetractPlan { plan } =>
+    gunbc.roadmap_dashboard_instance.DashboardInstanceRetractPlan { plan } =>
       retract_plan_is_safe(plan: plan, instance: lab)
         && all(plan, op => match op {
-          DashboardRemoveSourceRepo { path } =>
+          gunbc.roadmap_dashboard_instance.DashboardRemoveSourceRepo { path } =>
             path != gunbc.roadmap_dashboard_instance.dashboard_instance_provider_state_root(instance: lab)
-          DashboardRemoveLocalOrigin { path } =>
+          gunbc.roadmap_dashboard_instance.DashboardRemoveLocalOrigin { path } =>
             path != gunbc.roadmap_dashboard_instance.dashboard_instance_provider_state_root(instance: lab)
           _ => true
         })
-    DashboardInstanceRetractRefused { reason: _ } => false
+    gunbc.roadmap_dashboard_instance.DashboardInstanceRetractRefused { reason: _ } => false
   }
 }
 
 test fn dashboard_retract_refuses_production_existing_repo() -> Bool {
   match gunbc.roadmap_dashboard_instance.dashboard_instance_retract_plan(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()) {
-    DashboardInstanceRetractPlan { plan: _ } => false
-    DashboardInstanceRetractRefused { reason } =>
+    gunbc.roadmap_dashboard_instance.DashboardInstanceRetractPlan { plan: _ } => false
+    gunbc.roadmap_dashboard_instance.DashboardInstanceRetractRefused { reason } =>
       string_contains(s: reason as String, pattern: "not owned")
   }
 }
@@ -480,24 +481,24 @@ test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
       Absent => false
     }
     && match i.source_seed {
-      DashboardGitBundle {
+      gunbc.roadmap_dashboard_instance.DashboardGitBundle {
         controller_repo,
         staged_bundle: _,
         anchor_ref: _,
         history_remote: _,
       } => controller_repo == "/witness/controller-repo"
-      DashboardExistingRepo { anchor_ref: _ } => false
+      gunbc.roadmap_dashboard_instance.DashboardExistingRepo { anchor_ref: _ } => false
     }
     && !(i.serve_binary == gunbc.host_layout.srv1_gunbc_serve_binary)
     && !(gunbc.roadmap_dashboard_instance.dashboard_instance_provider_state_root(instance: i) == gunbc.host_layout.srv1_roadmap_codex_home)
     && !(match i.source_seed {
-      DashboardGitBundle {
+      gunbc.roadmap_dashboard_instance.DashboardGitBundle {
         controller_repo,
         staged_bundle: _,
         anchor_ref: _,
         history_remote: _,
       } => controller_repo == gunbc.host_layout.srv1_dashboard_controller_repo
-      DashboardExistingRepo { anchor_ref: _ } => false
+      gunbc.roadmap_dashboard_instance.DashboardExistingRepo { anchor_ref: _ } => false
     })
 }
 
@@ -570,7 +571,7 @@ fn plan_ensures_provider_state_root(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> Bool {
   any(plan, op => match op {
-    DashboardEnsureProviderStateRoot { path } =>
+    gunbc.roadmap_dashboard_instance.DashboardEnsureProviderStateRoot { path } =>
       path == gunbc.roadmap_dashboard_instance.dashboard_instance_provider_state_root(instance: instance)
     _ => false
   })
@@ -581,7 +582,7 @@ fn plan_ensures_serve_binary(
   instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> Bool {
   any(plan, op => match op {
-    DashboardEnsureServeBinary { controller_repo: _, built_binary: _, path } =>
+    gunbc.roadmap_dashboard_instance.DashboardEnsureServeBinary { controller_repo: _, built_binary: _, path } =>
       path == instance.serve_binary
     _ => false
   })
@@ -649,15 +650,15 @@ test fn a_refused_observation_never_derives_a_plan() -> Bool {
     refusals: ["path observation could not run for /x: ssh: connect refused"],
   )
   match gunbc.roadmap_dashboard_instance.dashboard_instance_reconcile(instance: lab, observed: could_not_look) {
-    DashboardInstanceRefused { reason } =>
+    gunbc.roadmap_dashboard_instance.DashboardInstanceRefused { reason } =>
       string_contains(s: reason as String, pattern: "observation incomplete")
         && match gunbc.roadmap_dashboard_instance.dashboard_instance_reconcile(instance: lab, observed: genuinely_absent) {
-          DashboardInstanceApply { plan } => count(plan) > 0
-          DashboardInstanceRefused { reason: _ } => false
-          DashboardInstanceConverged => false
+          gunbc.roadmap_dashboard_instance.DashboardInstanceApply { plan } => count(plan) > 0
+          gunbc.roadmap_dashboard_instance.DashboardInstanceRefused { reason: _ } => false
+          gunbc.roadmap_dashboard_instance.DashboardInstanceConverged => false
         }
-    DashboardInstanceApply { plan: _ } => false
-    DashboardInstanceConverged => false
+    gunbc.roadmap_dashboard_instance.DashboardInstanceApply { plan: _ } => false
+    gunbc.roadmap_dashboard_instance.DashboardInstanceConverged => false
   }
 }
 

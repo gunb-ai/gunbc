@@ -3,7 +3,7 @@ module extdeps.llm.claude_agent_sdk_stream
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.npmjs.com/package/@anthropic-ai/claude-agent-sdk/v/0.3.220"
   }
 }
@@ -15,10 +15,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.llm.claude_agent_sdk_stream",
       decl_name: "claude_stream_event_type_control_response",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.llm.claude_agent_sdk_stream.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -41,27 +41,27 @@ fn list_contains_string(items: List<String>, needle: String) -> Bool {
 
 fn decode_json_string_array(v: extdeps.languages.json.emit.JsonValue) -> JsonStringListDecode {
   match v {
-    JsonArray { elements: elems } =>
+    extdeps.languages.json.emit.JsonArray { elements: elems } =>
       fold(elems, init: JsonStringListOk { values: [] }, f: fn(acc, head) {
         match acc {
           JsonStringListFail => JsonStringListFail
           JsonStringListOk { values: vs } =>
             match head {
-              JsonString { value: s } =>
+              extdeps.languages.json.emit.JsonString { value: s } =>
                 JsonStringListOk { values: v2.std.algebra.list_snoc_item(xs: vs, item: s) }
-              JsonNull => JsonStringListFail
-              JsonBool { value: _ } => JsonStringListFail
-              JsonNumber { lexeme: _ } => JsonStringListFail
-              JsonArray { elements: _ } => JsonStringListFail
-              JsonObject { members: _ } => JsonStringListFail
+              extdeps.languages.json.emit.JsonNull => JsonStringListFail
+              extdeps.languages.json.emit.JsonBool { value: _ } => JsonStringListFail
+              extdeps.languages.json.emit.JsonNumber { lexeme: _ } => JsonStringListFail
+              extdeps.languages.json.emit.JsonArray { elements: _ } => JsonStringListFail
+              extdeps.languages.json.emit.JsonObject { members: _ } => JsonStringListFail
             }
         }
       })
-    JsonNull => JsonStringListFail
-    JsonBool { value: _ } => JsonStringListFail
-    JsonNumber { lexeme: _ } => JsonStringListFail
-    JsonString { value: _ } => JsonStringListFail
-    JsonObject { members: _ } => JsonStringListFail
+    extdeps.languages.json.emit.JsonNull => JsonStringListFail
+    extdeps.languages.json.emit.JsonBool { value: _ } => JsonStringListFail
+    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => JsonStringListFail
+    extdeps.languages.json.emit.JsonString { value: _ } => JsonStringListFail
+    extdeps.languages.json.emit.JsonObject { members: _ } => JsonStringListFail
   }
 }
 
@@ -70,16 +70,16 @@ type JsonMemberRequiredDecode
   | JsonMemberRequiredRefuse
 
 fn parser_drop_receipt_required_member(v: extdeps.languages.json.emit.JsonValue, key: String) -> JsonMemberRequiredDecode {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value: found } => JsonMemberRequiredOk { value: found }
-    JsonMemberAbsent => JsonMemberRequiredRefuse
-    JsonMemberDuplicated { count: _ } => JsonMemberRequiredRefuse
-    JsonMemberNotAnObject => JsonMemberRequiredRefuse
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
+    extdeps.languages.json.parse.JsonMemberFound { value: found } => JsonMemberRequiredOk { value: found }
+    extdeps.languages.json.parse.JsonMemberAbsent => JsonMemberRequiredRefuse
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => JsonMemberRequiredRefuse
+    extdeps.languages.json.parse.JsonMemberNotAnObject => JsonMemberRequiredRefuse
   }
 }
 
 fn claude_sdk_parser_drop_receipt_holds(text: String) -> Bool {
-  match parse_json(s: text) {
+  match extdeps.languages.json.parse.parse_json(s: text) {
     Absent => false
     Present { value: root } =>
       match parser_drop_receipt_required_member(v: root, key: "comparison") {
@@ -119,11 +119,11 @@ fn claude_sdk_control_response_parser_drop_holds(
   subprocess_raw_types: List<String>,
   sdk_parsed_types: List<String>
 ) -> Bool {
-  extdeps.llm.claude_agent_sdk_stream.list_contains_string(
+  list_contains_string(
     items: subprocess_raw_types,
     needle: claude_stream_event_type_control_response
   )
-    && !extdeps.llm.claude_agent_sdk_stream.list_contains_string(
+    && !list_contains_string(
       items: sdk_parsed_types,
       needle: claude_stream_event_type_control_response
     )

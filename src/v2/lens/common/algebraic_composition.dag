@@ -24,7 +24,7 @@ type ParallelismKindPolicy
   = KnownParallelismRelation { relation: ParallelismRelation }
   | ReadsParallelismFacts
 
-data effect_classifier: DependencyKindClassifier<EffectClassification> = v2.std.dependency.DependencyKindClassifier {
+data effect_classifier: v2.std.dependency.DependencyKindClassifier<EffectClassification> = v2.std.dependency.DependencyKindClassifier {
   contains: EffectClassification {},
   binds_to: EffectClassification {},
   type_depends_on: EffectClassification {},
@@ -42,7 +42,7 @@ data effect_classifier: DependencyKindClassifier<EffectClassification> = v2.std.
   bootstrap_depends_on: EffectClassification {}
 }
 
-data idempotency_classifier: DependencyKindClassifier<IdempotencyVerdict> = v2.std.dependency.DependencyKindClassifier {
+data idempotency_classifier: v2.std.dependency.DependencyKindClassifier<IdempotencyVerdict> = v2.std.dependency.DependencyKindClassifier {
   contains: RequiresAlgebraWitness,
   binds_to: RequiresAlgebraWitness,
   type_depends_on: RequiresAlgebraWitness,
@@ -60,7 +60,7 @@ data idempotency_classifier: DependencyKindClassifier<IdempotencyVerdict> = v2.s
   bootstrap_depends_on: RequiresAlgebraWitness
 }
 
-data ownership_classifier: DependencyKindClassifier<OwnershipMode> = v2.std.dependency.DependencyKindClassifier {
+data ownership_classifier: v2.std.dependency.DependencyKindClassifier<OwnershipMode> = v2.std.dependency.DependencyKindClassifier {
   contains: OwnedContainment,
   binds_to: BorrowedDependency,
   type_depends_on: UnknownOwnership,
@@ -78,7 +78,7 @@ data ownership_classifier: DependencyKindClassifier<OwnershipMode> = v2.std.depe
   bootstrap_depends_on: UnknownOwnership
 }
 
-data parallelism_classifier: DependencyKindClassifier<ParallelismKindPolicy> = v2.std.dependency.DependencyKindClassifier {
+data parallelism_classifier: v2.std.dependency.DependencyKindClassifier<ParallelismKindPolicy> = v2.std.dependency.DependencyKindClassifier {
   contains: KnownParallelismRelation { relation: DataDependent },
   binds_to: KnownParallelismRelation { relation: DataDependent },
   type_depends_on: ReadsParallelismFacts,

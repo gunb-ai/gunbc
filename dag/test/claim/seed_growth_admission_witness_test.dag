@@ -2,43 +2,43 @@ module test.claim.seed_growth_admission_witness
 
 
 test fn seed_growth_roster_mechanical_checks_hold() -> Bool {
-  seed_growth_roster_mechanical_checks_holds()
+  gunbc.seed_growth_admission.seed_growth_roster_mechanical_checks_holds()
 }
 
 test fn seed_growth_join_refuses_unknown_declaration() -> Bool {
   let rogue = std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.cli_run",
     decl_name: "totally_unjustified_hand_rust_symbol",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
-  match seed_growth_join_declarations(candidates: [rogue]) {
-    SeedGrowthAdmissionRefused { unjustified_additions: bad, detail: detail } =>
-      length(xs: bad) == 1
+  match gunbc.seed_growth_admission.seed_growth_join_declarations(candidates: [rogue]) {
+    gunbc.seed_growth_admission.SeedGrowthAdmissionRefused { unjustified_additions: bad, detail: detail } =>
+      v2.std.algebra.length(xs: bad) == 1
         && string_contains(s: detail, pattern: "lack SeedGrowthJustification")
-    SeedGrowthAdmissionComplete { justified_items: _, stale_justifications: _, duplicate_justifications: _, uncitable_items: _ } =>
+    gunbc.seed_growth_admission.SeedGrowthAdmissionComplete { justified_items: _, stale_justifications: _, duplicate_justifications: _, uncitable_items: _ } =>
       false
   }
 }
 
 test fn forward_freeze_policy_requires_item_enumeration() -> Bool {
-  string_contains(s: seed_growth_forward_freeze_policy_note, pattern: "exact item identity")
-    && string_contains(s: seed_growth_forward_freeze_policy_note, pattern: "no netting")
+  string_contains(s: gunbc.seed_growth_admission.seed_growth_forward_freeze_policy_note, pattern: "exact item identity")
+    && string_contains(s: gunbc.seed_growth_admission.seed_growth_forward_freeze_policy_note, pattern: "no netting")
 }
 
 test fn witness_seed_growth_roster_well_formed_gate_holds() -> Bool {
-  seed_growth_roster_well_formed_gate_holds()
+  gunbc.seed_growth_admission.seed_growth_roster_well_formed_gate_holds()
 }
 
 test fn seed_growth_admission_join_is_scaffold_until_diff_population() -> Bool {
-  match seed_growth_admission_join_scaffold {
-    Scaffold { dissolves_to: _, bind: _ } => true
+  match gunbc.seed_growth_admission.seed_growth_admission_join_scaffold {
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
     _ => false
   }
 }
 
 test fn seed_growth_g0_census_host_is_scaffold_until_modeled_producer() -> Bool {
-  match seed_growth_g0_census_host_scaffold {
-    Scaffold { dissolves_to: _, bind: bind } =>
+  match gunbc.seed_growth_admission.seed_growth_g0_census_host_scaffold {
+    std.disposition.Scaffold { dissolves_to: _, bind: bind } =>
       bind.module_path == "gunbc.rust_item_identity"
         && bind.decl_name == "rust_item_host_observation_scaffold_note"
     _ => false
@@ -51,9 +51,9 @@ test fn g0_population_note_supersedes_stale_cli_run_prose() -> Bool {
 }
 
 test fn stage0_justification_rows_are_in_roster() -> Bool {
-  let roster = seed_growth_roster_all_declarations()
-  let stage0 = gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.hand_authored_declarations
-  let scoped = observation_scoped_run_seed_growth_justification().hand_authored_declarations
-  (stage0 |> all(r => roster |> any(x => declaration_ref_display_key(ref: r) == declaration_ref_display_key(ref: x))))
-    && (scoped |> all(r => roster |> any(x => declaration_ref_display_key(ref: r) == declaration_ref_display_key(ref: x))))
+  let roster = gunbc.seed_growth_admission.seed_growth_roster_all_declarations()
+  let stage0 = stage0_rust_observation_seed_growth_justification.hand_authored_declarations
+  let scoped = gunbc.roadmap_authority.observation_scoped_run_seed_growth_justification().hand_authored_declarations
+  (stage0 |> all(r => roster |> v2.std.algebra.any(x => std.decl_ref.declaration_ref_display_key(ref: r) == std.decl_ref.declaration_ref_display_key(ref: x))))
+    && (scoped |> all(r => roster |> v2.std.algebra.any(x => std.decl_ref.declaration_ref_display_key(ref: r) == std.decl_ref.declaration_ref_display_key(ref: x))))
 }

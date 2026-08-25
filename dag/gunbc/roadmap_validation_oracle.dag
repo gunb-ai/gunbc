@@ -66,9 +66,9 @@ data validation_oracle_identity_tag: std.types.NonEmptyStr = "gunbc.validation-o
 data validation_oracle_set_tag: std.types.NonEmptyStr = "gunbc.validation-oracle-set/v1"
 
 fn validation_oracle_source_identity(source: String) -> std.content_hash.Fnv1a64Structural {
-  content_hash_tagged_structural(
+  std.content_hash.content_hash_tagged_structural(
     tag: validation_oracle_identity_tag,
-    payload: content_hash_atom(value: source as std.types.NonEmptyStr),
+    payload: std.content_hash.content_hash_atom(value: source as std.types.NonEmptyStr),
   )
 }
 
@@ -167,19 +167,19 @@ type OraclePinScope
 
 fn validation_oracle_scope(validation: gunbc.roadmap_execution_contract.ValidationOperation) -> OraclePinScope {
   match validation {
-    GunbcClaimValidation { entry, function } =>
+    gunbc.roadmap_execution_contract.GunbcClaimValidation { entry, function } =>
       OraclePinnable {
         oracle: ValidationOracleRef {
           entry: entry,
           function: function,
         },
       }
-    CargoTestValidation { filter: f } =>
+    gunbc.roadmap_execution_contract.CargoTestValidation { filter: f } =>
       OracleNotPinnable {
         validation_label: join(["cargo-test ", f as String], ""),
         reason: "a cargo test filter names no single observable oracle artifact; its extent is decided by cargo at run time",
       }
-    CargoFmtValidation =>
+    gunbc.roadmap_execution_contract.CargoFmtValidation =>
       OracleNotPinnable {
         validation_label: "cargo-fmt",
         reason: "a formatter's oracle is its own rule set, which carries no identity this module can observe",
@@ -191,8 +191,8 @@ fn validation_oracle_scopes(
   contract: gunbc.roadmap_execution_contract.WorkItemExecutionContract,
 ) -> List<OraclePinScope> {
   match contract {
-    ExecutionContractUnspecified => []
-    ExecutionContract { validations, extra_capabilities: _ } =>
+    gunbc.roadmap_execution_contract.ExecutionContractUnspecified => []
+    gunbc.roadmap_execution_contract.ExecutionContract { validations, extra_capabilities: _ } =>
       map(validations, v => validation_oracle_scope(validation: v))
   }
 }
@@ -258,14 +258,14 @@ fn validation_oracle_set_observe(
       }
     Absent =>
       OracleSetObserved {
-        identity: as_content_hash_structural(
+        identity: std.content_hash.as_content_hash_structural(
           structural: fold(
             observations,
-            init: content_hash_atom(value: validation_oracle_set_tag),
+            init: std.content_hash.content_hash_atom(value: validation_oracle_set_tag),
             f: fn(acc, o) {
               match validation_oracle_observation_identity(observation: o) {
                 Present { value: structural } =>
-                  content_hash_combine_structural(left: acc, right: structural)
+                  std.content_hash.content_hash_combine_structural(left: acc, right: structural)
                 Absent => acc
               }
             },
@@ -365,9 +365,9 @@ fn validation_oracle_parse_pinned_identity_wire(text: String) -> std.content_has
   if text == "" {
     none
   } else {
-    match fnv1a64_structural_hex_digest(hex: text) {
+    match std.content_hash.fnv1a64_structural_hex_digest(hex: text) {
       Present { value: structural } =>
-        Present { value: as_content_hash_structural(structural: structural) }
+        Present { value: std.content_hash.as_content_hash_structural(structural: structural) }
       Absent => none
     }
   }
@@ -399,12 +399,12 @@ fn validation_oracle_pin(
   oracles: List<ValidationOracleRef>,
   expected_identity: std.content_hash.ContentHash,
   revision: extdeps.version.VersionIdentity,
-) -> Pin<List<ValidationOracleRef>> {
+) -> extdeps.pin.Pin<List<ValidationOracleRef>> {
   extdeps.pin.Pin {
     subject: oracles,
     version: revision,
     expected_identity: expected_identity,
-    selection: ExactPin,
+    selection: extdeps.pin.ExactPin,
   }
 }
 
@@ -412,21 +412,21 @@ fn validation_oracle_pin_refusal_cause(
   cause: extdeps.pin.PinRefusalCause,
 ) -> ValidationRefusalCause {
   match cause {
-    ObservedIdentityMismatch { expected, observed } =>
+    extdeps.pin.ObservedIdentityMismatch { expected, observed } =>
       ValidationOracleMoved {
         expected: expected,
         observed: observed,
       }
-    TrackedResolutionUnrecorded { channel } =>
+    extdeps.pin.TrackedResolutionUnrecorded { channel } =>
       ValidationOraclePinUnrecorded { channel: channel }
-    ConstraintIsNotIdentity { constraint } =>
+    extdeps.pin.ConstraintIsNotIdentity { constraint } =>
       ValidationPinReceiptUnreadable {
         detail: join([
           "pinned oracle identity is a constraint, not an identity: ",
           constraint as String,
         ], ""),
       }
-    PinAbsent =>
+    extdeps.pin.PinAbsent =>
       ValidationPinReceiptUnreadable {
         detail: "no oracle identity was recorded for this attempt at dispatch",
       }
@@ -457,9 +457,9 @@ fn validation_oracle_gate(
   pin_read_detail: String,
 ) -> ValidationOracleGate {
   match contract {
-    ExecutionContractUnspecified =>
+    gunbc.roadmap_execution_contract.ExecutionContractUnspecified =>
       ValidationOracleGateRefused { cause: ValidationContractUnspecified }
-    ExecutionContract { validations: _, extra_capabilities: _ } =>
+    gunbc.roadmap_execution_contract.ExecutionContract { validations: _, extra_capabilities: _ } =>
       match validation_oracle_scopes(contract: contract)
         |> filter(s => match s {
           OraclePinnable { oracle: _ } => false
@@ -498,7 +498,7 @@ fn validation_oracle_gate(
                   },
                 }
               } else {
-                match admit_pin_integrity(
+                match extdeps.pin.admit_pin_integrity(
                   pin: validation_oracle_pin(
                     oracles: validation_oracle_refs(
                       observations: observations,
@@ -508,9 +508,9 @@ fn validation_oracle_gate(
                   ),
                   observed_identity: identity,
                 ) {
-                  PinIntegrityAdmitted { pin: _ } =>
+                  extdeps.pin.PinIntegrityAdmitted { pin: _ } =>
                     ValidationOracleAdmitted { identity: identity }
-                  PinRefused { subject: _, cause } =>
+                  extdeps.pin.PinRefused { subject: _, cause } =>
                     ValidationOracleGateRefused {
                       cause: validation_oracle_pin_refusal_cause(cause: cause),
                     }
@@ -523,11 +523,11 @@ fn validation_oracle_gate(
 
 fn change_window_preparation_refusal_detail(cause: gunbc.git_diff_change_window.ChangeWindowPreparationRefusal) -> String {
   match cause {
-    ChangeWindowMergeBaseRefused { observation: observation } =>
+    gunbc.git_diff_change_window.ChangeWindowMergeBaseRefused { observation: observation } =>
       match observation {
-        GitMergeBaseProgramUnavailable { program, reason } =>
+        gunbc.git_diff_change_window.GitMergeBaseProgramUnavailable { program, reason } =>
           join([program, " was not available to observe merge-base: ", reason], "")
-        GitMergeBaseExecutionFailed { program, exit_code, stdout, stderr } =>
+        gunbc.git_diff_change_window.GitMergeBaseExecutionFailed { program, exit_code, stdout, stderr } =>
           join([
             program,
             " merge-base observation failed (exit ",
@@ -535,16 +535,16 @@ fn change_window_preparation_refusal_detail(cause: gunbc.git_diff_change_window.
             "): ",
             stderr,
           ], "")
-        GitMergeBaseOutputMalformed { stdout } =>
+        gunbc.git_diff_change_window.GitMergeBaseOutputMalformed { stdout } =>
           join(["merge-base observation returned malformed stdout: ", stdout], "")
-        GitMergeBaseObserved { target: _, target_generation: _, base: _, head: _ } =>
+        gunbc.git_diff_change_window.GitMergeBaseObserved { target: _, target_generation: _, base: _, head: _ } =>
           "unreachable merge-base observed arm in refusal detail"
       }
-    ChangeWindowTargetGenerationRefused { observation: observation } =>
+    gunbc.git_diff_change_window.ChangeWindowTargetGenerationRefused { observation: observation } =>
       match observation {
-        GitTargetGenerationProgramUnavailable { program, reason } =>
+        gunbc.git_diff_change_window.GitTargetGenerationProgramUnavailable { program, reason } =>
           join([program, " was not available to read target generation: ", reason], "")
-        GitTargetGenerationExecutionFailed { program, exit_code, stdout, stderr } =>
+        gunbc.git_diff_change_window.GitTargetGenerationExecutionFailed { program, exit_code, stdout, stderr } =>
           join([
             program,
             " target-generation observation failed (exit ",
@@ -552,14 +552,14 @@ fn change_window_preparation_refusal_detail(cause: gunbc.git_diff_change_window.
             "): ",
             stderr,
           ], "")
-        GitTargetGenerationOutputMalformed { stdout } =>
+        gunbc.git_diff_change_window.GitTargetGenerationOutputMalformed { stdout } =>
           join(["target-generation observation returned malformed stdout: ", stdout], "")
-        GitTargetGenerationObserved { generation: _ } =>
+        gunbc.git_diff_change_window.GitTargetGenerationObserved { generation: _ } =>
           "unreachable target-generation observed arm in refusal detail"
       }
-    ChangeWindowHeadObjectIdRefused { head_hex } =>
+    gunbc.git_diff_change_window.ChangeWindowHeadObjectIdRefused { head_hex } =>
       join(["verification subject head is not a valid git object id: ", head_hex], "")
-    ChangeWindowPersistenceRefused { path, cause } =>
+    gunbc.git_diff_change_window.ChangeWindowPersistenceRefused { path, cause } =>
       join(["git diff window receipt could not be written at ", concat(path, ": "), cause], "")
   }
 }
@@ -770,16 +770,16 @@ fn validation_receipt_string_member(
   doc: extdeps.languages.json.emit.JsonValue,
   key: String,
 ) -> ValidationReceiptMember {
-  match json_object_unique_member(v: doc, key: key) {
-    JsonMemberNotAnObject =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       ValidationReceiptMemberUnreadable {
         reason: "validation receipt is not a JSON object",
       }
-    JsonMemberAbsent =>
+    extdeps.languages.json.parse.JsonMemberAbsent =>
       ValidationReceiptMemberUnreadable {
         reason: concat("validation receipt has no ", concat(key, " member")),
       }
-    JsonMemberDuplicated { count: n } =>
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: n } =>
       ValidationReceiptMemberUnreadable {
         reason: concat(
           "validation receipt carries ",
@@ -792,9 +792,9 @@ fn validation_receipt_string_member(
           ),
         ),
       }
-    JsonMemberFound { value: v } =>
+    extdeps.languages.json.parse.JsonMemberFound { value: v } =>
       match v {
-        JsonString { value: sv } => ValidationReceiptMemberRead { value: sv }
+        extdeps.languages.json.emit.JsonString { value: sv } => ValidationReceiptMemberRead { value: sv }
         _ =>
           ValidationReceiptMemberUnreadable {
             reason: concat(
@@ -811,41 +811,41 @@ fn validation_oracle_observation_json(
 ) -> extdeps.languages.json.emit.JsonValue {
   match observation {
     OracleFound { oracle, identity } =>
-      json_object(members: [
-        json_kv(key: "entry", value: json_string(s: oracle.entry as String)),
-        json_kv(key: "function", value: json_string(s: oracle.function as String)),
-        json_kv(key: "state", value: json_string(s: "found")),
-        json_kv(
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "entry", value: extdeps.languages.json.emit.json_string(s: oracle.entry as String)),
+        extdeps.languages.json.emit.json_kv(key: "function", value: extdeps.languages.json.emit.json_string(s: oracle.function as String)),
+        extdeps.languages.json.emit.json_kv(key: "state", value: extdeps.languages.json.emit.json_string(s: "found")),
+        extdeps.languages.json.emit.json_kv(
           key: "identity",
-          value: json_string(
-            s: serialize_content_hash(
-              hash: as_content_hash_structural(structural: identity),
+          value: extdeps.languages.json.emit.json_string(
+            s: std.content_hash.serialize_content_hash(
+              hash: std.content_hash.as_content_hash_structural(structural: identity),
             ),
           ),
         ),
       ])
     OracleMissing { oracle, detail } =>
-      json_object(members: [
-        json_kv(key: "entry", value: json_string(s: oracle.entry as String)),
-        json_kv(key: "function", value: json_string(s: oracle.function as String)),
-        json_kv(key: "state", value: json_string(s: "missing")),
-        json_kv(key: "detail", value: json_string(s: detail)),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "entry", value: extdeps.languages.json.emit.json_string(s: oracle.entry as String)),
+        extdeps.languages.json.emit.json_kv(key: "function", value: extdeps.languages.json.emit.json_string(s: oracle.function as String)),
+        extdeps.languages.json.emit.json_kv(key: "state", value: extdeps.languages.json.emit.json_string(s: "missing")),
+        extdeps.languages.json.emit.json_kv(key: "detail", value: extdeps.languages.json.emit.json_string(s: detail)),
       ])
     OracleDependsOnUnpinnedOracle { oracle, imports } =>
-      json_object(members: [
-        json_kv(key: "entry", value: json_string(s: oracle.entry as String)),
-        json_kv(key: "function", value: json_string(s: oracle.function as String)),
-        json_kv(key: "state", value: json_string(s: "unpinned-dependency")),
-        json_kv(key: "imports", value: json_array(elements: map(
-          imports, m => json_string(s: m),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "entry", value: extdeps.languages.json.emit.json_string(s: oracle.entry as String)),
+        extdeps.languages.json.emit.json_kv(key: "function", value: extdeps.languages.json.emit.json_string(s: oracle.function as String)),
+        extdeps.languages.json.emit.json_kv(key: "state", value: extdeps.languages.json.emit.json_string(s: "unpinned-dependency")),
+        extdeps.languages.json.emit.json_kv(key: "imports", value: extdeps.languages.json.emit.json_array(elements: map(
+          imports, m => extdeps.languages.json.emit.json_string(s: m),
         ))),
       ])
     OracleAmbiguous { oracle, declaration_count } =>
-      json_object(members: [
-        json_kv(key: "entry", value: json_string(s: oracle.entry as String)),
-        json_kv(key: "function", value: json_string(s: oracle.function as String)),
-        json_kv(key: "state", value: json_string(s: "ambiguous")),
-        json_kv(key: "declaration_count", value: json_int(n: declaration_count)),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "entry", value: extdeps.languages.json.emit.json_string(s: oracle.entry as String)),
+        extdeps.languages.json.emit.json_kv(key: "function", value: extdeps.languages.json.emit.json_string(s: oracle.function as String)),
+        extdeps.languages.json.emit.json_kv(key: "state", value: extdeps.languages.json.emit.json_string(s: "ambiguous")),
+        extdeps.languages.json.emit.json_kv(key: "declaration_count", value: extdeps.languages.json.emit.json_int(n: declaration_count)),
       ])
   }
 }
@@ -854,19 +854,19 @@ fn validation_receipt_json(
   verdict: ValidationVerdict,
   observations: List<OracleObservation>,
 ) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: validation_receipt_schema as String)),
-    json_kv(
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: validation_receipt_schema as String)),
+    extdeps.languages.json.emit.json_kv(
       key: "verdict",
-      value: json_string(s: validation_verdict_key(verdict: verdict)),
+      value: extdeps.languages.json.emit.json_string(s: validation_verdict_key(verdict: verdict)),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "detail",
-      value: json_string(s: validation_verdict_detail(verdict: verdict)),
+      value: extdeps.languages.json.emit.json_string(s: validation_verdict_detail(verdict: verdict)),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "oracles",
-      value: json_array(elements: map(
+      value: extdeps.languages.json.emit.json_array(elements: map(
         observations,
         o => validation_oracle_observation_json(observation: o),
       )),
@@ -914,7 +914,7 @@ fn validation_receipt_decode_document(doc: extdeps.languages.json.emit.JsonValue
 }
 
 fn validation_receipt_decode(receipt: String) -> ValidationReceiptDecode {
-  match parse_json(s: receipt) {
+  match extdeps.languages.json.parse.parse_json(s: receipt) {
     Absent =>
       ValidationReceiptUndecodable {
         reason: "validation receipt is not one complete JSON value",

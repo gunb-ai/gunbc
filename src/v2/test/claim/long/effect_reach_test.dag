@@ -86,35 +86,35 @@ fn transport_classification() -> v2.std.effect_reach.EffectReachClassification {
   )
 }
 
-test fn effect_reach_path_data_init_derived_host_reading_holds() -> v2.std.logic.Bool {
+test fn effect_reach_path_data_init_derived_host_reading_holds() -> Bool {
   v2.lens.effect_reach.derived_host_reading(classification: transport_classification())
 }
 
-test fn effect_reach_path_data_init_red_when_import_severed_holds() -> v2.std.logic.Bool {
+test fn effect_reach_path_data_init_red_when_import_severed_holds() -> Bool {
   let c = v2.lens.effect_reach.effect_reach_classification_from_facts(
     entry_module: "fix.witness",
-    facts: v2.test.claim.long.effect_reach_test.fixture_severed_facts,
+    facts: fixture_severed_facts,
     decls: fixture_empty_decls,
     data_inits: fixture_path_data_inits
   )
   v2.lens.effect_reach.classification_is_local(classification: c)
 }
 
-test fn effect_reach_path_touch_selects_on_normalize_path_holds() -> v2.std.logic.Bool {
+test fn effect_reach_path_touch_selects_on_normalize_path_holds() -> Bool {
   v2.lens.effect_reach.effect_reach_touched_by_paths(
     classification: transport_classification(),
     touched_paths: [sn_source_rel_path]
   )
 }
 
-test fn effect_reach_unrelated_path_does_not_select_holds() -> v2.std.logic.Bool {
+test fn effect_reach_unrelated_path_does_not_select_holds() -> Bool {
   !v2.lens.effect_reach.effect_reach_touched_by_paths(
     classification: transport_classification(),
     touched_paths: ["src/v2/std/logic.dag"]
   )
 }
 
-test fn effect_reach_hermetic_fixture_stays_local_holds() -> v2.std.logic.Bool {
+test fn effect_reach_hermetic_fixture_stays_local_holds() -> Bool {
   let c = v2.lens.effect_reach.effect_reach_classification_from_facts(
     entry_module: "fix.hermetic_witness",
     facts: fixture_hermetic_facts,
@@ -125,7 +125,7 @@ test fn effect_reach_hermetic_fixture_stays_local_holds() -> v2.std.logic.Bool {
     && v2.lens.effect_reach.effect_reach_flow_count(classification: c) == 0
 }
 
-test fn effect_reach_prose_string_path_does_not_classify_holds() -> v2.std.logic.Bool {
+test fn effect_reach_prose_string_path_does_not_classify_holds() -> Bool {
   let c = v2.lens.effect_reach.effect_reach_classification_from_facts(
     entry_module: "fix.prose_witness",
     facts: fixture_prose_facts,
@@ -137,7 +137,7 @@ test fn effect_reach_prose_string_path_does_not_classify_holds() -> v2.std.logic
     && v2.lens.effect_reach.effect_reach_flow_count(classification: c) == 0
 }
 
-fn witness_frontier_concat_built_path_not_classified() -> v2.std.logic.Bool {
+fn witness_frontier_concat_built_path_not_classified() -> Bool {
   let c = v2.lens.effect_reach.effect_reach_classification_from_facts(
     entry_module: "fix.concat_witness",
     facts: fixture_concat_path_facts,
@@ -149,7 +149,7 @@ fn witness_frontier_concat_built_path_not_classified() -> v2.std.logic.Bool {
     && v2.lens.effect_reach.effect_reach_flow_count(classification: c) == 0
 }
 
-test fn effect_reach_concat_built_path_frontier_not_classified_holds() -> v2.std.logic.Bool {
+test fn effect_reach_concat_built_path_frontier_not_classified_holds() -> Bool {
   witness_frontier_concat_built_path_not_classified()
 }
 
@@ -194,7 +194,7 @@ data live_03_normalize_data_inits: List<v2.std.data_index.DataInitDecl> = [
   }
 ]
 
-test fn effect_reach_live_03_normalize_witness_derived_host_reading_holds() -> v2.std.logic.Bool {
+test fn effect_reach_live_03_normalize_witness_derived_host_reading_holds() -> Bool {
   v2.lens.effect_reach.derived_host_reading(
     classification: v2.lens.effect_reach.effect_reach_classification_from_facts(
       entry_module: "test.claim.self_host_03_normalize_behavioral_witness",

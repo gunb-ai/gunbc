@@ -3,24 +3,24 @@ module v2.workflow.bash_command_fold_serialize
 
 // Emit realization for bash_command_fold grammar rows lives in workflow (serialize_target ∘ translate over pre-built TargetModel rows). Grammar productions and target-model witnesses stay in v2.extdeps.languages.bash_command_fold per layer DAG (extdeps must not import compiler).
 fn bash_fold_serialize_emit_from_node(emitted: v2.std.node.Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<String> {
-  match target_serialize_source_from_model(target: target, emitted: emitted) {
-    Accepted { value: source, diagnostics: d } =>
+  match v2.compiler.translate.target_serialize_source_from_model(target: target, emitted: emitted) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       match d {
-        None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: v2.std.diagnostic.None }
-        Some { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: v2.std.diagnostic.None }
+        v2.std.diagnostic.Some { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn bash_fold_built_stmt_production_binding(stmt: v2.std.node.Node) -> v2.std.node.Symbol {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 0) {
-    Present { value: tag } =>
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 0) {
+    v2.std.collection.Present { value: tag } =>
       match tag.kind {
-        TypeNode { connective: Atom { identity: binding } } => binding
+        v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } } => binding
         _ => ^bash_production_fold_unsupported
       }
-    Absent => ^bash_production_fold_unsupported
+    v2.std.collection.Absent => ^bash_production_fold_unsupported
   }
 }
 
@@ -29,16 +29,16 @@ fn bash_fold_serialize_leaf_node(
   production_binding: v2.std.node.Symbol,
   rule_name: v2.std.node.Symbol
 ) -> v2.std.diagnostic.Outcome<String> {
-  match bash_fold_target_model_for_emitted_witness(
+  match v2.extdeps.languages.bash_command_fold.bash_fold_target_model_for_emitted_witness(
     emitted: emitted,
     source_literal: ^bash_fold_dynamic_source_literal,
     source_text: "",
     production_binding: production_binding,
     rule_name: rule_name
   ) {
-    Holds { value: target } =>
+    v2.std.witness.Holds { value: target } =>
       bash_fold_serialize_emit_from_node(emitted: emitted, target: target)
-    Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
   }
 }
 
@@ -47,17 +47,17 @@ fn bash_fold_serialize_stmts_semi_from(
   first: Bool,
   rest: List<v2.std.node.Node>
 ) -> v2.std.diagnostic.Outcome<String> {
-  match list_head(xs: rest) {
-    HeadAbsent => v2.std.diagnostic.Accepted { value: acc, diagnostics: v2.std.diagnostic.None }
-    HeadFound { value: s } =>
-      bind_outcome(
+  match v2.std.algebra.list_head(xs: rest) {
+    v2.std.algebra.HeadAbsent => v2.std.diagnostic.Accepted { value: acc, diagnostics: v2.std.diagnostic.None }
+    v2.std.algebra.HeadFound { value: s } =>
+      v2.std.diagnostic.bind_outcome(
         o: bash_fold_serialize_node(stmt: s),
         f: fn(part) {
           let next = if first { part } else { concat(acc, concat("; ", part)) }
-          match list_tail(xs: rest) {
-            TailFound { tail: t } =>
+          match v2.std.algebra.list_tail(xs: rest) {
+            v2.std.algebra.TailFound { tail: t } =>
               bash_fold_serialize_stmts_semi_from(acc: next, first: false, rest: t)
-            TailAbsent => v2.std.diagnostic.Accepted { value: next, diagnostics: v2.std.diagnostic.None }
+            v2.std.algebra.TailAbsent => v2.std.diagnostic.Accepted { value: next, diagnostics: v2.std.diagnostic.None }
           }
         }
       )
@@ -69,14 +69,14 @@ fn bash_fold_serialize_stmts_semi(stmts: List<v2.std.node.Node>) -> v2.std.diagn
 }
 
 fn bash_fold_flatten_stmt_list(list_node: v2.std.node.Node) -> List<v2.std.node.Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: list_node), index: 0) {
-    Present { value: first } =>
-      match list_at_optional(xs: node_positional_child_targets(node: list_node), index: 1) {
-        Present { value: second } =>
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: list_node), index: 0) {
+    v2.std.collection.Present { value: first } =>
+      match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: list_node), index: 1) {
+        v2.std.collection.Present { value: second } =>
           concat(bash_fold_flatten_stmt_list(list_node: first), [second])
-        Absent => [first]
+        v2.std.collection.Absent => [first]
       }
-    Absent => []
+    v2.std.collection.Absent => []
   }
 }
 
@@ -85,74 +85,74 @@ fn bash_fold_serialize_stmt_list_semi(list_node: v2.std.node.Node) -> v2.std.dia
 }
 
 fn bash_fold_serialize_with_redir_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    Present { value: inner } =>
-      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
-        Present { value: redir_tag } =>
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 1) {
+    v2.std.collection.Present { value: inner } =>
+      match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 2) {
+        v2.std.collection.Present { value: redir_tag } =>
           match redir_tag.kind {
-            TypeNode { connective: Atom { identity: redir_binding } } =>
-              bind_outcome(
+            v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: redir_binding } } =>
+              v2.std.diagnostic.bind_outcome(
                 o: bash_fold_serialize_node(stmt: inner),
                 f: fn(stmt_spelling) {
                   if redir_binding == ^bash_production_fold_redir_stderr_null {
                     bash_fold_serialize_emit_from_node(
-                      emitted: bash_stmt_with_redir_emitted,
-                      target: bash_stmt_with_redir_target_model(
+                      emitted: v2.extdeps.languages.bash.bash_stmt_with_redir_emitted,
+                      target: v2.extdeps.languages.bash.bash_stmt_with_redir_target_model(
                         stmt: stmt_spelling,
                         redir: "2>/dev/null"
                       )
                     )
                   } else if redir_binding == ^bash_production_fold_redir_stdout_and_stderr_null {
                     bash_fold_serialize_emit_from_node(
-                      emitted: bash_stmt_with_redir_emitted,
-                      target: bash_stmt_with_redir_target_model(
+                      emitted: v2.extdeps.languages.bash.bash_stmt_with_redir_emitted,
+                      target: v2.extdeps.languages.bash.bash_stmt_with_redir_target_model(
                         stmt: stmt_spelling,
                         redir: ">/dev/null 2>&1"
                       )
                     )
                   } else if redir_binding == ^bash_production_fold_redir_stdout_to_stderr {
                     bash_fold_serialize_emit_from_node(
-                      emitted: bash_stmt_with_redir_emitted,
-                      target: bash_stmt_with_redir_target_model(
+                      emitted: v2.extdeps.languages.bash.bash_stmt_with_redir_emitted,
+                      target: v2.extdeps.languages.bash.bash_stmt_with_redir_target_model(
                         stmt: stmt_spelling,
                         redir: ">&2"
                       )
                     )
                   } else if redir_binding == ^bash_production_fold_redir_to_file {
-                    match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 3) {
-                      Present { value: path_node } =>
-                        bind_outcome(
+                    match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 3) {
+                      v2.std.collection.Present { value: path_node } =>
+                        v2.std.diagnostic.bind_outcome(
                           o: bash_fold_serialize_word_node(word: path_node),
                           f: fn(path_spelling) {
                             bash_fold_serialize_emit_from_node(
-                              emitted: bash_stmt_with_redir_emitted,
-                              target: bash_stmt_with_redir_target_model(
+                              emitted: v2.extdeps.languages.bash.bash_stmt_with_redir_emitted,
+                              target: v2.extdeps.languages.bash.bash_stmt_with_redir_target_model(
                                 stmt: stmt_spelling,
                                 redir: concat("> ", path_spelling)
                               )
                             )
                           }
                         )
-                      Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+                      v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
                     }
                   } else {
-                    bash_fold_serialize_refused(variant: ^bash_fold_serialize_redir_binding_unsupported)
+                    v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_redir_binding_unsupported)
                   }
                 }
               )
-            _ => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
+            _ => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
           }
-        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+        v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
       }
-    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_word_node(word: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: word), index: 0) {
-    Present { value: kind_node } =>
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: word), index: 0) {
+    v2.std.collection.Present { value: kind_node } =>
       match kind_node.kind {
-        TypeNode { connective: Atom { identity: kind } } =>
+        v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: kind } } =>
           if kind == ^bash_fold_word_kind_lit {
             bash_fold_serialize_leaf_node(
               emitted: word,
@@ -172,33 +172,33 @@ fn bash_fold_serialize_word_node(word: v2.std.node.Node) -> v2.std.diagnostic.Ou
               rule_name: ^bash_production_fold_concat_word
             )
           } else if kind == ^bash_fold_word_kind_cmdsubst {
-            match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
-              Present { value: body } =>
-                bind_outcome(
+            match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: word), index: 1) {
+              v2.std.collection.Present { value: body } =>
+                v2.std.diagnostic.bind_outcome(
                   o: bash_fold_serialize_node(stmt: body),
                   f: fn(body_spelling) {
                     bash_fold_serialize_emit_from_node(
-                      emitted: bash_word_cmdsubst_emitted,
-                      target: bash_word_cmdsubst_target_model(body: body_spelling)
+                      emitted: v2.extdeps.languages.bash.bash_word_cmdsubst_emitted,
+                      target: v2.extdeps.languages.bash.bash_word_cmdsubst_target_model(body: body_spelling)
                     )
                   }
                 )
-              Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+              v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
             }
           } else if kind == ^bash_build_refused_empty_word_list {
             v2.std.diagnostic.Rejected {
-              diagnostics: diagnostics_singleton(
-                d: bash_fold_unsupported_variant_diagnostic(
+              diagnostics: v2.std.diagnostic.diagnostics_singleton(
+                d: v2.extdeps.languages.bash_command_fold.bash_fold_unsupported_variant_diagnostic(
                   variant: ^bash_build_refused_empty_word_list
                 )
               )
             }
           } else {
-            bash_fold_serialize_refused(variant: ^bash_fold_serialize_word_kind_unsupported)
+            v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_word_kind_unsupported)
           }
-        _ => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
+        _ => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
       }
-    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
@@ -207,17 +207,17 @@ fn bash_fold_serialize_word_list_spelling_from(
   first: Bool,
   rest: List<v2.std.node.Node>
 ) -> v2.std.diagnostic.Outcome<String> {
-  match list_head(xs: rest) {
-    HeadAbsent => v2.std.diagnostic.Accepted { value: acc, diagnostics: v2.std.diagnostic.None }
-    HeadFound { value: w } =>
-      bind_outcome(
+  match v2.std.algebra.list_head(xs: rest) {
+    v2.std.algebra.HeadAbsent => v2.std.diagnostic.Accepted { value: acc, diagnostics: v2.std.diagnostic.None }
+    v2.std.algebra.HeadFound { value: w } =>
+      v2.std.diagnostic.bind_outcome(
         o: bash_fold_serialize_word_node(word: w),
         f: fn(part) {
           let next = if first { part } else { concat(acc, part) }
-          match list_tail(xs: rest) {
-            TailFound { tail: t } =>
+          match v2.std.algebra.list_tail(xs: rest) {
+            v2.std.algebra.TailFound { tail: t } =>
               bash_fold_serialize_word_list_spelling_from(acc: next, first: false, rest: t)
-            TailAbsent => v2.std.diagnostic.Accepted { value: next, diagnostics: v2.std.diagnostic.None }
+            v2.std.algebra.TailAbsent => v2.std.diagnostic.Accepted { value: next, diagnostics: v2.std.diagnostic.None }
           }
         }
       )
@@ -241,61 +241,61 @@ fn bash_fold_serialize_command_node(stmt: v2.std.node.Node) -> v2.std.diagnostic
 }
 
 fn bash_fold_serialize_assign_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    Present { value: name_node } =>
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 1) {
+    v2.std.collection.Present { value: name_node } =>
       match name_node.kind {
-        TypeNode { connective: Atom { identity: name } } =>
-          match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
-            Present { value: value } =>
-              bind_outcome(
+        v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } } =>
+          match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 2) {
+            v2.std.collection.Present { value: value } =>
+              v2.std.diagnostic.bind_outcome(
                 o: bash_fold_serialize_word_node(word: value),
                 f: fn(value_spelling) {
                   bash_fold_serialize_emit_from_node(
-                    emitted: bash_stmt_assign_emitted,
-                    target: bash_stmt_assign_target_model(
+                    emitted: v2.extdeps.languages.bash.bash_stmt_assign_emitted,
+                    target: v2.extdeps.languages.bash.bash_stmt_assign_target_model(
                       name: name,
                       value: value_spelling
                     )
                   )
                 }
               )
-            Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+            v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
           }
-        _ => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
+        _ => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
       }
-    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_exit_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    Present { value: code_node } =>
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 1) {
+    v2.std.collection.Present { value: code_node } =>
       match code_node.kind {
-        TypeNode { connective: Atom { identity: code } } =>
+        v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: code } } =>
           bash_fold_serialize_emit_from_node(
-            emitted: bash_stmt_exit_emitted,
-            target: bash_stmt_exit_target_model(code: code)
+            emitted: v2.extdeps.languages.bash.bash_stmt_exit_emitted,
+            target: v2.extdeps.languages.bash.bash_stmt_exit_target_model(code: code)
           )
-        _ => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
+        _ => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
       }
-    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_and_then_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    Present { value: left } =>
-      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
-        Present { value: right } =>
-          bind_outcome(
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 1) {
+    v2.std.collection.Present { value: left } =>
+      match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 2) {
+        v2.std.collection.Present { value: right } =>
+          v2.std.diagnostic.bind_outcome(
             o: bash_fold_serialize_node(stmt: left),
             f: fn(left_spelling) {
-              bind_outcome(
+              v2.std.diagnostic.bind_outcome(
                 o: bash_fold_serialize_node(stmt: right),
                 f: fn(right_spelling) {
                   bash_fold_serialize_emit_from_node(
-                    emitted: bash_stmt_andor_emitted,
-                    target: bash_stmt_andor_target_model(
+                    emitted: v2.extdeps.languages.bash.bash_stmt_andor_emitted,
+                    target: v2.extdeps.languages.bash.bash_stmt_andor_target_model(
                       left: left_spelling,
                       op: "&&",
                       right: right_spelling
@@ -305,26 +305,26 @@ fn bash_fold_serialize_and_then_node(stmt: v2.std.node.Node) -> v2.std.diagnosti
               )
             }
           )
-        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+        v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
       }
-    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_or_else_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    Present { value: left } =>
-      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
-        Present { value: right } =>
-          bind_outcome(
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 1) {
+    v2.std.collection.Present { value: left } =>
+      match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 2) {
+        v2.std.collection.Present { value: right } =>
+          v2.std.diagnostic.bind_outcome(
             o: bash_fold_serialize_node(stmt: left),
             f: fn(left_spelling) {
-              bind_outcome(
+              v2.std.diagnostic.bind_outcome(
                 o: bash_fold_serialize_node(stmt: right),
                 f: fn(right_spelling) {
                   bash_fold_serialize_emit_from_node(
-                    emitted: bash_stmt_andor_emitted,
-                    target: bash_stmt_andor_target_model(
+                    emitted: v2.extdeps.languages.bash.bash_stmt_andor_emitted,
+                    target: v2.extdeps.languages.bash.bash_stmt_andor_target_model(
                       left: left_spelling,
                       op: "||",
                       right: right_spelling
@@ -334,26 +334,26 @@ fn bash_fold_serialize_or_else_node(stmt: v2.std.node.Node) -> v2.std.diagnostic
               )
             }
           )
-        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+        v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
       }
-    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_pipe_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    Present { value: left } =>
-      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
-        Present { value: right } =>
-          bind_outcome(
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 1) {
+    v2.std.collection.Present { value: left } =>
+      match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 2) {
+        v2.std.collection.Present { value: right } =>
+          v2.std.diagnostic.bind_outcome(
             o: bash_fold_serialize_node(stmt: left),
             f: fn(left_spelling) {
-              bind_outcome(
+              v2.std.diagnostic.bind_outcome(
                 o: bash_fold_serialize_node(stmt: right),
                 f: fn(right_spelling) {
                   bash_fold_serialize_emit_from_node(
-                    emitted: bash_stmt_pipe_emitted,
-                    target: bash_stmt_pipe_target_model(
+                    emitted: v2.extdeps.languages.bash.bash_stmt_pipe_emitted,
+                    target: v2.extdeps.languages.bash.bash_stmt_pipe_target_model(
                       left: left_spelling,
                       right: right_spelling
                     )
@@ -362,31 +362,31 @@ fn bash_fold_serialize_pipe_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Ou
               )
             }
           )
-        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+        v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
       }
-    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_if_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    Present { value: cond } =>
-      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
-        Present { value: body } =>
-          bind_outcome(
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 1) {
+    v2.std.collection.Present { value: cond } =>
+      match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 2) {
+        v2.std.collection.Present { value: body } =>
+          v2.std.diagnostic.bind_outcome(
             o: bash_fold_serialize_node(stmt: cond),
             f: fn(cond_spelling) {
-              bind_outcome(
+              v2.std.diagnostic.bind_outcome(
                 o: bash_fold_serialize_stmt_list_semi(list_node: body),
                 f: fn(body_spelling) {
-                  bind_outcome(
-                    o: bash_stmt_if_target_model(
+                  v2.std.diagnostic.bind_outcome(
+                    o: v2.extdeps.languages.bash.bash_stmt_if_target_model(
                       cond: cond_spelling,
                       body: body_spelling
                     ),
                     f: fn(target) {
                       bash_fold_serialize_emit_from_node(
-                        emitted: bash_stmt_if_emitted,
+                        emitted: v2.extdeps.languages.bash.bash_stmt_if_emitted,
                         target: target
                       )
                     }
@@ -395,41 +395,41 @@ fn bash_fold_serialize_if_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outc
               )
             }
           )
-        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+        v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
       }
-    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_subshell_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    Present { value: body } =>
-      bind_outcome(
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 1) {
+    v2.std.collection.Present { value: body } =>
+      v2.std.diagnostic.bind_outcome(
         o: bash_fold_serialize_stmt_list_semi(list_node: body),
         f: fn(body_spelling) {
           bash_fold_serialize_emit_from_node(
-            emitted: bash_stmt_subshell_emitted,
-            target: bash_stmt_subshell_target_model(body: body_spelling)
+            emitted: v2.extdeps.languages.bash.bash_stmt_subshell_emitted,
+            target: v2.extdeps.languages.bash.bash_stmt_subshell_target_model(body: body_spelling)
           )
         }
       )
-    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_negation_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    Present { value: inner } =>
-      bind_outcome(
+  match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: stmt), index: 1) {
+    v2.std.collection.Present { value: inner } =>
+      v2.std.diagnostic.bind_outcome(
         o: bash_fold_serialize_node(stmt: inner),
         f: fn(inner_spelling) {
           bash_fold_serialize_emit_from_node(
-            emitted: bash_stmt_negation_emitted,
-            target: bash_stmt_negation_target_model(inner: inner_spelling)
+            emitted: v2.extdeps.languages.bash.bash_stmt_negation_emitted,
+            target: v2.extdeps.languages.bash.bash_stmt_negation_target_model(inner: inner_spelling)
           )
         }
       )
-    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    v2.std.collection.Absent => v2.extdeps.languages.bash_command_fold.bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
@@ -457,8 +457,8 @@ fn bash_fold_serialize_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome
     bash_fold_serialize_negation_node(stmt: stmt)
   } else if binding == ^bash_build_refused_empty_stmt_list {
     v2.std.diagnostic.Rejected {
-      diagnostics: diagnostics_singleton(
-        d: bash_fold_unsupported_variant_diagnostic(
+      diagnostics: v2.std.diagnostic.diagnostics_singleton(
+        d: v2.extdeps.languages.bash_command_fold.bash_fold_unsupported_variant_diagnostic(
           variant: ^bash_build_refused_empty_stmt_list
         )
       )
@@ -473,21 +473,21 @@ fn bash_fold_serialize_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome
 }
 
 fn bash_fold_serialize_body(stmts: List<v2.std.node.Node>) -> v2.std.diagnostic.Outcome<String> {
-  match list_head(xs: stmts) {
-    HeadAbsent => v2.std.diagnostic.Accepted { value: "", diagnostics: v2.std.diagnostic.None }
-    HeadFound { value: s } =>
-      bind_outcome(
+  match v2.std.algebra.list_head(xs: stmts) {
+    v2.std.algebra.HeadAbsent => v2.std.diagnostic.Accepted { value: "", diagnostics: v2.std.diagnostic.None }
+    v2.std.algebra.HeadFound { value: s } =>
+      v2.std.diagnostic.bind_outcome(
         o: bash_fold_serialize_node(stmt: s),
         f: fn(part) {
-          match list_tail(xs: stmts) {
-            TailFound { tail: t } =>
-              bind_outcome(
+          match v2.std.algebra.list_tail(xs: stmts) {
+            v2.std.algebra.TailFound { tail: t } =>
+              v2.std.diagnostic.bind_outcome(
                 o: bash_fold_serialize_body(stmts: t),
                 f: fn(rest) {
                   v2.std.diagnostic.Accepted { value: concat(concat(part, "\n"), rest), diagnostics: v2.std.diagnostic.None }
                 }
               )
-            TailAbsent => v2.std.diagnostic.Accepted { value: concat(part, "\n"), diagnostics: v2.std.diagnostic.None }
+            v2.std.algebra.TailAbsent => v2.std.diagnostic.Accepted { value: concat(part, "\n"), diagnostics: v2.std.diagnostic.None }
           }
         }
       )
@@ -495,7 +495,7 @@ fn bash_fold_serialize_body(stmts: List<v2.std.node.Node>) -> v2.std.diagnostic.
 }
 
 fn bash_fold_serialize_program(stmts: List<v2.std.node.Node>, set_e: Bool) -> v2.std.diagnostic.Outcome<String> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: bash_fold_serialize_body(stmts: stmts),
     f: fn(body) {
       if set_e {

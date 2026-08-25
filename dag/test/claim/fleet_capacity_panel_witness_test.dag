@@ -1,8 +1,9 @@
 module test.claim.fleet_capacity_panel_witness_test
 
-fn workspace_emission() -> HtmlEmitResult {
-  try_serialize_html_source(node: roadmap_daily_workspace_page(
-    doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
+
+fn workspace_emission() -> extdeps.languages.html.HtmlEmitResult {
+  extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page(
+    doc: gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
     merged: [],
   ))
 }
@@ -20,15 +21,15 @@ fn workspace_emission() -> HtmlEmitResult {
 // file searches for, so it cannot accidentally satisfy one either.
 fn empty_workspace_html() -> String {
   match workspace_emission() {
-    EmitOk { html: h } => h
-    EmitRejected { reason: r } => join(["EMISSION-REFUSED: ", r as String], "")
+    extdeps.languages.html.EmitOk { html: h } => h
+    extdeps.languages.html.EmitRejected { reason: r } => join(["EMISSION-REFUSED: ", r as String], "")
   }
 }
 
 fn workspace_emission_is_ok() -> Bool {
   match workspace_emission() {
-    EmitOk { html: _ } => true
-    EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: _ } => true
+    extdeps.languages.html.EmitRejected { reason: _ } => false
   }
 }
 
@@ -86,12 +87,12 @@ test fn the_panel_labels_its_widths_as_committed_not_observed() -> Bool {
 // stays a genuine oracle rather than measure() == measure(): the right side reads
 // gunbc_runner_slot_allocation, a different authority from the panel fold on the left.
 test fn the_slot_total_sums_the_allocation_authority() -> Bool {
-  fleet_committed_slot_total_ignoring_withdrawals()
-    == gunbc_runner_slots_per_host(host: operator_host_srv1)
-       + gunbc_runner_slots_per_host(host: operator_host_srv2)
-       + gunbc_runner_slots_per_host(host: operator_host_srv3)
-       + gunbc_runner_slots_per_host(host: operator_host_srv4)
-    && fleet_committed_slot_total() > 0
+  gunbc.fleet_capacity_panel.fleet_committed_slot_total_ignoring_withdrawals()
+    == gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: gunbc.fleet_intent_network.operator_host_srv1)
+       + gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: gunbc.fleet_intent_network.operator_host_srv2)
+       + gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: gunbc.fleet_intent_network.operator_host_srv3)
+       + gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: gunbc.fleet_intent_network.operator_host_srv4)
+    && gunbc.fleet_capacity_panel.fleet_committed_slot_total() > 0
 }
 
 // WITH NOTHING WITHDRAWN THE TWO TOTALS AGREE AND THE WITHDRAWN LINE IS ABSENT.
@@ -99,16 +100,16 @@ test fn the_slot_total_sums_the_allocation_authority() -> Bool {
 // The absent line is the point: a standing "0 withdrawn" row is noise on every ordinary day and
 // trains the reader to skip the row where a non-zero number finally matters.
 test fn nothing_withdrawn_means_no_withdrawn_line() -> Bool {
-  let line_absent = match fleet_capacity_withdrawn_line() {
+  let line_absent = match gunbc.fleet_capacity_panel.fleet_capacity_withdrawn_line() {
     Present { value: _ } => false
     Absent => true
   }
-  fleet_committed_slot_total() == fleet_committed_slot_total_ignoring_withdrawals()
+  gunbc.fleet_capacity_panel.fleet_committed_slot_total() == gunbc.fleet_capacity_panel.fleet_committed_slot_total_ignoring_withdrawals()
     && line_absent
 }
 
 test fn the_summary_line_names_both_axes() -> Bool {
-  let line = fleet_capacity_summary_line()
+  let line = gunbc.fleet_capacity_panel.fleet_capacity_summary_line()
   string_contains(s: line, pattern: "hosts")
     && string_contains(s: line, pattern: "runtimes")
     && string_contains(s: line, pattern: "slots committed")
@@ -124,8 +125,8 @@ test fn the_summary_line_names_both_axes() -> Bool {
 // satisfying the minimum would list disk beside memory and read as two independent confirmations
 // of a width only one axis actually measured.
 test fn an_unmeasured_axis_is_not_reported_as_binding() -> Bool {
-  let binding = host_binding_width_axes(host: operator_host_srv1)
-  let label = host_width_binding_label(host: operator_host_srv1)
+  let binding = gunbc.runner_slot_allocation.host_binding_width_axes(host: gunbc.fleet_intent_network.operator_host_srv1)
+  let label = gunbc.runner_slot_allocation.host_width_binding_label(host: gunbc.fleet_intent_network.operator_host_srv1)
   (binding |> count) == 1
     && string_contains(s: label, pattern: "disk unmeasured")
     && !string_contains(s: label, pattern: "disk admits")
@@ -139,8 +140,8 @@ test fn an_unmeasured_axis_is_not_reported_as_binding() -> Bool {
 // of these hosts. This is the discriminating witness: a label function that named one axis for the
 // whole fleet passes every other assertion here and fails this one.
 test fn srv1_and_srv2_are_bound_by_different_axes() -> Bool {
-  let one = host_width_binding_label(host: operator_host_srv1)
-  let two = host_width_binding_label(host: operator_host_srv2)
+  let one = gunbc.runner_slot_allocation.host_width_binding_label(host: gunbc.fleet_intent_network.operator_host_srv1)
+  let two = gunbc.runner_slot_allocation.host_width_binding_label(host: gunbc.fleet_intent_network.operator_host_srv2)
   one != two
     && string_contains(s: one, pattern: "bound by cores")
     && string_contains(s: two, pattern: "bound by memory")
@@ -153,9 +154,9 @@ test fn srv1_and_srv2_are_bound_by_different_axes() -> Bool {
 // from somewhere else, and nothing downstream would catch it -- the panel would explain a number
 // using a cause that did not produce it.
 test fn the_binding_axis_sits_at_the_committed_width() -> Bool {
-  all([operator_host_srv1, operator_host_srv3], h =>
-    all(host_binding_width_axes(host: h), a =>
-      width_axis_binds_at(standing: a, committed: gunbc_runner_slots_per_host(host: h))))
+  all([gunbc.fleet_intent_network.operator_host_srv1, gunbc.fleet_intent_network.operator_host_srv3], h =>
+    all(gunbc.runner_slot_allocation.host_binding_width_axes(host: h), a =>
+      gunbc.runner_slot_allocation.width_axis_binds_at(standing: a, committed: gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: h))))
 }
 
 test fn the_panel_renders_the_binding_axis_for_every_host() -> Bool {

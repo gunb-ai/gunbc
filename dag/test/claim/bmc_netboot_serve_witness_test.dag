@@ -1,5 +1,6 @@
 module test.claim.bmc_netboot_serve
 
+
 test fn srv4_grub_cfg_boots_mirror_bulk_with_bmc_seed() -> Bool {
   let cfg = gunbc.bmc_netboot_serve.bmc_netboot_grub_cfg_text(plan: gunbc.bmc_netboot_serve.srv4_bmc_netboot_serve_plan)
   string_contains(s: cfg, pattern: "linux /vmlinuz ip=dhcp url=https://cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso autoinstall \"ds=nocloud-net;s=http://192.168.1.195:8080/nocloud/\" ---")
@@ -22,8 +23,8 @@ test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
 
 fn bmc_netboot_serve_command_text_unwrap(plan: gunbc.bmc_netboot_serve.BmcNetbootServePlan) -> String {
   match gunbc.bmc_netboot_serve.bmc_netboot_serve_command_text(plan: plan) {
-    BmcNetbootServeCommandTextRefused { cause: _ } => "REFUSED -- test fixture expected PosixShellInterpreted, got a refusal"
-    BmcNetbootServeCommandTextBuilt { text: t } => t
+    gunbc.bmc_netboot_serve.BmcNetbootServeCommandTextRefused { cause: _ } => "REFUSED -- test fixture expected PosixShellInterpreted, got a refusal"
+    gunbc.bmc_netboot_serve.BmcNetbootServeCommandTextBuilt { text: t } => t
   }
 }
 
@@ -64,16 +65,16 @@ test fn srv4_staging_manifest_stages_rendered_grub_and_seed() -> Bool {
   let grub_ok = fold(m, init: false, f: (acc, file) =>
     acc || (string_contains(s: file.remote_path as String, pattern: "/grub.cfg")
       && match file.content {
-        InlineText { text: t } => string_contains(s: t, pattern: "ds=nocloud-net")
-        LocalArtifact { path: _ } => false
-        FetchFromUri { source: _ } => false
+        gunbc.bmc_netboot_serve.InlineText { text: t } => string_contains(s: t, pattern: "ds=nocloud-net")
+        gunbc.bmc_netboot_serve.LocalArtifact { path: _ } => false
+        gunbc.bmc_netboot_serve.FetchFromUri { source: _ } => false
       }))
   let seed_ok = fold(m, init: false, f: (acc, file) =>
     acc || (string_contains(s: file.remote_path as String, pattern: "nocloud/user-data")
       && match file.content {
-        InlineText { text: t } => string_contains(s: t, pattern: "fleet-automation@gunbc")
-        LocalArtifact { path: _ } => false
-        FetchFromUri { source: _ } => false
+        gunbc.bmc_netboot_serve.InlineText { text: t } => string_contains(s: t, pattern: "fleet-automation@gunbc")
+        gunbc.bmc_netboot_serve.LocalArtifact { path: _ } => false
+        gunbc.bmc_netboot_serve.FetchFromUri { source: _ } => false
       }))
   grub_ok && seed_ok && std.types.list_length(items: m) == 7
 }

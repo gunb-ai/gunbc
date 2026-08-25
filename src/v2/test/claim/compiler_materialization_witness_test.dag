@@ -2,51 +2,51 @@ module v2.test.claim.compiler_materialization_witness
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data compiler_materialization_witness_note: String = "Green-by-execution receipt that v2 ParseTable and cached_stage memoization flows through the governed carrier door (Memoize verdict consumed; non-Memoize refuses store). Ladder + catalog projection witnesses unchanged. RED: plural RefusedScopeTooNarrow / RefusedNoProvider; governed-store refusal when Recompute; bypass insert on non-Memoize carrier. reconcile-as-lookup-path is the next increment."
 
 test fn compiler_materialization_ladder_holds() -> Bool {
-  v2.compiler.materialization_carriers.v2_compiler_materialization_ladder_holds()
+  v2_compiler_materialization_ladder_holds()
 }
 
 test fn parse_table_memo_provider_preserves_catalog_retention() -> Bool {
-  v2.compiler.materialization_carriers.parse_table_memo_retention_preserved()
-    && (v2.compiler.materialization_carriers.parse_table_memo_provider_id() == extdeps.realization.parse_table_memo.parse_table_memo_id)
+  parse_table_memo_retention_preserved()
+    && (parse_table_memo_provider_id() == parse_table_memo_id)
 }
 
 test fn compile_stage_memo_provider_preserves_catalog_retention() -> Bool {
-  v2.compiler.materialization_carriers.compile_stage_memo_retention_preserved()
-    && (v2.compiler.materialization_carriers.compile_stage_memo_provider_id() == extdeps.realization.compile_stage_memo.compile_stage_memo_id)
+  compile_stage_memo_retention_preserved()
+    && (compile_stage_memo_provider_id() == compile_stage_memo_id)
 }
 
 test fn parse_table_carrier_inhabits_realization() -> Bool {
-  let step = v2.compiler.materialization_carriers.parse_table_realized_step()
-  (step.materialization == std.realization.Memoize)
+  let step = parse_table_realized_step()
+  (step.materialization == Memoize)
     && (step.placement == std.realization.LocalInProcess)
-    && (v2.compiler.materialization_carriers.parse_table_memo_materialization() == std.realization.Memoize)
+    && (parse_table_memo_materialization() == Memoize)
 }
 
 test fn compile_stage_carrier_inhabits_realization() -> Bool {
-  let step = v2.compiler.materialization_carriers.compile_stage_realized_step()
-  (step.materialization == std.realization.Memoize)
+  let step = compile_stage_realized_step()
+  (step.materialization == Memoize)
     && (step.placement == std.realization.LocalInProcess)
-    && (v2.compiler.materialization_carriers.compile_stage_memo_materialization() == std.realization.Memoize)
-    && (v2.compiler.materialization_carriers.cached_stage_realization().provider_id == extdeps.realization.compile_stage_memo.compile_stage_memo_id)
+    && (compile_stage_memo_materialization() == Memoize)
+    && (cached_stage_realization().provider_id == compile_stage_memo_id)
 }
 
 test fn parse_table_empty_uses_catalog_identity() -> Bool {
-  v2.compiler.materialization_carriers.parse_table_carrier_grounded_on_catalog()
+  parse_table_carrier_grounded_on_catalog()
 }
 
 test fn single_site_demands_are_accepted_single_recompute() -> Bool {
-  v2.compiler.materialization_carriers.parse_table_memo_verdict_is_single_recompute()
-    && v2.compiler.materialization_carriers.compile_stage_memo_verdict_is_single_recompute()
+  parse_table_memo_verdict_is_single_recompute()
+    && compile_stage_memo_verdict_is_single_recompute()
 }
 
 test fn parse_table_memo_plural_reds_without_provider() -> Bool {
-  !v2.compiler.materialization_carriers.parse_table_memo_plural_holds_with_provider()
-    && (v2.compiler.materialization_carriers.parse_table_memo_plural_scope_too_narrow_count() == 1)
-    && !v2.compiler.materialization_carriers.parse_table_memo_plural_holds_without_provider()
-    && (v2.compiler.materialization_carriers.parse_table_memo_plural_refused_without_provider_count() == 1)
+  !parse_table_memo_plural_holds_with_provider()
+    && (parse_table_memo_plural_scope_too_narrow_count() == 1)
+    && !parse_table_memo_plural_holds_without_provider()
+    && (parse_table_memo_plural_refused_without_provider_count() == 1)
 }

@@ -1,14 +1,14 @@
 module test.claim.fleet_convergence_verdict_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn no_receipts() -> List<gunbc.fleet_converge_cli.ConvergeCliReceipt> {
   []
 }
 
 fn converged_receipt(host: String) -> gunbc.fleet_converge_cli.ConvergeCliReceipt {
-  gunbc.fleet_converge_cli.ConvergeCliReceipt { host: host, applied: 0, drifted: 0, verdict: VerdictConverged, reason: none }
+  gunbc.fleet_converge_cli.ConvergeCliReceipt { host: host, applied: 0, drifted: 0, verdict: gunbc.host_converge.VerdictConverged, reason: none }
 }
 
 // THE LAW: the live fleet, with its one real producer cell and zero knob receipts, is
@@ -16,9 +16,9 @@ fn converged_receipt(host: String) -> gunbc.fleet_converge_cli.ConvergeCliReceip
 // green, and the unobserved count is a positive number (the arc's honest progress
 // denominator). This witness is the named current defect made executable.
 test fn live_fleet_is_not_converged_and_unobserved_cells_are_counted() -> Bool {
-  match fleet_convergence_verdict(enrollments: fleet_subsumption_enrollments, receipts: no_receipts()) {
-    FleetNotConverged { standings: ss } => fleet_unobserved_cell_count(standings: ss) > 0
-    FleetConverged { host_count: _ } => false
+  match gunbc.fleet_convergence_verdict.fleet_convergence_verdict(enrollments: gunbc.host_phase_status.fleet_subsumption_enrollments, receipts: no_receipts()) {
+    gunbc.fleet_convergence_verdict.FleetNotConverged { standings: ss } => gunbc.fleet_convergence_verdict.fleet_unobserved_cell_count(standings: ss) > 0
+    gunbc.fleet_convergence_verdict.FleetConverged { host_count: _ } => false
   }
 }
 
@@ -26,44 +26,44 @@ test fn live_fleet_is_not_converged_and_unobserved_cells_are_counted() -> Bool {
 // CONVERGED knob receipt, the unobserved lifecycle cells still prevent fleet
 // convergence — knob green never outvotes an unobserved required cell.
 test fn knob_receipts_alone_cannot_converge_the_fleet() -> Bool {
-  let receipts = map(fleet_subsumption_enrollments, e => converged_receipt(host: e.host as String))
-  match fleet_convergence_verdict(enrollments: fleet_subsumption_enrollments, receipts: receipts) {
-    FleetNotConverged { standings: _ } => true
-    FleetConverged { host_count: _ } => false
+  let receipts = map(gunbc.host_phase_status.fleet_subsumption_enrollments, e => converged_receipt(host: e.host as String))
+  match gunbc.fleet_convergence_verdict.fleet_convergence_verdict(enrollments: gunbc.host_phase_status.fleet_subsumption_enrollments, receipts: receipts) {
+    gunbc.fleet_convergence_verdict.FleetNotConverged { standings: _ } => true
+    gunbc.fleet_convergence_verdict.FleetConverged { host_count: _ } => false
   }
 }
 
 // An empty enrollment is an observation gap, never a vacuously converged fleet.
 test fn empty_fleet_refuses_convergence() -> Bool {
   let empty: List<gunbc.host_assimilation_program.HostEnrollmentIntent> = []
-  match fleet_convergence_verdict(enrollments: empty, receipts: no_receipts()) {
-    FleetNotConverged { standings: ss } => length(ss) == 0
-    FleetConverged { host_count: _ } => false
+  match gunbc.fleet_convergence_verdict.fleet_convergence_verdict(enrollments: empty, receipts: no_receipts()) {
+    gunbc.fleet_convergence_verdict.FleetNotConverged { standings: ss } => length(ss) == 0
+    gunbc.fleet_convergence_verdict.FleetConverged { host_count: _ } => false
   }
 }
 
 // Knob standing discriminates its three arms: no receipt is Unobserved (never green), a
 // non-converged receipt is NotConverged, a converged receipt is Converged.
 test fn knob_standing_three_arms_discriminate() -> Bool {
-  match host_knob_standing(host: operator_host_srv1, receipts: no_receipts()) {
-    KnobUnobserved { host: _ } => true
+  match gunbc.fleet_convergence_verdict.host_knob_standing(host: gunbc.fleet_intent_network.operator_host_srv1, receipts: no_receipts()) {
+    gunbc.fleet_convergence_verdict.KnobUnobserved { host: _ } => true
     _ => false
   }
-    && match host_knob_standing(host: operator_host_srv1, receipts: [converged_receipt(host: operator_host_srv1 as String)]) {
-      KnobConverged { host: _ } => true
+    && match gunbc.fleet_convergence_verdict.host_knob_standing(host: gunbc.fleet_intent_network.operator_host_srv1, receipts: [converged_receipt(host: gunbc.fleet_intent_network.operator_host_srv1 as String)]) {
+      gunbc.fleet_convergence_verdict.KnobConverged { host: _ } => true
       _ => false
     }
-    && match host_knob_standing(
-      host: operator_host_srv1,
+    && match gunbc.fleet_convergence_verdict.host_knob_standing(
+      host: gunbc.fleet_intent_network.operator_host_srv1,
       receipts: [gunbc.fleet_converge_cli.ConvergeCliReceipt {
-        host: operator_host_srv1 as String,
+        host: gunbc.fleet_intent_network.operator_host_srv1 as String,
         applied: 0,
         drifted: 1,
         verdict: gunbc.host_converge.Absent,
         reason: Present { value: gunbc.fleet_converge_cli.KnobFrontier { reason: "witness fixture" } },
       }],
     ) {
-      KnobNotConverged { host: _, reason: _ } => true
+      gunbc.fleet_convergence_verdict.KnobNotConverged { host: _, reason: _ } => true
       _ => false
     }
 }
@@ -71,12 +71,12 @@ test fn knob_standing_three_arms_discriminate() -> Bool {
 // The five cell arms stay distinct — unobserved, unreachable, drifted, and conflict are
 // different remedies and none of them is converged.
 test fn cell_standings_discriminate_and_only_converged_counts() -> Bool {
-  let h = operator_host_srv1
-  cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellConverged { host: h, phase_label: "p" })
-    && !cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellUnobserved { host: h, phase_label: "p" })
-    && !cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellUnreachable { host: h, phase_label: "p" })
-    && !cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellDrifted { host: h, phase_label: "p" })
-    && !cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellConflict { host: h, phase_label: "p" })
+  let h = gunbc.fleet_intent_network.operator_host_srv1
+  gunbc.fleet_convergence_verdict.cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellConverged { host: h, phase_label: "p" })
+    && !gunbc.fleet_convergence_verdict.cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellUnobserved { host: h, phase_label: "p" })
+    && !gunbc.fleet_convergence_verdict.cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellUnreachable { host: h, phase_label: "p" })
+    && !gunbc.fleet_convergence_verdict.cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellDrifted { host: h, phase_label: "p" })
+    && !gunbc.fleet_convergence_verdict.cell_standing_is_converged(s: gunbc.fleet_convergence_verdict.CellConflict { host: h, phase_label: "p" })
 }
 
 // Machine-id hazard control (msg_1c4e0bce): two receipts claiming ONE host identity —
@@ -86,12 +86,12 @@ test fn cell_standings_discriminate_and_only_converged_counts() -> Bool {
 test fn duplicate_receipts_for_one_host_are_ambiguity_never_a_pick() -> Bool {
   let a = converged_receipt(host: "srv5")
   let b = converged_receipt(host: "srv5")
-  match host_knob_standing(host: "srv5" as product.placement_supply.HostIdentity, receipts: [a, b]) {
-    KnobNotConverged { host: _, reason: r } => string_contains(s: r, pattern: "ambiguous")
+  match gunbc.fleet_convergence_verdict.host_knob_standing(host: "srv5" as product.placement_supply.HostIdentity, receipts: [a, b]) {
+    gunbc.fleet_convergence_verdict.KnobNotConverged { host: _, reason: r } => string_contains(s: r, pattern: "ambiguous")
     _ => false
   }
-    && match host_knob_standing(host: "srv5" as product.placement_supply.HostIdentity, receipts: [a]) {
-      KnobConverged { host: _ } => true
+    && match gunbc.fleet_convergence_verdict.host_knob_standing(host: "srv5" as product.placement_supply.HostIdentity, receipts: [a]) {
+      gunbc.fleet_convergence_verdict.KnobConverged { host: _ } => true
       _ => false
     }
 }

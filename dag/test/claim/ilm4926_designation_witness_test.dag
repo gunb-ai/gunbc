@@ -1,7 +1,7 @@
 module test.claim.ilm4926_designation_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn w_ilm4926_is_carried_as_a_designator() -> Bool {
   ilm4926.designator == "ILM4926"
@@ -10,20 +10,20 @@ test fn w_ilm4926_is_carried_as_a_designator() -> Bool {
 // The justification for a separate authority is INDEPENDENT publishers, not a
 // count of mentions: two Ampere datasheets are one publisher saying it twice.
 test fn w_the_designation_is_attested_by_independent_publishers() -> Bool {
-  attestation_count() == 3
-    && list_length(items: ilm4926_attestations) == 3
-    && attested_by_ampere_datasheets()
-    && attested_by_ocp_specification()
-    && attested_by_independent_publishers()
+  extdeps.cpu_attachment.ilm4926.attestation_count() == 3
+    && std.types.list_length(items: extdeps.cpu_attachment.ilm4926.ilm4926_attestations) == 3
+    && extdeps.cpu_attachment.ilm4926.attested_by_ampere_datasheets()
+    && extdeps.cpu_attachment.ilm4926.attested_by_ocp_specification()
+    && extdeps.cpu_attachment.ilm4926.attested_by_independent_publishers()
 }
 
 test fn w_each_attestation_carries_its_own_authority_and_wording() -> Bool {
-  let ampere_max = attestations_from_authority(authority: extdeps.cpu_attachment.ilm4926.extdeps_external_authority_anchor)
-  let ampere_classic = attestations_from_authority(authority: altra_classic_datasheet_authority)
-  let ocp = attestations_from_authority(authority: ocp_mt_jade_specification_authority)
-  list_length(items: ampere_max) == 1
-    && list_length(items: ampere_classic) == 1
-    && list_length(items: ocp) == 1
+  let ampere_max = extdeps.cpu_attachment.ilm4926.attestations_from_authority(authority: extdeps.cpu_attachment.ilm4926.extdeps_external_authority_anchor)
+  let ampere_classic = extdeps.cpu_attachment.ilm4926.attestations_from_authority(authority: extdeps.cpu_attachment.ilm4926.altra_classic_datasheet_authority)
+  let ocp = extdeps.cpu_attachment.ilm4926.attestations_from_authority(authority: extdeps.cpu_attachment.ilm4926.ocp_mt_jade_specification_authority)
+  std.types.list_length(items: ampere_max) == 1
+    && std.types.list_length(items: ampere_classic) == 1
+    && std.types.list_length(items: ocp) == 1
     && ampere_max.first().wording == "device seated in ILM4926 socket"
     && ocp.first().wording == "ILM4926"
 }
@@ -32,26 +32,26 @@ test fn w_each_attestation_carries_its_own_authority_and_wording() -> Bool {
 // the designator or attributes it to a vendor part, so the referent is
 // unresolved and the predicate says so.
 test fn w_the_referent_is_unresolved_by_the_cited_documents() -> Bool {
-  !designation_referent_is_resolved(referent: ilm4926_referent)
+  !extdeps.cpu_attachment.ilm4926.designation_referent_is_resolved(referent: extdeps.cpu_attachment.ilm4926.ilm4926_referent)
 }
 
 // RED control: each concrete referent WOULD resolve, so the unresolved answer
 // above is a property of the evidence rather than a predicate that can only
 // return false.
 test fn w_red_a_concrete_referent_would_resolve_the_question() -> Bool {
-  designation_referent_is_resolved(referent: SocketBodyOnly)
-    && designation_referent_is_resolved(referent: IndependentLoadingMechanismOnly)
-    && designation_referent_is_resolved(referent: SocketAssemblyIncludingLoadingMechanism)
-    && !designation_referent_is_resolved(referent: extdeps.cpu_attachment.ilm4926.ReferentUnresolvedByCitedDocuments { reason: "any reason at all" })
+  extdeps.cpu_attachment.ilm4926.designation_referent_is_resolved(referent: extdeps.cpu_attachment.ilm4926.SocketBodyOnly)
+    && extdeps.cpu_attachment.ilm4926.designation_referent_is_resolved(referent: extdeps.cpu_attachment.ilm4926.IndependentLoadingMechanismOnly)
+    && extdeps.cpu_attachment.ilm4926.designation_referent_is_resolved(referent: extdeps.cpu_attachment.ilm4926.SocketAssemblyIncludingLoadingMechanism)
+    && !extdeps.cpu_attachment.ilm4926.designation_referent_is_resolved(referent: extdeps.cpu_attachment.ilm4926.ReferentUnresolvedByCitedDocuments { reason: "any reason at all" })
 }
 
 // RED control: a single-publisher population must NOT read as independent
 // attestation, which is the claim this module's existence rests on.
 test fn w_red_one_publisher_twice_is_not_independent_attestation() -> Bool {
-  let ampere_only = attestations_from_authority(authority: extdeps.cpu_attachment.ilm4926.extdeps_external_authority_anchor)
-  let ocp_only = attestations_from_authority(authority: ocp_mt_jade_specification_authority)
-  list_length(items: ampere_only) != list_length(items: ilm4926_attestations)
-    && list_length(items: ocp_only) != list_length(items: ilm4926_attestations)
+  let ampere_only = extdeps.cpu_attachment.ilm4926.attestations_from_authority(authority: extdeps.cpu_attachment.ilm4926.extdeps_external_authority_anchor)
+  let ocp_only = extdeps.cpu_attachment.ilm4926.attestations_from_authority(authority: extdeps.cpu_attachment.ilm4926.ocp_mt_jade_specification_authority)
+  std.types.list_length(items: ampere_only) != std.types.list_length(items: extdeps.cpu_attachment.ilm4926.ilm4926_attestations)
+    && std.types.list_length(items: ocp_only) != std.types.list_length(items: extdeps.cpu_attachment.ilm4926.ilm4926_attestations)
 }
 
 // THE FOUR BOARD-DESIGN AXES ARE UNRESOLVED SUMS, NOT NONEMPTY STRINGS — read by
@@ -63,12 +63,12 @@ test fn w_red_one_publisher_twice_is_not_independent_attestation() -> Bool {
 // that combination assert. A part number resolves what to order; it does not tell you what the
 // letters I-L-M stand for, and no cited document still does.
 test fn w_the_socket_body_is_identified_while_the_designator_stays_unexpanded() -> Bool {
-  let a = ilm4926_attachment_standing
-  standing_is_established(s: a.socket_body.vendor_identity)
-    && standing_is_established(s: a.socket_body.orderable_part_number)
-    && standing_is_established(s: attachment_board_land_pattern(a: a))
-    && attachment_socket_body_is_identified(a: a)
-    && !designation_referent_is_resolved(referent: ilm4926_referent)
+  let a = extdeps.cpu_attachment.ilm4926.ilm4926_attachment_standing
+  extdeps.cpu_attachment.ilm4926.standing_is_established(s: a.socket_body.vendor_identity)
+    && extdeps.cpu_attachment.ilm4926.standing_is_established(s: a.socket_body.orderable_part_number)
+    && extdeps.cpu_attachment.ilm4926.standing_is_established(s: extdeps.cpu_attachment.ilm4926.attachment_board_land_pattern(a: a))
+    && extdeps.cpu_attachment.ilm4926.attachment_socket_body_is_identified(a: a)
+    && !extdeps.cpu_attachment.ilm4926.designation_referent_is_resolved(referent: extdeps.cpu_attachment.ilm4926.ilm4926_referent)
 }
 
 // TWO CONSTITUENTS, TWO AUTHORITIES, AND THE WITNESS IS THAT THEY STAYED SEPARATE. The retention
@@ -77,30 +77,30 @@ test fn w_the_socket_body_is_identified_while_the_designator_stays_unexpanded() 
 // declarations: one vendor supplying two parts is still two subjects, and the failure this
 // guards is a later edit collapsing them onto one citation because the vendor name matches.
 test fn w_the_two_constituents_resolve_to_their_own_separate_authorities() -> Bool {
-  let a = ilm4926_attachment_standing
+  let a = extdeps.cpu_attachment.ilm4926.ilm4926_attachment_standing
   (match a.retention_assembly.orderable_part_number {
-    DesignationFactEstablished { value: _, authority: auth } => auth == lotes_azif0222_product_authority
-    DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
+    extdeps.cpu_attachment.ilm4926.DesignationFactEstablished { value: _, authority: auth } => auth == extdeps.cpu_attachment.ilm4926.lotes_azif0222_product_authority
+    extdeps.cpu_attachment.ilm4926.DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
   })
     && (match a.socket_body.orderable_part_number {
-      DesignationFactEstablished { value: _, authority: auth } => auth == azifa072_drawing_authority
-      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
+      extdeps.cpu_attachment.ilm4926.DesignationFactEstablished { value: _, authority: auth } => auth == extdeps.cpu_attachment.lotes_azifa072.azifa072_drawing_authority
+      extdeps.cpu_attachment.ilm4926.DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
     })
-    && (match attachment_board_land_pattern(a: a) {
-      DesignationFactEstablished { value: _, authority: auth } => auth == azifa072_drawing_authority
-      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
+    && (match extdeps.cpu_attachment.ilm4926.attachment_board_land_pattern(a: a) {
+      extdeps.cpu_attachment.ilm4926.DesignationFactEstablished { value: _, authority: auth } => auth == extdeps.cpu_attachment.lotes_azifa072.azifa072_drawing_authority
+      extdeps.cpu_attachment.ilm4926.DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
     })
-    && standing_is_established(s: a.retention_assembly.vendor_identity)
-    && lotes_azif0222_product_authority != azifa072_drawing_authority
+    && extdeps.cpu_attachment.ilm4926.standing_is_established(s: a.retention_assembly.vendor_identity)
+    && extdeps.cpu_attachment.ilm4926.lotes_azif0222_product_authority != extdeps.cpu_attachment.lotes_azifa072.azifa072_drawing_authority
 }
 
 // MOUNTING HARDWARE IS ITS OWN CONSTITUENT AND IS NOT COVERED BY THE RETENTION PART. Whether the
 // screws ship with AZIF0222 is unestablished, so assuming the retention row covers them would be
 // inventing a procurement fact -- three constituents, two of them unresolved.
 test fn w_mounting_hardware_is_separately_unresolved() -> Bool {
-  let a = ilm4926_attachment_standing
-  !standing_is_established(s: a.mounting_hardware.orderable_part_number)
-    && attachment_unresolved_constituent_count(a: a) == 1
+  let a = extdeps.cpu_attachment.ilm4926.ilm4926_attachment_standing
+  !extdeps.cpu_attachment.ilm4926.standing_is_established(s: a.mounting_hardware.orderable_part_number)
+    && extdeps.cpu_attachment.ilm4926.attachment_unresolved_constituent_count(a: a) == 1
 }
 
 // ESTABLISHED IS NOT COMPLETE, AND THIS WITNESS IS THE PAIR THAT SAYS SO. The standing-level
@@ -116,10 +116,10 @@ test fn w_mounting_hardware_is_separately_unresolved() -> Bool {
 // releasability is a property of a deliverable's completeness. A gate reading only the first
 // permits as soon as the paperwork is done.
 test fn w_the_standing_gate_opens_while_the_release_gate_still_refuses() -> Bool {
-  attachment_footprint_may_emit(a: ilm4926_attachment_standing)
-    && !lga4926_footprint_may_release()
-    && !azifa072_footprint_may_emit()
-    && land_pattern_gap_count() == 3
+  extdeps.cpu_attachment.ilm4926.attachment_footprint_may_emit(a: extdeps.cpu_attachment.ilm4926.ilm4926_attachment_standing)
+    && !extdeps.cpu_attachment.ilm4926.lga4926_footprint_may_release()
+    && !extdeps.cpu_attachment.lotes_azifa072.azifa072_footprint_may_emit()
+    && extdeps.cpu_attachment.lotes_azifa072.land_pattern_gap_count() == 3
 }
 
 // RED control: the emit gate is reachable. A predicate that can only answer false would prove
@@ -128,7 +128,7 @@ test fn w_the_standing_gate_opens_while_the_release_gate_still_refuses() -> Bool
 test fn w_red_an_identified_socket_body_with_a_land_pattern_would_permit_emission() -> Bool {
   let cited = extdeps.cpu_attachment.ilm4926.DesignationFactEstablished {
     value: "some cited value",
-    authority: lotes_azif0222_product_authority,
+    authority: extdeps.cpu_attachment.ilm4926.lotes_azif0222_product_authority,
   }
   let missing = extdeps.cpu_attachment.ilm4926.DesignationFactUnresolved {
     reason: "any reason at all",
@@ -179,10 +179,10 @@ test fn w_red_an_identified_socket_body_with_a_land_pattern_would_permit_emissio
       orderable_part_number: cited,
     },
   }
-  attachment_footprint_may_emit(a: complete)
-    && !attachment_footprint_may_emit(a: no_land_pattern)
-    && !attachment_footprint_may_emit(a: unnamed_socket)
-    && attachment_unresolved_constituent_count(a: complete) == 0
+  extdeps.cpu_attachment.ilm4926.attachment_footprint_may_emit(a: complete)
+    && !extdeps.cpu_attachment.ilm4926.attachment_footprint_may_emit(a: no_land_pattern)
+    && !extdeps.cpu_attachment.ilm4926.attachment_footprint_may_emit(a: unnamed_socket)
+    && extdeps.cpu_attachment.ilm4926.attachment_unresolved_constituent_count(a: complete) == 0
 }
 
 // RED control: the established arm is reachable only by inhabiting DesignationFactEstablished.
@@ -196,12 +196,12 @@ test fn w_red_a_cited_value_would_establish_a_resolution_axis() -> Bool {
     next_authority_to_consult: none,
   }
   match established {
-    DesignationFactEstablished { value: _, authority: _ } => true
-    DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
+    extdeps.cpu_attachment.ilm4926.DesignationFactEstablished { value: _, authority: _ } => true
+    extdeps.cpu_attachment.ilm4926.DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
   }
     && match unresolved {
-      DesignationFactEstablished { value: _, authority: _ } => false
-      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
+      extdeps.cpu_attachment.ilm4926.DesignationFactEstablished { value: _, authority: _ } => false
+      extdeps.cpu_attachment.ilm4926.DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
     }
 }
 
@@ -211,14 +211,14 @@ test fn w_red_a_cited_value_would_establish_a_resolution_axis() -> Bool {
 // resolution. These three witnesses are the wall against that: the candidates are carried, and
 // NONE of them is officially attested or referent-assigned.
 test fn w_one_lotes_part_is_carried_and_vendor_attested() -> Bool {
-  count(lotes_part_attestations) == 1
-    && any_part_officially_attested()
-    && all(lotes_part_attestations, c => part_referent_is_assigned(c: c))
-    && all(lotes_part_attestations, c => match c.claimed_referent {
-      ClaimedLoadingMechanismWithBackplate => true
-      ClaimedSocketBody => false
-      ClaimedLoadingMechanism => false
-      ReferentAssignmentDisputed { because: _ } => false
+  count(extdeps.cpu_attachment.ilm4926.lotes_part_attestations) == 1
+    && extdeps.cpu_attachment.ilm4926.any_part_officially_attested()
+    && all(extdeps.cpu_attachment.ilm4926.lotes_part_attestations, c => extdeps.cpu_attachment.ilm4926.part_referent_is_assigned(c: c))
+    && all(extdeps.cpu_attachment.ilm4926.lotes_part_attestations, c => match c.claimed_referent {
+      extdeps.cpu_attachment.ilm4926.ClaimedLoadingMechanismWithBackplate => true
+      extdeps.cpu_attachment.ilm4926.ClaimedSocketBody => false
+      extdeps.cpu_attachment.ilm4926.ClaimedLoadingMechanism => false
+      extdeps.cpu_attachment.ilm4926.ReferentAssignmentDisputed { because: _ } => false
     })
 }
 
@@ -226,11 +226,11 @@ test fn w_one_lotes_part_is_carried_and_vendor_attested() -> Bool {
 // be read as a socket body, because only the socket body carries the land pattern. This asserts
 // the negative directly rather than trusting the row above to stay correct.
 test fn w_no_carried_part_claims_to_be_the_socket_body() -> Bool {
-  all(lotes_part_attestations, c => match c.claimed_referent {
-    ClaimedSocketBody => false
-    ClaimedLoadingMechanism => true
-    ClaimedLoadingMechanismWithBackplate => true
-    ReferentAssignmentDisputed { because: _ } => true
+  all(extdeps.cpu_attachment.ilm4926.lotes_part_attestations, c => match c.claimed_referent {
+    extdeps.cpu_attachment.ilm4926.ClaimedSocketBody => false
+    extdeps.cpu_attachment.ilm4926.ClaimedLoadingMechanism => true
+    extdeps.cpu_attachment.ilm4926.ClaimedLoadingMechanismWithBackplate => true
+    extdeps.cpu_attachment.ilm4926.ReferentAssignmentDisputed { because: _ } => true
   })
 }
 
@@ -240,12 +240,12 @@ test fn w_red_an_official_attestation_would_register_as_one() -> Bool {
   let official = extdeps.cpu_attachment.ilm4926.PartNumberCandidate {
     part_number: "SOME-PART",
     vendor: extdeps.vendor.lotes.lotes,
-    claimed_referent: ClaimedSocketBody,
-    standing: PublisherOfRecord,
-    authority: ampere_community_lga4926_thread_authority,
+    claimed_referent: extdeps.cpu_attachment.ilm4926.ClaimedSocketBody,
+    standing: extdeps.cpu_attachment.ilm4926.PublisherOfRecord,
+    authority: extdeps.cpu_attachment.ilm4926.ampere_community_lga4926_thread_authority,
   }
-  part_candidate_is_officially_attested(c: official)
-    && part_referent_is_assigned(c: official)
+  extdeps.cpu_attachment.ilm4926.part_candidate_is_officially_attested(c: official)
+    && extdeps.cpu_attachment.ilm4926.part_referent_is_assigned(c: official)
 }
 
 // THE RETENTION DRAWING IS MOUNTING GEOMETRY, NOT A LAND PATTERN, and this witness is what stops
@@ -257,14 +257,14 @@ test fn w_red_an_official_attestation_would_register_as_one() -> Bool {
 // claim exactly (mounting geometry establishes no pad array) and states it against the world that
 // exists rather than the one that did.
 test fn w_retention_drawing_does_not_establish_the_land_pattern() -> Bool {
-  (match lga4926_retention_drawing_scope {
-    MountingAndOutlineGeometry => true
-    BoardSidePadArray => false
+  (match extdeps.cpu_attachment.ilm4926.lga4926_retention_drawing_scope {
+    extdeps.cpu_attachment.ilm4926.MountingAndOutlineGeometry => true
+    extdeps.cpu_attachment.ilm4926.BoardSidePadArray => false
   })
-    && (match attachment_board_land_pattern(a: ilm4926_attachment_standing) {
-      DesignationFactEstablished { value: _, authority: auth } =>
-        auth == azifa072_drawing_authority && auth != lotes_azif0222_product_authority
-      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
+    && (match extdeps.cpu_attachment.ilm4926.attachment_board_land_pattern(a: extdeps.cpu_attachment.ilm4926.ilm4926_attachment_standing) {
+      extdeps.cpu_attachment.ilm4926.DesignationFactEstablished { value: _, authority: auth } =>
+        auth == extdeps.cpu_attachment.lotes_azifa072.azifa072_drawing_authority && auth != extdeps.cpu_attachment.ilm4926.lotes_azif0222_product_authority
+      extdeps.cpu_attachment.ilm4926.DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
     })
 }
 
@@ -273,17 +273,17 @@ test fn w_retention_drawing_does_not_establish_the_land_pattern() -> Bool {
 // as before, so an NDA acquisition must never register as progress toward a carriable fact. Only
 // the socket-vendor route ends somewhere this repository can publish.
 test fn w_only_the_public_socket_vendor_route_yields_a_carriable_fact() -> Bool {
-  route_yields_a_carriable_fact(r: lga4926_land_pattern_public_route)
-    && !route_yields_a_carriable_fact(r: lga4926_land_pattern_gated_route)
+  extdeps.cpu_attachment.ilm4926.route_yields_a_carriable_fact(r: extdeps.cpu_attachment.ilm4926.lga4926_land_pattern_public_route)
+    && !extdeps.cpu_attachment.ilm4926.route_yields_a_carriable_fact(r: extdeps.cpu_attachment.ilm4926.lga4926_land_pattern_gated_route)
 }
 
 // AND THE GATED ROUTE STILL EXISTS. Recording that the land pattern is written down somewhere is a
 // different claim from being able to carry it, and dropping the gated route would have made the
 // fact look undiscovered rather than unpublishable.
 test fn w_the_gated_route_is_retained_beside_the_public_one() -> Bool {
-  match lga4926_land_pattern_gated_route {
-    AccessGatedReferenceCollateral { access_route: a, why_not_carriable: _ } =>
-      a == ampere_customer_reference_boards_authority
-    PublicSocketVendorDrawing { vendor_authority: _, what_to_request: _ } => false
+  match extdeps.cpu_attachment.ilm4926.lga4926_land_pattern_gated_route {
+    extdeps.cpu_attachment.ilm4926.AccessGatedReferenceCollateral { access_route: a, why_not_carriable: _ } =>
+      a == extdeps.vendor.ampere.ampere_customer_reference_boards_authority
+    extdeps.cpu_attachment.ilm4926.PublicSocketVendorDrawing { vendor_authority: _, what_to_request: _ } => false
   }
 }

@@ -1,7 +1,7 @@
 module test.claim.srv3_install_media_fetch_real_execution
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data real_execution_home_doc: String = "These three witnesses drive real shell/filesystem effects (shell.Mktemp.Dir, Filesystem.Write, shell.Remove.RecursiveForce have no mock_response - dag/extdeps/shell/shell.dag - so they cannot run in CI's default Hermetic discovery corpus, dag/std/execution_mode.dag). Split out of srv3_install_media_fetch_witness_test.dag so that file's pure classification witnesses keep hermetic per-PR discovery; these three are excluded from discovery (gunbc.ci_layer_roots witness_exclusion_substrings) and re-enrolled as declared Wet explicit entries (bin_witness_wet_entries), same lane as the bin-execution witnesses."
 
@@ -13,7 +13,7 @@ test fn install_media_hash_matches_true_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
   let path = concat(dir.path as String, "/fixture") as std.types.NonEmptyStr
   let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
-  let matched = observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_sha256) == InstallMediaFetchVerified
+  let matched = extdeps.provisioning.ubuntu_install_media_fetch.observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_sha256) == extdeps.provisioning.ubuntu_install_media_fetch.InstallMediaFetchVerified
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote.success && matched
 }
@@ -22,7 +22,7 @@ test fn install_media_hash_matches_false_on_wrong_hash_by_real_execution() -> Bo
   let dir = shell.Mktemp.Dir()
   let path = concat(dir.path as String, "/fixture") as std.types.NonEmptyStr
   let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
-  let matched = observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_wrong_sha256) == InstallMediaFetchHashMismatch
+  let matched = extdeps.provisioning.ubuntu_install_media_fetch.observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_wrong_sha256) == extdeps.provisioning.ubuntu_install_media_fetch.InstallMediaFetchHashMismatch
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote.success && matched
 }
@@ -32,18 +32,18 @@ test fn observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_
   let missing_path = concat(dir.path as String, "/does-not-exist") as std.types.NonEmptyStr
   let present_path = concat(dir.path as String, "/present") as std.types.NonEmptyStr
   let wrote = Filesystem.Write(path: present_path as String, content: install_media_fetch_fixture_content)
-  let absent_ok = observe_install_media_fetch(
+  let absent_ok = extdeps.provisioning.ubuntu_install_media_fetch.observe_install_media_fetch(
     path: missing_path,
     expected_hash: install_media_fetch_fixture_sha256,
-  ) == InstallMediaFetchAbsent
-  let verified_ok = observe_install_media_fetch(
+  ) == extdeps.provisioning.ubuntu_install_media_fetch.InstallMediaFetchAbsent
+  let verified_ok = extdeps.provisioning.ubuntu_install_media_fetch.observe_install_media_fetch(
     path: present_path,
     expected_hash: install_media_fetch_fixture_sha256,
-  ) == InstallMediaFetchVerified
-  let mismatch_ok = observe_install_media_fetch(
+  ) == extdeps.provisioning.ubuntu_install_media_fetch.InstallMediaFetchVerified
+  let mismatch_ok = extdeps.provisioning.ubuntu_install_media_fetch.observe_install_media_fetch(
     path: present_path,
     expected_hash: install_media_fetch_fixture_wrong_sha256,
-  ) == InstallMediaFetchHashMismatch
+  ) == extdeps.provisioning.ubuntu_install_media_fetch.InstallMediaFetchHashMismatch
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote.success && absent_ok && verified_ok && mismatch_ok
 }

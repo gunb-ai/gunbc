@@ -18,7 +18,7 @@ fn env_var(name: std.types.NonEmptyStr) -> String? {
 
 fn capture_walk_attempt_id() -> gunbc.merge_admission_subject.WalkAttemptId? {
   match env_var(name: "GUNBC_WALK_ATTEMPT_ID") {
-    Present { value: explicit } => compose_explicit_walk_attempt_id(explicit: explicit)
+    Present { value: explicit } => gunbc.merge_admission_subject.compose_explicit_walk_attempt_id(explicit: explicit)
     Absent =>
       match env_var(name: "GITHUB_RUN_ID") {
         Absent => none
@@ -28,7 +28,7 @@ fn capture_walk_attempt_id() -> gunbc.merge_admission_subject.WalkAttemptId? {
             Present { value: run_attempt } =>
               match env_var(name: "GITHUB_JOB") {
                 Absent => none
-                Present { value: job } => compose_walk_attempt_id(
+                Present { value: job } => gunbc.merge_admission_subject.compose_walk_attempt_id(
                   run_id: run_id,
                   run_attempt: run_attempt,
                   job: job
@@ -95,7 +95,7 @@ func tested_subject_capture() -> TestedSubjectCapture {
           TestedSubjectCaptureRefused { cause: CaptureBaseCommitRefused }
         } else {
               let root = git.Inspect.Toplevel().path as String
-              let attempt_dir = merge_admission_attempt_dir(root: root, attempt_id: attempt_id)
+              let attempt_dir = gunbc.merge_admission_subject.merge_admission_attempt_dir(root: root, attempt_id: attempt_id)
               let cleared = shell.Remove.RecursiveForce(path: attempt_dir as std.types.FilePath)
               if !cleared.success {
                 TestedSubjectCaptureRefused { cause: CaptureAttemptDirClearRefused }
@@ -107,12 +107,12 @@ func tested_subject_capture() -> TestedSubjectCapture {
                   let subject = gunbc.merge_admission_subject.TestedSubject {
                     attempt_id: attempt_id,
                     head_sha: head.sha,
-                    base_ref: merge_admission_merge_base_ref,
+                    base_ref: gunbc.merge_admission_subject.merge_admission_merge_base_ref,
                     base_commit_sha: base_commit.sha,
                   }
-                  let written = Filesystem.Write(
-                    path: merge_admission_tested_subject_path(root: root, attempt_id: attempt_id),
-                    content: render_tested_subject_wire(subject: subject)
+                  let written = extdeps.filesystem.filesystem_io.Filesystem.Write(
+                    path: gunbc.merge_admission_subject.merge_admission_tested_subject_path(root: root, attempt_id: attempt_id),
+                    content: gunbc.merge_admission_subject.render_tested_subject_wire(subject: subject)
                   )
                   if written.success {
                     TestedSubjectCaptured
@@ -132,7 +132,7 @@ func capture_refusal_wire_path() -> std.types.FilePath {
 }
 
 func write_capture_refusal_wire(cause: TestedSubjectCaptureRefusal) -> Bool {
-  Filesystem.Write(
+  extdeps.filesystem.filesystem_io.Filesystem.Write(
     path: capture_refusal_wire_path(),
     content: concat(concat("cause=", tested_subject_capture_refusal_label(cause: cause)), "\n")
   ).success

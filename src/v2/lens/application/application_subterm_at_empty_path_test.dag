@@ -1,14 +1,15 @@
 module v2.test.lens_application.application_subterm_at_empty_path
 
+
 data application_subterm_root: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^application_subterm_symbol } },
   children: [],
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn application_subterm_at_empty_path_claim_holds() -> v2.std.logic.Bool {
+test fn application_subterm_at_empty_path_claim_holds() -> Bool {
   match v2.lens.application.subterm_at(root: application_subterm_root, path: v2.std.node.Path { steps: [] }) {
-    Accepted { value: n, diagnostics: _ } => n == application_subterm_root
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: n, diagnostics: _ } => n == application_subterm_root
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

@@ -5,5 +5,5 @@ module test.fixture.sole_constructor_sealed.admitted_caller
 // admission wall is only evidence if the admitted caller compiles clean while an identical call from an
 // unnamed decl refuses — otherwise a wall that refused everyone would look the same.
 fn admitted_mint_call(n: Int) -> test.fixture.sole_constructor_sealed.definer.LocalValidated {
-  mint_sealed_local(n: n)
+  test.fixture.sole_constructor_sealed.definer.mint_sealed_local(n: n)
 }

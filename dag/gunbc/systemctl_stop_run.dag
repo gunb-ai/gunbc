@@ -1,8 +1,5 @@
 module gunbc.systemctl_stop_run
 
-data systemctl_stop_path: String = "dag/extdeps/systemd/systemctl.dag"
-data systemctl_stop_service: String = "systemd.Systemctl"
-data systemctl_stop_operation: String = "Stop"
 
 type SystemctlStopOutcome =
     SystemctlStopped { stdout: String }
@@ -29,15 +26,15 @@ fn systemctl_stop_run(transport: gunbc.host_effect.HostEffectTransport, unit: st
           }
         }
       }
-    HostOperationRefused { operation: _, reason: why } =>
+    gunbc.host_operation_exec.HostOperationRefused { operation: _, reason: why } =>
       SystemctlStopRefused { reason: why }
   }
 }
 
 fn systemctl_stop_operation_argv_matches_authority(unit: std.types.NonEmptyStr) -> Bool {
   let authority = ["systemctl", "stop", unit as String]
-  match host_operation_materialize_argv(operation: SystemctlStop { unit: unit }) {
-    ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
-    ArgvMaterializationRefused { at: _, cause: _ } => false
+  match gunbc.host_operation_exec.host_operation_materialize_argv(operation: gunbc.host_operation_exec.SystemctlStop { unit: unit }) {
+    v2.std.operation_argv.ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
+    v2.std.operation_argv.ArgvMaterializationRefused { at: _, cause: _ } => false
   }
 }

@@ -3,7 +3,7 @@ module extdeps.container.oci.manifest
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/opencontainers/image-spec/blob/main/manifest.md"
   }
 }
@@ -37,8 +37,8 @@ fn accept_image_manifest(m: ImageManifest) -> ManifestOutcome {
       reason: WrongMediaType { got: m.mediaType, expected: media_type_oci_image_manifest_v1 },
     }
   } else {
-    match accept_descriptor(m.config) {
-      DescriptorRejected { reason: _ } =>
+    match extdeps.container.oci.descriptor.accept_descriptor(m.config) {
+      extdeps.container.oci.descriptor.DescriptorRejected { reason: _ } =>
         ManifestRejected { reason: ConfigDescriptorRejected { detail: "config" } }
       DescriptorAccepted { value: cfg } =>
         if cfg.mediaType != media_type_oci_image_config_v1 {
@@ -71,8 +71,8 @@ fn accept_image_manifest_layers(m: ImageManifest, index: Int) -> ManifestOutcome
           reason: LayerMissing { index: index },
         }
       layer =>
-        match accept_descriptor(layer) {
-          DescriptorRejected { reason } =>
+        match extdeps.container.oci.descriptor.accept_descriptor(layer) {
+          extdeps.container.oci.descriptor.DescriptorRejected { reason } =>
             ManifestRejected {
               reason: LayerDescriptorRejected { index: index, reason: reason },
             }

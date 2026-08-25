@@ -11,9 +11,9 @@ data materialization_carriers_tail_probe_note: String = "TAIL probe 2026-07-17 (
 
 fn materialization_allows_memo_store(m: std.realization.Materialization) -> Bool {
   match m {
-    Memoize => true
-    Recompute => false
-    Share => false
+    std.realization.Memoize => true
+    std.realization.Recompute => false
+    std.realization.Share => false
   }
 }
 
@@ -52,7 +52,7 @@ fn parse_table_memo_provider() -> std.materialization_ladder.CacheProvider {
   extdeps.cache.materialization.provider_from_catalog(
     facts: extdeps.realization.parse_table_memo.parse_table_memo_facts,
     scope: v2_compile_process_site(),
-    coverage: CoversAllComputations
+    coverage: std.materialization_ladder.CoversAllComputations
   )
 }
 
@@ -60,7 +60,7 @@ fn compile_stage_memo_provider() -> std.materialization_ladder.CacheProvider {
   extdeps.cache.materialization.provider_from_catalog(
     facts: extdeps.realization.compile_stage_memo.compile_stage_memo_facts,
     scope: v2_compile_process_site(),
-    coverage: CoversAllComputations
+    coverage: std.materialization_ladder.CoversAllComputations
   )
 }
 
@@ -118,9 +118,9 @@ fn cached_stage_realization() -> CachedStageRealization {
 
 fn cached_stage_governed<A, B>(
   realization: CachedStageRealization,
-  lookup: fn(A) -> CacheProbe<B>,
-  stage: fn(A) -> Outcome<B>
-) -> fn(A) -> Outcome<B> {
+  lookup: fn(A) -> v2.std.staging.CacheProbe<B>,
+  stage: fn(A) -> v2.std.diagnostic.Outcome<B>
+) -> fn(A) -> v2.std.diagnostic.Outcome<B> {
   fn(x) {
     match materialization_allows_memo_store(m: realization.materialization) {
       true => v2.std.staging.resolve_probe(probe: lookup(x), stage: stage, x: x)
@@ -129,18 +129,18 @@ fn cached_stage_governed<A, B>(
   }
 }
 
-fn parse_table_realized_step() -> RealizedStep<std.measure.Nano> {
+fn parse_table_realized_step() -> std.realization.RealizedStep<std.measure.Nano> {
   std.realization.RealizedStep {
-    shape: ReadEffect,
+    shape: std.effects.ReadEffect,
     placement: std.realization.LocalInProcess,
     materialization: parse_table_memo_materialization(),
     cost: std.realization_schedule.cost_account_predicted_zero()
   }
 }
 
-fn compile_stage_realized_step() -> RealizedStep<std.measure.Nano> {
+fn compile_stage_realized_step() -> std.realization.RealizedStep<std.measure.Nano> {
   std.realization.RealizedStep {
-    shape: ReadEffect,
+    shape: std.effects.ReadEffect,
     placement: std.realization.LocalInProcess,
     materialization: compile_stage_memo_materialization(),
     cost: std.realization_schedule.cost_account_predicted_zero()
@@ -153,11 +153,11 @@ fn compile_stage_realized_step() -> RealizedStep<std.measure.Nano> {
 // the catalog's retention UNCHANGED — the property the pre-verdicting mapping
 // actually broke when it discarded placement retention and minted SpacePacked.
 fn parse_table_memo_retention_preserved() -> Bool {
-  parse_table_memo_provider().retention == extdeps.realization.parse_table_memo.parse_table_memo_facts.placement.retention
+  parse_table_memo_provider().retention == parse_table_memo_facts.placement.retention
 }
 
 fn compile_stage_memo_retention_preserved() -> Bool {
-  compile_stage_memo_provider().retention == extdeps.realization.compile_stage_memo.compile_stage_memo_facts.placement.retention
+  compile_stage_memo_provider().retention == compile_stage_memo_facts.placement.retention
 }
 
 fn parse_table_memo_verdict_is_single_recompute() -> Bool {

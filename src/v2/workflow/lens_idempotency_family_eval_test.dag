@@ -1,16 +1,17 @@
 module v2.test.workflow.lens_idempotency_family_eval
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn idempotency_control_empty_resolves() -> v2.std.logic.Bool {
+fn idempotency_control_empty_resolves() -> Bool {
   match v2.lens.idempotency.idempotency_witness(tree: v2.test.lens_idempotency.write_effect.idempotency_claim_tree(), dependencies: []) {
-    Holds { value: _ } => true
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Holds { value: _ } => true
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-fn idempotency_discriminating_controls_pass() -> v2.std.logic.Bool {
+fn idempotency_discriminating_controls_pass() -> Bool {
   idempotency_control_empty_resolves()
 }
 
-test data witness_lens_idempotency_family_gate_closed: v2.std.logic.Bool = idempotency_discriminating_controls_pass()
+test data witness_lens_idempotency_family_gate_closed: Bool = idempotency_discriminating_controls_pass()

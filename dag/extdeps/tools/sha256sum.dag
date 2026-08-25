@@ -3,22 +3,22 @@ module extdeps.tools.sha256sum
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.gnu.org/software/coreutils/manual/coreutils.html"
   }
 }
 
 data sha256_algorithm_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "csrc.nist.gov/pubs/fips/180-4/final"
   }
 }
 
-data sha256sum_cli_tool: CliTool = CliTool {
+data sha256sum_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "sha256sum",
   min_version: none,
-  installable_via: [SourceCoreutils],
+  installable_via: [extdeps.tools.SourceCoreutils],
 }
 
 service sha256sum.Sha256 {
@@ -45,9 +45,9 @@ data sha256_verify_infra_failure_doc: String = "Sha256VerifyInfraFailure is DESI
 
 data sha256_verify_native_transport_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.tools.sha256sum", decl_name: "Sha256VerifyVerdict"),
+    ref: std.decl_ref.decl_ref(module_path: "extdeps.tools.sha256sum", decl_name: "Sha256VerifyVerdict"),
     reason: "Sha256VerifyVerdict|transport:shell-only",
-    dissolution: unbound_dissolution(description: "a native/library SHA-256 realization lands and is bound as a second handler for the Sha256Verify shape"),
+    dissolution: std.dissolution.unbound_dissolution(description: "a native/library SHA-256 realization lands and is bound as a second handler for the Sha256Verify shape"),
   )
 ]
 
@@ -64,7 +64,7 @@ fn sha256sum_verify_via_shell(path: std.types.NonEmptyStr, expected_digest: std.
       let cleaned = shell.Remove.RecursiveForce(path: checksum_dir.path)
       Sha256VerifyInfraFailure { reason: "checksum file write failed" as std.types.NonEmptyStr }
     } else {
-      let checked = sha256sum.Sha256.CheckFile(checksum_file: checksum_path, expect: OutcomeIsData)
+      let checked = sha256sum.Sha256.CheckFile(checksum_file: checksum_path, expect: gunbc.output_policy.OutcomeIsData)
       let cleaned = shell.Remove.RecursiveForce(path: checksum_dir.path)
       if checked.matches {
         Sha256Matches

@@ -43,14 +43,14 @@ fn probe_read_tree_words() -> List<String> {
 // admission every one of these words must survive to cross an ssh boundary, so a witness that
 // checked the characters itself would pass on an argv the transport goes on to refuse.
 test fn witness_revision_argv_is_admitted_by_the_portability_wall() -> Bool {
-  match portable_remote_words(raws: probe_revision_words()) {
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: probe_revision_words()) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
 test fn witness_status_argv_is_admitted_by_the_portability_wall() -> Bool {
-  match portable_remote_words(raws: probe_status_words()) {
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: probe_status_words()) {
     Present { value: _ } => true
     Absent => false
   }
@@ -60,7 +60,7 @@ test fn witness_status_argv_is_admitted_by_the_portability_wall() -> Bool {
 // both witnesses above would be vacuous -- so one word that MUST be refused is asserted refused. A
 // pipe is the exact character that rules out the digest pipeline this instrument replaced.
 test fn witness_the_portability_wall_refuses_a_pipeline() -> Bool {
-  match portable_remote_words(raws: ["git", "status", "|", "sha256sum"]) {
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: ["git", "status", "|", "sha256sum"]) {
     Present { value: _ } => false
     Absent => true
   }
@@ -73,10 +73,10 @@ test fn witness_the_portability_wall_refuses_a_pipeline() -> Bool {
 // index -- which is the artifact the whole construction exists to avoid consulting, and the fallback
 // produces a plausible answer rather than an error.
 test fn witness_the_comparison_is_bound_to_the_materialized_index() -> Bool {
-  any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path),
+  any(gunbc.live_deploy.deployed_tree_observation.deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path),
       w => w == join(["GIT_INDEX_FILE=", probe_index_path], ""))
-    && any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path), w => w == "env")
-    && any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path), w => w == "status")
+    && any(gunbc.live_deploy.deployed_tree_observation.deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path), w => w == "env")
+    && any(gunbc.live_deploy.deployed_tree_observation.deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path), w => w == "status")
 }
 
 // `--no-optional-locks` IS LOAD-BEARING: plain `git status` WRITES the index back, measured by md5.
@@ -84,7 +84,7 @@ test fn witness_the_comparison_is_bound_to_the_materialized_index() -> Bool {
 // answer correctly, so nothing downstream would notice. This witness is the only thing standing
 // between that flag and a later reader who removes it as noise.
 test fn witness_the_observation_cannot_write_the_hosts_index() -> Bool {
-  any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path),
+  any(gunbc.live_deploy.deployed_tree_observation.deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path),
       w => w == "--no-optional-locks")
 }
 
@@ -99,7 +99,7 @@ test fn witness_the_observation_cannot_write_the_hosts_index() -> Bool {
 // index, so a MISSING tracked path reads as intentionally absent rather than as drift -- a false clean
 // on exactly the failure this observation exists to catch.
 test fn witness_the_index_is_materialized_from_the_revision_into_a_named_file() -> Bool {
-  let argv = deployed_tree_read_tree_argv(
+  let argv = gunbc.live_deploy.deployed_tree_observation.deployed_tree_read_tree_argv(
     repo: probe_repo(),
     revision_hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3",
     index_path: probe_index_path,
@@ -118,15 +118,15 @@ test fn witness_the_temp_index_is_named_for_the_attempt() -> Bool {
 }
 
 test fn witness_revision_argv_asks_for_head_in_the_deployed_repo() -> Bool {
-  deployed_tree_revision_argv(repo: probe_repo()) == probe_revision_words()
+  gunbc.live_deploy.deployed_tree_observation.deployed_tree_revision_argv(repo: probe_repo()) == probe_revision_words()
 }
 
 test fn witness_status_argv_targets_the_deployed_repo() -> Bool {
-  deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path) == probe_status_words()
+  gunbc.live_deploy.deployed_tree_observation.deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path) == probe_status_words()
 }
 
 test fn witness_read_tree_argv_is_admitted_by_the_portability_wall() -> Bool {
-  match portable_remote_words(raws: probe_read_tree_words()) {
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: probe_read_tree_words()) {
     Present { value: _ } => true
     Absent => false
   }
@@ -140,30 +140,30 @@ fn nul() -> String {
 }
 
 fn nul_join(fields: List<String>) -> String {
-  fold(fields, init: "", f: (acc, f) => join([acc, f, test.claim.live_deploy.deployed_tree_observation_witness.nul()], ""))
+  fold(fields, init: "", f: (acc, f) => join([acc, f, nul()], ""))
 }
 
 test fn witness_an_empty_status_and_no_ignored_paths_read_as_matching_the_commit() -> Bool {
-  match deployed_tree_content_reading(entries_nul: "", ignored_nul: "") {
-    ContentUnreadable { detail: _ } => false
-    ContentRead { state: s } =>
+  match gunbc.live_deploy.deployed_tree_observation.deployed_tree_content_reading(entries_nul: "", ignored_nul: "") {
+    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: s } =>
       match s {
-        DeployedScopeMatchesCommit => true
-        DeployedScopeDiverged { changed_paths: _ } => false
+        gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit => true
+        gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: _ } => false
       }
   }
 }
 
 test fn witness_a_modified_tracked_path_reads_as_diverged_and_carries_what_was_seen() -> Bool {
-  match deployed_tree_content_reading(
+  match gunbc.live_deploy.deployed_tree_observation.deployed_tree_content_reading(
     entries_nul: nul_join([" M dag/gunbc/ci_spec.dag"]),
     ignored_nul: "",
   ) {
-    ContentUnreadable { detail: _ } => false
-    ContentRead { state: s } =>
+    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: s } =>
       match s {
-        DeployedScopeMatchesCommit => false
-        DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/ci_spec.dag"
+        gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit => false
+        gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/ci_spec.dag"
       }
   }
 }
@@ -172,12 +172,12 @@ test fn witness_a_modified_tracked_path_reads_as_diverged_and_carries_what_was_s
 // excluded prefix would present on a host: rsync never ships it, so the worktree lacks a path HEAD
 // names, and status lists it like any other difference.
 test fn witness_a_deleted_tracked_path_reads_as_diverged() -> Bool {
-  match deployed_tree_content_reading(entries_nul: nul_join([" D dag/gunbc/ci_spec.dag"]), ignored_nul: "") {
-    ContentUnreadable { detail: _ } => false
-    ContentRead { state: s } =>
+  match gunbc.live_deploy.deployed_tree_observation.deployed_tree_content_reading(entries_nul: nul_join([" D dag/gunbc/ci_spec.dag"]), ignored_nul: "") {
+    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: s } =>
       match s {
-        DeployedScopeMatchesCommit => false
-        DeployedScopeDiverged { changed_paths: _ } => true
+        gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit => false
+        gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: _ } => true
       }
   }
 }
@@ -186,23 +186,23 @@ test fn witness_a_deleted_tracked_path_reads_as_diverged() -> Bool {
 // `--untracked-files=no` and never read ignored paths at all, so an untracked or ignored `.dag` source
 // inside the deployed scope reported CONVERGED -- and the sync ships exactly those bytes.
 test fn witness_an_untracked_deployed_path_is_not_converged() -> Bool {
-  match deployed_tree_content_reading(entries_nul: nul_join(["?? dag/gunbc/stowaway.dag"]), ignored_nul: "") {
-    ContentUnreadable { detail: _ } => false
-    ContentRead { state: s } =>
+  match gunbc.live_deploy.deployed_tree_observation.deployed_tree_content_reading(entries_nul: nul_join(["?? dag/gunbc/stowaway.dag"]), ignored_nul: "") {
+    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: s } =>
       match s {
-        DeployedScopeMatchesCommit => false
-        DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/stowaway.dag"
+        gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit => false
+        gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/stowaway.dag"
       }
   }
 }
 
 test fn witness_an_ignored_deployed_path_is_not_converged() -> Bool {
-  match deployed_tree_content_reading(entries_nul: "", ignored_nul: nul_join([".env"])) {
-    ContentUnreadable { detail: _ } => false
-    ContentRead { state: s } =>
+  match gunbc.live_deploy.deployed_tree_observation.deployed_tree_content_reading(entries_nul: "", ignored_nul: nul_join([".env"])) {
+    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: s } =>
       match s {
-        DeployedScopeMatchesCommit => false
-        DeployedScopeDiverged { changed_paths: body } => body as String == ".env"
+        gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit => false
+        gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: body } => body as String == ".env"
       }
   }
 }
@@ -212,15 +212,15 @@ test fn witness_an_ignored_deployed_path_is_not_converged() -> Bool {
 // `path_is_deployed` authority the source side projects through, so an untracked build artifact there
 // must NOT hold the deployment back -- and it is present on every real host.
 test fn witness_an_untracked_path_outside_the_deployed_scope_stays_converged() -> Bool {
-  match deployed_tree_content_reading(
+  match gunbc.live_deploy.deployed_tree_observation.deployed_tree_content_reading(
     entries_nul: nul_join(["?? target/release/gunbc"]),
     ignored_nul: nul_join(["target/debug/x"]),
   ) {
-    ContentUnreadable { detail: _ } => false
-    ContentRead { state: s } =>
+    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: s } =>
       match s {
-        DeployedScopeMatchesCommit => true
-        DeployedScopeDiverged { changed_paths: _ } => false
+        gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit => true
+        gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: _ } => false
       }
   }
 }
@@ -228,16 +228,16 @@ test fn witness_an_untracked_path_outside_the_deployed_scope_stays_converged() -
 // AN UNPARSEABLE READING REFUSES RATHER THAN ANSWERING CLEAN -- the empty-observation narrow, which is
 // worse than the widen because a narrow is silently uncovered.
 test fn witness_a_malformed_status_field_refuses_rather_than_reading_clean() -> Bool {
-  match deployed_tree_content_reading(entries_nul: nul_join(["xy"]), ignored_nul: "") {
-    ContentRead { state: _ } => false
-    ContentUnreadable { detail: _ } => true
+  match gunbc.live_deploy.deployed_tree_observation.deployed_tree_content_reading(entries_nul: nul_join(["xy"]), ignored_nul: "") {
+    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => true
   }
 }
 
 test fn witness_a_truncated_rename_record_refuses_rather_than_reading_clean() -> Bool {
-  match deployed_tree_content_reading(entries_nul: nul_join(["R  dag/b.dag"]), ignored_nul: "") {
-    ContentRead { state: _ } => false
-    ContentUnreadable { detail: _ } => true
+  match gunbc.live_deploy.deployed_tree_observation.deployed_tree_content_reading(entries_nul: nul_join(["R  dag/b.dag"]), ignored_nul: "") {
+    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => true
   }
 }
 
@@ -245,43 +245,43 @@ test fn witness_a_truncated_rename_record_refuses_rather_than_reading_clean() ->
 // refuse at the wall rather than at the host, and the two ignored-path witnesses above would be
 // asserting about a command that can never be sent.
 test fn witness_the_ignored_leg_argv_is_portable_and_names_the_temp_index() -> Bool {
-  deployed_tree_ignored_argv(repo: probe_repo(), index_path: probe_index_path) == probe_ignored_words()
-    && match portable_remote_words(raws: probe_ignored_words()) {
+  gunbc.live_deploy.deployed_tree_observation.deployed_tree_ignored_argv(repo: probe_repo(), index_path: probe_index_path) == probe_ignored_words()
+    && match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: probe_ignored_words()) {
       Present { value: _ } => true
       Absent => false
     }
 }
 
 fn oid_a() -> extdeps.git.object_store.GitObjectId? {
-  git_object_id_from_untagged_hex(hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3")
+  extdeps.git.object_store.git_object_id_from_untagged_hex(hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3")
 }
 
 fn oid_b() -> extdeps.git.object_store.GitObjectId? {
-  git_object_id_from_untagged_hex(hex: "1111111111111111111111111111111111111111")
+  extdeps.git.object_store.git_object_id_from_untagged_hex(hex: "1111111111111111111111111111111111111111")
 }
 
 // The two hexes must actually decode and must actually differ, or every standing witness below is
 // asserting about Absent and passes for the wrong reason.
 test fn witness_the_two_probe_revisions_decode_and_differ() -> Bool {
-  match test.claim.live_deploy.deployed_tree_observation_witness.oid_a() {
+  match oid_a() {
     Absent => false
     Present { value: a } =>
-      match test.claim.live_deploy.deployed_tree_observation_witness.oid_b() {
+      match oid_b() {
         Absent => false
-        Present { value: b } => !git_object_id_eq(left: a, right: b)
+        Present { value: b } => !extdeps.git.object_store.git_object_id_eq(left: a, right: b)
       }
   }
 }
 
 fn standing_for(desired: extdeps.git.object_store.GitObjectId, obs: gunbc.live_deploy.deployed_tree_observation.DeployedTreeObservation) -> gunbc.live_deploy.deployed_tree_observation.DeployedTreeStanding {
-  deployed_tree_standing(desired: desired, observation: obs)
+  gunbc.live_deploy.deployed_tree_observation.deployed_tree_standing(desired: desired, observation: obs)
 }
 
 test fn witness_matching_revision_and_clean_tree_is_the_only_converged_arm() -> Bool {
-  match test.claim.live_deploy.deployed_tree_observation_witness.oid_a() {
+  match oid_a() {
     Absent => false
     Present { value: a } =>
-      deployed_tree_standing_is_converged(
+      gunbc.live_deploy.deployed_tree_observation.deployed_tree_standing_is_converged(
         standing: standing_for(
           desired: a,
           obs: gunbc.live_deploy.deployed_tree_observation.DeployedTreeObserved { revision: a, content: gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit },
@@ -293,7 +293,7 @@ test fn witness_matching_revision_and_clean_tree_is_the_only_converged_arm() -> 
 // THE ARM THE REVISION-ONLY STANDING CANNOT EXPRESS. Same commit, edited tracked files: not
 // converged, and not drifted either.
 test fn witness_right_revision_with_modifications_is_not_converged_and_not_drifted() -> Bool {
-  match test.claim.live_deploy.deployed_tree_observation_witness.oid_a() {
+  match oid_a() {
     Absent => false
     Present { value: a } =>
       match standing_for(
@@ -303,31 +303,31 @@ test fn witness_right_revision_with_modifications_is_not_converged_and_not_drift
           content: gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: "dag/gunbc/ci_spec.dag" as std.types.NonEmptyStr },
         },
       ) {
-        DeployedTreeModifiedAtRevision { revision: _, changed_paths: body } =>
+        gunbc.live_deploy.deployed_tree_observation.DeployedTreeModifiedAtRevision { revision: _, changed_paths: body } =>
           body as String == "dag/gunbc/ci_spec.dag"
-        DeployedTreeConverged { revision: _ } => false
-        DeployedTreeRevisionDrifted { desired: _, local: _ } => false
-        DeployedTreeStandingUnobserved { cause: _ } => false
+        gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: _ } => false
+        gunbc.live_deploy.deployed_tree_observation.DeployedTreeRevisionDrifted { desired: _, local: _ } => false
+        gunbc.live_deploy.deployed_tree_observation.DeployedTreeStandingUnobserved { cause: _ } => false
       }
   }
 }
 
 test fn witness_a_different_revision_reports_drift_carrying_both_sides() -> Bool {
-  match test.claim.live_deploy.deployed_tree_observation_witness.oid_a() {
+  match oid_a() {
     Absent => false
     Present { value: a } =>
-      match test.claim.live_deploy.deployed_tree_observation_witness.oid_b() {
+      match oid_b() {
         Absent => false
         Present { value: b } =>
           match standing_for(
             desired: a,
             obs: gunbc.live_deploy.deployed_tree_observation.DeployedTreeObserved { revision: b, content: gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit },
           ) {
-            DeployedTreeRevisionDrifted { desired: d, local: l } =>
-              git_object_id_eq(left: d, right: a) && git_object_id_eq(left: l, right: b)
-            DeployedTreeConverged { revision: _ } => false
-            DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
-            DeployedTreeStandingUnobserved { cause: _ } => false
+            gunbc.live_deploy.deployed_tree_observation.DeployedTreeRevisionDrifted { desired: d, local: l } =>
+              extdeps.git.object_store.git_object_id_eq(left: d, right: a) && extdeps.git.object_store.git_object_id_eq(left: l, right: b)
+            gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: _ } => false
+            gunbc.live_deploy.deployed_tree_observation.DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
+            gunbc.live_deploy.deployed_tree_observation.DeployedTreeStandingUnobserved { cause: _ } => false
           }
       }
   }
@@ -336,10 +336,10 @@ test fn witness_a_different_revision_reports_drift_carrying_both_sides() -> Bool
 // DRIFT DOMINATES: a tree on the wrong commit AND modified reports drift, because the modification
 // state is a fact about a revision nobody asked for.
 test fn witness_drift_dominates_modification() -> Bool {
-  match test.claim.live_deploy.deployed_tree_observation_witness.oid_a() {
+  match oid_a() {
     Absent => false
     Present { value: a } =>
-      match test.claim.live_deploy.deployed_tree_observation_witness.oid_b() {
+      match oid_b() {
         Absent => false
         Present { value: b } =>
           match standing_for(
@@ -349,10 +349,10 @@ test fn witness_drift_dominates_modification() -> Bool {
               content: gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: "x" as std.types.NonEmptyStr },
             },
           ) {
-            DeployedTreeRevisionDrifted { desired: _, local: _ } => true
-            DeployedTreeConverged { revision: _ } => false
-            DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
-            DeployedTreeStandingUnobserved { cause: _ } => false
+            gunbc.live_deploy.deployed_tree_observation.DeployedTreeRevisionDrifted { desired: _, local: _ } => true
+            gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: _ } => false
+            gunbc.live_deploy.deployed_tree_observation.DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
+            gunbc.live_deploy.deployed_tree_observation.DeployedTreeStandingUnobserved { cause: _ } => false
           }
       }
   }
@@ -361,23 +361,23 @@ test fn witness_drift_dominates_modification() -> Bool {
 // UNOBSERVED IS NEVER SATISFIED. Could-not-look rendered as nothing-is-wrong is the empty-observation
 // narrow, and it is the arm most likely to be quietly admitted by a caller re-deriving good-enough.
 test fn witness_unobservable_is_not_converged_and_keeps_its_cause() -> Bool {
-  match test.claim.live_deploy.deployed_tree_observation_witness.oid_a() {
+  match oid_a() {
     Absent => false
     Present { value: a } =>
       match standing_for(desired: a, obs: gunbc.live_deploy.deployed_tree_observation.DeployedTreeUnobservable { cause: gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } }) {
-        DeployedTreeStandingUnobserved { cause: c } =>
+        gunbc.live_deploy.deployed_tree_observation.DeployedTreeStandingUnobserved { cause: c } =>
           match c {
-            TreeLegNotAttempted { leg: _, reason: why } => why == "ssh refused"
-            TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
-            TreeRevisionUndecodable { text: _ } => false
-            TreeStatusUnreadable { detail: _ } => false
+            gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: _, reason: why } => why == "ssh refused"
+            gunbc.live_deploy.deployed_tree_observation.TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
+            gunbc.live_deploy.deployed_tree_observation.TreeRevisionUndecodable { text: _ } => false
+            gunbc.live_deploy.deployed_tree_observation.TreeStatusUnreadable { detail: _ } => false
           }
-            && !deployed_tree_standing_is_converged(
+            && !gunbc.live_deploy.deployed_tree_observation.deployed_tree_standing_is_converged(
               standing: standing_for(desired: a, obs: gunbc.live_deploy.deployed_tree_observation.DeployedTreeUnobservable { cause: gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } }),
             )
-        DeployedTreeConverged { revision: _ } => false
-        DeployedTreeRevisionDrifted { desired: _, local: _ } => false
-        DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
+        gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: _ } => false
+        gunbc.live_deploy.deployed_tree_observation.DeployedTreeRevisionDrifted { desired: _, local: _ } => false
+        gunbc.live_deploy.deployed_tree_observation.DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
       }
   }
 }
@@ -387,17 +387,17 @@ test fn witness_unobservable_is_not_converged_and_keeps_its_cause() -> Bool {
 // consumer must be able to tell them apart WITHOUT reading a sentence. Asserted by matching the
 // arms, so this stays green only while the distinction is structural.
 test fn witness_never_attempted_and_ran_and_failed_are_different_arms() -> Bool {
-  match TreeLegNotAttempted { leg: "revision", reason: "no credential" } {
-    TreeLegNotAttempted { leg: _, reason: _ } =>
-      match TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "not a git repository" } {
-        TreeCommandFailed { leg: _, exit_code: code, stderr: _ } => code == 128
-        TreeLegNotAttempted { leg: _, reason: _ } => false
-        TreeRevisionUndecodable { text: _ } => false
-        TreeStatusUnreadable { detail: _ } => false
+  match gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: "revision", reason: "no credential" } {
+    gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: _, reason: _ } =>
+      match gunbc.live_deploy.deployed_tree_observation.TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "not a git repository" } {
+        gunbc.live_deploy.deployed_tree_observation.TreeCommandFailed { leg: _, exit_code: code, stderr: _ } => code == 128
+        gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: _, reason: _ } => false
+        gunbc.live_deploy.deployed_tree_observation.TreeRevisionUndecodable { text: _ } => false
+        gunbc.live_deploy.deployed_tree_observation.TreeStatusUnreadable { detail: _ } => false
       }
-    TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
-    TreeRevisionUndecodable { text: _ } => false
-    TreeStatusUnreadable { detail: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.TreeRevisionUndecodable { text: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.TreeStatusUnreadable { detail: _ } => false
   }
 }
 
@@ -406,7 +406,7 @@ test fn witness_never_attempted_and_ran_and_failed_are_different_arms() -> Bool 
 // justify. git exits 128 for a missing repository, an unreadable .git, AND a repository with no
 // commits, so the model must not claim to know which.
 test fn witness_the_failure_rendering_carries_the_hosts_own_words() -> Bool {
-  let text = deployed_tree_unobservable_text(
+  let text = gunbc.live_deploy.deployed_tree_observation.deployed_tree_unobservable_text(
     cause: gunbc.live_deploy.deployed_tree_observation.TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "fatal: not a git repository" },
   )
   string_contains(s: text, pattern: "fatal: not a git repository")
@@ -415,7 +415,7 @@ test fn witness_the_failure_rendering_carries_the_hosts_own_words() -> Bool {
 }
 
 test fn witness_a_never_attempted_leg_does_not_read_as_a_host_failure() -> Bool {
-  let text = deployed_tree_unobservable_text(
+  let text = gunbc.live_deploy.deployed_tree_observation.deployed_tree_unobservable_text(
     cause: gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: "revision", reason: "no credential" },
   )
   string_contains(s: text, pattern: "never attempted")

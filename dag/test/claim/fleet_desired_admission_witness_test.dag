@@ -13,12 +13,12 @@ fn fixture_oid(hex: String) -> extdeps.git.object_store.GitObjectId {
   }
 }
 
-fn fixture_event(workflow_name: String, conclusion: WorkflowRunConclusion, branch: String, head_repo: String, activity: String, workflow_path: String, originating: String) -> WorkflowRunEvent {
-  WorkflowRunEvent {
+fn fixture_event(workflow_name: String, conclusion: extdeps.github.workflow_runs.WorkflowRunConclusion, branch: String, head_repo: String, activity: String, workflow_path: String, originating: String) -> extdeps.github.workflow_run_event.WorkflowRunEvent {
+  extdeps.github.workflow_run_event.WorkflowRunEvent {
     activity: activity,
     run_id: "1" as std.types.NonEmptyStr,
     workflow_name: workflow_name,
-    workflow_id: "2" as NonEmptyStr,
+    workflow_id: "2" as std.types.NonEmptyStr,
     workflow_path: workflow_path,
     conclusion: conclusion,
     html_url: "https://example.invalid/run" as std.types.NonEmptyStr,
@@ -43,10 +43,10 @@ fn admitting_event() -> extdeps.github.workflow_run_event.WorkflowRunEvent {
   )
 }
 
-fn is_event_refused(o: FleetDesiredAcceptedRevision) -> Bool {
+fn is_event_refused(o: gunbc.fleet_desired_admission.FleetDesiredAcceptedRevision) -> Bool {
   match o {
-    FleetDesiredRevisionRefused { cause: _ } => true
-    FleetDesiredRevisionAccepted { accepted: _ } => false
+    gunbc.fleet_desired_admission.FleetDesiredRevisionRefused { cause: _ } => true
+    gunbc.fleet_desired_admission.FleetDesiredRevisionAccepted { accepted: _ } => false
   }
 }
 
@@ -55,10 +55,10 @@ fn is_event_refused(o: FleetDesiredAcceptedRevision) -> Bool {
 // It also pins the revision, because an acceptance naming the wrong one would advance the fleet
 // to something the floor never proved.
 test fn a_floor_green_default_branch_run_accepts_the_candidate_revision() -> Bool {
-  match fleet_desired_accepted_from_event(event: admitting_event()) {
-    FleetDesiredRevisionRefused { cause: _ } => false
-    FleetDesiredRevisionAccepted { accepted: a } =>
-      git_object_id_wire_hex(oid: a.revision) as String == fixture_candidate_hex
+  match gunbc.fleet_desired_admission.fleet_desired_accepted_from_event(event: admitting_event()) {
+    gunbc.fleet_desired_admission.FleetDesiredRevisionRefused { cause: _ } => false
+    gunbc.fleet_desired_admission.FleetDesiredRevisionAccepted { accepted: a } =>
+      extdeps.git.object_store.git_object_id_wire_hex(oid: a.revision) as String == fixture_candidate_hex
   }
 }
 
@@ -78,12 +78,12 @@ test fn a_floor_green_default_branch_run_accepts_the_candidate_revision() -> Boo
 // claim means re-asserting it against the live message rather than copying a string that no
 // longer exists.
 test fn an_undecodable_desired_ref_refuses_without_writing_over_it() -> Bool {
-  match action_for(input: FleetDesiredExpectationRefusedInput {
+  match action_for(input: gunbc.fleet_main_revision.FleetDesiredExpectationRefusedInput {
     accepted: accepted_fixture(),
-    cause: FleetDesiredRefUndecodable { advertised: "not-a-sha refs/fleet/desired" },
+    cause: gunbc.fleet_main_revision.FleetDesiredRefUndecodable { advertised: "not-a-sha refs/fleet/desired" },
   }) {
-    AdmissionActionAuthorized { action: _ } => false
-    AdmissionRefused { cause: c } =>
+    gunbc.fleet_desired_admission.AdmissionActionAuthorized { action: _ } => false
+    gunbc.fleet_desired_admission.AdmissionRefused { cause: c } =>
       string_contains(s: c, pattern: "must not be written over")
         && string_contains(s: c, pattern: "not-a-sha refs/fleet/desired")
         && !string_contains(s: c, pattern: "could not be observed")
@@ -91,15 +91,15 @@ test fn an_undecodable_desired_ref_refuses_without_writing_over_it() -> Bool {
 }
 
 // THE KEYSTONE. This is the defect the emitted deploy.yml carried: a candidate whose floor is not
-// green was advanced anyway. Every non-extdeps.github.workflow_runs.Success conclusion is red -- extdeps.github.workflow_runs.Cancelled and extdeps.github.workflow_runs.Skipped are the
+// green was advanced anyway. Every non-Success conclusion is red -- Cancelled and Skipped are the
 // two that most invite a "close enough" arm, since a cancelled floor proves nothing and a skipped
 // one ran nothing. Enumerated rather than sampled, because the arm that admits one of these is
 // exactly the arm that never fires in testing.
-fn accepted_with_conclusion(conclusion: WorkflowRunConclusion) -> Bool {
-  !is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
-    workflow_name: witness_floor_workflow_name,
+fn accepted_with_conclusion(conclusion: extdeps.github.workflow_runs.WorkflowRunConclusion) -> Bool {
+  !is_event_refused(o: gunbc.fleet_desired_admission.fleet_desired_accepted_from_event(event: fixture_event(
+    workflow_name: gunbc.witness_floor_workflow.witness_floor_workflow_name,
     conclusion: conclusion,
-    branch: gunbc_default_branch_name,
+    branch: gunbc.repo_identity.gunbc_default_branch_name,
     head_repo: fixture_repo,
     activity: "completed",
     workflow_path: ".github/workflows/witnesses.yml",
@@ -115,16 +115,16 @@ test fn only_a_success_conclusion_is_accepted() -> Bool {
     && !accepted_with_conclusion(conclusion: extdeps.github.workflow_runs.TimedOut)
     && !accepted_with_conclusion(conclusion: extdeps.github.workflow_runs.Neutral)
     && !accepted_with_conclusion(conclusion: extdeps.github.workflow_runs.ActionRequired)
-    && !accepted_with_conclusion(conclusion: StartupFailure)
+    && !accepted_with_conclusion(conclusion: extdeps.github.workflow_runs.StartupFailure)
 }
 
 // The floor is identified by PATH, not by name. A workflow that renames itself "witnesses" does
 // not become the floor, and the old wall -- which matched on the name -- would have admitted it.
 test fn a_run_of_another_workflow_path_is_refused() -> Bool {
-  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
-    workflow_name: witness_floor_workflow_name,
+  is_event_refused(o: gunbc.fleet_desired_admission.fleet_desired_accepted_from_event(event: fixture_event(
+    workflow_name: gunbc.witness_floor_workflow.witness_floor_workflow_name,
     conclusion: extdeps.github.workflow_runs.Success,
-    branch: gunbc_default_branch_name,
+    branch: gunbc.repo_identity.gunbc_default_branch_name,
     head_repo: fixture_repo,
     activity: "completed",
     workflow_path: ".github/workflows/deploy.yml",
@@ -133,8 +133,8 @@ test fn a_run_of_another_workflow_path_is_refused() -> Bool {
 }
 
 test fn a_non_default_branch_run_is_refused() -> Bool {
-  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
-    workflow_name: witness_floor_workflow_name,
+  is_event_refused(o: gunbc.fleet_desired_admission.fleet_desired_accepted_from_event(event: fixture_event(
+    workflow_name: gunbc.witness_floor_workflow.witness_floor_workflow_name,
     conclusion: extdeps.github.workflow_runs.Success,
     branch: "session/nimble-fox-671",
     head_repo: fixture_repo,
@@ -145,10 +145,10 @@ test fn a_non_default_branch_run_is_refused() -> Bool {
 }
 
 test fn a_fork_head_repository_is_refused() -> Bool {
-  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
-    workflow_name: witness_floor_workflow_name,
+  is_event_refused(o: gunbc.fleet_desired_admission.fleet_desired_accepted_from_event(event: fixture_event(
+    workflow_name: gunbc.witness_floor_workflow.witness_floor_workflow_name,
     conclusion: extdeps.github.workflow_runs.Success,
-    branch: gunbc_default_branch_name,
+    branch: gunbc.repo_identity.gunbc_default_branch_name,
     head_repo: "someone-else/gunbc",
     activity: "completed",
     workflow_path: ".github/workflows/witnesses.yml",
@@ -157,10 +157,10 @@ test fn a_fork_head_repository_is_refused() -> Bool {
 }
 
 test fn an_incomplete_activity_is_refused() -> Bool {
-  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
-    workflow_name: witness_floor_workflow_name,
+  is_event_refused(o: gunbc.fleet_desired_admission.fleet_desired_accepted_from_event(event: fixture_event(
+    workflow_name: gunbc.witness_floor_workflow.witness_floor_workflow_name,
     conclusion: extdeps.github.workflow_runs.Success,
-    branch: gunbc_default_branch_name,
+    branch: gunbc.repo_identity.gunbc_default_branch_name,
     head_repo: fixture_repo,
     activity: "requested",
     workflow_path: ".github/workflows/witnesses.yml",
@@ -172,10 +172,10 @@ test fn an_incomplete_activity_is_refused() -> Bool {
 // default branch -- a manual dispatch, a schedule -- proves the floor green for a tree that was
 // never merged, so its head_sha is not a landed revision.
 test fn a_non_push_originating_event_is_refused() -> Bool {
-  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
-    workflow_name: witness_floor_workflow_name,
+  is_event_refused(o: gunbc.fleet_desired_admission.fleet_desired_accepted_from_event(event: fixture_event(
+    workflow_name: gunbc.witness_floor_workflow.witness_floor_workflow_name,
     conclusion: extdeps.github.workflow_runs.Success,
-    branch: gunbc_default_branch_name,
+    branch: gunbc.repo_identity.gunbc_default_branch_name,
     head_repo: fixture_repo,
     activity: "completed",
     workflow_path: ".github/workflows/witnesses.yml",
@@ -191,26 +191,26 @@ test fn a_non_push_originating_event_is_refused() -> Bool {
 // The refusing arm is unreachable while the positive control above holds -- it recurses rather
 // than fabricating an accepted revision, because a fabricated one would let every row below pass
 // against a fixture the producers never admitted.
-fn accepted_fixture() -> AcceptedFleetRevision<NonEmptyStr, NonEmptyStr> {
-  match fleet_desired_accepted_from_event(event: admitting_event()) {
-    FleetDesiredRevisionAccepted { accepted: a } => a
-    FleetDesiredRevisionRefused { cause: _ } => accepted_fixture()
+fn accepted_fixture() -> gunbc.fleet_revision_acceptance.AcceptedFleetRevision<std.types.NonEmptyStr, std.types.NonEmptyStr> {
+  match gunbc.fleet_desired_admission.fleet_desired_accepted_from_event(event: admitting_event()) {
+    gunbc.fleet_desired_admission.FleetDesiredRevisionAccepted { accepted: a } => a
+    gunbc.fleet_desired_admission.FleetDesiredRevisionRefused { cause: _ } => accepted_fixture()
   }
 }
 
-fn action_for(input: FleetDesiredAdvanceInput<NonEmptyStr, NonEmptyStr>) -> FleetDesiredAdmissionOutcome {
-  fleet_desired_action_from_decision(decision: decide_fleet_desired_advance(input: input))
+fn action_for(input: gunbc.fleet_main_revision.FleetDesiredAdvanceInput<std.types.NonEmptyStr, std.types.NonEmptyStr>) -> gunbc.fleet_desired_admission.FleetDesiredAdmissionOutcome {
+  gunbc.fleet_desired_admission.fleet_desired_action_from_decision(decision: gunbc.fleet_main_revision.decide_fleet_desired_advance(input: input))
 }
 
 // The relation is carried as an OBSERVATION -- which two revisions were compared -- rather than as
 // a bare verdict, so these fixtures name both endpoints. Building it any other way would let a
 // relation computed for one pair be applied to another, which is the refusal the last row here
 // pins down.
-fn observed_input(current_hex: String, relation: DeployRevisionRelation) -> FleetDesiredAdvanceInput<NonEmptyStr, NonEmptyStr> {
-  FleetDesiredObservedCurrentInput {
+fn observed_input(current_hex: String, relation: gunbc.live_deploy.revision.DeployRevisionRelation) -> gunbc.fleet_main_revision.FleetDesiredAdvanceInput<std.types.NonEmptyStr, std.types.NonEmptyStr> {
+  gunbc.fleet_main_revision.FleetDesiredObservedCurrentInput {
     accepted: accepted_fixture(),
     current: fixture_oid(hex: current_hex),
-    relation: FleetRevisionRelationObservation {
+    relation: gunbc.fleet_main_revision.FleetRevisionRelationObservation {
       current: fixture_oid(hex: current_hex),
       accepted: fixture_oid(hex: fixture_candidate_hex),
       relation: relation,
@@ -222,15 +222,15 @@ fn observed_input(current_hex: String, relation: DeployRevisionRelation) -> Flee
 // operands: the revision to publish and the prior it expects. An action naming only the target is
 // a blind overwrite wearing a compare-and-swap's name.
 test fn a_descendant_candidate_authorizes_an_advance_carrying_the_observed_prior() -> Bool {
-  match action_for(input: observed_input(current_hex: fixture_prior_hex, relation: DeployedIsAncestor)) {
-    AdmissionRefused { cause: _ } => false
-    AdmissionActionAuthorized { action: a } =>
+  match action_for(input: observed_input(current_hex: fixture_prior_hex, relation: gunbc.live_deploy.revision.DeployedIsAncestor)) {
+    gunbc.fleet_desired_admission.AdmissionRefused { cause: _ } => false
+    gunbc.fleet_desired_admission.AdmissionActionAuthorized { action: a } =>
       match a {
-        FleetDesiredRemoteAdvance { accepted: to, expected_prior: prior } =>
-          (git_object_id_wire_hex(oid: to) as String == fixture_candidate_hex)
-            && (git_object_id_wire_hex(oid: prior) as String == fixture_prior_hex)
-        FleetDesiredAlreadyConvergedAction { revision: _ } => false
-        FleetDesiredSupersededAction { accepted: _, current: _ } => false
+        gunbc.fleet_desired_admission.FleetDesiredRemoteAdvance { accepted: to, expected_prior: prior } =>
+          (extdeps.git.object_store.git_object_id_wire_hex(oid: to) as String == fixture_candidate_hex)
+            && (extdeps.git.object_store.git_object_id_wire_hex(oid: prior) as String == fixture_prior_hex)
+        gunbc.fleet_desired_admission.FleetDesiredAlreadyConvergedAction { revision: _ } => false
+        gunbc.fleet_desired_admission.FleetDesiredSupersededAction { accepted: _, current: _ } => false
       }
   }
 }
@@ -240,14 +240,14 @@ test fn a_descendant_candidate_authorizes_an_advance_carrying_the_observed_prior
 // nothing, while a refusal means the gate could not decide. Collapsing them would make a healthy
 // converged fleet report as a broken one on every floor run.
 test fn an_already_converged_fleet_authorizes_a_no_op_rather_than_refusing() -> Bool {
-  match action_for(input: observed_input(current_hex: fixture_candidate_hex, relation: SameRevision)) {
-    AdmissionRefused { cause: _ } => false
-    AdmissionActionAuthorized { action: a } =>
+  match action_for(input: observed_input(current_hex: fixture_candidate_hex, relation: gunbc.live_deploy.revision.SameRevision)) {
+    gunbc.fleet_desired_admission.AdmissionRefused { cause: _ } => false
+    gunbc.fleet_desired_admission.AdmissionActionAuthorized { action: a } =>
       match a {
-        FleetDesiredAlreadyConvergedAction { revision: r } =>
-          git_object_id_wire_hex(oid: r) as String == fixture_candidate_hex
-        FleetDesiredRemoteAdvance { accepted: _, expected_prior: _ } => false
-        FleetDesiredSupersededAction { accepted: _, current: _ } => false
+        gunbc.fleet_desired_admission.FleetDesiredAlreadyConvergedAction { revision: r } =>
+          extdeps.git.object_store.git_object_id_wire_hex(oid: r) as String == fixture_candidate_hex
+        gunbc.fleet_desired_admission.FleetDesiredRemoteAdvance { accepted: _, expected_prior: _ } => false
+        gunbc.fleet_desired_admission.FleetDesiredSupersededAction { accepted: _, current: _ } => false
       }
   }
 }
@@ -256,13 +256,13 @@ test fn an_already_converged_fleet_authorizes_a_no_op_rather_than_refusing() -> 
 // revision is an ancestor of what the fleet already runs, so publishing it would be a rewind
 // dressed as an advance.
 test fn a_superseded_candidate_authorizes_a_no_op_and_never_an_advance() -> Bool {
-  match action_for(input: observed_input(current_hex: fixture_candidate_hex, relation: CandidateIsAncestor)) {
-    AdmissionRefused { cause: _ } => false
-    AdmissionActionAuthorized { action: a } =>
+  match action_for(input: observed_input(current_hex: fixture_candidate_hex, relation: gunbc.live_deploy.revision.CandidateIsAncestor)) {
+    gunbc.fleet_desired_admission.AdmissionRefused { cause: _ } => false
+    gunbc.fleet_desired_admission.AdmissionActionAuthorized { action: a } =>
       match a {
-        FleetDesiredSupersededAction { accepted: _, current: _ } => true
-        FleetDesiredRemoteAdvance { accepted: _, expected_prior: _ } => false
-        FleetDesiredAlreadyConvergedAction { revision: _ } => false
+        gunbc.fleet_desired_admission.FleetDesiredSupersededAction { accepted: _, current: _ } => true
+        gunbc.fleet_desired_admission.FleetDesiredRemoteAdvance { accepted: _, expected_prior: _ } => false
+        gunbc.fleet_desired_admission.FleetDesiredAlreadyConvergedAction { revision: _ } => false
       }
   }
 }
@@ -271,12 +271,12 @@ test fn a_superseded_candidate_authorizes_a_no_op_and_never_an_advance() -> Bool
 // absent one -- the arm that would create the ref from scratch and overwrite an admitted revision
 // nobody could read. The event is otherwise fully admitting, so this is discriminating.
 test fn an_unobservable_prior_refuses_rather_than_authorizing_a_creation() -> Bool {
-  match action_for(input: FleetDesiredExpectationRefusedInput {
+  match action_for(input: gunbc.fleet_main_revision.FleetDesiredExpectationRefusedInput {
     accepted: accepted_fixture(),
-    cause: FleetDesiredRefUnobserved { cause: "ls-remote refused: network unreachable" },
+    cause: gunbc.fleet_main_revision.FleetDesiredRefUnobserved { cause: "ls-remote refused: network unreachable" },
   }) {
-    AdmissionActionAuthorized { action: _ } => false
-    AdmissionRefused { cause: c } => string_contains(s: c, pattern: "fleet_desired_admission: ")
+    gunbc.fleet_desired_admission.AdmissionActionAuthorized { action: _ } => false
+    gunbc.fleet_desired_admission.AdmissionRefused { cause: c } => string_contains(s: c, pattern: "fleet_desired_admission: ")
   }
 }
 
@@ -295,9 +295,9 @@ test fn an_unobservable_prior_refuses_rather_than_authorizing_a_creation() -> Bo
 // so this annotation states the policy, and a future red here is answered by reading it, not by
 // making the row pass.
 test fn an_absent_ref_refuses_because_creation_needs_a_mint_authority() -> Bool {
-  match action_for(input: FleetDesiredRefAbsentInput { accepted: accepted_fixture() }) {
-    AdmissionActionAuthorized { action: _ } => false
-    AdmissionRefused { cause: c } => string_contains(s: c, pattern: "mint the fleet root")
+  match action_for(input: gunbc.fleet_main_revision.FleetDesiredRefAbsentInput { accepted: accepted_fixture() }) {
+    gunbc.fleet_desired_admission.AdmissionActionAuthorized { action: _ } => false
+    gunbc.fleet_desired_admission.AdmissionRefused { cause: c } => string_contains(s: c, pattern: "mint the fleet root")
   }
 }
 
@@ -307,8 +307,8 @@ test fn an_absent_ref_refuses_because_creation_needs_a_mint_authority() -> Bool 
 // The authorized advance names the observed prior as the compare-and-swap expectation, so a
 // concurrent admission refuses at the remote instead of overwriting.
 test fn the_authorized_advance_carries_the_observed_prior_as_the_cas_expectation() -> Bool {
-  let script = fleet_desired_authorized_action_script(
-    action: FleetDesiredRemoteAdvance {
+  let script = gunbc.fleet_desired_admission.fleet_desired_authorized_action_script(
+    action: gunbc.fleet_desired_admission.FleetDesiredRemoteAdvance {
       accepted: fixture_oid(hex: fixture_candidate_hex),
       expected_prior: fixture_oid(hex: fixture_prior_hex),
     },
@@ -329,8 +329,8 @@ test fn the_authorized_advance_carries_the_observed_prior_as_the_cas_expectation
 // in unrelated positions would satisfy a looser assertion while telling the reader nothing about
 // which was expected. Found by nimble-fox-671.
 test fn the_receipt_names_the_expected_prior_beside_the_target() -> Bool {
-  let script = fleet_desired_authorized_action_script(
-    action: FleetDesiredRemoteAdvance {
+  let script = gunbc.fleet_desired_admission.fleet_desired_authorized_action_script(
+    action: gunbc.fleet_desired_admission.FleetDesiredRemoteAdvance {
       accepted: fixture_oid(hex: fixture_candidate_hex),
       expected_prior: fixture_oid(hex: fixture_prior_hex),
     },
@@ -346,12 +346,12 @@ test fn the_receipt_names_the_expected_prior_beside_the_target() -> Bool {
 // discriminating half: if either no-op arm is ever simplified to an empty string, the executing
 // step reads a dropped authorization as a converged fleet.
 test fn a_no_op_action_still_renders_a_nonempty_script() -> Bool {
-  let converged = fleet_desired_authorized_action_script(
-    action: FleetDesiredAlreadyConvergedAction { revision: fixture_oid(hex: fixture_candidate_hex) },
+  let converged = gunbc.fleet_desired_admission.fleet_desired_authorized_action_script(
+    action: gunbc.fleet_desired_admission.FleetDesiredAlreadyConvergedAction { revision: fixture_oid(hex: fixture_candidate_hex) },
     judge_source_observed: fixture_oid(hex: fixture_judge_hex),
   ) as String
-  let superseded = fleet_desired_authorized_action_script(
-    action: FleetDesiredSupersededAction {
+  let superseded = gunbc.fleet_desired_admission.fleet_desired_authorized_action_script(
+    action: gunbc.fleet_desired_admission.FleetDesiredSupersededAction {
       accepted: fixture_oid(hex: fixture_prior_hex),
       current: fixture_oid(hex: fixture_candidate_hex),
     },
@@ -363,12 +363,12 @@ test fn a_no_op_action_still_renders_a_nonempty_script() -> Bool {
 // A no-op must mutate no ref. The renderer is the last place a stray push could be introduced,
 // and the executing step runs whatever it produces without inspecting it.
 test fn a_no_op_action_renders_no_ref_mutation() -> Bool {
-  let converged = fleet_desired_authorized_action_script(
-    action: FleetDesiredAlreadyConvergedAction { revision: fixture_oid(hex: fixture_candidate_hex) },
+  let converged = gunbc.fleet_desired_admission.fleet_desired_authorized_action_script(
+    action: gunbc.fleet_desired_admission.FleetDesiredAlreadyConvergedAction { revision: fixture_oid(hex: fixture_candidate_hex) },
     judge_source_observed: fixture_oid(hex: fixture_judge_hex),
   ) as String
-  let superseded = fleet_desired_authorized_action_script(
-    action: FleetDesiredSupersededAction {
+  let superseded = gunbc.fleet_desired_admission.fleet_desired_authorized_action_script(
+    action: gunbc.fleet_desired_admission.FleetDesiredSupersededAction {
       accepted: fixture_oid(hex: fixture_prior_hex),
       current: fixture_oid(hex: fixture_candidate_hex),
     },
@@ -395,11 +395,11 @@ test fn the_admission_workflow_triggers_on_the_floor_workflow_completing() -> Bo
 // keep closed. It reads the emitted bytes because the defect was in the emission, not the model:
 // the branch was checked in two places that both ran too late.
 test fn the_admission_workflow_filters_the_trigger_to_the_default_branch() -> Bool {
-  let yml = expected_fleet_desired_yml()
+  let yml = gunbc.fleet_desired_admission_workflow.expected_fleet_desired_yml()
   let workflow_run_block = split(s: yml, delimiter: "workflow_run:").last()
   let trigger = split(s: workflow_run_block, delimiter: "jobs:").first()
   string_contains(s: trigger, pattern: "branches:")
-    && string_contains(s: trigger, pattern: gunbc_default_branch_name)
+    && string_contains(s: trigger, pattern: gunbc.repo_identity.gunbc_default_branch_name)
 }
 
 // MAIN-FLOOR COMPLETIONS ARE RETAINED FOR ADJUDICATION RATHER THAN PENDING-REPLACED, AND THE
@@ -433,7 +433,7 @@ test fn the_admission_workflow_filters_the_trigger_to_the_default_branch() -> Bo
 // one: it is what keeps a RUNNING admission from being interrupted between the compare-and-swap
 // decision and the push, which is the one property the default group was genuinely providing.
 test fn the_admission_workflow_uses_the_maximum_pending_queue_instead_of_pending_replacement() -> Bool {
-  let yml = expected_fleet_desired_yml()
+  let yml = gunbc.fleet_desired_admission_workflow.expected_fleet_desired_yml()
   let concurrency = split(s: split(s: yml, delimiter: "concurrency:").last(), delimiter: "jobs:").first()
   string_contains(s: concurrency, pattern: "queue: max")
     && string_contains(s: concurrency, pattern: "cancel-in-progress: false")
@@ -442,8 +442,8 @@ test fn the_admission_workflow_uses_the_maximum_pending_queue_instead_of_pending
 // THE ACTUATION CARRIES NO DECISION. If the action step ever names the ref or a revision
 // expression of its own, it has re-acquired the ability to push something the gate did not admit.
 test fn the_admission_workflow_action_step_names_no_revision_of_its_own() -> Bool {
-  let yml = expected_fleet_desired_yml()
-  string_contains(s: yml, pattern: fleet_desired_admission_authorized_action_path)
+  let yml = gunbc.fleet_desired_admission_workflow.expected_fleet_desired_yml()
+  string_contains(s: yml, pattern: gunbc.fleet_desired_admission.fleet_desired_admission_authorized_action_path)
     && !string_contains(s: yml, pattern: "GITHUB_SHA")
     && !string_contains(s: yml, pattern: "force-with-lease")
     && !string_contains(s: yml, pattern: "ls-remote")
@@ -525,8 +525,8 @@ test fn the_emitted_admission_yaml_disables_the_shared_home_cache_on_its_setup_a
 // which is exactly the cut this recording exists to make falsifiable. The field is named for the
 // observation, not for the inference, so the later pinning work has something to contradict.
 test fn the_advance_receipt_names_the_observed_judge_source_revision() -> Bool {
-  let script = fleet_desired_authorized_action_script(
-    action: FleetDesiredRemoteAdvance {
+  let script = gunbc.fleet_desired_admission.fleet_desired_authorized_action_script(
+    action: gunbc.fleet_desired_admission.FleetDesiredRemoteAdvance {
       accepted: fixture_oid(hex: fixture_candidate_hex),
       expected_prior: fixture_oid(hex: fixture_prior_hex),
     },
@@ -541,8 +541,8 @@ test fn the_advance_receipt_names_the_observed_judge_source_revision() -> Bool {
 // sibling above returned FAIL -- a claim that could not fail for the reason it existed. Caught by
 // a deliberately-emptied receipt, not by review.
 test fn the_observed_judge_source_is_present_and_distinct_from_target_and_prior() -> Bool {
-  let script = fleet_desired_authorized_action_script(
-    action: FleetDesiredRemoteAdvance {
+  let script = gunbc.fleet_desired_admission.fleet_desired_authorized_action_script(
+    action: gunbc.fleet_desired_admission.FleetDesiredRemoteAdvance {
       accepted: fixture_oid(hex: fixture_candidate_hex),
       expected_prior: fixture_oid(hex: fixture_prior_hex),
     },
@@ -557,12 +557,12 @@ test fn the_observed_judge_source_is_present_and_distinct_from_target_and_prior(
 // to mutate" is exactly as attributable a decision as an advance, and recording it only on the
 // mutating arm would leave the two most common outcomes unattributable.
 test fn both_no_op_receipts_also_name_the_observed_judge_source() -> Bool {
-  let converged = fleet_desired_authorized_action_script(
-    action: FleetDesiredAlreadyConvergedAction { revision: fixture_oid(hex: fixture_candidate_hex) },
+  let converged = gunbc.fleet_desired_admission.fleet_desired_authorized_action_script(
+    action: gunbc.fleet_desired_admission.FleetDesiredAlreadyConvergedAction { revision: fixture_oid(hex: fixture_candidate_hex) },
     judge_source_observed: fixture_oid(hex: fixture_judge_hex),
   ) as String
-  let superseded = fleet_desired_authorized_action_script(
-    action: FleetDesiredSupersededAction {
+  let superseded = gunbc.fleet_desired_admission.fleet_desired_authorized_action_script(
+    action: gunbc.fleet_desired_admission.FleetDesiredSupersededAction {
       accepted: fixture_oid(hex: fixture_prior_hex),
       current: fixture_oid(hex: fixture_candidate_hex),
     },
@@ -577,7 +577,7 @@ test fn both_no_op_receipts_also_name_the_observed_judge_source() -> Bool {
 // the only artifact they get, because the process exits here. Naming `judge-source-observed`
 // joins the failure to the receipt grammar the successful arms emit.
 test fn the_unobservable_judge_source_refusal_names_the_field_it_could_not_record() -> Bool {
-  let reason = fleet_desired_unobservable_judge_source_refusal_reason()
+  let reason = gunbc.fleet_desired_admission.fleet_desired_unobservable_judge_source_refusal_reason()
   string_contains(s: reason, pattern: "judge-source-observed")
     && string_contains(s: reason, pattern: "could not be observed")
 }
@@ -594,7 +594,7 @@ test fn the_unobservable_judge_source_refusal_names_the_field_it_could_not_recor
 // The positive conjunct pins the subject so the negations have something to be true OF.
 // Discriminating control: restore either older phrasing and this row goes red.
 test fn the_unobservable_judge_source_refusal_claims_no_binary_provenance() -> Bool {
-  let reason = fleet_desired_unobservable_judge_source_refusal_reason()
+  let reason = gunbc.fleet_desired_admission.fleet_desired_unobservable_judge_source_refusal_reason()
   string_contains(s: reason, pattern: "after adjudication")
     && !string_contains(s: reason, pattern: "adjudicated from")
     && !string_contains(s: reason, pattern: "was running from")

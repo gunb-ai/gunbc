@@ -1,85 +1,85 @@
 module test.claim.runner_capacity_operator_access_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn witness_srv3_admission_binds_local_shell_not_ssh() -> Bool {
-  let req = runner_capacity_host_in_band_admission_requirement(host: operator_host_srv3)
-  req.transport_binding.transport == LocalShell
+  let req = gunbc.runner_capacity_operator_access.runner_capacity_host_in_band_admission_requirement(host: gunbc.fleet_intent_network.operator_host_srv3)
+  req.transport_binding.transport == gunbc.host_effect.LocalShell
     && req.transport_binding.github_actions_host_label == ("srv3" as std.types.NonEmptyStr)
     && req.executing_principal == ("briansrls" as std.types.NonEmptyStr)
     && req.required_operations.length() == 4
     && match req.required_operations[0] {
-      Present { value: op } =>
+      v2.std.optional.Present { value: op } =>
         match op {
-          PrivOpRunnerRootDirectoryCreate {} => true
-          PrivOpSystemdUnitInstall {} => false
-          PrivOpSystemdDaemonReload {} => false
-          PrivOpSystemdUnitStart {} => false
+          gunbc.runner_capacity_operator_access.PrivOpRunnerRootDirectoryCreate {} => true
+          gunbc.runner_capacity_operator_access.PrivOpSystemdUnitInstall {} => false
+          gunbc.runner_capacity_operator_access.PrivOpSystemdDaemonReload {} => false
+          gunbc.runner_capacity_operator_access.PrivOpSystemdUnitStart {} => false
         }
-      Absent {} => false
+      v2.std.optional.Absent {} => false
     }
 }
 
 test fn witness_srv1_privilege_observed_from_parent_probe() -> Bool {
-  match srv1_in_band_privilege_observation {
-    PrivilegeObserved { observed_on: o, host: h, principal: p, sudo_grant_summary: s } =>
-      (h as String) == (operator_host_srv1 as String)
+  match gunbc.runner_capacity_operator_access.srv1_in_band_privilege_observation {
+    gunbc.runner_capacity_operator_access.PrivilegeObserved { observed_on: o, host: h, principal: p, sudo_grant_summary: s } =>
+      (h as String) == (gunbc.fleet_intent_network.operator_host_srv1 as String)
         && p == ("briansrls" as std.types.NonEmptyStr)
         && string_contains(s: s as String, pattern: "NOPASSWD")
         && (o as String) == "2026-08-07"
-    PrivilegeUnobserved { reason: _ } => false
+    gunbc.runner_capacity_operator_access.PrivilegeUnobserved { reason: _ } => false
   }
 }
 
 test fn witness_srv3_admission_verdict_is_privilege_unobserved_today() -> Bool {
-  match runner_capacity_host_admission_verdict(host: operator_host_srv3) {
-    InBandPrivilegeUnobserved { host: h, reason: r } =>
-      (h as String) == (operator_host_srv3 as String)
+  match gunbc.runner_capacity_operator_access.runner_capacity_host_admission_verdict(host: gunbc.fleet_intent_network.operator_host_srv3) {
+    gunbc.runner_capacity_operator_access.InBandPrivilegeUnobserved { host: h, reason: r } =>
+      (h as String) == (gunbc.fleet_intent_network.operator_host_srv3 as String)
         && string_contains(s: r, pattern: "LocalShell")
-    InBandAdmissionRequirementDocumented { requirement: _ } => false
+    gunbc.runner_capacity_operator_access.InBandAdmissionRequirementDocumented { requirement: _ } => false
     _ => false
   }
 }
 
 test fn witness_srv4_admission_verdict_is_privilege_unobserved_today() -> Bool {
-  match runner_capacity_host_admission_verdict(host: operator_host_srv4) {
-    InBandPrivilegeUnobserved { host: h, reason: _ } =>
-      (h as String) == (operator_host_srv4 as String)
-    InBandAdmissionRequirementDocumented { requirement: _ } => false
+  match gunbc.runner_capacity_operator_access.runner_capacity_host_admission_verdict(host: gunbc.fleet_intent_network.operator_host_srv4) {
+    gunbc.runner_capacity_operator_access.InBandPrivilegeUnobserved { host: h, reason: _ } =>
+      (h as String) == (gunbc.fleet_intent_network.operator_host_srv4 as String)
+    gunbc.runner_capacity_operator_access.InBandAdmissionRequirementDocumented { requirement: _ } => false
     _ => false
   }
 }
 
 test fn witness_managed_hosts_have_independent_admission_verdicts() -> Bool {
-  runner_capacity_managed_host_admission_verdicts().length() == 2
+  gunbc.runner_capacity_operator_access.runner_capacity_managed_host_admission_verdicts().length() == 2
 }
 
 test fn witness_srv3_privilege_not_inferred_from_srv1() -> Bool {
-  match in_band_privilege_observation_for_host(host: operator_host_srv3) {
-    PrivilegeUnobserved { reason: _ } => true
-    PrivilegeObserved { observed_on: _, host: _, principal: _, sudo_grant_summary: _ } => false
+  match gunbc.runner_capacity_operator_access.in_band_privilege_observation_for_host(host: gunbc.fleet_intent_network.operator_host_srv3) {
+    gunbc.runner_capacity_operator_access.PrivilegeUnobserved { reason: _ } => true
+    gunbc.runner_capacity_operator_access.PrivilegeObserved { observed_on: _, host: _, principal: _, sudo_grant_summary: _ } => false
   }
 }
 
 test fn witness_add_slots_execution_target_is_in_band_local_shell() -> Bool {
-  match runner_capacity_execution_target_for_action(
-    action: gunbc.runner_capacity_operator_access.RunnerCapacityAddSlots { host: operator_host_srv3 },
+  match gunbc.runner_capacity_operator_access.runner_capacity_execution_target_for_action(
+    action: gunbc.runner_capacity_operator_access.RunnerCapacityAddSlots { host: gunbc.fleet_intent_network.operator_host_srv3 },
   ) {
-    RunnerCapacityExecuteInBand { host_label: l, transport: t } =>
-      (l as String) == "srv3" && t == LocalShell
-    RunnerCapacityExecuteHostedRemote { host: _, transport: _, reason: _ } => false
+    gunbc.runner_capacity_operator_access.RunnerCapacityExecuteInBand { host_label: l, transport: t } =>
+      (l as String) == "srv3" && t == gunbc.host_effect.LocalShell
+    gunbc.runner_capacity_operator_access.RunnerCapacityExecuteHostedRemote { host: _, transport: _, reason: _ } => false
   }
 }
 
 test fn witness_recover_host_execution_target_is_hosted_ssh() -> Bool {
-  match runner_capacity_execution_target_for_action(
-    action: gunbc.runner_capacity_operator_access.RunnerCapacityRecoverHost { host: operator_host_srv3 },
+  match gunbc.runner_capacity_operator_access.runner_capacity_execution_target_for_action(
+    action: gunbc.runner_capacity_operator_access.RunnerCapacityRecoverHost { host: gunbc.fleet_intent_network.operator_host_srv3 },
   ) {
-    RunnerCapacityExecuteHostedRemote { host: h, transport: t, reason: r } =>
-      (h as String) == (operator_host_srv3 as String)
-        && t == SshShell
+    gunbc.runner_capacity_operator_access.RunnerCapacityExecuteHostedRemote { host: h, transport: t, reason: r } =>
+      (h as String) == (gunbc.fleet_intent_network.operator_host_srv3 as String)
+        && t == gunbc.host_effect.SshShell
         && string_contains(s: r, pattern: "GitHub-hosted")
-    RunnerCapacityExecuteInBand { host_label: _, transport: _ } => false
+    gunbc.runner_capacity_operator_access.RunnerCapacityExecuteInBand { host_label: _, transport: _ } => false
   }
 }

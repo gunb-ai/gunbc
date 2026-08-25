@@ -2,14 +2,14 @@ module v2.test.claim.discovery_enumeration_test
 
 
 test fn discovery_enumeration_unified_claim_arm_modules_holds() -> Bool {
-  unified_claim_arm_bool_witness_claim_module == "v2.std.verification"
-    && unified_claim_arm_node_corpus_module == "v2.std.verification"
+  v2.compiler.discovery_enumeration.unified_claim_arm_bool_witness_claim_module == "v2.std.verification"
+    && v2.compiler.discovery_enumeration.unified_claim_arm_node_corpus_module == "v2.std.verification"
 }
 
 test fn corpus_init_round_trips() -> Bool {
-  let init: v2.compiler.discovery_enumeration.OwnedDataDeclInitializer = OwnedNodeCorpusInit
+  let init: v2.compiler.discovery_enumeration.OwnedDataDeclInitializer = v2.compiler.discovery_enumeration.OwnedNodeCorpusInit
   match init {
-    OwnedNodeCorpusInit => true
+    v2.compiler.discovery_enumeration.OwnedNodeCorpusInit => true
     _ => false
   }
 }
@@ -20,7 +20,7 @@ test fn bool_witness_init_round_trips() -> Bool {
     witness_function: "witness_fn"
   }
   match init {
-    OwnedBoolWitnessClaimInit { witness_entry: e, witness_function: f } =>
+    v2.compiler.discovery_enumeration.OwnedBoolWitnessClaimInit { witness_entry: e, witness_function: f } =>
       (e == "entry.dag") && (f == "witness_fn")
     _ => false
   }
@@ -31,7 +31,7 @@ test fn other_init_round_trips() -> Bool {
     resolved: v2.compiler.discovery_enumeration.ResolvedDeclRef { module: "v2.example", name: ^sym }
   }
   match init {
-    OwnedOtherInit { resolved: d } =>
+    v2.compiler.discovery_enumeration.OwnedOtherInit { resolved: d } =>
       (d.module == "v2.example") && (d.name == ^sym)
     _ => false
   }

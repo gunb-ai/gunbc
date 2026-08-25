@@ -1,7 +1,7 @@
 module test.claim.compute_board_article_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // The exact decks. These are FULL EQUALITY, not substring probes: a substring oracle passes on
 // a deck with an extra element, a missing element, a wrong reference node or a reordered
@@ -20,9 +20,9 @@ data expected_verilog_source: String = "module board_power_interlock (\n  input 
 // match is the only route by which the production article reaches either projection. A refused
 // article fails the witness rather than being projected anyway.
 fn admitted_production_article() -> product.compute_board.admission.AdmittedBoardPowerInterfaceArticle? {
-  match product.compute_board.admission.admit_board_article(a: power_interlock_article) {
-    BoardArticleAdmitted { article: adm } => Present { value: adm }
-    BoardArticleRefused { causes: _ } => none
+  match product.compute_board.admission.admit_board_article(a: product.compute_board.article.power_interlock_article) {
+    product.compute_board.admission.BoardArticleAdmitted { article: adm } => Present { value: adm }
+    product.compute_board.admission.BoardArticleRefused { causes: _ } => none
   }
 }
 
@@ -37,21 +37,21 @@ test fn w_one_article_feeds_both_emissions() -> Bool {
   match admitted_production_article() {
     Absent => false
     Present { value: admitted } =>
-  match project_article_to_spice(admitted: admitted) {
-    SpiceSliceProjected { receipt: sr } =>
-      match project_article_to_verilog(
+  match product.compute_board.spice_projection.project_article_to_spice(admitted: admitted) {
+    product.compute_board.spice_projection.SpiceSliceProjected { receipt: sr } =>
+      match product.compute_board.verilog_projection.project_article_to_verilog(
         admitted: admitted,
-        bindings: power_interlock_verilog_bindings
+        bindings: product.compute_board.verilog_projection.power_interlock_verilog_bindings
       ) {
-        VerilogModuleEmitted { receipt: vr } =>
+        product.compute_board.verilog_projection.VerilogModuleEmitted { receipt: vr } =>
           sr.source == expected_spice_deck
             && vr.source == expected_verilog_source
-            && article_identity_eq(a: sr.source_article, b: vr.source_article)
+            && product.compute_board.article.article_identity_eq(a: sr.source_article, b: vr.source_article)
             && (sr.source_article.name as String) == "board power interlock"
             && (sr.source_article.revision as String) == "0"
-        VerilogProjectionRefused { cause: _ } => false
+        product.compute_board.verilog_projection.VerilogProjectionRefused { cause: _ } => false
       }
-    SpiceSliceRefused { cause: _ } => false
+    product.compute_board.spice_projection.SpiceSliceRefused { cause: _ } => false
   }
   }
 }
@@ -67,8 +67,8 @@ test fn w_one_article_feeds_both_emissions() -> Bool {
 // measuring nothing.
 fn perturbed_bindings() -> List<product.compute_board.analog.ComponentModelBinding> {
   fold(power_interlock_article.model_bindings, init: [], f: fn(acc, b) {
-    if component_local_label(c: b.component) == "pg_top" {
-      concat(acc, [product.compute_board.analog.ComponentModelBinding { component: b.component, standing: ElectricalModelAbsent }])
+    if product.electrical.connectivity.component_local_label(c: b.component) == "pg_top" {
+      concat(acc, [product.compute_board.analog.ComponentModelBinding { component: b.component, standing: product.compute_board.analog.ElectricalModelAbsent }])
     } else {
       concat(acc, [b])
     }
@@ -76,14 +76,14 @@ fn perturbed_bindings() -> List<product.compute_board.analog.ComponentModelBindi
 }
 
 test fn w_spice_refuses_when_one_binding_is_perturbed() -> Bool {
-  match project_analog_to_spice(
+  match product.compute_board.spice_projection.project_analog_to_spice(
     article_identity: power_interlock_article.identity,
-    intent: article_analog(a: power_interlock_article),
+    intent: product.compute_board.article.article_analog(a: product.compute_board.article.power_interlock_article),
     bindings: perturbed_bindings(),
     reference: power_interlock_article.reference_net
   ) {
-    SpiceSliceProjected { receipt: _ } => false
-    SpiceSliceRefused { cause: _ } => true
+    product.compute_board.spice_projection.SpiceSliceProjected { receipt: _ } => false
+    product.compute_board.spice_projection.SpiceSliceRefused { cause: _ } => true
   }
 }
 
@@ -94,58 +94,58 @@ test fn w_verilog_refuses_unbound_signal() -> Bool {
   match admitted_production_article() {
     Absent => false
     Present { value: admitted } =>
-      match project_article_to_verilog(admitted: admitted, bindings: []) {
-        VerilogModuleEmitted { receipt: _ } => false
-        VerilogProjectionRefused { cause: _ } => true
+      match product.compute_board.verilog_projection.project_article_to_verilog(admitted: admitted, bindings: []) {
+        product.compute_board.verilog_projection.VerilogModuleEmitted { receipt: _ } => false
+        product.compute_board.verilog_projection.VerilogProjectionRefused { cause: _ } => true
       }
   }
 }
 
 fn bond_is_chassis(b: product.compute_board.article.ElectricalBond) -> Bool {
   match b {
-    ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => true
-    PowerReturnConnection { domain: _, terminal: _ } => false
-    SignalReferenceConnection { signal_class: _, terminal: _ } => false
-    ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
-    ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
+    product.compute_board.article.ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => true
+    product.compute_board.article.PowerReturnConnection { domain: _, terminal: _ } => false
+    product.compute_board.article.SignalReferenceConnection { signal_class: _, terminal: _ } => false
+    product.compute_board.article.ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
+    product.compute_board.article.ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
   }
 }
 
 fn bond_is_power_return(b: product.compute_board.article.ElectricalBond) -> Bool {
   match b {
-    PowerReturnConnection { domain: _, terminal: _ } => true
-    ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => false
-    SignalReferenceConnection { signal_class: _, terminal: _ } => false
-    ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
-    ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
+    product.compute_board.article.PowerReturnConnection { domain: _, terminal: _ } => true
+    product.compute_board.article.ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => false
+    product.compute_board.article.SignalReferenceConnection { signal_class: _, terminal: _ } => false
+    product.compute_board.article.ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
+    product.compute_board.article.ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
   }
 }
 
 fn bond_is_signal_reference(b: product.compute_board.article.ElectricalBond) -> Bool {
   match b {
-    SignalReferenceConnection { signal_class: _, terminal: _ } => true
-    ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => false
-    PowerReturnConnection { domain: _, terminal: _ } => false
-    ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
-    ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
+    product.compute_board.article.SignalReferenceConnection { signal_class: _, terminal: _ } => true
+    product.compute_board.article.ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => false
+    product.compute_board.article.PowerReturnConnection { domain: _, terminal: _ } => false
+    product.compute_board.article.ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
+    product.compute_board.article.ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
   }
 }
 
 fn bond_is_proposed_chassis(b: product.compute_board.article.ElectricalBond) -> Bool {
   match b {
-    ChassisBond { board_feature: _, chassis_feature: _, standing: st } =>
+    product.compute_board.article.ChassisBond { board_feature: _, chassis_feature: _, standing: st } =>
       match st {
-        ChassisBondProposed => true
-        ChassisBondObserved { observer: _ } => false
+        product.compute_board.article.ChassisBondProposed => true
+        product.compute_board.article.ChassisBondObserved { observer: _ } => false
       }
-    PowerReturnConnection { domain: _, terminal: _ } => false
-    SignalReferenceConnection { signal_class: _, terminal: _ } => false
-    ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
-    ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
+    product.compute_board.article.PowerReturnConnection { domain: _, terminal: _ } => false
+    product.compute_board.article.SignalReferenceConnection { signal_class: _, terminal: _ } => false
+    product.compute_board.article.ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
+    product.compute_board.article.ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
   }
 }
 
-fn count_bonds(bonds: List<product.compute_board.article.ElectricalBond>, pred: fn(ElectricalBond) -> Bool) -> Int {
+fn count_bonds(bonds: List<product.compute_board.article.ElectricalBond>, pred: fn(product.compute_board.article.ElectricalBond) -> Bool) -> Int {
   fold(bonds, init: 0, f: fn(acc, b) { if pred(b) { acc + 1 } else { acc } })
 }
 
@@ -167,14 +167,14 @@ test fn w_electrical_references_are_not_one_ground() -> Bool {
 test fn w_bond_endpoints_join_the_analog_circuit_by_identity() -> Bool {
   fold(power_interlock_article.bonds, init: false, f: fn(acc, b) {
     acc || match b {
-      PowerReturnConnection { domain: d, terminal: t } =>
-        net_local_label(n: d) == "power_return"
-          && component_local_label(c: t.component) == "logic_in"
+      product.compute_board.article.PowerReturnConnection { domain: d, terminal: t } =>
+        product.electrical.connectivity.net_local_label(n: d) == "power_return"
+          && product.electrical.connectivity.component_local_label(c: t.component) == "logic_in"
           && (t.terminal as String) == "2"
-      ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => false
-      SignalReferenceConnection { signal_class: _, terminal: _ } => false
-      ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
-      ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
+      product.compute_board.article.ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => false
+      product.compute_board.article.SignalReferenceConnection { signal_class: _, terminal: _ } => false
+      product.compute_board.article.ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => false
+      product.compute_board.article.ShieldTermination { shield: _, chassis_feature: _, standing: _ } => false
     }
   })
 }
@@ -184,9 +184,9 @@ test fn w_bond_endpoints_join_the_analog_circuit_by_identity() -> Bool {
 // unmodelled rather than defaulted to protected. A contract silent on either would read as safe.
 test fn w_firmware_contract_states_its_unknowns_rather_than_defaulting() -> Bool {
   match power_interlock_article.platform_firmware.production_signing {
-    ProductionSigningUnavailable { reason: r } =>
+    product.compute_board.article.ProductionSigningUnavailable { reason: r } =>
       match power_interlock_article.platform_firmware.write_protection {
-        WriteProtectionUnmodelled { reason: w } =>
+        product.compute_board.article.WriteProtectionUnmodelled { reason: w } =>
           string_contains(s: r as String, pattern: "no production signing authority")
             && string_contains(s: w as String, pattern: "unmodelled")
         HardwareWriteProtect { control: _ } => false
@@ -199,13 +199,13 @@ test fn w_firmware_contract_states_its_unknowns_rather_than_defaulting() -> Bool
 // prose. The rung names were corrected with it: an admitted physical interface is not a realized
 // board, and a selected manufacturing profile is not a manufacturable one.
 test fn w_physical_and_manufacturing_boundaries_refuse_with_named_causes() -> Bool {
-  !article_physical_interface_admitted(a: power_interlock_article)
-    && !article_manufacturing_profile_selected(a: power_interlock_article)
+  !product.compute_board.article.article_physical_interface_admitted(a: product.compute_board.article.power_interlock_article)
+    && !product.compute_board.article.article_manufacturing_profile_selected(a: product.compute_board.article.power_interlock_article)
     && match power_interlock_article.physical {
-      PhysicalRealizationPending { causes: cs } =>
+      product.compute_board.article.PhysicalRealizationPending { causes: cs } =>
         fold(cs, init: false, f: fn(acc, c) {
           acc || match c {
-            RequiresExactSubMillimeterCoordinateQuantum => true
+            product.compute_board.article.RequiresExactSubMillimeterCoordinateQuantum => true
             RequiresShapeAndTopology => false
             RequiresPackageFootprintAuthority => false
           }
@@ -213,7 +213,7 @@ test fn w_physical_and_manufacturing_boundaries_refuse_with_named_causes() -> Bo
       PhysicalRealizationAdmitted { outline: _ } => false
     }
     && match power_interlock_article.manufacturing {
-      ManufacturingProfileUnselected { pending: p } =>
+      product.compute_board.article.ManufacturingProfileUnselected { pending: p } =>
         string_contains(s: p as String, pattern: "no fabricator selected")
       ManufacturingProfileSelected { fabricator: _, authority: _ } => false
     }
@@ -225,9 +225,9 @@ test fn w_physical_and_manufacturing_boundaries_refuse_with_named_causes() -> Bo
 // explicitly NOT this article's, which is a claim and not an omission.
 fn establishment_kind(p: product.compute_board.article.HostFirmwareStartPrecondition) -> String {
   match p.establishment {
-    EstablishedByBoardSignal { signal: _ } => "signal"
-    EstablishedByPlatformComponent { role: _ } => "component"
-    NotEstablishedByThisArticle { owner: _ } => "not-ours"
+    product.compute_board.article.EstablishedByBoardSignal { signal: _ } => "signal"
+    product.compute_board.article.EstablishedByPlatformComponent { role: _ } => "component"
+    product.compute_board.article.NotEstablishedByThisArticle { owner: _ } => "not-ours"
   }
 }
 
@@ -251,9 +251,9 @@ fn precondition_signal_for(kind_matches: fn(product.compute_board.article.HostFi
   fold(power_interlock_article.platform_firmware.start_preconditions, init: "", f: fn(acc, p) {
     if kind_matches(p) {
       match p.establishment {
-        EstablishedByBoardSignal { signal: s } => s as String
-        EstablishedByPlatformComponent { role: _ } => acc
-        NotEstablishedByThisArticle { owner: _ } => acc
+        product.compute_board.article.EstablishedByBoardSignal { signal: s } => s as String
+        product.compute_board.article.EstablishedByPlatformComponent { role: _ } => acc
+        product.compute_board.article.NotEstablishedByThisArticle { owner: _ } => acc
       }
     } else {
       acc
@@ -264,20 +264,20 @@ fn precondition_signal_for(kind_matches: fn(product.compute_board.article.HostFi
 test fn w_the_permit_and_reset_preconditions_name_their_own_signals() -> Bool {
   precondition_signal_for(kind_matches: fn(p) {
     match p.kind {
-      PowerPermitAsserted => true
-      ResetReleased => false
-      BootStorageReadable => false
-      RecoveryRequestObservable => false
-      ConsoleAvailable => false
+      product.compute_board.article.PowerPermitAsserted => true
+      product.compute_board.article.ResetReleased => false
+      product.compute_board.article.BootStorageReadable => false
+      product.compute_board.article.RecoveryRequestObservable => false
+      product.compute_board.article.ConsoleAvailable => false
     }
   }) == "power_permit"
     && precondition_signal_for(kind_matches: fn(p) {
       match p.kind {
-        ResetReleased => true
-        PowerPermitAsserted => false
-        BootStorageReadable => false
-        RecoveryRequestObservable => false
-        ConsoleAvailable => false
+        product.compute_board.article.ResetReleased => true
+        product.compute_board.article.PowerPermitAsserted => false
+        product.compute_board.article.BootStorageReadable => false
+        product.compute_board.article.RecoveryRequestObservable => false
+        product.compute_board.article.ConsoleAvailable => false
       }
     }) == "reset_release"
 }
@@ -287,26 +287,26 @@ test fn w_the_permit_and_reset_preconditions_name_their_own_signals() -> Bool {
 // Optional would make "nobody has cited this yet" indistinguishable from "there is nothing to
 // cite", and only the first is an authoring gap someone can close.
 fn role_is_cited(role: product.compute_board.article.PlatformFirmwareRole) -> Bool {
-  match platform_firmware_role_upstream(role: role) {
-    UpstreamCited { subject: _ } => true
-    UpstreamNotModelledHere { reason: _ } => false
+  match product.compute_board.article.platform_firmware_role_upstream(role: role) {
+    product.compute_board.article.UpstreamCited { subject: _ } => true
+    product.compute_board.article.UpstreamNotModelledHere { reason: _ } => false
   }
 }
 
 test fn w_the_three_upstream_roles_resolve_to_cited_subjects() -> Bool {
-  role_is_cited(role: TrustedFirmwareSecureBootChain)
-    && role_is_cited(role: HostUefiFirmware)
-    && role_is_cited(role: BaseboardManagementFirmware)
+  role_is_cited(role: product.compute_board.article.TrustedFirmwareSecureBootChain)
+    && role_is_cited(role: product.compute_board.article.HostUefiFirmware)
+    && role_is_cited(role: product.compute_board.article.BaseboardManagementFirmware)
 }
 
 test fn w_the_two_uncited_roles_name_why_rather_than_answering_absent() -> Bool {
-  match platform_firmware_role_upstream(role: SystemControlProcessorFirmware) {
-    UpstreamCited { subject: _ } => false
-    UpstreamNotModelledHere { reason: r } => (r as String) != ""
+  match product.compute_board.article.platform_firmware_role_upstream(role: product.compute_board.article.SystemControlProcessorFirmware) {
+    product.compute_board.article.UpstreamCited { subject: _ } => false
+    product.compute_board.article.UpstreamNotModelledHere { reason: r } => (r as String) != ""
   }
-    && match platform_firmware_role_upstream(role: BoardProgrammableLogic) {
-      UpstreamCited { subject: _ } => false
-      UpstreamNotModelledHere { reason: r } => (r as String) != ""
+    && match product.compute_board.article.platform_firmware_role_upstream(role: product.compute_board.article.BoardProgrammableLogic) {
+      product.compute_board.article.UpstreamCited { subject: _ } => false
+      product.compute_board.article.UpstreamNotModelledHere { reason: r } => (r as String) != ""
     }
 }
 
@@ -314,15 +314,15 @@ test fn w_the_two_uncited_roles_name_why_rather_than_answering_absent() -> Bool 
 // decomposition bought nothing — which is the failure the split exists to avoid, and it is not
 // visible from the fact that each role answers UpstreamCited.
 test fn w_the_cited_roles_do_not_collapse_onto_one_subject() -> Bool {
-  match platform_firmware_role_upstream(role: TrustedFirmwareSecureBootChain) {
-    UpstreamNotModelledHere { reason: _ } => false
-    UpstreamCited { subject: a } =>
-      match platform_firmware_role_upstream(role: HostUefiFirmware) {
-        UpstreamNotModelledHere { reason: _ } => false
-        UpstreamCited { subject: b } =>
-          match platform_firmware_role_upstream(role: BaseboardManagementFirmware) {
-            UpstreamNotModelledHere { reason: _ } => false
-            UpstreamCited { subject: c } =>
+  match product.compute_board.article.platform_firmware_role_upstream(role: product.compute_board.article.TrustedFirmwareSecureBootChain) {
+    product.compute_board.article.UpstreamNotModelledHere { reason: _ } => false
+    product.compute_board.article.UpstreamCited { subject: a } =>
+      match product.compute_board.article.platform_firmware_role_upstream(role: product.compute_board.article.HostUefiFirmware) {
+        product.compute_board.article.UpstreamNotModelledHere { reason: _ } => false
+        product.compute_board.article.UpstreamCited { subject: b } =>
+          match product.compute_board.article.platform_firmware_role_upstream(role: product.compute_board.article.BaseboardManagementFirmware) {
+            product.compute_board.article.UpstreamNotModelledHere { reason: _ } => false
+            product.compute_board.article.UpstreamCited { subject: c } =>
               a.module_path != b.module_path
                 && b.module_path != c.module_path
                 && a.module_path != c.module_path

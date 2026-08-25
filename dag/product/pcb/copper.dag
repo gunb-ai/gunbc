@@ -344,8 +344,8 @@ fn interlayer_refusal_causes(
   )
   let foreign = map(
     filter(vs, v =>
-      v.from_layer.stackup_authority != admitted_stackup_authority(a: board)
-        || v.to_layer.stackup_authority != admitted_stackup_authority(a: board)),
+      v.from_layer.stackup_authority != product.pcb.stackup.admitted_stackup_authority(a: board)
+        || v.to_layer.stackup_authority != product.pcb.stackup.admitted_stackup_authority(a: board)),
     v => InterlayerConnectionSelectedAgainstAnotherStackup { net: v.net },
   )
   let degenerate = map(
@@ -411,7 +411,7 @@ fn admit_copper(
   if count(causes) > 0 {
     CopperRefused { causes: causes }
   } else {
-    mint_admitted_copper(board: admitted_stackup_authority(a: board), rs: rs, vs: vs)
+    mint_admitted_copper(board: product.pcb.stackup.admitted_stackup_authority(a: board), rs: rs, vs: vs)
   }
 }
 

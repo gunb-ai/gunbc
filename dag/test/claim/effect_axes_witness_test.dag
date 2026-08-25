@@ -2,17 +2,17 @@ module test.claim.effect_axes_witness_test
 
 
 // Discriminating witnesses for the P-C derived axes (std.effect_axes) and the ExecutionMode presets (v2.std.execution_envelope). classify_region is derived from the grant root position via position_under (each region + the UnclassifiedRegion residue). The three axes over the presets: hermetic reads substrate-closure + writes frame-scratch, so replayable AND isolated AND NOT live-tree; wet reads+writes the repo tree for real, so NOT replayable AND NOT isolated AND reads-live; record is reach-identical to wet by construction (capture is orthogonal). derive_live_tree_disposition bridges to the real v2.std.live_tree.LiveTreeDisposition (the retire target for the 763 hand-stamped rows). Two REDs pin the fail-closed choices: an UnclassifiedRegion read is ASSUMED live (unknown region never silently skips); and a Replay-bound RepoTree read is replayable AND NOT live -- the binding-aware control that would flip if live_tree_intersects were root-only, proving 'replayable => SubstrateInputsOnly' holds.
-data red_frame: std.materialization_ladder.Frame = std.materialization_ladder.Frame { name: "axes-red", kind: SharedStateFrame }
+data red_frame: std.materialization_ladder.Frame = std.materialization_ladder.Frame { name: "axes-red", kind: std.materialization_ladder.SharedStateFrame }
 
 fn unclassified_read_envelope() -> std.effect_grant.Envelope {
   std.effect_grant.Envelope {
     frame: red_frame,
     grants: [
       std.effect_grant.Grant {
-        verb: Read,
-        root: filesystem_position(path: ["elsewhere"]),
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
+        verb: std.effect_grant.Read,
+        root: std.effect_grant.filesystem_position(path: ["elsewhere"]),
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConvention
       }
     ]
   }
@@ -23,88 +23,88 @@ fn replay_repo_read_envelope() -> std.effect_grant.Envelope {
     frame: red_frame,
     grants: [
       std.effect_grant.Grant {
-        verb: Read,
-        root: region_repo_root,
+        verb: std.effect_grant.Read,
+        root: std.effect_axes.region_repo_root,
         binding: std.effect_grant.Replay { fixture_store: "fx" },
-        lifecycle: LifecycleByConvention
+        lifecycle: std.effect_grant.LifecycleByConvention
       }
     ]
   }
 }
 
 test fn classify_region_closure_is_substrate() -> Bool {
-  match classify_region(root: region_substrate_closure_root) {
-    SubstrateClosure => true
-    RepoTree => false
-    FrameScratch => false
-    UnclassifiedRegion => false
+  match std.effect_axes.classify_region(root: std.effect_axes.region_substrate_closure_root) {
+    std.effect_axes.SubstrateClosure => true
+    std.effect_axes.RepoTree => false
+    std.effect_axes.FrameScratch => false
+    std.effect_axes.UnclassifiedRegion => false
   }
 }
 
 test fn classify_region_repo_is_repo() -> Bool {
-  match classify_region(root: region_repo_root) {
-    RepoTree => true
-    SubstrateClosure => false
-    FrameScratch => false
-    UnclassifiedRegion => false
+  match std.effect_axes.classify_region(root: std.effect_axes.region_repo_root) {
+    std.effect_axes.RepoTree => true
+    std.effect_axes.SubstrateClosure => false
+    std.effect_axes.FrameScratch => false
+    std.effect_axes.UnclassifiedRegion => false
   }
 }
 
 test fn classify_region_scratch_is_frame_scratch() -> Bool {
-  match classify_region(root: region_frame_scratch_root) {
-    FrameScratch => true
-    SubstrateClosure => false
-    RepoTree => false
-    UnclassifiedRegion => false
+  match std.effect_axes.classify_region(root: std.effect_axes.region_frame_scratch_root) {
+    std.effect_axes.FrameScratch => true
+    std.effect_axes.SubstrateClosure => false
+    std.effect_axes.RepoTree => false
+    std.effect_axes.UnclassifiedRegion => false
   }
 }
 
 test fn classify_region_unknown_is_unclassified() -> Bool {
-  match classify_region(root: filesystem_position(path: ["elsewhere"])) {
-    UnclassifiedRegion => true
-    SubstrateClosure => false
-    RepoTree => false
-    FrameScratch => false
+  match std.effect_axes.classify_region(root: std.effect_grant.filesystem_position(path: ["elsewhere"])) {
+    std.effect_axes.UnclassifiedRegion => true
+    std.effect_axes.SubstrateClosure => false
+    std.effect_axes.RepoTree => false
+    std.effect_axes.FrameScratch => false
   }
 }
 
 test fn hermetic_is_replayable_isolated_not_live() -> Bool {
-  envelope_replayable(env: v2.std.execution_envelope.hermetic_envelope())
-    && envelope_isolated(env: v2.std.execution_envelope.hermetic_envelope())
-    && !envelope_live_tree_intersects(env: v2.std.execution_envelope.hermetic_envelope())
+  std.effect_axes.envelope_replayable(env: v2.std.execution_envelope.hermetic_envelope())
+    && std.effect_axes.envelope_isolated(env: v2.std.execution_envelope.hermetic_envelope())
+    && !std.effect_axes.envelope_live_tree_intersects(env: v2.std.execution_envelope.hermetic_envelope())
 }
 
 test fn wet_is_not_replayable_not_isolated_reads_live() -> Bool {
-  !envelope_replayable(env: v2.std.execution_envelope.wet_envelope())
-    && !envelope_isolated(env: v2.std.execution_envelope.wet_envelope())
-    && envelope_live_tree_intersects(env: v2.std.execution_envelope.wet_envelope())
+  !std.effect_axes.envelope_replayable(env: v2.std.execution_envelope.wet_envelope())
+    && !std.effect_axes.envelope_isolated(env: v2.std.execution_envelope.wet_envelope())
+    && std.effect_axes.envelope_live_tree_intersects(env: v2.std.execution_envelope.wet_envelope())
 }
 
 test fn record_reach_identical_to_wet() -> Bool {
-  (envelope_replayable(env: v2.std.execution_envelope.record_envelope()) == envelope_replayable(env: v2.std.execution_envelope.wet_envelope()))
-    && (envelope_isolated(env: v2.std.execution_envelope.record_envelope()) == envelope_isolated(env: v2.std.execution_envelope.wet_envelope()))
-    && (envelope_live_tree_intersects(env: v2.std.execution_envelope.record_envelope()) == envelope_live_tree_intersects(env: v2.std.execution_envelope.wet_envelope()))
+  (std.effect_axes.envelope_replayable(env: v2.std.execution_envelope.record_envelope()) == std.effect_axes.envelope_replayable(env: v2.std.execution_envelope.wet_envelope()))
+    && (std.effect_axes.envelope_isolated(env: v2.std.execution_envelope.record_envelope()) == std.effect_axes.envelope_isolated(env: v2.std.execution_envelope.wet_envelope()))
+    && (std.effect_axes.envelope_live_tree_intersects(env: v2.std.execution_envelope.record_envelope()) == std.effect_axes.envelope_live_tree_intersects(env: v2.std.execution_envelope.wet_envelope()))
 }
 
 test fn derive_disposition_hermetic_is_substrate_only() -> Bool {
   match v2.std.execution_envelope.derive_live_tree_disposition(env: v2.std.execution_envelope.hermetic_envelope()) {
-    SubstrateInputsOnly => true
-    ReadsLiveTree => false
+    v2.std.live_tree.SubstrateInputsOnly => true
+    v2.std.live_tree.ReadsLiveTree => false
   }
 }
 
 test fn derive_disposition_wet_is_reads_live() -> Bool {
   match v2.std.execution_envelope.derive_live_tree_disposition(env: v2.std.execution_envelope.wet_envelope()) {
-    ReadsLiveTree => true
-    SubstrateInputsOnly => false
+    v2.std.live_tree.ReadsLiveTree => true
+    v2.std.live_tree.SubstrateInputsOnly => false
   }
 }
 
 test fn unclassified_read_assumed_live_failclosed() -> Bool {
-  envelope_live_tree_intersects(env: unclassified_read_envelope())
+  std.effect_axes.envelope_live_tree_intersects(env: unclassified_read_envelope())
 }
 
 test fn replay_repo_read_is_replayable_not_live() -> Bool {
-  envelope_replayable(env: replay_repo_read_envelope())
-    && !envelope_live_tree_intersects(env: replay_repo_read_envelope())
+  std.effect_axes.envelope_replayable(env: replay_repo_read_envelope())
+    && !std.effect_axes.envelope_live_tree_intersects(env: replay_repo_read_envelope())
 }

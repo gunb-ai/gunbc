@@ -1,7 +1,7 @@
 module v2.test.claim.rc_probe_wire_decode_call
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 
 data target_model_path: String = "src/v2/std/compilers/target_model.dag"
@@ -11,7 +11,7 @@ fn target_model_live_content() -> String {
   result.content
 }
 
-test fn probe_wire_decode_call_uses_node_and_projection_args() -> v2.std.logic.Bool {
+test fn probe_wire_decode_call_uses_node_and_projection_args() -> Bool {
   let live = target_model_live_content()
   string_contains(
     s: live,

@@ -6,28 +6,28 @@ type OwnershipFact {
 }
 
 fn ownership_classify(view: v2.std.dependency.DependencyView) -> v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode> {
-  classify_dependency_view(classifier: ownership_classifier, view: view)
+  v2.std.dependency.classify_dependency_view(classifier: v2.lens.common.algebraic_composition.ownership_classifier, view: view)
 }
 
 fn ownership_fact(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> OwnershipFact {
   OwnershipFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_snoc_item(xs: acc, item: ownership_classify(view: view))
+      v2.std.algebra.list_snoc_item(xs: acc, item: ownership_classify(view: view))
     })
   }
 }
 
-fn ownership_mode_unresolved(mode: v2.lens.common.algebraic_composition.OwnershipMode) -> v2.std.logic.Bool {
+fn ownership_mode_unresolved(mode: v2.lens.common.algebraic_composition.OwnershipMode) -> Bool {
   match mode {
-    RequiresAccessWitness => true
-    UnknownOwnership => true
-    OwnedContainment => false
-    SharedRead => false
-    BorrowedDependency => false
+    v2.lens.common.algebraic_composition.RequiresAccessWitness => true
+    v2.lens.common.algebraic_composition.UnknownOwnership => true
+    v2.lens.common.algebraic_composition.OwnedContainment => false
+    v2.lens.common.algebraic_composition.SharedRead => false
+    v2.lens.common.algebraic_composition.BorrowedDependency => false
   }
 }
 
-fn ownership_fact_unresolved(fact: OwnershipFact) -> v2.std.logic.Bool {
+fn ownership_fact_unresolved(fact: OwnershipFact) -> Bool {
   fold(fact.dependencies, init: false, f: fn(acc, dep) {
     acc || ownership_mode_unresolved(mode: dep.classification)
   })
@@ -36,8 +36,8 @@ fn ownership_fact_unresolved(fact: OwnershipFact) -> v2.std.logic.Bool {
 fn ownership_witness_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^ownership_reason_unresolved_projection,
-    at: v2.std.diagnostic.Textual { file: ^ownership_projection_virtual_file, extent: WholeFile },
-    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^ownership_projection_virtual_file, extent: v2.std.diagnostic.WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
   }
 }
 
@@ -50,26 +50,26 @@ fn ownership_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencies:
   }
 }
 
-fn ownership_mode_eq(a: v2.lens.common.algebraic_composition.OwnershipMode, b: v2.lens.common.algebraic_composition.OwnershipMode) -> v2.std.logic.Bool {
+fn ownership_mode_eq(a: v2.lens.common.algebraic_composition.OwnershipMode, b: v2.lens.common.algebraic_composition.OwnershipMode) -> Bool {
   match a {
-    OwnedContainment => match b {
-      OwnedContainment => true
+    v2.lens.common.algebraic_composition.OwnedContainment => match b {
+      v2.lens.common.algebraic_composition.OwnedContainment => true
       _ => false
     }
-    SharedRead => match b {
-      SharedRead => true
+    v2.lens.common.algebraic_composition.SharedRead => match b {
+      v2.lens.common.algebraic_composition.SharedRead => true
       _ => false
     }
-    RequiresAccessWitness => match b {
-      RequiresAccessWitness => true
+    v2.lens.common.algebraic_composition.RequiresAccessWitness => match b {
+      v2.lens.common.algebraic_composition.RequiresAccessWitness => true
       _ => false
     }
-    BorrowedDependency => match b {
-      BorrowedDependency => true
+    v2.lens.common.algebraic_composition.BorrowedDependency => match b {
+      v2.lens.common.algebraic_composition.BorrowedDependency => true
       _ => false
     }
-    UnknownOwnership => match b {
-      UnknownOwnership => true
+    v2.lens.common.algebraic_composition.UnknownOwnership => match b {
+      v2.lens.common.algebraic_composition.UnknownOwnership => true
       _ => false
     }
   }
@@ -78,14 +78,14 @@ fn ownership_mode_eq(a: v2.lens.common.algebraic_composition.OwnershipMode, b: v
 fn ownership_classified_eq(
   a: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>,
   b: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>
-) -> v2.std.logic.Bool {
-  classified_dependency_view_eq(a: a, b: b, classification_eq: ownership_mode_eq)
+) -> Bool {
+  v2.std.dependency.classified_dependency_view_eq(a: a, b: b, classification_eq: ownership_mode_eq)
 }
 
-fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> v2.std.logic.Bool {
-  bag_eq(xs: a.dependencies, ys: b.dependencies, eq: ownership_classified_eq)
+fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> Bool {
+  v2.std.algebra.bag_eq(xs: a.dependencies, ys: b.dependencies, eq: ownership_classified_eq)
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority }
 }

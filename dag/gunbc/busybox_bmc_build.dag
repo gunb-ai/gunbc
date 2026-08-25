@@ -1,17 +1,18 @@
 module gunbc.busybox_bmc_build
 
+
 type BusyboxCrossBuildPlan {
-  source_url: Uri
-  source_tarball: NonEmptyStr
-  build_dir: NonEmptyStr
-  cross_compile: NonEmptyStr
-  kernel_arch: NonEmptyStr
-  extra_cflags: NonEmptyStr
-  output_path: NonEmptyStr
+  source_url: extdeps.uri.Uri
+  source_tarball: std.types.NonEmptyStr
+  build_dir: std.types.NonEmptyStr
+  cross_compile: std.types.NonEmptyStr
+  kernel_arch: std.types.NonEmptyStr
+  extra_cflags: std.types.NonEmptyStr
+  output_path: std.types.NonEmptyStr
 }
 
 data bmc_busybox_build_plan: BusyboxCrossBuildPlan = BusyboxCrossBuildPlan {
-  source_url: busybox_source_1_36_1_url,
+  source_url: extdeps.tools.busybox.busybox_source_1_36_1_url,
   source_tarball: "/tmp/gunbc-busybox-src.tar.bz2",
   build_dir: "/tmp/gunbc-bb-build",
   cross_compile: "arm-linux-gnueabi-",
@@ -35,26 +36,26 @@ fn bb_config_path(plan: BusyboxCrossBuildPlan) -> String {
 // layout, which is the fabrication extdeps.tools.mkdir's own rows warn against -- the same shape as
 // the devboot case recorded there. The other seven commands name tools whose absence is a plain
 // spawn failure; mkdir is the one with two spellings, so it is the one that has to choose.
-fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<ArgvCommand> {
+fn busybox_build_commands(plan: BusyboxCrossBuildPlan) -> List<extdeps.exec.command.ArgvCommand> {
   let bd = plan.build_dir as String
   let arch = bb_make_var(key: "ARCH", value: plan.kernel_arch as String)
   let cross = bb_make_var(key: "CROSS_COMPILE", value: plan.cross_compile as String)
   let cflags = bb_make_var(key: "EXTRA_CFLAGS", value: plan.extra_cflags as String)
   let config = bb_config_path(plan: plan)
   [
-    curl_download_command(url: uri_wire(uri: plan.source_url), destination: plan.source_tarball as String),
-    mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: bd),
-    tar_extract_command(archive: plan.source_tarball as String, into_directory: bd, strip_components: 1),
-    make_command(directory: bd, arguments: [arch, cross, "defconfig"]),
-    sed_in_place_command(expression: "s/# CONFIG_STATIC is not set/CONFIG_STATIC=y/", path: config),
-    sed_in_place_command(expression: "s/CONFIG_TC=y/# CONFIG_TC is not set/", path: config),
-    make_command(directory: bd, arguments: [arch, cross, cflags]),
-    cp_command(source: join([bd, "/busybox"], ""), destination: plan.output_path as String),
+    extdeps.tools.curl.curl_download_command(url: extdeps.uri.uri_wire(uri: plan.source_url), destination: plan.source_tarball as String),
+    extdeps.tools.mkdir.mkdir_parents_command_at(mkdir_binary: extdeps.tools.mkdir.mkdir_path_resolved_program, path: bd),
+    extdeps.tools.tar.tar_extract_command(archive: plan.source_tarball as String, into_directory: bd, strip_components: 1),
+    extdeps.tools.make.make_command(directory: bd, arguments: [arch, cross, "defconfig"]),
+    extdeps.tools.sed.sed_in_place_command(expression: "s/# CONFIG_STATIC is not set/CONFIG_STATIC=y/", path: config),
+    extdeps.tools.sed.sed_in_place_command(expression: "s/CONFIG_TC=y/# CONFIG_TC is not set/", path: config),
+    extdeps.tools.make.make_command(directory: bd, arguments: [arch, cross, cflags]),
+    extdeps.tools.gnu_coreutils.cp_command(source: join([bd, "/busybox"], ""), destination: plan.output_path as String),
   ]
 }
 
-func busybox_bmc_build_run() -> ProcessExit
-  uses net: Network
+func busybox_bmc_build_run() -> std.process.ProcessExit
+  uses net: std.resources.Network
 {
-  run_shell_commands(commands: busybox_build_commands(plan: bmc_busybox_build_plan), transport: LocalExec)
+  gunbc.command_runner.run_shell_commands(commands: busybox_build_commands(plan: bmc_busybox_build_plan), transport: extdeps.exec.command.LocalExec)
 }

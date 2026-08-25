@@ -4,41 +4,41 @@ module std.markup
 type EscapeContext = TextContext | AttributeContext | UrlContext
 
 type Attribute {
-  name: std.string_type.String
+  name: String
   ctx: EscapeContext
-  value: std.string_type.String
+  value: String
 }
 
 type Fragment
-  = Element { tag: std.string_type.String, attributes: List<Attribute>, children: List<Fragment> }
-  | FragmentText { content: std.string_type.String }
-  | RawNode { content: std.string_type.String }
+  = Element { tag: String, attributes: List<Attribute>, children: List<Fragment> }
+  | FragmentText { content: String }
+  | RawNode { content: String }
 
-fn escape_text(s: std.string_type.String) -> std.string_type.String {
+fn escape_text(s: String) -> String {
   replace(replace(replace(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
 }
 
-fn unescape_text(s: std.string_type.String) -> std.string_type.String {
+fn unescape_text(s: String) -> String {
   replace(replace(replace(s, "&lt;", "<"), "&gt;", ">"), "&amp;", "&")
 }
 
-fn escape_attribute(s: std.string_type.String) -> std.string_type.String {
+fn escape_attribute(s: String) -> String {
   replace(replace(replace(replace(s, "&", "&amp;"), "<", "&lt;"), ">", "&gt;"), "\"", "&quot;")
 }
 
-fn unescape_attribute(s: std.string_type.String) -> std.string_type.String {
+fn unescape_attribute(s: String) -> String {
   replace(replace(replace(replace(s, "&lt;", "<"), "&gt;", ">"), "&quot;", "\""), "&amp;", "&")
 }
 
-fn escape_url(s: std.string_type.String) -> std.string_type.String {
+fn escape_url(s: String) -> String {
   replace(replace(replace(replace(replace(s, "%", "%25"), "&", "&amp;"), "\"", "%22"), " ", "%20"), "<", "%3C")
 }
 
-fn unescape_url(s: std.string_type.String) -> std.string_type.String {
+fn unescape_url(s: String) -> String {
   replace(replace(replace(replace(replace(s, "%22", "\""), "%20", " "), "%3C", "<"), "&amp;", "&"), "%25", "%")
 }
 
-fn escape_in(ctx: EscapeContext, s: std.string_type.String) -> std.string_type.String {
+fn escape_in(ctx: EscapeContext, s: String) -> String {
   match ctx {
     TextContext => escape_text(s)
     AttributeContext => escape_attribute(s)
@@ -46,7 +46,7 @@ fn escape_in(ctx: EscapeContext, s: std.string_type.String) -> std.string_type.S
   }
 }
 
-fn unescape_in(ctx: EscapeContext, s: std.string_type.String) -> std.string_type.String {
+fn unescape_in(ctx: EscapeContext, s: String) -> String {
   match ctx {
     TextContext => unescape_text(s)
     AttributeContext => unescape_attribute(s)
@@ -57,18 +57,18 @@ fn unescape_in(ctx: EscapeContext, s: std.string_type.String) -> std.string_type
 type EscapeMode = EscapeHtml | EscapeRaw
 
 type MarkupBracket {
-  tag_open: std.string_type.String
-  end_tag_open: std.string_type.String
-  tag_close: std.string_type.String
-  attr_sep: std.string_type.String
-  attr_assign: std.string_type.String
-  attr_quote: std.string_type.String
+  tag_open: String
+  end_tag_open: String
+  tag_close: String
+  attr_sep: String
+  attr_assign: String
+  attr_quote: String
 }
 
 type TagDelimiter {
-  tag: std.string_type.String
-  open: std.string_type.String
-  close: std.string_type.String
+  tag: String
+  open: String
+  close: String
 }
 
 type VoidTagRendering = OmitClose | SelfClose
@@ -77,20 +77,20 @@ type MarkupMedium {
   tag_overrides: List<TagDelimiter>
   bracket: MarkupBracket
   text_escape: EscapeMode
-  void_tags: List<std.string_type.String>
+  void_tags: List<String>
   void_rendering: VoidTagRendering
-  raw_text_tags: List<std.string_type.String>
+  raw_text_tags: List<String>
 }
 
-fn tag_in_set(tag: std.string_type.String, tags: List<std.string_type.String>) -> Bool {
+fn tag_in_set(tag: String, tags: List<String>) -> Bool {
   fold(tags, init: false, f: (acc, t) => acc || t == tag)
 }
 
-fn is_void_tag(tag: std.string_type.String, void_tags: List<std.string_type.String>) -> Bool {
+fn is_void_tag(tag: String, void_tags: List<String>) -> Bool {
   tag_in_set(tag: tag, tags: void_tags)
 }
 
-fn escape_text_for(mode: EscapeMode, s: std.string_type.String) -> std.string_type.String {
+fn escape_text_for(mode: EscapeMode, s: String) -> String {
   match mode {
     EscapeHtml => escape_text(s: s)
     EscapeRaw => s
@@ -101,7 +101,7 @@ type TagLookup
   = FoundTag { delim: TagDelimiter }
   | NoTag
 
-fn lookup_tag_delimiter(overrides: List<TagDelimiter>, tag: std.string_type.String) -> TagLookup {
+fn lookup_tag_delimiter(overrides: List<TagDelimiter>, tag: String) -> TagLookup {
   fold(overrides, init: NoTag, f: (acc, d) =>
     match acc {
       FoundTag { delim: r } => FoundTag { delim: r }
@@ -110,15 +110,15 @@ fn lookup_tag_delimiter(overrides: List<TagDelimiter>, tag: std.string_type.Stri
   )
 }
 
-fn serialize_attribute_with(a: Attribute, bracket: MarkupBracket) -> std.string_type.String {
+fn serialize_attribute_with(a: Attribute, bracket: MarkupBracket) -> String {
   join([bracket.attr_sep, a.name, bracket.attr_assign, bracket.attr_quote, escape_in(ctx: a.ctx, s: a.value), bracket.attr_quote], "")
 }
 
-fn serialize_attributes_with(attrs: List<Attribute>, bracket: MarkupBracket) -> std.string_type.String {
+fn serialize_attributes_with(attrs: List<Attribute>, bracket: MarkupBracket) -> String {
   fold(attrs, init: "", f: (acc, a) => concat(acc, serialize_attribute_with(a: a, bracket: bracket)))
 }
 
-fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> std.string_type.String {
+fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
   match frag {
     FragmentText { content: c } => escape_text_for(mode: medium.text_escape, s: c)
     RawNode { content: c } => c
@@ -158,11 +158,11 @@ fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> std.string_t
   }
 }
 
-fn attr_is_url_attr(name: std.string_type.String) -> Bool {
+fn attr_is_url_attr(name: String) -> Bool {
   name == "href" || name == "src"
 }
 
-fn attribute_escape_context(name: std.string_type.String) -> EscapeContext {
+fn attribute_escape_context(name: String) -> EscapeContext {
   if attr_is_url_attr(name: name) {
     UrlContext
   } else {
@@ -170,7 +170,7 @@ fn attribute_escape_context(name: std.string_type.String) -> EscapeContext {
   }
 }
 
-fn attr(name: std.string_type.String, value: std.string_type.String) -> Attribute {
+fn attr(name: String, value: String) -> Attribute {
   Attribute {
     name: name,
     ctx: attribute_escape_context(name: name),
@@ -179,5 +179,5 @@ fn attr(name: std.string_type.String, value: std.string_type.String) -> Attribut
 }
 
 type MarkupSerializeResult
-  = Serialized { html: std.string_type.String }
-  | Rejected { reason: std.string_type.String }
+  = Serialized { html: String }
+  | Rejected { reason: String }

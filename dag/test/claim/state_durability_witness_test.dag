@@ -1,7 +1,7 @@
 module test.claim.state_durability_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 type FixtureTarget = std.types.NonEmptyStr where brand("FixtureTarget")
 
@@ -9,31 +9,31 @@ type FixtureReadbackSubject {
   path: std.types.NonEmptyStr
 }
 
-data fixture_target: test.claim.state_durability_witness.FixtureTarget = "fixture-host" as FixtureTarget
-data fixture_subject: test.claim.state_durability_witness.FixtureReadbackSubject = FixtureReadbackSubject {
+data fixture_target: FixtureTarget = "fixture-host" as FixtureTarget
+data fixture_subject: FixtureReadbackSubject = FixtureReadbackSubject {
   path: "/etc/fixture-policy",
 }
 
 data fixture_boundary: std.state_durability.StateDurabilityBoundary = std.state_durability.ControlPlaneRestartBoundary {
-  mode: LifecycleGracefulRestart,
+  mode: std.state_durability.LifecycleGracefulRestart,
 }
 
 data fixture_wrong_boundary: std.state_durability.StateDurabilityBoundary = std.state_durability.SoftwareReplacementBoundary {
-  scope: ControlPlaneFirmwareReplacement,
+  scope: std.state_durability.ControlPlaneFirmwareReplacement,
 }
 
-data fixture_digest_a: extdeps.crypto.hash.Digest = sha256_digest(
+data fixture_digest_a: extdeps.crypto.hash.Digest = extdeps.crypto.hash.sha256_digest(
   hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 )
 
-data fixture_digest_b: extdeps.crypto.hash.Digest = sha256_digest(
+data fixture_digest_b: extdeps.crypto.hash.Digest = extdeps.crypto.hash.sha256_digest(
   hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 )
 
 fn fixture_definition_linkage(reason: std.types.NonEmptyStr) -> std.state_durability.StateDefinitionLinkage {
   std.state_durability.CallerAssertedDefinitionLinkage {
     reason: reason,
-    dissolution: symbol_index_subtree_digest_dissolution,
+    dissolution: std.state_durability.symbol_index_subtree_digest_dissolution,
   }
 }
 
@@ -75,18 +75,18 @@ fn fixture_admission(
   realization: std.state_durability.StateRealizationIdentity,
   capability_version: std.state_durability.StateDurabilityCapabilityVersion,
   desired: extdeps.crypto.hash.Digest,
-) -> std.state_durability.StateDurabilityAdmission<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
+) -> std.state_durability.StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject> {
   std.state_durability.StateDurabilityAdmission {
     target: fixture_target,
     desired_state_digest: desired,
     realization: realization,
     capability_version: capability_version,
     perturbation_generation: 7,
-    readback_subject: test.claim.state_durability_witness.fixture_subject,
+    readback_subject: fixture_subject,
   }
 }
 
-fn current_admission() -> std.state_durability.StateDurabilityAdmission<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
+fn current_admission() -> std.state_durability.StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject> {
   fixture_admission(
     realization: fixture_realization,
     capability_version: fixture_capability_version,
@@ -102,7 +102,7 @@ fn fixture_capability(
     realization: realization,
     capability_version: capability_version,
     supported_boundaries: [fixture_boundary],
-    commit_barrier: SynchronizedCommit,
+    commit_barrier: std.state_durability.SynchronizedCommit,
   }
 }
 
@@ -114,9 +114,9 @@ fn current_capability() -> std.state_durability.StateDurabilityCapability {
 }
 
 fn fixture_activation(
-  admission: std.state_durability.StateDurabilityAdmission<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject>,
+  admission: std.state_durability.StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
   receipt_id: std.types.NonEmptyStr,
-) -> std.state_durability.StateActivationEvidence<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
+) -> std.state_durability.StateActivationEvidence<FixtureTarget, FixtureReadbackSubject> {
   std.state_durability.ActivationVerified {
     receipt: std.state_durability.StateActivationReceipt {
       perturbation_receipt_id: receipt_id,
@@ -133,11 +133,11 @@ fn fixture_activation(
 fn fixture_before_readback(
   receipt_id: std.types.NonEmptyStr,
   digest: extdeps.crypto.hash.Digest,
-) -> std.state_durability.StateBeforeReadbackReceipt<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
+) -> std.state_durability.StateBeforeReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
   std.state_durability.StateBeforeReadbackReceipt {
     perturbation_receipt_id: receipt_id,
     target: fixture_target,
-    subject: test.claim.state_durability_witness.fixture_subject,
+    subject: fixture_subject,
     state_digest: digest,
     observed_at: 1000,
   }
@@ -146,26 +146,26 @@ fn fixture_before_readback(
 fn fixture_after_readback(
   receipt_id: std.types.NonEmptyStr,
   digest: extdeps.crypto.hash.Digest,
-) -> std.state_durability.StateAfterReadbackReceipt<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
+) -> std.state_durability.StateAfterReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
   std.state_durability.StateAfterReadbackReceipt {
     perturbation_receipt_id: receipt_id,
     target: fixture_target,
-    subject: test.claim.state_durability_witness.fixture_subject,
+    subject: fixture_subject,
     state_digest: digest,
-    observed_after_perturbation_completion: positive_millisecond(
-      count: positive_measure_count(predecessor: 29),
+    observed_after_perturbation_completion: std.measure.positive_millisecond(
+      count: std.measure.positive_measure_count(predecessor: 29),
     ),
   }
 }
 
 fn fixture_evidence(
-  admission: std.state_durability.StateDurabilityAdmission<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject>,
+  admission: std.state_durability.StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
   boundary: std.state_durability.StateDurabilityBoundary,
   readback_receipt_id: std.types.NonEmptyStr,
   before: extdeps.crypto.hash.Digest,
   after: extdeps.crypto.hash.Digest,
-  activation: StateActivationEvidence<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject>,
-) -> std.state_durability.StateDurabilityEvidence<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
+  activation: std.state_durability.StateActivationEvidence<FixtureTarget, FixtureReadbackSubject>,
+) -> std.state_durability.StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
   std.state_durability.StateDurabilityEvidence {
     admission: admission,
     perturbation: std.state_durability.StatePerturbationReceipt {
@@ -173,11 +173,11 @@ fn fixture_evidence(
       target: fixture_target,
       boundary: boundary,
       generation: 7,
-      started_after_before_readback: positive_millisecond(
-        count: positive_measure_count(predecessor: 9),
+      started_after_before_readback: std.measure.positive_millisecond(
+        count: std.measure.positive_measure_count(predecessor: 9),
       ),
-      duration: positive_millisecond(
-        count: positive_measure_count(predecessor: 19),
+      duration: std.measure.positive_millisecond(
+        count: std.measure.positive_measure_count(predecessor: 19),
       ),
     },
     outcome: std.state_durability.StatePreserved {
@@ -194,8 +194,8 @@ fn fixture_evidence(
   }
 }
 
-fn matching_evidence() -> std.state_durability.StateDurabilityEvidence<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
-  test.claim.state_durability_witness.fixture_evidence(
+fn matching_evidence() -> std.state_durability.StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
+  fixture_evidence(
     admission: current_admission(),
     boundary: fixture_boundary,
     readback_receipt_id: "fixture-perturbation",
@@ -209,11 +209,11 @@ fn matching_evidence() -> std.state_durability.StateDurabilityEvidence<test.clai
 }
 
 fn durable_verdict(
-  evidence: List<std.state_durability.StateDurabilityEvidence<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject>>,
-) -> std.state_durability.StateDurabilityVerdict<test.claim.state_durability_witness.FixtureTarget, test.claim.state_durability_witness.FixtureReadbackSubject> {
-  state_durability_verdict(
+  evidence: List<std.state_durability.StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject>>,
+) -> std.state_durability.StateDurabilityVerdict<FixtureTarget, FixtureReadbackSubject> {
+  std.state_durability.state_durability_verdict(
     intent: std.state_durability.DurableAcross {
-      boundaries: state_durability_boundary_requirements(
+      boundaries: std.state_durability.state_durability_boundary_requirements(
         first: fixture_boundary,
         additional: [],
       ),
@@ -225,11 +225,11 @@ fn durable_verdict(
 }
 
 test fn boundary_requirements_are_nonempty_and_deduplicate_by_construction() -> Bool {
-  let requirements = state_durability_boundary_requirements(
+  let requirements = std.state_durability.state_durability_boundary_requirements(
     first: fixture_boundary,
     additional: [fixture_boundary, fixture_wrong_boundary, fixture_wrong_boundary],
   )
-  let boundaries = state_durability_boundary_requirement_list(
+  let boundaries = std.state_durability.state_durability_boundary_requirement_list(
     requirements: requirements,
   )
   fold(boundaries, init: 0, f: (count, _) => count + 1) == 2
@@ -238,18 +238,18 @@ test fn boundary_requirements_are_nonempty_and_deduplicate_by_construction() -> 
 }
 
 test fn direct_duplicate_boundary_literal_reaches_typed_counted_refusal() -> Bool {
-  let duplicated = std.state_durability.StateDurabilityBoundaryRequirements {
+  let duplicated = StateDurabilityBoundaryRequirements {
     first: fixture_boundary,
     additional_unique: [fixture_boundary, fixture_boundary],
   }
-  match state_durability_verdict(
+  match std.state_durability.state_durability_verdict(
     intent: std.state_durability.DurableAcross { boundaries: duplicated },
     admission: current_admission(),
     capability: Present { value: current_capability() },
     evidence: [matching_evidence()],
   ) {
-    StateDurabilityRefused {
-      cause: DurabilityRequirementDuplicate {
+    std.state_durability.StateDurabilityRefused {
+      cause: std.state_durability.DurabilityRequirementDuplicate {
         boundary: boundary,
         count: count,
       },
@@ -261,20 +261,20 @@ test fn direct_duplicate_boundary_literal_reaches_typed_counted_refusal() -> Boo
 test fn receipt_order_is_derived_from_positive_deltas() -> Bool {
   let evidence = matching_evidence()
   match evidence.outcome {
-    StatePreserved {
+    std.state_durability.StatePreserved {
       before: before,
       after: after_readback,
       activation: _,
     } => {
-      let started = state_durability_perturbation_started_at(
+      let started = std.state_durability.state_durability_perturbation_started_at(
         before: before,
         perturbation: evidence.perturbation,
       )
-      let completed = state_durability_perturbation_completed_at(
+      let completed = std.state_durability.state_durability_perturbation_completed_at(
         before: before,
         perturbation: evidence.perturbation,
       )
-      let after = state_durability_after_readback_at(
+      let after = std.state_durability.state_durability_after_readback_at(
         before: before,
         perturbation: evidence.perturbation,
         after: after_readback,
@@ -288,29 +288,29 @@ test fn receipt_order_is_derived_from_positive_deltas() -> Bool {
 }
 
 test fn non_positive_measure_counts_are_typed_refusals() -> Bool {
-  match positive_measure_count_from_int(count: 0) {
-    PositiveMeasureCountRefused { cause: zero } =>
-      match positive_measure_count_from_int(count: 0 - 5) {
-        PositiveMeasureCountRefused { cause: negative } =>
+  match std.measure.positive_measure_count_from_int(count: 0) {
+    std.measure.PositiveMeasureCountRefused { cause: zero } =>
+      match std.measure.positive_measure_count_from_int(count: 0 - 5) {
+        std.measure.PositiveMeasureCountRefused { cause: negative } =>
           zero.observed == 0 && negative.observed == (0 - 5)
-        PositiveMeasureCountBuilt { count: _ } => false
+        std.measure.PositiveMeasureCountBuilt { count: _ } => false
       }
-    PositiveMeasureCountBuilt { count: _ } => false
+    std.measure.PositiveMeasureCountBuilt { count: _ } => false
   }
 }
 
 test fn positive_measure_count_build_executes_positive_arm() -> Bool {
-  match positive_measure_count_from_int(count: 3) {
-    PositiveMeasureCountBuilt { count: count } =>
-      positive_measure_count_value(count: count) == 3
-    PositiveMeasureCountRefused { cause: _ } => false
+  match std.measure.positive_measure_count_from_int(count: 3) {
+    std.measure.PositiveMeasureCountBuilt { count: count } =>
+      std.measure.positive_measure_count_value(count: count) == 3
+    std.measure.PositiveMeasureCountRefused { cause: _ } => false
   }
 }
 
 test fn caller_asserted_definitions_cannot_buy_durable_qualification() -> Bool {
   match durable_verdict(evidence: [matching_evidence()]) {
-    StateDurabilityRefused {
-      cause: DurabilityDefinitionLinkageUnavailable {
+    std.state_durability.StateDurabilityRefused {
+      cause: std.state_durability.DurabilityDefinitionLinkageUnavailable {
         realization: realization,
         capability: capability,
         assertions: assertions,
@@ -320,15 +320,15 @@ test fn caller_asserted_definitions_cannot_buy_durable_qualification() -> Bool {
       realization == fixture_realization
         && capability == fixture_capability_version
         && count == 6
-        && list_length(assertions) == 6
+        && std.types.list_length(assertions) == 6
     _ => false
   }
 }
 
 test fn realization_identity_change_invalidates_old_receipt() -> Bool {
-  match state_durability_verdict(
+  match std.state_durability.state_durability_verdict(
     intent: std.state_durability.DurableAcross {
-      boundaries: state_durability_boundary_requirements(
+      boundaries: std.state_durability.state_durability_boundary_requirements(
         first: fixture_boundary,
         additional: [],
       ),
@@ -342,8 +342,8 @@ test fn realization_identity_change_invalidates_old_receipt() -> Bool {
     },
     evidence: [],
   ) {
-    StateDurabilityRefused {
-      cause: DurabilityCapabilityAdmissionMismatch {
+    std.state_durability.StateDurabilityRefused {
+      cause: std.state_durability.DurabilityCapabilityAdmissionMismatch {
         expected_realization: _,
         observed_realization: _,
         expected_capability_version: _,
@@ -355,9 +355,9 @@ test fn realization_identity_change_invalidates_old_receipt() -> Bool {
 }
 
 test fn capability_definition_change_invalidates_old_receipt() -> Bool {
-  match state_durability_verdict(
+  match std.state_durability.state_durability_verdict(
     intent: std.state_durability.DurableAcross {
-      boundaries: state_durability_boundary_requirements(
+      boundaries: std.state_durability.state_durability_boundary_requirements(
         first: fixture_boundary,
         additional: [],
       ),
@@ -371,8 +371,8 @@ test fn capability_definition_change_invalidates_old_receipt() -> Bool {
     },
     evidence: [],
   ) {
-    StateDurabilityRefused {
-      cause: DurabilityCapabilityAdmissionMismatch {
+    std.state_durability.StateDurabilityRefused {
+      cause: std.state_durability.DurabilityCapabilityAdmissionMismatch {
         expected_realization: _,
         observed_realization: _,
         expected_capability_version: _,
@@ -384,7 +384,7 @@ test fn capability_definition_change_invalidates_old_receipt() -> Bool {
 }
 
 test fn wrong_boundary_receipt_reaches_typed_mismatch_arm() -> Bool {
-  let wrong = test.claim.state_durability_witness.fixture_evidence(
+  let wrong = fixture_evidence(
     admission: current_admission(),
     boundary: fixture_wrong_boundary,
     readback_receipt_id: "fixture-perturbation",
@@ -395,13 +395,13 @@ test fn wrong_boundary_receipt_reaches_typed_mismatch_arm() -> Bool {
       receipt_id: "fixture-perturbation",
     ),
   )
-  match state_durability_evidence_refusal(
+  match std.state_durability.state_durability_evidence_refusal(
     admission: current_admission(),
     boundary: fixture_boundary,
     evidence: wrong,
   ) {
     Present {
-      value: DurabilityPerturbationBoundaryMismatch {
+      value: std.state_durability.DurabilityPerturbationBoundaryMismatch {
         expected: expected,
         observed: observed,
       },
@@ -411,7 +411,7 @@ test fn wrong_boundary_receipt_reaches_typed_mismatch_arm() -> Bool {
 }
 
 test fn readbacks_must_link_the_perturbation_receipt() -> Bool {
-  let wrong = test.claim.state_durability_witness.fixture_evidence(
+  let wrong = fixture_evidence(
     admission: current_admission(),
     boundary: fixture_boundary,
     readback_receipt_id: "unrelated-perturbation",
@@ -422,13 +422,13 @@ test fn readbacks_must_link_the_perturbation_receipt() -> Bool {
       receipt_id: "fixture-perturbation",
     ),
   )
-  match state_durability_evidence_refusal(
+  match std.state_durability.state_durability_evidence_refusal(
     admission: current_admission(),
     boundary: fixture_boundary,
     evidence: wrong,
   ) {
     Present {
-      value: DurabilityReadbackReceiptLinkMismatch {
+      value: std.state_durability.DurabilityReadbackReceiptLinkMismatch {
         position: _,
         expected_receipt_id: expected,
         observed_receipt_id: observed,
@@ -444,7 +444,7 @@ test fn activation_receipt_is_scoped_to_the_admitted_digest() -> Bool {
     capability_version: fixture_capability_version,
     desired: fixture_digest_b,
   )
-  let wrong = test.claim.state_durability_witness.fixture_evidence(
+  let wrong = fixture_evidence(
     admission: current_admission(),
     boundary: fixture_boundary,
     readback_receipt_id: "fixture-perturbation",
@@ -455,13 +455,13 @@ test fn activation_receipt_is_scoped_to_the_admitted_digest() -> Bool {
       receipt_id: "fixture-perturbation",
     ),
   )
-  match state_durability_evidence_refusal(
+  match std.state_durability.state_durability_evidence_refusal(
     admission: current_admission(),
     boundary: fixture_boundary,
     evidence: wrong,
   ) {
     Present {
-      value: DurabilityActivationScopeMismatch {
+      value: std.state_durability.DurabilityActivationScopeMismatch {
         expected: _,
         observed: observed,
       },
@@ -471,7 +471,7 @@ test fn activation_receipt_is_scoped_to_the_admitted_digest() -> Bool {
 }
 
 test fn semantically_similar_but_digest_different_state_refuses() -> Bool {
-  let wrong = test.claim.state_durability_witness.fixture_evidence(
+  let wrong = fixture_evidence(
     admission: current_admission(),
     boundary: fixture_boundary,
     readback_receipt_id: "fixture-perturbation",
@@ -482,13 +482,13 @@ test fn semantically_similar_but_digest_different_state_refuses() -> Bool {
       receipt_id: "fixture-perturbation",
     ),
   )
-  match state_durability_evidence_refusal(
+  match std.state_durability.state_durability_evidence_refusal(
     admission: current_admission(),
     boundary: fixture_boundary,
     evidence: wrong,
   ) {
     Present {
-      value: DurabilityDesiredStateMismatch {
+      value: std.state_durability.DurabilityDesiredStateMismatch {
         desired: desired,
         before: before,
         after: after,
@@ -502,18 +502,18 @@ test fn semantically_similar_but_digest_different_state_refuses() -> Bool {
 }
 
 test fn duplicate_exact_receipts_are_ambiguous() -> Bool {
-  match state_durability_admission_evidence_cardinality(
+  match std.state_durability.state_durability_admission_evidence_cardinality(
     evidence: [matching_evidence(), matching_evidence()],
     admission: current_admission(),
   ) {
-    MultipleMatchingDurabilityEvidence { count: 2 } => true
+    std.state_durability.MultipleMatchingDurabilityEvidence { count: 2 } => true
     _ => false
   }
 }
 
 test fn boundary_fold_accepts_evidence_without_qualifying_durability() -> Bool {
-  match state_durability_boundaries_evidence_verdict(
-    required: state_durability_boundary_requirements(
+  match std.state_durability.state_durability_boundaries_evidence_verdict(
+    required: std.state_durability.state_durability_boundary_requirements(
       first: fixture_boundary,
       additional: [],
     ),
@@ -521,15 +521,15 @@ test fn boundary_fold_accepts_evidence_without_qualifying_durability() -> Bool {
     capability: current_capability(),
     evidence: [matching_evidence()],
   ) {
-    StateDurabilityEvidenceAccepted { evidence: accepted } =>
-      list_length(accepted) == 1
-    StateDurabilityEvidenceRefused { cause: _ } => false
+    std.state_durability.StateDurabilityEvidenceAccepted { evidence: accepted } =>
+      std.types.list_length(accepted) == 1
+    std.state_durability.StateDurabilityEvidenceRefused { cause: _ } => false
   }
 }
 
 test fn boundary_fold_refuses_duplicate_evidence_behind_linkage_frontier() -> Bool {
-  match state_durability_boundaries_evidence_verdict(
-    required: state_durability_boundary_requirements(
+  match std.state_durability.state_durability_boundaries_evidence_verdict(
+    required: std.state_durability.state_durability_boundary_requirements(
       first: fixture_boundary,
       additional: [],
     ),
@@ -537,8 +537,8 @@ test fn boundary_fold_refuses_duplicate_evidence_behind_linkage_frontier() -> Bo
     capability: current_capability(),
     evidence: [matching_evidence(), matching_evidence()],
   ) {
-    StateDurabilityEvidenceRefused {
-      cause: DurabilityEvidenceAmbiguous {
+    std.state_durability.StateDurabilityEvidenceRefused {
+      cause: std.state_durability.DurabilityEvidenceAmbiguous {
         admission: _,
         boundary: boundary,
         count: count,

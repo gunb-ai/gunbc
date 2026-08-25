@@ -9,30 +9,30 @@ module product.pcb.plan_view
 // those may look like a footprint. Completeness is a join of scene identities against the exact
 // text nodes the fragment fold emitted — a prefix of a longer label is not a representation, and
 // the serialized document is not the oracle.
-data attachment_label_base: std.measure.Micrometer = micrometer(count: 24000)
-data attachment_label_step: std.measure.Micrometer = micrometer(count: 2400)
-data attachment_label_x: std.measure.Micrometer = micrometer(count: 8000)
-data legend_origin_x: std.measure.Micrometer = micrometer(count: 8000)
-data legend_origin_y: std.measure.Micrometer = micrometer(count: 12000)
-data established_label_lift: std.measure.Micrometer = micrometer(count: 1200)
-data established_source_lift: std.measure.Micrometer = micrometer(count: 2400)
-data obligation_cause_drop: std.measure.Micrometer = micrometer(count: 1800)
+data attachment_label_base: std.measure.Micrometer = std.measure.micrometer(count: 24000)
+data attachment_label_step: std.measure.Micrometer = std.measure.micrometer(count: 2400)
+data attachment_label_x: std.measure.Micrometer = std.measure.micrometer(count: 8000)
+data legend_origin_x: std.measure.Micrometer = std.measure.micrometer(count: 8000)
+data legend_origin_y: std.measure.Micrometer = std.measure.micrometer(count: 12000)
+data established_label_lift: std.measure.Micrometer = std.measure.micrometer(count: 1200)
+data established_source_lift: std.measure.Micrometer = std.measure.micrometer(count: 2400)
+data obligation_cause_drop: std.measure.Micrometer = std.measure.micrometer(count: 1800)
 
 // TYPE SIZES IN THE BOARD'S OWN UNITS, because the coordinate space IS micrometres and a font size
 // expressed in it is a length like any other. Without these the document carried semantic class
 // names and no presentation, so every label rendered at the user agent's default size inside a
 // 305 millimetre wide viewBox and was effectively invisible; the artifact was only readable
 // through a stylesheet somebody wrote by hand outside it, which is not a self-contained emission.
-data label_type_size: std.measure.Micrometer = micrometer(count: 4400)
-data cause_type_size: std.measure.Micrometer = micrometer(count: 2600)
-data legend_type_size: std.measure.Micrometer = micrometer(count: 3000)
-data legend_design_drop: std.measure.Micrometer = micrometer(count: 2400)
+data label_type_size: std.measure.Micrometer = std.measure.micrometer(count: 4400)
+data cause_type_size: std.measure.Micrometer = std.measure.micrometer(count: 2600)
+data legend_type_size: std.measure.Micrometer = std.measure.micrometer(count: 3000)
+data legend_design_drop: std.measure.Micrometer = std.measure.micrometer(count: 2400)
 
 type OutlineExtent {
-  x0: std.integer.Int
-  y0: std.integer.Int
-  x1: std.integer.Int
-  y1: std.integer.Int
+  x0: Int
+  y0: Int
+  x1: Int
+  y1: Int
 }
 
 type PcbSceneRefusal
@@ -49,7 +49,7 @@ type PcbPlanViewScene sole_constructor {
 }
 
 type AttachmentLabelAcc {
-  index: std.integer.Int
+  index: Int
   fragments: List<std.markup.Fragment>
 }
 
@@ -58,19 +58,19 @@ fn pcb_plan_view_scene(world: product.pcb.world.PcbWorld, document: String) -> P
 }
 
 fn outline_extent(o: std.orthogonal_geometry.AxisAlignedRectangle2) -> OutlineExtent {
-  let lo = rectangle2_min(r: o)
-  let hi = rectangle2_max(r: o)
+  let lo = std.orthogonal_geometry.rectangle2_min(r: o)
+  let hi = std.orthogonal_geometry.rectangle2_max(r: o)
   OutlineExtent {
-    x0: signed_frame_component_count(c: lo.x),
-    y0: signed_frame_component_count(c: lo.y),
-    x1: signed_frame_component_count(c: hi.x),
-    y1: signed_frame_component_count(c: hi.y),
+    x0: std.affine_space.signed_frame_component_count(c: lo.x),
+    y0: std.affine_space.signed_frame_component_count(c: lo.y),
+    x1: std.affine_space.signed_frame_component_count(c: hi.x),
+    y1: std.affine_space.signed_frame_component_count(c: hi.y),
   }
 }
 
 fn board_outline_fragment(o: std.orthogonal_geometry.AxisAlignedRectangle2) -> std.markup.Fragment {
   let e = outline_extent(o: o)
-  svg_rect(
+  extdeps.w3c.svg.svg_rect(
     x: e.x0, y: e.y0, width: e.x1 - e.x0, height: e.y1 - e.y0,
     class_name: "pcb-board-outline",
     fill: "none",
@@ -88,25 +88,25 @@ type BodyRenderStyle {
 
 fn body_render_style(s: product.pcb.world.PcbBodyLayoutStanding) -> BodyRenderStyle {
   match s {
-    PcbBodyLayoutAdmittedOverEveryRequiredPart => BodyRenderStyle {
+    product.pcb.world.PcbBodyLayoutAdmittedOverEveryRequiredPart => BodyRenderStyle {
       class_name: "pcb-component-established",
       label_class: "pcb-label-established",
       fill: "#c8d6e8",
       stroke: "#1a2744",
     }
-    PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: _ } => BodyRenderStyle {
+    product.pcb.world.PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: _ } => BodyRenderStyle {
       class_name: "pcb-component-subset-body",
       label_class: "pcb-label-subset-body",
       fill: "#edf1f5",
       stroke: "#8a97a8",
     }
-    PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: _, causes: _ } => BodyRenderStyle {
+    product.pcb.world.PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: _, causes: _ } => BodyRenderStyle {
       class_name: "pcb-component-layout-refused",
       label_class: "pcb-label-layout-refused",
       fill: "#f3e8e8",
       stroke: "#8a4a4a",
     }
-    PcbBodyLayoutRefusedOverCompletePopulation { causes: _ } => BodyRenderStyle {
+    product.pcb.world.PcbBodyLayoutRefusedOverCompletePopulation { causes: _ } => BodyRenderStyle {
       class_name: "pcb-component-layout-refused",
       label_class: "pcb-label-layout-refused",
       fill: "#f3e8e8",
@@ -115,25 +115,25 @@ fn body_render_style(s: product.pcb.world.PcbBodyLayoutStanding) -> BodyRenderSt
   }
 }
 
-fn established_body_fragments(identity: std.types.NonEmptyStr, origin_x: std.integer.Int, origin_y: std.integer.Int, width: std.integer.Int, height: std.integer.Int, source: std.decl_ref.DeclarationRef?, style: BodyRenderStyle) -> List<std.markup.Fragment> {
+fn established_body_fragments(identity: std.types.NonEmptyStr, origin_x: Int, origin_y: Int, width: Int, height: Int, source: std.decl_ref.DeclarationRef?, style: BodyRenderStyle) -> List<std.markup.Fragment> {
   let body = [
-    svg_rect(
+    extdeps.w3c.svg.svg_rect(
       x: origin_x, y: origin_y, width: width, height: height,
       class_name: style.class_name,
       fill: style.fill,
       stroke: style.stroke,
       stroke_width: "400",
     ),
-    svg_text(x: origin_x, y: origin_y - micrometer_count(m: established_label_lift), label: identity as String, class_name: style.label_class),
+    extdeps.w3c.svg.svg_text(x: origin_x, y: origin_y - std.measure.micrometer_count(m: established_label_lift), label: identity as String, class_name: style.label_class),
   ]
   match source {
     Absent => body
     Present { value: r } =>
       concat(body, [
-        svg_text(
+        extdeps.w3c.svg.svg_text(
           x: origin_x,
-          y: origin_y - micrometer_count(m: established_source_lift),
-          label: declaration_ref_display_key(ref: r),
+          y: origin_y - std.measure.micrometer_count(m: established_source_lift),
+          label: std.decl_ref.declaration_ref_display_key(ref: r),
           class_name: style.label_class,
         )
       ])
@@ -144,17 +144,17 @@ fn obligation_class(tag: String) -> String {
   concat("pcb-component-", tag)
 }
 
-fn obligation_marker_fragments(identity: std.types.NonEmptyStr, origin_x: std.integer.Int, origin_y: std.integer.Int, cause_label: String, tag: String) -> List<std.markup.Fragment> {
+fn obligation_marker_fragments(identity: std.types.NonEmptyStr, origin_x: Int, origin_y: Int, cause_label: String, tag: String) -> List<std.markup.Fragment> {
   [
-    svg_text(
+    extdeps.w3c.svg.svg_text(
       x: origin_x,
       y: origin_y,
       label: identity as String,
       class_name: obligation_class(tag: tag),
     ),
-    svg_text(
+    extdeps.w3c.svg.svg_text(
       x: origin_x,
-      y: origin_y + micrometer_count(m: obligation_cause_drop),
+      y: origin_y + std.measure.micrometer_count(m: obligation_cause_drop),
       label: concat("(", concat(cause_label, ")")),
       class_name: "pcb-obligation-cause",
     ),
@@ -163,13 +163,13 @@ fn obligation_marker_fragments(identity: std.types.NonEmptyStr, origin_x: std.in
 
 fn body_layout_legend(s: product.pcb.world.PcbBodyLayoutStanding) -> String {
   match s {
-    PcbBodyLayoutAdmittedOverEveryRequiredPart =>
+    product.pcb.world.PcbBodyLayoutAdmittedOverEveryRequiredPart =>
       "body layout admitted over every required part"
-    PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: n } =>
+    product.pcb.world.PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: n } =>
       concat("body layout admitted over established subset only; ", concat(to_string(n), " parts owed"))
-    PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: n, causes: _ } =>
+    product.pcb.world.PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: n, causes: _ } =>
       concat("body layout REFUSED over the established subset; ", concat(to_string(n), " parts owed"))
-    PcbBodyLayoutRefusedOverCompletePopulation { causes: _ } =>
+    product.pcb.world.PcbBodyLayoutRefusedOverCompletePopulation { causes: _ } =>
       "body layout refused over the complete population"
   }
 }
@@ -177,9 +177,9 @@ fn body_layout_legend(s: product.pcb.world.PcbBodyLayoutStanding) -> String {
 fn envelope_reads_legend(xs: List<std.decl_ref.DeclarationRef>) -> String {
   let body = fold(xs, init: "", f: fn(acc, r) {
     if acc == "" {
-      declaration_ref_display_key(ref: r)
+      std.decl_ref.declaration_ref_display_key(ref: r)
     } else {
-      concat(acc, concat("; ", declaration_ref_display_key(ref: r)))
+      concat(acc, concat("; ", std.decl_ref.declaration_ref_display_key(ref: r)))
     }
   })
   if body == "" {
@@ -201,62 +201,62 @@ fn legend_text(c: product.pcb.scene.PcbSceneLegend) -> String {
     concat(to_string(c.named_attachment_part_unresolved), concat(" attachment-part-unresolved / ",
     concat(to_string(c.functional_obligation), concat(" unrealized-function — ",
     concat(body_layout_legend(s: c.body_layout), concat(" — design identity: ",
-    concat(declaration_ref_display_key(ref: c.design), concat(" — ",
+    concat(std.decl_ref.declaration_ref_display_key(ref: c.design), concat(" — ",
     envelope_reads_legend(xs: c.envelope_reads)))))))))))))))))))))
   )
 }
 
 fn legend_fragments(c: product.pcb.scene.PcbSceneLegend) -> List<std.markup.Fragment> {
   [
-    svg_text(x: micrometer_count(m: legend_origin_x), y: micrometer_count(m: legend_origin_y), label: legend_text(c: c), class_name: "pcb-legend"),
-    svg_text(
-      x: micrometer_count(m: legend_origin_x),
-      y: micrometer_count(m: legend_origin_y) + micrometer_count(m: legend_design_drop),
-      label: declaration_ref_display_key(ref: c.design),
+    extdeps.w3c.svg.svg_text(x: std.measure.micrometer_count(m: legend_origin_x), y: std.measure.micrometer_count(m: legend_origin_y), label: legend_text(c: c), class_name: "pcb-legend"),
+    extdeps.w3c.svg.svg_text(
+      x: std.measure.micrometer_count(m: legend_origin_x),
+      y: std.measure.micrometer_count(m: legend_origin_y) + std.measure.micrometer_count(m: legend_design_drop),
+      label: std.decl_ref.declaration_ref_display_key(ref: c.design),
       class_name: "pcb-legend-design",
     ),
   ]
 }
 
-fn element_fragments(e: product.pcb.scene.PcbSceneElement, attachment_index: std.integer.Int, body_layout: product.pcb.world.PcbBodyLayoutStanding) -> List<std.markup.Fragment> {
+fn element_fragments(e: product.pcb.scene.PcbSceneElement, attachment_index: Int, body_layout: product.pcb.world.PcbBodyLayoutStanding) -> List<std.markup.Fragment> {
   match e {
-    SceneBoardOutline { outline: o } => [board_outline_fragment(o: o)]
-    SceneLegend { counts: c } => legend_fragments(c: c)
-    SceneEstablishedBody { identity: id, origin: origin, body_width: w, body_height: h, source: src } =>
+    product.pcb.scene.SceneBoardOutline { outline: o } => [board_outline_fragment(o: o)]
+    product.pcb.scene.SceneLegend { counts: c } => legend_fragments(c: c)
+    product.pcb.scene.SceneEstablishedBody { identity: id, origin: origin, body_width: w, body_height: h, source: src } =>
       established_body_fragments(
         identity: id,
-        origin_x: signed_frame_component_count(c: origin.x),
-        origin_y: signed_frame_component_count(c: origin.y),
-        width: micrometer_count(m: w),
-        height: micrometer_count(m: h),
+        origin_x: std.affine_space.signed_frame_component_count(c: origin.x),
+        origin_y: std.affine_space.signed_frame_component_count(c: origin.y),
+        width: std.measure.micrometer_count(m: w),
+        height: std.measure.micrometer_count(m: h),
         source: src,
         style: body_render_style(s: body_layout),
       )
-    SceneObligationMarker { identity: id, origin: origin, cause: cause } =>
+    product.pcb.scene.SceneObligationMarker { identity: id, origin: origin, cause: cause } =>
       obligation_marker_fragments(
         identity: id,
-        origin_x: signed_frame_component_count(c: origin.x),
-        origin_y: signed_frame_component_count(c: origin.y),
-        cause_label: obligation_cause_label(c: cause),
-        tag: (obligation_cause_tag(c: cause) as String),
+        origin_x: std.affine_space.signed_frame_component_count(c: origin.x),
+        origin_y: std.affine_space.signed_frame_component_count(c: origin.y),
+        cause_label: product.pcb.scene.obligation_cause_label(c: cause),
+        tag: (product.pcb.world.obligation_cause_tag(c: cause) as String),
       )
-    SceneAttachmentMarker { layer: layer, cause: _ } =>
-      [svg_text(
-        x: micrometer_count(m: attachment_label_x),
-        y: micrometer_count(m: attachment_label_base) + (attachment_index * micrometer_count(m: attachment_label_step)),
+    product.pcb.scene.SceneAttachmentMarker { layer: layer, cause: _ } =>
+      [extdeps.w3c.svg.svg_text(
+        x: std.measure.micrometer_count(m: attachment_label_x),
+        y: std.measure.micrometer_count(m: attachment_label_base) + (attachment_index * std.measure.micrometer_count(m: attachment_label_step)),
         label: concat("attachment: ", layer as String),
         class_name: "pcb-label-attachment-obligation",
       )]
-    SceneFunctionalMarker { function: f, cause: cause } =>
-      [svg_text(
-        x: micrometer_count(m: attachment_label_x),
-        y: micrometer_count(m: attachment_label_base) + (attachment_index * micrometer_count(m: attachment_label_step)),
+    product.pcb.scene.SceneFunctionalMarker { function: f, cause: cause } =>
+      [extdeps.w3c.svg.svg_text(
+        x: std.measure.micrometer_count(m: attachment_label_x),
+        y: std.measure.micrometer_count(m: attachment_label_base) + (attachment_index * std.measure.micrometer_count(m: attachment_label_step)),
         label: concat("function unrealized: ", f as String),
         class_name: "pcb-label-functional-obligation",
-      ), svg_text(
-        x: micrometer_count(m: attachment_label_x),
-        y: micrometer_count(m: attachment_label_base) + (attachment_index * micrometer_count(m: attachment_label_step)) + micrometer_count(m: obligation_cause_drop),
-        label: concat("(", concat(obligation_cause_label(c: cause), ")")),
+      ), extdeps.w3c.svg.svg_text(
+        x: std.measure.micrometer_count(m: attachment_label_x),
+        y: std.measure.micrometer_count(m: attachment_label_base) + (attachment_index * std.measure.micrometer_count(m: attachment_label_step)) + std.measure.micrometer_count(m: obligation_cause_drop),
+        label: concat("(", concat(product.pcb.scene.obligation_cause_label(c: cause), ")")),
         class_name: "pcb-obligation-cause",
       )]
   }
@@ -271,12 +271,12 @@ fn fold_scene_fragments(scene: product.pcb.scene.PcbEngineeringScene) -> List<st
   let body_layout = scene.world.physical.body_layout
   let acc = fold(scene.elements, init: AttachmentLabelAcc { index: 0, fragments: [] }, f: fn(state, e) {
     let next_index = match e {
-      SceneAttachmentMarker { layer: _, cause: _ } => state.index + 1
-      SceneFunctionalMarker { function: _, cause: _ } => state.index + 2
-      SceneBoardOutline { outline: _ } => state.index
-      SceneEstablishedBody { identity: _, origin: _, body_width: _, body_height: _, source: _ } => state.index
-      SceneObligationMarker { identity: _, origin: _, cause: _ } => state.index
-      SceneLegend { counts: _ } => state.index
+      product.pcb.scene.SceneAttachmentMarker { layer: _, cause: _ } => state.index + 1
+      product.pcb.scene.SceneFunctionalMarker { function: _, cause: _ } => state.index + 2
+      product.pcb.scene.SceneBoardOutline { outline: _ } => state.index
+      product.pcb.scene.SceneEstablishedBody { identity: _, origin: _, body_width: _, body_height: _, source: _ } => state.index
+      product.pcb.scene.SceneObligationMarker { identity: _, origin: _, cause: _ } => state.index
+      product.pcb.scene.SceneLegend { counts: _ } => state.index
     }
     AttachmentLabelAcc {
       index: next_index,
@@ -288,14 +288,14 @@ fn fold_scene_fragments(scene: product.pcb.scene.PcbEngineeringScene) -> List<st
 
 fn fragment_text_labels(frag: std.markup.Fragment) -> List<std.types.NonEmptyStr> {
   match frag {
-    FragmentText { content: c } =>
+    std.markup.FragmentText { content: c } =>
       if c == "" {
         []
       } else {
         [c as std.types.NonEmptyStr]
       }
-    RawNode { content: _ } => []
-    Element { tag: _, attributes: _, children: kids } =>
+    std.markup.RawNode { content: _ } => []
+    std.markup.Element { tag: _, attributes: _, children: kids } =>
       fold(kids, init: [], f: fn(acc, k) {
         concat(acc, fragment_text_labels(frag: k))
       })
@@ -313,18 +313,18 @@ fn represented_scene_labels(scene: product.pcb.scene.PcbEngineeringScene) -> Lis
 }
 
 fn project_pcb_world(w: product.pcb.world.PcbWorld) -> PcbSceneConstruction<PcbPlanViewScene> {
-  let scene = project_engineering_scene(w: w)
+  let scene = product.pcb.scene.project_engineering_scene(w: w)
   match fold(scene.elements, init: none, f: fn(acc, e) {
     match acc {
       Present { value: o } => Present { value: o }
       Absent =>
         match e {
-          SceneBoardOutline { outline: o } => Present { value: o }
-          SceneEstablishedBody { identity: _, origin: _, body_width: _, body_height: _, source: _ } => none
-          SceneObligationMarker { identity: _, origin: _, cause: _ } => none
-          SceneAttachmentMarker { layer: _, cause: _ } => none
-          SceneFunctionalMarker { function: _, cause: _ } => none
-          SceneLegend { counts: _ } => none
+          product.pcb.scene.SceneBoardOutline { outline: o } => Present { value: o }
+          product.pcb.scene.SceneEstablishedBody { identity: _, origin: _, body_width: _, body_height: _, source: _ } => none
+          product.pcb.scene.SceneObligationMarker { identity: _, origin: _, cause: _ } => none
+          product.pcb.scene.SceneAttachmentMarker { layer: _, cause: _ } => none
+          product.pcb.scene.SceneFunctionalMarker { function: _, cause: _ } => none
+          product.pcb.scene.SceneLegend { counts: _ } => none
         }
     }
   }) {
@@ -334,18 +334,18 @@ fn project_pcb_world(w: product.pcb.world.PcbWorld) -> PcbSceneConstruction<PcbP
       let width = e.x1 - e.x0
       let height = e.y1 - e.y0
       let fragments = fold_scene_fragments(scene: scene)
-      match first_unrepresented_scene_identity(scene: scene, represented: scene_fragment_labels(frags: fragments)) {
+      match product.pcb.scene.first_unrepresented_scene_identity(scene: scene, represented: scene_fragment_labels(frags: fragments)) {
         Present { value: id } => PcbSceneRefused { cause: PcbSceneSubjectDropped { identity: id } }
         Absent =>
           PcbSceneReady {
             value: pcb_plan_view_scene(
               world: w,
-              document: serialize_svg_document(
-                doc: svg_document(
+              document: extdeps.w3c.svg.serialize_svg_document(
+                doc: extdeps.w3c.svg.svg_document(
                   view_box: concat("0 0 ", concat(to_string(width), concat(" ", to_string(height)))),
                   class_name: "pcb-world-scene",
                   aria_label: "PCB plan view",
-                  children: concat([svg_style(css: plan_view_stylesheet())], fragments),
+                  children: concat([extdeps.w3c.svg.svg_style(css: plan_view_stylesheet())], fragments),
                 )
               ),
             )
@@ -360,14 +360,14 @@ fn project_pcb_world(w: product.pcb.world.PcbWorld) -> PcbSceneConstruction<PcbP
 fn plan_view_stylesheet() -> String {
   concat(
     concat("svg.pcb-world-scene text\{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}",
-    concat(".pcb-legend\{font-size:", concat(to_string(micrometer_count(m: legend_type_size)), "px;fill:#1a2744}"))),
+    concat(".pcb-legend\{font-size:", concat(to_string(std.measure.micrometer_count(m: legend_type_size)), "px;fill:#1a2744}"))),
     concat(
-      concat(".pcb-legend-design\{font-size:", concat(to_string(micrometer_count(m: cause_type_size)), "px;fill:#5a6472}")),
+      concat(".pcb-legend-design\{font-size:", concat(to_string(std.measure.micrometer_count(m: cause_type_size)), "px;fill:#5a6472}")),
       concat(
-        concat(".pcb-label-subset-body,.pcb-label-established\{font-size:", concat(to_string(micrometer_count(m: label_type_size)), "px;fill:#1a2744}")),
+        concat(".pcb-label-subset-body,.pcb-label-established\{font-size:", concat(to_string(std.measure.micrometer_count(m: label_type_size)), "px;fill:#1a2744}")),
         concat(
-          concat(".pcb-component-unselected-part,.pcb-component-missing-document,.pcb-component-named-attachment-type-part-unresolved,.pcb-label-attachment-obligation,.pcb-label-functional-obligation\{font-size:", concat(to_string(micrometer_count(m: label_type_size)), "px;fill:#8a4a4a}")),
-          concat(".pcb-obligation-cause\{font-size:", concat(to_string(micrometer_count(m: cause_type_size)), "px;fill:#6b5a4a}"))
+          concat(".pcb-component-unselected-part,.pcb-component-missing-document,.pcb-component-named-attachment-type-part-unresolved,.pcb-label-attachment-obligation,.pcb-label-functional-obligation\{font-size:", concat(to_string(std.measure.micrometer_count(m: label_type_size)), "px;fill:#8a4a4a}")),
+          concat(".pcb-obligation-cause\{font-size:", concat(to_string(std.measure.micrometer_count(m: cause_type_size)), "px;fill:#6b5a4a}"))
         )
       )
     )

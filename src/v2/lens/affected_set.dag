@@ -7,26 +7,26 @@ type AffectedDimension = v2.std.node.Symbol
 
 type ExclusionKey {
   at: v2.std.node.Node
-  dimension: v2.lens.affected_set.AffectedDimension
+  dimension: AffectedDimension
 }
 
 type EditDimension {
   edit: v2.std.node.Edit
-  dimension: v2.lens.affected_set.AffectedDimension
+  dimension: AffectedDimension
 }
 
 type ExclusionProof
   = EmptyDimensionDelta { subject: v2.std.node.Path }
 
 type PropagationExclusionProof
-  = DimensionNotRead { usage_site: v2.std.node.Node, changed_dimension: v2.lens.affected_set.AffectedDimension }
+  = DimensionNotRead { usage_site: v2.std.node.Node, changed_dimension: AffectedDimension }
 
 type BoundaryExclusionProof
   = UnchangedPureBoundary { content_hash: v2.std.node.Hash }
 
 type BoundaryExclusion {
   edit: v2.std.node.Edit
-  proof: v2.lens.affected_set.BoundaryExclusionProof
+  proof: BoundaryExclusionProof
 }
 
 type FailClosedReason
@@ -35,14 +35,14 @@ type FailClosedReason
 
 type FrontierDecision
   = Rerun
-  | Excluded { first: v2.lens.affected_set.PropagationExclusionProof, rest: List<v2.lens.affected_set.PropagationExclusionProof> }
+  | Excluded { first: PropagationExclusionProof, rest: List<PropagationExclusionProof> }
 
 type ReExecFrontier
   = ChangedSubgraphFrontier {
-      boundary_exclusions: List<v2.lens.affected_set.BoundaryExclusion>,
-      decisions: Map<v2.lens.affected_set.ExclusionKey, v2.lens.affected_set.FrontierDecision>
+      boundary_exclusions: List<BoundaryExclusion>,
+      decisions: Map<ExclusionKey, FrontierDecision>
     }
-  | FailClosed { reason: v2.lens.affected_set.FailClosedReason }
+  | FailClosed { reason: FailClosedReason }
 
 type HashReceipt
   = HashUnchangedPure { content_hash: v2.std.node.Hash }
@@ -50,17 +50,17 @@ type HashReceipt
   | HashUnknown { reason: v2.std.node.Symbol }
 
 type BoundaryReceipt
-  = BoundaryPruned { proof: v2.lens.affected_set.BoundaryExclusionProof }
+  = BoundaryPruned { proof: BoundaryExclusionProof }
   | BoundaryExpands
   | BoundaryUnknown { reason: v2.std.node.Symbol }
 
 type ChangedDimensionReceipt
-  = ChangedDimensions { first: v2.lens.affected_set.AffectedDimension, rest: List<v2.lens.affected_set.AffectedDimension> }
+  = ChangedDimensions { first: AffectedDimension, rest: List<AffectedDimension> }
   | ChangedDimensionsUnknown { reason: v2.std.node.Symbol }
 
 type PropagationReceipt
   = Propagates
-  | DoesNotPropagate { proof: v2.lens.affected_set.PropagationExclusionProof }
+  | DoesNotPropagate { proof: PropagationExclusionProof }
   | PropagationUnknown { reason: v2.std.node.Symbol }
 
 type FrontierDependency {
@@ -69,23 +69,23 @@ type FrontierDependency {
 }
 
 type FrontierReceipt
-  = FrontierProduced { dependencies: List<v2.lens.affected_set.FrontierDependency> }
+  = FrontierProduced { dependencies: List<FrontierDependency> }
   | FrontierUnknown { reason: v2.std.node.Symbol }
   | FrontierRejected { diagnostic: v2.std.diagnostic.Diagnostic }
 
 type AffectedFrontierRead {
-  proven_transitive_dependency_frontier: fn(v2.lens.affected_set.Dag, v2.lens.affected_set.EditDimension) -> v2.lens.affected_set.FrontierReceipt
+  proven_transitive_dependency_frontier: fn(Dag, EditDimension) -> FrontierReceipt
 }
 
 type AffectedBoundaryRead {
-  boundary_hash_receipt: fn(v2.lens.affected_set.Dag, Path, v2.std.node.Node) -> v2.lens.affected_set.HashReceipt,
-  changed_dimension_receipt: fn(v2.lens.affected_set.Dag, Edit) -> v2.lens.affected_set.ChangedDimensionReceipt
+  boundary_hash_receipt: fn(Dag, v2.std.node.Path, v2.std.node.Node) -> HashReceipt,
+  changed_dimension_receipt: fn(Dag, v2.std.node.Edit) -> ChangedDimensionReceipt
 }
 
 type AffectedSetRead {
-  boundary: v2.lens.affected_set.AffectedBoundaryRead
-  frontier: v2.lens.affected_set.AffectedFrontierRead,
-  propagation_receipt: fn(v2.lens.affected_set.Dag, v2.lens.affected_set.EditDimension, DependencyView) -> v2.lens.affected_set.PropagationReceipt
+  boundary: AffectedBoundaryRead
+  frontier: AffectedFrontierRead,
+  propagation_receipt: fn(Dag, EditDimension, v2.std.dependency.DependencyView) -> PropagationReceipt
 }
 
 type AffectedPostEditDagRead {
@@ -93,14 +93,14 @@ type AffectedPostEditDagRead {
 }
 
 type AffectedFoldAcc {
-  dag: v2.lens.affected_set.Dag
-  frontier: v2.lens.affected_set.ReExecFrontier
+  dag: Dag
+  frontier: ReExecFrontier
   pending: v2.std.diagnostic.Diagnostics
 }
 
 type AffectedSetFoldAcc
   = AffectedSetActive {
-      dag: v2.lens.affected_set.Dag,
+      dag: Dag,
       changes: v2.std.change.ChangeSet,
       affected: List<v2.std.change.AffectedDependency>,
       exclusions: List<v2.std.change.AffectedExclusion>
@@ -121,35 +121,35 @@ type RerunNodeSet
 type AffectedSetReading {
   edit_locus: v2.std.node.Node
   affected: List<v2.std.node.Node>
-  dependencies: List<v2.lens.affected_set.FrontierDependency>
+  dependencies: List<FrontierDependency>
 }
 
 type AffectedSetClosureAcc {
   frontier: List<v2.std.node.Node>
-  dependencies: List<v2.lens.affected_set.FrontierDependency>
+  dependencies: List<FrontierDependency>
 }
 
 type AffectedSetClosureFixpointState {
-  acc: v2.lens.affected_set.AffectedSetClosureAcc
+  acc: AffectedSetClosureAcc
   stable: Bool
 }
 
-fn empty_frontier() -> v2.lens.affected_set.ReExecFrontier {
+fn empty_frontier() -> ReExecFrontier {
   ChangedSubgraphFrontier {
     boundary_exclusions: [],
     decisions: empty_map()
   }
 }
 
-fn empty_affected_fold_acc(dag: v2.lens.affected_set.Dag) -> v2.lens.affected_set.AffectedFoldAcc {
+fn empty_affected_fold_acc(dag: Dag) -> AffectedFoldAcc {
   AffectedFoldAcc {
     dag: dag,
     frontier: empty_frontier(),
-    pending: None
+    pending: v2.std.diagnostic.None
   }
 }
 
-fn empty_affected_set_fold_acc(dag: v2.lens.affected_set.Dag) -> v2.lens.affected_set.AffectedSetFoldAcc {
+fn empty_affected_set_fold_acc(dag: Dag) -> AffectedSetFoldAcc {
   AffectedSetActive {
     dag: dag,
     changes: v2.std.change.ChangeSet { changes: [] },
@@ -158,41 +158,41 @@ fn empty_affected_set_fold_acc(dag: v2.lens.affected_set.Dag) -> v2.lens.affecte
   }
 }
 
-fn fold_pending(acc: v2.lens.affected_set.AffectedFoldAcc, next: v2.std.diagnostic.Diagnostics) -> v2.std.diagnostic.Diagnostics {
-  diagnostics_merge(outer: acc.pending, inner: next)
+fn fold_pending(acc: AffectedFoldAcc, next: v2.std.diagnostic.Diagnostics) -> v2.std.diagnostic.Diagnostics {
+  v2.std.diagnostic.diagnostics_merge(outer: acc.pending, inner: next)
 }
 
-fn frontier_from_fold_acc(acc: v2.lens.affected_set.AffectedFoldAcc) -> v2.lens.affected_set.ReExecFrontier {
+fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
   match acc.pending {
     Some { diagnostics: nds } => FailClosed {
       reason: ReasonDiagnostics { diagnostics: nds }
     }
-    None => acc.frontier
+    v2.std.diagnostic.None => acc.frontier
   }
 }
 
 fn lens_frontier_dependency_kinds() -> List<v2.std.dependency.DependencyKind> {
-  [ProjectionDependsOn, VerifiedBy, v2.std.dependency.Contains]
+  [v2.std.dependency.ProjectionDependsOn, v2.std.dependency.VerifiedBy, v2.std.dependency.Contains]
 }
 
 fn affected_set_boundary_pure_receipt_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^affected_set_boundary_pure_receipt_payload } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn affected_set_dimension_not_read_receipt_node(dimension: v2.lens.affected_set.AffectedDimension) -> v2.std.node.Node {
+fn affected_set_dimension_not_read_receipt_node(dimension: AffectedDimension) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: dimension } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn dependency_kind_in_lens_frontier_policy(kind: v2.std.dependency.DependencyKind) -> Bool {
-  contains(
+  v2.std.algebra.contains(
     xs: lens_frontier_dependency_kinds(),
     item: kind,
     eq: fn(left, right) { left == right }
@@ -201,13 +201,13 @@ fn dependency_kind_in_lens_frontier_policy(kind: v2.std.dependency.DependencyKin
 
 fn change_for_edit(edit: v2.std.node.Edit) -> v2.std.change.Change {
   v2.std.change.Change {
-    kind: NodeChanged,
+    kind: v2.std.change.NodeChanged,
     subject: edit.replacement,
     at: edit.at
   }
 }
 
-fn affected_set_from_fold_acc(acc: v2.lens.affected_set.AffectedSetFoldAcc) -> v2.std.change.AffectedSet {
+fn affected_set_from_fold_acc(acc: AffectedSetFoldAcc) -> v2.std.change.AffectedSet {
   match acc {
     AffectedSetActive { dag: _, changes: changes, affected: affected, exclusions: exclusions } =>
       v2.std.change.AffectedSetProduced {
@@ -226,11 +226,11 @@ fn affected_set_from_fold_acc(acc: v2.lens.affected_set.AffectedSetFoldAcc) -> v
 
 fn append_change(changes: v2.std.change.ChangeSet, change: v2.std.change.Change) -> v2.std.change.ChangeSet {
   v2.std.change.ChangeSet {
-    changes: list_snoc_item(xs: changes.changes, item: change)
+    changes: v2.std.algebra.list_snoc_item(xs: changes.changes, item: change)
   }
 }
 
-fn add_change_to_affected_acc(acc: v2.lens.affected_set.AffectedSetFoldAcc, change: v2.std.change.Change) -> v2.lens.affected_set.AffectedSetFoldAcc {
+fn add_change_to_affected_acc(acc: AffectedSetFoldAcc, change: v2.std.change.Change) -> AffectedSetFoldAcc {
   match acc {
     AffectedSetActive { dag: dag, changes: changes, affected: affected, exclusions: exclusions } =>
       AffectedSetActive {
@@ -248,18 +248,18 @@ fn add_change_to_affected_acc(acc: v2.lens.affected_set.AffectedSetFoldAcc, chan
 }
 
 fn record_affected_dependency(
-  acc: v2.lens.affected_set.AffectedSetFoldAcc,
+  acc: AffectedSetFoldAcc,
   change: v2.std.change.Change,
   dependency: v2.std.dependency.DependencyView,
   target: v2.std.change.DependencyEndpoint
-) -> v2.lens.affected_set.AffectedSetFoldAcc {
+) -> AffectedSetFoldAcc {
   match acc {
     AffectedSetActive { dag: dag, changes: changes, affected: affected, exclusions: exclusions } =>
       if dependency_in_lens_frontier(dependency: dependency) {
         AffectedSetActive {
           dag: dag,
           changes: changes,
-          affected: list_snoc_item(xs: affected, item: v2.std.change.AffectedDependency {
+          affected: v2.std.algebra.list_snoc_item(xs: affected, item: v2.std.change.AffectedDependency {
               change: change,
               dependency: dependency,
               target: target
@@ -292,21 +292,21 @@ fn node_in_list(nodes: List<v2.std.node.Node>, needle: v2.std.node.Node) -> Bool
   })
 }
 
-fn affected_set_closure_step(acc: v2.lens.affected_set.AffectedSetClosureAcc, dependency: v2.std.dependency.DependencyView) -> v2.lens.affected_set.AffectedSetClosureAcc {
+fn affected_set_closure_step(acc: AffectedSetClosureAcc, dependency: v2.std.dependency.DependencyView) -> AffectedSetClosureAcc {
   if node_in_list(nodes: acc.frontier, needle: dependency.source) && (node_in_list(nodes: acc.frontier, needle: dependency.dependent) == false) {
     AffectedSetClosureAcc {
-      frontier: list_snoc_item(xs: acc.frontier, item: dependency.dependent),
-      dependencies: list_snoc_item(xs: acc.dependencies, item: v2.lens.affected_set.FrontierDependency {
+      frontier: v2.std.algebra.list_snoc_item(xs: acc.frontier, item: dependency.dependent),
+      dependencies: v2.std.algebra.list_snoc_item(xs: acc.dependencies, item: FrontierDependency {
           dependency: dependency,
-          target: DependencyDependent
+          target: v2.std.change.DependencyDependent
         })
     }
   } else if dependency_in_lens_frontier(dependency: dependency) && node_in_list(nodes: acc.frontier, needle: dependency.dependent) && (node_in_list(nodes: acc.frontier, needle: dependency.source) == false) {
     AffectedSetClosureAcc {
-      frontier: list_snoc_item(xs: acc.frontier, item: dependency.source),
-      dependencies: list_snoc_item(xs: acc.dependencies, item: v2.lens.affected_set.FrontierDependency {
+      frontier: v2.std.algebra.list_snoc_item(xs: acc.frontier, item: dependency.source),
+      dependencies: v2.std.algebra.list_snoc_item(xs: acc.dependencies, item: FrontierDependency {
           dependency: dependency,
-          target: DependencySource
+          target: v2.std.change.DependencySource
         })
     }
   } else {
@@ -314,7 +314,7 @@ fn affected_set_closure_step(acc: v2.lens.affected_set.AffectedSetClosureAcc, de
   }
 }
 
-fn affected_set_closure_pass(dependencies: List<v2.std.dependency.DependencyView>, acc: v2.lens.affected_set.AffectedSetClosureAcc) -> v2.lens.affected_set.AffectedSetClosureAcc {
+fn affected_set_closure_pass(dependencies: List<v2.std.dependency.DependencyView>, acc: AffectedSetClosureAcc) -> AffectedSetClosureAcc {
   fold(
     dependencies,
     init: acc,
@@ -325,20 +325,20 @@ fn affected_set_closure_pass(dependencies: List<v2.std.dependency.DependencyView
 }
 
 fn affected_set_closure_frontier_unchanged(
-  before: v2.lens.affected_set.AffectedSetClosureAcc,
-  after: v2.lens.affected_set.AffectedSetClosureAcc
+  before: AffectedSetClosureAcc,
+  after: AffectedSetClosureAcc
 ) -> Bool {
-  length(xs: before.frontier) == length(xs: after.frontier)
+  v2.std.algebra.length(xs: before.frontier) == v2.std.algebra.length(xs: after.frontier)
 }
 
 fn affected_set_closure_convergence_rounds(dependencies: List<v2.std.dependency.DependencyView>) -> List<v2.std.dependency.DependencyView> {
-  list_append(left: dependencies, right: dependencies)
+  v2.std.algebra.list_append(left: dependencies, right: dependencies)
 }
 
 fn affected_set_closure_fixpoint_step(
   dependencies: List<v2.std.dependency.DependencyView>,
-  state: v2.lens.affected_set.AffectedSetClosureFixpointState
-) -> v2.lens.affected_set.AffectedSetClosureFixpointState {
+  state: AffectedSetClosureFixpointState
+) -> AffectedSetClosureFixpointState {
   if state.stable {
     state
   } else {
@@ -350,11 +350,11 @@ fn affected_set_closure_fixpoint_step(
   }
 }
 
-fn affected_set_closure(dependencies: List<v2.std.dependency.DependencyView>, edit_locus: v2.std.node.Node) -> v2.lens.affected_set.AffectedSetClosureAcc {
+fn affected_set_closure(dependencies: List<v2.std.dependency.DependencyView>, edit_locus: v2.std.node.Node) -> AffectedSetClosureAcc {
   let state = fold(
     affected_set_closure_convergence_rounds(dependencies: dependencies),
-    init: v2.lens.affected_set.AffectedSetClosureFixpointState {
-      acc: v2.lens.affected_set.AffectedSetClosureAcc {
+    init: AffectedSetClosureFixpointState {
+      acc: AffectedSetClosureAcc {
         frontier: [edit_locus],
         dependencies: []
       },
@@ -367,8 +367,8 @@ fn affected_set_closure(dependencies: List<v2.std.dependency.DependencyView>, ed
   state.acc
 }
 
-fn affected_set_reading(graph: v2.compiler.inferred_tree.InferredTree, edit_locus: v2.std.node.Node) -> v2.lens.affected_set.AffectedSetReading {
-  let dependency_reading = dependency_lens(root: graph.root)
+fn affected_set_reading(graph: v2.compiler.inferred_tree.InferredTree, edit_locus: v2.std.node.Node) -> AffectedSetReading {
+  let dependency_reading = v2.std.dependency.dependency_lens(root: graph.root)
   let closure = affected_set_closure(dependencies: dependency_reading, edit_locus: edit_locus)
   AffectedSetReading {
     edit_locus: edit_locus,
@@ -379,47 +379,47 @@ fn affected_set_reading(graph: v2.compiler.inferred_tree.InferredTree, edit_locu
 
 fn append_changed_node_subjects(nodes: List<v2.std.node.Node>, changes: v2.std.change.ChangeSet) -> List<v2.std.node.Node> {
   fold(changes.changes, init: nodes, f: fn(acc, change) {
-    list_snoc_item(xs: acc, item: change.subject)
+    v2.std.algebra.list_snoc_item(xs: acc, item: change.subject)
   })
 }
 
 fn append_affected_dependency_nodes(nodes: List<v2.std.node.Node>, affected: List<v2.std.change.AffectedDependency>) -> List<v2.std.node.Node> {
   fold(affected, init: nodes, f: fn(acc, row) {
-    list_snoc_item(
+    v2.std.algebra.list_snoc_item(
       xs: acc,
       item: dependency_endpoint_node(dependency: row.dependency, target: row.target)
     )
   })
 }
 
-fn affected_set_rerun_nodes(affected_set_value: v2.std.change.AffectedSet) -> v2.lens.affected_set.RerunNodeSet {
+fn affected_set_rerun_nodes(affected_set_value: v2.std.change.AffectedSet) -> RerunNodeSet {
   match affected_set_value {
-    AffectedSetProduced { changes: changes, affected: affected, exclusions: _, restricted_to: _ } =>
+    v2.std.change.AffectedSetProduced { changes: changes, affected: affected, exclusions: _, restricted_to: _ } =>
       RerunNodeSetProduced {
         nodes: append_affected_dependency_nodes(
           nodes: append_changed_node_subjects(nodes: [], changes: changes),
           affected: affected
         )
       }
-    AffectedSetFailClosed { changes: _, evidence: evidence } =>
+    v2.std.change.AffectedSetFailClosed { changes: _, evidence: evidence } =>
       RerunNodeSetFailClosed {
         evidence: evidence
       }
   }
 }
 
-fn affected_set_reading_rerun_nodes(reading: v2.lens.affected_set.AffectedSetReading) -> v2.lens.affected_set.RerunNodeSet {
+fn affected_set_reading_rerun_nodes(reading: AffectedSetReading) -> RerunNodeSet {
   RerunNodeSetProduced {
     nodes: reading.affected
   }
 }
 
 fn record_affected_exclusion(
-  acc: v2.lens.affected_set.AffectedSetFoldAcc,
+  acc: AffectedSetFoldAcc,
   change: v2.std.change.Change,
   dependency: v2.std.dependency.DependencyView,
-  proof: v2.lens.affected_set.PropagationExclusionProof
-) -> v2.lens.affected_set.AffectedSetFoldAcc {
+  proof: PropagationExclusionProof
+) -> AffectedSetFoldAcc {
   match acc {
     AffectedSetActive { dag: dag, changes: changes, affected: affected, exclusions: exclusions } =>
       match proof {
@@ -428,7 +428,7 @@ fn record_affected_exclusion(
             dag: dag,
             changes: changes,
             affected: affected,
-            exclusions: list_snoc_item(xs: exclusions, item: v2.std.change.AffectedExclusion {
+            exclusions: v2.std.algebra.list_snoc_item(xs: exclusions, item: v2.std.change.AffectedExclusion {
                 change: change,
                 dependency: dependency,
                 usage_site: usage_site,
@@ -444,7 +444,7 @@ fn record_affected_exclusion(
   }
 }
 
-fn fail_affected_set_with_reason(acc: v2.lens.affected_set.AffectedSetFoldAcc, reason: v2.std.node.Symbol) -> v2.lens.affected_set.AffectedSetFoldAcc {
+fn fail_affected_set_with_reason(acc: AffectedSetFoldAcc, reason: v2.std.node.Symbol) -> AffectedSetFoldAcc {
   match acc {
     AffectedSetActive { dag: _, changes: changes, affected: _, exclusions: _ } =>
       AffectedSetFailed {
@@ -459,7 +459,7 @@ fn fail_affected_set_with_reason(acc: v2.lens.affected_set.AffectedSetFoldAcc, r
   }
 }
 
-fn fail_affected_set_with_diagnostics(acc: v2.lens.affected_set.AffectedSetFoldAcc, diagnostics: v2.std.diagnostic.NonEmptyDiagnostics) -> v2.lens.affected_set.AffectedSetFoldAcc {
+fn fail_affected_set_with_diagnostics(acc: AffectedSetFoldAcc, diagnostics: v2.std.diagnostic.NonEmptyDiagnostics) -> AffectedSetFoldAcc {
   match acc {
     AffectedSetActive { dag: _, changes: changes, affected: _, exclusions: _ } =>
       AffectedSetFailed {
@@ -474,7 +474,7 @@ fn fail_affected_set_with_diagnostics(acc: v2.lens.affected_set.AffectedSetFoldA
   }
 }
 
-fn root_key(subject: v2.std.node.Node, dimension: v2.lens.affected_set.AffectedDimension) -> v2.lens.affected_set.ExclusionKey {
+fn root_key(subject: v2.std.node.Node, dimension: AffectedDimension) -> ExclusionKey {
   ExclusionKey {
     at: subject,
     dimension: dimension
@@ -483,12 +483,12 @@ fn root_key(subject: v2.std.node.Node, dimension: v2.lens.affected_set.AffectedD
 
 fn dependency_endpoint_node(dependency: v2.std.dependency.DependencyView, target: v2.std.change.DependencyEndpoint) -> v2.std.node.Node {
   match target {
-    DependencySource => dependency.source
-    DependencyDependent => dependency.dependent
+    v2.std.change.DependencySource => dependency.source
+    v2.std.change.DependencyDependent => dependency.dependent
   }
 }
 
-fn frontier_dependency_key(dependency: v2.lens.affected_set.FrontierDependency, dimension: v2.lens.affected_set.AffectedDimension) -> v2.lens.affected_set.ExclusionKey {
+fn frontier_dependency_key(dependency: FrontierDependency, dimension: AffectedDimension) -> ExclusionKey {
   ExclusionKey {
     at: dependency_endpoint_node(
       dependency: dependency.dependency,
@@ -498,36 +498,36 @@ fn frontier_dependency_key(dependency: v2.lens.affected_set.FrontierDependency, 
   }
 }
 
-fn mark_rerun(frontier: v2.lens.affected_set.ReExecFrontier, key: v2.lens.affected_set.ExclusionKey) -> v2.lens.affected_set.ReExecFrontier {
+fn mark_rerun(frontier: ReExecFrontier, key: ExclusionKey) -> ReExecFrontier {
   match frontier {
     FailClosed { reason: e } => FailClosed { reason: e }
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
       ChangedSubgraphFrontier {
         boundary_exclusions: boundary_exclusions,
-        decisions: map_insert(decisions, key, Rerun)
+        decisions: v2.std.collection.map_insert(decisions, key, Rerun)
       }
   }
 }
 
-fn mark_boundary_excluded(frontier: v2.lens.affected_set.ReExecFrontier, edit: v2.std.node.Edit, proof: v2.lens.affected_set.BoundaryExclusionProof) -> v2.lens.affected_set.ReExecFrontier {
+fn mark_boundary_excluded(frontier: ReExecFrontier, edit: v2.std.node.Edit, proof: BoundaryExclusionProof) -> ReExecFrontier {
   match frontier {
     FailClosed { reason: e } => FailClosed { reason: e }
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
       ChangedSubgraphFrontier {
-        boundary_exclusions: list_snoc_item(xs: boundary_exclusions, item: v2.lens.affected_set.BoundaryExclusion { edit: edit, proof: proof }),
+        boundary_exclusions: v2.std.algebra.list_snoc_item(xs: boundary_exclusions, item: BoundaryExclusion { edit: edit, proof: proof }),
         decisions: decisions
       }
   }
 }
 
-fn mark_excluded(frontier: v2.lens.affected_set.ReExecFrontier, key: v2.lens.affected_set.ExclusionKey, proof: v2.lens.affected_set.PropagationExclusionProof) -> v2.lens.affected_set.ReExecFrontier {
+fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: PropagationExclusionProof) -> ReExecFrontier {
   match frontier {
     FailClosed { reason: e } => FailClosed { reason: e }
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
 
       match v2.std.collection.map_get(decisions, key) {
-        Accepted { value: opt, diagnostics: _ } => match opt {
-          Present { value: decision } =>
+        v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } => match opt {
+          v2.std.collection.Present { value: decision } =>
             match decision {
               Rerun =>
                 ChangedSubgraphFrontier {
@@ -537,35 +537,35 @@ fn mark_excluded(frontier: v2.lens.affected_set.ReExecFrontier, key: v2.lens.aff
               Excluded { first: first, rest: rest } =>
                 ChangedSubgraphFrontier {
                   boundary_exclusions: boundary_exclusions,
-                  decisions: map_insert(decisions, key, Excluded { first: first, rest: list_snoc_item(xs: rest, item: proof) })
+                  decisions: v2.std.collection.map_insert(decisions, key, Excluded { first: first, rest: v2.std.algebra.list_snoc_item(xs: rest, item: proof) })
                 }
             }
-          Absent =>
+          v2.std.collection.Absent =>
             ChangedSubgraphFrontier {
               boundary_exclusions: boundary_exclusions,
-              decisions: map_insert(decisions, key, Excluded { first: proof, rest: [] })
+              decisions: v2.std.collection.map_insert(decisions, key, Excluded { first: proof, rest: [] })
             }
         }
 
-        Rejected { diagnostics: d } => mark_whole_dag_diagnostics(diagnostics: d)
+        v2.std.diagnostic.Rejected { diagnostics: d } => mark_whole_dag_diagnostics(diagnostics: d)
       }
   }
 }
 
-fn mark_whole_dag(reason: v2.std.node.Symbol) -> v2.lens.affected_set.ReExecFrontier {
+fn mark_whole_dag(reason: v2.std.node.Symbol) -> ReExecFrontier {
   FailClosed { reason: ReasonSymbol { reason: reason } }
 }
 
-fn mark_whole_dag_diagnostics(diagnostics: v2.std.diagnostic.NonEmptyDiagnostics) -> v2.lens.affected_set.ReExecFrontier {
+fn mark_whole_dag_diagnostics(diagnostics: v2.std.diagnostic.NonEmptyDiagnostics) -> ReExecFrontier {
   FailClosed { reason: ReasonDiagnostics { diagnostics: diagnostics } }
 }
-fn mark_whole_dag_diagnostic(diagnostic: v2.std.diagnostic.Diagnostic) -> v2.lens.affected_set.ReExecFrontier {
+fn mark_whole_dag_diagnostic(diagnostic: v2.std.diagnostic.Diagnostic) -> ReExecFrontier {
   mark_whole_dag_diagnostics(
-    diagnostics: diagnostics_singleton(d: diagnostic)
+    diagnostics: v2.std.diagnostic.diagnostics_singleton(d: diagnostic)
   )
 }
 
-fn boundary_receipt(read_model: v2.lens.affected_set.AffectedSetRead, dag: v2.lens.affected_set.Dag, path: v2.std.node.Path, replacement: v2.std.node.Node) -> v2.lens.affected_set.BoundaryReceipt {
+fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: v2.std.node.Path, replacement: v2.std.node.Node) -> BoundaryReceipt {
   match read_model.boundary.boundary_hash_receipt(dag, path, replacement) {
     HashUnchangedPure { content_hash: h } =>
       BoundaryPruned {
@@ -579,38 +579,38 @@ fn boundary_receipt(read_model: v2.lens.affected_set.AffectedSetRead, dag: v2.le
 }
 
 fn frontier_receipt(
-  read_model: v2.lens.affected_set.AffectedSetRead,
-  dag: v2.lens.affected_set.Dag,
+  read_model: AffectedSetRead,
+  dag: Dag,
   edit: v2.std.node.Edit,
-  dimension: v2.lens.affected_set.AffectedDimension
-) -> v2.lens.affected_set.FrontierReceipt {
+  dimension: AffectedDimension
+) -> FrontierReceipt {
   read_model.frontier.proven_transitive_dependency_frontier(
     dag,
-    v2.lens.affected_set.EditDimension { edit: edit, dimension: dimension }
+    EditDimension { edit: edit, dimension: dimension }
   )
 }
 
 fn propagation_receipt(
-  read_model: v2.lens.affected_set.AffectedSetRead,
-  dag: v2.lens.affected_set.Dag,
+  read_model: AffectedSetRead,
+  dag: Dag,
   edit: v2.std.node.Edit,
-  dimension: v2.lens.affected_set.AffectedDimension,
+  dimension: AffectedDimension,
   dependency: v2.std.dependency.DependencyView
-) -> v2.lens.affected_set.PropagationReceipt {
+) -> PropagationReceipt {
   read_model.propagation_receipt(
     dag,
-    v2.lens.affected_set.EditDimension { edit: edit, dimension: dimension },
+    EditDimension { edit: edit, dimension: dimension },
     dependency
   )
 }
 
 fn expand_dimension(
-  read_model: v2.lens.affected_set.AffectedSetRead,
-  dag: v2.lens.affected_set.Dag,
-  frontier: v2.lens.affected_set.ReExecFrontier,
+  read_model: AffectedSetRead,
+  dag: Dag,
+  frontier: ReExecFrontier,
   edit: v2.std.node.Edit,
-  dimension: v2.lens.affected_set.AffectedDimension
-) -> v2.lens.affected_set.ReExecFrontier {
+  dimension: AffectedDimension
+) -> ReExecFrontier {
   match frontier {
     FailClosed { reason: e } => FailClosed { reason: e }
     ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
@@ -645,11 +645,11 @@ fn expand_dimension(
 }
 
 fn seed_edit_fold_acc_live(
-  read_model: v2.lens.affected_set.AffectedSetRead,
-  post_edit_dag: fn(v2.lens.affected_set.Dag, Edit) -> v2.lens.affected_set.AffectedPostEditDagRead,
-  acc: v2.lens.affected_set.AffectedFoldAcc,
+  read_model: AffectedSetRead,
+  post_edit_dag: fn(Dag, v2.std.node.Edit) -> AffectedPostEditDagRead,
+  acc: AffectedFoldAcc,
   edit: v2.std.node.Edit
-) -> v2.lens.affected_set.AffectedFoldAcc {
+) -> AffectedFoldAcc {
   match boundary_receipt(
     read_model: read_model,
     dag: acc.dag,
@@ -664,7 +664,7 @@ fn seed_edit_fold_acc_live(
       }
     BoundaryExpands =>
       match post_edit_dag(acc.dag, edit).outcome {
-        Accepted { value: next_dag, diagnostics: ad } =>
+        v2.std.diagnostic.Accepted { value: next_dag, diagnostics: ad } =>
           AffectedFoldAcc {
             dag: next_dag,
             frontier: expand_changed_dimensions(
@@ -676,7 +676,7 @@ fn seed_edit_fold_acc_live(
             ),
             pending: fold_pending(acc: acc, next: ad)
           }
-        Rejected { diagnostics: nds } =>
+        v2.std.diagnostic.Rejected { diagnostics: nds } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostics(diagnostics: nds),
@@ -685,13 +685,13 @@ fn seed_edit_fold_acc_live(
       }
     BoundaryUnknown { reason: boundary_reason } =>
       match post_edit_dag(acc.dag, edit).outcome {
-        Accepted { value: next_dag, diagnostics: ad } =>
+        v2.std.diagnostic.Accepted { value: next_dag, diagnostics: ad } =>
           AffectedFoldAcc {
             dag: next_dag,
             frontier: mark_whole_dag(reason: boundary_reason),
             pending: fold_pending(acc: acc, next: ad)
           }
-        Rejected { diagnostics: nds } =>
+        v2.std.diagnostic.Rejected { diagnostics: nds } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostics(diagnostics: nds),
@@ -702,12 +702,12 @@ fn seed_edit_fold_acc_live(
 }
 
 fn expand_changed_dimensions(
-  read_model: v2.lens.affected_set.AffectedSetRead,
-  boundary_dag: v2.lens.affected_set.Dag,
-  frontier_dag: v2.lens.affected_set.Dag,
-  frontier: v2.lens.affected_set.ReExecFrontier,
+  read_model: AffectedSetRead,
+  boundary_dag: Dag,
+  frontier_dag: Dag,
+  frontier: ReExecFrontier,
   edit: v2.std.node.Edit
-) -> v2.lens.affected_set.ReExecFrontier {
+) -> ReExecFrontier {
   match read_model.boundary.changed_dimension_receipt(boundary_dag, edit) {
     ChangedDimensions { first: first_dimension, rest: rest_dimensions } =>
       fold(rest_dimensions, init: expand_dimension(
@@ -731,11 +731,11 @@ fn expand_changed_dimensions(
 }
 
 fn seed_edit_fold_acc(
-  read_model: v2.lens.affected_set.AffectedSetRead,
-  post_edit_dag: fn(v2.lens.affected_set.Dag, Edit) -> v2.lens.affected_set.AffectedPostEditDagRead,
-  acc: v2.lens.affected_set.AffectedFoldAcc,
+  read_model: AffectedSetRead,
+  post_edit_dag: fn(Dag, v2.std.node.Edit) -> AffectedPostEditDagRead,
+  acc: AffectedFoldAcc,
   edit: v2.std.node.Edit
-) -> v2.lens.affected_set.AffectedFoldAcc {
+) -> AffectedFoldAcc {
   match acc.frontier {
     FailClosed { reason: _ } => acc
     ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
@@ -749,12 +749,12 @@ fn seed_edit_fold_acc(
 }
 
 fn expand_affected_dimension(
-  read_model: v2.lens.affected_set.AffectedSetRead,
-  dag: v2.lens.affected_set.Dag,
-  acc: v2.lens.affected_set.AffectedSetFoldAcc,
+  read_model: AffectedSetRead,
+  dag: Dag,
+  acc: AffectedSetFoldAcc,
   edit: v2.std.node.Edit,
-  dimension: v2.lens.affected_set.AffectedDimension
-) -> v2.lens.affected_set.AffectedSetFoldAcc {
+  dimension: AffectedDimension
+) -> AffectedSetFoldAcc {
   match frontier_receipt(read_model: read_model, dag: dag, edit: edit, dimension: dimension) {
     FrontierProduced { dependencies: dependencies } =>
       fold(dependencies, init: acc, f: fn(acc2, frontier_dependency) {
@@ -788,18 +788,18 @@ fn expand_affected_dimension(
     FrontierRejected { diagnostic: d } =>
       fail_affected_set_with_diagnostics(
         acc: acc,
-        diagnostics: diagnostics_singleton(d: d)
+        diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d)
       )
   }
 }
 
 fn expand_affected_dimensions(
-  read_model: v2.lens.affected_set.AffectedSetRead,
-  boundary_dag: v2.lens.affected_set.Dag,
-  frontier_dag: v2.lens.affected_set.Dag,
-  acc: v2.lens.affected_set.AffectedSetFoldAcc,
+  read_model: AffectedSetRead,
+  boundary_dag: Dag,
+  frontier_dag: Dag,
+  acc: AffectedSetFoldAcc,
   edit: v2.std.node.Edit
-) -> v2.lens.affected_set.AffectedSetFoldAcc {
+) -> AffectedSetFoldAcc {
   match read_model.boundary.changed_dimension_receipt(boundary_dag, edit) {
     ChangedDimensions { first: first_dimension, rest: rest_dimensions } =>
       fold(rest_dimensions, init: expand_affected_dimension(
@@ -823,11 +823,11 @@ fn expand_affected_dimensions(
 }
 
 fn seed_affected_set_fold_acc_live(
-  read_model: v2.lens.affected_set.AffectedSetRead,
-  post_edit_dag: fn(v2.lens.affected_set.Dag, Edit) -> v2.lens.affected_set.AffectedPostEditDagRead,
-  acc: v2.lens.affected_set.AffectedSetFoldAcc,
+  read_model: AffectedSetRead,
+  post_edit_dag: fn(Dag, v2.std.node.Edit) -> AffectedPostEditDagRead,
+  acc: AffectedSetFoldAcc,
   edit: v2.std.node.Edit
-) -> v2.lens.affected_set.AffectedSetFoldAcc {
+) -> AffectedSetFoldAcc {
   let change = change_for_edit(edit: edit)
   match add_change_to_affected_acc(acc: acc, change: change) {
     AffectedSetFailed { changes: changes, evidence: evidence } =>
@@ -853,7 +853,7 @@ fn seed_affected_set_fold_acc_live(
         }
         BoundaryExpands =>
           match post_edit_dag(active_dag, edit).outcome {
-            Accepted { value: next_dag, diagnostics: ad } =>
+            v2.std.diagnostic.Accepted { value: next_dag, diagnostics: ad } =>
               match ad {
                 Some { diagnostics: nds } =>
                   fail_affected_set_with_diagnostics(
@@ -865,7 +865,7 @@ fn seed_affected_set_fold_acc_live(
                     },
                     diagnostics: nds
                   )
-                None =>
+                v2.std.diagnostic.None =>
                   expand_affected_dimensions(
                     read_model: read_model,
                     boundary_dag: active_dag,
@@ -879,7 +879,7 @@ fn seed_affected_set_fold_acc_live(
                     edit: edit
                   )
               }
-            Rejected { diagnostics: nds } =>
+            v2.std.diagnostic.Rejected { diagnostics: nds } =>
               fail_affected_set_with_diagnostics(
                 acc: AffectedSetActive {
                   dag: active_dag,
@@ -905,9 +905,9 @@ fn seed_affected_set_fold_acc_live(
 }
 
 fn affected_set_from_diff(
-  read_model: v2.lens.affected_set.AffectedSetRead,
-  post_edit_dag: fn(v2.lens.affected_set.Dag, Edit) -> v2.lens.affected_set.AffectedPostEditDagRead,
-  dag: v2.lens.affected_set.Dag,
+  read_model: AffectedSetRead,
+  post_edit_dag: fn(Dag, v2.std.node.Edit) -> AffectedPostEditDagRead,
+  dag: Dag,
   diff: v2.std.node.Diff
 ) -> Witness<v2.std.change.AffectedSet> {
   v2.std.witness.Holds {
@@ -925,11 +925,11 @@ fn affected_set_from_diff(
 }
 
 fn re_exec_frontier_from_diff(
-  read_model: v2.lens.affected_set.AffectedSetRead,
-  post_edit_dag: fn(v2.lens.affected_set.Dag, Edit) -> v2.lens.affected_set.AffectedPostEditDagRead,
-  dag: v2.lens.affected_set.Dag,
+  read_model: AffectedSetRead,
+  post_edit_dag: fn(Dag, v2.std.node.Edit) -> AffectedPostEditDagRead,
+  dag: Dag,
   diff: v2.std.node.Diff
-) -> Witness<v2.lens.affected_set.ReExecFrontier> {
+) -> Witness<ReExecFrontier> {
   v2.std.witness.Holds {
     value: frontier_from_fold_acc(
       acc: fold(diff.edits, init: empty_affected_fold_acc(dag: dag), f: fn(acc, edit) {
@@ -944,9 +944,9 @@ fn re_exec_frontier_from_diff(
   }
 }
 
-fn canonical_boundary_exclusion_receipt(node: v2.std.node.Node, h: v2.std.node.Hash) -> v2.lens.affected_set.BoundaryReceipt {
-  match find_child_by_name(root: node, name: ^affected_set_boundary_pure_receipt_edge) {
-    Accepted { value: receipt, diagnostics: _ } =>
+fn canonical_boundary_exclusion_receipt(node: v2.std.node.Node, h: v2.std.node.Hash) -> BoundaryReceipt {
+  match v2.lens.application.find_child_by_name(root: node, name: ^affected_set_boundary_pure_receipt_edge) {
+    v2.std.diagnostic.Accepted { value: receipt, diagnostics: _ } =>
       if receipt == affected_set_boundary_pure_receipt_node() {
         BoundaryPruned {
           proof: UnchangedPureBoundary {
@@ -956,16 +956,16 @@ fn canonical_boundary_exclusion_receipt(node: v2.std.node.Node, h: v2.std.node.H
       } else {
         BoundaryUnknown { reason: ^affected_set_reason_boundary_purity_unproven }
       }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       BoundaryUnknown { reason: ^affected_set_reason_boundary_purity_unproven }
   }
 }
 
-fn canonical_boundary_hash_receipt(dag: v2.lens.affected_set.Dag, path: v2.std.node.Path, replacement: v2.std.node.Node) -> v2.lens.affected_set.HashReceipt {
-  match subterm_at(root: dag, path: path) {
-    Accepted { value: current, diagnostics: _ } =>
-      if content_hash(n: current) == content_hash(n: replacement) {
-        match canonical_boundary_exclusion_receipt(node: current, h: content_hash(n: current)) {
+fn canonical_boundary_hash_receipt(dag: Dag, path: v2.std.node.Path, replacement: v2.std.node.Node) -> HashReceipt {
+  match v2.lens.application.subterm_at(root: dag, path: path) {
+    v2.std.diagnostic.Accepted { value: current, diagnostics: _ } =>
+      if v2.std.node.content_hash(n: current) == v2.std.node.content_hash(n: replacement) {
+        match canonical_boundary_exclusion_receipt(node: current, h: v2.std.node.content_hash(n: current)) {
           BoundaryPruned { proof: UnchangedPureBoundary { content_hash: h } } =>
             HashUnchangedPure { content_hash: h }
           BoundaryUnknown { reason: r } =>
@@ -976,76 +976,76 @@ fn canonical_boundary_hash_receipt(dag: v2.lens.affected_set.Dag, path: v2.std.n
       } else {
         HashChanged
       }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       HashUnknown { reason: ^affected_set_reason_boundary_path_unresolved }
   }
 }
 
-fn connective_to_dimension_family(connective: v2.std.node.Connective) -> v2.lens.affected_set.AffectedDimension {
+fn connective_to_dimension_family(connective: v2.std.node.Connective) -> AffectedDimension {
   match connective {
-    Atom { identity: identity } => identity
-    Conj => ^canonical_tag_conj
-    Disj => ^canonical_tag_disj
-    Arrow => ^canonical_tag_arrow
-    Cardinality => ^canonical_tag_cardinality
-    Instantiation => ^canonical_tag_instantiation
+    v2.std.node.Atom { identity: identity } => identity
+    v2.std.node.Conj => ^canonical_tag_conj
+    v2.std.node.Disj => ^canonical_tag_disj
+    v2.std.node.Arrow => ^canonical_tag_arrow
+    v2.std.node.Cardinality => ^canonical_tag_cardinality
+    v2.std.node.Instantiation => ^canonical_tag_instantiation
   }
 }
 
-fn behavior_to_dimension_family(behavior: v2.std.node.Behavior) -> v2.lens.affected_set.AffectedDimension {
+fn behavior_to_dimension_family(behavior: v2.std.node.Behavior) -> AffectedDimension {
   match behavior {
-    Value => ^canonical_tag_value
-    Transform => ^canonical_tag_transform
-    Branch => ^canonical_tag_branch
-    Loop => ^canonical_tag_loop
-    Bind => ^canonical_tag_bind
+    v2.std.node.Value => ^canonical_tag_value
+    v2.std.node.Transform => ^canonical_tag_transform
+    v2.std.node.Branch => ^canonical_tag_branch
+    v2.std.node.Loop => ^canonical_tag_loop
+    v2.std.node.Bind => ^canonical_tag_bind
     Match => ^canonical_tag_match
   }
 }
 
-fn node_root_dimension_family(node: v2.std.node.Node) -> List<v2.lens.affected_set.AffectedDimension> {
+fn node_root_dimension_family(node: v2.std.node.Node) -> List<AffectedDimension> {
   match node.kind {
-    TypeNode { connective: connective } =>
+    v2.std.node.TypeNode { connective: connective } =>
       [connective_to_dimension_family(connective: connective)]
-    ComputationNode { behavior: behavior } =>
+    v2.std.node.ComputationNode { behavior: behavior } =>
       [behavior_to_dimension_family(behavior: behavior)]
   }
 }
 
-fn dimension_in_list(xs: List<v2.lens.affected_set.AffectedDimension>, item: v2.lens.affected_set.AffectedDimension) -> Bool {
-  contains(xs: xs, item: item, eq: fn(left, right) { left == right })
+fn dimension_in_list(xs: List<AffectedDimension>, item: AffectedDimension) -> Bool {
+  v2.std.algebra.contains(xs: xs, item: item, eq: fn(left, right) { left == right })
 }
 
-fn union_dimension_into(acc: List<v2.lens.affected_set.AffectedDimension>, dim: v2.lens.affected_set.AffectedDimension) -> List<v2.lens.affected_set.AffectedDimension> {
+fn union_dimension_into(acc: List<AffectedDimension>, dim: AffectedDimension) -> List<AffectedDimension> {
   if dimension_in_list(xs: acc, item: dim) {
     acc
   } else {
-    list_snoc_item(xs: acc, item: dim)
+    v2.std.algebra.list_snoc_item(xs: acc, item: dim)
   }
 }
 
-fn union_dimension_lists(left: List<v2.lens.affected_set.AffectedDimension>, right: List<v2.lens.affected_set.AffectedDimension>) -> List<v2.lens.affected_set.AffectedDimension> {
+fn union_dimension_lists(left: List<AffectedDimension>, right: List<AffectedDimension>) -> List<AffectedDimension> {
   fold(right, init: left, f: fn(acc, dim) {
     union_dimension_into(acc: acc, dim: dim)
   })
 }
 
-fn list_to_changed_dimension_receipt(dims: List<v2.lens.affected_set.AffectedDimension>) -> v2.lens.affected_set.ChangedDimensionReceipt {
-  match list_at_optional(xs: dims, index: 0) {
-    Present { value: first } =>
-      match list_tail(xs: dims) {
-        TailFound { tail: rest } =>
+fn list_to_changed_dimension_receipt(dims: List<AffectedDimension>) -> ChangedDimensionReceipt {
+  match v2.std.collection.list_at_optional(xs: dims, index: 0) {
+    v2.std.collection.Present { value: first } =>
+      match v2.std.algebra.list_tail(xs: dims) {
+        v2.std.algebra.TailFound { tail: rest } =>
           ChangedDimensions { first: first, rest: rest }
-        TailAbsent =>
+        v2.std.algebra.TailAbsent =>
           ChangedDimensions { first: first, rest: [] }
       }
-    Absent =>
+    v2.std.collection.Absent =>
       ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
   }
 }
 
-fn changed_dimension_families_union(before: v2.std.node.Node, after: v2.std.node.Node) -> v2.lens.affected_set.ChangedDimensionReceipt {
-  if content_hash(n: before) == content_hash(n: after) {
+fn changed_dimension_families_union(before: v2.std.node.Node, after: v2.std.node.Node) -> ChangedDimensionReceipt {
+  if v2.std.node.content_hash(n: before) == v2.std.node.content_hash(n: after) {
     ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
   } else {
     list_to_changed_dimension_receipt(
@@ -1057,18 +1057,18 @@ fn changed_dimension_families_union(before: v2.std.node.Node, after: v2.std.node
   }
 }
 
-fn canonical_changed_dimension_receipt(dag: v2.lens.affected_set.Dag, edit: v2.std.node.Edit) -> v2.lens.affected_set.ChangedDimensionReceipt {
-  match subterm_at(root: dag, path: edit.at) {
-    Accepted { value: current, diagnostics: _ } =>
+fn canonical_changed_dimension_receipt(dag: Dag, edit: v2.std.node.Edit) -> ChangedDimensionReceipt {
+  match v2.lens.application.subterm_at(root: dag, path: edit.at) {
+    v2.std.diagnostic.Accepted { value: current, diagnostics: _ } =>
       changed_dimension_families_union(before: current, after: edit.replacement)
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
   }
 }
 
-fn canonical_ancestor_frame_dependencies(frame: v2.lens.application.AncestorFrame) -> v2.lens.affected_set.FrontierReceipt {
-  match find_child_by_name(root: frame.ancestor, name: frame.step) {
-    Accepted { value: child, diagnostics: _ } =>
+fn canonical_ancestor_frame_dependencies(frame: v2.lens.application.AncestorFrame) -> FrontierReceipt {
+  match v2.lens.application.find_child_by_name(root: frame.ancestor, name: frame.step) {
+    v2.std.diagnostic.Accepted { value: child, diagnostics: _ } =>
       FrontierProduced {
         dependencies: [
           FrontierDependency {
@@ -1078,25 +1078,25 @@ fn canonical_ancestor_frame_dependencies(frame: v2.lens.application.AncestorFram
               kind: v2.std.dependency.Contains,
               usage_site: child
             },
-            target: DependencySource
+            target: v2.std.change.DependencySource
           }
         ]
       }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       FrontierUnknown { reason: ^affected_set_reason_frontier_ancestor_unresolved }
   }
 }
 
-fn frontier_dependency_from_dependency_view(dependency: v2.std.dependency.DependencyView) -> v2.lens.affected_set.FrontierDependency {
+fn frontier_dependency_from_dependency_view(dependency: v2.std.dependency.DependencyView) -> FrontierDependency {
   FrontierDependency {
     dependency: dependency,
-    target: DependencyDependent
+    target: v2.std.change.DependencyDependent
   }
 }
 
-fn frontier_dependencies_from_dependency_views(dependencies: List<v2.std.dependency.DependencyView>) -> List<v2.lens.affected_set.FrontierDependency> {
+fn frontier_dependencies_from_dependency_views(dependencies: List<v2.std.dependency.DependencyView>) -> List<FrontierDependency> {
   fold(dependencies, init: [], f: fn(acc, dependency) {
-    list_snoc_item(
+    v2.std.algebra.list_snoc_item(
       xs: acc,
       item: frontier_dependency_from_dependency_view(dependency: dependency)
     )
@@ -1104,15 +1104,15 @@ fn frontier_dependencies_from_dependency_views(dependencies: List<v2.std.depende
 }
 
 fn append_canonical_ancestor_dependencies(
-  acc: v2.lens.affected_set.FrontierReceipt,
+  acc: FrontierReceipt,
   frame: v2.lens.application.AncestorFrame
-) -> v2.lens.affected_set.FrontierReceipt {
+) -> FrontierReceipt {
   match acc {
     FrontierProduced { dependencies: dependencies } =>
       match canonical_ancestor_frame_dependencies(frame: frame) {
         FrontierProduced { dependencies: frame_dependencies } =>
           FrontierProduced {
-            dependencies: list_append(
+            dependencies: v2.std.algebra.list_append(
               left: dependencies,
               right: frame_dependencies
             )
@@ -1129,16 +1129,16 @@ fn append_canonical_ancestor_dependencies(
   }
 }
 
-fn canonical_ancestor_dependencies(frames: List<v2.lens.application.AncestorFrame>) -> v2.lens.affected_set.FrontierReceipt {
+fn canonical_ancestor_dependencies(frames: List<v2.lens.application.AncestorFrame>) -> FrontierReceipt {
   fold(frames, init: FrontierProduced { dependencies: [] }, f: fn(acc, frame) {
     append_canonical_ancestor_dependencies(acc: acc, frame: frame)
   })
 }
 
-fn canonical_region_dependencies(dag: v2.lens.affected_set.Dag, walk: v2.lens.application.AncestorWalk) -> v2.lens.affected_set.FrontierReceipt {
+fn canonical_region_dependencies(dag: Dag, walk: v2.lens.application.AncestorWalk) -> FrontierReceipt {
   match canonical_ancestor_dependencies(frames: walk.frames) {
     FrontierProduced { dependencies: _ } =>
-      let closure = affected_set_closure(dependencies: dependency_lens(root: dag), edit_locus: walk.current)
+      let closure = affected_set_closure(dependencies: v2.std.dependency.dependency_lens(root: dag), edit_locus: walk.current)
       FrontierProduced {
         dependencies: closure.dependencies
       }
@@ -1149,25 +1149,25 @@ fn canonical_region_dependencies(dag: v2.lens.affected_set.Dag, walk: v2.lens.ap
   }
 }
 
-fn canonical_transitive_frontier(dag: v2.lens.affected_set.Dag, edit_dimension: v2.lens.affected_set.EditDimension) -> v2.lens.affected_set.FrontierReceipt {
-  match collect_ancestor_frames(root: dag, steps: edit_dimension.edit.at.steps) {
-    Accepted { value: walk, diagnostics: _ } =>
+fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> FrontierReceipt {
+  match v2.lens.application.collect_ancestor_frames(root: dag, steps: edit_dimension.edit.at.steps) {
+    v2.std.diagnostic.Accepted { value: walk, diagnostics: _ } =>
       canonical_region_dependencies(dag: dag, walk: walk)
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       FrontierUnknown { reason: ^affected_set_reason_frontier_path_unresolved }
   }
 }
 
 fn canonical_propagation_receipt(
-  dag: v2.lens.affected_set.Dag,
-  edit_dimension: v2.lens.affected_set.EditDimension,
+  dag: Dag,
+  edit_dimension: EditDimension,
   dependency: v2.std.dependency.DependencyView
-) -> v2.lens.affected_set.PropagationReceipt {
+) -> PropagationReceipt {
   if dependency_in_lens_frontier(dependency: dependency) {
     Propagates
   } else {
-    match find_child_by_name(root: dependency.usage_site, name: ^affected_set_dimension_not_read_receipt_edge) {
-      Accepted { value: receipt, diagnostics: _ } =>
+    match v2.lens.application.find_child_by_name(root: dependency.usage_site, name: ^affected_set_dimension_not_read_receipt_edge) {
+      v2.std.diagnostic.Accepted { value: receipt, diagnostics: _ } =>
         if receipt == affected_set_dimension_not_read_receipt_node(dimension: edit_dimension.dimension) {
           DoesNotPropagate {
             proof: DimensionNotRead {
@@ -1178,32 +1178,32 @@ fn canonical_propagation_receipt(
         } else {
           Propagates
         }
-      Rejected { diagnostics: _ } =>
+      v2.std.diagnostic.Rejected { diagnostics: _ } =>
       Propagates
     }
   }
 }
 
-fn canonical_affected_set_read() -> v2.lens.affected_set.AffectedSetRead {
+fn canonical_affected_set_read() -> AffectedSetRead {
   AffectedSetRead {
-    boundary: v2.lens.affected_set.AffectedBoundaryRead {
+    boundary: AffectedBoundaryRead {
       boundary_hash_receipt: canonical_boundary_hash_receipt,
       changed_dimension_receipt: canonical_changed_dimension_receipt
     },
-    frontier: v2.lens.affected_set.AffectedFrontierRead {
+    frontier: AffectedFrontierRead {
       proven_transitive_dependency_frontier: canonical_transitive_frontier
     },
     propagation_receipt: canonical_propagation_receipt
   }
 }
 
-fn canonical_post_edit_dag(dag: v2.lens.affected_set.Dag, edit: v2.std.node.Edit) -> v2.lens.affected_set.AffectedPostEditDagRead {
+fn canonical_post_edit_dag(dag: Dag, edit: v2.std.node.Edit) -> AffectedPostEditDagRead {
   AffectedPostEditDagRead {
-    outcome: substitute_at(root: dag, path: edit.at, replacement: edit.replacement)
+    outcome: v2.lens.application.substitute_at(root: dag, path: edit.at, replacement: edit.replacement)
   }
 }
 
-fn affected_set(dag: v2.lens.affected_set.Dag, diff: v2.std.node.Diff) -> Witness<v2.lens.affected_set.ReExecFrontier> {
+fn affected_set(dag: Dag, diff: v2.std.node.Diff) -> Witness<ReExecFrontier> {
   re_exec_frontier_from_diff(
     read_model: canonical_affected_set_read(),
     post_edit_dag: canonical_post_edit_dag,
@@ -1223,39 +1223,39 @@ type MetaProcessKind
   | FloorRunner
 
 type RepoProcess {
-  kind: v2.lens.affected_set.RepoProcessKind
+  kind: RepoProcessKind
   identity: v2.std.node.Symbol
 }
 
 type RepoProcessUniverse
-  = UniverseComplete { processes: List<v2.lens.affected_set.RepoProcess> }
-  | UniverseIncomplete { uncovered_kind: v2.std.node.Symbol, reason: v2.lens.affected_set.FailClosedReason }
+  = UniverseComplete { processes: List<RepoProcess> }
+  | UniverseIncomplete { uncovered_kind: v2.std.node.Symbol, reason: FailClosedReason }
 
 data affected_set_reflect_gate_type: v2.std.node.Symbol = ^Gate
 data affected_set_reflect_meta_process_kind_type: v2.std.node.Symbol = ^MetaProcessKind
 data affected_set_reflect_repo_process_kind_type: v2.std.node.Symbol = ^RepoProcessKind
 
-fn ci_gate_processes() -> List<v2.lens.affected_set.RepoProcess> {
-  fold(coproduct_arm_keys(type_name: affected_set_reflect_gate_type), init: [], f: fn(acc, key) {
-    list_snoc_item(xs: acc, item: v2.lens.affected_set.RepoProcess { kind: CiGateProcess, identity: key })
+fn ci_gate_processes() -> List<RepoProcess> {
+  fold(v2.std.node_query.coproduct_arm_keys(type_name: affected_set_reflect_gate_type), init: [], f: fn(acc, key) {
+    v2.std.algebra.list_snoc_item(xs: acc, item: RepoProcess { kind: CiGateProcess, identity: key })
   })
 }
 
-fn meta_processes() -> List<v2.lens.affected_set.RepoProcess> {
-  fold(coproduct_arm_keys(type_name: affected_set_reflect_meta_process_kind_type), init: [], f: fn(acc, key) {
-    list_snoc_item(xs: acc, item: v2.lens.affected_set.RepoProcess { kind: MetaProcessRole, identity: key })
+fn meta_processes() -> List<RepoProcess> {
+  fold(v2.std.node_query.coproduct_arm_keys(type_name: affected_set_reflect_meta_process_kind_type), init: [], f: fn(acc, key) {
+    v2.std.algebra.list_snoc_item(xs: acc, item: RepoProcess { kind: MetaProcessRole, identity: key })
   })
 }
 
-fn universe_has_process_of_kind(processes: List<v2.lens.affected_set.RepoProcess>, kind_key: v2.std.node.Symbol) -> Bool {
+fn universe_has_process_of_kind(processes: List<RepoProcess>, kind_key: v2.std.node.Symbol) -> Bool {
   fold(processes, init: false, f: fn(acc, p) {
     acc || (discriminant(v: p.kind) == kind_key)
   })
 }
 
-fn repo_process_universe_from(processes: List<v2.lens.affected_set.RepoProcess>) -> v2.lens.affected_set.RepoProcessUniverse {
+fn repo_process_universe_from(processes: List<RepoProcess>) -> RepoProcessUniverse {
   fold(
-    coproduct_arm_keys(type_name: affected_set_reflect_repo_process_kind_type),
+    v2.std.node_query.coproduct_arm_keys(type_name: affected_set_reflect_repo_process_kind_type),
     init: UniverseComplete { processes: processes },
     f: fn(acc, kind_key) {
       match acc {
@@ -1275,12 +1275,12 @@ fn repo_process_universe_from(processes: List<v2.lens.affected_set.RepoProcess>)
   )
 }
 
-fn repo_process_universe() -> v2.lens.affected_set.RepoProcessUniverse {
+fn repo_process_universe() -> RepoProcessUniverse {
   repo_process_universe_from(
-    processes: list_append(left: ci_gate_processes(), right: meta_processes())
+    processes: v2.std.algebra.list_append(left: ci_gate_processes(), right: meta_processes())
   )
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority }
 }

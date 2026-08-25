@@ -51,21 +51,21 @@ type ReceiptText
   | ReceiptTextFailed { decoding: FloorComponentReceiptDecoding }
 
 fn receipt_text_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> ReceiptText {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
-    JsonMemberDuplicated { count: _ } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
+    extdeps.languages.json.parse.JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
       ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is duplicated" } }
-    JsonMemberNotAnObject =>
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "enclosing value is not a JSON object" } }
-    JsonMemberFound { value: found } =>
+    extdeps.languages.json.parse.JsonMemberFound { value: found } =>
       match found {
-        JsonString { value: s } =>
+        extdeps.languages.json.emit.JsonString { value: s } =>
           if s == "" {
             ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is the empty string" } }
           } else {
             ReceiptTextFound { text: s }
           }
-        JsonNumber { lexeme: _ } =>
+        extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
           ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is a number, expected a string" } }
         JsonNull =>
           ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is null" } }
@@ -84,18 +84,18 @@ type ReceiptElements
   | ReceiptElementsFailed { decoding: FloorComponentReceiptDecoding }
 
 fn receipt_array_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> ReceiptElements {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberAbsent => ReceiptElementsFailed { decoding: ReceiptMemberAbsent { member: key } }
-    JsonMemberDuplicated { count: _ } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
+    extdeps.languages.json.parse.JsonMemberAbsent => ReceiptElementsFailed { decoding: ReceiptMemberAbsent { member: key } }
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
       ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is duplicated" } }
-    JsonMemberNotAnObject =>
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "enclosing value is not a JSON object" } }
-    JsonMemberFound { value: found } =>
+    extdeps.languages.json.parse.JsonMemberFound { value: found } =>
       match found {
         JsonArray { elements: es } => ReceiptElementsFound { elements: es }
-        JsonString { value: _ } =>
+        extdeps.languages.json.emit.JsonString { value: _ } =>
           ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is a string, expected an array" } }
-        JsonNumber { lexeme: _ } =>
+        extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
           ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is a number, expected an array" } }
         JsonNull =>
           ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is null, expected an array" } }
@@ -114,12 +114,12 @@ type ReceiptValue
   | ReceiptValueFailed { decoding: FloorComponentReceiptDecoding }
 
 fn receipt_required_value_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> ReceiptValue {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value: found } => ReceiptValueFound { value: found }
-    JsonMemberAbsent => ReceiptValueFailed { decoding: ReceiptMemberAbsent { member: key } }
-    JsonMemberDuplicated { count: _ } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
+    extdeps.languages.json.parse.JsonMemberFound { value: found } => ReceiptValueFound { value: found }
+    extdeps.languages.json.parse.JsonMemberAbsent => ReceiptValueFailed { decoding: ReceiptMemberAbsent { member: key } }
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
       ReceiptValueFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is duplicated" } }
-    JsonMemberNotAnObject =>
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       ReceiptValueFailed { decoding: ReceiptMemberMalformed { member: key, detail: "enclosing value is not a JSON object" } }
   }
 }
@@ -127,43 +127,43 @@ fn receipt_required_value_at(v: extdeps.languages.json.emit.JsonValue, key: Stri
 data receipt_run_terminal_legacy_absent_note: String = "TRANSITIONAL BACK-COMPAT for receipts under GitHub Actions artifact retention written before this PR: run_terminal did not exist, so the member is absent rather than null. Treating absent as ReceiptMemberAbsent would refuse the exact population the falsifier alert still consumes (review 51856). Absent therefore decodes to json_null(), meaning no incomplete envelope was recorded — the same reading as a concluded walk that explicitly emits run_terminal:null. The writer always emits the member on new receipts; only the reader carries this legacy arm. Dissolve-on: counted census shows zero retention receipts lacking the member, then delete this helper and require the member like selection_degradation."
 
 fn receipt_run_terminal_at(v: extdeps.languages.json.emit.JsonValue) -> ReceiptValue {
-  match json_object_unique_member(v: v, key: receipt_member_run_terminal) {
-    JsonMemberFound { value: found } => ReceiptValueFound { value: found }
-    JsonMemberAbsent => ReceiptValueFound { value: json_null() }
-    JsonMemberDuplicated { count: _ } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: receipt_member_run_terminal) {
+    extdeps.languages.json.parse.JsonMemberFound { value: found } => ReceiptValueFound { value: found }
+    extdeps.languages.json.parse.JsonMemberAbsent => ReceiptValueFound { value: extdeps.languages.json.emit.json_null() }
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
       ReceiptValueFailed {
         decoding: ReceiptMemberMalformed { member: receipt_member_run_terminal, detail: "member is duplicated" }
       }
-    JsonMemberNotAnObject =>
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       ReceiptValueFailed {
         decoding: ReceiptMemberMalformed { member: receipt_member_run_terminal, detail: "enclosing value is not a JSON object" }
       }
   }
 }
 
-fn floor_component_receipt_subject_json(subject: FloorComponentReceiptSubject) -> List<extdeps.languages.json.emit.JsonKeyValue> {
+fn floor_component_receipt_subject_json(subject: FloorComponentReceiptSubject) -> List<JsonKeyValue> {
   [
-    json_kv(key: receipt_member_schema, value: json_string(s: subject.schema as String)),
-    json_kv(key: receipt_member_workflow_name, value: json_string(s: subject.workflow_name as String)),
-    json_kv(key: receipt_member_run_id, value: json_string(s: subject.run_id as String)),
-    json_kv(key: receipt_member_head_sha, value: json_string(s: subject.head_sha as String))
+    extdeps.languages.json.emit.json_kv(key: receipt_member_schema, value: extdeps.languages.json.emit.json_string(s: subject.schema as String)),
+    extdeps.languages.json.emit.json_kv(key: receipt_member_workflow_name, value: extdeps.languages.json.emit.json_string(s: subject.workflow_name as String)),
+    extdeps.languages.json.emit.json_kv(key: receipt_member_run_id, value: extdeps.languages.json.emit.json_string(s: subject.run_id as String)),
+    extdeps.languages.json.emit.json_kv(key: receipt_member_head_sha, value: extdeps.languages.json.emit.json_string(s: subject.head_sha as String))
   ]
 }
 
 fn floor_component_receipt_document_json(doc: FloorComponentReceiptDocument) -> extdeps.languages.json.emit.JsonValue {
-  json_object(members: concat(
+  extdeps.languages.json.emit.json_object(members: concat(
     floor_component_receipt_subject_json(subject: doc.subject),
     [
-      json_kv(key: receipt_member_component_count, value: json_int(n: doc.component_count)),
-      json_kv(key: receipt_member_unsuccessful_components, value: json_array(elements: doc.unsuccessful_components)),
-      json_kv(key: receipt_member_components, value: json_array(elements: doc.components)),
-      json_kv(key: receipt_member_run_terminal, value: doc.run_terminal)
+      extdeps.languages.json.emit.json_kv(key: receipt_member_component_count, value: extdeps.languages.json.emit.json_int(n: doc.component_count)),
+      extdeps.languages.json.emit.json_kv(key: receipt_member_unsuccessful_components, value: extdeps.languages.json.emit.json_array(elements: doc.unsuccessful_components)),
+      extdeps.languages.json.emit.json_kv(key: receipt_member_components, value: extdeps.languages.json.emit.json_array(elements: doc.components)),
+      extdeps.languages.json.emit.json_kv(key: receipt_member_run_terminal, value: doc.run_terminal)
     ]
   ))
 }
 
 fn floor_component_receipt_document_text(doc: FloorComponentReceiptDocument) -> String {
-  serialize_json(v: floor_component_receipt_document_json(doc: doc))
+  extdeps.languages.json.emit.serialize_json(v: floor_component_receipt_document_json(doc: doc))
 }
 
 type FloorComponentFailureMode
@@ -214,12 +214,12 @@ fn floor_component_failure_mode_tag(m: FloorComponentFailureMode) -> String {
 
 fn floor_component_outcome_tag(o: std.observation.ObservationOutcome) -> String {
   match o {
-    Done => "done"
-    Refused { diagnostic: _ } => "refused"
-    Failed { error: _, output: _ } => "failed"
-    TimedOut { basis: _, budget: _, elapsed: _ } => "timed_out"
-    Skipped { reason: _ } => "skipped"
-    Final { shown_failures: _ } => "final"
+    std.observation.Done => "done"
+    std.observation.Refused { diagnostic: _ } => "refused"
+    std.observation.Failed { error: _, output: _ } => "failed"
+    std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => "timed_out"
+    std.observation.Skipped { reason: _ } => "skipped"
+    std.observation.Final { shown_failures: _ } => "final"
   }
 }
 
@@ -260,7 +260,7 @@ fn floor_component_failure_mode_of_wire_tag(tag: String) -> FloorComponentFailur
 
 data strict_natural_decode_note: String = "A NUMERIC LEXEME IS NOT A NATURAL NUMBER. The JSON grammar admits `-1`, `6.5`, `6e3` and `1e400` as numbers, and parse_int on any of them produces something — a truncation, a wrong magnitude, or a value the carrier cannot hold — with no signal that the input was not what the field means. Component indices and counts are cardinals: they are positions and tallies, and a negative position or a fractional count is not a small error in a valid value, it is a different kind of thing.\\n\\nSo the lexeme is checked before it is trusted, and the check is a ROUND TRIP rather than a character scan: the parse must reproduce the original lexeme exactly, and the result must be non-negative. That rejects `-1` on the sign test and rejects `6.5`, `6e3`, `+6`, ` 6` and `06` because none of them is what its own parse renders back. It is stronger than a digit scan and needs no character iteration — and it catches the out-of-range case for free, since a magnitude the carrier cannot hold does not render back to what was read. This is the boundary the parse-then-hope shape was hiding: parse_int is total, so it answered for inputs the field cannot represent, and a total function answering for an impossible input is exactly the fabricated-plausible-output the rest of this decoder refuses."
 
-fn strict_natural_of_lexeme(text: String) -> std.nat.Nat? {
+fn strict_natural_of_lexeme(text: String) -> Nat? {
   match parse_int(s: text) {
     Absent => none
     Present { value: parsed } =>
@@ -286,13 +286,13 @@ fn receipt_natural_member_at(v: extdeps.languages.json.emit.JsonValue, key: Stri
 }
 
 type ReceiptNatural
-  = ReceiptNaturalFound { value: std.nat.Nat }
+  = ReceiptNaturalFound { value: Nat }
   | ReceiptNaturalFailed { decoding: FloorComponentReceiptDecoding }
 
 data component_alert_summary_note: String = "THE STRICT TYPED PROJECTION OF THE FACTS THE ALERT ACTUALLY DECIDES ON. Component interiors are still transported as JSON residue, because a total reverse decoder for std.observation.ObservationEvent is a separate obligation and half of one would fork a coproduct that already has an authority. But the four fields the alert READS — index, label, outcome, failure_mode — are exactly the fields its incident signature is keyed on, so they are not residue and must not be typed as residue. They are decoded, each required, each exactly once, each with its own located refusal.\n\nThe distinction that makes this coherent rather than arbitrary: unknown OPTIONAL detail may remain JSON, decision-driving facts may not. A field that changes what the alert says must be one the decoder has checked."
 
 type ComponentAlertSummary {
-  index: std.nat.Nat
+  index: Nat
   label: std.types.NonEmptyStr
   outcome: ComponentOutcomeRead
   failure_mode: FloorComponentFailureMode
@@ -305,16 +305,16 @@ type ComponentAlertSummaryDecoding
 data receipt_numeric_member_note: String = "A NUMERIC MEMBER IS READ AS A NUMBER, NOT AS TEXT THAT HAPPENS TO LOOK LIKE ONE. The component index is an identity — routing joins on it, the incident signature is keyed on it, and it is inserted between delimiters when a marker is serialized. A text rendering of an identity is not an identity: `6` and `\"6\"` and `\" 6\"` are three strings and one component, and the string form is the one that later gets concatenated into a signature where a stray delimiter changes what the alert believes failed.\\n\\nSo this reader admits a JSON number and refuses everything else, including a numeric-looking string. The writer emits json_int, so a number is not merely tolerated here — it is the only shape the producer makes, and anything else means the producer changed or something other than the producer wrote the file."
 
 fn receipt_numeric_member_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> ReceiptText {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
-    JsonMemberDuplicated { count: _ } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
+    extdeps.languages.json.parse.JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
       ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is duplicated" } }
-    JsonMemberNotAnObject =>
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "enclosing value is not a JSON object" } }
-    JsonMemberFound { value: found } =>
+    extdeps.languages.json.parse.JsonMemberFound { value: found } =>
       match found {
-        JsonNumber { lexeme: l } => ReceiptTextFound { text: l as String }
-        JsonString { value: _ } =>
+        extdeps.languages.json.emit.JsonNumber { lexeme: l } => ReceiptTextFound { text: l as String }
+        extdeps.languages.json.emit.JsonString { value: _ } =>
           ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is a string, expected a number" } }
         JsonNull =>
           ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is null" } }
@@ -329,21 +329,21 @@ fn receipt_numeric_member_at(v: extdeps.languages.json.emit.JsonValue, key: Stri
 }
 
 fn receipt_summary_required_string_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> ReceiptText {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
-    JsonMemberDuplicated { count: _ } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
+    extdeps.languages.json.parse.JsonMemberAbsent => ReceiptTextFailed { decoding: ReceiptMemberAbsent { member: key } }
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
       ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is duplicated" } }
-    JsonMemberNotAnObject =>
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component is not a JSON object" } }
-    JsonMemberFound { value: found } =>
+    extdeps.languages.json.parse.JsonMemberFound { value: found } =>
       match found {
-        JsonString { value: sv } =>
+        extdeps.languages.json.emit.JsonString { value: sv } =>
           if sv == "" {
             ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is the empty string" } }
           } else {
             ReceiptTextFound { text: sv }
           }
-        JsonNumber { lexeme: _ } =>
+        extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
           ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is a number, expected a string" } }
         JsonNull =>
           ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is null" } }
@@ -391,9 +391,9 @@ fn component_outcome_read_of_tag(tag: String, component: extdeps.languages.json.
           ReceiptValueFailed { decoding: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome carries no output member" }
           ReceiptValueFound { value: raw } =>
             match raw {
-              JsonString { value: out } =>
+              extdeps.languages.json.emit.JsonString { value: out } =>
                 ComponentOutcomeRecovered { read: ComponentConcluded { outcome: std.observation.Failed { error: e as std.types.NonEmptyStr, output: out } } }
-              JsonNumber { lexeme: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is a number, expected a string" }
+              extdeps.languages.json.emit.JsonNumber { lexeme: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is a number, expected a string" }
               JsonNull => ComponentOutcomeUnmodelled { detail: "failed outcome output is null, expected a string" }
               JsonBool { value: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is a bool, expected a string" }
               JsonArray { elements: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is an array, expected a string" }
@@ -532,7 +532,7 @@ fn component_alert_summary_of(component: extdeps.languages.json.emit.JsonValue) 
   }
 }
 
-fn component_alert_summary_identity(s: ComponentAlertSummary) -> std.nat.Nat {
+fn component_alert_summary_identity(s: ComponentAlertSummary) -> Nat {
   s.index
 }
 
@@ -541,19 +541,19 @@ fn summary_outcome_is_unsuccessful(s: ComponentAlertSummary) -> Bool {
     ComponentNotConcluded => true
     ComponentConcluded { outcome: o } =>
       match o {
-        Done => false
-        Final { shown_failures: n } => n != 0
-        Refused { diagnostic: _ } => true
-        Failed { error: _, output: _ } => true
-        Skipped { reason: _ } => true
-        TimedOut { basis: _, budget: _, elapsed: _ } => true
+        std.observation.Done => false
+        std.observation.Final { shown_failures: n } => n != 0
+        std.observation.Refused { diagnostic: _ } => true
+        std.observation.Failed { error: _, output: _ } => true
+        std.observation.Skipped { reason: _ } => true
+        std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => true
       }
   }
 }
 
 data unsuccessful_component_identity_note: String = "EVERY UNSUCCESSFUL COMPONENT MUST HAVE A UNIQUE IDENTITY, and the check is an identity join rather than a count. The incident signature is built by mapping over these rows, so two rows sharing an index and label are either one row duplicated — which silently doubles a member of the signature and makes a red look like it changed when it did not — or two genuinely distinct components the receipt cannot tell apart, which means the signature cannot distinguish them either. Both are defects in the thing the alert decides on, so the decoder refuses rather than deduplicating: deduplicating would be the absorbing fallback, quietly repairing a producer defect until nobody knows it exists."
 
-fn identity_list_contains(seen: List<std.nat.Nat>, needle: std.nat.Nat) -> Bool {
+fn identity_list_contains(seen: List<Nat>, needle: Nat) -> Bool {
   fold(seen, init: false, f: (acc, s) => acc || (s == needle))
 }
 
@@ -566,11 +566,11 @@ fn summaries_have_unique_identity(summaries: List<ComponentAlertSummary>) -> Boo
 
 data unsuccessful_population_join_note: String = "THE UNSUCCESSFUL LIST IS JOINED TO THE COMPLETE POPULATION, NOT MERELY CHECKED FOR INTERNAL UNIQUENESS. Uniqueness inside unsuccessful_components proves the list does not repeat itself. It proves nothing about whether the list IS the unsuccessful set: a row could name a component that does not exist, a successful component could be listed as unsuccessful, or a genuinely failing component could be missing from the list entirely — and the third is the one that matters, because the alert would then report a smaller incident than the one that happened and the operator would be told a component is fine while its receipt says otherwise.\\n\\nSo the law is an identity join, in the form DESIGN states it: the decoded unsuccessful identities must equal the identities of exactly those complete-population components whose TYPED outcome is unsuccessful. Equality of sets, at identity grain, in both directions — an unresolved identity refuses, a successful row listed as unsuccessful refuses, an omitted failing row refuses. It is not a count comparison; two counts can agree while naming different components, which is the failure mode a count check is structurally unable to see.\\n\\nThis is why the complete components list is decoded through the same summary reader rather than left as JSON residue. Deciding whether a row is unsuccessful requires its typed outcome, and asking that question of untyped residue would mean reading the tag as prose — the exact widening the typed outcome recovery closes one layer down."
 
-fn summary_identities(summaries: List<ComponentAlertSummary>) -> List<std.nat.Nat> {
+fn summary_identities(summaries: List<ComponentAlertSummary>) -> List<Nat> {
   map(summaries, x => component_alert_summary_identity(s: x))
 }
 
-fn identity_sets_agree(left: List<std.nat.Nat>, right: List<std.nat.Nat>) -> Bool {
+fn identity_sets_agree(left: List<Nat>, right: List<Nat>) -> Bool {
   count(left) == count(right)
     && fold(left, init: true, f: (acc, x) => acc && identity_list_contains(seen: right, needle: x))
     && fold(right, init: true, f: (acc, x) => acc && identity_list_contains(seen: left, needle: x))
@@ -606,7 +606,7 @@ fn component_alert_summaries_of(components: List<extdeps.languages.json.emit.Jso
 data receipt_count_decode_note: String = "component_count is read by the strict numeric reader, the same one the component index uses. It previously admitted a string and compared text, so a receipt declaring \"1\" passed against a decoded count of 1 — the field was checked for AGREEMENT while its type went unchecked, which is half a boundary. The writer emits json_int; a string here means the producer changed."
 
 fn floor_component_receipt_decode_with(text: String, expected_schema: std.types.NonEmptyStr) -> FloorComponentReceiptDecoding {
-  match parse_json(s: text) {
+  match extdeps.languages.json.parse.parse_json(s: text) {
     Absent => ReceiptNotJson { detail: "receipt is not valid JSON" }
     Present { value: doc } =>
       match receipt_text_at(v: doc, key: receipt_member_schema) {

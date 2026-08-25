@@ -1,7 +1,7 @@
 module test.claim.effects_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 type ReadonlyGetCase {
   name: String
@@ -9,79 +9,79 @@ type ReadonlyGetCase {
 }
 
 fn derived_op(name: String, method: std.types.HttpMethod, path: std.http_path.PathTemplate) -> std.effects.DerivedOpEffect {
-  match derive_op_effect(operation_name: name, method: method, path: path) {
-    DerivedEffect { effect: e } => e
-    MalformedPathInput => std.effects.DerivedOpEffect {
+  match std.effects.derive_op_effect(operation_name: name, method: method, path: path) {
+    std.effects.DerivedEffect { effect: e } => e
+    std.effects.MalformedPathInput => std.effects.DerivedOpEffect {
       operation_name: name,
       method: method,
       path_template: path,
-      shape: AppendEffect
+      shape: std.effects.AppendEffect
     }
   }
 }
 
 fn derived_raw_is_read(name: String, method: std.types.HttpMethod, raw: String) -> Bool {
-  match parse_path_template(raw: raw) {
-    ParsedPathTemplate { template: path } => test.claim.effects_witness_test.is_read(shape: derived_op(name: name, method: method, path: path).shape)
-    MalformedPathTemplate => false
+  match extdeps.uri_path.parse_path_template(raw: raw) {
+    extdeps.uri_path.ParsedPathTemplate { template: path } => is_read(shape: derived_op(name: name, method: method, path: path).shape)
+    extdeps.uri_path.MalformedPathTemplate => false
   }
 }
 
 fn derived_raw_is_create(name: String, method: std.types.HttpMethod, raw: String) -> Bool {
-  match parse_path_template(raw: raw) {
-    ParsedPathTemplate { template: path } => is_create(shape: derived_op(name: name, method: method, path: path).shape)
-    MalformedPathTemplate => false
+  match extdeps.uri_path.parse_path_template(raw: raw) {
+    extdeps.uri_path.ParsedPathTemplate { template: path } => is_create(shape: derived_op(name: name, method: method, path: path).shape)
+    extdeps.uri_path.MalformedPathTemplate => false
   }
 }
 
 fn derived_raw_is_upsert(name: String, method: std.types.HttpMethod, raw: String) -> Bool {
-  match parse_path_template(raw: raw) {
-    ParsedPathTemplate { template: path } => is_upsert(shape: derived_op(name: name, method: method, path: path).shape)
-    MalformedPathTemplate => false
+  match extdeps.uri_path.parse_path_template(raw: raw) {
+    extdeps.uri_path.ParsedPathTemplate { template: path } => is_upsert(shape: derived_op(name: name, method: method, path: path).shape)
+    extdeps.uri_path.MalformedPathTemplate => false
   }
 }
 
 fn derived_raw_is_delete(name: String, method: std.types.HttpMethod, raw: String) -> Bool {
-  match parse_path_template(raw: raw) {
-    ParsedPathTemplate { template: path } => is_delete(shape: derived_op(name: name, method: method, path: path).shape)
-    MalformedPathTemplate => false
+  match extdeps.uri_path.parse_path_template(raw: raw) {
+    extdeps.uri_path.ParsedPathTemplate { template: path } => is_delete(shape: derived_op(name: name, method: method, path: path).shape)
+    extdeps.uri_path.MalformedPathTemplate => false
   }
 }
 
 fn derived_raw_modifier_agrees(name: String, method: std.types.HttpMethod, raw: String, declared_idempotent: Bool, declared_readonly: Bool) -> Bool {
-  match parse_path_template(raw: raw) {
-    ParsedPathTemplate { template: path } =>
-      match check_modifier_vs_derivation(
+  match extdeps.uri_path.parse_path_template(raw: raw) {
+    extdeps.uri_path.ParsedPathTemplate { template: path } =>
+      match std.effects.check_modifier_vs_derivation(
         op: derived_op(name: name, method: method, path: path),
         declared_idempotent: declared_idempotent,
         declared_readonly: declared_readonly
-      ).agreement { Agrees => true _ => false }
-    MalformedPathTemplate => false
+      ).agreement { std.effects.Agrees => true _ => false }
+    extdeps.uri_path.MalformedPathTemplate => false
   }
 }
 
 fn derived_raw_modifier_unknown(name: String, method: std.types.HttpMethod, raw: String, declared_idempotent: Bool, declared_readonly: Bool) -> Bool {
-  match parse_path_template(raw: raw) {
-    ParsedPathTemplate { template: path } =>
-      match check_modifier_vs_derivation(
+  match extdeps.uri_path.parse_path_template(raw: raw) {
+    extdeps.uri_path.ParsedPathTemplate { template: path } =>
+      match std.effects.check_modifier_vs_derivation(
         op: derived_op(name: name, method: method, path: path),
         declared_idempotent: declared_idempotent,
         declared_readonly: declared_readonly
-      ).agreement { DerivationUnknown { reason: reason } => true _ => false }
-    MalformedPathTemplate => false
+      ).agreement { std.effects.DerivationUnknown { reason: reason } => true _ => false }
+    extdeps.uri_path.MalformedPathTemplate => false
   }
 }
 
 fn is_read(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    ReadEffect => true
+    std.effects.ReadEffect => true
     _ => false
   }
 }
 
 fn is_create(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    CreateEffect { cause: cause } => true
+    std.effects.CreateEffect { cause: cause } => true
     _ => false
   }
 }
@@ -90,18 +90,18 @@ data keyless_fallback_witness_note: String = "Discriminating control for the Pos
 
 fn derived_cause_is_keyless_with_method(shape: std.effects.EffectShape<std.effects.KeySource>, expected: std.types.HttpMethod) -> Bool {
   match shape {
-    CreateEffect { cause: cause } =>
+    std.effects.CreateEffect { cause: cause } =>
       match cause {
-        KeylessFallback { method: m } =>
+        std.effects.KeylessFallback { method: m } =>
           match m {
-            GET => match expected { GET => true, _ => false }
-            POST => match expected { POST => true, _ => false }
-            PUT => match expected { PUT => true, _ => false }
-            DELETE => match expected { DELETE => true, _ => false }
+            std.types.GET => match expected { std.types.GET => true, _ => false }
+            std.types.POST => match expected { std.types.POST => true, _ => false }
+            std.types.PUT => match expected { std.types.PUT => true, _ => false }
+            std.types.DELETE => match expected { std.types.DELETE => true, _ => false }
             _ => false
           }
-        PostAlways => false
-        CreateIfAbsent { key_source: key_source } => false
+        std.effects.PostAlways => false
+        std.effects.CreateIfAbsent { key_source: key_source } => false
       }
     _ => false
   }
@@ -109,48 +109,48 @@ fn derived_cause_is_keyless_with_method(shape: std.effects.EffectShape<std.effec
 
 fn derived_cause_is_post_always(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    CreateEffect { cause: cause } =>
+    std.effects.CreateEffect { cause: cause } =>
       match cause {
-        PostAlways => true
-        KeylessFallback { method: m } => false
-        CreateIfAbsent { key_source: key_source } => false
+        std.effects.PostAlways => true
+        std.effects.KeylessFallback { method: m } => false
+        std.effects.CreateIfAbsent { key_source: key_source } => false
       }
     _ => false
   }
 }
 
 fn derived_raw_cause_is_keyless_with_method(name: String, method: std.types.HttpMethod, raw: String, expected: std.types.HttpMethod) -> Bool {
-  match parse_path_template(raw: raw) {
-    ParsedPathTemplate { template: path } =>
-      match derive_op_effect(operation_name: name, method: method, path: path) {
-        DerivedEffect { effect: effect } => derived_cause_is_keyless_with_method(shape: effect.shape, expected: expected)
-        MalformedPathInput => false
+  match extdeps.uri_path.parse_path_template(raw: raw) {
+    extdeps.uri_path.ParsedPathTemplate { template: path } =>
+      match std.effects.derive_op_effect(operation_name: name, method: method, path: path) {
+        std.effects.DerivedEffect { effect: effect } => derived_cause_is_keyless_with_method(shape: effect.shape, expected: expected)
+        std.effects.MalformedPathInput => false
       }
-    MalformedPathTemplate => false
+    extdeps.uri_path.MalformedPathTemplate => false
   }
 }
 
 fn derived_raw_cause_is_post_always(name: String, method: std.types.HttpMethod, raw: String) -> Bool {
-  match parse_path_template(raw: raw) {
-    ParsedPathTemplate { template: path } =>
-      match derive_op_effect(operation_name: name, method: method, path: path) {
-        DerivedEffect { effect: effect } => derived_cause_is_post_always(shape: effect.shape)
-        MalformedPathInput => false
+  match extdeps.uri_path.parse_path_template(raw: raw) {
+    extdeps.uri_path.ParsedPathTemplate { template: path } =>
+      match std.effects.derive_op_effect(operation_name: name, method: method, path: path) {
+        std.effects.DerivedEffect { effect: effect } => derived_cause_is_post_always(shape: effect.shape)
+        std.effects.MalformedPathInput => false
       }
-    MalformedPathTemplate => false
+    extdeps.uri_path.MalformedPathTemplate => false
   }
 }
 
 fn is_upsert(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    UpsertEffect { key_source: key_source } => true
+    std.effects.UpsertEffect { key_source: key_source } => true
     _ => false
   }
 }
 
 fn is_delete(shape: std.effects.EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
-    DeleteEffect { key_source: key_source } => true
+    std.effects.DeleteEffect { key_source: key_source } => true
     _ => false
   }
 }
@@ -166,121 +166,121 @@ fn op_lattice_read(name: String) -> std.effects.OperationEffect {
 fn op_non_idempotent(name: String) -> std.effects.OperationEffect {
   std.effects.OperationEffect {
     operation_name: name,
-    shape: std.effects.CreateEffect { cause: PostAlways },
+    shape: std.effects.CreateEffect { cause: std.effects.PostAlways },
     evidence: std.effects.NonIdempotent {
-      shape: std.effects.CreateEffect { cause: PostAlways },
+      shape: std.effects.CreateEffect { cause: std.effects.PostAlways },
       reason: "test"
     }
   }
 }
 
 test fn effects_path_parse_witnesses() -> Bool {
-  match parse_path_template(raw: "/repos/\{owner\}/\{repo\}/pulls") {
-    ParsedPathTemplate { template: simple } =>
-      match parse_path_template(raw: "/v1/\{secret_name\}:addVersion") {
-        ParsedPathTemplate { template: colon } =>
-          match parse_path_template(raw: "/token") {
-            ParsedPathTemplate { template: no_params } =>
-              match parse_path_template(raw: "/v1/projects/\{project_id\}/secrets/\{secret\}/versions/\{version\}:access") {
-                ParsedPathTemplate { template: nested } =>
-                  match parse_path_template(raw: "/computeMetadata/v1/instance/service-accounts/default/identity?audience=\{audience\}") {
-                    ParsedPathTemplate { template: query_stripped } =>
-                      match parse_path_template(raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews") {
-                        ParsedPathTemplate { template: deep } =>
-                          has_path_params(template: simple)
-                            && match last_path_param(template: simple) {
+  match extdeps.uri_path.parse_path_template(raw: "/repos/\{owner\}/\{repo\}/pulls") {
+    extdeps.uri_path.ParsedPathTemplate { template: simple } =>
+      match extdeps.uri_path.parse_path_template(raw: "/v1/\{secret_name\}:addVersion") {
+        extdeps.uri_path.ParsedPathTemplate { template: colon } =>
+          match extdeps.uri_path.parse_path_template(raw: "/token") {
+            extdeps.uri_path.ParsedPathTemplate { template: no_params } =>
+              match extdeps.uri_path.parse_path_template(raw: "/v1/projects/\{project_id\}/secrets/\{secret\}/versions/\{version\}:access") {
+                extdeps.uri_path.ParsedPathTemplate { template: nested } =>
+                  match extdeps.uri_path.parse_path_template(raw: "/computeMetadata/v1/instance/service-accounts/default/identity?audience=\{audience\}") {
+                    extdeps.uri_path.ParsedPathTemplate { template: query_stripped } =>
+                      match extdeps.uri_path.parse_path_template(raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews") {
+                        extdeps.uri_path.ParsedPathTemplate { template: deep } =>
+                          std.http_path.has_path_params(template: simple)
+                            && match std.http_path.last_path_param(template: simple) {
                               Present { value: p } => p == "repo"
                               Absent => false
                             }
-                            && has_path_params(template: colon)
-                            && match last_path_param(template: colon) {
+                            && std.http_path.has_path_params(template: colon)
+                            && match std.http_path.last_path_param(template: colon) {
                               Present { value: p } => p == "secret_name"
                               Absent => false
                             }
-                            && !has_path_params(template: no_params)
-                            && match last_path_param(template: no_params) { Absent => true Present => false }
-                            && has_path_params(template: nested)
-                            && match last_path_param(template: nested) {
+                            && !std.http_path.has_path_params(template: no_params)
+                            && match std.http_path.last_path_param(template: no_params) { Absent => true Present => false }
+                            && std.http_path.has_path_params(template: nested)
+                            && match std.http_path.last_path_param(template: nested) {
                               Present { value: p } => p == "version"
                               Absent => false
                             }
-                            && !has_path_params(template: query_stripped)
-                            && has_path_params(template: deep)
-                            && match last_path_param(template: deep) {
+                            && !std.http_path.has_path_params(template: query_stripped)
+                            && std.http_path.has_path_params(template: deep)
+                            && match std.http_path.last_path_param(template: deep) {
                               Present { value: p } => p == "pull_number"
                               Absent => false
                             }
-                            && match parse_path_template(raw: concat("/repos/", "{", "owner/pulls")) {
-                              MalformedPathTemplate => true
-                              ParsedPathTemplate => false
+                            && match extdeps.uri_path.parse_path_template(raw: concat("/repos/", "{", "owner/pulls")) {
+                              extdeps.uri_path.MalformedPathTemplate => true
+                              extdeps.uri_path.ParsedPathTemplate => false
                             }
-                            && match parse_path_template(raw: concat("/repos/owner", "}", "/pulls")) {
-                              MalformedPathTemplate => true
-                              ParsedPathTemplate => false
+                            && match extdeps.uri_path.parse_path_template(raw: concat("/repos/owner", "}", "/pulls")) {
+                              extdeps.uri_path.MalformedPathTemplate => true
+                              extdeps.uri_path.ParsedPathTemplate => false
                             }
-                            && match parse_path_template(raw: concat("/v1/", "{", "project", "}", "{", "secret", "}")) {
-                              MalformedPathTemplate => true
-                              ParsedPathTemplate => false
+                            && match extdeps.uri_path.parse_path_template(raw: concat("/v1/", "{", "project", "}", "{", "secret", "}")) {
+                              extdeps.uri_path.MalformedPathTemplate => true
+                              extdeps.uri_path.ParsedPathTemplate => false
                             }
-                        MalformedPathTemplate => false
+                        extdeps.uri_path.MalformedPathTemplate => false
                       }
-                    MalformedPathTemplate => false
+                    extdeps.uri_path.MalformedPathTemplate => false
                   }
-                MalformedPathTemplate => false
+                extdeps.uri_path.MalformedPathTemplate => false
               }
-            MalformedPathTemplate => false
+            extdeps.uri_path.MalformedPathTemplate => false
           }
-        MalformedPathTemplate => false
+        extdeps.uri_path.MalformedPathTemplate => false
       }
-    MalformedPathTemplate => false
+    extdeps.uri_path.MalformedPathTemplate => false
   }
 }
 
 test fn effects_derivation_witnesses() -> Bool {
-  derived_raw_is_read(name: "List", method: GET, raw: "/repos/\{owner\}/\{repo\}/pulls")
-    && derived_raw_is_create(name: "CreateSecret", method: POST, raw: "/v1/projects/\{project_id\}/secrets")
-    && derived_raw_is_create(name: "Messages", method: POST, raw: "/v1/messages")
-    && derived_raw_is_upsert(name: "Update", method: PUT, raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}")
-    && derived_raw_is_create(name: "Update", method: PUT, raw: "/config")
-    && derived_raw_is_delete(name: "DeleteItem", method: DELETE, raw: "/items/\{id\}")
-    && derived_raw_is_create(name: "Purge", method: DELETE, raw: "/cache")
-    && match parse_path_template(raw: "/repos/\{owner\}/\{repo\}") {
-      ParsedPathTemplate { template: path } =>
-        match derive_op_effect(operation_name: "TypedBoundary", method: PUT, path: path) {
-          DerivedEffect { effect: effect } => true
-          MalformedPathInput => false
+  derived_raw_is_read(name: "List", method: std.types.GET, raw: "/repos/\{owner\}/\{repo\}/pulls")
+    && derived_raw_is_create(name: "CreateSecret", method: std.types.POST, raw: "/v1/projects/\{project_id\}/secrets")
+    && derived_raw_is_create(name: "Messages", method: std.types.POST, raw: "/v1/messages")
+    && derived_raw_is_upsert(name: "Update", method: std.types.PUT, raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}")
+    && derived_raw_is_create(name: "Update", method: std.types.PUT, raw: "/config")
+    && derived_raw_is_delete(name: "DeleteItem", method: std.types.DELETE, raw: "/items/\{id\}")
+    && derived_raw_is_create(name: "Purge", method: std.types.DELETE, raw: "/cache")
+    && match extdeps.uri_path.parse_path_template(raw: "/repos/\{owner\}/\{repo\}") {
+      extdeps.uri_path.ParsedPathTemplate { template: path } =>
+        match std.effects.derive_op_effect(operation_name: "TypedBoundary", method: std.types.PUT, path: path) {
+          std.effects.DerivedEffect { effect: effect } => true
+          std.effects.MalformedPathInput => false
         }
-      MalformedPathTemplate => false
+      extdeps.uri_path.MalformedPathTemplate => false
     }
 }
 
 test fn effects_keyless_fallback_is_not_post_witnesses() -> Bool {
-  derived_raw_cause_is_keyless_with_method(name: "Update", method: PUT, raw: "/config", expected: PUT)
-    && derived_raw_cause_is_keyless_with_method(name: "Purge", method: DELETE, raw: "/cache", expected: DELETE)
-    && !derived_raw_cause_is_keyless_with_method(name: "Update", method: PUT, raw: "/config", expected: DELETE)
-    && derived_raw_cause_is_post_always(name: "Messages", method: POST, raw: "/v1/messages")
-    && !derived_raw_cause_is_keyless_with_method(name: "Messages", method: POST, raw: "/v1/messages", expected: POST)
-    && !derived_raw_cause_is_post_always(name: "Update", method: PUT, raw: "/config")
-    && derived_raw_is_upsert(name: "Update", method: PUT, raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}")
-    && derived_raw_is_delete(name: "DeleteItem", method: DELETE, raw: "/items/\{id\}")
+  derived_raw_cause_is_keyless_with_method(name: "Update", method: std.types.PUT, raw: "/config", expected: std.types.PUT)
+    && derived_raw_cause_is_keyless_with_method(name: "Purge", method: std.types.DELETE, raw: "/cache", expected: std.types.DELETE)
+    && !derived_raw_cause_is_keyless_with_method(name: "Update", method: std.types.PUT, raw: "/config", expected: std.types.DELETE)
+    && derived_raw_cause_is_post_always(name: "Messages", method: std.types.POST, raw: "/v1/messages")
+    && !derived_raw_cause_is_keyless_with_method(name: "Messages", method: std.types.POST, raw: "/v1/messages", expected: std.types.POST)
+    && !derived_raw_cause_is_post_always(name: "Update", method: std.types.PUT, raw: "/config")
+    && derived_raw_is_upsert(name: "Update", method: std.types.PUT, raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}")
+    && derived_raw_is_delete(name: "DeleteItem", method: std.types.DELETE, raw: "/items/\{id\}")
 }
 
 test fn effects_compose_witnesses() -> Bool {
-  match compose_effects(effects: []) {
-    IdempotentComposition => true
-    BrokenBy { first_breaker: breaker } => false
+  match std.effects.compose_effects(effects: []) {
+    std.effects.IdempotentComposition => true
+    std.effects.BrokenBy { first_breaker: breaker } => false
   }
-    && match compose_effects(effects: [op_lattice_read(name: "a"), op_lattice_read(name: "b")]) {
-      IdempotentComposition => true
-      BrokenBy { first_breaker: breaker } => false
+    && match std.effects.compose_effects(effects: [op_lattice_read(name: "a"), op_lattice_read(name: "b")]) {
+      std.effects.IdempotentComposition => true
+      std.effects.BrokenBy { first_breaker: breaker } => false
     }
-    && match compose_effects(effects: [
+    && match std.effects.compose_effects(effects: [
       op_lattice_read(name: "first"),
       op_non_idempotent(name: "breaker"),
       op_non_idempotent(name: "later")
     ]) {
-      BrokenBy { first_breaker: breaker } => breaker.operation_name == "breaker"
-      IdempotentComposition => false
+      std.effects.BrokenBy { first_breaker: breaker } => breaker.operation_name == "breaker"
+      std.effects.IdempotentComposition => false
     }
 }
 
@@ -295,7 +295,7 @@ test fn effects_modifier_github_readonly_witnesses() -> Bool {
   fold(readonly_gets, init: true, f: (acc, case) => {
     acc && derived_raw_modifier_agrees(
       name: case.name,
-      method: GET,
+      method: std.types.GET,
       raw: case.path,
       declared_idempotent: false,
       declared_readonly: true
@@ -306,43 +306,43 @@ test fn effects_modifier_github_readonly_witnesses() -> Bool {
 test fn effects_modifier_gcp_sites_witnesses() -> Bool {
   derived_raw_modifier_agrees(
     name: "AccessVersion",
-    method: GET,
+    method: std.types.GET,
     raw: "/v1/projects/\{project_id\}/secrets/\{secret\}/versions/\{version\}:access",
     declared_idempotent: true,
     declared_readonly: true
   )
-    && derived_raw_is_create(name: "AddVersion", method: POST, raw: "/v1/\{secret_name\}:addVersion")
+    && derived_raw_is_create(name: "AddVersion", method: std.types.POST, raw: "/v1/\{secret_name\}:addVersion")
     && derived_raw_modifier_agrees(
       name: "AddVersion",
-      method: POST,
+      method: std.types.POST,
       raw: "/v1/\{secret_name\}:addVersion",
       declared_idempotent: false,
       declared_readonly: false
     )
     && derived_raw_is_create(
       name: "GenerateAccessToken",
-      method: POST,
+      method: std.types.POST,
       raw: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken"
     )
     && derived_raw_modifier_unknown(
       name: "GenerateAccessToken",
-      method: POST,
+      method: std.types.POST,
       raw: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken",
       declared_idempotent: true,
       declared_readonly: false
     )
-    && derived_raw_is_create(name: "Refresh", method: POST, raw: "/token")
+    && derived_raw_is_create(name: "Refresh", method: std.types.POST, raw: "/token")
     && derived_raw_modifier_unknown(
       name: "Refresh",
-      method: POST,
+      method: std.types.POST,
       raw: "/token",
       declared_idempotent: true,
       declared_readonly: false
     )
-    && derived_raw_is_create(name: "Exchange", method: POST, raw: "/v1/token")
+    && derived_raw_is_create(name: "Exchange", method: std.types.POST, raw: "/v1/token")
     && derived_raw_modifier_unknown(
       name: "Exchange",
-      method: POST,
+      method: std.types.POST,
       raw: "/v1/token",
       declared_idempotent: true,
       declared_readonly: false
@@ -350,15 +350,15 @@ test fn effects_modifier_gcp_sites_witnesses() -> Bool {
 }
 
 test fn effects_post_parent_path_witnesses() -> Bool {
-  derived_raw_is_create(name: "CreateSecret", method: POST, raw: "/v1/projects/\{project_id\}/secrets")
+  derived_raw_is_create(name: "CreateSecret", method: std.types.POST, raw: "/v1/projects/\{project_id\}/secrets")
     && derived_raw_is_create(
       name: "CreateComment",
-      method: POST,
+      method: std.types.POST,
       raw: "/repos/\{owner\}/\{repo\}/issues/\{issue_number\}/comments"
     )
     && derived_raw_is_create(
       name: "CreateReview",
-      method: POST,
+      method: std.types.POST,
       raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews"
     )
 }
@@ -368,45 +368,45 @@ test fn effects_create_if_absent_dedup_witnesses() -> Bool {
   let shape = std.effects.CreateEffect { cause: std.effects.CreateIfAbsent { key_source: key } }
   let key_b = std.effects.InputField { field: "b" }
   let shape_b = std.effects.CreateEffect { cause: std.effects.CreateIfAbsent { key_source: key_b } }
-  let always = std.effects.CreateEffect { cause: PostAlways }
+  let always = std.effects.CreateEffect { cause: std.effects.PostAlways }
 
-  is_idempotent_effect(shape: shape)
-    && create_effect_is_dedupable(shape: shape)
-    && create_double_init_collapsible(a: shape, b: shape)
-    && create_effect_is_dedupable(shape: shape_b)
-    && !create_double_init_collapsible(a: shape, b: shape_b)
-    && !is_idempotent_effect(shape: always)
-    && !create_effect_is_dedupable(shape: always)
-    && !create_double_init_collapsible(a: always, b: always)
+  std.effects.is_idempotent_effect(shape: shape)
+    && std.effects.create_effect_is_dedupable(shape: shape)
+    && std.effects.create_double_init_collapsible(a: shape, b: shape)
+    && std.effects.create_effect_is_dedupable(shape: shape_b)
+    && !std.effects.create_double_init_collapsible(a: shape, b: shape_b)
+    && !std.effects.is_idempotent_effect(shape: always)
+    && !std.effects.create_effect_is_dedupable(shape: always)
+    && !std.effects.create_double_init_collapsible(a: always, b: always)
 }
 
 test fn effects_create_if_absent_modifier_witnesses() -> Bool {
   let key = std.effects.InputField { field: "id" }
   let shape = std.effects.CreateEffect { cause: std.effects.CreateIfAbsent { key_source: key } }
-  match parse_path_template(raw: "/secrets") {
-    ParsedPathTemplate { template: secrets_path } =>
-      match parse_path_template(raw: "/versions") {
-        ParsedPathTemplate { template: versions_path } =>
+  match extdeps.uri_path.parse_path_template(raw: "/secrets") {
+    extdeps.uri_path.ParsedPathTemplate { template: secrets_path } =>
+      match extdeps.uri_path.parse_path_template(raw: "/versions") {
+        extdeps.uri_path.ParsedPathTemplate { template: versions_path } =>
           let op = std.effects.DerivedOpEffect {
             operation_name: "create_secret",
-            method: POST,
+            method: std.types.POST,
             path_template: secrets_path,
             shape: shape
           }
-          let agrees = check_modifier_vs_derivation(op: op, declared_idempotent: true, declared_readonly: false)
-          let disagrees = check_modifier_vs_derivation(op: op, declared_idempotent: false, declared_readonly: false)
+          let agrees = std.effects.check_modifier_vs_derivation(op: op, declared_idempotent: true, declared_readonly: false)
+          let disagrees = std.effects.check_modifier_vs_derivation(op: op, declared_idempotent: false, declared_readonly: false)
           let always_op = std.effects.DerivedOpEffect {
             operation_name: "add_version",
-            method: POST,
+            method: std.types.POST,
             path_template: versions_path,
-            shape: std.effects.CreateEffect { cause: PostAlways }
+            shape: std.effects.CreateEffect { cause: std.effects.PostAlways }
           }
-          let unknown = check_modifier_vs_derivation(op: always_op, declared_idempotent: true, declared_readonly: false)
-          match agrees.agreement { Agrees => true _ => false }
-            && match disagrees.agreement { Disagrees { reason: reason } => true _ => false }
-            && match unknown.agreement { DerivationUnknown { reason: reason } => true _ => false }
-        MalformedPathTemplate => false
+          let unknown = std.effects.check_modifier_vs_derivation(op: always_op, declared_idempotent: true, declared_readonly: false)
+          match agrees.agreement { std.effects.Agrees => true _ => false }
+            && match disagrees.agreement { std.effects.Disagrees { reason: reason } => true _ => false }
+            && match unknown.agreement { std.effects.DerivationUnknown { reason: reason } => true _ => false }
+        extdeps.uri_path.MalformedPathTemplate => false
       }
-    MalformedPathTemplate => false
+    extdeps.uri_path.MalformedPathTemplate => false
   }
 }

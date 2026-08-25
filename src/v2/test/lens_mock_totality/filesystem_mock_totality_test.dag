@@ -1,44 +1,46 @@
 module v2.test.lens_mock_totality.filesystem_mock_totality
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedFilesystemMock {
-  tag: v2.std.node.Symbol
+  tag: Symbol
 }
 
 data filesystem_red_omit_keys: List<String> = ["Filesystem.Read"]
 
-fn materialize_filesystem_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedFilesystemMock> {
+fn materialize_filesystem_mock(case: PublishedMockCase) -> Outcome<MaterializedFilesystemMock> {
   if case.operation_key == "Filesystem.Write" || case.operation_key == "Filesystem.WriteOwnerOnly" {
-    outcome_accepted(value: MaterializedFilesystemMock { tag: ^materialized_write })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedFilesystemMock { tag: ^materialized_write })
   } else if case.operation_key == "Filesystem.Read" {
-    outcome_accepted(value: MaterializedFilesystemMock { tag: ^materialized_read })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedFilesystemMock { tag: ^materialized_read })
   } else {
-    mock_unhandled_rejection()
+    v2.lens.mock_totality.mock_unhandled_rejection()
   }
 }
 
-fn real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  outcome_accepted_p(outcome: materialize_filesystem_mock(case: case))
+fn real_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.outcome_accepted_p(outcome: materialize_filesystem_mock(case: case))
 }
 
-fn omits_read_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  omit_consumer_handles(
+fn omits_read_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.omit_consumer_handles(
     case: case,
     omit_keys: filesystem_red_omit_keys,
-    total_consumer_handles: v2.test.lens_mock_totality.filesystem_mock_totality.real_consumer_handles
+    total_consumer_handles: real_consumer_handles
   )
 }
 
 test fn filesystem_mock_consumer_is_total_holds() -> Bool {
-  mock_totality_green_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_green_holds(
     published: extdeps.filesystem.mock_corpus.filesystem_published_mock_corpus,
-    consumer_handles: v2.test.lens_mock_totality.filesystem_mock_totality.real_consumer_handles
+    consumer_handles: real_consumer_handles
   )
 }
 
 test fn filesystem_mock_omitted_member_is_red_holds() -> Bool {
-  mock_totality_red_on_omission_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_red_on_omission_holds(
     published: extdeps.filesystem.mock_corpus.filesystem_published_mock_corpus,
     consumer_handles: omits_read_consumer_handles
   )

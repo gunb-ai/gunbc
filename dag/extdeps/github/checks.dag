@@ -3,7 +3,7 @@ module extdeps.github.checks
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/rest/checks/runs"
   }
 }
@@ -34,12 +34,12 @@ data structural_coverage_gap_check_codec_hand_rolled: List<String> = [
 ]
 
 fn parse_check_status(raw: String) -> CheckStatus? {
-  if raw == "queued" { Present { value: Queued } }
-  else { if raw == "in_progress" { Present { value: InProgress } }
-  else { if raw == "completed" { Present { value: Completed } }
-  else { if raw == "waiting" { Present { value: Waiting } }
-  else { if raw == "pending" { Present { value: Pending } }
-  else { if raw == "requested" { Present { value: Requested } }
+  if raw == "queued" { v2.std.collection.Present { value: Queued } }
+  else { if raw == "in_progress" { v2.std.collection.Present { value: InProgress } }
+  else { if raw == "completed" { v2.std.collection.Present { value: Completed } }
+  else { if raw == "waiting" { v2.std.collection.Present { value: Waiting } }
+  else { if raw == "pending" { v2.std.collection.Present { value: Pending } }
+  else { if raw == "requested" { v2.std.collection.Present { value: Requested } }
   else { none } } } } } }
 }
 
@@ -55,14 +55,14 @@ fn check_status_wire_label(s: CheckStatus) -> String {
 }
 
 fn parse_check_conclusion(raw: String) -> CheckConclusion? {
-  if raw == "action_required" { Present { value: ActionRequired } }
-  else { if raw == "cancelled" { Present { value: Cancelled } }
-  else { if raw == "failure" { Present { value: Failure } }
-  else { if raw == "neutral" { Present { value: Neutral } }
-  else { if raw == "skipped" { Present { value: Skipped } }
-  else { if raw == "stale" { Present { value: Stale } }
-  else { if raw == "success" { Present { value: Success } }
-  else { if raw == "timed_out" { Present { value: TimedOut } }
+  if raw == "action_required" { v2.std.collection.Present { value: ActionRequired } }
+  else { if raw == "cancelled" { v2.std.collection.Present { value: Cancelled } }
+  else { if raw == "failure" { v2.std.collection.Present { value: Failure } }
+  else { if raw == "neutral" { v2.std.collection.Present { value: Neutral } }
+  else { if raw == "skipped" { v2.std.collection.Present { value: Skipped } }
+  else { if raw == "stale" { v2.std.collection.Present { value: Stale } }
+  else { if raw == "success" { v2.std.collection.Present { value: Success } }
+  else { if raw == "timed_out" { v2.std.collection.Present { value: TimedOut } }
   else { none } } } } } } } }
 }
 
@@ -81,8 +81,8 @@ fn check_conclusion_wire_label(c: CheckConclusion) -> String {
 
 fn check_conclusion_wire_optional(c: CheckConclusion?) -> String? {
   match c {
-    Present { value: v } => Present { value: check_conclusion_wire_label(c: v) }
-    Absent => none
+    v2.std.collection.Present { value: v } => v2.std.collection.Present { value: check_conclusion_wire_label(c: v) }
+    v2.std.collection.Absent => none
   }
 }
 
@@ -124,7 +124,7 @@ type CheckRunList {
 
 service github.Checks {
   config {
-    endpoint: default_api_base
+    endpoint: extdeps.github.github.default_api_base
     auth: Bearer
     auth_source: std.credentials.EnvVar { name: "GITHUB_TOKEN" }
 
@@ -137,7 +137,7 @@ service github.Checks {
       owner: String
       repo: String
       ref: String
-      per_page: Int = default_per_page
+      per_page: Int = extdeps.github.github.default_per_page
     }
     output {
       result: CheckRunList
@@ -150,9 +150,9 @@ service github.Checks {
     }
     response {
       200 => CheckRunList
-      401 => GitHubErrorShape
-      404 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 
@@ -183,11 +183,11 @@ service github.Checks {
     }
     response {
       201 => CheckRun
-      401 => GitHubErrorShape
-      403 => GitHubErrorShape
-      404 => GitHubErrorShape
-      422 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      403 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      422 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 
@@ -218,11 +218,11 @@ service github.Checks {
     }
     response {
       200 => CheckRun
-      401 => GitHubErrorShape
-      403 => GitHubErrorShape
-      404 => GitHubErrorShape
-      422 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      403 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      422 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 }

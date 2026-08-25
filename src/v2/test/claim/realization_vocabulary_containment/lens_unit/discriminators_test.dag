@@ -1,7 +1,7 @@
 module v2.test.realization_vocabulary_containment.lens_unit.discriminators
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data sidecar_module: String = "extdeps.languages.typescript.program"
 
@@ -9,80 +9,80 @@ data bash_vocab_module: String = "v2.extdeps.languages.bash_build"
 
 data fresh_leak_facts: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/tools/_perturb_fresh_consumer.dag",
     import_module: sidecar_module
   }
 ]
 
-test fn fresh_non_edge_import_is_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: v2.test.realization_vocabulary_containment.lens_unit.discriminators.fresh_leak_facts) == 1
+test fn fresh_non_edge_import_is_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: fresh_leak_facts) == 1
 }
 
 data edge_import_facts: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixExtdeps,
+    layer: v2.std.layer.LayerPrefixExtdeps,
     path: "src/v2/extdeps/languages/bash.dag",
     import_module: sidecar_module
   }
 ]
 
-test fn realization_edge_import_is_not_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: v2.test.realization_vocabulary_containment.lens_unit.discriminators.edge_import_facts) == 0
+test fn realization_edge_import_is_not_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: edge_import_facts) == 0
 }
 
 data rostered_import_facts: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/node_http_server_emit.dag",
     import_module: sidecar_module
   }
 ]
 
-test fn rostered_consumer_import_is_not_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: v2.test.realization_vocabulary_containment.lens_unit.discriminators.rostered_import_facts) == 0
+test fn rostered_consumer_import_is_not_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: rostered_import_facts) == 0
 }
 
 data de_rostered_consumer_import_facts: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/ci_spec.dag",
     import_module: sidecar_module
   }
 ]
 
-test fn de_rostered_consumer_import_is_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: de_rostered_consumer_import_facts) == 1
+test fn de_rostered_consumer_import_is_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: de_rostered_consumer_import_facts) == 1
 }
 
 data non_vocab_import_facts: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/tools/_perturb_fresh_consumer.dag",
     import_module: "extdeps.shell"
   }
 ]
 
-test fn non_vocabulary_import_is_not_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: non_vocab_import_facts) == 0
+test fn non_vocabulary_import_is_not_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: non_vocab_import_facts) == 0
 }
 
-fn list_contains_str(xs: List<String>, target: String) -> v2.std.logic.Bool {
+fn list_contains_str(xs: List<String>, target: String) -> Bool {
   fold(xs, init: false, f: fn(acc, s) { acc || (s == target) })
 }
 
-fn edge_in_grandfathered_roster(edge: v2.lens.realization_vocabulary_containment.RealizationVocabImportEdge) -> v2.std.logic.Bool {
+fn edge_in_grandfathered_roster(edge: v2.lens.realization_vocabulary_containment.RealizationVocabImportEdge) -> Bool {
   fold(
-    realization_vocab_grandfathered_edges(),
+    v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edges(),
     init: false,
     f: fn(found, candidate) {
-      found || realization_vocab_import_edge_eq(a: candidate, b: edge)
+      found || v2.lens.realization_vocabulary_containment.realization_vocab_import_edge_eq(a: candidate, b: edge)
     }
   )
 }
 
-test fn ci_spec_excused_from_bash_roster_holds() -> v2.std.logic.Bool {
-  !v2.test.realization_vocabulary_containment.lens_unit.discriminators.edge_in_grandfathered_roster(
+test fn ci_spec_excused_from_bash_roster_holds() -> Bool {
+  !edge_in_grandfathered_roster(
     edge: v2.lens.realization_vocabulary_containment.RealizationVocabImportEdge {
       importer_path: "dag/gunbc/ci_spec.dag",
       vocab_module: bash_vocab_module
@@ -90,8 +90,8 @@ test fn ci_spec_excused_from_bash_roster_holds() -> v2.std.logic.Bool {
   )
 }
 
-test fn build_step_rostered_for_bash_build_holds() -> v2.std.logic.Bool {
-  v2.test.realization_vocabulary_containment.lens_unit.discriminators.edge_in_grandfathered_roster(
+test fn build_step_rostered_for_bash_build_holds() -> Bool {
+  edge_in_grandfathered_roster(
     edge: v2.lens.realization_vocabulary_containment.RealizationVocabImportEdge {
       importer_path: "dag/tools/build_step.dag",
       vocab_module: bash_vocab_module
@@ -101,30 +101,30 @@ test fn build_step_rostered_for_bash_build_holds() -> v2.std.logic.Bool {
 
 data bash_fresh_leak_facts: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/tools/_perturb_fresh_bash_consumer.dag",
     import_module: bash_vocab_module
   }
 ]
 
-test fn bash_vocab_fresh_non_edge_import_is_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: bash_fresh_leak_facts) == 1
+test fn bash_vocab_fresh_non_edge_import_is_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: bash_fresh_leak_facts) == 1
 }
 
 data bash_edge_import_facts: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixExtdeps,
+    layer: v2.std.layer.LayerPrefixExtdeps,
     path: "src/v2/workflow/bash_emit.dag",
     import_module: bash_vocab_module
   }
 ]
 
-test fn bash_vocab_realization_edge_import_is_not_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: bash_edge_import_facts) == 0
+test fn bash_vocab_realization_edge_import_is_not_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: bash_edge_import_facts) == 0
 }
 
-test fn node_http_server_emit_rostered_for_typescript_sidecar_holds() -> v2.std.logic.Bool {
-  v2.test.realization_vocabulary_containment.lens_unit.discriminators.edge_in_grandfathered_roster(
+test fn node_http_server_emit_rostered_for_typescript_sidecar_holds() -> Bool {
+  edge_in_grandfathered_roster(
     edge: v2.lens.realization_vocabulary_containment.RealizationVocabImportEdge {
       importer_path: "dag/gunbc/node_http_server_emit.dag",
       vocab_module: sidecar_module
@@ -132,8 +132,8 @@ test fn node_http_server_emit_rostered_for_typescript_sidecar_holds() -> v2.std.
   )
 }
 
-test fn roadmap_component_rostered_for_typescript_sidecar_holds() -> v2.std.logic.Bool {
-  v2.test.realization_vocabulary_containment.lens_unit.discriminators.edge_in_grandfathered_roster(
+test fn roadmap_component_rostered_for_typescript_sidecar_holds() -> Bool {
+  edge_in_grandfathered_roster(
     edge: v2.lens.realization_vocabulary_containment.RealizationVocabImportEdge {
       importer_path: "dag/gunbc/roadmap_component.dag",
       vocab_module: sidecar_module
@@ -141,8 +141,8 @@ test fn roadmap_component_rostered_for_typescript_sidecar_holds() -> v2.std.logi
   )
 }
 
-test fn theme_transition_rostered_for_typescript_sidecar_holds() -> v2.std.logic.Bool {
-  v2.test.realization_vocabulary_containment.lens_unit.discriminators.edge_in_grandfathered_roster(
+test fn theme_transition_rostered_for_typescript_sidecar_holds() -> Bool {
+  edge_in_grandfathered_roster(
     edge: v2.lens.realization_vocabulary_containment.RealizationVocabImportEdge {
       importer_path: "dag/gunbc/design/theme_transition.dag",
       vocab_module: sidecar_module
@@ -150,8 +150,8 @@ test fn theme_transition_rostered_for_typescript_sidecar_holds() -> v2.std.logic
   )
 }
 
-test fn effect_plan_bash_materialize_rostered_for_bash_build_holds() -> v2.std.logic.Bool {
-  v2.test.realization_vocabulary_containment.lens_unit.discriminators.edge_in_grandfathered_roster(
+test fn effect_plan_bash_materialize_rostered_for_bash_build_holds() -> Bool {
+  edge_in_grandfathered_roster(
     edge: v2.lens.realization_vocabulary_containment.RealizationVocabImportEdge {
       importer_path: "src/v2/workflow/effect_plan_bash_materialize.dag",
       vocab_module: bash_vocab_module
@@ -163,7 +163,7 @@ data bash_orchestration_emit_module: String = "v2.extdeps.languages.bash_orchest
 
 data bucket_d_emit_edge_import_facts: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixWorkflow,
+    layer: v2.std.layer.LayerPrefixWorkflow,
     path: "src/v2/workflow/ci_materialization_emit.dag",
     import_module: bash_orchestration_emit_module
   }
@@ -171,30 +171,30 @@ data bucket_d_emit_edge_import_facts: List<v2.std.layer.LayerImportFact> = [
 
 data bucket_d_emit_edge_discriminator_note: String = "Synthetic executing receipt for the surviving #7265 bucket-D materialization emitter. The sibling merge-admission emitter and its edge-prefix row deleted when the live work moved inside WalkPlan; retaining its synthetic fact would validate an implementation that no longer exists."
 
-test fn bucket_d_emit_modules_on_edge_roster_are_not_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: bucket_d_emit_edge_import_facts) == 0
+test fn bucket_d_emit_modules_on_edge_roster_are_not_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: bucket_d_emit_edge_import_facts) == 0
 }
 
 data ci_materialization_emit_edge_fact: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixWorkflow,
+    layer: v2.std.layer.LayerPrefixWorkflow,
     path: "src/v2/workflow/ci_materialization_emit.dag",
     import_module: bash_orchestration_emit_module
   }
 ]
 
-test fn de_rostered_ci_materialization_emit_edge_is_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_with_edge_prefixes(
+test fn de_rostered_ci_materialization_emit_edge_is_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_with_edge_prefixes(
     facts: ci_materialization_emit_edge_fact,
-    edge_prefixes: realization_edge_path_prefixes_without(
+    edge_prefixes: v2.lens.realization_vocabulary_containment.realization_edge_path_prefixes_without(
       excluded: "src/v2/workflow/ci_materialization_emit"
     )
   ) == 1
 }
 
-test fn grandfathered_edge_keys_are_exact_identity_holds() -> v2.std.logic.Bool {
-  v2.test.realization_vocabulary_containment.lens_unit.discriminators.list_contains_str(
-    xs: realization_vocab_grandfathered_edge_keys(),
+test fn grandfathered_edge_keys_are_exact_identity_holds() -> Bool {
+  list_contains_str(
+    xs: v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edge_keys(),
     target: "dag/gunbc/roadmap_component.dag -> extdeps.languages.typescript.program"
   )
 }

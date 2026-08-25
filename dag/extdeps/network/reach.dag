@@ -3,14 +3,14 @@ module extdeps.network.reach
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "man.openbsd.org/ssh_config#ProxyJump",
   }
 }
 
 data reach_proxycommand_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "man.openbsd.org/ssh_config#ProxyCommand",
   }
 }

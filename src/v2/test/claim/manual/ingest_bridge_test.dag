@@ -31,15 +31,15 @@ fn ingest_fixture_root() -> v2.std.grammar.GrammarRoot {
 fn ingest_parse() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let at = v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port)
   match v2.compiler.parse.grammar_validate_for_parse(root: ingest_fixture_root(), at: at) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: validated, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: validated, diagnostics: _ } =>
       match v2.compiler.parse.parse_production(
         tokens: std.algebra.Cons { head: ingest_fixture_token(), tail: std.algebra.Empty },
         validated: validated,
         production_name: ^ingest_fixture_start
       ) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: artifact, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: v2.std.diagnostic.None }
       }
   }
@@ -111,44 +111,44 @@ fn ingest_fixture_model_ambiguous(emitted: v2.std.node.Node, spine_class: v2.std
   ingest_fixture_model_from_bundle(bundle: ingest_fixture_bundle_with_rules(rules: rules))
 }
 
-test fn ingest_recovers_emitted_holds() -> v2.std.logic.Bool {
+test fn ingest_recovers_emitted_holds() -> Bool {
   match ingest_parse() {
-    Accepted { value: tree, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
       match v2.compiler.ingest.parse_tree_to_emitted_node(
         parse_tree: tree,
         source_model: ingest_fixture_model(emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
-        Accepted { value: recovered, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: recovered, diagnostics: _ } =>
           recovered == v2.extdeps.languages.dag.dag_fixture_emitted_add_fn
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ingest_bridge_to_canonical_holds() -> v2.std.logic.Bool {
+test fn ingest_bridge_to_canonical_holds() -> Bool {
   match ingest_parse() {
-    Accepted { value: tree, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
       match v2.compiler.ingest.parse_tree_to_target_model_bridge(
         parse_tree: tree,
         source_model: ingest_fixture_model(emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
-        Accepted { value: core, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: core, diagnostics: _ } =>
           core == v2.extdeps.languages.dag.dag_fixture_emitted_add_fn
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ingest_identity_coercion_needs_roster_membership_not_derived_grounding() -> v2.std.logic.Bool {
+test fn ingest_identity_coercion_needs_roster_membership_not_derived_grounding() -> Bool {
   let source = v2.extdeps.languages.dag.dag_fixture_emitted_add_fn
   match v2.compiler.infer.infer(tree: source) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: inferred, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: inferred, diagnostics: _ } =>
       match v2.compiler.infer.canonical_grounding_for_node(tree: inferred, node: source) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: grounding_r } =>
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: grounding_r } =>
           (grounding_r.head.reason == ^infer_grounding_not_derived)
             && match v2.compiler.translate.coerce_grounded_node(
               source: source,
@@ -158,19 +158,19 @@ test fn ingest_identity_coercion_needs_roster_membership_not_derived_grounding()
                 spine_class: ^ingest_fixture_tok
               )
             ) {
-              Rejected { diagnostics: _ } => false
-              Accepted { value: coerced, diagnostics: _ } =>
+              v2.std.diagnostic.Rejected { diagnostics: _ } => false
+              v2.std.diagnostic.Accepted { value: coerced, diagnostics: _ } =>
                 (coerced.quality == v2.std.coercion.Identity) && (coerced.target == source)
             }
       }
   }
 }
 
-test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() -> v2.std.logic.Bool {
+test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() -> Bool {
   let source = ingest_unstamped_node()
   match v2.compiler.infer.infer(tree: source) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: inferred, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: inferred, diagnostics: _ } =>
       match v2.compiler.translate.coerce_grounded_node(
         source: source,
         tree: inferred,
@@ -179,37 +179,37 @@ test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() ->
           spine_class: ^ingest_fixture_tok
         )
       ) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
       }
   }
 }
 
-test fn ingest_fails_closed_off_frontier_holds() -> v2.std.logic.Bool {
+test fn ingest_fails_closed_off_frontier_holds() -> Bool {
   match ingest_parse() {
-    Accepted { value: tree, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
       match v2.compiler.ingest.parse_tree_to_emitted_node(
         parse_tree: tree,
         source_model: ingest_fixture_model(emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_other_tok)
       ) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ingest_fails_closed_ambiguous_holds() -> v2.std.logic.Bool {
+test fn ingest_fails_closed_ambiguous_holds() -> Bool {
   match ingest_parse() {
-    Accepted { value: tree, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
       match v2.compiler.ingest.parse_tree_to_emitted_node(
         parse_tree: tree,
         source_model: ingest_fixture_model_ambiguous(emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -221,33 +221,33 @@ fn ingest_unstamped_node() -> v2.std.node.Node {
 }
 }
 
-test fn ingest_fails_closed_on_unstamped_holds() -> v2.std.logic.Bool {
+test fn ingest_fails_closed_on_unstamped_holds() -> Bool {
   match v2.compiler.ingest.parse_tree_to_emitted_node(
     parse_tree: ingest_unstamped_node(),
     source_model: ingest_fixture_model(emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-test fn ingest_cross_language_compile_refuses_underived_holds() -> v2.std.logic.Bool {
+test fn ingest_cross_language_compile_refuses_underived_holds() -> Bool {
   match ingest_parse() {
-    Accepted { value: tree, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
       match v2.compiler.ingest.cross_language_compile(
         parse_tree: tree,
         source_model: ingest_fixture_model(emitted: v2.extdeps.languages.dag.dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok),
         target_model: v2.extdeps.languages.dag.dag_target_model()
       ) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           d.head.reason == ^infer_grounding_not_derived
-        Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ingest_bridge_realized() -> v2.std.logic.Bool {
+test fn ingest_bridge_realized() -> Bool {
   ingest_recovers_emitted_holds()
     && ingest_bridge_to_canonical_holds()
     && ingest_fails_closed_off_frontier_holds()

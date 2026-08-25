@@ -2,14 +2,14 @@ module test.claim.cursor_sdk_model_witness_test
 
 
 test fn local_usage_standing_is_typed_capability_gap() -> Bool {
-  let gap = cursor_sdk_local_account_usage_unobservable()
-  gap.missing_capability == cursor_sdk_local_usage_missing_capability
+  let gap = extdeps.llm.cursor_sdk_facts.cursor_sdk_local_account_usage_unobservable()
+  gap.missing_capability == extdeps.llm.cursor_sdk_facts.cursor_sdk_local_usage_missing_capability
     && string_contains(s: gap.reason as String, pattern: "account-level")
 }
 
 test fn package_closure_matches_probe_receipt() -> Bool {
-  let closure = cursor_sdk_local_package_closure()
-  let receipt = provider_interface_acquisition_cursor_sdk_closure_receipt()
+  let closure = extdeps.llm.cursor_sdk_facts.cursor_sdk_local_package_closure()
+  let receipt = extdeps.probes.provider_interface_acquisition.provider_interface_acquisition_cursor_sdk_closure_receipt()
   closure.package_name == receipt.package_name
     && closure.exact_version == receipt.exact_version
     && closure.lockfile_sha256 == receipt.lockfile_sha256
@@ -23,8 +23,8 @@ test fn package_closure_matches_probe_receipt() -> Bool {
 }
 
 test fn srv1_package_provision_is_typed_gap() -> Bool {
-  let gap = cursor_sdk_local_package_unprovisioned_on_deployed_host()
-  gap.missing_capability == cursor_sdk_local_provision_missing_capability
+  let gap = extdeps.llm.cursor_sdk_facts.cursor_sdk_local_package_unprovisioned_on_deployed_host()
+  gap.missing_capability == extdeps.llm.cursor_sdk_facts.cursor_sdk_local_provision_missing_capability
     && string_contains(s: gap.reason as String, pattern: "srv1")
 }
 

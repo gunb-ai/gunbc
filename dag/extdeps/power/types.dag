@@ -3,7 +3,7 @@ module extdeps.power.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Power_distribution_unit"
   }
 }
@@ -13,16 +13,16 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.power.types",
       decl_name: "PduCatalogRow",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.power.types.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
 type PduCatalogRow {
   model_family: std.types.NonEmptyStr
-  manufacturer: Vendor<extdeps.hardware.Hardware>
+  manufacturer: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   rack_units: std.measure.RackUnit
   nominal_supply_voltage: std.measure.Volt
   rated_current: std.measure.Ampere

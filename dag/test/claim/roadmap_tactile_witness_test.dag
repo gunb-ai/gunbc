@@ -1,16 +1,16 @@
 module test.claim.roadmap_tactile_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data roadmap_tactile_witness_note: String = "The exemplar's walls, executed. Checkpoints 1, 2 and 7a are things a person verifies by clicking, so what a witness can honestly hold is the layer underneath them: that the vocabulary is real, that it is CONSUMED, that the mechanics are the ones the analog law requires, and that each claim has an input which makes it fail. Every witness in this file is reachable from the single test fn below — the orphaned-enrollment defect this repo just paid for once is not worth paying for twice."
 
 fn css() -> String {
-  roadmap_css()
+  gunbc.roadmap_style.roadmap_css()
 }
 
 fn js() -> String {
-  dispatch_client_js_source()
+  gunbc.roadmap_component.dispatch_client_js_source()
 }
 
 test fn witness_settle_spring_mints_only_the_easing() -> Bool {
@@ -20,37 +20,37 @@ test fn witness_settle_spring_mints_only_the_easing() -> Bool {
 }
 
 fn timing_in_scale(t: gunbc.design.material.TimingToken) -> Bool {
-  fold(timing_scale, init: false, f: (acc, s) =>
+  fold(gunbc.design.material.timing_scale, init: false, f: (acc, s) =>
     acc || (s.duration_ms == t.duration_ms && s.easing == t.easing))
 }
 
 test fn witness_every_behavior_timing_comes_from_the_scale() -> Bool {
-  all(roadmap_behaviors, r => timing_in_scale(t: r.timing))
+  all(gunbc.roadmap_interaction.roadmap_behaviors, r => timing_in_scale(t: r.timing))
 }
 
 fn witness_press_preserves_family() -> Bool {
   let c = css()
-  string_contains(s: c, pattern: join([".dispatch-btn.", dispatch_class_requested, ":active { background: var(--band-in-progress-pressed) }"], ""))
-    && string_contains(s: c, pattern: join([".dispatch-btn.", dispatch_class_ok, ":active { background: var(--band-ok-pressed) }"], ""))
+  string_contains(s: c, pattern: join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_requested, ":active { background: var(--band-in-progress-pressed) }"], ""))
+    && string_contains(s: c, pattern: join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_ok, ":active { background: var(--band-ok-pressed) }"], ""))
     && string_contains(s: c, pattern: ".dispatch-btn.dispatch-refused:active { background: var(--band-fail-pressed) }")
     && string_contains(s: c, pattern: ".dispatch-btn.dispatch-loud:active { background: var(--band-loud-pressed) }")
-    && !string_contains(s: c, pattern: join([".dispatch-btn.", dispatch_class_ok, ":active { background: var(--band-invite-pressed)"], ""))
+    && !string_contains(s: c, pattern: join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_ok, ":active { background: var(--band-invite-pressed)"], ""))
     && !string_contains(s: c, pattern: ".dispatch-btn.dispatch-refused:active { background: var(--band-invite-pressed)")
 }
 
 test fn witness_hover_runs_on_reveal_not_the_press_clock() -> Bool {
-  let approach_rows = roadmap_behaviors |> filter(r => r.timing.duration_ms == reveal_deliberate.duration_ms)
+  let approach_rows = gunbc.roadmap_interaction.roadmap_behaviors |> filter(r => r.timing.duration_ms == reveal_deliberate.duration_ms)
   approach_rows.length() > 0
     && string_contains(s: css(), pattern: "transform 160ms ease-out")
     && string_contains(s: css(), pattern: "border-color 160ms ease-out")
 }
 
 test fn witness_register_vocabulary_is_consumed() -> Bool {
-  coverage_complete(elements: roadmap_elements, rows: roadmap_behaviors)
+  gunbc.design.interaction.coverage_complete(elements: gunbc.roadmap_interaction.roadmap_elements, rows: gunbc.roadmap_interaction.roadmap_behaviors)
     && string_contains(s: css(), pattern: "translateY(var(--travel-lift))")
     && string_contains(s: css(), pattern: "translateY(var(--travel-press))")
-    && string_contains(s: css(), pattern: scale_transform_wire(per_mille: press_scale_per_mille))
-    && string_contains(s: css(), pattern: scale_transform_wire(per_mille: hold_scale_per_mille))
+    && string_contains(s: css(), pattern: gunbc.design.material.scale_transform_wire(per_mille: gunbc.design.material.press_scale_per_mille))
+    && string_contains(s: css(), pattern: gunbc.design.material.scale_transform_wire(per_mille: gunbc.design.material.hold_scale_per_mille))
     && string_contains(s: css(), pattern: settle_spring.easing)
 }
 
@@ -61,53 +61,53 @@ test fn witness_press_depresses_on_pointer_down() -> Bool {
       s: css(),
       pattern: join([
         ".dispatch-btn:active { transform: translateY(var(--travel-press)) ",
-        scale_transform_wire(per_mille: press_scale_per_mille),
+        gunbc.design.material.scale_transform_wire(per_mille: gunbc.design.material.press_scale_per_mille),
         " }",
       ], ""))
 }
 
 test fn witness_accept_settles_from_a_held_position() -> Bool {
-  let held = join([".dispatch-btn.", dispatch_class_requested, " { transform: ", scale_transform_wire(per_mille: hold_scale_per_mille), " }"], "")
-  let settled = join([".dispatch-btn.", dispatch_class_ok, " { transform: ", scale_transform_wire(per_mille: rest_scale_per_mille), " }"], "")
-  let spring = join([".dispatch-btn.", dispatch_class_ok, " { transition: transform 240ms ", settle_spring.easing, " }"], "")
+  let held = join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_requested, " { transform: ", gunbc.design.material.scale_transform_wire(per_mille: gunbc.design.material.hold_scale_per_mille), " }"], "")
+  let settled = join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_ok, " { transform: ", gunbc.design.material.scale_transform_wire(per_mille: gunbc.design.material.rest_scale_per_mille), " }"], "")
+  let spring = join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_ok, " { transition: transform 240ms ", settle_spring.easing, " }"], "")
   string_contains(s: css(), pattern: held)
     && string_contains(s: css(), pattern: settled)
     && string_contains(s: css(), pattern: spring)
 }
 
 test fn witness_detent_edges_all_beat() -> Bool {
-  roadmap_dispatch_detent_defects().length() == 0
-    && detent_edges_all_beat(detents: roadmap_dispatch_detents, edges: roadmap_detent_edges)
+  gunbc.roadmap_interaction.roadmap_dispatch_detent_defects().length() == 0
+    && gunbc.design.interaction.detent_edges_all_beat(detents: gunbc.roadmap_interaction.roadmap_dispatch_detents, edges: gunbc.roadmap_interaction.roadmap_detent_edges)
 }
 
 test fn witness_inert_edge_reds_with_its_transform() -> Bool {
-  let inert = gunbc.design.interaction.DetentEdge { from_state: detent_rest, to_state: detent_accepted }
-  let defects = detent_edge_defects(detents: roadmap_dispatch_detents, edges: [inert])
+  let inert = gunbc.design.interaction.DetentEdge { from_state: gunbc.roadmap_interaction.detent_rest, to_state: gunbc.roadmap_interaction.detent_accepted }
+  let defects = gunbc.design.interaction.detent_edge_defects(detents: gunbc.roadmap_interaction.roadmap_dispatch_detents, edges: [inert])
   defects.length() == 1
-    && all(defects, d => d.from_state == detent_rest && d.to_state == detent_accepted
+    && all(defects, d => d.from_state == gunbc.roadmap_interaction.detent_rest && d.to_state == gunbc.roadmap_interaction.detent_accepted
       && match d.fault {
-        PositionsCoincide { transform: t } => t == scale_transform_wire(per_mille: rest_scale_per_mille)
-        EndpointUndeclared { state: _ } => false
+        gunbc.design.interaction.PositionsCoincide { transform: t } => t == gunbc.design.material.scale_transform_wire(per_mille: gunbc.design.material.rest_scale_per_mille)
+        gunbc.design.interaction.EndpointUndeclared { state: _ } => false
       })
 }
 
 test fn witness_undeclared_endpoint_reds_by_name() -> Bool {
-  let typo = gunbc.design.interaction.DetentEdge { from_state: detent_pressed, to_state: "requsted" }
-  let defects = detent_edge_defects(detents: roadmap_dispatch_detents, edges: [typo])
+  let typo = gunbc.design.interaction.DetentEdge { from_state: gunbc.roadmap_interaction.detent_pressed, to_state: "requsted" }
+  let defects = gunbc.design.interaction.detent_edge_defects(detents: gunbc.roadmap_interaction.roadmap_dispatch_detents, edges: [typo])
   defects.length() == 1
     && all(defects, d => match d.fault {
-      EndpointUndeclared { state: s } => s == "requsted"
-      PositionsCoincide { transform: _ } => false
+      gunbc.design.interaction.EndpointUndeclared { state: s } => s == "requsted"
+      gunbc.design.interaction.PositionsCoincide { transform: _ } => false
     })
 }
 
 test fn witness_two_missing_endpoints_do_not_cancel() -> Bool {
   let both_bad = gunbc.design.interaction.DetentEdge { from_state: "nope-a", to_state: "nope-b" }
-  let defects = detent_edge_defects(detents: roadmap_dispatch_detents, edges: [both_bad])
+  let defects = gunbc.design.interaction.detent_edge_defects(detents: gunbc.roadmap_interaction.roadmap_dispatch_detents, edges: [both_bad])
   defects.length() == 1
     && all(defects, d => match d.fault {
-      EndpointUndeclared { state: s } => s == "nope-a"
-      PositionsCoincide { transform: _ } => false
+      gunbc.design.interaction.EndpointUndeclared { state: s } => s == "nope-a"
+      gunbc.design.interaction.PositionsCoincide { transform: _ } => false
     })
 }
 
@@ -116,7 +116,7 @@ fn carrier_items_all_timed(c: gunbc.design.material.TransitionCarrier) -> Bool {
 }
 
 test fn witness_every_transition_property_carries_its_own_duration() -> Bool {
-  let carriers = all_transition_carriers(rules: roadmap_rules())
+  let carriers = gunbc.design.material.all_transition_carriers(rules: gunbc.roadmap_style.roadmap_rules())
   carriers.length() > 0
     && all(carriers, c => carrier_items_all_timed(c: c))
     && string_contains(
@@ -127,25 +127,25 @@ test fn witness_every_transition_property_carries_its_own_duration() -> Bool {
 
 test fn witness_per_edge_weights_ride_their_own_selectors() -> Bool {
   string_contains(s: css(), pattern: ".dispatch-btn:active { transition: transform 90ms ease-out }")
-    && string_contains(s: css(), pattern: join([".dispatch-btn.", dispatch_class_requested, " { transition: transform 90ms ease-out }"], ""))
-    && string_contains(s: css(), pattern: join([".dispatch-btn.", dispatch_class_ok, " { transition: transform 240ms "], ""))
+    && string_contains(s: css(), pattern: join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_requested, " { transition: transform 90ms ease-out }"], ""))
+    && string_contains(s: css(), pattern: join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_ok, " { transition: transform 240ms "], ""))
 }
 
 test fn witness_state_class_trigger_selects_by_class_not_pseudo() -> Bool {
-  trigger_selector_suffix(t: gunbc.design.material.OnStateClass { class_name: dispatch_class_ok }) == join([".", dispatch_class_ok], "")
-    && trigger_is_state_class(t: gunbc.design.material.OnStateClass { class_name: dispatch_class_ok })
-    && !trigger_is_state_class(t: OnHover)
-    && trigger_selector_suffix(t: OnHover) == ":hover"
+  gunbc.design.material.trigger_selector_suffix(t: gunbc.design.material.OnStateClass { class_name: gunbc.roadmap_component.dispatch_class_ok }) == join([".", gunbc.roadmap_component.dispatch_class_ok], "")
+    && gunbc.design.material.trigger_is_state_class(t: gunbc.design.material.OnStateClass { class_name: gunbc.roadmap_component.dispatch_class_ok })
+    && !gunbc.design.material.trigger_is_state_class(t: gunbc.design.material.OnHover)
+    && gunbc.design.material.trigger_selector_suffix(t: gunbc.design.material.OnHover) == ":hover"
 }
 
 test fn witness_state_transitions_carry_on_the_state_selector() -> Bool {
-  let subject = extdeps.languages.css.selectors.ClassSelector { name: "dispatch-btn" }
-  let on_state = transition_carrier_selector(
+  let subject = ClassSelector { name: "dispatch-btn" }
+  let on_state = gunbc.design.material.transition_carrier_selector(
     subject: subject,
-    shape: SelfResponse,
-    trigger: gunbc.design.material.OnStateClass { class_name: dispatch_class_ok })
-  let on_pseudo = transition_carrier_selector(subject: subject, shape: SelfResponse, trigger: OnActive)
-  on_state == join([".dispatch-btn.", dispatch_class_ok], "")
+    shape: gunbc.design.material.SelfResponse,
+    trigger: gunbc.design.material.OnStateClass { class_name: gunbc.roadmap_component.dispatch_class_ok })
+  let on_pseudo = gunbc.design.material.transition_carrier_selector(subject: subject, shape: gunbc.design.material.SelfResponse, trigger: gunbc.design.material.OnActive)
+  on_state == join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_ok], "")
     && on_pseudo == ".dispatch-btn"
 }
 
@@ -157,33 +157,33 @@ test fn witness_keyframes_wall_holds_on_the_dashboard() -> Bool {
 }
 
 test fn witness_reduced_motion_neutralizes_every_carrier() -> Bool {
-  let block = reduced_motion_block(rules: roadmap_rules())
+  let block = gunbc.design.material.reduced_motion_block(rules: gunbc.roadmap_style.roadmap_rules())
   string_contains(s: block, pattern: ".dispatch-btn { transition: none }")
-    && string_contains(s: block, pattern: join([".dispatch-btn.", dispatch_class_ok, " { transition: none }"], ""))
-    && string_contains(s: block, pattern: join([".dispatch-btn.", dispatch_class_requested, " { transition: none }"], ""))
+    && string_contains(s: block, pattern: join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_ok, " { transition: none }"], ""))
+    && string_contains(s: block, pattern: join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_requested, " { transition: none }"], ""))
     && string_contains(s: block, pattern: ".dispatch-btn:active { transition: none }")
-    && string_contains(s: block, pattern: join([".", sound_toggle_class, " { transition: none }"], ""))
+    && string_contains(s: block, pattern: join([".", gunbc.roadmap_component.sound_toggle_class, " { transition: none }"], ""))
     && string_contains(s: css(), pattern: "@media (prefers-reduced-motion: reduce)")
 }
 
 test fn witness_declared_sounds_are_operation_sounds() -> Bool {
-  every_declared_sound_admissible()
+  gunbc.design.sound.every_declared_sound_admissible()
     && sound_specs.length() > 0
-    && operation_sound_envelope(s: engage_detent_click)
+    && gunbc.design.sound.operation_sound_envelope(s: gunbc.design.sound.engage_detent_click)
 }
 
 test fn witness_notification_chime_is_inadmissible() -> Bool {
-  !operation_sound_envelope(s: notification_chime_negative_control)
-    && notification_chime_negative_control.decay > operation_sound_max_decay_ms
+  !gunbc.design.sound.operation_sound_envelope(s: gunbc.design.sound.notification_chime_negative_control)
+    && notification_chime_negative_control.decay > gunbc.design.sound.operation_sound_max_decay_ms
 }
 
 test fn witness_press_tick_is_derived_from_the_sound_row() -> Bool {
   let source = js()
-  string_contains(s: source, pattern: sound_spec_frequency_wire(s: engage_detent_click))
-    && string_contains(s: source, pattern: sound_spec_decay_seconds_wire(s: engage_detent_click))
-    && string_contains(s: source, pattern: sound_spec_peak_gain_wire(s: engage_detent_click))
-    && string_contains(s: source, pattern: sound_spec_timbre_wire(s: engage_detent_click))
-    && !string_contains(s: source, pattern: sound_spec_frequency_wire(s: notification_chime_negative_control))
+  string_contains(s: source, pattern: gunbc.design.sound.sound_spec_frequency_wire(s: gunbc.design.sound.engage_detent_click))
+    && string_contains(s: source, pattern: gunbc.design.sound.sound_spec_decay_seconds_wire(s: gunbc.design.sound.engage_detent_click))
+    && string_contains(s: source, pattern: gunbc.design.sound.sound_spec_peak_gain_wire(s: gunbc.design.sound.engage_detent_click))
+    && string_contains(s: source, pattern: gunbc.design.sound.sound_spec_timbre_wire(s: gunbc.design.sound.engage_detent_click))
+    && !string_contains(s: source, pattern: gunbc.design.sound.sound_spec_frequency_wire(s: gunbc.design.sound.notification_chime_negative_control))
 }
 
 test fn witness_tick_is_synthesized_not_a_file() -> Bool {
@@ -204,16 +204,16 @@ test fn witness_tick_fires_on_pointer_down_in_its_own_listener() -> Bool {
 
 test fn witness_mute_is_persisted_and_defaults_to_sounding() -> Bool {
   let source = js()
-  sound_default_sounding
-    && string_contains(s: source, pattern: join(["localStorage.getItem('", sound_mute_storage_key, "')"], ""))
-    && string_contains(s: source, pattern: join(["localStorage.setItem('", sound_mute_storage_key, "'"], ""))
-    && string_contains(s: source, pattern: sound_toggle_label_on)
-    && string_contains(s: source, pattern: sound_toggle_label_off)
+  gunbc.design.sound.sound_default_sounding
+    && string_contains(s: source, pattern: join(["localStorage.getItem('", gunbc.design.sound.sound_mute_storage_key, "')"], ""))
+    && string_contains(s: source, pattern: join(["localStorage.setItem('", gunbc.design.sound.sound_mute_storage_key, "'"], ""))
+    && string_contains(s: source, pattern: gunbc.roadmap_component.sound_toggle_label_on)
+    && string_contains(s: source, pattern: gunbc.roadmap_component.sound_toggle_label_off)
 }
 
 test fn witness_button_reports_dispatch_acceptance() -> Bool {
   let source = js()
-  string_contains(s: source, pattern: concat(dispatch_ack_prefix, dispatch_ack_word))
+  string_contains(s: source, pattern: concat(gunbc.roadmap_component.dispatch_ack_prefix, gunbc.roadmap_component.dispatch_ack_word))
     && string_contains(s: source, pattern: "sfx.line")
     && !string_contains(s: source, pattern: "session · present")
     && !string_contains(s: source, pattern: "session · spawned")
@@ -221,66 +221,66 @@ test fn witness_button_reports_dispatch_acceptance() -> Bool {
 
 fn fragment_is_sound_toggle(c: std.markup.Fragment) -> Bool {
   match c {
-    Element { tag: t, attributes: a, children: _ } =>
+    std.markup.Element { tag: t, attributes: a, children: _ } =>
       t == "button"
         && fold(a, init: false, f: (found, at) =>
-          found || (at.name == "class" && at.value == sound_toggle_class))
-    FragmentText { content: _ } => false
-    RawNode { content: _ } => false
+          found || (at.name == "class" && at.value == gunbc.roadmap_component.sound_toggle_class))
+    std.markup.FragmentText { content: _ } => false
+    std.markup.RawNode { content: _ } => false
   }
 }
 
-// Amended for the A2 hierarchy closeout: the header's controls moved inside the div.header-inner composition frame (gunbc.roadmap_page.header_composition_frame_note), so the toggle is no longer a direct child. Same shape as the wordmark scan in roadmap_register_witness_test (header_frame_scan_note): a RECURSIVE descent over the header's std.markup.Fragment subtree, because the claim is 'every page header ships the toggle', not 'the toggle sits at depth one'. A fixed depth would re-pin the nesting it was just unpinned from.
+// Amended for the A2 hierarchy closeout: the header's controls moved inside the div.header-inner composition frame (gunbc.roadmap_page.header_composition_frame_note), so the toggle is no longer a direct child. Same shape as the wordmark scan in roadmap_register_witness_test (header_frame_scan_note): a RECURSIVE descent over the header's Fragment subtree, because the claim is 'every page header ships the toggle', not 'the toggle sits at depth one'. A fixed depth would re-pin the nesting it was just unpinned from.
 fn header_subtree_has_sound_toggle(f: std.markup.Fragment) -> Bool {
   fragment_is_sound_toggle(c: f)
     || (match f {
-      Element { tag: _, attributes: _, children } =>
+      std.markup.Element { tag: _, attributes: _, children } =>
         fold(children, init: false, f: (acc, c) => acc || header_subtree_has_sound_toggle(f: c))
-      FragmentText { content: _ } => false
-      RawNode { content: _ } => false
+      std.markup.FragmentText { content: _ } => false
+      std.markup.RawNode { content: _ } => false
     })
 }
 
 fn header_has_sound_toggle(h: std.markup.Fragment) -> Bool {
   match h {
-    Element { tag, attributes: _, children } =>
+    std.markup.Element { tag, attributes: _, children } =>
       tag == "header"
         && fold(children, init: false, f: (acc, c) => acc || header_subtree_has_sound_toggle(f: c))
-    FragmentText { content: _ } => false
-    RawNode { content: _ } => false
+    std.markup.FragmentText { content: _ } => false
+    std.markup.RawNode { content: _ } => false
   }
 }
 
 test fn witness_sound_toggle_ships_on_every_page_header() -> Bool {
-  header_has_sound_toggle(h: roadmap_header(page: "roadmap"))
-    && header_has_sound_toggle(h: roadmap_header(page: "daily workspace"))
+  header_has_sound_toggle(h: gunbc.roadmap_page.roadmap_header(page: "roadmap"))
+    && header_has_sound_toggle(h: gunbc.roadmap_page.roadmap_header(page: "daily workspace"))
 }
 
 test fn witness_sound_toggle_scan_discriminates() -> Bool {
-  !header_has_sound_toggle(h: extdeps.browser.Element {
+  !header_has_sound_toggle(h: std.markup.Element {
     tag: "header",
     attributes: [],
     children: [
-      extdeps.browser.Element {
+      std.markup.Element {
         tag: "div",
         attributes: [],
         children: [
-          extdeps.browser.Element {
+          std.markup.Element {
             tag: "button",
-            attributes: [ attr(name: "class", value: "theme-toggle") ],
+            attributes: [ std.markup.attr(name: "class", value: "theme-toggle") ],
             children: [],
           },
         ],
       },
     ],
   })
-    && !header_has_sound_toggle(h: extdeps.browser.Element {
+    && !header_has_sound_toggle(h: std.markup.Element {
       tag: "div",
       attributes: [],
       children: [
-        extdeps.browser.Element {
+        std.markup.Element {
           tag: "button",
-          attributes: [ attr(name: "class", value: sound_toggle_class) ],
+          attributes: [ std.markup.attr(name: "class", value: gunbc.roadmap_component.sound_toggle_class) ],
           children: [],
         },
       ],
@@ -290,10 +290,10 @@ test fn witness_sound_toggle_scan_discriminates() -> Bool {
 data sound_toggle_name_vs_state_note: String = "Amended at A1 (presentation recon, 2026-08-01): the markup ships the control's NAME ('sound') so the button has visible content and an accessible name before the client program runs — the former empty-button pin enshrined blankness as the wire contract, which was the defect, not the honesty. The claim that MATTERS is unchanged and still asserted: the markup never ships a STATE label (sound_toggle_label_on), because the state lives in this browser's storage and only the client program may paint it."
 
 test fn witness_sound_toggle_label_is_painted_by_the_program_not_the_markup() -> Bool {
-  match try_serialize_html_source(node: roadmap_page_for_authority()) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      string_contains(s: h, pattern: join(["<button class=\"", sound_toggle_class, "\" type=\"button\">sound</button>"], ""))
-        && !string_contains(s: h, pattern: sound_toggle_label_on)
+  match extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.roadmap_page_for_authority()) {
+    extdeps.languages.html.EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitOk { html: h } =>
+      string_contains(s: h, pattern: join(["<button class=\"", gunbc.roadmap_component.sound_toggle_class, "\" type=\"button\">sound</button>"], ""))
+        && !string_contains(s: h, pattern: gunbc.roadmap_component.sound_toggle_label_on)
   }
 }

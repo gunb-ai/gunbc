@@ -2,8 +2,8 @@ module v2.compiler.normalized_tree
 
 
 // A NormalizedTree is the ADMITTED product of normalize: a root whose own
-// lowering left no wrapper behind. It was an alias for v2.std.node.Node until BL-1; the
-// alias is why retention evidence reached resolve as a bare v2.std.node.Node and was
+// lowering left no wrapper behind. It was an alias for Node until BL-1; the
+// alias is why retention evidence reached resolve as a bare Node and was
 // dropped there. Sealing the carrier is what makes the drop unwritable.
 type NormalizedTree sole_constructor {
   root: v2.std.node.Node,
@@ -14,17 +14,17 @@ data normalized_tree_admission_rung_note: String = "Rung: ACCEPTED REFINEMENT WI
 fn normalized_tree_retention_diagnostic(root: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^normalized_tree_reason_wrapper_retention_not_normalized,
-    at: node_locus(node: root),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: root),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn admit_normalized_tree(root: v2.std.node.Node, diagnostics: v2.std.diagnostic.Diagnostics) -> v2.std.diagnostic.Outcome<NormalizedTree> {
-  if body_lowering_diagnostics_carry_wrapper_retention(d: diagnostics) {
+  if v2.compiler.body_lowering_fold.body_lowering_diagnostics_carry_wrapper_retention(d: diagnostics) {
     v2.std.diagnostic.Rejected {
-      diagnostics: rejected_with_pending(
+      diagnostics: v2.std.diagnostic.rejected_with_pending(
         pending: diagnostics,
-        rejected: diagnostics_singleton(d: normalized_tree_retention_diagnostic(root: root))
+        rejected: v2.std.diagnostic.diagnostics_singleton(d: normalized_tree_retention_diagnostic(root: root))
       )
     }
   } else {
@@ -33,14 +33,14 @@ fn admit_normalized_tree(root: v2.std.node.Node, diagnostics: v2.std.diagnostic.
 }
 
 // Projection out of the sealed carrier for consumers that are genuinely about
-// v2.std.node.Node structure and not about admission -- the symbol-index fill, for one.
+// Node structure and not about admission -- the symbol-index fill, for one.
 // Order-preserving: a symbol index built from a reordered root list is a
 // different index.
-fn normalized_tree_roots_to_nodes(roots: FreeMonoid<NormalizedTree>) -> FreeMonoid<v2.std.node.Node> {
-  fold_list(
+fn normalized_tree_roots_to_nodes(roots: std.algebra.FreeMonoid<NormalizedTree>) -> std.algebra.FreeMonoid<v2.std.node.Node> {
+  v2.std.algebra.fold_list(
     xs: roots,
     empty: std.algebra.Empty,
-    cons: fn(acc, root) { list_snoc_item(xs: acc, item: root.root) }
+    cons: fn(acc, root) { v2.std.algebra.list_snoc_item(xs: acc, item: root.root) }
   )
 }
 
@@ -56,29 +56,29 @@ fn normalized_tree_roots_to_nodes(roots: FreeMonoid<NormalizedTree>) -> FreeMono
 // set exactly once via admit_normalized_tree, and the accepted diagnostics are
 // attached once at the end.
 fn admit_normalized_roots(
-  roots: FreeMonoid<v2.std.node.Node>,
+  roots: std.algebra.FreeMonoid<v2.std.node.Node>,
   diagnostics: v2.std.diagnostic.Diagnostics
-) -> v2.std.diagnostic.Outcome<FreeMonoid<NormalizedTree>> {
-  match fold_list(
+) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<NormalizedTree>> {
+  match v2.std.algebra.fold_list(
     xs: roots,
-    empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
+    empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: None },
     cons: fn(acc, root) {
       match acc {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: admitted, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
           match admit_normalized_tree(root: root, diagnostics: diagnostics) {
-            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-            Accepted { value: one, diagnostics: _ } =>
+            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            v2.std.diagnostic.Accepted { value: one, diagnostics: _ } =>
               v2.std.diagnostic.Accepted {
-                value: list_snoc_item(xs: admitted, item: one),
-                diagnostics: v2.std.diagnostic.None
+                value: v2.std.algebra.list_snoc_item(xs: admitted, item: one),
+                diagnostics: None
               }
           }
       }
     }
   ) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: all, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: all, diagnostics: _ } =>
       v2.std.diagnostic.Accepted { value: all, diagnostics: diagnostics }
   }
 }

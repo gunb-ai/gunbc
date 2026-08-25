@@ -39,7 +39,7 @@ fn ob_two_level_path_is(
   terminal: v2.std.node.Symbol
 ) -> Bool {
   match path.ancestors {
-    Cons { head: observed_root, tail: Empty } =>
+    std.algebra.Cons { head: observed_root, tail: std.algebra.Empty } =>
       observed_root == root && path.terminal == terminal
     _ => false
   }
@@ -48,7 +48,7 @@ fn ob_two_level_path_is(
 test fn occurrence_binding_root_only_path_is_nonempty_holds() -> Bool {
   let path = ob_root_path(terminal: ^root_only)
   match path.ancestors {
-    Empty => path.terminal == ^root_only
+    std.algebra.Empty => path.terminal == ^root_only
     _ => false
   }
 }
@@ -62,11 +62,11 @@ test fn occurrence_binding_two_level_path_separates_terminal_holds() -> Bool {
 }
 
 test fn occurrence_binding_zero_candidates_is_unbound_holds() -> Bool {
-  match occurrence_binding_from_candidates(
+  match std.occurrence_binding.occurrence_binding_from_candidates(
     occurrence: ob_occurrence(),
     candidates: std.algebra.Empty,
   ) {
-    OccurrenceUnbound { occurrence: observed } =>
+    std.occurrence_binding.OccurrenceUnbound { occurrence: observed } =>
       observed.containment.terminal == ^use_site
         && ob_two_level_path_is(
           path: observed.containment,
@@ -84,12 +84,12 @@ test fn occurrence_binding_one_candidate_is_bound_holds() -> Bool {
       terminal: ^declaration,
     ),
   )
-  match occurrence_binding_from_candidates(
+  match std.occurrence_binding.occurrence_binding_from_candidates(
     occurrence: ob_occurrence(),
     candidates: std.algebra.Cons { head: candidate, tail: std.algebra.Empty },
   ) {
-    OccurrenceBound {
-      binding: OccurrenceBinding {
+    std.occurrence_binding.OccurrenceBound {
+      binding: std.occurrence_binding.OccurrenceBinding {
         occurrence: observed_occurrence,
         candidate: observed_candidate,
       },
@@ -112,19 +112,19 @@ test fn occurrence_binding_two_candidates_are_structurally_ambiguous_holds() -> 
   let second = ob_candidate(
     containment: ob_root_path(terminal: ^second_declaration),
   )
-  match occurrence_binding_from_candidates(
+  match std.occurrence_binding.occurrence_binding_from_candidates(
     occurrence: ob_occurrence(),
     candidates: std.algebra.Cons {
       head: first,
       tail: std.algebra.Cons { head: second, tail: std.algebra.Empty },
     },
   ) {
-    OccurrenceAmbiguous {
+    std.occurrence_binding.OccurrenceAmbiguous {
       occurrence: _,
-      candidates: AmbiguousBindingCandidates {
+      candidates: std.occurrence_binding.AmbiguousBindingCandidates {
         first: observed_first,
         second: observed_second,
-        rest: Empty,
+        rest: std.algebra.Empty,
       },
     } =>
       observed_first.containment.terminal == ^first_declaration
@@ -146,7 +146,7 @@ test fn occurrence_binding_many_candidates_preserve_input_order_holds() -> Bool 
   let fourth = ob_candidate(
     containment: ob_root_path(terminal: ^fourth_declaration),
   )
-  match occurrence_binding_from_candidates(
+  match std.occurrence_binding.occurrence_binding_from_candidates(
     occurrence: ob_occurrence(),
     candidates: std.algebra.Cons {
       head: first,
@@ -159,14 +159,14 @@ test fn occurrence_binding_many_candidates_preserve_input_order_holds() -> Bool 
       },
     },
   ) {
-    OccurrenceAmbiguous {
+    std.occurrence_binding.OccurrenceAmbiguous {
       occurrence: _,
-      candidates: AmbiguousBindingCandidates {
+      candidates: std.occurrence_binding.AmbiguousBindingCandidates {
         first: observed_first,
         second: observed_second,
-        rest: Cons {
+        rest: std.algebra.Cons {
           head: observed_third,
-          tail: Cons { head: observed_fourth, tail: Empty },
+          tail: std.algebra.Cons { head: observed_fourth, tail: std.algebra.Empty },
         },
       },
     } =>
@@ -185,19 +185,19 @@ test fn occurrence_binding_duplicate_candidates_remain_ambiguous_holds() -> Bool
       terminal: ^duplicate_declaration,
     ),
   )
-  match occurrence_binding_from_candidates(
+  match std.occurrence_binding.occurrence_binding_from_candidates(
     occurrence: ob_occurrence(),
     candidates: std.algebra.Cons {
       head: duplicate,
       tail: std.algebra.Cons { head: duplicate, tail: std.algebra.Empty },
     },
   ) {
-    OccurrenceAmbiguous {
+    std.occurrence_binding.OccurrenceAmbiguous {
       occurrence: _,
-      candidates: AmbiguousBindingCandidates {
+      candidates: std.occurrence_binding.AmbiguousBindingCandidates {
         first: observed_first,
         second: observed_second,
-        rest: Empty,
+        rest: std.algebra.Empty,
       },
     } =>
       observed_first.containment.terminal == ^duplicate_declaration
@@ -229,19 +229,19 @@ test fn occurrence_binding_same_name_different_containment_is_ambiguous_holds() 
       terminal: ^same_name,
     ),
   )
-  match occurrence_binding_from_candidates(
+  match std.occurrence_binding.occurrence_binding_from_candidates(
     occurrence: ob_occurrence(),
     candidates: std.algebra.Cons {
       head: left,
       tail: std.algebra.Cons { head: right, tail: std.algebra.Empty },
     },
   ) {
-    OccurrenceAmbiguous {
+    std.occurrence_binding.OccurrenceAmbiguous {
       occurrence: _,
-      candidates: AmbiguousBindingCandidates {
+      candidates: std.occurrence_binding.AmbiguousBindingCandidates {
         first: observed_left,
         second: observed_right,
-        rest: Empty,
+        rest: std.algebra.Empty,
       },
     } =>
       observed_left.containment.terminal == ^same_name

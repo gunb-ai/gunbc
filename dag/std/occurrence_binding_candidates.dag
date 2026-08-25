@@ -127,7 +127,7 @@ fn declaration_exposure_eq(
     LexicalExposure { exposing_scope: left_scope } =>
       match right {
         LexicalExposure { exposing_scope: right_scope } =>
-          occurrence_containment_paths_equal(left: left_scope, right: right_scope)
+          std.occurrence_identity.occurrence_containment_paths_equal(left: left_scope, right: right_scope)
         _ => false
       }
     ModuleExposure { module: left_module } =>
@@ -154,8 +154,8 @@ fn occurrence_containment_parent_scope(
   ancestors: std.algebra.FreeMonoid<std.occurrence_identity.OccurrenceId>
 ) -> std.occurrence_identity.OccurrenceContainmentPath? {
   match reverse(ancestors) {
-    Empty => none
-    Cons { head: parent_terminal, tail: parent_ancestors_reversed } =>
+    std.algebra.Empty => none
+    std.algebra.Cons { head: parent_terminal, tail: parent_ancestors_reversed } =>
       Present {
         value: std.occurrence_identity.OccurrenceContainmentPath {
           ancestors: reverse(parent_ancestors_reversed),
@@ -174,9 +174,9 @@ fn declaration_exposure_module_local_member(
       ModuleExposure { module: module_path }
     Present { value: exposing_scope } =>
       match exposing_scope.ancestors {
-        Empty =>
+        std.algebra.Empty =>
           ModuleExposure { module: module_path }
-        Cons { head: _, tail: _ } =>
+        std.algebra.Cons { head: _, tail: _ } =>
           LexicalExposure { exposing_scope: exposing_scope }
       }
   }
@@ -194,10 +194,10 @@ fn declaration_exposure_namespace_structural_root(
 
     Present { value: exposing_scope } =>
       match exposing_scope.ancestors {
-        Empty =>
+        std.algebra.Empty =>
           ModuleExposure { module: module_path }
 
-        Cons { head: _, tail: _ } =>
+        std.algebra.Cons { head: _, tail: _ } =>
           LexicalExposure { exposing_scope: exposing_scope }
       }
   }
@@ -305,7 +305,7 @@ fn authored_order_fold_step(
     Absent =>
       match map_get(build.order_by_occurrence, row.occurrence.value) {
         Present { value: existing } =>
-          if authored_token_ordinal_eq(left: existing, right: row.ordinal) {
+          if std.occurrence_identity.authored_token_ordinal_eq(left: existing, right: row.ordinal) {
             build
           } else {
             AuthoredOrderIndexBuild {
@@ -525,7 +525,7 @@ fn declaration_lexically_exposed(
   exposing_scope: std.occurrence_identity.OccurrenceContainmentPath,
   reference: std.occurrence_identity.ReferenceOccurrence
 ) -> Bool {
-  occurrence_containment_path_is_prefix_of(
+  std.occurrence_identity.occurrence_containment_path_is_prefix_of(
     prefix: exposing_scope,
     path: reference.containment,
   )
@@ -550,7 +550,7 @@ fn declaration_module_sibling_exposed(
       ) {
         Absent => false
         Present { value: reference_ordinal } =>
-          authored_token_ordinal_before(
+          std.occurrence_identity.authored_token_ordinal_before(
             earlier: declaration_ordinal,
             later: reference_ordinal,
           ) && match module_of_occurrence(
@@ -684,10 +684,10 @@ fn occurrence_candidate_index_build(
   transport: std.occurrence_identity.OccurrenceTransport,
   inputs: OccurrenceBindingCandidateInputs
 ) -> OccurrenceCandidateIndexBuild {
-  match occurrence_transport_validate(transport: transport) {
-    OccurrenceTransportRefused { refusal: refusal } =>
+  match std.occurrence_identity.occurrence_transport_validate(transport: transport) {
+    std.occurrence_identity.OccurrenceTransportRefused { refusal: refusal } =>
       OccurrenceCandidateIndexTransportRefused { refusal: refusal }
-    OccurrenceTransportValidated { transport: validated } =>
+    std.occurrence_identity.OccurrenceTransportValidated { transport: validated } =>
       let module_path_build = module_by_occurrence_build(rows: inputs.module_paths)
       let exposure_build = exposure_by_occurrence_build(rows: inputs.exposure_rows)
       let order_build = authored_order_by_occurrence_build(rows: inputs.authored_order_rows)
@@ -1074,7 +1074,7 @@ data module_path_file_row_note: String = "ModulePathFileRow is the parser-embedd
 
 data module_path_file_row_dissolution_note: String = "See module_path_file_row_dissolution_note_dissolve_on for the lifecycle condition this row's rationale accompanies."
 
-data module_path_file_row_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only.")
+data module_path_file_row_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only.")
 
 type ModulePathFileRow {
   module_path: std.types.NonEmptyStr
@@ -1505,14 +1505,14 @@ fn reference_derived_dependency_binding_references(
     references,
     init: ReferenceDerivedDependencyBindingReferenceBuild { references_reversed: [] },
     f: (acc, reference) =>
-      match occurrence_category_clause_e_dependency_inducing_verdict(
+      match std.occurrence_identity.occurrence_category_clause_e_dependency_inducing_verdict(
         category: reference.category,
       ) {
-        OccurrenceCategoryClauseEDependencyInducing =>
+        std.occurrence_identity.OccurrenceCategoryClauseEDependencyInducing =>
           ReferenceDerivedDependencyBindingReferenceBuild {
             references_reversed: concat([reference], acc.references_reversed),
           }
-        OccurrenceCategoryClauseEDependencyNotInducing { category: _ } => acc
+        std.occurrence_identity.OccurrenceCategoryClauseEDependencyNotInducing { category: _ } => acc
       },
   )
   reverse(build.references_reversed)
@@ -1603,7 +1603,7 @@ fn remap_occurrence_id(
     Present { value: remapped } =>
       OccurrenceIdRemapResult { id: remapped, state: state }
     Absent =>
-      let allocated = alloc_occurrence_id(alloc: state.allocator)
+      let allocated = std.occurrence_identity.alloc_occurrence_id(alloc: state.allocator)
       OccurrenceIdRemapResult {
         id: allocated.id,
         state: OccurrenceIdRemapState {
@@ -1956,7 +1956,7 @@ fn assemble_cross_file_binding_closure(
   providers: List<CrossFileBindingClosureRow>
 ) -> AssembledCrossFileBindingClosure {
   let consumer_state = occurrence_id_remap_state_with_fresh_map(
-    allocator: occurrence_id_allocator_initial(),
+    allocator: std.occurrence_identity.occurrence_id_allocator_initial(),
   )
   let consumer_transport_rekey = rekey_occurrence_transport(
     transport: consumer.transport,
@@ -2306,7 +2306,7 @@ fn resolve_type_reference_containment_binding(
   reference: std.occurrence_identity.ReferenceOccurrence
 ) -> ReferenceBindingProjection {
   match reference.category {
-    TypeOccurrence =>
+    std.occurrence_identity.TypeOccurrence =>
       resolve_reference_binding_via_structural_candidates(
         transport: transport,
         inputs: inputs,
@@ -2331,20 +2331,20 @@ fn resolve_reference_via_structural_candidates(
     index: index,
     reference: reference,
   )
-  match resolve_reference_occurrence_binding(
+  match std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
     transport: transport,
     occurrence: reference.occurrence,
     supplied_candidates: candidates,
   ) {
-    OccurrenceReferenceBindingTransportRefused { refusal: refusal } =>
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingTransportRefused { refusal: refusal } =>
       ReferenceBindingProjectionTransportRefused { refusal: refusal }
-    OccurrenceReferenceBindingDecided { result: result } =>
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingDecided { result: result } =>
       match result {
-        OccurrenceUnbound { occurrence: _ } =>
+        std.occurrence_binding.OccurrenceUnbound { occurrence: _ } =>
           ReferenceBindingProjectionUnbound { occurrence: reference.occurrence }
-        OccurrenceAmbiguous { occurrence: _, candidates: _ } =>
+        std.occurrence_binding.OccurrenceAmbiguous { occurrence: _, candidates: _ } =>
           ReferenceBindingProjectionAmbiguous { occurrence: reference.occurrence }
-        OccurrenceBound { binding: binding } =>
+        std.occurrence_binding.OccurrenceBound { binding: binding } =>
           let declaration_occurrence = binding.candidate.containment.terminal
           match module_of_occurrence(
             module_by_occurrence: index.module_by_occurrence,
@@ -2470,7 +2470,7 @@ fn section13_executing_receipt(
   std.decl_ref.DeclarationRef {
     module_path: module_path,
     decl_name: decl_name,
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
@@ -2478,7 +2478,7 @@ fn section13_collector_dedup_dissolve_on() -> std.decl_ref.DeclarationRef {
   std.decl_ref.DeclarationRef {
     module_path: "std.occurrence_binding_candidates" as std.types.NonEmptyStr,
     decl_name: "occurrence_safe_collector_dedup_receipt" as std.types.NonEmptyStr,
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
@@ -2690,7 +2690,7 @@ fn section13_observation_joins_receipt(
       match found {
         Present { value: _ } => found
         Absent =>
-          if declaration_ref_eq(
+          if std.decl_ref.declaration_ref_eq(
             a: observation.declaration,
             b: receipt,
           ) && observation.head == required_head {
@@ -2783,4 +2783,4 @@ fn section13_population_law_roster_denominator_holds(
   }
 }
 
-data section13_module_path_is_symbolic_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling i")
+data section13_module_path_is_symbolic_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling i")

@@ -2,19 +2,19 @@ module v2.std.compilers.coproduct_variant_shape
 
 
 // Single authority for nullary vs payload-bearing coproduct variant classification (Conj-child presence on variant targets). Consumed by semantic_decl_emission decoration rules, rust derive-binding rows, and trait_derive_completeness elem-shape. Fail-closed: non-Conj targets carry no payload.
-fn coproduct_variant_edge_has_payload(edge: v2.std.node.Edge) -> v2.std.logic.Bool {
+fn coproduct_variant_edge_has_payload(edge: v2.std.node.Edge) -> Bool {
   match edge.target.kind {
-    TypeNode { connective: Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       match edge.target.children {
-        Empty => false
-        Cons { head: _, tail: _ } => true
+        v2.std.algebra.Empty => false
+        std.algebra.Cons { head: _, tail: _ } => true
       }
     _ => false
   }
 }
 
-fn coproduct_all_variants_nullary(edges: List<v2.std.node.Edge>) -> v2.std.logic.Bool {
-  fold_list(
+fn coproduct_all_variants_nullary(edges: List<v2.std.node.Edge>) -> Bool {
+  v2.std.algebra.fold_list(
     xs: edges,
     empty: true,
     cons: fn(acc, edge) {

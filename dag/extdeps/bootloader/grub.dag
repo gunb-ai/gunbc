@@ -3,7 +3,7 @@ module extdeps.bootloader.grub
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.gnu.org/software/grub/manual/grub/grub.html#Simple-configuration"
   }
 }
@@ -22,7 +22,7 @@ type GrubConfig {
 }
 
 fn grub_cmdline_arg_render(arg: extdeps.firmware.kernel_cmdline.KernelCmdlineArg) -> String {
-  let wire = kernel_cmdline_arg_wire(arg: arg)
+  let wire = extdeps.firmware.kernel_cmdline.kernel_cmdline_arg_wire(arg: arg)
   if string_contains(s: wire, pattern: ";") {
     concat("\"", concat(wire, "\""))
   } else {

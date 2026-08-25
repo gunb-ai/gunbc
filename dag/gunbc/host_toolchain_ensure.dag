@@ -101,7 +101,7 @@ func host_toolchain_ensure(host: product.placement_supply.HostIdentity, kind: Ho
         transport: reach.access.transport,
         fixture_actor: none,
       ) {
-        Converged { evidence: _, applied: _ } => std.process.ExitSuccess
+        std.realization_reconcile.Converged { evidence: _, applied: _ } => std.process.ExitSuccess
         std.realization_reconcile.NotConverged { reason: why, applied: _ } => std.process.exit_failure(reason: why)
       }
     ReachTargetAbsent =>

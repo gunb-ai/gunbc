@@ -1,5 +1,6 @@
 module v2.test.lens_application.substitute_at_depth_three
 
+
 data depth_three_original_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^depth_three_original_leaf_symbol } },
   children: [],
@@ -74,7 +75,7 @@ data depth_three_expected_root: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn substitute_at_depth_three_claim_holds() -> v2.std.logic.Bool {
+test fn substitute_at_depth_three_claim_holds() -> Bool {
   match v2.lens.application.substitute_at(
     root: depth_three_root,
     path: v2.std.node.Path {
@@ -82,7 +83,7 @@ test fn substitute_at_depth_three_claim_holds() -> v2.std.logic.Bool {
     },
     replacement: depth_three_replacement_leaf
   ) {
-    Accepted { value: n, diagnostics: _ } => n == depth_three_expected_root
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: n, diagnostics: _ } => n == depth_three_expected_root
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

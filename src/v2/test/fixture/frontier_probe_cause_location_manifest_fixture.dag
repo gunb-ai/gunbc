@@ -6,9 +6,9 @@ data frontier_probe_cause_location_manifest_fixture_note: String = "REAL EMITTED
 data frontier_probe_cause_location_emitted_receipt: v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt = v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
   module_path: "src/v2/compiler/use_site_verdict.dag",
   blocker_class: v2.compiler.self_host.frontier_probe_types.UnknownProbeCause { reason: ^tokenize_lex_e1_unrecognized_char },
-  located_stage: ProbeStageAssemble,
+  located_stage: v2.compiler.self_host.frontier_probe_types.ProbeStageAssemble,
   located_reason: ^tokenize_lex_e1_unrecognized_char,
-  detail: FrontierProbeDetailAbsent,
+  detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeDetailAbsent,
   assemble_detail: v2.compiler.self_host.frontier_probe_types.AssembleRejectionDetail {
   rejection_chain: v2.compiler.self_host.frontier_probe_types.NonEmptySymbolChain {
   head: ^tokenize_lex_e1_unrecognized_char,

@@ -12,15 +12,15 @@ fn absolute_path_segments(path: String) -> List<String> {
 }
 
 fn absolute_path_position(path: String) -> std.effect_grant.NamespacePosition {
-  filesystem_position(path: absolute_path_segments(path: path))
+  std.effect_grant.filesystem_position(path: absolute_path_segments(path: path))
 }
 
 fn repo_rel_path_position(rel: String) -> std.effect_grant.NamespacePosition {
   if rel_path_has_parent_segment(p: rel) || starts_with(s: rel, prefix: "/") {
-    filesystem_position(path: absolute_path_segments(path: rel))
+    std.effect_grant.filesystem_position(path: absolute_path_segments(path: rel))
   } else if rel == "" {
-    filesystem_position(path: ["repo"])
+    std.effect_grant.filesystem_position(path: ["repo"])
   } else {
-    filesystem_position(path: concat(["repo"], absolute_path_segments(path: rel)))
+    std.effect_grant.filesystem_position(path: concat(["repo"], absolute_path_segments(path: rel)))
   }
 }

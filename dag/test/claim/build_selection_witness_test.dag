@@ -1,5 +1,6 @@
 module test.claim.build_selection_witness
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // The projector is exercised on hand-built candidates rather than on a full
@@ -51,13 +52,13 @@ fn candidate(
 }
 
 fn cheap_build() -> product.build_selection.BuildCandidate {
-  candidate(identity: cheap_ref, label: "cheap" as std.types.NonEmptyStr, capacity: one_terabyte, cash: test.claim.build_selection_witness.usd_micros(count: 1000000), builds: 31, wall_power: std.measure.watt(count: 300), bandwidth: std.measure.Bandwidth { count: 204800000000 })
+  candidate(identity: cheap_ref, label: "cheap" as std.types.NonEmptyStr, capacity: one_terabyte, cash: usd_micros(count: 1000000), builds: 31, wall_power: std.measure.watt(count: 300), bandwidth: std.measure.Bandwidth { count: 204800000000 })
 }
 
 // Strictly worse on every funded axis than the cheap build: less memory, more
 // money, fewer builds, more power, less bandwidth.
 fn dear_build() -> product.build_selection.BuildCandidate {
-  candidate(identity: dear_ref, label: "dear" as std.types.NonEmptyStr, capacity: half_terabyte, cash: test.claim.build_selection_witness.usd_micros(count: 9000000), builds: 30, wall_power: std.measure.watt(count: 400), bandwidth: std.measure.Bandwidth { count: 187712000000 })
+  candidate(identity: dear_ref, label: "dear" as std.types.NonEmptyStr, capacity: half_terabyte, cash: usd_micros(count: 9000000), builds: 30, wall_power: std.measure.watt(count: 400), bandwidth: std.measure.Bandwidth { count: 187712000000 })
 }
 
 test fn w_the_axes_are_the_five_the_pipeline_funds() -> Bool {
@@ -66,14 +67,14 @@ test fn w_the_axes_are_the_five_the_pipeline_funds() -> Bool {
 
 test fn w_a_strictly_worse_candidate_is_dominated() -> Bool {
   match product.build_selection.build_standing(subject: dear_build(), field: [cheap_build(), dear_build()], declared: std.currency.Usd) {
-    DominatedBy { dominators: ds } => count(ds) == 1
+    std.pareto.DominatedBy { dominators: ds } => count(ds) == 1
     _ => false
   }
 }
 
 test fn w_the_better_candidate_stands_on_the_frontier() -> Bool {
   match product.build_selection.build_standing(subject: cheap_build(), field: [cheap_build(), dear_build()], declared: std.currency.Usd) {
-    ProvisionallyNonDominated { sensitivities: _ } => true
+    std.pareto.ProvisionallyNonDominated { sensitivities: _ } => true
     _ => false
   }
 }
@@ -84,9 +85,9 @@ test fn w_the_better_candidate_stands_on_the_frontier() -> Bool {
 // higher-is-better, the dominance above would still hold and this claim goes
 // red.
 test fn w_a_tradeoff_is_not_a_domination() -> Bool {
-  let tradeoff = candidate(identity: dear_ref, label: "tradeoff" as std.types.NonEmptyStr, capacity: half_terabyte, cash: test.claim.build_selection_witness.usd_micros(count: 100000), builds: 31, wall_power: std.measure.watt(count: 300), bandwidth: std.measure.Bandwidth { count: 204800000000 })
+  let tradeoff = candidate(identity: dear_ref, label: "tradeoff" as std.types.NonEmptyStr, capacity: half_terabyte, cash: usd_micros(count: 100000), builds: 31, wall_power: std.measure.watt(count: 300), bandwidth: std.measure.Bandwidth { count: 204800000000 })
   match product.build_selection.build_standing(subject: tradeoff, field: [cheap_build(), tradeoff], declared: std.currency.Usd) {
-    ProvisionallyNonDominated { sensitivities: _ } => true
+    std.pareto.ProvisionallyNonDominated { sensitivities: _ } => true
     _ => false
   }
 }
@@ -110,14 +111,14 @@ fn pending_build() -> product.build_selection.BuildCandidate {
         },
       },
     ],
-    cash: product.build_fulfillment.CashDerived { cash: test.claim.build_selection_witness.usd_micros(count: 1) },
+    cash: product.build_fulfillment.CashDerived { cash: usd_micros(count: 1) },
     ceiling: product.build_fulfillment.CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
   }
 }
 
 test fn w_an_unread_compatibility_is_pending_evidence_not_a_winner() -> Bool {
   match product.build_selection.build_standing(subject: pending_build(), field: [cheap_build(), pending_build()], declared: std.currency.Usd) {
-    IncomparablePendingEvidence { missing: _ } => true
+    std.pareto.IncomparablePendingEvidence { missing: _ } => true
     _ => false
   }
 }
@@ -127,7 +128,7 @@ test fn w_an_unread_compatibility_is_pending_evidence_not_a_winner() -> Bool {
 // its standing even though the pending candidate would beat it on paper.
 test fn w_a_pending_candidate_neither_wins_nor_poisons_the_field() -> Bool {
   match product.build_selection.build_standing(subject: cheap_build(), field: [cheap_build(), pending_build()], declared: std.currency.Usd) {
-    ProvisionallyNonDominated { sensitivities: _ } => true
+    std.pareto.ProvisionallyNonDominated { sensitivities: _ } => true
     _ => false
   }
 }
@@ -147,7 +148,7 @@ test fn w_a_candidate_in_an_undeclared_currency_does_not_rank() -> Bool {
     ceiling: product.build_fulfillment.CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
   }
   match product.build_selection.build_standing(subject: eur, field: [cheap_build(), eur], declared: std.currency.Usd) {
-    IncomparablePendingEvidence { missing: _ } => true
+    std.pareto.IncomparablePendingEvidence { missing: _ } => true
     _ => false
   }
 }
@@ -166,7 +167,7 @@ test fn w_a_refused_cash_answer_makes_the_candidate_incomparable() -> Bool {
     ceiling: product.build_fulfillment.CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
   }
   match product.build_selection.build_standing(subject: broken, field: [cheap_build(), broken], declared: std.currency.Usd) {
-    IncomparablePendingEvidence { missing: _ } => true
+    std.pareto.IncomparablePendingEvidence { missing: _ } => true
     _ => false
   }
 }
@@ -186,7 +187,7 @@ test fn w_a_fully_owned_build_ranks_at_zero_cash() -> Bool {
     ceiling: product.build_fulfillment.CeilingDerived { builds: 31, bottlenecks: [purchase_line()], bottleneck_units: 992 },
   }
   match product.build_selection.build_standing(subject: owned, field: [cheap_build(), owned], declared: std.currency.Usd) {
-    ProvisionallyNonDominated { sensitivities: _ } => true
+    std.pareto.ProvisionallyNonDominated { sensitivities: _ } => true
     _ => false
   }
 }
@@ -205,7 +206,7 @@ test fn w_an_unbounded_ceiling_is_declared_missing_not_read_as_zero() -> Bool {
     ceiling: product.build_fulfillment.CeilingUnconstrainedByAnyLine,
   }
   match product.build_selection.build_standing(subject: unbounded, field: [cheap_build(), unbounded], declared: std.currency.Usd) {
-    IncomparablePendingEvidence { missing: _ } => true
+    std.pareto.IncomparablePendingEvidence { missing: _ } => true
     _ => false
   }
 }
@@ -214,7 +215,7 @@ test fn w_an_unbounded_ceiling_is_declared_missing_not_read_as_zero() -> Bool {
 // own duplicate rule, reached through this projector.
 test fn w_duplicate_candidate_identity_refuses_the_selection() -> Bool {
   match product.build_selection.build_standing(subject: cheap_build(), field: [cheap_build(), cheap_build()], declared: std.currency.Usd) {
-    SelectionRefused { cause: _ } => true
+    std.pareto.SelectionRefused { cause: _ } => true
     _ => false
   }
 }

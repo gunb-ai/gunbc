@@ -44,8 +44,8 @@ type MarketShapeBenchmark {
 
 // The census reading for one benchmark, read live from the surveyed rows.
 fn benchmark_reading(benchmark: MarketShapeBenchmark) -> gunbc.runner_shape_census.MemoryPerVcpuReading {
-  memory_per_vcpu(
-    rows: surveyed_runner_shapes(),
+  gunbc.runner_shape_census.memory_per_vcpu(
+    rows: gunbc.runner_shape_census.surveyed_runner_shapes(),
     provider: benchmark.provider,
     architecture: benchmark.architecture,
   )
@@ -85,20 +85,20 @@ fn classify_benchmark(
   benchmark: MarketShapeBenchmark,
 ) -> EvidenceStanding {
   match benchmark_reading(benchmark: benchmark) {
-    UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } =>
-      if quoted_unit_label(quoted: per_vcpu) != quoted_unit_label(quoted: declared) {
+    gunbc.runner_shape_census.UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } =>
+      if extdeps.ci_runner.types.quoted_unit_label(quoted: per_vcpu) != extdeps.ci_runner.types.quoted_unit_label(quoted: declared) {
         ContrastsOnUnitWord {
-          advertised_unit_label: quoted_unit_label(quoted: per_vcpu),
-          declared_unit_label: quoted_unit_label(quoted: declared),
+          advertised_unit_label: extdeps.ci_runner.types.quoted_unit_label(quoted: per_vcpu),
+          declared_unit_label: extdeps.ci_runner.types.quoted_unit_label(quoted: declared),
         }
       } else {
-        if quoted_numeral(quoted: per_vcpu) == quoted_numeral(quoted: declared) {
+        if extdeps.ci_runner.types.quoted_numeral(quoted: per_vcpu) == extdeps.ci_runner.types.quoted_numeral(quoted: declared) {
           SupportsDeclaredRatio { advertised_per_entitlement: per_vcpu, sizes_agreeing: sizes_agreeing }
         } else {
           ContrastsOnRatio { advertised_per_entitlement: per_vcpu }
         }
       }
-    RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } =>
+    gunbc.runner_shape_census.RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } =>
       ContrastsOnRatioUniformity {
         reading: gunbc.runner_shape_census.RatioNotUniformAcrossSizes {
           first_per_vcpu: first_per_vcpu,
@@ -106,14 +106,14 @@ fn classify_benchmark(
           divergent_per_vcpu: divergent_per_vcpu,
         },
       }
-    UnitLabelNotUniformAcrossSizes { first_label, divergent_label } =>
+    gunbc.runner_shape_census.UnitLabelNotUniformAcrossSizes { first_label, divergent_label } =>
       ContrastsOnRatioUniformity {
         reading: gunbc.runner_shape_census.UnitLabelNotUniformAcrossSizes { first_label: first_label, divergent_label: divergent_label },
       }
-    NonIntegralRatioInSizes { label } =>
+    gunbc.runner_shape_census.NonIntegralRatioInSizes { label } =>
       BenchmarkUnreadable { reading: gunbc.runner_shape_census.NonIntegralRatioInSizes { label: label } }
-    NoShapesForProviderArchitecture =>
-      BenchmarkUnreadable { reading: NoShapesForProviderArchitecture }
+    gunbc.runner_shape_census.NoShapesForProviderArchitecture =>
+      BenchmarkUnreadable { reading: gunbc.runner_shape_census.NoShapesForProviderArchitecture }
   }
 }
 
@@ -208,9 +208,9 @@ type EntitlementBytes
   | EntitlementBytesBasisUndeclared
 
 fn entitlement_bytes(profile: RunnerProductProfile) -> EntitlementBytes {
-  match quoted_magnitude_bytes(quoted: profile.guaranteed_memory_per_entitlement) {
-    ResolvedBytes { bytes } => EntitlementBytesDeclared { bytes: bytes }
-    QuotedBasisUnresolved { numeral, unit_label } => EntitlementBytesBasisUndeclared
+  match extdeps.ci_runner.types.quoted_magnitude_bytes(quoted: profile.guaranteed_memory_per_entitlement) {
+    extdeps.ci_runner.types.ResolvedBytes { bytes } => EntitlementBytesDeclared { bytes: bytes }
+    extdeps.ci_runner.types.QuotedBasisUnresolved { numeral, unit_label } => EntitlementBytesBasisUndeclared
   }
 }
 
@@ -234,10 +234,10 @@ type CpuEntitlementSupply
 
 fn cpu_entitlement_supply(cpu: extdeps.cpu.types.CpuModelCatalogRow, entitlement: extdeps.ci_runner.types.CpuEntitlement) -> CpuEntitlementSupply {
   match entitlement {
-    DedicatedPhysicalCore => EntitlementsAvailable { count: cpu.cores }
-    SmtSharedVcpu { threads_per_core } =>
+    extdeps.ci_runner.types.DedicatedPhysicalCore => EntitlementsAvailable { count: cpu.cores }
+    extdeps.ci_runner.types.SmtSharedVcpu { threads_per_core } =>
       EntitlementsAvailable { count: std.measure.hardware_thread_count_value(t: cpu.threads) }
-    EntitlementUnstated => EntitlementKindUnstated
+    extdeps.ci_runner.types.EntitlementUnstated => EntitlementKindUnstated
   }
 }
 
@@ -289,11 +289,11 @@ fn profile_admission(
   cpu_entitlements: std.nat.Nat,
   memory_entitlements: std.nat.Nat,
 ) -> ProfileAdmission {
-  if byte_size_count(b: installed_bytes) >= byte_size_count(b: required_bytes) {
+  if std.measure.byte_size_count(b: installed_bytes) >= std.measure.byte_size_count(b: required_bytes) {
     MeetsProfile { surplus_entitlements: memory_entitlements - cpu_entitlements }
   } else {
     DoesNotMeetProfile {
-      shortfall_bytes: byte_size(count: byte_size_count(b: required_bytes) - byte_size_count(b: installed_bytes)),
+      shortfall_bytes: std.measure.byte_size(count: std.measure.byte_size_count(b: required_bytes) - std.measure.byte_size_count(b: installed_bytes)),
       shortfall_entitlements: cpu_entitlements - memory_entitlements,
     }
   }
@@ -305,14 +305,14 @@ fn observed_capacity_for(
   per_entitlement: std.measure.ByteSize,
   cpu_entitlements: std.nat.Nat,
 ) -> ObservedCapacity {
-  let memory_entitlements = byte_size_count(b: installed_bytes) / byte_size_count(b: per_entitlement)
-  let required = byte_size(count: byte_size_count(b: per_entitlement) * cpu_entitlements)
+  let memory_entitlements = std.measure.byte_size_count(b: installed_bytes) / std.measure.byte_size_count(b: per_entitlement)
+  let required = std.measure.byte_size(count: std.measure.byte_size_count(b: per_entitlement) * cpu_entitlements)
   ObservedCapacity {
     profile_label: profile.label,
     installed_bytes: installed_bytes,
     cpu_entitlements: cpu_entitlements,
     memory_entitlements: memory_entitlements,
-    servable_entitlements: nat_min(a: cpu_entitlements, b: memory_entitlements),
+    servable_entitlements: std.nat.nat_min(a: cpu_entitlements, b: memory_entitlements),
     bound: observed_bound(cpu_entitlements: cpu_entitlements, memory_entitlements: memory_entitlements),
     admission: profile_admission(
       installed_bytes: installed_bytes,
@@ -353,8 +353,8 @@ fn profile_readiness(cpu: extdeps.cpu.types.CpuModelCatalogRow, profile: RunnerP
   if profile.architecture != cpu.architecture {
     ProfileNotReady {
       cause: ProfileArchitectureUnsupportedByCpu {
-        profile_architecture: architecture_diagnostic_name(arch: profile.architecture),
-        cpu_architecture: architecture_diagnostic_name(arch: cpu.architecture),
+        profile_architecture: extdeps.toolchain.types.architecture_diagnostic_name(arch: profile.architecture),
+        cpu_architecture: extdeps.toolchain.types.architecture_diagnostic_name(arch: cpu.architecture),
       },
     }
   } else {
@@ -460,8 +460,8 @@ fn geometry_slot_count(g: MemoryChannelGeometry) -> std.nat.Nat {
 // authority does not admit has no way into the candidate set.
 fn admitted_topologies(g: MemoryChannelGeometry) -> List<extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmsPerChannelTopology> {
   match g.max_topology {
-    OneDimmPerChannel => [extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel]
-    TwoDimmsPerChannel => [extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel, extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel]
+    extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel => [extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel]
+    extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel => [extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel, extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel]
   }
 }
 
@@ -473,7 +473,7 @@ type PopulationShape {
 
 fn full_channel_shape(g: MemoryChannelGeometry, topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmsPerChannelTopology) -> PopulationShape {
   PopulationShape {
-    dimm_count: g.channels * dimms_per_channel_count(topology: topology),
+    dimm_count: g.channels * extdeps.cpu.ampere_altra_platform_hw_design.platform.dimms_per_channel_count(topology: topology),
     coverage: FullChannel { topology: topology },
   }
 }
@@ -499,7 +499,7 @@ fn coverage_search_step(acc: CoverageSearch, g: MemoryChannelGeometry, dimm_coun
   match acc {
     CoverageFound { topology } => CoverageFound { topology: topology }
     CoverageNotFound =>
-      if dimm_count == g.channels * dimms_per_channel_count(topology: topology) {
+      if dimm_count == g.channels * extdeps.cpu.ampere_altra_platform_hw_design.platform.dimms_per_channel_count(topology: topology) {
         CoverageFound { topology: topology }
       } else {
         CoverageNotFound
@@ -516,8 +516,8 @@ fn documented_coverage(g: MemoryChannelGeometry, dimm_count: std.nat.Nat) -> Cha
     CoverageFound { topology } => FullChannel { topology: topology }
     CoverageNotFound =>
       PartialChannel {
-        channels_populated: nat_min(a: dimm_count, b: g.channels),
-        channels_dark: g.channels - nat_min(a: dimm_count, b: g.channels),
+        channels_populated: std.nat.nat_min(a: dimm_count, b: g.channels),
+        channels_dark: g.channels - std.nat.nat_min(a: dimm_count, b: g.channels),
       }
   }
 }
@@ -625,14 +625,14 @@ fn module_compatibility_step(acc: ModuleCompatibility, g: MemoryChannelGeometry,
   match acc {
     ModuleIncompatible { cause } => ModuleIncompatible { cause: cause }
     ModulesCompatible =>
-      if dram_generation_eq(a: module.generation, b: g.memory_generation) {
+      if extdeps.memory.types.dram_generation_eq(a: module.generation, b: g.memory_generation) {
         ModulesCompatible
       } else {
         ModuleIncompatible {
           cause: ModuleGenerationUnsupportedByPlatform {
             part_number: module.part_number,
-            module_generation_number: dram_generation_number(gen: module.generation),
-            platform_generation_number: dram_generation_number(gen: g.memory_generation),
+            module_generation_number: extdeps.memory.types.dram_generation_number(gen: module.generation),
+            platform_generation_number: extdeps.memory.types.dram_generation_number(gen: g.memory_generation),
           },
         }
       }
@@ -644,7 +644,7 @@ fn modules_compatible_with(g: MemoryChannelGeometry, modules: List<extdeps.memor
 }
 
 fn population_total_bytes(module: extdeps.memory.types.DramModuleCatalogRow, dimm_count: std.nat.Nat) -> std.measure.ByteSize {
-  byte_size(count: byte_size_count(b: module.capacity_bytes) * dimm_count)
+  std.measure.byte_size(count: std.measure.byte_size_count(b: module.capacity_bytes) * dimm_count)
 }
 
 fn option_for(
@@ -653,7 +653,7 @@ fn option_for(
   required: std.measure.ByteSize,
 ) -> List<PopulationOption> {
   let total = population_total_bytes(module: module, dimm_count: shape.dimm_count)
-  if byte_size_count(b: total) >= byte_size_count(b: required) {
+  if std.measure.byte_size_count(b: total) >= std.measure.byte_size_count(b: required) {
     [
       PopulationOption {
         module: module,
@@ -685,11 +685,11 @@ fn best_reachable_bytes(
   modules: List<extdeps.memory.types.DramModuleCatalogRow>,
 ) -> std.measure.ByteSize {
   let widest = fold(shapes, init: 0, f: (acc, s) => std.nat.nat_max(a: acc, b: s.dimm_count))
-  byte_size(
+  std.measure.byte_size(
     count: fold(
       modules,
       init: 0,
-      f: (acc, m) => std.nat.nat_max(a: acc, b: byte_size_count(b: m.capacity_bytes) * widest),
+      f: (acc, m) => std.nat.nat_max(a: acc, b: std.measure.byte_size_count(b: m.capacity_bytes) * widest),
     ),
   )
 }
@@ -735,7 +735,7 @@ fn derive_populations(
                 cause: TargetUnreachableInSlotGeometry {
                   required_bytes: required,
                   best_reachable_bytes: best,
-                  shortfall_bytes: byte_size(count: byte_size_count(b: required) - byte_size_count(b: best)),
+                  shortfall_bytes: std.measure.byte_size(count: std.measure.byte_size_count(b: required) - std.measure.byte_size_count(b: best)),
                 },
               }
             } else {
@@ -822,7 +822,7 @@ fn derive_profile_capacity(
     ProfileNotReady { cause } =>
       ProfileCapacityRefused { profile_label: profile.label, cause: cause }
     ProfileReady { per_entitlement, cpu_entitlements } => {
-      let required = byte_size(count: byte_size_count(b: per_entitlement) * cpu_entitlements)
+      let required = std.measure.byte_size(count: std.measure.byte_size_count(b: per_entitlement) * cpu_entitlements)
       match derive_populations(geometry: geometry, policy: policy, required: required, modules: modules) {
         PopulationDerivationRefused { board_label, cause } =>
           ProfileCapacityRefused {
@@ -882,7 +882,7 @@ fn derivation_option_count(d: PopulationDerivation) -> std.nat.Nat {
 // that row's authority, so the derivation is joinable back to its source.
 // ===========================================================================
 
-data ubicloud_shapes_ref: std.decl_ref.DeclarationRef = decl_ref(
+data ubicloud_shapes_ref: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.cloud.ubicloud",
   decl_name: "ubicloud_runner_catalog_shapes",
 )
@@ -919,65 +919,65 @@ data circleci_shapes_ref: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
 // promoted to an entitlement.
 data ubicloud_arm_benchmark: MarketShapeBenchmark = MarketShapeBenchmark {
   provider_label: "Ubicloud",
-  provider: ubicloud_provider_identity,
-  architecture: Aarch64,
-  advertised_entitlement: DedicatedPhysicalCore,
+  provider: extdeps.cloud.ubicloud.ubicloud_provider_identity,
+  architecture: extdeps.toolchain.types.Aarch64,
+  advertised_entitlement: extdeps.ci_runner.types.DedicatedPhysicalCore,
   catalog_source: ubicloud_shapes_ref,
 }
 
 data blacksmith_arm_benchmark: MarketShapeBenchmark = MarketShapeBenchmark {
   provider_label: "Blacksmith",
-  provider: blacksmith_provider_identity,
-  architecture: Aarch64,
-  advertised_entitlement: EntitlementUnstated,
+  provider: extdeps.ci_runner.blacksmith.blacksmith_provider_identity,
+  architecture: extdeps.toolchain.types.Aarch64,
+  advertised_entitlement: extdeps.ci_runner.types.EntitlementUnstated,
   catalog_source: blacksmith_shapes_ref,
 }
 
 data github_arm_benchmark: MarketShapeBenchmark = MarketShapeBenchmark {
   provider_label: "GitHub Actions",
-  provider: github_actions_provider_identity,
-  architecture: Aarch64,
-  advertised_entitlement: EntitlementUnstated,
+  provider: extdeps.ci_runner.github_actions.github_actions_provider_identity,
+  architecture: extdeps.toolchain.types.Aarch64,
+  advertised_entitlement: extdeps.ci_runner.types.EntitlementUnstated,
   catalog_source: github_shapes_ref,
 }
 
 data depot_arm_benchmark: MarketShapeBenchmark = MarketShapeBenchmark {
   provider_label: "Depot",
-  provider: depot_provider_identity,
-  architecture: Aarch64,
-  advertised_entitlement: EntitlementUnstated,
+  provider: extdeps.ci_runner.depot.depot_provider_identity,
+  architecture: extdeps.toolchain.types.Aarch64,
+  advertised_entitlement: extdeps.ci_runner.types.EntitlementUnstated,
   catalog_source: depot_shapes_ref,
 }
 
 data warpbuild_arm_benchmark: MarketShapeBenchmark = MarketShapeBenchmark {
   provider_label: "WarpBuild",
-  provider: warpbuild_provider_identity,
-  architecture: Aarch64,
-  advertised_entitlement: EntitlementUnstated,
+  provider: extdeps.ci_runner.warpbuild.warpbuild_provider_identity,
+  architecture: extdeps.toolchain.types.Aarch64,
+  advertised_entitlement: extdeps.ci_runner.types.EntitlementUnstated,
   catalog_source: warpbuild_shapes_ref,
 }
 
 data github_x64_benchmark: MarketShapeBenchmark = MarketShapeBenchmark {
   provider_label: "GitHub Actions",
-  provider: github_actions_provider_identity,
-  architecture: X86_64,
-  advertised_entitlement: EntitlementUnstated,
+  provider: extdeps.ci_runner.github_actions.github_actions_provider_identity,
+  architecture: extdeps.toolchain.types.X86_64,
+  advertised_entitlement: extdeps.ci_runner.types.EntitlementUnstated,
   catalog_source: github_shapes_ref,
 }
 
 data depot_x64_benchmark: MarketShapeBenchmark = MarketShapeBenchmark {
   provider_label: "Depot",
-  provider: depot_provider_identity,
-  architecture: X86_64,
-  advertised_entitlement: EntitlementUnstated,
+  provider: extdeps.ci_runner.depot.depot_provider_identity,
+  architecture: extdeps.toolchain.types.X86_64,
+  advertised_entitlement: extdeps.ci_runner.types.EntitlementUnstated,
   catalog_source: depot_shapes_ref,
 }
 
 data warpbuild_x64_benchmark: MarketShapeBenchmark = MarketShapeBenchmark {
   provider_label: "WarpBuild",
-  provider: warpbuild_provider_identity,
-  architecture: X86_64,
-  advertised_entitlement: EntitlementUnstated,
+  provider: extdeps.ci_runner.warpbuild.warpbuild_provider_identity,
+  architecture: extdeps.toolchain.types.X86_64,
+  advertised_entitlement: extdeps.ci_runner.types.EntitlementUnstated,
   catalog_source: warpbuild_shapes_ref,
 }
 
@@ -989,9 +989,9 @@ data warpbuild_x64_benchmark: MarketShapeBenchmark = MarketShapeBenchmark {
 // cannot inflate the support count.
 data circleci_x64_benchmark: MarketShapeBenchmark = MarketShapeBenchmark {
   provider_label: "CircleCI",
-  provider: circleci_provider_identity,
-  architecture: X86_64,
-  advertised_entitlement: EntitlementUnstated,
+  provider: extdeps.ci_runner.circleci.circleci_provider_identity,
+  architecture: extdeps.toolchain.types.X86_64,
+  advertised_entitlement: extdeps.ci_runner.types.EntitlementUnstated,
   catalog_source: circleci_shapes_ref,
 }
 
@@ -1020,9 +1020,9 @@ fn surveyed_market_benchmarks() -> List<MarketShapeBenchmark> {
 // target inspectable rather than assumed.
 data arm_value_profile: RunnerProductProfile = RunnerProductProfile {
   label: "arm-value",
-  architecture: Aarch64,
-  advertised_entitlement: DedicatedPhysicalCore,
-  guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: gigabyte(count: 3) },
+  architecture: extdeps.toolchain.types.Aarch64,
+  advertised_entitlement: extdeps.ci_runner.types.DedicatedPhysicalCore,
+  guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: std.measure.gigabyte(count: 3) },
   consulted_benchmarks: [ubicloud_arm_benchmark, blacksmith_arm_benchmark, github_arm_benchmark],
 }
 
@@ -1038,9 +1038,9 @@ data arm_value_profile: RunnerProductProfile = RunnerProductProfile {
 // Depot and WarpBuild, which is what was actually true all along.
 data arm_memory_profile: RunnerProductProfile = RunnerProductProfile {
   label: "arm-memory",
-  architecture: Aarch64,
-  advertised_entitlement: DedicatedPhysicalCore,
-  guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: gigabyte(count: 4) },
+  architecture: extdeps.toolchain.types.Aarch64,
+  advertised_entitlement: extdeps.ci_runner.types.DedicatedPhysicalCore,
+  guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: std.measure.gigabyte(count: 4) },
   consulted_benchmarks: [github_arm_benchmark, depot_arm_benchmark, warpbuild_arm_benchmark],
 }
 
@@ -1049,9 +1049,9 @@ data arm_memory_profile: RunnerProductProfile = RunnerProductProfile {
 // is EIGHT GB per physical core.
 data x64_standard_profile: RunnerProductProfile = RunnerProductProfile {
   label: "x64-standard",
-  architecture: X86_64,
+  architecture: extdeps.toolchain.types.X86_64,
   advertised_entitlement: extdeps.ci_runner.types.SmtSharedVcpu { threads_per_core: 2 },
-  guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: gigabyte(count: 4) },
+  guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: std.measure.gigabyte(count: 4) },
   consulted_benchmarks: [
     github_x64_benchmark,
     depot_x64_benchmark,
@@ -1086,13 +1086,13 @@ fn derived_channel_count(dimm_slots_total: std.nat.Nat, dimms_per_channel: std.n
 data asrock_altrad8ud_1l2t_geometry: MemoryChannelGeometry = MemoryChannelGeometry {
   board_label: "ASRock Rack ALTRAD8UD-1L2T",
   channels: derived_channel_count(
-    dimm_slots_total: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_mechanical.dimm_slots_total,
-    dimms_per_channel: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_mechanical.dimms_per_channel,
+    dimm_slots_total: asrock_altrad8ud_1l2t_mechanical.dimm_slots_total,
+    dimms_per_channel: asrock_altrad8ud_1l2t_mechanical.dimms_per_channel,
   ),
-  max_topology: OneDimmPerChannel,
-  memory_generation: altra_platform_memory_generation,
-  documented_populations: asrock_altrad8ud_documented_dimm_populations,
-  authority: asrock_altrad8ud_download_authority,
+  max_topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel,
+  memory_generation: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_memory_generation,
+  documented_populations: extdeps.boards.asrock_rack.asrock_altrad8ud_documented_dimm_populations,
+  authority: extdeps.boards.asrock_rack.asrock_altrad8ud_download_authority,
 }
 
 // The Supermicro R12SPD-A: sixteen slots at two DIMMs per channel on ONE
@@ -1103,13 +1103,13 @@ data asrock_altrad8ud_1l2t_geometry: MemoryChannelGeometry = MemoryChannelGeomet
 data supermicro_r12spd_a_geometry: MemoryChannelGeometry = MemoryChannelGeometry {
   board_label: "Supermicro R12SPD-A",
   channels: derived_channel_count(
-    dimm_slots_total: extdeps.boards.supermicro.supermicro_r12spd_a_mechanical.dimm_slots_total,
-    dimms_per_channel: extdeps.boards.supermicro.supermicro_r12spd_a_mechanical.dimms_per_channel,
+    dimm_slots_total: supermicro_r12spd_a_mechanical.dimm_slots_total,
+    dimms_per_channel: supermicro_r12spd_a_mechanical.dimms_per_channel,
   ),
-  max_topology: TwoDimmsPerChannel,
-  memory_generation: altra_platform_memory_generation,
+  max_topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel,
+  memory_generation: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_memory_generation,
   documented_populations: [],
-  authority: supermicro_r12spd_a_authority,
+  authority: extdeps.boards.supermicro.supermicro_r12spd_a_authority,
 }
 
 // The Mt. Collins platform, PER SOCKET. The machine is dual-socket with
@@ -1123,13 +1123,13 @@ data supermicro_r12spd_a_geometry: MemoryChannelGeometry = MemoryChannelGeometry
 data mt_collins_per_socket_geometry: MemoryChannelGeometry = MemoryChannelGeometry {
   board_label: "Ampere Mt. Collins (per socket)",
   channels: derived_channel_count(
-    dimm_slots_total: extdeps.ampere.mt_collins_product_brief.platform.mt_collins_platform_mechanical.ddr4_dimms_per_socket,
-    dimms_per_channel: extdeps.ampere.mt_collins_product_brief.platform.mt_collins_platform_mechanical.dimms_per_channel,
+    dimm_slots_total: mt_collins_platform_mechanical.ddr4_dimms_per_socket,
+    dimms_per_channel: mt_collins_platform_mechanical.dimms_per_channel,
   ),
-  max_topology: TwoDimmsPerChannel,
-  memory_generation: altra_platform_memory_generation,
+  max_topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel,
+  memory_generation: extdeps.cpu.ampere_altra_platform_hw_design.platform.altra_platform_memory_generation,
   documented_populations: [],
-  authority: mt_collins_product_brief_authority,
+  authority: extdeps.ampere.mt_collins_product_brief.platform.mt_collins_product_brief_authority,
 }
 
 fn answered_candidate_geometries() -> List<MemoryChannelGeometry> {

@@ -25,10 +25,10 @@ module test.claim.transport_script_stdin_byte_fidelity_witness
 // as `effect_plan_bash_materialize_real_execution_witness_test`.
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 fn stdin_exact_bytes(body: String) -> String {
-  let script = retained_runtime(
+  let script = gunbc.retained_shell_script.retained_runtime(
     body: body,
     reason: "witness: TransportScript stdin byte fidelity through the production bridge" as std.types.NonEmptyStr,
   )

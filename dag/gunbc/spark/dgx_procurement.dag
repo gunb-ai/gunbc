@@ -3,7 +3,7 @@ module gunbc.spark.dgx_procurement
 
 // SPARK-0 (2026-08-05). Three deliberately separate fact classes: (1) the vendor catalog (extdeps.systems.nvidia) -- what NVIDIA documents the product to be; (2) operator procurement intent (this module) -- that two units were ordered and that srv5/srv6 are RESERVED identities for them; (3) deployment observation -- physical binding evidence that must never be fabricated. A reserved identity is explicitly NOT enrollment: srv5/srv6 do not appear in gunbc.fleet_intent_network's endpoint list, gunbc.fleet_intent's ComputeHost list, or any phase matrix/compute offer.
 // SPARK-LANE-A (2026-08-06) moved the identities to gunbc.fleet_intent_network, the single authority for a host's fleet identity (§3 -- SPARK-0 forked them privately here only because that file was mid-refactor at the time).
-// SPARK-LANE-A revision (2026-08-07), operator review of #7952. Two identity defects and one staleness, repaired below and in gunbc.fleet_lifecycle_observation. The staleness: BOTH UNITS ARRIVED and hold Static, extdeps.dhcp.v4.Active CR1000A reservations, so the earlier "not yet arrived / no MAC exists / no address chosen" rows were false. Arrival is DERIVED from the observed reservation rows (dgx_spark_arrival_standing) rather than asserted in prose that can drift. SPARK-ALLOC-LAND-0 (2026-08-07): the slot allocation was delegated by the operator ("the 5, 6 decision is arbitrary - just make it yourself") and decided on ascending address order; it is recorded as an OperatorAllocation receipt, never as an observation.
+// SPARK-LANE-A revision (2026-08-07), operator review of #7952. Two identity defects and one staleness, repaired below and in gunbc.fleet_lifecycle_observation. The staleness: BOTH UNITS ARRIVED and hold Static, Active CR1000A reservations, so the earlier "not yet arrived / no MAC exists / no address chosen" rows were false. Arrival is DERIVED from the observed reservation rows (dgx_spark_arrival_standing) rather than asserted in prose that can drift. SPARK-ALLOC-LAND-0 (2026-08-07): the slot allocation was delegated by the operator ("the 5, 6 decision is arbitrary - just make it yourself") and decided on ascending address order; it is recorded as an OperatorAllocation receipt, never as an observation.
 type HardwareProcurementIntent {
   vendor_catalog: extdeps.systems.types.IntegratedComputeSystemCatalogRow
   unit_count: Int
@@ -14,7 +14,7 @@ type HardwareProcurementIntent {
 // The two static reservations the operator authored on the CR1000A, transcribed verbatim from the router table they supplied (spark-a3ee 192.168.1.222 4C:BB:47:E8:A3:EE / spark-3bd5 192.168.1.223 4C:BB:47:E8:3B:D5; both MACs independently ARP-confirmed on the LAN). These are OBSERVED ROUTER FACTS and nothing more. The reservation labels are vendor-derived from the MAC tail -- they are the units' factory hotspot SSIDs -- which makes them display aliases of the box, NOT fleet identity: a label that the vendor generated cannot decide which fleet subject a machine serves, and reading one as if it could is the same presentation-as-identity error the collector-observation carrier below exists to prevent. So the join to a slot is never inferred from a label: it is the explicit OperatorAllocation recorded below.
 data spark_a3ee_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow = extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow {
   mac_address: "4C:BB:47:E8:A3:EE" as extdeps.dhcp.v4.MacAddress,
-  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
+  ipv4_address: extdeps.network.ipv4.ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
   lease: extdeps.dhcp.v4.StaticDhcpReservation {
     reservation_label: "spark-a3ee" as std.types.NonEmptyStr,
     status: extdeps.dhcp.v4.Active,
@@ -23,7 +23,7 @@ data spark_a3ee_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow 
 
 data spark_3bd5_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow = extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow {
   mac_address: "4C:BB:47:E8:3B:D5" as extdeps.dhcp.v4.MacAddress,
-  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 223),
+  ipv4_address: extdeps.network.ipv4.ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 223),
   lease: extdeps.dhcp.v4.StaticDhcpReservation {
     reservation_label: "spark-3bd5" as std.types.NonEmptyStr,
     status: extdeps.dhcp.v4.Active,
@@ -84,13 +84,13 @@ data dgx_spark_router_binding_operator_allocation: OperatorAllocation = Operator
 }
 
 data srv5_router_binding: DgxSparkRouterBinding = SlotAssigned {
-  identity: operator_host_srv5,
+  identity: gunbc.fleet_intent_network.operator_host_srv5,
   reservation: spark_a3ee_reservation,
   allocation: dgx_spark_router_binding_operator_allocation,
 }
 
 data srv6_router_binding: DgxSparkRouterBinding = SlotAssigned {
-  identity: operator_host_srv6,
+  identity: gunbc.fleet_intent_network.operator_host_srv6,
   reservation: spark_3bd5_reservation,
   allocation: dgx_spark_router_binding_operator_allocation,
 }
@@ -100,7 +100,7 @@ data dgx_spark_router_bindings: List<DgxSparkRouterBinding> = [srv5_router_bindi
 // Arrival is DERIVED from the observed router rows, never stored beside them: a stored "arrived"
 // flag is a second representation of what the reservation roster already says, and it is the copy
 // that goes stale -- which is exactly how this module came to claim the units had not arrived while
-// they were sitting on the LAN. Each row is a Static, extdeps.dhcp.v4.Active reservation the operator read off the
+// they were sitting on the LAN. Each row is a Static, Active reservation the operator read off the
 // CR1000A, which is presence evidence; the count against unit_count is the standing.
 type DgxSparkArrivalStanding
   = AllOrderedUnitsObservedOnLan { observed_count: Int }
@@ -123,7 +123,7 @@ fn dgx_spark_reserved_identities() -> List<product.placement_supply.HostIdentity
 }
 
 data dgx_spark_procurement_intent: HardwareProcurementIntent = HardwareProcurementIntent {
-  vendor_catalog: nvidia_dgx_spark_4tb_catalog,
+  vendor_catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
   unit_count: 2,
   reserved_identities: dgx_spark_reserved_identities(),
   ordered_note: "2x NVIDIA DGX Spark ordered. Both units arrived and are live on the operator LAN, each holding a Static, Active CR1000A reservation (spark-a3ee 192.168.1.222 and spark-3bd5 192.168.1.223, MACs ARP-confirmed). Arrival is derived by dgx_spark_arrival_standing from those observed rows. srv5/srv6 slot assignment is recorded by dgx_spark_router_binding_operator_allocation, not inferred from router labels.",
@@ -169,9 +169,9 @@ fn host_identity_is_reserved(identity: product.placement_supply.HostIdentity) ->
 // A tool ran is not a tool succeeded. The cited envelope carries BOTH a status and an exit code and they are independent facts (a StatusWarning `Endpoint degraded` observation is documented as "tool ran successfully but returned warning or failure status due to device health signals"), so success is the conjunction, never either one alone.
 fn envelope_reports_success(envelope: extdeps.systems.nvidia_fleet_lifecycle.FleetLifecycleEnvelope) -> Bool {
   match envelope.status {
-    StatusOk => envelope.rc == 0
-    StatusWarning => false
-    StatusError => false
+    extdeps.systems.nvidia_fleet_lifecycle.StatusOk => envelope.rc == 0
+    extdeps.systems.nvidia_fleet_lifecycle.StatusWarning => false
+    extdeps.systems.nvidia_fleet_lifecycle.StatusError => false
   }
 }
 
@@ -187,7 +187,7 @@ fn admit_selected_dgx_spark_observation(
   observation: gunbc.fleet_lifecycle_observation.FleetLifecycleObservation,
   router_binding: DgxSparkRouterBinding,
 ) -> DgxSparkAdmissionOutcome {
-  if observation.envelope.tool != fleet_lifecycle_operation_tool_name(op: extdeps.systems.nvidia_fleet_lifecycle.DeviceIdentity) {
+  if observation.envelope.tool != extdeps.systems.nvidia_fleet_lifecycle.fleet_lifecycle_operation_tool_name(op: extdeps.systems.nvidia_fleet_lifecycle.DeviceIdentity) {
     DgxSparkDeploymentRefused {
       reason: DeploymentAdmissionWrongTool { observed_tool: observation.envelope.tool }
     }
@@ -200,7 +200,7 @@ fn admit_selected_dgx_spark_observation(
         }
       }
     } else {
-      if !execution_evidence_agrees(observation: observation) {
+      if !gunbc.fleet_lifecycle_observation.execution_evidence_agrees(observation: observation) {
         DgxSparkDeploymentRefused {
           reason: DeploymentAdmissionExecutionEvidenceDisagrees {
             receipt: observation.execution_receipt,
@@ -246,7 +246,7 @@ fn admit_selected_dgx_spark_observation(
                         catalog: catalog,
                         observation: observation,
                         router_reservation: reservation,
-                        envelope_host_presentation: envelope_host_presentation_evidence(observation: observation),
+                        envelope_host_presentation: gunbc.fleet_lifecycle_observation.envelope_host_presentation_evidence(observation: observation),
                       }
                     }
                   }
@@ -274,18 +274,18 @@ fn admit_dgx_spark_deployment(
   router_binding: DgxSparkRouterBinding,
 ) -> DgxSparkAdmissionOutcome {
   match selection {
-    ObservationMissing { subject: _ } =>
+    gunbc.fleet_lifecycle_observation.ObservationMissing { subject: _ } =>
       DgxSparkDeploymentRefused {
         reason: DeploymentAdmissionNoEvidence { requested_identity: identity }
       }
-    ObservationAmbiguous { subject: _, candidate_count: n } =>
+    gunbc.fleet_lifecycle_observation.ObservationAmbiguous { subject: _, candidate_count: n } =>
       DgxSparkDeploymentRefused {
         reason: DeploymentAdmissionAmbiguousEvidence {
           requested_identity: identity,
           candidate_count: n,
         }
       }
-    ObservationUnique { observation: o } =>
+    gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o } =>
       admit_selected_dgx_spark_observation(
         identity: identity,
         catalog: catalog,
@@ -312,7 +312,7 @@ fn dgx_spark_unit_disposition(
   match admit_dgx_spark_deployment(
     identity: router_binding_identity(binding: binding),
     catalog: dgx_spark_procurement_intent.vendor_catalog,
-    selection: select_observation_for_subject(subject: router_binding_identity(binding: binding), observations: observations),
+    selection: gunbc.fleet_lifecycle_observation.select_observation_for_subject(subject: router_binding_identity(binding: binding), observations: observations),
     router_binding: binding,
   ) {
     DgxSparkDeploymentAdmitted { deployment: d } => DgxSparkUnitDeployed { deployment: d }
@@ -393,17 +393,17 @@ fn admit_dgx_spark_pair_deployments(
           Absent =>
             DgxSparkPairRefused { reason: PairHardwareIdentityUnobserved { identity: second.identity } }
           Present { value: second_hw } =>
-            match compare_hardware_identity(left: first_hw, right: second_hw) {
-              HardwareIdentitiesDistinct =>
+            match gunbc.fleet_lifecycle_observation.compare_hardware_identity(left: first_hw, right: second_hw) {
+              gunbc.fleet_lifecycle_observation.HardwareIdentitiesDistinct =>
                 DgxSparkPairAdmitted { first: first, second: second }
-              HardwareIdentitiesSame =>
+              gunbc.fleet_lifecycle_observation.HardwareIdentitiesSame =>
                 DgxSparkPairRefused {
                   reason: PairHardwareIdentityNotDistinct {
                     first: first.identity,
                     second: second.identity,
                   }
                 }
-              HardwareIdentitiesIncomparable =>
+              gunbc.fleet_lifecycle_observation.HardwareIdentitiesIncomparable =>
                 DgxSparkPairRefused {
                   reason: PairHardwareIdentityIncomparable {
                     first: first.identity,

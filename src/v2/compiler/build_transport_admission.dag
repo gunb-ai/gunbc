@@ -13,22 +13,22 @@ data build_transport_frame: std.materialization_ladder.Frame = std.materializati
 }
 
 data build_transport_workspace_root: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: FilesystemPathTree,
+  tree: std.effect_grant.FilesystemPathTree,
   path: [build_transport_workspace_segment]
 }
 
 data build_transport_toolchain_root: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: FilesystemPathTree,
+  tree: std.effect_grant.FilesystemPathTree,
   path: [build_transport_toolchain_segment]
 }
 
 data build_transport_closure_root: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: FilesystemPathTree,
+  tree: std.effect_grant.FilesystemPathTree,
   path: [build_transport_closure_segment]
 }
 
 fn build_transport_envelope() -> std.effect_grant.Envelope {
-  build_workspace_grant_envelope(
+  v2.compiler.build_workspace_grant.build_workspace_grant_envelope(
     workspace_root: build_transport_workspace_root,
     substrate_closure_root: build_transport_closure_root,
     toolchain_root: build_transport_toolchain_root,
@@ -43,12 +43,12 @@ fn rel_path_is_workspace_contained(p: v2.std.host_transport.RelPath) -> Bool {
 fn build_transport_rel_position(rel: v2.std.host_transport.RelPath) -> std.effect_grant.NamespacePosition {
   if rel_path_is_workspace_contained(p: rel) {
     std.effect_grant.NamespacePosition {
-      tree: FilesystemPathTree,
+      tree: std.effect_grant.FilesystemPathTree,
       path: [build_transport_workspace_segment, rel]
     }
   } else {
     std.effect_grant.NamespacePosition {
-      tree: FilesystemPathTree,
+      tree: std.effect_grant.FilesystemPathTree,
       path: [rel]
     }
   }
@@ -56,16 +56,16 @@ fn build_transport_rel_position(rel: v2.std.host_transport.RelPath) -> std.effec
 
 fn build_transport_toolchain_position(executable: String) -> std.effect_grant.NamespacePosition {
   std.effect_grant.NamespacePosition {
-    tree: FilesystemPathTree,
+    tree: std.effect_grant.FilesystemPathTree,
     path: [build_transport_toolchain_segment, executable]
   }
 }
 
 fn build_program_read_position(program: v2.std.host_transport.ProcessProgram) -> std.effect_grant.NamespacePosition {
   match program {
-    HostToolProgram { executable: executable } =>
+    v2.std.host_transport.HostToolProgram { executable: executable } =>
       build_transport_toolchain_position(executable: executable)
-    ProducedProgram { path: path } =>
+    v2.std.host_transport.ProducedProgram { path: path } =>
       build_transport_rel_position(rel: path)
   }
 }
@@ -88,10 +88,10 @@ fn build_program_read_admission(env: std.effect_grant.Envelope, invocation: v2.s
 
 fn build_invocation_arg_read_admission(env: std.effect_grant.Envelope, arg: v2.std.host_transport.InvocationArg) -> std.access.AccessDecision {
   match arg {
-    LiteralArg { text: text } => std.access.Permit
-    WorkspacePath { path: path } =>
+    v2.std.host_transport.LiteralArg { text: text } => std.access.Permit
+    v2.std.host_transport.WorkspacePath { path: path } =>
       std.effect_grant.admit_effect(env: env, verb: std.effect_grant.Read, target: build_transport_rel_position(rel: path))
-    ProducedArtifact { path: path } =>
+    v2.std.host_transport.ProducedArtifact { path: path } =>
       std.effect_grant.admit_effect(env: env, verb: std.effect_grant.Read, target: build_transport_rel_position(rel: path))
   }
 }

@@ -14,9 +14,9 @@ type UpstreamFactCarriage
 
 fn upstream_fact_carriage(status: extdeps.publication.DocumentPublicationStatus) -> UpstreamFactCarriage {
   match status {
-    PubliclyPublishedUnderOpenLicense { license } => FactsMayBeCarried
-    PubliclyPublishedWithRestrictiveMarking { marking } => FactsMayBeCarried
-    AccessGatedNotPubliclyPublished { gate } => FactsBarredDocumentNotPublic { gate: gate }
+    extdeps.publication.PubliclyPublishedUnderOpenLicense { license } => FactsMayBeCarried
+    extdeps.publication.PubliclyPublishedWithRestrictiveMarking { marking } => FactsMayBeCarried
+    extdeps.publication.AccessGatedNotPubliclyPublished { gate } => FactsBarredDocumentNotPublic { gate: gate }
   }
 }
 

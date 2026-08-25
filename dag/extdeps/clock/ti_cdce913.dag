@@ -5,7 +5,7 @@ module extdeps.clock.ti_cdce913
 // reprints is PW0014A, stamped 4220202/B, 12/2023.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.ti.com/lit/ds/symlink/cdce913.pdf"
   }
 }
@@ -15,19 +15,19 @@ data ti_cdce913_note: String = "THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SEL
 data cdce913_pw0014a_drawing: extdeps.land_pattern.types.PackageDrawingRef = extdeps.land_pattern.types.PackageDrawingRef {
   drawing_number: "4220202/B",
   revision_date: "12/2023",
-  reprinted_in: extdeps.clock.ti_cdce913.extdeps_external_authority_anchor,
+  reprinted_in: extdeps_external_authority_anchor,
 }
 
 data cdce913_pw0014a_body: extdeps.land_pattern.types.PackageBodyDimensions = extdeps.land_pattern.types.PackageBodyDimensions {
   designator: "PW0014A",
   drawing: cdce913_pw0014a_drawing,
   terminal_count: 14,
-  terminal_pitch: micrometer(count: 650),
-  body_length_min: micrometer(count: 4900),
-  body_length_max: micrometer(count: 5100),
-  body_width_min: micrometer(count: 4300),
-  body_width_max: micrometer(count: 4500),
-  height_max: micrometer(count: 1200),
+  terminal_pitch: std.measure.micrometer(count: 650),
+  body_length_min: std.measure.micrometer(count: 4900),
+  body_length_max: std.measure.micrometer(count: 5100),
+  body_width_min: std.measure.micrometer(count: 4300),
+  body_width_max: std.measure.micrometer(count: 4500),
+  height_max: std.measure.micrometer(count: 1200),
 }
 
 data cdce913_pw0014a_land_pattern: extdeps.land_pattern.types.VendorRecommendedLandPattern = extdeps.land_pattern.types.VendorRecommendedLandPattern {
@@ -35,10 +35,10 @@ data cdce913_pw0014a_land_pattern: extdeps.land_pattern.types.VendorRecommendedL
   drawing: cdce913_pw0014a_drawing,
   geometry: extdeps.land_pattern.types.DualRowLandGeometry {
     lands_per_row: 7,
-    pitch: micrometer(count: 650),
-    row_span_centre_to_centre: micrometer(count: 5800),
-    land_length: micrometer(count: 1500),
-    land_width: micrometer(count: 450),
+    pitch: std.measure.micrometer(count: 650),
+    row_span_centre_to_centre: std.measure.micrometer(count: 5800),
+    land_length: std.measure.micrometer(count: 1500),
+    land_width: std.measure.micrometer(count: 450),
   },
 }
 
@@ -57,9 +57,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.clock.ti_cdce913",
       decl_name: "cdce913pwr",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.clock.ti_cdce913.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

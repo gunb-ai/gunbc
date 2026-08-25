@@ -6,21 +6,21 @@ data witness_real_execution_split_note: String = "Filesystem write/read round-tr
 data witness_required_release_asset_digest_hex: String = "79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237"
 
 test fn witness_materialization_writer_targets_reader_wire_path() -> Bool {
-  let written = spark_serving_ollama_runtime_materialization_receipt_write_path() as String
-  let read_back = spark_serving_runtime_receipt_wire_path() as String
+  let written = gunbc.package_delivery.spark_serving_ollama_runtime_materialization_receipt_write_path() as String
+  let read_back = gunbc.spark.serving_runtime_receipt.spark_serving_runtime_receipt_wire_path() as String
   written == read_back
 }
 
 test fn witness_runtime_archive_admission_receipt_json_round_trips_digest() -> Bool {
-  let json = spark_serving_runtime_archive_admission_receipt_json(
+  let json = gunbc.spark.serving_runtime_receipt.spark_serving_runtime_archive_admission_receipt_json(
     receipt: gunbc.spark.serving_runtime_receipt.SparkServingRuntimeArchiveAdmissionReceipt {
-      release_asset_digest_hex: test.claim.spark_serving_runtime_receipt_witness_test.witness_required_release_asset_digest_hex as std.types.NonEmptyStr,
+      release_asset_digest_hex: witness_required_release_asset_digest_hex as std.types.NonEmptyStr,
     },
   )
-  match spark_serving_parse_runtime_receipt_json(stdout: json) {
-    SparkServingReadbackPresent { value: hex } =>
-      hex == test.claim.spark_serving_runtime_receipt_witness_test.witness_required_release_asset_digest_hex
-    SparkServingReadbackAbsent => false
-    SparkServingReadbackRefused { cause: _ } => false
+  match gunbc.spark.serving_runtime_receipt.spark_serving_parse_runtime_receipt_json(stdout: json) {
+    gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: hex } =>
+      hex == witness_required_release_asset_digest_hex
+    gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent => false
+    gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: _ } => false
   }
 }

@@ -2,15 +2,15 @@ module v2.test.manual.eval_runtime
 
 
 
-fn eval_byte() -> std.bit.Byte {
-  std.bit.Byte { bits: [true] }
+fn eval_byte() -> v2.std.machine.Byte {
+  v2.std.machine.Byte { bits: [true] }
 }
 
 fn eval_i64_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^eval_i64_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -18,30 +18,30 @@ fn eval_algebra_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^eval_algebra_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 data eval_two_literal: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Value },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data eval_add_subgraph_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
   children: [
-    v2.std.node.Edge { label: Positional, target: eval_two_literal },
-    v2.std.node.Edge { label: Positional, target: eval_two_literal }
+    v2.std.node.Edge { label: v2.std.node.Positional, target: eval_two_literal },
+    v2.std.node.Edge { label: v2.std.node.Positional, target: eval_two_literal }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 fn eval_add_subgraph() -> v2.std.node.Node {
   eval_add_subgraph_node
 }
 
-fn eval_runtime_value(bytes: List<std.bit.Byte>) -> v2.std.runtime.RuntimeValue {
+fn eval_runtime_value(bytes: List<v2.std.machine.Byte>) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: eval_i64_node(),
@@ -72,7 +72,7 @@ fn eval_allocate_literal(_node: v2.std.node.Node, _env: v2.std.runtime.Evaluatio
 
 fn eval_arg_is_two_literal(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: p } =>
+    v2.std.runtime.RuntimePrimitive { value: p } =>
       (p.primitive_type == eval_i64_node()) && (count(p.bytes) == 2)
     _ => false
   }
@@ -85,14 +85,14 @@ fn eval_args_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
 fn eval_args_are_two_literals(args: List<v2.std.runtime.RuntimeValue>) -> Bool {
   if count(args) == 2 {
     match v2.std.collection.list_nth(xs: args, wanted: 0, absent: eval_args_absent_diagnostic()) {
-      Holds { value: left } =>
+      v2.std.witness.Holds { value: left } =>
         match v2.std.collection.list_nth(xs: args, wanted: 1, absent: eval_args_absent_diagnostic()) {
-          Holds { value: right } =>
+          v2.std.witness.Holds { value: right } =>
             eval_arg_is_two_literal(value: left)
               && eval_arg_is_two_literal(value: right)
-          Violates { diagnostic: _ } => false
+          v2.std.witness.Violates { diagnostic: _ } => false
         }
-      Violates { diagnostic: _ } => false
+      v2.std.witness.Violates { diagnostic: _ } => false
     }
   } else {
     false
@@ -175,7 +175,8 @@ fn eval_interpretation_algebra() -> v2.std.runtime.InterpretationAlgebra {
     },
     match: v2.std.runtime.MatchInterpreter {
       choose_arm: v2.std.runtime.runtime_reject_match_arm,
-      identity: ^runtime_reject_match_arm    }
+      identity: ^v2.std.runtime.runtime_reject_match_arm
+    }
   }
 }
 
@@ -211,7 +212,7 @@ fn eval_fact_lookup(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compi
 fn eval_inferred_tree() -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: eval_add_subgraph(),
-    facts: std.algebra.PartialFunction {
+    facts: PartialFunction {
       lookup: eval_fact_lookup
     }
   }
@@ -232,7 +233,7 @@ fn eval_empty_environment() -> v2.std.runtime.EvaluationEnvironment {
 }
 
 data witness_eval_add_accepts_five: Bool = match eval_actual() {
-  Accepted { value: RuntimePrimitive { value: p }, diagnostics: None } =>
+  v2.std.diagnostic.Accepted { value: v2.std.runtime.RuntimePrimitive { value: p }, diagnostics: v2.std.diagnostic.None } =>
     (p.primitive_type == eval_i64_node()) && (count(p.bytes) == 5)
   _ => false
 }
@@ -242,7 +243,7 @@ data witness_eval_call_primitive_rejects_bad_args: Bool = match eval_call_primit
   args: [],
   _env: eval_empty_environment()
 ) {
-  Rejected { diagnostics: _ } => true
+  v2.std.diagnostic.Rejected { diagnostics: _ } => true
   _ => false
 }
 
@@ -252,7 +253,8 @@ fn eval_interpretation_structure_witness() -> v2.std.runtime.InterpretationStruc
     call_primitive: ^eval_call_primitive,
     choose_branch: ^eval_choose_branch,
     step_loop: ^eval_step_loop,
-    bind_value: ^eval_bind_value,    choose_arm: ^runtime_reject_match_arm
+    bind_value: ^eval_bind_value,
+    choose_arm: ^v2.std.runtime.runtime_reject_match_arm
   }
 }
 
@@ -266,13 +268,13 @@ fn eval_context() -> v2.compiler.eval.EvalContext {
 
 data claim_eval_test_claim_route: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "eval routes TestClaim through runtime interpretation",
-  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: eval_add_subgraph(),
   rhs: eval_add_subgraph(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
-data subject_eval_test_claim_route: v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> = v2.compiler.eval.eval_test_claim_subject(
+data subject_eval_test_claim_route: TestClaimEvalSubject<v2.std.node.Node> = v2.compiler.eval.eval_test_claim_subject(
   claim: claim_eval_test_claim_route,
   context: eval_context(),
   tree: eval_inferred_tree(),

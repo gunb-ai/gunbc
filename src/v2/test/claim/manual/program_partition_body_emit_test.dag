@@ -1,19 +1,20 @@
 module v2.test.manual.program_partition_body_emit
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn program_partition_node_list_member_seen(seen: List<v2.std.node.Node>, needle: v2.std.node.Node) -> v2.std.logic.Bool {
+fn program_partition_node_list_member_seen(seen: List<v2.std.node.Node>, needle: v2.std.node.Node) -> Bool {
   v2.std.algebra.any(xs: seen, predicate: fn(member) { member == needle })
 }
 
-fn program_partition_node_list_is_duplicate_free(xs: List<v2.std.node.Node>) -> v2.std.logic.Bool {
+fn program_partition_node_list_is_duplicate_free(xs: List<v2.std.node.Node>) -> Bool {
   match v2.std.algebra.fold_list(
     xs: xs,
     empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, member) {
       match acc {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: seen, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: seen, diagnostics: _ } =>
           if program_partition_node_list_member_seen(seen: seen, needle: member) {
             v2.std.diagnostic.Rejected {
               diagnostics: v2.std.diagnostic.diagnostics_singleton(
@@ -33,103 +34,103 @@ fn program_partition_node_list_is_duplicate_free(xs: List<v2.std.node.Node>) -> 
       }
     }
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn program_partition_body_canonical_closure_enumeration_is_duplicate_free() -> v2.std.logic.Bool {
+test fn program_partition_body_canonical_closure_enumeration_is_duplicate_free() -> Bool {
   match v2.test.manual.add_body_emit_typescript.add_body_ts_producer_inferred_tree() {
-    Accepted { value: program, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: program, diagnostics: _ } =>
       match v2.std.node_query.find_arrow_body_child(root: program.root) {
-        Accepted { value: body, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
           program_partition_node_list_is_duplicate_free(
             xs: v2.std.node.node_subtree_nodes(root: body)
           )
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn program_partition_body_fail_closed_facts_closure_fold_accepts() -> v2.std.logic.Bool {
+test fn program_partition_body_fail_closed_facts_closure_fold_accepts() -> Bool {
   match v2.test.manual.add_body_emit_typescript.add_body_ts_producer_inferred_tree() {
-    Accepted { value: program, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: program, diagnostics: _ } =>
       match v2.std.node_query.find_arrow_body_child(root: program.root) {
-        Accepted { value: body, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
           match v2.compiler.program_partition.resolve_program_partition(
             program: program,
             segment: v2.std.program_segment.program_segment_subtree_root(root: body),
             boundary: v2.std.program_segment.partition_boundary_fail_closed()
           ) {
-            Accepted { value: partition, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: partition, diagnostics: _ } =>
               match v2.compiler.program_partition.facts_closure_fold(partition: partition) {
-                Accepted { value: _, diagnostics: _ } => true
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn program_partition_body_emit_accepts_and_differs_from_whole() -> v2.std.logic.Bool {
+test fn program_partition_body_emit_accepts_and_differs_from_whole() -> Bool {
   match v2.test.manual.add_body_emit_typescript.add_body_ts_producer_inferred_tree() {
-    Accepted { value: program, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: program, diagnostics: _ } =>
       match v2.std.node_query.find_arrow_body_child(root: program.root) {
-        Accepted { value: body, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
           match v2.test.manual.add_body_emit_typescript.add_body_ts_emit_from_producer_tree(target: v2.extdeps.languages.typescript.ts_target_model()) {
-            Accepted { value: whole_source, diagnostics: whole_d } =>
+            v2.std.diagnostic.Accepted { value: whole_source, diagnostics: whole_d } =>
               match v2.compiler.program_partition.emit_for_target(
                 program: program,
                 segment: v2.std.program_segment.program_segment_subtree_root(root: body),
                 target: v2.extdeps.languages.typescript.ts_target_model(),
                 boundary: v2.std.program_segment.partition_boundary_ambient_context()
               ) {
-                Accepted { value: body_source, diagnostics: body_d } =>
+                v2.std.diagnostic.Accepted { value: body_source, diagnostics: body_d } =>
                   (body_d == v2.std.diagnostic.None)
                     && (whole_d == v2.std.diagnostic.None)
                     && (body_source != whole_source)
                     && (whole_source.carried == v2.extdeps.languages.typescript.ts_source_text)
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn program_partition_whole_program_emit_matches_direct() -> v2.std.logic.Bool {
+test fn program_partition_whole_program_emit_matches_direct() -> Bool {
   match v2.test.manual.add_body_emit_typescript.add_body_ts_producer_inferred_tree() {
-    Accepted { value: program, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: program, diagnostics: _ } =>
       match v2.test.manual.add_body_emit_typescript.add_body_ts_emit_from_producer_tree(target: v2.extdeps.languages.typescript.ts_target_model()) {
-        Accepted { value: direct_source, diagnostics: direct_d } =>
+        v2.std.diagnostic.Accepted { value: direct_source, diagnostics: direct_d } =>
           match v2.compiler.program_partition.emit_for_target(
             program: program,
             segment: v2.std.program_segment.program_segment_whole_program(),
             target: v2.extdeps.languages.typescript.ts_target_model(),
             boundary: v2.std.program_segment.partition_boundary_ambient_context()
           ) {
-            Accepted { value: partition_source, diagnostics: partition_d } =>
+            v2.std.diagnostic.Accepted { value: partition_source, diagnostics: partition_d } =>
               (direct_d == v2.std.diagnostic.None)
                 && (partition_d == v2.std.diagnostic.None)
                 && (direct_source == partition_source)
                 && (direct_source.carried == v2.extdeps.languages.typescript.ts_source_text)
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn program_partition_section_adapter_unavailable_rejects() -> v2.std.logic.Bool {
+test fn program_partition_section_adapter_unavailable_rejects() -> Bool {
   match v2.compiler.program_partition.program_segment_from_section_unavailable() {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }

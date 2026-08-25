@@ -11,6 +11,8 @@ module test.claim.scm_object_store_collision_witness
 // So the bodies are plain functions there and the enrolled declarations are here. Only a Bool
 // verdict crosses the boundary; no forged material is exported.
 
+
+
 // One locator, two different canonical records -- refused, and the refusal names both records so a
 // caller sees WHAT disagreed rather than only that something did.
 test fn locator_collision_refuses_a_different_record() -> Bool {

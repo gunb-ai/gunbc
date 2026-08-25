@@ -44,8 +44,8 @@ fn assess_generated_artifact_observation(o: GeneratedArtifactObservation) -> Boo
 data assess_generated_artifact_population_note: String = "PURE GROUP. `expected` is the identity roster (committed_generated_artifacts(), passed in by the caller — this module never calls it); `observations` is the retained receipt population. Passes iff every expected identity is observed EXACTLY ONCE (no missing, no duplicate, no unknown observation outside the expected roster) and every observed receipt's leaf assessment holds. An identity join by artifact_eq, never a bare count equality (DESIGN section 5 oracle-independence ruling) — a population that lost one artifact and duplicated another would count-match while missing the defect."
 
 fn assess_generated_artifact_population(expected: List<gunbc.generated_artifact.GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> Bool {
-  all(expected, e => count(filter(observations, o => artifact_eq(a: observation_artifact(o: o), b: e))) == 1)
-    && all(observations, o => any(expected, e => artifact_eq(a: observation_artifact(o: o), b: e)))
+  all(expected, e => count(filter(observations, o => gunbc.generated_artifact.artifact_eq(a: observation_artifact(o: o), b: e))) == 1)
+    && all(observations, o => any(expected, e => gunbc.generated_artifact.artifact_eq(a: observation_artifact(o: o), b: e)))
     && all(observations, o => assess_generated_artifact_observation(o: o))
 }
 
@@ -59,8 +59,8 @@ fn first_failing_observation_path(observations: List<GeneratedArtifactObservatio
 
 fn first_missing_expected_path(expected: List<gunbc.generated_artifact.GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
   fold(expected, init: "", f: fn(acc, e) {
-    if acc == "" && count(filter(observations, o => artifact_eq(a: observation_artifact(o: o), b: e))) != 1 {
-      artifact_path(a: e)
+    if acc == "" && count(filter(observations, o => gunbc.generated_artifact.artifact_eq(a: observation_artifact(o: o), b: e))) != 1 {
+      gunbc.generated_artifact.artifact_path(a: e)
     } else {
       acc
     }
@@ -69,7 +69,7 @@ fn first_missing_expected_path(expected: List<gunbc.generated_artifact.Generated
 
 fn first_unknown_observation_path(expected: List<gunbc.generated_artifact.GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
   fold(observations, init: "", f: fn(acc, o) {
-    if acc == "" && !any(expected, e => artifact_eq(a: observation_artifact(o: o), b: e)) {
+    if acc == "" && !any(expected, e => gunbc.generated_artifact.artifact_eq(a: observation_artifact(o: o), b: e)) {
       observation_path(o: o)
     } else {
       acc

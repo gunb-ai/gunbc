@@ -9,33 +9,33 @@ module test.claim.spatial_units_witness
 // the ratio itself: a generic linear conversion would give 1000, which is the defect these
 // separate factors exist to prevent.
 fn witness_area_and_volume_scale_nonlinearly() -> Bool {
-  square_millimeter_count(m: square_metres_to_square_millimetres(area: square_meter(count: 1))) == 1000000
-    && cubic_millimeter_count(m: cubic_metres_to_cubic_millimetres(volume: cubic_meter(count: 1))) == 1000000000
-    && square_millimetres_per_square_metre() == 1000 * 1000
-    && cubic_millimetres_per_cubic_metre() == 1000 * 1000 * 1000
-    && square_millimeter_count(m: square_metres_to_square_millimetres(area: square_meter(count: 3))) == 3000000
+  std.measure.square_millimeter_count(m: std.measure.square_metres_to_square_millimetres(area: std.measure.square_meter(count: 1))) == 1000000
+    && std.measure.cubic_millimeter_count(m: std.measure.cubic_metres_to_cubic_millimetres(volume: std.measure.cubic_meter(count: 1))) == 1000000000
+    && extdeps.units.iso_80000_3.square_millimetres_per_square_metre() == 1000 * 1000
+    && extdeps.units.iso_80000_3.cubic_millimetres_per_cubic_metre() == 1000 * 1000 * 1000
+    && std.measure.square_millimeter_count(m: std.measure.square_metres_to_square_millimetres(area: std.measure.square_meter(count: 3))) == 3000000
 }
 
 // The subdivision chain is exact and rational, which is why the turn is the canonical unit.
 fn witness_turn_subdivision_is_exact() -> Bool {
-  degrees_per_turn() == 360
-    && arcminutes_per_degree() == 60
-    && arcseconds_per_arcminute() == 60
-    && arcseconds_per_degree_derived() == 3600
-    && arcseconds_per_turn() == 1296000
-    && arcsecond_count(a: full_turn_arcseconds()) == 1296000
-    && arcsecond_count(a: degrees_to_arcseconds(degrees: degree(count: 90))) == 324000
-    && arcsecond_count(a: turns_to_arcseconds(turns: turn(count: 1))) == 1296000
-    && arcsecond_count(a: turns_to_arcseconds(turns: turn(count: 2))) == 2592000
+  extdeps.units.iso_80000_3.degrees_per_turn() == 360
+    && extdeps.units.iso_80000_3.arcminutes_per_degree() == 60
+    && extdeps.units.iso_80000_3.arcseconds_per_arcminute() == 60
+    && extdeps.units.iso_80000_3.arcseconds_per_degree_derived() == 3600
+    && extdeps.units.iso_80000_3.arcseconds_per_turn() == 1296000
+    && std.measure.arcsecond_count(a: std.measure.full_turn_arcseconds()) == 1296000
+    && std.measure.arcsecond_count(a: std.measure.degrees_to_arcseconds(degrees: std.measure.degree(count: 90))) == 324000
+    && std.measure.arcsecond_count(a: std.measure.turns_to_arcseconds(turns: std.measure.turn(count: 1))) == 1296000
+    && std.measure.arcsecond_count(a: std.measure.turns_to_arcseconds(turns: std.measure.turn(count: 2))) == 2592000
 }
 
 // A quarter turn is exact in arcseconds because 1296000 divides by four with no remainder - the
 // same rational property that makes quarter-turn rotation exact in std.affine_space, and the
 // reason no radian conversion is offered.
 fn witness_quarter_turn_is_exact() -> Bool {
-  arcsecond_count(a: quarter_turn_arcseconds()) == 324000
-    && arcsecond_count(a: quarter_turn_arcseconds()) * 4 == arcsecond_count(a: full_turn_arcseconds())
-    && arcsecond_count(a: quarter_turn_arcseconds()) == arcsecond_count(a: degrees_to_arcseconds(degrees: degree(count: 90)))
+  std.measure.arcsecond_count(a: std.measure.quarter_turn_arcseconds()) == 324000
+    && std.measure.arcsecond_count(a: std.measure.quarter_turn_arcseconds()) * 4 == std.measure.arcsecond_count(a: std.measure.full_turn_arcseconds())
+    && std.measure.arcsecond_count(a: std.measure.quarter_turn_arcseconds()) == std.measure.arcsecond_count(a: std.measure.degrees_to_arcseconds(degrees: std.measure.degree(count: 90)))
 }
 
 // REGRESSION CONTROL for the srgb consolidation: srgb no longer mints its own 360 and now consumes
@@ -46,12 +46,12 @@ fn rgb_equal(a: extdeps.color.srgb.RgbScaled, b: extdeps.color.srgb.RgbScaled) -
 }
 
 fn witness_srgb_hue_wrap_unchanged_after_consolidation() -> Bool {
-  rgb_equal(a: hsl_to_rgb_scaled(hue: 0 - 120, sat_pct: 100, light_pct: 50),
-            b: hsl_to_rgb_scaled(hue: 240, sat_pct: 100, light_pct: 50))
-    && rgb_equal(a: hsl_to_rgb_scaled(hue: 360, sat_pct: 100, light_pct: 50),
-                 b: hsl_to_rgb_scaled(hue: 0, sat_pct: 100, light_pct: 50))
-    && rgb_equal(a: hsl_to_rgb_scaled(hue: 480, sat_pct: 100, light_pct: 50),
-                 b: hsl_to_rgb_scaled(hue: 120, sat_pct: 100, light_pct: 50))
+  rgb_equal(a: extdeps.color.srgb.hsl_to_rgb_scaled(hue: 0 - 120, sat_pct: 100, light_pct: 50),
+            b: extdeps.color.srgb.hsl_to_rgb_scaled(hue: 240, sat_pct: 100, light_pct: 50))
+    && rgb_equal(a: extdeps.color.srgb.hsl_to_rgb_scaled(hue: 360, sat_pct: 100, light_pct: 50),
+                 b: extdeps.color.srgb.hsl_to_rgb_scaled(hue: 0, sat_pct: 100, light_pct: 50))
+    && rgb_equal(a: extdeps.color.srgb.hsl_to_rgb_scaled(hue: 480, sat_pct: 100, light_pct: 50),
+                 b: extdeps.color.srgb.hsl_to_rgb_scaled(hue: 120, sat_pct: 100, light_pct: 50))
 }
 
 test fn spatial_units_witnesses() -> Bool {

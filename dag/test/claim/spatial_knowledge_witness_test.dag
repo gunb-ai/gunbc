@@ -6,7 +6,7 @@ module test.claim.spatial_knowledge_witness
 // massing premise that produced this lane: a plausible, useful, wrong number is exactly the input
 // a fabrication guard must refuse.
 
-fn the_room() -> product.placement_supply.RoomIdentity {
+fn the_room() -> RoomIdentity {
   "room-open-work"
 }
 
@@ -16,7 +16,7 @@ fn the_room() -> product.placement_supply.RoomIdentity {
 fn tape_anchor_evidence() -> product.spatial_dimension.RoomDimensionEvidence {
   std.claim_evidence.EvidenceLink {
     fact: std.claim_evidence.RecordedFact { id: "fact-room-open-work-clear-width", value: "3660 mm at 1.0 m height" },
-    direction: EvidenceSupports,
+    direction: std.claim_evidence.EvidenceSupports,
     inference_rule: "direct-instrument-reading",
     authority: "operator walkthrough, laser measure",
     provenance: std.claim_evidence.EvidenceProvenance {
@@ -33,7 +33,7 @@ fn tape_anchor_evidence() -> product.spatial_dimension.RoomDimensionEvidence {
 fn photo_reconstruction_evidence() -> product.spatial_dimension.RoomDimensionEvidence {
   std.claim_evidence.EvidenceLink {
     fact: std.claim_evidence.RecordedFact { id: "fact-room-open-work-photo-scale", value: "scaled on 3x6in subway tile course" },
-    direction: EvidenceSupports,
+    direction: std.claim_evidence.EvidenceSupports,
     inference_rule: "photo-reconstruction-scaled-on-in-frame-constant",
     authority: "listing photo set",
     provenance: std.claim_evidence.EvidenceProvenance {
@@ -50,21 +50,21 @@ fn photo_reconstruction_evidence() -> product.spatial_dimension.RoomDimensionEvi
 // Every fixture below is ordered, so the refused arm is unreachable here; it collapses to the
 // degenerate zero interval rather than fabricating a width. The reversed case is asserted on its
 // own in witness 4, against the mint directly, so this helper never becomes the thing under test.
-fn interval_or_degenerate(low: std.nat.Nat, high: std.nat.Nat) -> product.spatial_dimension.LengthInterval {
-  match length_interval(low: millimeter(count: low), high: millimeter(count: high)) {
-    IntervalReady { interval: i } => i
-    IntervalRefused { reason: _ } => degenerate_interval(point: millimeter(count: 0))
+fn interval_or_degenerate(low: Nat, high: Nat) -> product.spatial_dimension.LengthInterval {
+  match product.spatial_dimension.length_interval(low: std.measure.millimeter(count: low), high: std.measure.millimeter(count: high)) {
+    std.interval.IntervalReady { interval: i } => i
+    std.interval.IntervalRefused { reason: _ } => std.interval.degenerate_interval(point: std.measure.millimeter(count: 0))
   }
 }
 
 fn dimension_at(standing: product.spatial_dimension.RoomDimensionStanding) -> product.spatial_dimension.RoomDimensionKnowledge {
-  product.spatial_dimension.RoomDimensionKnowledge { room: the_room(), axis: ClearWidth, standing: standing }
+  product.spatial_dimension.RoomDimensionKnowledge { room: the_room(), axis: product.spatial_dimension.ClearWidth, standing: standing }
 }
 
 // Measured to +/- 10 mm: uncertainty interval spans 20 mm.
 fn measured_precise() -> product.spatial_dimension.RoomDimensionKnowledge {
   dimension_at(standing: std.spatial_knowledge.SpatialMeasured {
-    value: millimeter(count: 3660),
+    value: std.measure.millimeter(count: 3660),
     uncertainty: interval_or_degenerate(low: 3650, high: 3670),
     evidence: tape_anchor_evidence(),
   })
@@ -74,7 +74,7 @@ fn measured_precise() -> product.spatial_dimension.RoomDimensionKnowledge {
 // exactly as readily as the specimen above; the precision budget is what separates them.
 fn measured_coarse() -> product.spatial_dimension.RoomDimensionKnowledge {
   dimension_at(standing: std.spatial_knowledge.SpatialMeasured {
-    value: millimeter(count: 3660),
+    value: std.measure.millimeter(count: 3660),
     uncertainty: interval_or_degenerate(low: 3410, high: 3910),
     evidence: tape_anchor_evidence(),
   })
@@ -98,7 +98,7 @@ fn estimate_wide() -> product.spatial_dimension.RoomDimensionKnowledge {
 
 fn hypothesis_25ft() -> product.spatial_dimension.RoomDimensionKnowledge {
   dimension_at(standing: std.spatial_knowledge.SpatialHypothesis {
-    value: millimeter(count: 7620),
+    value: std.measure.millimeter(count: 7620),
     purpose: "H1 massing candidate: assumed 25 ft corner-lot width, refuted by parcel records",
   })
 }
@@ -108,162 +108,162 @@ fn unknown_width() -> product.spatial_dimension.RoomDimensionKnowledge {
 }
 
 // Furniture / rack layout: +/- 100 mm, i.e. a 200 mm budget span.
-fn furniture_layout_requirement() -> SpatialRequirement<product.spatial_dimension.LengthInterval> {
+fn furniture_layout_requirement() -> std.spatial_knowledge.SpatialRequirement<product.spatial_dimension.LengthInterval> {
   std.spatial_knowledge.SpatialRequirement {
-    minimum_standing: MeasuredOrEstimated,
+    minimum_standing: std.spatial_knowledge.MeasuredOrEstimated,
     maximum_uncertainty: interval_or_degenerate(low: 0, high: 200),
   }
 }
 
 // Egress clearance: measured only, +/- 5 mm, a 10 mm budget span.
-fn egress_requirement() -> SpatialRequirement<product.spatial_dimension.LengthInterval> {
+fn egress_requirement() -> std.spatial_knowledge.SpatialRequirement<product.spatial_dimension.LengthInterval> {
   std.spatial_knowledge.SpatialRequirement {
-    minimum_standing: MeasuredOnly,
+    minimum_standing: std.spatial_knowledge.MeasuredOnly,
     maximum_uncertainty: interval_or_degenerate(low: 0, high: 10),
   }
 }
 
-fn admits(dimension: product.spatial_dimension.RoomDimensionKnowledge, requirement: SpatialRequirement<product.spatial_dimension.LengthInterval>) -> Bool {
-  match admit_room_dimension(dimension: dimension, requirement: requirement) {
-    SpatialAdmittedMeasured { value: _, uncertainty: _ } => true
-    SpatialAdmittedEstimated { region: _ } => true
-    SpatialRefused { cause: _ } => false
+fn admits(dimension: product.spatial_dimension.RoomDimensionKnowledge, requirement: std.spatial_knowledge.SpatialRequirement<product.spatial_dimension.LengthInterval>) -> Bool {
+  match product.spatial_dimension.admit_room_dimension(dimension: dimension, requirement: requirement) {
+    std.spatial_knowledge.SpatialAdmittedMeasured { value: _, uncertainty: _ } => true
+    std.spatial_knowledge.SpatialAdmittedEstimated { region: _ } => true
+    std.spatial_knowledge.SpatialRefused { cause: _ } => false
   }
 }
 
 fn refused_for_precision(
   dimension: product.spatial_dimension.RoomDimensionKnowledge,
-  requirement: SpatialRequirement<product.spatial_dimension.LengthInterval>,
+  requirement: std.spatial_knowledge.SpatialRequirement<product.spatial_dimension.LengthInterval>,
 ) -> Bool {
-  match admit_room_dimension(dimension: dimension, requirement: requirement) {
-    SpatialAdmittedMeasured { value: _, uncertainty: _ } => false
-    SpatialAdmittedEstimated { region: _ } => false
-    SpatialRefused { cause: c } =>
+  match product.spatial_dimension.admit_room_dimension(dimension: dimension, requirement: requirement) {
+    std.spatial_knowledge.SpatialAdmittedMeasured { value: _, uncertainty: _ } => false
+    std.spatial_knowledge.SpatialAdmittedEstimated { region: _ } => false
+    std.spatial_knowledge.SpatialRefused { cause: c } =>
       match c {
-        SpatialUncertaintyExceedsBudget { actual: _, budget: _ } => true
-        SpatialGeometryUnknown { obligation: _ } => false
-        SpatialHypothesisNotAdmissible { purpose: _ } => false
-        SpatialStandingBelowMinimum { method: _ } => false
+        std.spatial_knowledge.SpatialUncertaintyExceedsBudget { actual: _, budget: _ } => true
+        std.spatial_knowledge.SpatialGeometryUnknown { obligation: _ } => false
+        std.spatial_knowledge.SpatialHypothesisNotAdmissible { purpose: _ } => false
+        std.spatial_knowledge.SpatialStandingBelowMinimum { method: _ } => false
       }
   }
 }
 
 fn refused_naming_obligation(dimension: product.spatial_dimension.RoomDimensionKnowledge) -> Bool {
-  match admit_room_dimension(dimension: dimension, requirement: furniture_layout_requirement()) {
-    SpatialAdmittedMeasured { value: _, uncertainty: _ } => false
-    SpatialAdmittedEstimated { region: _ } => false
-    SpatialRefused { cause: c } =>
+  match product.spatial_dimension.admit_room_dimension(dimension: dimension, requirement: furniture_layout_requirement()) {
+    std.spatial_knowledge.SpatialAdmittedMeasured { value: _, uncertainty: _ } => false
+    std.spatial_knowledge.SpatialAdmittedEstimated { region: _ } => false
+    std.spatial_knowledge.SpatialRefused { cause: c } =>
       match c {
-        SpatialGeometryUnknown { obligation: o } => (o as String) == "srv-geometry-capture"
-        SpatialHypothesisNotAdmissible { purpose: _ } => false
-        SpatialStandingBelowMinimum { method: _ } => false
-        SpatialUncertaintyExceedsBudget { actual: _, budget: _ } => false
+        std.spatial_knowledge.SpatialGeometryUnknown { obligation: o } => (o as String) == "srv-geometry-capture"
+        std.spatial_knowledge.SpatialHypothesisNotAdmissible { purpose: _ } => false
+        std.spatial_knowledge.SpatialStandingBelowMinimum { method: _ } => false
+        std.spatial_knowledge.SpatialUncertaintyExceedsBudget { actual: _, budget: _ } => false
       }
   }
 }
 
 fn refused_as_hypothesis(dimension: product.spatial_dimension.RoomDimensionKnowledge) -> Bool {
-  match admit_room_dimension(dimension: dimension, requirement: furniture_layout_requirement()) {
-    SpatialAdmittedMeasured { value: _, uncertainty: _ } => false
-    SpatialAdmittedEstimated { region: _ } => false
-    SpatialRefused { cause: c } =>
+  match product.spatial_dimension.admit_room_dimension(dimension: dimension, requirement: furniture_layout_requirement()) {
+    std.spatial_knowledge.SpatialAdmittedMeasured { value: _, uncertainty: _ } => false
+    std.spatial_knowledge.SpatialAdmittedEstimated { region: _ } => false
+    std.spatial_knowledge.SpatialRefused { cause: c } =>
       match c {
-        SpatialHypothesisNotAdmissible { purpose: _ } => true
-        SpatialGeometryUnknown { obligation: _ } => false
-        SpatialStandingBelowMinimum { method: _ } => false
-        SpatialUncertaintyExceedsBudget { actual: _, budget: _ } => false
+        std.spatial_knowledge.SpatialHypothesisNotAdmissible { purpose: _ } => true
+        std.spatial_knowledge.SpatialGeometryUnknown { obligation: _ } => false
+        std.spatial_knowledge.SpatialStandingBelowMinimum { method: _ } => false
+        std.spatial_knowledge.SpatialUncertaintyExceedsBudget { actual: _, budget: _ } => false
       }
   }
 }
 
 fn standing_is(dimension: product.spatial_dimension.RoomDimensionKnowledge, expected: std.spatial_knowledge.SpatialEvidenceClass) -> Bool {
-  match spatial_evidence_class(knowledge: dimension.standing) {
-    SpatialClassMeasured =>
+  match std.spatial_knowledge.spatial_evidence_class(knowledge: dimension.standing) {
+    std.spatial_knowledge.SpatialClassMeasured =>
       match expected {
-        SpatialClassMeasured => true
-        SpatialClassEstimated => false
-        SpatialClassHypothesis => false
-        SpatialClassUnknown => false
+        std.spatial_knowledge.SpatialClassMeasured => true
+        std.spatial_knowledge.SpatialClassEstimated => false
+        std.spatial_knowledge.SpatialClassHypothesis => false
+        std.spatial_knowledge.SpatialClassUnknown => false
       }
-    SpatialClassEstimated =>
+    std.spatial_knowledge.SpatialClassEstimated =>
       match expected {
-        SpatialClassMeasured => false
-        SpatialClassEstimated => true
-        SpatialClassHypothesis => false
-        SpatialClassUnknown => false
+        std.spatial_knowledge.SpatialClassMeasured => false
+        std.spatial_knowledge.SpatialClassEstimated => true
+        std.spatial_knowledge.SpatialClassHypothesis => false
+        std.spatial_knowledge.SpatialClassUnknown => false
       }
-    SpatialClassHypothesis =>
+    std.spatial_knowledge.SpatialClassHypothesis =>
       match expected {
-        SpatialClassMeasured => false
-        SpatialClassEstimated => false
-        SpatialClassHypothesis => true
-        SpatialClassUnknown => false
+        std.spatial_knowledge.SpatialClassMeasured => false
+        std.spatial_knowledge.SpatialClassEstimated => false
+        std.spatial_knowledge.SpatialClassHypothesis => true
+        std.spatial_knowledge.SpatialClassUnknown => false
       }
-    SpatialClassUnknown =>
+    std.spatial_knowledge.SpatialClassUnknown =>
       match expected {
-        SpatialClassMeasured => false
-        SpatialClassEstimated => false
-        SpatialClassHypothesis => false
-        SpatialClassUnknown => true
+        std.spatial_knowledge.SpatialClassMeasured => false
+        std.spatial_knowledge.SpatialClassEstimated => false
+        std.spatial_knowledge.SpatialClassHypothesis => false
+        std.spatial_knowledge.SpatialClassUnknown => true
       }
   }
 }
 
 fn style_wire_of(dimension: product.spatial_dimension.RoomDimensionKnowledge) -> String {
-  render_style_wire(style: render_style(rendering: render_room_dimension(dimension: dimension)))
+  product.spatial_dimension.render_style_wire(style: product.spatial_dimension.render_style(rendering: product.spatial_dimension.render_room_dimension(dimension: dimension)))
 }
 
 // 1 + 2 — CONSUMING PRECISION. Same standing, same evidence, same room: only the uncertainty
 // differs, and only the coarse one is refused. This is the metrology rule actually implemented.
 fn witness_precision_decides_not_standing() -> Bool {
-  test.claim.spatial_knowledge_witness.admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
+  admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
     && refused_for_precision(dimension: measured_coarse(), requirement: furniture_layout_requirement())
-    && standing_is(dimension: measured_coarse(), expected: SpatialClassMeasured)
+    && standing_is(dimension: measured_coarse(), expected: std.spatial_knowledge.SpatialClassMeasured)
 }
 
 // 3 — the same measured fact admits for furniture layout and REFUSES at egress grade.
 fn witness_same_evidence_differs_by_consuming_decision() -> Bool {
-  test.claim.spatial_knowledge_witness.admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
+  admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
     && refused_for_precision(dimension: measured_precise(), requirement: egress_requirement())
 }
 
 // 4 — a reversed interval cannot be constructed at all.
 fn witness_reversed_interval_refuses() -> Bool {
-  match length_interval(low: millimeter(count: 4000), high: millimeter(count: 3300)) {
-    IntervalReady { interval: _ } => false
-    IntervalRefused { reason: _ } => true
+  match product.spatial_dimension.length_interval(low: std.measure.millimeter(count: 4000), high: std.measure.millimeter(count: 3300)) {
+    std.interval.IntervalReady { interval: _ } => false
+    std.interval.IntervalRefused { reason: _ } => true
   }
-    && match length_interval(low: millimeter(count: 3300), high: millimeter(count: 4000)) {
-         IntervalReady { interval: _ } => true
-         IntervalRefused { reason: _ } => false
+    && match product.spatial_dimension.length_interval(low: std.measure.millimeter(count: 3300), high: std.measure.millimeter(count: 4000)) {
+         std.interval.IntervalReady { interval: _ } => true
+         std.interval.IntervalRefused { reason: _ } => false
        }
 }
 
 // 5 — a narrow estimate satisfies a loose layout requirement; a wide one does not; and neither
 // satisfies an egress-grade requirement, which demands a measurement outright.
 fn witness_estimate_width_and_standing_both_bind() -> Bool {
-  test.claim.spatial_knowledge_witness.admits(dimension: estimate_narrow(), requirement: furniture_layout_requirement())
+  admits(dimension: estimate_narrow(), requirement: furniture_layout_requirement())
     && refused_for_precision(dimension: estimate_wide(), requirement: furniture_layout_requirement())
-    && test.claim.spatial_knowledge_witness.admits(dimension: estimate_narrow(), requirement: egress_requirement()) == false
+    && admits(dimension: estimate_narrow(), requirement: egress_requirement()) == false
 }
 
 // 6 — a hypothesis RENDERS as a hypothesis while REFUSING decision admission. Explore freely,
 // claim conservatively: the two verbs disagree on the same input, which is the point.
 fn witness_hypothesis_renders_but_refuses_decisions() -> Bool {
-  standing_is(dimension: hypothesis_25ft(), expected: SpatialClassHypothesis)
+  standing_is(dimension: hypothesis_25ft(), expected: std.spatial_knowledge.SpatialClassHypothesis)
     && style_wire_of(dimension: hypothesis_25ft()) == "stroke-dashed-hypothesis"
     && style_wire_of(dimension: hypothesis_25ft()) != style_wire_of(dimension: measured_precise())
     && refused_as_hypothesis(dimension: hypothesis_25ft())
-    && test.claim.spatial_knowledge_witness.admits(dimension: hypothesis_25ft(), requirement: egress_requirement()) == false
+    && admits(dimension: hypothesis_25ft(), requirement: egress_requirement()) == false
 }
 
 // 7 — unknown geometry creates no shape, and its refusal names the discharging obligation.
 fn witness_unknown_creates_no_shape() -> Bool {
   style_wire_of(dimension: unknown_width()) == "not-drawn-obligation"
-    && string_contains(s: render_wire(dimension: unknown_width()), pattern: "srv-geometry-capture")
-    && string_contains(s: render_wire(dimension: unknown_width()), pattern: "<line") == false
+    && string_contains(s: product.spatial_dimension.render_wire(dimension: unknown_width()), pattern: "srv-geometry-capture")
+    && string_contains(s: product.spatial_dimension.render_wire(dimension: unknown_width()), pattern: "<line") == false
     && refused_naming_obligation(dimension: unknown_width())
-    && test.claim.spatial_knowledge_witness.admits(dimension: unknown_width(), requirement: furniture_layout_requirement()) == false
+    && admits(dimension: unknown_width(), requirement: furniture_layout_requirement()) == false
 }
 
 // 8 — the four standings render distinguishably, which is the loop the deleted packet broke: one
@@ -279,16 +279,16 @@ fn witness_render_styles_are_distinct() -> Bool {
 fn witness_identity_survives_projection() -> Bool {
   (measured_precise().room as String) == "room-open-work"
     && (unknown_width().room as String) == "room-open-work"
-    && string_contains(s: render_wire(dimension: measured_precise()), pattern: "3660")
+    && string_contains(s: product.spatial_dimension.render_wire(dimension: measured_precise()), pattern: "3660")
 }
 
 // 10 — POSITIVE CONTROL: a real quantity is genuinely admitted AND genuinely drawn, so the suite
 // cannot pass by refusing everything, the failure mode a refusal-heavy guard is most prone to.
 fn witness_measured_admits_and_draws() -> Bool {
-  test.claim.spatial_knowledge_witness.admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
-    && standing_is(dimension: measured_precise(), expected: SpatialClassMeasured)
-    && string_contains(s: render_wire(dimension: measured_precise()), pattern: "stroke-solid")
-    && length_uncertainty_admissible(
+  admits(dimension: measured_precise(), requirement: furniture_layout_requirement())
+    && standing_is(dimension: measured_precise(), expected: std.spatial_knowledge.SpatialClassMeasured)
+    && string_contains(s: product.spatial_dimension.render_wire(dimension: measured_precise()), pattern: "stroke-solid")
+    && product.spatial_dimension.length_uncertainty_admissible(
          actual: interval_or_degenerate(low: 3650, high: 3670),
          budget: interval_or_degenerate(low: 0, high: 200),
        )

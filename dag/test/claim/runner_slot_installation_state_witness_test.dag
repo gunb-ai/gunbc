@@ -2,7 +2,7 @@ module test.claim.runner_slot_installation_state_witness
 
 
 test fn witness_never_activated_materialized_is_ready() -> Bool {
-  runner_slot_installation_is_ready_to_activate(
+  gunbc.runner_incarnation.runner_slot_installation_is_ready_to_activate(
     state: gunbc.runner_incarnation.SlotMaterializedNotActive {
       install_tree_complete: true,
       unit_active: false,
@@ -12,14 +12,14 @@ test fn witness_never_activated_materialized_is_ready() -> Bool {
 }
 
 test fn witness_stale_runner_dot_does_not_block_activation() -> Bool {
-  runner_slot_installation_is_ready_to_activate(
+  gunbc.runner_incarnation.runner_slot_installation_is_ready_to_activate(
     state: gunbc.runner_incarnation.SlotMaterializedNotActive {
       install_tree_complete: true,
       unit_active: false,
       stale_runner_dot_present: true,
     },
   )
-    && !runner_slot_add_requires_incarnation_replace(
+    && !gunbc.runner_incarnation.runner_slot_add_requires_incarnation_replace(
       state: gunbc.runner_incarnation.SlotMaterializedNotActive {
         install_tree_complete: true,
         unit_active: false,
@@ -29,52 +29,52 @@ test fn witness_stale_runner_dot_does_not_block_activation() -> Bool {
 }
 
 test fn witness_srv3_slot_06_observed_materialized_not_active() -> Bool {
-  match vivid_eagle_srv3_slot_installation_observation(slot_index: 6) {
-    SlotInstallationObserved { state: SlotMaterializedNotActive { install_tree_complete: true, unit_active: false, stale_runner_dot_present: true } } =>
+  match gunbc.runner_incarnation.vivid_eagle_srv3_slot_installation_observation(slot_index: 6) {
+    gunbc.runner_incarnation.SlotInstallationObserved { state: gunbc.runner_incarnation.SlotMaterializedNotActive { install_tree_complete: true, unit_active: false, stale_runner_dot_present: true } } =>
       true
     _ => false
   }
 }
 
 test fn witness_srv3_slot_05_observed_active() -> Bool {
-  match vivid_eagle_srv3_slot_installation_observation(slot_index: 5) {
-    SlotInstallationObserved { state: SlotCurrentlyActive {} } => true
+  match gunbc.runner_incarnation.vivid_eagle_srv3_slot_installation_observation(slot_index: 5) {
+    gunbc.runner_incarnation.SlotInstallationObserved { state: gunbc.runner_incarnation.SlotCurrentlyActive {} } => true
     _ => false
   }
 }
 
 test fn witness_srv4_reach_refused_not_slot_absent() -> Bool {
-  match srv4_slot_installation_observation(slot_index: 6) {
-    SlotInstallationReachRefused { host: h, reason: r } =>
-      (h as String) == (operator_host_srv4 as String)
+  match gunbc.runner_incarnation.srv4_slot_installation_observation(slot_index: 6) {
+    gunbc.runner_incarnation.SlotInstallationReachRefused { host: h, reason: r } =>
+      (h as String) == (gunbc.fleet_intent_network.operator_host_srv4 as String)
         && string_contains(s: r, pattern: "NO OBSERVATION")
-    SlotInstallationObserved { state: SlotAbsent {} } => false
+    gunbc.runner_incarnation.SlotInstallationObserved { state: gunbc.runner_incarnation.SlotAbsent {} } => false
     _ => false
   }
 }
 
 test fn witness_srv4_unobserved_blocks_add_and_forbids_reextract_route() -> Bool {
-  let obs = srv4_slot_installation_observation(slot_index: 6)
-  runner_slot_installation_observation_blocks_add(observation: obs)
-    && runner_slot_installation_observation_must_not_reextract(observation: obs)
+  let obs = gunbc.runner_incarnation.srv4_slot_installation_observation(slot_index: 6)
+  gunbc.runner_incarnation.runner_slot_installation_observation_blocks_add(observation: obs)
+    && gunbc.runner_incarnation.runner_slot_installation_observation_must_not_reextract(observation: obs)
 }
 
 test fn witness_srv3_slot_07_ready_to_activate() -> Bool {
-  match vivid_eagle_srv3_slot_installation_observation(slot_index: 7) {
-    SlotInstallationObserved { state: s } => runner_slot_installation_is_ready_to_activate(state: s)
+  match gunbc.runner_incarnation.vivid_eagle_srv3_slot_installation_observation(slot_index: 7) {
+    gunbc.runner_incarnation.SlotInstallationObserved { state: s } => gunbc.runner_incarnation.runner_slot_installation_is_ready_to_activate(state: s)
     _ => false
   }
 }
 
 test fn witness_active_unit_is_converged_not_ready() -> Bool {
-  !runner_slot_installation_is_ready_to_activate(
+  !gunbc.runner_incarnation.runner_slot_installation_is_ready_to_activate(
     state: gunbc.runner_incarnation.SlotMaterializedNotActive {
       install_tree_complete: true,
       unit_active: true,
       stale_runner_dot_present: true,
     },
   )
-    && runner_slot_installation_is_converged(
+    && gunbc.runner_incarnation.runner_slot_installation_is_converged(
       state: gunbc.runner_incarnation.SlotMaterializedNotActive {
         install_tree_complete: true,
         unit_active: true,

@@ -53,18 +53,18 @@ fn model_artifact_seal(
   serving_label: std.types.NonEmptyStr,
 ) -> ModelArtifact
   admit_callers: [
-    decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_observed_digest"),
-    decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_tuning_run"),
-    decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_resolution"),
+    std.decl_ref.decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_observed_digest"),
+    std.decl_ref.decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_tuning_run"),
+    std.decl_ref.decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_resolution"),
   ]
   = ModelArtifact { identity: identity, provenance: provenance, serving_label: serving_label }
 
 // The stock path: an artifact whose digest came off /api/tags or /api/show.
 fn model_artifact_from_observed_digest(publisher: std.types.NonEmptyStr, observed: extdeps.ollama.api.OllamaModelDigest) -> ModelArtifact {
   model_artifact_seal(
-    identity: ollama_model_content_hash(digest: observed),
+    identity: extdeps.ollama.api.ollama_model_content_hash(digest: observed),
     provenance: PulledFromUpstream { publisher: publisher, reference: observed.ref },
-    serving_label: ollama_model_ref_wire(ref: observed.ref) as std.types.NonEmptyStr,
+    serving_label: extdeps.ollama.api.ollama_model_ref_wire(ref: observed.ref) as std.types.NonEmptyStr,
   )
 }
 
@@ -87,7 +87,7 @@ fn model_artifact_from_resolution<Evidence>(
   model_artifact_seal(
     identity: resolution.resolved_identity,
     provenance: PulledFromUpstream { publisher: publisher, reference: resolution.reference },
-    serving_label: ollama_model_ref_wire(ref: resolution.reference) as std.types.NonEmptyStr,
+    serving_label: extdeps.ollama.api.ollama_model_ref_wire(ref: resolution.reference) as std.types.NonEmptyStr,
   )
 }
 
@@ -113,7 +113,7 @@ fn model_artifact_from_tuning_run(
   serving_label: std.types.NonEmptyStr,
 ) -> ModelArtifact {
   model_artifact_seal(
-    identity: as_content_hash_cryptographic(digest: produced_digest),
+    identity: std.content_hash.as_content_hash_cryptographic(digest: produced_digest),
     provenance: DerivedByTuning {
       base_identity: base.identity,
       dataset_identity: dataset_identity,
@@ -133,10 +133,10 @@ type ModelArtifactAgreement
   | ArtifactIncomparable { cause: std.types.NonEmptyStr }
 
 fn compare_model_artifact(desired: ModelArtifact, loaded: ModelArtifact) -> ModelArtifactAgreement {
-  match compare_content_hash(left: desired.identity, right: loaded.identity) {
-    ContentHashEqual => ArtifactIdentical
-    ContentHashDifferent => ArtifactDiffers { desired: desired.identity, loaded: loaded.identity }
-    ContentHashCrossFamilyIncomparable => ArtifactIncomparable {
+  match std.content_hash.compare_content_hash(left: desired.identity, right: loaded.identity) {
+    std.content_hash.ContentHashEqual => ArtifactIdentical
+    std.content_hash.ContentHashDifferent => ArtifactDiffers { desired: desired.identity, loaded: loaded.identity }
+    std.content_hash.ContentHashCrossFamilyIncomparable => ArtifactIncomparable {
       cause: "desired and loaded model identities are in different hash families, so agreement was not established" as std.types.NonEmptyStr,
     }
   }
@@ -150,10 +150,10 @@ fn model_label_collision(left: ModelArtifact, right: ModelArtifact) -> Bool {
 }
 
 fn model_artifact_same(left: ModelArtifact, right: ModelArtifact) -> Bool {
-  match compare_content_hash(left: left.identity, right: right.identity) {
-    ContentHashEqual => true
-    ContentHashDifferent => false
-    ContentHashCrossFamilyIncomparable => false
+  match std.content_hash.compare_content_hash(left: left.identity, right: right.identity) {
+    std.content_hash.ContentHashEqual => true
+    std.content_hash.ContentHashDifferent => false
+    std.content_hash.ContentHashCrossFamilyIncomparable => false
   }
 }
 
@@ -170,11 +170,11 @@ fn model_artifact_base_identity(artifact: ModelArtifact) -> std.content_hash.Con
 fn model_artifact_provenance_label(artifact: ModelArtifact) -> String {
   match artifact.provenance {
     PulledFromUpstream { publisher: p, reference: r } =>
-      join(["pulled publisher=", p as String, " reference=", ollama_model_ref_wire(ref: r)], "")
+      join(["pulled publisher=", p as String, " reference=", extdeps.ollama.api.ollama_model_ref_wire(ref: r)], "")
     DerivedByTuning { base_identity: b, dataset_identity: d, run_identity: run } =>
       join([
-        "tuned base=", serialize_content_hash(hash: b) as String,
-        " dataset=", serialize_content_hash(hash: d) as String,
+        "tuned base=", std.content_hash.serialize_content_hash(hash: b) as String,
+        " dataset=", std.content_hash.serialize_content_hash(hash: d) as String,
         " run=", run as String,
       ], "")
   }

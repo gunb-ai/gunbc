@@ -1,13 +1,13 @@
 module v2.test.workflow.frontier_probe_closure_matrix
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn fp_matrix_synthetic_ref(path: String, hash_seed: String) -> v2.compiler.source_authority.SourceRef {
   v2.compiler.source_authority.SourceRef {
     path: path,
-    source_root: DagTree,
-    content_hash: std.content_hash.content_hash_of_value(value: hash_seed as std.types.NonEmptyStr)
+    source_root: v2.std.cross_tree.import_model.DagTree,
+    content_hash: std.content_hash.content_hash_of_value(value: hash_seed as NonEmptyStr)
   }
 }
 
@@ -22,7 +22,7 @@ fn fp_matrix_ref_b() -> v2.compiler.source_authority.SourceRef {
 data fp_matrix_cap_boundary_paths: List<String> = std.algebra.Cons { head: "dag/fp_matrix/cap/00.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/01.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/02.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/03.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/04.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/05.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/06.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/07.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/08.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/09.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/10.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/11.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/12.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/13.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/14.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/15.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/16.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/17.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/18.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/19.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/20.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/21.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/22.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/23.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/24.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/25.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/26.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/27.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/28.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/29.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/30.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/31.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/32.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/33.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/34.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/35.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/36.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/37.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/38.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/39.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/40.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/41.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/42.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/43.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/44.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/45.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/46.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/47.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/48.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/49.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/50.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/51.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/52.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/53.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/54.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/55.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/56.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/57.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/58.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/59.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/60.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/61.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/62.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/63.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/64.dag", tail: std.algebra.Empty } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
 
 fn fp_matrix_refs_from_paths(paths: List<String>) -> List<v2.compiler.source_authority.SourceRef> {
-  list_map(
+  v2.std.algebra.list_map(
     xs: paths,
     f: fn(path) {
       fp_matrix_synthetic_ref(path: path, hash_seed: path)
@@ -40,53 +40,53 @@ fn fp_matrix_closure_subject_matching_digest(
   ingest_read_count: Int,
   entry: v2.compiler.source_authority.SourceRef
 ) -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  frontier_probe_discovered_closure_subject_for_matrix(
-    closure: frontier_probe_discovered_closure_seal(refs: refs, entry: entry),
+  v2.compiler.self_host.frontier_probe.frontier_probe_discovered_closure_subject_for_matrix(
+    closure: v2.compiler.source_authority.frontier_probe_discovered_closure_seal(refs: refs, entry: entry),
     coverage: coverage,
     ingest_read_count: ingest_read_count
   )
 }
 
 fn fp_matrix_duplicate_closure_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
+  fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
-      tail: std.algebra.Cons { head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(), tail: std.algebra.Empty }
+      head: fp_matrix_ref_a(),
+      tail: std.algebra.Cons { head: fp_matrix_ref_a(), tail: std.algebra.Empty }
     },
-    coverage: SourceRootCoverageComplete,
+    coverage: v2.compiler.source_authority.SourceRootCoverageComplete,
     ingest_read_count: 2,
-    entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
+    entry: fp_matrix_ref_a()
   )
 }
 
 fn fp_matrix_entry_not_in_refs_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
+  fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
+      head: fp_matrix_ref_a(),
       tail: std.algebra.Empty
     },
-    coverage: SourceRootCoverageComplete,
+    coverage: v2.compiler.source_authority.SourceRootCoverageComplete,
     ingest_read_count: 1,
     entry: fp_matrix_ref_b()
   )
 }
 
 fn fp_matrix_count_mismatch_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
+  fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
+      head: fp_matrix_ref_a(),
       tail: std.algebra.Cons { head: fp_matrix_ref_b(), tail: std.algebra.Empty }
     },
-    coverage: SourceRootCoverageComplete,
+    coverage: v2.compiler.source_authority.SourceRootCoverageComplete,
     ingest_read_count: 3,
-    entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
+    entry: fp_matrix_ref_a()
   )
 }
 
 fn fp_matrix_rows_missing_coverage_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
+  fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
+      head: fp_matrix_ref_a(),
       tail: std.algebra.Empty
     },
     coverage: v2.compiler.source_authority.SourceRootRowsMissing {
@@ -94,31 +94,31 @@ fn fp_matrix_rows_missing_coverage_subject() -> v2.compiler.self_host.frontier_p
       produced_row_count: 0
     },
     ingest_read_count: 1,
-    entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
+    entry: fp_matrix_ref_a()
   )
 }
 
 fn fp_matrix_manifest_absent_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
+  fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
+      head: fp_matrix_ref_a(),
       tail: std.algebra.Empty
     },
-    coverage: SourceRootManifestAbsent,
+    coverage: v2.compiler.source_authority.SourceRootManifestAbsent,
     ingest_read_count: 1,
-    entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
+    entry: fp_matrix_ref_a()
   )
 }
 
 fn fp_matrix_elided_incomplete_refs_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
+  fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
+      head: fp_matrix_ref_a(),
       tail: std.algebra.Empty
     },
     coverage: v2.compiler.source_authority.SourceRootManifestElided { read_count: 91, cap: 64 },
     ingest_read_count: 1,
-    entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
+    entry: fp_matrix_ref_a()
   )
 }
 
@@ -127,147 +127,147 @@ fn fp_matrix_wrong_hash_ref() -> v2.compiler.source_authority.SourceRef {
 }
 
 fn fp_matrix_storage_hash_conflict_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_closure_subject_matching_digest(
+  fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
+      head: fp_matrix_ref_a(),
       tail: std.algebra.Cons { head: fp_matrix_wrong_hash_ref(), tail: std.algebra.Empty }
     },
-    coverage: SourceRootCoverageComplete,
+    coverage: v2.compiler.source_authority.SourceRootCoverageComplete,
     ingest_read_count: 2,
-    entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
+    entry: fp_matrix_ref_a()
   )
 }
 
 fn fp_matrix_substituted_refs_digest() -> v2.compiler.source_authority.DiscoveredSourceRefsDigest {
-  discovered_source_refs_digest_for_refs(
+  v2.compiler.source_authority.discovered_source_refs_digest_for_refs(
     refs: std.algebra.Cons {
-      head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
-      tail: std.algebra.Cons { head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(), tail: std.algebra.Empty }
+      head: fp_matrix_ref_a(),
+      tail: std.algebra.Cons { head: fp_matrix_ref_a(), tail: std.algebra.Empty }
     }
   )
 }
 
 fn fp_matrix_forged_closure_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  frontier_probe_discovered_closure_subject_for_matrix(
+  v2.compiler.self_host.frontier_probe.frontier_probe_discovered_closure_subject_for_matrix(
     closure: v2.compiler.source_authority.FrontierProbeDiscoveredClosure {
       refs: std.algebra.Cons {
-        head: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a(),
+        head: fp_matrix_ref_a(),
         tail: std.algebra.Cons { head: fp_matrix_ref_b(), tail: std.algebra.Empty }
       },
       population_digest: fp_matrix_substituted_refs_digest(),
-      entry: v2.test.workflow.frontier_probe_closure_matrix.fp_matrix_ref_a()
+      entry: fp_matrix_ref_a()
     },
-    coverage: SourceRootCoverageComplete,
+    coverage: v2.compiler.source_authority.SourceRootCoverageComplete,
     ingest_read_count: 2
   )
 }
 
-test fn frontier_probe_closure_storage_duplicate_refused_holds() -> v2.std.logic.Bool {
-  match frontier_probe_receipt_for_subject(
+test fn frontier_probe_closure_storage_duplicate_refused_holds() -> Bool {
+  match v2.compiler.self_host.frontier_probe.frontier_probe_receipt_for_subject(
     subject: fp_matrix_duplicate_closure_subject(),
     fixture_module_path: ""
   ).detail {
-    FrontierProbeClosurePopulationRefused { cause: cause } =>
-      cause == frontier_probe_entry_binding_refused_reason
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeClosurePopulationRefused { cause: cause } =>
+      cause == v2.compiler.self_host.frontier_probe.frontier_probe_entry_binding_refused_reason
     _ => false
   }
 }
 
-test fn frontier_probe_closure_entry_binding_refused_holds() -> v2.std.logic.Bool {
-  match frontier_probe_receipt_for_subject(
+test fn frontier_probe_closure_entry_binding_refused_holds() -> Bool {
+  match v2.compiler.self_host.frontier_probe.frontier_probe_receipt_for_subject(
     subject: fp_matrix_entry_not_in_refs_subject(),
     fixture_module_path: ""
   ).detail {
-    FrontierProbeClosurePopulationRefused { cause: cause } =>
-      cause == frontier_probe_entry_binding_refused_reason
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeClosurePopulationRefused { cause: cause } =>
+      cause == v2.compiler.self_host.frontier_probe.frontier_probe_entry_binding_refused_reason
     _ => false
   }
 }
 
-test fn frontier_probe_closure_count_mismatch_refused_holds() -> v2.std.logic.Bool {
-  match frontier_probe_receipt_for_subject(
+test fn frontier_probe_closure_count_mismatch_refused_holds() -> Bool {
+  match v2.compiler.self_host.frontier_probe.frontier_probe_receipt_for_subject(
     subject: fp_matrix_count_mismatch_subject(),
     fixture_module_path: ""
   ).detail {
-    FrontierProbeClosurePopulationRefused { cause: cause } =>
-      cause == frontier_probe_closure_count_mismatch_reason
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeClosurePopulationRefused { cause: cause } =>
+      cause == v2.compiler.self_host.frontier_probe.frontier_probe_closure_count_mismatch_reason
     _ => false
   }
 }
 
-test fn frontier_probe_closure_refs_digest_mismatch_refused_holds() -> v2.std.logic.Bool {
-  match frontier_probe_receipt_for_subject(
+test fn frontier_probe_closure_refs_digest_mismatch_refused_holds() -> Bool {
+  match v2.compiler.self_host.frontier_probe.frontier_probe_receipt_for_subject(
     subject: fp_matrix_forged_closure_subject(),
     fixture_module_path: ""
   ).detail {
-    FrontierProbeClosurePopulationRefused { cause: cause } =>
-      cause == frontier_probe_closure_refs_digest_mismatch_reason
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeClosurePopulationRefused { cause: cause } =>
+      cause == v2.compiler.self_host.frontier_probe.frontier_probe_closure_refs_digest_mismatch_reason
     _ => false
   }
 }
 
-test fn frontier_probe_coverage_rows_missing_refused_holds() -> v2.std.logic.Bool {
-  match frontier_probe_receipt_for_subject(
+test fn frontier_probe_coverage_rows_missing_refused_holds() -> Bool {
+  match v2.compiler.self_host.frontier_probe.frontier_probe_receipt_for_subject(
     subject: fp_matrix_rows_missing_coverage_subject(),
     fixture_module_path: ""
   ).detail {
-    FrontierProbeCoverageRefused { coverage: coverage } =>
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeCoverageRefused { coverage: coverage } =>
       match coverage {
-        SourceRootRowsMissing { read_count: 5, produced_row_count: 0 } => true
+        v2.compiler.source_authority.SourceRootRowsMissing { read_count: 5, produced_row_count: 0 } => true
         _ => false
       }
     _ => false
   }
 }
 
-test fn frontier_probe_coverage_manifest_absent_refused_holds() -> v2.std.logic.Bool {
-  match frontier_probe_receipt_for_subject(
+test fn frontier_probe_coverage_manifest_absent_refused_holds() -> Bool {
+  match v2.compiler.self_host.frontier_probe.frontier_probe_receipt_for_subject(
     subject: fp_matrix_manifest_absent_subject(),
     fixture_module_path: ""
   ).detail {
-    FrontierProbeCoverageRefused { coverage: coverage } =>
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeCoverageRefused { coverage: coverage } =>
       match coverage {
-        SourceRootManifestAbsent => true
+        v2.compiler.source_authority.SourceRootManifestAbsent => true
         _ => false
       }
     _ => false
   }
 }
 
-test fn frontier_probe_elided_incomplete_refs_coverage_refused_holds() -> v2.std.logic.Bool {
-  match frontier_probe_receipt_for_subject(
+test fn frontier_probe_elided_incomplete_refs_coverage_refused_holds() -> Bool {
+  match v2.compiler.self_host.frontier_probe.frontier_probe_receipt_for_subject(
     subject: fp_matrix_elided_incomplete_refs_subject(),
     fixture_module_path: ""
   ).detail {
-    FrontierProbeCoverageRefused { coverage: coverage } =>
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeCoverageRefused { coverage: coverage } =>
       match coverage {
-        SourceRootManifestElided { read_count: 91, cap: 64 } => true
+        v2.compiler.source_authority.SourceRootManifestElided { read_count: 91, cap: 64 } => true
         _ => false
       }
     _ => false
   }
 }
 
-test fn frontier_probe_storage_hash_conflict_refused_holds() -> v2.std.logic.Bool {
-  match frontier_probe_receipt_for_subject(
+test fn frontier_probe_storage_hash_conflict_refused_holds() -> Bool {
+  match v2.compiler.self_host.frontier_probe.frontier_probe_receipt_for_subject(
     subject: fp_matrix_storage_hash_conflict_subject(),
     fixture_module_path: ""
   ).detail {
-    FrontierProbeClosurePopulationRefused { cause: cause } =>
-      cause == frontier_probe_closure_storage_hash_conflict_reason
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeClosurePopulationRefused { cause: cause } =>
+      cause == v2.compiler.self_host.frontier_probe.frontier_probe_closure_storage_hash_conflict_reason
     _ => false
   }
 }
 
-test fn frontier_probe_elided_cap_plus_one_coverage_gate_permitted_holds() -> v2.std.logic.Bool {
+test fn frontier_probe_elided_cap_plus_one_coverage_gate_permitted_holds() -> Bool {
   let refs = fp_matrix_cap_boundary_refs()
-  match frontier_probe_coverage_gate(
+  match v2.compiler.self_host.frontier_probe.frontier_probe_coverage_gate(
     coverage: v2.compiler.source_authority.SourceRootManifestElided { read_count: 65, cap: 64 },
     refs: refs,
     ingest_read_count: 65
   ) {
-    FrontierProbeCoveragePermitted =>
-      length(xs: refs) == 65
+    v2.compiler.self_host.frontier_probe.FrontierProbeCoveragePermitted =>
+      v2.std.algebra.length(xs: refs) == 65
     _ => false
   }
 }

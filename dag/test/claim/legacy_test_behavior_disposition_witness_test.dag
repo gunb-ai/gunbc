@@ -1,7 +1,7 @@
 module test.claim.legacy_test_behavior_disposition_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data fixture_covered_behavior: gunbc.legacy_test_behavior_disposition.LegacyTestBehavior = gunbc.legacy_test_behavior_disposition.LegacyTestBehavior {
   source_file: "fixture/legacy.rs" as std.types.FilePath,
@@ -27,18 +27,18 @@ data fixture_covered_disposition: gunbc.legacy_test_behavior_disposition.LegacyT
 data fixture_retained_disposition: gunbc.legacy_test_behavior_disposition.LegacyTestBehaviorDisposition = gunbc.legacy_test_behavior_disposition.RetainedNonMigratableBehavior {
   behavior: fixture_retained_behavior,
   reason: "fixture host-only behavior cannot yet execute through the substrate" as std.types.NonEmptyStr,
-  dissolution: unbound_dissolution(description: "the fixture host surface becomes a modeled effect"),
+  dissolution: std.dissolution.unbound_dissolution(description: "the fixture host surface becomes a modeled effect"),
 }
 
 fn fixture_discovered_legacy() -> List<String> {
   [
-    legacy_test_behavior_id(behavior: fixture_covered_behavior),
-    legacy_test_behavior_id(behavior: fixture_retained_behavior),
+    gunbc.legacy_test_behavior_disposition.legacy_test_behavior_id(behavior: fixture_covered_behavior),
+    gunbc.legacy_test_behavior_disposition.legacy_test_behavior_id(behavior: fixture_retained_behavior),
   ]
 }
 
 fn fixture_discovered_witnesses() -> List<String> {
-  [test_behavior_witness_id(witness: fixture_witness)]
+  [gunbc.legacy_test_behavior_disposition.test_behavior_witness_id(witness: fixture_witness)]
 }
 
 fn fixture_complete_dispositions() -> List<gunbc.legacy_test_behavior_disposition.LegacyTestBehaviorDisposition> {
@@ -46,11 +46,11 @@ fn fixture_complete_dispositions() -> List<gunbc.legacy_test_behavior_dispositio
 }
 
 test fn legacy_test_behavior_live_discovery_and_first_file_mapping_hold() -> Bool {
-  legacy_test_behavior_declared_slice_holds()
+  gunbc.legacy_test_behavior_disposition.legacy_test_behavior_declared_slice_holds()
 }
 
 test fn legacy_test_behavior_complete_fixture_is_admitted() -> Bool {
-  legacy_test_behavior_disposition_graph_holds(
+  gunbc.legacy_test_behavior_disposition.legacy_test_behavior_disposition_graph_holds(
     discovery_holds: true,
     discovered_legacy: fixture_discovered_legacy(),
     discovered_witnesses: fixture_discovered_witnesses(),
@@ -59,7 +59,7 @@ test fn legacy_test_behavior_complete_fixture_is_admitted() -> Bool {
 }
 
 test fn legacy_test_behavior_planted_unclassified_function_reds() -> Bool {
-  !legacy_test_behavior_disposition_graph_holds(
+  !gunbc.legacy_test_behavior_disposition.legacy_test_behavior_disposition_graph_holds(
     discovery_holds: true,
     discovered_legacy: fixture_discovered_legacy(),
     discovered_witnesses: fixture_discovered_witnesses(),
@@ -68,7 +68,7 @@ test fn legacy_test_behavior_planted_unclassified_function_reds() -> Bool {
 }
 
 test fn legacy_test_behavior_planted_misclassification_reds() -> Bool {
-  !legacy_test_behavior_disposition_graph_holds(
+  !gunbc.legacy_test_behavior_disposition.legacy_test_behavior_disposition_graph_holds(
     discovery_holds: true,
     discovered_legacy: fixture_discovered_legacy(),
     discovered_witnesses: [],
@@ -93,14 +93,14 @@ data fixture_outside_family_behavior: gunbc.legacy_test_behavior_disposition.Leg
 
 fn fixture_discovered_legacy_with_outsider() -> List<String> {
   [
-    legacy_test_behavior_id(behavior: fixture_covered_behavior),
-    legacy_test_behavior_id(behavior: fixture_retained_behavior),
-    legacy_test_behavior_id(behavior: fixture_outside_family_behavior),
+    gunbc.legacy_test_behavior_disposition.legacy_test_behavior_id(behavior: fixture_covered_behavior),
+    gunbc.legacy_test_behavior_disposition.legacy_test_behavior_id(behavior: fixture_retained_behavior),
+    gunbc.legacy_test_behavior_disposition.legacy_test_behavior_id(behavior: fixture_outside_family_behavior),
   ]
 }
 
 test fn legacy_test_behavior_family_complete_fixture_is_admitted() -> Bool {
-  legacy_test_behavior_family_complete(
+  gunbc.legacy_test_behavior_disposition.legacy_test_behavior_family_complete(
     discovery_holds: true,
     family: fixture_family,
     discovered_legacy: fixture_discovered_legacy(),
@@ -110,14 +110,14 @@ test fn legacy_test_behavior_family_complete_fixture_is_admitted() -> Bool {
 }
 
 test fn legacy_test_behavior_family_ignores_unclassified_outside_its_files() -> Bool {
-  legacy_test_behavior_family_complete(
+  gunbc.legacy_test_behavior_disposition.legacy_test_behavior_family_complete(
     discovery_holds: true,
     family: fixture_family,
     discovered_legacy: fixture_discovered_legacy_with_outsider(),
     discovered_witnesses: fixture_discovered_witnesses(),
     dispositions: fixture_complete_dispositions(),
   )
-    && !legacy_test_behavior_disposition_graph_holds(
+    && !gunbc.legacy_test_behavior_disposition.legacy_test_behavior_disposition_graph_holds(
       discovery_holds: true,
       discovered_legacy: fixture_discovered_legacy_with_outsider(),
       discovered_witnesses: fixture_discovered_witnesses(),
@@ -126,7 +126,7 @@ test fn legacy_test_behavior_family_ignores_unclassified_outside_its_files() -> 
 }
 
 test fn legacy_test_behavior_family_planted_unclassified_member_reds() -> Bool {
-  !legacy_test_behavior_family_complete(
+  !gunbc.legacy_test_behavior_disposition.legacy_test_behavior_family_complete(
     discovery_holds: true,
     family: fixture_family,
     discovered_legacy: fixture_discovered_legacy(),
@@ -136,7 +136,7 @@ test fn legacy_test_behavior_family_planted_unclassified_member_reds() -> Bool {
 }
 
 test fn legacy_test_behavior_family_with_no_discovered_member_reds() -> Bool {
-  !legacy_test_behavior_family_complete(
+  !gunbc.legacy_test_behavior_disposition.legacy_test_behavior_family_complete(
     discovery_holds: true,
     family: fixture_absent_family,
     discovered_legacy: fixture_discovered_legacy(),
@@ -146,7 +146,7 @@ test fn legacy_test_behavior_family_with_no_discovered_member_reds() -> Bool {
 }
 
 test fn legacy_test_behavior_family_unresolved_witness_reds() -> Bool {
-  !legacy_test_behavior_family_complete(
+  !gunbc.legacy_test_behavior_disposition.legacy_test_behavior_family_complete(
     discovery_holds: true,
     family: fixture_family,
     discovered_legacy: fixture_discovered_legacy(),
@@ -156,7 +156,7 @@ test fn legacy_test_behavior_family_unresolved_witness_reds() -> Bool {
 }
 
 test fn legacy_test_behavior_discovery_refusal_cannot_fabricate_green() -> Bool {
-  !legacy_test_behavior_disposition_graph_holds(
+  !gunbc.legacy_test_behavior_disposition.legacy_test_behavior_disposition_graph_holds(
     discovery_holds: false,
     discovered_legacy: [],
     discovered_witnesses: [],

@@ -42,9 +42,9 @@ type MemberPresence
 
 fn read_member_value(v: extdeps.languages.json.emit.JsonValue, key: String) -> MemberPresence {
   match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
-    JsonMemberAbsent => MemberLookupFailed { cause: MemberReadMissing { key: key } }
+    extdeps.languages.json.parse.JsonMemberAbsent => MemberLookupFailed { cause: MemberReadMissing { key: key } }
     extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => MemberLookupFailed { cause: MemberReadDuplicated { key: key } }
-    JsonMemberNotAnObject => MemberLookupFailed { cause: MemberReadSubjectNotObject }
+    extdeps.languages.json.parse.JsonMemberNotAnObject => MemberLookupFailed { cause: MemberReadSubjectNotObject }
     extdeps.languages.json.parse.JsonMemberFound { value: found } => MemberValue { value: found }
   }
 }
@@ -60,12 +60,12 @@ fn read_member(v: extdeps.languages.json.emit.JsonValue, key: String) -> MemberR
     MemberLookupFailed { cause: c } => MemberFailed { cause: c }
     MemberValue { value: found } =>
       match found {
-        JsonString { value: s } => MemberString { value: s }
-        JsonArray { elements: es } => MemberArray { elements: es }
-        JsonObject { members: _ } => MemberObject { value: found }
-        JsonNull => MemberFailed { cause: MemberReadWrongShape { key: key } }
-        JsonBool { value: _ } => MemberFailed { cause: MemberReadWrongShape { key: key } }
-        JsonNumber { lexeme: _ } => MemberFailed { cause: MemberReadWrongShape { key: key } }
+        extdeps.languages.json.emit.JsonString { value: s } => MemberString { value: s }
+        extdeps.languages.json.emit.JsonArray { elements: es } => MemberArray { elements: es }
+        extdeps.languages.json.emit.JsonObject { members: _ } => MemberObject { value: found }
+        extdeps.languages.json.emit.JsonNull => MemberFailed { cause: MemberReadWrongShape { key: key } }
+        extdeps.languages.json.emit.JsonBool { value: _ } => MemberFailed { cause: MemberReadWrongShape { key: key } }
+        extdeps.languages.json.emit.JsonNumber { lexeme: _ } => MemberFailed { cause: MemberReadWrongShape { key: key } }
       }
   }
 }

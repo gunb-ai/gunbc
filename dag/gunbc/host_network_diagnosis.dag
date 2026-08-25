@@ -20,17 +20,17 @@ fn diagnose_host_network(
         detail: "no netplan configuration present for this host",
       }
     Present { value: f } =>
-      if !netplan_file_is_applied(f: f) {
+      if !extdeps.netplan.netplan.netplan_file_is_applied(f: f) {
         NetworkConfigAbsent { detail: f.path }
       } else {
-        if !interface_is_configured(o: observed) {
+        if !extdeps.netplan.netplan.interface_is_configured(o: observed) {
           NetworkConfigAbsent { detail: observed.name }
         } else {
           match observed.carrier {
-            CarrierUnobserved => LinkStateUnobserved { interface: observed.name }
-            CarrierAbsent =>
+            extdeps.netplan.netplan.CarrierUnobserved => LinkStateUnobserved { interface: observed.name }
+            extdeps.netplan.netplan.CarrierAbsent =>
               ConfiguredLinkAbsent { interface: observed.name, mac: observed.mac }
-            CarrierPresent => ConfiguredLinkPresent { interface: observed.name }
+            extdeps.netplan.netplan.CarrierPresent => ConfiguredLinkPresent { interface: observed.name }
           }
         }
       }
@@ -39,33 +39,33 @@ fn diagnose_host_network(
 
 // The generator's disposition answers exactly one question, and it is not whether the network works. It decides whether the netplan file is regenerated each boot or FROZEN — i.e. whether a hand edit survives. On an ISO-installed Ubuntu host the installer always disables cloud-init, so the file is always frozen and always hand-authoritative, which is useful to know before editing it and irrelevant to why an interface has no carrier. Keeping this on its own function rather than as a branch inside diagnose_host_network is the structural form of that separation.
 fn netplan_file_ownership(d: extdeps.cloud_init.cloud_init.CloudInitDisposition) -> extdeps.cloud_init.cloud_init.CloudInitGeneratedFileState {
-  cloud_init_generated_file_state(d: d)
+  extdeps.cloud_init.cloud_init.cloud_init_generated_file_state(d: d)
 }
 
 data srv4_incident_note: String = "The srv4 readings of 2026-07-25, kept as cited fixtures because they are the discriminating input for this whole module and because a synthetic pair could be made to satisfy the fold by accident. Observed live over the BMC serial console after the host dropped off the network: cloud-init disabled by the Ubuntu live installer's marker file; /etc/netplan/50-cloud-init.yaml present and correct, naming enP3p3s0f1 with dhcp4 true and critical true; enP3p3s0f1 administratively UP with qdisc mq and carrier 0; the machine's unused sibling ports at qdisc noop. The fault survived a graceful power-down, a twenty-second de-energised hold and a power-up, which is what rules out NIC firmware or driver state and leaves the cable, the switch port or the PHY."
 
 data srv4_cloud_init_disposition: extdeps.cloud_init.cloud_init.CloudInitDisposition = extdeps.cloud_init.cloud_init.CloudInitDisabledByMarkerFile {
-  path: cloud_init_disabled_marker_path,
-  reason: ubuntu_live_installer_disable_marker_text,
+  path: extdeps.cloud_init.cloud_init.cloud_init_disabled_marker_path,
+  reason: extdeps.cloud_init.cloud_init.ubuntu_live_installer_disable_marker_text,
 }
 
 data srv4_netplan_config: extdeps.netplan.netplan.NetplanConfigFile = extdeps.netplan.netplan.NetplanConfigFile {
-  path: cloud_init_generated_netplan_path,
-  writer: WrittenByCloudInit,
+  path: extdeps.cloud_init.cloud_init.cloud_init_generated_netplan_path,
+  writer: extdeps.netplan.netplan.WrittenByCloudInit,
 }
 
 data srv4_lan_interface: extdeps.netplan.netplan.InterfaceObservation = extdeps.netplan.netplan.InterfaceObservation {
   name: "enP3p3s0f1",
   mac: "48:21:0b:87:2d:64",
-  admin: AdminUpConfigured,
-  carrier: CarrierAbsent,
+  admin: extdeps.netplan.netplan.AdminUpConfigured,
+  carrier: extdeps.netplan.netplan.CarrierAbsent,
 }
 
 data srv4_unused_port: extdeps.netplan.netplan.InterfaceObservation = extdeps.netplan.netplan.InterfaceObservation {
   name: "enP3p3s0f0",
   mac: "48:21:0b:87:2d:63",
-  admin: AdminDownUnconfigured,
-  carrier: CarrierUnobserved,
+  admin: extdeps.netplan.netplan.AdminDownUnconfigured,
+  carrier: extdeps.netplan.netplan.CarrierUnobserved,
 }
 
 data disabled_generator_widen_red_control_note: String = "THE forbidden inference, written as an executable declaration rather than a warning: if the generator is disabled, report the configuration as absent. This is not a strawman — it is the reasoning actually performed during the srv4 outage, and it is seductive because it is nearly right in a neighbouring case (a generator disabled BEFORE it ever ran does leave no config). The gate rejects it on srv4's own inputs and accepts the authority on the same inputs, so the separation is proven to be a decision rather than a coincidence."
@@ -75,7 +75,7 @@ fn diagnose_via_generator_state_widen_sketch(
   config: extdeps.netplan.netplan.NetplanConfigFile?,
   observed: extdeps.netplan.netplan.InterfaceObservation,
 ) -> HostNetworkDiagnosis {
-  if cloud_init_is_disabled(d: generator) {
+  if extdeps.cloud_init.cloud_init.cloud_init_is_disabled(d: generator) {
     NetworkConfigAbsent { detail: "generator disabled" }
   } else {
     diagnose_host_network(config: config, observed: observed)
@@ -101,7 +101,7 @@ fn diagnosis_blames_physical_layer(d: HostNetworkDiagnosis) -> Bool {
 }
 
 fn diagnosis_gate_accepts(d: HostNetworkDiagnosis, observed: extdeps.netplan.netplan.InterfaceObservation) -> Bool {
-  if interface_is_configured(o: observed) {
+  if extdeps.netplan.netplan.interface_is_configured(o: observed) {
     !diagnosis_blames_configuration(d: d)
   } else {
     true
@@ -110,13 +110,13 @@ fn diagnosis_gate_accepts(d: HostNetworkDiagnosis, observed: extdeps.netplan.net
 
 data network_axis_cell_note: String = "What makes this fold a MECHANISM rather than a description of a past incident: the network becomes a per-host axis on the same status matrix the swap-backing and toolchain-completeness axes sit on, with the same three parts — a per-host verdict, routed through the read-back independence criterion, and a COUNTED fleet tally of the hosts it cannot see. The count is the load-bearing part. There is no live producer for interface observations today, so every host answers UnknownRefused and the tally is the full fleet; that is a typed, located, countable deficit which RANKS for fixing, and it is the opposite of the absorbing fallback this lane keeps refusing (DESIGN §5 — a masked cost displaces nothing, so a deficit whose frequency is zero by construction never gets fixed). When a producer lands, the tally falls on its own and the fall is the receipt."
 
-// Both decisive failures map to std.upsert_decision.Drifted, and the layer they name is deliberately NOT carried on the verdict. The status cell answers one question — is this host's network converged — and the answer for a missing config and for a dead cable is the same 'no'; what differs is the remedy, and the remedy lives on HostNetworkDiagnosis, which the fold returns and which every consumer that needs to act reads instead of the cell. Collapsing them on the CELL is a projection; collapsing them in the FOLD would be the state-space conflation, and that is why diagnose_host_network keeps them apart. LinkStateUnobserved maps to UnknownRefused rather than to either decisive verdict, because 'I could not see the link' and 'the link is down' are the ⊤-as-ignorance / ⊤-as-answer pair §5 names.
+// Both decisive failures map to Drifted, and the layer they name is deliberately NOT carried on the verdict. The status cell answers one question — is this host's network converged — and the answer for a missing config and for a dead cable is the same 'no'; what differs is the remedy, and the remedy lives on HostNetworkDiagnosis, which the fold returns and which every consumer that needs to act reads instead of the cell. Collapsing them on the CELL is a projection; collapsing them in the FOLD would be the state-space conflation, and that is why diagnose_host_network keeps them apart. LinkStateUnobserved maps to UnknownRefused rather than to either decisive verdict, because 'I could not see the link' and 'the link is down' are the ⊤-as-ignorance / ⊤-as-answer pair §5 names.
 fn network_diagnosis_verdict(d: HostNetworkDiagnosis) -> std.upsert_decision.ObservationVerdict {
   match d {
     ConfiguredLinkPresent { interface: _ } => std.upsert_decision.Converged
     ConfiguredLinkAbsent { interface: _, mac: _ } => std.upsert_decision.Drifted
     NetworkConfigAbsent { detail: _ } => std.upsert_decision.Drifted
-    LinkStateUnobserved { interface: _ } => UnknownRefused
+    LinkStateUnobserved { interface: _ } => std.upsert_decision.UnknownRefused
   }
 }
 
@@ -132,10 +132,10 @@ fn host_network_observation(host: product.placement_supply.HostIdentity) -> extd
 
 fn host_network_verdict(host: product.placement_supply.HostIdentity) -> std.upsert_decision.ObservationVerdict {
   match host_network_observation(host: host) {
-    Absent => UnknownRefused
+    Absent => std.upsert_decision.UnknownRefused
     Present { value: o } =>
-      readback_evidence_verdict(
-        p: ip_link_carrier_read_probe,
+      gunbc.readback_independence.readback_evidence_verdict(
+        p: gunbc.readback_independence.ip_link_carrier_read_probe,
         observed: network_diagnosis_verdict(
           d: diagnose_host_network(config: host_network_config(host: host), observed: o),
         ),

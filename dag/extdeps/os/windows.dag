@@ -4,23 +4,23 @@ module extdeps.os.windows
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "learn.microsoft.com/en-us/windows/release-health/windows11-release-information"
   }
 }
 
 data windows_11_24h2_catalog: std.os.types.WindowsDistributionCatalogRow = std.os.types.WindowsDistributionCatalogRow {
-  distribution: Windows1124H2Build26100,
+  distribution: std.os.types.Windows1124H2Build26100,
   release_label: "24H2",
   os_build: "26100",
-  package_manager: Winget,
-  libc: Ucrt,
+  package_manager: std.os.types.Winget,
+  libc: std.os.types.Ucrt,
   libc_version: none,
   end_of_servicing: "2026-10-13",
 }
 
 fn windows_distribution_catalog_row(distro: std.os.types.WindowsDistribution) -> std.os.types.WindowsDistributionCatalogRow {
   match distro {
-    Windows1124H2Build26100 => windows_11_24h2_catalog
+    std.os.types.Windows1124H2Build26100 => windows_11_24h2_catalog
   }
 }

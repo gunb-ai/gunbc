@@ -1,13 +1,13 @@
 module test.claim.mt_jade_platform_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data expected_mt_jade_subject_ref: extdeps.external_authority.ExternalSubjectRef = extdeps.external_authority.ExternalSubjectRef {
   declaration: std.decl_ref.DeclarationRef {
     module_path: "extdeps.ocp.mt_jade.subject",
     decl_name: "mt_jade_reference_platform",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
@@ -16,20 +16,20 @@ fn cpld_role_eq(
   b: extdeps.ocp.mt_jade.platform.MtJadeBoardCpldResponsibility,
 ) -> Bool {
   match a {
-    CpuBmcGpioVoltageIsolation =>
-      match b { CpuBmcGpioVoltageIsolation => true, _ => false }
-    CpuJtagDaisyChainMux =>
-      match b { CpuJtagDaisyChainMux => true, _ => false }
-    BmcJtagMasterProgramsCpld =>
-      match b { BmcJtagMasterProgramsCpld => true, _ => false }
-    PciePerstDecodeFromCpuGpio =>
-      match b { PciePerstDecodeFromCpuGpio => true, _ => false }
-    GlobalTimerClockGeneration =>
-      match b { GlobalTimerClockGeneration => true, _ => false }
-    SlaveSocketSysResetReleaseGating =>
-      match b { SlaveSocketSysResetReleaseGating => true, _ => false }
-    SysResetPathWithBmc =>
-      match b { SysResetPathWithBmc => true, _ => false }
+    extdeps.ocp.mt_jade.platform.CpuBmcGpioVoltageIsolation =>
+      match b { extdeps.ocp.mt_jade.platform.CpuBmcGpioVoltageIsolation => true, _ => false }
+    extdeps.ocp.mt_jade.platform.CpuJtagDaisyChainMux =>
+      match b { extdeps.ocp.mt_jade.platform.CpuJtagDaisyChainMux => true, _ => false }
+    extdeps.ocp.mt_jade.platform.BmcJtagMasterProgramsCpld =>
+      match b { extdeps.ocp.mt_jade.platform.BmcJtagMasterProgramsCpld => true, _ => false }
+    extdeps.ocp.mt_jade.platform.PciePerstDecodeFromCpuGpio =>
+      match b { extdeps.ocp.mt_jade.platform.PciePerstDecodeFromCpuGpio => true, _ => false }
+    extdeps.ocp.mt_jade.platform.GlobalTimerClockGeneration =>
+      match b { extdeps.ocp.mt_jade.platform.GlobalTimerClockGeneration => true, _ => false }
+    extdeps.ocp.mt_jade.platform.SlaveSocketSysResetReleaseGating =>
+      match b { extdeps.ocp.mt_jade.platform.SlaveSocketSysResetReleaseGating => true, _ => false }
+    extdeps.ocp.mt_jade.platform.SysResetPathWithBmc =>
+      match b { extdeps.ocp.mt_jade.platform.SysResetPathWithBmc => true, _ => false }
   }
 }
 
@@ -43,16 +43,16 @@ fn list_contains_cpld_role(
 fn handshake_includes_slave_start(chain: List<extdeps.ocp.mt_jade.platform.PlatformSequencingHandshake>) -> Bool {
   fold(chain, init: false, f: fn(acc, step) {
     acc || match step {
-      SlaveStartHandshake {
+      extdeps.ocp.mt_jade.platform.SlaveStartHandshake {
         alert9_asserted: _,
         alert3_one_microsecond_pulse: _,
         cpld_releases_slave_sys_reset: _,
       } => true
-      SocPwrgdObserved { socket: _ } => acc
-      SysResetReleased { socket: _ } => acc
-      TimerResetReleased { socket: _ } => acc
-      PcpRailEnabled { socket: _ } => acc
-      PcpPwrgdObserved { socket: _ } => acc
+      extdeps.ocp.mt_jade.platform.SocPwrgdObserved { socket: _ } => acc
+      extdeps.ocp.mt_jade.platform.SysResetReleased { socket: _ } => acc
+      extdeps.ocp.mt_jade.platform.TimerResetReleased { socket: _ } => acc
+      extdeps.ocp.mt_jade.platform.PcpRailEnabled { socket: _ } => acc
+      extdeps.ocp.mt_jade.platform.PcpPwrgdObserved { socket: _ } => acc
     }
   })
 }
@@ -61,26 +61,26 @@ fn handshake_includes_slave_start(chain: List<extdeps.ocp.mt_jade.platform.Platf
 // without declaring which declaration they are about is the floating-island shape extdeps exists
 // to refuse.
 test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool {
-  external_subject_ref_eq(
-    a: extdeps.ocp.mt_jade.subject.mt_jade_model_scope.subject,
+  extdeps.external_authority.external_subject_ref_eq(
+    a: mt_jade_model_scope.subject,
     b: expected_mt_jade_subject_ref,
   )
     && match mt_jade_reference_platform.revision {
-      MtJadeRev1_0 {} => true
+      extdeps.ocp.mt_jade.subject.MtJadeRev1_0 {} => true
     }
-    && (mt_jade_specification_version_label as String) == "v1.0"
+    && (extdeps.ocp.mt_jade.subject.mt_jade_specification_version_label as String) == "v1.0"
     && mt_jade_specification_publication_date.year == 2021
     && mt_jade_specification_publication_date.month == 9
     && mt_jade_specification_publication_date.day == 17
-    && (extdeps.ocp.mt_jade.subject.mt_jade_model_scope.first_citation.uri.locator as String) == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+    && (mt_jade_model_scope.first_citation.uri.locator as String) == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
 }
 
 // THE PLATFORM MODULE MUST CARRY THE SAME TYPED SUBJECT EDGE, NOT ONLY A SHARED URI IMPORT.
 test fn w_the_platform_module_carries_a_typed_subject_edge() -> Bool {
   (mt_jade_platform_subject.marketing_name as String) == (mt_jade_reference_platform.marketing_name as String)
     && match mt_jade_platform_subject.revision {
-      MtJadeRev1_0 {} => match mt_jade_reference_platform.revision {
-        MtJadeRev1_0 {} => true
+      extdeps.ocp.mt_jade.subject.MtJadeRev1_0 {} => match mt_jade_reference_platform.revision {
+        extdeps.ocp.mt_jade.subject.MtJadeRev1_0 {} => true
       }
     }
     && (mt_jade_platform_subject.version_label as String) == (mt_jade_reference_platform.version_label as String)
@@ -91,36 +91,36 @@ test fn w_the_platform_module_carries_a_typed_subject_edge() -> Bool {
 
 // THE LICENCE TERMS AND APPENDIX EXCLUSION ARE LOAD-BEARING FOR PUBLIC REPOSITORY ADMISSION.
 test fn w_the_specification_license_excludes_non_normative_appendices() -> Bool {
-  match mt_jade_specification_license {
-    Owfa1_0FinalSpecificationAgreement {} => true
+  match extdeps.ocp.mt_jade.subject.mt_jade_specification_license {
+    extdeps.ocp.publication.Owfa1_0FinalSpecificationAgreement {} => true
   }
-    && match mt_jade_contribution_license {
-      OcpContributionLicenseAgreement {} => true
+    && match extdeps.ocp.mt_jade.subject.mt_jade_contribution_license {
+      extdeps.ocp.publication.OcpContributionLicenseAgreement {} => true
     }
-    && fold(mt_jade_excluded_non_normative_appendices, init: true, f: fn(acc, a) {
+    && fold(extdeps.ocp.mt_jade.subject.mt_jade_excluded_non_normative_appendices, init: true, f: fn(acc, a) {
       acc && match a {
-        AppendixA {} => true
-        AppendixB {} => true
+        extdeps.ocp.publication.AppendixA {} => true
+        extdeps.ocp.publication.AppendixB {} => true
       }
     })
-    && fold(mt_jade_excluded_non_normative_appendices, init: 0, f: fn(acc, _a) { acc + 1 }) == 2
+    && fold(extdeps.ocp.mt_jade.subject.mt_jade_excluded_non_normative_appendices, init: 0, f: fn(acc, _a) { acc + 1 }) == 2
 }
 
 // THE PUBLISHER FETCH REFUSAL AND THE INGESTED TEXT PATH ARE TWO OBSERVATIONS, NOT ONE.
 test fn w_the_publisher_citation_provenance_records_the_refused_fetch() -> Bool {
   match mt_jade_publisher_citation_read_receipt.provenance {
-    DocumentLocatorFetchRefused { http_status: code, detail: _ } => code == 403
+    gunbc.specification_citation_read_provenance.DocumentLocatorFetchRefused { http_status: code, detail: _ } => code == 403
     DocumentLocatorFetchedButTextUnread { http_status: _, detail: _ } => false
     DatedPublisherLocatorMirrorTextIngested { mirror: _, capture_date: _, peer_session: _, detail: _ } => false
     PeerSessionPdfTextIngested { peer_session: _, detail: _ } => false
-    OperatorSuppliedDocumentText {} => false
+    gunbc.specification_citation_read_provenance.OperatorSuppliedDocumentText {} => false
   }
 }
 
 test fn w_platform_facts_ground_on_operator_supplied_text() -> Bool {
   match mt_jade_ingested_citation_read_receipt.provenance {
-    OperatorSuppliedDocumentText {} => true
-    DocumentLocatorFetchRefused { http_status: _, detail: _ } => false
+    gunbc.specification_citation_read_provenance.OperatorSuppliedDocumentText {} => true
+    gunbc.specification_citation_read_provenance.DocumentLocatorFetchRefused { http_status: _, detail: _ } => false
     DocumentLocatorFetchedButTextUnread { http_status: _, detail: _ } => false
     DatedPublisherLocatorMirrorTextIngested { mirror: _, capture_date: _, peer_session: _, detail: _ } => false
     PeerSessionPdfTextIngested { peer_session: _, detail: _ } => false
@@ -131,8 +131,8 @@ test fn w_platform_facts_ground_on_operator_supplied_text() -> Bool {
 
 // SECTION 7.2/7.3: 428 BY 479.36 MM OUTLINE AND ILM4926 SOCKET ON A DUAL-SOCKET 32-DIMM BOARD.
 test fn w_the_motherboard_outline_and_socket_facts_are_carried() -> Bool {
-  micrometer_count(m: mt_jade_motherboard_mechanical.outline_width) == 428000
-    && micrometer_count(m: mt_jade_motherboard_mechanical.outline_depth) == 479360
+  std.measure.micrometer_count(m: mt_jade_motherboard_mechanical.outline_width) == 428000
+    && std.measure.micrometer_count(m: mt_jade_motherboard_mechanical.outline_depth) == 479360
     && (mt_jade_motherboard_mechanical.cpu_socket_designation as String) == "ILM4926"
     && mt_jade_motherboard_mechanical.processor_socket_count == 2
     && mt_jade_motherboard_mechanical.ddr4_dimms_total == 32
@@ -140,55 +140,55 @@ test fn w_the_motherboard_outline_and_socket_facts_are_carried() -> Bool {
 
 // SECTION 7.10.3 NAMES SEVEN RAILS IN ORDER, STARTING AT VDD_SOC AND ENDING AT VDD3V3_SOC.
 test fn w_the_processor_power_rail_sequence_matches_the_spec() -> Bool {
-  list_length(items: processor_power_rail_enable_order) == 7
-    && (processor_power_rail_name(rail: VddSoc) as String) == "VDD_SOC"
-    && (processor_power_rail_name(rail: Vdd3v3Soc) as String) == "VDD3V3_SOC"
-    && soc_pwrgd_minimum_system_clock_cycles == 32
+  std.types.list_length(items: extdeps.ocp.mt_jade.platform.processor_power_rail_enable_order) == 7
+    && (extdeps.ocp.mt_jade.platform.processor_power_rail_name(rail: extdeps.ocp.mt_jade.platform.VddSoc) as String) == "VDD_SOC"
+    && (extdeps.ocp.mt_jade.platform.processor_power_rail_name(rail: extdeps.ocp.mt_jade.platform.Vdd3v3Soc) as String) == "VDD3V3_SOC"
+    && extdeps.ocp.mt_jade.platform.soc_pwrgd_minimum_system_clock_cycles == 32
 }
 
 // THE MASTER AND SLAVE SOCKET NAMES ARE DISTINCT ROLES, NOT TWO LABELS FOR ONE SOCKET.
 test fn w_the_socket_roles_are_named_distinctly() -> Bool {
-  (processor_socket_role_name(role: MasterSocket) as String) == "socket0 master"
-    && (processor_socket_role_name(role: SlaveSocket) as String) == "socket1 slave"
-    && (processor_socket_role_name(role: MasterSocket) as String) != (processor_socket_role_name(role: SlaveSocket) as String)
+  (extdeps.ocp.mt_jade.platform.processor_socket_role_name(role: extdeps.ocp.mt_jade.platform.MasterSocket) as String) == "socket0 master"
+    && (extdeps.ocp.mt_jade.platform.processor_socket_role_name(role: extdeps.ocp.mt_jade.platform.SlaveSocket) as String) == "socket1 slave"
+    && (extdeps.ocp.mt_jade.platform.processor_socket_role_name(role: extdeps.ocp.mt_jade.platform.MasterSocket) as String) != (extdeps.ocp.mt_jade.platform.processor_socket_role_name(role: extdeps.ocp.mt_jade.platform.SlaveSocket) as String)
 }
 
 // SLAVE-SOCKET FIRMWARE START IS GATED THROUGH THE CPLD WITH A ONE-MICROSECOND ALERT3 PULSE.
 test fn w_the_slave_start_handshake_names_the_cpld_and_the_pulse_width() -> Bool {
-  handshake_includes_slave_start(chain: platform_sequencing_handshake_chain)
-    && microsecond_count(m: slave_socket_alert3_pulse_width) == 1
+  handshake_includes_slave_start(chain: extdeps.ocp.mt_jade.platform.platform_sequencing_handshake_chain)
+    && std.measure.microsecond_count(m: extdeps.ocp.mt_jade.platform.slave_socket_alert3_pulse_width) == 1
     && list_contains_cpld_role(
-      rows: mt_jade_board_cpld_responsibilities,
-      wanted: SlaveSocketSysResetReleaseGating,
+      rows: extdeps.ocp.mt_jade.platform.mt_jade_board_cpld_responsibilities,
+      wanted: extdeps.ocp.mt_jade.platform.SlaveSocketSysResetReleaseGating,
     )
 }
 
 // THE CPLD ROLE SET INCLUDES THE THREE FUNCTIONS THE SPEC SPREADS ACROSS GPIO, JTAG AND RESET.
 test fn w_the_board_cpld_responsibilities_cover_gpio_jtag_and_perst() -> Bool {
-  list_length(items: mt_jade_board_cpld_responsibilities) == 7
-    && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: PciePerstDecodeFromCpuGpio)
-    && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: BmcJtagMasterProgramsCpld)
-    && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: SysResetPathWithBmc)
-    && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: GlobalTimerClockGeneration)
+  std.types.list_length(items: extdeps.ocp.mt_jade.platform.mt_jade_board_cpld_responsibilities) == 7
+    && list_contains_cpld_role(rows: extdeps.ocp.mt_jade.platform.mt_jade_board_cpld_responsibilities, wanted: extdeps.ocp.mt_jade.platform.PciePerstDecodeFromCpuGpio)
+    && list_contains_cpld_role(rows: extdeps.ocp.mt_jade.platform.mt_jade_board_cpld_responsibilities, wanted: extdeps.ocp.mt_jade.platform.BmcJtagMasterProgramsCpld)
+    && list_contains_cpld_role(rows: extdeps.ocp.mt_jade.platform.mt_jade_board_cpld_responsibilities, wanted: extdeps.ocp.mt_jade.platform.SysResetPathWithBmc)
+    && list_contains_cpld_role(rows: extdeps.ocp.mt_jade.platform.mt_jade_board_cpld_responsibilities, wanted: extdeps.ocp.mt_jade.platform.GlobalTimerClockGeneration)
 }
 
 // THE CLOCK TREE NAMES THE RENESAS GENERATORS AT 100 MHZ AND KEEPS THE CPLD TIMER DERIVATION SEPARATE.
 test fn w_the_clock_tree_names_the_cited_generators_and_the_cpld_divider() -> Bool {
-  list_length(items: mt_jade_clock_tree) == 6
-    && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "9FGV1006B")
-    && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "9FGL0841")
-    && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "5P35023")
-    && hertz_count(h: mt_jade_cpld_timer_clock.input_frequency) == 50000000
-    && hertz_count(h: mt_jade_cpld_timer_clock.output_frequency) == 25000000
+  std.types.list_length(items: extdeps.ocp.mt_jade.platform.mt_jade_clock_tree) == 6
+    && extdeps.ocp.mt_jade.platform.clock_tree_contains_part_number(nodes: extdeps.ocp.mt_jade.platform.mt_jade_clock_tree, part: "9FGV1006B")
+    && extdeps.ocp.mt_jade.platform.clock_tree_contains_part_number(nodes: extdeps.ocp.mt_jade.platform.mt_jade_clock_tree, part: "9FGL0841")
+    && extdeps.ocp.mt_jade.platform.clock_tree_contains_part_number(nodes: extdeps.ocp.mt_jade.platform.mt_jade_clock_tree, part: "5P35023")
+    && std.measure.hertz_count(h: mt_jade_cpld_timer_clock.input_frequency) == 50000000
+    && std.measure.hertz_count(h: mt_jade_cpld_timer_clock.output_frequency) == 25000000
 }
 
 // REFERENCE PART ROWS CARRY THE AST2500 BMC AND THE CLOCK GENERATORS AS PRECEDENT, EACH CITING THE OCP AUTHORITY.
 test fn w_reference_parts_name_the_bmc_and_clock_generators() -> Bool {
-  list_length(items: mt_jade_reference_parts) == 9
-    && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: BaseboardManagementController)
-    && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: PcieClockGenerator)
-    && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: PcieClockBuffer)
-    && fold(mt_jade_reference_parts, init: true, f: fn(acc, r) {
+  std.types.list_length(items: extdeps.ocp.mt_jade.platform.mt_jade_reference_parts) == 9
+    && extdeps.ocp.mt_jade.platform.reference_part_roles_include(rows: extdeps.ocp.mt_jade.platform.mt_jade_reference_parts, wanted: extdeps.ocp.mt_jade.platform.BaseboardManagementController)
+    && extdeps.ocp.mt_jade.platform.reference_part_roles_include(rows: extdeps.ocp.mt_jade.platform.mt_jade_reference_parts, wanted: extdeps.ocp.mt_jade.platform.PcieClockGenerator)
+    && extdeps.ocp.mt_jade.platform.reference_part_roles_include(rows: extdeps.ocp.mt_jade.platform.mt_jade_reference_parts, wanted: extdeps.ocp.mt_jade.platform.PcieClockBuffer)
+    && fold(extdeps.ocp.mt_jade.platform.mt_jade_reference_parts, init: true, f: fn(acc, r) {
       acc && (r.authority.uri.locator as String) == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
     })
 }
@@ -196,5 +196,5 @@ test fn w_reference_parts_name_the_bmc_and_clock_generators() -> Bool {
 // THE BMC REFERENCE PART JOINS THE ASPEED CHIP AUTHORITY, NOT ONLY OCP PROSE LABELS.
 test fn w_mt_jade_bmc_chip_catalog_joins_the_aspeed_ast2500_authority() -> Bool {
   (mt_jade_bmc_chip_catalog.ordering_part_number as String) == "AST2500"
-    && mt_jade_bmc_chip_catalog == aspeed_ast2500_catalog
+    && extdeps.ocp.mt_jade.platform.mt_jade_bmc_chip_catalog == extdeps.bmc.aspeed_ast2500.aspeed_ast2500_catalog
 }

@@ -1,5 +1,6 @@
 module test.claim.guarantee_rung_drop_witness_test
 
+
 // A CONTROL DROP THAT DIFFERS FROM THE LIVE ROW IN EVERY DECIDED FIELD. Its purpose is to make
 // the assertions below discriminating: a renderer that ignored its argument, or an off-ladder
 // predicate that answered a constant, would agree with the live row here and be caught.

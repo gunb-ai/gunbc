@@ -10,14 +10,14 @@ fn empty_ingest() -> v2.compiler.source_authority.SourceRootIngest {
 fn empty_ingest_admission() -> v2.compiler.name_resolve.Admission {
   v2.compiler.name_resolve.Admission {
     subject: v2.compiler.name_resolve.ResolutionSubject {
-      name: qualified_name_from_dotted_string(dotted: "v2.compiler.03_resolve")
+      name: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.compiler.03_resolve")
     },
     imports: std.algebra.Empty
   }
 }
 
 fn empty_ingest_receipt() -> v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
-  frontier_probe_emit_from_ingest(
+  v2.compiler.self_host.frontier_probe.frontier_probe_emit_from_ingest(
     module_path: "src/v2/compiler/03_resolve.dag",
     ingest: empty_ingest(),
     admission: empty_ingest_admission()
@@ -26,29 +26,29 @@ fn empty_ingest_receipt() -> v2.compiler.self_host.frontier_probe_types.Frontier
 
 fn empty_ingest_detail_arm() -> v2.std.node.Symbol {
   match empty_ingest_receipt().detail {
-    FrontierProbeClosurePopulationRefused { cause: c } => c
-    FrontierProbeDetailAbsent => ^detail_absent
-    MissingModule { requested: _ } => ^detail_missing_module
-    SourceRootManifestElidedProbe { read_count: _, cap: _ } => ^detail_elided
-    FrontierProbeCoverageRefused { coverage: _ } => ^detail_coverage_refused
-    SourceRefReadRefused { source_ref: _, error: _ } => ^detail_read_refused
-    SourceRefContentHashMismatch { source_ref: _, expected: _, observed: _ } =>
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeClosurePopulationRefused { cause: c } => c
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeDetailAbsent => ^detail_absent
+    v2.compiler.self_host.frontier_probe_types.MissingModule { requested: _ } => ^detail_missing_module
+    v2.compiler.self_host.frontier_probe_types.SourceRootManifestElidedProbe { read_count: _, cap: _ } => ^detail_elided
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeCoverageRefused { coverage: _ } => ^detail_coverage_refused
+    v2.compiler.self_host.frontier_probe_types.SourceRefReadRefused { source_ref: _, error: _ } => ^detail_read_refused
+    v2.compiler.self_host.frontier_probe_types.SourceRefContentHashMismatch { source_ref: _, expected: _, observed: _ } =>
       ^detail_hash_mismatch
   }
 }
 
-test fn empty_ingest_refuses_rather_than_reporting_a_missing_module_holds() -> v2.std.logic.Bool {
+test fn empty_ingest_refuses_rather_than_reporting_a_missing_module_holds() -> Bool {
   empty_ingest_receipt().located_reason != ^resolve_module_not_found
 }
 
-test fn empty_ingest_names_the_absent_closure_holds() -> v2.std.logic.Bool {
+test fn empty_ingest_names_the_absent_closure_holds() -> Bool {
   empty_ingest_receipt().located_reason == ^frontier_probe_empty_ingest
 }
 
-test fn empty_ingest_refusal_lands_in_the_population_detail_holds() -> v2.std.logic.Bool {
+test fn empty_ingest_refusal_lands_in_the_population_detail_holds() -> Bool {
   empty_ingest_detail_arm() == ^frontier_probe_empty_ingest
 }
 
-test fn empty_ingest_keeps_the_module_path_it_was_asked_about_holds() -> v2.std.logic.Bool {
+test fn empty_ingest_keeps_the_module_path_it_was_asked_about_holds() -> Bool {
   empty_ingest_receipt().module_path == "src/v2/compiler/03_resolve.dag"
 }

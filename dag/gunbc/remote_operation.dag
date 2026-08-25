@@ -62,13 +62,13 @@ fn remote_execution_permits_continuation(execution: RemoteOperationExecution) ->
   match execution {
     RemoteArgvExecution { outcome: o } =>
       match o {
-        TypedArgvExecRefused { reason: _ } => false
-        TypedArgvExecConverged { result: r } => r.success
+        gunbc.typed_argv_exec.TypedArgvExecRefused { reason: _ } => false
+        gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } => r.success
       }
     RemoteFileExecution { outcome: o } =>
       match o {
-        TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
-        TypedRemoteFileConverged { path: _, mode: _ } => true
+        gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
+        gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => true
       }
   }
 }
@@ -109,17 +109,17 @@ fn remote_step_failure_cause(standing: RemoteStepStanding) -> String? {
       match x {
         RemoteArgvExecution { outcome: o } =>
           match o {
-            TypedArgvExecRefused { reason: why } => Present { value: why }
-            TypedArgvExecConverged { result: r } =>
+            gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => Present { value: why }
+            gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
               Present {
                 value: join(["argv exit=", to_string(r.exit_code), " stderr=", r.stderr], ""),
               }
           }
         RemoteFileExecution { outcome: o } =>
           match o {
-            TypedRemoteFileConvergenceRefused { step: st, reason: why } =>
+            gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: st, reason: why } =>
               Present { value: join(["file-write refused at ", st, ": ", why], "") }
-            TypedRemoteFileConverged { path: _, mode: _ } => none
+            gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => none
           }
       }
   }
@@ -185,9 +185,9 @@ fn remote_operation_wire(operation: RemoteOperation) -> String {
     RemoteFileBytes { write: w, mode: m } =>
       join([
         "file[", w.path as String,
-        " mode=", remote_file_mode_octal(mode: m),
-        " content=", serialize_content_hash(
-          hash: content_hash_of_value(value: join(["unit-content:", w.content], "") as std.types.NonEmptyStr),
+        " mode=", gunbc.typed_remote_file_write.remote_file_mode_octal(mode: m),
+        " content=", std.content_hash.serialize_content_hash(
+          hash: std.content_hash.content_hash_of_value(value: join(["unit-content:", w.content], "") as std.types.NonEmptyStr),
         ) as String,
         "]",
       ], "")

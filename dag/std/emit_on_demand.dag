@@ -18,8 +18,8 @@ data witness_family_build_grain_ruling: String = "Build-grain ruling (operator-d
 fn family_closure_digest(members: List<std.content_hash.Fnv1a64Structural>) -> std.content_hash.Fnv1a64Structural {
   fold(
     members,
-    init: content_hash_atom(value: "witness-family-closure"),
-    f: (acc, member) => content_hash_combine_structural(left: acc, right: member)
+    init: std.content_hash.content_hash_atom(value: "witness-family-closure"),
+    f: (acc, member) => std.content_hash.content_hash_combine_structural(left: acc, right: member)
   )
 }
 
@@ -40,7 +40,7 @@ fn emit_on_demand_key(
   target_language: String,
   grain: ArtifactGrain
 ) -> std.content_hash.ContentHash {
-  artifact_key_hash(key: std.artifact_store.ArtifactKey {
+  std.artifact_store.artifact_key_hash(key: std.artifact_store.ArtifactKey {
     closure_digest: closure_digest,
     emitter_identity: emitter_identity,
     target_language: target_language,
@@ -54,23 +54,23 @@ type EmitOnDemandCacheReceipt {
 }
 
 type EmitOnDemandLookup
-  = EmitOnDemandHit { receipt: std.emit_on_demand.EmitOnDemandCacheReceipt }
+  = EmitOnDemandHit { receipt: EmitOnDemandCacheReceipt }
   | EmitOnDemandMiss
 
 fn emit_on_demand_lookup(store: std.artifact_store.ArtifactStore, key: std.content_hash.ContentHash) -> EmitOnDemandLookup {
-  match store_get(store: store, key: key) {
-    StoreHit { store: _, row: _ } =>
+  match std.artifact_store.store_get(store: store, key: key) {
+    std.artifact_store.StoreHit { store: _, row: _ } =>
       EmitOnDemandHit {
-        receipt: std.emit_on_demand.EmitOnDemandCacheReceipt { key: key, compile_skipped: true }
+        receipt: EmitOnDemandCacheReceipt { key: key, compile_skipped: true }
       }
-    StoreMiss { store: _ } => EmitOnDemandMiss
+    std.artifact_store.StoreMiss { store: _ } => EmitOnDemandMiss
   }
 }
 
 fn materialization_for_lookup(lookup: EmitOnDemandLookup) -> std.realization.Materialization {
   match lookup {
-    EmitOnDemandHit { receipt: _ } => Share
-    EmitOnDemandMiss => Recompute
+    EmitOnDemandHit { receipt: _ } => std.realization.Share
+    EmitOnDemandMiss => std.realization.Recompute
   }
 }
 
@@ -97,7 +97,7 @@ fn wet_surface_ref(module_path: String, decl_name: String) -> std.decl_ref.Decla
   std.decl_ref.DeclarationRef {
     module_path: module_path,
     decl_name: decl_name,
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -110,7 +110,7 @@ data emitted_effect_family_boundary_note: String = "Boundary citation, not a sha
 
 data interpreter_wet_surface_decl_ref_frontier_note: String = "Every current member is DeclaredFrontier because field-granular declaration-Node enumeration does not yet exist (the std.decl_ref / gunbc#5364 wall-after-grounding). Each row still names the closest .dag authorities plus its own reason and dissolution route; none is silently omitted. A row graduates to NodeTreeDerived when the compile graph can resolve its exact declaration reference. interpreter_surviving_roles is derived from this membership and drops wet-effect-surfaces when the roster reaches zero."
 
-data gunbc_serve_wet_surface: std.emit_on_demand.InterpreterWetSurface = std.emit_on_demand.InterpreterWetSurface {
+data gunbc_serve_wet_surface: InterpreterWetSurface = InterpreterWetSurface {
   id: "gunbc-serve-accept-loop-and-belt-dispatch",
   membership: DeclaredFrontier {
     authorities: [
@@ -118,33 +118,33 @@ data gunbc_serve_wet_surface: std.emit_on_demand.InterpreterWetSurface = std.emi
       wet_surface_ref(module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_dispatch_node")
     ],
     reason: "the in-process belt dispatch is modeled, but the gunbc serve socket accept-loop remains a seed Rust seam and exact declaration-Node resolution is unavailable",
-    dissolution: unbound_dissolution(description: "emit-on-demand materializes the serve closure and its host accept-loop, then the seed handle_serve seam deletes")
+    dissolution: std.dissolution.unbound_dissolution(description: "emit-on-demand materializes the serve closure and its host accept-loop, then the seed handle_serve seam deletes")
   }
 }
 
-data main_wet_regen_surface: std.emit_on_demand.InterpreterWetSurface = std.emit_on_demand.InterpreterWetSurface {
+data main_wet_regen_surface: InterpreterWetSurface = InterpreterWetSurface {
   id: "main-wet-generated-artifact-emission",
   membership: DeclaredFrontier {
     authorities: [
       wet_surface_ref(module_path: "tools.generated_artifact_gate", decl_name: "main_wet")
     ],
     reason: "main_wet is a .dag declaration, but its live Filesystem.Write dispatch still crosses the seed interpreter and exact declaration-Node resolution is unavailable",
-    dissolution: unbound_dissolution(description: "generated-artifact emission runs through a v2-emitted per-grant HandlerBinding and the seed main_wet dispatch path deletes")
+    dissolution: std.dissolution.unbound_dissolution(description: "generated-artifact emission runs through a v2-emitted per-grant HandlerBinding and the seed main_wet dispatch path deletes")
   }
 }
 
-data gunbc_ci_emission_surface: std.emit_on_demand.InterpreterWetSurface = std.emit_on_demand.InterpreterWetSurface {
+data gunbc_ci_emission_surface: InterpreterWetSurface = InterpreterWetSurface {
   id: "gunbc-ci-emission",
   membership: DeclaredFrontier {
     authorities: [
       wet_surface_ref(module_path: "tools.gunbc_ci", decl_name: "main")
     ],
     reason: "gunbc ci is modeled, but its shell Exec.Run realization still dispatches through the seed interpreter and exact declaration-Node resolution is unavailable",
-    dissolution: unbound_dissolution(description: "the typed CI plan runs through the v2-emitted shell handler selected from its covering grant")
+    dissolution: std.dissolution.unbound_dissolution(description: "the typed CI plan runs through the v2-emitted shell handler selected from its covering grant")
   }
 }
 
-data pre_push_transport_surface: std.emit_on_demand.InterpreterWetSurface = std.emit_on_demand.InterpreterWetSurface {
+data pre_push_transport_surface: InterpreterWetSurface = InterpreterWetSurface {
   id: "pre-push-transport",
   membership: DeclaredFrontier {
     authorities: [
@@ -152,22 +152,22 @@ data pre_push_transport_surface: std.emit_on_demand.InterpreterWetSurface = std.
       wet_surface_ref(module_path: "gunbc.githooks_pre_push_plan", decl_name: "pre_push_active_kinds")
     ],
     reason: "the typed pre-push plan is modeled, while its on-demand claim_batch argv/stdin transport remains in seed Rust and exact declaration-Node resolution is unavailable",
-    dissolution: unbound_dissolution(description: "the emitted crate partition deletes pre_push.rs and the on-demand seed transport, or a usage census proves the transport has no consumers")
+    dissolution: std.dissolution.unbound_dissolution(description: "the emitted crate partition deletes pre_push.rs and the on-demand seed transport, or a usage census proves the transport has no consumers")
   }
 }
 
-data probe_bins_surface: std.emit_on_demand.InterpreterWetSurface = std.emit_on_demand.InterpreterWetSurface {
+data probe_bins_surface: InterpreterWetSurface = InterpreterWetSurface {
   id: "probe-bins",
   membership: DeclaredFrontier {
     authorities: [
       wet_surface_ref(module_path: "gunbc.ci_release_bins", decl_name: "witness_declared_release_bins")
     ],
     reason: "witness_declared_release_bins is the exact production WitnessBin transport-name frontier; the binaries remain seed host transports and exact declaration-Node resolution is unavailable",
-    dissolution: unbound_dissolution(description: "probe-bin consumers migrate to v2-emitted execution surfaces and witness_declared_release_bins reaches its host-census-derived form")
+    dissolution: std.dissolution.unbound_dissolution(description: "probe-bin consumers migrate to v2-emitted execution surfaces and witness_declared_release_bins reaches its host-census-derived form")
   }
 }
 
-data interpreter_wet_surfaces: List<std.emit_on_demand.InterpreterWetSurface> = [
+data interpreter_wet_surfaces: List<InterpreterWetSurface> = [
   gunbc_serve_wet_surface,
   main_wet_regen_surface,
   gunbc_ci_emission_surface,
@@ -175,51 +175,51 @@ data interpreter_wet_surfaces: List<std.emit_on_demand.InterpreterWetSurface> = 
   probe_bins_surface
 ]
 
-data interpreter_base_surviving_roles: List<std.emit_on_demand.InterpreterSurvivingRole> = [
-  std.emit_on_demand.InterpreterSurvivingRole {
+data interpreter_base_surviving_roles: List<InterpreterSurvivingRole> = [
+  InterpreterSurvivingRole {
     id: "bootstrap-receipts",
     purpose: "S1 parse census and seed-honesty receipts until native artifacts cover the corpus",
-    dissolution: unbound_dissolution(description: "witness_family_fanout complete + ci_floor_cutover on v2-emitted execution")
+    dissolution: std.dissolution.unbound_dissolution(description: "witness_family_fanout complete + ci_floor_cutover on v2-emitted execution")
   },
-  std.emit_on_demand.InterpreterSurvivingRole {
+  InterpreterSurvivingRole {
     id: "compile-time-eval",
     purpose: "EqualsClaim expected arm and emit-vs-eval oracle during the emit_host transition",
-    dissolution: unbound_dissolution(description: "emit_on_demand agreement witnesses green for every enrolled family")
+    dissolution: std.dissolution.unbound_dissolution(description: "emit_on_demand agreement witnesses green for every enrolled family")
   },
-  std.emit_on_demand.InterpreterSurvivingRole {
+  InterpreterSurvivingRole {
     id: "terminal-bootstrap-kernel",
     purpose: "claim_executor host physics (pinned HAND roster — recorded_fixture, resolved_graph_cache)",
-    dissolution: unbound_dissolution(description: "v1_quarantine — seed crates frozen as bootstrap artifact only")
+    dissolution: std.dissolution.unbound_dissolution(description: "v1_quarantine — seed crates frozen as bootstrap artifact only")
   }
 ]
 
 fn interpreter_surviving_roles_from_wet_surfaces(
-  wet_surfaces: List<std.emit_on_demand.InterpreterWetSurface>
-) -> List<std.emit_on_demand.InterpreterSurvivingRole> {
-  if list_length(items: wet_surfaces) == 0 {
+  wet_surfaces: List<InterpreterWetSurface>
+) -> List<InterpreterSurvivingRole> {
+  if std.types.list_length(items: wet_surfaces) == 0 {
     interpreter_base_surviving_roles
   } else {
     concat(
       interpreter_base_surviving_roles,
       [
-        std.emit_on_demand.InterpreterSurvivingRole {
+        InterpreterSurvivingRole {
           id: "wet-effect-surfaces",
           purpose: "Wet/Record live-effect dispatch for the countable interpreter_wet_surfaces membership",
-          dissolution: unbound_dissolution(description: "interpreter_wet_surfaces reaches zero after every effect dispatch selects HandlerBinding from covering_grant + ci_floor_cutover on v2-emitted execution")
+          dissolution: std.dissolution.unbound_dissolution(description: "interpreter_wet_surfaces reaches zero after every effect dispatch selects HandlerBinding from covering_grant + ci_floor_cutover on v2-emitted execution")
         }
       ]
     )
   }
 }
 
-data interpreter_surviving_roles: List<std.emit_on_demand.InterpreterSurvivingRole> = interpreter_surviving_roles_from_wet_surfaces(wet_surfaces: interpreter_wet_surfaces)
+data interpreter_surviving_roles: List<InterpreterSurvivingRole> = interpreter_surviving_roles_from_wet_surfaces(wet_surfaces: interpreter_wet_surfaces)
 
 data interpreter_surviving_roles_ceiling_note: String = "Policy ceiling (independent of current occupancy): bootstrap headroom for interpreter-surviving roles until witness_family_fanout lands (P3 ACCEPT (c); docs/plans/witness-realization-plan.md). Occupancy is count(interpreter_surviving_roles); wet-effect-surfaces is derived from nonempty interpreter_wet_surfaces membership and dissolves at zero. The ceiling is an upper bound so roster growth is checked against declared headroom, never conflated with a hand count of current entries."
 
 data interpreter_surviving_roles_ceiling: Int = 8
 
 fn interpreter_surviving_roles_occupancy() -> Int {
-  list_length(items: interpreter_surviving_roles)
+  std.types.list_length(items: interpreter_surviving_roles)
 }
 
 fn interpreter_surviving_roles_occupancy_within_ceiling() -> Bool {

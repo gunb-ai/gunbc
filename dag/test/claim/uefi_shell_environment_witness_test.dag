@@ -2,14 +2,14 @@ module test.claim.uefi_shell_environment
 
 
 test fn new_shell_commands_render() -> Bool {
-  uefi_shell_command_line(cmd: ConnectRecursive) == "connect -r"
-    && uefi_shell_command_line(cmd: extdeps.firmware.uefi_shell.Ifconfig { action: extdeps.firmware.uefi_shell.IfconfigSetDhcp { interface: "eth0" } }) == "ifconfig -s eth0 dhcp"
+  extdeps.firmware.uefi_shell.uefi_shell_command_line(cmd: extdeps.firmware.uefi_shell.ConnectRecursive) == "connect -r"
+    && extdeps.firmware.uefi_shell.uefi_shell_command_line(cmd: extdeps.firmware.uefi_shell.Ifconfig { action: extdeps.firmware.uefi_shell.IfconfigSetDhcp { interface: "eth0" } }) == "ifconfig -s eth0 dhcp"
 }
 
 test fn srv4_observed_env_has_link_and_windows() -> Bool {
   let env = gunbc.srv4_uefi_observed.srv4_uefi_observed_environment
   let eth0_up = fold(env.interfaces, init: false, f: (acc, i) =>
-    acc || (i.name == "eth0" && (match i.media { MediaPresent => true, MediaDisconnected => false })))
+    acc || (i.name == "eth0" && (match i.media { extdeps.firmware.uefi_shell.MediaPresent => true, extdeps.firmware.uefi_shell.MediaDisconnected => false })))
   let has_windows = fold(env.boot_options, init: false, f: (acc, b) =>
     acc || b.description == "Windows Boot Manager")
   eth0_up && has_windows

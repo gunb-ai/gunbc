@@ -1,7 +1,7 @@
 module gunbc.host_compile_pool
 
 
-data host_compile_pool_scope_disposition: std.disposition.Disposition = SingleAuthority
+data host_compile_pool_scope_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 data host_compile_pool_producer_note: String = "THE PRODUCER FOR HostCompilePoolReady, AND DELIBERATELY NOT A SECOND COMPILE-POOL MODEL. Everything about how large the pool is and where compile RSS is charged already has an authority: gunbc.fleet_host_budget owns CompilePoolPlacement and derives the size through compile_pool_bytes_for from extdeps.jobserver's jobserver_build_pool_bytes, which is the same cited knob that bounds build concurrency. Minting a HostCompilePool record with its own memory_high, memory_max and token_count fields beside that would fork the sizing authority and give a host two answers for how big its pool is — the DESIGN section 3 nickname defect, at the carrier that decides whether a runner may take work.\n\nSo this module adds no sizing and no topology. It adds exactly the missing half: gunbc.runner_activation's HostCompilePoolReady had no producer, so every construction of it in the tree was hand-authored, which is precisely the forgeable-receipt residual that carrier's own note names. derive_host_compile_pool_ready is the one derivation, taking the declared topology and a host observation and returning the receipt.\n\nWHAT IT ANSWERS TODAY, stated so this is not read as a description of a working fleet: gunbc_compile_pool_placement is CompilePoolInRunnerSlots, so the derivation returns not-ready for EVERY host, and activation therefore refuses fleet-wide. That is the correct answer, not a gap in this module — no observed host has the managed slice, and the 2026-08-01 placement receipt found every CI cache endpoint owned by a runner-slot process. The receipt going green is gated on the same flip fleet_host_budget's dissolution trigger already names."
 
@@ -33,17 +33,17 @@ fn derive_compile_pool_readiness(
   observed: CompilePoolObservation,
 ) -> CompilePoolReadiness {
   match placement {
-    CompilePoolInRunnerSlots =>
+    gunbc.host_layout.CompilePoolInRunnerSlots =>
       CompilePoolNotReady {
         reason: PoolNotDeclaredInTopology {
           detail: "gunbc_compile_pool_placement is CompilePoolInRunnerSlots: no managed compile-pool slice is declared for this fleet, so compile RSS is charged to whichever cgroup the cache server sits in and there is no pool to observe" as std.types.NonEmptyStr,
         },
       }
-    CompilePoolSliceDeclared { slice_unit: declared } =>
+    gunbc.host_layout.CompilePoolSliceDeclared { slice_unit: declared } =>
       match observed {
         CompilePoolObservationUnavailable { reason: r } =>
           CompilePoolNotReady {
-            reason: PoolObservationUnavailable { detail: unavailable_reason_detail(reason: r) },
+            reason: PoolObservationUnavailable { detail: gunbc.build_cache_instance.unavailable_reason_detail(reason: r) },
           }
         CompilePoolSliceAbsent { slice_unit: s } =>
           CompilePoolNotReady { reason: PoolSliceAbsentOnHost { slice_unit: s } }
@@ -58,12 +58,12 @@ fn derive_compile_pool_readiness(
               }
             true =>
               match sizing {
-                CompilePoolUnresolved { reason: sr } =>
+                gunbc.fleet_host_budget.CompilePoolUnresolved { reason: sr } =>
                   CompilePoolNotReady {
                     reason: PoolSizingUnresolved { detail: sr as std.types.NonEmptyStr },
                   }
-                CompilePoolDerived { bytes: b } =>
-                  match byte_size_count(b: lim.memory_max) >= byte_size_count(b: b) {
+                gunbc.fleet_host_budget.CompilePoolDerived { bytes: b } =>
+                  match std.measure.byte_size_count(b: lim.memory_max) >= std.measure.byte_size_count(b: b) {
                     false =>
                       CompilePoolNotReady {
                         reason: PoolSliceCannotHoldDerivedSize {

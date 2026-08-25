@@ -2,15 +2,15 @@ module v2.test.std_grounding.terminal_gate
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-fn terminal_gate_empty_bytes() -> List<std.bit.Byte> {
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+fn terminal_gate_empty_bytes() -> List<v2.std.machine.Byte> {
   []
 }
 
 fn terminal_gate_receipt(status: v2.std.grounding.HostVerdictSurfaceExecutionStatus) -> v2.std.grounding.PerTargetTestClaimReceipt {
   v2.std.grounding.PerTargetTestClaimReceipt {
     host_run: v2.std.host_run.EmitHostRunReceipt {
-      target: rust_target_model(),
+      target: v2.extdeps.languages.rust.rust_target_model(),
       source_text: "",
       exit: v2.std.host_run.HostExit {
         outcome: v2.std.diagnostic.Accepted { value: v2.std.witness.Holds { value: v2.std.host_run.ExitOk { code: 0 } }, diagnostics: v2.std.diagnostic.None }
@@ -28,9 +28,9 @@ fn terminal_gate_receipt(status: v2.std.grounding.HostVerdictSurfaceExecutionSta
   }
 }
 
-test fn witness_grounding_terminal_gate_runtime_authoritative_discriminates() -> v2.std.logic.Bool {
-  host_verdict_surface_runtime_authoritative(receipt: terminal_gate_receipt(status: RuntimeVerdicts))
-    && (host_verdict_surface_runtime_authoritative(
-      receipt: terminal_gate_receipt(status: AuthoringTimeVerdictSurface)
+test fn witness_grounding_terminal_gate_runtime_authoritative_discriminates() -> Bool {
+  v2.std.grounding.host_verdict_surface_runtime_authoritative(receipt: terminal_gate_receipt(status: v2.std.grounding.RuntimeVerdicts))
+    && (v2.std.grounding.host_verdict_surface_runtime_authoritative(
+      receipt: terminal_gate_receipt(status: v2.std.grounding.AuthoringTimeVerdictSurface)
     ) == false)
 }

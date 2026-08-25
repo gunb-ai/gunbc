@@ -26,10 +26,10 @@ type InferredFacts {
 
 type InferredTree {
   root: v2.std.node.Node
-  facts: std.algebra.PartialFunction<v2.std.node.Node, InferredFacts>
+  facts: PartialFunction<v2.std.node.Node, InferredFacts>
 }
 
 type InferredFactsEntry {
   node: v2.std.node.Node
-  facts: v2.compiler.inferred_tree.InferredFacts
+  facts: InferredFacts
 }

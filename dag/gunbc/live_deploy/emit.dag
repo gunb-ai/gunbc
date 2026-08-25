@@ -1,6 +1,8 @@
 module gunbc.live_deploy.emit
 
-data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+
+
+data live_deploy_protocol: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "" }
 
 data live_deploy_apply_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ live-deploy APPLY intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so the committed .github/live-deploy-srv1-apply.sh drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)\n"
 
@@ -10,65 +12,65 @@ data live_deploy_ensure_dep_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REF
 
 data live_deploy_systemd_retirement_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ systemd runtime-retirement intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid deploy shell, so the committed retract artifact drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
 
-fn deploy_raw(command: String) -> PipelineStep {
-  Do {
-    run: Run {
+fn deploy_raw(command: String) -> v2.std.orchestration.PipelineStep {
+  v2.std.orchestration.Do {
+    run: v2.std.orchestration.Run {
       command: command,
       env: Empty,
-      redirect: Absent,
-      capture: Absent
+      redirect: v2.std.collection.Absent,
+      capture: v2.std.collection.Absent
     }
   }
 }
 
-fn systemctl_disable_now_argv_for_deploy(unit: NonEmptyStr, privileged: Bool) -> List<String> {
+fn systemctl_disable_now_argv_for_deploy(unit: std.types.NonEmptyStr, privileged: Bool) -> List<String> {
   if privileged {
-    concat(["sudo", "-n"], systemctl_disable_now_argv(unit: unit))
+    concat(["sudo", "-n"], extdeps.systemd.systemctl.systemctl_disable_now_argv(unit: unit))
   } else {
-    systemctl_disable_now_argv(unit: unit)
+    extdeps.systemd.systemctl.systemctl_disable_now_argv(unit: unit)
   }
 }
 
 data systemctl_disable_now_if_present_note: String = "Runtime retirement is idempotent only for the explicit systemd LoadState=not-found observation. The decision is a bash grammar tree at this foreign-executor realization edge: a fail-fast assignment captures LoadState, then a modeled If disables every state other than not-found. A show/read failure therefore stops before the conditional, and a disable/stop failure remains loud. This replaces the former `2>/dev/null || true` without smuggling command substitution or control flow through a String leaf."
 
-fn systemctl_load_state_assignment_intent(unit: NonEmptyStr) -> Node {
-  bash_build_assign(
+fn systemctl_load_state_assignment_intent(unit: std.types.NonEmptyStr) -> v2.std.node.Node {
+  v2.extdeps.languages.bash_build.bash_build_assign(
     name: "_gunbc_load_state",
-    value: bash_build_word_cmdsubst(
-      body: bash_build_command_from_lits(
-        lits: systemctl_show_load_state_argv(unit: unit)
+    value: v2.extdeps.languages.bash_build.bash_build_word_cmdsubst(
+      body: v2.extdeps.languages.bash_build.bash_build_command_from_lits(
+        lits: extdeps.systemd.systemctl.systemctl_show_load_state_argv(unit: unit)
       )
     )
   )
 }
 
-fn systemctl_disable_now_when_loaded_intent(unit: NonEmptyStr, privileged: Bool) -> Node {
-  bash_build_if_from_stmts(
-    cond: bash_build_test_bracket(words: [
-      bash_build_word_var(name: "_gunbc_load_state"),
-      bash_build_word_lit(text: "!="),
-      bash_build_word_lit(text: systemd_unit_load_state_not_found_wire as String),
+fn systemctl_disable_now_when_loaded_intent(unit: std.types.NonEmptyStr, privileged: Bool) -> v2.std.node.Node {
+  v2.extdeps.languages.bash_build.bash_build_if_from_stmts(
+    cond: v2.extdeps.languages.bash_build.bash_build_test_bracket(words: [
+      v2.extdeps.languages.bash_build.bash_build_word_var(name: "_gunbc_load_state"),
+      v2.extdeps.languages.bash_build.bash_build_word_lit(text: "!="),
+      v2.extdeps.languages.bash_build.bash_build_word_lit(text: extdeps.systemd.systemd_unit_load_state_not_found_wire as String),
     ]),
     then_stmts: [
-      bash_build_command_from_lits(
+      v2.extdeps.languages.bash_build.bash_build_command_from_lits(
         lits: systemctl_disable_now_argv_for_deploy(unit: unit, privileged: privileged)
       )
     ]
   )
 }
 
-fn bash_intent_command_or_poison(intent: Node) -> String {
-  match bash_fold_serialize_node(stmt: intent) {
-    Accepted { value: source, diagnostics: d } =>
+fn bash_intent_command_or_poison(intent: v2.std.node.Node) -> String {
+  match v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node(stmt: intent) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       match d {
-        None => source
+        v2.std.diagnostic.None => source
         Some { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
       }
-    Rejected { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
+    v2.std.diagnostic.Rejected { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
   }
 }
 
-fn systemctl_disable_now_if_present_steps(unit: NonEmptyStr, privileged: Bool) -> List<PipelineStep> {
+fn systemctl_disable_now_if_present_steps(unit: std.types.NonEmptyStr, privileged: Bool) -> List<v2.std.orchestration.PipelineStep> {
   [
     deploy_raw(command: bash_intent_command_or_poison(
       intent: systemctl_load_state_assignment_intent(unit: unit)
@@ -79,21 +81,21 @@ fn systemctl_disable_now_if_present_steps(unit: NonEmptyStr, privileged: Bool) -
   ]
 }
 
-fn ensure_apt_package_step(pkg: NonEmptyStr, privileged: Bool) -> PipelineStep {
-  If {
-    cond: Not { inner: ExitZero {
-      run: Run {
-        command: dpkg_status_command(package: pkg),
+fn ensure_apt_package_step(pkg: std.types.NonEmptyStr, privileged: Bool) -> v2.std.orchestration.PipelineStep {
+  v2.std.orchestration.If {
+    cond: v2.std.orchestration.Not { inner: v2.std.orchestration.ExitZero {
+      run: v2.std.orchestration.Run {
+        command: gunbc.live_deploy.operations.dpkg_status_command(package: pkg),
         env: Empty,
-        redirect: Present { value: DiscardAll },
-        capture: Absent
+        redirect: v2.std.collection.Present { value: v2.std.orchestration.DiscardAll },
+        capture: v2.std.collection.Absent
       }
     } },
-    then_: Pipeline {
-      steps: [deploy_raw(command: apt_install_command(package: pkg, privileged: privileged))],
-      on_failure: FailFast
+    then_: v2.std.orchestration.Pipeline {
+      steps: [deploy_raw(command: gunbc.live_deploy.operations.apt_install_command(package: pkg, privileged: privileged))],
+      on_failure: v2.std.orchestration.FailFast
     },
-    else_: Absent
+    else_: v2.std.collection.Absent
   }
 }
 
@@ -101,10 +103,10 @@ fn ensure_apt_package_step(pkg: NonEmptyStr, privileged: Bool) -> PipelineStep {
 // already carries Let with an ExprCmdSubst value, so the name, the callee and its argument are
 // three modeled parts instead of one quoted line an author assembled — and the variable name is
 // the same single authority the staged-path word reads (operations.deploy_stage_dir_var).
-fn deploy_stage_directory_let_step() -> PipelineStep {
-  Let {
-    name: deploy_stage_dir_var,
-    value: ExprCmdSubst { callee: "mktemp", args: ["-d"] },
+fn deploy_stage_directory_let_step() -> v2.std.orchestration.PipelineStep {
+  v2.std.orchestration.Let {
+    name: gunbc.live_deploy.operations.deploy_stage_dir_var,
+    value: v2.std.orchestration.ExprCmdSubst { callee: "mktemp", args: ["-d"] },
   }
 }
 
@@ -120,8 +122,8 @@ data deploy_stage_trap_is_unmodelled_note: String = "trap 'rm -rf \"$_gunbc_stag
 // The end-of-fold receipt line, named once for both folds. Its fields are argv elements rather
 // than a sentence assembled by concat, so a host identity carrying a space cannot split
 // `host=` from its value and turn one field into two.
-fn deploy_receipt_command(host: NonEmptyStr, fold: String) -> String {
-  shell_command_text_of_argv(argv: [
+fn deploy_receipt_command(host: std.types.NonEmptyStr, fold: String) -> String {
+  gunbc.shell_command_text.shell_command_text_of_argv(argv: [
     "echo",
     "live-deploy-receipt",
     concat("host=", host as String),
@@ -130,14 +132,14 @@ fn deploy_receipt_command(host: NonEmptyStr, fold: String) -> String {
   ])
 }
 
-fn emit_pipeline_or_poison(p: Pipeline, refused: String) -> String {
-  match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: d } =>
+fn emit_pipeline_or_poison(p: v2.std.orchestration.Pipeline, refused: String) -> String {
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(p: p, medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       match d {
-        None => source.carried
+        v2.std.diagnostic.None => source.carried
         Some { diagnostics: _ } => refused
       }
-    Rejected { diagnostics: _ } => refused
+    v2.std.diagnostic.Rejected { diagnostics: _ } => refused
   }
 }
 
@@ -146,7 +148,7 @@ data emit_systemd_unit_serve_note: String = "The belt-B unit: ExecStart is `gunb
 data release_revision_binding_note: String = "WHERE THE LAUNCH REVISION COMES FROM IS ITSELF A MODELED FACT, AND THERE ARE EXACTLY TWO ARMS BECAUSE ONLY TWO ARE HONEST. RevisionBoundAtEmission is the production apply: the launcher observed one candidate, the unit installed at the host bakes exactly that value, and readiness compares against the same single subject. RevisionNotInstalled is the retract fold, and it exists so a retract cannot name a revision even accidentally — the arm that would render ExecStart under it REFUSES with a poison marker, the same unreachable-arm discipline emit_deploy_teardown_dependency_refusal uses.\\n\\nA THIRD ARM WAS TRIED AND DELETED, AND THE REASON IS WORTH KEEPING. RevisionBoundAtInvocation rendered a bash parameter expansion into the unit so a committed script could defer its revision to invocation. It could never have worked: the unit body reaches the host as a single-quoted printf argument (it was a quoted-delimiter heredoc when this was found, and the property that mattered survived the change), so bash performs no expansion inside it and the literal dollar-brace text lands in the unit file; systemd does not run ExecStart through bash, implements no :? operator, and this unit sets no such Environment. The chain script-invocation to unit to launch argument did not exist at any link. Proven by execution, not by reading — which is the point: it typechecked, it read plausibly, and it was inert.\\n\\nWhat it was protecting turned out not to need protecting. It existed to keep a committed script as the byte oracle over this ExecStart line, on the belief that deleting the artifact would lose that coverage. A fixture sha is forbidden in a committed PRODUCTION artifact, not in a witness — so the oracle lives in the test corpus against RevisionBoundAtEmission with a fixture, and the artifact was simply dead (no execution consumer, and a HostReconciler consumer row that named a reader which does not exist)."
 
 type ReleaseRevisionBinding
-  = RevisionBoundAtEmission { revision: CommitSha }
+  = RevisionBoundAtEmission { revision: std.types.CommitSha }
   | RevisionNotInstalled
 
 data release_revision_not_installed_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the systemd unit writer was reached with RevisionNotInstalled — a retract fold dispatched a unit install. This marker is not a valid release revision, so the golden drift gate reds rather than emitting a unit whose ExecStart names no release (DESIGN section 5: an unreachable arm refuses loudly, never fabricates)."
@@ -156,11 +158,11 @@ data release_revision_not_installed_poison: String = "__GUNBC_DEPLOY_UNREACHABLE
 // evaluation_limit_unset_is_a_state_not_a_default_note), so it emits no flag and the
 // process announces `unset` at startup — the same visible operational fact it announces
 // today. What changes is that production no longer REACHES that arm by omission.
-fn eval_budget_flag_text(flag: String, limit: EvaluationLimit) -> String {
+fn eval_budget_flag_text(flag: String, limit: std.evaluation_budget.EvaluationLimit) -> String {
   match limit {
-    LimitUnset => ""
-    LimitSet { limit: l } =>
-      join([" ", flag, " ", to_string(positive_millisecond_count(m: l))], "")
+    std.evaluation_budget.LimitUnset => ""
+    std.evaluation_budget.LimitSet { limit: l } =>
+      join([" ", flag, " ", to_string(std.measure.positive_millisecond_count(m: l))], "")
   }
 }
 
@@ -171,22 +173,22 @@ fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
   }
 }
 
-fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
+fn emit_systemd_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec, revision: ReleaseRevisionBinding) -> std.layout.Doc {
   let svc = spec.service
   let port = to_string(svc.listen.port)
   let host = svc.listen.host
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+  std.layout.doc_text(text: extdeps.systemd.unit_file.serialize_systemd_unit_file(file: extdeps.systemd.unit_file.ServiceUnitFile {
     unit: [
-      Description { text: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr },
-      After { target: "network-online.target tailscaled.service" as NonEmptyStr },
-      Wants { target: "network-online.target" as NonEmptyStr },
+      extdeps.systemd.unit_file.Description { text: "gunbc roadmap HTTP server (gunbc serve)" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.After { target: "network-online.target tailscaled.service" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.Wants { target: "network-online.target" as std.types.NonEmptyStr },
     ],
     service: [
-      ServiceType { mode: "simple" as NonEmptyStr },
-      ServiceUser { name: svc.service_user },
-      ServiceGroup { name: svc.service_user },
-      WorkingDirectory { path: svc.repo_root },
-      ExecStart { command: join([
+      extdeps.systemd.unit_file.ServiceType { mode: "simple" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.ServiceUser { name: svc.service_user },
+      extdeps.systemd.unit_file.ServiceGroup { name: svc.service_user },
+      extdeps.systemd.unit_file.WorkingDirectory { path: svc.repo_root },
+      extdeps.systemd.unit_file.ExecStart { command: join([
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
         " --entry dag/gunbc/roadmap_serve.dag --function ", svc.serve_function as String,
@@ -194,10 +196,10 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding)
         " --release-revision ", release_revision_execstart_text(binding: revision),
         eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
         eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
-      ], "") as NonEmptyStr },
-      Restart { policy: "on-failure" as NonEmptyStr },
+      ], "") as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.Restart { policy: "on-failure" as std.types.NonEmptyStr },
     ],
-    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+    install: extdeps.systemd.unit_file.Installable { directives: [extdeps.systemd.unit_file.WantedBy { target: "multi-user.target" as std.types.NonEmptyStr }] },
   }))
 }
 
@@ -205,42 +207,42 @@ data belt_tick_cadence_note: String = "OnUnitInactiveSec, NOT OnUnitActiveSec, a
 
 data belt_tick_cadence: String = "60s"
 
-fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
+fn emit_belt_service_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.layout.Doc {
   let svc = spec.service
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+  std.layout.doc_text(text: extdeps.systemd.unit_file.serialize_systemd_unit_file(file: extdeps.systemd.unit_file.ServiceUnitFile {
     unit: [
-      Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as NonEmptyStr },
-      After { target: "network-online.target" as NonEmptyStr },
-      Wants { target: "network-online.target" as NonEmptyStr },
+      extdeps.systemd.unit_file.Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.After { target: "network-online.target" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.Wants { target: "network-online.target" as std.types.NonEmptyStr },
     ],
     service: [
-      ServiceType { mode: "oneshot" as NonEmptyStr },
-      ServiceUser { name: svc.service_user },
-      ServiceGroup { name: svc.service_user },
-      WorkingDirectory { path: svc.repo_root },
-      Environment { assignment: join([
-        belt_spawn_workdir_env_var as String, "=", svc.repo_root as String,
-      ], "") as NonEmptyStr },
-      ExecStart { command: join([
+      extdeps.systemd.unit_file.ServiceType { mode: "oneshot" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.ServiceUser { name: svc.service_user },
+      extdeps.systemd.unit_file.ServiceGroup { name: svc.service_user },
+      extdeps.systemd.unit_file.WorkingDirectory { path: svc.repo_root },
+      extdeps.systemd.unit_file.Environment { assignment: join([
+        gunbc.host_layout.belt_spawn_workdir_env_var as String, "=", svc.repo_root as String,
+      ], "") as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.ExecStart { command: join([
         svc.serve_binary as String,
         " run --source-root dag --source-root src/v2",
         " --entry dag/gunbc/roadmap_belt_actuate.dag --function belt_run_once_cli",
-      ], "") as NonEmptyStr },
+      ], "") as std.types.NonEmptyStr },
     ],
-    install: NotInstallable,
+    install: extdeps.systemd.unit_file.NotInstallable,
   }))
 }
 
-fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
-  doc_text(text: serialize_systemd_unit_file(file: TimerUnitFile {
-    unit: [Description { text: "gunbc roadmap belt tick cadence" as NonEmptyStr }],
+fn emit_belt_timer_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.layout.Doc {
+  std.layout.doc_text(text: extdeps.systemd.unit_file.serialize_systemd_unit_file(file: extdeps.systemd.unit_file.TimerUnitFile {
+    unit: [extdeps.systemd.unit_file.Description { text: "gunbc roadmap belt tick cadence" as std.types.NonEmptyStr }],
     timer: [
-      TimerUnit { target: deployment_belt_service_unit_name(names: spec.names) },
-      OnBootSec { duration: "2min" as NonEmptyStr },
-      OnUnitInactiveSec { duration: belt_tick_cadence as NonEmptyStr },
-      AccuracySec { duration: "5s" as NonEmptyStr },
+      extdeps.systemd.unit_file.TimerUnit { target: gunbc.live_deploy.spec.deployment_belt_service_unit_name(names: spec.names) },
+      extdeps.systemd.unit_file.OnBootSec { duration: "2min" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.OnUnitInactiveSec { duration: belt_tick_cadence as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.AccuracySec { duration: "5s" as std.types.NonEmptyStr },
     ],
-    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+    install: extdeps.systemd.unit_file.Installable { directives: [extdeps.systemd.unit_file.WantedBy { target: "timers.target" as std.types.NonEmptyStr }] },
   }))
 }
 
@@ -266,39 +268,39 @@ fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
 //
 // The ExecStart names the tree explicitly rather than deriving it, because a host can run two slots
 // and the unit of one slot must not converge the other's tree.
-fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
+fn emit_tree_remote_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.layout.Doc {
   let svc = spec.service
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
-    unit: [Description {
-      text: "gunbc deployed tree remote convergence (origin URL for fleet desired observation)" as NonEmptyStr,
+  std.layout.doc_text(text: extdeps.systemd.unit_file.serialize_systemd_unit_file(file: extdeps.systemd.unit_file.ServiceUnitFile {
+    unit: [extdeps.systemd.unit_file.Description {
+      text: "gunbc deployed tree remote convergence (origin URL for fleet desired observation)" as std.types.NonEmptyStr,
     }],
     service: [
-      ServiceType { mode: "oneshot" as NonEmptyStr },
-      ServiceUser { name: svc.service_user },
-      ServiceGroup { name: svc.service_user },
-      WorkingDirectory { path: svc.repo_root },
-      ExecStart { command: join([
+      extdeps.systemd.unit_file.ServiceType { mode: "oneshot" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.ServiceUser { name: svc.service_user },
+      extdeps.systemd.unit_file.ServiceGroup { name: svc.service_user },
+      extdeps.systemd.unit_file.WorkingDirectory { path: svc.repo_root },
+      extdeps.systemd.unit_file.ExecStart { command: join([
         svc.serve_binary as String,
         " run --source-root dag --source-root src/v2",
         " --entry dag/gunbc/deployed_tree_remote.dag --function ensure_deployed_tree_remote_wet",
         " --arg repository_path=", svc.repo_root as String,
-      ], "") as NonEmptyStr },
+      ], "") as std.types.NonEmptyStr },
     ],
-    install: NotInstallable,
+    install: extdeps.systemd.unit_file.NotInstallable,
   }))
 }
 
-fn apply_tree_remote_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: deploy_stage_write_command(
-    stage_name: deployment_tree_remote_unit_name(names: spec.names) as String,
-    content: render(doc: emit_tree_remote_unit_doc(spec: spec), proto: live_deploy_protocol),
+fn apply_tree_remote_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpec) -> v2.std.orchestration.PipelineStep {
+  deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_write_command(
+    stage_name: gunbc.live_deploy.spec.deployment_tree_remote_unit_name(names: spec.names) as String,
+    content: std.layout.render(doc: emit_tree_remote_unit_doc(spec: spec), proto: live_deploy_protocol),
   ))
 }
 
-fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: deploy_stage_write_command(
-    stage_name: deployment_belt_service_unit_name(names: spec.names) as String,
-    content: render(doc: emit_belt_service_unit_doc(spec: spec), proto: live_deploy_protocol),
+fn apply_belt_service_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpec) -> v2.std.orchestration.PipelineStep {
+  deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_write_command(
+    stage_name: gunbc.live_deploy.spec.deployment_belt_service_unit_name(names: spec.names) as String,
+    content: std.layout.render(doc: emit_belt_service_unit_doc(spec: spec), proto: live_deploy_protocol),
   ))
 }
 
@@ -319,83 +321,83 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 // on any fresh instance root since that retirement. It rides BeltTimerUnit apply against the
 // per-instance receipts directory instead — see belt_receipt_dir_bootstrap_note. Publication and
 // bootstrap remain orthogonal problems; only the bootstrap's home moved.
-fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
+fn emit_fleet_converge_service_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.layout.Doc {
   let svc = spec.service
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+  std.layout.doc_text(text: extdeps.systemd.unit_file.serialize_systemd_unit_file(file: extdeps.systemd.unit_file.ServiceUnitFile {
     unit: [
-      Description { text: "gunbc fleet converge (self)" as NonEmptyStr },
-      After { target: "network-online.target" as NonEmptyStr },
-      Wants { target: "network-online.target" as NonEmptyStr },
+      extdeps.systemd.unit_file.Description { text: "gunbc fleet converge (self)" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.After { target: "network-online.target" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.Wants { target: "network-online.target" as std.types.NonEmptyStr },
     ],
     service: [
-      ServiceType { mode: "oneshot" as NonEmptyStr },
-      ServiceUser { name: svc.service_user },
-      ServiceGroup { name: svc.service_user },
-      WorkingDirectory { path: svc.repo_root },
-      ExecStart { command: join([svc.serve_binary as String, " converge --host self"], "") as NonEmptyStr },
+      extdeps.systemd.unit_file.ServiceType { mode: "oneshot" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.ServiceUser { name: svc.service_user },
+      extdeps.systemd.unit_file.ServiceGroup { name: svc.service_user },
+      extdeps.systemd.unit_file.WorkingDirectory { path: svc.repo_root },
+      extdeps.systemd.unit_file.ExecStart { command: join([svc.serve_binary as String, " converge --host self"], "") as std.types.NonEmptyStr },
     ],
-    install: NotInstallable,
+    install: extdeps.systemd.unit_file.NotInstallable,
   }))
 }
 
-fn emit_fleet_converge_timer_unit_doc(spec: DeploymentSpec) -> Doc {
-  doc_text(text: serialize_systemd_unit_file(file: TimerUnitFile {
-    unit: [Description { text: "gunbc fleet converge cadence" as NonEmptyStr }],
+fn emit_fleet_converge_timer_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec) -> std.layout.Doc {
+  std.layout.doc_text(text: extdeps.systemd.unit_file.serialize_systemd_unit_file(file: extdeps.systemd.unit_file.TimerUnitFile {
+    unit: [extdeps.systemd.unit_file.Description { text: "gunbc fleet converge cadence" as std.types.NonEmptyStr }],
     timer: [
-      TimerUnit { target: deployment_fleet_converge_service_unit_name(names: spec.names) },
-      OnCalendar { expression: fleet_converge_timer_on_calendar as NonEmptyStr },
-      Persistent { enabled: true },
-      RandomizedDelaySec {
-        duration: to_string(second_count(s: fleet_converge_timer_randomized_delay)) as NonEmptyStr,
+      extdeps.systemd.unit_file.TimerUnit { target: gunbc.live_deploy.spec.deployment_fleet_converge_service_unit_name(names: spec.names) },
+      extdeps.systemd.unit_file.OnCalendar { expression: gunbc.fleet_converge_timer.fleet_converge_timer_on_calendar as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.Persistent { enabled: true },
+      extdeps.systemd.unit_file.RandomizedDelaySec {
+        duration: to_string(std.measure.second_count(s: gunbc.fleet_converge_timer.fleet_converge_timer_randomized_delay)) as std.types.NonEmptyStr,
       },
     ],
-    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+    install: extdeps.systemd.unit_file.Installable { directives: [extdeps.systemd.unit_file.WantedBy { target: "timers.target" as std.types.NonEmptyStr }] },
   }))
 }
 
-fn apply_fleet_converge_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: deploy_stage_write_command(
-    stage_name: deployment_fleet_converge_service_unit_name(names: spec.names) as String,
-    content: render(doc: emit_fleet_converge_service_unit_doc(spec: spec), proto: live_deploy_protocol),
+fn apply_fleet_converge_service_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpec) -> v2.std.orchestration.PipelineStep {
+  deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_write_command(
+    stage_name: gunbc.live_deploy.spec.deployment_fleet_converge_service_unit_name(names: spec.names) as String,
+    content: std.layout.render(doc: emit_fleet_converge_service_unit_doc(spec: spec), proto: live_deploy_protocol),
   ))
 }
 
-fn apply_fleet_converge_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: deploy_stage_write_command(
-    stage_name: deployment_fleet_converge_timer_unit_name(names: spec.names) as String,
-    content: render(doc: emit_fleet_converge_timer_unit_doc(spec: spec), proto: live_deploy_protocol),
+fn apply_fleet_converge_timer_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpec) -> v2.std.orchestration.PipelineStep {
+  deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_write_command(
+    stage_name: gunbc.live_deploy.spec.deployment_fleet_converge_timer_unit_name(names: spec.names) as String,
+    content: std.layout.render(doc: emit_fleet_converge_timer_unit_doc(spec: spec), proto: live_deploy_protocol),
   ))
 }
 
-fn apply_belt_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: deploy_stage_write_command(
-    stage_name: deployment_belt_timer_unit_name(names: spec.names) as String,
-    content: render(doc: emit_belt_timer_unit_doc(spec: spec), proto: live_deploy_protocol),
+fn apply_belt_timer_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpec) -> v2.std.orchestration.PipelineStep {
+  deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_write_command(
+    stage_name: gunbc.live_deploy.spec.deployment_belt_timer_unit_name(names: spec.names) as String,
+    content: std.layout.render(doc: emit_belt_timer_unit_doc(spec: spec), proto: live_deploy_protocol),
   ))
 }
 
 data live_deploy_reconcile_binding_note: String = "apply/retract are the two degenerate POLES of the ONE grain-agnostic membership_reconcile (gunbc.membership_reconcile) — no bespoke fold. apply = reconcile(desired = all deploy members, observed = none) => every member Added => Upsert. retract = reconcile(desired = none, observed = the owned artifacts) => every member Removed => Teardown (all Owned, so no refusal). The DeploymentStep (key_of/key_eq/value_eq/ownership_of) bundle is this consumer's Realization of the spine — not a copy of it. ownership_of projects through deployment_step_ownership onto the single gunbc.ownership authority, so it is ALWAYS Present (a deploy member's ownership is known by construction); the OwnershipUnknown/MemberNotOwned refusal arms are the safety backstop for a future non-degenerate observed provider, exercised only by the synthetic spine witness. key_of returns stable member IDENTITY (artifact path / dependency package); value_eq never fires in the degenerate poles (no Modified — one side is always empty)."
 
-type DeploymentStepMemberAt = NonEmptyStr
+type DeploymentStepMemberAt = std.types.NonEmptyStr
 
-fn deployment_step_key(step: DeploymentStep) -> NonEmptyStr {
+fn deployment_step_key(step: gunbc.live_deploy.spec.DeploymentStep) -> std.types.NonEmptyStr {
   match step {
-    ArtifactStep { step: art } => art.path
-    Dependency { step: dep } => ensured_subject_identity(subject: dep.subject)
+    gunbc.live_deploy.spec.ArtifactStep { step: art } => art.path
+    gunbc.live_deploy.spec.Dependency { step: dep } => gunbc.live_deploy.spec.ensured_subject_identity(subject: dep.subject)
   }
 }
 
-fn deployment_step_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool { a == b }
+fn deployment_step_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool { a == b }
 
-fn deployment_step_value_eq(a: DeploymentStep, b: DeploymentStep) -> Bool { a == b }
+fn deployment_step_value_eq(a: gunbc.live_deploy.spec.DeploymentStep, b: gunbc.live_deploy.spec.DeploymentStep) -> Bool { a == b }
 
-fn deployment_step_ownership_opt(step: DeploymentStep) -> Ownership? {
-  Present { value: deployment_step_ownership(step: step) }
+fn deployment_step_ownership_opt(step: gunbc.live_deploy.spec.DeploymentStep) -> gunbc.ownership.Ownership? {
+  v2.std.collection.Present { value: gunbc.live_deploy.spec.deployment_step_ownership(step: step) }
 }
 
-fn deployment_apply_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep, DeploymentStepMemberAt> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
+fn deployment_apply_plan(spec: gunbc.live_deploy.spec.DeploymentSpec) -> gunbc.membership_reconcile.MembershipPlan<gunbc.live_deploy.spec.DeploymentStep, DeploymentStepMemberAt> {
+  gunbc.membership_reconcile.membership_plan_admitting_outcome(
+    outcome: gunbc.membership_reconcile.membership_reconcile(
       desired: spec.steps,
       observed: [],
       key_of: deployment_step_key,
@@ -406,11 +408,11 @@ fn deployment_apply_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep,
   )
 }
 
-fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep, DeploymentStepMemberAt> {
-  membership_plan_admitting_outcome(
-    outcome: membership_reconcile(
+fn deployment_retract_plan(spec: gunbc.live_deploy.spec.DeploymentSpec) -> gunbc.membership_reconcile.MembershipPlan<gunbc.live_deploy.spec.DeploymentStep, DeploymentStepMemberAt> {
+  gunbc.membership_reconcile.membership_plan_admitting_outcome(
+    outcome: gunbc.membership_reconcile.membership_reconcile(
       desired: [],
-      observed: map(deployment_owned_steps_retract_order(spec: spec), s => ArtifactStep { step: s }),
+      observed: map(gunbc.live_deploy.spec.deployment_owned_steps_retract_order(spec: spec), s => gunbc.live_deploy.spec.ArtifactStep { step: s }),
       key_of: deployment_step_key,
       key_eq: deployment_step_key_eq,
       value_eq: deployment_step_value_eq,
@@ -421,68 +423,68 @@ fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentSte
 
 data staged_unit_filename_note: String = "The staged filename reads from spec.service.unit_name for the same reason the install does: these two steps write and then install THE SAME FILE, and while both were the literal gunbc-roadmap.service that agreement was a coincidence of two independent constants rather than a fact. Parameterizing only the install side would have left the writer staging one name and the installer copying another — a deploy that fails on a missing file, which is at least loud, or worse installs a stale unit left in the stage directory from a previous run."
 
-fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> PipelineStep {
-  deploy_raw(command: deploy_stage_write_command(
+fn apply_systemd_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpec, revision: ReleaseRevisionBinding) -> v2.std.orchestration.PipelineStep {
+  deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_write_command(
     stage_name: spec.service.unit_name as String,
-    content: render(doc: emit_systemd_unit_doc(spec: spec, revision: revision), proto: live_deploy_protocol),
+    content: std.layout.render(doc: emit_systemd_unit_doc(spec: spec, revision: revision), proto: live_deploy_protocol),
   ))
 }
 
 data tree_sync_git_whitelist_note: String = "The .git/ leg is a WHITELIST sync (2026-07-22, journal receipt on srv1: three deploys failed rsync exit 23 on ONE file — objects/pack/pack-25d0810548020708d75d5510c2107766baaf86d2.keep, a git fetch-time marker written 0600 by ghrunner, unreadable to the User= principal; and /opt/gunbc/gunbc/.git/config was found carrying a live actions extraheader auth token from an earlier blanket sync — a credential leak). The belt needs exactly four things for `git worktree add` resolving origin/main: HEAD (repo validity), objects/ (minus *.keep / tmp_pack_* fetch transients, which are 0600 runner-private and never needed), packed-refs, and refs/. Everything else — config (CREDENTIALS), config.worktree, index, hooks, logs — never syncs, so both failure classes are unwritable by construction: no runner-private 0600 file can red the sync, and no credential can reach the service tree (DESIGN 5 construction over validation; the blacklist alternative re-reds on the next unknown transient). Still additive (no --delete): target-local worktree registrations, session refs, and their objects must survive redeploys (apply_tree_split_sync_note). Filter order is load-bearing: the two pack-transient excludes precede the /objects/*** include (first match wins), and the terminal --exclude=* is the whitelist wall."
 
-fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
+fn emit_tree_sync_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpec, tree_path: String) -> std.layout.Doc {
   let user = spec.service.service_user
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
-    unit: [Description {
-      text: "gunbc source tree sync (service-user-principal rsync from CI runner checkout)" as NonEmptyStr,
+  std.layout.doc_text(text: extdeps.systemd.unit_file.serialize_systemd_unit_file(file: extdeps.systemd.unit_file.ServiceUnitFile {
+    unit: [extdeps.systemd.unit_file.Description {
+      text: "gunbc source tree sync (service-user-principal rsync from CI runner checkout)" as std.types.NonEmptyStr,
     }],
     service: [
-      ServiceType { mode: "oneshot" as NonEmptyStr },
-      ServiceUser { name: user },
-      ServiceGroup { name: user },
-      EnvironmentFile { path: spec.names.tree_sync_env_path },
-      ExecStart { command: join([
-        "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
+      extdeps.systemd.unit_file.ServiceType { mode: "oneshot" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.ServiceUser { name: user },
+      extdeps.systemd.unit_file.ServiceGroup { name: user },
+      extdeps.systemd.unit_file.EnvironmentFile { path: spec.names.tree_sync_env_path },
+      extdeps.systemd.unit_file.ExecStart { command: join([
+        "/usr/bin/rsync -rlpt --delete ", gunbc.live_deploy.deployed_tree_scope.deployed_tree_rsync_exclude_flags(),
         " \"$\{GUNBC_TREE_SRC\}/\" ", tree_path, "/",
-      ], "") as NonEmptyStr },
-      ExecStart { command: join([
+      ], "") as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.ExecStart { command: join([
         "/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC\}/.git/\" ",
         tree_path, "/.git/",
-      ], "") as NonEmptyStr },
+      ], "") as std.types.NonEmptyStr },
     ],
-    install: NotInstallable,
+    install: extdeps.systemd.unit_file.NotInstallable,
   }))
 }
 
-fn apply_tree_sync_unit_write_step(spec: DeploymentSpec, tree_path: String) -> PipelineStep {
-  deploy_raw(command: deploy_stage_write_command(
+fn apply_tree_sync_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpec, tree_path: String) -> v2.std.orchestration.PipelineStep {
+  deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_write_command(
     stage_name: "gunbc-tree-sync.service",
-    content: render(doc: emit_tree_sync_unit_doc(spec: spec, tree_path: tree_path), proto: live_deploy_protocol),
+    content: std.layout.render(doc: emit_tree_sync_unit_doc(spec: spec, tree_path: tree_path), proto: live_deploy_protocol),
   ))
 }
 
 data tree_sync_restart_diagnosis_note: String = "gunbc-tree-sync.service (#7011 realization) failed its control process on every srv1 deploy since landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl restart' stderr — 'Job for gunbc-tree-sync.service failed because the control process exited with error code' — never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the unit's own journal, unreachable from this refusal (DESIGN 5 — a stopped, typed, but unlocated line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart is SYNCHRONOUS, ahead of that poll-based unit_diagnosis capture entirely (GunbcSourceTree upsert runs before the SystemdUnit member), so it needs its own capture rather than waiting on one that never runs. Reuses the single unit-status-tail authority (live_deploy_unit_status_tail_command, gunbc.live_deploy.intent) the roadmap-unit capture already owns — no second diagnosis format. On failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an escape hatch (DESIGN 5 forbids proceeding as if the refusal had not fired)."
 
-fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
+fn tree_sync_restart_step_with_diagnosis(spec: gunbc.live_deploy.spec.DeploymentSpec) -> v2.std.orchestration.PipelineStep {
   deploy_raw(command: join([
-    systemctl_restart_command(unit: spec.names.tree_sync_unit_name, privileged: true),
+    gunbc.live_deploy.operations.systemctl_restart_command(unit: spec.names.tree_sync_unit_name, privileged: true),
     " || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; ",
-    live_deploy_unit_status_tail_command(unit: spec.names.tree_sync_unit_name),
+    gunbc.live_deploy.intent.live_deploy_unit_status_tail_command(unit: spec.names.tree_sync_unit_name),
     " >&2; exit 1; }",
   ], ""))
 }
 
 data tailscale_apply_is_unconditional_note: String = "THE IDEMPOTENCE GUARD IS DELETED, AND ITS REMOVAL IS THE POINT. The apply used to wrap the serve command in `if ! tailscale serve status | grep -q ':<port>'`, which is a pseudo-observation twice over: it greps unstructured status text for a port number that appears nowhere in the configuration key, and a mapping for a DIFFERENT deployment on the same port would satisfy it — so the guard skipped precisely when another deployment held the endpoint, which is the collision it looked like it was preventing.\\n\\nThere is nothing to guard. Configuring an endpoint to a backend it already has is a no-op at the upstream, because the endpoint IS the key; issuing it twice cannot produce a second mapping. So the correct number of observations here is zero, and the replacement for a wrong observation is not a better observation but no observation at all.\\n\\nThe argv is built by extdeps.tailscale.serve rather than concatenated here, so the apply and the teardown cannot disagree about the flags — which is the property the upstream `off` form actually requires."
 
-fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: shell_privileged_command_text_of_argv(
-    argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)),
+fn tailscale_serve_apply_step(spec: gunbc.live_deploy.spec.DeploymentSpec) -> v2.std.orchestration.PipelineStep {
+  deploy_raw(command: gunbc.shell_command_text.shell_privileged_command_text_of_argv(
+    argv: concat(["tailscale"], extdeps.tailscale.serve.tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)),
   ))
 }
 
-fn tailscale_serve_teardown_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: shell_privileged_command_text_of_argv(
-    argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: spec.names.tailscale_serve_endpoint)),
+fn tailscale_serve_teardown_step(spec: gunbc.live_deploy.spec.DeploymentSpec) -> v2.std.orchestration.PipelineStep {
+  deploy_raw(command: gunbc.shell_command_text.shell_privileged_command_text_of_argv(
+    argv: concat(["tailscale"], extdeps.tailscale.serve.tailscale_serve_off_argv(endpoint: spec.names.tailscale_serve_endpoint)),
   ))
 }
 
@@ -491,9 +493,9 @@ data emit_deploy_principal_note: String = "The deploy principal on srv1 is the U
 data serve_binary_parent_was_a_literal_note: String = "THE BINARY PATH BECAME A PARAMETER AND ITS PARENT DIRECTORY DID NOT (review 45197). This PR derives serve_binary from the instance root, so a twin installs to its own tree — but the step that CREATES the destination directory still read `sudo -n install -d -m 0755 /opt/gunbc/bin`, production's literal. `install` does not create missing parents, so a twin apply reaches the copy with no `<instance-root>/bin` to copy into and fails on a path that looks like a permissions problem.\\n\\nThat is the same half-parameterization the placement de-fork exists to remove, surviving one level down: the value moved to the argument and the directory that has to exist for the value to be writable stayed behind. Nothing caught it because production's parent and the literal agree, which is exactly the condition that made every srv1-only gap in this lane invisible until a second instance existed.\\n\\nDeriving the parent FROM the path being installed is what keeps them from drifting again — there is no second literal to update, and the emitted command for srv1-live is byte-identical because the derivation of /opt/gunbc/bin/gunbc is /opt/gunbc/bin. The mode and ownership are deliberately unchanged: production's bin directory is root-owned, and switching this to the service-user-owned install_d_owned_command would silently re-own a live directory to satisfy a twin."
 
 fn path_parent_dir(path: String) -> String {
-  match list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
-    TailAbsent => "/"
-    TailFound { tail: rest } => join(reverse(rest), "/")
+  match v2.std.algebra.list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
+    v2.std.algebra.TailAbsent => "/"
+    v2.std.algebra.TailFound { tail: rest } => join(reverse(rest), "/")
   }
 }
 data install_d_mode_undeviated_note: String = "🟡 dissolve-on — FRONTIER, 1 of 4 directory members migrated (attempt-state-root derives its mode through install_d_managed_command; gunbc-source-tree, serve-binary-dir, and dispatch-worktree-root still inherit the constant below). The 0755 here is a SHARED CONSTANT, not a derived fact, and every member still on it inherits it regardless of what that member's readers and writers actually need. That is why /opt/gunbc/attempt-state converges world-readable while the per-attempt directories the belt creates under it are 0700 (attempt_state_prepare_argv_for_instance) — the leaf states its requirement, the root cannot, so the root is loose by default rather than by decision. Ownership is already derived (-o/-g project the service user from the spec, emit_deploy_principal_note); the mode is the one field on the triple still hand-picked. The FIX IS NOT A TIGHTER LITERAL — replacing 0755 with 0700 would move the same undeclared number, and a member whose dependents genuinely need traversal would then break with no statement of why. The mode must be DERIVED FROM THE MEMBER'S DECLARED DEPENDENTS: which principals need which verbs on that position, folded into extdeps.access.posix.FilePermissions (PermissionBits per owner/group/other class, cited to Open Group sys/stat.h) — the same requirement rows std.effect_grant already carries as (verb x subtree x principal) for the execute direction, read here to construct the permission instead of to admit against it. Once a member carries its dependents, an over-permissive mode is unwritable rather than merely unreviewed, and this helper loses its mode argument entirely. DISSOLVES WHEN a footprint member carries FilePermissions derived from its declared dependents; until then the constant is marked, not silently inherited (operator direction 2026-07-30: precise, and derived from the needs/dependents)."
@@ -504,14 +506,14 @@ data install_d_mode_undeviated_note: String = "🟡 dissolve-on — FRONTIER, 1 
 // them changes no emitted byte and does not derive them — that derivation is exactly what the
 // note above says is still owed — but it makes the inheritance visible to the reader and gives
 // the eventual derivation one place to land per class.
-data install_d_shared_mode: NonEmptyStr = "0755"
+data install_d_shared_mode: std.types.NonEmptyStr = "0755"
 
-data install_file_shared_mode: NonEmptyStr = "0644"
+data install_file_shared_mode: std.types.NonEmptyStr = "0644"
 
-data install_executable_shared_mode: NonEmptyStr = "0755"
+data install_executable_shared_mode: std.types.NonEmptyStr = "0755"
 
-fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
-  install_directory_owned_command(
+fn install_d_owned_for_user(user: std.types.NonEmptyStr, path: String) -> String {
+  gunbc.live_deploy.operations.install_directory_owned_command(
     mode: install_d_shared_mode,
     owner: user,
     group: user,
@@ -519,16 +521,16 @@ fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
   )
 }
 
-fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
+fn install_d_owned_command(spec: gunbc.live_deploy.spec.DeploymentSpec, path: String) -> String {
   install_d_owned_for_user(user: spec.service.service_user, path: path)
 }
 
 data ensure_dependency_steps_note: String = "THE DISPATCH THAT ADMITS A SECOND KIND OF ENSURED RESOURCE, written so the package arm is untouched. A package still lowers to exactly the ensure step it always did, at both privilege settings, so no existing emitted byte moves -- the widening adds a kind, it does not redefine what ensuring a package means.\\n\\nA directory lowers to the same owned install -d the artifact steps use, through the same single authority, with the owner taken from the ensured subject rather than from a deployment spec. That is what lets a host-level resource be stated without an instance: an ensured host directory is a fact about the host, and threading a spec through it would have made it look like a per-instance fact again -- the exact confusion that put this root in the owned roster to begin with.\\n\\nprivileged is consumed only by the package arm because it describes how apt is invoked; install -d is privileged in both contexts and takes the same form either way."
 
-fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> List<PipelineStep> {
+fn ensure_dependency_steps(dep: gunbc.live_deploy.spec.DeploymentDependencyStep, privileged: Bool) -> List<v2.std.orchestration.PipelineStep> {
   match dep.subject {
-    EnsuredPackage { package } => [ensure_apt_package_step(pkg: package, privileged: privileged)]
-    EnsuredHostDirectory { path, owner } => [
+    gunbc.live_deploy.spec.EnsuredPackage { package } => [ensure_apt_package_step(pkg: package, privileged: privileged)]
+    gunbc.live_deploy.spec.EnsuredHostDirectory { path, owner } => [
       deploy_raw(command: install_d_owned_for_user(user: owner, path: path as String)),
     ]
   }
@@ -536,25 +538,25 @@ fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> L
 
 data install_d_managed_group_residue_note: String = "`-g` is spelled with the OWNER'S USER NAME, not a modeled group name, and that is inherited from install_d_owned_command rather than introduced here: PosixUser carries a gid but no group name, and srv1's per-user groups happen to share their user's name so the emitted argv is byte-identical either way. It is written down because the coincidence is load-bearing and silent — a host whose service account sat in a differently-named primary group would emit a `-g` that does not resolve, and the failure would look like a permissions bug rather than a modeling gap. dissolve-on = PosixUser (or a PosixGroup beside it) carries the group name, at which point this projects it instead of reusing the user's."
 
-fn install_d_managed_command(dir: ManagedDirectory) -> String {
-  install_directory_owned_command(
-    mode: managed_directory_mode_octal(d: dir) as NonEmptyStr,
+fn install_d_managed_command(dir: gunbc.managed_directory.ManagedDirectory) -> String {
+  gunbc.live_deploy.operations.install_directory_owned_command(
+    mode: gunbc.managed_directory.managed_directory_mode_octal(d: dir) as std.types.NonEmptyStr,
     owner: dir.owner.name,
     group: dir.owner.name,
     path: dir.path as String,
   )
 }
 
-fn deploy_apply_preamble_steps(access: DeployAccess) -> List<PipelineStep> {
-  [deploy_raw(command: deploy_sudoers_install_shell(access: access))]
+fn deploy_apply_preamble_steps(access: gunbc.ci_deploy_access.DeployAccess) -> List<v2.std.orchestration.PipelineStep> {
+  [deploy_raw(command: gunbc.ci_deploy_sudoers.deploy_sudoers_install_shell(access: access))]
 }
 
-fn deploy_memory_cap_apply_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+fn deploy_memory_cap_apply_steps(spec: gunbc.live_deploy.spec.DeploymentSpec) -> List<v2.std.orchestration.PipelineStep> {
   let host = spec.target.host.identity
-  let units = runner_slot_service_units_for_host(host: host)
-  let script = deploy_memory_cap_apply_script_for_host(host: host)
-  if host_axis_caps_author_before_revert_enforced
-    && deploy_memory_cap_script_author_precedes_shadow_revert(script: script, units: units) {
+  let units = gunbc.host_axis_caps.runner_slot_service_units_for_host(host: host)
+  let script = gunbc.host_axis_caps.deploy_memory_cap_apply_script_for_host(host: host)
+  if gunbc.host_axis_caps.host_axis_caps_author_before_revert_enforced
+    && gunbc.host_axis_caps.deploy_memory_cap_script_author_precedes_shadow_revert(script: script, units: units) {
     [deploy_raw(command: script)]
   } else {
     [
@@ -570,37 +572,37 @@ fn deploy_memory_cap_apply_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 
 data apply_tree_split_sync_note: String = "GunbcSourceTree apply is a SPLIT sync (review 40332, DESIGN 5 — the retract-side rmdir wall alone gave false assurance): the shared repo at /opt/gunbc/gunbc accumulates target-LOCAL git state the runner checkout never has — .git/worktrees/<name> registrations for every live dispatch worktree, the session branch refs those worktrees are on, and the objects their commits wrote into the shared store — so a single rsync --delete of ./ would destroy live agent sessions on every redeploy. The working tree syncs with --delete (stale sources must not linger) but excludes /.git; .git syncs ADDITIVELY (no --delete), which keeps origin/main fresh from the runner checkout (the belt's git worktree add resolves origin/main from these remote-tracking refs — srv1 does no fetch) while never deleting worktree metadata, session refs, or their objects. Accumulation of pruned-worktree residue is the safe direction and is reaped by git itself, never by deploy. Flags are -rlpt, not -a: the sync principal is the service user (emit_deploy_principal_note), so -a's owner/group replication would chgrp toward the runner's group and fail EPERM — ownership is the destination principal's by construction, never replicated from the source."
 
-fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+fn emit_artifact_upsert(art: gunbc.live_deploy.spec.DeploymentArtifactStep, spec: gunbc.live_deploy.spec.DeploymentSpec, revision: ReleaseRevisionBinding) -> List<v2.std.orchestration.PipelineStep> {
   match art.kind {
-    GunbcSourceTree => [
-      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
+    gunbc.live_deploy.spec.GunbcSourceTree => [
+      deploy_raw(command: gunbc.live_deploy.operations.install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
       deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
-      deploy_raw(command: deploy_stage_write_expansion_command(
+      deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_write_expansion_command(
         stage_name: "gunbc-tree-sync.env",
         format: "GUNBC_TREE_SRC=%s\n",
         expansion_var: "PWD",
       )),
-      deploy_raw(command: deploy_stage_install_command(
+      deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_install_command(
         stage_name: "gunbc-tree-sync.env",
         mode: install_file_shared_mode,
         dest: spec.names.tree_sync_env_path as String,
       )),
       apply_tree_sync_unit_write_step(spec: spec, tree_path: art.path as String),
-      deploy_raw(command: deploy_stage_install_command(
+      deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_install_command(
         stage_name: "gunbc-tree-sync.service",
         mode: install_file_shared_mode,
-        dest: tree_sync_unit_path(names: spec.names) as String,
+        dest: gunbc.live_deploy.spec.tree_sync_unit_path(names: spec.names) as String,
       )),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      deploy_raw(command: gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)),
       tree_sync_restart_step_with_diagnosis(spec: spec),
     ]
-    ServeBinary => [
-      deploy_raw(command: install_directory_command(
+    gunbc.live_deploy.spec.ServeBinary => [
+      deploy_raw(command: gunbc.live_deploy.operations.install_directory_command(
         mode: install_d_shared_mode,
         path: path_parent_dir(path: art.path as String),
         privileged: true,
       )),
-      deploy_raw(command: install_file_owned_command(
+      deploy_raw(command: gunbc.live_deploy.operations.install_file_owned_command(
         mode: install_executable_shared_mode,
         owner: spec.service.service_user,
         group: spec.service.service_user,
@@ -608,61 +610,61 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         dest: art.path as String,
       )),
     ]
-    DispatchWorktreeRoot => [
+    gunbc.live_deploy.spec.DispatchWorktreeRoot => [
       deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
     ]
-    AttemptStateRoot => [
+    gunbc.live_deploy.spec.AttemptStateRoot => [
       deploy_raw(command: install_d_managed_command(
-        dir: attempt_state_directory_at(path: art.path as String as std.types.FilePath),
+        dir: gunbc.managed_directory.attempt_state_directory_at(path: art.path as String as std.types.FilePath),
       )),
     ]
-    SystemdUnit => [
+    gunbc.live_deploy.spec.SystemdUnit => [
       apply_systemd_unit_write_step(spec: spec, revision: revision),
-      deploy_raw(command: deploy_stage_install_command(
+      deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_install_command(
         stage_name: spec.service.unit_name as String,
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-      deploy_raw(command: systemctl_enable_command(unit: spec.service.unit_name, privileged: true)),
-      deploy_raw(command: systemctl_restart_command(unit: spec.service.unit_name, privileged: true)),
+      deploy_raw(command: gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)),
+      deploy_raw(command: gunbc.live_deploy.operations.systemctl_enable_command(unit: spec.service.unit_name, privileged: true)),
+      deploy_raw(command: gunbc.live_deploy.operations.systemctl_restart_command(unit: spec.service.unit_name, privileged: true)),
     ]
-    BeltTimerUnit => [
+    gunbc.live_deploy.spec.BeltTimerUnit => [
       deploy_raw(command: install_d_owned_command(
         spec: spec,
-        path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
+        path: gunbc.host_layout.instance_receipts_dir(instance_root: spec.service.instance_root as String),
       )),
       apply_belt_service_unit_write_step(spec: spec),
       apply_belt_timer_unit_write_step(spec: spec),
-      deploy_raw(command: deploy_stage_install_command(
-        stage_name: deployment_belt_service_unit_name(names: spec.names) as String,
+      deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_install_command(
+        stage_name: gunbc.live_deploy.spec.deployment_belt_service_unit_name(names: spec.names) as String,
         mode: install_file_shared_mode,
-        dest: deployment_belt_service_unit_path(names: spec.names) as String,
+        dest: gunbc.live_deploy.spec.deployment_belt_service_unit_path(names: spec.names) as String,
       )),
-      deploy_raw(command: deploy_stage_install_command(
-        stage_name: deployment_belt_timer_unit_name(names: spec.names) as String,
+      deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_install_command(
+        stage_name: gunbc.live_deploy.spec.deployment_belt_timer_unit_name(names: spec.names) as String,
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-      deploy_raw(command: systemctl_enable_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
-      deploy_raw(command: systemctl_restart_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
+      deploy_raw(command: gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)),
+      deploy_raw(command: gunbc.live_deploy.operations.systemctl_enable_command(unit: gunbc.live_deploy.spec.deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
+      deploy_raw(command: gunbc.live_deploy.operations.systemctl_restart_command(unit: gunbc.live_deploy.spec.deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
     ]
-    FleetConvergeTimerUnit => [
+    gunbc.live_deploy.spec.FleetConvergeTimerUnit => [
       deploy_raw(command: "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"),
     ]
-    TailscaleServeMapping => [
+    gunbc.live_deploy.spec.TailscaleServeMapping => [
       tailscale_serve_apply_step(spec: spec),
     ]
-    DeployedTreeRemoteUnit => [
+    gunbc.live_deploy.spec.DeployedTreeRemoteUnit => [
       apply_tree_remote_unit_write_step(spec: spec),
-      deploy_raw(command: deploy_stage_install_command(
-        stage_name: deployment_tree_remote_unit_name(names: spec.names) as String,
+      deploy_raw(command: gunbc.live_deploy.operations.deploy_stage_install_command(
+        stage_name: gunbc.live_deploy.spec.deployment_tree_remote_unit_name(names: spec.names) as String,
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-      deploy_raw(command: systemctl_restart_command(unit: deployment_tree_remote_unit_name(names: spec.names), privileged: true)),
+      deploy_raw(command: gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)),
+      deploy_raw(command: gunbc.live_deploy.operations.systemctl_restart_command(unit: gunbc.live_deploy.spec.deployment_tree_remote_unit_name(names: spec.names), privileged: true)),
     ]
   }
 }
@@ -672,61 +674,61 @@ data devboot_root_realization_note: String = "REALIZATION FOR THE BUILD SERVICE'
 data belt_receipt_dir_bootstrap_note: String = "THE BELT MEMBER CARRIES THE install -d FOR THE DIRECTORY ITS TICK WRITES INTO, which is the orchestration-is-derived-from-the-member rule emit_deploy_member_effect_note already states (a ServerScript carries the install -d it writes into). The belt tick publishes its receipt to instance_receipts_dir(instance_root) and the workflow UI reads that receipt to answer whether a tick ran; with no directory owned by the service principal the write is EACCES, which is what every instance was in fact doing — belt-last-tick.json was absent from BOTH srv1 roots when read on 2026-08-19, so this receipt has never been written anywhere, not merely on the new slot.\n\nTHIS ALSO RESTORES A BOOTSTRAP THAT WENT DEAD RATHER THAN ADDING A NEW ONE. fleet_converge_receipt_atomic_publish_note FORMERLY named the deploy install-d on fleet_converge_receipt_dir as riding FleetConvergeTimerUnit apply (that clause is itself now corrected in gunbc.host_layout, so this sentence describes the prior revision rather than the current text), and that member is a retired refusal poison (the cadence moved to on-demand plan/apply, sleek-heron-218), so nothing has bootstrapped a receipts directory on any fresh instance root since. Green has no receipts directory at all; production's exists only because it predates the retirement. Riding the belt member is correct rather than convenient: the belt is the consumer that needs the directory on every instance it is installed on, so the bootstrap travels with a member that is unconditionally present wherever a receipt gets written.\n\nTHERE IS DELIBERATELY NO TEARDOWN ARM. Receipts are produced artifacts, and devboot_root_realization_note draws exactly this line — a deploy must never delete what it produced — so the directory is bootstrapped and never removed, and a retract that also destroyed the converge receipts sharing the directory would be the failure that note exists to prevent. install -d is idempotent, so converging an existing correctly-owned directory (production's) emits the same command and changes nothing.\n\nRESIDUE, NAMED: the belt writes its receipt in place rather than through the same-directory staging + rename that gunbc.fleet_converge_cli uses. In-place write is correct here because the directory is service-user-owned and the file is not a stale root-owned artifact, but it is NOT crash-safe — a tick interrupted mid-write leaves a truncated receipt, which renders as BeltPassOutcomeUnreadable rather than as a wrong verdict. Adopting the atomic publish is the strictly better construction and is not done here; it is stated so the weaker one is a decision on the record rather than an oversight."
 data teardown_worktree_rmdir_note: String = "DispatchWorktreeRoot teardown is rm -d (empty-directory removal via the granted rm — the unprivileged principal has no rmdir grant and no write on the root-owned parent), NEVER rm -rf: a non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition itself, identical to the former rmdir). GunbcSourceTree teardown runs AFTER the worktree rm -d succeeds, so the repo the worktrees are registered in is never deleted from under them."
 
-fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
+fn emit_artifact_teardown(art: gunbc.live_deploy.spec.DeploymentArtifactStep, spec: gunbc.live_deploy.spec.DeploymentSpec) -> List<v2.std.orchestration.PipelineStep> {
   match art.kind {
-    TailscaleServeMapping => [
+    gunbc.live_deploy.spec.TailscaleServeMapping => [
       tailscale_serve_teardown_step(spec: spec),
     ]
-    SystemdUnit => concat(
+    gunbc.live_deploy.spec.SystemdUnit => concat(
       systemctl_disable_now_if_present_steps(unit: spec.service.unit_name, privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+        deploy_raw(command: gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)),
       ]
     )
-    BeltTimerUnit => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true),
+    gunbc.live_deploy.spec.BeltTimerUnit => concat(
+      systemctl_disable_now_if_present_steps(unit: gunbc.live_deploy.spec.deployment_belt_timer_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
           art.path as String,
-          deployment_belt_service_unit_path(names: spec.names) as String,
+          gunbc.live_deploy.spec.deployment_belt_service_unit_path(names: spec.names) as String,
         ])),
-        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+        deploy_raw(command: gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)),
       ]
     )
-    FleetConvergeTimerUnit => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true),
+    gunbc.live_deploy.spec.FleetConvergeTimerUnit => concat(
+      systemctl_disable_now_if_present_steps(unit: gunbc.live_deploy.spec.deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
           art.path as String,
-          deployment_fleet_converge_service_unit_path(names: spec.names) as String,
+          gunbc.live_deploy.spec.deployment_fleet_converge_service_unit_path(names: spec.names) as String,
         ])),
-        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+        deploy_raw(command: gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)),
       ]
     )
-    DeployedTreeRemoteUnit => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_tree_remote_unit_name(names: spec.names), privileged: true),
+    gunbc.live_deploy.spec.DeployedTreeRemoteUnit => concat(
+      systemctl_disable_now_if_present_steps(unit: gunbc.live_deploy.spec.deployment_tree_remote_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+        deploy_raw(command: gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)),
       ]
     )
-    DispatchWorktreeRoot => [
-      deploy_raw(command: rm_empty_directory_command(path: art.path as String)),
+    gunbc.live_deploy.spec.DispatchWorktreeRoot => [
+      deploy_raw(command: gunbc.live_deploy.operations.rm_empty_directory_command(path: art.path as String)),
     ]
-    AttemptStateRoot => [
-      deploy_raw(command: rm_empty_directory_command(path: art.path as String)),
+    gunbc.live_deploy.spec.AttemptStateRoot => [
+      deploy_raw(command: gunbc.live_deploy.operations.rm_empty_directory_command(path: art.path as String)),
     ]
-    ServeBinary => [
+    gunbc.live_deploy.spec.ServeBinary => [
       deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
     ]
-    GunbcSourceTree => [
+    gunbc.live_deploy.spec.GunbcSourceTree => [
       deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
-        tree_sync_unit_path(names: spec.names) as String,
+        gunbc.live_deploy.spec.tree_sync_unit_path(names: spec.names) as String,
         spec.names.tree_sync_env_path as String,
       ])),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-      deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
+      deploy_raw(command: gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true)),
+      deploy_raw(command: gunbc.live_deploy.operations.rm_force_recursive_command(path: art.path as String)),
     ]
   }
 }
@@ -735,39 +737,39 @@ data emit_deploy_member_effect_note: String = "The per-member realization HANDLE
 
 data live_deploy_replace_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ EffectReplace reached the deploy emit dispatch. Both deploy poles are degenerate — apply observes the empty set, retract desires the empty set — so no Modified hunk can arise and no replace can be emitted. Reaching this arm means a NON-degenerate observed provider landed without its realization being modeled: a replace on a host resource is an in-place update only if the address survived, and a STAGED replacement with declared intermediates otherwise (gunbc.change_realization). Emitting an unconditional overwrite here would be the srv4 failure exactly — a transition that believed it had nothing to retire. This marker is not valid deploy shell, so the golden drift gate reds. member="
 
-fn emit_deploy_replace_unreachable_refusal(step: DeploymentStep) -> List<PipelineStep> {
+fn emit_deploy_replace_unreachable_refusal(step: gunbc.live_deploy.spec.DeploymentStep) -> List<v2.std.orchestration.PipelineStep> {
   [deploy_raw(command: concat(live_deploy_replace_unreachable_poison, deployment_step_key(step: step) as String))]
 }
 
 data live_deploy_teardown_dependency_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ R5 wall breach — EffectRemove of an Ensured dependency reached the emit dispatch. A dependency is Ensured, so a Removed dependency is MemberRemovalRefused (never an EffectRemove); reaching this arm means deployment_step_ownership or membership_effects is broken. This marker is not valid deploy shell, so the golden drift gate reds — DESIGN §5: an unreachable arm REFUSES loudly (typed/located/counted), never fabricates a no-op. dependency="
 
-fn emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep) -> List<PipelineStep> {
-  [deploy_raw(command: concat(live_deploy_teardown_dependency_unreachable_poison, ensured_subject_identity(subject: dep.subject) as String))]
+fn emit_deploy_teardown_dependency_refusal(dep: gunbc.live_deploy.spec.DeploymentDependencyStep) -> List<v2.std.orchestration.PipelineStep> {
+  [deploy_raw(command: concat(live_deploy_teardown_dependency_unreachable_poison, gunbc.live_deploy.spec.ensured_subject_identity(subject: dep.subject) as String))]
 }
 
-fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+fn emit_deploy_member_effect(effect: gunbc.membership_reconcile.MemberEffect<gunbc.live_deploy.spec.DeploymentStep>, spec: gunbc.live_deploy.spec.DeploymentSpec, revision: ReleaseRevisionBinding) -> List<v2.std.orchestration.PipelineStep> {
   match effect {
-    EffectAdd { to: step } =>
+    gunbc.membership_reconcile.EffectAdd { to: step } =>
       match step {
-        Dependency { step: dep } => ensure_dependency_steps(dep: dep, privileged: true)
-        ArtifactStep { step: art } => emit_artifact_upsert(art: art, spec: spec, revision: revision)
+        gunbc.live_deploy.spec.Dependency { step: dep } => ensure_dependency_steps(dep: dep, privileged: true)
+        gunbc.live_deploy.spec.ArtifactStep { step: art } => emit_artifact_upsert(art: art, spec: spec, revision: revision)
       }
-    EffectReplace { from: _, to: step } => emit_deploy_replace_unreachable_refusal(step: step)
-    EffectRemove { from: step } =>
+    gunbc.membership_reconcile.EffectReplace { from: _, to: step } => emit_deploy_replace_unreachable_refusal(step: step)
+    gunbc.membership_reconcile.EffectRemove { from: step } =>
       match step {
-        ArtifactStep { step: art } => emit_artifact_teardown(art: art, spec: spec)
-        Dependency { step: dep } => emit_deploy_teardown_dependency_refusal(dep: dep)
+        gunbc.live_deploy.spec.ArtifactStep { step: art } => emit_artifact_teardown(art: art, spec: spec)
+        gunbc.live_deploy.spec.Dependency { step: dep } => emit_deploy_teardown_dependency_refusal(dep: dep)
       }
   }
 }
 
 fn apply_intent_from_effects(
-  spec: DeploymentSpec,
-  effects: List<MemberEffect<DeploymentStep>>,
-  access: DeployAccess,
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  effects: List<gunbc.membership_reconcile.MemberEffect<gunbc.live_deploy.spec.DeploymentStep>>,
+  access: gunbc.ci_deploy_access.DeployAccess,
   revision: ReleaseRevisionBinding
-) -> Pipeline {
-  Pipeline {
+) -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: concat(
       [
         deploy_raw(command: "set -euo pipefail"),
@@ -791,7 +793,7 @@ fn apply_intent_from_effects(
         )
       )
     ),
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
@@ -818,11 +820,11 @@ fn retract_unobserved_client_poison(reason: String) -> String {
 }
 
 fn retract_intent_from_effects(
-  spec: DeploymentSpec,
-  effects: List<MemberEffect<DeploymentStep>>,
-  access: DeployAccess
-) -> Pipeline {
-  Pipeline {
+  spec: gunbc.live_deploy.spec.DeploymentSpec,
+  effects: List<gunbc.membership_reconcile.MemberEffect<gunbc.live_deploy.spec.DeploymentStep>>,
+  access: gunbc.ci_deploy_access.DeployAccess
+) -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: concat(
       [
         deploy_raw(command: "set -euo pipefail"),
@@ -848,118 +850,118 @@ fn retract_intent_from_effects(
         )
       )
     ),
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
 data live_deploy_wholesale_refused_poison_prefix: String = "__GUNBC_DEPLOY_REFUSED__ live-deploy reconcile refused WHOLESALE — the plan carried member teardown-refusals (a member the deploy does not own, or ownership unknown). Per the wholesale-refuse execution policy (gunbc.membership_reconcile.membership_effects_wholesale_refuse_policy_trigger) the ENTIRE fold is refused before emit rather than partially applied — R5 owned-only teardown is a construction wall, never emit-around. This marker is not valid deploy shell, so the committed golden drift gate reds (DESIGN §5: refuse, never widen). "
 
-fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentStep>>, fold_label: String) -> String {
+fn live_deploy_wholesale_refused_poison(refusals: List<gunbc.membership_reconcile.MemberRefusal<gunbc.live_deploy.spec.DeploymentStep>>, fold_label: String) -> String {
   concat(
     live_deploy_wholesale_refused_poison_prefix,
     concat(fold_label, concat(" refused-member-count=", to_string(count(refusals))))
   )
 }
 
-fn live_deploy_apply_script_for(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
-  match ci_deploy_srv1_access_or_refusal() {
-    DeployAccessJobPrincipalRefused { refusal: r } =>
-      deploy_access_job_principal_refused_emit_poison(refusal: r)
-    DeployAccessReady { access: access } =>
-      match membership_effects(plan: deployment_apply_plan(spec: spec)) {
-        EffectsReady { effects: es } =>
+fn live_deploy_apply_script_for(spec: gunbc.live_deploy.spec.DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
+  match gunbc.ci_deploy_access.ci_deploy_srv1_access_or_refusal() {
+    gunbc.ci_deploy_access.DeployAccessJobPrincipalRefused { refusal: r } =>
+      gunbc.ci_deploy_access.deploy_access_job_principal_refused_emit_poison(refusal: r)
+    gunbc.ci_deploy_access.DeployAccessReady { access: access } =>
+      match gunbc.membership_reconcile.membership_effects(plan: deployment_apply_plan(spec: spec)) {
+        gunbc.membership_reconcile.EffectsReady { effects: es } =>
           emit_pipeline_or_poison(
             p: apply_intent_from_effects(spec: spec, effects: es, access: access, revision: revision),
             refused: live_deploy_apply_emit_refused_poison
           )
-        ApplyRefused { refusals: rs } =>
+        gunbc.membership_reconcile.ApplyRefused { refusals: rs } =>
           live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "APPLY")
       }
   }
 }
 
-fn live_deploy_retract_script_for(spec: DeploymentSpec) -> String {
+fn live_deploy_retract_script_for(spec: gunbc.live_deploy.spec.DeploymentSpec) -> String {
   match spec.target.tailscale_client {
-    ScopedRemovalUnsupported { observed: v } =>
-      retract_unsupported_client_poison(observed: semver_version_label(v: v))
-    ScopedRemovalUnobserved { reason: r } =>
+    extdeps.tailscale.serve.ScopedRemovalUnsupported { observed: v } =>
+      retract_unsupported_client_poison(observed: extdeps.version.semver.semver_version_label(v: v))
+    extdeps.tailscale.serve.ScopedRemovalUnobserved { reason: r } =>
       retract_unobserved_client_poison(reason: r)
-    ScopedRemovalSupported { observed: _ } =>
+    extdeps.tailscale.serve.ScopedRemovalSupported { observed: _ } =>
       live_deploy_retract_script_with_scoped_removal(spec: spec)
   }
 }
 
-fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec) -> String {
-  match ci_deploy_srv1_access_or_refusal() {
-    DeployAccessJobPrincipalRefused { refusal: r } =>
-      deploy_access_job_principal_refused_emit_poison(refusal: r)
-    DeployAccessReady { access: access } =>
-      match membership_effects(plan: deployment_retract_plan(spec: spec)) {
-        EffectsReady { effects: es } =>
+fn live_deploy_retract_script_with_scoped_removal(spec: gunbc.live_deploy.spec.DeploymentSpec) -> String {
+  match gunbc.ci_deploy_access.ci_deploy_srv1_access_or_refusal() {
+    gunbc.ci_deploy_access.DeployAccessJobPrincipalRefused { refusal: r } =>
+      gunbc.ci_deploy_access.deploy_access_job_principal_refused_emit_poison(refusal: r)
+    gunbc.ci_deploy_access.DeployAccessReady { access: access } =>
+      match gunbc.membership_reconcile.membership_effects(plan: deployment_retract_plan(spec: spec)) {
+        gunbc.membership_reconcile.EffectsReady { effects: es } =>
           emit_pipeline_or_poison(
             p: retract_intent_from_effects(spec: spec, effects: es, access: access),
             refused: live_deploy_retract_emit_refused_poison
           )
-        ApplyRefused { refusals: rs } =>
+        gunbc.membership_reconcile.ApplyRefused { refusals: rs } =>
           live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
       }
   }
 }
 
-fn live_deploy_systemd_unit_for(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
-  render(doc: emit_systemd_unit_doc(spec: spec, revision: revision), proto: live_deploy_protocol)
+fn live_deploy_systemd_unit_for(spec: gunbc.live_deploy.spec.DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
+  std.layout.render(doc: emit_systemd_unit_doc(spec: spec, revision: revision), proto: live_deploy_protocol)
 }
 
-fn live_deploy_tree_sync_unit_for(spec: DeploymentSpec) -> String {
-  render(doc: emit_tree_sync_unit_doc(spec: spec, tree_path: spec.service.repo_root as String), proto: live_deploy_protocol)
+fn live_deploy_tree_sync_unit_for(spec: gunbc.live_deploy.spec.DeploymentSpec) -> String {
+  std.layout.render(doc: emit_tree_sync_unit_doc(spec: spec, tree_path: spec.service.repo_root as String), proto: live_deploy_protocol)
 }
 
-fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipeline {
-  Pipeline {
+fn deployment_ensure_dependency_intent(dep: gunbc.live_deploy.spec.DeploymentDependencyStep) -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: ensure_dependency_steps(dep: dep, privileged: false),
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
-fn deployment_ensure_dependency_script(dep: DeploymentDependencyStep) -> String {
+fn deployment_ensure_dependency_script(dep: gunbc.live_deploy.spec.DeploymentDependencyStep) -> String {
   emit_pipeline_or_poison(p: deployment_ensure_dependency_intent(dep: dep), refused: live_deploy_ensure_dep_emit_refused_poison)
 }
 
 data emitted_shell_parseability_oracle_note: String = "THE ORACLE THIS PR'S OWN DIAGNOSIS ARGUES FOR AND DOES NOT YET BUILD, written down rather than left implicit (review, 2026-07-30). The refusal-arm defect established that a byte-equality golden gate and target-language VALIDITY are different oracle families, and only the first exists over these two artifacts. What landed in response was a string-shape claim about one call site — the escape form present, the raw apostrophe absent — which closes that site and says nothing about the next hand-quoted one.\\n\\nSo the class is open and this row names its closure rather than implying the point fix covered it. The repo already has the machinery: a bounded bash grammar and serialize_bash, read forward, ingest the emitted script and refuse on a parse failure — the same one-grammar-both-directions move DESIGN 4 describes, with a bash -n gate over the two committed artifacts as the cheaper interim if the grammar's coverage of this dialect proves short.\\n\\nThe point fix it described is now gone with its subject: the arm that needed quoting was the tailscale teardown refusal, and that refusal was itself built on a false claim about the CLI, so the emitter no longer quotes anything by hand. That REMOVES a call site; it does not close the class, and the bound is now worse rather than better — with no hand-quoted site left in this module, nothing here would red if the next one were introduced.\\n\\nDISSOLVES ON: both generated deploy scripts parsed by an executing consumer on every emit, with a discriminating RED that introduces a hand-concatenated quote at any call site and goes red on the parse rather than on a string shape. The shared authority itself stays independently witnessed at shell_quote_escapes_an_embedded_apostrophe, which does not depend on this module having a caller."
 
-data live_deploy_emit_shell_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+data live_deploy_emit_shell_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.RealizationDispatch,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.emit",
     decl_name: "live_deploy_apply_script_for",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data live_deploy_retract_emit_shell_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+data live_deploy_retract_emit_shell_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.RealizationDispatch,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.emit",
     decl_name: "live_deploy_retract_script_for",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.RealizationDispatch,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.emit",
     decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
-data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+data live_deploy_intent_dependency_graph_emit_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.RealizationDispatch,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.compiler.emit_orchestration",
     decl_name: "orch_emit_pipeline",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 

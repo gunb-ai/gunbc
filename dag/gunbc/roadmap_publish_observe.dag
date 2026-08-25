@@ -8,7 +8,7 @@ data remote_branch_observation_note: String = "THE REFUSAL IS BUILT FROM A VALUE
 fn advertised_ref_to_remote_branch(r: extdeps.git.AdvertisedRef, remote: std.types.NonEmptyStr) -> gunbc.roadmap_publish.RemoteBranch {
   gunbc.roadmap_publish.RemoteBranch {
     remote: remote,
-    branch: advertised_ref_branch_name(ref_name: r.ref_name) as std.types.NonEmptyStr,
+    branch: extdeps.git.advertised_ref_branch_name(ref_name: r.ref_name) as std.types.NonEmptyStr,
     head_sha: r.object_id,
   }
 }
@@ -17,7 +17,7 @@ data empty_branch_projection_note: String = "WHY AN EMPTY PROJECTED BRANCH NAME 
 
 // COUNTING THE OFFENDERS THREW AWAY WHICH ONES THEY WERE. This returned an Int, the caller compared it to zero, and the refusal it built could say only that some head ref projected to an empty branch name. The identity was in hand at the moment of the test and discarded before the refusal was constructed, so a reader of the refusal had to re-run the projection over the whole advertisement to learn which ref caused it.\n\nRETURNING THE REFS THEMSELVES IS ALSO STRICTLY LESS WORK, which is the tell that the count was never the cheaper choice: the filter already built the offending set and count() then collapsed it. The caller now branches on whether that set is empty, so the same single filter decides the question AND supplies the evidence.\n\nTHE SET, NOT THE FIRST OF IT. This module's no_silent_pick_note bans reaching for the head of a list whose length was never established, and an advertisement may in principle carry more than one degenerate ref. Carrying every offender keeps the refusal 0/1/many-honest without adjudicating a uniqueness nobody established, and the arm is constructed only when the set is nonempty.
 fn advertised_refs_projecting_empty_branch(refs: List<extdeps.git.AdvertisedRef>) -> List<extdeps.git.AdvertisedRef> {
-  filter(refs, r => advertised_ref_branch_name(ref_name: r.ref_name) == "")
+  filter(refs, r => extdeps.git.advertised_ref_branch_name(ref_name: r.ref_name) == "")
 }
 
 data transport_shim_split_note: String = "THE READING IS PURE; ONLY THE CALL IS NOT. remote_branch_observation_of takes exactly the three values git.Core.LsRemoteHeads returns and decides everything from them, so every arm - refused, unparseable line, empty projected branch, read - is reachable in a hermetic witness with no remote and no credentials. observe_remote_branches is then a projection with no branches of its own.\\n\\nThe split exists because the alternative is a function whose refusal arms can only be reached by having a real remote fail in a real way, which is to say never reached in CI and therefore never proven. Keeping the decision above the transport is what makes the evidence executable rather than aspirational."
@@ -37,8 +37,8 @@ fn remote_branch_observation_of(
       },
     }
   } else {
-    match scan_advertised_refs(lines: advertised) {
-      AdvertisedRefLineUnparsed { line, index } =>
+    match extdeps.git.scan_advertised_refs(lines: advertised) {
+      extdeps.git.AdvertisedRefLineUnparsed { line, index } =>
         gunbc.roadmap_publish.RemoteBranchesUnreadable {
           cause: gunbc.roadmap_publish.AdvertisedLineUnparsed {
             remote: remote,
@@ -46,7 +46,7 @@ fn remote_branch_observation_of(
             line: line,
           },
         }
-      AdvertisedRefsRead { refs } =>
+      extdeps.git.AdvertisedRefsRead { refs } =>
         let degenerate = advertised_refs_projecting_empty_branch(refs: refs)
         if count(degenerate) > 0 {
           gunbc.roadmap_publish.RemoteBranchesUnreadable {
@@ -113,7 +113,7 @@ fn observe_worktree_repository_binding(
     exit_code: result.exit_code,
     stderr: result.stderr,
     url: result.url,
-    expected: github_https_clone_url(repo: repo),
+    expected: extdeps.github.github.github_https_clone_url(repo: repo),
   )
 }
 
@@ -145,8 +145,8 @@ fn observe_pull_requests(
         state: extdeps.github.pulls.Open,
       )
       match result.outcome {
-        RestOk => gunbc.roadmap_publish.PullRequestsRead { pulls: result.pulls }
-        RestStatusRefused { status, body } =>
+        extdeps.transports.rest.RestOk => gunbc.roadmap_publish.PullRequestsRead { pulls: result.pulls }
+        extdeps.transports.rest.RestStatusRefused { status, body } =>
           gunbc.roadmap_publish.PullRequestsUnreadable {
             cause: gunbc.roadmap_publish.PullRequestStatusRefused {
               repository: repo.full_name,
@@ -154,14 +154,14 @@ fn observe_pull_requests(
               body: body,
             },
           }
-        RestTransportRefused { cause } =>
+        extdeps.transports.rest.RestTransportRefused { cause } =>
           gunbc.roadmap_publish.PullRequestsUnreadable {
             cause: gunbc.roadmap_publish.PullRequestTransportRefused {
               repository: repo.full_name,
               cause: cause,
             },
           }
-        RestBodyUndecodable { status, cause } =>
+        extdeps.transports.rest.RestBodyUndecodable { status, cause } =>
           gunbc.roadmap_publish.PullRequestsUnreadable {
             cause: gunbc.roadmap_publish.PullRequestBodyUndecodable {
               repository: repo.full_name,
@@ -182,8 +182,8 @@ fn observe_publication_for_subject(
   credential: PublicationCredentialSource,
   subject: gunbc.roadmap_publish.RoadmapPublicationSubject,
 ) -> gunbc.roadmap_publish.PublicationOutcome {
-  let remote = publication_subject_remote(subject: subject)
-  adjudicate_publication(
+  let remote = gunbc.roadmap_publish.publication_subject_remote(subject: subject)
+  gunbc.roadmap_publish.adjudicate_publication(
     pulls: observe_pull_requests(
       credential: credential,
       repo: subject.repository,

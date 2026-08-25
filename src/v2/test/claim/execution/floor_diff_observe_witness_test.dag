@@ -1,33 +1,33 @@
 module v2.test.execution.floor_diff_observe_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn witness_ci_policy_observation_succeeds() -> Bool {
-  match floor_observe_git_diff_unified_for_ci() {
-    UnifiedDiffOk { text: _ } => true
-    UnifiedDiffFail { reason: _ } => false
+  match v2.workflow.floor_diff_observe.floor_observe_git_diff_unified_for_ci() {
+    v2.workflow.floor_diff_observe.UnifiedDiffOk { text: _ } => true
+    v2.workflow.floor_diff_observe.UnifiedDiffFail { reason: _ } => false
   }
 }
 
 test fn witness_invalid_base_fails_closed() -> Bool {
-  match floor_run_git_diff_unified(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: DiffMergeBase) {
-    UnifiedDiffFail { reason: _ } => true
-    UnifiedDiffOk { text: _ } => false
+  match v2.workflow.floor_diff_observe.floor_run_git_diff_unified(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: gunbc.ci_spec.DiffMergeBase) {
+    v2.workflow.floor_diff_observe.UnifiedDiffFail { reason: _ } => true
+    v2.workflow.floor_diff_observe.UnifiedDiffOk { text: _ } => false
   }
 }
 
 test fn witness_ci_policy_name_status_observation_succeeds() -> Bool {
-  match floor_observe_git_diff_name_status_for_ci() {
-    NameStatusDiffOk { changed_paths: _, departed_paths: _ } => true
-    NameStatusDiffFail { reason: _ } => false
+  match v2.workflow.floor_diff_observe.floor_observe_git_diff_name_status_for_ci() {
+    v2.workflow.floor_diff_observe.NameStatusDiffOk { changed_paths: _, departed_paths: _ } => true
+    v2.workflow.floor_diff_observe.NameStatusDiffFail { reason: _ } => false
   }
 }
 
 test fn witness_invalid_base_name_status_fails_closed() -> Bool {
-  match floor_run_git_diff_name_status(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: DiffMergeBase) {
-    NameStatusDiffFail { reason: _ } => true
-    NameStatusDiffOk { changed_paths: _, departed_paths: _ } => false
+  match v2.workflow.floor_diff_observe.floor_run_git_diff_name_status(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: gunbc.ci_spec.DiffMergeBase) {
+    v2.workflow.floor_diff_observe.NameStatusDiffFail { reason: _ } => true
+    v2.workflow.floor_diff_observe.NameStatusDiffOk { changed_paths: _, departed_paths: _ } => false
   }
 }
 

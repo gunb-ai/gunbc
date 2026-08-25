@@ -1,8 +1,10 @@
 module extdeps.cargo
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "doc.rust-lang.org/cargo/"
   }
 }
@@ -24,17 +26,17 @@ fn rust_edition_str(edition: RustEdition) -> String {
 
 data default_rust_edition: RustEdition = Edition2021
 
-data min_cargo_version: CargoToolVersionFloor = ">= 1.56"
+data min_cargo_version: extdeps.cargo_version.CargoToolVersionFloor = ">= 1.56"
 
 type CargoPackage {
   name: String
-  version: CargoPackageVersion
+  version: extdeps.cargo_version.CargoPackageVersion
   edition: RustEdition
   path: String
 }
 
 type CargoDepSource
-  = RegistryDep  { version: CargoVersionRequirement, features: List<String> }
+  = RegistryDep  { version: extdeps.cargo_version.CargoVersionRequirement, features: List<String> }
   | LocalPathDep { path: String }
 
 type CargoDependency {
@@ -49,25 +51,25 @@ type CargoTarget
   | Example { name: String }
   | Bench { name: String }
 
-fn cargo_target_source_path(target: CargoTarget, package_name: String) -> FilePathParts {
+fn cargo_target_source_path(target: CargoTarget, package_name: String) -> std.types.FilePathParts {
   match target {
-    Lib => FilePathParts { segments: ["src", "lib.rs"] }
+    Lib => std.types.FilePathParts { segments: ["src", "lib.rs"] }
     Bin { name: name } =>
       if name == package_name {
-        FilePathParts { segments: ["src", "main.rs"] }
+        std.types.FilePathParts { segments: ["src", "main.rs"] }
       } else {
-        FilePathParts { segments: ["src", "bin", concat(name, ".rs")] }
+        std.types.FilePathParts { segments: ["src", "bin", concat(name, ".rs")] }
       }
-    CargoTest { name: name } => FilePathParts { segments: ["tests", concat(name, ".rs")] }
-    Example { name: name } => FilePathParts { segments: ["examples", concat(name, ".rs")] }
-    Bench { name: name } => FilePathParts { segments: ["benches", concat(name, ".rs")] }
+    CargoTest { name: name } => std.types.FilePathParts { segments: ["tests", concat(name, ".rs")] }
+    Example { name: name } => std.types.FilePathParts { segments: ["examples", concat(name, ".rs")] }
+    Bench { name: name } => std.types.FilePathParts { segments: ["benches", concat(name, ".rs")] }
   }
 }
 
-fn rust_module_candidate_paths(stem: String) -> List<FilePathParts> {
+fn rust_module_candidate_paths(stem: String) -> List<std.types.FilePathParts> {
   [
-    FilePathParts { segments: ["src", concat(stem, ".rs")] },
-    FilePathParts { segments: ["src", stem, "mod.rs"] }
+    std.types.FilePathParts { segments: ["src", concat(stem, ".rs")] },
+    std.types.FilePathParts { segments: ["src", stem, "mod.rs"] }
   ]
 }
 
@@ -95,9 +97,9 @@ data default_profile: CargoProfile = "dev"
 // upstream product with its own book and its own release cadence (DESIGN section 3, external
 // upstream decomposition), so its variable lives in extdeps.rustup; enumerating it here would
 // make a rustup change require editing cargo's module.
-data cargo_environment_variables_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data cargo_environment_variables_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "doc.rust-lang.org/cargo/reference/environment-variables.html"
   }
 }
@@ -116,7 +118,7 @@ type CargoEnvironmentVariable
 // rendering it again here would be the DESIGN section 3 fork this migration exists to remove,
 // committed by the change removing it. Callers pair a name from this function with an EnvSet
 // binding and let extdeps.tools.env env_bindings_argv render the operand.
-fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> NonEmptyStr {
+fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> std.types.NonEmptyStr {
   match variable {
     CargoHomeEnv => "CARGO_HOME"
     CargoTargetDirEnv => "CARGO_TARGET_DIR"

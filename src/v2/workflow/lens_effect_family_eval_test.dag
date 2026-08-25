@@ -1,10 +1,10 @@
 module v2.test.workflow.lens_effect_family_eval
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn lens_effect_family_gate() -> v2.std.logic.Bool {
-  effect_depends_on_claim_passes
+fn lens_effect_family_gate() -> Bool {
+  v2.test.lens_effect.effect_depends_on.effect_depends_on_claim_passes
 }
 
-test data witness_lens_effect_family_gate_closed: v2.std.logic.Bool = lens_effect_family_gate()
+test data witness_lens_effect_family_gate_closed: Bool = lens_effect_family_gate()

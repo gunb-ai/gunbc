@@ -29,15 +29,15 @@ type LeafModelFixture<C> {
   claim: C
   artifact: TargetArtifact
   invocation: TargetInvocation
-  expected_verdict: Verdict<Symbol, Symbol>
+  expected_verdict: v2.std.verdict.Verdict<v2.std.node.Symbol, v2.std.node.Symbol>
   falsification_artifact: TargetArtifact
-  expected_falsification_verdict: Verdict<Symbol, Symbol>
+  expected_falsification_verdict: v2.std.verdict.Verdict<v2.std.node.Symbol, v2.std.node.Symbol>
 }
 
 type LeafModelClaimVerdictRow {
   claim_id: v2.std.node.Symbol
-  verdict: Verdict<Symbol, Symbol>
-  falsification_verdict: Verdict<Symbol, Symbol>
+  verdict: v2.std.verdict.Verdict<v2.std.node.Symbol, v2.std.node.Symbol>
+  falsification_verdict: v2.std.verdict.Verdict<v2.std.node.Symbol, v2.std.node.Symbol>
 }
 
 type LeafModelVerificationTotals {
@@ -120,7 +120,7 @@ type LeafModelCrossRuntimeDriftProbe {
   arbitrary_precision_source: String
   fixed_width_rust_source: String
   fixed_width_go_source: String
-  expected_divergence: ValueDiff<String>
+  expected_divergence: v2.std.host_run.ValueDiff<String>
 }
 
 type LeafModelCrossTargetParityProbe {
@@ -132,7 +132,7 @@ type LeafModelCrossTargetParityProbe {
   python_source: String
   rust_source: String
   go_source: String
-  expected_parity: ValueDiff<String>
+  expected_parity: v2.std.host_run.ValueDiff<String>
 }
 
 type LeafModelRustCrateType = v2.std.node.Symbol
@@ -305,30 +305,30 @@ type LeafModelTypeScriptRuntimeFixturePair {
 
 type LeafModelVerificationRunReceipt {
   claim_id: LeafModelClaimId
-  happy_verdict: Verdict<LeafModelClaimId, TargetCompileVerdict>
-  falsification_verdict: Verdict<LeafModelClaimId, TargetCompileVerdict>
+  happy_verdict: v2.std.verdict.Verdict<LeafModelClaimId, TargetCompileVerdict>
+  falsification_verdict: v2.std.verdict.Verdict<LeafModelClaimId, TargetCompileVerdict>
 }
 
 type LeafModelRuntimeVerificationRunReceipt {
   claim_id: LeafModelClaimId
-  happy_verdict: Verdict<LeafModelClaimId, TargetRuntimeExerciseVerdict>
-  falsification_verdict: Verdict<LeafModelClaimId, TargetRuntimeExerciseVerdict>
+  happy_verdict: v2.std.verdict.Verdict<LeafModelClaimId, TargetRuntimeExerciseVerdict>
+  falsification_verdict: v2.std.verdict.Verdict<LeafModelClaimId, TargetRuntimeExerciseVerdict>
 }
 
 fn leaf_model_verification_claim_passes(
   receipt: LeafModelVerificationRunReceipt
-) -> Verdict<LeafModelClaimId, TargetCompileVerdict> {
-  verdict_combine(a: receipt.happy_verdict, b: receipt.falsification_verdict)
+) -> v2.std.verdict.Verdict<LeafModelClaimId, TargetCompileVerdict> {
+  v2.std.verdict.verdict_combine(a: receipt.happy_verdict, b: receipt.falsification_verdict)
 }
 
 fn leaf_model_verification_combine_runs(
   runs: List<LeafModelVerificationRunReceipt>
-) -> Verdict<LeafModelClaimId, TargetCompileVerdict> {
+) -> v2.std.verdict.Verdict<LeafModelClaimId, TargetCompileVerdict> {
   fold(
     runs,
     init: Pass,
     f: fn(acc, r) {
-      verdict_combine(a: acc, b: leaf_model_verification_claim_passes(receipt: r))
+      v2.std.verdict.verdict_combine(a: acc, b: leaf_model_verification_claim_passes(receipt: r))
     }
   )
 }

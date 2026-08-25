@@ -4,14 +4,14 @@ module extdeps.transports.rest
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.rfc-editor.org/rfc/rfc9110"
   }
 }
 
 data rest_basic_auth_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.rfc-editor.org/rfc/rfc7617"
   }
 }
@@ -125,7 +125,7 @@ fn rest_fixture_scan(
     let next = if matches {
       RestFixtureScan {
         count: scan.count + 1,
-        observation: Present { value: fixture.observation },
+        observation: v2.std.optional.Present { value: fixture.observation },
       }
     } else {
       scan
@@ -148,29 +148,29 @@ fn rest_exchange_fixture_lookup(
     fixtures: fixtures,
     store: store,
     invocation: invocation,
-    scan: RestFixtureScan { count: 0, observation: Absent },
+    scan: RestFixtureScan { count: 0, observation: v2.std.optional.Absent },
   )
   if scan.count == 0 {
     RestFixtureAbsent { invocation: invocation }
   } else if scan.count == 1 {
     match scan.observation {
-      Present { value } => RestFixtureFound { observation: value }
-      Absent => RestFixtureAbsent { invocation: invocation }
+      v2.std.optional.Present { value } => RestFixtureFound { observation: value }
+      v2.std.optional.Absent => RestFixtureAbsent { invocation: invocation }
     }
   } else {
     RestFixtureAmbiguous { invocation: invocation, count: scan.count }
   }
 }
 
-fn rest_method_verb(method: std.types.HttpMethod) -> std.effect_grant.Verb {
+fn rest_method_verb(method: std.types.HttpMethod) -> Verb {
   match method {
-    GET => Read
-    HEAD => Read
-    OPTIONS => Read
-    POST => Write
-    PUT => Write
-    PATCH => Write
-    DELETE => Write
+    std.types.GET => std.effect_grant.Read
+    std.types.HEAD => std.effect_grant.Read
+    std.types.OPTIONS => std.effect_grant.Read
+    std.types.POST => std.effect_grant.Write
+    std.types.PUT => std.effect_grant.Write
+    std.types.PATCH => std.effect_grant.Write
+    std.types.DELETE => std.effect_grant.Write
   }
 }
 
@@ -186,13 +186,13 @@ type RestHandlerSelection
   | RestHandlerUncovered { invocation: RestBoundOperationInvocation }
 
 fn rest_handler_selection(env: std.effect_grant.Envelope, invocation: RestBoundOperationInvocation) -> RestHandlerSelection {
-  match covering_grant(
+  match std.effect_grant.covering_grant(
     env: env,
     verb: rest_method_verb(method: invocation.method),
     target: rest_operation_position(at: invocation.at),
   ) {
-    CoveredBy { grant } => RestHandlerSelected { binding: grant.binding }
-    NoCoveringGrant { verb: _, target: _, frame: _ } => RestHandlerUncovered { invocation: invocation }
+    std.effect_grant.CoveredBy { grant } => RestHandlerSelected { binding: grant.binding }
+    std.effect_grant.NoCoveringGrant { verb: _, target: _, frame: _ } => RestHandlerUncovered { invocation: invocation }
   }
 }
 
@@ -227,6 +227,6 @@ fn rest_exchange_resolution(
   }
 }
 
-data rest_auth_scheme_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "a REST realization selects its auth by matching RestAuthScheme rather than reading auth by shape (config-level Bearer/Header via svc_auth, transport-level BasicCredentials via the inline auth_basic record); until then the type is forward-looking scaffolding with no matching consumer")
+data rest_auth_scheme_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "a REST realization selects its auth by matching RestAuthScheme rather than reading auth by shape (config-level Bearer/Header via svc_auth, transport-level BasicCredentials via the inline auth_basic record); until then the type is forward-looking scaffolding with no matching consumer")
 
-data rest_target_form_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "a REST realization matches RestTargetForm rather than reaching absolute-form targeting through an empty config base plus a full-URL path template; until then the interp/emit concat of base_url and path is the only realization and the type has no matching consumer")
+data rest_target_form_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "a REST realization matches RestTargetForm rather than reaching absolute-form targeting through an empty config base plus a full-URL path template; until then the interp/emit concat of base_url and path is the only realization and the type has no matching consumer")

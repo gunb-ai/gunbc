@@ -4,72 +4,72 @@ module gunbc.site.moodboard
 data moodboard_note: String = "Layer 6: the page. Everything visible projects from the layers below — principles (laws) -> tokens (themes/materials/timing) -> interaction (behavior rows) -> mark / constellation (figures) -> this composition. Every color routes through a theme role var: :root carries the night theme, one prefers-color-scheme media block carries the day theme, both derived from the same Theme rows (one rule set, N themes — a hardcoded hsl in a page rule is the fork this construction removes). The stylesheet is DERIVED from the behavior rows via realize_behavior, so a declared behavior with no realization is countable."
 
 data moodboard_elements: List<gunbc.design.interaction.InteractiveElement> = [
-  gunbc.design.interaction.InteractiveElement { element: StarElement, verbs: [Approach] },
-  gunbc.design.interaction.InteractiveElement { element: HashElement, verbs: [Approach] },
-  gunbc.design.interaction.InteractiveElement { element: SwatchElement, verbs: [Approach] },
+  gunbc.design.interaction.InteractiveElement { element: gunbc.design.interaction.StarElement, verbs: [gunbc.design.interaction.Approach] },
+  gunbc.design.interaction.InteractiveElement { element: gunbc.design.interaction.HashElement, verbs: [gunbc.design.interaction.Approach] },
+  gunbc.design.interaction.InteractiveElement { element: gunbc.design.interaction.SwatchElement, verbs: [gunbc.design.interaction.Approach] },
 ]
 
 data moodboard_behaviors: List<gunbc.design.interaction.BehaviorRow> = [
-  gunbc.design.interaction.BehaviorRow { element: StarElement, verb: Approach, response: Brighten, timing: respond_fast },
-  gunbc.design.interaction.BehaviorRow { element: StarElement, verb: Approach, response: Reveal, timing: reveal_deliberate },
-  gunbc.design.interaction.BehaviorRow { element: HashElement, verb: Approach, response: Reveal, timing: reveal_deliberate },
-  gunbc.design.interaction.BehaviorRow { element: SwatchElement, verb: Approach, response: Brighten, timing: respond_fast },
+  gunbc.design.interaction.BehaviorRow { element: gunbc.design.interaction.StarElement, verb: gunbc.design.interaction.Approach, response: gunbc.design.interaction.Brighten, timing: gunbc.design.material.respond_fast },
+  gunbc.design.interaction.BehaviorRow { element: gunbc.design.interaction.StarElement, verb: gunbc.design.interaction.Approach, response: gunbc.design.interaction.Reveal, timing: gunbc.design.material.reveal_deliberate },
+  gunbc.design.interaction.BehaviorRow { element: gunbc.design.interaction.HashElement, verb: gunbc.design.interaction.Approach, response: gunbc.design.interaction.Reveal, timing: gunbc.design.material.reveal_deliberate },
+  gunbc.design.interaction.BehaviorRow { element: gunbc.design.interaction.SwatchElement, verb: gunbc.design.interaction.Approach, response: gunbc.design.interaction.Brighten, timing: gunbc.design.material.respond_fast },
 ]
 
 fn approach_triggers() -> List<gunbc.design.material.MotionTrigger> {
-  [OnHover, OnFocusVisible]
+  [gunbc.design.material.OnHover, gunbc.design.material.OnFocusVisible]
 }
 
 fn star_brighten_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(approach_triggers(), t =>
     gunbc.design.material.ResponseRule {
-      subject: extdeps.languages.css.selectors.ClassSelector { name: "star" },
-      shape: SelfResponse,
+      subject: ClassSelector { name: "star" },
+      shape: gunbc.design.material.SelfResponse,
       trigger: t,
       transition_props: "fill",
       timing: timing,
-      base_decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer") ],
-      response_decls: [ role_decl(prop: Fill, r: FigureLitRole) ],
+      base_decls: [ gunbc.design.theme.role_decl(prop: Fill, r: gunbc.design.theme.FigureRole), gunbc.design.material.decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer") ],
+      response_decls: [ gunbc.design.theme.role_decl(prop: Fill, r: gunbc.design.theme.FigureLitRole) ],
     })
 }
 
 fn star_legend_reveal_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
-  fold(layer_stars, init: [], f: (acc, s) =>
+  fold(gunbc.site.constellation.layer_stars, init: [], f: (acc, s) =>
     concat(acc, map(approach_triggers(), t =>
       gunbc.design.material.ResponseRule {
-        subject: extdeps.languages.css.selectors.RawSelector { text: concat(".star-", s.key) },
+        subject: RawSelector { text: concat(".star-", s.key) },
         shape: gunbc.design.material.ContainerHas { container: ".hero", target: concat(".legend-", s.key) },
         trigger: t,
         transition_props: "opacity",
         timing: timing,
-        base_decls: [ decl(prop: Opacity, value: "0.5") ],
-        response_decls: [ decl(prop: Opacity, value: "1") ],
+        base_decls: [ gunbc.design.material.decl(prop: Opacity, value: "0.5") ],
+        response_decls: [ gunbc.design.material.decl(prop: Opacity, value: "1") ],
       })))
 }
 
 fn hash_reveal_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(approach_triggers(), t =>
     gunbc.design.material.ResponseRule {
-      subject: extdeps.languages.css.selectors.ClassSelector { name: "hash" },
+      subject: ClassSelector { name: "hash" },
       shape: gunbc.design.material.WithinSubject { target: ".hash-full" },
       trigger: t,
       transition_props: "opacity",
       timing: timing,
-      base_decls: [ decl(prop: Opacity, value: "0") ],
-      response_decls: [ decl(prop: Opacity, value: "1") ],
+      base_decls: [ gunbc.design.material.decl(prop: Opacity, value: "0") ],
+      response_decls: [ gunbc.design.material.decl(prop: Opacity, value: "1") ],
     })
 }
 
 fn swatch_brighten_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(approach_triggers(), t =>
     gunbc.design.material.ResponseRule {
-      subject: extdeps.languages.css.selectors.ClassSelector { name: "swatch" },
-      shape: SelfResponse,
+      subject: ClassSelector { name: "swatch" },
+      shape: gunbc.design.material.SelfResponse,
       trigger: t,
       transition_props: "border-color",
       timing: timing,
-      base_decls: [ decl(prop: Border, value: "1px solid var(--border)") ],
-      response_decls: [ role_decl(prop: BorderColor, r: FigureEdgeRole) ],
+      base_decls: [ gunbc.design.material.decl(prop: Border, value: "1px solid var(--border)") ],
+      response_decls: [ gunbc.design.theme.role_decl(prop: BorderColor, r: gunbc.design.theme.FigureEdgeRole) ],
     })
 }
 
@@ -79,17 +79,17 @@ type RealizedBehavior
 
 fn realize_behavior(row: gunbc.design.interaction.BehaviorRow) -> RealizedBehavior {
   let e = row.element
-  let r = response_key(r: row.response)
-  if element_id_eq(a: e, b: StarElement) && r == "brighten" {
+  let r = gunbc.design.interaction.response_key(r: row.response)
+  if gunbc.design.interaction.element_id_eq(a: e, b: gunbc.design.interaction.StarElement) && r == "brighten" {
     RealizedRules { rules: star_brighten_rules(timing: row.timing) }
-  } else if element_id_eq(a: e, b: StarElement) && r == "reveal" {
+  } else if gunbc.design.interaction.element_id_eq(a: e, b: gunbc.design.interaction.StarElement) && r == "reveal" {
     RealizedRules { rules: star_legend_reveal_rules(timing: row.timing) }
-  } else if element_id_eq(a: e, b: HashElement) && r == "reveal" {
+  } else if gunbc.design.interaction.element_id_eq(a: e, b: gunbc.design.interaction.HashElement) && r == "reveal" {
     RealizedRules { rules: hash_reveal_rules(timing: row.timing) }
-  } else if element_id_eq(a: e, b: SwatchElement) && r == "brighten" {
+  } else if gunbc.design.interaction.element_id_eq(a: e, b: gunbc.design.interaction.SwatchElement) && r == "brighten" {
     RealizedRules { rules: swatch_brighten_rules(timing: row.timing) }
   } else {
-    UnrealizedBehavior { element: element_id_key(id: e), verb: verb_key(v: row.verb), response: r }
+    UnrealizedBehavior { element: element_id_key(id: e), verb: gunbc.design.interaction.verb_key(v: row.verb), response: r }
   }
 }
 
@@ -110,113 +110,113 @@ fn behavior_rules(rows: List<gunbc.design.interaction.BehaviorRow>) -> List<gunb
 
 fn figure_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mark-point" }, decls: [ role_decl(prop: Fill, r: FigureRole) ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mark-sink" }, decls: [ role_decl(prop: Fill, r: FocusRole) ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mark-halo" }, decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Opacity, value: "0.16") ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mark-halo-sink" }, decls: [ role_decl(prop: Fill, r: FocusRole) ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mark-edge" }, decls: [ role_decl(prop: Stroke, r: FigureEdgeRole) ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "sky-edge" }, decls: [ role_decl(prop: Stroke, r: FigureEdgeRole) ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "star-halo" }, decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Opacity, value: "0.1") ] },
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "mark-point" }, decls: [ gunbc.design.theme.role_decl(prop: Fill, r: gunbc.design.theme.FigureRole) ] },
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "mark-sink" }, decls: [ gunbc.design.theme.role_decl(prop: Fill, r: gunbc.design.theme.FocusRole) ] },
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "mark-halo" }, decls: [ gunbc.design.theme.role_decl(prop: Fill, r: gunbc.design.theme.FigureRole), gunbc.design.material.decl(prop: Opacity, value: "0.16") ] },
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "mark-halo-sink" }, decls: [ gunbc.design.theme.role_decl(prop: Fill, r: gunbc.design.theme.FocusRole) ] },
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "mark-edge" }, decls: [ gunbc.design.theme.role_decl(prop: Stroke, r: gunbc.design.theme.FigureEdgeRole) ] },
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "sky-edge" }, decls: [ gunbc.design.theme.role_decl(prop: Stroke, r: gunbc.design.theme.FigureEdgeRole) ] },
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "star-halo" }, decls: [ gunbc.design.theme.role_decl(prop: Fill, r: gunbc.design.theme.FigureRole), gunbc.design.material.decl(prop: Opacity, value: "0.1") ] },
   ]
 }
 
 fn static_rules() -> List<gunbc.design.material.BuildRule> {
   [
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "body" }, decls: [
-      role_decl(prop: Background, r: CanvasRole),
-      role_decl(prop: Color, r: TextRole),
-      decl(prop: FontFamily, value: "'Noto Sans', system-ui, sans-serif"),
-      decl(prop: Margin, value: "0"),
-      decl(prop: LineHeight, value: "1.55"),
+    gunbc.design.material.StaticRule { selector: ElementSelector { tag: "body" }, decls: [
+      gunbc.design.theme.role_decl(prop: Background, r: gunbc.design.theme.CanvasRole),
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextRole),
+      gunbc.design.material.decl(prop: FontFamily, value: "'Noto Sans', system-ui, sans-serif"),
+      gunbc.design.material.decl(prop: Margin, value: "0"),
+      gunbc.design.material.decl(prop: LineHeight, value: "1.55"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "main" }, decls: [
-      decl(prop: MaxWidth, value: "54rem"),
-      decl(prop: Margin, value: "0 auto"),
-      decl(prop: Padding, value: "3rem 1.5rem 4rem"),
+    gunbc.design.material.StaticRule { selector: ElementSelector { tag: "main" }, decls: [
+      gunbc.design.material.decl(prop: MaxWidth, value: "54rem"),
+      gunbc.design.material.decl(prop: Margin, value: "0 auto"),
+      gunbc.design.material.decl(prop: Padding, value: "3rem 1.5rem 4rem"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "wordmark" }, decls: [
-      decl(prop: FontSize, value: "1.4rem"),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: LetterSpacing, value: "0.01em"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "wordmark" }, decls: [
+      gunbc.design.material.decl(prop: FontSize, value: "1.4rem"),
+      gunbc.design.material.decl(prop: FontWeight, value: "500"),
+      gunbc.design.material.decl(prop: LetterSpacing, value: "0.01em"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "thesis" }, decls: [
-      role_decl(prop: Color, r: TextDimRole),
-      decl(prop: Margin, value: "0.25rem 0 0"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "thesis" }, decls: [
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextDimRole),
+      gunbc.design.material.decl(prop: Margin, value: "0.25rem 0 0"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "section" }, decls: [
-      decl(prop: MarginTop, value: "3rem"),
+    gunbc.design.material.StaticRule { selector: ElementSelector { tag: "section" }, decls: [
+      gunbc.design.material.decl(prop: MarginTop, value: "3rem"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ElementSelector { tag: "h2" }, decls: [
-      decl(prop: FontSize, value: "0.85rem"),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: LetterSpacing, value: "0.08em"),
-      decl(prop: TextTransform, value: "lowercase"),
-      role_decl(prop: Color, r: TextDimRole),
+    gunbc.design.material.StaticRule { selector: ElementSelector { tag: "h2" }, decls: [
+      gunbc.design.material.decl(prop: FontSize, value: "0.85rem"),
+      gunbc.design.material.decl(prop: FontWeight, value: "500"),
+      gunbc.design.material.decl(prop: LetterSpacing, value: "0.08em"),
+      gunbc.design.material.decl(prop: TextTransform, value: "lowercase"),
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextDimRole),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "panel" }, decls: [
-      role_decl(prop: Background, r: SurfaceRole),
-      decl(prop: Border, value: "1px solid var(--border)"),
-      decl(prop: BorderRadius, value: "3px"),
-      decl(prop: Padding, value: "1.1rem 1.25rem"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "panel" }, decls: [
+      gunbc.design.theme.role_decl(prop: Background, r: gunbc.design.theme.SurfaceRole),
+      gunbc.design.material.decl(prop: Border, value: "1px solid var(--border)"),
+      gunbc.design.material.decl(prop: BorderRadius, value: "3px"),
+      gunbc.design.material.decl(prop: Padding, value: "1.1rem 1.25rem"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mono" }, decls: [
-      decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
-      decl(prop: FontSize, value: "0.82em"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "mono" }, decls: [
+      gunbc.design.material.decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
+      gunbc.design.material.decl(prop: FontSize, value: "0.82em"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "mark" }, decls: [
-      decl(prop: Height, value: "3rem"),
-      decl(prop: MarginRight, value: "1.5rem"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "mark" }, decls: [
+      gunbc.design.material.decl(prop: Height, value: "3rem"),
+      gunbc.design.material.decl(prop: MarginRight, value: "1.5rem"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "constellation" }, decls: [
-      decl(prop: Width, value: "100%"),
-      decl(prop: Height, value: "auto"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "constellation" }, decls: [
+      gunbc.design.material.decl(prop: Width, value: "100%"),
+      gunbc.design.material.decl(prop: Height, value: "auto"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "hero" }, decls: [
-      decl(prop: Margin, value: "0"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "hero" }, decls: [
+      gunbc.design.material.decl(prop: Margin, value: "0"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "legend" }, decls: [
-      decl(prop: ListStyle, value: "none"),
-      decl(prop: Padding, value: "0"),
-      decl(prop: FontSize, value: "0.85rem"),
-      role_decl(prop: Color, r: TextDimRole),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "legend" }, decls: [
+      gunbc.design.material.decl(prop: ListStyle, value: "none"),
+      gunbc.design.material.decl(prop: Padding, value: "0"),
+      gunbc.design.material.decl(prop: FontSize, value: "0.85rem"),
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextDimRole),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "legend-key" }, decls: [
-      decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
-      role_decl(prop: Color, r: TextRole),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "legend-key" }, decls: [
+      gunbc.design.material.decl(prop: FontFamily, value: "'JetBrains Mono', monospace"),
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextRole),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "swatch" }, decls: [
-      decl(prop: Display, value: "inline-block"),
-      decl(prop: BorderRadius, value: "3px"),
-      decl(prop: Padding, value: "0.3rem"),
-      decl(prop: Margin, value: "0 0.5rem 0.25rem 0"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "swatch" }, decls: [
+      gunbc.design.material.decl(prop: Display, value: "inline-block"),
+      gunbc.design.material.decl(prop: BorderRadius, value: "3px"),
+      gunbc.design.material.decl(prop: Padding, value: "0.3rem"),
+      gunbc.design.material.decl(prop: Margin, value: "0 0.5rem 0.25rem 0"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "chip-inline" }, decls: [
-      decl(prop: Display, value: "inline-block"),
-      decl(prop: Width, value: "2.4rem"),
-      decl(prop: Height, value: "1.2rem"),
-      decl(prop: BorderRadius, value: "2px"),
-      decl(prop: Border, value: "1px solid var(--border)"),
-      decl(prop: VerticalAlign, value: "middle"),
-      decl(prop: MarginRight, value: "0.5rem"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "chip-inline" }, decls: [
+      gunbc.design.material.decl(prop: Display, value: "inline-block"),
+      gunbc.design.material.decl(prop: Width, value: "2.4rem"),
+      gunbc.design.material.decl(prop: Height, value: "1.2rem"),
+      gunbc.design.material.decl(prop: BorderRadius, value: "2px"),
+      gunbc.design.material.decl(prop: Border, value: "1px solid var(--border)"),
+      gunbc.design.material.decl(prop: VerticalAlign, value: "middle"),
+      gunbc.design.material.decl(prop: MarginRight, value: "0.5rem"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "ledger" }, decls: [
-      decl(prop: Width, value: "100%"),
-      decl(prop: BorderCollapse, value: "collapse"),
-      decl(prop: FontSize, value: "0.85rem"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "ledger" }, decls: [
+      gunbc.design.material.decl(prop: Width, value: "100%"),
+      gunbc.design.material.decl(prop: BorderCollapse, value: "collapse"),
+      gunbc.design.material.decl(prop: FontSize, value: "0.85rem"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".ledger td" }, decls: [
-      decl(prop: Padding, value: "0.45rem 0.75rem 0.45rem 0"),
-      decl(prop: BorderBottom, value: "1px solid var(--border)"),
-      decl(prop: VerticalAlign, value: "top"),
+    gunbc.design.material.StaticRule { selector: RawSelector { text: ".ledger td" }, decls: [
+      gunbc.design.material.decl(prop: Padding, value: "0.45rem 0.75rem 0.45rem 0"),
+      gunbc.design.material.decl(prop: BorderBottom, value: "1px solid var(--border)"),
+      gunbc.design.material.decl(prop: VerticalAlign, value: "top"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "boundary" }, decls: [
-      decl(prop: BorderLeft, value: "2px solid var(--boundary)"),
-      decl(prop: PaddingLeft, value: "1rem"),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "boundary" }, decls: [
+      gunbc.design.material.decl(prop: BorderLeft, value: "2px solid var(--boundary)"),
+      gunbc.design.material.decl(prop: PaddingLeft, value: "1rem"),
     ] },
-    gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "foot" }, decls: [
-      decl(prop: MarginTop, value: "4rem"),
-      decl(prop: FontSize, value: "0.78rem"),
-      role_decl(prop: Color, r: TextDimRole),
+    gunbc.design.material.StaticRule { selector: ClassSelector { name: "foot" }, decls: [
+      gunbc.design.material.decl(prop: MarginTop, value: "4rem"),
+      gunbc.design.material.decl(prop: FontSize, value: "0.78rem"),
+      gunbc.design.theme.role_decl(prop: Color, r: gunbc.design.theme.TextDimRole),
     ] },
   ]
 }
@@ -227,29 +227,29 @@ fn moodboard_rules() -> List<gunbc.design.material.BuildRule> {
 
 fn moodboard_css() -> String {
   join([
-    theme_root_css(base: night_theme, alternate: day_theme),
-    serialize_rules(rules: moodboard_rules()),
-    reframe_css(rules: moodboard_rules()),
-    reduced_motion_block(rules: behavior_rules(rows: moodboard_behaviors)),
+    gunbc.design.theme.theme_root_css(base: gunbc.design.theme.night_theme, alternate: gunbc.design.theme.day_theme),
+    gunbc.design.material.serialize_rules(rules: moodboard_rules()),
+    gunbc.design.theme_transition.reframe_css(rules: moodboard_rules()),
+    gunbc.design.material.reduced_motion_block(rules: behavior_rules(rows: moodboard_behaviors)),
   ], "\n")
 }
 
 fn moodboard_nav_js() -> String {
-  reframe_watcher_js()
+  gunbc.design.theme_transition.reframe_watcher_js()
 }
 
 fn theme_paint_of(t: gunbc.design.theme.Theme, r: gunbc.design.theme.ThemeRole) -> String {
   fold(t.assignments, init: "", f: (acc, a) =>
-    if role_eq(a: a.role, b: r) { assignment_paint(a: a) } else { acc })
+    if gunbc.design.theme.role_eq(a: a.role, b: r) { gunbc.design.theme.assignment_paint(a: a) } else { acc })
 }
 
 fn themes_serialized() -> String {
-  join(map(site_themes, t =>
-    join(map(t.assignments, a => join([t.name, ".", role_key(r: a.role), "=", assignment_paint(a: a)], "")), ";")), "|")
+  join(map(gunbc.design.theme.site_themes, t =>
+    join(map(t.assignments, a => join([t.name, ".", gunbc.design.theme.role_key(r: a.role), "=", gunbc.design.theme.assignment_paint(a: a)], "")), ";")), "|")
 }
 
 fn moodboard_digest() -> String {
-  content_hash_atom(value: concat(register_thesis, themes_serialized()) as std.types.NonEmptyStr).digest as String
+  std.content_hash.content_hash_atom(value: concat(gunbc.design.principles.register_thesis, themes_serialized()) as std.types.NonEmptyStr).digest as String
 }
 
 fn short_digest(digest: String) -> String {
@@ -257,36 +257,36 @@ fn short_digest(digest: String) -> String {
 }
 
 fn masthead() -> std.markup.Fragment {
-  el_class("header", "masthead", [
-    el_class("p", "wordmark", [ txt("gunb.ai") ]),
-    el_class("p", "thesis", [ txt(register_thesis) ]),
+  gunbc.site.markup.el_class("header", "masthead", [
+    gunbc.site.markup.el_class("p", "wordmark", [ gunbc.site.markup.txt("gunb.ai") ]),
+    gunbc.site.markup.el_class("p", "thesis", [ gunbc.site.markup.txt(gunbc.design.principles.register_thesis) ]),
   ])
 }
 
 fn mark_section() -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("the mark — one spec, three depths") ]),
-    el_class("div", "panel", [
-      render_mark(depth: 0),
-      render_mark(depth: 1),
-      render_mark(depth: 3),
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("the mark — one spec, three depths") ]),
+    gunbc.site.markup.el_class("div", "panel", [
+      gunbc.site.mark.render_mark(depth: 0),
+      gunbc.site.mark.render_mark(depth: 1),
+      gunbc.site.mark.render_mark(depth: 3),
     ]),
   ])
 }
 
 fn hero_section() -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("the layer dag as an asterism — touch a star") ]),
-    el_class("div", "panel", [ constellation_figure() ]),
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("the layer dag as an asterism — touch a star") ]),
+    gunbc.site.markup.el_class("div", "panel", [ gunbc.site.constellation.constellation_figure() ]),
   ])
 }
 
 fn theme_chip(paint_value: String) -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "span",
     attributes: [
-      attr(name: "class", value: "chip-inline" ),
-      attr(name: "style", value: concat("background: ", paint_value) ),
+      std.markup.attr(name: "class", value: "chip-inline" ),
+      std.markup.attr(name: "style", value: concat("background: ", paint_value) ),
     ],
     children: [],
   }
@@ -294,78 +294,78 @@ fn theme_chip(paint_value: String) -> std.markup.Fragment {
 
 fn theme_cell(t: gunbc.design.theme.Theme, r: gunbc.design.theme.ThemeRole) -> std.markup.Fragment {
   let p = theme_paint_of(t: t, r: r)
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "td",
     attributes: [],
     children: [
-      extdeps.browser.Element {
+      std.markup.Element {
         tag: "span",
         attributes: [
-          attr(name: "class", value: "swatch" ),
-          attr(name: "tabindex", value: "0" ),
+          std.markup.attr(name: "class", value: "swatch" ),
+          std.markup.attr(name: "tabindex", value: "0" ),
         ],
-        children: [ theme_chip(paint_value: p), el_class("span", "mono", [ txt(p) ]) ],
+        children: [ theme_chip(paint_value: p), gunbc.site.markup.el_class("span", "mono", [ gunbc.site.markup.txt(p) ]) ],
       },
     ],
   }
 }
 
 fn theme_role_row(r: gunbc.design.theme.ThemeRole) -> std.markup.Fragment {
-  el("tr", [
-    el_class("td", "mono", [ txt(role_key(r: r)) ]),
-    theme_cell(t: night_theme, r: r),
-    theme_cell(t: day_theme, r: r),
+  gunbc.site.markup.el("tr", [
+    gunbc.site.markup.el_class("td", "mono", [ gunbc.site.markup.txt(gunbc.design.theme.role_key(r: r)) ]),
+    theme_cell(t: gunbc.design.theme.night_theme, r: r),
+    theme_cell(t: gunbc.design.theme.day_theme, r: r),
   ])
 }
 
 fn themes_section() -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("themes — one role model, night and day projections") ]),
-    el_class("table", "ledger", concat(
-      [ el("tr", [
-          el_class("td", "mono", [ txt("role") ]),
-          el_class("td", "mono", [ txt("night") ]),
-          el_class("td", "mono", [ txt("day") ]),
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("themes — one role model, night and day projections") ]),
+    gunbc.site.markup.el_class("table", "ledger", concat(
+      [ gunbc.site.markup.el("tr", [
+          gunbc.site.markup.el_class("td", "mono", [ gunbc.site.markup.txt("role") ]),
+          gunbc.site.markup.el_class("td", "mono", [ gunbc.site.markup.txt("night") ]),
+          gunbc.site.markup.el_class("td", "mono", [ gunbc.site.markup.txt("day") ]),
         ]) ],
-      map(theme_roles, r => theme_role_row(r: r)))),
+      map(gunbc.design.theme.theme_roles, r => theme_role_row(r: r)))),
   ])
 }
 
 fn timing_row(t: gunbc.design.material.TimingToken) -> std.markup.Fragment {
-  el("tr", [
-    el_class("td", "mono", [ txt(t.name) ]),
-    el_class("td", "mono", [ txt(join([to_string(t.duration_ms), "ms ", t.easing], "")) ]),
+  gunbc.site.markup.el("tr", [
+    gunbc.site.markup.el_class("td", "mono", [ gunbc.site.markup.txt(t.name) ]),
+    gunbc.site.markup.el_class("td", "mono", [ gunbc.site.markup.txt(join([to_string(t.duration_ms), "ms ", t.easing], "")) ]),
   ])
 }
 
 fn timing_section() -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("the timing scale — three tokens, no other durations exist") ]),
-    el_class("table", "ledger", map(timing_scale, t => timing_row(t: t))),
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("the timing scale — three tokens, no other durations exist") ]),
+    gunbc.site.markup.el_class("table", "ledger", map(gunbc.design.material.timing_scale, t => timing_row(t: t))),
   ])
 }
 
 fn principle_row(p: gunbc.design.principles.RegisterPrinciple) -> std.markup.Fragment {
-  el("tr", [
-    el_class("td", "mono", [ txt(principle_id_key(id: p.id)) ]),
-    el("td", [ txt(p.law) ]),
-    el_class("td", "mono", [ txt(join([p.enforced_by.module_path, ".", p.enforced_by.decl_name], "")) ]),
+  gunbc.site.markup.el("tr", [
+    gunbc.site.markup.el_class("td", "mono", [ gunbc.site.markup.txt(gunbc.design.principles.principle_id_key(id: p.id)) ]),
+    gunbc.site.markup.el("td", [ gunbc.site.markup.txt(p.law) ]),
+    gunbc.site.markup.el_class("td", "mono", [ gunbc.site.markup.txt(join([p.enforced_by.module_path, ".", p.enforced_by.decl_name], "")) ]),
   ])
 }
 
 fn principles_section() -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("base principles — each law names its enforcing carrier") ]),
-    el_class("table", "ledger", map(register_principles, p => principle_row(p: p))),
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("base principles — each law names its enforcing carrier") ]),
+    gunbc.site.markup.el_class("table", "ledger", map(gunbc.design.principles.register_principles, p => principle_row(p: p))),
   ])
 }
 
 fn boundary_section() -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("a boundary — refusal does not glow") ]),
-    el_class("div", "panel boundary", [
-      el_class("p", "mono", [
-        txt("invariant — a bright saturated material fails the glare envelope; the row is inadmissible at the theme witness, no artifact emitted"),
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("a boundary — refusal does not glow") ]),
+    gunbc.site.markup.el_class("div", "panel boundary", [
+      gunbc.site.markup.el_class("p", "mono", [
+        gunbc.site.markup.txt("invariant — a bright saturated material fails the glare envelope; the row is inadmissible at the theme witness, no artifact emitted"),
       ]),
     ]),
   ])
@@ -373,36 +373,36 @@ fn boundary_section() -> std.markup.Fragment {
 
 fn hallmark() -> std.markup.Fragment {
   let digest = moodboard_digest()
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "footer",
     attributes: [
-      attr(name: "class", value: "foot hash" ),
-      attr(name: "tabindex", value: "0" ),
+      std.markup.attr(name: "class", value: "foot hash" ),
+      std.markup.attr(name: "tabindex", value: "0" ),
     ],
     children: [
-      el_class("span", "mono", [ txt(concat("emitted from gunbc.site.moodboard · thesis+themes digest ", short_digest(digest: digest))) ]),
-      el_class("span", "mono hash-full", [ txt(concat(" · full ", digest)) ]),
+      gunbc.site.markup.el_class("span", "mono", [ gunbc.site.markup.txt(concat("emitted from gunbc.site.moodboard · thesis+themes digest ", short_digest(digest: digest))) ]),
+      gunbc.site.markup.el_class("span", "mono hash-full", [ gunbc.site.markup.txt(concat(" · full ", digest)) ]),
     ],
   }
 }
 
 fn moodboard_page() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "html", attributes: [ attr(name: "lang", value: "en" ) ], children: [
-    el("head", [
-      std.markup.Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+  std.markup.Element { tag: "html", attributes: [ std.markup.attr(name: "lang", value: "en" ) ], children: [
+    gunbc.site.markup.el("head", [
+      std.markup.Element { tag: "meta", attributes: [ std.markup.attr(name: "charset", value: "utf-8" ) ], children: [] },
       std.markup.Element { tag: "meta", attributes: [
-        attr(name: "name", value: "viewport" ),
-        attr(name: "content", value: "width=device-width, initial-scale=1" ),
+        std.markup.attr(name: "name", value: "viewport" ),
+        std.markup.attr(name: "content", value: "width=device-width, initial-scale=1" ),
       ], children: [] },
-      el("title", [ txt("gunb.ai — register moodboard (phase 0)") ]),
-      el("style", [ txt(moodboard_css()) ]),
+      gunbc.site.markup.el("title", [ gunbc.site.markup.txt("gunb.ai — register moodboard (phase 0)") ]),
+      gunbc.site.markup.el("style", [ gunbc.site.markup.txt(moodboard_css()) ]),
       std.markup.Element { tag: "script", attributes: [
-        attr(name: "src", value: "assets/nav.js" ),
-        attr(name: "defer", value: "" ),
+        std.markup.attr(name: "src", value: "assets/nav.js" ),
+        std.markup.attr(name: "defer", value: "" ),
       ], children: [] },
     ]),
-    el("body", [
-      el("main", [
+    gunbc.site.markup.el("body", [
+      gunbc.site.markup.el("main", [
         masthead(),
         mark_section(),
         hero_section(),
@@ -417,16 +417,16 @@ fn moodboard_page() -> std.markup.Fragment {
 }
 
 fn moodboard_html() -> String {
-  match try_serialize_html_source(node: moodboard_page()) {
-    EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
-    EmitRejected { reason: r } => concat("EMIT REJECTED: ", r)
+  match extdeps.languages.html.try_serialize_html_source(node: moodboard_page()) {
+    extdeps.languages.html.EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
+    extdeps.languages.html.EmitRejected { reason: r } => concat("EMIT REJECTED: ", r)
   }
 }
 
 fn moodboard_preconditions_hold() -> Bool {
-  themes_coherent(themes: site_themes, roles: theme_roles)
-    && coverage_gaps(elements: moodboard_elements, rows: moodboard_behaviors).length() == 0
+  gunbc.design.theme.themes_coherent(themes: gunbc.design.theme.site_themes, roles: gunbc.design.theme.theme_roles)
+    && gunbc.design.interaction.coverage_gaps(elements: moodboard_elements, rows: moodboard_behaviors).length() == 0
     && unrealized_behaviors(rows: moodboard_behaviors).length() == 0
-    && unthemed_color_decls(rules: moodboard_rules()).length() == 0
-    && all_forks_rejoin(nodes: mark_nodes, edges: mark_edges, source: "a")
+    && gunbc.design.theme_transition.unthemed_color_decls(rules: moodboard_rules()).length() == 0
+    && gunbc.site.mark.all_forks_rejoin(nodes: gunbc.site.mark.mark_nodes, edges: gunbc.site.mark.mark_edges, source: "a")
 }

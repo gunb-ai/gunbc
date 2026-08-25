@@ -148,13 +148,13 @@ fn belt_json_value(
 
 fn roadmap_belt_status_json() -> String {
   match gunbc.roadmap_authority.roadmap_authority_projection() {
-    RoadmapAuthorityProjectionRefused { detail: detail } =>
+    gunbc.roadmap_authority.RoadmapAuthorityProjectionRefused { detail: detail } =>
       extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
         extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: "roadmap-belt/v1")),
         extdeps.languages.json.emit.json_kv(key: "refused", value: extdeps.languages.json.emit.json_bool(b: true)),
         extdeps.languages.json.emit.json_kv(key: "detail", value: extdeps.languages.json.emit.json_string(s: detail)),
       ]))
-    RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
+    gunbc.roadmap_authority.RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
       extdeps.languages.json.emit.serialize_json(v: belt_json_value(
         state: roadmap_belt_default_run_state,
         doc: doc,
@@ -188,7 +188,7 @@ data belt_value_eq_note: String = "Presence-only equality (always true): a ready
 
 fn dispatch_member_value_eq(a: DispatchMember, b: DispatchMember) -> Bool { true }
 
-data belt_ownership_mapping_note: String = "R5 owned-only teardown at session grain. Teardown-eligibility (gunbc.ownership.Owned) is the actuator's dispatch_session_is_owned Bool (Converged/Drifted = OUR process; Conflict/Inaccessible/UnknownRefused/Absent = not owned — see dispatch_session_ownership_note). This fn LIFTS that Bool into gunbc.ownership.Ownership? for the spine's teardown gate: owned -> Present{gunbc.ownership.Owned} (reap), not-owned -> Absent -> OwnershipUnknown -> the spine REFUSES teardown (counted, surfaced), never kills a session it cannot prove it owns. The coarse spine cause (foreign Conflict collapses to OwnershipUnknown because gunbc.ownership has no observed-but-foreign stance distinct from Ensured=required-dependency) is retained finely in the ObservedMember payload (session.lease_verdict) for belt surfacing; a spine-cause refinement is a coordinated evolution, not a belt fork. Keeping the verdict match in the actuator lets roadmap_belt avoid importing ObservationVerdict, whose Absent variant collides with Optional.Absent."
+data belt_ownership_mapping_note: String = "R5 owned-only teardown at session grain. Teardown-eligibility (Owned) is the actuator's dispatch_session_is_owned Bool (Converged/Drifted = OUR process; Conflict/Inaccessible/UnknownRefused/Absent = not owned — see dispatch_session_ownership_note). This fn LIFTS that Bool into gunbc.ownership.Ownership? for the spine's teardown gate: owned -> Present{Owned} (reap), not-owned -> Absent -> OwnershipUnknown -> the spine REFUSES teardown (counted, surfaced), never kills a session it cannot prove it owns. The coarse spine cause (foreign Conflict collapses to OwnershipUnknown because gunbc.ownership has no observed-but-foreign stance distinct from Ensured=required-dependency) is retained finely in the ObservedMember payload (session.lease_verdict) for belt surfacing; a spine-cause refinement is a coordinated evolution, not a belt fork. Keeping the verdict match in the actuator lets roadmap_belt avoid importing ObservationVerdict, whose Absent variant collides with Optional.Absent."
 
 fn belt_ownership_owned() -> gunbc.ownership.Ownership? { Present { value: gunbc.ownership.Owned } }
 fn belt_ownership_unknown() -> gunbc.ownership.Ownership? { Absent }
@@ -233,11 +233,11 @@ fn belt_membership_plan(
 fn belt_plan_upserts(plan: gunbc.membership_reconcile.MembershipPlan<DispatchMember, DispatchMemberAt>) -> List<DispatchMember> {
   fold(plan.actions, init: [], f: fn(acc, a) {
     match a {
-      MemberAdded { at: _, to: member } => concat(acc, [member])
-      MemberChanged { at: _, from: _, to: member } => concat(acc, [member])
-      MemberRemoved { at: _, from: _ } => acc
-      MemberRemovalRefused { from: _, cause: _ } => acc
-      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => acc
+      gunbc.membership_reconcile.MemberAdded { at: _, to: member } => concat(acc, [member])
+      gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: member } => concat(acc, [member])
+      gunbc.membership_reconcile.MemberRemoved { at: _, from: _ } => acc
+      gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => acc
+      gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => acc
     }
   })
 }
@@ -245,22 +245,22 @@ fn belt_plan_upserts(plan: gunbc.membership_reconcile.MembershipPlan<DispatchMem
 fn belt_plan_teardowns(plan: gunbc.membership_reconcile.MembershipPlan<DispatchMember, DispatchMemberAt>) -> List<DispatchMember> {
   fold(plan.actions, init: [], f: fn(acc, a) {
     match a {
-      MemberRemoved { at: _, from: member } => concat(acc, [member])
-      MemberAdded { at: _, to: _ } => acc
-      MemberChanged { at: _, from: _, to: _ } => acc
-      MemberRemovalRefused { from: _, cause: _ } => acc
-      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => acc
+      gunbc.membership_reconcile.MemberRemoved { at: _, from: member } => concat(acc, [member])
+      gunbc.membership_reconcile.MemberAdded { at: _, to: _ } => acc
+      gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => acc
+      gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => acc
+      gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => acc
     }
   })
 }
 
 fn belt_plan_refusals(plan: gunbc.membership_reconcile.MembershipPlan<DispatchMember, DispatchMemberAt>) -> List<gunbc.membership_reconcile.MemberAction<DispatchMember, DispatchMemberAt>> {
   plan.actions |> filter(a => match a {
-    MemberRemovalRefused { from: _, cause: _ } => true
-    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => true
-    MemberAdded { at: _, to: _ } => false
-    MemberChanged { at: _, from: _, to: _ } => false
-    MemberRemoved { at: _, from: _ } => false
+    gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => true
+    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => true
+    gunbc.membership_reconcile.MemberAdded { at: _, to: _ } => false
+    gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => false
+    gunbc.membership_reconcile.MemberRemoved { at: _, from: _ } => false
   })
 }
 
@@ -323,11 +323,11 @@ fn belt_member_ids(ms: List<DispatchMember>) -> List<String> {
 
 fn belt_refusal_member_id(a: gunbc.membership_reconcile.MemberAction<DispatchMember, DispatchMemberAt>) -> String {
   match a {
-    MemberRemovalRefused { from: member, cause: _ } => dispatch_member_id(m: member)
-    MemberRosterDuplicateKeyRefused { roster: _, first: member, duplicate: _ } => dispatch_member_id(m: member)
-    MemberAdded { at: _, to: member } => dispatch_member_id(m: member)
-    MemberChanged { at: _, from: _, to: member } => dispatch_member_id(m: member)
-    MemberRemoved { at: _, from: member } => dispatch_member_id(m: member)
+    gunbc.membership_reconcile.MemberRemovalRefused { from: member, cause: _ } => dispatch_member_id(m: member)
+    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: member, duplicate: _ } => dispatch_member_id(m: member)
+    gunbc.membership_reconcile.MemberAdded { at: _, to: member } => dispatch_member_id(m: member)
+    gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: member } => dispatch_member_id(m: member)
+    gunbc.membership_reconcile.MemberRemoved { at: _, from: member } => dispatch_member_id(m: member)
   }
 }
 

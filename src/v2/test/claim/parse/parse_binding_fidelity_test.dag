@@ -1,23 +1,23 @@
 module v2.test.parse.parse_binding_fidelity
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn pbf_graft_module_root(root: v2.std.node.Node) -> v2.std.node.Node {
-  match module_header_containment_graft(root: root) {
-    Accepted { value: grafted, diagnostics: _ } => grafted
-    Rejected { diagnostics: _ } => root
+  match v2.compiler.namespace_graft.module_header_containment_graft(root: root) {
+    v2.std.diagnostic.Accepted { value: grafted, diagnostics: _ } => grafted
+    v2.std.diagnostic.Rejected { diagnostics: _ } => root
   }
 }
 
 fn pbf_qn_node(seg: v2.std.node.Symbol) -> v2.std.node.Node {
-  fold_list_node(
+  v2.std.algebra.fold_list_node(
     xs: std.algebra.Cons { head: seg, tail: std.algebra.Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
       }
     }
   )
@@ -25,13 +25,13 @@ fn pbf_qn_node(seg: v2.std.node.Symbol) -> v2.std.node.Node {
 
 fn pbf_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header,
-        target: dag_grammar_atom(id: ^dag_surface_module_header)
+        target: v2.extdeps.languages.dag.dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
         target: pbf_qn_node(seg: seg)
       ),
@@ -40,23 +40,23 @@ fn pbf_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, expo
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: export_atom } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn pbf_subject_with_import_use() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header,
-        target: dag_grammar_atom(id: ^dag_surface_module_header)
+        target: v2.extdeps.languages.dag.dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
         target: pbf_qn_node(seg: ^pbf_subject_seg)
       ),
@@ -65,16 +65,16 @@ fn pbf_subject_with_import_use() -> v2.std.node.Node {
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^pbf_imported_decl } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn pbf_cross_file_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
-  admit_normalized_roots(
+fn pbf_cross_file_roots() -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+  v2.compiler.normalized_tree.admit_normalized_roots(
     roots: std.algebra.Cons {
     head: pbf_graft_module_root(root: pbf_subject_with_import_use()),
     tail: std.algebra.Cons {
@@ -92,12 +92,12 @@ fn pbf_cross_file_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.no
   )
 }
 
-fn pbf_cross_file_import_resolves() -> v2.std.logic.Bool {
+fn pbf_cross_file_import_resolves() -> Bool {
   match pbf_cross_file_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted_roots, diagnostics: _ } =>
-    match resolve_with_admission_policy(
-      lm: dag_language_model_surface_empty_prelude(),
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted_roots, diagnostics: _ } =>
+    match v2.compiler.name_resolve.resolve_with_admission_policy(
+      lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude(),
       roots: admitted_roots,
       admission: v2.compiler.name_resolve.Admission {
         subject: v2.compiler.name_resolve.ResolutionSubject {
@@ -106,61 +106,61 @@ fn pbf_cross_file_import_resolves() -> v2.std.logic.Bool {
         imports: std.algebra.Cons {
           head: v2.compiler.name_resolve.Import {
             target: std.algebra.Cons { head: ^pbf_imported_seg, tail: std.algebra.Empty },
-            visibility: ImportVisible
+            visibility: v2.compiler.name_resolve.ImportVisible
           },
           tail: std.algebra.Empty
         }
       },
-      index: source_root_index_empty(),
+      index: v2.std.cross_tree.resolution.source_root_index_empty(),
       active_roots: std.algebra.Empty,
-      policy: ImportScoped
+      policy: v2.std.resolution_policy.ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
 fn pbf_unbound_atom_tree() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^pbf_unbound_sym } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn pbf_resolve_unbound_symbol_rejects() -> v2.std.logic.Bool {
-  match admit_normalized_tree(root: pbf_unbound_atom_tree(), diagnostics: v2.std.diagnostic.None) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted_tree, diagnostics: _ } =>
+fn pbf_resolve_unbound_symbol_rejects() -> Bool {
+  match v2.compiler.normalized_tree.admit_normalized_tree(root: pbf_unbound_atom_tree(), diagnostics: v2.std.diagnostic.None) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted_tree, diagnostics: _ } =>
   match v2.compiler.resolve.resolve(
     tree: admitted_tree,
-    lm: dag_language_model_surface_empty_prelude()
+    lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
   }
 }
 
 fn pbf_subject_with_ambiguous_import_use() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header,
-        target: dag_grammar_atom(id: ^dag_surface_module_header)
+        target: v2.extdeps.languages.dag.dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
         target: pbf_qn_node(seg: ^pbf_subject_seg)
       ),
@@ -169,16 +169,16 @@ fn pbf_subject_with_ambiguous_import_use() -> v2.std.node.Node {
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^pbf_ambiguous_export_sym } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn pbf_ambiguous_import_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
-  admit_normalized_roots(
+fn pbf_ambiguous_import_roots() -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+  v2.compiler.normalized_tree.admit_normalized_roots(
     roots: std.algebra.Cons {
     head: pbf_graft_module_root(root: pbf_subject_with_ambiguous_import_use()),
     tail: std.algebra.Cons {
@@ -205,12 +205,12 @@ fn pbf_ambiguous_import_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compi
   )
 }
 
-fn pbf_ambiguous_export_rejects() -> v2.std.logic.Bool {
+fn pbf_ambiguous_export_rejects() -> Bool {
   match pbf_ambiguous_import_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
-    match resolve_with_admission_policy(
-      lm: dag_language_model_surface_empty_prelude(),
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
+    match v2.compiler.name_resolve.resolve_with_admission_policy(
+      lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude(),
       roots: admitted,
       admission: v2.compiler.name_resolve.Admission {
         subject: v2.compiler.name_resolve.ResolutionSubject {
@@ -219,39 +219,39 @@ fn pbf_ambiguous_export_rejects() -> v2.std.logic.Bool {
         imports: std.algebra.Cons {
           head: v2.compiler.name_resolve.Import {
             target: std.algebra.Cons { head: ^pbf_ambiguous_import_a_seg, tail: std.algebra.Empty },
-            visibility: ImportVisible
+            visibility: v2.compiler.name_resolve.ImportVisible
           },
           tail: std.algebra.Cons {
             head: v2.compiler.name_resolve.Import {
               target: std.algebra.Cons { head: ^pbf_ambiguous_import_b_seg, tail: std.algebra.Empty },
-              visibility: ImportVisible
+              visibility: v2.compiler.name_resolve.ImportVisible
             },
             tail: std.algebra.Empty
           }
         }
       },
-      index: source_root_index_empty(),
+      index: v2.std.cross_tree.resolution.source_root_index_empty(),
       active_roots: std.algebra.Empty,
-      policy: ImportScoped
+      policy: v2.std.resolution_policy.ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => false
-      Rejected { diagnostics: _ } => true
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: _ } => true
     }
   }
 }
 
 data parse_binding_fidelity_fast_note: String = "Fixture: three cross-file binding resolution + fail-closed witness tests. Discovered per-PR via *_test.dag walk. Long-lane corpus split: long/parse_binding_fidelity_witness_test.dag (commit_workflow-enrolled module ingest tests) — see parse_binding_fidelity_long_note."
 
-test fn witness_cross_file_import_binding_resolves_holds() -> v2.std.logic.Bool {
+test fn witness_cross_file_import_binding_resolves_holds() -> Bool {
   pbf_cross_file_import_resolves()
 }
 
-test fn witness_unbound_symbol_fail_closed_holds() -> v2.std.logic.Bool {
+test fn witness_unbound_symbol_fail_closed_holds() -> Bool {
   pbf_resolve_unbound_symbol_rejects()
     && ((pbf_resolve_unbound_symbol_rejects() == false) == false)
 }
 
-test fn witness_ambiguous_export_fail_closed_holds() -> v2.std.logic.Bool {
+test fn witness_ambiguous_export_fail_closed_holds() -> Bool {
   pbf_ambiguous_export_rejects()
     && ((pbf_ambiguous_export_rejects() == false) == false)
 }

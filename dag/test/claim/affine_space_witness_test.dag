@@ -6,35 +6,35 @@ module test.claim.affine_space_witness
 // path 2026-08-11, the cross-frame subtraction compiled clean and returned 9. std.coordinate_frame
 // records the full account. The room's origin is its southwest floor corner, the building's is
 // elsewhere, and a coordinate means nothing without saying which.
-fn room() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
+fn room() -> std.coordinate_frame.CoordinateFrameIdentity { std.coordinate_frame.coordinate_frame_identity(occurrence: 1) }
 
 // THE METRIC OPERATIONS NOW ASK THE REGISTRY WHAT THE FRAME'S QUANTUM IS, because they are the
 // operations that put a millimetre label back on a unit-neutral component. This registry declares
 // the room in millimetres, which is what makes that label true here.
 fn mm_registry() -> std.spatial_frame.SpatialFrameRegistry {
-  match register_frame(r: empty_frame_registry(), identity: test.claim.affine_space_witness.room(), length_scale: Milli) {
-    FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
-    FrameRegistrationRefused { cause: _ } => empty_frame_registry()
+  match std.spatial_frame.register_frame(r: std.spatial_frame.empty_frame_registry(), identity: room(), length_scale: std.measure.Milli) {
+    std.spatial_frame.FrameRegistered { frame: f } => std.spatial_frame.registry_with(r: std.spatial_frame.empty_frame_registry(), f: f)
+    std.spatial_frame.FrameRegistrationRefused { cause: _ } => std.spatial_frame.empty_frame_registry()
   }
 }
-fn building() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
+fn building() -> std.coordinate_frame.CoordinateFrameIdentity { std.coordinate_frame.coordinate_frame_identity(occurrence: 2) }
 
-fn desk_a() -> std.affine_space.Point3 { point3(frame: test.claim.affine_space_witness.room(), x: 1200, y: 800, z: 0) }
+fn desk_a() -> std.affine_space.Point3 { std.affine_space.point3(frame: room(), x: 1200, y: 800, z: 0) }
 
 // Nothing physically negative about this desk: it is 300 mm on the negative side of the chosen
 // x-origin. That is the whole point of the affine layer.
-fn desk_b() -> std.affine_space.Point3 { point3(frame: test.claim.affine_space_witness.room(), x: 0 - 300, y: 2600, z: 0) }
+fn desk_b() -> std.affine_space.Point3 { std.affine_space.point3(frame: room(), x: 0 - 300, y: 2600, z: 0) }
 
 fn vector_equals(a: std.affine_space.Vector3, b: std.affine_space.Vector3) -> Bool {
-  signed_frame_component_count(c: a.x) == signed_frame_component_count(c: b.x)
-    && signed_frame_component_count(c: a.y) == signed_frame_component_count(c: b.y)
-    && signed_frame_component_count(c: a.z) == signed_frame_component_count(c: b.z)
+  std.affine_space.signed_frame_component_count(c: a.x) == std.affine_space.signed_frame_component_count(c: b.x)
+    && std.affine_space.signed_frame_component_count(c: a.y) == std.affine_space.signed_frame_component_count(c: b.y)
+    && std.affine_space.signed_frame_component_count(c: a.z) == std.affine_space.signed_frame_component_count(c: b.z)
 }
 
 fn point_equals(a: std.affine_space.Point3, b: std.affine_space.Point3) -> Bool {
-  signed_frame_component_count(c: a.x) == signed_frame_component_count(c: b.x)
-    && signed_frame_component_count(c: a.y) == signed_frame_component_count(c: b.y)
-    && signed_frame_component_count(c: a.z) == signed_frame_component_count(c: b.z)
+  std.affine_space.signed_frame_component_count(c: a.x) == std.affine_space.signed_frame_component_count(c: b.x)
+    && std.affine_space.signed_frame_component_count(c: a.y) == std.affine_space.signed_frame_component_count(c: b.y)
+    && std.affine_space.signed_frame_component_count(c: a.z) == std.affine_space.signed_frame_component_count(c: b.z)
 }
 
 // THE READY SIDE IS ASSERTED, NEVER ASSUMED. Every claim below that expects an ordinary
@@ -42,72 +42,72 @@ fn point_equals(a: std.affine_space.Point3, b: std.affine_space.Point3) -> Bool 
 // silently skipped, so an implementation that started refusing everything could not read as green.
 fn ready_vector_equals(r: std.affine_space.SpatialResult<std.affine_space.Vector3>, b: std.affine_space.Vector3) -> Bool {
   match r {
-    SpatialArithmeticRefused { cause: _ } => false
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialReady { value: v } => vector_equals(a: v, b: b)
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialReady { value: v } => vector_equals(a: v, b: b)
   }
 }
 
 fn ready_point_equals(r: std.affine_space.SpatialResult<std.affine_space.Point3>, b: std.affine_space.Point3) -> Bool {
   match r {
-    SpatialArithmeticRefused { cause: _ } => false
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialReady { value: p } => point_equals(a: p, b: b)
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialReady { value: p } => point_equals(a: p, b: b)
   }
 }
 
 fn norm_squared_is(v: std.affine_space.Vector3, expected: std.nat.Nat) -> Bool {
-  match norm_squared3(registry: test.claim.affine_space_witness.mm_registry(), v: v) {
-    SpatialArithmeticRefused { cause: _ } => false
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialReady { value: s } => square_millimeter_count(m: s) == expected
+  match std.euclidean_geometry.norm_squared3(registry: mm_registry(), v: v) {
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialReady { value: s } => std.measure.square_millimeter_count(m: s) == expected
   }
 }
 
 fn ready_bool_is(r: std.affine_space.SpatialResult<Bool>, expected: Bool) -> Bool {
   match r {
-    SpatialArithmeticRefused { cause: _ } => false
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialReady { value: b } => b == expected
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialReady { value: b } => b == expected
   }
 }
 
 // Point - Point -> Vector, with signed components. desk_b - desk_a = (-1500, 1800, 0).
 fn witness_point_difference_is_signed_displacement() -> Bool {
   ready_vector_equals(
-    r: displacement_between3(from: desk_a(), to: desk_b()),
-    b: vector3(frame: test.claim.affine_space_witness.room(), x: 0 - 1500, y: 1800, z: 0),
+    r: std.affine_space.displacement_between3(from: desk_a(), to: desk_b()),
+    b: std.affine_space.vector3(frame: room(), x: 0 - 1500, y: 1800, z: 0),
   )
 }
 
 // Point + Vector -> Point, and it inverts the difference: a + (b - a) == b.
 fn witness_translate_inverts_difference() -> Bool {
-  match displacement_between3(from: desk_a(), to: desk_b()) {
-    SpatialArithmeticRefused { cause: _ } => false
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialReady { value: d } =>
-      ready_point_equals(r: translate_point3(point: desk_a(), by: d), b: desk_b())
+  match std.affine_space.displacement_between3(from: desk_a(), to: desk_b()) {
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialReady { value: d } =>
+      ready_point_equals(r: std.affine_space.translate_point3(point: desk_a(), by: d), b: desk_b())
   }
-    && ready_point_equals(r: translate_point3(point: desk_a(), by: zero_vector3(frame: test.claim.affine_space_witness.room())), b: desk_a())
+    && ready_point_equals(r: std.affine_space.translate_point3(point: desk_a(), by: std.affine_space.zero_vector3(frame: room())), b: desk_a())
 }
 
 // Vector +/- Vector -> Vector, and negation is the additive inverse.
 fn witness_vectors_compose() -> Bool {
-  let u = vector3(frame: test.claim.affine_space_witness.room(), x: 100, y: 0 - 50, z: 25)
-  let v = vector3(frame: test.claim.affine_space_witness.room(), x: 0 - 30, y: 70, z: 0 - 5)
-  match add_vector3(a: u, b: v) {
-    SpatialArithmeticRefused { cause: _ } => false
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialReady { value: sum } =>
-      ready_vector_equals(r: subtract_vector3(a: sum, b: v), b: u)
+  let u = std.affine_space.vector3(frame: room(), x: 100, y: 0 - 50, z: 25)
+  let v = std.affine_space.vector3(frame: room(), x: 0 - 30, y: 70, z: 0 - 5)
+  match std.affine_space.add_vector3(a: u, b: v) {
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialReady { value: sum } =>
+      ready_vector_equals(r: std.affine_space.subtract_vector3(a: sum, b: v), b: u)
   }
-    && match negate_vector3(v: u) {
-         SpatialArithmeticRefused { cause: _ } => false
-         SpatialFrameRefused { refusal: _ } => false
-         SpatialReady { value: nu } =>
-           ready_vector_equals(r: add_vector3(a: u, b: nu), b: zero_vector3(frame: test.claim.affine_space_witness.room()))
+    && match std.affine_space.negate_vector3(v: u) {
+         std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
+         std.affine_space.SpatialReady { value: nu } =>
+           ready_vector_equals(r: std.affine_space.add_vector3(a: u, b: nu), b: std.affine_space.zero_vector3(frame: room()))
        }
-    && ready_vector_equals(r: scale_vector3(v: u, factor: 2), b: vector3(frame: test.claim.affine_space_witness.room(), x: 200, y: 0 - 100, z: 50))
+    && ready_vector_equals(r: std.affine_space.scale_vector3(v: u, factor: 2), b: std.affine_space.vector3(frame: room(), x: 200, y: 0 - 100, z: 50))
 }
 
 // A quarter turn about +Z is exact: (x, y) -> (-y, x); four of them are the identity.
@@ -117,63 +117,63 @@ fn witness_vectors_compose() -> Bool {
 // while the operation was a reflection. The defect was found by mutating the implementation and
 // watching this witness stay green; an asymmetric vector is what makes the sign observable.
 fn witness_quarter_turns_are_exact_and_close() -> Bool {
-  let v = vector3(frame: test.claim.affine_space_witness.room(), x: 1000, y: 300, z: 7)
-  ready_vector_equals(r: rotate_quarter_turns_about_z(v: v, turns: OneQuarter), b: vector3(frame: test.claim.affine_space_witness.room(), x: 0 - 300, y: 1000, z: 7))
-    && ready_vector_equals(r: rotate_quarter_turns_about_z(v: v, turns: TwoQuarters), b: vector3(frame: test.claim.affine_space_witness.room(), x: 0 - 1000, y: 0 - 300, z: 7))
-    && ready_vector_equals(r: rotate_quarter_turns_about_z(v: v, turns: ThreeQuarters), b: vector3(frame: test.claim.affine_space_witness.room(), x: 300, y: 0 - 1000, z: 7))
-    && ready_vector_equals(r: rotate_quarter_turns_about_z(v: v, turns: NoTurn), b: v)
-    && match rotate_quarter_turns_about_z(v: v, turns: TwoQuarters) {
-         SpatialArithmeticRefused { cause: _ } => false
-         SpatialFrameRefused { refusal: _ } => false
-         SpatialReady { value: half } =>
-           ready_vector_equals(r: rotate_quarter_turns_about_z(v: half, turns: TwoQuarters), b: v)
+  let v = std.affine_space.vector3(frame: room(), x: 1000, y: 300, z: 7)
+  ready_vector_equals(r: std.affine_space.rotate_quarter_turns_about_z(v: v, turns: std.affine_space.OneQuarter), b: std.affine_space.vector3(frame: room(), x: 0 - 300, y: 1000, z: 7))
+    && ready_vector_equals(r: std.affine_space.rotate_quarter_turns_about_z(v: v, turns: std.affine_space.TwoQuarters), b: std.affine_space.vector3(frame: room(), x: 0 - 1000, y: 0 - 300, z: 7))
+    && ready_vector_equals(r: std.affine_space.rotate_quarter_turns_about_z(v: v, turns: std.affine_space.ThreeQuarters), b: std.affine_space.vector3(frame: room(), x: 300, y: 0 - 1000, z: 7))
+    && ready_vector_equals(r: std.affine_space.rotate_quarter_turns_about_z(v: v, turns: std.affine_space.NoTurn), b: v)
+    && match std.affine_space.rotate_quarter_turns_about_z(v: v, turns: std.affine_space.TwoQuarters) {
+         std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
+         std.affine_space.SpatialReady { value: half } =>
+           ready_vector_equals(r: std.affine_space.rotate_quarter_turns_about_z(v: half, turns: std.affine_space.TwoQuarters), b: v)
        }
 }
 
 // Squared magnitudes are exact wherever they are representable, including the diagonal case norm3
 // must leave unresolved.
 fn witness_norm_squared_is_exact() -> Bool {
-  norm_squared_is(v: vector3(frame: test.claim.affine_space_witness.room(), x: 3, y: 4, z: 0), expected: 25)
-    && norm_squared_is(v: vector3(frame: test.claim.affine_space_witness.room(), x: 0 - 3, y: 0 - 4, z: 0), expected: 25)
-    && norm_squared_is(v: zero_vector3(frame: test.claim.affine_space_witness.room()), expected: 0)
-    && match distance_squared3(registry: test.claim.affine_space_witness.mm_registry(), from: desk_a(), to: desk_b()) {
-         SpatialArithmeticRefused { cause: _ } => false
-         SpatialFrameRefused { refusal: _ } => false
-         SpatialReady { value: s } =>
-           square_millimeter_count(m: s) == (1500 * 1500) + (1800 * 1800)
+  norm_squared_is(v: std.affine_space.vector3(frame: room(), x: 3, y: 4, z: 0), expected: 25)
+    && norm_squared_is(v: std.affine_space.vector3(frame: room(), x: 0 - 3, y: 0 - 4, z: 0), expected: 25)
+    && norm_squared_is(v: std.affine_space.zero_vector3(frame: room()), expected: 0)
+    && match std.euclidean_geometry.distance_squared3(registry: mm_registry(), from: desk_a(), to: desk_b()) {
+         std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
+         std.affine_space.SpatialReady { value: s } =>
+           std.measure.square_millimeter_count(m: s) == (1500 * 1500) + (1800 * 1800)
        }
 }
 
 // THE NUMERIC POLICY, made executable. Axis-aligned magnitudes are exact; a diagonal is UNRESOLVED
 // and carries the exact squared magnitude so a richer kernel can finish.
 fn witness_norm_exact_on_axis_unresolved_on_diagonal() -> Bool {
-  match norm3(registry: test.claim.affine_space_witness.mm_registry(), v: vector3(frame: test.claim.affine_space_witness.room(), x: 0, y: 0 - 2500, z: 0)) {
-    SpatialArithmeticRefused { cause: _ } => false
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialReady { value: l } =>
+  match std.euclidean_geometry.norm3(registry: mm_registry(), v: std.affine_space.vector3(frame: room(), x: 0, y: 0 - 2500, z: 0)) {
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialReady { value: l } =>
       match l {
-        LengthExact { value: v } => millimeter_count(m: v) == 2500
-        LengthRootUnresolvedInExactKernel { squared: _, reason: _ } => false
+        std.euclidean_geometry.LengthExact { value: v } => std.measure.millimeter_count(m: v) == 2500
+        std.euclidean_geometry.LengthRootUnresolvedInExactKernel { squared: _, reason: _ } => false
       }
   }
-    && match norm3(registry: test.claim.affine_space_witness.mm_registry(), v: vector3(frame: test.claim.affine_space_witness.room(), x: 3, y: 4, z: 0)) {
-         SpatialArithmeticRefused { cause: _ } => false
-         SpatialFrameRefused { refusal: _ } => false
-         SpatialReady { value: l } =>
+    && match std.euclidean_geometry.norm3(registry: mm_registry(), v: std.affine_space.vector3(frame: room(), x: 3, y: 4, z: 0)) {
+         std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
+         std.affine_space.SpatialReady { value: l } =>
            match l {
-             LengthExact { value: _ } => false
-             LengthRootUnresolvedInExactKernel { squared: s, reason: _ } =>
-               square_millimeter_count(m: s) == 25
+             std.euclidean_geometry.LengthExact { value: _ } => false
+             std.euclidean_geometry.LengthRootUnresolvedInExactKernel { squared: s, reason: _ } =>
+               std.measure.square_millimeter_count(m: s) == 25
            }
        }
-    && match distance3(registry: test.claim.affine_space_witness.mm_registry(), from: desk_a(), to: desk_b()) {
-         SpatialArithmeticRefused { cause: _ } => false
-         SpatialFrameRefused { refusal: _ } => false
-         SpatialReady { value: l } =>
+    && match std.euclidean_geometry.distance3(registry: mm_registry(), from: desk_a(), to: desk_b()) {
+         std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
+         std.affine_space.SpatialReady { value: l } =>
            match l {
-             LengthExact { value: _ } => false
-             LengthRootUnresolvedInExactKernel { squared: s, reason: _ } =>
-               square_millimeter_count(m: s) == (1500 * 1500) + (1800 * 1800)
+             std.euclidean_geometry.LengthExact { value: _ } => false
+             std.euclidean_geometry.LengthRootUnresolvedInExactKernel { squared: s, reason: _ } =>
+               std.measure.square_millimeter_count(m: s) == (1500 * 1500) + (1800 * 1800)
            }
        }
 }
@@ -181,13 +181,13 @@ fn witness_norm_exact_on_axis_unresolved_on_diagonal() -> Bool {
 // Comparison needs no square root, and is exact where norm leaves the magnitude unresolved.
 fn witness_comparison_resolves_where_norm_does_not() -> Bool {
   ready_bool_is(
-    r: closer_than3(registry: test.claim.affine_space_witness.mm_registry(), a_from: point3(frame: test.claim.affine_space_witness.room(), x: 0, y: 0, z: 0), a_to: point3(frame: test.claim.affine_space_witness.room(), x: 3, y: 4, z: 0),
-                    b_from: point3(frame: test.claim.affine_space_witness.room(), x: 0, y: 0, z: 0), b_to: point3(frame: test.claim.affine_space_witness.room(), x: 30, y: 40, z: 0)),
+    r: std.euclidean_geometry.closer_than3(registry: mm_registry(), a_from: std.affine_space.point3(frame: room(), x: 0, y: 0, z: 0), a_to: std.affine_space.point3(frame: room(), x: 3, y: 4, z: 0),
+                    b_from: std.affine_space.point3(frame: room(), x: 0, y: 0, z: 0), b_to: std.affine_space.point3(frame: room(), x: 30, y: 40, z: 0)),
     expected: true,
   )
     && ready_bool_is(
-         r: closer_than3(registry: test.claim.affine_space_witness.mm_registry(), a_from: point3(frame: test.claim.affine_space_witness.room(), x: 0, y: 0, z: 0), a_to: point3(frame: test.claim.affine_space_witness.room(), x: 30, y: 40, z: 0),
-                         b_from: point3(frame: test.claim.affine_space_witness.room(), x: 0, y: 0, z: 0), b_to: point3(frame: test.claim.affine_space_witness.room(), x: 3, y: 4, z: 0)),
+         r: std.euclidean_geometry.closer_than3(registry: mm_registry(), a_from: std.affine_space.point3(frame: room(), x: 0, y: 0, z: 0), a_to: std.affine_space.point3(frame: room(), x: 30, y: 40, z: 0),
+                         b_from: std.affine_space.point3(frame: room(), x: 0, y: 0, z: 0), b_to: std.affine_space.point3(frame: room(), x: 3, y: 4, z: 0)),
          expected: false,
        )
 }
@@ -195,35 +195,35 @@ fn witness_comparison_resolves_where_norm_does_not() -> Bool {
 // Zero has magnitude but no direction: a DIFFERENT arm from "this kernel did not resolve it", and
 // both are different again from "the machine could not compute it".
 fn witness_normalize_separates_no_direction_from_unresolved() -> Bool {
-  match normalize3(registry: test.claim.affine_space_witness.mm_registry(), v: zero_vector3(frame: test.claim.affine_space_witness.room())) {
-    SpatialArithmeticRefused { cause: _ } => false
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialReady { value: d } =>
+  match std.euclidean_geometry.normalize3(registry: mm_registry(), v: std.affine_space.zero_vector3(frame: room())) {
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialReady { value: d } =>
       match d {
-        DirectionZeroVectorHasNone => true
-        DirectionExact { direction: _ } => false
-        DirectionUnresolvedInAxisKernel { squared_magnitude: _, reason: _ } => false
+        std.euclidean_geometry.DirectionZeroVectorHasNone => true
+        std.euclidean_geometry.DirectionExact { direction: _ } => false
+        std.euclidean_geometry.DirectionUnresolvedInAxisKernel { squared_magnitude: _, reason: _ } => false
       }
   }
-    && match normalize3(registry: test.claim.affine_space_witness.mm_registry(), v: vector3(frame: test.claim.affine_space_witness.room(), x: 0, y: 0 - 900, z: 0)) {
-         SpatialArithmeticRefused { cause: _ } => false
-         SpatialFrameRefused { refusal: _ } => false
-         SpatialReady { value: d } =>
+    && match std.euclidean_geometry.normalize3(registry: mm_registry(), v: std.affine_space.vector3(frame: room(), x: 0, y: 0 - 900, z: 0)) {
+         std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
+         std.affine_space.SpatialReady { value: d } =>
            match d {
-             DirectionExact { direction: a } => is_negative_y(d: a)
-             DirectionZeroVectorHasNone => false
-             DirectionUnresolvedInAxisKernel { squared_magnitude: _, reason: _ } => false
+             std.euclidean_geometry.DirectionExact { direction: a } => is_negative_y(d: a)
+             std.euclidean_geometry.DirectionZeroVectorHasNone => false
+             std.euclidean_geometry.DirectionUnresolvedInAxisKernel { squared_magnitude: _, reason: _ } => false
            }
        }
-    && match normalize3(registry: test.claim.affine_space_witness.mm_registry(), v: vector3(frame: test.claim.affine_space_witness.room(), x: 3, y: 4, z: 0)) {
-         SpatialArithmeticRefused { cause: _ } => false
-         SpatialFrameRefused { refusal: _ } => false
-         SpatialReady { value: d } =>
+    && match std.euclidean_geometry.normalize3(registry: mm_registry(), v: std.affine_space.vector3(frame: room(), x: 3, y: 4, z: 0)) {
+         std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
+         std.affine_space.SpatialReady { value: d } =>
            match d {
-             DirectionUnresolvedInAxisKernel { squared_magnitude: s, reason: _ } =>
-               square_millimeter_count(m: s) == 25
-             DirectionExact { direction: _ } => false
-             DirectionZeroVectorHasNone => false
+             std.euclidean_geometry.DirectionUnresolvedInAxisKernel { squared_magnitude: s, reason: _ } =>
+               std.measure.square_millimeter_count(m: s) == 25
+             std.euclidean_geometry.DirectionExact { direction: _ } => false
+             std.euclidean_geometry.DirectionZeroVectorHasNone => false
            }
        }
 }
@@ -233,44 +233,44 @@ fn witness_normalize_separates_no_direction_from_unresolved() -> Bool {
 // displacement - that is a type error, not a runtime refusal, which is why there is no claim here
 // asserting it: the code expressing it does not compile.
 fn witness_dot_and_cross_are_exact_and_dimensioned() -> Bool {
-  let u = vector3(frame: test.claim.affine_space_witness.room(), x: 1000, y: 0, z: 0)
-  let v = vector3(frame: test.claim.affine_space_witness.room(), x: 0, y: 1000, z: 0)
+  let u = std.affine_space.vector3(frame: room(), x: 1000, y: 0, z: 0)
+  let v = std.affine_space.vector3(frame: room(), x: 0, y: 1000, z: 0)
   dot_is(a: u, b: v, expected: 0)
     && dot_is(a: u, b: u, expected: 1000000)
-    && match cross3(registry: test.claim.affine_space_witness.mm_registry(), a: u, b: v) {
-         SpatialArithmeticRefused { cause: _ } => false
-         SpatialFrameRefused { refusal: _ } => false
-         SpatialReady { value: c } => area_vector_equals(a: c, x: 0, y: 0, z: 1000000)
+    && match std.euclidean_geometry.cross3(registry: mm_registry(), a: u, b: v) {
+         std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
+         std.affine_space.SpatialReady { value: c } => area_vector_equals(a: c, x: 0, y: 0, z: 1000000)
        }
-    && match negate_vector3(v: u) {
-         SpatialArithmeticRefused { cause: _ } => false
-         SpatialFrameRefused { refusal: _ } => false
-         SpatialReady { value: nu } => dot_is(a: u, b: nu, expected: 0 - 1000000)
+    && match std.affine_space.negate_vector3(v: u) {
+         std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
+         std.affine_space.SpatialReady { value: nu } => dot_is(a: u, b: nu, expected: 0 - 1000000)
        }
 }
 
-fn dot_is(a: std.affine_space.Vector3, b: std.affine_space.Vector3, expected: std.integer.Int) -> Bool {
-  match dot3(registry: test.claim.affine_space_witness.mm_registry(), a: a, b: b) {
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialArithmeticRefused { cause: _ } => false
-    SpatialReady { value: d } => signed_square_millimeter_count(m: d) == expected
+fn dot_is(a: std.affine_space.Vector3, b: std.affine_space.Vector3, expected: Int) -> Bool {
+  match std.euclidean_geometry.dot3(registry: mm_registry(), a: a, b: b) {
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialReady { value: d } => std.measure.signed_square_millimeter_count(m: d) == expected
   }
 }
 
-fn area_vector_equals(a: std.euclidean_geometry.AreaVector3, x: std.integer.Int, y: std.integer.Int, z: std.integer.Int) -> Bool {
-  signed_square_millimeter_count(m: a.x) == x
-    && signed_square_millimeter_count(m: a.y) == y
-    && signed_square_millimeter_count(m: a.z) == z
+fn area_vector_equals(a: std.euclidean_geometry.AreaVector3, x: Int, y: Int, z: Int) -> Bool {
+  std.measure.signed_square_millimeter_count(m: a.x) == x
+    && std.measure.signed_square_millimeter_count(m: a.y) == y
+    && std.measure.signed_square_millimeter_count(m: a.z) == z
 }
 
 fn is_negative_y(d: std.euclidean_geometry.AxisDirection3) -> Bool {
   match d {
-    NegativeY => true
-    PositiveY => false
-    PositiveX => false
-    NegativeX => false
-    PositiveZ => false
-    NegativeZ => false
+    std.euclidean_geometry.NegativeY => true
+    std.euclidean_geometry.PositiveY => false
+    std.euclidean_geometry.PositiveX => false
+    std.euclidean_geometry.NegativeX => false
+    std.euclidean_geometry.PositiveZ => false
+    std.euclidean_geometry.NegativeZ => false
   }
 }
 
@@ -279,22 +279,22 @@ fn is_negative_y(d: std.euclidean_geometry.AxisDirection3) -> Bool {
 // silently consumed by a room-frame operation - it is refused, not unwritable.
 fn room_to_building() -> std.affine_space.ZQuarterTurnTransform3 {
   std.affine_space.ZQuarterTurnTransform3 {
-    from_frame: test.claim.affine_space_witness.room(),
-    to_frame: test.claim.affine_space_witness.building(),
-    rotation_about_z: OneQuarter,
-    translation: vector3(frame: test.claim.affine_space_witness.building(), x: 10000, y: 20000, z: 0),
+    from_frame: room(),
+    to_frame: building(),
+    rotation_about_z: std.affine_space.OneQuarter,
+    translation: std.affine_space.vector3(frame: building(), x: 10000, y: 20000, z: 0),
   }
 }
 
 fn witness_transform_crosses_frames_exactly() -> Bool {
-  match apply_z_quarter_turn_transform3(transform: room_to_building(), point: point3(frame: test.claim.affine_space_witness.room(), x: 1000, y: 0, z: 500)) {
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialArithmeticRefused { cause: _ } => false
-    SpatialReady { value: moved } =>
-      signed_frame_component_count(c: moved.x) == 10000
-        && signed_frame_component_count(c: moved.y) == 21000
-        && signed_frame_component_count(c: moved.z) == 500
-        && coordinate_frame_identity_eq(a: moved.frame, b: test.claim.affine_space_witness.building())
+  match std.affine_space.apply_z_quarter_turn_transform3(transform: room_to_building(), point: std.affine_space.point3(frame: room(), x: 1000, y: 0, z: 500)) {
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialReady { value: moved } =>
+      std.affine_space.signed_frame_component_count(c: moved.x) == 10000
+        && std.affine_space.signed_frame_component_count(c: moved.y) == 21000
+        && std.affine_space.signed_frame_component_count(c: moved.z) == 500
+        && std.coordinate_frame.coordinate_frame_identity_eq(a: moved.frame, b: building())
   }
 }
 
@@ -305,53 +305,53 @@ fn witness_transform_crosses_frames_exactly() -> Bool {
 // meaningless question rather than a refusal of it.
 fn frame_refusal_is(r: std.affine_space.SpatialResult<std.affine_space.Vector3>, left: std.coordinate_frame.CoordinateFrameIdentity, right: std.coordinate_frame.CoordinateFrameIdentity) -> Bool {
   match r {
-    SpatialReady { value: _ } => false
-    SpatialArithmeticRefused { cause: _ } => false
-    SpatialFrameRefused { refusal: fr } =>
-      coordinate_frame_identity_eq(a: fr.left_frame, b: left)
-        && coordinate_frame_identity_eq(a: fr.right_frame, b: right)
+    std.affine_space.SpatialReady { value: _ } => false
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialFrameRefused { refusal: fr } =>
+      std.coordinate_frame.coordinate_frame_identity_eq(a: fr.left_frame, b: left)
+        && std.coordinate_frame.coordinate_frame_identity_eq(a: fr.right_frame, b: right)
         && relation_is_same_frame(r: fr.relation)
   }
 }
 
 fn relation_is_same_frame(r: std.affine_space.SpatialFrameRelation) -> Bool {
   match r {
-    SameFrameOperandsRequired => true
-    TransformSourceFrameRequired => false
+    std.affine_space.SameFrameOperandsRequired => true
+    std.affine_space.TransformSourceFrameRequired => false
     MillimetreFrameRequired => false
-    TransformTranslationInDestinationRequired => false
-    ProjectionSourceFrameRequired => false
+    std.affine_space.TransformTranslationInDestinationRequired => false
+    std.affine_space.ProjectionSourceFrameRequired => false
   }
 }
 
 fn relation_is_transform_source(r: std.affine_space.SpatialFrameRelation) -> Bool {
   match r {
-    SameFrameOperandsRequired => false
-    TransformSourceFrameRequired => true
+    std.affine_space.SameFrameOperandsRequired => false
+    std.affine_space.TransformSourceFrameRequired => true
     MillimetreFrameRequired => false
-    TransformTranslationInDestinationRequired => false
-    ProjectionSourceFrameRequired => false
+    std.affine_space.TransformTranslationInDestinationRequired => false
+    std.affine_space.ProjectionSourceFrameRequired => false
   }
 }
 
 fn witness_cross_frame_operations_refuse_and_name_both_frames() -> Bool {
-  let room_point = point3(frame: test.claim.affine_space_witness.room(), x: 1, y: 2, z: 3)
-  let building_point = point3(frame: test.claim.affine_space_witness.building(), x: 10, y: 20, z: 30)
-  let room_vector = vector3(frame: test.claim.affine_space_witness.room(), x: 1, y: 1, z: 1)
-  let building_vector = vector3(frame: test.claim.affine_space_witness.building(), x: 1, y: 1, z: 1)
-  frame_refusal_is(r: displacement_between3(from: room_point, to: building_point), left: test.claim.affine_space_witness.room(), right: test.claim.affine_space_witness.building())
-    && frame_refusal_is(r: add_vector3(a: room_vector, b: building_vector), left: test.claim.affine_space_witness.room(), right: test.claim.affine_space_witness.building())
-    && frame_refusal_is(r: subtract_vector3(a: room_vector, b: building_vector), left: test.claim.affine_space_witness.room(), right: test.claim.affine_space_witness.building())
-    && match translate_point3(point: room_point, by: building_vector) {
-      SpatialFrameRefused { refusal: fr } =>
-        coordinate_frame_identity_eq(a: fr.left_frame, b: test.claim.affine_space_witness.room())
-          && coordinate_frame_identity_eq(a: fr.right_frame, b: test.claim.affine_space_witness.building())
+  let room_point = std.affine_space.point3(frame: room(), x: 1, y: 2, z: 3)
+  let building_point = std.affine_space.point3(frame: building(), x: 10, y: 20, z: 30)
+  let room_vector = std.affine_space.vector3(frame: room(), x: 1, y: 1, z: 1)
+  let building_vector = std.affine_space.vector3(frame: building(), x: 1, y: 1, z: 1)
+  frame_refusal_is(r: std.affine_space.displacement_between3(from: room_point, to: building_point), left: room(), right: building())
+    && frame_refusal_is(r: std.affine_space.add_vector3(a: room_vector, b: building_vector), left: room(), right: building())
+    && frame_refusal_is(r: std.affine_space.subtract_vector3(a: room_vector, b: building_vector), left: room(), right: building())
+    && match std.affine_space.translate_point3(point: room_point, by: building_vector) {
+      std.affine_space.SpatialFrameRefused { refusal: fr } =>
+        std.coordinate_frame.coordinate_frame_identity_eq(a: fr.left_frame, b: room())
+          && std.coordinate_frame.coordinate_frame_identity_eq(a: fr.right_frame, b: building())
       _ => false
     }
-    && match apply_z_quarter_turn_transform3(transform: room_to_building(), point: building_point) {
-      SpatialFrameRefused { refusal: fr } =>
-        coordinate_frame_identity_eq(a: fr.left_frame, b: test.claim.affine_space_witness.room())
-          && coordinate_frame_identity_eq(a: fr.right_frame, b: test.claim.affine_space_witness.building())
+    && match std.affine_space.apply_z_quarter_turn_transform3(transform: room_to_building(), point: building_point) {
+      std.affine_space.SpatialFrameRefused { refusal: fr } =>
+        std.coordinate_frame.coordinate_frame_identity_eq(a: fr.left_frame, b: room())
+          && std.coordinate_frame.coordinate_frame_identity_eq(a: fr.right_frame, b: building())
           && relation_is_transform_source(r: fr.relation)
       _ => false
     }
@@ -360,15 +360,15 @@ fn witness_cross_frame_operations_refuse_and_name_both_frames() -> Bool {
 // THE POSITIVE SIBLING. Without it the witness above is satisfied by an operation that refuses
 // everything, which is the failure mode a refusal-only control cannot see.
 fn witness_same_frame_operations_still_answer() -> Bool {
-  let a = point3(frame: test.claim.affine_space_witness.room(), x: 1, y: 2, z: 3)
-  let b = point3(frame: test.claim.affine_space_witness.room(), x: 11, y: 22, z: 33)
-  match displacement_between3(from: a, to: b) {
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialReady { value: d } =>
-      signed_frame_component_count(c: d.x) == 10
-        && signed_frame_component_count(c: d.y) == 20
-        && signed_frame_component_count(c: d.z) == 30
-        && coordinate_frame_identity_eq(a: d.frame, b: test.claim.affine_space_witness.room())
+  let a = std.affine_space.point3(frame: room(), x: 1, y: 2, z: 3)
+  let b = std.affine_space.point3(frame: room(), x: 11, y: 22, z: 33)
+  match std.affine_space.displacement_between3(from: a, to: b) {
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialReady { value: d } =>
+      std.affine_space.signed_frame_component_count(c: d.x) == 10
+        && std.affine_space.signed_frame_component_count(c: d.y) == 20
+        && std.affine_space.signed_frame_component_count(c: d.z) == 30
+        && std.coordinate_frame.coordinate_frame_identity_eq(a: d.frame, b: room())
     _ => false
   }
 }
@@ -377,12 +377,12 @@ fn witness_same_frame_operations_still_answer() -> Bool {
 // collapsed into one "failed" arm later without this going red: operands that disagree on frame AND
 // would also overflow report the frame, because there is no question to overflow.
 fn witness_frame_and_overflow_are_distinct_causes() -> Bool {
-  let big_room = vector3(frame: test.claim.affine_space_witness.room(), x: int_inclusive_max(), y: 0, z: 0)
-  let big_building = vector3(frame: test.claim.affine_space_witness.building(), x: int_inclusive_max(), y: 0, z: 0)
-  let big_room_2 = vector3(frame: test.claim.affine_space_witness.room(), x: int_inclusive_max(), y: 0, z: 0)
-  frame_refusal_is(r: add_vector3(a: big_room, b: big_building), left: test.claim.affine_space_witness.room(), right: test.claim.affine_space_witness.building())
-    && match add_vector3(a: big_room, b: big_room_2) {
-      SpatialArithmeticRefused { cause: _ } => true
+  let big_room = std.affine_space.vector3(frame: room(), x: std.checked_arithmetic.int_inclusive_max(), y: 0, z: 0)
+  let big_building = std.affine_space.vector3(frame: building(), x: std.checked_arithmetic.int_inclusive_max(), y: 0, z: 0)
+  let big_room_2 = std.affine_space.vector3(frame: room(), x: std.checked_arithmetic.int_inclusive_max(), y: 0, z: 0)
+  frame_refusal_is(r: std.affine_space.add_vector3(a: big_room, b: big_building), left: room(), right: building())
+    && match std.affine_space.add_vector3(a: big_room, b: big_room_2) {
+      std.affine_space.SpatialArithmeticRefused { cause: _ } => true
       _ => false
     }
 }
@@ -396,79 +396,79 @@ fn witness_frame_and_overflow_are_distinct_causes() -> Bool {
 // wrapped i64 and the surrounding comment called the operation total and exact.
 fn refusal_names(r: std.affine_space.SpatialResult<std.affine_space.Vector3>, op: std.checked_arithmetic.IntegerArithmeticOperation) -> Bool {
   match r {
-    SpatialReady { value: _ } => false
-    SpatialArithmeticRefused { cause: c } => operation_equals(a: c.operation, b: op)
-    SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialReady { value: _ } => false
+    std.affine_space.SpatialArithmeticRefused { cause: c } => operation_equals(a: c.operation, b: op)
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
   }
 }
 
 fn operation_equals(a: std.checked_arithmetic.IntegerArithmeticOperation, b: std.checked_arithmetic.IntegerArithmeticOperation) -> Bool {
   match a {
-    IntegerAdd => match b { IntegerAdd => true, IntegerSubtract => false, IntegerMultiply => false, IntegerNegate => false }
-    IntegerSubtract => match b { IntegerAdd => false, IntegerSubtract => true, IntegerMultiply => false, IntegerNegate => false }
-    IntegerMultiply => match b { IntegerAdd => false, IntegerSubtract => false, IntegerMultiply => true, IntegerNegate => false }
-    IntegerNegate => match b { IntegerAdd => false, IntegerSubtract => false, IntegerMultiply => false, IntegerNegate => true }
+    std.checked_arithmetic.IntegerAdd => match b { std.checked_arithmetic.IntegerAdd => true, std.checked_arithmetic.IntegerSubtract => false, std.checked_arithmetic.IntegerMultiply => false, std.checked_arithmetic.IntegerNegate => false }
+    std.checked_arithmetic.IntegerSubtract => match b { std.checked_arithmetic.IntegerAdd => false, std.checked_arithmetic.IntegerSubtract => true, std.checked_arithmetic.IntegerMultiply => false, std.checked_arithmetic.IntegerNegate => false }
+    std.checked_arithmetic.IntegerMultiply => match b { std.checked_arithmetic.IntegerAdd => false, std.checked_arithmetic.IntegerSubtract => false, std.checked_arithmetic.IntegerMultiply => true, std.checked_arithmetic.IntegerNegate => false }
+    std.checked_arithmetic.IntegerNegate => match b { std.checked_arithmetic.IntegerAdd => false, std.checked_arithmetic.IntegerSubtract => false, std.checked_arithmetic.IntegerMultiply => false, std.checked_arithmetic.IntegerNegate => true }
   }
 }
 
 fn max_vector() -> std.affine_space.Vector3 {
-  vector3(frame: test.claim.affine_space_witness.room(), x: int_inclusive_max(), y: 0, z: 0)
+  std.affine_space.vector3(frame: room(), x: std.checked_arithmetic.int_inclusive_max(), y: 0, z: 0)
 }
 
 fn min_vector() -> std.affine_space.Vector3 {
-  vector3(frame: test.claim.affine_space_witness.room(), x: int_inclusive_min(), y: 0, z: 0)
+  std.affine_space.vector3(frame: room(), x: std.checked_arithmetic.int_inclusive_min(), y: 0, z: 0)
 }
 
 fn witness_each_operation_refuses_at_its_own_bound() -> Bool {
-  refusal_names(r: add_vector3(a: max_vector(), b: vector3(frame: test.claim.affine_space_witness.room(), x: 1, y: 0, z: 0)), op: IntegerAdd)
-    && refusal_names(r: subtract_vector3(a: min_vector(), b: vector3(frame: test.claim.affine_space_witness.room(), x: 1, y: 0, z: 0)), op: IntegerSubtract)
-    && refusal_names(r: negate_vector3(v: min_vector()), op: IntegerNegate)
-    && refusal_names(r: scale_vector3(v: max_vector(), factor: 2), op: IntegerMultiply)
-    && refusal_names(r: rotate_quarter_turns_about_z(v: min_vector(), turns: TwoQuarters), op: IntegerNegate)
-    && match displacement_between3(from: point3(frame: test.claim.affine_space_witness.room(), x: int_inclusive_min(), y: 0, z: 0), to: point3(frame: test.claim.affine_space_witness.room(), x: int_inclusive_max(), y: 0, z: 0)) {
-         SpatialReady { value: _ } => false
-         SpatialArithmeticRefused { cause: c } => operation_equals(a: c.operation, b: IntegerSubtract)
-         SpatialFrameRefused { refusal: _ } => false
+  refusal_names(r: std.affine_space.add_vector3(a: max_vector(), b: std.affine_space.vector3(frame: room(), x: 1, y: 0, z: 0)), op: std.checked_arithmetic.IntegerAdd)
+    && refusal_names(r: std.affine_space.subtract_vector3(a: min_vector(), b: std.affine_space.vector3(frame: room(), x: 1, y: 0, z: 0)), op: std.checked_arithmetic.IntegerSubtract)
+    && refusal_names(r: std.affine_space.negate_vector3(v: min_vector()), op: std.checked_arithmetic.IntegerNegate)
+    && refusal_names(r: std.affine_space.scale_vector3(v: max_vector(), factor: 2), op: std.checked_arithmetic.IntegerMultiply)
+    && refusal_names(r: std.affine_space.rotate_quarter_turns_about_z(v: min_vector(), turns: std.affine_space.TwoQuarters), op: std.checked_arithmetic.IntegerNegate)
+    && match std.affine_space.displacement_between3(from: std.affine_space.point3(frame: room(), x: std.checked_arithmetic.int_inclusive_min(), y: 0, z: 0), to: std.affine_space.point3(frame: room(), x: std.checked_arithmetic.int_inclusive_max(), y: 0, z: 0)) {
+         std.affine_space.SpatialReady { value: _ } => false
+         std.affine_space.SpatialArithmeticRefused { cause: c } => operation_equals(a: c.operation, b: std.checked_arithmetic.IntegerSubtract)
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
        }
-    && match norm_squared3(registry: test.claim.affine_space_witness.mm_registry(), v: vector3(frame: test.claim.affine_space_witness.room(), x: 4000000000, y: 0, z: 0)) {
-         SpatialReady { value: _ } => false
-         SpatialArithmeticRefused { cause: c } => operation_equals(a: c.operation, b: IntegerMultiply)
-         SpatialFrameRefused { refusal: _ } => false
+    && match std.euclidean_geometry.norm_squared3(registry: mm_registry(), v: std.affine_space.vector3(frame: room(), x: 4000000000, y: 0, z: 0)) {
+         std.affine_space.SpatialReady { value: _ } => false
+         std.affine_space.SpatialArithmeticRefused { cause: c } => operation_equals(a: c.operation, b: std.checked_arithmetic.IntegerMultiply)
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
        }
-    && match dot3(registry: test.claim.affine_space_witness.mm_registry(), a: vector3(frame: test.claim.affine_space_witness.room(), x: 3000000000, y: 3000000000, z: 0), b: vector3(frame: test.claim.affine_space_witness.room(), x: 3000000000, y: 3000000000, z: 0)) {
-         SpatialReady { value: _ } => false
-         SpatialArithmeticRefused { cause: c } => operation_equals(a: c.operation, b: IntegerAdd)
-         SpatialFrameRefused { refusal: _ } => false
+    && match std.euclidean_geometry.dot3(registry: mm_registry(), a: std.affine_space.vector3(frame: room(), x: 3000000000, y: 3000000000, z: 0), b: std.affine_space.vector3(frame: room(), x: 3000000000, y: 3000000000, z: 0)) {
+         std.affine_space.SpatialReady { value: _ } => false
+         std.affine_space.SpatialArithmeticRefused { cause: c } => operation_equals(a: c.operation, b: std.checked_arithmetic.IntegerAdd)
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
        }
-    && match apply_z_quarter_turn_transform3(
-              transform: std.affine_space.ZQuarterTurnTransform3 { from_frame: test.claim.affine_space_witness.room(), to_frame: test.claim.affine_space_witness.room(), rotation_about_z: NoTurn, translation: vector3(frame: test.claim.affine_space_witness.room(), x: 1, y: 0, z: 0) },
-              point: point3(frame: test.claim.affine_space_witness.room(), x: int_inclusive_max(), y: 0, z: 0),
+    && match std.affine_space.apply_z_quarter_turn_transform3(
+              transform: std.affine_space.ZQuarterTurnTransform3 { from_frame: room(), to_frame: room(), rotation_about_z: std.affine_space.NoTurn, translation: std.affine_space.vector3(frame: room(), x: 1, y: 0, z: 0) },
+              point: std.affine_space.point3(frame: room(), x: std.checked_arithmetic.int_inclusive_max(), y: 0, z: 0),
             ) {
-         SpatialReady { value: _ } => false
-         SpatialArithmeticRefused { cause: c } => operation_equals(a: c.operation, b: IntegerAdd)
-         SpatialFrameRefused { refusal: _ } => false
+         std.affine_space.SpatialReady { value: _ } => false
+         std.affine_space.SpatialArithmeticRefused { cause: c } => operation_equals(a: c.operation, b: std.checked_arithmetic.IntegerAdd)
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
        }
 }
 
 // THE OPERANDS TRAVEL WITH THE CAUSE. A refusal that named only the operation would tell a caller
 // that an addition failed somewhere in a three-component fold; this says which two numbers.
 fn witness_refusal_carries_its_operands() -> Bool {
-  match add_vector3(a: max_vector(), b: vector3(frame: test.claim.affine_space_witness.room(), x: 1, y: 0, z: 0)) {
-    SpatialReady { value: _ } => false
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialArithmeticRefused { cause: c } =>
+  match std.affine_space.add_vector3(a: max_vector(), b: std.affine_space.vector3(frame: room(), x: 1, y: 0, z: 0)) {
+    std.affine_space.SpatialReady { value: _ } => false
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialArithmeticRefused { cause: c } =>
       match c.operands {
-        UnaryOperand { value: _ } => false
-        BinaryOperands { lhs: l, rhs: r } => l == int_inclusive_max() && r == 1
+        std.checked_arithmetic.UnaryOperand { value: _ } => false
+        std.checked_arithmetic.BinaryOperands { lhs: l, rhs: r } => l == std.checked_arithmetic.int_inclusive_max() && r == 1
       }
   }
-    && match negate_vector3(v: min_vector()) {
-         SpatialReady { value: _ } => false
-         SpatialFrameRefused { refusal: _ } => false
-         SpatialArithmeticRefused { cause: c } =>
+    && match std.affine_space.negate_vector3(v: min_vector()) {
+         std.affine_space.SpatialReady { value: _ } => false
+         std.affine_space.SpatialFrameRefused { refusal: _ } => false
+         std.affine_space.SpatialArithmeticRefused { cause: c } =>
            match c.operands {
-             UnaryOperand { value: v } => v == int_inclusive_min()
-             BinaryOperands { lhs: _, rhs: _ } => false
+             std.checked_arithmetic.UnaryOperand { value: v } => v == std.checked_arithmetic.int_inclusive_min()
+             std.checked_arithmetic.BinaryOperands { lhs: _, rhs: _ } => false
            }
        }
 }
@@ -478,13 +478,13 @@ fn witness_refusal_carries_its_operands() -> Bool {
 // the maximum is reachable, and one past it is not.
 fn witness_bound_is_reached_not_merely_approached() -> Bool {
   ready_vector_equals(
-    r: add_vector3(a: vector3(frame: test.claim.affine_space_witness.room(), x: int_inclusive_max() - 1, y: 0, z: 0), b: vector3(frame: test.claim.affine_space_witness.room(), x: 1, y: 0, z: 0)),
+    r: std.affine_space.add_vector3(a: std.affine_space.vector3(frame: room(), x: std.checked_arithmetic.int_inclusive_max() - 1, y: 0, z: 0), b: std.affine_space.vector3(frame: room(), x: 1, y: 0, z: 0)),
     b: max_vector(),
   )
-    && ready_vector_equals(r: negate_vector3(v: vector3(frame: test.claim.affine_space_witness.room(), x: int_inclusive_max(), y: 0, z: 0)),
-                           b: vector3(frame: test.claim.affine_space_witness.room(), x: 0 - int_inclusive_max(), y: 0, z: 0))
-    && ready_vector_equals(r: scale_vector3(v: vector3(frame: test.claim.affine_space_witness.room(), x: int_inclusive_max() / 2, y: 0, z: 0), factor: 2),
-                           b: vector3(frame: test.claim.affine_space_witness.room(), x: (int_inclusive_max() / 2) * 2, y: 0, z: 0))
+    && ready_vector_equals(r: std.affine_space.negate_vector3(v: std.affine_space.vector3(frame: room(), x: std.checked_arithmetic.int_inclusive_max(), y: 0, z: 0)),
+                           b: std.affine_space.vector3(frame: room(), x: 0 - std.checked_arithmetic.int_inclusive_max(), y: 0, z: 0))
+    && ready_vector_equals(r: std.affine_space.scale_vector3(v: std.affine_space.vector3(frame: room(), x: std.checked_arithmetic.int_inclusive_max() / 2, y: 0, z: 0), factor: 2),
+                           b: std.affine_space.vector3(frame: room(), x: (std.checked_arithmetic.int_inclusive_max() / 2) * 2, y: 0, z: 0))
 }
 
 // THE LYING-PRODUCER CONTROL, and it is the reason the carried identity exists at all rather than
@@ -499,17 +499,17 @@ fn witness_bound_is_reached_not_merely_approached() -> Bool {
 // If this ever passes by the value actually being in building(), the carried identity has stopped
 // being the authority and the claim in std.coordinate_frame is false again.
 fn falsely_reframed_point() -> std.affine_space.Point3 {
-  point3(frame: test.claim.affine_space_witness.room(), x: 5, y: 5, z: 5)
+  std.affine_space.point3(frame: room(), x: 5, y: 5, z: 5)
 }
 
 fn witness_false_return_annotation_cannot_rewrite_carried_frame() -> Bool {
   let claimed_building = falsely_reframed_point()
-  let genuine_building = point3(frame: test.claim.affine_space_witness.building(), x: 0, y: 0, z: 0)
-  coordinate_frame_identity_eq(a: claimed_building.frame, b: test.claim.affine_space_witness.room())
+  let genuine_building = std.affine_space.point3(frame: building(), x: 0, y: 0, z: 0)
+  std.coordinate_frame.coordinate_frame_identity_eq(a: claimed_building.frame, b: room())
     && frame_refusal_is(
-      r: displacement_between3(from: genuine_building, to: claimed_building),
-      left: test.claim.affine_space_witness.building(),
-      right: test.claim.affine_space_witness.room())
+      r: std.affine_space.displacement_between3(from: genuine_building, to: claimed_building),
+      left: building(),
+      right: room())
 }
 
 // THE TRANSFORM'S SECOND FRAME OBLIGATION, distinct from the first and invisible to it. A transform
@@ -517,28 +517,28 @@ fn witness_false_return_annotation_cannot_rewrite_carried_frame() -> Bool {
 // source-frame check cannot see, so it carries its own relation and its own control.
 fn misframed_transform() -> std.affine_space.ZQuarterTurnTransform3 {
   std.affine_space.ZQuarterTurnTransform3 {
-    from_frame: test.claim.affine_space_witness.room(),
-    to_frame: test.claim.affine_space_witness.building(),
-    rotation_about_z: NoTurn,
-    translation: vector3(frame: test.claim.affine_space_witness.room(), x: 1, y: 1, z: 1),
+    from_frame: room(),
+    to_frame: building(),
+    rotation_about_z: std.affine_space.NoTurn,
+    translation: std.affine_space.vector3(frame: room(), x: 1, y: 1, z: 1),
   }
 }
 
 fn witness_transform_translation_must_be_in_destination_frame() -> Bool {
-  match apply_z_quarter_turn_transform3(transform: misframed_transform(), point: point3(frame: test.claim.affine_space_witness.room(), x: 0, y: 0, z: 0)) {
-    SpatialFrameRefused { refusal: fr } =>
-      coordinate_frame_identity_eq(a: fr.left_frame, b: test.claim.affine_space_witness.building())
-        && coordinate_frame_identity_eq(a: fr.right_frame, b: test.claim.affine_space_witness.room())
+  match std.affine_space.apply_z_quarter_turn_transform3(transform: misframed_transform(), point: std.affine_space.point3(frame: room(), x: 0, y: 0, z: 0)) {
+    std.affine_space.SpatialFrameRefused { refusal: fr } =>
+      std.coordinate_frame.coordinate_frame_identity_eq(a: fr.left_frame, b: building())
+        && std.coordinate_frame.coordinate_frame_identity_eq(a: fr.right_frame, b: room())
         && match fr.relation {
           MillimetreFrameRequired => false
-    TransformTranslationInDestinationRequired => true
-          SameFrameOperandsRequired => false
-          TransformSourceFrameRequired => false
-          ProjectionSourceFrameRequired => false
+    std.affine_space.TransformTranslationInDestinationRequired => true
+          std.affine_space.SameFrameOperandsRequired => false
+          std.affine_space.TransformSourceFrameRequired => false
+          std.affine_space.ProjectionSourceFrameRequired => false
         }
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialReady { value: _ } => false
-    SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialReady { value: _ } => false
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
   }
 }
 
@@ -571,9 +571,9 @@ test fn affine_space_witnesses() -> Bool {
 // positive control on the same vector, so this asserts the frame decides the outcome rather than
 // the operation refusing everything.
 fn micro_registry() -> std.spatial_frame.SpatialFrameRegistry {
-  match register_frame(r: empty_frame_registry(), identity: test.claim.affine_space_witness.room(), length_scale: Micro) {
-    FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
-    FrameRegistrationRefused { cause: _ } => empty_frame_registry()
+  match std.spatial_frame.register_frame(r: std.spatial_frame.empty_frame_registry(), identity: room(), length_scale: std.measure.Micro) {
+    std.spatial_frame.FrameRegistered { frame: f } => std.spatial_frame.registry_with(r: std.spatial_frame.empty_frame_registry(), f: f)
+    std.spatial_frame.FrameRegistrationRefused { cause: _ } => std.spatial_frame.empty_frame_registry()
   }
 }
 
@@ -582,49 +582,49 @@ fn micro_registry() -> std.spatial_frame.SpatialFrameRegistry {
 // CROSS PRODUCT IS THE SAME WALL, censused rather than waited for: it labels THREE components
 // in square millimetres, so an unguarded micrometre frame mislabels a whole vector at once.
 test fn w_metric_operations_refuse_a_frame_they_cannot_label() -> Bool {
-  let v = vector3(frame: test.claim.affine_space_witness.room(), x: 1000, y: 0, z: 0)
-  let refused_in_micrometres = match norm3(registry: test.claim.affine_space_witness.micro_registry(), v: v) {
-    SpatialFrameRefused { refusal: r } =>
+  let v = std.affine_space.vector3(frame: room(), x: 1000, y: 0, z: 0)
+  let refused_in_micrometres = match std.euclidean_geometry.norm3(registry: micro_registry(), v: v) {
+    std.affine_space.SpatialFrameRefused { refusal: r } =>
       match r.relation {
         MillimetreFrameRequired => true
-        SameFrameOperandsRequired => false
-        TransformSourceFrameRequired => false
-        TransformTranslationInDestinationRequired => false
-        ProjectionSourceFrameRequired => false
+        std.affine_space.SameFrameOperandsRequired => false
+        std.affine_space.TransformSourceFrameRequired => false
+        std.affine_space.TransformTranslationInDestinationRequired => false
+        std.affine_space.ProjectionSourceFrameRequired => false
       }
-    SpatialReady { value: _ } => false
-    SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialReady { value: _ } => false
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
   }
-  let answered_in_millimetres = match norm3(registry: test.claim.affine_space_witness.mm_registry(), v: v) {
-    SpatialReady { value: l } =>
+  let answered_in_millimetres = match std.euclidean_geometry.norm3(registry: mm_registry(), v: v) {
+    std.affine_space.SpatialReady { value: l } =>
       match l {
-        LengthExact { value: mm } => millimeter_count(m: mm) == 1000
-        LengthRootUnresolvedInExactKernel { squared: _, reason: _ } => false
+        std.euclidean_geometry.LengthExact { value: mm } => std.measure.millimeter_count(m: mm) == 1000
+        std.euclidean_geometry.LengthRootUnresolvedInExactKernel { squared: _, reason: _ } => false
       }
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
   }
-  let refused_when_unregistered = match norm3(registry: empty_frame_registry(), v: v) {
-    SpatialFrameRefused { refusal: _ } => true
-    SpatialReady { value: _ } => false
-    SpatialArithmeticRefused { cause: _ } => false
+  let refused_when_unregistered = match std.euclidean_geometry.norm3(registry: std.spatial_frame.empty_frame_registry(), v: v) {
+    std.affine_space.SpatialFrameRefused { refusal: _ } => true
+    std.affine_space.SpatialReady { value: _ } => false
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
   }
-  let cross_refused_in_micrometres = match cross3(registry: test.claim.affine_space_witness.micro_registry(), a: v, b: vector3(frame: test.claim.affine_space_witness.room(), x: 0, y: 1000, z: 0)) {
-    SpatialFrameRefused { refusal: r } =>
+  let cross_refused_in_micrometres = match std.euclidean_geometry.cross3(registry: micro_registry(), a: v, b: std.affine_space.vector3(frame: room(), x: 0, y: 1000, z: 0)) {
+    std.affine_space.SpatialFrameRefused { refusal: r } =>
       match r.relation {
         MillimetreFrameRequired => true
-        SameFrameOperandsRequired => false
-        TransformSourceFrameRequired => false
-        TransformTranslationInDestinationRequired => false
-        ProjectionSourceFrameRequired => false
+        std.affine_space.SameFrameOperandsRequired => false
+        std.affine_space.TransformSourceFrameRequired => false
+        std.affine_space.TransformTranslationInDestinationRequired => false
+        std.affine_space.ProjectionSourceFrameRequired => false
       }
-    SpatialReady { value: _ } => false
-    SpatialArithmeticRefused { cause: _ } => false
+    std.affine_space.SpatialReady { value: _ } => false
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
   }
-  let cross_answers_in_millimetres = match cross3(registry: test.claim.affine_space_witness.mm_registry(), a: v, b: vector3(frame: test.claim.affine_space_witness.room(), x: 0, y: 1000, z: 0)) {
-    SpatialReady { value: av } => signed_square_millimeter_count(m: av.z) == 1000000
-    SpatialFrameRefused { refusal: _ } => false
-    SpatialArithmeticRefused { cause: _ } => false
+  let cross_answers_in_millimetres = match std.euclidean_geometry.cross3(registry: mm_registry(), a: v, b: std.affine_space.vector3(frame: room(), x: 0, y: 1000, z: 0)) {
+    std.affine_space.SpatialReady { value: av } => std.measure.signed_square_millimeter_count(m: av.z) == 1000000
+    std.affine_space.SpatialFrameRefused { refusal: _ } => false
+    std.affine_space.SpatialArithmeticRefused { cause: _ } => false
   }
   refused_in_micrometres && answered_in_millimetres && refused_when_unregistered
     && cross_refused_in_micrometres && cross_answers_in_millimetres

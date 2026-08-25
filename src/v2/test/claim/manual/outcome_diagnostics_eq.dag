@@ -4,15 +4,15 @@ module v2.test.manual.outcome_diagnostics_eq
 fn diag_eq_x() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^diag_eq_reason_x,
-    at: node_locus(node: v2.test.manual.connective_anchors.stub_empty_conj),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: v2.test.manual.connective_anchors.stub_empty_conj),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 fn diag_eq_y() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^diag_eq_reason_y,
-    at: node_locus(node: v2.test.manual.connective_anchors.stub_empty_conj),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: v2.test.manual.connective_anchors.stub_empty_conj),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -24,27 +24,27 @@ data nds_xyy: v2.std.diagnostic.NonEmptyDiagnostics = v2.std.diagnostic.NonEmpty
   head: diag_eq_x(),
   tail: [diag_eq_y(), diag_eq_y()]
 }
-data rejected_xx_y: Outcome<v2.std.node.Node> = v2.std.diagnostic.Rejected { diagnostics: nds_xx_y }
-data rejected_xyy: Outcome<v2.std.node.Node> = v2.std.diagnostic.Rejected { diagnostics: nds_xyy }
+data rejected_xx_y: v2.std.diagnostic.Outcome<v2.std.node.Node> = v2.std.diagnostic.Rejected { diagnostics: nds_xx_y }
+data rejected_xyy: v2.std.diagnostic.Outcome<v2.std.node.Node> = v2.std.diagnostic.Rejected { diagnostics: nds_xyy }
 fn witness_tail_mult_not_equal() -> Bool {
-  if non_empty_diagnostics_eq(a: nds_xx_y, b: nds_xyy) {
+  if v2.std.diagnostic.non_empty_diagnostics_eq(a: nds_xx_y, b: nds_xyy) {
     false
   } else {
     true
   }
 }
 fn witness_rejected_mult_not_equal() -> Bool {
-  if outcome_node_eq(a: rejected_xx_y, b: rejected_xyy) {
+  if v2.std.diagnostic.outcome_node_eq(a: rejected_xx_y, b: rejected_xyy) {
     false
   } else {
     true
   }
 }
 
-data witness_diagnostics_merge_some: Bool = match diagnostics_merge(
+data witness_diagnostics_merge_some: Bool = match v2.std.diagnostic.diagnostics_merge(
   outer: v2.std.diagnostic.Some { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: diag_eq_x(), tail: [] } },
   inner: v2.std.diagnostic.Some { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: diag_eq_y(), tail: [] } }
 ) {
-  Some { diagnostics: _ } => true
-  None => false
+  v2.std.diagnostic.Some { diagnostics: _ } => true
+  v2.std.diagnostic.None => false
 }

@@ -5,23 +5,23 @@ data plain_int_specimen: Int = 7
 
 data plain_string_specimen: String = "not a disposition"
 
-data bare_construction_mechanism_specimen: std.disposition.ConstructionMechanism = SingleAuthority
+data bare_construction_mechanism_specimen: std.disposition.ConstructionMechanism = std.disposition.SingleAuthority
 
 data terminal_reason_a_specimen: std.disposition.Disposition = std.disposition.Terminal { reason: "closed by an explicit operator decision; no dissolution ever applies" }
 
 data terminal_reason_b_specimen: std.disposition.Disposition = std.disposition.Terminal { reason: "duplicate of an existing concept, retired rather than scaffolded" }
 
 data scaffold_single_authority_whole_specimen: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.scaffold_disposition_census.pool.specimens",
     decl_name: "scaffold_single_authority_whole_specimen",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data scaffold_single_authority_named_specimen: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.scaffold_disposition_census.pool.specimens",
     decl_name: "scaffold_single_authority_named_specimen",
@@ -30,16 +30,16 @@ data scaffold_single_authority_named_specimen: std.disposition.Disposition = std
 }
 
 data scaffold_realization_dispatch_whole_specimen: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.scaffold_disposition_census.pool.specimens",
     decl_name: "scaffold_realization_dispatch_whole_specimen",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data scaffold_realization_dispatch_named_specimen: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.scaffold_disposition_census.pool.specimens",
     decl_name: "scaffold_realization_dispatch_named_specimen",
@@ -48,16 +48,16 @@ data scaffold_realization_dispatch_named_specimen: std.disposition.Disposition =
 }
 
 data scaffold_substrate_mandatory_tag_whole_specimen: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SubstrateMandatoryTag,
+  dissolves_to: std.disposition.SubstrateMandatoryTag,
   bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.scaffold_disposition_census.pool.specimens",
     decl_name: "scaffold_substrate_mandatory_tag_whole_specimen",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data scaffold_substrate_mandatory_tag_named_specimen: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SubstrateMandatoryTag,
+  dissolves_to: std.disposition.SubstrateMandatoryTag,
   bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.scaffold_disposition_census.pool.specimens",
     decl_name: "scaffold_substrate_mandatory_tag_named_specimen",
@@ -66,11 +66,11 @@ data scaffold_substrate_mandatory_tag_named_specimen: std.disposition.Dispositio
 }
 
 data original_for_alias_specimen: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.scaffold_disposition_census.pool.specimens",
     decl_name: "original_for_alias_specimen",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -78,11 +78,11 @@ data aliased_disposition_specimen: std.disposition.Disposition = original_for_al
 
 fn compute_disposition_specimen_value() -> std.disposition.Disposition {
   std.disposition.Scaffold {
-    dissolves_to: RealizationDispatch,
+    dissolves_to: std.disposition.RealizationDispatch,
     bind: std.decl_ref.DeclarationRef {
       module_path: "test.fixture.scaffold_disposition_census.pool.specimens",
       decl_name: "computed_disposition_specimen",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   }
 }
@@ -90,11 +90,11 @@ fn compute_disposition_specimen_value() -> std.disposition.Disposition {
 data computed_disposition_specimen: std.disposition.Disposition = compute_disposition_specimen_value()
 
 data dangling_bind_target_specimen: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SubstrateMandatoryTag,
+  dissolves_to: std.disposition.SubstrateMandatoryTag,
   bind: std.decl_ref.DeclarationRef {
     module_path: "test.fixture.scaffold_disposition_census.pool.specimens",
     decl_name: "no_such_declaration_G1_dangling_bind_control_RED",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

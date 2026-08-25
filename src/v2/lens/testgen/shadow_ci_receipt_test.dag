@@ -1,12 +1,12 @@
 module v2.test.lens_testgen.shadow_ci_receipt
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-test fn lens_testgen_shadow_ci_run_receipt_holds() -> v2.std.logic.Bool {
-  match testgen_run_receipt_outcome(profile_ref: ^testgen_default_profile_ref) {
-    Accepted { value: receipt, diagnostics: _ } =>
-      testgen_run_receipt_carries_profile_roster(receipt: receipt)
-    Rejected { diagnostics: _ } => false
+test fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {
+  match v2.lens.testgen.testgen_run_receipt_outcome(profile_ref: ^testgen_default_profile_ref) {
+    v2.std.diagnostic.Accepted { value: receipt, diagnostics: _ } =>
+      v2.lens.testgen.testgen_run_receipt_carries_profile_roster(receipt: receipt)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

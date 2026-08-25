@@ -2,6 +2,6 @@ module gunbc.ci_yaml_validate
 
 
 fn ci_yml_parses(path: String) -> Bool {
-  let read = Filesystem.Read(path: path)
-  read.success && yaml_source_parses(src: read.content)
+  let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path)
+  read.success && extdeps.languages.yaml.ingest.yaml_source_parses(src: read.content)
 }

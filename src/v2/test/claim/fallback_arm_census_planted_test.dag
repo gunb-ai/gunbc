@@ -1,61 +1,61 @@
 module v2.test.claim.fallback_arm_census_planted
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data fallback_arm_planted_note: String = "W2 fallback-arm census planted fixtures (docs/plans/fallback-arm-census.md): AnswersOnOpen / Refuses / ClassifierUnknown mechanism REDs on synthetic Match nodes — no host, no corpus walk. Corpus grain enrolls separately on falsifier_substrate_long_lane."
 
-test fn planted_answers_on_open_is_defect_holds() -> v2.std.logic.Bool {
-  let c = classify_last_arm_of_planted_match(
-    match_node: planted_match_with_wildcard_answers(),
+test fn planted_answers_on_open_is_defect_holds() -> Bool {
+  let c = v2.lens.fallback_arm_census.classify_last_arm_of_planted_match(
+    match_node: v2.lens.fallback_arm_census.planted_match_with_wildcard_answers(),
     scrutinee_closed_total: false,
     interim_declared: false
   )
-  fallback_arm_class_eq(a: c, b: AnswersOnOpen) && fallback_arm_class_is_defect(c: c)
+  v2.lens.fallback_arm_census.fallback_arm_class_eq(a: c, b: v2.lens.fallback_arm_census.AnswersOnOpen) && v2.lens.fallback_arm_census.fallback_arm_class_is_defect(c: c)
 }
 
-test fn planted_refuses_is_healthy_holds() -> v2.std.logic.Bool {
-  let c = classify_last_arm_of_planted_match(
-    match_node: planted_match_with_wildcard_refuses(),
+test fn planted_refuses_is_healthy_holds() -> Bool {
+  let c = v2.lens.fallback_arm_census.classify_last_arm_of_planted_match(
+    match_node: v2.lens.fallback_arm_census.planted_match_with_wildcard_refuses(),
     scrutinee_closed_total: false,
     interim_declared: false
   )
-  fallback_arm_class_eq(a: c, b: Refuses) && !fallback_arm_class_is_defect(c: c)
+  v2.lens.fallback_arm_census.fallback_arm_class_eq(a: c, b: v2.lens.fallback_arm_census.Refuses) && !v2.lens.fallback_arm_census.fallback_arm_class_is_defect(c: c)
 }
 
-test fn planted_opaque_is_unknown_counted_holds() -> v2.std.logic.Bool {
-  let c = classify_last_arm_of_planted_match(
-    match_node: planted_match_with_wildcard_opaque(),
+test fn planted_opaque_is_unknown_counted_holds() -> Bool {
+  let c = v2.lens.fallback_arm_census.classify_last_arm_of_planted_match(
+    match_node: v2.lens.fallback_arm_census.planted_match_with_wildcard_opaque(),
     scrutinee_closed_total: false,
     interim_declared: false
   )
-  fallback_arm_class_is_unknown(c: c)
-    && fallback_arm_class_eq(
+  v2.lens.fallback_arm_census.fallback_arm_class_is_unknown(c: c)
+    && v2.lens.fallback_arm_census.fallback_arm_class_eq(
       a: c,
-      b: v2.lens.fallback_arm_census.ClassifierUnknown { cause: fallback_unknown_undecidable_body }
+      b: v2.lens.fallback_arm_census.ClassifierUnknown { cause: v2.lens.fallback_arm_census.fallback_unknown_undecidable_body }
     )
 }
 
-test fn planted_closed_total_answers_holds() -> v2.std.logic.Bool {
-  let c = classify_last_arm_of_planted_match(
-    match_node: planted_match_with_wildcard_answers(),
+test fn planted_closed_total_answers_holds() -> Bool {
+  let c = v2.lens.fallback_arm_census.classify_last_arm_of_planted_match(
+    match_node: v2.lens.fallback_arm_census.planted_match_with_wildcard_answers(),
     scrutinee_closed_total: true,
     interim_declared: false
   )
-  fallback_arm_class_eq(a: c, b: CompletesClosedTotal)
+  v2.lens.fallback_arm_census.fallback_arm_class_eq(a: c, b: v2.lens.fallback_arm_census.CompletesClosedTotal)
 }
 
-test fn planted_interim_overrides_answers_holds() -> v2.std.logic.Bool {
-  let c = classify_last_arm_of_planted_match(
-    match_node: planted_match_with_wildcard_answers(),
+test fn planted_interim_overrides_answers_holds() -> Bool {
+  let c = v2.lens.fallback_arm_census.classify_last_arm_of_planted_match(
+    match_node: v2.lens.fallback_arm_census.planted_match_with_wildcard_answers(),
     scrutinee_closed_total: false,
     interim_declared: true
   )
-  fallback_arm_class_eq(a: c, b: DeclaredInterim)
+  v2.lens.fallback_arm_census.fallback_arm_class_eq(a: c, b: v2.lens.fallback_arm_census.DeclaredInterim)
 }
 
-test fn classifier_input_not_wildcard_is_unknown_holds() -> v2.std.logic.Bool {
-  let c = classify_fallback_arm(
+test fn classifier_input_not_wildcard_is_unknown_holds() -> Bool {
+  let c = v2.lens.fallback_arm_census.classify_fallback_arm(
     input: v2.lens.fallback_arm_census.FallbackArmClassifyInput {
       pattern_is_wildcard: false,
       body_refuses: false,
@@ -64,17 +64,17 @@ test fn classifier_input_not_wildcard_is_unknown_holds() -> v2.std.logic.Bool {
       interim_declared: false
     }
   )
-  fallback_arm_class_is_unknown(c: c)
+  v2.lens.fallback_arm_census.fallback_arm_class_is_unknown(c: c)
 }
 
-test fn classifier_class_eq_covers_all_variants_self_applies_holds() -> v2.std.logic.Bool {
-  fallback_arm_class_eq(a: Refuses, b: Refuses)
-    && fallback_arm_class_eq(a: CompletesClosedTotal, b: CompletesClosedTotal)
-    && fallback_arm_class_eq(a: DeclaredInterim, b: DeclaredInterim)
-    && fallback_arm_class_eq(a: AnswersOnOpen, b: AnswersOnOpen)
-    && fallback_arm_class_eq(
-      a: v2.lens.fallback_arm_census.ClassifierUnknown { cause: fallback_unknown_undecidable_body },
-      b: v2.lens.fallback_arm_census.ClassifierUnknown { cause: fallback_unknown_undecidable_body }
+test fn classifier_class_eq_covers_all_variants_self_applies_holds() -> Bool {
+  v2.lens.fallback_arm_census.fallback_arm_class_eq(a: v2.lens.fallback_arm_census.Refuses, b: v2.lens.fallback_arm_census.Refuses)
+    && v2.lens.fallback_arm_census.fallback_arm_class_eq(a: v2.lens.fallback_arm_census.CompletesClosedTotal, b: v2.lens.fallback_arm_census.CompletesClosedTotal)
+    && v2.lens.fallback_arm_census.fallback_arm_class_eq(a: v2.lens.fallback_arm_census.DeclaredInterim, b: v2.lens.fallback_arm_census.DeclaredInterim)
+    && v2.lens.fallback_arm_census.fallback_arm_class_eq(a: v2.lens.fallback_arm_census.AnswersOnOpen, b: v2.lens.fallback_arm_census.AnswersOnOpen)
+    && v2.lens.fallback_arm_census.fallback_arm_class_eq(
+      a: v2.lens.fallback_arm_census.ClassifierUnknown { cause: v2.lens.fallback_arm_census.fallback_unknown_undecidable_body },
+      b: v2.lens.fallback_arm_census.ClassifierUnknown { cause: v2.lens.fallback_arm_census.fallback_unknown_undecidable_body }
     )
-    && !fallback_arm_class_eq(a: AnswersOnOpen, b: Refuses)
+    && !v2.lens.fallback_arm_census.fallback_arm_class_eq(a: v2.lens.fallback_arm_census.AnswersOnOpen, b: v2.lens.fallback_arm_census.Refuses)
 }

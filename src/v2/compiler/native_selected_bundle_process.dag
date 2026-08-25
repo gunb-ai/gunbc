@@ -8,11 +8,11 @@ data native_selected_bundle_process_seed_deferral: String = "§7 seed-retained e
 type NativeSelectedBundleProcessSpec {
   workspace_dir: String
   bundle_identity: String
-  selected_count: v2.std.integer.Int
-  bundle_count: v2.std.integer.Int
-  shard_count: v2.std.integer.Int
+  selected_count: Int
+  bundle_count: Int
+  shard_count: Int
   files: List<v2.std.host_transport.MaterializedWorkspaceFile>
   build: List<List<String>>
   run: List<String>
-  expected_stdout_octets: List<v2.std.integer.Int>
+  expected_stdout_octets: List<Int>
 }

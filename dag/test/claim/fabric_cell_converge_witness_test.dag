@@ -5,53 +5,53 @@ fn srv3_fabric_slot() -> gunbc.build_cache_instance.RunnerSlotIdentity {
   gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv3, slot_index: 6 }
 }
 
-fn desired_member(address: FabricCellResourceAddress) -> FabricCellMember {
-  FabricCellMember {
+fn desired_member(address: gunbc.fabric_cell_converge.FabricCellResourceAddress) -> gunbc.fabric_cell_converge.FabricCellMember {
+  gunbc.fabric_cell_converge.FabricCellMember {
     slot: srv3_fabric_slot(),
     address: address,
-    state_digest: fabric_cell_desired_state_digest(slot: srv3_fabric_slot(), address: address),
+    state_digest: gunbc.fabric_cell_converge.fabric_cell_desired_state_digest(slot: srv3_fabric_slot(), address: address),
   }
 }
 
-fn converged_readback() -> FabricCellReadback {
-  FabricCellReadback {
+fn converged_readback() -> gunbc.fabric_cell_converge.FabricCellReadback {
+  gunbc.fabric_cell_converge.FabricCellReadback {
     slot: srv3_fabric_slot(),
     observations: [
-      AddressObserved { member: desired_member(address: FabricCellRootAddress) },
-      AddressObserved { member: desired_member(address: FabricCellAttemptRootAddress) },
-      AddressObserved { member: desired_member(address: FabricCellResourceBoundaryAddress) },
+      gunbc.fabric_cell_converge.AddressObserved { member: desired_member(address: gunbc.fabric_cell_converge.FabricCellRootAddress) },
+      gunbc.fabric_cell_converge.AddressObserved { member: desired_member(address: gunbc.fabric_cell_converge.FabricCellAttemptRootAddress) },
+      gunbc.fabric_cell_converge.AddressObserved { member: desired_member(address: gunbc.fabric_cell_converge.FabricCellResourceBoundaryAddress) },
     ]
   }
 }
 
-fn readback_plus(extra: FabricCellAddressObservation) -> FabricCellReadback {
-  FabricCellReadback {
+fn readback_plus(extra: gunbc.fabric_cell_converge.FabricCellAddressObservation) -> gunbc.fabric_cell_converge.FabricCellReadback {
+  gunbc.fabric_cell_converge.FabricCellReadback {
     slot: srv3_fabric_slot(),
     observations: concat(converged_readback().observations, [extra])
   }
 }
 
-fn membership_is_family_member(m: FabricCellFamilyMembership) -> Bool {
+fn membership_is_family_member(m: gunbc.fabric_cell_converge.FabricCellFamilyMembership) -> Bool {
   match m {
-    FabricCellIsAFamilyMember { cell: _ } => true
-    SlotIsNotAFabricExecutionMember { reason: _ } => false
-    SlotIsNotACommittedMemberOfItsHost { reason: _ } => false
+    gunbc.fabric_cell_converge.FabricCellIsAFamilyMember { cell: _ } => true
+    gunbc.fabric_cell_converge.SlotIsNotAFabricExecutionMember { reason: _ } => false
+    gunbc.fabric_cell_converge.SlotIsNotACommittedMemberOfItsHost { reason: _ } => false
   }
 }
 
-fn membership_refuses_wrong_family(m: FabricCellFamilyMembership) -> Bool {
+fn membership_refuses_wrong_family(m: gunbc.fabric_cell_converge.FabricCellFamilyMembership) -> Bool {
   match m {
-    SlotIsNotAFabricExecutionMember { reason: _ } => true
-    FabricCellIsAFamilyMember { cell: _ } => false
-    SlotIsNotACommittedMemberOfItsHost { reason: _ } => false
+    gunbc.fabric_cell_converge.SlotIsNotAFabricExecutionMember { reason: _ } => true
+    gunbc.fabric_cell_converge.FabricCellIsAFamilyMember { cell: _ } => false
+    gunbc.fabric_cell_converge.SlotIsNotACommittedMemberOfItsHost { reason: _ } => false
   }
 }
 
-fn membership_refuses_uncommitted(m: FabricCellFamilyMembership) -> Bool {
+fn membership_refuses_uncommitted(m: gunbc.fabric_cell_converge.FabricCellFamilyMembership) -> Bool {
   match m {
-    SlotIsNotACommittedMemberOfItsHost { reason: _ } => true
-    FabricCellIsAFamilyMember { cell: _ } => false
-    SlotIsNotAFabricExecutionMember { reason: _ } => false
+    gunbc.fabric_cell_converge.SlotIsNotACommittedMemberOfItsHost { reason: _ } => true
+    gunbc.fabric_cell_converge.FabricCellIsAFamilyMember { cell: _ } => false
+    gunbc.fabric_cell_converge.SlotIsNotAFabricExecutionMember { reason: _ } => false
   }
 }
 
@@ -60,72 +60,72 @@ fn membership_refuses_uncommitted(m: FabricCellFamilyMembership) -> Bool {
 // same host one index down; srv4-06 is the same index on the other host of the same committed width.
 // A gate that answered "family member" for everything would satisfy the first row alone.
 test fn witness_fabric_cell_family_is_exactly_the_declared_member() -> Bool {
-  membership_is_family_member(m: fabric_cell_family_membership(host: gunbc.fleet_intent_network.operator_host_srv3, slot_index: 6))
-    && membership_refuses_wrong_family(m: fabric_cell_family_membership(host: gunbc.fleet_intent_network.operator_host_srv3, slot_index: 5))
-    && membership_refuses_wrong_family(m: fabric_cell_family_membership(host: gunbc.fleet_intent_network.operator_host_srv4, slot_index: 6))
+  membership_is_family_member(m: gunbc.fabric_cell_converge.fabric_cell_family_membership(host: gunbc.fleet_intent_network.operator_host_srv3, slot_index: 6))
+    && membership_refuses_wrong_family(m: gunbc.fabric_cell_converge.fabric_cell_family_membership(host: gunbc.fleet_intent_network.operator_host_srv3, slot_index: 5))
+    && membership_refuses_wrong_family(m: gunbc.fabric_cell_converge.fabric_cell_family_membership(host: gunbc.fleet_intent_network.operator_host_srv4, slot_index: 6))
 }
 
 // MEMBERSHIP IS ASKED BEFORE PURPOSE: an index the host was never admitted to carry is refused as an
 // uncommitted member, not classified as a non-fabric slot.
 test fn witness_fabric_cell_refuses_uncommitted_index() -> Bool {
-  membership_refuses_uncommitted(m: fabric_cell_family_membership(host: gunbc.fleet_intent_network.operator_host_srv3, slot_index: 99))
+  membership_refuses_uncommitted(m: gunbc.fabric_cell_converge.fabric_cell_family_membership(host: gunbc.fleet_intent_network.operator_host_srv3, slot_index: 99))
 }
 
 // THE CELL NAME IS THE SLOT NAME. If these ever disagree, a second naming authority was minted.
 test fn witness_fabric_cell_id_is_the_slot_instance_name() -> Bool {
-  (fabric_cell_id_for_slot(slot: srv3_fabric_slot()) as String) == "srv3-06"
-    && (fabric_cell_id_for_slot(slot: srv3_fabric_slot()) as String)
+  (gunbc.fabric_cell_converge.fabric_cell_id_for_slot(slot: srv3_fabric_slot()) as String) == "srv3-06"
+    && (gunbc.fabric_cell_converge.fabric_cell_id_for_slot(slot: srv3_fabric_slot()) as String)
         == gunbc.build_cache_instance.runner_slot_instance_name(slot: srv3_fabric_slot())
-    && std.types.list_length(items: fabric_cell_ids()) == 1
+    && std.types.list_length(items: gunbc.fabric_cell_converge.fabric_cell_ids()) == 1
 }
 
 // THE DESIRED POPULATION IS THREE RESOURCE-ADDRESSED MEMBERS ON THE ONE FABRIC HOST, AND NONE ON A
 // HOST THAT CARRIES NO FABRIC MEMBER. The second half is what stops the family proposing cells fleet
 // wide the moment it is threaded into converge.
 test fn witness_fabric_cell_desired_population_is_host_exact() -> Bool {
-  std.types.list_length(items: fabric_cell_desired_members(host: gunbc.fleet_intent_network.operator_host_srv3)) == 3
-    && std.types.list_length(items: fabric_cell_desired_members(host: gunbc.fleet_intent_network.operator_host_srv4)) == 0
-    && std.types.list_length(items: fabric_cell_resource_addresses()) == 3
+  std.types.list_length(items: gunbc.fabric_cell_converge.fabric_cell_desired_members(host: gunbc.fleet_intent_network.operator_host_srv3)) == 3
+    && std.types.list_length(items: gunbc.fabric_cell_converge.fabric_cell_desired_members(host: gunbc.fleet_intent_network.operator_host_srv4)) == 0
+    && std.types.list_length(items: gunbc.fabric_cell_converge.fabric_cell_resource_addresses()) == 3
 }
 
 // MEMBER KEYS ARE DISTINCT PER ADDRESS. If two addresses collided the reconcile would see a
 // duplicate key and refuse the whole roster -- correct behaviour for a real collision, and a
 // self-inflicted outage if the key function is wrong.
 test fn witness_fabric_cell_member_keys_are_address_distinct() -> Bool {
-  fabric_cell_member_key(member: desired_member(address: FabricCellRootAddress))
+  gunbc.fabric_cell_converge.fabric_cell_member_key(member: desired_member(address: gunbc.fabric_cell_converge.FabricCellRootAddress))
     == "srv3|srv3-06|cell-root"
-    && fabric_cell_member_key(member: desired_member(address: FabricCellAttemptRootAddress))
+    && gunbc.fabric_cell_converge.fabric_cell_member_key(member: desired_member(address: gunbc.fabric_cell_converge.FabricCellAttemptRootAddress))
         == "srv3|srv3-06|attempt-root"
-    && fabric_cell_member_key(member: desired_member(address: FabricCellResourceBoundaryAddress))
+    && gunbc.fabric_cell_converge.fabric_cell_member_key(member: desired_member(address: gunbc.fabric_cell_converge.FabricCellResourceBoundaryAddress))
         == "srv3|srv3-06|resource-boundary"
 }
 
-fn verdict_is_provisioned(v: FabricCellSubstrateVerdict) -> Bool {
+fn verdict_is_provisioned(v: gunbc.fabric_cell_converge.FabricCellSubstrateVerdict) -> Bool {
   match v {
-    FabricCellSubstrateProvisioned { cell: _ } => true
-    FabricCellSubstrateUnprovisioned { cell: _, missing_or_drifted: _ } => false
-    FabricCellSubstrateObservationRefused { cell: _, blocked: _ } => false
+    gunbc.fabric_cell_converge.FabricCellSubstrateProvisioned { cell: _ } => true
+    gunbc.fabric_cell_converge.FabricCellSubstrateUnprovisioned { cell: _, missing_or_drifted: _ } => false
+    gunbc.fabric_cell_converge.FabricCellSubstrateObservationRefused { cell: _, blocked: _ } => false
   }
 }
 
-fn verdict_is_unprovisioned(v: FabricCellSubstrateVerdict) -> Bool {
+fn verdict_is_unprovisioned(v: gunbc.fabric_cell_converge.FabricCellSubstrateVerdict) -> Bool {
   match v {
-    FabricCellSubstrateUnprovisioned { cell: _, missing_or_drifted: _ } => true
-    FabricCellSubstrateProvisioned { cell: _ } => false
-    FabricCellSubstrateObservationRefused { cell: _, blocked: _ } => false
+    gunbc.fabric_cell_converge.FabricCellSubstrateUnprovisioned { cell: _, missing_or_drifted: _ } => true
+    gunbc.fabric_cell_converge.FabricCellSubstrateProvisioned { cell: _ } => false
+    gunbc.fabric_cell_converge.FabricCellSubstrateObservationRefused { cell: _, blocked: _ } => false
   }
 }
 
-fn verdict_is_observation_refused(v: FabricCellSubstrateVerdict) -> Bool {
+fn verdict_is_observation_refused(v: gunbc.fabric_cell_converge.FabricCellSubstrateVerdict) -> Bool {
   match v {
-    FabricCellSubstrateObservationRefused { cell: _, blocked: _ } => true
-    FabricCellSubstrateProvisioned { cell: _ } => false
-    FabricCellSubstrateUnprovisioned { cell: _, missing_or_drifted: _ } => false
+    gunbc.fabric_cell_converge.FabricCellSubstrateObservationRefused { cell: _, blocked: _ } => true
+    gunbc.fabric_cell_converge.FabricCellSubstrateProvisioned { cell: _ } => false
+    gunbc.fabric_cell_converge.FabricCellSubstrateUnprovisioned { cell: _, missing_or_drifted: _ } => false
   }
 }
 
 test fn witness_fabric_cell_converged_readback_is_provisioned() -> Bool {
-  verdict_is_provisioned(v: fabric_cell_substrate_verdict(readback: converged_readback()))
+  verdict_is_provisioned(v: gunbc.fabric_cell_converge.fabric_cell_substrate_verdict(readback: converged_readback()))
 }
 
 // A READBACK WITH NO OBSERVATIONS IS REFUSED, NOT PROVISIONED AND NOT UNPROVISIONED.
@@ -142,29 +142,29 @@ test fn witness_fabric_cell_converged_readback_is_provisioned() -> Bool {
 // would have planned three ADDs against a host nobody read.
 test fn witness_fabric_cell_empty_readback_is_observation_refused() -> Bool {
   verdict_is_observation_refused(
-    v: fabric_cell_substrate_verdict(
-      readback: fabric_cell_readback_without_observations(slot: srv3_fabric_slot())
+    v: gunbc.fabric_cell_converge.fabric_cell_substrate_verdict(
+      readback: gunbc.fabric_cell_converge.fabric_cell_readback_without_observations(slot: srv3_fabric_slot())
     )
   )
 }
 
-fn disposition_is_contradicted(d: FabricCellAddressDisposition) -> Bool {
+fn disposition_is_contradicted(d: gunbc.fabric_cell_converge.FabricCellAddressDisposition) -> Bool {
   match d {
-    AddressContradicted { ref: _ } => true
-    AddressPresent { ref: _, member: _ } => false
-    AddressMissingOnHost { ref: _ } => false
-    AddressUnobserved { ref: _ } => false
-    AddressUnreadable { ref: _, cause: _ } => false
+    gunbc.fabric_cell_converge.AddressContradicted { ref: _ } => true
+    gunbc.fabric_cell_converge.AddressPresent { ref: _, member: _ } => false
+    gunbc.fabric_cell_converge.AddressMissingOnHost { ref: _ } => false
+    gunbc.fabric_cell_converge.AddressUnobserved { ref: _ } => false
+    gunbc.fabric_cell_converge.AddressUnreadable { ref: _, cause: _ } => false
   }
 }
 
-fn disposition_is_present(d: FabricCellAddressDisposition) -> Bool {
+fn disposition_is_present(d: gunbc.fabric_cell_converge.FabricCellAddressDisposition) -> Bool {
   match d {
-    AddressPresent { ref: _, member: _ } => true
-    AddressContradicted { ref: _ } => false
-    AddressMissingOnHost { ref: _ } => false
-    AddressUnobserved { ref: _ } => false
-    AddressUnreadable { ref: _, cause: _ } => false
+    gunbc.fabric_cell_converge.AddressPresent { ref: _, member: _ } => true
+    gunbc.fabric_cell_converge.AddressContradicted { ref: _ } => false
+    gunbc.fabric_cell_converge.AddressMissingOnHost { ref: _ } => false
+    gunbc.fabric_cell_converge.AddressUnobserved { ref: _ } => false
+    gunbc.fabric_cell_converge.AddressUnreadable { ref: _, cause: _ } => false
   }
 }
 
@@ -174,15 +174,15 @@ fn disposition_is_present(d: FabricCellAddressDisposition) -> Bool {
 // first-match implementation would go green here. The verdict must not be a function of list order.
 test fn witness_fabric_cell_contradiction_does_not_resolve_by_order() -> Bool {
   let contradicted = readback_plus(
-    extra: AddressAbsent { slot: srv3_fabric_slot(), address: FabricCellRootAddress }
+    extra: gunbc.fabric_cell_converge.AddressAbsent { slot: srv3_fabric_slot(), address: gunbc.fabric_cell_converge.FabricCellRootAddress }
   )
   disposition_is_contradicted(
-    d: fabric_cell_address_disposition(readback: contradicted, slot: srv3_fabric_slot(), address: FabricCellRootAddress)
+    d: gunbc.fabric_cell_converge.fabric_cell_address_disposition(readback: contradicted, slot: srv3_fabric_slot(), address: gunbc.fabric_cell_converge.FabricCellRootAddress)
   )
     && disposition_is_present(
-      d: fabric_cell_address_disposition(readback: contradicted, slot: srv3_fabric_slot(), address: FabricCellAttemptRootAddress)
+      d: gunbc.fabric_cell_converge.fabric_cell_address_disposition(readback: contradicted, slot: srv3_fabric_slot(), address: gunbc.fabric_cell_converge.FabricCellAttemptRootAddress)
     )
-    && verdict_is_observation_refused(v: fabric_cell_substrate_verdict(readback: contradicted))
+    && verdict_is_observation_refused(v: gunbc.fabric_cell_converge.fabric_cell_substrate_verdict(readback: contradicted))
 }
 
 // AN UNREADABLE RESOURCE NEVER ARRIVES AS AN ABSENT ONE. This is the empty-observation narrow in its
@@ -190,49 +190,49 @@ test fn witness_fabric_cell_contradiction_does_not_resolve_by_order() -> Bool {
 // planning a full provision over a cell it could not see.
 test fn witness_fabric_cell_unreadable_address_refuses_rather_than_reading_as_absent() -> Bool {
   let refused = readback_plus(
-    extra: AddressObservationRefused {
+    extra: gunbc.fabric_cell_converge.AddressObservationRefused {
       slot: srv3_fabric_slot(),
-      address: FabricCellResourceBoundaryAddress,
+      address: gunbc.fabric_cell_converge.FabricCellResourceBoundaryAddress,
       cause: "probe could not read the cell resource boundary"
     }
   )
-  verdict_is_observation_refused(v: fabric_cell_substrate_verdict(readback: refused))
+  verdict_is_observation_refused(v: gunbc.fabric_cell_converge.fabric_cell_substrate_verdict(readback: refused))
 }
 
 // A MISSING ADDRESS IS UNPROVISIONED AND NOT REFUSED -- absent and unreadable have different
 // remedies, and the verdict keeps them apart.
 test fn witness_fabric_cell_absent_address_is_unprovisioned_not_refused() -> Bool {
-  let partial = FabricCellReadback {
+  let partial = gunbc.fabric_cell_converge.FabricCellReadback {
     slot: srv3_fabric_slot(),
     observations: [
-      AddressObserved { member: desired_member(address: FabricCellRootAddress) },
-      AddressObserved { member: desired_member(address: FabricCellAttemptRootAddress) },
-      AddressAbsent { slot: srv3_fabric_slot(), address: FabricCellResourceBoundaryAddress },
+      gunbc.fabric_cell_converge.AddressObserved { member: desired_member(address: gunbc.fabric_cell_converge.FabricCellRootAddress) },
+      gunbc.fabric_cell_converge.AddressObserved { member: desired_member(address: gunbc.fabric_cell_converge.FabricCellAttemptRootAddress) },
+      gunbc.fabric_cell_converge.AddressAbsent { slot: srv3_fabric_slot(), address: gunbc.fabric_cell_converge.FabricCellResourceBoundaryAddress },
     ]
   }
-  verdict_is_unprovisioned(v: fabric_cell_substrate_verdict(readback: partial))
+  verdict_is_unprovisioned(v: gunbc.fabric_cell_converge.fabric_cell_substrate_verdict(readback: partial))
 }
 
 // DRIFT IS UNPROVISIONED, NOT PROVISIONED. A present resource carrying the wrong value is the case a
 // presence-only check reports as converged, which is how a cell keeps the previous slot authority's
 // memory ceiling after the fleet row moves.
 test fn witness_fabric_cell_drifted_digest_is_unprovisioned() -> Bool {
-  let drifted = FabricCellReadback {
+  let drifted = gunbc.fabric_cell_converge.FabricCellReadback {
     slot: srv3_fabric_slot(),
     observations: [
-      AddressObserved { member: desired_member(address: FabricCellRootAddress) },
-      AddressObserved { member: desired_member(address: FabricCellAttemptRootAddress) },
-      AddressObserved {
-        member: FabricCellMember {
+      gunbc.fabric_cell_converge.AddressObserved { member: desired_member(address: gunbc.fabric_cell_converge.FabricCellRootAddress) },
+      gunbc.fabric_cell_converge.AddressObserved { member: desired_member(address: gunbc.fabric_cell_converge.FabricCellAttemptRootAddress) },
+      gunbc.fabric_cell_converge.AddressObserved {
+        member: gunbc.fabric_cell_converge.FabricCellMember {
           slot: srv3_fabric_slot(),
-          address: FabricCellResourceBoundaryAddress,
-          state_digest: "fabric-cell-srv3-06.slice;memory_max=1" as NonEmptyStr,
+          address: gunbc.fabric_cell_converge.FabricCellResourceBoundaryAddress,
+          state_digest: "fabric-cell-srv3-06.slice;memory_max=1" as std.types.NonEmptyStr,
         }
       },
     ]
   }
-  verdict_is_unprovisioned(v: fabric_cell_substrate_verdict(readback: drifted))
-    && verdict_is_provisioned(v: fabric_cell_substrate_verdict(readback: converged_readback()))
+  verdict_is_unprovisioned(v: gunbc.fabric_cell_converge.fabric_cell_substrate_verdict(readback: drifted))
+    && verdict_is_provisioned(v: gunbc.fabric_cell_converge.fabric_cell_substrate_verdict(readback: converged_readback()))
 }
 
 
@@ -248,51 +248,51 @@ test fn witness_fabric_cell_drifted_digest_is_unprovisioned() -> Bool {
 // THE DESIRED MEMBER IS AUTHORED FIRST so that a first-match implementation returns the FAVOURABLE
 // reading and goes green; only a fold that compares every observation can go red here.
 test fn witness_fabric_cell_conflicting_positive_observations_contradict() -> Bool {
-  let conflicting = FabricCellReadback {
+  let conflicting = gunbc.fabric_cell_converge.FabricCellReadback {
     slot: srv3_fabric_slot(),
     observations: [
-      AddressObserved { member: desired_member(address: FabricCellRootAddress) },
-      AddressObserved {
-        member: FabricCellMember {
+      gunbc.fabric_cell_converge.AddressObserved { member: desired_member(address: gunbc.fabric_cell_converge.FabricCellRootAddress) },
+      gunbc.fabric_cell_converge.AddressObserved {
+        member: gunbc.fabric_cell_converge.FabricCellMember {
           slot: srv3_fabric_slot(),
-          address: FabricCellRootAddress,
-          state_digest: "/opt/fabric-cells/srv3-06-stale-reading" as NonEmptyStr,
+          address: gunbc.fabric_cell_converge.FabricCellRootAddress,
+          state_digest: "/opt/fabric-cells/srv3-06-stale-reading" as std.types.NonEmptyStr,
         }
       },
-      AddressObserved { member: desired_member(address: FabricCellAttemptRootAddress) },
-      AddressObserved { member: desired_member(address: FabricCellResourceBoundaryAddress) },
+      gunbc.fabric_cell_converge.AddressObserved { member: desired_member(address: gunbc.fabric_cell_converge.FabricCellAttemptRootAddress) },
+      gunbc.fabric_cell_converge.AddressObserved { member: desired_member(address: gunbc.fabric_cell_converge.FabricCellResourceBoundaryAddress) },
     ]
   }
   disposition_is_contradicted(
-    d: fabric_cell_address_disposition(readback: conflicting, slot: srv3_fabric_slot(), address: FabricCellRootAddress)
+    d: gunbc.fabric_cell_converge.fabric_cell_address_disposition(readback: conflicting, slot: srv3_fabric_slot(), address: gunbc.fabric_cell_converge.FabricCellRootAddress)
   )
     && disposition_is_present(
-      d: fabric_cell_address_disposition(readback: conflicting, slot: srv3_fabric_slot(), address: FabricCellAttemptRootAddress)
+      d: gunbc.fabric_cell_converge.fabric_cell_address_disposition(readback: conflicting, slot: srv3_fabric_slot(), address: gunbc.fabric_cell_converge.FabricCellAttemptRootAddress)
     )
-    && verdict_is_observation_refused(v: fabric_cell_substrate_verdict(readback: conflicting))
+    && verdict_is_observation_refused(v: gunbc.fabric_cell_converge.fabric_cell_substrate_verdict(readback: conflicting))
 }
 
 // AGREEING DUPLICATE OBSERVATIONS ARE NOT A CONTRADICTION. Without this control the fix above could
 // be "any second observation contradicts", which would refuse every readback taken by two attesters
 // that agree -- turning a redundant probe into an outage.
 test fn witness_fabric_cell_agreeing_duplicate_observations_are_present() -> Bool {
-  let duplicated = FabricCellReadback {
+  let duplicated = gunbc.fabric_cell_converge.FabricCellReadback {
     slot: srv3_fabric_slot(),
     observations: concat(
       converged_readback().observations,
-      [AddressObserved { member: desired_member(address: FabricCellRootAddress) }]
+      [gunbc.fabric_cell_converge.AddressObserved { member: desired_member(address: gunbc.fabric_cell_converge.FabricCellRootAddress) }]
     )
   }
   disposition_is_present(
-    d: fabric_cell_address_disposition(readback: duplicated, slot: srv3_fabric_slot(), address: FabricCellRootAddress)
+    d: gunbc.fabric_cell_converge.fabric_cell_address_disposition(readback: duplicated, slot: srv3_fabric_slot(), address: gunbc.fabric_cell_converge.FabricCellRootAddress)
   )
-    && verdict_is_provisioned(v: fabric_cell_substrate_verdict(readback: duplicated))
+    && verdict_is_provisioned(v: gunbc.fabric_cell_converge.fabric_cell_substrate_verdict(readback: duplicated))
 }
 
-fn population_is_observation_refused(p: FabricCellPopulation) -> Bool {
+fn population_is_observation_refused(p: gunbc.fabric_cell_converge.FabricCellPopulation) -> Bool {
   match p {
-    FabricCellPopulationObservationRefused { host: _, blocked: _ } => true
-    FabricCellPopulationObserved { host: _, observed: _ } => false
+    gunbc.fabric_cell_converge.FabricCellPopulationObservationRefused { host: _, blocked: _ } => true
+    gunbc.fabric_cell_converge.FabricCellPopulationObserved { host: _, observed: _ } => false
   }
 }
 
@@ -315,22 +315,22 @@ fn population_is_observation_refused(p: FabricCellPopulation) -> Bool {
 // and this row exercises the same mechanism through the one input the authority does admit.
 test fn witness_fabric_cell_unread_expected_cell_refuses_despite_a_complete_foreign_readback() -> Bool {
   let foreign_slot = gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv3, slot_index: 99 }
-  let foreign_readback = FabricCellReadback {
+  let foreign_readback = gunbc.fabric_cell_converge.FabricCellReadback {
     slot: foreign_slot,
     observations: map(
-      fabric_cell_resource_addresses(),
-      a => AddressObserved {
-        member: FabricCellMember {
+      gunbc.fabric_cell_converge.fabric_cell_resource_addresses(),
+      a => gunbc.fabric_cell_converge.AddressObserved {
+        member: gunbc.fabric_cell_converge.FabricCellMember {
           slot: foreign_slot,
           address: a,
-          state_digest: fabric_cell_desired_state_digest(slot: foreign_slot, address: a),
+          state_digest: gunbc.fabric_cell_converge.fabric_cell_desired_state_digest(slot: foreign_slot, address: a),
         }
       }
     ),
   }
   population_is_observation_refused(
-    p: fabric_cell_population(
-      readback: FabricCellHostReadback {
+    p: gunbc.fabric_cell_converge.fabric_cell_population(
+      readback: gunbc.fabric_cell_converge.FabricCellHostReadback {
         host: gunbc.fleet_intent_network.operator_host_srv3,
         cell_readbacks: [foreign_readback],
       }
@@ -338,18 +338,18 @@ test fn witness_fabric_cell_unread_expected_cell_refuses_despite_a_complete_fore
   )
 }
 
-fn population_is_observed_empty(p: FabricCellPopulation) -> Bool {
+fn population_is_observed_empty(p: gunbc.fabric_cell_converge.FabricCellPopulation) -> Bool {
   match p {
-    FabricCellPopulationObservationRefused { host: _, blocked: _ } => false
-    FabricCellPopulationObserved { host: _, observed: o } =>
-      std.types.list_length(items: fabric_cell_observed_members(observed: o)) == 0
+    gunbc.fabric_cell_converge.FabricCellPopulationObservationRefused { host: _, blocked: _ } => false
+    gunbc.fabric_cell_converge.FabricCellPopulationObserved { host: _, observed: o } =>
+      std.types.list_length(items: gunbc.fabric_cell_converge.fabric_cell_observed_members(observed: o)) == 0
   }
 }
 
-fn population_blocked_count(p: FabricCellPopulation) -> Int {
+fn population_blocked_count(p: gunbc.fabric_cell_converge.FabricCellPopulation) -> Int {
   match p {
-    FabricCellPopulationObservationRefused { host: _, blocked: b } => std.types.list_length(items: b)
-    FabricCellPopulationObserved { host: _, observed: _ } => 0
+    gunbc.fabric_cell_converge.FabricCellPopulationObservationRefused { host: _, blocked: b } => std.types.list_length(items: b)
+    gunbc.fabric_cell_converge.FabricCellPopulationObserved { host: _, observed: _ } => 0
   }
 }
 
@@ -368,11 +368,11 @@ fn population_blocked_count(p: FabricCellPopulation) -> Int {
 // fabric_cell_expected_slots. They disagreed before -- the fold was host-exact, the constructor was
 // not -- and a second row asserting only the constructor would not have noticed.
 test fn witness_fabric_cell_unobserved_is_host_exact_not_the_global_roster() -> Bool {
-  population_is_observed_empty(p: fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv4))
-    && population_blocked_count(p: fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3)) == 3
+  population_is_observed_empty(p: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv4))
+    && population_blocked_count(p: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: gunbc.fleet_intent_network.operator_host_srv3)) == 3
     && population_is_observed_empty(
-        p: fabric_cell_population(
-          readback: FabricCellHostReadback { host: gunbc.fleet_intent_network.operator_host_srv4, cell_readbacks: [] }
+        p: gunbc.fabric_cell_converge.fabric_cell_population(
+          readback: gunbc.fabric_cell_converge.FabricCellHostReadback { host: gunbc.fleet_intent_network.operator_host_srv4, cell_readbacks: [] }
         )
       )
 }
@@ -390,33 +390,33 @@ test fn witness_fabric_cell_unobserved_is_host_exact_not_the_global_roster() -> 
 //
 // AND IT IS ASSERTED IN BOTH ORDERS, because a last-wins implementation is green in one of them by
 // construction. A single-order row would have passed against exactly the code this fixes.
-fn drifted_root_readback() -> FabricCellReadback {
-  FabricCellReadback {
+fn drifted_root_readback() -> gunbc.fabric_cell_converge.FabricCellReadback {
+  gunbc.fabric_cell_converge.FabricCellReadback {
     slot: srv3_fabric_slot(),
     observations: [
-      AddressObserved {
-        member: FabricCellMember {
+      gunbc.fabric_cell_converge.AddressObserved {
+        member: gunbc.fabric_cell_converge.FabricCellMember {
           slot: srv3_fabric_slot(),
-          address: FabricCellRootAddress,
-          state_digest: "/opt/fabric-cells/srv3-06-a-different-reading" as NonEmptyStr,
+          address: gunbc.fabric_cell_converge.FabricCellRootAddress,
+          state_digest: "/opt/fabric-cells/srv3-06-a-different-reading" as std.types.NonEmptyStr,
         }
       }
     ],
   }
 }
 
-fn host_readback_of(entries: List<FabricCellReadback>) -> FabricCellHostReadback {
-  FabricCellHostReadback { host: gunbc.fleet_intent_network.operator_host_srv3, cell_readbacks: entries }
+fn host_readback_of(entries: List<gunbc.fabric_cell_converge.FabricCellReadback>) -> gunbc.fabric_cell_converge.FabricCellHostReadback {
+  gunbc.fabric_cell_converge.FabricCellHostReadback { host: gunbc.fleet_intent_network.operator_host_srv3, cell_readbacks: entries }
 }
 
 test fn witness_fabric_cell_duplicate_slot_readbacks_merge_rather_than_last_wins() -> Bool {
   population_is_observation_refused(
-    p: fabric_cell_population(readback: host_readback_of(entries: [converged_readback(), drifted_root_readback()]))
+    p: gunbc.fabric_cell_converge.fabric_cell_population(readback: host_readback_of(entries: [converged_readback(), drifted_root_readback()]))
   )
     && population_is_observation_refused(
-        p: fabric_cell_population(readback: host_readback_of(entries: [drifted_root_readback(), converged_readback()]))
+        p: gunbc.fabric_cell_converge.fabric_cell_population(readback: host_readback_of(entries: [drifted_root_readback(), converged_readback()]))
       )
     && !population_is_observation_refused(
-        p: fabric_cell_population(readback: host_readback_of(entries: [converged_readback()]))
+        p: gunbc.fabric_cell_converge.fabric_cell_population(readback: host_readback_of(entries: [converged_readback()]))
       )
 }

@@ -1,23 +1,23 @@
 module test.claim.bmc_firmware_thermal_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data fixture_approved_openbmc_3_22_artifact: gunbc.bmc_converge.ApprovedBmcFirmwareArtifact = gunbc.bmc_converge.ApprovedBmcFirmwareArtifact {
   firmware: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.firmware,
   board: srv3_baseboard.catalog.model,
   image_uri: extdeps.uri.Uri {
-    scheme: Https,
-    locator: "example.invalid/fixture/altrad8ud-100.static.mtd.tar",
+    scheme: extdeps.uri.Https,
+    locator: "example.invalid/fixture/altrad8ud-1l2t_3.22.00.static.mtd.tar",
   },
-  digest: sha256_digest(
+  digest: extdeps.crypto.hash.sha256_digest(
     hex: "0000000000000000000000000000000000000000000000000000000000000000",
   ),
 }
 
 data fixture_pinned_track3_intent: extdeps.bmc.capability.BmcFirmwareIntent = extdeps.bmc.capability.BmcFirmwareTrackRequired {
   track: extdeps.bmc.capability.BmcFirmwareTrack {
-    family: OpenBmc,
+    family: std.bmc.OpenBmc,
     major_version: 3,
   },
 }
@@ -25,19 +25,19 @@ data fixture_pinned_track3_intent: extdeps.bmc.capability.BmcFirmwareIntent = ex
 // A synthetic OpenBMC track-3 firmware requirement used only to exercise the firmware-classification machinery (mismatch detection, typed update plans). The fleet intent is BmcFirmwareUnpinned so no fleet host drifts on firmware; drift and update-plan coverage is demonstrated against this pinned fixture rather than fleet policy, so the machinery stays tested after the fleet stopped pinning a track for fan reasons.
 fn host_uses_global_bmc_valid_state(host: gunbc.fleet_intent.ComputeHost) -> Bool {
   match host.bmc_intent {
-    Present { value: intent } => intent == fleet_bmc_valid_state
+    Present { value: intent } => intent == gunbc.bmc_intent.fleet_bmc_valid_state
     Absent => false
   }
 }
 
 test fn every_metal_host_uses_the_single_global_bmc_valid_state() -> Bool {
-  host_uses_global_bmc_valid_state(host: srv1_host)
-    && host_uses_global_bmc_valid_state(host: srv2_host)
-    && host_uses_global_bmc_valid_state(host: srv3_host)
-    && host_uses_global_bmc_valid_state(host: srv4_host)
+  host_uses_global_bmc_valid_state(host: gunbc.fleet_intent.srv1_host)
+    && host_uses_global_bmc_valid_state(host: gunbc.fleet_intent.srv2_host)
+    && host_uses_global_bmc_valid_state(host: gunbc.fleet_intent.srv3_host)
+    && host_uses_global_bmc_valid_state(host: gunbc.fleet_intent.srv4_host)
     && match fleet_bmc_valid_state.firmware {
-      BmcFirmwareUnpinned => true
-      BmcFirmwareTrackRequired { track: _ } => false
+      extdeps.bmc.capability.BmcFirmwareUnpinned => true
+      extdeps.bmc.capability.BmcFirmwareTrackRequired { track: _ } => false
     }
 }
 
@@ -51,31 +51,31 @@ test fn heterogeneous_firmware_satisfies_unpinned_intent_and_pinned_detects_mism
     && srv3_bmc_firmware_2_07_00_observation.firmware.version.minor == 7
     && srv4_bmc_firmware_observation.firmware.version.major == 3
     && srv4_bmc_firmware_observation.firmware.version.minor == 22
-    && match bmc_firmware_observation_intent_verdict(
+    && match extdeps.bmc.capability.bmc_firmware_observation_intent_verdict(
       intent: fleet_bmc_valid_state.firmware,
-      observation: srv3_bmc_firmware_2_07_00_observation,
+      observation: gunbc.fleet_bmc_observation.srv3_bmc_firmware_2_07_00_observation,
     ) {
-      BmcFirmwareIntentSatisfied => true
-      BmcFirmwareIntentMismatch { required: _, observed: _ } => false
+      extdeps.bmc.capability.BmcFirmwareIntentSatisfied => true
+      extdeps.bmc.capability.BmcFirmwareIntentMismatch { required: _, observed: _ } => false
     }
-    && match bmc_firmware_observation_intent_verdict(
+    && match extdeps.bmc.capability.bmc_firmware_observation_intent_verdict(
       intent: fleet_bmc_valid_state.firmware,
-      observation: srv4_bmc_firmware_observation,
+      observation: gunbc.fleet_bmc_observation.srv4_bmc_firmware_observation,
     ) {
-      BmcFirmwareIntentSatisfied => true
-      BmcFirmwareIntentMismatch { required: _, observed: _ } => false
+      extdeps.bmc.capability.BmcFirmwareIntentSatisfied => true
+      extdeps.bmc.capability.BmcFirmwareIntentMismatch { required: _, observed: _ } => false
     }
-    && match bmc_firmware_observation_intent_verdict(
+    && match extdeps.bmc.capability.bmc_firmware_observation_intent_verdict(
       intent: fixture_pinned_track3_intent,
-      observation: srv3_bmc_firmware_2_07_00_observation,
+      observation: gunbc.fleet_bmc_observation.srv3_bmc_firmware_2_07_00_observation,
     ) {
-      BmcFirmwareIntentMismatch {
+      extdeps.bmc.capability.BmcFirmwareIntentMismatch {
         required: required,
         observed: observed,
       } =>
         required.major_version == 3
           && observed.version.major == 2
-      BmcFirmwareIntentSatisfied => false
+      extdeps.bmc.capability.BmcFirmwareIntentSatisfied => false
     }
 }
 
@@ -91,23 +91,23 @@ test fn both_update_services_are_observed_but_neither_exposes_a_backup_bmc_image
 }
 
 test fn firmware_classification_reuses_upsert_states_and_refuses_unapproved_update() -> Bool {
-  let srv3 = bmc_firmware_classification(
+  let srv3 = gunbc.bmc_converge.bmc_firmware_classification(
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
     intent: fixture_pinned_track3_intent,
-    observation: Present { value: srv3_bmc_firmware_2_07_00_observation },
+    observation: Present { value: gunbc.fleet_bmc_observation.srv3_bmc_firmware_2_07_00_observation },
     artifact: none,
     update_service: none,
   )
-  let srv4 = bmc_firmware_classification(
+  let srv4 = gunbc.bmc_converge.bmc_firmware_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state.firmware,
-    observation: Present { value: srv4_bmc_firmware_observation },
+    observation: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_firmware_observation },
     artifact: none,
     update_service: none,
   )
-  let unknown = bmc_firmware_classification(
+  let unknown = gunbc.bmc_converge.bmc_firmware_classification(
     host: srv1_host.identity,
     board: srv3_baseboard.catalog.model,
     intent: fixture_pinned_track3_intent,
@@ -117,56 +117,56 @@ test fn firmware_classification_reuses_upsert_states_and_refuses_unapproved_upda
   )
   srv3.verdict == std.upsert_decision.Drifted
     && match srv3.decision {
-      Refuse { reason: _ } => true
-      Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => true
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
     && srv4.verdict == std.upsert_decision.Converged
     && match srv4.decision {
-      Noop => true
-      Refuse { reason: _ } => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Noop => true
+      std.upsert_decision.Refuse { reason: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
-    && unknown.verdict == UnknownRefused
+    && unknown.verdict == std.upsert_decision.UnknownRefused
     && match unknown.decision {
-      Refuse { reason: _ } => true
-      Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => true
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
 test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bool {
-  let classified = bmc_firmware_classification(
+  let classified = gunbc.bmc_converge.bmc_firmware_classification(
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
     intent: fixture_pinned_track3_intent,
-    observation: Present { value: srv3_bmc_firmware_2_07_00_observation },
+    observation: Present { value: gunbc.fleet_bmc_observation.srv3_bmc_firmware_2_07_00_observation },
     artifact: Present { value: fixture_approved_openbmc_3_22_artifact },
-    update_service: Present { value: srv3_bmc_update_service_observation },
+    update_service: Present { value: gunbc.fleet_bmc_observation.srv3_bmc_update_service_observation },
   )
-  let without_update_surface = bmc_firmware_classification(
+  let without_update_surface = gunbc.bmc_converge.bmc_firmware_classification(
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
     intent: fixture_pinned_track3_intent,
-    observation: Present { value: srv3_bmc_firmware_2_07_00_observation },
+    observation: Present { value: gunbc.fleet_bmc_observation.srv3_bmc_firmware_2_07_00_observation },
     artifact: Present { value: fixture_approved_openbmc_3_22_artifact },
     update_service: none,
   )
   classified.verdict == std.upsert_decision.Drifted
     && match classified.decision {
-      Apply { plan: plan } =>
+      std.upsert_decision.Apply { plan: plan } =>
         plan.host == srv3_host.identity
-          && plan.observed == srv3_bmc_firmware_2_07_00_observation
+          && plan.observed == gunbc.fleet_bmc_observation.srv3_bmc_firmware_2_07_00_observation
           && plan.artifact == fixture_approved_openbmc_3_22_artifact
-          && plan.update_service == srv3_bmc_update_service_observation
-      Noop => false
-      Refuse { reason: _ } => false
+          && plan.update_service == gunbc.fleet_bmc_observation.srv3_bmc_update_service_observation
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Refuse { reason: _ } => false
     }
     && without_update_surface.verdict == std.upsert_decision.Drifted
     && match without_update_surface.decision {
-      Refuse { reason: _ } => true
-      Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => true
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
@@ -177,18 +177,18 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
 // 2.07.00 constants as literals and therefore stayed green while describing
 // a surface srv3 no longer had.
 test fn hosts_on_the_same_image_derive_the_same_surface() -> Bool {
-  match srv3_bmc_redfish_surface {
-    SurfaceShapeKnown { shape: s3 } =>
-      match srv4_bmc_redfish_surface {
-        SurfaceShapeKnown { shape: s4 } =>
+  match gunbc.fleet_bmc_observation.srv3_bmc_redfish_surface {
+    extdeps.bmc.types.SurfaceShapeKnown { shape: s3 } =>
+      match gunbc.fleet_bmc_observation.srv4_bmc_redfish_surface {
+        extdeps.bmc.types.SurfaceShapeKnown { shape: s4 } =>
           s3 == s4
-            && s3.thermal_surface == RedfishLegacyChassisThermal
-            && s3.fan_control_surface == RedfishInitialDutyControlResource
-        SurfaceShapeUncatalogued { firmware: _ } => false
-        SurfaceShapeAmbiguous { firmware: _, matches: _ } => false
+            && s3.thermal_surface == extdeps.bmc.types.RedfishLegacyChassisThermal
+            && s3.fan_control_surface == extdeps.bmc.types.RedfishInitialDutyControlResource
+        extdeps.bmc.types.SurfaceShapeUncatalogued { firmware: _ } => false
+        extdeps.bmc.types.SurfaceShapeAmbiguous { firmware: _, matches: _ } => false
       }
-    SurfaceShapeUncatalogued { firmware: _ } => false
-    SurfaceShapeAmbiguous { firmware: _, matches: _ } => false
+    extdeps.bmc.types.SurfaceShapeUncatalogued { firmware: _ } => false
+    extdeps.bmc.types.SurfaceShapeAmbiguous { firmware: _, matches: _ } => false
   }
 }
 
@@ -197,15 +197,15 @@ test fn hosts_on_the_same_image_derive_the_same_surface() -> Bool {
 // is a fact about the two hosts sharing an image rather than the catalog
 // answering the same way regardless of input.
 test fn a_different_image_derives_a_different_surface() -> Bool {
-  match bmc_redfish_surface_for(
-    catalog: asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+  match extdeps.bmc.types.bmc_redfish_surface_for(
+    catalog: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
     firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
   ) {
-    SurfaceShapeKnown { shape: s } =>
-      s.thermal_surface == RedfishThermalSubsystemSensorCollection
-        && s.fan_control_surface == RedfishFanControlResourceAbsent
-    SurfaceShapeUncatalogued { firmware: _ } => false
-    SurfaceShapeAmbiguous { firmware: _, matches: _ } => false
+    extdeps.bmc.types.SurfaceShapeKnown { shape: s } =>
+      s.thermal_surface == extdeps.bmc.types.RedfishThermalSubsystemSensorCollection
+        && s.fan_control_surface == extdeps.bmc.types.RedfishFanControlResourceAbsent
+    extdeps.bmc.types.SurfaceShapeUncatalogued { firmware: _ } => false
+    extdeps.bmc.types.SurfaceShapeAmbiguous { firmware: _, matches: _ } => false
   }
 }
 
@@ -213,16 +213,16 @@ test fn a_different_image_derives_a_different_surface() -> Bool {
 // nearest neighbour or a default. This is the arm that makes the next flash
 // loud instead of silently wrong.
 test fn an_uncatalogued_image_refuses_to_derive_a_surface() -> Bool {
-  match bmc_redfish_surface_for(
-    catalog: asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+  match extdeps.bmc.types.bmc_redfish_surface_for(
+    catalog: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
     firmware: extdeps.bmc.capability.BmcFirmwareVersion {
-      family: OpenBmc,
-      version: firmware_semantic_version(major: 4, minor: 0, patch: 0),
+      family: std.bmc.OpenBmc,
+      version: extdeps.firmware.types.firmware_semantic_version(major: 4, minor: 0, patch: 0),
     },
   ) {
-    SurfaceShapeUncatalogued { firmware: _ } => true
-    SurfaceShapeKnown { shape: _ } => false
-    SurfaceShapeAmbiguous { firmware: _, matches: _ } => false
+    extdeps.bmc.types.SurfaceShapeUncatalogued { firmware: _ } => true
+    extdeps.bmc.types.SurfaceShapeKnown { shape: _ } => false
+    extdeps.bmc.types.SurfaceShapeAmbiguous { firmware: _, matches: _ } => false
   }
 }
 
@@ -231,156 +231,156 @@ test fn an_uncatalogued_image_refuses_to_derive_a_surface() -> Bool {
 // list position — a silent, order-dependent answer where the catalog actually
 // contradicts itself. It refuses instead, and reports how many rows collided.
 test fn a_duplicate_catalog_key_refuses_rather_than_taking_the_first() -> Bool {
-  match bmc_redfish_surface_for(
+  match extdeps.bmc.types.bmc_redfish_surface_for(
     catalog: [
-      asrock_altrad8ud_openbmc_3_22_00_redfish_surface,
-      asrock_altrad8ud_openbmc_3_22_00_redfish_surface,
+      extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_3_22_00_redfish_surface,
+      extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_3_22_00_redfish_surface,
     ],
     firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
   ) {
-    SurfaceShapeAmbiguous { firmware: _, matches: n } => n == 2
+    extdeps.bmc.types.SurfaceShapeAmbiguous { firmware: _, matches: n } => n == 2
     _ => false
   }
 }
 
 test fn both_observed_thermal_query_shapes_are_complete() -> Bool {
-  let srv3_verdict = redfish_thermal_query_verdict(
+  let srv3_verdict = extdeps.bmc.types.redfish_thermal_query_verdict(
     chassis_sensors_success: true,
     thermal_subsystem_success: true,
     legacy_thermal_success: false
   )
-  let srv4_verdict = redfish_thermal_query_verdict(
+  let srv4_verdict = extdeps.bmc.types.redfish_thermal_query_verdict(
     chassis_sensors_success: true,
     thermal_subsystem_success: false,
     legacy_thermal_success: true
   )
   match srv3_verdict {
-    RedfishThermalQueryComplete { surface: srv3_surface } =>
+    extdeps.bmc.types.RedfishThermalQueryComplete { surface: srv3_surface } =>
       match srv4_verdict {
-        RedfishThermalQueryComplete { surface: srv4_surface } =>
-          srv3_surface == RedfishThermalSubsystemSensorCollection
-            && srv4_surface == RedfishLegacyChassisThermal
-        RedfishThermalQueryRefused { reason: _ } => false
+        extdeps.bmc.types.RedfishThermalQueryComplete { surface: srv4_surface } =>
+          srv3_surface == extdeps.bmc.types.RedfishThermalSubsystemSensorCollection
+            && srv4_surface == extdeps.bmc.types.RedfishLegacyChassisThermal
+        extdeps.bmc.types.RedfishThermalQueryRefused { reason: _ } => false
       }
-    RedfishThermalQueryRefused { reason: _ } => false
+    extdeps.bmc.types.RedfishThermalQueryRefused { reason: _ } => false
   }
 }
 
 test fn sensors_http_success_alone_is_incomplete_red_control() -> Bool {
-  match redfish_thermal_query_verdict(
+  match extdeps.bmc.types.redfish_thermal_query_verdict(
     chassis_sensors_success: true,
     thermal_subsystem_success: false,
     legacy_thermal_success: false
   ) {
-    RedfishThermalQueryComplete { surface: _ } => false
-    RedfishThermalQueryRefused { reason: _ } => true
+    extdeps.bmc.types.RedfishThermalQueryComplete { surface: _ } => false
+    extdeps.bmc.types.RedfishThermalQueryRefused { reason: _ } => true
   }
 }
 
 test fn firmware_versions_share_curve_but_not_controller_shape() -> Bool {
-  asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation.curve == asrock_altrad8ud_factory_temp_soc_fan_curve
-    && asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.curve == asrock_altrad8ud_factory_temp_soc_fan_curve
-    && match bmc_fan_controller_shape_independent_entry_names(
+  asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation.curve == extdeps.boards.asrock_rack.asrock_altrad8ud_factory_temp_soc_fan_curve
+    && asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.curve == extdeps.boards.asrock_rack.asrock_altrad8ud_factory_temp_soc_fan_curve
+    && match extdeps.bmc.types.bmc_fan_controller_shape_independent_entry_names(
       shape: asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation.controller_shape,
     ) {
-      Present { value: names } => list_length(items: names) == 10
+      Present { value: names } => std.types.list_length(items: names) == 10
       Absent => false
     }
-    && match bmc_fan_controller_shape_aggregated_topology(
+    && match extdeps.bmc.types.bmc_fan_controller_shape_aggregated_topology(
       shape: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_shape,
     ) {
       Present {
-        value: BmcFanAggregatedControllerTopology {
+        value: extdeps.bmc.types.BmcFanAggregatedControllerTopology {
           entry_name: name,
           tach_inputs: inputs,
         },
-      } => name == "FAN1" && list_length(items: inputs) == 5
+      } => name == "FAN1" && std.types.list_length(items: inputs) == 5
       Absent => false
     }
 }
 
 test fn temp_soc_curve_explains_the_audible_step() -> Bool {
-  match bmc_fan_curve_curve_duty_at_temperature(
-    curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
-    reading: celsius(39),
+  match extdeps.bmc.types.bmc_fan_curve_curve_duty_at_temperature(
+    curve: extdeps.boards.asrock_rack.asrock_altrad8ud_factory_temp_soc_fan_curve,
+    reading: std.measure.celsius(39),
   ) {
-    Present { value: duty } => percent_count(duty) == 30
+    Present { value: duty } => std.measure.percent_count(duty) == 30
     Absent => false
   }
-    && match bmc_fan_curve_curve_duty_at_temperature(
-      curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
-      reading: celsius(62),
+    && match extdeps.bmc.types.bmc_fan_curve_curve_duty_at_temperature(
+      curve: extdeps.boards.asrock_rack.asrock_altrad8ud_factory_temp_soc_fan_curve,
+      reading: std.measure.celsius(62),
     ) {
-      Present { value: duty } => percent_count(duty) == 40
+      Present { value: duty } => std.measure.percent_count(duty) == 40
       Absent => false
     }
-    && match bmc_fan_curve_curve_duty_at_temperature(
-      curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
-      reading: celsius(69),
+    && match extdeps.bmc.types.bmc_fan_curve_curve_duty_at_temperature(
+      curve: extdeps.boards.asrock_rack.asrock_altrad8ud_factory_temp_soc_fan_curve,
+      reading: std.measure.celsius(69),
     ) {
-      Present { value: duty } => percent_count(duty) == 50
+      Present { value: duty } => std.measure.percent_count(duty) == 50
       Absent => false
     }
-    && match bmc_fan_curve_curve_duty_at_temperature(
-      curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
-      reading: celsius(75),
+    && match extdeps.bmc.types.bmc_fan_curve_curve_duty_at_temperature(
+      curve: extdeps.boards.asrock_rack.asrock_altrad8ud_factory_temp_soc_fan_curve,
+      reading: std.measure.celsius(75),
     ) {
-      Present { value: duty } => percent_count(duty) == 75
+      Present { value: duty } => std.measure.percent_count(duty) == 75
       Absent => false
     }
-    && match bmc_fan_curve_curve_duty_at_temperature(
-      curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
-      reading: celsius(85),
+    && match extdeps.bmc.types.bmc_fan_curve_curve_duty_at_temperature(
+      curve: extdeps.boards.asrock_rack.asrock_altrad8ud_factory_temp_soc_fan_curve,
+      reading: std.measure.celsius(85),
     ) {
-      Present { value: duty } => percent_count(duty) == 100
+      Present { value: duty } => std.measure.percent_count(duty) == 100
       Absent => false
     }
 }
 
 test fn fleet_curve_engages_cooling_early_and_reaches_full_before_continuous_limit() -> Bool {
-  fleet_fan_policy_is_thermally_bounded()
-    && match bmc_fan_curve_curve_duty_at_temperature(
-      curve: fleet_quiet_temp_soc_fan_curve,
-      reading: celsius(54),
+  gunbc.bmc_intent.fleet_fan_policy_is_thermally_bounded()
+    && match extdeps.bmc.types.bmc_fan_curve_curve_duty_at_temperature(
+      curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
+      reading: std.measure.celsius(54),
     ) {
-      Present { value: duty } => percent_count(duty) == 30
+      Present { value: duty } => std.measure.percent_count(duty) == 30
       Absent => false
     }
-    && match bmc_fan_curve_curve_duty_at_temperature(
-      curve: fleet_quiet_temp_soc_fan_curve,
-      reading: celsius(55),
+    && match extdeps.bmc.types.bmc_fan_curve_curve_duty_at_temperature(
+      curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
+      reading: std.measure.celsius(55),
     ) {
-      Present { value: duty } => percent_count(duty) == 40
+      Present { value: duty } => std.measure.percent_count(duty) == 40
       Absent => false
     }
-    && match bmc_fan_curve_curve_duty_at_temperature(
-      curve: fleet_quiet_temp_soc_fan_curve,
-      reading: celsius(65),
+    && match extdeps.bmc.types.bmc_fan_curve_curve_duty_at_temperature(
+      curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
+      reading: std.measure.celsius(65),
     ) {
-      Present { value: duty } => percent_count(duty) == 50
+      Present { value: duty } => std.measure.percent_count(duty) == 50
       Absent => false
     }
-    && match bmc_fan_curve_curve_duty_at_temperature(
-      curve: fleet_quiet_temp_soc_fan_curve,
-      reading: celsius(75),
+    && match extdeps.bmc.types.bmc_fan_curve_curve_duty_at_temperature(
+      curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
+      reading: std.measure.celsius(75),
     ) {
-      Present { value: duty } => percent_count(duty) == 75
+      Present { value: duty } => std.measure.percent_count(duty) == 75
       Absent => false
     }
-    && match bmc_fan_curve_curve_duty_at_temperature(
-      curve: fleet_quiet_temp_soc_fan_curve,
-      reading: celsius(85),
+    && match extdeps.bmc.types.bmc_fan_curve_curve_duty_at_temperature(
+      curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
+      reading: std.measure.celsius(85),
     ) {
-      Present { value: duty } => percent_count(duty) == 100
+      Present { value: duty } => std.measure.percent_count(duty) == 100
       Absent => false
     }
 }
 
 test fn sensor_unavailable_uses_same_duty_but_retains_cause() -> Bool {
-  match bmc_fan_curve_sensor_unavailable_duty(
-    curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+  match extdeps.bmc.types.bmc_fan_curve_sensor_unavailable_duty(
+    curve: extdeps.boards.asrock_rack.asrock_altrad8ud_factory_temp_soc_fan_curve,
   ) {
-    Present { value: duty } => percent_count(duty) == 75
+    Present { value: duty } => std.measure.percent_count(duty) == 75
     Absent => false
   }
 }
@@ -388,9 +388,9 @@ test fn sensor_unavailable_uses_same_duty_but_retains_cause() -> Bool {
 fn srv4_fan_policy_with_curve(curve: extdeps.bmc.types.BmcFanCurve) -> extdeps.bmc.types.BmcFanPolicyObservation {
   extdeps.bmc.types.BmcFanPolicyObservation {
     firmware: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.firmware,
-    evidence_scope: HistoricalEvidenceSnapshot,
+    evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
     curve: curve,
-    active_config_digest: srv4_bmc_fan_active_config_digest,
+    active_config_digest: gunbc.fleet_bmc_observation.srv4_bmc_fan_active_config_digest,
     selected_config_path: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.selected_config_path,
     board_config_path: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.board_config_path,
     controller_service: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_service,
@@ -407,7 +407,7 @@ fn minimum_duty_perturbation() -> extdeps.bmc.types.BmcFanCurve {
   extdeps.bmc.types.BmcFanCurve {
     control_sensor: fleet_quiet_temp_soc_fan_curve.control_sensor,
     steps: fleet_quiet_temp_soc_fan_curve.steps,
-    minimum_duty: percent(31),
+    minimum_duty: std.measure.percent(31),
     sensor_unavailable_duty: fleet_quiet_temp_soc_fan_curve.sensor_unavailable_duty,
     zone_failsafe_duty: fleet_quiet_temp_soc_fan_curve.zone_failsafe_duty,
     positive_hysteresis: fleet_quiet_temp_soc_fan_curve.positive_hysteresis,
@@ -416,34 +416,34 @@ fn minimum_duty_perturbation() -> extdeps.bmc.types.BmcFanCurve {
 }
 
 data lazy_onboarding_drift_curve_steps: List<extdeps.bmc.types.BmcFanCurveStep> = [
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(75), duty: percent(30) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(90), duty: percent(30) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(93), duty: percent(55) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(95), duty: percent(70) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(97), duty: percent(85) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(98), duty: percent(100) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(40), duty: std.measure.percent(30) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(75), duty: std.measure.percent(30) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(90), duty: std.measure.percent(30) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(93), duty: std.measure.percent(55) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(95), duty: std.measure.percent(70) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(97), duty: std.measure.percent(85) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(98), duty: std.measure.percent(100) },
 ]
 
 data lazy_onboarding_drift_curve: extdeps.bmc.types.BmcFanCurve = extdeps.bmc.types.BmcFanCurve {
   control_sensor: "TEMP_SOC",
   steps: lazy_onboarding_drift_curve_steps,
-  minimum_duty: percent(30),
-  sensor_unavailable_duty: percent(75),
-  zone_failsafe_duty: percent(75),
-  positive_hysteresis: positive_celsius_delta(
-    count: positive_measure_count(predecessor: 0),
+  minimum_duty: std.measure.percent(30),
+  sensor_unavailable_duty: std.measure.percent(75),
+  zone_failsafe_duty: std.measure.percent(75),
+  positive_hysteresis: std.measure.positive_celsius_delta(
+    count: std.measure.positive_measure_count(predecessor: 0),
   ),
-  negative_hysteresis: positive_celsius_delta(
-    count: positive_measure_count(predecessor: 1),
+  negative_hysteresis: std.measure.positive_celsius_delta(
+    count: std.measure.positive_measure_count(predecessor: 1),
   ),
 }
 
 data lazy_onboarding_drift_curve_note: String = "The stripped onboarding-overwrite curve (fleet incident 2026-07-30): minimum 30 percent held through 90C, then a late panic ramp to 55/70/85/100 percent at 93/95/97/98C. It is deliberately NOT the fleet intent, which is now the srv3 2.07.00 vendor stock aggressive curve (byte-equal to asrock_altrad8ud_factory_temp_soc_fan_curve). This is the witness's genuine drift fixture: a BMC carrying it is drifted from fleet intent and must receive a typed apply plan back to the stock curve. The prior model instead carried the lazy curve AS the fleet intent, so its drift fixture was the factory aggressive curve and its apply plan would have converted srv4's factory default INTO this lazy curve."
 
 test fn srv4_flash_overlay_is_observed_writable_and_live_overridden() -> Bool {
-  match srv4_bmc_config_persistence_observation {
-    BmcOverlayConfigObserved {
+  match gunbc.fleet_bmc_observation.srv4_bmc_config_persistence_observation {
+    extdeps.bmc.types.BmcOverlayConfigObserved {
       firmware: firmware,
       config_path: path,
       overlay: overlay,
@@ -459,7 +459,7 @@ test fn srv4_flash_overlay_is_observed_writable_and_live_overridden() -> Bool {
         && linux_overlay_observation_is_flash_backed(observation: overlay)
         && writable
         && upper_present
-    BmcConfigPersistenceUnsupported {
+    extdeps.bmc.types.BmcConfigPersistenceUnsupported {
       firmware: _,
       config_path: _,
       reason: _,
@@ -469,48 +469,48 @@ test fn srv4_flash_overlay_is_observed_writable_and_live_overridden() -> Bool {
 }
 
 test fn srv4_live_receipt_is_converged_quiet_and_failsafe_clear() -> Bool {
-  srv4_bmc_fan_convergence_receipt.policy == srv4_bmc_fan_converged_policy_observation
-    && srv4_bmc_fan_convergence_receipt.policy.curve == fleet_quiet_temp_soc_fan_curve
+  srv4_bmc_fan_convergence_receipt.policy == gunbc.fleet_bmc_observation.srv4_bmc_fan_converged_policy_observation
+    && srv4_bmc_fan_convergence_receipt.policy.curve == gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve
     && !srv4_bmc_fan_convergence_receipt.zone_failsafe_active
     && srv4_bmc_fan_convergence_receipt.monitoring_sample_count == 12
     && srv4_bmc_fan_convergence_receipt.final_tachs.length() == 4
 }
 
 test fn srv4_durability_admission_binds_projection_derived_digest() -> Bool {
-  let capability = srv4_bmc_fan_projection_capability
-  srv4_bmc_fan_durability_admission == bmc_fan_policy_projection_durability_admission(
+  let capability = gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability
+  gunbc.fleet_bmc_state.srv4_bmc_fan_durability_admission == gunbc.bmc_fan_projection.bmc_fan_policy_projection_durability_admission(
     host: srv4_host.identity,
     capability: capability,
-    perturbation_generation: srv4_bmc_fan_perturbation_generation,
+    perturbation_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
   )
-    && capability.projected_config_digest == altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
-    && capability.projected_curve == fleet_quiet_temp_soc_fan_curve
-    && match bmc_fan_projected_config_digest(
-      curve: fleet_quiet_temp_soc_fan_curve,
-      intent_curve: fleet_quiet_temp_soc_fan_curve,
+    && capability.projected_config_digest == gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
+    && capability.projected_curve == gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve
+    && match gunbc.bmc_fan_projection.bmc_fan_projected_config_digest(
+      curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
+      intent_curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
       realization: srv4_bmc_fan_projection_capability.realization,
-      config_path: srv4_bmc_fan_observed_config_path,
-      content_identity: altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
+      config_path: gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_config_path,
+      content_identity: gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
     ) {
-      ProjectedConfigDigestKnown { digest: digest } =>
+      gunbc.bmc_fan_projection.ProjectedConfigDigestKnown { digest: digest } =>
         digest == capability.projected_config_digest
-      ProjectedConfigDigestUnavailable => false
+      gunbc.bmc_fan_projection.ProjectedConfigDigestUnavailable => false
     }
 }
 
 test fn srv4_converged_observation_matches_projection_derived_digest() -> Bool {
-  srv4_bmc_fan_active_config_digest == altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
-    && match bmc_fan_policy_projection_live_digest_suitability(
-      capability: srv4_bmc_fan_projection_capability,
-      observation: srv4_bmc_fan_converged_policy_observation,
+  gunbc.fleet_bmc_observation.srv4_bmc_fan_active_config_digest == gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
+    && match gunbc.bmc_fan_projection.bmc_fan_policy_projection_live_digest_suitability(
+      capability: gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability,
+      observation: gunbc.fleet_bmc_observation.srv4_bmc_fan_converged_policy_observation,
     ) {
-      BmcFanProjectionLiveDigestMatches => true
-      BmcFanProjectionLiveDigestRefused { cause: _ } => false
+      gunbc.bmc_fan_projection.BmcFanProjectionLiveDigestMatches => true
+      gunbc.bmc_fan_projection.BmcFanProjectionLiveDigestRefused { cause: _ } => false
     }
 }
 
 test fn bmc_fan_durability_refusal_reason_surfaces_generation_mismatch() -> Bool {
-  let reason = bmc_fan_durability_refusal_reason(
+  let reason = gunbc.bmc_converge.bmc_fan_durability_refusal_reason(
     verdict: std.state_durability.StateDurabilityRefused {
       cause: std.state_durability.DurabilityPerturbationGenerationMismatch {
         expected: 1,
@@ -528,220 +528,220 @@ test fn bmc_fan_durability_refusal_reason_surfaces_generation_mismatch() -> Bool
 }
 
 test fn srv4_durability_gate_preserves_typed_linkage_refusal_verdict() -> Bool {
-  match bmc_fan_policy_durability_gate(
-    intent: fleet_bmc_valid_state,
+  match gunbc.bmc_converge.bmc_fan_policy_durability_gate(
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
     host: srv4_host.identity,
-    projection: srv4_bmc_fan_projection_capability,
-    durability_generation: srv4_bmc_fan_perturbation_generation,
+    projection: gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability,
+    durability_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
     durability_evidence_construction: Present {
-      value: srv4_bmc_fan_durability_evidence_construction,
+      value: gunbc.fleet_bmc_state.srv4_bmc_fan_durability_evidence_construction,
     },
     durability_evidence: [],
   ) {
-    BmcFanPolicyDurabilityVerdictRefused {
-      verdict: StateDurabilityRefused {
-        cause: DurabilityDefinitionLinkageUnavailable {
+    gunbc.bmc_converge.BmcFanPolicyDurabilityVerdictRefused {
+      verdict: std.state_durability.StateDurabilityRefused {
+        cause: std.state_durability.DurabilityDefinitionLinkageUnavailable {
           count: count,
           assertions: assertions,
           realization: _,
           capability: _,
         },
       },
-    } => count == 6 && list_length(items: assertions) == 6
-    BmcFanPolicyDurabilityQualified { qualification: _ } => false
+    } => count == 6 && std.types.list_length(items: assertions) == 6
+    gunbc.bmc_converge.BmcFanPolicyDurabilityQualified { qualification: _ } => false
   }
 }
 
 test fn fleet_quiet_projected_config_digest_sha256_equality_executes() -> Bool {
-  match bmc_fan_projected_config_digest(
-    curve: fleet_quiet_temp_soc_fan_curve,
-    intent_curve: fleet_quiet_temp_soc_fan_curve,
+  match gunbc.bmc_fan_projection.bmc_fan_projected_config_digest(
+    curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
+    intent_curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
     realization: srv4_bmc_fan_projection_capability.realization,
-    config_path: srv4_bmc_fan_observed_config_path,
-    content_identity: altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
+    config_path: gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_config_path,
+    content_identity: gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
   ) {
-    ProjectedConfigDigestKnown { digest: digest } =>
-      digest == sha256_digest(hex: gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex)
-    ProjectedConfigDigestUnavailable => false
+    gunbc.bmc_fan_projection.ProjectedConfigDigestKnown { digest: digest } =>
+      digest == extdeps.crypto.hash.sha256_digest(hex: gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex)
+    gunbc.bmc_fan_projection.ProjectedConfigDigestUnavailable => false
   }
 }
 
 test fn fleet_quiet_projected_config_digest_hex_authority_executes() -> Bool {
-  match bmc_fan_projected_config_digest_sha256_hex(
-    curve: fleet_quiet_temp_soc_fan_curve,
-    intent_curve: fleet_quiet_temp_soc_fan_curve,
+  match gunbc.bmc_fan_projection.bmc_fan_projected_config_digest_sha256_hex(
+    curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
+    intent_curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
     realization: srv4_bmc_fan_projection_capability.realization,
-    config_path: srv4_bmc_fan_observed_config_path,
-    content_identity: altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
+    config_path: gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_config_path,
+    content_identity: gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
   ) {
     Present { value: hex } =>
       hex == gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex
-        && sha256_digest(hex: hex) == altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
+        && extdeps.crypto.hash.sha256_digest(hex: hex) == gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
     Absent => false
   }
 }
 
 test fn fleet_quiet_temp_soc_curve_matches_projected_config_content_identity() -> Bool {
-  fleet_quiet_temp_soc_fan_curve == altrad8ud_openbmc_322_fleet_quiet_projected_config_curve
+  gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve == gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_projected_config_curve
 }
 
 test fn non_fleet_quiet_curve_projected_config_digest_is_unavailable() -> Bool {
-  match bmc_fan_projected_config_digest(
+  match gunbc.bmc_fan_projection.bmc_fan_projected_config_digest(
     curve: lazy_onboarding_drift_curve,
-    intent_curve: fleet_quiet_temp_soc_fan_curve,
+    intent_curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
     realization: srv4_bmc_fan_projection_capability.realization,
-    config_path: srv4_bmc_fan_observed_config_path,
-    content_identity: altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
+    config_path: gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_config_path,
+    content_identity: gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
   ) {
-    ProjectedConfigDigestKnown { digest: _ } => false
-    ProjectedConfigDigestUnavailable => true
+    gunbc.bmc_fan_projection.ProjectedConfigDigestKnown { digest: _ } => false
+    gunbc.bmc_fan_projection.ProjectedConfigDigestUnavailable => true
   }
 }
 
 test fn srv4_bmc_reboot_persistence_receipt_proves_same_config_and_noop() -> Bool {
   let receipt = gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt
-  let classified = bmc_fan_policy_classification(
+  let classified = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
     observation: Present { value: receipt.post_reboot_policy },
-    persistence: Present { value: srv4_bmc_config_persistence_observation },
-    projection: Present { value: srv4_bmc_fan_projection_capability },
-    durability_generation: srv4_bmc_fan_perturbation_generation,
-    durability_evidence_construction: Present { value: srv4_bmc_fan_durability_evidence_construction },
+    persistence: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_config_persistence_observation },
+    projection: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability },
+    durability_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
+    durability_evidence_construction: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_durability_evidence_construction },
     durability_evidence: [],
   )
   receipt.reset.action_target == "/redfish/v1/Managers/bmc/Actions/Manager.Reset"
-    && receipt.reset.reset_type == ResetGracefulRestart
+    && receipt.reset.reset_type == extdeps.bmc.types.ResetGracefulRestart
     && receipt.reset.http_status == 200
     && receipt.reset.accepted
     && receipt.bmc_down_observed
     && receipt.bmc_returned
     && receipt.bmc_returned_at - receipt.bmc_down_observed_at == 170000
-    && receipt.host_power_before == On
-    && receipt.host_power_after == On
+    && receipt.host_power_before == extdeps.bmc.types.On
+    && receipt.host_power_after == extdeps.bmc.types.On
     && receipt.host_os_ssh_reachable_throughout
     && receipt.before.active_config_digest == receipt.post_reboot_active_config_digest
-    && receipt.post_reboot_policy.curve == fleet_quiet_temp_soc_fan_curve
+    && receipt.post_reboot_policy.curve == gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve
     && receipt.post_reboot_tachs.length() == 4
     && fold(
       receipt.post_reboot_tachs,
       init: true,
-      f: (healthy, tach) => healthy && rpm_count(tach.reading) > 0,
+      f: (healthy, tach) => healthy && std.measure.rpm_count(tach.reading) > 0,
     )
-    && (celsius_count(receipt.post_reboot_temp_soc) < celsius_count(fleet_bmc_valid_state.fan_policy.thermal_guard.processor_rollback_temperature))
+    && (std.measure.celsius_count(receipt.post_reboot_temp_soc) < std.measure.celsius_count(fleet_bmc_valid_state.fan_policy.thermal_guard.processor_rollback_temperature))
     && receipt.post_reboot_controller_active
     && !receipt.post_reboot_zone_failsafe_active
     && receipt.post_reboot_observer_exit_success
     && receipt.post_reboot_converge_noop_exit_success
-    && classified.verdict == UnknownRefused
+    && classified.verdict == std.upsert_decision.UnknownRefused
     && match classified.decision {
-      Refuse { reason: reason } =>
+      std.upsert_decision.Refuse { reason: reason } =>
         string_contains(s: reason, pattern: "caller-asserted definition linkages")
           && string_contains(s: reason, pattern: "count 6")
-      Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
 test fn srv4_receipt_cannot_qualify_a_later_perturbation_generation() -> Bool {
-  let classified = bmc_fan_policy_classification(
+  let classified = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
-    observation: Present { value: srv4_bmc_fan_converged_policy_observation },
-    persistence: Present { value: srv4_bmc_config_persistence_observation },
-    projection: Present { value: srv4_bmc_fan_projection_capability },
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
+    observation: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_fan_converged_policy_observation },
+    persistence: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_config_persistence_observation },
+    projection: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability },
     durability_generation: 2,
-    durability_evidence_construction: Present { value: srv4_bmc_fan_durability_evidence_construction },
+    durability_evidence_construction: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_durability_evidence_construction },
     durability_evidence: [],
   )
-  classified.verdict == UnknownRefused
+  classified.verdict == std.upsert_decision.UnknownRefused
     && match classified.decision {
-      Refuse { reason: reason } =>
+      std.upsert_decision.Refuse { reason: reason } =>
         string_contains(s: reason, pattern: "caller-asserted definition linkages")
           && string_contains(s: reason, pattern: "count 6")
-      Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
 test fn duplicate_srv4_durability_receipts_refuse_instead_of_first_wins() -> Bool {
-  let classified = bmc_fan_policy_classification(
+  let classified = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
-    observation: Present { value: srv4_bmc_fan_converged_policy_observation },
-    persistence: Present { value: srv4_bmc_config_persistence_observation },
-    projection: Present { value: srv4_bmc_fan_projection_capability },
-    durability_generation: srv4_bmc_fan_perturbation_generation,
-    durability_evidence_construction: Present { value: srv4_bmc_fan_durability_evidence_construction },
-    durability_evidence: bmc_fan_durability_evidence_built_items(
-      construction: srv4_bmc_fan_durability_evidence_construction,
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
+    observation: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_fan_converged_policy_observation },
+    persistence: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_config_persistence_observation },
+    projection: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability },
+    durability_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
+    durability_evidence_construction: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_durability_evidence_construction },
+    durability_evidence: gunbc.fleet_bmc_state.bmc_fan_durability_evidence_built_items(
+      construction: gunbc.fleet_bmc_state.srv4_bmc_fan_durability_evidence_construction,
     ),
   )
-  classified.verdict == UnknownRefused
+  classified.verdict == std.upsert_decision.UnknownRefused
     && match classified.decision {
-      Refuse { reason: reason } =>
+      std.upsert_decision.Refuse { reason: reason } =>
         string_contains(s: reason, pattern: "caller-asserted definition linkages")
           && string_contains(s: reason, pattern: "count 6")
-      Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
 test fn converged_srv4_curve_without_topology_projection_refuses_noop() -> Bool {
-  let classified = bmc_fan_policy_classification(
+  let classified = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
     observation: Present {
-      value: srv4_fan_policy_with_curve(curve: fleet_quiet_temp_soc_fan_curve),
+      value: srv4_fan_policy_with_curve(curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve),
     },
     persistence: none,
     projection: none,
-    durability_generation: srv4_bmc_fan_perturbation_generation,
-    durability_evidence_construction: Present { value: srv4_bmc_fan_durability_evidence_construction },
+    durability_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
+    durability_evidence_construction: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_durability_evidence_construction },
     durability_evidence: [],
   )
-  classified.verdict == UnknownRefused
+  classified.verdict == std.upsert_decision.UnknownRefused
     && match classified.decision {
-      Noop => false
-      Refuse { reason: _ } => true
-      Apply { plan: _ } => false
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Refuse { reason: _ } => true
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
 test fn converged_curve_and_installed_tach_topology_are_noop() -> Bool {
-  let classified = bmc_fan_policy_classification(
+  let classified = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
     observation: Present {
-      value: srv4_fan_policy_with_curve(curve: fleet_quiet_temp_soc_fan_curve),
+      value: srv4_fan_policy_with_curve(curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve),
     },
-    persistence: Present { value: srv4_bmc_config_persistence_observation },
-    projection: Present { value: srv4_bmc_fan_projection_capability },
-    durability_generation: srv4_bmc_fan_perturbation_generation,
-    durability_evidence_construction: Present { value: srv4_bmc_fan_durability_evidence_construction },
+    persistence: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_config_persistence_observation },
+    projection: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability },
+    durability_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
+    durability_evidence_construction: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_durability_evidence_construction },
     durability_evidence: [],
   )
-  classified.verdict == UnknownRefused
+  classified.verdict == std.upsert_decision.UnknownRefused
     && match classified.decision {
-      Refuse { reason: reason } =>
+      std.upsert_decision.Refuse { reason: reason } =>
         string_contains(s: reason, pattern: "caller-asserted definition linkages")
           && string_contains(s: reason, pattern: "count 6")
-      Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
 test fn desired_curve_with_stale_uninstalled_fan_input_still_builds_apply_plan() -> Bool {
   let stale_topology = extdeps.bmc.types.BmcFanPolicyObservation {
     firmware: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.firmware,
-    evidence_scope: HistoricalEvidenceSnapshot,
-    curve: fleet_quiet_temp_soc_fan_curve,
-    active_config_digest: srv4_bmc_fan_active_config_digest,
+    evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
+    curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
+    active_config_digest: gunbc.fleet_bmc_observation.srv4_bmc_fan_active_config_digest,
     selected_config_path: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.selected_config_path,
     board_config_path: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.board_config_path,
     controller_service: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_service,
@@ -749,91 +749,91 @@ test fn desired_curve_with_stale_uninstalled_fan_input_still_builds_apply_plan()
     controller_shape: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_shape,
     observed_at: 0,
   }
-  let classified = bmc_fan_policy_classification(
+  let classified = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
     observation: Present { value: stale_topology },
-    persistence: Present { value: srv4_bmc_config_persistence_observation },
-    projection: Present { value: srv4_bmc_fan_projection_capability },
-    durability_generation: srv4_bmc_fan_perturbation_generation,
-    durability_evidence_construction: Present { value: srv4_bmc_fan_durability_evidence_construction },
+    persistence: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_config_persistence_observation },
+    projection: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability },
+    durability_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
+    durability_evidence_construction: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_durability_evidence_construction },
     durability_evidence: [],
   )
   classified.verdict == std.upsert_decision.Drifted
     && match classified.decision {
-      Apply { plan: _ } => true
-      Noop => false
-      Refuse { reason: _ } => false
+      std.upsert_decision.Apply { plan: _ } => true
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Refuse { reason: _ } => false
     }
 }
 
 test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_and_persistence() -> Bool {
   let drifted = srv4_fan_policy_with_curve(curve: lazy_onboarding_drift_curve)
-  let with_storage = bmc_fan_policy_classification(
+  let with_storage = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
     observation: Present { value: drifted },
-    persistence: Present { value: srv4_bmc_config_persistence_observation },
-    projection: Present { value: srv4_bmc_fan_projection_capability },
-    durability_generation: srv4_bmc_fan_perturbation_generation,
-    durability_evidence_construction: Present { value: srv4_bmc_fan_durability_evidence_construction },
+    persistence: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_config_persistence_observation },
+    projection: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability },
+    durability_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
+    durability_evidence_construction: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_durability_evidence_construction },
     durability_evidence: [],
   )
-  let without_storage = bmc_fan_policy_classification(
+  let without_storage = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
     observation: Present { value: drifted },
     persistence: none,
-    projection: Present { value: srv4_bmc_fan_projection_capability },
-    durability_generation: srv4_bmc_fan_perturbation_generation,
-    durability_evidence_construction: Present { value: srv4_bmc_fan_durability_evidence_construction },
+    projection: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability },
+    durability_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
+    durability_evidence_construction: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_durability_evidence_construction },
     durability_evidence: [],
   )
-  let without_projection = bmc_fan_policy_classification(
+  let without_projection = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
     observation: Present { value: drifted },
-    persistence: Present { value: srv4_bmc_config_persistence_observation },
+    persistence: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_config_persistence_observation },
     projection: none,
-    durability_generation: srv4_bmc_fan_perturbation_generation,
-    durability_evidence_construction: Present { value: srv4_bmc_fan_durability_evidence_construction },
+    durability_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
+    durability_evidence_construction: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_durability_evidence_construction },
     durability_evidence: [],
   )
   with_storage.verdict == std.upsert_decision.Drifted
     && match with_storage.decision {
-      Apply { plan: plan } =>
+      std.upsert_decision.Apply { plan: plan } =>
         plan.host == srv4_host.identity
           && plan.config_path == "/usr/share/swampd/config-asrr.json"
           && plan.controller_service == "phosphor-pid-control.service"
-          && plan.desired_curve == fleet_quiet_temp_soc_fan_curve
-          && plan.projection == srv4_bmc_fan_projection_capability
-      Noop => false
-      Refuse { reason: _ } => false
+          && plan.desired_curve == gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve
+          && plan.projection == gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Refuse { reason: _ } => false
     }
-    && without_storage.verdict == UnknownRefused
+    && without_storage.verdict == std.upsert_decision.UnknownRefused
     && match without_storage.decision {
-      Refuse { reason: _ } => true
-      Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => true
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
-    && without_projection.verdict == UnknownRefused
+    && without_projection.verdict == std.upsert_decision.UnknownRefused
     && match without_projection.decision {
-      Refuse { reason: _ } => true
-      Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => true
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
 test fn projection_firmware_mismatch_refuses_a_322_projection_on_a_306_host() -> Bool {
   let observed = extdeps.bmc.types.BmcFanPolicyObservation {
     firmware: asrock_altrad8ud_openbmc_3_06_00_capabilities.firmware,
-    evidence_scope: HistoricalEvidenceSnapshot,
+    evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
     curve: minimum_duty_perturbation(),
-    active_config_digest: srv4_bmc_fan_active_config_digest,
+    active_config_digest: gunbc.fleet_bmc_observation.srv4_bmc_fan_active_config_digest,
     selected_config_path: "/usr/share/swampd/config.json",
     board_config_path: "/usr/share/swampd/config-asrr.json",
     controller_service: "phosphor-pid-control.service",
@@ -841,32 +841,32 @@ test fn projection_firmware_mismatch_refuses_a_322_projection_on_a_306_host() ->
     controller_shape: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_shape,
     observed_at: 0,
   }
-  let classified = bmc_fan_policy_classification(
+  let classified = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
     observation: Present { value: observed },
     persistence: none,
-    projection: Present { value: srv4_bmc_fan_projection_capability },
-    durability_generation: srv4_bmc_fan_perturbation_generation,
+    projection: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability },
+    durability_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
     durability_evidence_construction: Absent,
     durability_evidence: [],
   )
-  classified.verdict == UnknownRefused
+  classified.verdict == std.upsert_decision.UnknownRefused
     && match classified.decision {
-      Refuse { reason: _ } => true
-      Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => true
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
 test fn srv3_fan_realization_refuses_without_a_modeled_projection() -> Bool {
-  let classified = bmc_fan_policy_classification(
+  let classified = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
     observation: Present {
-      value: asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation,
+      value: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation,
     },
     persistence: none,
     projection: none,
@@ -874,25 +874,25 @@ test fn srv3_fan_realization_refuses_without_a_modeled_projection() -> Bool {
     durability_evidence_construction: Absent,
     durability_evidence: [],
   )
-  classified.verdict == UnknownRefused
+  classified.verdict == std.upsert_decision.UnknownRefused
     && match classified.decision {
-      Refuse { reason: _ } => true
-      Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => true
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
 test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_digest() -> Bool {
   let relabeled_receipt = gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt {
-    evidence_scope: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
-    host: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host,
-    perturbation_receipt_id: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
-    perturbation_generation: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
+    evidence_scope: srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
+    host: srv4_bmc_fan_reboot_persistence_receipt.host,
+    perturbation_receipt_id: srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
+    perturbation_generation: srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
     perturbation_capability: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability {
       board: srv4_bmc_fan_projection_capability.board,
       firmware: srv4_bmc_fan_projection_capability.firmware,
       projected_curve: srv4_bmc_fan_projection_capability.projected_curve,
-      projected_config_digest: bmc_fan_witness_digest_mismatch_sentinel,
+      projected_config_digest: gunbc.bmc_fan_projection.bmc_fan_witness_digest_mismatch_sentinel,
       config_path: srv4_bmc_fan_projection_capability.config_path,
       controller_service: srv4_bmc_fan_projection_capability.controller_service,
       controller_zone_path: srv4_bmc_fan_projection_capability.controller_zone_path,
@@ -909,46 +909,46 @@ test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_dig
       durability_boundaries: srv4_bmc_fan_projection_capability.durability_boundaries,
       required_tach_inputs: srv4_bmc_fan_projection_capability.required_tach_inputs,
     },
-    before: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.before,
-    post_reboot_policy: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
-    reset: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.reset,
-    bmc_down_observed: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed,
-    bmc_returned: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_returned,
-    bmc_down_observed_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed_at,
-    bmc_returned_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_returned_at,
-    host_power_before: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_power_before,
-    host_power_after: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_power_after,
-    host_os_ssh_reachable_throughout: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_os_ssh_reachable_throughout,
-    pre_reboot_temp_soc: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_temp_soc,
-    post_reboot_temp_soc: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_temp_soc,
-    pre_reboot_tachs: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_tachs,
-    post_reboot_tachs: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_tachs,
-    post_reboot_active_config_digest: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_active_config_digest,
-    post_reboot_controller_active: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_controller_active,
-    post_reboot_zone_failsafe_active: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_zone_failsafe_active,
-    post_reboot_observer_exit_success: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_observer_exit_success,
-    post_reboot_converge_noop_exit_success: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_converge_noop_exit_success,
-    observed_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.observed_at,
+    before: srv4_bmc_fan_reboot_persistence_receipt.before,
+    post_reboot_policy: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
+    reset: srv4_bmc_fan_reboot_persistence_receipt.reset,
+    bmc_down_observed: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed,
+    bmc_returned: srv4_bmc_fan_reboot_persistence_receipt.bmc_returned,
+    bmc_down_observed_at: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed_at,
+    bmc_returned_at: srv4_bmc_fan_reboot_persistence_receipt.bmc_returned_at,
+    host_power_before: srv4_bmc_fan_reboot_persistence_receipt.host_power_before,
+    host_power_after: srv4_bmc_fan_reboot_persistence_receipt.host_power_after,
+    host_os_ssh_reachable_throughout: srv4_bmc_fan_reboot_persistence_receipt.host_os_ssh_reachable_throughout,
+    pre_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_temp_soc,
+    post_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_temp_soc,
+    pre_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_tachs,
+    post_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_tachs,
+    post_reboot_active_config_digest: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_active_config_digest,
+    post_reboot_controller_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_controller_active,
+    post_reboot_zone_failsafe_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_zone_failsafe_active,
+    post_reboot_observer_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_observer_exit_success,
+    post_reboot_converge_noop_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_converge_noop_exit_success,
+    observed_at: srv4_bmc_fan_reboot_persistence_receipt.observed_at,
   }
-  match bmc_fan_reboot_durability_evidence(receipt: relabeled_receipt) {
-    BmcFanDurabilityEvidenceConstructionRefused {
-      cause: DurabilityReceiptDigestMismatch,
+  match gunbc.fleet_bmc_state.bmc_fan_reboot_durability_evidence(receipt: relabeled_receipt) {
+    gunbc.fleet_bmc_state.BmcFanDurabilityEvidenceConstructionRefused {
+      cause: gunbc.fleet_bmc_state.DurabilityReceiptDigestMismatch,
     } => true
-    BmcFanDurabilityEvidenceBuilt { evidence: _ } => false
+    gunbc.fleet_bmc_state.BmcFanDurabilityEvidenceBuilt { evidence: _ } => false
   }
 }
 
 test fn relabeled_reboot_construction_refusal_propagates_through_classification() -> Bool {
   let relabeled_receipt = gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt {
-    evidence_scope: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
-    host: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host,
-    perturbation_receipt_id: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
-    perturbation_generation: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
+    evidence_scope: srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
+    host: srv4_bmc_fan_reboot_persistence_receipt.host,
+    perturbation_receipt_id: srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
+    perturbation_generation: srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
     perturbation_capability: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability {
       board: srv4_bmc_fan_projection_capability.board,
       firmware: srv4_bmc_fan_projection_capability.firmware,
       projected_curve: srv4_bmc_fan_projection_capability.projected_curve,
-      projected_config_digest: bmc_fan_witness_digest_mismatch_sentinel,
+      projected_config_digest: gunbc.bmc_fan_projection.bmc_fan_witness_digest_mismatch_sentinel,
       config_path: srv4_bmc_fan_projection_capability.config_path,
       controller_service: srv4_bmc_fan_projection_capability.controller_service,
       controller_zone_path: srv4_bmc_fan_projection_capability.controller_zone_path,
@@ -959,58 +959,58 @@ test fn relabeled_reboot_construction_refusal_propagates_through_classification(
       durability_boundaries: srv4_bmc_fan_projection_capability.durability_boundaries,
       required_tach_inputs: srv4_bmc_fan_projection_capability.required_tach_inputs,
     },
-    before: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.before,
-    post_reboot_policy: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
-    reset: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.reset,
-    bmc_down_observed: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed,
-    bmc_returned: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_returned,
-    bmc_down_observed_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed_at,
-    bmc_returned_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_returned_at,
-    host_power_before: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_power_before,
-    host_power_after: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_power_after,
-    host_os_ssh_reachable_throughout: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_os_ssh_reachable_throughout,
-    pre_reboot_temp_soc: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_temp_soc,
-    post_reboot_temp_soc: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_temp_soc,
-    pre_reboot_tachs: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_tachs,
-    post_reboot_tachs: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_tachs,
-    post_reboot_active_config_digest: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_active_config_digest,
-    post_reboot_controller_active: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_controller_active,
-    post_reboot_zone_failsafe_active: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_zone_failsafe_active,
-    post_reboot_observer_exit_success: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_observer_exit_success,
-    post_reboot_converge_noop_exit_success: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_converge_noop_exit_success,
-    observed_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.observed_at,
+    before: srv4_bmc_fan_reboot_persistence_receipt.before,
+    post_reboot_policy: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
+    reset: srv4_bmc_fan_reboot_persistence_receipt.reset,
+    bmc_down_observed: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed,
+    bmc_returned: srv4_bmc_fan_reboot_persistence_receipt.bmc_returned,
+    bmc_down_observed_at: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed_at,
+    bmc_returned_at: srv4_bmc_fan_reboot_persistence_receipt.bmc_returned_at,
+    host_power_before: srv4_bmc_fan_reboot_persistence_receipt.host_power_before,
+    host_power_after: srv4_bmc_fan_reboot_persistence_receipt.host_power_after,
+    host_os_ssh_reachable_throughout: srv4_bmc_fan_reboot_persistence_receipt.host_os_ssh_reachable_throughout,
+    pre_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_temp_soc,
+    post_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_temp_soc,
+    pre_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_tachs,
+    post_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_tachs,
+    post_reboot_active_config_digest: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_active_config_digest,
+    post_reboot_controller_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_controller_active,
+    post_reboot_zone_failsafe_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_zone_failsafe_active,
+    post_reboot_observer_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_observer_exit_success,
+    post_reboot_converge_noop_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_converge_noop_exit_success,
+    observed_at: srv4_bmc_fan_reboot_persistence_receipt.observed_at,
   }
-  let construction = bmc_fan_reboot_durability_evidence(receipt: relabeled_receipt)
-  let classified = bmc_fan_policy_classification(
+  let construction = gunbc.fleet_bmc_state.bmc_fan_reboot_durability_evidence(receipt: relabeled_receipt)
+  let classified = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
-    observation: Present { value: srv4_bmc_fan_converged_policy_observation },
-    persistence: Present { value: srv4_bmc_config_persistence_observation },
-    projection: Present { value: srv4_bmc_fan_projection_capability },
-    durability_generation: srv4_bmc_fan_perturbation_generation,
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
+    observation: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_fan_converged_policy_observation },
+    persistence: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_config_persistence_observation },
+    projection: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability },
+    durability_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
     durability_evidence_construction: Present { value: construction },
     durability_evidence: [],
   )
-  classified.verdict == UnknownRefused
+  classified.verdict == std.upsert_decision.UnknownRefused
     && match classified.decision {
-      Refuse { reason: reason } =>
+      std.upsert_decision.Refuse { reason: reason } =>
         string_contains(s: reason, pattern: "durability evidence construction refused")
           && string_contains(
             s: reason,
             pattern: "active config digest does not match the perturbation capability projected config digest",
           )
-      Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
 test fn semantically_converged_live_digest_mismatch_refuses_noop() -> Bool {
   let digest_mismatch = extdeps.bmc.types.BmcFanPolicyObservation {
     firmware: srv4_bmc_fan_converged_policy_observation.firmware,
-    evidence_scope: HistoricalEvidenceSnapshot,
-    curve: fleet_quiet_temp_soc_fan_curve,
-    active_config_digest: bmc_fan_witness_digest_mismatch_sentinel,
+    evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
+    curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
+    active_config_digest: gunbc.bmc_fan_projection.bmc_fan_witness_digest_mismatch_sentinel,
     selected_config_path: srv4_bmc_fan_converged_policy_observation.selected_config_path,
     board_config_path: srv4_bmc_fan_converged_policy_observation.board_config_path,
     controller_service: srv4_bmc_fan_converged_policy_observation.controller_service,
@@ -1018,97 +1018,97 @@ test fn semantically_converged_live_digest_mismatch_refuses_noop() -> Bool {
     controller_shape: srv4_bmc_fan_converged_policy_observation.controller_shape,
     observed_at: 0,
   }
-  let classified = bmc_fan_policy_classification(
+  let classified = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
     observation: Present { value: digest_mismatch },
-    persistence: Present { value: srv4_bmc_config_persistence_observation },
-    projection: Present { value: srv4_bmc_fan_projection_capability },
-    durability_generation: srv4_bmc_fan_perturbation_generation,
-    durability_evidence_construction: Present { value: srv4_bmc_fan_durability_evidence_construction },
+    persistence: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_config_persistence_observation },
+    projection: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability },
+    durability_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
+    durability_evidence_construction: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_durability_evidence_construction },
     durability_evidence: [],
   )
   classified.verdict == std.upsert_decision.Drifted
     && match classified.decision {
-      Apply { plan: _ } => true
-      Noop => false
-      Refuse { reason: _ } => false
+      std.upsert_decision.Apply { plan: _ } => true
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Refuse { reason: _ } => false
     }
 }
 
 test fn drifted_policy_applies_without_prior_durability_evidence() -> Bool {
   let drifted = srv4_fan_policy_with_curve(curve: lazy_onboarding_drift_curve)
-  let classified = bmc_fan_policy_classification(
+  let classified = gunbc.bmc_converge.bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state,
+    intent: gunbc.bmc_intent.fleet_bmc_valid_state,
     observation: Present { value: drifted },
-    persistence: Present { value: srv4_bmc_config_persistence_observation },
-    projection: Present { value: srv4_bmc_fan_projection_capability },
-    durability_generation: srv4_bmc_fan_perturbation_generation,
+    persistence: Present { value: gunbc.fleet_bmc_observation.srv4_bmc_config_persistence_observation },
+    projection: Present { value: gunbc.fleet_bmc_state.srv4_bmc_fan_projection_capability },
+    durability_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
     durability_evidence_construction: Absent,
     durability_evidence: [],
   )
   classified.verdict == std.upsert_decision.Drifted
     && match classified.decision {
-      Apply { plan: _ } => true
-      Noop => false
-      Refuse { reason: _ } => false
+      std.upsert_decision.Apply { plan: _ } => true
+      std.upsert_decision.Noop => false
+      std.upsert_decision.Refuse { reason: _ } => false
     }
 }
 
 test fn srv4_fixture_durability_evidence_is_constructed_not_relabelled() -> Bool {
-  match srv4_bmc_fan_durability_evidence_construction {
-    BmcFanDurabilityEvidenceBuilt { evidence: evidence } =>
-      evidence.admission == srv4_bmc_fan_durability_admission
-    BmcFanDurabilityEvidenceConstructionRefused { cause: _ } => false
+  match gunbc.fleet_bmc_state.srv4_bmc_fan_durability_evidence_construction {
+    gunbc.fleet_bmc_state.BmcFanDurabilityEvidenceBuilt { evidence: evidence } =>
+      evidence.admission == gunbc.fleet_bmc_state.srv4_bmc_fan_durability_admission
+    gunbc.fleet_bmc_state.BmcFanDurabilityEvidenceConstructionRefused { cause: _ } => false
   }
 }
 
 test fn fleet_quiet_curve_admits_srv4_active_config_digest() -> Bool {
-  match bmc_fan_admitted_config_digest(
-    curve: fleet_quiet_temp_soc_fan_curve,
-    intent_curve: fleet_quiet_temp_soc_fan_curve,
+  match gunbc.bmc_fan_projection.bmc_fan_admitted_config_digest(
+    curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
+    intent_curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
     projected_config_digest: Present {
-      value: altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
+      value: gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
     },
   ) {
-    AdmittedConfigDigestKnown { digest: digest } =>
-      digest == altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
+    gunbc.bmc_fan_projection.AdmittedConfigDigestKnown { digest: digest } =>
+      digest == gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
         && digest == srv4_bmc_fan_projection_capability.projected_config_digest
-    AdmittedConfigDigestUnavailable => false
+    gunbc.bmc_fan_projection.AdmittedConfigDigestUnavailable => false
   }
 }
 
 test fn non_fleet_curve_admitted_config_digest_is_unavailable() -> Bool {
-  match bmc_fan_admitted_config_digest(
+  match gunbc.bmc_fan_projection.bmc_fan_admitted_config_digest(
     curve: lazy_onboarding_drift_curve,
-    intent_curve: fleet_quiet_temp_soc_fan_curve,
+    intent_curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
     projected_config_digest: Present {
-      value: altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
+      value: gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
     },
   ) {
-    AdmittedConfigDigestKnown { digest: _ } => false
-    AdmittedConfigDigestUnavailable => true
+    gunbc.bmc_fan_projection.AdmittedConfigDigestKnown { digest: _ } => false
+    gunbc.bmc_fan_projection.AdmittedConfigDigestUnavailable => true
   }
 }
 
 test fn absent_projected_digest_admitted_config_digest_is_unavailable() -> Bool {
-  match bmc_fan_admitted_config_digest(
-    curve: fleet_quiet_temp_soc_fan_curve,
-    intent_curve: fleet_quiet_temp_soc_fan_curve,
+  match gunbc.bmc_fan_projection.bmc_fan_admitted_config_digest(
+    curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
+    intent_curve: gunbc.bmc_intent.fleet_quiet_temp_soc_fan_curve,
     projected_config_digest: none,
   ) {
-    AdmittedConfigDigestKnown { digest: _ } => false
-    AdmittedConfigDigestUnavailable => true
+    gunbc.bmc_fan_projection.AdmittedConfigDigestKnown { digest: _ } => false
+    gunbc.bmc_fan_projection.AdmittedConfigDigestUnavailable => true
   }
 }
 
 test fn linux_synchronized_publication_admits_commit_barrier() -> Bool {
-  match linux_synchronized_rename_replace_publication {
-    LinuxSynchronizedRenameReplacePublication => true
-    LinuxFilePublicationProtocolUnsynchronized {
+  match extdeps.filesystem.linux.linux_synchronized_rename_replace_publication {
+    extdeps.filesystem.linux.LinuxSynchronizedRenameReplacePublication => true
+    extdeps.filesystem.linux.LinuxFilePublicationProtocolUnsynchronized {
       stage_in_target_directory: _,
       staged_content_validated: _,
       replacement: _,
@@ -1116,7 +1116,7 @@ test fn linux_synchronized_publication_admits_commit_barrier() -> Bool {
     } => false
   }
     && match srv4_bmc_fan_durability_capability_version.definition_linkage {
-      CallerAssertedDefinitionLinkage {
+      std.state_durability.CallerAssertedDefinitionLinkage {
         reason: reason,
     dissolution: symbol_index_subtree_digest_dissolution,
       } =>
@@ -1128,12 +1128,12 @@ test fn linux_unsynchronized_publication_refuses_commit_barrier() -> Bool {
   let protocol = extdeps.filesystem.linux.LinuxFilePublicationProtocolUnsynchronized {
     stage_in_target_directory: true,
     staged_content_validated: true,
-    replacement: ReplacementAtomicityUnspecified,
-    synchronization: NoExplicitFilesystemSynchronization,
+    replacement: extdeps.filesystem.linux.ReplacementAtomicityUnspecified,
+    synchronization: extdeps.filesystem.linux.NoExplicitFilesystemSynchronization,
   }
   match protocol {
-    LinuxSynchronizedRenameReplacePublication => false
-    LinuxFilePublicationProtocolUnsynchronized {
+    extdeps.filesystem.linux.LinuxSynchronizedRenameReplacePublication => false
+    extdeps.filesystem.linux.LinuxFilePublicationProtocolUnsynchronized {
       stage_in_target_directory: _,
       staged_content_validated: _,
       replacement: _,
@@ -1144,40 +1144,40 @@ test fn linux_unsynchronized_publication_refuses_commit_barrier() -> Bool {
 
 test fn reboot_durability_evidence_refuses_non_positive_interval() -> Bool {
   let zero_duration_receipt = gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt {
-    evidence_scope: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
-    host: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host,
-    perturbation_receipt_id: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
-    perturbation_generation: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
-    perturbation_capability: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.perturbation_capability,
-    before: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.before,
-    post_reboot_policy: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
-    reset: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.reset,
-    bmc_down_observed: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed,
-    bmc_returned: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_returned,
-    bmc_down_observed_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed_at,
-    bmc_returned_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.reset.observed_at,
-    host_power_before: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_power_before,
-    host_power_after: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_power_after,
-    host_os_ssh_reachable_throughout: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.host_os_ssh_reachable_throughout,
-    pre_reboot_temp_soc: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_temp_soc,
-    post_reboot_temp_soc: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_temp_soc,
-    pre_reboot_tachs: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_tachs,
-    post_reboot_tachs: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_tachs,
-    post_reboot_active_config_digest: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_active_config_digest,
-    post_reboot_controller_active: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_controller_active,
-    post_reboot_zone_failsafe_active: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_zone_failsafe_active,
-    post_reboot_observer_exit_success: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_observer_exit_success,
-    post_reboot_converge_noop_exit_success: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.post_reboot_converge_noop_exit_success,
-    observed_at: gunbc.fleet_bmc_state.srv4_bmc_fan_reboot_persistence_receipt.observed_at,
+    evidence_scope: srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
+    host: srv4_bmc_fan_reboot_persistence_receipt.host,
+    perturbation_receipt_id: srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
+    perturbation_generation: srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
+    perturbation_capability: srv4_bmc_fan_reboot_persistence_receipt.perturbation_capability,
+    before: srv4_bmc_fan_reboot_persistence_receipt.before,
+    post_reboot_policy: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
+    reset: srv4_bmc_fan_reboot_persistence_receipt.reset,
+    bmc_down_observed: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed,
+    bmc_returned: srv4_bmc_fan_reboot_persistence_receipt.bmc_returned,
+    bmc_down_observed_at: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed_at,
+    bmc_returned_at: srv4_bmc_fan_reboot_persistence_receipt.reset.observed_at,
+    host_power_before: srv4_bmc_fan_reboot_persistence_receipt.host_power_before,
+    host_power_after: srv4_bmc_fan_reboot_persistence_receipt.host_power_after,
+    host_os_ssh_reachable_throughout: srv4_bmc_fan_reboot_persistence_receipt.host_os_ssh_reachable_throughout,
+    pre_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_temp_soc,
+    post_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_temp_soc,
+    pre_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_tachs,
+    post_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_tachs,
+    post_reboot_active_config_digest: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_active_config_digest,
+    post_reboot_controller_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_controller_active,
+    post_reboot_zone_failsafe_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_zone_failsafe_active,
+    post_reboot_observer_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_observer_exit_success,
+    post_reboot_converge_noop_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_converge_noop_exit_success,
+    observed_at: srv4_bmc_fan_reboot_persistence_receipt.observed_at,
   }
-  match bmc_fan_reboot_durability_evidence(
+  match gunbc.fleet_bmc_state.bmc_fan_reboot_durability_evidence(
     receipt: zero_duration_receipt,
   ) {
-    BmcFanDurabilityEvidenceConstructionRefused {
-      cause: DurabilityReceiptNonPositiveInterval {
-        cause: PositiveMeasureCountNonPositive { observed: 0 },
+    gunbc.fleet_bmc_state.BmcFanDurabilityEvidenceConstructionRefused {
+      cause: gunbc.fleet_bmc_state.DurabilityReceiptNonPositiveInterval {
+        cause: std.measure.PositiveMeasureCountNonPositive { observed: 0 },
       },
     } => true
-    BmcFanDurabilityEvidenceBuilt { evidence: _ } => false
+    gunbc.fleet_bmc_state.BmcFanDurabilityEvidenceBuilt { evidence: _ } => false
   }
 }

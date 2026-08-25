@@ -1,7 +1,7 @@
 module v2.test.lens_complexity.map_id
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 type LensComplexityClaim {
   input: v2.std.node.Node
   expected_cost: v2.lens.cost.SymbolicCost
@@ -11,51 +11,51 @@ type LensComplexityClaim {
 data map_id_body_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^map_id_body_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data map_id_body: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
   children: [
-    v2.std.node.Edge { label: Positional, target: map_id_body_leaf }
+    v2.std.node.Edge { label: v2.std.node.Positional, target: map_id_body_leaf }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data map_id_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
   children: [
-    v2.std.node.Edge { label: Positional, target: map_id_body }
+    v2.std.node.Edge { label: v2.std.node.Positional, target: map_id_body }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data map_id_claim: LensComplexityClaim = LensComplexityClaim {
   input: map_id_input,
   expected_cost: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: map_id_input } },
-  expected_complexity: linear_complexity(size_var: v2.lens.cost.SizeVariable { source: map_id_input }),
+  expected_complexity: v2.lens.complexity.linear_complexity(size_var: v2.lens.cost.SizeVariable { source: map_id_input }),
   falsification: v2.std.diagnostic.Diagnostic {
     reason: ^map_id_claim_reason,
-    at: v2.std.diagnostic.Textual { file: ^map_id_claim_file, extent: WholeFile },
-    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^map_id_claim_file, extent: v2.std.diagnostic.WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
   }
 }
 
 fn map_id_actual_cost() -> Witness<v2.lens.cost.SymbolicCost> {
-  cost_lens(n: map_id_input)
+  v2.lens.cost.cost_lens(n: map_id_input)
 }
 
 fn map_id_actual_complexity() -> v2.lens.complexity.ComplexityBound {
-  complexity_lens(n: map_id_input)
+  v2.lens.complexity.complexity_lens(n: map_id_input)
 }
 
-test fn map_id_cost_projection_holds() -> v2.std.logic.Bool {
+test fn map_id_cost_projection_holds() -> Bool {
   match map_id_actual_cost() {
-    Holds { value: actual } => actual == map_id_claim.expected_cost
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Holds { value: actual } => actual == map_id_claim.expected_cost
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn map_id_complexity_projection_holds() -> v2.std.logic.Bool {
+test fn map_id_complexity_projection_holds() -> Bool {
   map_id_actual_complexity() == map_id_claim.expected_complexity
 }

@@ -1,5 +1,6 @@
 module test.claim.witness_floor_workflow_consolidation_witness_test
 
+
 // THE CI PHASES ARE THE PROGRAM'S TO SEQUENCE, NOT THE JOB'S (operator directive, 2026-08-20:
 // "i would much prefer if it was all handled within the witnesses step and within the gunbc
 // binary, not at a github actions job level").
@@ -53,13 +54,13 @@ data consolidation_note: String = "The step ladder these replace was four steps:
 // exactly one of these four tokens.
 test fn w_ci_invokes_one_composed_mode_not_a_step_ladder() -> Bool {
   match gunbc.witness_floor_workflow.expected_witness_floor_yml() {
-    WitnessFloorGenerated { content: yml } =>
+    gunbc.witness_floor_workflow.WitnessFloorGenerated { content: yml } =>
       string_contains(s: yml, pattern: "claim_executor")
         && string_contains(s: yml, pattern: "--required-ci")
         && !string_contains(s: yml, pattern: "--required-floor")
         && !string_contains(s: yml, pattern: "--required-regen")
         && !string_contains(s: yml, pattern: "target/release/v1_src_dag_parse")
-    WitnessFloorGenerationRefused => false
+    gunbc.witness_floor_workflow.WitnessFloorGenerationRefused => false
   }
 }
 
@@ -69,10 +70,10 @@ test fn w_ci_invokes_one_composed_mode_not_a_step_ladder() -> Bool {
 // data dependency that now lives in the binary as an in-memory digest handoff.
 test fn w_no_phase_precondition_reads_another_phases_outcome() -> Bool {
   match gunbc.witness_floor_workflow.expected_witness_floor_yml() {
-    WitnessFloorGenerated { content: yml } =>
+    gunbc.witness_floor_workflow.WitnessFloorGenerated { content: yml } =>
       !string_contains(s: yml, pattern: "steps.required_regen.outcome")
         && string_contains(s: yml, pattern: "steps.build_witness_fold.outcome == 'success'")
-    WitnessFloorGenerationRefused => false
+    gunbc.witness_floor_workflow.WitnessFloorGenerationRefused => false
   }
 }
 
@@ -97,11 +98,11 @@ test fn w_no_phase_precondition_reads_another_phases_outcome() -> Bool {
 // subject does not contain.
 test fn w_the_required_workflow_does_not_build_the_parse_binary() -> Bool {
   match gunbc.witness_floor_workflow.expected_witness_floor_yml() {
-    WitnessFloorGenerated { content: yml } =>
+    gunbc.witness_floor_workflow.WitnessFloorGenerated { content: yml } =>
       string_contains(s: yml, pattern: "--required-ci")
         && string_contains(s: yml, pattern: "--bin claim_executor")
         && !string_contains(s: yml, pattern: "--bin v1_src_dag_parse")
-    WitnessFloorGenerationRefused => false
+    gunbc.witness_floor_workflow.WitnessFloorGenerationRefused => false
   }
 }
 
@@ -129,13 +130,13 @@ test fn w_the_required_workflow_does_not_build_the_parse_binary() -> Bool {
 // exist to detect.
 test fn w_RED_the_retired_step_names_do_not_return() -> Bool {
   match gunbc.witness_floor_workflow.expected_witness_floor_yml() {
-    WitnessFloorGenerated { content: yml } =>
+    gunbc.witness_floor_workflow.WitnessFloorGenerated { content: yml } =>
       let positive_control = string_contains(s: yml, pattern: "Required CI:")
       positive_control
         && !string_contains(s: yml, pattern: "name: src/v1 .dag sources parse")
         && !string_contains(s: yml, pattern: "Regen fixed point:")
         && !string_contains(s: yml, pattern: "Regen determinism:")
-    WitnessFloorGenerationRefused => false
+    gunbc.witness_floor_workflow.WitnessFloorGenerationRefused => false
   }
 }
 

@@ -1,19 +1,19 @@
 module gunbc.srv3_seeded_install_media_artifact
 
 
-data srv3_autoinstall_user_data_body: std.types.NonEmptyStr = autoinstall_user_data(
-  payload: srv3_ubuntu_autoinstall_on_iso,
+data srv3_autoinstall_user_data_body: std.types.NonEmptyStr = gunbc.os_install_emit.autoinstall_user_data(
+  payload: gunbc.os_install.srv3_ubuntu_autoinstall_on_iso,
 ) as std.types.NonEmptyStr
 
-data srv3_seeded_nocloud_dir_on_iso: std.types.NonEmptyStr = ubuntu_seeded_install_media_default_nocloud_dir(
+data srv3_seeded_nocloud_dir_on_iso: std.types.NonEmptyStr = extdeps.provisioning.ubuntu_seeded_install_media.ubuntu_seeded_install_media_default_nocloud_dir(
   hostname: srv3_ubuntu_autoinstall_on_iso.identity.hostname,
 )
 
-data srv3_seeded_grub_kernel_cmdline: std.types.NonEmptyStr = ubuntu_seeded_install_media_grub_kernel_cmdline(
+data srv3_seeded_grub_kernel_cmdline: std.types.NonEmptyStr = extdeps.provisioning.ubuntu_seeded_install_media.ubuntu_seeded_install_media_grub_kernel_cmdline(
   nocloud_dir: srv3_seeded_nocloud_dir_on_iso,
 )
 
-data srv3_seeded_install_media_content_hash: std.content_hash.ContentHash = seeded_install_media_content_hash(
+data srv3_seeded_install_media_content_hash: std.content_hash.ContentHash = extdeps.provisioning.ubuntu_seeded_install_media.seeded_install_media_content_hash(
   stock_content_sha256: noble_numbat_2404_3_live_server_arm64.content_sha256 as std.types.NonEmptyStr,
   autoinstall_user_data_body: srv3_autoinstall_user_data_body,
   grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
@@ -21,14 +21,14 @@ data srv3_seeded_install_media_content_hash: std.content_hash.ContentHash = seed
 )
 
 data srv3_seeded_install_media_artifact: extdeps.provisioning.ubuntu_seeded_install_media.UbuntuSeededInstallMediaArtifactRow = extdeps.provisioning.ubuntu_seeded_install_media.UbuntuSeededInstallMediaArtifactRow {
-  stock_artifact: noble_numbat_2404_3_live_server_arm64,
-  autoinstall: srv3_ubuntu_autoinstall_on_iso,
+  stock_artifact: extdeps.provisioning.ubuntu_install_media.noble_numbat_2404_3_live_server_arm64,
+  autoinstall: gunbc.os_install.srv3_ubuntu_autoinstall_on_iso,
   autoinstall_user_data_body: srv3_autoinstall_user_data_body,
   grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
   nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
   content_hash: srv3_seeded_install_media_content_hash,
 }
 
-data srv3_seeded_ubuntu_install_media_install_path: std.types.NonEmptyStr = ubuntu_seeded_install_media_install_path(
+data srv3_seeded_ubuntu_install_media_install_path: std.types.NonEmptyStr = extdeps.provisioning.ubuntu_seeded_install_media.ubuntu_seeded_install_media_install_path(
   artifact: srv3_seeded_install_media_artifact,
 )

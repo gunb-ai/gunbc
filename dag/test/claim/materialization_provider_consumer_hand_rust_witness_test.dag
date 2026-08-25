@@ -5,22 +5,22 @@ module test.claim.materialization_provider_consumer_hand_rust_witness
 // Model-layer control only: these imported witnesses are already on main, so this row does not exercise the Rust bridge.
 test fn materialization_provider_consumer_hand_rust_scaffold_is_seed_retained() -> Bool {
   match gunbc.materialization_provider_consumer_scaffold.materialization_provider_consumer_hand_rust_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn materialization_provider_consumer_scaffold_names_dissolve_trigger() -> Bool {
-  !(dissolution_description(condition: gunbc.materialization_provider_consumer_scaffold.materialization_provider_consumer_dissolve_trigger) == "")
-    && !(materialization_provider_consumer_receipt_plan_anchor == "")
-    && !(materialization_provider_consumer_roadmap_lane_anchor == "")
-    && materialization_provider_consumer_witness_entry ==
+  !(std.dissolution.dissolution_description(condition: gunbc.materialization_provider_consumer_scaffold.materialization_provider_consumer_dissolve_trigger) == "")
+    && !(gunbc.materialization_provider_consumer_scaffold.materialization_provider_consumer_receipt_plan_anchor == "")
+    && !(gunbc.materialization_provider_consumer_scaffold.materialization_provider_consumer_roadmap_lane_anchor == "")
+    && gunbc.materialization_provider_consumer_scaffold.materialization_provider_consumer_witness_entry ==
       "dag/test/claim/materialization_provider_consumer_hand_rust_witness_test.dag"
-    && length(xs: materialization_provider_consumer_hand_rust_paths) == 2
-    && materialization_provider_consumer_hand_rust_loc_delta_net == 469
+    && v2.std.algebra.length(xs: gunbc.materialization_provider_consumer_scaffold.materialization_provider_consumer_hand_rust_paths) == 2
+    && gunbc.materialization_provider_consumer_scaffold.materialization_provider_consumer_hand_rust_loc_delta_net == 469
 }
 
 test fn witness_model_refusal_controls_remain_distinct() -> Bool {
-  incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union()
-    && red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact()
+  test.claim.materialization_provider_witness.incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union()
+    && test.claim.materialization_provider_witness.red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact()
 }

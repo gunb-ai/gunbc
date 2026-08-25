@@ -86,17 +86,17 @@ fn well_formed_maintenance_disposition_paths() -> List<String> {
 // What it must NOT do is proceed on an empty population, which would report every tracked stage0
 // path as unclassified under the name of a measurement. Hence the guard before the derivation
 // rather than a default inside it.
-fn emit_population_declared(evidence: EmitPopulationEvidence) -> Bool {
+fn emit_population_declared(evidence: gunbc.stage0_rust_host_observation.EmitPopulationEvidence) -> Bool {
   match evidence {
-    EmitPopulationConfirmed { emitted_stage0_repo_paths: _ } => true
-    EmitPopulationUnobserved { detail: _ } => false
+    gunbc.stage0_rust_host_observation.EmitPopulationConfirmed { emitted_stage0_repo_paths: _ } => true
+    gunbc.stage0_rust_host_observation.EmitPopulationUnobserved { detail: _ } => false
   }
 }
 
-fn declared_emit_population_or_empty(evidence: EmitPopulationEvidence) -> List<String> {
+fn declared_emit_population_or_empty(evidence: gunbc.stage0_rust_host_observation.EmitPopulationEvidence) -> List<String> {
   match evidence {
-    EmitPopulationConfirmed { emitted_stage0_repo_paths: paths } => paths
-    EmitPopulationUnobserved { detail: _ } => []
+    gunbc.stage0_rust_host_observation.EmitPopulationConfirmed { emitted_stage0_repo_paths: paths } => paths
+    gunbc.stage0_rust_host_observation.EmitPopulationUnobserved { detail: _ } => []
   }
 }
 
@@ -104,8 +104,8 @@ fn derived_file_grain_classified_repo_paths(
   emitted_stage0_repo_paths: List<String>,
   tracked_paths: List<String>
 ) -> List<String> {
-  list_concat_unique(
-    acc: derived_generated_stage0_repo_paths(
+  gunbc.stage0_rust_source_lifecycle_scaffold.list_concat_unique(
+    acc: gunbc.stage0_rust_source_lifecycle_scaffold.derived_generated_stage0_repo_paths(
       emitted_stage0_repo_paths: emitted_stage0_repo_paths,
       tracked_paths: tracked_paths
     ),
@@ -166,7 +166,7 @@ fn lifecycle_totality_receipt(
   observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation
 ) -> LifecycleTotalityReceipt {
   match observation {
-    RustManifestObserved {
+    gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: revision,
       tracked_rust_repo_paths: tracked_paths,
       cargo_bin_repo_paths: cargo_bin_repo_paths,
@@ -182,7 +182,7 @@ fn lifecycle_totality_receipt(
         let emitted_stage0_repo_paths = declared_emit_population_or_empty(
           evidence: emit_population_evidence
         )
-        let generated_paths = derived_generated_stage0_repo_paths(
+        let generated_paths = gunbc.stage0_rust_source_lifecycle_scaffold.derived_generated_stage0_repo_paths(
           emitted_stage0_repo_paths: emitted_stage0_repo_paths,
           tracked_paths: tracked_paths
         )
@@ -224,9 +224,9 @@ fn lifecycle_totality_receipt(
           ill_formed_maintenance_disposition_paths: exact_ill_formed_maintenance_disposition_paths()
         }
       }
-    RustManifestReadRefused { detail: detail } => LifecycleTotalityObservationRefused
-    RustManifestParseRefused { detail: detail } => LifecycleTotalityObservationRefused
-    GitObservationRefused { detail: detail } => LifecycleTotalityObservationRefused
+    gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: detail } => LifecycleTotalityObservationRefused
+    gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: detail } => LifecycleTotalityObservationRefused
+    gunbc.stage0_rust_host_observation.GitObservationRefused { detail: detail } => LifecycleTotalityObservationRefused
   }
 }
 
@@ -294,7 +294,7 @@ fn lifecycle_totality_witness_classified_paths() -> List<String> {
   )
 }
 
-fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
+fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> gunbc.stage0_rust_host_observation.RustManifestObserved {
   let classified = lifecycle_totality_witness_classified_paths()
   gunbc.stage0_rust_host_observation.RustManifestObserved {
     repository_revision: "witness-deadbeef",
@@ -302,8 +302,8 @@ fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> gunbc.st
     tracked_rust_repo_paths: gunbc.stage0_rust_source_lifecycle_scaffold.list_concat_unique(acc: classified, items: extra_paths),
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
-    emit_population_evidence: EmitPopulationConfirmed {
-      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: gunbc.stage0_rust_source_lifecycle_scaffold.witness_generated_stage0_fixture_paths
     }
   }
 }

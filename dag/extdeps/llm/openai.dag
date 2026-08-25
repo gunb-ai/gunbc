@@ -3,7 +3,7 @@ module extdeps.llm.openai
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "platform.openai.com/docs/api-reference/chat/create"
   }
 }
@@ -173,12 +173,12 @@ type OpenAiChatCompletion200Body {
 data structural_coverage_gap_openai_chat_completion_200_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "OpenAiChatCompletion200Message" },
-      extdeps.coverage.VariantPending { variant: "tool_calls" },
-      extdeps.coverage.VariantPending { variant: "function_call" },
-      extdeps.coverage.VariantPending { variant: "audio" },
-      extdeps.coverage.VariantPending { variant: "non_string_content" },
-      extdeps.coverage.VariantPending { variant: "refusal_without_content" }
+      Subject { path: "OpenAiChatCompletion200Message" },
+      VariantPending { variant: "tool_calls" },
+      VariantPending { variant: "function_call" },
+      VariantPending { variant: "audio" },
+      VariantPending { variant: "non_string_content" },
+      VariantPending { variant: "refusal_without_content" }
     ],
     trigger: "model response content/tool/audio coproduct surface"
   }
@@ -187,10 +187,10 @@ data structural_coverage_gap_openai_chat_completion_200_residual: List<extdeps.c
 data structural_coverage_gap_openai_chat_message_additive_content_parts: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "OpenAiChatMessagePart" },
-      extdeps.coverage.Missing { item: "audio_input_part" },
-      extdeps.coverage.Missing { item: "refusal_part" },
-      extdeps.coverage.Missing { item: "file_or_custom_parts" }
+      Subject { path: "OpenAiChatMessagePart" },
+      Missing { item: "audio_input_part" },
+      Missing { item: "refusal_part" },
+      Missing { item: "file_or_custom_parts" }
     ],
     trigger: "OpenAI Chat Completions request content-part spec extension"
   }
@@ -199,8 +199,8 @@ data structural_coverage_gap_openai_chat_message_additive_content_parts: List<ex
 data structural_coverage_gap_openai_chat_message_additive_tool_calls: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "ToolCall" },
-      extdeps.coverage.Missing { item: "custom_tool_call" }
+      Subject { path: "ToolCall" },
+      Missing { item: "custom_tool_call" }
     ],
     trigger: "OpenAI Chat Completions custom tool-call payload carrier"
   }
@@ -311,19 +311,19 @@ type OpenAiResponses200OutputContent {
 data structural_coverage_gap_openai_responses_200_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "OpenAiResponses200OutputContent" },
-      extdeps.coverage.JsonPending { field: "logprobs" },
-      extdeps.coverage.VariantPending { variant: "refusal" }
+      Subject { path: "OpenAiResponses200OutputContent" },
+      JsonPending { field: "logprobs" },
+      VariantPending { variant: "refusal" }
     ],
     trigger: "Responses output content coproduct surface"
   },
   {
     facts: [
-      extdeps.coverage.Subject { path: "OpenAiResponses200OutputItem" },
-      extdeps.coverage.VariantPending { variant: "tool_calls" },
-      extdeps.coverage.VariantPending { variant: "reasoning" },
-      extdeps.coverage.VariantPending { variant: "error" },
-      extdeps.coverage.VariantPending { variant: "multimodal_output" }
+      Subject { path: "OpenAiResponses200OutputItem" },
+      VariantPending { variant: "tool_calls" },
+      VariantPending { variant: "reasoning" },
+      VariantPending { variant: "error" },
+      VariantPending { variant: "multimodal_output" }
     ],
     trigger: "Responses output item coproduct surface"
   }

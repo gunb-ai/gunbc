@@ -21,11 +21,11 @@ type FrontEndStageStep
   = FrontEndStagePassed {
       stage: FrontEndStage,
       receipt: FrontEndStageReceipt,
-      diagnostics: Diagnostics
+      diagnostics: v2.std.diagnostic.Diagnostics
     }
   | FrontEndStageRejected {
       stage: FrontEndStage,
-      diagnostics: NonEmptyDiagnostics
+      diagnostics: v2.std.diagnostic.NonEmptyDiagnostics
     }
 
 type FrontEndCompletion
@@ -55,9 +55,9 @@ fn front_end_passed(
   steps: List<FrontEndStageStep>,
   stage: FrontEndStage,
   receipt: FrontEndStageReceipt,
-  diagnostics: Diagnostics
+  diagnostics: v2.std.diagnostic.Diagnostics
 ) -> List<FrontEndStageStep> {
-  list_snoc_item(
+  v2.std.algebra.list_snoc_item(
     xs: steps,
     item: FrontEndStagePassed { stage: stage, receipt: receipt, diagnostics: diagnostics }
   )
@@ -66,10 +66,10 @@ fn front_end_passed(
 fn front_end_stopped(
   steps: List<FrontEndStageStep>,
   stage: FrontEndStage,
-  diagnostics: NonEmptyDiagnostics
+  diagnostics: v2.std.diagnostic.NonEmptyDiagnostics
 ) -> FrontEndRun {
   FrontEndRun {
-    steps: list_snoc_item(
+    steps: v2.std.algebra.list_snoc_item(
       xs: steps,
       item: FrontEndStageRejected { stage: stage, diagnostics: diagnostics }
     ),
@@ -77,12 +77,12 @@ fn front_end_stopped(
   }
 }
 
-fn run_front_end(source: String, file: Symbol) -> FrontEndRun {
+fn run_front_end(source: String, file: v2.std.node.Symbol) -> FrontEndRun {
   run_front_end_to(source: source, file: file, depth: front_end_full_depth)
 }
 
-fn run_front_end_to(source: String, file: Symbol, depth: Int) -> FrontEndRun {
-  front_end_tokenize_step(source: source, file: file, lm: dag_language_model(), depth: depth)
+fn run_front_end_to(source: String, file: v2.std.node.Symbol, depth: Int) -> FrontEndRun {
+  front_end_tokenize_step(source: source, file: file, lm: v2.extdeps.languages.dag.dag_language_model(), depth: depth)
 }
 
 fn front_end_bounded(
@@ -92,16 +92,16 @@ fn front_end_bounded(
   FrontEndRun { steps: steps, completion: FrontEndBoundReached { last: stage } }
 }
 
-fn front_end_tokenize_step(source: String, file: Symbol, lm: LanguageModel, depth: Int) -> FrontEndRun {
+fn front_end_tokenize_step(source: String, file: v2.std.node.Symbol, lm: v2.std.language_model.LanguageModel, depth: Int) -> FrontEndRun {
   match v2.compiler.tokenize.tokenize(text: source, file: file, rules: lm.lex) {
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       front_end_stopped(steps: [], stage: FrontEndTokenize, diagnostics: r)
-    Accepted { value: tokens, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: d } =>
       front_end_continue_parse(
         steps: front_end_passed(
           steps: [],
           stage: FrontEndTokenize,
-          receipt: TokenizedSource { token_count: token_stream_remaining_count(stream: tokens) },
+          receipt: TokenizedSource { token_count: v2.std.compilers.lexing.token_stream_remaining_count(stream: tokens) },
           diagnostics: d
         ),
         tokens: tokens,
@@ -114,7 +114,7 @@ fn front_end_tokenize_step(source: String, file: Symbol, lm: LanguageModel, dept
 fn front_end_continue_parse(
   steps: List<FrontEndStageStep>,
   tokens: v2.std.compilers.lexing.TokenStream,
-  lm: LanguageModel,
+  lm: v2.std.language_model.LanguageModel,
   depth: Int
 ) -> FrontEndRun {
   if depth <= front_end_stage_index(stage: FrontEndTokenize) {
@@ -127,18 +127,18 @@ fn front_end_continue_parse(
 fn front_end_parse_step(
   steps: List<FrontEndStageStep>,
   tokens: v2.std.compilers.lexing.TokenStream,
-  lm: LanguageModel,
+  lm: v2.std.language_model.LanguageModel,
   depth: Int
 ) -> FrontEndRun {
   match v2.compiler.parse.parse_module(tokens: tokens, grammar: lm.grammar) {
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       front_end_stopped(steps: steps, stage: FrontEndParse, diagnostics: r)
-    Accepted { value: artifact, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: artifact, diagnostics: d } =>
       front_end_continue_normalize(
         steps: front_end_passed(
           steps: steps,
           stage: FrontEndParse,
-          receipt: ParsedModule { node_count: node_subtree_count(n: artifact.tree) },
+          receipt: ParsedModule { node_count: v2.std.node.node_subtree_count(n: artifact.tree) },
           diagnostics: d
         ),
         parse_tree: artifact.tree,
@@ -151,7 +151,7 @@ fn front_end_parse_step(
 fn front_end_continue_normalize(
   steps: List<FrontEndStageStep>,
   parse_tree: v2.std.node.Node,
-  lm: LanguageModel,
+  lm: v2.std.language_model.LanguageModel,
   depth: Int
 ) -> FrontEndRun {
   if depth <= front_end_stage_index(stage: FrontEndParse) {
@@ -164,18 +164,18 @@ fn front_end_continue_normalize(
 fn front_end_normalize_step(
   steps: List<FrontEndStageStep>,
   parse_tree: v2.std.node.Node,
-  lm: LanguageModel,
+  lm: v2.std.language_model.LanguageModel,
   depth: Int
 ) -> FrontEndRun {
-  match normalize(parse_tree: parse_tree) {
-    Rejected { diagnostics: r } =>
+  match v2.compiler.normalize.normalize(parse_tree: parse_tree) {
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       front_end_stopped(steps: steps, stage: FrontEndNormalize, diagnostics: r)
-    Accepted { value: normalized, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: normalized, diagnostics: d } =>
       front_end_continue_resolve(
         steps: front_end_passed(
           steps: steps,
           stage: FrontEndNormalize,
-          receipt: NormalizedModule { node_count: node_subtree_count(n: normalized.root) },
+          receipt: NormalizedModule { node_count: v2.std.node.node_subtree_count(n: normalized.root) },
           diagnostics: d
         ),
         normalized: normalized,
@@ -187,8 +187,8 @@ fn front_end_normalize_step(
 
 fn front_end_continue_resolve(
   steps: List<FrontEndStageStep>,
-  normalized: NormalizedTree,
-  lm: LanguageModel,
+  normalized: v2.compiler.normalized_tree.NormalizedTree,
+  lm: v2.std.language_model.LanguageModel,
   depth: Int
 ) -> FrontEndRun {
   if depth <= front_end_stage_index(stage: FrontEndNormalize) {
@@ -200,18 +200,18 @@ fn front_end_continue_resolve(
 
 fn front_end_resolve_step(
   steps: List<FrontEndStageStep>,
-  normalized: NormalizedTree,
-  lm: LanguageModel
+  normalized: v2.compiler.normalized_tree.NormalizedTree,
+  lm: v2.std.language_model.LanguageModel
 ) -> FrontEndRun {
   match v2.compiler.resolve.resolve(tree: normalized, lm: lm) {
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       front_end_stopped(steps: steps, stage: FrontEndResolve, diagnostics: r)
-    Accepted { value: resolved, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: resolved, diagnostics: d } =>
       FrontEndRun {
         steps: front_end_passed(
           steps: steps,
           stage: FrontEndResolve,
-          receipt: ResolvedModule { node_count: node_subtree_count(n: resolved) },
+          receipt: ResolvedModule { node_count: v2.std.node.node_subtree_count(n: resolved) },
           diagnostics: d
         ),
         completion: FrontEndResolvedModule { resolved: resolved }
@@ -219,42 +219,42 @@ fn front_end_resolve_step(
   }
 }
 
-fn front_end_accumulated_diagnostics(steps: List<FrontEndStageStep>) -> Diagnostics {
-  fold(steps, init: None, f: fn(acc, step) {
+fn front_end_accumulated_diagnostics(steps: List<FrontEndStageStep>) -> v2.std.diagnostic.Diagnostics {
+  fold(steps, init: v2.std.diagnostic.None, f: fn(acc, step) {
     match step {
       FrontEndStagePassed { stage: _, receipt: _, diagnostics: d } =>
-        diagnostics_merge(outer: acc, inner: d)
+        v2.std.diagnostic.diagnostics_merge(outer: acc, inner: d)
       FrontEndStageRejected { stage: _, diagnostics: _ } => acc
     }
   })
 }
 
-fn front_end_first_refusal(steps: List<FrontEndStageStep>) -> v2.std.optional.Optional<NonEmptyDiagnostics> {
-  fold(steps, init: optional_absent(), f: fn(acc, step) {
+fn front_end_first_refusal(steps: List<FrontEndStageStep>) -> v2.std.optional.Optional<v2.std.diagnostic.NonEmptyDiagnostics> {
+  fold(steps, init: v2.std.optional.optional_absent(), f: fn(acc, step) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent =>
         match step {
-          FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => optional_absent()
-          FrontEndStageRejected { stage: _, diagnostics: r } => optional_present(value: r)
+          FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => v2.std.optional.optional_absent()
+          FrontEndStageRejected { stage: _, diagnostics: r } => v2.std.optional.optional_present(value: r)
         }
     }
   })
 }
 
-fn front_end_run_outcome(run: FrontEndRun) -> Outcome<v2.std.node.Node> {
+fn front_end_run_outcome(run: FrontEndRun) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match front_end_first_refusal(steps: run.steps) {
-    Present { value: r } =>
+    v2.std.optional.Present { value: r } =>
       v2.std.diagnostic.Rejected {
-        diagnostics: rejected_with_pending(
+        diagnostics: v2.std.diagnostic.rejected_with_pending(
           pending: front_end_accumulated_diagnostics(steps: run.steps),
           rejected: r
         )
       }
-    Absent =>
+    v2.std.optional.Absent =>
       match run.completion {
         FrontEndResolvedModule { resolved: resolved } =>
-          Accepted {
+          v2.std.diagnostic.Accepted {
             value: resolved,
             diagnostics: front_end_accumulated_diagnostics(steps: run.steps)
           }
@@ -268,7 +268,7 @@ fn front_end_run_outcome(run: FrontEndRun) -> Outcome<v2.std.node.Node> {
 
 data front_end_incomplete_note: String = "The no-refusal-and-no-resolved arm is unreachable by construction: run_front_end reaches FrontEndRun with Present resolved only through front_end_resolve_step's Accepted arm, and every other exit appends a FrontEndStageRejected. It refuses with a typed, located diagnostic rather than fabricating an Accepted over a node it does not have — an unreachable arm refuses, never fabricates (DESIGN section 5)."
 
-fn front_end_bound_reason(stage: FrontEndStage) -> Symbol {
+fn front_end_bound_reason(stage: FrontEndStage) -> v2.std.node.Symbol {
   match stage {
     FrontEndTokenize => ^staged_front_end_bounded_after_tokenize
     FrontEndParse => ^staged_front_end_bounded_after_parse
@@ -277,22 +277,22 @@ fn front_end_bound_reason(stage: FrontEndStage) -> Symbol {
   }
 }
 
-fn front_end_bounded_diagnostics(last: FrontEndStage) -> NonEmptyDiagnostics {
-  diagnostics_singleton(
-    d: Diagnostic {
+fn front_end_bounded_diagnostics(last: FrontEndStage) -> v2.std.diagnostic.NonEmptyDiagnostics {
+  v2.std.diagnostic.diagnostics_singleton(
+    d: v2.std.diagnostic.Diagnostic {
       reason: front_end_bound_reason(stage: last),
-      at: port_locus(port: ^staged_front_end_locus_port),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      at: v2.std.diagnostic.port_locus(port: ^staged_front_end_locus_port),
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
     }
   )
 }
 
-fn front_end_incomplete_diagnostics() -> NonEmptyDiagnostics {
-  diagnostics_singleton(
-    d: Diagnostic {
+fn front_end_incomplete_diagnostics() -> v2.std.diagnostic.NonEmptyDiagnostics {
+  v2.std.diagnostic.diagnostics_singleton(
+    d: v2.std.diagnostic.Diagnostic {
       reason: ^staged_front_end_run_incomplete,
-      at: port_locus(port: ^staged_front_end_locus_port),
-      correction: Unavailable { reason: ExternalContractUnknown }
+      at: v2.std.diagnostic.port_locus(port: ^staged_front_end_locus_port),
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
     }
   )
 }

@@ -3,7 +3,7 @@ module extdeps.cpu.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/CPU_socket"
   }
 }
@@ -96,7 +96,7 @@ fn socket_termination_as_package_termination(t: SocketTermination) -> ProcessorP
 // socket cannot be authored without naming the mount it presents, which is the completeness a
 // separate join table would have had to check for.
 type ProcessorCoolingMount {
-  platform_owner: Vendor<extdeps.hardware.Hardware>
+  platform_owner: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   designation: std.types.NonEmptyStr
 }
 
@@ -105,7 +105,7 @@ fn cooling_mount_eq(a: ProcessorCoolingMount, b: ProcessorCoolingMount) -> Bool 
 }
 
 type CpuSocket {
-  platform_owner: Vendor<extdeps.hardware.Hardware>
+  platform_owner: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
 
   termination: SocketTermination
   contact_count: Int
@@ -170,7 +170,7 @@ type ProcessorThermalLimits {
 type CpuModelCatalogRow {
   model_number: std.types.NonEmptyStr
   oem_listing_id: std.types.NonEmptyStr?
-  vendor: Vendor<extdeps.hardware.Hardware>
+  vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   architecture: extdeps.toolchain.types.Architecture
   cores: Int
   threads: std.measure.HardwareThreadCount

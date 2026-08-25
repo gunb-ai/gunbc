@@ -142,7 +142,7 @@ fn classify_heal_revalidation_admission(
     HealRevalidationCoverageObserved {
       prior_head: _, healed_head, changed_artifacts: _, coverage
     } =>
-      if check_coverage_admits(
+      if gunbc.merge_admission.check_coverage_admits(
         coverage: coverage,
         required_head: healed_head,
         required_roster: required_roster,

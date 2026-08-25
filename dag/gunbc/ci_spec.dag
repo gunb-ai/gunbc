@@ -8,7 +8,7 @@ type DiffMode = DiffMergeBase | DiffTwoDot
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 
-type RuntimeUnitCount = RuntimeUnitCountObserved { units: std.nat.Nat } | RuntimeUnitCountUnavailable { cause: String }
+type RuntimeUnitCount = RuntimeUnitCountObserved { units: Nat } | RuntimeUnitCountUnavailable { cause: String }
 
 data gunbc_ci_floor_batch_runtime_unit_count_note: String = "RUNTIME UNIT COUNT for the derived batch clamp (gunbc_ci_floor_batch_clamp_note): claim_executor alone knows the affected-set-selected unit count at enforcement time. RuntimeUnitCountObserved carries the count used in clamp_ms = overhead_seconds*1000 + units * per_unit_ms. RuntimeUnitCountUnavailable means the count was lost — typically a hard discovery error discarded DiscoverySummary at the Result boundary so corpus_witnesses reads 0 while the batch is a discovery aggregate, not a single-claim gate row. When unavailable the clamp comparison is REFUSED (verdict ClampRefused): a third state, not WithinBudget and not OverBudget — never map zero to one and render a corpus failure as FLOOR-BATCH-OVER-BUDGET. Authority type here; observation and enforcement live in claim_executor.rs (see gunbc_ci_floor_batch_runtime_unit_count_claim_executor_seed_note)."
 
@@ -204,14 +204,14 @@ fn ci_retry_body_run(command: String) -> v2.std.orchestration.Run {
   v2.std.orchestration.Run {
     command: command,
     env: Empty,
-    redirect: v2.std.optional.Absent,
-    capture: v2.std.optional.Absent
+    redirect: v2.std.collection.Absent,
+    capture: v2.std.collection.Absent
   }
 }
 
 fn ci_retry_exhausted_pipeline() -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
-    steps: [v2.std.orchestration.Do { run: v2.std.orchestration.Run { command: "exit 1", env: Empty, redirect: v2.std.optional.Absent, capture: v2.std.optional.Absent } }],
+    steps: [v2.std.orchestration.Do { run: v2.std.orchestration.Run { command: "exit 1", env: Empty, redirect: v2.std.collection.Absent, capture: v2.std.collection.Absent } }],
     on_failure: v2.std.orchestration.FailFast
   }
 }
@@ -339,7 +339,7 @@ fn scheduler_invoke_with(spec: CiSpec, plan_function: gunbc.cli_invoke.PlanFunct
     source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     plan_entry: floor_plan_entry,
     plan_function: plan_function,
-    notice_title: v2.std.optional.Present { value: spec.notice_title },
+    notice_title: v2.std.collection.Present { value: spec.notice_title },
     rooted: true
   )
 }
@@ -654,60 +654,60 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 // trap disarms): that was measured directly against this function's body and found
 // correct, not a defect this change is fixing.
 //
-// The std.disposition.Scaffold and DissolutionCondition rows that stood here are deleted rather than
+// The Scaffold and DissolutionCondition rows that stood here are deleted rather than
 // corrected-in-place: the typed-orchestration-emit condition they should have named is
 // fulfilled by this same change (gunbc_ci_fleet_key_agent_prelude below, emitted through
 // v2.workflow.gunbc_invoke_step_emit gunbc_invoke_step_emit_pipeline), so a corrected row
 // would be created and discharged in the same diff — ceremony, not a standing obligation.
-fn gunbc_ci_fleet_key_agent_prelude() -> List<PipelineStep> {
+fn gunbc_ci_fleet_key_agent_prelude() -> List<v2.std.orchestration.PipelineStep> {
   [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "KEY_FILE=\"$RUNNER_TEMP/fleet-automation-key\"") },
-    Do { run: ci_retry_body_run(command: "AGENT_STARTED=0") },
-    Do {
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "umask 077") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "KEY_FILE=\"$RUNNER_TEMP/fleet-automation-key\"") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "AGENT_STARTED=0") },
+    v2.std.orchestration.Do {
       run: ci_retry_body_run(
         command: "cleanup() { rm -f \"$KEY_FILE\"; if [ \"$AGENT_STARTED\" = 1 ] && [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }"
       )
     },
-    Do { run: ci_retry_body_run(command: "trap cleanup EXIT") },
-    Do {
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "trap cleanup EXIT") },
+    v2.std.orchestration.Do {
       run: ci_retry_body_run(
         command: join([
           "curl -sSf -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"",
-          fleet_automation_privkey_sm_access_url(),
+          gunbc.fleet_ssh_access.fleet_automation_privkey_sm_access_url(),
           "\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$KEY_FILE\""
         ], "")
       )
     },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$KEY_FILE\"") },
-    Do {
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "chmod 600 \"$KEY_FILE\"") },
+    v2.std.orchestration.Do {
       run: ci_retry_body_run(
-        command: join(["EXPECTED_FP=\"", fleet_automation_ssh_key_fingerprint, "\""], "")
+        command: join(["EXPECTED_FP=\"", gunbc.fleet_ssh_access.fleet_automation_ssh_key_fingerprint, "\""], "")
       )
     },
-    Do {
+    v2.std.orchestration.Do {
       run: ci_retry_body_run(
         command: "OBSERVED_FP=\"$(ssh-keygen -y -f \"$KEY_FILE\" | ssh-keygen -lf - | awk '\{print $2}')\""
       )
     },
-    Do {
+    v2.std.orchestration.Do {
       run: ci_retry_body_run(
         command: join([
           "if [ \"$OBSERVED_FP\" != \"$EXPECTED_FP\" ]; then echo \"ProbeCredentialIdentityMismatch: fetched secret ",
-          fleet_automation_privkey_version_segment(),
+          gunbc.fleet_ssh_access.fleet_automation_privkey_version_segment(),
           " fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host\" >&2; exit 1; fi"
         ], "")
       )
     },
-    Do { run: ci_retry_body_run(command: "eval \"$(ssh-agent -s)\" >/dev/null") },
-    Do { run: ci_retry_body_run(command: "AGENT_STARTED=1") },
-    Do { run: ci_retry_body_run(command: "ssh-add \"$KEY_FILE\" 2>/dev/null") },
-    Do { run: ci_retry_body_run(command: "rm -f \"$KEY_FILE\"") },
-    Do { run: ci_retry_body_run(command: "trap - EXIT") },
-    Do { run: ci_retry_body_run(command: "echo \"SSH_AUTH_SOCK=$SSH_AUTH_SOCK\" >> \"$GITHUB_ENV\"") },
-    Do { run: ci_retry_body_run(command: "echo \"SSH_AGENT_PID=$SSH_AGENT_PID\" >> \"$GITHUB_ENV\"") },
-    Do {
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "eval \"$(ssh-agent -s)\" >/dev/null") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "AGENT_STARTED=1") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "ssh-add \"$KEY_FILE\" 2>/dev/null") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "rm -f \"$KEY_FILE\"") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "trap - EXIT") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "echo \"SSH_AUTH_SOCK=$SSH_AUTH_SOCK\" >> \"$GITHUB_ENV\"") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "echo \"SSH_AGENT_PID=$SSH_AGENT_PID\" >> \"$GITHUB_ENV\"") },
+    v2.std.orchestration.Do {
       run: ci_retry_body_run(
         command: "echo \"fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)\""
       )
@@ -716,8 +716,8 @@ fn gunbc_ci_fleet_key_agent_prelude() -> List<PipelineStep> {
 }
 
 fn gunbc_ci_fleet_key_agent_script() -> String {
-  gunbc_invoke_step_emit_pipeline(
-    p: Pipeline { steps: gunbc_ci_fleet_key_agent_prelude(), on_failure: FailFast }
+  v2.workflow.gunbc_invoke_step_emit.gunbc_invoke_step_emit_pipeline(
+    p: v2.std.orchestration.Pipeline { steps: gunbc_ci_fleet_key_agent_prelude(), on_failure: v2.std.orchestration.FailFast }
   )
 }
 
@@ -759,72 +759,72 @@ fn gunbc_ci_fleet_key_agent_script() -> String {
 // own process tree: one trap (armed for the whole script, never disarmed, because nothing needs
 // the file to survive past this script's own exit), one CRED_FILE, a shell-local export instead
 // of GITHUB_ENV so the path never crosses a step boundary.
-fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
+fn gunbc_ci_spark_grant_install_credential_prelude() -> List<v2.std.orchestration.PipelineStep> {
   [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "CRED_FILE=\"$RUNNER_TEMP/spark-administrator-credential\"") },
-    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/spark-administrator-response.json\"") },
-    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$CRED_FILE\" \"$RESP_FILE\"' EXIT") },
-    Do {
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "umask 077") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "CRED_FILE=\"$RUNNER_TEMP/spark-administrator-credential\"") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/spark-administrator-response.json\"") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "trap 'rm -f \"$CRED_FILE\" \"$RESP_FILE\"' EXIT") },
+    v2.std.orchestration.Do {
       run: ci_retry_body_run(
         command: join([
           "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"",
-          secret_ref_access_url(ref: spark_administrator_password_secret_ref),
+          extdeps.cloud.gcp.secret_ref.secret_ref_access_url(ref: gunbc.spark.credential_workflow.spark_administrator_password_secret_ref),
           "\" || echo 000)\""
         ], "")
       )
     },
-    Do {
+    v2.std.orchestration.Do {
       run: ci_retry_body_run(
         command: join([
           "if [ \"$HTTP_CODE\" = 403 ]; then echo \"SparkAdministratorCredentialUnreadable: ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
-          " answered 403 to ", spark_bootstrap_cloud_principal_member(),
+          extdeps.cloud.gcp.secret_ref.secret_ref_version_resource(ref: gunbc.spark.credential_workflow.spark_administrator_password_secret_ref),
+          " answered 403 to ", gunbc.spark.bootstrap_provision.spark_bootstrap_cloud_principal_member(),
           ". Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host.\" >&2; exit 1; fi"
         ], "")
       )
     },
-    Do {
+    v2.std.orchestration.Do {
       run: ci_retry_body_run(
         command: join([
           "if [ \"$HTTP_CODE\" = 404 ]; then echo \"SparkAdministratorCredentialAbsent: ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          extdeps.cloud.gcp.secret_ref.secret_ref_version_resource(ref: gunbc.spark.credential_workflow.spark_administrator_password_secret_ref),
           " answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host.\" >&2; exit 1; fi"
         ], "")
       )
     },
-    Do {
+    v2.std.orchestration.Do {
       run: ci_retry_body_run(
         command: join([
           "if [ \"$HTTP_CODE\" != 200 ]; then echo \"SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          extdeps.cloud.gcp.secret_ref.secret_ref_version_resource(ref: gunbc.spark.credential_workflow.spark_administrator_password_secret_ref),
           "; contacting NO host.\" >&2; exit 1; fi"
         ], "")
       )
     },
-    Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$RESP_FILE\" > \"$CRED_FILE\"") },
-    Do { run: ci_retry_body_run(command: "rm -f \"$RESP_FILE\"") },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$CRED_FILE\"") },
-    Do {
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$RESP_FILE\" > \"$CRED_FILE\"") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "rm -f \"$RESP_FILE\"") },
+    v2.std.orchestration.Do { run: ci_retry_body_run(command: "chmod 600 \"$CRED_FILE\"") },
+    v2.std.orchestration.Do {
       run: ci_retry_body_run(
         command: join([
           "if [ ! -s \"$CRED_FILE\" ]; then echo \"SparkAdministratorCredentialEmpty: ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          extdeps.cloud.gcp.secret_ref.secret_ref_version_resource(ref: gunbc.spark.credential_workflow.spark_administrator_password_secret_ref),
           " returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host\" >&2; exit 1; fi"
         ], "")
       )
     },
-    Do {
+    v2.std.orchestration.Do {
       run: ci_retry_body_run(
-        command: join(["export ", spark_grant_credential_path_env as String, "=\"$CRED_FILE\""], "")
+        command: join(["export ", gunbc.spark.grant_privileged_operation.spark_grant_credential_path_env as String, "=\"$CRED_FILE\""], "")
       )
     },
-    Do {
+    v2.std.orchestration.Do {
       run: ci_retry_body_run(
         command: join([
           "echo \"spark-admin-credential: materialized from ",
-          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          extdeps.cloud.gcp.secret_ref.secret_ref_version_resource(ref: gunbc.spark.credential_workflow.spark_administrator_password_secret_ref),
           " to a 0600 run-local file, consumed and removed within this one step\""
         ], "")
       )
@@ -847,10 +847,10 @@ fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
 // otherwise "had zero callers, a disconnected mechanism". That step lived in `ci.yml`,
 // which #8283 deleted, so the wire returned to being exactly the disconnected mechanism it
 // was added to prevent: measured at deletion, `gunbc_ci_fleet_timer_install_invoke` had no
-// consumer but the `DeclarationRef` inside its own `std.disposition.Scaffold` row, and
+// consumer but the `DeclarationRef` inside its own `Scaffold` row, and
 // `fleet_timer_self_install` appears in neither surviving workflow.
 //
-// Its registered `std.disposition.Scaffold` and unbound `DissolutionCondition` go with it. Both described a
+// Its registered `Scaffold` and unbound `DissolutionCondition` go with it. Both described a
 // concat-built foreign-executor shell awaiting bash-emit; deleting the emitter discharges
 // the obligation instead of carrying it, and an unbound condition whose subject no longer
 // exists can never report itself fired.
@@ -903,8 +903,8 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
 
 
 fn gunbc_ci_spark_serving_reboot_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
+  v2.workflow.gunbc_invoke_step_emit.gunbc_run_step_script(
+    source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     entry: gunbc_ci_spark_serving_reboot_target.entry,
     function: gunbc_ci_spark_serving_reboot_target.function,
     claim_run: false,
@@ -913,8 +913,8 @@ fn gunbc_ci_spark_serving_reboot_invoke() -> String {
 }
 
 fn gunbc_ci_spark_serving_durability_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
+  v2.workflow.gunbc_invoke_step_emit.gunbc_run_step_script(
+    source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     entry: gunbc_ci_spark_serving_durability_target.entry,
     function: gunbc_ci_spark_serving_durability_target.function,
     claim_run: false,
@@ -923,9 +923,9 @@ fn gunbc_ci_spark_serving_durability_invoke() -> String {
 }
 
 fn gunbc_ci_spark_grant_install_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
+  v2.workflow.gunbc_invoke_step_emit.gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
-    source_roots: witness_layer_roots,
+    source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     entry: gunbc_ci_spark_grant_install_target.entry,
     function: gunbc_ci_spark_grant_install_target.function,
     claim_run: false,
@@ -935,8 +935,8 @@ fn gunbc_ci_spark_grant_install_invoke() -> String {
 
 
 fn gunbc_ci_spark_serving_observe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
+  v2.workflow.gunbc_invoke_step_emit.gunbc_run_step_script(
+    source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     entry: gunbc_ci_spark_serving_observe_target.entry,
     function: gunbc_ci_spark_serving_observe_target.function,
     claim_run: false,
@@ -945,8 +945,8 @@ fn gunbc_ci_spark_serving_observe_invoke() -> String {
 }
 
 fn gunbc_ci_spark_serving_converge_slice_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
+  v2.workflow.gunbc_invoke_step_emit.gunbc_run_step_script(
+    source_roots: gunbc.ci_layer_roots.witness_layer_roots,
     entry: gunbc_ci_spark_serving_converge_slice_target.entry,
     function: gunbc_ci_spark_serving_converge_slice_target.function,
     claim_run: false,
@@ -1074,7 +1074,7 @@ fn gunbc_ci_authorized_key_enroll_invoke() -> String {
 // call site from returning. The script's only other consumers were gunbc.live_deploy_workflow and
 // its witness file, both deleted with the deploy workflow authority.
 //
-// The std.disposition.Scaffold disposition and dissolution trigger that tracked this script's medium-as-string debt
+// The Scaffold disposition and dissolution trigger that tracked this script's medium-as-string debt
 // went with it -- the replacement's actuation is a model-rendered script, so that debt is re-declared
 // where the remaining shell actually lives, not inherited here.
 //

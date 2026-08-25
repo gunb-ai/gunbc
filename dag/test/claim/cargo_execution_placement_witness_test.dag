@@ -12,31 +12,31 @@ module test.claim.cargo_execution_placement_witness_test
 data placement_probe_subject: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "tools.interpreter_dispatch_bijection_real_roster_transport",
   decl_name: "run_interpreter_dispatch_bijection_real_roster_red",
-  field: WholeDeclaration,
+  field: std.decl_ref.WholeDeclaration,
 }
 
 fn w_local_runner_admits_its_observed_path() -> Bool {
-  match decide_cargo_placement(
+  match gunbc.cargo_execution_placement.decide_cargo_placement(
     requirement: gunbc.cargo_execution_placement.RequiresLocalWorkspace { required_by: placement_probe_subject },
     placement: gunbc.cargo_execution_placement.LocalRunner { cargo_path: "/observed/cargo" }
   ) {
-    PlacementAdmitted { cargo_path: p } => p == "/observed/cargo"
-    PlacementRefused { cause: _ } => false
+    gunbc.cargo_execution_placement.PlacementAdmitted { cargo_path: p } => p == "/observed/cargo"
+    gunbc.cargo_execution_placement.PlacementRefused { cause: _ } => false
   }
 }
 
 // The load-bearing arm: a local-workspace subject handed a remote builder must refuse
 // BEFORE execution. Regressing decide_cargo_placement to admit the remote arm reds this.
 fn w_remote_builder_refuses_a_local_workspace_subject() -> Bool {
-  match decide_cargo_placement(
+  match gunbc.cargo_execution_placement.decide_cargo_placement(
     requirement: gunbc.cargo_execution_placement.RequiresLocalWorkspace { required_by: placement_probe_subject },
     placement: gunbc.cargo_execution_placement.RemoteBuilder { service: "buildbuddy" }
   ) {
-    PlacementAdmitted { cargo_path: _ } => false
-    PlacementRefused { cause: c } => match c {
-      RemoteBuilderCannotServeLocalWorkspace { service: s } => s == "buildbuddy"
-      RemoteBuilderRealizationUnbound { service: _ } => false
-      CargoExecutableUnobserved { observation: _ } => false
+    gunbc.cargo_execution_placement.PlacementAdmitted { cargo_path: _ } => false
+    gunbc.cargo_execution_placement.PlacementRefused { cause: c } => match c {
+      gunbc.cargo_execution_placement.RemoteBuilderCannotServeLocalWorkspace { service: s } => s == "buildbuddy"
+      gunbc.cargo_execution_placement.RemoteBuilderRealizationUnbound { service: _ } => false
+      gunbc.cargo_execution_placement.CargoExecutableUnobserved { observation: _ } => false
     }
   }
 }
@@ -46,38 +46,38 @@ fn w_remote_builder_refuses_a_local_workspace_subject() -> Bool {
 // refusals must stay distinguishable, because their remedies differ — one is a missing
 // capability to model, the other is permanent.
 fn w_relocatable_subject_refuses_for_an_unbound_realization_not_locality() -> Bool {
-  match decide_cargo_placement(
-    requirement: RelocatableSubject,
+  match gunbc.cargo_execution_placement.decide_cargo_placement(
+    requirement: gunbc.cargo_execution_placement.RelocatableSubject,
     placement: gunbc.cargo_execution_placement.RemoteBuilder { service: "buildbuddy" }
   ) {
-    PlacementAdmitted { cargo_path: _ } => false
-    PlacementRefused { cause: c } => match c {
-      RemoteBuilderRealizationUnbound { service: s } => s == "buildbuddy"
-      RemoteBuilderCannotServeLocalWorkspace { service: _ } => false
-      CargoExecutableUnobserved { observation: _ } => false
+    gunbc.cargo_execution_placement.PlacementAdmitted { cargo_path: _ } => false
+    gunbc.cargo_execution_placement.PlacementRefused { cause: c } => match c {
+      gunbc.cargo_execution_placement.RemoteBuilderRealizationUnbound { service: s } => s == "buildbuddy"
+      gunbc.cargo_execution_placement.RemoteBuilderCannotServeLocalWorkspace { service: _ } => false
+      gunbc.cargo_execution_placement.CargoExecutableUnobserved { observation: _ } => false
     }
   }
 }
 
 fn w_the_two_remote_refusals_read_differently() -> Bool {
-  let local_subject = decide_cargo_placement(
+  let local_subject = gunbc.cargo_execution_placement.decide_cargo_placement(
     requirement: gunbc.cargo_execution_placement.RequiresLocalWorkspace { required_by: placement_probe_subject },
     placement: gunbc.cargo_execution_placement.RemoteBuilder { service: "buildbuddy" }
   )
-  let relocatable = decide_cargo_placement(
-    requirement: RelocatableSubject,
+  let relocatable = gunbc.cargo_execution_placement.decide_cargo_placement(
+    requirement: gunbc.cargo_execution_placement.RelocatableSubject,
     placement: gunbc.cargo_execution_placement.RemoteBuilder { service: "buildbuddy" }
   )
   placement_decision_text(d: local_subject) != placement_decision_text(d: relocatable)
 }
 
 fn w_absent_executable_refuses_rather_than_guessing() -> Bool {
-  match cargo_placement_refused_for_absent_executable(observation: "which cargo: not found") {
-    PlacementAdmitted { cargo_path: _ } => false
-    PlacementRefused { cause: c } => match c {
-      CargoExecutableUnobserved { observation: o } => o == "which cargo: not found"
-      RemoteBuilderCannotServeLocalWorkspace { service: _ } => false
-      RemoteBuilderRealizationUnbound { service: _ } => false
+  match gunbc.cargo_execution_placement.cargo_placement_refused_for_absent_executable(observation: "which cargo: not found") {
+    gunbc.cargo_execution_placement.PlacementAdmitted { cargo_path: _ } => false
+    gunbc.cargo_execution_placement.PlacementRefused { cause: c } => match c {
+      gunbc.cargo_execution_placement.CargoExecutableUnobserved { observation: o } => o == "which cargo: not found"
+      gunbc.cargo_execution_placement.RemoteBuilderCannotServeLocalWorkspace { service: _ } => false
+      gunbc.cargo_execution_placement.RemoteBuilderRealizationUnbound { service: _ } => false
     }
   }
 }
@@ -89,20 +89,20 @@ fn w_refusal_and_failure_are_distinguishable_though_both_false() -> Bool {
   let refused = gunbc.cargo_execution_placement.CargoInvocationNotAttempted {
     refusal: gunbc.cargo_execution_placement.CargoExecutableUnobserved { observation: "which cargo: not found" }
   }
-  !cargo_outcome_holds(o: failed)
-    && !cargo_outcome_holds(o: refused)
-    && cargo_outcome_diagnostic(o: failed) != cargo_outcome_diagnostic(o: refused)
-    && string_contains(s: cargo_outcome_diagnostic(o: failed), pattern: "101")
+  !gunbc.cargo_execution_placement.cargo_outcome_holds(o: failed)
+    && !gunbc.cargo_execution_placement.cargo_outcome_holds(o: refused)
+    && gunbc.cargo_execution_placement.cargo_outcome_diagnostic(o: failed) != gunbc.cargo_execution_placement.cargo_outcome_diagnostic(o: refused)
+    && string_contains(s: gunbc.cargo_execution_placement.cargo_outcome_diagnostic(o: failed), pattern: "101")
 }
 
 fn w_passed_is_the_only_holding_outcome() -> Bool {
-  cargo_outcome_holds(o: CargoInvocationPassed)
+  gunbc.cargo_execution_placement.cargo_outcome_holds(o: gunbc.cargo_execution_placement.CargoInvocationPassed)
 }
 
 fn placement_decision_text(d: gunbc.cargo_execution_placement.CargoPlacementDecision) -> String {
   match d {
-    PlacementAdmitted { cargo_path: p } => concat("admitted:", p)
-    PlacementRefused { cause: c } => cargo_placement_refusal_text(cause: c)
+    gunbc.cargo_execution_placement.PlacementAdmitted { cargo_path: p } => concat("admitted:", p)
+    gunbc.cargo_execution_placement.PlacementRefused { cause: c } => gunbc.cargo_execution_placement.cargo_placement_refusal_text(cause: c)
   }
 }
 

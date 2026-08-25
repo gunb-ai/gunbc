@@ -18,74 +18,74 @@ fn observation(emitted_production: String, node_shape: String) -> v2.workflow.bo
 // several distinct absent producers; if the census collapsed them, a repair
 // to one family would read as the population moving. Two productions at the
 // same node shape must stay two rows.
-test fn two_productions_at_one_node_shape_stay_two_families() -> v2.std.logic.Bool {
-  let families = retention_family_bump(
-    families: retention_family_bump(
+test fn two_productions_at_one_node_shape_stay_two_families() -> Bool {
+  let families = v2.workflow.body_lowering_retention_census.retention_family_bump(
+    families: v2.workflow.body_lowering_retention_census.retention_family_bump(
       families: v2.std.algebra.Empty,
-      observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_variant", node_shape: "Type/Conj")
+      observation: observation(emitted_production: "dag_surface_type_variant", node_shape: "Type/Conj")
     ),
-    observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_field_init", node_shape: "Type/Conj")
+    observation: observation(emitted_production: "dag_surface_field_init", node_shape: "Type/Conj")
   )
-  (length(xs: families) == 2) && (retention_families_total(families: families) == 2)
+  (v2.std.algebra.length(xs: families) == 2) && (v2.workflow.body_lowering_retention_census.retention_families_total(families: families) == 2)
 }
 
 // The mirror: one production observed repeatedly is ONE family with a count,
 // not N families of one. Without this the partition inflates into a per-
 // observation listing and stops ranking anything.
-test fn one_production_observed_repeatedly_is_one_family_with_a_count() -> v2.std.logic.Bool {
-  let families = retention_family_bump(
-    families: retention_family_bump(
-      families: retention_family_bump(
+test fn one_production_observed_repeatedly_is_one_family_with_a_count() -> Bool {
+  let families = v2.workflow.body_lowering_retention_census.retention_family_bump(
+    families: v2.workflow.body_lowering_retention_census.retention_family_bump(
+      families: v2.workflow.body_lowering_retention_census.retention_family_bump(
         families: v2.std.algebra.Empty,
-        observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
+        observation: observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
       ),
-      observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
+      observation: observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
     ),
-    observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
+    observation: observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
   )
-  (length(xs: families) == 1) && (retention_families_total(families: families) == 3)
+  (v2.std.algebra.length(xs: families) == 1) && (v2.workflow.body_lowering_retention_census.retention_families_total(families: families) == 3)
 }
 
 // The node shape is part of the key, not decoration. One production identity
 // retained at two different shapes is two different missing producers, and a
 // key that dropped the shape would merge them.
-test fn one_production_at_two_node_shapes_stays_two_families() -> v2.std.logic.Bool {
-  let families = retention_family_bump(
-    families: retention_family_bump(
+test fn one_production_at_two_node_shapes_stays_two_families() -> Bool {
+  let families = v2.workflow.body_lowering_retention_census.retention_family_bump(
+    families: v2.workflow.body_lowering_retention_census.retention_family_bump(
       families: v2.std.algebra.Empty,
-      observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_fn_type", node_shape: "Type/Conj")
+      observation: observation(emitted_production: "dag_surface_fn_type", node_shape: "Type/Conj")
     ),
-    observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_fn_type", node_shape: "Computation/Transform")
+    observation: observation(emitted_production: "dag_surface_fn_type", node_shape: "Computation/Transform")
   )
-  (length(xs: families) == 2) && (retention_families_total(families: families) == 2)
+  (v2.std.algebra.length(xs: families) == 2) && (v2.workflow.body_lowering_retention_census.retention_families_total(families: families) == 2)
 }
 
 // The total must survive the partition. A bump that lost or duplicated an
 // observation would still look like a well-formed census, so the invariant is
 // asserted rather than assumed: whatever the family count, the observations
 // sum to what went in.
-test fn the_observation_total_is_preserved_across_every_partition() -> v2.std.logic.Bool {
-  let families = retention_family_bump(
-    families: retention_family_bump(
-      families: retention_family_bump(
-        families: retention_family_bump(
+test fn the_observation_total_is_preserved_across_every_partition() -> Bool {
+  let families = v2.workflow.body_lowering_retention_census.retention_family_bump(
+    families: v2.workflow.body_lowering_retention_census.retention_family_bump(
+      families: v2.workflow.body_lowering_retention_census.retention_family_bump(
+        families: v2.workflow.body_lowering_retention_census.retention_family_bump(
           families: v2.std.algebra.Empty,
-          observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "a", node_shape: "Type/Conj")
+          observation: observation(emitted_production: "a", node_shape: "Type/Conj")
         ),
-        observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "b", node_shape: "Type/Conj")
+        observation: observation(emitted_production: "b", node_shape: "Type/Conj")
       ),
-      observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "a", node_shape: "Type/Conj")
+      observation: observation(emitted_production: "a", node_shape: "Type/Conj")
     ),
-    observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "c", node_shape: "Type/Conj")
+    observation: observation(emitted_production: "c", node_shape: "Type/Conj")
   )
-  (length(xs: families) == 3) && (retention_families_total(families: families) == 4)
+  (v2.std.algebra.length(xs: families) == 3) && (v2.workflow.body_lowering_retention_census.retention_families_total(families: families) == 4)
 }
 
 // The key is what a reader acts on, so it must name the production and the
 // shape and not silently drop either half.
-test fn the_family_key_names_both_the_production_and_the_shape() -> v2.std.logic.Bool {
-  let key = retained_production_key(
-    observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_field_decl_block", node_shape: "Type/Conj")
+test fn the_family_key_names_both_the_production_and_the_shape() -> Bool {
+  let key = v2.workflow.body_lowering_retention_census.retained_production_key(
+    observation: observation(emitted_production: "dag_surface_field_decl_block", node_shape: "Type/Conj")
   )
   string_contains(s: key, pattern: "dag_surface_field_decl_block")
     && string_contains(s: key, pattern: "Type/Conj")

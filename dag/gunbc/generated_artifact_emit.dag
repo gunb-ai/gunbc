@@ -12,41 +12,41 @@ fn artifact_generated(content: String) -> ArtifactGenerationOutcome {
 
 fn artifact_generate(a: gunbc.generated_artifact.GeneratedArtifact) -> ArtifactGenerationOutcome {
   match a {
-    WitnessFloorYamlArtifact => match gunbc.witness_floor_workflow.expected_witness_floor_yml() {
-      WitnessFloorGenerated { content } => artifact_generated(content: content)
-      WitnessFloorGenerationRefused => ArtifactGenerationRefused { reason: "witness floor workflow capability closure refused" }
+    gunbc.generated_artifact.WitnessFloorYamlArtifact => match gunbc.witness_floor_workflow.expected_witness_floor_yml() {
+      gunbc.witness_floor_workflow.WitnessFloorGenerated { content } => artifact_generated(content: content)
+      gunbc.witness_floor_workflow.WitnessFloorGenerationRefused => ArtifactGenerationRefused { reason: "witness floor workflow capability closure refused" }
     }
-    CorpusTypeJudgmentYamlArtifact => match expected_corpus_type_judgment_yml() {
-      CorpusTypeJudgmentGenerated { content } => artifact_generated(content: content)
-      CorpusTypeJudgmentGenerationRefused => ArtifactGenerationRefused { reason: "corpus type judgment workflow capability closure refused" }
+    gunbc.generated_artifact.CorpusTypeJudgmentYamlArtifact => match gunbc.corpus_type_judgment_workflow.expected_corpus_type_judgment_yml() {
+      gunbc.corpus_type_judgment_workflow.CorpusTypeJudgmentGenerated { content } => artifact_generated(content: content)
+      gunbc.corpus_type_judgment_workflow.CorpusTypeJudgmentGenerationRefused => ArtifactGenerationRefused { reason: "corpus type judgment workflow capability closure refused" }
     }
-    FleetConvergeYamlArtifact => match expected_fleet_converge_yml() {
-      FleetConvergeYamlGenerated { content } => artifact_generated(content: content)
-      FleetConvergeYamlGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    gunbc.generated_artifact.FleetConvergeYamlArtifact => match gunbc.fleet_converge_workflow.expected_fleet_converge_yml() {
+      gunbc.fleet_converge_workflow.FleetConvergeYamlGenerated { content } => artifact_generated(content: content)
+      gunbc.fleet_converge_workflow.FleetConvergeYamlGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
-    FleetDesiredAdmissionYamlArtifact => artifact_generated(content: expected_fleet_desired_yml())
-    GitignoreArtifact => artifact_generated(content: expected_gitignore())
-    GitattributesArtifact => match expected_gitattributes() {
-      GitattributesGenerated { content } => artifact_generated(content: content)
-      GitattributesGenerationRefused => ArtifactGenerationRefused { reason: "generated projection path population refused" }
+    gunbc.generated_artifact.FleetDesiredAdmissionYamlArtifact => artifact_generated(content: gunbc.fleet_desired_admission_workflow.expected_fleet_desired_yml())
+    gunbc.generated_artifact.GitignoreArtifact => artifact_generated(content: gunbc.gitignore_emit.expected_gitignore())
+    gunbc.generated_artifact.GitattributesArtifact => match gunbc.gitattributes_emit.expected_gitattributes() {
+      gunbc.gitattributes_emit.GitattributesGenerated { content } => artifact_generated(content: content)
+      gunbc.gitattributes_emit.GitattributesGenerationRefused => ArtifactGenerationRefused { reason: "generated projection path population refused" }
     }
-    RoadmapArtifact => artifact_generated(content: gunbc.roadmap_authority.expected_roadmap_md())
-    DesignArtifact => artifact_generated(content: gunbc.design_document.expected_design_md())
-    GithooksPrePushArtifact => artifact_generated(content: gunbc.githooks_pre_push_emit.expected_githooks_pre_push_sh())
-    GithooksPreCommitArtifact => artifact_generated(content: gunbc.githooks_pre_commit_emit.expected_githooks_pre_commit_sh())
-    GeneratedArtifactMergeDriverArtifact => artifact_generated(content: gunbc.generated_artifact_merge_driver.expected_generated_artifact_merge_driver_sh(regen_command: gunbc.ci_spec.ci_heal_author_commit_regen_command))
-    RunnerDeployArtifact => artifact_generated(content: gunbc.runner_deploy_emit.expected_runner_deploy_manifest())
-    Stage0CrateLayoutGeneratedDagArtifact => artifact_generated(content: gunbc.stage0_crate_layout_emit.expected_stage0_crate_layout_generated_dag())
-    Stage0CrateLayoutGeneratedRsArtifact => artifact_generated(content: gunbc.stage0_crate_layout_emit.expected_stage0_crate_layout_generated_rs())
-    Stage0CratePartitionGeneratedDagArtifact => artifact_generated(content: gunbc.stage0_crate_partition_emit.expected_stage0_crate_partition_generated_dag())
-    V1InterpreterDispatchGeneratedRsArtifact => match gunbc.v1_interpreter_dispatch_emit.expected_v1_interpreter_dispatch_generated_rs() {
-      V1InterpreterDispatchGenerated { content } => artifact_generated(content: content)
-      V1InterpreterDispatchGenerationRefused { reason } =>
+    gunbc.generated_artifact.RoadmapArtifact => artifact_generated(content: gunbc.roadmap_authority.expected_roadmap_md())
+    gunbc.generated_artifact.DesignArtifact => artifact_generated(content: gunbc.design_document.expected_design_md())
+    gunbc.generated_artifact.GithooksPrePushArtifact => artifact_generated(content: gunbc.githooks_pre_push_emit.expected_githooks_pre_push_sh())
+    gunbc.generated_artifact.GithooksPreCommitArtifact => artifact_generated(content: gunbc.githooks_pre_commit_emit.expected_githooks_pre_commit_sh())
+    gunbc.generated_artifact.GeneratedArtifactMergeDriverArtifact => artifact_generated(content: gunbc.generated_artifact_merge_driver.expected_generated_artifact_merge_driver_sh(regen_command: gunbc.ci_spec.ci_heal_author_commit_regen_command))
+    gunbc.generated_artifact.RunnerDeployArtifact => artifact_generated(content: gunbc.runner_deploy_emit.expected_runner_deploy_manifest())
+    gunbc.generated_artifact.Stage0CrateLayoutGeneratedDagArtifact => artifact_generated(content: gunbc.stage0_crate_layout_emit.expected_stage0_crate_layout_generated_dag())
+    gunbc.generated_artifact.Stage0CrateLayoutGeneratedRsArtifact => artifact_generated(content: gunbc.stage0_crate_layout_emit.expected_stage0_crate_layout_generated_rs())
+    gunbc.generated_artifact.Stage0CratePartitionGeneratedDagArtifact => artifact_generated(content: gunbc.stage0_crate_partition_emit.expected_stage0_crate_partition_generated_dag())
+    gunbc.generated_artifact.V1InterpreterDispatchGeneratedRsArtifact => match gunbc.v1_interpreter_dispatch_emit.expected_v1_interpreter_dispatch_generated_rs() {
+      gunbc.v1_interpreter_dispatch_emit.V1InterpreterDispatchGenerated { content } => artifact_generated(content: content)
+      gunbc.v1_interpreter_dispatch_emit.V1InterpreterDispatchGenerationRefused { reason } =>
         ArtifactGenerationRefused { reason: reason }
     }
-    AutoinstallUserDataArtifact { spec } => artifact_generated(content: gunbc.os_install_emit.autoinstall_user_data(payload: spec.payload))
-    ProxyDhcpDnsmasqArtifact { spec } => artifact_generated(content: gunbc.install_server_emit.install_server_dnsmasq_conf(spec: spec))
-    PlanArtifact { plan } => artifact_generated(content: gunbc.plan.expected_plan_md(p: plan))
+    gunbc.generated_artifact.AutoinstallUserDataArtifact { spec } => artifact_generated(content: gunbc.os_install_emit.autoinstall_user_data(payload: spec.payload))
+    gunbc.generated_artifact.ProxyDhcpDnsmasqArtifact { spec } => artifact_generated(content: gunbc.install_server_emit.install_server_dnsmasq_conf(spec: spec))
+    gunbc.generated_artifact.PlanArtifact { plan } => artifact_generated(content: gunbc.plan.expected_plan_md(p: plan))
   }
 }
 
@@ -54,28 +54,28 @@ data artifact_extra_valid_note: String = "P0 (operator-directed, 2026-08-05; loy
 
 fn artifact_extra_valid(a: gunbc.generated_artifact.GeneratedArtifact, generated: ArtifactGenerationOutcome) -> Bool {
   match a {
-    WitnessFloorYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
-    CorpusTypeJudgmentYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
-    FleetConvergeYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
-    FleetDesiredAdmissionYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
-    GitignoreArtifact => true
-    GitattributesArtifact => true
-    RoadmapArtifact => true
-    DesignArtifact => true
-    GithooksPrePushArtifact => true
-    GithooksPreCommitArtifact => true
-    GeneratedArtifactMergeDriverArtifact => true
-    RunnerDeployArtifact => true
-    Stage0CrateLayoutGeneratedDagArtifact => true
-    Stage0CrateLayoutGeneratedRsArtifact => true
-    Stage0CratePartitionGeneratedDagArtifact => true
-    V1InterpreterDispatchGeneratedRsArtifact => match generated {
+    gunbc.generated_artifact.WitnessFloorYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
+    gunbc.generated_artifact.CorpusTypeJudgmentYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
+    gunbc.generated_artifact.FleetConvergeYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
+    gunbc.generated_artifact.FleetDesiredAdmissionYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
+    gunbc.generated_artifact.GitignoreArtifact => true
+    gunbc.generated_artifact.GitattributesArtifact => true
+    gunbc.generated_artifact.RoadmapArtifact => true
+    gunbc.generated_artifact.DesignArtifact => true
+    gunbc.generated_artifact.GithooksPrePushArtifact => true
+    gunbc.generated_artifact.GithooksPreCommitArtifact => true
+    gunbc.generated_artifact.GeneratedArtifactMergeDriverArtifact => true
+    gunbc.generated_artifact.RunnerDeployArtifact => true
+    gunbc.generated_artifact.Stage0CrateLayoutGeneratedDagArtifact => true
+    gunbc.generated_artifact.Stage0CrateLayoutGeneratedRsArtifact => true
+    gunbc.generated_artifact.Stage0CratePartitionGeneratedDagArtifact => true
+    gunbc.generated_artifact.V1InterpreterDispatchGeneratedRsArtifact => match generated {
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
     }
-    AutoinstallUserDataArtifact { spec: _ } => true
-    ProxyDhcpDnsmasqArtifact { spec: _ } => true
-    PlanArtifact { plan: _ } => true
+    gunbc.generated_artifact.AutoinstallUserDataArtifact { spec: _ } => true
+    gunbc.generated_artifact.ProxyDhcpDnsmasqArtifact { spec: _ } => true
+    gunbc.generated_artifact.PlanArtifact { plan: _ } => true
   }
 }
 

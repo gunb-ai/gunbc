@@ -9,7 +9,7 @@ data source_provider_naming_note: String = "THE FIELD NAMES A PROVIDER, SO IT IS
 
 data physical_impulse_note: String = "THE ONE FACT EVERY BINDING PRODUCES, AND THE REASON THE BOBBER PHYSICS NEVER LEARNS WHERE MOTION CAME FROM. A web DeviceMotion event, a web LinearAccelerationSensor reading, a Windows sensor sample, an Apple Core Motion update, an Android SensorManager callback, a Linux IIO read and the deterministic synthetic tap all converge here. The display consumes PhysicalImpulse and nothing else, so a new platform binding is a new producer and changes no physics, no projection and no roadmap semantics (DESIGN §2 Realization: one kernel, N handlers).
 
-MAGNITUDE IS A Nat, NOT A SIGNED Int (review finding, 2026-08-06 — and this repeats a mistake the corpus already paid for once). gunbc.design.instrument_physical's amplitude_note records the same defect being fixed there: a signed amplitude let two disturbances cancel and pass a budget, so the carrier became Nat and a negative amplitude lost its constructor. Direction is a separate field here for exactly that reason, so a signed magnitude would have been a second encoding of direction sitting beside the real one — two representations of one fact, disagreeing at will."
+MAGNITUDE IS A std.integer.Nat, NOT A SIGNED Int (review finding, 2026-08-06 — and this repeats a mistake the corpus already paid for once). instrument_physical's amplitude_note records the same defect being fixed there: a signed amplitude let two disturbances cancel and pass a budget, so the carrier became std.integer.Nat and a negative amplitude lost its constructor. Direction is a separate field here for exactly that reason, so a signed magnitude would have been a second encoding of direction sitting beside the real one — two representations of one fact, disagreeing at will."
 
 type ImpulseDirection
   = ImpulseUp
@@ -28,7 +28,7 @@ fn impulse_direction_key(d: ImpulseDirection) -> String {
 
 type PhysicalImpulse {
   source_provider: std.decl_ref.DeclarationRef
-  magnitude_milli_m_per_s2: std.nat.Nat
+  magnitude_milli_m_per_s2: std.integer.Nat
   direction: ImpulseDirection
   observed_at_ms: std.types.Milliseconds
 }
@@ -62,11 +62,11 @@ fn gravity_handling_key(g: GravityHandling) -> String {
 }
 
 type PhysicalImpulseRequirement {
-  axis_count: std.nat.Nat
-  minimum_sample_rate_hz: std.nat.Nat
+  axis_count: std.integer.Nat
+  minimum_sample_rate_hz: std.integer.Nat
   maximum_detection_latency_ms: std.types.Milliseconds
   gravity_handling: GravityHandling
-  minimum_discriminating_magnitude_milli_m_per_s2: std.nat.Nat
+  minimum_discriminating_magnitude_milli_m_per_s2: std.integer.Nat
   standing: RequirementStanding
 }
 
@@ -86,15 +86,15 @@ data bob_impulse_requirement_candidate: PhysicalImpulseRequirement = PhysicalImp
 data observed_quantity_note: String = "AN UNOBSERVED QUANTITY IS NOT ZERO (review finding, 2026-08-06). An earlier revision projected a web reading into a sample receipt carrying frequency_hz: 0 and noise_floor_milli: 0 because the web observation supplied neither — and a zero noise floor is not an absence, it is a claim of a perfect signal, which is the strongest possible statement about a quantity nobody measured. Each measured axis therefore carries its own observed-or-not coproduct, and a qualification that needs a dimension nobody observed REFUSES on that dimension rather than reading the fabricated zero as a pass."
 
 type FrequencyObservation
-  = FrequencyObserved { hz: std.nat.Nat }
+  = FrequencyObserved { hz: std.integer.Nat }
   | FrequencyUnobserved
 
 type NoiseFloorObservation
-  = NoiseFloorObserved { magnitude_milli: std.nat.Nat }
+  = NoiseFloorObserved { magnitude_milli: std.integer.Nat }
   | NoiseFloorUnobserved
 
 type AxisCountObservation
-  = AxisCountObserved { n: std.nat.Nat }
+  = AxisCountObserved { n: std.integer.Nat }
   | AxisCountUnobserved
 
 type LatencyObservation
@@ -111,16 +111,16 @@ data negative_control_note: String = "THE CONTROL THAT MAKES A THRESHOLD A DISCR
 IT CARRIES AN OBSERVATION, NOT A VERDICT (review finding, 2026-08-06). The earlier shape had Passed and Failed arms each carrying an idle peak, and qualification trusted the arm's NAME — so a control recording an idle peak far above the discriminating floor still passed, because someone had written Passed. That is the same defect as the qualified arm one level down: a judgement supplied by the author where a comparison was available. There is one arm now, it carries what was measured, and pass or fail is DERIVED by comparing that peak with the floor the requirement declares."
 
 type NegativeControl
-  = NegativeControlObserved { idle_peak_milli: std.nat.Nat }
+  = NegativeControlObserved { idle_peak_milli: std.integer.Nat }
   | NegativeControlNotRun
 
 type SampleReceipt {
-  count: std.nat.Nat
+  count: std.integer.Nat
   frequency: FrequencyObservation
   noise_floor: NoiseFloorObservation
   observed_axes: AxisCountObservation
   gravity: GravityNormalization
-  peak_magnitude_milli: std.nat.Nat
+  peak_magnitude_milli: std.integer.Nat
   detection_latency_ms: LatencyObservation
   negative_control: NegativeControl
 }
@@ -273,7 +273,7 @@ type BindingStreamState
   | HardwareUnavailable
   | BackendConnectionRefused { error_name: String }
   | NoSamplesObserved { lifecycle: SampleLifecycle }
-  | HollowSamplesObserved { count: std.nat.Nat }
+  | HollowSamplesObserved { count: std.integer.Nat }
   | SamplesObserved { receipt: SampleReceipt }
   | TapOutcome { receipt: SampleReceipt }
   | BindingStreamUnobserved
@@ -366,7 +366,7 @@ fn capability_verdict_key(v: TargetCapabilityVerdict) -> String {
 data synthetic_tap_provider: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.capability_binding",
   decl_name: "synthetic_tap_impulse",
-  field: WholeDeclaration
+  field: std.decl_ref.WholeDeclaration
 }
 
 data verdict_qualifies_its_own_receipt_note: String = "THE VERDICT CALLS qualify_tap ITSELF, and that is what makes the wall real (review finding, 2026-08-06). Naming qualify_tap the sole minter was not enough while the stream carried an already-qualified value: TapQualified is a public constructor, so a caller could author the qualified arm around a receipt that fails the requirement and reach CapabilitySupported without the minter ever running. The claimed construction was a convention.
@@ -430,7 +430,7 @@ fn verdict_rows(rows: List<CapabilityBindingObservation>) -> List<CapabilityVerd
 data durable_support_claim_note: String = "A durable support claim needs an EXACT host, which is a stricter condition than a useful observation. An observation from a reduced or partially identified host is real and worth rendering; it simply cannot become a row asserting that this exact target is supported, because nobody can say which target it was. So the gate is separate from the verdict rather than folded into it."
 
 fn row_supports_a_durable_claim(r: CapabilityVerdictRow) -> Bool {
-  capability_verdict_key(v: r.verdict) == "supported" && host_identity_is_exact(h: r.binding.host)
+  capability_verdict_key(v: r.verdict) == "supported" && gunbc.host_realization.host_identity_is_exact(h: r.binding.host)
 }
 
 data synthetic_tap_note: String = "THE ONE PROVIDER THAT IS OURS, AND IT IS A SOURCE RATHER THAN A SIMULATION. Every other provider models an external upstream and lives in its own extdeps authority; the synthetic tap is authored input produced by this repository, so it lives here, beside the verdict it serves as an alternative to. It is deterministic — the same strength yields the same impulse, with no clock and no randomness — which is what lets the bob be judged, demonstrated and regression-tested on hardware that has no accelerometer at all.
@@ -452,7 +452,7 @@ fn synthetic_tap_strength_key(t: SyntheticTapStrength) -> String {
 
 data synthetic_tap_strength_note: String = "Three strengths rather than a slider, because the point of the control is to demonstrate the response AND its bound: a light tap that barely moves the plate and sits below the discriminating floor, a firm one that clears it, and a full knock that reaches the clamp. A continuous input lets a viewer wander the range without ever seeing the two ends that carry the argument."
 
-fn synthetic_tap_magnitude_milli(t: SyntheticTapStrength) -> std.nat.Nat {
+fn synthetic_tap_magnitude_milli(t: SyntheticTapStrength) -> std.integer.Nat {
   match t {
     SyntheticTapLight => 900
     SyntheticTapFirm => 2600
@@ -568,7 +568,7 @@ data coverage_targets: List<BindingCoverageTarget> = [
       receipt: std.decl_ref.DeclarationRef {
         module_path: "test.claim.instrument_bob_witness",
         decl_name: "instrument_bob_keystone_holds",
-        field: WholeDeclaration
+        field: std.decl_ref.WholeDeclaration
       }
     },
   },
@@ -578,14 +578,14 @@ data coverage_targets: List<BindingCoverageTarget> = [
       declaration: std.decl_ref.DeclarationRef {
         module_path: "extdeps.w3c.device_orientation_and_motion",
         decl_name: "devicemotion_event_type",
-        field: WholeDeclaration
+        field: std.decl_ref.WholeDeclaration
       }
     },
     implementation: Implemented {
       implementation: std.decl_ref.DeclarationRef {
         module_path: "gunbc.roadmap_component",
         decl_name: "motion_devicemotion_probe_statement",
-        field: WholeDeclaration
+        field: std.decl_ref.WholeDeclaration
       }
     },
     probe: ProbeRequired,
@@ -596,14 +596,14 @@ data coverage_targets: List<BindingCoverageTarget> = [
       declaration: std.decl_ref.DeclarationRef {
         module_path: "extdeps.w3c.accelerometer",
         decl_name: "LinearAccelerationSensor",
-        field: WholeDeclaration
+        field: std.decl_ref.WholeDeclaration
       }
     },
     implementation: Implemented {
       implementation: std.decl_ref.DeclarationRef {
         module_path: "gunbc.roadmap_component",
         decl_name: "motion_sensor_probe_statement",
-        field: WholeDeclaration
+        field: std.decl_ref.WholeDeclaration
       }
     },
     probe: ProbeRequired,

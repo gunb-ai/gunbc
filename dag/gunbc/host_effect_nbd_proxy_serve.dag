@@ -1,5 +1,6 @@
 module gunbc.host_effect_nbd_proxy_serve
 
+
 data host_effect_nbd_proxy_serve_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "systemd transient-unit realize transport for Srv3NbdProxyServe (P6 Part 2; operator ruling 2026-07-14: no trap/&/$! ShellStmt vocabulary). Actuate side routes through gunbc.systemd_run_transient (RunTransient) and gunbc.systemctl_stop_run (Stop), both typed-argv dispatch over the cited extdeps.systemd.systemd_run / extdeps.systemd.systemctl authorities. Observe side routes through gunbc.systemctl_is_active_read (IsActive) against the transient unit name, which is this scope's identity anchor. Token bridge: start_units materializes BMCWEB session token from srv3_bmcweb_token_path via Filesystem.Read into websocat argv. Formerly host_effect_nbd_proxy_serve_dissolution_trigger / host_effect_nbd_proxy_serve_scaffold (WitnessBin systemd-run scaffolding + unconditional PortInaccessible observe stub); both conditions of that trigger are now met and it is retired in favor of this Terminal disposition."
 }
@@ -14,7 +15,7 @@ fn host_effect_nbd_proxy_serve_session_policy(lease_key: std.types.NonEmptyStr) 
 
 fn host_effect_nbd_proxy_serve_session_policy_is_held_lease(lease_key: std.types.NonEmptyStr) -> Bool {
   match host_effect_nbd_proxy_serve_session_policy(lease_key: lease_key) {
-    HeldSessionLease { lease_key: lk } => lk == lease_key
+    std.temporal_effect.HeldSessionLease { lease_key: lk } => lk == lease_key
     PureRead => false
     CreateIfAbsent { content_key: _ } => false
     ReplaceIfStale { content_key: _ } => false
@@ -60,8 +61,8 @@ fn host_effect_nbd_proxy_serve_systemd_run_transient(
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> String? {
   match gunbc.systemd_run_transient.systemd_run_transient_read(transport: transport, unit: unit, command_argv: command_argv) {
-    SystemdRunTransientStarted { stdout: _ } => Absent
-    SystemdRunTransientRefused { reason: why } =>
+    gunbc.systemd_run_transient.SystemdRunTransientStarted { stdout: _ } => Absent
+    gunbc.systemd_run_transient.SystemdRunTransientRefused { reason: why } =>
       Present { value: concat(concat("unit ", unit as String), concat(": ", why)) }
   }
 }
@@ -71,8 +72,8 @@ fn host_effect_nbd_proxy_serve_systemd_stop_unit(
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> String? {
   match gunbc.systemctl_stop_run.systemctl_stop_run(transport: transport, unit: unit) {
-    SystemctlStopped { stdout: _ } => Absent
-    SystemctlStopRefused { reason: why } =>
+    gunbc.systemctl_stop_run.SystemctlStopped { stdout: _ } => Absent
+    gunbc.systemctl_stop_run.SystemctlStopRefused { reason: why } =>
       Present { value: concat(concat("unit ", unit as String), concat(": ", why)) }
   }
 }
@@ -88,7 +89,7 @@ fn host_effect_nbd_proxy_serve_observation_from_is_active_capture(
   capture: gunbc.systemctl_is_active_read.UnitIsActiveCapture,
 ) -> gunbc.session_lease.ProcessPortObservation {
   match capture {
-    UnitIsActiveCaptured { state: _, active: active } =>
+    gunbc.systemctl_is_active_read.UnitIsActiveCaptured { state: _, active: active } =>
       if active {
         gunbc.session_lease.PortObserved {
           observed_port: scope.listen_port,
@@ -99,7 +100,7 @@ fn host_effect_nbd_proxy_serve_observation_from_is_active_capture(
       } else {
         gunbc.session_lease.PortAbsent
       }
-    UnitIsActiveCaptureRefused { reason: why } =>
+    gunbc.systemctl_is_active_read.UnitIsActiveCaptureRefused { reason: why } =>
       gunbc.session_lease.PortObservationRefused { reason: why as std.types.NonEmptyStr }
   }
 }
@@ -144,7 +145,7 @@ fn host_effect_nbd_proxy_serve_apply_refuses_foreign_port(
   obs: gunbc.session_lease.ProcessPortObservation,
 ) -> Bool {
   match host_effect_nbd_proxy_serve_apply_classification(binding: binding, obs: obs) {
-    UpsertClassification { verdict: std.upsert_decision.Conflict, decision: std.upsert_decision.Refuse { reason: _ } } => true
+    std.upsert_decision.UpsertClassification { verdict: std.upsert_decision.Conflict, decision: std.upsert_decision.Refuse { reason: _ } } => true
     _ => false
   }
 }
@@ -154,7 +155,7 @@ fn host_effect_nbd_proxy_serve_apply_drains_stale_matching(
   obs: gunbc.session_lease.ProcessPortObservation,
 ) -> Bool {
   match host_effect_nbd_proxy_serve_apply_classification(binding: binding, obs: obs) {
-    UpsertClassification {
+    std.upsert_decision.UpsertClassification {
       verdict: std.upsert_decision.Drifted,
       decision: std.upsert_decision.Apply { plan: gunbc.session_lease.DrainMatchingStaleThenStart },
     } => true
@@ -263,16 +264,16 @@ fn host_effect_nbd_proxy_serve_apply(
   let websocat_unit = extdeps.bmc.webui.nbd_proxy_serve.nbd_proxy_serve_websocat_unit_name(lease_key: binding.lease_key)
   let obs = host_effect_nbd_proxy_serve_observe_port(scope: binding.scope, transport: transport, websocat_unit: websocat_unit)
   match host_effect_nbd_proxy_serve_apply_classification(binding: binding, obs: obs).decision {
-    Noop =>
+    std.upsert_decision.Noop =>
       NbdProxyServeApplyConverged {
         stdout: concat(
           "NbdProxyServeSessionReceipt: verdict=Converged unit=",
           websocat_unit as String,
         ),
       }
-    Refuse { reason: why } =>
+    std.upsert_decision.Refuse { reason: why } =>
       NbdProxyServeApplyRefused { reason: why as String }
-    Apply { plan: gunbc.session_lease.Start } =>
+    std.upsert_decision.Apply { plan: gunbc.session_lease.Start } =>
       match host_effect_nbd_proxy_serve_start_units(binding: binding, transport: transport) {
         Absent =>
           NbdProxyServeApplyConverged {
@@ -286,7 +287,7 @@ fn host_effect_nbd_proxy_serve_apply(
             reason: concat("nbd-proxy-serve: systemd-run transient start failed; fail-closed: ", why),
           }
       }
-    Apply { plan: gunbc.session_lease.DrainMatchingStaleThenStart } =>
+    std.upsert_decision.Apply { plan: gunbc.session_lease.DrainMatchingStaleThenStart } =>
       match host_effect_nbd_proxy_serve_drain_stale_units(binding: binding, transport: transport) {
         Present { value: why } =>
           NbdProxyServeApplyRefused {
@@ -316,11 +317,11 @@ fn host_effect_nbd_proxy_serve_apply_with_observation(
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> NbdProxyServeApplyOutcome {
   match host_effect_nbd_proxy_serve_apply_classification(binding: binding, obs: obs).decision {
-    Noop =>
+    std.upsert_decision.Noop =>
       NbdProxyServeApplyConverged { stdout: "NbdProxyServeSessionReceipt: verdict=Converged" }
-    Refuse { reason: why } =>
+    std.upsert_decision.Refuse { reason: why } =>
       NbdProxyServeApplyRefused { reason: why as String }
-    Apply { plan: gunbc.session_lease.Start } =>
+    std.upsert_decision.Apply { plan: gunbc.session_lease.Start } =>
       match host_effect_nbd_proxy_serve_start_units(binding: binding, transport: transport) {
         Absent =>
           NbdProxyServeApplyConverged { stdout: "NbdProxyServeSessionReceipt: verdict=Absent plan=Start" }
@@ -329,7 +330,7 @@ fn host_effect_nbd_proxy_serve_apply_with_observation(
             reason: concat("nbd-proxy-serve: systemd-run transient start failed; fail-closed: ", why),
           }
       }
-    Apply { plan: gunbc.session_lease.DrainMatchingStaleThenStart } =>
+    std.upsert_decision.Apply { plan: gunbc.session_lease.DrainMatchingStaleThenStart } =>
       match host_effect_nbd_proxy_serve_drain_stale_units(binding: binding, transport: transport) {
         Present { value: why } =>
           NbdProxyServeApplyRefused {

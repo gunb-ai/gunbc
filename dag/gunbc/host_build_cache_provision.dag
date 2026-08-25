@@ -24,8 +24,8 @@ data ci_sccache_opportunistic_detect_scaffold: std.disposition.Disposition = std
     field: std.decl_ref.WholeDeclaration,
   }
 }
-fn provision_build_cache_effect_for_host(host: HostIdentity) -> HostEffect {
-  EnsureBuildCacheInstance { desired: ci_cache_instance(host: host) }
+fn provision_build_cache_effect_for_host(host: product.placement_supply.HostIdentity) -> gunbc.host_effect.HostEffect {
+  gunbc.host_effect.EnsureBuildCacheInstance { desired: gunbc.build_cache_instance.ci_cache_instance(host: host) }
 }
 
 fn provision_build_cache_default_effect(host: product.placement_supply.HostIdentity) -> gunbc.host_effect.HostEffect {
@@ -34,12 +34,12 @@ fn provision_build_cache_default_effect(host: product.placement_supply.HostIdent
 
 fn provision_build_cache_routes_through_host_effect_apply() -> Bool {
   match host_build_cache_provision_realize_scaffold {
-    Scaffold {
+    std.disposition.Scaffold {
       dissolves_to: std.disposition.RealizationDispatch,
       bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
       m == "gunbc.host_effect_realize" && n == "realize_provision_build_cache"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
@@ -49,7 +49,7 @@ func provision_build_cache(host: product.placement_supply.HostIdentity, catalog_
   uses net: std.resources.Network
 {
   match gunbc.host_build_cache_catalog_gate.provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
-    ProvisionBuildCacheCatalogRefused { reason: reason } => std.process.exit_failure(reason: reason as String)
-    ProvisionBuildCacheCatalogRealizable => gunbc.host_toolchain_ensure.host_toolchain_ensure(host: host, kind: gunbc.host_toolchain_ensure.BuildCache)
+    gunbc.host_build_cache_catalog_gate.ProvisionBuildCacheCatalogRefused { reason: reason } => std.process.exit_failure(reason: reason as String)
+    gunbc.host_build_cache_catalog_gate.ProvisionBuildCacheCatalogRealizable => gunbc.host_toolchain_ensure.host_toolchain_ensure(host: host, kind: gunbc.host_toolchain_ensure.BuildCache)
   }
 }

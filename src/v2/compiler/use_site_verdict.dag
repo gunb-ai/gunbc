@@ -22,14 +22,14 @@ data use_site_verdict_clone_shared_tag: v2.std.node.Symbol = ^use_site_verdict_c
 data use_site_verdict_unclassified_tag: v2.std.node.Symbol = ^use_site_verdict_unclassified
 
 fn use_site_verdict_atom(tag: v2.std.node.Symbol) -> v2.std.node.Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: tag } }, children: [])
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: tag } }, children: [])
 }
 
 fn use_site_verdict_to_node(verdict: UseSiteVerdict) -> v2.std.node.Node {
   match verdict {
     MoveWhole => use_site_verdict_atom(tag: use_site_verdict_move_whole_tag)
     MoveField { field: f } =>
-      node_synthetic(
+      v2.std.node.node_synthetic(
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: use_site_verdict_move_field_tag } },
         children: [
           v2.std.node.Edge { label: v2.std.node.Named { name: use_site_verdict_field_edge }, target: use_site_verdict_atom(tag: f) }
@@ -42,20 +42,20 @@ fn use_site_verdict_to_node(verdict: UseSiteVerdict) -> v2.std.node.Node {
 }
 
 fn use_site_verdict_move_field_of(children: List<v2.std.node.Edge>) -> UseSiteVerdict {
-  match named_edge_target_lookup(children: children, name: use_site_verdict_field_edge) {
-    Found { target: field_node } =>
+  match v2.std.node.named_edge_target_lookup(children: children, name: use_site_verdict_field_edge) {
+    v2.std.node.Found { target: field_node } =>
       match field_node.kind {
-        TypeNode { connective: Atom { identity: f } } => MoveField { field: f }
+        v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: f } } => MoveField { field: f }
         _ => Unclassified
       }
-    Absent => Unclassified
-    Ambiguous => Unclassified
+    v2.std.node.Absent => Unclassified
+    v2.std.node.Ambiguous => Unclassified
   }
 }
 
 fn use_site_verdict_of_node(target: v2.std.node.Node) -> UseSiteVerdict {
   match target.kind {
-    TypeNode { connective: Atom { identity: sym } } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
       if sym == use_site_verdict_move_whole_tag {
         MoveWhole
       } else if sym == use_site_verdict_borrow_tag {
@@ -72,17 +72,17 @@ fn use_site_verdict_of_node(target: v2.std.node.Node) -> UseSiteVerdict {
 }
 
 fn use_site_verdict_lookup(node: v2.std.node.Node) -> UseSiteVerdictLookup {
-  match named_edge_target_lookup(children: node.children, name: use_site_verdict_edge) {
-    Found { target: t } => VerdictFound { verdict: use_site_verdict_of_node(target: t) }
-    Absent => VerdictAbsent
-    Ambiguous => VerdictAmbiguous
+  match v2.std.node.named_edge_target_lookup(children: node.children, name: use_site_verdict_edge) {
+    v2.std.node.Found { target: t } => VerdictFound { verdict: use_site_verdict_of_node(target: t) }
+    v2.std.node.Absent => VerdictAbsent
+    v2.std.node.Ambiguous => VerdictAmbiguous
   }
 }
 
 fn attach_use_site_verdict(node: v2.std.node.Node, verdict: UseSiteVerdict) -> v2.std.node.Node {
-  node_rebuild(
+  v2.std.node.node_rebuild(
     n: node,
-    children: list_snoc_item(
+    children: v2.std.algebra.list_snoc_item(
       xs: node.children,
       item: v2.std.node.Edge { label: v2.std.node.Named { name: use_site_verdict_edge }, target: use_site_verdict_to_node(verdict: verdict) }
     )

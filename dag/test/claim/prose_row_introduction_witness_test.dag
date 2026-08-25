@@ -32,29 +32,29 @@ data other_in_scope_path: String = "dag/extdeps/auth/moved_probe.dag"
 data out_of_scope_path: String = "dag/gunbc/probe.dag"
 
 fn observe(diff_text: String) -> gunbc.prose_row_frontier.ProseRowDiffObservation {
-  prose_row_diff_observation(diff_text: diff_text)
+  gunbc.prose_row_frontier.prose_row_diff_observation(diff_text: diff_text)
 }
 
 fn refused_of(diff_text: String) -> List<gunbc.prose_row_frontier.ProseRowRef> {
   match observe(diff_text: diff_text) {
-    ProseRowDiffUnreadable { reason: _ } => []
-    ProseRowsObserved { added: added, removed: removed } =>
-      prose_rows_refused(introduced: prose_rows_introduced(added: added, removed: removed))
+    gunbc.prose_row_frontier.ProseRowDiffUnreadable { reason: _ } => []
+    gunbc.prose_row_frontier.ProseRowsObserved { added: added, removed: removed } =>
+      gunbc.prose_row_frontier.prose_rows_refused(introduced: gunbc.prose_row_frontier.prose_rows_introduced(added: added, removed: removed))
   }
 }
 
 fn residue_of(diff_text: String) -> List<gunbc.prose_row_frontier.ProseRowRef> {
   match observe(diff_text: diff_text) {
-    ProseRowDiffUnreadable { reason: _ } => []
-    ProseRowsObserved { added: added, removed: removed } =>
-      prose_rows_out_of_scope(introduced: prose_rows_introduced(added: added, removed: removed))
+    gunbc.prose_row_frontier.ProseRowDiffUnreadable { reason: _ } => []
+    gunbc.prose_row_frontier.ProseRowsObserved { added: added, removed: removed } =>
+      gunbc.prose_row_frontier.prose_rows_out_of_scope(introduced: gunbc.prose_row_frontier.prose_rows_introduced(added: added, removed: removed))
   }
 }
 
 fn verdict_refuses(diff_text: String) -> Bool {
-  match prose_row_introduction_verdict(observation: observe(diff_text: diff_text)) {
-    ExitSuccess => false
-    ExitFailure { code: _, reason: _ } => true
+  match tools.prose_row_introduction_gate.prose_row_introduction_verdict(observation: observe(diff_text: diff_text)) {
+    std.process.ExitSuccess => false
+    std.process.ExitFailure { code: _, reason: _ } => true
   }
 }
 
@@ -64,7 +64,7 @@ fn verdict_refuses(diff_text: String) -> Bool {
 data introduction_diff: String = concat(diff_header(path: in_scope_path), added_line(name: "probe_note"))
 
 test fn prose_row_introduced_in_scope_is_refused() -> Bool {
-  prose_rows_render(rows: refused_of(diff_text: introduction_diff)) == "dag/extdeps/auth/probe.dag probe_note"
+  gunbc.prose_row_frontier.prose_rows_render(rows: refused_of(diff_text: introduction_diff)) == "dag/extdeps/auth/probe.dag probe_note"
     && verdict_refuses(diff_text: introduction_diff)
 }
 
@@ -103,7 +103,7 @@ data out_of_scope_diff: String = concat(diff_header(path: out_of_scope_path), ad
 test fn prose_row_introduced_out_of_scope_is_counted_not_refused() -> Bool {
   (refused_of(diff_text: out_of_scope_diff) |> count) == 0
     && !verdict_refuses(diff_text: out_of_scope_diff)
-    && prose_rows_render(rows: residue_of(diff_text: out_of_scope_diff)) == "dag/gunbc/probe.dag probe_note"
+    && gunbc.prose_row_frontier.prose_rows_render(rows: residue_of(diff_text: out_of_scope_diff)) == "dag/gunbc/probe.dag probe_note"
 }
 
 // A RENAME READS AS AN INTRODUCTION, and that is the declared answer rather than an accident of the
@@ -115,7 +115,7 @@ data rename_diff: String = concat(
 )
 
 test fn prose_row_renamed_is_an_introduction() -> Bool {
-  prose_rows_render(rows: refused_of(diff_text: rename_diff)) == "dag/extdeps/auth/probe.dag new_probe_note"
+  gunbc.prose_row_frontier.prose_rows_render(rows: refused_of(diff_text: rename_diff)) == "dag/extdeps/auth/probe.dag new_probe_note"
 }
 
 // THE SHAPE BOUNDARY. The wall recognises one idiom, and the two nearest misses must not be swept in
@@ -123,13 +123,13 @@ test fn prose_row_renamed_is_an_introduction() -> Bool {
 // rather than prose. Widening past this is the general prose classifier the operator ruled must not
 // become a prerequisite.
 test fn only_the_prose_row_idiom_is_recognised() -> Bool {
-  match prose_row_decl_name(line: "data probe_note: String = \"prose\"") {
+  match gunbc.prose_row_frontier.prose_row_decl_name(line: "data probe_note: String = \"prose\"") {
     Absent => false
     Present { value: name } =>
       name == "probe_note"
-        && match prose_row_decl_name(line: "data probe: String = \"value\"") { Absent => true  Present { value: _ } => false }
-        && match prose_row_decl_name(line: "data probe_note: Int = 3") { Absent => true  Present { value: _ } => false }
-        && match prose_row_decl_name(line: "  data probe_note: String = \"indented\"") { Absent => true  Present { value: _ } => false }
+        && match gunbc.prose_row_frontier.prose_row_decl_name(line: "data probe: String = \"value\"") { Absent => true  Present { value: _ } => false }
+        && match gunbc.prose_row_frontier.prose_row_decl_name(line: "data probe_note: Int = 3") { Absent => true  Present { value: _ } => false }
+        && match gunbc.prose_row_frontier.prose_row_decl_name(line: "  data probe_note: String = \"indented\"") { Absent => true  Present { value: _ } => false }
   }
 }
 
@@ -140,15 +140,15 @@ data headerless_diff: String = "@@ -3,0 +4 @@\n+data probe_note: String = \"pros
 
 test fn hunks_without_a_file_header_refuse_rather_than_reading_as_clean() -> Bool {
   match observe(diff_text: headerless_diff) {
-    ProseRowDiffUnreadable { reason: _ } => verdict_refuses(diff_text: headerless_diff)
-    ProseRowsObserved { added: _, removed: _ } => false
+    gunbc.prose_row_frontier.ProseRowDiffUnreadable { reason: _ } => verdict_refuses(diff_text: headerless_diff)
+    gunbc.prose_row_frontier.ProseRowsObserved { added: _, removed: _ } => false
   }
 }
 
 test fn an_empty_diff_observes_nothing_and_admits() -> Bool {
   match observe(diff_text: "") {
-    ProseRowDiffUnreadable { reason: _ } => false
-    ProseRowsObserved { added: added, removed: removed } =>
+    gunbc.prose_row_frontier.ProseRowDiffUnreadable { reason: _ } => false
+    gunbc.prose_row_frontier.ProseRowsObserved { added: added, removed: removed } =>
       (added |> count) == 0 && (removed |> count) == 0 && !verdict_refuses(diff_text: "")
   }
 }

@@ -7,7 +7,7 @@ module extdeps.runtime.abi.sysv_amd64
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf"
   }
 }
@@ -18,21 +18,21 @@ data x86_64_abi_subject_ref: extdeps.external_authority.ExternalSubjectRef = ext
   declaration: std.decl_ref.DeclarationRef {
     module_path: "extdeps.runtime.abi.sysv_amd64",
     decl_name: "x86_64_abi_specification",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
 }
 
-data x86_64_abi_pdf_identity: std.citation.CitedRepresentationIdentity = cited_representation_identity(
+data x86_64_abi_pdf_identity: std.citation.CitedRepresentationIdentity = std.citation.cited_representation_identity(
   source: x86_64_abi_subject_ref,
-  access_route: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri,
-  byte_domain: RawResponseBody,
+  access_route: uri,
+  byte_domain: std.citation.RawResponseBody,
 )
 
 // Document cover: Draft Version 0.99.6, dated July 2 2012 — NOT the filename 0.99. VersionIdentity carries the edition string 0.99.6.
 data x86_64_abi_pdf_draft_version: extdeps.version.VersionIdentity = "0.99.6" as extdeps.version.VersionIdentity
 
 data x86_64_abi_application_pdf: extdeps.http.server.MediaType = extdeps.http.server.MediaType {
-  top_level: TopLevelApplication,
+  top_level: extdeps.http.server.TopLevelApplication,
   subtype: "pdf",
   parameters: [],
 }

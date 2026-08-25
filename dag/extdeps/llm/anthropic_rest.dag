@@ -3,7 +3,7 @@ module extdeps.llm.anthropic_rest
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.anthropic.com/en/docs/claude-code"
   }
 }
@@ -41,14 +41,14 @@ service llm.Anthropic {
       headers: { "anthropic-version": current_api_version.version }
     }
     response {
-      200 => AnthropicMessages200Body
-      400 => AnthropicErrorShape
-      401 => AnthropicErrorShape
-      403 => AnthropicErrorShape
-      404 => AnthropicErrorShape
-      429 => AnthropicErrorShape
-      529 => AnthropicErrorShape
-      5xx => AnthropicErrorShape
+      200 => extdeps.llm.anthropic.AnthropicMessages200Body
+      400 => extdeps.llm.anthropic_errors.AnthropicErrorShape
+      401 => extdeps.llm.anthropic_errors.AnthropicErrorShape
+      403 => extdeps.llm.anthropic_errors.AnthropicErrorShape
+      404 => extdeps.llm.anthropic_errors.AnthropicErrorShape
+      429 => extdeps.llm.anthropic_errors.AnthropicErrorShape
+      529 => extdeps.llm.anthropic_errors.AnthropicErrorShape
+      5xx => extdeps.llm.anthropic_errors.AnthropicErrorShape
     }
   }
 

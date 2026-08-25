@@ -1,10 +1,10 @@
 module test.claim.float_add_associativity_law_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn w_float_add_associativity_refuted_by_execution() -> Bool {
-  float_add_associativity_refutation_holds()
+  gunbc.float_add_associativity_observation.float_add_associativity_refutation_holds()
 }
 
 test fn w_float_add_associativity_associative_triple_control() -> Bool {
@@ -26,16 +26,16 @@ test fn w_float_add_associativity_rejects_fabricated_left_fold_result() -> Bool 
     right_fold_result: witness.right_fold_result,
   }
   let bad_receipt = std.algebra_law.AssociativityRefutationReceipt {
-    subject: float_add_associativity_subject,
+    subject: gunbc.float_add_associativity_observation.float_add_associativity_subject,
     witness: fabricated,
   }
-  !associativity_refutation_holds_for_float_add(receipt: bad_receipt)
+  !std.algebra_law.associativity_refutation_holds_for_float_add(receipt: bad_receipt)
 }
 
 test fn w_float_kernel_type_in_std_types_roster() -> Bool {
-  float_kernel_type_in_authority_roster()
+  std.algebra_law.float_kernel_type_in_authority_roster()
 }
 
 test fn w_float_add_associativity_subject_is_float_add_coproduct() -> Bool {
-  float_add_associativity_subject == std.algebra_law.AssociativityFloatAdd {}
+  gunbc.float_add_associativity_observation.float_add_associativity_subject == std.algebra_law.AssociativityFloatAdd {}
 }

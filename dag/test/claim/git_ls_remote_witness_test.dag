@@ -1,7 +1,7 @@
 module test.claim.git_ls_remote_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_scope_note: String = "What is claimed is the READING of a ref advertisement, not the network call. scan_advertised_refs is pure over lines the caller already holds, so every arm is reachable with no remote and no credentials. What is NOT claimed, stated so the bound is visible: nothing here runs git.Core.LsRemoteHeads. A change that broke the transport while leaving the scan intact would keep these green.\\n\\nWhy this capability had to exist at all: git.Core.RemoteBranches returns ref NAMES from `git branch -r`, so gunbc.roadmap_publish's RemoteBranch.head_sha - the field that makes a publication judgment exact rather than name-shaped - could not be populated from any operation in the corpus. The model had gotten ahead of the transport."
 
@@ -11,97 +11,97 @@ data fixture_sha_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 fn tab() -> String { from_code_point(cp: 9) }
 
 fn line_of(sha: String, ref_name: String) -> String {
-  concat(sha, concat(test.claim.git_ls_remote_witness_test.tab(), ref_name))
+  concat(sha, concat(tab(), ref_name))
 }
 
 fn scanned_count(scan: extdeps.git.AdvertisedRefScan) -> Int {
   match scan {
-    AdvertisedRefsRead { refs } => count(refs)
-    AdvertisedRefLineUnparsed { line: _, index: _ } => 0 - 1
+    extdeps.git.AdvertisedRefsRead { refs } => count(refs)
+    extdeps.git.AdvertisedRefLineUnparsed { line: _, index: _ } => 0 - 1
   }
 }
 
 test fn an_advertisement_line_yields_its_object_id_and_ref() -> Bool {
-  match parse_advertised_ref_line(line: test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_a, ref_name: "refs/heads/main")) {
+  match extdeps.git.parse_advertised_ref_line(line: line_of(sha: fixture_sha_a, ref_name: "refs/heads/main")) {
     Absent => false
     Present { value: r } =>
-      (r.object_id as String) == test.claim.git_ls_remote_witness_test.fixture_sha_a && r.ref_name == "refs/heads/main"
+      (r.object_id as String) == fixture_sha_a && r.ref_name == "refs/heads/main"
   }
 }
 
 test fn the_branch_name_is_projected_off_the_full_ref() -> Bool {
-  let nested = advertised_ref_branch_name(ref_name: "refs/heads/dispatch/some-node-a7")
-  advertised_ref_branch_name(ref_name: "refs/heads/main") == "main"
+  let nested = extdeps.git.advertised_ref_branch_name(ref_name: "refs/heads/dispatch/some-node-a7")
+  extdeps.git.advertised_ref_branch_name(ref_name: "refs/heads/main") == "main"
     && nested == "dispatch/some-node-a7"
-    && advertised_ref_branch_name(ref_name: "refs/tags/v1") == "refs/tags/v1"
+    && extdeps.git.advertised_ref_branch_name(ref_name: "refs/tags/v1") == "refs/tags/v1"
 }
 
 test fn a_whole_advertisement_scans_to_its_rows() -> Bool {
-  let scan = scan_advertised_refs(lines: [
-    test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_a, ref_name: "refs/heads/main"),
-    test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_b, ref_name: "refs/heads/dispatch/some-node-a7"),
+  let scan = extdeps.git.scan_advertised_refs(lines: [
+    line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
+    line_of(sha: fixture_sha_b, ref_name: "refs/heads/dispatch/some-node-a7"),
   ])
   match scan {
-    AdvertisedRefLineUnparsed { line: _, index: _ } => false
-    AdvertisedRefsRead { refs } =>
+    extdeps.git.AdvertisedRefLineUnparsed { line: _, index: _ } => false
+    extdeps.git.AdvertisedRefsRead { refs } =>
       count(refs) == 2
         && all(refs, r => (r.object_id as String) != "")
   }
 }
 
 test fn an_empty_advertisement_is_zero_rows_not_a_refusal() -> Bool {
-  scanned_count(scan: scan_advertised_refs(lines: [])) == 0
+  scanned_count(scan: extdeps.git.scan_advertised_refs(lines: [])) == 0
 }
 
 data refuse_not_skip_note: String = "The discriminating claim. A scan that DROPPED the unreadable line would still answer AdvertisedRefsRead with the two good rows, and every count-based assertion above would stay green while the answer silently became a partial advertisement. That is the absorbing fallback: the consumer cannot distinguish a complete listing from a truncated one, so a branch that IS published reads as absent. The refusal carries the offending line and its index so the deficit is located rather than merely counted."
 
 test fn an_unreadable_line_refuses_rather_than_being_skipped() -> Bool {
-  let scan = scan_advertised_refs(lines: [
-    test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_a, ref_name: "refs/heads/main"),
+  let scan = extdeps.git.scan_advertised_refs(lines: [
+    line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
     "this line has no tab at all",
-    test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_b, ref_name: "refs/heads/other"),
+    line_of(sha: fixture_sha_b, ref_name: "refs/heads/other"),
   ])
   match scan {
-    AdvertisedRefsRead { refs: _ } => false
-    AdvertisedRefLineUnparsed { line, index } =>
+    extdeps.git.AdvertisedRefsRead { refs: _ } => false
+    extdeps.git.AdvertisedRefLineUnparsed { line, index } =>
       line == "this line has no tab at all" && index == 1
   }
 }
 
 test fn a_line_with_too_many_fields_also_refuses() -> Bool {
-  let scan = scan_advertised_refs(lines: [
+  let scan = extdeps.git.scan_advertised_refs(lines: [
     concat(
-      test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_a, ref_name: "refs/heads/main"),
-      concat(test.claim.git_ls_remote_witness_test.tab(), "extra"),
+      line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"),
+      concat(tab(), "extra"),
     ),
   ])
   match scan {
-    AdvertisedRefsRead { refs: _ } => false
-    AdvertisedRefLineUnparsed { line: _, index } => index == 0
+    extdeps.git.AdvertisedRefsRead { refs: _ } => false
+    extdeps.git.AdvertisedRefLineUnparsed { line: _, index } => index == 0
   }
 }
 
 fn line_parses(line: String) -> Bool {
-  match parse_advertised_ref_line(line: line) {
+  match extdeps.git.parse_advertised_ref_line(line: line) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
 test fn an_empty_field_refuses_rather_than_minting_an_empty_sha() -> Bool {
-  let no_sha = line_parses(line: test.claim.git_ls_remote_witness_test.line_of(sha: "", ref_name: "refs/heads/main"))
-  let no_ref = line_parses(line: test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_a, ref_name: ""))
-  let good = line_parses(line: test.claim.git_ls_remote_witness_test.line_of(sha: test.claim.git_ls_remote_witness_test.fixture_sha_a, ref_name: "refs/heads/main"))
+  let no_sha = line_parses(line: line_of(sha: "", ref_name: "refs/heads/main"))
+  let no_ref = line_parses(line: line_of(sha: fixture_sha_a, ref_name: ""))
+  let good = line_parses(line: line_of(sha: fixture_sha_a, ref_name: "refs/heads/main"))
   !no_sha && !no_ref && good
 }
 
 test fn the_first_unreadable_line_is_the_one_reported() -> Bool {
-  let scan = scan_advertised_refs(lines: [
+  let scan = extdeps.git.scan_advertised_refs(lines: [
     "first bad line",
     "second bad line",
   ])
   match scan {
-    AdvertisedRefsRead { refs: _ } => false
-    AdvertisedRefLineUnparsed { line, index } => line == "first bad line" && index == 0
+    extdeps.git.AdvertisedRefsRead { refs: _ } => false
+    extdeps.git.AdvertisedRefLineUnparsed { line, index } => line == "first bad line" && index == 0
   }
 }

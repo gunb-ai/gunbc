@@ -3,7 +3,7 @@ module extdeps.firmware.uefi_http_boot
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "uefi.org/specs/UEFI/2.10/24_Network_Protocols_HTTP_Boot.html"
   }
 }
@@ -15,7 +15,7 @@ type UefiHttpBootEntry {
 }
 
 fn uefi_http_boot_uri_wire(entry: UefiHttpBootEntry) -> String {
-  uri_wire(uri: entry.boot_file_uri)
+  extdeps.uri.uri_wire(uri: entry.boot_file_uri)
 }
 
 type UefiHttpBootProvisioning

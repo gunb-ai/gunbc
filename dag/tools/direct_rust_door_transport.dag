@@ -5,7 +5,7 @@ data direct_rust_door_fixture_lane_tag: String = "direct_rust_door_fixture_conta
 
 data direct_rust_door_transport_note: String = "Lane B wet transport realization (wise-ram-22 PR1 containment): mint_written_synthetic_emitted_artifact_from_fixture_inferred is the sole fixture write authority; FixtureCargoGreen only after cargo.Build.BuildManifest executes. No mint_written_provenanced_rust_artifact and no ProducerEmissionReceipt on this path."
 
-fn direct_rust_door_compile_workspace(workspace_dir: String) -> v2.std.logic.Bool {
+fn direct_rust_door_compile_workspace(workspace_dir: String) -> Bool {
   let build = cargo.Build.BuildManifest(
     workdir: workspace_dir,
     manifest_path: concat(workspace_dir, "/Cargo.toml"),
@@ -15,7 +15,7 @@ fn direct_rust_door_compile_workspace(workspace_dir: String) -> v2.std.logic.Boo
   build.success
 }
 
-fn run_direct_rust_door_emit_write_compile_smoke() -> v2.std.logic.Bool {
+fn run_direct_rust_door_emit_write_compile_smoke() -> Bool {
   let dir = shell.Mktemp.Dir()
   let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
   let pipeline_ok = match v2.compiler.self_host.fixture_synthetic_emission.mint_written_synthetic_emitted_artifact_from_fixture_inferred(
@@ -25,7 +25,7 @@ fn run_direct_rust_door_emit_write_compile_smoke() -> v2.std.logic.Bool {
     workspace_dir: dir.path,
     fixture_lane_tag: direct_rust_door_fixture_lane_tag
   ) {
-    Accepted { value: written, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: written, diagnostics: _ } =>
       let compile_ok =
         v2.compiler.self_host.fixture_synthetic_emission.written_synthetic_emitted_artifact_ok(written: written)
           && direct_rust_door_compile_workspace(workspace_dir: dir.path)
@@ -33,14 +33,14 @@ fn run_direct_rust_door_emit_write_compile_smoke() -> v2.std.logic.Bool {
         written: written,
         cargo_green: compile_ok
       ) {
-        Present { value: cargo_written } =>
+        v2.std.optional.Present { value: cargo_written } =>
           v2.compiler.self_host.fixture_synthetic_emission.written_synthetic_emitted_artifact_ok(written: cargo_written)
             && v2.compiler.self_host.fixture_synthetic_emission.written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
               written: cargo_written
             )
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
   let cleanup = shell.Remove.RecursiveForce(path: dir.path)
   dir.success

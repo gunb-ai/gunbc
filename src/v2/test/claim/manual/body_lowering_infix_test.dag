@@ -1,14 +1,14 @@
 module v2.test.manual.body_lowering_infix
 
 
-fn body_lowering_bool_node(pass: v2.std.logic.Bool) -> v2.std.node.Node {
+fn body_lowering_bool_node(pass: Bool) -> v2.std.node.Node {
   if pass {
-    node_synthetic(
+    v2.std.node.node_synthetic(
       kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_pass } },
       children: []
     )
   } else {
-    node_synthetic(
+    v2.std.node.node_synthetic(
       kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_fail } },
       children: []
     )
@@ -16,13 +16,13 @@ fn body_lowering_bool_node(pass: v2.std.logic.Bool) -> v2.std.node.Node {
 }
 
 fn body_lowering_atom_x() -> v2.std.node.Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_x } }, children: [])
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_x } }, children: [])
 }
 fn body_lowering_atom_plus() -> v2.std.node.Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_token_plus } }, children: [])
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_token_plus } }, children: [])
 }
 fn body_lowering_atom_y() -> v2.std.node.Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_y } }, children: [])
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^body_lowering_y } }, children: [])
 }
 
 fn body_lowering_infix_atoms() -> List<v2.std.node.Node> {
@@ -30,54 +30,54 @@ fn body_lowering_infix_atoms() -> List<v2.std.node.Node> {
 }
 
 fn body_lowering_emitted() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  lower_block_body_atoms(
+  v2.std.compilers.body_lowering.lower_block_body_atoms(
     atoms: body_lowering_infix_atoms(),
     witness: body_lowering_atom_plus()
   )
 }
 
-test fn body_lowering_emit_is_call() -> v2.std.logic.Bool {
+test fn body_lowering_emit_is_call() -> Bool {
   match body_lowering_emitted() {
-    Accepted { value: body, diagnostics: _ } => node_is_call(node: body)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } => v2.std.node_query.node_is_call(node: body)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn body_lowering_emit_callee_is_operator() -> v2.std.logic.Bool {
+test fn body_lowering_emit_callee_is_operator() -> Bool {
   match body_lowering_emitted() {
-    Accepted { value: body, diagnostics: _ } =>
-      match call_callee_target(node: body) {
-        Accepted { value: callee, diagnostics: _ } => callee == body_lowering_atom_plus()
-        Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+      match v2.std.node_query.call_callee_target(node: body) {
+        v2.std.diagnostic.Accepted { value: callee, diagnostics: _ } => callee == body_lowering_atom_plus()
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn body_lowering_emit_args_are_operands() -> v2.std.logic.Bool {
+test fn body_lowering_emit_args_are_operands() -> Bool {
   match body_lowering_emitted() {
-    Accepted { value: body, diagnostics: _ } =>
-      let args = call_argument_targets(node: body)
+    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
+      let args = v2.std.node_query.call_argument_targets(node: body)
       let arity_two = count(args) == 2
-      let first_is_x = match list_at_optional(xs: args, index: 0) {
-        Present { value: a0 } => a0 == body_lowering_atom_x()
-        Absent => false
+      let first_is_x = match v2.std.collection.list_at_optional(xs: args, index: 0) {
+        v2.std.collection.Present { value: a0 } => a0 == body_lowering_atom_x()
+        v2.std.collection.Absent => false
       }
-      let second_is_y = match list_at_optional(xs: args, index: 1) {
-        Present { value: a1 } => a1 == body_lowering_atom_y()
-        Absent => false
+      let second_is_y = match v2.std.collection.list_at_optional(xs: args, index: 1) {
+        v2.std.collection.Present { value: a1 } => a1 == body_lowering_atom_y()
+        v2.std.collection.Absent => false
       }
       arity_two && first_is_x && second_is_y
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn body_lowering_rejects_non_binary() -> v2.std.logic.Bool {
-  match lower_block_body_atoms(
+test fn body_lowering_rejects_non_binary() -> Bool {
+  match v2.std.compilers.body_lowering.lower_block_body_atoms(
     atoms: [body_lowering_atom_plus()],
     witness: body_lowering_atom_plus()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }

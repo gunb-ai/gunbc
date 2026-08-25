@@ -3,7 +3,7 @@ module extdeps.languages.json.emit
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.rfc-editor.org/rfc/rfc8259"
   }
 }
@@ -34,11 +34,11 @@ fn json_bool(b: Bool) -> JsonValue {
 }
 
 fn json_int(n: Int) -> JsonValue {
-  JsonNumber { lexeme: json_int_lexeme(n: n) }
+  JsonNumber { lexeme: extdeps.languages.json.grammar.json_int_lexeme(n: n) }
 }
 
 fn json_number_from_lexeme_string(s: String) -> JsonValue? {
-  match json_number_lexeme(s: s) {
+  match extdeps.languages.json.grammar.json_number_lexeme(s: s) {
     Present { value: l } => Present { value: JsonNumber { lexeme: l } }
     none => Absent
   }
@@ -83,7 +83,7 @@ fn escape_json_string(s: String) -> String {
 }
 
 fn quote_json_string(s: String) -> String {
-  concat("\"", concat(extdeps.languages.json.emit.escape_json_string(s: s), "\""))
+  concat("\"", concat(escape_json_string(s: s), "\""))
 }
 
 fn serialize_json_string(s: String) -> String {

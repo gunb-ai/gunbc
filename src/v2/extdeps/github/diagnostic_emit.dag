@@ -3,8 +3,8 @@ module v2.extdeps.github.diagnostic_emit
 
 fn gha_severity_command(severity: v2.std.diagnostic.DiagnosticSeverity) -> String {
   match severity {
-    SeverityError => extdeps.github.log_annotations.gha_log_command_error
-    SeverityWarning => extdeps.github.log_annotations.gha_log_command_warning
+    v2.std.diagnostic.SeverityError => extdeps.github.log_annotations.gha_log_command_error
+    v2.std.diagnostic.SeverityWarning => extdeps.github.log_annotations.gha_log_command_warning
   }
 }
 
@@ -20,5 +20,5 @@ fn emit_directive_gha_directive(d: v2.std.diagnostic.EmitDirective) -> v2.std.di
 }
 
 fn emit_directive_gha_target_model(d: v2.std.diagnostic.EmitDirective) -> v2.std.compilers.target_model.TargetModel {
-  emit_directive_bash_target_model(d: emit_directive_gha_directive(d: d))
+  v2.extdeps.languages.bash.emit_directive_bash_target_model(d: emit_directive_gha_directive(d: d))
 }

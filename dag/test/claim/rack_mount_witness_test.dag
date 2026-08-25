@@ -1,7 +1,7 @@
 module test.claim.rack_mount_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // A cited Rosewill 4U chassis asset in the cited Navepoint 18U rack. It is deliberately NOT called
 // an ALTRAD8UD fixture: no baseboard row, host identity, containment relation or compatibility
@@ -20,16 +20,16 @@ fn second_rosewill_4u_asset(lowest: product.placement_supply.RackUnitPosition) -
 // Free capacity is a RackUnit behind a construction, so the claim reads it through the carrier and
 // answers -1 on a refusal rather than a number that could be mistaken for a count.
 fn free_units(r: product.rack_mount.RackInstance) -> Int {
-  match rack_units_free(r: r) {
-    MountRefused { cause: _ } => 0 - 1
-    MountReady { value: u } => rack_unit_count(u: u)
+  match product.rack_mount.rack_units_free(r: r) {
+    product.rack_mount.MountRefused { cause: _ } => 0 - 1
+    product.rack_mount.MountReady { value: u } => std.measure.rack_unit_count(u: u)
   }
 }
 
 fn rack_of(mounts: List<product.rack_mount.ChassisMount>) -> product.rack_mount.RackInstance? {
-  match rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: mounts) {
-    MountRefused { cause: _ } => none
-    MountReady { value: r } => v2.std.optional.Present { value: r }
+  match product.rack_mount.rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: mounts) {
+    product.rack_mount.MountRefused { cause: _ } => none
+    product.rack_mount.MountReady { value: r } => v2.std.optional.Present { value: r }
   }
 }
 
@@ -37,31 +37,31 @@ fn rack_of(mounts: List<product.rack_mount.ChassisMount>) -> product.rack_mount.
 // A 4U chassis at U1 occupies U1..U4 inclusive. Modelling it as a position rather than an interval
 // is what lets two mounts overlap while their positions differ.
 test fn a_mount_occupies_an_interval_derived_from_the_cited_chassis() -> Bool {
-  mount_top_unit(m: rosewill_4u_asset()) == 4
+  product.rack_mount.mount_top_unit(m: rosewill_4u_asset()) == 4
 }
 
 // 18U of MOUNTING APERTURE is 800.1 mm exactly. Asserting 800100 micrometres keeps dead the
 // truncation an earlier revision shipped and an earlier version of this claim pinned at 800.
 // It is the aperture, not the rack's external height, which no cited row carries.
 test fn one_mounted_fixture_leaves_the_rest_of_the_rack_free() -> Bool {
-  match test.claim.rack_mount_witness.rack_of(mounts: [rosewill_4u_asset()]) {
-    Absent => false
-    Present { value: r } => free_units(r: r) == 14 && micrometer_count(m: rack_mounting_aperture_height(r: r)) == 800100
+  match rack_of(mounts: [rosewill_4u_asset()]) {
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: r } => free_units(r: r) == 14 && std.measure.micrometer_count(m: product.rack_mount.rack_mounting_aperture_height(r: r)) == 800100
   }
 }
 
 test fn two_hosts_stack_without_colliding() -> Bool {
-  match test.claim.rack_mount_witness.rack_of(mounts: [rosewill_4u_asset(), second_rosewill_4u_asset(lowest: 5)]) {
-    Absent => false
-    Present { value: r } => free_units(r: r) == 10
+  match rack_of(mounts: [rosewill_4u_asset(), second_rosewill_4u_asset(lowest: 5)]) {
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: r } => free_units(r: r) == 10
   }
 }
 
 // U4 is the top of the first chassis, so a second chassis starting there is metal in the same hole.
 test fn overlapping_mounts_refuse() -> Bool {
-  match rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [rosewill_4u_asset(), second_rosewill_4u_asset(lowest: 4)]) {
-    MountReady { value: _ } => false
-    MountRefused { cause: c } => match c { MountsCollide { lower: _, upper: _ } => true  _ => false }
+  match product.rack_mount.rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [rosewill_4u_asset(), second_rosewill_4u_asset(lowest: 4)]) {
+    product.rack_mount.MountReady { value: _ } => false
+    product.rack_mount.MountRefused { cause: c } => match c { product.rack_mount.MountsCollide { lower: _, upper: _ } => true  _ => false }
   }
 }
 
@@ -69,11 +69,11 @@ test fn overlapping_mounts_refuse() -> Bool {
 // swapped; the lower and upper identities must be decided by lowest_unit and stay put. An earlier
 // revision passed (already-admitted, incoming), so this pair of assertions disagreed with itself.
 fn collision_lower_upper(first: product.rack_mount.ChassisMount, second: product.rack_mount.ChassisMount) -> String {
-  match rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [first, second]) {
-    MountReady { value: _ } => "no-collision"
-    MountRefused { cause: c } =>
+  match product.rack_mount.rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [first, second]) {
+    product.rack_mount.MountReady { value: _ } => "no-collision"
+    product.rack_mount.MountRefused { cause: c } =>
       match c {
-        MountsCollide { lower: l, upper: u } => concat(concat((l as String), ">"), (u as String))
+        product.rack_mount.MountsCollide { lower: l, upper: u } => concat(concat((l as String), ">"), (u as String))
         _ => "other-cause"
       }
   }
@@ -87,24 +87,24 @@ test fn collision_labels_follow_position_not_input_order() -> Bool {
 }
 
 test fn a_mount_past_the_top_refuses_and_names_the_overshoot() -> Bool {
-  match rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [second_rosewill_4u_asset(lowest: 16)]) {
-    MountReady { value: _ } => false
-    MountRefused { cause: c } => match c { MountExceedsRackHeight { top_unit: t, rack_capacity: u } => t == 19 && rack_unit_count(u: u) == 18  _ => false }
+  match product.rack_mount.rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [second_rosewill_4u_asset(lowest: 16)]) {
+    product.rack_mount.MountReady { value: _ } => false
+    product.rack_mount.MountRefused { cause: c } => match c { product.rack_mount.MountExceedsRackHeight { top_unit: t, rack_capacity: u } => t == 19 && std.measure.rack_unit_count(u: u) == 18  _ => false }
   }
 }
 
 // Rack units are numbered from 1; U0 is not the floor, it does not exist.
 test fn a_mount_below_the_first_unit_refuses() -> Bool {
-  match rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [second_rosewill_4u_asset(lowest: 0)]) {
-    MountReady { value: _ } => false
-    MountRefused { cause: c } => match c { MountBelowFirstUnit { lowest_unit: l } => l == 0  _ => false }
+  match product.rack_mount.rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [second_rosewill_4u_asset(lowest: 0)]) {
+    product.rack_mount.MountReady { value: _ } => false
+    product.rack_mount.MountRefused { cause: c } => match c { product.rack_mount.MountBelowFirstUnit { lowest_unit: l } => l == 0  _ => false }
   }
 }
 
 test fn mounting_one_asset_twice_refuses() -> Bool {
-  match rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [rosewill_4u_asset(), rosewill_4u_asset()]) {
-    MountReady { value: _ } => false
-    MountRefused { cause: c } => match c { AssetMountedTwice { asset: _ } => true  _ => false }
+  match product.rack_mount.rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [rosewill_4u_asset(), rosewill_4u_asset()]) {
+    product.rack_mount.MountReady { value: _ } => false
+    product.rack_mount.MountRefused { cause: c } => match c { product.rack_mount.AssetMountedTwice { asset: _ } => true  _ => false }
   }
 }
 
@@ -115,28 +115,28 @@ test fn mounting_one_asset_twice_refuses() -> Bool {
 // 2, so the case the name described was never executed and a regression in the zero path would
 // have stayed green.
 test fn a_rack_filled_to_capacity_reports_zero_free() -> Bool {
-  match rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [
+  match product.rack_mount.rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [
     product.rack_mount.ChassisMount { asset: ("a" as product.placement_supply.PhysicalAssetIdentity), chassis: extdeps.chassis.rosewill.rosewill_rsv_r4000u_catalog, lowest_unit: 1 },
     product.rack_mount.ChassisMount { asset: ("b" as product.placement_supply.PhysicalAssetIdentity), chassis: extdeps.chassis.rosewill.rosewill_rsv_r4000u_catalog, lowest_unit: 5 },
     product.rack_mount.ChassisMount { asset: ("c" as product.placement_supply.PhysicalAssetIdentity), chassis: extdeps.chassis.rosewill.rosewill_rsv_r4000u_catalog, lowest_unit: 9 },
     product.rack_mount.ChassisMount { asset: ("d" as product.placement_supply.PhysicalAssetIdentity), chassis: extdeps.chassis.rosewill.rosewill_rsv_r4000u_catalog, lowest_unit: 13 },
-    product.rack_mount.ChassisMount { asset: ("e" as product.placement_supply.PhysicalAssetIdentity), chassis: rosewill_rsv_z2600u_catalog, lowest_unit: 17 },
+    product.rack_mount.ChassisMount { asset: ("e" as product.placement_supply.PhysicalAssetIdentity), chassis: extdeps.chassis.rosewill.rosewill_rsv_z2600u_catalog, lowest_unit: 17 },
   ]) {
-    MountRefused { cause: _ } => false
-    MountReady { value: r } => free_units(r: r) == 0
+    product.rack_mount.MountRefused { cause: _ } => false
+    product.rack_mount.MountReady { value: r } => free_units(r: r) == 0
   }
 }
 
 // The partially filled rack, kept as its own claim rather than left standing in for the boundary.
 test fn a_partially_filled_rack_reports_the_remainder() -> Bool {
-  match rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [
+  match product.rack_mount.rack_instance(identity: ("rack-a" as product.placement_supply.RackIdentity), catalog: extdeps.rack.navepoint.navepoint_18u_open_frame_catalog, mounts: [
     product.rack_mount.ChassisMount { asset: ("a" as product.placement_supply.PhysicalAssetIdentity), chassis: extdeps.chassis.rosewill.rosewill_rsv_r4000u_catalog, lowest_unit: 1 },
     product.rack_mount.ChassisMount { asset: ("b" as product.placement_supply.PhysicalAssetIdentity), chassis: extdeps.chassis.rosewill.rosewill_rsv_r4000u_catalog, lowest_unit: 5 },
     product.rack_mount.ChassisMount { asset: ("c" as product.placement_supply.PhysicalAssetIdentity), chassis: extdeps.chassis.rosewill.rosewill_rsv_r4000u_catalog, lowest_unit: 9 },
     product.rack_mount.ChassisMount { asset: ("d" as product.placement_supply.PhysicalAssetIdentity), chassis: extdeps.chassis.rosewill.rosewill_rsv_r4000u_catalog, lowest_unit: 13 },
   ]) {
-    MountRefused { cause: _ } => false
-    MountReady { value: r } => free_units(r: r) == 2
+    product.rack_mount.MountRefused { cause: _ } => false
+    product.rack_mount.MountReady { value: r } => free_units(r: r) == 2
   }
 }
 

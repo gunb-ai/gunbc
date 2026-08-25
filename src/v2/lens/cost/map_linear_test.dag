@@ -1,5 +1,6 @@
 module v2.test.lens_cost.map_linear
 
+
 data map_linear_body_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^map_linear_body_atom } },
   children: [],
@@ -22,9 +23,9 @@ data map_linear_input: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn map_linear_claim_holds() -> v2.std.logic.Bool {
+test fn map_linear_claim_holds() -> Bool {
   match v2.lens.cost.cost_lens(n: map_linear_input) {
-    Holds { value: actual } =>
+    v2.std.witness.Holds { value: actual } =>
       actual == v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: map_linear_input } }
     _ => false
   }

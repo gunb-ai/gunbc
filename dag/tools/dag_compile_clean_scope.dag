@@ -11,22 +11,22 @@ type CompileCleanScopeDisposition
 data compile_clean_scope_import_closure_reground_note: String = "2026-07-16 reground (channel 2 of operator fork (c), 2026-07-10): compile-clean per-PR selection consumes v2.lens.module_graph.entry_affected_by_touched_paths (import-closure grain, edge-source-agnostic) — the same authority the discovery-corpus entry_file_touched channel regrounded onto. The fn-arrow DependencyView chain (entry_affected_by_dependency_view, gated on corpus_dependency_view_per_pr_substrate_ready / #6239) is no longer a consumer here; it remains in tree as the decl-level candidate only. Two guards keep the whole-tree baseline where import-closure selection cannot answer: (a) any touched path outside the selectable universe (docs/** or *.dag) is a compiler/infra change — whole-tree; (b) any non-docs departed path (deletion/rename-from) is invisible to current-tree adjacency (a dangling import drops the edge, so the broken importer would not be selected) — whole-tree."
 
 data compile_clean_docs_universe_path_grain_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.floor_compile_clean_predicates",
     decl_name: "compile_clean_all_touched_paths_docs_universe",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data compile_clean_docs_universe_path_grain_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: compile_clean_docs_universe_path_grain — docs/** path-prefix predicate short-circuits floor admission ahead of import-closure entry selection; DISSOLVES WHEN v2.lens.module_graph.entry_affected_by_touched_paths over the merge-base diff is the sole authority for the docs-only skip (docs paths fall out of every entry closure structurally, so the prefix predicate becomes a redundant second representation and the witness bin reads the scope disposition without a path-grain short-circuit)")
+data compile_clean_docs_universe_path_grain_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: compile_clean_docs_universe_path_grain — docs/** path-prefix predicate short-circuits floor admission ahead of import-closure entry selection; DISSOLVES WHEN v2.lens.module_graph.entry_affected_by_touched_paths over the merge-base diff is the sole authority for the docs-only skip (docs paths fall out of every entry closure structurally, so the prefix predicate becomes a redundant second representation and the witness bin reads the scope disposition without a path-grain short-circuit)")
 
 fn compile_clean_pool_roots() -> List<String> {
-  compile_clean_partition_boundary().pool_roots
+  tools.dag_compile_clean_partition.compile_clean_partition_boundary().pool_roots
 }
 
 fn compile_clean_entry_roots() -> List<String> {
-  compile_clean_partition_boundary().entry_roots
+  tools.dag_compile_clean_partition.compile_clean_partition_boundary().entry_roots
 }
 
 fn compile_clean_affected_entry_paths_from_roster(
@@ -57,7 +57,7 @@ fn compile_clean_scope_disposition_probe(
   roster: List<String>,
   pool_roots: List<String>
 ) -> CompileCleanScopeDisposition {
-  if list_length(items: touched_paths) == 0 {
+  if std.types.list_length(items: touched_paths) == 0 {
     RequireWholeTree {
       reason: "empty touched-path set — a diff that observed nothing is indistinguishable from a diff that could not be observed, so the whole tree is the only sound baseline (a main-push squash merge lands here)"
     }
@@ -79,7 +79,7 @@ fn compile_clean_scope_disposition_probe(
       touched_paths: touched_paths,
       roster: roster
     )
-    if list_length(items: affected) > 0 {
+    if std.types.list_length(items: affected) > 0 {
       ScopedRun { entry_paths: affected }
     } else {
       RequireWholeTree {
@@ -106,8 +106,8 @@ fn compile_clean_scope_disposition_from_diff(
   touched_paths: List<String>,
   departed_paths: List<String>
 ) -> CompileCleanScopeDisposition {
-  match compile_clean_shard_entry_paths() {
-    CompileCleanShardEntryPathsDuplicatePath { path: p, first: _, duplicate: _ } =>
+  match tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths() {
+    tools.dag_compile_clean_shard_roster.CompileCleanShardEntryPathsDuplicatePath { path: p, first: _, duplicate: _ } =>
       RefuseShardRosterDuplicate {
         path: p,
         reason: concat(
@@ -115,7 +115,7 @@ fn compile_clean_scope_disposition_from_diff(
           p,
         )
       }
-    CompileCleanShardEntryPathsBuilt { paths: roster } =>
+    tools.dag_compile_clean_shard_roster.CompileCleanShardEntryPathsBuilt { paths: roster } =>
       compile_clean_scope_disposition_from_diff_with_roster(
         touched_paths: touched_paths,
         departed_paths: departed_paths,
@@ -283,10 +283,10 @@ fn witness_docs_only_departure_still_skips() -> Bool {
 fn compile_clean_scope_disposition_from_decl_facts(
   touched_paths: List<String>,
   departed_paths: List<String>,
-  decl_facts: List<tools.dag_compile_clean_shard_roster.CompileCleanModuleDeclFact>,
+  decl_facts: List<CompileCleanModuleDeclFact>,
 ) -> CompileCleanScopeDisposition {
-  match compile_clean_shard_entry_paths_from(decl_facts: decl_facts) {
-    CompileCleanShardEntryPathsDuplicatePath { path: p, first: _, duplicate: _ } =>
+  match tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths_from(decl_facts: decl_facts) {
+    tools.dag_compile_clean_shard_roster.CompileCleanShardEntryPathsDuplicatePath { path: p, first: _, duplicate: _ } =>
       RefuseShardRosterDuplicate {
         path: p,
         reason: concat(
@@ -294,7 +294,7 @@ fn compile_clean_scope_disposition_from_decl_facts(
           p,
         )
       }
-    CompileCleanShardEntryPathsBuilt { paths: roster } =>
+    tools.dag_compile_clean_shard_roster.CompileCleanShardEntryPathsBuilt { paths: roster } =>
       compile_clean_scope_disposition_from_diff_with_roster(
         touched_paths: touched_paths,
         departed_paths: departed_paths,
@@ -307,7 +307,7 @@ fn witness_shard_roster_duplicate_refuses_at_scope_admission() -> Bool {
   match compile_clean_scope_disposition_from_decl_facts(
     touched_paths: ["dag/std/logic.dag"],
     departed_paths: [],
-    decl_facts: compile_clean_shard_roster_mechanism_fixture_duplicate_facts,
+    decl_facts: tools.dag_compile_clean_shard_roster.compile_clean_shard_roster_mechanism_fixture_duplicate_facts,
   ) {
     RefuseShardRosterDuplicate { path: p, reason: reason } =>
       p == "dag/fixture/alpha.dag"
@@ -325,7 +325,7 @@ fn witness_empty_touched_duplicate_roster_refuses_at_admission() -> Bool {
   match compile_clean_scope_disposition_from_decl_facts(
     touched_paths: [],
     departed_paths: [],
-    decl_facts: compile_clean_shard_roster_mechanism_fixture_duplicate_facts,
+    decl_facts: tools.dag_compile_clean_shard_roster.compile_clean_shard_roster_mechanism_fixture_duplicate_facts,
   ) {
     RefuseShardRosterDuplicate { path: p, reason: reason } =>
       p == "dag/fixture/alpha.dag"

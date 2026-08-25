@@ -7,12 +7,12 @@ fn ms_sym_node(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn ms_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> v2.std.node.Node {
-  fold_list_node(
+  v2.std.algebra.fold_list_node(
     xs: segments,
     item_node: fn(sym) { ms_sym_node(sym: sym) }
   )
@@ -26,22 +26,22 @@ fn ms_pre_graft_module_root(
     kind: v2.std.node.TypeNode { connective: Conj },
     children: concat(
       [
-        dag_named_edge(
+        v2.extdeps.languages.dag.dag_named_edge(
           name: ^dag_surface_module_header,
-          target: dag_grammar_atom(id: ^dag_surface_module_header)
+          target: v2.extdeps.languages.dag.dag_grammar_atom(id: ^dag_surface_module_header)
         ),
-        dag_named_edge(
+        v2.extdeps.languages.dag.dag_named_edge(
           name: ^dag_surface_module_header_qualified_name,
           target: ms_qn_spine(segments: qn)
         )
       ],
       body_edges
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-data ms_module_qn: v2.std.qualified_name.QualifiedName = qualified_name_from_dotted_string(
+data ms_module_qn: v2.std.qualified_name.QualifiedName = v2.std.qualified_name.qualified_name_from_dotted_string(
   dotted: "v2.test.namespace_graft.marker"
 )
 
@@ -62,56 +62,56 @@ data ms_pre_graft_root: v2.std.node.Node = ms_pre_graft_module_root(
             target: ms_sym_node(sym: ^MsNo)
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
       }
     }
   ]
 )
 
-data ms_grafted_root: v2.std.node.Node = match module_header_containment_graft(root: ms_pre_graft_root) {
-  Accepted { value: grafted, diagnostics: _ } => grafted
+data ms_grafted_root: v2.std.node.Node = match v2.compiler.namespace_graft.module_header_containment_graft(root: ms_pre_graft_root) {
+  v2.std.diagnostic.Accepted { value: grafted, diagnostics: _ } => grafted
   Rejected { diagnostics: _ } => ms_pre_graft_root
 }
 
-data ms_stripped_root: v2.std.node.Node = namespace_graft_strip_provenance_marker(root: ms_grafted_root)
+data ms_stripped_root: v2.std.node.Node = v2.compiler.namespace_graft.namespace_graft_strip_provenance_marker(root: ms_grafted_root)
 
-fn ms_fill_index(root: v2.std.node.Node) -> v2.std.symbol_index.SymbolIndex {
-  symbol_index_fill_containment_node(
+fn ms_fill_index(root: v2.std.node.Node) -> SymbolIndex {
+  v2.compiler.symbol_index_fill.symbol_index_fill_containment_node(
     index: v2.std.symbol_index.empty_symbol_index(),
-    path: Empty,
+    path: std.algebra.Empty,
     node: root
   )
 }
 
 fn ms_lookup_pair_eq(
-  marked: v2.std.symbol_index.SymbolIndex,
-  stripped: v2.std.symbol_index.SymbolIndex,
+  marked: SymbolIndex,
+  stripped: SymbolIndex,
   path: v2.std.qualified_name.QualifiedName
-) -> v2.std.logic.Bool {
+) -> Bool {
   match v2.std.symbol_index.symbol_index_lookup(index: marked, qualified_path: path) {
-    Present { value: marked_node } =>
+    v2.std.collection.Present { value: marked_node } =>
       match v2.std.symbol_index.symbol_index_lookup(index: stripped, qualified_path: path) {
-        Present { value: stripped_node } => marked_node == stripped_node
-        Absent => false
+        v2.std.collection.Present { value: stripped_node } => marked_node == stripped_node
+        v2.std.collection.Absent => false
       }
-    Absent =>
+    v2.std.collection.Absent =>
       match v2.std.symbol_index.symbol_index_lookup(index: stripped, qualified_path: path) {
-        Present { value: _ } => false
-        Absent => true
+        v2.std.collection.Present { value: _ } => false
+        v2.std.collection.Absent => true
       }
   }
 }
 
-fn ms_marker_strip_fill_equivalent_holds() -> v2.std.logic.Bool {
+fn ms_marker_strip_fill_equivalent_holds() -> Bool {
   let marked = ms_fill_index(root: ms_grafted_root)
   let stripped = ms_fill_index(root: ms_stripped_root)
-  let type_path = qualified_name_from_dotted_string(
+  let type_path = v2.std.qualified_name.qualified_name_from_dotted_string(
     dotted: "v2.test.namespace_graft.marker.MsPilotType"
   )
-  let yes_path = qualified_name_from_dotted_string(
+  let yes_path = v2.std.qualified_name.qualified_name_from_dotted_string(
     dotted: "v2.test.namespace_graft.marker.MsPilotType.MsYes"
   )
-  let no_path = qualified_name_from_dotted_string(
+  let no_path = v2.std.qualified_name.qualified_name_from_dotted_string(
     dotted: "v2.test.namespace_graft.marker.MsPilotType.MsNo"
   )
   ms_lookup_pair_eq(marked: marked, stripped: stripped, path: type_path)
@@ -119,13 +119,13 @@ fn ms_marker_strip_fill_equivalent_holds() -> v2.std.logic.Bool {
     && ms_lookup_pair_eq(marked: marked, stripped: stripped, path: no_path)
 }
 
-test fn namespace_graft_marker_strip_fill_equivalent_holds() -> v2.std.logic.Bool {
+test fn namespace_graft_marker_strip_fill_equivalent_holds() -> Bool {
   ms_marker_strip_fill_equivalent_holds()
 }
 
 data claim_namespace_graft_marker_strip_fill_equivalent: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "namespace_graft: stripping provenance marker leaves symbol_index fill unchanged",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   lhs: ms_sym_node(sym: ^ms_bool_true),
   rhs: ms_sym_node(
     sym: if ms_marker_strip_fill_equivalent_holds() {
@@ -134,5 +134,5 @@ data claim_namespace_graft_marker_strip_fill_equivalent: v2.std.verification.Tes
       ^ms_bool_false
     }
   ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }

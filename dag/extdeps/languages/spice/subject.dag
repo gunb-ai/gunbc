@@ -3,7 +3,7 @@ module extdeps.languages.spice.subject
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "ptolemy.berkeley.edu/projects/embedded/pubs/downloads/spice/index.htm"
   }
 }
@@ -20,10 +20,10 @@ data spice_netlist_language_model_scope: extdeps.external_authority.ExternalMode
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.languages.spice.subject",
       decl_name: "spice_netlist_language",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.languages.spice.subject.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 

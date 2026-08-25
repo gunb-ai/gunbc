@@ -1,5 +1,7 @@
 module v2.lens.synthesis
 
+
+
 type LowerBoundTechnique
   = DecisionTree
   | AlgebraicRank
@@ -9,29 +11,29 @@ type LowerBoundTechnique
 
 type DeclaredRelationBound {
   technique: LowerBoundTechnique
-  lower_bound: v2.lens.complexity.ComplexityBound
-  relation_locus: v2.std.diagnostic.Locus
+  lower_bound: ComplexityBound
+  relation_locus: Locus
 }
 
 type SynthesisOutcome
   = SynthesisGap {
-      realization_cost: v2.lens.complexity.ComplexityBound
+      realization_cost: ComplexityBound
       lower_bound: DeclaredRelationBound
-      report: v2.std.report.Report
+      report: Report
     }
   | SynthesisOptimal {
-      realization_cost: v2.lens.complexity.ComplexityBound
+      realization_cost: ComplexityBound
       lower_bound: DeclaredRelationBound
     }
   | SynthesisNoTechnique {
-      diagnostic: v2.std.diagnostic.Diagnostic
+      diagnostic: Diagnostic
     }
 
-fn synthesis_no_technique_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
-  v2.std.diagnostic.Diagnostic {
+fn synthesis_no_technique_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
     reason: ^synthesis_no_technique_reason_symbol,
     at: node_locus(node: n),
-    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+    correction: Unavailable { reason: AmbiguousIntent }
   }
 }
 
@@ -40,7 +42,7 @@ fn decision_tree_declared_bound(n: Node) -> DeclaredRelationBound {
     technique: DecisionTree,
     lower_bound: sized_complexity(
       class: SizedLinearithmicClass,
-      variables: single_complexity_variable(size_var: v2.lens.cost.SizeVariable { source: n })
+      variables: single_complexity_variable(size_var: SizeVariable { source: n })
     ),
     relation_locus: node_locus(node: n)
   }
@@ -51,13 +53,13 @@ fn information_theoretic_declared_bound(n: Node) -> DeclaredRelationBound {
     technique: InformationTheoretic,
     lower_bound: sized_complexity(
       class: SizedLinearClass,
-      variables: single_complexity_variable(size_var: v2.lens.cost.SizeVariable { source: n })
+      variables: single_complexity_variable(size_var: SizeVariable { source: n })
     ),
     relation_locus: node_locus(node: n)
   }
 }
 
-fn assess_decision_tree(n: Node, realization: v2.lens.complexity.ComplexityBound) -> SynthesisOutcome {
+fn assess_decision_tree(n: Node, realization: ComplexityBound) -> SynthesisOutcome {
   if asymptotic_class_dominates(
     a: complexity_bound_class(b: realization),
     b: ClassLinearithmic
@@ -65,7 +67,7 @@ fn assess_decision_tree(n: Node, realization: v2.lens.complexity.ComplexityBound
     SynthesisGap {
       realization_cost: realization,
       lower_bound: decision_tree_declared_bound(n: n),
-      report: v2.std.report.Report {
+      report: Report {
         reason: SynthesisGapDecisionTree,
         at: node_locus(node: n)
       }
@@ -78,7 +80,7 @@ fn assess_decision_tree(n: Node, realization: v2.lens.complexity.ComplexityBound
   }
 }
 
-fn assess_information_theoretic(n: Node, realization: v2.lens.complexity.ComplexityBound) -> SynthesisOutcome {
+fn assess_information_theoretic(n: Node, realization: ComplexityBound) -> SynthesisOutcome {
   if asymptotic_class_dominates(
     a: complexity_bound_class(b: realization),
     b: ClassLinear
@@ -95,7 +97,7 @@ fn assess_information_theoretic(n: Node, realization: v2.lens.complexity.Complex
       SynthesisGap {
         realization_cost: realization,
         lower_bound: information_theoretic_declared_bound(n: n),
-        report: v2.std.report.Report {
+        report: Report {
           reason: SynthesisGapInformationTheoretic,
           at: node_locus(node: n)
         }
@@ -109,24 +111,24 @@ fn assess_information_theoretic(n: Node, realization: v2.lens.complexity.Complex
   }
 }
 
-fn outcome_to_reports(outcome: SynthesisOutcome) -> List<v2.std.report.Report> {
+fn outcome_to_reports(outcome: SynthesisOutcome) -> List<Report> {
   match outcome {
     SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
-      std.algebra.Cons { head: r, tail: std.algebra.Empty }
-    SynthesisOptimal { realization_cost: _, lower_bound: _ } => std.algebra.Empty
-    SynthesisNoTechnique { diagnostic: _ } => std.algebra.Empty
+      Cons { head: r, tail: Empty }
+    SynthesisOptimal { realization_cost: _, lower_bound: _ } => Empty
+    SynthesisNoTechnique { diagnostic: _ } => Empty
   }
 }
 
-fn outcome_to_diagnostics(outcome: SynthesisOutcome) -> List<v2.std.diagnostic.Diagnostic> {
+fn outcome_to_diagnostics(outcome: SynthesisOutcome) -> List<Diagnostic> {
   match outcome {
-    SynthesisGap { realization_cost: _, lower_bound: _, report: _ } => std.algebra.Empty
-    SynthesisOptimal { realization_cost: _, lower_bound: _ } => std.algebra.Empty
-    SynthesisNoTechnique { diagnostic: d } => std.algebra.Cons { head: d, tail: std.algebra.Empty }
+    SynthesisGap { realization_cost: _, lower_bound: _, report: _ } => Empty
+    SynthesisOptimal { realization_cost: _, lower_bound: _ } => Empty
+    SynthesisNoTechnique { diagnostic: d } => Cons { head: d, tail: Empty }
   }
 }
 
-fn synthesis_lens_known_reports(n: Node, declared_technique: LowerBoundTechnique, realization: v2.lens.complexity.ComplexityBound) -> List<v2.std.report.Report> {
+fn synthesis_lens_known_reports(n: Node, declared_technique: LowerBoundTechnique, realization: ComplexityBound) -> List<Report> {
   match declared_technique {
     DecisionTree =>
       outcome_to_reports(outcome: assess_decision_tree(n: n, realization: realization))
@@ -141,10 +143,10 @@ fn synthesis_lens_known_reports(n: Node, declared_technique: LowerBoundTechnique
   }
 }
 
-fn synthesis_lens(n: Node, declared_technique: LowerBoundTechnique) -> List<v2.std.report.Report> {
+fn synthesis_lens(n: Node, declared_technique: LowerBoundTechnique) -> List<Report> {
   let realization = v2.lens.complexity.complexity_lens(n: n)
   match realization {
-    UnknownComplexity { diagnostic: _ } => std.algebra.Empty
+    UnknownComplexity { diagnostic: _ } => Empty
     ConstantComplexity =>
       synthesis_lens_known_reports(n: n, declared_technique: declared_technique, realization: realization)
     SizedComplexity { class: _, variables: _ } =>
@@ -152,23 +154,23 @@ fn synthesis_lens(n: Node, declared_technique: LowerBoundTechnique) -> List<v2.s
   }
 }
 
-fn decision_tree_synthesis_lens_read(n: Node) -> List<v2.std.report.Report> {
+fn decision_tree_synthesis_lens_read(n: Node) -> List<Report> {
   synthesis_lens(n: n, declared_technique: DecisionTree)
 }
 
-data decision_tree_synthesis_advisory_lens: v2.lens.application.AdvisoryLens = v2.lens.application.AdvisoryLens {
+data decision_tree_synthesis_advisory_lens: AdvisoryLens = AdvisoryLens {
   read: decision_tree_synthesis_lens_read
 }
 
-fn information_theoretic_synthesis_lens_read(n: Node) -> List<v2.std.report.Report> {
+fn information_theoretic_synthesis_lens_read(n: Node) -> List<Report> {
   synthesis_lens(n: n, declared_technique: InformationTheoretic)
 }
 
-data information_theoretic_synthesis_advisory_lens: v2.lens.application.AdvisoryLens = v2.lens.application.AdvisoryLens {
+data information_theoretic_synthesis_advisory_lens: AdvisoryLens = AdvisoryLens {
   read: information_theoretic_synthesis_lens_read
 }
 
-fn synthesis_lens_known_diagnostics(n: Node, declared_technique: LowerBoundTechnique, realization: v2.lens.complexity.ComplexityBound) -> List<v2.std.diagnostic.Diagnostic> {
+fn synthesis_lens_known_diagnostics(n: Node, declared_technique: LowerBoundTechnique, realization: ComplexityBound) -> List<Diagnostic> {
   match declared_technique {
     DecisionTree =>
       outcome_to_diagnostics(outcome: assess_decision_tree(n: n, realization: realization))
@@ -183,10 +185,10 @@ fn synthesis_lens_known_diagnostics(n: Node, declared_technique: LowerBoundTechn
   }
 }
 
-fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) -> List<v2.std.diagnostic.Diagnostic> {
+fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) -> List<Diagnostic> {
   let realization = v2.lens.complexity.complexity_lens(n: n)
   match realization {
-    UnknownComplexity { diagnostic: d } => std.algebra.Cons { head: d, tail: std.algebra.Empty }
+    UnknownComplexity { diagnostic: d } => Cons { head: d, tail: Empty }
     ConstantComplexity =>
       synthesis_lens_known_diagnostics(n: n, declared_technique: declared_technique, realization: realization)
     SizedComplexity { class: _, variables: _ } =>
@@ -194,6 +196,6 @@ fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) 
   }
 }
 
-data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
+data construction_justification: ConstructionJustification = ConstructionJustification {
   class: RatchetForever
 }

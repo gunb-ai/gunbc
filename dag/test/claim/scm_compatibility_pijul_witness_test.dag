@@ -1,18 +1,18 @@
 module test.claim.scm_compatibility_pijul_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn pijul_fixture_observation() -> extdeps.pijul.PijulReadBackObservation {
   extdeps.pijul.PijulReadBackObservation {
-    pijul_version: pijul_upstream_version,
-    projection: pijul_r0_fixture_projection(),
+    pijul_version: extdeps.pijul.pijul_upstream_version,
+    projection: test.claim.pijul_upstream_model_witness.pijul_r0_fixture_projection(),
   }
 }
 
 fn pijul_fixture_binding() -> gunbc.scm_compatibility.pijul.PijulCompatibilityBindingOutcome {
-  pijul_compatibility_bind(
-    projection: pijul_r0_fixture_projection(),
+  gunbc.scm_compatibility.pijul.pijul_compatibility_bind(
+    projection: test.claim.pijul_upstream_model_witness.pijul_r0_fixture_projection(),
     target: "main",
     read_back: pijul_fixture_observation(),
   )
@@ -20,38 +20,38 @@ fn pijul_fixture_binding() -> gunbc.scm_compatibility.pijul.PijulCompatibilityBi
 
 test fn witness_pijul_r1_consumes_native_projection_and_readback() -> Bool {
   match pijul_fixture_binding() {
-    PijulCompatibilityBindingRefused { cause: _ } => false
-    PijulCompatibilityBound { receipt } =>
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBound { receipt } =>
       receipt.target == "main"
         && count(receipt.generation.changes) == 3
-        && match pijul_compatibility_projection_receipt(
+        && match gunbc.scm_compatibility.pijul.pijul_compatibility_projection_receipt(
           receipt: receipt,
         ).advance {
-          CompatibilityAdvanceUnavailable { cause: _ } => true
+          gunbc.scm_compatibility_shape.CompatibilityAdvanceUnavailable { cause: _ } => true
           _ => false
         }
   }
 }
 
 test fn witness_pijul_realization_preserves_c0_primary_behavior() -> Bool {
-  let original = native_scm_receipt_for(
-    scenario: TwoIndependentChangesLand,
+  let original = test.claim.native_scm_interaction_scenario_fixture.native_scm_receipt_for(
+    scenario: test.claim.native_scm_interaction_scenario_fixture.TwoIndependentChangesLand,
   )
   match pijul_fixture_binding() {
-    PijulCompatibilityBindingRefused { cause: _ } => false
-    PijulCompatibilityBound { receipt } => {
-      let projection = compatibility_projection_from_handler(
-        handler: pijul_compatibility_projection_handler(),
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBound { receipt } => {
+      let projection = gunbc.scm_compatibility_shape.compatibility_projection_from_handler(
+        handler: gunbc.scm_compatibility.pijul.pijul_compatibility_projection_handler(),
         receipt: receipt,
       )
-      let attached = native_scm_attach_projection(
+      let attached = gunbc.native_scm_interaction_contract.native_scm_attach_projection(
         receipt: original,
         projection: projection,
       )
       attached.identity == original.identity
         && attached.transition == original.transition
         && attached.primary == original.primary
-        && native_scm_primary_label(primary: attached.primary) == "Landed"
+        && gunbc.native_scm_interaction_contract.native_scm_primary_label(primary: attached.primary) == "Landed"
         && projection.realization == "pijul-r0"
     }
   }
@@ -59,29 +59,29 @@ test fn witness_pijul_realization_preserves_c0_primary_behavior() -> Bool {
 
 test fn witness_pijul_missing_advance_refuses_required_capability() -> Bool {
   match pijul_fixture_binding() {
-    PijulCompatibilityBindingRefused { cause: _ } => false
-    PijulCompatibilityBound { receipt } => {
-      let capability = pijul_compatibility_projection_receipt(
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBound { receipt } => {
+      let capability = gunbc.scm_compatibility.pijul.pijul_compatibility_projection_receipt(
         receipt: receipt,
       ).advance
-      match compatibility_check_advance_requirement(
-        requirement: CompatibilityObservationOnly,
+      match gunbc.scm_compatibility_shape.compatibility_check_advance_requirement(
+        requirement: gunbc.scm_compatibility_shape.CompatibilityObservationOnly,
         observed: capability,
       ) {
-        CompatibilityCapabilitySatisfied =>
-          match compatibility_check_advance_requirement(
+        gunbc.scm_compatibility_shape.CompatibilityCapabilitySatisfied =>
+          match gunbc.scm_compatibility_shape.compatibility_check_advance_requirement(
             requirement: gunbc.scm_compatibility_shape.CompatibilityModeledAdvanceRequired {
-              guarantee: CompatibilityExactCompareAndAdvance,
+              guarantee: gunbc.scm_compatibility_shape.CompatibilityExactCompareAndAdvance,
             },
             observed: capability,
           ) {
-            CompatibilityCapabilityRefused {
+            gunbc.scm_compatibility_shape.CompatibilityCapabilityRefused {
               requirement: _,
               observed: _,
             } => true
-            CompatibilityCapabilitySatisfied => false
+            gunbc.scm_compatibility_shape.CompatibilityCapabilitySatisfied => false
           }
-        CompatibilityCapabilityRefused {
+        gunbc.scm_compatibility_shape.CompatibilityCapabilityRefused {
           requirement: _,
           observed: _,
         } => false
@@ -92,13 +92,13 @@ test fn witness_pijul_missing_advance_refuses_required_capability() -> Bool {
 
 test fn witness_pijul_preserves_upstream_change_evidence() -> Bool {
   match pijul_fixture_binding() {
-    PijulCompatibilityBindingRefused { cause: _ } => false
-    PijulCompatibilityBound { receipt } => {
-      let profile = pijul_compatibility_projection_receipt(
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBound { receipt } => {
+      let profile = gunbc.scm_compatibility.pijul.pijul_compatibility_projection_receipt(
         receipt: receipt,
       ).fidelity
       match profile.upstream_change_evidence {
-        CompatibilityFidelityPreserved => true
+        gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved => true
         _ => false
       }
     }
@@ -107,10 +107,10 @@ test fn witness_pijul_preserves_upstream_change_evidence() -> Bool {
 
 test fn witness_pijul_readback_identity_comes_from_observation() -> Bool {
   match pijul_fixture_binding() {
-    PijulCompatibilityBindingRefused { cause: _ } => false
-    PijulCompatibilityBound { receipt: expected } =>
-      match pijul_compatibility_bind(
-        projection: pijul_r0_fixture_projection(),
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBound { receipt: expected } =>
+      match gunbc.scm_compatibility.pijul.pijul_compatibility_bind(
+        projection: test.claim.pijul_upstream_model_witness.pijul_r0_fixture_projection(),
         target: "main",
         read_back: extdeps.pijul.PijulReadBackObservation {
           pijul_version: extdeps.pijul.PijulUpstreamVersion {
@@ -119,17 +119,17 @@ test fn witness_pijul_readback_identity_comes_from_observation() -> Bool {
             patch: 0,
             beta: 21,
           },
-          projection: pijul_r0_fixture_projection(),
+          projection: test.claim.pijul_upstream_model_witness.pijul_r0_fixture_projection(),
         },
       ) {
-        PijulCompatibilityBindingRefused { cause: _ } => false
-        PijulCompatibilityBound { receipt: other_observer } => {
-          let expected_projection = compatibility_projection_from_handler(
-            handler: pijul_compatibility_projection_handler(),
+        gunbc.scm_compatibility.pijul.PijulCompatibilityBindingRefused { cause: _ } => false
+        gunbc.scm_compatibility.pijul.PijulCompatibilityBound { receipt: other_observer } => {
+          let expected_projection = gunbc.scm_compatibility_shape.compatibility_projection_from_handler(
+            handler: gunbc.scm_compatibility.pijul.pijul_compatibility_projection_handler(),
             receipt: expected,
           )
-          let other_projection = compatibility_projection_from_handler(
-            handler: pijul_compatibility_projection_handler(),
+          let other_projection = gunbc.scm_compatibility_shape.compatibility_projection_from_handler(
+            handler: gunbc.scm_compatibility.pijul.pijul_compatibility_projection_handler(),
             receipt: other_observer,
           )
           expected_projection.generation_evidence == other_projection.generation_evidence
@@ -140,32 +140,32 @@ test fn witness_pijul_readback_identity_comes_from_observation() -> Bool {
 }
 
 test fn witness_pijul_unavailable_readback_refuses_binding() -> Bool {
-  match pijul_compatibility_bind(
-    projection: pijul_r0_fixture_projection(),
+  match gunbc.scm_compatibility.pijul.pijul_compatibility_bind(
+    projection: test.claim.pijul_upstream_model_witness.pijul_r0_fixture_projection(),
     target: "main",
     read_back: extdeps.pijul.PijulReadBackObservation {
-      pijul_version: pijul_upstream_version,
+      pijul_version: extdeps.pijul.pijul_upstream_version,
       projection: extdeps.pijul.PijulInaccessibleProjection {
         reason: "fixture unavailable",
       },
     },
   ) {
-    PijulCompatibilityBindingRefused { cause: _ } => true
-    PijulCompatibilityBound { receipt: _ } => false
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBindingRefused { cause: _ } => true
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBound { receipt: _ } => false
   }
 }
 
 test fn witness_pijul_readback_identity_changes_with_observed_state() -> Bool {
-  let repository = pijul_r0_fixture_repository()
-  let other_projection = projection_with_channels(
-    projection: pijul_r0_fixture_projection(),
+  let repository = test.claim.pijul_upstream_model_witness.pijul_r0_fixture_repository()
+  let other_projection = test.claim.pijul_upstream_model_witness.projection_with_channels(
+    projection: test.claim.pijul_upstream_model_witness.pijul_r0_fixture_projection(),
     channels: repository.channels
       |> map(channel =>
         if channel.name == "main" || channel.name == "review" {
           extdeps.pijul.PijulChannel {
             name: channel.name,
             state_identity: extdeps.pijul.PijulChannelStateIdentity {
-              state: pijul_state_partial,
+              state: test.claim.pijul_upstream_model_witness.pijul_state_partial,
               changes: channel.state_identity.changes,
               producer: channel.state_identity.producer,
             },
@@ -176,22 +176,22 @@ test fn witness_pijul_readback_identity_changes_with_observed_state() -> Bool {
       ),
   )
   match pijul_fixture_binding() {
-    PijulCompatibilityBindingRefused { cause: _ } => false
-    PijulCompatibilityBound { receipt: expected } =>
-      match pijul_compatibility_bind(
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.pijul.PijulCompatibilityBound { receipt: expected } =>
+      match gunbc.scm_compatibility.pijul.pijul_compatibility_bind(
         projection: other_projection,
         target: "main",
         read_back: extdeps.pijul.PijulReadBackObservation {
-          pijul_version: pijul_upstream_version,
+          pijul_version: extdeps.pijul.pijul_upstream_version,
           projection: other_projection,
         },
       ) {
-        PijulCompatibilityBindingRefused { cause: _ } => false
-        PijulCompatibilityBound { receipt: other_state } => {
-          let expected_projection = pijul_compatibility_projection_receipt(
+        gunbc.scm_compatibility.pijul.PijulCompatibilityBindingRefused { cause: _ } => false
+        gunbc.scm_compatibility.pijul.PijulCompatibilityBound { receipt: other_state } => {
+          let expected_projection = gunbc.scm_compatibility.pijul.pijul_compatibility_projection_receipt(
             receipt: expected,
           )
-          let other_state_projection = pijul_compatibility_projection_receipt(
+          let other_state_projection = gunbc.scm_compatibility.pijul.pijul_compatibility_projection_receipt(
             receipt: other_state,
           )
           expected_projection.read_back != other_state_projection.read_back

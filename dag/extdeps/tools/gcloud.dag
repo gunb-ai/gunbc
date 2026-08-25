@@ -3,15 +3,15 @@ module extdeps.tools.gcloud
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "cloud.google.com/sdk/docs/install-sdk"
   }
 }
 
 data gcloud_pinned_version: extdeps.version.VersionConstraint = ">= 470.0.0"
 
-data gcloud_cli_tool: CliTool = CliTool {
+data gcloud_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "gcloud",
   min_version: Present { value: gcloud_pinned_version },
-  installable_via: [SourceApt { package: package_google_cloud_cli }],
+  installable_via: [extdeps.tools.SourceApt { package: extdeps.apt.package_google_cloud_cli }],
 }

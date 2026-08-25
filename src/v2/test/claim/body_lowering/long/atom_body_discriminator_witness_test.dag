@@ -11,5 +11,5 @@ module v2.test.claim.long.body_lowering_atom_body_discriminator_witness
 // synthetic fixture.
 
 test fn atom_body_discriminator_single_pass_receipt_holds() -> Bool {
-  atom_body_discriminator_batched_receipt_holds()
+  v2.test.claim.body_lowering.atom_body_discriminator_helpers.atom_body_discriminator_batched_receipt_holds()
 }

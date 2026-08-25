@@ -1,14 +1,14 @@
 module v2.test.claim.live_tree.live_tree_collision
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data live_tree_collision_note: String = "Collision regression control for the entry-grain disposition rows: this entry and its imported peer BOTH declare a module-level data row named live_tree_disposition (the corpus-wide stamp shape). The witness proves by execution that same-named data rows in two modules of one closure resolve cleanly and the entry's unqualified reference binds its OWN row (SubstrateInputsOnly here, while the peer declares ReadsLiveTree)."
 
-test fn live_tree_same_named_rows_resolve_cleanly_holds() -> v2.std.logic.Bool {
-  live_tree_peer_truth()
-    && match v2.test.claim.live_tree.live_tree_collision.live_tree_disposition {
-      SubstrateInputsOnly => true
-      ReadsLiveTree => false
+test fn live_tree_same_named_rows_resolve_cleanly_holds() -> Bool {
+  v2.test.claim.live_tree.live_tree_import_peer.live_tree_peer_truth()
+    && match live_tree_disposition {
+      v2.std.live_tree.SubstrateInputsOnly => true
+      v2.std.live_tree.ReadsLiveTree => false
     }
 }

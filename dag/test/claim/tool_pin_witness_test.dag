@@ -1,28 +1,28 @@
 module test.claim.tool_pin_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data cargo_identity: std.content_hash.ContentHash = content_hash_of_value(value: "sha256-cargo-1930-aarch64" as std.types.NonEmptyStr)
-data other_identity: std.content_hash.ContentHash = content_hash_of_value(value: "sha256-cargo-1920-aarch64" as std.types.NonEmptyStr)
+data cargo_identity: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "sha256-cargo-1930-aarch64" as std.types.NonEmptyStr)
+data other_identity: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "sha256-cargo-1920-aarch64" as std.types.NonEmptyStr)
 
 data cargo_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "cargo",
   min_version: Absent,
-  installable_via: [SourceApt],
+  installable_via: [extdeps.tools.SourceApt],
 }
 
 data jq_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "jq",
   min_version: Absent,
-  installable_via: [SourceApt],
+  installable_via: [extdeps.tools.SourceApt],
 }
 
 data authored_pin: extdeps.pin.Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
   subject: cargo_tool,
   version: "1.93.0" as extdeps.version.VersionIdentity,
   expected_identity: cargo_identity,
-  selection: ExactPin,
+  selection: extdeps.pin.ExactPin,
 }
 
 data tracked_pin: extdeps.pin.Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
@@ -38,56 +38,56 @@ data tracked_pin: extdeps.pin.Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
 data currency_family_note: String = "Currency family, REWRITTEN after review 44274 found that ExactPin returned PinFresh unconditionally — a fabricated positive. Authorship proves reproducibility, not currency: an exact pin authored three years ago is exactly as reproducible and exactly as rotten. pin_currency_gap is now TOTAL and never returns a positive verdict for either variant. RED CONTROLS are the two below: each fails if its variant ever reports anything other than a named gap, which is exactly the 'pinned and never updated' silence the refresh axis exists to break."
 
 test fn exact_pin_currency_is_an_unfilled_gap() -> Bool {
-  match pin_currency_gap(pin: authored_pin) {
-    AuthoredPinHasNoReviewDate => true
-    TrackedPinHasNoResolutionDate { channel: _ } => false
+  match extdeps.pin.pin_currency_gap(pin: authored_pin) {
+    extdeps.pin.AuthoredPinHasNoReviewDate => true
+    extdeps.pin.TrackedPinHasNoResolutionDate { channel: _ } => false
   }
 }
 
 test fn tracked_pin_currency_is_an_unfilled_gap() -> Bool {
-  match pin_currency_gap(pin: tracked_pin) {
-    TrackedPinHasNoResolutionDate { channel: c } => (c as String) == "latest"
-    AuthoredPinHasNoReviewDate => false
+  match extdeps.pin.pin_currency_gap(pin: tracked_pin) {
+    extdeps.pin.TrackedPinHasNoResolutionDate { channel: c } => (c as String) == "latest"
+    extdeps.pin.AuthoredPinHasNoReviewDate => false
   }
 }
 
 data integrity_family_note: String = "Integrity family: admission establishes ONLY that the observed binary is the one the pin declares, and is named admit_pin_integrity so it cannot be misread as a currency verdict (review 44274). RED CONTROL mismatched_identity_refuses covers what a location-based resolver cannot see at all — it finds 'a cargo' at the declared version and proceeds, where digest comparison refuses. RED CONTROL tracked_pin_refuses_even_when_identity_matches is the standing regression control for review 44242: a tracked pin whose observed digest matches EXACTLY is still refused, because its expected_identity was resolved from a moving reference with no record of that resolution."
 
 test fn matching_identity_admits_integrity() -> Bool {
-  match admit_pin_integrity(pin: authored_pin, observed_identity: cargo_identity) {
-    PinIntegrityAdmitted { pin: p } => (p.subject.name as String) == "cargo"
-    PinRefused { subject: _, cause: _ } => false
+  match extdeps.pin.admit_pin_integrity(pin: authored_pin, observed_identity: cargo_identity) {
+    extdeps.pin.PinIntegrityAdmitted { pin: p } => (p.subject.name as String) == "cargo"
+    extdeps.pin.PinRefused { subject: _, cause: _ } => false
   }
 }
 
 test fn mismatched_identity_refuses() -> Bool {
-  match admit_pin_integrity(pin: authored_pin, observed_identity: other_identity) {
-    PinRefused { subject: subj, cause: c } =>
+  match extdeps.pin.admit_pin_integrity(pin: authored_pin, observed_identity: other_identity) {
+    extdeps.pin.PinRefused { subject: subj, cause: c } =>
       ((subj.name as String) == "cargo") && match c {
-        ObservedIdentityMismatch { expected: e, observed: o } =>
+        extdeps.pin.ObservedIdentityMismatch { expected: e, observed: o } =>
           (e == cargo_identity) && (o == other_identity)
         CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
-        ConstraintIsNotIdentity { constraint: _ } => false
-        PinAbsent => false
-        TrackedResolutionUnrecorded { channel: _ } => false
+        extdeps.pin.ConstraintIsNotIdentity { constraint: _ } => false
+        extdeps.pin.PinAbsent => false
+        extdeps.pin.TrackedResolutionUnrecorded { channel: _ } => false
         CitedDigestIdentityUnprojectable => false
       }
-    PinIntegrityAdmitted { pin: _ } => false
+    extdeps.pin.PinIntegrityAdmitted { pin: _ } => false
   }
 }
 
 test fn tracked_pin_refuses_even_when_identity_matches() -> Bool {
-  match admit_pin_integrity(pin: tracked_pin, observed_identity: cargo_identity) {
-    PinRefused { subject: subj, cause: c } =>
+  match extdeps.pin.admit_pin_integrity(pin: tracked_pin, observed_identity: cargo_identity) {
+    extdeps.pin.PinRefused { subject: subj, cause: c } =>
       ((subj.name as String) == "jq") && match c {
-        TrackedResolutionUnrecorded { channel: ch } => (ch as String) == "latest"
-        ObservedIdentityMismatch { expected: _, observed: _ } => false
+        extdeps.pin.TrackedResolutionUnrecorded { channel: ch } => (ch as String) == "latest"
+        extdeps.pin.ObservedIdentityMismatch { expected: _, observed: _ } => false
         CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
-        ConstraintIsNotIdentity { constraint: _ } => false
-        PinAbsent => false
+        extdeps.pin.ConstraintIsNotIdentity { constraint: _ } => false
+        extdeps.pin.PinAbsent => false
         CitedDigestIdentityUnprojectable => false
       }
-    PinIntegrityAdmitted { pin: _ } => false
+    extdeps.pin.PinIntegrityAdmitted { pin: _ } => false
   }
 }
 
@@ -106,32 +106,32 @@ data legacy_unversioned_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
 data legacy_ingest_family_note: String = "Migration-frontier family, and the load-bearing RED for P1: EVERY CliTool row in the corpus today refuses conversion, which is the correct answer rather than a gap. ranged_legacy_tool_refuses_as_not_an_identity fails if a range is silently promoted to an identity — two hosts satisfying '>= 7.68' run different binaries, exactly the variance a pin removes, so widening here would be the absorbing fallback DESIGN section 5 forbids. unversioned_legacy_tool_refuses_as_absent keeps 'no version stated' a DISTINCT cause from 'a range stated'; collapsing the two would be a state-space conflation and would hide which deficit a given row actually has."
 
 test fn ranged_legacy_tool_refuses_as_not_an_identity() -> Bool {
-  match admit_legacy_cli_tool(tool: legacy_ranged_tool) {
-    PinRefused { subject: subj, cause: c } =>
+  match extdeps.tools.pin.admit_legacy_cli_tool(tool: legacy_ranged_tool) {
+    extdeps.pin.PinRefused { subject: subj, cause: c } =>
       ((subj.name as String) == "curl") && match c {
-        ConstraintIsNotIdentity { constraint: k } => (k as String) == ">= 7.68"
-        PinAbsent => false
-        TrackedResolutionUnrecorded { channel: _ } => false
-        ObservedIdentityMismatch { expected: _, observed: _ } => false
+        extdeps.pin.ConstraintIsNotIdentity { constraint: k } => (k as String) == ">= 7.68"
+        extdeps.pin.PinAbsent => false
+        extdeps.pin.TrackedResolutionUnrecorded { channel: _ } => false
+        extdeps.pin.ObservedIdentityMismatch { expected: _, observed: _ } => false
         CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
         CitedDigestIdentityUnprojectable => false
       }
-    PinIntegrityAdmitted { pin: _ } => false
+    extdeps.pin.PinIntegrityAdmitted { pin: _ } => false
   }
 }
 
 test fn unversioned_legacy_tool_refuses_as_absent() -> Bool {
-  match admit_legacy_cli_tool(tool: legacy_unversioned_tool) {
-    PinRefused { subject: subj, cause: c } =>
+  match extdeps.tools.pin.admit_legacy_cli_tool(tool: legacy_unversioned_tool) {
+    extdeps.pin.PinRefused { subject: subj, cause: c } =>
       ((subj.name as String) == "jq") && match c {
-        PinAbsent => true
-        ConstraintIsNotIdentity { constraint: _ } => false
-        TrackedResolutionUnrecorded { channel: _ } => false
-        ObservedIdentityMismatch { expected: _, observed: _ } => false
+        extdeps.pin.PinAbsent => true
+        extdeps.pin.ConstraintIsNotIdentity { constraint: _ } => false
+        extdeps.pin.TrackedResolutionUnrecorded { channel: _ } => false
+        extdeps.pin.ObservedIdentityMismatch { expected: _, observed: _ } => false
         CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
         CitedDigestIdentityUnprojectable => false
       }
-    PinIntegrityAdmitted { pin: _ } => false
+    extdeps.pin.PinIntegrityAdmitted { pin: _ } => false
   }
 }
 
@@ -141,10 +141,10 @@ test fn key_is_identity_so_a_version_bump_is_a_modify() -> Bool {
     subject: cargo_tool,
     version: "1.94.0" as extdeps.version.VersionIdentity,
     expected_identity: other_identity,
-    selection: ExactPin,
+    selection: extdeps.pin.ExactPin,
   }
-  ((cli_tool_pin_key_of(pin: authored_pin) as String) == (cli_tool_pin_key_of(pin: bumped) as String))
-    && !pin_value_eq(a: authored_pin, b: bumped)
+  ((extdeps.tools.pin.cli_tool_pin_key_of(pin: authored_pin) as String) == (extdeps.tools.pin.cli_tool_pin_key_of(pin: bumped) as String))
+    && !extdeps.pin.pin_value_eq(a: authored_pin, b: bumped)
 }
 
 test fn value_eq_covers_digest_not_only_version() -> Bool {
@@ -152,9 +152,9 @@ test fn value_eq_covers_digest_not_only_version() -> Bool {
     subject: cargo_tool,
     version: "1.93.0" as extdeps.version.VersionIdentity,
     expected_identity: other_identity,
-    selection: ExactPin,
+    selection: extdeps.pin.ExactPin,
   }
-  !pin_value_eq(a: authored_pin, b: same_version_new_binary)
+  !extdeps.pin.pin_value_eq(a: authored_pin, b: same_version_new_binary)
 }
 
 data selection_is_reconcile_content_note: String = "Added after review 44329, which found pin_value_eq comparing only version and expected_identity while ignoring selection. That was a real reconcile gap, not a style point: membership_reconcile treats value_eq as presence-plus-content, so a pin whose refresh POLICY changed — ExactPin flipped to TrackedChannel, a different channel, a different window — produced no Modified hunk and would never re-upsert. The refresh policy is exactly the content this lane exists to carry, so omitting it from equality silently exempted the feature from reconciliation. RED CONTROLS below cover all three shapes of that change; each fails if value_eq ignores selection again."
@@ -166,7 +166,7 @@ test fn value_eq_detects_exact_to_tracked_flip() -> Bool {
     expected_identity: cargo_identity,
     selection: extdeps.pin.TrackedChannel { channel: "stable", refresh_window_days: 30 },
   }
-  !pin_value_eq(a: authored_pin, b: flipped)
+  !extdeps.pin.pin_value_eq(a: authored_pin, b: flipped)
 }
 
 test fn value_eq_detects_channel_change() -> Bool {
@@ -176,7 +176,7 @@ test fn value_eq_detects_channel_change() -> Bool {
     expected_identity: cargo_identity,
     selection: extdeps.pin.TrackedChannel { channel: "beta", refresh_window_days: 30 },
   }
-  !pin_value_eq(a: tracked_pin, b: other_channel)
+  !extdeps.pin.pin_value_eq(a: tracked_pin, b: other_channel)
 }
 
 test fn value_eq_detects_refresh_window_change() -> Bool {
@@ -186,7 +186,7 @@ test fn value_eq_detects_refresh_window_change() -> Bool {
     expected_identity: cargo_identity,
     selection: extdeps.pin.TrackedChannel { channel: "latest", refresh_window_days: 90 },
   }
-  !pin_value_eq(a: tracked_pin, b: wider_window)
+  !extdeps.pin.pin_value_eq(a: tracked_pin, b: wider_window)
 }
 
 test fn value_eq_still_holds_for_identical_pins() -> Bool {
@@ -196,7 +196,7 @@ test fn value_eq_still_holds_for_identical_pins() -> Bool {
     expected_identity: cargo_identity,
     selection: extdeps.pin.TrackedChannel { channel: "latest", refresh_window_days: 30 },
   }
-  pin_value_eq(a: tracked_pin, b: same)
+  extdeps.pin.pin_value_eq(a: tracked_pin, b: same)
     && (tracked_pin.selection == same.selection)
 }
 
@@ -210,64 +210,64 @@ data second_subject_double_bound_row_finding_note: String = "review 44886, and i
 
 data pin_channel_restates_subject_reference_finding_note: String = "THE FINDING THIS SECOND SUBJECT EARNED, which is the actual argument for having one. A generic's second consumer is supposed to expose where the dimension was shaped around its first consumer, and it did. ActionRef.ref is a moving GitHub major tag (v5 tracks the latest 5.x), so it is a CONSTRAINT-like reference, not an identity — which is why Pin<ActionRef> is sound where Pin<OciDescriptor> was not, and why version 5.0.1 above is a SELECTION satisfying that reference rather than a restatement of it. That is the same requirement-versus-selection distinction already defended for CliTool.min_version, and it holds here for the same reason. But it does NOT extend to the selection axis: had this pin been written with TrackedChannel { channel: \"v5\" }, the channel string would RESTATE subject.ref, two writable fields holding one fact — the same duplication shape review 44850 rejected on the identity axis, one axis over. The tell is that PinSelection.TrackedChannel.channel is subject-agnostic while the channel it names may already live ON the subject: for a CliTool the channel is external (latest), for an ActionRef it IS subject.ref. So channel is arguably a subject PROJECTION wearing the shape of a generic field. Not fixed here, and deliberately not papered over with a caveat: the fix is either a projection on each instantiation (the cli_tool_pin_key_of shape, which is where subject-specific projections already belong) or a selection variant that names no channel of its own, and choosing between those is dimension surgery that wants its own review rather than a rider on a witness. dissolve-on: feature:pin-selection-channel-projection. Until then this witness uses ExactPin, which has no channel field and therefore cannot exhibit the duplication."
 
-data action_ref_pinned_identity: std.content_hash.ContentHash = content_hash_of_value(value: "sha256-checkout-v5-commit" as std.types.NonEmptyStr)
+data action_ref_pinned_identity: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "sha256-checkout-v5-commit" as std.types.NonEmptyStr)
 
-data action_ref_other_identity: std.content_hash.ContentHash = content_hash_of_value(value: "sha256-checkout-v5-other-commit" as std.types.NonEmptyStr)
+data action_ref_other_identity: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "sha256-checkout-v5-other-commit" as std.types.NonEmptyStr)
 
 data action_ref_synthetic_identity_note: String = "The two identities above are OBVIOUSLY synthetic and deliberately so, in the same style as cargo_identity at the top of this module. Writing a real 40-hex commit SHA here and calling it actions/upload-artifact@v2 would fabricate an upstream fact inside a fail-closed carrier — the failure admit_legacy_cli_tool's own note forbids — and it would ALSO create a second authority for that SHA the day the lane pins the action for real. What this witness proves is structural (the dimension admits the subject, and refuses on mismatch); it makes no claim about upstream truth, so a value that could never be mistaken for a real digest is the honest fixture."
 
 data checkout_pin: extdeps.pin.Pin<extdeps.github.actions.ActionRef> = extdeps.pin.Pin {
-  subject: checkout_action,
+  subject: extdeps.github.actions.checkout_action,
   version: "5.0.1" as extdeps.version.VersionIdentity,
   expected_identity: action_ref_pinned_identity,
-  selection: ExactPin,
+  selection: extdeps.pin.ExactPin,
 }
 
 data checkout_pin_disagreeing: extdeps.pin.Pin<extdeps.github.actions.ActionRef> = extdeps.pin.Pin {
-  subject: checkout_action,
+  subject: extdeps.github.actions.checkout_action,
   version: "5.0.1" as extdeps.version.VersionIdentity,
   expected_identity: action_ref_other_identity,
-  selection: ExactPin,
+  selection: extdeps.pin.ExactPin,
 }
 
 test fn pin_composes_over_a_structurally_different_subject() -> Bool {
-  match admit_pin_integrity(
+  match extdeps.pin.admit_pin_integrity(
     pin: checkout_pin,
     observed_identity: action_ref_pinned_identity,
   ) {
-    PinIntegrityAdmitted { pin: p } =>
+    extdeps.pin.PinIntegrityAdmitted { pin: p } =>
       (p.subject.repo == "checkout") && (p.subject.owner == "actions")
-    PinRefused { subject: _, cause: _ } => false
+    extdeps.pin.PinRefused { subject: _, cause: _ } => false
   }
 }
 
 test fn second_subject_identity_is_the_pins_own_fact_not_the_subjects() -> Bool {
   ((checkout_pin.subject.ref as String) == (checkout_pin_disagreeing.subject.ref as String))
-    && (pin_value_eq(a: checkout_pin, b: checkout_pin_disagreeing) == false)
-    && match admit_pin_integrity(
+    && (extdeps.pin.pin_value_eq(a: checkout_pin, b: checkout_pin_disagreeing) == false)
+    && match extdeps.pin.admit_pin_integrity(
          pin: checkout_pin_disagreeing,
          observed_identity: action_ref_pinned_identity,
        ) {
-         PinIntegrityAdmitted { pin: _ } => false
-         PinRefused { subject: _, cause: _ } => true
+         extdeps.pin.PinIntegrityAdmitted { pin: _ } => false
+         extdeps.pin.PinRefused { subject: _, cause: _ } => true
        }
 }
 
 data second_subject_identity_test_rationale_note: String = "WHAT THE TEST ABOVE REPLACED, and why the replacement discriminates where the original did not. The previous version asserted that Pin.expected_identity equalled the subject's own digest — a check that could only fail if someone edited the literal beside it, so it validated a value this file hand-wrote rather than any behavior of the dimension. Worse, it asserted the very duplication review 44850 identified as the defect. The test above instead pins two DIFFERENT identities to the SAME subject value and shows three things at once: the subject halves are identical (same mutable ref), the pins are nevertheless not value-equal, and admission REFUSES the disagreeing pin against the first identity. So expected_identity is load-bearing and independent — the pin supplies what the subject lacks — and there is no shadow copy inside the subject for admission to fall back on. This goes red on a real change (drop expected_identity from pin_value_eq, or make admission read a subject field, and it fails), which the original could not."
 
 test fn second_subject_refuses_on_identity_mismatch_too() -> Bool {
-  match admit_pin_integrity(pin: checkout_pin, observed_identity: action_ref_other_identity) {
-    PinIntegrityAdmitted { pin: _ } => false
-    PinRefused { subject: subj, cause: c } =>
+  match extdeps.pin.admit_pin_integrity(pin: checkout_pin, observed_identity: action_ref_other_identity) {
+    extdeps.pin.PinIntegrityAdmitted { pin: _ } => false
+    extdeps.pin.PinRefused { subject: subj, cause: c } =>
       (subj.repo == "checkout")
         && match c {
-             ObservedIdentityMismatch { expected: e, observed: o } =>
+             extdeps.pin.ObservedIdentityMismatch { expected: e, observed: o } =>
                ((e as String) == (action_ref_pinned_identity as String))
                  && ((o as String) == (action_ref_other_identity as String))
              CrossFamilyIdentityIncomparable { expected: _, observed: _ } => false
-             ConstraintIsNotIdentity { constraint: _ } => false
-             PinAbsent => false
-             TrackedResolutionUnrecorded { channel: _ } => false
+             extdeps.pin.ConstraintIsNotIdentity { constraint: _ } => false
+             extdeps.pin.PinAbsent => false
+             extdeps.pin.TrackedResolutionUnrecorded { channel: _ } => false
              CitedDigestIdentityUnprojectable => false
            }
   }

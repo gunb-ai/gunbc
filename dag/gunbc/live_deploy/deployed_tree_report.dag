@@ -30,22 +30,22 @@ data deployed_tree_report_vantage: std.types.FilePath = "." as std.types.FilePat
 
 fn deployed_tree_standing_line(standing: gunbc.live_deploy.deployed_tree_observation.DeployedTreeStanding) -> String {
   match standing {
-    DeployedTreeConverged { revision: r } =>
+    gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: r } =>
       join(["deployed-tree host=", deployed_tree_report_host as String,
-            " CONVERGED revision=", git_object_id_wire_hex(oid: r) as String,
+            " CONVERGED revision=", extdeps.git.object_store.git_object_id_wire_hex(oid: r) as String,
             " -- the deployed tree is the admitted revision and every path in the deployed scope realizes it"], "")
-    DeployedTreeRevisionDrifted { desired: d, local: l } =>
+    gunbc.live_deploy.deployed_tree_observation.DeployedTreeRevisionDrifted { desired: d, local: l } =>
       join(["deployed-tree host=", deployed_tree_report_host as String,
-            " REVISION-DRIFTED desired=", git_object_id_wire_hex(oid: d) as String,
-            " local=", git_object_id_wire_hex(oid: l) as String,
+            " REVISION-DRIFTED desired=", extdeps.git.object_store.git_object_id_wire_hex(oid: d) as String,
+            " local=", extdeps.git.object_store.git_object_id_wire_hex(oid: l) as String,
             " -- both sides named because a catch-up needs the prior"], "")
-    DeployedTreeModifiedAtRevision { revision: r, changed_paths: body } =>
+    gunbc.live_deploy.deployed_tree_observation.DeployedTreeModifiedAtRevision { revision: r, changed_paths: body } =>
       join(["deployed-tree host=", deployed_tree_report_host as String,
-            " MODIFIED-AT-REVISION revision=", git_object_id_wire_hex(oid: r) as String,
+            " MODIFIED-AT-REVISION revision=", extdeps.git.object_store.git_object_id_wire_hex(oid: r) as String,
             " -- the revision agrees and the bytes do not; git status reports: ", body as String], "")
-    DeployedTreeStandingUnobserved { cause: c } =>
+    gunbc.live_deploy.deployed_tree_observation.DeployedTreeStandingUnobserved { cause: c } =>
       join(["deployed-tree host=", deployed_tree_report_host as String,
-            " UNOBSERVED -- ", deployed_tree_unobservable_text(cause: c)], "")
+            " UNOBSERVED -- ", gunbc.live_deploy.deployed_tree_observation.deployed_tree_unobservable_text(cause: c)], "")
   }
 }
 
@@ -54,10 +54,10 @@ fn deployed_tree_standing_line(standing: gunbc.live_deploy.deployed_tree_observa
 // one place guaranteed to be read as a green.
 fn deployed_tree_standing_is_publication_converged(standing: gunbc.live_deploy.deployed_tree_observation.DeployedTreeStanding) -> Bool {
   match standing {
-    DeployedTreeConverged { revision: _ } => true
-    DeployedTreeRevisionDrifted { desired: _, local: _ } => false
-    DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
-    DeployedTreeStandingUnobserved { cause: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: _ } => true
+    gunbc.live_deploy.deployed_tree_observation.DeployedTreeRevisionDrifted { desired: _, local: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
+    gunbc.live_deploy.deployed_tree_observation.DeployedTreeStandingUnobserved { cause: _ } => false
   }
 }
 
@@ -75,11 +75,11 @@ func deployed_tree_report_emit(
     context_receipt,
     deployed_tree_standing_line(standing: standing), "\n",
   ], "")
-  let w = Filesystem.Write(path: deployed_tree_report_receipt_path, content: text)
+  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: deployed_tree_report_receipt_path, content: text)
   if w.success == false {
-    exit_failure(reason: join(["deployed tree receipt write failed: ", w.error], ""))
+    std.process.exit_failure(reason: join(["deployed tree receipt write failed: ", w.error], ""))
   } else if deployed_tree_standing_is_publication_converged(standing: standing) == false {
-    exit_failure(reason: text)
+    std.process.exit_failure(reason: text)
   } else {
     std.process.ExitSuccess
   }
@@ -89,26 +89,26 @@ func deployed_tree_report_for_context(
   context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   context_receipt: String,
 ) -> std.process.ProcessExit
-  uses net: std.resources.Network
+  uses net: Network
 {
-  match converge_target_revision(
-    observed: observe_fleet_desired_revision(repo: deployed_tree_report_vantage),
+  match gunbc.fleet_main_revision.converge_target_revision(
+    observed: gunbc.fleet_desired_observe.observe_fleet_desired_revision(repo: deployed_tree_report_vantage),
   ) {
     Absent =>
-      exit_failure(
+      std.process.exit_failure(
         reason: "deployed tree report: origin advertises no admitted fleet revision, so there is nothing to compare a host against",
       )
     Present { value: desired } => {
-      let locus = deployed_tree_locus(
+      let locus = gunbc.live_deploy.deployed_tree_observation.deployed_tree_locus(
         context: context,
-        target: fleet_locus_ssh_target(host: deployed_tree_report_host),
-        repo: srv1_gunbc_repo_root as String as std.types.NonEmptyStr,
+        target: gunbc.fleet_ssh_locus.fleet_locus_ssh_target(host: deployed_tree_report_host),
+        repo: gunbc.host_layout.srv1_gunbc_repo_root as String as std.types.NonEmptyStr,
       )
       deployed_tree_report_emit(
         context_receipt: context_receipt,
-        standing: deployed_tree_standing(
+        standing: gunbc.live_deploy.deployed_tree_observation.deployed_tree_standing(
           desired: desired,
-          observation: observe_deployed_tree(locus: locus),
+          observation: gunbc.live_deploy.deployed_tree_observation.observe_deployed_tree(locus: locus),
         ),
       )
     }
@@ -116,12 +116,12 @@ func deployed_tree_report_for_context(
 }
 
 func deployed_tree_report_ci_wet() -> std.process.ProcessExit
-  uses net: std.resources.Network
+  uses net: Network
 {
-  match prepare_fleet_ssh_agent_context(attempt_raw: deployed_tree_report_attempt_raw) {
-    FleetSshContextRefused { cause: c } =>
-      exit_failure(reason: join(["deployed tree report refused before any ssh leg: ", c], ""))
-    FleetSshContextReady { context: context, receipt: receipt } =>
+  match gunbc.fleet_ssh_locus.prepare_fleet_ssh_agent_context(attempt_raw: deployed_tree_report_attempt_raw) {
+    gunbc.fleet_ssh_locus.FleetSshContextRefused { cause: c } =>
+      std.process.exit_failure(reason: join(["deployed tree report refused before any ssh leg: ", c], ""))
+    gunbc.fleet_ssh_locus.FleetSshContextReady { context: context, receipt: receipt } =>
       deployed_tree_report_for_context(context: context, context_receipt: receipt)
   }
 }

@@ -3,7 +3,7 @@ module extdeps.toolchain.icestorm.subject
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "github.com/YosysHQ/icestorm"
   }
 }
@@ -148,10 +148,10 @@ data icestorm_model_scope: extdeps.external_authority.ExternalModelScope = extde
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.toolchain.icestorm.subject",
       decl_name: "icestorm_project",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.toolchain.icestorm.subject.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 

@@ -7,33 +7,33 @@ data qn_brace_spelling: String = "test.fixture.record_decl_spelling.specimens.Re
 data qn_equals_spelling: String = "test.fixture.record_decl_spelling.specimens.RecordDeclEqualsSpelling"
 data qn_leaf_alias: String = "test.fixture.record_decl_spelling.specimens.RecordDeclLeafAlias"
 
-fn record_decl_spelling_node_optional(qn: String) -> Node? {
+fn record_decl_spelling_node_optional(qn: String) -> v2.std.node.Node? {
   match v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: test.fixture.record_decl_spelling.witness_support.record_decl_spelling_facts, qn: qn) {
-    v2.std.decl_facts_skeleton.DeclFactResolvedUnique { fact: v2.lens.structural_resolution.fact } => Present { value: v2.lens.structural_resolution.fact.node }
-    v2.std.decl_facts_skeleton.DeclFactResolvedMissing { qualified_name: _ } => Absent
-    v2.std.decl_facts_skeleton.DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => Absent
+    v2.std.decl_facts_skeleton.DeclFactResolvedUnique { fact: fact } => v2.std.collection.Present { value: fact.node }
+    v2.std.decl_facts_skeleton.DeclFactResolvedMissing { qualified_name: _ } => v2.std.collection.Absent
+    v2.std.decl_facts_skeleton.DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => v2.std.collection.Absent
   }
 }
 
-fn record_decl_spelling_has_named_field(qn: String, field: Symbol) -> Bool {
+fn record_decl_spelling_has_named_field(qn: String, field: v2.std.node.Symbol) -> Bool {
   match record_decl_spelling_node_optional(qn: qn) {
-    Present { value: test.claim.package_graph_witness_test.node } =>
-      match v2.std.node_query.find_named_child(root: test.claim.package_graph_witness_test.node, name: field) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+    v2.std.collection.Present { value: node } =>
+      match v2.std.node_query.find_named_child(root: node, name: field) {
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Absent => false
+    v2.std.collection.Absent => false
   }
 }
 
 test fn brace_spelling_carries_its_named_fields() -> Bool {
   record_decl_spelling_has_named_field(qn: qn_brace_spelling, field: ^first)
-    && record_decl_spelling_has_named_field(qn: qn_brace_spelling, field: ^std.measure.second)
+    && record_decl_spelling_has_named_field(qn: qn_brace_spelling, field: ^second)
 }
 
 test fn equals_spelling_carries_the_same_named_fields() -> Bool {
   record_decl_spelling_has_named_field(qn: qn_equals_spelling, field: ^first)
-    && record_decl_spelling_has_named_field(qn: qn_equals_spelling, field: ^std.measure.second)
+    && record_decl_spelling_has_named_field(qn: qn_equals_spelling, field: ^second)
 }
 
 test fn leaf_alias_is_not_read_as_a_record() -> Bool {

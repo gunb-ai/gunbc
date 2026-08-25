@@ -2,7 +2,7 @@ module std.affine_space
 
 
 // THE COMPONENT CARRIES NO UNIT, BECAUSE THE FRAME OWNS THE QUANTUM. An earlier revision typed
-// these fields SignedMillimeterComponent — Measure<Length, Milli, std.integer.Int> — while std.spatial_frame
+// these fields SignedMillimeterComponent — Measure<Length, Milli, Int> — while std.spatial_frame
 // let a frame declare that the same counts mean micrometres. That is one coordinate with two unit
 // authorities: the type said Milli, the frame said Micro, and the readers extracted the integer
 // and believed the frame. The code was numerically right and the type was lying, which is the
@@ -10,18 +10,18 @@ module std.affine_space
 // trusts the frame has to know not to.
 //
 // The authority is now one chain: frame identity, then coordinate quantum, then the
-// interpretation of every component in that frame. A component is an std.integer.Int with a role, and the
+// interpretation of every component in that frame. A component is an Int with a role, and the
 // role is "signed displacement or coordinate along an axis" — which is exactly as much as is true
 // of it without knowing its frame.
 type SignedFrameComponent {
-  count: std.integer.Int
+  count: Int
 }
 
-fn signed_frame_component(count: std.integer.Int) -> SignedFrameComponent {
+fn signed_frame_component(count: Int) -> SignedFrameComponent {
   SignedFrameComponent { count: count }
 }
 
-fn signed_frame_component_count(c: SignedFrameComponent) -> std.integer.Int {
+fn signed_frame_component_count(c: SignedFrameComponent) -> Int {
   c.count
 }
 
@@ -94,7 +94,7 @@ type Point2 {
   y: SignedFrameComponent
 }
 
-fn vector3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.integer.Int, y: std.integer.Int, z: std.integer.Int) -> Vector3 {
+fn vector3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Vector3 {
   Vector3 {
     frame: frame,
     x: signed_frame_component(count: x),
@@ -103,7 +103,7 @@ fn vector3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.integer.I
   }
 }
 
-fn point3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.integer.Int, y: std.integer.Int, z: std.integer.Int) -> Point3 {
+fn point3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Point3 {
   Point3 {
     frame: frame,
     x: signed_frame_component(count: x),
@@ -112,11 +112,11 @@ fn point3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.integer.In
   }
 }
 
-fn vector2(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.integer.Int, y: std.integer.Int) -> Vector2 {
+fn vector2(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int) -> Vector2 {
   Vector2 { frame: frame, x: signed_frame_component(count: x), y: signed_frame_component(count: y) }
 }
 
-fn point2(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.integer.Int, y: std.integer.Int) -> Point2 {
+fn point2(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int) -> Point2 {
   Point2 { frame: frame, x: signed_frame_component(count: x), y: signed_frame_component(count: y) }
 }
 
@@ -194,14 +194,14 @@ type SpatialResult<T>
 // the rest: a vector with one unrepresentable component is not a vector.
 fn vector3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.checked_arithmetic.CheckedInt, y: std.checked_arithmetic.CheckedInt, z: std.checked_arithmetic.CheckedInt) -> SpatialResult<Vector3> {
   match x {
-    CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
-    CheckedIntReady { value: xv } =>
+    std.checked_arithmetic.CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+    std.checked_arithmetic.CheckedIntReady { value: xv } =>
       match y {
-        CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
-        CheckedIntReady { value: yv } =>
+        std.checked_arithmetic.CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+        std.checked_arithmetic.CheckedIntReady { value: yv } =>
           match z {
-            CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
-            CheckedIntReady { value: zv } =>
+            std.checked_arithmetic.CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+            std.checked_arithmetic.CheckedIntReady { value: zv } =>
               SpatialReady { value: vector3(frame: frame, x: xv, y: yv, z: zv) }
           }
       }
@@ -210,14 +210,14 @@ fn vector3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: 
 
 fn point3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.checked_arithmetic.CheckedInt, y: std.checked_arithmetic.CheckedInt, z: std.checked_arithmetic.CheckedInt) -> SpatialResult<Point3> {
   match x {
-    CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
-    CheckedIntReady { value: xv } =>
+    std.checked_arithmetic.CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+    std.checked_arithmetic.CheckedIntReady { value: xv } =>
       match y {
-        CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
-        CheckedIntReady { value: yv } =>
+        std.checked_arithmetic.CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+        std.checked_arithmetic.CheckedIntReady { value: yv } =>
           match z {
-            CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
-            CheckedIntReady { value: zv } =>
+            std.checked_arithmetic.CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+            std.checked_arithmetic.CheckedIntReady { value: zv } =>
               SpatialReady { value: point3(frame: frame, x: xv, y: yv, z: zv) }
           }
       }
@@ -226,22 +226,22 @@ fn point3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: s
 
 fn vector2_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.checked_arithmetic.CheckedInt, y: std.checked_arithmetic.CheckedInt) -> SpatialResult<Vector2> {
   match x {
-    CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
-    CheckedIntReady { value: xv } =>
+    std.checked_arithmetic.CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+    std.checked_arithmetic.CheckedIntReady { value: xv } =>
       match y {
-        CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
-        CheckedIntReady { value: yv } => SpatialReady { value: vector2(frame: frame, x: xv, y: yv) }
+        std.checked_arithmetic.CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+        std.checked_arithmetic.CheckedIntReady { value: yv } => SpatialReady { value: vector2(frame: frame, x: xv, y: yv) }
       }
   }
 }
 
 fn point2_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.checked_arithmetic.CheckedInt, y: std.checked_arithmetic.CheckedInt) -> SpatialResult<Point2> {
   match x {
-    CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
-    CheckedIntReady { value: xv } =>
+    std.checked_arithmetic.CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+    std.checked_arithmetic.CheckedIntReady { value: xv } =>
       match y {
-        CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
-        CheckedIntReady { value: yv } => SpatialReady { value: point2(frame: frame, x: xv, y: yv) }
+        std.checked_arithmetic.CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+        std.checked_arithmetic.CheckedIntReady { value: yv } => SpatialReady { value: point2(frame: frame, x: xv, y: yv) }
       }
   }
 }
@@ -256,14 +256,14 @@ fn point2_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: s
 // the one that disagreed with it. A caller reading a refusal therefore learns which value was out of
 // place, not merely that two frames differed.
 fn translate_point3(point: Point3, by: Vector3) -> SpatialResult<Point3> {
-  if !coordinate_frame_identity_eq(a: point.frame, b: by.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: point.frame, b: by.frame) {
     SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpTranslatePoint3, left_frame: point.frame, right_frame: by.frame, relation: SameFrameOperandsRequired } }
   } else {
     point3_from_checked(
       frame: point.frame,
-      x: checked_int_add(a: signed_frame_component_count(c: point.x), b: signed_frame_component_count(c: by.x)),
-      y: checked_int_add(a: signed_frame_component_count(c: point.y), b: signed_frame_component_count(c: by.y)),
-      z: checked_int_add(a: signed_frame_component_count(c: point.z), b: signed_frame_component_count(c: by.z)),
+      x: std.checked_arithmetic.checked_int_add(a: signed_frame_component_count(c: point.x), b: signed_frame_component_count(c: by.x)),
+      y: std.checked_arithmetic.checked_int_add(a: signed_frame_component_count(c: point.y), b: signed_frame_component_count(c: by.y)),
+      z: std.checked_arithmetic.checked_int_add(a: signed_frame_component_count(c: point.z), b: signed_frame_component_count(c: by.z)),
     )
   }
 }
@@ -276,40 +276,40 @@ fn translate_point3(point: Point3, by: Vector3) -> SpatialResult<Point3> {
 // reached it and it answered 9. It now answers SpatialFrameRefused, and the witness that proves so
 // is the regression control for the whole recut.
 fn displacement_between3(from: Point3, to: Point3) -> SpatialResult<Vector3> {
-  if !coordinate_frame_identity_eq(a: from.frame, b: to.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: from.frame, b: to.frame) {
     SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpDisplacementBetween3, left_frame: from.frame, right_frame: to.frame, relation: SameFrameOperandsRequired } }
   } else {
     vector3_from_checked(
       frame: from.frame,
-      x: checked_int_subtract(a: signed_frame_component_count(c: to.x), b: signed_frame_component_count(c: from.x)),
-      y: checked_int_subtract(a: signed_frame_component_count(c: to.y), b: signed_frame_component_count(c: from.y)),
-      z: checked_int_subtract(a: signed_frame_component_count(c: to.z), b: signed_frame_component_count(c: from.z)),
+      x: std.checked_arithmetic.checked_int_subtract(a: signed_frame_component_count(c: to.x), b: signed_frame_component_count(c: from.x)),
+      y: std.checked_arithmetic.checked_int_subtract(a: signed_frame_component_count(c: to.y), b: signed_frame_component_count(c: from.y)),
+      z: std.checked_arithmetic.checked_int_subtract(a: signed_frame_component_count(c: to.z), b: signed_frame_component_count(c: from.z)),
     )
   }
 }
 
 fn add_vector3(a: Vector3, b: Vector3) -> SpatialResult<Vector3> {
-  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
     SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpAddVector3, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
   } else {
     vector3_from_checked(
       frame: a.frame,
-      x: checked_int_add(a: signed_frame_component_count(c: a.x), b: signed_frame_component_count(c: b.x)),
-      y: checked_int_add(a: signed_frame_component_count(c: a.y), b: signed_frame_component_count(c: b.y)),
-      z: checked_int_add(a: signed_frame_component_count(c: a.z), b: signed_frame_component_count(c: b.z)),
+      x: std.checked_arithmetic.checked_int_add(a: signed_frame_component_count(c: a.x), b: signed_frame_component_count(c: b.x)),
+      y: std.checked_arithmetic.checked_int_add(a: signed_frame_component_count(c: a.y), b: signed_frame_component_count(c: b.y)),
+      z: std.checked_arithmetic.checked_int_add(a: signed_frame_component_count(c: a.z), b: signed_frame_component_count(c: b.z)),
     )
   }
 }
 
 fn subtract_vector3(a: Vector3, b: Vector3) -> SpatialResult<Vector3> {
-  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
     SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpSubtractVector3, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
   } else {
     vector3_from_checked(
       frame: a.frame,
-      x: checked_int_subtract(a: signed_frame_component_count(c: a.x), b: signed_frame_component_count(c: b.x)),
-      y: checked_int_subtract(a: signed_frame_component_count(c: a.y), b: signed_frame_component_count(c: b.y)),
-      z: checked_int_subtract(a: signed_frame_component_count(c: a.z), b: signed_frame_component_count(c: b.z)),
+      x: std.checked_arithmetic.checked_int_subtract(a: signed_frame_component_count(c: a.x), b: signed_frame_component_count(c: b.x)),
+      y: std.checked_arithmetic.checked_int_subtract(a: signed_frame_component_count(c: a.y), b: signed_frame_component_count(c: b.y)),
+      z: std.checked_arithmetic.checked_int_subtract(a: signed_frame_component_count(c: a.z), b: signed_frame_component_count(c: b.z)),
     )
   }
 }
@@ -319,56 +319,56 @@ fn subtract_vector3(a: Vector3, b: Vector3) -> SpatialResult<Vector3> {
 fn negate_vector3(v: Vector3) -> SpatialResult<Vector3> {
   vector3_from_checked(
     frame: v.frame,
-    x: checked_int_negate(a: signed_frame_component_count(c: v.x)),
-    y: checked_int_negate(a: signed_frame_component_count(c: v.y)),
-    z: checked_int_negate(a: signed_frame_component_count(c: v.z)),
+    x: std.checked_arithmetic.checked_int_negate(a: signed_frame_component_count(c: v.x)),
+    y: std.checked_arithmetic.checked_int_negate(a: signed_frame_component_count(c: v.y)),
+    z: std.checked_arithmetic.checked_int_negate(a: signed_frame_component_count(c: v.z)),
   )
 }
 
 // Scaling by an integer is exact. Scaling by a ratio is NOT offered: it would need a rounding
 // policy, and inventing one here would put approximation into the affine layer before the
 // numeric seam is decided.
-fn scale_vector3(v: Vector3, factor: std.integer.Int) -> SpatialResult<Vector3> {
+fn scale_vector3(v: Vector3, factor: Int) -> SpatialResult<Vector3> {
   vector3_from_checked(
     frame: v.frame,
-    x: checked_int_multiply(a: signed_frame_component_count(c: v.x), b: factor),
-    y: checked_int_multiply(a: signed_frame_component_count(c: v.y), b: factor),
-    z: checked_int_multiply(a: signed_frame_component_count(c: v.z), b: factor),
+    x: std.checked_arithmetic.checked_int_multiply(a: signed_frame_component_count(c: v.x), b: factor),
+    y: std.checked_arithmetic.checked_int_multiply(a: signed_frame_component_count(c: v.y), b: factor),
+    z: std.checked_arithmetic.checked_int_multiply(a: signed_frame_component_count(c: v.z), b: factor),
   )
 }
 
 fn translate_point2(point: Point2, by: Vector2) -> SpatialResult<Point2> {
-  if !coordinate_frame_identity_eq(a: point.frame, b: by.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: point.frame, b: by.frame) {
     SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpTranslatePoint2, left_frame: point.frame, right_frame: by.frame, relation: SameFrameOperandsRequired } }
   } else {
     point2_from_checked(
       frame: point.frame,
-      x: checked_int_add(a: signed_frame_component_count(c: point.x), b: signed_frame_component_count(c: by.x)),
-      y: checked_int_add(a: signed_frame_component_count(c: point.y), b: signed_frame_component_count(c: by.y)),
+      x: std.checked_arithmetic.checked_int_add(a: signed_frame_component_count(c: point.x), b: signed_frame_component_count(c: by.x)),
+      y: std.checked_arithmetic.checked_int_add(a: signed_frame_component_count(c: point.y), b: signed_frame_component_count(c: by.y)),
     )
   }
 }
 
 fn displacement_between2(from: Point2, to: Point2) -> SpatialResult<Vector2> {
-  if !coordinate_frame_identity_eq(a: from.frame, b: to.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: from.frame, b: to.frame) {
     SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpDisplacementBetween2, left_frame: from.frame, right_frame: to.frame, relation: SameFrameOperandsRequired } }
   } else {
     vector2_from_checked(
       frame: from.frame,
-      x: checked_int_subtract(a: signed_frame_component_count(c: to.x), b: signed_frame_component_count(c: from.x)),
-      y: checked_int_subtract(a: signed_frame_component_count(c: to.y), b: signed_frame_component_count(c: from.y)),
+      x: std.checked_arithmetic.checked_int_subtract(a: signed_frame_component_count(c: to.x), b: signed_frame_component_count(c: from.x)),
+      y: std.checked_arithmetic.checked_int_subtract(a: signed_frame_component_count(c: to.y), b: signed_frame_component_count(c: from.y)),
     )
   }
 }
 
 fn add_vector2(a: Vector2, b: Vector2) -> SpatialResult<Vector2> {
-  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
     SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpAddVector2, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
   } else {
     vector2_from_checked(
       frame: a.frame,
-      x: checked_int_add(a: signed_frame_component_count(c: a.x), b: signed_frame_component_count(c: b.x)),
-      y: checked_int_add(a: signed_frame_component_count(c: a.y), b: signed_frame_component_count(c: b.y)),
+      x: std.checked_arithmetic.checked_int_add(a: signed_frame_component_count(c: a.x), b: signed_frame_component_count(c: b.x)),
+      y: std.checked_arithmetic.checked_int_add(a: signed_frame_component_count(c: a.y), b: signed_frame_component_count(c: b.y)),
     )
   }
 }
@@ -399,9 +399,9 @@ fn rotate_quarter_turns_about_z(v: Vector3, turns: QuarterTurns) -> SpatialResul
   let z = signed_frame_component_count(c: v.z)
   match turns {
     NoTurn => vector3_from_checked(frame: v.frame, x: std.checked_arithmetic.CheckedIntReady { value: x }, y: std.checked_arithmetic.CheckedIntReady { value: y }, z: std.checked_arithmetic.CheckedIntReady { value: z })
-    OneQuarter => vector3_from_checked(frame: v.frame, x: checked_int_negate(a: y), y: std.checked_arithmetic.CheckedIntReady { value: x }, z: std.checked_arithmetic.CheckedIntReady { value: z })
-    TwoQuarters => vector3_from_checked(frame: v.frame, x: checked_int_negate(a: x), y: checked_int_negate(a: y), z: std.checked_arithmetic.CheckedIntReady { value: z })
-    ThreeQuarters => vector3_from_checked(frame: v.frame, x: std.checked_arithmetic.CheckedIntReady { value: y }, y: checked_int_negate(a: x), z: std.checked_arithmetic.CheckedIntReady { value: z })
+    OneQuarter => vector3_from_checked(frame: v.frame, x: std.checked_arithmetic.checked_int_negate(a: y), y: std.checked_arithmetic.CheckedIntReady { value: x }, z: std.checked_arithmetic.CheckedIntReady { value: z })
+    TwoQuarters => vector3_from_checked(frame: v.frame, x: std.checked_arithmetic.checked_int_negate(a: x), y: std.checked_arithmetic.checked_int_negate(a: y), z: std.checked_arithmetic.CheckedIntReady { value: z })
+    ThreeQuarters => vector3_from_checked(frame: v.frame, x: std.checked_arithmetic.CheckedIntReady { value: y }, y: std.checked_arithmetic.checked_int_negate(a: x), z: std.checked_arithmetic.CheckedIntReady { value: z })
   }
 }
 
@@ -439,9 +439,9 @@ fn apply_z_quarter_turn_transform3(
   transform: ZQuarterTurnTransform3,
   point: Point3,
 ) -> SpatialResult<Point3> {
-  if !coordinate_frame_identity_eq(a: transform.from_frame, b: point.frame) {
+  if !std.coordinate_frame.coordinate_frame_identity_eq(a: transform.from_frame, b: point.frame) {
     SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpApplyZQuarterTurnTransform3, left_frame: transform.from_frame, right_frame: point.frame, relation: TransformSourceFrameRequired } }
-  } else if !coordinate_frame_identity_eq(a: transform.to_frame, b: transform.translation.frame) {
+  } else if !std.coordinate_frame.coordinate_frame_identity_eq(a: transform.to_frame, b: transform.translation.frame) {
     SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpApplyZQuarterTurnTransform3, left_frame: transform.to_frame, right_frame: transform.translation.frame, relation: TransformTranslationInDestinationRequired } }
   } else {
     let as_displacement = vector3(
@@ -456,9 +456,9 @@ fn apply_z_quarter_turn_transform3(
       SpatialReady { value: rotated } =>
         point3_from_checked(
           frame: transform.to_frame,
-          x: checked_int_add(a: signed_frame_component_count(c: rotated.x), b: signed_frame_component_count(c: transform.translation.x)),
-          y: checked_int_add(a: signed_frame_component_count(c: rotated.y), b: signed_frame_component_count(c: transform.translation.y)),
-          z: checked_int_add(a: signed_frame_component_count(c: rotated.z), b: signed_frame_component_count(c: transform.translation.z)),
+          x: std.checked_arithmetic.checked_int_add(a: signed_frame_component_count(c: rotated.x), b: signed_frame_component_count(c: transform.translation.x)),
+          y: std.checked_arithmetic.checked_int_add(a: signed_frame_component_count(c: rotated.y), b: signed_frame_component_count(c: transform.translation.y)),
+          z: std.checked_arithmetic.checked_int_add(a: signed_frame_component_count(c: rotated.z), b: signed_frame_component_count(c: transform.translation.z)),
         )
     }
   }

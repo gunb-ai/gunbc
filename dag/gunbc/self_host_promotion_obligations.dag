@@ -36,13 +36,13 @@ type PromotionObligation {
 // checkable trigger impersonating a decision; unbound prose that cannot report itself
 // fired is the honest arm here.
 data artifact_axis_omits_build_path: PromotionObligation = PromotionObligation {
-  subject: decl_field_ref(
+  subject: std.decl_ref.decl_field_ref(
     module_path: "v2.compiler.self_host.generation",
     decl_name: "GenerationIdentity",
     field_name: "build_configuration"
   ),
   claim_at_risk: "Two generations agreeing on all six declared axes may still produce different artifact bytes, so artifact-digest equality across hosts or workspaces is not a reproducibility oracle." as std.types.NonEmptyStr,
-  condition: unbound_dissolution(
+  condition: std.dissolution.unbound_dissolution(
     description: "🟡 dissolve-on: EITHER the emitted artifact is built with the path remapped out (making the declared axes an actual determinant of the bytes), OR build path is named as a component of build_configuration (making the axis tell the truth about what it covers). Papering over it inside a comparison is not one of the remedies." as std.types.NonEmptyStr
   ),
 }
@@ -91,13 +91,13 @@ data artifact_axis_omits_build_path: PromotionObligation = PromotionObligation {
 // specified authoring point, per the paragraph above about a bound ref naming where the
 // carrier will be authored rather than where it is.
 data frontier_numerator_admits_seed_evidence: PromotionObligation = PromotionObligation {
-  subject: decl_ref(
+  subject: std.decl_ref.decl_ref(
     module_path: "v2.compiler.self_host.emitter_producer_provenance",
     decl_name: "EmitterProducer"
   ),
   claim_at_risk: "A self-host promotion is supposed to mean a v2 emitter produced the module; the producer axis still carries a V1SeedEmitter arm, so a promotion granted on seed-produced evidence is representable." as std.types.NonEmptyStr,
-  condition: bound_dissolution(
-    ref: decl_ref(
+  condition: std.dissolution.bound_dissolution(
+    ref: std.decl_ref.decl_ref(
       module_path: "v2.compiler.self_host.emitter_producer_provenance",
       decl_name: "v2_self_hosted_promotions"
     )
@@ -110,7 +110,7 @@ data self_host_promotion_obligations: List<PromotionObligation> = [
 ]
 
 fn obligation_is_registered(o: PromotionObligation) -> Bool {
-  !(dissolution_description(condition: o.condition) == "")
+  !(std.dissolution.dissolution_description(condition: o.condition) == "")
     && !((o.claim_at_risk as String) == "")
     && !((o.subject.decl_name as String) == "")
 }
@@ -120,5 +120,5 @@ fn obligation_is_registered(o: PromotionObligation) -> Bool {
 // consumer can tell the two apart without re-matching the coproduct, and so that an
 // obligation silently converted from bound to unbound is visible rather than absorbed.
 fn obligation_reports_itself_fired(o: PromotionObligation) -> Bool {
-  dissolution_is_bound(condition: o.condition)
+  std.dissolution.dissolution_is_bound(condition: o.condition)
 }

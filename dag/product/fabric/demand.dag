@@ -1,5 +1,6 @@
 module product.fabric.demand
 
+
 // Demand is WHO currently wants a result and WHERE to report it. Provider facts
 // live here and nowhere else, which is what keeps Work provider-neutral.
 
@@ -204,7 +205,7 @@ fn demand_maximum_buy_order<P>(d: Demand<P>) -> std.measure.MoneyAmountMicro {
 type CommandAttestation<P> sole_constructor {
   principal: P
   evidence: ObservationReceiptRef
-  verification_authority: DeclarationRef
+  verification_authority: std.decl_ref.DeclarationRef
 }
 
 // The evidence receipt is a required argument rather than an optional field, so
@@ -214,7 +215,7 @@ type CommandAttestation<P> sole_constructor {
 fn attest_command_principal<P>(
   principal: P,
   evidence: ObservationReceiptRef,
-  verification_authority: DeclarationRef,
+  verification_authority: std.decl_ref.DeclarationRef,
 ) -> CommandAttestation<P> {
   CommandAttestation {
     principal: principal,
@@ -281,21 +282,21 @@ fn admit_command<P>(
 }
 
 type DemandRefusal<P>
-  = UnknownDemand { demand: FabricIdentity<P, DemandKey> }
+  = UnknownDemand { demand: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey> }
   | AttestationDoesNotCoverPrincipal {
       attested: P,
       acting: P,
     }
-  | DemandPrincipalMismatch { demand: FabricIdentity<P, DemandKey> }
-  | DuplicateDemand { demand: FabricIdentity<P, DemandKey> }
-  | ReplacementAlreadyRegistered { demand: FabricIdentity<P, DemandKey> }
+  | DemandPrincipalMismatch { demand: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey> }
+  | DuplicateDemand { demand: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey> }
+  | ReplacementAlreadyRegistered { demand: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey> }
   | SupersedeCrossesPrincipal {
-      superseded: FabricIdentity<P, DemandKey>,
-      replacement: FabricIdentity<P, DemandKey>,
+      superseded: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey>,
+      replacement: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey>,
     }
   | ReplacementWorkMismatch {
-      superseded_work: FabricIdentity<P, WorkKey>,
-      replacement_work: FabricIdentity<P, WorkKey>,
+      superseded_work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>,
+      replacement_work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>,
     }
 
 // THE POPULATION IS SEALED, for the same reason the command is. The whole claim
@@ -345,33 +346,33 @@ fn population_demands<P>(p: DemandPopulation<P>) -> List<Demand<P>> {
 type DemandRegistration<P>
   = RegistrationAdvanced {
       population: DemandPopulation<P>,
-      subject_work: FabricIdentity<P, WorkKey>,
+      subject_work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>,
     }
   | RegistrationRefused { refusal: DemandRefusal<P> }
 
 fn demands_for_work<P>(
   population: List<Demand<P>>,
-  work: FabricIdentity<P, WorkKey>,
+  work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>,
 ) -> List<Demand<P>> {
-  population |> filter(d => fabric_identity_eq(left: d.work, right: work))
+  population |> filter(d => product.fabric.identity.fabric_identity_eq(left: d.work, right: work))
 }
 
 fn demand_matching_identity<P>(
   population: List<Demand<P>>,
-  id: FabricIdentity<P, DemandKey>,
+  id: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey>,
 ) -> List<Demand<P>> {
-  population |> filter(d => fabric_identity_eq(left: d.id, right: id))
+  population |> filter(d => product.fabric.identity.fabric_identity_eq(left: d.id, right: id))
 }
 
-fn demand_matching_key<P>(population: List<Demand<P>>, key: DemandKey) -> List<Demand<P>> {
+fn demand_matching_key<P>(population: List<Demand<P>>, key: product.fabric.identity.DemandKey) -> List<Demand<P>> {
   population |> filter(d => d.id.key == key)
 }
 
 fn population_without<P>(
   population: List<Demand<P>>,
-  id: FabricIdentity<P, DemandKey>,
+  id: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey>,
 ) -> List<Demand<P>> {
-  population |> filter(d => !fabric_identity_eq(left: d.id, right: id))
+  population |> filter(d => !product.fabric.identity.fabric_identity_eq(left: d.id, right: id))
 }
 
 // Lookup refuses on the pair and distinguishes the two ways it can fail. The
@@ -383,7 +384,7 @@ type DemandLookup<P>
 
 fn lookup_demand<P>(
   population: List<Demand<P>>,
-  id: FabricIdentity<P, DemandKey>,
+  id: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey>,
 ) -> DemandLookup<P> {
   match demand_matching_identity(population: population, id: id) {
     Cons { head: d, tail: _ } => DemandFound { demand: d }
@@ -421,7 +422,7 @@ fn submit_demand_into<P>(population: List<Demand<P>>, d: Demand<P>) -> DemandReg
 // another's population.
 fn supersede_demand_in<P>(
   population: List<Demand<P>>,
-  superseded: FabricIdentity<P, DemandKey>,
+  superseded: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey>,
   replacement: Demand<P>,
 ) -> DemandRegistration<P> {
   match lookup_demand(population: population, id: superseded) {
@@ -434,7 +435,7 @@ fn supersede_demand_in<P>(
             replacement: replacement.id,
           }
         }
-      } else if !fabric_identity_eq(left: prior.work, right: replacement.work) {
+      } else if !product.fabric.identity.fabric_identity_eq(left: prior.work, right: replacement.work) {
         RegistrationRefused {
           refusal: ReplacementWorkMismatch {
             superseded_work: prior.work,
@@ -444,7 +445,7 @@ fn supersede_demand_in<P>(
       } else {
         match demand_matching_identity(population: population, id: replacement.id) {
           Cons { head: _, tail: _ } =>
-            if fabric_identity_eq(left: replacement.id, right: superseded) {
+            if product.fabric.identity.fabric_identity_eq(left: replacement.id, right: superseded) {
               RegistrationAdvanced {
                 population: DemandPopulation {
                   demands: concat(
@@ -528,11 +529,11 @@ fn apply_demand_command<P>(
 // running for in order to report to them.
 type WorkRequirement<P>
   = WorkStillRequired { remaining: List<Demand<P>> }
-  | WorkNoLongerRequired { work: FabricIdentity<P, WorkKey> }
+  | WorkNoLongerRequired { work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey> }
 
 fn work_requirement<P>(
   population: List<Demand<P>>,
-  work: FabricIdentity<P, WorkKey>,
+  work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>,
 ) -> WorkRequirement<P> {
   let remaining = demands_for_work(population: population, work: work)
   if remaining.length() == 0 {

@@ -26,17 +26,17 @@ type OsInstallActuatorPlan {
 fn boot_once_step(target: extdeps.bmc.types.RedfishBootSourceOverrideTarget) -> OsInstallActuatorStep {
   ActuatorBootOnce {
     target: target,
-    enabled: BootOverrideOnce,
+    enabled: extdeps.bmc.types.BootOverrideOnce,
   }
 }
 
 fn force_restart_step() -> OsInstallActuatorStep {
-  ActuatorForceRestart { reset_type: ResetForceRestart }
+  ActuatorForceRestart { reset_type: extdeps.bmc.types.ResetForceRestart }
 }
 
 fn nbd_proxy_serve_step(export: extdeps.bmc.webui.nbd_proxy.NbdProxyServeInterface) -> OsInstallActuatorStep {
   ActuatorNbdProxyServe {
-    endpoint: asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
+    endpoint: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
     slot: 0,
     index: 0,
     export: export,
@@ -44,24 +44,24 @@ fn nbd_proxy_serve_step(export: extdeps.bmc.webui.nbd_proxy.NbdProxyServeInterfa
 }
 
 fn os_install_actuator_steps(mechanism: gunbc.os_install_mechanism.OsInstallMechanism, export: extdeps.bmc.webui.nbd_proxy.NbdProxyServeInterface) -> List<OsInstallActuatorStep> {
-  let boot_target = install_boot_target_for(mechanism: mechanism)
+  let boot_target = gunbc.os_install_mechanism.install_boot_target_for(mechanism: mechanism)
   match mechanism {
-    VirtualMediaInstall => [
+    gunbc.os_install_mechanism.VirtualMediaInstall => [
       ActuatorRedfishInsertMedia,
       boot_once_step(target: boot_target),
       force_restart_step(),
     ]
-    NbdProxyVirtualMediaInstall => [
+    gunbc.os_install_mechanism.NbdProxyVirtualMediaInstall => [
       nbd_proxy_serve_step(export: export),
       boot_once_step(target: boot_target),
       force_restart_step(),
     ]
-    PxeHttpInstall => [
+    gunbc.os_install_mechanism.PxeHttpInstall => [
       ActuatorPxeNetworkBootStaging,
       boot_once_step(target: boot_target),
       force_restart_step(),
     ]
-    FirmwareUpdateThenVirtualMedia => [
+    gunbc.os_install_mechanism.FirmwareUpdateThenVirtualMedia => [
       ActuatorFirmwareUpdate,
       ActuatorRedfishInsertMedia,
       boot_once_step(target: boot_target),
@@ -78,16 +78,16 @@ fn os_install_actuator_plan(mechanism: gunbc.os_install_mechanism.OsInstallMecha
 }
 
 data srv3_nbd_proxy_export_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.nbd_proxy_virtual_media_install",
     decl_name: "srv3_nbd_proxy_export_placeholder",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data srv3_nbd_proxy_export_placeholder: extdeps.bmc.webui.nbd_proxy.NbdProxyServeInterface = extdeps.bmc.webui.nbd_proxy.NbdProxyServeInterface {
-  export_byte_count: byte_size(0),
+  export_byte_count: std.measure.byte_size(0),
 }
 
 // The actuator plan carries the refusal rather than erasing it: a host whose firmware justifies
@@ -105,7 +105,7 @@ fn os_install_actuator_plan_standing_for(
   export: extdeps.bmc.webui.nbd_proxy.NbdProxyServeInterface,
 ) -> OsInstallActuatorPlanStanding {
   match solution {
-    OsInstallMechanismSelected { mechanism: m } =>
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: m } =>
       match os_install_actuator_plan(mechanism: m, export: export) {
         p =>
           match actuator_plan_realization(steps: p.steps) {
@@ -114,13 +114,13 @@ fn os_install_actuator_plan_standing_for(
               ActuatorPlanRefused { cause: ActuatorStepsUnrealized { refusals: rs } }
           }
       }
-    OsInstallMechanismRefused { cause: c } =>
+    gunbc.os_install_mechanism.OsInstallMechanismRefused { cause: c } =>
       ActuatorPlanRefused { cause: ActuatorMechanismRefused { cause: c } }
   }
 }
 
 data srv3_os_install_actuator_plan_standing: OsInstallActuatorPlanStanding = os_install_actuator_plan_standing_for(
-  solution: srv3_install_mechanism_solution,
+  solution: gunbc.os_install_mechanism.srv3_install_mechanism_solution,
   export: srv3_nbd_proxy_export_placeholder
 )
 
@@ -171,43 +171,43 @@ fn actuator_step_realization(step: OsInstallActuatorStep) -> ActuatorStepRealiza
     ActuatorBootOnce { target: t, enabled: e } =>
       ActuatorStepReady {
         intent: gunbc.host_effect.HostEffectIntent {
-          target: gunbc.host_effect.BmcController { node: srv3_host },
+          target: gunbc.host_effect.BmcController { node: gunbc.fleet_intent.srv3_host },
           effect: gunbc.host_effect.RedfishAction {
-            action: extdeps.bmc.types.SetBootSourceOverride { target: t, enabled: e }
+            action: extdeps.bmc.http.SetBootSourceOverride { target: t, enabled: e }
           },
-          evidence: host_effect_identity_evidence,
-          transport: LocalShell,
+          evidence: gunbc.host_effect.host_effect_identity_evidence,
+          transport: gunbc.host_effect.LocalShell,
           privilege_denial: none,
         }
       }
     ActuatorForceRestart { reset_type: r } =>
       ActuatorStepReady {
         intent: gunbc.host_effect.HostEffectIntent {
-          target: gunbc.host_effect.BmcController { node: srv3_host },
+          target: gunbc.host_effect.BmcController { node: gunbc.fleet_intent.srv3_host },
           effect: gunbc.host_effect.RedfishAction {
             action: extdeps.bmc.types.ResetSystem { reset_type: r }
           },
-          evidence: host_effect_identity_evidence,
-          transport: LocalShell,
+          evidence: gunbc.host_effect.host_effect_identity_evidence,
+          transport: gunbc.host_effect.LocalShell,
           privilege_denial: none,
         }
       }
     ActuatorNbdProxyServe { endpoint: ep, slot: s, index: i, export: _ } =>
       ActuatorStepReady {
         intent: gunbc.host_effect.HostEffectIntent {
-          target: gunbc.host_effect.HostOs { node: srv3_os_install_actuator_host },
+          target: gunbc.host_effect.HostOs { node: gunbc.os_install_actuator_selection.srv3_os_install_actuator_host },
           effect: gunbc.host_effect.Srv3NbdProxyServe {
-            intent: nbd_proxy_serve_transport_intent(
-              bmc_host: asrock_srv3_live_bmc_host,
-              session_token: bmcweb_session_token_env_ref,
-              ws_path: bmcweb_nbd_proxy_ws_path(variant: ep, slot: s, index: i),
+            intent: extdeps.bmc.webui.nbd_proxy_serve.nbd_proxy_serve_transport_intent(
+              bmc_host: extdeps.boards.asrock_rack.asrock_srv3_live_bmc_host,
+              session_token: extdeps.bmc.webui.nbd_proxy_serve.bmcweb_session_token_env_ref,
+              ws_path: extdeps.bmc.webui.nbd_proxy.bmcweb_nbd_proxy_ws_path(variant: ep, slot: s, index: i),
               iso_path: gunbc.srv3_os_install_actuate_scope.srv3_actuator_virtual_media_iso_install_path,
-              local_nbd_port: srv3_nbd_proxy_local_port,
+              local_nbd_port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port,
             ),
-            lease_key: srv3_nbd_proxy_lease_key,
+            lease_key: gunbc.srv3_nbd_proxy_serve_intent.srv3_nbd_proxy_lease_key,
           },
-          evidence: host_effect_identity_evidence,
-          transport: LocalShell,
+          evidence: gunbc.host_effect.host_effect_identity_evidence,
+          transport: gunbc.host_effect.LocalShell,
           privilege_denial: none,
         }
       }

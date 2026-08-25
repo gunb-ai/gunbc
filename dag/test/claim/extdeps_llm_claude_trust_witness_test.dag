@@ -1,16 +1,16 @@
 module test.claim.extdeps_llm_claude_trust_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn root() -> String { "/opt/gunbc/dispatch-worktrees" }
 
 fn seeded(config: String) -> Bool {
-  claude_workspace_trust_seeded(config_text: config, project_path: root())
+  extdeps.llm.cli.claude_workspace_trust_seeded(config_text: config, project_path: root())
 }
 
 test fn w_trust_store_path_shape() -> Bool {
-  claude_trust_store_path(home: "/home/u") == "/home/u/.claude.json"
+  extdeps.llm.cli.claude_trust_store_path(home: "/home/u") == "/home/u/.claude.json"
 }
 
 test fn w_minimal_seeded_entry_accepts() -> Bool {
@@ -52,17 +52,17 @@ test fn w_empty_and_garbage_refuse() -> Bool {
 }
 
 test fn w_argv_head_is_program_authority() -> Bool {
-  let argv = shape_claude_invoke_argv(
+  let argv = extdeps.llm.cli.shape_claude_invoke_argv(
     session_id: "u",
     node_id: "n",
-    effort: ReasoningHigh,
+    effort: extdeps.llm.cli.ReasoningHigh,
     settings_json: "\{\}",
     append_system_prompt: "brief",
     start_prompt: "go",
     permission_args: [],
   )
   match argv.first() {
-    Present { value: head } => head == claude_cli_program
+    Present { value: head } => head == extdeps.llm.cli.claude_cli_program
     Absent => false
   }
 }

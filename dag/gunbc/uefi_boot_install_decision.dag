@@ -11,17 +11,17 @@ type BootInstallSituation
   | NoBootSourceAvailable { reason: std.types.NonEmptyStr }
 
 fn ipv4_link_local(ipv4: std.types.NonEmptyStr) -> Bool {
-  starts_with(ipv4 as String, prefix: uefi_ipv4_link_local_prefix)
+  starts_with(ipv4 as String, prefix: extdeps.firmware.uefi_shell.uefi_ipv4_link_local_prefix)
 }
 
 fn ipv4_unconfigured(ipv4: std.types.NonEmptyStr) -> Bool {
-  ipv4 as String == uefi_ipv4_unspecified
+  ipv4 as String == extdeps.firmware.uefi_shell.uefi_ipv4_unspecified
     || ipv4_link_local(ipv4: ipv4)
 }
 
 fn mapping_is_removable_install_media(m: extdeps.firmware.uefi_shell.UefiDeviceMapping) -> Bool {
   fold(
-    uefi_shell_removable_media_device_path_tokens,
+    extdeps.firmware.uefi_shell.uefi_shell_removable_media_device_path_tokens,
     init: false,
     f: (acc, token) => acc || string_contains(s: m.device_path as String, pattern: token),
   )
@@ -59,8 +59,8 @@ data iface_dhcp_rank_doc: String = "DHCP-candidate ranking, grounded in the srv4
 
 fn iface_dhcp_rank(iface: extdeps.firmware.uefi_shell.UefiNetworkInterface) -> Int {
   match iface.media {
-    MediaDisconnected => 0
-    MediaPresent =>
+    extdeps.firmware.uefi_shell.MediaDisconnected => 0
+    extdeps.firmware.uefi_shell.MediaPresent =>
       if !ipv4_unconfigured(ipv4: iface.ipv4) { 3 }
       else if ipv4_link_local(ipv4: iface.ipv4) { 1 }
       else { 2 }
@@ -122,15 +122,15 @@ fn boot_install_commands(action: BootInstallAction) -> List<extdeps.firmware.uef
       Present {
         value: [
           extdeps.firmware.uefi_shell.MapDevices { refresh: true },
-          extdeps.firmware.uefi_shell.BcfgAdd { target: BcfgBoot, index: 0, file: f, description: "gunbc-install-media" as std.types.NonEmptyStr },
-          extdeps.firmware.uefi_shell.Reset { mode: ResetWarm },
+          extdeps.firmware.uefi_shell.BcfgAdd { target: extdeps.firmware.uefi_shell.BcfgBoot, index: 0, file: f, description: "gunbc-install-media" as std.types.NonEmptyStr },
+          extdeps.firmware.uefi_shell.Reset { mode: extdeps.firmware.uefi_shell.ResetWarm },
         ]
       }
     DhcpThenNetworkBoot { interface: i } =>
       Present {
         value: [
           extdeps.firmware.uefi_shell.Ifconfig { action: extdeps.firmware.uefi_shell.IfconfigSetDhcp { interface: i } },
-          extdeps.firmware.uefi_shell.BcfgDump { target: BcfgBoot },
+          extdeps.firmware.uefi_shell.BcfgDump { target: extdeps.firmware.uefi_shell.BcfgBoot },
         ]
       }
     RefuseNoSource { reason: _ } => Absent

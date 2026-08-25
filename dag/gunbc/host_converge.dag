@@ -33,11 +33,11 @@ data gunbc_fleet_pinned_binary_registry: String = "ghcr.io/gunb-ai/gunbc/bootstr
 data gunbc_fleet_pinned_binary_digest: String = "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER"
 
 data gunbc_fleet_pinned_binary_digest_marker: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge",
     decl_name: "gunbc_fleet_pinned_binary_digest",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -55,7 +55,7 @@ data gunbc_ctrl_green_place_marker_ts_prefix: String = "first_green_at="
 
 data gunbc_ctrl_quiescent_reload_hook: String = "scripts/session-dashboard/bin/gunbc-pin-quiescent-reload.mjs"
 
-data gunbc_spawn_retry_backstop_cadence: std.measure.Second = second(count: 600)
+data gunbc_spawn_retry_backstop_cadence: std.measure.Second = std.measure.second(count: 600)
 
 type GreenPlaceReadinessMarker {
   path: String
@@ -203,20 +203,20 @@ type ConvergeKnob {
 }
 
 data gunbc_host_converge_knob_apply_semantics_marker: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge",
     decl_name: "ConvergeKnob",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data gunbc_host_converge_runner_sessions_coupling_marker: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge",
     decl_name: "HostConverge",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -230,7 +230,7 @@ type HostConverge {
   membership: SessionsMembershipProbe
 }
 
-fn find_by_identity<T>(items: List<T>, identity: product.placement_supply.HostIdentity, key: fn(T) -> HostIdentity) -> T? {
+fn find_by_identity<T>(items: List<T>, identity: product.placement_supply.HostIdentity, key: fn(T) -> product.placement_supply.HostIdentity) -> T? {
   fold(
     items,
     init: none,
@@ -307,13 +307,13 @@ fn gunbc_dashboard_live_apply_policy() -> ConvergeLiveApplyPolicy {
 }
 
 fn gunbc_sha_triple_coherent(binary_pin: String, dag_pin: String, ctrl_pin: String) -> Bool {
-  gunbc_pin_match(read_pin: binary_pin, desired_pin: ctrl_pin)
-    && gunbc_pin_match(read_pin: dag_pin, desired_pin: ctrl_pin)
-    && gunbc_pin_match(read_pin: binary_pin, desired_pin: dag_pin)
+  extdeps.ctrl.gunbc_pin.gunbc_pin_match(read_pin: binary_pin, desired_pin: ctrl_pin)
+    && extdeps.ctrl.gunbc_pin.gunbc_pin_match(read_pin: dag_pin, desired_pin: ctrl_pin)
+    && extdeps.ctrl.gunbc_pin.gunbc_pin_match(read_pin: binary_pin, desired_pin: dag_pin)
 }
 
 fn gunbc_binary_dag_skewed(binary_pin: String, dag_pin: String) -> Bool {
-  binary_pin != "" && dag_pin != "" && gunbc_pin_skewed(host_pin: binary_pin, ctrl_pin: dag_pin)
+  binary_pin != "" && dag_pin != "" && extdeps.ctrl.gunbc_pin.gunbc_pin_skewed(host_pin: binary_pin, ctrl_pin: dag_pin)
 }
 
 fn gunbc_pinned_drift_receipt(
@@ -332,12 +332,12 @@ fn gunbc_pinned_drift_receipt(
 }
 
 fn gunbc_process_effective_converged(process_pin: String, ctrl_pin: String) -> Bool {
-  gunbc_pin_match(read_pin: process_pin, desired_pin: ctrl_pin)
+  extdeps.ctrl.gunbc_pin.gunbc_pin_match(read_pin: process_pin, desired_pin: ctrl_pin)
 }
 
 fn gunbc_green_place_marker_satisfied(marker_line: String, marker_pin: String, desired_pin: String) -> Bool {
   marker_line != ""
-    && gunbc_pin_match(read_pin: marker_pin, desired_pin: desired_pin)
+    && extdeps.ctrl.gunbc_pin.gunbc_pin_match(read_pin: marker_pin, desired_pin: desired_pin)
     && string_contains(s: marker_line, pattern: gunbc_ctrl_green_place_marker_ts_prefix)
 }
 
@@ -379,7 +379,7 @@ fn gunbc_pinned_binary_provenance_policy() -> GunbcBinaryProvenancePolicy {
 }
 
 fn gunbc_apply_mode_for_host(host: product.placement_supply.HostIdentity) -> ConvergeApplyMode {
-  if host == operator_host_srv3 { FreshStandup } else { ExistingHostQuiescentReload }
+  if host == gunbc.fleet_intent_network.operator_host_srv3 { FreshStandup } else { ExistingHostQuiescentReload }
 }
 
 fn gunbc_pinned_noop_policy() -> ConvergeNoOpPolicy {
@@ -440,7 +440,7 @@ fn codex_runtime_bundle_knob(host: product.placement_supply.HostIdentity) -> Con
   legacy_converge_knob(
     slice: GunbcSlice,
     name: "codex_runtime_bundle",
-    desired: codex_runtime_version_identity_marker(),
+    desired: gunbc.package_delivery.codex_runtime_version_identity_marker(),
     target: CodexRuntimeBundle { host_identity: host },
   )
 }
@@ -456,29 +456,29 @@ fn runner_host_knobs(h: gunbc.ci_runner_placement.RunnerHostDeployment) -> List<
       slice: RunnerSlice,
       name: "runner_slice_cap_bytes",
       unit: gunbc_runner_slot_unit_placeholder,
-      property: systemd_memory_max_property,
-      value: byte_size_count(b: h.runner_slice_cap)
+      property: extdeps.systemd.systemd_memory_max_property,
+      value: std.measure.byte_size_count(b: h.runner_slice_cap)
     ),
     legacy_converge_knob(
       slice: RunnerSlice,
       name: "per_slot_memory_max_bytes",
-      desired: to_string(byte_size_count(b: h.per_runner_memory_cap)),
+      desired: to_string(std.measure.byte_size_count(b: h.per_runner_memory_cap)),
       target: PerSlotMemoryCap {
         dropin_path: gunbc_runner_per_slot_dropin_path,
         instance_glob: glob,
-        property: systemd_memory_max_property,
-        bytes_value: to_string(byte_size_count(b: h.per_runner_memory_cap)),
+        property: extdeps.systemd.systemd_memory_max_property,
+        bytes_value: to_string(std.measure.byte_size_count(b: h.per_runner_memory_cap)),
       }
     ),
     legacy_converge_knob(
       slice: RunnerSlice,
       name: "per_slot_memory_swap_max_bytes",
-      desired: to_string(byte_size_count(b: h.per_runner_memory_swap_cap)),
+      desired: to_string(std.measure.byte_size_count(b: h.per_runner_memory_swap_cap)),
       target: PerSlotMemoryCap {
         dropin_path: gunbc_runner_per_slot_swap_dropin_path,
         instance_glob: glob,
-        property: systemd_memory_swap_max_property,
-        bytes_value: to_string(byte_size_count(b: h.per_runner_memory_swap_cap)),
+        property: extdeps.systemd.systemd_memory_swap_max_property,
+        bytes_value: to_string(std.measure.byte_size_count(b: h.per_runner_memory_swap_cap)),
       }
     ),
     legacy_converge_knob(
@@ -488,32 +488,32 @@ fn runner_host_knobs(h: gunbc.ci_runner_placement.RunnerHostDeployment) -> List<
       target: PerSlotMemoryCap {
         dropin_path: gunbc_runner_per_slot_tasks_dropin_path,
         instance_glob: glob,
-        property: systemd_tasks_max_property,
+        property: extdeps.systemd.systemd_tasks_max_property,
         bytes_value: to_string(h.per_runner_tasks_max),
       }
     ),
     legacy_converge_knob(
       slice: RunnerSlice,
       name: "per_slot_memory_high_bytes",
-      desired: to_string(byte_size_count(b: h.per_runner_memory_high_cap)),
+      desired: to_string(std.measure.byte_size_count(b: h.per_runner_memory_high_cap)),
       target: PerSlotMemoryCap {
         dropin_path: gunbc_runner_per_slot_high_dropin_path,
         instance_glob: glob,
-        property: systemd_memory_high_property,
-        bytes_value: to_string(byte_size_count(b: h.per_runner_memory_high_cap)),
+        property: extdeps.systemd.systemd_memory_high_property,
+        bytes_value: to_string(std.measure.byte_size_count(b: h.per_runner_memory_high_cap)),
       }
     ),
     slice_numeric_knob(
       slice: RunnerSlice,
       name: "cpu_weight",
       unit: gunbc_runner_slot_unit_placeholder,
-      property: systemd_cpu_weight_property,
-      value: workload_class_cpu_weight(wc: h.workload_class)
+      property: extdeps.systemd.systemd_cpu_weight_property,
+      value: gunbc.ci_runner_placement.workload_class_cpu_weight(wc: h.workload_class)
     ),
     legacy_converge_knob(
       slice: RunnerSlice,
       name: "build_tokens",
-      desired: to_string(hardware_thread_count_value(t: h.build_tokens)),
+      desired: to_string(std.measure.hardware_thread_count_value(t: h.build_tokens)),
       target: JobserverTokens {
         env_file: gunbc_runner_jobserver_env_file,
         env_key: gunbc_runner_jobserver_env_key,
@@ -530,23 +530,23 @@ fn runner_host_knobs(h: gunbc.ci_runner_placement.RunnerHostDeployment) -> List<
 }
 
 fn session_host_knobs(slice_max: std.measure.ByteSize, per_session: std.measure.ByteSize) -> List<ConvergeKnob> {
-  let kill_value = managed_oom_action_value(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure)
-  let pct = to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit))
+  let kill_value = extdeps.systemd.oomd.managed_oom_action_value(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure)
+  let pct = to_string(std.measure.percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit))
   [
     slice_numeric_knob(
       slice: SessionsSlice,
       name: "slice_max_bytes",
-      unit: gunbc_oomd_sessions_slice,
-      property: systemd_memory_max_property,
-      value: byte_size_count(b: slice_max)
+      unit: gunbc.oomd_install.gunbc_oomd_sessions_slice,
+      property: extdeps.systemd.systemd_memory_max_property,
+      value: std.measure.byte_size_count(b: slice_max)
     ),
     legacy_converge_knob(
       slice: SessionsSlice,
       name: "per_session_max_bytes",
-      desired: to_string(byte_size_count(b: per_session)),
+      desired: to_string(std.measure.byte_size_count(b: per_session)),
       target: VerifyOnlyCap {
-        slice_unit: gunbc_oomd_sessions_slice,
-        property: systemd_memory_max_property,
+        slice_unit: gunbc.oomd_install.gunbc_oomd_sessions_slice,
+        property: extdeps.systemd.systemd_memory_max_property,
       }
     ),
     legacy_converge_knob(
@@ -554,8 +554,8 @@ fn session_host_knobs(slice_max: std.measure.ByteSize, per_session: std.measure.
       name: "oom_pressure_kill",
       desired: "true",
       target: SliceProperty {
-        unit: gunbc_oomd_sessions_slice,
-        property: oomd_managed_oom_memory_pressure_property,
+        unit: gunbc.oomd_install.gunbc_oomd_sessions_slice,
+        property: extdeps.systemd.oomd.oomd_managed_oom_memory_pressure_property,
         apply_value: kill_value,
         expected_effective: kill_value,
       }
@@ -565,30 +565,30 @@ fn session_host_knobs(slice_max: std.measure.ByteSize, per_session: std.measure.
       name: "oom_pressure_limit_pct",
       desired: pct,
       target: SliceProperty {
-        unit: gunbc_oomd_sessions_slice,
-        property: oomd_managed_oom_memory_pressure_limit_property,
+        unit: gunbc.oomd_install.gunbc_oomd_sessions_slice,
+        property: extdeps.systemd.oomd.oomd_managed_oom_memory_pressure_limit_property,
         apply_value: concat(pct, "%"),
-        expected_effective: to_string(managed_oom_pressure_limit_show_value(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)),
+        expected_effective: to_string(extdeps.systemd.oomd.managed_oom_pressure_limit_show_value(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)),
       }
     ),
     slice_numeric_knob(
       slice: SessionsSlice,
       name: "cpu_weight",
-      unit: gunbc_oomd_sessions_slice,
-      property: systemd_cpu_weight_property,
-      value: workload_class_cpu_weight(wc: InteractiveLatencySensitive)
+      unit: gunbc.oomd_install.gunbc_oomd_sessions_slice,
+      property: extdeps.systemd.systemd_cpu_weight_property,
+      value: gunbc.ci_runner_placement.workload_class_cpu_weight(wc: gunbc.ci_runner_placement.InteractiveLatencySensitive)
     ),
   ]
 }
 
 fn session_knobs_by_host(mode: gunbc.ci_floor_measurement.SessionReservationMode) -> List<ConvergeKnob>? {
   match mode {
-    SessionReservationModeUnset => none
-    Regime1WorstCase { point: _ } => none
-    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg } =>
+    gunbc.ci_floor_measurement.SessionReservationModeUnset => none
+    gunbc.ci_floor_measurement.Regime1WorstCase { point: _ } => none
+    gunbc.ci_floor_measurement.Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg } =>
       match agg {
-        SessionAggregateUnmeasured => none
-        SessionAggregateMeasured { bytes: agg_bytes } =>
+        gunbc.ci_floor_measurement.SessionAggregateUnmeasured => none
+        gunbc.ci_floor_measurement.SessionAggregateMeasured { bytes: agg_bytes } =>
           Present { value: session_host_knobs(
             slice_max: agg_bytes,
             per_session: ceiling
@@ -600,7 +600,7 @@ fn session_knobs_by_host(mode: gunbc.ci_floor_measurement.SessionReservationMode
 fn sessions_membership_probe(session_knobs: List<ConvergeKnob>) -> SessionsMembershipProbe {
   if session_knobs.length() > 0 {
     MembershipProbe {
-      slice_cgroup: concat(concat(gunbc_cgroup_v2_root, "/"), gunbc_oomd_sessions_slice),
+      slice_cgroup: concat(concat(gunbc_cgroup_v2_root, "/"), gunbc.oomd_install.gunbc_oomd_sessions_slice),
       legacy_cgroup: concat(concat(gunbc_cgroup_v2_root, "/"), gunbc_sessions_legacy_parent_slice),
     }
   } else {
@@ -624,9 +624,9 @@ fn host_converge_of(h: gunbc.ci_runner_placement.RunnerHostDeployment, session_k
 
 fn fleet_converge_policy_from(plan: gunbc.ci_runner_placement.RunnerDeploymentPlan, mode: gunbc.ci_floor_measurement.SessionReservationMode) -> ConvergePolicy {
   match plan {
-    PlanUnsound { reason: reason } =>
+    gunbc.ci_runner_placement.PlanUnsound { reason: reason } =>
       ConvergePolicyUnsound { reason: concat("runner deployment unsound: ", reason) }
-    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } => {
+    gunbc.ci_runner_placement.PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } => {
       let session_knobs = match session_knobs_by_host(mode: mode) {
         Present { value: ks } => ks
         Absent => []
@@ -639,5 +639,5 @@ fn fleet_converge_policy_from(plan: gunbc.ci_runner_placement.RunnerDeploymentPl
 }
 
 fn fleet_converge_policy() -> ConvergePolicy {
-  fleet_converge_policy_from(plan: runner_deployment_plan(), mode: gunbc_ci_session_reservation_mode)
+  fleet_converge_policy_from(plan: gunbc.ci_runner_placement.runner_deployment_plan(), mode: gunbc.ci_floor_measurement.gunbc_ci_session_reservation_mode)
 }

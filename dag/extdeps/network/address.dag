@@ -3,7 +3,7 @@ module extdeps.network.address
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.iana.org/assignments/address-family-numbers/address-family-numbers.xhtml",
   }
 }
@@ -24,7 +24,7 @@ fn ip_v6(addr: extdeps.network.ipv6.Ipv6Address) -> IpAddress {
 
 fn render_ip_address(addr: IpAddress) -> std.types.NonEmptyStr? {
   match addr {
-    IpV4 { v4: a } => Present { value: render_ipv4_address(addr: a) }
+    IpV4 { v4: a } => Present { value: extdeps.network.ipv4.render_ipv4_address(addr: a) }
     IpV6 { v6: _ } => none
   }
 }
@@ -39,6 +39,6 @@ fn ip_address_is_v4(addr: IpAddress) -> Bool {
 fn ip_address_is_loopback(addr: IpAddress) -> Bool {
   match addr {
     IpV4 { v4: a } => a.octet1 == 127
-    IpV6 { v6: a } => ipv6_is_loopback(addr: a)
+    IpV6 { v6: a } => extdeps.network.ipv6.ipv6_is_loopback(addr: a)
   }
 }

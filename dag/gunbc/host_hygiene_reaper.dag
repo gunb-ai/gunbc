@@ -1,5 +1,6 @@
 module gunbc.host_hygiene_reaper
 
+
 data gunbc_host_hygiene_reaper_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Brief 4 deliverable (a): residual reaper decision core. Extends the ctrl-runner-reclaim.timer pattern (a hand-deployed host timer with no prior .dag model) to dead-slot residue: processes surviving KillMode=process in an INACTIVE unit's cgroup, plus stale system.control override dirs for disabled instances. NON-GOAL: reaping anything in an ACTIVE unit's cgroup. CRITICAL SEQUENCING (the incident this guards against): a naive reap-everything-inactive would have killed the shared sccache server, found lazily auto-spawned into dead slot srv1-10's cgroup (host diagnosis behind PR 7019, session/wise-crab-547, open at authoring time). This module refuses to touch any build-cache-server occupant unconditionally, typed and counted, never a silent skip — fixing placement is that sibling work's separate concern, not this reaper's."
 }
@@ -41,12 +42,12 @@ type ResidualReapAction
 
 fn unit_is_inactive_for_reap(s: extdeps.systemd.SystemdUnitActiveState) -> Bool {
   match s {
-    Active => false
-    Activating => false
-    Deactivating => false
-    Reloading => false
-    Inactive => true
-    Failed => true
+    extdeps.systemd.Active => false
+    extdeps.systemd.Activating => false
+    extdeps.systemd.Deactivating => false
+    extdeps.systemd.Reloading => false
+    extdeps.systemd.Inactive => true
+    extdeps.systemd.Failed => true
   }
 }
 
@@ -154,13 +155,13 @@ fn reconcile_residual_reap(
   read: std.realization_reconcile.ShowEffectiveRead<List<ResidualSlotObservation>>,
 ) -> std.realization_reconcile.Reconciliation<String, ResidualReapEvidence> {
   match read {
-    ReadAbsent { reason: why } =>
+    std.realization_reconcile.ReadAbsent { reason: why } =>
       std.realization_reconcile.reconcile_grounded(
         apply_effect: "host_hygiene_reaper.timer",
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    ReadObserved { value: obs_list } =>
+    std.realization_reconcile.ReadObserved { value: obs_list } =>
       std.realization_reconcile.reconcile_grounded(
         apply_effect: "host_hygiene_reaper.timer",
         show_read: read,

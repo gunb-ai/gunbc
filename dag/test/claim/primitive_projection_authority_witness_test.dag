@@ -1,52 +1,53 @@
 module test.claim.primitive_projection_authority_witness_test
 
+
 data primitive_projection_authority_witness_note: String = "Executes the question a candidate collector asks of this carrier: given a DECLARATION, is it the modeled surface of a PRIMITIVE, and are the two one authority or two. The discriminating control is the DivergentProjection row -- v2.std.collection map_get -- which must answer NOT one authority while the seam and modeled rows answer that they are. A carrier that collapsed the three fidelities into a boolean suppress flag reds w_divergent_projection_is_not_one_authority, which is the whole reason the third variant exists."
 
-fn projection_declaration(module_path: String, decl_name: String) -> DeclarationRef {
-  decl_ref(module_path: module_path, decl_name: decl_name)
+fn projection_declaration(module_path: String, decl_name: String) -> std.decl_ref.DeclarationRef {
+  std.decl_ref.decl_ref(module_path: module_path, decl_name: decl_name)
 }
 
 test fn w_host_realized_seam_answers_with_its_fidelity() -> Bool {
-  match primitive_projection_for_declaration(
+  match std.primitive_identity.primitive_projection_for_declaration(
     declaration: projection_declaration(module_path: "v2.std.decl_index", decl_name: "decl_facts")
   ) {
-    DeclarationProjectsNoPrimitive => false
-    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
-    DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
+    std.primitive_projection.DeclarationProjectsNoPrimitive => false
+    std.primitive_projection.DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+    std.primitive_projection.DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
       match fidelity {
-        HostRealizedSeam => true
-        ModeledProjection => false
-        DivergentProjection { divergence: _ } => false
+        std.primitive_projection.HostRealizedSeam => true
+        std.primitive_projection.ModeledProjection => false
+        std.primitive_projection.DivergentProjection { divergence: _ } => false
       }
   }
 }
 
 test fn w_modeled_projection_answers_with_its_fidelity() -> Bool {
-  match primitive_projection_for_declaration(
+  match std.primitive_identity.primitive_projection_for_declaration(
     declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "length")
   ) {
-    DeclarationProjectsNoPrimitive => false
-    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
-    DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
+    std.primitive_projection.DeclarationProjectsNoPrimitive => false
+    std.primitive_projection.DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+    std.primitive_projection.DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
       match fidelity {
-        HostRealizedSeam => false
-        ModeledProjection => true
-        DivergentProjection { divergence: _ } => false
+        std.primitive_projection.HostRealizedSeam => false
+        std.primitive_projection.ModeledProjection => true
+        std.primitive_projection.DivergentProjection { divergence: _ } => false
       }
   }
 }
 
 test fn w_divergent_projection_answers_with_its_fidelity() -> Bool {
-  match primitive_projection_for_declaration(
+  match std.primitive_identity.primitive_projection_for_declaration(
     declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_get")
   ) {
-    DeclarationProjectsNoPrimitive => false
-    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
-    DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
+    std.primitive_projection.DeclarationProjectsNoPrimitive => false
+    std.primitive_projection.DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+    std.primitive_projection.DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
       match fidelity {
-        HostRealizedSeam => false
-        ModeledProjection => false
-        DivergentProjection { divergence: _ } => true
+        std.primitive_projection.HostRealizedSeam => false
+        std.primitive_projection.ModeledProjection => false
+        std.primitive_projection.DivergentProjection { divergence: _ } => true
       }
   }
 }
@@ -59,133 +60,133 @@ test fn w_divergent_projection_answers_with_its_fidelity() -> Bool {
 // nobody has classified it -- top-as-ignorance, which a consumer must not route to its refusing
 // arm.
 test fn w_a_declaration_on_no_surface_answers_classified_no_primitive() -> Bool {
-  match primitive_projection_for_declaration(
+  match std.primitive_identity.primitive_projection_for_declaration(
     declaration: projection_declaration(
       module_path: "v2.std.collection",
       decl_name: "list_at_optional",
     )
   ) {
-    DeclarationProjectsNoPrimitive => true
-    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
-    DeclarationProjectsPrimitive { identity: _, fidelity: _ } => false
+    std.primitive_projection.DeclarationProjectsNoPrimitive => true
+    std.primitive_projection.DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+    std.primitive_projection.DeclarationProjectsPrimitive { identity: _, fidelity: _ } => false
   }
 }
 
 test fn w_a_declaration_on_a_surface_with_no_projection_row_answers_undisposed() -> Bool {
-  match primitive_projection_for_declaration(
+  match std.primitive_identity.primitive_projection_for_declaration(
     declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "to_upper")
   ) {
-    DeclarationProjectsNoPrimitive => false
-    DeclarationPrimitiveUndisposed { authored_symbol: sym } => (sym as String) == "to_upper"
-    DeclarationProjectsPrimitive { identity: _, fidelity: _ } => false
+    std.primitive_projection.DeclarationProjectsNoPrimitive => false
+    std.primitive_projection.DeclarationPrimitiveUndisposed { authored_symbol: sym } => (sym as String) == "to_upper"
+    std.primitive_projection.DeclarationProjectsPrimitive { identity: _, fidelity: _ } => false
   }
 }
 
 test fn w_undisposed_is_not_one_authority_and_so_never_suppresses() -> Bool {
-  !declaration_and_primitive_are_one_authority(
+  !std.primitive_identity.declaration_and_primitive_are_one_authority(
     declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "to_upper"),
-    primitive: primitive_length,
+    primitive: std.primitive_projection.primitive_length,
   )
 }
 
 test fn w_divergent_projection_is_not_one_authority() -> Bool {
-  !declaration_and_primitive_are_one_authority(
+  !std.primitive_identity.declaration_and_primitive_are_one_authority(
     declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_get"),
-    primitive: primitive_map_get,
+    primitive: std.primitive_projection.primitive_map_get,
   )
 }
 
 test fn w_seam_and_modeled_projections_are_one_authority() -> Bool {
-  declaration_and_primitive_are_one_authority(
+  std.primitive_identity.declaration_and_primitive_are_one_authority(
     declaration: projection_declaration(module_path: "v2.std.decl_index", decl_name: "decl_facts"),
-    primitive: primitive_decl_facts,
+    primitive: std.primitive_projection.primitive_decl_facts,
   )
-    && declaration_and_primitive_are_one_authority(
+    && std.primitive_identity.declaration_and_primitive_are_one_authority(
       declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "length"),
-      primitive: primitive_length,
+      primitive: std.primitive_projection.primitive_length,
     )
-    && declaration_and_primitive_are_one_authority(
+    && std.primitive_identity.declaration_and_primitive_are_one_authority(
       declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_insert"),
-      primitive: primitive_map_insert,
+      primitive: std.primitive_projection.primitive_map_insert,
     )
-    && declaration_and_primitive_are_one_authority(
+    && std.primitive_identity.declaration_and_primitive_are_one_authority(
       declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "empty_map"),
-      primitive: primitive_empty_map,
+      primitive: std.primitive_projection.primitive_empty_map,
     )
 }
 
 test fn w_projection_of_a_different_primitive_is_not_one_authority() -> Bool {
-  !declaration_and_primitive_are_one_authority(
+  !std.primitive_identity.declaration_and_primitive_are_one_authority(
     declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "length"),
-    primitive: primitive_map_insert,
+    primitive: std.primitive_projection.primitive_map_insert,
   )
 }
 
 test fn w_projection_roster_carries_no_violations() -> Bool {
-  primitive_projection_violation_count() == 0
+  std.primitive_identity.primitive_projection_violation_count() == 0
 }
 
 test fn w_planted_projection_naming_an_undeclared_primitive_refuses() -> Bool {
   let planted = [
-    primitive_projection_row(
-      primitive: primitive_identity_slug(name: "no_such_primitive_in_the_declared_population"),
+    std.primitive_projection.primitive_projection_row(
+      primitive: std.primitive_projection.primitive_identity_slug(name: "no_such_primitive_in_the_declared_population"),
       module_path: "v2.std.collection",
       decl_name: "list_at_optional",
-      fidelity: ModeledProjection,
+      fidelity: std.primitive_projection.ModeledProjection,
     ),
   ]
-  primitive_projection_violation_count_in(rows: planted) > 0
+  std.primitive_identity.primitive_projection_violation_count_in(rows: planted) > 0
 }
 
 test fn w_planted_duplicate_projection_for_one_declaration_refuses() -> Bool {
   let planted = [
-    primitive_projection_row(
-      primitive: primitive_length,
+    std.primitive_projection.primitive_projection_row(
+      primitive: std.primitive_projection.primitive_length,
       module_path: "v2.std.algebra",
       decl_name: "length",
-      fidelity: ModeledProjection,
+      fidelity: std.primitive_projection.ModeledProjection,
     ),
-    primitive_projection_row(
-      primitive: primitive_map_insert,
+    std.primitive_projection.primitive_projection_row(
+      primitive: std.primitive_projection.primitive_map_insert,
       module_path: "v2.std.algebra",
       decl_name: "length",
-      fidelity: ModeledProjection,
+      fidelity: std.primitive_projection.ModeledProjection,
     ),
   ]
-  primitive_projection_violation_count_in(rows: planted) > 0
+  std.primitive_identity.primitive_projection_violation_count_in(rows: planted) > 0
 }
 
 test fn w_detector_admits_a_well_formed_planted_roster() -> Bool {
   let planted = [
-    primitive_projection_row(
-      primitive: primitive_length,
+    std.primitive_projection.primitive_projection_row(
+      primitive: std.primitive_projection.primitive_length,
       module_path: "v2.std.algebra",
       decl_name: "length",
-      fidelity: ModeledProjection,
+      fidelity: std.primitive_projection.ModeledProjection,
     ),
   ]
-  primitive_projection_violation_count_in(rows: planted) == 0
+  std.primitive_identity.primitive_projection_violation_count_in(rows: planted) == 0
 }
 
 test fn w_projection_roster_carries_both_one_authority_and_divergent_rows() -> Bool {
-  primitive_projection_divergent_row_count() >= 1
-    && primitive_projection_one_authority_row_count() >= 1
+  std.primitive_identity.primitive_projection_divergent_row_count() >= 1
+    && std.primitive_identity.primitive_projection_one_authority_row_count() >= 1
 }
 
 test fn w_a_declared_symbol_disposes_to_its_identity() -> Bool {
-  match primitive_symbol_disposition(authored_symbol: "map_keys") {
-    SymbolUndisposed { authored_symbol: _ } => false
-    SymbolJoinsDeclaredPrimitive { authored_symbol: _, identity: id } =>
-      primitive_identity_eq(left: id, right: primitive_map_keys)
+  match std.primitive_identity.primitive_symbol_disposition(authored_symbol: "map_keys") {
+    std.primitive_identity.SymbolUndisposed { authored_symbol: _ } => false
+    std.primitive_identity.SymbolJoinsDeclaredPrimitive { authored_symbol: _, identity: id } =>
+      std.primitive_identity.primitive_identity_eq(left: id, right: std.primitive_identity.primitive_map_keys)
   }
 }
 
 test fn w_an_undeclared_symbol_disposes_to_undisposed() -> Bool {
-  match primitive_symbol_disposition(
+  match std.primitive_identity.primitive_symbol_disposition(
     authored_symbol: "no_such_symbol_in_the_declared_population"
   ) {
-    SymbolUndisposed { authored_symbol: _ } => true
-    SymbolJoinsDeclaredPrimitive { authored_symbol: _, identity: _ } => false
+    std.primitive_identity.SymbolUndisposed { authored_symbol: _ } => true
+    std.primitive_identity.SymbolJoinsDeclaredPrimitive { authored_symbol: _, identity: _ } => false
   }
 }
 
@@ -195,60 +196,60 @@ test fn w_an_undeclared_symbol_disposes_to_undisposed() -> Bool {
 // bar is reached, which is the defect the roadmap node already records against an earlier
 // acceptance clause of this same carrier.
 test fn w_every_census_symbol_lands_in_exactly_one_disposition_arm() -> Bool {
-  primitive_disposed_surface_symbol_count() + primitive_undisposed_surface_symbol_count()
-    == primitive_surface_distinct_symbol_count()
-    && primitive_surface_distinct_symbol_count() > 0
+  std.primitive_identity.primitive_disposed_surface_symbol_count() + std.primitive_identity.primitive_undisposed_surface_symbol_count()
+    == std.primitive_identity.primitive_surface_distinct_symbol_count()
+    && std.primitive_identity.primitive_surface_distinct_symbol_count() > 0
 }
 
 data primitive_runtime_coverage_witness_note: String = "The opposite direction from the projection query, and it catches the class the projection query is blind to by construction: a symbol registered on the typecheck surface with no row on any runtime-bearing surface. The three planted controls are a controlled fixture -- the population and the expected answer are authored here, not copied from the tree -- so the detector is exercised in all three arms rather than only in whichever arm the live corpus happens to occupy today."
 
-fn planted_registry_row(authority: PrimitiveSurfaceAuthority, sym: String) -> PrimitiveSurfaceRow {
-  surface_row(
+fn planted_registry_row(authority: std.primitive_identity.PrimitiveSurfaceAuthority, sym: String) -> std.primitive_identity.PrimitiveSurfaceRow {
+  std.primitive_identity.surface_row(
     authority: authority,
     authored_symbol: sym,
-    authority_ref: decl_ref(module_path: "test.fixture", decl_name: "planted"),
+    authority_ref: std.decl_ref.decl_ref(module_path: "test.fixture", decl_name: "planted"),
     primitive: none,
-    provenance: DerivedFromAuthority,
+    provenance: std.primitive_identity.DerivedFromAuthority,
   )
 }
 
 test fn w_planted_registry_only_symbol_has_no_runtime_row() -> Bool {
-  let planted = [planted_registry_row(authority: BuiltinRegistry, sym: "planted_registry_only")]
-  match primitive_runtime_coverage_in(rows: planted, authored_symbol: "planted_registry_only") {
-    RuntimeRowAbsentFromEnumeratedSurfaces => true
-    RuntimeRowOnEmitHandlerOnly => false
-    RuntimeRowOnInterpreterDispatch => false
+  let planted = [planted_registry_row(authority: std.primitive_identity.BuiltinRegistry, sym: "planted_registry_only")]
+  match std.primitive_identity.primitive_runtime_coverage_in(rows: planted, authored_symbol: "planted_registry_only") {
+    std.primitive_identity.RuntimeRowAbsentFromEnumeratedSurfaces => true
+    std.primitive_identity.RuntimeRowOnEmitHandlerOnly => false
+    std.primitive_identity.RuntimeRowOnInterpreterDispatch => false
   }
 }
 
 test fn w_planted_symbol_with_an_interpreter_row_has_a_runtime_row() -> Bool {
   let planted = [
-    planted_registry_row(authority: BuiltinRegistry, sym: "planted_with_runtime"),
-    planted_registry_row(authority: InterpreterDispatch, sym: "planted_with_runtime"),
+    planted_registry_row(authority: std.primitive_identity.BuiltinRegistry, sym: "planted_with_runtime"),
+    planted_registry_row(authority: std.primitive_identity.InterpreterDispatch, sym: "planted_with_runtime"),
   ]
-  match primitive_runtime_coverage_in(rows: planted, authored_symbol: "planted_with_runtime") {
-    RuntimeRowAbsentFromEnumeratedSurfaces => false
-    RuntimeRowOnEmitHandlerOnly => false
-    RuntimeRowOnInterpreterDispatch => true
+  match std.primitive_identity.primitive_runtime_coverage_in(rows: planted, authored_symbol: "planted_with_runtime") {
+    std.primitive_identity.RuntimeRowAbsentFromEnumeratedSurfaces => false
+    std.primitive_identity.RuntimeRowOnEmitHandlerOnly => false
+    std.primitive_identity.RuntimeRowOnInterpreterDispatch => true
   }
 }
 
 test fn w_planted_symbol_with_only_an_emit_row_is_named_as_such() -> Bool {
   let planted = [
-    planted_registry_row(authority: BuiltinRegistry, sym: "planted_emit_only"),
-    planted_registry_row(authority: EmitHandler, sym: "planted_emit_only"),
+    planted_registry_row(authority: std.primitive_identity.BuiltinRegistry, sym: "planted_emit_only"),
+    planted_registry_row(authority: std.primitive_identity.EmitHandler, sym: "planted_emit_only"),
   ]
-  match primitive_runtime_coverage_in(rows: planted, authored_symbol: "planted_emit_only") {
-    RuntimeRowAbsentFromEnumeratedSurfaces => false
-    RuntimeRowOnEmitHandlerOnly => true
-    RuntimeRowOnInterpreterDispatch => false
+  match std.primitive_identity.primitive_runtime_coverage_in(rows: planted, authored_symbol: "planted_emit_only") {
+    std.primitive_identity.RuntimeRowAbsentFromEnumeratedSurfaces => false
+    std.primitive_identity.RuntimeRowOnEmitHandlerOnly => true
+    std.primitive_identity.RuntimeRowOnInterpreterDispatch => false
   }
 }
 
 test fn w_live_census_answers_runtime_coverage_for_a_named_symbol() -> Bool {
-  match primitive_runtime_coverage(authored_symbol: "map_keys") {
-    RuntimeRowOnInterpreterDispatch => true
-    RuntimeRowOnEmitHandlerOnly => false
-    RuntimeRowAbsentFromEnumeratedSurfaces => false
+  match std.primitive_identity.primitive_runtime_coverage(authored_symbol: "map_keys") {
+    std.primitive_identity.RuntimeRowOnInterpreterDispatch => true
+    std.primitive_identity.RuntimeRowOnEmitHandlerOnly => false
+    std.primitive_identity.RuntimeRowAbsentFromEnumeratedSurfaces => false
   }
 }

@@ -7,7 +7,7 @@ type DemandGuard
 
 type ReplicationIntent
   = SingleRun
-  | ReplicatedOracle { runs: v2.std.integer.Int }
+  | ReplicatedOracle { runs: Int }
 
 type ComputationDemandFact {
   site: String
@@ -20,17 +20,17 @@ data empty_computation_demand_facts: List<ComputationDemandFact> = []
 data empty_duplicate_computation_violations: List<std.materialization_ladder.LadderVerdict> = []
 data empty_computation_key_tokens: List<String> = []
 
-fn computation_placement_flag(token: String) -> v2.std.logic.Bool {
+fn computation_placement_flag(token: String) -> Bool {
   token == "--output-dir"
 }
 
 type ComputationKeyFold {
-  skip_next: v2.std.logic.Bool
+  skip_next: Bool
   kept: List<String>
 }
 
 fn computation_key_tokens(tokens: List<String>) -> List<String> {
-  let folded = fold_list(
+  let folded = v2.std.algebra.fold_list(
     xs: tokens,
     empty: ComputationKeyFold { skip_next: false, kept: empty_computation_key_tokens },
     cons: fn(acc, t) {
@@ -41,7 +41,7 @@ fn computation_key_tokens(tokens: List<String>) -> List<String> {
       } else {
         ComputationKeyFold {
           skip_next: false,
-          kept: list_snoc_item(xs: acc.kept, item: t)
+          kept: v2.std.algebra.list_snoc_item(xs: acc.kept, item: t)
         }
       }
     }
@@ -50,7 +50,7 @@ fn computation_key_tokens(tokens: List<String>) -> List<String> {
 }
 
 fn computation_join_tokens(tokens: List<String>) -> String {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: tokens,
     empty: "",
     cons: fn(acc, t) {
@@ -66,26 +66,26 @@ type TypedArgvInvocation {
 }
 
 fn typed_argv_computation_tokens(invocation: TypedArgvInvocation) -> List<String> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: invocation.args,
     empty: [invocation.tool],
-    cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) }
+    cons: fn(acc, a) { v2.std.algebra.list_snoc_item(xs: acc, item: a) }
   )
 }
 
-fn computation_command_is_compile_class(tokens: List<String>) -> v2.std.logic.Bool {
+fn computation_command_is_compile_class(tokens: List<String>) -> Bool {
   let first = computation_token_at(tokens: tokens, at: 0)
   let second = computation_token_at(tokens: tokens, at: 1)
   ((first == "cargo") && (second == "build")) || ((first == "gunbc") && (second == "compile"))
 }
 
 type ComputationTokenPick {
-  index: v2.std.integer.Int
+  index: Int
   picked: String
 }
 
-fn computation_token_at(tokens: List<String>, at: v2.std.integer.Int) -> String {
-  let folded = fold_list(
+fn computation_token_at(tokens: List<String>, at: Int) -> String {
+  let folded = v2.std.algebra.fold_list(
     xs: tokens,
     empty: ComputationTokenPick { index: 0, picked: "" },
     cons: fn(acc, t) {
@@ -117,45 +117,45 @@ fn typed_argv_computation_demands(
   }
 }
 
-fn demand_guard_is_unguarded(g: DemandGuard) -> v2.std.logic.Bool {
+fn demand_guard_is_unguarded(g: DemandGuard) -> Bool {
   match g {
     UnguardedDemand => true
     GuardedFallbackDemand => false
   }
 }
 
-fn replication_admits_observed_runs(r: ReplicationIntent, observed: v2.std.integer.Int) -> v2.std.logic.Bool {
+fn replication_admits_observed_runs(r: ReplicationIntent, observed: Int) -> Bool {
   match r {
     SingleRun => observed <= 1
     ReplicatedOracle { runs: declared } => observed == declared
   }
 }
 
-fn computation_keys_contain(keys: List<String>, key: String) -> v2.std.logic.Bool {
-  any(xs: keys, predicate: fn(k) { k == key })
+fn computation_keys_contain(keys: List<String>, key: String) -> Bool {
+  v2.std.algebra.any(xs: keys, predicate: fn(k) { k == key })
 }
 
 fn distinct_computation_keys(facts: List<ComputationDemandFact>) -> List<String> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: facts,
     empty: empty_computation_key_tokens,
     cons: fn(acc, f) {
       if computation_keys_contain(keys: acc, key: f.computation_key) {
         acc
       } else {
-        list_snoc_item(xs: acc, item: f.computation_key)
+        v2.std.algebra.list_snoc_item(xs: acc, item: f.computation_key)
       }
     }
   )
 }
 
 fn unguarded_demands_for_key(facts: List<ComputationDemandFact>, key: String) -> List<ComputationDemandFact> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: facts,
     empty: empty_computation_demand_facts,
     cons: fn(acc, f) {
       if (f.computation_key == key) && demand_guard_is_unguarded(g: f.guard) {
-        list_snoc_item(xs: acc, item: f)
+        v2.std.algebra.list_snoc_item(xs: acc, item: f)
       } else {
         acc
       }
@@ -163,12 +163,12 @@ fn unguarded_demands_for_key(facts: List<ComputationDemandFact>, key: String) ->
   )
 }
 
-fn computation_demand_group_admissible(group: List<ComputationDemandFact>) -> v2.std.logic.Bool {
-  let observed = length(xs: group)
+fn computation_demand_group_admissible(group: List<ComputationDemandFact>) -> Bool {
+  let observed = v2.std.algebra.length(xs: group)
   if observed <= 1 {
     true
   } else {
-    !(any(xs: group, predicate: fn(f) { !(replication_admits_observed_runs(r: f.replication, observed: observed)) }))
+    !(v2.std.algebra.any(xs: group, predicate: fn(f) { !(replication_admits_observed_runs(r: f.replication, observed: observed)) }))
   }
 }
 
@@ -177,7 +177,7 @@ fn authored_duplication_lca(key: String) -> List<std.materialization_ladder.Fram
 }
 
 fn duplicate_computation_violations(facts: List<ComputationDemandFact>) -> List<std.materialization_ladder.LadderVerdict> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: distinct_computation_keys(facts: facts),
     empty: empty_duplicate_computation_violations,
     cons: fn(acc, key) {
@@ -185,24 +185,24 @@ fn duplicate_computation_violations(facts: List<ComputationDemandFact>) -> List<
       if computation_demand_group_admissible(group: group) {
         acc
       } else {
-        list_snoc_item(xs: acc, item: std.materialization_ladder.AuthoredDuplication {
+        v2.std.algebra.list_snoc_item(xs: acc, item: std.materialization_ladder.AuthoredDuplication {
           identity: key,
           lca: authored_duplication_lca(key: key),
-          site_count: length(xs: group)
+          site_count: v2.std.algebra.length(xs: group)
         })
       }
     }
   )
 }
 
-fn duplicate_computation_violation_count(facts: List<ComputationDemandFact>) -> v2.std.integer.Int {
-  length(xs: duplicate_computation_violations(facts: facts))
+fn duplicate_computation_violation_count(facts: List<ComputationDemandFact>) -> Int {
+  v2.std.algebra.length(xs: duplicate_computation_violations(facts: facts))
 }
 
-fn duplicate_computation_clean_holds(facts: List<ComputationDemandFact>) -> v2.std.logic.Bool {
+fn duplicate_computation_clean_holds(facts: List<ComputationDemandFact>) -> Bool {
   duplicate_computation_violation_count(facts: facts) == 0
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch }
 }

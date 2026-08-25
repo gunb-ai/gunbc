@@ -4,11 +4,11 @@ module test.claim.shell_target_conformance_witness
 data conformance_witness_note: String = "Controls for the Bash/POSIX decomposition (DESIGN section 3, external upstream decomposition; review relayed through the operator 2026-08-04). The defect these pin: the POSIX Shell Command Language was stored as a further_citation on GNU Bash's ExternalModelScope, so one independently governed subject was recorded as a source ABOUT another. The rule is that multiple citations may ground one subject while a second governed subject is never a citation of the first. The discriminating assertion is the citation count — under the old shape Bash carried two citations and POSIX had no subject of its own, so asserting that Bash's further_citations is EMPTY goes red against the previous tree and green against this one. The rest pin the replacement: POSIX is a subject with its own scope and its own citation, and the conformance relation is a product-layer fact naming two DISTINCT subjects."
 
 fn citation_count_of_bash_scope() -> Int {
-  fold(extdeps.languages.bash.subject.gnu_bash_model_scope.further_citations, init: 0, f: fn(acc, _c) { acc + 1 })
+  fold(gnu_bash_model_scope.further_citations, init: 0, f: fn(acc, _c) { acc + 1 })
 }
 
 fn citation_count_of_posix_scope() -> Int {
-  fold(extdeps.posix.shell_command_language.posix_shell_model_scope.further_citations, init: 0, f: fn(acc, _c) { acc + 1 })
+  fold(posix_shell_model_scope.further_citations, init: 0, f: fn(acc, _c) { acc + 1 })
 }
 
 test fn red_bash_scope_no_longer_cites_a_second_governed_subject() -> Bool {
@@ -16,33 +16,33 @@ test fn red_bash_scope_no_longer_cites_a_second_governed_subject() -> Bool {
 }
 
 test fn posix_is_its_own_subject_with_its_own_grounding() -> Bool {
-  declaration_ref_eq(a: extdeps.posix.shell_command_language.posix_shell_model_scope.subject.declaration, b: posix_shell_subject_ref)
+  std.decl_ref.declaration_ref_eq(a: posix_shell_model_scope.subject.declaration, b: gunbc.shell_target_conformance.posix_shell_subject_ref)
     && citation_count_of_posix_scope() == 0
 }
 
 test fn bash_scope_grounds_the_bash_subject_and_not_the_specification() -> Bool {
-  declaration_ref_eq(a: extdeps.languages.bash.subject.gnu_bash_model_scope.subject.declaration, b: gunbc.language_target_registry.gnu_bash_subject_ref)
-    && !declaration_ref_eq(a: extdeps.languages.bash.subject.gnu_bash_model_scope.subject.declaration, b: posix_shell_subject_ref)
+  std.decl_ref.declaration_ref_eq(a: gnu_bash_model_scope.subject.declaration, b: gunbc.language_target_registry.gnu_bash_subject_ref)
+    && !std.decl_ref.declaration_ref_eq(a: gnu_bash_model_scope.subject.declaration, b: gunbc.shell_target_conformance.posix_shell_subject_ref)
 }
 
 test fn conformance_relates_two_distinct_subjects() -> Bool {
-  implementation_and_specification_are_distinct_subjects()
+  gunbc.shell_target_conformance.implementation_and_specification_are_distinct_subjects()
 }
 
 test fn conformance_fact_is_reachable_from_the_implementation() -> Bool {
-  match conformance_for_implementation(implementation: gunbc.language_target_registry.gnu_bash_subject_ref) {
+  match gunbc.shell_target_conformance.conformance_for_implementation(implementation: gunbc.language_target_registry.gnu_bash_subject_ref) {
     Present { value: c } =>
-      declaration_ref_eq(a: c.specification, b: posix_shell_subject_ref)
+      std.decl_ref.declaration_ref_eq(a: c.specification, b: gunbc.shell_target_conformance.posix_shell_subject_ref)
         && match c.degree {
-          ConformantSupersetWithStrictMode => true
-          ConformanceUnstated => false
+          gunbc.shell_target_conformance.ConformantSupersetWithStrictMode => true
+          gunbc.shell_target_conformance.ConformanceUnstated => false
         }
     Absent => false
   }
 }
 
 test fn red_conformance_lookup_for_an_unrelated_subject_refuses() -> Bool {
-  match conformance_for_implementation(implementation: posix_shell_subject_ref) {
+  match gunbc.shell_target_conformance.conformance_for_implementation(implementation: gunbc.shell_target_conformance.posix_shell_subject_ref) {
     Absent => true
     Present { value: _ } => false
   }

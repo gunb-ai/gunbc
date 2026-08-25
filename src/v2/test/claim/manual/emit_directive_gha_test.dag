@@ -1,24 +1,24 @@
 module v2.test.manual.emit_directive_gha
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn emit_directive_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_absent()
+  v2.std.optional.optional_absent()
 }
 
 data emit_directive_gha_error_example: v2.std.diagnostic.EmitDirective = v2.std.diagnostic.EmitDirective {
-  severity: SeverityError,
+  severity: v2.std.diagnostic.SeverityError,
   message: "build verification failed"
 }
 
 data emit_directive_gha_warning_example: v2.std.diagnostic.EmitDirective = v2.std.diagnostic.EmitDirective {
-  severity: SeverityWarning,
+  severity: v2.std.diagnostic.SeverityWarning,
   message: "build verification failed"
 }
 
 data emit_directive_gha_other_example: v2.std.diagnostic.EmitDirective = v2.std.diagnostic.EmitDirective {
-  severity: SeverityError,
+  severity: v2.std.diagnostic.SeverityError,
   message: "cache corruption"
 }
 
@@ -29,69 +29,69 @@ data emit_directive_gha_other_expected: String = "'echo' '::error::cache corrupt
 fn emit_directive_gha_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   v2.compiler.emit.emit(
     tree: v2.compiler.inferred_tree.InferredTree {
-      root: emit_directive_bash_emitted_command,
-      facts: std.algebra.PartialFunction { lookup: emit_directive_facts_lookup }
+      root: v2.extdeps.languages.bash.emit_directive_bash_emitted_command,
+      facts: PartialFunction { lookup: emit_directive_facts_lookup }
     },
-    target: emit_directive_gha_target_model(d: d)
+    target: v2.extdeps.github.diagnostic_emit.emit_directive_gha_target_model(d: d)
   )
 }
 
 fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   v2.compiler.emit.emit(
     tree: v2.compiler.inferred_tree.InferredTree {
-      root: emit_directive_bash_emitted_command,
-      facts: std.algebra.PartialFunction { lookup: emit_directive_facts_lookup }
+      root: v2.extdeps.languages.bash.emit_directive_bash_emitted_command,
+      facts: PartialFunction { lookup: emit_directive_facts_lookup }
     },
-    target: emit_directive_bash_target_model(d: d)
+    target: v2.extdeps.languages.bash.emit_directive_bash_target_model(d: d)
   )
 }
 
 test fn emit_directive_gha_error_emits_error_annotation_holds() -> Bool {
   match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
-    Accepted { value: source, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
       (source.carried == emit_directive_gha_error_expected) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_directive_gha_warning_emits_warning_annotation_holds() -> Bool {
   match emit_directive_gha_emit(d: emit_directive_gha_warning_example) {
-    Accepted { value: source, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
       (source.carried == emit_directive_gha_warning_expected) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_directive_gha_severity_variant_holds() -> Bool {
   match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
-    Accepted { value: se, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: se, diagnostics: _ } =>
       match emit_directive_gha_emit(d: emit_directive_gha_warning_example) {
-        Accepted { value: sw, diagnostics: _ } => se.carried != sw.carried
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Accepted { value: sw, diagnostics: _ } => se.carried != sw.carried
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_directive_gha_message_flows_holds() -> Bool {
   match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
-    Accepted { value: s1, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: s1, diagnostics: _ } =>
       match emit_directive_gha_emit(d: emit_directive_gha_other_example) {
-        Accepted { value: s2, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: s2, diagnostics: _ } =>
           (s2.carried == emit_directive_gha_other_expected) && (s1.carried != s2.carried)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn emit_directive_gha_distinct_from_bash_holds() -> Bool {
   match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
-    Accepted { value: g, diagnostics: _ } =>
-      match v2.test.manual.emit_directive_gha.emit_directive_bash_emit(d: emit_directive_gha_error_example) {
-        Accepted { value: b, diagnostics: _ } => g.carried != b.carried
-        Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: g, diagnostics: _ } =>
+      match emit_directive_bash_emit(d: emit_directive_gha_error_example) {
+        v2.std.diagnostic.Accepted { value: b, diagnostics: _ } => g.carried != b.carried
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

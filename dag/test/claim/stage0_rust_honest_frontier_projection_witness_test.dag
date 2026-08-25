@@ -2,80 +2,80 @@ module test.claim.stage0_rust_honest_frontier_projection_witness
 
 
 test fn honest_frontier_exact_unclassified_paths_preserve_identity_and_order() -> Bool {
-  exact_unclassified_tracked_paths(
+  gunbc.stage0_rust_lifecycle_totality.exact_unclassified_tracked_paths(
     tracked_paths: ["a.rs", "generated.rs", "disposition.rs", "b.rs"],
     classified_paths: ["generated.rs", "disposition.rs"]
   ) == ["a.rs", "b.rs"]
 }
 
 test fn honest_frontier_projection_returns_exact_unclassified_paths() -> Bool {
-  match tracked_rust_unclassified_projection(
-    observation: honest_frontier_projection_witness_observation(
+  match gunbc.stage0_rust_honest_frontier_integration.tracked_rust_unclassified_projection(
+    observation: gunbc.stage0_rust_honest_frontier_projection.honest_frontier_projection_witness_observation(
       extra_paths: ["synthetic/a.rs", "synthetic/b.rs"]
     )
   ) {
-    TrackedRustUnclassifiedPaths { paths: paths } =>
+    gunbc.stage0_rust_honest_frontier_integration.TrackedRustUnclassifiedPaths { paths: paths } =>
       paths == ["synthetic/a.rs", "synthetic/b.rs"]
     _ => false
   }
 }
 
 test fn honest_frontier_projection_positive_control_has_no_unclassified_paths() -> Bool {
-  match tracked_rust_unclassified_projection(
-    observation: honest_frontier_projection_witness_observation(extra_paths: [])
+  match gunbc.stage0_rust_honest_frontier_integration.tracked_rust_unclassified_projection(
+    observation: gunbc.stage0_rust_honest_frontier_projection.honest_frontier_projection_witness_observation(extra_paths: [])
   ) {
-    TrackedRustUnclassifiedPaths { paths: paths } => length(xs: paths) == 0
+    gunbc.stage0_rust_honest_frontier_integration.TrackedRustUnclassifiedPaths { paths: paths } => v2.std.algebra.length(xs: paths) == 0
     _ => false
   }
 }
 
 test fn honest_frontier_projection_does_not_treat_hand_roster_as_disposition() -> Bool {
-  let hand_roster_paths = derived_hand_maintained_stage0_repo_paths()
-  match tracked_rust_unclassified_projection(
-    observation: honest_frontier_projection_witness_observation(extra_paths: hand_roster_paths)
+  let hand_roster_paths = gunbc.stage0_rust_source_lifecycle_scaffold.derived_hand_maintained_stage0_repo_paths()
+  match gunbc.stage0_rust_honest_frontier_integration.tracked_rust_unclassified_projection(
+    observation: gunbc.stage0_rust_honest_frontier_projection.honest_frontier_projection_witness_observation(extra_paths: hand_roster_paths)
   ) {
-    TrackedRustUnclassifiedPaths { paths: paths } => any(
+    gunbc.stage0_rust_honest_frontier_integration.TrackedRustUnclassifiedPaths { paths: paths } => v2.std.algebra.any(
       xs: paths,
-      predicate: fn(path) { path_in_list(path: path, paths: hand_roster_paths) }
+      predicate: fn(path) { gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: path, paths: hand_roster_paths) }
     )
     _ => false
   }
 }
 
 test fn honest_frontier_projection_propagates_observation_refusal() -> Bool {
-  match tracked_rust_unclassified_projection(
+  match gunbc.stage0_rust_honest_frontier_integration.tracked_rust_unclassified_projection(
     observation: gunbc.stage0_rust_host_observation.GitObservationRefused { detail: "git unavailable" }
   ) {
-    TrackedRustProjectionGitRefused { detail: detail } => detail == "git unavailable"
+    gunbc.stage0_rust_honest_frontier_integration.TrackedRustProjectionGitRefused { detail: detail } => detail == "git unavailable"
     _ => false
   }
 }
 
 test fn honest_frontier_projection_refuses_observed_paths_without_revision() -> Bool {
-  match tracked_rust_unclassified_projection(
+  match gunbc.stage0_rust_honest_frontier_integration.tracked_rust_unclassified_projection(
     observation: gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: "",
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: ["synthetic/a.rs"],
       prior_tracked_rust_repo_paths: [],
       cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
-      emit_population_evidence: EmitPopulationConfirmed {
+      emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
         emitted_stage0_repo_paths: []
       }
     }
   ) {
-    TrackedRustProjectionObservationRefused { detail: detail } =>
+    gunbc.stage0_rust_honest_frontier_integration.TrackedRustProjectionObservationRefused { detail: detail } =>
       detail == "observed manifest missing repository_revision"
     _ => false
   }
 }
 
 test fn honest_frontier_projection_declares_deferred_axes() -> Bool {
-  stage0_rust_honest_frontier_deferred_axes == [
-    HandAuthoredLOC,
-    HandCapability,
-    RetirementTrigger
+  gunbc.stage0_rust_honest_frontier_projection.stage0_rust_honest_frontier_deferred_axes == [
+    gunbc.stage0_rust_honest_frontier_projection.HandAuthoredLOC,
+    gunbc.stage0_rust_honest_frontier_projection.HandCapability,
+    gunbc.stage0_rust_honest_frontier_projection.RetirementTrigger
   ]
-    && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "HandAuthoredLOC")
-    && string_contains(s: stage0_rust_honest_frontier_projection_note, pattern: "stage0_rust_honest_frontier_integration")
+    && string_contains(s: gunbc.stage0_rust_honest_frontier_projection.stage0_rust_honest_frontier_projection_note, pattern: "HandAuthoredLOC")
+    && string_contains(s: gunbc.stage0_rust_honest_frontier_projection.stage0_rust_honest_frontier_projection_note, pattern: "stage0_rust_honest_frontier_integration")
 }

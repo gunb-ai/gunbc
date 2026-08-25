@@ -68,9 +68,9 @@ data gpt_oss_20b_srv6_api_tags_reading: OllamaManifestReading = OllamaManifestRe
 // srv6 readings follow as confirmations, and their agreement is why re-pinning to this identity plans
 // zero model action rather than a pull.
 fn gpt_oss_20b_resolution() -> extdeps.pin.TrackedReferenceResolution<extdeps.ollama.api.OllamaModelRef, OllamaManifestReading> {
-  tracked_reference_resolution(
-    reference: ollama_gpt_oss_20b_model_ref,
-    resolved_identity: as_content_hash_cryptographic(digest: gpt_oss_20b_manifest_digest_2026_08_19),
+  extdeps.pin.tracked_reference_resolution(
+    reference: extdeps.ollama.capability.ollama_gpt_oss_20b_model_ref,
+    resolved_identity: std.content_hash.as_content_hash_cryptographic(digest: gpt_oss_20b_manifest_digest_2026_08_19),
     resolved_at: "2026-08-19T14:28Z",
     first_evidence: gpt_oss_20b_registry_reading,
     further_evidence: [gpt_oss_20b_srv6_manifest_file_reading, gpt_oss_20b_srv6_api_tags_reading],
@@ -145,16 +145,16 @@ fn ollama_manifest_reading_wire(reading: OllamaManifestReading) -> String {
 // to end: a digest with no account of where it came from.
 fn gpt_oss_20b_resolution_wire() -> String {
   join([
-    ollama_model_ref_wire(ref: gpt_oss_20b_resolution().reference),
+    extdeps.ollama.api.ollama_model_ref_wire(ref: gpt_oss_20b_resolution().reference),
     " -> ",
-    serialize_content_hash(hash: gpt_oss_20b_resolution().resolved_identity) as String,
+    std.content_hash.serialize_content_hash(hash: gpt_oss_20b_resolution().resolved_identity) as String,
     " resolved_at=",
     gpt_oss_20b_resolution().resolved_at,
     " evidence=",
-    join(map(tracked_reference_resolution_evidence(resolution: gpt_oss_20b_resolution()), r => ollama_manifest_reading_wire(reading: r)), " | "),
+    join(map(extdeps.pin.tracked_reference_resolution_evidence(resolution: gpt_oss_20b_resolution()), r => ollama_manifest_reading_wire(reading: r)), " | "),
   ], "")
 }
 
 fn gpt_oss_20b_resolution_evidence_count() -> Int {
-  length(tracked_reference_resolution_evidence(resolution: gpt_oss_20b_resolution()))
+  length(extdeps.pin.tracked_reference_resolution_evidence(resolution: gpt_oss_20b_resolution()))
 }

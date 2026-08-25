@@ -150,7 +150,7 @@ fn walk_expr(accum: UsageAccum, texpr: v1.std.core.Node, in_tail: Bool, si: Map<
 
     v1.std.core.ExprLiteral { value: _ } => accum
 
-    ExprFieldAccess =>
+    v1.std.core.ExprFieldAccess =>
       let base_node = v1.std.core.field_access_base(texpr: texpr)
       match base_node.expr_data {
         v1.std.core.ExprVar { binding_kind: bk } =>
@@ -160,7 +160,7 @@ fn walk_expr(accum: UsageAccum, texpr: v1.std.core.Node, in_tail: Bool, si: Map<
         _ => walk_expr(accum: accum, texpr: base_node, in_tail: false, si: si)
       }
 
-    ExprCall =>
+    v1.std.core.ExprCall =>
       let fname = v1.std.core.expr_call_func_at(texpr: texpr, source_indices: si)
       if fname == "fold" {
         let init_arg = texpr.children |> filter(a => v1.std.core.authored_name_at(source_indices: si, node: a) == "init") |> first
@@ -185,7 +185,7 @@ fn walk_expr(accum: UsageAccum, texpr: v1.std.core.Node, in_tail: Bool, si: Map<
         )
       }
 
-    ExprMethodCall =>
+    v1.std.core.ExprMethodCall =>
       let recv = v1.std.core.method_receiver(texpr: texpr)
       let mc_args = v1.std.core.method_arg_nodes(texpr: texpr)
       let mname = v1.std.core.expr_method_name_at(texpr: texpr, source_indices: si)
@@ -215,7 +215,7 @@ fn walk_expr(accum: UsageAccum, texpr: v1.std.core.Node, in_tail: Bool, si: Map<
         )
       }
 
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut = v1.std.core.match_scrutinee(texpr: texpr)
       let arm_nodes = v1.std.core.match_arm_nodes(texpr: texpr)
       let s_accum = walk_expr(accum: accum, texpr: scrut, in_tail: false, si: si)
@@ -225,7 +225,7 @@ fn walk_expr(accum: UsageAccum, texpr: v1.std.core.Node, in_tail: Bool, si: Map<
       )
       merge_branch_usages(base: s_accum, branches: branch_accums)
 
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let c = v1.std.core.if_condition(texpr: texpr)
       let t = v1.std.core.if_then_branch(texpr: texpr)
       let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false, si: si)
@@ -237,7 +237,7 @@ fn walk_expr(accum: UsageAccum, texpr: v1.std.core.Node, in_tail: Bool, si: Map<
       }
       merge_branch_usages(base: c_accum, branches: [t_accum, e_accum])
 
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let v = v1.std.core.let_value(texpr: texpr)
       let v_accum = walk_expr(accum: accum, texpr: v, in_tail: false, si: si)
       match v1.std.core.let_body(texpr: texpr) {
@@ -245,7 +245,7 @@ fn walk_expr(accum: UsageAccum, texpr: v1.std.core.Node, in_tail: Bool, si: Map<
         Absent => v_accum
       }
 
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       let ss = texpr.children
       let ss_count = ss |> count
       if ss_count == 0 { accum }
@@ -262,12 +262,12 @@ fn walk_expr(accum: UsageAccum, texpr: v1.std.core.Node, in_tail: Bool, si: Map<
         }
       }
 
-    ExprReturn =>
+    v1.std.core.ExprReturn =>
       texpr.children |> fold(init: accum, f: (acc, child) =>
         walk_expr(accum: acc, texpr: child, in_tail: true, si: si)
       )
 
-    ExprLambda =>
+    v1.std.core.ExprLambda =>
       let body = v1.std.core.lambda_body(texpr: texpr)
       let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: accum, f: (acc, usage) =>
@@ -275,7 +275,7 @@ fn walk_expr(accum: UsageAccum, texpr: v1.std.core.Node, in_tail: Bool, si: Map<
       )
       UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes), touched: binding_merged.touched }
 
-    ExprForEach =>
+    v1.std.core.ExprForEach =>
       let coll = v1.std.core.foreach_collection(texpr: texpr)
       let coll_accum = walk_expr(accum: accum, texpr: coll, in_tail: false, si: si)
       let body = v1.std.core.foreach_body(texpr: texpr)
@@ -355,9 +355,9 @@ fn collect_callable_refs(texpr: v1.std.core.Node, si: Map<String, v1.std.core.Ne
         _ => empty_set()
       }
     v1.std.core.ExprLiteral { value: _ } => empty_set()
-    ExprFieldAccess =>
+    v1.std.core.ExprFieldAccess =>
       collect_callable_refs(texpr: v1.std.core.field_access_base(texpr: texpr), si: si)
-    ExprCall =>
+    v1.std.core.ExprCall =>
       texpr.children |> fold(init: empty_set(), f: (acc, a) =>
         set_union(acc, collect_callable_refs(texpr: v1.std.core.arg_value(n: a), si: si))
       )
@@ -366,7 +366,7 @@ fn collect_callable_refs(texpr: v1.std.core.Node, si: Map<String, v1.std.core.Ne
       v1.std.core.method_arg_nodes(texpr: texpr) |> fold(init: recv, f: (acc, a) =>
         set_union(acc, collect_callable_refs(texpr: v1.std.core.arg_value(n: a), si: si))
       )
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let cond = collect_callable_refs(texpr: v1.std.core.if_condition(texpr: texpr), si: si)
       let then_br = collect_callable_refs(texpr: v1.std.core.if_then_branch(texpr: texpr), si: si)
       let else_br = match v1.std.core.if_else_branch(texpr: texpr) {
@@ -374,32 +374,32 @@ fn collect_callable_refs(texpr: v1.std.core.Node, si: Map<String, v1.std.core.Ne
         Absent => empty_set()
       }
       set_union(set_union(cond, then_br), else_br)
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut = collect_callable_refs(texpr: v1.std.core.match_scrutinee(texpr: texpr), si: si)
       v1.std.core.match_arm_nodes(texpr: texpr) |> fold(init: scrut, f: (acc, arm) =>
         set_union(acc, collect_callable_refs(texpr: v1.std.core.arm_body(n: arm), si: si))
       )
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let val = collect_callable_refs(texpr: v1.std.core.let_value(texpr: texpr), si: si)
       match v1.std.core.let_body(texpr: texpr) {
         Present { value: lb } => set_union(val, collect_callable_refs(texpr: lb, si: si))
         Absent => val
       }
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       texpr.children |> fold(init: empty_set(), f: (acc, child) =>
         set_union(acc, collect_callable_refs(texpr: child, si: si))
       )
-    ExprReturn =>
+    v1.std.core.ExprReturn =>
       match texpr.children |> first {
         Present { value: child } => collect_callable_refs(texpr: child, si: si)
         Absent => empty_set()
       }
-    ExprLambda =>
+    v1.std.core.ExprLambda =>
       collect_callable_refs(texpr: v1.std.core.lambda_body(texpr: texpr), si: si)
-    ExprForEach =>
+    v1.std.core.ExprForEach =>
       let col = collect_callable_refs(texpr: v1.std.core.foreach_collection(texpr: texpr), si: si)
       set_union(col, collect_callable_refs(texpr: v1.std.core.foreach_body(texpr: texpr), si: si))
-    ExprRecordLit =>
+    v1.std.core.ExprRecordLit =>
       texpr.children |> fold(init: empty_set(), f: (acc, field) =>
         set_union(acc, collect_callable_refs(texpr: v1.std.core.arg_value(n: field), si: si))
       )
@@ -409,11 +409,11 @@ fn collect_callable_refs(texpr: v1.std.core.Node, si: Map<String, v1.std.core.Ne
 
 fn fold_terminal_expr(body: v1.std.core.Node) -> v1.std.core.Node {
   match body.expr_data {
-    ExprLet => match v1.std.core.let_body(texpr: body) {
+    v1.std.core.ExprLet => match v1.std.core.let_body(texpr: body) {
       Present { value: inner } => fold_terminal_expr(body: inner)
       Absent => body
     }
-    ExprBlock => match body.children |> last {
+    v1.std.core.ExprBlock => match body.children |> last {
       Present { value: last_child } => fold_terminal_expr(body: last_child)
       Absent => body
     }
@@ -468,7 +468,7 @@ fn summarize_fold_acc_uses(node: v1.std.core.Node, acc_name: String, si: Map<Str
         )
       }
 
-    ExprLambda =>
+    v1.std.core.ExprLambda =>
       let body_summary = summarize_fold_acc_uses(node: v1.std.core.lambda_body(texpr: node), acc_name: acc_name, si: si, inside_nested: true)
       if body_summary.whole_acc_uses > 0 || body_summary.field_moves |> count > 0 || body_summary.nested_acc_refs {
         FoldAccUseSummary { whole_acc_uses: 0, field_moves: [], nested_acc_refs: true }
@@ -476,7 +476,7 @@ fn summarize_fold_acc_uses(node: v1.std.core.Node, acc_name: String, si: Map<Str
         empty_fold_acc_use_summary()
       }
 
-    ExprForEach =>
+    v1.std.core.ExprForEach =>
       let coll_summary = summarize_fold_acc_uses(node: v1.std.core.foreach_collection(texpr: node), acc_name: acc_name, si: si, inside_nested: inside_nested)
       let body_summary = summarize_fold_acc_uses(node: v1.std.core.foreach_body(texpr: node), acc_name: acc_name, si: si, inside_nested: true)
       let nested_summary = if body_summary.whole_acc_uses > 0 || body_summary.field_moves |> count > 0 || body_summary.nested_acc_refs {
@@ -495,14 +495,14 @@ fn summarize_fold_acc_uses(node: v1.std.core.Node, acc_name: String, si: Map<Str
 
 fn fold_lambda_acc_use_summary(lambda_node: v1.std.core.Node, acc_name: String, si: Map<String, v1.std.core.NewlineIndex>) -> FoldAccUseSummary {
   match lambda_node.expr_data {
-    ExprLambda => summarize_fold_acc_uses(node: v1.std.core.lambda_body(texpr: lambda_node), acc_name: acc_name, si: si, inside_nested: false)
+    v1.std.core.ExprLambda => summarize_fold_acc_uses(node: v1.std.core.lambda_body(texpr: lambda_node), acc_name: acc_name, si: si, inside_nested: false)
     _ => empty_fold_acc_use_summary()
   }
 }
 
 fn fold_body_constructs_acc_struct(lambda_node: v1.std.core.Node, acc_type_name: String, si: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match lambda_node.expr_data {
-    ExprLambda =>
+    v1.std.core.ExprLambda =>
       let body = v1.std.core.lambda_body(texpr: lambda_node)
       let terminal = fold_terminal_expr(body: body)
       match terminal.expr_data {
@@ -539,7 +539,7 @@ fn analyze_single_fold(method_call: v1.std.core.Node, si: Map<String, v1.std.cor
     Absent => method_call
   }
   let acc_param_name = match fold_lambda_node.expr_data {
-    ExprLambda => match v1.std.core.lambda_param_names_at(texpr: fold_lambda_node, source_indices: si) |> first {
+    v1.std.core.ExprLambda => match v1.std.core.lambda_param_names_at(texpr: fold_lambda_node, source_indices: si) |> first {
       Present { value: n } => n
       Absent => ""
     }

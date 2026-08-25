@@ -4,7 +4,7 @@ module extdeps.realization.cache_purity
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
@@ -21,11 +21,11 @@ type CachePurityVerdict
   | Impure { violation: CachePurityViolation }
 
 fn cache_purity_verdict(warm_equals_cold: Bool, violation: CachePurityViolation) -> CachePurityVerdict {
-  match perturbation_verdict(
-    reading: ForwardSameInSameOut,
+  match std.perturbation.perturbation_verdict(
+    reading: std.perturbation.ForwardSameInSameOut,
     output_responded: warm_equals_cold == false
   ) {
-    ResponseConsistent => Pure
-    ResponseViolation => Impure { violation: violation }
+    std.perturbation.ResponseConsistent => Pure
+    std.perturbation.ResponseViolation => Impure { violation: violation }
   }
 }

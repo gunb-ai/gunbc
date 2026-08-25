@@ -12,7 +12,7 @@ type BuildCacheInstanceNotReadyReason
   | CacheImplementationUnsupported
   | CacheExecutableMismatch
   | CachePrincipalMismatch
-  | CacheObservationSubjectMismatch { axis: NonEmptyStr }
+  | CacheObservationSubjectMismatch { axis: std.types.NonEmptyStr }
   | CacheStorageUnset
   | CacheStorageMismatch
   | CacheCapacityIntentUndeclared
@@ -26,9 +26,9 @@ type BuildCacheInstanceNotReadyReason
   | CacheOwnerOutsidePool
 
 type BuildCacheInstanceObservationUnavailableReason
-  = CacheEndpointObservationUnavailable { detail: NonEmptyStr }
-  | CacheStorageObservationUnavailable { detail: NonEmptyStr }
-  | CacheCapacityObservationUnavailable { detail: NonEmptyStr }
+  = CacheEndpointObservationUnavailable { detail: std.types.NonEmptyStr }
+  | CacheStorageObservationUnavailable { detail: std.types.NonEmptyStr }
+  | CacheCapacityObservationUnavailable { detail: std.types.NonEmptyStr }
 
 type BuildCacheInstanceReadiness
   = BuildCacheInstanceObservedReady { receipt: gunbc.runner_activation.BuildCacheInstanceReady }
@@ -65,7 +65,7 @@ fn unavailable_configuration_input(
     gunbc.build_cache_instance.BuildCacheStorageObservationUnavailable { instance: si, owner: so, detail: d } =>
       if !same_instance(a: anchor_instance, b: si) || !same_owner(a: anchor_owner, b: so) {
         Present { value: BuildCacheInstanceObservedNotReady {
-          reason: CacheObservationSubjectMismatch { axis: "storage" as NonEmptyStr },
+          reason: CacheObservationSubjectMismatch { axis: "storage" as std.types.NonEmptyStr },
         } }
       } else {
         Present { value: BuildCacheInstanceObservationUnavailable {
@@ -74,10 +74,10 @@ fn unavailable_configuration_input(
       }
     gunbc.build_cache_instance.BuildCacheStorageObserved { instance: _, owner: _, configuration: _ } =>
       match capacity {
-        gunbc.build_cache_instance.BuildCacheCapacityObservationUnavailable { instance: test.claim.build_cache_ensure.ci, owner: co, detail: d } =>
-          if !same_instance(a: anchor_instance, b: test.claim.build_cache_ensure.ci) || !same_owner(a: anchor_owner, b: co) {
+        gunbc.build_cache_instance.BuildCacheCapacityObservationUnavailable { instance: ci, owner: co, detail: d } =>
+          if !same_instance(a: anchor_instance, b: ci) || !same_owner(a: anchor_owner, b: co) {
             Present { value: BuildCacheInstanceObservedNotReady {
-              reason: CacheObservationSubjectMismatch { axis: "capacity" as NonEmptyStr },
+              reason: CacheObservationSubjectMismatch { axis: "capacity" as std.types.NonEmptyStr },
             } }
           } else {
             Present { value: BuildCacheInstanceObservationUnavailable {
@@ -89,11 +89,11 @@ fn unavailable_configuration_input(
   }
 }
 
-fn pool_cgroup_segment(slice: NonEmptyStr) -> String {
+fn pool_cgroup_segment(slice: std.types.NonEmptyStr) -> String {
   concat(concat("/", slice as String), "/")
 }
 
-fn owner_is_nested_in_pool(observed_cgroup: NonEmptyStr, slice: NonEmptyStr) -> Bool {
+fn owner_is_nested_in_pool(observed_cgroup: std.types.NonEmptyStr, slice: std.types.NonEmptyStr) -> Bool {
   (observed_cgroup as String).contains(pool_cgroup_segment(slice: slice))
 }
 
@@ -111,7 +111,7 @@ fn observed_readiness(
     }
     gunbc.build_cache_instance.EndpointOwnerObserved {
       instance: instance, owner: owner, executable: executable, principal: principal,
-      owner_context: test.claim.tool_readiness_witness.context, memory_limits: _, memory_events: _,
+      owner_context: context, memory_limits: _, memory_events: _,
     } =>
       match storage {
         gunbc.build_cache_instance.BuildCacheStorageObservationUnavailable { instance: _, owner: _, detail: d } => BuildCacheInstanceObservationUnavailable {
@@ -122,11 +122,11 @@ fn observed_readiness(
             gunbc.build_cache_instance.BuildCacheCapacityObservationUnavailable { instance: _, owner: _, detail: d } => BuildCacheInstanceObservationUnavailable {
               reason: CacheCapacityObservationUnavailable { detail: d },
             }
-            gunbc.build_cache_instance.BuildCacheCapacityObserved { instance: test.claim.build_cache_ensure.ci, owner: co, configuration: cc } =>
+            gunbc.build_cache_instance.BuildCacheCapacityObserved { instance: ci, owner: co, configuration: cc } =>
               if !same_instance(a: instance, b: si) || !same_owner(a: owner, b: so) {
-                BuildCacheInstanceObservedNotReady { reason: CacheObservationSubjectMismatch { axis: "storage" as NonEmptyStr } }
-              } else if !same_instance(a: instance, b: test.claim.build_cache_ensure.ci) || !same_owner(a: owner, b: co) {
-                BuildCacheInstanceObservedNotReady { reason: CacheObservationSubjectMismatch { axis: "capacity" as NonEmptyStr } }
+                BuildCacheInstanceObservedNotReady { reason: CacheObservationSubjectMismatch { axis: "storage" as std.types.NonEmptyStr } }
+              } else if !same_instance(a: instance, b: ci) || !same_owner(a: owner, b: co) {
+                BuildCacheInstanceObservedNotReady { reason: CacheObservationSubjectMismatch { axis: "capacity" as std.types.NonEmptyStr } }
               } else if instance.implementation != extdeps.cache.sccache.sccache_local_id {
                 BuildCacheInstanceObservedNotReady { reason: CacheImplementationUnsupported }
               } else if (executable as String) != extdeps.cache.sccache.sccache_installed_binary_path {
@@ -134,7 +134,7 @@ fn observed_readiness(
               } else if (principal as String) != (instance.intended_principal as String) {
                 BuildCacheInstanceObservedNotReady { reason: CachePrincipalMismatch }
               } else {
-                match test.claim.tool_readiness_witness.context {
+                match context {
                   gunbc.build_cache_instance.OwnerInRunnerSlot { slot: _, lifecycle: _, observed_cgroup: _ } => BuildCacheInstanceObservedNotReady { reason: CacheEndpointWrongUnit }
                   gunbc.build_cache_instance.OwnerContextUndecided { detail: _, observed_cgroup: _ } => BuildCacheInstanceObservedNotReady { reason: CacheEndpointWrongUnit }
                   gunbc.build_cache_instance.OwnerInSystemdUnit { unit: unit, observed_cgroup: cgroup } =>
@@ -143,8 +143,8 @@ fn observed_readiness(
                     } else {
                       match sc {
                         gunbc.build_cache_instance.BuildCacheStorageRootUnset => BuildCacheInstanceObservedNotReady { reason: CacheStorageUnset }
-                        gunbc.build_cache_instance.BuildCacheStorageRootConfigured { root: test.claim.extdeps_llm_claude_trust_witness.root } =>
-                          if (test.claim.extdeps_llm_claude_trust_witness.root as String) != (instance.intended_storage as String) {
+                        gunbc.build_cache_instance.BuildCacheStorageRootConfigured { root: root } =>
+                          if (root as String) != (instance.intended_storage as String) {
                             BuildCacheInstanceObservedNotReady { reason: CacheStorageMismatch }
                           } else {
                             match instance.intended_capacity {
@@ -156,17 +156,17 @@ fn observed_readiness(
                                   gunbc.build_cache_instance.BuildCacheCapacityConfigured { capacity: observed_capacity } =>
                                     if std.measure.byte_size_count(b: intended_capacity) != std.measure.byte_size_count(b: observed_capacity) {
                                       BuildCacheInstanceObservedNotReady { reason: CacheCapacityMismatch }
-                                    } else if (test.claim.shared_pool_encoding_control.pool.host as String) != (instance.identity.host as String) {
+                                    } else if (pool.host as String) != (instance.identity.host as String) {
                                       BuildCacheInstanceObservedNotReady { reason: CachePoolReceiptWrongHost }
-                                    } else if !test.claim.shared_pool_encoding_control.pool.pool_declared || !test.claim.shared_pool_encoding_control.pool.pool_observed {
+                                    } else if !pool.pool_declared || !pool.pool_observed {
                                       BuildCacheInstanceObservedNotReady { reason: CachePoolNotReady }
                                     } else {
                                       match instance.intended_compile_pool {
                                         gunbc.host_layout.CompilePoolInRunnerSlots => BuildCacheInstanceObservedNotReady { reason: CachePoolNotDeclared }
                                         gunbc.host_layout.CompilePoolSliceDeclared { slice_unit: slice } =>
-                                          if (test.claim.shared_pool_encoding_control.pool.slice_unit as String) != slice {
+                                          if (pool.slice_unit as String) != slice {
                                             BuildCacheInstanceObservedNotReady { reason: CachePoolSliceMismatch }
-                                          } else if !owner_is_nested_in_pool(observed_cgroup: cgroup, slice: test.claim.shared_pool_encoding_control.pool.slice_unit) {
+                                          } else if !owner_is_nested_in_pool(observed_cgroup: cgroup, slice: pool.slice_unit) {
                                             BuildCacheInstanceObservedNotReady { reason: CacheOwnerOutsidePool }
                                           } else {
                                             BuildCacheInstanceObservedReady {

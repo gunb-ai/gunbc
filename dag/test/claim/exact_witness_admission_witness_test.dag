@@ -1,11 +1,11 @@
 module test.claim.exact_witness_admission_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data exact_witness_admission_witness_note: String = "Executes the walls over gunbc.explicit_witness_admission, the one function-grain authority for exact witness admission. THE DISCRIMINATING RED is admission_reaches_the_admitted_function_and_not_its_sibling, and it runs against a SYNTHETIC fixture that this witness authors itself: one admission over a fixture entry holding an expected-red function and an ordinary green one. It asserts the admission reaches the first and NOT the second. Under the representation this lane replaced - a file-grain WitnessExclusionRow beside a probe_red row - the second half was FALSE by construction: the file-level exclusion hid every function in the file while the schedule named one, so the green sibling executed nowhere and the reconciliation still passed, because it only ever asked whether some scheduled row's entry CONTAINED the exclusion pattern. THE FIXTURE IS DELIBERATE AND THE ALTERNATIVE WAS TRIED. The first draft anchored this assertion to the real live instance instead, on the reasoning that a wall is better evidenced by a defect that actually happened. That is normally the stronger move, and here it was the wrong one: it binds the evidence to the defect's CONTINUED EXISTENCE, which is the one thing a wall exists to end. Caught in review before merge - gunbc#7688 dissolves that very quarantine tonight (the operator recorded the seed-honesty verdict, the closing contract greened, and the row climbs out under DESIGN 4b(4)), which would have left this assertion with no subject: passing vacuously or redding for a reason that has nothing to do with the wall. Evidence that must survive a climb has to be constructed so the climb cannot delete it. DESIGN 4b(4) says the climb deletes the production machinery and keeps the evidence enrolled; a live-anchored assertion cannot satisfy that clause because the machinery and the subject are the same rows. THE HISTORICAL RECEIPT, past tense and no longer load-bearing: when this lane opened, the bad state had exactly one live instance, measured on the pre-change tree - seed_honesty_discharge_unavailable_test.dag, 8 of whose 9 functions had no probe row while the file's classification named the whole file QuarantineProbeExpectRed, absorbed as OfflineLocalRecipe by the test/claim/execution/ path policy so the Phase 0(b) orphan refusal never saw them. Everywhere else the file-grain roster form or that refusal already covered it. That instance is a provenance note for why the wall was built, not the thing the wall is tested against. THE REMAINING CLAIMS are the walls over the live rows, and they are population-independent by construction - each is a universal over the admission rows plus a projection identity, so they stay meaningful at any roster size including zero, and none of them is where the discrimination lives. Synthetic RED controls cover the duplicate row, the non-executing cadence, and the file-grain shape that does reach the sibling."
 
-test fn exact_witness_admission_walls_hold() -> v2.std.logic.Bool {
+test fn exact_witness_admission_walls_hold() -> Bool {
   v2.workflow.witness_admission.explicit_witness_admission_uniqueness_holds()
     && v2.workflow.witness_admission.explicit_witness_admission_rows_well_formed_holds()
     && v2.workflow.witness_admission.explicit_witness_admissions_are_scheduled_holds()
@@ -19,116 +19,116 @@ data fixture_green_sibling_function: String = "fixture_ordinary_green_holds"
 
 fn fixture_exact_admission_rows() -> List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission> {
   [
-    known_red_probe(
+    gunbc.explicit_witness_admission.known_red_probe(
       entry: fixture_entry,
       f: fixture_expected_red_function,
-      kind: CorpusWitnessKind,
-      budget: FastLaneEvalBudget,
+      kind: std.realization_schedule.CorpusWitnessKind,
+      budget: std.witness_admission.FastLaneEvalBudget,
       reason: "fixture: an expected-red witness sharing a file with an ordinary green one",
-      dissolution: unbound_dissolution(description: "fixture: never - this row is authored by the witness, not by the roster")
+      dissolution: std.dissolution.unbound_dissolution(description: "fixture: never - this row is authored by the witness, not by the roster")
     )
   ]
 }
 
 fn fixture_file_grain_admission_rows() -> List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission> {
   [
-    known_red_probe(
+    gunbc.explicit_witness_admission.known_red_probe(
       entry: fixture_entry,
       f: "",
-      kind: CorpusWitnessKind,
-      budget: FastLaneEvalBudget,
+      kind: std.realization_schedule.CorpusWitnessKind,
+      budget: std.witness_admission.FastLaneEvalBudget,
       reason: "fixture: the file-grain shape this authority replaced",
-      dissolution: unbound_dissolution(description: "fixture: never - control only")
+      dissolution: std.dissolution.unbound_dissolution(description: "fixture: never - control only")
     )
   ]
 }
 
-test fn admission_reaches_the_admitted_function_and_not_its_sibling() -> v2.std.logic.Bool {
+test fn admission_reaches_the_admitted_function_and_not_its_sibling() -> Bool {
   let rows = fixture_exact_admission_rows()
-  explicit_witness_admission_covers_in(
+  gunbc.explicit_witness_admission.explicit_witness_admission_covers_in(
     rows: rows,
     entry: fixture_entry,
     function: fixture_expected_red_function
   )
-    && !explicit_witness_admission_covers_in(
+    && !gunbc.explicit_witness_admission.explicit_witness_admission_covers_in(
       rows: rows,
       entry: fixture_entry,
       function: fixture_green_sibling_function
     )
 }
 
-test fn admission_does_not_reach_the_same_function_name_in_another_file() -> v2.std.logic.Bool {
-  !explicit_witness_admission_covers_in(
+test fn admission_does_not_reach_the_same_function_name_in_another_file() -> Bool {
+  !gunbc.explicit_witness_admission.explicit_witness_admission_covers_in(
     rows: fixture_exact_admission_rows(),
     entry: "dag/test/claim/synthetic_other_witness_test.dag",
     function: fixture_expected_red_function
   )
 }
 
-test fn every_live_admission_is_reached_by_its_own_row() -> v2.std.logic.Bool {
+test fn every_live_admission_is_reached_by_its_own_row() -> Bool {
   v2.workflow.witness_admission.explicit_witness_admissions_each_cover_themselves()
 }
 
-test fn every_admission_is_projected_into_exactly_one_cadence_roster() -> v2.std.logic.Bool {
-  let corpus_rows = length(xs: known_red_probe_corpus_roster())
-  let v1_envelope_rows = length(xs: known_red_probe_v1_envelope_roster())
-  let execution_rows = length(xs: known_red_probe_execution_roster())
+test fn every_admission_is_projected_into_exactly_one_cadence_roster() -> Bool {
+  let corpus_rows = v2.std.algebra.length(xs: gunbc.explicit_witness_admission.known_red_probe_corpus_roster())
+  let v1_envelope_rows = v2.std.algebra.length(xs: gunbc.explicit_witness_admission.known_red_probe_v1_envelope_roster())
+  let execution_rows = v2.std.algebra.length(xs: gunbc.explicit_witness_admission.known_red_probe_execution_roster())
   let known_red_projected = corpus_rows + v1_envelope_rows + execution_rows
-  let executing_projected = length(xs: explicit_witness_admission_executing_witness_roster())
-  (known_red_projected + executing_projected) == length(xs: explicit_witness_admissions)
+  let executing_projected = v2.std.algebra.length(xs: gunbc.explicit_witness_admission.explicit_witness_admission_executing_witness_roster())
+  (known_red_projected + executing_projected) == v2.std.algebra.length(xs: gunbc.explicit_witness_admission.explicit_witness_admissions)
 }
 
-test fn ci_layer_roots_probe_roster_is_the_union_of_corpus_and_v1_envelope() -> v2.std.logic.Bool {
-  length(xs: gunbc.ci_layer_roots.known_red_probe_roster()) == (length(xs: known_red_probe_corpus_roster()) + length(xs: known_red_probe_v1_envelope_roster()))
+test fn ci_layer_roots_probe_roster_is_the_union_of_corpus_and_v1_envelope() -> Bool {
+  v2.std.algebra.length(xs: gunbc.ci_layer_roots.known_red_probe_roster()) == (v2.std.algebra.length(xs: gunbc.explicit_witness_admission.known_red_probe_corpus_roster()) + v2.std.algebra.length(xs: gunbc.explicit_witness_admission.known_red_probe_v1_envelope_roster()))
 }
 
 fn synthetic_admission(f: String) -> gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
-  known_red_probe(
+  gunbc.explicit_witness_admission.known_red_probe(
     entry: "dag/test/claim/synthetic_admission_witness_test.dag",
     f: f,
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
+    kind: std.realization_schedule.CorpusWitnessKind,
+    budget: std.witness_admission.FastLaneEvalBudget,
     reason: "synthetic",
-    dissolution: unbound_dissolution(description: "synthetic")
+    dissolution: std.dissolution.unbound_dissolution(description: "synthetic")
   )
 }
 
-test fn red_control_duplicate_admission_rows_red() -> v2.std.logic.Bool {
-  (explicit_witness_admission_duplicate_count_in(
+test fn red_control_duplicate_admission_rows_red() -> Bool {
+  (gunbc.explicit_witness_admission.explicit_witness_admission_duplicate_count_in(
     rows: [synthetic_admission(f: "a_holds"), synthetic_admission(f: "a_holds")]
   ) > 0)
-    && (explicit_witness_admission_duplicate_count_in(
+    && (gunbc.explicit_witness_admission.explicit_witness_admission_duplicate_count_in(
       rows: [synthetic_admission(f: "a_holds"), synthetic_admission(f: "b_holds")]
     ) == 0)
-    && (explicit_witness_admission_duplicate_count() == 0)
+    && (gunbc.explicit_witness_admission.explicit_witness_admission_duplicate_count() == 0)
 }
 
-test fn red_control_admission_with_non_executing_cadence_reds() -> v2.std.logic.Bool {
-  explicit_witness_admissions_well_formed_in(
+test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
+  gunbc.explicit_witness_admission.explicit_witness_admissions_well_formed_in(
     rows: [
       gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
         witness: std.realization_schedule.ScheduleWitnessEntry {
           entry: "dag/test/claim/synthetic_admission_witness_test.dag",
           function: "a_holds",
-          kind: CorpusWitnessKind
+          kind: std.realization_schedule.CorpusWitnessKind
         },
         cadence: std.witness_admission.OfflineLocalRecipe,
-        budget: FastLaneEvalBudget,
-        expected: ExpectAssertionFalse,
+        budget: std.witness_admission.FastLaneEvalBudget,
+        expected: std.witness_admission.ExpectAssertionFalse,
         reason: "synthetic",
-        dissolution: unbound_dissolution(description: "synthetic")
+        dissolution: std.dissolution.unbound_dissolution(description: "synthetic")
       }
     ]
   ) == false
 }
 
-test fn red_control_file_grain_admission_would_reach_the_sibling() -> v2.std.logic.Bool {
-  explicit_witness_admission_covers_in(
+test fn red_control_file_grain_admission_would_reach_the_sibling() -> Bool {
+  gunbc.explicit_witness_admission.explicit_witness_admission_covers_in(
     rows: fixture_file_grain_admission_rows(),
     entry: fixture_entry,
     function: fixture_green_sibling_function
   )
-    && !explicit_witness_admission_covers_in(
+    && !gunbc.explicit_witness_admission.explicit_witness_admission_covers_in(
       rows: fixture_exact_admission_rows(),
       entry: fixture_entry,
       function: fixture_green_sibling_function
@@ -147,13 +147,13 @@ fn synthetic_long_lane_cadence_but_expected_red() -> gunbc.explicit_witness_admi
     witness: std.realization_schedule.ScheduleWitnessEntry {
       entry: "dag/test/claim/synthetic_admission_witness_test.dag",
       function: "a_holds",
-      kind: CorpusWitnessKind
+      kind: std.realization_schedule.CorpusWitnessKind
     },
-    cadence: FalsifierSubstrateLongLane,
-    budget: SubstrateLongLaneEvalBudget,
-    expected: ExpectAssertionFalse,
+    cadence: std.witness_admission.FalsifierSubstrateLongLane,
+    budget: std.witness_admission.SubstrateLongLaneEvalBudget,
+    expected: std.witness_admission.ExpectAssertionFalse,
     reason: "synthetic",
-    dissolution: unbound_dissolution(description: "synthetic")
+    dissolution: std.dissolution.unbound_dissolution(description: "synthetic")
   }
 }
 
@@ -162,48 +162,48 @@ fn synthetic_quarantine_cadence_but_expected_holds() -> gunbc.explicit_witness_a
     witness: std.realization_schedule.ScheduleWitnessEntry {
       entry: "dag/test/claim/synthetic_admission_witness_test.dag",
       function: "b_holds",
-      kind: CorpusWitnessKind
+      kind: std.realization_schedule.CorpusWitnessKind
     },
-    cadence: QuarantineProbeExpectRed,
-    budget: FastLaneEvalBudget,
-    expected: ExpectWitnessHolds,
+    cadence: std.witness_admission.QuarantineProbeExpectRed,
+    budget: std.witness_admission.FastLaneEvalBudget,
+    expected: std.witness_admission.ExpectWitnessHolds,
     reason: "synthetic",
-    dissolution: unbound_dissolution(description: "synthetic")
+    dissolution: std.dissolution.unbound_dissolution(description: "synthetic")
   }
 }
 
-test fn expected_verdict_is_independent_of_cadence() -> v2.std.logic.Bool {
-  explicit_witness_admission_is_known_red(row: synthetic_long_lane_cadence_but_expected_red())
-    && !explicit_witness_admission_is_known_red(
+test fn expected_verdict_is_independent_of_cadence() -> Bool {
+  gunbc.explicit_witness_admission.explicit_witness_admission_is_known_red(row: synthetic_long_lane_cadence_but_expected_red())
+    && !gunbc.explicit_witness_admission.explicit_witness_admission_is_known_red(
       row: synthetic_quarantine_cadence_but_expected_holds()
     )
 }
 
-test fn eval_budget_is_independent_of_cadence_and_of_expected_verdict() -> v2.std.logic.Bool {
-  explicit_witness_admission_requires_long_eval_budget(
+test fn eval_budget_is_independent_of_cadence_and_of_expected_verdict() -> Bool {
+  gunbc.explicit_witness_admission.explicit_witness_admission_requires_long_eval_budget(
     row: synthetic_long_lane_cadence_but_expected_red()
   )
-    && !explicit_witness_admission_requires_long_eval_budget(
+    && !gunbc.explicit_witness_admission.explicit_witness_admission_requires_long_eval_budget(
       row: synthetic_quarantine_cadence_but_expected_holds()
     )
 }
 
 data long_budget_union_note: String = "The scheduler ceiling reads the UNION, so a row that declares its own long budget is covered without appearing on the long-lane BATCH roster. The second clause is what makes that a real separation rather than a renaming: a declared-long row is genuinely absent from the batch roster, so it occupies one schedule position, not two. The union is an IDENTITY SET, and the counting clause below is stated as one-occurrence-per-declared-row rather than as a sum of the two input lengths — a sum is only correct while the inputs happen to be disjoint, which is a property of today's population and not of the mechanism, so it would go quietly wrong exactly when a row starts reaching the ceiling through both inputs."
 
-fn long_budget_union_occurrences(w: std.realization_schedule.ScheduleWitnessEntry) -> v2.std.integer.Int {
+fn long_budget_union_occurrences(w: std.realization_schedule.ScheduleWitnessEntry) -> Int {
   fold(gunbc.ci_layer_roots.witness_long_eval_budget_entries(), init: 0, f: fn(n, x) {
-    if schedule_witness_entry_eq(a: x, b: w) { n + 1 } else { n }
+    if std.realization_schedule.schedule_witness_entry_eq(a: x, b: w) { n + 1 } else { n }
   })
 }
 
-test fn declared_long_budget_reaches_the_ceiling_roster_without_the_batch_roster() -> v2.std.logic.Bool {
-  let declared = witness_long_eval_budget_roster()
+test fn declared_long_budget_reaches_the_ceiling_roster_without_the_batch_roster() -> Bool {
+  let declared = gunbc.explicit_witness_admission.witness_long_eval_budget_roster()
   let batch = gunbc.ci_layer_roots.falsifier_substrate_long_lane_entries()
-  (length(xs: declared) > 0)
+  (v2.std.algebra.length(xs: declared) > 0)
     && fold(declared, init: true, f: fn(ok, w) {
       ok
         && (long_budget_union_occurrences(w: w) == 1)
-        && !any(xs: batch, predicate: fn(b) { schedule_witness_entry_eq(a: b, b: w) })
+        && !any(xs: batch, predicate: fn(b) { std.realization_schedule.schedule_witness_entry_eq(a: b, b: w) })
     })
     && fold(batch, init: true, f: fn(ok, b) { ok && (long_budget_union_occurrences(w: b) == 1) })
 }
@@ -214,7 +214,7 @@ fn synthetic_union_row(f: String) -> std.realization_schedule.ScheduleWitnessEnt
   std.realization_schedule.ScheduleWitnessEntry {
     entry: "dag/test/claim/synthetic_admission_witness_test.dag",
     function: f,
-    kind: CorpusWitnessKind
+    kind: std.realization_schedule.CorpusWitnessKind
   }
 }
 
@@ -222,15 +222,15 @@ fn planted_union_occurrences(
   batch: List<std.realization_schedule.ScheduleWitnessEntry>,
   declared: List<std.realization_schedule.ScheduleWitnessEntry>,
   w: std.realization_schedule.ScheduleWitnessEntry
-) -> v2.std.integer.Int {
+) -> Int {
   fold(
     gunbc.ci_layer_roots.witness_long_eval_budget_union_in(batch: batch, declared: declared),
     init: 0,
-    f: fn(n, x) { if schedule_witness_entry_eq(a: x, b: w) { n + 1 } else { n } }
+    f: fn(n, x) { if std.realization_schedule.schedule_witness_entry_eq(a: x, b: w) { n + 1 } else { n } }
   )
 }
 
-test fn red_control_long_budget_union_collapses_a_row_present_in_both_inputs() -> v2.std.logic.Bool {
+test fn red_control_long_budget_union_collapses_a_row_present_in_both_inputs() -> Bool {
   let overlapping = synthetic_union_row(f: "reaches_the_ceiling_through_both_inputs")
   let batch_only = synthetic_union_row(f: "on_the_batch_roster_only")
   let declared_only = synthetic_union_row(f: "declares_its_own_budget_only")
@@ -238,19 +238,19 @@ test fn red_control_long_budget_union_collapses_a_row_present_in_both_inputs() -
   let batch = [batch_only, overlapping]
   let declared = [overlapping, declared_only]
   (planted_union_occurrences(batch: batch, declared: declared, w: overlapping) == 1)
-    && (length(xs: gunbc.ci_layer_roots.witness_long_eval_budget_union_in(batch: batch, declared: declared)) == 3)
+    && (v2.std.algebra.length(xs: gunbc.ci_layer_roots.witness_long_eval_budget_union_in(batch: batch, declared: declared)) == 3)
     && (planted_union_occurrences(batch: batch, declared: declared, w: absent) == 0)
     && (planted_union_occurrences(batch: batch, declared: declared, w: declared_only) == 1)
-    && schedule_witness_entry_roster_contains(xs: batch, w: overlapping)
-    && !schedule_witness_entry_roster_contains(xs: batch, w: declared_only)
+    && std.realization_schedule.schedule_witness_entry_roster_contains(xs: batch, w: overlapping)
+    && !std.realization_schedule.schedule_witness_entry_roster_contains(xs: batch, w: declared_only)
 }
 
-test fn declared_long_budget_row_is_known_red_or_executing_green() -> v2.std.logic.Bool {
-  fold(explicit_witness_admissions, init: true, f: fn(ok, row) {
-    if explicit_witness_admission_requires_long_eval_budget(row: row) {
+test fn declared_long_budget_row_is_known_red_or_executing_green() -> Bool {
+  fold(gunbc.explicit_witness_admission.explicit_witness_admissions, init: true, f: fn(ok, row) {
+    if gunbc.explicit_witness_admission.explicit_witness_admission_requires_long_eval_budget(row: row) {
       ok
         && (
-          explicit_witness_admission_is_known_red(row: row)
+          gunbc.explicit_witness_admission.explicit_witness_admission_is_known_red(row: row)
             || explicit_witness_admission_is_executing_witness(row: row)
         )
     } else {
@@ -263,99 +263,99 @@ data both_axes_on_one_row_note: String = "RETIRED CLAIM: every_declared_long_bud
 
 data budget_partition_witness_note: String = "THE RECUT CLAIM. Two facts have to hold together and neither alone is enough: the two batches must PARTITION the lane (every known-red corpus row on exactly one side, nothing invented, nothing dropped) and each side must be HOMOGENEOUS in declared budget. A partition alone would be satisfied by any split, including the mixed batch this replaces; homogeneity alone would be satisfied by dropping every row that does not fit. The population is derived, so these hold at any roster size including an empty long side."
 
-fn budget_partition_side_count(xs: List<std.realization_schedule.ScheduleWitnessEntry>) -> v2.std.integer.Int {
-  length(xs: xs)
+fn budget_partition_side_count(xs: List<std.realization_schedule.ScheduleWitnessEntry>) -> Int {
+  v2.std.algebra.length(xs: xs)
 }
 
-test fn budget_rosters_partition_the_known_red_corpus_lane() -> v2.std.logic.Bool {
-  let fast = known_red_probe_corpus_fast_budget_roster()
-  let long = known_red_probe_corpus_long_budget_roster()
-  let pv_fast = known_red_probe_corpus_pre_verdict_fast_budget_roster()
-  let pv_long = known_red_probe_corpus_pre_verdict_long_budget_roster()
-  let whole = known_red_probe_corpus_roster()
+test fn budget_rosters_partition_the_known_red_corpus_lane() -> Bool {
+  let fast = gunbc.explicit_witness_admission.known_red_probe_corpus_fast_budget_roster()
+  let long = gunbc.explicit_witness_admission.known_red_probe_corpus_long_budget_roster()
+  let pv_fast = gunbc.explicit_witness_admission.known_red_probe_corpus_pre_verdict_fast_budget_roster()
+  let pv_long = gunbc.explicit_witness_admission.known_red_probe_corpus_pre_verdict_long_budget_roster()
+  let whole = gunbc.explicit_witness_admission.known_red_probe_corpus_roster()
   let split = budget_partition_side_count(xs: fast) +
     budget_partition_side_count(xs: long) +
     budget_partition_side_count(xs: pv_fast) +
     budget_partition_side_count(xs: pv_long)
   (split == budget_partition_side_count(xs: whole))
     && fold(whole, init: true, f: fn(ok, w) {
-      let sides = (if schedule_witness_entry_roster_contains(xs: fast, w: w) { 1 } else { 0 }) +
-        (if schedule_witness_entry_roster_contains(xs: long, w: w) { 1 } else { 0 }) +
-        (if schedule_witness_entry_roster_contains(xs: pv_fast, w: w) { 1 } else { 0 }) +
-        (if schedule_witness_entry_roster_contains(xs: pv_long, w: w) { 1 } else { 0 })
+      let sides = (if std.realization_schedule.schedule_witness_entry_roster_contains(xs: fast, w: w) { 1 } else { 0 }) +
+        (if std.realization_schedule.schedule_witness_entry_roster_contains(xs: long, w: w) { 1 } else { 0 }) +
+        (if std.realization_schedule.schedule_witness_entry_roster_contains(xs: pv_fast, w: w) { 1 } else { 0 }) +
+        (if std.realization_schedule.schedule_witness_entry_roster_contains(xs: pv_long, w: w) { 1 } else { 0 })
       ok && (sides == 1)
     })
 }
 
-test fn no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row() -> v2.std.logic.Bool {
-  let pv = known_red_pre_verdict_refusal_roster()
+test fn no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row() -> Bool {
+  let pv = gunbc.explicit_witness_admission.known_red_pre_verdict_refusal_roster()
   let assertion_false_sides = concat(
-    known_red_probe_corpus_fast_budget_roster(),
-    known_red_probe_corpus_long_budget_roster()
+    gunbc.explicit_witness_admission.known_red_probe_corpus_fast_budget_roster(),
+    gunbc.explicit_witness_admission.known_red_probe_corpus_long_budget_roster()
   )
   let pre_verdict_sides = concat(
-    known_red_probe_corpus_pre_verdict_fast_budget_roster(),
-    known_red_probe_corpus_pre_verdict_long_budget_roster()
+    gunbc.explicit_witness_admission.known_red_probe_corpus_pre_verdict_fast_budget_roster(),
+    gunbc.explicit_witness_admission.known_red_probe_corpus_pre_verdict_long_budget_roster()
   )
   fold(assertion_false_sides, init: true, f: fn(ok, w) {
-    ok && !schedule_witness_entry_roster_contains(xs: pv, w: w)
+    ok && !std.realization_schedule.schedule_witness_entry_roster_contains(xs: pv, w: w)
   })
     && fold(pre_verdict_sides, init: true, f: fn(ok, w) {
-      ok && schedule_witness_entry_roster_contains(xs: pv, w: w)
+      ok && std.realization_schedule.schedule_witness_entry_roster_contains(xs: pv, w: w)
     })
-    && (length(xs: pre_verdict_sides) > 0)
+    && (v2.std.algebra.length(xs: pre_verdict_sides) > 0)
 }
 
-test fn each_budget_roster_is_homogeneous_in_declared_budget() -> v2.std.logic.Bool {
-  let declared = witness_long_eval_budget_roster()
+test fn each_budget_roster_is_homogeneous_in_declared_budget() -> Bool {
+  let declared = gunbc.explicit_witness_admission.witness_long_eval_budget_roster()
   fold(concat(
-    known_red_probe_corpus_long_budget_roster(),
-    known_red_probe_corpus_pre_verdict_long_budget_roster()
+    gunbc.explicit_witness_admission.known_red_probe_corpus_long_budget_roster(),
+    gunbc.explicit_witness_admission.known_red_probe_corpus_pre_verdict_long_budget_roster()
   ), init: true, f: fn(ok, w) {
-    ok && schedule_witness_entry_roster_contains(xs: declared, w: w)
+    ok && std.realization_schedule.schedule_witness_entry_roster_contains(xs: declared, w: w)
   })
     && fold(concat(
-      known_red_probe_corpus_fast_budget_roster(),
-      known_red_probe_corpus_pre_verdict_fast_budget_roster()
+      gunbc.explicit_witness_admission.known_red_probe_corpus_fast_budget_roster(),
+      gunbc.explicit_witness_admission.known_red_probe_corpus_pre_verdict_fast_budget_roster()
     ), init: true, f: fn(ok, w) {
-      ok && !schedule_witness_entry_roster_contains(xs: declared, w: w)
+      ok && !std.realization_schedule.schedule_witness_entry_roster_contains(xs: declared, w: w)
     })
 }
 
 data pre_verdict_roster_witness_note: String = "known_red_pre_verdict_refusal_roster must be a STRICT SUBSET of the known-red roster and must not swallow it, because it is the only population allowed to turn a corpus-level refuse — which carries no per-witness outcome — into agreement. If it ever equals the known-red roster, the narrowing this claim exists to hold has been undone and any resolve failure in a known-red batch reports every quarantine as holding again. The synthetic pair below is the discrimination: the same predicate answers true for a declared pre-verdict row and false for an ordinary known-red row, so the live subset relation is a decision rather than a predicate that never matches."
 
 fn synthetic_pre_verdict_row() -> gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
-  known_red_probe_expecting(
+  gunbc.explicit_witness_admission.known_red_probe_expecting(
     entry: "dag/test/claim/synthetic_admission_witness_test.dag",
     f: "cannot_resolve_at_all",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
+    kind: std.realization_schedule.CorpusWitnessKind,
+    budget: std.witness_admission.FastLaneEvalBudget,
     expected: std.witness_admission.ExpectTypedPreVerdictRefusal {
-      phase: PreVerdictResolve,
-      cause: UnboundImportedVariantConstructor
+      phase: std.witness_admission.PreVerdictResolve,
+      cause: std.witness_admission.UnboundImportedVariantConstructor
     },
     reason: "synthetic",
-    dissolution: unbound_dissolution(description: "synthetic")
+    dissolution: std.dissolution.unbound_dissolution(description: "synthetic")
   )
 }
 
 fn synthetic_assertion_false_row() -> gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
-  known_red_probe_expecting(
+  gunbc.explicit_witness_admission.known_red_probe_expecting(
     entry: "dag/test/claim/synthetic_admission_witness_test.dag",
     f: "runs_and_returns_false",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    expected: ExpectAssertionFalse,
+    kind: std.realization_schedule.CorpusWitnessKind,
+    budget: std.witness_admission.FastLaneEvalBudget,
+    expected: std.witness_admission.ExpectAssertionFalse,
     reason: "synthetic",
-    dissolution: unbound_dissolution(description: "synthetic")
+    dissolution: std.dissolution.unbound_dissolution(description: "synthetic")
   )
 }
 
-test fn both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal() -> v2.std.logic.Bool {
-  let pre_verdict_count = budget_partition_side_count(xs: known_red_pre_verdict_refusal_roster())
+test fn both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal() -> Bool {
+  let pre_verdict_count = budget_partition_side_count(xs: gunbc.explicit_witness_admission.known_red_pre_verdict_refusal_roster())
   let known_red_count = budget_partition_side_count(xs: gunbc.ci_layer_roots.known_red_probe_roster())
-  explicit_witness_admission_is_known_red(row: synthetic_pre_verdict_row())
-    && explicit_witness_admission_is_known_red(row: synthetic_assertion_false_row())
+  gunbc.explicit_witness_admission.explicit_witness_admission_is_known_red(row: synthetic_pre_verdict_row())
+    && gunbc.explicit_witness_admission.explicit_witness_admission_is_known_red(row: synthetic_assertion_false_row())
     && (pre_verdict_count < known_red_count)
     && (pre_verdict_count > 0)
 }

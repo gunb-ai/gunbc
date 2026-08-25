@@ -1,29 +1,29 @@
 module test.claim.repo_local_git_config_real_execution
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data real_execution_home_doc: String = "Wet execution witness for repository-local Git config actuator (generated-file conflict policy charter, lane 2, review 46452/46471). Creates an isolated temp git repo via git.Core.InitInRepo, proves local read-back is empty before actuation, then invokes repo_local_git_config_converge_actuate_at — the single modeled actuator — and requires Converged with two upserts and both desired bindings present. Excluded from hermetic discovery and enrolled in bin_witness_wet_entries — git.Core.ConfigLocalGetInRepo/SetInRepo/InitInRepo and shell.Mktemp.Dir have no mock_response."
 
 test fn repo_local_git_config_actuator_sets_local_bindings_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
   let seeded = git.Core.InitInRepo(repo: dir.path).success
-  let observed_before = observe_repo_local_git_config_bindings_at_repo(repo: dir.path)
-  let reconciled = repo_local_git_config_converge_actuate_at(repo: dir.path)
+  let observed_before = gunbc.repo_local_git_config.observe_repo_local_git_config_bindings_at_repo(repo: dir.path)
+  let reconciled = gunbc.repo_local_git_config.repo_local_git_config_converge_actuate_at(repo: dir.path)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success
     && seeded
     && count(observed_before) == 0
     && cleaned.success
     && match reconciled {
-      Converged { evidence: e, applied: bindings } =>
+      std.realization_reconcile.Converged { evidence: e, applied: bindings } =>
         e.upserts_applied == 2
           && repo_local_git_config_converged_observed(bindings: bindings)
-      NotConverged { reason: _, applied: _ } => false
+      std.realization_reconcile.NotConverged { reason: _, applied: _ } => false
     }
 }
 
 fn repo_local_git_config_converged_observed(bindings: List<gunbc.repo_local_git_config.RepoLocalGitConfigBinding>) -> Bool {
-  any(bindings, b => b.key == generated_artifact_merge_driver_key && b.value == generated_artifact_merge_driver_value)
-    && any(bindings, b => b.key == core_hooks_path_key && b.value == core_hooks_path_value)
+  any(bindings, b => b.key == gunbc.repo_local_git_config.generated_artifact_merge_driver_key && b.value == gunbc.repo_local_git_config.generated_artifact_merge_driver_value)
+    && any(bindings, b => b.key == gunbc.repo_local_git_config.core_hooks_path_key && b.value == gunbc.repo_local_git_config.core_hooks_path_value)
 }

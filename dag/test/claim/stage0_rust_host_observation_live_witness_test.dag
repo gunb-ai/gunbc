@@ -1,13 +1,14 @@
 module test.claim.stage0_rust_host_observation_live_witness
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 test fn live_rust_observation_matches_actions_subject() -> Bool {
   match gunbc.live_rust_observation.live_rust_observation_wet() {
-    LiveObservationAdmitted { receipt: receipt } =>
+    gunbc.live_rust_observation.LiveObservationAdmitted { receipt: receipt } =>
       receipt.expected_repository_revision == receipt.observed_repository_revision
         && receipt.tracked_path_count > 0
-    LiveObservationRefused { cause: _ } => false
+    gunbc.live_rust_observation.LiveObservationRefused { cause: _ } => false
   }
 }
 
@@ -15,7 +16,7 @@ data live_observation_split_note: String = "SPLIT OUT OF stage0_rust_source_life
 
 test fn scaffold_host_observation_is_live_and_observed() -> Bool {
   match gunbc.stage0_rust_host_observation.current_stage0_rust_source_observation() {
-    RustManifestObserved {
+    gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: revision,
       manifest_content_identity: digest,
       tracked_rust_repo_paths: tracked,
@@ -59,8 +60,8 @@ test fn scaffold_host_observation_is_live_and_observed() -> Bool {
 // gunbc.stage0_rust_source_lifecycle_scaffold unclassified_axis_rung_note.
 fn live_verdict_is_unclassified_frontier() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observation.current_stage0_rust_source_observation()) {
-    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedUnclassifiedTracked { count: count } } => count > 0
-    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: count } } => count > 0
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedUnclassifiedTracked { count: count } } => count > 0
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: count } } => count > 0
     _ => false
   }
 }

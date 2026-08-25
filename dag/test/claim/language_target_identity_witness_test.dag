@@ -7,7 +7,7 @@ fn ref_of(module_path: String, decl_name: String) -> std.decl_ref.DeclarationRef
   std.decl_ref.DeclarationRef {
     module_path: module_path,
     decl_name: decl_name,
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -26,14 +26,14 @@ fn project_subject() -> std.decl_ref.DeclarationRef {
 fn bash_registration() -> std.language_target_identity.LanguageTargetRegistration {
   std.language_target_identity.LanguageTargetRegistration {
     grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.bash.subject.gnu_bash_model_scope },
-    disposition: TargetActive
+    disposition: std.language_target_identity.TargetActive
   }
 }
 
 fn project_registration() -> std.language_target_identity.LanguageTargetRegistration {
   std.language_target_identity.LanguageTargetRegistration {
     grounding: std.language_target_identity.ProjectGrounding { authority: project_subject() },
-    disposition: TargetActive
+    disposition: std.language_target_identity.TargetActive
   }
 }
 
@@ -43,27 +43,27 @@ fn bash_grammar_surface() -> std.language_target_identity.LanguageTargetSurfaceL
 
 fn bash_grammar_row() -> std.language_target_identity.LanguageTargetSurfaceRow {
   std.language_target_identity.LanguageTargetSurfaceRow {
-    authority: TargetModelDeclaration,
+    authority: std.language_target_identity.TargetModelDeclaration,
     surface: bash_grammar_surface(),
     target: Present { value: bash_subject() }
   }
 }
 
 test fn green_registered_bash_surface_resolves_to_the_bash_subject() -> Bool {
-  match resolve_target_for_surface(
+  match std.language_target_identity.resolve_target_for_surface(
     surface: bash_grammar_surface(),
     rows: [bash_grammar_row()],
     registry: [bash_registration()]
   ) {
-    TargetResolved { target: t } => declaration_ref_eq(a: t, b: bash_subject())
-    TargetSurfaceUnregistered { surface: _ } => false
-    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetNotRegistered { target: _ } => false
+    std.language_target_identity.TargetResolved { target: t } => std.decl_ref.declaration_ref_eq(a: t, b: bash_subject())
+    std.language_target_identity.TargetSurfaceUnregistered { surface: _ } => false
+    std.language_target_identity.TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    std.language_target_identity.TargetNotRegistered { target: _ } => false
   }
 }
 
 test fn green_clean_join_reports_no_violations() -> Bool {
-  language_target_join_clean(
+  std.language_target_identity.language_target_join_clean(
     rows: [bash_grammar_row()],
     registry: [bash_registration()]
   )
@@ -73,45 +73,45 @@ data neutral_key_note: String = "THE NEUTRAL-KEY CONTROL, and it is the discrimi
 
 test fn green_project_grounded_target_joins_through_the_same_key() -> Bool {
   let row = std.language_target_identity.LanguageTargetSurfaceRow {
-    authority: TargetModelDeclaration,
+    authority: std.language_target_identity.TargetModelDeclaration,
     surface: std.language_target_identity.SurfaceModule { module_path: "extdeps.languages.dag.syntax" },
     target: Present { value: project_subject() }
   }
-  match resolve_target_for_surface(
+  match std.language_target_identity.resolve_target_for_surface(
     surface: std.language_target_identity.SurfaceModule { module_path: "extdeps.languages.dag.syntax" },
     rows: [row],
     registry: [bash_registration(), project_registration()]
   ) {
-    TargetResolved { target: t } => declaration_ref_eq(a: t, b: project_subject())
-    TargetSurfaceUnregistered { surface: _ } => false
-    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetNotRegistered { target: _ } => false
+    std.language_target_identity.TargetResolved { target: t } => std.decl_ref.declaration_ref_eq(a: t, b: project_subject())
+    std.language_target_identity.TargetSurfaceUnregistered { surface: _ } => false
+    std.language_target_identity.TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    std.language_target_identity.TargetNotRegistered { target: _ } => false
   }
 }
 
 test fn green_both_grounding_arms_derive_their_declared_subject() -> Bool {
-  declaration_ref_eq(a: registration_subject(registration: bash_registration()), b: bash_subject())
-    && declaration_ref_eq(a: registration_subject(registration: project_registration()), b: project_subject())
+  std.decl_ref.declaration_ref_eq(a: std.language_target_identity.registration_subject(registration: bash_registration()), b: bash_subject())
+    && std.decl_ref.declaration_ref_eq(a: std.language_target_identity.registration_subject(registration: project_registration()), b: project_subject())
 }
 
 test fn red_surface_without_identity_refuses() -> Bool {
   let rows = [
     std.language_target_identity.LanguageTargetSurfaceRow {
-      authority: StdLanguageCatalogue,
+      authority: std.language_target_identity.StdLanguageCatalogue,
       surface: std.language_target_identity.SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") },
       target: none
     }
   ]
-  fold(language_target_join_violations(rows: rows, registry: [bash_registration()]),
+  fold(std.language_target_identity.language_target_join_violations(rows: rows, registry: [bash_registration()]),
     init: false,
     f: fn(acc, v) {
       acc || match v {
-        SurfaceMissingTargetIdentity { authority: _, surface: s } => surface_locus_eq(a: s, b: std.language_target_identity.SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") })
-        SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
-        DuplicateRegistryTarget { target: _ } => false
-        SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
-        TargetVocabularyHasNoRegistryTarget { surface: _ } => false
-        DuplicateSurfaceLocus { surface: _ } => false
+        std.language_target_identity.SurfaceMissingTargetIdentity { authority: _, surface: s } => std.language_target_identity.surface_locus_eq(a: s, b: std.language_target_identity.SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") })
+        std.language_target_identity.SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
+        std.language_target_identity.DuplicateRegistryTarget { target: _ } => false
+        std.language_target_identity.SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
+        std.language_target_identity.TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+        std.language_target_identity.DuplicateSurfaceLocus { surface: _ } => false
       }
     })
 }
@@ -119,39 +119,39 @@ test fn red_surface_without_identity_refuses() -> Bool {
 test fn red_surface_naming_unregistered_subject_refuses() -> Bool {
   let rows = [
     std.language_target_identity.LanguageTargetSurfaceRow {
-      authority: TargetVocabulary,
+      authority: std.language_target_identity.TargetVocabulary,
       surface: std.language_target_identity.SurfaceModule { module_path: "v2.extdeps.languages.verilog" },
       target: Present { value: unregistered_subject() }
     }
   ]
-  fold(language_target_join_violations(rows: rows, registry: [bash_registration()]),
+  fold(std.language_target_identity.language_target_join_violations(rows: rows, registry: [bash_registration()]),
     init: false,
     f: fn(acc, v) {
       acc || match v {
-        SurfaceNamesUnknownTarget { authority: _, surface: _, named: n } =>
-          declaration_ref_eq(a: n, b: unregistered_subject())
-        SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
-        DuplicateRegistryTarget { target: _ } => false
-        SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
-        TargetVocabularyHasNoRegistryTarget { surface: _ } => false
-        DuplicateSurfaceLocus { surface: _ } => false
+        std.language_target_identity.SurfaceNamesUnknownTarget { authority: _, surface: _, named: n } =>
+          std.decl_ref.declaration_ref_eq(a: n, b: unregistered_subject())
+        std.language_target_identity.SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
+        std.language_target_identity.DuplicateRegistryTarget { target: _ } => false
+        std.language_target_identity.SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
+        std.language_target_identity.TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+        std.language_target_identity.DuplicateSurfaceLocus { surface: _ } => false
       }
     })
 }
 
 test fn red_duplicate_registration_refuses() -> Bool {
-  let violations = language_target_join_violations(
+  let violations = std.language_target_identity.language_target_join_violations(
     rows: [],
     registry: [bash_registration(), bash_registration()]
   )
   fold(violations, init: false, f: fn(acc, v) {
     acc || match v {
-      DuplicateRegistryTarget { target: t } => declaration_ref_eq(a: t, b: bash_subject())
-      SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
-      SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
-      SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
-      TargetVocabularyHasNoRegistryTarget { surface: _ } => false
-      DuplicateSurfaceLocus { surface: _ } => false
+      std.language_target_identity.DuplicateRegistryTarget { target: t } => std.decl_ref.declaration_ref_eq(a: t, b: bash_subject())
+      std.language_target_identity.SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
+      std.language_target_identity.SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
+      std.language_target_identity.SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
+      std.language_target_identity.TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+      std.language_target_identity.DuplicateSurfaceLocus { surface: _ } => false
     }
   })
 }
@@ -160,31 +160,31 @@ data duplicate_registration_grain_control_note: String = "The grain control for 
 
 test fn duplicate_registration_reported_once_not_per_row() -> Bool {
   let thrice = [bash_registration(), bash_registration(), bash_registration()]
-  fold(language_target_join_violations(rows: [], registry: thrice),
+  fold(std.language_target_identity.language_target_join_violations(rows: [], registry: thrice),
     init: 0,
     f: fn(acc, v) {
       acc + match v {
-        DuplicateRegistryTarget { target: _ } => 1
-        SurfaceMissingTargetIdentity { authority: _, surface: _ } => 0
-        SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => 0
-        SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => 0
-        TargetVocabularyHasNoRegistryTarget { surface: _ } => 0
-        DuplicateSurfaceLocus { surface: _ } => 0
+        std.language_target_identity.DuplicateRegistryTarget { target: _ } => 1
+        std.language_target_identity.SurfaceMissingTargetIdentity { authority: _, surface: _ } => 0
+        std.language_target_identity.SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => 0
+        std.language_target_identity.SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => 0
+        std.language_target_identity.TargetVocabularyHasNoRegistryTarget { surface: _ } => 0
+        std.language_target_identity.DuplicateSurfaceLocus { surface: _ } => 0
       }
     }) == 1
 }
 
 test fn red_unregistered_surface_reports_located_refusal_not_silence() -> Bool {
   let unknown = std.language_target_identity.SurfaceModule { module_path: "v2.extdeps.languages.spice" }
-  match resolve_target_for_surface(
+  match std.language_target_identity.resolve_target_for_surface(
     surface: unknown,
     rows: [bash_grammar_row()],
     registry: [bash_registration()]
   ) {
-    TargetSurfaceUnregistered { surface: s } => surface_locus_eq(a: s, b: unknown)
-    TargetResolved { target: _ } => false
-    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetNotRegistered { target: _ } => false
+    std.language_target_identity.TargetSurfaceUnregistered { surface: s } => std.language_target_identity.surface_locus_eq(a: s, b: unknown)
+    std.language_target_identity.TargetResolved { target: _ } => false
+    std.language_target_identity.TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    std.language_target_identity.TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -192,20 +192,20 @@ test fn red_two_rows_disagreeing_about_one_surface_refuse_as_ambiguous() -> Bool
   let conflicting = [
     bash_grammar_row(),
     std.language_target_identity.LanguageTargetSurfaceRow {
-      authority: EmitHostExecution,
+      authority: std.language_target_identity.EmitHostExecution,
       surface: bash_grammar_surface(),
       target: Present { value: unregistered_subject() }
     }
   ]
-  match resolve_target_for_surface(
+  match std.language_target_identity.resolve_target_for_surface(
     surface: bash_grammar_surface(),
     rows: conflicting,
     registry: [bash_registration()]
   ) {
-    TargetSurfaceAmbiguous { surface: _, candidates: c } => fold(c, init: 0, f: fn(a, _x) { a + 1 }) == 2
-    TargetResolved { target: _ } => false
-    TargetSurfaceUnregistered { surface: _ } => false
-    TargetNotRegistered { target: _ } => false
+    std.language_target_identity.TargetSurfaceAmbiguous { surface: _, candidates: c } => fold(c, init: 0, f: fn(a, _x) { a + 1 }) == 2
+    std.language_target_identity.TargetResolved { target: _ } => false
+    std.language_target_identity.TargetSurfaceUnregistered { surface: _ } => false
+    std.language_target_identity.TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -214,20 +214,20 @@ data outcome_naming_note: String = "This arm was called TargetSubjectUnresolvabl
 test fn red_surface_naming_subject_absent_from_registry_is_not_registered() -> Bool {
   let rows = [
     std.language_target_identity.LanguageTargetSurfaceRow {
-      authority: RuntimeChecker,
+      authority: std.language_target_identity.RuntimeChecker,
       surface: std.language_target_identity.SurfaceDeclaration { ref: ref_of(module_path: "tools.emit_host_gate", decl_name: "run_ts_smoke") },
       target: Present { value: unregistered_subject() }
     }
   ]
-  match resolve_target_for_surface(
+  match std.language_target_identity.resolve_target_for_surface(
     surface: std.language_target_identity.SurfaceDeclaration { ref: ref_of(module_path: "tools.emit_host_gate", decl_name: "run_ts_smoke") },
     rows: rows,
     registry: [bash_registration()]
   ) {
-    TargetNotRegistered { target: t } => declaration_ref_eq(a: t, b: unregistered_subject())
-    TargetResolved { target: _ } => false
-    TargetSurfaceUnregistered { surface: _ } => false
-    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    std.language_target_identity.TargetNotRegistered { target: t } => std.decl_ref.declaration_ref_eq(a: t, b: unregistered_subject())
+    std.language_target_identity.TargetResolved { target: _ } => false
+    std.language_target_identity.TargetSurfaceUnregistered { surface: _ } => false
+    std.language_target_identity.TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
   }
 }
 
@@ -236,22 +236,22 @@ test fn red_surface_named_by_two_targets_emits_joins_multiple() -> Bool {
   let conflicting = [
     bash_grammar_row(),
     std.language_target_identity.LanguageTargetSurfaceRow {
-      authority: EmitHostExecution,
+      authority: std.language_target_identity.EmitHostExecution,
       surface: bash_grammar_surface(),
       target: Present { value: unregistered_subject() }
     }
   ]
-  fold(language_target_join_violations(rows: conflicting, registry: [bash_registration()]),
+  fold(std.language_target_identity.language_target_join_violations(rows: conflicting, registry: [bash_registration()]),
     init: false,
     f: fn(acc, v) {
       acc || match v {
-        SurfaceJoinsMultipleTargets { authority: _, surface: s, first: _, second: _ } =>
-          surface_locus_eq(a: s, b: bash_grammar_surface())
-        SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
-        SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
-        TargetVocabularyHasNoRegistryTarget { surface: _ } => false
-        DuplicateRegistryTarget { target: _ } => false
-        DuplicateSurfaceLocus { surface: _ } => false
+        std.language_target_identity.SurfaceJoinsMultipleTargets { authority: _, surface: s, first: _, second: _ } =>
+          std.language_target_identity.surface_locus_eq(a: s, b: bash_grammar_surface())
+        std.language_target_identity.SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
+        std.language_target_identity.SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
+        std.language_target_identity.TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+        std.language_target_identity.DuplicateRegistryTarget { target: _ } => false
+        std.language_target_identity.DuplicateSurfaceLocus { surface: _ } => false
       }
     })
 }
@@ -259,22 +259,22 @@ test fn red_surface_named_by_two_targets_emits_joins_multiple() -> Bool {
 test fn red_unidentified_vocabulary_surface_emits_its_own_class() -> Bool {
   let rows = [
     std.language_target_identity.LanguageTargetSurfaceRow {
-      authority: TargetVocabulary,
+      authority: std.language_target_identity.TargetVocabulary,
       surface: std.language_target_identity.SurfaceModule { module_path: "extdeps.languages.typescript.program" },
       target: none
     }
   ]
-  fold(language_target_join_violations(rows: rows, registry: [bash_registration()]),
+  fold(std.language_target_identity.language_target_join_violations(rows: rows, registry: [bash_registration()]),
     init: false,
     f: fn(acc, v) {
       acc || match v {
-        TargetVocabularyHasNoRegistryTarget { surface: s } =>
-          surface_locus_eq(a: s, b: std.language_target_identity.SurfaceModule { module_path: "extdeps.languages.typescript.program" })
-        SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
-        SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
-        SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
-        DuplicateRegistryTarget { target: _ } => false
-        DuplicateSurfaceLocus { surface: _ } => false
+        std.language_target_identity.TargetVocabularyHasNoRegistryTarget { surface: s } =>
+          std.language_target_identity.surface_locus_eq(a: s, b: std.language_target_identity.SurfaceModule { module_path: "extdeps.languages.typescript.program" })
+        std.language_target_identity.SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
+        std.language_target_identity.SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
+        std.language_target_identity.SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
+        std.language_target_identity.DuplicateRegistryTarget { target: _ } => false
+        std.language_target_identity.DuplicateSurfaceLocus { surface: _ } => false
       }
     })
 }
@@ -282,19 +282,19 @@ test fn red_unidentified_vocabulary_surface_emits_its_own_class() -> Bool {
 test fn multi_target_surface_reported_once_not_per_row() -> Bool {
   let three_way = [
     bash_grammar_row(),
-    std.language_target_identity.LanguageTargetSurfaceRow { authority: EmitHostExecution, surface: bash_grammar_surface(), target: Present { value: unregistered_subject() } },
-    std.language_target_identity.LanguageTargetSurfaceRow { authority: RuntimeChecker, surface: bash_grammar_surface(), target: Present { value: project_subject() } }
+    std.language_target_identity.LanguageTargetSurfaceRow { authority: std.language_target_identity.EmitHostExecution, surface: bash_grammar_surface(), target: Present { value: unregistered_subject() } },
+    std.language_target_identity.LanguageTargetSurfaceRow { authority: std.language_target_identity.RuntimeChecker, surface: bash_grammar_surface(), target: Present { value: project_subject() } }
   ]
-  fold(language_target_join_violations(rows: three_way, registry: [bash_registration()]),
+  fold(std.language_target_identity.language_target_join_violations(rows: three_way, registry: [bash_registration()]),
     init: 0,
     f: fn(acc, v) {
       acc + match v {
-        SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => 1
-        SurfaceMissingTargetIdentity { authority: _, surface: _ } => 0
-        SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => 0
-        TargetVocabularyHasNoRegistryTarget { surface: _ } => 0
-        DuplicateRegistryTarget { target: _ } => 0
-        DuplicateSurfaceLocus { surface: _ } => 0
+        std.language_target_identity.SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => 1
+        std.language_target_identity.SurfaceMissingTargetIdentity { authority: _, surface: _ } => 0
+        std.language_target_identity.SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => 0
+        std.language_target_identity.TargetVocabularyHasNoRegistryTarget { surface: _ } => 0
+        std.language_target_identity.DuplicateRegistryTarget { target: _ } => 0
+        std.language_target_identity.DuplicateSurfaceLocus { surface: _ } => 0
       }
     }) == 1
 }
@@ -305,7 +305,7 @@ fn duplicated_same_target_rows() -> List<std.language_target_identity.LanguageTa
   [
     bash_grammar_row(),
     std.language_target_identity.LanguageTargetSurfaceRow {
-      authority: EmitHostExecution,
+      authority: std.language_target_identity.EmitHostExecution,
       surface: bash_grammar_surface(),
       target: Present { value: bash_subject() }
     }
@@ -313,41 +313,41 @@ fn duplicated_same_target_rows() -> List<std.language_target_identity.LanguageTa
 }
 
 test fn red_same_surface_named_twice_by_one_target_is_not_ambiguous() -> Bool {
-  match resolve_target_for_surface(
+  match std.language_target_identity.resolve_target_for_surface(
     surface: bash_grammar_surface(),
     rows: duplicated_same_target_rows(),
     registry: [bash_registration()]
   ) {
-    TargetResolved { target: t } => declaration_ref_eq(a: t, b: bash_subject())
-    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetSurfaceUnregistered { surface: _ } => false
-    TargetNotRegistered { target: _ } => false
+    std.language_target_identity.TargetResolved { target: t } => std.decl_ref.declaration_ref_eq(a: t, b: bash_subject())
+    std.language_target_identity.TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    std.language_target_identity.TargetSurfaceUnregistered { surface: _ } => false
+    std.language_target_identity.TargetNotRegistered { target: _ } => false
   }
 }
 
 test fn red_duplicated_surface_row_emits_duplicate_locus_not_multi_target() -> Bool {
-  let violations = language_target_join_violations(
+  let violations = std.language_target_identity.language_target_join_violations(
     rows: duplicated_same_target_rows(),
     registry: [bash_registration()]
   )
   let dup = fold(violations, init: false, f: fn(acc, v) {
     acc || match v {
-      DuplicateSurfaceLocus { surface: s } => surface_locus_eq(a: s, b: bash_grammar_surface())
-      SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
-      SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
-      SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
-      TargetVocabularyHasNoRegistryTarget { surface: _ } => false
-      DuplicateRegistryTarget { target: _ } => false
+      std.language_target_identity.DuplicateSurfaceLocus { surface: s } => std.language_target_identity.surface_locus_eq(a: s, b: bash_grammar_surface())
+      std.language_target_identity.SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => false
+      std.language_target_identity.SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
+      std.language_target_identity.SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
+      std.language_target_identity.TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+      std.language_target_identity.DuplicateRegistryTarget { target: _ } => false
     }
   })
   let multi = fold(violations, init: false, f: fn(acc, v) {
     acc || match v {
-      SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => true
-      DuplicateSurfaceLocus { surface: _ } => false
-      SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
-      SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
-      TargetVocabularyHasNoRegistryTarget { surface: _ } => false
-      DuplicateRegistryTarget { target: _ } => false
+      std.language_target_identity.SurfaceJoinsMultipleTargets { authority: _, surface: _, first: _, second: _ } => true
+      std.language_target_identity.DuplicateSurfaceLocus { surface: _ } => false
+      std.language_target_identity.SurfaceMissingTargetIdentity { authority: _, surface: _ } => false
+      std.language_target_identity.SurfaceNamesUnknownTarget { authority: _, surface: _, named: _ } => false
+      std.language_target_identity.TargetVocabularyHasNoRegistryTarget { surface: _ } => false
+      std.language_target_identity.DuplicateRegistryTarget { target: _ } => false
     }
   })
   dup && !multi
@@ -359,7 +359,7 @@ fn clean_population() -> List<std.language_target_identity.LanguageTargetSurface
   [
     bash_grammar_row(),
     std.language_target_identity.LanguageTargetSurfaceRow {
-      authority: StdLanguageCatalogue,
+      authority: std.language_target_identity.StdLanguageCatalogue,
       surface: std.language_target_identity.SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") },
       target: none
     }
@@ -370,7 +370,7 @@ fn population_with_unknown_target() -> List<std.language_target_identity.Languag
   [
     bash_grammar_row(),
     std.language_target_identity.LanguageTargetSurfaceRow {
-      authority: StdLanguageCatalogue,
+      authority: std.language_target_identity.StdLanguageCatalogue,
       surface: std.language_target_identity.SurfaceDeclaration { ref: ref_of(module_path: "std.languages", decl_name: "rust_language") },
       target: Present { value: unregistered_subject() }
     }
@@ -378,26 +378,26 @@ fn population_with_unknown_target() -> List<std.language_target_identity.Languag
 }
 
 test fn green_clean_population_accounts_exactly() -> Bool {
-  declared_population_accounting_exact(rows: clean_population(), registry: [bash_registration()])
-    && identified_row_count(rows: clean_population(), registry: [bash_registration()]) == 1
+  std.language_target_identity.declared_population_accounting_exact(rows: clean_population(), registry: [bash_registration()])
+    && std.language_target_identity.identified_row_count(rows: clean_population(), registry: [bash_registration()]) == 1
 }
 
 test fn red_row_naming_unregistered_subject_breaks_the_accounting_sum() -> Bool {
-  !declared_population_accounting_exact(
+  !std.language_target_identity.declared_population_accounting_exact(
     rows: population_with_unknown_target(),
     registry: [bash_registration()]
   )
 }
 
 test fn red_unknown_target_row_fails_the_integrity_wall_separately() -> Bool {
-  registry_integrity_clean(rows: clean_population(), registry: [bash_registration()], projections: [])
-    && !registry_integrity_clean(rows: population_with_unknown_target(), registry: [bash_registration()], projections: [])
+  std.language_target_identity.registry_integrity_clean(rows: clean_population(), registry: [bash_registration()], projections: [])
+    && !std.language_target_identity.registry_integrity_clean(rows: population_with_unknown_target(), registry: [bash_registration()], projections: [])
 }
 
 test fn red_duplicate_registration_fails_integrity_but_not_accounting() -> Bool {
   let dup_registry = [bash_registration(), bash_registration()]
-  declared_population_accounting_exact(rows: clean_population(), registry: dup_registry)
-    && !registry_integrity_clean(rows: clean_population(), registry: dup_registry, projections: [])
+  std.language_target_identity.declared_population_accounting_exact(rows: clean_population(), registry: dup_registry)
+    && !std.language_target_identity.registry_integrity_clean(rows: clean_population(), registry: dup_registry, projections: [])
 }
 
 // Both projection directions previously resolved by ORDER — a later row silently overwrote an earlier one, so two projections claiming one legacy id returned whichever came last, and a subject with two projections returned whichever came last. That is the same silent last-wins shape as the resolver's double-bound import defect, reproduced inside the module built to remove parallel identities. These controls pin the refusals.
@@ -422,39 +422,39 @@ fn colliding_projection() -> std.language_target_identity.LanguageTargetProjecti
 }
 
 test fn green_unique_legacy_id_resolves() -> Bool {
-  match language_id_to_subject(language_id: "shell", projections: [bash_projection()]) {
-    LanguageIdResolved { target: t } => declaration_ref_eq(a: t, b: bash_subject())
-    LanguageIdUnregistered { language_id: _ } => false
-    LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
+  match std.language_target_identity.language_id_to_subject(language_id: "shell", projections: [bash_projection()]) {
+    std.language_target_identity.LanguageIdResolved { target: t } => std.decl_ref.declaration_ref_eq(a: t, b: bash_subject())
+    std.language_target_identity.LanguageIdUnregistered { language_id: _ } => false
+    std.language_target_identity.LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
   }
 }
 
 test fn red_two_projections_claiming_one_legacy_id_refuse_rather_than_last_wins() -> Bool {
-  match language_id_to_subject(
+  match std.language_target_identity.language_id_to_subject(
     language_id: "shell",
     projections: [bash_projection(), colliding_projection()]
   ) {
-    LanguageIdAmbiguous { language_id: l, first: f, second: s } =>
+    std.language_target_identity.LanguageIdAmbiguous { language_id: l, first: f, second: s } =>
       l == "shell"
-        && declaration_ref_eq(a: f, b: bash_subject())
-        && declaration_ref_eq(a: s, b: project_subject())
-    LanguageIdResolved { target: _ } => false
-    LanguageIdUnregistered { language_id: _ } => false
+        && std.decl_ref.declaration_ref_eq(a: f, b: bash_subject())
+        && std.decl_ref.declaration_ref_eq(a: s, b: project_subject())
+    std.language_target_identity.LanguageIdResolved { target: _ } => false
+    std.language_target_identity.LanguageIdUnregistered { language_id: _ } => false
   }
 }
 
 test fn red_two_projections_for_one_subject_refuse_rather_than_last_wins() -> Bool {
   let doubled = [bash_projection(), bash_projection()]
-  match projection_for_subject(subject: bash_subject(), projections: doubled) {
-    ProjectionAmbiguous { subject: s } => declaration_ref_eq(a: s, b: bash_subject())
-    ProjectionResolved { projection: _ } => false
-    ProjectionAbsent { subject: _ } => false
+  match std.language_target_identity.projection_for_subject(subject: bash_subject(), projections: doubled) {
+    std.language_target_identity.ProjectionAmbiguous { subject: s } => std.decl_ref.declaration_ref_eq(a: s, b: bash_subject())
+    std.language_target_identity.ProjectionResolved { projection: _ } => false
+    std.language_target_identity.ProjectionAbsent { subject: _ } => false
   }
 }
 
 test fn red_duplicate_projection_fails_the_integrity_wall() -> Bool {
-  registry_integrity_clean(rows: clean_population(), registry: [bash_registration()], projections: [bash_projection()])
-    && !registry_integrity_clean(
+  std.language_target_identity.registry_integrity_clean(rows: clean_population(), registry: [bash_registration()], projections: [bash_projection()])
+    && !std.language_target_identity.registry_integrity_clean(
       rows: clean_population(),
       registry: [bash_registration()],
       projections: [bash_projection(), bash_projection()]
@@ -462,9 +462,9 @@ test fn red_duplicate_projection_fails_the_integrity_wall() -> Bool {
 }
 
 test fn green_absent_projection_reports_its_subject() -> Bool {
-  match projection_for_subject(subject: unregistered_subject(), projections: [bash_projection()]) {
-    ProjectionAbsent { subject: s } => declaration_ref_eq(a: s, b: unregistered_subject())
-    ProjectionResolved { projection: _ } => false
-    ProjectionAmbiguous { subject: _ } => false
+  match std.language_target_identity.projection_for_subject(subject: unregistered_subject(), projections: [bash_projection()]) {
+    std.language_target_identity.ProjectionAbsent { subject: s } => std.decl_ref.declaration_ref_eq(a: s, b: unregistered_subject())
+    std.language_target_identity.ProjectionResolved { projection: _ } => false
+    std.language_target_identity.ProjectionAmbiguous { subject: _ } => false
   }
 }

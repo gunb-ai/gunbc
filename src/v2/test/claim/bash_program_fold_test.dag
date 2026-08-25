@@ -2,7 +2,7 @@ module v2.test.claim.bash_program_fold
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data bash_program_fold_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of extdeps.languages.bash.program serialize_bash and of the grammar rows/segment spellings. Each test compares bash_emit_program (row-emit) against its golden only, so a row/emitter regression cannot go green by perturbing both sides at once (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
 
@@ -30,18 +30,18 @@ data bash_program_exit_tail_regression_note: String = "The exit-in-joined-tail t
 
 fn bash_program_fold_sample_specials() -> List<v2.workflow.bash_emit.BashEmitSpecial> {
   [
-    bash_program_fold_tag_command(node: bash_build_command_from_lits(lits: ["echo", "hi"])),
-    bash_program_fold_tag_assign(node: bash_build_assign_lit(name: "X", text: "1"))
+    v2.test.claim.bash_program_fold_support.bash_program_fold_tag_command(node: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["echo", "hi"])),
+    v2.test.claim.bash_program_fold_support.bash_program_fold_tag_assign(node: v2.extdeps.languages.bash_build.bash_build_assign_lit(name: "X", text: "1"))
   ]
 }
 
 fn bash_program_depth2_cmdsubst_specials() -> List<v2.workflow.bash_emit.BashEmitSpecial> {
   [
-    bash_program_fold_tag_assign(
-      node: bash_build_assign(
+    v2.test.claim.bash_program_fold_support.bash_program_fold_tag_assign(
+      node: v2.extdeps.languages.bash_build.bash_build_assign(
         name: "ROOT",
-        value: bash_build_word_cmdsubst(
-          body: bash_build_command_from_lits(lits: ["pwd"])
+        value: v2.extdeps.languages.bash_build.bash_build_word_cmdsubst(
+          body: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["pwd"])
         )
       )
     )
@@ -50,9 +50,9 @@ fn bash_program_depth2_cmdsubst_specials() -> List<v2.workflow.bash_emit.BashEmi
 
 fn bash_program_depth2_redir_specials() -> List<v2.workflow.bash_emit.BashEmitSpecial> {
   [
-    bash_program_fold_tag_with_redir(
-      node: bash_build_with_redir(
-        inner: bash_build_command_from_lits(lits: ["git", "rev-parse"]),
+    v2.test.claim.bash_program_fold_support.bash_program_fold_tag_with_redir(
+      node: v2.extdeps.languages.bash_build.bash_build_with_redir(
+        inner: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["git", "rev-parse"]),
         redir: ^bash_production_fold_redir_stderr_null
       )
     )
@@ -61,13 +61,13 @@ fn bash_program_depth2_redir_specials() -> List<v2.workflow.bash_emit.BashEmitSp
 
 fn bash_program_depth2_concat_specials() -> List<v2.workflow.bash_emit.BashEmitSpecial> {
   [
-    bash_program_fold_tag_assign(
-      node: bash_build_assign(
+    v2.test.claim.bash_program_fold_support.bash_program_fold_tag_assign(
+      node: v2.extdeps.languages.bash_build.bash_build_assign(
         name: "BIN",
-        value: bash_build_word_concat(
-          parts: bash_build_command_words_pair(
-            left: bash_build_command_words_single(word: bash_build_word_var(name: "ROOT")),
-            right: bash_build_word_lit(text: "/target/release/gunbc")
+        value: v2.extdeps.languages.bash_build.bash_build_word_concat(
+          parts: v2.extdeps.languages.bash_build.bash_build_command_words_pair(
+            left: v2.extdeps.languages.bash_build.bash_build_command_words_single(word: v2.extdeps.languages.bash_build.bash_build_word_var(name: "ROOT")),
+            right: v2.extdeps.languages.bash_build.bash_build_word_lit(text: "/target/release/gunbc")
           )
         )
       )
@@ -77,37 +77,37 @@ fn bash_program_depth2_concat_specials() -> List<v2.workflow.bash_emit.BashEmitS
 
 fn bash_program_mktemp_rm_specials() -> List<v2.workflow.bash_emit.BashEmitSpecial> {
   [
-    bash_program_fold_tag_assign(
-      node: bash_build_assign(
+    v2.test.claim.bash_program_fold_support.bash_program_fold_tag_assign(
+      node: v2.extdeps.languages.bash_build.bash_build_assign(
         name: "OUT",
-        value: bash_build_word_cmdsubst(
-          body: bash_build_command_from_lits(lits: ["mktemp", "-d"])
+        value: v2.extdeps.languages.bash_build.bash_build_word_cmdsubst(
+          body: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["mktemp", "-d"])
         )
       )
     ),
-    bash_program_fold_tag_command(
-      node: bash_build_command_from_word_nodes(words: [
-        bash_build_word_lit(text: "rm"),
-        bash_build_word_lit(text: "-rf"),
-        bash_build_word_var(name: "OUT")
+    v2.test.claim.bash_program_fold_support.bash_program_fold_tag_command(
+      node: v2.extdeps.languages.bash_build.bash_build_command_from_word_nodes(words: [
+        v2.extdeps.languages.bash_build.bash_build_word_lit(text: "rm"),
+        v2.extdeps.languages.bash_build.bash_build_word_lit(text: "-rf"),
+        v2.extdeps.languages.bash_build.bash_build_word_var(name: "OUT")
       ])
     )
   ]
 }
 
-test fn bash_program_mktemp_rm_matches_golden_holds() -> v2.std.logic.Bool {
-  bash_emit_program_matches_golden(
+test fn bash_program_mktemp_rm_matches_golden_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_program_matches_golden(
     statements: bash_program_mktemp_rm_specials(),
     set_e: true,
     golden: bash_program_mktemp_rm_golden
   )
 }
 
-test fn bash_program_metachars_quoted_matches_golden_holds() -> v2.std.logic.Bool {
-  bash_emit_program_matches_golden(
+test fn bash_program_metachars_quoted_matches_golden_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_program_matches_golden(
     statements: [
-      bash_program_fold_tag_command(
-        node: bash_build_command_from_lits(lits: ["echo", "$(rm -rf /)"])
+      v2.test.claim.bash_program_fold_support.bash_program_fold_tag_command(
+        node: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["echo", "$(rm -rf /)"])
       )
     ],
     set_e: false,
@@ -115,13 +115,13 @@ test fn bash_program_metachars_quoted_matches_golden_holds() -> v2.std.logic.Boo
   )
 }
 
-test fn bash_program_varref_vs_lit_quoting_matches_golden_holds() -> v2.std.logic.Bool {
-  bash_emit_program_matches_golden(
+test fn bash_program_varref_vs_lit_quoting_matches_golden_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_program_matches_golden(
     statements: [
-      bash_program_fold_tag_command(
-        node: bash_build_command_from_word_nodes(words: [
-          bash_build_word_var(name: "ROOT"),
-          bash_build_word_lit(text: "ROOT")
+      v2.test.claim.bash_program_fold_support.bash_program_fold_tag_command(
+        node: v2.extdeps.languages.bash_build.bash_build_command_from_word_nodes(words: [
+          v2.extdeps.languages.bash_build.bash_build_word_var(name: "ROOT"),
+          v2.extdeps.languages.bash_build.bash_build_word_lit(text: "ROOT")
         ])
       )
     ],
@@ -130,40 +130,40 @@ test fn bash_program_varref_vs_lit_quoting_matches_golden_holds() -> v2.std.logi
   )
 }
 
-test fn bash_program_serialize_matches_golden_holds() -> v2.std.logic.Bool {
-  bash_emit_program_matches_golden(
+test fn bash_program_serialize_matches_golden_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_program_matches_golden(
     statements: bash_program_fold_sample_specials(),
     set_e: true,
     golden: bash_program_fold_sample_set_e_golden
   )
 }
 
-test fn bash_program_serialize_set_e_has_teeth_holds() -> v2.std.logic.Bool {
-  match bash_emit_program(statements: bash_program_fold_sample_specials(), set_e: true) {
-    Accepted { value: folded, diagnostics: _ } =>
+test fn bash_program_serialize_set_e_has_teeth_holds() -> Bool {
+  match v2.workflow.bash_emit.bash_emit_program(statements: bash_program_fold_sample_specials(), set_e: true) {
+    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } =>
       folded != bash_program_fold_sample_no_set_e_golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn bash_program_serialize_cmdsubst_matches_golden_holds() -> v2.std.logic.Bool {
-  bash_emit_program_matches_golden(
+test fn bash_program_serialize_cmdsubst_matches_golden_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_program_matches_golden(
     statements: bash_program_depth2_cmdsubst_specials(),
     set_e: false,
     golden: bash_program_depth2_cmdsubst_golden
   )
 }
 
-test fn bash_program_serialize_redir_matches_golden_holds() -> v2.std.logic.Bool {
-  bash_emit_program_matches_golden(
+test fn bash_program_serialize_redir_matches_golden_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_program_matches_golden(
     statements: bash_program_depth2_redir_specials(),
     set_e: false,
     golden: bash_program_depth2_redir_golden
   )
 }
 
-test fn bash_program_serialize_concat_matches_golden_holds() -> v2.std.logic.Bool {
-  bash_emit_program_matches_golden(
+test fn bash_program_serialize_concat_matches_golden_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_program_matches_golden(
     statements: bash_program_depth2_concat_specials(),
     set_e: false,
     golden: bash_program_depth2_concat_golden
@@ -171,21 +171,21 @@ test fn bash_program_serialize_concat_matches_golden_holds() -> v2.std.logic.Boo
 }
 
 
-test fn bash_program_assign_root_matches_golden_holds() -> v2.std.logic.Bool {
-  bash_emit_program_matches_golden(
-    statements: [bash_program_fold_tag_assign(node: bash_program_fixture_assign_root_node())],
+test fn bash_program_assign_root_matches_golden_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_program_matches_golden(
+    statements: [v2.test.claim.bash_program_fold_support.bash_program_fold_tag_assign(node: v2.test.claim.bash_program_fold_support.bash_program_fixture_assign_root_node())],
     set_e: false,
     golden: bash_program_assign_root_golden
   )
 }
 
-test fn bash_program_exit_in_subshell_tail_matches_golden_holds() -> v2.std.logic.Bool {
-  bash_emit_program_matches_golden(
+test fn bash_program_exit_in_subshell_tail_matches_golden_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_program_matches_golden(
     statements: [
-      bash_program_fold_tag_subshell(
-        node: bash_build_subshell_from_stmts(stmts: [
-          bash_build_command_from_lits(lits: ["echo", "hi"]),
-          bash_build_exit(code: "1")
+      v2.test.claim.bash_program_fold_support.bash_program_fold_tag_subshell(
+        node: v2.extdeps.languages.bash_build.bash_build_subshell_from_stmts(stmts: [
+          v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["echo", "hi"]),
+          v2.extdeps.languages.bash_build.bash_build_exit(code: "1")
         ])
       )
     ],
@@ -194,15 +194,15 @@ test fn bash_program_exit_in_subshell_tail_matches_golden_holds() -> v2.std.logi
   )
 }
 
-test fn bash_program_exit_in_if_body_matches_golden_holds() -> v2.std.logic.Bool {
-  bash_emit_program_matches_golden(
+test fn bash_program_exit_in_if_body_matches_golden_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_program_matches_golden(
     statements: [
-      bash_program_fold_tag_if(
-        node: bash_build_if_from_stmts(
-          cond: bash_build_command_from_lits(lits: ["true"]),
+      v2.test.claim.bash_program_fold_support.bash_program_fold_tag_if(
+        node: v2.extdeps.languages.bash_build.bash_build_if_from_stmts(
+          cond: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["true"]),
           then_stmts: [
-            bash_build_command_from_lits(lits: ["echo", "hi"]),
-            bash_build_exit(code: "1")
+            v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["echo", "hi"]),
+            v2.extdeps.languages.bash_build.bash_build_exit(code: "1")
           ]
         )
       )
@@ -212,12 +212,12 @@ test fn bash_program_exit_in_if_body_matches_golden_holds() -> v2.std.logic.Bool
   )
 }
 
-test fn bash_program_exit_spelling_literal_holds() -> v2.std.logic.Bool {
-  bash_emit_matches_golden(
+test fn bash_program_exit_spelling_literal_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_matches_golden(
     stmt: v2.workflow.bash_emit.BashEmitStmt {
-      node: bash_build_subshell_from_stmts(stmts: [
-        bash_build_command_from_lits(lits: ["echo", "hi"]),
-        bash_build_exit(code: "1")
+      node: v2.extdeps.languages.bash_build.bash_build_subshell_from_stmts(stmts: [
+        v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["echo", "hi"]),
+        v2.extdeps.languages.bash_build.bash_build_exit(code: "1")
       ]),
       production_binding: ^bash_production_fold_subshell,
       rule_name: ^bash_relation_rule_fold_subshell
@@ -226,13 +226,13 @@ test fn bash_program_exit_spelling_literal_holds() -> v2.std.logic.Bool {
   )
 }
 
-test fn bash_program_andor_exit_matches_golden_holds() -> v2.std.logic.Bool {
-  bash_emit_program_matches_golden(
+test fn bash_program_andor_exit_matches_golden_holds() -> Bool {
+  v2.workflow.bash_emit.bash_emit_program_matches_golden(
     statements: [
-      bash_program_fold_tag_or_else(
-        node: bash_build_or_else(
-          left: bash_build_command_from_lits(lits: ["true"]),
-          right: bash_build_exit(code: "1")
+      v2.test.claim.bash_program_fold_support.bash_program_fold_tag_or_else(
+        node: v2.extdeps.languages.bash_build.bash_build_or_else(
+          left: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["true"]),
+          right: v2.extdeps.languages.bash_build.bash_build_exit(code: "1")
         )
       )
     ],

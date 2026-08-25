@@ -1,7 +1,7 @@
 module v2.test.emit.conditional_delimiting
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data conditional_delimiting_scope_note: String = "SCOPE: conditional only. The loop half was withdrawn from this slice after execution showed it regressed rust_loop_emit_one_accepts, and the reason is a finding rather than an oversight: Rust's value-producing loop is `loop { break v; }`, so it needs a break token and a terminator, which an open/close pair cannot express. The staging spelling `loop { break ` smuggles exactly those, the same way the conditional smuggled its close. Modeling loop delimiting therefore needs a shape that carries break and terminator, and claiming an open/close discipline for it would have been the same under-modeling one level over. TargetLoopShape is left untouched."
 
@@ -25,11 +25,11 @@ data conditional_self_delimiting_golden: String = "if x { y } else { x"
 fn cld_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
-      rules: list_append(
-        left: rust_fn_add_lex_rules().rules,
+      rules: v2.std.algebra.list_append(
+        left: v2.extdeps.languages.rust.rust_fn_add_lex_rules().rules,
         right: [
-          rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
-          rust_lex_rule(token_class: ^rust_token_unwired_else, text: " } else { ")
+          v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
+          v2.extdeps.languages.rust.rust_lex_rule(token_class: ^rust_token_unwired_else, text: " } else { ")
         ]
       )
     }
@@ -39,50 +39,50 @@ fn cld_lex() -> v2.std.compilers.lexing.LexRules {
 fn cld_target() -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
     lex: cld_lex(),
-    produced_decl_support: rust_target_model().produced_decl_support,
-    bundle: rust_target_model().bundle,
-    binding_spellings: rust_target_model().binding_spellings,
-    token_class_emit_transforms: rust_target_model().token_class_emit_transforms,
-    authority_source_text: rust_target_model().authority_source_text,
-    runtime_row: rust_target_model().runtime_row
+    produced_decl_support: v2.extdeps.languages.rust.rust_target_model().produced_decl_support,
+    bundle: v2.extdeps.languages.rust.rust_target_model().bundle,
+    binding_spellings: v2.extdeps.languages.rust.rust_target_model().binding_spellings,
+    token_class_emit_transforms: v2.extdeps.languages.rust.rust_target_model().token_class_emit_transforms,
+    authority_source_text: v2.extdeps.languages.rust.rust_target_model().authority_source_text,
+    runtime_row: v2.extdeps.languages.rust.rust_target_model().runtime_row
   }
 }
 
 fn cld_conditional() -> v2.std.compilers.target_model.TargetValueExpression {
-  target_value_expression_conditional(
-    condition: target_value_expression_binding_ref(binding: ^rust_binding_param_x),
-    then_arm: target_value_expression_binding_ref(binding: ^rust_binding_param_y),
-    else_arm: target_value_expression_binding_ref(binding: ^rust_binding_param_x)
+  v2.std.compilers.target_model.target_value_expression_conditional(
+    condition: v2.std.compilers.target_model.target_value_expression_binding_ref(binding: ^rust_binding_param_x),
+    then_arm: v2.std.compilers.target_model.target_value_expression_binding_ref(binding: ^rust_binding_param_y),
+    else_arm: v2.std.compilers.target_model.target_value_expression_binding_ref(binding: ^rust_binding_param_x)
   )
 }
 
 fn cld_projection_with(conditional_form: v2.std.compilers.target_model.TargetConditionalShape) -> v2.std.compilers.target_model.TargetValueExpressionProjection {
   v2.std.compilers.target_model.TargetValueExpressionProjection {
     conditional_form: conditional_form,
-    binding_ref_form: rust_value_expression_projection().binding_ref_form,
-    primitive_apply_form: rust_value_expression_projection().primitive_apply_form,
-    callable_apply_form: rust_value_expression_projection().callable_apply_form,
-    closure_form: rust_value_expression_projection().closure_form,
-    effect_apply_form: rust_value_expression_projection().effect_apply_form,
-    let_form: rust_value_expression_projection().let_form,
-    loop_form: rust_value_expression_projection().loop_form,
-    record_construct_form: rust_value_expression_projection().record_construct_form,
-    field_access_form: rust_value_expression_projection().field_access_form,
-    match_form: rust_value_expression_projection().match_form,
-    bool_literal_form: rust_value_expression_projection().bool_literal_form,
-    block_evaluation_mode: rust_value_expression_projection().block_evaluation_mode
+    binding_ref_form: v2.extdeps.languages.rust.rust_value_expression_projection().binding_ref_form,
+    primitive_apply_form: v2.extdeps.languages.rust.rust_value_expression_projection().primitive_apply_form,
+    callable_apply_form: v2.extdeps.languages.rust.rust_value_expression_projection().callable_apply_form,
+    closure_form: v2.extdeps.languages.rust.rust_value_expression_projection().closure_form,
+    effect_apply_form: v2.extdeps.languages.rust.rust_value_expression_projection().effect_apply_form,
+    let_form: v2.extdeps.languages.rust.rust_value_expression_projection().let_form,
+    loop_form: v2.extdeps.languages.rust.rust_value_expression_projection().loop_form,
+    record_construct_form: v2.extdeps.languages.rust.rust_value_expression_projection().record_construct_form,
+    field_access_form: v2.extdeps.languages.rust.rust_value_expression_projection().field_access_form,
+    match_form: v2.extdeps.languages.rust.rust_value_expression_projection().match_form,
+    bool_literal_form: v2.extdeps.languages.rust.rust_value_expression_projection().bool_literal_form,
+    block_evaluation_mode: v2.extdeps.languages.rust.rust_value_expression_projection().block_evaluation_mode
   }
 }
 
-fn cld_delimiting_for(delimiting_closed: v2.std.logic.Bool) -> v2.std.compilers.target_model.ConditionalDelimiting {
+fn cld_delimiting_for(delimiting_closed: Bool) -> v2.std.compilers.target_model.ConditionalDelimiting {
   if delimiting_closed {
     v2.std.compilers.target_model.ConditionalClosedByToken { close_token: ^rust_token_rbrace }
   } else {
-    ConditionalSelfDelimiting
+    v2.std.compilers.target_model.ConditionalSelfDelimiting
   }
 }
 
-fn cld_conditional_form_with(delimiting_closed: v2.std.logic.Bool) -> v2.std.compilers.target_model.TargetConditionalShape {
+fn cld_conditional_form_with(delimiting_closed: Bool) -> v2.std.compilers.target_model.TargetConditionalShape {
   v2.std.compilers.target_model.TargetConditionalShape {
     if_token: ^rust_token_kw_if,
     then_token: ^rust_token_lbrace,
@@ -92,32 +92,32 @@ fn cld_conditional_form_with(delimiting_closed: v2.std.logic.Bool) -> v2.std.com
 }
 
 fn cld_emit(projection: v2.std.compilers.target_model.TargetValueExpressionProjection) -> v2.std.diagnostic.Outcome<String> {
-  match target_value_expression_to_concrete_tokens(
+  match v2.std.compilers.target_model.target_value_expression_to_concrete_tokens(
     expr: cld_conditional(),
     projection: projection,
     catalog: v2.extdeps.languages.rust.rust_operator_realizations_catalog_node()
   ) {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match serialize_concrete_syntax_tokens_to_source_string(
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
+      match v2.compiler.translate.serialize_concrete_syntax_tokens_to_source_string(
         target: cld_target(),
         tokens: tokens
       ) {
-        Accepted { value: text, diagnostics: _ } =>
-          v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: text, diagnostics: _ } =>
+          v2.std.diagnostic.Accepted { value: v2.std.compilers.target_model.render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn cld_emits(delimiting_closed: v2.std.logic.Bool, golden: String) -> v2.std.logic.Bool {
+fn cld_emits(delimiting_closed: Bool, golden: String) -> Bool {
   match cld_emit(
     projection: cld_projection_with(
       conditional_form: cld_conditional_form_with(delimiting_closed: delimiting_closed)
     )
   ) {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -125,7 +125,7 @@ fn cld_emits(delimiting_closed: v2.std.logic.Bool, golden: String) -> v2.std.log
 // differs, and it is exactly one closing token of difference. The cross arms are
 // the RED: a closing target must not emit the self-delimiting text, and a
 // self-delimiting target must not acquire a close it never declared.
-test fn conditional_close_is_derived_from_declared_discipline() -> v2.std.logic.Bool {
+test fn conditional_close_is_derived_from_declared_discipline() -> Bool {
   cld_emits(delimiting_closed: true, golden: conditional_closed_golden)
     && cld_emits(delimiting_closed: false, golden: conditional_self_delimiting_golden)
     && !cld_emits(delimiting_closed: true, golden: conditional_self_delimiting_golden)
@@ -135,40 +135,40 @@ test fn conditional_close_is_derived_from_declared_discipline() -> v2.std.logic.
 // Production Rust is wired to close, so it must agree with the closed arm rather
 // than merely being capable of it. Without this, the mechanism could be correct
 // while the Rust target still declared nothing.
-test fn production_rust_conditional_declares_a_close() -> v2.std.logic.Bool {
-  match cld_emit(projection: rust_value_expression_projection()) {
-    Accepted { value: text, diagnostics: _ } => text == conditional_closed_golden
-    Rejected { diagnostics: _ } => false
+test fn production_rust_conditional_declares_a_close() -> Bool {
+  match cld_emit(projection: v2.extdeps.languages.rust.rust_value_expression_projection()) {
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == conditional_closed_golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn cld_bundle_with(discriminant: v2.std.node.Symbol) -> v2.std.node.Node {
-  target_model_type_conj_node(
+  v2.std.compilers.target_model.target_model_type_conj_node(
     children: [
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^target_value_expr_field_if_token,
-        target: target_model_type_atom_node(identity: ^rust_token_kw_if)
+        target: v2.std.compilers.target_model.target_model_type_atom_node(identity: ^rust_token_kw_if)
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^target_value_expr_field_then_token,
-        target: target_model_type_atom_node(identity: ^rust_token_lbrace)
+        target: v2.std.compilers.target_model.target_model_type_atom_node(identity: ^rust_token_lbrace)
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^target_value_expr_field_else_token,
-        target: target_model_type_atom_node(identity: ^rust_token_unwired_else)
+        target: v2.std.compilers.target_model.target_model_type_atom_node(identity: ^rust_token_unwired_else)
       ),
-      target_model_named_edge(
+      v2.std.compilers.target_model.target_model_named_edge(
         name: ^target_value_expr_field_conditional_delimiting,
-        target: target_model_type_atom_node(identity: discriminant)
+        target: v2.std.compilers.target_model.target_model_type_atom_node(identity: discriminant)
       )
     ]
   )
 }
 
-fn cld_decodes(discriminant: v2.std.node.Symbol) -> v2.std.logic.Bool {
-  match decode_conditional_shape_bundle(bundle: cld_bundle_with(discriminant: discriminant)) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+fn cld_decodes(discriminant: v2.std.node.Symbol) -> Bool {
+  match v2.std.compilers.target_model.decode_conditional_shape_bundle(bundle: cld_bundle_with(discriminant: discriminant)) {
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -179,7 +179,7 @@ fn cld_decodes(discriminant: v2.std.node.Symbol) -> v2.std.logic.Bool {
 // closing target decode one token short, and the defect would surface as
 // unbalanced output far from the decoder that caused it. The self-delimiting
 // positive control keeps this from passing because decode is simply broken.
-test fn unknown_delimiting_discriminant_refuses() -> v2.std.logic.Bool {
+test fn unknown_delimiting_discriminant_refuses() -> Bool {
   cld_decodes(discriminant: ^conditional_self_delimiting)
     && !cld_decodes(discriminant: ^conditional_delimiting_never_defined)
     && !cld_decodes(discriminant: ^some_symbol_that_names_no_delimiting_variant)

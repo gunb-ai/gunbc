@@ -3,37 +3,37 @@ module gunbc.plans.interpreter_kernel_d
 
 fn interpreter_kernel_d_body() -> List<std.markdown.MarkdownBlock> {
   [
-    p(text: "**Status:** model-and-witness + seam classification landed (#6229 / session deep-crab-542). Parent seed burn-down **HAND kernel D**. **Original slice:** `gunbc.interpreter_kernel_model` + `interpreter_kernel_model_witnesses` — no `v1_interpreter.rs` emit flip, no `regen --verify` flip. **Follow-on (landed #6217):** `rest_transport_facts` · `wire_value_serialize` dissolved as pure fact-projection into `cli_run.rs` — pinned roster now 2 host-physics files."),
-    h2(text: "0. Verdict — pure-eval authority vs pinned host-physics"),
-    p(text: "`v1_interpreter.rs` (~6.3k LOC, `HAND_MAINTAINED_STAGE0_FILES`) is a **hybrid**: pure expression evaluation + host-effect dispatch (shell / REST / file / fixture replay / caches). Total dissolution is not one file delete — the seam splits on **decidability**: pure-eval grounds into `v2.compiler.eval` + `emit_host`; host-physics (transports / fixtures / cache backends) is the **terminal irreducible kernel** (seed-shrink-census §6)."),
+    gunbc.plans.md_helpers.p(text: "**Status:** model-and-witness + seam classification landed (#6229 / session deep-crab-542). Parent seed burn-down **HAND kernel D**. **Original slice:** `gunbc.interpreter_kernel_model` + `interpreter_kernel_model_witnesses` — no `v1_interpreter.rs` emit flip, no `regen --verify` flip. **Follow-on (landed #6217):** `rest_transport_facts` · `wire_value_serialize` dissolved as pure fact-projection into `cli_run.rs` — pinned roster now 2 host-physics files."),
+    gunbc.plans.md_helpers.h2(text: "0. Verdict — pure-eval authority vs pinned host-physics"),
+    gunbc.plans.md_helpers.p(text: "`v1_interpreter.rs` (~6.3k LOC, `HAND_MAINTAINED_STAGE0_FILES`) is a **hybrid**: pure expression evaluation + host-effect dispatch (shell / REST / file / fixture replay / caches). Total dissolution is not one file delete — the seam splits on **decidability**: pure-eval grounds into `v2.compiler.eval` + `emit_host`; host-physics (transports / fixtures / cache backends) is the **terminal irreducible kernel** (seed-shrink-census §6)."),
     std.markdown.TableBlock {
-      header: gunbc.plans.md_helpers.row(cells: [cell(text: "class"), cell(text: "authority / carrier"), cell(text: "this slice"), cell(text: "follow-up")]),
-      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      header: gunbc.plans.md_helpers.row(cells: [gunbc.plans.md_helpers.cell(text: "class"), gunbc.plans.md_helpers.cell(text: "authority / carrier"), gunbc.plans.md_helpers.cell(text: "this slice"), gunbc.plans.md_helpers.cell(text: "follow-up")]),
+      alignments: [std.markdown.AlignNone, std.markdown.AlignNone, std.markdown.AlignNone, std.markdown.AlignNone],
       rows: [
-        gunbc.plans.md_helpers.row(cells: [cell(text: "pure-eval"), cell(text: "`05_eval.dag` · `emit_host.dag` · `v2_evaluator.dag` · `host_transport.dag` · `host_run.dag`"), cell(text: "`gunbc.interpreter_kernel_model` + `interpreter_kernel_model_witnesses`"), cell(text: "wire `05_emit_rust` pure-eval emit → shrink `v1_interpreter.rs` eval core")]),
-        gunbc.plans.md_helpers.row(cells: [cell(text: "pinned host-physics"), cell(text: "`recorded_fixture.rs` · `resolved_graph_cache.rs`"), cell(text: "roster + dissolution triggers in model"), cell(text: "collapse onto Materialization kernel (`realize(subject)`); stays HAND until then")]),
-        gunbc.plans.md_helpers.row(cells: [cell(text: "hybrid remainder"), cell(text: "`v1_interpreter.rs` host-effect + CLI render dispatch"), cell(text: "explicitly NOT pinned as a whole file"), cell(text: "split: eval → GENERATED; host dispatch → pinned submodule or `.dag` transport handlers")]),
+        gunbc.plans.md_helpers.row(cells: [gunbc.plans.md_helpers.cell(text: "pure-eval"), gunbc.plans.md_helpers.cell(text: "`05_eval.dag` · `emit_host.dag` · `v2_evaluator.dag` · `host_transport.dag` · `host_run.dag`"), gunbc.plans.md_helpers.cell(text: "`gunbc.interpreter_kernel_model` + `interpreter_kernel_model_witnesses`"), gunbc.plans.md_helpers.cell(text: "wire `05_emit_rust` pure-eval emit → shrink `v1_interpreter.rs` eval core")]),
+        gunbc.plans.md_helpers.row(cells: [gunbc.plans.md_helpers.cell(text: "pinned host-physics"), gunbc.plans.md_helpers.cell(text: "`recorded_fixture.rs` · `resolved_graph_cache.rs`"), gunbc.plans.md_helpers.cell(text: "roster + dissolution triggers in model"), gunbc.plans.md_helpers.cell(text: "collapse onto Materialization kernel (`realize(subject)`); stays HAND until then")]),
+        gunbc.plans.md_helpers.row(cells: [gunbc.plans.md_helpers.cell(text: "hybrid remainder"), gunbc.plans.md_helpers.cell(text: "`v1_interpreter.rs` host-effect + CLI render dispatch"), gunbc.plans.md_helpers.cell(text: "explicitly NOT pinned as a whole file"), gunbc.plans.md_helpers.cell(text: "split: eval → GENERATED; host dispatch → pinned submodule or `.dag` transport handlers")]),
       ],
     },
-    h2(text: "1. Pure-eval emit seam (`emit_host`)"),
-    p(text: "**Symptom:** `v2.compiler.emit_host.run_host_process` is fail-closed (`emit_host_transport_not_wired`) — the modeled `HostTransportDescriptor` rows in `extdeps/languages/*` are not yet consumed by the v1 interpreter tap. **Authority:** `run_test_claim_emit_vs_eval` already compares `emit(tree)` against `eval(tree)` for `EqualsClaim` / `CompilesClaim`; the host run is the residue."),
-    p(text: "**Construction direction (this slice):** name the authority modules and phase gate (`ModelAndWitnessOnly` → `PureEvalEmitWired`). **Follow-on:** wire transport realization in the seed interpreter (or thin host handler) from `HostTransportDescriptor` rows — same class as #5075 `TargetModel.runtime_row`."),
-    h2(text: "2. Pinned host-physics (transports / fixtures / cache)"),
-    p(text: "**Verdict:** `recorded_fixture.rs` and `resolved_graph_cache.rs` are honestly **physics-bound** — fixture-store and cross-run cache I/O. They are pinned in the model until the §4 Materialization kernel (`realization_measurement_loop` Phase 2/3) provides one `CacheLookupResult` fold consumed by both v1 handlers and v2 `05_eval`. `rest_transport_facts.rs` + `wire_value_serialize.rs` were misclassified as host-physics — verified zero fs/net/process calls; folded into `cli_run.rs` as pure Node-tree / wire-policy fact projection."),
-    ul(items: [
-      li(text: "`recorded_fixture.rs` — hermetic service replay store (M4/M5 consolidation target)."),
-      li(text: "`resolved_graph_cache.rs` — cross-run resolve memo (content-hash keyed) + warm==cold cache-purity oracle (`audit_warm_equals_cold`)."),
+    gunbc.plans.md_helpers.h2(text: "1. Pure-eval emit seam (`emit_host`)"),
+    gunbc.plans.md_helpers.p(text: "**Symptom:** `v2.compiler.emit_host.run_host_process` is fail-closed (`emit_host_transport_not_wired`) — the modeled `HostTransportDescriptor` rows in `extdeps/languages/*` are not yet consumed by the v1 interpreter tap. **Authority:** `run_test_claim_emit_vs_eval` already compares `emit(tree)` against `eval(tree)` for `EqualsClaim` / `CompilesClaim`; the host run is the residue."),
+    gunbc.plans.md_helpers.p(text: "**Construction direction (this slice):** name the authority modules and phase gate (`ModelAndWitnessOnly` → `PureEvalEmitWired`). **Follow-on:** wire transport realization in the seed interpreter (or thin host handler) from `HostTransportDescriptor` rows — same class as #5075 `TargetModel.runtime_row`."),
+    gunbc.plans.md_helpers.h2(text: "2. Pinned host-physics (transports / fixtures / cache)"),
+    gunbc.plans.md_helpers.p(text: "**Verdict:** `recorded_fixture.rs` and `resolved_graph_cache.rs` are honestly **physics-bound** — fixture-store and cross-run cache I/O. They are pinned in the model until the §4 Materialization kernel (`realization_measurement_loop` Phase 2/3) provides one `CacheLookupResult` fold consumed by both v1 handlers and v2 `05_eval`. `rest_transport_facts.rs` + `wire_value_serialize.rs` were misclassified as host-physics — verified zero fs/net/process calls; folded into `cli_run.rs` as pure Node-tree / wire-policy fact projection."),
+    gunbc.plans.md_helpers.ul(items: [
+      gunbc.plans.md_helpers.li(text: "`recorded_fixture.rs` — hermetic service replay store (M4/M5 consolidation target)."),
+      gunbc.plans.md_helpers.li(text: "`resolved_graph_cache.rs` — cross-run resolve memo (content-hash keyed) + warm==cold cache-purity oracle (`audit_warm_equals_cold`)."),
     ]),
-    h2(text: "3. Explicit non-goals (remaining)"),
-    ul(items: [
-      li(text: "No `v1_interpreter.rs` refactor or LOC deletion."),
-      li(text: "No `emit_host.dag` `run_host_process` wiring (transport realization PR)."),
-      li(text: "No `regen --verify` flip or bulk HAND→GENERATED cutover (per-module dissolution only)."),
+    gunbc.plans.md_helpers.h2(text: "3. Explicit non-goals (remaining)"),
+    gunbc.plans.md_helpers.ul(items: [
+      gunbc.plans.md_helpers.li(text: "No `v1_interpreter.rs` refactor or LOC deletion."),
+      gunbc.plans.md_helpers.li(text: "No `emit_host.dag` `run_host_process` wiring (transport realization PR)."),
+      gunbc.plans.md_helpers.li(text: "No `regen --verify` flip or bulk HAND→GENERATED cutover (per-module dissolution only)."),
     ]),
-    h2(text: "4. Discriminating witness (follow-on PRs)"),
-    ul(items: [
-      li(text: "**Pure-eval emit:** `run_test_claim_emit_vs_eval` GREEN on a rust `EqualsClaim` row without `Deferred` transport diagnostic."),
-      li(text: "**Pin receipt:** pinned roster matches `regen_stage0.rs` HAND list for the two pinned host-physics files — drift-gated when invert-hand-maintained derives the registry."),
+    gunbc.plans.md_helpers.h2(text: "4. Discriminating witness (follow-on PRs)"),
+    gunbc.plans.md_helpers.ul(items: [
+      gunbc.plans.md_helpers.li(text: "**Pure-eval emit:** `run_test_claim_emit_vs_eval` GREEN on a rust `EqualsClaim` row without `Deferred` transport diagnostic."),
+      gunbc.plans.md_helpers.li(text: "**Pin receipt:** pinned roster matches `regen_stage0.rs` HAND list for the two pinned host-physics files — drift-gated when invert-hand-maintained derives the registry."),
     ]),
   ]
 }
@@ -42,6 +42,6 @@ data interpreter_kernel_d_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "interpreter-kernel-d",
   title: "HAND kernel D — v1_interpreter pure-eval authority + pinned host-physics",
   body: interpreter_kernel_d_body(),
-  retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "Pure-eval eval core is v2-emitted from `05_eval` ( `v1_interpreter.rs` eval functions GENERATED ); host-physics backends are either collapsed onto the Materialization kernel or explicitly pinned as the terminal bootstrap kernel with a content-addressed receipt — at which point this tracker is redundant.")
+  retirement: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "Pure-eval eval core is v2-emitted from `05_eval` ( `v1_interpreter.rs` eval functions GENERATED ); host-physics backends are either collapsed onto the Materialization kernel or explicitly pinned as the terminal bootstrap kernel with a content-addressed receipt — at which point this tracker is redundant.")
   }
 }

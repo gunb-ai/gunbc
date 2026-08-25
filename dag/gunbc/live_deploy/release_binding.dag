@@ -54,21 +54,21 @@ fn deployed_release_binding(
   identity: gunbc.running_release_identity.RunningReleaseIdentity,
 ) -> DeployedReleaseBinding {
   match observation {
-    DeployedTreeUnobservable { cause: c } =>
+    gunbc.live_deploy.deployed_tree_observation.DeployedTreeUnobservable { cause: c } =>
       ReleaseBindingUnobserved {
         cause: join([
           "the deployed tree was not observed, so no binding is decidable: ",
-          deployed_tree_unobservable_text(cause: c),
+          gunbc.live_deploy.deployed_tree_observation.deployed_tree_unobservable_text(cause: c),
         ], ""),
       }
-    DeployedTreeObserved { revision: tree_revision, content: _ } =>
+    gunbc.live_deploy.deployed_tree_observation.DeployedTreeObserved { revision: tree_revision, content: _ } =>
       match identity {
-        RunningReleaseUnidentified { cause: _ } =>
+        gunbc.running_release_identity.RunningReleaseUnidentified { cause: _ } =>
           ReleaseBindingUnobserved {
             cause: "the running process did not state a readable release identity, so no binding is decidable",
           }
-        RunningReleaseIdentified { observation: obs } =>
-          if (obs.revision as String) == (git_object_id_wire_hex(oid: tree_revision) as String) {
+        gunbc.running_release_identity.RunningReleaseIdentified { observation: obs } =>
+          if (obs.revision as String) == (extdeps.git.object_store.git_object_id_wire_hex(oid: tree_revision) as String) {
             ReleaseBoundToTree { revision: tree_revision }
           } else {
             ReleaseMixed { tree_revision: tree_revision, process_revision: obs.revision }
@@ -91,10 +91,10 @@ fn release_binding_holds(binding: DeployedReleaseBinding) -> Bool {
 fn release_binding_line(binding: DeployedReleaseBinding) -> String {
   match binding {
     ReleaseBoundToTree { revision: r } =>
-      join(["release-binding BOUND revision=", git_object_id_wire_hex(oid: r) as String,
+      join(["release-binding BOUND revision=", extdeps.git.object_store.git_object_id_wire_hex(oid: r) as String,
             " -- the running process states the revision the deployed tree is on"], "")
     ReleaseMixed { tree_revision: t, process_revision: p } =>
-      join(["release-binding MIXED tree=", git_object_id_wire_hex(oid: t) as String,
+      join(["release-binding MIXED tree=", extdeps.git.object_store.git_object_id_wire_hex(oid: t) as String,
             " process=", p as String,
             " -- the process is interpreting a tree it was not built from; both sides named because",
             " the remedy depends on which one is ahead"], "")

@@ -2,45 +2,45 @@ module test.claim.roadmap_focus_witness_test
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data focus_witness_note: String = "Focus is a VIEW, so the property that matters is not what it shows but what it cannot do: it must never be able to lose work. These claims pin the two ways a filtered projection goes wrong. First, the filter must be a partition and not an edit — visible plus hidden equals the whole declared set, so a node cannot fall out of both and vanish from the roadmap entirely; that is checked by arithmetic against the same list the filter runs over, not by trusting the filter. Second, the page must not read as a shorter roadmap — the notice carries a DERIVED count, so a reader who forgot the focus was set is told what is missing rather than shown a plausible-looking complete page.\n\nThe RED control is the one that would otherwise rot: clearing the focus must restore every node. Without it, a filter that silently dropped nodes on BOTH paths would still satisfy an is-subset check and still look correct on the focused page."
 
 fn all_nodes() -> List<gunbc.roadmap_model.RoadmapNode> {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      active_roadmap_nodes_for_accepted(accepted: accepted)
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
+  match gunbc.roadmap_authority.accepted_roadmap_node_ids_projection() {
+    gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      gunbc.roadmap_authority.active_roadmap_nodes_for_accepted(accepted: accepted)
+    gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
   }
 }
 
 fn active_roadmap_edges() -> List<gunbc.roadmap_model.RoadmapEdge> {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      active_roadmap_edges_for_accepted(accepted: accepted)
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
+  match gunbc.roadmap_authority.accepted_roadmap_node_ids_projection() {
+    gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      gunbc.roadmap_authority.active_roadmap_edges_for_accepted(accepted: accepted)
+    gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
   }
 }
 
 fn visible() -> List<gunbc.roadmap_model.RoadmapNode> {
-  focus_visible_nodes(focus: roadmap_focus_selection, nodes: all_nodes(), edges: active_roadmap_edges())
+  gunbc.roadmap_focus.focus_visible_nodes(focus: gunbc.roadmap_authority.roadmap_focus_selection, nodes: all_nodes(), edges: active_roadmap_edges())
 }
 
 test fn focus_partitions_rather_than_deletes() -> Bool {
-  count(visible()) + focus_hidden_node_count(
-    focus: roadmap_focus_selection,
+  count(visible()) + gunbc.roadmap_focus.focus_hidden_node_count(
+    focus: gunbc.roadmap_authority.roadmap_focus_selection,
     nodes: all_nodes(),
     edges: active_roadmap_edges(),
   ) == count(all_nodes())
 }
 
 test fn clearing_focus_restores_every_node() -> Bool {
-  count(focus_visible_nodes(focus: NoFocus, nodes: all_nodes(), edges: active_roadmap_edges())) == count(all_nodes())
-    && focus_hidden_node_count(focus: NoFocus, nodes: all_nodes(), edges: active_roadmap_edges()) == 0
+  count(gunbc.roadmap_focus.focus_visible_nodes(focus: gunbc.roadmap_focus.NoFocus, nodes: all_nodes(), edges: active_roadmap_edges())) == count(all_nodes())
+    && gunbc.roadmap_focus.focus_hidden_node_count(focus: gunbc.roadmap_focus.NoFocus, nodes: all_nodes(), edges: active_roadmap_edges()) == 0
 }
 
 test fn focus_actually_narrows_the_page() -> Bool {
-  focus_is_active(focus: roadmap_focus_selection)
+  gunbc.roadmap_focus.focus_is_active(focus: gunbc.roadmap_authority.roadmap_focus_selection)
     && count(visible()) < count(all_nodes())
     && count(visible()) > 0
 }
@@ -48,8 +48,8 @@ test fn focus_actually_narrows_the_page() -> Bool {
 test fn every_visible_edge_has_both_endpoints_visible() -> Bool {
   let vis = visible()
   all(
-    focus_visible_edges(
-      focus: roadmap_focus_selection,
+    gunbc.roadmap_focus.focus_visible_edges(
+      focus: gunbc.roadmap_authority.roadmap_focus_selection,
       nodes: all_nodes(),
       edges: active_roadmap_edges(),
     ),
@@ -59,11 +59,11 @@ test fn every_visible_edge_has_both_endpoints_visible() -> Bool {
 }
 
 test fn focus_notice_states_the_derived_hidden_count() -> Bool {
-  let notice = focus_notice(focus: roadmap_focus_selection, nodes: all_nodes(), edges: active_roadmap_edges())
+  let notice = gunbc.roadmap_focus.focus_notice(focus: gunbc.roadmap_authority.roadmap_focus_selection, nodes: all_nodes(), edges: active_roadmap_edges())
   string_contains(
     s: notice,
-    pattern: to_string(focus_hidden_node_count(
-      focus: roadmap_focus_selection,
+    pattern: to_string(gunbc.roadmap_focus.focus_hidden_node_count(
+      focus: gunbc.roadmap_authority.roadmap_focus_selection,
       nodes: all_nodes(),
       edges: active_roadmap_edges(),
     )),
@@ -71,7 +71,7 @@ test fn focus_notice_states_the_derived_hidden_count() -> Bool {
 }
 
 test fn unfocused_projection_emits_no_notice() -> Bool {
-  focus_notice(focus: NoFocus, nodes: all_nodes(), edges: active_roadmap_edges()) == ""
+  gunbc.roadmap_focus.focus_notice(focus: gunbc.roadmap_focus.NoFocus, nodes: all_nodes(), edges: active_roadmap_edges()) == ""
 }
 
 // THE CLAIM THAT WOULD HAVE CAUGHT THE ORIGINAL BUG, stated over a SYNTHETIC graph rather than the live focus. The first focus shipped owner-membership as the whole visibility rule, and the page rendered pderive-source-slot-binding as ready while its prerequisite in a hidden lane was nowhere on it. Nothing was red; the page lied by omission, which is worse for a dispatched agent than for a person — a worker reads a ready-looking node, starts, and stalls on work the roadmap never mentioned.
@@ -90,8 +90,8 @@ fn fx(id: String, owner: String) -> gunbc.roadmap_model.RoadmapNode {
       updates: [], authored_on: "", last_verified_on: "",
     } },
     carriers: [gunbc.roadmap_model.Pointer { label: "authority", path: "DESIGN.md" }],
-    sizing: gunbc.roadmap_model.Sized { intricacy: IntricacyMedium, volume: VolumeMedium, repo: "gunbc", acceptance: ManualAcceptance },
-    execution: ExecutionContractUnspecified,
+    sizing: gunbc.roadmap_model.Sized { intricacy: gunbc.roadmap_model.IntricacyMedium, volume: gunbc.roadmap_model.VolumeMedium, repo: "gunbc", acceptance: gunbc.roadmap_model.ManualAcceptance },
+    execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: owner,
     signoff: gunbc.roadmap_status.Unsigned,
   }
@@ -119,8 +119,8 @@ fn fixture_focus() -> gunbc.roadmap_focus.RoadmapFocus {
 }
 
 test fn synthetic_closure_pulls_transitive_cross_lane_prerequisites() -> Bool {
-  let pulled = focus_prerequisite_ids(
-    focus: fixture_focus(), nodes: test.claim.roadmap_focus_witness_test.fixture_nodes(), edges: test.claim.roadmap_focus_witness_test.fixture_edges(),
+  let pulled = gunbc.roadmap_focus.focus_prerequisite_ids(
+    focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges(),
   )
   count(pulled) == 3
     && any(pulled, p => p == "b3")
@@ -129,35 +129,35 @@ test fn synthetic_closure_pulls_transitive_cross_lane_prerequisites() -> Bool {
 }
 
 test fn synthetic_visible_set_is_lane_plus_pulled() -> Bool {
-  count(focus_visible_nodes(
-    focus: fixture_focus(), nodes: test.claim.roadmap_focus_witness_test.fixture_nodes(), edges: test.claim.roadmap_focus_witness_test.fixture_edges(),
+  count(gunbc.roadmap_focus.focus_visible_nodes(
+    focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges(),
   )) == 4
 }
 
 test fn synthetic_no_visible_node_has_a_hidden_prerequisite() -> Bool {
-  let vis = focus_visible_nodes(
-    focus: fixture_focus(), nodes: test.claim.roadmap_focus_witness_test.fixture_nodes(), edges: test.claim.roadmap_focus_witness_test.fixture_edges(),
+  let vis = gunbc.roadmap_focus.focus_visible_nodes(
+    focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges(),
   )
   all(
-    test.claim.roadmap_focus_witness_test.fixture_edges() |> filter(e => any(vis, n => (n.node as String) == (e.child as String))),
+    fixture_edges() |> filter(e => any(vis, n => (n.node as String) == (e.child as String))),
     e => any(vis, n => (n.node as String) == (e.parent as String)),
   )
 }
 
 test fn synthetic_focus_with_no_external_prerequisite_pulls_nothing() -> Bool {
-  count(focus_prerequisite_ids(
+  count(gunbc.roadmap_focus.focus_prerequisite_ids(
     focus: gunbc.roadmap_focus.FocusOnOwners { label: "lane b", owners: ["lane-b"] },
-    nodes: test.claim.roadmap_focus_witness_test.fixture_nodes(),
-    edges: test.claim.roadmap_focus_witness_test.fixture_edges(),
+    nodes: fixture_nodes(),
+    edges: fixture_edges(),
   )) == 0
 }
 
 test fn synthetic_notice_names_every_pulled_prerequisite() -> Bool {
-  let notice = focus_notice(
-    focus: fixture_focus(), nodes: test.claim.roadmap_focus_witness_test.fixture_nodes(), edges: test.claim.roadmap_focus_witness_test.fixture_edges(),
+  let notice = gunbc.roadmap_focus.focus_notice(
+    focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges(),
   )
   all(
-    focus_prerequisite_ids(focus: fixture_focus(), nodes: test.claim.roadmap_focus_witness_test.fixture_nodes(), edges: test.claim.roadmap_focus_witness_test.fixture_edges()),
+    gunbc.roadmap_focus.focus_prerequisite_ids(focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges()),
     id => string_contains(s: notice, pattern: id),
   )
 }

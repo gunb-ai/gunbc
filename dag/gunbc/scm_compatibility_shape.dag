@@ -13,7 +13,7 @@ fn compatibility_identity_text(
   tag: std.types.NonEmptyStr,
   value: String,
 ) -> std.content_hash.Fnv1a64Structural {
-  content_hash_atom(
+  std.content_hash.content_hash_atom(
     value: concat(
       tag,
       concat(":", value),
@@ -27,9 +27,9 @@ fn compatibility_identity_sequence(
 ) -> std.content_hash.Fnv1a64Structural {
   fold(
     members,
-    init: content_hash_atom(value: tag),
+    init: std.content_hash.content_hash_atom(value: tag),
     f: fn(acc, member) {
-      content_hash_combine_structural(left: acc, right: member)
+      std.content_hash.content_hash_combine_structural(left: acc, right: member)
     },
   )
 }
@@ -38,7 +38,7 @@ fn compatibility_projection_handle(
   realization: CompatibilityRealizationHandle,
   state: std.content_hash.Fnv1a64Structural,
 ) -> CompatibilityProjectionHandle {
-  content_hash_tagged_structural(
+  std.content_hash.content_hash_tagged_structural(
     tag: concat(
       "compatibility-projection:",
       realization as String,
@@ -52,12 +52,12 @@ fn compatibility_read_back_handle(
   producer: std.types.NonEmptyStr,
   state: std.content_hash.Fnv1a64Structural,
 ) -> CompatibilityReadBackHandle {
-  content_hash_tagged_structural(
+  std.content_hash.content_hash_tagged_structural(
     tag: concat(
       "compatibility-readback:",
       realization as String,
     ) as std.types.NonEmptyStr,
-    payload: content_hash_combine_structural(
+    payload: std.content_hash.content_hash_combine_structural(
       left: compatibility_identity_text(
         tag: "producer",
         value: producer as String,

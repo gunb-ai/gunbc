@@ -4,7 +4,7 @@ module extdeps.bmc.capability
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.dmtf.org/standards/redfish"
   }
 }
@@ -35,18 +35,18 @@ fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
   } else {
     match parse_int(s: fields.first()) {
       Absent => BmcFirmwareVersionRefused { wire: wire }
-      Present { value: major } =>
+      v2.std.optional.Present { value: major } =>
         match parse_int(s: fields.skip(n: 1).first()) {
           Absent => BmcFirmwareVersionRefused { wire: wire }
-          Present { value: minor } =>
+          v2.std.optional.Present { value: minor } =>
             match parse_int(s: fields.skip(n: 2).first()) {
               Absent => BmcFirmwareVersionRefused { wire: wire }
-              Present { value: patch } =>
+              v2.std.optional.Present { value: patch } =>
                 if major < 0 || minor < 0 || patch < 0 {
                   BmcFirmwareVersionRefused { wire: wire }
                 } else {
                   BmcFirmwareVersionParsed {
-                    version: firmware_semantic_version(
+                    version: extdeps.firmware.types.firmware_semantic_version(
                       major: major,
                       minor: minor,
                       patch: patch,
@@ -158,7 +158,7 @@ fn bmc_firmware_capability_row_for(
   firmware: BmcFirmwareVersion,
   catalog: List<BmcFirmwareCapabilityRow>
 ) -> BmcFirmwareCapabilityLookup {
-  let hits = catalog |> filter(row => bmc_firmware_version_eq(a: row.firmware, b: firmware))
+  let hits = catalog |> v2.std.algebra.filter(row => bmc_firmware_version_eq(a: row.firmware, b: firmware))
   let n = count(hits)
   if n == 0 {
     BmcFirmwareCapabilityUncatalogued { firmware: firmware }
@@ -174,11 +174,11 @@ fn bmc_firmware_capability_row_for(
 }
 
 fn firmware_has_capability(row: BmcFirmwareCapabilityRow, cap: BmcCapability) -> Bool {
-  row.capabilities |> any(c => c == cap)
+  row.capabilities |> v2.std.algebra.any(c => c == cap)
 }
 
 fn catalog_has_vm_capable_firmware(catalog: List<BmcFirmwareCapabilityRow>) -> Bool {
-  catalog |> any(row => firmware_has_capability(row: row, cap: CapabilityVirtualMedia))
+  catalog |> v2.std.algebra.any(row => firmware_has_capability(row: row, cap: CapabilityVirtualMedia))
 }
 
-data bmc_firmware_semver_parser_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: a cited semantic-version grammar row set lands in the shared grammar substrate with forward ingest. bmc_firmware_version_from_wire then consumes that grammar fold instead of its local three-component parser; until then this is the declared Redfish/OpenBMC wire scaffold and refuses every non-exact or non-Nat component through BmcFirmwareVersionRefused.")
+data bmc_firmware_semver_parser_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: a cited semantic-version grammar row set lands in the shared grammar substrate with forward ingest. bmc_firmware_version_from_wire then consumes that grammar fold instead of its local three-component parser; until then this is the declared Redfish/OpenBMC wire scaffold and refuses every non-exact or non-Nat component through BmcFirmwareVersionRefused.")

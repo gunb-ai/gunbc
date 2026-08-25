@@ -1,7 +1,7 @@
 module test.claim.machine_shape_catalog_integration_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data ampere_domain: std.machine_shape.DomainId = "ampere-altra-max" as std.machine_shape.DomainId
 data ampere_l1_level: std.machine_shape.LevelId = "l1d" as std.machine_shape.LevelId
@@ -14,37 +14,37 @@ data ampere_l3_bytes: std.nat.Nat = 16777216
 data ampere_cache_line_bytes: std.nat.Nat = 64
 
 fn cpu_catalog_shape() -> std.machine_shape.MachineShape {
-  match cpu_shape_from_catalog(input: extdeps.cpu.machine_shape.FromCpuModelCatalog {
+  match extdeps.cpu.machine_shape.cpu_shape_from_catalog(input: extdeps.cpu.machine_shape.FromCpuModelCatalog {
     domain: ampere_domain,
     l1_level: ampere_l1_level,
     l2_level: ampere_l2_level,
     l3_level: ampere_l3_level,
-    row: altra_max_m12830_catalog,
+    row: extdeps.cpu.ampere.altra_max_m12830_catalog,
   }) {
-    MachineShapeOk { shape: s } => s
+    std.machine_shape.MachineShapeOk { shape: s } => s
     _ => std.machine_shape.MachineShape { domains: [], edges: [] }
   }
 }
 
 test fn w_cpu_cache_levels_integrated_into_memory_shape() -> Bool {
   let memory = cpu_catalog_shape().domains.first().memory
-  list_length(items: memory) == 3
+  std.types.list_length(items: memory) == 3
     && memory.first().id == ampere_l1_level
-    && byte_size_count(b: memory.first().capacity) == ampere_l1_bytes_per_core
+    && std.measure.byte_size_count(b: memory.first().capacity) == ampere_l1_bytes_per_core
     && match memory.first().transfer_grain {
-      Present { value: grain } => byte_size_count(b: grain) == ampere_cache_line_bytes
+      Present { value: grain } => std.measure.byte_size_count(b: grain) == ampere_cache_line_bytes
       Absent => false
     }
     && memory.skip(n: 1).first().id == ampere_l2_level
-    && byte_size_count(b: memory.skip(n: 1).first().capacity) == ampere_l2_bytes_per_core
+    && std.measure.byte_size_count(b: memory.skip(n: 1).first().capacity) == ampere_l2_bytes_per_core
     && memory.skip(n: 2).first().id == ampere_l3_level
-    && byte_size_count(b: memory.skip(n: 2).first().capacity) == ampere_l3_bytes
+    && std.measure.byte_size_count(b: memory.skip(n: 2).first().capacity) == ampere_l3_bytes
 }
 
 test fn w_cpu_catalog_lane_count_matches_threads() -> Bool {
-  match machine_shape_domain_lane_count(shape: cpu_catalog_shape()) {
+  match std.machine_shape.machine_shape_domain_lane_count(shape: cpu_catalog_shape()) {
     Present { value: lanes } =>
-      hardware_thread_count_value(t: lanes) == hardware_thread_count_value(t: altra_max_m12830_catalog.threads)
+      std.measure.hardware_thread_count_value(t: lanes) == std.measure.hardware_thread_count_value(t: altra_max_m12830_catalog.threads)
     Absent => false
   }
 }

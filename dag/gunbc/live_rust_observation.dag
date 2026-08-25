@@ -41,13 +41,13 @@ fn admit_live_rust_observation(
   observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation
 ) -> LiveRustObservationOutcome {
   match observation {
-    GitObservationRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.GitObservationRefused { detail: detail } =>
       LiveObservationRefused { cause: LiveGitRefused { detail: detail } }
-    RustManifestReadRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: detail } =>
       LiveObservationRefused { cause: LiveManifestReadRefused { detail: detail } }
-    RustManifestParseRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: detail } =>
       LiveObservationRefused { cause: LiveManifestParseRefused { detail: detail } }
-    RustManifestObserved {
+    gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: observed_revision,
       manifest_content_identity: identity,
       tracked_rust_repo_paths: tracked,
@@ -66,11 +66,11 @@ fn admit_live_rust_observation(
             observed: observed_revision
           }
         }
-      } else if length(xs: tracked) == 0 {
+      } else if v2.std.algebra.length(xs: tracked) == 0 {
         LiveObservationRefused { cause: LiveTrackedPopulationEmpty }
-      } else if length(xs: prior) == 0 {
+      } else if v2.std.algebra.length(xs: prior) == 0 {
         LiveObservationRefused { cause: LivePriorPopulationEmpty }
-      } else if length(xs: cargo) == 0 {
+      } else if v2.std.algebra.length(xs: cargo) == 0 {
         LiveObservationRefused { cause: LiveCargoTargetsEmpty }
       } else {
         LiveObservationAdmitted {
@@ -78,10 +78,10 @@ fn admit_live_rust_observation(
             expected_repository_revision: request.expected_repository_revision,
             observed_repository_revision: observed_revision,
             manifest_content_identity: identity,
-            tracked_path_count: length(xs: tracked),
-            prior_path_count: length(xs: prior),
-            cargo_target_count: length(xs: cargo),
-            verdict: rust_source_manifest_state_verdict(observation: observation)
+            tracked_path_count: v2.std.algebra.length(xs: tracked),
+            prior_path_count: v2.std.algebra.length(xs: prior),
+            cargo_target_count: v2.std.algebra.length(xs: cargo),
+            verdict: gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: observation)
           }
         }
       }
@@ -89,7 +89,7 @@ fn admit_live_rust_observation(
 }
 
 fn current_actions_sha_observation() -> extdeps.github.actions_environment.ActionsShaObservation {
-  let reading = shell.Env.Get(name: github_sha_variable_name as std.types.NonEmptyStr)
+  let reading = shell.Env.Get(name: extdeps.github.actions_environment.github_sha_variable_name as std.types.NonEmptyStr)
   match reading.value {
     Present { value: value } =>
       if value == "" {
@@ -105,11 +105,11 @@ fn live_rust_observation_expectation(
   actions: extdeps.github.actions_environment.ActionsShaObservation
 ) -> LiveRustObservationExpectation {
   match actions {
-    ActionsShaMissing { detail: detail } =>
+    extdeps.github.actions_environment.ActionsShaMissing { detail: detail } =>
       LiveExpectationRefused { cause: LiveExpectationMissing { detail: detail } }
-    ActionsShaEmpty { detail: detail } =>
+    extdeps.github.actions_environment.ActionsShaEmpty { detail: detail } =>
       LiveExpectationRefused { cause: LiveExpectationEmpty { detail: detail } }
-    ActionsShaObserved { sha: expected } =>
+    extdeps.github.actions_environment.ActionsShaObserved { sha: expected } =>
       LiveExpectationAdmitted {
         request: LiveRustObservationRequest { expected_repository_revision: expected }
       }
@@ -136,7 +136,7 @@ fn live_rust_observation_wet() -> LiveRustObservationOutcome {
     LiveExpectationAdmitted { request: request } =>
       admit_live_rust_observation(
         request: request,
-        observation: current_stage0_rust_source_observation()
+        observation: gunbc.stage0_rust_host_observation.current_stage0_rust_source_observation()
       )
   }
 }

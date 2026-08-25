@@ -1,16 +1,16 @@
 module test.claim.observation_tty_render_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_note: String = "P2 acceptance (docs/plans/progress-observation-design.md section 3b): the TTY renderer is a SIBLING of the CI renderer over the same std.observation carriers, differing only where the medium differs. The witnesses prove the sibling property by execution — the same event drives both surfaces and moves together — plus the TTY-specific facts: a required preamble, in-place repaint derived from attention, inline BlockedOn with named remaining, and a deterministic reward animal on Final. The three upgrades over the reference (durations, Refused vs Failed, recursive escalation) are inherited from the shared carriers, not re-earned."
 
 fn tty_cap() -> std.render.RenderCapability {
-  std.render.RenderCapability { color: true, tier: Emoji, cursor_addressable: true }
+  std.render.RenderCapability { color: true, tier: std.symbols.Emoji, cursor_addressable: true }
 }
 
 fn pipe_cap() -> std.render.RenderCapability {
-  std.render.RenderCapability { color: false, tier: Ascii, cursor_addressable: false }
+  std.render.RenderCapability { color: false, tier: std.symbols.Ascii, cursor_addressable: false }
 }
 
 fn tty_entry_subject() -> std.observation.ObservationSubject {
@@ -26,11 +26,11 @@ fn tty_entry_subject() -> std.observation.ObservationSubject {
 }
 
 fn tty_basis() -> std.observation.AttentionBasis {
-  std.observation.AttentionBasis { average: millisecond(count: 1000), maximum: millisecond(count: 5000) }
+  std.observation.AttentionBasis { average: std.measure.millisecond(count: 1000), maximum: std.measure.millisecond(count: 5000) }
 }
 
 test fn w_preamble_names_what_why_and_how_much() -> Bool {
-  let line = tty_preamble_line(fields: gunbc.observation_tty_render.PreambleFields {
+  let line = gunbc.observation_tty_render.tty_preamble_line(fields: gunbc.observation_tty_render.PreambleFields {
     run_id: "30044816605" as std.types.NonEmptyStr,
     trigger: "pull_request" as std.types.NonEmptyStr,
     diff_summary: "3 files touched" as std.types.NonEmptyStr,
@@ -43,27 +43,27 @@ test fn w_preamble_names_what_why_and_how_much() -> Bool {
 }
 
 test fn w_routine_repaints_in_place_but_anomaly_scrolls() -> Bool {
-  tty_cursor_action(density: RoutineCollapsible, attention: Ambient, cap: tty_cap()) == Overwrite &&
-  tty_cursor_action(density: RoutineCollapsible, attention: Notable, cap: tty_cap()) == Append &&
-  tty_cursor_action(density: AnomalyExpanded, attention: Anomaly, cap: tty_cap()) == Append &&
-  tty_cursor_action(density: SummaryAlwaysShown, attention: Ambient, cap: tty_cap()) == Append
+  gunbc.observation_tty_render.tty_cursor_action(density: std.observation.RoutineCollapsible, attention: std.observation.Ambient, cap: tty_cap()) == std.render.Overwrite &&
+  gunbc.observation_tty_render.tty_cursor_action(density: std.observation.RoutineCollapsible, attention: std.observation.Notable, cap: tty_cap()) == std.render.Append &&
+  gunbc.observation_tty_render.tty_cursor_action(density: std.observation.AnomalyExpanded, attention: std.observation.Anomaly, cap: tty_cap()) == std.render.Append &&
+  gunbc.observation_tty_render.tty_cursor_action(density: std.observation.SummaryAlwaysShown, attention: std.observation.Ambient, cap: tty_cap()) == std.render.Append
 }
 
 test fn w_non_addressable_terminal_always_appends() -> Bool {
-  tty_cursor_action(density: RoutineCollapsible, attention: Ambient, cap: pipe_cap()) == Append &&
-  tty_cursor_action(density: AnomalyExpanded, attention: Anomaly, cap: pipe_cap()) == Append
+  gunbc.observation_tty_render.tty_cursor_action(density: std.observation.RoutineCollapsible, attention: std.observation.Ambient, cap: pipe_cap()) == std.render.Append &&
+  gunbc.observation_tty_render.tty_cursor_action(density: std.observation.AnomalyExpanded, attention: std.observation.Anomaly, cap: pipe_cap()) == std.render.Append
 }
 
 test fn w_refusal_never_repaints_away() -> Bool {
   let refusal = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
     transition: std.observation.Concluded { outcome: std.observation.Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr } },
-    durations: observation_durations_wall(elapsed: nanosecond(count: 2472000000000)),
+    durations: std.observation.observation_durations_wall(elapsed: std.measure.nanosecond(count: 2472000000000)),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: refusal, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
-    TtyEmissionProjected { emission: e } => e.line.attention == Anomaly && e.cursor == Append
-    TtyEmissionRefused { cause: _ } => false
+  match gunbc.observation_tty_render.tty_event_emission_under(event: refusal, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
+    gunbc.observation_tty_render.TtyEmissionProjected { emission: e } => e.line.attention == std.observation.Anomaly && e.cursor == std.render.Append
+    gunbc.observation_tty_render.TtyEmissionRefused { cause: _ } => false
   }
 }
 
@@ -71,13 +71,13 @@ test fn w_same_event_drives_both_surfaces() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
     transition: std.observation.Concluded { outcome: std.observation.Done },
-    durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
+    durations: std.observation.observation_durations_wall(elapsed: std.measure.nanosecond(count: 230000000)),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: event, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
-    TtyEmissionProjected { emission: e } =>
-      string_contains(s: tty_render_emission(emission: e, tier: Emoji), pattern: "in 230ms")
-    TtyEmissionRefused { cause: _ } => false
+  match gunbc.observation_tty_render.tty_event_emission_under(event: event, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
+    gunbc.observation_tty_render.TtyEmissionProjected { emission: e } =>
+      string_contains(s: gunbc.observation_tty_render.tty_render_emission(emission: e, tier: std.symbols.Emoji), pattern: "in 230ms")
+    gunbc.observation_tty_render.TtyEmissionRefused { cause: _ } => false
   }
 }
 
@@ -86,12 +86,12 @@ test fn w_unavailable_basis_refuses_with_exact_cause() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
     transition: std.observation.Concluded { outcome: std.observation.Done },
-    durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
+    durations: std.observation.observation_durations_wall(elapsed: std.measure.nanosecond(count: 230000000)),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: event, basis: std.observation.MeasuredUnavailable { cause: cause }, cap: tty_cap()) {
-    TtyEmissionProjected { emission: _ } => false
-    TtyEmissionRefused { cause: c } => c == cause
+  match gunbc.observation_tty_render.tty_event_emission_under(event: event, basis: std.observation.MeasuredUnavailable { cause: cause }, cap: tty_cap()) {
+    gunbc.observation_tty_render.TtyEmissionProjected { emission: _ } => false
+    gunbc.observation_tty_render.TtyEmissionRefused { cause: c } => c == cause
   }
 }
 
@@ -99,25 +99,25 @@ test fn w_clean_final_appends_even_when_ambient() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
     transition: std.observation.Concluded { outcome: std.observation.Final { shown_failures: 0 } },
-    durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
+    durations: std.observation.observation_durations_wall(elapsed: std.measure.nanosecond(count: 230000000)),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: event, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
-    TtyEmissionProjected { emission: e } => e.line.attention == Ambient && e.cursor == Append
-    TtyEmissionRefused { cause: _ } => false
+  match gunbc.observation_tty_render.tty_event_emission_under(event: event, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
+    gunbc.observation_tty_render.TtyEmissionProjected { emission: e } => e.line.attention == std.observation.Ambient && e.cursor == std.render.Append
+    gunbc.observation_tty_render.TtyEmissionRefused { cause: _ } => false
   }
 }
 
 test fn w_routine_begin_overwrites_on_addressable_tty() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
-    transition: Begin,
-    durations: observation_durations_wall_unavailable(cause: "not started" as std.types.NonEmptyStr),
+    transition: std.observation.Begin,
+    durations: std.observation.observation_durations_wall_unavailable(cause: "not started" as std.types.NonEmptyStr),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: event, basis: std.observation.MeasuredUnavailable { cause: "basis absent" as std.types.NonEmptyStr }, cap: tty_cap()) {
-    TtyEmissionProjected { emission: e } => e.line.attention == Ambient && e.cursor == Overwrite
-    TtyEmissionRefused { cause: _ } => false
+  match gunbc.observation_tty_render.tty_event_emission_under(event: event, basis: std.observation.MeasuredUnavailable { cause: "basis absent" as std.types.NonEmptyStr }, cap: tty_cap()) {
+    gunbc.observation_tty_render.TtyEmissionProjected { emission: e } => e.line.attention == std.observation.Ambient && e.cursor == std.render.Overwrite
+    gunbc.observation_tty_render.TtyEmissionRefused { cause: _ } => false
   }
 }
 
@@ -125,40 +125,40 @@ test fn w_tty_strict_facade_equals_measured_value_projection() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
     transition: std.observation.Concluded { outcome: std.observation.Done },
-    durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
+    durations: std.observation.observation_durations_wall(elapsed: std.measure.nanosecond(count: 230000000)),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  let strict = tty_event_emission(event: event, basis: tty_basis(), cap: tty_cap())
-  match tty_event_emission_under(event: event, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
-    TtyEmissionProjected { emission: projected } => strict == projected
-    TtyEmissionRefused { cause: _ } => false
+  let strict = gunbc.observation_tty_render.tty_event_emission(event: event, basis: tty_basis(), cap: tty_cap())
+  match gunbc.observation_tty_render.tty_event_emission_under(event: event, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
+    gunbc.observation_tty_render.TtyEmissionProjected { emission: projected } => strict == projected
+    gunbc.observation_tty_render.TtyEmissionRefused { cause: _ } => false
   }
 }
 
 test fn w_nonaddressable_routine_composes_to_plain_append_wire() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
-    transition: Begin,
-    durations: observation_durations_wall_unavailable(cause: "not started" as std.types.NonEmptyStr),
+    transition: std.observation.Begin,
+    durations: std.observation.observation_durations_wall_unavailable(cause: "not started" as std.types.NonEmptyStr),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: event, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: pipe_cap()) {
-    TtyEmissionRefused { cause: _ } => false
-    TtyEmissionProjected { emission: e } =>
-      let rendered = tty_render_emission(emission: e, tier: Ascii)
-      e.cursor == Append &&
-      match project_terminal_write(
-        prior: DynamicLineClosed,
+  match gunbc.observation_tty_render.tty_event_emission_under(event: event, basis: std.observation.MeasuredValue { value: tty_basis() }, cap: pipe_cap()) {
+    gunbc.observation_tty_render.TtyEmissionRefused { cause: _ } => false
+    gunbc.observation_tty_render.TtyEmissionProjected { emission: e } =>
+      let rendered = gunbc.observation_tty_render.tty_render_emission(emission: e, tier: std.symbols.Ascii)
+      e.cursor == std.render.Append &&
+      match extdeps.render.terminal.project_terminal_write(
+        prior: extdeps.render.terminal.DynamicLineClosed,
         requested: e.cursor,
         capability: pipe_cap(),
         rendered: rendered
       ) {
-        TerminalWriteRefused { cause: _ } => false
-        TerminalWriteProjected { bytes: b, next: n } =>
-          b == concat(rendered, ansi_line_feed) &&
-          n == DynamicLineClosed &&
-          !string_contains(s: b, pattern: ansi_carriage_return) &&
-          !string_contains(s: b, pattern: ansi_erase_entire_line())
+        extdeps.render.terminal.TerminalWriteRefused { cause: _ } => false
+        extdeps.render.terminal.TerminalWriteProjected { bytes: b, next: n } =>
+          b == concat(rendered, extdeps.render.ansi.ansi_line_feed) &&
+          n == extdeps.render.terminal.DynamicLineClosed &&
+          !string_contains(s: b, pattern: extdeps.render.ansi.ansi_carriage_return) &&
+          !string_contains(s: b, pattern: extdeps.render.ansi.ansi_erase_entire_line())
       }
   }
 }
@@ -167,52 +167,52 @@ test fn w_addressable_refusal_persists_via_exact_closed_append_wire() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
     transition: std.observation.Concluded { outcome: std.observation.Refused { diagnostic: "policy" as std.types.NonEmptyStr } },
-    durations: observation_durations_wall_unavailable(cause: "clock absent" as std.types.NonEmptyStr),
+    durations: std.observation.observation_durations_wall_unavailable(cause: "clock absent" as std.types.NonEmptyStr),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
-  match tty_event_emission_under(event: event, basis: std.observation.MeasuredUnavailable { cause: "basis absent" as std.types.NonEmptyStr }, cap: tty_cap()) {
-    TtyEmissionRefused { cause: _ } => false
-    TtyEmissionProjected { emission: e } =>
-      let rendered = tty_render_emission(emission: e, tier: Emoji)
-      e.cursor == Append &&
-      match project_terminal_write(
-        prior: DynamicLineOpen,
+  match gunbc.observation_tty_render.tty_event_emission_under(event: event, basis: std.observation.MeasuredUnavailable { cause: "basis absent" as std.types.NonEmptyStr }, cap: tty_cap()) {
+    gunbc.observation_tty_render.TtyEmissionRefused { cause: _ } => false
+    gunbc.observation_tty_render.TtyEmissionProjected { emission: e } =>
+      let rendered = gunbc.observation_tty_render.tty_render_emission(emission: e, tier: std.symbols.Emoji)
+      e.cursor == std.render.Append &&
+      match extdeps.render.terminal.project_terminal_write(
+        prior: extdeps.render.terminal.DynamicLineOpen,
         requested: e.cursor,
         capability: tty_cap(),
         rendered: rendered
       ) {
-        TerminalWriteRefused { cause: _ } => false
-        TerminalWriteProjected { bytes: b, next: n } =>
+        extdeps.render.terminal.TerminalWriteRefused { cause: _ } => false
+        extdeps.render.terminal.TerminalWriteProjected { bytes: b, next: n } =>
           b == concat(
-            ansi_carriage_return,
-            concat(ansi_erase_entire_line(), concat(rendered, ansi_line_feed))
+            extdeps.render.ansi.ansi_carriage_return,
+            concat(extdeps.render.ansi.ansi_erase_entire_line(), concat(rendered, extdeps.render.ansi.ansi_line_feed))
           ) &&
-          n == DynamicLineClosed
+          n == extdeps.render.terminal.DynamicLineClosed
       }
   }
 }
 
 test fn w_group_line_names_the_current_entry() -> Bool {
-  let line = tty_group_line(active: tty_entry_subject(), k: 214, n: 602, spinner: Spinner0)
+  let line = gunbc.observation_tty_render.tty_group_line(active: tty_entry_subject(), k: 214, n: 602, spinner: std.symbols.Spinner0)
   string_contains(s: line.text, pattern: "214 of 602") &&
   string_contains(s: line.text, pattern: "v2.compiler.normalized_tree") &&
-  line.attention == Ambient
+  line.attention == std.observation.Ambient
 }
 
 test fn w_blocked_line_carries_holder_and_bounded_remaining() -> Bool {
-  let bounded = tty_blocked_line(blocked: std.observation.BlockedOn {
-    resource: MemoryBudget,
+  let bounded = gunbc.observation_tty_render.tty_blocked_line(blocked: std.observation.BlockedOn {
+    resource: std.observation.MemoryBudget,
     holders: [tty_entry_subject()],
-    remaining: std.observation.RemainingBounded { by: millisecond(count: 80000) }
+    remaining: std.observation.RemainingBounded { by: std.measure.millisecond(count: 80000) }
   })
   string_contains(s: bounded.text, pattern: "1 holder(s)") &&
   string_contains(s: bounded.text, pattern: "80 seconds remaining") &&
-  bounded.attention == Anomaly
+  bounded.attention == std.observation.Anomaly
 }
 
 test fn w_blocked_line_names_why_remaining_is_unknown() -> Bool {
-  let unknown = tty_blocked_line(blocked: std.observation.BlockedOn {
-    resource: MemoryBudget,
+  let unknown = gunbc.observation_tty_render.tty_blocked_line(blocked: std.observation.BlockedOn {
+    resource: std.observation.MemoryBudget,
     holders: [tty_entry_subject()],
     remaining: std.observation.RemainingUnknown { cause: "governor exposes no reclaim bound" as std.types.NonEmptyStr }
   })
@@ -221,17 +221,17 @@ test fn w_blocked_line_names_why_remaining_is_unknown() -> Bool {
 }
 
 test fn w_reward_animal_is_deterministic_and_degrades_to_a_word() -> Bool {
-  let emoji_clean = tty_final_line(shown_failures: 0, run_index: 3, tier: Emoji)
-  let emoji_again = tty_final_line(shown_failures: 0, run_index: 3, tier: Emoji)
-  let ascii_clean = tty_final_line(shown_failures: 0, run_index: 3, tier: Ascii)
+  let emoji_clean = gunbc.observation_tty_render.tty_final_line(shown_failures: 0, run_index: 3, tier: std.symbols.Emoji)
+  let emoji_again = gunbc.observation_tty_render.tty_final_line(shown_failures: 0, run_index: 3, tier: std.symbols.Emoji)
+  let ascii_clean = gunbc.observation_tty_render.tty_final_line(shown_failures: 0, run_index: 3, tier: std.symbols.Ascii)
   emoji_clean.text == emoji_again.text &&
   string_contains(s: emoji_clean.text, pattern: "all clean") &&
-  emoji_clean.attention == Ambient &&
+  emoji_clean.attention == std.observation.Ambient &&
   !string_contains(s: ascii_clean.text, pattern: "🦦")
 }
 
 test fn w_final_with_failures_names_them_and_is_anomaly() -> Bool {
-  let line = tty_final_line(shown_failures: 3, run_index: 3, tier: Emoji)
+  let line = gunbc.observation_tty_render.tty_final_line(shown_failures: 3, run_index: 3, tier: std.symbols.Emoji)
   string_contains(s: line.text, pattern: "3 problems shown") &&
-  line.attention == Anomaly
+  line.attention == std.observation.Anomaly
 }

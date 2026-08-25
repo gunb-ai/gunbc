@@ -1,7 +1,7 @@
 module test.claim.commit_writer_heal_admission_real_execution
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data real_execution_home_doc: String = "Wet execution witness for commit_writer_heal_admission_gate — the CommitWriterHealSkewConflictArm transport landed against gunbc#7905. It builds a real throwaway git repository, stages real index entries (via real conflicting merges and real git add), and runs the real gate against the real repo — shell.Mktemp.Dir, Filesystem.Write, git.Core.*InRepo have no mock_response, so this file is excluded from hermetic discovery (gunbc.ci_layer_roots witness_exclusion_frontier) and enrolled in bin_witness_wet_entries instead. clean_staged_index_admits is the non-widen control (nothing to refuse, gate must not refuse the ordinary case). unmerged_index_with_no_markers_refuses is the discriminator this gate exists for — a real three-way merge left genuinely unresolved (stages 1/2/3 present, no conflict-marker text anywhere, the exact #7870/#7821 shape) must still refuse on the unmerged-index arm alone. unclaimed_text_blob_with_markers_refuses_red_control is the RED control for the absence-arm classification landed in the prior PR on this branch: a staged blob with no module_storage claim (a path outside dag/ and src/v2/) that happens to carry literal conflict-marker-shaped text must refuse, proving the absence arm is not a silent pass-through. This gate is explicitly NOT a fix for the CommitWriterHealSkewConflictArm's provisional-ours-commit residue (commit_writer_heal_skew_conflict_arm_provisional_bytes_residue_note) — every fixture below stages content that is ALREADY the intended final bytes, so none of these witnesses exercise or claim to close that separate, still-open defect."
 
@@ -10,7 +10,7 @@ fn witness_repo_file(repo: std.types.FilePath, name: String) -> String {
 }
 
 fn write_witness_file(repo: std.types.FilePath, name: String, content: String) -> Bool {
-  Filesystem.Write(path: test.claim.commit_writer_heal_admission_real_execution.witness_repo_file(repo: repo, name: name), content: content).success
+  Filesystem.Write(path: witness_repo_file(repo: repo, name: name), content: content).success
 }
 
 fn seed_witness_repository(repo: std.types.FilePath) -> Bool {
@@ -32,25 +32,25 @@ fn commit_witness_side(repo: std.types.FilePath, branch: String, content: String
   branched == 0 && written && staged == 0 && committed == 0
 }
 
-fn refusals_contain_unmerged_index(refusals: std.algebra.FreeMonoid<gunbc.commit_workflow.CommitWriterRefusal>) -> Bool {
+fn refusals_contain_unmerged_index(refusals: List<CommitWriterRefusal>) -> Bool {
   match refusals {
-    Empty => false
-    Cons { head: CommitWriterUnmergedIndexRefusal { path: _, stages: _ }, tail: _ } => true
-    Cons { head: _, tail } => refusals_contain_unmerged_index(refusals: tail)
+    std.algebra.Empty => false
+    std.algebra.Cons { head: gunbc.commit_workflow.CommitWriterUnmergedIndexRefusal { path: _, stages: _ }, tail: _ } => true
+    std.algebra.Cons { head: _, tail } => refusals_contain_unmerged_index(refusals: tail)
   }
 }
 
-fn refusals_contain_conflict_marker_text(refusals: std.algebra.FreeMonoid<gunbc.commit_workflow.CommitWriterRefusal>) -> Bool {
+fn refusals_contain_conflict_marker_text(refusals: List<CommitWriterRefusal>) -> Bool {
   match refusals {
-    Empty => false
-    Cons { head: CommitWriterConflictMarkerTextRefusal { location: _ }, tail: _ } => true
-    Cons { head: _, tail } => refusals_contain_conflict_marker_text(refusals: tail)
+    std.algebra.Empty => false
+    std.algebra.Cons { head: gunbc.commit_workflow.CommitWriterConflictMarkerTextRefusal { location: _ }, tail: _ } => true
+    std.algebra.Cons { head: _, tail } => refusals_contain_conflict_marker_text(refusals: tail)
   }
 }
 
 fn with_witness_repo(scenario: fn(std.types.FilePath) -> Bool) -> Bool {
   let dir = shell.Mktemp.Dir()
-  let seeded = test.claim.commit_writer_heal_admission_real_execution.seed_witness_repository(repo: dir.path)
+  let seeded = seed_witness_repository(repo: dir.path)
   let observed = scenario(dir.path)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && seeded && observed && cleaned.success
@@ -58,31 +58,31 @@ fn with_witness_repo(scenario: fn(std.types.FilePath) -> Bool) -> Bool {
 
 test fn clean_staged_index_admits_by_real_execution() -> Bool {
   with_witness_repo(scenario: repo => {
-    let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)
+    let gated = gunbc.commit_workflow.commit_writer_heal_admission_gate(repo: repo, writer: gunbc.commit_workflow.HealAutocommit)
     match gated {
-      ExitSuccess => true
-      ExitFailure { code: _, reason: _ } => false
+      std.process.ExitSuccess => true
+      std.process.ExitFailure { code: _, reason: _ } => false
     }
   })
 }
 
 test fn unmerged_index_with_no_markers_refuses_by_real_execution() -> Bool {
   with_witness_repo(scenario: repo => {
-    let theirs = test.claim.commit_writer_heal_admission_real_execution.commit_witness_side(repo: repo, branch: "theirs", content: "theirs\n")
-    let ours = test.claim.commit_writer_heal_admission_real_execution.commit_witness_side(repo: repo, branch: "ours", content: "ours\n")
-    let merged = git.Core.MergeNoEditInRepo(repo: repo, branch: "theirs", expect: ExpectFailure)
+    let theirs = commit_witness_side(repo: repo, branch: "theirs", content: "theirs\n")
+    let ours = commit_witness_side(repo: repo, branch: "ours", content: "ours\n")
+    let merged = git.Core.MergeNoEditInRepo(repo: repo, branch: "theirs", expect: gunbc.output_policy.ExpectFailure)
     let unmerged = git.Core.LsFilesUnmergedInRepo(repo: repo, path: "unclaimed.txt")
-    let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)
+    let gated = gunbc.commit_workflow.commit_writer_heal_admission_gate(repo: repo, writer: gunbc.commit_workflow.HealAutocommit)
     let gate_refused = match gated {
-      ExitSuccess => false
-      ExitFailure { code: _, reason: _ } => true
+      std.process.ExitSuccess => false
+      std.process.ExitFailure { code: _, reason: _ } => true
     }
-    let variant_refused = match observe_complete_staged_commit(repo: repo, writer: HealAutocommit) {
-      CommitWriterTransportRefused { reason: _ } => false
-      CommitWriterTransportObserved { observation } =>
-        match admit_commit_writer(writer: HealAutocommit, observation: observation) {
-          CommitWriterAdmitted { writer: _, coverage: _ } => false
-          CommitWriterRefused { writer: _, refusals } => refusals_contain_unmerged_index(refusals: refusals)
+    let variant_refused = match gunbc.commit_workflow.observe_complete_staged_commit(repo: repo, writer: gunbc.commit_workflow.HealAutocommit) {
+      gunbc.commit_workflow.CommitWriterTransportRefused { reason: _ } => false
+      gunbc.commit_workflow.CommitWriterTransportObserved { observation } =>
+        match gunbc.commit_workflow.admit_commit_writer(writer: gunbc.commit_workflow.HealAutocommit, observation: observation) {
+          gunbc.commit_workflow.CommitWriterAdmitted { writer: _, coverage: _ } => false
+          gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals } => refusals_contain_unmerged_index(refusals: refusals)
         }
     }
     theirs && ours && merged.exit_code != 0 && count(unmerged.entries) == 3
@@ -99,17 +99,17 @@ test fn unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution()
       content: "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n",
     )
     let staged = git.Core.AddAllInRepo(repo: repo).exit_code
-    let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)
+    let gated = gunbc.commit_workflow.commit_writer_heal_admission_gate(repo: repo, writer: gunbc.commit_workflow.HealAutocommit)
     let gate_refused = match gated {
-      ExitSuccess => false
-      ExitFailure { code: _, reason: _ } => true
+      std.process.ExitSuccess => false
+      std.process.ExitFailure { code: _, reason: _ } => true
     }
-    let variant_refused = match observe_complete_staged_commit(repo: repo, writer: HealAutocommit) {
-      CommitWriterTransportRefused { reason: _ } => false
-      CommitWriterTransportObserved { observation } =>
-        match admit_commit_writer(writer: HealAutocommit, observation: observation) {
-          CommitWriterAdmitted { writer: _, coverage: _ } => false
-          CommitWriterRefused { writer: _, refusals } => refusals_contain_conflict_marker_text(refusals: refusals)
+    let variant_refused = match gunbc.commit_workflow.observe_complete_staged_commit(repo: repo, writer: gunbc.commit_workflow.HealAutocommit) {
+      gunbc.commit_workflow.CommitWriterTransportRefused { reason: _ } => false
+      gunbc.commit_workflow.CommitWriterTransportObserved { observation } =>
+        match gunbc.commit_workflow.admit_commit_writer(writer: gunbc.commit_workflow.HealAutocommit, observation: observation) {
+          gunbc.commit_workflow.CommitWriterAdmitted { writer: _, coverage: _ } => false
+          gunbc.commit_workflow.CommitWriterRefused { writer: _, refusals } => refusals_contain_conflict_marker_text(refusals: refusals)
         }
     }
     written && staged == 0 && gate_refused && variant_refused
@@ -121,10 +121,10 @@ test fn space_and_tab_named_paths_admit_by_real_execution() -> Bool {
     let space_written = write_witness_file(repo: repo, name: "has space name.txt", content: "space fixture\n")
     let tab_written = write_witness_file(repo: repo, name: "has\ttab\tname.txt", content: "tab fixture\n")
     let staged = git.Core.AddAllInRepo(repo: repo).exit_code
-    let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)
+    let gated = gunbc.commit_workflow.commit_writer_heal_admission_gate(repo: repo, writer: gunbc.commit_workflow.HealAutocommit)
     let gate_admitted = match gated {
-      ExitSuccess => true
-      ExitFailure { code: _, reason: _ } => false
+      std.process.ExitSuccess => true
+      std.process.ExitFailure { code: _, reason: _ } => false
     }
     space_written && tab_written && staged == 0 && gate_admitted
   })

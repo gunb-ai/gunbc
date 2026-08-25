@@ -1,34 +1,35 @@
 module gunbc.spark.serving_converge_plan
 
+
 data spark_serving_converge_plan_authority_note: String = "Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed rows. First member kind: Ensured linger (SparkServingLingerAddress → EnableLingerForOwnAccount). Plan observes linger state, runs membership_reconcile once, serializes MemberAction + install_effects into typed_action_rows on the artifact; apply MUST read those frozen rows (never re-derive). Spark actuation is typed argv via spark_serving_converge_realize + typed_argv_exec — NOT merged into apply_shell. Change arm (disable-linger) is NOT claimed proven — sudoers grants enable-linger only."
 
-fn spark_serving_converge_host_is_spark(host: NonEmptyStr) -> Bool {
-  host == (operator_host_srv5 as NonEmptyStr) || host == (operator_host_srv6 as NonEmptyStr)
+fn spark_serving_converge_host_is_spark(host: std.types.NonEmptyStr) -> Bool {
+  host == (gunbc.fleet_intent_network.operator_host_srv5 as std.types.NonEmptyStr) || host == (gunbc.fleet_intent_network.operator_host_srv6 as std.types.NonEmptyStr)
 }
 
-fn spark_serving_desired_linger_member(host: HostIdentity) -> SparkServingMember {
-  spark_serving_member(
+fn spark_serving_desired_linger_member(host: product.placement_supply.HostIdentity) -> gunbc.spark.serving_membership.SparkServingMember {
+  gunbc.spark.serving_membership.spark_serving_member(
     host: host,
-    principal: spark_serving_serving_principal(),
-    address: SparkServingLingerAddress,
-    state_digest: spark_serving_executor_linger_state_digest(),
+    principal: gunbc.spark.serving_membership.spark_serving_serving_principal(),
+    address: gunbc.spark.serving_membership.SparkServingLingerAddress,
+    state_digest: gunbc.spark.serving_membership.spark_serving_executor_linger_state_digest(),
     ownership: Ensured,
   )
 }
 
 fn spark_serving_linger_observed_members(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   linger_enabled: Bool,
-) -> List<SparkServingMember> {
+) -> List<gunbc.spark.serving_membership.SparkServingMember> {
   if linger_enabled {
     [spark_serving_desired_linger_member(host: host)]
   } else {
     [
-      spark_serving_member(
+      gunbc.spark.serving_membership.spark_serving_member(
         host: host,
-        principal: spark_serving_serving_principal(),
-        address: SparkServingLingerAddress,
-        state_digest: spark_serving_executor_linger_disabled_state_digest(),
+        principal: gunbc.spark.serving_membership.spark_serving_serving_principal(),
+        address: gunbc.spark.serving_membership.SparkServingLingerAddress,
+        state_digest: gunbc.spark.serving_membership.spark_serving_executor_linger_disabled_state_digest(),
         ownership: Ensured,
       ),
     ]
@@ -36,10 +37,10 @@ fn spark_serving_linger_observed_members(
 }
 
 fn spark_serving_linger_membership_plan(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   linger_enabled: Bool,
-) -> MembershipPlan<SparkServingMember, SparkServingMemberAt> {
-  spark_serving_membership_reconcile(
+) -> gunbc.membership_reconcile.MembershipPlan<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt> {
+  gunbc.spark.serving_membership.spark_serving_membership_reconcile(
     desired: [spark_serving_desired_linger_member(host: host)],
     observed: spark_serving_linger_observed_members(host: host, linger_enabled: linger_enabled),
   )
@@ -57,21 +58,21 @@ fn spark_serving_linger_membership_plan(
 // matches no scheduled subject, so a plan carrying one fails the row-count completeness check and
 // refuses. That is the same refusal a dropped row has always produced, reached by the same check.
 fn fleet_converge_spark_serving_action_at(
-  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
-) -> SparkServingMemberAt {
+  action: gunbc.membership_reconcile.MemberAction<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
+) -> gunbc.spark.serving_membership.SparkServingMemberAt {
   match action {
-    MemberAdded { at: at, to: _ } => at
-    MemberChanged { at: at, from: _, to: _ } => at
-    MemberRemoved { at: at, from: _ } => at
-    MemberRemovalRefused { from: _, cause: _ } => ""
-    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => ""
+    gunbc.membership_reconcile.MemberAdded { at: at, to: _ } => at
+    gunbc.membership_reconcile.MemberChanged { at: at, from: _, to: _ } => at
+    gunbc.membership_reconcile.MemberRemoved { at: at, from: _ } => at
+    gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => ""
+    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => ""
   }
 }
 
 fn fleet_converge_spark_serving_typed_action(
-  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
-) -> FleetConvergeSparkServingTypedAction? {
-  match spark_serving_install_effects_for_member_action(action: action) {
+  action: gunbc.membership_reconcile.MemberAction<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
+) -> gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction? {
+  match gunbc.spark.serving_member_realization.spark_serving_install_effects_for_member_action(action: action) {
     Absent => Absent
     Present { value: effects } =>
       match spark_serving_planned_effect_executions(effects: effects) {
@@ -81,7 +82,7 @@ fn fleet_converge_spark_serving_typed_action(
             Absent => Absent
             Present { value: head } =>
               Present {
-                value: FleetConvergeSparkServingTypedAction {
+                value: gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction {
                   action: action,
                   first_execution: head,
                   further_executions: executions.skip(n: 1),
@@ -102,24 +103,24 @@ fn fleet_converge_spark_serving_typed_action(
 // One effect refusing refuses the whole row, unchanged from the fold it replaces -- a partially
 // realizable member must not produce a row that applies the half that worked.
 fn spark_serving_planned_effect_executions(
-  effects: List<ServingInstallEffect>,
-) -> List<PlannedEffectExecution>? {
+  effects: List<gunbc.spark.serving_realization.ServingInstallEffect>,
+) -> List<gunbc.fleet_converge_plan.PlannedEffectExecution>? {
   fold(effects, init: Present { value: [] }, f: fn(acc, effect) {
     match acc {
       Absent => none
       Present { value: prior } =>
-        match realize_spark_serving_install_effect_command(
+        match gunbc.spark.serving_converge_realize.realize_spark_serving_install_effect_command(
           effect: effect,
-          executor_login: spark_serving_automation_principal_login(),
+          executor_login: gunbc.spark.serving_desired.spark_serving_automation_principal_login(),
         ) {
-          SparkServingInstallRemoteCommandsRefused { reason: _ } => none
-          SparkServingInstallRemoteCommandsPresent { steps: steps } =>
+          gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => none
+          gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: steps } =>
             match steps.first() {
               Absent => none
               Present { value: head } =>
                 Present {
                   value: concat(prior, [
-                    PlannedEffectExecution {
+                    gunbc.fleet_converge_plan.PlannedEffectExecution {
                       effect: effect,
                       first_step: head,
                       further_steps: steps.skip(n: 1),
@@ -143,7 +144,7 @@ fn spark_serving_planned_effect_executions(
 // always translates, so nothing ever exercised the arm. That is what made it worth closing before
 // the plan widens rather than after -- a four-member plan is exactly the input that reaches it.
 type SparkServingTypedActionProjection
-  = SparkServingTypedActionsProjected { rows: ScheduledRows<FleetConvergeSparkServingTypedAction> }
+  = SparkServingTypedActionsProjected { rows: gunbc.spark.serving_execution_schedule.ScheduledRows<gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction> }
   | SparkServingTypedActionsRefused { cause: String }
 
 // THE ROWS COME OUT IN THE SCHEDULED ORDER, NOT THE DIFF ORDER.
@@ -156,16 +157,16 @@ type SparkServingTypedActionProjection
 // an unscheduled order, because an unscheduled order is what produced a manager reload against a
 // unit file that did not exist yet.
 fn fleet_converge_spark_serving_typed_actions(
-  plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
-  desired: List<SparkServingMember>,
+  plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
+  desired: List<gunbc.spark.serving_membership.SparkServingMember>,
 ) -> SparkServingTypedActionProjection {
-  match spark_serving_freeze_execution_schedule(
+  match gunbc.spark.serving_execution_schedule.spark_serving_freeze_execution_schedule(
     plan: plan,
     desired_addresses: flat_map(desired, m => [m.address]),
   ) {
-    SparkServingScheduleRefused { cause: why } =>
+    gunbc.spark.serving_execution_schedule.SparkServingScheduleRefused { cause: why } =>
       SparkServingTypedActionsRefused { cause: why }
-    SparkServingScheduleFrozen { schedule: schedule } =>
+    gunbc.spark.serving_execution_schedule.SparkServingScheduleFrozen { schedule: schedule } =>
       fleet_converge_spark_serving_typed_actions_in_order(plan: plan, schedule: schedule)
   }
 }
@@ -175,10 +176,10 @@ fn fleet_converge_spark_serving_typed_actions(
 // failed projection always did -- the schedule is a permutation of the planned rows or it is a
 // refusal, never a quiet subset.
 fn fleet_converge_spark_serving_typed_actions_in_order(
-  plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
-  schedule: SparkServingFrozenExecutionSchedule,
+  plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
+  schedule: gunbc.spark.serving_execution_schedule.SparkServingFrozenExecutionSchedule,
 ) -> SparkServingTypedActionProjection {
-  let scheduled = scheduled_rows_from_frozen_schedule(
+  let scheduled = gunbc.spark.serving_execution_schedule.scheduled_rows_from_frozen_schedule(
     schedule: schedule,
     rows_for: fn(at) {
       flat_map(
@@ -191,7 +192,7 @@ fn fleet_converge_spark_serving_typed_actions_in_order(
       )
     },
   )
-  let rows = scheduled_rows_list(scheduled: scheduled)
+  let rows = gunbc.spark.serving_execution_schedule.scheduled_rows_list(scheduled: scheduled)
   if length(rows) == length(plan.actions) {
     SparkServingTypedActionsProjected { rows: scheduled }
   } else {
@@ -206,12 +207,12 @@ fn fleet_converge_spark_serving_typed_actions_in_order(
 }
 
 fn spark_serving_fleet_converge_apply_shell(
-  timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
-  host: NonEmptyStr,
-  observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  timer_plan: gunbc.membership_reconcile.MembershipPlan<gunbc.fleet_converge_plan.TimerRetirementMember, gunbc.fleet_converge_plan.TimerRetirementMemberAt>,
+  host: std.types.NonEmptyStr,
+  observed_slots: List<gunbc.runner_slot_provision.RunnerSlotMember>,
+  observed_fabric_cells: gunbc.fabric_cell_converge.FabricCellPopulation,
 ) -> String {
-  fleet_converge_apply_shell(
+  gunbc.fleet_converge_plan.fleet_converge_apply_shell(
     timer_plan: timer_plan,
     host: host,
     observed_slots: observed_slots,
@@ -233,27 +234,27 @@ fn spark_serving_fleet_converge_apply_shell(
 // it would write the unit on every run and no second plan could ever be empty. That is the
 // empty-observation narrow, and the guard is the reason `unit_observed` travels beside the members.
 type SparkServingPlanArtifactVerdict
-  = SparkServingPlanArtifactReady { artifact: FleetConvergePlanArtifact }
+  = SparkServingPlanArtifactReady { artifact: gunbc.fleet_converge_plan.FleetConvergePlanArtifact }
   | SparkServingPlanArtifactRefused { cause: String }
 
 fn spark_serving_fleet_converge_plan_artifact(
-  host: NonEmptyStr,
+  host: std.types.NonEmptyStr,
   prior_generation: Int,
-  observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<CapMember>,
-  projection: SparkServingObservedMemberProjection,
+  observed_timers: List<gunbc.fleet_converge_plan.TimerRetirementMember>,
+  observed_caps: List<gunbc.host_axis_caps.CapMember>,
+  projection: gunbc.spark.serving_observed_members.SparkServingObservedMemberProjection,
 ) -> SparkServingPlanArtifactVerdict {
   if !spark_serving_converge_host_is_spark(host: host) {
     SparkServingPlanArtifactRefused {
       cause: join(["plan-refused host-not-spark host=", host as String], ""),
     }
   } else {
-    match spark_serving_desired_admission {
-      SparkServingDesiredRefused { cause: why } =>
+    match gunbc.spark.serving_desired.spark_serving_desired_admission {
+      gunbc.spark.serving_desired.SparkServingDesiredRefused { cause: why } =>
         SparkServingPlanArtifactRefused {
           cause: join(["plan-refused desired-release-unadmitted ", why as String], ""),
         }
-      SparkServingDesiredAdmitted { serving_release: admitted_release } =>
+      gunbc.spark.serving_desired.SparkServingDesiredAdmitted { serving_release: admitted_release } =>
         spark_serving_fleet_converge_plan_artifact_for_release(
           host: host,
           prior_generation: prior_generation,
@@ -267,16 +268,16 @@ fn spark_serving_fleet_converge_plan_artifact(
 }
 
 fn spark_serving_fleet_converge_plan_artifact_for_release(
-  host: NonEmptyStr,
+  host: std.types.NonEmptyStr,
   prior_generation: Int,
-  observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<CapMember>,
-  projection: SparkServingObservedMemberProjection,
-  serving_release: SparkServingRelease,
+  observed_timers: List<gunbc.fleet_converge_plan.TimerRetirementMember>,
+  observed_caps: List<gunbc.host_axis_caps.CapMember>,
+  projection: gunbc.spark.serving_observed_members.SparkServingObservedMemberProjection,
+  serving_release: gunbc.spark.serving_release.SparkServingRelease,
 ) -> SparkServingPlanArtifactVerdict {
   match spark_serving_full_membership_plan(
-    occurrence: spark_serving_occurrence(
-      host: host as HostIdentity,
+    occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(
+      host: host as product.placement_supply.HostIdentity,
       serving_release: serving_release,
     ),
     serving_release: serving_release,
@@ -336,7 +337,7 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
                 spark_rows: spark_rows,
                 observed_spark: observed_members,
                 observed_slots: [],
-                observed_fabric_cells: fabric_cell_population_unobserved(host: host as HostIdentity),
+                observed_fabric_cells: gunbc.fabric_cell_converge.fabric_cell_population_unobserved(host: host as product.placement_supply.HostIdentity),
               ),
             }
         }
@@ -362,17 +363,17 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
 // `std.temporal_effect` `HeldLease` declares that field as `ContentHash`; that one is the union on
 // purpose.
 fn spark_serving_fleet_converge_plan_artifact_from_rows(
-  host: NonEmptyStr,
+  host: std.types.NonEmptyStr,
   prior_generation: Int,
-  observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<CapMember>,
-  spark_plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
-  spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
-  observed_spark: List<SparkServingMember>,
-  observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
-) -> FleetConvergePlanArtifact {
-  let subject = fleet_converge_plan_subject(
+  observed_timers: List<gunbc.fleet_converge_plan.TimerRetirementMember>,
+  observed_caps: List<gunbc.host_axis_caps.CapMember>,
+  spark_plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
+  spark_rows: gunbc.spark.serving_execution_schedule.ScheduledRows<gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction>,
+  observed_spark: List<gunbc.spark.serving_membership.SparkServingMember>,
+  observed_slots: List<gunbc.runner_slot_provision.RunnerSlotMember>,
+  observed_fabric_cells: gunbc.fabric_cell_converge.FabricCellPopulation,
+) -> gunbc.fleet_converge_plan.FleetConvergePlanArtifact {
+  let subject = gunbc.fleet_converge_plan.fleet_converge_plan_subject(
       host: host,
       observed_timers: observed_timers,
       observed_caps: observed_caps,
@@ -380,12 +381,12 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
     )
-    let timer_plan = timer_retirement_plan(observed: observed_timers)
-    let cap_plan = caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)
-    let timer_lines = membership_plan_lines_timer(plan: timer_plan)
-    let cap_lines = membership_plan_lines_cap(plan: cap_plan)
-    let spark_lines = map(scheduled_rows_list(scheduled: spark_rows), r => fleet_converge_spark_serving_action_line(row: r))
-    let baseline = observed_baseline_text(
+    let timer_plan = gunbc.fleet_converge_plan.timer_retirement_plan(observed: observed_timers)
+    let cap_plan = gunbc.host_axis_caps.caps_reconcile(desired: gunbc.fleet_converge_plan.fleet_converge_desired_caps(), observed: observed_caps)
+    let timer_lines = gunbc.fleet_converge_plan.membership_plan_lines_timer(plan: timer_plan)
+    let cap_lines = gunbc.fleet_converge_plan.membership_plan_lines_cap(plan: cap_plan)
+    let spark_lines = map(gunbc.spark.serving_execution_schedule.scheduled_rows_list(scheduled: spark_rows), r => gunbc.fleet_converge_plan.fleet_converge_spark_serving_action_line(row: r))
+    let baseline = gunbc.fleet_converge_plan.observed_baseline_text(
       host: host,
       observed_timers: observed_timers,
       observed_caps: observed_caps,
@@ -394,7 +395,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
       observed_fabric_cells: observed_fabric_cells,
     )
     let planned_generation = prior_generation + 1
-    let spark_wire = fleet_converge_spark_serving_typed_actions_wire(rows: scheduled_rows_list(scheduled: spark_rows))
+    let spark_wire = gunbc.fleet_converge_plan.fleet_converge_spark_serving_typed_actions_wire(rows: gunbc.spark.serving_execution_schedule.scheduled_rows_list(scheduled: spark_rows))
     let apply_shell = spark_serving_fleet_converge_apply_shell(
       timer_plan: timer_plan,
       host: host,
@@ -408,10 +409,10 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
           concat("subject_host:", subject.host as String),
           concat(
             "subject_member_set:",
-            serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+            std.content_hash.serialize_content_hash(hash: subject.member_set_fingerprint) as String,
           ),
           concat("plan_generation:", to_string(planned_generation)),
-          concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
+          concat("lease_key:", gunbc.fleet_converge_plan.fleet_converge_plan_lease_key(host: subject.host) as String),
           "observed_baseline:",
           baseline,
           "# timer-retirement",
@@ -423,24 +424,24 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
         spark_lines,
         [
           concat("# spark-serving-typed-actions:", spark_wire),
-          concat("# spark-member-writes=", to_string(membership_write_count(plan: spark_plan))),
-          concat("# cap-refusals=", to_string(membership_refusal_count(plan: cap_plan))),
-          concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_plan))),
+          concat("# spark-member-writes=", to_string(gunbc.membership_reconcile.membership_write_count(plan: spark_plan))),
+          concat("# cap-refusals=", to_string(gunbc.membership_reconcile.membership_refusal_count(plan: cap_plan))),
+          concat("# timer-refusals=", to_string(gunbc.membership_reconcile.membership_refusal_count(plan: timer_plan))),
         ],
       ),
       "\n",
     )
-    let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
-    let lease = fleet_converge_plan_held_lease(
+    let owner_fp = std.content_hash.content_hash_of_value(value: body as std.types.NonEmptyStr)
+    let lease = gunbc.fleet_converge_plan.fleet_converge_plan_held_lease(
       subject: subject,
       prior_generation: prior_generation,
       owner_fingerprint: owner_fp,
     )
-    FleetConvergePlanArtifact {
+    gunbc.fleet_converge_plan.FleetConvergePlanArtifact {
       subject: subject,
       prior_generation: prior_generation,
       plan_lease: lease,
-      observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+      observed_baseline_hex: std.content_hash.content_hash_atom(value: baseline as std.types.NonEmptyStr).digest,
       plan_body: body,
       apply_shell: apply_shell,
       spark_serving_typed_actions: spark_rows,
@@ -448,18 +449,18 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
 }
 
 fn spark_serving_linger_slice_noop_when_converged(linger_enabled: Bool) -> Bool {
-  spark_serving_membership_noop(
+  gunbc.spark.serving_membership.spark_serving_membership_noop(
     plan: spark_serving_linger_membership_plan(
-      host: operator_host_srv5,
+      host: gunbc.fleet_intent_network.operator_host_srv5,
       linger_enabled: linger_enabled,
     ),
   )
 }
 
-fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction) -> ServingInstallEffect? {
-  if spark_serving_install_effects_include(
-    effects: fleet_converge_spark_serving_row_effects(row: row),
-    needle: EnableLingerForOwnAccount,
+fn spark_serving_frozen_linger_effect(row: gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction) -> gunbc.spark.serving_realization.ServingInstallEffect? {
+  if gunbc.spark.serving_member_realization.spark_serving_install_effects_include(
+    effects: gunbc.fleet_converge_plan.fleet_converge_spark_serving_row_effects(row: row),
+    needle: gunbc.spark.serving_realization.EnableLingerForOwnAccount,
   ) {
     Present { value: gunbc.spark.serving_realization.EnableLingerForOwnAccount }
   } else {
@@ -491,12 +492,12 @@ fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction)
 // Each cause names its own subject: a single "incomplete observation" sentence would send an
 // operator looking in the wrong place, and these two have different probes and different remedies.
 fn spark_serving_full_membership_plan(
-  occurrence: SparkServingOccurrence,
-  serving_release: SparkServingRelease,
-  projection: SparkServingObservedMemberProjection,
+  occurrence: gunbc.spark.serving_release.SparkServingOccurrence,
+  serving_release: gunbc.spark.serving_release.SparkServingRelease,
+  projection: gunbc.spark.serving_observed_members.SparkServingObservedMemberProjection,
 ) -> SparkServingFullMembershipPlan {
   match projection {
-    SparkServingObservedMembers {
+    gunbc.spark.serving_observed_members.SparkServingObservedMembers {
       members: observed,
       runtime_observed: runtime_observed,
       model_observed: model_observed,
@@ -515,14 +516,14 @@ fn spark_serving_full_membership_plan(
         }
       } else {
       SparkServingFullMembershipPlanReady {
-        plan: spark_serving_membership_reconcile(
-          desired: spark_serving_desired_members(
+        plan: gunbc.spark.serving_membership.spark_serving_membership_reconcile(
+          desired: gunbc.spark.serving_membership.spark_serving_desired_members(
             occurrence: occurrence,
             serving_release: serving_release,
           ),
           observed: observed,
         ),
-        desired_members: spark_serving_desired_members(
+        desired_members: gunbc.spark.serving_membership.spark_serving_desired_members(
           occurrence: occurrence,
           serving_release: serving_release,
         ),
@@ -538,12 +539,12 @@ fn spark_serving_full_membership_plan(
 
 type SparkServingFullMembershipPlan
   = SparkServingFullMembershipPlanReady {
-      plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
+      plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
       unit_observed: Bool,
       enablement_observed: Bool,
       activity_observed: Bool,
       linger_observed: Bool,
-      observed_members: List<SparkServingMember>,
-      desired_members: List<SparkServingMember>,
+      observed_members: List<gunbc.spark.serving_membership.SparkServingMember>,
+      desired_members: List<gunbc.spark.serving_membership.SparkServingMember>,
     }
   | SparkServingFullMembershipPlanRefused { cause: String }

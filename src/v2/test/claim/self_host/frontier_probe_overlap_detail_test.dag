@@ -4,109 +4,109 @@ module v2.test.self_host.frontier_probe_overlap_detail
 fn sample_overlap_row() -> v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow {
   v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow {
     production: ^dag_production_expr,
-    left_first_terminals: std.algebra.Cons { head: ^dag_token_ident, tail: std.algebra.Empty },
-    right_first_terminals: std.algebra.Cons { head: ^dag_token_kw_fn, tail: std.algebra.Empty },
-    overlap_terminals: Empty,
+    left_first_terminals: std.algebra.Cons { head: ^dag_token_ident, tail: v2.std.algebra.Empty },
+    right_first_terminals: std.algebra.Cons { head: ^dag_token_kw_fn, tail: v2.std.algebra.Empty },
+    overlap_terminals: v2.std.algebra.Empty,
     both_nullable: true
   }
 }
 
 fn overlap_residue_stage_diagnostic(row: v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow) -> v2.compiler.parse_diagnostic.ParseStageDiagnostic {
-  parse_overlap_residue_stage_diagnostic_at(
-    at: port_locus(port: ^parse_stage_locus_port),
+  v2.compiler.parse_diagnostic.parse_overlap_residue_stage_diagnostic_at(
+    at: v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port),
     row: row
   )
 }
 
-test fn overlap_evidence_binds_exact_row_not_global_roster() -> v2.std.logic.Bool {
+test fn overlap_evidence_binds_exact_row_not_global_roster() -> Bool {
   let row = sample_overlap_row()
-  let detail = frontier_probe_assemble_detail_from_parse_stage(
+  let detail = v2.compiler.self_host.frontier_probe_assemble_detail.frontier_probe_assemble_detail_from_parse_stage(
     d: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
       head: overlap_residue_stage_diagnostic(row: row),
-      tail: Empty
+      tail: v2.std.algebra.Empty
     }
   )
   match detail {
-    AssembleRejectionDetail {
-      cause: GrammarChoiceOverlap { rows: rows },
+    v2.compiler.self_host.frontier_probe_types.AssembleRejectionDetail {
+      cause: v2.compiler.self_host.frontier_probe_types.GrammarChoiceOverlap { rows: rows },
       rejection_chain: _,
       at: _
     } =>
       match rows {
-        NonEmptyGrammarChoiceAmbiguityRows {
+        v2.std.grammar_choice_ambiguity.NonEmptyGrammarChoiceAmbiguityRows {
           head: bound,
-          tail: Empty
+          tail: v2.std.algebra.Empty
         } => bound.production == row.production
       }
     _ => false
   }
 }
 
-test fn masked_overlap_tail_preserves_overlap_evidence_and_remaining_chain() -> v2.std.logic.Bool {
+test fn masked_overlap_tail_preserves_overlap_evidence_and_remaining_chain() -> Bool {
   let row = sample_overlap_row()
-  let cause = assemble_rejection_cause_from_parse_stage(
+  let cause = v2.compiler.self_host.frontier_probe_assemble_detail.assemble_rejection_cause_from_parse_stage(
     d: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
       head: overlap_residue_stage_diagnostic(row: row),
       tail: [
         v2.compiler.parse_diagnostic.ParseStageDiagnostic {
           diagnostic: v2.std.diagnostic.Diagnostic {
             reason: ^normalize_rejected,
-            at: port_locus(port: ^parse_stage_locus_port),
-            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+            at: v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port),
+            correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
           },
-          evidence: NoParseDiagnosticEvidence
+          evidence: v2.compiler.parse_diagnostic.NoParseDiagnosticEvidence
         }
       ]
     }
   )
   match cause {
-    MaskedAssembleRefusal {
+    v2.compiler.self_host.frontier_probe_types.MaskedAssembleRefusal {
       overlap_evidence: overlap_rows,
       remaining_chain: chain
     } =>
       match overlap_rows {
-        NonEmptyGrammarChoiceAmbiguityRows {
+        v2.std.grammar_choice_ambiguity.NonEmptyGrammarChoiceAmbiguityRows {
           head: bound,
-          tail: Empty
+          tail: v2.std.algebra.Empty
         } => (bound.production == row.production)
           && (chain.head == ^normalize_rejected)
-          && (length(xs: chain.tail) == 0)
+          && (v2.std.algebra.length(xs: chain.tail) == 0)
       }
     _ => false
   }
 }
 
-test fn emit_stage_receipt_has_no_assemble_detail() -> v2.std.logic.Bool {
-  match frontier_probe_receipt_without_assemble_detail(
+test fn emit_stage_receipt_has_no_assemble_detail() -> Bool {
+  match v2.compiler.self_host.frontier_probe_types.frontier_probe_receipt_without_assemble_detail(
     module_path: "src/v2/compiler/example.dag",
-    blocker: RealizationGap,
-    located_stage: ProbeStageEmit,
+    blocker: v2.compiler.self_host.frontier_probe_types.RealizationGap,
+    located_stage: v2.compiler.self_host.frontier_probe_types.ProbeStageEmit,
     located_reason: ^probe_emit_accept_self_host_bar_unbound,
-    detail: FrontierProbeDetailAbsent
+    detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeDetailAbsent
   ).assemble_detail {
-    NoFrontierProbeDetail => true
+    v2.compiler.self_host.frontier_probe_types.NoFrontierProbeDetail => true
     _ => false
   }
 }
 
-test fn assemble_receipt_carries_nonempty_rejection_chain() -> v2.std.logic.Bool {
+test fn assemble_receipt_carries_nonempty_rejection_chain() -> Bool {
   let row = sample_overlap_row()
   let stage = v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
     head: overlap_residue_stage_diagnostic(row: row),
-    tail: Empty
+    tail: v2.std.algebra.Empty
   }
-  let receipt = frontier_probe_receipt_from_assemble_rejection(
+  let receipt = v2.compiler.self_host.frontier_probe_assemble_detail.frontier_probe_receipt_from_assemble_rejection(
     module_path: "src/v2/compiler/example.dag",
-    diagnostics: non_empty_diagnostics_from_parse_stage(d: stage),
-    detail: FrontierProbeDetailAbsent,
-    overlap_residue_stage: optional_present(value: stage)
+    diagnostics: v2.compiler.parse_diagnostic.non_empty_diagnostics_from_parse_stage(d: stage),
+    detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeDetailAbsent,
+    overlap_residue_stage: v2.std.optional.optional_present(value: stage)
   )
   match receipt.assemble_detail {
-    AssembleRejectionDetail { rejection_chain: chain, cause: cause, at: _ } =>
+    v2.compiler.self_host.frontier_probe_types.AssembleRejectionDetail { rejection_chain: chain, cause: cause, at: _ } =>
       match cause {
-        GrammarChoiceOverlap { rows: rows } =>
+        v2.compiler.self_host.frontier_probe_types.GrammarChoiceOverlap { rows: rows } =>
           (chain.head == ^parse_grammar_choice_overlap_residue)
-            && (length(xs: chain.tail) == 0)
+            && (v2.std.algebra.length(xs: chain.tail) == 0)
             && (rows.head.production == row.production)
         _ => false
       }
@@ -114,79 +114,79 @@ test fn assemble_receipt_carries_nonempty_rejection_chain() -> v2.std.logic.Bool
   }
 }
 
-test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> v2.std.logic.Bool {
+test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> Bool {
   let row = sample_overlap_row()
   let stage = v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
     head: overlap_residue_stage_diagnostic(row: row),
-    tail: Empty
+    tail: v2.std.algebra.Empty
   }
-  let stripped = non_empty_diagnostics_from_parse_stage(d: stage)
-  let detail = frontier_probe_assemble_detail_from_rejection_with_overlap_stage(
+  let stripped = v2.compiler.parse_diagnostic.non_empty_diagnostics_from_parse_stage(d: stage)
+  let detail = v2.compiler.self_host.frontier_probe_assemble_detail.frontier_probe_assemble_detail_from_rejection_with_overlap_stage(
     d: stripped,
-    overlap_residue_stage: optional_present(value: stage)
+    overlap_residue_stage: v2.std.optional.optional_present(value: stage)
   )
   match detail {
-    AssembleRejectionDetail {
-      cause: GrammarChoiceOverlap { rows: rows },
+    v2.compiler.self_host.frontier_probe_types.AssembleRejectionDetail {
+      cause: v2.compiler.self_host.frontier_probe_types.GrammarChoiceOverlap { rows: rows },
       rejection_chain: _,
       at: _
     } =>
       match rows {
-        NonEmptyGrammarChoiceAmbiguityRows {
+        v2.std.grammar_choice_ambiguity.NonEmptyGrammarChoiceAmbiguityRows {
           head: bound,
-          tail: Empty
+          tail: v2.std.algebra.Empty
         } => bound.production == row.production
       }
     _ => false
   }
 }
 
-test fn masked_overlap_located_reason_unmasks_terminal_refusal() -> v2.std.logic.Bool {
+test fn masked_overlap_located_reason_unmasks_terminal_refusal() -> Bool {
   let masked = v2.std.diagnostic.NonEmptyDiagnostics {
     head: v2.std.diagnostic.Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
-      at: port_locus(port: ^parse_stage_locus_port),
-      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+      at: v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port),
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
     },
     tail: [
       v2.std.diagnostic.Diagnostic {
         reason: ^body_lowering_reason_wrapper_retained_emitted,
-        at: port_locus(port: ^parse_stage_locus_port),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
     ]
   }
-  let located = frontier_probe_assemble_located_reason_from_diagnostics(d: masked)
+  let located = v2.compiler.self_host.frontier_probe_assemble_detail.frontier_probe_assemble_located_reason_from_diagnostics(d: masked)
   located == ^body_lowering_reason_wrapper_retained_emitted
 }
 
-test fn overlap_only_chain_keeps_overlap_located_reason() -> v2.std.logic.Bool {
+test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool {
   let overlap_only = v2.std.diagnostic.NonEmptyDiagnostics {
     head: v2.std.diagnostic.Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
-      at: port_locus(port: ^parse_stage_locus_port),
-      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+      at: v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port),
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
     },
-    tail: std.algebra.Empty
+    tail: v2.std.algebra.Empty
   }
-  let located = frontier_probe_assemble_located_reason_from_diagnostics(d: overlap_only)
+  let located = v2.compiler.self_host.frontier_probe_assemble_detail.frontier_probe_assemble_located_reason_from_diagnostics(d: overlap_only)
   located == ^parse_grammar_choice_overlap_residue
 }
 
-test fn masked_resolve_not_found_unmasks_located_reason() -> v2.std.logic.Bool {
+test fn masked_resolve_not_found_unmasks_located_reason() -> Bool {
   let masked = v2.std.diagnostic.NonEmptyDiagnostics {
     head: v2.std.diagnostic.Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
-      at: port_locus(port: ^parse_stage_locus_port),
-      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+      at: v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port),
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
     },
     tail: [
       v2.std.diagnostic.Diagnostic {
         reason: ^resolve_module_not_found,
-        at: port_locus(port: ^parse_stage_locus_port),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
     ]
   }
-  frontier_probe_assemble_located_reason_from_diagnostics(d: masked) == ^resolve_module_not_found
+  v2.compiler.self_host.frontier_probe_assemble_detail.frontier_probe_assemble_located_reason_from_diagnostics(d: masked) == ^resolve_module_not_found
 }

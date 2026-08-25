@@ -1,84 +1,84 @@
 module test.claim.markup_serializer_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_text_escaping_by_execution() -> Bool {
-  escape_text(s: "a <b> & c") == "a &lt;b&gt; &amp; c"
+  std.markup.escape_text(s: "a <b> & c") == "a &lt;b&gt; &amp; c"
 }
 
 test fn witness_attribute_escaping_by_execution() -> Bool {
-  escape_attribute(s: "a \"q\" <&>") == "a &quot;q&quot; &lt;&amp;&gt;"
+  std.markup.escape_attribute(s: "a \"q\" <&>") == "a &quot;q&quot; &lt;&amp;&gt;"
 }
 
 test fn witness_url_escaping_by_execution() -> Bool {
-  escape_url(s: "/p?x=a b&y=\"z\"<") == "/p?x=a%20b&amp;y=%22z%22%3C"
+  std.markup.escape_url(s: "/p?x=a b&y=\"z\"<") == "/p?x=a%20b&amp;y=%22z%22%3C"
 }
 
 fn sample_fragment() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "a",
-    attributes: [ std.markup.Attribute { name: "href", ctx: UrlContext, value: "/x?a=1&b=2" } ],
+    attributes: [ std.markup.Attribute { name: "href", ctx: std.markup.UrlContext, value: "/x?a=1&b=2" } ],
     children: [
       std.markup.FragmentText { content: "hi <b> & \"q\"" },
-      extdeps.browser.Element { tag: "span", attributes: [], children: [ std.markup.FragmentText { content: ">end" } ] }
+      std.markup.Element { tag: "span", attributes: [], children: [ std.markup.FragmentText { content: ">end" } ] }
     ]
   }
 }
 
 test fn witness_serialize_fragment_full() -> Bool {
-  serialize_fragment(frag: sample_fragment()) ==
+  extdeps.languages.html_fragment.serialize_fragment(frag: sample_fragment()) ==
     "<a href=\"/x?a=1&amp;b=2\">hi &lt;b&gt; &amp; \"q\"<span>&gt;end</span></a>"
 }
 
 fn html_consumer_button() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "button",
-    attributes: [ std.markup.Attribute { name: "class", ctx: AttributeContext, value: "primary" } ],
+    attributes: [ std.markup.Attribute { name: "class", ctx: std.markup.AttributeContext, value: "primary" } ],
     children: [ std.markup.FragmentText { content: "Go" } ]
   }
 }
 
 fn react_consumer_button() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "button",
-    attributes: [ std.markup.Attribute { name: "class", ctx: AttributeContext, value: "primary" } ],
+    attributes: [ std.markup.Attribute { name: "class", ctx: std.markup.AttributeContext, value: "primary" } ],
     children: [ std.markup.FragmentText { content: "Go" } ]
   }
 }
 
 test fn witness_one_fold_serves_html_and_react() -> Bool {
-  let html = serialize_fragment(frag: html_consumer_button())
-  let react = serialize_fragment(frag: react_consumer_button())
+  let html = extdeps.languages.html_fragment.serialize_fragment(frag: html_consumer_button())
+  let react = extdeps.languages.html_fragment.serialize_fragment(frag: react_consumer_button())
   (html == react) && (html == "<button class=\"primary\">Go</button>")
 }
 
 test fn witness_round_trip_text() -> Bool {
-  unescape_text(s: escape_text(s: "x <a> & \"q\" y")) == "x <a> & \"q\" y"
+  std.markup.unescape_text(s: std.markup.escape_text(s: "x <a> & \"q\" y")) == "x <a> & \"q\" y"
 }
 
 test fn witness_round_trip_attribute() -> Bool {
-  unescape_attribute(s: escape_attribute(s: "x <a> & \"q\" y")) == "x <a> & \"q\" y"
+  std.markup.unescape_attribute(s: std.markup.escape_attribute(s: "x <a> & \"q\" y")) == "x <a> & \"q\" y"
 }
 
 test fn witness_round_trip_url() -> Bool {
-  unescape_url(s: escape_url(s: "x <a> & \"q\" y")) == "x <a> & \"q\" y"
+  std.markup.unescape_url(s: std.markup.escape_url(s: "x <a> & \"q\" y")) == "x <a> & \"q\" y"
 }
 
 test fn witness_round_trip_url_literal_percent() -> Bool {
-  unescape_url(s: escape_url(s: "a %3C %22 %25 <b>")) == "a %3C %22 %25 <b>"
+  std.markup.unescape_url(s: std.markup.escape_url(s: "a %3C %22 %25 <b>")) == "a %3C %22 %25 <b>"
 }
 
 fn req_a_breakout_fragment() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "a",
-    attributes: [ std.markup.Attribute { name: "href", ctx: UrlContext, value: "x\"&<y onmouseover=z" } ],
+    attributes: [ std.markup.Attribute { name: "href", ctx: std.markup.UrlContext, value: "x\"&<y onmouseover=z" } ],
     children: []
   }
 }
 
 test fn witness_url_within_attribute_composition() -> Bool {
-  serialize_fragment(frag: req_a_breakout_fragment()) ==
+  extdeps.languages.html_fragment.serialize_fragment(frag: req_a_breakout_fragment()) ==
     "<a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a>"
 }
 
@@ -87,8 +87,8 @@ fn escape_text_drop_lt(s: String) -> String {
 }
 
 test fn witness_perturb_break_escape_goes_red() -> Bool {
-  (escape_text(s: "a <b>") != escape_text_drop_lt(s: "a <b>")) &&
-    (escape_text(s: "a <b>") == "a &lt;b&gt;") &&
+  (std.markup.escape_text(s: "a <b>") != escape_text_drop_lt(s: "a <b>")) &&
+    (std.markup.escape_text(s: "a <b>") == "a &lt;b&gt;") &&
     (escape_text_drop_lt(s: "a <b>") == "a <b&gt;")
 }
 

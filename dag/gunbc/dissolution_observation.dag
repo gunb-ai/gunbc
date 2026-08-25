@@ -37,7 +37,7 @@ fn census_trigger_refs(rows: List<std.roster_frontier.FrontierRow>) -> List<std.
 }
 
 // A MODULE THE DECLARATION INDEX DOES NOT COVER IS NOT A MODULE WHOSE DECLARATIONS ARE
-// GONE, and conflating the two is the whole hazard. `v2.std.decl_index.decl_facts` deliberately skips test
+// GONE, and conflating the two is the whole hazard. `decl_facts` deliberately skips test
 // `.dag` files while `module_declaration_facts` still reports their modules, so a ref
 // into a witness module resolves as DeclarationAbsent for a reason that has nothing to
 // do with the tree. `std.decl_ref` already names this state

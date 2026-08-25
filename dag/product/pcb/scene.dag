@@ -12,14 +12,14 @@ module product.pcb.scene
 // represented only by an exact emitted label: a longer label that merely contains it as a prefix
 // is not a representation.
 type PcbSceneLegend {
-  established: std.integer.Int
-  missing_document: std.integer.Int
-  commercial_access: std.integer.Int
-  legal_carriage: std.integer.Int
-  unselected_part: std.integer.Int
-  drawing_must_be_read: std.integer.Int
-  named_attachment_part_unresolved: std.integer.Int
-  functional_obligation: std.integer.Int
+  established: Int
+  missing_document: Int
+  commercial_access: Int
+  legal_carriage: Int
+  unselected_part: Int
+  drawing_must_be_read: Int
+  named_attachment_part_unresolved: Int
+  functional_obligation: Int
   body_layout: product.pcb.world.PcbBodyLayoutStanding
   design: std.decl_ref.DeclarationRef
   envelope_reads: List<std.decl_ref.DeclarationRef>
@@ -59,20 +59,20 @@ fn pcb_engineering_scene(world: product.pcb.world.PcbWorld, elements: List<PcbSc
 }
 
 fn legend_of(w: product.pcb.world.PcbWorld) -> PcbSceneLegend {
-  let p = pcb_world_physical(w: w)
-  let causes = pcb_cause_counts(p: p)
+  let p = product.pcb.world.pcb_world_physical(w: w)
+  let causes = product.pcb.world.pcb_cause_counts(p: p)
   PcbSceneLegend {
-    established: pcb_component_count(p: p),
+    established: product.pcb.world.pcb_component_count(p: p),
     missing_document: causes.missing_document,
     commercial_access: causes.commercial_access,
     legal_carriage: causes.legal_carriage,
     unselected_part: causes.unselected_part,
     drawing_must_be_read: causes.drawing_must_be_read,
     named_attachment_part_unresolved: causes.named_attachment_part_unresolved,
-    functional_obligation: pcb_functional_obligation_count(p: pcb_world_physical(w: w)),
-    body_layout: pcb_body_layout(p: p),
-    design: pcb_world_design(w: w),
-    envelope_reads: fold(pcb_envelope_reads(p: p), init: [], f: fn(acc, r) {
+    functional_obligation: product.pcb.world.pcb_functional_obligation_count(p: product.pcb.world.pcb_world_physical(w: w)),
+    body_layout: product.pcb.world.pcb_body_layout(p: p),
+    design: product.pcb.world.pcb_world_design(w: w),
+    envelope_reads: fold(product.pcb.world.pcb_envelope_reads(p: p), init: [], f: fn(acc, r) {
       concat(acc, [r.source])
     }),
   }
@@ -99,7 +99,7 @@ fn established_elements(p: product.pcb.world.PcbPhysicalWorld) -> List<PcbSceneE
       origin: c.origin,
       body_width: c.body_envelope.body_width,
       body_height: c.body_envelope.body_height,
-      source: envelope_read_for(reads: pcb_envelope_reads(p: p), identity: c.identity),
+      source: envelope_read_for(reads: product.pcb.world.pcb_envelope_reads(p: p), identity: c.identity),
     }])
   })
 }
@@ -133,7 +133,7 @@ fn attachment_elements(p: product.pcb.world.PcbPhysicalWorld) -> List<PcbSceneEl
 }
 
 fn project_engineering_scene(w: product.pcb.world.PcbWorld) -> PcbEngineeringScene {
-  let p = pcb_world_physical(w: w)
+  let p = product.pcb.world.pcb_world_physical(w: w)
   let outline = [SceneBoardOutline { outline: p.board.outline }]
   let legend = [SceneLegend { counts: legend_of(w: w) }]
   pcb_engineering_scene(
@@ -151,16 +151,16 @@ fn scene_element_identities(e: PcbSceneElement) -> List<std.types.NonEmptyStr> {
     SceneEstablishedBody { identity: id, origin: _, body_width: _, body_height: _, source: src } =>
       match src {
         Absent => [id]
-        Present { value: r } => [id, declaration_ref_display_key(ref: r) as std.types.NonEmptyStr]
+        Present { value: r } => [id, std.decl_ref.declaration_ref_display_key(ref: r) as std.types.NonEmptyStr]
       }
     SceneObligationMarker { identity: id, origin: _, cause: _ } => [id]
     SceneAttachmentMarker { layer: layer, cause: _ } => [concat("attachment: ", layer as String) as std.types.NonEmptyStr]
     SceneFunctionalMarker { function: f, cause: _ } => [concat("function unrealized: ", f as String) as std.types.NonEmptyStr]
     SceneLegend { counts: c } =>
       concat(
-        [declaration_ref_display_key(ref: c.design) as std.types.NonEmptyStr],
+        [std.decl_ref.declaration_ref_display_key(ref: c.design) as std.types.NonEmptyStr],
         fold(c.envelope_reads, init: [], f: fn(acc, r) {
-          concat(acc, [declaration_ref_display_key(ref: r) as std.types.NonEmptyStr])
+          concat(acc, [std.decl_ref.declaration_ref_display_key(ref: r) as std.types.NonEmptyStr])
         })
       )
   }
@@ -200,12 +200,12 @@ fn first_unrepresented_scene_identity(scene: PcbEngineeringScene, represented: L
 
 fn obligation_cause_label(c: product.pcb.world.PcbObligationCause) -> String {
   match c {
-    MissingDocument { what_is_missing: w } => concat("missing document:", w as String)
-    CommercialAccess { subject: s } => concat("commercial access:", s as String)
-    LegalCarriage { reason: r } => concat("legal carriage:", r as String)
-    UnselectedPart { because: b } => concat("unselected part:", b as String)
-    DrawingMustBeRead { figure: f, what_is_drawn: _ } => concat("drawing must be read:", f as String)
-    StandingIsSelfContradictory { what_is_wrong: w } => concat("standing is self-contradictory:", w as String)
-    NamedAttachmentTypePartUnresolved { designation: d, missing: m } => concat(concat(d as String, " part unresolved:"), m as String)
+    product.pcb.world.MissingDocument { what_is_missing: w } => concat("missing document:", w as String)
+    product.pcb.world.CommercialAccess { subject: s } => concat("commercial access:", s as String)
+    product.pcb.world.LegalCarriage { reason: r } => concat("legal carriage:", r as String)
+    product.pcb.world.UnselectedPart { because: b } => concat("unselected part:", b as String)
+    product.pcb.world.DrawingMustBeRead { figure: f, what_is_drawn: _ } => concat("drawing must be read:", f as String)
+    product.pcb.world.StandingIsSelfContradictory { what_is_wrong: w } => concat("standing is self-contradictory:", w as String)
+    product.pcb.world.NamedAttachmentTypePartUnresolved { designation: d, missing: m } => concat(concat(d as String, " part unresolved:"), m as String)
   }
 }

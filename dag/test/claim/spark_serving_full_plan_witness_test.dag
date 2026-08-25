@@ -8,14 +8,14 @@ data subject_host: product.placement_supply.HostIdentity = "srv6" as product.pla
 // witness says so rather than substituting one.
 fn subject_release() -> gunbc.spark.serving_release.SparkServingRelease? {
   match gunbc.spark.serving_desired.spark_serving_desired_admission {
-    SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
-    SparkServingDesiredRefused { cause: _ } => none
+    gunbc.spark.serving_desired.SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
+    gunbc.spark.serving_desired.SparkServingDesiredRefused { cause: _ } => none
   }
 }
 
 fn complete_required_runtime() -> gunbc.ollama_runtime_bundle.RuntimeMaterializationObservation {
   gunbc.ollama_runtime_bundle.RuntimeMaterializationComplete {
-    identity: ollama_runtime_materialization_identity_for_required_release(),
+    identity: gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release(),
   }
 }
 
@@ -29,11 +29,11 @@ fn project(
   runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservation,
   store: gunbc.ollama_runtime_bundle.ModelStoreObservation,
   unit: gunbc.spark.serving_observed_members.SparkServingObservedUnitState,
-  enablement: gunbc.spark.serving_observed_members.SparkServingUnitManagerState,
-  activity: gunbc.spark.serving_observed_members.SparkServingObservedActivityState,
+  enablement: SparkServingUnitManagerState,
+  activity: SparkServingObservedActivityState,
   linger: gunbc.spark.serving_observed_members.SparkServingObservedLingerState,
 ) -> gunbc.spark.serving_observed_members.SparkServingObservedMemberProjection {
-  spark_serving_observed_members(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger)
+  gunbc.spark.serving_observed_members.spark_serving_observed_members(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger)
 }
 
 fn bare_runtime() -> gunbc.ollama_runtime_bundle.RuntimeMaterializationObservation {
@@ -51,11 +51,11 @@ fn bare_store() -> gunbc.ollama_runtime_bundle.ModelStoreObservation {
 // "holds exactly what is desired" rather than "holds something". A literal here would drift from the
 // authority and the zero-writes claim would stop meaning anything.
 fn complete_required_store() -> gunbc.ollama_runtime_bundle.ModelStoreObservation {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: "no admitted release" as std.types.NonEmptyStr }
     Present { value: r } =>
       gunbc.ollama_runtime_bundle.ModelStoreComplete {
-        manifest_identity: serialize_content_hash(hash: r.model.identity) as std.types.NonEmptyStr,
+        manifest_identity: std.content_hash.serialize_content_hash(hash: r.model.identity) as std.types.NonEmptyStr,
         blob_closure_count: 1,
       }
   }
@@ -63,15 +63,15 @@ fn complete_required_store() -> gunbc.ollama_runtime_bundle.ModelStoreObservatio
 
 fn observed_count(p: gunbc.spark.serving_observed_members.SparkServingObservedMemberProjection) -> Int {
   match p {
-    SparkServingObservedMembers { members: ms, runtime_observed: _, unit_observed: _, registration_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
+    gunbc.spark.serving_observed_members.SparkServingObservedMembers { members: ms, runtime_observed: _, unit_observed: _, registration_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
   }
 }
 
 fn plan_writes(p: gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlan) -> Int {
   match p {
-    SparkServingFullMembershipPlanRefused { cause: _ } => 0 - 1
-    SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _, enablement_observed: _, linger_observed: _, observed_members: _ } =>
-      membership_write_count(plan: plan)
+    gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: _ } => 0 - 1
+    gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _, enablement_observed: _, linger_observed: _, observed_members: _ } =>
+      gunbc.membership_reconcile.membership_write_count(plan: plan)
   }
 }
 
@@ -80,18 +80,18 @@ fn full_plan_writes(
   runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservation,
   store: gunbc.ollama_runtime_bundle.ModelStoreObservation,
   unit: gunbc.spark.serving_observed_members.SparkServingObservedUnitState,
-  enablement: gunbc.spark.serving_observed_members.SparkServingUnitManagerState,
-  activity: gunbc.spark.serving_observed_members.SparkServingObservedActivityState,
+  enablement: SparkServingUnitManagerState,
+  activity: SparkServingObservedActivityState,
   linger: gunbc.spark.serving_observed_members.SparkServingObservedLingerState,
 ) -> Int {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => 0 - 2
     Present { value: r } =>
       plan_writes(
         p: gunbc.spark.serving_converge_plan.spark_serving_full_membership_plan(
-          occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
+          occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
           serving_release: r,
-          projection: test.claim.spark_serving_full_plan_witness_test.project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
+          projection: project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
         ),
       )
   }
@@ -102,20 +102,20 @@ fn full_plan_refuses(
   runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservation,
   store: gunbc.ollama_runtime_bundle.ModelStoreObservation,
   unit: gunbc.spark.serving_observed_members.SparkServingObservedUnitState,
-  enablement: gunbc.spark.serving_observed_members.SparkServingUnitManagerState,
-  activity: gunbc.spark.serving_observed_members.SparkServingObservedActivityState,
+  enablement: SparkServingUnitManagerState,
+  activity: SparkServingObservedActivityState,
   linger: gunbc.spark.serving_observed_members.SparkServingObservedLingerState,
 ) -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
       match gunbc.spark.serving_converge_plan.spark_serving_full_membership_plan(
-        occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
+        occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
-        projection: test.claim.spark_serving_full_plan_witness_test.project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
+        projection: project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
       ) {
-        SparkServingFullMembershipPlanRefused { cause: c } => string_contains(c, "refused")
-        SparkServingFullMembershipPlanReady { plan: _, unit_observed: _ } => false
+        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: c } => string_contains(c, "refused")
+        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanReady { plan: _, unit_observed: _ } => false
       }
   }
 }
@@ -125,11 +125,11 @@ fn full_plan_refuses(
 // The declared desired population is four members. This is the denominator every claim below divides
 // by, asserted rather than assumed.
 test fn the_declared_desired_population_is_seven_members() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
       length(gunbc.spark.serving_membership.spark_serving_desired_members(
-        occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
+        occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
       )) == 7
   }
@@ -142,11 +142,11 @@ test fn the_declared_desired_population_is_seven_members() -> Bool {
 // content, registration, enablement, ACTIVITY, the model slot and linger.
 test fn a_bare_host_plans_all_seven_members_not_only_linger() -> Bool {
   full_plan_writes(
-    host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+    host: subject_host,
     runtime: bare_runtime(), store: bare_store(),
     unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent,
-    enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered,
-    activity: gunbc.spark.serving_observed_members.UnitActivityStopped,
+    enablement: UserUnitManagerNotRegistered,
+    activity: UnitActivityStopped,
     linger: gunbc.spark.serving_observed_members.LingerObservedDisabled,
   ) == 7
 }
@@ -154,7 +154,7 @@ test fn a_bare_host_plans_all_seven_members_not_only_linger() -> Bool {
 // The contrast, executed rather than asserted in prose: the superseded plan writes exactly one.
 test fn the_superseded_linger_plan_writes_exactly_one() -> Bool {
   gunbc.membership_reconcile.membership_write_count(
-    plan: gunbc.spark.serving_converge_plan.spark_serving_linger_membership_plan(host: test.claim.spark_serving_full_plan_witness_test.subject_host, linger_enabled: false),
+    plan: gunbc.spark.serving_converge_plan.spark_serving_linger_membership_plan(host: subject_host, linger_enabled: false),
   ) == 1
 }
 
@@ -172,22 +172,22 @@ test fn the_superseded_linger_plan_writes_exactly_one() -> Bool {
 // before the split this one member was an enablement member carrying not-registered, which is the
 // conflation that let an absent subject reconcile as a change to it.
 test fn a_bare_host_observes_its_unit_registration_and_its_stopped_activity() -> Bool {
-  observed_count(p: test.claim.spark_serving_full_plan_witness_test.project(host: test.claim.spark_serving_full_plan_witness_test.subject_host, runtime: bare_runtime(), store: bare_store(), unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent, enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered, activity: gunbc.spark.serving_observed_members.UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedDisabled)) == 2
+  observed_count(p: project(host: subject_host, runtime: bare_runtime(), store: bare_store(), unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent, enablement: UserUnitManagerNotRegistered, activity: UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedDisabled)) == 2
 }
 
 // Linger is observed independently, so it is carried even when serving is absent.
 test fn linger_is_carried_on_a_bare_host_when_it_is_enabled() -> Bool {
-  observed_count(p: test.claim.spark_serving_full_plan_witness_test.project(host: test.claim.spark_serving_full_plan_witness_test.subject_host, runtime: bare_runtime(), store: bare_store(), unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent, enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered, activity: gunbc.spark.serving_observed_members.UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled)) == 3
+  observed_count(p: project(host: subject_host, runtime: bare_runtime(), store: bare_store(), unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent, enablement: UserUnitManagerNotRegistered, activity: UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled)) == 3
 }
 
 // With linger already enabled a bare host needs one fewer write than the fully bare case.
 test fn a_bare_host_with_linger_already_enabled_plans_six() -> Bool {
   full_plan_writes(
-    host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+    host: subject_host,
     runtime: bare_runtime(), store: bare_store(),
     unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent,
-    enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered,
-    activity: gunbc.spark.serving_observed_members.UnitActivityStopped,
+    enablement: UserUnitManagerNotRegistered,
+    activity: UnitActivityStopped,
     linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
   ) == 6
 }
@@ -221,25 +221,25 @@ test fn a_bare_host_with_linger_already_enabled_plans_six() -> Bool {
 // An unobserved unit is not listed, so it plans as an addition — the same OUTCOME as absent, but the
 // two must remain distinguishable because only one of them supports an empty replan.
 test fn an_unobserved_unit_does_not_support_an_empty_replan() -> Bool {
-  !spark_serving_projection_supports_empty_replan(
-    projection: test.claim.spark_serving_full_plan_witness_test.project(host: test.claim.spark_serving_full_plan_witness_test.subject_host, runtime: bare_runtime(), store: bare_store(), unit: gunbc.spark.serving_observed_members.UserUnitStateUnobserved, enablement: gunbc.spark.serving_observed_members.UserUnitManagerUnobserved, activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled),
+  !gunbc.spark.serving_observed_members.spark_serving_projection_supports_empty_replan(
+    projection: project(host: subject_host, runtime: bare_runtime(), store: bare_store(), unit: gunbc.spark.serving_observed_members.UserUnitStateUnobserved, enablement: UserUnitManagerUnobserved, activity: UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled),
   )
 }
 
 test fn an_observed_absent_unit_does_support_an_empty_replan() -> Bool {
-  spark_serving_projection_supports_empty_replan(
-    projection: test.claim.spark_serving_full_plan_witness_test.project(host: test.claim.spark_serving_full_plan_witness_test.subject_host, runtime: bare_runtime(), store: bare_store(), unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent, enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered, activity: gunbc.spark.serving_observed_members.UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled),
+  gunbc.spark.serving_observed_members.spark_serving_projection_supports_empty_replan(
+    projection: project(host: subject_host, runtime: bare_runtime(), store: bare_store(), unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent, enablement: UserUnitManagerNotRegistered, activity: UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled),
   )
 }
 
 test fn a_refused_projection_never_supports_an_empty_replan() -> Bool {
   !gunbc.spark.serving_observed_members.spark_serving_projection_supports_empty_replan(
-    projection: test.claim.spark_serving_full_plan_witness_test.project(
-      host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+    projection: project(
+      host: subject_host,
       runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as std.types.NonEmptyStr }, store: gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: "probe leg unreachable" as std.types.NonEmptyStr },
       unit: gunbc.spark.serving_observed_members.UserUnitStateUnobserved,
-      enablement: gunbc.spark.serving_observed_members.UserUnitManagerUnobserved,
-      activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerUnobservedState,
+      enablement: UserUnitManagerUnobserved,
+      activity: UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerUnobservedState,
     ),
   )
 }
@@ -254,27 +254,27 @@ test fn a_refused_projection_never_supports_an_empty_replan() -> Bool {
 fn removal_refusing_plan() -> gunbc.membership_reconcile.MembershipPlan<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt> {
   gunbc.spark.serving_membership.spark_serving_membership_reconcile(
     desired: [],
-    observed: [gunbc.spark.serving_converge_plan.spark_serving_desired_linger_member(host: test.claim.spark_serving_full_plan_witness_test.subject_host)],
+    observed: [gunbc.spark.serving_converge_plan.spark_serving_desired_linger_member(host: subject_host)],
   )
 }
 
 test fn a_plan_whose_member_cannot_translate_refuses_the_typed_projection() -> Bool {
-  match fleet_converge_spark_serving_typed_actions(plan: removal_refusing_plan(), desired: []) {
-    SparkServingTypedActionsRefused { cause: c } =>
+  match gunbc.spark.serving_converge_plan.fleet_converge_spark_serving_typed_actions(plan: removal_refusing_plan(), desired: []) {
+    gunbc.spark.serving_converge_plan.SparkServingTypedActionsRefused { cause: c } =>
       string_contains(c, "dropped") && string_contains(c, "1 planned member actions")
-    SparkServingTypedActionsProjected { rows: _ } => false
+    gunbc.spark.serving_converge_plan.SparkServingTypedActionsProjected { rows: _ } => false
   }
 }
 
 // The positive control: the ordinary bare-host linger plan still projects, so the refusal above is a
 // property of the untranslatable action and not of the projection refusing everything.
 test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
-  match fleet_converge_spark_serving_typed_actions(
-    plan: spark_serving_linger_membership_plan(host: test.claim.spark_serving_full_plan_witness_test.subject_host, linger_enabled: false),
-    desired: [spark_serving_desired_linger_member(host: test.claim.spark_serving_full_plan_witness_test.subject_host)],
+  match gunbc.spark.serving_converge_plan.fleet_converge_spark_serving_typed_actions(
+    plan: gunbc.spark.serving_converge_plan.spark_serving_linger_membership_plan(host: subject_host, linger_enabled: false),
+    desired: [gunbc.spark.serving_converge_plan.spark_serving_desired_linger_member(host: subject_host)],
   ) {
-    SparkServingTypedActionsProjected { rows: rows } => length(scheduled_rows_list(scheduled: rows)) == 1
-    SparkServingTypedActionsRefused { cause: _ } => false
+    gunbc.spark.serving_converge_plan.SparkServingTypedActionsProjected { rows: rows } => length(gunbc.spark.serving_execution_schedule.scheduled_rows_list(scheduled: rows)) == 1
+    gunbc.spark.serving_converge_plan.SparkServingTypedActionsRefused { cause: _ } => false
   }
 }
 
@@ -290,29 +290,29 @@ test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
 // every run. The defect survived review precisely because no witness asserted the zero case -- a
 // roster full of drift-detection claims is satisfied by a projection that reports drift always.
 fn observed_exactly_desired(r: gunbc.spark.serving_release.SparkServingRelease) -> gunbc.spark.serving_observed_members.SparkServingObservedMemberProjection {
-  spark_serving_observed_members(
-    host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+  gunbc.spark.serving_observed_members.spark_serving_observed_members(
+    host: subject_host,
     runtime: complete_required_runtime(),
     store: complete_required_store(),
-    unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-    enablement: gunbc.spark.serving_observed_members.UserUnitManagerEnabled,
-    activity: gunbc.spark.serving_observed_members.UnitActivityRunning,
+    unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: gunbc.spark.serving_membership.spark_serving_user_unit_state_digest() },
+    enablement: UserUnitManagerEnabled,
+    activity: UnitActivityRunning,
           linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
   )
 }
 
 test fn a_host_in_exactly_the_desired_state_plans_no_writes() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
-      match spark_serving_full_membership_plan(
-        occurrence: spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
+      match gunbc.spark.serving_converge_plan.spark_serving_full_membership_plan(
+        occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
         projection: observed_exactly_desired(r: r),
       ) {
-        SparkServingFullMembershipPlanRefused { cause: _ } => false
-        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: observed, enablement_observed: _, linger_observed: _, observed_members: _ } =>
-          membership_write_count(plan: plan) == 0 && observed
+        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: _ } => false
+        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanReady { plan: plan, unit_observed: observed, enablement_observed: _, linger_observed: _, observed_members: _ } =>
+          gunbc.membership_reconcile.membership_write_count(plan: plan) == 0 && observed
       }
   }
 }
@@ -320,10 +320,10 @@ test fn a_host_in_exactly_the_desired_state_plans_no_writes() -> Bool {
 // And the same observation must support an empty replan -- the property that distinguishes "nothing
 // to do" from "we never looked at the unit".
 test fn an_exactly_desired_host_supports_an_empty_replan() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
-      spark_serving_projection_supports_empty_replan(projection: observed_exactly_desired(r: r))
+      gunbc.spark.serving_observed_members.spark_serving_projection_supports_empty_replan(projection: observed_exactly_desired(r: r))
   }
 }
 
@@ -334,31 +334,31 @@ test fn an_exactly_desired_host_supports_an_empty_replan() -> Bool {
 // drifted the model too and made a claim named "exactly one member" measure two. The fixture, not
 // the plan, was wrong.
 test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
-      match spark_serving_full_membership_plan(
-        occurrence: spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
+      match gunbc.spark.serving_converge_plan.spark_serving_full_membership_plan(
+        occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
-        projection: spark_serving_observed_members(
-          host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+        projection: gunbc.spark.serving_observed_members.spark_serving_observed_members(
+          host: subject_host,
           store: complete_required_store(),
           runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationIncomplete {
-            identity: ollama_runtime_materialization_identity_for_required_release(),
+            identity: gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release(),
             first_defect: gunbc.ollama_runtime_bundle.RuntimeExecutableMissing {
               expected_relative_path: "bin/ollama" as std.types.NonEmptyStr,
             },
             further_defects: [],
           },
-          unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-          enablement: gunbc.spark.serving_observed_members.UserUnitManagerEnabled,
-          activity: gunbc.spark.serving_observed_members.UnitActivityRunning,
+          unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: gunbc.spark.serving_membership.spark_serving_user_unit_state_digest() },
+          enablement: UserUnitManagerEnabled,
+          activity: UnitActivityRunning,
           linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
         ),
       ) {
-        SparkServingFullMembershipPlanRefused { cause: _ } => false
-        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _, enablement_observed: _, linger_observed: _, observed_members: _ } =>
-          membership_write_count(plan: plan) == 1
+        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: _ } => false
+        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _, enablement_observed: _, linger_observed: _, observed_members: _ } =>
+          gunbc.membership_reconcile.membership_write_count(plan: plan) == 1
       }
   }
 }
@@ -369,7 +369,7 @@ fn artifact_verdict(
   host: product.placement_supply.HostIdentity,
   projection: gunbc.spark.serving_observed_members.SparkServingObservedMemberProjection,
 ) -> gunbc.spark.serving_converge_plan.SparkServingPlanArtifactVerdict {
-  spark_serving_fleet_converge_plan_artifact(
+  gunbc.spark.serving_converge_plan.spark_serving_fleet_converge_plan_artifact(
     host: host as std.types.NonEmptyStr,
     prior_generation: 0,
     observed_timers: [],
@@ -380,15 +380,15 @@ fn artifact_verdict(
 
 fn artifact_refusal_cause(v: gunbc.spark.serving_converge_plan.SparkServingPlanArtifactVerdict) -> String {
   match v {
-    SparkServingPlanArtifactReady { artifact: _ } => "<ready>"
-    SparkServingPlanArtifactRefused { cause: c } => c
+    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactReady { artifact: _ } => "<ready>"
+    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactRefused { cause: c } => c
   }
 }
 
 fn artifact_row_count(v: gunbc.spark.serving_converge_plan.SparkServingPlanArtifactVerdict) -> Int {
   match v {
-    SparkServingPlanArtifactReady { artifact: a } => length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
-    SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
+    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactReady { artifact: a } => length(gunbc.spark.serving_execution_schedule.scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
+    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
   }
 }
 
@@ -416,23 +416,23 @@ fn artifact_row_count(v: gunbc.spark.serving_converge_plan.SparkServingPlanArtif
 // its own subject; carrying both counts states the relationship instead of a remembered constant.
 test fn a_bare_host_produces_a_complete_plan_with_no_typed_action_refusal() -> Bool {
   let v = artifact_verdict(
-    host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-    projection: test.claim.spark_serving_full_plan_witness_test.project(
-      host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+    host: subject_host,
+    projection: project(
+      host: subject_host,
       runtime: bare_runtime(), store: bare_store(),
       unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent,
-      enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered,
-      activity: gunbc.spark.serving_observed_members.UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+      enablement: UserUnitManagerNotRegistered,
+      activity: UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
     ),
   )
   let with_linger_off = artifact_verdict(
-    host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-    projection: test.claim.spark_serving_full_plan_witness_test.project(
-      host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+    host: subject_host,
+    projection: project(
+      host: subject_host,
       runtime: bare_runtime(), store: bare_store(),
       unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent,
-      enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered,
-      activity: gunbc.spark.serving_observed_members.UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedDisabled,
+      enablement: UserUnitManagerNotRegistered,
+      activity: UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedDisabled,
     ),
   )
   artifact_refusal_cause(v: v) == "<ready>"
@@ -448,19 +448,19 @@ test fn a_bare_host_produces_a_complete_plan_with_no_typed_action_refusal() -> B
 // same two operations the bundled content remedy used to emit, now attributed to the two subjects
 // that actually own them.
 test fn a_unit_only_drift_freezes_exactly_two_rows() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
       artifact_row_count(
         v: artifact_verdict(
-          host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-          projection: test.claim.spark_serving_full_plan_witness_test.project(
-        host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+          host: subject_host,
+          projection: project(
+        host: subject_host,
             runtime: complete_required_runtime(),
             store: complete_required_store(),
             unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: "drifted-unit-bytes" as std.types.NonEmptyStr },
-            enablement: gunbc.spark.serving_observed_members.UserUnitManagerEnabled,
-            activity: gunbc.spark.serving_observed_members.UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+            enablement: UserUnitManagerEnabled,
+            activity: UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
           ),
         ),
       ) == 2
@@ -474,22 +474,22 @@ test fn a_unit_only_drift_freezes_exactly_two_rows() -> Bool {
 // only the second is what the publish sequence needs.
 fn runtime_rows(v: gunbc.spark.serving_converge_plan.SparkServingPlanArtifactVerdict) -> Int {
   match v {
-    SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
-    SparkServingPlanArtifactReady { artifact: a } =>
-      length(filter(scheduled_rows_list(scheduled: a.spark_serving_typed_actions), row =>
+    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
+    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactReady { artifact: a } =>
+      length(filter(gunbc.spark.serving_execution_schedule.scheduled_rows_list(scheduled: a.spark_serving_typed_actions), row =>
         match row.action {
-          MemberAdded { at: _, to: m } => is_runtime_root(address: m.address)
-          MemberChanged { at: _, from: _, to: m } => is_runtime_root(address: m.address)
-          MemberRemoved { at: _, from: m } => is_runtime_root(address: m.address)
-          MemberRemovalRefused { from: _, cause: _ } => false
-          MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
+          gunbc.membership_reconcile.MemberAdded { at: _, to: m } => is_runtime_root(address: m.address)
+          gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: m } => is_runtime_root(address: m.address)
+          gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => is_runtime_root(address: m.address)
+          gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => false
+          gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
         }))
   }
 }
 
 fn is_runtime_root(address: gunbc.spark.serving_membership.SparkServingResourceAddress) -> Bool {
   match address {
-    SparkServingRuntimeRootAddress => true
+    gunbc.spark.serving_membership.SparkServingRuntimeRootAddress => true
     SparkServingUserUnitAddress => false
     SparkServingUserUnitRegistrationAddress => false
     SparkServingUserUnitEnablementAddress => false
@@ -513,25 +513,25 @@ fn is_runtime_root(address: gunbc.spark.serving_membership.SparkServingResourceA
 // from "structurally mute" is measuring nothing.
 test fn a_complete_runtime_plans_no_install_steps() -> Bool {
   let converged_runtime = artifact_verdict(
-    host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-    projection: test.claim.spark_serving_full_plan_witness_test.project(
-      host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+    host: subject_host,
+    projection: project(
+      host: subject_host,
       runtime: complete_required_runtime(),
       store: complete_required_store(),
       unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: "drifted-unit-bytes" as std.types.NonEmptyStr },
-      enablement: gunbc.spark.serving_observed_members.UserUnitManagerEnabled,
-      activity: gunbc.spark.serving_observed_members.UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+      enablement: UserUnitManagerEnabled,
+      activity: UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
     ),
   )
   let bare_runtime_same_drift = artifact_verdict(
-    host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-    projection: test.claim.spark_serving_full_plan_witness_test.project(
-      host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+    host: subject_host,
+    projection: project(
+      host: subject_host,
       runtime: bare_runtime(),
       store: complete_required_store(),
       unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: "drifted-unit-bytes" as std.types.NonEmptyStr },
-      enablement: gunbc.spark.serving_observed_members.UserUnitManagerEnabled,
-      activity: gunbc.spark.serving_observed_members.UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+      enablement: UserUnitManagerEnabled,
+      activity: UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
     ),
   )
   runtime_rows(v: converged_runtime) == 0
@@ -544,10 +544,10 @@ test fn a_complete_runtime_plans_no_install_steps() -> Bool {
 // is reachable through the production entry point and not merely through the plan beneath it: if it
 // ever fails, the wet slice writes on every run forever.
 test fn the_production_artifact_freezes_no_rows_when_converged() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
-      artifact_row_count(v: artifact_verdict(host: test.claim.spark_serving_full_plan_witness_test.subject_host, projection: observed_exactly_desired(r: r))) == 0
+      artifact_row_count(v: artifact_verdict(host: subject_host, projection: observed_exactly_desired(r: r))) == 0
   }
 }
 
@@ -557,13 +557,13 @@ test fn the_production_artifact_freezes_no_rows_when_converged() -> Bool {
 test fn an_unobserved_unit_refuses_the_artifact_rather_than_planning_a_write() -> Bool {
   let cause = artifact_refusal_cause(
     v: artifact_verdict(
-      host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-      projection: test.claim.spark_serving_full_plan_witness_test.project(
-        host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+      host: subject_host,
+      projection: project(
+        host: subject_host,
         runtime: bare_runtime(), store: bare_store(),
         unit: gunbc.spark.serving_observed_members.UserUnitStateUnobserved,
-        enablement: gunbc.spark.serving_observed_members.UserUnitManagerUnobserved,
-        activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+        enablement: UserUnitManagerUnobserved,
+        activity: UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
       ),
     ),
   )
@@ -576,13 +576,13 @@ test fn an_unobserved_unit_refuses_the_artifact_rather_than_planning_a_write() -
 test fn a_refused_observation_refuses_the_artifact_with_its_own_cause() -> Bool {
   let cause = artifact_refusal_cause(
     v: artifact_verdict(
-      host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-      projection: test.claim.spark_serving_full_plan_witness_test.project(
-        host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+      host: subject_host,
+      projection: project(
+        host: subject_host,
         runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as std.types.NonEmptyStr }, store: gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: "probe leg unreachable" as std.types.NonEmptyStr },
         unit: gunbc.spark.serving_observed_members.UserUnitStateUnobserved,
-        enablement: gunbc.spark.serving_observed_members.UserUnitManagerUnobserved,
-        activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerUnobservedState,
+        enablement: UserUnitManagerUnobserved,
+        activity: UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerUnobservedState,
       ),
     ),
   )
@@ -596,12 +596,12 @@ test fn a_non_spark_host_refuses_with_a_distinguishable_cause() -> Bool {
   let cause = artifact_refusal_cause(
     v: artifact_verdict(
       host: "srv1" as product.placement_supply.HostIdentity,
-      projection: test.claim.spark_serving_full_plan_witness_test.project(
+      projection: project(
         host: "srv1" as product.placement_supply.HostIdentity,
         runtime: bare_runtime(), store: bare_store(),
         unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent,
-        enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered,
-        activity: gunbc.spark.serving_observed_members.UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+        enablement: UserUnitManagerNotRegistered,
+        activity: UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
       ),
     ),
   )
@@ -613,20 +613,20 @@ test fn a_non_spark_host_refuses_with_a_distinguishable_cause() -> Bool {
 test fn the_refusal_causes_are_pairwise_distinct() -> Bool {
   let unobserved = artifact_refusal_cause(
     v: artifact_verdict(
-      host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-      projection: test.claim.spark_serving_full_plan_witness_test.project(host: test.claim.spark_serving_full_plan_witness_test.subject_host, runtime: bare_runtime(), store: bare_store(), unit: gunbc.spark.serving_observed_members.UserUnitStateUnobserved, enablement: gunbc.spark.serving_observed_members.UserUnitManagerUnobserved, activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled),
+      host: subject_host,
+      projection: project(host: subject_host, runtime: bare_runtime(), store: bare_store(), unit: gunbc.spark.serving_observed_members.UserUnitStateUnobserved, enablement: UserUnitManagerUnobserved, activity: UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled),
     ),
   )
   let unreached = artifact_refusal_cause(
     v: artifact_verdict(
-      host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-      projection: test.claim.spark_serving_full_plan_witness_test.project(host: test.claim.spark_serving_full_plan_witness_test.subject_host, runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as std.types.NonEmptyStr }, store: gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: "probe leg unreachable" as std.types.NonEmptyStr }, unit: gunbc.spark.serving_observed_members.UserUnitStateUnobserved, enablement: gunbc.spark.serving_observed_members.UserUnitManagerUnobserved, activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerUnobservedState),
+      host: subject_host,
+      projection: project(host: subject_host, runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as std.types.NonEmptyStr }, store: gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: "probe leg unreachable" as std.types.NonEmptyStr }, unit: gunbc.spark.serving_observed_members.UserUnitStateUnobserved, enablement: UserUnitManagerUnobserved, activity: UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerUnobservedState),
     ),
   )
   let wrong_host = artifact_refusal_cause(
     v: artifact_verdict(
       host: "srv1" as product.placement_supply.HostIdentity,
-      projection: test.claim.spark_serving_full_plan_witness_test.project(host: "srv1" as product.placement_supply.HostIdentity, runtime: bare_runtime(), store: bare_store(), unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent, enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered, activity: gunbc.spark.serving_observed_members.UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled),
+      projection: project(host: "srv1" as product.placement_supply.HostIdentity, runtime: bare_runtime(), store: bare_store(), unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent, enablement: UserUnitManagerNotRegistered, activity: UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled),
     ),
   )
   unobserved != unreached && unreached != wrong_host && unobserved != wrong_host
@@ -637,20 +637,20 @@ test fn the_refusal_causes_are_pairwise_distinct() -> Bool {
 // linger case is the dangerous one, because the effect it would select is privileged. A failed probe
 // must stop the plan, not authorize an enable-linger.
 test fn an_unobserved_linger_refuses_rather_than_selecting_a_privileged_effect() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
       string_contains(
         artifact_refusal_cause(
           v: artifact_verdict(
-            host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-            projection: test.claim.spark_serving_full_plan_witness_test.project(
-        host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+            host: subject_host,
+            projection: project(
+        host: subject_host,
               runtime: complete_required_runtime(),
               store: complete_required_store(),
-              unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-              enablement: gunbc.spark.serving_observed_members.UserUnitManagerEnabled,
-              activity: gunbc.spark.serving_observed_members.UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerUnobservedState,
+              unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: gunbc.spark.serving_membership.spark_serving_user_unit_state_digest() },
+              enablement: UserUnitManagerEnabled,
+              activity: UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerUnobservedState,
             ),
           ),
         ),
@@ -662,19 +662,19 @@ test fn an_unobserved_linger_refuses_rather_than_selecting_a_privileged_effect()
 // And a DISABLED linger does not refuse -- it plans. Without this the claim above would also pass if
 // linger observation were broken outright, which is the failure it is meant to exclude.
 test fn a_disabled_linger_plans_rather_than_refusing() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
       artifact_row_count(
         v: artifact_verdict(
-          host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-          projection: test.claim.spark_serving_full_plan_witness_test.project(
-        host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+          host: subject_host,
+          projection: project(
+        host: subject_host,
             runtime: complete_required_runtime(),
             store: complete_required_store(),
-            unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-            enablement: gunbc.spark.serving_observed_members.UserUnitManagerEnabled,
-            activity: gunbc.spark.serving_observed_members.UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedDisabled,
+            unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: gunbc.spark.serving_membership.spark_serving_user_unit_state_digest() },
+            enablement: UserUnitManagerEnabled,
+            activity: UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedDisabled,
           ),
         ),
       ) == 1
@@ -685,7 +685,7 @@ test fn a_disabled_linger_plans_rather_than_refusing() -> Bool {
 
 fn observed_addresses(p: gunbc.spark.serving_observed_members.SparkServingObservedMemberProjection) -> Int {
   match p {
-    SparkServingObservedMembers { members: ms, runtime_observed: _, unit_observed: _, registration_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
+    gunbc.spark.serving_observed_members.SparkServingObservedMembers { members: ms, runtime_observed: _, unit_observed: _, registration_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
   }
 }
 
@@ -697,18 +697,18 @@ fn observed_addresses(p: gunbc.spark.serving_observed_members.SparkServingObserv
 // A read that succeeded establishes the content whatever happened to the enablement probe. The unit
 // member is present; only the enablement member is missing.
 test fn an_unobserved_enablement_leaves_the_observed_content_intact() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
-      match test.claim.spark_serving_full_plan_witness_test.project(
-        host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+      match project(
+        host: subject_host,
         runtime: complete_required_runtime(),
         store: complete_required_store(),
-        unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-        enablement: gunbc.spark.serving_observed_members.UserUnitManagerUnobserved,
-        activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+        unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: gunbc.spark.serving_membership.spark_serving_user_unit_state_digest() },
+        enablement: UserUnitManagerUnobserved,
+        activity: UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
       ) {
-        SparkServingObservedMembers { members: _, unit_observed: unit_seen, enablement_observed: enab_seen, linger_observed: _ } =>
+        gunbc.spark.serving_observed_members.SparkServingObservedMembers { members: _, unit_observed: unit_seen, enablement_observed: enab_seen, linger_observed: _ } =>
           unit_seen && !enab_seen
       }
   }
@@ -717,18 +717,18 @@ test fn an_unobserved_enablement_leaves_the_observed_content_intact() -> Bool {
 // And the mirror: an unreadable unit file does not erase an observed enablement. Without both
 // directions this passes on a projection that simply reports everything as observed.
 test fn an_unobserved_unit_leaves_the_observed_enablement_intact() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
-      match test.claim.spark_serving_full_plan_witness_test.project(
-        host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+      match project(
+        host: subject_host,
         runtime: complete_required_runtime(),
         store: complete_required_store(),
         unit: gunbc.spark.serving_observed_members.UserUnitStateUnobserved,
-        enablement: gunbc.spark.serving_observed_members.UserUnitManagerEnabled,
-        activity: gunbc.spark.serving_observed_members.UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+        enablement: UserUnitManagerEnabled,
+        activity: UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
       ) {
-        SparkServingObservedMembers { members: _, unit_observed: unit_seen, enablement_observed: enab_seen, linger_observed: _ } =>
+        gunbc.spark.serving_observed_members.SparkServingObservedMembers { members: _, unit_observed: unit_seen, enablement_observed: enab_seen, linger_observed: _ } =>
           !unit_seen && enab_seen
       }
   }
@@ -746,20 +746,20 @@ test fn an_unobserved_unit_leaves_the_observed_enablement_intact() -> Bool {
 // drifts" had to be asserted against a host that was also dead, and the claim quietly depended on
 // activity being unmodeled.
 test fn a_correct_but_disabled_and_running_unit_plans_exactly_one_member() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
       plan_writes(
-        p: spark_serving_full_membership_plan(
-          occurrence: spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
+        p: gunbc.spark.serving_converge_plan.spark_serving_full_membership_plan(
+          occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
           serving_release: r,
-          projection: test.claim.spark_serving_full_plan_witness_test.project(
-            host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+          projection: project(
+            host: subject_host,
             runtime: complete_required_runtime(),
             store: complete_required_store(),
-            unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-            enablement: gunbc.spark.serving_observed_members.UserUnitManagerDisabled,
-            activity: gunbc.spark.serving_observed_members.UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+            unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: gunbc.spark.serving_membership.spark_serving_user_unit_state_digest() },
+            enablement: UserUnitManagerDisabled,
+            activity: UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
           ),
         ),
       ) == 1
@@ -772,20 +772,20 @@ test fn a_correct_but_disabled_and_running_unit_plans_exactly_one_member() -> Bo
 // was the generation probe at the end of the run. This claim goes red the moment activity stops
 // being a member, which is the property that keeps the split from being quietly undone.
 test fn an_enabled_but_dead_unit_plans_exactly_one_member() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
       plan_writes(
-        p: spark_serving_full_membership_plan(
-          occurrence: spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
+        p: gunbc.spark.serving_converge_plan.spark_serving_full_membership_plan(
+          occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
           serving_release: r,
-          projection: test.claim.spark_serving_full_plan_witness_test.project(
-            host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+          projection: project(
+            host: subject_host,
             runtime: complete_required_runtime(),
             store: complete_required_store(),
-            unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-            enablement: gunbc.spark.serving_observed_members.UserUnitManagerEnabled,
-            activity: gunbc.spark.serving_observed_members.UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+            unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: gunbc.spark.serving_membership.spark_serving_user_unit_state_digest() },
+            enablement: UserUnitManagerEnabled,
+            activity: UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
           ),
         ),
       ) == 1
@@ -801,20 +801,20 @@ test fn an_enabled_but_dead_unit_plans_exactly_one_member() -> Bool {
 // MemberAdded, so EnableUserUnit is selected off a probe that never answered. Same class as the
 // linger fail-open, reintroduced by adding an address without threading its completeness.
 test fn an_unobserved_enablement_refuses_the_artifact_rather_than_enabling() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
       string_contains(
         artifact_refusal_cause(
           v: artifact_verdict(
-            host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-            projection: test.claim.spark_serving_full_plan_witness_test.project(
-              host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+            host: subject_host,
+            projection: project(
+              host: subject_host,
               runtime: complete_required_runtime(),
               store: complete_required_store(),
-              unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-              enablement: gunbc.spark.serving_observed_members.UserUnitManagerUnobserved,
-              activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+              unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: gunbc.spark.serving_membership.spark_serving_user_unit_state_digest() },
+              enablement: UserUnitManagerUnobserved,
+              activity: UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
             ),
           ),
         ),
@@ -826,19 +826,19 @@ test fn an_unobserved_enablement_refuses_the_artifact_rather_than_enabling() -> 
 // And an OBSERVED enablement still plans, so the refusal is not simply the artifact refusing
 // everything once a third completeness fact exists.
 test fn an_observed_disabled_enablement_still_plans_through_the_artifact() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
       artifact_row_count(
         v: artifact_verdict(
-          host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-          projection: test.claim.spark_serving_full_plan_witness_test.project(
-            host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+          host: subject_host,
+          projection: project(
+            host: subject_host,
             runtime: complete_required_runtime(),
             store: complete_required_store(),
-            unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-            enablement: gunbc.spark.serving_observed_members.UserUnitManagerDisabled,
-            activity: gunbc.spark.serving_observed_members.UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+            unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: gunbc.spark.serving_membership.spark_serving_user_unit_state_digest() },
+            enablement: UserUnitManagerDisabled,
+            activity: UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
           ),
         ),
       ) == 1
@@ -851,15 +851,15 @@ test fn an_observed_disabled_enablement_still_plans_through_the_artifact() -> Bo
 // froze two enables for one unit. Adding an address does not divide a responsibility; removing it
 // from the old owner does.
 test fn a_bare_host_freezes_exactly_one_enable_operation() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => false
     Present { value: r } =>
       length(flat_map(
-        spark_serving_desired_members(
-          occurrence: spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
+        gunbc.spark.serving_membership.spark_serving_desired_members(
+          occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
           serving_release: r,
         ),
-        m => spark_serving_install_effects_for_add(member: m),
+        m => gunbc.spark.serving_member_realization.spark_serving_install_effects_for_add(member: m),
       ).filter(e => e == gunbc.spark.serving_realization.EnableUserUnit)) == 1
   }
 }
@@ -870,17 +870,17 @@ test fn a_bare_host_freezes_exactly_one_enable_operation() -> Bool {
 // must no longer reload either: reload is the remedy that establishes REGISTRATION, and leaving it
 // here would freeze two daemon-reloads on any host that drifts at both subjects.
 test fn the_unit_content_member_writes_only() -> Bool {
-  !any(spark_serving_user_unit_install_effects(), e => e == gunbc.spark.serving_realization.EnableUserUnit)
-    && !any(spark_serving_user_unit_install_effects(), e => e == gunbc.spark.serving_realization.ReloadUserManager)
-    && any(spark_serving_user_unit_install_effects(), e => e == gunbc.spark.serving_realization.WriteUserUnitFile)
-    && length(spark_serving_user_unit_install_effects()) == 1
+  !any(gunbc.spark.serving_member_realization.spark_serving_user_unit_install_effects(), e => e == gunbc.spark.serving_realization.EnableUserUnit)
+    && !any(gunbc.spark.serving_member_realization.spark_serving_user_unit_install_effects(), e => e == gunbc.spark.serving_realization.ReloadUserManager)
+    && any(gunbc.spark.serving_member_realization.spark_serving_user_unit_install_effects(), e => e == gunbc.spark.serving_realization.WriteUserUnitFile)
+    && length(gunbc.spark.serving_member_realization.spark_serving_user_unit_install_effects()) == 1
 }
 
 // The reload did not vanish, it moved. Asserted so the claim above cannot be satisfied by the
 // operation being dropped from the model altogether.
 test fn the_registration_member_owns_the_reload() -> Bool {
   let effects = spark_serving_install_effects_for_address(
-    address: gunbc.spark.serving_membership.SparkServingUserUnitRegistrationAddress,
+    address: SparkServingUserUnitRegistrationAddress,
   )
   any(effects, e => e == gunbc.spark.serving_realization.ReloadUserManager) && length(effects) == 1
 }
@@ -900,14 +900,14 @@ test fn the_registration_member_owns_the_reload() -> Bool {
 // also asserts zero rows, because a refusal carrying rows would let a consumer act on them.
 test fn an_unobserved_runtime_refuses_the_plan_and_emits_no_operations() -> Bool {
   let v = artifact_verdict(
-    host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-    projection: test.claim.spark_serving_full_plan_witness_test.project(
-      host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+    host: subject_host,
+    projection: project(
+      host: subject_host,
       runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused { cause: "probe leg did not run" as std.types.NonEmptyStr },
       store: bare_store(),
       unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent,
-      enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered,
-      activity: gunbc.spark.serving_observed_members.UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+      enablement: UserUnitManagerNotRegistered,
+      activity: UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
     ),
   )
   string_contains(artifact_refusal_cause(v: v), "runtime materialization was not observed")
@@ -919,14 +919,14 @@ test fn an_unobserved_runtime_refuses_the_plan_and_emits_no_operations() -> Bool
 // the strength of a probe that failed.
 test fn an_unobserved_model_store_refuses_the_plan_and_emits_no_pull() -> Bool {
   let v = artifact_verdict(
-    host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-    projection: test.claim.spark_serving_full_plan_witness_test.project(
-      host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+    host: subject_host,
+    projection: project(
+      host: subject_host,
       runtime: bare_runtime(),
       store: gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: "blob listing leg did not run" as std.types.NonEmptyStr },
       unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent,
-      enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered,
-      activity: gunbc.spark.serving_observed_members.UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+      enablement: UserUnitManagerNotRegistered,
+      activity: UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
     ),
   )
   string_contains(artifact_refusal_cause(v: v), "model store was not observed")
@@ -939,27 +939,27 @@ test fn an_unobserved_model_store_refuses_the_plan_and_emits_no_pull() -> Bool {
 test fn the_two_unobserved_walls_name_their_own_subjects() -> Bool {
   let rt = artifact_refusal_cause(
     v: artifact_verdict(
-      host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-      projection: test.claim.spark_serving_full_plan_witness_test.project(
-        host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+      host: subject_host,
+      projection: project(
+        host: subject_host,
         runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused { cause: "x" as std.types.NonEmptyStr },
         store: bare_store(),
         unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent,
-        enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered,
-        activity: gunbc.spark.serving_observed_members.UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+        enablement: UserUnitManagerNotRegistered,
+        activity: UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
       ),
     ),
   )
   let ms = artifact_refusal_cause(
     v: artifact_verdict(
-      host: test.claim.spark_serving_full_plan_witness_test.subject_host,
-      projection: test.claim.spark_serving_full_plan_witness_test.project(
-        host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+      host: subject_host,
+      projection: project(
+        host: subject_host,
         runtime: bare_runtime(),
         store: gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: "x" as std.types.NonEmptyStr },
         unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent,
-        enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered,
-        activity: gunbc.spark.serving_observed_members.UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
+        enablement: UserUnitManagerNotRegistered,
+        activity: UnitActivityStopped, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
       ),
     ),
   )
@@ -1003,27 +1003,27 @@ fn frozen_order(
   runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservation,
   store: gunbc.ollama_runtime_bundle.ModelStoreObservation,
   unit: gunbc.spark.serving_observed_members.SparkServingObservedUnitState,
-  enablement: gunbc.spark.serving_observed_members.SparkServingUnitManagerState,
-  activity: gunbc.spark.serving_observed_members.SparkServingObservedActivityState,
+  enablement: SparkServingUnitManagerState,
+  activity: SparkServingObservedActivityState,
   linger: gunbc.spark.serving_observed_members.SparkServingObservedLingerState,
 ) -> List<String> {
-  match test.claim.spark_serving_full_plan_witness_test.subject_release() {
+  match subject_release() {
     Absent => []
     Present { value: r } =>
-      match spark_serving_full_membership_plan(
-        occurrence: spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
+      match gunbc.spark.serving_converge_plan.spark_serving_full_membership_plan(
+        occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
-        projection: test.claim.spark_serving_full_plan_witness_test.project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
+        projection: project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
       ) {
-        SparkServingFullMembershipPlanRefused { cause: _ } => []
-        SparkServingFullMembershipPlanReady { plan: p, desired_members: d } =>
-          match spark_serving_freeze_execution_schedule(
+        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: _ } => []
+        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanReady { plan: p, desired_members: d } =>
+          match gunbc.spark.serving_execution_schedule.spark_serving_freeze_execution_schedule(
             plan: p,
             desired_addresses: flat_map(d, m => [m.address]),
           ) {
-            SparkServingScheduleRefused { cause: _ } => []
-            SparkServingScheduleFrozen { schedule: sched } =>
-              spark_serving_frozen_schedule_order(schedule: sched)
+            gunbc.spark.serving_execution_schedule.SparkServingScheduleRefused { cause: _ } => []
+            gunbc.spark.serving_execution_schedule.SparkServingScheduleFrozen { schedule: sched } =>
+              gunbc.spark.serving_execution_schedule.spark_serving_frozen_schedule_order(schedule: sched)
           }
       }
   }
@@ -1031,11 +1031,11 @@ fn frozen_order(
 
 fn bare_host_frozen_order() -> List<String> {
   frozen_order(
-    host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+    host: subject_host,
     runtime: bare_runtime(), store: bare_store(),
     unit: gunbc.spark.serving_observed_members.UserUnitStateAbsent,
-    enablement: gunbc.spark.serving_observed_members.UserUnitManagerNotRegistered,
-    activity: gunbc.spark.serving_observed_members.UnitActivityStopped,
+    enablement: UserUnitManagerNotRegistered,
+    activity: UnitActivityStopped,
     linger: gunbc.spark.serving_observed_members.LingerObservedDisabled,
   )
 }
@@ -1096,11 +1096,11 @@ test fn the_frozen_order_is_a_permutation_of_the_planned_rows() -> Bool {
 // claim that keeps the refusal from being satisfied by refusing everything.
 test fn a_host_needing_only_the_model_schedules_that_one_row() -> Bool {
   let order = frozen_order(
-    host: test.claim.spark_serving_full_plan_witness_test.subject_host,
+    host: subject_host,
     runtime: complete_required_runtime(), store: bare_store(),
-    unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-    enablement: gunbc.spark.serving_observed_members.UserUnitManagerEnabled,
-    activity: gunbc.spark.serving_observed_members.UnitActivityRunning,
+    unit: gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: gunbc.spark.serving_membership.spark_serving_user_unit_state_digest() },
+    enablement: UserUnitManagerEnabled,
+    activity: UnitActivityRunning,
     linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
   )
   length(order) == 1 && schedule_index_of(order: order, address_wire: "model-slot:") == 0
@@ -1111,8 +1111,8 @@ test fn a_host_needing_only_the_model_schedules_that_one_row() -> Bool {
 // Unobserved made a host with nothing installed indistinguishable from a host we failed to measure,
 // so the plan refused instead of installing. The projection must treat it as observed.
 test fn a_host_with_no_unit_at_all_is_observed_not_unobserved() -> Bool {
-  spark_serving_activity_was_observed(activity: gunbc.spark.serving_observed_members.UnitActivityNoSuchUnit)
-    && !spark_serving_activity_was_observed(activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved)
+  gunbc.spark.serving_observed_members.spark_serving_activity_was_observed(activity: gunbc.spark.serving_observed_members.UnitActivityNoSuchUnit)
+    && !gunbc.spark.serving_observed_members.spark_serving_activity_was_observed(activity: UnitActivityUnobserved)
 }
 
 // It is NOT Stopped either, and the difference is not cosmetic: a stopped unit exists and could be
@@ -1120,13 +1120,13 @@ test fn a_host_with_no_unit_at_all_is_observed_not_unobserved() -> Bool {
 // would let a plan select StartUserUnit against a unit file that is not there. A stopped unit
 // projects a member; a missing one projects none.
 test fn a_missing_unit_projects_no_activity_member_but_a_stopped_one_does() -> Bool {
-  spark_serving_observed_unit_activity_members(host: test.claim.spark_serving_full_plan_witness_test.subject_host, activity: gunbc.spark.serving_observed_members.UnitActivityNoSuchUnit).length() == 0
-    && spark_serving_observed_unit_activity_members(host: test.claim.spark_serving_full_plan_witness_test.subject_host, activity: gunbc.spark.serving_observed_members.UnitActivityStopped).length() == 1
-    && spark_serving_observed_unit_activity_members(host: test.claim.spark_serving_full_plan_witness_test.subject_host, activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved).length() == 0
+  gunbc.spark.serving_observed_members.spark_serving_observed_unit_activity_members(host: subject_host, activity: gunbc.spark.serving_observed_members.UnitActivityNoSuchUnit).length() == 0
+    && gunbc.spark.serving_observed_members.spark_serving_observed_unit_activity_members(host: subject_host, activity: UnitActivityStopped).length() == 1
+    && gunbc.spark.serving_observed_members.spark_serving_observed_unit_activity_members(host: subject_host, activity: UnitActivityUnobserved).length() == 0
 }
 
 // The silence arm stays load-bearing: a manager we could not reach has not told us the unit is dead,
 // and the plan must still refuse rather than start off a probe that never answered.
 test fn a_genuinely_unobserved_activity_still_refuses() -> Bool {
-  !spark_serving_activity_was_observed(activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved)
+  !gunbc.spark.serving_observed_members.spark_serving_activity_was_observed(activity: UnitActivityUnobserved)
 }

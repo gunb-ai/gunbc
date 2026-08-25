@@ -3,28 +3,28 @@ module extdeps.tools.sleep
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/sleep.html"
   }
 }
 
-data sleep_cli_tool: CliTool = CliTool {
+data sleep_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "sleep",
   min_version: none,
-  installable_via: [SourceCoreutils],
+  installable_via: [extdeps.tools.SourceCoreutils],
 }
 
 data sleep_delay_seconds_flat_scalar_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.tools.sleep",
     decl_name: "sleep_delay_seconds_second_carrier_projection",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 fn sleep_delay_seconds_second_carrier_projection(duration: std.measure.Second) -> Bool {
-  let seconds = second_count(s: duration)
+  let seconds = std.measure.second_count(s: duration)
   if seconds <= 0 {
     false
   } else {

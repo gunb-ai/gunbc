@@ -8,7 +8,7 @@ data spice_rc_tran_deck: v2.extdeps.formats.spice.SpiceNetlist = v2.extdeps.form
       component: v2.extdeps.formats.spice.VoltageSource {
         name: "1",
         n_plus: v2.extdeps.formats.spice.Named { node: v2.extdeps.formats.spice.NamedNode { name: "n1" } },
-        n_minus: Ground,
+        n_minus: v2.extdeps.formats.spice.Ground,
         value: v2.extdeps.formats.spice.SpiceValue { lexeme: "DC 5" }
       }
     },
@@ -26,7 +26,7 @@ data spice_rc_tran_deck: v2.extdeps.formats.spice.SpiceNetlist = v2.extdeps.form
           component: v2.extdeps.formats.spice.Capacitor {
             name: "1",
             n_plus: v2.extdeps.formats.spice.Named { node: v2.extdeps.formats.spice.NamedNode { name: "n2" } },
-            n_minus: Ground,
+            n_minus: v2.extdeps.formats.spice.Ground,
             value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1e-6" }
           }
         },

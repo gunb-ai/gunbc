@@ -1,47 +1,47 @@
 module test.claim.compute_board_physical_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn board() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 11) }
-fn other_frame() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 12) }
-fn mm_frame() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 13) }
+fn board() -> std.coordinate_frame.CoordinateFrameIdentity { std.coordinate_frame.coordinate_frame_identity(occurrence: 11) }
+fn other_frame() -> std.coordinate_frame.CoordinateFrameIdentity { std.coordinate_frame.coordinate_frame_identity(occurrence: 12) }
+fn mm_frame() -> std.coordinate_frame.CoordinateFrameIdentity { std.coordinate_frame.coordinate_frame_identity(occurrence: 13) }
 
 fn registry_with_scales() -> std.spatial_frame.SpatialFrameRegistry {
-  let r0 = empty_frame_registry()
-  let r1 = match register_frame(r: r0, identity: test.claim.compute_board_physical_witness.board(), length_scale: Micro) {
-    FrameRegistered { frame: f } => registry_with(r: r0, f: f)
-    FrameRegistrationRefused { cause: _ } => r0
+  let r0 = std.spatial_frame.empty_frame_registry()
+  let r1 = match std.spatial_frame.register_frame(r: r0, identity: board(), length_scale: std.measure.Micro) {
+    std.spatial_frame.FrameRegistered { frame: f } => std.spatial_frame.registry_with(r: r0, f: f)
+    std.spatial_frame.FrameRegistrationRefused { cause: _ } => r0
   }
-  let r2 = match register_frame(r: r1, identity: other_frame(), length_scale: Micro) {
-    FrameRegistered { frame: f } => registry_with(r: r1, f: f)
-    FrameRegistrationRefused { cause: _ } => r1
+  let r2 = match std.spatial_frame.register_frame(r: r1, identity: other_frame(), length_scale: std.measure.Micro) {
+    std.spatial_frame.FrameRegistered { frame: f } => std.spatial_frame.registry_with(r: r1, f: f)
+    std.spatial_frame.FrameRegistrationRefused { cause: _ } => r1
   }
-  match register_frame(r: r2, identity: mm_frame(), length_scale: Milli) {
-    FrameRegistered { frame: f } => registry_with(r: r2, f: f)
-    FrameRegistrationRefused { cause: _ } => r2
+  match std.spatial_frame.register_frame(r: r2, identity: mm_frame(), length_scale: std.measure.Milli) {
+    std.spatial_frame.FrameRegistered { frame: f } => std.spatial_frame.registry_with(r: r2, f: f)
+    std.spatial_frame.FrameRegistrationRefused { cause: _ } => r2
   }
 }
 
-fn bp(x: Int, y: Int) -> std.affine_space.Point2 { point2(frame: test.claim.compute_board_physical_witness.board(), x: x, y: y) }
+fn bp(x: Int, y: Int) -> std.affine_space.Point2 { std.affine_space.point2(frame: board(), x: x, y: y) }
 
 // A 100 by 80 millimetre board, drawn in micrometres. The numbers are large precisely because the
 // unit is fine, which is the point: this is the coordinate grain at which a 500 um pitch is a
 // distance rather than a rounding error.
 fn outline_in(frame: std.coordinate_frame.CoordinateFrameIdentity) -> std.orthogonal_geometry.AxisAlignedRectangle2? {
-  match axis_aligned_rectangle2(
-    min: point2(frame: frame, x: 0, y: 0),
-    max: point2(frame: frame, x: 100000, y: 80000)
+  match std.orthogonal_geometry.axis_aligned_rectangle2(
+    min: std.affine_space.point2(frame: frame, x: 0, y: 0),
+    max: std.affine_space.point2(frame: frame, x: 100000, y: 80000)
   ) {
-    OrthogonalReady { value: r } => Present { value: r }
-    OrthogonalRefused { cause: _ } => none
+    std.orthogonal_geometry.OrthogonalReady { value: r } => Present { value: r }
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => none
   }
 }
 
 // THE FOOTPRINT IS THE CITED PACKAGE'S, NOT A NUMBER RETYPED HERE. If the datasheet row moved,
 // this placement would move with it.
 fn tq144_body_envelope() -> product.pcb.physical.PackageBodyEnvelope {
-  body_envelope_of_ice40_package(p: ice40_tq144_package)
+  product.pcb.physical.body_envelope_of_ice40_package(p: extdeps.programmable_logic.ice40.subject.ice40_tq144_package)
 }
 
 fn placement(id: std.types.NonEmptyStr, x: Int, y: Int) -> product.pcb.physical.ComponentPlacement {
@@ -49,10 +49,10 @@ fn placement(id: std.types.NonEmptyStr, x: Int, y: Int) -> product.pcb.physical.
 }
 
 fn article_with(placements: List<product.pcb.physical.ComponentPlacement>) -> product.pcb.physical.BoardPhysicalArticle? {
-  match outline_in(frame: test.claim.compute_board_physical_witness.board()) {
+  match outline_in(frame: board()) {
     Absent => none
     Present { value: o } =>
-      Present { value: product.pcb.physical.BoardPhysicalArticle { frame: test.claim.compute_board_physical_witness.board(), outline: o, placements: placements } }
+      Present { value: product.pcb.physical.BoardPhysicalArticle { frame: board(), outline: o, placements: placements } }
   }
 }
 
@@ -60,23 +60,23 @@ fn admits(placements: List<product.pcb.physical.ComponentPlacement>) -> Bool {
   match article_with(placements: placements) {
     Absent => false
     Present { value: a } =>
-      match admit_body_envelopes(registry: registry_with_scales(), article: a) {
-        BodyEnvelopesAdmitted { article: _ } => true
-        PhysicallyRefused { causes: _ } => false
+      match product.pcb.physical.admit_body_envelopes(registry: registry_with_scales(), article: a) {
+        product.pcb.physical.BodyEnvelopesAdmitted { article: _ } => true
+        product.pcb.physical.PhysicallyRefused { causes: _ } => false
       }
   }
 }
 
 fn refusal_is(r: product.pcb.physical.PhysicalRefusal, wanted: String) -> Bool {
   match r {
-    BoardFrameUnregistered { frame: _ } => wanted == "BoardFrameUnregistered"
-    BoardFrameRegistrationRefused { cause: _ } => wanted == "BoardFrameRegistrationRefused"
-    BoardFrameIsNotSubMillimetre { frame: _ } => wanted == "BoardFrameIsNotSubMillimetre"
-    PlacementFrameDiffersFromBoard { placement: _ } => wanted == "PlacementFrameDiffersFromBoard"
-    PlacementExtentNotPositive { placement: _ } => wanted == "PlacementExtentNotPositive"
-    PlacementNotWithinOutline { placement: _ } => wanted == "PlacementNotWithinOutline"
-    PlacementsOverlap { first: _, second: _ } => wanted == "PlacementsOverlap"
-    PlacementIdentityRepeated { placement: _ } => wanted == "PlacementIdentityRepeated"
+    product.pcb.physical.BoardFrameUnregistered { frame: _ } => wanted == "BoardFrameUnregistered"
+    product.pcb.physical.BoardFrameRegistrationRefused { cause: _ } => wanted == "BoardFrameRegistrationRefused"
+    product.pcb.physical.BoardFrameIsNotSubMillimetre { frame: _ } => wanted == "BoardFrameIsNotSubMillimetre"
+    product.pcb.physical.PlacementFrameDiffersFromBoard { placement: _ } => wanted == "PlacementFrameDiffersFromBoard"
+    product.pcb.physical.PlacementExtentNotPositive { placement: _ } => wanted == "PlacementExtentNotPositive"
+    product.pcb.physical.PlacementNotWithinOutline { placement: _ } => wanted == "PlacementNotWithinOutline"
+    product.pcb.physical.PlacementsOverlap { first: _, second: _ } => wanted == "PlacementsOverlap"
+    product.pcb.physical.PlacementIdentityRepeated { placement: _ } => wanted == "PlacementIdentityRepeated"
   }
 }
 
@@ -84,10 +84,10 @@ fn refuses_naming(placements: List<product.pcb.physical.ComponentPlacement>, wan
   match article_with(placements: placements) {
     Absent => false
     Present { value: a } =>
-      match admit_body_envelopes(registry: registry_with_scales(), article: a) {
-        BodyEnvelopesAdmitted { article: _ } => false
-        PhysicallyRefused { causes: cs } =>
-          fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || test.claim.compute_board_physical_witness.refusal_is(r: r, wanted: wanted) })
+      match product.pcb.physical.admit_body_envelopes(registry: registry_with_scales(), article: a) {
+        product.pcb.physical.BodyEnvelopesAdmitted { article: _ } => false
+        product.pcb.physical.PhysicallyRefused { causes: cs } =>
+          fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || refusal_is(r: r, wanted: wanted) })
       }
   }
 }
@@ -96,7 +96,7 @@ fn refuses_naming(placements: List<product.pcb.physical.ComponentPlacement>, wan
 // admission that refuses everything. Two TQ144 parts, 20 mm square each, placed well apart on a
 // 100 by 80 mm board: both inside, not touching, distinct identities.
 test fn w_a_coherent_placement_is_admitted() -> Bool {
-  test.claim.compute_board_physical_witness.admits(placements: [
+  admits(placements: [
     placement(id: "u1", x: 5000, y: 5000),
     placement(id: "u2", x: 50000, y: 5000),
   ])
@@ -106,7 +106,7 @@ test fn w_a_coherent_placement_is_admitted() -> Bool {
 // interesting case: a check that tested only the origin would pass it, and the part would be
 // half in air. The extent is what has to be contained.
 test fn w_a_part_that_does_not_fit_inside_the_outline_refuses() -> Bool {
-  test.claim.compute_board_physical_witness.refuses_naming(
+  refuses_naming(
     placements: [placement(id: "u1", x: 90000, y: 5000)],
     wanted: "PlacementNotWithinOutline"
   )
@@ -115,7 +115,7 @@ test fn w_a_part_that_does_not_fit_inside_the_outline_refuses() -> Bool {
 // TWO PARTS IN THE SAME PLACE. Twenty-millimetre bodies five millimetres apart share interior
 // area, which is a collision no fabricator can build.
 test fn w_two_parts_sharing_area_refuse() -> Bool {
-  test.claim.compute_board_physical_witness.refuses_naming(
+  refuses_naming(
     placements: [
       placement(id: "u1", x: 5000, y: 5000),
       placement(id: "u2", x: 10000, y: 5000),
@@ -132,14 +132,14 @@ test fn w_two_parts_sharing_area_refuse() -> Bool {
 // attached to it is deleted. What this admits is a body-envelope verdict, and the name of the arm
 // it checks now says so.
 test fn w_touching_bodies_do_not_register_as_overlapping() -> Bool {
-  test.claim.compute_board_physical_witness.admits(placements: [
+  admits(placements: [
     placement(id: "u1", x: 5000, y: 5000),
     placement(id: "u2", x: 25000, y: 5000),
   ])
 }
 
 test fn w_a_repeated_placement_identity_refuses() -> Bool {
-  test.claim.compute_board_physical_witness.refuses_naming(
+  refuses_naming(
     placements: [
       placement(id: "u1", x: 5000, y: 5000),
       placement(id: "u1", x: 50000, y: 5000),
@@ -159,20 +159,20 @@ test fn w_one_defect_is_reported_once() -> Bool {
   ]) {
     Absent => false
     Present { value: a } =>
-      match admit_body_envelopes(registry: registry_with_scales(), article: a) {
-        BodyEnvelopesAdmitted { article: _ } => false
-        PhysicallyRefused { causes: cs } => physical_refusal_count(s: cs) == 2
+      match product.pcb.physical.admit_body_envelopes(registry: registry_with_scales(), article: a) {
+        product.pcb.physical.BodyEnvelopesAdmitted { article: _ } => false
+        product.pcb.physical.PhysicallyRefused { causes: cs } => product.pcb.physical.physical_refusal_count(s: cs) == 2
       }
   }
 }
 
 test fn w_a_placement_in_another_frame_refuses() -> Bool {
-  test.claim.compute_board_physical_witness.refuses_naming(
+  refuses_naming(
     placements: [
       product.pcb.physical.ComponentPlacement {
         identity: "u1",
         body_envelope: tq144_body_envelope(),
-        origin: point2(frame: other_frame(), x: 5000, y: 5000),
+        origin: std.affine_space.point2(frame: other_frame(), x: 5000, y: 5000),
       },
     ],
     wanted: "PlacementFrameDiffersFromBoard"
@@ -187,14 +187,14 @@ test fn w_a_millimetre_board_frame_refuses() -> Bool {
   match outline_in(frame: mm_frame()) {
     Absent => false
     Present { value: o } =>
-      match admit_body_envelopes(
+      match product.pcb.physical.admit_body_envelopes(
         registry: registry_with_scales(),
         article: product.pcb.physical.BoardPhysicalArticle { frame: mm_frame(), outline: o, placements: [] }
       ) {
-        BodyEnvelopesAdmitted { article: _ } => false
-        PhysicallyRefused { causes: cs } =>
+        product.pcb.physical.BodyEnvelopesAdmitted { article: _ } => false
+        product.pcb.physical.PhysicallyRefused { causes: cs } =>
           fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) {
-            acc || test.claim.compute_board_physical_witness.refusal_is(r: r, wanted: "BoardFrameIsNotSubMillimetre")
+            acc || refusal_is(r: r, wanted: "BoardFrameIsNotSubMillimetre")
           })
       }
   }
@@ -204,17 +204,17 @@ test fn w_a_millimetre_board_frame_refuses() -> Bool {
 // and has a different remedy: one is a board drawn at the wrong grain, the other is a board whose
 // grain nobody declared.
 test fn w_an_unregistered_board_frame_refuses_distinctly() -> Bool {
-  match outline_in(frame: test.claim.compute_board_physical_witness.board()) {
+  match outline_in(frame: board()) {
     Absent => false
     Present { value: o } =>
-      match admit_body_envelopes(
-        registry: empty_frame_registry(),
-        article: product.pcb.physical.BoardPhysicalArticle { frame: test.claim.compute_board_physical_witness.board(), outline: o, placements: [] }
+      match product.pcb.physical.admit_body_envelopes(
+        registry: std.spatial_frame.empty_frame_registry(),
+        article: product.pcb.physical.BoardPhysicalArticle { frame: board(), outline: o, placements: [] }
       ) {
-        BodyEnvelopesAdmitted { article: _ } => false
-        PhysicallyRefused { causes: cs } =>
+        product.pcb.physical.BodyEnvelopesAdmitted { article: _ } => false
+        product.pcb.physical.PhysicallyRefused { causes: cs } =>
           fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) {
-            acc || test.claim.compute_board_physical_witness.refusal_is(r: r, wanted: "BoardFrameUnregistered")
+            acc || refusal_is(r: r, wanted: "BoardFrameUnregistered")
           })
       }
   }
@@ -226,7 +226,7 @@ test fn w_an_unregistered_board_frame_refuses_distinctly() -> Bool {
 // body is not one. TQ144 is a 20 mm body, which is 20000 um, and that is what the placement
 // reserves — 2 mm short of the 22 mm its leads actually occupy.
 test fn w_the_envelope_is_the_cited_package_body() -> Bool {
-  micrometer_count(m: tq144_body_envelope().body_width) == 20000
-    && micrometer_count(m: tq144_body_envelope().body_height) == 20000
+  std.measure.micrometer_count(m: tq144_body_envelope().body_width) == 20000
+    && std.measure.micrometer_count(m: tq144_body_envelope().body_height) == 20000
     && (tq144_body_envelope().package_designator as String) == "TQ144"
 }

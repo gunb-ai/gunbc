@@ -7,14 +7,14 @@ data repository_census_coverage_authority_note: String = "CENSUS-0B, the coverag
 data repository_census_coverage_recut_note: String = "THE RULE THIS RECUT KEEPS, and every one of the five blockers behind it was one instance of it (operator ruling 2026-08-04, superseding the first cut of this module): THE CEILING MUST BE A FUNCTION OF ONE COHERENT EVIDENCE PACKAGE, NOT OF SEVERAL INDEPENDENTLY SUPPLIED VALUES THAT MERELY SIT NEAR EACH OTHER. Independently supplied evidence must JOIN ON EXACT IDENTITY before it can raise a conclusion. The first cut reconciled subject-key spellings while never comparing the two sides' population or revision, so two different repositories at two different revisions reconciled if their keys happened to be spelled alike, and the receipt then RECORDED both identities afterwards — recording a mismatch instead of refusing it. It detected duplicates on the observed side only, so a denominator of A, A against an observation of A reconciled cleanly. It let the ceiling take an observation and a coverage receipt as separate arguments, so a receipt for observation A raised an exhaustive ceiling for observation B. It let a capability be authored with no tie to the classifier that ran. And it made a shared-run self-join VISIBLE while nothing acted on it. The same move fixes all five, and it is a move this carrier already makes one level down: 0A derives rows_identity inside the constructor so no authored copy can disagree with the rows. This stage does that one level up — every input an inference reads is either derived from the package or joined to it on an exact identity, and a mismatch REFUSES rather than being recorded."
 
 fn census_subject_key_identity(key: gunbc.repository_census_observation.CensusSubjectKey) -> std.content_hash.Fnv1a64Structural {
-  census_tagged_identity(tag: "CensusSubjectKey" as std.types.NonEmptyStr, value: key as std.types.NonEmptyStr)
+  gunbc.repository_census_observation.census_tagged_identity(tag: "CensusSubjectKey" as std.types.NonEmptyStr, value: key as std.types.NonEmptyStr)
 }
 
 data repository_census_keyed_index_note: String = "SUBJECT SETS ARE BUILT AS A KEYED INDEX, NOT BY PAIRWISE LIST SCANS (operator ruling 2026-08-05). The first cut of this reconciliation appended to a growing list while collecting distinct keys, counted occurrences by rescanning the whole list once per distinct key, and then tested membership by rescanning again for every missing and every unexpected subject. Every one of those is a linear scan per element, so the reconciliation was QUADRATIC in the subject count. The 24-subject consumer in this tree does not expose it, which is exactly why it survived review — the population is too small for the shape to show — and DESIGN section 6 rules that a proven cost-shape defect is fixed regardless of the realized n, because n is small here is not a time-stable fact. Membership and duplicate detection now go through a Map keyed on the subject spelling, which the substrate primitive contracts price at work 1 per lookup and insert against the list scan's n. AUTHORED ORDER IS PRESERVED IN A LIST BESIDE THE MAP rather than recovered from it: map traversal order is host-unspecified, so every list this module returns — the distinct keys, the duplicates, the missing and the unexpected — is accumulated in the order the caller supplied, and the map is consulted ONLY for membership. That is the pattern the determinism thread prescribes and the reason no map_keys or map_values call appears here."
 
 data repository_census_keyed_roster_dissolution_note: String = "WHY THIS DOES NOT CALL std.keyed_roster, AND THE TRIGGER THAT DELETES THIS NOTE. keyed_roster_build is the repository's keyed-set construction authority and the obvious thing to reuse here, and it CANNOT deliver the property this module needs: it folds keyed_roster_insert_into_unique, which performs one linear keyed_row_find plus one growing concat per element, so it is itself quadratic — its own module note says so. The cause is its SIGNATURE, not its body: key_eq is an arbitrary caller-supplied fn K K to Bool, and an arbitrary predicate cannot be indexed, because a map keys on substrate identity and there is no way to consult key_eq without visiting every existing row. Measured on that function rather than modelled, at 256, 512 and 1024 synthetic distinct keys: 85ms, 318ms, 1273ms, so 3.74x then 4.00x per doubling against quadratic 4.00 and linear 2.00. So this module consumes the OTHER existing std pattern that already fits — std.occurrence_binding_candidates builds duplicate-refusing keyed indexes with map_get and map_insert and typed duplicate evidence carrying the first and conflicting values — rather than minting a set authority of its own."
 
-data repository_census_keyed_roster_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: std.keyed_roster is regrounded on a key-to-identity projection instead of an equality bundle, at which point keyed_roster_build becomes linear and this module consumes it directly and this note deletes. That regrounding is its own work item and deliberately not a rider here: it changes a std interface with six production consumers — std.roster_frontier, tools.dag_compile_clean_shard_roster, gunbc.doc_graph_roots, gunbc.commit_workflow, gunbc.non_fold_residue and v1.trait_derive_emit — all of which pay this same quadratic today.")
+data repository_census_keyed_roster_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: std.keyed_roster is regrounded on a key-to-identity projection instead of an equality bundle, at which point keyed_roster_build becomes linear and this module consumes it directly and this note deletes. That regrounding is its own work item and deliberately not a rider here: it changes a std interface with six production consumers — std.roster_frontier, tools.dag_compile_clean_shard_roster, gunbc.doc_graph_roots, gunbc.commit_workflow, gunbc.non_fold_residue and v1.trait_derive_emit — all of which pay this same quadratic today.")
 
 data repository_census_index_cost_note: String = "THE OPERATION COUNTS ARE INCREMENTED BY THE REAL FOLD, WHICH IS WHY THEY CANNOT DRIFT FROM IT. A cost claim measured by a second function that mirrors this one would be a claim about the mirror: it stays green while the real path regresses, the same way a hand-built Node fixture describes a module it has stopped resembling. So the counters live on the accumulator the production fold already threads, every increment sits on the branch that performs the operation it counts, and a witness reads them back from an ordinary index build. Removing an operation without decrementing its counter is not possible, because there is one site each.\n\nWHAT THESE COUNT, EXACTLY, so nobody reads more into them. map_lookups is one map_get per input key. map_inserts is one map_insert per newly seen key plus one per key at the moment it first repeats. key_prepends is one constant-work cons per key appended to either order list. order_reversals is the number of single linear passes taken at the end, which is two, one per order list. WHAT THEY DO NOT COUNT is the interpreter's internal copy volume inside concat or reverse: that is the substrate's per-operation cost, priced in the std.primitives contracts, and this module counts the OPERATIONS it issues rather than re-deriving what each costs. The claim the counters support is therefore about SHAPE — that the operation count grows in proportion to the subject count rather than to its square — which is the claim the recut was about."
 
@@ -133,15 +133,15 @@ fn census_duplicated_subject_keys(keys: List<gunbc.repository_census_observation
 }
 
 fn pair_with(left: std.content_hash.Fnv1a64Structural, right: std.content_hash.Fnv1a64Structural) -> std.content_hash.Fnv1a64Structural {
-  content_hash_combine_structural(left: left, right: right)
+  std.content_hash.content_hash_combine_structural(left: left, right: right)
 }
 
 fn census_subject_keys_identity(subjects: List<gunbc.repository_census_observation.CensusSubjectKey>) -> std.content_hash.Fnv1a64Structural {
   fold(
     subjects,
-    init: content_hash_atom(value: "CensusSubjectKeysEmpty" as std.types.NonEmptyStr),
+    init: std.content_hash.content_hash_atom(value: "CensusSubjectKeysEmpty" as std.types.NonEmptyStr),
     f: fn(acc, key) {
-      content_hash_tagged_structural(
+      std.content_hash.content_hash_tagged_structural(
         tag: "CensusSubjectKeysStep" as std.types.NonEmptyStr,
         payload: pair_with(left: acc, right: census_subject_key_identity(key: key)),
       )
@@ -175,9 +175,9 @@ fn census_denominator_observation(
 }
 
 fn census_denominator_identity(denominator: CensusDenominatorObservation) -> std.content_hash.Fnv1a64Structural {
-  let population = repository_census_population_identity(population: denominator.population)
-  let revision = census_revision_identity(revision: denominator.observed_at_revision)
-  let run = census_method_run_identity(method: denominator.enumeration_run)
+  let population = gunbc.repository_census_observation.repository_census_population_identity(population: denominator.population)
+  let revision = gunbc.repository_census_observation.census_revision_identity(revision: denominator.observed_at_revision)
+  let run = gunbc.repository_census_observation.census_method_run_identity(method: denominator.enumeration_run)
   let subjects = denominator.subjects_identity
   pair_with(left: pair_with(left: population, right: revision), right: pair_with(left: run, right: subjects))
 }
@@ -206,21 +206,21 @@ fn census_resolve_coverage_subjects(
   denominator: CensusDenominatorObservation,
   observation: gunbc.repository_census_observation.RepositoryCensusObservation,
 ) -> CoverageSubjectResolution {
-  let denominator_population = repository_census_population_identity(
+  let denominator_population = gunbc.repository_census_observation.repository_census_population_identity(
     population: denominator.population,
   )
-  let observation_population = repository_census_population_identity(
+  let observation_population = gunbc.repository_census_observation.repository_census_population_identity(
     population: observation.population,
   )
-  let denominator_revision = census_revision_identity(revision: denominator.observed_at_revision)
-  let observation_revision = census_revision_identity(
+  let denominator_revision = gunbc.repository_census_observation.census_revision_identity(revision: denominator.observed_at_revision)
+  let observation_revision = gunbc.repository_census_observation.census_revision_identity(
     revision: observation.observed_at_revision,
   )
-  let population_aligned = content_hash_eq_structural(
+  let population_aligned = std.content_hash.content_hash_eq_structural(
     left: denominator_population,
     right: observation_population,
   )
-  let revision_aligned = content_hash_eq_structural(
+  let revision_aligned = std.content_hash.content_hash_eq_structural(
     left: denominator_revision,
     right: observation_revision,
   )
@@ -335,7 +335,7 @@ fn census_reconcile_observation(
     } =>
       census_reconcile_aligned_subjects(
         denominator_subjects: denominator.subjects,
-        observed_subjects: repository_census_subject_keys(observation: observation),
+        observed_subjects: gunbc.repository_census_observation.repository_census_subject_keys(observation: observation),
         population_identity: population_identity,
         revision_identity: revision_identity,
       )
@@ -412,19 +412,19 @@ fn census_resolve_independence(
   enumeration_run: gunbc.repository_census_observation.CensusMethodRunIdentity,
   classification_run: gunbc.repository_census_observation.CensusMethodRunIdentity,
 ) -> DenominatorIndependence {
-  let enumeration_identity = census_method_run_identity(method: enumeration_run)
-  let classification_identity = census_method_run_identity(method: classification_run)
-  let enumeration_classifier = census_declaration_ref_identity(
+  let enumeration_identity = gunbc.repository_census_observation.census_method_run_identity(method: enumeration_run)
+  let classification_identity = gunbc.repository_census_observation.census_method_run_identity(method: classification_run)
+  let enumeration_classifier = gunbc.repository_census_observation.census_declaration_ref_identity(
     reference: enumeration_run.classifier,
   )
-  let classification_classifier = census_declaration_ref_identity(
+  let classification_classifier = gunbc.repository_census_observation.census_declaration_ref_identity(
     reference: classification_run.classifier,
   )
-  let same_run = content_hash_eq_structural(
+  let same_run = std.content_hash.content_hash_eq_structural(
     left: enumeration_identity,
     right: classification_identity,
   )
-  let same_classifier = content_hash_eq_structural(
+  let same_classifier = std.content_hash.content_hash_eq_structural(
     left: enumeration_classifier,
     right: classification_classifier,
   )
@@ -478,9 +478,9 @@ fn census_establish_coverage(
   denominator: CensusDenominatorObservation,
   observation: gunbc.repository_census_observation.RepositoryCensusObservation,
 ) -> CensusCoverageOutcome {
-  let observed_subjects = repository_census_subject_keys(observation: observation)
-  let observation_identity = repository_census_observation_identity(observation: observation)
-  let classification_run_identity = census_method_run_identity(method: observation.method_run)
+  let observed_subjects = gunbc.repository_census_observation.repository_census_subject_keys(observation: observation)
+  let observation_identity = gunbc.repository_census_observation.repository_census_observation_identity(observation: observation)
+  let classification_run_identity = gunbc.repository_census_observation.census_method_run_identity(method: observation.method_run)
   let reconciliation = census_reconcile_observation(
     denominator: denominator,
     observation: observation,
@@ -496,7 +496,7 @@ fn census_establish_coverage(
           observation_identity: observation_identity,
           population_identity: population_identity,
           revision_identity: revision_identity,
-          enumeration_run_identity: census_method_run_identity(
+          enumeration_run_identity: gunbc.repository_census_observation.census_method_run_identity(
             method: denominator.enumeration_run,
           ),
           classification_run_identity: classification_run_identity,
@@ -598,8 +598,8 @@ fn census_capability_kind_tag(capability: CensusMethodCapability) -> std.types.N
 }
 
 fn census_capability_identity(capability: CensusMethodCapability) -> std.content_hash.Fnv1a64Structural {
-  let kind = content_hash_atom(value: census_capability_kind_tag(capability: capability))
-  let contract = census_declaration_ref_identity(
+  let kind = std.content_hash.content_hash_atom(value: census_capability_kind_tag(capability: capability))
+  let contract = gunbc.repository_census_observation.census_declaration_ref_identity(
     reference: census_capability_contract(capability: capability),
   )
   pair_with(left: kind, right: contract)
@@ -651,15 +651,15 @@ fn census_control_run_is_distinct_from_measurement(
   control_run: gunbc.repository_census_observation.CensusMethodRunIdentity,
   method_run: gunbc.repository_census_observation.CensusMethodRunIdentity,
 ) -> Bool {
-  let same_classifier = content_hash_eq_structural(
-    left: census_declaration_ref_identity(reference: control_run.classifier),
-    right: census_declaration_ref_identity(reference: method_run.classifier),
+  let same_classifier = std.content_hash.content_hash_eq_structural(
+    left: gunbc.repository_census_observation.census_declaration_ref_identity(reference: control_run.classifier),
+    right: gunbc.repository_census_observation.census_declaration_ref_identity(reference: method_run.classifier),
   )
-  let same_revision = content_hash_eq_structural(
-    left: census_revision_identity(revision: control_run.classifier_revision),
-    right: census_revision_identity(revision: method_run.classifier_revision),
+  let same_revision = std.content_hash.content_hash_eq_structural(
+    left: gunbc.repository_census_observation.census_revision_identity(revision: control_run.classifier_revision),
+    right: gunbc.repository_census_observation.census_revision_identity(revision: method_run.classifier_revision),
   )
-  let same_invocation = content_hash_eq_structural(
+  let same_invocation = std.content_hash.content_hash_eq_structural(
     left: control_run.invocation_identity,
     right: method_run.invocation_identity,
   )
@@ -670,11 +670,11 @@ fn census_control_outcomes_join_the_control_run(
   pair: CensusControlPair,
   control_run_identity: std.content_hash.Fnv1a64Structural,
 ) -> Bool {
-  let discriminating_joins = content_hash_eq_structural(
+  let discriminating_joins = std.content_hash.content_hash_eq_structural(
     left: census_coverage_classification_run_identity(coverage: pair.discriminating),
     right: control_run_identity,
   )
-  let positive_joins = content_hash_eq_structural(
+  let positive_joins = std.content_hash.content_hash_eq_structural(
     left: census_coverage_classification_run_identity(coverage: pair.positive),
     right: control_run_identity,
   )
@@ -685,8 +685,8 @@ fn census_method_conformance_receipt(
   pair: CensusControlPair,
   method_run: gunbc.repository_census_observation.CensusMethodRunIdentity,
 ) -> CensusConformanceOutcome {
-  let control_run_identity = census_method_run_identity(method: pair.control_run)
-  let method_run_identity = census_method_run_identity(method: method_run)
+  let control_run_identity = gunbc.repository_census_observation.census_method_run_identity(method: pair.control_run)
+  let method_run_identity = gunbc.repository_census_observation.census_method_run_identity(method: method_run)
   if !census_control_outcomes_join_the_control_run(
     pair: pair,
     control_run_identity: control_run_identity,
@@ -760,10 +760,10 @@ fn census_method_capability_receipt(
   conformance: CensusMethodConformanceReceipt?,
 ) -> CensusMethodCapabilityReceipt? {
   let contract = census_capability_contract(capability: capability)
-  let method_run_identity = census_method_run_identity(method: observation.method_run)
-  let contract_names_the_classifier = content_hash_eq_structural(
-    left: census_declaration_ref_identity(reference: contract),
-    right: census_declaration_ref_identity(reference: observation.method_run.classifier),
+  let method_run_identity = gunbc.repository_census_observation.census_method_run_identity(method: observation.method_run)
+  let contract_names_the_classifier = std.content_hash.content_hash_eq_structural(
+    left: gunbc.repository_census_observation.census_declaration_ref_identity(reference: contract),
+    right: gunbc.repository_census_observation.census_declaration_ref_identity(reference: observation.method_run.classifier),
   )
   let conformance_joins = census_conformance_joins_the_method_run(
     conformance: conformance,
@@ -792,7 +792,7 @@ fn census_conformance_joins_the_method_run(
   match conformance {
     Absent => true
     Present { value: receipt } =>
-      content_hash_eq_structural(
+      std.content_hash.content_hash_eq_structural(
         left: receipt.method_run_identity,
         right: method_run_identity,
       )
@@ -894,7 +894,7 @@ fn census_inference_ceiling(
   let classification_run_identity = census_coverage_classification_run_identity(
     coverage: coverage,
   )
-  if content_hash_eq_structural(
+  if std.content_hash.content_hash_eq_structural(
     left: capability_receipt.method_run_identity,
     right: classification_run_identity,
   ) {

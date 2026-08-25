@@ -60,11 +60,11 @@ fn phrase(spans: List<TokenSpan>) -> LexicalPhrase {
 
 fn phrase_to_lex_rule_set(p: LexicalPhrase) -> LexRuleSet {
   LexRuleSet {
-    rules: fold_list(
+    rules: v2.std.algebra.fold_list(
       xs: p.spans,
       empty: std.algebra.Empty,
       cons: fn(acc, s) {
-        list_snoc_item(
+        v2.std.algebra.list_snoc_item(
           xs: acc,
           item: TokenRule {
             token_class: s.token_class,
@@ -81,7 +81,7 @@ fn phrase_to_lex_rules(p: LexicalPhrase) -> LexRules {
 }
 
 fn phrase_to_source_text(p: LexicalPhrase) -> String {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: p.spans,
     empty: "",
     cons: fn(acc, s) { concat(acc, s.fragment) }
@@ -97,11 +97,11 @@ type Token {
 }
 
 type TokenStream {
-  all: List<v2.std.compilers.lexing.Token>
+  all: List<Token>
   pos: Int
 }
 
-fn token_stream_new(all: List<v2.std.compilers.lexing.Token>) -> TokenStream {
+fn token_stream_new(all: List<Token>) -> TokenStream {
   TokenStream { all: all, pos: 0 }
 }
 
@@ -113,24 +113,24 @@ fn token_stream_position(stream: TokenStream) -> Int {
   stream.pos
 }
 
-fn token_stream_all(stream: TokenStream) -> List<v2.std.compilers.lexing.Token> {
+fn token_stream_all(stream: TokenStream) -> List<Token> {
   stream.all
 }
 
 fn token_stream_remaining_count(stream: TokenStream) -> Int {
-  length(xs: stream.all) - stream.pos
+  v2.std.algebra.length(xs: stream.all) - stream.pos
 }
 
-fn token_stream_remaining(stream: TokenStream) -> List<v2.std.compilers.lexing.Token> {
-  skip(xs: stream.all, n: stream.pos)
+fn token_stream_remaining(stream: TokenStream) -> List<Token> {
+  v2.std.algebra.skip(xs: stream.all, n: stream.pos)
 }
 
-fn token_stream_first(stream: TokenStream) -> v2.std.optional.Optional<v2.std.compilers.lexing.Token> {
-  list_at_optional(xs: stream.all, index: stream.pos)
+fn token_stream_first(stream: TokenStream) -> v2.std.optional.Optional<Token> {
+  v2.std.collection.list_at_optional(xs: stream.all, index: stream.pos)
 }
 
-fn token_stream_get(stream: TokenStream, offset: Int) -> v2.std.optional.Optional<v2.std.compilers.lexing.Token> {
-  list_at_optional(xs: stream.all, index: stream.pos + offset)
+fn token_stream_get(stream: TokenStream, offset: Int) -> v2.std.optional.Optional<Token> {
+  v2.std.collection.list_at_optional(xs: stream.all, index: stream.pos + offset)
 }
 
 fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
@@ -167,7 +167,7 @@ fn lex_artifact_new(tokens: TokenStream, annotations: List<UnboundSourceAnnotati
   LexArtifact { tokens: tokens, annotations: annotations }
 }
 
-fn lex_rule_token_class_member(rule: LexRule, token_class: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn lex_rule_token_class_member(rule: LexRule, token_class: v2.std.node.Symbol) -> Bool {
   match rule {
     TokenRule { token_class: c, pattern: _ } => c == token_class
     TriviaRule { pattern: _ } => false
@@ -175,8 +175,8 @@ fn lex_rule_token_class_member(rule: LexRule, token_class: v2.std.node.Symbol) -
   }
 }
 
-fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: v2.std.node.Symbol) -> v2.std.logic.Bool {
-  fold_list(
+fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: v2.std.node.Symbol) -> Bool {
+  v2.std.algebra.fold_list(
     xs: rules.rules,
     empty: false,
     cons: fn(acc, rule) {
@@ -189,7 +189,7 @@ type LexPatternFold<R> {
   empty:       R
   literal:     fn(String) -> R
   keyword:     fn(String) -> R
-  char:        fn(Char) -> R
+  char:        fn(std.types.Char) -> R
   char_class:  fn(LexCharClass) -> R
   sequence:    fn(R, R) -> R
   choice:      fn(R, R) -> R
@@ -244,7 +244,7 @@ fn lex_void_lex_rules_evidence_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lex_void_lex_rules_evidence } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 

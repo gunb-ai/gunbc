@@ -11,7 +11,7 @@ fn my_leaf() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^inline_leaf } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -28,7 +28,7 @@ fn inline_topdown_algebra() -> v2.std.node.NodeFoldTopDown<MyFold, MyFold> {
 }
 
 fn use_inline_topdown() -> Int {
-  match fold_node_topdown(
+  match v2.std.node.fold_node_topdown(
     n: my_leaf(),
     ctx: MyFold { origin: 7, state: 0, at_conj: false },
     algebra: inline_topdown_algebra()
@@ -41,16 +41,16 @@ data witness_inline_topdown_field_access: Bool = use_inline_topdown() == 8
 
 data claim_nodefold_topdown_inline_algebra_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/nodefold_topdown_inline_algebra: inline NodeFoldTopDown algebra compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: my_leaf(),
   expected_value: my_leaf(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
 data claim_nodefold_topdown_inline_field_access: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/nodefold_topdown_inline_algebra: init lambda reads fold.origin/state/at_conj",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: my_leaf(),
   expected_value: my_leaf(),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }

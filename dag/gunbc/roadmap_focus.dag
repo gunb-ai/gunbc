@@ -50,7 +50,7 @@ fn focus_prerequisite_ids(
   let lane_ids = focus_lane_nodes(focus: focus, nodes: nodes) |> map(n => n.node as String)
   fold(lane_ids, init: [], f: fn(acc, id) {
     fold(
-      graph_reverse_reachable_members(names: names, graph: graph, start: id),
+      std.graph.graph_reverse_reachable_members(names: names, graph: graph, start: id),
       init: acc,
       f: fn(inner, anc) {
         if any(lane_ids, l => l == anc) {

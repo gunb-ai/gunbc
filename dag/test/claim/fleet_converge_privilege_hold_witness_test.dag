@@ -1,14 +1,14 @@
 module test.claim.fleet_converge_privilege_hold_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // RED control: whole-binary install/systemctl on the operator roster is root-equivalent
 // and held for operator ruling — not an accidental merge artifact.
 test fn witness_operator_roster_not_widened_to_whole_binary_install_or_systemctl() -> Bool {
-  list_length(items: fleet_posix_operator_sudo_grants()) == 1
-    && fleet_posix_operator_sudo_grant_is_hostnamectl_only()
-    && list_length(items: fleet_posix_ci_runner_sudo_grants()) >= 2
+  std.types.list_length(items: gunbc.fleet_posix_accounts.fleet_posix_operator_sudo_grants()) == 1
+    && gunbc.fleet_posix_accounts.fleet_posix_operator_sudo_grant_is_hostnamectl_only()
+    && std.types.list_length(items: gunbc.fleet_posix_accounts.fleet_posix_ci_runner_sudo_grants()) >= 2
 }
 
 // witness_convergence_suppresses_memory_max_set_property WAS HERE AND ITS DELETION IS THE POINT.
@@ -22,19 +22,19 @@ test fn witness_operator_roster_not_widened_to_whole_binary_install_or_systemctl
 
 // Residue removal uses systemctl revert (inverse of set-property), not a new set-property apply.
 test fn witness_control_shadow_revert_script_is_revert_not_set_property() -> Bool {
-  host_converge_slice1_shadow_revert_script_matches_authority(unit: host_converge_slice1_probe_unit)
+  gunbc.host_converge_slice1.host_converge_slice1_shadow_revert_script_matches_authority(unit: gunbc.host_converge_slice1.host_converge_slice1_probe_unit)
 }
 
 test fn witness_cap_author_before_shadow_revert_enforced_in_slice1() -> Bool {
-  host_converge_slice1_cap_author_before_shadow_revert_enforced
+  gunbc.host_converge_slice1.host_converge_slice1_cap_author_before_shadow_revert_enforced
 }
 
 test fn witness_shadow_revert_blocked_without_derived_dropins_on_disk() -> Bool {
-  !runner_memory_cap_author_ready_for_shadow_revert(observed: [])
-    && runner_memory_cap_author_ready_for_shadow_revert(observed: derived_runner_memory_cap_members())
+  !gunbc.host_axis_caps.runner_memory_cap_author_ready_for_shadow_revert(observed: [])
+    && gunbc.host_axis_caps.runner_memory_cap_author_ready_for_shadow_revert(observed: gunbc.host_axis_caps.derived_runner_memory_cap_members())
 }
 
 test fn witness_receipt_owner_readback_required() -> Bool {
-  converge_cli_receipt_owner_readback_required
-    && converge_cli_expected_receipt_owner_name() == "briansrls"
+  gunbc.fleet_converge_cli.converge_cli_receipt_owner_readback_required
+    && gunbc.fleet_converge_cli.converge_cli_expected_receipt_owner_name() == "briansrls"
 }

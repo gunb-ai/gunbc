@@ -4,7 +4,7 @@ module extdeps.sec.edgar
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.sec.gov/edgar/sec-api-documentation"
   }
 }
@@ -42,8 +42,8 @@ type CompanyFactsResponse {
 data structural_coverage_gap_company_facts_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "CompanyFactsResponse" },
-      extdeps.coverage.JsonPending { field: ".facts.* (full taxonomy map depth)" }
+      Subject { path: "CompanyFactsResponse" },
+      JsonPending { field: ".facts.* (full taxonomy map depth)" }
     ],
     trigger: "consumer needs full taxonomy/concept enumeration beyond the top-level entityName projection"
   }
@@ -52,8 +52,8 @@ data structural_coverage_gap_company_facts_residual: List<extdeps.coverage.Cover
 data structural_coverage_gap_company_concept_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "CompanyConceptResponse" },
-      extdeps.coverage.JsonPending { field: ".units (all measure axes)" }
+      Subject { path: "CompanyConceptResponse" },
+      JsonPending { field: ".units (all measure axes)" }
     ],
     trigger: "consumer needs every unit-of-measure axis, not the first-fact projection"
   }
@@ -64,7 +64,7 @@ fn cik_url_segment(cik: extdeps.sec.types.Cik) -> std.types.NonEmptyStr {
 }
 
 fn cik_padded_digits(cik: extdeps.sec.types.Cik) -> std.types.NonEmptyStr {
-  pad_cik_digits_loop(remaining: cik_digit_width() - string_length(cik.digits), acc: cik.digits)
+  pad_cik_digits_loop(remaining: extdeps.sec.types.cik_digit_width() - string_length(cik.digits), acc: cik.digits)
 }
 
 fn pad_cik_digits_loop(remaining: Int, acc: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
@@ -76,5 +76,5 @@ fn pad_cik_digits_loop(remaining: Int, acc: std.types.NonEmptyStr) -> std.types.
 }
 
 fn xbrl_concept_path_segment(ref: extdeps.sec.types.XbrlConceptRef) -> std.types.NonEmptyStr {
-  concat(xbrl_taxonomy_wire(taxonomy: ref.taxonomy), "/", ref.tag, ".json")
+  concat(extdeps.sec.types.xbrl_taxonomy_wire(taxonomy: ref.taxonomy), "/", ref.tag, ".json")
 }

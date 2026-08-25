@@ -5,15 +5,15 @@ data structural_red_control_fixture_note: String = "Test-only structural RED-con
 
 data structural_red_control_mint_site_qualified_name: String = "v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture.structural_red_control_mint_site_probe"
 
-fn structural_red_control_mint_site_probe() -> v2.std.logic.Bool {
-  let mint_ok = match mint_written_provenanced_rust_artifact(
-    inferred: direct_rust_door_inferred_tree,
-    target: direct_rust_door_target_model(),
+fn structural_red_control_mint_site_probe() -> Bool {
+  let mint_ok = match v2.compiler.self_host.candidate_generation.mint_written_provenanced_rust_artifact(
+    inferred: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_inferred_tree,
+    target: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_target_model(),
     module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path,
     workspace_dir: "/tmp/structural_red_control_mint_site_probe"
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
   mint_ok
 }

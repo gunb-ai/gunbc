@@ -125,14 +125,14 @@ type V1ComplexityInventoryRow {
 }
 
 fn v1_ref(decl_name: String) -> std.decl_ref.DeclarationRef {
-  decl_ref(module_path: "v1.compiler.complexity", decl_name: decl_name)
+  std.decl_ref.decl_ref(module_path: "v1.compiler.complexity", decl_name: decl_name)
 }
 
 data asymptotic_class_and_dominance: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
   item: SemanticCapabilityItem { capability: AsymptoticClassAndDominance },
   v1_carrier: v1_ref(decl_name: "classify_complexity"),
   disposition: CompleteInV2 {
-    carrier: decl_ref(module_path: "v2.lens.cost", decl_name: "asymptotic_class_of_cost"),
+    carrier: std.decl_ref.decl_ref(module_path: "v2.lens.cost", decl_name: "asymptotic_class_of_cost"),
     note: "v2 carries AsymptoticClass with asymptotic_class_dominates and a bounded lattice — the parity note's own table calls this row better factored than v1's String-returning classifier. No work owed." as std.types.NonEmptyStr
   }
 }
@@ -141,7 +141,7 @@ data polynomial_degree_reading: V1ComplexityInventoryRow = V1ComplexityInventory
   item: SemanticCapabilityItem { capability: PolynomialDegreeReading },
   v1_carrier: v1_ref(decl_name: "cost_expr_degree"),
   disposition: CompleteInV2 {
-    carrier: decl_ref(module_path: "v2.lens.cost", decl_name: "add_polynomial_degree"),
+    carrier: std.decl_ref.decl_ref(module_path: "v2.lens.cost", decl_name: "add_polynomial_degree"),
     note: "Audited by reading the composition path, not by matching names: IterativeCost composes as ProductCost, and asymptotic_class_of_cost routes ProductCost through multiply_classes to add_polynomial_degree, so nested iteration does climb degree structurally in v2. The exact per-element reading needs the binder that BoundedSummation carries and is rostered there." as std.types.NonEmptyStr
   }
 }
@@ -282,7 +282,7 @@ data call_graph_and_scc: V1ComplexityInventoryRow = V1ComplexityInventoryRow {
   item: SemanticCapabilityItem { capability: CallGraphAndScc },
   v1_carrier: v1_ref(decl_name: "build_scc_index"),
   disposition: IntegrationOwed {
-    substrate_carrier: decl_ref(module_path: "std.graph", decl_name: "graph_multi_node_scc_members"),
+    substrate_carrier: std.decl_ref.decl_ref(module_path: "std.graph", decl_name: "graph_multi_node_scc_members"),
     phase: ParityC4Interprocedural,
     note: "CENSUS CORRECTION to the parity table, which read 'Call graph / SCC — v1 yes, v2 no' and would have made this migration work. std.graph already carries CallGraph, forward and reverse adjacency, dfs_finish_order, dfs_collect_component, graph_multi_node_scc_members, graph_cycle_members and is_valid_proof, and v1.compiler.complexity reaches them by import; v2's lens modules import std.graph nowhere. Corrected again on operator review: the work is INTEGRATION, not nothing. Calling it discharged understated C4 — v2 must still consume the substrate and produce the facts it consumes." as std.types.NonEmptyStr
   }
@@ -292,7 +292,7 @@ data descent_evidence_vocabulary: V1ComplexityInventoryRow = V1ComplexityInvento
   item: SemanticCapabilityItem { capability: DescentEvidenceVocabulary },
   v1_carrier: v1_ref(decl_name: "construct_termination_proof"),
   disposition: IntegrationOwed {
-    substrate_carrier: decl_ref(module_path: "std.termination", decl_name: "DescentEvidence"),
+    substrate_carrier: std.decl_ref.decl_ref(module_path: "std.termination", decl_name: "DescentEvidence"),
     phase: ParityC4Interprocedural,
     note: "std.termination owns DescentEvidence, RankingDimension, DescentSource, TerminationProof and ProofEdge with the lattice meet and evidence rank, all imported by v1.compiler.complexity. The vocabulary a recursion bound is stated in is already consolidated on its single authority; what remains is v2 producing and consuming those facts, tracked with the walker row separately." as std.types.NonEmptyStr
   }
@@ -302,7 +302,7 @@ data cost_bound_vocabulary: V1ComplexityInventoryRow = V1ComplexityInventoryRow 
   item: SemanticCapabilityItem { capability: CostBoundVocabulary },
   v1_carrier: v1_ref(decl_name: "extract_shrink_factor"),
   disposition: IntegrationOwed {
-    substrate_carrier: decl_ref(module_path: "std.induction", decl_name: "derive_bound"),
+    substrate_carrier: std.decl_ref.decl_ref(module_path: "std.induction", decl_name: "derive_bound"),
     phase: ParityC1ExpressionAuthority,
     note: "std.induction carries SubValueRelation, CostBound with its Constant/Atomic/Forever/Error arms, AtomicCost, PolyCost, catamorphism_bound and derive_bound — a bound vocabulary derived from sub-value structure, imported by the seed. Named so C1 does not re-mint a cost-bound taxonomy the substrate already carries; the sibling note's do-not-re-mint list did not include it and now does." as std.types.NonEmptyStr
   }
@@ -312,7 +312,7 @@ data lowering_target_vocabulary: V1ComplexityInventoryRow = V1ComplexityInventor
   item: SemanticCapabilityItem { capability: LoweringTargetVocabulary },
   v1_carrier: v1_ref(decl_name: "proof_to_call_pattern"),
   disposition: IntegrationOwed {
-    substrate_carrier: decl_ref(module_path: "std.computation", decl_name: "lower_call_pattern"),
+    substrate_carrier: std.decl_ref.decl_ref(module_path: "std.computation", decl_name: "lower_call_pattern"),
     phase: ParityC4Interprocedural,
     note: "std.computation owns CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, IterationDimension and ShrinkFactor, all imported by the seed. The recursion-shape vocabulary a bounded recursive cost is computed against is shared substrate awaiting a v2 consumer." as std.types.NonEmptyStr
   }
@@ -596,4 +596,4 @@ fn inventory_identity_keys_distinct() -> Bool {
   keys_are_distinct(keys: inventory_identity_keys())
 }
 
-data capability_retirement_trigger_naming_note: std.dissolution.DissolutionCondition = unbound_dissolution(description: "NAMED CapabilityRetirementTrigger, not RetirementTrigger, and the reason is a §3 finding this census caught in itself. A bare RetirementTrigger ALREADY EXISTS in the tree as a VARIANT of gunbc.stage0_rust_honest_frontier_projection RustHonestFrontierDeferredAxis. Declaring a top-level type of that name shadowed the variant and broke lifecycle_totality_counts_retirement_trigger_as_underived_axis wi")
+data capability_retirement_trigger_naming_note: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "NAMED CapabilityRetirementTrigger, not RetirementTrigger, and the reason is a §3 finding this census caught in itself. A bare RetirementTrigger ALREADY EXISTS in the tree as a VARIANT of gunbc.stage0_rust_honest_frontier_projection RustHonestFrontierDeferredAxis. Declaring a top-level type of that name shadowed the variant and broke lifecycle_totality_counts_retirement_trigger_as_underived_axis wi")

@@ -3,7 +3,7 @@ module extdeps.github.actions_runner
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/actions/runner/releases"
   }
 }
@@ -25,17 +25,17 @@ fn actions_runner_published_linux_arch_key_of(arch: ActionsRunnerPublishedLinuxA
 
 fn actions_runner_published_linux_arch_of(arch: extdeps.toolchain.types.Architecture) -> ActionsRunnerPublishedLinuxArch? {
   match arch {
-    Aarch64 => Present { value: ActionsRunnerLinuxArm64 }
-    X86_64 => Present { value: ActionsRunnerLinuxX64 }
-    X86 => none
-    Arm => none
-    Armv7 => none
-    Mips => none
-    Mipsel => none
-    Mips64 => none
-    Mips64el => none
-    Riscv64 => none
-    Wasm32 => none
+    extdeps.toolchain.types.Aarch64 => Present { value: ActionsRunnerLinuxArm64 }
+    extdeps.toolchain.types.X86_64 => Present { value: ActionsRunnerLinuxX64 }
+    extdeps.toolchain.types.X86 => none
+    extdeps.toolchain.types.Arm => none
+    extdeps.toolchain.types.Armv7 => none
+    extdeps.toolchain.types.Mips => none
+    extdeps.toolchain.types.Mipsel => none
+    extdeps.toolchain.types.Mips64 => none
+    extdeps.toolchain.types.Mips64el => none
+    extdeps.toolchain.types.Riscv64 => none
+    extdeps.toolchain.types.Wasm32 => none
   }
 }
 
@@ -90,8 +90,8 @@ fn actions_runner_download_url(artifact: ActionsRunnerBinaryArtifact) -> String 
 
 data actions_runner_release_2_334_0: ActionsRunnerRelease = ActionsRunnerRelease {
   version: "2.334.0",
-  digest_aarch64: sha256_digest(hex: "f44255bd3e80160eb25f71bc83d06ea025f6908748807a584687b3184759f7e4"),
-  digest_x86_64: sha256_digest(hex: "048024cd2c848eb6f14d5646d56c13a4def2ae7ee3ad12122bee960c56f3d271"),
+  digest_aarch64: extdeps.crypto.hash.sha256_digest(hex: "f44255bd3e80160eb25f71bc83d06ea025f6908748807a584687b3184759f7e4"),
+  digest_x86_64: extdeps.crypto.hash.sha256_digest(hex: "048024cd2c848eb6f14d5646d56c13a4def2ae7ee3ad12122bee960c56f3d271"),
 }
 
 data actions_runner_base_dir: String = "/opt/actions-runner"
@@ -99,11 +99,11 @@ data actions_runner_base_dir: String = "/opt/actions-runner"
 data actions_runner_cache_dir: String = "/opt/actions-runner-cache"
 
 data actions_runner_slot_extract_script_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "host_effect_apply",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
@@ -136,7 +136,7 @@ fn actions_runner_slot_extract_script(
   join([
     "set -e",
     join(["curl -fsSL '", url, "' -o /tmp/actions-runner.tar.gz"], ""),
-    digest_shell_verify_line(digest: digest, file_path: "/tmp/actions-runner.tar.gz"),
+    extdeps.crypto.hash.digest_shell_verify_line(digest: digest, file_path: "/tmp/actions-runner.tar.gz"),
     join(["sudo rm -rf '", slot_dir as String, "'"], ""),
     join([
       "sudo install -d -m 755 -o ",
@@ -154,11 +154,11 @@ fn actions_runner_slot_extract_script(
 }
 
 data actions_runner_base_dir_ensure_script_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "host_effect_apply",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
@@ -176,9 +176,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.actions_runner",
       decl_name: "actions_runner_release_2_334_0",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.github.actions_runner.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

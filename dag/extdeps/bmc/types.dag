@@ -3,14 +3,14 @@ module extdeps.bmc.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.dmtf.org/standards/redfish"
   }
 }
 
 data phosphor_pid_control_stepwise_semantics_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/openbmc/phosphor-pid-control/blob/master/configure.md"
   }
 }
@@ -145,7 +145,7 @@ fn bmc_redfish_surface_matches(
   catalog: List<BmcRedfishSurfaceRow>,
   firmware: extdeps.bmc.capability.BmcFirmwareVersion,
 ) -> List<BmcRedfishSurfaceRow> {
-  filter(catalog, row => row.firmware == firmware)
+  v2.std.algebra.filter(catalog, row => row.firmware == firmware)
 }
 
 fn bmc_redfish_surface_for(
@@ -153,7 +153,7 @@ fn bmc_redfish_surface_for(
   firmware: extdeps.bmc.capability.BmcFirmwareVersion,
 ) -> BmcRedfishSurfaceDerivation {
   let matches = bmc_redfish_surface_matches(catalog: catalog, firmware: firmware)
-  let count = list_length(matches)
+  let count = std.types.list_length(matches)
   if count == 0 {
     SurfaceShapeUncatalogued { firmware: firmware }
   } else if count == 1 {
@@ -276,7 +276,7 @@ fn bmc_fan_curve_step_order_refusal(
       match acc.refusal {
         Present { value: _ } => acc
         Absent =>
-          if celsius_count(current.at_or_above) <= celsius_count(acc.previous.at_or_above) {
+          if std.measure.celsius_count(current.at_or_above) <= std.measure.celsius_count(acc.previous.at_or_above) {
             BmcFanCurveStepOrderFold {
               previous: acc.previous,
               refusal: Present {
@@ -286,7 +286,7 @@ fn bmc_fan_curve_step_order_refusal(
                 },
               },
             }
-          } else if percent_count(current.duty) < percent_count(acc.previous.duty) {
+          } else if std.measure.percent_count(current.duty) < std.measure.percent_count(acc.previous.duty) {
             BmcFanCurveStepOrderFold {
               previous: acc.previous,
               refusal: Present {
@@ -312,28 +312,28 @@ fn validate_bmc_fan_curve(curve: BmcFanCurve) -> BmcFanCurveValidation {
     Absent =>
       BmcFanCurveInvalid { cause: BmcFanCurveEmpty }
     Present { value: first } =>
-      if percent_count(curve.minimum_duty) > 100 {
+      if std.measure.percent_count(curve.minimum_duty) > 100 {
         BmcFanCurveInvalid {
           cause: BmcFanCurveDutyAboveFull {
             field: BmcFanCurveMinimumDuty,
             duty: curve.minimum_duty,
           },
         }
-      } else if percent_count(curve.sensor_unavailable_duty) > 100 {
+      } else if std.measure.percent_count(curve.sensor_unavailable_duty) > 100 {
         BmcFanCurveInvalid {
           cause: BmcFanCurveDutyAboveFull {
             field: BmcFanCurveSensorUnavailableDuty,
             duty: curve.sensor_unavailable_duty,
           },
         }
-      } else if percent_count(curve.zone_failsafe_duty) > 100 {
+      } else if std.measure.percent_count(curve.zone_failsafe_duty) > 100 {
         BmcFanCurveInvalid {
           cause: BmcFanCurveDutyAboveFull {
             field: BmcFanCurveZoneFailsafeDuty,
             duty: curve.zone_failsafe_duty,
           },
         }
-      } else if percent_count(first.duty) < percent_count(curve.minimum_duty) {
+      } else if std.measure.percent_count(first.duty) < std.measure.percent_count(curve.minimum_duty) {
         BmcFanCurveInvalid {
           cause: BmcFanCurveMinimumExceedsFirstStep {
             minimum: curve.minimum_duty,
@@ -353,7 +353,7 @@ fn validate_bmc_fan_curve(curve: BmcFanCurve) -> BmcFanCurveValidation {
               Absent =>
                 BmcFanCurveInvalid { cause: BmcFanCurveEmpty }
               Present { value: final_step } =>
-                if percent_count(final_step.duty) != 100 {
+                if std.measure.percent_count(final_step.duty) != 100 {
                   BmcFanCurveInvalid {
                     cause: BmcFanCurveTerminalDutyNotFull {
                       terminal_duty: final_step.duty,
@@ -385,7 +385,7 @@ fn bmc_fan_curve_duty_at(
     curve.steps,
     init: curve.minimum_duty,
     f: (selected, step) =>
-      if celsius_count(reading) >= celsius_count(step.at_or_above) {
+      if std.measure.celsius_count(reading) >= std.measure.celsius_count(step.at_or_above) {
         step.duty
       } else {
         selected

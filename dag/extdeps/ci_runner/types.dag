@@ -104,13 +104,13 @@ fn quoted_unit_label(quoted: QuotedByteMagnitude) -> std.types.NonEmptyStr {
 }
 
 // ONE PUBLISHED RUNNER SIZE. vcpus is a HardwareThreadCount rather than a bare
-// std.nat.Nat, matching what the CPU side of this repo already carries
+// Nat, matching what the CPU side of this repo already carries
 // (UbicloudRunnerCatalogRow.vcpus, CpuModelCatalogRow.threads) — a shared shape
 // is the wrong place to downgrade a unit those rows already model.
 //
 // The entitlement axis above says what one of these is BACKED BY; it does not
 // change what is being counted, which is advertised hardware threads either
-// way. Conversion to a bare std.nat.Nat happens only at the arithmetic boundary in the
+// way. Conversion to a bare Nat happens only at the arithmetic boundary in the
 // census fold.
 type RunnerShapeRow {
   provider: std.decl_ref.DeclarationRef

@@ -4,7 +4,7 @@ module extdeps.languages.html
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "html.spec.whatwg.org/"
   }
 }
@@ -129,11 +129,11 @@ fn parse_attrs_with(attrs_str: String, sp: std.markup.MarkupBracket) -> HtmlAttr
     } else if acc.is_value {
       let name = acc.pending_name
       let raw_val = piece
-      let is_url = attr_is_url_attr(name: name)
-      let unescaped = if is_url { unescape_url(s: raw_val) } else { unescape_attribute(s: raw_val) }
+      let is_url = std.markup.attr_is_url_attr(name: name)
+      let unescaped = if is_url { std.markup.unescape_url(s: raw_val) } else { std.markup.unescape_attribute(s: raw_val) }
       if is_url {
-        match validate_href(url: unescaped) {
-          RejectedHref { reason: _ } =>
+        match extdeps.uri_validation.validate_href(url: unescaped) {
+          extdeps.uri_validation.RejectedHref { reason: _ } =>
             HtmlAttrFoldState {
               attributes: acc.attributes,
               pending_name: "",
@@ -141,9 +141,9 @@ fn parse_attrs_with(attrs_str: String, sp: std.markup.MarkupBracket) -> HtmlAttr
               rejected: true,
               reject_reason: join(["rejected href: ", unescaped], ""),
             }
-          SafeHref { url: safe } =>
+          extdeps.uri_validation.SafeHref { url: safe } =>
             HtmlAttrFoldState {
-              attributes: concat(acc.attributes, [attr(name: name, value: safe )]),
+              attributes: concat(acc.attributes, [std.markup.attr(name: name, value: safe )]),
               pending_name: "",
               is_value: false,
               rejected: false,
@@ -152,7 +152,7 @@ fn parse_attrs_with(attrs_str: String, sp: std.markup.MarkupBracket) -> HtmlAttr
         }
       } else {
         HtmlAttrFoldState {
-          attributes: concat(acc.attributes, [attr(name: name, value: unescaped )]),
+          attributes: concat(acc.attributes, [std.markup.attr(name: name, value: unescaped )]),
           pending_name: "",
           is_value: false,
           rejected: false,
@@ -208,7 +208,7 @@ fn parse_one_with(s: String, sp: std.markup.MarkupBracket) -> HtmlParseOneResult
   } else {
     let text_raw = split(s: s, delimiter: sp.tag_open).first()
     let rest = html_strip_prefix(s: s, prefix: text_raw)
-    ParsedOne { node: std.markup.FragmentText { content: unescape_text(s: text_raw) }, rest: rest }
+    ParsedOne { node: std.markup.FragmentText { content: std.markup.unescape_text(s: text_raw) }, rest: rest }
   }
 }
 
@@ -244,15 +244,15 @@ fn html_medium_with(sp: std.markup.MarkupBracket) -> std.markup.MarkupMedium {
   std.markup.MarkupMedium {
     tag_overrides: [],
     bracket: sp,
-    text_escape: EscapeHtml,
+    text_escape: std.markup.EscapeHtml,
     void_tags: html5_void_tags,
-    void_rendering: OmitClose,
+    void_rendering: std.markup.OmitClose,
     raw_text_tags: html5_raw_text_tags,
   }
 }
 
 fn serialize_html_source_with(node: std.markup.Fragment, sp: std.markup.MarkupBracket) -> String {
-  serialize_fragment_with(frag: node, medium: html_medium_with(sp: sp))
+  std.markup.serialize_fragment_with(frag: node, medium: html_medium_with(sp: sp))
 }
 
 fn serialize_html_source(node: std.markup.Fragment) -> String {
@@ -272,8 +272,8 @@ fn ingest_html_source(src: String) -> HtmlIngestResult {
   ingest_html_source_with(src: src, sp: canonical_html_spellings)
 }
 
-fn html_medium_lossless(node: std.markup.Fragment) -> Medium<std.markup.Fragment> {
-  extdeps.communication.medium.Medium { carried: node, fidelity: Lossless }
+fn html_medium_lossless(node: std.markup.Fragment) -> extdeps.communication.medium.Medium<std.markup.Fragment> {
+  extdeps.communication.medium.Medium { carried: node, fidelity: extdeps.communication.medium.Lossless }
 }
 
 type HtmlEmitResult
@@ -282,18 +282,18 @@ type HtmlEmitResult
 
 fn raw_text_children_text(children: List<std.markup.Fragment>) -> String {
   fold(children, init: "", f: (acc, c) => match c {
-    FragmentText { content: t } => concat(acc, t)
-    RawNode { content: t } => concat(acc, t)
-    Element { tag: _, attributes: _, children: _ } => acc
+    std.markup.FragmentText { content: t } => concat(acc, t)
+    std.markup.RawNode { content: t } => concat(acc, t)
+    std.markup.Element { tag: _, attributes: _, children: _ } => acc
   })
 }
 
 fn raw_text_hazard(node: std.markup.Fragment) -> String {
   match node {
-    FragmentText { content: _ } => ""
-    RawNode { content: _ } => ""
-    Element { tag: t, attributes: _, children: kids } =>
-      if tag_in_set(tag: t, tags: html5_raw_text_tags) {
+    std.markup.FragmentText { content: _ } => ""
+    std.markup.RawNode { content: _ } => ""
+    std.markup.Element { tag: t, attributes: _, children: kids } =>
+      if std.markup.tag_in_set(tag: t, tags: html5_raw_text_tags) {
         if string_contains(s: raw_text_children_text(children: kids), pattern: concat("</", t)) {
           join(["raw-text element <", t, "> content contains its own close sequence '</", t, "' — refusing to serialize (corruption otherwise); restructure the content"], "")
         } else {
@@ -310,7 +310,7 @@ fn raw_text_children_hazard(children: List<std.markup.Fragment>) -> String {
 }
 
 fn try_serialize_html_source(node: std.markup.Fragment) -> HtmlEmitResult {
-  match find_first_rejected_url(node: node) {
+  match extdeps.uri_validation.find_first_rejected_url(node: node) {
     Present { value: r } =>
       EmitRejected { reason: r.url }
     Absent => {

@@ -1,7 +1,7 @@
 module v2.workflow.orchestration_while_emit
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data orch_while_unfreeze_note: String = "THIS FILE CAME BACK. It lived at exactly this path until gunbc#7098 (commit 5f1872bd159, 2026-07-23) renamed it to src/v2/test/claim/long/ under the title 'orch_while falsifier fast-lane relocation' — a pure rename, three lines added and one changed, the added lines being the note that justified the move. The note it carried claimed 'these three check_fns' own eval exceeds the operator's 5-second fast-lane budget' and cited gunbc_ci_fast_lane_rule_note. THE MEASUREMENT DOES NOT SUPPORT THAT CLAIM TODAY, and this row exists to say so with the numbers rather than to assert a correction. Executed 2026-08-05 via claim_batch over this file's four check_fns, on a host carrying load average 28: orch_while_locate_pipeline_matches_golden_holds 94ms, orch_while_step_matches_golden_holds 54ms, orch_while_raw_while_perturbation_changes_bytes_holds 36ms, orch_while_path_kind_discriminates_regular_directory_missing_holds 8ms — 192ms for all four together, against a FIVE THOUSAND millisecond PER-WITNESS budget. WHY THE CLOCK MISMATCH DOES NOT SPOIL THIS, stated because getting it backwards is easy and was gotten backwards elsewhere in this repo: those four figures are WALL (claim_batch reports them as witness_eval_wall_nanos and they sum to it), while gunbc_ci_fast_lane_witness_eval_budget is enforced on thread CPU, which excludes descheduled time. For a single witness thread cpu <= wall, so a wall figure BOUNDS the cpu figure ABOVE — a small wall proves a small cpu, and the load-28 host can only have inflated it. The margin is 53x on the slowest witness and every source of error runs the safe way. WHAT THAT DOES NOT ESTABLISH: not that the 2026-07-23 claim was false when it was made — no measurement from that day survives to compare against, the relocating commit recorded none, and this row will not invent one. It establishes only that the budget does not justify the exclusion NOW. THE MOVE COST MORE THAN DISCOVERY. src/v2/test is absent from realization_vocab_consumer_scan_roots, while src/v2/workflow/orchestration_ sits in realization_edge_path_prefixes — so this file, which imports the confined v2.extdeps.languages.bash vocabulary, was licensed to do so at its old path, and at the long/ path was simply not scanned. The relocation therefore removed it from per-PR execution AND from the realization-containment scan in one motion, and neither loss was stated. Coming back restores both. THE FREEZE SHRINKS BY ONE ENTRY (14 identities) — gunbc.witness_deferral_freeze's roster may only shrink against its diff baseline, and this is that direction, not an exemption. TEN OF THOSE FOURTEEN IDENTITIES WERE NEVER WITNESSES, and discovering that is what the return actually bought (CI run 31023883137, the first execution of this file in per-PR discovery). The file declared its fixtures — the PathIntent rows, the PathPredicate, the DirnameAscent, the two derived command Strings, the three PipelineStep intents — as `test data`, and `test data` does not mean 'a declaration belonging to a test'; it means A WITNESS WHOSE VALUE IS THE VERDICT, so discovery evaluated all ten and refused each one for returning PathIntent or PipelineStep or String rather than Bool. Every other `test data` row across every discovered src/v2/workflow/*_test.dag is Bool; these ten were the only exceptions in the corpus. They are plain `data` now, and the four real `test fn` witnesses — which PASSED in that same run — are the whole witness population. THE POINT IS NOT THE TYPO. Under path policy this file was never evaluated, so nothing could distinguish a fixture from a witness inside it, and the freeze row duly recorded fourteen 'identities' when four are witnesses and ten are values they consume. That is the frozen population's own accounting inflating the thing it counts, and it is the same defect at the roster grain that gunbc.witness_deferral_freeze's purpose-frontier note already admits at the row grain: these identities were admitted with no purpose, no cost and no consumer recorded, so nothing checked whether they were even the kind of thing a witness roster holds. A frozen row cannot be trusted as a count of deferred COVERAGE; it is a count of deferred NAMES. Any future migration out of that roster should expect the same discrepancy and re-derive the witness set by execution rather than by reading the row."
 
@@ -22,7 +22,7 @@ data orch_while_memory_peak_path: std.path_intent.PathIntent = std.path_intent.P
   suffix: std.types.FilePathParts { segments: ["memory.peak"] }
 }
 
-data orch_while_predicate: std.path_intent.PathPredicate = std.path_intent.And {
+data orch_while_predicate: PathPredicate = std.path_intent.And {
   lhs: std.path_intent.PathNonempty { path: orch_while_path_ref },
   rhs: std.path_intent.And {
     lhs: std.path_intent.PathNotEq {
@@ -44,24 +44,24 @@ data orch_while_ascent: std.path_intent.DirnameAscent = std.path_intent.DirnameA
 }
 
 fn orch_while_cond_model_text() -> String {
-  match bash_path_predicate_target_model(predicate: orch_while_predicate) {
-    Accepted { value: source, diagnostics: dg } =>
+  match v2.extdeps.languages.bash_orch_if.bash_path_predicate_target_model(predicate: orch_while_predicate) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
       match dg {
-        None => source.authority_source_text
+        v2.std.diagnostic.None => source.authority_source_text
         Some { diagnostics: _ } => ""
       }
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
 }
 
 fn orch_while_body_model_text() -> String {
-  match bash_dirname_ascent_target_model(ascent: orch_while_ascent) {
-    Accepted { value: source, diagnostics: dg } =>
+  match v2.extdeps.languages.bash_orch_if.bash_dirname_ascent_target_model(ascent: orch_while_ascent) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
       match dg {
-        None => source.authority_source_text
+        v2.std.diagnostic.None => source.authority_source_text
         Some { diagnostics: _ } => ""
       }
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
 }
 
@@ -74,8 +74,8 @@ data orch_while_locate_intent: v2.std.orchestration.PipelineStep = v2.std.orches
     run: v2.std.orchestration.Run {
       command: orch_while_cond_command,
       env: Empty,
-      redirect: v2.std.optional.Absent,
-      capture: v2.std.optional.Absent
+      redirect: v2.std.collection.Absent,
+      capture: v2.std.collection.Absent
     }
   },
   body: v2.std.orchestration.Pipeline {
@@ -84,12 +84,12 @@ data orch_while_locate_intent: v2.std.orchestration.PipelineStep = v2.std.orches
         run: v2.std.orchestration.Run {
           command: orch_while_body_command,
           env: Empty,
-          redirect: v2.std.optional.Absent,
-          capture: v2.std.optional.Absent
+          redirect: v2.std.collection.Absent,
+          capture: v2.std.collection.Absent
         }
       }
     ],
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
@@ -98,8 +98,8 @@ data orch_while_locate_perturbed_intent: v2.std.orchestration.PipelineStep = v2.
     run: v2.std.orchestration.Run {
       command: concat(orch_while_cond_command, " # perturbed"),
       env: Empty,
-      redirect: v2.std.optional.Absent,
-      capture: v2.std.optional.Absent
+      redirect: v2.std.collection.Absent,
+      capture: v2.std.collection.Absent
     }
   },
   body: v2.std.orchestration.Pipeline {
@@ -108,12 +108,12 @@ data orch_while_locate_perturbed_intent: v2.std.orchestration.PipelineStep = v2.
         run: v2.std.orchestration.Run {
           command: orch_while_body_command,
           env: Empty,
-          redirect: v2.std.optional.Absent,
-          capture: v2.std.optional.Absent
+          redirect: v2.std.collection.Absent,
+          capture: v2.std.collection.Absent
         }
       }
     ],
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
@@ -122,8 +122,8 @@ data orch_while_locate_body_perturbed_intent: v2.std.orchestration.PipelineStep 
     run: v2.std.orchestration.Run {
       command: orch_while_cond_command,
       env: Empty,
-      redirect: v2.std.optional.Absent,
-      capture: v2.std.optional.Absent
+      redirect: v2.std.collection.Absent,
+      capture: v2.std.collection.Absent
     }
   },
   body: v2.std.orchestration.Pipeline {
@@ -132,74 +132,74 @@ data orch_while_locate_body_perturbed_intent: v2.std.orchestration.PipelineStep 
         run: v2.std.orchestration.Run {
           command: concat(orch_while_body_command, " # perturbed"),
           env: Empty,
-          redirect: v2.std.optional.Absent,
-          capture: v2.std.optional.Absent
+          redirect: v2.std.collection.Absent,
+          capture: v2.std.collection.Absent
         }
       }
     ],
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
 test fn orch_while_locate_pipeline_matches_golden_holds() -> Bool {
-  match orch_emit_pipeline(
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(
     p: v2.std.orchestration.Pipeline {
       steps: [
         v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: orch_while_assign_cgroup_dir_command,
             env: Empty,
-            redirect: v2.std.optional.Absent,
-            capture: v2.std.optional.Absent
+            redirect: v2.std.collection.Absent,
+            capture: v2.std.collection.Absent
           }
         },
         orch_while_locate_intent
       ],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     },
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: source, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_while_locate_golden) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn orch_while_step_matches_golden_holds() -> Bool {
-  match orch_emit_pipeline(
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(
     p: v2.std.orchestration.Pipeline {
       steps: [
         v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: orch_while_assign_cgroup_dir_command,
             env: Empty,
-            redirect: v2.std.optional.Absent,
-            capture: v2.std.optional.Absent
+            redirect: v2.std.collection.Absent,
+            capture: v2.std.collection.Absent
           }
         },
         orch_while_locate_intent
       ],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     },
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: source, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_while_locate_golden) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 data orch_while_raw_while_deferred_note: String = "Raw While construction refusal is deferred here: the current seam only proves emitted-bytes perturbation, because orch_emit_step routes While through the byte-emitting target model and does not expose a dedicated construction/lens refusal carrier yet. This witness only checks that changing the raw cond text changes the emitted bytes."
 
 test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: v2.std.orchestration.While {
       cond: v2.std.orchestration.ExitZero {
         run: v2.std.orchestration.Run {
           command: concat(orch_while_cond_command, " # raw-while"),
           env: Empty,
-          redirect: v2.std.optional.Absent,
-          capture: v2.std.optional.Absent
+          redirect: v2.std.collection.Absent,
+          capture: v2.std.collection.Absent
         }
       },
       body: v2.std.orchestration.Pipeline {
@@ -208,49 +208,49 @@ test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
             run: v2.std.orchestration.Run {
               command: orch_while_body_command,
               env: Empty,
-              redirect: v2.std.optional.Absent,
-              capture: v2.std.optional.Absent
+              redirect: v2.std.collection.Absent,
+              capture: v2.std.collection.Absent
             }
           }
         ],
-        on_failure: FailFast
+        on_failure: v2.std.orchestration.FailFast
       }
     },
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: source, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
       source.carried != orch_while_locate_golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn orch_while_path_kind_discriminates_regular_directory_missing_holds() -> Bool {
-  let regular = match bash_path_predicate_target_model(
+  let regular = match v2.extdeps.languages.bash_orch_if.bash_path_predicate_target_model(
     predicate: std.path_intent.PathEntryKind {
       path: orch_while_memory_peak_path,
       kind: std.filesystem.types.RegularFile
     }
   ) {
-    Accepted { value: source, diagnostics: _ } => source.authority_source_text
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.authority_source_text
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
-  let directory = match bash_path_predicate_target_model(
+  let directory = match v2.extdeps.languages.bash_orch_if.bash_path_predicate_target_model(
     predicate: std.path_intent.PathEntryKind {
       path: orch_while_memory_peak_path,
       kind: std.filesystem.types.Directory
     }
   ) {
-    Accepted { value: source, diagnostics: _ } => source.authority_source_text
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.authority_source_text
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
-  let missing = match bash_path_predicate_target_model(
+  let missing = match v2.extdeps.languages.bash_orch_if.bash_path_predicate_target_model(
     predicate: std.path_intent.PathEntryKind {
       path: orch_while_memory_peak_path,
       kind: std.filesystem.types.Missing
     }
   ) {
-    Accepted { value: source, diagnostics: _ } => source.authority_source_text
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } => source.authority_source_text
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
   (regular == "[ -f \"$d/memory.peak\" ]")
     && (directory == "[ -d \"$d/memory.peak\" ]")

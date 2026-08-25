@@ -1,5 +1,6 @@
 module test.claim.observation_ci_render_witness_test
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_note: String = "P1 flagship acceptance (docs/plans/progress-observation-design.md section 5): re-render the CAPTURED crawl window of run 30044816605 through the escalation law and produce named activity where there was silence. The fixture below is not invented — every number is read off that run's log: the heartbeat at t=33m carried current=16107200512 swap=34359738368 psi_some_avg10=9.01 and named no subject, and the module the process was actually inside for the whole window, v2.compiler.normalized_tree, was disclosed only at walk end as typecheck-attribution ms=606984. The renderer is a pure function of the stream, which is exactly what makes replaying a real captured run possible."
@@ -248,7 +249,7 @@ fn proj_leaf_subject(entry: std.types.NonEmptyStr) -> std.observation.Observatio
   }
 }
 
-fn proj_event(subject: std.observation.ObservationSubject, transition: std.observation.ObservationTransition) -> std.observation.ObservationEvent {
+fn proj_event(subject: std.observation.ObservationSubject, transition: ObservationTransition) -> std.observation.ObservationEvent {
   std.observation.ObservationEvent {
     subject: subject,
     transition: transition,
@@ -262,8 +263,8 @@ test fn w_a_passing_witness_folds_into_its_batch_and_emits_nothing() -> Bool {
     event: proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
     grain: Present { value: std.observation.BatchGrain },
   ) {
-    FoldedIntoRollup { at: a } => std.observation.observation_subject_contains(ancestor: a, descendant: proj_leaf_subject(entry: "dag/a.dag"))
-    EmittedAtLeaf { reason: _ } => false
+    gunbc.observation_ci_render.FoldedIntoRollup { at: a } => std.observation.observation_subject_contains(ancestor: a, descendant: proj_leaf_subject(entry: "dag/a.dag"))
+    gunbc.observation_ci_render.EmittedAtLeaf { reason: _ } => false
   }
 }
 
@@ -272,9 +273,9 @@ test fn w_RED_a_failure_pierces_the_fold_at_its_exact_leaf() -> Bool {
     event: proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Failed { error: "witness red", output: "" } }),
     grain: Present { value: std.observation.BatchGrain },
   ) {
-    FoldedIntoRollup { at: _ } => false
-    EmittedAtLeaf { reason: r } => match r {
-      AnomalyPierces => true
+    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => false
+    gunbc.observation_ci_render.EmittedAtLeaf { reason: r } => match r {
+      gunbc.observation_ci_render.AnomalyPierces => true
       _ => false
     }
   }
@@ -285,8 +286,8 @@ test fn w_RED_a_refusal_pierces_the_fold_too() -> Bool {
     event: proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: std.observation.Refused { diagnostic: "admission refused" } }),
     grain: Present { value: std.observation.BatchGrain },
   ) {
-    FoldedIntoRollup { at: _ } => false
-    EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.AnomalyPierces => true, _ => false }
+    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => false
+    gunbc.observation_ci_render.EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.AnomalyPierces => true, _ => false }
   }
 }
 
@@ -295,8 +296,8 @@ test fn w_verbose_leaf_grain_emits_every_routine_event() -> Bool {
     event: proj_event(subject: proj_leaf_subject(entry: "dag/d.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
     grain: none,
   ) {
-    FoldedIntoRollup { at: _ } => false
-    EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.LeafGrainRequested => true, _ => false }
+    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => false
+    gunbc.observation_ci_render.EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.LeafGrainRequested => true, _ => false }
   }
 }
 
@@ -305,8 +306,8 @@ test fn w_RED_an_event_with_no_ancestor_at_the_grain_is_emitted_not_dropped() ->
     event: proj_event(subject: proj_batch_subject(), transition: std.observation.Concluded { outcome: std.observation.Done }),
     grain: Present { value: std.observation.ModuleGrain },
   ) {
-    FoldedIntoRollup { at: _ } => false
-    EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.NoAncestorAtGrain => true, _ => false }
+    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => false
+    gunbc.observation_ci_render.EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.NoAncestorAtGrain => true, _ => false }
   }
 }
 
@@ -319,8 +320,8 @@ test fn w_batch_summary_reports_the_folded_counts() -> Bool {
     ],
     init: std.observation.observation_rollup_open(subject: proj_batch_subject()),
     f: (acc, e) => match std.observation.observation_rollup_accept(rollup: acc, event: e) {
-      RollupAccepted { rollup: r } => r
-      RollupSubjectOutOfScope { subject: _ } => acc
+      std.observation.RollupAccepted { rollup: r } => r
+      std.observation.RollupSubjectOutOfScope { subject: _ } => acc
     }
   )
   let line = gunbc.observation_ci_render.ci_batch_summary_line(rollup: folded)
@@ -338,8 +339,8 @@ test fn w_RED_a_batch_carrying_a_failure_summarises_as_an_anomaly() -> Bool {
     ],
     init: std.observation.observation_rollup_open(subject: proj_batch_subject()),
     f: (acc, e) => match std.observation.observation_rollup_accept(rollup: acc, event: e) {
-      RollupAccepted { rollup: r } => r
-      RollupSubjectOutOfScope { subject: _ } => acc
+      std.observation.RollupAccepted { rollup: r } => r
+      std.observation.RollupSubjectOutOfScope { subject: _ } => acc
     }
   )
   let line = gunbc.observation_ci_render.ci_batch_summary_line(rollup: folded)
@@ -454,8 +455,8 @@ test fn w_RED_verbose_does_not_fold_but_normal_and_quiet_do() -> Bool {
 
 fn proj_folds_at_batch(e: std.observation.ObservationEvent) -> Bool {
   match gunbc.observation_ci_render.ci_routine_projection(event: e, grain: Present { value: std.observation.BatchGrain }) {
-    FoldedIntoRollup { at: _ } => true
-    EmittedAtLeaf { reason: _ } => false
+    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => true
+    gunbc.observation_ci_render.EmittedAtLeaf { reason: _ } => false
   }
 }
 
@@ -561,11 +562,11 @@ test fn w_RED_human_elapsed_minute_switch_boundary_holds() -> Bool {
 // columns, which is the property that failed when a reader's padding-sensitive pattern silently
 // selected only long identities out of a 142-row population.
 test fn w_witness_claim_line_carries_the_runtime_cause() -> Bool {
-  let text = ci_witness_claim_result_text(
+  let text = gunbc.observation_ci_render.ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
     verdict: WitnessRuntimeError { cause: WitnessCauseNoSuchVariable },
-    wall: nanosecond(count: 230000000)
+    wall: std.measure.nanosecond(count: 230000000)
   )
   string_contains(s: text, pattern: "//test/claim/foo:w_bar")
     && string_contains(s: text, pattern: "ERROR in 230ms")
@@ -576,17 +577,17 @@ test fn w_witness_claim_line_carries_the_runtime_cause() -> Bool {
 // that appended a CONSTANT cause field would satisfy it. Two rows identical in every argument but
 // the cause must differ, so the field has to be a function of the cause and not decoration.
 test fn w_RED_two_causes_do_not_render_the_same_row() -> Bool {
-  let missing_name = ci_witness_claim_result_text(
+  let missing_name = gunbc.observation_ci_render.ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
     verdict: WitnessRuntimeError { cause: WitnessCauseNoSuchVariable },
-    wall: nanosecond(count: 230000000)
+    wall: std.measure.nanosecond(count: 230000000)
   )
-  let wrong_type = ci_witness_claim_result_text(
+  let wrong_type = gunbc.observation_ci_render.ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
     verdict: WitnessRuntimeError { cause: WitnessCauseTypeError },
-    wall: nanosecond(count: 230000000)
+    wall: std.measure.nanosecond(count: 230000000)
   )
   missing_name != wrong_type
     && string_contains(s: wrong_type, pattern: "cause=type-error")
@@ -598,17 +599,17 @@ test fn w_RED_two_causes_do_not_render_the_same_row() -> Bool {
 // appended something, and a PASSED row that grew a trailing field would break every consumer
 // reading the existing format. This pins that the addition is confined to the arm that needed it.
 test fn w_RED_non_error_rows_carry_no_cause_field() -> Bool {
-  let passed = ci_witness_claim_result_text(
+  let passed = gunbc.observation_ci_render.ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
     verdict: WitnessPassed,
-    wall: nanosecond(count: 230000000)
+    wall: std.measure.nanosecond(count: 230000000)
   )
-  let known_red = ci_witness_claim_result_text(
+  let known_red = gunbc.observation_ci_render.ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
     verdict: WitnessKnownRed,
-    wall: nanosecond(count: 230000000)
+    wall: std.measure.nanosecond(count: 230000000)
   )
   !string_contains(s: passed, pattern: "cause=")
     && !string_contains(s: known_red, pattern: "cause=")
@@ -621,9 +622,9 @@ test fn w_RED_non_error_rows_carry_no_cause_field() -> Bool {
 // the arm is unreachable TODAY, and an unreachable arm with no evidence is the one that quietly
 // stops meaning anything.
 test fn w_mapped_outcome_escape_renders_its_own_cause() -> Bool {
-  ci_witness_runtime_cause_token(cause: WitnessCauseMappedOutcomeEscaped) == "mapped-outcome-escaped"
-    && ci_witness_runtime_cause_token(cause: WitnessCauseMappedOutcomeEscaped)
-      != ci_witness_runtime_cause_token(cause: WitnessCauseTypeError)
+  gunbc.observation_ci_render.ci_witness_runtime_cause_token(cause: WitnessCauseMappedOutcomeEscaped) == "mapped-outcome-escaped"
+    && gunbc.observation_ci_render.ci_witness_runtime_cause_token(cause: WitnessCauseMappedOutcomeEscaped)
+      != gunbc.observation_ci_render.ci_witness_runtime_cause_token(cause: WitnessCauseTypeError)
 }
 
 // THE FOUR CAUSES THE MEASURED POPULATION ACTUALLY CARRIES, pinned as distinct tokens. On main
@@ -632,10 +633,10 @@ test fn w_mapped_outcome_escape_renders_its_own_cause() -> Bool {
 // so `no declaration named X` and `no declaration named Y` counted separately. These four are
 // what that population reduces to once the cause is read from the type instead of the prose.
 test fn w_measured_population_causes_are_four_distinct_tokens() -> Bool {
-  let a = ci_witness_runtime_cause_token(cause: WitnessCauseNoSuchVariable)
-  let b = ci_witness_runtime_cause_token(cause: WitnessCauseTypeError)
-  let c = ci_witness_runtime_cause_token(cause: WitnessCauseNoSuchFunction)
-  let d = ci_witness_runtime_cause_token(cause: WitnessCauseCallContractMismatch)
+  let a = gunbc.observation_ci_render.ci_witness_runtime_cause_token(cause: WitnessCauseNoSuchVariable)
+  let b = gunbc.observation_ci_render.ci_witness_runtime_cause_token(cause: WitnessCauseTypeError)
+  let c = gunbc.observation_ci_render.ci_witness_runtime_cause_token(cause: WitnessCauseNoSuchFunction)
+  let d = gunbc.observation_ci_render.ci_witness_runtime_cause_token(cause: WitnessCauseCallContractMismatch)
   a != b && a != c && a != d && b != c && b != d && c != d
 }
 

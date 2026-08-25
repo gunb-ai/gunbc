@@ -29,7 +29,7 @@ fn run_closure_ingest_overlay_claims(
   manifest_dir: String,
   claims: List<tools.host_prelude.ClaimRun>
 ) -> Bool {
-  let emitted = gunbc.WitnessBin.Run(
+  let emitted = WitnessBin.Run(
     workdir: root,
     bin_path: tools.host_prelude.witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
     args: closure_manifest_emit_args(
@@ -51,7 +51,7 @@ fn run_closure_boundary_overlay_claims(
   root: String,
   manifest_dir: String
 ) -> Bool {
-  let emitted = gunbc.WitnessBin.Run(
+  let emitted = WitnessBin.Run(
     workdir: root,
     bin_path: tools.host_prelude.witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
     args: closure_manifest_emit_args(
@@ -128,7 +128,7 @@ func run_compiler_closure_ingest_gate() -> Bool {
   let root = git.Inspect.Toplevel()
   let ingest_bin = tools.host_prelude.witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
   match tools.host_prelude.witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
-    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
-    WitnessBinReady { path: _ } => run_compiler_closure_ingest_gate_ready(root: root.path)
+    tools.host_prelude.WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+    tools.host_prelude.WitnessBinReady { path: _ } => run_compiler_closure_ingest_gate_ready(root: root.path)
   }
 }

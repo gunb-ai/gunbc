@@ -1,11 +1,11 @@
 module v2.test.fact_cardinality.lens_unit.synthetic_unified_green
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data synthetic_unified_dag: v2.lens.fact_cardinality.FactCardinalityDeclFact = v2.lens.fact_cardinality.FactCardinalityDeclFact {
   rel_path_decl_key: "std/algebra.dag:Lattice",
-  tree: v2.lens.affected_set.Dag,
+  tree: Dag,
   content_hash: "7e31b580ce38306e"
 }
 
@@ -15,12 +15,12 @@ data synthetic_unified_v2: v2.lens.fact_cardinality.FactCardinalityDeclFact = v2
   content_hash: "7e31b580ce38306e"
 }
 
-test fn synthetic_unified_green_holds() -> v2.std.logic.Bool {
-  fact_cardinality_cross_tree_coexistence(
+test fn synthetic_unified_green_holds() -> Bool {
+  v2.lens.fact_cardinality.fact_cardinality_cross_tree_coexistence(
     left: synthetic_unified_dag,
     right: synthetic_unified_v2
   )
-    && !fact_cardinality_cross_tree_diverged_fork(
+    && !v2.lens.fact_cardinality.fact_cardinality_cross_tree_diverged_fork(
       left: synthetic_unified_dag,
       right: synthetic_unified_v2
     )

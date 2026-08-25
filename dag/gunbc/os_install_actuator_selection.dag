@@ -28,9 +28,9 @@ data os_install_actuator_requirement_kinds: List<OsInstallActuatorRequirementKin
   InstallWindowAvailability,
 ]
 
-data srv3_os_install_actuator_candidate_hosts: List<gunbc.fleet_intent.ComputeHost> = [srv1_host, srv2_host]
+data srv3_os_install_actuator_candidate_hosts: List<gunbc.fleet_intent.ComputeHost> = [gunbc.fleet_intent.srv1_host, gunbc.fleet_intent.srv2_host]
 
-data srv3_install_target_bmc_address: std.types.NonEmptyStr = asrock_srv3_live_bmc_host
+data srv3_install_target_bmc_address: std.types.NonEmptyStr = extdeps.boards.asrock_rack.asrock_srv3_live_bmc_host
 
 type ActuatorToolchainHostObservation {
   host: product.placement_supply.HostIdentity
@@ -38,7 +38,7 @@ type ActuatorToolchainHostObservation {
 }
 
 data srv1_actuator_toolchain_observation: ActuatorToolchainHostObservation = ActuatorToolchainHostObservation {
-  host: operator_host_srv1,
+  host: gunbc.fleet_intent_network.operator_host_srv1,
   satisfied: true,
 }
 
@@ -46,25 +46,25 @@ data srv1_install_window_load: Int = 13
 data srv2_install_window_load: Int = 13
 
 data srv2_actuator_toolchain_observation: ActuatorToolchainHostObservation = ActuatorToolchainHostObservation {
-  host: operator_host_srv2,
+  host: gunbc.fleet_intent_network.operator_host_srv2,
   satisfied: true,
 }
 
 data srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.os_install_actuator_selection",
     decl_name: "OsInstallActuatorReachFacts",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data srv3_os_install_actuator_host_unsatisfiable_fallback_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.os_install_actuator_selection",
     decl_name: "srv3_os_install_actuator_host",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -74,11 +74,11 @@ data live_srv3_actuator_reach_facts: OsInstallActuatorReachFacts = OsInstallActu
 }
 
 data srv3_os_install_actuator_tie_break_policy: OsInstallActuatorTieBreakPolicy = OperatorHostPreference {
-  order: [operator_host_srv1, operator_host_srv2],
+  order: [gunbc.fleet_intent_network.operator_host_srv1, gunbc.fleet_intent_network.operator_host_srv2],
 }
 
 fn host_identity_is_actuator_candidate(identity: product.placement_supply.HostIdentity) -> Bool {
-  identity == operator_host_srv1 || identity == operator_host_srv2
+  identity == gunbc.fleet_intent_network.operator_host_srv1 || identity == gunbc.fleet_intent_network.operator_host_srv2
 }
 
 fn host_identity_on_operator_lan(identity: product.placement_supply.HostIdentity) -> Bool {
@@ -86,9 +86,9 @@ fn host_identity_on_operator_lan(identity: product.placement_supply.HostIdentity
 }
 
 fn reach_fact_for_host(facts: OsInstallActuatorReachFacts, identity: product.placement_supply.HostIdentity) -> Bool {
-  if identity == operator_host_srv1 {
+  if identity == gunbc.fleet_intent_network.operator_host_srv1 {
     facts.srv1_reaches_target_bmc
-  } else if identity == operator_host_srv2 {
+  } else if identity == gunbc.fleet_intent_network.operator_host_srv2 {
     facts.srv2_reaches_target_bmc
   } else {
     false
@@ -101,10 +101,10 @@ fn os_install_actuator_requirement_bmc_network_reach(
 ) -> Bool {
   host_identity_on_operator_lan(identity: candidate.identity)
     && reach_fact_for_host(facts: facts, identity: candidate.identity)
-    && network_reachability(from: HostLan, to: BmcManagement)
+    && product.network_topology.network_reachability(from: product.network_topology.HostLan, to: product.network_topology.BmcManagement)
     && srv3_bmc_endpoint.address == srv3_install_target_bmc_address
-    && srv3_bmc_endpoint.locality == Lan
-    && operator_lan_segment.locality == Lan
+    && srv3_bmc_endpoint.locality == product.network_topology.Lan
+    && operator_lan_segment.locality == product.network_topology.Lan
 }
 
 fn optional_actuator_toolchain_observation_when_matching(
@@ -140,7 +140,7 @@ fn actuator_host_satisfies_toolchain_requirement(
   match actuator_toolchain_observation_for_host(host: host) {
     Present { value: row } =>
       row.satisfied
-        && actuator_toolchain_requirement_is_complete(requirement: requirement)
+        && extdeps.bmc.os_install_actuator_toolchain.actuator_toolchain_requirement_is_complete(requirement: requirement)
     Absent => false
   }
 }
@@ -148,7 +148,7 @@ fn actuator_host_satisfies_toolchain_requirement(
 fn os_install_actuator_requirement_toolchain_grant(candidate: gunbc.fleet_intent.ComputeHost) -> Bool {
   actuator_host_satisfies_toolchain_requirement(
     host: candidate.identity,
-    requirement: os_install_actuator_toolchain_requirement,
+    requirement: extdeps.bmc.os_install_actuator_toolchain.os_install_actuator_toolchain_requirement,
   )
 }
 
@@ -157,9 +157,9 @@ fn os_install_actuator_requirement_install_media_realizable(candidate: gunbc.fle
 }
 
 fn install_window_load_for_host(identity: product.placement_supply.HostIdentity) -> Int {
-  if identity == operator_host_srv1 {
+  if identity == gunbc.fleet_intent_network.operator_host_srv1 {
     srv1_install_window_load
-  } else if identity == operator_host_srv2 {
+  } else if identity == gunbc.fleet_intent_network.operator_host_srv2 {
     srv2_install_window_load
   } else {
     0
@@ -348,7 +348,7 @@ data srv3_os_install_actuator_selection: OsInstallActuatorSelection = select_os_
 
 data srv3_os_install_actuator_host: gunbc.fleet_intent.ComputeHost = match srv3_os_install_actuator_selection {
   ActuatorSelected { host: h } => h
-  ActuatorUnsatisfiable { reason: _ } => srv1_host
+  ActuatorUnsatisfiable { reason: _ } => gunbc.fleet_intent.srv1_host
 }
 
 fn srv3_os_install_actuator_selection_is_selected_on_live_fleet() -> Bool {
@@ -360,23 +360,23 @@ fn srv3_os_install_actuator_selection_is_selected_on_live_fleet() -> Bool {
 
 fn srv3_os_install_actuator_host_is_derived_srv1() -> Bool {
   match srv3_os_install_actuator_selection {
-    ActuatorSelected { host: h } => h == srv1_host
+    ActuatorSelected { host: h } => h == gunbc.fleet_intent.srv1_host
     ActuatorUnsatisfiable { reason: _ } => false
   }
 }
 
 fn srv3_os_install_actuator_host_selected_because_requirements_and_policy() -> Bool {
   host_satisfies_os_install_actuator_requirements(
-    candidate: srv1_host,
+    candidate: gunbc.fleet_intent.srv1_host,
     reach_facts: live_srv3_actuator_reach_facts,
   )
     && host_satisfies_os_install_actuator_requirements(
-      candidate: srv2_host,
+      candidate: gunbc.fleet_intent.srv2_host,
       reach_facts: live_srv3_actuator_reach_facts,
     )
     && srv1_install_window_load == srv2_install_window_load
     && match srv3_os_install_actuator_tie_break_policy {
-      OperatorHostPreference { order: order } => order.first() == operator_host_srv1
+      OperatorHostPreference { order: order } => order.first() == gunbc.fleet_intent_network.operator_host_srv1
       LeastLoadedHost => false
     }
     && srv3_os_install_actuator_host_is_derived_srv1()
@@ -392,7 +392,7 @@ fn srv3_os_install_actuator_host_failover_fixture_selects_srv2() -> Bool {
     reach_facts: failover_reach,
     tie_break: srv3_os_install_actuator_tie_break_policy,
   ) {
-    ActuatorSelected { host: h } => h == srv2_host
+    ActuatorSelected { host: h } => h == gunbc.fleet_intent.srv2_host
     ActuatorUnsatisfiable { reason: _ } => false
   }
 }

@@ -6,9 +6,9 @@ module extdeps.cpu_attachment.ilm4926
 // bindings to those declarations rather than second copies of the same URIs —
 // a re-typed locator is the parallel authority DESIGN section 3 forbids, and it
 // rots independently the day Ampere moves an asset.
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = ampere_altra_rev_a1_datasheet_authority
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.cpu.ampere.ampere_altra_rev_a1_datasheet_authority
 
-data altra_classic_datasheet_authority: extdeps.external_authority.ExternalAuthority = ampere_altra_classic_rev_a1_datasheet_authority
+data altra_classic_datasheet_authority: extdeps.external_authority.ExternalAuthority = extdeps.cpu.ampere.ampere_altra_classic_rev_a1_datasheet_authority
 
 data ocp_mt_jade_specification_authority: extdeps.external_authority.ExternalAuthority = extdeps.ocp.mt_jade.subject.mt_jade_subject_authority_anchor
 
@@ -43,10 +43,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cpu_attachment.ilm4926",
       decl_name: "ilm4926",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.cpu_attachment.ilm4926.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [altra_classic_datasheet_authority, ocp_mt_jade_specification_authority]
 }
 
@@ -98,7 +98,7 @@ type DesignationAttestation {
 
 data ilm4926_attestations: List<DesignationAttestation> = [
   DesignationAttestation {
-    authority: extdeps.cpu_attachment.ilm4926.extdeps_external_authority_anchor,
+    authority: extdeps_external_authority_anchor,
     wording: "device seated in ILM4926 socket",
     context: "Altra Max Rev A1 datasheet, Document Issue 1.15, thermal specification note stating where case temperature TC is measured",
   },
@@ -127,7 +127,7 @@ fn attestations_from_authority(authority: extdeps.external_authority.ExternalAut
 }
 
 fn attested_by_ampere_datasheets() -> Bool {
-  count(attestations_from_authority(authority: extdeps.cpu_attachment.ilm4926.extdeps_external_authority_anchor)) > 0
+  count(attestations_from_authority(authority: extdeps_external_authority_anchor)) > 0
     && count(attestations_from_authority(authority: altra_classic_datasheet_authority)) > 0
 }
 
@@ -158,14 +158,14 @@ type AttestationStanding
 // outranks the forum for anything it states. It resolves what the community thread could not.
 data lotes_azif0222_product_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.lotes.cc/en/product.php?act=view&id=566"
   }
 }
 
 data ampere_community_lga4926_thread_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "community.amperecomputing.com/t/lga4926-socket-details/2837"
   }
 }
@@ -186,7 +186,7 @@ type PartReferentClaim
 
 type PartNumberCandidate {
   part_number: std.types.NonEmptyStr
-  vendor: Vendor<extdeps.hardware.Hardware>
+  vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   claimed_referent: PartReferentClaim
   standing: AttestationStanding
   authority: extdeps.external_authority.ExternalAuthority
@@ -197,7 +197,7 @@ type PartNumberCandidate {
 // the only source was a forum line joining them with an ampersand and two readings disagreed
 // about which named the socket and which the loading mechanism.
 //
-// The Lotes catalogue page settles it: ARM P/N AZIF0222 has std.constructors.Product Overview
+// The Lotes catalogue page settles it: ARM P/N AZIF0222 has Product Overview
 // "SKT 4926 ILM & BP, Top-mount, HF" and Component Type "CPU Socket ILM & BP". So SKT 4926 ILM is
 // the vendor's PRODUCT NAME for AZIF0222, not a second part number -- the forum was giving one
 // part's name and number, and the ampersand joined a name to a number rather than two parts.
@@ -381,7 +381,7 @@ fn attachment_footprint_may_emit(a: AttachmentStanding) -> Bool {
 // and may the LGA4926 footprint be released today (here, and it may not).
 fn lga4926_footprint_may_release() -> Bool {
   attachment_footprint_may_emit(a: ilm4926_attachment_standing)
-    && azifa072_footprint_may_emit()
+    && extdeps.cpu_attachment.lotes_azifa072.azifa072_footprint_may_emit()
 }
 
 fn attachment_unresolved_constituent_count(a: AttachmentStanding) -> Int {
@@ -417,7 +417,7 @@ data lga4926_land_pattern_public_route: LandPatternRoute = PublicSocketVendorDra
 }
 
 data lga4926_land_pattern_gated_route: LandPatternRoute = AccessGatedReferenceCollateral {
-  access_route: ampere_customer_reference_boards_authority,
+  access_route: extdeps.vendor.ampere.ampere_customer_reference_boards_authority,
   why_not_carriable: "Ampere reference materials are released under NDA through Customer Connect. This repository is public, so geometry taken from that package could not be carried here even once obtained -- the acquisition would resolve the question for a reader and leave the model exactly as unresolved as before.",
 }
 
@@ -432,15 +432,15 @@ data ilm4926_attachment_standing: AttachmentStanding = AttachmentStanding {
   socket_body: SocketBodyStanding {
     vendor_identity: DesignationFactEstablished {
       value: "Lotes Co., Ltd",
-      authority: azifa072_drawing_authority,
+      authority: extdeps.cpu_attachment.lotes_azifa072.azifa072_drawing_authority,
     },
     orderable_part_number: DesignationFactEstablished {
       value: "AZIFA072-P001CCS, drawing GAP-AZIFA072 rev 2, title LGA4926 SOCKET -- the socket body that receives the processor and solders to the board, distinct from the AZIF0222 retention assembly",
-      authority: azifa072_drawing_authority,
+      authority: extdeps.cpu_attachment.lotes_azifa072.azifa072_drawing_authority,
     },
     board_land_pattern: DesignationFactEstablished {
       value: "4926 pads, Ø0.46 +/-0.05 mm, staggered lattice at 1.000 mm column pitch and 0.870 mm row pitch, array extent 63.449 x 75.470 mm; positions and outline carried in extdeps.cpu_attachment.lotes_azifa072. NOT a complete footprint release: that module's azifa072_open_gaps still carries the stencil aperture, the Pin 1 corner and the mask opening, and azifa072_footprint_may_emit refuses while they stand.",
-      authority: azifa072_drawing_authority,
+      authority: extdeps.cpu_attachment.lotes_azifa072.azifa072_drawing_authority,
     },
   },
   retention_assembly: ConstituentStanding {

@@ -1,5 +1,6 @@
 module extdeps.systemd.unit_file
 
+
 // THE UNIT FILE FORMAT ITSELF, not a unit's runtime state.
 //
 // `extdeps.systemd` models a unit's observable PROPERTIES (LoadState, ActiveState, MemoryMax) and
@@ -11,16 +12,16 @@ module extdeps.systemd.unit_file
 // The subject is the unit file format as specified by systemd.unit(5) and systemd.service(5). Those
 // are two citations of ONE subject, which is what `further_citations` is for.
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.freedesktop.org/software/systemd/man/latest/systemd.unit.html"
   }
 }
 
-data systemd_service_directive_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data systemd_service_directive_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.freedesktop.org/software/systemd/man/latest/systemd.service.html"
   }
 }
@@ -33,16 +34,16 @@ data systemd_service_directive_authority: ExternalAuthority = ExternalAuthority 
 // Those rows became this repository's PRODUCTION authority for live-deploy unit emission, so
 // leaving their subjects uncited would declare a scope narrower than the grammar being claimed --
 // the extdeps citation duty (DESIGN section 3, ExtdepsExternalAuthorityGate), not documentation.
-data systemd_timer_directive_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data systemd_timer_directive_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.freedesktop.org/software/systemd/man/latest/systemd.timer.html"
   }
 }
 
-data systemd_exec_directive_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data systemd_exec_directive_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.freedesktop.org/software/systemd/man/latest/systemd.exec.html"
   }
 }
@@ -54,19 +55,19 @@ data systemd_exec_directive_authority: ExternalAuthority = ExternalAuthority {
 // a [Slice] unit carries. Adding those directives without adding this citation would claim a grammar
 // wider than the declared scope, which is the extdeps citation duty (DESIGN section 3), not
 // bookkeeping.
-data systemd_resource_control_directive_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data systemd_resource_control_directive_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.freedesktop.org/software/systemd/man/latest/systemd.resource-control.html"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.systemd.unit_file",
       decl_name: "SystemdUnitFile",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
@@ -93,25 +94,25 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // `RestartSec=` adds one variant and one wire row, and nothing else changes.
 
 type SystemdUnitDirective
-  = Description { text: NonEmptyStr }
-  | After { target: NonEmptyStr }
-  | Before { target: NonEmptyStr }
-  | Wants { target: NonEmptyStr }
-  | Requires { target: NonEmptyStr }
+  = Description { text: std.types.NonEmptyStr }
+  | After { target: std.types.NonEmptyStr }
+  | Before { target: std.types.NonEmptyStr }
+  | Wants { target: std.types.NonEmptyStr }
+  | Requires { target: std.types.NonEmptyStr }
 
 type SystemdServiceDirective
-  = ServiceType { mode: NonEmptyStr }
-  | ExecStart { command: NonEmptyStr }
-  | Restart { policy: NonEmptyStr }
-  | Environment { assignment: NonEmptyStr }
-  | EnvironmentFile { path: NonEmptyStr }
-  | WorkingDirectory { path: NonEmptyStr }
-  | ServiceUser { name: NonEmptyStr }
-  | ServiceGroup { name: NonEmptyStr }
-  | ServiceSlice { name: NonEmptyStr }
+  = ServiceType { mode: std.types.NonEmptyStr }
+  | ExecStart { command: std.types.NonEmptyStr }
+  | Restart { policy: std.types.NonEmptyStr }
+  | Environment { assignment: std.types.NonEmptyStr }
+  | EnvironmentFile { path: std.types.NonEmptyStr }
+  | WorkingDirectory { path: std.types.NonEmptyStr }
+  | ServiceUser { name: std.types.NonEmptyStr }
+  | ServiceGroup { name: std.types.NonEmptyStr }
+  | ServiceSlice { name: std.types.NonEmptyStr }
   | ServiceNice { priority: Int }
   | ServiceIoSchedulingClass { scheduling_class: SystemdIoSchedulingClass }
-  | TimeoutStartSec { duration: NonEmptyStr }
+  | TimeoutStartSec { duration: std.types.NonEmptyStr }
 
 // THE THREE RESOURCE-DISCIPLINE DIRECTIVES, AND WHY THE MIDDLE ONE IS A COPRODUCT AND NOT A STRING.
 //
@@ -158,17 +159,17 @@ fn systemd_io_scheduling_class_wire(scheduling_class: SystemdIoSchedulingClass) 
 // them different semantics -- a monotonic timer measures from an event, a calendar timer from a
 // clock -- and fusing them into a key-value pair would put the distinction back into a string.
 type SystemdTimerDirective
-  = TimerUnit { target: NonEmptyStr }
-  | OnCalendar { expression: NonEmptyStr }
-  | OnBootSec { duration: NonEmptyStr }
-  | OnUnitInactiveSec { duration: NonEmptyStr }
-  | AccuracySec { duration: NonEmptyStr }
-  | RandomizedDelaySec { duration: NonEmptyStr }
+  = TimerUnit { target: std.types.NonEmptyStr }
+  | OnCalendar { expression: std.types.NonEmptyStr }
+  | OnBootSec { duration: std.types.NonEmptyStr }
+  | OnUnitInactiveSec { duration: std.types.NonEmptyStr }
+  | AccuracySec { duration: std.types.NonEmptyStr }
+  | RandomizedDelaySec { duration: std.types.NonEmptyStr }
   | Persistent { enabled: Bool }
 
 type SystemdInstallDirective
-  = WantedBy { target: NonEmptyStr }
-  | RequiredBy { target: NonEmptyStr }
+  = WantedBy { target: std.types.NonEmptyStr }
+  | RequiredBy { target: std.types.NonEmptyStr }
 
 // A [Slice] UNIT'S DIRECTIVES. `MemoryMax=` is the hard ceiling the kernel enforces on the cgroup;
 // `MemoryHigh=` is a throttling watermark the kernel permits to be exceeded. They are two directives
@@ -182,8 +183,8 @@ type SystemdInstallDirective
 // representation. Sharing one resource-control type across both sections would buy a little reuse and
 // sell the property the whole module is built on.
 type SystemdSliceDirective
-  = SliceMemoryMax { bytes: NonEmptyStr }
-  | SliceMemoryHigh { bytes: NonEmptyStr }
+  = SliceMemoryMax { bytes: std.types.NonEmptyStr }
+  | SliceMemoryHigh { bytes: std.types.NonEmptyStr }
 
 // The directive names are systemd's, spelled once here. A consumer never writes the literal
 // "ExecStart"; it constructs `ExecStart { command }` and this module decides how that renders.

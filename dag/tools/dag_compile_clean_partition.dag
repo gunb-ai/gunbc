@@ -103,7 +103,7 @@ fn witness_compose_associativity() -> Bool {
 
 fn witness_reduce_projection_preserves_compose() -> Bool {
   let vs = [ShardClean, ShardFailed { entry_path: "dag/x.dag" }]
-  verdict_eq(
+  std.reducible.verdict_eq(
     a: compose_compile_clean_shard_verdicts_as_reduce(verdicts: vs),
     b: compile_clean_shard_verdict_to_reduce(
       v: compose_compile_clean_shard_verdicts(verdicts: vs)
@@ -112,8 +112,8 @@ fn witness_reduce_projection_preserves_compose() -> Bool {
 }
 
 fn witness_empty_compose_is_unknown_reduce() -> Bool {
-  verdict_eq(
-    a: reduce_verdicts_located(verdicts: [], empty_missing: "compile-clean-shard:empty"),
+  std.reducible.verdict_eq(
+    a: std.reducible.reduce_verdicts_located(verdicts: [], empty_missing: "compile-clean-shard:empty"),
     b: compose_compile_clean_shard_verdicts_as_reduce(verdicts: [])
   )
 }

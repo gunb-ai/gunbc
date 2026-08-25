@@ -1,60 +1,61 @@
 module gunbc.live_deploy.operations
 
+
 // Package-ensure and systemd unit-upsert argv spellings are derived from extdeps operation transport rows (dpkg.Package.Status, apt.PackageManager.Install, systemd.Systemctl daemon-reload/enable/restart/disable) — not hand-concatenated shell in emit.dag. Per shell-emission-model CUT: no minted EnsurePackage/UnitUpsert verb; emit composes inline If-Not-ExitZero(dpkg -s) then apt-install intent from these authorities. Privileged ops prefix sudo -n at the orchestration leaf (deploy access grant), never a root shell.
 // The argv -> text step is gunbc.shell_command_text, a modeled bash command serialized by
 // v2.workflow.bash_command_fold_serialize. It replaces a local `join(argv, " ")`, which put no
 // quoting on any element: an argv element carrying a space, a quote or a metacharacter lost its
 // boundary on the way to the host and re-parsed as several words. Element boundaries now survive
 // structurally, and a shape the grammar cannot express refuses instead of emitting text.
-fn dpkg_status_command(package: NonEmptyStr) -> String {
-  shell_command_text_of_argv(argv: dpkg_status_argv(package: package))
+fn dpkg_status_command(package: std.types.NonEmptyStr) -> String {
+  gunbc.shell_command_text.shell_command_text_of_argv(argv: extdeps.dpkg.dpkg_status_argv(package: package))
 }
 
-fn apt_install_command(package: NonEmptyStr, privileged: Bool) -> String {
+fn apt_install_command(package: std.types.NonEmptyStr, privileged: Bool) -> String {
   if privileged {
-    shell_privileged_command_text_of_argv(argv: apt_install_argv(package: package))
+    gunbc.shell_command_text.shell_privileged_command_text_of_argv(argv: extdeps.apt.apt_install_argv(package: package))
   } else {
-    shell_command_text_of_argv(argv: apt_install_argv(package: package))
+    gunbc.shell_command_text.shell_command_text_of_argv(argv: extdeps.apt.apt_install_argv(package: package))
   }
 }
 
 fn systemctl_daemon_reload_command(privileged: Bool) -> String {
   if privileged {
-    shell_privileged_command_text_of_argv(argv: systemctl_daemon_reload_argv())
+    gunbc.shell_command_text.shell_privileged_command_text_of_argv(argv: extdeps.systemd.systemctl.systemctl_daemon_reload_argv())
   } else {
-    shell_command_text_of_argv(argv: systemctl_daemon_reload_argv())
+    gunbc.shell_command_text.shell_command_text_of_argv(argv: extdeps.systemd.systemctl.systemctl_daemon_reload_argv())
   }
 }
 
-fn systemctl_enable_command(unit: NonEmptyStr, privileged: Bool) -> String {
+fn systemctl_enable_command(unit: std.types.NonEmptyStr, privileged: Bool) -> String {
   if privileged {
-    shell_privileged_command_text_of_argv(argv: systemctl_enable_argv(unit: unit))
+    gunbc.shell_command_text.shell_privileged_command_text_of_argv(argv: extdeps.systemd.systemctl.systemctl_enable_argv(unit: unit))
   } else {
-    shell_command_text_of_argv(argv: systemctl_enable_argv(unit: unit))
+    gunbc.shell_command_text.shell_command_text_of_argv(argv: extdeps.systemd.systemctl.systemctl_enable_argv(unit: unit))
   }
 }
 
-fn systemctl_start_command(unit: NonEmptyStr, privileged: Bool) -> String {
+fn systemctl_start_command(unit: std.types.NonEmptyStr, privileged: Bool) -> String {
   if privileged {
-    shell_privileged_command_text_of_argv(argv: systemctl_start_argv(unit: unit))
+    gunbc.shell_command_text.shell_privileged_command_text_of_argv(argv: systemctl_start_argv(unit: unit))
   } else {
-    shell_command_text_of_argv(argv: systemctl_start_argv(unit: unit))
+    gunbc.shell_command_text.shell_command_text_of_argv(argv: systemctl_start_argv(unit: unit))
   }
 }
 
-fn systemctl_restart_command(unit: NonEmptyStr, privileged: Bool) -> String {
+fn systemctl_restart_command(unit: std.types.NonEmptyStr, privileged: Bool) -> String {
   if privileged {
-    shell_privileged_command_text_of_argv(argv: systemctl_restart_argv(unit: unit))
+    gunbc.shell_command_text.shell_privileged_command_text_of_argv(argv: extdeps.systemd.systemctl.systemctl_restart_argv(unit: unit))
   } else {
-    shell_command_text_of_argv(argv: systemctl_restart_argv(unit: unit))
+    gunbc.shell_command_text.shell_command_text_of_argv(argv: extdeps.systemd.systemctl.systemctl_restart_argv(unit: unit))
   }
 }
 
-fn systemctl_disable_now_command(unit: NonEmptyStr, privileged: Bool) -> String {
+fn systemctl_disable_now_command(unit: std.types.NonEmptyStr, privileged: Bool) -> String {
   if privileged {
-    shell_privileged_command_text_of_argv(argv: systemctl_disable_now_argv(unit: unit))
+    gunbc.shell_command_text.shell_privileged_command_text_of_argv(argv: extdeps.systemd.systemctl.systemctl_disable_now_argv(unit: unit))
   } else {
-    shell_command_text_of_argv(argv: systemctl_disable_now_argv(unit: unit))
+    gunbc.shell_command_text.shell_command_text_of_argv(argv: extdeps.systemd.systemctl.systemctl_disable_now_argv(unit: unit))
   }
 }
 
@@ -67,10 +68,10 @@ data deploy_stage_dir_var: String = "_gunbc_stage"
 // A staged path is a WORD — a variable reference and a literal suffix concatenated as two parts
 // of one word — so nothing here decides how the expansion is quoted. The grammar does, and it
 // does so identically at a redirection target and at an install argument, from the same word.
-fn deploy_stage_path_word(stage_name: String) -> Node {
-  bash_build_word_concat_from_nodes(parts: [
-    bash_build_word_var(name: deploy_stage_dir_var),
-    bash_build_word_lit(text: concat("/", stage_name)),
+fn deploy_stage_path_word(stage_name: String) -> v2.std.node.Node {
+  v2.extdeps.languages.bash_build.bash_build_word_concat_from_nodes(parts: [
+    v2.extdeps.languages.bash_build.bash_build_word_var(name: deploy_stage_dir_var),
+    v2.extdeps.languages.bash_build.bash_build_word_lit(text: concat("/", stage_name)),
   ])
 }
 
@@ -80,9 +81,9 @@ fn deploy_stage_path_word(stage_name: String) -> Node {
 // executed as shell. Choosing a tag nobody expects to appear is a probability argument, not a
 // wall. As a quoted argument the content has no terminator to collide with.
 fn deploy_stage_write_command(stage_name: String, content: String) -> String {
-  shell_command_text_of_node(
-    stmt: bash_build_with_redir_to_file(
-      inner: shell_command_intent(words: ["printf", "%s", content]),
+  gunbc.shell_command_text.shell_command_text_of_node(
+    stmt: v2.extdeps.languages.bash_build.bash_build_with_redir_to_file(
+      inner: gunbc.shell_command_text.shell_command_intent(words: ["printf", "%s", content]),
       path: deploy_stage_path_word(stage_name: stage_name),
     ),
   )
@@ -92,29 +93,29 @@ fn deploy_stage_write_command(stage_name: String, content: String) -> String {
 // path, which is a word carrying a variable reference rather than a value known here. So the
 // leading words are taken from the same coreutils rows the argv builders use — the binary name
 // and the mode flag are not respelled — and only the two path arguments are placed as words.
-fn deploy_stage_install_command(stage_name: String, mode: NonEmptyStr, dest: String) -> String {
-  shell_command_text_of_node(
-    stmt: bash_build_command_with_words(words: concat(
-      shell_literal_words(words: [
+fn deploy_stage_install_command(stage_name: String, mode: std.types.NonEmptyStr, dest: String) -> String {
+  gunbc.shell_command_text.shell_command_text_of_node(
+    stmt: v2.extdeps.languages.bash_build.bash_build_command_with_words(words: concat(
+      gunbc.shell_command_text.shell_literal_words(words: [
         "sudo",
         "-n",
-        coreutils_install_binary_name as String,
-        coreutils_install_mode_flag as String,
+        extdeps.tools.gnu_coreutils.coreutils_install_binary_name as String,
+        extdeps.tools.gnu_coreutils.coreutils_install_mode_flag as String,
         mode as String,
       ]),
       [
         deploy_stage_path_word(stage_name: stage_name),
-        bash_build_word_lit(text: dest),
+        v2.extdeps.languages.bash_build.bash_build_word_lit(text: dest),
       ],
     )),
   )
 }
 
-fn install_directory_command(mode: NonEmptyStr, path: String, privileged: Bool) -> String {
+fn install_directory_command(mode: std.types.NonEmptyStr, path: String, privileged: Bool) -> String {
   if privileged {
-    shell_privileged_command_text_of_argv(argv: coreutils_install_directory_argv(mode: mode, path: path))
+    gunbc.shell_command_text.shell_privileged_command_text_of_argv(argv: extdeps.tools.gnu_coreutils.coreutils_install_directory_argv(mode: mode, path: path))
   } else {
-    shell_command_text_of_argv(argv: coreutils_install_directory_argv(mode: mode, path: path))
+    gunbc.shell_command_text.shell_command_text_of_argv(argv: extdeps.tools.gnu_coreutils.coreutils_install_directory_argv(mode: mode, path: path))
   }
 }
 
@@ -123,12 +124,12 @@ fn install_directory_command(mode: NonEmptyStr, path: String, privileged: Bool) 
 // as shell. Spelled by hand this was `printf 'FMT' "$VAR" > "$stage/name"` — three independent
 // quoting decisions in one line.
 fn deploy_stage_write_expansion_command(stage_name: String, format: String, expansion_var: String) -> String {
-  shell_command_text_of_node(
-    stmt: bash_build_with_redir_to_file(
-      inner: bash_build_command_with_words(words: [
-        bash_build_word_lit(text: "printf"),
-        bash_build_word_lit(text: format),
-        bash_build_word_var(name: expansion_var),
+  gunbc.shell_command_text.shell_command_text_of_node(
+    stmt: v2.extdeps.languages.bash_build.bash_build_with_redir_to_file(
+      inner: v2.extdeps.languages.bash_build.bash_build_command_with_words(words: [
+        v2.extdeps.languages.bash_build.bash_build_word_lit(text: "printf"),
+        v2.extdeps.languages.bash_build.bash_build_word_lit(text: format),
+        v2.extdeps.languages.bash_build.bash_build_word_var(name: expansion_var),
       ]),
       path: deploy_stage_path_word(stage_name: stage_name),
     ),
@@ -136,14 +137,14 @@ fn deploy_stage_write_expansion_command(stage_name: String, format: String, expa
 }
 
 fn install_file_owned_command(
-  mode: NonEmptyStr,
-  owner: NonEmptyStr,
-  group: NonEmptyStr,
+  mode: std.types.NonEmptyStr,
+  owner: std.types.NonEmptyStr,
+  group: std.types.NonEmptyStr,
   source: String,
   dest: String,
 ) -> String {
-  shell_privileged_command_text_of_argv(
-    argv: coreutils_install_file_owned_argv(
+  gunbc.shell_command_text.shell_privileged_command_text_of_argv(
+    argv: extdeps.tools.gnu_coreutils.coreutils_install_file_owned_argv(
       mode: mode,
       owner: owner,
       group: group,
@@ -154,13 +155,13 @@ fn install_file_owned_command(
 }
 
 fn install_directory_owned_command(
-  mode: NonEmptyStr,
-  owner: NonEmptyStr,
-  group: NonEmptyStr,
+  mode: std.types.NonEmptyStr,
+  owner: std.types.NonEmptyStr,
+  group: std.types.NonEmptyStr,
   path: String,
 ) -> String {
-  shell_privileged_command_text_of_argv(
-    argv: coreutils_install_directory_owned_argv(mode: mode, owner: owner, group: group, path: path),
+  gunbc.shell_command_text.shell_privileged_command_text_of_argv(
+    argv: extdeps.tools.gnu_coreutils.coreutils_install_directory_owned_argv(mode: mode, owner: owner, group: group, path: path),
   )
 }
 
@@ -168,13 +169,13 @@ fn install_directory_owned_command(
 // rm_empty_directory in particular is a REFUSAL when the directory is non-empty (a live agent
 // worktree root, per emit's teardown_worktree_rmdir_note), so it must never widen into -rf.
 fn rm_force_command(paths: List<String>) -> String {
-  shell_privileged_command_text_of_argv(argv: coreutils_rm_force_argv(paths: paths))
+  gunbc.shell_command_text.shell_privileged_command_text_of_argv(argv: extdeps.tools.gnu_coreutils.coreutils_rm_force_argv(paths: paths))
 }
 
 fn rm_empty_directory_command(path: String) -> String {
-  shell_privileged_command_text_of_argv(argv: coreutils_rm_empty_directory_argv(path: path))
+  gunbc.shell_command_text.shell_privileged_command_text_of_argv(argv: extdeps.tools.gnu_coreutils.coreutils_rm_empty_directory_argv(path: path))
 }
 
 fn rm_force_recursive_command(path: String) -> String {
-  shell_privileged_command_text_of_argv(argv: coreutils_rm_force_recursive_argv(path: path))
+  gunbc.shell_command_text.shell_privileged_command_text_of_argv(argv: extdeps.tools.gnu_coreutils.coreutils_rm_force_recursive_argv(path: path))
 }

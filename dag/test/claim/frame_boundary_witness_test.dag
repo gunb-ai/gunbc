@@ -3,69 +3,69 @@ module test.claim.frame_boundary_witness_test
 
 // Discriminating witnesses for the frame-boundary SPEC (std.frame_boundary). The claim is fail-closed boundary admission (DESIGN 5): a frame runs only when every layer it requires closed is covered by the provided materialization; an uncovered required layer is a located BoundaryUnmaterialized naming that tree, never a silent pass. The build's common case: require the network layer (UriTree) closed; the Simulated/mock handler closes it at LifecycleByConvention (admissible, honestly weaker). RED control = refuses_uncovered_layer: if the coverage check were dropped, an uncovered UriTree would admit. Grade is the MEET across covered layers (only as strong as the weakest), pinned by grade_is_meet.
 data net_convention_provided: std.frame_boundary.BoundaryMaterialization = std.frame_boundary.BoundaryMaterialization {
-  closures: [std.frame_boundary.BoundaryClosure { tree: UriTree, grade: LifecycleByConvention }]
+  closures: [std.frame_boundary.BoundaryClosure { tree: std.effect_grant.UriTree, grade: std.effect_grant.LifecycleByConvention }]
 }
 
 data fs_only_provided: std.frame_boundary.BoundaryMaterialization = std.frame_boundary.BoundaryMaterialization {
-  closures: [std.frame_boundary.BoundaryClosure { tree: FilesystemPathTree, grade: LifecycleByConvention }]
+  closures: [std.frame_boundary.BoundaryClosure { tree: std.effect_grant.FilesystemPathTree, grade: std.effect_grant.LifecycleByConvention }]
 }
 
 data net_construction_fs_convention_provided: std.frame_boundary.BoundaryMaterialization = std.frame_boundary.BoundaryMaterialization {
   closures: [
-    std.frame_boundary.BoundaryClosure { tree: UriTree, grade: LifecycleByConstruction },
-    std.frame_boundary.BoundaryClosure { tree: FilesystemPathTree, grade: LifecycleByConvention }
+    std.frame_boundary.BoundaryClosure { tree: std.effect_grant.UriTree, grade: std.effect_grant.LifecycleByConstruction },
+    std.frame_boundary.BoundaryClosure { tree: std.effect_grant.FilesystemPathTree, grade: std.effect_grant.LifecycleByConvention }
   ]
 }
 
-data require_network: List<std.effect_grant.NamespaceTree> = [UriTree]
-data require_network_and_fs: List<std.effect_grant.NamespaceTree> = [UriTree, FilesystemPathTree]
+data require_network: List<std.effect_grant.NamespaceTree> = [std.effect_grant.UriTree]
+data require_network_and_fs: List<std.effect_grant.NamespaceTree> = [std.effect_grant.UriTree, std.effect_grant.FilesystemPathTree]
 data require_nothing: List<std.effect_grant.NamespaceTree> = []
 
 fn is_materialized_convention(a: std.frame_boundary.BoundaryAdmission) -> Bool {
   match a {
-    BoundaryMaterialized { grade: g } =>
+    std.frame_boundary.BoundaryMaterialized { grade: g } =>
       match g {
-        LifecycleByConvention => true
-        LifecycleByConstruction => false
+        std.effect_grant.LifecycleByConvention => true
+        std.effect_grant.LifecycleByConstruction => false
       }
-    BoundaryUnmaterialized { tree: t } => false
+    std.frame_boundary.BoundaryUnmaterialized { tree: t } => false
   }
 }
 
 fn is_materialized_construction(a: std.frame_boundary.BoundaryAdmission) -> Bool {
   match a {
-    BoundaryMaterialized { grade: g } =>
+    std.frame_boundary.BoundaryMaterialized { grade: g } =>
       match g {
-        LifecycleByConstruction => true
-        LifecycleByConvention => false
+        std.effect_grant.LifecycleByConstruction => true
+        std.effect_grant.LifecycleByConvention => false
       }
-    BoundaryUnmaterialized { tree: t } => false
+    std.frame_boundary.BoundaryUnmaterialized { tree: t } => false
   }
 }
 
 fn is_unmaterialized_for(a: std.frame_boundary.BoundaryAdmission, tree: std.effect_grant.NamespaceTree) -> Bool {
   match a {
-    BoundaryMaterialized { grade: g } => false
-    BoundaryUnmaterialized { tree: t } => namespace_tree_eq(a: t, b: tree)
+    std.frame_boundary.BoundaryMaterialized { grade: g } => false
+    std.frame_boundary.BoundaryUnmaterialized { tree: t } => std.effect_grant.namespace_tree_eq(a: t, b: tree)
   }
 }
 
 test fn frame_boundary_admits_covered_layer() -> Bool {
-  test.claim.frame_boundary_witness_test.is_materialized_convention(
-    a: boundary_admits(required_trees: test.claim.frame_boundary_witness_test.require_network, provided: net_convention_provided)
+  is_materialized_convention(
+    a: std.frame_boundary.boundary_admits(required_trees: require_network, provided: net_convention_provided)
   )
 }
 
 test fn frame_boundary_refuses_uncovered_layer() -> Bool {
-  test.claim.frame_boundary_witness_test.is_unmaterialized_for(
-    a: boundary_admits(required_trees: test.claim.frame_boundary_witness_test.require_network, provided: fs_only_provided),
-    tree: UriTree
+  is_unmaterialized_for(
+    a: std.frame_boundary.boundary_admits(required_trees: require_network, provided: fs_only_provided),
+    tree: std.effect_grant.UriTree
   )
 }
 
 test fn frame_boundary_grade_is_meet() -> Bool {
-  test.claim.frame_boundary_witness_test.is_materialized_convention(
-    a: boundary_admits(
+  is_materialized_convention(
+    a: std.frame_boundary.boundary_admits(
       required_trees: require_network_and_fs,
       provided: net_construction_fs_convention_provided
     )
@@ -74,10 +74,10 @@ test fn frame_boundary_grade_is_meet() -> Bool {
 
 test fn frame_boundary_full_construction_stays_construction() -> Bool {
   is_materialized_construction(
-    a: boundary_admits(
-      required_trees: test.claim.frame_boundary_witness_test.require_network,
+    a: std.frame_boundary.boundary_admits(
+      required_trees: require_network,
       provided: std.frame_boundary.BoundaryMaterialization {
-        closures: [std.frame_boundary.BoundaryClosure { tree: UriTree, grade: LifecycleByConstruction }]
+        closures: [std.frame_boundary.BoundaryClosure { tree: std.effect_grant.UriTree, grade: std.effect_grant.LifecycleByConstruction }]
       }
     )
   )
@@ -85,17 +85,17 @@ test fn frame_boundary_full_construction_stays_construction() -> Bool {
 
 test fn frame_boundary_empty_requirement_admits() -> Bool {
   is_materialized_construction(
-    a: boundary_admits(required_trees: require_nothing, provided: fs_only_provided)
+    a: std.frame_boundary.boundary_admits(required_trees: require_nothing, provided: fs_only_provided)
   )
 }
 
 test fn frame_boundary_refusal_is_located() -> Bool {
-  test.claim.frame_boundary_witness_test.is_unmaterialized_for(
-    a: boundary_admits(required_trees: test.claim.frame_boundary_witness_test.require_network, provided: fs_only_provided),
-    tree: UriTree
+  is_unmaterialized_for(
+    a: std.frame_boundary.boundary_admits(required_trees: require_network, provided: fs_only_provided),
+    tree: std.effect_grant.UriTree
   )
-    && !test.claim.frame_boundary_witness_test.is_unmaterialized_for(
-         a: boundary_admits(required_trees: test.claim.frame_boundary_witness_test.require_network, provided: fs_only_provided),
-         tree: ProcTree
+    && !is_unmaterialized_for(
+         a: std.frame_boundary.boundary_admits(required_trees: require_network, provided: fs_only_provided),
+         tree: std.effect_grant.ProcTree
        )
 }

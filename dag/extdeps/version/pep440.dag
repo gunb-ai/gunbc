@@ -3,7 +3,7 @@ module extdeps.version.pep440
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "packaging.python.org/en/latest/specifications/version-specifiers/"
   }
 }
@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 data pep440_spec_url: std.types.NonEmptyStr = "https://packaging.python.org/en/latest/specifications/version-specifiers/"
 data pep440_spec_label: std.types.NonEmptyStr = "PEP 440 (Final, 2014-08-22)"
 
-type Pep440Constraint = VersionConstraint
+type Pep440Constraint = extdeps.version.VersionConstraint
 
 data min_python_interpreter: Pep440Constraint = ">= 3.11"
 
@@ -64,45 +64,45 @@ type Pep440VersionClause {
 
 type Pep440VersionSpecifier = List<Pep440VersionClause>
 
-fn pep440_version_identity(v: Pep440Version) -> VersionIdentity {
+fn pep440_version_identity(v: Pep440Version) -> extdeps.version.VersionIdentity {
   pep440_version_label(v: v)
 }
 
-fn pep440_version_specifier_constraint(spec: Pep440VersionSpecifier) -> VersionConstraint {
+fn pep440_version_specifier_constraint(spec: Pep440VersionSpecifier) -> extdeps.version.VersionConstraint {
   pep440_version_specifier_label(spec: spec)
 }
 
 fn pep440_compare_non_negative_int(a: std.integer.NonNegativeInt, b: std.integer.NonNegativeInt) -> std.algebra.Ordering {
-  if a < b { Less }
-  else if a > b { Greater }
-  else { Equal }
+  if a < b { std.algebra.Less }
+  else if a > b { std.algebra.Greater }
+  else { std.algebra.Equal }
 }
 
 fn pep440_compare_release_segments(a: Pep440ReleaseSegments, b: Pep440ReleaseSegments) -> std.algebra.Ordering {
   match pep440_compare_non_negative_int(a: a.first, b: b.first) {
-    Equal => pep440_compare_release_rest(a_rest: a.rest, b_rest: b.rest)
+    std.algebra.Equal => pep440_compare_release_rest(a_rest: a.rest, b_rest: b.rest)
     other => other
   }
 }
 
 fn pep440_compare_release_rest(a_rest: List<std.integer.NonNegativeInt>, b_rest: List<std.integer.NonNegativeInt>) -> std.algebra.Ordering {
-  if a_rest.length() == 0 && b_rest.length() == 0 { Equal }
+  if a_rest.length() == 0 && b_rest.length() == 0 { std.algebra.Equal }
   else if a_rest.length() == 0 {
 
     if b_rest.first() == 0 {
       pep440_compare_release_rest(a_rest: a_rest, b_rest: b_rest.skip(n: 1))
     } else {
-      Less
+      std.algebra.Less
     }
   } else if b_rest.length() == 0 {
     if a_rest.first() == 0 {
       pep440_compare_release_rest(a_rest: a_rest.skip(n: 1), b_rest: b_rest)
     } else {
-      Greater
+      std.algebra.Greater
     }
   } else {
     match pep440_compare_non_negative_int(a: a_rest.first(), b: b_rest.first()) {
-      Equal => pep440_compare_release_rest(
+      std.algebra.Equal => pep440_compare_release_rest(
         a_rest: a_rest.skip(n: 1),
         b_rest: b_rest.skip(n: 1)
       )
@@ -122,17 +122,17 @@ fn pep440_pre_release_phase_rank(phase: Pep440PreReleasePhase) -> std.integer.No
 fn pep440_compare_pre_release(a: Pep440PreRelease?, b: Pep440PreRelease?) -> std.algebra.Ordering {
   match a {
     Absent => match b {
-      Absent => Equal
-      Present { value: _ } => Greater
+      Absent => std.algebra.Equal
+      Present { value: _ } => std.algebra.Greater
     }
     Present { value: av } => match b {
-      Absent => Less
+      Absent => std.algebra.Less
       Present { value: bv } =>
         match pep440_compare_non_negative_int(
           a: pep440_pre_release_phase_rank(phase: av.phase),
           b: pep440_pre_release_phase_rank(phase: bv.phase)
         ) {
-          Equal => pep440_compare_non_negative_int(a: av.number, b: bv.number)
+          std.algebra.Equal => pep440_compare_non_negative_int(a: av.number, b: bv.number)
           other => other
         }
     }
@@ -142,11 +142,11 @@ fn pep440_compare_pre_release(a: Pep440PreRelease?, b: Pep440PreRelease?) -> std
 fn pep440_compare_dev_release(a: std.integer.NonNegativeInt?, b: std.integer.NonNegativeInt?) -> std.algebra.Ordering {
   match a {
     Absent => match b {
-      Absent => Equal
-      Present { value: _ } => Greater
+      Absent => std.algebra.Equal
+      Present { value: _ } => std.algebra.Greater
     }
     Present { value: av } => match b {
-      Absent => Less
+      Absent => std.algebra.Less
       Present { value: bv } => pep440_compare_non_negative_int(a: av, b: bv)
     }
   }
@@ -155,11 +155,11 @@ fn pep440_compare_dev_release(a: std.integer.NonNegativeInt?, b: std.integer.Non
 fn pep440_compare_post_release(a: std.integer.NonNegativeInt?, b: std.integer.NonNegativeInt?) -> std.algebra.Ordering {
   match a {
     Absent => match b {
-      Absent => Equal
-      Present { value: _ } => Less
+      Absent => std.algebra.Equal
+      Present { value: _ } => std.algebra.Less
     }
     Present { value: av } => match b {
-      Absent => Greater
+      Absent => std.algebra.Greater
       Present { value: bv } => pep440_compare_non_negative_int(a: av, b: bv)
     }
   }
@@ -181,22 +181,22 @@ fn pep440_is_bare_dev_public(v: Pep440PublicVersion) -> Bool {
 fn pep440_compare_bare_dev_tier(a: Pep440PublicVersion, b: Pep440PublicVersion) -> std.algebra.Ordering {
   let a_bare = pep440_is_bare_dev_public(v: a)
   let b_bare = pep440_is_bare_dev_public(v: b)
-  if a_bare && !b_bare { Less }
-  else if !a_bare && b_bare { Greater }
-  else { Equal }
+  if a_bare && !b_bare { std.algebra.Less }
+  else if !a_bare && b_bare { std.algebra.Greater }
+  else { std.algebra.Equal }
 }
 
 fn pep440_compare_public(a: Pep440PublicVersion, b: Pep440PublicVersion) -> std.algebra.Ordering {
   match pep440_compare_non_negative_int(a: a.epoch, b: b.epoch) {
-    Equal =>
+    std.algebra.Equal =>
       match pep440_compare_release_segments(a: a.release_segments, b: b.release_segments) {
-        Equal =>
+        std.algebra.Equal =>
           match pep440_compare_bare_dev_tier(a: a, b: b) {
-            Equal =>
+            std.algebra.Equal =>
               match pep440_compare_pre_release(a: a.pre_release, b: b.pre_release) {
-                Equal =>
+                std.algebra.Equal =>
                   match pep440_compare_post_release(a: a.post_release, b: b.post_release) {
-                    Equal => pep440_compare_dev_release(a: a.dev_release, b: b.dev_release)
+                    std.algebra.Equal => pep440_compare_dev_release(a: a.dev_release, b: b.dev_release)
                     other => other
                   }
                 other => other

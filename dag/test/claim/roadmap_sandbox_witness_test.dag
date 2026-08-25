@@ -1,14 +1,14 @@
 module test.claim.roadmap_sandbox_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data roadmap_sandbox_witness_note: String = "P4 keystone: /sandbox is the register at every depth plus every component in every state, and it doubles as the visual witness. Gallery totality is the wire vocabulary re-witnessed as coverage (one static instance per wire label; drop one -> RED). The echo answers ANY wire arm on demand with the SAME belt JSON shape production sends (proven per label; unknown label refuses 400). The live instances are one pressable button per arm, all driven by the shared client program. The register depths (roles under both themes, scales) render from the authorities, so the sandbox cannot drift from the live surfaces."
 
 fn sandbox_html() -> String {
-  match try_serialize_html_source(node: sandbox_page()) {
-    EmitOk { html: h } => h
-    EmitRejected { reason: _ } => ""
+  match extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_sandbox.sandbox_page()) {
+    extdeps.languages.html.EmitOk { html: h } => h
+    extdeps.languages.html.EmitRejected { reason: _ } => ""
   }
 }
 
@@ -23,14 +23,14 @@ test fn witness_auditioner_blocks_emitted_with_derived_inks() -> Bool {
         Absent => false
       }))
     && map(audition_sets, a => a.set_name) == swatch_audition_values
-    && swatch_default_set_value == gunbc.design.catalog.okabe_ito.name
+    && swatch_default_set_value == okabe_ito.name
 }
 
 test fn witness_auditioner_missing_swatch_is_loud() -> Bool {
-  let bogus = gunbc.roadmap_style.AuditionSet {
+  let bogus = AuditionSet {
     set_name: "bogus",
-    set: gunbc.design.catalog.okabe_ito,
-    fills: [ gunbc.roadmap_style.AuditionFillRow { key: "invite", swatch_name: "no-such-swatch" } ],
+    set: okabe_ito,
+    fills: [ AuditionFillRow { key: "invite", swatch_name: "no-such-swatch" } ],
   }
   !audition_set_resolved(a: bogus)
     && audition_block_css(a: bogus) == ""
@@ -45,29 +45,29 @@ test fn witness_sandbox_carries_auditioner_control() -> Bool {
 }
 
 test fn witness_gallery_covers_every_wire_label() -> Bool {
-  let gallery = sandbox_gallery_terminal_labels()
-  let wire = belt_dispatch_all_status_labels()
+  let gallery = gunbc.roadmap_sandbox.sandbox_gallery_terminal_labels()
+  let wire = gunbc.roadmap_belt_actuate.belt_dispatch_all_status_labels()
   gallery.length() == wire.length()
     && all(wire, w => any(gallery, g => g == w))
     && all(gallery, g => any(wire, w => w == g))
 }
 
 test fn witness_gallery_drop_is_located_red() -> Bool {
-  let dropped = component_drop_state(c: dispatch_button_component(), drop_key: "spawned")
-  let labels = map(component_terminal_states(c: dropped), s => dispatch_state_display_text(state: s))
-  labels.length() == belt_dispatch_all_status_labels().length() - 1
+  let dropped = gunbc.design.component.component_drop_state(c: gunbc.roadmap_component.dispatch_button_component(), drop_key: "spawned")
+  let labels = map(gunbc.design.component.component_terminal_states(c: dropped), s => gunbc.roadmap_component.dispatch_state_display_text(state: s))
+  labels.length() == gunbc.roadmap_belt_actuate.belt_dispatch_all_status_labels().length() - 1
     && !any(labels, l => l == "spawned")
 }
 
 test fn witness_echo_answers_every_wire_arm() -> Bool {
-  all(belt_dispatch_all_status_labels(), l => {
-    let r = roadmap_serve_respond(method_label: "POST", path: join(["/sandbox/echo?status=", l], ""), body: "", release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
+  all(gunbc.roadmap_belt_actuate.belt_dispatch_all_status_labels(), l => {
+    let r = gunbc.roadmap_serve.roadmap_serve_respond(method_label: "POST", path: join(["/sandbox/echo?status=", l], ""), body: "", release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
     r.status == 200 && string_contains(s: r.body, pattern: l) && string_contains(s: r.body, pattern: "status")
   })
 }
 
 test fn witness_echo_unknown_label_refuses() -> Bool {
-  let r = roadmap_serve_respond(method_label: "POST", path: "/sandbox/echo?status=bogus", body: "", release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
+  let r = gunbc.roadmap_serve.roadmap_serve_respond(method_label: "POST", path: "/sandbox/echo?status=bogus", body: "", release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   r.status == 400 && string_contains(s: r.body, pattern: "unknown status")
 }
 
@@ -76,8 +76,8 @@ test fn witness_sandbox_renders_register_depths() -> Bool {
   string_contains(s: h, pattern: "roles — night / day")
     && string_contains(s: h, pattern: "scales")
     && string_contains(s: h, pattern: "class=\"swatch\"")
-    && string_contains(s: h, pattern: role_var(r: CanvasRole))
-    && string_contains(s: h, pattern: paint(m: night_canvas))
+    && string_contains(s: h, pattern: gunbc.design.theme.role_var(r: gunbc.design.theme.CanvasRole))
+    && string_contains(s: h, pattern: gunbc.design.material.paint(m: gunbc.design.theme.night_canvas))
     && string_contains(s: h, pattern: "space-8")
 }
 
@@ -87,9 +87,9 @@ test fn witness_sandbox_gallery_and_live_render() -> Bool {
     && string_contains(s: h, pattern: "dispatch-ok")
     && string_contains(s: h, pattern: "dispatch-refused")
     && string_contains(s: h, pattern: "dispatching...")
-    && string_contains(s: h, pattern: sandbox_live_class)
+    && string_contains(s: h, pattern: gunbc.roadmap_component.sandbox_live_class)
     && string_contains(s: h, pattern: "/assets/sandbox.js")
-    && all(belt_dispatch_all_status_labels(), l => string_contains(s: h, pattern: join(["data-status=\"", l, "\""], "")))
+    && all(gunbc.roadmap_belt_actuate.belt_dispatch_all_status_labels(), l => string_contains(s: h, pattern: join(["data-status=\"", l, "\""], "")))
 }
 
 
@@ -116,20 +116,20 @@ fn frame_occurrence_count(s: String, pattern: String) -> Int {
 
 fn fixture_band_entry_signature(e: gunbc.roadmap_presentation.WorkBandEntry) -> String {
   match e {
-    BandFamily { family } => join([
+    gunbc.roadmap_presentation.BandFamily { family } => join([
       "family|", family.claim,
       "|", to_string(count(family.rows)),
       "|", join(map(family.rows, r => r.headline), ","),
     ], "")
-    BandRow { row } => join(["row|", row.headline], "")
+    gunbc.roadmap_presentation.BandRow { row } => join(["row|", row.headline], "")
   }
 }
 
 test fn witness_family_fixture_typed_structure_exact() -> Bool {
-  let entries = band_entries(
-    rows: fixture_family_rows(),
-    families: [fixture_family_decl()],
-    members: fixture_family_members(),
+  let entries = gunbc.roadmap_presentation.band_entries(
+    rows: gunbc.roadmap_sandbox.fixture_family_rows(),
+    families: [gunbc.roadmap_sandbox.fixture_family_decl()],
+    members: gunbc.roadmap_sandbox.fixture_family_members(),
   )
   map(entries, e => fixture_band_entry_signature(e: e)) == [
     "family|Every startable node carries a closing contract|3|dag_compile_clean_gate,affected_set_falsifier,regen_floor_skip_witness",
@@ -138,9 +138,9 @@ test fn witness_family_fixture_typed_structure_exact() -> Bool {
 }
 
 fn family_frame_html(label: String, cls: String) -> String {
-  match try_serialize_html_source(node: family_fixture_frame(label: label, cls: cls)) {
-    EmitOk { html: h } => h
-    EmitRejected { reason: _ } => ""
+  match extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_sandbox.family_fixture_frame(label: label, cls: cls)) {
+    extdeps.languages.html.EmitOk { html: h } => h
+    extdeps.languages.html.EmitRejected { reason: _ } => ""
   }
 }
 

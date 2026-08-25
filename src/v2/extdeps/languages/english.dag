@@ -36,12 +36,12 @@ fn english_feature_disposition(f: EnglishFidelityFeature) -> v2.extdeps.language
   match f {
     FormalSubsetSvo => Modeled
     FormalSubsetCopula => Modeled
-    FormalSubsetAdverbial => v2.extdeps.languages.fidelity.FailClosed { feature: FormalSubsetAdverbial }
-    FormalSubsetIntransitive => v2.extdeps.languages.fidelity.FailClosed { feature: FormalSubsetIntransitive }
+    FormalSubsetAdverbial => FailClosed { feature: FormalSubsetAdverbial }
+    FormalSubsetIntransitive => FailClosed { feature: FormalSubsetIntransitive }
     ArticleDeterminer => Modeled
-    OutOfSubsetProse => v2.extdeps.languages.fidelity.FailClosed { feature: OutOfSubsetProse }
-    AmbiguousConstruct => v2.extdeps.languages.fidelity.FailClosed { feature: AmbiguousConstruct }
-    MalformedSentence => v2.extdeps.languages.fidelity.FailClosed { feature: MalformedSentence }
+    OutOfSubsetProse => FailClosed { feature: OutOfSubsetProse }
+    AmbiguousConstruct => FailClosed { feature: AmbiguousConstruct }
+    MalformedSentence => FailClosed { feature: MalformedSentence }
   }
 }
 fn english_lex_token(token_class: v2.std.node.Symbol, pattern: v2.std.compilers.lexing.LexPattern) -> v2.std.compilers.lexing.LexRule {

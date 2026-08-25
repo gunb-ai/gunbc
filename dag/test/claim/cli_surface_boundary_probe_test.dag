@@ -1,5 +1,6 @@
 module test.claim.cli_surface_boundary_probe
 
+
 // WAVE 0 (docs/plans/cli-invocation-emission-design.md).
 //
 // WHAT AN EARLIER REVISION OF THIS WITNESS GOT WRONG, kept because it is the instructive part:
@@ -73,7 +74,7 @@ fn argument_texts(arguments: List<v2.std.compilers.cli_surface.CliArgumentSyntax
     lex: probe_lex_rules(),
     binding_spellings: v2.std.collection.empty_map()
   ) {
-    Accepted { value: surface, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: surface, diagnostics: _ } =>
       v2.std.algebra.fold_list(
         xs: v2.std.compilers.cli_surface.cli_surface_arguments(surface: surface),
         empty: std.algebra.Empty,
@@ -81,18 +82,18 @@ fn argument_texts(arguments: List<v2.std.compilers.cli_surface.CliArgumentSyntax
           v2.std.algebra.list_snoc_item(xs: acc, item: v2.std.compilers.cli_surface.cli_argument_text(argument: argument))
         }
       )
-    Rejected { diagnostics: _ } => std.algebra.Empty
+    v2.std.diagnostic.Rejected { diagnostics: _ } => std.algebra.Empty
   }
 }
 
 // Grouped as one: exactly one argument, "--color=never".
 test fn joined_fragments_render_one_argument() -> Bool {
   match argument_texts(arguments: joined_grouping()) {
-    Empty => false
-    Cons { head: only, tail: rest } =>
+    std.algebra.Empty => false
+    std.algebra.Cons { head: only, tail: rest } =>
       match rest {
-        Empty => only == "--color=never"
-        Cons { head: _, tail: _ } => false
+        std.algebra.Empty => only == "--color=never"
+        std.algebra.Cons { head: _, tail: _ } => false
       }
   }
 }
@@ -100,17 +101,17 @@ test fn joined_fragments_render_one_argument() -> Bool {
 // Grouped as three: exactly three arguments, and the middle one is bare "=".
 test fn separated_fragments_render_three_arguments() -> Bool {
   match argument_texts(arguments: separated_grouping()) {
-    Empty => false
-    Cons { head: a, tail: r1 } =>
+    std.algebra.Empty => false
+    std.algebra.Cons { head: a, tail: r1 } =>
       match r1 {
-        Empty => false
-        Cons { head: b, tail: r2 } =>
+        std.algebra.Empty => false
+        std.algebra.Cons { head: b, tail: r2 } =>
           match r2 {
-            Empty => false
-            Cons { head: c, tail: r3 } =>
+            std.algebra.Empty => false
+            std.algebra.Cons { head: c, tail: r3 } =>
               match r3 {
-                Empty => (a == "--color") && (b == "=") && (c == "never")
-                Cons { head: _, tail: _ } => false
+                std.algebra.Empty => (a == "--color") && (b == "=") && (c == "never")
+                std.algebra.Cons { head: _, tail: _ } => false
               }
           }
       }
@@ -126,8 +127,8 @@ fn grouping_flat_text(arguments: List<v2.std.compilers.cli_surface.CliArgumentSy
     lex: probe_lex_rules(),
     binding_spellings: v2.std.collection.empty_map()
   ) {
-    Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
 }
 
@@ -147,11 +148,12 @@ test fn keystone_flat_text_is_nonempty() -> Bool {
     lex: probe_lex_rules(),
     binding_spellings: v2.std.collection.empty_map()
   ) {
-    Accepted { value: text, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } =>
       v2.std.compilers.target_model.render_target_text(t: text) == "--color=never"
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
+
 
 // A MISSING BINDING REFUSES. This is the perturbation control for the fail-open this fold used
 // to inherit: target_model's bound-token lookup answers an absent map entry with the binding
@@ -160,7 +162,7 @@ test fn keystone_flat_text_is_nonempty() -> Bool {
 // for compiler source text, where the symbol name is a legitimate rendering; fabricated
 // plausible output for runtime CLI data (DESIGN section 5).
 //
-// The assertion is deliberately v2.std.diagnostic.Rejected-vs-Accepted rather than a text comparison: if the
+// The assertion is deliberately Rejected-vs-Accepted rather than a text comparison: if the
 // fallback ever returns, this goes red because the fold ACCEPTS, and no assertion about the
 // emitted text is needed to see it.
 test fn a_bound_fragment_with_no_spelling_refuses() -> Bool {
@@ -171,7 +173,7 @@ test fn a_bound_fragment_with_no_spelling_refuses() -> Bool {
     lex: probe_lex_rules(),
     binding_spellings: v2.std.collection.empty_map()
   ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }

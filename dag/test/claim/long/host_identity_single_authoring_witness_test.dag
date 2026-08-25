@@ -28,7 +28,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 // TWO -- VALUES, AS OPPOSED TO DECLARATIONS. The honest claim one would want is that no two
 // declarations author the same host STRING, which would also correctly permit
 // gunbc.host_standup srv3_host_standup_target, since that REFERENCES operator_host_srv3 rather than
-// re-authoring "srv3". That claim is not expressible today: v2.std.decl_index v2.std.decl_index.DataDeclTypeFact
+// re-authoring "srv3". That claim is not expressible today: v2.std.decl_index DataDeclTypeFact
 // carries no value, and the DeclFact initializer projection reports the same kind
 // (DataInitializerTypecheckedSubjectAbsentProjection) for a string literal and for a reference to
 // another declaration -- verified by execution against all three specimens, not assumed. So a
@@ -104,7 +104,7 @@ fn host_identity_declarations_in(module_path: String) -> List<v2.std.decl_index.
   filter(host_identity_data_declarations(), f => f.module_path == module_path)
 }
 
-test fn the_physical_inventory_authors_no_host_identity() -> std.types.Bool {
+test fn the_physical_inventory_authors_no_host_identity() -> Bool {
   length(host_identity_declarations_in(module_path: "gunbc.fleet_physical_inventory")) == 0
 }
 
@@ -113,6 +113,6 @@ test fn the_physical_inventory_authors_no_host_identity() -> std.types.Bool {
 // silently found no modules -- the assertion above would be green for the wrong reason and would
 // stay green forever. This one fails in that case, because it demands that the surface still SEES
 // the authority: gunbc.fleet_intent_network must declare its six.
-test fn the_intent_network_still_authors_the_six() -> std.types.Bool {
+test fn the_intent_network_still_authors_the_six() -> Bool {
   length(host_identity_declarations_in(module_path: "gunbc.fleet_intent_network")) == 6
 }

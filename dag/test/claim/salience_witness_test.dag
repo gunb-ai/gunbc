@@ -1,24 +1,24 @@
 module test.claim.salience_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data salience_witness_note: String = "S1 selective-spectacle receipts (operator recalibration 2026-08-02), each a decided law with its RED control: the budget table grants energy to focus only; a second ordinary focal subject in one region is a typed refusal while Critical coexists; emission refuses for the wrong role, outside the envelope, and without a non-emission discriminator (so reduced-motion/no-emission renderings keep every distinction by construction); attraction is bounded and borrows the register's one spring rather than minting a second; and the principles carrier holds the revised thesis with the three new laws carried by real salience declarations."
 
 fn fx_emission_ok() -> gunbc.design.salience.EmissionSpec {
   gunbc.design.salience.EmissionSpec {
-    core_radius: css_px(4),
-    corona_radius: css_px(24),
+    core_radius: extdeps.languages.css.values.css_px(4),
+    corona_radius: extdeps.languages.css.values.css_px(24),
     core_alpha_pct: 70,
     corona_alpha_pct: 12,
   }
 }
 
 test fn witness_budget_grants_energy_to_focus_only() -> Bool {
-  let ground = salience_budget(role: SalienceGround)
-  let supporting = salience_budget(role: SalienceSupporting)
-  let focal = salience_budget(role: SalienceFocal)
-  let critical = salience_budget(role: SalienceCritical)
+  let ground = gunbc.design.salience.salience_budget(role: gunbc.design.salience.SalienceGround)
+  let supporting = gunbc.design.salience.salience_budget(role: gunbc.design.salience.SalienceSupporting)
+  let focal = gunbc.design.salience.salience_budget(role: gunbc.design.salience.SalienceFocal)
+  let critical = gunbc.design.salience.salience_budget(role: gunbc.design.salience.SalienceCritical)
   return !ground.emission_admissible
     && !ground.sound_admissible
     && !supporting.emission_admissible
@@ -27,153 +27,153 @@ test fn witness_budget_grants_energy_to_focus_only() -> Bool {
     && focal.sound_admissible
     && critical.emission_admissible
     && critical.sound_admissible
-    && motion_key(g: ground.motion) == "none"
-    && motion_key(g: supporting.motion) == "interaction"
-    && motion_key(g: focal.motion) == "physical"
-    && motion_key(g: critical.motion) == "sharp-bounded"
-    && chroma_key(g: ground.chroma) == "minimal"
-    && chroma_key(g: supporting.chroma) == "restrained"
-    && chroma_key(g: focal.chroma) == "strong"
-    && chroma_key(g: critical.chroma) == "strong"
+    && gunbc.design.salience.motion_key(g: ground.motion) == "none"
+    && gunbc.design.salience.motion_key(g: supporting.motion) == "interaction"
+    && gunbc.design.salience.motion_key(g: focal.motion) == "physical"
+    && gunbc.design.salience.motion_key(g: critical.motion) == "sharp-bounded"
+    && gunbc.design.salience.chroma_key(g: ground.chroma) == "minimal"
+    && gunbc.design.salience.chroma_key(g: supporting.chroma) == "restrained"
+    && gunbc.design.salience.chroma_key(g: focal.chroma) == "strong"
+    && gunbc.design.salience.chroma_key(g: critical.chroma) == "strong"
 }
 
 test fn witness_red_two_focal_subjects_in_one_region_refuse() -> Bool {
   let two_focal = [
-    gunbc.design.salience.SalienceAssignment { subject: "finish-line-compiler-fixed-point", role: SalienceFocal },
-    gunbc.design.salience.SalienceAssignment { subject: "finish-line-interpreter-delete", role: SalienceFocal },
-    gunbc.design.salience.SalienceAssignment { subject: "sibling", role: SalienceSupporting },
+    gunbc.design.salience.SalienceAssignment { subject: "finish-line-compiler-fixed-point", role: gunbc.design.salience.SalienceFocal },
+    gunbc.design.salience.SalienceAssignment { subject: "finish-line-interpreter-delete", role: gunbc.design.salience.SalienceFocal },
+    gunbc.design.salience.SalienceAssignment { subject: "sibling", role: gunbc.design.salience.SalienceSupporting },
   ]
-  match region_focal_admission(region: "outcome-screen", assignments: two_focal) {
-    FocalBudgetExceeded { region: r, focal_count: n } => r == "outcome-screen" && n == 2
-    FocalAdmitted { focal_count: _, critical_count: _ } => false
+  match gunbc.design.salience.region_focal_admission(region: "outcome-screen", assignments: two_focal) {
+    gunbc.design.salience.FocalBudgetExceeded { region: r, focal_count: n } => r == "outcome-screen" && n == 2
+    gunbc.design.salience.FocalAdmitted { focal_count: _, critical_count: _ } => false
   }
 }
 
 test fn witness_critical_interrupts_without_dethroning_the_focal_subject() -> Bool {
   let one_each = [
-    gunbc.design.salience.SalienceAssignment { subject: "finish-line-compiler-fixed-point", role: SalienceFocal },
-    gunbc.design.salience.SalienceAssignment { subject: "workflow-observation-refused", role: SalienceCritical },
-    gunbc.design.salience.SalienceAssignment { subject: "sibling-a", role: SalienceSupporting },
-    gunbc.design.salience.SalienceAssignment { subject: "world", role: SalienceGround },
+    gunbc.design.salience.SalienceAssignment { subject: "finish-line-compiler-fixed-point", role: gunbc.design.salience.SalienceFocal },
+    gunbc.design.salience.SalienceAssignment { subject: "workflow-observation-refused", role: gunbc.design.salience.SalienceCritical },
+    gunbc.design.salience.SalienceAssignment { subject: "sibling-a", role: gunbc.design.salience.SalienceSupporting },
+    gunbc.design.salience.SalienceAssignment { subject: "world", role: gunbc.design.salience.SalienceGround },
   ]
-  match region_focal_admission(region: "outcome-screen", assignments: one_each) {
-    FocalAdmitted { focal_count: fc, critical_count: cc } => fc == 1 && cc == 1
-    FocalBudgetExceeded { region: _, focal_count: _ } => false
+  match gunbc.design.salience.region_focal_admission(region: "outcome-screen", assignments: one_each) {
+    gunbc.design.salience.FocalAdmitted { focal_count: fc, critical_count: cc } => fc == 1 && cc == 1
+    gunbc.design.salience.FocalBudgetExceeded { region: _, focal_count: _ } => false
   }
 }
 
 test fn witness_red_supporting_subject_cannot_request_emission() -> Bool {
-  match emission_for(role: SalienceSupporting, spec: fx_emission_ok(), discriminator: "node-selected") {
-    EmissionRefusedForRole { role: r } => salience_key(role: r) == "supporting"
-    EmissionGranted { spec: _, discriminator: _ } => false
-    EmissionOutsideEnvelope { corona_alpha_pct: _, corona_radius_px: _ } => false
-    EmissionUnitNotComparable { core_unit: _, corona_unit: _ } => false
-    EmissionSoleDiscriminatorRefused => false
+  match gunbc.design.salience.emission_for(role: gunbc.design.salience.SalienceSupporting, spec: fx_emission_ok(), discriminator: "node-selected") {
+    gunbc.design.salience.EmissionRefusedForRole { role: r } => gunbc.design.salience.salience_key(role: r) == "supporting"
+    gunbc.design.salience.EmissionGranted { spec: _, discriminator: _ } => false
+    gunbc.design.salience.EmissionOutsideEnvelope { corona_alpha_pct: _, corona_radius_px: _ } => false
+    gunbc.design.salience.EmissionUnitNotComparable { core_unit: _, corona_unit: _ } => false
+    gunbc.design.salience.EmissionSoleDiscriminatorRefused => false
   }
 }
 
 test fn witness_red_emission_cannot_be_the_sole_discriminator() -> Bool {
-  match emission_for(role: SalienceFocal, spec: fx_emission_ok(), discriminator: "") {
-    EmissionSoleDiscriminatorRefused => true
-    EmissionGranted { spec: _, discriminator: _ } => false
-    EmissionRefusedForRole { role: _ } => false
-    EmissionOutsideEnvelope { corona_alpha_pct: _, corona_radius_px: _ } => false
-    EmissionUnitNotComparable { core_unit: _, corona_unit: _ } => false
+  match gunbc.design.salience.emission_for(role: gunbc.design.salience.SalienceFocal, spec: fx_emission_ok(), discriminator: "") {
+    gunbc.design.salience.EmissionSoleDiscriminatorRefused => true
+    gunbc.design.salience.EmissionGranted { spec: _, discriminator: _ } => false
+    gunbc.design.salience.EmissionRefusedForRole { role: _ } => false
+    gunbc.design.salience.EmissionOutsideEnvelope { corona_alpha_pct: _, corona_radius_px: _ } => false
+    gunbc.design.salience.EmissionUnitNotComparable { core_unit: _, corona_unit: _ } => false
   }
 }
 
 test fn witness_red_loud_corona_refuses_with_the_measured_violation() -> Bool {
   let loud = gunbc.design.salience.EmissionSpec {
-    core_radius: css_px(4),
-    corona_radius: css_px(60),
+    core_radius: extdeps.languages.css.values.css_px(4),
+    corona_radius: extdeps.languages.css.values.css_px(60),
     core_alpha_pct: 70,
     corona_alpha_pct: 40,
   }
-  match emission_for(role: SalienceFocal, spec: loud, discriminator: "node-selected") {
-    EmissionOutsideEnvelope { corona_alpha_pct: a, corona_radius_px: r } =>
-      a == 40 && r == 60 && a > emission_corona_alpha_max_pct && r > emission_corona_radius_max_px
-    EmissionGranted { spec: _, discriminator: _ } => false
-    EmissionRefusedForRole { role: _ } => false
-    EmissionUnitNotComparable { core_unit: _, corona_unit: _ } => false
-    EmissionSoleDiscriminatorRefused => false
+  match gunbc.design.salience.emission_for(role: gunbc.design.salience.SalienceFocal, spec: loud, discriminator: "node-selected") {
+    gunbc.design.salience.EmissionOutsideEnvelope { corona_alpha_pct: a, corona_radius_px: r } =>
+      a == 40 && r == 60 && a > gunbc.design.salience.emission_corona_alpha_max_pct && r > gunbc.design.salience.emission_corona_radius_max_px
+    gunbc.design.salience.EmissionGranted { spec: _, discriminator: _ } => false
+    gunbc.design.salience.EmissionRefusedForRole { role: _ } => false
+    gunbc.design.salience.EmissionUnitNotComparable { core_unit: _, corona_unit: _ } => false
+    gunbc.design.salience.EmissionSoleDiscriminatorRefused => false
   }
 }
 
 test fn witness_focal_emission_grant_carries_its_discriminator() -> Bool {
-  match emission_for(role: SalienceFocal, spec: fx_emission_ok(), discriminator: "node-selected") {
-    EmissionGranted { spec: s, discriminator: d } =>
-      d == "node-selected" && emission_envelope(spec: s) && s.corona_radius.n > s.core_radius.n
-    EmissionRefusedForRole { role: _ } => false
-    EmissionOutsideEnvelope { corona_alpha_pct: _, corona_radius_px: _ } => false
-    EmissionUnitNotComparable { core_unit: _, corona_unit: _ } => false
-    EmissionSoleDiscriminatorRefused => false
+  match gunbc.design.salience.emission_for(role: gunbc.design.salience.SalienceFocal, spec: fx_emission_ok(), discriminator: "node-selected") {
+    gunbc.design.salience.EmissionGranted { spec: s, discriminator: d } =>
+      d == "node-selected" && gunbc.design.salience.emission_envelope(spec: s) && s.corona_radius.n > s.core_radius.n
+    gunbc.design.salience.EmissionRefusedForRole { role: _ } => false
+    gunbc.design.salience.EmissionOutsideEnvelope { corona_alpha_pct: _, corona_radius_px: _ } => false
+    gunbc.design.salience.EmissionUnitNotComparable { core_unit: _, corona_unit: _ } => false
+    gunbc.design.salience.EmissionSoleDiscriminatorRefused => false
   }
 }
 
 test fn witness_attraction_is_bounded_and_borrows_the_register_spring() -> Bool {
-  attraction_envelope(f: focal_attraction)
+  gunbc.design.salience.attraction_envelope(f: gunbc.design.salience.focal_attraction)
     && focal_attraction.max_travel.n <= gunbc.design.salience.attraction_travel_max_px
-    && focal_attraction.activation_radius.n >= attraction_activation_min_px
-    && focal_attraction.activation_radius.n <= attraction_activation_max_px
+    && focal_attraction.activation_radius.n >= gunbc.design.salience.attraction_activation_min_px
+    && focal_attraction.activation_radius.n <= gunbc.design.salience.attraction_activation_max_px
     && focal_attraction.settle.name == settle_spring.name
     && focal_attraction.settle.duration_ms == settle_spring.duration_ms
 }
 
 test fn witness_red_viewport_scale_attraction_is_outside_the_envelope() -> Bool {
   let evasive = gunbc.design.salience.AttractionField {
-    activation_radius: css_px(800),
-    max_travel: css_px(40),
-    settle: settle_spring,
+    activation_radius: extdeps.languages.css.values.css_px(800),
+    max_travel: extdeps.languages.css.values.css_px(40),
+    settle: gunbc.design.material.settle_spring,
   }
-  !attraction_envelope(f: evasive)
+  !gunbc.design.salience.attraction_envelope(f: evasive)
 }
 
 // THE DISCRIMINATING PART IS THE NUMBER, NOT THE SIZE. Both controls below are authored to satisfy EVERY numeric constraint in their envelope and differ from an accepted specimen ONLY in unit, so they cannot pass by being small and cannot fail by being large — the sole reason either refuses is that a rem magnitude is not comparable to a px bound. A corona of 40rem satisfies 40 <= 48 and 40 > 4 while denoting roughly 640px, and an attraction field of 12rem travel inside a 150rem radius satisfies every one of the four numeric bounds; before the unit check both were admitted. The emission arm additionally pins WHICH refusal fires: EmissionUnitNotComparable carrying both offending unit tokens, never EmissionOutsideEnvelope, whose corona_radius_px field would report a rem magnitude under a px name.
 test fn witness_red_rem_emission_is_not_comparable_to_a_px_bound() -> Bool {
   let rem_spec = gunbc.design.salience.EmissionSpec {
-    core_radius: extdeps.languages.css.values.CssLength { n: 4, unit: Rem },
-    corona_radius: extdeps.languages.css.values.CssLength { n: 40, unit: Rem },
+    core_radius: extdeps.languages.css.values.CssLength { n: 4, unit: extdeps.languages.css.values.Rem },
+    corona_radius: extdeps.languages.css.values.CssLength { n: 40, unit: extdeps.languages.css.values.Rem },
     core_alpha_pct: 70,
     corona_alpha_pct: 12,
   }
-  !emission_envelope(spec: rem_spec)
-    && rem_spec.corona_radius.n <= emission_corona_radius_max_px
-    && rem_spec.corona_alpha_pct <= emission_corona_alpha_max_pct
+  !gunbc.design.salience.emission_envelope(spec: rem_spec)
+    && rem_spec.corona_radius.n <= gunbc.design.salience.emission_corona_radius_max_px
+    && rem_spec.corona_alpha_pct <= gunbc.design.salience.emission_corona_alpha_max_pct
     && rem_spec.corona_radius.n > rem_spec.core_radius.n
-    && match emission_for(role: SalienceFocal, spec: rem_spec, discriminator: "node-selected") {
-      EmissionUnitNotComparable { core_unit: cu, corona_unit: ru } => cu == "rem" && ru == "rem"
-      EmissionGranted { spec: _, discriminator: _ } => false
-      EmissionRefusedForRole { role: _ } => false
-      EmissionOutsideEnvelope { corona_alpha_pct: _, corona_radius_px: _ } => false
-      EmissionSoleDiscriminatorRefused => false
+    && match gunbc.design.salience.emission_for(role: gunbc.design.salience.SalienceFocal, spec: rem_spec, discriminator: "node-selected") {
+      gunbc.design.salience.EmissionUnitNotComparable { core_unit: cu, corona_unit: ru } => cu == "rem" && ru == "rem"
+      gunbc.design.salience.EmissionGranted { spec: _, discriminator: _ } => false
+      gunbc.design.salience.EmissionRefusedForRole { role: _ } => false
+      gunbc.design.salience.EmissionOutsideEnvelope { corona_alpha_pct: _, corona_radius_px: _ } => false
+      gunbc.design.salience.EmissionSoleDiscriminatorRefused => false
     }
 }
 
 test fn witness_red_rem_attraction_is_not_comparable_to_a_px_bound() -> Bool {
   let rem_field = gunbc.design.salience.AttractionField {
-    activation_radius: extdeps.languages.css.values.CssLength { n: 150, unit: Rem },
-    max_travel: extdeps.languages.css.values.CssLength { n: 12, unit: Rem },
-    settle: settle_spring,
+    activation_radius: extdeps.languages.css.values.CssLength { n: 150, unit: extdeps.languages.css.values.Rem },
+    max_travel: extdeps.languages.css.values.CssLength { n: 12, unit: extdeps.languages.css.values.Rem },
+    settle: gunbc.design.material.settle_spring,
   }
-  !attraction_envelope(f: rem_field)
+  !gunbc.design.salience.attraction_envelope(f: rem_field)
     && rem_field.max_travel.n <= gunbc.design.salience.attraction_travel_max_px
-    && rem_field.activation_radius.n >= attraction_activation_min_px
-    && rem_field.activation_radius.n <= attraction_activation_max_px
+    && rem_field.activation_radius.n >= gunbc.design.salience.attraction_activation_min_px
+    && rem_field.activation_radius.n <= gunbc.design.salience.attraction_activation_max_px
     && rem_field.activation_radius.n > rem_field.max_travel.n
 }
 
 test fn witness_principles_carry_the_amendment() -> Bool {
-  let keys = principle_keys(principles: register_principles)
-  register_thesis == "Calm field; luminous focus; physical response; every response true."
-    && principles_all_carried(principles: register_principles)
-    && principle_keys_distinct(principles: register_principles)
-    && count(register_principles) == 12
-    && contains_key(keys: keys, key: "selective-spectacle")
-    && contains_key(keys: keys, key: "emission-over-material")
-    && contains_key(keys: keys, key: "bounded-attraction")
-    && contains_key(keys: keys, key: "quiet-surface")
-    && contains_key(keys: keys, key: "still-until-touched")
-    && contains_key(keys: keys, key: "physical-enclosure")
+  let keys = gunbc.design.principles.principle_keys(principles: gunbc.design.principles.register_principles)
+  gunbc.design.principles.register_thesis == "Calm field; luminous focus; physical response; every response true."
+    && gunbc.design.principles.principles_all_carried(principles: gunbc.design.principles.register_principles)
+    && gunbc.design.principles.principle_keys_distinct(principles: gunbc.design.principles.register_principles)
+    && count(gunbc.design.principles.register_principles) == 12
+    && gunbc.design.principles.contains_key(keys: keys, key: "selective-spectacle")
+    && gunbc.design.principles.contains_key(keys: keys, key: "emission-over-material")
+    && gunbc.design.principles.contains_key(keys: keys, key: "bounded-attraction")
+    && gunbc.design.principles.contains_key(keys: keys, key: "quiet-surface")
+    && gunbc.design.principles.contains_key(keys: keys, key: "still-until-touched")
+    && gunbc.design.principles.contains_key(keys: keys, key: "physical-enclosure")
 }
 
 test fn salience_keystone_holds() -> Bool {

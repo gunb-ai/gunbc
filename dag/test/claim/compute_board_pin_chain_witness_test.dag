@@ -1,12 +1,12 @@
 module test.claim.compute_board_pin_chain_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn admitted() -> product.compute_board.admission.AdmittedBoardPowerInterfaceArticle? {
-  match product.compute_board.admission.admit_board_article(a: power_interlock_article) {
-    BoardArticleAdmitted { article: adm } => Present { value: adm }
-    BoardArticleRefused { causes: _ } => none
+  match product.compute_board.admission.admit_board_article(a: product.compute_board.article.power_interlock_article) {
+    product.compute_board.admission.BoardArticleAdmitted { article: adm } => Present { value: adm }
+    product.compute_board.admission.BoardArticleRefused { causes: _ } => none
   }
 }
 
@@ -14,17 +14,17 @@ fn project(
   bindings: List<product.compute_board.verilog_projection.VerilogBinding>,
   assignments: List<product.compute_board.device_binding.DevicePinAssignment>
 ) -> String {
-  match test.claim.compute_board_pin_chain_witness.admitted() {
+  match admitted() {
     Absent => "NOT-ADMITTED"
     Present { value: adm } =>
-      match project_article_to_pin_constraints(
+      match product.compute_board.device_binding.project_article_to_pin_constraints(
         admitted: adm,
-        realization: interlock_device_realization,
+        realization: product.compute_board.device_binding.interlock_device_realization,
         bindings: bindings,
         assignments: assignments
       ) {
-        PinConstraintsEmitted { receipt: r } => r.source
-        PinConstraintsRefused { causes: _ } => "REFUSED"
+        product.compute_board.device_binding.PinConstraintsEmitted { receipt: r } => r.source
+        product.compute_board.device_binding.PinConstraintsRefused { causes: _ } => "REFUSED"
       }
   }
 }
@@ -35,7 +35,7 @@ fn project(
 data expected_pin_constraints: String = "set_io conditioned_good 1\nset_io fault 2\nset_io power_permit 3\nset_io reset_release 4\n"
 
 test fn w_the_production_pin_constraints_emit_exact_bytes() -> Bool {
-  let emitted = test.claim.compute_board_pin_chain_witness.project(bindings: power_interlock_verilog_bindings, assignments: interlock_pin_assignments)
+  let emitted = project(bindings: product.compute_board.verilog_projection.power_interlock_verilog_bindings, assignments: product.compute_board.device_binding.interlock_pin_assignments)
   emitted == expected_pin_constraints
 }
 
@@ -45,43 +45,43 @@ test fn w_the_production_pin_constraints_emit_exact_bytes() -> Bool {
 // the module does not declare.
 data respelled_bindings: List<product.compute_board.verilog_projection.VerilogBinding> = [
   product.compute_board.verilog_projection.VerilogBinding { signal: "board_power_interlock" as product.compute_board.digital_control.SignalName, symbol: ^interlock_module_name, spelling: "board_power_interlock" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: conditioned_good_signal, symbol: ^interlock_conditioned_good, spelling: "cond_good_renamed" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: fault_signal, symbol: ^interlock_fault, spelling: "fault" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
-  product.compute_board.verilog_projection.VerilogBinding { signal: reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.conditioned_good_signal, symbol: ^interlock_conditioned_good, spelling: "cond_good_renamed" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.fault_signal, symbol: ^interlock_fault, spelling: "fault" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
+  product.compute_board.verilog_projection.VerilogBinding { signal: product.compute_board.digital_control.reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
 ]
 
 test fn w_a_respelled_port_moves_the_constraint_file() -> Bool {
-  let respelled = test.claim.compute_board_pin_chain_witness.project(bindings: respelled_bindings, assignments: interlock_pin_assignments)
+  let respelled = project(bindings: respelled_bindings, assignments: product.compute_board.device_binding.interlock_pin_assignments)
   respelled != expected_pin_constraints
     && respelled == "set_io cond_good_renamed 1\nset_io fault 2\nset_io power_permit 3\nset_io reset_release 4\n"
 }
 
 fn refusal_is(r: product.compute_board.device_binding.PinChainRefusal, wanted: String) -> Bool {
   match r {
-    PinNotOnPackage { signal: _, pin: _ } => wanted == "PinNotOnPackage"
-    PinAssignedToSeveralSignals { pin: _ } => wanted == "PinAssignedToSeveralSignals"
-    SignalAssignedToSeveralPins { signal: _ } => wanted == "SignalAssignedToSeveralPins"
-    AssignedSignalNotDeclared { signal: _ } => wanted == "AssignedSignalNotDeclared"
-    DeclaredSignalHasNoPin { signal: _ } => wanted == "DeclaredSignalHasNoPin"
-    SignalHasNoTargetSpelling { signal: _ } => wanted == "SignalHasNoTargetSpelling"
-    ConstraintNotEmittable { reason: _ } => wanted == "ConstraintNotEmittable"
+    product.compute_board.device_binding.PinNotOnPackage { signal: _, pin: _ } => wanted == "PinNotOnPackage"
+    product.compute_board.device_binding.PinAssignedToSeveralSignals { pin: _ } => wanted == "PinAssignedToSeveralSignals"
+    product.compute_board.device_binding.SignalAssignedToSeveralPins { signal: _ } => wanted == "SignalAssignedToSeveralPins"
+    product.compute_board.device_binding.AssignedSignalNotDeclared { signal: _ } => wanted == "AssignedSignalNotDeclared"
+    product.compute_board.device_binding.DeclaredSignalHasNoPin { signal: _ } => wanted == "DeclaredSignalHasNoPin"
+    product.compute_board.device_binding.SignalHasNoTargetSpelling { signal: _ } => wanted == "SignalHasNoTargetSpelling"
+    product.compute_board.device_binding.ConstraintNotEmittable { reason: _ } => wanted == "ConstraintNotEmittable"
   }
 }
 
 fn refuses_naming(assignments: List<product.compute_board.device_binding.DevicePinAssignment>, wanted: String) -> Bool {
-  match test.claim.compute_board_pin_chain_witness.admitted() {
+  match admitted() {
     Absent => false
     Present { value: adm } =>
-      match project_article_to_pin_constraints(
+      match product.compute_board.device_binding.project_article_to_pin_constraints(
         admitted: adm,
-        realization: interlock_device_realization,
-        bindings: power_interlock_verilog_bindings,
+        realization: product.compute_board.device_binding.interlock_device_realization,
+        bindings: product.compute_board.verilog_projection.power_interlock_verilog_bindings,
         assignments: assignments
       ) {
-        PinConstraintsEmitted { receipt: _ } => false
-        PinConstraintsRefused { causes: cs } =>
-          fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || test.claim.compute_board_pin_chain_witness.refusal_is(r: r, wanted: wanted) })
+        product.compute_board.device_binding.PinConstraintsEmitted { receipt: _ } => false
+        product.compute_board.device_binding.PinConstraintsRefused { causes: cs } =>
+          fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || refusal_is(r: r, wanted: wanted) })
       }
   }
 }
@@ -89,14 +89,14 @@ fn refuses_naming(assignments: List<product.compute_board.device_binding.DeviceP
 // Pin 5 is absent from the TQ144 roster — the package numbers 144 positions and only 96 of them
 // are placeable I/O, so a plausible-looking number is exactly the kind that gets authored.
 test fn w_a_pin_the_package_does_not_have_refuses() -> Bool {
-  roster_admits_pin(r: icestorm_hx1k_tq144_roster, pin: "1")
-    && !roster_admits_pin(r: icestorm_hx1k_tq144_roster, pin: "5")
-    && test.claim.compute_board_pin_chain_witness.refuses_naming(
+  extdeps.toolchain.icestorm.subject.roster_admits_pin(r: extdeps.toolchain.icestorm.subject.icestorm_hx1k_tq144_roster, pin: "1")
+    && !extdeps.toolchain.icestorm.subject.roster_admits_pin(r: extdeps.toolchain.icestorm.subject.icestorm_hx1k_tq144_roster, pin: "5")
+    && refuses_naming(
       assignments: [
-        product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "5" },
-        product.compute_board.device_binding.DevicePinAssignment { signal: fault_signal, pin: "2" },
-        product.compute_board.device_binding.DevicePinAssignment { signal: power_permit_signal, pin: "3" },
-        product.compute_board.device_binding.DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+        product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.conditioned_good_signal, pin: "5" },
+        product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.fault_signal, pin: "2" },
+        product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.power_permit_signal, pin: "3" },
+        product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.reset_release_signal, pin: "4" },
       ],
       wanted: "PinNotOnPackage"
     )
@@ -105,12 +105,12 @@ test fn w_a_pin_the_package_does_not_have_refuses() -> Bool {
 // Two signals on one pin is a short at the package boundary; place-and-route would refuse it, but
 // only after an artifact has been generated and handed over.
 test fn w_two_signals_on_one_pin_refuse() -> Bool {
-  test.claim.compute_board_pin_chain_witness.refuses_naming(
+  refuses_naming(
     assignments: [
-      product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: fault_signal, pin: "1" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: power_permit_signal, pin: "3" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.conditioned_good_signal, pin: "1" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.fault_signal, pin: "1" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.power_permit_signal, pin: "3" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.reset_release_signal, pin: "4" },
     ],
     wanted: "PinAssignedToSeveralSignals"
   )
@@ -120,25 +120,25 @@ test fn w_two_signals_on_one_pin_refuse() -> Bool {
 // list order. A verdict decided by which row was authored first is the accident this repository
 // has now closed in four places.
 test fn w_one_signal_on_two_pins_refuses() -> Bool {
-  test.claim.compute_board_pin_chain_witness.refuses_naming(
+  refuses_naming(
     assignments: [
-      product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "7" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: fault_signal, pin: "2" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: power_permit_signal, pin: "3" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.conditioned_good_signal, pin: "1" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.conditioned_good_signal, pin: "7" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.fault_signal, pin: "2" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.power_permit_signal, pin: "3" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.reset_release_signal, pin: "4" },
     ],
     wanted: "SignalAssignedToSeveralPins"
   )
 }
 
 test fn w_a_pin_for_a_signal_the_article_never_declared_refuses() -> Bool {
-  test.claim.compute_board_pin_chain_witness.refuses_naming(
+  refuses_naming(
     assignments: [
-      product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: fault_signal, pin: "2" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: power_permit_signal, pin: "3" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.conditioned_good_signal, pin: "1" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.fault_signal, pin: "2" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.power_permit_signal, pin: "3" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.reset_release_signal, pin: "4" },
       product.compute_board.device_binding.DevicePinAssignment { signal: "phantom_signal" as product.compute_board.digital_control.SignalName, pin: "7" },
     ],
     wanted: "AssignedSignalNotDeclared"
@@ -149,11 +149,11 @@ test fn w_a_pin_for_a_signal_the_article_never_declared_refuses() -> Bool {
 // can see a signal nobody assigned — the emitted file would simply not mention it and the tool
 // would place it somewhere. This is the arm that needs the opposite walk.
 test fn w_a_declared_signal_with_no_pin_refuses() -> Bool {
-  test.claim.compute_board_pin_chain_witness.refuses_naming(
+  refuses_naming(
     assignments: [
-      product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: fault_signal, pin: "2" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: power_permit_signal, pin: "3" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.conditioned_good_signal, pin: "1" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.fault_signal, pin: "2" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.power_permit_signal, pin: "3" },
     ],
     wanted: "DeclaredSignalHasNoPin"
   )
@@ -162,17 +162,17 @@ test fn w_a_declared_signal_with_no_pin_refuses() -> Bool {
 // An empty assignment list refuses once per declared signal rather than once overall: four
 // missing pins are four defects, and collapsing them into one cause would hide three of them.
 test fn w_every_unassigned_signal_is_its_own_cause() -> Bool {
-  match test.claim.compute_board_pin_chain_witness.admitted() {
+  match admitted() {
     Absent => false
     Present { value: adm } =>
-      match project_article_to_pin_constraints(
+      match product.compute_board.device_binding.project_article_to_pin_constraints(
         admitted: adm,
-        realization: interlock_device_realization,
-        bindings: power_interlock_verilog_bindings,
+        realization: product.compute_board.device_binding.interlock_device_realization,
+        bindings: product.compute_board.verilog_projection.power_interlock_verilog_bindings,
         assignments: []
       ) {
-        PinConstraintsEmitted { receipt: _ } => false
-        PinConstraintsRefused { causes: cs } => pin_refusal_set_count(s: cs) == 4
+        product.compute_board.device_binding.PinConstraintsEmitted { receipt: _ } => false
+        product.compute_board.device_binding.PinConstraintsRefused { causes: cs } => product.compute_board.device_binding.pin_refusal_set_count(s: cs) == 4
       }
   }
 }
@@ -182,22 +182,22 @@ test fn w_every_unassigned_signal_is_its_own_cause() -> Bool {
 // many assignments touched the collision rather than how many collisions there were. Counting is
 // what makes that visible: naming the cause passes either way.
 test fn w_a_doubled_pin_is_reported_once() -> Bool {
-  match test.claim.compute_board_pin_chain_witness.admitted() {
+  match admitted() {
     Absent => false
     Present { value: adm } =>
-      match project_article_to_pin_constraints(
+      match product.compute_board.device_binding.project_article_to_pin_constraints(
         admitted: adm,
-        realization: interlock_device_realization,
-        bindings: power_interlock_verilog_bindings,
+        realization: product.compute_board.device_binding.interlock_device_realization,
+        bindings: product.compute_board.verilog_projection.power_interlock_verilog_bindings,
         assignments: [
-          product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
-          product.compute_board.device_binding.DevicePinAssignment { signal: fault_signal, pin: "1" },
-          product.compute_board.device_binding.DevicePinAssignment { signal: power_permit_signal, pin: "3" },
-          product.compute_board.device_binding.DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+          product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.conditioned_good_signal, pin: "1" },
+          product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.fault_signal, pin: "1" },
+          product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.power_permit_signal, pin: "3" },
+          product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.reset_release_signal, pin: "4" },
         ]
       ) {
-        PinConstraintsEmitted { receipt: _ } => false
-        PinConstraintsRefused { causes: cs } => pin_refusal_set_count(s: cs) == 1
+        product.compute_board.device_binding.PinConstraintsEmitted { receipt: _ } => false
+        product.compute_board.device_binding.PinConstraintsRefused { causes: cs } => product.compute_board.device_binding.pin_refusal_set_count(s: cs) == 1
       }
   }
 }
@@ -207,23 +207,23 @@ test fn w_a_doubled_pin_is_reported_once() -> Bool {
 // two. Both directions are counted because a deduplication that only ran on one axis would pass
 // the test above and still double-report here.
 test fn w_a_doubled_signal_is_reported_once() -> Bool {
-  match test.claim.compute_board_pin_chain_witness.admitted() {
+  match admitted() {
     Absent => false
     Present { value: adm } =>
-      match project_article_to_pin_constraints(
+      match product.compute_board.device_binding.project_article_to_pin_constraints(
         admitted: adm,
-        realization: interlock_device_realization,
-        bindings: power_interlock_verilog_bindings,
+        realization: product.compute_board.device_binding.interlock_device_realization,
+        bindings: product.compute_board.verilog_projection.power_interlock_verilog_bindings,
         assignments: [
-          product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
-          product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "7" },
-          product.compute_board.device_binding.DevicePinAssignment { signal: fault_signal, pin: "2" },
-          product.compute_board.device_binding.DevicePinAssignment { signal: power_permit_signal, pin: "3" },
-          product.compute_board.device_binding.DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+          product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.conditioned_good_signal, pin: "1" },
+          product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.conditioned_good_signal, pin: "7" },
+          product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.fault_signal, pin: "2" },
+          product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.power_permit_signal, pin: "3" },
+          product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.reset_release_signal, pin: "4" },
         ]
       ) {
-        PinConstraintsEmitted { receipt: _ } => false
-        PinConstraintsRefused { causes: cs } => pin_refusal_set_count(s: cs) == 1
+        product.compute_board.device_binding.PinConstraintsEmitted { receipt: _ } => false
+        product.compute_board.device_binding.PinConstraintsRefused { causes: cs } => product.compute_board.device_binding.pin_refusal_set_count(s: cs) == 1
       }
   }
 }
@@ -234,10 +234,10 @@ test fn w_a_doubled_signal_is_reported_once() -> Bool {
 // Neither was derived from the other, so this is evidence rather than bookkeeping — and it is
 // derived from both rather than pinned to a literal, so it cannot be kept true by editing one.
 test fn w_the_vendor_and_the_toolchain_agree_on_the_pin_population() -> Bool {
-  bank_population_general_purpose(p: ice40_hx1k_tq144_banks) == 92
-    && bank_population_total(p: ice40_hx1k_tq144_banks) == 96
-    && roster_pin_count(r: icestorm_hx1k_tq144_roster) == 96
-    && realization_populations_agree(realization: interlock_device_realization)
+  extdeps.programmable_logic.ice40.subject.bank_population_general_purpose(p: extdeps.programmable_logic.ice40.subject.ice40_hx1k_tq144_banks) == 92
+    && extdeps.programmable_logic.ice40.subject.bank_population_total(p: extdeps.programmable_logic.ice40.subject.ice40_hx1k_tq144_banks) == 96
+    && extdeps.toolchain.icestorm.subject.roster_pin_count(r: extdeps.toolchain.icestorm.subject.icestorm_hx1k_tq144_roster) == 96
+    && product.compute_board.device_binding.realization_populations_agree(realization: product.compute_board.device_binding.interlock_device_realization)
 }
 
 // The device and package facts are the ones a board reproduces: a 0.5 mm pitch on a 20 mm body is
@@ -245,8 +245,8 @@ test fn w_the_vendor_and_the_toolchain_agree_on_the_pin_population() -> Bool {
 test fn w_the_package_carries_the_facts_a_footprint_needs() -> Bool {
   (ice40_hx1k.ordering_part_number as String) == "ICE40HX1K-TQ144"
     && (ice40_tq144_package.designator as String) == "TQ144"
-    && micrometer_count(m: ice40_tq144_package.contact_pitch) == 500
-    && micrometer_count(m: ice40_tq144_package.body_width) == 20000
+    && std.measure.micrometer_count(m: ice40_tq144_package.contact_pitch) == 500
+    && std.measure.micrometer_count(m: ice40_tq144_package.body_width) == 20000
     && ice40_tq144_package.contact_count == 144
 }
 
@@ -257,7 +257,7 @@ test fn w_the_package_carries_the_facts_a_footprint_needs() -> Bool {
 // a join rather than an arithmetic coincidence.
 test fn w_no_package_position_is_listed_twice() -> Bool {
   fold(icestorm_hx1k_tq144_roster.pins, init: true, f: fn(acc, p) {
-    acc && roster_pin_occurrences(r: icestorm_hx1k_tq144_roster, pin: p) == 1
+    acc && extdeps.toolchain.icestorm.subject.roster_pin_occurrences(r: extdeps.toolchain.icestorm.subject.icestorm_hx1k_tq144_roster, pin: p) == 1
   })
 }
 
@@ -266,10 +266,10 @@ test fn w_no_package_position_is_listed_twice() -> Bool {
 // rather than of agreement. This asserts the comparison lands on the AGREE arm specifically, so a
 // change that made the two populations incomparable could no longer read as a passing test.
 test fn w_the_population_agreement_names_its_kind() -> Bool {
-  match realization_population_comparison(realization: interlock_device_realization) {
-    PopulationsAgree { kind: k, count: c } => c == 96
-    PopulationsDisagree { kind: _, left: _, right: _ } => false
-    PopulationsNotComparable { left: _, right: _ } => false
+  match product.compute_board.device_binding.realization_population_comparison(realization: product.compute_board.device_binding.interlock_device_realization) {
+    product.compute_board.contact_population.PopulationsAgree { kind: k, count: c } => c == 96
+    product.compute_board.contact_population.PopulationsDisagree { kind: _, left: _, right: _ } => false
+    product.compute_board.contact_population.PopulationsNotComparable { left: _, right: _ } => false
   }
 }
 
@@ -278,12 +278,12 @@ test fn w_the_population_agreement_names_its_kind() -> Bool {
 // different questions, and nothing has stated the projection between them. Different states,
 // different remedies, different arms.
 test fn w_unlike_populations_refuse_rather_than_disagreeing() -> Bool {
-  let leads = product.compute_board.contact_population.ContactPopulation { kind: AllPackageLeads, count: 144, authority: "package drawing" }
-  let placeable = product.compute_board.contact_population.ContactPopulation { kind: PlaceableLogicPins, count: 96, authority: "IceStorm roster" }
-  match compare_populations(a: leads, b: placeable) {
-    PopulationsNotComparable { left: _, right: _ } => true
-    PopulationsAgree { kind: _, count: _ } => false
-    PopulationsDisagree { kind: _, left: _, right: _ } => false
+  let leads = product.compute_board.contact_population.ContactPopulation { kind: product.compute_board.contact_population.AllPackageLeads, count: 144, authority: "package drawing" }
+  let placeable = product.compute_board.contact_population.ContactPopulation { kind: product.compute_board.contact_population.PlaceableLogicPins, count: 96, authority: "IceStorm roster" }
+  match product.compute_board.contact_population.compare_populations(a: leads, b: placeable) {
+    product.compute_board.contact_population.PopulationsNotComparable { left: _, right: _ } => true
+    product.compute_board.contact_population.PopulationsAgree { kind: _, count: _ } => false
+    product.compute_board.contact_population.PopulationsDisagree { kind: _, left: _, right: _ } => false
   }
 }
 
@@ -293,13 +293,13 @@ test fn w_unlike_populations_refuse_rather_than_disagreeing() -> Bool {
 // 98 exactly. This asserts the arithmetic through the declared projection rather than restating
 // the sum, so a projection that stopped naming those two kinds would stop passing.
 test fn w_the_vendor_total_reconciles_through_a_declared_projection() -> Bool {
-  let se = product.compute_board.contact_population.ContactPopulation { kind: VendorGeneralPurposeSingleEndedIo, count: 96, authority: "FPGA-DS-02029-4.3" }
+  let se = product.compute_board.contact_population.ContactPopulation { kind: product.compute_board.contact_population.VendorGeneralPurposeSingleEndedIo, count: 96, authority: "FPGA-DS-02029-4.3" }
   let ded = product.compute_board.contact_population.ContactPopulation { kind: VendorDedicatedIo, count: 2, authority: "FPGA-DS-02029-4.3" }
-  match project_population(p: vendor_total_io_from_datasheet_rows, parts: [se, ded]) {
+  match product.compute_board.contact_population.project_population(p: product.compute_board.contact_population.vendor_total_io_from_datasheet_rows, parts: [se, ded]) {
     Absent => false
     Present { value: total } =>
       total.count == 98
-        && (population_kind_name(k: total.kind) as String) == "vendor total I/O"
+        && (product.compute_board.contact_population.population_kind_name(k: total.kind) as String) == "vendor total I/O"
   }
 }
 
@@ -307,9 +307,9 @@ test fn w_the_vendor_total_reconciles_through_a_declared_projection() -> Bool {
 // projection that sums whatever it is handed, which would make the declared from_kinds decorative
 // and let two unrelated populations add to a plausible total.
 test fn w_the_projection_refuses_a_population_it_does_not_admit() -> Bool {
-  let se = product.compute_board.contact_population.ContactPopulation { kind: VendorGeneralPurposeSingleEndedIo, count: 96, authority: "FPGA-DS-02029-4.3" }
-  let leads = product.compute_board.contact_population.ContactPopulation { kind: AllPackageLeads, count: 144, authority: "FPGA-DS-02029-4.3" }
-  match project_population(p: vendor_total_io_from_datasheet_rows, parts: [se, leads]) {
+  let se = product.compute_board.contact_population.ContactPopulation { kind: product.compute_board.contact_population.VendorGeneralPurposeSingleEndedIo, count: 96, authority: "FPGA-DS-02029-4.3" }
+  let leads = product.compute_board.contact_population.ContactPopulation { kind: product.compute_board.contact_population.AllPackageLeads, count: 144, authority: "FPGA-DS-02029-4.3" }
+  match product.compute_board.contact_population.project_population(p: product.compute_board.contact_population.vendor_total_io_from_datasheet_rows, parts: [se, leads]) {
     Absent => true
     Present { value: _ } => false
   }
@@ -321,15 +321,15 @@ test fn w_the_projection_refuses_a_population_it_does_not_admit() -> Bool {
 // VQ100 column is the control: read from the same rows by the same method, it cross-foots exactly,
 // which is what distinguishes a property of the document from a mistake in the reading.
 test fn w_the_bonded_pin_itemization_falls_one_short_and_says_so() -> Bool {
-  let itemized = itemized_contact_total(i: ice40_hx1k_tq144_contacts)
-  let control = itemized_contact_total(i: ice40_hx1k_vq100_contacts)
+  let itemized = extdeps.programmable_logic.ice40.subject.itemized_contact_total(i: extdeps.programmable_logic.ice40.subject.ice40_hx1k_tq144_contacts)
+  let control = extdeps.programmable_logic.ice40.subject.itemized_contact_total(i: extdeps.programmable_logic.ice40.subject.ice40_hx1k_vq100_contacts)
   itemized == 143
     && ice40_hx1k_tq144_contacts.declared_bonded_pins == 144
     && control == ice40_hx1k_vq100_contacts.declared_bonded_pins
-    && gap_is_open(g: ice40_hx1k_tq144_io_count_gap)
-    && citation_is_current(c: ice40_hx1k_tq144_io_count_gap.citation_currency)
+    && product.compute_board.contact_population.gap_is_open(g: product.compute_board.contact_population.ice40_hx1k_tq144_io_count_gap)
+    && product.compute_board.contact_population.citation_is_current(c: ice40_hx1k_tq144_io_count_gap.citation_currency)
     && fold(ice40_hx1k_tq144_io_count_gap.unreconciled, init: false, f: fn(acc, p) {
-      acc || (p.count == 144 && (population_kind_name(k: p.kind) as String) == "all package leads")
+      acc || (p.count == 144 && (product.compute_board.contact_population.population_kind_name(k: p.kind) as String) == "all package leads")
     })
 }
 
@@ -339,7 +339,7 @@ test fn w_the_bonded_pin_itemization_falls_one_short_and_says_so() -> Bool {
 // would overshoot the declared total rather than reaching it.
 test fn w_the_differential_recount_is_excluded_from_the_partition() -> Bool {
   ice40_hx1k_tq144_contacts.differential_inputs_subset == 12
-    && (itemized_contact_total(i: ice40_hx1k_tq144_contacts) +
+    && (extdeps.programmable_logic.ice40.subject.itemized_contact_total(i: extdeps.programmable_logic.ice40.subject.ice40_hx1k_tq144_contacts) +
         ice40_hx1k_tq144_contacts.differential_inputs_subset) > ice40_hx1k_tq144_contacts.declared_bonded_pins
 }
 
@@ -350,9 +350,9 @@ test fn w_the_differential_recount_is_excluded_from_the_partition() -> Bool {
 // to prevent it. The pairwise walk is over identity, not cardinality: a roster that grew a
 // duplicate entry would still have to produce two equal tags to pass.
 test fn w_every_population_kind_has_a_distinct_discriminant() -> Bool {
-  fold(all_contact_population_kinds, init: true, f: fn(acc, a) {
-    acc && fold(all_contact_population_kinds, init: 0, f: fn(n, b) {
-      if population_kinds_equal(a: a, b: b) { n + 1 } else { n }
+  fold(product.compute_board.contact_population.all_contact_population_kinds, init: true, f: fn(acc, a) {
+    acc && fold(product.compute_board.contact_population.all_contact_population_kinds, init: 0, f: fn(n, b) {
+      if product.compute_board.contact_population.population_kinds_equal(a: a, b: b) { n + 1 } else { n }
     }) == 1
   })
 }
@@ -361,8 +361,8 @@ test fn w_every_population_kind_has_a_distinct_discriminant() -> Bool {
 // different kinds; a reader comparing prose would fuse them. This pins the property the tag
 // bought by naming a pair that a substring-minded comparison would get wrong.
 test fn w_kind_equality_does_not_follow_the_display_prose() -> Bool {
-  !population_kinds_equal(a: VendorGeneralPurposeIo, b: VendorGeneralPurposeSingleEndedIo)
-    && !population_kinds_equal(a: VendorTotalIo, b: VendorDedicatedIo)
-    && population_kinds_equal(a: PlaceableLogicPins, b: PlaceableLogicPins)
-    && population_kind_tag(k: SupplyContacts) != population_kind_tag(k: ReturnContacts)
+  !product.compute_board.contact_population.population_kinds_equal(a: product.compute_board.contact_population.VendorGeneralPurposeIo, b: product.compute_board.contact_population.VendorGeneralPurposeSingleEndedIo)
+    && !product.compute_board.contact_population.population_kinds_equal(a: VendorTotalIo, b: VendorDedicatedIo)
+    && product.compute_board.contact_population.population_kinds_equal(a: product.compute_board.contact_population.PlaceableLogicPins, b: product.compute_board.contact_population.PlaceableLogicPins)
+    && product.compute_board.contact_population.population_kind_tag(k: SupplyContacts) != product.compute_board.contact_population.population_kind_tag(k: ReturnContacts)
 }

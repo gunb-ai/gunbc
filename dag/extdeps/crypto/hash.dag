@@ -4,7 +4,7 @@ module extdeps.crypto.hash
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "csrc.nist.gov/pubs/fips/180-4/upd1/final"
   }
 }
@@ -45,8 +45,8 @@ data sha256_digest_content_hash_convergence_note: String = "THE BRIDGE from extd
 fn sha256_digest_content_hash(digest: Digest) -> std.content_hash.ContentHash? {
   match digest.algorithm {
     Sha256 =>
-      match sha256_hex_digest(hex: digest.hex as String) {
-        Present { value: d } => Present { value: as_content_hash_cryptographic(digest: d) }
+      match std.content_hash.sha256_hex_digest(hex: digest.hex as String) {
+        Present { value: d } => Present { value: std.content_hash.as_content_hash_cryptographic(digest: d) }
         Absent => none
       }
     Sha512 => none
@@ -56,8 +56,8 @@ fn sha256_digest_content_hash(digest: Digest) -> std.content_hash.ContentHash? {
 fn sha512_digest_content_hash(digest: Digest) -> std.content_hash.ContentHash? {
   match digest.algorithm {
     Sha512 =>
-      match sha512_hex_digest(hex: digest.hex as String) {
-        Present { value: d } => Present { value: as_content_hash_sha512(digest: d) }
+      match std.content_hash.sha512_hex_digest(hex: digest.hex as String) {
+        Present { value: d } => Present { value: std.content_hash.as_content_hash_sha512(digest: d) }
         Absent => none
       }
     Sha256 => none

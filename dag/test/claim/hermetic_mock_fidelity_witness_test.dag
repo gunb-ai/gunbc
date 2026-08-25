@@ -1,5 +1,6 @@
 module test.claim.hermetic_mock_fidelity_witness
 
+
 // THE PAIR, NOT THE ASSERTION. `hermetic_mock_fidelity_all_diagnosed` over the live roster is
 // the positive control; on its own it would be satisfied by an empty roster and by a roster with
 // no fabricating rows, so it carries no information about the check. The two rows below are the
@@ -13,36 +14,36 @@ module test.claim.hermetic_mock_fidelity_witness
 // information (DESIGN section 4b). What replaced it is the third row below, which asserts the
 // derivation is not degenerate.
 
-fn undiagnosed_fabricating_row() -> HermeticMockRow {
-  HermeticMockRow {
+fn undiagnosed_fabricating_row() -> gunbc.hermetic_mock_fidelity.HermeticMockRow {
+  gunbc.hermetic_mock_fidelity.HermeticMockRow {
     operation: "probe.Undiagnosed.Run",
-    discrimination: UnconditionalArm {},
+    discrimination: gunbc.hermetic_mock_fidelity.UnconditionalArm {},
     fabricates: [],
-    rung: OutsideTheLadder {},
-    ceiling: StructurallyGuaranteed {}
+    rung: gunbc.guarantee_rung_drop.OutsideTheLadder {},
+    ceiling: gunbc.guarantee_rung_drop.StructurallyGuaranteed {}
   }
 }
 
-fn honest_row_names_nothing() -> HermeticMockRow {
-  HermeticMockRow {
+fn honest_row_names_nothing() -> gunbc.hermetic_mock_fidelity.HermeticMockRow {
+  gunbc.hermetic_mock_fidelity.HermeticMockRow {
     operation: "probe.Honest.Run",
-    discrimination: InputDiscriminating {},
+    discrimination: gunbc.hermetic_mock_fidelity.InputDiscriminating {},
     fabricates: [],
-    rung: StructurallyGuaranteed {},
-    ceiling: StructurallyGuaranteed {}
+    rung: gunbc.guarantee_rung_drop.StructurallyGuaranteed {},
+    ceiling: gunbc.guarantee_rung_drop.StructurallyGuaranteed {}
   }
 }
 
 test fn hermetic_mock_live_roster_is_diagnosed() -> Bool {
-  hermetic_mock_fidelity_all_diagnosed()
+  gunbc.hermetic_mock_fidelity.hermetic_mock_fidelity_all_diagnosed()
 }
 
 test fn hermetic_mock_undiagnosed_fabricating_row_is_rejected() -> Bool {
-  !hermetic_mock_row_names_what_it_fabricates(r: undiagnosed_fabricating_row())
+  !gunbc.hermetic_mock_fidelity.hermetic_mock_row_names_what_it_fabricates(r: undiagnosed_fabricating_row())
 }
 
 test fn hermetic_mock_honest_row_needs_no_fabrication_list() -> Bool {
-  hermetic_mock_row_names_what_it_fabricates(r: honest_row_names_nothing())
+  gunbc.hermetic_mock_fidelity.hermetic_mock_row_names_what_it_fabricates(r: honest_row_names_nothing())
 }
 
 // THE REACHABILITY REMEDY IS NOT THE OTHER TWO, asserted rather than left in a comment because
@@ -51,6 +52,6 @@ test fn hermetic_mock_honest_row_needs_no_fabrication_list() -> Bool {
 // three ever collapse to one string, that remedy has been quietly folded into the others and
 // this row reds.
 test fn hermetic_mock_reachability_trigger_is_distinct() -> Bool {
-  !(fabricated_fact_next_trigger(f: TransportReachability {}) == fabricated_fact_next_trigger(f: ExitStatus {}))
-    && !(fabricated_fact_next_trigger(f: TransportReachability {}) == fabricated_fact_next_trigger(f: CapturedOutput {}))
+  !(gunbc.hermetic_mock_fidelity.fabricated_fact_next_trigger(f: gunbc.hermetic_mock_fidelity.TransportReachability {}) == gunbc.hermetic_mock_fidelity.fabricated_fact_next_trigger(f: gunbc.hermetic_mock_fidelity.ExitStatus {}))
+    && !(gunbc.hermetic_mock_fidelity.fabricated_fact_next_trigger(f: gunbc.hermetic_mock_fidelity.TransportReachability {}) == gunbc.hermetic_mock_fidelity.fabricated_fact_next_trigger(f: gunbc.hermetic_mock_fidelity.CapturedOutput {}))
 }

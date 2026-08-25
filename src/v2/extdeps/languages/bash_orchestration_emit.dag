@@ -3,138 +3,138 @@ module v2.extdeps.languages.bash_orchestration_emit
 
 fn bash_orchestration_emit_registry_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      bash_named_edge(
+      v2.extdeps.languages.bash.bash_named_edge(
         name: v2.std.orchestration_emit.orch_construct_run_rawline,
-        target: bash_word_pass_emitted
+        target: v2.extdeps.languages.bash.bash_word_pass_emitted
       ),
-      bash_named_edge(
-        name: orch_construct_run_env_prefixed,
-        target: bash_stmt_env_prefixed_emitted
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_run_env_prefixed,
+        target: v2.extdeps.languages.bash.bash_stmt_env_prefixed_emitted
       ),
-      bash_named_edge(
-        name: orch_construct_run_env_unset,
-        target: bash_stmt_env_unset_emitted
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_run_env_unset,
+        target: v2.extdeps.languages.bash.bash_stmt_env_unset_emitted
       ),
-      bash_named_edge(
-        name: orch_construct_seq2,
-        target: orch_seq2_emitted_command
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_seq2,
+        target: v2.extdeps.languages.bash.orch_seq2_emitted_command
       ),
-      bash_named_edge(
-        name: orch_construct_retry,
-        target: orch_retry_emitted_command
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_retry,
+        target: v2.extdeps.languages.bash.orch_retry_emitted_command
       ),
-      bash_named_edge(
-        name: orch_construct_retry_1level,
-        target: orch_retry_1level_emitted_command
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_retry_1level,
+        target: v2.extdeps.languages.bash.orch_retry_1level_emitted_command
       ),
-      bash_named_edge(
-        name: orch_construct_retry_escalation_final,
-        target: orch_retry_escalation_final_emitted_command
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_retry_escalation_final,
+        target: v2.extdeps.languages.bash.orch_retry_escalation_final_emitted_command
       ),
-      bash_named_edge(
-        name: orch_construct_retry_escalation_step,
-        target: orch_retry_escalation_step_emitted_command
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_retry_escalation_step,
+        target: v2.extdeps.languages.bash.orch_retry_escalation_step_emitted_command
       ),
-      bash_named_edge(
-        name: orch_construct_if,
-        target: bash_stmt_if_emitted
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_if,
+        target: v2.extdeps.languages.bash.bash_stmt_if_emitted
       ),
-      bash_named_edge(
-        name: orch_construct_if_else,
-        target: bash_stmt_if_else_emitted
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_if_else,
+        target: v2.extdeps.languages.bash_orch_if.bash_stmt_if_else_emitted
       ),
-      bash_named_edge(
-        name: orch_construct_if_block,
-        target: bash_stmt_if_block_emitted
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_if_block,
+        target: v2.extdeps.languages.bash.bash_stmt_if_block_emitted
       ),
-      bash_named_edge(
-        name: orch_construct_if_else_block,
-        target: bash_stmt_if_else_block_emitted
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_if_else_block,
+        target: v2.extdeps.languages.bash_orch_if.bash_stmt_if_else_block_emitted
       ),
-      bash_named_edge(
-        name: orch_construct_while,
-        target: bash_stmt_while_emitted
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_while,
+        target: v2.extdeps.languages.bash_orch_if.bash_stmt_while_emitted
       ),
-      bash_named_edge(
-        name: orch_construct_procedure,
-        target: bash_orch_procedure_emitted
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_procedure,
+        target: v2.extdeps.languages.bash_orch_tier2.bash_orch_procedure_emitted
       ),
-      bash_named_edge(
-        name: orch_construct_call,
-        target: bash_orch_call_emitted
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_call,
+        target: v2.extdeps.languages.bash_orch_tier2.bash_orch_call_emitted
       ),
-      bash_named_edge(
-        name: orch_construct_cmdsubst_assign,
-        target: bash_stmt_assign_emitted
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_cmdsubst_assign,
+        target: v2.extdeps.languages.bash.bash_stmt_assign_emitted
       ),
-      bash_named_edge(
-        name: orch_construct_let_assign,
-        target: bash_stmt_assign_emitted
+      v2.extdeps.languages.bash.bash_named_edge(
+        name: v2.std.orchestration_emit.orch_construct_let_assign,
+        target: v2.extdeps.languages.bash.bash_stmt_assign_emitted
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn bash_orchestration_medium_authority() -> v2.std.compilers.target_model.TargetModel {
-  target_model_make_with_emit_transforms(
+  v2.std.compilers.target_model.target_model_make_with_emit_transforms(
     bundle: v2.std.node.Node {
-      kind: v2.std.node.TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
       children: [
-        bash_named_edge(
+        v2.extdeps.languages.bash.bash_named_edge(
           name: ^target_model_edge_orchestration_emit,
           target: bash_orchestration_emit_registry_node()
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
     },
-    lex: VoidLexRules,
-    binding_spellings: empty_map(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+    lex: v2.std.compilers.lexing.VoidLexRules,
+    binding_spellings: v2.std.collection.empty_map(),
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
     authority_source_text: "",
-    runtime_row: target_emit_host_runtime_row_unconfigured
+    runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
   )
 }
 
-fn bash_orch_run_env_tail(env: FreeMonoid<v2.std.orchestration.EnvBinding>) -> FreeMonoid<v2.std.orchestration.EnvBinding> {
-  match list_tail(xs: env) {
-    TailFound { tail: t } => t
-    TailAbsent => std.algebra.Empty
+fn bash_orch_run_env_tail(env: std.algebra.FreeMonoid<v2.std.orchestration.EnvBinding>) -> std.algebra.FreeMonoid<v2.std.orchestration.EnvBinding> {
+  match v2.std.algebra.list_tail(xs: env) {
+    v2.std.algebra.TailFound { tail: t } => t
+    v2.std.algebra.TailAbsent => Empty
   }
 }
 
-fn bash_orch_run_env_tail_command(env: FreeMonoid<v2.std.orchestration.EnvBinding>, command: String) -> String {
-  concat(bash_env_prefix(env: bash_orch_run_env_tail(env: env)), command)
+fn bash_orch_run_env_tail_command(env: std.algebra.FreeMonoid<v2.std.orchestration.EnvBinding>, command: String) -> String {
+  concat(v2.extdeps.languages.bash.bash_env_prefix(env: bash_orch_run_env_tail(env: env)), command)
 }
 
 fn bash_orch_run_env_plan(r: v2.std.orchestration.Run) -> v2.std.orchestration_emit.OrchRunEmitPlan {
-  match list_head(xs: r.env) {
-    HeadFound { value: b } =>
+  match v2.std.algebra.list_head(xs: r.env) {
+    v2.std.algebra.HeadFound { value: b } =>
       match b {
-        EnvSet { name: n, value: v } =>
+        v2.std.orchestration.EnvSet { name: n, value: v } =>
           v2.std.orchestration_emit.OrchRunEmitPlan {
-            construct_tag: orch_construct_run_env_prefixed,
-            target: bash_stmt_env_prefixed_target_model(
+            construct_tag: v2.std.orchestration_emit.orch_construct_run_env_prefixed,
+            target: v2.extdeps.languages.bash.bash_stmt_env_prefixed_target_model(
               name: n,
               value: v,
               command: bash_orch_run_env_tail_command(env: r.env, command: r.command)
             )
           }
-        EnvUnset { name: n } =>
+        v2.std.orchestration.EnvUnset { name: n } =>
           v2.std.orchestration_emit.OrchRunEmitPlan {
-            construct_tag: orch_construct_run_env_unset,
-            target: bash_stmt_env_unset_target_model(
+            construct_tag: v2.std.orchestration_emit.orch_construct_run_env_unset,
+            target: v2.extdeps.languages.bash.bash_stmt_env_unset_target_model(
               name: n,
               command: bash_orch_run_env_tail_command(env: r.env, command: r.command)
             )
           }
       }
-    HeadAbsent =>
+    v2.std.algebra.HeadAbsent =>
       v2.std.orchestration_emit.OrchRunEmitPlan {
         construct_tag: v2.std.orchestration_emit.orch_construct_run_rawline,
-        target: bash_fold_raw_line_target_model(text: r.command)
+        target: v2.extdeps.languages.bash_command_fold.bash_fold_raw_line_target_model(text: r.command)
       }
   }
 }
@@ -142,21 +142,21 @@ fn bash_orch_run_env_plan(r: v2.std.orchestration.Run) -> v2.std.orchestration_e
 fn bash_orchestration_emit_medium() -> v2.std.orchestration_emit.OrchestrationEmitMedium {
   v2.std.orchestration_emit.OrchestrationEmitMedium {
     authority: bash_orchestration_medium_authority(),
-    realize_run_rawline: bash_fold_raw_line_target_model,
+    realize_run_rawline: v2.extdeps.languages.bash_command_fold.bash_fold_raw_line_target_model,
     run_env_plan: bash_orch_run_env_plan,
-    realize_seq2: orch_seq2_target_model,
-    realize_retry: orch_retry_target_model,
-    realize_retry_1level: orch_retry_1level_target_model,
-    realize_retry_escalation_final: orch_retry_escalation_final_target_model,
-    realize_retry_escalation_step: orch_retry_escalation_step_target_model,
-    realize_if: orch_if_target_model,
-    realize_if_else: orch_if_else_target_model,
-    realize_if_block: orch_if_block_target_model,
-    realize_if_else_block: orch_if_else_block_target_model,
-    realize_while: orch_while_target_model,
-    realize_procedure: orch_procedure_target_model,
-    realize_call: orch_call_target_model,
-    realize_cmdsubst_assign: orch_cmdsubst_assign_target_model,
-    realize_let_assign: orch_let_assign_target_model
+    realize_seq2: v2.extdeps.languages.bash.orch_seq2_target_model,
+    realize_retry: v2.extdeps.languages.bash.orch_retry_target_model,
+    realize_retry_1level: v2.extdeps.languages.bash.orch_retry_1level_target_model,
+    realize_retry_escalation_final: v2.extdeps.languages.bash.orch_retry_escalation_final_target_model,
+    realize_retry_escalation_step: v2.extdeps.languages.bash.orch_retry_escalation_step_target_model,
+    realize_if: v2.extdeps.languages.bash_orch_if.orch_if_target_model,
+    realize_if_else: v2.extdeps.languages.bash_orch_if.orch_if_else_target_model,
+    realize_if_block: v2.extdeps.languages.bash_orch_if.orch_if_block_target_model,
+    realize_if_else_block: v2.extdeps.languages.bash_orch_if.orch_if_else_block_target_model,
+    realize_while: v2.extdeps.languages.bash_orch_if.orch_while_target_model,
+    realize_procedure: v2.extdeps.languages.bash_orch_tier2.orch_procedure_target_model,
+    realize_call: v2.extdeps.languages.bash_orch_tier2.orch_call_target_model,
+    realize_cmdsubst_assign: v2.extdeps.languages.bash_orch_tier2.orch_cmdsubst_assign_target_model,
+    realize_let_assign: v2.extdeps.languages.bash_orch_tier2.orch_let_assign_target_model
   }
 }

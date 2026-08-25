@@ -1,5 +1,7 @@
 module v2.test.generated.testgen_category_wishlist
 
+
+
 type TestgenOracleBasis
   = StructuralConstructionWitness
   | AlgebraLawWitness
@@ -18,7 +20,7 @@ fn wishlist_type_construction_generator() -> v2.std.diagnostic.Outcome<v2.lens.t
   v2.std.diagnostic.Accepted {
     value: v2.lens.testgen.Generator {
       kind: v2.std.verification.TestClaimCompilesClaimVariant,
-      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
       anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
       slot: v2.lens.testgen.TypeConstruction {
         subject: v2.lens.testgen.ConnectiveKernel { connective: v2.std.node.Conj },
@@ -34,7 +36,7 @@ fn dispatched_algebra_law_generator() -> v2.std.diagnostic.Outcome<v2.lens.testg
   v2.std.diagnostic.Accepted {
     value: v2.lens.testgen.Generator {
       kind: v2.std.verification.TestClaimEqualsClaimVariant,
-      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
       anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualNatAddAssociativity),
       slot: v2.lens.testgen.AlgebraLaw {
         subject: v2.lens.testgen.AlgebraLawSubject {
@@ -54,7 +56,7 @@ fn dispatched_diagnostic_exhaustiveness_generator() -> v2.std.diagnostic.Outcome
   v2.std.diagnostic.Accepted {
     value: v2.lens.testgen.Generator {
       kind: v2.std.verification.TestClaimDiagnosticClaimVariant,
-      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
       anchor: v2.std.verification.generated_claim_anchor(
         anchor: v2.std.verification.GeneratedCoproductExhaustiveness {
           coproduct_type: ^TestClaim,
@@ -114,7 +116,7 @@ fn dispatched_language_behavior_equivalence_generator() -> v2.std.diagnostic.Out
   v2.std.diagnostic.Accepted {
     value: v2.lens.testgen.Generator {
       kind: v2.std.verification.TestClaimCompilesClaimVariant,
-      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
+      classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
       anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualLbeConjDagSurface),
       slot: v2.lens.testgen.LanguageBehaviorEquivalence {
         subject: v2.lens.testgen.lbe_subject_conj_dag_surface(),
@@ -129,11 +131,11 @@ fn dispatched_language_behavior_equivalence_generator() -> v2.std.diagnostic.Out
 
 fn dispatched_refinement_preservation_generator() -> v2.std.diagnostic.Outcome<v2.lens.testgen.Generator<v2.lens.testgen.TestgenConcept>> {
   match v2.lens.testgen.refinement_preservation_subject_nonempty_list_base() {
-    Accepted { value: subject, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: subject, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: v2.lens.testgen.Generator {
           kind: v2.std.verification.TestClaimEqualsClaimVariant,
-          classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit },
+          classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit },
           anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualRefinementNonEmptyListBase),
           slot: v2.lens.testgen.RefinementPreservation {
             subject: subject,
@@ -143,7 +145,7 @@ fn dispatched_refinement_preservation_generator() -> v2.std.diagnostic.Outcome<v
         },
         diagnostics: d,
       }
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -192,10 +194,10 @@ fn testgen_dispatched_non_tautological_generators() -> List<TestgenWishlistRow> 
   ]
 }
 
-test fn pending_non_tautological_generator_count_is_three() -> v2.std.logic.Bool {
+test fn pending_non_tautological_generator_count_is_three() -> Bool {
   v2.std.algebra.length(xs: testgen_pending_non_tautological_generator_wishlist()) == 3
 }
 
-test fn dispatched_non_tautological_generator_count_is_four() -> v2.std.logic.Bool {
+test fn dispatched_non_tautological_generator_count_is_four() -> Bool {
   v2.std.algebra.length(xs: testgen_dispatched_non_tautological_generators()) == 4
 }

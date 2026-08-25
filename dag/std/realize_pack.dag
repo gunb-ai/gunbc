@@ -28,19 +28,19 @@ fn realize_pack_width(bound: DerivedBound, budget: HostBudget, independence_widt
     BudgetUnreadable => BudgetRefused
     BudgetReadable { bytes: budget_bytes } =>
       match bound {
-        BoundUnknown => MaturationReserve { width: hardware_thread_count(count: 1) }
+        BoundUnknown => MaturationReserve { width: std.measure.hardware_thread_count(count: 1) }
         BoundDerived { bytes: bound_bytes } =>
-          let mem_width = memory_bounded_shard_count(memory_budget: budget_bytes, per_shard_peak: bound_bytes)
-          let packed = int_min(a: independence_width, b: mem_width)
-          PackedWidth { width: hardware_thread_count(count: packed) }
+          let mem_width = std.realization_width.memory_bounded_shard_count(memory_budget: budget_bytes, per_shard_peak: bound_bytes)
+          let packed = std.realization_width.int_min(a: independence_width, b: mem_width)
+          PackedWidth { width: std.measure.hardware_thread_count(count: packed) }
       }
   }
 }
 
 fn realize_verdict_width(v: RealizeVerdict) -> Int {
   match v {
-    PackedWidth { width: w } => hardware_thread_count_value(t: w)
-    MaturationReserve { width: w } => hardware_thread_count_value(t: w)
+    PackedWidth { width: w } => std.measure.hardware_thread_count_value(t: w)
+    MaturationReserve { width: w } => std.measure.hardware_thread_count_value(t: w)
     BudgetRefused => 0
   }
 }
@@ -62,11 +62,11 @@ type RealizeAdvisory {
 
 fn realize_advisory(derived_bytes: Int?, budget_bytes: Int?, independence_width: Int) -> RealizeAdvisory {
   let bound = match derived_bytes {
-    Present { value: b } => BoundDerived { bytes: byte_size(count: b) }
+    Present { value: b } => BoundDerived { bytes: std.measure.byte_size(count: b) }
     Absent => BoundUnknown
   }
   let budget = match budget_bytes {
-    Present { value: y } => BudgetReadable { bytes: byte_size(count: y) }
+    Present { value: y } => BudgetReadable { bytes: std.measure.byte_size(count: y) }
     Absent => BudgetUnreadable
   }
   let v = realize_pack_width(bound: bound, budget: budget, independence_width: independence_width)
@@ -81,7 +81,7 @@ fn realize_fits_budget(v: RealizeVerdict, bound: DerivedBound, budget: HostBudge
         BoundUnknown => true
         BoundDerived { bytes: bound_bytes } =>
           let w = realize_verdict_width(v: v)
-          (w * byte_size_count(bound_bytes)) <= byte_size_count(budget_bytes)
+          (w * std.measure.byte_size_count(bound_bytes)) <= std.measure.byte_size_count(budget_bytes)
       }
   }
 }

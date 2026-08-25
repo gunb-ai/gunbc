@@ -1,19 +1,19 @@
 module extdeps.tools.chown
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "man7.org/linux/man-pages/man1/chown.1.html"
   }
 }
 
-data chown_binary_path: NonEmptyStr = "/usr/bin/chown"
+data chown_binary_path: std.types.NonEmptyStr = "/usr/bin/chown"
 
 // THE OWNER ARGUMENT IS A TYPED PAIR, NOT A STRING THE CALLER ASSEMBLED. Callers used to pass an
 // `owner: String` built as uid + ":" + gid at the call site, which put chown's argument grammar in
 // the caller and left every caller free to get it wrong silently. Here the ":" form is produced
 // once, from a PosixOwnerSpec that could only be constructed from decoded ids.
-fn chown_argv(owner: PosixOwnerSpec, path: String) -> List<String> {
-  [chown_binary_path as String, posix_owner_spec_text(spec: owner), path]
+fn chown_argv(owner: extdeps.posix.identity.PosixOwnerSpec, path: String) -> List<String> {
+  [chown_binary_path as String, extdeps.posix.identity.posix_owner_spec_text(spec: owner), path]
 }

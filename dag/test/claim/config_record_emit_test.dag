@@ -1,22 +1,23 @@
 module test.claim.config_record_emit_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data flat_proto: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "" }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn render_field(knobs: std.languages.SerializationKnobs, key: String, value: String) -> String {
+data flat_proto: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+
+fn render_field(knobs: SerializationKnobs, key: String, value: String) -> String {
   render(
     doc: serialize_field_doc(knobs: knobs, f: serial_field(key: key, value: serial_scalar(text: value))),
-    proto: test.claim.config_record_emit_witness.flat_proto
+    proto: flat_proto
   )
 }
 
-fn render_fields(knobs: std.languages.SerializationKnobs, fields: List<std.languages.SerialField>) -> String {
-  render(doc: serialize_fields_doc(knobs: knobs, fields: fields), proto: test.claim.config_record_emit_witness.flat_proto)
+fn render_fields(knobs: SerializationKnobs, fields: List<SerialField>) -> String {
+  render(doc: serialize_fields_doc(knobs: knobs, fields: fields), proto: flat_proto)
 }
 
-fn render_record(knobs: std.languages.SerializationKnobs, fields: List<std.languages.SerialField>) -> String {
-  render(doc: serialize_record_doc(knobs: knobs, fields: fields), proto: test.claim.config_record_emit_witness.flat_proto)
+fn render_record(knobs: SerializationKnobs, fields: List<SerialField>) -> String {
+  render(doc: serialize_record_doc(knobs: knobs, fields: fields), proto: flat_proto)
 }
 
 test fn witness_yaml_field_uses_colon_separator() -> Bool {
@@ -41,7 +42,7 @@ test fn witness_makefile_field_uses_equals_no_quotes() -> Bool {
 }
 
 test fn witness_gitignore_has_no_record_knobs() -> Bool {
-  match std.languages.gitignore_format.record {
+  match gitignore_format.record {
     null => true
     _ => false
   }
@@ -72,7 +73,7 @@ test fn witness_yaml_two_fields_newline_joined() -> Bool {
 
 test fn witness_manifest_knobs_space_separated() -> Bool {
   render_fields(
-    knobs: manifest_record_knobs,
+    knobs: gunbc.runner_deploy_emit.manifest_record_knobs,
     fields: [
       serial_field(key: "host", value: serial_scalar(text: "srv1")),
       serial_field(key: "runner_count", value: serial_scalar(text: "4"))
@@ -95,7 +96,7 @@ test fn witness_same_fields_differ_across_knobs() -> Bool {
     serial_field(key: "host", value: serial_scalar(text: "srv1")),
     serial_field(key: "runner_count", value: serial_scalar(text: "4"))
   ]
-  render_record(knobs: manifest_record_knobs, fields: fields) !=
+  render_record(knobs: gunbc.runner_deploy_emit.manifest_record_knobs, fields: fields) !=
     render_record(knobs: json_record_knobs, fields: fields)
 }
 

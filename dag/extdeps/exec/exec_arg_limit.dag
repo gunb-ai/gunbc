@@ -3,7 +3,7 @@ module extdeps.exec.exec_arg_limit
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "man7.org/linux/man-pages/man2/execve.2.html"
   }
 }
@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 data linux_execve_max_arg_strlen_page_factor: std.nat.Nat = 32
 
 fn host_exec_arg_max_strlen_from_page(page: std.measure.ByteSize, page_factor: std.nat.Nat) -> std.measure.ByteSize {
-  byte_size(count: byte_size_count(page) * page_factor)
+  std.measure.byte_size(count: std.measure.byte_size_count(page) * page_factor)
 }
 
 data host_exec_arg_max_strlen: std.measure.ByteSize = host_exec_arg_max_strlen_from_page(

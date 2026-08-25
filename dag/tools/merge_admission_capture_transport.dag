@@ -18,9 +18,9 @@ func run_merge_admission_capture_subprocess(
     source_root_argv(roots: source_roots),
     ["--entry", claim_entry, "--function", claim_function, "--claim-run", "--wet"]
   )
-  gunbc.WitnessBin.Run(
+  WitnessBin.Run(
     workdir: root,
-    bin_path: concat(concat(root as String, "/"), release_bin_rel_path(bin_name: "claim_batch")) as std.types.FilePath,
+    bin_path: concat(concat(root as String, "/"), gunbc.cli_invoke.release_bin_rel_path(bin_name: "claim_batch")) as std.types.FilePath,
     args: args
   ).success
 }

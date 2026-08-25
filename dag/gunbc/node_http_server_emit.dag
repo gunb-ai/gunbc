@@ -11,13 +11,13 @@ type NodeHttpStaticServerSpec {
 
 fn emit_http_method_label(method: std.types.HttpMethod) -> String {
   match method {
-    GET => "GET"
-    POST => "POST"
-    PUT => "PUT"
-    PATCH => "PATCH"
-    DELETE => "DELETE"
-    HEAD => "HEAD"
-    OPTIONS => "OPTIONS"
+    std.types.GET => "GET"
+    std.types.POST => "POST"
+    std.types.PUT => "PUT"
+    std.types.PATCH => "PATCH"
+    std.types.DELETE => "DELETE"
+    std.types.HEAD => "HEAD"
+    std.types.OPTIONS => "OPTIONS"
   }
 }
 
@@ -42,8 +42,8 @@ fn js_regex_escape_literal(s: String) -> String {
 fn emit_path_template_regex_source(template: std.http_path.PathTemplate) -> String {
   let segs = map(xs: template.tokens, f: tok =>
     match tok {
-      LiteralToken { text: t } => js_regex_escape_literal(s: t)
-      ParamToken { name: _ } => "[^\\/]+"
+      std.http_path.LiteralToken { text: t } => js_regex_escape_literal(s: t)
+      std.http_path.ParamToken { name: _ } => "[^\\/]+"
     }
   )
   if count(xs: segs) == 0 {
@@ -56,13 +56,13 @@ fn emit_path_template_regex_source(template: std.http_path.PathTemplate) -> Stri
 fn emit_static_route_expr(route: extdeps.http.server.ServedStaticRoute) -> extdeps.languages.typescript.program.TsExpr {
   let method = emit_http_method_label(method: route.method)
   let re = emit_path_template_regex_source(template: route.path_pattern)
-  let ct = media_type_wire_label(m: route.content_type)
-  ts_object([
-    ts_field(key: "method", value: ts_lit_str(value: method)),
-    ts_field(key: "pathRe", value: ts_lit_regex(source: re)),
-    ts_field(key: "body", value: ts_lit_backtick(value: route.body)),
-    ts_field(key: "contentType", value: ts_lit_str(value: ct)),
-    ts_field(key: "status", value: ts_lit_num(text: to_string(route.status_on_hit))),
+  let ct = extdeps.http.server.media_type_wire_label(m: route.content_type)
+  extdeps.languages.typescript.program.ts_object([
+    extdeps.languages.typescript.program.ts_field(key: "method", value: extdeps.languages.typescript.program.ts_lit_str(value: method)),
+    extdeps.languages.typescript.program.ts_field(key: "pathRe", value: extdeps.languages.typescript.program.ts_lit_regex(source: re)),
+    extdeps.languages.typescript.program.ts_field(key: "body", value: extdeps.languages.typescript.program.ts_lit_backtick(value: route.body)),
+    extdeps.languages.typescript.program.ts_field(key: "contentType", value: extdeps.languages.typescript.program.ts_lit_str(value: ct)),
+    extdeps.languages.typescript.program.ts_field(key: "status", value: extdeps.languages.typescript.program.ts_lit_num(text: to_string(route.status_on_hit))),
   ])
 }
 
@@ -71,126 +71,126 @@ fn emit_static_route_exprs(routes: List<extdeps.http.server.ServedStaticRoute>) 
 }
 
 fn req_member(name: String) -> extdeps.languages.typescript.program.TsExpr {
-  ts_member(object: ts_ident(name: "req"), property: name)
+  extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "req"), property: name)
 }
 
 fn res_member(name: String) -> extdeps.languages.typescript.program.TsExpr {
-  ts_member(object: ts_ident(name: "res"), property: name)
+  extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "res"), property: name)
 }
 
 fn route_member(name: String) -> extdeps.languages.typescript.program.TsExpr {
-  ts_member(object: ts_ident(name: "route"), property: name)
+  extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "route"), property: name)
 }
 
 fn process_env(key: String) -> extdeps.languages.typescript.program.TsExpr {
-  ts_index(
-    object: ts_member(object: ts_ident(name: "process"), property: "env"),
-    index: ts_lit_str(value: key)
+  extdeps.languages.typescript.program.ts_index(
+    object: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "process"), property: "env"),
+    index: extdeps.languages.typescript.program.ts_lit_str(value: key)
   )
 }
 
 fn node_http_match_handler_body() -> extdeps.languages.typescript.program.TsStmt {
-  ts_block(stmts: [
-    ts_expr_stmt(expr: ts_call(
+  extdeps.languages.typescript.program.ts_block(stmts: [
+    extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(
       callee: res_member(name: "writeHead"),
       args: [
         route_member(name: "status"),
-        ts_object(fields: [
-          ts_quoted_field(key: "Content-Type", value: route_member(name: "contentType")),
+        extdeps.languages.typescript.program.ts_object(fields: [
+          extdeps.languages.typescript.program.ts_quoted_field(key: "Content-Type", value: route_member(name: "contentType")),
         ]),
       ]
     )),
-    ts_expr_stmt(expr: ts_call(callee: res_member(name: "end"), args: [route_member(name: "body")])),
-    ts_return(expr: none),
+    extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(callee: res_member(name: "end"), args: [route_member(name: "body")])),
+    extdeps.languages.typescript.program.ts_return(expr: none),
   ])
 }
 
 fn node_http_request_handler_block() -> extdeps.languages.typescript.program.TsStmt {
-  ts_block(stmts: concat([
-    ts_const(
+  extdeps.languages.typescript.program.ts_block(stmts: concat([
+    extdeps.languages.typescript.program.ts_const(
       name: "method",
-      value: ts_binop(left: req_member(name: "method"), op: "||", right: ts_lit_str(value: "GET"))
+      value: extdeps.languages.typescript.program.ts_binop(left: req_member(name: "method"), op: "||", right: extdeps.languages.typescript.program.ts_lit_str(value: "GET"))
     ),
-    ts_const(
+    extdeps.languages.typescript.program.ts_const(
       name: "rawUrl",
-      value: ts_binop(left: req_member(name: "url"), op: "||", right: ts_lit_str(value: "/"))
+      value: extdeps.languages.typescript.program.ts_binop(left: req_member(name: "url"), op: "||", right: extdeps.languages.typescript.program.ts_lit_str(value: "/"))
     ),
-    ts_const(
+    extdeps.languages.typescript.program.ts_const(
       name: "path",
-      value: ts_binop(
-        left: ts_index(
-          object: ts_call(
-            callee: ts_member(object: ts_ident(name: "rawUrl"), property: "split"),
-            args: [ts_lit_str(value: "?")]
+      value: extdeps.languages.typescript.program.ts_binop(
+        left: extdeps.languages.typescript.program.ts_index(
+          object: extdeps.languages.typescript.program.ts_call(
+            callee: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "rawUrl"), property: "split"),
+            args: [extdeps.languages.typescript.program.ts_lit_str(value: "?")]
           ),
-          index: ts_lit_num(text: "0")
+          index: extdeps.languages.typescript.program.ts_lit_num(text: "0")
         ),
         op: "||",
-        right: ts_lit_str(value: "/")
+        right: extdeps.languages.typescript.program.ts_lit_str(value: "/")
       )
     ),
   ], [
-    ts_for_of(
+    extdeps.languages.typescript.program.ts_for_of(
       var_name: "route",
-      iterable: ts_ident(name: "routes"),
-      body: ts_if(
-        cond: ts_binop(
-          left: ts_binop(
+      iterable: extdeps.languages.typescript.program.ts_ident(name: "routes"),
+      body: extdeps.languages.typescript.program.ts_if(
+        cond: extdeps.languages.typescript.program.ts_binop(
+          left: extdeps.languages.typescript.program.ts_binop(
             left: route_member(name: "method"),
             op: "===",
-            right: ts_ident(name: "method")
+            right: extdeps.languages.typescript.program.ts_ident(name: "method")
           ),
           op: "&&",
-          right: ts_call(
-            callee: ts_member(object: route_member(name: "pathRe"), property: "test"),
-            args: [ts_ident(name: "path")]
+          right: extdeps.languages.typescript.program.ts_call(
+            callee: extdeps.languages.typescript.program.ts_member(object: route_member(name: "pathRe"), property: "test"),
+            args: [extdeps.languages.typescript.program.ts_ident(name: "path")]
           )
         ),
         then: node_http_match_handler_body(),
         else_stmt: none
       )
     ),
-    ts_const(
+    extdeps.languages.typescript.program.ts_const(
       name: "pathRoutes",
-      value: ts_call(
-        callee: ts_member(object: ts_ident(name: "routes"), property: "filter"),
+      value: extdeps.languages.typescript.program.ts_call(
+        callee: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "routes"), property: "filter"),
         args: [
-          ts_arrow(
+          extdeps.languages.typescript.program.ts_arrow(
             params: ["r"],
-            body: ts_expr_stmt(expr: ts_call(
-              callee: ts_member(
-                object: ts_member(object: ts_ident(name: "r"), property: "pathRe"),
+            body: extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(
+              callee: extdeps.languages.typescript.program.ts_member(
+                object: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "r"), property: "pathRe"),
                 property: "test"
               ),
-              args: [ts_ident(name: "path")]
+              args: [extdeps.languages.typescript.program.ts_ident(name: "path")]
             ))
           ),
         ]
       )
     ),
-    ts_if(
-      cond: ts_binop(
-        left: ts_member(object: ts_ident(name: "pathRoutes"), property: "length"),
+    extdeps.languages.typescript.program.ts_if(
+      cond: extdeps.languages.typescript.program.ts_binop(
+        left: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "pathRoutes"), property: "length"),
         op: ">",
-        right: ts_lit_num(text: "0")
+        right: extdeps.languages.typescript.program.ts_lit_num(text: "0")
       ),
-      then: ts_block(stmts: [
-        ts_const(
+      then: extdeps.languages.typescript.program.ts_block(stmts: [
+        extdeps.languages.typescript.program.ts_const(
           name: "allow",
-          value: ts_call(
-            callee: ts_member(
-              object: ts_array(elements: [
-                ts_spread(expr: ts_prefix(
+          value: extdeps.languages.typescript.program.ts_call(
+            callee: extdeps.languages.typescript.program.ts_member(
+              object: extdeps.languages.typescript.program.ts_array(elements: [
+                extdeps.languages.typescript.program.ts_spread(expr: extdeps.languages.typescript.program.ts_prefix(
                   op: "new ",
-                  expr: ts_call(
-                    callee: ts_ident(name: "Set"),
+                  expr: extdeps.languages.typescript.program.ts_call(
+                    callee: extdeps.languages.typescript.program.ts_ident(name: "Set"),
                     args: [
-                      ts_call(
-                        callee: ts_member(object: ts_ident(name: "pathRoutes"), property: "map"),
+                      extdeps.languages.typescript.program.ts_call(
+                        callee: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "pathRoutes"), property: "map"),
                         args: [
-                          ts_arrow(
+                          extdeps.languages.typescript.program.ts_arrow(
                             params: ["r"],
-                            body: ts_expr_stmt(expr: ts_member(object: ts_ident(name: "r"), property: "method"))
+                            body: extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "r"), property: "method"))
                           ),
                         ]
                       ),
@@ -200,78 +200,78 @@ fn node_http_request_handler_block() -> extdeps.languages.typescript.program.TsS
               ]),
               property: "join"
             ),
-            args: [ts_lit_str(value: ", ")]
+            args: [extdeps.languages.typescript.program.ts_lit_str(value: ", ")]
           )
         ),
-        ts_expr_stmt(expr: ts_call(
+        extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(
           callee: res_member(name: "writeHead"),
           args: [
-            ts_lit_num(text: "405"),
-            ts_object(fields: [ts_field(key: "Allow", value: ts_ident(name: "allow"))]),
+            extdeps.languages.typescript.program.ts_lit_num(text: "405"),
+            extdeps.languages.typescript.program.ts_object(fields: [extdeps.languages.typescript.program.ts_field(key: "Allow", value: extdeps.languages.typescript.program.ts_ident(name: "allow"))]),
           ]
         )),
-        ts_expr_stmt(expr: ts_call(
+        extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(
           callee: res_member(name: "end"),
-          args: [ts_lit_str(value: "Method Not Allowed")]
+          args: [extdeps.languages.typescript.program.ts_lit_str(value: "Method Not Allowed")]
         )),
-        ts_return(expr: none),
+        extdeps.languages.typescript.program.ts_return(expr: none),
       ]),
       else_stmt: none
     ),
-    ts_expr_stmt(expr: ts_call(callee: res_member(name: "writeHead"), args: [ts_lit_num(text: "404")])),
-    ts_expr_stmt(expr: ts_call(callee: res_member(name: "end"), args: [ts_lit_str(value: "Not Found")])),
+    extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(callee: res_member(name: "writeHead"), args: [extdeps.languages.typescript.program.ts_lit_num(text: "404")])),
+    extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(callee: res_member(name: "end"), args: [extdeps.languages.typescript.program.ts_lit_str(value: "Not Found")])),
   ]))
 }
 
 fn node_http_create_server_stmt() -> extdeps.languages.typescript.program.TsStmt {
-  ts_const(
+  extdeps.languages.typescript.program.ts_const(
     name: "server",
-    value: ts_call(
-      callee: ts_member(
-        object: ts_call(callee: ts_ident(name: "require"), args: [ts_lit_str(value: "http")]),
+    value: extdeps.languages.typescript.program.ts_call(
+      callee: extdeps.languages.typescript.program.ts_member(
+        object: extdeps.languages.typescript.program.ts_call(callee: extdeps.languages.typescript.program.ts_ident(name: "require"), args: [extdeps.languages.typescript.program.ts_lit_str(value: "http")]),
         property: "createServer"
       ),
-      args: [ts_arrow(params: ["req", "res"], body: node_http_request_handler_block())]
+      args: [extdeps.languages.typescript.program.ts_arrow(params: ["req", "res"], body: node_http_request_handler_block())]
     )
   )
 }
 
 fn node_http_port_const(port: String) -> extdeps.languages.typescript.program.TsStmt {
-  ts_const(
+  extdeps.languages.typescript.program.ts_const(
     name: "PORT",
-    value: ts_cond(
+    value: extdeps.languages.typescript.program.ts_cond(
       test: process_env(key: "PORT"),
-      consequent: ts_call(
-        callee: ts_ident(name: "parseInt"),
-        args: [process_env(key: "PORT"), ts_lit_num(text: "10")]
+      consequent: extdeps.languages.typescript.program.ts_call(
+        callee: extdeps.languages.typescript.program.ts_ident(name: "parseInt"),
+        args: [process_env(key: "PORT"), extdeps.languages.typescript.program.ts_lit_num(text: "10")]
       ),
-      alternate: ts_lit_num(text: port)
+      alternate: extdeps.languages.typescript.program.ts_lit_num(text: port)
     )
   )
 }
 
 fn node_http_host_const(host: String) -> extdeps.languages.typescript.program.TsStmt {
-  ts_const(
+  extdeps.languages.typescript.program.ts_const(
     name: "HOST",
-    value: ts_binop(left: process_env(key: "HOST"), op: "||", right: ts_lit_str(value: host))
+    value: extdeps.languages.typescript.program.ts_binop(left: process_env(key: "HOST"), op: "||", right: extdeps.languages.typescript.program.ts_lit_str(value: host))
   )
 }
 
 fn node_http_listen_stmt() -> extdeps.languages.typescript.program.TsStmt {
-  ts_expr_stmt(expr: ts_call(
-    callee: ts_member(object: ts_ident(name: "server"), property: "listen"),
+  extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(
+    callee: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "server"), property: "listen"),
     args: [
-      ts_ident(name: "PORT"),
-      ts_ident(name: "HOST"),
-      ts_arrow(
+      extdeps.languages.typescript.program.ts_ident(name: "PORT"),
+      extdeps.languages.typescript.program.ts_ident(name: "HOST"),
+      extdeps.languages.typescript.program.ts_arrow(
         params: [],
-        body: ts_block(stmts: [
-          ts_expr_stmt(expr: ts_call(
-            callee: ts_member(
-              object: ts_member(object: ts_ident(name: "process"), property: "stdout"),
+        body: extdeps.languages.typescript.program.ts_block(stmts: [
+          extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(
+            callee: extdeps.languages.typescript.program.ts_member(
+              object: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "process"), property: "stdout"),
               property: "write"
             ),
-            args: [ts_lit_str(value: "listening\\n")]
+            args: [extdeps.languages.typescript.program.ts_lit_str(value: "listening\\n")]
           )),
         ])
       ),
@@ -287,9 +287,9 @@ fn emit_node_http_static_server_program(spec: NodeHttpStaticServerSpec) -> extde
       "GENERATED by gunbc from dag/gunbc/node_http_server_emit.dag",
     ],
     statements: [
-      ts_const(
+      extdeps.languages.typescript.program.ts_const(
         name: "routes",
-        value: ts_array(elements: emit_static_route_exprs(routes: spec.routes.routes))
+        value: extdeps.languages.typescript.program.ts_array(elements: emit_static_route_exprs(routes: spec.routes.routes))
       ),
       node_http_create_server_stmt(),
       node_http_port_const(port: port),
@@ -302,7 +302,7 @@ fn emit_node_http_static_server_program(spec: NodeHttpStaticServerSpec) -> extde
 fn gunbhub_node_http_static_server_spec() -> NodeHttpStaticServerSpec {
   NodeHttpStaticServerSpec {
     service_name: "gunbhub",
-    routes: gunbhub_served_static_route_table(),
+    routes: gunbc.gunbhub_serve.gunbhub_served_static_route_table(),
     listen: extdeps.http.server.HttpServerListenConfig {
       host: "0.0.0.0",
       port: 8080,
@@ -311,5 +311,5 @@ fn gunbhub_node_http_static_server_spec() -> NodeHttpStaticServerSpec {
 }
 
 fn gunbhub_node_http_server_source() -> String {
-  serialize_typescript_program(p: emit_node_http_static_server_program(spec: gunbhub_node_http_static_server_spec()))
+  extdeps.languages.typescript.program.serialize_typescript_program(p: emit_node_http_static_server_program(spec: gunbhub_node_http_static_server_spec()))
 }

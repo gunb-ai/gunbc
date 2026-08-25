@@ -21,20 +21,20 @@ fn derive_regional_premium(
   baseline: extdeps.pricing.regional_compute.RegionalComputeRow,
   region: extdeps.pricing.regional_compute.RegionalComputeRow,
 ) -> RegionalPremiumResult {
-  if !compute_provider_eq(a: baseline.provider, b: region.provider) {
+  if !extdeps.pricing.regional_compute.compute_provider_eq(a: baseline.provider, b: region.provider) {
     RegionalPremiumRefused { cause: ProviderMismatch }
-  } else if !(hardware_thread_count_value(t: baseline.vcpus) == hardware_thread_count_value(t: region.vcpus)) {
+  } else if !(std.measure.hardware_thread_count_value(t: baseline.vcpus) == std.measure.hardware_thread_count_value(t: region.vcpus)) {
     RegionalPremiumRefused { cause: VcpuCountMismatch }
   } else {
-    match hourly_micros(row: baseline) {
+    match extdeps.pricing.regional_compute.hourly_micros(row: baseline) {
       Present { value: base } =>
-        match hourly_micros(row: region) {
+        match extdeps.pricing.regional_compute.hourly_micros(row: region) {
           Present { value: reg } =>
             if base <= 0 {
               RegionalPremiumRefused { cause: BaselineRateZero }
             } else {
               RegionalPremiumDerived {
-                premium_bp: basis_point(count: ((reg - base) * 10000) / base),
+                premium_bp: std.measure.basis_point(count: ((reg - base) * 10000) / base),
               }
             }
           _ => RegionalPremiumRefused { cause: RegionRateUnavailable }
@@ -46,14 +46,14 @@ fn derive_regional_premium(
 
 // Monthly cost for the row's whole instance at the conventional 730-hour billing month, and the same figure divided by the instance's vCPU count -- the per-vCPU number is what makes a 2-vCPU cloud instance comparable to a 12-thread dedicated box (extdeps.pricing.hetzner_dedicated), which is the comparison that shows on-demand cloud compute costing several times a rented machine.
 fn monthly_micros(row: extdeps.pricing.regional_compute.RegionalComputeRow) -> std.nat.Nat? {
-  match hourly_micros(row: row) {
+  match extdeps.pricing.regional_compute.hourly_micros(row: row) {
     Present { value: h } => Present { value: h * 730 }
     _ => none
   }
 }
 
 fn per_vcpu_month_micros(row: extdeps.pricing.regional_compute.RegionalComputeRow) -> std.nat.Nat? {
-  let cores = hardware_thread_count_value(t: row.vcpus)
+  let cores = std.measure.hardware_thread_count_value(t: row.vcpus)
   if cores <= 0 {
     none
   } else {

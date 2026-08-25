@@ -1,52 +1,52 @@
 module test.claim.scm_compatibility_git_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn git_fixture_binding() -> gunbc.scm_compatibility.git.GitCompatibilityBindingOutcome {
-  git_compatibility_bind(
-    repository: git_r0_fixture_repository(),
-    read_back: git_r0_fixture_read_back_observation(),
+  gunbc.scm_compatibility.git.git_compatibility_bind(
+    repository: test.claim.git_upstream_model_witness.git_r0_fixture_repository(),
+    read_back: test.claim.git_upstream_model_witness.git_r0_fixture_read_back_observation(),
     target: "refs/heads/main",
-    expected_generation: sha1_parent_commit,
-    proposed_generation: sha1_next_commit,
+    expected_generation: test.claim.git_upstream_model_witness.sha1_parent_commit,
+    proposed_generation: test.claim.git_upstream_model_witness.sha1_next_commit,
   )
 }
 
 test fn witness_git_r1_consumes_native_projection_readback_and_advance() -> Bool {
   match git_fixture_binding() {
-    GitCompatibilityBindingRefused { cause: _ } => false
-    GitCompatibilityBound { receipt } =>
+    gunbc.scm_compatibility.git.GitCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.git.GitCompatibilityBound { receipt } =>
       receipt.target == "refs/heads/main"
-        && receipt.generation == sha1_parent_commit
+        && receipt.generation == test.claim.git_upstream_model_witness.sha1_parent_commit
         && count(receipt.unsupported) > 0
-        && match git_compatibility_projection_receipt(receipt: receipt).advance {
-          CompatibilityAdvanceModeled { guarantee } =>
-            guarantee == CompatibilityExactCompareAndAdvance
+        && match gunbc.scm_compatibility.git.git_compatibility_projection_receipt(receipt: receipt).advance {
+          gunbc.scm_compatibility_shape.CompatibilityAdvanceModeled { guarantee } =>
+            guarantee == gunbc.scm_compatibility_shape.CompatibilityExactCompareAndAdvance
           _ => false
         }
   }
 }
 
 test fn witness_git_realization_preserves_c0_primary_behavior() -> Bool {
-  let original = native_scm_receipt_for(
-    scenario: TwoIndependentChangesLand,
+  let original = test.claim.native_scm_interaction_scenario_fixture.native_scm_receipt_for(
+    scenario: test.claim.native_scm_interaction_scenario_fixture.TwoIndependentChangesLand,
   )
   match git_fixture_binding() {
-    GitCompatibilityBindingRefused { cause: _ } => false
-    GitCompatibilityBound { receipt } => {
-      let projection = compatibility_projection_from_handler(
-        handler: git_compatibility_projection_handler(),
+    gunbc.scm_compatibility.git.GitCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.git.GitCompatibilityBound { receipt } => {
+      let projection = gunbc.scm_compatibility_shape.compatibility_projection_from_handler(
+        handler: gunbc.scm_compatibility.git.git_compatibility_projection_handler(),
         receipt: receipt,
       )
-      let attached = native_scm_attach_projection(
+      let attached = gunbc.native_scm_interaction_contract.native_scm_attach_projection(
         receipt: original,
         projection: projection,
       )
       attached.identity == original.identity
         && attached.transition == original.transition
         && attached.primary == original.primary
-        && native_scm_primary_label(primary: attached.primary) == "Landed"
+        && gunbc.native_scm_interaction_contract.native_scm_primary_label(primary: attached.primary) == "Landed"
         && count(attached.projections.realizations) == 1
         && projection.realization == "git-r0"
     }
@@ -55,24 +55,24 @@ test fn witness_git_realization_preserves_c0_primary_behavior() -> Bool {
 
 test fn witness_git_modeled_advance_refuses_different_guarantee() -> Bool {
   match git_fixture_binding() {
-    GitCompatibilityBindingRefused { cause: _ } => false
-    GitCompatibilityBound { receipt } => {
-      let capability = git_compatibility_projection_receipt(
+    gunbc.scm_compatibility.git.GitCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.git.GitCompatibilityBound { receipt } => {
+      let capability = gunbc.scm_compatibility.git.git_compatibility_projection_receipt(
         receipt: receipt,
       ).advance
-      match compatibility_check_advance_requirement(
-        requirement: CompatibilityObservationOnly,
+      match gunbc.scm_compatibility_shape.compatibility_check_advance_requirement(
+        requirement: gunbc.scm_compatibility_shape.CompatibilityObservationOnly,
         observed: capability,
       ) {
-        CompatibilityCapabilitySatisfied =>
-          match compatibility_check_advance_requirement(
+        gunbc.scm_compatibility_shape.CompatibilityCapabilitySatisfied =>
+          match gunbc.scm_compatibility_shape.compatibility_check_advance_requirement(
             requirement: gunbc.scm_compatibility_shape.CompatibilityModeledAdvanceRequired {
-              guarantee: CompatibilityExactCompareAndAdvance,
+              guarantee: gunbc.scm_compatibility_shape.CompatibilityExactCompareAndAdvance,
             },
             observed: capability,
           ) {
-            CompatibilityCapabilitySatisfied =>
-              match compatibility_check_advance_requirement(
+            gunbc.scm_compatibility_shape.CompatibilityCapabilitySatisfied =>
+              match gunbc.scm_compatibility_shape.compatibility_check_advance_requirement(
                 requirement: gunbc.scm_compatibility_shape.CompatibilityModeledAdvanceRequired {
                   guarantee: gunbc.scm_compatibility_shape.CompatibilityNamedConditionalAdvance {
                     authority: "fixture-other-authority",
@@ -81,18 +81,18 @@ test fn witness_git_modeled_advance_refuses_different_guarantee() -> Bool {
                 },
                 observed: capability,
               ) {
-                CompatibilityCapabilityRefused {
+                gunbc.scm_compatibility_shape.CompatibilityCapabilityRefused {
                   requirement: _,
                   observed: _,
                 } => true
-                CompatibilityCapabilitySatisfied => false
+                gunbc.scm_compatibility_shape.CompatibilityCapabilitySatisfied => false
               }
-            CompatibilityCapabilityRefused {
+            gunbc.scm_compatibility_shape.CompatibilityCapabilityRefused {
               requirement: _,
               observed: _,
             } => false
           }
-        CompatibilityCapabilityRefused {
+        gunbc.scm_compatibility_shape.CompatibilityCapabilityRefused {
           requirement: _,
           observed: _,
         } => false
@@ -103,13 +103,13 @@ test fn witness_git_modeled_advance_refuses_different_guarantee() -> Bool {
 
 test fn witness_git_endpoint_does_not_claim_authored_operation() -> Bool {
   match git_fixture_binding() {
-    GitCompatibilityBindingRefused { cause: _ } => false
-    GitCompatibilityBound { receipt } => {
-      let profile = git_compatibility_projection_receipt(
+    gunbc.scm_compatibility.git.GitCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.git.GitCompatibilityBound { receipt } => {
+      let profile = gunbc.scm_compatibility.git.git_compatibility_projection_receipt(
         receipt: receipt,
       ).fidelity
       match profile.upstream_change_evidence {
-        CompatibilityFidelityDowngraded { cause: _ } => true
+        gunbc.scm_compatibility_shape.CompatibilityFidelityDowngraded { cause: _ } => true
         _ => false
       }
     }
@@ -117,11 +117,11 @@ test fn witness_git_endpoint_does_not_claim_authored_operation() -> Bool {
 }
 
 test fn witness_git_readback_mismatch_refuses_binding() -> Bool {
-  let observed = git_r0_fixture_read_back_observation()
+  let observed = test.claim.git_upstream_model_witness.git_r0_fixture_read_back_observation()
   let wrong = extdeps.git.object_store.GitR0ReadBackObservation {
     git_version: observed.git_version,
     object_format: observed.object_format,
-    tree_oid: sha1_parent_commit,
+    tree_oid: test.claim.git_upstream_model_witness.sha1_parent_commit,
     tree_entries: observed.tree_entries,
     tag_oids: observed.tag_oids,
     refs: observed.refs,
@@ -129,34 +129,34 @@ test fn witness_git_readback_mismatch_refuses_binding() -> Bool {
     worktree: observed.worktree,
     unavailable: observed.unavailable,
   }
-  match git_compatibility_bind(
-    repository: git_r0_fixture_repository(),
+  match gunbc.scm_compatibility.git.git_compatibility_bind(
+    repository: test.claim.git_upstream_model_witness.git_r0_fixture_repository(),
     read_back: wrong,
     target: "refs/heads/main",
-    expected_generation: sha1_parent_commit,
-    proposed_generation: sha1_next_commit,
+    expected_generation: test.claim.git_upstream_model_witness.sha1_parent_commit,
+    proposed_generation: test.claim.git_upstream_model_witness.sha1_next_commit,
   ) {
-    GitCompatibilityBindingRefused { cause: _ } => true
-    GitCompatibilityBound { receipt: _ } => false
+    gunbc.scm_compatibility.git.GitCompatibilityBindingRefused { cause: _ } => true
+    gunbc.scm_compatibility.git.GitCompatibilityBound { receipt: _ } => false
   }
 }
 
 test fn witness_git_generation_derives_tree_from_commit() -> Bool {
-  match git_compatibility_bind(
-    repository: git_r0_fixture_repository(),
-    read_back: git_r0_fixture_read_back_observation(),
+  match gunbc.scm_compatibility.git.git_compatibility_bind(
+    repository: test.claim.git_upstream_model_witness.git_r0_fixture_repository(),
+    read_back: test.claim.git_upstream_model_witness.git_r0_fixture_read_back_observation(),
     target: "refs/heads/main",
-    expected_generation: sha1_root_tree,
-    proposed_generation: sha1_next_commit,
+    expected_generation: test.claim.git_upstream_model_witness.sha1_root_tree,
+    proposed_generation: test.claim.git_upstream_model_witness.sha1_next_commit,
   ) {
-    GitCompatibilityBindingRefused { cause: _ } => true
-    GitCompatibilityBound { receipt: _ } => false
+    gunbc.scm_compatibility.git.GitCompatibilityBindingRefused { cause: _ } => true
+    gunbc.scm_compatibility.git.GitCompatibilityBound { receipt: _ } => false
   }
 }
 
 test fn witness_git_readback_identity_changes_with_observed_state() -> Bool {
-  let repository = git_r0_fixture_repository()
-  let observation = git_r0_fixture_read_back_observation()
+  let repository = test.claim.git_upstream_model_witness.git_r0_fixture_repository()
+  let observation = test.claim.git_upstream_model_witness.git_r0_fixture_read_back_observation()
   let other_repository = extdeps.git.object_store.GitRepositoryState {
     object_format: repository.object_format,
     objects: repository.objects,
@@ -177,21 +177,21 @@ test fn witness_git_readback_identity_changes_with_observed_state() -> Bool {
     unavailable: observation.unavailable,
   }
   match git_fixture_binding() {
-    GitCompatibilityBindingRefused { cause: _ } => false
-    GitCompatibilityBound { receipt: expected } =>
-      match git_compatibility_bind(
+    gunbc.scm_compatibility.git.GitCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.git.GitCompatibilityBound { receipt: expected } =>
+      match gunbc.scm_compatibility.git.git_compatibility_bind(
         repository: other_repository,
         read_back: other_observation,
         target: "refs/heads/main",
-        expected_generation: sha1_parent_commit,
-        proposed_generation: sha1_next_commit,
+        expected_generation: test.claim.git_upstream_model_witness.sha1_parent_commit,
+        proposed_generation: test.claim.git_upstream_model_witness.sha1_next_commit,
       ) {
-        GitCompatibilityBindingRefused { cause: _ } => false
-        GitCompatibilityBound { receipt: other_state } => {
-          let expected_projection = git_compatibility_projection_receipt(
+        gunbc.scm_compatibility.git.GitCompatibilityBindingRefused { cause: _ } => false
+        gunbc.scm_compatibility.git.GitCompatibilityBound { receipt: other_state } => {
+          let expected_projection = gunbc.scm_compatibility.git.git_compatibility_projection_receipt(
             receipt: expected,
           )
-          let other_projection = git_compatibility_projection_receipt(
+          let other_projection = gunbc.scm_compatibility.git.git_compatibility_projection_receipt(
             receipt: other_state,
           )
           expected_projection.generation_evidence == other_projection.generation_evidence

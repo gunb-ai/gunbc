@@ -3,7 +3,7 @@ module extdeps.coverage
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/blob/main/dag/extdeps/coverage.dag"
   }
 }

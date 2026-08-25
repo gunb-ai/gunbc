@@ -30,24 +30,24 @@ fn bach_which_path_evidence_gap() -> BachWhichPathEvidenceGap {
 }
 
 fn bach_buildup_row_is_cited_apparatus(row: extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow) -> Bool {
-  row.apparatus == bach_et_al_2013_double_slit
+  row.apparatus == extdeps.physics.bach_et_al_2013_double_slit.bach_et_al_2013_double_slit
 }
 
 fn figure_3_panel_rank(panel: extdeps.physics.bach_et_al_2013_double_slit.Figure3BuildupPanel) -> Int {
   match panel {
-    Figure3PanelA => 0
-    Figure3PanelB => 1
-    Figure3PanelC => 2
-    Figure3PanelD => 3
-    Figure3PanelE => 4
+    extdeps.physics.bach_et_al_2013_double_slit.Figure3PanelA => 0
+    extdeps.physics.bach_et_al_2013_double_slit.Figure3PanelB => 1
+    extdeps.physics.bach_et_al_2013_double_slit.Figure3PanelC => 2
+    extdeps.physics.bach_et_al_2013_double_slit.Figure3PanelD => 3
+    extdeps.physics.bach_et_al_2013_double_slit.Figure3PanelE => 4
   }
 }
 
 fn bach_pattern_status_rank(status: extdeps.physics.bach_et_al_2013_double_slit.PatternStatus) -> Int {
   match status {
-    PatternNotYetDiscernible => 0
-    PatternDiscernible => 1
-    PatternClearlyVisible => 2
+    extdeps.physics.bach_et_al_2013_double_slit.PatternNotYetDiscernible => 0
+    extdeps.physics.bach_et_al_2013_double_slit.PatternDiscernible => 1
+    extdeps.physics.bach_et_al_2013_double_slit.PatternClearlyVisible => 2
   }
 }
 
@@ -158,7 +158,7 @@ fn bach_buildup_pattern_status_never_regresses(
   let folded = fold(
     rows,
     init: PatternStatusMonotonicFoldAcc {
-      previous_status: PatternNotYetDiscernible,
+      previous_status: extdeps.physics.bach_et_al_2013_double_slit.PatternNotYetDiscernible,
       has_previous: false,
       valid: true,
     },
@@ -182,7 +182,7 @@ fn fold_discernible_before_clearly_visible(
     acc
   } else {
     match row.pattern_status {
-      PatternClearlyVisible =>
+      extdeps.physics.bach_et_al_2013_double_slit.PatternClearlyVisible =>
         if acc.seen_discernible {
           DiscernibleBeforeClearlyVisibleAcc {
             seen_discernible: acc.seen_discernible,
@@ -194,12 +194,12 @@ fn fold_discernible_before_clearly_visible(
             valid: false,
           }
         }
-      PatternDiscernible =>
+      extdeps.physics.bach_et_al_2013_double_slit.PatternDiscernible =>
         DiscernibleBeforeClearlyVisibleAcc {
           seen_discernible: true,
           valid: true,
         }
-      PatternNotYetDiscernible =>
+      extdeps.physics.bach_et_al_2013_double_slit.PatternNotYetDiscernible =>
         acc
     }
   }
@@ -243,7 +243,7 @@ fn bach_buildup_final_row_clearly_visible(
     },
   ) {
     LastBuildupRowPresent { row: final_row } =>
-      final_row.pattern_status == PatternClearlyVisible
+      final_row.pattern_status == extdeps.physics.bach_et_al_2013_double_slit.PatternClearlyVisible
     LastBuildupRowAbsent => false
   }
 }
@@ -315,16 +315,16 @@ fn bach_buildup_progression_holds_for(
 }
 
 fn bach_cited_buildup_progression_holds() -> Bool {
-  bach_buildup_progression_holds_for(rows: bach_buildup_observations)
+  bach_buildup_progression_holds_for(rows: extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_observations)
 }
 
 fn bach_distribution_observation_rank(
   observation: extdeps.physics.bach_et_al_2013_double_slit.BachDistributionObservation,
 ) -> Int {
   match observation {
-    SlitOneSingleSlitDiffractionObserved => 0
-    SlitTwoSingleSlitDiffractionObserved => 1
-    BothSlitsDoubleSlitDiffractionObserved => 2
+    extdeps.physics.bach_et_al_2013_double_slit.SlitOneSingleSlitDiffractionObserved => 0
+    extdeps.physics.bach_et_al_2013_double_slit.SlitTwoSingleSlitDiffractionObserved => 1
+    extdeps.physics.bach_et_al_2013_double_slit.BothSlitsDoubleSlitDiffractionObserved => 2
   }
 }
 
@@ -373,7 +373,7 @@ fn bach_distribution_observations_match_canonical_sequence_for(
 
 fn bach_cited_distribution_observations_match_canonical_sequence() -> Bool {
   bach_distribution_observations_match_canonical_sequence_for(
-    observations: bach_distribution_observations,
+    observations: extdeps.physics.bach_et_al_2013_double_slit.bach_distribution_observations,
   )
 }
 
@@ -421,6 +421,6 @@ fn bach_buildup_progression_rejects_wrong_panel_order(
   !bach_buildup_panels_are_figure_3_a_through_e_once(rows: rows)
 }
 
-data bach_raw_count_triplet_coverage_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: extdeps carries raw matched-exposure arrival rows at a grain that supports left, right, and both counts under one exposure identity; then bach_quantitative_path_additivity_gap may gain a positive cited counterpart.")
+data bach_raw_count_triplet_coverage_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: extdeps carries raw matched-exposure arrival rows at a grain that supports left, right, and both counts under one exposure identity; then bach_quantitative_path_additivity_gap may gain a positive cited counterpart.")
 
-data bach_which_path_evidence_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: a cited upstream authority for which-path distinguishability evidence lands; then bach_which_path_evidence_gap may gain a positive cited counterpart.")
+data bach_which_path_evidence_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: a cited upstream authority for which-path distinguishability evidence lands; then bach_which_path_evidence_gap may gain a positive cited counterpart.")

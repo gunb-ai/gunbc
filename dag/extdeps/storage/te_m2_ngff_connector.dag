@@ -6,7 +6,7 @@ module extdeps.storage.te_m2_ngff_connector
 // the revision recorded below is the one printed on the sheets.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Specification+Or+Standard%7F114-115006%7FB%7Fpdf%7FEnglish%7FENG_SS_114-115006_B_114-115006_REV_B.pdf%7F2199119-3"
   }
 }
@@ -16,7 +16,7 @@ data te_m2_ngff_note: String = "THIS ROW IS A CONNECTOR FAMILY, NOT AN ORDERING 
 type M2ConnectorCatalogRow {
   specification_number: std.types.NonEmptyStr
   specification_revision: std.types.NonEmptyStr
-  vendor: Vendor<extdeps.hardware.Hardware>
+  vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   position_count: std.nat.Nat
   contact_pitch: std.measure.Micrometer
   attachment: extdeps.land_pattern.types.BoardAttachmentStyle
@@ -28,8 +28,8 @@ data m2_ngff_minicard_67_position: M2ConnectorCatalogRow = M2ConnectorCatalogRow
   specification_revision: "C",
   vendor: extdeps.vendor.tyco_electronics_amp_kk.tyco_electronics_amp_kk,
   position_count: 67,
-  contact_pitch: micrometer(count: 500),
-  attachment: SurfaceMountTerminals,
+  contact_pitch: std.measure.micrometer(count: 500),
+  attachment: extdeps.land_pattern.types.SurfaceMountTerminals,
   board_pattern: extdeps.land_pattern.types.SurfaceMountPatternNotEstablished {
     what_is_missing: "the recommended PCB layout that application specification 114-115006 publishes as Figures 2 and 3, and which the per-part customer drawing governs where the two conflict. An orderable M-keyed part number is owed with it, since the key is a per-part fact this specification does not carry",
   },
@@ -40,9 +40,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.storage.te_m2_ngff_connector",
       decl_name: "m2_ngff_minicard_67_position",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.storage.te_m2_ngff_connector.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

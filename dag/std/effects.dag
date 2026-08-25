@@ -5,7 +5,7 @@ type EffectShape<K>
   = ReadEffect
   | UpsertEffect { key_source: K }
   | DeleteEffect { key_source: K }
-  | CreateEffect { cause: std.effects.CreateCause<K> }
+  | CreateEffect { cause: CreateCause<K> }
   | AppendEffect
   | ExecuteEffect
 
@@ -154,24 +154,24 @@ fn derive_effect_shape(
   path: std.http_path.PathTemplate
 ) -> EffectShape<KeySource> {
   match method {
-    GET     => ReadEffect
-    HEAD    => ReadEffect
-    OPTIONS => ReadEffect
-    POST    => CreateEffect { cause: std.effects.PostAlways }
-    DELETE =>
-      match last_path_param(template: path) {
+    std.types.GET     => ReadEffect
+    std.types.HEAD    => ReadEffect
+    std.types.OPTIONS => ReadEffect
+    std.types.POST    => CreateEffect { cause: PostAlways }
+    std.types.DELETE =>
+      match std.http_path.last_path_param(template: path) {
         Present { value: p } => DeleteEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: std.effects.KeylessFallback { method: DELETE } }
+        Absent => CreateEffect { cause: KeylessFallback { method: std.types.DELETE } }
       }
-    PUT =>
-      match last_path_param(template: path) {
+    std.types.PUT =>
+      match std.http_path.last_path_param(template: path) {
         Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: std.effects.KeylessFallback { method: PUT } }
+        Absent => CreateEffect { cause: KeylessFallback { method: std.types.PUT } }
       }
-    PATCH =>
-      match last_path_param(template: path) {
+    std.types.PATCH =>
+      match std.http_path.last_path_param(template: path) {
         Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: std.effects.KeylessFallback { method: PATCH } }
+        Absent => CreateEffect { cause: KeylessFallback { method: std.types.PATCH } }
       }
   }
 }
@@ -250,9 +250,9 @@ fn check_modifier_vs_derivation(
     }
   } else if !declared_idempotent && declared_readonly {
     match op.method {
-      GET => Agrees
-      HEAD => Agrees
-      OPTIONS => Agrees
+      std.types.GET => Agrees
+      std.types.HEAD => Agrees
+      std.types.OPTIONS => Agrees
       _ => Disagrees { reason: "readonly declared but method is not GET/HEAD/OPTIONS" }
     }
   } else {

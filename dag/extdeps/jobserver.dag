@@ -3,7 +3,7 @@ module extdeps.jobserver
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html"
   }
 }
@@ -15,15 +15,15 @@ type JobserverConfig {
 }
 
 fn derive_jobserver_tokens(nproc: std.measure.HardwareThreadCount, mem_total: std.measure.ByteSize, cfg: JobserverConfig) -> std.measure.HardwareThreadCount {
-  let cpu_bound = hardware_thread_count_value(t: cpu_cores_available(nproc: nproc, margin: cfg.margin))
-  let mem_for_builds = byte_size_saturating_sub(total: mem_total, reserved: cfg.mem_reserve)
-  let mem_bound = measure_fit_count_floor(capacity: mem_for_builds, each: cfg.mib_per_job)
-  hardware_thread_count(count: nat_min(a: cpu_bound, b: mem_bound))
+  let cpu_bound = std.measure.hardware_thread_count_value(t: std.realization_width.cpu_cores_available(nproc: nproc, margin: cfg.margin))
+  let mem_for_builds = std.realization_width.byte_size_saturating_sub(total: mem_total, reserved: cfg.mem_reserve)
+  let mem_bound = std.measure.measure_fit_count_floor(capacity: mem_for_builds, each: cfg.mib_per_job)
+  std.measure.hardware_thread_count(count: std.nat.nat_min(a: cpu_bound, b: mem_bound))
 }
 
 fn jobserver_build_pool_bytes(nproc: std.measure.HardwareThreadCount, mem_total: std.measure.ByteSize, cfg: JobserverConfig) -> std.measure.ByteSize {
   let tokens = derive_jobserver_tokens(nproc: nproc, mem_total: mem_total, cfg: cfg)
-  measure_scale_fraction_floor(m: cfg.mib_per_job, num: hardware_thread_count_value(t: tokens), den: 1)
+  std.measure.measure_scale_fraction_floor(m: cfg.mib_per_job, num: std.measure.hardware_thread_count_value(t: tokens), den: 1)
 }
 
 type JobserverCitation
@@ -34,9 +34,9 @@ data jobserver_config_citation_note: String = "CITED 2026-08-06 from the install
 
 data jobserver_config: JobserverCitation = JobserverCited {
   config: JobserverConfig {
-    margin: hardware_thread_count(count: 8),
-    mem_reserve: byte_size(17179869184),
-    mib_per_job: byte_size(1879048192),
+    margin: std.measure.hardware_thread_count(count: 8),
+    mem_reserve: std.measure.byte_size(17179869184),
+    mib_per_job: std.measure.byte_size(1879048192),
   },
   provenance: "srv1 /usr/local/sbin/ctrl-jobserver defaults read 2026-08-06: CTRL_JOBSERVER_MARGIN=8 cores, CTRL_JOBSERVER_MEM_RESERVE_GIB=16 (17179869184 bytes), CTRL_JOBSERVER_MIB_PER_JOB=1792 (1879048192 bytes); same unit installed on srv1 and srv2",
 }

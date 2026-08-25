@@ -1,36 +1,36 @@
 module test.claim.artifact_store_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data artifact_store_witness_note: String = "P2 pure-spec ACCEPT witnesses: put/get/evict receipts with discriminating REDs - a mutated key input never serves the old artifact (stale-never-served), identical files and argv under a changed resolved build toolchain OR changed admitted environment select different effective native workspaces, budget breach evicts least-recent WITH the eviction counted in the receipt, and a store cannot be constructed over a provider that did not declare the byte ceiling it is being sized by (the retention field's first behavioral reader, audit F5). The budget is DERIVED from the provider, so the fixtures can no longer declare an unobserved ceiling and be handed an exact number anyway; each refusal names its own cause because the remedies differ."
 
-data byte_bounded_provider: std.materialization_ladder.CacheProvider = provider_row(
+data byte_bounded_provider: std.materialization_ladder.CacheProvider = std.materialization_ladder.provider_row(
   id: "artifact-store-test",
   scope: [],
-  coverage: CoversAllComputations,
-  tier: std.materialization_ladder.ArtifactTier { keying: ContentKeyed },
-  retention: persistent_retention(capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: byte_size(count: 100) } }, at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed } })
+  coverage: std.materialization_ladder.CoversAllComputations,
+  tier: std.materialization_ladder.ArtifactTier { keying: std.materialization_ladder.ContentKeyed },
+  retention: std.materialization_ladder.persistent_retention(capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: std.measure.byte_size(count: 100) } }, at_capacity: std.cache_interface.ReplaceExisting { strategy: std.cache_interface.LeastRecentlyUsed } })
 )
 
-data scopeexit_provider: std.materialization_ladder.CacheProvider = provider_row(
+data scopeexit_provider: std.materialization_ladder.CacheProvider = std.materialization_ladder.provider_row(
   id: "scoped-provider-test",
   scope: [],
-  coverage: CoversAllComputations,
-  tier: ReferenceTier,
-  retention: scope_released_retention(capacity: CapacityUnbounded)
+  coverage: std.materialization_ladder.CoversAllComputations,
+  tier: std.materialization_ladder.ReferenceTier,
+  retention: std.materialization_ladder.scope_released_retention(capacity: std.cache_interface.CapacityUnbounded)
 )
 
 fn test_store() -> std.artifact_store.ArtifactStore {
-  match store_over_provider(provider: byte_bounded_provider) {
-    StoreReady { store: s } => s
-    StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => std.artifact_store.ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
+  match std.artifact_store.store_over_provider(provider: byte_bounded_provider) {
+    std.artifact_store.StoreReady { store: s } => s
+    std.artifact_store.StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => std.artifact_store.ArtifactStore { budget: std.measure.byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
 }
 
 fn key_of(toolchain: String) -> std.content_hash.ContentHash {
-  artifact_key_hash(key: std.artifact_store.ArtifactKey {
-    closure_digest: content_hash_atom(value: "closure-digest-fixture"),
+  std.artifact_store.artifact_key_hash(key: std.artifact_store.ArtifactKey {
+    closure_digest: std.content_hash.content_hash_atom(value: "closure-digest-fixture"),
     emitter_identity: "v1-seed",
     target_language: "rust",
     toolchain: toolchain
@@ -38,21 +38,21 @@ fn key_of(toolchain: String) -> std.content_hash.ContentHash {
 }
 
 fn structural_resolved_build_context_identity(context: extdeps.realization.emit_on_demand_host.ResolvedBuildContext) -> std.content_hash.ContentHash {
-  match resolved_build_context_identity_outcome(context: context) {
-    ResolvedBuildContextIdentityPresent { identity: id } => id
-    ResolvedBuildContextIdentityRefusedCrypto { component: _, identity: _ } =>
-      as_content_hash_structural(
-        structural: content_hash_atom(value: "artifact-store-witness-unexpected-crypto-refusal")
+  match extdeps.realization.emit_on_demand_host.resolved_build_context_identity_outcome(context: context) {
+    extdeps.realization.emit_on_demand_host.ResolvedBuildContextIdentityPresent { identity: id } => id
+    extdeps.realization.emit_on_demand_host.ResolvedBuildContextIdentityRefusedCrypto { component: _, identity: _ } =>
+      std.content_hash.as_content_hash_structural(
+        structural: std.content_hash.content_hash_atom(value: "artifact-store-witness-unexpected-crypto-refusal")
       )
   }
 }
 
 fn structural_toolchain_identity(context: extdeps.realization.emit_on_demand_host.ResolvedBuildContext) -> std.content_hash.ContentHash {
-  match toolchain_identity_outcome(context: context) {
-    ToolchainIdentityPresent { identity: id } => id
-    ToolchainIdentityRefusedCrypto { component: _, identity: _ } =>
-      as_content_hash_structural(
-        structural: content_hash_atom(value: "artifact-store-witness-unexpected-crypto-refusal")
+  match extdeps.realization.emit_on_demand_host.toolchain_identity_outcome(context: context) {
+    extdeps.realization.emit_on_demand_host.ToolchainIdentityPresent { identity: id } => id
+    extdeps.realization.emit_on_demand_host.ToolchainIdentityRefusedCrypto { component: _, identity: _ } =>
+      std.content_hash.as_content_hash_structural(
+        structural: std.content_hash.content_hash_atom(value: "artifact-store-witness-unexpected-crypto-refusal")
       )
   }
 }
@@ -60,8 +60,8 @@ fn structural_toolchain_identity(context: extdeps.realization.emit_on_demand_hos
 fn observed_tool(tool_name: String, observed_identity: String) -> extdeps.realization.emit_on_demand_host.ObservedToolIdentity {
   extdeps.realization.emit_on_demand_host.ObservedToolIdentity {
     tool_name: tool_name,
-    observed_identity: as_content_hash_structural(
-      structural: content_hash_atom(value: observed_identity)
+    observed_identity: std.content_hash.as_content_hash_structural(
+      structural: std.content_hash.content_hash_atom(value: observed_identity)
     )
   }
 }
@@ -70,10 +70,10 @@ fn legacy_toolchain_identity(
   cargo_observed_identity: std.content_hash.Fnv1a64Structural,
   rustc_observed_identity: std.content_hash.Fnv1a64Structural,
 ) -> std.content_hash.ContentHash {
-  as_content_hash_structural(
-    structural: content_hash_combine_structural(
-      left: content_hash_combine_structural(
-        left: content_hash_atom(value: "emit-host-resolved-build-toolchain-v1"),
+  std.content_hash.as_content_hash_structural(
+    structural: std.content_hash.content_hash_combine_structural(
+      left: std.content_hash.content_hash_combine_structural(
+        left: std.content_hash.content_hash_atom(value: "emit-host-resolved-build-toolchain-v1"),
         right: cargo_observed_identity,
       ),
       right: rustc_observed_identity,
@@ -86,53 +86,53 @@ fn legacy_toolchain_identity(
 // halves passed while the provider declared EffectiveLimitUnobserved and the
 // caller supplied 100 — the contradiction the split exists to make unwritable.
 test fn store_budget_is_derived_from_the_provider_not_the_caller() -> Bool {
-  match store_over_provider(provider: byte_bounded_provider) {
-    StoreReady { store: s } => s.budget == byte_size(count: 100)
-    StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => false
+  match std.artifact_store.store_over_provider(provider: byte_bounded_provider) {
+    std.artifact_store.StoreReady { store: s } => s.budget == std.measure.byte_size(count: 100)
+    std.artifact_store.StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => false
   }
 }
 
 test fn scope_released_provider_is_refused_with_the_scope_cause() -> Bool {
-  match store_over_provider(provider: scopeexit_provider) {
-    StoreReady { store: _ } => false
-    StoreRefusedRetention { provider_id: pid, declared: _, cause: c } =>
-      (pid == "scoped-provider-test") && (c == ProviderScopeReleased)
+  match std.artifact_store.store_over_provider(provider: scopeexit_provider) {
+    std.artifact_store.StoreReady { store: _ } => false
+    std.artifact_store.StoreRefusedRetention { provider_id: pid, declared: _, cause: c } =>
+      (pid == "scoped-provider-test") && (c == std.artifact_store.ProviderScopeReleased)
   }
 }
 
 // Each remaining refusal cause gets its own control, because the whole point of
 // splitting StoreRefusedRetention into causes is that the remedies differ.
 test fn entry_capped_provider_is_refused_for_the_unit_not_the_ceiling() -> Bool {
-  let entry_capped = provider_row(
+  let entry_capped = std.materialization_ladder.provider_row(
     id: "entry-capped-test",
     scope: [],
-    coverage: CoversAllComputations,
-    tier: std.materialization_ladder.ArtifactTier { keying: ContentKeyed },
-    retention: persistent_retention(capacity: std.cache_interface.CapacityBounded {
+    coverage: std.materialization_ladder.CoversAllComputations,
+    tier: std.materialization_ladder.ArtifactTier { keying: std.materialization_ladder.ContentKeyed },
+    retention: std.materialization_ladder.persistent_retention(capacity: std.cache_interface.CapacityBounded {
       limit: std.cache_interface.EntryCountCapacity { limit: std.cache_interface.ExactLimit { value: 512 } },
-      at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed }
+      at_capacity: std.cache_interface.ReplaceExisting { strategy: std.cache_interface.LeastRecentlyUsed }
     })
   )
-  match store_over_provider(provider: entry_capped) {
-    StoreReady { store: _ } => false
-    StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == CapacityUnitMismatch
+  match std.artifact_store.store_over_provider(provider: entry_capped) {
+    std.artifact_store.StoreReady { store: _ } => false
+    std.artifact_store.StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == std.artifact_store.CapacityUnitMismatch
   }
 }
 
 test fn unobserved_byte_value_is_refused_rather_than_defaulted() -> Bool {
-  let value_unknown = provider_row(
+  let value_unknown = std.materialization_ladder.provider_row(
     id: "value-unobserved-test",
     scope: [],
-    coverage: CoversAllComputations,
-    tier: std.materialization_ladder.ArtifactTier { keying: ContentKeyed },
-    retention: persistent_retention(capacity: std.cache_interface.CapacityBounded {
-      limit: std.cache_interface.ByteCapacity { limit: EffectiveLimitUnobserved },
-      at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed }
+    coverage: std.materialization_ladder.CoversAllComputations,
+    tier: std.materialization_ladder.ArtifactTier { keying: std.materialization_ladder.ContentKeyed },
+    retention: std.materialization_ladder.persistent_retention(capacity: std.cache_interface.CapacityBounded {
+      limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.EffectiveLimitUnobserved },
+      at_capacity: std.cache_interface.ReplaceExisting { strategy: std.cache_interface.LeastRecentlyUsed }
     })
   )
-  match store_over_provider(provider: value_unknown) {
-    StoreReady { store: _ } => false
-    StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == CapacityValueUnobserved
+  match std.artifact_store.store_over_provider(provider: value_unknown) {
+    std.artifact_store.StoreReady { store: _ } => false
+    std.artifact_store.StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == std.artifact_store.CapacityValueUnobserved
   }
 }
 
@@ -140,36 +140,36 @@ test fn unobserved_byte_value_is_refused_rather_than_defaulted() -> Bool {
 // instead of replacing — it would silently evict where the row says it should
 // have declined. This is the at_capacity field's first behavioral reader.
 test fn refuse_new_store_provider_is_not_realized_as_lru() -> Bool {
-  let refuses_new = provider_row(
+  let refuses_new = std.materialization_ladder.provider_row(
     id: "refuse-new-test",
     scope: [],
-    coverage: CoversAllComputations,
-    tier: std.materialization_ladder.ArtifactTier { keying: ContentKeyed },
-    retention: persistent_retention(capacity: std.cache_interface.CapacityBounded {
-      limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: byte_size(count: 100) } },
-      at_capacity: RefuseNewStore
+    coverage: std.materialization_ladder.CoversAllComputations,
+    tier: std.materialization_ladder.ArtifactTier { keying: std.materialization_ladder.ContentKeyed },
+    retention: std.materialization_ladder.persistent_retention(capacity: std.cache_interface.CapacityBounded {
+      limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: std.measure.byte_size(count: 100) } },
+      at_capacity: std.cache_interface.RefuseNewStore
     })
   )
-  match store_over_provider(provider: refuses_new) {
-    StoreReady { store: _ } => false
-    StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == RefuseNewStoreUnsupported
+  match std.artifact_store.store_over_provider(provider: refuses_new) {
+    std.artifact_store.StoreReady { store: _ } => false
+    std.artifact_store.StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == std.artifact_store.RefuseNewStoreUnsupported
   }
 }
 
 test fn store_hit_and_stale_never_served_holds() -> Bool {
   let k1 = key_of(toolchain: "1.93.0")
   let k2 = key_of(toolchain: "1.94.0")
-  store_put_fold(
-    outcome: store_put(store: test_store(), key: k1, artifact_bytes: byte_size(count: 40)),
+  std.artifact_store.store_put_fold(
+    outcome: std.artifact_store.store_put(store: test_store(), key: k1, artifact_bytes: std.measure.byte_size(count: 40)),
     did_not_fit: (a, b) => false,
     admitted: fn(put1_store, evicted) {
-      let hit = match store_get(store: put1_store, key: k1) {
-        StoreHit { store: _, row: r } => r.key == k1
-        StoreMiss { store: _ } => false
+      let hit = match std.artifact_store.store_get(store: put1_store, key: k1) {
+        std.artifact_store.StoreHit { store: _, row: r } => r.key == k1
+        std.artifact_store.StoreMiss { store: _ } => false
       }
-      let mutated_input_misses = match store_get(store: put1_store, key: k2) {
-        StoreHit { store: _, row: _ } => false
-        StoreMiss { store: _ } => true
+      let mutated_input_misses = match std.artifact_store.store_get(store: put1_store, key: k2) {
+        std.artifact_store.StoreHit { store: _, row: _ } => false
+        std.artifact_store.StoreMiss { store: _ } => true
       }
       hit && mutated_input_misses && (k1 == k2) == false
     }
@@ -180,59 +180,59 @@ test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
   let fixed_inputs: List<std.artifact_store.ArtifactRealizationInput> = [
     std.artifact_store.ArtifactRealizationInput {
       identity: "workspace:src/main.rs",
-      content_digest: content_hash_atom(value: "fn main() {}")
+      content_digest: std.content_hash.content_hash_atom(value: "fn main() {}")
     },
     std.artifact_store.ArtifactRealizationInput {
       identity: "build-argv",
-      content_digest: content_hash_atom(value: "cargo build --release")
+      content_digest: std.content_hash.content_hash_atom(value: "cargo build --release")
     },
   ]
-  let fixed_realization = native_cache_realization_workspace_root(
+  let fixed_realization = extdeps.realization.emit_on_demand_host.native_cache_realization_workspace_root(
     workspace_root: "/tmp/gunbc_toolchain_identity/outer-key",
-    realization_digest: artifact_realization_digest(inputs: fixed_inputs)
+    realization_digest: std.artifact_store.artifact_realization_digest(inputs: fixed_inputs)
   )
   let before_resolved_context = extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: [
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
       observed_tool(tool_name: "rustc", observed_identity: "rustc 1.93.0 -vV"),
     ],
-    environment_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed environment")),
-    cargo_configuration_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed cargo configuration"))
+    environment_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "fixed environment")),
+    cargo_configuration_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "fixed cargo configuration"))
   }
   let after_resolved_context = extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: [
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
       observed_tool(tool_name: "rustc", observed_identity: "rustc 1.94.0 -vV"),
     ],
-    environment_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed environment")),
-    cargo_configuration_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed cargo configuration"))
+    environment_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "fixed environment")),
+    cargo_configuration_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "fixed cargo configuration"))
   }
   let before_context = structural_resolved_build_context_identity(context: before_resolved_context)
   let after_context = structural_resolved_build_context_identity(context: after_resolved_context)
-  let cargo_before = match observed_tool_identity(context: before_resolved_context, tool_name: "cargo") {
-    ObservedToolIdentityFound { row } => row.observed_identity == as_content_hash_structural(
-      structural: content_hash_atom(value: "cargo 1.93.0 -Vv")
+  let cargo_before = match extdeps.realization.emit_on_demand_host.observed_tool_identity(context: before_resolved_context, tool_name: "cargo") {
+    ObservedToolIdentityFound { row } => row.observed_identity == std.content_hash.as_content_hash_structural(
+      structural: std.content_hash.content_hash_atom(value: "cargo 1.93.0 -Vv")
     )
     ObservedToolIdentityMissing { tool_name: _ } => false
     ObservedToolIdentityDuplicate { tool_name: _, count: _ } => false
   }
-  let rustc_changed = match observed_tool_identity(context: after_resolved_context, tool_name: "rustc") {
-    ObservedToolIdentityFound { row } => row.observed_identity == as_content_hash_structural(
-      structural: content_hash_atom(value: "rustc 1.94.0 -vV")
+  let rustc_changed = match extdeps.realization.emit_on_demand_host.observed_tool_identity(context: after_resolved_context, tool_name: "rustc") {
+    ObservedToolIdentityFound { row } => row.observed_identity == std.content_hash.as_content_hash_structural(
+      structural: std.content_hash.content_hash_atom(value: "rustc 1.94.0 -vV")
     )
     ObservedToolIdentityMissing { tool_name: _ } => false
     ObservedToolIdentityDuplicate { tool_name: _, count: _ } => false
   }
   let derived_receipt = legacy_toolchain_identity(
-    cargo_observed_identity: content_hash_atom(value: "cargo 1.93.0 -Vv"),
-    rustc_observed_identity: content_hash_atom(value: "rustc 1.93.0 -vV"),
+    cargo_observed_identity: std.content_hash.content_hash_atom(value: "cargo 1.93.0 -Vv"),
+    rustc_observed_identity: std.content_hash.content_hash_atom(value: "rustc 1.93.0 -vV"),
   )
   let unchanged_build_receipt = structural_toolchain_identity(context: before_resolved_context) == derived_receipt
-  let before = native_cache_resolved_build_context_workspace_root(
+  let before = extdeps.realization.emit_on_demand_host.native_cache_resolved_build_context_workspace_root(
     realization_workspace_root: fixed_realization,
     resolved_build_context_identity: before_context
   )
-  let after = native_cache_resolved_build_context_workspace_root(
+  let after = extdeps.realization.emit_on_demand_host.native_cache_resolved_build_context_workspace_root(
     realization_workspace_root: fixed_realization,
     resolved_build_context_identity: after_context
   )
@@ -245,23 +245,23 @@ test fn observed_tool_identity_missing_and_duplicate_refuse() -> Bool {
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
       observed_tool(tool_name: "rustc", observed_identity: "rustc 1.93.0 -vV"),
     ],
-    environment_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed environment")),
-    cargo_configuration_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed cargo configuration"))
+    environment_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "fixed environment")),
+    cargo_configuration_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "fixed cargo configuration"))
   }
   let duplicate_context = extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: [
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.94.0 -Vv"),
     ],
-    environment_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed environment")),
-    cargo_configuration_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed cargo configuration"))
+    environment_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "fixed environment")),
+    cargo_configuration_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "fixed cargo configuration"))
   }
-  let missing = match observed_tool_identity(context: missing_context, tool_name: "clippy") {
+  let missing = match extdeps.realization.emit_on_demand_host.observed_tool_identity(context: missing_context, tool_name: "clippy") {
     ObservedToolIdentityMissing { tool_name: n } => (n as String) == "clippy"
     ObservedToolIdentityDuplicate { tool_name: _, count: _ } => false
     ObservedToolIdentityFound { row: _ } => false
   }
-  let duplicate = match observed_tool_identity(context: duplicate_context, tool_name: "cargo") {
+  let duplicate = match extdeps.realization.emit_on_demand_host.observed_tool_identity(context: duplicate_context, tool_name: "cargo") {
     ObservedToolIdentityDuplicate { tool_name: n, count: _ } => (n as String) == "cargo"
     ObservedToolIdentityMissing { tool_name: _ } => false
     ObservedToolIdentityFound { row: _ } => false
@@ -272,10 +272,10 @@ test fn observed_tool_identity_missing_and_duplicate_refuse() -> Bool {
 data witness_sha256_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 test fn resolved_build_context_identity_refuses_sha256_observed_tool() -> Bool {
-  let sha256_identity = match sha256_hex_digest(hex: test.claim.artifact_store_witness.witness_sha256_hex) {
-    Present { value: digest } => as_content_hash_cryptographic(digest: digest)
-    Absent =>
-      as_content_hash_structural(structural: content_hash_atom(value: "witness-setup-failed"))
+  let sha256_identity = match std.content_hash.sha256_hex_digest(hex: witness_sha256_hex) {
+    v2.std.optional.Present { value: digest } => std.content_hash.as_content_hash_cryptographic(digest: digest)
+    v2.std.optional.Absent =>
+      std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "witness-setup-failed"))
   }
   let context = extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: [
@@ -284,17 +284,17 @@ test fn resolved_build_context_identity_refuses_sha256_observed_tool() -> Bool {
         observed_identity: sha256_identity
       }
     ],
-    environment_identity: as_content_hash_structural(
-      structural: content_hash_atom(value: "env")
+    environment_identity: std.content_hash.as_content_hash_structural(
+      structural: std.content_hash.content_hash_atom(value: "env")
     ),
-    cargo_configuration_identity: as_content_hash_structural(
-      structural: content_hash_atom(value: "cargo-config")
+    cargo_configuration_identity: std.content_hash.as_content_hash_structural(
+      structural: std.content_hash.content_hash_atom(value: "cargo-config")
     ),
   }
-  match resolved_build_context_identity_outcome(context: context) {
-    ResolvedBuildContextIdentityRefusedCrypto { component: c, identity: i } =>
-      (c as String) == "cargo" && content_hash_family(hash: i) == Sha256Family
-    ResolvedBuildContextIdentityPresent { identity: _ } => false
+  match extdeps.realization.emit_on_demand_host.resolved_build_context_identity_outcome(context: context) {
+    extdeps.realization.emit_on_demand_host.ResolvedBuildContextIdentityRefusedCrypto { component: c, identity: i } =>
+      (c as String) == "cargo" && std.content_hash.content_hash_family(hash: i) == std.content_hash.Sha256Family
+    extdeps.realization.emit_on_demand_host.ResolvedBuildContextIdentityPresent { identity: _ } => false
   }
 }
 
@@ -304,20 +304,20 @@ test fn derived_aggregate_matches_legacy_aggregate_for_unchanged_build() -> Bool
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
       observed_tool(tool_name: "rustc", observed_identity: "rustc 1.93.0 -vV"),
     ],
-    environment_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed environment")),
-    cargo_configuration_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed cargo configuration"))
+    environment_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "fixed environment")),
+    cargo_configuration_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "fixed cargo configuration"))
   }
   structural_toolchain_identity(context: context) == legacy_toolchain_identity(
-    cargo_observed_identity: content_hash_atom(value: "cargo 1.93.0 -Vv"),
-    rustc_observed_identity: content_hash_atom(value: "rustc 1.93.0 -vV"),
+    cargo_observed_identity: std.content_hash.content_hash_atom(value: "cargo 1.93.0 -Vv"),
+    rustc_observed_identity: std.content_hash.content_hash_atom(value: "rustc 1.93.0 -vV"),
   )
 }
 
 test fn native_realization_environment_change_cold_rebuild_holds() -> Bool {
-  let fixed_realization = native_cache_realization_workspace_root(
+  let fixed_realization = extdeps.realization.emit_on_demand_host.native_cache_realization_workspace_root(
     workspace_root: "/tmp/gunbc_environment_identity/outer-key",
-    realization_digest: as_content_hash_structural(
-      structural: content_hash_atom(value: "fixed files and build argv")
+    realization_digest: std.content_hash.as_content_hash_structural(
+      structural: std.content_hash.content_hash_atom(value: "fixed files and build argv")
     )
   )
   let before_context = structural_resolved_build_context_identity(context: extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
@@ -325,22 +325,22 @@ test fn native_realization_environment_change_cold_rebuild_holds() -> Bool {
       observed_tool(tool_name: "cargo", observed_identity: "fixed cargo and rustc"),
       observed_tool(tool_name: "rustc", observed_identity: "fixed cargo and rustc"),
     ],
-    environment_identity: as_content_hash_structural(structural: content_hash_atom(value: "RUSTFLAGS=-Copt-level=2")),
-    cargo_configuration_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed cargo configuration"))
+    environment_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "RUSTFLAGS=-Copt-level=2")),
+    cargo_configuration_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "fixed cargo configuration"))
   })
   let after_context = structural_resolved_build_context_identity(context: extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: [
       observed_tool(tool_name: "cargo", observed_identity: "fixed cargo and rustc"),
       observed_tool(tool_name: "rustc", observed_identity: "fixed cargo and rustc"),
     ],
-    environment_identity: as_content_hash_structural(structural: content_hash_atom(value: "RUSTFLAGS=-Copt-level=3")),
-    cargo_configuration_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed cargo configuration"))
+    environment_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "RUSTFLAGS=-Copt-level=3")),
+    cargo_configuration_identity: std.content_hash.as_content_hash_structural(structural: std.content_hash.content_hash_atom(value: "fixed cargo configuration"))
   })
-  let before = native_cache_resolved_build_context_workspace_root(
+  let before = extdeps.realization.emit_on_demand_host.native_cache_resolved_build_context_workspace_root(
     realization_workspace_root: fixed_realization,
     resolved_build_context_identity: before_context
   )
-  let after = native_cache_resolved_build_context_workspace_root(
+  let after = extdeps.realization.emit_on_demand_host.native_cache_resolved_build_context_workspace_root(
     realization_workspace_root: fixed_realization,
     resolved_build_context_identity: after_context
   )
@@ -351,26 +351,26 @@ test fn store_budget_evicts_least_recent_counted_holds() -> Bool {
   let ka = key_of(toolchain: "a")
   let kb = key_of(toolchain: "b")
   let kc = key_of(toolchain: "c")
-  store_put_fold(
-    outcome: store_put(store: test_store(), key: ka, artifact_bytes: byte_size(count: 40)),
+  std.artifact_store.store_put_fold(
+    outcome: std.artifact_store.store_put(store: test_store(), key: ka, artifact_bytes: std.measure.byte_size(count: 40)),
     did_not_fit: (a, b) => false,
     admitted: fn(s1, e1) {
-  store_put_fold(
-    outcome: store_put(store: s1, key: kb, artifact_bytes: byte_size(count: 40)),
+  std.artifact_store.store_put_fold(
+    outcome: std.artifact_store.store_put(store: s1, key: kb, artifact_bytes: std.measure.byte_size(count: 40)),
     did_not_fit: (a, b) => false,
     admitted: fn(s2, e2) {
-  let touched = match store_get(store: s2, key: ka) {
-    StoreHit { store: s, row: _ } => s
-    StoreMiss { store: s } => s
+  let touched = match std.artifact_store.store_get(store: s2, key: ka) {
+    std.artifact_store.StoreHit { store: s, row: _ } => s
+    std.artifact_store.StoreMiss { store: s } => s
   }
-  store_put_fold(
-    outcome: store_put(store: touched, key: kc, artifact_bytes: byte_size(count: 40)),
+  std.artifact_store.store_put_fold(
+    outcome: std.artifact_store.store_put(store: touched, key: kc, artifact_bytes: std.measure.byte_size(count: 40)),
     admitted: fn(packed, evicted) {
       let evicted_is_least_recent = evicted == [kb]
-      let within_budget = store_bytes_used(store: packed) <= measure_count(m: packed.budget)
-      let survivors_hit = match store_get(store: packed, key: ka) {
-        StoreHit { store: _, row: _ } => true
-        StoreMiss { store: _ } => false
+      let within_budget = std.artifact_store.store_bytes_used(store: packed) <= std.measure.measure_count(m: packed.budget)
+      let survivors_hit = match std.artifact_store.store_get(store: packed, key: ka) {
+        std.artifact_store.StoreHit { store: _, row: _ } => true
+        std.artifact_store.StoreMiss { store: _ } => false
       }
       evicted_is_least_recent && within_budget && survivors_hit
     },
@@ -383,8 +383,8 @@ test fn store_budget_evicts_least_recent_counted_holds() -> Bool {
 }
 
 test fn store_no_eviction_under_budget_holds() -> Bool {
-  store_put_evicted_keys(
-    outcome: store_put(store: test_store(), key: key_of(toolchain: "solo"), artifact_bytes: byte_size(count: 40))
+  std.artifact_store.store_put_evicted_keys(
+    outcome: std.artifact_store.store_put(store: test_store(), key: key_of(toolchain: "solo"), artifact_bytes: std.measure.byte_size(count: 40))
   ) == []
 }
 
@@ -392,43 +392,43 @@ test fn store_no_eviction_under_budget_holds() -> Bool {
 data store_put_totality_witness_note: String = "The discriminating receipt for store_put's totality repair: an artifact larger than the whole budget must be a DidNotFit VALUE and must leave the store untouched. Before the repair these assertions were all false in the same direction - the oversized put reported success, its evicted list named the key just put, and against a warm store it had already discarded the valid rows. The warm case is asserted separately from the cold one because only the warm case exposes the DESTRUCTION: a cold oversized put merely returned an empty store it had also started with, so a cold-only witness would have gone green against the destructive implementation."
 
 fn oversize_store() -> std.artifact_store.ArtifactStore {
-  std.artifact_store.ArtifactStore { budget: byte_size(count: 100), next_ordinal: 1, rows: [] }
+  std.artifact_store.ArtifactStore { budget: std.measure.byte_size(count: 100), next_ordinal: 1, rows: [] }
 }
 
 test fn store_put_oversized_artifact_does_not_fit_holds() -> Bool {
-  let outcome = store_put(store: oversize_store(), key: key_of(toolchain: "oversize"), artifact_bytes: byte_size(count: 500))
-  (store_put_is_admitted(outcome: outcome) == false)
-    && (store_put_evicted_keys(outcome: outcome) == [])
+  let outcome = std.artifact_store.store_put(store: oversize_store(), key: key_of(toolchain: "oversize"), artifact_bytes: std.measure.byte_size(count: 500))
+  (std.artifact_store.store_put_is_admitted(outcome: outcome) == false)
+    && (std.artifact_store.store_put_evicted_keys(outcome: outcome) == [])
 }
 
 test fn store_put_oversized_artifact_never_evicts_itself_holds() -> Bool {
   let k = key_of(toolchain: "oversize-self")
-  let evicted = store_put_evicted_keys(
-    outcome: store_put(store: oversize_store(), key: k, artifact_bytes: byte_size(count: 500))
+  let evicted = std.artifact_store.store_put_evicted_keys(
+    outcome: std.artifact_store.store_put(store: oversize_store(), key: k, artifact_bytes: std.measure.byte_size(count: 500))
   )
   (evicted |> any(e => e == k)) == false
 }
 
 test fn store_put_oversized_artifact_preserves_warm_rows_holds() -> Bool {
   let survivor = key_of(toolchain: "warm-survivor")
-  store_put_fold(
-    outcome: store_put(store: oversize_store(), key: survivor, artifact_bytes: byte_size(count: 40)),
+  std.artifact_store.store_put_fold(
+    outcome: std.artifact_store.store_put(store: oversize_store(), key: survivor, artifact_bytes: std.measure.byte_size(count: 40)),
     did_not_fit: (a, b) => false,
     admitted: fn(warmed, e) {
-      let outcome = store_put(store: warmed, key: key_of(toolchain: "oversize-warm"), artifact_bytes: byte_size(count: 500))
-      let still_there = match store_get(store: warmed, key: survivor) {
-        StoreHit { store: _, row: _ } => true
-        StoreMiss { store: _ } => false
+      let outcome = std.artifact_store.store_put(store: warmed, key: key_of(toolchain: "oversize-warm"), artifact_bytes: std.measure.byte_size(count: 500))
+      let still_there = match std.artifact_store.store_get(store: warmed, key: survivor) {
+        std.artifact_store.StoreHit { store: _, row: _ } => true
+        std.artifact_store.StoreMiss { store: _ } => false
       }
-      (store_put_is_admitted(outcome: outcome) == false)
-        && (store_put_evicted_keys(outcome: outcome) == [])
+      (std.artifact_store.store_put_is_admitted(outcome: outcome) == false)
+        && (std.artifact_store.store_put_evicted_keys(outcome: outcome) == [])
         && still_there
     }
   )
 }
 
 test fn store_put_artifact_exactly_at_budget_is_admitted_holds() -> Bool {
-  store_put_is_admitted(
-    outcome: store_put(store: oversize_store(), key: key_of(toolchain: "exact"), artifact_bytes: byte_size(count: 100))
+  std.artifact_store.store_put_is_admitted(
+    outcome: std.artifact_store.store_put(store: oversize_store(), key: key_of(toolchain: "exact"), artifact_bytes: std.measure.byte_size(count: 100))
   )
 }

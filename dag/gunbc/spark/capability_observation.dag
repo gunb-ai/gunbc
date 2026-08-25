@@ -89,23 +89,23 @@ fn admitted_capability_outcome(observation: SparkCapabilityObservation) -> Capab
   match observation.outcome {
     CapabilityPresent { evidence: e } =>
       match observation.probe_effect {
-        ProbeInert => gunbc.spark.capability_observation.CapabilityPresent { evidence: e }
-        ProbeMayEstablish { mechanism: m } => CapabilityObservationRefused {
+        gunbc.readback_independence.ProbeInert => CapabilityPresent { evidence: e }
+        gunbc.readback_independence.ProbeMayEstablish { mechanism: m } => CapabilityObservationRefused {
           first: join(["a positive readback is not evidence here: performing the probe may have established the subject via ", m as String], "") as std.types.NonEmptyStr,
           more: [],
         }
-        ProbeAnswersWithoutSubject { mechanism: m } => CapabilityObservationRefused {
+        gunbc.readback_independence.ProbeAnswersWithoutSubject { mechanism: m } => CapabilityObservationRefused {
           first: join(["a positive readback is not evidence here: the probe answers positively with no subject present via ", m as String], "") as std.types.NonEmptyStr,
           more: [],
         }
-        ProbeEffectUnknown { reason: r } => CapabilityObservationRefused {
+        gunbc.readback_independence.ProbeEffectUnknown { reason: r } => CapabilityObservationRefused {
           first: join(["a positive readback is not evidence here: the probe's effect on the subject is unclassified -- ", r as String], "") as std.types.NonEmptyStr,
           more: [],
         }
       }
     CapabilityAbsent { evidence: e } => CapabilityAbsent { evidence: e }
     CapabilityObservationRefused { first: f, more: m } => CapabilityObservationRefused { first: f, more: m }
-    CapabilityUnobserved => gunbc.spark.capability_observation.CapabilityUnobserved
+    CapabilityUnobserved => CapabilityUnobserved
   }
 }
 
@@ -124,7 +124,7 @@ fn observation_for(
   principal: std.types.NonEmptyStr,
   capability: SparkServingCapability,
 ) -> CapabilityObservationOutcome {
-  fold(observations, init: gunbc.spark.capability_observation.CapabilityUnobserved, f: fn(acc, o) {
+  fold(observations, init: CapabilityUnobserved, f: fn(acc, o) {
     match acc {
       CapabilityUnobserved =>
         if (o.subject.host as String) == (host as String)

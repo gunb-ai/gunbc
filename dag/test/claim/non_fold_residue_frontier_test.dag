@@ -4,18 +4,18 @@ module test.claim.non_fold_residue_frontier
 data non_fold_residue_frontier_test_note: String = "GREEN: every enrolled non-fold-residue row is well-formed (nonempty subject, reason, trigger), path keys are unique via keyed_roster_build construction (lane 4), and the roster is populated. RED controls: a synthetic row with an empty trigger fails well-formedness; a synthetic duplicate path key yields KeyedRosterBuildDuplicateKey. The host-side equivalence receipt (nfr_roster_receipt: unrostered=0, stale=0 against the live corpus scan) lives in cli_run.rs nfr_tests and the always-on witness enrollment on src/v2/lens/non_fold_residue_test.dag."
 
 test fn non_fold_residue_frontier_rows_well_formed_holds() -> Bool {
-  non_fold_residue_frontier_well_formed()
+  gunbc.non_fold_residue.non_fold_residue_frontier_well_formed()
 }
 
 test fn non_fold_residue_frontier_keyed_roster_build_admits() -> Bool {
-  match non_fold_residue_frontier_construct() {
-    KeyedRosterBuilt { rows: _ } => true
-    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  match gunbc.non_fold_residue.non_fold_residue_frontier_construct() {
+    std.keyed_roster.KeyedRosterBuilt { rows: _ } => true
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
 test fn non_fold_residue_frontier_is_populated() -> Bool {
-  length(xs: non_fold_residue_frontier_units()) >= 100
+  length(xs: gunbc.non_fold_residue.non_fold_residue_frontier_units()) >= 100
 }
 
 // Constructs the empty condition through the NON-LITERAL path deliberately.
@@ -30,7 +30,7 @@ fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
 }
 
 fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
-  unbound_dissolution(description: test.claim.non_fold_residue_frontier.synthetic_nonliteral_text(text: text))
+  std.dissolution.unbound_dissolution(description: synthetic_nonliteral_text(text: text))
 }
 
 test fn non_fold_residue_frontier_red_control_empty_trigger_reds() -> Bool {
@@ -38,7 +38,7 @@ test fn non_fold_residue_frontier_red_control_empty_trigger_reds() -> Bool {
     row: std.roster_frontier.FrontierRow {
       subject: std.roster_frontier.PathSubject { path: "synthetic.dag::f" },
       reason: "a reason without a trigger is not a frontier row",
-      dissolution: test.claim.non_fold_residue_frontier.synthetic_empty_condition(text: "")
+      dissolution: synthetic_empty_condition(text: "")
     }
   )
   verdict == false
@@ -50,16 +50,16 @@ test fn non_fold_residue_frontier_red_control_duplicate_path_reds() -> Bool {
       std.roster_frontier.FrontierRow {
         subject: std.roster_frontier.PathSubject { path: "synthetic/a.dag::f" },
         reason: "r1",
-        dissolution: unbound_dissolution(description: "d1"),
+        dissolution: std.dissolution.unbound_dissolution(description: "d1"),
       },
       std.roster_frontier.FrontierRow {
         subject: std.roster_frontier.PathSubject { path: "synthetic/a.dag::f" },
         reason: "r2",
-        dissolution: unbound_dissolution(description: "d2"),
+        dissolution: std.dissolution.unbound_dissolution(description: "d2"),
       },
     ]
   ) {
-    KeyedRosterBuilt { rows: _ } => false
-    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
+    std.keyed_roster.KeyedRosterBuilt { rows: _ } => false
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
   }
 }

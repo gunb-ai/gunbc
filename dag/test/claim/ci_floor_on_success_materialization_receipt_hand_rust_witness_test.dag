@@ -5,7 +5,7 @@ data ci_floor_on_success_materialization_receipt_hand_rust_witness_note: String 
 
 test fn scaffold_is_seed_retained_on_path_authority() -> Bool {
   match gunbc.ci_materialization.ci_floor_on_success_materialization_receipt_claim_executor_seed_disposition {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
@@ -17,8 +17,8 @@ test fn attempt_scoped_path_names_attempt_id() -> Bool {
 
 test fn scaffold_names_bounded_deferral_receipt() -> Bool {
   !(gunbc.ci_materialization.ci_floor_on_success_materialization_receipt_claim_executor_seed_deferral == "")
-    && !(ci_floor_on_success_materialization_receipt_claim_executor_seed_receipt_plan_anchor == "")
-    && !(ci_floor_on_success_materialization_receipt_claim_executor_seed_roadmap_lane_anchor == "")
-    && ci_floor_on_success_materialization_receipt_claim_executor_seed_witness_entry ==
+    && !(gunbc.ci_materialization.ci_floor_on_success_materialization_receipt_claim_executor_seed_receipt_plan_anchor == "")
+    && !(gunbc.ci_materialization.ci_floor_on_success_materialization_receipt_claim_executor_seed_roadmap_lane_anchor == "")
+    && gunbc.ci_materialization.ci_floor_on_success_materialization_receipt_claim_executor_seed_witness_entry ==
       "dag/test/claim/ci_floor_on_success_materialization_receipt_hand_rust_witness_test.dag"
 }

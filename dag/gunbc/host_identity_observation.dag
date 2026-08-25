@@ -4,15 +4,15 @@ module gunbc.host_identity_observation
 
 type HostIdentityObservationRow {
   short_hostname_raw: String
-  probed_at: std.types.NonEmptyStr
+  probed_at: NonEmptyStr
 }
 
 type HostIdentityObservation {
   short_hostname: String
-  probed_at: std.types.NonEmptyStr
+  probed_at: NonEmptyStr
 }
 
-data gunbc_host_identity_observation_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
+data gunbc_host_identity_observation_scope_disposition: Disposition = Terminal {
   reason: "Slice-1 typed fixture/read carrier: hostname -s over host_effect transport -> HostIdentityObservation. Does NOT subsume gunbc.ci_deploy_target_host.deploy_target_host_observed_hostname (direct shell.Exec) — that path dissolves when live deploy routes target-host proof through this carrier."
 }
 
@@ -33,7 +33,7 @@ fn host_identity_observation_typed(row: HostIdentityObservationRow) -> HostIdent
   }
 }
 
-fn host_identity_observation_from_stdout(stdout: String, probed_at: std.types.NonEmptyStr) -> HostIdentityObservation? {
+fn host_identity_observation_from_stdout(stdout: String, probed_at: NonEmptyStr) -> HostIdentityObservation? {
   let trimmed = std.algebra.trim(stdout)
   if trimmed == "" {
     none
@@ -48,9 +48,9 @@ fn host_identity_observation_from_stdout(stdout: String, probed_at: std.types.No
 }
 
 fn host_identity_observation_apply(
-  target: gunbc.host_effect.NodeControlPlane,
-  transport: gunbc.host_effect.HostEffectTransport,
-) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
+  target: NodeControlPlane,
+  transport: HostEffectTransport,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   host_effect_apply(
     target: target,
     effect: HostIdentityShortHostnameRead,
@@ -60,8 +60,8 @@ fn host_identity_observation_apply(
 }
 
 fn host_identity_observation_from_apply(
-  r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>,
-  probed_at: std.types.NonEmptyStr,
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  probed_at: NonEmptyStr,
 ) -> HostIdentityObservation? {
   match r {
     Converged { evidence: e, applied: _ } =>

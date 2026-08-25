@@ -5,12 +5,12 @@ module extdeps.advertising.google_ads
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "support.google.com/google-ads/answer/2472725"
   }
 }
 
-data google_ads_subject: Vendor<extdeps.securities.Securities> = alphabet
+data google_ads_subject: extdeps.vendor.Vendor<extdeps.securities.Securities> = extdeps.vendor.alphabet.alphabet
 
 data google_ads_subject_note: String = "Subject and source are orthogonal axes (operator ruling 2026-07-25, extdeps.pricing.gitlab_subscription precedent): the anchor above is the SOURCE (Google's own product help pages under support.google.com/google-ads), and the subject edge names the ENTITY -- the SEC issuer Alphabet Inc., the filing parent whose income statement reports Google advertising revenue. The consumer-facing product brand is Google Ads; no separate legal-entity row is minted for the operating subsidiary because no fact in this module is about corporate structure."
 

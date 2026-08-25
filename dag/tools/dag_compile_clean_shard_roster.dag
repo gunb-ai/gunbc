@@ -27,7 +27,7 @@ fn compile_clean_shard_roster_build_from(
 }
 
 fn compile_clean_entry_module_facts() -> List<CompileCleanModuleDeclFact> {
-  module_declaration_facts(pool_roots: compile_clean_partition_boundary().entry_roots)
+  module_declaration_facts(pool_roots: tools.dag_compile_clean_partition.compile_clean_partition_boundary().entry_roots)
 }
 
 fn compile_clean_module_shard_from_decl(decl: CompileCleanModuleDeclFact) -> tools.dag_compile_clean_partition.CompileCleanModuleShard {
@@ -54,11 +54,11 @@ fn compile_clean_module_shard_roster_from(
   decl_facts: List<CompileCleanModuleDeclFact>
 ) -> CompileCleanModuleShardRoster {
   match compile_clean_shard_roster_build_from(decl_facts: decl_facts) {
-    KeyedRosterBuilt { rows: rows } =>
+    std.keyed_roster.KeyedRosterBuilt { rows: rows } =>
       CompileCleanModuleShardRosterBuilt {
         shards: map(rows, row => compile_clean_module_shard_from_decl(decl: row.value))
       }
-    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       CompileCleanModuleShardRosterDuplicatePath {
         path: k,
         first: f.value,
@@ -93,7 +93,7 @@ fn list_contains_path(xs: List<String>, target: String) -> Bool {
 }
 
 fn witness_shard_roster_boundary_is_witness_layer_roots() -> Bool {
-  compile_clean_partition_boundary().entry_roots == gunbc.ci_layer_roots.witness_layer_roots
+  tools.dag_compile_clean_partition.compile_clean_partition_boundary().entry_roots == gunbc.ci_layer_roots.witness_layer_roots
 }
 
 data compile_clean_shard_roster_mechanism_fixture_facts: List<CompileCleanModuleDeclFact> = [
@@ -113,15 +113,15 @@ fn witness_roster_nonempty_on_fixture_facts() -> Bool {
   match compile_clean_module_shard_roster_from(
     decl_facts: compile_clean_shard_roster_mechanism_fixture_facts
   ) {
-    CompileCleanModuleShardRosterBuilt { shards: shards } => list_length(items: shards) > 0
+    CompileCleanModuleShardRosterBuilt { shards: shards } => std.types.list_length(items: shards) > 0
     CompileCleanModuleShardRosterDuplicatePath { path: _, first: _, duplicate: _ } => false
   }
 }
 
 fn witness_roster_build_admits_on_fixture_facts() -> Bool {
   match compile_clean_shard_roster_build_from(decl_facts: compile_clean_shard_roster_mechanism_fixture_facts) {
-    KeyedRosterBuilt { rows: _ } => true
-    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    std.keyed_roster.KeyedRosterBuilt { rows: _ } => true
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
@@ -129,8 +129,8 @@ fn witness_roster_build_refuses_synthetic_duplicate_facts() -> Bool {
   match compile_clean_shard_roster_build_from(
     decl_facts: compile_clean_shard_roster_mechanism_fixture_duplicate_facts
   ) {
-    KeyedRosterBuilt { rows: _ } => false
-    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    std.keyed_roster.KeyedRosterBuilt { rows: _ } => false
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       k == "dag/fixture/alpha.dag"
         && f.value.module == "fixture.alpha"
         && d.value.module == "fixture.alpha_reexport"
@@ -157,23 +157,23 @@ fn witness_roster_build_refuses_synthetic_duplicate_facts() -> Bool {
 
 fn witness_roster_empty_facts_are_not_nonempty() -> Bool {
   match compile_clean_module_shard_roster_from(decl_facts: []) {
-    CompileCleanModuleShardRosterBuilt { shards: shards } => list_length(items: shards) == 0
+    CompileCleanModuleShardRosterBuilt { shards: shards } => std.types.list_length(items: shards) == 0
     CompileCleanModuleShardRosterDuplicatePath { path: _, first: _, duplicate: _ } => false
   }
 }
 
 data compile_clean_shard_entry_paths_fast_hand_rust_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "tools.dag_compile_clean_shard_roster",
     decl_name: "compile_clean_shard_entry_paths_from",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data compile_clean_shard_entry_paths_fast_hand_rust_receipt_census: String = "rg '^pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER' src/v1/stage0/src/cli_run.rs == 1"
 
-data compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER (src/v1/stage0/src/cli_run.rs compile_clean_shard_entry_paths_from_decl_facts / compile_clean_shard_entry_paths_fast) — host floor-CI realization of tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths_from keyed via std.keyed_roster.keyed_roster_build because the wet interpreter path cold-scans ~minutes (dag_compile_clean_scope import note). Not a second roster authority: duplicate-key refusal must match KeyedRosterBuildDuplicateKey / RefuseShardRosterDuplicate semantics proven on compile_clean_shard_entry_paths_fast_hand_rust_receipt_census and compile_clean_shard_entry_paths_fast_scaffold_marker_declaration_is_singular in cli_run.rs until deletion. DISSOLVES WHEN docs/plans/floor-shared-compute-memoization.md M2 entry-graph union / per-entry memoization or docs/plans/witness-realization-plan.md makes the modeled .dag entry callable on the floor hot path without this parallel Rust keyed_roster_build.")
+data compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER (src/v1/stage0/src/cli_run.rs compile_clean_shard_entry_paths_from_decl_facts / compile_clean_shard_entry_paths_fast) — host floor-CI realization of tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths_from keyed via std.keyed_roster.keyed_roster_build because the wet interpreter path cold-scans ~minutes (dag_compile_clean_scope import note). Not a second roster authority: duplicate-key refusal must match KeyedRosterBuildDuplicateKey / RefuseShardRosterDuplicate semantics proven on compile_clean_shard_entry_paths_fast_hand_rust_receipt_census and compile_clean_shard_entry_paths_fast_scaffold_marker_declaration_is_singular in cli_run.rs until deletion. DISSOLVES WHEN docs/plans/floor-shared-compute-memoization.md M2 entry-graph union / per-entry memoization or docs/plans/witness-realization-plan.md makes the modeled .dag entry callable on the floor hot path without this parallel Rust keyed_roster_build.")
 
 data compile_clean_shard_entry_paths_fast_hand_rust_receipt_plan_anchor: String = "tools.dag_compile_clean_shard_roster compile_clean_shard_entry_paths_from"
 

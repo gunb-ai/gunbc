@@ -3,7 +3,7 @@ module extdeps.provisioning.ubuntu_seeded_install_media_toolchain
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.gnu.org/software/xorriso/"
   }
 }
@@ -13,7 +13,7 @@ type InstallMediaRemasterToolchainRequirement {
 }
 
 data install_media_remaster_toolchain_requirement: InstallMediaRemasterToolchainRequirement = InstallMediaRemasterToolchainRequirement {
-  required_tools: [xorriso_cli_tool],
+  required_tools: [extdeps.tools.xorriso.xorriso_cli_tool],
 }
 
 fn install_media_remaster_toolchain_includes_xorriso(

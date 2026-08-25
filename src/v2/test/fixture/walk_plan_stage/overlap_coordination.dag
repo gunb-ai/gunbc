@@ -21,7 +21,7 @@ fn walk_plan_stage_overlap_record_peer(peer: OverlapPeer) -> Bool {
   if !dir_ready.success {
     false
   } else {
-    let marker = Filesystem.Write(
+    let marker = extdeps.filesystem.filesystem_io.Filesystem.Write(
       path: walk_plan_stage_overlap_marker_path(peer: peer),
       content: ""
     )

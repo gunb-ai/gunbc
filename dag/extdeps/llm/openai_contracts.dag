@@ -3,7 +3,7 @@ module extdeps.llm.openai_contracts
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "platform.openai.com/docs/api-reference/chat/create"
   }
 }
@@ -11,16 +11,16 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 data wire_contract: std.serialization.VariantEncoding = extdeps.llm.llm_contracts.llm_snake_wire_contract
 
 data openai_chat_message_wire_contract: std.serialization.CoproductWireContract = {
-  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.openai", decl_name: "OpenAiChatMessage", field: WholeDeclaration },
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.openai", decl_name: "OpenAiChatMessage", field: std.decl_ref.WholeDeclaration },
   encoding: std.serialization.InternallyTaggedObject { tag_field: "role", naming: std.serialization.StripPrefixAndSnakeCase { prefix: "OpenAiChatMessage" } }
 }
 
 data openai_chat_message_part_wire_contract: std.serialization.CoproductWireContract = {
-  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.openai", decl_name: "OpenAiChatMessagePart", field: WholeDeclaration },
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.openai", decl_name: "OpenAiChatMessagePart", field: std.decl_ref.WholeDeclaration },
   encoding: std.serialization.InternallyTaggedObject { tag_field: "type", naming: std.serialization.StripPrefixSuffixAndSnakeCase { prefix: "OpenAiChatMessage", suffix: "Part" } }
 }
 
 data openai_chat_message_content_wire_contract: std.serialization.CoproductWireContract = {
-  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.openai", decl_name: "OpenAiChatMessageContent", field: WholeDeclaration },
-  encoding: UntaggedVariant
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.openai", decl_name: "OpenAiChatMessageContent", field: std.decl_ref.WholeDeclaration },
+  encoding: std.serialization.UntaggedVariant
 }

@@ -5,24 +5,24 @@ data compile_gate_law: String = "The accumulator-copy lens as a compile citizen 
 
 fn finding_diagnostic(f: v2.lens.complexity_accumulator_copy.Finding) -> v2.std.diagnostic.Diagnostic {
   match f {
-    Poly2Suspect { at: n, cost: _ } =>
+    v2.lens.complexity_accumulator_copy.Poly2Suspect { at: n, cost: _ } =>
       v2.std.diagnostic.Diagnostic {
         reason: ^accumulator_copy_poly2_suspect,
-        at: node_locus(node: n),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.node_locus(node: n),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
-    Unclassifiable { at: n, cause: c } =>
+    v2.lens.complexity_accumulator_copy.Unclassifiable { at: n, cause: c } =>
       v2.std.diagnostic.Diagnostic {
         reason: c,
-        at: node_locus(node: n),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.node_locus(node: n),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
   }
 }
 
 type GateLedger {
-  suspects: std.algebra.FreeMonoid<v2.std.diagnostic.Diagnostic>
-  refusals: std.algebra.FreeMonoid<v2.std.diagnostic.Diagnostic>
+  suspects: List<v2.std.diagnostic.Diagnostic>
+  refusals: List<v2.std.diagnostic.Diagnostic>
 }
 
 fn gate_ledger(findings: List<v2.lens.complexity_accumulator_copy.Finding>) -> GateLedger {
@@ -44,15 +44,15 @@ fn gate_ledger(findings: List<v2.lens.complexity_accumulator_copy.Finding>) -> G
     }
   )
   GateLedger {
-    suspects: list_reverse(xs: split.suspects),
-    refusals: list_reverse(xs: split.refusals)
+    suspects: v2.std.algebra.list_reverse(xs: split.suspects),
+    refusals: v2.std.algebra.list_reverse(xs: split.refusals)
   }
 }
 
-fn accumulator_copy_compile_gate(node: v2.std.node.Node) -> Outcome<Witness<v2.std.node.Node>> {
+fn accumulator_copy_compile_gate(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   let ledger = gate_ledger(findings: v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_findings(root: node))
   match ledger.suspects {
-    Cons { head: first, tail: rest } =>
+    std.algebra.Cons { head: first, tail: rest } =>
       v2.std.diagnostic.Rejected {
         diagnostics: v2.std.diagnostic.NonEmptyDiagnostics {
           head: first,
@@ -61,20 +61,20 @@ fn accumulator_copy_compile_gate(node: v2.std.node.Node) -> Outcome<Witness<v2.s
           })
         }
       }
-    Empty =>
+    std.algebra.Empty =>
       match ledger.refusals {
-        Cons { head: first, tail: rest } =>
-          outcome_with_diagnostics(
+        std.algebra.Cons { head: first, tail: rest } =>
+          v2.std.diagnostic.outcome_with_diagnostics(
             value: v2.std.witness.Holds { value: node },
             diagnostics: v2.std.diagnostic.Some {
               diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
             }
           )
-        Empty => outcome_accepted(value: v2.std.witness.Holds { value: node })
+        std.algebra.Empty => v2.std.diagnostic.outcome_accepted(value: v2.std.witness.Holds { value: node })
       }
   }
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SubstrateMandatoryTag }
 }

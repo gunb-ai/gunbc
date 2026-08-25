@@ -10,12 +10,12 @@ fn serial_field(key: String, value: std.languages.SerialValue) -> std.languages.
 
 fn serialize_value_doc(knobs: std.languages.SerializationKnobs, v: std.languages.SerialValue) -> std.layout.Doc {
   match v {
-    ScalarValue { text: t } =>
+    std.languages.ScalarValue { text: t } =>
       match knobs.value_quote {
-        null => doc_text(text: t)
-        q => doc_text(text: concat(concat(q, t), q))
+        null => std.layout.doc_text(text: t)
+        q => std.layout.doc_text(text: concat(concat(q, t), q))
       }
-    RecordValue { fields: fields } =>
+    std.languages.RecordValue { fields: fields } =>
       serialize_record_doc(knobs: knobs, fields: fields)
   }
 }
@@ -26,30 +26,30 @@ fn serialize_field_doc(knobs: std.languages.SerializationKnobs, f: std.languages
   } else {
     f.key
   }
-  doc_concat(parts: [
-    doc_text(text: concat(key_text, knobs.assign)),
+  std.layout.doc_concat(parts: [
+    std.layout.doc_text(text: concat(key_text, knobs.assign)),
     serialize_value_doc(knobs: knobs, v: f.value)
   ])
 }
 
 fn serialize_fields_doc(knobs: std.languages.SerializationKnobs, fields: List<std.languages.SerialField>) -> std.layout.Doc {
-  doc_concat(parts: reverse(
+  std.layout.doc_concat(parts: reverse(
     fields
       |> map(fld => serialize_field_doc(knobs: knobs, f: fld))
       |> fold(init: [], f: fn(acc, doc) {
         if count(acc) == 0 {
           [doc]
         } else {
-          concat([doc], concat([doc_text(text: knobs.entry_separator)], acc))
+          concat([doc], concat([std.layout.doc_text(text: knobs.entry_separator)], acc))
         }
       })
   ))
 }
 
 fn serialize_record_doc(knobs: std.languages.SerializationKnobs, fields: List<std.languages.SerialField>) -> std.layout.Doc {
-  doc_concat(parts: [
-    doc_text(text: knobs.open),
+  std.layout.doc_concat(parts: [
+    std.layout.doc_text(text: knobs.open),
     serialize_fields_doc(knobs: knobs, fields: fields),
-    doc_text(text: knobs.close)
+    std.layout.doc_text(text: knobs.close)
   ])
 }

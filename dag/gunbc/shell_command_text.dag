@@ -1,5 +1,6 @@
 module gunbc.shell_command_text
 
+
 // One authority for "an argv this repository intends to run" becoming shell text.
 // The argv is built as a bash grammar tree (v2.extdeps.languages.bash_build) and serialized
 // once, at the foreign-executor edge, by v2.workflow.bash_command_fold_serialize — so word
@@ -10,37 +11,37 @@ module gunbc.shell_command_text
 // by the live-deploy operation spellings; a second spelling of it would be the §3 fork.
 data shell_command_text_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ a command intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the consuming step fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
 
-fn shell_literal_words(words: List<String>) -> List<Node> {
-  map(words, w => bash_build_word_lit(text: w))
+fn shell_literal_words(words: List<String>) -> List<v2.std.node.Node> {
+  map(words, w => v2.extdeps.languages.bash_build.bash_build_word_lit(text: w))
 }
 
-fn shell_command_intent(words: List<String>) -> Node {
-  bash_build_command_with_words(words: shell_literal_words(words: words))
+fn shell_command_intent(words: List<String>) -> v2.std.node.Node {
+  v2.extdeps.languages.bash_build.bash_build_command_with_words(words: shell_literal_words(words: words))
 }
 
-fn shell_privileged_command_intent(argv: List<String>) -> Node {
+fn shell_privileged_command_intent(argv: List<String>) -> v2.std.node.Node {
   shell_command_intent(words: concat(["sudo", "-n"], argv))
 }
 
-fn shell_command_text_of_node(stmt: Node) -> String {
-  match bash_fold_serialize_node(stmt: stmt) {
-    Accepted { value: source, diagnostics: d } =>
+fn shell_command_text_of_node(stmt: v2.std.node.Node) -> String {
+  match v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node(stmt: stmt) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       match d {
-        None => source
+        v2.std.diagnostic.None => source
         Some { diagnostics: _ } => shell_command_text_refused_poison
       }
-    Rejected { diagnostics: _ } => shell_command_text_refused_poison
+    v2.std.diagnostic.Rejected { diagnostics: _ } => shell_command_text_refused_poison
   }
 }
 
-fn shell_command_text_of_stmts(stmts: List<Node>) -> String {
-  match bash_fold_serialize_stmts_semi(stmts: stmts) {
-    Accepted { value: source, diagnostics: d } =>
+fn shell_command_text_of_stmts(stmts: List<v2.std.node.Node>) -> String {
+  match v2.workflow.bash_command_fold_serialize.bash_fold_serialize_stmts_semi(stmts: stmts) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       match d {
-        None => source
+        v2.std.diagnostic.None => source
         Some { diagnostics: _ } => shell_command_text_refused_poison
       }
-    Rejected { diagnostics: _ } => shell_command_text_refused_poison
+    v2.std.diagnostic.Rejected { diagnostics: _ } => shell_command_text_refused_poison
   }
 }
 

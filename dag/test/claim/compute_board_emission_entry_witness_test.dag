@@ -1,7 +1,7 @@
 module test.claim.compute_board_emission_entry_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // THE HOST BOUNDARY IS WHERE A REFUSAL IS EASIEST TO LOSE AND WORST TO LOSE. These entries used
 // to answer a refused article with the literal string "REFUSED: article not admitted", which a
@@ -11,19 +11,19 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn is_emitted(e: product.compute_board.emission_entry.BoardEmission<product.compute_board.spice_projection.SpiceProjectionRefusal>) -> Bool {
   match e {
-    BoardEmitted { source: s } => s != ""
-    BoardArticleNotAdmitted { causes: _ } => false
-    BoardTargetRefused { cause: _ } => false
+    product.compute_board.emission_entry.BoardEmitted { source: s } => s != ""
+    product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => false
+    product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
   }
 }
 
 test fn w_the_production_article_emits_through_every_entry() -> Bool {
-  test.claim.compute_board_emission_entry_witness.is_emitted(e: emit_spice())
-    && test.claim.compute_board_emission_entry_witness.is_emitted(e: emit_ngspice_run())
+  is_emitted(e: product.compute_board.emission_entry.emit_spice())
+    && is_emitted(e: product.compute_board.emission_entry.emit_ngspice_run())
     && match product.compute_board.emission_entry.emit_verilog() {
-      BoardEmitted { source: s } => s != ""
-      BoardArticleNotAdmitted { causes: _ } => false
-      BoardTargetRefused { cause: _ } => false
+      product.compute_board.emission_entry.BoardEmitted { source: s } => s != ""
+      product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => false
+      product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
     }
 }
 
@@ -49,20 +49,20 @@ data incoherent_article: product.compute_board.article.BoardPowerInterfaceArticl
 }
 
 test fn w_an_incoherent_board_reaches_the_admission_arm_on_every_entry() -> Bool {
-  match emit_spice_for(article: incoherent_article) {
-    BoardArticleNotAdmitted { causes: _ } =>
-      match emit_ngspice_run_for(article: incoherent_article) {
-        BoardArticleNotAdmitted { causes: _ } =>
-          match emit_verilog_for(article: incoherent_article) {
-            BoardArticleNotAdmitted { causes: _ } => true
-            BoardEmitted { source: _ } => false
-            BoardTargetRefused { cause: _ } => false
+  match product.compute_board.emission_entry.emit_spice_for(article: incoherent_article) {
+    product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } =>
+      match product.compute_board.emission_entry.emit_ngspice_run_for(article: incoherent_article) {
+        product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } =>
+          match product.compute_board.emission_entry.emit_verilog_for(article: incoherent_article) {
+            product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => true
+            product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+            product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
           }
-        BoardEmitted { source: _ } => false
-        BoardTargetRefused { cause: _ } => false
+        product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+        product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
       }
-    BoardEmitted { source: _ } => false
-    BoardTargetRefused { cause: _ } => false
+    product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+    product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
   }
 }
 
@@ -70,10 +70,10 @@ test fn w_an_incoherent_board_reaches_the_admission_arm_on_every_entry() -> Bool
 // an empty cause set would be the string it replaced, wearing a type — and the count is read
 // through the admission module's own accessor, so this asserts the set, not a re-derivation.
 test fn w_the_admission_causes_cross_the_boundary_intact() -> Bool {
-  match emit_spice_for(article: incoherent_article) {
-    BoardArticleNotAdmitted { causes: cs } => product.compute_board.admission.refusal_set_count(s: cs) == 2
-    BoardEmitted { source: _ } => false
-    BoardTargetRefused { cause: _ } => false
+  match product.compute_board.emission_entry.emit_spice_for(article: incoherent_article) {
+    product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: cs } => product.compute_board.admission.refusal_set_count(s: cs) == 2
+    product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+    product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
   }
 }
 
@@ -95,7 +95,7 @@ fn without_filter_high_terminal(nets: List<product.electrical.connectivity.Elect
     concat(acc, [product.electrical.connectivity.ElectricalNet {
       identity: net.identity,
       members: fold(net.members, init: [], f: fn(macc, m) {
-        if (component_local_label(c: m.component) == "pg_filt") && ((m.terminal as String) == "1") {
+        if (product.electrical.connectivity.component_local_label(c: m.component) == "pg_filt") && ((m.terminal as String) == "1") {
           macc
         } else {
           concat(macc, [m])
@@ -105,7 +105,7 @@ fn without_filter_high_terminal(nets: List<product.electrical.connectivity.Elect
   })
 }
 
-fn terminal_member_count(nets: List<product.electrical.connectivity.ElectricalNet>) -> std.integer.Int {
+fn terminal_member_count(nets: List<product.electrical.connectivity.ElectricalNet>) -> Int {
   fold(nets, init: 0, f: fn(acc, net) {
     fold(net.members, init: acc, f: fn(macc, _m) { macc + 1 })
   })
@@ -114,12 +114,12 @@ fn terminal_member_count(nets: List<product.electrical.connectivity.ElectricalNe
 data floating_analog: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
   title: power_interlock_article.analog.title,
   components: power_interlock_article.analog.components,
-  nets: test.claim.compute_board_emission_entry_witness.without_filter_high_terminal(nets: power_interlock_article.analog.nets),
+  nets: without_filter_high_terminal(nets: power_interlock_article.analog.nets),
 }
 
 data floating_article: product.compute_board.article.BoardPowerInterfaceArticle = product.compute_board.article.BoardPowerInterfaceArticle {
   identity: power_interlock_article.identity,
-  analog: test.claim.compute_board_emission_entry_witness.floating_analog,
+  analog: floating_analog,
   model_bindings: power_interlock_article.model_bindings,
   reference_net: power_interlock_article.reference_net,
   digital_control: power_interlock_article.digital_control,
@@ -135,31 +135,31 @@ data floating_article: product.compute_board.article.BoardPowerInterfaceArticle 
 // identity grain rather than by trusting the name: exactly one terminal member fewer than the
 // production intent, every component retained.
 test fn w_the_floating_fixture_actually_floats_exactly_one_terminal() -> Bool {
-  let produced = test.claim.compute_board_emission_entry_witness.terminal_member_count(nets: power_interlock_article.analog.nets)
-  let floated = test.claim.compute_board_emission_entry_witness.terminal_member_count(nets: test.claim.compute_board_emission_entry_witness.floating_analog.nets)
+  let produced = terminal_member_count(nets: power_interlock_article.analog.nets)
+  let floated = terminal_member_count(nets: floating_analog.nets)
   produced > 0 && floated == (produced - 1)
 }
 
 test fn w_a_target_that_cannot_render_reaches_the_target_arm() -> Bool {
-  match emit_spice_for(article: test.claim.compute_board_emission_entry_witness.floating_article) {
-    BoardTargetRefused { cause: _ } =>
-      match emit_ngspice_run_for(article: test.claim.compute_board_emission_entry_witness.floating_article) {
-        BoardTargetRefused { cause: _ } => true
-        BoardEmitted { source: _ } => false
-        BoardArticleNotAdmitted { causes: _ } => false
+  match product.compute_board.emission_entry.emit_spice_for(article: floating_article) {
+    product.compute_board.emission_entry.BoardTargetRefused { cause: _ } =>
+      match product.compute_board.emission_entry.emit_ngspice_run_for(article: floating_article) {
+        product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => true
+        product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+        product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => false
       }
-    BoardEmitted { source: _ } => false
-    BoardArticleNotAdmitted { causes: _ } => false
+    product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+    product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => false
   }
 }
 
 // The same board that SPICE refuses emits fine as Verilog, which is what makes the target arm a
 // statement about the target rather than about the board.
 test fn w_the_same_board_still_emits_for_a_target_that_can_render_it() -> Bool {
-  match emit_verilog_for(article: test.claim.compute_board_emission_entry_witness.floating_article) {
-    BoardEmitted { source: s } => s != ""
-    BoardArticleNotAdmitted { causes: _ } => false
-    BoardTargetRefused { cause: _ } => false
+  match product.compute_board.emission_entry.emit_verilog_for(article: floating_article) {
+    product.compute_board.emission_entry.BoardEmitted { source: s } => s != ""
+    product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => false
+    product.compute_board.emission_entry.BoardTargetRefused { cause: _ } => false
   }
 }
 
@@ -170,17 +170,17 @@ test fn w_the_same_board_still_emits_for_a_target_that_can_render_it() -> Bool {
 // is not on the TQ144 package, and reset_release is left with no pin at all. Counting is what
 // makes the fix visible; matching the arm passed before and after.
 test fn w_every_target_cause_crosses_the_boundary() -> Bool {
-  match emit_pin_constraints_for(
-    article: power_interlock_article,
-    realization: interlock_device_realization,
+  match product.compute_board.emission_entry.emit_pin_constraints_for(
+    article: product.compute_board.article.power_interlock_article,
+    realization: product.compute_board.device_binding.interlock_device_realization,
     assignments: [
-      product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "5" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: fault_signal, pin: "2" },
-      product.compute_board.device_binding.DevicePinAssignment { signal: power_permit_signal, pin: "3" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.conditioned_good_signal, pin: "5" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.fault_signal, pin: "2" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: product.compute_board.digital_control.power_permit_signal, pin: "3" },
     ]
   ) {
-    BoardEmitted { source: _ } => false
-    BoardArticleNotAdmitted { causes: _ } => false
-    BoardTargetRefused { cause: cs } => pin_refusal_set_count(s: cs) == 2
+    product.compute_board.emission_entry.BoardEmitted { source: _ } => false
+    product.compute_board.emission_entry.BoardArticleNotAdmitted { causes: _ } => false
+    product.compute_board.emission_entry.BoardTargetRefused { cause: cs } => product.compute_board.device_binding.pin_refusal_set_count(s: cs) == 2
   }
 }

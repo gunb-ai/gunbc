@@ -1,7 +1,7 @@
 module v2.workflow.ci_floor_peak_emit_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data ci_floor_peak_emit_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of the orch_* grammar row spellings in src/v2/extdeps/languages/bash.dag: byte tests compare the emitter (and the production seam) against these literals so a row/segment/emitter regression cannot go green by perturbing both sides at once (#6467 ci_cargo_eagain_retry_core_golden pattern). The committed .github/workflows/ci.yml drift gate is the corpus-level twin of the production seam."
 
@@ -12,8 +12,8 @@ data ci_floor_peak_pre_golden: String = "# 🟡 dissolve-on: ci_cgroup_peak_loca
 data ci_floor_peak_post_golden: String = "# 🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, column-name log, row-count summary log, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text.\nif [ -f \"$GUNBC_FLOOR_PHASE_JOURNAL\" ]; then\necho \"[floor-phase-journal] columns: unix_millis pid phase state detail\"\necho \"[floor-phase-journal] $(wc -l < $GUNBC_FLOOR_PHASE_JOURNAL) rows retained; full journal in the floor-phase-journal artifact\"\nelse\necho \"[floor-phase-journal] absent\"\nfi\n# 🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, column-name log, row-count summary log, and absent log. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text.\nif [ -f \"target/floor-wet-witness-row-outcome-receipt.tsv\" ]; then\necho \"[wet-witness-row-outcome-receipt] columns: batch entry function outcome detail\"\necho \"[wet-witness-row-outcome-receipt] $(wc -l < target/floor-wet-witness-row-outcome-receipt.tsv) rows; full receipt in the floor-component-receipt artifact\"\nelse\necho \"[wet-witness-row-outcome-receipt] absent\"\nfi\n# 🟡 dissolve-on: ci_cgroup_peak_locate_shell — foreign-executor (GitHub Actions run:) shell transport composing extdeps.linux.proc_self_cgroup unified-hierarchy membership (v2.extdeps.languages.bash_proc_self_cgroup) with std.path_intent NearestAncestorContaining dirname ascent (bash_orch_if). Procfs path is extdeps.linux.procfs ProcSelfCgroup. DISSOLVES WHEN shell→intent Phase 2 realizes cgroup membership plus path ascent on host_effect_apply / orchestration path arms without medium-as-string Run.command concat.\n\{ _cg_bad=0; _cg_n=0; _cg_rel=\"\"; while IFS= read -r _cg_line || [ -n \"$_cg_line\" ]; do _cg_trim=$(echo \"$_cg_line\" | sed -e 's/^ //' -e 's/ $//'); [ -z \"$_cg_trim\" ] && continue; case \"$_cg_trim\" in *:*:*) ;; *) _cg_bad=1; continue ;; esac; _cg_h=$(echo \"$_cg_trim\" | cut -d: -f1); _cg_ctl=$(echo \"$_cg_trim\" | cut -d: -f2); _cg_path=$(echo \"$_cg_trim\" | cut -d: -f3-); [ -z \"$_cg_h\" ] && _cg_bad=1; [ -z \"$_cg_path\" ] && _cg_bad=1; if [ \"$_cg_h\" = \"0\" ] && [ -z \"$_cg_ctl\" ]; then _cg_n=$((_cg_n + 1)); _cg_rel=\"$_cg_path\"; fi; done < /proc/self/cgroup; [ \"$_cg_bad\" -eq 1 ] && \{ echo \"[calibration] cgroup_membership=malformed\" >&2; exit 1; \}; [ \"$_cg_n\" -eq 0 ] && \{ echo \"[calibration] cgroup_membership=missing\" >&2; exit 1; \}; [ \"$_cg_n\" -gt 1 ] && \{ echo \"[calibration] cgroup_membership=ambiguous\" >&2; exit 1; \}; d=\"/sys/fs/cgroup$_cg_rel\"; \} || exit 1\nwhile [ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && ! [ -f \"$d/memory.peak\" ]; do d=$(dirname \"$d\"); done\nif [ -f \"$d/memory.peak\" ]; then echo \"[calibration] floor_peak_post=$(cat \"$d/memory.peak\") floor_outcome=$\{\{ steps.floor.outcome \}\} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)\"; else echo \"[calibration] floor_peak_post floor_outcome=$\{\{ steps.floor.outcome \}\} scope=unavailable (no memory.peak ancestor)\"; fi"
 
 fn ci_floor_peak_pre_perturbed_pipeline() -> v2.std.orchestration.Pipeline {
-  match ci_floor_peak_pre_pipeline() {
-    Pipeline { steps: s, on_failure: p } =>
+  match v2.workflow.ci_floor_peak_emit.ci_floor_peak_pre_pipeline() {
+    v2.std.orchestration.Pipeline { steps: s, on_failure: p } =>
       v2.std.orchestration.Pipeline {
         steps: concat(
           s,
@@ -21,8 +21,8 @@ fn ci_floor_peak_pre_perturbed_pipeline() -> v2.std.orchestration.Pipeline {
             run: v2.std.orchestration.Run {
               command: "true",
               env: Empty,
-              redirect: v2.std.optional.Absent,
-              capture: v2.std.optional.Absent
+              redirect: v2.std.collection.Absent,
+              capture: v2.std.collection.Absent
             }
           }]
         ),
@@ -35,58 +35,58 @@ fn ci_floor_peak_pre_reset_perturbed_if() -> v2.std.orchestration.PipelineStep {
   v2.std.orchestration.If {
     cond: v2.std.orchestration.ExitZero {
       run: v2.std.orchestration.Run {
-        command: concat(ci_floor_peak_echo_reset_redirect_command, " # perturbed"),
+        command: concat(v2.workflow.ci_floor_peak_emit.ci_floor_peak_echo_reset_redirect_command, " # perturbed"),
         env: Empty,
-        redirect: v2.std.optional.Absent,
-        capture: v2.std.optional.Absent
+        redirect: v2.std.collection.Absent,
+        capture: v2.std.collection.Absent
       }
     },
     then_: v2.std.orchestration.Pipeline {
       steps: [v2.std.orchestration.Do {
         run: v2.std.orchestration.Run {
-          command: ci_floor_peak_pre_reset_ok_command,
+          command: v2.workflow.ci_floor_peak_emit.ci_floor_peak_pre_reset_ok_command,
           env: Empty,
-          redirect: v2.std.optional.Absent,
-          capture: v2.std.optional.Absent
+          redirect: v2.std.collection.Absent,
+          capture: v2.std.collection.Absent
         }
       }],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.optional.Absent
+    else_: v2.std.collection.Absent
   }
 }
 
 test fn ci_floor_peak_locate_emit_matches_golden_holds() -> Bool {
-  ci_cgroup_peak_locate_shell() == ci_floor_peak_locate_golden
+  v2.workflow.ci_floor_peak_emit.ci_cgroup_peak_locate_shell() == ci_floor_peak_locate_golden
 }
 
 test fn ci_floor_peak_pre_emit_matches_golden_holds() -> Bool {
-  ci_floor_peak_pre_script() == ci_floor_peak_pre_golden
+  v2.workflow.ci_floor_peak_emit.ci_floor_peak_pre_script() == ci_floor_peak_pre_golden
 }
 
 test fn ci_floor_peak_post_emit_matches_golden_holds() -> Bool {
-  ci_floor_peak_post_script() == ci_floor_peak_post_golden
+  v2.workflow.ci_floor_peak_emit.ci_floor_peak_post_script() == ci_floor_peak_post_golden
 }
 
 test fn ci_floor_peak_pre_emit_has_teeth_holds() -> Bool {
-  match orch_emit_pipeline(p: ci_floor_peak_pre_perturbed_pipeline(), medium: bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: _ } =>
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(p: ci_floor_peak_pre_perturbed_pipeline(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
       source.carried != ci_floor_peak_pre_golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn ci_floor_peak_pre_reset_if_has_teeth_holds() -> Bool {
-  match orch_emit_pipeline(
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(
     p: v2.std.orchestration.Pipeline {
       steps: [ci_floor_peak_pre_reset_perturbed_if()],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     },
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: source, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
       (source.carried != "if echo reset > \"$d/memory.peak\" 2>/dev/null; then echo \"[calibration] floor_peak_pre reset=ok scope=floor cgroup=$d\"; fi")
         && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

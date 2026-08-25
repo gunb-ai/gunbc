@@ -3,14 +3,14 @@ module extdeps.systems.nvidia_dgx_spark_pxe
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.nvidia.com/dgx/dgx-spark/pxe.html"
   }
 }
 
 data dgx_spark_uefi_settings_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.nvidia.com/dgx/dgx-spark/uefi-settings.html"
   }
 }
@@ -20,10 +20,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.systems.nvidia_dgx_spark_pxe",
       decl_name: "spark_pxe_bootloader_filename",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.systems.nvidia_dgx_spark_pxe.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [dgx_spark_uefi_settings_authority]
 }
 
@@ -61,7 +61,7 @@ fn spark_pxe_tftp_relative_path(p: SparkPxeTftpRelativePath, image: SparkPxeBoot
 fn spark_pxe_http_install_image_path(image: SparkPxeBootImageKind) -> std.types.NonEmptyStr {
   match image {
     FastOsRecoveryTarball => "fastos/usb.customer.tar.gz"
-    DgxOsIsoImage => "0/0.iso"
+    DgxOsIsoImage => "base_os_7.0.0/base_os_7.0.0.iso"
   }
 }
 
@@ -87,7 +87,7 @@ type SparkPxeSecureBootPrerequisite
   | BootloaderEnrolledForPxe { bootloader: std.types.NonEmptyStr }
 
 fn spark_fastos_unattended_kernel_cmdline(http_image_root: extdeps.uri.Uri) -> String {
-  kernel_cmdline_render(args: [
+  extdeps.firmware.kernel_cmdline.kernel_cmdline_render(args: [
     extdeps.firmware.kernel_cmdline.KernelKeyValue { key: "nouveau.modeset", value: "0" },
     extdeps.firmware.kernel_cmdline.KernelFlag { name: "console=tty0" },
     extdeps.firmware.kernel_cmdline.KernelFlag { name: "console=ttyS0,921600" },
@@ -100,7 +100,7 @@ fn spark_fastos_unattended_kernel_cmdline(http_image_root: extdeps.uri.Uri) -> S
     extdeps.firmware.kernel_cmdline.KernelKeyValue {
       key: "fastos_usbimg_url",
       value: concat(
-        uri_wire(uri: http_image_root),
+        extdeps.uri.uri_wire(uri: http_image_root),
         concat("/", spark_pxe_http_install_image_path(image: FastOsRecoveryTarball) as String),
       ),
     },
@@ -109,14 +109,14 @@ fn spark_fastos_unattended_kernel_cmdline(http_image_root: extdeps.uri.Uri) -> S
 }
 
 fn spark_dgx_os_unattended_kernel_cmdline(http_image_root: extdeps.uri.Uri) -> String {
-  kernel_cmdline_render(args: [
+  extdeps.firmware.kernel_cmdline.kernel_cmdline_render(args: [
     extdeps.firmware.kernel_cmdline.KernelFlag { name: "fsck.mode=skip" },
     extdeps.firmware.kernel_cmdline.KernelFlag { name: spark_installer_kernel_parameter_name(p: SparkInstallerAutoinstall) },
     extdeps.firmware.kernel_cmdline.KernelFlag { name: "ip=dhcp" },
     extdeps.firmware.kernel_cmdline.KernelKeyValue {
       key: "url",
       value: concat(
-        uri_wire(uri: http_image_root),
+        extdeps.uri.uri_wire(uri: http_image_root),
         concat("/", spark_pxe_http_install_image_path(image: DgxOsIsoImage) as String),
       ),
     },

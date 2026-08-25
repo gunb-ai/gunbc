@@ -1,52 +1,52 @@
 module test.claim.codex_package_lock_parse_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data witness_note: String = "Parses the committed provider-runtime/codex/package-lock.json (npm-generated v3). Empty edges by design. RED: unsupported lockfileVersion refuses. Archive digest admission is the pure expected/observed compare — observation realization is the typed file-hash dissolve-on."
 
 data openai_codex_integrity_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eebc5833921ab2b1b754172e8422d39207a0fc9cea989ab557df11138309e630b10d75d094e8eb762b4547"
 
 fn committed_codex_lock_text() -> String {
-  filesystem_read(path: codex_runtime_lock_path as String).content
+  filesystem_read(path: gunbc.package_delivery.codex_runtime_lock_path as String).content
 }
 
 test fn committed_codex_lock_parses_v3_roster() -> Bool {
-  match npm_decode_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
-    NpmPackageLockParsed { manager: _, nodes, unsupported, graph } =>
+  match extdeps.npm.npm_decode_package_lock_text(text: committed_codex_lock_text()) {
+    extdeps.npm.NpmPackageLockParsed { manager: _, nodes, unsupported, graph } =>
       count(unsupported) == 0
         && count(nodes) == 8
         && count(graph.nodes) == 8
         && count(graph.edges) == 0
         && count(graph.roots) == 1
-    NpmPackageLockParseRefused { cause: _ } => false
+    extdeps.npm.NpmPackageLockParseRefused { cause: _ } => false
   }
 }
 
 test fn committed_codex_lock_admits_under_codex_profile() -> Bool {
-  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
-    CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts } =>
+  match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    gunbc.package_delivery.CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts } =>
       count(registry_artifacts) == 7 && count(nodes) == 8
-    CodexPackageLockParseFailed { cause: _ } => false
-    CodexPackageLockUnsupportedNodes { unsupported: _ } => false
-    CodexPackageLockGraphRefused { admission: _ } => false
+    gunbc.package_delivery.CodexPackageLockParseFailed { cause: _ } => false
+    gunbc.package_delivery.CodexPackageLockUnsupportedNodes { unsupported: _ } => false
+    gunbc.package_delivery.CodexPackageLockGraphRefused { admission: _ } => false
   }
 }
 
 test fn openai_codex_wrapper_selected_by_exact_lock_node_key() -> Bool {
-  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
-    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
-      match codex_wrapper_lookup(graph: graph) {
-        CodexWrapperUnique { node: _, artifact } =>
+  match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    gunbc.package_delivery.CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match gunbc.package_delivery.codex_wrapper_lookup(graph: graph) {
+        gunbc.package_delivery.CodexWrapperUnique { node: _, artifact } =>
           (artifact.version as String) == "0.146.0"
-            && match codex_admit_npm_integrity(integrity: artifact.expected_integrity) {
-              CodexNpmIntegrityAdmitted { digest } =>
-                (digest.hex as String) == test.claim.codex_package_lock_parse_witness_test.openai_codex_integrity_hex
-                  && match npm_registry_artifact_pin(artifact: artifact).selection {
-                    ExactPin =>
-                      match npm_registry_artifact_pin(artifact: artifact).expected_identity {
-                        Sha512Hash(pinned) =>
-                          (pinned.hex as String) == test.claim.codex_package_lock_parse_witness_test.openai_codex_integrity_hex
+            && match gunbc.package_delivery.codex_admit_npm_integrity(integrity: artifact.expected_integrity) {
+              gunbc.package_delivery.CodexNpmIntegrityAdmitted { digest } =>
+                (digest.hex as String) == openai_codex_integrity_hex
+                  && match extdeps.npm.npm_registry_artifact_pin(artifact: artifact).selection {
+                    extdeps.pin.ExactPin =>
+                      match extdeps.npm.npm_registry_artifact_pin(artifact: artifact).expected_identity {
+                        std.content_hash.Sha512Hash(pinned) =>
+                          (pinned.hex as String) == openai_codex_integrity_hex
                         _ => false
                       }
                     _ => false
@@ -60,12 +60,12 @@ test fn openai_codex_wrapper_selected_by_exact_lock_node_key() -> Bool {
 }
 
 test fn linux_arm64_exact_closure_is_wrapper_plus_platform_lock_node() -> Bool {
-  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
-    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
-      match codex_map_uname_to_npm_target(kernel: "Linux", machine: "aarch64") {
-        CodexNpmRuntimeTargetObserved { target } =>
-          match select_codex_exact_target_closure(graph: graph, target: target) {
-            CodexExactTargetClosureSelected {
+  match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    gunbc.package_delivery.CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match gunbc.package_delivery.codex_map_uname_to_npm_target(kernel: "Linux", machine: "aarch64") {
+        gunbc.package_delivery.CodexNpmRuntimeTargetObserved { target } =>
+          match gunbc.package_delivery.select_codex_exact_target_closure(graph: graph, target: target) {
+            gunbc.package_delivery.CodexExactTargetClosureSelected {
               wrapper: _,
               platform: _,
               target: _,
@@ -83,10 +83,10 @@ test fn linux_arm64_exact_closure_is_wrapper_plus_platform_lock_node() -> Bool {
 }
 
 test fn selected_node_with_install_script_refuses() -> Bool {
-  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
-    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
-      match codex_wrapper_lookup(graph: graph) {
-        CodexWrapperUnique { node, artifact } => {
+  match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    gunbc.package_delivery.CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match gunbc.package_delivery.codex_wrapper_lookup(graph: graph) {
+        gunbc.package_delivery.CodexWrapperUnique { node, artifact } => {
           let with_script = gunbc.package_delivery.CodexPackageLockNode {
             key: node.key,
             selection: node.selection,
@@ -102,7 +102,7 @@ test fn selected_node_with_install_script_refuses() -> Bool {
               platform: node.metadata.platform,
             },
           }
-          match admit_codex_selected_node(
+          match gunbc.package_delivery.admit_codex_selected_node(
             node: with_script,
             artifact: artifact,
             lock_node_key: "node_modules/@openai/codex" as std.types.NonEmptyStr,
@@ -111,10 +111,10 @@ test fn selected_node_with_install_script_refuses() -> Bool {
             expect_os: none,
             expect_cpu: none,
           ) {
-            CodexSelectedNodeInstallScriptRefused { lock_node_key } =>
+            gunbc.package_delivery.CodexSelectedNodeInstallScriptRefused { lock_node_key } =>
               (lock_node_key as String) == "node_modules/@openai/codex"
-            CodexSelectedNodeIdentityRefused { lock_node_key: _, cause: _ } => false
-            CodexSelectedNodeAdmitted {
+            gunbc.package_delivery.CodexSelectedNodeIdentityRefused { lock_node_key: _, cause: _ } => false
+            gunbc.package_delivery.CodexSelectedNodeAdmitted {
               node: _,
               artifact: _,
               lock_node_key: _,
@@ -128,17 +128,17 @@ test fn selected_node_with_install_script_refuses() -> Bool {
 }
 
 test fn selected_node_wrong_version_keeps_key_but_refuses() -> Bool {
-  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
-    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
-      match codex_wrapper_lookup(graph: graph) {
-        CodexWrapperUnique { node, artifact } => {
+  match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    gunbc.package_delivery.CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match gunbc.package_delivery.codex_wrapper_lookup(graph: graph) {
+        gunbc.package_delivery.CodexWrapperUnique { node, artifact } => {
           let wrong = extdeps.npm.NpmRegistryArtifact {
             package: artifact.package,
             version: "0.145.0" as std.types.NonEmptyStr,
             resolved: artifact.resolved,
             expected_integrity: artifact.expected_integrity,
           }
-          match admit_codex_selected_node(
+          match gunbc.package_delivery.admit_codex_selected_node(
             node: node,
             artifact: wrong,
             lock_node_key: "node_modules/@openai/codex" as std.types.NonEmptyStr,
@@ -147,7 +147,7 @@ test fn selected_node_wrong_version_keeps_key_but_refuses() -> Bool {
             expect_os: none,
             expect_cpu: none,
           ) {
-            CodexSelectedNodeIdentityRefused { lock_node_key, cause: _ } =>
+            gunbc.package_delivery.CodexSelectedNodeIdentityRefused { lock_node_key, cause: _ } =>
               (lock_node_key as String) == "node_modules/@openai/codex"
             _ => false
           }
@@ -159,11 +159,11 @@ test fn selected_node_wrong_version_keeps_key_but_refuses() -> Bool {
 }
 
 test fn selected_node_wrong_optional_keeps_key_but_refuses() -> Bool {
-  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
-    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
-      match codex_wrapper_lookup(graph: graph) {
-        CodexWrapperUnique { node, artifact } =>
-          match admit_codex_selected_node(
+  match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    gunbc.package_delivery.CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match gunbc.package_delivery.codex_wrapper_lookup(graph: graph) {
+        gunbc.package_delivery.CodexWrapperUnique { node, artifact } =>
+          match gunbc.package_delivery.admit_codex_selected_node(
             node: node,
             artifact: artifact,
             lock_node_key: "node_modules/@openai/codex" as std.types.NonEmptyStr,
@@ -172,7 +172,7 @@ test fn selected_node_wrong_optional_keeps_key_but_refuses() -> Bool {
             expect_os: none,
             expect_cpu: none,
           ) {
-            CodexSelectedNodeIdentityRefused { lock_node_key, cause: _ } =>
+            gunbc.package_delivery.CodexSelectedNodeIdentityRefused { lock_node_key, cause: _ } =>
               (lock_node_key as String) == "node_modules/@openai/codex"
             _ => false
           }
@@ -183,12 +183,12 @@ test fn selected_node_wrong_optional_keeps_key_but_refuses() -> Bool {
 }
 
 test fn selected_platform_wrong_os_keeps_key_but_refuses() -> Bool {
-  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
-    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
-      match codex_map_uname_to_npm_target(kernel: "Linux", machine: "aarch64") {
-        CodexNpmRuntimeTargetObserved { target } =>
-          match select_codex_exact_target_closure(graph: graph, target: target) {
-            CodexExactTargetClosureSelected {
+  match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    gunbc.package_delivery.CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match gunbc.package_delivery.codex_map_uname_to_npm_target(kernel: "Linux", machine: "aarch64") {
+        gunbc.package_delivery.CodexNpmRuntimeTargetObserved { target } =>
+          match gunbc.package_delivery.select_codex_exact_target_closure(graph: graph, target: target) {
+            gunbc.package_delivery.CodexExactTargetClosureSelected {
               wrapper: _,
               platform,
               target: _,
@@ -196,8 +196,8 @@ test fn selected_platform_wrong_os_keeps_key_but_refuses() -> Bool {
               native_executable_rel: _,
             } =>
               match platform {
-                CodexSelectedNodeAdmitted { node, artifact, lock_node_key } =>
-                  match admit_codex_selected_node(
+                gunbc.package_delivery.CodexSelectedNodeAdmitted { node, artifact, lock_node_key } =>
+                  match gunbc.package_delivery.admit_codex_selected_node(
                     node: node,
                     artifact: artifact,
                     lock_node_key: lock_node_key,
@@ -206,7 +206,7 @@ test fn selected_platform_wrong_os_keeps_key_but_refuses() -> Bool {
                     expect_os: Present { value: "darwin" as std.types.NonEmptyStr },
                     expect_cpu: Present { value: "arm64" as std.types.NonEmptyStr },
                   ) {
-                    CodexSelectedNodeIdentityRefused { lock_node_key: _, cause: _ } => true
+                    gunbc.package_delivery.CodexSelectedNodeIdentityRefused { lock_node_key: _, cause: _ } => true
                     _ => false
                   }
                 _ => false
@@ -220,28 +220,28 @@ test fn selected_platform_wrong_os_keeps_key_but_refuses() -> Bool {
 }
 
 test fn non_registry_locator_refuses_before_fetch() -> Bool {
-  match admit_codex_registry_artifact_locator(
+  match gunbc.package_delivery.admit_codex_registry_artifact_locator(
     locator: "https://evil.example/codex.tgz" as std.types.NonEmptyStr,
   ) {
-    CodexRegistryLocatorRefused { locator: _, cause: _ } =>
-      match admit_codex_registry_artifact_locator(
+    gunbc.package_delivery.CodexRegistryLocatorRefused { locator: _, cause: _ } =>
+      match gunbc.package_delivery.admit_codex_registry_artifact_locator(
         locator: "https://registry.npmjs.org/@openai/codex/-/codex-0.146.0.tgz" as std.types.NonEmptyStr,
       ) {
-        CodexRegistryLocatorAdmitted { locator: _ } => true
-        CodexRegistryLocatorRefused { locator: _, cause: _ } => false
+        gunbc.package_delivery.CodexRegistryLocatorAdmitted { locator: _ } => true
+        gunbc.package_delivery.CodexRegistryLocatorRefused { locator: _, cause: _ } => false
       }
-    CodexRegistryLocatorAdmitted { locator: _ } => false
+    gunbc.package_delivery.CodexRegistryLocatorAdmitted { locator: _ } => false
   }
 }
 
 test fn archive_digest_admission_matches_and_mismatches() -> Bool {
-  match admit_codex_package_lock_text(text: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text()) {
-    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
-      match codex_wrapper_lookup(graph: graph) {
-        CodexWrapperUnique { node: _, artifact } =>
-          match codex_admit_npm_integrity(integrity: artifact.expected_integrity) {
-            CodexNpmIntegrityAdmitted { digest: expected } => {
-              let matched = admit_observed_archive_digest(
+  match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    gunbc.package_delivery.CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match gunbc.package_delivery.codex_wrapper_lookup(graph: graph) {
+        gunbc.package_delivery.CodexWrapperUnique { node: _, artifact } =>
+          match gunbc.package_delivery.codex_admit_npm_integrity(integrity: artifact.expected_integrity) {
+            gunbc.package_delivery.CodexNpmIntegrityAdmitted { digest: expected } => {
+              let matched = gunbc.package_delivery.admit_observed_archive_digest(
                 expected: expected,
                 observation: gunbc.package_delivery.PackageArchiveDigestObserved {
                   locator: artifact.resolved.locator,
@@ -249,18 +249,18 @@ test fn archive_digest_admission_matches_and_mismatches() -> Bool {
                 },
               )
               let wrong_hex = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-              match sha512_hex_digest(hex: wrong_hex) {
+              match std.content_hash.sha512_hex_digest(hex: wrong_hex) {
                 Present { value: other } =>
                   match matched {
-                    PackageArchiveDigestMatched { locator: _, digest: _ } =>
-                      match admit_observed_archive_digest(
+                    gunbc.package_delivery.PackageArchiveDigestMatched { locator: _, digest: _ } =>
+                      match gunbc.package_delivery.admit_observed_archive_digest(
                         expected: expected,
                         observation: gunbc.package_delivery.PackageArchiveDigestObserved {
                           locator: artifact.resolved.locator,
                           observed: other,
                         },
                       ) {
-                        PackageArchiveDigestMismatch {
+                        gunbc.package_delivery.PackageArchiveDigestMismatch {
                           locator: _,
                           expected: _,
                           observed: _,
@@ -282,58 +282,58 @@ test fn archive_digest_admission_matches_and_mismatches() -> Bool {
 
 test fn lockfile_v2_text_refuses() -> Bool {
   let v2 = "{\"name\":\"x\",\"lockfileVersion\":2,\"packages\":{\"\":{\"name\":\"x\"}}}"
-  match npm_decode_package_lock_text(text: v2) {
-    NpmPackageLockParseRefused { cause: _ } => true
-    NpmPackageLockParsed { manager: _, nodes: _, unsupported: _, graph: _ } => false
+  match extdeps.npm.npm_decode_package_lock_text(text: v2) {
+    extdeps.npm.NpmPackageLockParseRefused { cause: _ } => true
+    extdeps.npm.NpmPackageLockParsed { manager: _, nodes: _, unsupported: _, graph: _ } => false
   }
 }
 
 test fn admitted_and_executed_lock_bytes_disagree_when_forked() -> Bool {
-  admitted_and_executed_lock_bytes_agree(
-    admitted_lock_bytes: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text(),
+  gunbc.package_delivery.admitted_and_executed_lock_bytes_agree(
+    admitted_lock_bytes: committed_codex_lock_text(),
     executed_lock_bytes: "{\"lockfileVersion\":3,\"packages\":{}}",
   ) == false
-    && admitted_and_executed_lock_bytes_agree(
-      admitted_lock_bytes: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text(),
-      executed_lock_bytes: test.claim.codex_package_lock_parse_witness_test.committed_codex_lock_text(),
+    && gunbc.package_delivery.admitted_and_executed_lock_bytes_agree(
+      admitted_lock_bytes: committed_codex_lock_text(),
+      executed_lock_bytes: committed_codex_lock_text(),
     )
 }
 
 test fn link_node_is_unsupported_not_half_modeled() -> Bool {
   let text = "{\"name\":\"x\",\"lockfileVersion\":3,\"packages\":{\"\":{\"name\":\"x\"},\"node_modules/local\":{\"link\":true,\"resolved\":\"../local\"}}}"
-  match npm_decode_package_lock_text(text: text) {
-    NpmPackageLockParsed { manager: _, nodes, unsupported, graph: _ } =>
+  match extdeps.npm.npm_decode_package_lock_text(text: text) {
+    extdeps.npm.NpmPackageLockParsed { manager: _, nodes, unsupported, graph: _ } =>
       count(nodes) == 1 && count(unsupported) == 1
-    NpmPackageLockParseRefused { cause: _ } => false
+    extdeps.npm.NpmPackageLockParseRefused { cause: _ } => false
   }
 }
 
 test fn codex_runtime_version_identity_refuses_ambient_srv1_version() -> Bool {
-  (codex_required_package_version as String) == "0.146.0"
-    && codex_runtime_version_identity_marker() == "codex-cli 0.146.0"
-    && !codex_runtime_version_identity_satisfied(combined_output: "codex-cli 0.133.0\n")
-    && codex_runtime_version_identity_satisfied(combined_output: "codex-cli 0.146.0\n")
-    && !codex_runtime_version_identity_satisfied(
+  (gunbc.package_delivery.codex_required_package_version as String) == "0.146.0"
+    && gunbc.package_delivery.codex_runtime_version_identity_marker() == "codex-cli 0.146.0"
+    && !gunbc.package_delivery.codex_runtime_version_identity_satisfied(combined_output: "codex-cli 0.133.0\n")
+    && gunbc.package_delivery.codex_runtime_version_identity_satisfied(combined_output: "codex-cli 0.146.0\n")
+    && !gunbc.package_delivery.codex_runtime_version_identity_satisfied(
       combined_output: "codex-cli 0.147.0\n",
     )
-    && !codex_runtime_version_identity_satisfied(
+    && !gunbc.package_delivery.codex_runtime_version_identity_satisfied(
       combined_output: "codex-cli 0.146.01\n",
     )
-    && !codex_runtime_version_identity_satisfied(
+    && !gunbc.package_delivery.codex_runtime_version_identity_satisfied(
       combined_output: "codex-cli 0.146.0-rc1\n",
     )
-    && !codex_runtime_version_identity_satisfied(
+    && !gunbc.package_delivery.codex_runtime_version_identity_satisfied(
       combined_output: "codex-cli 0.146.0-dev+build\n",
     )
-    && !codex_runtime_version_identity_satisfied(
+    && !gunbc.package_delivery.codex_runtime_version_identity_satisfied(
       combined_output: "codex-cli 0.146.0 extra\n",
     )
 }
 
 test fn srv1_codex_bundled_executable_is_package_delivery_authority() -> Bool {
-  match srv1_codex_bundled_executable() {
+  match gunbc.host_layout.srv1_codex_bundled_executable() {
     Present { value: layout_path } =>
-      match codex_bundled_executable_for_srv1() {
+      match gunbc.package_delivery.codex_bundled_executable_for_srv1() {
         Present { value: delivery_path } =>
           (layout_path as String) == (delivery_path as String)
         Absent => false
@@ -343,7 +343,7 @@ test fn srv1_codex_bundled_executable_is_package_delivery_authority() -> Bool {
 }
 
 test fn srv1_committed_lock_bundled_executable_is_present() -> Bool {
-  match codex_bundled_executable_for_srv1() {
+  match gunbc.package_delivery.codex_bundled_executable_for_srv1() {
     Present { value: _ } => true
     Absent => false
   }

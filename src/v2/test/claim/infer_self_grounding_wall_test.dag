@@ -1,10 +1,10 @@
 module v2.test.claim.infer_self_grounding_wall
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 fn measured_infer_eval_harness_source() -> std.types.NonEmptyStr {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: gunbc.guarantee_probe_corpus.v2_infer_eval_harness_source_paths(),
     empty: "guarantee-probe-harness-source" as std.types.NonEmptyStr,
     cons: fn(acc, path) {
@@ -20,13 +20,13 @@ fn measured_infer_eval_harness_source() -> std.types.NonEmptyStr {
 fn infer_wall_harness_revision(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> gunbc.guarantee_measurement.MeasurementRevision {
   let harness_source = measured_infer_eval_harness_source()
   match gunbc.guarantee_probe_corpus.active_v2_infer_eval_probe_row(probe: probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.v2_infer_eval_harness_revision(
         probe: probe,
         expectation: row.expectation,
         harness_source: harness_source,
       )
-    Absent =>
+    v2.std.optional.Absent =>
       gunbc.guarantee_probe_corpus.v2_infer_eval_harness_revision(
         probe: probe,
         expectation: gunbc.guarantee_probe_corpus.ExpectAcceptedCounted { diagnostic_class: "infer-harness-row-absent" as std.types.NonEmptyStr },
@@ -39,31 +39,31 @@ fn wall_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn wall_conj_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn wall_disj_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Disj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn wall_value_node() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.ComputationNode { behavior: Value },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Value },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -76,15 +76,15 @@ fn wall_malformed_bool_with_payload() -> v2.std.node.Node {
         target: wall_value_node()
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn wall_malformed_int_with_extra_payload() -> v2.std.node.Node {
-  let literal = dag_int_literal_fixture_one()
+  let literal = v2.extdeps.languages.dag.dag_int_literal_fixture_one()
   v2.std.node.Node {
     kind: literal.kind,
-    children: list_snoc_item(
+    children: v2.std.algebra.list_snoc_item(
       xs: literal.children,
       item: v2.std.node.Edge {
         label: v2.std.node.Named { name: ^wall_malformed_int_payload_field },
@@ -132,59 +132,59 @@ fn wall_derived_grounding(node: v2.std.node.Node) -> v2.std.constraints.Canonica
 }
 
 fn wall_grounding_for_node_refused(root: v2.std.node.Node) -> Bool {
-  match infer(tree: root) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      match canonical_grounding_for_node(tree: tree, node: root) {
-        Rejected { diagnostics: r } => r.head.reason == ^infer_grounding_not_derived
-        Accepted { value: _, diagnostics: _ } => false
+  match v2.compiler.infer.infer(tree: root) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+      match v2.compiler.infer.canonical_grounding_for_node(tree: tree, node: root) {
+        v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^infer_grounding_not_derived
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
       }
   }
 }
 
 fn wall_resolved_type_refused(root: v2.std.node.Node) -> Bool {
-  match infer(tree: root) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      match inferred_facts_witness_for_node(tree: tree, node: root) {
-        Violates { diagnostic: _ } => false
-        Holds { value: facts } =>
-          match inferred_facts_resolved_type(facts: facts) {
-            Violates { diagnostic: d } => d.reason == ^infer_grounding_not_derived
-            Holds { value: _ } => false
+  match v2.compiler.infer.infer(tree: root) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
+      match v2.compiler.infer.inferred_facts_witness_for_node(tree: tree, node: root) {
+        v2.std.witness.Violates { diagnostic: _ } => false
+        v2.std.witness.Holds { value: facts } =>
+          match v2.compiler.infer.inferred_facts_resolved_type(facts: facts) {
+            v2.std.witness.Violates { diagnostic: d } => d.reason == ^infer_grounding_not_derived
+            v2.std.witness.Holds { value: _ } => false
           }
       }
   }
 }
 
 fn wall_infer_counts_frontier(root: v2.std.node.Node) -> Bool {
-  match infer(tree: root) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: _, diagnostics: d } =>
+  match v2.compiler.infer.infer(tree: root) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
       match d {
-        Some { diagnostics: nds } => nds.head.reason == ^infer_grounding_not_derived
-        None => false
+        v2.std.diagnostic.Some { diagnostics: nds } => nds.head.reason == ^infer_grounding_not_derived
+        v2.std.diagnostic.None => false
       }
   }
 }
 
 test fn wall_construction_authority_refuses_self_evidence() -> Bool {
-  match canonical_grounding_from_derived_type(
+  match v2.std.constraints.canonical_grounding_from_derived_type(
     node: wall_conj_node(),
     derived_type: wall_conj_node()
   ) {
-    Rejected { diagnostics: r } => r.head.reason == ^grounding_evidence_is_source
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^grounding_evidence_is_source
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
 test fn wall_construction_authority_accepts_derived_type() -> Bool {
-  match canonical_grounding_from_derived_type(
+  match v2.std.constraints.canonical_grounding_from_derived_type(
     node: wall_conj_node(),
     derived_type: wall_derived_type_node()
   ) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: g, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: g, diagnostics: _ } =>
       (g.node == wall_conj_node())
         && (g.witness.structural.evidence == wall_derived_type_node())
   }
@@ -193,11 +193,11 @@ test fn wall_construction_authority_accepts_derived_type() -> Bool {
 data wall_hand_built_residue_note: String = "The stated residue: a CanonicalGrounding written field-by-field, bypassing the construction authority, is still admitted. This is asserted rather than left implicit so the wall's edge is documented by a test and not by optimism — see canonical_grounding_admission_scope_note for why the 'evidence != node' read-path proxy was withdrawn (it false-positives on v2_evaluator's bool fixture, which uses one atom as both evaluand and primitive_type). Closing this residue needs CanonicalGrounding to stop being structurally constructible, not a wider predicate."
 
 test fn wall_hand_built_self_grounding_is_the_stated_residue() -> Bool {
-  canonical_grounding_admits_infer_facts(grounding: wall_self_grounding(node: wall_conj_node()))
+  v2.compiler.infer.canonical_grounding_admits_infer_facts(grounding: wall_self_grounding(node: wall_conj_node()))
 }
 
 test fn wall_admission_admits_hand_built_derived_grounding() -> Bool {
-  canonical_grounding_admits_infer_facts(grounding: wall_derived_grounding(node: wall_conj_node()))
+  v2.compiler.infer.canonical_grounding_admits_infer_facts(grounding: wall_derived_grounding(node: wall_conj_node()))
 }
 
 test fn wall_conj_grounding_no_longer_returns_source_as_its_own_type() -> Bool {
@@ -244,14 +244,14 @@ fn wall_frontier_observation_matches_infer(nes: v2.std.diagnostic.NonEmptyDiagno
 
 test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
   let root = wall_value_node()
-  match infer(tree: root) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: _, diagnostics: d } =>
+  match v2.compiler.infer.infer(tree: root) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
       match d {
-        None => false
-        Some { diagnostics: nes } =>
+        v2.std.diagnostic.None => false
+        v2.std.diagnostic.Some { diagnostics: nes } =>
           match gunbc.guarantee_probe_corpus.active_v2_infer_eval_probe_row(probe: gunbc.guarantee_probe_corpus.v2_frontier_red_probe) {
-            Present { value: row } =>
+            v2.std.optional.Present { value: row } =>
               wall_resolved_type_refused(root: root)
                 && nes.head.reason == ^infer_grounding_not_derived
                 && gunbc.guarantee_probe_corpus.receipt_matches_v2_infer_eval_probe_row(
@@ -272,28 +272,28 @@ test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
                   ),
                   paths: gunbc.guarantee_probe_corpus.guarantee_probe_paths(),
                 ) {
-                  ReceiptJoined { path: p } =>
+                  gunbc.guarantee_measurement.ReceiptJoined { path: p } =>
                     p.acceptance_boundary == gunbc.guarantee_measurement.InferToEval
                       && wall_frontier_observation_matches_infer(
                         nes: nes,
                         o: gunbc.guarantee_probe_corpus.probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
                       )
-                  ReceiptPathUnknown { receipt_path: _ } => false
-                  ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
+                  gunbc.guarantee_measurement.ReceiptPathUnknown { receipt_path: _ } => false
+                  gunbc.guarantee_measurement.ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
                 }
-            Absent => false
+            v2.std.optional.Absent => false
           }
       }
   }
 }
 
 test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
-  let root = dag_pick_if_body_fixture
-  match infer(tree: root) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: _, diagnostics: d } =>
+  let root = v2.extdeps.languages.dag.dag_pick_if_body_fixture
+  match v2.compiler.infer.infer(tree: root) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
       match gunbc.guarantee_probe_corpus.active_v2_infer_eval_probe_row(probe: gunbc.guarantee_probe_corpus.v2_frontier_green_probe) {
-        Present { value: row } =>
+        v2.std.optional.Present { value: row } =>
           d == v2.std.diagnostic.None
             && gunbc.guarantee_probe_corpus.observation_is_clean(o: gunbc.guarantee_probe_corpus.probe_observation_from_accepted_infer_diagnostics(diagnostics: d))
             && gunbc.guarantee_probe_corpus.receipt_matches_v2_infer_eval_probe_row(
@@ -314,11 +314,11 @@ test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
               ),
               paths: gunbc.guarantee_probe_corpus.guarantee_probe_paths(),
             ) {
-              ReceiptJoined { path: p } => p.acceptance_boundary == gunbc.guarantee_measurement.InferToEval
-              ReceiptPathUnknown { receipt_path: _ } => false
-              ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
+              gunbc.guarantee_measurement.ReceiptJoined { path: p } => p.acceptance_boundary == gunbc.guarantee_measurement.InferToEval
+              gunbc.guarantee_measurement.ReceiptPathUnknown { receipt_path: _ } => false
+              gunbc.guarantee_measurement.ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
             }
-        Absent => false
+        v2.std.optional.Absent => false
       }
   }
 }

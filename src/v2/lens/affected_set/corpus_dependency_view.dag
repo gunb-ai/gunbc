@@ -14,8 +14,8 @@ type CorpusDependencyViewMeasurementVerdict
   = Completed {
       resolve_wall: std.measure.Millisecond,
       view_build_wall: std.measure.Millisecond,
-      edge_count: v2.std.integer.Int,
-      decl_count: v2.std.integer.Int
+      edge_count: Int,
+      decl_count: Int
     }
   | WallPricedAbort {
       aborted_wall: std.measure.Millisecond
@@ -46,7 +46,7 @@ data corpus_dependency_view_per_pr_execution_gate: std.disposition.Disposition =
 }
 
 fn corpus_dependency_view_per_pr_substrate_ready() -> Bool {
-  fn_arrow_decl_substrate_is_whole_tree()
+  v2.std.fn_index.fn_arrow_decl_substrate_is_whole_tree()
 }
 
 fn corpus_dependency_view_per_pr_substrate_refuse() -> Bool {
@@ -63,18 +63,18 @@ fn ensure_corpus_dependency_view_per_pr_substrate() -> Bool {
 
 fn corpus_dependency_views_live() -> List<v2.std.dependency.DependencyView> {
   let _ready = ensure_corpus_dependency_view_per_pr_substrate()
-  fold(fn_arrow_decl_facts_live(), init: [], f: fn(acc, decl) {
-    append_dependency_views(
+  fold(v2.std.fn_index.fn_arrow_decl_facts_live(), init: [], f: fn(acc, decl) {
+    v2.std.dependency.append_dependency_views(
       left: acc,
-      right: dependency_lens(root: decl.output)
+      right: v2.std.dependency.dependency_lens(root: decl.output)
     )
   })
 }
 
-fn corpus_dependency_view_edge_count() -> v2.std.integer.Int {
-  length(xs: corpus_dependency_views_live())
+fn corpus_dependency_view_edge_count() -> Int {
+  v2.std.algebra.length(xs: corpus_dependency_views_live())
 }
 
-fn corpus_dependency_view_decl_count() -> v2.std.integer.Int {
-  length(xs: fn_arrow_decl_facts_live())
+fn corpus_dependency_view_decl_count() -> Int {
+  v2.std.algebra.length(xs: v2.std.fn_index.fn_arrow_decl_facts_live())
 }

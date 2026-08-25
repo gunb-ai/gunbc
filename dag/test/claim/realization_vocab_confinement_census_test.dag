@@ -1,14 +1,14 @@
 module test.claim.realization_vocab_confinement_census_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data confinement_census_witness_note: String = "THE SUBJECT ROSTERS ARE READ FROM THE REAL LENS MODULE, not restated here. Every expected key in this file is taken from v2.lens.realization_vocabulary_containment's own declared data, so a roster edit moves both the census and its expectation together and this file never becomes a second copy of the confinement surface. What it does independently is COUNT and CROSS-CHECK: the arithmetic below sums the four rosters, which is a different assembly than either the census enumeration or its classification performs."
 
 data confinement_census_witness_revision_commit: String = "0000000000000000000000000000000000000b0b"
 
 fn confinement_witness_revision() -> gunbc.guarantee_measurement.MeasurementRevision {
-  confinement_census_revision(commit: confinement_census_witness_revision_commit)
+  gunbc.realization_vocab_confinement_census.confinement_census_revision(commit: confinement_census_witness_revision_commit)
 }
 
 fn confinement_witness_roster_total() -> Int {
@@ -20,22 +20,22 @@ fn confinement_witness_roster_total() -> Int {
 }
 
 test fn witness_the_confinement_census_enumerates_every_declared_roster() -> Bool {
-  count(confinement_surface_declared_keys()) == confinement_witness_roster_total()
+  count(gunbc.realization_vocab_confinement_census.confinement_surface_declared_keys()) == confinement_witness_roster_total()
 }
 
 test fn witness_the_confinement_census_classifies_every_enumerated_key() -> Bool {
-  count(confinement_surface_axis_of_declared_key()) == confinement_witness_roster_total()
+  count(gunbc.realization_vocab_confinement_census.confinement_surface_axis_of_declared_key()) == confinement_witness_roster_total()
 }
 
 test fn witness_the_declared_confinement_keys_are_distinct() -> Bool {
-  let keys = confinement_surface_declared_keys()
-  count(census_distinct_subject_keys(keys: keys)) == count(keys)
+  let keys = gunbc.realization_vocab_confinement_census.confinement_surface_declared_keys()
+  count(gunbc.repository_census_coverage.census_distinct_subject_keys(keys: keys)) == count(keys)
 }
 
 fn confinement_witness_coverage_established() -> Bool {
-  match confinement_surface_coverage(revision: confinement_witness_revision()) {
-    CoverageEstablished { receipt: _ } => true
-    CoverageRefused {
+  match gunbc.realization_vocab_confinement_census.confinement_surface_coverage(revision: confinement_witness_revision()) {
+    gunbc.repository_census_coverage.CoverageEstablished { receipt: _ } => true
+    gunbc.repository_census_coverage.CoverageRefused {
       observation_identity: _,
       classification_run_identity: _,
       reconciliation: _,
@@ -50,10 +50,10 @@ test fn witness_the_real_confinement_surface_reconciles_exactly() -> Bool {
 data confinement_self_join_separability_note: String = "THIS WITNESS IS AN IMPLICATION, NOT A CONJUNCTION, and the difference is the separability rule applied to itself. Written as 'a receipt exists AND its denominator is independent' it cannot be individually falsified: a mutation that removes the receipt entirely reds it without saying anything about independence, so independence would be licensed by a red that never examined it. Split, the two halves land on their own witnesses — receipt existence is witness_the_real_confinement_surface_reconciles_exactly, and what remains here is the conditional. The refusal arm is therefore vacuously true rather than false, which is only sound BECAUSE existence is asserted separately; on its own it would be a hole."
 
 test fn witness_the_confinement_receipt_if_present_has_an_independent_denominator() -> Bool {
-  match confinement_surface_coverage(revision: confinement_witness_revision()) {
-    CoverageEstablished { receipt: receipt } =>
-      census_independence_is_established(independence: receipt.independence)
-    CoverageRefused {
+  match gunbc.realization_vocab_confinement_census.confinement_surface_coverage(revision: confinement_witness_revision()) {
+    gunbc.repository_census_coverage.CoverageEstablished { receipt: receipt } =>
+      gunbc.repository_census_coverage.census_independence_is_established(independence: receipt.independence)
+    gunbc.repository_census_coverage.CoverageRefused {
       observation_identity: _,
       classification_run_identity: _,
       reconciliation: _,
@@ -64,59 +64,59 @@ test fn witness_the_confinement_receipt_if_present_has_an_independent_denominato
 data confinement_conformance_witness_note: String = "THE CONFORMANCE CONTROLS ARE ASSERTED SEPARATELY FROM THE CEILING THEY FEED, so a red says whether the classifier stopped discriminating or whether something downstream broke. The discriminating half is the load-bearing one: it asserts that the census REFUSES a classification with one axis dropped, which is probe 5 turned into an enrolled control that re-runs on every affected change rather than a mutation in a worktree that no longer exists."
 
 test fn witness_the_discriminating_control_is_refused_by_the_census() -> Bool {
-  census_coverage_is_refused(
-    coverage: confinement_control_pair(revision: confinement_witness_revision()).discriminating,
+  gunbc.repository_census_coverage.census_coverage_is_refused(
+    coverage: gunbc.realization_vocab_confinement_census.confinement_control_pair(revision: confinement_witness_revision()).discriminating,
   )
 }
 
 test fn witness_the_positive_control_is_accepted_by_the_census() -> Bool {
-  !census_coverage_is_refused(
-    coverage: confinement_control_pair(revision: confinement_witness_revision()).positive,
+  !gunbc.repository_census_coverage.census_coverage_is_refused(
+    coverage: gunbc.realization_vocab_confinement_census.confinement_control_pair(revision: confinement_witness_revision()).positive,
   )
 }
 
 test fn witness_the_conformance_receipt_is_derived_from_the_two_control_outcomes() -> Bool {
-  match confinement_conformance_outcome(revision: confinement_witness_revision()) {
-    CensusConformanceEstablished { receipt: _ } => true
-    CensusConformanceControlOutcomesUnjoined {
+  match gunbc.realization_vocab_confinement_census.confinement_conformance_outcome(revision: confinement_witness_revision()) {
+    gunbc.repository_census_coverage.CensusConformanceEstablished { receipt: _ } => true
+    gunbc.repository_census_coverage.CensusConformanceControlOutcomesUnjoined {
       control_run_identity: _,
       discriminating_run_identity: _,
       positive_run_identity: _,
     } => false
-    CensusConformanceControlNotDistinctFromMeasurement {
+    gunbc.repository_census_coverage.CensusConformanceControlNotDistinctFromMeasurement {
       control_run_identity: _,
       method_run_identity: _,
     } => false
-    CensusConformanceControlsDidNotDiscriminate { discriminating: _, positive: _ } => false
+    gunbc.repository_census_coverage.CensusConformanceControlsDidNotDiscriminate { discriminating: _, positive: _ } => false
   }
 }
 
 test fn witness_the_defective_control_rows_are_a_proper_subset_of_the_real_rows() -> Bool {
-  let defective = count(confinement_surface_defective_rows())
-  let real = count(confinement_surface_axis_of_declared_key())
+  let defective = count(gunbc.realization_vocab_confinement_census.confinement_surface_defective_rows())
+  let real = count(gunbc.realization_vocab_confinement_census.confinement_surface_axis_of_declared_key())
   defective < real
 }
 
 test fn witness_the_confinement_capability_receipt_joins_the_executed_classifier() -> Bool {
-  match confinement_capability_receipt(revision: confinement_witness_revision()) {
+  match gunbc.realization_vocab_confinement_census.confinement_capability_receipt(revision: confinement_witness_revision()) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
 test fn witness_the_confinement_capability_receipt_carries_established_conformance() -> Bool {
-  match confinement_capability_receipt(revision: confinement_witness_revision()) {
+  match gunbc.realization_vocab_confinement_census.confinement_capability_receipt(revision: confinement_witness_revision()) {
     Present { value: receipt } =>
-      census_capability_receipt_conformance_established(receipt: receipt)
+      gunbc.repository_census_coverage.census_capability_receipt_conformance_established(receipt: receipt)
     Absent => false
   }
 }
 
-fn confinement_witness_ceiling_predicate(f: fn(CensusInferenceCeiling) -> Bool) -> Bool {
-  match confinement_surface_ceiling(revision: confinement_witness_revision()) {
-    ConfinementCeilingDerived { ceiling: ceiling } => f(ceiling)
-    ConfinementCeilingReceiptUnavailable => false
-    ConfinementCeilingRefused {
+fn confinement_witness_ceiling_predicate(f: fn(gunbc.repository_census_coverage.CensusInferenceCeiling) -> Bool) -> Bool {
+  match gunbc.realization_vocab_confinement_census.confinement_surface_ceiling(revision: confinement_witness_revision()) {
+    gunbc.realization_vocab_confinement_census.ConfinementCeilingDerived { ceiling: ceiling } => f(ceiling)
+    gunbc.realization_vocab_confinement_census.ConfinementCeilingReceiptUnavailable => false
+    gunbc.realization_vocab_confinement_census.ConfinementCeilingRefused {
       coverage_classification_run_identity: _,
       capability_method_run_identity: _,
     } => false
@@ -129,60 +129,60 @@ test fn witness_the_confinement_ceiling_exists() -> Bool {
 
 test fn witness_the_confinement_ceiling_is_not_a_floor() -> Bool {
   !confinement_witness_ceiling_predicate(
-    f: ceiling => census_ceiling_is_floor_only(ceiling: ceiling),
+    f: ceiling => gunbc.repository_census_coverage.census_ceiling_is_floor_only(ceiling: ceiling),
   )
 }
 
 test fn witness_the_confinement_ceiling_carries_no_independence_limit() -> Bool {
   !confinement_witness_ceiling_predicate(
-    f: ceiling => census_ceiling_has_limit(ceiling: ceiling, limit: DenominatorProcedureNotDistinct),
+    f: ceiling => gunbc.repository_census_coverage.census_ceiling_has_limit(ceiling: ceiling, limit: gunbc.repository_census_coverage.DenominatorProcedureNotDistinct),
   )
 }
 
 test fn witness_the_confinement_ceiling_carries_no_conformance_limit() -> Bool {
   !confinement_witness_ceiling_predicate(
-    f: ceiling => census_ceiling_has_limit(ceiling: ceiling, limit: MethodConformanceUnobserved),
+    f: ceiling => gunbc.repository_census_coverage.census_ceiling_has_limit(ceiling: ceiling, limit: gunbc.repository_census_coverage.MethodConformanceUnobserved),
   )
 }
 
 test fn witness_the_confinement_population_claim_exists_at_this_revision() -> Bool {
-  match confinement_surface_population_claim(revision: confinement_witness_revision()) {
+  match gunbc.realization_vocab_confinement_census.confinement_surface_population_claim(revision: confinement_witness_revision()) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
 test fn witness_the_claimed_key_count_is_the_real_roster_total() -> Bool {
-  match confinement_surface_population_claim(revision: confinement_witness_revision()) {
+  match gunbc.realization_vocab_confinement_census.confinement_surface_population_claim(revision: confinement_witness_revision()) {
     Present { value: claim } =>
-      confinement_surface_declared_key_count(claim: claim) == confinement_witness_roster_total()
+      gunbc.realization_vocab_confinement_census.confinement_surface_declared_key_count(claim: claim) == confinement_witness_roster_total()
     Absent => false
   }
 }
 
 test fn witness_the_claim_carries_every_declared_key_by_identity() -> Bool {
-  match confinement_surface_population_claim(revision: confinement_witness_revision()) {
+  match gunbc.realization_vocab_confinement_census.confinement_surface_population_claim(revision: confinement_witness_revision()) {
     Present { value: claim } => {
-      let claimed = confinement_surface_claimed_keys(claim: claim)
-      let declared = confinement_surface_declared_keys()
-      all(declared, key => v2.std.algebra.any(claimed, seen => (seen as String) == (key as String)))
+      let claimed = gunbc.realization_vocab_confinement_census.confinement_surface_claimed_keys(claim: claim)
+      let declared = gunbc.realization_vocab_confinement_census.confinement_surface_declared_keys()
+      all(declared, key => any(claimed, seen => (seen as String) == (key as String)))
     }
     Absent => false
   }
 }
 
 test fn witness_the_claim_supports_absence_of_an_undeclared_key() -> Bool {
-  match confinement_surface_population_claim(revision: confinement_witness_revision()) {
-    Present { value: claim } => confinement_surface_supports_undeclared_key_absence(claim: claim)
+  match gunbc.realization_vocab_confinement_census.confinement_surface_population_claim(revision: confinement_witness_revision()) {
+    Present { value: claim } => gunbc.realization_vocab_confinement_census.confinement_surface_supports_undeclared_key_absence(claim: claim)
     Absent => false
   }
 }
 
 test fn witness_an_undeclared_key_is_absent_from_the_claimed_population() -> Bool {
-  match confinement_surface_population_claim(revision: confinement_witness_revision()) {
+  match gunbc.realization_vocab_confinement_census.confinement_surface_population_claim(revision: confinement_witness_revision()) {
     Present { value: claim } => {
-      let claimed = confinement_surface_claimed_keys(claim: claim)
-      !v2.std.algebra.any(claimed, seen => (seen as String) == "v2.workflow.definitely_not_confined")
+      let claimed = gunbc.realization_vocab_confinement_census.confinement_surface_claimed_keys(claim: claim)
+      !any(claimed, seen => (seen as String) == "v2.workflow.definitely_not_confined")
     }
     Absent => false
   }
@@ -193,32 +193,32 @@ data confinement_prefix_grain_witness_note: String = "THE GRAIN CHECK, RUN AGAIN
 test fn witness_a_confinement_prefix_key_matches_a_non_descendant_by_string_prefix() -> Bool {
   let prefix = "v2.workflow.bash"
   let sibling = "v2.workflow.bash_command_fold_serialize"
-  let declared = v2.std.algebra.any(v2.lens.realization_vocabulary_containment.target_ast_vocab_module_prefixes, key => key == prefix)
+  let declared = any(v2.lens.realization_vocabulary_containment.target_ast_vocab_module_prefixes, key => key == prefix)
   let matches_as_string_prefix = starts_with(sibling, prefix)
   let is_not_namespace_descendant = !starts_with(sibling, concat(prefix, "."))
   declared && matches_as_string_prefix && is_not_namespace_descendant
 }
 
 test fn witness_the_prefix_grain_axes_are_the_prefix_matching_ones() -> Bool {
-  let module_prefix_grain = confinement_axis_is_prefix_grain(axis: VocabularyModulePrefix)
-  let edge_prefix_grain = confinement_axis_is_prefix_grain(axis: RealizationEdgePathPrefix)
+  let module_prefix_grain = gunbc.realization_vocab_confinement_census.confinement_axis_is_prefix_grain(axis: gunbc.realization_vocab_confinement_census.VocabularyModulePrefix)
+  let edge_prefix_grain = gunbc.realization_vocab_confinement_census.confinement_axis_is_prefix_grain(axis: gunbc.realization_vocab_confinement_census.RealizationEdgePathPrefix)
   module_prefix_grain && edge_prefix_grain
 }
 
 test fn witness_the_exact_module_axis_is_not_prefix_grain() -> Bool {
-  !confinement_axis_is_prefix_grain(axis: ExactVocabularyModule)
+  !gunbc.realization_vocab_confinement_census.confinement_axis_is_prefix_grain(axis: gunbc.realization_vocab_confinement_census.ExactVocabularyModule)
 }
 
 test fn witness_the_exception_unit_axis_is_not_prefix_grain() -> Bool {
-  !confinement_axis_is_prefix_grain(axis: DeclaredExceptionUnit)
+  !gunbc.realization_vocab_confinement_census.confinement_axis_is_prefix_grain(axis: gunbc.realization_vocab_confinement_census.DeclaredExceptionUnit)
 }
 
 test fn witness_the_prefix_grain_keys_are_a_proper_part_of_the_surface() -> Bool {
-  count(confinement_surface_prefix_grain_keys()) < confinement_witness_roster_total()
+  count(gunbc.realization_vocab_confinement_census.confinement_surface_prefix_grain_keys()) < confinement_witness_roster_total()
 }
 
 test fn witness_the_denominator_subject_count_matches_the_real_rosters() -> Bool {
-  census_denominator_subject_count(
-    denominator: confinement_surface_denominator(revision: confinement_witness_revision()),
+  gunbc.repository_census_coverage.census_denominator_subject_count(
+    denominator: gunbc.realization_vocab_confinement_census.confinement_surface_denominator(revision: confinement_witness_revision()),
   ) == confinement_witness_roster_total()
 }

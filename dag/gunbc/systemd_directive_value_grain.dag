@@ -1,5 +1,6 @@
 module gunbc.systemd_directive_value_grain
 
+
 // WHAT THIS CARRIER IS FOR, AND WHY IT IS A FILING RATHER THAN A REPAIR.
 //
 // The systemd unit grammar in extdeps.systemd.unit_file models WHICH directive goes in WHICH
@@ -33,7 +34,7 @@ module gunbc.systemd_directive_value_grain
 // STATED AS A RUNG (DESIGN section 4b): that axis sits at MITIGATABLE and its ceiling is
 // structurally impossible, because membership is decidable -- the accepted forms are a closed,
 // cited set. It is not a ratchet.
-data systemd_directive_value_grain_scope: Disposition = SingleAuthority
+data systemd_directive_value_grain_scope: std.disposition.Disposition = std.disposition.SingleAuthority
 
 // Environment { assignment: NonEmptyStr } CARRIES A KEY=VALUE PAIR AS ONE OPAQUE STRING, and the
 // fusion is what makes the finding below invisible rather than being the finding itself. A
@@ -62,7 +63,7 @@ type EnvironmentNameAuthority
   | SpelledInConsumer
 
 type BuildCacheEnvironmentVariable {
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
   authority: EnvironmentNameAuthority
 }
 
@@ -79,14 +80,14 @@ type BuildCacheEnvironmentVariable {
 // directive type. NEXT-RUNG TRIGGER is also the same: a variant- or construction-site enumeration
 // surface, at which point this list is derived and deleted rather than maintained.
 data build_cache_environment_variables: List<BuildCacheEnvironmentVariable> = [
-  BuildCacheEnvironmentVariable { name: "SCCACHE_START_SERVER" as NonEmptyStr, authority: ModeledUpstream },
-  BuildCacheEnvironmentVariable { name: "SCCACHE_NO_DAEMON" as NonEmptyStr, authority: ModeledUpstream },
-  BuildCacheEnvironmentVariable { name: "SCCACHE_IDLE_TIMEOUT" as NonEmptyStr, authority: ModeledUpstream },
-  BuildCacheEnvironmentVariable { name: "SCCACHE_DIR" as NonEmptyStr, authority: ModeledUpstream },
-  BuildCacheEnvironmentVariable { name: "SCCACHE_ERROR_LOG" as NonEmptyStr, authority: SpelledInConsumer },
-  BuildCacheEnvironmentVariable { name: "SCCACHE_CACHE_SIZE" as NonEmptyStr, authority: ModeledUpstream },
-  BuildCacheEnvironmentVariable { name: "SCCACHE_SERVER_UDS" as NonEmptyStr, authority: SpelledInConsumer },
-  BuildCacheEnvironmentVariable { name: "SCCACHE_SERVER_PORT" as NonEmptyStr, authority: SpelledInConsumer },
+  BuildCacheEnvironmentVariable { name: "SCCACHE_START_SERVER" as std.types.NonEmptyStr, authority: ModeledUpstream },
+  BuildCacheEnvironmentVariable { name: "SCCACHE_NO_DAEMON" as std.types.NonEmptyStr, authority: ModeledUpstream },
+  BuildCacheEnvironmentVariable { name: "SCCACHE_IDLE_TIMEOUT" as std.types.NonEmptyStr, authority: ModeledUpstream },
+  BuildCacheEnvironmentVariable { name: "SCCACHE_DIR" as std.types.NonEmptyStr, authority: ModeledUpstream },
+  BuildCacheEnvironmentVariable { name: "SCCACHE_ERROR_LOG" as std.types.NonEmptyStr, authority: SpelledInConsumer },
+  BuildCacheEnvironmentVariable { name: "SCCACHE_CACHE_SIZE" as std.types.NonEmptyStr, authority: ModeledUpstream },
+  BuildCacheEnvironmentVariable { name: "SCCACHE_SERVER_UDS" as std.types.NonEmptyStr, authority: SpelledInConsumer },
+  BuildCacheEnvironmentVariable { name: "SCCACHE_SERVER_PORT" as std.types.NonEmptyStr, authority: SpelledInConsumer },
 ]
 
 // A CHECK THAT COULD NOT FAIL WAS WRITTEN HERE FIRST, AND IT IS RECORDED RATHER THAN QUIETLY
@@ -126,6 +127,6 @@ fn environment_name_authority_is_split() -> Bool {
 // fabricated-citation class. Picking a ref that makes the row LOOK bound would be that failure
 // arriving by the back door, so the row states its condition in prose and is honest that no
 // mechanism watches it.
-data systemd_directive_value_grain_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "the systemd directive vocabulary decomposes its values: SliceMemoryMax and SliceMemoryHigh take a modeled magnitude that can express the byte count, the suffixed form and the percentage form systemd.resource-control(5) admits, and Environment takes a variable name and a value as two fields rather than one fused assignment -- at which point the remaining three sccache variable names gunbc spells as literals move to extdeps.cache.sccache beside the five modeled rows. SCCACHE_DIR and SCCACHE_CACHE_SIZE moved early because the readiness producer now reads those exact upstream names as well as the renderer writing them; leaving either literal in both consumers would have grown the fork this roster exists to count. This row deletes when the value-grain work and the remaining name move land together." as NonEmptyStr,
+data systemd_directive_value_grain_dissolution: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(
+  description: "the systemd directive vocabulary decomposes its values: SliceMemoryMax and SliceMemoryHigh take a modeled magnitude that can express the byte count, the suffixed form and the percentage form systemd.resource-control(5) admits, and Environment takes a variable name and a value as two fields rather than one fused assignment -- at which point the remaining three sccache variable names gunbc spells as literals move to extdeps.cache.sccache beside the five modeled rows. SCCACHE_DIR and SCCACHE_CACHE_SIZE moved early because the readiness producer now reads those exact upstream names as well as the renderer writing them; leaving either literal in both consumers would have grown the fork this roster exists to count. This row deletes when the value-grain work and the remaining name move land together." as std.types.NonEmptyStr,
 )

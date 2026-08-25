@@ -4,77 +4,77 @@ module test.claim.language_target_registry_totality
 data registry_totality_witness_note: String = "Controls for the registry ACCOUNTING ratchet and the separate INTEGRITY wall — the no-invisible-remainder property, not a completion claim. The ratchet's whole content is that every declared surface is either joined to a registered subject or reported as an exact unidentified row, as an EXACT equality; the wall's is that malformed join input is exactly zero. They are asserted separately because summing them is precisely what made the predecessor undiscriminating: it compared total violations to census rows with a <=, which held for any census and would have held against an empty violation list. WHAT NO ASSERTION HERE ESTABLISHES, restated from the registry's own maximum-conclusion row because a witness is exactly where that gets forgotten: the DECLARED population is not proven complete against the repository, and a declared row is not proven to name a real surface — three census rows were found on 2026-08-04 to be file paths transcribed as module paths. All six authorities are hand-declared, so a target-bearing surface nobody wrote a row for is invisible here. These are ratchet controls; none of them is completion evidence for any target."
 
 test fn registry_census_is_nonempty_and_accounting_is_exact() -> Bool {
-  registry_accounting_total() && surface_census_row_count() > 0
+  gunbc.language_target_registry.registry_accounting_total() && gunbc.language_target_registry.surface_census_row_count() > 0
 }
 
 test fn registry_integrity_wall_holds_with_zero_malformed_rows() -> Bool {
-  registry_integrity_holds() && registry_integrity_violation_count() == 0
+  gunbc.language_target_registry.registry_integrity_holds() && gunbc.language_target_registry.registry_integrity_violation_count() == 0
 }
 
 data accounting_partition_note: String = "The exact equality restated on the live registry: identified plus unidentified equals the census, with both parts strictly positive. Strict positivity on BOTH sides is what stops either arm from being vacuously satisfied — an all-unidentified census would make the join look total while joining nothing, and an all-identified one would hide the remainder the ratchet exists to display."
 
 test fn identified_and_unidentified_partition_the_census_exactly() -> Bool {
-  identified_surface_count() + unidentified_surface_count() == surface_census_row_count()
-    && identified_surface_count() > 0
-    && unidentified_surface_count() > 0
+  gunbc.language_target_registry.identified_surface_count() + gunbc.language_target_registry.unidentified_surface_count() == gunbc.language_target_registry.surface_census_row_count()
+    && gunbc.language_target_registry.identified_surface_count() > 0
+    && gunbc.language_target_registry.unidentified_surface_count() > 0
 }
 
 test fn bash_vocabulary_surface_joins_the_bash_subject() -> Bool {
-  match resolve_target_for_surface(
+  match std.language_target_identity.resolve_target_for_surface(
     surface: std.language_target_identity.SurfaceModule { module_path: "v2.extdeps.languages.bash" },
-    rows: language_target_surface_census,
-    registry: registered_language_targets
+    rows: gunbc.language_target_registry.language_target_surface_census,
+    registry: gunbc.language_target_registry.registered_language_targets
   ) {
-    TargetResolved { target: t } => declaration_ref_eq(a: t, b: gunbc.language_target_registry.gnu_bash_subject_ref)
-    TargetSurfaceUnregistered { surface: _ } => false
-    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetNotRegistered { target: _ } => false
+    std.language_target_identity.TargetResolved { target: t } => std.decl_ref.declaration_ref_eq(a: t, b: gunbc.language_target_registry.gnu_bash_subject_ref)
+    std.language_target_identity.TargetSurfaceUnregistered { surface: _ } => false
+    std.language_target_identity.TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    std.language_target_identity.TargetNotRegistered { target: _ } => false
   }
 }
 
 data vocabulary_surface_premise_inversion_note: String = "THIS TEST'S PREMISE INVERTED WHEN THE SUBJECTS LANDED, AND BOTH ARMS ARE KEPT LIVE. It previously asserted that extdeps.languages.typescript.program is visibly UNIDENTIFIED, which was true and worth pinning while Bash was the only registered subject — the TypeScript target vocabulary was confined by a lens around a module prefix with no upstream authority behind it. TypeScript is now a registered, cited subject, so that surface resolves, and asserting it is still unidentified would be asserting the registry had not done its job. The assertion is therefore re-aimed at the join it now makes. The unidentified arm is NOT retired with it — DESIGN section 4b's dissolution rule keeps the discriminating control enrolled when a class climbs — so machine_code takes over that duty in the test below, and it is a better control than the old one because its unidentified status is PERMANENT until the surface is decomposed, rather than pending someone authoring a citation."
 
 test fn typescript_vocabulary_surface_resolves_to_the_typescript_subject() -> Bool {
-  match resolve_target_for_surface(
+  match std.language_target_identity.resolve_target_for_surface(
     surface: std.language_target_identity.SurfaceModule { module_path: "extdeps.languages.typescript.program" },
-    rows: language_target_surface_census,
-    registry: registered_language_targets
+    rows: gunbc.language_target_registry.language_target_surface_census,
+    registry: gunbc.language_target_registry.registered_language_targets
   ) {
-    TargetResolved { target: t } => declaration_ref_eq(a: t, b: typescript_language_subject_ref)
-    TargetSurfaceUnregistered { surface: _ } => false
-    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetNotRegistered { target: _ } => false
+    std.language_target_identity.TargetResolved { target: t } => std.decl_ref.declaration_ref_eq(a: t, b: gunbc.language_target_registry.typescript_language_subject_ref)
+    std.language_target_identity.TargetSurfaceUnregistered { surface: _ } => false
+    std.language_target_identity.TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    std.language_target_identity.TargetNotRegistered { target: _ } => false
   }
 }
 
 test fn machine_code_surface_is_visibly_unidentified() -> Bool {
-  match resolve_target_for_surface(
+  match std.language_target_identity.resolve_target_for_surface(
     surface: std.language_target_identity.SurfaceModule { module_path: "v2.extdeps.languages.machine_code" },
-    rows: language_target_surface_census,
-    registry: registered_language_targets
+    rows: gunbc.language_target_registry.language_target_surface_census,
+    registry: gunbc.language_target_registry.registered_language_targets
   ) {
-    TargetSurfaceUnregistered { surface: _ } => true
-    TargetResolved { target: _ } => false
-    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetNotRegistered { target: _ } => false
+    std.language_target_identity.TargetSurfaceUnregistered { surface: _ } => true
+    std.language_target_identity.TargetResolved { target: _ } => false
+    std.language_target_identity.TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    std.language_target_identity.TargetNotRegistered { target: _ } => false
   }
 }
 
 test fn unidentified_population_is_positive_and_below_the_census() -> Bool {
-  unidentified_surface_count() > 0
-    && unidentified_surface_count() < surface_census_row_count()
+  gunbc.language_target_registry.unidentified_surface_count() > 0
+    && gunbc.language_target_registry.unidentified_surface_count() < gunbc.language_target_registry.surface_census_row_count()
 }
 
 test fn a_surface_absent_from_the_registry_does_not_resolve() -> Bool {
-  match resolve_target_for_surface(
+  match std.language_target_identity.resolve_target_for_surface(
     surface: std.language_target_identity.SurfaceModule { module_path: "v2.extdeps.languages.not_a_real_target" },
-    rows: language_target_surface_census,
-    registry: registered_language_targets
+    rows: gunbc.language_target_registry.language_target_surface_census,
+    registry: gunbc.language_target_registry.registered_language_targets
   ) {
-    TargetSurfaceUnregistered { surface: _ } => true
-    TargetResolved { target: _ } => false
-    TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
-    TargetNotRegistered { target: _ } => false
+    std.language_target_identity.TargetSurfaceUnregistered { surface: _ } => true
+    std.language_target_identity.TargetResolved { target: _ } => false
+    std.language_target_identity.TargetSurfaceAmbiguous { surface: _, candidates: _ } => false
+    std.language_target_identity.TargetNotRegistered { target: _ } => false
   }
 }
 
@@ -89,7 +89,7 @@ data projection_direction_note: String = "Requirement D's controls, and the prop
 
 
 test fn projection_from_registered_subject_is_total() -> Bool {
-  match bash_display_name() {
+  match gunbc.language_target_registry.bash_display_name() {
     Present { value: n } => n == "GNU Bash"
     Absent => false
   }
@@ -97,62 +97,62 @@ test fn projection_from_registered_subject_is_total() -> Bool {
 
 // THE LIVE DISCRIMINATOR FOR THE NEUTRAL JOIN KEY. While the key was an external subject reference, a project-grounded target could not be projected at all — the stacked D0 branch produced projections for every external target and NEITHER project one, which is how the defect surfaced. This asserts a project-grounded subject projects through the same roster as Bash, on live registry rows rather than fixtures. The English row is the paired negative: it is REGISTERED but deliberately unprojected, so an absent projection is proven to report Absent rather than being confused with an unregistered subject.
 test fn project_grounded_subject_projects_through_the_same_roster() -> Bool {
-  match dag_display_name() {
+  match gunbc.language_target_registry.dag_display_name() {
     Present { value: n } => n == "dag"
     Absent => false
   }
 }
 
 test fn registered_but_unprojected_subject_reports_absent() -> Bool {
-  match english_display_name() {
+  match gunbc.language_target_registry.english_display_name() {
     Absent => true
     Present { value: _ } => false
   }
 }
 
 test fn every_projection_hangs_off_a_registered_subject() -> Bool {
-  every_projection_subject_is_registered()
+  gunbc.language_target_registry.every_projection_subject_is_registered()
 }
 
 data legacy_id_direction_note: String = "THE SHARPEST AVAILABLE STATEMENT OF 'A LanguageId IS NOT AN IDENTITY', and it only became provable on a real row when the subjects landed. This test used to look up 'rust' and assert it REFUSED — true only because no projection claimed any legacy id yet, so it was really asserting the projection table was empty. Now rust IS claimed, and asserting refusal would assert the projection table is still broken. The two assertions below state the actual direction law from language_target_projection_law instead, and the second is the load-bearing one: GNU Bash is a fully registered, cited subject, and looking up 'bash' STILL REFUSES — because std.languages carries rust, go, python and typescript rows and no bash row, so the target this repository emits most has no legacy id at all. A key that cannot name a registered subject is definitionally not that subject's identity. That is a live corpus fact doing the work a fixture used to fake."
 
 test fn claimed_legacy_language_id_projects_to_its_subject() -> Bool {
-  match lookup_language_id(language_id: "rust") {
-    LanguageIdResolved { target: t } => declaration_ref_eq(a: t, b: rust_language_subject_ref)
-    LanguageIdUnregistered { language_id: _ } => false
-    LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
+  match gunbc.language_target_registry.lookup_language_id(language_id: "rust") {
+    std.language_target_identity.LanguageIdResolved { target: t } => std.decl_ref.declaration_ref_eq(a: t, b: gunbc.language_target_registry.rust_language_subject_ref)
+    std.language_target_identity.LanguageIdUnregistered { language_id: _ } => false
+    std.language_target_identity.LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
   }
 }
 
 test fn red_registered_subject_with_no_legacy_id_still_refuses_lookup() -> Bool {
-  match lookup_language_id(language_id: "bash") {
-    LanguageIdUnregistered { language_id: l } => l == "bash"
-    LanguageIdResolved { target: _ } => false
-    LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
+  match gunbc.language_target_registry.lookup_language_id(language_id: "bash") {
+    std.language_target_identity.LanguageIdUnregistered { language_id: l } => l == "bash"
+    std.language_target_identity.LanguageIdResolved { target: _ } => false
+    std.language_target_identity.LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
   }
 }
 
 test fn red_unknown_legacy_id_refuses_rather_than_defaulting() -> Bool {
-  match lookup_language_id(language_id: "not_a_language") {
-    LanguageIdUnregistered { language_id: _ } => true
-    LanguageIdResolved { target: _ } => false
-    LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
+  match gunbc.language_target_registry.lookup_language_id(language_id: "not_a_language") {
+    std.language_target_identity.LanguageIdUnregistered { language_id: _ } => true
+    std.language_target_identity.LanguageIdResolved { target: _ } => false
+    std.language_target_identity.LanguageIdAmbiguous { language_id: _, first: _, second: _ } => false
   }
 }
 
 // Controls for the ProjectGrounding arm, which had zero inhabitants until the .dag and controlled-English rows landed — an unexercised coproduct arm is untested code, and this is the arm that exists precisely because a universal external subject reference would have forced this project's own targets to claim an upstream governance they do not have. The discriminating property is that a project-grounded subject derives from its OWN authority declaration rather than from any external scope, so the derived subject equals the declared authority exactly.
 test fn project_grounded_target_derives_its_own_authority_as_subject() -> Bool {
-  fold(registered_language_targets, init: false, f: fn(acc, r) {
-    acc || declaration_ref_eq(a: registration_subject(registration: r), b: dag_subject_ref)
+  fold(gunbc.language_target_registry.registered_language_targets, init: false, f: fn(acc, r) {
+    acc || std.decl_ref.declaration_ref_eq(a: std.language_target_identity.registration_subject(registration: r), b: gunbc.language_target_registry.dag_subject_ref)
   })
 }
 
 // This test asserted registered_target_count() == 3 until the D0 subject rows landed. That literal was a MEASUREMENT COPIED FROM THE TREE standing in for the property the test is named after — DESIGN section 5's oracle rule names exactly this shape, and its review tell applies: automating the literal's update would collapse the assertion to measure() == measure(), so the manual update WAS the test's entire content. It also failed the moment the registry grew, which is a change detector reporting, not a wall refusing. Rewritten to assert the property directly: BOTH grounding arms are inhabited. That is what makes the coproduct exercised rather than half-dead, it is what the name claims, and it stays true at 3 targets or 300 without anyone editing a number.
 test fn registry_carries_both_grounding_arms() -> Bool {
-  let arms = fold(registered_language_targets, init: GroundingArmsSeen { external: false, project: false }, f: fn(acc, r) {
+  let arms = fold(gunbc.language_target_registry.registered_language_targets, init: GroundingArmsSeen { external: false, project: false }, f: fn(acc, r) {
     match r.grounding {
-      ExternalGrounding { scope: _ } => GroundingArmsSeen { external: true, project: acc.project }
-      ProjectGrounding { authority: _ } => GroundingArmsSeen { external: acc.external, project: true }
+      std.language_target_identity.ExternalGrounding { scope: _ } => GroundingArmsSeen { external: true, project: acc.project }
+      std.language_target_identity.ProjectGrounding { authority: _ } => GroundingArmsSeen { external: acc.external, project: true }
     }
   })
   arms.external && arms.project

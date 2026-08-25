@@ -9,14 +9,14 @@ data checkpoint_identity_keying_witness_note: String = "EXECUTING evidence for t
 
 // A table-present name renders from the table.
 test fn table_present_name_renders_from_the_table() -> Bool {
-  rust_scalar_checkpoint_reference_base(dag_name: "Int", decl_file: "dag/std/integer.dag")
+  v1.compiler.emit_rust.rust_scalar_checkpoint_reference_base(dag_name: "Int", decl_file: "dag/std/integer.dag")
     == Present { value: "i64" }
 }
 
 // A table-ABSENT name reaches the identity arm and realizes natively for the
 // std declaration.
 test fn table_absent_name_realizes_natively_for_the_std_declaration() -> Bool {
-  rust_scalar_checkpoint_reference_base(dag_name: "Nat", decl_file: "dag/std/nat.dag")
+  v1.compiler.emit_rust.rust_scalar_checkpoint_reference_base(dag_name: "Nat", decl_file: "dag/std/nat.dag")
     == Present { value: "i64" }
 }
 
@@ -25,14 +25,14 @@ test fn table_absent_name_realizes_natively_for_the_std_declaration() -> Bool {
 // integer. A rule keyed on the name alone cannot pass this and the previous row
 // together -- which is exactly what the deleted global corpus mode could not do.
 test fn same_spelling_different_declaration_does_not_realize_natively() -> Bool {
-  rust_scalar_checkpoint_reference_base(dag_name: "Nat", decl_file: "src/v2/std/nat.dag")
+  v1.compiler.emit_rust.rust_scalar_checkpoint_reference_base(dag_name: "Nat", decl_file: "src/v2/std/nat.dag")
     == none
 }
 
 // Identity UNKNOWN at the site refuses rather than guessing. The empty decl_file
 // is not a third realization, it is the absence of the fact the decision needs.
 test fn unknown_declaration_identity_refuses_rather_than_guessing() -> Bool {
-  rust_scalar_checkpoint_reference_base(dag_name: "Nat", decl_file: "")
+  v1.compiler.emit_rust.rust_scalar_checkpoint_reference_base(dag_name: "Nat", decl_file: "")
     == none
 }
 
@@ -45,7 +45,7 @@ test fn unknown_declaration_identity_refuses_rather_than_guessing() -> Bool {
 // ---------------------------------------------------------------------------
 
 test fn residue_table_present_int_bypasses_identity() -> Bool {
-  rust_scalar_checkpoint_reference_base(dag_name: "Int", decl_file: "src/v2/std/integer.dag")
+  v1.compiler.emit_rust.rust_scalar_checkpoint_reference_base(dag_name: "Int", decl_file: "src/v2/std/integer.dag")
     == Present { value: "i64" }
 }
 
@@ -87,27 +87,27 @@ test fn residue_table_present_int_bypasses_identity() -> Bool {
 // ---------------------------------------------------------------------------
 
 test fn table_present_hash_refuses_under_structural_declaration() -> Bool {
-  rust_scalar_checkpoint_reference_base(dag_name: "Hash", decl_file: "src/v2/std/node.dag")
+  v1.compiler.emit_rust.rust_scalar_checkpoint_reference_base(dag_name: "Hash", decl_file: "src/v2/std/node.dag")
     == none
 }
 
 test fn table_present_string_refuses_under_structural_declaration_text() -> Bool {
-  rust_scalar_checkpoint_reference_base(dag_name: "String", decl_file: "src/v2/std/text.dag")
+  v1.compiler.emit_rust.rust_scalar_checkpoint_reference_base(dag_name: "String", decl_file: "src/v2/std/text.dag")
     == none
 }
 
 test fn table_present_string_refuses_under_structural_declaration_string_type() -> Bool {
-  rust_scalar_checkpoint_reference_base(dag_name: "String", decl_file: "dag/std/string_type.dag")
+  v1.compiler.emit_rust.rust_scalar_checkpoint_reference_base(dag_name: "String", decl_file: "dag/std/string_type.dag")
     == none
 }
 
 test fn table_present_bool_refuses_under_structural_declaration_logic() -> Bool {
-  rust_scalar_checkpoint_reference_base(dag_name: "Bool", decl_file: "src/v2/std/logic.dag")
+  v1.compiler.emit_rust.rust_scalar_checkpoint_reference_base(dag_name: "Bool", decl_file: "src/v2/std/logic.dag")
     == none
 }
 
 test fn table_present_bool_renders_natively_for_the_corpus_prelude() -> Bool {
-  rust_scalar_checkpoint_reference_base(dag_name: "Bool", decl_file: "dag/std/types.dag")
+  v1.compiler.emit_rust.rust_scalar_checkpoint_reference_base(dag_name: "Bool", decl_file: "dag/std/types.dag")
     == Present { value: "bool" }
 }
 
@@ -230,12 +230,12 @@ test fn literal_suffix_production_call_site_never_threads_declaration_identity()
 // ---------------------------------------------------------------------------
 
 test fn reference_position_renders_the_bare_spelling() -> Bool {
-  rust_scalar_checkpoint_reference_base(dag_name: "String", decl_file: "dag/std/types.dag")
+  v1.compiler.emit_rust.rust_scalar_checkpoint_reference_base(dag_name: "String", decl_file: "dag/std/types.dag")
     == Present { value: "String" }
 }
 
 test fn declaration_position_renders_the_grounding_spelling() -> Bool {
-  rust_scalar_checkpoint_grounding_base(dag_name: "String", decl_file: "dag/std/types.dag")
+  v1.compiler.emit_rust.rust_scalar_checkpoint_grounding_base(dag_name: "String", decl_file: "dag/std/types.dag")
     == Present { value: "std::string::String" }
 }
 
@@ -243,6 +243,6 @@ test fn declaration_position_renders_the_grounding_spelling() -> Bool {
 // reference spelling, and stating that by execution keeps the new field from
 // being read as a second authority that could drift row by row.
 test fn numeric_name_grounds_in_its_own_reference_spelling() -> Bool {
-  rust_scalar_checkpoint_grounding_base(dag_name: "Int", decl_file: "dag/std/integer.dag")
+  v1.compiler.emit_rust.rust_scalar_checkpoint_grounding_base(dag_name: "Int", decl_file: "dag/std/integer.dag")
     == Present { value: "i64" }
 }

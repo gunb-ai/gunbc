@@ -16,21 +16,21 @@ data mod_c: v2.lens.module_impact_query.ModuleIdentity = v2.lens.module_impact_q
 
 data pool_independence_unavailable: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> = [
   gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
-    capability: UnrelatedLoadedFileExcluded,
-    trigger: P2aPoolIndependentDependencyProjection7515
+    capability: gunbc.namespace_reference_derived_closure_admission.UnrelatedLoadedFileExcluded,
+    trigger: gunbc.namespace_reference_derived_closure_admission.P2aPoolIndependentDependencyProjection7515
   },
 ]
 
 data pool_independence_established_note: String = "ReferenceDerivedClosureAcceptanceReceipt is sole_constructor, so a consumer CANNOT fabricate an Established capability from outside the admission module - the wall refused this witness's first attempt to hand-build the receipt, which is exactly the point of the wall. The admission module's own `established` constructor is the only legitimate route, so the witness goes through it."
 
 data pool_independence_established: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> = [
-  established(capability: UnrelatedLoadedFileExcluded),
+  gunbc.namespace_reference_derived_closure_admission.established(capability: gunbc.namespace_reference_derived_closure_admission.UnrelatedLoadedFileExcluded),
 ]
 
 data unrelated_admission_only: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> = [
   gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
-    capability: RepeatedMentionsCollapseDependency,
-    trigger: P2aReferenceDependencyProjection7515
+    capability: gunbc.namespace_reference_derived_closure_admission.RepeatedMentionsCollapseDependency,
+    trigger: gunbc.namespace_reference_derived_closure_admission.P2aReferenceDependencyProjection7515
   },
 ]
 
@@ -52,7 +52,7 @@ fn chain_reading(
     seeds: seeds,
     direction: v2.lens.module_impact_query.DependentsOf,
     edges: chain_edges,
-    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
+    nodes: fixture_nodes,
     import_facts: chain_import_facts,
     admissions: admissions
   )
@@ -75,7 +75,7 @@ test fn witness_dependencies_of_is_the_opposite_direction() -> Bool {
     seeds: [mod_a],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: chain_edges,
-    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
+    nodes: fixture_nodes,
     import_facts: chain_import_facts,
     admissions: unrelated_admission_only
   )
@@ -98,52 +98,52 @@ test fn witness_core_is_keyed_on_module_identity_not_path() -> Bool {
 }
 
 test fn witness_path_adapter_projects_a_file_question_to_semantic_seeds() -> Bool {
-  let seeds = v2.lens.module_impact_query.impact_seeds_for_path(nodes: test.claim.module_impact_query_witness_test.fixture_nodes, path: "fixture/a.dag")
+  let seeds = v2.lens.module_impact_query.impact_seeds_for_path(nodes: fixture_nodes, path: "fixture/a.dag")
   v2.std.algebra.count_where(xs: seeds, predicate: fn(_) { true }) == 1
     && v2.std.algebra.any(xs: seeds, predicate: fn(m) { m.name == "m.a" })
 }
 
 test fn witness_path_adapter_invents_no_seed_for_an_unknown_path() -> Bool {
   v2.std.algebra.count_where(
-    xs: v2.lens.module_impact_query.impact_seeds_for_path(nodes: test.claim.module_impact_query_witness_test.fixture_nodes, path: "fixture/nowhere.dag"),
+    xs: v2.lens.module_impact_query.impact_seeds_for_path(nodes: fixture_nodes, path: "fixture/nowhere.dag"),
     predicate: fn(_) { true }
   ) == 0
 }
 
 test fn witness_paths_project_back_for_presentation() -> Bool {
-  let paths = v2.lens.module_impact_query.impact_paths_for_module(nodes: test.claim.module_impact_query_witness_test.fixture_nodes, module_id: mod_a)
+  let paths = v2.lens.module_impact_query.impact_paths_for_module(nodes: fixture_nodes, module_id: mod_a)
   v2.std.algebra.count_where(xs: paths, predicate: fn(_) { true }) == 1
     && v2.std.algebra.contains(xs: paths, item: "fixture/a.dag", eq: fn(x, y) { x == y })
 }
 
 test fn witness_pool_independence_unavailable_forbids_an_exact_standing() -> Bool {
   match chain_reading(seeds: [mod_c], admissions: pool_independence_unavailable).standing {
-    PoolIndependentProjectionUnavailable { trigger } =>
+    v2.lens.module_impact_query.PoolIndependentProjectionUnavailable { trigger } =>
       match trigger {
-        P2aPoolIndependentDependencyProjection7515 => true
+        gunbc.namespace_reference_derived_closure_admission.P2aPoolIndependentDependencyProjection7515 => true
         _ => false
       }
-    ExactForGraphSubject => false
-    ProvisionalForObservedPool => false
-    Incomplete { causes: _ } => false
+    v2.lens.module_impact_query.ExactForGraphSubject => false
+    v2.lens.module_impact_query.ProvisionalForObservedPool => false
+    v2.lens.module_impact_query.Incomplete { causes: _ } => false
   }
 }
 
 test fn witness_clean_pool_without_established_independence_is_only_provisional() -> Bool {
   match chain_reading(seeds: [mod_c], admissions: unrelated_admission_only).standing {
-    ProvisionalForObservedPool => true
-    ExactForGraphSubject => false
-    Incomplete { causes: _ } => false
-    PoolIndependentProjectionUnavailable { trigger: _ } => false
+    v2.lens.module_impact_query.ProvisionalForObservedPool => true
+    v2.lens.module_impact_query.ExactForGraphSubject => false
+    v2.lens.module_impact_query.Incomplete { causes: _ } => false
+    v2.lens.module_impact_query.PoolIndependentProjectionUnavailable { trigger: _ } => false
   }
 }
 
 test fn witness_exact_standing_requires_established_pool_independence() -> Bool {
   match chain_reading(seeds: [mod_c], admissions: pool_independence_established).standing {
-    ExactForGraphSubject => true
-    ProvisionalForObservedPool => false
-    Incomplete { causes: _ } => false
-    PoolIndependentProjectionUnavailable { trigger: _ } => false
+    v2.lens.module_impact_query.ExactForGraphSubject => true
+    v2.lens.module_impact_query.ProvisionalForObservedPool => false
+    v2.lens.module_impact_query.Incomplete { causes: _ } => false
+    v2.lens.module_impact_query.PoolIndependentProjectionUnavailable { trigger: _ } => false
   }
 }
 
@@ -157,16 +157,16 @@ test fn witness_undeclared_target_lands_as_a_typed_cause() -> Bool {
     seeds: [mod_a],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: undeclared_target_edges,
-    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
+    nodes: fixture_nodes,
     import_facts: chain_import_facts,
     admissions: pool_independence_established
   )
   v2.std.algebra.count_where(xs: reading.causes, predicate: fn(_) { true }) == 1
     && v2.std.algebra.any(xs: reading.causes, predicate: fn(cause) {
       match cause {
-        UndeclaredTargetModule { dependent_module, target_module } =>
+        v2.lens.module_impact_query.UndeclaredTargetModule { dependent_module, target_module } =>
           dependent_module.name == "m.b" && target_module == "m.outside_pool"
-        DeclaredTargetAbsentFromPool { dependent_module: _, target_module: _ } => false
+        v2.lens.module_impact_query.DeclaredTargetAbsentFromPool { dependent_module: _, target_module: _ } => false
       }
     })
 }
@@ -183,16 +183,16 @@ test fn witness_declared_but_absent_target_is_not_silently_dropped() -> Bool {
     seeds: [mod_a],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: declared_but_absent_edges,
-    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
+    nodes: fixture_nodes,
     import_facts: chain_import_facts,
     admissions: pool_independence_established
   )
   v2.std.algebra.count_where(xs: reading.causes, predicate: fn(_) { true }) == 1
     && v2.std.algebra.any(xs: reading.causes, predicate: fn(cause) {
       match cause {
-        DeclaredTargetAbsentFromPool { dependent_module, target_module } =>
+        v2.lens.module_impact_query.DeclaredTargetAbsentFromPool { dependent_module, target_module } =>
           dependent_module.name == "m.b" && target_module == "m.ghost"
-        UndeclaredTargetModule { dependent_module: _, target_module: _ } => false
+        v2.lens.module_impact_query.UndeclaredTargetModule { dependent_module: _, target_module: _ } => false
       }
     })
 }
@@ -202,15 +202,15 @@ test fn witness_pool_mismatch_forbids_an_exact_standing() -> Bool {
     seeds: [mod_a],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: declared_but_absent_edges,
-    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
+    nodes: fixture_nodes,
     import_facts: chain_import_facts,
     admissions: pool_independence_established
   )
   match reading.standing {
-    Incomplete { causes } => v2.std.algebra.count_where(xs: causes, predicate: fn(_) { true }) == 1
-    ExactForGraphSubject => false
-    ProvisionalForObservedPool => false
-    PoolIndependentProjectionUnavailable { trigger: _ } => false
+    v2.lens.module_impact_query.Incomplete { causes } => v2.std.algebra.count_where(xs: causes, predicate: fn(_) { true }) == 1
+    v2.lens.module_impact_query.ExactForGraphSubject => false
+    v2.lens.module_impact_query.ProvisionalForObservedPool => false
+    v2.lens.module_impact_query.PoolIndependentProjectionUnavailable { trigger: _ } => false
   }
 }
 
@@ -233,7 +233,7 @@ fn cycle_reading(facts: List<v2.lens.module_graph.ImportResolutionFact>) -> v2.l
     seeds: [mod_a],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: cycle_edges,
-    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
+    nodes: fixture_nodes,
     import_facts: facts,
     admissions: unrelated_admission_only
   )
@@ -241,9 +241,9 @@ fn cycle_reading(facts: List<v2.lens.module_graph.ImportResolutionFact>) -> v2.l
 
 fn cycle_has_member(cycle: v2.lens.module_impact_query.ImpactCycle, wanted: String) -> Bool {
   match cycle {
-    ImpactImportAcyclicityViolation { members } =>
+    v2.lens.module_impact_query.ImpactImportAcyclicityViolation { members } =>
       v2.std.algebra.any(xs: members, predicate: fn(m) { m.name == wanted })
-    ImpactCycleReferenceAdmissible { members } =>
+    v2.lens.module_impact_query.ImpactCycleReferenceAdmissible { members } =>
       v2.std.algebra.any(xs: members, predicate: fn(m) { m.name == wanted })
   }
 }
@@ -253,9 +253,9 @@ test fn witness_all_import_cycle_is_an_acyclicity_violation() -> Bool {
   v2.std.algebra.count_where(xs: cycles, predicate: fn(_) { true }) == 1
     && v2.std.algebra.any(xs: cycles, predicate: fn(cycle) {
       match cycle {
-        ImpactImportAcyclicityViolation { members } =>
+        v2.lens.module_impact_query.ImpactImportAcyclicityViolation { members } =>
           v2.std.algebra.count_where(xs: members, predicate: fn(_) { true }) == 2
-        ImpactCycleReferenceAdmissible { members: _ } => false
+        v2.lens.module_impact_query.ImpactCycleReferenceAdmissible { members: _ } => false
       }
     })
 }
@@ -265,8 +265,8 @@ test fn witness_cycle_with_a_reference_derived_edge_is_admissible() -> Bool {
   v2.std.algebra.count_where(xs: cycles, predicate: fn(_) { true }) == 1
     && v2.std.algebra.any(xs: cycles, predicate: fn(cycle) {
       match cycle {
-        ImpactImportAcyclicityViolation { members: _ } => false
-        ImpactCycleReferenceAdmissible { members } =>
+        v2.lens.module_impact_query.ImpactImportAcyclicityViolation { members: _ } => false
+        v2.lens.module_impact_query.ImpactCycleReferenceAdmissible { members } =>
           v2.std.algebra.count_where(xs: members, predicate: fn(_) { true }) == 2
       }
     })
@@ -297,7 +297,7 @@ fn two_disjoint_cycles_reading() -> v2.lens.module_impact_query.ImpactReading {
     seeds: [mod_a, mod_c],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: two_disjoint_cycle_edges,
-    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
+    nodes: fixture_nodes,
     import_facts: two_disjoint_cycle_import_facts,
     admissions: unrelated_admission_only
   )
@@ -310,11 +310,11 @@ test fn witness_two_disjoint_cycles_are_classified_separately() -> Bool {
 test fn witness_all_import_cycle_survives_a_reference_cycle_elsewhere() -> Bool {
   v2.std.algebra.any(xs: v2.lens.module_impact_query.module_cycle_analysis(reading: two_disjoint_cycles_reading()).cycles, predicate: fn(cycle) {
     match cycle {
-      ImpactImportAcyclicityViolation { members } =>
+      v2.lens.module_impact_query.ImpactImportAcyclicityViolation { members } =>
         v2.std.algebra.count_where(xs: members, predicate: fn(_) { true }) == 2
           && cycle_has_member(cycle: cycle, wanted: "m.a")
           && cycle_has_member(cycle: cycle, wanted: "m.b")
-      ImpactCycleReferenceAdmissible { members: _ } => false
+      v2.lens.module_impact_query.ImpactCycleReferenceAdmissible { members: _ } => false
     }
   })
 }
@@ -322,8 +322,8 @@ test fn witness_all_import_cycle_survives_a_reference_cycle_elsewhere() -> Bool 
 test fn witness_reference_cycle_stays_admissible_beside_an_import_cycle() -> Bool {
   v2.std.algebra.any(xs: v2.lens.module_impact_query.module_cycle_analysis(reading: two_disjoint_cycles_reading()).cycles, predicate: fn(cycle) {
     match cycle {
-      ImpactImportAcyclicityViolation { members: _ } => false
-      ImpactCycleReferenceAdmissible { members } =>
+      v2.lens.module_impact_query.ImpactImportAcyclicityViolation { members: _ } => false
+      v2.lens.module_impact_query.ImpactCycleReferenceAdmissible { members } =>
         v2.std.algebra.count_where(xs: members, predicate: fn(_) { true }) == 2
           && cycle_has_member(cycle: cycle, wanted: "m.c")
           && cycle_has_member(cycle: cycle, wanted: "m.d")
@@ -359,7 +359,7 @@ fn surface_outcome(
     changed_paths: changed,
     departed_paths: departed,
     edges: chain_edges,
-    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
+    nodes: fixture_nodes,
     import_facts: chain_import_facts,
     admissions: unrelated_admission_only
   )
@@ -367,29 +367,29 @@ fn surface_outcome(
 
 fn outcome_is_partial(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutcome) -> Bool {
   match outcome {
-    ChangedSurfacePartial { reading: _, unresolved_subjects: _ } => true
-    ChangedSurfaceComplete { reading: _ } => false
-    ChangedSurfaceRefused { reason: _ } => false
+    v2.lens.module_impact_query.ChangedSurfacePartial { reading: _, unresolved_subjects: _ } => true
+    v2.lens.module_impact_query.ChangedSurfaceComplete { reading: _ } => false
+    v2.lens.module_impact_query.ChangedSurfaceRefused { reason: _ } => false
   }
 }
 
 fn outcome_reached_count(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutcome) -> Int {
   match outcome {
-    ChangedSurfacePartial { reading, unresolved_subjects: _ } =>
+    v2.lens.module_impact_query.ChangedSurfacePartial { reading, unresolved_subjects: _ } =>
       v2.std.algebra.count_where(xs: reading.reached, predicate: fn(_) { true })
-    ChangedSurfaceComplete { reading } =>
+    v2.lens.module_impact_query.ChangedSurfaceComplete { reading } =>
       v2.std.algebra.count_where(xs: reading.reached, predicate: fn(_) { true })
-    ChangedSurfaceRefused { reason: _ } => 0
+    v2.lens.module_impact_query.ChangedSurfaceRefused { reason: _ } => 0
   }
 }
 
 test fn witness_a_clean_changed_surface_is_complete() -> Bool {
   let outcome = surface_outcome(changed: ["fixture/c.dag"], departed: no_departed)
   match outcome {
-    ChangedSurfaceComplete { reading } =>
+    v2.lens.module_impact_query.ChangedSurfaceComplete { reading } =>
       v2.std.algebra.count_where(xs: reading.reached, predicate: fn(_) { true }) == 3
-    ChangedSurfacePartial { reading: _, unresolved_subjects: _ } => false
-    ChangedSurfaceRefused { reason: _ } => false
+    v2.lens.module_impact_query.ChangedSurfacePartial { reading: _, unresolved_subjects: _ } => false
+    v2.lens.module_impact_query.ChangedSurfaceRefused { reason: _ } => false
   }
 }
 
@@ -398,16 +398,16 @@ test fn witness_an_unresolved_subject_contaminates_the_whole_outcome() -> Bool {
   outcome_is_partial(outcome: outcome)
     && outcome_reached_count(outcome: outcome) == 3
     && match outcome {
-      ChangedSurfacePartial { reading: _, unresolved_subjects } =>
+      v2.lens.module_impact_query.ChangedSurfacePartial { reading: _, unresolved_subjects } =>
         v2.std.algebra.count_where(xs: unresolved_subjects, predicate: fn(_) { true }) == 1
           && v2.std.algebra.any(xs: unresolved_subjects, predicate: fn(u) {
             match u.cause {
-              NoModuleDeclaredAtPath => u.path == "README.md"
-              BaseGraphUnavailable => false
+              v2.lens.module_impact_query.NoModuleDeclaredAtPath => u.path == "README.md"
+              v2.lens.module_impact_query.BaseGraphUnavailable => false
             }
           })
-      ChangedSurfaceComplete { reading: _ } => false
-      ChangedSurfaceRefused { reason: _ } => false
+      v2.lens.module_impact_query.ChangedSurfaceComplete { reading: _ } => false
+      v2.lens.module_impact_query.ChangedSurfaceRefused { reason: _ } => false
     }
 }
 
@@ -415,16 +415,16 @@ test fn witness_a_deleted_path_is_consumed_and_needs_the_base_population() -> Bo
   let outcome = surface_outcome(changed: no_departed, departed: ["fixture/b.dag"])
   outcome_is_partial(outcome: outcome)
     && match outcome {
-      ChangedSurfacePartial { reading: _, unresolved_subjects } =>
+      v2.lens.module_impact_query.ChangedSurfacePartial { reading: _, unresolved_subjects } =>
         v2.std.algebra.count_where(xs: unresolved_subjects, predicate: fn(_) { true }) == 1
           && v2.std.algebra.any(xs: unresolved_subjects, predicate: fn(u) {
             match u.cause {
-              BaseGraphUnavailable => u.path == "fixture/b.dag"
-              NoModuleDeclaredAtPath => false
+              v2.lens.module_impact_query.BaseGraphUnavailable => u.path == "fixture/b.dag"
+              v2.lens.module_impact_query.NoModuleDeclaredAtPath => false
             }
           })
-      ChangedSurfaceComplete { reading: _ } => false
-      ChangedSurfaceRefused { reason: _ } => false
+      v2.lens.module_impact_query.ChangedSurfaceComplete { reading: _ } => false
+      v2.lens.module_impact_query.ChangedSurfaceRefused { reason: _ } => false
     }
 }
 
@@ -438,13 +438,13 @@ test fn witness_partial_never_yields_a_skip_authority() -> Bool {
   match v2.lens.module_impact_query.changed_surface_skip_authority(
     outcome: surface_outcome(changed: ["README.md"], departed: no_departed)
   ) {
-    SkipAuthorityWithheld { cause } =>
+    v2.lens.module_impact_query.SkipAuthorityWithheld { cause } =>
       match cause {
-        SkipWithheldUnresolvedSubjects => true
-        SkipWithheldObservationRefused => false
-        SkipWithheldStandingNotExact => false
+        v2.lens.module_impact_query.SkipWithheldUnresolvedSubjects => true
+        v2.lens.module_impact_query.SkipWithheldObservationRefused => false
+        v2.lens.module_impact_query.SkipWithheldStandingNotExact => false
       }
-    SkipAuthorityGranted { affected: _ } => false
+    v2.lens.module_impact_query.SkipAuthorityGranted { affected: _ } => false
   }
 }
 
@@ -452,13 +452,13 @@ test fn witness_a_refused_observation_never_yields_a_skip_authority() -> Bool {
   match v2.lens.module_impact_query.changed_surface_skip_authority(
     outcome: v2.lens.module_impact_query.ChangedSurfaceRefused { reason: "diff observation failed" }
   ) {
-    SkipAuthorityWithheld { cause } =>
+    v2.lens.module_impact_query.SkipAuthorityWithheld { cause } =>
       match cause {
-        SkipWithheldObservationRefused => true
-        SkipWithheldUnresolvedSubjects => false
-        SkipWithheldStandingNotExact => false
+        v2.lens.module_impact_query.SkipWithheldObservationRefused => true
+        v2.lens.module_impact_query.SkipWithheldUnresolvedSubjects => false
+        v2.lens.module_impact_query.SkipWithheldStandingNotExact => false
       }
-    SkipAuthorityGranted { affected: _ } => false
+    v2.lens.module_impact_query.SkipAuthorityGranted { affected: _ } => false
   }
 }
 
@@ -466,13 +466,13 @@ test fn witness_a_complete_but_pool_relative_outcome_withholds_skip_authority() 
   match v2.lens.module_impact_query.changed_surface_skip_authority(
     outcome: surface_outcome(changed: ["fixture/c.dag"], departed: no_departed)
   ) {
-    SkipAuthorityWithheld { cause } =>
+    v2.lens.module_impact_query.SkipAuthorityWithheld { cause } =>
       match cause {
-        SkipWithheldStandingNotExact => true
-        SkipWithheldUnresolvedSubjects => false
-        SkipWithheldObservationRefused => false
+        v2.lens.module_impact_query.SkipWithheldStandingNotExact => true
+        v2.lens.module_impact_query.SkipWithheldUnresolvedSubjects => false
+        v2.lens.module_impact_query.SkipWithheldObservationRefused => false
       }
-    SkipAuthorityGranted { affected: _ } => false
+    v2.lens.module_impact_query.SkipAuthorityGranted { affected: _ } => false
   }
 }
 
@@ -483,7 +483,7 @@ fn forward_closure_of(entry: v2.lens.module_impact_query.ModuleIdentity) -> List
     seeds: [entry],
     direction: v2.lens.module_impact_query.DependenciesOf,
     edges: chain_edges,
-    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
+    nodes: fixture_nodes,
     import_facts: chain_import_facts,
     admissions: unrelated_admission_only
   ).reached
@@ -494,14 +494,14 @@ fn reverse_consumers_of(target: v2.lens.module_impact_query.ModuleIdentity) -> L
     seeds: [target],
     direction: v2.lens.module_impact_query.DependentsOf,
     edges: chain_edges,
-    nodes: test.claim.module_impact_query_witness_test.fixture_nodes,
+    nodes: fixture_nodes,
     import_facts: chain_import_facts,
     admissions: unrelated_admission_only
   ).reached
 }
 
 fn module_in(xs: List<v2.lens.module_impact_query.ModuleIdentity>, m: v2.lens.module_impact_query.ModuleIdentity) -> Bool {
-  any(xs: xs, predicate: fn(x) { x.name == m.name })
+  v2.std.algebra.any(xs: xs, predicate: fn(x) { x.name == m.name })
 }
 
 fn biconditional_holds_for(entry: v2.lens.module_impact_query.ModuleIdentity, target: v2.lens.module_impact_query.ModuleIdentity) -> Bool {
@@ -512,11 +512,11 @@ fn biconditional_holds_for(entry: v2.lens.module_impact_query.ModuleIdentity, ta
 data differential_universe: List<v2.lens.module_impact_query.ModuleIdentity> = [mod_a, mod_b, mod_c]
 
 test fn witness_reverse_agrees_with_forward_closure_in_both_directions() -> Bool {
-  v2.std.algebra.fold_list(
+  fold_list(
     xs: differential_universe,
     empty: true,
     cons: fn(acc, entry) {
-      acc && v2.std.algebra.fold_list(
+      acc && fold_list(
         xs: differential_universe,
         empty: true,
         cons: fn(inner, target) {
@@ -541,10 +541,10 @@ test fn witness_a_fully_unresolved_surface_is_partial_not_an_empty_answer() -> B
   outcome_is_partial(outcome: outcome)
     && outcome_reached_count(outcome: outcome) == 0
     && match outcome {
-      ChangedSurfacePartial { reading: _, unresolved_subjects } =>
+      v2.lens.module_impact_query.ChangedSurfacePartial { reading: _, unresolved_subjects } =>
         v2.std.algebra.count_where(xs: unresolved_subjects, predicate: fn(_) { true }) == 2
-      ChangedSurfaceComplete { reading: _ } => false
-      ChangedSurfaceRefused { reason: _ } => false
+      v2.lens.module_impact_query.ChangedSurfaceComplete { reading: _ } => false
+      v2.lens.module_impact_query.ChangedSurfaceRefused { reason: _ } => false
     }
 }
 
@@ -557,15 +557,15 @@ test fn witness_a_deleted_path_present_in_both_lists_yields_one_base_subject() -
     departed: ["fixture/b.dag"]
   )
   match outcome {
-    ChangedSurfacePartial { reading: _, unresolved_subjects } =>
+    v2.lens.module_impact_query.ChangedSurfacePartial { reading: _, unresolved_subjects } =>
       v2.std.algebra.count_where(xs: unresolved_subjects, predicate: fn(_) { true }) == 1
-        && any(xs: unresolved_subjects, predicate: fn(u) {
+        && v2.std.algebra.any(xs: unresolved_subjects, predicate: fn(u) {
           match u.cause {
-            BaseGraphUnavailable => u.path == "fixture/b.dag"
-            NoModuleDeclaredAtPath => false
+            v2.lens.module_impact_query.BaseGraphUnavailable => u.path == "fixture/b.dag"
+            v2.lens.module_impact_query.NoModuleDeclaredAtPath => false
           }
         })
-    ChangedSurfaceComplete { reading: _ } => false
-    ChangedSurfaceRefused { reason: _ } => false
+    v2.lens.module_impact_query.ChangedSurfaceComplete { reading: _ } => false
+    v2.lens.module_impact_query.ChangedSurfaceRefused { reason: _ } => false
   }
 }

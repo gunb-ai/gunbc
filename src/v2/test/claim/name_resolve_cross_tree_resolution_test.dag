@@ -1,36 +1,36 @@
 module v2.test.claim.name_resolve_cross_tree_resolution
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn ct_graft_module_root(root: v2.std.node.Node) -> v2.std.node.Node {
-  match module_header_containment_graft(root: root) {
-    Accepted { value: grafted, diagnostics: _ } => grafted
-    Rejected { diagnostics: _ } => root
+  match v2.compiler.namespace_graft.module_header_containment_graft(root: root) {
+    v2.std.diagnostic.Accepted { value: grafted, diagnostics: _ } => grafted
+    v2.std.diagnostic.Rejected { diagnostics: _ } => root
   }
 }
 
 fn ct_qn_node(seg: v2.std.node.Symbol) -> v2.std.node.Node {
-  fold_list_node(
+  v2.std.algebra.fold_list_node(
     xs: std.algebra.Cons { head: seg, tail: std.algebra.Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
       }
     }
   )
 }
 
-fn ct_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> v2.std.node.Node {
-  fold_list_node(
+fn ct_qn_spine(segments: std.algebra.FreeMonoid<v2.std.node.Symbol>) -> v2.std.node.Node {
+  v2.std.algebra.fold_list_node(
     xs: segments,
     item_node: fn(sym) {
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
       }
     }
   )
@@ -38,13 +38,13 @@ fn ct_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> v2.std.node.Node {
 
 fn ct_module_root(qn_spine: v2.std.node.Node, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header,
-        target: dag_grammar_atom(id: ^dag_surface_module_header)
+        target: v2.extdeps.languages.dag.dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
         target: qn_spine
       ),
@@ -53,11 +53,11 @@ fn ct_module_root(qn_spine: v2.std.node.Node, export_sym: v2.std.node.Symbol, ex
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: export_atom } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -67,13 +67,13 @@ fn ct_subject_with_import_use(
   imported_decl: v2.std.node.Symbol
 ) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header,
-        target: dag_grammar_atom(id: ^dag_surface_module_header)
+        target: v2.extdeps.languages.dag.dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
         target: qn_spine
       ),
@@ -82,11 +82,11 @@ fn ct_subject_with_import_use(
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: imported_decl } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -109,11 +109,11 @@ fn ct_qn_v2_std() -> v2.std.qualified_name.QualifiedName {
 }
 
 fn ct_both_trees() -> v2.std.cross_tree.import_model.SourceRootSet {
-  std.algebra.Cons { head: V2Tree, tail: std.algebra.Cons { head: DagTree, tail: std.algebra.Empty } }
+  std.algebra.Cons { head: v2.std.cross_tree.import_model.V2Tree, tail: std.algebra.Cons { head: v2.std.cross_tree.import_model.DagTree, tail: std.algebra.Empty } }
 }
 
-fn ct_dag_same_tree_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
-  admit_normalized_roots(
+fn ct_dag_same_tree_roots() -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+  v2.compiler.normalized_tree.admit_normalized_roots(
     roots: std.algebra.Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
@@ -143,15 +143,15 @@ fn ct_dag_same_tree_admission() -> v2.compiler.name_resolve.Admission {
     imports: std.algebra.Cons {
       head: v2.compiler.name_resolve.Import {
         target: ct_qn_one(seg: ^ct_dag_peer_seg),
-        visibility: ImportVisible
+        visibility: v2.compiler.name_resolve.ImportVisible
       },
       tail: std.algebra.Empty
     }
   }
 }
 
-fn ct_v2_same_tree_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
-  admit_normalized_roots(
+fn ct_v2_same_tree_roots() -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+  v2.compiler.normalized_tree.admit_normalized_roots(
     roots: std.algebra.Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
@@ -185,15 +185,15 @@ fn ct_v2_same_tree_admission() -> v2.compiler.name_resolve.Admission {
     imports: std.algebra.Cons {
       head: v2.compiler.name_resolve.Import {
         target: ct_qn_v2(seg_b: ^ct_v2_peer_seg),
-        visibility: ImportVisible
+        visibility: v2.compiler.name_resolve.ImportVisible
       },
       tail: std.algebra.Empty
     }
   }
 }
 
-fn ct_cross_tree_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
-  admit_normalized_roots(
+fn ct_cross_tree_roots() -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+  v2.compiler.normalized_tree.admit_normalized_roots(
     roots: std.algebra.Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
@@ -227,7 +227,7 @@ fn ct_cross_tree_admission() -> v2.compiler.name_resolve.Admission {
     imports: std.algebra.Cons {
       head: v2.compiler.name_resolve.Import {
         target: ct_qn_one(seg: ^ct_cross_dag_target_seg),
-        visibility: ImportVisible
+        visibility: v2.compiler.name_resolve.ImportVisible
       },
       tail: std.algebra.Empty
     }
@@ -235,19 +235,19 @@ fn ct_cross_tree_admission() -> v2.compiler.name_resolve.Admission {
 }
 
 fn ct_v2_to_dag_index() -> v2.std.cross_tree.resolution.SourceRootIndex {
-  source_root_index_insert(
-    index: source_root_index_insert(
-      index: source_root_index_empty(),
+  v2.std.cross_tree.resolution.source_root_index_insert(
+    index: v2.std.cross_tree.resolution.source_root_index_insert(
+      index: v2.std.cross_tree.resolution.source_root_index_empty(),
       module: ct_qn_v2(seg_b: ^ct_cross_v2_subject_seg),
-      root: V2Tree
+      root: v2.std.cross_tree.import_model.V2Tree
     ),
     module: ct_qn_one(seg: ^ct_cross_dag_target_seg),
-    root: DagTree
+    root: v2.std.cross_tree.import_model.DagTree
   )
 }
 
-fn ct_dag_to_v2_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
-  admit_normalized_roots(
+fn ct_dag_to_v2_roots() -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+  v2.compiler.normalized_tree.admit_normalized_roots(
     roots: std.algebra.Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
@@ -281,7 +281,7 @@ fn ct_dag_to_v2_admission() -> v2.compiler.name_resolve.Admission {
     imports: std.algebra.Cons {
       head: v2.compiler.name_resolve.Import {
         target: ct_qn_v2_std(),
-        visibility: ImportVisible
+        visibility: v2.compiler.name_resolve.ImportVisible
       },
       tail: std.algebra.Empty
     }
@@ -289,89 +289,89 @@ fn ct_dag_to_v2_admission() -> v2.compiler.name_resolve.Admission {
 }
 
 fn ct_dag_to_v2_index() -> v2.std.cross_tree.resolution.SourceRootIndex {
-  source_root_index_insert(
-    index: source_root_index_insert(
-      index: source_root_index_empty(),
+  v2.std.cross_tree.resolution.source_root_index_insert(
+    index: v2.std.cross_tree.resolution.source_root_index_insert(
+      index: v2.std.cross_tree.resolution.source_root_index_empty(),
       module: ct_qn_one(seg: ^ct_inv_dag_subject_seg),
-      root: DagTree
+      root: v2.std.cross_tree.import_model.DagTree
     ),
     module: ct_qn_v2_std(),
-    root: V2Tree
+    root: v2.std.cross_tree.import_model.V2Tree
   )
 }
 
-test fn witness_dag_same_tree_import_resolves_holds() -> v2.std.logic.Bool {
+test fn witness_dag_same_tree_import_resolves_holds() -> Bool {
   match ct_dag_same_tree_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
-    match resolve_with_admission_policy(
-      lm: dag_language_model_surface_empty_prelude(),
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
+    match v2.compiler.name_resolve.resolve_with_admission_policy(
+      lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude(),
       roots: admitted,
       admission: ct_dag_same_tree_admission(),
-      index: source_root_index_empty(),
+      index: v2.std.cross_tree.resolution.source_root_index_empty(),
       active_roots: std.algebra.Empty,
-      policy: ImportScoped
+      policy: v2.std.resolution_policy.ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
-test fn witness_v2_same_tree_import_resolves_holds() -> v2.std.logic.Bool {
+test fn witness_v2_same_tree_import_resolves_holds() -> Bool {
   match ct_v2_same_tree_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
-    match resolve_with_admission_policy(
-      lm: dag_language_model_surface_empty_prelude(),
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
+    match v2.compiler.name_resolve.resolve_with_admission_policy(
+      lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude(),
       roots: admitted,
       admission: ct_v2_same_tree_admission(),
-      index: source_root_index_empty(),
+      index: v2.std.cross_tree.resolution.source_root_index_empty(),
       active_roots: std.algebra.Empty,
-      policy: ImportScoped
+      policy: v2.std.resolution_policy.ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
-test fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> v2.std.logic.Bool {
+test fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
   match ct_cross_tree_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
-    match resolve_with_admission_policy(
-      lm: dag_language_model_surface_empty_prelude(),
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
+    match v2.compiler.name_resolve.resolve_with_admission_policy(
+      lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude(),
       roots: admitted,
       admission: ct_cross_tree_admission(),
       index: ct_v2_to_dag_index(),
       active_roots: ct_both_trees(),
-      policy: ImportScoped
+      policy: v2.std.resolution_policy.ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
-test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> v2.std.logic.Bool {
+test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
   match ct_dag_to_v2_roots() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
-    match resolve_with_admission_policy(
-      lm: dag_language_model_surface_empty_prelude(),
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
+    match v2.compiler.name_resolve.resolve_with_admission_policy(
+      lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude(),
       roots: admitted,
       admission: ct_dag_to_v2_admission(),
       index: ct_dag_to_v2_index(),
       active_roots: ct_both_trees(),
-      policy: ImportScoped
+      policy: v2.std.resolution_policy.ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => false
-      Rejected { diagnostics: r } =>
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: r } =>
         (r.head.reason == ^resolve_cross_tree_import_denied)
-          && locus_eq(
+          && v2.std.diagnostic.locus_eq(
             a: r.head.at,
-            b: port_locus(port: ^resolve_cross_tree_import_denied)
+            b: v2.std.diagnostic.port_locus(port: ^resolve_cross_tree_import_denied)
           )
     }
   }

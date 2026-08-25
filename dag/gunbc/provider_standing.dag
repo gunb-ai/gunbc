@@ -355,7 +355,7 @@ fn limit_observations_are_selection_eligible(
   observations: List<ProviderLimitObservation>,
   draw: ProviderLimitDispatchDraw,
 ) -> Bool {
-  if list_length(items: observations) == 0 {
+  if std.types.list_length(items: observations) == 0 {
     false
   } else {
     !any(
@@ -438,9 +438,9 @@ fn first_blocking_native_limit_bucket_for_automatic_draw(
 data dispatch_automatic_provider_preference_note: String = "AUTHORED preference order for automatic provider selection. Incidental inventory list order must never decide; this row is the sole authority. Filter ineligible offers by standing first, then walk this preference list and select the first eligible match, or refuse typed when none qualify."
 
 data dispatch_automatic_provider_preference: List<extdeps.llm.cli_lifecycle.ProviderKind> = [
-  ClaudeCliProvider,
-  CursorCliProvider,
-  CodexCliProvider,
+  extdeps.llm.cli_lifecycle.ClaudeCliProvider,
+  extdeps.llm.cli_lifecycle.CursorCliProvider,
+  extdeps.llm.cli_lifecycle.CodexCliProvider,
 ]
 
 fn optional_kind_when_eligible(

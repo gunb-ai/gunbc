@@ -18,9 +18,9 @@ fn wet_receipt_binding_if_path_matches(
   b: SelfHostWetReceiptBinding
 ) -> v2.std.optional.Optional<SelfHostWetReceiptBinding> {
   if b.module_path == module_path {
-    optional_present(value: b)
+    v2.std.optional.optional_present(value: b)
   } else {
-    optional_absent()
+    v2.std.optional.optional_absent()
   }
 }
 
@@ -30,8 +30,8 @@ fn find_wet_receipt_binding(module_path: String) -> v2.std.optional.Optional<Sel
     init: v2.std.optional.Absent,
     f: fn(acc, b) {
       match acc {
-        Present { value: _ } => acc
-        Absent => wet_receipt_binding_if_path_matches(module_path: module_path, b: b)
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent => wet_receipt_binding_if_path_matches(module_path: module_path, b: b)
       }
     }
   )

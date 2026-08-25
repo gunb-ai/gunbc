@@ -3,7 +3,7 @@ module extdeps.posix.rusage
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/getrusage.html"
   }
 }
@@ -28,8 +28,8 @@ type RusageMaxrssUnit
 
 fn maxrss_to_byte_size(raw: Int, unit: RusageMaxrssUnit) -> std.measure.ByteSize {
   match unit {
-    MaxrssBytes => byte_size(raw)
-    MaxrssKibibytes => byte_size(raw * 1024)
+    MaxrssBytes => std.measure.byte_size(raw)
+    MaxrssKibibytes => std.measure.byte_size(raw * 1024)
   }
 }
 
@@ -52,9 +52,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.posix.rusage",
       decl_name: "RusageWho",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.posix.rusage.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

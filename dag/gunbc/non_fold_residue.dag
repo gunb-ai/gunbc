@@ -7,27 +7,27 @@ data non_fold_residue_stale_row_ruling_note: String = "2026-07-20 stale-row-remo
 
 data nfr_reason_local_tidy: String = "one-special-variant dispatch (LocalTidyCargoFmtCheck special, else the glob fallback), landed with the shell-to-dag bash de-fork (#6751); surfaced by the whole-corpus receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms"
 
-data nfr_dissolve_local_tidy: std.dissolution.DissolutionCondition = unbound_dissolution(description: "local_tidy_spec's fold migration totals the dispatch and the row deletes")
+data nfr_dissolve_local_tidy: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "local_tidy_spec's fold migration totals the dispatch and the row deletes")
 
 data nfr_reason_structural_eq_backfill: String = "structural equality (param scrutinee, off-variant wildcard arm returning false) landed unrostered when per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (masking class receipted on #6530/#6533; sites from the 2026-07-18 backfill, #6857, and #6582); declared so the ratchet re-arms"
 
-data nfr_dissolve_derived_equality: std.dissolution.DissolutionCondition = unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
+data nfr_dissolve_derived_equality: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
 
 data nfr_reason_frontier_probe: String = "#6533 (Wave 2 frontier probe) landed this site unrostered — the nfr witnesses are corpus-read rows the affected-set selection did not run for that diff, so the red surfaced on the next whole-corpus cold sweep (masking class receipted on #6530); declared so the ratchet re-arms"
 
-data nfr_dissolve_frontier_probe: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the frontier probe's fold migration totals the match and the row deletes")
+data nfr_dissolve_frontier_probe: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "the frontier probe's fold migration totals the match and the row deletes")
 
 data nfr_reason_orch_emit: String = "one-special-variant dispatch (ExprCmdSubst to cmdsubst_assign; every other Expr through the uniform spelling path) — enumerating all Expr variants would clone the general arm; landed with the shell-to-dag P2b/P4 slices (#6573), surfaced on the 2026-07-14 nightly cold sweep (masking receipt 9)"
 
-data nfr_dissolve_orch_emit: std.dissolution.DissolutionCondition = unbound_dissolution(description: "emit becomes the backward grammar-row fold (DESIGN §4) and the special case dissolves with the orchestration-emit fold migration")
+data nfr_dissolve_orch_emit: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "emit becomes the backward grammar-row fold (DESIGN §4) and the special case dissolves with the orchestration-emit fold migration")
 
 data nfr_reason_land_red_era: String = "landed unrostered while the gate was red during the land-red-with-local-proof era (revoked 2026-07-12); declared so the ratchet re-arms"
 
-data nfr_dissolve_owning_fold: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the owning file's fold migration totals the match and the row deletes")
+data nfr_dissolve_owning_fold: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "the owning file's fold migration totals the match and the row deletes")
 
 data nfr_reason_legacy_slice1_bridge: String = "projection over the legacy HostConvergeSlice1HostResult bridge (host_converge_slice1_unit_outcome_to_legacy_result) — off-variant arms reduce to the identity, so enumerating would clone the arm per variant; landed with #7009, surfaced by the scheduled cold falsifier (alert #7032)"
 
-data nfr_dissolve_legacy_slice1: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the legacy slice-1 result carrier is deleted in favor of the per-unit outcome model and the rows delete")
+data nfr_dissolve_legacy_slice1: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "the legacy slice-1 result carrier is deleted in favor of the per-unit outcome model and the rows delete")
 
 data nfr_reason_reaper_oracle: String = "two-axis discriminating predicate (occupant by action) with off-variant wildcard arms returning false — the reaper witnesses' oracle, same shape as the structural-equality rows; landed with #7026, surfaced by the scheduled cold falsifier (alert #7032)"
 
@@ -37,23 +37,23 @@ data nfr_reason_structural_eq_mint: String = "structural equality fold (param sc
 
 data nfr_reason_mint_era: String = "match over a closed-coproduct param carrying a top-level wildcard arm — un-migrated modeling declared before per-row landing receipts were required (no dated receipt recorded; DESIGN §6: a named irreducible kernel or un-migrated modeling, there is no third)"
 
-data nfr_dissolve_wildcard_total: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the site's wildcard arm migrates to a total match — or the fn is declared kernel-permanent in cla_is_kernel_permanent_fn, which forces this row's deletion (DESIGN §6 exclusivity, per non_fold_residue_stale_row_ruling_note) — and the row deletes")
+data nfr_dissolve_wildcard_total: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "the site's wildcard arm migrates to a total match — or the fn is declared kernel-permanent in cla_is_kernel_permanent_fn, which forces this row's deletion (DESIGN §6 exclusivity, per non_fold_residue_stale_row_ruling_note) — and the row deletes")
 
 data nfr_reason_floor_discovery_transport: String = "typed transport-state projection: the observation coproduct's non-applicable variants share one located refusal arm at each phase; enumerating them would duplicate the same wrong-phase refusal rather than add semantic coverage. Declared with the transport boundary so the ratchet remains armed."
 
-data nfr_dissolve_floor_discovery_transport: std.dissolution.DissolutionCondition = unbound_dissolution(description: "generated transport realization derives wrong-phase refusal from the observation-state partition and the shared arms become named total cases; the row deletes with the hand-Rust transport scaffold")
+data nfr_dissolve_floor_discovery_transport: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "generated transport realization derives wrong-phase refusal from the observation-state partition and the shared arms become named total cases; the row deletes with the hand-Rust transport scaffold")
 
 data nfr_reason_ci_floor_gate_membership: String = "gate-identity membership fold (match on the Gate param with an off-variant wildcard arm continuing the fold) landed with the CI fail-fast cheap-gate early batch (#7088); surfaced by the re-home PR's whole-corpus receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms"
 
-data nfr_dissolve_gate_membership: std.dissolution.DissolutionCondition = unbound_dissolution(description: "derived equality on Gate from inhabitance lands (dag/std/algebra, DESIGN §3/§4): the nested per-variant match is a hand-rolled sg-equals-g test, so the membership fold collapses to found or sg == g, the nested matches delete, and the row deletes with them")
+data nfr_dissolve_gate_membership: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "derived equality on Gate from inhabitance lands (dag/std/algebra, DESIGN §3/§4): the nested per-variant match is a hand-rolled sg-equals-g test, so the membership fold collapses to found or sg == g, the nested matches delete, and the row deletes with them")
 
 data nfr_reason_trait_derive_shape_table: String = "trait-shape→derive-trait capability table (nested match on ReprGroundingDeriveElemShape × ReprGroundingDeriveTrait with off-trait wildcard arms returning false) landed with Gate-1 sub-wall #2 predicate scaffold (#7174); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
 
-data nfr_dissolve_trait_derive_shape_table: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the #7174 v1 emit arms (clone bounds + serde/debug/ord derives on named types) wire through trait_derive_completeness.dag and the hand table migrates to derived rows (or a total match) — row deletes with that wiring; coproduct-native arithmetic impl emission is out of scope (GroupCompletion grounding lane)")
+data nfr_dissolve_trait_derive_shape_table: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "the #7174 v1 emit arms (clone bounds + serde/debug/ord derives on named types) wire through trait_derive_completeness.dag and the hand table migrates to derived rows (or a total match) — row deletes with that wiring; coproduct-native arithmetic impl emission is out of scope (GroupCompletion grounding lane)")
 
 data nfr_reason_native_agreement_octet: String = "RuntimeValue primitive-discriminant projection (RuntimePrimitive arm extracts byte[1]; off-variant wildcard Absent) landed with Lane B native-agreement loudness (#7111); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
 
-data nfr_dissolve_native_agreement_octet: std.dissolution.DissolutionCondition = unbound_dissolution(description: "RuntimeValue model↔realization grounds each primitive variant and the wildcard arm migrates to a total match — or the receipt formatter derives from inhabitance and the row deletes")
+data nfr_dissolve_native_agreement_octet: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "RuntimeValue model↔realization grounds each primitive variant and the wildcard arm migrates to a total match — or the receipt formatter derives from inhabitance and the row deletes")
 
 data nfr_reason_observation_hold_cause: String = "the CI-log renderer names the two memory-pressure holds (PsiPressure, CurrentHighWater — the crawl-window narrative) with a specific cause and gives the other five SchedulerHold variants a generic 'blocked on scheduler admission'; landed with the progress-and-observation stack (session/sleek-ibex-634, #7168) and surfaced by the whole-corpus nfr receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at merge time (the masking class); declared so the ratchet re-arms"
 
@@ -67,45 +67,47 @@ data nfr_reason_cost_valuation_zero_annihilator: String = "Zero-annihilator disc
 
 data nfr_reason_provider_terminal_absorb: String = "terminal-state absorption over the provider/worker observation coproducts: the arm names each TERMINAL variant (ProviderCompleted / ProviderFailed / ProviderEventsRefused, or WorkerProcessRunning) and gives every non-terminal variant one shared arm, because those variants reduce to the identical behaviour — enumerating them would clone the arm per variant, which is the redundancy DESIGN §2 forbids rather than the totality DESIGN §4 asks for. Landed with the Codex dispatch and recursive workflow evidence slice; declared at landing (not surfaced by a later cold sweep) so the ratchet arms with the code."
 
-data nfr_dissolve_provider_terminal_absorb: std.dissolution.DissolutionCondition = unbound_dissolution(description: "ProviderExecutionState and WorkerProcessEvidence carry a DERIVED terminality projection from inhabitance (dag/std/algebra, DESIGN §3/§4 — the same move as derived equality), so these folds match on the partition rather than on the variant list, the shared arm becomes a named case instead of a wildcard, and the rows delete.")
+data nfr_dissolve_provider_terminal_absorb: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "ProviderExecutionState and WorkerProcessEvidence carry a DERIVED terminality projection from inhabitance (dag/std/algebra, DESIGN §3/§4 — the same move as derived equality), so these folds match on the partition rather than on the variant list, the shared arm becomes a named case instead of a wildcard, and the rows delete.")
 
 data nfr_reason_verification_producer_absent: String = "NOT terminal-state absorption, which is why this row carries its own reason rather than the shared provider one it first landed under: verification_segment has no terminal arm to absorb into, because Verify has no authoritative receipt producer yet. Every arm — including ProviderCompleted — answers WorkflowSegmentPending, so the match selects only the operator-facing detail string and decides no behaviour. Enumerating the remaining provider variants would clone a Pending arm per variant. The Pending-on-agent-success arm is the deliberate DESIGN §5 refusal to fabricate a verification fact from provider evidence, and it is load-bearing until the producer exists."
 
-data nfr_dissolve_verification_producer_absent: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the Verify receipt producer lands: the WorkItemExecutionContract's ModeledValidationCommand runs in the attempt worktree against one immutable candidate revision and persists a receipt, at which point this function folds over that receipt instead of over provider state, its arms carry distinct WorkflowSegmentStates, and the row deletes. It does NOT dissolve on the derived-terminality projection that clears its four siblings — a terminality partition over ProviderExecutionState leaves every arm answering Pending.")
+data nfr_dissolve_verification_producer_absent: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "the Verify receipt producer lands: the WorkItemExecutionContract's ModeledValidationCommand runs in the attempt worktree against one immutable candidate revision and persists a receipt, at which point this function folds over that receipt instead of over provider state, its arms carry distinct WorkflowSegmentStates, and the row deletes. It does NOT dissolve on the derived-terminality projection that clears its four siblings — a terminality partition over ProviderExecutionState leaves every arm answering Pending.")
 
 data nfr_reason_dispatch_selection_routing: String = "provider-selection routing residue (match on ProviderSelectionRequest, ProviderOffer, or ResolvedProviderSelection with off-shape wildcard refusal or false arms) landed with Slice A dispatch_selection.dag; declared at landing so the ratchet re-arms"
 
-data nfr_dissolve_dispatch_selection_routing: std.dissolution.DissolutionCondition = unbound_dissolution(description: "total matches over the closed selection request and offer coproducts land and the wildcard arms migrate to named variants — rows delete with that fold")
+data nfr_dissolve_dispatch_selection_routing: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "total matches over the closed selection request and offer coproducts land and the wildcard arms migrate to named variants — rows delete with that fold")
 
 data nfr_reason_provider_standing_limit_draw: String = "dispatch-scoped limit relevance folds (match on ProviderLimitDispatchDraw × ProviderLimitSubject and LimitRejected carve-outs with wildcard arms routing off-shape subjects) landed with provider_standing authority #7926; declared at landing so the ratchet re-arms"
 
-data nfr_dissolve_provider_standing_limit_draw: std.dissolution.DissolutionCondition = unbound_dissolution(description: "cited model-to-native-token joins land per provider gap notes and limit_subject_covers_dispatch_draw becomes a total match — rows delete with that fold")
+data nfr_dissolve_provider_standing_limit_draw: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "cited model-to-native-token joins land per provider gap notes and limit_subject_covers_dispatch_draw becomes a total match — rows delete with that fold")
 
 data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBindingResolution admission projection (StructuralBindingResolved arm extracts binding_outcome; off-variant wildcard Absent collapses six typed index-build refusal variants into option-absence) landed with N3-A carrier move (#7772); un-migrated modeling at assess_reference_binding_observation — the carrier distinguishes refusals but binding_outcome_from_resolution still absorbs them; declared at landing so the ratchet re-arms"
 
-data nfr_dissolve_binding_outcome_resolution_wildcard: std.dissolution.DissolutionCondition = unbound_dissolution(description: "assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row")
+data nfr_dissolve_binding_outcome_resolution_wildcard: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row")
 
 data nfr_reason_content_hash_structural_refusal: String = "ContentHash family structural filter at SourceRef list digest boundary (PR #7762): only Fnv1a64Structural participates in population digest; other family arms refuse as SourceRefContentHashStructuralNonFnv1a64 rather than silently coercing cross-family hashes. Declared at landing so the ratchet re-arms."
 
-data nfr_dissolve_content_hash_structural_refusal: std.dissolution.DissolutionCondition = unbound_dissolution(description: "SourceRef digest construction grounds each ContentHash family at inhabitance and the wildcard arm becomes a total match — row deletes with that fold (std.content_hash family grounding)")
+data nfr_dissolve_content_hash_structural_refusal: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "SourceRef digest construction grounds each ContentHash family at inhabitance and the wildcard arm becomes a total match — row deletes with that fold (std.content_hash family grounding)")
 
 data nfr_reason_arrow_body_form_eval_runtime_equals: String = "arrow_body_form_eval_runtime_int_equals matches RuntimeValue with an off-variant wildcard arm returning false for witness-side integer equality checks against eval output; landed with ArrowBodyForm semantic helpers; declared at landing so the ratchet re-arms"
 
-data nfr_dissolve_arrow_body_form_eval_runtime_equals: std.dissolution.DissolutionCondition = unbound_dissolution(description: "RuntimeValue projection for eval witnesses becomes a total match over inhabited primitive carriers and the wildcard arm deletes with that fold")
+data nfr_dissolve_arrow_body_form_eval_runtime_equals: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "RuntimeValue projection for eval witnesses becomes a total match over inhabited primitive carriers and the wildcard arm deletes with that fold")
 
+data nfr_reason_class_b_binding_projection: String = "Class B declared-import-closure observation projection (match on DeclaredImportClosureBindingObservation with off-variant wildcard refusal arms) landed with #7835 observe_declared_import_closure_symbol_binding builtin; callers judge ListedImport vs PoolCoincidence vs refusal — the match is the typed verdict fold over the host observation carrier, not business policy; declared at landing so the ratchet re-arms"
 
 data nfr_reason_release_identity_absent_split: String = "one-special-variant split over RunningReleaseUnidentifiedCause: ReleaseRevisionAbsent answers ProcessIdentityAbsent because a process predating the identity channel is a MIGRATION state, and the other nine causes answer ProcessIdentityMalformed because a live channel carrying something that is not an identity is a DEFECT in the deploying machinery. The nine share one arm because they already differ where it matters — running_release_unidentified_detail names each cause before the match runs, so the arm carries the distinction rather than erasing it, and enumerating the nine would clone one arm nine times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with Phase A release-identity readiness; declared at landing so the ratchet arms with the code."
 
-data nfr_dissolve_release_identity_absent_split: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the migration arm becomes unreachable once the identity-publishing release is deployed everywhere routed, at which point ReleaseRevisionAbsent is the executing RED control rather than a live arm; the split then folds into a derived migration-vs-defect partition over RunningReleaseUnidentifiedCause (the same derived-from-inhabitance move that clears the terminal-absorption rows) and this row deletes with it.")
+data nfr_dissolve_release_identity_absent_split: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "the migration arm becomes unreachable once the identity-publishing release is deployed everywhere routed, at which point ReleaseRevisionAbsent is the executing RED control rather than a live arm; the split then folds into a derived migration-vs-defect partition over RunningReleaseUnidentifiedCause (the same derived-from-inhabitance move that clears the terminal-absorption rows) and this row deletes with it.")
 
+data nfr_dissolve_class_b_binding_projection: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "the observation carrier's verdict partition becomes derived from inhabitance (total match over BindingObserved vs BindingNotRunnable and over UnlistedImportBindingSource) and the wildcard arms delete with their rows")
 
 data nfr_reason_pool_independence_projection: String = "ReferenceDerivedDependencyProjection pool-independence comparison harness (match on Ready vs BindingRefused vs FileRefused with off-variant wildcard arms returning RefusalOutcomeMismatch or false) landed with N3-C #7996; the outer match partitions the clause-(e) carrier for baseline-vs-perturbed equality, not business policy; declared at landing so the ratchet re-arms"
 
-data nfr_dissolve_pool_independence_projection: std.dissolution.DissolutionCondition = unbound_dissolution(description: "ReferenceDerivedDependencyProjection carrier equality becomes derived from inhabitance (total match over Ready, BindingRefused, and FileRefused with named refusal arms, or a single std projection-equality carrier) and the wildcard arms delete with their rows")
+data nfr_dissolve_pool_independence_projection: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "ReferenceDerivedDependencyProjection carrier equality becomes derived from inhabitance (total match over Ready, BindingRefused, and FileRefused with named refusal arms, or a single std projection-equality carrier) and the wildcard arms delete with their rows")
 
 data nfr_reason_floor_component_receipt_validation: String = "receipt alert validation predicate (match on ComponentOutcomeRead with nested match on FloorComponentFailureMode; the NOT-CONCLUDED arm whitelists only ModeRunIncomplete and ModeUnrecorded, returning false for every other mode via an off-variant wildcard) landed with the floor progress/terminal receipt split (#8239); declared at landing so the ratchet re-arms"
 
-data nfr_dissolve_floor_component_receipt_validation: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the writer-side pair projection becomes derived from inhabitance (total match over the NOT-CONCLUDED × failure-mode combinations the receipt can actually carry) and the wildcard arm deletes with its row")
+data nfr_dissolve_floor_component_receipt_validation: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "the writer-side pair projection becomes derived from inhabitance (total match over the NOT-CONCLUDED × failure-mode combinations the receipt can actually carry) and the wildcard arm deletes with its row")
 
 data non_fold_residue_frontier: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.FrontierRow {
@@ -861,7 +863,7 @@ data non_fold_residue_frontier: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.FrontierRow {
     subject: std.roster_frontier.PathSubject { path: "dag/std/occurrence_binding_resolve.dag::occurrence_category_binding_verdict" },
     reason: nfr_reason_trait_derive_shape_table,
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: OccurrenceCategory×OccurrenceCategory compatibility becomes a total derived table (or inhabitance-derived admissibility) and the nested wildcard arms delete with the row"),
+    dissolution: std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: OccurrenceCategory×OccurrenceCategory compatibility becomes a total derived table (or inhabitance-derived admissibility) and the nested wildcard arms delete with the row"),
   },
   std.roster_frontier.FrontierRow {
     subject: std.roster_frontier.PathSubject { path: "dag/std/occurrence_binding_candidates.dag::declaration_exposure_eq" },
@@ -871,17 +873,17 @@ data non_fold_residue_frontier: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.FrontierRow {
     subject: std.roster_frontier.PathSubject { path: "dag/std/occurrence_binding_candidates.dag::section13_population_law_id_eq" },
     reason: nfr_reason_structural_eq_mint,
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: Section13PopulationLawId equality becomes derived from inhabitance (dag/std/algebra, DESIGN §3/§4) and the hand nested-match equality fold deletes with the row"),
+    dissolution: std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: Section13PopulationLawId equality becomes derived from inhabitance (dag/std/algebra, DESIGN §3/§4) and the hand nested-match equality fold deletes with the row"),
   },
   std.roster_frontier.FrontierRow {
     subject: std.roster_frontier.PathSubject { path: "src/v2/lens/vacuity.dag::vacuity_operand_provenance_is_live_snapshot_duplicate_partner" },
     reason: "hand-rolled subset predicate over TestClaimOperandProvenance (param scrutinee, off-variant wildcard arm returning false), sibling in shape to the structural-equality rows above; landed with the vacuity-lens item-5 consumer-witness fix (review 47124/46886, PR #7620) and surfaced by the whole-corpus nfr receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms. In-code disposition (owner v2.lens.vacuity, lane: vacuity-lens item-5 consumer-witness lane) lives at vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_disposition in src/v2/lens/vacuity.dag.",
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: provenance is read from the containment-tree projection and live-snapshot-duplicate membership is construction-side (illegal states unrepresentable), or a single canonical accessor over TestClaimOperandProvenance answers both this and the independent-oracle question (operand_provenance_is_independent_oracle), replacing both hand-matched predicates at once — never two accessors surviving side by side once one canonical one exists (DESIGN §3 single authority). Same trigger as vacuity_operand_provenance_independent_oracle_predicate_dissolution_note's sibling note."),
+    dissolution: std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: provenance is read from the containment-tree projection and live-snapshot-duplicate membership is construction-side (illegal states unrepresentable), or a single canonical accessor over TestClaimOperandProvenance answers both this and the independent-oracle question (operand_provenance_is_independent_oracle), replacing both hand-matched predicates at once — never two accessors surviving side by side once one canonical one exists (DESIGN §3 single authority). Same trigger as vacuity_operand_provenance_independent_oracle_predicate_dissolution_note's sibling note."),
   },
   std.roster_frontier.FrontierRow {
     subject: std.roster_frontier.PathSubject { path: "dag/gunbc/repo_local_git_config.dag::apply_repo_local_git_config_action_at_repo" },
     reason: nfr_reason_legacy_slice1_bridge,
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberRemoved/MemberRemovalRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row"),
+    dissolution: std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberRemoved/MemberRemovalRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row"),
   },
   std.roster_frontier.FrontierRow {
     subject: std.roster_frontier.PathSubject { path: "dag/gunbc/ci_materialization.dag::warm_without_provider_receipt" },
@@ -897,6 +899,21 @@ data non_fold_residue_frontier: List<std.roster_frontier.FrontierRow> = [
     subject: std.roster_frontier.PathSubject { path: "dag/gunbc/host_standup.dag::assimilation_complete_input_eq" },
     reason: nfr_reason_structural_eq_backfill,
     dissolution: nfr_dissolve_derived_equality,
+  },
+  std.roster_frontier.FrontierRow {
+    subject: std.roster_frontier.PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_listed_import" },
+    reason: nfr_reason_class_b_binding_projection,
+    dissolution: nfr_dissolve_class_b_binding_projection,
+  },
+  std.roster_frontier.FrontierRow {
+    subject: std.roster_frontier.PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_pool_coincidence" },
+    reason: nfr_reason_class_b_binding_projection,
+    dissolution: nfr_dissolve_class_b_binding_projection,
+  },
+  std.roster_frontier.FrontierRow {
+    subject: std.roster_frontier.PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_refused_at_intended_seam" },
+    reason: nfr_reason_class_b_binding_projection,
+    dissolution: nfr_dissolve_class_b_binding_projection,
   },
   std.roster_frontier.FrontierRow {
     subject: std.roster_frontier.PathSubject { path: "dag/gunbc/codex_app_server_press.dag::rate_limit_buckets_from_by_limit_id" },

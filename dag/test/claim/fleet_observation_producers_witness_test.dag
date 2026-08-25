@@ -1,7 +1,7 @@
 module test.claim.fleet_observation_producers_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 
 // EVERY FRONTIER BELOW IS A SET OF NAMED HOSTS, NOT A TALLY. The four fleet counts these replaced
@@ -28,110 +28,110 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // THE UNIVERSE IS THE ENROLLED POPULATION and never a roster typed into this file: a list pinned to
 // nothing is the same defect as a count pinned to a population, with more typing.
 fn disk_unobserved_hosts() -> List<HostIdentity> {
-  filter(fleet_subsumption_hosts, h => match host_disk_observation(host: h) {
-    DiskUnobserved { reason: _ } => true
+  filter(gunbc.host_phase_status.fleet_subsumption_hosts, h => match gunbc.host_disk_observation.host_disk_observation(host: h) {
+    gunbc.host_disk_observation.DiskUnobserved { reason: _ } => true
     _ => false
   })
 }
 
 fn swap_unobserved_hosts() -> List<HostIdentity> {
-  filter(fleet_subsumption_hosts, h => host_swap_backing_host_verdict(host: h) == UnknownRefused)
+  filter(gunbc.host_phase_status.fleet_subsumption_hosts, h => gunbc.host_swap_backing.host_swap_backing_host_verdict(host: h) == std.upsert_decision.UnknownRefused)
 }
 
 fn endpoint_unavailable_hosts() -> List<HostIdentity> {
-  filter(fleet_subsumption_hosts, h => match build_cache_ci_endpoint_observation(host: h) {
-    EndpointObservationUnavailable { instance: _, reason: _ } => true
+  filter(gunbc.host_phase_status.fleet_subsumption_hosts, h => match gunbc.build_cache_endpoint_observation.build_cache_ci_endpoint_observation(host: h) {
+    gunbc.build_cache_instance.EndpointObservationUnavailable { instance: _, reason: _ } => true
     _ => false
   })
 }
 
 fn shell_transport_unobserved_hosts() -> List<HostIdentity> {
-  filter(fleet_subsumption_hosts, h => match fleet_shell_transport_observation(host: h) {
-    ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
+  filter(gunbc.host_phase_status.fleet_subsumption_hosts, h => match gunbc.fleet_shell_transport_observation.fleet_shell_transport_observation(host: h) {
+    gunbc.fleet_shell_transport_observation.ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
     _ => true
   })
 }
 
 test fn producer_unobserved_all_enrolled_hosts_not_stale_reach_refused() -> Bool {
   shell_transport_unobserved_hosts()
-    == filter(fleet_subsumption_hosts, h => h != operator_host_srv3)
+    == filter(gunbc.host_phase_status.fleet_subsumption_hosts, h => h != gunbc.fleet_intent_network.operator_host_srv3)
     && fleet_subsumption_hosts.length() > 0
-    && match fleet_shell_transport_observation(host: operator_host_srv3) {
-      ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => true
-      ShellTransportUnobserved { reason: _ } => false
-      ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
+    && match gunbc.fleet_shell_transport_observation.fleet_shell_transport_observation(host: gunbc.fleet_intent_network.operator_host_srv3) {
+      gunbc.fleet_shell_transport_observation.ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => true
+      gunbc.fleet_shell_transport_observation.ShellTransportUnobserved { reason: _ } => false
+      gunbc.fleet_shell_transport_observation.ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
     }
 }
 
 test fn srv3_shell_transport_observed_srv4_stays_unobserved_discriminates_grade() -> Bool {
-  match fleet_shell_transport_observation(host: operator_host_srv3) {
-    ShellTransportSucceeded { observed_on: o, principal: p, detail: d } =>
+  match gunbc.fleet_shell_transport_observation.fleet_shell_transport_observation(host: gunbc.fleet_intent_network.operator_host_srv3) {
+    gunbc.fleet_shell_transport_observation.ShellTransportSucceeded { observed_on: o, principal: p, detail: d } =>
       (o as String) == "2026-08-07"
         && string_contains(s: p as String, pattern: "ubuntu@192.168.1.221")
         && string_contains(s: d as String, pattern: "vivid-eagle-131")
-    ShellTransportUnobserved { reason: _ } => false
-    ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
+    gunbc.fleet_shell_transport_observation.ShellTransportUnobserved { reason: _ } => false
+    gunbc.fleet_shell_transport_observation.ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
   }
-    && match fleet_shell_transport_observation(host: operator_host_srv4) {
-      ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
-      ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
-      ShellTransportUnobserved { reason: r } =>
+    && match gunbc.fleet_shell_transport_observation.fleet_shell_transport_observation(host: gunbc.fleet_intent_network.operator_host_srv4) {
+      gunbc.fleet_shell_transport_observation.ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
+      gunbc.fleet_shell_transport_observation.ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
+      gunbc.fleet_shell_transport_observation.ShellTransportUnobserved { reason: r } =>
         string_contains(s: r, pattern: "dated session receipt")
           && string_contains(s: r, pattern: "2026-08-06")
           && string_contains(s: r, pattern: "Permission denied")
     }
     && string_contains(
-      s: still_ram_738_session_shell_transport_receipt_note(host: operator_host_srv4),
+      s: gunbc.fleet_shell_transport_observation.still_ram_738_session_shell_transport_receipt_note(host: gunbc.fleet_intent_network.operator_host_srv4),
       pattern: "A1",
     )
 }
 
 test fn session_producer_returns_unobserved_not_operator_declared_absent() -> Bool {
-  match session_residency_shell_gated_census(host: operator_host_srv3) {
-    SessionsUnobserved { reason: _ } => true
-    SessionsOperatorDeclaredAbsent { reason: _ } => false
-    SessionsObservedAbsent { observed_on: _ } => false
-    SessionsObservedPresent { observed_on: _, container_count: _ } => false
+  match gunbc.session_residency.session_residency_shell_gated_census(host: gunbc.fleet_intent_network.operator_host_srv3) {
+    gunbc.session_residency.SessionsUnobserved { reason: _ } => true
+    gunbc.session_residency.SessionsOperatorDeclaredAbsent { reason: _ } => false
+    gunbc.session_residency.SessionsObservedAbsent { observed_on: _ } => false
+    gunbc.session_residency.SessionsObservedPresent { observed_on: _, container_count: _ } => false
   }
 }
 
 test fn disk_producer_unobserved_while_swap_backing_unknown_refused() -> Bool {
-  disk_unobserved_hosts() == fleet_subsumption_hosts
-    && swap_unobserved_hosts() == fleet_subsumption_hosts
-    && match host_disk_observation(host: operator_host_srv3) {
-      DiskUnobserved { reason: _ } => true
-      DiskObservationRefused { detail: _ } => false
+  disk_unobserved_hosts() == gunbc.host_phase_status.fleet_subsumption_hosts
+    && swap_unobserved_hosts() == gunbc.host_phase_status.fleet_subsumption_hosts
+    && match gunbc.host_disk_observation.host_disk_observation(host: gunbc.fleet_intent_network.operator_host_srv3) {
+      gunbc.host_disk_observation.DiskUnobserved { reason: _ } => true
+      gunbc.host_disk_observation.DiskObservationRefused { detail: _ } => false
       _ => false
     }
-    && host_swap_backing_host_verdict(host: operator_host_srv3) == UnknownRefused
+    && gunbc.host_swap_backing.host_swap_backing_host_verdict(host: gunbc.fleet_intent_network.operator_host_srv3) == std.upsert_decision.UnknownRefused
 }
 
 test fn build_cache_ci_endpoint_unavailable_not_absent() -> Bool {
-  endpoint_unavailable_hosts() == fleet_subsumption_hosts
-    && match build_cache_ci_endpoint_observation(host: operator_host_srv3) {
-      EndpointObservationUnavailable { instance: _, reason: _ } => true
+  endpoint_unavailable_hosts() == gunbc.host_phase_status.fleet_subsumption_hosts
+    && match gunbc.build_cache_endpoint_observation.build_cache_ci_endpoint_observation(host: gunbc.fleet_intent_network.operator_host_srv3) {
+      gunbc.build_cache_instance.EndpointObservationUnavailable { instance: _, reason: _ } => true
       _ => false
     }
-    && match build_cache_ci_placement_observation(host: operator_host_srv3) {
-      ServerPlacementUnknown { detail: _ } => true
+    && match gunbc.build_cache_endpoint_observation.build_cache_ci_placement_observation(host: gunbc.fleet_intent_network.operator_host_srv3) {
+      gunbc.build_cache_instance.ServerPlacementUnknown { detail: _ } => true
       _ => false
     }
 }
 
 test fn shell_transport_observation_not_authoritative_reach_refused() -> Bool {
-  match fleet_shell_transport_observation(host: operator_host_srv1) {
-    ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
-    ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
-    ShellTransportUnobserved { reason: _ } => true
+  match gunbc.fleet_shell_transport_observation.fleet_shell_transport_observation(host: gunbc.fleet_intent_network.operator_host_srv1) {
+    gunbc.fleet_shell_transport_observation.ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
+    gunbc.fleet_shell_transport_observation.ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
+    gunbc.fleet_shell_transport_observation.ShellTransportUnobserved { reason: _ } => true
   }
-    && match fleet_shell_transport_observation(host: operator_host_srv2) {
-      ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
-      ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
-      ShellTransportUnobserved { reason: _ } => true
+    && match gunbc.fleet_shell_transport_observation.fleet_shell_transport_observation(host: gunbc.fleet_intent_network.operator_host_srv2) {
+      gunbc.fleet_shell_transport_observation.ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
+      gunbc.fleet_shell_transport_observation.ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
+      gunbc.fleet_shell_transport_observation.ShellTransportUnobserved { reason: _ } => true
     }
-    && match fleet_shell_transport_observation(host: operator_host_srv4) {
-      ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
-      ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
-      ShellTransportUnobserved { reason: _ } => true
+    && match gunbc.fleet_shell_transport_observation.fleet_shell_transport_observation(host: gunbc.fleet_intent_network.operator_host_srv4) {
+      gunbc.fleet_shell_transport_observation.ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
+      gunbc.fleet_shell_transport_observation.ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false
+      gunbc.fleet_shell_transport_observation.ShellTransportUnobserved { reason: _ } => true
     }
 }

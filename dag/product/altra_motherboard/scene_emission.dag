@@ -5,9 +5,9 @@ module product.altra_motherboard.scene_emission
 // product.altra_motherboard.pcb_world as a partial preview and realized through
 // product.pcb.plan_view as SVG. This module names no component and no channel.
 fn emit_altra_board_scene() -> product.pcb.plan_view.PcbSceneEmission {
-  match altra_pcb_world() {
-    PcbWorldRefused { cause: c } => product.pcb.plan_view.PcbSceneEmissionRefused { cause: product.pcb.plan_view.PcbSceneWorldRefused { cause: c } }
-    PartialPcbWorldReady { value: w } => emit_pcb_plan_view(c: project_pcb_world(w: w))
-    AdmittedPcbWorld { value: w } => emit_pcb_plan_view(c: project_pcb_world(w: w))
+  match product.altra_motherboard.pcb_world.altra_pcb_world() {
+    product.pcb.world.PcbWorldRefused { cause: c } => product.pcb.plan_view.PcbSceneEmissionRefused { cause: product.pcb.plan_view.PcbSceneWorldRefused { cause: c } }
+    product.pcb.world.PartialPcbWorldReady { value: w } => product.pcb.plan_view.emit_pcb_plan_view(c: product.pcb.plan_view.project_pcb_world(w: w))
+    product.pcb.world.AdmittedPcbWorld { value: w } => product.pcb.plan_view.emit_pcb_plan_view(c: product.pcb.plan_view.project_pcb_world(w: w))
   }
 }

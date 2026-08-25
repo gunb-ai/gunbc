@@ -1,5 +1,6 @@
 module v2.test.lens_application.empty_required_lenses_skip_gate
 
+
 data empty_lenses_target_model_stub: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
   bundle: v2.std.node.Node {
@@ -20,7 +21,7 @@ data empty_lenses_authority_node: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-fn non_empty_diagnostics_contain_reason(d: v2.std.diagnostic.NonEmptyDiagnostics, reason: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn non_empty_diagnostics_contain_reason(d: v2.std.diagnostic.NonEmptyDiagnostics, reason: v2.std.node.Symbol) -> Bool {
   if d.head.reason == reason {
     true
   } else {
@@ -30,17 +31,17 @@ fn non_empty_diagnostics_contain_reason(d: v2.std.diagnostic.NonEmptyDiagnostics
   }
 }
 
-test fn empty_required_lenses_skip_gate_claim_holds() -> v2.std.logic.Bool {
+test fn empty_required_lenses_skip_gate_claim_holds() -> Bool {
   match v2.compiler.compile.validate_then_compile(
     source: v2.test.manual.infer_ground_add.fixture_add_resolved_tree(),
     lenses: [],
     mode: v2.compiler.compile.TranslateTo { target: empty_lenses_target_model_stub }
   ) {
-    Rejected { diagnostics: r } =>
-      !v2.test.lens_application.empty_required_lenses_skip_gate.non_empty_diagnostics_contain_reason(d: r, reason: ^compile_lens_gate_rejected)
-    Accepted { value: v, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
+      !non_empty_diagnostics_contain_reason(d: r, reason: ^compile_lens_gate_rejected)
+    v2.std.diagnostic.Accepted { value: v, diagnostics: _ } =>
       match v.value {
-        TranslateResult { source: _ } => true
+        v2.compiler.compile.TranslateResult { source: _ } => true
         _ => false
       }
   }

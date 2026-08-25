@@ -57,7 +57,7 @@ data empty_inert_carrier_names: List<String> = []
 
 
 fn list_contains_str(xs: List<String>, target: String) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: xs,
     empty: false,
     cons: fn(acc, s) { acc || (s == target) }
@@ -91,21 +91,21 @@ data empty_inert_carrier_findings: List<InertCarrierFinding> = []
 
 
 fn names_not_in_roster(names: List<String>, roster: List<String>) -> List<String> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: names,
     empty: empty_inert_carrier_names,
     cons: fn(acc, name) {
       if list_contains_str(xs: roster, target: name) {
         acc
       } else {
-        v2.std.algebra.list_snoc_item(xs: acc, item: name)
+        list_snoc_item(xs: acc, item: name)
       }
     }
   )
 }
 
 fn stale_roster_names(roster: List<String>, inert_names: List<String>) -> List<String> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: roster,
     empty: empty_inert_carrier_names,
     cons: fn(acc, entry) {
@@ -127,15 +127,15 @@ fn count_stale_roster(roster: List<String>, inert_names: List<String>) -> Int {
 }
 
 fn inert_carrier_findings(names: List<String>, roster: List<String>) -> List<InertCarrierFinding> {
-  let unrostered = fold_list(
+  let unrostered = v2.std.algebra.fold_list(
     xs: names_not_in_roster(names: names, roster: roster),
     empty: empty_inert_carrier_findings,
     cons: fn(acc, name) { list_snoc_item(xs: acc, item: UnrosteredInertCarrier { carrier: name }) }
   )
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: stale_roster_names(roster: roster, inert_names: names),
     empty: unrostered,
-    cons: fn(acc, entry) { v2.std.algebra.list_snoc_item(xs: acc, item: StaleInertCarrierRow { carrier: entry }) }
+    cons: fn(acc, entry) { list_snoc_item(xs: acc, item: StaleInertCarrierRow { carrier: entry }) }
   )
 }
 
@@ -185,7 +185,7 @@ fn inert_carrier_population_add(acc: InertCarrierPopulations, f: InertCarrierFin
 }
 
 fn inert_carrier_populations(v: InertCarrierRosterVerdict) -> InertCarrierPopulations {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: inert_carrier_verdict_findings(v: v),
     empty: empty_inert_carrier_populations,
     cons: fn(acc, f) { inert_carrier_population_add(acc: acc, f: f) }
@@ -221,5 +221,5 @@ fn inert_carrier_live_declared_count() -> Int {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch }
 }

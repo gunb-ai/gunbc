@@ -10,10 +10,10 @@ data gi_artifact_moved_hex: String = "f316fd8378b70362bcac957857fd6dd68292084d75
 // then refuses by name — the honest arm, and strictly better than a green axis
 // derived from bytes nobody observed.
 fn gi_artifact(hex: String) -> v2.compiler.self_host.generation.GeneratedArtifactIdentity {
-  match sha512_hex_digest(hex: hex) {
-    Present { value: d } =>
+  match std.content_hash.sha512_hex_digest(hex: hex) {
+    v2.std.optional.Present { value: d } =>
       v2.compiler.self_host.generation.ArtifactMaterialized { digest: v2.compiler.self_host.generation.observed_artifact_digest(observed: d) }
-    Absent => v2.compiler.self_host.generation.ArtifactNotMaterialized
+    v2.std.optional.Absent => v2.compiler.self_host.generation.ArtifactNotMaterialized
   }
 }
 
@@ -39,7 +39,7 @@ fn gi_baseline() -> v2.compiler.self_host.generation.GenerationIdentity {
 fn gi_perturbed(axis: v2.compiler.self_host.generation.GenerationAxis) -> v2.compiler.self_host.generation.GenerationIdentity {
   let base = gi_baseline()
   match axis {
-    ProducerCompilerAxis =>
+    v2.compiler.self_host.generation.ProducerCompilerAxis =>
       v2.compiler.self_host.generation.GenerationIdentity {
         producer_compiler: gi_digest(label: "producer-compiler-MOVED"),
         source_closure: base.source_closure,
@@ -48,7 +48,7 @@ fn gi_perturbed(axis: v2.compiler.self_host.generation.GenerationAxis) -> v2.com
         build_configuration: base.build_configuration,
         materialized_artifact: base.materialized_artifact
       }
-    SourceClosureAxis =>
+    v2.compiler.self_host.generation.SourceClosureAxis =>
       v2.compiler.self_host.generation.GenerationIdentity {
         producer_compiler: base.producer_compiler,
         source_closure: gi_digest(label: "source-closure-MOVED"),
@@ -57,7 +57,7 @@ fn gi_perturbed(axis: v2.compiler.self_host.generation.GenerationAxis) -> v2.com
         build_configuration: base.build_configuration,
         materialized_artifact: base.materialized_artifact
       }
-    TargetModelAxis =>
+    v2.compiler.self_host.generation.TargetModelAxis =>
       v2.compiler.self_host.generation.GenerationIdentity {
         producer_compiler: base.producer_compiler,
         source_closure: base.source_closure,
@@ -66,7 +66,7 @@ fn gi_perturbed(axis: v2.compiler.self_host.generation.GenerationAxis) -> v2.com
         build_configuration: base.build_configuration,
         materialized_artifact: base.materialized_artifact
       }
-    ToolchainAxis =>
+    v2.compiler.self_host.generation.ToolchainAxis =>
       v2.compiler.self_host.generation.GenerationIdentity {
         producer_compiler: base.producer_compiler,
         source_closure: base.source_closure,
@@ -75,7 +75,7 @@ fn gi_perturbed(axis: v2.compiler.self_host.generation.GenerationAxis) -> v2.com
         build_configuration: base.build_configuration,
         materialized_artifact: base.materialized_artifact
       }
-    BuildConfigurationAxis =>
+    v2.compiler.self_host.generation.BuildConfigurationAxis =>
       v2.compiler.self_host.generation.GenerationIdentity {
         producer_compiler: base.producer_compiler,
         source_closure: base.source_closure,
@@ -84,7 +84,7 @@ fn gi_perturbed(axis: v2.compiler.self_host.generation.GenerationAxis) -> v2.com
         build_configuration: gi_digest(label: "build-configuration-MOVED"),
         materialized_artifact: base.materialized_artifact
       }
-    MaterializedArtifactAxis =>
+    v2.compiler.self_host.generation.MaterializedArtifactAxis =>
       v2.compiler.self_host.generation.GenerationIdentity {
         producer_compiler: base.producer_compiler,
         source_closure: base.source_closure,
@@ -97,7 +97,7 @@ fn gi_perturbed(axis: v2.compiler.self_host.generation.GenerationAxis) -> v2.com
 }
 
 // POSITIVE CONTROL. An identity agrees with itself on every axis.
-test fn generation_identity_agrees_with_itself() -> v2.std.logic.Bool {
+test fn generation_identity_agrees_with_itself() -> Bool {
   v2.compiler.self_host.generation.generation_identity_agrees(left: gi_baseline(), right: gi_baseline())
 }
 
@@ -107,7 +107,7 @@ test fn generation_identity_agrees_with_itself() -> v2.std.logic.Bool {
 // report exactly ONE mismatched axis, and (c) report THAT axis by name. Clause (c)
 // is what a single opaque compiler_identity scalar cannot satisfy — it would fail
 // (b) and (c) together by reporting an undifferentiated mismatch.
-test fn each_axis_perturbation_names_exactly_its_own_axis() -> v2.std.logic.Bool {
+test fn each_axis_perturbation_names_exactly_its_own_axis() -> Bool {
   v2.std.algebra.for_all(
     xs: v2.compiler.self_host.generation.generation_axes,
     predicate: fn(axis) {
@@ -117,7 +117,7 @@ test fn each_axis_perturbation_names_exactly_its_own_axis() -> v2.std.logic.Bool
         right: moved
       )
       !v2.compiler.self_host.generation.generation_identity_agrees(left: gi_baseline(), right: moved)
-        && length(xs: mismatched) == 1
+        && v2.std.algebra.length(xs: mismatched) == 1
         && v2.std.algebra.for_all(
           xs: mismatched,
           predicate: fn(named) {
@@ -137,7 +137,7 @@ test fn each_axis_perturbation_names_exactly_its_own_axis() -> v2.std.logic.Bool
 // The five axes NOT perturbed must still agree, so a perturbation cannot be reported
 // as a whole-identity smear. Without this, an implementation that marked every axis
 // mismatched on any change would pass the naming assertion above by accident.
-test fn perturbing_one_axis_leaves_the_other_five_agreeing() -> v2.std.logic.Bool {
+test fn perturbing_one_axis_leaves_the_other_five_agreeing() -> Bool {
   v2.std.algebra.for_all(
     xs: v2.compiler.self_host.generation.generation_axes,
     predicate: fn(moved_axis) {
@@ -176,7 +176,7 @@ fn gi_unbuilt() -> v2.compiler.self_host.generation.GenerationIdentity {
 // artifacts agree" — ⊥-as-ignorance reported as ⊥-as-answer. This is the arm most
 // likely to be quietly relaxed later, which is why it is asserted in both
 // directions: unbuilt-vs-unbuilt and unbuilt-vs-built.
-test fn two_unmaterialized_artifacts_do_not_agree() -> v2.std.logic.Bool {
+test fn two_unmaterialized_artifacts_do_not_agree() -> Bool {
   !v2.compiler.self_host.generation.generation_axis_agrees(
     left: gi_unbuilt(),
     right: gi_unbuilt(),
@@ -238,17 +238,17 @@ fn gi_roster_empty_identity() -> v2.compiler.self_host.generation.SourceClosureR
   }
 }
 
-test fn canonical_roster_admits_and_yields_a_digest() -> v2.std.logic.Bool {
+test fn canonical_roster_admits_and_yields_a_digest() -> Bool {
   gi_ordered(roster: gi_roster_canonical())
     && match v2.compiler.self_host.generation.source_closure_axis_digest(roster: gi_roster_canonical()) {
-      SourceClosureAxisDigest { digest: _ } => true
-      SourceClosureAxisRefused { verdict: _ } => false
+      v2.compiler.self_host.generation.SourceClosureAxisDigest { digest: _ } => true
+      v2.compiler.self_host.generation.SourceClosureAxisRefused { verdict: _ } => false
     }
     && match v2.compiler.self_host.generation.roster_order_verdict(roster: gi_roster_canonical()) {
-      RosterCanonicallyOrdered => true
-      RosterNotAscending { at_member: _ } => false
-      RosterDuplicateMember { at_member: _ } => false
-      RosterMemberIdentityEmpty => false
+      v2.compiler.self_host.generation.RosterCanonicallyOrdered => true
+      v2.compiler.self_host.generation.RosterNotAscending { at_member: _ } => false
+      v2.compiler.self_host.generation.RosterDuplicateMember { at_member: _ } => false
+      v2.compiler.self_host.generation.RosterMemberIdentityEmpty => false
     }
 }
 
@@ -256,45 +256,45 @@ test fn canonical_roster_admits_and_yields_a_digest() -> v2.std.logic.Bool {
 // digest. It must not silently re-sort (which would hide an order-unstable
 // producer) and must not fold anyway (which would make the same closure report as
 // two different generations).
-test fn reordered_roster_refuses_naming_the_offending_member() -> v2.std.logic.Bool {
+test fn reordered_roster_refuses_naming_the_offending_member() -> Bool {
   !gi_ordered(roster: gi_roster_reordered())
     && match v2.compiler.self_host.generation.source_closure_axis_digest(roster: gi_roster_reordered()) {
-      SourceClosureAxisDigest { digest: _ } => false
-      SourceClosureAxisRefused { verdict: v } =>
+      v2.compiler.self_host.generation.SourceClosureAxisDigest { digest: _ } => false
+      v2.compiler.self_host.generation.SourceClosureAxisRefused { verdict: v } =>
         match v {
-          RosterNotAscending { at_member: m } => m == "a_module"
-          RosterCanonicallyOrdered => false
-          RosterDuplicateMember { at_member: _ } => false
-          RosterMemberIdentityEmpty => false
+          v2.compiler.self_host.generation.RosterNotAscending { at_member: m } => m == "a_module"
+          v2.compiler.self_host.generation.RosterCanonicallyOrdered => false
+          v2.compiler.self_host.generation.RosterDuplicateMember { at_member: _ } => false
+          v2.compiler.self_host.generation.RosterMemberIdentityEmpty => false
         }
     }
 }
 
 // DISCRIMINATING RED. A duplicated member is its OWN verdict, not folded into the
 // ordering refusal — two different producer defects with two different remedies.
-test fn duplicate_member_refuses_as_a_distinct_verdict() -> v2.std.logic.Bool {
+test fn duplicate_member_refuses_as_a_distinct_verdict() -> Bool {
   !gi_ordered(roster: gi_roster_duplicate())
     && match v2.compiler.self_host.generation.source_closure_axis_digest(roster: gi_roster_duplicate()) {
-      SourceClosureAxisDigest { digest: _ } => false
-      SourceClosureAxisRefused { verdict: v } =>
+      v2.compiler.self_host.generation.SourceClosureAxisDigest { digest: _ } => false
+      v2.compiler.self_host.generation.SourceClosureAxisRefused { verdict: v } =>
         match v {
-          RosterDuplicateMember { at_member: m } => m == "a_module"
-          RosterCanonicallyOrdered => false
-          RosterNotAscending { at_member: _ } => false
-          RosterMemberIdentityEmpty => false
+          v2.compiler.self_host.generation.RosterDuplicateMember { at_member: m } => m == "a_module"
+          v2.compiler.self_host.generation.RosterCanonicallyOrdered => false
+          v2.compiler.self_host.generation.RosterNotAscending { at_member: _ } => false
+          v2.compiler.self_host.generation.RosterMemberIdentityEmpty => false
         }
     }
 }
 
-test fn empty_member_identity_refuses() -> v2.std.logic.Bool {
+test fn empty_member_identity_refuses() -> Bool {
   match v2.compiler.self_host.generation.source_closure_axis_digest(roster: gi_roster_empty_identity()) {
-    SourceClosureAxisDigest { digest: _ } => false
-    SourceClosureAxisRefused { verdict: v } =>
+    v2.compiler.self_host.generation.SourceClosureAxisDigest { digest: _ } => false
+    v2.compiler.self_host.generation.SourceClosureAxisRefused { verdict: v } =>
       match v {
-        RosterMemberIdentityEmpty => true
-        RosterCanonicallyOrdered => false
-        RosterNotAscending { at_member: _ } => false
-        RosterDuplicateMember { at_member: _ } => false
+        v2.compiler.self_host.generation.RosterMemberIdentityEmpty => true
+        v2.compiler.self_host.generation.RosterCanonicallyOrdered => false
+        v2.compiler.self_host.generation.RosterNotAscending { at_member: _ } => false
+        v2.compiler.self_host.generation.RosterDuplicateMember { at_member: _ } => false
       }
   }
 }
@@ -302,8 +302,8 @@ test fn empty_member_identity_refuses() -> v2.std.logic.Bool {
 // The six axis symbols must be pairwise distinct. If two axes shared a symbol, the
 // naming assertion above would still pass while a stale refusal pointed a reader at
 // the wrong fact — the defect this whole carrier exists to prevent.
-test fn axis_symbols_are_pairwise_distinct() -> v2.std.logic.Bool {
-  length(xs: v2.compiler.self_host.generation.generation_axes) == 6
+test fn axis_symbols_are_pairwise_distinct() -> Bool {
+  v2.std.algebra.length(xs: v2.compiler.self_host.generation.generation_axes) == 6
     && v2.std.algebra.for_all(
       xs: v2.compiler.self_host.generation.generation_axes,
       predicate: fn(left) {
@@ -324,13 +324,13 @@ test fn axis_symbols_are_pairwise_distinct() -> v2.std.logic.Bool {
 }
 
 // Test-side projection over the roster verdict coproduct; the authority exposes the
-// verdict itself, not a v2.std.logic.Bool (review 51217).
-fn gi_ordered(roster: v2.compiler.self_host.generation.SourceClosureRoster) -> v2.std.logic.Bool {
+// verdict itself, not a Bool (review 51217).
+fn gi_ordered(roster: v2.compiler.self_host.generation.SourceClosureRoster) -> Bool {
   match v2.compiler.self_host.generation.roster_order_verdict(roster: roster) {
-    RosterCanonicallyOrdered => true
-    RosterNotAscending { at_member: _ } => false
-    RosterDuplicateMember { at_member: _ } => false
-    RosterMemberIdentityEmpty => false
+    v2.compiler.self_host.generation.RosterCanonicallyOrdered => true
+    v2.compiler.self_host.generation.RosterNotAscending { at_member: _ } => false
+    v2.compiler.self_host.generation.RosterDuplicateMember { at_member: _ } => false
+    v2.compiler.self_host.generation.RosterMemberIdentityEmpty => false
   }
 }
 
@@ -339,17 +339,17 @@ fn gi_ordered(roster: v2.compiler.self_host.generation.SourceClosureRoster) -> v
 // validated digest, the axis was typed as the structural Hash that
 // symbol_identity_digest mints from ANY symbol, so an artifact identity could be
 // authored with no build, no file and no observation behind it.
-test fn unobserved_text_cannot_become_a_materialized_artifact() -> v2.std.logic.Bool {
+test fn unobserved_text_cannot_become_a_materialized_artifact() -> Bool {
   match gi_artifact(hex: "not-a-digest") {
-    ArtifactMaterialized { digest: _ } => false
-    ArtifactNotMaterialized => true
+    v2.compiler.self_host.generation.ArtifactMaterialized { digest: _ } => false
+    v2.compiler.self_host.generation.ArtifactNotMaterialized => true
   }
     && match gi_artifact(hex: "") {
-      ArtifactMaterialized { digest: _ } => false
-      ArtifactNotMaterialized => true
+      v2.compiler.self_host.generation.ArtifactMaterialized { digest: _ } => false
+      v2.compiler.self_host.generation.ArtifactNotMaterialized => true
     }
     && match gi_artifact(hex: gi_artifact_baseline_hex) {
-      ArtifactMaterialized { digest: _ } => true
-      ArtifactNotMaterialized => false
+      v2.compiler.self_host.generation.ArtifactMaterialized { digest: _ } => true
+      v2.compiler.self_host.generation.ArtifactNotMaterialized => false
     }
 }

@@ -1,36 +1,37 @@
 module v2.test.manual.model_core_anchor
 
-test fn model_core_bool_width_fact_holds() -> v2.std.logic.Bool {
+
+test fn model_core_bool_width_fact_holds() -> Bool {
   match v2.std.model_core.model_core_bool_fact_lookup(
     facts: v2.std.logic.bool_primitive_facts,
     axis: discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {})
   ) {
-    Holds { value } => value == v2.std.logic.bool_width_fact_node(width: v2.std.logic.bool_primitive_facts.width)
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Holds { value } => value == v2.std.logic.bool_width_fact_node(width: bool_primitive_facts.width)
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn model_core_bool_encoding_fact_holds() -> v2.std.logic.Bool {
+test fn model_core_bool_encoding_fact_holds() -> Bool {
   match v2.std.model_core.model_core_bool_fact_lookup(
     facts: v2.std.logic.bool_primitive_facts,
     axis: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {})
   ) {
-    Holds { value } => value == v2.std.logic.bool_encoding_fact_node(encoding: v2.std.logic.bool_primitive_facts.encoding)
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Holds { value } => value == v2.std.logic.bool_encoding_fact_node(encoding: bool_primitive_facts.encoding)
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn model_core_bool_unbound_axes_fail_closed() -> v2.std.logic.Bool {
+test fn model_core_bool_unbound_axes_fail_closed() -> Bool {
   match v2.std.model_core.model_core_bool_fact_lookup(
     facts: v2.std.logic.bool_primitive_facts,
     axis: discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {})
   ) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => true
   }
 }
 
-test fn model_core_primitives_contract() -> v2.std.logic.Bool {
+test fn model_core_primitives_contract() -> Bool {
   (v2.std.algebra.length(xs: v2.std.model_core.bool_model_core().primitives) == 1) &&
   model_core_first_primitive_substrate(core: v2.std.model_core.bool_model_core()) ==
     v2.std.logic.bool_primitive_facts_node(facts: v2.std.logic.bool_primitive_facts) &&
@@ -41,11 +42,11 @@ test fn model_core_primitives_contract() -> v2.std.logic.Bool {
   model_core_bool_unbound_axes_fail_closed()
 }
 
-test fn model_core_inhabitance_contract() -> v2.std.logic.Bool {
+test fn model_core_inhabitance_contract() -> Bool {
   v2.std.model_core.bool_model_core().inhabitance == [v2.std.model_core.model_core_bool_inhabitance()]
 }
 
-test fn model_core_laws_contract() -> v2.std.logic.Bool {
+test fn model_core_laws_contract() -> Bool {
   v2.std.model_core.bool_model_core().laws == [
     v2.std.model_core.model_core_bool_law_obligation(key: v2.std.model_core.ModelCoreBoolBoundedLatticeIdentities),
     v2.std.model_core.model_core_bool_law_obligation(key: v2.std.model_core.ModelCoreBoolDistributivity),
@@ -54,7 +55,7 @@ test fn model_core_laws_contract() -> v2.std.logic.Bool {
   ]
 }
 
-test fn model_core_payload_contract_holds() -> v2.std.logic.Bool {
+test fn model_core_payload_contract_holds() -> Bool {
   let core = v2.std.model_core.bool_model_core()
   (v2.std.model_core.bool_model_core().inhabitance == core.inhabitance) &&
   (v2.std.model_core.bool_model_core().laws == core.laws) &&

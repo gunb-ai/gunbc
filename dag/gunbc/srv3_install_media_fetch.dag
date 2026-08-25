@@ -9,11 +9,11 @@ data srv3_install_media_fetch_shell_runner_scaffold: std.disposition.Disposition
   reason: "srv3_install_media_fetch() routes through host_effect_apply to install_media_fetch_reconcile() in-process (TypedReconcileOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
-data srv3_ubuntu_install_media_install_path: std.types.NonEmptyStr = ubuntu_install_media_install_path(
-  artifact: srv3_ubuntu_install_media_artifact,
+data srv3_ubuntu_install_media_install_path: std.types.NonEmptyStr = extdeps.provisioning.ubuntu_install_media.ubuntu_install_media_install_path(
+  artifact: gunbc.srv3_ubuntu_install_media_artifact.srv3_ubuntu_install_media_artifact,
 )
 
-data install_media_fetch_effect_shape: EffectShape<std.effects.KeySource> = std.effects.CreateEffect {
+data install_media_fetch_effect_shape: std.effects.EffectShape<KeySource> = std.effects.CreateEffect {
   cause: std.effects.CreateIfAbsent { key_source: std.effects.InputField { field: "content_sha256" } },
 }
 
@@ -53,12 +53,12 @@ fn classify_install_media_fetch(
   observation: InstallMediaPresenceObservation,
   artifact: extdeps.provisioning.ubuntu_install_media.UbuntuInstallMediaArtifactRow,
 ) -> InstallMediaFetchVerdict {
-  let install_path = ubuntu_install_media_install_path(artifact: artifact)
+  let install_path = extdeps.provisioning.ubuntu_install_media.ubuntu_install_media_install_path(artifact: artifact)
   match observation {
     Absent =>
       FetchRequired {
         install_path: install_path,
-        mirror_order: ubuntu_install_media_mirror_rows,
+        mirror_order: extdeps.provisioning.ubuntu_install_media.ubuntu_install_media_mirror_rows,
       }
     Present { observed_sha256: observed } =>
       if observed == artifact.content_sha256 {
@@ -86,18 +86,18 @@ fn install_media_fetch_verdict_is_idempotent_skip(verdict: InstallMediaFetchVerd
 
 fn install_media_fetch_first_mirror_url(artifact: extdeps.provisioning.ubuntu_install_media.UbuntuInstallMediaArtifactRow) -> std.types.NonEmptyStr {
   let first = ubuntu_install_media_mirror_rows.first()
-  ubuntu_install_media_mirror_url(artifact: artifact, mirror: first)
+  extdeps.provisioning.ubuntu_install_media.ubuntu_install_media_mirror_url(artifact: artifact, mirror: first)
 }
 
 fn srv3_install_media_fetch_actuator_host() -> gunbc.fleet_intent.ComputeHost {
-  srv3_os_install_actuator_host
+  gunbc.os_install_actuator_selection.srv3_os_install_actuator_host
 }
 
 func srv3_install_media_fetch() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
-  srv3_reconciliation_to_process_exit(
-    r: srv3_install_media_fetch_apply(),
+  gunbc.srv3_host_effect_apply.srv3_reconciliation_to_process_exit(
+    r: gunbc.srv3_host_effect_apply.srv3_install_media_fetch_apply(),
     failure_prefix: "install-media-fetch: ",
   )
 }
@@ -110,5 +110,5 @@ fn srv3_install_media_fetch_install_path_is_versioned() -> Bool {
 }
 
 fn srv3_install_media_fetch_actuator_host_is_srv1() -> Bool {
-  srv3_install_media_fetch_actuator_host() == srv1_host
+  srv3_install_media_fetch_actuator_host() == gunbc.fleet_intent.srv1_host
 }

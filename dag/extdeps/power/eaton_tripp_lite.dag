@@ -3,7 +3,7 @@ module extdeps.power.eaton_tripp_lite
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "tripplite.eaton.com/product/RS-1215"
   }
 }
@@ -19,13 +19,13 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 data eaton_tripp_lite_rs_1215_family_catalog: extdeps.power.types.PduCatalogRow = extdeps.power.types.PduCatalogRow {
   model_family: "RS-1215",
   manufacturer: extdeps.vendor.eaton.eaton,
-  rack_units: rack_unit(1),
-  nominal_supply_voltage: volt(120),
-  rated_current: ampere(15),
+  rack_units: std.measure.rack_unit(1),
+  nominal_supply_voltage: std.measure.volt(120),
+  rated_current: std.measure.ampere(15),
   outlet_count: 12,
   front_outlet_count: 6,
   rear_outlet_count: 6,
-  cord_length: millimeter(4572),
+  cord_length: std.measure.millimeter(4572),
 }
 
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
@@ -33,9 +33,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.power.eaton_tripp_lite",
       decl_name: "eaton_tripp_lite_rs_1215_family_catalog",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.power.eaton_tripp_lite.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

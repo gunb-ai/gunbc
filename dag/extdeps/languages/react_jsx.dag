@@ -3,7 +3,7 @@ module extdeps.languages.react_jsx
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "react.dev/learn/writing-markup-with-jsx"
   }
 }
@@ -13,11 +13,11 @@ data react_jsx_keep_mark_note: String = "KEEP with mark (#7272 A3; gpu/wgsl trea
 data react_jsx_site_subsumption_jsx_page_emission: String = "dissolve-on: gunb.ai site-subsumption emits ≥1 production page through serialize_jsx_component (a non-test import under gunbc.site.*). That call is the dissolution event for react_jsx_awaiting_production_consumer."
 
 data react_jsx_awaiting_production_consumer: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.react_jsx",
     decl_name: "react_jsx_site_subsumption_jsx_page_emission",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -28,16 +28,16 @@ fn jsx_component_prefix(fn_name: String) -> String {
 fn jsx_markup_medium() -> std.markup.MarkupMedium {
   std.markup.MarkupMedium {
     tag_overrides: [],
-    bracket: canonical_html_spellings,
-    text_escape: EscapeHtml,
-    void_tags: html5_void_tags,
-    void_rendering: SelfClose,
+    bracket: extdeps.languages.html.canonical_html_spellings,
+    text_escape: std.markup.EscapeHtml,
+    void_tags: extdeps.languages.html.html5_void_tags,
+    void_rendering: std.markup.SelfClose,
     raw_text_tags: [],
   }
 }
 
 fn serialize_jsx_fragment(node: std.markup.Fragment) -> String {
-  serialize_fragment_with(frag: node, medium: jsx_markup_medium())
+  std.markup.serialize_fragment_with(frag: node, medium: jsx_markup_medium())
 }
 
 fn serialize_jsx_component(fn_name: String, node: std.markup.Fragment) -> String {
@@ -49,7 +49,7 @@ type JsxEmitResult
   | JsxRejected { reason: String }
 
 fn try_serialize_jsx_component(fn_name: String, node: std.markup.Fragment) -> JsxEmitResult {
-  match find_first_rejected_url(node: node) {
+  match extdeps.uri_validation.find_first_rejected_url(node: node) {
     Present { value: r } => JsxRejected { reason: r.url }
     Absent => JsxOk { tsx: serialize_jsx_component(fn_name: fn_name, node: node) }
   }

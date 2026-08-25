@@ -2,10 +2,10 @@ module v2.std.staging
 
 
 fn then_outcome<A, B, C>(
-  f: fn(A) -> Outcome<B>,
-  g: fn(B) -> Outcome<C>
-) -> fn(A) -> Outcome<C> {
-  fn(x) { bind_outcome(o: f(x), f: g) }
+  f: fn(A) -> v2.std.diagnostic.Outcome<B>,
+  g: fn(B) -> v2.std.diagnostic.Outcome<C>
+) -> fn(A) -> v2.std.diagnostic.Outcome<C> {
+  fn(x) { v2.std.diagnostic.bind_outcome(o: f(x), f: g) }
 }
 
 type CacheProbe<B>
@@ -14,19 +14,19 @@ type CacheProbe<B>
 
 fn resolve_probe<A, B>(
   probe: CacheProbe<B>,
-  stage: fn(A) -> Outcome<B>,
+  stage: fn(A) -> v2.std.diagnostic.Outcome<B>,
   x: A
-) -> Outcome<B> {
+) -> v2.std.diagnostic.Outcome<B> {
   match probe {
-    Hit { value: hit } => outcome_accepted(value: hit)
+    Hit { value: hit } => v2.std.diagnostic.outcome_accepted(value: hit)
     Miss => stage(x)
   }
 }
 
 fn cached_stage<A, B>(
   lookup: fn(A) -> CacheProbe<B>,
-  stage: fn(A) -> Outcome<B>
-) -> fn(A) -> Outcome<B> {
+  stage: fn(A) -> v2.std.diagnostic.Outcome<B>
+) -> fn(A) -> v2.std.diagnostic.Outcome<B> {
   fn(x) {
     resolve_probe(probe: lookup(x), stage: stage, x: x)
   }

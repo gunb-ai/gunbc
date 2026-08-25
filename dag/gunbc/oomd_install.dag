@@ -7,10 +7,10 @@ data gunbc_oomd_sessions_slice: std.types.NonEmptyStr = "sessions.slice"
 
 data gunbc_oomd_sessions_policy: extdeps.systemd.oomd.UnitManagedOomPolicy = extdeps.systemd.oomd.UnitManagedOomPolicy {
   scope_unit: gunbc_oomd_sessions_slice,
-  managed_oom_swap: ManagedOomKill,
-  managed_oom_memory_pressure: ManagedOomKill,
-  managed_oom_memory_pressure_limit: percent(60),
-  managed_oom_memory_pressure_duration: second(20),
+  managed_oom_swap: extdeps.systemd.oomd.ManagedOomKill,
+  managed_oom_memory_pressure: extdeps.systemd.oomd.ManagedOomKill,
+  managed_oom_memory_pressure_limit: std.measure.percent(60),
+  managed_oom_memory_pressure_duration: std.measure.second(20),
 }
 
 type OomdApplyEffect {
@@ -19,7 +19,7 @@ type OomdApplyEffect {
 }
 
 data gunbc_oomd_apply_effect: OomdApplyEffect = OomdApplyEffect {
-  install_package: package_systemd_oomd_defaults,
+  install_package: extdeps.apt.package_systemd_oomd_defaults,
   configured_policy: gunbc_oomd_sessions_policy,
 }
 
@@ -32,14 +32,14 @@ type OomdInstallPlan {
 }
 
 data gunbc_oomd_install_plan: OomdInstallPlan = OomdInstallPlan {
-  install_package: package_systemd_oomd_defaults,
-  global_config: oomd_default_global_config,
+  install_package: extdeps.apt.package_systemd_oomd_defaults,
+  global_config: extdeps.systemd.oomd.oomd_default_global_config,
   dropin: extdeps.systemd.oomd.OomdDropIn {
     target_unit: gunbc_oomd_sessions_slice,
     policy: gunbc_oomd_sessions_policy,
   },
-  service_unit: systemd_oomd_unit,
-  verify_property: oomd_managed_oom_memory_pressure_property,
+  service_unit: extdeps.systemd.oomd.systemd_oomd_unit,
+  verify_property: extdeps.systemd.oomd.oomd_managed_oom_memory_pressure_property,
 }
 
 type SliceMembershipSignal {
@@ -75,48 +75,48 @@ fn grounding_check(ok: Bool, reason: String) -> OomdGroundingCheck {
 
 fn unit_is_active(s: extdeps.systemd.SystemdUnitActiveState) -> Bool {
   match s {
-    Active => true
-    Inactive => false
-    Activating => false
-    Deactivating => false
-    Reloading => false
-    Failed => false
+    extdeps.systemd.Active => true
+    extdeps.systemd.Inactive => false
+    extdeps.systemd.Activating => false
+    extdeps.systemd.Deactivating => false
+    extdeps.systemd.Reloading => false
+    extdeps.systemd.Failed => false
   }
 }
 
 fn unit_is_enabled(s: extdeps.systemd.systemctl.UnitFileState) -> Bool {
   match s {
-    UnitEnabled => true
-    UnitEnabledRuntime => false
-    UnitLinked => false
-    UnitMasked => false
-    UnitStatic => false
-    UnitDisabled => false
-    UnitIndirect => false
-    UnitGenerated => false
-    UnitTransient => false
-    UnitBad => false
+    extdeps.systemd.systemctl.UnitEnabled => true
+    extdeps.systemd.systemctl.UnitEnabledRuntime => false
+    extdeps.systemd.systemctl.UnitLinked => false
+    extdeps.systemd.systemctl.UnitMasked => false
+    extdeps.systemd.systemctl.UnitStatic => false
+    extdeps.systemd.systemctl.UnitDisabled => false
+    extdeps.systemd.systemctl.UnitIndirect => false
+    extdeps.systemd.systemctl.UnitGenerated => false
+    extdeps.systemd.systemctl.UnitTransient => false
+    extdeps.systemd.systemctl.UnitBad => false
   }
 }
 
 fn pressure_is_kill(a: extdeps.systemd.oomd.ManagedOomAction) -> Bool {
   match a {
-    ManagedOomKill => true
-    ManagedOomAuto => false
+    extdeps.systemd.oomd.ManagedOomKill => true
+    extdeps.systemd.oomd.ManagedOomAuto => false
   }
 }
 
 fn cap_equals(eff: gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness, target: std.measure.ByteSize) -> Bool {
   match eff {
-    CapUnbounded => false
-    CapEffective { bytes } => byte_size_count(b: bytes) == byte_size_count(b: target)
+    gunbc.ci_floor_measurement.CapUnbounded => false
+    gunbc.ci_floor_measurement.CapEffective { bytes } => std.measure.byte_size_count(b: bytes) == std.measure.byte_size_count(b: target)
   }
 }
 
 fn parent_slice_cap_ok(eff: gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness, agg: gunbc.ci_floor_measurement.SessionAggregateReservation) -> Bool {
   match agg {
-    SessionAggregateUnmeasured => false
-    SessionAggregateMeasured { bytes } => cap_equals(eff: eff, target: bytes)
+    gunbc.ci_floor_measurement.SessionAggregateUnmeasured => false
+    gunbc.ci_floor_measurement.SessionAggregateMeasured { bytes } => cap_equals(eff: eff, target: bytes)
   }
 }
 
@@ -140,7 +140,7 @@ fn grounding_checks(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> Li
     grounding_check(ok: pressure_is_kill(a: read.effective_managed_oom_memory_pressure), reason: "effective ManagedOOMMemoryPressure is auto, not kill: eviction is not guaranteed on the sessions slice"),
     grounding_check(ok: cap_equals(eff: read.effective_per_session_memory_max, target: req.per_session_cap), reason: "per-session memory.max does not equal the C eviction ceiling (or MemoryMax is infinity — an inert cap)"),
     grounding_check(ok: parent_slice_cap_ok(eff: read.effective_parent_slice_memory_max, agg: req.parent_slice_cap), reason: "parent sessions.slice MemoryMax does not equal the measured aggregate reservation (or the aggregate is unmeasured / MemoryMax is infinity)"),
-    grounding_check(ok: percent_count(p: read.effective_managed_oom_memory_pressure_limit) == percent_count(p: req.pressure_limit), reason: "ManagedOOMMemoryPressureLimit (PSI percent) does not equal the intended threshold"),
+    grounding_check(ok: std.measure.percent_count(p: read.effective_managed_oom_memory_pressure_limit) == std.measure.percent_count(p: req.pressure_limit), reason: "ManagedOOMMemoryPressureLimit (PSI percent) does not equal the intended threshold"),
     grounding_check(ok: read.oomctl_manages_slice, reason: "oomctl does not list the sessions slice in the systemd-oomd managed set"),
     membership_grounding_check(m: read.membership),
   ]
@@ -160,21 +160,21 @@ fn first_grounding_failure(checks: List<OomdGroundingCheck>) -> String? {
 
 fn ground_oomd_from_read(read: OomdEffectiveRead, req: OomdGroundingThresholds) -> std.realization_reconcile.Grounding<gunbc.ci_floor_measurement.OomdEnforcementEvidence> {
   match first_grounding_failure(checks: grounding_checks(read: read, req: req)) {
-    Absent => std.realization_reconcile.Grounds { evidence: OomdEnforced }
+    Absent => std.realization_reconcile.Grounds { evidence: gunbc.ci_floor_measurement.OomdEnforced }
     Present { value: reason } => std.realization_reconcile.DoesNotGround { reason: reason }
   }
 }
 
 fn reconcile_oomd(read: std.realization_reconcile.ShowEffectiveRead<OomdEffectiveRead>, req: OomdGroundingThresholds) -> std.realization_reconcile.Reconciliation<OomdApplyEffect, gunbc.ci_floor_measurement.OomdEnforcementEvidence> {
   match read {
-    ReadAbsent { reason: why } =>
-      reconcile_grounded(
+    std.realization_reconcile.ReadAbsent { reason: why } =>
+      std.realization_reconcile.reconcile_grounded(
         apply_effect: gunbc_oomd_apply_effect,
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    ReadObserved { value: observed } =>
-      reconcile_grounded(
+    std.realization_reconcile.ReadObserved { value: observed } =>
+      std.realization_reconcile.reconcile_grounded(
         apply_effect: gunbc_oomd_apply_effect,
         show_read: read,
         grounding: ground_oomd_from_read(read: observed, req: req)
@@ -184,8 +184,8 @@ fn reconcile_oomd(read: std.realization_reconcile.ShowEffectiveRead<OomdEffectiv
 
 fn oomd_evidence_from_reconciliation(r: std.realization_reconcile.Reconciliation<OomdApplyEffect, gunbc.ci_floor_measurement.OomdEnforcementEvidence>) -> gunbc.ci_floor_measurement.OomdEnforcementEvidence {
   match r {
-    Converged { evidence: e, applied: _ } => e
-    NotConverged { reason: _, applied: _ } => OomdUnverified
+    std.realization_reconcile.Converged { evidence: e, applied: _ } => e
+    std.realization_reconcile.NotConverged { reason: _, applied: _ } => gunbc.ci_floor_measurement.OomdUnverified
   }
 }
 
@@ -195,8 +195,8 @@ data gunbc_oomd_show_effective_read: std.realization_reconcile.ShowEffectiveRead
 
 fn gunbc_oomd_install_evidence() -> gunbc.ci_floor_measurement.OomdEnforcementEvidence {
   match gunbc_oomd_show_effective_read {
-    ReadAbsent { reason: _ } => OomdUnverified
-    ReadObserved { value: _ } => OomdUnverified
+    std.realization_reconcile.ReadAbsent { reason: _ } => gunbc.ci_floor_measurement.OomdUnverified
+    std.realization_reconcile.ReadObserved { value: _ } => gunbc.ci_floor_measurement.OomdUnverified
   }
 }
 

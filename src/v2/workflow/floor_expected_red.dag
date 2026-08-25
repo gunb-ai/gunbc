@@ -1,5 +1,6 @@
 module v2.workflow.floor_expected_red
 
+
 // 101 ROWS LEFT THIS ROSTER ON 2026-08-20 AND WERE NEVER ELIGIBLE FOR IT, which is a fact about
 // this mechanism rather than about those rows, so it is recorded at the top where the next
 // author enrolling something will read it.
@@ -347,7 +348,7 @@ module v2.workflow.floor_expected_red
 // parse-depth hazard, not because the chunk boundaries mean anything. They do not: a chunk is a
 // slice of an alphabetical list and nothing reads it.
 fn floor_expected_red_chunk_00() -> List<String> {
-  Cons { head: "test.claim.ci_exclusion_proof.ci_exclusion_proof_sentinel", tail:     v2.std.algebra.Empty {} }
+  std.algebra.Cons { head: "test.claim.ci_exclusion_proof.ci_exclusion_proof_sentinel", tail:     v2.std.algebra.Empty {} }
 }
 
 fn floor_expected_red_chunk_01() -> List<String> {
@@ -355,15 +356,15 @@ fn floor_expected_red_chunk_01() -> List<String> {
 }
 
 fn floor_expected_red_chunk_02() -> List<String> {
-  Cons { head: "test.claim.exact_witness_admission_witness.both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal", tail: Cons { head: "test.claim.exact_witness_admission_witness.no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row", tail: v2.std.algebra.Empty {} } }
+  std.algebra.Cons { head: "test.claim.exact_witness_admission_witness.both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal", tail: std.algebra.Cons { head: "test.claim.exact_witness_admission_witness.no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row", tail: v2.std.algebra.Empty {} } }
 }
 
 fn floor_expected_red_chunk_03() -> List<String> {
-  Cons { head: "test.claim.host_effect_apply_witness.witness_ssh_shell_unreachable_fails_closed", tail: Cons { head: "test.claim.host_phase_status.witness_reconcile_covers_upsert_teardown_and_noop", tail: Cons { head: "test.claim.host_phase_status.witness_remaining_work_counts_every_unfinished_cell", tail: Cons { head: "test.claim.interpreter_replacement_cut_witness_test.interpreter_cut_plan_refuses_with_open_decisions", tail: Cons { head: "test.claim.interpreter_replacement_cut_witness_test.retiring_with_x_needs_no_coverage_authority", tail: v2.std.algebra.Empty {} } } } } }
+  std.algebra.Cons { head: "test.claim.host_effect_apply_witness.witness_ssh_shell_unreachable_fails_closed", tail: std.algebra.Cons { head: "test.claim.host_phase_status.witness_reconcile_covers_upsert_teardown_and_noop", tail: std.algebra.Cons { head: "test.claim.host_phase_status.witness_remaining_work_counts_every_unfinished_cell", tail: std.algebra.Cons { head: "test.claim.interpreter_replacement_cut_witness_test.interpreter_cut_plan_refuses_with_open_decisions", tail: std.algebra.Cons { head: "test.claim.interpreter_replacement_cut_witness_test.retiring_with_x_needs_no_coverage_authority", tail: v2.std.algebra.Empty {} } } } } }
 }
 
 fn floor_expected_red_chunk_04() -> List<String> {
-     Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.non_fold_residue_witness.non_fold_residue_clean_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance_test.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           v2.std.algebra.Empty {} } } } }
+     std.algebra.Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: std.algebra.Cons { head: "test.claim.non_fold_residue_witness.non_fold_residue_clean_holds", tail: std.algebra.Cons { head: "test.claim.observation_raw_print_retirement_acceptance_test.observation_emit_frontier_is_zero", tail: std.algebra.Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           v2.std.algebra.Empty {} } } } }
 }
 
 fn floor_expected_red_chunk_05() -> List<String> {
@@ -371,7 +372,7 @@ fn floor_expected_red_chunk_05() -> List<String> {
 }
 
 fn floor_expected_red_chunk_06() -> List<String> {
-              Cons { head: "test.claim.source_integration_proof_kernel_acceptance.witness_p1_proof_kernel_acceptance_contract_holds", tail:     Cons { head: "test.claim.srv3_subsumption.comment_only_drift_is_one_change_not_remove_add", tail: Cons { head: "test.claim.srv3_subsumption.reconcile_would_teardown_only_if_ownership_claimed_it", tail: Cons { head: "test.claim.srv3_subsumption.srv3_and_srv4_disagree_on_convergence", tail: Cons { head: "test.claim.srv3_subsumption.srv3_reconcile_adds_exactly_the_missing_fleet_key", tail: Cons { head: "test.claim.srv3_subsumption.srv3_reconcile_refuses_both_unowned_keys_never_teardown", tail: Cons { head: "test.claim.srv3_subsumption.srv4_reconcile_is_converged_empty_plan", tail:               v2.std.algebra.Empty {} } } } } } } }
+              std.algebra.Cons { head: "test.claim.source_integration_proof_kernel_acceptance.witness_p1_proof_kernel_acceptance_contract_holds", tail:     std.algebra.Cons { head: "test.claim.srv3_subsumption.comment_only_drift_is_one_change_not_remove_add", tail: std.algebra.Cons { head: "test.claim.srv3_subsumption.reconcile_would_teardown_only_if_ownership_claimed_it", tail: std.algebra.Cons { head: "test.claim.srv3_subsumption.srv3_and_srv4_disagree_on_convergence", tail: std.algebra.Cons { head: "test.claim.srv3_subsumption.srv3_reconcile_adds_exactly_the_missing_fleet_key", tail: std.algebra.Cons { head: "test.claim.srv3_subsumption.srv3_reconcile_refuses_both_unowned_keys_never_teardown", tail: std.algebra.Cons { head: "test.claim.srv3_subsumption.srv4_reconcile_is_converged_empty_plan", tail:               v2.std.algebra.Empty {} } } } } } } }
 }
 
 fn floor_expected_red_chunk_07() -> List<String> {
@@ -379,11 +380,11 @@ fn floor_expected_red_chunk_07() -> List<String> {
 }
 
 fn floor_expected_red_chunk_08() -> List<String> {
-   Cons { head: "v2.test.claim.staging.cached_stage_hit_skips_stage", tail: Cons { head: "v2.test.claim.staging.cached_stage_miss_runs_stage", tail: Cons { head: "v2.test.emit.produced_decl_support_preserved.produced_decl_support_survives_augmentation", tail: Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_coerce_accepts_holds", tail: Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_translate_accepts_holds", tail: v2.std.algebra.Empty {} } } } } }
+   std.algebra.Cons { head: "v2.test.claim.staging.cached_stage_hit_skips_stage", tail: std.algebra.Cons { head: "v2.test.claim.staging.cached_stage_miss_runs_stage", tail: std.algebra.Cons { head: "v2.test.emit.produced_decl_support_preserved.produced_decl_support_survives_augmentation", tail: std.algebra.Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_coerce_accepts_holds", tail: std.algebra.Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_translate_accepts_holds", tail: v2.std.algebra.Empty {} } } } } }
 }
 
 fn floor_expected_red_chunk_09() -> List<String> {
-  Cons { head: "v2.test.execution.emit_host_complement_equals_eval.emit_host_complement_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.execution.emit_host_meet_join_equals_eval.emit_host_meet_equals_eval_holds", tail: Cons { head: "v2.test.execution.emit_host_variant_construct_equals_eval.emit_host_variant_construct_equals_eval_holds", tail: Cons { head: "v2.test.execution.emit_host_variant_construct_equals_eval.emit_host_variant_construct_wrong_fixture_refuses_holds", tail: Cons { head: "v2.test.execution.emit_ingest_python_same_language_round_trip.emit_ingest_python_same_language_round_trip_holds", tail: Cons { head: "v2.test.execution.emit_ingest_python_same_language_round_trip.python_same_language_source_emit_round_trip_holds", tail: Cons { head: "v2.test.execution.emit_ingest_type_decl_round_trip.type_decl_real_source_round_trip_holds", tail: Cons { head: "v2.test.execution.emit_ingest_typescript_same_language_round_trip.emit_ingest_typescript_same_language_round_trip_holds", tail: Cons { head: "v2.test.execution.emit_ingest_typescript_same_language_round_trip.typescript_same_language_source_emit_round_trip_holds", tail:     v2.std.algebra.Empty {} } } } } } } } } }
+  std.algebra.Cons { head: "v2.test.execution.emit_host_complement_equals_eval.emit_host_complement_wrong_fixture_refuses_holds", tail: std.algebra.Cons { head: "v2.test.execution.emit_host_meet_join_equals_eval.emit_host_meet_equals_eval_holds", tail: std.algebra.Cons { head: "v2.test.execution.emit_host_variant_construct_equals_eval.emit_host_variant_construct_equals_eval_holds", tail: std.algebra.Cons { head: "v2.test.execution.emit_host_variant_construct_equals_eval.emit_host_variant_construct_wrong_fixture_refuses_holds", tail: std.algebra.Cons { head: "v2.test.execution.emit_ingest_python_same_language_round_trip.emit_ingest_python_same_language_round_trip_holds", tail: std.algebra.Cons { head: "v2.test.execution.emit_ingest_python_same_language_round_trip.python_same_language_source_emit_round_trip_holds", tail: std.algebra.Cons { head: "v2.test.execution.emit_ingest_type_decl_round_trip.type_decl_real_source_round_trip_holds", tail: std.algebra.Cons { head: "v2.test.execution.emit_ingest_typescript_same_language_round_trip.emit_ingest_typescript_same_language_round_trip_holds", tail: std.algebra.Cons { head: "v2.test.execution.emit_ingest_typescript_same_language_round_trip.typescript_same_language_source_emit_round_trip_holds", tail:     v2.std.algebra.Empty {} } } } } } } } } }
 }
 
 fn floor_expected_red_chunk_10() -> List<String> {
@@ -391,11 +392,11 @@ fn floor_expected_red_chunk_10() -> List<String> {
 }
 
 fn floor_expected_red_chunk_11() -> List<String> {
-    Cons { head: "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.diagnostic_mock_totality.diagnostic_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.diagnostic_mock_totality.diagnostic_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.filesystem_mock_totality.filesystem_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.filesystem_mock_totality.filesystem_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.gcp_mock_totality.gcp_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.gcp_mock_totality.gcp_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.github_mock_totality.github_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.github_mock_totality.github_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.git_mock_totality.git_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.git_mock_totality.git_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.git_mock_totality.git_mock_omitted_show_tree_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.http_pilot_mock_totality.http_pilot_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.http_pilot_mock_totality.http_pilot_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.llm_mock_totality.llm_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.llm_mock_totality.llm_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_omitted_member_is_red_holds", tail: v2.std.algebra.Empty {} } } } } } } } } } } } } } } } } } } }
+    std.algebra.Cons { head: "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_consumer_is_total_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_omitted_member_is_red_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.diagnostic_mock_totality.diagnostic_mock_consumer_is_total_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.diagnostic_mock_totality.diagnostic_mock_omitted_member_is_red_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.filesystem_mock_totality.filesystem_mock_consumer_is_total_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.filesystem_mock_totality.filesystem_mock_omitted_member_is_red_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.gcp_mock_totality.gcp_mock_consumer_is_total_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.gcp_mock_totality.gcp_mock_omitted_member_is_red_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.github_mock_totality.github_mock_consumer_is_total_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.github_mock_totality.github_mock_omitted_member_is_red_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.git_mock_totality.git_mock_consumer_is_total_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.git_mock_totality.git_mock_omitted_member_is_red_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.git_mock_totality.git_mock_omitted_show_tree_is_red_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.http_pilot_mock_totality.http_pilot_mock_consumer_is_total_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.http_pilot_mock_totality.http_pilot_mock_omitted_member_is_red_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.llm_mock_totality.llm_mock_consumer_is_total_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.llm_mock_totality.llm_mock_omitted_member_is_red_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_consumer_is_total_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_omitted_member_is_red_holds", tail: v2.std.algebra.Empty {} } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_expected_red_chunk_12() -> List<String> {
-  Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.manual.english_emit_add.english_emit_add_ingest_round_trip_holds", tail: v2.std.algebra.Empty {} } } }
+  std.algebra.Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds", tail: std.algebra.Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds", tail: std.algebra.Cons { head: "v2.test.manual.english_emit_add.english_emit_add_ingest_round_trip_holds", tail: v2.std.algebra.Empty {} } } }
 }
 
 // Enrolled per deep-ant-102's 2026-08-20 ruling on gunbc#8625/#8627: the witness is
@@ -408,7 +409,7 @@ fn floor_expected_red_chunk_12() -> List<String> {
 // gunbc.explicit_witness_admission's known_red_probe row for this identity, which documents
 // the same red but (per the same ruling) does not itself gate the required floor.
 fn floor_expected_red_chunk_13() -> List<String> {
-  Cons { head: "test.claim.method_arg_declared_contract_witness_test.w_method_arg_infers_against_declared_contract_not_element_type_test", tail: v2.std.algebra.Empty {} }
+  std.algebra.Cons { head: "test.claim.method_arg_declared_contract_witness_test.w_method_arg_infers_against_declared_contract_not_element_type_test", tail: v2.std.algebra.Empty {} }
 }
 
 fn floor_expected_red_chunk_14() -> List<String> {
@@ -432,7 +433,7 @@ fn floor_expected_red_chunk_18() -> List<String> {
 }
 
 fn floor_expected_red_chunk_19() -> List<String> {
-  Cons { head: "test.claim.direct_call_argument_type_witness_test.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: v2.std.algebra.Empty {} }
+  std.algebra.Cons { head: "test.claim.direct_call_argument_type_witness_test.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: v2.std.algebra.Empty {} }
 }
 
 // FIVE IDENTITIES ENROLLED 2026-08-22, and they arrive by a route this roster has not carried
@@ -461,7 +462,7 @@ fn floor_expected_red_chunk_19() -> List<String> {
 // -- when the substrate arm lands, these rows PASS, and a passing enrolled row reds the build
 // naming itself. The file's prose trigger could not do that; this roster does it mechanically.
 fn floor_expected_red_chunk_20() -> List<String> {
-  Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_content_hash_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_non_canonical_violates", tail: Cons { head: "v2.test.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: v2.std.algebra.Empty {} } } } } }
+  std.algebra.Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_content_hash_violates", tail: std.algebra.Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates", tail: std.algebra.Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds", tail: std.algebra.Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_non_canonical_violates", tail: std.algebra.Cons { head: "v2.test.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: v2.std.algebra.Empty {} } } } } }
 }
 
 // THREE IDENTITIES ENROLLED 2026-08-23, and they are the first rows here that were AUTHORED red
@@ -490,11 +491,11 @@ fn floor_expected_red_chunk_20() -> List<String> {
 // The partition of the 164 and the measurements behind this family are
 // docs/plans/receipts/floor-runtime-error-partition-2026-08-23/.
 fn floor_expected_red_chunk_21() -> List<String> {
-  Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: v2.std.algebra.Empty {} } } }
+  std.algebra.Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: std.algebra.Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: std.algebra.Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: v2.std.algebra.Empty {} } } }
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: v2.std.algebra.Empty {}}}}}}}}}}}}}}}}}}}}}}}
+  std.algebra.Cons { head: floor_expected_red_chunk_00(), tail: std.algebra.Cons { head: floor_expected_red_chunk_01(), tail: std.algebra.Cons { head: floor_expected_red_chunk_02(), tail: std.algebra.Cons { head: floor_expected_red_chunk_03(), tail: std.algebra.Cons { head: floor_expected_red_chunk_04(), tail: std.algebra.Cons { head: floor_expected_red_chunk_05(), tail: std.algebra.Cons { head: floor_expected_red_chunk_06(), tail: std.algebra.Cons { head: floor_expected_red_chunk_07(), tail: std.algebra.Cons { head: floor_expected_red_chunk_08(), tail: std.algebra.Cons { head: floor_expected_red_chunk_09(), tail: std.algebra.Cons { head: floor_expected_red_chunk_10(), tail: std.algebra.Cons { head: floor_expected_red_chunk_11(), tail: std.algebra.Cons { head: floor_expected_red_chunk_12(), tail: std.algebra.Cons { head: floor_expected_red_chunk_13(), tail: std.algebra.Cons { head: floor_expected_red_chunk_14(), tail: std.algebra.Cons { head: floor_expected_red_chunk_15(), tail: std.algebra.Cons { head: floor_expected_red_chunk_16(), tail: std.algebra.Cons { head: floor_expected_red_chunk_17(), tail: std.algebra.Cons { head: floor_expected_red_chunk_18(), tail: std.algebra.Cons { head: floor_expected_red_chunk_19(), tail: std.algebra.Cons { head: floor_expected_red_chunk_20(), tail: std.algebra.Cons { head: floor_expected_red_chunk_21(), tail: v2.std.algebra.Empty {}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import
@@ -540,8 +541,8 @@ fn floor_expected_red_is_live(name: String) -> Bool {
 }
 
 fn floor_expected_red_roster() -> List<String> {
-  filter(
-    xs: list_flat_map(xs: floor_expected_red_chunks(), f: fn(chunk) { chunk }),
+  v2.std.algebra.filter(
+    xs: v2.std.algebra.list_flat_map(xs: floor_expected_red_chunks(), f: fn(chunk) { chunk }),
     predicate: floor_expected_red_is_live
   )
 }

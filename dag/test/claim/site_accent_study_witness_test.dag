@@ -1,39 +1,39 @@
 module test.claim.site_accent_study_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn witness_candidates_admissible() -> Bool {
-  accent_study_preconditions_hold()
-    && candidates_admissible(rs: study_candidates)
+  gunbc.site.accent_study.accent_study_preconditions_hold()
+    && gunbc.site.starlight.candidates_admissible(rs: gunbc.site.starlight.study_candidates)
 }
 
 test fn witness_cited_classification_well_formed() -> Bool {
   harvard_main_sequence_classes.length() == 7
-    && classes_hot_to_cool_by_floor(classes: harvard_main_sequence_classes)
-    && temperature_label(r: g_class.temperature) == "5300–6000 K"
+    && extdeps.astronomy.stellar_classification.classes_hot_to_cool_by_floor(classes: extdeps.astronomy.stellar_classification.harvard_main_sequence_classes)
+    && extdeps.astronomy.stellar_classification.temperature_label(r: g_class.temperature) == "5300–6000 K"
 }
 
 test fn witness_no_green_star_in_source_or_projection() -> Bool {
-  no_green_stellar_class(classes: harvard_main_sequence_classes)
-    && no_green_starlight_projection(renders: starlight_renders)
-    && hue_is_green(hue: verdigris_patina.hue)
+  extdeps.astronomy.stellar_classification.no_green_stellar_class(classes: extdeps.astronomy.stellar_classification.harvard_main_sequence_classes)
+    && gunbc.site.starlight.no_green_starlight_projection(renders: gunbc.site.starlight.starlight_renders)
+    && gunbc.site.starlight.hue_is_green(hue: verdigris_patina.hue)
 }
 
 test fn witness_projection_covers_the_classification() -> Bool {
-  renders_cover_classification(renders: starlight_renders, classes: harvard_main_sequence_classes)
+  gunbc.site.starlight.renders_cover_classification(renders: gunbc.site.starlight.starlight_renders, classes: extdeps.astronomy.stellar_classification.harvard_main_sequence_classes)
 }
 
 test fn witness_envelope_prunes_m_class_at_lit() -> Bool {
-  chroma_admissible(m: m_render.figure)
-    && !chroma_admissible(m: lit_variant(m: m_render.figure))
+  gunbc.design.material.chroma_admissible(m: m_render.figure)
+    && !gunbc.design.material.chroma_admissible(m: gunbc.site.starlight.lit_variant(m: m_render.figure))
 }
 
 test fn witness_g_class_is_the_live_night_figure() -> Bool {
   g_render.figure.hue == warm_starlight.hue
     && g_render.figure.sat_pct == warm_starlight.sat_pct
     && g_render.figure.light_pct == warm_starlight.light_pct
-    && render_label(r: g_render) == "G — yellow · 5300–6000 K"
+    && gunbc.site.starlight.render_label(r: gunbc.site.starlight.g_render) == "G — yellow · 5300–6000 K"
 }
 
 data signed_accent_selection_witness_note: String = "WHAT IS LEFT TO CHECK ONCE THE SIGNATURE IS A REFERENCE. This claim used to repeat the three field comparisons in witness_g_class_is_the_live_night_figure verbatim, because signed_accent_render was a second literal that could drift from g_render. It is now g_render, so those comparisons are the same expression twice and prove nothing the sibling does not — §2. What survives is the part that is still falsifiable: WHICH class the signature selects. That is a real claim about the cited classification rather than about a copy, and it reds if the selection is re-pointed at another class."
@@ -43,7 +43,7 @@ test fn witness_signed_accent_selects_the_g_class() -> Bool {
 }
 
 test fn witness_study_page_emits() -> Bool {
-  let h = accent_study_html()
+  let h = gunbc.site.accent_study.accent_study_html()
   starts_with(s: h, prefix: "<!DOCTYPE html>")
     && string_contains(s: h, pattern: "starlight accent study")
     && string_contains(s: h, pattern: "O — blue · ≥ 33000 K")

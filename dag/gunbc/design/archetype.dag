@@ -34,19 +34,19 @@ data dashboard_archetype: SurfaceArchetype = SurfaceArchetype {
   posture: Operational,
   content_shape: LiveFacts,
   liveness: Live,
-  verbs: [Approach, Dispatch, Await, Accept, Enter],
+  verbs: [gunbc.design.interaction.Approach, gunbc.design.interaction.Dispatch, gunbc.design.interaction.Await, gunbc.design.interaction.Accept, Enter],
   role_demand: [
-    CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
-    FigureRole, FigureEdgeRole, FocusRole,
+    gunbc.design.theme.CanvasRole, gunbc.design.theme.SurfaceRole, gunbc.design.theme.BorderRole, gunbc.design.theme.TextRole, gunbc.design.theme.TextDimRole,
+    gunbc.design.theme.FigureRole, gunbc.design.theme.FigureEdgeRole, gunbc.design.theme.FocusRole,
   ],
 }
 
 data dashboard_boundary_demand_dissolved_note: String = "BoundaryRole left the dashboard's demand 2026-07-24 (remodel W1c/W1d): the refusal chip was its only paint consumer on this surface, and refusal color now routes through the instrument band vars (gunbc.roadmap_style band_paint_note — venom, a workspace palette completion, deliberately outside the ThemeRole axis under the instrument-area amendment). The both-ways demand witness is what forced this row to move with the stylesheet instead of lying."
 
 fn archetype_demands_role(a: SurfaceArchetype, r: gunbc.design.theme.ThemeRole) -> Bool {
-  fold(a.role_demand, init: false, f: (acc, d) => acc || role_key(r: d) == role_key(r: r))
+  fold(a.role_demand, init: false, f: (acc, d) => acc || gunbc.design.theme.role_key(r: d) == gunbc.design.theme.role_key(r: r))
 }
 
 fn archetype_admits_verb(a: SurfaceArchetype, v: gunbc.design.interaction.InteractionVerb) -> Bool {
-  fold(a.verbs, init: false, f: (acc, w) => acc || verb_key(v: w) == verb_key(v: v))
+  fold(a.verbs, init: false, f: (acc, w) => acc || gunbc.design.interaction.verb_key(v: w) == gunbc.design.interaction.verb_key(v: v))
 }

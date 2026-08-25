@@ -15,8 +15,8 @@ module gunbc.bash_materialized_transport
 // output DESIGN 5 forbids. The caller must match on the absence.
 fn bash_materialized_transport(materialization: v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterialization) -> extdeps.shell.exec.TransportScript? {
   match materialization {
-    EffectPlanBashMaterialized { source: source } =>
-      Present { value: transport_script_seal(body: source) }
-    EffectPlanBashMaterializationRefused { refusal: _ } => Absent
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterialized { source: source } =>
+      Present { value: extdeps.shell.exec.transport_script_seal(body: source) }
+    v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterializationRefused { refusal: _ } => Absent
   }
 }

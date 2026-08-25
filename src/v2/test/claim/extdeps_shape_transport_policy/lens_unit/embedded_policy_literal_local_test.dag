@@ -2,20 +2,20 @@ module v2.test.extdeps_shape_transport_policy.lens_unit.embedded_policy_literal_
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data embedded_policy_local_data_name: String = "local_dev_runtime"
 data embedded_policy_local_field_name: String = "fallback_auth_command"
 data embedded_policy_local_literal: String = "gcloud auth print-access-token"
 
-data embedded_policy_local_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsEmbeddedPolicyLiteralFact> = [
-  v2.lens.extdeps_shape_transport_policy.ExtdepsEmbeddedPolicyLiteralFact {
+data embedded_policy_local_facts: List<ExtdepsEmbeddedPolicyLiteralFact> = [
+  ExtdepsEmbeddedPolicyLiteralFact {
     module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_runtime_local_module,
     data_name: embedded_policy_local_data_name,
     field_name: embedded_policy_local_field_name,
     literal_value: embedded_policy_local_literal
   },
-  v2.lens.extdeps_shape_transport_policy.ExtdepsEmbeddedPolicyLiteralFact {
+  ExtdepsEmbeddedPolicyLiteralFact {
     module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_runtime_local_module,
     data_name: embedded_policy_local_data_name,
     field_name: "adc_env_var",
@@ -24,7 +24,7 @@ data embedded_policy_local_facts: List<v2.lens.extdeps_shape_transport_policy.Ex
 ]
 
 test fn embedded_policy_literal_local_is_red_holds() -> Bool {
-  v2.lens.extdeps_shape_transport_policy.extdeps_shape_transport_policy_embedded_policy_literal_count(
+  extdeps_shape_transport_policy_embedded_policy_literal_count(
     facts: embedded_policy_local_facts
   ) == 1
 }

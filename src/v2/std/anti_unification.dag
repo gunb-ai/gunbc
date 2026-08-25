@@ -7,29 +7,29 @@ fn hole_kind() -> v2.std.node.NodeKind {
   v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: anti_unification_hole_symbol } }
 }
 fn hole_node() -> v2.std.node.Node {
-  node_synthetic(kind: hole_kind(), children: [])
+  v2.std.node.node_synthetic(kind: hole_kind(), children: [])
 }
-fn is_hole(n: v2.std.node.Node) -> v2.std.logic.Bool {
+fn is_hole(n: v2.std.node.Node) -> Bool {
   n.kind == hole_kind()
 }
 
-fn is_leaf(n: v2.std.node.Node) -> v2.std.logic.Bool {
+fn is_leaf(n: v2.std.node.Node) -> Bool {
   v2.std.algebra.is_empty(xs: n.children)
 }
 
-fn edge_labels_eq(ea: v2.std.node.Edge, eb: v2.std.node.Edge) -> v2.std.logic.Bool {
+fn edge_labels_eq(ea: v2.std.node.Edge, eb: v2.std.node.Edge) -> Bool {
   ea.label == eb.label
 }
-fn children_aligned(a: v2.std.node.Node, b: v2.std.node.Node) -> v2.std.logic.Bool {
+fn children_aligned(a: v2.std.node.Node, b: v2.std.node.Node) -> Bool {
   a.kind == b.kind
-    && zip_eq(a: a.children, b: b.children, eq: fn(ea, eb) { edge_labels_eq(ea: ea, eb: eb) })
+    && v2.std.algebra.zip_eq(a: a.children, b: b.children, eq: fn(ea, eb) { edge_labels_eq(ea: ea, eb: eb) })
 }
 
 fn anti_unify_edge(ea: v2.std.node.Edge, eb: v2.std.node.Edge) -> v2.std.node.Edge {
   v2.std.node.Edge { label: ea.label, target: anti_unify(a: ea.target, b: eb.target) }
 }
-fn anti_unify_children(a: FreeMonoid<v2.std.node.Edge>, b: FreeMonoid<v2.std.node.Edge>) -> FreeMonoid<v2.std.node.Edge> {
-  zip_map(a: a, b: b, f: fn(ea, eb) { anti_unify_edge(ea: ea, eb: eb) })
+fn anti_unify_children(a: std.algebra.FreeMonoid<v2.std.node.Edge>, b: std.algebra.FreeMonoid<v2.std.node.Edge>) -> std.algebra.FreeMonoid<v2.std.node.Edge> {
+  v2.std.algebra.zip_map(a: a, b: b, f: fn(ea, eb) { anti_unify_edge(ea: ea, eb: eb) })
 }
 
 fn anti_unify(a: v2.std.node.Node, b: v2.std.node.Node) -> v2.std.node.Node {
@@ -42,7 +42,7 @@ fn anti_unify(a: v2.std.node.Node, b: v2.std.node.Node) -> v2.std.node.Node {
       if is_leaf(a) {
         if is_leaf(b) {
           if v2.std.exact_structural_equality_zip_fold_predicate.exact_structural_equality_zip_fold(source_facts: a, candidate: b) {
-            node_synthetic(kind: a.kind, children: [])
+            v2.std.node.node_synthetic(kind: a.kind, children: [])
           } else {
             hole_node()
           }
@@ -54,7 +54,7 @@ fn anti_unify(a: v2.std.node.Node, b: v2.std.node.Node) -> v2.std.node.Node {
           hole_node()
         } else {
           if children_aligned(a: a, b: b) {
-            node_synthetic(kind: a.kind, children: anti_unify_children(a: a.children, b: b.children))
+            v2.std.node.node_synthetic(kind: a.kind, children: anti_unify_children(a: a.children, b: b.children))
           } else {
             hole_node()
           }
@@ -64,62 +64,62 @@ fn anti_unify(a: v2.std.node.Node, b: v2.std.node.Node) -> v2.std.node.Node {
   }
 }
 
-fn extract_fillings_edge(te: v2.std.node.Edge, ee: v2.std.node.Edge) -> FreeMonoid<v2.std.node.Node> {
+fn extract_fillings_edge(te: v2.std.node.Edge, ee: v2.std.node.Edge) -> std.algebra.FreeMonoid<v2.std.node.Node> {
   extract_fillings(template: te.target, element: ee.target)
 }
-fn extract_fillings(template: v2.std.node.Node, element: v2.std.node.Node) -> FreeMonoid<v2.std.node.Node> {
+fn extract_fillings(template: v2.std.node.Node, element: v2.std.node.Node) -> std.algebra.FreeMonoid<v2.std.node.Node> {
   if is_hole(template) {
-    list_snoc_item(xs: freemonoid_empty(), item: element)
+    v2.std.algebra.list_snoc_item(xs: v2.std.algebra.freemonoid_empty(), item: element)
   } else {
-    fold_list(
-      xs: zip_map(
+    v2.std.algebra.fold_list(
+      xs: v2.std.algebra.zip_map(
         a: template.children,
         b: element.children,
         f: fn(te, ee) { extract_fillings_edge(te: te, ee: ee) }
       ),
-      empty: freemonoid_empty(),
-      cons: fn(acc, fills) { list_append(left: acc, right: fills) }
+      empty: v2.std.algebra.freemonoid_empty(),
+      cons: fn(acc, fills) { v2.std.algebra.list_append(left: acc, right: fills) }
     )
   }
 }
 
 type ChainGeneralization {
   template: v2.std.node.Node
-  per_element: FreeMonoid<FreeMonoid<v2.std.node.Node>>
+  per_element: std.algebra.FreeMonoid<std.algebra.FreeMonoid<v2.std.node.Node>>
 }
 
-fn chain_template(steps: FreeMonoid<v2.std.node.Node>) -> v2.std.node.Node {
-  reduce_or(
+fn chain_template(steps: std.algebra.FreeMonoid<v2.std.node.Node>) -> v2.std.node.Node {
+  v2.std.algebra.reduce_or(
     xs: steps,
     fallback: hole_node(),
     combine: fn(acc, step) { anti_unify(a: acc, b: step) }
   )
 }
 
-fn chain_generalization_for(template: v2.std.node.Node, steps: FreeMonoid<v2.std.node.Node>) -> ChainGeneralization {
+fn chain_generalization_for(template: v2.std.node.Node, steps: std.algebra.FreeMonoid<v2.std.node.Node>) -> ChainGeneralization {
   ChainGeneralization {
     template: template,
-    per_element: fold_list(
+    per_element: v2.std.algebra.fold_list(
       xs: steps,
-      empty: freemonoid_empty(),
+      empty: v2.std.algebra.freemonoid_empty(),
       cons: fn(acc, step) {
-        list_snoc_item(xs: acc, item: extract_fillings(template: template, element: step))
+        v2.std.algebra.list_snoc_item(xs: acc, item: extract_fillings(template: template, element: step))
       }
     )
   }
 }
 
-fn anti_unify_chain(steps: FreeMonoid<v2.std.node.Node>) -> ChainGeneralization {
+fn anti_unify_chain(steps: std.algebra.FreeMonoid<v2.std.node.Node>) -> ChainGeneralization {
   chain_generalization_for(template: chain_template(steps: steps), steps: steps)
 }
 
-fn template_has_hole(template: v2.std.node.Node) -> v2.std.logic.Bool {
-  any(xs: node_subtree_nodes(root: template), predicate: fn(n) { is_hole(n) })
+fn template_has_hole(template: v2.std.node.Node) -> Bool {
+  v2.std.algebra.any(xs: v2.std.node.node_subtree_nodes(root: template), predicate: fn(n) { is_hole(n) })
 }
 
-fn fillings_all_leaves(per_element: FreeMonoid<FreeMonoid<v2.std.node.Node>>) -> v2.std.logic.Bool {
-  for_all(
+fn fillings_all_leaves(per_element: std.algebra.FreeMonoid<std.algebra.FreeMonoid<v2.std.node.Node>>) -> Bool {
+  v2.std.algebra.for_all(
     xs: per_element,
-    predicate: fn(fills) { for_all(xs: fills, predicate: fn(f) { is_leaf(f) }) }
+    predicate: fn(fills) { v2.std.algebra.for_all(xs: fills, predicate: fn(f) { is_leaf(f) }) }
   )
 }

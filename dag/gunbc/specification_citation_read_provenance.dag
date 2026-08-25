@@ -4,8 +4,8 @@ module gunbc.specification_citation_read_provenance
 data specification_citation_read_provenance_law: String = "OBSERVATIONS PRODUCED BY THIS REPOSITORY, NOT FACTS OWNED BY THE OBSERVED UPSTREAM (DESIGN section 3). Each receipt names the upstream declaration it is about and records what gunbc did on a particular day against a cited locator. WHETHER THE PUBLISHER PUBLISHED THE DOCUMENT PUBLICLY IS A SEPARATE UPSTREAM AXIS: DocumentPublicationStatus is an extdeps.publication fact re-landed by #8260; status values live on document modules; the rule mapping status to whether gunbc may carry facts lives in gunbc.upstream_document_carriage. OCP subject anchors in this lane carry licence terms on OcpSpecificationLicense instead. The two axes stay independent — a document may be publicly published under OWFa 1.0 while our publisher fetch was refused."
 
 type SpecificationCitationReadProvenance
-  = DocumentLocatorFetchRefused { http_status: std.integer.Int, detail: std.types.NonEmptyStr }
-  | DocumentLocatorFetchedButTextUnread { http_status: std.integer.Int, detail: std.types.NonEmptyStr }
+  = DocumentLocatorFetchRefused { http_status: Int, detail: std.types.NonEmptyStr }
+  | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: std.types.NonEmptyStr }
   | DatedPublisherLocatorMirrorTextIngested {
       mirror: extdeps.external_authority.ExternalAuthority,
       capture_date: extdeps.publication.SpecificationDocumentDate,
@@ -23,25 +23,25 @@ type SpecificationCitationReadReceipt {
 data mt_jade_reference_platform_subject_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "extdeps.ocp.mt_jade.subject",
   decl_name: "mt_jade_reference_platform",
-  field: WholeDeclaration,
+  field: std.decl_ref.WholeDeclaration,
 }
 
 data mt_mitchell_reference_platform_subject_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "extdeps.ocp.mt_mitchell.subject",
   decl_name: "mt_mitchell_reference_platform",
-  field: WholeDeclaration,
+  field: std.decl_ref.WholeDeclaration,
 }
 
 data altra_platform_hw_design_specification_subject_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
   decl_name: "altra_platform_hw_design_specification",
-  field: WholeDeclaration,
+  field: std.decl_ref.WholeDeclaration,
 }
 
 data mt_collins_public_product_brief_subject_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "extdeps.ampere.mt_collins_product_brief.subject",
   decl_name: "mt_collins_public_product_brief",
-  field: WholeDeclaration,
+  field: std.decl_ref.WholeDeclaration,
 }
 
 data mt_jade_publisher_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
@@ -74,7 +74,7 @@ data internet_archive_mt_mitchell_capture_date: extdeps.publication.Specificatio
 data mt_mitchell_mirror_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
   subject: mt_mitchell_reference_platform_subject_ref,
   provenance: DatedPublisherLocatorMirrorTextIngested {
-    mirror: internet_archive_mt_mitchell_capture_authority,
+    mirror: extdeps.ocp.mt_mitchell.subject.internet_archive_mt_mitchell_capture_authority,
     capture_date: internet_archive_mt_mitchell_capture_date,
     peer_session: "neat-hawk-428",
     detail: "full PDF text of the dated Internet Archive capture of the publisher locator was decoded by peer session neat-hawk-428; this is a second artifact from the publisher copy and may not match what the publisher serves today",

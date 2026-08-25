@@ -49,25 +49,25 @@ fn floor_observe_push_before_input(event_name: String) -> gunbc.diff_baseline.Pu
           }
         } else {
           match extdeps.github.push_event.push_before_from_event_path(path: path) {
-            PushBeforeObserved { sha: sha } =>
+            extdeps.github.push_event.PushBeforeObserved { sha: sha } =>
               Present { value: gunbc.diff_baseline.PushBeforeSha { sha: sha as String } }
-            PushBeforeAbsent { detail: detail } =>
+            extdeps.github.push_event.PushBeforeAbsent { detail: detail } =>
               Present {
                 value: floor_push_before_refusal(
                   prefix: "push event before SHA absent — ",
                   detail: detail
                 )
               }
-            PushBeforeZeroSha =>
+            extdeps.github.push_event.PushBeforeZeroSha =>
               Present { value: gunbc.diff_baseline.PushBeforeZeroShaInput }
-            PushBeforeMalformed { detail: detail } =>
+            extdeps.github.push_event.PushBeforeMalformed { detail: detail } =>
               Present {
                 value: floor_push_before_refusal(
                   prefix: "push event before SHA malformed — ",
                   detail: detail
                 )
               }
-            PushEventPayloadReadRefused { path: event_path, cause: cause } =>
+            extdeps.github.push_event.PushEventPayloadReadRefused { path: event_path, cause: cause } =>
               Present {
                 value: floor_push_before_refusal(
                   prefix: concat(
@@ -122,9 +122,9 @@ fn floor_resolved_head(policy: gunbc.ci_spec.DiffPolicy) -> String {
 
 fn floor_diff_mode_for_baseline(baseline: gunbc.diff_baseline.DiffBaseline, policy: gunbc.ci_spec.DiffPolicy) -> gunbc.ci_spec.DiffMode {
   match baseline {
-    PushBefore { ref: _ } => DiffTwoDot
-    ExactReplayBoundary { base: _, head: _, observed_relation: _ } => DiffTwoDot
-    MergeTarget { ref: _ } => policy.mode
+    gunbc.diff_baseline.PushBefore { ref: _ } => gunbc.ci_spec.DiffTwoDot
+    gunbc.diff_baseline.ExactReplayBoundary { base: _, head: _, observed_relation: _ } => gunbc.ci_spec.DiffTwoDot
+    gunbc.diff_baseline.MergeTarget { ref: _ } => policy.mode
     PushParent { ref: _ } => policy.mode
     OperatorOverride { ref: _ } => policy.mode
   }
@@ -132,8 +132,8 @@ fn floor_diff_mode_for_baseline(baseline: gunbc.diff_baseline.DiffBaseline, poli
 
 fn floor_git_diff_range_of_mode(mode: gunbc.ci_spec.DiffMode) -> extdeps.git.GitDiffRange {
   match mode {
-    DiffMergeBase => ThreeDot
-    DiffTwoDot => TwoDot
+    gunbc.ci_spec.DiffMergeBase => extdeps.git.ThreeDot
+    gunbc.ci_spec.DiffTwoDot => extdeps.git.TwoDot
   }
 }
 
@@ -152,8 +152,8 @@ fn floor_observe_git_diff_unified(policy: gunbc.ci_spec.DiffPolicy) -> FloorUnif
     Present { value: injected } => UnifiedDiffOk { text: injected }
     Absent =>
       match floor_resolve_baseline(policy: policy) {
-        BaselineRefused { reason: reason } => UnifiedDiffFail { reason: reason }
-        BaselineSourceConflict { window_detail: detail, override_ref: override_ref } =>
+        gunbc.diff_baseline.BaselineRefused { reason: reason } => UnifiedDiffFail { reason: reason }
+        gunbc.diff_baseline.BaselineSourceConflict { window_detail: detail, override_ref: override_ref } =>
           UnifiedDiffFail {
             reason: join([
               "baseline source conflict — ",
@@ -163,7 +163,7 @@ fn floor_observe_git_diff_unified(policy: gunbc.ci_spec.DiffPolicy) -> FloorUnif
               "; halting the floor (AFFECTED-SET REFUSAL)",
             ], ""),
           }
-        BaselineSelected { baseline: baseline } =>
+        gunbc.diff_baseline.BaselineSelected { baseline: baseline } =>
           floor_run_git_diff_unified(
             base: gunbc.diff_baseline.diff_baseline_diff_base(b: baseline),
             head: gunbc.diff_baseline.diff_baseline_diff_head(
@@ -177,7 +177,7 @@ fn floor_observe_git_diff_unified(policy: gunbc.ci_spec.DiffPolicy) -> FloorUnif
 }
 
 fn floor_observe_git_diff_unified_for_ci() -> FloorUnifiedDiffResult {
-  floor_observe_git_diff_unified(policy: gunbc.ci_spec.gunbc_ci_spec.diff_policy)
+  floor_observe_git_diff_unified(policy: gunbc_ci_spec.diff_policy)
 }
 
 data floor_diff_baseline_readout_note: String = "A PROJECTION of the already-resolved baseline FOR DIAGNOSTICS ONLY — it observes no git, decides nothing, and adds no second baseline authority (resolve_diff_baseline stays the single one, DESIGN section 3). Its consumer is the affected-set no-observed-change diagnostic in the seed executor: when the observation returns zero changed paths, the receipt must be able to NAME the baseline the comparison was made against, because 'nothing changed' and 'the baseline could not express what changed' are different states with different remedies and the second is what a self-referential baseline produces (a push whose base ref is the pushed ref itself). Locating the state requires naming its base and event, so the diagnostic reads them from here rather than re-deriving them.
@@ -191,8 +191,8 @@ type FloorDiffBaselineReadout
 
 fn floor_observe_diff_baseline_readout(policy: gunbc.ci_spec.DiffPolicy) -> FloorDiffBaselineReadout {
   match floor_resolve_baseline(policy: policy) {
-    BaselineRefused { reason: reason } => BaselineReadoutRefused { reason: reason }
-    BaselineSourceConflict { window_detail: detail, override_ref: override_ref } =>
+    gunbc.diff_baseline.BaselineRefused { reason: reason } => BaselineReadoutRefused { reason: reason }
+    gunbc.diff_baseline.BaselineSourceConflict { window_detail: detail, override_ref: override_ref } =>
       BaselineReadoutRefused {
         reason: join([
           "baseline source conflict — ",
@@ -202,7 +202,7 @@ fn floor_observe_diff_baseline_readout(policy: gunbc.ci_spec.DiffPolicy) -> Floo
           "; halting the floor (AFFECTED-SET REFUSAL)",
         ], ""),
       }
-    BaselineSelected { baseline: baseline } =>
+    gunbc.diff_baseline.BaselineSelected { baseline: baseline } =>
       BaselineReadout {
         ref: gunbc.diff_baseline.diff_baseline_ref(b: baseline) as String,
         event_name: floor_observe_ci_diff_event().event_name
@@ -211,12 +211,12 @@ fn floor_observe_diff_baseline_readout(policy: gunbc.ci_spec.DiffPolicy) -> Floo
 }
 
 fn floor_observe_diff_baseline_readout_for_ci() -> FloorDiffBaselineReadout {
-  floor_observe_diff_baseline_readout(policy: gunbc.ci_spec.gunbc_ci_spec.diff_policy)
+  floor_observe_diff_baseline_readout(policy: gunbc_ci_spec.diff_policy)
 }
 
 data floor_diff_comparison_readout_law: String = "THE PROJECTION A DECIDING CONSUMER MUST TAKE, and the defect that produced it. The baseline readout above answers 'which ref' and nothing else, which is exactly enough to LOCATE a diagnostic and not nearly enough to COMPARE two trees. gunbc#7953 took that lossy projection into the frozen-roster monotonicity gate and then reconstructed the missing half in Rust by imposing merge-base on every arm — deleting the origin/main source fork and immediately re-forking the RELATION instead. That is a fail-open, not a cosmetic slip: PushBefore and ExactReplayBoundary are exact two-dot comparisons, so a non-fast-forward push whose before SHA is not an ancestor gets compared against the common ancestor instead, and a frozen row REINTRODUCED by that push reads as no addition at all. Executed counterexample: roster A=\{X\}, push before B=\{\} (X removed), pushed head H=\{X\} off A; the true two-dot answer H minus B is \{X\} and must refuse, while merge-base(B,H)=A gives H minus A=\{\} and passes real growth.
 
-WHAT THIS CARRIER FIXES, stated as the law rather than as the patch: a comparison is a TRIPLE — resolved base, resolved head, and the relation between them — and it must cross the seam as one value. The mode arm is the discriminator, so a consumer cannot silently pick a relation, and the head is the SELECTED head rather than an ambient one, because ExactReplayBoundary carries its own exact head and substituting the checkout's HEAD is the same class of substitution one endpoint over. Kind rides along to locate refusals and decides nothing. Deriving all three here rather than in each consumer keeps resolve_diff_baseline the single authority (DESIGN section 3); a second consumer that re-derived any member would be the fork this row exists to close."
+WHAT THIS CARRIER FIXES, stated as the law rather than as the patch: a comparison is a TRIPLE — resolved base, resolved head, and the relation between them — and it must cross the seam as one value. The mode arm is the discriminator, so a consumer cannot silently pick a relation, and the head is the SELECTED head rather than an ambient one, because gunbc.diff_baseline.ExactReplayBoundary carries its own exact head and substituting the checkout's HEAD is the same class of substitution one endpoint over. Kind rides along to locate refusals and decides nothing. Deriving all three here rather than in each consumer keeps gunbc.diff_baseline.resolve_diff_baseline the single authority (DESIGN section 3); a second consumer that re-derived any member would be the fork this row exists to close."
 
 type FloorDiffComparisonReadout
   = DirectComparison {
@@ -238,17 +238,17 @@ fn floor_comparison_of_mode(
   kind: gunbc.diff_baseline.DiffBaselineKind
 ) -> FloorDiffComparisonReadout {
   match mode {
-    DiffTwoDot =>
+    gunbc.ci_spec.DiffTwoDot =>
       DirectComparison { base: base, head: head, kind: kind }
-    DiffMergeBase =>
+    gunbc.ci_spec.DiffMergeBase =>
       MergeBaseComparison { base: base, head: head, kind: kind }
   }
 }
 
 fn floor_observe_diff_comparison_readout(policy: gunbc.ci_spec.DiffPolicy) -> FloorDiffComparisonReadout {
   match floor_resolve_baseline(policy: policy) {
-    BaselineRefused { reason: reason } => ComparisonReadoutRefused { reason: reason }
-    BaselineSourceConflict { window_detail: detail, override_ref: override_ref } =>
+    gunbc.diff_baseline.BaselineRefused { reason: reason } => ComparisonReadoutRefused { reason: reason }
+    gunbc.diff_baseline.BaselineSourceConflict { window_detail: detail, override_ref: override_ref } =>
       ComparisonReadoutRefused {
         reason: join([
           "baseline source conflict — ",
@@ -258,7 +258,7 @@ fn floor_observe_diff_comparison_readout(policy: gunbc.ci_spec.DiffPolicy) -> Fl
           "; halting the floor (AFFECTED-SET REFUSAL)",
         ], ""),
       }
-    BaselineSelected { baseline: baseline } =>
+    gunbc.diff_baseline.BaselineSelected { baseline: baseline } =>
       floor_comparison_of_mode(
         mode: floor_diff_mode_for_baseline(baseline: baseline, policy: policy),
         base: gunbc.diff_baseline.diff_baseline_diff_base(b: baseline),
@@ -272,14 +272,14 @@ fn floor_observe_diff_comparison_readout(policy: gunbc.ci_spec.DiffPolicy) -> Fl
 }
 
 fn floor_observe_diff_comparison_readout_for_ci() -> FloorDiffComparisonReadout {
-  floor_observe_diff_comparison_readout(policy: gunbc.ci_spec.gunbc_ci_spec.diff_policy)
+  floor_observe_diff_comparison_readout(policy: gunbc_ci_spec.diff_policy)
 }
 
 fn floor_name_status_from_raw(raw: String) -> FloorNameStatusDiffResult {
   match extdeps.git.git_diff_name_status_parse(raw: raw) {
-    GitDiffNameStatusTruncated { pending: _, entries: _ } =>
+    extdeps.git.GitDiffNameStatusTruncated { pending: _, entries: _ } =>
       NameStatusDiffFail { reason: "git diff --name-status -z observation ended mid-record (truncated stream)" }
-    GitDiffNameStatusComplete { entries: entries } =>
+    extdeps.git.GitDiffNameStatusComplete { entries: entries } =>
       if extdeps.git.git_diff_status_entries_any_unknown(entries: entries) {
         NameStatusDiffFail { reason: "unrecognized git diff --name-status status letter in observation" }
       } else {
@@ -315,8 +315,8 @@ fn floor_observe_git_diff_name_status(policy: gunbc.ci_spec.DiffPolicy) -> Floor
       floor_name_status_from_raw(raw: floor_decode_injected_name_status(injected: injected))
     Absent =>
       match floor_resolve_baseline(policy: policy) {
-        BaselineRefused { reason: reason } => NameStatusDiffFail { reason: reason }
-        BaselineSourceConflict { window_detail: detail, override_ref: override_ref } =>
+        gunbc.diff_baseline.BaselineRefused { reason: reason } => NameStatusDiffFail { reason: reason }
+        gunbc.diff_baseline.BaselineSourceConflict { window_detail: detail, override_ref: override_ref } =>
           NameStatusDiffFail {
             reason: join([
               "baseline source conflict — ",
@@ -326,7 +326,7 @@ fn floor_observe_git_diff_name_status(policy: gunbc.ci_spec.DiffPolicy) -> Floor
               "; halting the floor (AFFECTED-SET REFUSAL)",
             ], ""),
           }
-        BaselineSelected { baseline: baseline } =>
+        gunbc.diff_baseline.BaselineSelected { baseline: baseline } =>
           floor_run_git_diff_name_status(
             base: gunbc.diff_baseline.diff_baseline_diff_base(b: baseline),
             head: gunbc.diff_baseline.diff_baseline_diff_head(
@@ -340,5 +340,5 @@ fn floor_observe_git_diff_name_status(policy: gunbc.ci_spec.DiffPolicy) -> Floor
 }
 
 fn floor_observe_git_diff_name_status_for_ci() -> FloorNameStatusDiffResult {
-  floor_observe_git_diff_name_status(policy: gunbc.ci_spec.gunbc_ci_spec.diff_policy)
+  floor_observe_git_diff_name_status(policy: gunbc_ci_spec.diff_policy)
 }

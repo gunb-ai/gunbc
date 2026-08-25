@@ -27,8 +27,8 @@ type EmitPopulationEvidence
 
 type RustSourceHostObservation
   = RustManifestObserved {
-      repository_revision: CommitSha,
-      manifest_content_identity: Fnv1a64Structural,
+      repository_revision: std.types.CommitSha,
+      manifest_content_identity: std.content_hash.Fnv1a64Structural,
       tracked_rust_repo_paths: List<String>,
       prior_tracked_rust_repo_paths: List<String>,
       cargo_bin_repo_paths: List<String>,
@@ -126,8 +126,8 @@ fn normalize_cargo_bin_repo_paths(
 }
 
 data emitted_population_manifest_repo_path: String = concat(
-  stage0_package_root,
-  concat(stage0_source_dir_relative_to_package, emitted_population_manifest_basename)
+  gunbc.stage0_cargo_manifest.stage0_package_root,
+  concat(gunbc.stage0_cargo_manifest.stage0_source_dir_relative_to_package, gunbc.stage0_emitted_population_manifest.emitted_population_manifest_basename)
 )
 
 // THE READ IS THE STRUCTURAL INVERSE OF THE WRITE, NOT A SECOND PARSER.
@@ -145,13 +145,13 @@ data emitted_population_manifest_repo_path: String = concat(
 // results is caught by the caller, which refuses on an empty population rather than reporting
 // "the emitter produced nothing".
 fn emitted_population_paths_from_manifest(content: String) -> List<String> {
-  let prefix_length = string_length(s: emitted_population_manifest_line_prefix)
-  let lines = split(s: content, delimiter: emitted_population_manifest_line_separator)
-  list_map(
+  let prefix_length = string_length(s: gunbc.stage0_emitted_population_manifest.emitted_population_manifest_line_prefix)
+  let lines = split(s: content, delimiter: gunbc.stage0_emitted_population_manifest.emitted_population_manifest_line_separator)
+  v2.std.algebra.list_map(
     xs: filter(
       xs: lines,
       predicate: fn(line) {
-        starts_with(s: line, prefix: emitted_population_manifest_line_prefix)
+        starts_with(s: line, prefix: gunbc.stage0_emitted_population_manifest.emitted_population_manifest_line_prefix)
       }
     ),
     f: fn(line) { substring(s: line, start: prefix_length, end: string_length(s: line)) }
@@ -164,17 +164,17 @@ fn emitted_population_paths_from_manifest(content: String) -> List<String> {
 // the shared manifest authority for the reason stated there: only the parts that are genuinely
 // one fact are shared, and a path is not -- the two ends speak different spaces.
 fn emitted_population_repo_paths(content: String) -> List<String> {
-  list_map(
+  v2.std.algebra.list_map(
     xs: emitted_population_paths_from_manifest(content: content),
-    f: fn(target_relative) { concat(stage0_package_root, target_relative) }
+    f: fn(target_relative) { concat(gunbc.stage0_cargo_manifest.stage0_package_root, target_relative) }
   )
 }
 
-fn observe_emit_population_evidence(revision: CommitSha) -> EmitPopulationEvidence {
+fn observe_emit_population_evidence(revision: std.types.CommitSha) -> EmitPopulationEvidence {
   let manifest = git.Core.Show(
-    ref: revision as GitRef,
+    ref: revision as std.types.GitRef,
     path: emitted_population_manifest_repo_path,
-    expect: ExpectSuccess
+    expect: gunbc.output_policy.ExpectSuccess
   )
   if !manifest.success {
     EmitPopulationUnobserved {
@@ -185,7 +185,7 @@ fn observe_emit_population_evidence(revision: CommitSha) -> EmitPopulationEviden
     }
   } else {
     let paths = emitted_population_repo_paths(content: manifest.content)
-    if length(xs: paths) == 0 {
+    if v2.std.algebra.length(xs: paths) == 0 {
       EmitPopulationUnobserved {
         detail: concat(
           emitted_population_manifest_repo_path,
@@ -210,9 +210,9 @@ fn observe_stage0_rust_sources(
     let revision = head.sha as String
     let baseline = git.Inspect.MergeBase(
       repository_path: stage0_rust_observation_repository_path,
-      left: revision as GitRef,
-      right: base_ref as GitRef,
-      expect: ExpectSuccess
+      left: revision as std.types.GitRef,
+      right: base_ref as std.types.GitRef,
+      expect: gunbc.output_policy.ExpectSuccess
     )
     if !baseline.success || (baseline.sha as String) == "" {
       GitObservationRefused {
@@ -254,9 +254,9 @@ fn observe_stage0_rust_sources(
             }
           } else {
             match parse_stage0_cargo_manifest_bins(manifest: manifest.content) {
-              CargoManifestBinsParseRefused { detail: detail } =>
+              gunbc.stage0_cargo_manifest.CargoManifestBinsParseRefused { detail: detail } =>
                 RustManifestParseRefused { detail: detail }
-              CargoManifestBinsParsed { authored_relative_paths: authored_paths } =>
+              gunbc.stage0_cargo_manifest.CargoManifestBinsParsed { authored_relative_paths: authored_paths } =>
                 match normalize_cargo_bin_repo_paths(
                   package_root: package_root,
                   authored_paths: authored_paths

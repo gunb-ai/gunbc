@@ -4,14 +4,14 @@ module gunbc.ci_deploy_sudoers
 
 data deploy_sudoers_note: String = "Wave C envelope: /etc/sudoers.d/gunbc-deploy is EMITTED from the roster grants (never hand-managed). visudo -c gates install. Generic movers (rsync/chown) are refused in the roster — #7011 realization routes tree sync through gunbc-tree-sync.service and ownership through install -o/-g. Sudo-grant lint allow-list is DERIVED from fleet_posix_ci_runner_sudo_grants() command_path rows — never a parallel path list."
 
-data deploy_sudoers_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.ci_deploy_sudoers — concat-built bash for sudoers dropin install and visudo gates; DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger retires (bash-emit #5828 / shell-intent Phase 2 realizes deploy shell through orchestration emit without medium-as-string here-docs).")
+data deploy_sudoers_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: gunbc.ci_deploy_sudoers — concat-built bash for sudoers dropin install and visudo gates; DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger retires (bash-emit #5828 / shell-intent Phase 2 realizes deploy shell through orchestration emit without medium-as-string here-docs).")
 
 data deploy_sudoers_shell_emit_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_deploy_sudoers",
     decl_name: "deploy_sudoers_shell_emit_dissolution_trigger",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
@@ -21,7 +21,7 @@ data refused_generic_mover_paths: List<std.types.NonEmptyStr> = [
 ]
 
 fn posix_sudo_grant_is_refused_generic_mover(g: gunbc.fleet_posix_accounts.PosixSudoGrant) -> Bool {
-  any(refused_generic_mover_paths, p => p == g.command_path)
+  v2.std.algebra.any(refused_generic_mover_paths, p => p == g.command_path)
 }
 
 fn posix_sudo_grant_command_paths_match(row: gunbc.fleet_posix_accounts.PosixSudoGrant, g: gunbc.fleet_posix_accounts.PosixSudoGrant) -> Bool {
@@ -29,8 +29,8 @@ fn posix_sudo_grant_command_paths_match(row: gunbc.fleet_posix_accounts.PosixSud
 }
 
 fn posix_sudo_grant_is_allowed_roster_command(g: gunbc.fleet_posix_accounts.PosixSudoGrant) -> Bool {
-  any(
-    fleet_posix_ci_runner_sudo_grants(),
+  v2.std.algebra.any(
+    gunbc.fleet_posix_accounts.fleet_posix_ci_runner_sudo_grants(),
     row => posix_sudo_grant_command_paths_match(row: row, g: g)
   )
 }
@@ -61,9 +61,9 @@ fn deploy_sudoers_dropin_header() -> String {
 }
 
 fn deploy_sudoers_line_for_grant(access: gunbc.ci_deploy_access.DeployAccess, g: gunbc.fleet_posix_accounts.PosixSudoGrant) -> String {
-  deploy_access_sudoers_line(
+  gunbc.ci_deploy_access.deploy_access_sudoers_line(
     access: access,
-    cmd: posix_sudo_grant_to_privileged(g: g)
+    cmd: gunbc.ci_deploy_access.posix_sudo_grant_to_privileged(g: g)
   )
 }
 
@@ -88,10 +88,10 @@ fn deploy_sudoers_install_shell(access: gunbc.ci_deploy_access.DeployAccess) -> 
     "cat > \"$_gunbc_stage/gunbc-deploy.sudoers\" <<'GUNBC_SUDOERS_EOF'\n",
     deploy_sudoers_dropin_content(access: access),
     "GUNBC_SUDOERS_EOF\n",
-    "sudo -n ", fleet_visudo_binary_path as String, " -cf \"$_gunbc_stage/gunbc-deploy.sudoers\"\n",
+    "sudo -n ", gunbc.fleet_posix_accounts.fleet_visudo_binary_path as String, " -cf \"$_gunbc_stage/gunbc-deploy.sudoers\"\n",
     "sudo -n install -m 0440 \"$_gunbc_stage/gunbc-deploy.sudoers\" ",
-    gunbc_deploy_sudoers_dropin as String,
+    gunbc.ci_deploy_access.gunbc_deploy_sudoers_dropin as String,
     "\n",
-    "sudo -n ", fleet_visudo_binary_path as String, " -cf ", gunbc_deploy_sudoers_dropin as String,
+    "sudo -n ", gunbc.fleet_posix_accounts.fleet_visudo_binary_path as String, " -cf ", gunbc.ci_deploy_access.gunbc_deploy_sudoers_dropin as String,
   ], "")
 }

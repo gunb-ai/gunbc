@@ -22,9 +22,9 @@ data devboot_root_layout_admission_note: String = "THE BUILD SERVICE'S HOST ROOT
 data srv1_devboot_artifact_store_root: std.types.FilePath = "/var/lib/gunbc/artifacts.git" as std.types.FilePath
 
 
-data srv1_roadmap_codex_home: std.types.FilePath = codex_account_state_root(
+data srv1_roadmap_codex_home: std.types.FilePath = gunbc.provider_account.codex_account_state_root(
   home: operator_home_root,
-  selection: codex_roadmap_account_selection(),
+  selection: gunbc.provider_account.codex_roadmap_account_selection(),
 ) as String as std.types.FilePath
 
 data gunbc_host_layout_note: String = "THE HOST FACTS AN INSTANCE CANNOT DERIVE FROM ITS OWN ROOT, carried as one row per host instead of one name per host. An isolated dashboard instance derives most of its paths from its instance root — source, attempts, attempt-state and local origin are all children of it — but three belong to the machine rather than the instance: which seed binary serves, where the provider's authenticated state root lives, and which local worktree seeds the source bundle. Those cannot come from the root, so before this row they were written as srv1 literals inside the shared constructor.\\n\\nBE PRECISE ABOUT WHAT THAT DEFECT WAS, because overstating it would be its own false claim. No value was wrong. srv1 and srv2 run the same layout convention, so both rows below carry byte-identical paths, and a home-directory path denotes a different file on each machine anyway. The defect was representational: the constructor took host_identity as a parameter and then pinned the other three facts, so a host whose layout DIVERGED could not be expressed at all. A second host was nameable without being describable, and the name silently carried the first host's body.\\n\\nThat is precisely why it survived review — there was no wrong output to notice. It is a latent fabrication, not a live one: the first host to install its binary elsewhere would have gotten srv1's path under its own name, with the mismatch appearing as an unexplained refusal against a path nobody wrote for it.\\n\\nOne row per host beats a second set of srv2_-prefixed names, because a prefix bakes the instance into the concept and the next host repeats the exercise. The flat srv1_ rows above stay as the field values of srv1's row — they have live consumers in live_deploy and the actuators — so each path is still written exactly once. Dissolution trigger: when live_deploy takes a layout row as a parameter, those flat rows fold into the record literal and the prefix disappears."
@@ -63,9 +63,9 @@ data srv2_host_layout_note: String = "srv2's own row, where a DECLARATION and an
 
 data srv2_gunbc_serve_binary: std.types.FilePath = "/opt/gunbc/bin/gunbc" as std.types.FilePath
 
-data srv2_roadmap_codex_home: std.types.FilePath = codex_account_state_root(
+data srv2_roadmap_codex_home: std.types.FilePath = gunbc.provider_account.codex_account_state_root(
   home: operator_home_root,
-  selection: codex_roadmap_account_selection(),
+  selection: gunbc.provider_account.codex_roadmap_account_selection(),
 ) as String as std.types.FilePath
 
 data srv2_dashboard_controller_repo: std.types.FilePath = "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as std.types.FilePath
@@ -140,17 +140,17 @@ data srv1_provider_wire_evidence_root: std.types.FilePath = "/opt/gunbc/provider
 
 fn srv1_provider_runtime_placement() -> ProviderRuntimePlacement {
   ProviderRuntimePlacement {
-    runtime_release_root: srv1_codex_runtime_release_root,
+    runtime_release_root: gunbc.codex_runtime_paths.srv1_codex_runtime_release_root,
     runtime_mutable_state_root: srv1_codex_runtime_mutable_state_root,
     wire_evidence_root: srv1_provider_wire_evidence_root,
   }
 }
 
 fn provider_runtime_placement_for_host(host: product.placement_supply.HostIdentity) -> ProviderRuntimePlacement? {
-  if host == operator_host_srv1
-    || host == operator_host_srv2
-    || host == operator_host_srv3
-    || host == operator_host_srv4
+  if host == gunbc.fleet_intent_network.operator_host_srv1
+    || host == gunbc.fleet_intent_network.operator_host_srv2
+    || host == gunbc.fleet_intent_network.operator_host_srv3
+    || host == gunbc.fleet_intent_network.operator_host_srv4
   {
     Present { value: srv1_provider_runtime_placement() }
   } else {
@@ -164,11 +164,11 @@ fn codex_bundled_executable_for_host(host: product.placement_supply.HostIdentity
   match provider_runtime_placement_for_host(host: host) {
     Absent => none
     Present { value: placement } =>
-      match codex_linux_arm64_native_executable_rel() {
+      match gunbc.package_delivery.codex_linux_arm64_native_executable_rel() {
         Absent => none
         Present { value: rel } =>
           Present {
-            value: codex_bundled_executable_at_current_link(
+            value: gunbc.codex_runtime_paths.codex_bundled_executable_at_current_link(
               release_parent: placement.runtime_release_root,
               native_executable_rel: rel,
             )

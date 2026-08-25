@@ -10,8 +10,8 @@ fn audition_subject_key() -> String {
 }
 
 fn audition_subject_role() -> gunbc.design.salience.SalienceRole {
-  assignment_role_for(
-    assignments: project_finish_line_salience(camera: exemplar_camera(), refusal: NoActiveRefusal),
+  gunbc.design.instrument_projection.assignment_role_for(
+    assignments: gunbc.design.instrument_projection.project_finish_line_salience(camera: exemplar_camera(), refusal: gunbc.design.instrument_projection.NoActiveRefusal),
     subject: audition_subject_key(),
   )
 }
@@ -24,11 +24,11 @@ data instrument_note_class: String = "instrument-note"
 data instrument_refusal_class: String = "instrument-refusal"
 
 fn audition_card_class(i: gunbc.design.instrument_audition.AuditionIntensity) -> String {
-  concat("audition-", audition_intensity_key(i: i))
+  concat("audition-", gunbc.design.instrument_audition.audition_intensity_key(i: i))
 }
 
 fn audition_emission_var(i: gunbc.design.instrument_audition.AuditionIntensity) -> String {
-  concat("instrument-emission-", audition_intensity_key(i: i))
+  concat("instrument-emission-", gunbc.design.instrument_audition.audition_intensity_key(i: i))
 }
 
 data admitted_only_note: String = "THE STYLESHEET IS GENERATED FROM THE ADMISSION, NOT FROM THE REQUEST (review finding, 2026-08-05, and it was a real hole rather than a tidiness point). The first cut derived each card's box-shadow straight from audition_emission and printed the admission verdict as PROSE UNDERNEATH the already-painted glow. So a refused emission still painted: the gate decided what the page SAID about the effect, not whether the effect existed. That is the register's admission machinery reduced to a caption — the same coverage-by-illusion shape as an inert lens, one layer further out, and it would have failed silently the first time a budget change turned a grant into a refusal. Emission is now projected from AuditionAdmitted alone: a refused variant emits the literal value none and has no glow to inspect. The discriminating control is a witness that renders the specimen at a non-focal role and finds no emission anywhere in the emitted CSS."
@@ -37,36 +37,36 @@ data emission_projection_note: String = "An EmissionSpec becomes a two-layer box
 
 fn emission_shadow_value(m: gunbc.design.material.Material, spec: gunbc.design.salience.EmissionSpec) -> String {
   join([
-    "0 0 ", to_string(spec.core_radius.n), "px ", paint_alpha(m: m, alpha_pct: spec.core_alpha_pct),
-    ", 0 0 ", to_string(spec.corona_radius.n), "px ", paint_alpha(m: m, alpha_pct: spec.corona_alpha_pct),
+    "0 0 ", to_string(spec.core_radius.n), "px ", gunbc.design.material.paint_alpha(m: m, alpha_pct: spec.core_alpha_pct),
+    ", 0 0 ", to_string(spec.corona_radius.n), "px ", gunbc.design.material.paint_alpha(m: m, alpha_pct: spec.corona_alpha_pct),
   ], "")
 }
 
 fn no_emission_decl(i: gunbc.design.instrument_audition.AuditionIntensity) -> List<gunbc.design.material.CssDecl> {
-  [decl(prop: extdeps.languages.css.properties.CustomProperty { name: audition_emission_var(i: i) }, value: "none")]
+  [gunbc.design.material.decl(prop: extdeps.languages.css.properties.CustomProperty { name: audition_emission_var(i: i) }, value: "none")]
 }
 
 fn emission_decl_for(t: gunbc.design.theme.Theme, i: gunbc.design.instrument_audition.AuditionIntensity, role: gunbc.design.salience.SalienceRole) -> List<gunbc.design.material.CssDecl> {
-  match admit_audition(i: i, role: role, subject_key: audition_subject_key()) {
-    AuditionAdmitted { intensity, emission, attraction, displacement_px } => match emission {
-      AuditionNoEmission => no_emission_decl(i: i)
-      AuditionEmits { spec } => [decl(
+  match gunbc.design.instrument_audition.admit_audition(i: i, role: role, subject_key: audition_subject_key()) {
+    gunbc.design.instrument_audition.AuditionAdmitted { intensity, emission, attraction, displacement_px } => match emission {
+      gunbc.design.instrument_audition.AuditionNoEmission => no_emission_decl(i: i)
+      gunbc.design.instrument_audition.AuditionEmits { spec } => [gunbc.design.material.decl(
         prop: extdeps.languages.css.properties.CustomProperty { name: audition_emission_var(i: i) },
-        value: emission_shadow_value(m: assignment_material(t: t, r: FocusRole), spec: spec),
+        value: emission_shadow_value(m: gunbc.design.theme.assignment_material(t: t, r: gunbc.design.theme.FocusRole), spec: spec),
       )]
     }
-    AuditionEmissionRefused { intensity, grant } => no_emission_decl(i: i)
-    AuditionAttractionOutsideEnvelope { intensity } => no_emission_decl(i: i)
-    AuditionDisplacementOverBudget { intensity, total_px, max_px } => no_emission_decl(i: i)
+    gunbc.design.instrument_audition.AuditionEmissionRefused { intensity, grant } => no_emission_decl(i: i)
+    gunbc.design.instrument_audition.AuditionAttractionOutsideEnvelope { intensity } => no_emission_decl(i: i)
+    gunbc.design.instrument_audition.AuditionDisplacementOverBudget { intensity, total_px, max_px } => no_emission_decl(i: i)
   }
 }
 
 fn emission_var_decls(t: gunbc.design.theme.Theme, role: gunbc.design.salience.SalienceRole) -> List<gunbc.design.material.CssDecl> {
-  flat_map(audition_intensities, i => emission_decl_for(t: t, i: i, role: role))
+  flat_map(gunbc.design.instrument_audition.audition_intensities, i => emission_decl_for(t: t, i: i, role: role))
 }
 
 fn instrument_emission_root_css_for(role: gunbc.design.salience.SalienceRole) -> String {
-  theme_scoped_blocks(base: day_theme, alternate: night_theme, decls_for: t => emission_var_decls(t: t, role: role))
+  gunbc.design.theme.theme_scoped_blocks(base: gunbc.design.theme.day_theme, alternate: gunbc.design.theme.night_theme, decls_for: t => emission_var_decls(t: t, role: role))
 }
 
 fn instrument_emission_root_css() -> String {
@@ -79,14 +79,14 @@ fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
 
 fn audition_card_rule(i: gunbc.design.instrument_audition.AuditionIntensity) -> gunbc.design.material.BuildRule {
   gunbc.design.material.StaticRule {
-    selector: gunbc.roadmap_instrument_sandbox.cls(name: audition_card_class(i: i)),
+    selector: cls(name: audition_card_class(i: i)),
     decls: [
-      decl(prop: BoxShadow, value: concat("var(--", concat(audition_emission_var(i: i), ")"))),
-      decl(prop: Border, value: join(["1px solid ", role_var(r: BorderRole)], "")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_var(t: space_6)),
-      decl(prop: Background, value: role_var(r: SurfaceRole)),
-      decl(prop: MinWidth, value: "14rem"),
+      gunbc.design.material.decl(prop: extdeps.languages.css.properties.BoxShadow, value: concat("var(--", concat(audition_emission_var(i: i), ")"))),
+      gunbc.design.material.decl(prop: extdeps.languages.css.properties.Border, value: join(["1px solid ", gunbc.design.theme.role_var(r: gunbc.design.theme.BorderRole)], "")),
+      gunbc.design.material.decl(prop: extdeps.languages.css.properties.BorderRadius, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.radius_3)),
+      gunbc.design.material.decl(prop: extdeps.languages.css.properties.Padding, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_6)),
+      gunbc.design.material.decl(prop: extdeps.languages.css.properties.Background, value: gunbc.design.theme.role_var(r: gunbc.design.theme.SurfaceRole)),
+      gunbc.design.material.decl(prop: extdeps.languages.css.properties.MinWidth, value: "14rem"),
     ],
   }
 }
@@ -94,55 +94,55 @@ fn audition_card_rule(i: gunbc.design.instrument_audition.AuditionIntensity) -> 
 data impulse_press_note: String = "THE CAUSED HALF, BUILT THROUGH THE ORDINARY MACHINERY. Pressing the instrument frame displaces it by the preference's own impulse amplitude and it settles on the glitch duration's timing — a ResponseRule with the OnActive trigger, the same construction every other control in this register uses, so the physical character is not a special case that bypasses the wall. The displacement is negative on the Y axis and read straight off the preference: an author who disables the impulse channel gets a rule that displaces by zero rather than a rule that has to be removed."
 
 fn impulse_translate_value(p: gunbc.design.instrument_physical.InstrumentPreference) -> String {
-  join(["translateY(-", to_string(amplitude_px(a: p.impulse_glitch)), "px)"], "")
+  join(["translateY(-", to_string(gunbc.design.instrument_physical.amplitude_px(a: p.impulse_glitch)), "px)"], "")
 }
 
 fn instrument_frame_rule(p: gunbc.design.instrument_physical.InstrumentPreference) -> gunbc.design.material.BuildRule {
   gunbc.design.material.ResponseRule {
-    subject: gunbc.roadmap_instrument_sandbox.cls(name: instrument_frame_class),
-    shape: SelfResponse,
-    trigger: OnActive,
+    subject: cls(name: instrument_frame_class),
+    shape: gunbc.design.material.SelfResponse,
+    trigger: gunbc.design.material.OnActive,
     transition_props: "transform",
-    timing: glitch_settle(g: p.glitch_duration),
+    timing: gunbc.design.instrument_physical.glitch_settle(g: p.glitch_duration),
     base_decls: [
-      decl(prop: Border, value: join(["1px solid ", role_var(r: BorderRole)], "")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_var(t: space_16)),
-      decl(prop: Background, value: role_var(r: SurfaceRole)),
-      decl(prop: extdeps.languages.css.properties.Transform, value: "translateY(0)"),
+      gunbc.design.material.decl(prop: extdeps.languages.css.properties.Border, value: join(["1px solid ", gunbc.design.theme.role_var(r: gunbc.design.theme.BorderRole)], "")),
+      gunbc.design.material.decl(prop: extdeps.languages.css.properties.BorderRadius, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.radius_3)),
+      gunbc.design.material.decl(prop: extdeps.languages.css.properties.Padding, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_16)),
+      gunbc.design.material.decl(prop: extdeps.languages.css.properties.Background, value: gunbc.design.theme.role_var(r: gunbc.design.theme.SurfaceRole)),
+      gunbc.design.material.decl(prop: extdeps.languages.css.properties.Transform, value: "translateY(0)"),
     ],
-    response_decls: [decl(prop: extdeps.languages.css.properties.Transform, value: impulse_translate_value(p: p))],
+    response_decls: [gunbc.design.material.decl(prop: extdeps.languages.css.properties.Transform, value: impulse_translate_value(p: p))],
   }
 }
 
 fn instrument_layout_rules() -> List<gunbc.design.material.BuildRule> {
   [
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_instrument_sandbox.cls(name: instrument_row_class),
+      selector: cls(name: instrument_row_class),
       decls: [
-        decl(prop: Display, value: "flex"),
-        decl(prop: Gap, value: scale_var(t: space_6)),
-        decl(prop: Margin, value: join([scale_var(t: space_6), " 0"], "")),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Display, value: "flex"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Gap, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_6)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Margin, value: join([gunbc.design.scale.scale_var(t: gunbc.design.scale.space_6), " 0"], "")),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_instrument_sandbox.cls(name: instrument_cell_class),
+      selector: cls(name: instrument_cell_class),
       decls: [
-        decl(prop: FontFamily, value: scale_var(t: font_mono)),
-        decl(prop: FontSize, value: scale_var(t: text_12)),
-        decl(prop: Padding, value: scale_var(t: space_2)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontSize, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.text_12)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Padding, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_2)),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_instrument_sandbox.cls(name: instrument_note_class),
-      decls: [decl(prop: Color, value: role_var(r: TextDimRole))],
+      selector: cls(name: instrument_note_class),
+      decls: [gunbc.design.material.decl(prop: extdeps.languages.css.properties.Color, value: gunbc.design.theme.role_var(r: gunbc.design.theme.TextDimRole))],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_instrument_sandbox.cls(name: instrument_refusal_class),
+      selector: cls(name: instrument_refusal_class),
       decls: [
-        decl(prop: Color, value: role_var(r: TextRole)),
-        decl(prop: Border, value: join(["1px dashed ", role_var(r: BorderRole)], "")),
-        decl(prop: Padding, value: scale_var(t: space_2)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Color, value: gunbc.design.theme.role_var(r: gunbc.design.theme.TextRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Border, value: join(["1px dashed ", gunbc.design.theme.role_var(r: gunbc.design.theme.BorderRole)], "")),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Padding, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_2)),
       ],
     },
   ]
@@ -152,30 +152,30 @@ fn instrument_rules() -> List<gunbc.design.material.BuildRule> {
   concat(
     instrument_layout_rules(),
     concat(
-      [instrument_frame_rule(p: preference_default)],
-      map(audition_intensities, i => audition_card_rule(i: i))))
+      [instrument_frame_rule(p: gunbc.design.instrument_physical.preference_default)],
+      map(gunbc.design.instrument_audition.audition_intensities, i => audition_card_rule(i: i))))
 }
 
 fn instrument_css() -> String {
-  join([roadmap_css(), instrument_emission_root_css(), serialize_rules(rules: instrument_rules())], "\n")
+  join([gunbc.roadmap_style.roadmap_css(), instrument_emission_root_css(), gunbc.design.material.serialize_rules(rules: instrument_rules())], "\n")
 }
 
 data css_at_role_note: String = "The stylesheet at an arbitrary role, exposed so a witness can render the study as if the specimen were NOT selected and prove no emission appears. Without this seam the refused-emission control could only be written by editing the page, which is the kind of test that passes because the author remembered to keep it in sync."
 
 fn instrument_css_at_role(role: gunbc.design.salience.SalienceRole) -> String {
-  join([instrument_emission_root_css_for(role: role), serialize_rules(rules: instrument_rules())], "\n")
+  join([instrument_emission_root_css_for(role: role), gunbc.design.material.serialize_rules(rules: instrument_rules())], "\n")
 }
 
 fn fragment_cell(s: String) -> std.markup.Fragment {
-  el_class("span", instrument_cell_class, [ txt(s) ])
+  gunbc.site.markup.el_class("span", instrument_cell_class, [ gunbc.site.markup.txt(s) ])
 }
 
 fn fragment_row(cells: List<std.markup.Fragment>) -> std.markup.Fragment {
-  el_class("div", instrument_row_class, cells)
+  gunbc.site.markup.el_class("div", instrument_row_class, cells)
 }
 
 fn instrument_note(s: String) -> std.markup.Fragment {
-  el_class("p", instrument_note_class, [ txt(s) ])
+  gunbc.site.markup.el_class("p", instrument_note_class, [ gunbc.site.markup.txt(s) ])
 }
 
 data exemplar_note: String = "THIS PAGE IS A STATIC STUDY, and calling it that is the correction rather than a hedge. It renders ONE camera state, server-side, with no client program: no pointer selection, no keyboard parity, no wheel detent, no persistence. What it is for is showing what each depth and mode PRODUCE from the real derived world, so the projections can be read and judged before an operable instrument is built on them. The operable tuner — persistent camera, selection parity, one-detent movement, working controls — is the declared follow-on, and describing this page as that instrument would be the rung inflation DESIGN section 4b names."
@@ -183,7 +183,7 @@ data exemplar_note: String = "THIS PAGE IS A STATIC STUDY, and calling it that i
 data live_view_note: String = "THE WORLD IS THE ONE V0 DERIVES, read live from the roadmap authority — declared nodes, declared edges, and acceptance receipts, which is the same call the program-view witness makes. The previous revision passed an empty accepted list and read gunbc.v1_deletion_plan's authored rows directly, so every finish line rendered as not-accepted regardless of the real receipts and the remaining/why modes had nothing to project. A refusal from the projection renders AS a refusal here: if a finish-line node or front gate resolves to nothing, the page says so with the located causes rather than drawing a smaller program."
 
 fn exemplar_camera() -> gunbc.design.instrument_camera.ProgramCamera {
-  camera_select(c: camera_initial, f: focus_finish_line(l: CompilerFixedPoint))
+  gunbc.design.instrument_camera.camera_select(c: gunbc.design.instrument_camera.camera_initial, f: gunbc.design.instrument_camera.focus_finish_line(l: gunbc.v1_deletion_plan.CompilerFixedPoint))
 }
 
 data live_view_two_refusal_sources_note: String = "TWO INDEPENDENT WAYS THE LIVE WORLD CAN FAIL TO ARRIVE, flattened to located text exactly once. gunbc.roadmap_authority's roadmap_acceptance_receipts is a PROJECTION (#7791 receipt-continuity work), not a list — it can refuse before the program view is ever attempted — and gunbc.roadmap_program_view can then refuse on its own causes. Forwarding the first as the second was not available and would have been the fabrication this page exists to avoid: a receipts-projection refusal is not a ProgramViewRefusalCause, and inventing one would put a cause in front of the reader that the model never produced. So this carrier keeps both sources and renders either as its own located line. The page's contract is unchanged — refuse loudly with the causes named, never draw a smaller program. Found by execution rather than by typecheck: passing the projection straight into v1_program_view compiled clean and failed at runtime with 'fold expects a list, got Variant', so the List-versus-coproduct swap at a call site is a class the substrate does not currently wall."
@@ -193,22 +193,22 @@ type LiveProgramView
   | LiveViewRefused { causes: List<String> }
 
 fn live_program_view_result() -> LiveProgramView {
-  match roadmap_acceptance_receipts() {
-    RoadmapAcceptanceReceiptsProjectionRefused { detail } =>
+  match gunbc.roadmap_authority.roadmap_acceptance_receipts() {
+    gunbc.roadmap_authority.RoadmapAcceptanceReceiptsProjectionRefused { detail } =>
       LiveViewRefused { causes: [join(["acceptance receipts unavailable: ", detail], "")] }
-    RoadmapAcceptanceReceiptsProjected { receipts } =>
-      match projected_roadmap_dependency_edges_projection() {
-        ProjectedRoadmapDependencyEdgesProjectionRefused { detail } =>
+    gunbc.roadmap_authority.RoadmapAcceptanceReceiptsProjected { receipts } =>
+      match gunbc.roadmap_authority.projected_roadmap_dependency_edges_projection() {
+        gunbc.roadmap_authority.ProjectedRoadmapDependencyEdgesProjectionRefused { detail } =>
           LiveViewRefused { causes: [join(["dependency edges unavailable: ", detail], "")] }
-        ProjectedRoadmapDependencyEdgesProjected { edges } =>
-          match v1_program_view(
-            nodes: declared_roadmap_nodes(),
+        gunbc.roadmap_authority.ProjectedRoadmapDependencyEdgesProjected { edges } =>
+          match gunbc.roadmap_program_view.v1_program_view(
+            nodes: gunbc.roadmap_authority.declared_roadmap_nodes(),
             edges: edges,
             receipts: receipts,
             in_flight: [],
           ) {
-            ProgramViewDerived { view } => LiveViewDerived { view: view }
-            ProgramViewRefused { causes } =>
+            gunbc.roadmap_program_view.ProgramViewDerived { view } => LiveViewDerived { view: view }
+            gunbc.roadmap_program_view.ProgramViewRefused { causes } =>
               LiveViewRefused { causes: map(causes, c => refusal_cause_text(c: c)) }
           }
       }
@@ -216,29 +216,29 @@ fn live_program_view_result() -> LiveProgramView {
 }
 
 fn depth_cell(d: gunbc.design.instrument_camera.ProgramDepth) -> std.markup.Fragment {
-  fragment_cell(s: join([to_string(program_depth_index(d: d)), " · ", program_depth_key(d: d)], ""))
+  fragment_cell(s: join([to_string(gunbc.design.instrument_camera.program_depth_index(d: d)), " · ", gunbc.design.instrument_camera.program_depth_key(d: d)], ""))
 }
 
 fn owner_cell(o: gunbc.design.instrument_camera.StateOwner) -> std.markup.Fragment {
   fragment_cell(s: join([
-    state_owner_key(o: o), " — ",
-    if owner_may_write_domain_fact(o: o) { "may write domain facts" } else { "presentation only" },
+    gunbc.design.instrument_camera.state_owner_key(o: o), " — ",
+    if gunbc.design.instrument_camera.owner_may_write_domain_fact(o: o) { "may write domain facts" } else { "presentation only" },
   ], ""))
 }
 
 fn camera_section() -> std.markup.Fragment {
-  el("section", concat(
+  gunbc.site.markup.el("section", concat(
     [
-      el("h2", [ txt("semantic camera") ]),
+      gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("semantic camera") ]),
       instrument_note(s: "Five depths on one axis, three modes across it. A depth change crosses exactly one detent, and every move carries the selected subject unchanged."),
-      fragment_row(cells: map(program_depths(), d => depth_cell(d: d))),
-      el("h3", [ txt("state ownership") ]),
+      fragment_row(cells: map(gunbc.design.instrument_camera.program_depths(), d => depth_cell(d: d))),
+      gunbc.site.markup.el("h3", [ gunbc.site.markup.txt("state ownership") ]),
       instrument_note(s: "Only one owner may write a domain fact, and it is not reachable from the instrument."),
       fragment_row(cells: map(
-        [AuthoritativeProgramView, LocalInstrumentState, InstrumentObservation, RendererEphemera],
+        [gunbc.design.instrument_camera.AuthoritativeProgramView, gunbc.design.instrument_camera.LocalInstrumentState, gunbc.design.instrument_camera.InstrumentObservation, gunbc.design.instrument_camera.RendererEphemera],
         o => owner_cell(o: o))),
     ],
-    [ el("h3", [ txt("readings") ]), reading_rows() ]))
+    [ gunbc.site.markup.el("h3", [ gunbc.site.markup.txt("readings") ]), reading_rows() ]))
 }
 
 data reading_render_note: String = "A refusal renders AS a refusal. The Why mode has no rationale carrier to read, so it produces a typed ReadingUnavailable and the page prints the cause — the alternative, printing the claim under a Why heading, would be indistinguishable from an answer and is exactly the fabricated-plausible-output arm this surface exists to make visible."
@@ -256,45 +256,45 @@ fn remaining_text(r: gunbc.roadmap_program_view.RemainingShape) -> String {
 
 fn render_reading(label: String, r: gunbc.design.instrument_audition.ProgramReading) -> std.markup.Fragment {
   match r {
-    ReadingNoSubject => fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "no subject selected") ])
-    ReadingProgramShape { remaining } =>
-      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "whole program"), fragment_cell(s: gunbc.roadmap_instrument_sandbox.remaining_text(r: remaining)) ])
-    ReadingOutcomeStatus { name, node, accepted, open_fronts } => fragment_row(cells: [
+    gunbc.design.instrument_audition.ReadingNoSubject => fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "no subject selected") ])
+    gunbc.design.instrument_audition.ReadingProgramShape { remaining } =>
+      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "whole program"), fragment_cell(s: remaining_text(r: remaining)) ])
+    gunbc.design.instrument_audition.ReadingOutcomeStatus { name, node, accepted, open_fronts } => fragment_row(cells: [
       fragment_cell(s: label),
       fragment_cell(s: name),
       fragment_cell(s: node),
       fragment_cell(s: if accepted { "accepted" } else { "not accepted" }),
       fragment_cell(s: join([to_string(open_fronts), " open fronts"], "")),
     ])
-    ReadingOutcomeRemaining { name, remaining } =>
-      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: name), fragment_cell(s: gunbc.roadmap_instrument_sandbox.remaining_text(r: remaining)) ])
-    ReadingConstraint { subject, kind, headline, in_flight, depth } => fragment_row(cells: [
+    gunbc.design.instrument_audition.ReadingOutcomeRemaining { name, remaining } =>
+      fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: name), fragment_cell(s: remaining_text(r: remaining)) ])
+    gunbc.design.instrument_audition.ReadingConstraint { subject, kind, headline, in_flight, depth } => fragment_row(cells: [
       fragment_cell(s: label),
       fragment_cell(s: join([kind, " constraint"], "")),
       fragment_cell(s: subject),
       fragment_cell(s: headline),
       fragment_cell(s: if in_flight { "work observed" } else { "no work observed" }),
     ])
-    ReadingNoConstraint { subject_key, reason } =>
+    gunbc.design.instrument_audition.ReadingNoConstraint { subject_key, reason } =>
       fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: subject_key), fragment_cell(s: reason) ])
-    ReadingFront { key, name, closed, gates_accepted, gates_total } => fragment_row(cells: [
+    gunbc.design.instrument_audition.ReadingFront { key, name, closed, gates_accepted, gates_total } => fragment_row(cells: [
       fragment_cell(s: label),
       fragment_cell(s: name),
       fragment_cell(s: join([to_string(gates_accepted), " of ", to_string(gates_total), " gates accepted"], "")),
       fragment_cell(s: if closed { "closed" } else { "open" }),
     ])
-    ReadingUnavailable { mode, subject_key, cause } =>
-      el_class("div", instrument_refusal_class, [
-        txt(join([label, " · ", subject_key, " — unavailable: ", cause], "")),
+    gunbc.design.instrument_audition.ReadingUnavailable { mode, subject_key, cause } =>
+      gunbc.site.markup.el_class("div", instrument_refusal_class, [
+        gunbc.site.markup.txt(join([label, " · ", subject_key, " — unavailable: ", cause], "")),
       ])
   }
 }
 
 fn reading_at(view: gunbc.roadmap_program_view.V1DeletionProgramView, d: gunbc.design.instrument_camera.ProgramDepth, m: gunbc.design.instrument_camera.ProgramMode) -> std.markup.Fragment {
-  gunbc.roadmap_instrument_sandbox.render_reading(
-    label: join([program_depth_key(d: d), " / ", program_mode_key(m: m)], ""),
-    r: read_camera(
-      camera: camera_set_mode(c: camera_step_to(d: d), m: m),
+  render_reading(
+    label: join([gunbc.design.instrument_camera.program_depth_key(d: d), " / ", gunbc.design.instrument_camera.program_mode_key(m: m)], ""),
+    r: gunbc.design.instrument_audition.read_camera(
+      camera: gunbc.design.instrument_camera.camera_set_mode(c: camera_step_to(d: d), m: m),
       view: view,
     ),
   )
@@ -305,16 +305,16 @@ fn camera_step_to(d: gunbc.design.instrument_camera.ProgramDepth) -> gunbc.desig
 }
 
 fn depth_readings(view: gunbc.roadmap_program_view.V1DeletionProgramView, d: gunbc.design.instrument_camera.ProgramDepth) -> List<std.markup.Fragment> {
-  map(program_modes(), m => reading_at(view: view, d: d, m: m))
+  map(gunbc.design.instrument_camera.program_modes(), m => reading_at(view: view, d: d, m: m))
 }
 
 data refusal_cause_arms_note: String = "TOTAL OVER V0's REFUSAL COPRODUCT, and the totality is load-bearing rather than tidy. The page's whole contract when the projection refuses is that it draws the LOCATED causes instead of a smaller program, so a cause this page could not name would be a cause the reader never sees — the empty-observation narrow, one layer out. The duplicate arms arrived from PR #7822 and the compiler refused this match until they were handled, which is the construction wall working across a merge: nobody had to notice that V0 grew two refusal shapes, because an Accepted program could not be built without them."
 
 fn refusal_cause_text(c: gunbc.roadmap_program_view.ProgramViewRefusalCause) -> String {
   match c {
-    FinishLineNodeUnresolved { line_key, node } =>
+    gunbc.roadmap_program_view.FinishLineNodeUnresolved { line_key, node } =>
       join(["finish line ", line_key, " names no declared node: ", node as String], "")
-    FrontGateUnresolved { front_key, gate } =>
+    gunbc.roadmap_program_view.FrontGateUnresolved { front_key, gate } =>
       join(["front ", front_key, " names no declared gate: ", gate as String], "")
     DuplicateAcceptanceReceipt { node } =>
       join(["node ", node as String, " carries more than one acceptance receipt"], "")
@@ -325,41 +325,41 @@ fn refusal_cause_text(c: gunbc.roadmap_program_view.ProgramViewRefusalCause) -> 
 
 fn reading_rows() -> std.markup.Fragment {
   match live_program_view_result() {
-    LiveViewRefused { causes } => el("div", concat(
-      [ el_class("div", instrument_refusal_class, [ txt("program view refused — the page draws nothing rather than a smaller program") ]) ],
-      map(causes, c => el_class("div", instrument_refusal_class, [ txt(c) ]))))
+    LiveViewRefused { causes } => gunbc.site.markup.el("div", concat(
+      [ gunbc.site.markup.el_class("div", instrument_refusal_class, [ gunbc.site.markup.txt("program view refused — the page draws nothing rather than a smaller program") ]) ],
+      map(causes, c => gunbc.site.markup.el_class("div", instrument_refusal_class, [ gunbc.site.markup.txt(c) ]))))
     LiveViewDerived { view } =>
-      el("div", flat_map(program_depths(), d => depth_readings(view: view, d: d)))
+      gunbc.site.markup.el("div", flat_map(gunbc.design.instrument_camera.program_depths(), d => depth_readings(view: view, d: d)))
   }
 }
 
 fn salience_row(assignments: List<gunbc.design.salience.SalienceAssignment>, spec: gunbc.v1_deletion_plan.V1FinishLineSpec) -> std.markup.Fragment {
-  let key = v1_finish_line_key(l: spec.line)
+  let key = gunbc.v1_deletion_plan.v1_finish_line_key(l: spec.line)
   fragment_row(cells: [
-    fragment_cell(s: salience_key(role: assignment_role_for(assignments: assignments, subject: key))),
+    fragment_cell(s: gunbc.design.salience.salience_key(role: gunbc.design.instrument_projection.assignment_role_for(assignments: assignments, subject: key))),
     fragment_cell(s: spec.name),
     fragment_cell(s: key),
   ])
 }
 
 fn salience_block(label: String, camera: gunbc.design.instrument_camera.ProgramCamera, refusal: gunbc.design.instrument_projection.RefusalAggregate) -> std.markup.Fragment {
-  let assignments = project_finish_line_salience(camera: camera, refusal: refusal)
-  el("div", concat(
+  let assignments = gunbc.design.instrument_projection.project_finish_line_salience(camera: camera, refusal: refusal)
+  gunbc.site.markup.el("div", concat(
     concat(
-      [ el("h3", [ txt(label) ]) ],
-      map(v1_exit_finish_lines(), s => salience_row(assignments: assignments, spec: s))),
+      [ gunbc.site.markup.el("h3", [ gunbc.site.markup.txt(label) ]) ],
+      map(gunbc.v1_deletion_plan.v1_exit_finish_lines(), s => salience_row(assignments: assignments, spec: s))),
     [ fragment_row(cells: [
-        fragment_cell(s: salience_key(role: assignment_role_for(assignments: assignments, subject: refusal_subject_key))),
-        fragment_cell(s: refusal_subject_key),
+        fragment_cell(s: gunbc.design.salience.salience_key(role: gunbc.design.instrument_projection.assignment_role_for(assignments: assignments, subject: gunbc.design.instrument_projection.refusal_subject_key))),
+        fragment_cell(s: gunbc.design.instrument_projection.refusal_subject_key),
       ]) ]))
 }
 
 fn salience_section() -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("focal salience, derived") ]),
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("focal salience, derived") ]),
     instrument_note(s: "No row on this page carries an authored role. The selected subject is Focal, its region siblings are Supporting, everything else is Ground, and an active refusal is one Critical subject however many refuse."),
-    salience_block(label: "nothing selected", camera: camera_initial, refusal: NoActiveRefusal),
-    salience_block(label: "compiler fixed point selected", camera: exemplar_camera(), refusal: NoActiveRefusal),
+    salience_block(label: "nothing selected", camera: gunbc.design.instrument_camera.camera_initial, refusal: gunbc.design.instrument_projection.NoActiveRefusal),
+    salience_block(label: "compiler fixed point selected", camera: exemplar_camera(), refusal: gunbc.design.instrument_projection.NoActiveRefusal),
     salience_block(
       label: "selected, with three active refusals",
       camera: exemplar_camera(),
@@ -370,48 +370,48 @@ fn salience_section() -> std.markup.Fragment {
 
 fn audition_verdict_text(a: gunbc.design.instrument_audition.AuditionAdmission) -> String {
   match a {
-    AuditionAdmitted { intensity, emission, attraction, displacement_px } =>
+    gunbc.design.instrument_audition.AuditionAdmitted { intensity, emission, attraction, displacement_px } =>
       join(["admitted · enclosure displacement ", to_string(displacement_px), "px"], "")
-    AuditionEmissionRefused { intensity, grant } => "refused: emission not admissible at this role"
-    AuditionAttractionOutsideEnvelope { intensity } => "refused: attraction outside the envelope"
-    AuditionDisplacementOverBudget { intensity, total_px, max_px } =>
+    gunbc.design.instrument_audition.AuditionEmissionRefused { intensity, grant } => "refused: emission not admissible at this role"
+    gunbc.design.instrument_audition.AuditionAttractionOutsideEnvelope { intensity } => "refused: attraction outside the envelope"
+    gunbc.design.instrument_audition.AuditionDisplacementOverBudget { intensity, total_px, max_px } =>
       join(["refused: displacement ", to_string(total_px), "px over ", to_string(max_px), "px"], "")
   }
 }
 
 fn audition_card(i: gunbc.design.instrument_audition.AuditionIntensity) -> std.markup.Fragment {
-  let verdict = admit_audition(i: i, role: audition_subject_role(), subject_key: audition_subject_key())
-  el_class("div", audition_card_class(i: i), [
-    el("h3", [ txt(audition_intensity_key(i: i)) ]),
+  let verdict = gunbc.design.instrument_audition.admit_audition(i: i, role: audition_subject_role(), subject_key: audition_subject_key())
+  gunbc.site.markup.el_class("div", audition_card_class(i: i), [
+    gunbc.site.markup.el("h3", [ gunbc.site.markup.txt(gunbc.design.instrument_audition.audition_intensity_key(i: i)) ]),
     fragment_cell(s: "Compiler fixed point"),
     instrument_note(s: audition_verdict_text(a: verdict)),
   ])
 }
 
 fn audition_section() -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("focal audition — one real subject, three energies") ]),
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("focal audition — one real subject, three energies") ]),
     instrument_note(s: "The same finish line rendered at three grants of the same budget. Restrained is the register before the amendment; hero sits at the emission envelope's admissible maximum, so the comparison shows where the bound actually is."),
-    el_class("div", instrument_row_class, map(audition_intensities, i => audition_card(i: i))),
+    gunbc.site.markup.el_class("div", instrument_row_class, map(gunbc.design.instrument_audition.audition_intensities, i => audition_card(i: i))),
   ])
 }
 
 fn channel_row(p: gunbc.design.instrument_physical.InstrumentPreference, c: gunbc.design.instrument_physical.InstrumentChannel) -> std.markup.Fragment {
   fragment_row(cells: [
-    fragment_cell(s: channel_key(c: c)),
-    fragment_cell(s: join([to_string(amplitude_px(a: channel_amplitude(p: p, c: c))), "px"], "")),
+    fragment_cell(s: gunbc.design.instrument_physical.channel_key(c: c)),
+    fragment_cell(s: join([to_string(gunbc.design.instrument_physical.amplitude_px(a: gunbc.design.instrument_physical.channel_amplitude(p: p, c: c))), "px"], "")),
     fragment_cell(s: "carries no domain fact"),
   ])
 }
 
 fn displacement_text(p: gunbc.design.instrument_physical.InstrumentPreference) -> String {
-  match displacement_admission(p: p) {
-    DisplacementAdmitted { total_px } =>
+  match gunbc.design.instrument_physical.displacement_admission(p: p) {
+    gunbc.design.instrument_physical.DisplacementAdmitted { total_px } =>
       join([
         "composed displacement ", to_string(total_px), "px, within the ",
-        to_string(instrument_displacement_max_px), "px ceiling borrowed from the register's attraction travel",
+        to_string(gunbc.design.instrument_physical.instrument_displacement_max_px), "px ceiling borrowed from the register's attraction travel",
       ], "")
-    DisplacementOverBudget { total_px, max_px } =>
+    gunbc.design.instrument_physical.DisplacementOverBudget { total_px, max_px } =>
       join(["refused: composed ", to_string(total_px), "px exceeds the ", to_string(max_px), "px envelope"], "")
     EnclosureCharacterReachesResponseTravel { character_px, max_px } =>
       join([
@@ -423,77 +423,77 @@ fn displacement_text(p: gunbc.design.instrument_physical.InstrumentPreference) -
 
 fn impulse_cell(s: gunbc.design.instrument_physical.PhysicalImpulseSource, a: gunbc.design.instrument_physical.SensorAvailability) -> std.markup.Fragment {
   fragment_cell(s: join([
-    sensor_availability_key(a: a), " → ",
-    match admit_impulse(p: preference_default, s: s, sensor: a) {
-      ImpulseAdmitted { source, settle } => join(["admitted (", settle.name, ")"], "")
-      ImpulseSourceUnavailable { source, availability } => join(["refused (", availability, ")"], "")
-      ImpulseChannelDisabled { source } => "refused (channel disabled)"
+    gunbc.design.instrument_physical.sensor_availability_key(a: a), " → ",
+    match gunbc.design.instrument_physical.admit_impulse(p: gunbc.design.instrument_physical.preference_default, s: s, sensor: a) {
+      gunbc.design.instrument_physical.ImpulseAdmitted { source, settle } => join(["admitted (", settle.name, ")"], "")
+      gunbc.design.instrument_physical.ImpulseSourceUnavailable { source, availability } => join(["refused (", availability, ")"], "")
+      gunbc.design.instrument_physical.ImpulseChannelDisabled { source } => "refused (channel disabled)"
     },
   ], ""))
 }
 
 fn sensor_states() -> List<gunbc.design.instrument_physical.SensorAvailability> {
-  [SensorPresent, SensorAbsent, SensorPermissionNotRequested, SensorPermissionDenied, SensorAvailabilityUnknown]
+  [gunbc.design.instrument_physical.SensorPresent, gunbc.design.instrument_physical.SensorAbsent, gunbc.design.instrument_physical.SensorPermissionNotRequested, gunbc.design.instrument_physical.SensorPermissionDenied, gunbc.design.instrument_physical.SensorAvailabilityUnknown]
 }
 
 fn impulse_row(s: gunbc.design.instrument_physical.PhysicalImpulseSource) -> std.markup.Fragment {
   fragment_row(cells: concat(
-    [ fragment_cell(s: impulse_source_key(s: s)) ],
+    [ fragment_cell(s: gunbc.design.instrument_physical.impulse_source_key(s: s)) ],
     map(sensor_states(), a => impulse_cell(s: s, a: a))))
 }
 
 fn physical_section() -> std.markup.Fragment {
-  el("section", concat(
+  gunbc.site.markup.el("section", concat(
     concat(
       [
-        el("h2", [ txt("physical screen") ]),
+        gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("physical screen") ]),
         instrument_note(s: "Press the frame below: the impulse glitch is a real response built through the ordinary ResponseRule machinery, so it obeys the same still-until-touched law every other control does. The idle channels are budgeted here but not animated — ambient motion has no constructor in this register yet, and emitting one past that wall would be an unmarked workaround."),
-        el_attrs("button", [
-          attr(name: "class", value: instrument_frame_class ),
-          attr(name: "type", value: "button" ),
+        gunbc.site.markup.el_attrs("button", [
+          std.markup.attr(name: "class", value: instrument_frame_class ),
+          std.markup.attr(name: "type", value: "button" ),
         ], [
-          el("h3", [ txt("instrument enclosure — press to see the impulse transient") ]),
-          instrument_note(s: join(["impulse decay: ", glitch_duration_key(g: preference_default.glitch_duration)], "")),
+          gunbc.site.markup.el("h3", [ gunbc.site.markup.txt("instrument enclosure — press to see the impulse transient") ]),
+          instrument_note(s: join(["impulse decay: ", gunbc.design.instrument_physical.glitch_duration_key(g: preference_default.glitch_duration)], "")),
         ]),
       ],
-      map([ChannelOpticalJitter, ChannelVerticalShift, ChannelBuoyantDrift, ChannelImpulseGlitch], c => channel_row(p: preference_default, c: c))),
+      map([gunbc.design.instrument_physical.ChannelOpticalJitter, gunbc.design.instrument_physical.ChannelVerticalShift, gunbc.design.instrument_physical.ChannelBuoyantDrift, gunbc.design.instrument_physical.ChannelImpulseGlitch], c => channel_row(p: gunbc.design.instrument_physical.preference_default, c: c))),
     concat(
-      [ instrument_note(s: displacement_text(p: preference_default)), el("h3", [ txt("impulse admission") ]) ],
-      map([SyntheticImpulse, HostAccelerometer, HostDeviceMotion], s => impulse_row(s: s)))))
+      [ instrument_note(s: displacement_text(p: gunbc.design.instrument_physical.preference_default)), gunbc.site.markup.el("h3", [ gunbc.site.markup.txt("impulse admission") ]) ],
+      map([gunbc.design.instrument_physical.SyntheticImpulse, gunbc.design.instrument_physical.HostAccelerometer, gunbc.design.instrument_physical.HostDeviceMotion], s => impulse_row(s: s)))))
 }
 
 data page_shell_note: String = "THE SHELL SAYS WHAT THE PAGE IS. It declares a language and a viewport because a document without them is not a finished page on a phone or to a screen reader, and it does NOT reuse the roadmap header: that header carries theme and sound toggles whose behaviour comes from a client program this static study does not load, so rendering them would put two dead controls on the page — an affordance that does nothing is the same lie as a caption under an unadmitted glow, just cheaper to notice. The title names it a study rather than an instrument, for the reason exemplar_note gives."
 
 fn instrument_study_header() -> std.markup.Fragment {
-  el("header", [
-    el_class("div", "header-inner", [
-      el_class("span", "wordmark", [ txt("gunbc") ]),
-      el("h1", [ txt("instrument — static study") ]),
+  gunbc.site.markup.el("header", [
+    gunbc.site.markup.el_class("div", "header-inner", [
+      gunbc.site.markup.el_class("span", "wordmark", [ gunbc.site.markup.txt("gunbc") ]),
+      gunbc.site.markup.el("h1", [ gunbc.site.markup.txt("instrument — static study") ]),
     ]),
   ])
 }
 
 fn instrument_sandbox_page() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "html",
-    attributes: [ attr(name: "lang", value: "en" ) ],
+    attributes: [ std.markup.attr(name: "lang", value: "en" ) ],
     children: [
-      el("head", [
-        std.markup.Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+      gunbc.site.markup.el("head", [
+        std.markup.Element { tag: "meta", attributes: [ std.markup.attr(name: "charset", value: "utf-8" ) ], children: [] },
         std.markup.Element {
           tag: "meta",
           attributes: [
-            attr(name: "name", value: "viewport" ),
-            attr(name: "content", value: "width=device-width, initial-scale=1" ),
+            std.markup.attr(name: "name", value: "viewport" ),
+            std.markup.attr(name: "content", value: "width=device-width, initial-scale=1" ),
           ],
           children: [],
         },
-        el("style", [ txt(instrument_css()) ]),
-        el("title", [ txt("gunbc — instrument study") ]),
+        gunbc.site.markup.el("style", [ gunbc.site.markup.txt(instrument_css()) ]),
+        gunbc.site.markup.el("title", [ gunbc.site.markup.txt("gunbc — instrument study") ]),
       ]),
-      el("body", [
+      gunbc.site.markup.el("body", [
         instrument_study_header(),
-        el_class("main", instrument_sandbox_page_class, [
+        gunbc.site.markup.el_class("main", instrument_sandbox_page_class, [
           camera_section(),
           salience_section(),
           audition_section(),

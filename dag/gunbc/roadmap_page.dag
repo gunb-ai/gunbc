@@ -1,5 +1,6 @@
 module gunbc.roadmap_page
 
+
 fn roadmap_page_max_depth() -> Int { 12 }
 
 data finish_line_placement_note: String = "The finish-line block is REFERENCE prose, not operational attention (A1 of the presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / leads with the frontier and carries only the one-line program strip (program_progress_markup_of, the ProgramProgressView consumer); the four claims render on /roadmap, where the strategic argument lives. The 2026-07-28 stylesheet-debt scaffold that shipped this section unstyled dissolved in the same pass: the gate/brick rules are deleted, .finish-line-* rules exist on the tokened grain, and roadmap_css_lift_parity_digest was re-pinned by execution (see the A1 re-pin note in test.claim.design_register_lift_parity_witness). The count line under the heading is the LOCAL denominator — accepted finish lines over the four — never the global roadmap population, which belonged to a different question (review: the section visually implied a denominator of four while reporting an unrelated global one)."
@@ -8,81 +9,82 @@ fn finish_line_state_class(accepted: Bool) -> String {
   if accepted { "accepted" } else { "active" }
 }
 
-fn finish_line_row(spec: V1FinishLineSpec, accepted_ids: List<RoadmapNodeId>) -> Fragment {
-  let accepted = v1_finish_line_accepted(spec: spec, accepted: accepted_ids)
-  el_class("li", concat("finish-line finish-line-", finish_line_state_class(accepted: accepted)), [
-    el_class("span", "finish-line-state", [ txt(finish_line_state_class(accepted: accepted)) ]),
-    el_class("span", "finish-line-name", [ txt(spec.name) ]),
-    el_class("span", "finish-line-node", [ txt(spec.node as String) ]),
-    el_class("span", "finish-line-claim", [ txt(spec.claim) ]),
+fn finish_line_row(spec: gunbc.v1_deletion_plan.V1FinishLineSpec, accepted_ids: List<gunbc.roadmap_model.RoadmapNodeId>) -> std.markup.Fragment {
+  let accepted = gunbc.v1_deletion_plan.v1_finish_line_accepted(spec: spec, accepted: accepted_ids)
+  gunbc.site.markup.el_class("li", concat("finish-line finish-line-", finish_line_state_class(accepted: accepted)), [
+    gunbc.site.markup.el_class("span", "finish-line-state", [ gunbc.site.markup.txt(finish_line_state_class(accepted: accepted)) ]),
+    gunbc.site.markup.el_class("span", "finish-line-name", [ gunbc.site.markup.txt(spec.name) ]),
+    gunbc.site.markup.el_class("span", "finish-line-node", [ gunbc.site.markup.txt(spec.node as String) ]),
+    gunbc.site.markup.el_class("span", "finish-line-claim", [ gunbc.site.markup.txt(spec.claim) ]),
   ])
 }
 
-fn finish_line_local_count_label(accepted_ids: List<RoadmapNodeId>) -> String {
+fn finish_line_local_count_label(accepted_ids: List<gunbc.roadmap_model.RoadmapNodeId>) -> String {
   join([
-    to_string(v1_finish_lines_accepted_count(accepted: accepted_ids)),
+    to_string(gunbc.v1_deletion_plan.v1_finish_lines_accepted_count(accepted: accepted_ids)),
     " of ",
-    to_string(count(v1_exit_finish_lines())),
+    to_string(count(gunbc.v1_deletion_plan.v1_exit_finish_lines())),
     " complete",
   ], "")
 }
 
-fn finish_line_progress_markup_for_accepted(accepted_ids: List<RoadmapNodeId>) -> Fragment {
-  el_class("section", "finish-line-progress", [
-    el("h2", [ txt("v1 exit: four finish lines") ]),
-    el_class("p", "finish-line-counts", [ txt(finish_line_local_count_label(accepted_ids: accepted_ids)) ]),
-    el_class("ul", "finish-lines",
-      map(v1_exit_finish_lines(), s => finish_line_row(spec: s, accepted_ids: accepted_ids))),
+fn finish_line_progress_markup_for_accepted(accepted_ids: List<gunbc.roadmap_model.RoadmapNodeId>) -> std.markup.Fragment {
+  gunbc.site.markup.el_class("section", "finish-line-progress", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("v1 exit: four finish lines") ]),
+    gunbc.site.markup.el_class("p", "finish-line-counts", [ gunbc.site.markup.txt(finish_line_local_count_label(accepted_ids: accepted_ids)) ]),
+    gunbc.site.markup.el_class("ul", "finish-lines",
+      map(gunbc.v1_deletion_plan.v1_exit_finish_lines(), s => finish_line_row(spec: s, accepted_ids: accepted_ids))),
   ])
 }
 
-fn finish_line_progress_markup() -> Fragment {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
-      el_class("section", "finish-line-progress", [
-        el("h2", [ txt("v1 exit: four finish lines") ]),
-        el_class("p", "finish-line-refused", [
-          txt(concat("acceptance carrier refused: ", detail)),
+fn finish_line_progress_markup() -> std.markup.Fragment {
+  match gunbc.roadmap_authority.accepted_roadmap_node_ids_projection() {
+    gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+      gunbc.site.markup.el_class("section", "finish-line-progress", [
+        gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("v1 exit: four finish lines") ]),
+        gunbc.site.markup.el_class("p", "finish-line-refused", [
+          gunbc.site.markup.txt(concat("acceptance carrier refused: ", detail)),
         ]),
       ])
-    AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
+    gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
       finish_line_progress_markup_for_accepted(accepted_ids: accepted_ids)
   }
 }
 
-fn dashboard_instance_banner() -> Fragment {
-  el_class("section", dashboard_instance_class, [
-    el_class("span", dashboard_instance_label_class, [
-      txt("instance · observing"),
+fn dashboard_instance_banner() -> std.markup.Fragment {
+  gunbc.site.markup.el_class("section", gunbc.roadmap_component.dashboard_instance_class, [
+    gunbc.site.markup.el_class("span", gunbc.roadmap_component.dashboard_instance_label_class, [
+      gunbc.site.markup.txt("instance · observing"),
     ]),
   ])
 }
 
+
 data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. The former empty-label rendering was corrected at A1 (presentation recon, 2026-08-01): honest-before-JS does not require blankness — a blank button has no visible content and no accessible name, which is a defect, not honesty. The TWO TOGGLES SHIP DIFFERENT AMOUNTS OF STATE, and the asymmetry is the honesty boundary, not an inconsistency (A1 reconciliation, operator feedback 2026-08-01): the theme control ships 'theme · auto' because at parse time the document carries no data-theme and prefers-color-scheme governs — which is the DEFINITION of auto, true for every visitor until the client program applies a stored choice; the sound control ships only its NAME because its state has no parse-time truth — the preference lives in this browser's storage (unreadable at serve), and for a no-JS visitor no sound ever plays, so any shipped state word would be a fabricated claim for someone. The client program repaints both from storage on load, exactly as before."
 
-fn sound_toggle_control() -> Fragment {
-  el_attrs("button", [
-    attr(name: "class", value: sound_toggle_class ),
-    attr(name: "type", value: "button" ),
-  ], [ txt("sound") ])
+fn sound_toggle_control() -> std.markup.Fragment {
+  gunbc.site.markup.el_attrs("button", [
+    std.markup.attr(name: "class", value: gunbc.roadmap_component.sound_toggle_class ),
+    std.markup.attr(name: "type", value: "button" ),
+  ], [ gunbc.site.markup.txt("sound") ])
 }
 
-fn theme_toggle_control() -> Fragment {
-  el_attrs("button", [
-    attr(name: "class", value: theme_toggle_class ),
-    attr(name: "type", value: "button" ),
-  ], [ txt(join([theme_toggle_label_prefix, theme_toggle_auto_value], "")) ])
+fn theme_toggle_control() -> std.markup.Fragment {
+  gunbc.site.markup.el_attrs("button", [
+    std.markup.attr(name: "class", value: gunbc.roadmap_component.theme_toggle_class ),
+    std.markup.attr(name: "type", value: "button" ),
+  ], [ gunbc.site.markup.txt(join([gunbc.roadmap_component.theme_toggle_label_prefix, gunbc.roadmap_component.theme_toggle_auto_value], "")) ])
 }
 
 data roadmap_wordmark_note: String = "A1 header decision (presentation recon, operator-signed 2026-08-01): the header carries a TEXT wordmark, not the site mark. The mark that stood here was gunbc.site.mark candidate A ('Confluence') — an explicitly unselected brand experiment (DESIGN's site thread still owes candidates B–D) whose aria-label said 'gunb.ai mark' on a gunbc operational tool: a public-site brand artifact leaking into a tool surface. The minimal correct move is the wordmark; a drawn mark returns if and when an actual brand-selection task runs (the sandbox auditioner is the venue, the swatch-graduation precedent). The h1 carries the PAGE name alone — the product name lives in the wordmark, so the two never restate each other."
 
 data header_composition_frame_note: String = "HEADER AND CONTENT SHARE ONE COMPOSITION FRAME (A2 hierarchy closeout, operator gap ruling 2026-08-02: the wide-screen fold showed two alignment systems — the header hugging the left viewport edge while the content column centered at the page measure, leaving a dead gutter that read as accident). The header element keeps its full-width surface and border — it is a chassis edge — but its CONTENT now lives in .header-inner, the same measure_page/auto-margin frame the .roadmap and .daily-workspace columns use, so the wordmark, page name, and controls sit flush over the content column at every width. One frame, stated once: the inner wrapper consumes the identical tokens, so a measure change moves header and content together."
 
-fn roadmap_header(page: String) -> Fragment {
-  el("header", [
-    el_class("div", "header-inner", [
-      el_class("span", "wordmark", [ txt("gunbc") ]),
-      el("h1", [ txt(page) ]),
+fn roadmap_header(page: String) -> std.markup.Fragment {
+  gunbc.site.markup.el("header", [
+    gunbc.site.markup.el_class("div", "header-inner", [
+      gunbc.site.markup.el_class("span", "wordmark", [ gunbc.site.markup.txt("gunbc") ]),
+      gunbc.site.markup.el("h1", [ gunbc.site.markup.txt(page) ]),
       sound_toggle_control(),
       theme_toggle_control(),
     ]),
@@ -91,8 +93,8 @@ fn roadmap_header(page: String) -> Fragment {
 
 data page_status_vocab_note: String = "The status vocabulary the page renders (chip text, node-<key> classes, altitude-band counts) is work_lifecycle_key over the seam's WorkLifecycle — the node_status_symbol decision moved to gunbc.roadmap_presentation as its single authority (operator blocker 1, 2026-08-01: the old renderer independently re-decided open/review/done/superseded beside the seam). The key set is unchanged, so the altitude machinery and the styling grain consume the same four words."
 
-fn node_lifecycle_key(rn: RoadmapNode, merged: List<Int>) -> String {
-  work_lifecycle_key(l: work_lifecycle(rn: rn, merged: merged))
+fn node_lifecycle_key(rn: gunbc.roadmap_model.RoadmapNode, merged: List<Int>) -> String {
+  gunbc.roadmap_presentation.work_lifecycle_key(l: gunbc.roadmap_presentation.work_lifecycle(rn: rn, merged: merged))
 }
 
 data roadmap_lead_budget_note: String = "The lead is the row's at-a-glance face: the seam's row_headline (the ticket's typed headline; for legacy lines the named lead residue inside gunbc.roadmap_presentation). A row whose LEAD is itself paragraph-length defeats the disclosure — the brief stays collapsed but the summary line does not, so the reader pays the full text anyway. The bound is authoring residue, not a structural class: no construction forbids a long sentence, so this is the §5-sanctioned lens over the genuinely unstructurable part, and it is typed/located/counted (node id + measured length) rather than a bare Bool, so a red says WHICH row and by how much. 300 chars is the operator's declared bound (roadmap-workspace-ux-plan.md P1b); an offender is re-cut by moving its summary delimiter earlier or splitting its content, while the body remains available behind the disclosure."
@@ -104,9 +106,9 @@ type LeadBudgetViolation {
   lead_chars: Int
 }
 
-fn lead_budget_violations(nodes: List<RoadmapNode>) -> List<LeadBudgetViolation> {
+fn lead_budget_violations(nodes: List<gunbc.roadmap_model.RoadmapNode>) -> List<LeadBudgetViolation> {
   fold(nodes, init: [], f: (acc, rn) => {
-    let n = row_headline(line: rn.line).length()
+    let n = gunbc.roadmap_presentation.row_headline(line: rn.line).length()
     if n > roadmap_lead_budget_chars() {
       concat(acc, [LeadBudgetViolation { node: rn.node as String, lead_chars: n }])
     } else {
@@ -116,7 +118,7 @@ fn lead_budget_violations(nodes: List<RoadmapNode>) -> List<LeadBudgetViolation>
 }
 
 fn roadmap_authority_lead_budget_violations() -> List<LeadBudgetViolation> {
-  lead_budget_violations(nodes: declared_roadmap_nodes())
+  lead_budget_violations(nodes: gunbc.roadmap_authority.declared_roadmap_nodes())
 }
 
 data ticket_brief_budget_note: String = "The brief bound (operator's ticket model: a brief is ~100 words or less, read daily). Same shape as the lead budget: authoring residue no construction can forbid, so a typed located counted census — a red carries the node id and the measured count, never a bare Bool. Words, not characters, because the operator priced it in reading, and a word is the unit reading is priced in."
@@ -124,7 +126,7 @@ data ticket_brief_budget_note: String = "The brief bound (operator's ticket mode
 data ticket_brief_word_budget: Int = 100
 
 type BriefBudgetViolation {
-  node: RoadmapNodeId
+  node: gunbc.roadmap_model.RoadmapNodeId
   words: Int
 }
 
@@ -132,8 +134,8 @@ fn ticket_brief_word_count(brief: String) -> Int {
   count(split(s: brief, delimiter: " "))
 }
 
-fn ticket_brief_violations(nodes: List<RoadmapNode>) -> List<BriefBudgetViolation> {
-  fold(nodes, init: [], f: (acc, rn) => match line_ticket(item: rn.line) {
+fn ticket_brief_violations(nodes: List<gunbc.roadmap_model.RoadmapNode>) -> List<BriefBudgetViolation> {
+  fold(nodes, init: [], f: (acc, rn) => match gunbc.roadmap_status.line_ticket(item: rn.line) {
     Absent => acc
     Present { value: t } => {
       let words = ticket_brief_word_count(brief: t.brief)
@@ -149,87 +151,87 @@ fn ticket_brief_violations(nodes: List<RoadmapNode>) -> List<BriefBudgetViolatio
 data ticket_brief_budget_subject_note: String = "THE BUDGET GOVERNS AUTHORED TICKET PROSE, SO IT WALKS THE AUTHORED NODES RATHER THAN THE PROJECTION. It previously walked doc_all_nodes(roadmap_authority()), which includes the DERIVED closing-contract task nodes whose boundary is generated as a fixed prefix plus the target node's red_control. That made the budget a second, indirect and undeclared constraint on red_control length: accepting any node could push a DIFFERENT node over budget, because acceptance makes the next node startable-and-unbound and therefore derives a closing-contract row for it.\n\nThat is exactly what happened when v1-interpreter-primitive-roster was accepted: v1-interpreter-primitive-dispatch-authority became the frontier, its derived row's brief came to the prefix plus a six-clause red_control, and the budget refused -- with the only available remedies being to trim a carefully authored acceptance bar to satisfy a PAGE constraint, or to leave every PR touching roadmap_authority.dag red. Neither is the budget's purpose.\n\nA derived brief is a projection of a field that is already governed where it is authored. Budgeting the projection prices the source field twice, through a channel nobody declared. So the subject is declared_roadmap_nodes(): every authored ticket, accepted or active, and nothing generated. The planted-fixture RED control is unaffected -- it passes an authored node directly to ticket_brief_violations, which still refuses at the same threshold."
 
 fn roadmap_ticket_brief_violations() -> List<BriefBudgetViolation> {
-  ticket_brief_violations(nodes: declared_roadmap_nodes())
+  ticket_brief_violations(nodes: gunbc.roadmap_authority.declared_roadmap_nodes())
 }
 
-fn inline_md_nodes(text: String) -> List<Fragment> {
-  markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: text))
+fn inline_md_nodes(text: String) -> List<std.markup.Fragment> {
+  std.markdown.markdown_inlines_to_fragments(inlines: extdeps.languages.markdown.parse_inline_markdown_minimal(text: text))
 }
 
-fn disclosure_field_row(f: DisclosureField) -> Fragment {
-  el_class("div", "ticket-field", concat(
-    [ el_class("span", "ticket-field-label", [ txt(f.label) ]) ],
-    [ el_class("span", "ticket-field-value", inline_md_nodes(text: f.value)) ]))
+fn disclosure_field_row(f: gunbc.roadmap_presentation.DisclosureField) -> std.markup.Fragment {
+  gunbc.site.markup.el_class("div", "ticket-field", concat(
+    [ gunbc.site.markup.el_class("span", "ticket-field-label", [ gunbc.site.markup.txt(f.label) ]) ],
+    [ gunbc.site.markup.el_class("span", "ticket-field-value", inline_md_nodes(text: f.value)) ]))
 }
 
-fn disclosure_update_row(u: DisclosureNote) -> Fragment {
-  el_class("div", "ticket-update", concat(
-    [ el_class("span", "ticket-update-date", [ txt(u.on) ]) ],
-    [ el_class("span", "ticket-update-note", inline_md_nodes(text: u.note)) ]))
+fn disclosure_update_row(u: gunbc.roadmap_presentation.DisclosureNote) -> std.markup.Fragment {
+  gunbc.site.markup.el_class("div", "ticket-update", concat(
+    [ gunbc.site.markup.el_class("span", "ticket-update-date", [ gunbc.site.markup.txt(u.on) ]) ],
+    [ gunbc.site.markup.el_class("span", "ticket-update-note", inline_md_nodes(text: u.note)) ]))
 }
 
-fn disclosure_updates_block(updates: List<DisclosureNote>) -> List<Fragment> {
+fn disclosure_updates_block(updates: List<gunbc.roadmap_presentation.DisclosureNote>) -> List<std.markup.Fragment> {
   if count(updates) == 0 {
     []
   } else {
-    [ el_class("div", "ticket-updates", concat(
-        [ el_class("div", "ticket-updates-head", [ txt("updates") ]) ],
+    [ gunbc.site.markup.el_class("div", "ticket-updates", concat(
+        [ gunbc.site.markup.el_class("div", "ticket-updates-head", [ gunbc.site.markup.txt("updates") ]) ],
         map(updates, u => disclosure_update_row(u: u)))) ]
   }
 }
 
-fn disclosure_body_nodes(d: DisclosureView) -> List<Fragment> {
+fn disclosure_body_nodes(d: gunbc.roadmap_presentation.DisclosureView) -> List<std.markup.Fragment> {
   match d {
-    NoDisclosure => []
-    TicketDisclosure { brief, fields, updates } =>
+    gunbc.roadmap_presentation.NoDisclosure => []
+    gunbc.roadmap_presentation.TicketDisclosure { brief, fields, updates } =>
       concat(
-        [ el_class("p", "ticket-brief", inline_md_nodes(text: brief)) ],
+        [ gunbc.site.markup.el_class("p", "ticket-brief", inline_md_nodes(text: brief)) ],
         concat(
           map(fields, f => disclosure_field_row(f: f)),
           disclosure_updates_block(updates: updates)))
-    LegacyBodyDisclosure { content } =>
-      markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: content))
+    gunbc.roadmap_presentation.LegacyBodyDisclosure { content } =>
+      std.markdown.markdown_inlines_to_fragments(inlines: extdeps.languages.markdown.parse_inline_markdown_minimal(text: content))
   }
 }
 
 data item_facts_disclosure_note: String = "Supporting facts live in the disclosure, not the head row (A1 of the presentation recon, operator-signed 2026-08-01): the head line had grown to ~7 simultaneous inline facts — owner, sizing codes, carrier links, dependencies — wrapping arbitrarily under the title, which is the half-console-half-product voice fork the recon named. The head carries the row's PRIMARY facts only plus the actuator; owner/sizing/carriers are supporting facts behind the same disclosure that already held the body. A row with supporting facts but no body still discloses (summary label 'facts'), so no fact is dropped — only demoted. AT A2 this renderer reads the DECIDED view alone: supporting facts arrive as WorkRowView.supporting_facts rows (label/value/href), the body as WorkRowView.disclosure — the RoadmapNode/TicketFields reads that used to live here moved behind the seam."
 
-fn supporting_fact_node(f: SupportingFact) -> Fragment {
+fn supporting_fact_node(f: gunbc.roadmap_presentation.SupportingFact) -> std.markup.Fragment {
   if f.href == "" {
-    el_class("span", f.label, [ txt(f.value) ])
+    gunbc.site.markup.el_class("span", f.label, [ gunbc.site.markup.txt(f.value) ])
   } else {
-    el_attrs("a", [ attr(name: "href", value: join([github_blob_base, f.href], "") ) ], [ txt(f.value) ])
+    gunbc.site.markup.el_attrs("a", [ std.markup.attr(name: "href", value: join([github_blob_base, f.href], "") ) ], [ gunbc.site.markup.txt(f.value) ])
   }
 }
 
-fn view_supporting_facts(view: WorkRowView) -> List<Fragment> {
+fn view_supporting_facts(view: gunbc.roadmap_presentation.WorkRowView) -> List<std.markup.Fragment> {
   if count(view.supporting_facts) == 0 {
     []
   } else {
-    [ el_class("div", "item-facts", map(view.supporting_facts, f => supporting_fact_node(f: f))) ]
+    [ gunbc.site.markup.el_class("div", "item-facts", map(view.supporting_facts, f => supporting_fact_node(f: f))) ]
   }
 }
 
-fn view_detail_block(view: WorkRowView) -> List<Fragment> {
+fn view_detail_block(view: gunbc.roadmap_presentation.WorkRowView) -> List<std.markup.Fragment> {
   let facts = view_supporting_facts(view: view)
   let body = disclosure_body_nodes(d: view.disclosure)
   if count(facts) == 0 && count(body) == 0 {
     []
   } else {
     let is_ticket = match view.disclosure {
-      TicketDisclosure { brief: _, fields: _, updates: _ } => true
-      NoDisclosure => false
-      LegacyBodyDisclosure { content: _ } => false
+      gunbc.roadmap_presentation.TicketDisclosure { brief: _, fields: _, updates: _ } => true
+      gunbc.roadmap_presentation.NoDisclosure => false
+      gunbc.roadmap_presentation.LegacyBodyDisclosure { content: _ } => false
     }
     let label = if is_ticket { "details" } else { if count(body) == 0 { "facts" } else { "brief" } }
-    [ el_attrs("details", [
-        attr(name: "class", value: if is_ticket { "item-detail ticket-row" } else { "item-detail" } ),
+    [ gunbc.site.markup.el_attrs("details", [
+        std.markup.attr(name: "class", value: if is_ticket { "item-detail ticket-row" } else { "item-detail" } ),
       ], [
-        el("summary", [
-          el_class("span", disclosure_mark_class, [ txt(disclosure_mark_glyph) ]),
-          txt(label),
+        gunbc.site.markup.el("summary", [
+          gunbc.site.markup.el_class("span", gunbc.roadmap_component.disclosure_mark_class, [ gunbc.site.markup.txt(gunbc.roadmap_component.disclosure_mark_glyph) ]),
+          gunbc.site.markup.txt(label),
         ]),
-        el_class("div", "item-body", concat(facts, body)),
+        gunbc.site.markup.el_class("div", "item-body", concat(facts, body)),
       ]) ]
   }
 }
@@ -238,59 +240,61 @@ data github_blob_base_note: String = "The per-surface link projection (remodel W
 
 data github_blob_base: String = "https://github.com/gunb-ai/gunbc/blob/main/"
 
-fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
-  nodes |> filter(n => match roadmap_primary_parent(edges: edges, node: n.node) {
-    UnderParent { parent: p } => p == parent
-    TopLevel => false
+
+fn children_of(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, parent: gunbc.roadmap_model.RoadmapNodeId) -> List<gunbc.roadmap_model.RoadmapNode> {
+  nodes |> filter(n => match gunbc.roadmap_model.roadmap_primary_parent(edges: edges, node: n.node) {
+    gunbc.roadmap_model.UnderParent { parent: p } => p == parent
+    gunbc.roadmap_model.TopLevel => false
   })
 }
 
+
 data dispatch_button_note: String = "The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every open or review node; only signoff-Done and authored Superseded rows hide it. This deliberately preserves manual out-of-order dispatch for blocked and unsized rows: spawn_frontier.ready governs automatic belt reconciliation and page grouping, not the manual POST admission contract. belt_dispatch_node currently refuses signoff-Done but does not consult Ready, so the page must not claim otherwise. The button carries data-node = the node id. Its client behavior is a MODELED TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>' under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`)."
 
-fn superseded_badge_of(view: WorkRowView) -> List<Fragment> {
+fn superseded_badge_of(view: gunbc.roadmap_presentation.WorkRowView) -> List<std.markup.Fragment> {
   if view.superseded_by == "" {
     []
   } else {
-    [ el_class("span", "superseded-by", [ txt(concat("→ ", view.superseded_by)) ]) ]
+    [ gunbc.site.markup.el_class("span", "superseded-by", [ gunbc.site.markup.txt(concat("→ ", view.superseded_by)) ]) ]
   }
 }
 
-fn view_dispatch_actions(view: WorkRowView) -> List<WorkAction> {
+fn view_dispatch_actions(view: gunbc.roadmap_presentation.WorkRowView) -> List<gunbc.roadmap_presentation.WorkAction> {
   let primary = match view.action.primary_action {
     Present { value: a } => [a]
     Absent => []
   }
   concat(primary, view.action.secondary_actions) |> filter(a => match a.kind {
-    DispatchAction => true
-    ClearSessionAction => false
+    gunbc.roadmap_presentation.DispatchAction => true
+    gunbc.roadmap_presentation.ClearSessionAction => false
   })
 }
 
 data dispatch_button_axes_note: String = "THE BUTTON CARRIES ITS DECIDED AXES (A2 hierarchy closeout, operator gap ruling 2026-08-02: 'action prominence derives from selection and priority, not mere availability'). The seam already decided priority and availability per action (action_axes_note); this renderer used to flatten both into one identical class, which is exactly how fourteen equally loud pills reached the desktop fold while LANDED rows kept the ready-row treatment. The class now carries the decided priority (action-primary / action-secondary) and data-availability carries the admission fact, so the stylesheet can rest every in-row control quiet and the client program can raise ONLY the selected row's primary action to the invite band (the action-focal class — selection is client state, prominence is its projection; named for the grant, not for liveness). Status classes keep winning in the cascade: emphasis never overrides truth. No-JS visitors see every control quiet but present, labeled, and operable — honest-before-JS forbids blankness, not calm."
 
-fn dispatch_button_nodes(view: WorkRowView) -> List<Fragment> {
+fn dispatch_button_nodes(view: gunbc.roadmap_presentation.WorkRowView) -> List<std.markup.Fragment> {
   map(view_dispatch_actions(view: view), a =>
-    el_attrs("button", [
-      attr(name: "class", value: concat("dispatch-btn action-", action_priority_key(p: a.priority)) ),
-      attr(name: "type", value: "button" ),
-      attr(name: "data-node", value: view.node_id ),
-      attr(name: "data-availability", value: action_availability_key(a: a.availability) ),
-    ], [ txt("dispatch") ]))
+    gunbc.site.markup.el_attrs("button", [
+      std.markup.attr(name: "class", value: concat("dispatch-btn action-", gunbc.roadmap_presentation.action_priority_key(p: a.priority)) ),
+      std.markup.attr(name: "type", value: "button" ),
+      std.markup.attr(name: "data-node", value: view.node_id ),
+      std.markup.attr(name: "data-availability", value: gunbc.roadmap_presentation.action_availability_key(a: a.availability) ),
+    ], [ gunbc.site.markup.txt("dispatch") ]))
 }
 
 data workflow_controls_actions_only_note: String = "The actuator cell carries ACTIONS ONLY (A2, the falsifier correction — see roadmap_row_archetype_note). The server-rendered lamp strip, seven pending stage chips, and 'waiting' activity text that used to preload this wrapper were exactly the furniture the attention rule forbids: a row with no attempt renders NO workflow DOM at all, and a row with one gets its activity painted by the client into the under-head ActivityRegion from the DECIDED /workflow.json view — never into this cell. The wrapper stays always-present so the dispatch control keeps a stable actuator home and the head grid keeps its three derived tracks."
 
-fn workflow_controls_nodes(view: WorkRowView) -> List<Fragment> {
-  [ el_class("div", workflow_controls_class,
+fn workflow_controls_nodes(view: gunbc.roadmap_presentation.WorkRowView) -> List<std.markup.Fragment> {
+  [ gunbc.site.markup.el_class("div", gunbc.roadmap_component.workflow_controls_class,
       dispatch_button_nodes(view: view)) ]
 }
 
-fn dispatch_client_script() -> Fragment {
-  Element {
+fn dispatch_client_script() -> std.markup.Fragment {
+  std.markup.Element {
     tag: "script",
     attributes: [
-      attr(name: "src", value: roadmap_dispatch_asset_path ),
-      attr(name: "defer", value: "" ),
+      std.markup.attr(name: "src", value: gunbc.roadmap_component.roadmap_dispatch_asset_path ),
+      std.markup.attr(name: "defer", value: "" ),
     ],
     children: [],
   }
@@ -303,23 +307,23 @@ type PageScriptViolation {
   detail: String
 }
 
-fn script_inline_text(children: List<Fragment>) -> String {
+fn script_inline_text(children: List<std.markup.Fragment>) -> String {
   fold(children, init: "", f: (acc, c) => match c {
-    FragmentText { content } => concat(acc, content)
-    RawNode { content } => concat(acc, content)
-    Element { tag: _, attributes: _, children: _ } => acc
+    std.markup.FragmentText { content } => concat(acc, content)
+    std.markup.RawNode { content } => concat(acc, content)
+    std.markup.Element { tag: _, attributes: _, children: _ } => acc
   })
 }
 
-fn script_src_attr(attributes: List<Attribute>) -> String {
+fn script_src_attr(attributes: List<std.markup.Attribute>) -> String {
   fold(attributes, init: "", f: (acc, a) => if a.name == "src" { a.value } else { acc })
 }
 
-fn collect_script_violations(node: Fragment, known_src: String) -> List<PageScriptViolation> {
+fn collect_script_violations(node: std.markup.Fragment, known_src: String) -> List<PageScriptViolation> {
   match node {
-    FragmentText { content: _ } => []
-    RawNode { content: _ } => []
-    Element { tag, attributes, children } =>
+    std.markup.FragmentText { content: _ } => []
+    std.markup.RawNode { content: _ } => []
+    std.markup.Element { tag, attributes, children } =>
       if tag == "script" {
         let inline = script_inline_text(children: children)
         let src = script_src_attr(attributes: attributes)
@@ -333,16 +337,16 @@ fn collect_script_violations(node: Fragment, known_src: String) -> List<PageScri
   }
 }
 
-fn page_script_census(page: Fragment) -> List<PageScriptViolation> {
-  collect_script_violations(node: page, known_src: roadmap_dispatch_asset_path)
+fn page_script_census(page: std.markup.Fragment) -> List<PageScriptViolation> {
+  collect_script_violations(node: page, known_src: gunbc.roadmap_component.roadmap_dispatch_asset_path)
 }
 
 data a1_composition_provisional_note: String = "SCOPE STATEMENT for the A1 pass (operator feedback 2026-08-01): the flat row list, the head-line composition, and the visual style of this module are ONE PROVISIONAL RENDERER, not product ontology. What A1 fixed is which claims render and at what altitude (operational before narrative, local denominators, supporting facts demoted, routine chrome quieted); it deliberately did NOT choose the workspace's interaction model. The named misses carried forward to the presentation-seam slice (A2: WorkRowView/DailyWorkspaceView/ObservationImpactView, roadmap_page becomes serialize-only): the row's one purpose-specific supporting line (why-now / what-it-unlocks — deferred because no typed fact carries it yet, and truncating ticket prose by punctuation is exactly the heuristic class the seam exists to kill); the observation-refusal altitude split (one cause narrated once, not once per channel); availability-vs-priority on the dispatch control; family-once row grouping; routine-state collapse (open/ticket/idle lamps). Witnesses over this module assert per-claim semantics, never element order or adjacency — pinning the accidental composition would harden this renderer into the model."
 
 // The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion carrying actions only (workflow_controls_actions_only_note). Activity — what is happening to the work — is the separate UnderHead ActivityRegion: the client creates it below this head when the decided /workflow.json view says an attempt exists, and removes it when the view says none, so the intrinsic-width third track can never again starve the title (the A2 falsifier). The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its regions.
-fn dependency_line_nodes(view: WorkRowView) -> List<Fragment> {
-  match scheduling_dependency_line(s: view.scheduling) {
-    Present { value: line } => [ el_class("span", "dependencies", [ txt(line) ]) ]
+fn dependency_line_nodes(view: gunbc.roadmap_presentation.WorkRowView) -> List<std.markup.Fragment> {
+  match gunbc.roadmap_presentation.scheduling_dependency_line(s: view.scheduling) {
+    Present { value: line } => [ gunbc.site.markup.el_class("span", "dependencies", [ gunbc.site.markup.txt(line) ]) ]
     Absent => []
   }
 }
@@ -351,121 +355,121 @@ data render_work_row_note: String = "The view-only row renderer (operator blocke
 
 data server_activity_realization_note: String = "The SERVER realization of the activity region — the same semantic DOM the emitted client paints from the decided /workflow.json view (node-activity container with arm/attention data, one summary line via activity_summary_line, the obligation ledger and evidence rows behind the activity disclosure, the located reason on the refused arm; anomalous or refused opens the disclosure — the attention rule's server half). Two realizations, ONE deciding module; the parity witness holds their semantic regions and labels equal (operator blocker 7). A NoActiveWork view renders NOTHING, which is why a served page whose rows carry no observed attempt still ships zero workflow furniture."
 
-fn activity_obligation_node(s: WorkflowSegment) -> Fragment {
-  let state = workflow_segment_state_key(state: s.state)
-  el_attrs("div", [
-    attr(name: "class", value: activity_obligation_class ),
-    attr(name: "data-state", value: state ),
-  ], [ txt(join([
-    workflow_segment_kind_label(kind: s.kind), activity_state_sep, state,
-    if s.detail == "" { "" } else { join([activity_detail_sep, s.detail], "") },
+fn activity_obligation_node(s: gunbc.roadmap_workflow_stage.WorkflowSegment) -> std.markup.Fragment {
+  let state = gunbc.roadmap_workflow_stage.workflow_segment_state_key(state: s.state)
+  gunbc.site.markup.el_attrs("div", [
+    std.markup.attr(name: "class", value: gunbc.roadmap_component.activity_obligation_class ),
+    std.markup.attr(name: "data-state", value: state ),
+  ], [ gunbc.site.markup.txt(join([
+    gunbc.roadmap_workflow_stage.workflow_segment_kind_label(kind: s.kind), gunbc.roadmap_presentation.activity_state_sep, state,
+    if s.detail == "" { "" } else { join([gunbc.roadmap_presentation.activity_detail_sep, s.detail], "") },
   ], "")) ])
 }
 
-fn activity_evidence_row_node(row: ActivityEvidenceRow) -> Fragment {
-  el_class("div", activity_evidence_row_class, [ txt(join([row.label, activity_evidence_kv_sep, row.value], "")) ])
+fn activity_evidence_row_node(row: gunbc.roadmap_presentation.ActivityEvidenceRow) -> std.markup.Fragment {
+  gunbc.site.markup.el_class("div", gunbc.roadmap_component.activity_evidence_row_class, [ gunbc.site.markup.txt(join([row.label, gunbc.roadmap_presentation.activity_evidence_kv_sep, row.value], "")) ])
 }
 
-fn activity_detail_nodes(obligations: List<WorkflowSegment>, evidence: List<ActivityEvidenceRow>, located_reason: String, open: Bool) -> Fragment {
-  el_attrs("details",
+fn activity_detail_nodes(obligations: List<gunbc.roadmap_workflow_stage.WorkflowSegment>, evidence: List<gunbc.roadmap_presentation.ActivityEvidenceRow>, located_reason: String, open: Bool) -> std.markup.Fragment {
+  gunbc.site.markup.el_attrs("details",
     concat(
-      [ attr(name: "class", value: activity_detail_class ) ],
-      if open { [ attr(name: "open", value: "" ) ] } else { [] }),
+      [ std.markup.attr(name: "class", value: gunbc.roadmap_component.activity_detail_class ) ],
+      if open { [ std.markup.attr(name: "open", value: "" ) ] } else { [] }),
     [
-      el("summary", [ txt(activity_disclosure_label) ]),
-      el_class("div", activity_ledger_class, map(obligations, s => activity_obligation_node(s: s))),
-      el_class("div", activity_evidence_class, concat(
+      gunbc.site.markup.el("summary", [ gunbc.site.markup.txt(gunbc.roadmap_presentation.activity_disclosure_label) ]),
+      gunbc.site.markup.el_class("div", gunbc.roadmap_component.activity_ledger_class, map(obligations, s => activity_obligation_node(s: s))),
+      gunbc.site.markup.el_class("div", gunbc.roadmap_component.activity_evidence_class, concat(
         map(evidence, row => activity_evidence_row_node(row: row)),
         if located_reason == "" { [] } else {
-          [ el_class("div", activity_located_reason_class, [ txt(located_reason) ]) ]
+          [ gunbc.site.markup.el_class("div", gunbc.roadmap_component.activity_located_reason_class, [ gunbc.site.markup.txt(located_reason) ]) ]
         })),
     ])
 }
 
-fn activity_container(a: ActivityView, attention: String, children: List<Fragment>) -> Fragment {
-  el_attrs("div", concat(
+fn activity_container(a: gunbc.roadmap_presentation.ActivityView, attention: String, children: List<std.markup.Fragment>) -> std.markup.Fragment {
+  gunbc.site.markup.el_attrs("div", concat(
     [
-      attr(name: "class", value: node_activity_class ),
-      attr(name: "data-arm", value: activity_arm_key(a: a) ),
+      std.markup.attr(name: "class", value: gunbc.roadmap_component.node_activity_class ),
+      std.markup.attr(name: "data-arm", value: gunbc.roadmap_presentation.activity_arm_key(a: a) ),
     ],
-    if attention == "" { [] } else { [ attr(name: "data-attention", value: attention ) ] }),
-    concat([ el_class("span", activity_summary_class, [ txt(activity_summary_line(a: a)) ]) ], children))
+    if attention == "" { [] } else { [ std.markup.attr(name: "data-attention", value: attention ) ] }),
+    concat([ gunbc.site.markup.el_class("span", gunbc.roadmap_component.activity_summary_class, [ gunbc.site.markup.txt(gunbc.roadmap_presentation.activity_summary_line(a: a)) ]) ], children))
 }
 
-fn activity_region_nodes(a: ActivityView) -> List<Fragment> {
+fn activity_region_nodes(a: gunbc.roadmap_presentation.ActivityView) -> List<std.markup.Fragment> {
   match a {
-    NoActiveWork => []
-    ActivityUnobservable { reason: _ } => [ activity_container(a: a, attention: "", children: []) ]
-    ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention, evidence } => {
-      let key = activity_attention_key(a: attention)
+    gunbc.roadmap_presentation.NoActiveWork => []
+    gunbc.roadmap_presentation.ActivityUnobservable { reason: _ } => [ activity_container(a: a, attention: "", children: []) ]
+    gunbc.roadmap_presentation.ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention, evidence } => {
+      let key = gunbc.roadmap_presentation.activity_attention_key(a: attention)
       [ activity_container(a: a, attention: key, children: [
           activity_detail_nodes(obligations: obligations, evidence: evidence, located_reason: "", open: key == "anomalous"),
         ]) ]
     }
-    ActiveWorkRefused { summary: _, located_reason, evidence } =>
+    gunbc.roadmap_presentation.ActiveWorkRefused { summary: _, located_reason, evidence } =>
       [ activity_container(a: a, attention: "", children: [
           activity_detail_nodes(obligations: [], evidence: evidence, located_reason: located_reason, open: true),
         ]) ]
-    LegacySupersedableAttempt { summary: _, located_reason, attempt_key, evidence } =>
+    gunbc.roadmap_presentation.LegacySupersedableAttempt { summary: _, located_reason, attempt_key, evidence } =>
       [ activity_container(a: a, attention: "", children: [
           activity_detail_nodes(
             obligations: [],
             evidence: concat(
               evidence,
-              [ ActivityEvidenceRow { label: "attempt key", value: attempt_key } ],
+              [ gunbc.roadmap_presentation.ActivityEvidenceRow { label: "attempt key", value: attempt_key } ],
             ),
             located_reason: located_reason,
             open: true,
           ),
         ]) ]
-    CompletedWork { outcome: _, evidence } =>
+    gunbc.roadmap_presentation.CompletedWork { outcome: _, evidence } =>
       [ activity_container(a: a, attention: "", children: [
           activity_detail_nodes(obligations: [], evidence: evidence, located_reason: "", open: false),
         ]) ]
   }
 }
 
-fn status_chip_nodes(view: WorkRowView) -> List<Fragment> {
-  if lifecycle_chip_renders(l: view.lifecycle) {
-    let status = work_lifecycle_key(l: view.lifecycle)
-    [ el_class("span", concat("status status-", status), [ txt(status) ]) ]
+fn status_chip_nodes(view: gunbc.roadmap_presentation.WorkRowView) -> List<std.markup.Fragment> {
+  if gunbc.roadmap_presentation.lifecycle_chip_renders(l: view.lifecycle) {
+    let status = gunbc.roadmap_presentation.work_lifecycle_key(l: view.lifecycle)
+    [ gunbc.site.markup.el_class("span", concat("status status-", status), [ gunbc.site.markup.txt(status) ]) ]
   } else {
     []
   }
 }
 
-fn render_work_row_head(view: WorkRowView) -> Fragment {
-  el_class("div", "node-head", concat(
+fn render_work_row_head(view: gunbc.roadmap_presentation.WorkRowView) -> std.markup.Fragment {
+  gunbc.site.markup.el_class("div", "node-head", concat(
     concat(
       status_chip_nodes(view: view),
-      [ el_class("span", node_mid_class, concat(
+      [ gunbc.site.markup.el_class("span", gunbc.roadmap_component.node_mid_class, concat(
           concat(
-            [ el_class("span", "title", inline_md_nodes(text: view.headline)) ],
+            [ gunbc.site.markup.el_class("span", "title", inline_md_nodes(text: view.headline)) ],
             superseded_badge_of(view: view),
           ),
           dependency_line_nodes(view: view))) ]),
     workflow_controls_nodes(view: view)))
 }
 
-fn render_work_row(view: WorkRowView) -> List<Fragment> {
+fn render_work_row(view: gunbc.roadmap_presentation.WorkRowView) -> List<std.markup.Fragment> {
   concat(
     [ render_work_row_head(view: view) ],
     concat(activity_region_nodes(a: view.activity), view_detail_block(view: view)))
 }
 
-fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
+fn node_li_attributes(view: gunbc.roadmap_presentation.WorkRowView) -> List<std.markup.Attribute> {
   [
-    attr(name: "class", value: concat("node node-", work_lifecycle_key(l: view.lifecycle))),
-    attr(name: "data-node", value: view.node_id),
-    attr(name: "tabindex", value: "0"),
+    std.markup.attr(name: "class", value: concat("node node-", gunbc.roadmap_presentation.work_lifecycle_key(l: view.lifecycle))),
+    std.markup.attr(name: "data-node", value: view.node_id),
+    std.markup.attr(name: "tabindex", value: "0"),
   ]
 }
 
-fn node_work_row_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> WorkRowView {
-  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork)
+fn node_work_row_view(rn: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, merged: List<Int>) -> gunbc.roadmap_presentation.WorkRowView {
+  gunbc.roadmap_presentation.work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: gunbc.roadmap_presentation.NoActiveWork)
 }
 
-fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> Fragment {
+fn node_li(rn: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, merged: List<Int>, fuel: Int) -> std.markup.Fragment {
   let view = node_work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged)
   let head = render_work_row(view: view)
   let kids = children_of(nodes: nodes, edges: edges, parent: rn.node)
@@ -475,162 +479,162 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
     if fuel > 0 {
       [ nodes_ul(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1) ]
     } else {
-      [ el_class("ul", "depth-limited", [
-          el_class("li", "depth-limit", [
-            txt(concat(concat("(", to_string(count(kids))), " nested node(s) hidden — depth limit)")),
+      [ gunbc.site.markup.el_class("ul", "depth-limited", [
+          gunbc.site.markup.el_class("li", "depth-limit", [
+            gunbc.site.markup.txt(concat(concat("(", to_string(count(kids))), " nested node(s) hidden — depth limit)")),
           ]),
         ]) ]
     }
   }
-  Element {
+  std.markup.Element {
     tag: "li",
     attributes: node_li_attributes(view: view),
     children: concat(head, child_block),
   }
 }
 
-fn nodes_ul(items: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> Fragment {
-  el("ul", map(items, rn => node_li(rn: rn, nodes: nodes, edges: edges, merged: merged, fuel: fuel)))
+fn nodes_ul(items: List<gunbc.roadmap_model.RoadmapNode>, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, merged: List<Int>, fuel: Int) -> std.markup.Fragment {
+  gunbc.site.markup.el("ul", map(items, rn => node_li(rn: rn, nodes: nodes, edges: edges, merged: merged, fuel: fuel)))
 }
 
-fn group_markup(g: SectionGroup, merged: List<Int>) -> List<Fragment> {
-  let tops = g.nodes |> filter(n => is_top_level(edges: g.edges, node: n.node))
+fn group_markup(g: gunbc.roadmap_model.SectionGroup, merged: List<Int>) -> List<std.markup.Fragment> {
+  let tops = g.nodes |> filter(n => gunbc.roadmap_model.is_top_level(edges: g.edges, node: n.node))
   let ul = nodes_ul(items: tops, nodes: g.nodes, edges: g.edges, merged: merged, fuel: roadmap_page_max_depth())
   if g.label == "" {
     [ ul ]
   } else {
-    [ el_class("h3", "group-label", [ txt(g.label) ]), ul ]
+    [ gunbc.site.markup.el_class("h3", "group-label", [ gunbc.site.markup.txt(g.label) ]), ul ]
   }
 }
 
-fn element_markup(e: SectionElement, merged: List<Int>) -> List<Fragment> {
+fn element_markup(e: gunbc.roadmap_model.SectionElement, merged: List<Int>) -> List<std.markup.Fragment> {
   match e {
-    Prose { prose } => [ el_class("p", "prose", markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: prose.content))) ]
-    Group { group } => group_markup(g: group, merged: merged)
+    gunbc.roadmap_model.Prose { prose } => [ gunbc.site.markup.el_class("p", "prose", std.markdown.markdown_inlines_to_fragments(inlines: extdeps.languages.markdown.parse_inline_markdown_minimal(text: prose.content))) ]
+    gunbc.roadmap_model.Group { group } => group_markup(g: group, merged: merged)
   }
 }
 
 // Page altitude from the attention law (composition slice 3; gunbc.roadmap_altitude carries the law, this page is its renderer — the workspace as the third renderer of 'routine collapses, anomaly expands'). A node-bearing section renders as a BAND: a details.section-fold whose summary carries the section's title and its derived counts, open exactly when the section holds non-routine work — statuses_all_routine folds the finished lanes, one working or anomalous member holds the band open, and the open attribute is DERIVED, never authored per section. A section without nodes has no altitude axis and renders flat, so prose leads never fold themselves away.
-fn altitude_section(cls: String, title_nodes: List<Fragment>, statuses: List<String>, body: List<Fragment>) -> Fragment {
+fn altitude_section(cls: String, title_nodes: List<std.markup.Fragment>, statuses: List<String>, body: List<std.markup.Fragment>) -> std.markup.Fragment {
   if count(statuses) == 0 {
-    el_class("section", cls, concat(title_nodes, body))
+    gunbc.site.markup.el_class("section", cls, concat(title_nodes, body))
   } else {
-    let counts = el_class("span", "section-counts", [ txt(section_counts_wire(c: section_counts(statuses: statuses))) ])
-    let band = el_class("summary", "section-band", concat(title_nodes, [ counts ]))
-    let fold_attrs = if statuses_all_routine(statuses: statuses) {
-      [ attr(name: "class", value: "section-fold" ) ]
+    let counts = gunbc.site.markup.el_class("span", "section-counts", [ gunbc.site.markup.txt(gunbc.roadmap_altitude.section_counts_wire(c: gunbc.roadmap_altitude.section_counts(statuses: statuses))) ])
+    let band = gunbc.site.markup.el_class("summary", "section-band", concat(title_nodes, [ counts ]))
+    let fold_attrs = if gunbc.roadmap_altitude.statuses_all_routine(statuses: statuses) {
+      [ std.markup.attr(name: "class", value: "section-fold" ) ]
     } else {
-      [ attr(name: "class", value: "section-fold" ), attr(name: "open", value: "" ) ]
+      [ std.markup.attr(name: "class", value: "section-fold" ), std.markup.attr(name: "open", value: "" ) ]
     }
-    el_class("section", cls, [
-      el_attrs("details", fold_attrs, concat([ band ], body)),
+    gunbc.site.markup.el_class("section", cls, [
+      gunbc.site.markup.el_attrs("details", fold_attrs, concat([ band ], body)),
     ])
   }
 }
 
-fn group_statuses(g: SectionGroup, merged: List<Int>) -> List<String> {
+fn group_statuses(g: gunbc.roadmap_model.SectionGroup, merged: List<Int>) -> List<String> {
   map(g.nodes, rn => node_lifecycle_key(rn: rn, merged: merged))
 }
 
-fn section_statuses(s: RoadmapSection, merged: List<Int>) -> List<String> {
+fn section_statuses(s: gunbc.roadmap_document.RoadmapSection, merged: List<Int>) -> List<String> {
   fold(s.elements, init: [], f: (acc, e) => match e {
-    Prose { prose: _ } => acc
-    Group { group } => concat(acc, group_statuses(g: group, merged: merged))
+    gunbc.roadmap_model.Prose { prose: _ } => acc
+    gunbc.roadmap_model.Group { group } => concat(acc, group_statuses(g: group, merged: merged))
   })
 }
 
-fn section_markup(s: RoadmapSection, merged: List<Int>) -> Fragment {
+fn section_markup(s: gunbc.roadmap_document.RoadmapSection, merged: List<Int>) -> std.markup.Fragment {
   let body = fold(s.elements, init: [], f: (acc, e) => concat(acc, element_markup(e: e, merged: merged)))
   altitude_section(
     cls: "roadmap-section",
-    title_nodes: [ el("h2", [ txt(s.title) ]) ],
+    title_nodes: [ gunbc.site.markup.el("h2", [ gunbc.site.markup.txt(s.title) ]) ],
     statuses: section_statuses(s: s, merged: merged),
     body: body)
 }
 
 data daily_workspace_composition_note: String = "The workspace is rendered from ONE DailyWorkspaceView (operator blocker 6): active work bands ABOVE the ready queue and never folds itself away (a flat section — the attention rule says work in flight owns the operator's attention, so it gets no altitude fold to hide behind); the scheduling bands keep the frontier vocabulary and the altitude machinery. The workspace observation banner narrates a channel-level refusal ONCE, and rows the impact covers render without their per-row unobservable line (workspace_covers_row_activity — the row's typed state is unchanged, only the duplicate narration is suppressed). The program strip is the ProgramProgressView consumer: its ready-obligation count is the causal link between the program claim and the queue below it."
 
-fn workspace_row_li(view: WorkRowView, observation: ObservationImpactView) -> Fragment {
-  let body = if workspace_covers_row_activity(observation: observation, a: view.activity) {
+fn workspace_row_li(view: gunbc.roadmap_presentation.WorkRowView, observation: gunbc.roadmap_presentation.ObservationImpactView) -> std.markup.Fragment {
+  let body = if gunbc.roadmap_presentation.workspace_covers_row_activity(observation: observation, a: view.activity) {
     concat([ render_work_row_head(view: view) ], view_detail_block(view: view))
   } else {
     render_work_row(view: view)
   }
-  Element {
+  std.markup.Element {
     tag: "li",
     attributes: node_li_attributes(view: view),
     children: body,
   }
 }
 
-fn workspace_rows_ul(rows: List<WorkRowView>, observation: ObservationImpactView) -> Fragment {
-  el("ul", map(rows, v => workspace_row_li(view: v, observation: observation)))
+fn workspace_rows_ul(rows: List<gunbc.roadmap_presentation.WorkRowView>, observation: gunbc.roadmap_presentation.ObservationImpactView) -> std.markup.Fragment {
+  gunbc.site.markup.el("ul", map(rows, v => workspace_row_li(view: v, observation: observation)))
 }
 
-fn family_group_li(family: WorkFamilyView, observation: ObservationImpactView) -> Fragment {
-  el_class("li", "family-group", [
-    el_class("div", "family-head", [
-      el_class("span", "family-claim", [ txt(family.claim) ]),
-      el_class("span", "family-count", [ txt(concat(to_string(count(family.rows)), " nodes")) ]),
+fn family_group_li(family: gunbc.roadmap_presentation.WorkFamilyView, observation: gunbc.roadmap_presentation.ObservationImpactView) -> std.markup.Fragment {
+  gunbc.site.markup.el_class("li", "family-group", [
+    gunbc.site.markup.el_class("div", "family-head", [
+      gunbc.site.markup.el_class("span", "family-claim", [ gunbc.site.markup.txt(family.claim) ]),
+      gunbc.site.markup.el_class("span", "family-count", [ gunbc.site.markup.txt(concat(to_string(count(family.rows)), " nodes")) ]),
     ]),
-    el_class("ul", "family-rows", map(family.rows, v => workspace_row_li(view: v, observation: observation))),
+    gunbc.site.markup.el_class("ul", "family-rows", map(family.rows, v => workspace_row_li(view: v, observation: observation))),
   ])
 }
 
-fn band_entry_li(entry: WorkBandEntry, observation: ObservationImpactView) -> Fragment {
+fn band_entry_li(entry: gunbc.roadmap_presentation.WorkBandEntry, observation: gunbc.roadmap_presentation.ObservationImpactView) -> std.markup.Fragment {
   match entry {
-    BandRow { row } => workspace_row_li(view: row, observation: observation)
-    BandFamily { family } => family_group_li(family: family, observation: observation)
+    gunbc.roadmap_presentation.BandRow { row } => workspace_row_li(view: row, observation: observation)
+    gunbc.roadmap_presentation.BandFamily { family } => family_group_li(family: family, observation: observation)
   }
 }
 
-fn band_entry_statuses(entry: WorkBandEntry) -> List<String> {
+fn band_entry_statuses(entry: gunbc.roadmap_presentation.WorkBandEntry) -> List<String> {
   match entry {
-    BandRow { row } => [ work_lifecycle_key(l: row.lifecycle) ]
-    BandFamily { family } => map(family.rows, v => work_lifecycle_key(l: v.lifecycle))
+    gunbc.roadmap_presentation.BandRow { row } => [ gunbc.roadmap_presentation.work_lifecycle_key(l: row.lifecycle) ]
+    gunbc.roadmap_presentation.BandFamily { family } => map(family.rows, v => gunbc.roadmap_presentation.work_lifecycle_key(l: v.lifecycle))
   }
 }
 
-fn workspace_entries_ul(entries: List<WorkBandEntry>, observation: ObservationImpactView) -> Fragment {
-  el("ul", map(entries, e => band_entry_li(entry: e, observation: observation)))
+fn workspace_entries_ul(entries: List<gunbc.roadmap_presentation.WorkBandEntry>, observation: gunbc.roadmap_presentation.ObservationImpactView) -> std.markup.Fragment {
+  gunbc.site.markup.el("ul", map(entries, e => band_entry_li(entry: e, observation: observation)))
 }
 
-fn workspace_band(label: String, cls: String, entries: List<WorkBandEntry>, observation: ObservationImpactView) -> List<Fragment> {
+fn workspace_band(label: String, cls: String, entries: List<gunbc.roadmap_presentation.WorkBandEntry>, observation: gunbc.roadmap_presentation.ObservationImpactView) -> List<std.markup.Fragment> {
   if count(entries) == 0 && cls == "active" {
     []
   } else {
     [ altitude_section(
         cls: concat("frontier-bucket frontier-", cls),
-        title_nodes: [ el("h2", [ txt(label) ]) ],
+        title_nodes: [ gunbc.site.markup.el("h2", [ gunbc.site.markup.txt(label) ]) ],
         statuses: fold(entries, init: [], f: (acc, e) => concat(acc, band_entry_statuses(entry: e))),
         body: [ workspace_entries_ul(entries: entries, observation: observation) ]) ]
   }
 }
 
-fn workspace_active_band(rows: List<WorkRowView>, observation: ObservationImpactView) -> List<Fragment> {
+fn workspace_active_band(rows: List<gunbc.roadmap_presentation.WorkRowView>, observation: gunbc.roadmap_presentation.ObservationImpactView) -> List<std.markup.Fragment> {
   if count(rows) == 0 {
     []
   } else {
-    [ el_class("section", "frontier-bucket frontier-active", [
-        el("h2", [ txt("Active") ]),
+    [ gunbc.site.markup.el_class("section", "frontier-bucket frontier-active", [
+        gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("Active") ]),
         workspace_rows_ul(rows: rows, observation: observation),
       ]) ]
   }
 }
 
-fn workspace_observation_banner(observation: ObservationImpactView) -> List<Fragment> {
+fn workspace_observation_banner(observation: gunbc.roadmap_presentation.ObservationImpactView) -> List<std.markup.Fragment> {
   match observation {
-    ObservationsNominal => []
-    WorkspaceObservationImpact { summary, located_reason } =>
-      [ el_class("section", "workspace-observation", [
-          el_class("span", "workspace-observation-summary", [ txt(summary) ]),
-          el_class("span", "workspace-observation-reason", [ txt(located_reason) ]),
+    gunbc.roadmap_presentation.ObservationsNominal => []
+    gunbc.roadmap_presentation.WorkspaceObservationImpact { summary, located_reason } =>
+      [ gunbc.site.markup.el_class("section", "workspace-observation", [
+          gunbc.site.markup.el_class("span", "workspace-observation-summary", [ gunbc.site.markup.txt(summary) ]),
+          gunbc.site.markup.el_class("span", "workspace-observation-reason", [ gunbc.site.markup.txt(located_reason) ]),
         ]) ]
   }
 }
 
-fn workspace_markup(ws: DailyWorkspaceView) -> Fragment {
-  el_class("section", "roadmap-frontier", concat(
+fn workspace_markup(ws: gunbc.roadmap_presentation.DailyWorkspaceView) -> std.markup.Fragment {
+  gunbc.site.markup.el_class("section", "roadmap-frontier", concat(
     workspace_active_band(rows: ws.active, observation: ws.observation),
     concat(workspace_band(label: "Ready", cls: "ready", entries: ws.ready, observation: ws.observation),
       concat(workspace_band(label: "Upcoming", cls: "upcoming", entries: ws.upcoming, observation: ws.observation),
@@ -638,34 +642,34 @@ fn workspace_markup(ws: DailyWorkspaceView) -> Fragment {
           workspace_band(label: "Superseded", cls: "superseded", entries: ws.superseded, observation: ws.observation))))))
 }
 
-fn v1_exit_program_progress_view_for_accepted(accepted_ids: List<RoadmapNodeId>, ready_count: Int) -> ProgramProgressView {
-  ProgramProgressView {
+fn v1_exit_program_progress_view_for_accepted(accepted_ids: List<gunbc.roadmap_model.RoadmapNodeId>, ready_count: Int) -> gunbc.roadmap_presentation.ProgramProgressView {
+  gunbc.roadmap_presentation.ProgramProgressView {
     name: "v1 exit",
-    completed: v1_finish_lines_accepted_count(accepted: accepted_ids),
-    total: count(v1_exit_finish_lines()),
+    completed: gunbc.v1_deletion_plan.v1_finish_lines_accepted_count(accepted: accepted_ids),
+    total: count(gunbc.v1_deletion_plan.v1_exit_finish_lines()),
     ready_obligation_count: ready_count,
   }
 }
 
-fn v1_exit_program_progress_view(ready_count: Int) -> ProgramProgressView {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
-      ProgramProgressView {
+fn v1_exit_program_progress_view(ready_count: Int) -> gunbc.roadmap_presentation.ProgramProgressView {
+  match gunbc.roadmap_authority.accepted_roadmap_node_ids_projection() {
+    gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
+      gunbc.roadmap_presentation.ProgramProgressView {
         name: "v1 exit (acceptance carrier refused)",
         completed: 0,
         total: 0,
         ready_obligation_count: ready_count,
       }
-    AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
+    gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
       v1_exit_program_progress_view_for_accepted(accepted_ids: accepted_ids, ready_count: ready_count)
   }
 }
 
-fn program_progress_markup_of(v: ProgramProgressView) -> Fragment {
-  el_class("section", "program-progress", [
-    el_class("span", "program-progress-name", [ txt(v.name) ]),
-    el_class("span", "program-progress-count", [
-      txt(join([
+fn program_progress_markup_of(v: gunbc.roadmap_presentation.ProgramProgressView) -> std.markup.Fragment {
+  gunbc.site.markup.el_class("section", "program-progress", [
+    gunbc.site.markup.el_class("span", "program-progress-name", [ gunbc.site.markup.txt(v.name) ]),
+    gunbc.site.markup.el_class("span", "program-progress-count", [
+      gunbc.site.markup.txt(join([
         to_string(v.completed), " of ", to_string(v.total), " finish lines complete",
         " · ", to_string(v.ready_obligation_count), " ready now",
       ], "")),
@@ -673,20 +677,20 @@ fn program_progress_markup_of(v: ProgramProgressView) -> Fragment {
   ])
 }
 
-fn daily_attempt_progress_for(node_id: String, attempts: List<WorkflowAttemptProgress>) -> WorkflowAttemptProgress? {
+fn daily_attempt_progress_for(node_id: String, attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>) -> gunbc.roadmap_workflow_progress.WorkflowAttemptProgress? {
   fold(attempts, init: none, f: (acc, p) => match acc {
     Present { value: v } => Present { value: v }
     Absent => if p.node_id == node_id { Present { value: p } } else { none }
   })
 }
 
-fn daily_row_activity(node_id: String, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> ActivityView {
+fn daily_row_activity(node_id: String, attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>, attempts_refused: String?) -> gunbc.roadmap_presentation.ActivityView {
   match attempts_refused {
-    Present { value: reason } => ActivityUnobservable { reason: reason }
+    Present { value: reason } => gunbc.roadmap_presentation.ActivityUnobservable { reason: reason }
     Absent =>
       match daily_attempt_progress_for(node_id: node_id, attempts: attempts) {
-        Present { value: p } => activity_view_from_progress(progress: p)
-        Absent => NoActiveWork
+        Present { value: p } => gunbc.roadmap_presentation.activity_view_from_progress(progress: p)
+        Absent => gunbc.roadmap_presentation.NoActiveWork
       }
   }
 }
@@ -694,12 +698,12 @@ fn daily_row_activity(node_id: String, attempts: List<WorkflowAttemptProgress>, 
 // The live family facts: one WorkFamilyDecl for the closing-contract family (claim = the authority's closing_contract_family_claim, stated once) and one member fact per generator pair, each carrying the gated node's typed headline as the row subject. Fixtures construct their own decls/members, so the grouping stays witnessable without live counts.
 fn closing_contract_family_id() -> String { "closing-contract" }
 
-fn live_work_family_decls() -> List<WorkFamilyDecl> {
-  [ WorkFamilyDecl { id: closing_contract_family_id(), claim: closing_contract_family_claim } ]
+fn live_work_family_decls() -> List<gunbc.roadmap_presentation.WorkFamilyDecl> {
+  [ gunbc.roadmap_presentation.WorkFamilyDecl { id: closing_contract_family_id(), claim: gunbc.roadmap_authority.closing_contract_family_claim } ]
 }
 
-fn live_work_family_members_for_accepted(accepted: List<RoadmapNodeId>) -> List<WorkFamilyMemberFact> {
-  closing_contract_task_pairs_for_accepted(accepted: accepted) |> map(p => WorkFamilyMemberFact {
+fn live_work_family_members_for_accepted(accepted: List<gunbc.roadmap_model.RoadmapNodeId>) -> List<gunbc.roadmap_presentation.WorkFamilyMemberFact> {
+  gunbc.roadmap_authority.closing_contract_task_pairs_for_accepted(accepted: accepted) |> map(p => gunbc.roadmap_presentation.WorkFamilyMemberFact {
     family_id: closing_contract_family_id(),
     task_node: p.task.node as String,
     subject: p.subject,
@@ -707,21 +711,21 @@ fn live_work_family_members_for_accepted(accepted: List<RoadmapNodeId>) -> List<
 }
 
 fn daily_workspace_view_of_for_accepted(
-  doc: RoadmapDocument,
+  doc: gunbc.roadmap_document.RoadmapDocument,
   merged: List<Int>,
-  accepted_ids: List<RoadmapNodeId>,
-  attempts: List<WorkflowAttemptProgress>,
+  accepted_ids: List<gunbc.roadmap_model.RoadmapNodeId>,
+  attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>,
   attempts_refused: String?,
-) -> DailyWorkspaceView {
-  let nodes = doc_all_nodes(doc: doc)
-  let edges = doc_all_edges(doc: doc)
-  let observation = observation_impact_view(workflow_refused: attempts_refused)
-  let rows = map(nodes, rn => work_row_view(
+) -> gunbc.roadmap_presentation.DailyWorkspaceView {
+  let nodes = gunbc.roadmap_spawner.doc_all_nodes(doc: doc)
+  let edges = gunbc.roadmap_spawner.doc_all_edges(doc: doc)
+  let observation = gunbc.roadmap_presentation.observation_impact_view(workflow_refused: attempts_refused)
+  let rows = map(nodes, rn => gunbc.roadmap_presentation.work_row_view(
     rn: rn, nodes: nodes, edges: edges, merged: merged,
     activity: daily_row_activity(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused)))
   let ready_count = count(rows |> filter(r =>
-    !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
-  daily_workspace_view(
+    !gunbc.roadmap_presentation.row_is_active_work(row: r) && gunbc.roadmap_presentation.work_scheduling_key(s: r.scheduling) == "ready"))
+  gunbc.roadmap_presentation.daily_workspace_view(
     rows: rows,
     program: Present { value: v1_exit_program_progress_view_for_accepted(accepted_ids: accepted_ids, ready_count: ready_count) },
     observation: observation,
@@ -729,9 +733,9 @@ fn daily_workspace_view_of_for_accepted(
     members: live_work_family_members_for_accepted(accepted: accepted_ids))
 }
 
-fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> DailyWorkspaceView {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
+fn daily_workspace_view_of(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>, attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>, attempts_refused: String?) -> gunbc.roadmap_presentation.DailyWorkspaceView {
+  match gunbc.roadmap_authority.accepted_roadmap_node_ids_projection() {
+    gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
       daily_workspace_view_of_for_accepted(
         doc: doc,
         merged: merged,
@@ -739,7 +743,7 @@ fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: Li
         attempts: attempts,
         attempts_refused: attempts_refused,
       )
-    AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
+    gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
       daily_workspace_view_of_for_accepted(
         doc: doc,
         merged: merged,
@@ -751,13 +755,13 @@ fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: Li
 }
 
 fn roadmap_daily_workspace_page_impl_for_accepted(
-  doc: RoadmapDocument,
+  doc: gunbc.roadmap_document.RoadmapDocument,
   merged: List<Int>,
-  accepted_ids: List<RoadmapNodeId>,
-  main_prefix: List<Fragment>,
-  attempts: List<WorkflowAttemptProgress>,
+  accepted_ids: List<gunbc.roadmap_model.RoadmapNodeId>,
+  main_prefix: List<std.markup.Fragment>,
+  attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>,
   attempts_refused: String?,
-) -> Fragment {
+) -> std.markup.Fragment {
   let ws = daily_workspace_view_of_for_accepted(
     doc: doc,
     merged: merged,
@@ -769,19 +773,19 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
     Present { value: v } => [ program_progress_markup_of(v: v) ]
     Absent => []
   }
-  Element {
+  std.markup.Element {
     tag: "html",
-    attributes: [ attr(name: "lang", value: "en" ) ],
+    attributes: [ std.markup.attr(name: "lang", value: "en" ) ],
     children: [
-      el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
-        el("style", [ txt(roadmap_css()) ]),
-        el("title", [ txt("gunbc — daily workspace") ]),
+      gunbc.site.markup.el("head", [
+        std.markup.Element { tag: "meta", attributes: [ std.markup.attr(name: "charset", value: "utf-8" ) ], children: [] },
+        std.markup.Element { tag: "meta", attributes: [ std.markup.attr(name: "name", value: "viewport" ), std.markup.attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
+        gunbc.site.markup.el("style", [ gunbc.site.markup.txt(gunbc.roadmap_style.roadmap_css()) ]),
+        gunbc.site.markup.el("title", [ gunbc.site.markup.txt("gunbc — daily workspace") ]),
       ]),
-      el("body", [
+      gunbc.site.markup.el("body", [
         roadmap_header(page: "daily workspace"),
-        el_class("main", "daily-workspace", concat(main_prefix, concat([fleet_hardware_standing_panel(), fleet_capacity_panel()], concat(program_strip, concat(
+        gunbc.site.markup.el_class("main", "daily-workspace", concat(main_prefix, concat([gunbc.fleet_hardware_standing_panel.fleet_hardware_standing_panel(), gunbc.fleet_capacity_panel.fleet_capacity_panel()], concat(program_strip, concat(
           workspace_observation_banner(observation: ws.observation),
           [ workspace_markup(ws: ws)]))))),
         dispatch_client_script(),
@@ -790,9 +794,9 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
   }
 }
 
-fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> Fragment {
-  match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
+fn roadmap_daily_workspace_page_impl(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>, main_prefix: List<std.markup.Fragment>, attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>, attempts_refused: String?) -> std.markup.Fragment {
+  match gunbc.roadmap_authority.accepted_roadmap_node_ids_projection() {
+    gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
       roadmap_daily_workspace_page_impl_for_accepted(
         doc: doc,
         merged: merged,
@@ -801,7 +805,7 @@ fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, ma
         attempts: attempts,
         attempts_refused: attempts_refused,
       )
-    AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
+    gunbc.roadmap_authority.AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
       roadmap_daily_workspace_page_impl_for_accepted(
         doc: doc,
         merged: merged,
@@ -813,44 +817,44 @@ fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, ma
   }
 }
 
-fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>) -> Fragment {
+fn roadmap_page_impl(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>, main_prefix: List<std.markup.Fragment>) -> std.markup.Fragment {
   let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged))
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged))
   let main_children = concat(main_prefix, concat(lead, secs))
   let body_base = [
     roadmap_header(page: "roadmap"),
-    el_class("main", "roadmap", main_children),
+    gunbc.site.markup.el_class("main", "roadmap", main_children),
   ]
-  let body_children = if list_length(main_children) == 0 {
+  let body_children = if std.types.list_length(main_children) == 0 {
     body_base
   } else {
     concat(body_base, [ dispatch_client_script() ])
   }
-  Element {
+  std.markup.Element {
     tag: "html",
-    attributes: [ attr(name: "lang", value: "en" ) ],
+    attributes: [ std.markup.attr(name: "lang", value: "en" ) ],
     children: [
-      el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
-        el("style", [ txt(roadmap_css()) ]),
-        el("title", [ txt("gunbc — roadmap") ]),
+      gunbc.site.markup.el("head", [
+        std.markup.Element { tag: "meta", attributes: [ std.markup.attr(name: "charset", value: "utf-8" ) ], children: [] },
+        std.markup.Element { tag: "meta", attributes: [ std.markup.attr(name: "name", value: "viewport" ), std.markup.attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
+        gunbc.site.markup.el("style", [ gunbc.site.markup.txt(gunbc.roadmap_style.roadmap_css()) ]),
+        gunbc.site.markup.el("title", [ gunbc.site.markup.txt("gunbc — roadmap") ]),
       ]),
-      el("body", body_children),
+      gunbc.site.markup.el("body", body_children),
     ],
   }
 }
 
-fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
+fn roadmap_page(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>) -> std.markup.Fragment {
   roadmap_page_impl(doc: doc, merged: merged, main_prefix: [])
 }
 
 data roadmap_page_focus_parameter_note: String = "roadmap_page_for_doc exists so a claim about how a TICKET ROW renders can be written without a claim about which lanes are currently shown. witness_ticket_rows_render_structured asserts the row markup — disclosure mark, brief class, displaced-cost label, carrier href — and it happened to pick a node from a lane the focus later hid, so it went red having found nothing wrong with the rendering at all. Passing an unfocused document keeps that claim measuring markup. roadmap_page_for_authority keeps the declared focus, because the served page IS the focused view."
 
-fn roadmap_page_for_doc(doc: RoadmapDocument) -> Fragment {
+fn roadmap_page_for_doc(doc: gunbc.roadmap_document.RoadmapDocument) -> std.markup.Fragment {
   roadmap_page_impl(
     doc: doc,
-    merged: authored_merged_prs(),
+    merged: gunbc.roadmap_authority.authored_merged_prs(),
     main_prefix: [
       dashboard_instance_banner(),
       finish_line_progress_markup(),
@@ -858,34 +862,34 @@ fn roadmap_page_for_doc(doc: RoadmapDocument) -> Fragment {
   )
 }
 
-fn roadmap_authority_refusal_markup(detail: String) -> Fragment {
-  el_class("section", "roadmap-authority-refused", [
-    el("h2", [ txt("roadmap unavailable") ]),
-    el_class("p", "roadmap-authority-refused-detail", [
-      txt(concat("acceptance history projection refused: ", detail)),
+fn roadmap_authority_refusal_markup(detail: String) -> std.markup.Fragment {
+  gunbc.site.markup.el_class("section", "roadmap-authority-refused", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("roadmap unavailable") ]),
+    gunbc.site.markup.el_class("p", "roadmap-authority-refused-detail", [
+      gunbc.site.markup.txt(concat("acceptance history projection refused: ", detail)),
     ]),
   ])
 }
 
-fn roadmap_page_for_authority() -> Fragment {
-  roadmap_page_for_projection(proj: roadmap_authority_projection())
+fn roadmap_page_for_authority() -> std.markup.Fragment {
+  roadmap_page_for_projection(proj: gunbc.roadmap_authority.roadmap_authority_projection())
 }
 
-fn roadmap_page_for_projection(proj: RoadmapAuthorityProjection) -> Fragment {
+fn roadmap_page_for_projection(proj: gunbc.roadmap_authority.RoadmapAuthorityProjection) -> std.markup.Fragment {
   match proj {
-    RoadmapAuthorityProjectionRefused { detail: detail } =>
+    gunbc.roadmap_authority.RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_page_impl(
-        doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
+        doc: gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
         merged: [],
         main_prefix: [
           dashboard_instance_banner(),
           roadmap_authority_refusal_markup(detail: detail),
         ],
       )
-    RoadmapAuthorityProjected { doc: doc, accepted: accepted } =>
+    gunbc.roadmap_authority.RoadmapAuthorityProjected { doc: doc, accepted: accepted } =>
       roadmap_page_impl(
         doc: doc,
-        merged: authored_merged_prs(),
+        merged: gunbc.roadmap_authority.authored_merged_prs(),
         main_prefix: [
           dashboard_instance_banner(),
           finish_line_progress_markup_for_accepted(accepted_ids: accepted),
@@ -894,28 +898,28 @@ fn roadmap_page_for_projection(proj: RoadmapAuthorityProjection) -> Fragment {
   }
 }
 
-fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
+fn roadmap_daily_workspace_page(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>) -> std.markup.Fragment {
   roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none)
 }
 
 // The served daily workspace consumes the OBSERVED attempt evidence at render (the serve handler decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The zero-argument form stays pure (empty attempts, nominal observation) for witnesses that assert composition without observation.
-fn roadmap_daily_workspace_page_for_authority_observed(attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> Fragment {
+fn roadmap_daily_workspace_page_for_authority_observed(attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>, attempts_refused: String?) -> std.markup.Fragment {
   roadmap_daily_workspace_page_for_projection_observed(
-    proj: roadmap_authority_projection(),
+    proj: gunbc.roadmap_authority.roadmap_authority_projection(),
     attempts: attempts,
     attempts_refused: attempts_refused,
   )
 }
 
 fn roadmap_daily_workspace_page_for_projection_observed(
-  proj: RoadmapAuthorityProjection,
-  attempts: List<WorkflowAttemptProgress>,
+  proj: gunbc.roadmap_authority.RoadmapAuthorityProjection,
+  attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>,
   attempts_refused: String?,
-) -> Fragment {
+) -> std.markup.Fragment {
   match proj {
-    RoadmapAuthorityProjectionRefused { detail: detail } =>
+    gunbc.roadmap_authority.RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_daily_workspace_page_impl(
-        doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
+        doc: gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
         merged: [],
         main_prefix: [
           dashboard_instance_banner(),
@@ -924,10 +928,10 @@ fn roadmap_daily_workspace_page_for_projection_observed(
         attempts: attempts,
         attempts_refused: attempts_refused,
       )
-    RoadmapAuthorityProjected { doc: doc, accepted: accepted } =>
+    gunbc.roadmap_authority.RoadmapAuthorityProjected { doc: doc, accepted: accepted } =>
       roadmap_daily_workspace_page_impl_for_accepted(
         doc: doc,
-        merged: authored_merged_prs(),
+        merged: gunbc.roadmap_authority.authored_merged_prs(),
         accepted_ids: accepted,
         main_prefix: [
           dashboard_instance_banner(),
@@ -938,11 +942,11 @@ fn roadmap_daily_workspace_page_for_projection_observed(
   }
 }
 
-fn roadmap_daily_workspace_page_for_authority() -> Fragment {
-  roadmap_daily_workspace_page_for_projection(proj: roadmap_authority_projection())
+fn roadmap_daily_workspace_page_for_authority() -> std.markup.Fragment {
+  roadmap_daily_workspace_page_for_projection(proj: gunbc.roadmap_authority.roadmap_authority_projection())
 }
 
-fn roadmap_daily_workspace_page_for_projection(proj: RoadmapAuthorityProjection) -> Fragment {
+fn roadmap_daily_workspace_page_for_projection(proj: gunbc.roadmap_authority.RoadmapAuthorityProjection) -> std.markup.Fragment {
   roadmap_daily_workspace_page_for_projection_observed(
     proj: proj,
     attempts: [],

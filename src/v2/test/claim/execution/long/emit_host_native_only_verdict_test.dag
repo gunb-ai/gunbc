@@ -9,15 +9,15 @@ data emit_host_native_only_verdict_vs_native_routing_frontier_note: String = "No
 
 data emit_host_native_only_verdict_ci_placement_note: String = "KERNEL-D TESTING RE-STEER (operator direction, 2026-07-24): the real-compile-and-run witness below (emit_host_native_only_verdict_all_holds) runs OFFLINE/NIGHTLY only — enrolled in falsifier_self_host_wet_template_entries (wet_receipt_enrollment.dag), the same lane self_host_logic_behavioral_transport uses; it is not a per-PR CommitCheckEnrollment row (removed from commit_workflow.dag). The per-PR proof of this cutover is the layer-boundary mock pair below (emit_host_native_only_verdict_stdout_match_mock_holds / _mismatch_mock_holds), which exercises native_only_stdout_matches — the SAME comparator the real witness calls — against a literal, mocked HostRunStdout with no compile/run step, templated on v2.test.std_grounding.terminal_gate's mocked-HostLogicalRun shape. This mirrors ingested_classical_not_emit_source_arm_shape_holds's existing per-PR mock-emit proof (no separate mock is needed for the emit-to-text half; that shape already exists and is enrolled)."
 
-fn native_only_stdout_matches(stdout: v2.std.host_run.HostRunStdout, expected_octet: v2.std.integer.Int) -> v2.std.logic.Bool {
+fn native_only_stdout_matches(stdout: v2.std.host_run.HostRunStdout, expected_octet: Int) -> Bool {
   stdout.bytes == v2.compiler.emit_host.emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
 }
 
-fn native_only_matches_expected(source: String, expected_octet: v2.std.integer.Int) -> v2.std.logic.Bool {
+fn native_only_matches_expected(source: String, expected_octet: Int) -> Bool {
   match v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_wet_emit_eval_composed_tree_from_source(source: source) {
-    Accepted { value: tree, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: tree, diagnostics: _ } =>
       match v2.compiler.emit.emit(tree: tree, target: v2.extdeps.languages.rust_test.rust_classical_not_ingested_target_model_staging()) {
-        Accepted { value: emitted, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } =>
           let workspace = extdeps.realization.emit_on_demand_host.native_cache_workspace_root(
             cache_root: v2.test.execution.emit_on_demand_classical_not_ingested_family_witness.classical_not_family_cache_root_for(test_id: "native_one_build"),
             key: v2.test.execution.emit_on_demand_classical_not_ingested_family_witness.classical_not_family_native_key_for(tree: tree)
@@ -28,36 +28,36 @@ fn native_only_matches_expected(source: String, expected_octet: v2.std.integer.I
             source: emitted,
             fixture_inputs: v2.compiler.eval.inputs_root_only(root: tree.root)
           ) {
-            Accepted { value: receipt, diagnostics: _ } =>
+            v2.std.diagnostic.Accepted { value: receipt, diagnostics: _ } =>
               match receipt.logical_run {
-                Accepted { value: v2.std.host_run.HostLogicalRun { stdout: stdout }, diagnostics: v2.std.diagnostic.None } =>
+                v2.std.diagnostic.Accepted { value: v2.std.host_run.HostLogicalRun { stdout: stdout }, diagnostics: v2.std.diagnostic.None } =>
                   native_only_stdout_matches(stdout: stdout, expected_octet: expected_octet)
                 _ => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn emit_host_native_only_classical_not_holds() -> v2.std.logic.Bool {
+test fn emit_host_native_only_classical_not_holds() -> Bool {
   native_only_matches_expected(source: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_source, expected_octet: 0)
 }
 
-test fn emit_host_native_only_classical_not_swapped_mismatch_detected_holds() -> v2.std.logic.Bool {
+test fn emit_host_native_only_classical_not_swapped_mismatch_detected_holds() -> Bool {
   native_only_matches_expected(source: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_swapped_source, expected_octet: 0) == false
 }
 
-test fn emit_host_native_only_verdict_stdout_match_mock_holds() -> v2.std.logic.Bool {
+test fn emit_host_native_only_verdict_stdout_match_mock_holds() -> Bool {
   native_only_stdout_matches(
     stdout: v2.std.host_run.HostRunStdout { bytes: v2.compiler.emit_host.emit_host_octets_byte_string(octets: [0, 0, 0, 0, 0]) },
     expected_octet: 0
   )
 }
 
-test fn emit_host_native_only_verdict_stdout_mismatch_mock_holds() -> v2.std.logic.Bool {
+test fn emit_host_native_only_verdict_stdout_mismatch_mock_holds() -> Bool {
   native_only_stdout_matches(
     stdout: v2.std.host_run.HostRunStdout { bytes: v2.compiler.emit_host.emit_host_octets_byte_string(octets: [0, 1, 0, 0, 0]) },
     expected_octet: 0

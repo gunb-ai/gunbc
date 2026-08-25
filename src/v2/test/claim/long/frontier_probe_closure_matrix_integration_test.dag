@@ -1,16 +1,16 @@
 module v2.test.long.frontier_probe_closure_matrix_integration
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data frontier_probe_closure_matrix_integration_cadence_note: String = "PR #7762 scheduled integration witnesses (operator msg_b51df9e7): below_cap and second_root on FalsifierCadenceJob with SpanEnrolled measured envelopes (4h cadence). Per-PR mechanism controls: src/v2/test/claim/workflow/frontier_probe_closure_matrix_test.dag (9 synthetic). Per-PR wet controls: src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms — measured claim_batch eval wall, not full-pipeline resolve). below_cap and second_root re-homed to falsifier_rehomed_bin_wet_rows with measured exact-head eval (784772ms / 742109ms)."
 
 fn fp_matrix_ref_a() -> v2.compiler.source_authority.SourceRef {
-  source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")
+  v2.compiler.source_authority.source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")
 }
 
 fn fp_matrix_ref_v2() -> v2.compiler.source_authority.SourceRef {
-  source_ref_for_observed_storage_path(path: "src/v2/std/text.dag")
+  v2.compiler.source_authority.source_ref_for_observed_storage_path(path: "src/v2/std/text.dag")
 }
 
 fn fp_matrix_closure_subject_matching_digest(
@@ -19,57 +19,57 @@ fn fp_matrix_closure_subject_matching_digest(
   ingest_read_count: Int,
   entry: v2.compiler.source_authority.SourceRef
 ) -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  frontier_probe_discovered_closure_subject_for_matrix(
-    closure: frontier_probe_discovered_closure_seal(refs: refs, entry: entry),
+  v2.compiler.self_host.frontier_probe.frontier_probe_discovered_closure_subject_for_matrix(
+    closure: v2.compiler.source_authority.frontier_probe_discovered_closure_seal(refs: refs, entry: entry),
     coverage: coverage,
     ingest_read_count: ingest_read_count
   )
 }
 
 fn fp_matrix_below_cap_complete_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  v2.test.long.frontier_probe_closure_matrix_integration.fp_matrix_closure_subject_matching_digest(
+  fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: v2.test.long.frontier_probe_closure_matrix_integration.fp_matrix_ref_a(),
+      head: fp_matrix_ref_a(),
       tail: std.algebra.Empty
     },
-    coverage: SourceRootCoverageComplete,
+    coverage: v2.compiler.source_authority.SourceRootCoverageComplete,
     ingest_read_count: 1,
-    entry: v2.test.long.frontier_probe_closure_matrix_integration.fp_matrix_ref_a()
+    entry: fp_matrix_ref_a()
   )
 }
 
 fn fp_matrix_second_root_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
-  v2.test.long.frontier_probe_closure_matrix_integration.fp_matrix_closure_subject_matching_digest(
+  fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
-      head: v2.test.long.frontier_probe_closure_matrix_integration.fp_matrix_ref_a(),
+      head: fp_matrix_ref_a(),
       tail: std.algebra.Cons { head: fp_matrix_ref_v2(), tail: std.algebra.Empty }
     },
-    coverage: SourceRootCoverageComplete,
+    coverage: v2.compiler.source_authority.SourceRootCoverageComplete,
     ingest_read_count: 2,
     entry: fp_matrix_ref_v2()
   )
 }
 
-fn fp_matrix_population_gates_not_refused(detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeDetail) -> v2.std.logic.Bool {
+fn fp_matrix_population_gates_not_refused(detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeDetail) -> Bool {
   match detail {
-    FrontierProbeClosurePopulationRefused { cause: _ } => false
-    FrontierProbeCoverageRefused { coverage: _ } => false
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeClosurePopulationRefused { cause: _ } => false
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeCoverageRefused { coverage: _ } => false
     _ => true
   }
 }
 
-test fn frontier_probe_below_cap_complete_population_gates_pass_holds() -> v2.std.logic.Bool {
+test fn frontier_probe_below_cap_complete_population_gates_pass_holds() -> Bool {
   fp_matrix_population_gates_not_refused(
-    detail: frontier_probe_receipt_for_subject(
+    detail: v2.compiler.self_host.frontier_probe.frontier_probe_receipt_for_subject(
       subject: fp_matrix_below_cap_complete_subject(),
       fixture_module_path: ""
     ).detail
   )
 }
 
-test fn frontier_probe_second_source_root_population_gates_pass_holds() -> v2.std.logic.Bool {
+test fn frontier_probe_second_source_root_population_gates_pass_holds() -> Bool {
   fp_matrix_population_gates_not_refused(
-    detail: frontier_probe_receipt_for_subject(
+    detail: v2.compiler.self_host.frontier_probe.frontier_probe_receipt_for_subject(
       subject: fp_matrix_second_root_subject(),
       fixture_module_path: ""
     ).detail

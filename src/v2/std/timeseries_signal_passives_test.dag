@@ -1,52 +1,52 @@
 module v2.test.std.timeseries_signal_passives
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data witness_voltage_zero: v2.std.timeseries_signal.Voltage = voltage(0)
+data witness_voltage_zero: v2.std.timeseries_signal.Voltage = v2.std.timeseries_signal.voltage(0)
 
 data witness_current_zero: v2.std.timeseries_signal.Current = v2.std.timeseries_signal.current(0)
 
-test fn named_affine_voltage_preserves_ground_reference_holds() -> v2.std.logic.Bool {
-  let named = named_affine_voltage(
-    reference: GroundReference,
-    approx: timeseries_witness_approx_zero
+test fn named_affine_voltage_preserves_ground_reference_holds() -> Bool {
+  let named = v2.std.timeseries_signal.named_affine_voltage(
+    reference: v2.std.timeseries_signal.GroundReference,
+    approx: v2.std.timeseries_signal.timeseries_witness_approx_zero
   )
-  potential_reference_eq(
-    left: potential_reference_of_named(named: named),
-    right: GroundReference
+  v2.std.timeseries_signal.potential_reference_eq(
+    left: v2.std.timeseries_signal.potential_reference_of_named(named: named),
+    right: v2.std.timeseries_signal.GroundReference
   )
 }
 
-test fn absolute_potential_from_named_preserves_reference_holds() -> v2.std.logic.Bool {
-  let named = named_affine_voltage(
-    reference: GroundReference,
-    approx: timeseries_witness_approx_zero
+test fn absolute_potential_from_named_preserves_reference_holds() -> Bool {
+  let named = v2.std.timeseries_signal.named_affine_voltage(
+    reference: v2.std.timeseries_signal.GroundReference,
+    approx: v2.std.timeseries_signal.timeseries_witness_approx_zero
   )
-  absolute_potential_from_named_preserves_reference(
+  v2.std.timeseries_signal.absolute_potential_from_named_preserves_reference(
     named: named,
     magnitude: witness_voltage_zero
   )
 }
 
-test fn potential_difference_of_magnitude_is_structural_identity_holds() -> v2.std.logic.Bool {
-  match potential_difference_of_magnitude(magnitude: witness_voltage_zero) {
-    PotentialDifference { magnitude: m } =>
-      voltage_count(v: m) == voltage_count(v: witness_voltage_zero)
+test fn potential_difference_of_magnitude_is_structural_identity_holds() -> Bool {
+  match v2.std.timeseries_signal.potential_difference_of_magnitude(magnitude: witness_voltage_zero) {
+    v2.std.timeseries_signal.PotentialDifference { magnitude: m } =>
+      v2.std.timeseries_signal.voltage_count(v: m) == v2.std.timeseries_signal.voltage_count(v: witness_voltage_zero)
   }
 }
 
-test fn branch_current_of_magnitude_is_structural_identity_holds() -> v2.std.logic.Bool {
-  match branch_current_of_magnitude(magnitude: witness_current_zero) {
-    BranchCurrent { magnitude: m } =>
-      current_count(c: m) == current_count(c: witness_current_zero)
+test fn branch_current_of_magnitude_is_structural_identity_holds() -> Bool {
+  match v2.std.timeseries_signal.branch_current_of_magnitude(magnitude: witness_current_zero) {
+    v2.std.timeseries_signal.BranchCurrent { magnitude: m } =>
+      v2.std.timeseries_signal.current_count(c: m) == v2.std.timeseries_signal.current_count(c: witness_current_zero)
   }
 }
 
 data claim_timeseries_signal_module_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "std/timeseries_signal: torsor + passive topology + map/fold passives compile",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: GroundReference,
-  expected_value: GroundReference,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
+  input: v2.std.timeseries_signal.GroundReference,
+  expected_value: v2.std.timeseries_signal.GroundReference,
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }

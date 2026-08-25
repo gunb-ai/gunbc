@@ -1,5 +1,6 @@
 module gunbc.fabric_witness_run
 
+
 // THE FLOOR'S PROGRAM AND CONTRACTS. NOTHING ELSE.
 //
 // This module used to own authorize_floor_run and a FloorRunRefusal coproduct.
@@ -89,11 +90,11 @@ module gunbc.fabric_witness_run
 // consequence of the consolidation, not an oversight, and the phase-grain
 // resumability that would restore it belongs with the cost basis rather than
 // here.
-fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
-  WorkContract {
+fn floor_work_contract(source: product.fabric.work.SourceManifestRef) -> product.fabric.work.WorkContract {
+  product.fabric.work.WorkContract {
     program: "gunbc.claim_executor",
     steps: [
-      WorkStep { step_id: "required-ci", resumability: ReceiptSatisfiable },
+      product.fabric.work.WorkStep { step_id: "required-ci", resumability: product.fabric.work.ReceiptSatisfiable },
     ],
     source: source,
     inputs: floor_inputs_manifest_ref(),
@@ -155,15 +156,15 @@ fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
 // the broker will consume, not a live wall, and calling it enforcement would be the rung inflation
 // the paragraph above already records for affordability. NEXT-RUNG TRIGGER is the same one: a
 // broker fold that selects an Offer for this Demand.
-fn floor_isolation_requirement() -> IsolationProfile {
-  IsolationProfile { guarantees: [] }
+fn floor_isolation_requirement() -> product.fabric.isolation.IsolationProfile {
+  product.fabric.isolation.IsolationProfile { guarantees: [] }
 }
 
-fn floor_execution_requirements() -> ExecutionRequirements {
-  ExecutionRequirements {
-    shape: Shape {
-      hard: HardRequirements { threads: hardware_thread_count(count: 8) },
-      envelope: unstated_envelope(),
+fn floor_execution_requirements() -> product.fabric.work.ExecutionRequirements {
+  product.fabric.work.ExecutionRequirements {
+    shape: product.fabric.work.Shape {
+      hard: product.fabric.work.HardRequirements { threads: std.measure.hardware_thread_count(count: 8) },
+      envelope: product.fabric.envelope.unstated_envelope(),
     },
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
@@ -188,14 +189,14 @@ fn floor_execution_requirements() -> ExecutionRequirements {
 // which is the failure my own notes name as searching by remembered name rather
 // than reading the authority surface.
 
-fn floor_inputs_manifest_ref() -> ArtifactManifestRef {
-  concat("gunbc.floor.inputs.source-roots:", join(witness_layer_roots, "+"))
+fn floor_inputs_manifest_ref() -> product.fabric.work.ArtifactManifestRef {
+  concat("gunbc.floor.inputs.source-roots:", join(gunbc.ci_layer_roots.witness_layer_roots, "+"))
 }
-fn floor_run_command() -> ArgvCommand {
-  claim_executor_command(
+fn floor_run_command() -> extdeps.exec.command.ArgvCommand {
+  gunbc.claim_executor_cli.claim_executor_command(
     mode_flag: "--required-ci",
     operands: fold(
-      witness_layer_roots,
+      gunbc.ci_layer_roots.witness_layer_roots,
       init: [],
       f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
     ),
@@ -231,8 +232,8 @@ fn floor_run_command() -> ArgvCommand {
 // Control-plane work is a separately privileged class. That exclusion must not
 // leak here: a floor run is customer work that happens to be ours.
 
-fn floor_offer_fungibility<P>(offer: SupplierOffer<P>) -> OfferFungibility {
-  offer_fungibility_for(requirements: floor_execution_requirements(), offer: offer)
+fn floor_offer_fungibility<P>(offer: product.fabric.supply.SupplierOffer<P>) -> product.fabric.supply.OfferFungibility {
+  product.fabric.supply.offer_fungibility_for(requirements: floor_execution_requirements(), offer: offer)
 }
 
 // THE FLOOR'S GRANT DURATION IS AN ESTIMATE, NOT A MEASUREMENT. `~30 min wall`
@@ -245,16 +246,16 @@ fn floor_offer_fungibility<P>(offer: SupplierOffer<P>) -> OfferFungibility {
 // only honest constructor available, and it is what lets a rate-quoted offer
 // land on AffordableUnderEstimate instead of silently borrowing the
 // certainty ExactGrantDuration would claim.
-fn floor_grant_duration() -> GrantDuration {
-  EstimatedGrantDuration { seconds: second(count: 1800) }
+fn floor_grant_duration() -> product.fabric.supply.GrantDuration {
+  product.fabric.supply.EstimatedGrantDuration { seconds: std.measure.second(count: 1800) }
 }
 
 fn floor_offer_affordability<P>(
-  offer: SupplierOffer<P>,
-  maximum_buy_order: MoneyAmountMicro,
-  budget_currency: CurrencyCode,
-) -> DemandOfferAffordability {
-  offer_affordability_for(
+  offer: product.fabric.supply.SupplierOffer<P>,
+  maximum_buy_order: std.measure.MoneyAmountMicro,
+  budget_currency: std.currency.CurrencyCode,
+) -> product.fabric.supply.DemandOfferAffordability {
+  product.fabric.supply.offer_affordability_for(
     offer: offer,
     maximum_buy_order: maximum_buy_order,
     budget_currency: budget_currency,
@@ -279,8 +280,8 @@ fn floor_offer_affordability<P>(
 // accelerate a rerun. That is not the same claim as "the step completed" -- a
 // build cache making the second attempt faster is not a receipt.
 
-fn floor_satisfaction_requirement() -> SatisfactionRequirement {
-  SatisfactionRequirement {
+fn floor_satisfaction_requirement() -> product.fabric.demand.SatisfactionRequirement {
+  product.fabric.demand.SatisfactionRequirement {
     terminal_receipt_may_satisfy: false,
     new_attempt_required: true,
     step_reuse_permitted: true,
@@ -288,13 +289,13 @@ fn floor_satisfaction_requirement() -> SatisfactionRequirement {
 }
 
 fn floor_buy_terms(
-  account: BudgetAccountId,
-  reservation_price: MoneyAmountMicro,
-  maximum_buy_order: MoneyAmountMicro,
-) -> BuyTerms {
-  BuyTerms {
+  account: product.fabric.demand.BudgetAccountId,
+  reservation_price: std.measure.MoneyAmountMicro,
+  maximum_buy_order: std.measure.MoneyAmountMicro,
+) -> product.fabric.demand.BuyTerms {
+  product.fabric.demand.BuyTerms {
     budget_account: account,
-    currency: Usd,
+    currency: std.currency.Usd,
     reservation_price: reservation_price,
     maximum_buy_order: maximum_buy_order,
   }
@@ -306,8 +307,8 @@ fn floor_buy_terms(
 // jump the queue, the arbitrage has been lost and the opportunity cost of our
 // own work has stopped being computable.
 
-fn floor_admission_terms(buy: BuyTerms, deadline: Timestamp?) -> AdmissionTerms {
-  AdmissionTerms {
+fn floor_admission_terms(buy: product.fabric.demand.BuyTerms, deadline: std.types.Timestamp?) -> product.fabric.demand.AdmissionTerms {
+  product.fabric.demand.AdmissionTerms {
     priority_class: "gunbc.ci.floor",
     deadline: deadline,
     buy: buy,

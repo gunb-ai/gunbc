@@ -3,7 +3,7 @@ module extdeps.formats.elf.hello_static_witness
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html"
   }
 }
@@ -50,119 +50,119 @@ fn witness_format_atom_is_elf() -> Bool {
 }
 
 fn witness_truncated_ehdr_rejects() -> Bool {
-  match decode_elf64_ehdr(static_hello_truncated_ehdr_bytes) {
-    ElfRejected { reason: Truncated { required_bytes: _, available_bytes: _ } } => true
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_truncated_ehdr_bytes) {
+    extdeps.formats.elf.types.ElfRejected { reason: Truncated { required_bytes: _, available_bytes: _ } } => true
     _ => false
   }
 }
 
 fn witness_unknown_class_rejects() -> Bool {
-  match decode_elf64_ehdr(static_hello_bad_class_ehdr_bytes) {
-    ElfRejected { reason: UnsupportedElfClass { raw: 99 } } => true
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_bad_class_ehdr_bytes) {
+    extdeps.formats.elf.types.ElfRejected { reason: extdeps.formats.elf.types.UnsupportedElfClass { raw: 99 } } => true
     _ => false
   }
 }
 
 fn witness_invalid_magic_rejects() -> Bool {
-  match decode_elf64_ehdr(static_hello_bad_magic_ehdr_bytes) {
-    ElfRejected { reason: InvalidElfMagic { mag0: 0, mag1: 69, mag2: 76, mag3: 70 } } => true
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_bad_magic_ehdr_bytes) {
+    extdeps.formats.elf.types.ElfRejected { reason: extdeps.formats.elf.types.InvalidElfMagic { mag0: 0, mag1: 69, mag2: 76, mag3: 70 } } => true
     _ => false
   }
 }
 
 fn witness_elf32_class_rejects() -> Bool {
-  match decode_elf64_ehdr(static_hello_elf32_class_ehdr_bytes) {
-    ElfRejected { reason: ElfClassNotElf64 { class: ElfClass32 } } => true
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_elf32_class_ehdr_bytes) {
+    extdeps.formats.elf.types.ElfRejected { reason: extdeps.formats.elf.types.ElfClassNotElf64 { class: ElfClass32 } } => true
     _ => false
   }
 }
 
 fn witness_ident_magic() -> Bool {
-  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
     ElfDecoded { value: hdr } => elf_ident_has_valid_magic(hdr.ident)
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_ident_class_is_elf64() -> Bool {
-  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
     ElfDecoded { value: hdr } => hdr.ident.class == ElfClass64
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_ident_data_is_little_endian() -> Bool {
-  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
     ElfDecoded { value: hdr } => hdr.ident.data == ElfData2Lsb
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_file_type_is_exec() -> Bool {
-  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
     ElfDecoded { value: hdr } => hdr.file_type == EtExec
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_machine_is_x86_64() -> Bool {
-  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
     ElfDecoded { value: hdr } => hdr.machine == EmX86_64
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_entry_point_address() -> Bool {
-  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
     ElfDecoded { value: hdr } => elf64_ehdr_entry_point(hdr).virtual_address == 4198443
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_phoff_is_64() -> Bool {
-  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
     ElfDecoded { value: hdr } => hdr.phoff == 64
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_shoff_is_43576() -> Bool {
-  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
     ElfDecoded { value: hdr } => hdr.shoff == 43576
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_ehsize_is_64() -> Bool {
-  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
     ElfDecoded { value: hdr } => hdr.ehsize == elf64_ehdr_size
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_phentsize_is_56() -> Bool {
-  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
     ElfDecoded { value: hdr } => hdr.phentsize == elf64_phdr_size
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_phnum_is_9() -> Bool {
-  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
     ElfDecoded { value: hdr } => hdr.phnum == 9
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_first_segment_is_pt_load() -> Bool {
-  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+  match extdeps.formats.elf.segments.decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
     ElfDecoded { value: phdr } => phdr.segment_type == PtLoad
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_first_segment_is_read_only() -> Bool {
-  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+  match extdeps.formats.elf.segments.decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
     ElfDecoded { value: phdr } => {
       let seg = elf64_phdr_to_load_segment(phdr)
       phdr.flags == pf_r
@@ -170,57 +170,57 @@ fn witness_first_segment_is_read_only() -> Bool {
         && seg.permissions.writable == false
         && seg.permissions.executable == false
     }
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_first_load_segment_vaddr() -> Bool {
-  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+  match extdeps.formats.elf.segments.decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
     ElfDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).virtual_address == 4194304
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_first_load_segment_filesz() -> Bool {
-  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+  match extdeps.formats.elf.segments.decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
     ElfDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).file_size == 652
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_first_load_segment_align() -> Bool {
-  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+  match extdeps.formats.elf.segments.decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
     ElfDecoded { value: phdr } => elf64_phdr_to_load_segment(phdr).alignment == 4096
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_ehdr_encode_decode_roundtrip() -> Bool {
-  witness_encode_decode_roundtrip_ehdr(static_hello_elf64_ehdr_bytes)
+  extdeps.formats.elf.encode.witness_encode_decode_roundtrip_ehdr(static_hello_elf64_ehdr_bytes)
 }
 
 fn witness_phdr_encode_decode_roundtrip() -> Bool {
-  match decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
+  match extdeps.formats.elf.segments.decode_elf64_phdr(static_hello_first_phdr_bytes, 0) {
     ElfDecoded { value: phdr } =>
-      let out = encode_elf64_phdr(phdr)
+      let out = extdeps.formats.elf.encode.encode_elf64_phdr(phdr)
       count(out) == elf64_phdr_size
-        && int_lists_equal(static_hello_first_phdr_bytes, out)
-    ElfRejected { reason: _ } => false
+        && extdeps.formats.elf.encode.int_lists_equal(static_hello_first_phdr_bytes, out)
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 
 fn witness_ehdr_reencode_preserves_decode() -> Bool {
-  match decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
+  match extdeps.formats.elf.types.decode_elf64_ehdr(static_hello_elf64_ehdr_bytes) {
     ElfDecoded { value: hdr } =>
-      match decode_elf64_ehdr(encode_elf64_ehdr(hdr)) {
+      match extdeps.formats.elf.types.decode_elf64_ehdr(extdeps.formats.elf.encode.encode_elf64_ehdr(hdr)) {
         ElfDecoded { value: hdr2 } =>
           hdr2.entry == hdr.entry
             && hdr2.phoff == hdr.phoff
             && hdr2.shoff == hdr.shoff
             && hdr2.phnum == hdr.phnum
-        ElfRejected { reason: _ } => false
+        extdeps.formats.elf.types.ElfRejected { reason: _ } => false
       }
-    ElfRejected { reason: _ } => false
+    extdeps.formats.elf.types.ElfRejected { reason: _ } => false
   }
 }
 

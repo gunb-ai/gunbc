@@ -1,5 +1,6 @@
 module test.claim.checkpoint_identity_keying_witness
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // Executing floor migration of src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag

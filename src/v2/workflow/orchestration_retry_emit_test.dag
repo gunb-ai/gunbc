@@ -1,5 +1,6 @@
 module v2.workflow.orchestration_retry_emit_test
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data orch_retry_golden_note: String = "ci_cargo_eagain_retry_core_golden below is the HAND-AUTHORED spelling of the CI EAGAIN-retry construct, moved here verbatim when production gunbc.ci_spec cut over to emit(Retry, Bash). It is deliberately independent of the grammar rows and segment spellings: the byte tests compare the emitter (and the production seam) against this golden, so a row/segment/emitter regression cannot go green by perturbing both sides at once. The committed .github/workflows/ci.yml drift gate is the corpus-level twin of this oracle."
@@ -34,7 +35,7 @@ test fn orch_retry_row_direct_emit_accepted_holds() -> Bool {
   match v2.compiler.emit.emit(
     tree: v2.compiler.inferred_tree.InferredTree {
       root: v2.extdeps.languages.bash.orch_retry_emitted_command,
-      facts: std.algebra.PartialFunction { lookup: orch_retry_probe_facts }
+      facts: PartialFunction { lookup: orch_retry_probe_facts }
     },
     target: v2.extdeps.languages.bash.orch_retry_target_model(
       occ1: "cmd",
@@ -47,8 +48,8 @@ test fn orch_retry_row_direct_emit_accepted_holds() -> Bool {
       exhausted: "exit 1"
     )
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -68,22 +69,22 @@ fn orch_retry_perturbed_level2() -> v2.std.orchestration.EscalationLevel {
 
 fn orch_retry_level1_from(e: std.algebra.FreeMonoid<v2.std.orchestration.EscalationLevel>) -> v2.std.orchestration.EscalationLevel {
   match v2.std.algebra.list_head(xs: e) {
-    HeadFound { value: l } => l
-    HeadAbsent => orch_retry_perturbed_level2()
+    v2.std.algebra.HeadFound { value: l } => l
+    v2.std.algebra.HeadAbsent => orch_retry_perturbed_level2()
   }
 }
 
 fn orch_retry_perturbed_intent() -> v2.std.orchestration.PipelineStep {
   match v2.test.manual.retry_eagain_bash.retry_eagain_intent() {
-    Retry { body: b, escalations: e, on_exhausted: x } =>
+    v2.std.orchestration.Retry { body: b, escalations: e, on_exhausted: x } =>
       v2.std.orchestration.Retry {
         body: b,
         escalations: [orch_retry_level1_from(e: e), orch_retry_perturbed_level2()],
         on_exhausted: x
       }
-    Do { run: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
-    Comment { text: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
-    Exit { status: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    v2.std.orchestration.Do { run: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    v2.std.orchestration.Comment { text: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    v2.std.orchestration.Exit { status: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
     If { cond: _, then_: _, else_: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
     For { binder: _, over: _, body: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
     While { cond: _, body: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
@@ -94,10 +95,10 @@ fn orch_retry_perturbed_intent() -> v2.std.orchestration.PipelineStep {
 
 test fn orch_retry_byte_identical_to_hand_authored_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_step(s: v2.test.manual.retry_eagain_bash.retry_eagain_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
       (source.carried == ci_cargo_eagain_retry_core_golden(command: v2.test.manual.retry_eagain_bash.retry_eagain_example_command))
         && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -108,15 +109,15 @@ test fn orch_retry_production_seam_matches_golden_holds() -> Bool {
 
 test fn orch_retry_env_value_has_teeth_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_step(s: orch_retry_perturbed_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
       source.carried != ci_cargo_eagain_retry_core_golden(command: v2.test.manual.retry_eagain_bash.retry_eagain_example_command)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn orch_retry_perturbed_exhausted_intent() -> v2.std.orchestration.PipelineStep {
   match v2.test.manual.retry_eagain_bash.retry_eagain_intent() {
-    Retry { body: b, escalations: e, on_exhausted: _ } =>
+    v2.std.orchestration.Retry { body: b, escalations: e, on_exhausted: _ } =>
       v2.std.orchestration.Retry {
         body: b,
         escalations: e,
@@ -125,9 +126,9 @@ fn orch_retry_perturbed_exhausted_intent() -> v2.std.orchestration.PipelineStep 
           on_failure: v2.std.orchestration.FailFast
         }
       }
-    Do { run: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
-    Comment { text: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
-    Exit { status: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    v2.std.orchestration.Do { run: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    v2.std.orchestration.Comment { text: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    v2.std.orchestration.Exit { status: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
     If { cond: _, then_: _, else_: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
     For { binder: _, over: _, body: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
     While { cond: _, body: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
@@ -138,9 +139,9 @@ fn orch_retry_perturbed_exhausted_intent() -> v2.std.orchestration.PipelineStep 
 
 test fn orch_retry_exhausted_has_teeth_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_step(s: orch_retry_perturbed_exhausted_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
       source.carried != ci_cargo_eagain_retry_core_golden(command: v2.test.manual.retry_eagain_bash.retry_eagain_example_command)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -212,7 +213,7 @@ fn orch_retry_1level_golden() -> String {
 
 fn orch_retry_1level_perturbed_intent() -> v2.std.orchestration.PipelineStep {
   match orch_retry_1level_intent() {
-    Retry { body: b, escalations: e, on_exhausted: x } =>
+    v2.std.orchestration.Retry { body: b, escalations: e, on_exhausted: x } =>
       v2.std.orchestration.Retry {
         body: b,
         escalations: [
@@ -227,9 +228,9 @@ fn orch_retry_1level_perturbed_intent() -> v2.std.orchestration.PipelineStep {
         ],
         on_exhausted: x
       }
-    Do { run: _ } => orch_retry_1level_intent()
-    Comment { text: _ } => orch_retry_1level_intent()
-    Exit { status: _ } => orch_retry_1level_intent()
+    v2.std.orchestration.Do { run: _ } => orch_retry_1level_intent()
+    v2.std.orchestration.Comment { text: _ } => orch_retry_1level_intent()
+    v2.std.orchestration.Exit { status: _ } => orch_retry_1level_intent()
     If { cond: _, then_: _, else_: _ } => orch_retry_1level_intent()
     For { binder: _, over: _, body: _ } => orch_retry_1level_intent()
     While { cond: _, body: _ } => orch_retry_1level_intent()
@@ -240,17 +241,17 @@ fn orch_retry_1level_perturbed_intent() -> v2.std.orchestration.PipelineStep {
 
 test fn orch_retry_1level_emit_matches_golden_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_step(s: orch_retry_1level_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: dg } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_retry_1level_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn orch_retry_1level_emit_has_teeth_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_step(s: orch_retry_1level_perturbed_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
       source.carried != orch_retry_1level_golden()
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -258,15 +259,15 @@ test fn orch_retry_escalation_final_row_emit_holds() -> Bool {
   match v2.compiler.emit.emit(
     tree: v2.compiler.inferred_tree.InferredTree {
       root: v2.extdeps.languages.bash.orch_retry_escalation_final_emitted_command,
-      facts: std.algebra.PartialFunction { lookup: orch_retry_probe_facts }
+      facts: PartialFunction { lookup: orch_retry_probe_facts }
     },
     target: v2.extdeps.languages.bash.orch_retry_escalation_final_target_model(
       occ: "E3=1 cmd",
       exhausted: "exit 9"
     )
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -274,7 +275,7 @@ test fn orch_retry_escalation_step_row_emit_holds() -> Bool {
   match v2.compiler.emit.emit(
     tree: v2.compiler.inferred_tree.InferredTree {
       root: v2.extdeps.languages.bash.orch_retry_escalation_step_emitted_command,
-      facts: std.algebra.PartialFunction { lookup: orch_retry_probe_facts }
+      facts: PartialFunction { lookup: orch_retry_probe_facts }
     },
     target: v2.extdeps.languages.bash.orch_retry_escalation_step_target_model(
       occ: "E2=1 cmd",
@@ -284,8 +285,8 @@ test fn orch_retry_escalation_step_row_emit_holds() -> Bool {
       exhausted: "exit 9"
     )
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -293,7 +294,7 @@ test fn orch_retry_1level_row_direct_emit_accepted_holds() -> Bool {
   match v2.compiler.emit.emit(
     tree: v2.compiler.inferred_tree.InferredTree {
       root: v2.extdeps.languages.bash.orch_retry_1level_emitted_command,
-      facts: std.algebra.PartialFunction { lookup: orch_retry_probe_facts }
+      facts: PartialFunction { lookup: orch_retry_probe_facts }
     },
     target: v2.extdeps.languages.bash.orch_retry_1level_target_model(
       occ1: "cmd",
@@ -303,8 +304,8 @@ test fn orch_retry_1level_row_direct_emit_accepted_holds() -> Bool {
       exhausted: "exit 1"
     )
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -370,8 +371,8 @@ data orch_retry_3level_refuse_note: String = "Three-level Retry previously emitt
 
 test fn orch_retry_3level_refused_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_step(s: orch_retry_3level_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^orch_emit_retry_multilevel_unsupported
   }
 }
@@ -446,8 +447,8 @@ test fn orch_retry_body_multi_step_refused_holds() -> Bool {
     ),
     medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^orch_emit_retry_body_multi_step
   }
 }
@@ -465,8 +466,8 @@ test fn orch_retry_body_redirect_present_refused_holds() -> Bool {
     ),
     medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^orch_emit_retry_redirect_present
   }
 }
@@ -484,8 +485,8 @@ test fn orch_retry_body_capture_present_refused_holds() -> Bool {
     ),
     medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^orch_emit_retry_capture_present
   }
 }
@@ -503,8 +504,8 @@ test fn orch_retry_changed_log_source_refused_holds() -> Bool {
     ),
     medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^orch_emit_retry_log_source_mismatch
   }
 }
@@ -522,8 +523,8 @@ test fn orch_retry_body_env_present_refused_holds() -> Bool {
     ),
     medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^orch_emit_retry_body_env_present
   }
 }
@@ -541,7 +542,7 @@ test fn orch_retry_body_env_empty_accepted_holds() -> Bool {
     ),
     medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

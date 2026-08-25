@@ -1,28 +1,29 @@
 module test.claim.json_protocol_schema_memory_split_wet_witness_test
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data witness_note: String = "WET split attribution for parse_json vs canonicalize_json_value on codex_app_server_protocol.schemas.json (506,984 bytes). Not enrolled. srv1 recipe: build claim_batch in worktree; systemd-run --user --scope -p MemoryMax=8G -- claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/json_protocol_schema_memory_split_wet_witness_test.dag --function wet_finish_parse_largest_protocol_schema_only --claim-run (parse+canonicalize: same with wet_finish_parse_canonicalize_largest_protocol_schema_only). Poll RSS externally; OOM kill is exit 137."
 
 fn committed_codex_lock_text() -> String {
-  filesystem_read(path: codex_runtime_lock_path as String).content
+  filesystem_read(path: gunbc.package_delivery.codex_runtime_lock_path as String).content
 }
 
-fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
-  AdmittedCodexRuntimeSource {
-    manifest_bytes: filesystem_read(path: codex_runtime_manifest_path as String).content,
+fn committed_admitted_codex_runtime_source() -> gunbc.package_delivery.AdmittedCodexRuntimeSource {
+  gunbc.package_delivery.AdmittedCodexRuntimeSource {
+    manifest_bytes: filesystem_read(path: gunbc.package_delivery.codex_runtime_manifest_path as String).content,
     lock_bytes: committed_codex_lock_text(),
   }
 }
 
 test fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
-  materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
+  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
 
 test fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool {
-  materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
+  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }

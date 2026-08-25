@@ -1,20 +1,20 @@
 module v2.test.self_host.compiler_closure_ingest_boundary_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 // Wet boundary witness: 07_target_carriers closure at manifest_inline_list_max (transport-run).
-test fn compiler_closure_ingest_boundary_exact_cap_transport_holds() -> v2.std.logic.Bool {
-  let receipt = host_source_root_ingest_coverage_receipt
-  let refs = host_source_root_closure_refs
+test fn compiler_closure_ingest_boundary_exact_cap_transport_holds() -> Bool {
+  let receipt = v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt
+  let refs = v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs
   let n = receipt.ingest_read_count
-  (n == manifest_inline_list_max)
+  (n == v2.compiler.source_authority.manifest_inline_list_max)
     && (receipt.produced_row_count == n)
-    && (length(xs: refs) == n)
-    && source_root_closure_ref_transport_complete(receipt: receipt, refs: refs)
-    && source_root_overflow_never_empty_population_holds(receipt: receipt, refs: refs)
+    && (v2.std.algebra.length(xs: refs) == n)
+    && v2.compiler.source_authority.source_root_closure_ref_transport_complete(receipt: receipt, refs: refs)
+    && v2.compiler.source_authority.source_root_overflow_never_empty_population_holds(receipt: receipt, refs: refs)
     && match receipt.coverage {
-      SourceRootCoverageComplete => true
+      v2.compiler.source_authority.SourceRootCoverageComplete => true
       _ => false
     }
 }

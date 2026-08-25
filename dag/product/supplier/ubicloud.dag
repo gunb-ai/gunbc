@@ -1,5 +1,6 @@
 module product.supplier.ubicloud
 
+
 // THE MISSING LAYER BETWEEN A CITED PRICE AND A SELECTABLE OFFER.
 //
 // product.fabric.supply states the division of labour explicitly: "Normalizing a
@@ -24,12 +25,12 @@ module product.supplier.ubicloud
 // hours. Normalizing a supplier's period is not a presentational choice -- the period
 // and the quantum together ARE the tariff, and a binding that discards them hands the
 // selection fold a number that is not the price.
-fn ubicloud_quote(row: UbicloudRunnerPriceRow) -> OfferQuote {
-  QuotedPerMinute(row.per_minute)
+fn ubicloud_quote(row: extdeps.pricing.ubicloud.UbicloudRunnerPriceRow) -> product.fabric.supply.OfferQuote {
+  product.fabric.supply.QuotedPerMinute(row.per_minute)
 }
 
 // Sixty seconds, from the vendor's published per-minute billing. Not a default.
-data ubicloud_billing_quantum: Second = second(count: 60)
+data ubicloud_billing_quantum: std.measure.Second = std.measure.second(count: 60)
 
 // WHAT THE FABRIC'S SHAPE CANNOT SAY.
 //
@@ -45,7 +46,7 @@ data ubicloud_billing_quantum: Second = second(count: 60)
 // Disk stays, because nothing in ResourceEnvelope's storage axis is populated from this catalog
 // yet, and the fact is still true. That asymmetry is the whole content of this type now.
 type UnexpressedSupplyFact
-  = DiskNotExpressibleInShape { provided: ByteSize }
+  = DiskNotExpressibleInShape { provided: std.measure.ByteSize }
   | IsolationNotObserved
 
 // A PROJECTION BESIDE THE OFFER, NOT A SECOND KIND OF OFFER. The name matters more than it
@@ -54,14 +55,14 @@ type UnexpressedSupplyFact
 // carrier it wraps. Two types under one name is the ambiguity the corpus resolves by silent
 // last-import-wins, so nothing refuses and the reader cannot tell which one a use means.
 type SupplierOfferProjection<P> {
-  offer: SupplierOffer<P>
+  offer: product.fabric.supply.SupplierOffer<P>
   unexpressed: List<UnexpressedSupplyFact>
 }
 
-fn ubicloud_shape(catalog: UbicloudRunnerCatalogRow) -> Shape {
-  Shape {
-    hard: HardRequirements { threads: catalog.vcpus },
-    envelope: cpu_memory_envelope(
+fn ubicloud_shape(catalog: extdeps.cloud.ubicloud.UbicloudRunnerCatalogRow) -> product.fabric.work.Shape {
+  product.fabric.work.Shape {
+    hard: product.fabric.work.HardRequirements { threads: catalog.vcpus },
+    envelope: product.fabric.envelope.cpu_memory_envelope(
       min_threads: catalog.vcpus,
       architecture: none,
       min_bytes: catalog.memory_bytes,
@@ -84,11 +85,11 @@ fn ubicloud_shape(catalog: UbicloudRunnerCatalogRow) -> Shape {
 // The empty list alone would conflate "provides none" with "nobody looked", so the projection
 // carries IsolationNotObserved beside it -- the same move the disk fact makes, and the thing
 // that turns this from a silent zero into a stated coverage obligation.
-fn ubicloud_unobserved_isolation() -> IsolationProfile {
-  IsolationProfile { guarantees: [] }
+fn ubicloud_unobserved_isolation() -> product.fabric.isolation.IsolationProfile {
+  product.fabric.isolation.IsolationProfile { guarantees: [] }
 }
 
-fn ubicloud_unexpressed(catalog: UbicloudRunnerCatalogRow) -> List<UnexpressedSupplyFact> {
+fn ubicloud_unexpressed(catalog: extdeps.cloud.ubicloud.UbicloudRunnerCatalogRow) -> List<UnexpressedSupplyFact> {
   [
     DiskNotExpressibleInShape { provided: catalog.disk_bytes },
     IsolationNotObserved,
@@ -102,7 +103,7 @@ fn ubicloud_unexpressed(catalog: UbicloudRunnerCatalogRow) -> List<UnexpressedSu
 // OUR freshness policy -- how long we are willing to treat a scraped list price as
 // current -- which is a buyer fact and belongs in the product layer. It is NOT a claim
 // about what the vendor promised.
-data list_price_trust_horizon_note: NonEmptyStr = "A scraped vendor list price has no stated expiry. valid_until is therefore OUR staleness horizon, not the vendor's commitment. Reading it as a vendor promise would turn a buyer-side policy into a supplier guarantee that nobody made."
+data list_price_trust_horizon_note: std.types.NonEmptyStr = "A scraped vendor list price has no stated expiry. valid_until is therefore OUR staleness horizon, not the vendor's commitment. Reading it as a vendor promise would turn a buyer-side policy into a supplier guarantee that nobody made."
 
 // Cloud supply is bounded, never unbounded: supply.dag requires a quantity bound
 // because an offer without one cannot be conserved against, and no supplier actually
@@ -120,8 +121,8 @@ data placement_concurrency_bound: Int = 64
 // So provisioning delay must be MEASURED, and until it is this binding refuses rather
 // than binding an offer that would rank on a fabricated number.
 type ReadinessObservation
-  = ReadinessMeasured { ready_at: Timestamp, receipt: ObservationReceiptRef }
-  | ReadinessUnmeasured { obligation: NonEmptyStr }
+  = ReadinessMeasured { ready_at: std.types.Timestamp, receipt: product.fabric.demand.ObservationReceiptRef }
+  | ReadinessUnmeasured { obligation: std.types.NonEmptyStr }
 
 data ubicloud_readiness: ReadinessObservation = ReadinessUnmeasured {
   obligation: "Provisioning delay from job dispatch to a Ubicloud runner accepting work has not been measured. Start one job per shape, record dispatch and first-heartbeat timestamps, and land the receipt. Until then no Ubicloud offer may be ranked by a delay-valuing policy.",
@@ -129,18 +130,18 @@ data ubicloud_readiness: ReadinessObservation = ReadinessUnmeasured {
 
 type OfferBinding<P>
   = OfferBound { bound: SupplierOfferProjection<P> }
-  | OfferBindingRefused { runs_on_label: NonEmptyStr, cause: NonEmptyStr }
+  | OfferBindingRefused { runs_on_label: std.types.NonEmptyStr, cause: std.types.NonEmptyStr }
 
 fn bind_ubicloud_offer<P>(
   principal: P,
   executor: P,
-  row: UbicloudRunnerPriceRow,
-  capabilities: CapabilityManifestRef,
-  trust_domain: TrustDomainRef,
+  row: extdeps.pricing.ubicloud.UbicloudRunnerPriceRow,
+  capabilities: product.fabric.work.CapabilityManifestRef,
+  trust_domain: product.fabric.work.TrustDomainRef,
   readiness: ReadinessObservation,
-  quoted_at: Timestamp,
-  valid_until: Timestamp,
-  receipt: ObservationReceiptRef,
+  quoted_at: std.types.Timestamp,
+  valid_until: std.types.Timestamp,
+  receipt: product.fabric.demand.ObservationReceiptRef,
 ) -> OfferBinding<P> {
   match readiness {
     ReadinessUnmeasured { obligation } =>
@@ -148,8 +149,8 @@ fn bind_ubicloud_offer<P>(
     ReadinessMeasured { ready_at, receipt: readiness_receipt } =>
       OfferBound {
         bound: SupplierOfferProjection {
-          offer: SupplierOffer {
-            id: FabricIdentity { principal: principal, key: row.catalog.runs_on_label },
+          offer: product.fabric.supply.SupplierOffer {
+            id: product.fabric.identity.FabricIdentity { principal: principal, key: row.catalog.runs_on_label },
             executor: executor,
             shape: ubicloud_shape(catalog: row.catalog),
             capabilities: capabilities,
@@ -159,7 +160,7 @@ fn bind_ubicloud_offer<P>(
             ready_at: ready_at,
             quote: ubicloud_quote(row: row),
             billing_quantum: ubicloud_billing_quantum,
-            evidence: QuotedSupply {
+            evidence: product.fabric.supply.QuotedSupply {
               quoted_at: quoted_at,
               valid_until: valid_until,
               receipt: receipt,

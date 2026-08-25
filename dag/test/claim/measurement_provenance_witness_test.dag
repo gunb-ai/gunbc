@@ -1,10 +1,14 @@
 module test.claim.measurement_provenance_witness
 
-// WHAT THIS WITNESS COVERS. gunbc.measurement_provenance.observe folds two devboot retrievability observations into an
+
+
+
+
+// WHAT THIS WITNESS COVERS. observe folds two devboot retrievability observations into an
 // Observation<Value>. The claim is that the bound arm (Observed) is reachable only when BOTH
 // sides landed on ArtifactAvailable — never on the strength of a past ExecutionProduced, and
 // never when either side's bytes are missing, corrupt or unreadable — regardless of how
-// plausible the value handed to gunbc.measurement_provenance.observe looks.
+// plausible the value handed to observe looks.
 //
 // The four specimens the carrier was built from appear here as four separate rows rather than
 // as one, because they fail on different axes: (3) is an instrument whose build failed, (4) is
@@ -152,7 +156,7 @@ test fn w_RED_an_unfetchable_subject_never_yields_a_bound_observation() -> Bool 
 // ExecutionProduced, genuinely, in the past — and the bytes now in the store do not match the
 // digest that success recorded. That is the stale-binary specimen exactly: a past success read
 // as evidence about a present binary. The earlier revision of this carrier had no arm that
-// could tell these apart and declared the axis outside the modeled guarantee; gunbc.measurement_provenance.observe now
+// could tell these apart and declared the axis outside the modeled guarantee; observe now
 // selects on availability alone, so history has no vote and this refuses.
 test fn w_RED_a_past_build_success_does_not_bind_when_the_artifact_is_corrupt_now() -> Bool {
   match an_available_subject() {
@@ -182,13 +186,13 @@ test fn a_doubly_unavailable_fold_reports_the_instrument_refusal() -> Bool {
     subject_availability: gunbc.devboot.outcome.ArtifactMissing,
     value: 42,
   ) {
-    InstrumentNotHeld { execution, availability } => true
-    SubjectNotHeld { execution, availability } => false
-    Observed { instrument, subject, value } => false
+    gunbc.measurement_provenance.InstrumentNotHeld { execution, availability } => true
+    gunbc.measurement_provenance.SubjectNotHeld { execution, availability } => false
+    gunbc.measurement_provenance.Observed { instrument, subject, value } => false
   }
 }
 
-// THE AGREEMENT ROW, and the reason gunbc.measurement_provenance.observe is allowed to match on availability itself rather
+// THE AGREEMENT ROW, and the reason observe is allowed to match on availability itself rather
 // than call devboot's Bool-returning authority: it needs the StoredArtifact out of the arm,
 // which a Bool cannot hand back. That makes the agreement a claim rather than a tautology, so
 // it is executed here on every arm of ArtifactAvailability instead of asserted in a comment.

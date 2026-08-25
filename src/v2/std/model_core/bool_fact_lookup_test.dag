@@ -2,44 +2,44 @@ module v2.test.std_model_core.bool_fact_lookup
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-fn bool_lookup_width_ok(vw: v2.std.node.Node) -> v2.std.logic.Bool {
-  content_hash(n: vw) == content_hash(n: bool_width_fact_node(width: bool_primitive_facts.width))
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+fn bool_lookup_width_ok(vw: v2.std.node.Node) -> Bool {
+  v2.std.node.content_hash(n: vw) == v2.std.node.content_hash(n: v2.std.logic.bool_width_fact_node(width: bool_primitive_facts.width))
 }
 
-fn bool_lookup_encoding_ok(ve: v2.std.node.Node) -> v2.std.logic.Bool {
-  content_hash(n: ve) == content_hash(n: bool_encoding_fact_node(encoding: bool_primitive_facts.encoding))
+fn bool_lookup_encoding_ok(ve: v2.std.node.Node) -> Bool {
+  v2.std.node.content_hash(n: ve) == v2.std.node.content_hash(n: v2.std.logic.bool_encoding_fact_node(encoding: bool_primitive_facts.encoding))
 }
 
-fn bool_lookup_facts_ok(vw: v2.std.node.Node, ve: v2.std.node.Node) -> v2.std.logic.Bool {
+fn bool_lookup_facts_ok(vw: v2.std.node.Node, ve: v2.std.node.Node) -> Bool {
   bool_lookup_width_ok(vw: vw) && bool_lookup_encoding_ok(ve: ve)
 }
 
-fn bool_lookup_signed_fails_closed(w: Witness<v2.std.node.Node>) -> v2.std.logic.Bool {
+fn bool_lookup_signed_fails_closed(w: Witness<v2.std.node.Node>) -> Bool {
   match w {
-    Violates { diagnostic: _ } => true
-    Holds { value: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
   }
 }
 
-test fn witness_model_core_bool_fact_lookup_discriminates() -> v2.std.logic.Bool {
-  let w_width = model_core_bool_fact_lookup(
-    facts: bool_primitive_facts,
+test fn witness_model_core_bool_fact_lookup_discriminates() -> Bool {
+  let w_width = v2.std.model_core.model_core_bool_fact_lookup(
+    facts: v2.std.logic.bool_primitive_facts,
     axis: discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {})
   )
-  let w_enc = model_core_bool_fact_lookup(
-    facts: bool_primitive_facts,
+  let w_enc = v2.std.model_core.model_core_bool_fact_lookup(
+    facts: v2.std.logic.bool_primitive_facts,
     axis: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {})
   )
-  let w_signed = model_core_bool_fact_lookup(
-    facts: bool_primitive_facts,
+  let w_signed = v2.std.model_core.model_core_bool_fact_lookup(
+    facts: v2.std.logic.bool_primitive_facts,
     axis: discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {})
   )
   match w_width {
-    Holds { value: vw } => match w_enc {
-      Holds { value: ve } => bool_lookup_facts_ok(vw: vw, ve: ve) && bool_lookup_signed_fails_closed(w: w_signed)
-      Violates { diagnostic: _ } => false
+    v2.std.witness.Holds { value: vw } => match w_enc {
+      v2.std.witness.Holds { value: ve } => bool_lookup_facts_ok(vw: vw, ve: ve) && bool_lookup_signed_fails_closed(w: w_signed)
+      v2.std.witness.Violates { diagnostic: _ } => false
     }
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }

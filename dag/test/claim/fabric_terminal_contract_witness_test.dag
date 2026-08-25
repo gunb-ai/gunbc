@@ -1,6 +1,8 @@
 module test.claim.fabric_terminal_contract_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // The acceptance test for the terminal contract: two synthetic SCM bindings must
 // project into the same core carriers without the core naming either of them.
@@ -12,21 +14,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // assertion is that the Work identity they produce is IDENTICAL while the
 // demands remain distinct. If a provider fact ever leaks into Work, this
 // witness reds without anyone needing to notice the leak.
-data fixture_shape: Shape = Shape {
-  hard: HardRequirements { threads: hardware_thread_count(8) },
+data fixture_shape: product.fabric.work.Shape = product.fabric.work.Shape {
+  hard: product.fabric.work.HardRequirements { threads: std.measure.hardware_thread_count(8) },
   envelope: unstated_envelope(),
 }
 
-data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
+data fixture_requirements: product.fabric.work.ExecutionRequirements = product.fabric.work.ExecutionRequirements {
   shape: fixture_shape,
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
   isolation: shared_kernel_sandbox_profile(),
 }
 
-data fixture_contract: WorkContract = WorkContract {
+data fixture_contract: product.fabric.work.WorkContract = product.fabric.work.WorkContract {
   program: "gunbc-required-floor",
-  steps: [WorkStep { step_id: "floor", resumability: ReceiptSatisfiable }],
+  steps: [product.fabric.work.WorkStep { step_id: "floor", resumability: product.fabric.work.ReceiptSatisfiable }],
   source: "sha256:tree-abc",
   inputs: "manifest-inputs-1",
   runtime_closure: "toolchain-rust-1.89",
@@ -39,22 +41,22 @@ data fixture_contract: WorkContract = WorkContract {
 // neutrality test unfalsifiable: it would have passed against a key that
 // ignored every contract input, while claiming to prove the opposite.
 
-data fixture_work_key: WorkKey = derive_work_key(
+data fixture_work_key: product.fabric.identity.WorkKey = product.fabric.work.derive_work_key(
   contract: fixture_contract,
   requirements: fixture_requirements,
 )
 
-fn work_for_principal(p: NonEmptyStr) -> Work<NonEmptyStr> {
-  work_for(principal: p, contract: fixture_contract, requirements: fixture_requirements)
+fn work_for_principal(p: std.types.NonEmptyStr) -> product.fabric.work.Work<std.types.NonEmptyStr> {
+  product.fabric.work.work_for(principal: p, contract: fixture_contract, requirements: fixture_requirements)
 }
 
 // A contract differing in ONE semantic input - the source tree - and one
 // differing only in a scheduling-irrelevant way are the two controls the
 // derivation has to separate.
 
-data other_source_contract: WorkContract = WorkContract {
+data other_source_contract: product.fabric.work.WorkContract = product.fabric.work.WorkContract {
   program: "gunbc-required-floor",
-  steps: [WorkStep { step_id: "floor", resumability: ReceiptSatisfiable }],
+  steps: [product.fabric.work.WorkStep { step_id: "floor", resumability: product.fabric.work.ReceiptSatisfiable }],
   source: "sha256:tree-DIFFERENT",
   inputs: "manifest-inputs-1",
   runtime_closure: "toolchain-rust-1.89",
@@ -67,9 +69,9 @@ data other_source_contract: WorkContract = WorkContract {
 // machine requirements, and fungibility compares shape - so dedup identity and
 // matching constraints disagreed about whether two things were the same work.
 
-data bigger_shape_requirements: ExecutionRequirements = ExecutionRequirements {
-  shape: Shape {
-    hard: HardRequirements { threads: hardware_thread_count(64) },
+data bigger_shape_requirements: product.fabric.work.ExecutionRequirements = product.fabric.work.ExecutionRequirements {
+  shape: product.fabric.work.Shape {
+    hard: product.fabric.work.HardRequirements { threads: std.measure.hardware_thread_count(64) },
     envelope: unstated_envelope(),
   },
   capabilities: "linux-arm64",
@@ -77,39 +79,39 @@ data bigger_shape_requirements: ExecutionRequirements = ExecutionRequirements {
   isolation: shared_kernel_sandbox_profile(),
 }
 
-data other_runtime_requirements: ExecutionRequirements = ExecutionRequirements {
+data other_runtime_requirements: product.fabric.work.ExecutionRequirements = product.fabric.work.ExecutionRequirements {
   shape: fixture_shape,
   capabilities: "linux-amd64",
   trust_domain: "fleet-owned",
   isolation: shared_kernel_sandbox_profile(),
 }
 
-fn buy_terms(reservation: Int, ceiling: Int) -> BuyTerms {
-  BuyTerms {
+fn buy_terms(reservation: Int, ceiling: Int) -> product.fabric.demand.BuyTerms {
+  product.fabric.demand.BuyTerms {
     budget_account: "acct-fleet",
-    currency: Usd,
-    reservation_price: money_amount_micro(reservation),
-    maximum_buy_order: money_amount_micro(ceiling),
+    currency: std.currency.Usd,
+    reservation_price: std.measure.money_amount_micro(reservation),
+    maximum_buy_order: std.measure.money_amount_micro(ceiling),
   }
 }
 
 fn demand_from_binding(
-  key: DemandKey,
-  provenance: NonEmptyStr,
+  key: product.fabric.identity.DemandKey,
+  provenance: std.types.NonEmptyStr,
   reservation: Int,
   ceiling: Int,
-) -> Demand<NonEmptyStr> {
-  Demand {
-    id: FabricIdentity { principal: "operator", key: key },
-    work: FabricIdentity { principal: "operator", key: fixture_work_key },
+) -> product.fabric.demand.Demand<std.types.NonEmptyStr> {
+  product.fabric.demand.Demand {
+    id: product.fabric.identity.FabricIdentity { principal: "operator", key: key },
+    work: product.fabric.identity.FabricIdentity { principal: "operator", key: fixture_work_key },
     origin: provenance,
     submitted_at: "2026-08-18T00:00:00Z",
-    admission: AdmissionTerms {
+    admission: product.fabric.demand.AdmissionTerms {
       priority_class: "required-gate",
       deadline: none,
       buy: buy_terms(reservation: reservation, ceiling: ceiling),
     },
-    satisfaction: SatisfactionRequirement {
+    satisfaction: product.fabric.demand.SatisfactionRequirement {
       terminal_receipt_may_satisfy: true,
       new_attempt_required: false,
       step_reuse_permitted: true,
@@ -117,14 +119,14 @@ fn demand_from_binding(
   }
 }
 
-data github_binding_demand: Demand<NonEmptyStr> = demand_from_binding(
+data github_binding_demand: product.fabric.demand.Demand<std.types.NonEmptyStr> = demand_from_binding(
   key: "demand-gh-1",
   provenance: "github:pull/8387/head",
   reservation: 500,
   ceiling: 1000,
 )
 
-data gitlab_binding_demand: Demand<NonEmptyStr> = demand_from_binding(
+data gitlab_binding_demand: product.fabric.demand.Demand<std.types.NonEmptyStr> = demand_from_binding(
   key: "demand-gl-1",
   provenance: "gitlab:merge_request/42/head",
   reservation: 250,
@@ -134,19 +136,19 @@ data gitlab_binding_demand: Demand<NonEmptyStr> = demand_from_binding(
 // The load-bearing claim: two providers, one Work.
 
 test fn two_bindings_project_into_one_work_identity() -> Bool {
-  fabric_identity_key(id: demand_work(d: github_binding_demand))
-    == fabric_identity_key(id: demand_work(d: gitlab_binding_demand))
+  product.fabric.identity.fabric_identity_key(id: product.fabric.demand.demand_work(d: github_binding_demand))
+    == product.fabric.identity.fabric_identity_key(id: product.fabric.demand.demand_work(d: gitlab_binding_demand))
     && github_binding_demand.origin != gitlab_binding_demand.origin
-    && fabric_identity_key(id: github_binding_demand.id)
-      != fabric_identity_key(id: gitlab_binding_demand.id)
+    && product.fabric.identity.fabric_identity_key(id: github_binding_demand.id)
+      != product.fabric.identity.fabric_identity_key(id: gitlab_binding_demand.id)
 }
 
 // The derivation controls. Without these the test above is satisfied by a key
 // that ignores its inputs entirely, which is what an authored constant was.
 
 test fn one_changed_semantic_input_changes_the_work_key() -> Bool {
-  derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
-    != derive_work_key(contract: other_source_contract, requirements: fixture_requirements)
+  product.fabric.work.derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
+    != product.fabric.work.derive_work_key(contract: other_source_contract, requirements: fixture_requirements)
 }
 
 // Requirements are part of the promise, not scheduling trivia: work that needs
@@ -154,8 +156,8 @@ test fn one_changed_semantic_input_changes_the_work_key() -> Bool {
 // share a key with work that does.
 
 test fn changed_execution_requirements_change_the_work_key() -> Bool {
-  derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
-    != derive_work_key(contract: fixture_contract, requirements: other_runtime_requirements)
+  product.fabric.work.derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
+    != product.fabric.work.derive_work_key(contract: fixture_contract, requirements: other_runtime_requirements)
 }
 
 // And the direction that matters most for the fabric: identical semantics
@@ -164,11 +166,11 @@ test fn changed_execution_requirements_change_the_work_key() -> Bool {
 // than of two fixtures happening to be given one constant.
 
 test fn identical_contracts_derive_one_key_regardless_of_who_asked() -> Bool {
-  derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
-    == derive_work_key(
-      contract: WorkContract {
+  product.fabric.work.derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
+    == product.fabric.work.derive_work_key(
+      contract: product.fabric.work.WorkContract {
         program: "gunbc-required-floor",
-        steps: [WorkStep { step_id: "floor", resumability: ReceiptSatisfiable }],
+        steps: [product.fabric.work.WorkStep { step_id: "floor", resumability: product.fabric.work.ReceiptSatisfiable }],
         source: "sha256:tree-abc",
         inputs: "manifest-inputs-1",
         runtime_closure: "toolchain-rust-1.89",
@@ -186,16 +188,16 @@ test fn identical_contracts_derive_one_key_regardless_of_who_asked() -> Bool {
 // both, so a differing shape must derive a differing key.
 
 test fn a_different_machine_shape_changes_the_work_key() -> Bool {
-  derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
-    != derive_work_key(contract: fixture_contract, requirements: bigger_shape_requirements)
+  product.fabric.work.derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
+    != product.fabric.work.derive_work_key(contract: fixture_contract, requirements: bigger_shape_requirements)
 }
 
 test fn cost_terms_differ_without_forking_work() -> Bool {
-  money_amount_micro_count(m: demand_reservation_price(d: github_binding_demand)) == 500
-    && money_amount_micro_count(m: demand_reservation_price(d: gitlab_binding_demand)) == 250
-    && money_amount_micro_count(m: demand_maximum_buy_order(d: github_binding_demand)) == 1000
-    && (demand_work(d: github_binding_demand).key as String)
-      == (demand_work(d: gitlab_binding_demand).key as String)
+  std.measure.money_amount_micro_count(m: product.fabric.demand.demand_reservation_price(d: github_binding_demand)) == 500
+    && std.measure.money_amount_micro_count(m: product.fabric.demand.demand_reservation_price(d: gitlab_binding_demand)) == 250
+    && std.measure.money_amount_micro_count(m: product.fabric.demand.demand_maximum_buy_order(d: github_binding_demand)) == 1000
+    && (product.fabric.demand.demand_work(d: github_binding_demand).key as String)
+      == (product.fabric.demand.demand_work(d: gitlab_binding_demand).key as String)
 }
 
 // Different principals are different Work, even at an identical contract.
@@ -209,8 +211,8 @@ test fn principals_do_not_share_work_identity() -> Bool {
 
 // An owned offer states zero explicitly; absence is not free.
 
-data owned_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
-  id: FabricIdentity { principal: "operator", key: "offer-srv3-slot" },
+data owned_offer: product.fabric.supply.SupplierOffer<std.types.NonEmptyStr> = product.fabric.supply.SupplierOffer {
+  id: product.fabric.identity.FabricIdentity { principal: "operator", key: "offer-srv3-slot" },
   executor: "srv3",
   shape: fixture_shape,
   capabilities: "linux-arm64",
@@ -218,13 +220,13 @@ data owned_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   isolation: shared_kernel_sandbox_profile(),
   quantity_bound: 1,
   ready_at: "2026-08-18T00:00:00Z",
-  quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(0), currency: Usd }),
-  billing_quantum: second(count: 0),
-  evidence: ObservedSupply { observed_at: "2026-08-18T00:00:00Z", receipt: "obs-srv3-1" },
+  quote: product.fabric.supply.QuotedPerSecond(std.measure.MoneyRate { amount: std.measure.money_amount_micro(0), currency: std.currency.Usd }),
+  billing_quantum: std.measure.second(count: 0),
+  evidence: product.fabric.supply.ObservedSupply { observed_at: "2026-08-18T00:00:00Z", receipt: "obs-srv3-1" },
 }
 
-data rented_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
-  id: FabricIdentity { principal: "operator", key: "offer-rented-1" },
+data rented_offer: product.fabric.supply.SupplierOffer<std.types.NonEmptyStr> = product.fabric.supply.SupplierOffer {
+  id: product.fabric.identity.FabricIdentity { principal: "operator", key: "offer-rented-1" },
   executor: "rented-pool",
   shape: fixture_shape,
   capabilities: "linux-arm64",
@@ -232,9 +234,9 @@ data rented_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   isolation: shared_kernel_sandbox_profile(),
   quantity_bound: 64,
   ready_at: "2026-08-18T00:04:00Z",
-  quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(900), currency: Usd }),
-  billing_quantum: second(count: 0),
-  evidence: QuotedSupply {
+  quote: product.fabric.supply.QuotedPerSecond(std.measure.MoneyRate { amount: std.measure.money_amount_micro(900), currency: std.currency.Usd }),
+  billing_quantum: std.measure.second(count: 0),
+  evidence: product.fabric.supply.QuotedSupply {
     quoted_at: "2026-08-18T00:00:00Z",
     valid_until: "2026-08-18T01:00:00Z",
     receipt: "quote-rented-1",
@@ -242,9 +244,9 @@ data rented_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
 }
 
 test fn owned_supply_states_zero_rather_than_absent() -> Bool {
-  money_amount_micro_count(m: offer_quote_amount(q: owned_offer.quote)) == 0
-    && money_amount_micro_count(m: offer_quote_amount(q: rented_offer.quote)) == 900
-    && offer_quote_currency(q: owned_offer.quote) == Usd
+  std.measure.money_amount_micro_count(m: product.fabric.supply.offer_quote_amount(q: owned_offer.quote)) == 0
+    && std.measure.money_amount_micro_count(m: product.fabric.supply.offer_quote_amount(q: rented_offer.quote)) == 900
+    && product.fabric.supply.offer_quote_currency(q: owned_offer.quote) == std.currency.Usd
     && owned_offer.quantity_bound == 1
     && rented_offer.quantity_bound == 64
 }
@@ -253,37 +255,37 @@ test fn owned_supply_states_zero_rather_than_absent() -> Bool {
 
 test fn observed_and_quoted_supply_share_one_offer_type() -> Bool {
   match owned_offer.evidence {
-    ObservedSupply { observed_at: _, receipt: _ } =>
+    product.fabric.supply.ObservedSupply { observed_at: _, receipt: _ } =>
       match rented_offer.evidence {
-        QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => true
-        ObservedSupply { observed_at: _, receipt: _ } => false
+        product.fabric.supply.QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => true
+        product.fabric.supply.ObservedSupply { observed_at: _, receipt: _ } => false
       }
-    QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => false
+    product.fabric.supply.QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => false
   }
 }
 
 // A retry is a new attempt naming its cause, never a mutated old one.
 
-data lease_gen_9: LeaseIdentity = LeaseIdentity {
+data lease_gen_9: product.fabric.execution.LeaseIdentity = product.fabric.execution.LeaseIdentity {
   lease_key: "lease-attempt-1",
-  resource_fingerprint: content_hash_of_value(value: "srv3-slot-2"),
+  resource_fingerprint: std.content_hash.content_hash_of_value(value: "srv3-slot-2"),
   generation: 9,
 }
 
-data first_attempt: Attempt<NonEmptyStr> = Attempt {
-  id: FabricIdentity { principal: "operator", key: "attempt-1" },
-  work: FabricIdentity { principal: "operator", key: fixture_work_key },
-  lineage: InitialAttempt {
-    initiating_demand: FabricIdentity { principal: "operator", key: "demand-gh-1" },
+data first_attempt: product.fabric.execution.Attempt<std.types.NonEmptyStr> = product.fabric.execution.Attempt {
+  id: product.fabric.identity.FabricIdentity { principal: "operator", key: "attempt-1" },
+  work: product.fabric.identity.FabricIdentity { principal: "operator", key: fixture_work_key },
+  lineage: product.fabric.execution.InitialAttempt {
+    initiating_demand: product.fabric.identity.FabricIdentity { principal: "operator", key: "demand-gh-1" },
   },
   created_at: "2026-08-18T00:00:00Z",
 }
 
-data retry_attempt: Attempt<NonEmptyStr> = Attempt {
-  id: FabricIdentity { principal: "operator", key: "attempt-2" },
-  work: FabricIdentity { principal: "operator", key: fixture_work_key },
-  lineage: InfrastructureRetry {
-    prior_attempt: FabricIdentity { principal: "operator", key: "attempt-1" },
+data retry_attempt: product.fabric.execution.Attempt<std.types.NonEmptyStr> = product.fabric.execution.Attempt {
+  id: product.fabric.identity.FabricIdentity { principal: "operator", key: "attempt-2" },
+  work: product.fabric.identity.FabricIdentity { principal: "operator", key: fixture_work_key },
+  lineage: product.fabric.execution.InfrastructureRetry {
+    prior_attempt: product.fabric.identity.FabricIdentity { principal: "operator", key: "attempt-1" },
     cause_receipt: "obs-worker-lost-1",
   },
   created_at: "2026-08-18T00:10:00Z",
@@ -293,9 +295,9 @@ test fn retry_is_a_new_attempt_naming_its_cause() -> Bool {
   (first_attempt.id.key as String) != (retry_attempt.id.key as String)
     && (first_attempt.work.key as String) == (retry_attempt.work.key as String)
     && match retry_attempt.lineage {
-      InfrastructureRetry { prior_attempt: prior, cause_receipt: _ } =>
+      product.fabric.execution.InfrastructureRetry { prior_attempt: prior, cause_receipt: _ } =>
         (prior.key as String) == (first_attempt.id.key as String)
-      InitialAttempt { initiating_demand: _ } => false
+      product.fabric.execution.InitialAttempt { initiating_demand: _ } => false
       RequestedReexecution { initiating_demand: _ } => false
     }
 }
@@ -303,35 +305,35 @@ test fn retry_is_a_new_attempt_naming_its_cause() -> Bool {
 // A receipt carries the generation it was produced under, so a stale producer is
 // distinguishable from a current one.
 
-data stale_receipt: Receipt<NonEmptyStr> = Receipt {
-  id: FabricIdentity { principal: "operator", key: "receipt-1" },
-  attempt: FabricIdentity { principal: "operator", key: "attempt-1" },
-  lease: LeaseIdentity {
+data stale_receipt: product.fabric.execution.Receipt<std.types.NonEmptyStr> = product.fabric.execution.Receipt {
+  id: product.fabric.identity.FabricIdentity { principal: "operator", key: "receipt-1" },
+  attempt: product.fabric.identity.FabricIdentity { principal: "operator", key: "attempt-1" },
+  lease: product.fabric.execution.LeaseIdentity {
     lease_key: "lease-attempt-1",
-    resource_fingerprint: content_hash_of_value(value: "srv3-slot-2"),
+    resource_fingerprint: std.content_hash.content_hash_of_value(value: "srv3-slot-2"),
     generation: 8,
   },
-  payload: ExecutionReceipt {
+  payload: product.fabric.execution.ExecutionReceipt {
     step_id: "floor",
-    outputs: content_hash_of_value(value: "outputs-1"),
-    billable: second(count: 3600),
+    outputs: std.content_hash.content_hash_of_value(value: "outputs-1"),
+    billable: std.measure.second(count: 3600),
     completed_at: "2026-08-18T01:00:00Z",
   },
 }
 
-data fixture_grant: ExecutionGrant<NonEmptyStr> = ExecutionGrant {
-  id: FabricIdentity { principal: "operator", key: "grant-1" },
-  object: FabricGrantObject { offer: owned_offer.id, quote: owned_offer.quote },
-  context: FabricGrantContext {
+data fixture_grant: product.fabric.execution.ExecutionGrant<std.types.NonEmptyStr> = product.fabric.execution.ExecutionGrant {
+  id: product.fabric.identity.FabricIdentity { principal: "operator", key: "grant-1" },
+  object: product.fabric.execution.FabricGrantObject { offer: owned_offer.id, quote: owned_offer.quote },
+  context: product.fabric.execution.FabricGrantContext {
     demand: github_binding_demand.id,
-    work: FabricIdentity { principal: "operator", key: fixture_work_key },
+    work: product.fabric.identity.FabricIdentity { principal: "operator", key: fixture_work_key },
     attempt: first_attempt.id,
     executor: "srv3",
     lease: lease_gen_9,
     issued_at: "2026-08-18T01:00:00Z",
-    maximum_liability: money_amount_micro(1000000),
+    maximum_liability: std.measure.money_amount_micro(1000000),
   },
-  evidence: FabricGrantEvidence {
+  evidence: product.fabric.execution.FabricGrantEvidence {
     fungibility_receipt: "fungibility-1",
     offer_authority: "offer-authority-1",
     resource_conservation: "resource-conservation-1",
@@ -349,18 +351,18 @@ data fixture_grant: ExecutionGrant<NonEmptyStr> = ExecutionGrant {
 // catch: generation is a small integer every lease starts at and increments
 // independently, so two unrelated leases share a number almost immediately.
 
-data other_slice_receipt: Receipt<NonEmptyStr> = Receipt {
-  id: FabricIdentity { principal: "operator", key: "receipt-2" },
-  attempt: FabricIdentity { principal: "operator", key: "attempt-1" },
-  lease: LeaseIdentity {
+data other_slice_receipt: product.fabric.execution.Receipt<std.types.NonEmptyStr> = product.fabric.execution.Receipt {
+  id: product.fabric.identity.FabricIdentity { principal: "operator", key: "receipt-2" },
+  attempt: product.fabric.identity.FabricIdentity { principal: "operator", key: "attempt-1" },
+  lease: product.fabric.execution.LeaseIdentity {
     lease_key: "lease-attempt-1",
-    resource_fingerprint: content_hash_of_value(value: "srv3-slot-7"),
+    resource_fingerprint: std.content_hash.content_hash_of_value(value: "srv3-slot-7"),
     generation: 9,
   },
-  payload: ExecutionReceipt {
+  payload: product.fabric.execution.ExecutionReceipt {
     step_id: "floor",
-    outputs: content_hash_of_value(value: "outputs-2"),
-    billable: second(count: 3600),
+    outputs: std.content_hash.content_hash_of_value(value: "outputs-2"),
+    billable: std.measure.second(count: 3600),
     completed_at: "2026-08-18T01:00:00Z",
   },
 }
@@ -369,37 +371,37 @@ data other_slice_receipt: Receipt<NonEmptyStr> = Receipt {
 // tenants naming their attempt identically must not share receipts, and a
 // key-only comparison admits this one.
 
-data foreign_principal_receipt: Receipt<NonEmptyStr> = Receipt {
-  id: FabricIdentity { principal: "other-tenant", key: "receipt-4" },
-  attempt: FabricIdentity { principal: "other-tenant", key: "attempt-1" },
+data foreign_principal_receipt: product.fabric.execution.Receipt<std.types.NonEmptyStr> = product.fabric.execution.Receipt {
+  id: product.fabric.identity.FabricIdentity { principal: "other-tenant", key: "receipt-4" },
+  attempt: product.fabric.identity.FabricIdentity { principal: "other-tenant", key: "attempt-1" },
   lease: lease_gen_9,
-  payload: ExecutionReceipt {
+  payload: product.fabric.execution.ExecutionReceipt {
     step_id: "floor",
-    outputs: content_hash_of_value(value: "outputs-4"),
-    billable: second(count: 3600),
+    outputs: std.content_hash.content_hash_of_value(value: "outputs-4"),
+    billable: std.measure.second(count: 3600),
     completed_at: "2026-08-18T01:00:00Z",
   },
 }
 
-data foreign_attempt_receipt: Receipt<NonEmptyStr> = Receipt {
-  id: FabricIdentity { principal: "operator", key: "receipt-3" },
-  attempt: FabricIdentity { principal: "operator", key: "attempt-99" },
+data foreign_attempt_receipt: product.fabric.execution.Receipt<std.types.NonEmptyStr> = product.fabric.execution.Receipt {
+  id: product.fabric.identity.FabricIdentity { principal: "operator", key: "receipt-3" },
+  attempt: product.fabric.identity.FabricIdentity { principal: "operator", key: "attempt-99" },
   lease: lease_gen_9,
-  payload: ExecutionReceipt {
+  payload: product.fabric.execution.ExecutionReceipt {
     step_id: "floor",
-    outputs: content_hash_of_value(value: "outputs-3"),
-    billable: second(count: 3600),
+    outputs: std.content_hash.content_hash_of_value(value: "outputs-3"),
+    billable: std.measure.second(count: 3600),
     completed_at: "2026-08-18T01:00:00Z",
   },
 }
 
-fn admission_label(r: Receipt<NonEmptyStr>) -> NonEmptyStr {
-  match admit_receipt_for_grant(r: r, g: fixture_grant) {
-    ReceiptAdmissible => "admissible"
-    ReceiptFromDifferentLease => "different-lease"
-    ReceiptFromDifferentAttempt => "different-attempt"
-    ReceiptFingerprintIncomparable => "fingerprint-incomparable"
-    ReceiptGenerationStale { presented: _, current: _ } => "generation-stale"
+fn admission_label(r: product.fabric.execution.Receipt<std.types.NonEmptyStr>) -> std.types.NonEmptyStr {
+  match product.fabric.execution.admit_receipt_for_grant(r: r, g: fixture_grant) {
+    product.fabric.execution.ReceiptAdmissible => "admissible"
+    product.fabric.execution.ReceiptFromDifferentLease => "different-lease"
+    product.fabric.execution.ReceiptFromDifferentAttempt => "different-attempt"
+    product.fabric.execution.ReceiptFingerprintIncomparable => "fingerprint-incomparable"
+    product.fabric.execution.ReceiptGenerationStale { presented: _, current: _ } => "generation-stale"
   }
 }
 
@@ -426,25 +428,25 @@ test fn a_receipt_from_another_principal_is_not_the_same_attempt() -> Bool {
 // admission function that refuses everything.
 
 test fn a_receipt_from_the_granted_lease_is_admissible() -> Bool {
-  match admit_receipt_for_grant(
-    r: Receipt {
-      id: FabricIdentity { principal: "operator", key: "receipt-ok" },
+  match product.fabric.execution.admit_receipt_for_grant(
+    r: product.fabric.execution.Receipt {
+      id: product.fabric.identity.FabricIdentity { principal: "operator", key: "receipt-ok" },
       attempt: first_attempt.id,
       lease: lease_gen_9,
-      payload: ExecutionReceipt {
+      payload: product.fabric.execution.ExecutionReceipt {
         step_id: "floor",
-        outputs: content_hash_of_value(value: "outputs-ok"),
-        billable: second(count: 10),
+        outputs: std.content_hash.content_hash_of_value(value: "outputs-ok"),
+        billable: std.measure.second(count: 10),
         completed_at: "2026-08-18T01:00:00Z",
       },
     },
     g: fixture_grant,
   ) {
-    ReceiptAdmissible => true
-    ReceiptFromDifferentLease => false
-    ReceiptFromDifferentAttempt => false
-    ReceiptFingerprintIncomparable => false
-    ReceiptGenerationStale { presented: _, current: _ } => false
+    product.fabric.execution.ReceiptAdmissible => true
+    product.fabric.execution.ReceiptFromDifferentLease => false
+    product.fabric.execution.ReceiptFromDifferentAttempt => false
+    product.fabric.execution.ReceiptFingerprintIncomparable => false
+    product.fabric.execution.ReceiptGenerationStale { presented: _, current: _ } => false
   }
 }
 
@@ -455,26 +457,26 @@ test fn a_receipt_from_the_granted_lease_is_admissible() -> Bool {
 // fabric is permitted to do, so a projection that answered false for both
 // would erase the distinction this type exists to carry.
 
-fn resumability_tier_of(step: WorkStep) -> NonEmptyStr {
+fn resumability_tier_of(step: product.fabric.work.WorkStep) -> std.types.NonEmptyStr {
   match step.resumability {
-    ReceiptSatisfiable => "receipt-satisfiable"
-    IdempotentUnderKey { idempotency_key: _ } => "idempotent-under-key"
-    OpaqueEffects { reason: _ } => "opaque-effects"
+    product.fabric.work.ReceiptSatisfiable => "receipt-satisfiable"
+    product.fabric.work.IdempotentUnderKey { idempotency_key: _ } => "idempotent-under-key"
+    product.fabric.work.OpaqueEffects { reason: _ } => "opaque-effects"
   }
 }
 
 test fn resumability_is_declared_not_assumed() -> Bool {
-  let satisfiable = resumability_tier_of(step: WorkStep {
+  let satisfiable = resumability_tier_of(step: product.fabric.work.WorkStep {
     step_id: "build",
-    resumability: ReceiptSatisfiable,
+    resumability: product.fabric.work.ReceiptSatisfiable,
   })
-  let idempotent_tier = resumability_tier_of(step: WorkStep {
+  let idempotent_tier = resumability_tier_of(step: product.fabric.work.WorkStep {
     step_id: "deploy",
-    resumability: IdempotentUnderKey { idempotency_key: content_hash_of_value(value: "deploy-1") },
+    resumability: product.fabric.work.IdempotentUnderKey { idempotency_key: std.content_hash.content_hash_of_value(value: "deploy-1") },
   })
-  let opaque = resumability_tier_of(step: WorkStep {
+  let opaque = resumability_tier_of(step: product.fabric.work.WorkStep {
     step_id: "arbitrary-shell",
-    resumability: OpaqueEffects { reason: "foreign workflow step declares no effects" },
+    resumability: product.fabric.work.OpaqueEffects { reason: "foreign workflow step declares no effects" },
   })
   satisfiable == "receipt-satisfiable"
     && idempotent_tier == "idempotent-under-key"

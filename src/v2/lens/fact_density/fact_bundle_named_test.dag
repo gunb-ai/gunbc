@@ -1,5 +1,6 @@
 module v2.test.lens_fact_density.fact_bundle_named
 
+
 data fact_bundle_alias: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^fact_bundle_alias_symbol } },
   children: [],
@@ -21,19 +22,19 @@ data fact_bundle_input: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn fact_bundle_named_claim_holds() -> v2.std.logic.Bool {
+test fn fact_bundle_named_claim_holds() -> Bool {
   match v2.lens.fact_density.carrier_spec_fact(carrier: fact_bundle_input) {
-    NamedFieldFacts { density: d } =>
+    v2.lens.fact_density.NamedFieldFacts { density: d } =>
       match d.prev {
-        Succ { prev: q } =>
+        v2.std.nat.Succ { prev: q } =>
           match q {
-            Zero => true
-            Succ { prev: _ } => false
+            v2.std.nat.Zero => true
+            v2.std.nat.Succ { prev: _ } => false
           }
-        Zero => false
+        v2.std.nat.Zero => false
       }
-    KernelAmbientAtom => false
-    NoFact => false
-    NotATypeCarrier => false
+    v2.lens.fact_density.KernelAmbientAtom => false
+    v2.lens.fact_density.NoFact => false
+    v2.lens.fact_density.NotATypeCarrier => false
   }
 }

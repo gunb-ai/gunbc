@@ -14,9 +14,9 @@ fn optional_env(name: std.types.NonEmptyStr) -> String? {
 
 fn merge_admission_context_walk_attempt_id() -> gunbc.merge_admission_subject.WalkAttemptId? {
   match optional_env(name: "GUNBC_WALK_ATTEMPT_ID") {
-    Present { value: explicit } => compose_explicit_walk_attempt_id(explicit: explicit)
+    Present { value: explicit } => gunbc.merge_admission_subject.compose_explicit_walk_attempt_id(explicit: explicit)
     Absent =>
-      compose_walk_attempt_id(
+      gunbc.merge_admission_subject.compose_walk_attempt_id(
         run_id: match optional_env(name: "GITHUB_RUN_ID") {
           Present { value: value } => value
           Absent => ""
@@ -34,10 +34,10 @@ fn merge_admission_context_walk_attempt_id() -> gunbc.merge_admission_subject.Wa
 }
 
 fn denied_exit(verdict: gunbc.merge_admission.MergeAdmissionVerdict) -> std.process.ProcessExit {
-  exit_failure(
+  std.process.exit_failure(
     reason: concat(
       "merge_admission_current_context: blocked (",
-      concat(merge_admission_verdict_label(v: verdict), ")")
+      concat(gunbc.merge_admission.merge_admission_verdict_label(v: verdict), ")")
     )
   )
 }
@@ -49,55 +49,55 @@ fn denied_exit(verdict: gunbc.merge_admission.MergeAdmissionVerdict) -> std.proc
 func main() -> std.process.ProcessExit {
   let attempt = match merge_admission_context_walk_attempt_id() {
     Present { value: value } => value
-    Absent => return exit_failure(reason: "merge_admission_current_context: walk attempt identity absent or invalid")
+    Absent => return std.process.exit_failure(reason: "merge_admission_current_context: walk attempt identity absent or invalid")
   }
   let root = git.Inspect.Toplevel().path as String
-  let subject_read = Filesystem.Read(
-    path: merge_admission_tested_subject_path(root: root, attempt_id: attempt)
+  let subject_read = extdeps.filesystem.filesystem_io.Filesystem.Read(
+    path: gunbc.merge_admission_subject.merge_admission_tested_subject_path(root: root, attempt_id: attempt)
   )
   if !subject_read.success {
-    return exit_failure(reason: "merge_admission_current_context: tested-subject wire missing")
+    return std.process.exit_failure(reason: "merge_admission_current_context: tested-subject wire missing")
   }
-  let subject = match parse_tested_subject_wire(text: subject_read.content) {
+  let subject = match gunbc.merge_admission_subject.parse_tested_subject_wire(text: subject_read.content) {
     Present { value: value } => value
-    Absent => return exit_failure(reason: "merge_admission_current_context: tested-subject wire invalid")
+    Absent => return std.process.exit_failure(reason: "merge_admission_current_context: tested-subject wire invalid")
   }
-  let receipt_read = Filesystem.Read(
-    path: merge_admission_floor_receipt_path(root: root, attempt_id: attempt)
+  let receipt_read = extdeps.filesystem.filesystem_io.Filesystem.Read(
+    path: gunbc.merge_admission_subject.merge_admission_floor_receipt_path(root: root, attempt_id: attempt)
   )
   if !receipt_read.success {
-    return exit_failure(reason: "merge_admission_current_context: floor-receipt wire missing")
+    return std.process.exit_failure(reason: "merge_admission_current_context: floor-receipt wire missing")
   }
-  let receipt = match parse_receipt_wire_v2(text: receipt_read.content) {
+  let receipt = match gunbc.merge_admission_produce.parse_receipt_wire_v2(text: receipt_read.content) {
     Present { value: value } => value
-    Absent => return exit_failure(reason: "merge_admission_current_context: floor-receipt wire invalid")
+    Absent => return std.process.exit_failure(reason: "merge_admission_current_context: floor-receipt wire invalid")
   }
-  let fetch_parts = git_remote_ref_parts(ref: merge_admission_merge_base_ref as std.types.GitRef)
+  let fetch_parts = extdeps.git.git_remote_ref_parts(ref: gunbc.merge_admission_subject.merge_admission_merge_base_ref as std.types.GitRef)
   let fetched = git.Core.FetchNoTags(
     remote: fetch_parts.remote,
     ref: fetch_parts.ref_name,
     stall_deadline_seconds: tools.merge_admission_walk.merge_admission_fetch_stall_deadline_seconds
   )
   if !fetched.success {
-    return exit_failure(reason: "merge_admission_current_context: current merge target fetch refused")
+    return std.process.exit_failure(reason: "merge_admission_current_context: current merge target fetch refused")
   }
-  let observed_commit = git.Inspect.ResolveRefCommit(ref: merge_admission_merge_base_ref as std.types.GitRef)
+  let observed_commit = git.Inspect.ResolveRefCommit(ref: gunbc.merge_admission_subject.merge_admission_merge_base_ref as std.types.GitRef)
   if !observed_commit.success {
-    return exit_failure(reason: "merge_admission_current_context: current merge target commit observation refused")
+    return std.process.exit_failure(reason: "merge_admission_current_context: current merge target commit observation refused")
   }
-  let verdict = classify_merge_admission_verdict_v2(
+  let verdict = gunbc.merge_admission.classify_merge_admission_verdict_v2(
     current_attempt_id: attempt,
     tested_subject: subject,
     receipt: receipt,
     merge_target_commit_sha: observed_commit.sha,
-    current_roster_hash: current_gate_roster_hash,
+    current_roster_hash: gunbc.merge_admission.current_gate_roster_hash,
   )
   match verdict {
-    MergeAdmitted => std.process.ExitSuccess
-    MergeDeniedStaleBase => denied_exit(verdict: verdict)
-    MergeDeniedStaleRoster => denied_exit(verdict: verdict)
-    MergeDeniedNotSuccess => denied_exit(verdict: verdict)
-    MergeDeniedWrongAttempt => denied_exit(verdict: verdict)
-    MergeDeniedSubjectMismatch => denied_exit(verdict: verdict)
+    gunbc.merge_admission.MergeAdmitted => std.process.ExitSuccess
+    gunbc.merge_admission.MergeDeniedStaleBase => denied_exit(verdict: verdict)
+    gunbc.merge_admission.MergeDeniedStaleRoster => denied_exit(verdict: verdict)
+    gunbc.merge_admission.MergeDeniedNotSuccess => denied_exit(verdict: verdict)
+    gunbc.merge_admission.MergeDeniedWrongAttempt => denied_exit(verdict: verdict)
+    gunbc.merge_admission.MergeDeniedSubjectMismatch => denied_exit(verdict: verdict)
   }
 }

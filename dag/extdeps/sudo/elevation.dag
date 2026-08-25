@@ -1,8 +1,9 @@
 module extdeps.sudo.elevation
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.sudo.ws/docs/man/sudo.man/"
   }
 }
@@ -16,7 +17,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // PATH-resolved spelling would let the caller's own PATH decide which binary crosses the privilege
 // boundary, which is the opposite of what elevation is for. It is also the spelling sudo_elevate
 // above already used, so the alternative was two spellings of one binary inside one module.
-data sudo_binary_path: NonEmptyStr = "/usr/bin/sudo"
+data sudo_binary_path: std.types.NonEmptyStr = "/usr/bin/sudo"
 
 // ELEVATION IS A FACT ABOUT AN INVOCATION, AND IT WAS BEING SPELLED FOUR TIMES AS TWO LITERALS.
 // Every privileged leaf in gunbc.host_effect_realize carried `bin_path: "/usr/bin/sudo"` beside an
@@ -42,7 +43,7 @@ type ElevatedInvocation {
 
 // -n: never prompt. sudo fails instead of blocking on a tty, which is what makes a missing
 // NOPASSWD grant a refusal the caller can observe rather than a job that hangs until it is killed.
-data sudo_non_interactive_flag: NonEmptyStr = "-n"
+data sudo_non_interactive_flag: std.types.NonEmptyStr = "-n"
 
 // `command` is the full argv of the program being elevated, binary first -- the same shape that
 // would run unelevated. Elevation is therefore a transformation OF an invocation, not a separate
@@ -55,7 +56,7 @@ data sudo_non_interactive_flag: NonEmptyStr = "-n"
 fn sudo_elevate(command: List<String>) -> ElevatedInvocation {
   ElevatedInvocation {
     bin_path: sudo_binary_path as String,
-    args: list_append(left: [sudo_non_interactive_flag as String], right: command),
+    args: v2.std.algebra.list_append(left: [sudo_non_interactive_flag as String], right: command),
   }
 }
 
@@ -69,11 +70,11 @@ fn sudo_elevate(command: List<String>) -> ElevatedInvocation {
 // prompt on a tty. Adding non-interactive refusal here would be a live behaviour change shipped
 // inside an argv refactor, which is exactly what this lane refuses to do silently; if that command
 // should fail instead of prompting, that is its own change with its own witness.
-data sudo_preserve_environment_flag: NonEmptyStr = "-E"
+data sudo_preserve_environment_flag: std.types.NonEmptyStr = "-E"
 
-fn sudo_preserve_environment_command(command: List<String>) -> ArgvCommand {
-  argv_command(
+fn sudo_preserve_environment_command(command: List<String>) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(
     program: sudo_binary_path,
-    arguments: list_append(left: [sudo_preserve_environment_flag as String], right: command),
+    arguments: v2.std.algebra.list_append(left: [sudo_preserve_environment_flag as String], right: command),
   )
 }

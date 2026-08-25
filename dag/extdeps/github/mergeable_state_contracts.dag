@@ -3,7 +3,7 @@ module extdeps.github.mergeable_state_contracts
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/graphql/reference/enums#mergeablestate"
   }
 }

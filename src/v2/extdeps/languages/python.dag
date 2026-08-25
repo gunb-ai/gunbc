@@ -1,5 +1,6 @@
 module v2.extdeps.languages.python
 
+
 type PythonSingletonKind
   = NoneT | NotImplementedT | EllipsisT
 
@@ -12,60 +13,60 @@ type PythonCost {
 }
 
 type PythonGrammarRelationRow {
-  production: FormalProduction
-  emitted: Node
-  tokens: List<ConcreteSyntaxToken>
+  production: v2.std.grammar.FormalProduction
+  emitted: v2.std.node.Node
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 type PythonIntegerPrimitiveFacts {
-  surface_spelling: Symbol
-  encoding: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  encoding: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type PythonFloatPrimitiveFacts {
-  surface_spelling: Symbol
-  machine_representation: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  machine_representation: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type PythonComplexPrimitiveFacts {
-  surface_spelling: Symbol
-  component_machine_representation: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  component_machine_representation: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type PythonBoolPrimitiveFacts {
-  surface_spelling: Symbol
-  encoding: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  encoding: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type PythonSingletonPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   kind: PythonSingletonKind
-  std_projection: Symbol
+  std_projection: v2.std.node.Symbol
 }
 
-data python_integer_algebra_inhabitance_python_facts_int: AlgebraInhabitanceDecl = python_integer_algebra_inhabitance(facts: python_facts_int)
-data python_atom_realization_symbol_node: Node = python_inhabitant_atom(id: ^python_atom_realization_symbol)
+data python_integer_algebra_inhabitance_python_facts_int: v2.std.model_core.AlgebraInhabitanceDecl = python_integer_algebra_inhabitance(facts: python_facts_int)
+data python_atom_realization_symbol_node: v2.std.node.Node = python_inhabitant_atom(id: ^python_atom_realization_symbol)
 
 data python_source_text: String = "def add(x, y): return x + y"
 
-fn python_concrete_tokens() -> List<ConcreteSyntaxToken> {
+fn python_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^python_token_kw_def },
-    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_fn_add },
-    FixedToken { token_class: ^python_token_lparen },
-    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_x },
-    FixedToken { token_class: ^python_token_comma },
-    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_y },
-    FixedToken { token_class: ^python_token_rparen },
-    FixedToken { token_class: ^python_token_colon },
-    FixedToken { token_class: ^python_token_kw_return },
-    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_x },
-    FixedToken { token_class: ^python_token_plus },
-    BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_y }
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_kw_def },
+    v2.std.compilers.target_model.BoundToken { token_class: ^python_token_ident, binding: ^python_binding_fn_add },
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_lparen },
+    v2.std.compilers.target_model.BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_comma },
+    v2.std.compilers.target_model.BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_y },
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_rparen },
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_colon },
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_kw_return },
+    v2.std.compilers.target_model.BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_x },
+    v2.std.compilers.target_model.FixedToken { token_class: ^python_token_plus },
+    v2.std.compilers.target_model.BoundToken { token_class: ^python_token_ident, binding: ^python_binding_param_y }
   ]
 }
 
@@ -133,28 +134,28 @@ data python_singleton_facts_catalog: List<PythonSingletonPrimitiveFacts> = [
   python_facts_ellipsis
 ]
 
-data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+data py_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
 
-fn python_inhabitant_atom(id: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: id } },
+fn python_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn python_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn python_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
 fn python_primitive_facts_node(
-  surface_spelling: Symbol,
-  middle_field_name: Symbol,
-  middle_field_value: Symbol,
-  std_projection: Symbol
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+  surface_spelling: v2.std.node.Symbol,
+  middle_field_name: v2.std.node.Symbol,
+  middle_field_value: v2.std.node.Symbol,
+  std_projection: v2.std.node.Symbol
+) -> v2.std.node.Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       python_named_edge(
         name: ^python_facts_field_surface_spelling,
@@ -169,19 +170,19 @@ fn python_primitive_facts_node(
         target: python_inhabitant_atom(id: std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn python_primitive_algebra_witness_node(
-  witness_field_name: Symbol,
-  witness_tag: Symbol,
-  middle_field_name: Symbol,
-  middle_field_value: Symbol,
-  std_projection: Symbol
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+  witness_field_name: v2.std.node.Symbol,
+  witness_tag: v2.std.node.Symbol,
+  middle_field_name: v2.std.node.Symbol,
+  middle_field_value: v2.std.node.Symbol,
+  std_projection: v2.std.node.Symbol
+) -> v2.std.node.Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       python_named_edge(
         name: witness_field_name,
@@ -196,16 +197,16 @@ fn python_primitive_algebra_witness_node(
         target: python_inhabitant_atom(id: std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn python_catalog_surface_symbol_in_rows<T>(
-  sym: Symbol,
+  sym: v2.std.node.Symbol,
   rows: List<T>,
-  row_surface_spelling: fn(T) -> Symbol
+  row_surface_spelling: fn(T) -> v2.std.node.Symbol
 ) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: rows,
     empty: false,
     cons: fn(acc, row) {
@@ -216,37 +217,37 @@ fn python_catalog_surface_symbol_in_rows<T>(
 
 fn python_per_language_fact_bundle_entries_from_catalog_rows<T>(
   rows: List<T>,
-  row_to_entries: fn(T) -> List<PerLanguageFactBundleEntry>
-) -> List<PerLanguageFactBundleEntry> {
-  fold_list(
+  row_to_entries: fn(T) -> List<v2.std.grounding.PerLanguageFactBundleEntry>
+) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
+  v2.std.algebra.fold_list(
     xs: rows,
     empty: std.algebra.Empty,
     cons: fn(acc, row) {
-      list_append(left: acc, right: row_to_entries(row))
+      v2.std.algebra.list_append(left: acc, right: row_to_entries(row))
     }
   )
 }
 
 fn python_g1_2_pair_axis_fact_bundle_entries(
-  carrier: Node,
-  surface_spelling: Symbol,
-  encoding_value: Symbol
-) -> List<PerLanguageFactBundleEntry> {
+  carrier: v2.std.node.Node,
+  surface_spelling: v2.std.node.Symbol,
+  encoding_value: v2.std.node.Symbol
+) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   [
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: ModelCoreFactAxisSurfaceSpelling {},
+      fact_axis: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {},
       fact_value: python_inhabitant_atom(id: surface_spelling)
     ),
     python_g1_2_fact_bundle_entry(
       subject_carrier: carrier,
-      fact_axis: ModelCoreFactAxisEncoding {},
+      fact_axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
       fact_value: python_inhabitant_atom(id: encoding_value)
     )
   ]
 }
 
-fn python_integer_facts_node(facts: PythonIntegerPrimitiveFacts) -> Node {
+fn python_integer_facts_node(facts: PythonIntegerPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_facts_node(
     surface_spelling: facts.surface_spelling,
     middle_field_name: ^python_facts_field_encoding,
@@ -255,7 +256,7 @@ fn python_integer_facts_node(facts: PythonIntegerPrimitiveFacts) -> Node {
   )
 }
 
-fn python_float_facts_node(facts: PythonFloatPrimitiveFacts) -> Node {
+fn python_float_facts_node(facts: PythonFloatPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_facts_node(
     surface_spelling: facts.surface_spelling,
     middle_field_name: ^python_facts_field_machine_representation,
@@ -264,7 +265,7 @@ fn python_float_facts_node(facts: PythonFloatPrimitiveFacts) -> Node {
   )
 }
 
-fn python_complex_facts_node(facts: PythonComplexPrimitiveFacts) -> Node {
+fn python_complex_facts_node(facts: PythonComplexPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_facts_node(
     surface_spelling: facts.surface_spelling,
     middle_field_name: ^python_facts_field_component_machine_representation,
@@ -273,7 +274,7 @@ fn python_complex_facts_node(facts: PythonComplexPrimitiveFacts) -> Node {
   )
 }
 
-fn python_bool_facts_node(facts: PythonBoolPrimitiveFacts) -> Node {
+fn python_bool_facts_node(facts: PythonBoolPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_facts_node(
     surface_spelling: facts.surface_spelling,
     middle_field_name: ^python_facts_field_encoding,
@@ -282,7 +283,7 @@ fn python_bool_facts_node(facts: PythonBoolPrimitiveFacts) -> Node {
   )
 }
 
-fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
+fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_facts_node(
     surface_spelling: facts.surface_spelling,
     middle_field_name: ^python_facts_field_singleton_kind,
@@ -291,8 +292,8 @@ fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
   )
 }
 
-fn python_g1_2_fact_bundle_key(subject_carrier: Node, fact_axis: ModelCorePrimitiveFactAxis) -> PerLanguageFactBundleKey {
-  PerLanguageFactBundleKey {
+fn python_g1_2_fact_bundle_key(subject_carrier: v2.std.node.Node, fact_axis: v2.std.model_core.ModelCorePrimitiveFactAxis) -> v2.std.grounding.PerLanguageFactBundleKey {
+  v2.std.grounding.PerLanguageFactBundleKey {
     subject_carrier: subject_carrier,
     target: python_target_model(),
     fact_axis: fact_axis
@@ -300,11 +301,11 @@ fn python_g1_2_fact_bundle_key(subject_carrier: Node, fact_axis: ModelCorePrimit
 }
 
 fn python_g1_2_fact_bundle_entry(
-  subject_carrier: Node,
-  fact_axis: ModelCorePrimitiveFactAxis,
-  fact_value: Node
-) -> PerLanguageFactBundleEntry {
-  PerLanguageFactBundleEntry {
+  subject_carrier: v2.std.node.Node,
+  fact_axis: v2.std.model_core.ModelCorePrimitiveFactAxis,
+  fact_value: v2.std.node.Node
+) -> v2.std.grounding.PerLanguageFactBundleEntry {
+  v2.std.grounding.PerLanguageFactBundleEntry {
     key: python_g1_2_fact_bundle_key(
       subject_carrier: subject_carrier,
       fact_axis: fact_axis
@@ -315,7 +316,7 @@ fn python_g1_2_fact_bundle_entry(
 
 fn python_g1_2_integer_fact_bundle_entries(
   facts: PythonIntegerPrimitiveFacts
-) -> List<PerLanguageFactBundleEntry> {
+) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   python_g1_2_pair_axis_fact_bundle_entries(
     carrier: python_integer_facts_node(facts: facts),
     surface_spelling: facts.surface_spelling,
@@ -325,7 +326,7 @@ fn python_g1_2_integer_fact_bundle_entries(
 
 fn python_g1_2_float_fact_bundle_entries(
   facts: PythonFloatPrimitiveFacts
-) -> List<PerLanguageFactBundleEntry> {
+) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   python_g1_2_pair_axis_fact_bundle_entries(
     carrier: python_float_facts_node(facts: facts),
     surface_spelling: facts.surface_spelling,
@@ -335,7 +336,7 @@ fn python_g1_2_float_fact_bundle_entries(
 
 fn python_g1_2_complex_fact_bundle_entries(
   facts: PythonComplexPrimitiveFacts
-) -> List<PerLanguageFactBundleEntry> {
+) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   python_g1_2_pair_axis_fact_bundle_entries(
     carrier: python_complex_facts_node(facts: facts),
     surface_spelling: facts.surface_spelling,
@@ -345,7 +346,7 @@ fn python_g1_2_complex_fact_bundle_entries(
 
 fn python_g1_2_bool_fact_bundle_entries(
   facts: PythonBoolPrimitiveFacts
-) -> List<PerLanguageFactBundleEntry> {
+) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   python_g1_2_pair_axis_fact_bundle_entries(
     carrier: python_bool_facts_node(facts: facts),
     surface_spelling: facts.surface_spelling,
@@ -355,7 +356,7 @@ fn python_g1_2_bool_fact_bundle_entries(
 
 fn python_g1_2_singleton_fact_bundle_entries(
   facts: PythonSingletonPrimitiveFacts
-) -> List<PerLanguageFactBundleEntry> {
+) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   python_g1_2_pair_axis_fact_bundle_entries(
     carrier: python_singleton_facts_node(facts: facts),
     surface_spelling: facts.surface_spelling,
@@ -363,7 +364,7 @@ fn python_g1_2_singleton_fact_bundle_entries(
   )
 }
 
-fn python_g1_2_integer_catalog_entries() -> List<PerLanguageFactBundleEntry> {
+fn python_g1_2_integer_catalog_entries() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   python_per_language_fact_bundle_entries_from_catalog_rows(
     rows: python_integer_facts_catalog,
     row_to_entries: fn(facts) {
@@ -372,7 +373,7 @@ fn python_g1_2_integer_catalog_entries() -> List<PerLanguageFactBundleEntry> {
   )
 }
 
-fn python_g1_2_float_catalog_entries() -> List<PerLanguageFactBundleEntry> {
+fn python_g1_2_float_catalog_entries() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   python_per_language_fact_bundle_entries_from_catalog_rows(
     rows: python_float_facts_catalog,
     row_to_entries: fn(facts) {
@@ -381,7 +382,7 @@ fn python_g1_2_float_catalog_entries() -> List<PerLanguageFactBundleEntry> {
   )
 }
 
-fn python_g1_2_complex_catalog_entries() -> List<PerLanguageFactBundleEntry> {
+fn python_g1_2_complex_catalog_entries() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   python_per_language_fact_bundle_entries_from_catalog_rows(
     rows: python_complex_facts_catalog,
     row_to_entries: fn(facts) {
@@ -390,7 +391,7 @@ fn python_g1_2_complex_catalog_entries() -> List<PerLanguageFactBundleEntry> {
   )
 }
 
-fn python_g1_2_bool_catalog_entries() -> List<PerLanguageFactBundleEntry> {
+fn python_g1_2_bool_catalog_entries() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   python_per_language_fact_bundle_entries_from_catalog_rows(
     rows: python_bool_facts_catalog,
     row_to_entries: fn(facts) {
@@ -399,7 +400,7 @@ fn python_g1_2_bool_catalog_entries() -> List<PerLanguageFactBundleEntry> {
   )
 }
 
-fn python_g1_2_singleton_catalog_entries() -> List<PerLanguageFactBundleEntry> {
+fn python_g1_2_singleton_catalog_entries() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   python_per_language_fact_bundle_entries_from_catalog_rows(
     rows: python_singleton_facts_catalog,
     row_to_entries: fn(facts) {
@@ -408,11 +409,11 @@ fn python_g1_2_singleton_catalog_entries() -> List<PerLanguageFactBundleEntry> {
   )
 }
 
-fn python_g1_2_fact_bundle_entries() -> List<PerLanguageFactBundleEntry> {
-  list_append(
-    left: list_append(
-      left: list_append(
-        left: list_append(
+fn python_g1_2_fact_bundle_entries() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
+  v2.std.algebra.list_append(
+    left: v2.std.algebra.list_append(
+      left: v2.std.algebra.list_append(
+        left: v2.std.algebra.list_append(
           left: python_g1_2_integer_catalog_entries(),
           right: python_g1_2_float_catalog_entries()
         ),
@@ -425,10 +426,10 @@ fn python_g1_2_fact_bundle_entries() -> List<PerLanguageFactBundleEntry> {
 }
 
 fn python_g1_2_insert_fact_bundle_entry(
-  registry: PerLanguageFactBundleRegistry,
-  entry: PerLanguageFactBundleEntry
-) -> Outcome<PerLanguageFactBundleRegistry> {
-  insert_per_language_fact_bundle_entry(
+  registry: v2.std.grounding.PerLanguageFactBundleRegistry,
+  entry: v2.std.grounding.PerLanguageFactBundleEntry
+) -> v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
+  v2.std.grounding.insert_per_language_fact_bundle_entry(
     registry: registry,
     key: entry.key,
     fact_value: entry.fact_value
@@ -436,21 +437,21 @@ fn python_g1_2_insert_fact_bundle_entry(
 }
 
 fn python_g1_2_insert_entries(
-  registry: Outcome<PerLanguageFactBundleRegistry>,
-  entry: PerLanguageFactBundleEntry
-) -> Outcome<PerLanguageFactBundleRegistry> {
+  registry: v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry>,
+  entry: v2.std.grounding.PerLanguageFactBundleEntry
+) -> v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
   match registry {
-    Accepted { value: r, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
       python_g1_2_insert_fact_bundle_entry(registry: r, entry: entry)
-    Rejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
-fn python_g1_2_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
-  fold_list(
+fn python_g1_2_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.std.grounding.PerLanguageFactBundleRegistry> {
+  v2.std.algebra.fold_list(
     xs: python_g1_2_fact_bundle_entries(),
-    empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),
+    empty: v2.std.diagnostic.outcome_accepted(value: v2.std.grounding.empty_per_language_fact_bundle_registry()),
     cons: fn(acc, entry) {
       python_g1_2_insert_entries(registry: acc, entry: entry)
     }
@@ -458,35 +459,35 @@ fn python_g1_2_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> 
 }
 
 fn python_g1_2_snoc_primitive_bundle(
-  acc: Outcome<List<PrimitiveFactBundle>>,
-  registry: PerLanguageFactBundleRegistry,
-  subject_carrier: Node
-) -> Outcome<List<PrimitiveFactBundle>> {
+  acc: v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>>,
+  registry: v2.std.grounding.PerLanguageFactBundleRegistry,
+  subject_carrier: v2.std.node.Node
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   match acc {
-    Accepted { value: bundles, diagnostics: _ } => match primitive_fact_bundle_for_subject(
+    v2.std.diagnostic.Accepted { value: bundles, diagnostics: _ } => match v2.std.grounding.primitive_fact_bundle_for_subject(
       registry: registry,
       subject_carrier: subject_carrier,
       target: python_target_model()
     ) {
-      Accepted { value: bundle, diagnostics: d } =>
-        Accepted {
-          value: list_snoc_item(xs: bundles, item: bundle),
+      v2.std.diagnostic.Accepted { value: bundle, diagnostics: d } =>
+        v2.std.diagnostic.Accepted {
+          value: v2.std.algebra.list_snoc_item(xs: bundles, item: bundle),
           diagnostics: d
         }
-      Rejected { diagnostics: d } =>
-        Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    Rejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
 fn python_g1_2_integer_primitive_bundles_from_registry(
-  registry: PerLanguageFactBundleRegistry
-) -> Outcome<List<PrimitiveFactBundle>> {
-  fold_list(
+  registry: v2.std.grounding.PerLanguageFactBundleRegistry
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+  v2.std.algebra.fold_list(
     xs: python_integer_facts_catalog,
-    empty: outcome_accepted(value: std.algebra.Empty),
+    empty: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc, facts) {
       python_g1_2_snoc_primitive_bundle(
         acc: acc,
@@ -498,11 +499,11 @@ fn python_g1_2_integer_primitive_bundles_from_registry(
 }
 
 fn python_g1_2_float_primitive_bundles_from_registry(
-  registry: PerLanguageFactBundleRegistry
-) -> Outcome<List<PrimitiveFactBundle>> {
-  fold_list(
+  registry: v2.std.grounding.PerLanguageFactBundleRegistry
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+  v2.std.algebra.fold_list(
     xs: python_float_facts_catalog,
-    empty: outcome_accepted(value: std.algebra.Empty),
+    empty: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc, facts) {
       python_g1_2_snoc_primitive_bundle(
         acc: acc,
@@ -514,11 +515,11 @@ fn python_g1_2_float_primitive_bundles_from_registry(
 }
 
 fn python_g1_2_complex_primitive_bundles_from_registry(
-  registry: PerLanguageFactBundleRegistry
-) -> Outcome<List<PrimitiveFactBundle>> {
-  fold_list(
+  registry: v2.std.grounding.PerLanguageFactBundleRegistry
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+  v2.std.algebra.fold_list(
     xs: python_complex_facts_catalog,
-    empty: outcome_accepted(value: std.algebra.Empty),
+    empty: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc, facts) {
       python_g1_2_snoc_primitive_bundle(
         acc: acc,
@@ -530,11 +531,11 @@ fn python_g1_2_complex_primitive_bundles_from_registry(
 }
 
 fn python_g1_2_bool_primitive_bundles_from_registry(
-  registry: PerLanguageFactBundleRegistry
-) -> Outcome<List<PrimitiveFactBundle>> {
-  fold_list(
+  registry: v2.std.grounding.PerLanguageFactBundleRegistry
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+  v2.std.algebra.fold_list(
     xs: python_bool_facts_catalog,
-    empty: outcome_accepted(value: std.algebra.Empty),
+    empty: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc, facts) {
       python_g1_2_snoc_primitive_bundle(
         acc: acc,
@@ -546,11 +547,11 @@ fn python_g1_2_bool_primitive_bundles_from_registry(
 }
 
 fn python_g1_2_singleton_primitive_bundles_from_registry(
-  registry: PerLanguageFactBundleRegistry
-) -> Outcome<List<PrimitiveFactBundle>> {
-  fold_list(
+  registry: v2.std.grounding.PerLanguageFactBundleRegistry
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+  v2.std.algebra.fold_list(
     xs: python_singleton_facts_catalog,
-    empty: outcome_accepted(value: std.algebra.Empty),
+    empty: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc, facts) {
       python_g1_2_snoc_primitive_bundle(
         acc: acc,
@@ -562,24 +563,24 @@ fn python_g1_2_singleton_primitive_bundles_from_registry(
 }
 
 fn python_g1_2_append_primitive_bundle_outcomes(
-  left: Outcome<List<PrimitiveFactBundle>>,
-  right: Outcome<List<PrimitiveFactBundle>>
-) -> Outcome<List<PrimitiveFactBundle>> {
+  left: v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>>,
+  right: v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>>
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   match left {
-    Accepted { value: l, diagnostics: _ } => match right {
-      Accepted { value: r, diagnostics: d } =>
-        Accepted { value: list_append(left: l, right: r), diagnostics: d }
-      Rejected { diagnostics: d } =>
-        Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: l, diagnostics: _ } => match right {
+      v2.std.diagnostic.Accepted { value: r, diagnostics: d } =>
+        v2.std.diagnostic.Accepted { value: v2.std.algebra.list_append(left: l, right: r), diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    Rejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
 fn python_g1_2_primitive_bundles_from_registry(
-  registry: PerLanguageFactBundleRegistry
-) -> Outcome<List<PrimitiveFactBundle>> {
+  registry: v2.std.grounding.PerLanguageFactBundleRegistry
+) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   python_g1_2_append_primitive_bundle_outcomes(
     left: python_g1_2_append_primitive_bundle_outcomes(
       left: python_g1_2_append_primitive_bundle_outcomes(
@@ -595,16 +596,16 @@ fn python_g1_2_primitive_bundles_from_registry(
   )
 }
 
-fn python_g1_2_primitive_fact_bundles() -> Outcome<List<PrimitiveFactBundle>> {
+fn python_g1_2_primitive_fact_bundles() -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   match python_g1_2_fact_bundle_registry() {
-    Accepted { value: registry, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: registry, diagnostics: _ } =>
       python_g1_2_primitive_bundles_from_registry(registry: registry)
-    Rejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
-fn python_integer_algebra_witness_node(facts: PythonIntegerPrimitiveFacts) -> Node {
+fn python_integer_algebra_witness_node(facts: PythonIntegerPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_algebra_witness_node(
     witness_field_name: ^python_witness_int_ordered_ring_arbitrary_precision,
     witness_tag: ^python_witness_int_ordered_ring_arbitrary_precision,
@@ -614,7 +615,7 @@ fn python_integer_algebra_witness_node(facts: PythonIntegerPrimitiveFacts) -> No
   )
 }
 
-fn python_float_algebra_witness_node(facts: PythonFloatPrimitiveFacts) -> Node {
+fn python_float_algebra_witness_node(facts: PythonFloatPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_algebra_witness_node(
     witness_field_name: ^python_witness_float_approximate_field,
     witness_tag: ^python_witness_float_approximate_field,
@@ -624,7 +625,7 @@ fn python_float_algebra_witness_node(facts: PythonFloatPrimitiveFacts) -> Node {
   )
 }
 
-fn python_bool_algebra_witness_node(facts: PythonBoolPrimitiveFacts) -> Node {
+fn python_bool_algebra_witness_node(facts: PythonBoolPrimitiveFacts) -> v2.std.node.Node {
   python_primitive_algebra_witness_node(
     witness_field_name: ^python_witness_bool_boolean_algebra,
     witness_tag: ^python_witness_bool_boolean_algebra,
@@ -634,66 +635,66 @@ fn python_bool_algebra_witness_node(facts: PythonBoolPrimitiveFacts) -> Node {
   )
 }
 
-fn python_integer_algebra_inhabitance(facts: PythonIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn python_integer_algebra_inhabitance(facts: PythonIntegerPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = python_integer_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
-    algebra: ordered_ring_node(inhabitant: inhabitant),
+  v2.std.model_core.AlgebraInhabitanceDecl {
+    algebra: v2.std.algebra.ordered_ring_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: python_integer_algebra_witness_node(facts: facts)
   }
 }
 
-fn python_float_algebra_inhabitance(facts: PythonFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn python_float_algebra_inhabitance(facts: PythonFloatPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = python_float_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
-    algebra: approximate_field_node(inhabitant: inhabitant),
+  v2.std.model_core.AlgebraInhabitanceDecl {
+    algebra: v2.std.algebra.approximate_field_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: python_float_algebra_witness_node(facts: facts)
   }
 }
 
-fn python_bool_algebra_inhabitance(facts: PythonBoolPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn python_bool_algebra_inhabitance(facts: PythonBoolPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
   let inhabitant = python_bool_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
-    algebra: boolean_algebra_node(inhabitant: inhabitant),
+  v2.std.model_core.AlgebraInhabitanceDecl {
+    algebra: v2.std.algebra.boolean_algebra_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: python_bool_algebra_witness_node(facts: facts)
   }
 }
 
-fn python_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  fold_list(
+fn python_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
+  v2.std.algebra.fold_list(
     xs: python_integer_facts_catalog,
     empty: std.algebra.Empty,
     cons: fn(acc, facts) {
-      list_snoc_item(xs: acc, item: python_integer_algebra_inhabitance(facts: facts))
+      v2.std.algebra.list_snoc_item(xs: acc, item: python_integer_algebra_inhabitance(facts: facts))
     }
   )
 }
 
-fn python_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  fold_list(
+fn python_float_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
+  v2.std.algebra.fold_list(
     xs: python_float_facts_catalog,
     empty: std.algebra.Empty,
     cons: fn(acc, facts) {
-      list_snoc_item(xs: acc, item: python_float_algebra_inhabitance(facts: facts))
+      v2.std.algebra.list_snoc_item(xs: acc, item: python_float_algebra_inhabitance(facts: facts))
     }
   )
 }
 
-fn python_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  fold_list(
+fn python_bool_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
+  v2.std.algebra.fold_list(
     xs: python_bool_facts_catalog,
     empty: std.algebra.Empty,
     cons: fn(acc, facts) {
-      list_snoc_item(xs: acc, item: python_bool_algebra_inhabitance(facts: facts))
+      v2.std.algebra.list_snoc_item(xs: acc, item: python_bool_algebra_inhabitance(facts: facts))
     }
   )
 }
 
-fn python_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  list_append(
-    left: list_append(
+fn python_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
+  v2.std.algebra.list_append(
+    left: v2.std.algebra.list_append(
       left: python_integer_algebra_inhabitance_decls(),
       right: python_float_algebra_inhabitance_decls()
     ),
@@ -701,61 +702,61 @@ fn python_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn python_model_core() -> Outcome<ModelCore> {
+fn python_model_core() -> v2.std.diagnostic.Outcome<v2.std.model_core.ModelCore> {
   match python_g1_2_primitive_fact_bundles() {
-    Accepted { value: primitives, diagnostics: d } =>
-      Accepted {
-        value: ModelCore {
+    v2.std.diagnostic.Accepted { value: primitives, diagnostics: d } =>
+      v2.std.diagnostic.Accepted {
+        value: v2.std.model_core.ModelCore {
           primitives: primitives,
           inhabitance: python_model_core_inhabitance_decls(),
           laws: [],
-          effects: EffectSemanticsDecl { operations: [] },
-          partiality: PartialitySemanticsDecl { operations: [] }
+          effects: v2.std.model_core.EffectSemanticsDecl { operations: [] },
+          partiality: v2.std.model_core.PartialitySemanticsDecl { operations: [] }
         },
         diagnostics: d
       }
-    Rejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
-fn python_inhabitant_node(id: Symbol, facts: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+fn python_inhabitant_node(id: v2.std.node.Symbol, facts: v2.std.node.Node) -> v2.std.node.Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       python_named_edge(name: ^python_inhabitant_field_atom, target: python_inhabitant_atom(id: id)),
       python_named_edge(name: ^python_inhabitant_field_facts, target: facts)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn python_int_inhabitant_node() -> Node {
+fn python_int_inhabitant_node() -> v2.std.node.Node {
   python_inhabitant_node(
     id: ^python_inhabitant_int,
     facts: python_integer_facts_node(facts: python_facts_int)
   )
 }
 
-fn python_float_inhabitant_node() -> Node {
+fn python_float_inhabitant_node() -> v2.std.node.Node {
   python_inhabitant_node(
     id: ^python_inhabitant_float,
     facts: python_float_facts_node(facts: python_facts_float)
   )
 }
 
-fn python_declared_inhabitants_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+fn python_declared_inhabitants_root() -> v2.std.node.Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       python_named_edge(name: ^python_inhabitant_field_int, target: python_int_inhabitant_node()),
       python_named_edge(name: ^python_inhabitant_field_float, target: python_float_inhabitant_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn python_int_zip_fold_closure_edges() -> List<Edge> {
+fn python_int_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   [
     python_named_edge(
       name: ^python_inhabitant_field_add_fn,
@@ -784,44 +785,44 @@ fn python_int_zip_fold_closure_edges() -> List<Edge> {
   ]
 }
 
-fn python_coercion_candidate_edges() -> List<Edge> {
-  list_append(
+fn python_coercion_candidate_edges() -> List<v2.std.node.Edge> {
+  v2.std.algebra.list_append(
     left: python_declared_inhabitants_root().children,
     right: python_int_zip_fold_closure_edges()
   )
 }
 
-fn python_add_declared_inhabitants_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+fn python_add_declared_inhabitants_root() -> v2.std.node.Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: python_coercion_candidate_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn python_selection_policy_node() -> Node {
+fn python_selection_policy_node() -> v2.std.node.Node {
   python_int_inhabitant_node()
 }
 
-fn python_emitted_add_fn_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
+fn python_emitted_add_fn_node() -> v2.std.node.Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
-      Edge { label: Positional, target: python_int_inhabitant_node() },
-      Edge { label: Positional, target: python_int_inhabitant_node() },
-      Edge { label: Positional, target: python_int_inhabitant_node() }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: python_int_inhabitant_node() },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: python_int_inhabitant_node() },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: python_int_inhabitant_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn python_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+fn python_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.node.Node {
 
-  concrete_syntax_token_to_node(token: token)
+  v2.std.compilers.target_model.concrete_syntax_token_to_node(token: token)
 }
 
-fn python_serialize_source_children() -> List<Edge> {
-  list_append(
+fn python_serialize_source_children() -> List<v2.std.node.Edge> {
+  v2.std.algebra.list_append(
     left: [
       python_named_edge(name: ^serialize_source_field_source_text, target: python_inhabitant_atom(id: ^python_source_literal)),
       python_named_edge(name: ^serialize_source_field_source_grammar, target: python_inhabitant_atom(id: ^python_production_fn_add))
@@ -829,7 +830,7 @@ fn python_serialize_source_children() -> List<Edge> {
     right: [
       python_named_edge(
         name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
+        target: v2.std.grammar.grammar_relation_tokens_node(
           tokens: python_concrete_tokens(),
           token_to_node: python_concrete_token_node
         )
@@ -838,43 +839,43 @@ fn python_serialize_source_children() -> List<Edge> {
   )
 }
 
-fn python_serialize_source_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+fn python_serialize_source_node() -> v2.std.node.Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: python_serialize_source_children(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
-  fold_list(
+fn python_formal_rhs_from_token_classes() -> List<v2.std.grammar.FormalGrammarSymbol> {
+  v2.std.algebra.fold_list(
     xs: python_concrete_tokens(),
     empty: std.algebra.Empty,
     cons: fn(acc, token) {
-      list_snoc_item(
+      v2.std.algebra.list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
+        item: v2.std.grammar.grammar_formal_terminal(identity: v2.std.compilers.target_model.concrete_syntax_token_class(token: token))
       )
     }
   )
 }
 
-fn python_formal_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
-  formal_grammar_symbol_to_grammar_expr(sym: sym)
+fn python_formal_symbol_to_grammar_expr(sym: v2.std.grammar.FormalGrammarSymbol) -> v2.std.grammar.GrammarExpr {
+  v2.std.grammar.formal_grammar_symbol_to_grammar_expr(sym: sym)
 }
 
-fn python_formal_epsilon_grammar_expr() -> GrammarExpr {
-  Optional {
-    element: Terminal { token_class: ^python_formal_epsilon_shim_terminal, stamp: StampClass }
+fn python_formal_epsilon_grammar_expr() -> v2.std.grammar.GrammarExpr {
+  v2.std.optional.Optional {
+    element: v2.std.grammar.Terminal { token_class: ^python_formal_epsilon_shim_terminal, stamp: v2.std.grammar.StampClass }
   }
 }
 
 type PythonFormalRhsToExprState
   = PythonFormalRhsToExprUninitialized
-  | PythonFormalRhsToExprReady { expr: GrammarExpr }
+  | PythonFormalRhsToExprReady { expr: v2.std.grammar.GrammarExpr }
 
-fn python_formal_rhs_to_grammar_expr(rhs: List<FormalGrammarSymbol>) -> GrammarExpr {
-  match fold_list(
+fn python_formal_rhs_to_grammar_expr(rhs: List<v2.std.grammar.FormalGrammarSymbol>) -> v2.std.grammar.GrammarExpr {
+  match v2.std.algebra.fold_list(
     xs: rhs,
     empty: PythonFormalRhsToExprUninitialized,
     cons: fn(state, sym) {
@@ -884,7 +885,7 @@ fn python_formal_rhs_to_grammar_expr(rhs: List<FormalGrammarSymbol>) -> GrammarE
           PythonFormalRhsToExprReady { expr: piece }
         PythonFormalRhsToExprReady { expr: acc } =>
           PythonFormalRhsToExprReady {
-            expr: Sequence { left: acc, right: piece }
+            expr: v2.std.grammar.Sequence { left: acc, right: piece }
           }
       }
     }
@@ -896,10 +897,10 @@ fn python_formal_rhs_to_grammar_expr(rhs: List<FormalGrammarSymbol>) -> GrammarE
 
 type PythonFormalAltChoiceState
   = PythonFormalAltChoiceUninitialized
-  | PythonFormalAltChoiceReady { expr: GrammarExpr }
+  | PythonFormalAltChoiceReady { expr: v2.std.grammar.GrammarExpr }
 
-fn python_formal_alternatives_to_choice_expr(alts: List<List<FormalGrammarSymbol>>) -> GrammarExpr {
-  match fold_list(
+fn python_formal_alternatives_to_choice_expr(alts: List<List<v2.std.grammar.FormalGrammarSymbol>>) -> v2.std.grammar.GrammarExpr {
+  match v2.std.algebra.fold_list(
     xs: alts,
     empty: PythonFormalAltChoiceUninitialized,
     cons: fn(state, rhs) {
@@ -909,7 +910,7 @@ fn python_formal_alternatives_to_choice_expr(alts: List<List<FormalGrammarSymbol
           PythonFormalAltChoiceReady { expr: alt_expr }
         PythonFormalAltChoiceReady { expr: acc } =>
           PythonFormalAltChoiceReady {
-            expr: Choice { left: acc, right: alt_expr }
+            expr: v2.std.grammar.Choice { left: acc, right: alt_expr }
           }
       }
     }
@@ -919,46 +920,46 @@ fn python_formal_alternatives_to_choice_expr(alts: List<List<FormalGrammarSymbol
   }
 }
 
-fn python_formal_rhs_alternatives_accum_empty() -> List<List<FormalGrammarSymbol>> {
+fn python_formal_rhs_alternatives_accum_empty() -> List<List<v2.std.grammar.FormalGrammarSymbol>> {
   std.algebra.Empty
 }
 
 fn python_formal_collect_rhs_alternative(
-  acc: List<List<FormalGrammarSymbol>>,
-  prod: FormalProduction
-) -> List<List<FormalGrammarSymbol>> {
-  list_snoc_item(xs: acc, item: prod.rhs)
+  acc: List<List<v2.std.grammar.FormalGrammarSymbol>>,
+  prod: v2.std.grammar.FormalProduction
+) -> List<List<v2.std.grammar.FormalGrammarSymbol>> {
+  v2.std.algebra.list_snoc_item(xs: acc, item: prod.rhs)
 }
 
 fn python_formal_rhs_alternatives_from_productions(
-  prods: List<FormalProduction>
-) -> List<List<FormalGrammarSymbol>> {
-  fold_list(
+  prods: List<v2.std.grammar.FormalProduction>
+) -> List<List<v2.std.grammar.FormalGrammarSymbol>> {
+  v2.std.algebra.fold_list(
     xs: prods,
     empty: python_formal_rhs_alternatives_accum_empty(),
     cons: python_formal_collect_rhs_alternative
   )
 }
 
-fn python_formal_productions_to_grammar_expr(prods: List<FormalProduction>) -> GrammarExpr {
+fn python_formal_productions_to_grammar_expr(prods: List<v2.std.grammar.FormalProduction>) -> v2.std.grammar.GrammarExpr {
   python_formal_alternatives_to_choice_expr(
     alts: python_formal_rhs_alternatives_from_productions(prods: prods)
   )
 }
 
 fn python_formal_production_alts(
-  head: FormalProduction,
-  alts: List<FormalProduction>
-) -> List<FormalProduction> {
-  list_append(left: [head], right: alts)
+  head: v2.std.grammar.FormalProduction,
+  alts: List<v2.std.grammar.FormalProduction>
+) -> List<v2.std.grammar.FormalProduction> {
+  v2.std.algebra.list_append(left: [head], right: alts)
 }
 
 fn python_formal_productions_to_grammar_production(
-  head: FormalProduction,
-  alts: List<FormalProduction>,
-  emitted: Symbol
-) -> GrammarProduction {
-  GrammarProduction {
+  head: v2.std.grammar.FormalProduction,
+  alts: List<v2.std.grammar.FormalProduction>,
+  emitted: v2.std.node.Symbol
+) -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: head.lhs.identity,
     expression: python_formal_productions_to_grammar_expr(
       prods: python_formal_production_alts(head: head, alts: alts)
@@ -967,19 +968,19 @@ fn python_formal_productions_to_grammar_production(
   }
 }
 
-fn python_formal_production_fn_add() -> FormalProduction {
-  grammar_formal_production(
+fn python_formal_production_fn_add() -> v2.std.grammar.FormalProduction {
+  v2.std.grammar.grammar_formal_production(
     lhs: ^python_production_fn_add,
     rhs: python_formal_rhs_from_token_classes()
   )
 }
 
-fn python_formal_productions() -> List<FormalProduction> {
+fn python_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   [python_formal_production_fn_add()]
 }
 
-fn python_grammar_production_fn_add() -> GrammarProduction {
-  GrammarProduction {
+fn python_grammar_production_fn_add() -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: ^python_production_fn_add,
     expression: python_formal_productions_to_grammar_expr(
       prods: [python_formal_production_fn_add()]
@@ -996,89 +997,89 @@ fn python_grammar_relation_row() -> PythonGrammarRelationRow {
   }
 }
 
-fn python_grammar_relation_row_node(row: PythonGrammarRelationRow) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+fn python_grammar_relation_row_node(row: PythonGrammarRelationRow) -> v2.std.node.Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      python_named_edge(name: ^grammar_relation_field_production, target: formal_production_to_node(production: row.production)),
+      python_named_edge(name: ^grammar_relation_field_production, target: v2.std.grammar.formal_production_to_node(production: row.production)),
       python_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
       python_named_edge(
         name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
+        target: v2.std.grammar.grammar_relation_tokens_node(
           tokens: row.tokens,
           token_to_node: python_concrete_token_node
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn python_translation_rules_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+fn python_translation_rules_node() -> v2.std.node.Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       python_named_edge(
         name: ^python_relation_rule_fn_add,
         target: python_grammar_relation_row_node(row: python_grammar_relation_row())
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn python_emit_host_runtime_primitive_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: ^python_emit_host_runtime_primitive_symbol } },
+fn python_emit_host_runtime_primitive_type_node() -> v2.std.node.Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^python_emit_host_runtime_primitive_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn python_host_transport_descriptor() -> HostTransportDescriptor {
-  HostTransportDescriptor {
+fn python_host_transport_descriptor() -> v2.std.host_transport.HostTransportDescriptor {
+  v2.std.host_transport.HostTransportDescriptor {
     identity: ^python_host_transport_identity,
     workspace: [
-      WorkspaceFile {
+      v2.std.host_transport.WorkspaceFile {
         path: "fixture.py",
         content: EmittedSource
       }
     ],
     build: std.algebra.Empty,
-    run: ProcessInvocation {
-      program: HostToolProgram { executable: "python3" },
-      args: [WorkspacePath { path: "fixture.py" }]
+    run: v2.std.host_transport.ProcessInvocation {
+      program: v2.std.host_transport.HostToolProgram { executable: "python3" },
+      args: [v2.std.host_transport.WorkspacePath { path: "fixture.py" }]
     },
-    runtime_value_codec: FixedWidthBytes { width: 5 }
+    runtime_value_codec: v2.std.host_transport.FixedWidthBytes { width: 5 }
   }
 }
 
-fn python_runtime_row() -> TargetEmitHostRuntimeRow {
-  HostRuntimeRowPresent {
-    row: EmitHostRuntimeRow {
+fn python_runtime_row() -> v2.std.host_transport.TargetEmitHostRuntimeRow {
+  v2.std.host_transport.HostRuntimeRowPresent {
+    row: v2.std.host_transport.EmitHostRuntimeRow {
       transport: python_host_transport_descriptor(),
       runtime_primitive_type: python_emit_host_runtime_primitive_type_node()
     }
   }
 }
 
-fn python_target_model_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
+fn python_target_model_node() -> v2.std.node.Node {
+  v2.std.node.Node {
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       python_named_edge(name: ^target_model_edge_selection_policy, target: python_selection_policy_node()),
       python_named_edge(name: ^target_model_edge_declared_inhabitants, target: python_add_declared_inhabitants_root()),
       python_named_edge(name: ^target_model_edge_translation_rules, target: python_translation_rules_node()),
       python_named_edge(name: ^target_model_edge_serialize_source, target: python_serialize_source_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn python_binding_spellings() -> Map<Symbol, String> {
-  map_insert(
-    map_insert(
-      map_insert(empty_map(), ^python_binding_fn_add, "add"),
+fn python_binding_spellings() -> Map<v2.std.node.Symbol, String> {
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.map_insert(v2.std.collection.empty_map(), ^python_binding_fn_add, "add"),
       ^python_binding_param_x,
       "x"
     ),
@@ -1087,54 +1088,54 @@ fn python_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn python_target_model() -> TargetModel {
-  TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+fn python_target_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
     bundle: python_target_model_node(),
     lex: python_lex(),
     binding_spellings: python_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
     authority_source_text: python_source_text,
     runtime_row: python_runtime_row()
   }
 }
 
-fn python_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+fn python_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
+  v2.std.compilers.lexing.TokenRule { token_class: token_class, pattern: v2.std.compilers.lexing.LiteralPattern { text: text } }
 }
 
-fn python_ident_lex_pattern() -> LexPattern {
-  SequencePattern {
-    left: CharClassPattern { class: IdentStartChar },
-    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+fn python_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
+  v2.std.compilers.lexing.SequencePattern {
+    left: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentStartChar },
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentContinueChar } }
   }
 }
 
-fn python_ident_lex_rule() -> LexRule {
-  TokenRule {
+fn python_ident_lex_rule() -> v2.std.compilers.lexing.LexRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^python_token_ident,
     pattern: python_ident_lex_pattern()
   }
 }
 
-fn python_nonzero_digit_char_pattern() -> LexPattern {
-  ChoicePattern {
-    left: CharPattern { char: 49 },
-    right: ChoicePattern {
-      left: CharPattern { char: 50 },
-      right: ChoicePattern {
-        left: CharPattern { char: 51 },
-        right: ChoicePattern {
-          left: CharPattern { char: 52 },
-          right: ChoicePattern {
-            left: CharPattern { char: 53 },
-            right: ChoicePattern {
-              left: CharPattern { char: 54 },
-              right: ChoicePattern {
-                left: CharPattern { char: 55 },
-                right: ChoicePattern {
-                  left: CharPattern { char: 56 },
-                  right: CharPattern { char: 57 }
+fn python_nonzero_digit_char_pattern() -> v2.std.compilers.lexing.LexPattern {
+  v2.std.compilers.lexing.ChoicePattern {
+    left: v2.std.compilers.lexing.CharPattern { char: 49 },
+    right: v2.std.compilers.lexing.ChoicePattern {
+      left: v2.std.compilers.lexing.CharPattern { char: 50 },
+      right: v2.std.compilers.lexing.ChoicePattern {
+        left: v2.std.compilers.lexing.CharPattern { char: 51 },
+        right: v2.std.compilers.lexing.ChoicePattern {
+          left: v2.std.compilers.lexing.CharPattern { char: 52 },
+          right: v2.std.compilers.lexing.ChoicePattern {
+            left: v2.std.compilers.lexing.CharPattern { char: 53 },
+            right: v2.std.compilers.lexing.ChoicePattern {
+              left: v2.std.compilers.lexing.CharPattern { char: 54 },
+              right: v2.std.compilers.lexing.ChoicePattern {
+                left: v2.std.compilers.lexing.CharPattern { char: 55 },
+                right: v2.std.compilers.lexing.ChoicePattern {
+                  left: v2.std.compilers.lexing.CharPattern { char: 56 },
+                  right: v2.std.compilers.lexing.CharPattern { char: 57 }
                 }
               }
             }
@@ -1145,25 +1146,25 @@ fn python_nonzero_digit_char_pattern() -> LexPattern {
   }
 }
 
-fn python_decimal_int_literal_pattern() -> LexPattern {
-  ChoicePattern {
-    left: LiteralPattern { text: "0" },
-    right: SequencePattern {
+fn python_decimal_int_literal_pattern() -> v2.std.compilers.lexing.LexPattern {
+  v2.std.compilers.lexing.ChoicePattern {
+    left: v2.std.compilers.lexing.LiteralPattern { text: "0" },
+    right: v2.std.compilers.lexing.SequencePattern {
       left: python_nonzero_digit_char_pattern(),
-      right: RepeatPattern { element: CharClassPattern { class: DigitChar } }
+      right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.DigitChar } }
     }
   }
 }
 
-fn python_int_literal_lex_rule() -> LexRule {
-  TokenRule {
+fn python_int_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
+  v2.std.compilers.lexing.TokenRule {
     token_class: ^python_token_int_literal,
     pattern: python_decimal_int_literal_pattern()
   }
 }
 
-fn python_lex_rules() -> LexRuleSet {
-  LexRuleSet {
+fn python_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
+  v2.std.compilers.lexing.LexRuleSet {
     rules: [
       python_lex_rule(token_class: ^python_token_rparen_suite_indent, text: "):\n    "),
       python_lex_rule(token_class: ^python_token_colon_if_suite_indent, text: ":\n        "),
@@ -1186,29 +1187,29 @@ fn python_lex_rules() -> LexRuleSet {
   }
 }
 
-fn python_lex() -> LexRules {
-  ModeledLexRules { root: python_lex_rules() }
+fn python_lex() -> v2.std.compilers.lexing.LexRules {
+  v2.std.compilers.lexing.ModeledLexRules { root: python_lex_rules() }
 }
 
-fn python_grammar_atom(id: Symbol) -> Node {
+fn python_grammar_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   python_inhabitant_atom(id: id)
 }
 
-fn python_grammar_root() -> GrammarRoot {
-  GrammarRoot {
+fn python_grammar_root() -> v2.std.grammar.GrammarRoot {
+  v2.std.grammar.GrammarRoot {
     start: ^python_production_fn_def,
     productions: [
       python_grammar_production_fn_add(),
       python_formal_productions_to_grammar_production(
-        head: grammar_formal_production(
+        head: v2.std.grammar.grammar_formal_production(
           lhs: ^python_production_fn_def,
           rhs: [
-            grammar_formal_terminal(identity: ^python_token_kw_def),
-            grammar_formal_terminal(identity: ^python_token_ident),
-            grammar_formal_terminal(identity: ^python_token_lparen),
-            grammar_formal_terminal(identity: ^python_token_ident),
-            grammar_formal_terminal(identity: ^python_token_rparen_suite_indent),
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_suite)
+            v2.std.grammar.grammar_formal_terminal(identity: ^python_token_kw_def),
+            v2.std.grammar.grammar_formal_terminal(identity: ^python_token_ident),
+            v2.std.grammar.grammar_formal_terminal(identity: ^python_token_lparen),
+            v2.std.grammar.grammar_formal_terminal(identity: ^python_token_ident),
+            v2.std.grammar.grammar_formal_terminal(identity: ^python_token_rparen_suite_indent),
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_suite)
           ]
         ),
         alts: std.algebra.Empty,
@@ -1216,45 +1217,45 @@ fn python_grammar_root() -> GrammarRoot {
       ),
 
       python_formal_productions_to_grammar_production(
-        head: grammar_formal_production(
+        head: v2.std.grammar.grammar_formal_production(
           lhs: ^python_production_suite,
           rhs: [
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_stmt),
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_suite)
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_stmt),
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_suite)
           ]
         ),
         alts: [
-          grammar_formal_production(
+          v2.std.grammar.grammar_formal_production(
             lhs: ^python_production_suite,
-            rhs: [grammar_formal_nonterminal_occurrence(identity: ^python_production_stmt)]
+            rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_stmt)]
           )
         ],
         emitted: ^python_surface_suite
       ),
       python_formal_productions_to_grammar_production(
-        head: grammar_formal_production(
+        head: v2.std.grammar.grammar_formal_production(
           lhs: ^python_production_stmt,
-          rhs: [grammar_formal_nonterminal_occurrence(identity: ^python_production_assign_stmt)]
+          rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_assign_stmt)]
         ),
         alts: [
-          grammar_formal_production(
+          v2.std.grammar.grammar_formal_production(
             lhs: ^python_production_stmt,
-            rhs: [grammar_formal_nonterminal_occurrence(identity: ^python_production_if_stmt)]
+            rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_if_stmt)]
           ),
-          grammar_formal_production(
+          v2.std.grammar.grammar_formal_production(
             lhs: ^python_production_stmt,
-            rhs: [grammar_formal_nonterminal_occurrence(identity: ^python_production_return_stmt)]
+            rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_return_stmt)]
           )
         ],
         emitted: ^python_surface_stmt
       ),
       python_formal_productions_to_grammar_production(
-        head: grammar_formal_production(
+        head: v2.std.grammar.grammar_formal_production(
           lhs: ^python_production_assign_stmt,
           rhs: [
-            grammar_formal_terminal(identity: ^python_token_ident),
-            grammar_formal_terminal(identity: ^python_token_equal),
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_additive)
+            v2.std.grammar.grammar_formal_terminal(identity: ^python_token_ident),
+            v2.std.grammar.grammar_formal_terminal(identity: ^python_token_equal),
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_additive)
           ]
         ),
         alts: std.algebra.Empty,
@@ -1262,50 +1263,50 @@ fn python_grammar_root() -> GrammarRoot {
       ),
 
       python_formal_productions_to_grammar_production(
-        head: grammar_formal_production(
+        head: v2.std.grammar.grammar_formal_production(
           lhs: ^python_production_if_stmt,
           rhs: [
-            grammar_formal_terminal(identity: ^python_token_newline_if_stmt),
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_comparison),
-            grammar_formal_terminal(identity: ^python_token_colon_if_suite_indent),
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_return_stmt)
+            v2.std.grammar.grammar_formal_terminal(identity: ^python_token_newline_if_stmt),
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_comparison),
+            v2.std.grammar.grammar_formal_terminal(identity: ^python_token_colon_if_suite_indent),
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_return_stmt)
           ]
         ),
         alts: std.algebra.Empty,
         emitted: ^python_surface_if_stmt
       ),
       python_formal_productions_to_grammar_production(
-        head: grammar_formal_production(
+        head: v2.std.grammar.grammar_formal_production(
           lhs: ^python_production_return_stmt,
           rhs: [
-            grammar_formal_terminal(identity: ^python_token_newline_return_inner),
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_primary)
+            v2.std.grammar.grammar_formal_terminal(identity: ^python_token_newline_return_inner),
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_primary)
           ]
         ),
         alts: [
-          grammar_formal_production(
+          v2.std.grammar.grammar_formal_production(
             lhs: ^python_production_return_stmt,
             rhs: [
-              grammar_formal_terminal(identity: ^python_token_newline_return_outer),
-              grammar_formal_nonterminal_occurrence(identity: ^python_production_primary)
+              v2.std.grammar.grammar_formal_terminal(identity: ^python_token_newline_return_outer),
+              v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_primary)
             ]
           ),
-          grammar_formal_production(
+          v2.std.grammar.grammar_formal_production(
             lhs: ^python_production_return_stmt,
             rhs: [
-              grammar_formal_terminal(identity: ^python_token_kw_return),
-              grammar_formal_nonterminal_occurrence(identity: ^python_production_primary)
+              v2.std.grammar.grammar_formal_terminal(identity: ^python_token_kw_return),
+              v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_primary)
             ]
           )
         ],
         emitted: ^python_surface_return_stmt
       ),
       python_formal_productions_to_grammar_production(
-        head: grammar_formal_production(
+        head: v2.std.grammar.grammar_formal_production(
           lhs: ^python_production_comparison,
           rhs: [
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_additive),
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_comparison_tail)
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_additive),
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_comparison_tail)
           ]
         ),
         alts: std.algebra.Empty,
@@ -1313,22 +1314,22 @@ fn python_grammar_root() -> GrammarRoot {
       ),
 
       python_formal_productions_to_grammar_production(
-        head: grammar_formal_production(
+        head: v2.std.grammar.grammar_formal_production(
           lhs: ^python_production_comparison_tail,
           rhs: [
-            grammar_formal_terminal(identity: ^python_token_greater),
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_additive)
+            v2.std.grammar.grammar_formal_terminal(identity: ^python_token_greater),
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_additive)
           ]
         ),
-        alts: [grammar_formal_production(lhs: ^python_production_comparison_tail, rhs: std.algebra.Empty)],
+        alts: [v2.std.grammar.grammar_formal_production(lhs: ^python_production_comparison_tail, rhs: std.algebra.Empty)],
         emitted: ^python_surface_comparison_tail
       ),
       python_formal_productions_to_grammar_production(
-        head: grammar_formal_production(
+        head: v2.std.grammar.grammar_formal_production(
           lhs: ^python_production_additive,
           rhs: [
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_primary),
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_additive_tail)
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_primary),
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_additive_tail)
           ]
         ),
         alts: std.algebra.Empty,
@@ -1336,47 +1337,47 @@ fn python_grammar_root() -> GrammarRoot {
       ),
 
       python_formal_productions_to_grammar_production(
-        head: grammar_formal_production(
+        head: v2.std.grammar.grammar_formal_production(
           lhs: ^python_production_additive_tail,
           rhs: [
-            grammar_formal_terminal(identity: ^python_token_plus),
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_primary),
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_additive_tail)
+            v2.std.grammar.grammar_formal_terminal(identity: ^python_token_plus),
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_primary),
+            v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^python_production_additive_tail)
           ]
         ),
-        alts: [grammar_formal_production(lhs: ^python_production_additive_tail, rhs: std.algebra.Empty)],
+        alts: [v2.std.grammar.grammar_formal_production(lhs: ^python_production_additive_tail, rhs: std.algebra.Empty)],
         emitted: ^python_surface_additive_tail
       ),
       python_formal_productions_to_grammar_production(
-        head: grammar_formal_production(
+        head: v2.std.grammar.grammar_formal_production(
           lhs: ^python_production_primary,
-          rhs: [grammar_formal_terminal(identity: ^python_token_ident)]
+          rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^python_token_ident)]
         ),
         alts: [
-          grammar_formal_production(
+          v2.std.grammar.grammar_formal_production(
             lhs: ^python_production_primary,
-            rhs: [grammar_formal_terminal(identity: ^python_token_int_literal)]
+            rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^python_token_int_literal)]
           )
         ],
         emitted: ^python_surface_primary
       )
     ],
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
   }
 }
 
-fn python_grammar() -> ParseGrammar {
-  ModeledGrammar { root: python_grammar_root() }
+fn python_grammar() -> v2.std.grammar.ParseGrammar {
+  v2.std.grammar.ModeledGrammar { root: python_grammar_root() }
 }
 
-fn python_lex_token_symbol(sym: Symbol) -> Bool {
-  lex_rule_set_token_class_member(
+fn python_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
+  v2.std.compilers.lexing.lex_rule_set_token_class_member(
     rules: python_lex_rules(),
     token_class: sym
   )
 }
 
-fn python_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn python_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   python_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: python_integer_facts_catalog,
@@ -1384,7 +1385,7 @@ fn python_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn python_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn python_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   python_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: python_float_facts_catalog,
@@ -1392,7 +1393,7 @@ fn python_float_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn python_complex_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn python_complex_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   python_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: python_complex_facts_catalog,
@@ -1400,7 +1401,7 @@ fn python_complex_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn python_bool_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn python_bool_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   python_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: python_bool_facts_catalog,
@@ -1408,7 +1409,7 @@ fn python_bool_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn python_singleton_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn python_singleton_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   python_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: python_singleton_facts_catalog,
@@ -1416,7 +1417,7 @@ fn python_singleton_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn python_catalog_surface_symbol(sym: Symbol) -> Bool {
+fn python_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   python_integer_catalog_surface_symbol(sym: sym) ||
     python_float_catalog_surface_symbol(sym: sym) ||
     python_complex_catalog_surface_symbol(sym: sym) ||
@@ -1424,12 +1425,12 @@ fn python_catalog_surface_symbol(sym: Symbol) -> Bool {
     python_singleton_catalog_surface_symbol(sym: sym)
 }
 
-fn python_language_model_canonical_symbols() -> PointwisePower<Symbol> {
-  PointwisePower {
+fn python_language_model_canonical_symbols() -> std.algebra.PointwisePower<v2.std.node.Symbol> {
+  std.algebra.PointwisePower {
     member: fn(sym) {
       python_catalog_surface_symbol(sym: sym) ||
         python_lex_token_symbol(sym: sym) ||
-        grammar_carries_symbol(grammar: python_grammar(), sym: sym) ||
+        v2.std.grammar.grammar_carries_symbol(grammar: python_grammar(), sym: sym) ||
         sym == ^python_surface_fn_item ||
         sym == ^python_production_fn_add ||
         sym == ^python_source_literal
@@ -1437,11 +1438,11 @@ fn python_language_model_canonical_symbols() -> PointwisePower<Symbol> {
   }
 }
 
-fn python_language_model() -> Outcome<LanguageModel> {
+fn python_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_model.LanguageModel> {
   match python_model_core() {
-    Accepted { value: core, diagnostics: d } =>
-      Accepted {
-        value: LanguageModel {
+    v2.std.diagnostic.Accepted { value: core, diagnostics: d } =>
+      v2.std.diagnostic.Accepted {
+        value: v2.std.language_model.LanguageModel {
           lex: python_lex(),
           grammar: python_grammar(),
           language_identity: ^python_language_model_surface_id,
@@ -1450,7 +1451,7 @@ fn python_language_model() -> Outcome<LanguageModel> {
         },
         diagnostics: d
       }
-    Rejected { diagnostics: d } =>
-      Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

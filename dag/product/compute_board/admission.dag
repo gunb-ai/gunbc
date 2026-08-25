@@ -49,7 +49,7 @@ fn count_matching(names: List<std.types.NonEmptyStr>, name: std.types.NonEmptySt
 
 fn duplicated_names(names: List<std.types.NonEmptyStr>) -> List<std.types.NonEmptyStr> {
   fold(names, init: [], f: fn(acc, n) {
-    if product.compute_board.admission.count_matching(names: names, name: n) > 1 && product.compute_board.admission.count_matching(names: acc, name: n) == 0 {
+    if count_matching(names: names, name: n) > 1 && count_matching(names: acc, name: n) == 0 {
       concat(acc, [n])
     } else {
       acc
@@ -58,28 +58,28 @@ fn duplicated_names(names: List<std.types.NonEmptyStr>) -> List<std.types.NonEmp
 }
 
 fn article_terminals(intent: product.compute_board.analog.AnalogCircuitIntent) -> List<product.electrical.connectivity.ElectricalTerminalRef> {
-  fold(intent.components, init: [], f: fn(acc, c) { concat(acc, component_terminals(c: c)) })
+  fold(intent.components, init: [], f: fn(acc, c) { concat(acc, product.compute_board.analog.component_terminals(c: c)) })
 }
 
 fn terminal_exists(intent: product.compute_board.analog.AnalogCircuitIntent, t: product.electrical.connectivity.ElectricalTerminalRef) -> Bool {
-  fold(article_terminals(intent: intent), init: false, f: fn(acc, k) { acc || terminal_ref_equal(a: k, b: t) })
+  fold(article_terminals(intent: intent), init: false, f: fn(acc, k) { acc || product.electrical.connectivity.terminal_ref_equal(a: k, b: t) })
 }
 
 fn net_declared(intent: product.compute_board.analog.AnalogCircuitIntent, n: product.electrical.connectivity.NetIdentity) -> Bool {
-  fold(intent.nets, init: false, f: fn(acc, net) { acc || net_identity_eq(a: net.identity, b: n) })
+  fold(intent.nets, init: false, f: fn(acc, net) { acc || product.electrical.connectivity.net_identity_eq(a: net.identity, b: n) })
 }
 
 // ----- analog structure -----
 
 fn duplicate_component_refusals(intent: product.compute_board.analog.AnalogCircuitIntent) -> List<BoardArticleRefusal> {
-  let names = fold(intent.components, init: [], f: fn(acc, c) { concat(acc, [component_local_label(c: component_identity(c: c))]) })
+  let names = fold(intent.components, init: [], f: fn(acc, c) { concat(acc, [product.electrical.connectivity.component_local_label(c: product.compute_board.analog.component_identity(c: c))]) })
   fold(duplicated_names(names: names), init: [], f: fn(acc, n) {
     concat(acc, [DuplicateComponentIdentity { component: n }])
   })
 }
 
 fn duplicate_net_refusals(intent: product.compute_board.analog.AnalogCircuitIntent) -> List<BoardArticleRefusal> {
-  let names = fold(intent.nets, init: [], f: fn(acc, net) { concat(acc, [net_local_label(n: net.identity)]) })
+  let names = fold(intent.nets, init: [], f: fn(acc, net) { concat(acc, [product.electrical.connectivity.net_local_label(n: net.identity)]) })
   fold(duplicated_names(names: names), init: [], f: fn(acc, n) {
     concat(acc, [DuplicateNetIdentity { net: n }])
   })
@@ -105,11 +105,11 @@ fn duplicate_net_refusals(intent: product.compute_board.analog.AnalogCircuitInte
 fn foreign_design_net_member_refusals(intent: product.compute_board.analog.AnalogCircuitIntent) -> List<BoardArticleRefusal> {
   fold(intent.nets, init: [], f: fn(acc, net) {
     fold(net.members, init: acc, f: fn(inner, m) {
-      if design_identity_eq(a: net.identity.design, b: m.component.design) {
+      if product.electrical.connectivity.design_identity_eq(a: net.identity.design, b: m.component.design) {
         inner
       } else {
         concat(inner, [NetMemberBelongsToAnotherDesign {
-          net: net_local_label(n: net.identity),
+          net: product.electrical.connectivity.net_local_label(n: net.identity),
           net_design: net.identity.design as std.types.NonEmptyStr,
           member_design: m.component.design as std.types.NonEmptyStr,
         }])
@@ -122,12 +122,12 @@ fn dangling_net_member_refusals(intent: product.compute_board.analog.AnalogCircu
   fold(intent.nets, init: [], f: fn(acc, net) {
     fold(net.members, init: acc, f: fn(inner, m) {
       if terminal_exists(intent: intent, t: m)
-        || !design_identity_eq(a: net.identity.design, b: m.component.design) {
+        || !product.electrical.connectivity.design_identity_eq(a: net.identity.design, b: m.component.design) {
         inner
       } else {
         concat(inner, [NetMemberNamesNoTerminal {
-          net: net_local_label(n: net.identity),
-          component: component_local_label(c: m.component),
+          net: product.electrical.connectivity.net_local_label(n: net.identity),
+          component: product.electrical.connectivity.component_local_label(c: m.component),
           terminal: m.terminal as std.types.NonEmptyStr,
         }])
       }
@@ -137,13 +137,13 @@ fn dangling_net_member_refusals(intent: product.compute_board.analog.AnalogCircu
 
 fn bond_refusal(intent: product.compute_board.analog.AnalogCircuitIntent, b: product.compute_board.article.ElectricalBond) -> List<BoardArticleRefusal> {
   match b {
-    PowerReturnConnection { domain: d, terminal: t } =>
+    product.compute_board.article.PowerReturnConnection { domain: d, terminal: t } =>
       concat(net_refusal(intent: intent, n: d), terminal_refusal(intent: intent, t: t))
-    SignalReferenceConnection { signal_class: d, terminal: t } =>
+    product.compute_board.article.SignalReferenceConnection { signal_class: d, terminal: t } =>
       concat(net_refusal(intent: intent, n: d), terminal_refusal(intent: intent, t: t))
-    ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => []
-    ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => []
-    ShieldTermination { shield: _, chassis_feature: _, standing: _ } => []
+    product.compute_board.article.ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => []
+    product.compute_board.article.ProtectiveEarthBond { chassis_feature: _, earth_source: _, standing: _ } => []
+    product.compute_board.article.ShieldTermination { shield: _, chassis_feature: _, standing: _ } => []
   }
 }
 
@@ -152,14 +152,14 @@ fn bond_refusals(intent: product.compute_board.analog.AnalogCircuitIntent, bonds
 }
 
 fn net_refusal(intent: product.compute_board.analog.AnalogCircuitIntent, n: product.electrical.connectivity.NetIdentity) -> List<BoardArticleRefusal> {
-  if net_declared(intent: intent, n: n) { [] } else { [BondNamesUndeclaredNet { net: net_local_label(n: n) }] }
+  if net_declared(intent: intent, n: n) { [] } else { [BondNamesUndeclaredNet { net: product.electrical.connectivity.net_local_label(n: n) }] }
 }
 
 fn terminal_refusal(intent: product.compute_board.analog.AnalogCircuitIntent, t: product.electrical.connectivity.ElectricalTerminalRef) -> List<BoardArticleRefusal> {
   if terminal_exists(intent: intent, t: t) {
     []
   } else {
-    [BondTerminalNamesNoTerminal { component: component_local_label(c: t.component), terminal: t.terminal as std.types.NonEmptyStr }]
+    [BondTerminalNamesNoTerminal { component: product.electrical.connectivity.component_local_label(c: t.component), terminal: t.terminal as std.types.NonEmptyStr }]
   }
 }
 
@@ -167,7 +167,7 @@ fn reference_net_refusals(intent: product.compute_board.analog.AnalogCircuitInte
   if net_declared(intent: intent, n: reference) {
     []
   } else {
-    [ReferenceNetNotDeclared { net: net_local_label(n: reference) }]
+    [ReferenceNetNotDeclared { net: product.electrical.connectivity.net_local_label(n: reference) }]
   }
 }
 
@@ -182,29 +182,29 @@ fn duplicate_signal_refusals(control: product.compute_board.digital_control.Digi
 
 fn signal_is_output(control: product.compute_board.digital_control.DigitalControlIntent, name: product.compute_board.digital_control.SignalName) -> Bool {
   fold(control.signals, init: false, f: fn(acc, s) {
-    acc || (signal_names_equal(a: s.name, b: name) && signal_direction_is_output(s: s))
+    acc || (product.compute_board.digital_control.signal_names_equal(a: s.name, b: name) && product.compute_board.digital_control.signal_direction_is_output(s: s))
   })
 }
 
 fn driver_count(control: product.compute_board.digital_control.DigitalControlIntent, name: product.compute_board.digital_control.SignalName) -> std.nat.Nat {
   fold(control.equations, init: 0, f: fn(acc, e) {
-    if signal_names_equal(a: e.driven, b: name) { acc + 1 } else { acc }
+    if product.compute_board.digital_control.signal_names_equal(a: e.driven, b: name) { acc + 1 } else { acc }
   })
 }
 
 fn equation_refusals(control: product.compute_board.digital_control.DigitalControlIntent) -> List<BoardArticleRefusal> {
   fold(control.equations, init: [], f: fn(acc, e) {
-    let undeclared = if intent_declares_signal(intent: control, name: e.driven) {
+    let undeclared = if product.compute_board.digital_control.intent_declares_signal(intent: control, name: e.driven) {
       []
     } else {
       [DrivenSignalUndeclared { signal: e.driven as std.types.NonEmptyStr }]
     }
-    let direction = if intent_declares_signal(intent: control, name: e.driven) && !signal_is_output(control: control, name: e.driven) {
+    let direction = if product.compute_board.digital_control.intent_declares_signal(intent: control, name: e.driven) && !signal_is_output(control: control, name: e.driven) {
       [DrivenSignalIsAnInput { signal: e.driven as std.types.NonEmptyStr }]
     } else {
       []
     }
-    let referenced = if expr_references_undeclared(intent: control, e: e.expression) {
+    let referenced = if product.compute_board.digital_control.expr_references_undeclared(intent: control, e: e.expression) {
       [EquationReferencesUndeclaredSignal { driven: e.driven as std.types.NonEmptyStr }]
     } else {
       []
@@ -219,7 +219,7 @@ fn equation_refusals(control: product.compute_board.digital_control.DigitalContr
 // and leave the reader to work out which direction to edit in.
 fn output_driver_refusals(control: product.compute_board.digital_control.DigitalControlIntent) -> List<BoardArticleRefusal> {
   fold(control.signals, init: [], f: fn(acc, s) {
-    if signal_direction_is_output(s: s) {
+    if product.compute_board.digital_control.signal_direction_is_output(s: s) {
       let n = driver_count(control: control, name: s.name)
       if n == 0 {
         concat(acc, [OutputWithNoDriver { signal: s.name as std.types.NonEmptyStr }])
@@ -242,10 +242,10 @@ fn precondition_refusal(
   p: product.compute_board.article.HostFirmwareStartPrecondition
 ) -> List<BoardArticleRefusal> {
   match p.establishment {
-    EstablishedByPlatformComponent { role: _ } => []
-    NotEstablishedByThisArticle { owner: _ } => []
-    EstablishedByBoardSignal { signal: sig } =>
-      if !intent_declares_signal(intent: control, name: sig) {
+    product.compute_board.article.EstablishedByPlatformComponent { role: _ } => []
+    product.compute_board.article.NotEstablishedByThisArticle { owner: _ } => []
+    product.compute_board.article.EstablishedByBoardSignal { signal: sig } =>
+      if !product.compute_board.digital_control.intent_declares_signal(intent: control, name: sig) {
         [PreconditionSignalUndeclared { signal: sig as std.types.NonEmptyStr }]
       } else {
         if signal_is_output(control: control, name: sig) {

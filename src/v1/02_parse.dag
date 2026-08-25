@@ -340,7 +340,7 @@ fn parse_string_literal_value(tokens: TokenStream) -> StringLitResult {
   match tok {
     Present { value: t } =>
       match t.shape {
-        ShLitStr =>
+        v1.std.core.ShLitStr =>
           StringLitResult { value: t.text, tokens: token_stream_advance(stream: tokens, n: 1), err: none }
         _ =>
           StringLitResult { value: "", tokens: tokens, err: Present { value: parse_error(msg: "expected string literal", span: token_span(tok: tok)) } }
@@ -355,7 +355,7 @@ fn parse_int_literal_value(tokens: TokenStream) -> IntLitResult {
   match tok {
     Present { value: t } =>
       match t.shape {
-        ShLitInt =>
+        v1.std.core.ShLitInt =>
           let n_opt = parse_int(s: t.text)
           match n_opt {
             Present { value: n } =>
@@ -371,49 +371,49 @@ fn parse_int_literal_value(tokens: TokenStream) -> IntLitResult {
   }
 }
 
-fn is_ident_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShIdent => true  _ => false } }
-fn is_lit_str_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShLitStr => true  _ => false } }
-fn is_lit_int_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShLitInt => true  _ => false } }
-fn is_lit_float_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShLitFloat => true  _ => false } }
-fn is_str_begin_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShStrBegin => true  _ => false } }
-fn is_str_mid_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShStrMid => true  _ => false } }
-fn is_str_end_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShStrEnd => true  _ => false } }
-fn is_unknown_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShUnknown => true  _ => false } }
-fn is_newline_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShNewline => true  _ => false } }
-fn is_eof_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShEof => true  _ => false } }
-fn is_keyword_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShKeyword => true  _ => false } }
+fn is_ident_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShIdent => true  _ => false } }
+fn is_lit_str_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShLitStr => true  _ => false } }
+fn is_lit_int_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShLitInt => true  _ => false } }
+fn is_lit_float_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShLitFloat => true  _ => false } }
+fn is_str_begin_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShStrBegin => true  _ => false } }
+fn is_str_mid_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShStrMid => true  _ => false } }
+fn is_str_end_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShStrEnd => true  _ => false } }
+fn is_unknown_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShUnknown => true  _ => false } }
+fn is_newline_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShNewline => true  _ => false } }
+fn is_eof_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShEof => true  _ => false } }
+fn is_keyword_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShKeyword => true  _ => false } }
 
-fn is_lbrace_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShLBrace => true  _ => false } }
-fn is_rbrace_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShRBrace => true  _ => false } }
-fn is_lparen_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShLParen => true  _ => false } }
-fn is_rparen_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShRParen => true  _ => false } }
-fn is_lbracket_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShLBracket => true  _ => false } }
-fn is_rbracket_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShRBracket => true  _ => false } }
-fn is_lt_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShLt => true  _ => false } }
-fn is_gt_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShGt => true  _ => false } }
-fn is_le_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShLe => true  _ => false } }
-fn is_ge_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShGe => true  _ => false } }
-fn is_fat_arrow_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShFatArrow => true  _ => false } }
-fn is_arrow_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShArrow => true  _ => false } }
-fn is_colon_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShColon => true  _ => false } }
-fn is_comma_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShComma => true  _ => false } }
-fn is_dot_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShDot => true  _ => false } }
-fn is_dot_dot_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShDotDot => true  _ => false } }
-fn is_eq_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShEq => true  _ => false } }
-fn is_eq_eq_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShEqEq => true  _ => false } }
-fn is_ne_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShNe => true  _ => false } }
-fn is_plus_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShPlus => true  _ => false } }
-fn is_minus_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShMinus => true  _ => false } }
-fn is_star_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShStar => true  _ => false } }
-fn is_slash_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShSlash => true  _ => false } }
-fn is_percent_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShPercent => true  _ => false } }
-fn is_bang_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShBang => true  _ => false } }
-fn is_and_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShAnd => true  _ => false } }
-fn is_or_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShOr => true  _ => false } }
-fn is_question_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShQuestion => true  _ => false } }
-fn is_null_coalesce_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShNullCoalesce => true  _ => false } }
-fn is_pipe_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShPipe => true  _ => false } }
-fn is_pipe_arrow_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { ShPipeArrow => true  _ => false } }
+fn is_lbrace_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShLBrace => true  _ => false } }
+fn is_rbrace_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShRBrace => true  _ => false } }
+fn is_lparen_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShLParen => true  _ => false } }
+fn is_rparen_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShRParen => true  _ => false } }
+fn is_lbracket_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShLBracket => true  _ => false } }
+fn is_rbracket_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShRBracket => true  _ => false } }
+fn is_lt_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShLt => true  _ => false } }
+fn is_gt_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShGt => true  _ => false } }
+fn is_le_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShLe => true  _ => false } }
+fn is_ge_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShGe => true  _ => false } }
+fn is_fat_arrow_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShFatArrow => true  _ => false } }
+fn is_arrow_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShArrow => true  _ => false } }
+fn is_colon_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShColon => true  _ => false } }
+fn is_comma_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShComma => true  _ => false } }
+fn is_dot_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShDot => true  _ => false } }
+fn is_dot_dot_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShDotDot => true  _ => false } }
+fn is_eq_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShEq => true  _ => false } }
+fn is_eq_eq_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShEqEq => true  _ => false } }
+fn is_ne_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShNe => true  _ => false } }
+fn is_plus_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShPlus => true  _ => false } }
+fn is_minus_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShMinus => true  _ => false } }
+fn is_star_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShStar => true  _ => false } }
+fn is_slash_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShSlash => true  _ => false } }
+fn is_percent_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShPercent => true  _ => false } }
+fn is_bang_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShBang => true  _ => false } }
+fn is_and_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShAnd => true  _ => false } }
+fn is_or_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShOr => true  _ => false } }
+fn is_question_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShQuestion => true  _ => false } }
+fn is_null_coalesce_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShNullCoalesce => true  _ => false } }
+fn is_pipe_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShPipe => true  _ => false } }
+fn is_pipe_arrow_shape(shape: v1.std.core.TokenShape) -> Bool { match shape { v1.std.core.ShPipeArrow => true  _ => false } }
 
 fn tok_is_keyword(tok: v1.std.core.Token?, kw: String) -> Bool {
   match tok { Present { value: t } => is_keyword_shape(shape: t.shape) && t.text == kw  Absent => false }
@@ -524,49 +524,49 @@ fn tok_is_keyword_name(tok: v1.std.core.Token?) -> Bool {
 
 fn shape_display_name(shape: v1.std.core.TokenShape) -> String {
   match shape {
-    ShKeyword => "keyword"
-    ShLBrace => "LBrace"
-    ShRBrace => "RBrace"
-    ShLParen => "LParen"
-    ShRParen => "RParen"
-    ShLBracket => "LBracket"
-    ShRBracket => "RBracket"
-    ShLt => "Lt"
-    ShGt => "Gt"
-    ShLe => "Le"
-    ShGe => "Ge"
-    ShFatArrow => "FatArrow"
-    ShArrow => "Arrow"
-    ShColon => "Colon"
-    ShComma => "Comma"
-    ShDot => "Dot"
-    ShDotDot => "DotDot"
-    ShEq => "Eq"
-    ShEqEq => "EqEq"
-    ShNe => "Ne"
-    ShPlus => "Plus"
-    ShMinus => "Minus"
-    ShStar => "Star"
-    ShSlash => "Slash"
-    ShPercent => "Percent"
-    ShBang => "Bang"
-    ShAnd => "And"
-    ShOr => "Or"
-    ShQuestion => "Question"
-    ShNullCoalesce => "NullCoalesce"
-    ShCaret => "Caret"
-    ShPipe => "Pipe"
-    ShPipeArrow => "PipeArrow"
-    ShLitStr => "LitStr"
-    ShLitInt => "LitInt"
-    ShLitFloat => "LitFloat"
-    ShIdent => "Ident"
-    ShStrBegin => "StrBegin"
-    ShStrMid => "StrMid"
-    ShStrEnd => "StrEnd"
-    ShNewline => "Newline"
-    ShEof => "Eof"
-    ShUnknown => "Unknown"
+    v1.std.core.ShKeyword => "keyword"
+    v1.std.core.ShLBrace => "LBrace"
+    v1.std.core.ShRBrace => "RBrace"
+    v1.std.core.ShLParen => "LParen"
+    v1.std.core.ShRParen => "RParen"
+    v1.std.core.ShLBracket => "LBracket"
+    v1.std.core.ShRBracket => "RBracket"
+    v1.std.core.ShLt => "Lt"
+    v1.std.core.ShGt => "Gt"
+    v1.std.core.ShLe => "Le"
+    v1.std.core.ShGe => "Ge"
+    v1.std.core.ShFatArrow => "FatArrow"
+    v1.std.core.ShArrow => "Arrow"
+    v1.std.core.ShColon => "Colon"
+    v1.std.core.ShComma => "Comma"
+    v1.std.core.ShDot => "Dot"
+    v1.std.core.ShDotDot => "DotDot"
+    v1.std.core.ShEq => "Eq"
+    v1.std.core.ShEqEq => "EqEq"
+    v1.std.core.ShNe => "Ne"
+    v1.std.core.ShPlus => "Plus"
+    v1.std.core.ShMinus => "Minus"
+    v1.std.core.ShStar => "Star"
+    v1.std.core.ShSlash => "Slash"
+    v1.std.core.ShPercent => "Percent"
+    v1.std.core.ShBang => "Bang"
+    v1.std.core.ShAnd => "And"
+    v1.std.core.ShOr => "Or"
+    v1.std.core.ShQuestion => "Question"
+    v1.std.core.ShNullCoalesce => "NullCoalesce"
+    v1.std.core.ShCaret => "Caret"
+    v1.std.core.ShPipe => "Pipe"
+    v1.std.core.ShPipeArrow => "PipeArrow"
+    v1.std.core.ShLitStr => "LitStr"
+    v1.std.core.ShLitInt => "LitInt"
+    v1.std.core.ShLitFloat => "LitFloat"
+    v1.std.core.ShIdent => "Ident"
+    v1.std.core.ShStrBegin => "StrBegin"
+    v1.std.core.ShStrMid => "StrMid"
+    v1.std.core.ShStrEnd => "StrEnd"
+    v1.std.core.ShNewline => "Newline"
+    v1.std.core.ShEof => "Eof"
+    v1.std.core.ShUnknown => "Unknown"
   }
 }
 
@@ -778,7 +778,7 @@ fn eat(tokens: TokenStream, expected: ExpectedToken) -> EatResult {
 
 fn parser_result_base_var(expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   match expr.expr_data {
-    ExprFieldAccess =>
+    v1.std.core.ExprFieldAccess =>
       match expr.children |> first {
         Present { value: base } =>
           match base.expr_data {
@@ -813,7 +813,7 @@ fn parser_helper_state_arg_expr(call_node: v1.std.core.Node, source_indices: Map
 
 fn parser_progress_flag_var(expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   match expr.expr_data {
-    ExprFieldAccess =>
+    v1.std.core.ExprFieldAccess =>
       let field = v1.std.core.field_access_field_at(texpr: expr, source_indices: source_indices)
       if field == "consumed" || field == "changed" {
         parser_result_base_var(expr: expr, source_indices: source_indices)
@@ -1081,7 +1081,7 @@ fn parsed_occurrence_role_for_node(
   match requested {
     ParsedOccurrenceUnclassified =>
       match node.expr_data {
-        ExprLet =>
+        v1.std.core.ExprLet =>
           ParsedOccurrenceDeclaration { category: std.occurrence_identity.LexicalValueOccurrence }
         v1.std.core.ExprVar { binding_kind: _ } =>
           ParsedOccurrenceReference { category: std.occurrence_identity.LexicalValueOccurrence }
@@ -1091,7 +1091,7 @@ fn parsed_occurrence_role_for_node(
           ParsedOccurrenceReference { category: std.occurrence_identity.MethodOccurrence }
         v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
           ParsedOccurrenceReference { category: std.occurrence_identity.CallableOccurrence }
-        NoExprData =>
+        v1.std.core.NoExprData =>
           match node.body {
             Present { value: _ } =>
               match node.type_annotation {
@@ -1199,14 +1199,14 @@ fn stamp_parsed_node_children(
         head_role: ParsedOccurrenceReference { category: std.occurrence_identity.CallableOccurrence },
         tail_role: ParsedOccurrenceUnclassified
       )
-    ExprLet =>
+    v1.std.core.ExprLet =>
       stamp_parsed_node_list(
         nodes: node.children,
         ancestors: ancestors,
         ctx: ctx,
         role: ParsedOccurrenceUnclassified
       )
-    ExprLambda =>
+    v1.std.core.ExprLambda =>
       stamp_parsed_node_list_with_head_role(
         nodes: node.children,
         ancestors: ancestors,
@@ -1703,26 +1703,26 @@ fn parse_item_by_form(tokens: TokenStream, ctx: ParseContext, form: std.syntax.I
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let tokens = r.tokens
   match form.body_kind {
-    TypeBody => {
+    std.syntax.TypeBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: prefix.err } }
       parse_type_body_from_prefix(prefix: prefix, start_span: start_span)
     }
-    ExprBody => {
+    std.syntax.ExprBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: prefix.err } }
       parse_fn_body_from_prefix(prefix: prefix, start_span: start_span)
     }
-    BlockBody => {
+    std.syntax.BlockBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: prefix.err } }
       parse_block_body_from_prefix(prefix: prefix, start_span: start_span)
     }
-    ServiceBody => parse_service_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
-    ResourceBody => parse_resource_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
-    ValueBody => parse_data_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
+    std.syntax.ServiceBody => parse_service_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
+    std.syntax.ResourceBody => parse_resource_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
+    std.syntax.ValueBody => parse_data_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
     AliasBody => parse_alias_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
-    NoBody => {
+    std.syntax.NoBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: prefix.err } }
       parse_no_body_from_prefix(prefix: prefix, start_span: start_span)
@@ -2976,7 +2976,7 @@ fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: v1.std.co
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: Present { value: r3.expr }, headers: headers)
     } else if fname == v1.std.core.transport_headers_key {
       let h = match r3.expr.expr_data {
-        ExprRecordLit => r3.expr.children
+        v1.std.core.ExprRecordLit => r3.expr.children
         _ => return TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: v1.std.core.make_error_node(diagnostic: v1.std.core.InternalError { message: "transport headers must be a record literal { \"Name\": value, ... }", span: token_span(tok: token_stream_first(stream: tokens)) }, module_name: "") } }
       }
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: h)
@@ -3244,9 +3244,9 @@ fn modifier_to_prop(name: String, span: std.types.SourceSpan) -> v1.std.core.Nod
 
 fn modifiers_to_props(modifiers: List<v1.std.core.OperationModifier>, span: std.types.SourceSpan) -> List<v1.std.core.Node> {
   modifiers |> map(m => match m {
-    Idempotent => modifier_to_prop(name: "idempotent", span: span)
-    Readonly => modifier_to_prop(name: "readonly", span: span)
-    Hermetic => modifier_to_prop(name: "hermetic", span: span)
+    v1.std.core.Idempotent => modifier_to_prop(name: "idempotent", span: span)
+    v1.std.core.Readonly => modifier_to_prop(name: "readonly", span: span)
+    v1.std.core.Hermetic => modifier_to_prop(name: "hermetic", span: span)
   })
 }
 

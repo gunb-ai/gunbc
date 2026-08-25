@@ -3,7 +3,7 @@ module extdeps.cloud.gcp.iam_admin
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "cloud.google.com/iam/docs/reference/rest"
   }
 }
@@ -31,7 +31,7 @@ service gcp.IamAdmin {
 
     idempotent
     transport rest {
-      method: POST,
+      method: v2.std.network.POST,
       path: "/v1/projects/\{project_id\}/serviceAccounts",
       body: { accountId: account_id, serviceAccount: { displayName: display_name } }
     }
@@ -56,7 +56,7 @@ service gcp.IamAdmin {
 
     idempotent
     transport rest {
-      method: POST,
+      method: v2.std.network.POST,
       path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools",
       query: { workloadIdentityPoolId: pool_id },
       body: { displayName: display_name, disabled: false }
@@ -85,7 +85,7 @@ service gcp.IamAdmin {
 
     idempotent
     transport rest {
-      method: POST,
+      method: v2.std.network.POST,
       path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}/providers",
       query: { workloadIdentityPoolProviderId: provider_id },
       body: {

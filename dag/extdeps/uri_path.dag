@@ -3,7 +3,7 @@ module extdeps.uri_path
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.rfc-editor.org/rfc/rfc3986#section-3.3"
   }
 }
@@ -100,9 +100,9 @@ fn match_path_tokens(tokens: List<std.http_path.UrlPathToken>, segs: List<String
             PathNotMatched => PathNotMatched
             PathMatched { params: ps } =>
               match tok {
-                LiteralToken { text: t } =>
+                std.http_path.LiteralToken { text: t } =>
                   if t == seg { PathMatched { params: ps } } else { PathNotMatched }
-                ParamToken { name: n } =>
+                std.http_path.ParamToken { name: n } =>
                   if seg == "" {
                     PathNotMatched
                   } else {

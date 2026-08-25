@@ -1,11 +1,11 @@
 module v2.test.manual.timeseries_passive_map_fold_anchor
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data timeseries_anchor_resistor: v2.std.timeseries_signal.ResistorMap = v2.std.timeseries_signal.ResistorMap {
-  kind: MapStep
-  rating: v2.std.timeseries_signal.ResistorRating { microohms: resistance_micro(1000) }
+  kind: v2.std.timeseries_signal.MapStep
+  rating: v2.std.timeseries_signal.ResistorRating { microohms: v2.std.timeseries_signal.resistance_micro(1000) }
 }
 
 data timeseries_anchor_current: v2.std.timeseries_signal.StepCurrent = v2.std.timeseries_signal.StepCurrent {
@@ -13,36 +13,36 @@ data timeseries_anchor_current: v2.std.timeseries_signal.StepCurrent = v2.std.ti
 }
 
 data timeseries_anchor_capacitor: v2.std.timeseries_signal.CapacitorFold = v2.std.timeseries_signal.CapacitorFold {
-  kind: FoldStep
-  rating: v2.std.timeseries_signal.CapacitorRating { microfarads: capacitance_micro(2) }
+  kind: v2.std.timeseries_signal.FoldStep
+  rating: v2.std.timeseries_signal.CapacitorRating { microfarads: v2.std.timeseries_signal.capacitance_micro(2) }
 }
 
 data timeseries_anchor_cap_initial: v2.std.timeseries_signal.CapacitorState = v2.std.timeseries_signal.CapacitorState {
-  voltage: v2.std.timeseries_signal.StepPotentialDifference { microvolts: voltage(0) }
-  charge_microcoulombs: charge_micro(0)
+  voltage: v2.std.timeseries_signal.StepPotentialDifference { microvolts: v2.std.timeseries_signal.voltage(0) }
+  charge_microcoulombs: v2.std.timeseries_signal.charge_micro(0)
 }
 
 data timeseries_anchor_inductor: v2.std.timeseries_signal.InductorFold = v2.std.timeseries_signal.InductorFold {
-  kind: FoldStep
-  rating: v2.std.timeseries_signal.InductorRating { microhenries: inductance_micro(2) }
+  kind: v2.std.timeseries_signal.FoldStep
+  rating: v2.std.timeseries_signal.InductorRating { microhenries: v2.std.timeseries_signal.inductance_micro(2) }
 }
 
 data timeseries_anchor_ind_initial: v2.std.timeseries_signal.InductorState = v2.std.timeseries_signal.InductorState {
   current: v2.std.timeseries_signal.StepCurrent { microamperes: v2.std.timeseries_signal.current(0) }
-  flux_microwebers: flux_micro(0)
+  flux_microwebers: v2.std.timeseries_signal.flux_micro(0)
 }
 
 data timeseries_anchor_voltage: v2.std.timeseries_signal.StepBranchVoltage = v2.std.timeseries_signal.StepBranchVoltage {
-  difference: v2.std.timeseries_signal.StepPotentialDifference { microvolts: voltage(4) }
+  difference: v2.std.timeseries_signal.StepPotentialDifference { microvolts: v2.std.timeseries_signal.voltage(4) }
 }
 
 data timeseries_anchor_dt: v2.std.timeseries_signal.TimeStep = v2.std.timeseries_signal.TimeStep {
-  dt_microseconds: duration_micro(1000)
+  dt_microseconds: v2.std.timeseries_signal.duration_micro(1000)
 }
 
 data timeseries_anchor_tick0: v2.std.timeseries_signal.TimeSeriesSample = v2.std.timeseries_signal.TimeSeriesSample {
-  tick: Zero
-  microvolts: voltage(0)
+  tick: v2.std.nat.Zero
+  microvolts: v2.std.timeseries_signal.voltage(0)
 }
 
 data timeseries_anchor_signal: v2.std.timeseries_signal.TimeSeriesSignal = std.algebra.Cons {
@@ -50,55 +50,55 @@ data timeseries_anchor_signal: v2.std.timeseries_signal.TimeSeriesSignal = std.a
   tail: std.algebra.Empty
 }
 
-test fn timeseries_anchor_resistor_map_holds() -> v2.std.logic.Bool {
-  let mapped = resistor_map_voltage(
+test fn timeseries_anchor_resistor_map_holds() -> Bool {
+  let mapped = v2.std.timeseries_signal.resistor_map_voltage(
     element: timeseries_anchor_resistor,
     current: timeseries_anchor_current,
   )
-  voltage_count(mapped.difference.microvolts) == 2000
+  v2.std.timeseries_signal.voltage_count(mapped.difference.microvolts) == 2000
 }
 
-test fn timeseries_signed_magnitude_resistor_map_holds() -> v2.std.logic.Bool {
-  let mapped = resistor_map_voltage(
+test fn timeseries_signed_magnitude_resistor_map_holds() -> Bool {
+  let mapped = v2.std.timeseries_signal.resistor_map_voltage(
     element: v2.std.timeseries_signal.ResistorMap {
-      kind: MapStep
-      rating: v2.std.timeseries_signal.ResistorRating { microohms: resistance_micro(1000) }
+      kind: v2.std.timeseries_signal.MapStep
+      rating: v2.std.timeseries_signal.ResistorRating { microohms: v2.std.timeseries_signal.resistance_micro(1000) }
     },
     current: v2.std.timeseries_signal.StepCurrent { microamperes: v2.std.timeseries_signal.current(-3) },
   )
-  voltage_count(mapped.difference.microvolts) == -3000
+  v2.std.timeseries_signal.voltage_count(mapped.difference.microvolts) == -3000
 }
 
 data timeseries_signed_cap_initial_positive: v2.std.timeseries_signal.CapacitorState = v2.std.timeseries_signal.CapacitorState {
-  voltage: v2.std.timeseries_signal.StepPotentialDifference { microvolts: voltage(500) }
-  charge_microcoulombs: charge_micro(1000)
+  voltage: v2.std.timeseries_signal.StepPotentialDifference { microvolts: v2.std.timeseries_signal.voltage(500) }
+  charge_microcoulombs: v2.std.timeseries_signal.charge_micro(1000)
 }
 
-test fn timeseries_signed_magnitude_capacitor_fold_holds() -> v2.std.logic.Bool {
-  match capacitor_fold_step(
+test fn timeseries_signed_magnitude_capacitor_fold_holds() -> Bool {
+  match v2.std.timeseries_signal.capacitor_fold_step(
     element: timeseries_anchor_capacitor,
     state: timeseries_signed_cap_initial_positive,
     current: v2.std.timeseries_signal.StepCurrent { microamperes: v2.std.timeseries_signal.current(-2) },
     dt: timeseries_anchor_dt,
   ) {
-    Accepted { value: stepped, diagnostics: _ } =>
-      charge_micro_count(stepped.charge_microcoulombs) == -1000
-        && voltage_count(stepped.voltage.microvolts) == -500
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: stepped, diagnostics: _ } =>
+      v2.std.timeseries_signal.charge_micro_count(stepped.charge_microcoulombs) == -1000
+        && v2.std.timeseries_signal.voltage_count(stepped.voltage.microvolts) == -500
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn timeseries_anchor_capacitor_fold_holds() -> v2.std.logic.Bool {
-  match capacitor_fold_step(
+test fn timeseries_anchor_capacitor_fold_holds() -> Bool {
+  match v2.std.timeseries_signal.capacitor_fold_step(
     element: timeseries_anchor_capacitor,
     state: timeseries_anchor_cap_initial,
     current: timeseries_anchor_current,
     dt: timeseries_anchor_dt,
   ) {
-    Accepted { value: stepped, diagnostics: _ } =>
-      charge_micro_count(stepped.charge_microcoulombs) == 2000
-        && voltage_count(stepped.voltage.microvolts) == 1000
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: stepped, diagnostics: _ } =>
+      v2.std.timeseries_signal.charge_micro_count(stepped.charge_microcoulombs) == 2000
+        && v2.std.timeseries_signal.voltage_count(stepped.voltage.microvolts) == 1000
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -115,54 +115,54 @@ data timeseries_anchor_current_pair: List<v2.std.timeseries_signal.StepCurrent> 
   tail: std.algebra.Cons { head: timeseries_anchor_current_high, tail: std.algebra.Empty }
 }
 
-test fn timeseries_anchor_capacitor_fold_chronological_holds() -> v2.std.logic.Bool {
-  match fold_capacitor_transient(
+test fn timeseries_anchor_capacitor_fold_chronological_holds() -> Bool {
+  match v2.std.timeseries_signal.fold_capacitor_transient(
     element: timeseries_anchor_capacitor,
     initial: timeseries_anchor_cap_initial,
     currents: timeseries_anchor_current_pair,
     dt: timeseries_anchor_dt,
   ) {
-    Accepted { value: stepped, diagnostics: _ } =>
-      voltage_count(stepped.voltage.microvolts) == 3000
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: stepped, diagnostics: _ } =>
+      v2.std.timeseries_signal.voltage_count(stepped.voltage.microvolts) == 3000
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 data timeseries_anchor_cap_zero_rating: v2.std.timeseries_signal.CapacitorFold = v2.std.timeseries_signal.CapacitorFold {
-  kind: FoldStep
-  rating: v2.std.timeseries_signal.CapacitorRating { microfarads: capacitance_micro(0) }
+  kind: v2.std.timeseries_signal.FoldStep
+  rating: v2.std.timeseries_signal.CapacitorRating { microfarads: v2.std.timeseries_signal.capacitance_micro(0) }
 }
 
-test fn timeseries_anchor_capacitor_zero_rating_rejects() -> v2.std.logic.Bool {
-  match capacitor_fold_step(
+test fn timeseries_anchor_capacitor_zero_rating_rejects() -> Bool {
+  match v2.std.timeseries_signal.capacitor_fold_step(
     element: timeseries_anchor_cap_zero_rating,
     state: timeseries_anchor_cap_initial,
     current: timeseries_anchor_current,
     dt: timeseries_anchor_dt,
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-test fn timeseries_anchor_inductor_fold_holds() -> v2.std.logic.Bool {
-  match inductor_fold_step(
+test fn timeseries_anchor_inductor_fold_holds() -> Bool {
+  match v2.std.timeseries_signal.inductor_fold_step(
     element: timeseries_anchor_inductor,
     state: timeseries_anchor_ind_initial,
     voltage: timeseries_anchor_voltage,
     dt: timeseries_anchor_dt,
   ) {
-    Accepted { value: stepped, diagnostics: _ } =>
-      flux_micro_count(stepped.flux_microwebers) == 4000
-        && current_count(stepped.current.microamperes) == 2000
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: stepped, diagnostics: _ } =>
+      v2.std.timeseries_signal.flux_micro_count(stepped.flux_microwebers) == 4000
+        && v2.std.timeseries_signal.current_count(stepped.current.microamperes) == 2000
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 data claim_timeseries_passive_map_fold_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/timeseries_passive_map_fold_anchor: S1 map/fold passives compile",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: timeseries_anchor_resistor,
   expected_value: timeseries_anchor_resistor,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }

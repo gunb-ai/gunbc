@@ -10,27 +10,27 @@ module dag.test.claim.lifecycle_survivor_scan_witness
 // survivors, and zero is exactly what a predicate selecting nothing would also report, so
 // the predicate itself has to be shown to discriminate. These rows run the SAME function
 // production filters with, not a re-spelling of it.
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // Planted RED: the exact shape the migration removed must still be SELECTED.
 test fn planted_raw_survivor_is_selected() -> Bool {
-  fact_is_raw_lifecycle_survivor(f: planted_raw_survivor)
+  gunbc.lifecycle_survivor_scan.fact_is_raw_lifecycle_survivor(f: gunbc.lifecycle_survivor_scan.planted_raw_survivor)
 }
 
 // NonEmptyStr is not a hole: a refined string is still raw prose at this grain.
 test fn planted_nonempty_str_survivor_is_selected() -> Bool {
-  fact_is_raw_lifecycle_survivor(f: planted_nonempty_str_survivor)
+  gunbc.lifecycle_survivor_scan.fact_is_raw_lifecycle_survivor(f: gunbc.lifecycle_survivor_scan.planted_nonempty_str_survivor)
 }
 
 // The migrated form must NOT be selected, or the gate would red on the migration it exists
 // to confirm.
 test fn planted_migrated_control_is_not_selected() -> Bool {
-  !fact_is_raw_lifecycle_survivor(f: planted_migrated_control)
+  !gunbc.lifecycle_survivor_scan.fact_is_raw_lifecycle_survivor(f: gunbc.lifecycle_survivor_scan.planted_migrated_control)
 }
 
 // Discriminating: a predicate rejecting every String declaration would satisfy the control
 // above and still be wrong. This one is rejected on the NAME axis while the two survivors
 // above are accepted on it, so both axes are shown to carry.
 test fn planted_ordinary_string_note_is_not_selected() -> Bool {
-  !fact_is_raw_lifecycle_survivor(f: planted_ordinary_string_note)
+  !gunbc.lifecycle_survivor_scan.fact_is_raw_lifecycle_survivor(f: gunbc.lifecycle_survivor_scan.planted_ordinary_string_note)
 }

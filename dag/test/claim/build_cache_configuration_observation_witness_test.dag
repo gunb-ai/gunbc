@@ -1,110 +1,111 @@
 module test.claim.build_cache_configuration_observation_witness
 
+
 data configuration_observation_witness_note: String = "THE DISCRIMINATING PAIRS protect the distinction the carriers exist to express. A successful process-environment read with no assignment is positive evidence that the setting is unset; an unavailable read says the host never answered. Collapsing them to an Option would make the empty-observation narrow writable. The subject-binding witness separately proves the observations retain both which of two same-implementation instances was read and which endpoint-owning process supplied the environment, so a session server's 50 GiB setting cannot stand in for the CI server on the same host. The suffixed-capacity control keeps configured text representable without fabricating its byte magnitude."
 
 fn owner_fixture(pid: std.nat.Nat) -> gunbc.build_cache_instance.ProcessIdentity {
   gunbc.build_cache_instance.ProcessIdentity {
-    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
+    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr,
     pid: pid,
-    start_time: "79870020" as NonEmptyStr,
+    start_time: "79870020" as std.types.NonEmptyStr,
   }
 }
 
 test fn storage_unset_and_storage_unavailable_are_distinct() -> Bool {
-  let instance = ci_cache_instance(host: "srv1")
-  let unset = BuildCacheStorageObserved {
+  let instance = gunbc.build_cache_instance.ci_cache_instance(host: "srv1")
+  let unset = gunbc.build_cache_instance.BuildCacheStorageObserved {
     instance: instance,
     owner: owner_fixture(pid: 3975946),
-    configuration: BuildCacheStorageRootUnset,
+    configuration: gunbc.build_cache_instance.BuildCacheStorageRootUnset,
   }
-  let unavailable = BuildCacheStorageObservationUnavailable {
+  let unavailable = gunbc.build_cache_instance.BuildCacheStorageObservationUnavailable {
     instance: instance,
     owner: owner_fixture(pid: 3975946),
-    detail: "/proc owner environment read failed" as NonEmptyStr,
+    detail: "/proc owner environment read failed" as std.types.NonEmptyStr,
   }
   match unset {
-    BuildCacheStorageObserved { instance: _, owner: _, configuration: BuildCacheStorageRootUnset } =>
+    gunbc.build_cache_instance.BuildCacheStorageObserved { instance: _, owner: _, configuration: gunbc.build_cache_instance.BuildCacheStorageRootUnset } =>
       match unavailable {
-        BuildCacheStorageObservationUnavailable { instance: _, owner: _, detail: _ } => true
-        BuildCacheStorageObserved { instance: _, owner: _, configuration: _ } => false
+        gunbc.build_cache_instance.BuildCacheStorageObservationUnavailable { instance: _, owner: _, detail: _ } => true
+        gunbc.build_cache_instance.BuildCacheStorageObserved { instance: _, owner: _, configuration: _ } => false
       }
-    BuildCacheStorageObserved { instance: _, owner: _, configuration: BuildCacheStorageRootConfigured { root: _ } } => false
-    BuildCacheStorageObservationUnavailable { instance: _, owner: _, detail: _ } => false
+    gunbc.build_cache_instance.BuildCacheStorageObserved { instance: _, owner: _, configuration: gunbc.build_cache_instance.BuildCacheStorageRootConfigured { root: _ } } => false
+    gunbc.build_cache_instance.BuildCacheStorageObservationUnavailable { instance: _, owner: _, detail: _ } => false
   }
 }
 
 test fn capacity_unset_and_capacity_unavailable_are_distinct() -> Bool {
-  let instance = ci_cache_instance(host: "srv1")
-  let unset = BuildCacheCapacityObserved {
+  let instance = gunbc.build_cache_instance.ci_cache_instance(host: "srv1")
+  let unset = gunbc.build_cache_instance.BuildCacheCapacityObserved {
     instance: instance,
     owner: owner_fixture(pid: 3975946),
-    configuration: BuildCacheCapacityUnset,
+    configuration: gunbc.build_cache_instance.BuildCacheCapacityUnset,
   }
-  let unavailable = BuildCacheCapacityObservationUnavailable {
+  let unavailable = gunbc.build_cache_instance.BuildCacheCapacityObservationUnavailable {
     instance: instance,
     owner: owner_fixture(pid: 3975946),
-    detail: "/proc owner environment read failed" as NonEmptyStr,
+    detail: "/proc owner environment read failed" as std.types.NonEmptyStr,
   }
   match unset {
-    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityUnset } =>
+    gunbc.build_cache_instance.BuildCacheCapacityObserved { instance: _, owner: _, configuration: gunbc.build_cache_instance.BuildCacheCapacityUnset } =>
       match unavailable {
-        BuildCacheCapacityObservationUnavailable { instance: _, owner: _, detail: _ } => true
-        BuildCacheCapacityObserved { instance: _, owner: _, configuration: _ } => false
+        gunbc.build_cache_instance.BuildCacheCapacityObservationUnavailable { instance: _, owner: _, detail: _ } => true
+        gunbc.build_cache_instance.BuildCacheCapacityObserved { instance: _, owner: _, configuration: _ } => false
       }
-    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityConfigured { capacity: _ } } => false
-    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityConfiguredUngrounded { configured_text: _ } } => false
-    BuildCacheCapacityObservationUnavailable { instance: _, owner: _, detail: _ } => false
+    gunbc.build_cache_instance.BuildCacheCapacityObserved { instance: _, owner: _, configuration: gunbc.build_cache_instance.BuildCacheCapacityConfigured { capacity: _ } } => false
+    gunbc.build_cache_instance.BuildCacheCapacityObserved { instance: _, owner: _, configuration: gunbc.build_cache_instance.BuildCacheCapacityConfiguredUngrounded { configured_text: _ } } => false
+    gunbc.build_cache_instance.BuildCacheCapacityObservationUnavailable { instance: _, owner: _, detail: _ } => false
   }
 }
 
 test fn storage_observation_is_bound_to_the_deployed_instance() -> Bool {
-  let observed = BuildCacheStorageObserved {
-    instance: session_cache_instance(host: "srv1"),
+  let observed = gunbc.build_cache_instance.BuildCacheStorageObserved {
+    instance: gunbc.build_cache_instance.session_cache_instance(host: "srv1"),
     owner: owner_fixture(pid: 3975946),
-    configuration: BuildCacheStorageRootConfigured {
-      root: "/var/lib/ctrl/sccache" as NonEmptyStr,
+    configuration: gunbc.build_cache_instance.BuildCacheStorageRootConfigured {
+      root: "/var/lib/ctrl/sccache" as std.types.NonEmptyStr,
     },
   }
   match observed {
-    BuildCacheStorageObserved { instance: instance, owner: owner, configuration: BuildCacheStorageRootConfigured { root: root } } =>
+    gunbc.build_cache_instance.BuildCacheStorageObserved { instance: instance, owner: owner, configuration: gunbc.build_cache_instance.BuildCacheStorageRootConfigured { root: root } } =>
       (instance.identity.instance_name as String) == "sccache-session"
         && owner.pid == 3975946
         && (root as String) == (instance.intended_storage as String)
-    BuildCacheStorageObserved { instance: _, owner: _, configuration: BuildCacheStorageRootUnset } => false
-    BuildCacheStorageObservationUnavailable { instance: _, owner: _, detail: _ } => false
+    gunbc.build_cache_instance.BuildCacheStorageObserved { instance: _, owner: _, configuration: gunbc.build_cache_instance.BuildCacheStorageRootUnset } => false
+    gunbc.build_cache_instance.BuildCacheStorageObservationUnavailable { instance: _, owner: _, detail: _ } => false
   }
 }
 
 test fn capacity_observation_carries_a_typed_byte_size() -> Bool {
-  let observed = BuildCacheCapacityObserved {
-    instance: session_cache_instance(host: "srv1"),
+  let observed = gunbc.build_cache_instance.BuildCacheCapacityObserved {
+    instance: gunbc.build_cache_instance.session_cache_instance(host: "srv1"),
     owner: owner_fixture(pid: 3975946),
-    configuration: BuildCacheCapacityConfigured { capacity: byte_size(count: 53687091200) },
+    configuration: gunbc.build_cache_instance.BuildCacheCapacityConfigured { capacity: std.measure.byte_size(count: 53687091200) },
   }
   match observed {
-    BuildCacheCapacityObserved { instance: instance, owner: owner, configuration: BuildCacheCapacityConfigured { capacity: capacity } } =>
+    gunbc.build_cache_instance.BuildCacheCapacityObserved { instance: instance, owner: owner, configuration: gunbc.build_cache_instance.BuildCacheCapacityConfigured { capacity: capacity } } =>
       (instance.identity.instance_name as String) == "sccache-session"
         && owner.pid == 3975946
-        && byte_size_count(b: capacity) == 53687091200
-    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityConfiguredUngrounded { configured_text: _ } } => false
-    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityUnset } => false
-    BuildCacheCapacityObservationUnavailable { instance: _, owner: _, detail: _ } => false
+        && std.measure.byte_size_count(b: capacity) == 53687091200
+    gunbc.build_cache_instance.BuildCacheCapacityObserved { instance: _, owner: _, configuration: gunbc.build_cache_instance.BuildCacheCapacityConfiguredUngrounded { configured_text: _ } } => false
+    gunbc.build_cache_instance.BuildCacheCapacityObserved { instance: _, owner: _, configuration: gunbc.build_cache_instance.BuildCacheCapacityUnset } => false
+    gunbc.build_cache_instance.BuildCacheCapacityObservationUnavailable { instance: _, owner: _, detail: _ } => false
   }
 }
 
 test fn suffixed_capacity_stays_text_until_its_unit_grammar_is_grounded() -> Bool {
-  let observed = BuildCacheCapacityObserved {
-    instance: session_cache_instance(host: "srv1"),
+  let observed = gunbc.build_cache_instance.BuildCacheCapacityObserved {
+    instance: gunbc.build_cache_instance.session_cache_instance(host: "srv1"),
     owner: owner_fixture(pid: 3975946),
-    configuration: BuildCacheCapacityConfiguredUngrounded {
-      configured_text: "50G" as NonEmptyStr,
+    configuration: gunbc.build_cache_instance.BuildCacheCapacityConfiguredUngrounded {
+      configured_text: "50G" as std.types.NonEmptyStr,
     },
   }
   match observed {
-    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityConfiguredUngrounded { configured_text: text } } =>
+    gunbc.build_cache_instance.BuildCacheCapacityObserved { instance: _, owner: _, configuration: gunbc.build_cache_instance.BuildCacheCapacityConfiguredUngrounded { configured_text: text } } =>
       (text as String) == "50G"
-    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityConfigured { capacity: _ } } => false
-    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityUnset } => false
-    BuildCacheCapacityObservationUnavailable { instance: _, owner: _, detail: _ } => false
+    gunbc.build_cache_instance.BuildCacheCapacityObserved { instance: _, owner: _, configuration: gunbc.build_cache_instance.BuildCacheCapacityConfigured { capacity: _ } } => false
+    gunbc.build_cache_instance.BuildCacheCapacityObserved { instance: _, owner: _, configuration: gunbc.build_cache_instance.BuildCacheCapacityUnset } => false
+    gunbc.build_cache_instance.BuildCacheCapacityObservationUnavailable { instance: _, owner: _, detail: _ } => false
   }
 }

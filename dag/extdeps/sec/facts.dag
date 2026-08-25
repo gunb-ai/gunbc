@@ -4,7 +4,7 @@ module extdeps.sec.facts
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.sec.gov/edgar/sec-api-documentation"
   }
 }
@@ -19,7 +19,7 @@ fn usd_whole_dollars(count: std.nat.Nat) -> UsdWholeDollars {
 }
 
 fn usd_whole_dollars_count(m: UsdWholeDollars) -> std.nat.Nat {
-  measure_count(m)
+  std.measure.measure_count(m)
 }
 
 // XBRL facts are either duration-typed (start and end bound a flow, e.g. income-statement lines) or instant-typed (a single as-of date, e.g. balance and commitment amounts; the upstream companyconcept row simply omits start). The period is a closed sum so a half-specified period is unwritable (DESIGN section 5, correctness by construction) rather than two optional date fields.

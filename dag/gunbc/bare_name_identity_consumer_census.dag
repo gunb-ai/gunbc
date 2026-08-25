@@ -221,7 +221,7 @@ data bare_name_identity_consumers: List<BareNameConsumer> = [
 // change detector DESIGN section 5 rejects. Every number this carrier reports is a fold over the
 // rows, so adding a row moves the number and no author has to remember to.
 
-fn consumer_identity_was_available(c: BareNameConsumer) -> std.types.Bool {
+fn consumer_identity_was_available(c: BareNameConsumer) -> Bool {
   match c.identity {
     AvailableAtSite { holder_expression: _, adjacent_consulting_call: _ } => true
     AvailableUpstreamNotThreaded { nearest_holder: _ } => true
@@ -229,7 +229,7 @@ fn consumer_identity_was_available(c: BareNameConsumer) -> std.types.Bool {
   }
 }
 
-fn consumer_has_unused_identity_sibling(c: BareNameConsumer) -> std.types.Bool {
+fn consumer_has_unused_identity_sibling(c: BareNameConsumer) -> Bool {
   match c.sibling {
     SiblingPresentButOrdered { sibling: _, precedence: _ } => true
     SiblingPresentButUnreachable { sibling: _, why_unreachable: _ } => true
@@ -237,7 +237,7 @@ fn consumer_has_unused_identity_sibling(c: BareNameConsumer) -> std.types.Bool {
   }
 }
 
-fn consumer_answers_wrongly_today(c: BareNameConsumer) -> std.types.Bool {
+fn consumer_answers_wrongly_today(c: BareNameConsumer) -> Bool {
   match c.outcome {
     SilentWrongProviderAnswer { what_is_emitted: _ } => true
     AmbiguityDetectedThenAnswered { sentinel: _, what_is_emitted: _ } => true
@@ -246,7 +246,7 @@ fn consumer_answers_wrongly_today(c: BareNameConsumer) -> std.types.Bool {
   }
 }
 
-fn consumer_reach_is_measured(c: BareNameConsumer) -> std.types.Bool {
+fn consumer_reach_is_measured(c: BareNameConsumer) -> Bool {
   match c.reach {
     ReachedByMeasuredPopulation { measurement: _ } => true
     UnreachableByConstantBody { body_answer: _ } => false

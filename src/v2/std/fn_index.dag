@@ -28,6 +28,6 @@ fn fn_arrow_decl_facts_live() -> List<FnArrowDecl> {
   fn_arrow_decl_facts_live()
 }
 
-fn fn_arrow_decl_substrate_is_whole_tree() -> v2.std.logic.Bool {
+fn fn_arrow_decl_substrate_is_whole_tree() -> Bool {
   fn_arrow_decl_substrate_is_whole_tree()
 }

@@ -1,7 +1,7 @@
 module test.claim.self_host_artifact_materialization_real_execution_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data real_execution_home_doc: String = "Wet execution witness for the artifact axis: it writes a real minimal crate into a real mktemp directory, runs a REAL cargo build through cargo.Build.BuildManifestMessages, decodes cargo's own JSON message stream, and digests the file cargo named with a REAL sha512sum. shell.Mktemp.Dir, Filesystem.Write and cargo.Build.* have no mock_response, so the hermetic discovery corpus refuses this file by construction; it is excluded from discovery (gunbc.ci_layer_roots witness_exclusion_frontier) and enrolled in bin_witness_wet_entries, same lane as the other real-execution witnesses. The pure decision folds are witnessed hermetically on every PR in test.claim.self_host_artifact_materialization_witness — this file adds only what a fixture cannot supply: that the flag cargo is actually invoked with produces the stream the decode expects, and that the path in that stream is a file sha512sum can read."
 
@@ -18,7 +18,7 @@ data mktemp_path_is_untrimmed_note: String = "shell.Mktemp.Dir models path as Fi
 data digest_identity_claim_is_permanent_note: String = "the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file DOES NOT RETIRE, and this note exists because it will one day look redundant. Today it is the only claim in this file that fails when the producer digests the WRONG REAL FILE: materialization, the carried path, and the refusal arms all stay green under that mutation, because none of them is a function of which file was read. ObservedArtifactDigest is sole_constructor over a validated digest and carries no referent, so wrong-file is writable at the mint and invisible to every consumer downstream of it — forgery-from-text is closed, forgery-from-a-different-real-file is not. RUNG, HONESTLY: mechanically preventable, and this claim IS the mechanism — not a backstop to a construction wall, because no such wall exists here. Three were proposed and all three were measured and abandoned, which is why the rung is stated rather than promised. Sealing the mint to an observation binding digest to subject would make 39 hermetic claims unconstructible across two lanes; sealing this producer's input is worse, because Sha512FileObservation is an extdeps type with 35 construction sites and two production consumers (gunbc.package_delivery, gunbc.provider_wire_evidence) that have no stake in this lane and would pay for a guarantee they did not ask for; and a narrower sealed observation closes the production hole only to require an admitted test-construction path, which is the escape hatch DESIGN §5 forbids wearing a better name. The circle is not an accident of these carriers: wrong-file is unforgeable only if an observation cannot be hand-authored, and every hermetic arm exists BECAUSE it can be. NEXT-RUNG TRIGGER, and it is the repository's already-tracked one rather than a coined local one: DESIGN §4b unforgeable construction for carrier-borne invariants, whose candidate wall sole_constructor is recorded as UNVERIFIED for generic refinement carriers and construction forms. This lane is downstream of that wall, not a reason for it. If it lands, this claim becomes the executed evidence that the higher rung stays real (§4b dissolution-on-climb: production machinery dissolves, discriminating evidence stays enrolled) — deleting it then would recreate specification-without-execution one rung up."
 
 type BuiltFixture
-  = BuiltFixture { outcome: gunbc.self_host_artifact_materialization.ArtifactMaterializationOutcome }
+  = BuiltFixture { outcome: ArtifactMaterializationOutcome }
   | FixtureSetupRefused { cause: String }
 
 fn build_fixture_once(target_name: String) -> BuiltFixture {
@@ -30,7 +30,7 @@ fn build_fixture_from_source(target_name: String, main_source: String) -> BuiltF
   if !dir.success {
     FixtureSetupRefused { cause: "mktemp -d failed" }
   } else {
-    let root = std.algebra.trim(dir.path as String)
+    let root = trim(dir.path as String)
     let manifest = "{root}/Cargo.toml"
     let main_rs = "{root}/main.rs"
     let wrote_manifest = Filesystem.Write(path: manifest, content: crate_manifest)
@@ -39,7 +39,7 @@ fn build_fixture_from_source(target_name: String, main_source: String) -> BuiltF
       FixtureSetupRefused { cause: "fixture crate write failed" }
     } else {
       BuiltFixture {
-        outcome: gunbc.self_host_artifact_materialization.materialize_artifact_wet(
+        outcome: materialize_artifact_wet(
           workdir: root,
           manifest_path: manifest,
           target_dir: "{root}/target",
@@ -55,7 +55,7 @@ fn observed_path_or_empty(built: BuiltFixture) -> String {
   match built {
     FixtureSetupRefused { cause: _ } => ""
     BuiltFixture { outcome: o } =>
-      match gunbc.self_host_artifact_materialization.materialized_executable(outcome: o) {
+      match materialized_executable(outcome: o) {
         Present { value: p } => p
         Absent => ""
       }
@@ -66,9 +66,9 @@ fn materialized(built: BuiltFixture) -> Bool {
   match built {
     FixtureSetupRefused { cause: _ } => false
     BuiltFixture { outcome: o } =>
-      match gunbc.self_host_artifact_materialization.artifact_identity_of(outcome: o) {
-        ArtifactMaterialized { digest: _ } => true
-        ArtifactNotMaterialized => false
+      match artifact_identity_of(outcome: o) {
+        v2.compiler.self_host.generation.ArtifactMaterialized { digest: _ } => true
+        v2.compiler.self_host.generation.ArtifactNotMaterialized => false
       }
   }
 }
@@ -172,7 +172,7 @@ fn build_twice_in_one_dir(first_source: String, second_source: String) -> TwoBui
   if !dir.success {
     TwoBuildsSetupRefused { cause: "mktemp -d failed" }
   } else {
-    let root = std.algebra.trim(dir.path as String)
+    let root = trim(dir.path as String)
     let manifest = "{root}/Cargo.toml"
     let main_rs = "{root}/main.rs"
     let wrote_manifest = Filesystem.Write(path: manifest, content: crate_manifest)
@@ -180,8 +180,8 @@ fn build_twice_in_one_dir(first_source: String, second_source: String) -> TwoBui
     if !wrote_manifest.success || !wrote_first.success {
       TwoBuildsSetupRefused { cause: "fixture crate write failed" }
     } else {
-      let first = gunbc.self_host_artifact_materialization.artifact_identity_of(
-        outcome: gunbc.self_host_artifact_materialization.materialize_artifact_wet(
+      let first = artifact_identity_of(
+        outcome: materialize_artifact_wet(
           workdir: root, manifest_path: manifest, target_dir: "{root}/target",
           target_name: fixture_target_name, extra_args: []
         )
@@ -192,8 +192,8 @@ fn build_twice_in_one_dir(first_source: String, second_source: String) -> TwoBui
       } else {
         TwoBuilds {
           first: first,
-          second: gunbc.self_host_artifact_materialization.artifact_identity_of(
-            outcome: gunbc.self_host_artifact_materialization.materialize_artifact_wet(
+          second: artifact_identity_of(
+            outcome: materialize_artifact_wet(
               workdir: root, manifest_path: manifest, target_dir: "{root}/target",
               target_name: fixture_target_name, extra_args: []
             )
@@ -206,8 +206,8 @@ fn build_twice_in_one_dir(first_source: String, second_source: String) -> TwoBui
 
 fn axis_is_materialized(a: v2.compiler.self_host.generation.GeneratedArtifactIdentity) -> Bool {
   match a {
-    ArtifactMaterialized { digest: _ } => true
-    ArtifactNotMaterialized => false
+    v2.compiler.self_host.generation.ArtifactMaterialized { digest: _ } => true
+    v2.compiler.self_host.generation.ArtifactNotMaterialized => false
   }
 }
 
@@ -229,7 +229,7 @@ fn moved_axis_count(both: TwoBuilds) -> Int {
       if !axis_is_materialized(a: f) || !axis_is_materialized(a: s) {
         0 - 1
       } else {
-        length(
+        v2.std.algebra.length(
           xs: v2.compiler.self_host.generation.generation_identity_mismatched_axes(
             left: axis_identity(artifact: f),
             right: axis_identity(artifact: s)

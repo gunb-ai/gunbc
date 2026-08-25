@@ -11,28 +11,28 @@ type LensComplexityClaim {
 data ts_task_complexity_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
   children: [
-    v2.std.node.Edge { label: Positional, target: ts_task_type_alias_emitted() }
+    v2.std.node.Edge { label: v2.std.node.Positional, target: v2.extdeps.languages.typescript.ts_task_type_alias_emitted() }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data ts_task_complexity_claim: LensComplexityClaim = LensComplexityClaim {
   input: ts_task_complexity_input,
   expected_cost: v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: ts_task_complexity_input } },
-  expected_complexity: linear_complexity(
+  expected_complexity: v2.lens.complexity.linear_complexity(
     size_var: v2.lens.cost.SizeVariable { source: ts_task_complexity_input }
   ),
   falsification: v2.std.diagnostic.Diagnostic {
     reason: ^ts_task_complexity_reason,
-    at: v2.std.diagnostic.Textual { file: ^ts_task_complexity_file, extent: WholeFile },
-    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^ts_task_complexity_file, extent: v2.std.diagnostic.WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
   }
 }
 
 fn ts_task_actual_cost() -> Witness<v2.lens.cost.SymbolicCost> {
-  cost_lens(n: ts_task_complexity_input)
+  v2.lens.cost.cost_lens(n: ts_task_complexity_input)
 }
 
 fn ts_task_actual_complexity() -> v2.lens.complexity.ComplexityBound {
-  complexity_lens(n: ts_task_complexity_input)
+  v2.lens.complexity.complexity_lens(n: ts_task_complexity_input)
 }

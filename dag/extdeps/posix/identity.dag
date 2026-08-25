@@ -1,9 +1,9 @@
 module extdeps.posix.identity
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/basedefs/sys_types.h.html"
   }
 }
@@ -37,12 +37,12 @@ type PosixOwnerSpec {
   group: PosixGroupId
 }
 
-// DECODING IS PARTIAL AND SAYS SO. Text that is not a decimal integer yields v2.std.optional.Absent, so a caller
+// DECODING IS PARTIAL AND SAYS SO. Text that is not a decimal integer yields Absent, so a caller
 // must answer for it; the previous shape made "1000", "" and "id: cannot find name for user ID"
 // equally acceptable owners.
 // EMPTY AND NEGATIVE ARE REFUSED HERE RATHER THAN DELEGATED. Measured, not assumed: a witness
 // asserting that empty text does not decode came back FALSE, because integer_lexeme_to_int_optional
-// answers v2.std.optional.Present { value: 0 } for "". Zero is uid 0 -- root -- so an `id` that printed nothing
+// answers Present { value: 0 } for "". Zero is uid 0 -- root -- so an `id` that printed nothing
 // would have decoded to the most privileged principal on the host and been chowned to. The
 // predecessor's String concatenation had the same hole from the other direction (an empty capture
 // produced the owner ":1000"); decoding does not remove a fabrication unless the decoder's own
@@ -55,9 +55,9 @@ fn posix_id_value_from_text(text: String) -> v2.std.optional.Optional<Int> {
   match lexeme == "" {
     true => v2.std.optional.Absent
     false =>
-      match integer_lexeme_to_int_optional(lexeme: lexeme) {
-        Absent => v2.std.optional.Absent
-        Present { value: n } =>
+      match v2.std.integer.integer_lexeme_to_int_optional(lexeme: lexeme) {
+        v2.std.optional.Absent => v2.std.optional.Absent
+        v2.std.optional.Present { value: n } =>
           match n < 0 {
             true => v2.std.optional.Absent
             false => v2.std.optional.Present { value: n }
@@ -68,24 +68,24 @@ fn posix_id_value_from_text(text: String) -> v2.std.optional.Optional<Int> {
 
 fn posix_user_id_from_text(text: String) -> v2.std.optional.Optional<PosixUserId> {
   match posix_id_value_from_text(text: text) {
-    Absent => v2.std.optional.Absent
-    Present { value: n } => v2.std.optional.Present { value: PosixUserId { value: n } }
+    v2.std.optional.Absent => v2.std.optional.Absent
+    v2.std.optional.Present { value: n } => v2.std.optional.Present { value: PosixUserId { value: n } }
   }
 }
 
 fn posix_group_id_from_text(text: String) -> v2.std.optional.Optional<PosixGroupId> {
   match posix_id_value_from_text(text: text) {
-    Absent => v2.std.optional.Absent
-    Present { value: n } => v2.std.optional.Present { value: PosixGroupId { value: n } }
+    v2.std.optional.Absent => v2.std.optional.Absent
+    v2.std.optional.Present { value: n } => v2.std.optional.Present { value: PosixGroupId { value: n } }
   }
 }
 
 fn posix_user_id_text(user: PosixUserId) -> String {
-  integer_nat_to_decimal_string(value: user.value)
+  v2.std.integer.integer_nat_to_decimal_string(value: user.value)
 }
 
 fn posix_group_id_text(group: PosixGroupId) -> String {
-  integer_nat_to_decimal_string(value: group.value)
+  v2.std.integer.integer_nat_to_decimal_string(value: group.value)
 }
 
 fn posix_owner_spec_text(spec: PosixOwnerSpec) -> String {

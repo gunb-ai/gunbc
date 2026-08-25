@@ -1,9 +1,9 @@
 module extdeps.posix.path_ownership
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/chown.html"
   }
 }
@@ -24,7 +24,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type PathOwnershipIntent {
   path: String
-  owner: PosixOwnerSpec
+  owner: extdeps.posix.identity.PosixOwnerSpec
 }
 
 // AN UNOBSERVED OWNER IS NOT AN UNOWNED PATH. `stat` refusing and `stat` reporting a different
@@ -32,15 +32,15 @@ type PathOwnershipIntent {
 // was never asked), the second must. Collapsing them is the empty-observation narrow pointed at a
 // privileged mutation.
 type PathOwnershipObservation
-  = PathOwnerObserved { owner: PosixOwnerSpec }
+  = PathOwnerObserved { owner: extdeps.posix.identity.PosixOwnerSpec }
   | PathOwnerUnobserved { reason: String }
 
 // THE PRE-MUTATION DECISION. Separated from the ensure itself so it is decidable without a host:
 // the whole point of the readback design is that the interesting logic is pure and the effects are
 // three calls at the edges.
 type PathOwnershipDecision
-  = OwnershipAlreadySatisfied { owner: PosixOwnerSpec }
-  | OwnershipMutationRequired { current: PosixOwnerSpec, desired: PosixOwnerSpec }
+  = OwnershipAlreadySatisfied { owner: extdeps.posix.identity.PosixOwnerSpec }
+  | OwnershipMutationRequired { current: extdeps.posix.identity.PosixOwnerSpec, desired: extdeps.posix.identity.PosixOwnerSpec }
   | OwnershipDecisionRefused { reason: String }
 
 // THE MUTATION IS EVIDENCE EVEN THOUGH IT IS NOT AUTHORITY. An earlier revision of this module
@@ -62,14 +62,14 @@ type ChownAttemptObservation
   | ChownReportedFailure
 
 type PathOwnershipEnsureOutcome
-  = PathAlreadyOwned { owner: PosixOwnerSpec }
+  = PathAlreadyOwned { owner: extdeps.posix.identity.PosixOwnerSpec }
   | PathOwnershipConvergedAfterAttempt {
-      owner: PosixOwnerSpec
+      owner: extdeps.posix.identity.PosixOwnerSpec
       attempt: ChownAttemptObservation
     }
   | PathOwnershipEnsureRefused { reason: String }
 
-fn posix_owner_spec_equal(left: PosixOwnerSpec, right: PosixOwnerSpec) -> Bool {
+fn posix_owner_spec_equal(left: extdeps.posix.identity.PosixOwnerSpec, right: extdeps.posix.identity.PosixOwnerSpec) -> Bool {
   left.user.value == right.user.value && left.group.value == right.group.value
 }
 
@@ -77,7 +77,7 @@ fn posix_owner_spec_equal(left: PosixOwnerSpec, right: PosixOwnerSpec) -> Bool {
 // elevation; not performing it is one fewer privileged invocation on the host, and on the common
 // path -- a converge that has already run -- it is the only invocation the ensure would have made.
 fn path_ownership_decision(
-  desired: PosixOwnerSpec,
+  desired: extdeps.posix.identity.PosixOwnerSpec,
   observed: PathOwnershipObservation,
 ) -> PathOwnershipDecision {
   match observed {
@@ -104,7 +104,7 @@ fn path_ownership_decision(
 // the values, not by an arm -- what matters to the caller is that the path is not owned as
 // intended, and what the actuator said is the cause they will look for next.
 fn path_ownership_verdict(
-  desired: PosixOwnerSpec,
+  desired: extdeps.posix.identity.PosixOwnerSpec,
   attempt: ChownAttemptObservation,
   readback: PathOwnershipObservation,
 ) -> PathOwnershipEnsureOutcome {
@@ -124,9 +124,9 @@ fn path_ownership_verdict(
             reason: concat(
               concat(
                 concat("path ownership: after the chown ", chown_attempt_text(attempt: attempt)),
-                concat(" the path is owned by ", posix_owner_spec_text(spec: after)),
+                concat(" the path is owned by ", extdeps.posix.identity.posix_owner_spec_text(spec: after)),
               ),
-              concat(", not ", posix_owner_spec_text(spec: desired)),
+              concat(", not ", extdeps.posix.identity.posix_owner_spec_text(spec: desired)),
             ),
           }
       }

@@ -1,37 +1,38 @@
 module test.claim.host_hygiene_reaper
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data reaper_test_active_slot: gunbc.host_hygiene_reaper.ResidualSlotObservation = gunbc.host_hygiene_reaper.ResidualSlotObservation {
-  unit: "actions-runner@srv1-03.service" as std.types.NonEmptyStr,
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data reaper_test_active_slot: ResidualSlotObservation = ResidualSlotObservation {
+  unit: "actions-runner@srv1-03.service" as NonEmptyStr,
   unit_active_state: Active,
   occupant: CgroupOrdinaryProcesses,
   has_control_override: false,
 }
 
-data reaper_test_dead_slot_empty_no_override: gunbc.host_hygiene_reaper.ResidualSlotObservation = gunbc.host_hygiene_reaper.ResidualSlotObservation {
-  unit: "actions-runner@srv1-06.service" as std.types.NonEmptyStr,
+data reaper_test_dead_slot_empty_no_override: ResidualSlotObservation = ResidualSlotObservation {
+  unit: "actions-runner@srv1-06.service" as NonEmptyStr,
   unit_active_state: Inactive,
   occupant: CgroupEmpty,
   has_control_override: false,
 }
 
-data reaper_test_dead_slot_stale_override: gunbc.host_hygiene_reaper.ResidualSlotObservation = gunbc.host_hygiene_reaper.ResidualSlotObservation {
-  unit: "actions-runner@srv1-07.service" as std.types.NonEmptyStr,
+data reaper_test_dead_slot_stale_override: ResidualSlotObservation = ResidualSlotObservation {
+  unit: "actions-runner@srv1-07.service" as NonEmptyStr,
   unit_active_state: Inactive,
   occupant: CgroupEmpty,
   has_control_override: true,
 }
 
-data reaper_test_dead_slot_ordinary_residue: gunbc.host_hygiene_reaper.ResidualSlotObservation = gunbc.host_hygiene_reaper.ResidualSlotObservation {
-  unit: "actions-runner@srv1-08.service" as std.types.NonEmptyStr,
+data reaper_test_dead_slot_ordinary_residue: ResidualSlotObservation = ResidualSlotObservation {
+  unit: "actions-runner@srv1-08.service" as NonEmptyStr,
   unit_active_state: Inactive,
   occupant: CgroupOrdinaryProcesses,
   has_control_override: true,
 }
 
-data reaper_test_stranded_build_cache_slot: gunbc.host_hygiene_reaper.ResidualSlotObservation = gunbc.host_hygiene_reaper.ResidualSlotObservation {
-  unit: "actions-runner@srv1-10.service" as std.types.NonEmptyStr,
+data reaper_test_stranded_build_cache_slot: ResidualSlotObservation = ResidualSlotObservation {
+  unit: "actions-runner@srv1-10.service" as NonEmptyStr,
   unit_active_state: Failed,
   occupant: CgroupBuildCacheServerOccupant,
   has_control_override: true,
@@ -45,7 +46,7 @@ test fn active_unit_is_never_reaped() -> Bool {
 }
 
 test fn active_unit_refusal_flips_when_unit_goes_inactive() -> Bool {
-  let toggled = gunbc.host_hygiene_reaper.ResidualSlotObservation {
+  let toggled = ResidualSlotObservation {
     unit: reaper_test_active_slot.unit,
     unit_active_state: Inactive,
     occupant: reaper_test_active_slot.occupant,
@@ -102,7 +103,7 @@ test fn guard_discriminates_against_the_naive_widen_sketch() -> Bool {
 }
 
 test fn build_cache_guard_is_not_a_bare_allowlist_it_reads_occupant_structure() -> Bool {
-  let ordinary_on_same_unit = gunbc.host_hygiene_reaper.ResidualSlotObservation {
+  let ordinary_on_same_unit = ResidualSlotObservation {
     unit: reaper_test_stranded_build_cache_slot.unit,
     unit_active_state: reaper_test_stranded_build_cache_slot.unit_active_state,
     occupant: CgroupOrdinaryProcesses,
@@ -147,22 +148,22 @@ test fn exempt_causes_are_counted_not_silently_dropped() -> Bool {
 }
 
 test fn typed_reap_effect_refuses_build_cache_occupant() -> Bool {
-  match gunbc.host_hygiene_reaper_remediate.residual_reap_effect_for(obs: reaper_test_stranded_build_cache_slot, occupant_pids: ["4242" as std.types.NonEmptyStr]) {
-    ReapEffectRefused { unit: _, cause: RefusalBuildCacheServerOccupant { unit: _ } } => true
+  match gunbc.host_hygiene_reaper_remediate.residual_reap_effect_for(obs: reaper_test_stranded_build_cache_slot, occupant_pids: ["4242" as NonEmptyStr]) {
+    gunbc.host_hygiene_reaper_remediate.ReapEffectRefused { unit: _, cause: RefusalBuildCacheServerOccupant { unit: _ } } => true
     _ => false
   }
 }
 
 test fn typed_reap_effect_skips_active_units() -> Bool {
-  match gunbc.host_hygiene_reaper_remediate.residual_reap_effect_for(obs: reaper_test_active_slot, occupant_pids: ["1111" as std.types.NonEmptyStr]) {
-    ReapEffectRefused { unit: _, cause: RefusalUnitActive } => true
+  match gunbc.host_hygiene_reaper_remediate.residual_reap_effect_for(obs: reaper_test_active_slot, occupant_pids: ["1111" as NonEmptyStr]) {
+    gunbc.host_hygiene_reaper_remediate.ReapEffectRefused { unit: _, cause: RefusalUnitActive } => true
     _ => false
   }
 }
 
 test fn typed_reap_effect_removes_only_disabled_overrides_not_the_occupant() -> Bool {
   match gunbc.host_hygiene_reaper_remediate.residual_reap_effect_for(obs: reaper_test_dead_slot_stale_override, occupant_pids: []) {
-    RemoveOverrideDirEffect { unit: u, dir: d } =>
+    gunbc.host_hygiene_reaper_remediate.RemoveOverrideDirEffect { unit: u, dir: d } =>
       u == reaper_test_dead_slot_stale_override.unit
         && d == gunbc.host_hygiene_reaper_observe.host_hygiene_override_dir_for_unit(unit: reaper_test_dead_slot_stale_override.unit)
     _ => false
@@ -170,9 +171,9 @@ test fn typed_reap_effect_removes_only_disabled_overrides_not_the_occupant() -> 
 }
 
 test fn typed_reap_effect_terminates_occupant_and_removes_override_for_ordinary_residue() -> Bool {
-  let pids = ["5150" as std.types.NonEmptyStr]
+  let pids = ["5150" as NonEmptyStr]
   match gunbc.host_hygiene_reaper_remediate.residual_reap_effect_for(obs: reaper_test_dead_slot_ordinary_residue, occupant_pids: pids) {
-    TerminateOccupantsAndRemoveOverrideEffect { unit: u, pids: p, dir: d } =>
+    gunbc.host_hygiene_reaper_remediate.TerminateOccupantsAndRemoveOverrideEffect { unit: u, pids: p, dir: d } =>
       u == reaper_test_dead_slot_ordinary_residue.unit
         && p == pids
         && d == gunbc.host_hygiene_reaper_observe.host_hygiene_override_dir_for_unit(unit: reaper_test_dead_slot_ordinary_residue.unit)
@@ -182,7 +183,7 @@ test fn typed_reap_effect_terminates_occupant_and_removes_override_for_ordinary_
 
 test fn typed_reap_effect_needs_no_action_for_empty_dead_slot_with_no_override() -> Bool {
   match gunbc.host_hygiene_reaper_remediate.residual_reap_effect_for(obs: reaper_test_dead_slot_empty_no_override, occupant_pids: []) {
-    NoEffect { unit: u } => u == reaper_test_dead_slot_empty_no_override.unit
+    gunbc.host_hygiene_reaper_remediate.NoEffect { unit: u } => u == reaper_test_dead_slot_empty_no_override.unit
     _ => false
   }
 }

@@ -1,7 +1,7 @@
 module v2.test.long.module_binding_host_consistency
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data mbhc_note: String = "CONDITION 3 of the module-binding supply carrier: the host transport must agree with the in-graph model. After task 4 both sides derive module names through parse — the host via v1_compiler_parse at the bootstrap boundary, the oracle via module_storage_bindings_from_ingest over ingest built from host_source_root_closure_refs (capless read-through transport). module_storage_host_agrees_with_oracle checks structural parity of the binding table (module identity + storage path), keeping the host handler a TRANSPORT of the modeled op instead of a second authority (§3).
 
@@ -12,42 +12,42 @@ Lives in long/ because the oracle re-parses every module it covers (~6.5s eval p
 data mbhc_oracle_vacuity_note: String = "Two ways this witness could go green while testing NOTHING, both closed here (review 39729 caught the first). (1) A Rejected oracle must FAIL, never degrade to Empty: module_storage_host_agrees_with_oracle folds over the oracle starting at ModuleStorageAgrees, so an empty oracle agrees vacuously — a failed derivation would have reported agreement (§5 fabricated plausible output; the sibling ingest witness already returns false on Rejected). (2) An oracle that is legitimately Accepted but EMPTY is equally vacuous — that is the state when the overlay manifest is absent and host_source_root_closure_refs is still the committed empty stub, i.e. exactly the mis-run this witness must not silently pass. So the oracle is required to be non-empty as well as derivable. Neither arm widens: both refuse."
 
 fn module_binding_oracle_ingest_from_manifest() -> v2.compiler.source_authority.SourceRootIngest {
-  match source_root_ingest_build_from_source_refs(refs: host_source_root_closure_refs) {
-    SourceRootIngestBuildOk { ingest: ingest } => ingest
-    SourceRootIngestBuildReadFailed { result: _ } => Empty
+  match v2.compiler.source_authority.source_root_ingest_build_from_source_refs(refs: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs) {
+    v2.compiler.source_authority.SourceRootIngestBuildOk { ingest: ingest } => ingest
+    v2.compiler.source_authority.SourceRootIngestBuildReadFailed { result: _ } => v2.std.algebra.Empty
   }
 }
 
-test fn module_binding_host_manifest_is_populated() -> v2.std.logic.Bool {
-  host_module_binding_count > 0
+test fn module_binding_host_manifest_is_populated() -> Bool {
+  v2.test.workflow.host_module_binding_manifest.host_module_binding_count > 0
 }
 
-test fn module_binding_host_agrees_with_parse_oracle() -> v2.std.logic.Bool {
-  match module_storage_bindings_from_ingest(ingest: module_binding_oracle_ingest_from_manifest()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: oracle, diagnostics: _ } =>
-      if length(xs: oracle) == 0 {
+test fn module_binding_host_agrees_with_parse_oracle() -> Bool {
+  match v2.compiler.source_authority.module_storage_bindings_from_ingest(ingest: module_binding_oracle_ingest_from_manifest()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: oracle, diagnostics: _ } =>
+      if v2.std.algebra.length(xs: oracle) == 0 {
         false
       } else {
-        match module_storage_host_agrees_with_oracle(
+        match v2.compiler.source_authority.module_storage_host_agrees_with_oracle(
           oracle: oracle,
-          host: host_module_bindings
+          host: v2.test.workflow.host_module_binding_manifest.host_module_bindings
         ) {
-          ModuleStorageAgrees => true
-          ModuleStorageDivergent { path: _ } => false
-          ModuleStorageUncovered { path: _ } => false
+          v2.compiler.source_authority.ModuleStorageAgrees => true
+          v2.compiler.source_authority.ModuleStorageDivergent { path: _ } => false
+          v2.compiler.source_authority.ModuleStorageUncovered { path: _ } => false
         }
       }
   }
 }
 
-test fn module_binding_host_resolves_a_known_compiler_module() -> v2.std.logic.Bool {
-  match module_storage_module_for_path(
-    index: host_module_bindings,
+test fn module_binding_host_resolves_a_known_compiler_module() -> Bool {
+  match v2.compiler.source_authority.module_storage_module_for_path(
+    index: v2.test.workflow.host_module_binding_manifest.host_module_bindings,
     file_path: "src/v2/compiler/source_authority.dag"
   ) {
-    Absent => false
-    Present { value: qn } =>
-      qualified_name_to_dotted_string(qn: qn) == "v2.compiler.source_authority"
+    v2.std.collection.Absent => false
+    v2.std.collection.Present { value: qn } =>
+      v2.std.qualified_name.qualified_name_to_dotted_string(qn: qn) == "v2.compiler.source_authority"
   }
 }

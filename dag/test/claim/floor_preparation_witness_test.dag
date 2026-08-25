@@ -12,12 +12,12 @@ data tested_tree: extdeps.git.object_store.GitObjectId = extdeps.git.object_stor
 fn discovery_request() -> v2.workflow.floor_discovery.FloorDiscoveryRequest {
   v2.workflow.floor_discovery.FloorDiscoveryRequest {
     subject: v2.workflow.floor_discovery.FloorDiscoverySubject {
-      tested_commit: v2.workflow.floor_discovery.floor_discovery_commit_id(object_id: test.claim.floor_preparation_witness.tested_commit),
-      tested_tree: v2.workflow.floor_discovery.floor_discovery_tree_id(object_id: test.claim.floor_preparation_witness.tested_tree),
+      tested_commit: v2.workflow.floor_discovery.floor_discovery_commit_id(object_id: tested_commit),
+      tested_tree: v2.workflow.floor_discovery.floor_discovery_tree_id(object_id: tested_tree),
       source_roots: ["dag", "src/v2"],
       execution_authority_source_roots: ["dag", "src/v2"],
-      naming_authority_identity: content_hash_atom(value: "floor-preparation-naming-fixture"),
-      tool_identity: content_hash_atom(value: "floor-preparation-tool-fixture"),
+      naming_authority_identity: std.content_hash.content_hash_atom(value: "floor-preparation-naming-fixture"),
+      tool_identity: std.content_hash.content_hash_atom(value: "floor-preparation-tool-fixture"),
     },
     scan_dirs: ["dag/test/claim"],
     exclude_substrings: [],
@@ -30,7 +30,7 @@ fn witness_a() -> std.realization_schedule.ScheduleWitnessEntry {
   std.realization_schedule.ScheduleWitnessEntry {
     entry: "dag/test/claim/a_test.dag",
     function: "a",
-    kind: CorpusWitnessKind,
+    kind: std.realization_schedule.CorpusWitnessKind,
   }
 }
 
@@ -38,7 +38,7 @@ fn witness_b() -> std.realization_schedule.ScheduleWitnessEntry {
   std.realization_schedule.ScheduleWitnessEntry {
     entry: "dag/test/claim/b_test.dag",
     function: "b",
-    kind: ExecutionWitnessKind,
+    kind: std.realization_schedule.ExecutionWitnessKind,
   }
 }
 
@@ -46,14 +46,14 @@ fn witness_extra() -> std.realization_schedule.ScheduleWitnessEntry {
   std.realization_schedule.ScheduleWitnessEntry {
     entry: "dag/test/claim/extra_test.dag",
     function: "extra",
-    kind: CorpusWitnessKind,
+    kind: std.realization_schedule.CorpusWitnessKind,
   }
 }
 
 fn entry_request(witness: std.realization_schedule.ScheduleWitnessEntry, closure: String) -> v2.workflow.floor_preparation.PreparedFloorEntryRequest {
   v2.workflow.floor_preparation.PreparedFloorEntryRequest {
     witness: witness,
-    closure_digest: content_hash_atom(value: closure),
+    closure_digest: std.content_hash.content_hash_atom(value: closure),
   }
 }
 
@@ -79,14 +79,14 @@ fn canonical_request() -> v2.workflow.floor_preparation.PreparedFloorSubjectRequ
 
 fn artifact_part(label: String) -> std.materialization_provider.ArtifactPart {
   std.materialization_provider.ArtifactPart {
-    digest: content_hash_atom(value: label),
-    bytes: byte_size(count: 1),
+    digest: std.content_hash.content_hash_atom(value: label),
+    bytes: std.measure.byte_size(count: 1),
   }
 }
 
 fn artifact_for(entry: v2.workflow.floor_preparation.PreparedFloorEntryRequest) -> std.materialization_provider.MaterializedArtifact {
   std.materialization_provider.ResolvedGraphArtifact {
-    request_key: request_key(
+    request_key: std.materialization_provider.request_key(
       req: v2.workflow.floor_preparation.prepared_floor_entry_artifact_request(
         discovery: discovery_request(),
         entry: entry,
@@ -104,46 +104,33 @@ fn probe_for(entry: v2.workflow.floor_preparation.PreparedFloorEntryRequest) -> 
     witness: entry.witness,
     probe: std.materialization_provider.ProbeFound {
       artifact: artifact,
-      observed_digest: artifact_content_digest(artifact: artifact),
+      observed_digest: std.materialization_provider.artifact_content_digest(artifact: artifact),
     }
   }
 }
 
 test fn exact_prepared_artifact_set_serves() -> Bool {
-  let request = test.claim.floor_preparation_witness.canonical_request()
+  let request = canonical_request()
   match v2.workflow.floor_preparation.prepared_floor_subject_serve(
     request: request,
     probes: [probe_for(entry: entry_a()), probe_for(entry: entry_b())],
   ) {
-    PreparedFloorSubjectReady { identity: identity, entries: entries } =>
+    v2.workflow.floor_preparation.PreparedFloorSubjectReady { identity: identity, entries: entries } =>
       identity == v2.workflow.floor_preparation.prepared_claim_subject_identity(request: request)
         && entries.count() == 2
         && entries.first().witness.entry == witness_a().entry
-    PreparedFloorSubjectRefused { cause: _ } => false
+    v2.workflow.floor_preparation.PreparedFloorSubjectRefused { cause: _ } => false
   }
-}
-
-fn entries_count(xs: std.algebra.FreeMonoid<std.realization_schedule.ScheduleWitnessEntry>) -> Int {
-  xs.count()
-}
-
-fn entries_first_entry(
-  xs: std.algebra.FreeMonoid<std.realization_schedule.ScheduleWitnessEntry>,
-) -> String {
-  xs.first().entry
 }
 
 test fn missing_prepared_identity_refuses() -> Bool {
   match v2.workflow.floor_preparation.prepared_floor_subject_serve(
-    request: test.claim.floor_preparation_witness.canonical_request(),
+    request: canonical_request(),
     probes: [probe_for(entry: entry_a())],
   ) {
-    PreparedFloorSubjectRefused { cause: cause } =>
-      match cause {
-        PreparedFloorMissingProbeIdentities { missing: missing } =>
-          entries_count(xs: missing) == 1 && entries_first_entry(xs: missing) == witness_b().entry
-        _ => false
-      }
+    v2.workflow.floor_preparation.PreparedFloorSubjectRefused {
+      cause: v2.workflow.floor_preparation.PreparedFloorMissingProbeIdentities { missing: missing }
+    } => missing.count() == 1 && missing.first().entry == witness_b().entry
     _ => false
   }
 }
@@ -151,12 +138,12 @@ test fn missing_prepared_identity_refuses() -> Bool {
 test fn absent_artifact_is_typed_miss_without_cold_fallback() -> Bool {
   match v2.workflow.floor_preparation.prepared_floor_subject_serve(
     request: request_with(selected: [entry_a()]),
-    probes: [v2.workflow.floor_preparation.PreparedFloorEntryProbe { witness: witness_a(), probe: ProbeAbsent }],
+    probes: [v2.workflow.floor_preparation.PreparedFloorEntryProbe { witness: witness_a(), probe: std.materialization_provider.ProbeAbsent }],
   ) {
-    PreparedFloorSubjectRefused {
-      cause: PreparedFloorProviderRefused {
+    v2.workflow.floor_preparation.PreparedFloorSubjectRefused {
+      cause: v2.workflow.floor_preparation.PreparedFloorProviderRefused {
         witness: witness,
-        lookup: ProviderMiss { key: _ },
+        lookup: std.materialization_provider.ProviderMiss { key: _ },
       }
     } => witness.entry == witness_a().entry
     _ => false
@@ -171,14 +158,14 @@ test fn wrong_artifact_key_refuses() -> Bool {
       witness: witness_a(),
       probe: std.materialization_provider.ProbeFound {
         artifact: wrong,
-        observed_digest: artifact_content_digest(artifact: wrong),
+        observed_digest: std.materialization_provider.artifact_content_digest(artifact: wrong),
       }
     }],
   ) {
-    PreparedFloorSubjectRefused {
-      cause: PreparedFloorProviderRefused {
+    v2.workflow.floor_preparation.PreparedFloorSubjectRefused {
+      cause: v2.workflow.floor_preparation.PreparedFloorProviderRefused {
         witness: _,
-        lookup: ProviderRefusedWrongArtifact { key: _, found_key: _ },
+        lookup: std.materialization_provider.ProviderRefusedWrongArtifact { key: _, found_key: _ },
       }
     } => true
     _ => false
@@ -190,11 +177,9 @@ test fn duplicate_selected_identity_refuses() -> Bool {
     request: request_with(selected: [entry_a(), entry_a()]),
     probes: [probe_for(entry: entry_a())],
   ) {
-    PreparedFloorSubjectRefused { cause: cause } =>
-      match cause {
-        PreparedFloorDuplicateSelectedIdentities { duplicates: duplicates } => entries_count(xs: duplicates) == 2
-        _ => false
-      }
+    v2.workflow.floor_preparation.PreparedFloorSubjectRefused {
+      cause: v2.workflow.floor_preparation.PreparedFloorDuplicateSelectedIdentities { duplicates: duplicates }
+    } => duplicates.count() == 2
     _ => false
   }
 }
@@ -204,11 +189,9 @@ test fn duplicate_probe_identity_refuses() -> Bool {
     request: request_with(selected: [entry_a()]),
     probes: [probe_for(entry: entry_a()), probe_for(entry: entry_a())],
   ) {
-    PreparedFloorSubjectRefused { cause: cause } =>
-      match cause {
-        PreparedFloorDuplicateProbeIdentities { duplicates: duplicates } => entries_count(xs: duplicates) == 2
-        _ => false
-      }
+    v2.workflow.floor_preparation.PreparedFloorSubjectRefused {
+      cause: v2.workflow.floor_preparation.PreparedFloorDuplicateProbeIdentities { duplicates: duplicates }
+    } => duplicates.count() == 2
     _ => false
   }
 }
@@ -219,12 +202,9 @@ test fn unexpected_probe_identity_refuses() -> Bool {
     request: request_with(selected: [entry_a()]),
     probes: [probe_for(entry: entry_a()), probe_for(entry: extra)],
   ) {
-    PreparedFloorSubjectRefused { cause: cause } =>
-      match cause {
-        PreparedFloorUnexpectedProbeIdentities { unexpected: unexpected } =>
-          entries_count(xs: unexpected) == 1 && entries_first_entry(xs: unexpected) == witness_extra().entry
-        _ => false
-      }
+    v2.workflow.floor_preparation.PreparedFloorSubjectRefused {
+      cause: v2.workflow.floor_preparation.PreparedFloorUnexpectedProbeIdentities { unexpected: unexpected }
+    } => unexpected.count() == 1 && unexpected.first().entry == witness_extra().entry
     _ => false
   }
 }

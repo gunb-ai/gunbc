@@ -3,22 +3,22 @@ module extdeps.os
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Operating_system"
   }
 }
 
 fn cited_operating_system_surface(product: std.os.types.OperatingSystemProduct) -> std.os.types.OperatingSystemSurface {
   match product {
-    UbuntuOs { distro: d } => operating_system_surface_ubuntu(ubuntu_distribution_catalog_row(d))
-    WindowsOs { distro: d } => operating_system_surface_windows(windows_distribution_catalog_row(d))
-    MacosOs { distro: d } => operating_system_surface_macos(macos_distribution_catalog_row(d))
+    std.os.types.UbuntuOs { distro: d } => std.os.operating_system_surface_ubuntu(extdeps.os.ubuntu.ubuntu_distribution_catalog_row(d))
+    std.os.types.WindowsOs { distro: d } => std.os.operating_system_surface_windows(extdeps.os.windows.windows_distribution_catalog_row(d))
+    std.os.types.MacosOs { distro: d } => std.os.operating_system_surface_macos(extdeps.os.macos.macos_distribution_catalog_row(d))
   }
 }
 
-data ubuntu_24_04: std.os.types.OperatingSystemSurface = cited_operating_system_surface(std.os.types.UbuntuOs { distro: NobleNumbat2404Lts })
-data windows_11: std.os.types.OperatingSystemSurface = cited_operating_system_surface(std.os.types.WindowsOs { distro: Windows1124H2Build26100 })
-data macos_15_sequoia: std.os.types.OperatingSystemSurface = cited_operating_system_surface(std.os.types.MacosOs { distro: Sequoia15 })
+data ubuntu_24_04: std.os.types.OperatingSystemSurface = cited_operating_system_surface(std.os.types.UbuntuOs { distro: std.os.types.NobleNumbat2404Lts })
+data windows_11: std.os.types.OperatingSystemSurface = cited_operating_system_surface(std.os.types.WindowsOs { distro: std.os.types.Windows1124H2Build26100 })
+data macos_15_sequoia: std.os.types.OperatingSystemSurface = cited_operating_system_surface(std.os.types.MacosOs { distro: std.os.types.Sequoia15 })
 
 data os_catalog: List<std.os.types.OperatingSystemSurface> = [
   ubuntu_24_04,

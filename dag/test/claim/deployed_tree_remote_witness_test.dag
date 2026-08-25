@@ -1,5 +1,7 @@
 module test.claim.deployed_tree_remote_witness
 
+
+
 fn other_at() -> extdeps.git.GitRemoteUrlAt {
   extdeps.git.GitRemoteUrlAt {
     repository_path: "/opt/gunbc-lab/gunbc" as std.types.FilePath,
@@ -9,10 +11,10 @@ fn other_at() -> extdeps.git.GitRemoteUrlAt {
 
 fn observed_url(o: extdeps.git.GitRemoteUrlObservation) -> String {
   match o {
-    GitRemoteUrlObserved { member: m } => m.url as String
-    GitRemoteUrlAbsent { at: _ } => "<absent>"
-    GitRemoteUrlRepositoryUnusable { at: _, exit_code: _, stderr: _ } => "<unusable>"
-    GitRemoteUrlReadRefused { at: _, exit_code: _, stderr: _ } => "<refused>"
+    extdeps.git.GitRemoteUrlObserved { member: m } => m.url as String
+    extdeps.git.GitRemoteUrlAbsent { at: _ } => "<absent>"
+    extdeps.git.GitRemoteUrlRepositoryUnusable { at: _, exit_code: _, stderr: _ } => "<unusable>"
+    extdeps.git.GitRemoteUrlReadRefused { at: _, exit_code: _, stderr: _ } => "<refused>"
   }
 }
 
@@ -107,8 +109,8 @@ test fn identity_separates_two_instances_on_one_host() -> Bool {
 
 fn exit_is_success(e: std.process.ProcessExit) -> Bool {
   match e {
-    ExitSuccess => true
-    ExitFailure { code: _, reason: _ } => false
+    std.process.ExitSuccess => true
+    std.process.ExitFailure { code: _, reason: _ } => false
   }
 }
 
@@ -120,31 +122,32 @@ fn member() -> extdeps.git.GitRemoteUrlMember {
 // follow a setter which reported no error at all — a mismatched read-back and an absent one. Those
 // are precisely the states a "did the command exit zero" check would call converged.
 test fn only_an_exact_read_back_reports_success() -> Bool {
-  test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(outcome: gunbc.deployed_tree_remote.RemoteAlreadyConverged { member: member() }))
-    && test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
+  exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(outcome: gunbc.deployed_tree_remote.RemoteAlreadyConverged { member: member() }))
+    && exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
       outcome: gunbc.deployed_tree_remote.RemoteConverged {
         member: member(),
         previous: extdeps.git.GitRemoteUrlAbsent { at: other_at() },
       },
     ))
-    && !test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
+    && !exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
       outcome: gunbc.deployed_tree_remote.RemoteReadBackMismatched {
         at: other_at(),
         expected: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
         observed: "https://example.invalid/other.git" as std.types.NonEmptyStr,
       },
     ))
-    && !test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(outcome: gunbc.deployed_tree_remote.RemoteReadBackAbsent { at: other_at() }))
-    && !test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
+    && !exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(outcome: gunbc.deployed_tree_remote.RemoteReadBackAbsent { at: other_at() }))
+    && !exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
       outcome: gunbc.deployed_tree_remote.RemoteSetRefused { at: other_at(), stderr: "denied" },
     ))
-    && !test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
+    && !exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
       outcome: gunbc.deployed_tree_remote.RemoteRepositoryUnusable { at: other_at(), exit_code: 128, stderr: "fatal" },
     ))
-    && !test.claim.deployed_tree_remote_witness.exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
+    && !exit_is_success(e: gunbc.deployed_tree_remote.deployed_tree_remote_exit(
       outcome: gunbc.deployed_tree_remote.RemoteReadBackRefused { at: other_at(), exit_code: 7, stderr: "?" },
     ))
 }
+
 
 // ── The prerequisite is ordered before its consumer ─────────────────────────────────────────────
 //
@@ -166,15 +169,15 @@ test fn only_an_exact_read_back_reports_success() -> Bool {
 
 fn ordering_tag(kind: gunbc.live_deploy.spec.OwnedArtifactKind) -> String {
   match kind {
-    GunbcSourceTree => "tree"
-    ServeBinary => "binary"
-    DeployedTreeRemoteUnit => "remote"
-    BeltTimerUnit => "belt"
-    TailscaleServeMapping => "route"
-    DispatchWorktreeRoot => ""
-    AttemptStateRoot => ""
-    SystemdUnit => ""
-    FleetConvergeTimerUnit => ""
+    gunbc.live_deploy.spec.GunbcSourceTree => "tree"
+    gunbc.live_deploy.spec.ServeBinary => "binary"
+    gunbc.live_deploy.spec.DeployedTreeRemoteUnit => "remote"
+    gunbc.live_deploy.spec.BeltTimerUnit => "belt"
+    gunbc.live_deploy.spec.TailscaleServeMapping => "route"
+    gunbc.live_deploy.spec.DispatchWorktreeRoot => ""
+    gunbc.live_deploy.spec.AttemptStateRoot => ""
+    gunbc.live_deploy.spec.SystemdUnit => ""
+    gunbc.live_deploy.spec.FleetConvergeTimerUnit => ""
   }
 }
 

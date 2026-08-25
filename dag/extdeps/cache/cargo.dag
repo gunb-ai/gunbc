@@ -4,7 +4,7 @@ module extdeps.cache.cargo
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "doc.rust-lang.org/cargo/guide/build-cache.html"
   }
 }
@@ -14,29 +14,29 @@ data cargo_target_dir_id: std.cache_identity.CacheInterfaceId = "cargo_target_di
 data cargo_target_dir_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: cargo_target_dir_id
   backing_surface: "cargo-target-directory"
-  transport_encoding: CargoFingerprintEncoding
+  transport_encoding: extdeps.cache.types.CargoFingerprintEncoding
   key_derivation: {
 
-    key_inputs: extdeps.cache.types.NativeInternal { cited_inputs: [RustcInvocation, FilePaths, ToolchainSpec] }
+    key_inputs: extdeps.cache.types.NativeInternal { cited_inputs: [extdeps.cache.types.RustcInvocation, extdeps.cache.types.FilePaths, extdeps.cache.types.ToolchainSpec] }
     overwritable: true
     prefix_fallback_allowed: false
     content_verified_on_read: false
-    visibility_scope: Repo
-    invalidation_triggers: [ToolchainChange, DependencyChange, ManualPurge]
+    visibility_scope: std.cache_interface.Repo
+    invalidation_triggers: [std.cache_interface.ToolchainChange, std.cache_interface.DependencyChange, std.cache_interface.ManualPurge]
   }
   io: {
-    lookup_semantics: NativeInternalLookup
-    write_semantics: ProviderInternal
-    miss_semantics: MissThenCreate
+    lookup_semantics: std.cache_interface.NativeInternalLookup
+    write_semantics: std.cache_interface.ProviderInternal
+    miss_semantics: std.cache_interface.MissThenCreate
   }
   placement: {
-    value_shape: FileTree
-    locality: PerRunnerFilesystem
-    retention: { release_policy: ReleasedManually, capacity: CapacityUnobserved }
-    atomicity: PerFile
-    auth: FilesystemPerms
-    read_latency: LocalDiskUs
-    consistency: ReadYourWrites
+    value_shape: std.cache_interface.FileTree
+    locality: std.cache_interface.PerRunnerFilesystem
+    retention: { release_policy: std.cache_interface.ReleasedManually, capacity: std.cache_interface.CapacityUnobserved }
+    atomicity: std.cache_interface.PerFile
+    auth: std.cache_interface.FilesystemPerms
+    read_latency: std.cache_interface.LocalDiskUs
+    consistency: std.cache_interface.ReadYourWrites
   }
   evidence: [
     {

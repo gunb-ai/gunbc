@@ -4,14 +4,14 @@ module extdeps.dns.domain_name
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.rfc-editor.org/rfc/rfc1035"
   }
 }
 
 data rfc1123_host_name_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.rfc-editor.org/rfc/rfc1123#section-2.1"
   }
 }
@@ -128,14 +128,14 @@ fn parse_dns_label_list(segments: List<String>) -> std.error_primitives.Result<L
     init: std.error_primitives.Ok { value: empty_dns_labels },
     f: (acc, seg) =>
       match acc {
-        Err { value: e } => std.error_primitives.Err { value: e }
-        Ok { value: labels } =>
+        std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
+        std.error_primitives.Ok { value: labels } =>
           if seg == "" {
             std.error_primitives.Err { value: EmptyName }
           } else {
             match parse_dns_label_raw(raw: seg) {
-              Err { value: e } => std.error_primitives.Err { value: e }
-              Ok { value: label } => std.error_primitives.Ok { value: labels |> list_push(label) }
+              std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
+              std.error_primitives.Ok { value: label } => std.error_primitives.Ok { value: labels |> list_push(label) }
             }
           }
       },
@@ -151,8 +151,8 @@ fn parse_host_name(raw: String) -> std.error_primitives.Result<HostName, DomainN
       std.error_primitives.Err { value: EmptyName }
     } else {
       match parse_dns_label_list(segments: body |> split(delimiter: ".")) {
-        Err { value: e } => std.error_primitives.Err { value: e }
-        Ok { value: labels } =>
+        std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
+        std.error_primitives.Ok { value: labels } =>
           if domain_name_wire_octet_count(labels: labels) > 255 {
             std.error_primitives.Err { value: NameTooLong }
           } else {
@@ -167,8 +167,8 @@ fn parse_host_name(raw: String) -> std.error_primitives.Result<HostName, DomainN
     }
   } else {
     match parse_dns_label_list(segments: raw |> split(delimiter: ".")) {
-      Err { value: e } => std.error_primitives.Err { value: e }
-      Ok { value: labels } =>
+      std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
+      std.error_primitives.Ok { value: labels } =>
         if domain_name_wire_octet_count(labels: labels) > 255 {
           std.error_primitives.Err { value: NameTooLong }
         } else {

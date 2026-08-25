@@ -1,13 +1,13 @@
 module test.claim.board_part_land_pattern_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn disagreement_kind(d: extdeps.land_pattern.types.LandPatternDisagreement) -> String {
   match d {
-    PatternDesignatorDiffersFromPackage { pattern_designator: _, package_designator: _ } => "designator"
-    LandCountDiffersFromTerminalCount { lands: _, terminals: _ } => "count"
-    LandPitchDiffersFromTerminalPitch { land_pitch: _, terminal_pitch: _ } => "pitch"
+    extdeps.land_pattern.types.PatternDesignatorDiffersFromPackage { pattern_designator: _, package_designator: _ } => "designator"
+    extdeps.land_pattern.types.LandCountDiffersFromTerminalCount { lands: _, terminals: _ } => "count"
+    extdeps.land_pattern.types.LandPitchDiffersFromTerminalPitch { land_pitch: _, terminal_pitch: _ } => "pitch"
   }
 }
 
@@ -15,38 +15,38 @@ fn has_kind(ds: List<extdeps.land_pattern.types.LandPatternDisagreement>, k: Str
   fold(ds, init: false, f: fn(acc, d) { acc || disagreement_kind(d: d) == k })
 }
 
-fn count_of(ds: List<extdeps.land_pattern.types.LandPatternDisagreement>) -> std.integer.Int {
+fn count_of(ds: List<extdeps.land_pattern.types.LandPatternDisagreement>) -> Int {
   fold(ds, init: 0, f: fn(acc, _d) { acc + 1 })
 }
 
 fn refusal_kind(r: extdeps.land_pattern.types.CandidateRefusal) -> String {
   match r {
-    MechanicalDisagreement { cause: _ } => "mechanical"
-    TerminalIndexingUnestablished { what_is_missing: _ } => "indexing"
+    extdeps.land_pattern.types.MechanicalDisagreement { cause: _ } => "mechanical"
+    extdeps.land_pattern.types.TerminalIndexingUnestablished { what_is_missing: _ } => "indexing"
   }
 }
 
 fn refusals_of(a: extdeps.land_pattern.types.PartAdmission) -> List<extdeps.land_pattern.types.CandidateRefusal> {
   match a {
-    AdmittedMountablePart { part: _ } => []
-    PartRefused { causes: s } => concat([s.first], s.rest)
+    extdeps.land_pattern.types.AdmittedMountablePart { part: _ } => []
+    extdeps.land_pattern.types.PartRefused { causes: s } => concat([s.first], s.rest)
   }
 }
 
 fn is_admitted(a: extdeps.land_pattern.types.PartAdmission) -> Bool {
   match a {
-    AdmittedMountablePart { part: _ } => true
-    PartRefused { causes: _ } => false
+    extdeps.land_pattern.types.AdmittedMountablePart { part: _ } => true
+    extdeps.land_pattern.types.PartRefused { causes: _ } => false
   }
 }
 
-fn refusal_count(a: extdeps.land_pattern.types.PartAdmission) -> std.integer.Int {
+fn refusal_count(a: extdeps.land_pattern.types.PartAdmission) -> Int {
   fold(refusals_of(a: a), init: 0, f: fn(acc, _r) { acc + 1 })
 }
 
 fn only_refusal_is(a: extdeps.land_pattern.types.PartAdmission, k: String) -> Bool {
-  let n = test.claim.board_part_land_pattern_witness.refusal_count(a: a)
-  let all_match = fold(refusals_of(a: a), init: true, f: fn(acc, r) { acc && test.claim.board_part_land_pattern_witness.refusal_kind(r: r) == k })
+  let n = refusal_count(a: a)
+  let all_match = fold(refusals_of(a: a), init: true, f: fn(acc, r) { acc && refusal_kind(r: r) == k })
   n == 1 && all_match
 }
 
@@ -56,10 +56,10 @@ fn only_refusal_is(a: extdeps.land_pattern.types.PartAdmission, k: String) -> Bo
 // body's terminal count, and the two pitches agree. This is a MECHANICAL join and nothing more; it
 // says the two transcriptions describe one package, not that the part suits any board role.
 test fn w_each_candidate_joins_its_own_package() -> Bool {
-  test.claim.board_part_land_pattern_witness.count_of(ds: land_pattern_disagreements(p: extdeps.power.ti_tps3808.tps3808g01dbvr)) == 0
-    && test.claim.board_part_land_pattern_witness.count_of(ds: land_pattern_disagreements(p: extdeps.power.ti_tps53688.tps53688rsbr)) == 0
-    && test.claim.board_part_land_pattern_witness.count_of(ds: land_pattern_disagreements(p: cdce913pwr)) == 0
-    && test.claim.board_part_land_pattern_witness.count_of(ds: land_pattern_disagreements(p: extdeps.network.ti_dp83867.dp83867irrgz)) == 0
+  count_of(ds: extdeps.land_pattern.types.land_pattern_disagreements(p: extdeps.power.ti_tps3808.tps3808g01dbvr)) == 0
+    && count_of(ds: extdeps.land_pattern.types.land_pattern_disagreements(p: extdeps.power.ti_tps53688.tps53688rsbr)) == 0
+    && count_of(ds: extdeps.land_pattern.types.land_pattern_disagreements(p: extdeps.clock.ti_cdce913.cdce913pwr)) == 0
+    && count_of(ds: extdeps.land_pattern.types.land_pattern_disagreements(p: extdeps.network.ti_dp83867.dp83867irrgz)) == 0
 }
 
 // AND NOT ONE OF THEM IS ADMISSIBLE, WHICH IS THE FINDING RATHER THAN A GAP IN THE TEST. A clean
@@ -69,11 +69,11 @@ test fn w_each_candidate_joins_its_own_package() -> Bool {
 // matching count as a known footprint. When a pin-map authority lands, these turn green by the
 // candidates gaining a fact, and this claim inverts to assert the admitted arm.
 test fn w_no_candidate_is_admissible_and_indexing_is_the_only_reason() -> Bool {
-  only_refusal_is(a: admit_part_candidate(p: extdeps.power.ti_tps3808.tps3808g01dbvr), k: "indexing")
-    && only_refusal_is(a: admit_part_candidate(p: extdeps.power.ti_tps53688.tps53688rsbr), k: "indexing")
-    && only_refusal_is(a: admit_part_candidate(p: cdce913pwr), k: "indexing")
-    && only_refusal_is(a: admit_part_candidate(p: extdeps.network.ti_dp83867.dp83867irrgz), k: "indexing")
-    && !test.claim.board_part_land_pattern_witness.is_admitted(a: admit_part_candidate(p: extdeps.network.ti_dp83867.dp83867irrgz))
+  only_refusal_is(a: extdeps.land_pattern.types.admit_part_candidate(p: extdeps.power.ti_tps3808.tps3808g01dbvr), k: "indexing")
+    && only_refusal_is(a: extdeps.land_pattern.types.admit_part_candidate(p: extdeps.power.ti_tps53688.tps53688rsbr), k: "indexing")
+    && only_refusal_is(a: extdeps.land_pattern.types.admit_part_candidate(p: extdeps.clock.ti_cdce913.cdce913pwr), k: "indexing")
+    && only_refusal_is(a: extdeps.land_pattern.types.admit_part_candidate(p: extdeps.network.ti_dp83867.dp83867irrgz), k: "indexing")
+    && !is_admitted(a: extdeps.land_pattern.types.admit_part_candidate(p: extdeps.network.ti_dp83867.dp83867irrgz))
 }
 
 // THE LAND POPULATION IS DERIVED FROM THE GEOMETRY AND EQUALS THE VENDOR'S TERMINAL COUNT. Six
@@ -81,11 +81,11 @@ test fn w_no_candidate_is_admissible_and_indexing_is_the_only_reason() -> Bool {
 // the two no-lead flatpacks. A stored count would have made this tautological; these numbers come
 // out of the per-row figures.
 test fn w_the_land_population_is_derived_and_matches_the_terminal_count() -> Bool {
-  peripheral_land_count(g: extdeps.power.ti_tps3808.tps3808g01dbvr.land_pattern.geometry) == 6
-    && peripheral_land_count(g: cdce913pwr.land_pattern.geometry) == 14
-    && peripheral_land_count(g: extdeps.power.ti_tps53688.tps53688rsbr.land_pattern.geometry) == 40
-    && peripheral_land_count(g: extdeps.network.ti_dp83867.dp83867irrgz.land_pattern.geometry) == 48
-    && peripheral_land_count(g: extdeps.network.ti_dp83867.dp83867irrgz.land_pattern.geometry) == extdeps.network.ti_dp83867.dp83867irrgz.body.terminal_count
+  extdeps.land_pattern.types.peripheral_land_count(g: tps3808g01dbvr.land_pattern.geometry) == 6
+    && extdeps.land_pattern.types.peripheral_land_count(g: cdce913pwr.land_pattern.geometry) == 14
+    && extdeps.land_pattern.types.peripheral_land_count(g: tps53688rsbr.land_pattern.geometry) == 40
+    && extdeps.land_pattern.types.peripheral_land_count(g: dp83867irrgz.land_pattern.geometry) == 48
+    && extdeps.land_pattern.types.peripheral_land_count(g: dp83867irrgz.land_pattern.geometry) == dp83867irrgz.body.terminal_count
 }
 
 // THE SOT-23 PITCH RECONCILES TWO PAGES OF ONE DRAWING. The body page prints 1.9 across two pitches
@@ -93,8 +93,8 @@ test fn w_the_land_population_is_derived_and_matches_the_terminal_count() -> Boo
 // body row is an arithmetic reading of the document rather than a figure supplied from memory of
 // what a SOT-23 usually is.
 test fn w_the_sot23_pitch_reconciles_the_two_printed_readings() -> Bool {
-  micrometer_count(m: land_pattern_pitch(g: extdeps.power.ti_tps3808.tps3808g01dbvr.land_pattern.geometry)) == 950
-    && 2 * micrometer_count(m: extdeps.power.ti_tps3808.tps3808_dbv0006a_body.terminal_pitch) == 1900
+  std.measure.micrometer_count(m: extdeps.land_pattern.types.land_pattern_pitch(g: tps3808g01dbvr.land_pattern.geometry)) == 950
+    && 2 * std.measure.micrometer_count(m: tps3808_dbv0006a_body.terminal_pitch) == 1900
 }
 
 // THE DISCRIMINATING RED, AND IT IS THE REAL FAILURE MODE. The DP83867IR datasheet reprints two
@@ -107,20 +107,20 @@ test fn w_the_sot23_pitch_reconciles_the_two_printed_readings() -> Bool {
 // mountable part and a test could hand-build a value that could not be mounted.
 data mismatched_candidate: extdeps.land_pattern.types.PartMechanicalCandidate = extdeps.land_pattern.types.PartMechanicalCandidate {
   ordering_part_number: "DP83867IRRGZ",
-  vendor: extdeps.network.ti_dp83867.dp83867irrgz.vendor,
+  vendor: dp83867irrgz.vendor,
   body: extdeps.network.ti_dp83867.dp83867_rgz0048b_body,
   land_pattern: extdeps.clock.ti_cdce913.cdce913_pw0014a_land_pattern,
-  terminal_indexing: extdeps.network.ti_dp83867.dp83867irrgz.terminal_indexing,
+  terminal_indexing: dp83867irrgz.terminal_indexing,
 }
 
 test fn w_a_pattern_from_the_wrong_package_is_refused_on_every_axis() -> Bool {
-  let ds = land_pattern_disagreements(p: mismatched_candidate)
-  test.claim.board_part_land_pattern_witness.count_of(ds: ds) == 3
+  let ds = extdeps.land_pattern.types.land_pattern_disagreements(p: mismatched_candidate)
+  count_of(ds: ds) == 3
     && has_kind(ds: ds, k: "designator")
     && has_kind(ds: ds, k: "count")
     && has_kind(ds: ds, k: "pitch")
-    && !test.claim.board_part_land_pattern_witness.is_admitted(a: admit_part_candidate(p: mismatched_candidate))
-    && test.claim.board_part_land_pattern_witness.refusal_count(a: admit_part_candidate(p: mismatched_candidate)) == 4
+    && !is_admitted(a: extdeps.land_pattern.types.admit_part_candidate(p: mismatched_candidate))
+    && refusal_count(a: extdeps.land_pattern.types.admit_part_candidate(p: mismatched_candidate)) == 4
 }
 
 // A SECOND RED, ISOLATING ONE AXIS. The mismatch above fails three ways at once, which would still
@@ -129,28 +129,28 @@ test fn w_a_pattern_from_the_wrong_package_is_refused_on_every_axis() -> Bool {
 // cause must be reported, and the count check is the one that has to be alive to report it.
 data undercounted_land_pattern: extdeps.land_pattern.types.VendorRecommendedLandPattern = extdeps.land_pattern.types.VendorRecommendedLandPattern {
   package_designator: "RSB0040A",
-  drawing: extdeps.power.ti_tps53688.tps53688rsbr.land_pattern.drawing,
+  drawing: tps53688rsbr.land_pattern.drawing,
   geometry: extdeps.land_pattern.types.QuadRowLandGeometry {
     lands_per_side: 9,
-    pitch: micrometer(count: 400),
-    side_span_centre_to_centre: micrometer(count: 4800),
-    land_length: micrometer(count: 600),
-    land_width: micrometer(count: 200),
-    thermal_land_side: Present { value: micrometer(count: 3600) },
+    pitch: std.measure.micrometer(count: 400),
+    side_span_centre_to_centre: std.measure.micrometer(count: 4800),
+    land_length: std.measure.micrometer(count: 600),
+    land_width: std.measure.micrometer(count: 200),
+    thermal_land_side: Present { value: std.measure.micrometer(count: 3600) },
   },
 }
 
 data undercounted_candidate: extdeps.land_pattern.types.PartMechanicalCandidate = extdeps.land_pattern.types.PartMechanicalCandidate {
   ordering_part_number: "TPS53688RSBR",
-  vendor: extdeps.power.ti_tps53688.tps53688rsbr.vendor,
-  body: extdeps.power.ti_tps53688.tps53688rsbr.body,
+  vendor: tps53688rsbr.vendor,
+  body: tps53688rsbr.body,
   land_pattern: undercounted_land_pattern,
-  terminal_indexing: extdeps.power.ti_tps53688.tps53688rsbr.terminal_indexing,
+  terminal_indexing: tps53688rsbr.terminal_indexing,
 }
 
 test fn w_a_land_population_that_disagrees_with_the_package_is_refused_alone() -> Bool {
-  let ds = land_pattern_disagreements(p: undercounted_candidate)
-  test.claim.board_part_land_pattern_witness.count_of(ds: ds) == 1 && has_kind(ds: ds, k: "count")
+  let ds = extdeps.land_pattern.types.land_pattern_disagreements(p: undercounted_candidate)
+  count_of(ds: ds) == 1 && has_kind(ds: ds, k: "count")
 }
 
 // A CITED FAMILY CAN STILL OWE ITS HOLE PATTERN, and the DDR4 socket is the live case. Its
@@ -164,12 +164,12 @@ fn obligation_is_stated(o: extdeps.land_pattern.types.MountingPatternObligation)
 }
 
 test fn w_the_dimm_socket_family_owes_a_hole_pattern_it_cannot_express_as_lands() -> Bool {
-  extdeps.memory.te_ddr4_dimm_socket.ddr4_dimm_socket_solder_tail_288_family.position_count == 288
-    && micrometer_count(m: extdeps.memory.te_ddr4_dimm_socket.ddr4_dimm_socket_solder_tail_288_family.contact_pitch) == 800
-    && obligation_is_stated(o: extdeps.memory.te_ddr4_dimm_socket.ddr4_dimm_socket_solder_tail_288_family.board_pattern)
-    && match extdeps.memory.te_ddr4_dimm_socket.ddr4_dimm_socket_solder_tail_288_family.attachment {
-      ThroughHoleSolderTail => true
-      SurfaceMountTerminals => false
+  ddr4_dimm_socket_solder_tail_288_family.position_count == 288
+    && std.measure.micrometer_count(m: ddr4_dimm_socket_solder_tail_288_family.contact_pitch) == 800
+    && obligation_is_stated(o: ddr4_dimm_socket_solder_tail_288_family.board_pattern)
+    && match ddr4_dimm_socket_solder_tail_288_family.attachment {
+      extdeps.land_pattern.types.ThroughHoleSolderTail => true
+      extdeps.land_pattern.types.SurfaceMountTerminals => false
     }
 }
 
@@ -181,8 +181,8 @@ data established_standing: extdeps.land_pattern.types.SurfaceMountPatternStandin
 
 test fn w_an_established_standing_reports_established() -> Bool {
   match established_standing {
-    SurfaceMountPatternEstablished { pattern: _ } => true
-    SurfaceMountPatternNotEstablished { what_is_missing: _ } => false
+    extdeps.land_pattern.types.SurfaceMountPatternEstablished { pattern: _ } => true
+    extdeps.land_pattern.types.SurfaceMountPatternNotEstablished { what_is_missing: _ } => false
   }
 }
 
@@ -191,15 +191,15 @@ test fn w_an_established_standing_reports_established() -> Bool {
 // outstanding patterns are outstanding in different carriers — a standing with a reachable success
 // arm here, a bare obligation there — and the attachment style is asserted to keep them apart.
 test fn w_the_m2_family_is_cited_with_its_pattern_outstanding() -> Bool {
-  extdeps.storage.te_m2_ngff_connector.m2_ngff_minicard_67_position.position_count == 67
-    && micrometer_count(m: extdeps.storage.te_m2_ngff_connector.m2_ngff_minicard_67_position.contact_pitch) == 500
-    && match extdeps.storage.te_m2_ngff_connector.m2_ngff_minicard_67_position.board_pattern {
-      SurfaceMountPatternNotEstablished { what_is_missing: _ } => true
-      SurfaceMountPatternEstablished { pattern: _ } => false
+  m2_ngff_minicard_67_position.position_count == 67
+    && std.measure.micrometer_count(m: m2_ngff_minicard_67_position.contact_pitch) == 500
+    && match m2_ngff_minicard_67_position.board_pattern {
+      extdeps.land_pattern.types.SurfaceMountPatternNotEstablished { what_is_missing: _ } => true
+      extdeps.land_pattern.types.SurfaceMountPatternEstablished { pattern: _ } => false
     }
-    && match extdeps.storage.te_m2_ngff_connector.m2_ngff_minicard_67_position.attachment {
-      SurfaceMountTerminals => true
-      ThroughHoleSolderTail => false
+    && match m2_ngff_minicard_67_position.attachment {
+      extdeps.land_pattern.types.SurfaceMountTerminals => true
+      extdeps.land_pattern.types.ThroughHoleSolderTail => false
     }
 }
 
@@ -208,8 +208,8 @@ test fn w_the_m2_family_is_cited_with_its_pattern_outstanding() -> Bool {
 // distinguishable — folding independently governed entities into one vendor because they share a
 // brand is the merge DESIGN §3 forbids, and it would make a correction to either edit the other.
 test fn w_the_two_tyco_entities_are_not_one_vendor() -> Bool {
-  let ddr4_vendor = extdeps.memory.te_ddr4_dimm_socket.ddr4_dimm_socket_solder_tail_288_family.vendor.legal_name as String
-  let m2_vendor = extdeps.storage.te_m2_ngff_connector.m2_ngff_minicard_67_position.vendor.legal_name as String
+  let ddr4_vendor = ddr4_dimm_socket_solder_tail_288_family.vendor.legal_name as String
+  let m2_vendor = m2_ngff_minicard_67_position.vendor.legal_name as String
   !(ddr4_vendor == m2_vendor)
 }
 
@@ -226,15 +226,15 @@ test fn w_every_unread_document_row_owes_its_geometry() -> Bool {
   owes_its_geometry(p: extdeps.storage.amphenol_mdt420m01001.mdt420m01001)
     && owes_its_geometry(p: extdeps.memory.microchip_at24cm02.at24cm02)
     && owes_its_geometry(p: extdeps.memory.macronix_mx25l25673g.mx25l25673g)
-    && owes_its_geometry(p: ftsh_105_01_l_dv)
+    && owes_its_geometry(p: extdeps.connector.samtec_ftsh_105_01_l_dv.ftsh_105_01_l_dv)
 }
 
 // THE PART NUMBERS ARE THE ONE FACT THESE ROWS DO CARRY, so they are asserted rather than left to
 // be trusted.
 test fn w_the_unread_rows_carry_their_part_numbers() -> Bool {
-  (extdeps.storage.amphenol_mdt420m01001.mdt420m01001.ordering_part_number as String) == "MDT420M01001"
-    && (extdeps.memory.microchip_at24cm02.at24cm02.ordering_part_number as String) == "AT24CM02"
-    && (extdeps.memory.macronix_mx25l25673g.mx25l25673g.ordering_part_number as String) == "MX25L25673G"
+  (mdt420m01001.ordering_part_number as String) == "MDT420M01001"
+    && (at24cm02.ordering_part_number as String) == "AT24CM02"
+    && (mx25l25673g.ordering_part_number as String) == "MX25L25673G"
     && (ftsh_105_01_l_dv.ordering_part_number as String) == "FTSH-105-01-L-DV"
 }
 
@@ -243,9 +243,9 @@ test fn w_the_unread_rows_carry_their_part_numbers() -> Bool {
 // splitting one entity into three — are the two opposite failures the Tyco decision in this same
 // tree already had to get right in the other direction.
 test fn w_the_four_new_vendors_are_four_distinct_entities() -> Bool {
-  let a = extdeps.storage.amphenol_mdt420m01001.mdt420m01001.vendor.legal_name as String
-  let m = extdeps.memory.microchip_at24cm02.at24cm02.vendor.legal_name as String
-  let x = extdeps.memory.macronix_mx25l25673g.mx25l25673g.vendor.legal_name as String
+  let a = mdt420m01001.vendor.legal_name as String
+  let m = at24cm02.vendor.legal_name as String
+  let x = mx25l25673g.vendor.legal_name as String
   let s = ftsh_105_01_l_dv.vendor.legal_name as String
   !(a == m) && !(a == x) && !(a == s) && !(m == x) && !(m == s) && !(x == s)
 }

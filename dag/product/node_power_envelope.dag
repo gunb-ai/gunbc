@@ -1,5 +1,6 @@
 module product.node_power_envelope
 
+
 // WHAT A NODE DRAWS AND WHAT ITS MEMORY DELIVERS — the electrical and bandwidth
 // half of a build, kept deliberately apart from what the build COSTS
 // (product.build_fulfillment). The two answer different questions and a reader
@@ -102,8 +103,8 @@ data altra_two_dpc_ceilings: TwoDpcRateCeilingTable = TwoDpcRateCeilingTable {
 // documented_coverage means by PartialChannel.
 fn populated_dimms_per_channel(population: gunbc.memory_provisioning.PopulationOption) -> std.nat.Nat {
   match population.coverage {
-    FullChannel { topology: t } => extdeps.cpu.ampere_altra_platform_hw_design.platform.dimms_per_channel_count(topology: t)
-    PartialChannel { channels_populated: _, channels_dark: _ } => 1
+    gunbc.memory_provisioning.FullChannel { topology: t } => extdeps.cpu.ampere_altra_platform_hw_design.platform.dimms_per_channel_count(topology: t)
+    gunbc.memory_provisioning.PartialChannel { channels_populated: _, channels_dark: _ } => 1
   }
 }
 

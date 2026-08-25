@@ -72,8 +72,8 @@ fn connective_name(value: v1.std.core.Connective) -> String {
   match value {
     Conj => "Conj"
     Disj => "Disj"
-    NoConnective => "NoConnective"
-    Arrow => "Arrow"
+    v1.std.core.NoConnective => "NoConnective"
+    v1.std.core.Arrow => "Arrow"
   }
 }
 
@@ -89,8 +89,8 @@ fn child_subtree_hash(connective: v1.std.core.Connective, digests: List<String>)
   match connective {
     Conj => dag_node_bag_hash(digests: digests)
     Disj => dag_node_bag_hash(digests: digests)
-    Arrow => dag_node_seq_hash(digests: digests)
-    NoConnective => dag_node_seq_hash(digests: digests)
+    v1.std.core.Arrow => dag_node_seq_hash(digests: digests)
+    v1.std.core.NoConnective => dag_node_seq_hash(digests: digests)
   }
 }
 
@@ -108,7 +108,7 @@ fn literal_value_fingerprint(value: std.syntax.LiteralValue) -> String {
     std.syntax.LitInt { value: v } => concat("LitInt:", to_string(value: v))
     std.syntax.LitFloat { value: v } => concat("LitFloat:", v)
     std.syntax.LitBool { value: v } => concat("LitBool:", to_string(value: v))
-    LitNull => "LitNull"
+    std.syntax.LitNull => "LitNull"
     std.syntax.LitSymbol { value: v } => concat("LitSymbol:", v)
   }
 }

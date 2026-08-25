@@ -3,7 +3,7 @@ module extdeps.rust.target_triple
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "doc.rust-lang.org/rustc/platform-support.html"
   }
 }
@@ -13,10 +13,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.rust.target_triple",
       decl_name: "RustTargetTripleRow",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.rust.target_triple.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -33,27 +33,27 @@ fn rust_target_triple_rows() -> List<RustTargetTripleRow> {
   [
     RustTargetTripleRow {
       spelling: "x86_64-unknown-linux-gnu" as std.types.NonEmptyStr,
-      triple: extdeps.toolchain.types.TargetTriple { arch: X86_64, vendor: UnknownVendor, os: Linux, env: Present { value: Gnu } },
+      triple: extdeps.toolchain.types.TargetTriple { arch: extdeps.toolchain.types.X86_64, vendor: extdeps.toolchain.types.UnknownVendor, os: extdeps.toolchain.types.Linux, env: Present { value: extdeps.toolchain.types.Gnu } },
     },
     RustTargetTripleRow {
       spelling: "aarch64-unknown-linux-gnu" as std.types.NonEmptyStr,
-      triple: extdeps.toolchain.types.TargetTriple { arch: Aarch64, vendor: UnknownVendor, os: Linux, env: Present { value: Gnu } },
+      triple: extdeps.toolchain.types.TargetTriple { arch: extdeps.toolchain.types.Aarch64, vendor: extdeps.toolchain.types.UnknownVendor, os: extdeps.toolchain.types.Linux, env: Present { value: extdeps.toolchain.types.Gnu } },
     },
     RustTargetTripleRow {
       spelling: "x86_64-unknown-linux-musl" as std.types.NonEmptyStr,
-      triple: extdeps.toolchain.types.TargetTriple { arch: X86_64, vendor: UnknownVendor, os: Linux, env: Present { value: Musl } },
+      triple: extdeps.toolchain.types.TargetTriple { arch: extdeps.toolchain.types.X86_64, vendor: extdeps.toolchain.types.UnknownVendor, os: extdeps.toolchain.types.Linux, env: Present { value: extdeps.toolchain.types.Musl } },
     },
     RustTargetTripleRow {
       spelling: "aarch64-unknown-linux-musl" as std.types.NonEmptyStr,
-      triple: extdeps.toolchain.types.TargetTriple { arch: Aarch64, vendor: UnknownVendor, os: Linux, env: Present { value: Musl } },
+      triple: extdeps.toolchain.types.TargetTriple { arch: extdeps.toolchain.types.Aarch64, vendor: extdeps.toolchain.types.UnknownVendor, os: extdeps.toolchain.types.Linux, env: Present { value: extdeps.toolchain.types.Musl } },
     },
     RustTargetTripleRow {
       spelling: "aarch64-apple-darwin" as std.types.NonEmptyStr,
-      triple: extdeps.toolchain.types.TargetTriple { arch: Aarch64, vendor: Apple, os: Macos, env: none },
+      triple: extdeps.toolchain.types.TargetTriple { arch: extdeps.toolchain.types.Aarch64, vendor: extdeps.toolchain.types.Apple, os: extdeps.toolchain.types.Macos, env: none },
     },
     RustTargetTripleRow {
       spelling: "x86_64-apple-darwin" as std.types.NonEmptyStr,
-      triple: extdeps.toolchain.types.TargetTriple { arch: X86_64, vendor: Apple, os: Macos, env: none },
+      triple: extdeps.toolchain.types.TargetTriple { arch: extdeps.toolchain.types.X86_64, vendor: extdeps.toolchain.types.Apple, os: extdeps.toolchain.types.Macos, env: none },
     },
   ]
 }

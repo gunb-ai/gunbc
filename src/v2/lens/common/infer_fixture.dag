@@ -5,7 +5,7 @@ fn claim_atom_node(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -82,8 +82,8 @@ fn claim_inferred_facts(
   )
 }
 
-fn claim_inferred_facts_map(facts: v2.compiler.inferred_tree.InferredFacts) -> std.algebra.PartialFunction<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts> {
-  std.algebra.PartialFunction {
+fn claim_inferred_facts_map(facts: v2.compiler.inferred_tree.InferredFacts) -> PartialFunction<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts> {
+  PartialFunction {
     lookup: fn(_) {
       v2.std.optional.Present { value: facts }
     }
@@ -98,5 +98,5 @@ fn claim_inferred_tree(root: v2.std.node.Node, facts: v2.compiler.inferred_tree.
 }
 
 fn claim_inferred_facts_for_tree(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> Witness<v2.compiler.inferred_tree.InferredFacts> {
-  witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
+  v2.std.witness.witness_from_optional(opt: tree.facts.lookup(node), absent: v2.compiler.infer.infer_facts_lookup_miss_diagnostic(key: node))
 }

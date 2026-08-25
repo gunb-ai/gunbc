@@ -88,9 +88,9 @@ fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
 
 fn stage0_partition_row_is_module_bearing(row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow) -> Bool {
   match row.kind {
-    GeneratedEmitCoreCrate => false
-    GeneratedFoundationCrate => true
-    GeneratedLayeredCoreCrate => true
+    gunbc.stage0_crate_partition_generated.GeneratedEmitCoreCrate => false
+    gunbc.stage0_crate_partition_generated.GeneratedFoundationCrate => true
+    gunbc.stage0_crate_partition_generated.GeneratedLayeredCoreCrate => true
   }
 }
 
@@ -267,17 +267,17 @@ fn stage0_emit_shell_path_dependencies() -> List<extdeps.cargo.CargoDependency> 
 
 fn stage0_partition_row_kind(row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow) -> Stage0CrateKind {
   match row.kind {
-    GeneratedFoundationCrate => FoundationCrate
-    GeneratedLayeredCoreCrate => LayeredCoreCrate
-    GeneratedEmitCoreCrate => EmitCoreCrate
+    gunbc.stage0_crate_partition_generated.GeneratedFoundationCrate => FoundationCrate
+    gunbc.stage0_crate_partition_generated.GeneratedLayeredCoreCrate => LayeredCoreCrate
+    gunbc.stage0_crate_partition_generated.GeneratedEmitCoreCrate => EmitCoreCrate
   }
 }
 
 fn stage0_partition_row_header_doc(row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow) -> String {
   match row.kind {
-    GeneratedFoundationCrate => stage0_foundation_header_doc()
-    GeneratedLayeredCoreCrate => stage0_layered_core_header_doc()
-    GeneratedEmitCoreCrate => stage0_emit_core_header_doc()
+    gunbc.stage0_crate_partition_generated.GeneratedFoundationCrate => stage0_foundation_header_doc()
+    gunbc.stage0_crate_partition_generated.GeneratedLayeredCoreCrate => stage0_layered_core_header_doc()
+    gunbc.stage0_crate_partition_generated.GeneratedEmitCoreCrate => stage0_emit_core_header_doc()
   }
 }
 
@@ -285,9 +285,9 @@ fn stage0_partition_row_dependencies_outcome(
   row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow
 ) -> Stage0PartitionRowDepsOutcome {
   match row.kind {
-    GeneratedFoundationCrate =>
+    gunbc.stage0_crate_partition_generated.GeneratedFoundationCrate =>
       Stage0PartitionRowDepsOk { deps: stage0_foundation_runtime_dependencies() }
-    GeneratedLayeredCoreCrate =>
+    gunbc.stage0_crate_partition_generated.GeneratedLayeredCoreCrate =>
       match stage0_reexport_path_dependencies_outcome(reexport_packages: row.reexport_packages) {
         Stage0ReexportPathDepsOk { deps: reexport_deps } =>
           Stage0PartitionRowDepsOk {
@@ -296,7 +296,7 @@ fn stage0_partition_row_dependencies_outcome(
         Stage0ReexportPathDepsRefused { cause: cause } =>
           Stage0PartitionRowDepsRefused { cause: cause }
       }
-    GeneratedEmitCoreCrate =>
+    gunbc.stage0_crate_partition_generated.GeneratedEmitCoreCrate =>
       Stage0PartitionRowDepsOk {
         deps: stage0_foundation_runtime_dependencies()
           |> concat(stage0_emit_shell_path_dependencies())
@@ -306,9 +306,9 @@ fn stage0_partition_row_dependencies_outcome(
 
 fn stage0_partition_row_features(row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow) -> List<extdeps.cargo.CargoFeature> {
   match row.kind {
-    GeneratedFoundationCrate => [extdeps.cargo.CargoFeature { name: "text_lookup_work_counter", dependencies: [] }]
-    GeneratedLayeredCoreCrate => []
-    GeneratedEmitCoreCrate => []
+    gunbc.stage0_crate_partition_generated.GeneratedFoundationCrate => [extdeps.cargo.CargoFeature { name: "text_lookup_work_counter", dependencies: [] }]
+    gunbc.stage0_crate_partition_generated.GeneratedLayeredCoreCrate => []
+    gunbc.stage0_crate_partition_generated.GeneratedEmitCoreCrate => []
   }
 }
 

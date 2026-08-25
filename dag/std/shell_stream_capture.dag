@@ -3,28 +3,28 @@ module std.shell_stream_capture
 
 data seed_host_shell_stream_bounded_drain_scaffold_note: String = "INTERIM v1_interpreter seed host-effect only (operator ruling #8087, 2026-08-09): dispatch_shell drains child stdout/stderr concurrently while the child runs — never wait_with_output-then-truncate. Enforcement constants and CapturedStreamEvidence (total_bytes, retained_bytes, truncated, digest_hex, retained_text) live ONLY in v1_interpreter bounded_shell_host_drain / shell_result_from_capture. This module records scaffold prose and pure predicate helpers for witness tests — NOT a parallel constant authority."
 
-data seed_host_shell_stream_bounded_drain_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: roadmap-serve-emitted-realization emit-on-demand native serve lands AND bounded shell stream capture is enforced on the production host-effect seam with CapturedProcessStream evidence consumed by the channel provider adapter — then delete this scaffold module and the v1_interpreter bounded_shell_host_drain child module.")
+data seed_host_shell_stream_bounded_drain_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: roadmap-serve-emitted-realization emit-on-demand native serve lands AND bounded shell stream capture is enforced on the production host-effect seam with CapturedProcessStream evidence consumed by the channel provider adapter — then delete this scaffold module and the v1_interpreter bounded_shell_host_drain child module.")
 
 fn seed_host_stderr_tail_within_bound(
   total_bytes: std.measure.ByteSize,
   retained_bytes: std.measure.ByteSize,
   tail_limit: std.measure.ByteSize,
 ) -> Bool {
-  measure_le(a: retained_bytes, b: tail_limit)
-    && measure_le(a: retained_bytes, b: total_bytes)
+  std.measure.measure_le(a: retained_bytes, b: tail_limit)
+    && std.measure.measure_le(a: retained_bytes, b: total_bytes)
 }
 
 fn seed_host_stdout_complete_within_bound(
   total_bytes: std.measure.ByteSize,
   limit: std.measure.ByteSize,
 ) -> Bool {
-  measure_le(a: total_bytes, b: limit)
+  std.measure.measure_le(a: total_bytes, b: limit)
 }
 
 fn seed_host_stdout_overflow_would_refuse(
   total_bytes: std.measure.ByteSize,
   limit: std.measure.ByteSize,
 ) -> Bool {
-  measure_le(a: limit, b: total_bytes)
-    && !measure_le(a: total_bytes, b: limit)
+  std.measure.measure_le(a: limit, b: total_bytes)
+    && !std.measure.measure_le(a: total_bytes, b: limit)
 }

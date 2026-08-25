@@ -35,9 +35,9 @@ fn generated_projection_merge_policy_lines() -> GitattributesGenerationOutcome {
     "# then regenerate from merged authorities before commit (charter four-case policy row 1).",
     ""
   ]
-  match deterministic_generated_projection_paths() {
-    GeneratedProjectionPathsRefused { cause: _ } => GitattributesGenerationRefused
-    GeneratedProjectionPathsAccepted { paths } => GitattributesGenerated {
+  match gunbc.generated_projection_paths.deterministic_generated_projection_paths() {
+    gunbc.generated_projection_paths.GeneratedProjectionPathsRefused { cause: _ } => GitattributesGenerationRefused
+    gunbc.generated_projection_paths.GeneratedProjectionPathsAccepted { paths } => GitattributesGenerated {
       content: join_lines(lines: concat(header, map(paths, p => concat(concat(p, " "), generated_projection_merge_attribute))))
     }
   }

@@ -18,7 +18,7 @@ type TransportFidelity {
 
 fn classify_fidelities(fidelities: List<TransportFidelity>) -> DerivedClassification {
   let depths = map(fidelities, f => f.depth)
-  let max_depth = fermi_max_of(depths: depths)
+  let max_depth = std.fermi.fermi_max_of(depths: depths)
   let all_hermetic = all(fidelities, f => f.hermetic)
   let n = count(fidelities)
   let test_class = if n == 0 { Unit } else { if all_hermetic { Hermetic } else { Integration } }

@@ -19,16 +19,16 @@ data unrealized_frame_refusal_note: String = "THE PURE BODY REFUSES; IT DOES NOT
 fn witness_frame_unrealized_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^witness_evaluation_frame_not_realized,
-    at: v2.std.diagnostic.Textual { file: ^witness_evaluation_unrealized_boundary, extent: WholeFile },
-    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+    at: v2.std.diagnostic.Textual { file: ^witness_evaluation_unrealized_boundary, extent: v2.std.diagnostic.WholeFile },
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
   }
 }
 
 fn evaluate_in_witness_frame<A>(
   frame: WitnessEvaluationFrame,
   subject: fn(Bool) -> A,
-) -> v2.std.witness_evaluation.WitnessEvaluation<A> {
-  v2.std.witness_evaluation.WitnessRefused { diagnostic: witness_frame_unrealized_diagnostic() }
+) -> WitnessEvaluation<A> {
+  WitnessRefused { diagnostic: witness_frame_unrealized_diagnostic() }
 }
 
 // An executing-scope observation proves that a temporary frame was removed. The pure/default answer is false; the interpreter realization returns true only while evaluate_in_witness_frame is applying its subject.

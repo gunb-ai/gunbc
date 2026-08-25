@@ -1,7 +1,7 @@
 module v2.test.emit.semantic_decl_routing_generic
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data semantic_witness_golden: String = concat(extdeps.languages.rust.emit.rust_enum_derives, "\nenum Witness<C> { Holds { value: C }, Violates { diagnostic: Diagnostic } }")
 
@@ -12,7 +12,7 @@ data semantic_pair_golden: String = concat(extdeps.languages.rust.emit.rust_stru
 data semantic_pair_wrong_golden: String = concat(extdeps.languages.rust.emit.rust_struct_derives, "\nstruct Pair<K, V> { value: V, key: K }")
 
 fn sdrg_atom_type(name: v2.std.node.Symbol) -> v2.std.node.Node {
-  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } }, children: [], occurrence_id: v2.std.node.SyntheticOccurrence }
 }
 
 fn sdrg_field_edge(name: v2.std.node.Symbol, type_name: v2.std.node.Symbol) -> v2.std.node.Edge {
@@ -20,7 +20,7 @@ fn sdrg_field_edge(name: v2.std.node.Symbol, type_name: v2.std.node.Symbol) -> v
 }
 
 fn sdrg_record(edges: List<v2.std.node.Edge>) -> v2.std.node.Node {
-  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: edges, occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: edges, occurrence_id: v2.std.node.SyntheticOccurrence }
 }
 
 fn sdrg_variant_edge(name: v2.std.node.Symbol, payload: v2.std.node.Node) -> v2.std.node.Edge {
@@ -29,12 +29,12 @@ fn sdrg_variant_edge(name: v2.std.node.Symbol, payload: v2.std.node.Node) -> v2.
 
 fn semantic_witness_coproduct() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Disj },
     children: [
       sdrg_variant_edge(name: ^Holds, payload: sdrg_record(edges: [ sdrg_field_edge(name: ^value, type_name: ^C) ])),
       sdrg_variant_edge(name: ^Violates, payload: sdrg_record(edges: [ sdrg_field_edge(name: ^diagnostic, type_name: ^Diagnostic) ]))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -43,32 +43,32 @@ fn semantic_pair_record() -> v2.std.node.Node {
 }
 
 fn semantic_generic_emit_text(name: v2.std.node.Symbol, params: List<v2.std.node.Symbol>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
-  match emit_semantic_type_decl(name: name, params: params, node: node, target: rust_target_model()) {
-    Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+  match v2.compiler.emit_semantic_decl.emit_semantic_type_decl(name: name, params: params, node: node, target: v2.extdeps.languages.rust.rust_target_model()) {
+    v2.std.diagnostic.Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn semantic_witness_matches(golden: String) -> v2.std.logic.Bool {
+fn semantic_witness_matches(golden: String) -> Bool {
   match semantic_generic_emit_text(name: ^Witness, params: [^C], node: semantic_witness_coproduct()) {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn semantic_pair_matches(golden: String) -> v2.std.logic.Bool {
+fn semantic_pair_matches(golden: String) -> Bool {
   match semantic_generic_emit_text(name: ^Pair, params: [^K, ^V], node: semantic_pair_record()) {
-    Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => text == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn semantic_generic_enum_routes_to_enum_emit() -> v2.std.logic.Bool {
+test fn semantic_generic_enum_routes_to_enum_emit() -> Bool {
   semantic_witness_matches(golden: semantic_witness_golden)
     && !semantic_witness_matches(golden: semantic_witness_wrong_golden)
 }
 
-test fn semantic_generic_struct_routes_to_struct_emit() -> v2.std.logic.Bool {
+test fn semantic_generic_struct_routes_to_struct_emit() -> Bool {
   semantic_pair_matches(golden: semantic_pair_golden)
     && !semantic_pair_matches(golden: semantic_pair_wrong_golden)
 }

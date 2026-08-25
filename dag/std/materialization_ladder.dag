@@ -98,27 +98,27 @@ type ProviderAxes {
 fn tier_axes(t: ProviderTier) -> ProviderAxes {
   match t {
     ReferenceTier => ProviderAxes {
-      placement: LocalInProcess,
+      placement: std.realization.LocalInProcess,
       addressing: EdgeAddressed,
       aliasing: AliasOne
     }
     CopyTier => ProviderAxes {
-      placement: LocalInProcess,
+      placement: std.realization.LocalInProcess,
       addressing: EdgeAddressed,
       aliasing: ReplicatePerConsumer
     }
     MemoTier { keying: k } => ProviderAxes {
-      placement: LocalInProcess,
+      placement: std.realization.LocalInProcess,
       addressing: KeyAddressed { keying: k },
       aliasing: ReplicatePerConsumer
     }
     ArtifactTier { keying: k } => ProviderAxes {
-      placement: LocalFilesystem,
+      placement: std.realization.LocalFilesystem,
       addressing: KeyAddressed { keying: k },
       aliasing: ReplicatePerConsumer
     }
     CasTier { keying: k } => ProviderAxes {
-      placement: RemoteNetwork,
+      placement: std.realization.RemoteNetwork,
       addressing: KeyAddressed { keying: k },
       aliasing: ReplicatePerConsumer
     }
@@ -137,11 +137,11 @@ fn addressing_spans_isolation(a: ProviderAddressing) -> Bool {
 // interior — the 2026-07-10 20GiB incident happened inside a live scope — so
 // the capacity fact travels beside it rather than being implied away.
 fn scope_released_retention(capacity: std.cache_interface.CapacityPolicy) -> std.cache_interface.ProviderRetention {
-  std.cache_interface.ProviderRetention { release_policy: ReleasedAtProviderScopeExit, capacity: capacity }
+  std.cache_interface.ProviderRetention { release_policy: std.cache_interface.ReleasedAtProviderScopeExit, capacity: capacity }
 }
 
 fn persistent_retention(capacity: std.cache_interface.CapacityPolicy) -> std.cache_interface.ProviderRetention {
-  std.cache_interface.ProviderRetention { release_policy: ReleasedNever, capacity: capacity }
+  std.cache_interface.ProviderRetention { release_policy: std.cache_interface.ReleasedNever, capacity: capacity }
 }
 
 fn provider_row(
@@ -289,7 +289,7 @@ fn string_list_contains(xs: List<String>, wanted: String) -> Bool {
 fn provider_covers_identity(p: CacheProvider, identity: String) -> Bool {
   match p.coverage {
     CoversAllComputations => true
-    CoversIdentities { identities: ids } => std.materialization_ladder.string_list_contains(xs: ids, wanted: identity)
+    CoversIdentities { identities: ids } => string_list_contains(xs: ids, wanted: identity)
   }
 }
 
@@ -330,7 +330,7 @@ fn provider_is_copy_tier(p: CacheProvider) -> Bool {
 
 fn ladder_distinct_identities(demands: List<FrameDemand>) -> List<String> {
   reverse(demands |> fold(init: [], f: fn(acc, d) {
-    if std.materialization_ladder.string_list_contains(xs: acc, wanted: d.identity) {
+    if string_list_contains(xs: acc, wanted: d.identity) {
       acc
     } else {
       concat([d.identity], acc)
@@ -443,17 +443,17 @@ type RefusedProvider {
 
 fn retention_admission(r: std.cache_interface.ProviderRetention) -> RetentionAdmission {
   match r.release_policy {
-    ReleasedAtProviderScopeExit => RetentionAdmitted
-    ReleasedNever => std.materialization_ladder.capacity_admission(c: r.capacity)
-    ReleasedManually => std.materialization_ladder.capacity_admission(c: r.capacity)
+    std.cache_interface.ReleasedAtProviderScopeExit => RetentionAdmitted
+    std.cache_interface.ReleasedNever => capacity_admission(c: r.capacity)
+    std.cache_interface.ReleasedManually => capacity_admission(c: r.capacity)
   }
 }
 
 fn capacity_admission(c: std.cache_interface.CapacityPolicy) -> RetentionAdmission {
   match c {
-    CapacityUnbounded => RetentionRefused { reason: RetentionUnbounded }
-    CapacityBounded { limit: _, at_capacity: _ } => RetentionAdmitted
-    CapacityUnobserved => RetentionRefused { reason: RetentionUnobserved }
+    std.cache_interface.CapacityUnbounded => RetentionRefused { reason: RetentionUnbounded }
+    std.cache_interface.CapacityBounded { limit: _, at_capacity: _ } => RetentionAdmitted
+    std.cache_interface.CapacityUnobserved => RetentionRefused { reason: RetentionUnobserved }
   }
 }
 
@@ -550,7 +550,7 @@ fn group_verdict(
 ) -> LadderVerdict {
   if group_has_nature_conflict(group: group) {
     RefusedNatureConflict { identity: identity }
-  } else if std.materialization_ladder.string_list_contains(xs: cost_floor_exempt, wanted: identity) {
+  } else if string_list_contains(xs: cost_floor_exempt, wanted: identity) {
     AcceptedBelowCostFloor { identity: identity }
   } else {
     match group_nature(group: group) {
@@ -615,20 +615,20 @@ fn ladder_verdict_is_green(v: LadderVerdict) -> Bool {
 
 fn ladder_verdict_prescribes(v: LadderVerdict) -> std.realization.Materialization {
   match v {
-    RefusedNatureConflict { identity: _ } => Recompute
-    AuthoredDuplication { identity: _, lca: _, site_count: _ } => Share
-    DeadComputation { identity: _ } => Recompute
-    AcceptedEffectIsTheUse { identity: _ } => Recompute
-    Discharged { identity: _, lca: _, provider_id: _ } => Memoize
-    RefusedNoProvider { identity: _, lca: _ } => Memoize
-    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => Memoize
-    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => Memoize
-    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => Memoize
-    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => Memoize
-    RefusedUnmodeledWorldRead { identity: _, lca: _ } => Recompute
-    ExemptFreshEffect { identity: _ } => Recompute
-    AcceptedBelowCostFloor { identity: _ } => Recompute
-    AcceptedSingleRecompute { identity: _ } => Recompute
+    RefusedNatureConflict { identity: _ } => std.realization.Recompute
+    AuthoredDuplication { identity: _, lca: _, site_count: _ } => std.realization.Share
+    DeadComputation { identity: _ } => std.realization.Recompute
+    AcceptedEffectIsTheUse { identity: _ } => std.realization.Recompute
+    Discharged { identity: _, lca: _, provider_id: _ } => std.realization.Memoize
+    RefusedNoProvider { identity: _, lca: _ } => std.realization.Memoize
+    RefusedScopeTooNarrow { identity: _, lca: _, provider_id: _ } => std.realization.Memoize
+    RefusedExistenceKeyed { identity: _, lca: _, provider_id: _ } => std.realization.Memoize
+    RefusedRetentionUnbounded { identity: _, lca: _, provider_id: _ } => std.realization.Memoize
+    RefusedRetentionUnobserved { identity: _, lca: _, provider_id: _ } => std.realization.Memoize
+    RefusedUnmodeledWorldRead { identity: _, lca: _ } => std.realization.Recompute
+    ExemptFreshEffect { identity: _ } => std.realization.Recompute
+    AcceptedBelowCostFloor { identity: _ } => std.realization.Recompute
+    AcceptedSingleRecompute { identity: _ } => std.realization.Recompute
   }
 }
 

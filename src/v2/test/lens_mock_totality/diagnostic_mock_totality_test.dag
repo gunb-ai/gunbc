@@ -1,53 +1,54 @@
 module v2.test.lens_mock_totality.diagnostic_mock_totality
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedDiagnosticMock {
-  tag: v2.std.node.Symbol
+  tag: Symbol
 }
 
 data diagnostic_red_omit_keys: List<String> = ["diagnostic.ipmi.Tool.SelList"]
 
-fn materialize_diagnostic_mock(case: std.hermetic_replay.PublishedMockCase) -> Outcome<MaterializedDiagnosticMock> {
+fn materialize_diagnostic_mock(case: PublishedMockCase) -> Outcome<MaterializedDiagnosticMock> {
   if case.operation_key == "ssh.Session.Exec" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec })
   } else if case.operation_key == "ssh.Session.ExecScript" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec_script })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec_script })
   } else if case.operation_key == "ssh.Session.ExecArgv" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec_argv })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec_argv })
   } else if case.operation_key == "ssh.Session.ExecPortableWordsWithStdin" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec_portable_words_with_stdin })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec_portable_words_with_stdin })
   } else if case.operation_key == "ssh.Session.Reachability" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_reachability })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_reachability })
   } else if case.operation_key == "redfish.Http.GetSystem" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_system })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_system })
   } else if case.operation_key == "redfish.Http.GetSystemWithNetrc" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_system_with_netrc })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_system_with_netrc })
   } else if case.operation_key == "redfish.Http.GetChassisSensors" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_chassis_sensors })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_chassis_sensors })
   } else if case.operation_key == "redfish.Http.GetPower" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_power })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_power })
   } else if case.operation_key == "redfish.Http.GetThermal" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_thermal })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_thermal })
   } else if case.operation_key == "diagnostic.edac.RasMcCtl.CorrectableCounts" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_edac_correctable_counts })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_edac_correctable_counts })
   } else if case.operation_key == "diagnostic.ipmi.Tool.SensorList" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ipmi_sensor_list })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ipmi_sensor_list })
   } else if case.operation_key == "diagnostic.ipmi.Tool.SdrList" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ipmi_sdr_list })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ipmi_sdr_list })
   } else if case.operation_key == "diagnostic.ipmi.Tool.SelList" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ipmi_sel_list })
+    v2.std.diagnostic.outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ipmi_sel_list })
   } else {
-    mock_unhandled_rejection()
+    v2.lens.mock_totality.mock_unhandled_rejection()
   }
 }
 
-fn diagnostic_real_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  outcome_accepted_p(outcome: materialize_diagnostic_mock(case: case))
+fn diagnostic_real_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.outcome_accepted_p(outcome: materialize_diagnostic_mock(case: case))
 }
 
-fn diagnostic_omits_sel_list_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> Bool {
-  omit_consumer_handles(
+fn diagnostic_omits_sel_list_consumer_handles(case: PublishedMockCase) -> Bool {
+  v2.test.lens_mock_totality.witness_template.omit_consumer_handles(
     case: case,
     omit_keys: diagnostic_red_omit_keys,
     total_consumer_handles: diagnostic_real_consumer_handles
@@ -55,14 +56,14 @@ fn diagnostic_omits_sel_list_consumer_handles(case: std.hermetic_replay.Publishe
 }
 
 test fn diagnostic_mock_consumer_is_total_holds() -> Bool {
-  mock_totality_green_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_green_holds(
     published: extdeps.diagnostic.mock_corpus.diagnostic_published_mock_corpus,
     consumer_handles: diagnostic_real_consumer_handles
   )
 }
 
 test fn diagnostic_mock_omitted_member_is_red_holds() -> Bool {
-  mock_totality_red_on_omission_holds(
+  v2.test.lens_mock_totality.witness_template.mock_totality_red_on_omission_holds(
     published: extdeps.diagnostic.mock_corpus.diagnostic_published_mock_corpus,
     consumer_handles: diagnostic_omits_sel_list_consumer_handles
   )

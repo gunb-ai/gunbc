@@ -6,13 +6,13 @@ data cost_valuation_subject_note: String = "The subject of this module is SEMANT
 data cost_valuation_exact_core_scope_note: String = "SCOPED TO THE EXACT CORE BY OPERATOR RULING, and the two things held back are SEQUENCED rather than rejected. What is here: exact valuation at a complete binding set, CostSum binder scoping and shadowing, duplicate-binding refusal, effect refusal, logarithm refusal, and the earned-zero versus fabricated-zero distinction. What is held on branch session/deep-owl-215-partial-bounded-hold: PARTIAL evaluation - an unresolved state for a caller who never claimed completeness - and BOUNDED evaluation - a ceiling-valued binding and the interval arithmetic over it. The reason is that the program is converging on one end-to-end result, exact work and span as literal numbers for a real DAG section, and the exact core is all that milestone needs. Two constraints ride with the held work so that returning it cannot quietly undo decisions already taken. FIRST, complete and partial evaluation stay TWO ENTRY POINTS over one fold; that they are separate modes is sound and must not be collapsed back into a single evaluator, because a caller who swaps one for the other to make a refusal go away is running the author-side absorbing fallback and a single entry point would make that invisible. SECOND, the unresolved state must carry the residual COST EXPRESSION and not merely the names of the free variables: the held revision carried names only, so 3 + x lost the 3, lost the addition, and lost the shape, leaving a result no consumer could complete, lower-bound, render, or check for conservation of work. The residual must be the rich CostExpr rather than a normalized SymbolicCost, because normalization is precisely the step that discards the CostSum binder - see projection_path_binder_discard_debt_note."
 
 type CostValuationBinding {
-  variable: SizeVariable
+  variable: v2.lens.cost.SizeVariable
   value: v2.std.nat.Nat
 }
 
 type CostEvaluationRefusal
-  = MissingSizeBinding { variable: SizeVariable, at: v2.std.diagnostic.Locus }
-  | DuplicateSizeBinding { variable: SizeVariable, at: v2.std.diagnostic.Locus }
+  = MissingSizeBinding { variable: v2.lens.cost.SizeVariable, at: v2.std.diagnostic.Locus }
+  | DuplicateSizeBinding { variable: v2.lens.cost.SizeVariable, at: v2.std.diagnostic.Locus }
   | UnmodeledEffectCost { operation: std.decl_ref.DeclarationRef, at: v2.std.diagnostic.Locus }
   | IntegerLogarithmUnavailable { base: v2.std.nat.Nat, argument: v2.lens.cost.expr.SizeExpr, at: v2.std.diagnostic.Locus }
   | ExpressionRefused { cause: v2.lens.cost.expr.CostExprRefusalCause, at: v2.std.diagnostic.Locus }
@@ -30,20 +30,20 @@ type CostValuationEnv {
 }
 
 type BindingScan {
-  seen: List<SizeVariable>
-  duplicates: List<SizeVariable>
+  seen: List<v2.lens.cost.SizeVariable>
+  duplicates: List<v2.lens.cost.SizeVariable>
 }
 
 fn cost_valuation_authority_locus() -> v2.std.diagnostic.Locus {
-  textual_whole_file_locus(file: ^cost_valuation_authority_virtual_file)
+  v2.std.diagnostic.textual_whole_file_locus(file: ^cost_valuation_authority_virtual_file)
 }
 
-fn size_variable_eq(a: SizeVariable, b: SizeVariable) -> v2.std.logic.Bool {
+fn size_variable_eq(a: v2.lens.cost.SizeVariable, b: v2.lens.cost.SizeVariable) -> Bool {
   a.source == b.source
 }
 
-fn size_variable_in(xs: List<SizeVariable>, wanted: SizeVariable) -> v2.std.logic.Bool {
-  fold_list(
+fn size_variable_in(xs: List<v2.lens.cost.SizeVariable>, wanted: v2.lens.cost.SizeVariable) -> Bool {
+  v2.std.algebra.fold_list(
     xs: xs,
     empty: false,
     cons: fn(acc, item) { acc || size_variable_eq(a: item, b: wanted) }
@@ -51,7 +51,7 @@ fn size_variable_in(xs: List<SizeVariable>, wanted: SizeVariable) -> v2.std.logi
 }
 
 fn refuse(cause: CostEvaluationRefusal) -> CostEvaluation {
-  CostEvaluationRefused { causes: non_empty_singleton(item: cause) }
+  CostEvaluationRefused { causes: v2.std.algebra.non_empty_singleton(item: cause) }
 }
 
 data env_scoping_note: String = "env_bind PREPENDS and lookup_bindings answers the HEAD-most match, so a CostSum binder shadows an outer binding of the same identity for the extent of the body and only for that extent. Removal on exit is structural rather than an unbind step: the extended environment is a local value, so the environment the caller holds is the one that was never modified. That is the scoping obligation discharged by construction rather than by remembering to undo something. The lookup is written as explicit head-first recursion instead of a fold precisely because the ANSWER DEPENDS ON DIRECTION, and a fold's direction is a property of fold_list rather than of this module."
@@ -63,27 +63,27 @@ fn env_bind(env: CostValuationEnv, binding: CostValuationBinding) -> CostValuati
 }
 
 fn lookup_bindings(
-  bindings: std.algebra.FreeMonoid<CostValuationBinding>,
-  variable: SizeVariable
+  bindings: List<CostValuationBinding>,
+  variable: v2.lens.cost.SizeVariable
 ) -> v2.std.optional.Optional<v2.std.nat.Nat> {
   match bindings {
-    Empty => v2.std.optional.Absent
-    Cons { head: h, tail: t } =>
+    std.algebra.Empty => v2.std.optional.Absent
+    std.algebra.Cons { head: h, tail: t } =>
       if size_variable_eq(a: h.variable, b: variable) {
-        optional_present(value: h.value)
+        v2.std.optional.optional_present(value: h.value)
       } else {
         lookup_bindings(bindings: t, variable: variable)
       }
   }
 }
 
-fn env_lookup(env: CostValuationEnv, variable: SizeVariable) -> v2.std.optional.Optional<v2.std.nat.Nat> {
+fn env_lookup(env: CostValuationEnv, variable: v2.lens.cost.SizeVariable) -> v2.std.optional.Optional<v2.std.nat.Nat> {
   lookup_bindings(bindings: env.bindings, variable: variable)
 }
 
 data unbound_size_refusal_note: String = "At the exact core the caller has ASSERTED a complete valuation, so a variable with no binding is a caller defect and refuses with the variable NAMED. It may never answer zero: that is the fabricated-plausible-output class DESIGN section 5 forbids outright, and zero is exactly the value that reads as harmless in a cost report. The partial-valuation mode - for a caller who never claimed completeness, and for whom an unbound variable is an honest state rather than a defect - is held on session/deep-owl-215-partial-bounded-hold and returns as a SECOND ENTRY POINT over this same fold, never as a widening of this one."
 
-fn unbound_size(variable: SizeVariable) -> CostEvaluation {
+fn unbound_size(variable: v2.lens.cost.SizeVariable) -> CostEvaluation {
   refuse(
     cause: MissingSizeBinding {
       variable: variable,
@@ -103,7 +103,7 @@ fn combine_evaluation(
     CostEvaluationRefused { causes: ca } =>
       match b {
         CostEvaluationRefused { causes: cb } =>
-          CostEvaluationRefused { causes: non_empty_append(left: ca, right: cb) }
+          CostEvaluationRefused { causes: v2.std.algebra.non_empty_append(left: ca, right: cb) }
         ExactCost { value: vb } => CostEvaluationRefused { causes: ca }
       }
     ExactCost { value: va } =>
@@ -118,39 +118,39 @@ data multiply_evaluations_zero_note: String = "A zero factor gives exact zero on
 
 fn multiply_evaluations(a: CostEvaluation, b: CostEvaluation) -> CostEvaluation {
   match a {
-    ExactCost { value: Zero } => ExactCost { value: Zero }
+    ExactCost { value: v2.std.nat.Zero } => ExactCost { value: v2.std.nat.Zero }
     _ =>
       match b {
-        ExactCost { value: Zero } => ExactCost { value: Zero }
-        _ => combine_evaluation(a: a, b: b, op: nat_mul)
+        ExactCost { value: v2.std.nat.Zero } => ExactCost { value: v2.std.nat.Zero }
+        _ => combine_evaluation(a: a, b: b, op: v2.std.nat.nat_mul)
       }
   }
 }
 
 fn evaluate_size_expr(size: v2.lens.cost.expr.SizeExpr, env: CostValuationEnv) -> CostEvaluation {
   match size {
-    SizeConst { value: v } => ExactCost { value: v }
-    SizeOf { variable: v } =>
+    v2.lens.cost.expr.SizeConst { value: v } => ExactCost { value: v }
+    v2.lens.cost.expr.SizeOf { variable: v } =>
       match env_lookup(env: env, variable: v) {
-        Present { value: n } => ExactCost { value: n }
-        Absent => unbound_size(variable: v)
+        v2.std.optional.Present { value: n } => ExactCost { value: n }
+        v2.std.optional.Absent => unbound_size(variable: v)
       }
-    SizeLength { of: v } =>
+    v2.lens.cost.expr.SizeLength { of: v } =>
       match env_lookup(env: env, variable: v) {
-        Present { value: n } => ExactCost { value: n }
-        Absent => unbound_size(variable: v)
+        v2.std.optional.Present { value: n } => ExactCost { value: n }
+        v2.std.optional.Absent => unbound_size(variable: v)
       }
-    SizeAdd { left: l, right: r } =>
+    v2.lens.cost.expr.SizeAdd { left: l, right: r } =>
       combine_evaluation(
         a: evaluate_size_expr(size: l, env: env),
         b: evaluate_size_expr(size: r, env: env),
-        op: nat_add
+        op: v2.std.nat.nat_add
       )
-    SizeMax { left: l, right: r } =>
+    v2.lens.cost.expr.SizeMax { left: l, right: r } =>
       combine_evaluation(
         a: evaluate_size_expr(size: l, env: env),
         b: evaluate_size_expr(size: r, env: env),
-        op: v2.std.nat.nat_max
+        op: nat_max
       )
   }
 }
@@ -165,14 +165,14 @@ data summation_semantics_note: String = "CostSum with binder i, upper u and body
 data summation_settled_disposition_note: String = "Once the accumulator has refused, later iterations do not evaluate the body. This is a COST fix with a soundness argument, not an optimisation, and both halves matter. The cost: non_empty_append is linear in its left argument because list_append folds the left side, so accumulating one cause per iteration is quadratic in the iteration count - and CostEffect refuses unconditionally in this slice, so any loop containing an effect reaches it, at whatever size the bound happens to be. The standing bare-minimum-cost rule fixes a proven quadratic fold regardless of the realized n, because n is not a time-stable fact. The signal: those causes are IDENTICAL - the body expression is fixed across iterations and only the binder VALUE changes - so accumulating them amplified one deficit u times rather than counting u deficits, degrading the very countability the accumulate rule exists to protect. The soundness argument for skipping, stated so it can be re-checked rather than trusted: a refusal here is a property of the body EXPRESSION, not of the binder's value - unboundness, an unmodelled effect, an invalid log base and an unavailable integer logarithm are all value-independent - so a body that refuses at one iteration refuses at every one. Dissolve-on: the first value-DEPENDENT refusal cause, at which point this skip becomes unsound and the fix becomes cause-identity dedup instead."
 
 fn evaluate_summation(
-  binder: SizeVariable,
+  binder: v2.lens.cost.SizeVariable,
   iterations: v2.std.nat.Nat,
   env: CostValuationEnv,
   evaluate_body: fn(CostValuationEnv) -> CostEvaluation
 ) -> CostEvaluation {
-  nat_cata(
+  v2.std.nat.nat_cata(
     n: iterations,
-    zero: SummationState { index: Zero, accumulated: ExactCost { value: Zero } },
+    zero: SummationState { index: v2.std.nat.Zero, accumulated: ExactCost { value: v2.std.nat.Zero } },
     succ: fn(state) {
       SummationState {
         index: v2.std.nat.Succ { prev: state.index },
@@ -186,7 +186,7 @@ fn evaluate_summation(
                 binding: CostValuationBinding { variable: binder, value: state.index }
               )
             ),
-            op: nat_add
+            op: v2.std.nat.nat_add
           )
         }
       }
@@ -201,7 +201,7 @@ fn evaluate_cost_log(
   argument: v2.lens.cost.expr.SizeExpr,
   env: CostValuationEnv
 ) -> CostEvaluation {
-  if nat_lte(a: base, b: v2.std.nat.Succ { prev: Zero }) {
+  if v2.std.nat.nat_lte(a: base, b: v2.std.nat.Succ { prev: v2.std.nat.Zero }) {
     refuse(
       cause: ExpressionRefused {
         cause: v2.lens.cost.expr.InvalidLogBase {
@@ -228,25 +228,25 @@ fn evaluate_cost_log(
 
 fn evaluate_cost_expr_in_env(expr: v2.lens.cost.expr.CostExpr, env: CostValuationEnv) -> CostEvaluation {
   match expr {
-    CostConst { value: v } => ExactCost { value: v }
-    CostAdd { left: l, right: r } =>
+    v2.lens.cost.expr.CostConst { value: v } => ExactCost { value: v }
+    v2.lens.cost.expr.CostAdd { left: l, right: r } =>
       combine_evaluation(
         a: evaluate_cost_expr_in_env(expr: l, env: env),
         b: evaluate_cost_expr_in_env(expr: r, env: env),
-        op: nat_add
+        op: v2.std.nat.nat_add
       )
-    CostMul { left: l, right: r } =>
+    v2.lens.cost.expr.CostMul { left: l, right: r } =>
       multiply_evaluations(
         a: evaluate_cost_expr_in_env(expr: l, env: env),
         b: evaluate_cost_expr_in_env(expr: r, env: env)
       )
-    CostMax { left: l, right: r } =>
+    v2.lens.cost.expr.CostMax { left: l, right: r } =>
       combine_evaluation(
         a: evaluate_cost_expr_in_env(expr: l, env: env),
         b: evaluate_cost_expr_in_env(expr: r, env: env),
-        op: v2.std.nat.nat_max
+        op: nat_max
       )
-    CostSum { binder: bi, upper: u, body: bd } =>
+    v2.lens.cost.expr.CostSum { binder: bi, upper: u, body: bd } =>
       match evaluate_size_expr(size: u, env: env) {
         ExactCost { value: n } =>
           evaluate_summation(
@@ -259,16 +259,16 @@ fn evaluate_cost_expr_in_env(expr: v2.lens.cost.expr.CostExpr, env: CostValuatio
           )
         CostEvaluationRefused { causes: c } => CostEvaluationRefused { causes: c }
       }
-    CostLog { base: b, argument: a } =>
+    v2.lens.cost.expr.CostLog { base: b, argument: a } =>
       evaluate_cost_log(base: b, argument: a, env: env)
-    CostEffect { operation: op } =>
+    v2.lens.cost.expr.CostEffect { operation: op } =>
       refuse(
         cause: UnmodeledEffectCost {
           operation: op,
           at: cost_valuation_authority_locus()
         }
       )
-    CostRefused { cause: c } =>
+    v2.lens.cost.expr.CostRefused { cause: c } =>
       refuse(
         cause: ExpressionRefused {
           cause: c,
@@ -279,7 +279,7 @@ fn evaluate_cost_expr_in_env(expr: v2.lens.cost.expr.CostExpr, env: CostValuatio
 }
 
 fn scan_bindings(bindings: List<CostValuationBinding>) -> BindingScan {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: bindings,
     empty: BindingScan { seen: [], duplicates: [] },
     cons: fn(acc, item) {
@@ -300,7 +300,7 @@ fn scan_bindings(bindings: List<CostValuationBinding>) -> BindingScan {
 
 data duplicate_binding_note: String = "A duplicate binding for one variable is refused rather than resolved by a first-wins or last-wins rule, because both rules answer a number for a question the caller asked two ways. Note the scope precisely: this checks the CALLER-supplied valuation only. A CostSum binder that shadows an outer binding of the same identity is not a duplicate - it is correct lexical scoping - and the two are kept apart by scanning the supplied list ONCE at entry, before any binder extends the environment."
 
-fn refuse_duplicate(variable: SizeVariable) -> CostEvaluation {
+fn refuse_duplicate(variable: v2.lens.cost.SizeVariable) -> CostEvaluation {
   refuse(
     cause: DuplicateSizeBinding {
       variable: variable,
@@ -310,20 +310,20 @@ fn refuse_duplicate(variable: SizeVariable) -> CostEvaluation {
 }
 
 fn duplicate_binding_refusal(
-  duplicates: List<SizeVariable>
+  duplicates: List<v2.lens.cost.SizeVariable>
 ) -> v2.std.optional.Optional<CostEvaluation> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: duplicates,
     empty: v2.std.optional.Absent,
     cons: fn(acc, item) {
       match acc {
-        Absent => v2.std.optional.Present { value: refuse_duplicate(variable: item) }
-        Present { value: v } =>
+        v2.std.optional.Absent => v2.std.optional.Present { value: refuse_duplicate(variable: item) }
+        v2.std.optional.Present { value: v } =>
           v2.std.optional.Present {
             value: combine_evaluation(
               a: v,
               b: refuse_duplicate(variable: item),
-              op: nat_add
+              op: v2.std.nat.nat_add
             )
           }
       }
@@ -340,8 +340,8 @@ fn evaluate_cost_expr(
   match duplicate_binding_refusal(
     duplicates: scan_bindings(bindings: bindings).duplicates
   ) {
-    Present { value: refusal } => refusal
-    Absent =>
+    v2.std.optional.Present { value: refusal } => refusal
+    v2.std.optional.Absent =>
       evaluate_cost_expr_in_env(
         expr: expr,
         env: CostValuationEnv { bindings: bindings }

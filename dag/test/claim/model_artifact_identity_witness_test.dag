@@ -2,7 +2,7 @@ module test.claim.model_artifact_identity_witness_test
 
 
 fn gpt_oss_20b() -> extdeps.ollama.api.OllamaModelRef {
-  ollama_gpt_oss_20b_model_ref
+  extdeps.ollama.capability.ollama_gpt_oss_20b_model_ref
 }
 
 // Two DIFFERENT digests carrying the SAME reference -- which is exactly what upstream repointing a
@@ -17,35 +17,35 @@ data digest_b: String = "ffffffffeeeeeeeeddddddddccccccccbbbbbbbbaaaaaaaa9999999
 data tuned_digest_hex: String = "1111111122222222333333334444444455555555666666667777777788888888"
 
 fn tuned_digest() -> std.content_hash.Sha256Digest {
-  match sha256_hex_digest(hex: tuned_digest_hex) {
+  match std.content_hash.sha256_hex_digest(hex: tuned_digest_hex) {
     Present { value: d } => d
     Absent => tuned_digest()
   }
 }
 
 fn artifact_with(hex: String) -> gunbc.model_artifact.ModelArtifact? {
-  match ollama_model_digest_from_wire(ref: gpt_oss_20b(), hex: hex) {
+  match extdeps.ollama.api.ollama_model_digest_from_wire(ref: gpt_oss_20b(), hex: hex) {
     Present { value: d } => Present {
-      value: model_artifact_from_observed_digest(publisher: "ollama" as std.types.NonEmptyStr, observed: d),
+      value: gunbc.model_artifact.model_artifact_from_observed_digest(publisher: "ollama" as std.types.NonEmptyStr, observed: d),
     }
     Absent => none
   }
 }
 
 test fn w_wire_digest_parses_and_the_sha256_prefix_is_serialization_not_identity() -> Bool {
-  match ollama_model_digest_from_wire(ref: gpt_oss_20b(), hex: digest_a) {
+  match extdeps.ollama.api.ollama_model_digest_from_wire(ref: gpt_oss_20b(), hex: digest_a) {
     Absent => false
     Present { value: bare } =>
-      match ollama_model_digest_from_wire(ref: gpt_oss_20b(), hex: concat("sha256:", digest_a)) {
+      match extdeps.ollama.api.ollama_model_digest_from_wire(ref: gpt_oss_20b(), hex: concat("sha256:", digest_a)) {
         Absent => false
         Present { value: prefixed } =>
-          match compare_model_artifact(
-            desired: model_artifact_from_observed_digest(publisher: "ollama" as std.types.NonEmptyStr, observed: bare),
-            loaded: model_artifact_from_observed_digest(publisher: "ollama" as std.types.NonEmptyStr, observed: prefixed),
+          match gunbc.model_artifact.compare_model_artifact(
+            desired: gunbc.model_artifact.model_artifact_from_observed_digest(publisher: "ollama" as std.types.NonEmptyStr, observed: bare),
+            loaded: gunbc.model_artifact.model_artifact_from_observed_digest(publisher: "ollama" as std.types.NonEmptyStr, observed: prefixed),
           ) {
-            ArtifactIdentical => true
-            ArtifactDiffers { desired: _, loaded: _ } => false
-            ArtifactIncomparable { cause: _ } => false
+            gunbc.model_artifact.ArtifactIdentical => true
+            gunbc.model_artifact.ArtifactDiffers { desired: _, loaded: _ } => false
+            gunbc.model_artifact.ArtifactIncomparable { cause: _ } => false
           }
       }
   }
@@ -61,10 +61,10 @@ test fn w_same_tag_different_bytes_is_a_different_model() -> Bool {
       match artifact_with(hex: digest_b) {
         Absent => false
         Present { value: b } =>
-          match compare_model_artifact(desired: a, loaded: b) {
-            ArtifactDiffers { desired: _, loaded: _ } => model_label_collision(left: a, right: b)
-            ArtifactIdentical => false
-            ArtifactIncomparable { cause: _ } => false
+          match gunbc.model_artifact.compare_model_artifact(desired: a, loaded: b) {
+            gunbc.model_artifact.ArtifactDiffers { desired: _, loaded: _ } => gunbc.model_artifact.model_label_collision(left: a, right: b)
+            gunbc.model_artifact.ArtifactIdentical => false
+            gunbc.model_artifact.ArtifactIncomparable { cause: _ } => false
           }
       }
   }
@@ -79,10 +79,10 @@ test fn w_same_bytes_agree_and_do_not_collide() -> Bool {
       match artifact_with(hex: digest_a) {
         Absent => false
         Present { value: a2 } =>
-          match compare_model_artifact(desired: a, loaded: a2) {
-            ArtifactIdentical => !model_label_collision(left: a, right: a2)
-            ArtifactDiffers { desired: _, loaded: _ } => false
-            ArtifactIncomparable { cause: _ } => false
+          match gunbc.model_artifact.compare_model_artifact(desired: a, loaded: a2) {
+            gunbc.model_artifact.ArtifactIdentical => !gunbc.model_artifact.model_label_collision(left: a, right: a2)
+            gunbc.model_artifact.ArtifactDiffers { desired: _, loaded: _ } => false
+            gunbc.model_artifact.ArtifactIncomparable { cause: _ } => false
           }
       }
   }
@@ -95,25 +95,25 @@ test fn w_a_tuned_artifact_carries_walkable_lineage_to_its_base() -> Bool {
   match artifact_with(hex: digest_a) {
     Absent => false
     Present { value: base } => {
-      let tuned = model_artifact_from_tuning_run(
+      let tuned = gunbc.model_artifact.model_artifact_from_tuning_run(
         produced_digest: tuned_digest(),
         base: base,
-        dataset_identity: content_hash_of_value(value: "dataset-v1" as std.types.NonEmptyStr),
+        dataset_identity: std.content_hash.content_hash_of_value(value: "dataset-v1" as std.types.NonEmptyStr),
         run_identity: "run-2026-08-12-a" as std.types.NonEmptyStr,
         serving_label: "gunbc-tuned:v1" as std.types.NonEmptyStr,
       )
-      match model_artifact_base_identity(artifact: tuned) {
+      match gunbc.model_artifact.model_artifact_base_identity(artifact: tuned) {
         Absent => false
         Present { value: recorded_base } =>
-          match compare_content_hash(left: recorded_base, right: base.identity) {
-            ContentHashEqual =>
-              match compare_model_artifact(desired: base, loaded: tuned) {
-                ArtifactDiffers { desired: _, loaded: _ } => true
-                ArtifactIdentical => false
-                ArtifactIncomparable { cause: _ } => false
+          match std.content_hash.compare_content_hash(left: recorded_base, right: base.identity) {
+            std.content_hash.ContentHashEqual =>
+              match gunbc.model_artifact.compare_model_artifact(desired: base, loaded: tuned) {
+                gunbc.model_artifact.ArtifactDiffers { desired: _, loaded: _ } => true
+                gunbc.model_artifact.ArtifactIdentical => false
+                gunbc.model_artifact.ArtifactIncomparable { cause: _ } => false
               }
-            ContentHashDifferent => false
-            ContentHashCrossFamilyIncomparable => false
+            std.content_hash.ContentHashDifferent => false
+            std.content_hash.ContentHashCrossFamilyIncomparable => false
           }
       }
     }
@@ -127,7 +127,7 @@ test fn w_a_stock_artifact_has_no_base() -> Bool {
   match artifact_with(hex: digest_a) {
     Absent => false
     Present { value: a } =>
-      match model_artifact_base_identity(artifact: a) {
+      match gunbc.model_artifact.model_artifact_base_identity(artifact: a) {
         Absent => true
         Present { value: _ } => false
       }
@@ -138,7 +138,7 @@ test fn w_a_stock_artifact_has_no_base() -> Bool {
 // identity. An artifact whose identity is wrong is worse than one that is missing, because every
 // downstream comparison trusts it.
 test fn red_control_malformed_digest_refuses_rather_than_placeholding() -> Bool {
-  match ollama_model_digest_from_wire(ref: gpt_oss_20b(), hex: "not-a-digest") {
+  match extdeps.ollama.api.ollama_model_digest_from_wire(ref: gpt_oss_20b(), hex: "not-a-digest") {
     Absent => true
     Present { value: _ } => false
   }

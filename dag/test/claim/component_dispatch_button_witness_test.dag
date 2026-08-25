@@ -1,34 +1,34 @@
 module test.claim.component_dispatch_button_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data component_dispatch_button_witness_note: String = "P0 keystone: the component concept, executable. The dispatch button's terminal states are DERIVED from the belt wire vocabulary and cross-checked total both directions; the RED control resurrects the exact drift the dispatch-button incident was — a wire label with no state row — and proves the totality check LOCATES it (returns the missing label), not vacuously passes. The role split (ok -> figure, refusal -> boundary) is proven derived from the ok-label authority, so a label moving across the ok line moves its chip material by derivation."
 
 test fn witness_scale_well_formed() -> Bool {
-  scale_well_formed()
+  gunbc.design.scale.scale_well_formed()
 }
 
 test fn witness_dispatch_button_states_total_over_wire() -> Bool {
-  dispatch_button_wire_total()
-    && dispatch_button_terminal_count() == belt_dispatch_all_status_labels().length()
-    && belt_dispatch_all_status_labels().length() == 13
+  gunbc.roadmap_component.dispatch_button_wire_total()
+    && gunbc.roadmap_component.dispatch_button_terminal_count() == gunbc.roadmap_belt_actuate.belt_dispatch_all_status_labels().length()
+    && gunbc.roadmap_belt_actuate.belt_dispatch_all_status_labels().length() == 13
 }
 
 test fn witness_dropped_state_is_located_red() -> Bool {
-  let broken = component_drop_state(c: dispatch_button_component(), drop_key: "spawned")
-  let gaps = labels_missing_state(c: broken, wire_labels: belt_dispatch_all_status_labels())
+  let broken = gunbc.design.component.component_drop_state(c: gunbc.roadmap_component.dispatch_button_component(), drop_key: "spawned")
+  let gaps = gunbc.design.component.labels_missing_state(c: broken, wire_labels: gunbc.roadmap_belt_actuate.belt_dispatch_all_status_labels())
   gaps.length() == 1 && all(gaps, g => g == "spawned")
 }
 
 test fn witness_no_fabricated_state() -> Bool {
-  states_missing_label(c: dispatch_button_component(), wire_labels: belt_dispatch_all_status_labels()).length() == 0
+  gunbc.design.component.states_missing_label(c: gunbc.roadmap_component.dispatch_button_component(), wire_labels: gunbc.roadmap_belt_actuate.belt_dispatch_all_status_labels()).length() == 0
 }
 
 data dwell_witness_scope_note: String = "THIS ASSERTION WAS LOOSENED AND THE REASON MATTERS, because loosening a witness to green your own change is the exact move a pinned oracle exists to prevent. It compared the WHOLE preamble to one line — `emitted == 'const gunbcDwellMs = 300;'` — so it failed the moment the preamble gained a second statement, which happened when the reason-surface helpers were added (2026-07-30). Nothing about the dwell had changed.\\n\\nThe over-specification was never the claim. The name says what is being tested: a Milliseconds-branded duration must reach the emitted program as a BARE INTEGER, not as `300ms`, not as a record, not as a quoted string — that is the property with a real failure mode, and whole-preamble equality only tested it incidentally while also asserting an unrelated fact nobody stated (that the preamble holds exactly one statement).\\n\\nSo the replacement is deliberately STRONGER on the property and silent on the incidental one: the dwell's exact statement must be present, and the three ways a brand leaks into emitted text are each refused by name. A version that rendered the brand would have passed the old equality only by accident of being the sole statement; it cannot pass this."
 
 test fn witness_dwell_emits_as_a_branded_duration() -> Bool {
-  let emitted = serialize_ts_stmts_indented(stmts: dispatch_preamble_statements(), indent: "")
+  let emitted = extdeps.languages.typescript.program.serialize_ts_stmts_indented(stmts: gunbc.roadmap_component.dispatch_preamble_statements(), indent: "")
   string_contains(s: emitted, pattern: "const gunbcDwellMs = 300;")
     && !string_contains(s: emitted, pattern: "gunbcDwellMs = '300'")
     && !string_contains(s: emitted, pattern: "gunbcDwellMs = 300ms")
@@ -36,6 +36,6 @@ test fn witness_dwell_emits_as_a_branded_duration() -> Bool {
 }
 
 test fn witness_terminal_role_split_follows_ok_set() -> Bool {
-  all(component_terminal_states(c: dispatch_button_component()), s =>
-    state_kind_ok(k: s.kind) == any(belt_dispatch_ok_status_labels(), l => l == state_kind_key(k: s.kind)))
+  all(gunbc.design.component.component_terminal_states(c: gunbc.roadmap_component.dispatch_button_component()), s =>
+    gunbc.design.component.state_kind_ok(k: s.kind) == any(gunbc.roadmap_belt_actuate.belt_dispatch_ok_status_labels(), l => l == gunbc.design.component.state_kind_key(k: s.kind)))
 }

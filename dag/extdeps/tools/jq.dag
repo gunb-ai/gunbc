@@ -1,5 +1,6 @@
 module extdeps.tools.jq
 
+
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: extdeps.uri.Https
@@ -7,7 +8,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data jq_authority: extdeps.external_authority.ExternalAuthority = extdeps.tools.jq.extdeps_external_authority_anchor
+data jq_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
 
 data jq_authority_anchor_scaffold_note: String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads an aliased anchor as absent, so the literal anchor grounds its projection while jq_authority remains the semantic authority name. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
 
@@ -38,7 +39,7 @@ data jq_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
 // reachable by every future caller.
 service jq.Process {
   operation RunWithStdin {
-    input { arguments: v2.std.compilers.cli_surface.ProcessArgvExpansion, stdin_payload: String }
+    input { arguments: ProcessArgvExpansion, stdin_payload: String }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
@@ -56,7 +57,7 @@ service jq.Process {
   }
 
   operation RunWithoutStdin {
-    input { arguments: v2.std.compilers.cli_surface.ProcessArgvExpansion }
+    input { arguments: ProcessArgvExpansion }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
@@ -133,11 +134,11 @@ type JqCliOption
   = JqCliOptionRawOutput
   | JqCliOptionExitStatus
 
-// ABSENCE IS A DECLARED ROW, NOT A MISSING ONE. An earlier revision returned v2.std.optional.Optional<JqCliOption>
-// and answered v2.std.optional.Absent for JqProgramExit -- which makes "this policy deliberately requires no
+// ABSENCE IS A DECLARED ROW, NOT A MISSING ONE. An earlier revision returned Optional<JqCliOption>
+// and answered Absent for JqProgramExit -- which makes "this policy deliberately requires no
 // option" and "nobody wrote a row for this policy" the SAME VALUE. That is the state-space
 // conflation DESIGN names, built here while writing about it: the two states have different
-// remedies (one is correct, one is a missing row that should refuse) and the v2.std.optional.Optional collapsed
+// remedies (one is correct, one is a missing row that should refuse) and the Optional collapsed
 // them. JqCliNoOptionRequired is the deliberate case stated out loud, so a genuinely absent row
 // has somewhere else to go.
 type JqCliSelection
@@ -233,9 +234,9 @@ type JqLowering
 // widen -- and never fabricate.
 fn jq_invocation_lower(invocation: JqInvocation) -> JqLowering {
   match invocation.bindings {
-    Cons { head: _, tail: _ } =>
+    std.algebra.Cons { head: _, tail: _ } =>
       JqLoweringRefused { cause: JqBindingLoweringUnwired }
-    Empty =>
+    std.algebra.Empty =>
       match invocation.input {
         JqInputFile { path: _ } =>
           JqLoweringRefused { cause: JqFileInputLoweringUnwired }
@@ -290,7 +291,7 @@ fn jq_selected_option_argument(selection: JqCliSelection) -> List<v2.std.compile
 // ambient. A handler consumes THIS, never a bare CliSurface it must reopen the JqInvocation to
 // complete -- that would give the process projection two authorities.
 // A PROCESS WITH NO STDIN CHANNEL AND A PROCESS GIVEN EMPTY STDIN ARE DIFFERENT EXECUTIONS.
-// An earlier revision carried v2.std.optional.Optional<String>, which conflates them -- the same state-space
+// An earlier revision carried Optional<String>, which conflates them -- the same state-space
 // collapse JqCliSelection exists to prevent one layer up, reintroduced at the process boundary.
 type JqProcessInput
   = JqProcessStdin { content: String }
@@ -425,6 +426,7 @@ fn jq_lowering_refused_diagnostic(cause: JqLoweringRefusal) -> v2.std.diagnostic
   }
 }
 
+
 // EXECUTION. The one function a domain module calls to actually run jq.
 //
 // It takes the SEALED plan, so the arguments reaching the process are the ones the row-driven
@@ -452,6 +454,6 @@ fn jq_execute_admitted_plan(plan: JqAdmittedProcessPlan) -> JqProcessObservation
 // The four-case receipt's entry point (test/manual/process_argv_expansion_receipt_test.dag). It
 // exists so the receipt asserts through the SAME handler production uses, rather than a
 // look-alike declared in the witness -- a witness-local service would prove nothing about this one.
-fn jq_argv_expansion_probe(expansion: v2.std.compilers.cli_surface.ProcessArgvExpansion, payload: String) -> Int {
+fn jq_argv_expansion_probe(expansion: ProcessArgvExpansion, payload: String) -> Int {
   jq.Process.RunWithStdin(arguments: expansion, stdin_payload: payload).exit_code
 }

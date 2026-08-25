@@ -44,7 +44,7 @@ fn render_go(doc: Doc, level: Int, proto: LayoutProtocol, st: RenderState) -> Re
       if t == "" {
         st
       } else if st.at_line_start {
-        RenderState { out: concat(concat(st.out, repeat_string(s: proto.indent_unit, n: level)), t), at_line_start: false }
+        RenderState { out: concat(concat(st.out, std.render_repeat_string_bootstrap.repeat_string(s: proto.indent_unit, n: level)), t), at_line_start: false }
       } else {
         RenderState { out: concat(st.out, t), at_line_start: false }
       }

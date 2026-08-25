@@ -1,14 +1,14 @@
 module test.claim.install_transport_qualification_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn probe(
   requirement: gunbc.install_transport_qualification.ConfigfsTransportRequirement,
   outcome: gunbc.install_transport_qualification.TransportProbeOutcome,
 ) -> gunbc.install_transport_qualification.TransportProbeObservation {
   gunbc.install_transport_qualification.TransportProbeObservation {
-    host: operator_host_srv3,
+    host: gunbc.fleet_intent_network.operator_host_srv3,
     requirement: requirement,
     probe: "synthetic fixture probe",
     result: "synthetic fixture result",
@@ -18,32 +18,32 @@ fn probe(
 }
 
 data every_requirement_present: List<gunbc.install_transport_qualification.TransportProbeObservation> = [
-  probe(requirement: ConfigfsMounted, outcome: ProbeFoundPresent),
-  probe(requirement: UsbGadgetFrameworkPresent, outcome: ProbeFoundPresent),
-  probe(requirement: MassStorageFunctionAvailable, outcome: ProbeFoundPresent),
-  probe(requirement: UdcPresent, outcome: ProbeFoundPresent),
-  probe(requirement: NbdClientPresent, outcome: ProbeFoundPresent),
-  probe(requirement: NbdServerReachableFromBmc, outcome: ProbeFoundPresent),
-  probe(requirement: BootOverrideNamesGadgetDevice, outcome: ProbeFoundPresent),
-  probe(requirement: NoForeignGadgetOrNbdAttachment, outcome: ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.ConfigfsMounted, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.UsbGadgetFrameworkPresent, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.MassStorageFunctionAvailable, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.UdcPresent, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.NbdClientPresent, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.NbdServerReachableFromBmc, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.BootOverrideNamesGadgetDevice, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.NoForeignGadgetOrNbdAttachment, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
 ]
 
 // The same eight with ONE flipped to absent. Authored explicitly rather than
 // folded so the single difference from the row above is readable.
 data one_requirement_absent: List<gunbc.install_transport_qualification.TransportProbeObservation> = [
-  probe(requirement: ConfigfsMounted, outcome: ProbeFoundAbsent),
-  probe(requirement: UsbGadgetFrameworkPresent, outcome: ProbeFoundPresent),
-  probe(requirement: MassStorageFunctionAvailable, outcome: ProbeFoundPresent),
-  probe(requirement: UdcPresent, outcome: ProbeFoundPresent),
-  probe(requirement: NbdClientPresent, outcome: ProbeFoundPresent),
-  probe(requirement: NbdServerReachableFromBmc, outcome: ProbeFoundPresent),
-  probe(requirement: BootOverrideNamesGadgetDevice, outcome: ProbeFoundPresent),
-  probe(requirement: NoForeignGadgetOrNbdAttachment, outcome: ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.ConfigfsMounted, outcome: gunbc.install_transport_qualification.ProbeFoundAbsent),
+  probe(requirement: gunbc.install_transport_qualification.UsbGadgetFrameworkPresent, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.MassStorageFunctionAvailable, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.UdcPresent, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.NbdClientPresent, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.NbdServerReachableFromBmc, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.BootOverrideNamesGadgetDevice, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.NoForeignGadgetOrNbdAttachment, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
 ]
 
 data absence_beside_unprobed: List<gunbc.install_transport_qualification.TransportProbeObservation> = [
-  probe(requirement: ConfigfsMounted, outcome: ProbeFoundPresent),
-  probe(requirement: NbdClientPresent, outcome: ProbeFoundAbsent),
+  probe(requirement: gunbc.install_transport_qualification.ConfigfsMounted, outcome: gunbc.install_transport_qualification.ProbeFoundPresent),
+  probe(requirement: gunbc.install_transport_qualification.NbdClientPresent, outcome: gunbc.install_transport_qualification.ProbeFoundAbsent),
 ]
 
 // THE CLAIM THIS WHOLE LANE RESTS ON. srv3 has four of eight requirements
@@ -53,9 +53,9 @@ data absence_beside_unprobed: List<gunbc.install_transport_qualification.Transpo
 // this transport.
 test fn unprobed_requirements_are_unestablished_not_refused() -> Bool {
   match gunbc.fleet_install_transport_observations.srv3_configfs_reinstall_path_standing {
-    ReinstallPathUnestablished { missing_probes: m } => list_length(items: m) == 4
-    ReinstallPathRefused { observed_absent: _ } => false
-    ReinstallPathEstablished { qualified_by: _ } => false
+    gunbc.install_transport_qualification.ReinstallPathUnestablished { missing_probes: m } => std.types.list_length(items: m) == 4
+    gunbc.install_transport_qualification.ReinstallPathRefused { observed_absent: _ } => false
+    gunbc.install_transport_qualification.ReinstallPathEstablished { qualified_by: _ } => false
   }
 }
 
@@ -63,32 +63,32 @@ test fn unprobed_requirements_are_unestablished_not_refused() -> Bool {
 // four. A standing that named the wrong requirements would send someone to run
 // probes that were already done.
 test fn the_missing_probes_are_the_four_that_were_never_run() -> Bool {
-  match transport_requirement_standing(
+  match gunbc.install_transport_qualification.transport_requirement_standing(
     observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
-    requirement: MassStorageFunctionAvailable,
+    requirement: gunbc.install_transport_qualification.MassStorageFunctionAvailable,
   ) {
-    RequirementUnobserved => true
+    gunbc.install_transport_qualification.RequirementUnobserved => true
     _ => false
   }
-    && match transport_requirement_standing(
+    && match gunbc.install_transport_qualification.transport_requirement_standing(
       observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
-      requirement: NbdServerReachableFromBmc,
+      requirement: gunbc.install_transport_qualification.NbdServerReachableFromBmc,
     ) {
-      RequirementUnobserved => true
+      gunbc.install_transport_qualification.RequirementUnobserved => true
       _ => false
     }
-    && match transport_requirement_standing(
+    && match gunbc.install_transport_qualification.transport_requirement_standing(
       observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
-      requirement: BootOverrideNamesGadgetDevice,
+      requirement: gunbc.install_transport_qualification.BootOverrideNamesGadgetDevice,
     ) {
-      RequirementUnobserved => true
+      gunbc.install_transport_qualification.RequirementUnobserved => true
       _ => false
     }
-    && match transport_requirement_standing(
+    && match gunbc.install_transport_qualification.transport_requirement_standing(
       observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
-      requirement: NoForeignGadgetOrNbdAttachment,
+      requirement: gunbc.install_transport_qualification.NoForeignGadgetOrNbdAttachment,
     ) {
-      RequirementUnobserved => true
+      gunbc.install_transport_qualification.RequirementUnobserved => true
       _ => false
     }
 }
@@ -96,32 +96,32 @@ test fn the_missing_probes_are_the_four_that_were_never_run() -> Bool {
 // The four that WERE run report present, so Unestablished above is not the
 // function ignoring its input.
 test fn the_four_observed_requirements_report_present() -> Bool {
-  match transport_requirement_standing(
+  match gunbc.install_transport_qualification.transport_requirement_standing(
     observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
-    requirement: ConfigfsMounted,
+    requirement: gunbc.install_transport_qualification.ConfigfsMounted,
   ) {
-    RequirementObservedPresent { observation: _ } => true
+    gunbc.install_transport_qualification.RequirementObservedPresent { observation: _ } => true
     _ => false
   }
-    && match transport_requirement_standing(
+    && match gunbc.install_transport_qualification.transport_requirement_standing(
       observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
-      requirement: UsbGadgetFrameworkPresent,
+      requirement: gunbc.install_transport_qualification.UsbGadgetFrameworkPresent,
     ) {
-      RequirementObservedPresent { observation: _ } => true
+      gunbc.install_transport_qualification.RequirementObservedPresent { observation: _ } => true
       _ => false
     }
-    && match transport_requirement_standing(
+    && match gunbc.install_transport_qualification.transport_requirement_standing(
       observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
-      requirement: UdcPresent,
+      requirement: gunbc.install_transport_qualification.UdcPresent,
     ) {
-      RequirementObservedPresent { observation: _ } => true
+      gunbc.install_transport_qualification.RequirementObservedPresent { observation: _ } => true
       _ => false
     }
-    && match transport_requirement_standing(
+    && match gunbc.install_transport_qualification.transport_requirement_standing(
       observations: gunbc.fleet_install_transport_observations.srv3_configfs_transport_observations,
-      requirement: NbdClientPresent,
+      requirement: gunbc.install_transport_qualification.NbdClientPresent,
     ) {
-      RequirementObservedPresent { observation: _ } => true
+      gunbc.install_transport_qualification.RequirementObservedPresent { observation: _ } => true
       _ => false
     }
 }
@@ -130,8 +130,8 @@ test fn the_four_observed_requirements_report_present() -> Bool {
 // observed present the standing is Established, so the srv3 verdict is a
 // function of its evidence rather than a constant.
 test fn a_fully_probed_transport_is_established() -> Bool {
-  match configfs_reinstall_path_standing(observations: every_requirement_present) {
-    ReinstallPathEstablished { qualified_by: q } => list_length(items: q) == 8
+  match gunbc.install_transport_qualification.configfs_reinstall_path_standing(observations: every_requirement_present) {
+    gunbc.install_transport_qualification.ReinstallPathEstablished { qualified_by: q } => std.types.list_length(items: q) == 8
     _ => false
   }
 }
@@ -140,10 +140,10 @@ test fn a_fully_probed_transport_is_established() -> Bool {
 // negative states. One requirement observed ABSENT with the other seven present
 // is REFUSED, not Unestablished: no remaining probe can change it.
 test fn one_observed_absence_refuses_rather_than_asking_for_more_probes() -> Bool {
-  match configfs_reinstall_path_standing(observations: one_requirement_absent) {
-    ReinstallPathRefused { observed_absent: a } => list_length(items: a) == 1
-    ReinstallPathUnestablished { missing_probes: _ } => false
-    ReinstallPathEstablished { qualified_by: _ } => false
+  match gunbc.install_transport_qualification.configfs_reinstall_path_standing(observations: one_requirement_absent) {
+    gunbc.install_transport_qualification.ReinstallPathRefused { observed_absent: a } => std.types.list_length(items: a) == 1
+    gunbc.install_transport_qualification.ReinstallPathUnestablished { missing_probes: _ } => false
+    gunbc.install_transport_qualification.ReinstallPathEstablished { qualified_by: _ } => false
   }
 }
 
@@ -151,8 +151,8 @@ test fn one_observed_absence_refuses_rather_than_asking_for_more_probes() -> Boo
 // refuses. Answering Unestablished here would hide a decided no behind a request
 // for probes that cannot overturn it.
 test fn an_absence_beside_unprobed_axes_still_refuses() -> Bool {
-  match configfs_reinstall_path_standing(observations: absence_beside_unprobed) {
-    ReinstallPathRefused { observed_absent: a } => list_length(items: a) == 1
+  match gunbc.install_transport_qualification.configfs_reinstall_path_standing(observations: absence_beside_unprobed) {
+    gunbc.install_transport_qualification.ReinstallPathRefused { observed_absent: a } => std.types.list_length(items: a) == 1
     _ => false
   }
 }
@@ -161,8 +161,8 @@ test fn an_absence_beside_unprobed_axes_still_refuses() -> Bool {
 // all eight, and specifically is not Refused — the shape of the original defect,
 // where knowing nothing produced a no.
 test fn no_observations_owes_every_probe_and_refuses_nothing() -> Bool {
-  match configfs_reinstall_path_standing(observations: []) {
-    ReinstallPathUnestablished { missing_probes: m } => list_length(items: m) == 8
+  match gunbc.install_transport_qualification.configfs_reinstall_path_standing(observations: []) {
+    gunbc.install_transport_qualification.ReinstallPathUnestablished { missing_probes: m } => std.types.list_length(items: m) == 8
     _ => false
   }
 }
@@ -172,9 +172,9 @@ test fn no_observations_owes_every_probe_and_refuses_nothing() -> Bool {
 // that could not hold both at once is how "no modeled install path" came to read
 // as "not installed".
 test fn a_running_host_can_have_an_unestablished_reinstall_path() -> Bool {
-  installed_os_is_running(standing: gunbc.install_transport_qualification.InstalledOsRunning { observed_at: 1786629600000 })
+  gunbc.install_transport_qualification.installed_os_is_running(standing: gunbc.install_transport_qualification.InstalledOsRunning { observed_at: 1786629600000 })
     && match gunbc.fleet_install_transport_observations.srv3_configfs_reinstall_path_standing {
-      ReinstallPathUnestablished { missing_probes: _ } => true
+      gunbc.install_transport_qualification.ReinstallPathUnestablished { missing_probes: _ } => true
       _ => false
     }
 }

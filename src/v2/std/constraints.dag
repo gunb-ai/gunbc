@@ -26,15 +26,15 @@ type CanonicalGroundingWitness {
 fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^constraints_not_realized,
-    at: node_locus(node: graph.root),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: graph.root),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 fn constraints_ill_formed_root_diagnostic(graph: ConstraintGraph) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^constraints_ill_formed_root,
-    at: node_locus(node: graph.root),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: graph.root),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -42,17 +42,17 @@ fn constraints_ill_formed_root_diagnostic(graph: ConstraintGraph) -> v2.std.diag
 fn grounding_evidence_is_source_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^grounding_evidence_is_source,
-    at: node_locus(node: node),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: node),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn canonical_grounding_from_derived_type(
   node: v2.std.node.Node,
   derived_type: v2.std.node.Node,
-) -> Outcome<CanonicalGrounding> {
+) -> v2.std.diagnostic.Outcome<CanonicalGrounding> {
   if derived_type == node {
-    outcome_rejected(grounding_evidence_is_source_diagnostic(node: node))
+    v2.std.diagnostic.outcome_rejected(grounding_evidence_is_source_diagnostic(node: node))
   } else {
     v2.std.diagnostic.Accepted {
       value: CanonicalGrounding {
@@ -104,8 +104,8 @@ fn canonical_grounding_candidate_set_closedness(root: v2.std.node.Node) -> v2.st
 
 fn canonical_grounding_candidates(
   policy: ConstraintSolvePolicy,
-) -> Outcome<CanonicalGroundingCandidateSet> {
-  if well_formed(n: policy.graph.root) {
+) -> v2.std.diagnostic.Outcome<CanonicalGroundingCandidateSet> {
+  if v2.std.node.well_formed(n: policy.graph.root) {
     v2.std.diagnostic.Accepted {
       value: CanonicalGroundingCandidateSet {
         set: v2.std.find_witness.CandidateSet {
@@ -116,23 +116,23 @@ fn canonical_grounding_candidates(
       diagnostics: v2.std.diagnostic.None
     }
   } else {
-    outcome_rejected(constraints_ill_formed_root_diagnostic(graph: policy.graph))
+    v2.std.diagnostic.outcome_rejected(constraints_ill_formed_root_diagnostic(graph: policy.graph))
   }
 }
-fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGrounding> {
-  bind_outcome(
+fn solve_constraints(policy: ConstraintSolvePolicy) -> v2.std.diagnostic.Outcome<CanonicalGrounding> {
+  v2.std.diagnostic.bind_outcome(
     o: canonical_grounding_candidates(policy: policy),
     f: fn(grounding_candidates) {
-      match find_witness(
+      match v2.std.find_witness.find_witness(
         source_facts: policy.graph.root,
         candidates: grounding_candidates.set,
         predicate: constraint_satisfaction_preservation_predicate(
           predicate: constraint_satisfaction_predicate(algebra: policy.graph.root)
         ),
-        multiplicity_policy: UniqueOnly
+        multiplicity_policy: v2.std.find_witness.UniqueOnly
       ) {
-        Accepted { value: fw, diagnostics: fw_d } =>
-          outcome_with_diagnostics(
+        v2.std.diagnostic.Accepted { value: fw, diagnostics: fw_d } =>
+          v2.std.diagnostic.outcome_with_diagnostics(
             value: CanonicalGrounding {
               node: fw.candidate,
               witness: CanonicalGroundingWitness {
@@ -142,7 +142,7 @@ fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGroundin
             },
             diagnostics: fw_d
           )
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )

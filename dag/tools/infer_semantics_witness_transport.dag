@@ -2,7 +2,7 @@ module tools.infer_semantics_witness_transport
 
 
 fn run_infer_semantics_witness() -> Bool {
-  run_witness_bin(
+  tools.host_prelude.run_witness_bin(
     var_name: "INFER_SEMANTICS_WITNESS",
     bin_name: "infer_semantics_witness",
     args: []

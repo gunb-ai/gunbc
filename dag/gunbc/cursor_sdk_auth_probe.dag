@@ -17,41 +17,41 @@ fn cursor_sdk_auth_probe_from_reconcile(
   reconcile: extdeps.llm.cursor_stream.CursorSdkStreamTerminalReconcile,
 ) -> CursorSdkAuthProbeResult {
   match reconcile {
-    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalFinished, error: _, raw: _ } =>
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsReconciled { status: extdeps.llm.cursor_stream.CursorSdkTerminalFinished, error: _, raw: _ } =>
       CursorSdkAuthProbeAuthenticated
-    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalError, error: err, raw: _ } =>
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsReconciled { status: extdeps.llm.cursor_stream.CursorSdkTerminalError, error: err, raw: _ } =>
       match err {
-        CursorSdkTerminalErrorObserved { message: _, code: code } =>
-          if cursor_sdk_error_code_is_authentication_failure(code: code) {
+        extdeps.llm.cursor_stream.CursorSdkTerminalErrorObserved { message: _, code: code } =>
+          if extdeps.llm.cursor_sdk_errors.cursor_sdk_error_code_is_authentication_failure(code: code) {
             CursorSdkAuthProbeCredentialsRejected { code: code }
           } else {
             CursorSdkAuthProbeTerminalNonAuthenticationError { code: code }
           }
-        CursorSdkTerminalErrorAbsent =>
+        extdeps.llm.cursor_stream.CursorSdkTerminalErrorAbsent =>
           CursorSdkAuthProbeUnclassified {
             reason: "terminal error status without error object" as std.types.NonEmptyStr,
           }
       }
-    CursorSdkStreamTerminalsReconciled { status: _, error: _, raw: _ } =>
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsReconciled { status: _, error: _, raw: _ } =>
       CursorSdkAuthProbeUnclassified {
         reason: "non-error terminal status is not an auth probe" as std.types.NonEmptyStr,
       }
-    CursorSdkStreamTerminalsUnclassified { reason: reason, raw: _ } =>
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsUnclassified { reason: reason, raw: _ } =>
       CursorSdkAuthProbeUnclassified { reason: reason }
   }
 }
 
 fn cursor_sdk_auth_probe_from_run_result(raw: String) -> CursorSdkAuthProbeResult {
   cursor_sdk_auth_probe_from_reconcile(
-    reconcile: cursor_sdk_stream_reconcile_run_result(raw: raw),
+    reconcile: extdeps.llm.cursor_stream.cursor_sdk_stream_reconcile_run_result(raw: raw),
   )
 }
 
 fn cursor_sdk_auth_probe_rejection_wire_code(probe: CursorSdkAuthProbeResult) -> String {
   match probe {
-    CursorSdkAuthProbeCredentialsRejected { code: code } => cursor_sdk_error_code_label(code: code)
+    CursorSdkAuthProbeCredentialsRejected { code: code } => extdeps.llm.cursor_sdk_errors.cursor_sdk_error_code_label(code: code)
     CursorSdkAuthProbeTerminalNonAuthenticationError { code: code } =>
-      cursor_sdk_error_code_label(code: code)
+      extdeps.llm.cursor_sdk_errors.cursor_sdk_error_code_label(code: code)
     CursorSdkAuthProbeAuthenticated => ""
     CursorSdkAuthProbeUnclassified { reason: _ } => ""
   }

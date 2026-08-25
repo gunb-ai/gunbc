@@ -1,7 +1,7 @@
 module v2.test.claim.c_compilation_unit_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_mod_a: v2.std.compilers.compilation_unit.ModuleId = "mod.a" as std.types.NonEmptyStr
 data witness_mod_b: v2.std.compilers.compilation_unit.ModuleId = "mod.b" as std.types.NonEmptyStr
@@ -35,37 +35,37 @@ data witness_type_int: v2.std.node.Symbol = ^witness_cu_int
 data witness_fn_use_point: v2.std.node.Symbol = ^witness_cu_use_point
 
 fn witness_type_atom(sym: v2.std.node.Symbol) -> v2.std.node.Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } }, children: [])
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } }, children: [])
 }
 
 fn witness_struct_field_by_value(sym: v2.std.node.Symbol) -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Conj },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^member },
-        target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: sym),
+        target: witness_type_atom(sym: sym),
       }
     ]
   )
 }
 
 fn witness_struct_field_by_pointer(sym: v2.std.node.Symbol) -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Conj },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^next },
-        target: node_synthetic(
-          kind: v2.std.node.TypeNode { connective: Arrow },
+        target: v2.std.node.node_synthetic(
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
           children: [
             v2.std.node.Edge {
               label: v2.std.node.Named { name: ^domain },
-              target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: sym),
+              target: witness_type_atom(sym: sym),
             },
             v2.std.node.Edge {
               label: v2.std.node.Named { name: ^codomain },
-              target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: v2.test.claim.c_compilation_unit_witness.witness_type_int),
+              target: witness_type_atom(sym: witness_type_int),
             }
           ]
         ),
@@ -75,44 +75,44 @@ fn witness_struct_field_by_pointer(sym: v2.std.node.Symbol) -> v2.std.node.Node 
 }
 
 fn witness_point_struct_conj_body() -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Conj },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^x },
-        target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: v2.test.claim.c_compilation_unit_witness.witness_type_int),
+        target: witness_type_atom(sym: witness_type_int),
       }
     ]
   )
 }
 
 fn witness_fn_taking_point_by_value() -> v2.std.node.Node {
-  node_synthetic(
+  v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode {
-      connective: Arrow,
+      connective: v2.std.node.Arrow,
     },
     children: [
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^domain },
-        target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: v2.test.claim.c_compilation_unit_witness.witness_type_point),
+        target: witness_type_atom(sym: witness_type_point),
       },
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^codomain },
-        target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: v2.test.claim.c_compilation_unit_witness.witness_type_int),
+        target: witness_type_atom(sym: witness_type_int),
       }
     ]
   )
 }
 
 fn witness_exports_for_c() -> List<v2.std.node.Node> {
-  [v2.test.claim.c_compilation_unit_witness.witness_fn_taking_point_by_value()]
+  [witness_fn_taking_point_by_value()]
 }
 
 fn witness_type_defs_for_c() -> List<v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow> {
   [
     v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow {
-      identity: v2.test.claim.c_compilation_unit_witness.witness_type_point,
-      definition: v2.test.claim.c_compilation_unit_witness.witness_point_struct_conj_body(),
+      identity: witness_type_point,
+      definition: witness_point_struct_conj_body(),
     }
   ]
 }
@@ -125,22 +125,22 @@ fn witness_triangle_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
     ],
-    exports: empty_map()
-      |> map_insert(witness_mod_a, std.algebra.Empty)
-      |> map_insert(witness_mod_b, std.algebra.Empty)
-      |> map_insert(witness_mod_c, v2.test.claim.c_compilation_unit_witness.witness_exports_for_c()),
-    type_definitions: empty_map()
-      |> map_insert(witness_mod_a, std.algebra.Empty)
-      |> map_insert(witness_mod_b, std.algebra.Empty)
-      |> map_insert(witness_mod_c, v2.test.claim.c_compilation_unit_witness.witness_type_defs_for_c()),
+    exports: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(witness_mod_a, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_b, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_c, witness_exports_for_c()),
+    type_definitions: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(witness_mod_a, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_b, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_c, witness_type_defs_for_c()),
   }
 }
 
 fn witness_two_unit_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
-  empty_map()
-    |> map_insert(witness_mod_a, v2.test.claim.c_compilation_unit_witness.witness_unit_one)
-    |> map_insert(witness_mod_b, v2.test.claim.c_compilation_unit_witness.witness_unit_one)
-    |> map_insert(witness_mod_c, v2.test.claim.c_compilation_unit_witness.witness_unit_two)
+  v2.std.collection.empty_map()
+    |> v2.std.collection.map_insert(witness_mod_a, witness_unit_one)
+    |> v2.std.collection.map_insert(witness_mod_b, witness_unit_one)
+    |> v2.std.collection.map_insert(witness_mod_c, witness_unit_two)
 }
 
 fn witness_mutual_recursive_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
@@ -150,30 +150,30 @@ fn witness_mutual_recursive_dag() -> v2.std.compilers.compilation_unit.ModuleDag
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_a },
     ],
-    exports: empty_map()
-      |> map_insert(witness_mod_a, std.algebra.Empty)
-      |> map_insert(witness_mod_b, std.algebra.Empty),
-    type_definitions: empty_map()
-      |> map_insert(witness_mod_a, std.algebra.Empty)
-      |> map_insert(witness_mod_b, std.algebra.Empty),
+    exports: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(witness_mod_a, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_b, std.algebra.Empty),
+    type_definitions: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(witness_mod_a, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_b, std.algebra.Empty),
   }
 }
 
 fn witness_module_scc_split_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
-  empty_map()
-    |> map_insert(witness_mod_a, witness_unit_a)
-    |> map_insert(witness_mod_b, witness_unit_b)
+  v2.std.collection.empty_map()
+    |> v2.std.collection.map_insert(witness_mod_a, witness_unit_a)
+    |> v2.std.collection.map_insert(witness_mod_b, witness_unit_b)
 }
 
 fn witness_by_value_type_cycle_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
   v2.std.compilers.compilation_unit.ModuleDag {
     modules: [witness_mod_a, witness_mod_b],
     edges: [],
-    exports: empty_map()
-      |> map_insert(witness_mod_a, std.algebra.Empty)
-      |> map_insert(witness_mod_b, std.algebra.Empty),
-    type_definitions: empty_map()
-      |> map_insert(
+    exports: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(witness_mod_a, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_b, std.algebra.Empty),
+    type_definitions: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(
         witness_mod_a,
         [
           v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow {
@@ -182,7 +182,7 @@ fn witness_by_value_type_cycle_dag() -> v2.std.compilers.compilation_unit.Module
           }
         ]
       )
-      |> map_insert(
+      |> v2.std.collection.map_insert(
         witness_mod_b,
         [
           v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow {
@@ -202,11 +202,11 @@ fn witness_pointer_type_cycle_dag() -> v2.std.compilers.compilation_unit.ModuleD
   v2.std.compilers.compilation_unit.ModuleDag {
     modules: [witness_mod_a, witness_mod_b],
     edges: [],
-    exports: empty_map()
-      |> map_insert(witness_mod_a, std.algebra.Empty)
-      |> map_insert(witness_mod_b, std.algebra.Empty),
-    type_definitions: empty_map()
-      |> map_insert(
+    exports: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(witness_mod_a, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_b, std.algebra.Empty),
+    type_definitions: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(
         witness_mod_a,
         [
           v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow {
@@ -215,7 +215,7 @@ fn witness_pointer_type_cycle_dag() -> v2.std.compilers.compilation_unit.ModuleD
           }
         ]
       )
-      |> map_insert(
+      |> v2.std.collection.map_insert(
         witness_mod_b,
         [
           v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow {
@@ -238,69 +238,69 @@ fn witness_link_cyclic_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_a1, to: witness_mod_b },
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_a2 },
     ],
-    exports: empty_map()
-      |> map_insert(witness_mod_a1, std.algebra.Empty)
-      |> map_insert(witness_mod_a2, std.algebra.Empty)
-      |> map_insert(witness_mod_b, std.algebra.Empty),
-    type_definitions: empty_map()
-      |> map_insert(witness_mod_a1, std.algebra.Empty)
-      |> map_insert(witness_mod_a2, std.algebra.Empty)
-      |> map_insert(witness_mod_b, std.algebra.Empty),
+    exports: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(witness_mod_a1, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_a2, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_b, std.algebra.Empty),
+    type_definitions: v2.std.collection.empty_map()
+      |> v2.std.collection.map_insert(witness_mod_a1, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_a2, std.algebra.Empty)
+      |> v2.std.collection.map_insert(witness_mod_b, std.algebra.Empty),
   }
 }
 
 fn witness_link_cyclic_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
-  empty_map()
-    |> map_insert(witness_mod_a1, witness_unit_a)
-    |> map_insert(witness_mod_a2, witness_unit_a)
-    |> map_insert(witness_mod_b, witness_unit_b)
+  v2.std.collection.empty_map()
+    |> v2.std.collection.map_insert(witness_mod_a1, witness_unit_a)
+    |> v2.std.collection.map_insert(witness_mod_a2, witness_unit_a)
+    |> v2.std.collection.map_insert(witness_mod_b, witness_unit_b)
 }
 
-fn witness_partition_fold_two_units() -> List<v2.std.compilers.compilation_unit.CompilationUnit> {
-  match c_partition_fold_outcome(
-    module_dag: v2.test.claim.c_compilation_unit_witness.witness_triangle_dag(),
-    assignment: v2.test.claim.c_compilation_unit_witness.witness_two_unit_assignment()
+fn witness_partition_fold_two_units() -> List<CompilationUnit> {
+  match v2.extdeps.languages.c.c_partition_fold_outcome(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment()
   ) {
-    PartitionFoldOk { units: units } => units
-    PartitionFoldRefused { cause: _ } => []
+    v2.std.compilers.compilation_unit.PartitionFoldOk { units: units } => units
+    v2.std.compilers.compilation_unit.PartitionFoldRefused { cause: _ } => []
   }
 }
 
 test fn witness_r3_header_source_object_paths() -> Bool {
-  c_unit_header_path(unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_one) == "cu-one.h"
-    && c_unit_source_path(unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_one) == "cu-one.c"
-    && c_unit_object_path(unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_one) == "cu-one.o"
+  v2.extdeps.languages.c.c_unit_header_path(unit_id: witness_unit_one) == "cu-one.h"
+    && v2.extdeps.languages.c.c_unit_source_path(unit_id: witness_unit_one) == "cu-one.c"
+    && v2.extdeps.languages.c.c_unit_object_path(unit_id: witness_unit_one) == "cu-one.o"
 }
 
 test fn witness_r3_include_directive_per_dep() -> Bool {
-  c_include_directive_for_dep(dep_id: v2.test.claim.c_compilation_unit_witness.witness_unit_two) == "#include \"cu-two.h\""
+  v2.extdeps.languages.c.c_include_directive_for_dep(dep_id: witness_unit_two) == "#include \"cu-two.h\""
 }
 
 test fn witness_r3_spelling_from_partition_fold() -> Bool {
-  let units = v2.test.claim.c_compilation_unit_witness.witness_partition_fold_two_units()
-  let point_def = v2.test.claim.c_compilation_unit_witness.witness_point_struct_conj_body()
-  match partition_unit_by_id(units: units, unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_two) {
+  let units = witness_partition_fold_two_units()
+  let point_def = witness_point_struct_conj_body()
+  match v2.std.compilers.compilation_unit.partition_unit_by_id(units: units, unit_id: witness_unit_two) {
     Present { value: unit } =>
-      let spelling = c_translation_unit_spelling(unit: unit, units: units)
+      let spelling = v2.extdeps.languages.c.c_translation_unit_spelling(unit: unit, units: units)
       (spelling.header_path == "cu-two.h")
         && (spelling.source_path == "cu-two.c")
         && (spelling.object_path == "cu-two.o")
-        && partition_interface_contains_node(interface: spelling.interface_nodes, needle: point_def)
+        && v2.std.compilers.compilation_unit.partition_interface_contains_node(interface: spelling.interface_nodes, needle: point_def)
         && ((spelling.interface_nodes |> count) >= 2)
     Absent => false
   }
 }
 
 test fn witness_r3_unit_one_spelling_paths() -> Bool {
-  let units = v2.test.claim.c_compilation_unit_witness.witness_partition_fold_two_units()
-  match partition_unit_by_id(units: units, unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_one) {
+  let units = witness_partition_fold_two_units()
+  match v2.std.compilers.compilation_unit.partition_unit_by_id(units: units, unit_id: witness_unit_one) {
     Present { value: unit } =>
-      let spelling = c_translation_unit_spelling(unit: unit, units: units)
+      let spelling = v2.extdeps.languages.c.c_translation_unit_spelling(unit: unit, units: units)
       (spelling.header_path == "cu-one.h")
         && (spelling.source_path == "cu-one.c")
         && (spelling.object_path == "cu-one.o")
         && (spelling.include_directives == ["#include \"cu-two.h\""])
-        && (spelling.include_closure == [v2.test.claim.c_compilation_unit_witness.witness_unit_one, v2.test.claim.c_compilation_unit_witness.witness_unit_two])
+        && (spelling.include_closure == [witness_unit_one, witness_unit_two])
     Absent => false
   }
 }
@@ -308,112 +308,112 @@ test fn witness_r3_unit_one_spelling_paths() -> Bool {
 test fn witness_r4_accepts_link_cyclic_unit_graph() -> Bool {
   let dag = witness_link_cyclic_dag()
   let assignment = witness_link_cyclic_assignment()
-  match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
-    PartitionFoldOk { units: units } =>
-      c_partition_unit_graph_has_cycle(units: units)
-        && match c_validate_partition_r4(
+  match v2.extdeps.languages.c.c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
+    v2.std.compilers.compilation_unit.PartitionFoldOk { units: units } =>
+      v2.extdeps.languages.c.c_partition_unit_graph_has_cycle(units: units)
+        && match v2.extdeps.languages.c.c_validate_partition_r4(
           module_dag: dag,
           assignment: assignment,
           units: units
         ) {
-          PartitionR4Valid => true
-          PartitionR4Refused { cause: _ } => false
+          v2.std.compilers.compilation_unit.PartitionR4Valid => true
+          v2.std.compilers.compilation_unit.PartitionR4Refused { cause: _ } => false
         }
-    PartitionFoldRefused { cause: _ } => false
+    v2.std.compilers.compilation_unit.PartitionFoldRefused { cause: _ } => false
   }
 }
 
 test fn witness_r4_accepts_module_scc_split_across_units() -> Bool {
   let dag = witness_mutual_recursive_dag()
   let assignment = witness_module_scc_split_assignment()
-  match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
-    PartitionFoldOk { units: units } =>
+  match v2.extdeps.languages.c.c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
+    v2.std.compilers.compilation_unit.PartitionFoldOk { units: units } =>
       (units |> count) == 2
-        && c_partition_unit_graph_has_cycle(units: units)
-        && match c_validate_partition_r4(
+        && v2.extdeps.languages.c.c_partition_unit_graph_has_cycle(units: units)
+        && match v2.extdeps.languages.c.c_validate_partition_r4(
           module_dag: dag,
           assignment: assignment,
           units: units
         ) {
-          PartitionR4Valid => true
-          PartitionR4Refused { cause: _ } => false
+          v2.std.compilers.compilation_unit.PartitionR4Valid => true
+          v2.std.compilers.compilation_unit.PartitionR4Refused { cause: _ } => false
         }
-    PartitionFoldRefused { cause: _ } => false
+    v2.std.compilers.compilation_unit.PartitionFoldRefused { cause: _ } => false
   }
 }
 
 test fn witness_r4_accepts_triangle_module_scc_split() -> Bool {
-  let dag = v2.test.claim.c_compilation_unit_witness.witness_triangle_dag()
-  let assignment = v2.test.claim.c_compilation_unit_witness.witness_two_unit_assignment()
-  match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
-    PartitionFoldOk { units: units } =>
-      match c_validate_partition_r4(
+  let dag = witness_triangle_dag()
+  let assignment = witness_two_unit_assignment()
+  match v2.extdeps.languages.c.c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
+    v2.std.compilers.compilation_unit.PartitionFoldOk { units: units } =>
+      match v2.extdeps.languages.c.c_validate_partition_r4(
         module_dag: dag,
         assignment: assignment,
         units: units
       ) {
-        PartitionR4Valid => true
-        PartitionR4Refused { cause: _ } => false
+        v2.std.compilers.compilation_unit.PartitionR4Valid => true
+        v2.std.compilers.compilation_unit.PartitionR4Refused { cause: _ } => false
       }
-    PartitionFoldRefused { cause: _ } => false
+    v2.std.compilers.compilation_unit.PartitionFoldRefused { cause: _ } => false
   }
 }
 
 test fn witness_r4_refuses_by_value_type_cycle_across_units() -> Bool {
   let dag = witness_by_value_type_cycle_dag()
   let assignment = witness_by_value_type_cycle_assignment()
-  match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
-    PartitionFoldOk { units: units } =>
-      match c_validate_partition_r4(
+  match v2.extdeps.languages.c.c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
+    v2.std.compilers.compilation_unit.PartitionFoldOk { units: units } =>
+      match v2.extdeps.languages.c.c_validate_partition_r4(
         module_dag: dag,
         assignment: assignment,
         units: units
       ) {
-        PartitionR4Refused { cause: ByValueTypeCycle { detail: _ } } => true
-        PartitionR4Valid => false
-        PartitionR4Refused { cause: _ } => false
+        v2.std.compilers.compilation_unit.PartitionR4Refused { cause: v2.std.compilers.compilation_unit.ByValueTypeCycle { detail: _ } } => true
+        v2.std.compilers.compilation_unit.PartitionR4Valid => false
+        v2.std.compilers.compilation_unit.PartitionR4Refused { cause: _ } => false
       }
-    PartitionFoldRefused { cause: _ } => false
+    v2.std.compilers.compilation_unit.PartitionFoldRefused { cause: _ } => false
   }
 }
 
 test fn witness_r4_accepts_pointer_type_cycle_across_units() -> Bool {
   let dag = witness_pointer_type_cycle_dag()
   let assignment = witness_pointer_type_cycle_assignment()
-  match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
-    PartitionFoldOk { units: units } =>
-      match c_validate_partition_r4(
+  match v2.extdeps.languages.c.c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
+    v2.std.compilers.compilation_unit.PartitionFoldOk { units: units } =>
+      match v2.extdeps.languages.c.c_validate_partition_r4(
         module_dag: dag,
         assignment: assignment,
         units: units
       ) {
-        PartitionR4Valid => true
-        PartitionR4Refused { cause: _ } => false
+        v2.std.compilers.compilation_unit.PartitionR4Valid => true
+        v2.std.compilers.compilation_unit.PartitionR4Refused { cause: _ } => false
       }
-    PartitionFoldRefused { cause: _ } => false
+    v2.std.compilers.compilation_unit.PartitionFoldRefused { cause: _ } => false
   }
 }
 
 test fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
-  match partition_fold_outcome_with_closure_fuel(
-    module_dag: v2.test.claim.c_compilation_unit_witness.witness_triangle_dag(),
-    assignment: v2.test.claim.c_compilation_unit_witness.witness_two_unit_assignment(),
+  match v2.std.compilers.compilation_unit.partition_fold_outcome_with_closure_fuel(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment(),
     closure_fuel: 0
   ) {
-    PartitionFoldRefused {
-      cause: InterfaceClosureUnreachedFixpoint { unit_id: _ },
+    v2.std.compilers.compilation_unit.PartitionFoldRefused {
+      cause: v2.std.compilers.compilation_unit.InterfaceClosureUnreachedFixpoint { unit_id: _ },
     } => true
-    PartitionFoldOk { units: _ } => false
+    v2.std.compilers.compilation_unit.PartitionFoldOk { units: _ } => false
   }
 }
 
 test fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
-  match partition_fold_outcome(
-    module_dag: v2.test.claim.c_compilation_unit_witness.witness_triangle_dag(),
-    assignment: v2.test.claim.c_compilation_unit_witness.witness_two_unit_assignment()
+  match v2.std.compilers.compilation_unit.partition_fold_outcome(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment()
   ) {
-    PartitionFoldOk { units: units } => (units |> count) == 2
-    PartitionFoldRefused { cause: _ } => false
+    v2.std.compilers.compilation_unit.PartitionFoldOk { units: units } => (units |> count) == 2
+    v2.std.compilers.compilation_unit.PartitionFoldRefused { cause: _ } => false
   }
 }
 
@@ -421,62 +421,62 @@ test fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
 data c_spelling_safety_witness_note: String = "C-realization spelling controls for review 2026-08-01 finding 1. CompilationUnitId is a branded NonEmptyStr with NO spelling law, so ../peer, a/b, a-backslash-b, embedded CR/LF/NUL and the double-quote character all inhabit it and previously reached .h/.c/.o paths verbatim, with the header path concatenated between the include directive open-quote and close-quote. These controls execute against c_translation_unit_basename (the reversible encoder), not against the brand. Four acceptance axes, all executed: encoding-or-refusal for each hostile codepoint; the cu-one positive control that must stay byte-unchanged; injectivity, proven by escaping the percent marker itself so no unencoded id can collide with an encoded one (two distinct ids can never contend for one .o); and a C-source control proving the rendered include remains exactly one directive with no embedded newline and no premature string termination."
 
 test fn witness_c_basename_positive_control_unchanged() -> Bool {
-  (c_translation_unit_basename(unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_one) as String) == "cu-one"
-    && c_unit_header_path(unit_id: v2.test.claim.c_compilation_unit_witness.witness_unit_one) == "cu-one.h"
+  (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: witness_unit_one) as String) == "cu-one"
+    && v2.extdeps.languages.c.c_unit_header_path(unit_id: witness_unit_one) == "cu-one.h"
 }
 
 test fn witness_c_basename_encodes_slash() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_slash) as String) == "a%00002fb"
+  (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_slash) as String) == "a%00002fb"
 }
 
 test fn witness_c_basename_encodes_backslash() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_backslash) as String) == "a%00005cb"
+  (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_backslash) as String) == "a%00005cb"
 }
 
 test fn witness_c_basename_encodes_quote() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_quote) as String) == "a%000022b"
+  (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_quote) as String) == "a%000022b"
 }
 
 test fn witness_c_basename_encodes_newline() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_newline) as String) == "a%00000ab"
+  (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_newline) as String) == "a%00000ab"
 }
 
 test fn witness_c_basename_encodes_carriage_return() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_cr) as String) == "a%00000db"
+  (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_cr) as String) == "a%00000db"
 }
 
 test fn witness_c_basename_encodes_nul() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_nul) as String) == "a%000000b"
+  (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_nul) as String) == "a%000000b"
 }
 
 
 
 test fn witness_c_basename_kills_parent_directory_segments() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_dot) as String) == "%00002e"
-    && (c_translation_unit_basename(unit_id: hostile_dotdot) as String) == "%00002e."
-    && (c_translation_unit_basename(unit_id: hostile_parent_dir) as String) == "%00002e.%00002fpeer"
+  (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_dot) as String) == "%00002e"
+    && (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_dotdot) as String) == "%00002e."
+    && (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_parent_dir) as String) == "%00002e.%00002fpeer"
 }
 
 test fn witness_c_basename_injective_on_escape_marker() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_percent) as String) == "a%000025b"
-    && (c_translation_unit_basename(unit_id: collide_left) as String) != (c_translation_unit_basename(unit_id: collide_right) as String)
+  (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_percent) as String) == "a%000025b"
+    && (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: collide_left) as String) != (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: collide_right) as String)
 }
 
 test fn witness_c_basename_output_always_safe() -> Bool {
-  c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_parent_dir) as String)
-    && c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_quote) as String)
-    && c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_newline) as String)
-    && c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_cr) as String)
-    && c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_nul) as String)
-    && c_translation_unit_basename_safe(value: c_translation_unit_basename(unit_id: hostile_dotdot) as String)
-    && !c_translation_unit_basename_safe(value: "..")
-    && !c_translation_unit_basename_safe(value: "a/b")
-    && !c_translation_unit_basename_safe(value: "")
+  v2.extdeps.languages.c.c_translation_unit_basename_safe(value: v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_parent_dir) as String)
+    && v2.extdeps.languages.c.c_translation_unit_basename_safe(value: v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_quote) as String)
+    && v2.extdeps.languages.c.c_translation_unit_basename_safe(value: v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_newline) as String)
+    && v2.extdeps.languages.c.c_translation_unit_basename_safe(value: v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_cr) as String)
+    && v2.extdeps.languages.c.c_translation_unit_basename_safe(value: v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_nul) as String)
+    && v2.extdeps.languages.c.c_translation_unit_basename_safe(value: v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_dotdot) as String)
+    && !v2.extdeps.languages.c.c_translation_unit_basename_safe(value: "..")
+    && !v2.extdeps.languages.c.c_translation_unit_basename_safe(value: "a/b")
+    && !v2.extdeps.languages.c.c_translation_unit_basename_safe(value: "")
 }
 
 test fn witness_c_include_directive_stays_single_directive() -> Bool {
-  let hostile_include = c_include_directive_for_dep(dep_id: hostile_newline)
-  let quote_include = c_include_directive_for_dep(dep_id: hostile_quote)
+  let hostile_include = v2.extdeps.languages.c.c_include_directive_for_dep(dep_id: hostile_newline)
+  let quote_include = v2.extdeps.languages.c.c_include_directive_for_dep(dep_id: hostile_quote)
   hostile_include == "#include \"a%00000ab.h\""
     && quote_include == "#include \"a%000022b.h\""
     && !string_contains(s: hostile_include, pattern: "\n")
@@ -484,9 +484,9 @@ test fn witness_c_include_directive_stays_single_directive() -> Bool {
 }
 
 test fn witness_c_object_path_shares_unit_id_spelling() -> Bool {
-  c_unit_object_path(unit_id: hostile_slash) == "a%00002fb.o"
-    && c_unit_header_path(unit_id: hostile_slash) == "a%00002fb.h"
-    && c_unit_source_path(unit_id: hostile_slash) == "a%00002fb.c"
+  v2.extdeps.languages.c.c_unit_object_path(unit_id: hostile_slash) == "a%00002fb.o"
+    && v2.extdeps.languages.c.c_unit_header_path(unit_id: hostile_slash) == "a%00002fb.h"
+    && v2.extdeps.languages.c.c_unit_source_path(unit_id: hostile_slash) == "a%00002fb.c"
 }
 
 
@@ -500,5 +500,5 @@ test fn witness_c_object_path_shares_unit_id_spelling() -> Bool {
 data c_spelling_control_expressibility_note: String = "DISSOLVED 2026-08-01. This row previously recorded a coverage boundary: the round-2 review asked for controls over slash, backslash, CR, LF, NUL and double-quote, and CR and NUL could not be witnessed directly because .dag string literals had no numeric-escape form -- backslash-r lexed as literal backslash-then-r, and the backslash-u brace form lexed as its raw characters, both measured. The note carried the dissolve-on trigger: when .dag string literals gain a numeric-escape form, add the direct CR and NUL rows here and delete this note. Main landed Unicode string escapes (#7585) and the trigger fired. The escapes were RE-MEASURED on this head rather than assumed from the commit title: backslash-u{000d} and backslash-u{0000} each yield exactly one character, of codepoint 13 and 0 respectively. So witness_c_basename_encodes_carriage_return and witness_c_basename_encodes_nul are now DIRECT rows above, and both codepoints also join the output-always-safe control. The whole requested hostile set is therefore witnessed against the real encoder, with no argument from escape-branch genericity standing in for any member of it. This row is retained only as the receipt that the boundary was declared, triggered and discharged rather than quietly dropped; it makes no live claim and names no residual gap."
 
 test fn witness_c_basename_escape_branch_is_codepoint_generic() -> Bool {
-  (c_translation_unit_basename(unit_id: hostile_high_codepoint) as String) == "a%0000e9b"
+  (v2.extdeps.languages.c.c_translation_unit_basename(unit_id: hostile_high_codepoint) as String) == "a%0000e9b"
 }

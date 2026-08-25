@@ -1,7 +1,7 @@
 module test.claim.diff_window_cross_seam_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data planted_base_hex: String = "abc123def4567890abc123def4567890abc12345"
 data planted_head_hex: String = "fedcba0987654321fedcba0987654321fedcba09"
@@ -9,7 +9,7 @@ data planted_target_generation_hex: String = "1111111111111111111111111111111111
 data planted_window_path: String = "/tmp/attempt/verification/fedcba09.identity.diff-window.json"
 
 fn planted_oid(hex: String) -> extdeps.git.object_store.GitObjectId {
-  match git_sha1_object_id(hex: hex) {
+  match extdeps.git.object_store.git_sha1_object_id(hex: hex) {
     Present { value: oid } => oid
     Absent =>
       extdeps.git.object_store.GitSha1ObjectId {
@@ -21,11 +21,11 @@ fn planted_oid(hex: String) -> extdeps.git.object_store.GitObjectId {
 }
 
 fn planted_exact_window() -> gunbc.git_diff_change_window.GitExactDiffWindow {
-  git_exact_diff_window_for_verification(
+  gunbc.git_diff_change_window.git_exact_diff_window_for_verification(
     target: "origin/main" as std.types.GitRef,
-    target_generation: test.claim.diff_window_cross_seam_witness_test.planted_oid(hex: planted_target_generation_hex),
-    base: test.claim.diff_window_cross_seam_witness_test.planted_oid(hex: planted_base_hex),
-    head: test.claim.diff_window_cross_seam_witness_test.planted_oid(hex: planted_head_hex),
+    target_generation: planted_oid(hex: planted_target_generation_hex),
+    base: planted_oid(hex: planted_base_hex),
+    head: planted_oid(hex: planted_head_hex),
   )
 }
 
@@ -34,7 +34,7 @@ fn resolve_with_diff_window(
   base_ref: String?,
   override_ref: String?
 ) -> gunbc.diff_baseline.DiffBaselineResolution {
-  resolve_diff_baseline(
+  gunbc.diff_baseline.resolve_diff_baseline(
     event: gunbc.diff_baseline.CiDiffEvent {
       override_ref: override_ref,
       event_name: "pull_request",
@@ -43,28 +43,28 @@ fn resolve_with_diff_window(
       head_sha: none,
       diff_window: diff_window
     },
-    push_parent_ref: gunbc_merge_target_ref,
-    default_remote_name: gunbc_default_remote_name
+    push_parent_ref: gunbc.repo_identity.gunbc_merge_target_ref,
+    default_remote_name: gunbc.repo_identity.gunbc_default_remote_name
   )
 }
 
 test fn witness_verification_window_emits_exact_replay_argv() -> Bool {
-  let json = git_diff_window_json(window: planted_exact_window())
-  match git_diff_window_from_json(text: json) {
-    GitDiffWindowObserved { window: window } =>
+  let json = gunbc.git_diff_change_window.git_diff_window_json(window: planted_exact_window())
+  match gunbc.git_diff_change_window.git_diff_window_from_json(text: json) {
+    gunbc.git_diff_change_window.GitDiffWindowObserved { window: window } =>
       match resolve_with_diff_window(
         diff_window: Present { value: gunbc.git_diff_change_window.GitDiffWindowObserved { window: window } },
         base_ref: Present { value: "main" },
         override_ref: none
       ) {
-        BaselineSelected { baseline: b } =>
-          diff_baseline_is_exact_replay(b: b)
-            && diff_baseline_diff_base(b: b) == planted_base_hex
-            && diff_baseline_diff_head(b: b, default_head: "HEAD") == planted_head_hex
-        BaselineRefused { reason: _ } => false
-        BaselineSourceConflict { window_detail: _, override_ref: _ } => false
+        gunbc.diff_baseline.BaselineSelected { baseline: b } =>
+          gunbc.diff_baseline.diff_baseline_is_exact_replay(b: b)
+            && gunbc.diff_baseline.diff_baseline_diff_base(b: b) == planted_base_hex
+            && gunbc.diff_baseline.diff_baseline_diff_head(b: b, default_head: "HEAD") == planted_head_hex
+        gunbc.diff_baseline.BaselineRefused { reason: _ } => false
+        gunbc.diff_baseline.BaselineSourceConflict { window_detail: _, override_ref: _ } => false
       }
-    GitDiffWindowMalformed { detail: _ } => false
+    gunbc.git_diff_change_window.GitDiffWindowMalformed { detail: _ } => false
     GitDiffWindowReadRefused { path: _, cause: _ } => false
   }
 }
@@ -75,11 +75,11 @@ test fn witness_without_diff_window_binding_stays_merge_target() -> Bool {
     base_ref: Present { value: "main" },
     override_ref: none
   ) {
-    BaselineSelected { baseline: b } =>
-      !diff_baseline_is_exact_replay(b: b)
-        && diff_baseline_diff_base(b: b) == "origin/main"
-    BaselineRefused { reason: _ } => false
-    BaselineSourceConflict { window_detail: _, override_ref: _ } => false
+    gunbc.diff_baseline.BaselineSelected { baseline: b } =>
+      !gunbc.diff_baseline.diff_baseline_is_exact_replay(b: b)
+        && gunbc.diff_baseline.diff_baseline_diff_base(b: b) == "origin/main"
+    gunbc.diff_baseline.BaselineRefused { reason: _ } => false
+    gunbc.diff_baseline.BaselineSourceConflict { window_detail: _, override_ref: _ } => false
   }
 }
 
@@ -89,28 +89,28 @@ test fn witness_hex_branch_base_ref_never_enters_exact_replay_route() -> Bool {
     base_ref: Present { value: planted_base_hex },
     override_ref: none
   ) {
-    BaselineSelected { baseline: b } =>
-      !diff_baseline_is_exact_replay(b: b)
-        && diff_baseline_diff_base(b: b) == concat("origin/", planted_base_hex)
-    BaselineRefused { reason: _ } => false
-    BaselineSourceConflict { window_detail: _, override_ref: _ } => false
+    gunbc.diff_baseline.BaselineSelected { baseline: b } =>
+      !gunbc.diff_baseline.diff_baseline_is_exact_replay(b: b)
+        && gunbc.diff_baseline.diff_baseline_diff_base(b: b) == concat("origin/", planted_base_hex)
+    gunbc.diff_baseline.BaselineRefused { reason: _ } => false
+    gunbc.diff_baseline.BaselineSourceConflict { window_detail: _, override_ref: _ } => false
   }
 }
 
 test fn witness_malformed_window_refuses_before_diff() -> Bool {
-  match git_diff_window_from_json(text: "{\"schema\":\"gunbc-git-diff-window/v2\"}") {
-    GitDiffWindowMalformed { detail: _ } =>
+  match gunbc.git_diff_change_window.git_diff_window_from_json(text: "{\"schema\":\"gunbc-git-diff-window/v2\"}") {
+    gunbc.git_diff_change_window.GitDiffWindowMalformed { detail: _ } =>
       match resolve_with_diff_window(
         diff_window: Present { value: gunbc.git_diff_change_window.GitDiffWindowMalformed { detail: "missing members" } },
         base_ref: Present { value: "main" },
         override_ref: none
       ) {
-        BaselineRefused { reason: reason } =>
+        gunbc.diff_baseline.BaselineRefused { reason: reason } =>
           string_contains(s: reason, pattern: "exact diff window malformed")
-        BaselineSelected { baseline: _ } => false
-        BaselineSourceConflict { window_detail: _, override_ref: _ } => false
+        gunbc.diff_baseline.BaselineSelected { baseline: _ } => false
+        gunbc.diff_baseline.BaselineSourceConflict { window_detail: _, override_ref: _ } => false
       }
-    GitDiffWindowObserved { window: _ } => false
+    gunbc.git_diff_change_window.GitDiffWindowObserved { window: _ } => false
     GitDiffWindowReadRefused { path: _, cause: _ } => false
   }
 }
@@ -118,7 +118,7 @@ test fn witness_malformed_window_refuses_before_diff() -> Bool {
 test fn witness_window_identity_is_derived_not_wire_trusted() -> Bool {
   let window = planted_exact_window()
   let tampered = concat(
-    git_diff_window_json(window: window),
+    gunbc.git_diff_change_window.git_diff_window_json(window: window),
     ""
   )
   let bad = concat(
@@ -137,66 +137,66 @@ test fn witness_window_identity_is_derived_not_wire_trusted() -> Bool {
     ),
     ""
   )
-  match git_diff_window_from_json(text: bad) {
-    GitDiffWindowMalformed { detail: detail } =>
+  match gunbc.git_diff_change_window.git_diff_window_from_json(text: bad) {
+    gunbc.git_diff_change_window.GitDiffWindowMalformed { detail: detail } =>
       string_contains(s: detail, pattern: "window_identity")
-    GitDiffWindowObserved { window: _ } => false
+    gunbc.git_diff_change_window.GitDiffWindowObserved { window: _ } => false
     GitDiffWindowReadRefused { path: _, cause: _ } => false
   }
 }
 
 test fn witness_baseline_source_conflict_refuses_both_authorities() -> Bool {
-  let json = git_diff_window_json(window: planted_exact_window())
-  match git_diff_window_from_json(text: json) {
-    GitDiffWindowObserved { window: window } =>
+  let json = gunbc.git_diff_change_window.git_diff_window_json(window: planted_exact_window())
+  match gunbc.git_diff_change_window.git_diff_window_from_json(text: json) {
+    gunbc.git_diff_change_window.GitDiffWindowObserved { window: window } =>
       match resolve_with_diff_window(
         diff_window: Present { value: gunbc.git_diff_change_window.GitDiffWindowObserved { window: window } },
         base_ref: Present { value: "main" },
         override_ref: Present { value: "origin/main" }
       ) {
-        BaselineSourceConflict { window_detail: _, override_ref: _ } => true
-        BaselineSelected { baseline: _ } => false
-        BaselineRefused { reason: _ } => false
+        gunbc.diff_baseline.BaselineSourceConflict { window_detail: _, override_ref: _ } => true
+        gunbc.diff_baseline.BaselineSelected { baseline: _ } => false
+        gunbc.diff_baseline.BaselineRefused { reason: _ } => false
       }
-    GitDiffWindowMalformed { detail: _ } => false
+    gunbc.git_diff_change_window.GitDiffWindowMalformed { detail: _ } => false
     GitDiffWindowReadRefused { path: _, cause: _ } => false
   }
 }
 
 test fn witness_env_binding_names_neutral_path_var() -> Bool {
-  git_diff_window_env_assignment(path: planted_window_path) == concat(
-    gunbc_diff_window_path_env as String,
+  gunbc.git_diff_change_window.git_diff_window_env_assignment(path: planted_window_path) == concat(
+    gunbc.git_diff_change_window.gunbc_diff_window_path_env as String,
     concat("=", planted_window_path)
   )
 }
 
 test fn witness_window_identity_hex_matches_derived_digest() -> Bool {
   let window = planted_exact_window()
-  git_diff_window_identity_hex(identity: window.window_identity) == (window.window_identity.digest as String)
+  gunbc.git_diff_change_window.git_diff_window_identity_hex(identity: window.window_identity) == (window.window_identity.digest as String)
 }
 
 test fn witness_persisted_window_selects_floor_two_dot_mode() -> Bool {
-  let json = git_diff_window_json(window: planted_exact_window())
-  match git_diff_window_from_json(text: json) {
-    GitDiffWindowObserved { window: window } =>
+  let json = gunbc.git_diff_change_window.git_diff_window_json(window: planted_exact_window())
+  match gunbc.git_diff_change_window.git_diff_window_from_json(text: json) {
+    gunbc.git_diff_change_window.GitDiffWindowObserved { window: window } =>
       match resolve_with_diff_window(
         diff_window: Present { value: gunbc.git_diff_change_window.GitDiffWindowObserved { window: window } },
         base_ref: Present { value: "main" },
         override_ref: none
       ) {
-        BaselineSelected { baseline: b } =>
-          diff_baseline_is_exact_replay(b: b)
+        gunbc.diff_baseline.BaselineSelected { baseline: b } =>
+          gunbc.diff_baseline.diff_baseline_is_exact_replay(b: b)
             && v2.workflow.floor_diff_observe.floor_diff_mode_for_baseline(
               baseline: b,
               policy: gunbc_ci_spec.diff_policy,
-            ) == DiffTwoDot
-            && v2.workflow.floor_diff_observe.floor_git_diff_range_of_mode(mode: DiffTwoDot) == TwoDot
-            && diff_baseline_diff_base(b: b) == planted_base_hex
-            && diff_baseline_diff_head(b: b, default_head: "HEAD") == planted_head_hex
-        BaselineRefused { reason: _ } => false
-        BaselineSourceConflict { window_detail: _, override_ref: _ } => false
+            ) == gunbc.ci_spec.DiffTwoDot
+            && v2.workflow.floor_diff_observe.floor_git_diff_range_of_mode(mode: gunbc.ci_spec.DiffTwoDot) == extdeps.git.TwoDot
+            && gunbc.diff_baseline.diff_baseline_diff_base(b: b) == planted_base_hex
+            && gunbc.diff_baseline.diff_baseline_diff_head(b: b, default_head: "HEAD") == planted_head_hex
+        gunbc.diff_baseline.BaselineRefused { reason: _ } => false
+        gunbc.diff_baseline.BaselineSourceConflict { window_detail: _, override_ref: _ } => false
       }
-    GitDiffWindowMalformed { detail: _ } => false
+    gunbc.git_diff_change_window.GitDiffWindowMalformed { detail: _ } => false
     GitDiffWindowReadRefused { path: _, cause: _ } => false
   }
 }

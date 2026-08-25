@@ -8,43 +8,43 @@ fn named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node
   v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
-fn conj_record(children: FreeMonoid<v2.std.node.Edge>) -> v2.std.node.Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: children)
+fn conj_record(children: std.algebra.FreeMonoid<v2.std.node.Edge>) -> v2.std.node.Node {
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: children)
 }
 
-fn fold_decode_reject(node: v2.std.node.Node, reason: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Node>> {
-  outcome_rejected(d: v2.std.diagnostic.Diagnostic {
+fn fold_decode_reject(node: v2.std.node.Node, reason: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.std.node.Node>> {
+  v2.std.diagnostic.outcome_rejected(d: v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: node_locus(node: node),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: node),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   })
 }
 
 type ApplyResult {
   node: v2.std.node.Node
-  rest: FreeMonoid<v2.std.node.Node>
+  rest: std.algebra.FreeMonoid<v2.std.node.Node>
 }
 type ApplyEdgesAcc {
-  edges: FreeMonoid<v2.std.node.Edge>
-  rest: FreeMonoid<v2.std.node.Node>
+  edges: std.algebra.FreeMonoid<v2.std.node.Edge>
+  rest: std.algebra.FreeMonoid<v2.std.node.Node>
 }
 
-fn apply_fills_into(template: v2.std.node.Node, fills: FreeMonoid<v2.std.node.Node>) -> ApplyResult {
-  if is_hole(template) {
-    match list_head(xs: fills) {
-      HeadFound { value: h } =>
-        match list_tail(xs: fills) {
-          TailFound { tail: t } => ApplyResult { node: h, rest: t }
-          TailAbsent => ApplyResult { node: h, rest: freemonoid_empty() }
+fn apply_fills_into(template: v2.std.node.Node, fills: std.algebra.FreeMonoid<v2.std.node.Node>) -> ApplyResult {
+  if v2.std.anti_unification.is_hole(template) {
+    match v2.std.algebra.list_head(xs: fills) {
+      v2.std.algebra.HeadFound { value: h } =>
+        match v2.std.algebra.list_tail(xs: fills) {
+          v2.std.algebra.TailFound { tail: t } => ApplyResult { node: h, rest: t }
+          v2.std.algebra.TailAbsent => ApplyResult { node: h, rest: v2.std.algebra.freemonoid_empty() }
         }
-      HeadAbsent => ApplyResult { node: template, rest: fills }
+      v2.std.algebra.HeadAbsent => ApplyResult { node: template, rest: fills }
     }
   } else {
     apply_fills_rebuild(
       kind_source: template,
-      acc: fold_list(
+      acc: v2.std.algebra.fold_list(
         xs: template.children,
-        empty: ApplyEdgesAcc { edges: freemonoid_empty(), rest: fills },
+        empty: ApplyEdgesAcc { edges: v2.std.algebra.freemonoid_empty(), rest: fills },
         cons: fn(acc, e) { apply_fills_step(acc: acc, e: e) }
       )
     )
@@ -56,84 +56,84 @@ fn apply_fills_step(acc: ApplyEdgesAcc, e: v2.std.node.Edge) -> ApplyEdgesAcc {
 }
 fn apply_fills_step_with(acc: ApplyEdgesAcc, e: v2.std.node.Edge, r: ApplyResult) -> ApplyEdgesAcc {
   ApplyEdgesAcc {
-    edges: list_snoc_item(xs: acc.edges, item: v2.std.node.Edge { label: e.label, target: r.node }),
+    edges: v2.std.algebra.list_snoc_item(xs: acc.edges, item: v2.std.node.Edge { label: e.label, target: r.node }),
     rest: r.rest
   }
 }
 
 fn apply_fills_rebuild(kind_source: v2.std.node.Node, acc: ApplyEdgesAcc) -> ApplyResult {
   ApplyResult {
-    node: node_synthetic(kind: kind_source.kind, children: acc.edges),
+    node: v2.std.node.node_synthetic(kind: kind_source.kind, children: acc.edges),
     rest: acc.rest
   }
 }
 
-fn apply_fills(template: v2.std.node.Node, fills: FreeMonoid<v2.std.node.Node>) -> v2.std.node.Node {
+fn apply_fills(template: v2.std.node.Node, fills: std.algebra.FreeMonoid<v2.std.node.Node>) -> v2.std.node.Node {
   apply_fills_into(template: template, fills: fills).node
 }
 
 fn template_hole_count(template: v2.std.node.Node) -> Int {
-  count_where(xs: node_subtree_nodes(root: template), predicate: fn(n) { is_hole(n) })
+  v2.std.algebra.count_where(xs: v2.std.node.node_subtree_nodes(root: template), predicate: fn(n) { v2.std.anti_unification.is_hole(n) })
 }
 
-fn encode_node_list(xs: FreeMonoid<v2.std.node.Node>) -> v2.std.node.Node {
-  fold_list_node(xs: xs, item_node: fn(n) { n })
+fn encode_node_list(xs: std.algebra.FreeMonoid<v2.std.node.Node>) -> v2.std.node.Node {
+  v2.std.algebra.fold_list_node(xs: xs, item_node: fn(n) { n })
 }
 
-fn encode_per_element(per_element: FreeMonoid<FreeMonoid<v2.std.node.Node>>) -> v2.std.node.Node {
-  fold_list_node(xs: per_element, item_node: fn(fills) { encode_node_list(xs: fills) })
+fn encode_per_element(per_element: std.algebra.FreeMonoid<std.algebra.FreeMonoid<v2.std.node.Node>>) -> v2.std.node.Node {
+  v2.std.algebra.fold_list_node(xs: per_element, item_node: fn(fills) { encode_node_list(xs: fills) })
 }
 
-fn decode_node_list(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Node>> {
+fn decode_node_list(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.std.node.Node>> {
   match node.kind {
-    TypeNode { connective: Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       decode_node_list_conj(
         node: node,
-        head: named_edge_target_lookup(children: node.children, name: ^fold_list_node_head),
-        tail: named_edge_target_lookup(children: node.children, name: ^fold_list_node_tail)
+        head: v2.std.node.named_edge_target_lookup(children: node.children, name: ^fold_list_node_head),
+        tail: v2.std.node.named_edge_target_lookup(children: node.children, name: ^fold_list_node_tail)
       )
     _ => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
   }
 }
 
-fn decode_node_list_conj(node: v2.std.node.Node, head: v2.std.node.NamedEdgeTargetLookup, tail: v2.std.node.NamedEdgeTargetLookup) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Node>> {
+fn decode_node_list_conj(node: v2.std.node.Node, head: v2.std.node.NamedEdgeTargetLookup, tail: v2.std.node.NamedEdgeTargetLookup) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.std.node.Node>> {
   match head {
-    Absent =>
+    v2.std.node.Absent =>
       match tail {
-        Absent => outcome_accepted(value: freemonoid_empty())
-        Found { target: _ } => fold_decode_reject(node: node, reason: ^fold_form_list_tail_without_head)
-        Ambiguous => fold_decode_reject(node: node, reason: ^fold_form_list_edge_ambiguous)
+        v2.std.node.Absent => v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.freemonoid_empty())
+        v2.std.node.Found { target: _ } => fold_decode_reject(node: node, reason: ^fold_form_list_tail_without_head)
+        v2.std.node.Ambiguous => fold_decode_reject(node: node, reason: ^fold_form_list_edge_ambiguous)
       }
-    Found { target: head_node } =>
+    v2.std.node.Found { target: head_node } =>
       match tail {
-        Found { target: tail_node } => decode_node_list_cons(head_node: head_node, tail_node: tail_node)
-        Absent => fold_decode_reject(node: node, reason: ^fold_form_list_head_without_tail)
-        Ambiguous => fold_decode_reject(node: node, reason: ^fold_form_list_edge_ambiguous)
+        v2.std.node.Found { target: tail_node } => decode_node_list_cons(head_node: head_node, tail_node: tail_node)
+        v2.std.node.Absent => fold_decode_reject(node: node, reason: ^fold_form_list_head_without_tail)
+        v2.std.node.Ambiguous => fold_decode_reject(node: node, reason: ^fold_form_list_edge_ambiguous)
       }
-    Ambiguous => fold_decode_reject(node: node, reason: ^fold_form_list_edge_ambiguous)
+    v2.std.node.Ambiguous => fold_decode_reject(node: node, reason: ^fold_form_list_edge_ambiguous)
   }
 }
 
-fn decode_node_list_cons(head_node: v2.std.node.Node, tail_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Node>> {
+fn decode_node_list_cons(head_node: v2.std.node.Node, tail_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.std.node.Node>> {
   match decode_node_list(node: tail_node) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: rest, diagnostics: _ } =>
-      outcome_accepted(value: list_append(left: list_snoc_item(xs: freemonoid_empty(), item: head_node), right: rest))
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: rest, diagnostics: _ } =>
+      v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_append(left: v2.std.algebra.list_snoc_item(xs: v2.std.algebra.freemonoid_empty(), item: head_node), right: rest))
   }
 }
 
 fn decode_node_list_item_step<T>(
-  acc: v2.std.diagnostic.Outcome<FreeMonoid<T>>,
+  acc: v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<T>>,
   item_node: v2.std.node.Node,
   decode_item: fn(v2.std.node.Node) -> v2.std.diagnostic.Outcome<T>
-) -> v2.std.diagnostic.Outcome<FreeMonoid<T>> {
+) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<T>> {
   match acc {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: items, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: items, diagnostics: _ } =>
       match decode_item(item_node) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: item, diagnostics: _ } =>
-          outcome_accepted(value: list_snoc_item(xs: items, item: item))
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: item, diagnostics: _ } =>
+          v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_snoc_item(xs: items, item: item))
       }
   }
 }
@@ -141,13 +141,13 @@ fn decode_node_list_item_step<T>(
 fn node_list_from_node<T>(
   node: v2.std.node.Node,
   decode_item: fn(v2.std.node.Node) -> v2.std.diagnostic.Outcome<T>
-) -> v2.std.diagnostic.Outcome<FreeMonoid<T>> {
+) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<T>> {
   match decode_node_list(node: node) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: item_nodes, diagnostics: _ } =>
-      fold_list(
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: item_nodes, diagnostics: _ } =>
+      v2.std.algebra.fold_list(
         xs: item_nodes,
-        empty: outcome_accepted(value: freemonoid_empty()),
+        empty: v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.freemonoid_empty()),
         cons: fn(acc, item_node) {
           decode_node_list_item_step(
             acc: acc,
@@ -159,29 +159,29 @@ fn node_list_from_node<T>(
   }
 }
 
-fn decode_per_element(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<FreeMonoid<FreeMonoid<v2.std.node.Node>>> {
+fn decode_per_element(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<std.algebra.FreeMonoid<v2.std.node.Node>>> {
   match decode_node_list(node: node) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: elem_nodes, diagnostics: _ } => decode_inner_lists(elem_nodes: elem_nodes)
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: elem_nodes, diagnostics: _ } => decode_inner_lists(elem_nodes: elem_nodes)
   }
 }
 
-fn decode_inner_lists(elem_nodes: FreeMonoid<v2.std.node.Node>) -> v2.std.diagnostic.Outcome<FreeMonoid<FreeMonoid<v2.std.node.Node>>> {
-  fold_list(
+fn decode_inner_lists(elem_nodes: std.algebra.FreeMonoid<v2.std.node.Node>) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<std.algebra.FreeMonoid<v2.std.node.Node>>> {
+  v2.std.algebra.fold_list(
     xs: elem_nodes,
-    empty: outcome_accepted(value: freemonoid_empty()),
+    empty: v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.freemonoid_empty()),
     cons: fn(acc, elem_node) { decode_inner_step(acc: acc, elem_node: elem_node) }
   )
 }
 
-fn decode_inner_step(acc: v2.std.diagnostic.Outcome<FreeMonoid<FreeMonoid<v2.std.node.Node>>>, elem_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<FreeMonoid<FreeMonoid<v2.std.node.Node>>> {
+fn decode_inner_step(acc: v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<std.algebra.FreeMonoid<v2.std.node.Node>>>, elem_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<std.algebra.FreeMonoid<v2.std.node.Node>>> {
   match acc {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: so_far, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: so_far, diagnostics: _ } =>
       match decode_node_list(node: elem_node) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: fills, diagnostics: _ } =>
-          outcome_accepted(value: list_snoc_item(xs: so_far, item: fills))
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: fills, diagnostics: _ } =>
+          v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_snoc_item(xs: so_far, item: fills))
       }
   }
 }
@@ -194,55 +194,55 @@ fn assemble_fold(g: v2.std.anti_unification.ChainGeneralization) -> v2.std.node.
 }
 
 fn fold_template_of(fold_form: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  match named_edge_target_lookup(children: fold_form.children, name: fold_template_edge) {
-    Found { target: t } => outcome_accepted(value: t)
-    Absent => outcome_rejected(d: v2.std.diagnostic.Diagnostic {
+  match v2.std.node.named_edge_target_lookup(children: fold_form.children, name: fold_template_edge) {
+    v2.std.node.Found { target: t } => v2.std.diagnostic.outcome_accepted(value: t)
+    v2.std.node.Absent => v2.std.diagnostic.outcome_rejected(d: v2.std.diagnostic.Diagnostic {
       reason: ^fold_form_template_edge_absent,
-      at: node_locus(node: fold_form),
-      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+      at: v2.std.diagnostic.node_locus(node: fold_form),
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
     })
-    Ambiguous => outcome_rejected(d: v2.std.diagnostic.Diagnostic {
+    v2.std.node.Ambiguous => v2.std.diagnostic.outcome_rejected(d: v2.std.diagnostic.Diagnostic {
       reason: ^fold_form_template_edge_ambiguous,
-      at: node_locus(node: fold_form),
-      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+      at: v2.std.diagnostic.node_locus(node: fold_form),
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
     })
   }
 }
 
-fn fold_per_element_of(fold_form: v2.std.node.Node) -> v2.std.diagnostic.Outcome<FreeMonoid<FreeMonoid<v2.std.node.Node>>> {
-  match named_edge_target_lookup(children: fold_form.children, name: fold_elements_edge) {
-    Found { target: e } => decode_per_element(node: e)
-    Absent => fold_decode_reject(node: fold_form, reason: ^fold_form_elements_edge_absent)
-    Ambiguous => fold_decode_reject(node: fold_form, reason: ^fold_form_elements_edge_ambiguous)
+fn fold_per_element_of(fold_form: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<std.algebra.FreeMonoid<v2.std.node.Node>>> {
+  match v2.std.node.named_edge_target_lookup(children: fold_form.children, name: fold_elements_edge) {
+    v2.std.node.Found { target: e } => decode_per_element(node: e)
+    v2.std.node.Absent => fold_decode_reject(node: fold_form, reason: ^fold_form_elements_edge_absent)
+    v2.std.node.Ambiguous => fold_decode_reject(node: fold_form, reason: ^fold_form_elements_edge_ambiguous)
   }
 }
 
-fn expand_fold(fold_form: v2.std.node.Node) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Node>> {
+fn expand_fold(fold_form: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.std.node.Node>> {
   match fold_template_of(fold_form: fold_form) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: template, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: template, diagnostics: _ } =>
       match fold_per_element_of(fold_form: fold_form) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: per_element, diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: per_element, diagnostics: _ } =>
           expand_elements(template: template, per_element: per_element)
       }
   }
 }
 
-fn expand_elements(template: v2.std.node.Node, per_element: FreeMonoid<FreeMonoid<v2.std.node.Node>>) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Node>> {
-  fold_list(
+fn expand_elements(template: v2.std.node.Node, per_element: std.algebra.FreeMonoid<std.algebra.FreeMonoid<v2.std.node.Node>>) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.std.node.Node>> {
+  v2.std.algebra.fold_list(
     xs: per_element,
-    empty: outcome_accepted(value: freemonoid_empty()),
+    empty: v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.freemonoid_empty()),
     cons: fn(acc, fills) { expand_element_step(template: template, acc: acc, fills: fills) }
   )
 }
 
-fn expand_element_step(template: v2.std.node.Node, acc: v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Node>>, fills: FreeMonoid<v2.std.node.Node>) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Node>> {
+fn expand_element_step(template: v2.std.node.Node, acc: v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.std.node.Node>>, fills: std.algebra.FreeMonoid<v2.std.node.Node>) -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.std.node.Node>> {
   match acc {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    Accepted { value: so_far, diagnostics: _ } =>
-      if template_hole_count(template: template) == length(xs: fills) {
-        outcome_accepted(value: list_snoc_item(xs: so_far, item: apply_fills(template: template, fills: fills)))
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Accepted { value: so_far, diagnostics: _ } =>
+      if template_hole_count(template: template) == v2.std.algebra.length(xs: fills) {
+        v2.std.diagnostic.outcome_accepted(value: v2.std.algebra.list_snoc_item(xs: so_far, item: apply_fills(template: template, fills: fills)))
       } else {
         fold_decode_reject(node: template, reason: ^fold_form_fill_arity_mismatch)
       }

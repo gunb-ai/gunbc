@@ -1,5 +1,6 @@
 module test.claim.belt_tick_receipt_home_witness
 
+
 // THE KEYSTONE. srv1-live resolves the dispatch attempt-state root to a path it does not own
 // alone — it is DispatchStateHostShared, so that root answers for the host, not for this instance.
 // A receipt homed there would be a per-host file pretending to be a per-instance one, and the UI
@@ -26,11 +27,11 @@ module test.claim.belt_tick_receipt_home_witness
 // got here. With it, a predicate that stopped detecting containment reds this claim from the
 // positive side even while the negative side still looks satisfied.
 test fn the_receipt_is_not_homed_in_the_shared_attempt_state_root() -> Bool {
-  let shared = dashboard_instance_dispatch_attempt_state_root(instance: srv1_live_dashboard_instance())
-  let receipt = belt_tick_receipt_path_for_instance(instance: srv1_live_dashboard_instance())
+  let shared = gunbc.roadmap_dashboard_instance.dashboard_instance_dispatch_attempt_state_root(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance())
+  let receipt = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance())
   let homed_in_shared = join([shared as String, "/belt-last-tick.json"], "") as std.types.FilePath
-  !dashboard_path_is_under(path: receipt as std.types.FilePath, root: shared)
-    && dashboard_path_is_under(path: homed_in_shared, root: shared)
+  !gunbc.roadmap_dashboard_instance.dashboard_path_is_under(path: receipt as std.types.FilePath, root: shared)
+    && gunbc.roadmap_dashboard_instance.dashboard_path_is_under(path: homed_in_shared, root: shared)
 }
 
 // Two instances on one host must not fuse. The receipt is per-instance by construction because it
@@ -39,8 +40,8 @@ test fn the_receipt_is_not_homed_in_the_shared_attempt_state_root() -> Bool {
 // its subject. srv1-lab is a real second instance on the same host, so the property still has a
 // population to hold over and this stays a live claim rather than a tautology.
 test fn two_instances_on_one_host_get_distinct_receipts() -> Bool {
-  let live = belt_tick_receipt_path_for_instance(instance: srv1_live_dashboard_instance())
-  let lab = belt_tick_receipt_path_for_instance(instance: srv1_lab_dashboard_instance())
+  let live = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance())
+  let lab = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_lab_dashboard_instance())
   live != lab
 }
 
@@ -48,8 +49,8 @@ test fn two_instances_on_one_host_get_distinct_receipts() -> Bool {
 // with install -d -o <service-user>. A receipt written anywhere else is written into a root-owned
 // directory and fails EACCES, which is the defect this change repairs.
 test fn the_receipt_sits_in_the_instance_receipts_directory() -> Bool {
-  let live = belt_tick_receipt_path_for_instance(instance: srv1_live_dashboard_instance())
-  let dir = instance_receipts_dir(instance_root: "/opt/gunbc")
+  let live = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance())
+  let dir = gunbc.host_layout.instance_receipts_dir(instance_root: "/opt/gunbc")
   live == join([dir, "/belt-last-tick.json"], "")
 }
 
@@ -57,7 +58,7 @@ test fn the_receipt_sits_in_the_instance_receipts_directory() -> Bool {
 // path: a derivation that drifted would create the directory in one place and write the receipt in
 // another, and both halves would look correct in isolation.
 test fn the_receipt_paths_are_the_expected_bytes() -> Bool {
-  let live = belt_tick_receipt_path_for_instance(instance: srv1_live_dashboard_instance())
+  let live = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance())
   live == "/opt/gunbc/receipts/belt-last-tick.json"
 }
 
@@ -65,10 +66,11 @@ test fn the_receipt_paths_are_the_expected_bytes() -> Bool {
 // A body that ignored instance_root and returned production's path would pass every claim above
 // that only reads one instance, so several roots are asserted here.
 test fn the_receipts_directory_derives_from_its_instance_root() -> Bool {
-  instance_receipts_dir(instance_root: "/opt/gunbc") == "/opt/gunbc/receipts"
-    && instance_receipts_dir(instance_root: "/srv/elsewhere") == "/srv/elsewhere/receipts"
-    && instance_receipts_dir(instance_root: "/var/tmp/x") == "/var/tmp/x/receipts"
+  gunbc.host_layout.instance_receipts_dir(instance_root: "/opt/gunbc") == "/opt/gunbc/receipts"
+    && gunbc.host_layout.instance_receipts_dir(instance_root: "/srv/elsewhere") == "/srv/elsewhere/receipts"
+    && gunbc.host_layout.instance_receipts_dir(instance_root: "/var/tmp/x") == "/var/tmp/x/receipts"
 }
+
 
 // ── The deploy-side half: the directory is actually created, and owned by the service user ─────
 //
@@ -76,9 +78,9 @@ test fn the_receipts_directory_derives_from_its_instance_root() -> Bool {
 // the pair — where the receipt goes, and who owns the directory it goes in — and either alone
 // leaves the defect intact.
 
-fn step_commands(steps: List<PipelineStep>) -> List<String> {
+fn step_commands(steps: List<v2.std.orchestration.PipelineStep>) -> List<String> {
   fold(steps, init: [], f: (acc, s) => match s {
-    Do { run: r } => concat(acc, [r.command])
+    v2.std.orchestration.Do { run: r } => concat(acc, [r.command])
     _ => acc
   })
 }
@@ -88,17 +90,17 @@ fn has_command(cmds: List<String>, want: String) -> Bool {
 }
 
 fn belt_upsert_commands() -> List<String> {
-  let spec = deployment_spec_srv1()
-  let art = DeploymentArtifactStep {
-    kind: BeltTimerUnit,
-    path: deployment_belt_timer_unit_path(
-      names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
-    ) as String as NonEmptyStr,
+  let spec = gunbc.live_deploy.spec.deployment_spec_srv1()
+  let art = gunbc.live_deploy.spec.DeploymentArtifactStep {
+    kind: gunbc.live_deploy.spec.BeltTimerUnit,
+    path: gunbc.live_deploy.spec.deployment_belt_timer_unit_path(
+      names: gunbc.live_deploy.spec.srv1_live_deployment_names(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()),
+    ) as String as std.types.NonEmptyStr,
   }
-  step_commands(steps: emit_artifact_upsert(
+  step_commands(steps: gunbc.live_deploy.emit.emit_artifact_upsert(
     art: art,
     spec: spec,
-    revision: RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as CommitSha },
+    revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as std.types.CommitSha },
   ))
 }
 
@@ -114,7 +116,7 @@ fn belt_upsert_commands() -> List<String> {
 test fn the_belt_member_bootstraps_its_own_receipts_directory() -> Bool {
   has_command(
     cmds: belt_upsert_commands(),
-    want: install_d_owned_for_user(user: gunbc_service_user, path: instance_receipts_dir(instance_root: "/opt/gunbc")),
+    want: gunbc.live_deploy.emit.install_d_owned_for_user(user: gunbc.live_deploy.spec.gunbc_service_user, path: gunbc.host_layout.instance_receipts_dir(instance_root: "/opt/gunbc")),
   )
 }
 
@@ -122,8 +124,8 @@ test fn the_belt_member_bootstraps_its_own_receipts_directory() -> Bool {
 // the two derivations rather than as two literals, so a drift in either one reds here instead of
 // producing a created-but-unused directory beside an unwritable receipt.
 test fn the_bootstrapped_directory_is_where_the_receipt_goes() -> Bool {
-  let dir = instance_receipts_dir(instance_root: "/opt/gunbc")
-  let receipt = belt_tick_receipt_path_for_instance(instance: srv1_live_dashboard_instance())
-  has_command(cmds: belt_upsert_commands(), want: install_d_owned_for_user(user: gunbc_service_user, path: dir))
+  let dir = gunbc.host_layout.instance_receipts_dir(instance_root: "/opt/gunbc")
+  let receipt = gunbc.roadmap_belt_actuate.belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance())
+  has_command(cmds: belt_upsert_commands(), want: gunbc.live_deploy.emit.install_d_owned_for_user(user: gunbc.live_deploy.spec.gunbc_service_user, path: dir))
     && receipt == join([dir, "/belt-last-tick.json"], "")
 }

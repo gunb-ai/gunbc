@@ -1,11 +1,11 @@
 module test.claim.claim_indexed_evidence_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn provider_evidence_fixture() -> extdeps.llm.cli_lifecycle.ProviderInstance {
   extdeps.llm.cli_lifecycle.ProviderInstance {
-    kind: CodexCliProvider,
+    kind: extdeps.llm.cli_lifecycle.CodexCliProvider,
     host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
       reason: "claim-evidence fixture",
     },
@@ -31,7 +31,7 @@ data provider_other_evidence_bound: std.types.RunKey = "provider-attempt-2"
 data source_binding_fixture_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
   source: extdeps.communication.medium.Medium {
     carried: "module claim.evidence.source\nfn foo() -> Bool { true }\nfn caller() -> Bool { foo() }",
-    fidelity: Lossless,
+    fidelity: extdeps.communication.medium.Lossless,
   },
   artifact: v2.std.artifact.Artifact {
     kind: v2.std.artifact.SourceFile,
@@ -39,20 +39,20 @@ data source_binding_fixture_read: v2.compiler.source_authority.DagSourceReadWitn
     file_path: "dag/test/claim/source_binding_fixture.dag",
   },
   compilation_unit: ^source_binding_fixture_compilation_unit,
-  source_root: DagTree,
+  source_root: v2.std.cross_tree.import_model.DagTree,
 }
 
-data source_binding_fixture_binding: OccurrenceBinding<std.occurrence_identity.OccurrenceId> = std.occurrence_binding.OccurrenceBinding {
+data source_binding_fixture_binding: std.occurrence_binding.OccurrenceBinding<OccurrenceId> = std.occurrence_binding.OccurrenceBinding {
   occurrence: std.occurrence_binding.BindingOccurrence {
     containment: std.occurrence_binding.ContainmentPath {
-      ancestors: Empty,
-      terminal: std.occurrence_identity.OccurrenceId { value: 2 },
+      ancestors: std.algebra.Empty,
+      terminal: OccurrenceId { value: 2 },
     },
   },
   candidate: std.occurrence_binding.BindingCandidate {
     containment: std.occurrence_binding.ContainmentPath {
-      ancestors: Empty,
-      terminal: std.occurrence_identity.OccurrenceId { value: 1 },
+      ancestors: std.algebra.Empty,
+      terminal: OccurrenceId { value: 1 },
     },
   },
 }
@@ -103,12 +103,12 @@ fn provider_live_request_succeeded_fact(
 
 test fn witness_login_status_does_not_promote_provider_readiness() -> Bool {
   let provider = provider_evidence_fixture()
-  let login = provider_login_status_inference(
+  let login = gunbc.provider_readiness_claim_evidence.provider_login_status_inference(
     observed_fact: provider_login_status_fact(id: "provider-login-status-fact"),
     provider: provider,
     bound: provider_evidence_bound,
   )
-  let failed = provider_live_request_failed_inference(
+  let failed = gunbc.provider_readiness_claim_evidence.provider_live_request_failed_inference(
     observed_fact: provider_live_request_failed_fact(
       id: "provider-live-request-failed-fact",
       reason: "invalid refresh token",
@@ -117,36 +117,36 @@ test fn witness_login_status_does_not_promote_provider_readiness() -> Bool {
     bound: provider_evidence_bound,
   )
   let links = append(
-    evidence_inference_links(inference: login),
-    items: evidence_inference_links(inference: failed),
+    std.claim_evidence.evidence_inference_links(inference: login),
+    items: std.claim_evidence.evidence_inference_links(inference: failed),
   )
-  let credential_claim = provider_credential_recorded_claim(
+  let credential_claim = gunbc.provider_readiness_claim_evidence.provider_credential_recorded_claim(
     provider: provider,
     bound: provider_evidence_bound,
   )
-  let ready_claim = provider_ready_claim(
+  let ready_claim = gunbc.provider_readiness_claim_evidence.provider_ready_claim(
     provider: provider,
     bound: provider_evidence_bound,
   )
-  let credential_assessment = claim_assessment_from_links(
+  let credential_assessment = std.claim_evidence.claim_assessment_from_links(
     claim: credential_claim,
     links: links,
   )
-  let ready_assessment = claim_assessment_from_links(
+  let ready_assessment = std.claim_evidence.claim_assessment_from_links(
     claim: ready_claim,
     links: links,
   )
-  let credential_state = claim_information_state(
+  let credential_state = std.claim_evidence.claim_information_state(
     assessment: credential_assessment,
   )
-  let ready_state = claim_information_state(
+  let ready_state = std.claim_evidence.claim_information_state(
     assessment: ready_assessment,
   )
-  let readiness = claim_readiness_assessment(
+  let readiness = std.claim_evidence.claim_readiness_assessment(
     policy: std.claim_evidence.ClaimReadinessPolicy {
       first_required: ready_claim,
       remaining_required: [],
-      evidence_admission: provider_readiness_evidence_admission_policy(),
+      evidence_admission: gunbc.provider_readiness_claim_evidence.provider_readiness_evidence_admission_policy(),
     },
     links: links,
   )
@@ -154,7 +154,7 @@ test fn witness_login_status_does_not_promote_provider_readiness() -> Bool {
     && !credential_state.challenge
     && !ready_state.support
     && ready_state.challenge
-    && !claim_readiness_is_ready(assessment: readiness)
+    && !std.claim_evidence.claim_readiness_is_ready(assessment: readiness)
 }
 
 test fn witness_provider_adapter_cannot_manufacture_live_success_from_login_status() -> Bool {
@@ -169,18 +169,18 @@ test fn witness_provider_adapter_cannot_manufacture_live_success_from_login_stat
       },
     },
   }
-  let inference = provider_live_request_succeeded_inference(
+  let inference = gunbc.provider_readiness_claim_evidence.provider_live_request_succeeded_inference(
     observed_fact: login_claiming_authenticated,
     provider: provider,
     bound: provider_evidence_bound,
   )
-  evidence_inference_links(inference: inference).length() == 0
-    && evidence_inference_insufficiencies(inference: inference).length() == 1
+  std.claim_evidence.evidence_inference_links(inference: inference).length() == 0
+    && std.claim_evidence.evidence_inference_insufficiencies(inference: inference).length() == 1
 }
 
 test fn witness_refresh_refusal_cannot_support_provider_authentication() -> Bool {
   let provider = provider_evidence_fixture()
-  let inference = provider_live_request_succeeded_inference(
+  let inference = gunbc.provider_readiness_claim_evidence.provider_live_request_succeeded_inference(
     observed_fact: provider_live_request_failed_fact(
       id: "provider-refresh-refusal-cannot-authenticate",
       reason: "invalid refresh token",
@@ -188,27 +188,27 @@ test fn witness_refresh_refusal_cannot_support_provider_authentication() -> Bool
     provider: provider,
     bound: provider_evidence_bound,
   )
-  evidence_inference_links(inference: inference).length() == 0
-    && evidence_inference_insufficiencies(inference: inference).length() == 1
+  std.claim_evidence.evidence_inference_links(inference: inference).length() == 0
+    && std.claim_evidence.evidence_inference_insufficiencies(inference: inference).length() == 1
 }
 
 test fn witness_evidence_from_one_attempt_cannot_support_another_attempt() -> Bool {
   let provider = provider_evidence_fixture()
-  let inference = provider_live_request_succeeded_inference(
+  let inference = gunbc.provider_readiness_claim_evidence.provider_live_request_succeeded_inference(
     observed_fact: provider_live_request_succeeded_fact(
       id: "provider-live-request-attempt-one",
     ),
     provider: provider,
     bound: provider_evidence_bound,
   )
-  let other_claim = provider_ready_claim(
+  let other_claim = gunbc.provider_readiness_claim_evidence.provider_ready_claim(
     provider: provider,
     bound: provider_other_evidence_bound,
   )
-  let other_state = claim_information_state(
-    assessment: claim_assessment_from_links(
+  let other_state = std.claim_evidence.claim_information_state(
+    assessment: std.claim_evidence.claim_assessment_from_links(
       claim: other_claim,
-      links: evidence_inference_links(inference: inference),
+      links: std.claim_evidence.evidence_inference_links(inference: inference),
     ),
   )
   !other_state.support && !other_state.challenge
@@ -216,7 +216,7 @@ test fn witness_evidence_from_one_attempt_cannot_support_another_attempt() -> Bo
 
 test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool {
   let provider = provider_evidence_fixture()
-  let failed = provider_live_request_failed_inference(
+  let failed = gunbc.provider_readiness_claim_evidence.provider_live_request_failed_inference(
     observed_fact: provider_live_request_failed_fact(
       id: "provider-live-request-failed-both",
       reason: "refresh refused",
@@ -224,33 +224,33 @@ test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool {
     provider: provider,
     bound: provider_evidence_bound,
   )
-  let succeeded = provider_live_request_succeeded_inference(
+  let succeeded = gunbc.provider_readiness_claim_evidence.provider_live_request_succeeded_inference(
     observed_fact: provider_live_request_succeeded_fact(
       id: "provider-live-request-succeeded-both",
     ),
     provider: provider,
     bound: provider_evidence_bound,
   )
-  let ready_claim = provider_ready_claim(
+  let ready_claim = gunbc.provider_readiness_claim_evidence.provider_ready_claim(
     provider: provider,
     bound: provider_evidence_bound,
   )
-  let credential_claim = provider_credential_recorded_claim(
+  let credential_claim = gunbc.provider_readiness_claim_evidence.provider_credential_recorded_claim(
     provider: provider,
     bound: provider_evidence_bound,
   )
   let links = append(
-    evidence_inference_links(inference: failed),
-    items: evidence_inference_links(inference: succeeded),
+    std.claim_evidence.evidence_inference_links(inference: failed),
+    items: std.claim_evidence.evidence_inference_links(inference: succeeded),
   )
-  let both = claim_information_state(
-    assessment: claim_assessment_from_links(
+  let both = std.claim_evidence.claim_information_state(
+    assessment: std.claim_evidence.claim_assessment_from_links(
       claim: ready_claim,
       links: links,
     ),
   )
-  let neither = claim_information_state(
-    assessment: claim_assessment_from_links(
+  let neither = std.claim_evidence.claim_information_state(
+    assessment: std.claim_evidence.claim_assessment_from_links(
       claim: credential_claim,
       links: links,
     ),
@@ -263,7 +263,7 @@ test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool {
 
 test fn witness_split_support_and_challenge_assessments_stay_blocking() -> Bool {
   let provider = provider_evidence_fixture()
-  let failed = provider_live_request_failed_inference(
+  let failed = gunbc.provider_readiness_claim_evidence.provider_live_request_failed_inference(
     observed_fact: provider_live_request_failed_fact(
       id: "provider-live-request-failed-split",
       reason: "refresh refused",
@@ -271,53 +271,53 @@ test fn witness_split_support_and_challenge_assessments_stay_blocking() -> Bool 
     provider: provider,
     bound: provider_evidence_bound,
   )
-  let succeeded = provider_live_request_succeeded_inference(
+  let succeeded = gunbc.provider_readiness_claim_evidence.provider_live_request_succeeded_inference(
     observed_fact: provider_live_request_succeeded_fact(
       id: "provider-live-request-succeeded-split",
     ),
     provider: provider,
     bound: provider_evidence_bound,
   )
-  let ready_claim = provider_ready_claim(
+  let ready_claim = gunbc.provider_readiness_claim_evidence.provider_ready_claim(
     provider: provider,
     bound: provider_evidence_bound,
   )
-  let readiness = claim_readiness_assessment(
+  let readiness = std.claim_evidence.claim_readiness_assessment(
     policy: std.claim_evidence.ClaimReadinessPolicy {
       first_required: ready_claim,
       remaining_required: [],
-      evidence_admission: provider_readiness_evidence_admission_policy(),
+      evidence_admission: gunbc.provider_readiness_claim_evidence.provider_readiness_evidence_admission_policy(),
     },
     links: append(
-      evidence_inference_links(inference: succeeded),
-      items: evidence_inference_links(inference: failed),
+      std.claim_evidence.evidence_inference_links(inference: succeeded),
+      items: std.claim_evidence.evidence_inference_links(inference: failed),
     ),
   )
-  !claim_readiness_is_ready(assessment: readiness)
+  !std.claim_evidence.claim_readiness_is_ready(assessment: readiness)
     && readiness.length() == 1
     && all(readiness, row =>
       match row {
-        ClaimReadinessBlocking { claim } => claim == ready_claim
+        std.claim_evidence.ClaimReadinessBlocking { claim } => claim == ready_claim
         _ => false
       }
     )
 }
 
 test fn witness_empty_readiness_assessment_is_never_ready() -> Bool {
-  !claim_readiness_is_ready(assessment: [])
+  !std.claim_evidence.claim_readiness_is_ready(assessment: [])
 }
 
 test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
   let provider = provider_evidence_fixture()
-  let required = provider_ready_claim(
+  let required = gunbc.provider_readiness_claim_evidence.provider_ready_claim(
     provider: provider,
     bound: provider_other_evidence_bound,
   )
-  let forged = provider_readiness_evidence_link(
+  let forged = gunbc.provider_readiness_claim_evidence.provider_readiness_evidence_link(
     fact: provider_live_request_succeeded_fact(
       id: "forged-provider-support-link",
     ),
-    direction: EvidenceSupports,
+    direction: std.claim_evidence.EvidenceSupports,
     inference_rule: "provider-live-request-succeeded",
     authority: extdeps.external_authority.extdeps_external_authority_anchor,
     provenance: std.claim_evidence.EvidenceProvenance {
@@ -330,7 +330,7 @@ test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
       basis: "caller-authored cross-attempt claim",
     },
     fidelity: std.claim_evidence.EvidenceFidelity {
-      boundary: ProviderAuthenticated,
+      boundary: extdeps.llm.cli_lifecycle.ProviderAuthenticated,
       losses: ["the response was not independently classified"],
     },
     probe: gunbc.readback_independence.ReadBackProbe {
@@ -341,26 +341,26 @@ test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
       },
     },
   )
-  let readiness = claim_readiness_assessment(
+  let readiness = std.claim_evidence.claim_readiness_assessment(
     policy: std.claim_evidence.ClaimReadinessPolicy {
       first_required: required,
       remaining_required: [],
-      evidence_admission: provider_readiness_evidence_admission_policy(),
+      evidence_admission: gunbc.provider_readiness_claim_evidence.provider_readiness_evidence_admission_policy(),
     },
     links: [forged],
   )
-  !claim_readiness_is_ready(assessment: readiness)
+  !std.claim_evidence.claim_readiness_is_ready(assessment: readiness)
 }
 
 test fn witness_self_establishing_positive_is_insufficient_but_negative_survives() -> Bool {
   let provider = provider_evidence_fixture()
-  let claim = provider_credential_recorded_claim(
+  let claim = gunbc.provider_readiness_claim_evidence.provider_credential_recorded_claim(
     provider: provider,
     bound: provider_evidence_bound,
   )
   let fact = std.claim_evidence.RecordedFact {
     id: "self-establishing-provider-probe",
-    value: ProviderCredentialsRecordedUnverified,
+    value: extdeps.llm.cli_lifecycle.ProviderCredentialsRecordedUnverified,
   }
   let probe = gunbc.readback_independence.ReadBackProbe {
     label: "ensure credentials then report status",
@@ -369,11 +369,11 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
       mechanism: "the query installs or refreshes credentials before reporting",
     },
   }
-  let support = infer_probe_evidence(
+  let support = gunbc.claim_evidence_probe_rule.infer_probe_evidence(
     fact: fact,
-    direction: EvidenceSupports,
+    direction: std.claim_evidence.EvidenceSupports,
     inference_rule: "self-establishing-provider-probe",
-    authority: codex_cli_auth_external_authority,
+    authority: extdeps.llm.cli_lifecycle.codex_cli_auth_external_authority,
     provenance: std.claim_evidence.EvidenceProvenance {
       entity: "self-establishing-provider-output",
       activity: "ensure-then-read",
@@ -384,16 +384,16 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
       basis: "same fixture attempt",
     },
     fidelity: std.claim_evidence.EvidenceFidelity {
-      boundary: ProviderCredentialsRecordedUnverified,
+      boundary: extdeps.llm.cli_lifecycle.ProviderCredentialsRecordedUnverified,
       losses: [],
     },
     probe: probe,
   )
-  let challenge = infer_probe_evidence(
+  let challenge = gunbc.claim_evidence_probe_rule.infer_probe_evidence(
     fact: fact,
-    direction: EvidenceChallenges,
+    direction: std.claim_evidence.EvidenceChallenges,
     inference_rule: "self-establishing-provider-probe",
-    authority: codex_cli_auth_external_authority,
+    authority: extdeps.llm.cli_lifecycle.codex_cli_auth_external_authority,
     provenance: std.claim_evidence.EvidenceProvenance {
       entity: "self-establishing-provider-output",
       activity: "ensure-then-read",
@@ -404,15 +404,15 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
       basis: "same fixture attempt",
     },
     fidelity: std.claim_evidence.EvidenceFidelity {
-      boundary: ProviderCredentialsRecordedUnverified,
+      boundary: extdeps.llm.cli_lifecycle.ProviderCredentialsRecordedUnverified,
       losses: [],
     },
     probe: probe,
   )
-  evidence_inference_links(inference: support).length() == 0
-    && evidence_inference_insufficiencies(inference: support).length() == 1
-    && evidence_inference_links(inference: challenge).length() == 1
-    && evidence_inference_insufficiencies(inference: challenge).length() == 0
+  std.claim_evidence.evidence_inference_links(inference: support).length() == 0
+    && std.claim_evidence.evidence_inference_insufficiencies(inference: support).length() == 1
+    && std.claim_evidence.evidence_inference_links(inference: challenge).length() == 1
+    && std.claim_evidence.evidence_inference_insufficiencies(inference: challenge).length() == 0
 }
 
 test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool {
@@ -420,36 +420,36 @@ test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool {
   let bound = "os-install-attempt-1" as std.types.RunKey
   let attestation = gunbc.os_install_deduction.KvmOperatorAttestation {
     target: target,
-    observed_screen: LoginPrompt,
+    observed_screen: gunbc.os_install_deduction.LoginPrompt,
     observed_at: "2026-07-28T18:00:00Z",
     attested_by: "operator",
   }
-  let inference = os_install_kvm_attestation_inference(
+  let inference = gunbc.os_install_claim_evidence.os_install_kvm_attestation_inference(
     fact_id: "kvm-login-prompt-fact",
     attestation: attestation,
-    preflight: CompleteForUnattended,
+    preflight: gunbc.os_install_deduction.CompleteForUnattended,
     bound: bound,
   )
-  let boot_claim = os_install_boot_suggestion_claim(
+  let boot_claim = gunbc.os_install_claim_evidence.os_install_boot_suggestion_claim(
     target: target,
-    preflight: CompleteForUnattended,
+    preflight: gunbc.os_install_deduction.CompleteForUnattended,
     bound: bound,
   )
-  let installed_claim = os_install_completed_claim(
+  let installed_claim = gunbc.os_install_claim_evidence.os_install_completed_claim(
     target: target,
-    preflight: CompleteForUnattended,
+    preflight: gunbc.os_install_deduction.CompleteForUnattended,
     bound: bound,
   )
-  let boot = claim_information_state(
-    assessment: claim_assessment_from_links(
+  let boot = std.claim_evidence.claim_information_state(
+    assessment: std.claim_evidence.claim_assessment_from_links(
       claim: boot_claim,
-      links: evidence_inference_links(inference: inference),
+      links: std.claim_evidence.evidence_inference_links(inference: inference),
     ),
   )
-  let installed = claim_information_state(
-    assessment: claim_assessment_from_links(
+  let installed = std.claim_evidence.claim_information_state(
+    assessment: std.claim_evidence.claim_assessment_from_links(
       claim: installed_claim,
-      links: evidence_inference_links(inference: inference),
+      links: std.claim_evidence.evidence_inference_links(inference: inference),
     ),
   )
   boot.support
@@ -465,26 +465,26 @@ test fn witness_source_capture_does_not_invent_admission() -> Bool {
     source_read: source_binding_fixture_read,
     binding: source_binding_fixture_binding,
   }
-  let inference = source_binding_capture_inference(
+  let inference = gunbc.source_integration_claim_evidence.source_binding_capture_inference(
     fact_id: "source-binding-capture-fact",
     fact: fact,
   )
-  let captured_claim = source_binding_captured_claim(
+  let captured_claim = gunbc.source_integration_claim_evidence.source_binding_captured_claim(
     fact: fact,
   )
-  let admissible_claim = source_binding_admissible_claim(
+  let admissible_claim = gunbc.source_integration_claim_evidence.source_binding_admissible_claim(
     fact: fact,
   )
-  let captured = claim_information_state(
-    assessment: claim_assessment_from_links(
+  let captured = std.claim_evidence.claim_information_state(
+    assessment: std.claim_evidence.claim_assessment_from_links(
       claim: captured_claim,
-      links: evidence_inference_links(inference: inference),
+      links: std.claim_evidence.evidence_inference_links(inference: inference),
     ),
   )
-  let admissible = claim_information_state(
-    assessment: claim_assessment_from_links(
+  let admissible = std.claim_evidence.claim_information_state(
+    assessment: std.claim_evidence.claim_assessment_from_links(
       claim: admissible_claim,
-      links: evidence_inference_links(inference: inference),
+      links: std.claim_evidence.evidence_inference_links(inference: inference),
     ),
   )
   captured.support
@@ -492,7 +492,7 @@ test fn witness_source_capture_does_not_invent_admission() -> Bool {
     && !admissible.support
     && !admissible.challenge
     && all(
-      evidence_inference_links(inference: inference),
+      std.claim_evidence.evidence_inference_links(inference: inference),
       link =>
         link.freshness.maximum_conclusion == captured_claim
           && link.freshness.maximum_conclusion.bound == bound

@@ -51,7 +51,7 @@ type SparkServingUserUnitSpec {
 fn spark_serving_desired_model_manifest_path() -> std.types.FilePath {
   concat(
     spark_serving_models_root() as String,
-    concat("/", ollama_manifest_rel_path(
+    concat("/", extdeps.ollama.model_store.ollama_manifest_rel_path(
       model: spark_serving_desired_model_ref.name,
       tag: spark_serving_desired_model_ref.tag,
     )),
@@ -66,9 +66,9 @@ fn spark_serving_desired_model_manifest_dir() -> std.types.FilePath {
     concat("/", concat(
       ollama_model_store_layout.manifests_dir_rel,
       concat("/", concat(
-        ollama_default_registry as String,
+        extdeps.ollama.model_store.ollama_default_registry as String,
         concat("/", concat(
-          ollama_default_namespace as String,
+          extdeps.ollama.model_store.ollama_default_namespace as String,
           concat("/", spark_serving_desired_model_ref.name as String),
         )),
       )),
@@ -106,7 +106,7 @@ fn spark_serving_blob_checksum_path(hex: std.types.NonEmptyStr) -> std.types.Fil
 fn spark_serving_published_blob_path(hex: std.types.NonEmptyStr) -> std.types.FilePath {
   concat(
     spark_serving_desired_model_blobs_dir() as String,
-    concat("/", ollama_blob_file_name(digest_hex: hex)),
+    concat("/", extdeps.ollama.model_store.ollama_blob_file_name(digest_hex: hex)),
   ) as std.types.FilePath
 }
 
@@ -122,8 +122,8 @@ fn spark_serving_published_blob_path(hex: std.types.NonEmptyStr) -> std.types.Fi
 // hashing to the requested digest), so the blob half needs no such compensation.
 fn spark_serving_registry_manifest_url() -> String {
   join([
-    "https://", ollama_default_registry as String, "/v2/",
-    ollama_default_namespace as String, "/",
+    "https://", extdeps.ollama.model_store.ollama_default_registry as String, "/v2/",
+    extdeps.ollama.model_store.ollama_default_namespace as String, "/",
     spark_serving_desired_model_ref.name as String, "/manifests/",
     spark_serving_desired_model_ref.tag as String,
   ], "")
@@ -131,8 +131,8 @@ fn spark_serving_registry_manifest_url() -> String {
 
 fn spark_serving_registry_blob_url(hex: std.types.NonEmptyStr) -> String {
   join([
-    "https://", ollama_default_registry as String, "/v2/",
-    ollama_default_namespace as String, "/",
+    "https://", extdeps.ollama.model_store.ollama_default_registry as String, "/v2/",
+    extdeps.ollama.model_store.ollama_default_namespace as String, "/",
     spark_serving_desired_model_ref.name as String, "/blobs/sha256:",
     hex as String,
   ], "")
@@ -146,19 +146,19 @@ fn spark_serving_desired_model_blobs_dir() -> std.types.FilePath {
 }
 
 fn spark_serving_user_unit_rel() -> String {
-  join([spark_serving_user_unit_dir_rel, spark_serving_unit_name], "/")
+  join([spark_serving_user_unit_dir_rel, gunbc.spark.serving_unit_identity.spark_serving_unit_name], "/")
 }
 
 fn spark_serving_runtimes_parent() -> std.types.FilePath {
   concat(
-    spark_serving_executor_home as String,
+    gunbc.spark.serving_runtime_receipt.spark_serving_executor_home as String,
     concat("/", spark_serving_runtimes_parent_rel),
   ) as std.types.FilePath
 }
 
 fn spark_serving_runtime_root_for_identity(identity: std.content_hash.Fnv1a64Structural) -> std.types.FilePath {
   concat(
-    spark_serving_executor_home as String,
+    gunbc.spark.serving_runtime_receipt.spark_serving_executor_home as String,
     concat("/", spark_serving_runtime_root_rel_for_identity(identity: identity)),
   ) as std.types.FilePath
 }
@@ -168,7 +168,7 @@ fn spark_serving_runtime_root_for_identity(identity: std.content_hash.Fnv1a64Str
 // identity and get an answer about a different tree.
 fn spark_serving_required_runtime_root() -> std.types.FilePath {
   spark_serving_runtime_root_for_identity(
-    identity: ollama_runtime_materialization_identity_for_required_release(),
+    identity: gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release(),
   )
 }
 
@@ -184,7 +184,7 @@ fn spark_serving_required_runtime_root() -> std.types.FilePath {
 fn spark_serving_required_runtime_staging_root() -> std.types.FilePath {
   concat(
     spark_serving_runtimes_parent() as String,
-    concat("/.staging-", ollama_runtime_materialization_identity_for_required_release().digest as String),
+    concat("/.staging-", gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release().digest as String),
   ) as std.types.FilePath
 }
 
@@ -218,14 +218,14 @@ fn spark_serving_health_request_body_path() -> std.types.FilePath {
 fn spark_serving_required_runtime_workspace_root() -> std.types.FilePath {
   concat(
     spark_serving_runtimes_parent() as String,
-    concat("/.workspace-", ollama_runtime_materialization_identity_for_required_release().digest as String),
+    concat("/.workspace-", gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release().digest as String),
   ) as std.types.FilePath
 }
 
 fn spark_serving_required_runtime_staged_archive_path() -> std.types.FilePath {
   concat(
     spark_serving_required_runtime_workspace_root() as String,
-    concat("/", ollama_binary_release_asset_name(binary_release: ollama_required_release) as String),
+    concat("/", extdeps.ollama.binary_release.ollama_binary_release_asset_name(binary_release: extdeps.ollama.binary_release.ollama_required_release) as String),
   ) as std.types.FilePath
 }
 
@@ -273,7 +273,7 @@ fn spark_serving_required_runtime_executable_path() -> std.types.FilePath {
 
 fn spark_serving_models_root() -> std.types.FilePath {
   concat(
-    spark_serving_executor_home as String,
+    gunbc.spark.serving_runtime_receipt.spark_serving_executor_home as String,
     concat("/", spark_serving_models_root_rel),
   ) as std.types.FilePath
 }
@@ -284,14 +284,14 @@ fn spark_serving_models_root() -> std.types.FilePath {
 // if the unit basename ever contains a separator.
 fn spark_serving_user_unit_dir() -> std.types.FilePath {
   concat(
-    spark_serving_executor_home as String,
+    gunbc.spark.serving_runtime_receipt.spark_serving_executor_home as String,
     concat("/", spark_serving_user_unit_dir_rel),
   ) as std.types.FilePath
 }
 
 fn spark_serving_user_unit_path() -> std.types.FilePath {
   concat(
-    spark_serving_executor_home as String,
+    gunbc.spark.serving_runtime_receipt.spark_serving_executor_home as String,
     concat("/", spark_serving_user_unit_rel()),
   ) as std.types.FilePath
 }
@@ -304,7 +304,7 @@ fn spark_serving_user_unit_spec(bind_host_port: std.types.NonEmptyStr) -> SparkS
     bind_host_port: bind_host_port,
     models_root_rel: spark_serving_models_root_rel,
     runtime_root_rel: spark_serving_runtime_root_rel_for_identity(
-      identity: ollama_runtime_materialization_identity_for_required_release(),
+      identity: gunbc.ollama_runtime_bundle.ollama_runtime_materialization_identity_for_required_release(),
     ),
     exec_subcommand: "serve" as std.types.NonEmptyStr,
     restart: "on-failure" as std.types.NonEmptyStr,
@@ -316,16 +316,16 @@ fn spark_serving_user_unit_spec_field_hash(
   tag: std.types.NonEmptyStr,
   value: std.types.NonEmptyStr,
 ) -> std.content_hash.Fnv1a64Structural {
-  content_hash_tagged_structural(
+  std.content_hash.content_hash_tagged_structural(
     tag: tag,
-    payload: content_hash_atom(value: value),
+    payload: std.content_hash.content_hash_atom(value: value),
   )
 }
 
 fn spark_serving_user_unit_spec_structural_hash(spec: SparkServingUserUnitSpec) -> std.content_hash.Fnv1a64Structural {
-  content_hash_combine_structural(
-    left: content_hash_combine_structural(
-      left: content_hash_combine_structural(
+  std.content_hash.content_hash_combine_structural(
+    left: std.content_hash.content_hash_combine_structural(
+      left: std.content_hash.content_hash_combine_structural(
         left: spark_serving_user_unit_spec_field_hash(
           tag: "description" as std.types.NonEmptyStr,
           value: spec.description,
@@ -335,7 +335,7 @@ fn spark_serving_user_unit_spec_structural_hash(spec: SparkServingUserUnitSpec) 
           value: spec.after,
         ),
       ),
-      right: content_hash_combine_structural(
+      right: std.content_hash.content_hash_combine_structural(
         left: spark_serving_user_unit_spec_field_hash(
           tag: "service_type" as std.types.NonEmptyStr,
           value: spec.service_type,
@@ -346,8 +346,8 @@ fn spark_serving_user_unit_spec_structural_hash(spec: SparkServingUserUnitSpec) 
         ),
       ),
     ),
-    right: content_hash_combine_structural(
-      left: content_hash_combine_structural(
+    right: std.content_hash.content_hash_combine_structural(
+      left: std.content_hash.content_hash_combine_structural(
         left: spark_serving_user_unit_spec_field_hash(
           tag: "models_root_rel" as std.types.NonEmptyStr,
           value: spec.models_root_rel as std.types.NonEmptyStr,
@@ -357,12 +357,12 @@ fn spark_serving_user_unit_spec_structural_hash(spec: SparkServingUserUnitSpec) 
           value: spec.runtime_root_rel as std.types.NonEmptyStr,
         ),
       ),
-      right: content_hash_combine_structural(
+      right: std.content_hash.content_hash_combine_structural(
         left: spark_serving_user_unit_spec_field_hash(
           tag: "exec_subcommand" as std.types.NonEmptyStr,
           value: spec.exec_subcommand,
         ),
-        right: content_hash_combine_structural(
+        right: std.content_hash.content_hash_combine_structural(
           left: spark_serving_user_unit_spec_field_hash(
             tag: "restart" as std.types.NonEmptyStr,
             value: spec.restart,

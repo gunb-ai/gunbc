@@ -1,18 +1,18 @@
 module test.claim.dag_compile_clean_perturb_receipts
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data dag_compile_clean_perturb_fixture_note: String = "Class C decomposition: per-PR mechanism RED arms on a fixture-only compile closure (dcc_fixture_only_compile_args — one module, no compile_clean_source_roots). perturb_fixture_green_holds is the discriminating GREEN control — a no-import valid module must compile on the same path, proving the fixture transport is not always-fail. Corpus-grain legs re-homed to falsifier_rehomed_bin_wet_rows via dag/test/claim/long/dag_compile_clean_perturb_corpus_witness_test.dag."
 
 test fn perturb_optional_skew_fixture_red_holds() -> Bool {
-  run_perturb_optional_skew_fixture_red_receipt()
+  tools.dag_compile_clean_transport.run_perturb_optional_skew_fixture_red_receipt()
 }
 
 test fn perturb_unresolved_import_fixture_red_holds() -> Bool {
-  run_perturb_unresolved_import_fixture_red_receipt()
+  tools.dag_compile_clean_transport.run_perturb_unresolved_import_fixture_red_receipt()
 }
 
 test fn perturb_fixture_green_holds() -> Bool {
-  run_perturb_fixture_green_receipt()
+  tools.dag_compile_clean_transport.run_perturb_fixture_green_receipt()
 }

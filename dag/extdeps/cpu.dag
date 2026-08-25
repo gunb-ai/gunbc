@@ -3,12 +3,12 @@ module extdeps.cpu
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Central_processing_unit"
   }
 }
 
-fn cpu_vendor(cpu: extdeps.cpu.types.CpuFacts) -> Vendor<extdeps.hardware.Hardware> {
+fn cpu_vendor(cpu: extdeps.cpu.types.CpuFacts) -> Vendor<Hardware> {
   cpu.catalog.vendor
 }
 

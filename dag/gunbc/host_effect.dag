@@ -1,5 +1,6 @@
 module gunbc.host_effect
 
+
 type HostEffect =
     ShellCommand { script: String }
   | RedfishAction { action: extdeps.bmc.types.RedfishSystemAction }
@@ -142,6 +143,7 @@ data thin_invocation_argv_carrier_scaffold: std.disposition.Disposition = std.di
     field: std.decl_ref.WholeDeclaration,
   }
 }
+
 
 type HostEffectIntent {
   target: NodeControlPlane

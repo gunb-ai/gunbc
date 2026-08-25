@@ -2,5 +2,5 @@ module test.fixture.module_graph_edge_source.consumer_imported
 
 
 fn edge_source_imported_consumer_total() -> Int {
-  edge_source_only_imported_value()
+  test.fixture.module_graph_edge_source.provider_imported.edge_source_only_imported_value()
 }

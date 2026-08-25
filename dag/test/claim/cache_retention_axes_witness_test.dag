@@ -7,75 +7,75 @@ data lru_ttl_unrepresentability_note: String = "WHERE THE LRU AND TTL HALVES ARE
 
 fn capacity_not_established() -> std.cache_interface.ProviderRetention {
   std.cache_interface.ProviderRetention {
-    release_policy: ReleasedNever,
-    capacity: CapacityUnobserved
+    release_policy: std.cache_interface.ReleasedNever,
+    capacity: std.cache_interface.CapacityUnobserved
   }
 }
 
 fn scope_exit_byte_bounded_refuse_new() -> std.cache_interface.ProviderRetention {
   std.cache_interface.ProviderRetention {
-    release_policy: ReleasedAtProviderScopeExit,
+    release_policy: std.cache_interface.ReleasedAtProviderScopeExit,
     capacity: std.cache_interface.CapacityBounded {
-      limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: byte_size(count: 268435456) } },
-      at_capacity: RefuseNewStore
+      limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: std.measure.byte_size(count: 268435456) } },
+      at_capacity: std.cache_interface.RefuseNewStore
     }
   }
 }
 
 fn scope_exit_runtime_derived_replace_existing() -> std.cache_interface.ProviderRetention {
   std.cache_interface.ProviderRetention {
-    release_policy: ReleasedAtProviderScopeExit,
+    release_policy: std.cache_interface.ReleasedAtProviderScopeExit,
     capacity: std.cache_interface.CapacityBounded {
       limit: std.cache_interface.EntryCountCapacity {
         limit: std.cache_interface.RuntimeDerivedLimit {
           authority: {
             module_path: "gunbc.host_budget_source",
             decl_name: "HostBudgetResolution",
-            field: WholeDeclaration
+            field: std.decl_ref.WholeDeclaration
           }
         }
       },
-      at_capacity: std.cache_interface.ReplaceExisting { strategy: ProviderNativeReplacement }
+      at_capacity: std.cache_interface.ReplaceExisting { strategy: std.cache_interface.ProviderNativeReplacement }
     }
   }
 }
 
 test fn unobserved_capacity_never_satisfies_a_bounded_role() -> Bool {
   let r = capacity_not_established()
-  !capacity_is_bounded(c: r.capacity) && !retention_growth_is_bounded(r: r)
+  !std.cache_interface.capacity_is_bounded(c: r.capacity) && !std.cache_interface.retention_growth_is_bounded(r: r)
 }
 
 data scope_release_bounds_growth_note: String = "Scope release bounds GROWTH because storage ends with the frame; it says nothing about the peak reached INSIDE that frame, which is why the 2026-07-10 20GiB incident happened under a live scope. retention_growth_is_bounded is the growth predicate, deliberately not a peak-memory guarantee, and a role that needs a peak bound asks the capacity axis."
 
 test fn scope_release_and_a_byte_ceiling_are_one_value() -> Bool {
   let r = scope_exit_byte_bounded_refuse_new()
-  capacity_is_bounded(c: r.capacity) && retention_growth_is_bounded(r: r)
+  std.cache_interface.capacity_is_bounded(c: r.capacity) && std.cache_interface.retention_growth_is_bounded(r: r)
 }
 
 test fn scope_release_and_a_runtime_derived_ceiling_are_one_value() -> Bool {
   let r = scope_exit_runtime_derived_replace_existing()
-  capacity_is_bounded(c: r.capacity) && retention_growth_is_bounded(r: r)
+  std.cache_interface.capacity_is_bounded(c: r.capacity) && std.cache_interface.retention_growth_is_bounded(r: r)
 }
 
 test fn refuse_new_store_is_distinct_from_replacement() -> Bool {
   let refusing = scope_exit_byte_bounded_refuse_new()
   let replacing = scope_exit_runtime_derived_replace_existing()
   let a = match refusing.capacity {
-    CapacityUnbounded => false
-    CapacityUnobserved => false
-    CapacityBounded { limit: _, at_capacity: d } => match d {
-      RefuseNewStore => true
-      ReplaceExisting { strategy: _ } => false
-      AtCapacityUnobserved => false
+    std.cache_interface.CapacityUnbounded => false
+    std.cache_interface.CapacityUnobserved => false
+    std.cache_interface.CapacityBounded { limit: _, at_capacity: d } => match d {
+      std.cache_interface.RefuseNewStore => true
+      std.cache_interface.ReplaceExisting { strategy: _ } => false
+      std.cache_interface.AtCapacityUnobserved => false
     }
   }
   let b = match replacing.capacity {
-    CapacityUnbounded => false
-    CapacityUnobserved => false
-    CapacityBounded { limit: _, at_capacity: d } => match d {
-      RefuseNewStore => false
-      ReplaceExisting { strategy: _ } => true
-      AtCapacityUnobserved => false
+    std.cache_interface.CapacityUnbounded => false
+    std.cache_interface.CapacityUnobserved => false
+    std.cache_interface.CapacityBounded { limit: _, at_capacity: d } => match d {
+      std.cache_interface.RefuseNewStore => false
+      std.cache_interface.ReplaceExisting { strategy: _ } => true
+      std.cache_interface.AtCapacityUnobserved => false
     }
   }
   a && b
@@ -83,19 +83,19 @@ test fn refuse_new_store_is_distinct_from_replacement() -> Bool {
 
 test fn unbounded_and_unobserved_capacity_are_different_states() -> Bool {
   let known_unbounded = std.cache_interface.ProviderRetention {
-    release_policy: ReleasedNever,
-    capacity: CapacityUnbounded
+    release_policy: std.cache_interface.ReleasedNever,
+    capacity: std.cache_interface.CapacityUnbounded
   }
   let not_established = std.cache_interface.ProviderRetention {
-    release_policy: ReleasedNever,
-    capacity: CapacityUnobserved
+    release_policy: std.cache_interface.ReleasedNever,
+    capacity: std.cache_interface.CapacityUnobserved
   }
   let neither_is_bounded =
-    !retention_growth_is_bounded(r: known_unbounded) && !retention_growth_is_bounded(r: not_established)
+    !std.cache_interface.retention_growth_is_bounded(r: known_unbounded) && !std.cache_interface.retention_growth_is_bounded(r: not_established)
   let they_are_distinguishable = match known_unbounded.capacity {
-    CapacityUnbounded => true
-    CapacityUnobserved => false
-    CapacityBounded { limit: _, at_capacity: _ } => false
+    std.cache_interface.CapacityUnbounded => true
+    std.cache_interface.CapacityUnobserved => false
+    std.cache_interface.CapacityBounded { limit: _, at_capacity: _ } => false
   }
   neither_is_bounded && they_are_distinguishable
 }
@@ -104,42 +104,42 @@ data scope_exit_role_discrimination_note: String = "THE CONTROL THE FIRST CUT LA
 
 test fn scope_release_with_unbounded_capacity_bounds_growth_but_not_capacity() -> Bool {
   let r = std.cache_interface.ProviderRetention {
-    release_policy: ReleasedAtProviderScopeExit,
-    capacity: CapacityUnbounded
+    release_policy: std.cache_interface.ReleasedAtProviderScopeExit,
+    capacity: std.cache_interface.CapacityUnbounded
   }
-  retention_growth_is_bounded(r: r)
-    && !retention_has_capacity_bound(r: r)
-    && !retention_has_exact_byte_bound(r: r)
+  std.cache_interface.retention_growth_is_bounded(r: r)
+    && !std.cache_interface.retention_has_capacity_bound(r: r)
+    && !std.cache_interface.retention_has_exact_byte_bound(r: r)
 }
 
 test fn scope_release_with_unobserved_capacity_bounds_growth_but_not_capacity() -> Bool {
   let r = std.cache_interface.ProviderRetention {
-    release_policy: ReleasedAtProviderScopeExit,
-    capacity: CapacityUnobserved
+    release_policy: std.cache_interface.ReleasedAtProviderScopeExit,
+    capacity: std.cache_interface.CapacityUnobserved
   }
-  retention_growth_is_bounded(r: r)
-    && !retention_has_capacity_bound(r: r)
-    && !retention_has_exact_byte_bound(r: r)
+  std.cache_interface.retention_growth_is_bounded(r: r)
+    && !std.cache_interface.retention_has_capacity_bound(r: r)
+    && !std.cache_interface.retention_has_exact_byte_bound(r: r)
 }
 
 test fn an_entry_count_ceiling_is_not_a_byte_budget() -> Bool {
   let r = std.cache_interface.ProviderRetention {
-    release_policy: ReleasedAtProviderScopeExit,
+    release_policy: std.cache_interface.ReleasedAtProviderScopeExit,
     capacity: std.cache_interface.CapacityBounded {
       limit: std.cache_interface.EntryCountCapacity { limit: std.cache_interface.ExactLimit { value: 1000000 } },
-      at_capacity: RefuseNewStore
+      at_capacity: std.cache_interface.RefuseNewStore
     }
   }
-  retention_has_capacity_bound(r: r) && !retention_has_exact_byte_bound(r: r)
+  std.cache_interface.retention_has_capacity_bound(r: r) && !std.cache_interface.retention_has_exact_byte_bound(r: r)
 }
 
 test fn an_unobserved_byte_ceiling_is_not_a_byte_budget() -> Bool {
   let r = std.cache_interface.ProviderRetention {
-    release_policy: ReleasedNever,
+    release_policy: std.cache_interface.ReleasedNever,
     capacity: std.cache_interface.CapacityBounded {
-      limit: std.cache_interface.ByteCapacity { limit: EffectiveLimitUnobserved },
-      at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed }
+      limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.EffectiveLimitUnobserved },
+      at_capacity: std.cache_interface.ReplaceExisting { strategy: std.cache_interface.LeastRecentlyUsed }
     }
   }
-  retention_has_capacity_bound(r: r) && !retention_has_exact_byte_bound(r: r)
+  std.cache_interface.retention_has_capacity_bound(r: r) && !std.cache_interface.retention_has_exact_byte_bound(r: r)
 }

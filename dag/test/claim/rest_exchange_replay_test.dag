@@ -1,12 +1,12 @@
 module test.claim.rest_exchange_replay_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data replay_store: String = "rest-outcome"
 data probe_path: String = "dag/test/fixture/rest_exchange_replay_probe.dag"
 data probe_target: extdeps.uri.Uri = extdeps.uri.Uri {
-  scheme: Https
+  scheme: extdeps.uri.Https
   locator: "rest-replay.invalid/answer"
 }
 
@@ -17,25 +17,25 @@ fn probe_invocation(operation: String) -> extdeps.transports.rest.RestBoundOpera
       service: "test.RestReplay"
       operation: operation
     }
-    method: GET
+    method: std.types.GET
     target: probe_target
     input_digest: std.content_hash.Fnv1a64Structural { digest: "0000000000000000" }
-    auth_identity: RestUnauthenticated
+    auth_identity: extdeps.transports.rest.RestUnauthenticated
   }
 }
 
 fn replay_frame(fixtures: List<extdeps.transports.rest.RestExchangeFixture>) -> v2.std.witness_evaluation.WitnessEvaluationFrame {
   v2.std.witness_evaluation.WitnessEvaluationFrame {
     envelope: std.effect_grant.Envelope {
-      frame: std.materialization_ladder.Frame { name: "rest-replay-witness", kind: SharedStateFrame }
+      frame: std.materialization_ladder.Frame { name: "rest-replay-witness", kind: std.materialization_ladder.SharedStateFrame }
       grants: [std.effect_grant.Grant {
-        verb: Read
+        verb: std.effect_grant.Read
         root: std.effect_grant.NamespacePosition {
           tree: std.effect_grant.ServiceOpTree { service: "test.RestReplay" }
           path: []
         }
         binding: std.effect_grant.Replay { fixture_store: replay_store }
-        lifecycle: LifecycleByConstruction
+        lifecycle: std.effect_grant.LifecycleByConstruction
       }]
     }
     rest_fixtures: fixtures
@@ -60,14 +60,14 @@ fn denied_observation() -> extdeps.transports.rest.RestExchangeObservation {
 test fn rest_status_and_body_are_persistable() -> Bool {
   let result = v2.std.witness_evaluation.evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(operation: "Observe", observation: denied_observation())]),
-    subject: fn(_scope) { test.RestReplay.Observe() }
+    subject: fn(_scope) { RestReplay.Observe() }
   )
   match result {
-    WitnessReturned { value } => match value.observed {
-      RestStatusRefused { status, body } => status == 401 && body == "{\"message\":\"denied\"}"
+    v2.std.witness_evaluation.WitnessReturned { value } => match value.observed {
+      extdeps.transports.rest.RestStatusRefused { status, body } => status == 401 && body == "{\"message\":\"denied\"}"
       _ => false
     }
-    WitnessRefused { diagnostic } => false
+    v2.std.witness_evaluation.WitnessRefused { diagnostic } => false
   }
 }
 
@@ -80,25 +80,25 @@ test fn rest_success_projects_rest_ok() -> Bool {
         body: extdeps.transports.rest.RestBodyRead { body: "{\"message\":\"accepted\"}" }
       }
     )]),
-    subject: fn(_scope) { test.RestReplay.Observe() }
+    subject: fn(_scope) { RestReplay.Observe() }
   )
   match result {
-    WitnessReturned { value } => value.message == "accepted" && match value.observed {
-      RestOk => true
+    v2.std.witness_evaluation.WitnessReturned { value } => value.message == "accepted" && match value.observed {
+      extdeps.transports.rest.RestOk => true
       _ => false
     }
-    WitnessRefused { diagnostic } => false
+    v2.std.witness_evaluation.WitnessRefused { diagnostic } => false
   }
 }
 
 test fn rest_operation_without_outcome_still_refuses() -> Bool {
   let result = v2.std.witness_evaluation.evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(operation: "Legacy", observation: denied_observation())]),
-    subject: fn(_scope) { test.RestReplay.Legacy() }
+    subject: fn(_scope) { RestReplay.Legacy() }
   )
   match result {
-    WitnessReturned { value } => false
-    WitnessRefused { diagnostic } => v2.std.witness_evaluation.witness_diagnostic_rendered_reason(diagnostic: diagnostic) == "type error: HTTP 401: {\"message\":\"denied\"}"
+    v2.std.witness_evaluation.WitnessReturned { value } => false
+    v2.std.witness_evaluation.WitnessRefused { diagnostic } => v2.std.witness_evaluation.witness_diagnostic_rendered_reason(diagnostic: diagnostic) == "type error: HTTP 401: {\"message\":\"denied\"}"
   }
 }
 
@@ -108,14 +108,14 @@ test fn rest_transport_failure_is_persistable() -> Bool {
       operation: "Observe",
       observation: extdeps.transports.rest.RestExchangeRefused { cause: "connection refused by fixture" }
     )]),
-    subject: fn(_scope) { test.RestReplay.Observe() }
+    subject: fn(_scope) { RestReplay.Observe() }
   )
   match result {
-    WitnessReturned { value } => match value.observed {
-      RestTransportRefused { cause } => cause == "connection refused by fixture"
+    v2.std.witness_evaluation.WitnessReturned { value } => match value.observed {
+      extdeps.transports.rest.RestTransportRefused { cause } => cause == "connection refused by fixture"
       _ => false
     }
-    WitnessRefused { diagnostic } => false
+    v2.std.witness_evaluation.WitnessRefused { diagnostic } => false
   }
 }
 
@@ -128,26 +128,26 @@ test fn rest_unreadable_body_is_not_fabricated_empty() -> Bool {
         body: extdeps.transports.rest.RestBodyReadRefused { cause: "truncated response body" }
       }
     )]),
-    subject: fn(_scope) { test.RestReplay.Observe() }
+    subject: fn(_scope) { RestReplay.Observe() }
   )
   match result {
-    WitnessReturned { value } => match value.observed {
-      RestBodyUndecodable { status, cause } =>
+    v2.std.witness_evaluation.WitnessReturned { value } => match value.observed {
+      extdeps.transports.rest.RestBodyUndecodable { status, cause } =>
         status == 401 && cause == "truncated response body"
       _ => false
     }
-    WitnessRefused { diagnostic } => false
+    v2.std.witness_evaluation.WitnessRefused { diagnostic } => false
   }
 }
 
 test fn rest_replay_missing_fixture_refuses_without_network_fallback() -> Bool {
   let result = v2.std.witness_evaluation.evaluate_in_witness_frame(
     frame: replay_frame(fixtures: []),
-    subject: fn(_scope) { test.RestReplay.Observe() }
+    subject: fn(_scope) { RestReplay.Observe() }
   )
   match result {
-    WitnessReturned { value } => false
-    WitnessRefused { diagnostic } => string_contains(
+    v2.std.witness_evaluation.WitnessReturned { value } => false
+    v2.std.witness_evaluation.WitnessRefused { diagnostic } => string_contains(
       s: v2.std.witness_evaluation.witness_diagnostic_rendered_reason(diagnostic: diagnostic),
       pattern: "missing exact REST replay fixture"
     )
@@ -158,11 +158,11 @@ test fn rest_replay_duplicate_exact_fixture_refuses() -> Bool {
   let fixture = fixture_for(operation: "Observe", observation: denied_observation())
   let result = v2.std.witness_evaluation.evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture, fixture]),
-    subject: fn(_scope) { test.RestReplay.Observe() }
+    subject: fn(_scope) { RestReplay.Observe() }
   )
   match result {
-    WitnessReturned { value } => false
-    WitnessRefused { diagnostic } => string_contains(
+    v2.std.witness_evaluation.WitnessReturned { value } => false
+    v2.std.witness_evaluation.WitnessRefused { diagnostic } => string_contains(
       s: v2.std.witness_evaluation.witness_diagnostic_rendered_reason(diagnostic: diagnostic),
       pattern: "2 matches"
     )
@@ -172,11 +172,11 @@ test fn rest_replay_duplicate_exact_fixture_refuses() -> Bool {
 test fn rest_replay_sibling_operation_fixture_cannot_satisfy_subject() -> Bool {
   let result = v2.std.witness_evaluation.evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(operation: "Sibling", observation: denied_observation())]),
-    subject: fn(_scope) { test.RestReplay.Observe() }
+    subject: fn(_scope) { RestReplay.Observe() }
   )
   match result {
-    WitnessReturned { value } => false
-    WitnessRefused { diagnostic } => string_contains(
+    v2.std.witness_evaluation.WitnessReturned { value } => false
+    v2.std.witness_evaluation.WitnessRefused { diagnostic } => string_contains(
       s: v2.std.witness_evaluation.witness_diagnostic_rendered_reason(diagnostic: diagnostic),
       pattern: "missing exact REST replay fixture"
     )
@@ -189,7 +189,7 @@ test fn rest_replay_binding_does_not_escape_its_frame() -> Bool {
     subject: fn(_scope) { v2.std.witness_evaluation.witness_evaluation_frame_active() }
   )
   match inside {
-    WitnessReturned { value } => value && !v2.std.witness_evaluation.witness_evaluation_frame_active()
-    WitnessRefused { diagnostic } => false
+    v2.std.witness_evaluation.WitnessReturned { value } => value && !v2.std.witness_evaluation.witness_evaluation_frame_active()
+    v2.std.witness_evaluation.WitnessRefused { diagnostic } => false
   }
 }

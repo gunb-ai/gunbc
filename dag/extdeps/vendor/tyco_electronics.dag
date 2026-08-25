@@ -5,23 +5,23 @@ module extdeps.vendor.tyco_electronics
 // (114-115012 Rev A, DDR4 DIMM Socket Solder Tail): "Tyco Electronics Corporation, Harrisburg, PA".
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Specification+Or+Standard%7F114-115012%7FA%7Fpdf%7FEnglish%7FENG_SS_114-115012_A.pdf%7F2308107-5"
   }
 }
 
 data tyco_electronics_registrant_note: String = "THE NAME RECORDED IS THE ONE THE READ DOCUMENT CARRIES, AND THE UNCERTAINTY IS RECORDED WITH IT. The application specification's copyright line reads 'Tyco Electronics Corporation, Harrisburg, PA', while the same page states that the TE logo and TE (Tyco Electronics) are trademarks — so the document distinguishes an entity from a brand and this row takes the entity. What is NOT established is whether that corporation is the registrant a filing would name for the group trading as TE Connectivity; both the SEC submissions endpoint and the vendor's own terms-of-use page refused the fetches performed while authoring this module, with HTTP 403 in each case. A later reader establishing the group-level registrant is grounding a fact this row leaves open, not correcting one it asserted."
 
-data tyco_electronics: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "Tyco Electronics Corporation" }
+data tyco_electronics: extdeps.vendor.Vendor<extdeps.hardware.Hardware> = extdeps.vendor.Vendor { legal_name: "Tyco Electronics Corporation" }
 
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
   subject: extdeps.external_authority.ExternalSubjectRef {
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.vendor.tyco_electronics",
       decl_name: "tyco_electronics",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.vendor.tyco_electronics.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

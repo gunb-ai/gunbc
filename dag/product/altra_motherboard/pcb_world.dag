@@ -20,27 +20,27 @@ module product.altra_motherboard.pcb_world
 // this increment, so it refuses rather than borrowing the reference plan.
 fn intent_eq(a: product.altra_motherboard.minimal_design.DesignIntent, b: product.altra_motherboard.minimal_design.DesignIntent) -> Bool {
   match a {
-    EngineeringBringUp => match b {
-      EngineeringBringUp => true
-      Production => false
+    product.altra_motherboard.minimal_design.EngineeringBringUp => match b {
+      product.altra_motherboard.minimal_design.EngineeringBringUp => true
+      product.altra_motherboard.minimal_design.Production => false
     }
-    Production => match b {
-      Production => true
-      EngineeringBringUp => false
+    product.altra_motherboard.minimal_design.Production => match b {
+      product.altra_motherboard.minimal_design.Production => true
+      product.altra_motherboard.minimal_design.EngineeringBringUp => false
     }
   }
 }
 
 fn slot_list_covers(xs: List<product.altra_motherboard.minimal_design.DdrSlotIdentity>, ys: List<product.altra_motherboard.minimal_design.DdrSlotIdentity>) -> Bool {
   fold(ys, init: true, f: fn(acc, p) {
-    acc && fold(xs, init: false, f: fn(seen, q) { seen || ddr_slot_identity_eq(a: p, b: q) })
+    acc && fold(xs, init: false, f: fn(seen, q) { seen || product.altra_motherboard.minimal_design.ddr_slot_identity_eq(a: p, b: q) })
   })
 }
 
 fn topologies_eq(a: product.altra_motherboard.minimal_design.ActiveDdrTopology, b: product.altra_motherboard.minimal_design.ActiveDdrTopology) -> Bool {
-  let aslots = topology_slot_identities(t: a)
-  let bslots = topology_slot_identities(t: b)
-  list_length(items: aslots) == list_length(items: bslots)
+  let aslots = product.altra_motherboard.minimal_design.topology_slot_identities(t: a)
+  let bslots = product.altra_motherboard.minimal_design.topology_slot_identities(t: b)
+  std.types.list_length(items: aslots) == std.types.list_length(items: bslots)
     && slot_list_covers(xs: aslots, ys: bslots)
 }
 
@@ -50,59 +50,59 @@ fn designs_eq(a: product.altra_motherboard.minimal_design.AltraMinimalMotherboar
     && a.pcie_lanes_broken_out == b.pcie_lanes_broken_out
 }
 
-fn mt_jade_reference_board_width_um() -> std.integer.Int {
-  micrometer_count(m: mt_jade_motherboard_mechanical.outline_width)
+fn mt_jade_reference_board_width_um() -> Int {
+  std.measure.micrometer_count(m: mt_jade_motherboard_mechanical.outline_width)
 }
 
-fn mt_jade_reference_board_depth_um() -> std.integer.Int {
-  micrometer_count(m: mt_jade_motherboard_mechanical.outline_depth)
+fn mt_jade_reference_board_depth_um() -> Int {
+  std.measure.micrometer_count(m: mt_jade_motherboard_mechanical.outline_depth)
 }
 
 fn outline_copies_mt_jade_reference(o: std.orthogonal_geometry.AxisAlignedRectangle2) -> Bool {
-  let hi = rectangle2_max(r: o)
-  signed_frame_component_count(c: hi.x) == mt_jade_reference_board_width_um()
-    && signed_frame_component_count(c: hi.y) == mt_jade_reference_board_depth_um()
+  let hi = std.orthogonal_geometry.rectangle2_max(r: o)
+  std.affine_space.signed_frame_component_count(c: hi.x) == mt_jade_reference_board_width_um()
+    && std.affine_space.signed_frame_component_count(c: hi.y) == mt_jade_reference_board_depth_um()
 }
 
 fn cause_from_unresolved_role(r: product.altra_motherboard.placement.BoardComponentRole, w: std.types.NonEmptyStr) -> product.pcb.world.PcbObligationCause {
   match r {
-    ProcessorSocket => product.pcb.world.NamedAttachmentTypePartUnresolved { designation: ilm4926.designator, missing: w }
-    ProcessorPackage => product.pcb.world.MissingDocument { what_is_missing: w }
-    BoardControlCpld => product.pcb.world.UnselectedPart { because: w }
-    MemoryModuleSlot { slot: _ } => product.pcb.world.UnselectedPart { because: w }
-    BootFirmwareEeprom => product.pcb.world.UnselectedPart { because: w }
-    FirmwareFlash => product.pcb.world.UnselectedPart { because: w }
-    ResetController => product.pcb.world.UnselectedPart { because: w }
-    ProcessorRailSequencer => product.pcb.world.UnselectedPart { because: w }
-    ProcessorPowerStage => product.pcb.world.UnselectedPart { because: w }
-    ProcessorPowerGoodSupervisor => product.pcb.world.UnselectedPart { because: w }
-    HostNetworkPhy => product.pcb.world.UnselectedPart { because: w }
-    ManagementNetworkPath => product.pcb.world.UnselectedPart { because: w }
-    StorageEndpoint => product.pcb.world.UnselectedPart { because: w }
-    DebugConnector => product.pcb.world.UnselectedPart { because: w }
+    product.altra_motherboard.placement.ProcessorSocket => NamedAttachmentTypePartUnresolved { designation: ilm4926.designator, missing: w }
+    product.altra_motherboard.placement.ProcessorPackage => product.pcb.world.MissingDocument { what_is_missing: w }
+    product.altra_motherboard.placement.BoardControlCpld => product.pcb.world.UnselectedPart { because: w }
+    product.altra_motherboard.placement.MemoryModuleSlot { slot: _ } => product.pcb.world.UnselectedPart { because: w }
+    product.altra_motherboard.placement.BootFirmwareEeprom => product.pcb.world.UnselectedPart { because: w }
+    product.altra_motherboard.placement.FirmwareFlash => product.pcb.world.UnselectedPart { because: w }
+    product.altra_motherboard.placement.ResetController => product.pcb.world.UnselectedPart { because: w }
+    product.altra_motherboard.placement.ProcessorRailSequencer => product.pcb.world.UnselectedPart { because: w }
+    product.altra_motherboard.placement.ProcessorPowerStage => product.pcb.world.UnselectedPart { because: w }
+    product.altra_motherboard.placement.ProcessorPowerGoodSupervisor => product.pcb.world.UnselectedPart { because: w }
+    product.altra_motherboard.placement.HostNetworkPhy => product.pcb.world.UnselectedPart { because: w }
+    product.altra_motherboard.placement.ManagementNetworkPath => product.pcb.world.UnselectedPart { because: w }
+    product.altra_motherboard.placement.StorageEndpoint => product.pcb.world.UnselectedPart { because: w }
+    product.altra_motherboard.placement.DebugConnector => product.pcb.world.UnselectedPart { because: w }
   }
 }
 
 fn cause_from_outstanding(c: product.altra_motherboard.placement.PlannedComponent, g: product.altra_motherboard.attachment_stack.FactAuthorityBlocker) -> product.pcb.world.PcbObligationCause {
   match g {
-    NeedsSomeoneToFindTheDocument { what_is_missing: w } =>
+    product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: w } =>
       cause_from_unresolved_role(r: c.role, w: w)
-    NeedsCommercialAccess { subject: s, access_route: _ } =>
+    product.altra_motherboard.attachment_stack.NeedsCommercialAccess { subject: s, access_route: _ } =>
       product.pcb.world.CommercialAccess { subject: s }
-    NeedsARedistributionDecision { reason: r } =>
+    product.altra_motherboard.attachment_stack.NeedsARedistributionDecision { reason: r } =>
       product.pcb.world.LegalCarriage { reason: r }
-    NeedsAHumanToReadTheDrawing { figure: f, what_is_drawn: d } =>
+    product.altra_motherboard.attachment_stack.NeedsAHumanToReadTheDrawing { figure: f, what_is_drawn: d } =>
       product.pcb.world.DrawingMustBeRead { figure: f, what_is_drawn: d }
-    NeedsTheStandingItselfRepaired { refusal: r } =>
-      product.pcb.world.StandingIsSelfContradictory { what_is_wrong: authority_standing_refusal_text(r: r) }
+    product.altra_motherboard.attachment_stack.NeedsTheStandingItselfRepaired { refusal: r } =>
+      product.pcb.world.StandingIsSelfContradictory { what_is_wrong: product.altra_motherboard.attachment_stack.authority_standing_refusal_text(r: r) }
   }
 }
 
 fn obligations_from_plan(plan: product.altra_motherboard.placement.BoardPlacementPlan) -> List<product.pcb.world.PcbComponentObligation> {
   fold(plan.components, init: [], f: fn(acc, c) {
     match c.envelope {
-      EnvelopeEstablished { envelope: _, source: _ } => acc
-      EnvelopeNotEstablished { gap: g } => concat(acc, [product.pcb.world.PcbComponentObligation {
+      product.altra_motherboard.placement.EnvelopeEstablished { envelope: _, source: _ } => acc
+      product.altra_motherboard.placement.EnvelopeNotEstablished { gap: g } => concat(acc, [product.pcb.world.PcbComponentObligation {
         identity: c.identity,
         origin: c.origin,
         cause: cause_from_outstanding(c: c, g: g),
@@ -113,28 +113,28 @@ fn obligations_from_plan(plan: product.altra_motherboard.placement.BoardPlacemen
 
 fn cause_from_attachment_blocker(g: product.altra_motherboard.attachment_stack.FactAuthorityBlocker) -> product.pcb.world.PcbObligationCause {
   match g {
-    NeedsSomeoneToFindTheDocument { what_is_missing: w } =>
+    product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: w } =>
       product.pcb.world.MissingDocument { what_is_missing: w }
-    NeedsCommercialAccess { subject: s, access_route: _ } =>
+    product.altra_motherboard.attachment_stack.NeedsCommercialAccess { subject: s, access_route: _ } =>
       product.pcb.world.CommercialAccess { subject: s }
-    NeedsARedistributionDecision { reason: r } =>
+    product.altra_motherboard.attachment_stack.NeedsARedistributionDecision { reason: r } =>
       product.pcb.world.LegalCarriage { reason: r }
-    NeedsAHumanToReadTheDrawing { figure: f, what_is_drawn: d } =>
+    product.altra_motherboard.attachment_stack.NeedsAHumanToReadTheDrawing { figure: f, what_is_drawn: d } =>
       product.pcb.world.DrawingMustBeRead { figure: f, what_is_drawn: d }
-    NeedsTheStandingItselfRepaired { refusal: r } =>
-      product.pcb.world.StandingIsSelfContradictory { what_is_wrong: authority_standing_refusal_text(r: r) }
+    product.altra_motherboard.attachment_stack.NeedsTheStandingItselfRepaired { refusal: r } =>
+      product.pcb.world.StandingIsSelfContradictory { what_is_wrong: product.altra_motherboard.attachment_stack.authority_standing_refusal_text(r: r) }
   }
 }
 
 fn attachment_obligation_from_blocker(b: product.altra_motherboard.attachment_stack.LayerBlocker) -> product.pcb.world.PcbAttachmentObligation {
   product.pcb.world.PcbAttachmentObligation {
-    layer: attachment_layer_name(l: b.layer),
+    layer: product.altra_motherboard.attachment_stack.attachment_layer_name(l: b.layer),
     cause: cause_from_attachment_blocker(g: b.blocker),
   }
 }
 
 fn attachment_obligations() -> List<product.pcb.world.PcbAttachmentObligation> {
-  fold(open_blockers(), init: [], f: fn(acc, b) {
+  fold(product.altra_motherboard.attachment_stack.open_blockers(), init: [], f: fn(acc, b) {
     concat(acc, [attachment_obligation_from_blocker(b: b)])
   })
 }
@@ -146,16 +146,16 @@ fn attachment_obligations() -> List<product.pcb.world.PcbAttachmentObligation> {
 // has actually done, and it must not be reported behind a word that means "so far so good".
 fn project_body_layout(s: product.altra_motherboard.placement.BoardBodyLayoutStanding) -> product.pcb.world.PcbBodyLayoutStanding {
   match s {
-    BodyLayoutAdmittedOverEveryRequiredPart { article: _ } =>
-      PcbBodyLayoutAdmittedOverEveryRequiredPart
-    BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n, geometry: g } =>
+    product.altra_motherboard.placement.BodyLayoutAdmittedOverEveryRequiredPart { article: _ } =>
+      product.pcb.world.PcbBodyLayoutAdmittedOverEveryRequiredPart
+    product.altra_motherboard.placement.BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n, geometry: g } =>
       match g {
-        BodyEnvelopesAdmitted { article: _ } =>
+        product.pcb.physical.BodyEnvelopesAdmitted { article: _ } =>
           product.pcb.world.PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: n }
-        PhysicallyRefused { causes: cs } =>
+        product.pcb.physical.PhysicallyRefused { causes: cs } =>
           product.pcb.world.PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: n, causes: cs }
       }
-    BodyLayoutRefused { causes: cs } =>
+    product.altra_motherboard.placement.BodyLayoutRefused { causes: cs } =>
       product.pcb.world.PcbBodyLayoutRefusedOverCompletePopulation { causes: cs }
   }
 }
@@ -163,9 +163,9 @@ fn project_body_layout(s: product.altra_motherboard.placement.BoardBodyLayoutSta
 fn envelope_reads_from_plan(plan: product.altra_motherboard.placement.BoardPlacementPlan) -> List<product.pcb.world.EstablishedEnvelopeRead> {
   fold(plan.components, init: [], f: fn(acc, c) {
     match c.envelope {
-      EnvelopeEstablished { envelope: _, source: s } =>
+      product.altra_motherboard.placement.EnvelopeEstablished { envelope: _, source: s } =>
         concat(acc, [product.pcb.world.EstablishedEnvelopeRead { identity: c.identity, source: s }])
-      EnvelopeNotEstablished { gap: _ } => acc
+      product.altra_motherboard.placement.EnvelopeNotEstablished { gap: _ } => acc
     }
   })
 }
@@ -177,76 +177,76 @@ fn envelope_reads_from_plan(plan: product.altra_motherboard.placement.BoardPlace
 // omitting an identity from that list would be the exact failure this projection is supposed to
 // make impossible.
 fn functional_obligations() -> List<product.pcb.world.PcbFunctionalObligation> {
-  fold(board_functional_obligations(), init: [], f: fn(acc, f) {
+  fold(product.altra_motherboard.realization.board_functional_obligations(), init: [], f: fn(acc, f) {
     concat(acc, [product.pcb.world.PcbFunctionalObligation {
-      function: functional_requirement_name(f: f),
-      cause: product.pcb.world.UnselectedPart { because: functional_requirement_reason(f: f) },
+      function: product.altra_motherboard.realization.functional_requirement_name(f: f),
+      cause: product.pcb.world.UnselectedPart { because: product.altra_motherboard.realization.functional_requirement_reason(f: f) },
     }])
   })
 }
 
-fn physical_world_from_plan(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: product.altra_motherboard.placement.BoardPlacementPlan) -> product.pcb.world.PcbPhysicalWorld {
+fn physical_world_from_plan(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: DeclarationRef, plan: product.altra_motherboard.placement.BoardPlacementPlan) -> product.pcb.world.PcbPhysicalWorld {
   product.pcb.world.PcbPhysicalWorld {
     board: product.pcb.world.PcbBoard { frame: plan.frame, outline: plan.outline },
-    components: placeable_components(plan: plan),
+    components: product.altra_motherboard.placement.placeable_components(plan: plan),
     envelope_reads: envelope_reads_from_plan(plan: plan),
     obligations: obligations_from_plan(plan: plan),
     attachment_obligations: attachment_obligations(),
     functional_obligations: functional_obligations(),
-    body_layout: project_body_layout(s: board_body_layout_standing(d: d, d_ref: d_ref, plan: plan)),
-    stackup: capability_pending(what_is_owed: "a cited dielectric stackup for this board; no fabricator profile has been joined"),
-    footprints: capability_pending(what_is_owed: "vendor land patterns placed on this board; body envelopes are not footprints"),
-    pads: capability_pending(what_is_owed: "a pad population derived from placed footprints"),
-    routes: capability_pending(what_is_owed: "a route population; routing has not been modeled for this board"),
+    body_layout: project_body_layout(s: product.altra_motherboard.placement.board_body_layout_standing(d: d, d_ref: d_ref, plan: plan)),
+    stackup: product.pcb.world.capability_pending(what_is_owed: "a cited dielectric stackup for this board; no fabricator profile has been joined"),
+    footprints: product.pcb.world.capability_pending(what_is_owed: "vendor land patterns placed on this board; body envelopes are not footprints"),
+    pads: product.pcb.world.capability_pending(what_is_owed: "a pad population derived from placed footprints"),
+    routes: product.pcb.world.capability_pending(what_is_owed: "a route population; routing has not been modeled for this board"),
   }
 }
 
-fn pcb_world_from_plan(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: product.altra_motherboard.placement.BoardPlacementPlan) -> product.pcb.world.PcbWorld {
-  pcb_world(
+fn pcb_world_from_plan(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: DeclarationRef, plan: product.altra_motherboard.placement.BoardPlacementPlan) -> product.pcb.world.PcbWorld {
+  product.pcb.world.pcb_world(
     design: plan.design,
     electrical: product.pcb.world.PcbElectricalWorld {
-      nets: capability_pending(what_is_owed: "a netlist joined to this board; electrical connectivity has not been modeled"),
+      nets: product.pcb.world.capability_pending(what_is_owed: "a netlist joined to this board; electrical connectivity has not been modeled"),
     },
     physical: physical_world_from_plan(d: d, d_ref: d_ref, plan: plan),
     manufacturing: product.pcb.world.PcbManufacturingWorld {
-      artifacts: capability_pending(what_is_owed: "manufacturing artifacts (gerber, drill, fab drawing); none have been emitted"),
+      artifacts: product.pcb.world.capability_pending(what_is_owed: "manufacturing artifacts (gerber, drill, fab drawing); none have been emitted"),
     },
   )
 }
 
-fn altra_pcb_world_for(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> PcbWorldConstruction<product.pcb.world.PcbWorld> {
-  if !designs_eq(a: d, b: altra_1p_minimum) {
-    product.pcb.world.PcbWorldRefused { cause: product.pcb.world.PcbDesignPlanUnavailable { only_available: altra_1p_minimum_ref() } }
+fn altra_pcb_world_for(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> product.pcb.world.PcbWorldConstruction<product.pcb.world.PcbWorld> {
+  if !designs_eq(a: d, b: product.altra_motherboard.minimal_design.altra_1p_minimum) {
+    product.pcb.world.PcbWorldRefused { cause: product.pcb.world.PcbDesignPlanUnavailable { only_available: product.altra_motherboard.placement.altra_1p_minimum_ref() } }
   } else {
-    match altra_reference_plan() {
-      OrthogonalRefused { cause: c } => product.pcb.world.PcbWorldRefused { cause: product.pcb.world.PcbBoardOutlineRefused { cause: c } }
-      OrthogonalReady { value: plan } =>
+    match product.altra_motherboard.placement.altra_reference_plan() {
+      std.orthogonal_geometry.OrthogonalRefused { cause: c } => product.pcb.world.PcbWorldRefused { cause: product.pcb.world.PcbBoardOutlineRefused { cause: c } }
+      std.orthogonal_geometry.OrthogonalReady { value: plan } =>
         if outline_copies_mt_jade_reference(o: plan.outline) {
-          product.pcb.world.PcbWorldRefused { cause: PcbOutlineCopiedFromCitedForeignBoard }
+          product.pcb.world.PcbWorldRefused { cause: product.pcb.world.PcbOutlineCopiedFromCitedForeignBoard }
         } else {
-          product.pcb.world.PartialPcbWorldReady { value: pcb_world_from_plan(d: d, d_ref: altra_1p_minimum_ref(), plan: plan) }
+          product.pcb.world.PartialPcbWorldReady { value: pcb_world_from_plan(d: d, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: plan) }
         }
     }
   }
 }
 
-fn altra_pcb_world() -> PcbWorldConstruction<product.pcb.world.PcbWorld> {
-  altra_pcb_world_for(d: altra_1p_minimum)
+fn altra_pcb_world() -> product.pcb.world.PcbWorldConstruction<product.pcb.world.PcbWorld> {
+  altra_pcb_world_for(d: product.altra_motherboard.minimal_design.altra_1p_minimum)
 }
 
-fn design_mismatch_from_causes(cs: List<product.altra_motherboard.placement.PlacementRefusal>) -> product.pcb.world.PcbWorldRefusal? {
+fn design_mismatch_from_causes(cs: List<product.altra_motherboard.placement.PlacementRefusal>) -> PcbWorldRefusal? {
   fold(cs, init: none, f: fn(acc, c) {
     match acc {
       Present { value: v } => Present { value: v }
       Absent =>
         match c {
-          PlanWasBuiltFromADifferentDesign { plan_design: a, admitted_against: b } =>
+          product.altra_motherboard.placement.PlanWasBuiltFromADifferentDesign { plan_design: a, admitted_against: b } =>
             Present { value: product.pcb.world.PcbPlanWasBuiltFromADifferentDesign { plan_design: a, admitted_against: b } }
-          ComponentEnvelopeNotEstablished { component: _, gap: _ } => none
-          RequiredRoleUnfilled { role: _ } => none
-          ComponentFillsNoRequiredRole { component: _, role_named: _ } => none
-          PlannedIdentityRepeated { component: _ } => none
-          RoleFilledMoreThanOnce { role: _, fills: _ } => none
+          product.altra_motherboard.placement.ComponentEnvelopeNotEstablished { component: _, gap: _ } => none
+          product.altra_motherboard.placement.RequiredRoleUnfilled { role: _ } => none
+          product.altra_motherboard.placement.ComponentFillsNoRequiredRole { component: _, role_named: _ } => none
+          product.altra_motherboard.placement.PlannedIdentityRepeated { component: _ } => none
+          product.altra_motherboard.placement.RoleFilledMoreThanOnce { role: _, fills: _ } => none
           RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => none
         }
     }
@@ -256,22 +256,22 @@ fn design_mismatch_from_causes(cs: List<product.altra_motherboard.placement.Plac
 // THE DESIGN'S IDENTITY IS SUPPLIED BY WHOEVER READ IT. Passing plan.design here instead would
 // make the join compare the plan against itself -- a tautology, and a worse defect than the
 // hardcoded reference it replaced, because it can never fail.
-fn admit_pcb_world(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, w: product.pcb.world.PcbWorld) -> PcbWorldConstruction<product.pcb.world.PcbWorld> {
-  match altra_reference_plan() {
-    OrthogonalRefused { cause: c } => product.pcb.world.PcbWorldRefused { cause: product.pcb.world.PcbBoardOutlineRefused { cause: c } }
-    OrthogonalReady { value: plan } =>
-      if !declaration_ref_eq(a: pcb_world_design(w: w), b: plan.design) {
-        product.pcb.world.PcbWorldRefused { cause: product.pcb.world.PcbPlanWasBuiltFromADifferentDesign { plan_design: plan.design, admitted_against: pcb_world_design(w: w) } }
+fn admit_pcb_world(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: DeclarationRef, w: product.pcb.world.PcbWorld) -> product.pcb.world.PcbWorldConstruction<product.pcb.world.PcbWorld> {
+  match product.altra_motherboard.placement.altra_reference_plan() {
+    std.orthogonal_geometry.OrthogonalRefused { cause: c } => product.pcb.world.PcbWorldRefused { cause: product.pcb.world.PcbBoardOutlineRefused { cause: c } }
+    std.orthogonal_geometry.OrthogonalReady { value: plan } =>
+      if !std.decl_ref.declaration_ref_eq(a: product.pcb.world.pcb_world_design(w: w), b: plan.design) {
+        product.pcb.world.PcbWorldRefused { cause: product.pcb.world.PcbPlanWasBuiltFromADifferentDesign { plan_design: plan.design, admitted_against: product.pcb.world.pcb_world_design(w: w) } }
       } else {
-        match first_unsettled_capability(w: w) {
+        match product.pcb.world.first_unsettled_capability(w: w) {
           Present { value: r } => product.pcb.world.PcbWorldRefused { cause: r }
           Absent =>
-            match admit_placement(d: d, d_ref: d_ref, plan: plan) {
-              PlacementAdmitted { plan: _ } => product.pcb.world.AdmittedPcbWorld { value: w }
-              PlacementRefused { causes: cs } =>
+            match product.altra_motherboard.placement.admit_placement(d: d, d_ref: d_ref, plan: plan) {
+              product.altra_motherboard.placement.PlacementAdmitted { plan: _ } => product.pcb.world.AdmittedPcbWorld { value: w }
+              product.altra_motherboard.placement.PlacementRefused { causes: cs } =>
                 match design_mismatch_from_causes(cs: cs) {
                   Present { value: r } => product.pcb.world.PcbWorldRefused { cause: r }
-                  Absent => product.pcb.world.PcbWorldRefused { cause: PcbPlacementNotAdmitted }
+                  Absent => product.pcb.world.PcbWorldRefused { cause: product.pcb.world.PcbPlacementNotAdmitted }
                 }
             }
         }

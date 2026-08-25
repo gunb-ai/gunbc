@@ -41,7 +41,7 @@ fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> Desc
   }
 }
 
-data descent_evidence_bounded_lattice: BoundedLattice<DescentEvidence> = {
+data descent_evidence_bounded_lattice: std.algebra.BoundedLattice<DescentEvidence> = {
   meet: descent_evidence_lattice_meet
   join: descent_evidence_lattice_join
   top: Strict

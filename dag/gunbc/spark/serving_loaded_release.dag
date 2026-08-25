@@ -30,14 +30,14 @@ fn spark_serving_loaded_model_artifact(
   tag: String,
   digest_wire: String,
 ) -> gunbc.model_artifact.ModelArtifact? {
-  match ollama_model_digest_from_wire(
+  match extdeps.ollama.api.ollama_model_digest_from_wire(
     ref: extdeps.ollama.api.OllamaModelRef { name: name as std.types.NonEmptyStr, tag: tag as std.types.NonEmptyStr },
     hex: digest_wire,
   ) {
     Absent => none
     Present { value: observed } =>
       Present {
-        value: model_artifact_from_observed_digest(
+        value: gunbc.model_artifact.model_artifact_from_observed_digest(
           publisher: "ollama" as std.types.NonEmptyStr,
           observed: observed,
         ),
@@ -51,10 +51,10 @@ fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> gunbc.
     SparkServingUnitAbsent => none
     SparkServingUnitObservationRefused { cause: _ } => none
     SparkServingUnitActive =>
-      match spark_serving_readback_field_present_value(field: readback.runtime_version) {
+      match gunbc.spark.serving_readback_parse.spark_serving_readback_field_present_value(field: readback.runtime_version) {
         Absent => none
         Present { value: ver } =>
-          match spark_serving_readback_field_present_value(field: readback.runtime_materialization_identity) {
+          match gunbc.spark.serving_readback_parse.spark_serving_readback_field_present_value(field: readback.runtime_materialization_identity) {
             Absent => none
             Present { value: receipt_identity } =>
               match spark_serving_admit_observed_runtime_identity(
@@ -63,13 +63,13 @@ fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> gunbc.
               ) {
                 Absent => none
                 Present { value: runtime_digest } =>
-                  match spark_serving_readback_field_present_value(field: readback.model_name) {
+                  match gunbc.spark.serving_readback_parse.spark_serving_readback_field_present_value(field: readback.model_name) {
                     Absent => none
                     Present { value: name } =>
-                      match spark_serving_readback_field_present_value(field: readback.model_tag) {
+                      match gunbc.spark.serving_readback_parse.spark_serving_readback_field_present_value(field: readback.model_tag) {
                         Absent => none
                         Present { value: tag } =>
-                          match spark_serving_readback_field_present_value(field: readback.model_manifest_digest) {
+                          match gunbc.spark.serving_readback_parse.spark_serving_readback_field_present_value(field: readback.model_manifest_digest) {
                             Absent => none
                             Present { value: digest_wire } =>
                               match spark_serving_loaded_model_artifact(
@@ -124,7 +124,7 @@ fn spark_serving_admit_observed_runtime_identity(
   version: String,
   receipt_identity: String,
 ) -> String? {
-  if !ollama_reported_version_matches_release(version: version, rel: ollama_required_release) {
+  if !extdeps.ollama.binary_release.ollama_reported_version_matches_release(version: version, rel: extdeps.ollama.binary_release.ollama_required_release) {
     none
   } else if std.algebra.trim(s: receipt_identity) == "" {
     none
@@ -136,7 +136,7 @@ fn spark_serving_admit_observed_runtime_identity(
 fn derive_loaded_spark_serving_release_identity(readback: SparkServingReadback) -> gunbc.spark.serving_release.SparkServingReleaseIdentity? {
   match derive_loaded_spark_serving_release(readback: readback) {
     Absent => none
-    Present { value: spec } => Present { value: spark_serving_release_identity(spec: spec) }
+    Present { value: spec } => Present { value: gunbc.spark.serving_release.spark_serving_release_identity(spec: spec) }
   }
 }
 
@@ -152,7 +152,7 @@ fn derive_spark_serving_observation(readback: SparkServingReadback) -> gunbc.spa
     SparkServingUnitObservationRefused { cause: c } =>
       gunbc.spark.serving_release.SparkServingObservationRefused { host: readback.host, cause: c }
     SparkServingUnitActive =>
-      match spark_serving_first_readback_refusal(fields: [
+      match gunbc.spark.serving_readback_parse.spark_serving_first_readback_refusal(fields: [
         readback.runtime_version,
         readback.runtime_materialization_identity,
         readback.model_name,
@@ -163,7 +163,7 @@ fn derive_spark_serving_observation(readback: SparkServingReadback) -> gunbc.spa
         Present { value: cause } =>
           gunbc.spark.serving_release.SparkServingObservationRefused { host: readback.host, cause: cause }
         Absent =>
-          match spark_serving_runtime_admission_refusal_cause(nvidia_driver: readback.nvidia_driver) {
+          match gunbc.spark.serving_runtime_admission.spark_serving_runtime_admission_refusal_cause(nvidia_driver: readback.nvidia_driver) {
             Present { value: admission_cause } =>
               gunbc.spark.serving_release.SparkServingObservationRefused { host: readback.host, cause: admission_cause }
             Absent =>

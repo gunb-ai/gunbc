@@ -8,30 +8,30 @@ data language_source_scaffold_enforcement_boundary: String = "What is actually e
 type LanguageSourceScaffoldRow {
   carrier_module: String
   blob_decl: String
-  disposition: std.disposition.Disposition
+  disposition: Disposition
 }
 
-data rust_pair_completion_spelling_scaffold_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data rust_pair_completion_spelling_scaffold_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "std.trait_derive_shape",
     decl_name: "pair_completion_op_rows",
     field: WholeDeclaration
   }
 }
 
-data rust_bool_host_bridge_scaffold_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data rust_bool_host_bridge_scaffold_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "gunbc.plans.value_null_split",
     decl_name: "value_null_split_plan",
     field: WholeDeclaration
   }
 }
 
-data rust_dry_run_mode_scaffold_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data rust_dry_run_mode_scaffold_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "std.execution_mode",
     decl_name: "ExecutionMode",
     field: WholeDeclaration
@@ -56,25 +56,25 @@ data rust_dry_run_mode_scaffold_row: LanguageSourceScaffoldRow = LanguageSourceS
   disposition: rust_dry_run_mode_scaffold_trigger
 }
 
-data runtime_rust_trace_mark_scaffold_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data runtime_rust_trace_mark_scaffold_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "std.observation",
     decl_name: "ObservationSubject",
     field: WholeDeclaration
   }
 }
 
-data runtime_rust_kernel_opcode_scaffold_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data runtime_rust_kernel_opcode_scaffold_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "std.realization_schedule",
     decl_name: "RealizationPlan",
     field: WholeDeclaration
   }
 }
 
-data runtime_rust_fnv1a64_terminal: std.disposition.Disposition = Terminal {
+data runtime_rust_fnv1a64_terminal: Disposition = Terminal {
   reason: "named irreducible intrinsic kernel: fnv1a64 is the content-hash primitive std.content_hash is defined over, so it has no substrate decomposition to dissolve into"
 }
 
@@ -96,61 +96,61 @@ data runtime_rust_hash_ops_terminal_row: LanguageSourceScaffoldRow = LanguageSou
   disposition: runtime_rust_fnv1a64_terminal
 }
 
-data compiler_tests_rust_hand_assertion_scaffold_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data compiler_tests_rust_hand_assertion_scaffold_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "v1.compiler.coercion",
     decl_name: "CoercionTestEntry",
     field: WholeDeclaration
   }
 }
 
-data runtime_rust_host_intrinsic_kernel_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data runtime_rust_host_intrinsic_kernel_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "std.realization_schedule",
     decl_name: "RealizationPlan",
     field: WholeDeclaration
   }
 }
 
-data runtime_rust_instrumentation_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data runtime_rust_instrumentation_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "std.observation",
     decl_name: "ObservationSubject",
     field: WholeDeclaration
   }
 }
 
-data runtime_rust_freemonoid_bridge_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data runtime_rust_freemonoid_bridge_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "std.algebra",
     decl_name: "FreeMonoid",
     field: WholeDeclaration
   }
 }
 
-data runtime_rust_rc_container_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data runtime_rust_rc_container_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "gunbc.ownership",
     decl_name: "Ownership",
     field: WholeDeclaration
   }
 }
 
-data runtime_rust_filesystem_effect_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data runtime_rust_filesystem_effect_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffect",
     field: WholeDeclaration
   }
 }
 
-data runtime_rust_module_preamble_terminal: std.disposition.Disposition = Terminal {
+data runtime_rust_module_preamble_terminal: Disposition = Terminal {
   reason: "emitted module preamble: a doc header carries no target-language semantics to derive, so it has no substrate decomposition to dissolve into"
 }
 
@@ -204,18 +204,18 @@ data runtime_rust_filesystem_row: LanguageSourceScaffoldRow = LanguageSourceScaf
   disposition: runtime_rust_filesystem_effect_trigger
 }
 
-data compiler_tests_harness_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data compiler_tests_harness_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "v2.test.workflow.claim_witness_corpus_ci_runner",
     decl_name: "ClaimWitnessCorpusClaimRunRow",
     field: WholeDeclaration
   }
 }
 
-data compiler_tests_profile_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data compiler_tests_profile_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "std.observation",
     decl_name: "ObservationSubject",
     field: WholeDeclaration
@@ -417,9 +417,9 @@ data ct_row_ct_profile_reconcile_test: LanguageSourceScaffoldRow = LanguageSourc
   disposition: compiler_tests_profile_trigger
 }
 
-data compiler_tests_coercion_hybrid_trigger: std.disposition.Disposition = std.disposition.Scaffold {
+data compiler_tests_coercion_hybrid_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "v1.compiler.coercion",
     decl_name: "CoercionTestEntry",
     field: WholeDeclaration
@@ -517,4 +517,4 @@ fn language_source_scaffold_terminal_count() -> Int {
     |> count
 }
 
-data rust_dry_run_mode_scaffold_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: emit_dry_run_module DryRunMode(bool) blob. BackendCapability/BackendInfo deleted as dead vocabulary (#7272 A2) — wiring five Cap* markers to satisfy a census ratchet was refused. Dissolves when dry-run is modeled on the ExecutionMode / effect-grant axis (Hermetic/Replay plan-only) rather than a hand-emitted bool wrapper; failing a substrate model, the next language-source scaffold swe")
+data rust_dry_run_mode_scaffold_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: emit_dry_run_module DryRunMode(bool) blob. BackendCapability/BackendInfo deleted as dead vocabulary (#7272 A2) — wiring five Cap* markers to satisfy a census ratchet was refused. Dissolves when dry-run is modeled on the ExecutionMode / effect-grant axis (Hermetic/Replay plan-only) rather than a hand-emitted bool wrapper; failing a substrate model, the next language-source scaffold swe")

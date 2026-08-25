@@ -30,7 +30,7 @@ fn child_type_node(ch: v1.std.core.Node) -> v1.std.core.Node {
 
 fn is_type_expr_annotation(n: v1.std.core.Node) -> Bool {
   match n.expr_data {
-    NoExprData => true
+    v1.std.core.NoExprData => true
     _ => false
   }
 }
@@ -193,7 +193,7 @@ fn type_resolution_verdict(n: v1.std.core.Node, source_indices: Map<String, v1.s
             )
           )
         }
-      NotAContainerSpelling =>
+      v1.std.core.NotAContainerSpelling =>
         fold(n.children, init: FullyResolved, f: (acc, ch) =>
           combine_resolution_verdicts(
             acc: acc,
@@ -392,14 +392,14 @@ fn instantiate_algebra_type(template: std.algebra.AlgebraTypeTemplate, base: v1.
   let key_node = algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "K")
   let val_node = algebra_child_or_placeholder(base: base, child_index: 1, placeholder: "V")
   match template {
-    ReceiverSelf => KernelTypeBuild { ty: base, diagnostics: [] }
-    ReceiverElement => KernelTypeBuild { ty: elem, diagnostics: [] }
-    ReceiverKey => KernelTypeBuild { ty: key_node, diagnostics: [] }
-    ReceiverValue => KernelTypeBuild { ty: val_node, diagnostics: [] }
+    std.algebra.ReceiverSelf => KernelTypeBuild { ty: base, diagnostics: [] }
+    std.algebra.ReceiverElement => KernelTypeBuild { ty: elem, diagnostics: [] }
+    std.algebra.ReceiverKey => KernelTypeBuild { ty: key_node, diagnostics: [] }
+    std.algebra.ReceiverValue => KernelTypeBuild { ty: val_node, diagnostics: [] }
     std.algebra.NamedTemplate { name: n } => KernelTypeBuild { ty: nominal_type_ref(name: n), diagnostics: [] }
     std.algebra.AlgebraTypeVariable { id: var_id } => KernelTypeBuild { ty: type_variable_node(id: var_id), diagnostics: [] }
     std.algebra.ContainerOf { source: src, element: inner } =>
-      let kind_name = match src { SameAsReceiver => container_kind_canonical(name: v1.std.core.authored_name_at(source_indices: source_indices, node: base))  std.algebra.Named { name: n } => n }
+      let kind_name = match src { std.algebra.SameAsReceiver => container_kind_canonical(name: v1.std.core.authored_name_at(source_indices: source_indices, node: base))  std.algebra.Named { name: n } => n }
       let inner_b = instantiate_algebra_type(template: inner, base: base, source_indices: source_indices)
       let built = make_container_type(kind_name: kind_name, element: inner_b.ty)
       KernelTypeBuild { ty: built.ty, diagnostics: concat(inner_b.diagnostics, built.diagnostics) }
@@ -456,7 +456,7 @@ fn unify_template(template: std.algebra.AlgebraTypeTemplate, concrete: v1.std.co
     std.algebra.AlgebraTypeVariable { id: var_id } =>
       if map_get(subst, var_id) != none { subst }
       else { map_insert(subst, var_id, concrete) }
-    ReceiverSelf =>
+    std.algebra.ReceiverSelf =>
       let s1 = match concrete.children |> first {
         Present { value: k } =>
           if map_get(subst, "__key__") != none { subst } else { map_insert(subst, "__key__", child_type_node(ch: k)) }
@@ -467,19 +467,19 @@ fn unify_template(template: std.algebra.AlgebraTypeTemplate, concrete: v1.std.co
           if map_get(s1, "__value__") != none { s1 } else { map_insert(s1, "__value__", child_type_node(ch: v)) }
         Absent => s1
       }
-    ReceiverKey =>
+    std.algebra.ReceiverKey =>
       if map_get(subst, "__key__") != none { subst }
       else { map_insert(subst, "__key__", concrete) }
-    ReceiverValue =>
+    std.algebra.ReceiverValue =>
       if map_get(subst, "__value__") != none { subst }
       else { map_insert(subst, "__value__", concrete) }
-    ReceiverElement =>
+    std.algebra.ReceiverElement =>
       if map_get(subst, "__element__") != none { subst }
       else { map_insert(subst, "__element__", concrete) }
     CallableOf { params: _, return_type: ret_template } =>
       unify_template(template: ret_template, concrete: concrete, receiver: receiver, subst: subst, source_indices: source_indices)
     std.algebra.ContainerOf { source: src, element: elem_template } =>
-      let expected_name = match src { SameAsReceiver => container_kind_canonical(name: v1.std.core.authored_name_at(source_indices: source_indices, node: receiver))  std.algebra.Named { name: n } => n }
+      let expected_name = match src { std.algebra.SameAsReceiver => container_kind_canonical(name: v1.std.core.authored_name_at(source_indices: source_indices, node: receiver))  std.algebra.Named { name: n } => n }
       if container_kind_canonical(name: v1.std.core.authored_name_at(source_indices: source_indices, node: concrete)) != expected_name { subst }
       else {
         match concrete.children |> first {
@@ -507,7 +507,7 @@ fn unify_template(template: std.algebra.AlgebraTypeTemplate, concrete: v1.std.co
 
 fn is_receiver_self(t: std.algebra.AlgebraTypeTemplate) -> Bool {
   match t {
-    ReceiverSelf => true
+    std.algebra.ReceiverSelf => true
     _ => false
   }
 }
@@ -537,7 +537,7 @@ fn apply_type_substitution(template: std.algebra.AlgebraTypeTemplate, subst: Map
         Present { value: resolved } => KernelTypeBuild { ty: resolved, diagnostics: [] }
         Absent => KernelTypeBuild { ty: type_variable_node(id: var_id), diagnostics: [] }
       }
-    ReceiverSelf =>
+    std.algebra.ReceiverSelf =>
       let receiver_name_str = container_kind_canonical(name: v1.std.core.authored_name_at(source_indices: source_indices, node: receiver))
       let is_bare = std.types.is_container_type(name: receiver_name_str) && (receiver.children |> all(ch =>
         let inner = child_type_node(ch: ch)
@@ -562,7 +562,7 @@ fn apply_type_substitution(template: std.algebra.AlgebraTypeTemplate, subst: Map
           }
         } else { KernelTypeBuild { ty: receiver, diagnostics: [] } }
       } else { KernelTypeBuild { ty: receiver, diagnostics: [] } }
-    ReceiverElement =>
+    std.algebra.ReceiverElement =>
       match receiver.children |> first {
         Present { value: child } => KernelTypeBuild { ty: child_type_node(ch: child), diagnostics: [] }
         Absent =>
@@ -580,7 +580,7 @@ fn apply_type_substitution(template: std.algebra.AlgebraTypeTemplate, subst: Map
               }
           }
       }
-    ReceiverKey =>
+    std.algebra.ReceiverKey =>
       match receiver.children |> first {
         Present { value: child } => KernelTypeBuild { ty: child_type_node(ch: child), diagnostics: [] }
         Absent =>
@@ -598,7 +598,7 @@ fn apply_type_substitution(template: std.algebra.AlgebraTypeTemplate, subst: Map
               }
           }
       }
-    ReceiverValue =>
+    std.algebra.ReceiverValue =>
       match receiver.children |> skip(1) |> first {
         Present { value: child } => KernelTypeBuild { ty: child_type_node(ch: child), diagnostics: [] }
         Absent =>
@@ -618,7 +618,7 @@ fn apply_type_substitution(template: std.algebra.AlgebraTypeTemplate, subst: Map
       }
     std.algebra.NamedTemplate { name: n } => KernelTypeBuild { ty: nominal_type_ref(name: n), diagnostics: [] }
     std.algebra.ContainerOf { source: src, element: inner } =>
-      let kind_name = match src { SameAsReceiver => container_kind_canonical(name: v1.std.core.authored_name_at(source_indices: source_indices, node: receiver))  std.algebra.Named { name: n } => n }
+      let kind_name = match src { std.algebra.SameAsReceiver => container_kind_canonical(name: v1.std.core.authored_name_at(source_indices: source_indices, node: receiver))  std.algebra.Named { name: n } => n }
       let inner_applied = apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices)
       let built = make_container_type(kind_name: kind_name, element: inner_applied.ty)
       KernelTypeBuild { ty: built.ty, diagnostics: concat(inner_applied.diagnostics, built.diagnostics) }
@@ -1045,7 +1045,7 @@ fn infer_literal_node(lit: std.syntax.LiteralValue) -> v1.std.core.Node {
     std.syntax.LitInt { value: _ } => v1.std.core.int_type
     std.syntax.LitFloat { value: _ } => v1.std.core.float_type
     std.syntax.LitBool { value: _ } => v1.std.core.bool_type
-    LitNull => v1.std.core.with_optional_cardinality(n: v1.std.core.unit_type)
+    std.syntax.LitNull => v1.std.core.with_optional_cardinality(n: v1.std.core.unit_type)
 
     std.syntax.LitSymbol { value: _ } => v1.std.core.string_type
   }
@@ -1087,14 +1087,14 @@ fn extract_optional_inner_node(n: v1.std.core.Node) -> v1.std.core.Node {
 
 fn algebra_field_kind_name(kind: std.syntax.AlgebraFieldKind) -> String {
   match kind {
-    AlgAdd => "add"
-    AlgMul => "mul"
-    AlgReciprocal => "reciprocal"
-    AlgQuotient => "quotient"
-    AlgRemainder => "remainder"
-    AlgCompare => "compare"
-    AlgMeet => "meet"
-    AlgJoin => "join"
+    std.syntax.AlgAdd => "add"
+    std.syntax.AlgMul => "mul"
+    std.syntax.AlgReciprocal => "reciprocal"
+    std.syntax.AlgQuotient => "quotient"
+    std.syntax.AlgRemainder => "remainder"
+    std.syntax.AlgCompare => "compare"
+    std.syntax.AlgMeet => "meet"
+    std.syntax.AlgJoin => "join"
   }
 }
 
@@ -1105,15 +1105,15 @@ fn binop_algebra_fields(op: std.syntax.BinOp) -> List<std.syntax.AlgebraFieldKin
     Mul => [std.syntax.AlgMul]
     Div => [std.syntax.AlgReciprocal, std.syntax.AlgQuotient]
     Mod => [std.syntax.AlgRemainder]
-    Eq => [std.syntax.AlgCompare]
-    Ne => [std.syntax.AlgCompare]
-    Lt => [std.syntax.AlgCompare]
-    Gt => [std.syntax.AlgCompare]
-    Le => [std.syntax.AlgCompare]
-    Ge => [std.syntax.AlgCompare]
-    And => [std.syntax.AlgMeet]
-    Or => [std.syntax.AlgJoin]
-    NullCoalesce => []
+    std.syntax.Eq => [std.syntax.AlgCompare]
+    std.syntax.Ne => [std.syntax.AlgCompare]
+    std.syntax.Lt => [std.syntax.AlgCompare]
+    std.syntax.Gt => [std.syntax.AlgCompare]
+    std.syntax.Le => [std.syntax.AlgCompare]
+    std.syntax.Ge => [std.syntax.AlgCompare]
+    v1.std.core.And => [std.syntax.AlgMeet]
+    v1.std.core.Or => [std.syntax.AlgJoin]
+    std.syntax.NullCoalesce => []
   }
 }
 
@@ -1140,15 +1140,15 @@ type BinOpInferred {
 
 fn infer_binop_type_node(op: std.syntax.BinOp, left_type: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> BinOpInferred {
   match op {
-    Eq => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
-    Ne => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
-    Lt => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
-    Gt => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
-    Le => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
-    Ge => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
-    And => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
-    Or => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
-    NullCoalesce => BinOpInferred { result_type: extract_optional_inner_node(n: left_type), algebra_field: none }
+    std.syntax.Eq => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
+    std.syntax.Ne => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
+    std.syntax.Lt => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
+    std.syntax.Gt => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
+    std.syntax.Le => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
+    std.syntax.Ge => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
+    v1.std.core.And => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
+    v1.std.core.Or => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
+    std.syntax.NullCoalesce => BinOpInferred { result_type: extract_optional_inner_node(n: left_type), algebra_field: none }
     _ =>
       let candidates = binop_algebra_fields(op: op)
       let is_product = left_type.connective == v1.std.core.Conj

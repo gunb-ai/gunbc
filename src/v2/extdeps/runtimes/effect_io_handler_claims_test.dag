@@ -1,12 +1,12 @@
 module v2.test.runtimes.effect_io_handler_claims
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn effect_io_claim_resource_arg(bytes: List<std.bit.Byte>) -> v2.std.runtime.RuntimeValue {
+fn effect_io_claim_resource_arg(bytes: List<v2.std.machine.Byte>) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
-      primitive_type: effect_io_pure_unit_type_node(),
+      primitive_type: v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_unit_type_node(),
       bytes: bytes
     }
   }
@@ -17,13 +17,13 @@ fn effect_io_claim_resource_a() -> v2.std.runtime.RuntimeValue {
 }
 
 fn effect_io_claim_resource_b() -> v2.std.runtime.RuntimeValue {
-  effect_io_claim_resource_arg(bytes: [std.bit.Byte { bits: [true] }])
+  effect_io_claim_resource_arg(bytes: [v2.std.machine.Byte { bits: [true] }])
 }
 
 fn effect_io_claim_unrepresentable_arg() -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimeUnit {
     value: v2.std.runtime.RuntimeUnitValue {
-      unit_type: effect_io_pure_unit_type_node()
+      unit_type: v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_unit_type_node()
     }
   }
 }
@@ -31,94 +31,94 @@ fn effect_io_claim_unrepresentable_arg() -> v2.std.runtime.RuntimeValue {
 fn effect_io_claim_payload() -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimeUnit {
     value: v2.std.runtime.RuntimeUnitValue {
-      unit_type: effect_io_pure_unit_type_node()
+      unit_type: v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_unit_type_node()
     }
   }
 }
 
-test fn effect_io_pure_file_roundtrip_holds() -> v2.std.logic.Bool {
-  effect_io_pure_read_write_roundtrip(
-    backend: FileResourceBackend,
+test fn effect_io_pure_file_roundtrip_holds() -> Bool {
+  v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_read_write_roundtrip(
+    backend: v2.extdeps.runtimes.v2_effect_io_pure.FileResourceBackend,
     payload: effect_io_claim_payload(),
     locator_arg: effect_io_claim_resource_a()
   )
 }
 
-test fn effect_io_pure_http_roundtrip_holds() -> v2.std.logic.Bool {
-  effect_io_pure_read_write_roundtrip(
-    backend: HttpResourceBackend,
+test fn effect_io_pure_http_roundtrip_holds() -> Bool {
+  v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_read_write_roundtrip(
+    backend: v2.extdeps.runtimes.v2_effect_io_pure.HttpResourceBackend,
     payload: effect_io_claim_payload(),
     locator_arg: effect_io_claim_resource_a()
   )
 }
 
-test fn effect_io_pure_storage_roundtrip_holds() -> v2.std.logic.Bool {
-  effect_io_pure_read_write_roundtrip(
-    backend: StorageResourceBackend,
+test fn effect_io_pure_storage_roundtrip_holds() -> Bool {
+  v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_read_write_roundtrip(
+    backend: v2.extdeps.runtimes.v2_effect_io_pure.StorageResourceBackend,
     payload: effect_io_claim_payload(),
     locator_arg: effect_io_claim_resource_a()
   )
 }
 
-test fn effect_io_pure_value_derived_key_discriminates_holds() -> v2.std.logic.Bool {
-  match effect_io_pure_locator_identity(value: effect_io_claim_resource_a()) {
-    Holds { value: key_a } =>
-      match effect_io_pure_locator_identity(value: effect_io_claim_resource_b()) {
-        Holds { value: key_b } =>
-          match effect_io_pure_locator_identity(value: effect_io_claim_resource_a()) {
-            Holds { value: key_a_again } =>
+test fn effect_io_pure_value_derived_key_discriminates_holds() -> Bool {
+  match v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_locator_identity(value: effect_io_claim_resource_a()) {
+    v2.std.witness.Holds { value: key_a } =>
+      match v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_locator_identity(value: effect_io_claim_resource_b()) {
+        v2.std.witness.Holds { value: key_b } =>
+          match v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_locator_identity(value: effect_io_claim_resource_a()) {
+            v2.std.witness.Holds { value: key_a_again } =>
               !(key_a == key_b) && (key_a == key_a_again)
-            Violates { diagnostic: _ } => false
+            v2.std.witness.Violates { diagnostic: _ } => false
           }
-        Violates { diagnostic: _ } => false
+        v2.std.witness.Violates { diagnostic: _ } => false
       }
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn effect_io_pure_unrepresentable_locator_fails_closed_holds() -> v2.std.logic.Bool {
-  match effect_io_pure_locator_identity(value: effect_io_claim_unrepresentable_arg()) {
-    Violates { diagnostic: _ } => true
-    Holds { value: _ } => false
+test fn effect_io_pure_unrepresentable_locator_fails_closed_holds() -> Bool {
+  match v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_locator_identity(value: effect_io_claim_unrepresentable_arg()) {
+    v2.std.witness.Violates { diagnostic: _ } => true
+    v2.std.witness.Holds { value: _ } => false
   }
 }
 
-test fn effect_io_pure_absent_lookup_is_fail_closed_holds() -> v2.std.logic.Bool {
-  let store = effect_io_pure_empty_fixture_store(backend: FileResourceBackend)
-  let bundle = effect_io_pure_handler_binding(store: store)
-  let read_handler = effect_handler_for_kind(binding: bundle.handlers, kind: ReadResource)
+test fn effect_io_pure_absent_lookup_is_fail_closed_holds() -> Bool {
+  let store = v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_empty_fixture_store(backend: v2.extdeps.runtimes.v2_effect_io_pure.FileResourceBackend)
+  let bundle = v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_handler_binding(store: store)
+  let read_handler = v2.std.runtime.effect_handler_for_kind(binding: bundle.handlers, kind: v2.std.runtime.ReadResource)
   let read_args = std.algebra.Cons { head: effect_io_claim_resource_a(), tail: std.algebra.Empty }
-  match effect_io_pure_invoke_handler(
+  match v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_invoke_handler(
     handler: read_handler,
-    request: effect_io_pure_read_request(args: read_args)
+    request: v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_read_request(args: read_args)
   ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn effect_io_host_read_fail_closed_holds() -> v2.std.logic.Bool {
-  let runtime = effect_io_host_runtime_hermetic(backend: FileResourceBackend)
+test fn effect_io_host_read_fail_closed_holds() -> Bool {
+  let runtime = v2.extdeps.runtimes.v2_effect_io_host.effect_io_host_runtime_hermetic(backend: v2.extdeps.runtimes.v2_effect_io_pure.FileResourceBackend)
   let read_args = std.algebra.Cons {
     head: effect_io_claim_resource_a(),
     tail: std.algebra.Empty
   }
-  let read_handler = effect_handler_for_kind(binding: runtime.handlers, kind: ReadResource)
-  match effect_io_pure_invoke_handler(
+  let read_handler = v2.std.runtime.effect_handler_for_kind(binding: runtime.handlers, kind: v2.std.runtime.ReadResource)
+  match v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_invoke_handler(
     handler: read_handler,
-    request: effect_io_pure_read_request(args: read_args)
+    request: v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_read_request(args: read_args)
   ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn effect_io_host_http_backend_routes_http_holds() -> v2.std.logic.Bool {
-  let runtime = effect_io_host_runtime_hermetic(backend: HttpResourceBackend)
+test fn effect_io_host_http_backend_routes_http_holds() -> Bool {
+  let runtime = v2.extdeps.runtimes.v2_effect_io_host.effect_io_host_runtime_hermetic(backend: v2.extdeps.runtimes.v2_effect_io_pure.HttpResourceBackend)
   match runtime.declared_backend {
-    HttpResourceBackend =>
+    v2.extdeps.runtimes.v2_effect_io_pure.HttpResourceBackend =>
       match runtime.backend_context {
-        HostHttpContext { context: _ } => true
+        v2.extdeps.runtimes.v2_effect_io_host.HostHttpContext { context: _ } => true
         _ => false
       }
     _ => false

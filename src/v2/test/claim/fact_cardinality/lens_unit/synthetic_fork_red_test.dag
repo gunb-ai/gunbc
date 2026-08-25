@@ -2,11 +2,11 @@ module v2.test.fact_cardinality.lens_unit.synthetic_fork_red
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data synthetic_fork_dag: v2.lens.fact_cardinality.FactCardinalityDeclFact = v2.lens.fact_cardinality.FactCardinalityDeclFact {
   rel_path_decl_key: "std/algebra.dag:FreeMonoid",
-  tree: v2.lens.affected_set.Dag,
+  tree: v2.lens.fact_cardinality.Dag,
   content_hash: "dag_free_monoid_record"
 }
 

@@ -5,12 +5,12 @@ fn roadmap_belt_nid(s: String) -> gunbc.roadmap_model.RoadmapNodeId { s }
 
 fn ready_node(id: String) -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
-    identity: "rnfx_P2E65A1P1148Z5Y175QT" as gunbc.roadmap_model.RoadmapNodeIdentity,
+    identity: "rnfx_P2E65A1P1148Z5Y175QT" as RoadmapNodeIdentity,
     node: roadmap_belt_nid(s: id),
     line: gunbc.roadmap_status.DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
-    sizing: gunbc.roadmap_model.Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
-    execution: ExecutionContractUnspecified,
+    sizing: gunbc.roadmap_model.Sized { intricacy: gunbc.roadmap_model.IntricacyHigh, volume: gunbc.roadmap_model.VolumeMedium, repo: "gunbc", acceptance: gunbc.roadmap_model.PrsMerged },
+    execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
     signoff: gunbc.roadmap_status.Unsigned,
   }
@@ -23,69 +23,69 @@ fn frontier_ready(ids: List<String>) -> gunbc.roadmap_spawner.SpawnFrontier {
 fn cap(n: Int) -> gunbc.roadmap_belt.BeltCapacity { gunbc.roadmap_belt.BeltCapacity { max_concurrent: n } }
 
 fn any_paused(actions: List<gunbc.roadmap_belt.BeltAction>) -> Bool {
-  any(actions, a => match a { HoldPaused => true, _ => false })
+  any(actions, a => match a { gunbc.roadmap_belt.HoldPaused => true, _ => false })
 }
 
 fn at_capacity_waiting(actions: List<gunbc.roadmap_belt.BeltAction>) -> Int {
-  fold(actions, init: 0, f: (acc, a) => match a { AtCapacity { ready_waiting } => ready_waiting, _ => acc })
+  fold(actions, init: 0, f: (acc, a) => match a { gunbc.roadmap_belt.AtCapacity { ready_waiting } => ready_waiting, _ => acc })
 }
 
 test fn witness_paused_spawns_nothing() -> Bool {
   let f = frontier_ready(ids: ["a", "b"])
-  let actions = belt_step(state: gunbc.roadmap_belt.Paused, frontier: f, occupied: [], cap: cap(n: 3))
-  belt_spawn_count(actions: actions) == 0 && any_paused(actions: actions)
+  let actions = gunbc.roadmap_belt.belt_step(state: gunbc.roadmap_belt.Paused, frontier: f, occupied: [], cap: cap(n: 3))
+  gunbc.roadmap_belt.belt_spawn_count(actions: actions) == 0 && any_paused(actions: actions)
 }
 
 test fn witness_running_spawns_ready_within_capacity() -> Bool {
   let f = frontier_ready(ids: ["a", "b"])
-  let actions = belt_step(state: gunbc.roadmap_belt.Running, frontier: f, occupied: [], cap: cap(n: 3))
-  belt_spawn_count(actions: actions) == 2
-    && belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "a"))
-    && belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "b"))
+  let actions = gunbc.roadmap_belt.belt_step(state: gunbc.roadmap_belt.Running, frontier: f, occupied: [], cap: cap(n: 3))
+  gunbc.roadmap_belt.belt_spawn_count(actions: actions) == 2
+    && gunbc.roadmap_belt.belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "a"))
+    && gunbc.roadmap_belt.belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "b"))
 }
 
 test fn witness_capacity_limits_spawns() -> Bool {
   let f = frontier_ready(ids: ["a", "b", "c"])
-  let actions = belt_step(state: gunbc.roadmap_belt.Running, frontier: f, occupied: [], cap: cap(n: 1))
-  belt_spawn_count(actions: actions) == 1
+  let actions = gunbc.roadmap_belt.belt_step(state: gunbc.roadmap_belt.Running, frontier: f, occupied: [], cap: cap(n: 1))
+  gunbc.roadmap_belt.belt_spawn_count(actions: actions) == 1
 }
 
 test fn witness_occupied_node_not_respawned() -> Bool {
   let f = frontier_ready(ids: ["a", "b"])
-  let actions = belt_step(state: gunbc.roadmap_belt.Running, frontier: f, occupied: [roadmap_belt_nid(s: "a")], cap: cap(n: 3))
-  belt_spawn_count(actions: actions) == 1
-    && belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "b"))
-    && !belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "a"))
+  let actions = gunbc.roadmap_belt.belt_step(state: gunbc.roadmap_belt.Running, frontier: f, occupied: [roadmap_belt_nid(s: "a")], cap: cap(n: 3))
+  gunbc.roadmap_belt.belt_spawn_count(actions: actions) == 1
+    && gunbc.roadmap_belt.belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "b"))
+    && !gunbc.roadmap_belt.belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "a"))
 }
 
 test fn witness_at_capacity_reports_backlog() -> Bool {
   let f = frontier_ready(ids: ["a", "b"])
-  let actions = belt_step(state: gunbc.roadmap_belt.Running, frontier: f, occupied: [roadmap_belt_nid(s: "x"), roadmap_belt_nid(s: "y")], cap: cap(n: 2))
-  belt_spawn_count(actions: actions) == 0 && at_capacity_waiting(actions: actions) == 2
+  let actions = gunbc.roadmap_belt.belt_step(state: gunbc.roadmap_belt.Running, frontier: f, occupied: [roadmap_belt_nid(s: "x"), roadmap_belt_nid(s: "y")], cap: cap(n: 2))
+  gunbc.roadmap_belt.belt_spawn_count(actions: actions) == 0 && at_capacity_waiting(actions: actions) == 2
 }
 
 test fn witness_belt_plan_equals_step_composition() -> Bool {
-  let doc = roadmap_authority()
-  let merged = authored_merged_prs()
-  let f = spawn_frontier(doc: doc, merged: merged)
-  let via_plan = belt_plan(state: gunbc.roadmap_belt.Running, doc: doc, merged: merged, occupied: [], cap: cap(n: 3))
-  let via_step = belt_step(state: gunbc.roadmap_belt.Running, frontier: f, occupied: [], cap: cap(n: 3))
-  belt_spawn_count(actions: via_plan) == belt_spawn_count(actions: via_step)
+  let doc = gunbc.roadmap_authority.roadmap_authority()
+  let merged = gunbc.roadmap_authority.authored_merged_prs()
+  let f = gunbc.roadmap_spawner.spawn_frontier(doc: doc, merged: merged)
+  let via_plan = gunbc.roadmap_belt.belt_plan(state: gunbc.roadmap_belt.Running, doc: doc, merged: merged, occupied: [], cap: cap(n: 3))
+  let via_step = gunbc.roadmap_belt.belt_step(state: gunbc.roadmap_belt.Running, frontier: f, occupied: [], cap: cap(n: 3))
+  gunbc.roadmap_belt.belt_spawn_count(actions: via_plan) == gunbc.roadmap_belt.belt_spawn_count(actions: via_step)
 }
 
 test fn witness_belt_plan_paused_holds_on_authority() -> Bool {
-  let actions = belt_plan(
+  let actions = gunbc.roadmap_belt.belt_plan(
     state: gunbc.roadmap_belt.Paused,
-    doc: roadmap_authority(),
-    merged: authored_merged_prs(),
+    doc: gunbc.roadmap_authority.roadmap_authority(),
+    merged: gunbc.roadmap_authority.authored_merged_prs(),
     occupied: [],
     cap: cap(n: 3),
   )
-  belt_spawn_count(actions: actions) == 0 && any_paused(actions: actions)
+  gunbc.roadmap_belt.belt_spawn_count(actions: actions) == 0 && any_paused(actions: actions)
 }
 
 test fn witness_belt_status_json_shape() -> Bool {
-  let j = roadmap_belt_status_json()
+  let j = gunbc.roadmap_belt.roadmap_belt_status_json()
   string_contains(s: j, pattern: "roadmap-belt/v1")
     && string_contains(s: j, pattern: "run_state")
     && string_contains(s: j, pattern: "running")
@@ -99,86 +99,86 @@ fn live_session(node_id: String, verdict: std.upsert_decision.ObservationVerdict
     node_id: node_id,
     windows: 1,
     lease_verdict: verdict,
-    worker: worker_observation_without_provider_probe(
-      instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
+    worker: gunbc.worker_lifecycle.worker_observation_without_provider_probe(
+      instance: gunbc.roadmap_dispatch_actuator.dispatch_provider_instance_for(provider: gunbc.roadmap_dispatch_actuator.CodexDispatchProvider),
     ),
   }
 }
 
 fn spawns_node(r: gunbc.roadmap_belt.BeltReconcile, id: String) -> Bool {
-  any(belt_member_ids(ms: r.spawns), x => x == id)
+  any(gunbc.roadmap_belt.belt_member_ids(ms: r.spawns), x => x == id)
 }
 
 fn tears_down_node(r: gunbc.roadmap_belt.BeltReconcile, id: String) -> Bool {
-  any(belt_member_ids(ms: r.teardowns), x => x == id)
+  any(gunbc.roadmap_belt.belt_member_ids(ms: r.teardowns), x => x == id)
 }
 
 test fn witness_reconcile_spawns_ready_missing_session() -> Bool {
   let f = frontier_ready(ids: ["a", "b"])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [], cap: cap(n: 3))
-  belt_reconcile_spawn_count(r: r) == 2
+  let r = gunbc.roadmap_belt.belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [], cap: cap(n: 3))
+  gunbc.roadmap_belt.belt_reconcile_spawn_count(r: r) == 2
     && spawns_node(r: r, id: "a")
     && spawns_node(r: r, id: "b")
-    && belt_reconcile_teardown_count(r: r) == 0
-    && belt_reconcile_refusal_count(r: r) == 0
+    && gunbc.roadmap_belt.belt_reconcile_teardown_count(r: r) == 0
+    && gunbc.roadmap_belt.belt_reconcile_refusal_count(r: r) == 0
 }
 
 test fn witness_reconcile_noop_when_ready_and_live() -> Bool {
   let f = frontier_ready(ids: ["a"])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "a", verdict: std.upsert_decision.Converged)], cap: cap(n: 3))
-  belt_reconcile_spawn_count(r: r) == 0
-    && belt_reconcile_teardown_count(r: r) == 0
-    && belt_reconcile_refusal_count(r: r) == 0
+  let r = gunbc.roadmap_belt.belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "a", verdict: std.upsert_decision.Converged)], cap: cap(n: 3))
+  gunbc.roadmap_belt.belt_reconcile_spawn_count(r: r) == 0
+    && gunbc.roadmap_belt.belt_reconcile_teardown_count(r: r) == 0
+    && gunbc.roadmap_belt.belt_reconcile_refusal_count(r: r) == 0
 }
 
 test fn witness_reconcile_reaps_owned_done_session() -> Bool {
   let f = frontier_ready(ids: ["a"])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: std.upsert_decision.Converged)], cap: cap(n: 3))
-  belt_reconcile_teardown_count(r: r) == 1
+  let r = gunbc.roadmap_belt.belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: std.upsert_decision.Converged)], cap: cap(n: 3))
+  gunbc.roadmap_belt.belt_reconcile_teardown_count(r: r) == 1
     && tears_down_node(r: r, id: "z")
-    && belt_reconcile_spawn_count(r: r) == 1
+    && gunbc.roadmap_belt.belt_reconcile_spawn_count(r: r) == 1
     && spawns_node(r: r, id: "a")
-    && belt_reconcile_refusal_count(r: r) == 0
+    && gunbc.roadmap_belt.belt_reconcile_refusal_count(r: r) == 0
 }
 
 test fn witness_reconcile_reaps_drifted_owned_session() -> Bool {
   let f = frontier_ready(ids: [])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: std.upsert_decision.Drifted)], cap: cap(n: 3))
-  belt_reconcile_teardown_count(r: r) == 1 && tears_down_node(r: r, id: "z")
+  let r = gunbc.roadmap_belt.belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: std.upsert_decision.Drifted)], cap: cap(n: 3))
+  gunbc.roadmap_belt.belt_reconcile_teardown_count(r: r) == 1 && tears_down_node(r: r, id: "z")
 }
 
 test fn witness_r5_refuses_foreign_teardown() -> Bool {
   let f = frontier_ready(ids: ["a"])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
-  belt_reconcile_teardown_count(r: r) == 0
+  let r = gunbc.roadmap_belt.belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: std.upsert_decision.Conflict)], cap: cap(n: 3))
+  gunbc.roadmap_belt.belt_reconcile_teardown_count(r: r) == 0
     && !tears_down_node(r: r, id: "z")
-    && belt_reconcile_refusal_count(r: r) == 1
-    && belt_reconcile_spawn_count(r: r) == 1
+    && gunbc.roadmap_belt.belt_reconcile_refusal_count(r: r) == 1
+    && gunbc.roadmap_belt.belt_reconcile_spawn_count(r: r) == 1
 }
 
 test fn witness_r5_refuses_nameonly_teardown() -> Bool {
   let f = frontier_ready(ids: [])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: UnknownRefused)], cap: cap(n: 3))
-  belt_reconcile_teardown_count(r: r) == 0 && belt_reconcile_refusal_count(r: r) == 1
+  let r = gunbc.roadmap_belt.belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: std.upsert_decision.UnknownRefused)], cap: cap(n: 3))
+  gunbc.roadmap_belt.belt_reconcile_teardown_count(r: r) == 0 && gunbc.roadmap_belt.belt_reconcile_refusal_count(r: r) == 1
 }
 
 test fn witness_reconcile_capacity_defers_surfaced() -> Bool {
   let f = frontier_ready(ids: ["a", "b", "c"])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [], cap: cap(n: 1))
-  belt_reconcile_spawn_count(r: r) == 1 && r.deferred == 2
+  let r = gunbc.roadmap_belt.belt_reconcile(state: gunbc.roadmap_belt.Running, frontier: f, live: [], cap: cap(n: 1))
+  gunbc.roadmap_belt.belt_reconcile_spawn_count(r: r) == 1 && r.deferred == 2
 }
 
 test fn witness_reconcile_paused_no_actions() -> Bool {
   let f = frontier_ready(ids: ["a", "b"])
-  let r = belt_reconcile(state: gunbc.roadmap_belt.Paused, frontier: f, live: [live_session(node_id: "z", verdict: std.upsert_decision.Converged)], cap: cap(n: 3))
-  belt_reconcile_spawn_count(r: r) == 0
-    && belt_reconcile_teardown_count(r: r) == 0
-    && belt_reconcile_refusal_count(r: r) == 0
+  let r = gunbc.roadmap_belt.belt_reconcile(state: gunbc.roadmap_belt.Paused, frontier: f, live: [live_session(node_id: "z", verdict: std.upsert_decision.Converged)], cap: cap(n: 3))
+  gunbc.roadmap_belt.belt_reconcile_spawn_count(r: r) == 0
+    && gunbc.roadmap_belt.belt_reconcile_teardown_count(r: r) == 0
+    && gunbc.roadmap_belt.belt_reconcile_refusal_count(r: r) == 0
 }
 
 test fn witness_reconcile_status_json_shape() -> Bool {
   let f = frontier_ready(ids: ["a"])
-  let j = belt_reconcile_status_json(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
+  let j = gunbc.roadmap_belt.belt_reconcile_status_json(state: gunbc.roadmap_belt.Running, frontier: f, live: [live_session(node_id: "z", verdict: std.upsert_decision.Conflict)], cap: cap(n: 3))
   string_contains(s: j, pattern: "roadmap-belt-reconcile/v1")
     && string_contains(s: j, pattern: "would_teardown")
     && string_contains(s: j, pattern: "refusal_count")

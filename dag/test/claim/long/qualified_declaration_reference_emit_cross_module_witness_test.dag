@@ -1,7 +1,7 @@
 module test.claim.qualified_declaration_reference_emit_cross_module_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data qualified_declaration_reference_emit_cross_module_witness_note: String = "Long-lane half of qualified_declaration_reference_emit_witness_test.dag: w_cross_module_qualified_reference_emits_call exercises a genuine cross-module qualified data reference (std.unicode.types.unicode_scalar_max_code_point — minimal std closure, not the heavy std.emit_on_demand roster the prior fixture dragged in) through compile_dag_rust_emit_check. Re-homed to test/claim/long/ after falsifier discovery batch 3 BudgetExceeded kills (5436-5544ms thread-CPU vs 5000ms fast-lane cap on srv_fleet_arm64; chronic on main, unrelated to decl_facts work). Same-module control stays per-PR in dag/test/claim/qualified_declaration_reference_emit_witness_test.dag. dissolve-on: eval under gunbc_ci_fast_lane_witness_eval_budget on fleet hardware, then row re-enrolls per-PR and this file deletes."
 

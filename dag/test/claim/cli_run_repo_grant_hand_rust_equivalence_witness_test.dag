@@ -2,7 +2,7 @@ module test.claim.cli_run_repo_grant_hand_rust_equivalence_witness
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data cli_run_repo_grant_hand_rust_equivalence_note: String = "Pins the HAND-RUST repo_relative_path gate (src/v1/stage0/src/cli_run.rs) against gunbc.cli_run_repo_grant on the SAME fixture spellings — parallel-representation drift guard until Chunk F dissolves the Rust gate. The .dag side asserts admit_effect verdicts; the Rust side is proven by cli_run.rs cli_run_repo_grant_equivalence_tests (named discriminators below). Both must agree: contained rel admits, absolute-outside refuses, parent-segment refuses."
 
@@ -11,37 +11,37 @@ data fixture_escaping_rel: String = "../outside.dag"
 data fixture_absolute_outside: String = "/etc/passwd"
 
 fn dag_admits(rel: String) -> Bool {
-  match cli_run_repo_write_admissible(rel: rel) {
-    Permit => true
-    Deny { refusal: refusal } => false
+  match gunbc.cli_run_repo_grant.cli_run_repo_write_admissible(rel: rel) {
+    std.access.Permit => true
+    std.access.Deny { refusal: refusal } => false
   }
 }
 
 fn dag_refuses(rel: String) -> Bool {
-  match cli_run_repo_write_admissible(rel: rel) {
-    Permit => false
-    Deny { refusal: refusal } => true
+  match gunbc.cli_run_repo_grant.cli_run_repo_write_admissible(rel: rel) {
+    std.access.Permit => false
+    std.access.Deny { refusal: refusal } => true
   }
 }
 
 test fn cli_run_repo_grant_hand_rust_scaffold_is_seed_retained() -> Bool {
   match gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_hand_rust_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn cli_run_repo_grant_dissolve_trigger_names_chunk_f() -> Bool {
-  string_contains(s: dissolution_description(condition: gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_dissolve_trigger), pattern: "Chunk F")
-    && string_contains(s: dissolution_description(condition: gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_dissolve_trigger), pattern: "cli-run-reconcile-defork")
-    && string_contains(s: dissolution_description(condition: gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_dissolve_trigger), pattern: "5-dissolve-patches")
+  string_contains(s: std.dissolution.dissolution_description(condition: gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_dissolve_trigger), pattern: "Chunk F")
+    && string_contains(s: std.dissolution.dissolution_description(condition: gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_dissolve_trigger), pattern: "cli-run-reconcile-defork")
+    && string_contains(s: std.dissolution.dissolution_description(condition: gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_dissolve_trigger), pattern: "5-dissolve-patches")
 }
 
 test fn cli_run_repo_grant_equivalence_dag_contained_admits_holds() -> Bool {
   dag_admits(rel: fixture_contained_rel)
-    && match cli_run_repo_read_admissible(rel: fixture_contained_rel) {
-      Permit => true
-      Deny { refusal: refusal } => false
+    && match gunbc.cli_run_repo_grant.cli_run_repo_read_admissible(rel: fixture_contained_rel) {
+      std.access.Permit => true
+      std.access.Deny { refusal: refusal } => false
     }
 }
 
@@ -60,15 +60,15 @@ test fn cli_run_repo_grant_equivalence_rust_tests_named() -> Bool {
     pattern: "contained_admits"
   ) &&
     string_contains(
-      s: cli_run_repo_grant_equivalence_test_absolute_outside,
+      s: gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_equivalence_test_absolute_outside,
       pattern: "absolute_outside_refuses"
     ) &&
     string_contains(
-      s: cli_run_repo_grant_equivalence_test_parent_segment,
+      s: gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_equivalence_test_parent_segment,
       pattern: "parent_segment_refuses"
     ) &&
     string_contains(
-      s: cli_run_repo_grant_receipt_plan_anchor,
+      s: gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_receipt_plan_anchor,
       pattern: "cli-run-reconcile-defork"
     )
 }

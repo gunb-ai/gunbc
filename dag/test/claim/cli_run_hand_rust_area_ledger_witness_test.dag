@@ -2,14 +2,14 @@ module test.claim.cli_run_hand_rust_area_ledger_witness
 
 
 test fn cli_run_area_ledger_covers_sixteen_areas() -> Bool {
-  cli_run_hand_rust_area_ledger_covers_sixteen_areas()
+  gunbc.cli_run_hand_rust_area_ledger.cli_run_hand_rust_area_ledger_covers_sixteen_areas()
 }
 
 test fn cli_run_live_scale_receipt_updates_stale_prose() -> Bool {
-  string_contains(s: cli_run_live_scale_receipt, pattern: "scripts/rust_item_census.py")
-    && string_contains(s: cli_run_live_scale_receipt, pattern: "cli_run_hollowing_plan")
+  string_contains(s: gunbc.cli_run_hand_rust_area_ledger.cli_run_live_scale_receipt, pattern: "scripts/rust_item_census.py")
+    && string_contains(s: gunbc.cli_run_hand_rust_area_ledger.cli_run_live_scale_receipt, pattern: "cli_run_hollowing_plan")
 }
 
 test fn cli_run_area_ledger_is_instrument_not_deletion() -> Bool {
-  string_contains(s: cli_run_hand_rust_area_ledger_note, pattern: "NOT a deletion plan")
+  string_contains(s: gunbc.cli_run_hand_rust_area_ledger.cli_run_hand_rust_area_ledger_note, pattern: "NOT a deletion plan")
 }

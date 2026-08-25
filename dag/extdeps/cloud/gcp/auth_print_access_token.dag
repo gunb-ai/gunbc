@@ -4,7 +4,7 @@ module extdeps.cloud.gcp.auth_print_access_token
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "cloud.google.com/sdk/gcloud/reference/auth/print-access-token"
   }
 }
@@ -67,7 +67,7 @@ fn gcloud_auth_deficit_for_pattern(
   row: GcloudAuthDeficitPatternRow,
 ) -> GcloudAuthDeficit? {
   if stderr.contains(row.stderr_substring) {
-    Present { value: row.deficit }
+    v2.std.optional.Present { value: row.deficit }
   } else {
     none
   }
@@ -79,10 +79,10 @@ fn gcloud_stderr_auth_deficit(stderr: String) -> GcloudAuthDeficit? {
     init: none,
     f: (selected, row) =>
       match selected {
-        Present { value: _ } => selected
+        v2.std.optional.Present { value: _ } => selected
         Absent => gcloud_auth_deficit_for_pattern(stderr: stderr, row: row)
       },
   )
 }
 
-data gcloud_auth_stderr_substring_classifier_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: a cited structured gcloud auth-status surface (for example `gcloud auth print-access-token --format=json` with a typed exit-status / error envelope, or an SDK row that exposes machine-readable auth deficit codes) replaces English-locale stderr substring matching in gcloud_stderr_auth_deficit. Until then this classifier is a declared heuristic over unstable prose: unmatched stderr co")
+data gcloud_auth_stderr_substring_classifier_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: a cited structured gcloud auth-status surface (for example `gcloud auth print-access-token --format=json` with a typed exit-status / error envelope, or an SDK row that exposes machine-readable auth deficit codes) replaces English-locale stderr substring matching in gcloud_stderr_auth_deficit. Until then this classifier is a declared heuristic over unstable prose: unmatched stderr co")

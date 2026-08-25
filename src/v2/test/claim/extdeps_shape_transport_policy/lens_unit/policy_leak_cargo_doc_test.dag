@@ -2,23 +2,23 @@ module v2.test.extdeps_shape_transport_policy.lens_unit.policy_leak_cargo_doc
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data policy_leak_cargo_doc_argv_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact> = [
-  v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact {
+data policy_leak_cargo_doc_argv_facts: List<ExtdepsTransportArgvFact> = [
+  ExtdepsTransportArgvFact {
     module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_cargo_build_module,
     service: "cargo.Build",
     operation: "Doc",
-    transport_kind: v2.lens.extdeps_shape_transport_policy.Shell,
+    transport_kind: Shell,
     argv_index: 2,
     argv_token: "--no-deps"
   }
 ]
 
-data policy_leak_cargo_doc_fusion_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsTransportFusionFact> = []
+data policy_leak_cargo_doc_fusion_facts: List<ExtdepsTransportFusionFact> = []
 
 test fn policy_leak_cargo_doc_is_red_holds() -> Bool {
-  v2.lens.extdeps_shape_transport_policy.extdeps_shape_transport_policy_violation_count(
+  extdeps_shape_transport_policy_violation_count(
     argv_facts: policy_leak_cargo_doc_argv_facts,
     fusion_facts: policy_leak_cargo_doc_fusion_facts
   ) == 1

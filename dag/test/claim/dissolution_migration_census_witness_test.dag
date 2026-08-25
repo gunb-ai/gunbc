@@ -1,15 +1,15 @@
 module test.claim.dissolution_migration_census
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn residue_population_is_the_five_class_partition() -> Bool {
-  let parts = length(xs: historical_receipt_rows()) + length(xs: dissolves_by_greening_rows()) + length(xs: refusal_or_reason_rows()) + length(xs: not_a_lifecycle_carrier_rows()) + length(xs: narrative_only_rows())
-  length(xs: lifecycle_residue_rows()) == parts
+  let parts = length(xs: gunbc.dissolution_migration_census.historical_receipt_rows()) + length(xs: gunbc.dissolution_migration_census.dissolves_by_greening_rows()) + length(xs: gunbc.dissolution_migration_census.refusal_or_reason_rows()) + length(xs: gunbc.dissolution_migration_census.not_a_lifecycle_carrier_rows()) + length(xs: gunbc.dissolution_migration_census.narrative_only_rows())
+  length(xs: gunbc.dissolution_migration_census.lifecycle_residue_rows()) == parts
 }
 
 test fn residue_rows_are_keyed_by_distinct_declarations() -> Bool {
-  residue_keys_are_unique()
+  gunbc.dissolution_migration_census.residue_keys_are_unique()
 }
 
 // Discriminating: the uniqueness check must actually distinguish. A dedup that
@@ -17,16 +17,16 @@ test fn residue_rows_are_keyed_by_distinct_declarations() -> Bool {
 // be wrong.
 test fn duplicate_keys_are_detected() -> Bool {
   let dup = ["a", "b", "a"]
-  length(xs: dedup_keys(dup)) == 2
+  length(xs: gunbc.dissolution_migration_census.dedup_keys(dup)) == 2
 }
 
 test fn residue_keys_carry_module_and_declaration() -> Bool {
-  all(residue_row_keys(), fn(k) { k != "" })
+  all(gunbc.dissolution_migration_census.residue_row_keys(), fn(k) { k != "" })
 }
 
 // Every rationale is nonempty by its NonEmptyStr carrier; this asserts the
 // projection reaches a real key rather than an empty ref, which is the failure
 // a wrongly-spelled module path would produce.
 test fn every_row_projects_a_nonempty_key() -> Bool {
-  all(lifecycle_residue_rows(), fn(r) { residue_row_key(row: r) != "" })
+  all(gunbc.dissolution_migration_census.lifecycle_residue_rows(), fn(r) { gunbc.dissolution_migration_census.residue_row_key(row: r) != "" })
 }

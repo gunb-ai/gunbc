@@ -1,5 +1,6 @@
 module gunbc.fleet_capacity_control
 
+
 // THE OPERATOR'S CONTROL OVER ACTIVE FLEET CAPACITY, ON TWO AXES THAT ARE NOT THE SAME FACT.
 //
 // Turning a MACHINE down and cutting off a PROVIDER are different questions with different blast
@@ -26,9 +27,9 @@ data fleet_capacity_control_note: String = "Operator withdrawal rosters for flee
 // merely notices the host answering again -- an intermittently failing host answers between
 // failures, and a restorer keyed on reachability would flap it back into service repeatedly.
 type CapacityWithdrawalCause
-  = WithdrawnForMaintenance { detail: NonEmptyStr }
-  | WithdrawnToReduceSpend { detail: NonEmptyStr }
-  | WithdrawnForObservedFault { detail: NonEmptyStr }
+  = WithdrawnForMaintenance { detail: std.types.NonEmptyStr }
+  | WithdrawnToReduceSpend { detail: std.types.NonEmptyStr }
+  | WithdrawnForObservedFault { detail: std.types.NonEmptyStr }
 
 fn withdrawal_cause_label(cause: CapacityWithdrawalCause) -> String {
   match cause {
@@ -38,7 +39,7 @@ fn withdrawal_cause_label(cause: CapacityWithdrawalCause) -> String {
   }
 }
 
-fn withdrawal_cause_detail(cause: CapacityWithdrawalCause) -> NonEmptyStr {
+fn withdrawal_cause_detail(cause: CapacityWithdrawalCause) -> std.types.NonEmptyStr {
   match cause {
     WithdrawnForMaintenance { detail: d } => d
     WithdrawnToReduceSpend { detail: d } => d
@@ -57,12 +58,12 @@ fn withdrawal_admits_automatic_restore(cause: CapacityWithdrawalCause) -> Bool {
 }
 
 type HostCapacityWithdrawal {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   cause: CapacityWithdrawalCause
 }
 
 type ProviderCapacityWithdrawal {
-  provider: ProviderKind
+  provider: extdeps.llm.cli_lifecycle.ProviderKind
   cause: CapacityWithdrawalCause
 }
 
@@ -85,23 +86,23 @@ data withdrawn_providers: List<ProviderCapacityWithdrawal> = []
 // unwritable-in-the-corpus and unwritable-as-a-fixture.
 fn host_withdrawal_in(
   rows: List<HostCapacityWithdrawal>,
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
 ) -> HostCapacityWithdrawal? {
   filter(rows, row => row.host == host).first()
 }
 
 fn provider_withdrawal_in(
   rows: List<ProviderCapacityWithdrawal>,
-  provider: ProviderKind,
+  provider: extdeps.llm.cli_lifecycle.ProviderKind,
 ) -> ProviderCapacityWithdrawal? {
   filter(rows, row => row.provider == provider).first()
 }
 
-fn host_withdrawal_for(host: HostIdentity) -> HostCapacityWithdrawal? {
+fn host_withdrawal_for(host: product.placement_supply.HostIdentity) -> HostCapacityWithdrawal? {
   host_withdrawal_in(rows: withdrawn_hosts, host: host)
 }
 
-fn provider_withdrawal_for(provider: ProviderKind) -> ProviderCapacityWithdrawal? {
+fn provider_withdrawal_for(provider: extdeps.llm.cli_lifecycle.ProviderKind) -> ProviderCapacityWithdrawal? {
   provider_withdrawal_in(rows: withdrawn_providers, provider: provider)
 }
 
@@ -113,14 +114,14 @@ fn provider_withdrawal_for(provider: ProviderKind) -> ProviderCapacityWithdrawal
 // over an Option whose Present payload is discarded into every call site, which is the same
 // discard spelled more times. The Option readers are exported beside them for callers that need
 // the cause, so nothing is forced through the lossy surface.
-fn host_is_withdrawn(host: HostIdentity) -> Bool {
+fn host_is_withdrawn(host: product.placement_supply.HostIdentity) -> Bool {
   match host_withdrawal_for(host: host) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-fn provider_is_withdrawn(provider: ProviderKind) -> Bool {
+fn provider_is_withdrawn(provider: extdeps.llm.cli_lifecycle.ProviderKind) -> Bool {
   match provider_withdrawal_for(provider: provider) {
     Present { value: _ } => true
     Absent => false
@@ -137,8 +138,8 @@ fn provider_is_withdrawn(provider: ProviderKind) -> Bool {
 // DESIGN section 5 names, where could-not-offer is rendered as the verdict nothing-is-available.
 type CapacityAdmission
   = CapacityAdmitted
-  | CapacityRefusedHostWithdrawn { host: HostIdentity, cause: CapacityWithdrawalCause }
-  | CapacityRefusedProviderWithdrawn { provider: ProviderKind, cause: CapacityWithdrawalCause }
+  | CapacityRefusedHostWithdrawn { host: product.placement_supply.HostIdentity, cause: CapacityWithdrawalCause }
+  | CapacityRefusedProviderWithdrawn { provider: extdeps.llm.cli_lifecycle.ProviderKind, cause: CapacityWithdrawalCause }
 
 // THE HOST AXIS IS CHECKED FIRST, AND THE ORDER IS A REAL DECISION RATHER THAN AN ARBITRARY ONE.
 //
@@ -149,8 +150,8 @@ type CapacityAdmission
 fn fleet_capacity_admission_in(
   host_rows: List<HostCapacityWithdrawal>,
   provider_rows: List<ProviderCapacityWithdrawal>,
-  host: HostIdentity,
-  provider: ProviderKind,
+  host: product.placement_supply.HostIdentity,
+  provider: extdeps.llm.cli_lifecycle.ProviderKind,
 ) -> CapacityAdmission {
   match host_withdrawal_in(rows: host_rows, host: host) {
     Present { value: h } => CapacityRefusedHostWithdrawn { host: host, cause: h.cause }
@@ -163,7 +164,7 @@ fn fleet_capacity_admission_in(
   }
 }
 
-fn fleet_capacity_admission(host: HostIdentity, provider: ProviderKind) -> CapacityAdmission {
+fn fleet_capacity_admission(host: product.placement_supply.HostIdentity, provider: extdeps.llm.cli_lifecycle.ProviderKind) -> CapacityAdmission {
   fleet_capacity_admission_in(
     host_rows: withdrawn_hosts,
     provider_rows: withdrawn_providers,
@@ -193,7 +194,7 @@ fn fleet_capacity_admission_line(admission: CapacityAdmission) -> String {
       join(["host ", h as String, " withdrawn (", withdrawal_cause_label(cause: c), "): ",
             withdrawal_cause_detail(cause: c) as String], "")
     CapacityRefusedProviderWithdrawn { provider: p, cause: c } =>
-      join(["provider ", provider_kind_label(kind: p), " withdrawn (",
+      join(["provider ", extdeps.llm.cli_lifecycle.provider_kind_label(kind: p), " withdrawn (",
             withdrawal_cause_label(cause: c), "): ",
             withdrawal_cause_detail(cause: c) as String], "")
   }
@@ -201,12 +202,12 @@ fn fleet_capacity_admission_line(admission: CapacityAdmission) -> String {
 
 // THE FLEET THIS CONTROL SPANS. Four hosts, taken from the fleet identity authority rather than
 // respelled, so a host added there is a host this control can reach without an edit here.
-fn capacity_controlled_hosts() -> List<HostIdentity> {
-  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
+fn capacity_controlled_hosts() -> List<product.placement_supply.HostIdentity> {
+  [gunbc.fleet_intent_network.operator_host_srv1, gunbc.fleet_intent_network.operator_host_srv2, gunbc.fleet_intent_network.operator_host_srv3, gunbc.fleet_intent_network.operator_host_srv4]
 }
 
-fn capacity_controlled_providers() -> List<ProviderKind> {
-  [ClaudeCliProvider, CodexCliProvider, CursorCliProvider]
+fn capacity_controlled_providers() -> List<extdeps.llm.cli_lifecycle.ProviderKind> {
+  [extdeps.llm.cli_lifecycle.ClaudeCliProvider, extdeps.llm.cli_lifecycle.CodexCliProvider, extdeps.llm.cli_lifecycle.CursorCliProvider]
 }
 
 fn active_host_count() -> Int {
@@ -241,15 +242,15 @@ fn active_provider_count() -> Int {
 // ============================================================================================
 
 type CapacityControlRequest
-  = CutHost { host: HostIdentity, cause: CapacityWithdrawalCause }
-  | CutProviderRuntime { provider: ProviderKind, cause: CapacityWithdrawalCause }
+  = CutHost { host: product.placement_supply.HostIdentity, cause: CapacityWithdrawalCause }
+  | CutProviderRuntime { provider: extdeps.llm.cli_lifecycle.ProviderKind, cause: CapacityWithdrawalCause }
   | CutProviderAccountBinding {
-      provider: ProviderKind,
-      account: NonEmptyStr,
+      provider: extdeps.llm.cli_lifecycle.ProviderKind,
+      account: std.types.NonEmptyStr,
       cause: CapacityWithdrawalCause,
     }
-  | RestoreHost { host: HostIdentity }
-  | RestoreProviderRuntime { provider: ProviderKind }
+  | RestoreHost { host: product.placement_supply.HostIdentity }
+  | RestoreProviderRuntime { provider: extdeps.llm.cli_lifecycle.ProviderKind }
 
 // NOTHING HERE APPLIES ANYTHING, AND THE OUTCOME VOCABULARY SAYS SO (review 54905, 2026-08-23).
 //
@@ -274,12 +275,12 @@ type CapacityControlRequest
 // operator to rephrase a request that was never the problem.
 type CapacityControlOutcome
   = ControlPlanned { roster_edit: String }
-  | ControlUnbound { axis: NonEmptyStr, trigger: NonEmptyStr }
-  | ControlRejected { reason: NonEmptyStr }
+  | ControlUnbound { axis: std.types.NonEmptyStr, trigger: std.types.NonEmptyStr }
+  | ControlRejected { reason: std.types.NonEmptyStr }
 
-data capacity_control_account_axis: NonEmptyStr = "provider account binding" as NonEmptyStr
+data capacity_control_account_axis: std.types.NonEmptyStr = "provider account binding" as std.types.NonEmptyStr
 
-data capacity_control_account_axis_trigger: NonEmptyStr = "dispatch_selection AdmittedAccountBinding must become a withdrawable subject: the account binding is resolved inside provider selection rather than offered alongside it, so there is no offer to remove and the runtime-axis mechanism does not reach it" as NonEmptyStr
+data capacity_control_account_axis_trigger: std.types.NonEmptyStr = "dispatch_selection AdmittedAccountBinding must become a withdrawable subject: the account binding is resolved inside provider selection rather than offered alongside it, so there is no offer to remove and the runtime-axis mechanism does not reach it" as std.types.NonEmptyStr
 
 fn apply_capacity_control(request: CapacityControlRequest) -> CapacityControlOutcome {
   match request {
@@ -292,7 +293,7 @@ fn apply_capacity_control(request: CapacityControlRequest) -> CapacityControlOut
     CutProviderRuntime { provider: p, cause: c } =>
       ControlPlanned {
         roster_edit: join(["add to withdrawn_providers: runtime ",
-                           provider_kind_label(kind: p), " (",
+                           extdeps.llm.cli_lifecycle.provider_kind_label(kind: p), " (",
                            withdrawal_cause_label(cause: c), ") ",
                            withdrawal_cause_detail(cause: c) as String], ""),
       }
@@ -308,7 +309,7 @@ fn apply_capacity_control(request: CapacityControlRequest) -> CapacityControlOut
     RestoreProviderRuntime { provider: p } =>
       ControlPlanned {
         roster_edit: join(["remove from withdrawn_providers: runtime ",
-                           provider_kind_label(kind: p)], ""),
+                           extdeps.llm.cli_lifecycle.provider_kind_label(kind: p)], ""),
       }
   }
 }

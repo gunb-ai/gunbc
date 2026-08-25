@@ -1,13 +1,13 @@
 module v2.test.tokenize.annotation_channel
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // The exhaustiveness arms added to lex_match_thunk_claims prove only that a new variant was handled; they never CONSTRUCT an AnnotationRule, so they establish nothing about whether the third channel works. These do: every claim below routes real source through the real walk and asserts where the lexeme landed. Pre-regen by design — the whole point is evidence before a long regen cycle, so nothing here needs a rebuilt stage0.
 fn annotation_pattern() -> v2.std.compilers.lexing.LexPattern {
   v2.std.compilers.lexing.SequencePattern {
     left: v2.std.compilers.lexing.LiteralPattern { text: "//" },
-    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: LineCommentTextChar } }
+    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.LineCommentTextChar } }
   }
 }
 
@@ -15,61 +15,61 @@ fn test_rules() -> v2.std.compilers.lexing.LexRuleSet {
   v2.std.compilers.lexing.LexRuleSet {
     rules: [
       v2.std.compilers.lexing.AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() },
-      v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: WhitespaceChar } } },
-      v2.std.compilers.lexing.TokenRule { token_class: ^ident, pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: IdentContinueChar } } }
+      v2.std.compilers.lexing.TriviaRule { pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.WhitespaceChar } } },
+      v2.std.compilers.lexing.TokenRule { token_class: ^ident, pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentContinueChar } } }
     ]
   }
 }
 
 // There is deliberately no `Rejected => empty artifact` arm. Such a fallback makes refusal indistinguishable from success on a clean source: `captures none` would pass because lexing FAILED, and a token-equivalence claim would degenerate into comparing two fabricated empties to each other. Every reader below renders the Outcome itself, so a refusal produces a string no expectation matches — the claim fails loudly instead of passing vacuously.
 fn annotation_count_rendered(source: String) -> String {
-  match lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
+  match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
     Accepted { value: a, diagnostics: _ } =>
-      to_string(length(xs: lex_artifact_annotations(artifact: a)))
+      to_string(v2.std.algebra.length(xs: v2.std.compilers.lexing.lex_artifact_annotations(artifact: a)))
     Rejected { diagnostics: _ } => "REFUSED"
   }
 }
 
 // Renders the semantic stream as an exact ordered (class, lexeme) sequence rather than a count or a concatenation. A count admits a leaked annotation that REPLACES another token while preserving cardinality; a concatenation admits any reordering that preserves total text. The identity sequence admits neither.
 fn token_identity(source: String) -> String {
-  match lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
+  match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
     Accepted { value: a, diagnostics: _ } =>
-      fold_list(
-        xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)),
+      v2.std.algebra.fold_list(
+        xs: v2.std.compilers.lexing.token_stream_all(stream: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: a)),
         empty: "",
-        cons: fn(acc, t) { concat(acc, concat("|", concat(symbol_lexeme(sym: t.class), concat(":", t.lexeme)))) }
+        cons: fn(acc, t) { concat(acc, concat("|", concat(v2.std.compilers.lexing.symbol_lexeme(sym: t.class), concat(":", t.lexeme)))) }
       )
     Rejected { diagnostics: _ } => "REFUSED"
   }
 }
 
 fn annotations_of(source: String) -> List<v2.std.compilers.lexing.UnboundSourceAnnotation> {
-  match lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
-    Accepted { value: a, diagnostics: _ } => lex_artifact_annotations(artifact: a)
+  match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
+    Accepted { value: a, diagnostics: _ } => v2.std.compilers.lexing.lex_artifact_annotations(artifact: a)
     Rejected { diagnostics: _ } => []
   }
 }
 
-test fn annotation_rule_routes_to_the_annotation_arm() -> v2.std.logic.Bool {
-  match lex_try_rule(rule: v2.std.compilers.lexing.AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() }, source: "// hi") {
-    LexRuleAnnotation { class: c, lexeme: _, remaining: _ } => c == ^line_comment
-    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
-    LexRuleTrivia { lexeme: _, remaining: _ } => false
-    LexRuleNoMatch => false
+test fn annotation_rule_routes_to_the_annotation_arm() -> Bool {
+  match v2.compiler.tokenize.lex_try_rule(rule: v2.std.compilers.lexing.AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() }, source: "// hi") {
+    v2.compiler.tokenize.LexRuleAnnotation { class: c, lexeme: _, remaining: _ } => c == ^line_comment
+    v2.compiler.tokenize.LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+    v2.compiler.tokenize.LexRuleTrivia { lexeme: _, remaining: _ } => false
+    v2.compiler.tokenize.LexRuleNoMatch => false
   }
 }
 
-test fn walk_captures_the_annotation() -> v2.std.logic.Bool {
+test fn walk_captures_the_annotation() -> Bool {
   annotation_count_rendered(source: "a\n// note\nb\n") == "1"
 }
 
 // The equality is anchored by a control rather than by a transcribed literal. A rendering that collapsed every stream to one constant — the failure mode a count or a fabricated empty already showed is real here — would satisfy the equality and prove nothing, so the second conjunct requires the SAME rendering to distinguish two streams that differ only in one token's text. Pinning an exact expected string instead would assert the class symbol's spelling, which is not what this claim is about.
-test fn semantic_tokens_are_unchanged_by_the_annotation() -> v2.std.logic.Bool {
+test fn semantic_tokens_are_unchanged_by_the_annotation() -> Bool {
   token_identity(source: "a\n// note\nb\n") == token_identity(source: "a\nb\n") &&
     token_identity(source: "a\nb\n") != token_identity(source: "a\nc\n")
 }
 
-test fn leading_and_trailing_placements_differ() -> v2.std.logic.Bool {
+test fn leading_and_trailing_placements_differ() -> Bool {
   let leading = annotations_of(source: "a\n// note\n")
   let trailing = annotations_of(source: "a // note\n")
   let l = leading |> first()
@@ -85,32 +85,32 @@ test fn leading_and_trailing_placements_differ() -> v2.std.logic.Bool {
   }
 }
 
-test fn annotation_at_eof_is_still_captured() -> v2.std.logic.Bool {
+test fn annotation_at_eof_is_still_captured() -> Bool {
   annotation_count_rendered(source: "a\n// trailing at eof") == "1"
 }
 
-test fn zero_width_annotation_rule_refuses_rather_than_looping() -> v2.std.logic.Bool {
-  match lex_walk_artifact(
+test fn zero_width_annotation_rule_refuses_rather_than_looping() -> Bool {
+  match v2.compiler.tokenize.lex_walk_artifact(
     source: "a",
     file: ^probe,
-    rules: v2.std.compilers.lexing.LexRuleSet { rules: [ v2.std.compilers.lexing.AnnotationRule { annotation_class: ^empty_ann, pattern: EmptyPattern } ] }
+    rules: v2.std.compilers.lexing.LexRuleSet { rules: [ v2.std.compilers.lexing.AnnotationRule { annotation_class: ^empty_ann, pattern: v2.std.compilers.lexing.EmptyPattern } ] }
   ) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn source_without_annotations_captures_none() -> v2.std.logic.Bool {
+test fn source_without_annotations_captures_none() -> Bool {
   annotation_count_rendered(source: "a\nb\n") == "0"
 }
 
-test fn lex_walk_projection_drops_annotations_but_keeps_tokens() -> v2.std.logic.Bool {
-  match lex_walk(source: "a\n// note\nb\n", file: ^probe, rules: test_rules()) {
+test fn lex_walk_projection_drops_annotations_but_keeps_tokens() -> Bool {
+  match v2.compiler.tokenize.lex_walk(source: "a\n// note\nb\n", file: ^probe, rules: test_rules()) {
     Accepted { value: stream, diagnostics: _ } =>
-      fold_list(
-        xs: token_stream_all(stream: stream),
+      v2.std.algebra.fold_list(
+        xs: v2.std.compilers.lexing.token_stream_all(stream: stream),
         empty: "",
-        cons: fn(acc, t) { concat(acc, concat("|", concat(symbol_lexeme(sym: t.class), concat(":", t.lexeme)))) }
+        cons: fn(acc, t) { concat(acc, concat("|", concat(v2.std.compilers.lexing.symbol_lexeme(sym: t.class), concat(":", t.lexeme)))) }
       ) == token_identity(source: "a\nb\n")
     Rejected { diagnostics: _ } => false
   }
@@ -130,15 +130,15 @@ fn line_spanning_rules(token_text: String) -> v2.std.compilers.lexing.LexRuleSet
 }
 
 fn placement_after_spanning_token(token_text: String) -> String {
-  match lex_walk_artifact(source: concat(token_text, "// note"), file: ^probe, rules: line_spanning_rules(token_text: token_text)) {
+  match v2.compiler.tokenize.lex_walk_artifact(source: concat(token_text, "// note"), file: ^probe, rules: line_spanning_rules(token_text: token_text)) {
     Accepted { value: a, diagnostics: _ } =>
-      fold_list(
-        xs: lex_artifact_annotations(artifact: a),
+      v2.std.algebra.fold_list(
+        xs: v2.std.compilers.lexing.lex_artifact_annotations(artifact: a),
         empty: "",
         cons: fn(acc, ann) {
           concat(acc, match ann.placement {
-            LeadingAfterLineIndent => "LEADING"
-            TrailingAfterSemanticToken => "TRAILING"
+            std.source_annotation.LeadingAfterLineIndent => "LEADING"
+            std.source_annotation.TrailingAfterSemanticToken => "TRAILING"
           })
         }
       )
@@ -146,10 +146,10 @@ fn placement_after_spanning_token(token_text: String) -> String {
   }
 }
 
-test fn token_ending_on_a_fresh_indented_line_makes_the_next_annotation_leading() -> v2.std.logic.Bool {
+test fn token_ending_on_a_fresh_indented_line_makes_the_next_annotation_leading() -> Bool {
   placement_after_spanning_token(token_text: "):\n    ") == "LEADING"
 }
 
-test fn token_ending_with_semantic_text_on_its_line_makes_the_next_annotation_trailing() -> v2.std.logic.Bool {
+test fn token_ending_with_semantic_text_on_its_line_makes_the_next_annotation_trailing() -> Bool {
   placement_after_spanning_token(token_text: "\n    if ") == "TRAILING"
 }

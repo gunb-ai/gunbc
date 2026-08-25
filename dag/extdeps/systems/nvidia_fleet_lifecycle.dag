@@ -4,7 +4,7 @@ module extdeps.systems.nvidia_fleet_lifecycle
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.nvidia.com/dgx/dgx-spark/enterprise-fleet-lifecycle.html"
   }
 }
@@ -14,10 +14,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.systems.nvidia_fleet_lifecycle",
       decl_name: "FleetLifecycleOperation",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.systems.nvidia_fleet_lifecycle.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 

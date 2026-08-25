@@ -3,7 +3,7 @@ module extdeps.provisioning.dhcp_client_arch
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "datatracker.ietf.org/doc/html/rfc4578#section-2.1"
   }
 }
@@ -27,56 +27,56 @@ fn dhcp_processor_architecture_code(a: DhcpProcessorArchitecture) -> Int {
 
 fn legacy_bios_processor_architecture(arch: extdeps.toolchain.types.Architecture) -> DhcpProcessorArchitecture? {
   match arch {
-    X86_64 => Present { value: BiosX86 }
-    X86 => Present { value: BiosX86 }
-    Aarch64 => Absent
-    Arm => Absent
-    Armv7 => Absent
-    Mips => Absent
-    Mipsel => Absent
-    Mips64 => Absent
-    Mips64el => Absent
-    Riscv64 => Absent
-    Wasm32 => Absent
+    extdeps.toolchain.types.X86_64 => Present { value: BiosX86 }
+    extdeps.toolchain.types.X86 => Present { value: BiosX86 }
+    extdeps.toolchain.types.Aarch64 => Absent
+    extdeps.toolchain.types.Arm => Absent
+    extdeps.toolchain.types.Armv7 => Absent
+    extdeps.toolchain.types.Mips => Absent
+    extdeps.toolchain.types.Mipsel => Absent
+    extdeps.toolchain.types.Mips64 => Absent
+    extdeps.toolchain.types.Mips64el => Absent
+    extdeps.toolchain.types.Riscv64 => Absent
+    extdeps.toolchain.types.Wasm32 => Absent
   }
 }
 
 fn uefi_processor_architecture(arch: extdeps.toolchain.types.Architecture) -> DhcpProcessorArchitecture? {
   match arch {
-    X86_64 => Present { value: UefiX86_64 }
-    Aarch64 => Present { value: UefiArm64 }
-    X86 => Absent
-    Arm => Absent
-    Armv7 => Absent
-    Mips => Absent
-    Mipsel => Absent
-    Mips64 => Absent
-    Mips64el => Absent
-    Riscv64 => Absent
-    Wasm32 => Absent
+    extdeps.toolchain.types.X86_64 => Present { value: UefiX86_64 }
+    extdeps.toolchain.types.Aarch64 => Present { value: UefiArm64 }
+    extdeps.toolchain.types.X86 => Absent
+    extdeps.toolchain.types.Arm => Absent
+    extdeps.toolchain.types.Armv7 => Absent
+    extdeps.toolchain.types.Mips => Absent
+    extdeps.toolchain.types.Mipsel => Absent
+    extdeps.toolchain.types.Mips64 => Absent
+    extdeps.toolchain.types.Mips64el => Absent
+    extdeps.toolchain.types.Riscv64 => Absent
+    extdeps.toolchain.types.Wasm32 => Absent
   }
 }
 
 fn http_boot_processor_architecture(arch: extdeps.toolchain.types.Architecture) -> DhcpProcessorArchitecture? {
   match arch {
-    X86_64 => Present { value: HttpBootX86_64 }
-    Aarch64 => Present { value: HttpBootArm64 }
-    X86 => Absent
-    Arm => Absent
-    Armv7 => Absent
-    Mips => Absent
-    Mipsel => Absent
-    Mips64 => Absent
-    Mips64el => Absent
-    Riscv64 => Absent
-    Wasm32 => Absent
+    extdeps.toolchain.types.X86_64 => Present { value: HttpBootX86_64 }
+    extdeps.toolchain.types.Aarch64 => Present { value: HttpBootArm64 }
+    extdeps.toolchain.types.X86 => Absent
+    extdeps.toolchain.types.Arm => Absent
+    extdeps.toolchain.types.Armv7 => Absent
+    extdeps.toolchain.types.Mips => Absent
+    extdeps.toolchain.types.Mipsel => Absent
+    extdeps.toolchain.types.Mips64 => Absent
+    extdeps.toolchain.types.Mips64el => Absent
+    extdeps.toolchain.types.Riscv64 => Absent
+    extdeps.toolchain.types.Wasm32 => Absent
   }
 }
 
 fn dhcp_client_processor_architecture(arch: extdeps.toolchain.types.Architecture, mode: extdeps.provisioning.network_boot.ClientNetworkBootMode) -> DhcpProcessorArchitecture? {
   match mode {
-    LegacyBiosPxe { tftp_root: _ } => legacy_bios_processor_architecture(arch: arch)
-    UefiPxe { tftp_root: _ } => uefi_processor_architecture(arch: arch)
-    UefiHttpBoot => http_boot_processor_architecture(arch: arch)
+    extdeps.provisioning.network_boot.LegacyBiosPxe { tftp_root: _ } => legacy_bios_processor_architecture(arch: arch)
+    extdeps.provisioning.network_boot.UefiPxe { tftp_root: _ } => uefi_processor_architecture(arch: arch)
+    extdeps.provisioning.network_boot.UefiHttpBoot => http_boot_processor_architecture(arch: arch)
   }
 }

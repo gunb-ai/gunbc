@@ -1,7 +1,7 @@
 module gunbc.bare_reference_scanner_admission
 
 
-data bare_reference_scanner_receipt_disposition: std.disposition.Disposition = Terminal {
+data bare_reference_scanner_receipt_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Single authority for the SEED-GROWTH RECEIPT owed by the bare-reference scanner change (gunbc#9102). It declares WHICH hand-authored Rust declarations that change adds to the seed, why they are there, and what retires them. It does NOT admit them: the realization disposition for the scanner itself is an operator judgment (ScaffoldAdmitted / TerminalOrRetainedKernel / RejectedForFinalConstruction) and is deliberately NOT asserted here. A receipt that also granted its own admission would be the self-authorized dissolution failure DESIGN names — an author who can write a scaffold can equally write a row claiming it was approved. The row is Terminal because the RECEIPT is permanent: it survives the scanner it describes, recording what was owed and on what trigger it was discharged."
 }
 

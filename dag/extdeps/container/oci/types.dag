@@ -4,7 +4,7 @@ module extdeps.container.oci.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/opencontainers/image-spec/blob/main/spec.md"
   }
 }
@@ -38,7 +38,7 @@ type ImageConfigGoosLabel
 
 fn parse_image_config_goarch(raw: String) -> ImageConfigGoarchParse {
   if raw == goarch_amd64_wire { ImageConfigGoarchKnown { value: X86_64 } }
-  else if raw == goarch_arm64_wire { ImageConfigGoarchKnown { value: Aarch64 } }
+  else if raw == goarch_arm64_wire { ImageConfigGoarchKnown { value: extdeps.toolchain.types.Aarch64 } }
   else if raw == goarch_386_wire { ImageConfigGoarchKnown { value: X86 } }
   else if raw == goarch_arm_wire { ImageConfigGoarchKnown { value: Arm } }
   else if raw == goarch_riscv64_wire { ImageConfigGoarchKnown { value: Riscv64 } }
@@ -49,12 +49,12 @@ fn parse_image_config_goarch(raw: String) -> ImageConfigGoarchParse {
 fn image_config_goarch_label(arch: extdeps.toolchain.types.Architecture) -> ImageConfigGoarchLabel {
   match arch {
     X86_64 => ImageConfigGoarchWireLabel { wire: goarch_amd64_wire }
-    Aarch64 => ImageConfigGoarchWireLabel { wire: goarch_arm64_wire }
+    extdeps.toolchain.types.Aarch64 => ImageConfigGoarchWireLabel { wire: goarch_arm64_wire }
     X86 => ImageConfigGoarchWireLabel { wire: goarch_386_wire }
     Arm => ImageConfigGoarchWireLabel { wire: goarch_arm_wire }
     Riscv64 => ImageConfigGoarchWireLabel { wire: goarch_riscv64_wire }
     Wasm32 => ImageConfigGoarchWireLabel { wire: goarch_wasm_wire }
-    Armv7 => ImageConfigGoarchUnrepresentable
+    extdeps.toolchain.types.Armv7 => ImageConfigGoarchUnrepresentable
     Mips => ImageConfigGoarchUnrepresentable
     Mipsel => ImageConfigGoarchUnrepresentable
     Mips64 => ImageConfigGoarchUnrepresentable
@@ -63,21 +63,21 @@ fn image_config_goarch_label(arch: extdeps.toolchain.types.Architecture) -> Imag
 }
 
 fn parse_image_config_goos(raw: String) -> ImageConfigGoosParse {
-  if raw == goos_linux_wire { ImageConfigGoosKnown { value: Linux } }
-  else if raw == goos_windows_wire { ImageConfigGoosKnown { value: Windows } }
-  else if raw == goos_darwin_wire { ImageConfigGoosKnown { value: Macos } }
+  if raw == goos_linux_wire { ImageConfigGoosKnown { value: extdeps.toolchain.types.Linux } }
+  else if raw == goos_windows_wire { ImageConfigGoosKnown { value: extdeps.toolchain.types.Windows } }
+  else if raw == goos_darwin_wire { ImageConfigGoosKnown { value: extdeps.toolchain.types.Macos } }
   else { ImageConfigGoosUnknown { wire: raw } }
 }
 
 fn image_config_goos_label(os: extdeps.toolchain.types.Os) -> ImageConfigGoosLabel {
   match os {
-    Linux => ImageConfigGoosWireLabel { wire: goos_linux_wire }
-    Windows => ImageConfigGoosWireLabel { wire: goos_windows_wire }
-    Macos => ImageConfigGoosWireLabel { wire: goos_darwin_wire }
-    Freebsd => ImageConfigGoosUnrepresentable
-    Android => ImageConfigGoosUnrepresentable
-    Ios => ImageConfigGoosUnrepresentable
-    Wasi => ImageConfigGoosUnrepresentable
+    extdeps.toolchain.types.Linux => ImageConfigGoosWireLabel { wire: goos_linux_wire }
+    extdeps.toolchain.types.Windows => ImageConfigGoosWireLabel { wire: goos_windows_wire }
+    extdeps.toolchain.types.Macos => ImageConfigGoosWireLabel { wire: goos_darwin_wire }
+    extdeps.toolchain.types.Freebsd => ImageConfigGoosUnrepresentable
+    extdeps.toolchain.types.Android => ImageConfigGoosUnrepresentable
+    extdeps.toolchain.types.Ios => ImageConfigGoosUnrepresentable
+    extdeps.toolchain.types.Wasi => ImageConfigGoosUnrepresentable
   }
 }
 

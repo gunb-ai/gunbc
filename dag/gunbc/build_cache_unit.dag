@@ -1,7 +1,7 @@
 module gunbc.build_cache_unit
 
 
-data build_cache_unit_scope_disposition: std.disposition.Disposition = SingleAuthority
+data build_cache_unit_scope_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 data build_cache_unit_authority_note: String = "THE UNIT IS DERIVED FROM THE INSTANCE, WHICH IS THE WHOLE POINT. A hand-written unit beside a declared BuildCacheInstance is two representations of one deployment, and they drift in the direction that is hardest to notice: the declaration says what we meant and the unit says what runs, so an observation checked against the declaration passes while the host does something else. Rendering the unit FROM the instance means a disagreement has nowhere to live (DESIGN section 5, construction over validation) — the same move placement made when observed_cgroup went inside EndpointOwnerContext.\n\nWHAT THE RENDER IS GROUNDED ON. Not invention: a live sudo capture of srv1's running CI server on 2026-08-01, and the ctrl-sccache.service unit that already manages the SESSION instance on srv1 and srv2. Every line below either comes from a field of the instance or is a constant that capture showed present. The captured CI environment was exactly SCCACHE_DIR, SCCACHE_ERROR_LOG, SCCACHE_IDLE_TIMEOUT=0, SCCACHE_SERVER_UDS, SCCACHE_START_SERVER=1 and a SCCACHE_STARTUP_NOTIFY temp path — and that last one is the tell that no unit exists: it is created by connect_or_start on a first cache-miss compile, so the server was born from a runner's compile rather than started by systemd.\n\nTHE UID IS LOAD-BEARING AND IS NOT A HOST CONSTANT. ctrl-sccache.service's own header records why: the UDS is created srwxr-xr-x, so connect() requires write and only the owning uid may connect; a cross-uid client fails SILENTLY and falls back to a per-container server, which is a cache miss that looks like a cache. The captured CI server runs as ghrunner while the session server on the same host runs as briansrls, so the principal genuinely differs per INSTANCE on one host and must stay a field rather than a per-host constant."
 
@@ -9,21 +9,21 @@ data systemd_medium_is_modeled_note: String = "THE UNIT IS A MODELED SystemdUnit
 
 data absent_capacity_omits_the_line_note: String = "AN ABSENT CAPACITY OMITS THE LINE; IT DOES NOT RENDER A DEFAULT. BuildCacheInstance.intended_capacity is optional, and CI's is deliberately Absent because the live 10 GiB is sccache's own built-in default rather than a number anybody chose. The live capture SETTLED that this is the right reading: srv1's running CI server carries NO SCCACHE_CACHE_SIZE in its environment at all, so 10 GiB is genuinely a default and not a decision recorded elsewhere.\n\nRendering `SCCACHE_CACHE_SIZE=10G` for an Absent capacity would therefore fabricate a decision nobody made and, worse, FREEZE it: once the number is written into a generated unit it becomes indistinguishable from an intended one, and the tracked gap silently closes without anyone choosing a value. Omitting the line preserves the same behaviour the host has today — sccache applies its own default — while leaving the absence visible in the instance where it can still be counted. This is the one place in the render where doing less is the fail-closed choice."
 
-fn sccache_endpoint_env_assignment(instance: gunbc.build_cache_instance.BuildCacheInstance) -> NonEmptyStr {
+fn sccache_endpoint_env_assignment(instance: gunbc.build_cache_instance.BuildCacheInstance) -> std.types.NonEmptyStr {
   match instance.endpoint {
-    SccacheServerUnixSocket { path: p } =>
-      concat("SCCACHE_SERVER_UDS=", p as String) as NonEmptyStr
-    SccacheServerTcpPort { port: n } =>
-      concat("SCCACHE_SERVER_PORT=", to_string(n)) as NonEmptyStr
+    extdeps.cache.sccache.SccacheServerUnixSocket { path: p } =>
+      concat("SCCACHE_SERVER_UDS=", p as String) as std.types.NonEmptyStr
+    extdeps.cache.sccache.SccacheServerTcpPort { port: n } =>
+      concat("SCCACHE_SERVER_PORT=", to_string(n)) as std.types.NonEmptyStr
   }
 }
 
-fn capacity_env_directives(instance: gunbc.build_cache_instance.BuildCacheInstance) -> List<SystemdServiceDirective> {
+fn capacity_env_directives(instance: gunbc.build_cache_instance.BuildCacheInstance) -> List<extdeps.systemd.unit_file.SystemdServiceDirective> {
   match instance.intended_capacity {
     Absent => []
     Present { value: b } => [
-      Environment {
-        assignment: concat(concat(sccache_cache_size_env_var as String, "="), to_string(byte_size_count(b: b))) as NonEmptyStr,
+      extdeps.systemd.unit_file.Environment {
+        assignment: concat(concat(extdeps.cache.sccache.sccache_cache_size_env_var as String, "="), to_string(std.measure.byte_size_count(b: b))) as std.types.NonEmptyStr,
       },
     ]
   }
@@ -35,13 +35,13 @@ fn build_cache_unit_name(instance: gunbc.build_cache_instance.BuildCacheInstance
 
 data unit_ordering_note: String = "THE ORDERING LINES ARE THE PHASE-3 REBIRTH GUARD, AND THEY ARE AN INTERIM RATHER THAN A WALL. A runner that starts before a managed cache exists will connect-or-start on its first cache-miss compile and adopt whatever cgroup it is in — which is exactly how srv1's server came to live in slot srv1-10 and how srv2's and srv3's came to live in active ones. Requires= plus After= on the runner template makes systemd refuse to start a runner whose cache unit failed, and orders it after the cache on boot.\n\nWHAT IT DOES NOT DO, stated so it is not read as the fix: systemd ordering constrains the BOOT and START path only. It does not prevent a runner already running from outliving a stopped cache unit, and it does not make a bad birth impossible — a runner started by hand with systemctl --no-block, or a cache unit that starts and then dies, both leave the window open. The construction-side answer is the activation admission in gunbc.runner_activation, which refuses to yield an enable command at all without a bound readiness receipt. These lines are defence in depth beneath that, with a bounded runway: they retire when activation withdrawal lands, so that a cache unit going away withdraws the admission that licensed the runners depending on it rather than merely failing to order them."
 
-fn runner_ordering_drop_in(instance: gunbc.build_cache_instance.BuildCacheInstance) -> SystemdDropIn {
-  SystemdDropIn {
+fn runner_ordering_drop_in(instance: gunbc.build_cache_instance.BuildCacheInstance) -> extdeps.systemd.unit_file.SystemdDropIn {
+  extdeps.systemd.unit_file.SystemdDropIn {
     sections: [
-      DropInUnitSection {
+      extdeps.systemd.unit_file.DropInUnitSection {
         directives: [
-          Requires { target: instance.intended_unit },
-          After { target: instance.intended_unit },
+          extdeps.systemd.unit_file.Requires { target: instance.intended_unit },
+          extdeps.systemd.unit_file.After { target: instance.intended_unit },
         ],
       },
     ],
@@ -49,7 +49,7 @@ fn runner_ordering_drop_in(instance: gunbc.build_cache_instance.BuildCacheInstan
 }
 
 fn runner_ordering_dropin_lines(instance: gunbc.build_cache_instance.BuildCacheInstance) -> List<String> {
-  systemd_drop_in_lines(drop_in: runner_ordering_drop_in(instance: instance))
+  extdeps.systemd.unit_file.systemd_drop_in_lines(drop_in: runner_ordering_drop_in(instance: instance))
 }
 
 // SLICE= IS RENDERED ONLY WHERE A MANAGED POOL IS DECLARED, AND THAT IS A CONSTRUCTION WALL RATHER
@@ -59,64 +59,64 @@ fn runner_ordering_dropin_lines(instance: gunbc.build_cache_instance.BuildCacheI
 // creates such a cgroup implicitly WITH NO LIMITS -- the unbounded compile charge wearing the
 // managed topology's name. Now the field carries the placement itself, so the CompilePoolInRunnerSlots
 // arm has no slice name to render and the bad unit cannot be built.
-fn compile_pool_service_directives(placement: gunbc.host_layout.CompilePoolPlacement) -> List<extdeps.systemd.unit_file.SystemdServiceDirective> {
+fn compile_pool_service_directives(placement: CompilePoolPlacement) -> List<extdeps.systemd.unit_file.SystemdServiceDirective> {
   match placement {
-    gunbc.host_layout.CompilePoolSliceDeclared { slice_unit: u } => [extdeps.systemd.unit_file.ServiceSlice { name: u as std.types.NonEmptyStr }]
-    gunbc.host_layout.CompilePoolInRunnerSlots => []
+    CompilePoolSliceDeclared { slice_unit: u } => [extdeps.systemd.unit_file.ServiceSlice { name: u as std.types.NonEmptyStr }]
+    CompilePoolInRunnerSlots => []
   }
 }
 
 fn build_cache_unit_file(instance: gunbc.build_cache_instance.BuildCacheInstance) -> extdeps.systemd.unit_file.SystemdUnitFile {
-  ServiceUnitFile {
+  extdeps.systemd.unit_file.ServiceUnitFile {
     unit: [
-      Description {
+      extdeps.systemd.unit_file.Description {
         text: concat(
           "gunbc managed build cache: ",
           instance.identity.instance_name as String,
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       },
-      After { target: "network.target" as NonEmptyStr },
+      extdeps.systemd.unit_file.After { target: "network.target" as std.types.NonEmptyStr },
     ],
     service: concat(
       compile_pool_service_directives(placement: instance.intended_compile_pool),
       concat(
       [
-        ServiceType { mode: "simple" as NonEmptyStr },
-        ServiceUser { name: instance.intended_principal },
-        ServiceGroup { name: instance.intended_principal },
-        Environment {
-          assignment: concat(concat(sccache_cache_dir_env_var as String, "="), instance.intended_storage as String) as NonEmptyStr,
+        extdeps.systemd.unit_file.ServiceType { mode: "simple" as std.types.NonEmptyStr },
+        extdeps.systemd.unit_file.ServiceUser { name: instance.intended_principal },
+        extdeps.systemd.unit_file.ServiceGroup { name: instance.intended_principal },
+        extdeps.systemd.unit_file.Environment {
+          assignment: concat(concat(extdeps.cache.sccache.sccache_cache_dir_env_var as String, "="), instance.intended_storage as String) as std.types.NonEmptyStr,
         },
-        Environment {
+        extdeps.systemd.unit_file.Environment {
           assignment: concat(
             concat("SCCACHE_ERROR_LOG=", instance.intended_storage as String),
             "/sccache-server.log",
-          ) as NonEmptyStr,
+          ) as std.types.NonEmptyStr,
         },
-        Environment { assignment: sccache_start_server_env_assignment() as NonEmptyStr },
-        Environment { assignment: sccache_no_daemon_env_assignment() as NonEmptyStr },
-        Environment { assignment: sccache_idle_timeout_never_env_assignment() as NonEmptyStr },
-        Environment { assignment: sccache_endpoint_env_assignment(instance: instance) },
+        extdeps.systemd.unit_file.Environment { assignment: extdeps.cache.sccache.sccache_start_server_env_assignment() as std.types.NonEmptyStr },
+        extdeps.systemd.unit_file.Environment { assignment: extdeps.cache.sccache.sccache_no_daemon_env_assignment() as std.types.NonEmptyStr },
+        extdeps.systemd.unit_file.Environment { assignment: extdeps.cache.sccache.sccache_idle_timeout_never_env_assignment() as std.types.NonEmptyStr },
+        extdeps.systemd.unit_file.Environment { assignment: sccache_endpoint_env_assignment(instance: instance) },
       ],
       concat(
         capacity_env_directives(instance: instance),
         [
-          ExecStart { command: sccache_installed_binary_path as NonEmptyStr },
-          Restart { policy: "on-failure" as NonEmptyStr },
+          extdeps.systemd.unit_file.ExecStart { command: extdeps.cache.sccache.sccache_installed_binary_path as std.types.NonEmptyStr },
+          extdeps.systemd.unit_file.Restart { policy: "on-failure" as std.types.NonEmptyStr },
         ],
       ),
     ),
     ),
-    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+    install: extdeps.systemd.unit_file.Installable { directives: [extdeps.systemd.unit_file.WantedBy { target: "multi-user.target" as std.types.NonEmptyStr }] },
   }
 }
 
 fn build_cache_unit_text(instance: gunbc.build_cache_instance.BuildCacheInstance) -> String {
-  serialize_systemd_unit_file(file: build_cache_unit_file(instance: instance))
+  extdeps.systemd.unit_file.serialize_systemd_unit_file(file: build_cache_unit_file(instance: instance))
 }
 
 fn render_build_cache_unit(instance: gunbc.build_cache_instance.BuildCacheInstance) -> List<String> {
-  systemd_unit_file_lines(file: build_cache_unit_file(instance: instance))
+  extdeps.systemd.unit_file.systemd_unit_file_lines(file: build_cache_unit_file(instance: instance))
 }
 
 data foreground_supervision_note: String = "ExecStart IS BARE, AND THE ENV ASSIGNMENTS COME FROM extdeps ROWS. An earlier draft of this render wrote `ExecStart=/usr/local/bin/sccache --start-server` with hand-spelled Environment literals. Both were wrong, and the tree already knew why.\n\n--start-server DAEMONIZES and returns 0, so under Type=simple systemd sees ExecStart exit cleanly and marks the unit inactive (dead) the instant it starts; the backgrounded server then idle-times-out unsupervised and Restart=on-failure never fires, because a clean exit is not a failure. Proven live on srv3 2026-07-25 -- the unit sat inactive with no sccache process, surviving only through sccache's own per-invocation auto-start, i.e. the unit was a no-op. That is the specification-without-execution trap in its purest form: a string witness asserting ExecStart matched the install path was GREEN while the unit did nothing.\n\nSo the form is bare ExecStart plus SCCACHE_START_SERVER=1 and SCCACHE_NO_DAEMON=1, matching the production ctrl-sccache.service invocation verified running for a month on srv1 and srv2 -- converging on the existing authority rather than inventing a third shape. SCCACHE_IDLE_TIMEOUT=0 is required for the same reason one level deeper: the foreground server otherwise exits status 0 after ten quiet minutes (measured on srv3: Duration 10min 8.215s, status=0/SUCCESS) and the unit dies clean. Restart=always would be the wrong repair -- it would relaunch THROUGH the clean exit and make the defect invisible, an absorbing fallback whose deficit frequency drops to zero by construction.\n\nAll three values come from extdeps.cache.sccache rows rather than literals spelled here, so gunbc is not a second authority for sccache env var names.\n\nHOW THIS WAS FOUND, because it is the point: the defect was caught by gunbc.host_build_cache_provision_script's existing construction checks -- build_cache_unit_is_foreground_supervised refuses a body containing --start-server -- when the A5 swap pointed them at this render. The wall built for the hand-written unit caught the generated one on its first contact."
@@ -124,27 +124,27 @@ data foreground_supervision_note: String = "ExecStart IS BARE, AND THE ENV ASSIG
 // THE COMPILE-POOL SLICE, RENDERED FROM THE SAME AUTHORITY THAT SIZES IT. The slice's memory ceiling is not a number this module chooses: gunbc.fleet_host_budget derives it through compile_pool_bytes_for from extdeps.jobserver's jobserver_build_pool_bytes, the same cited knob that bounds build concurrency, so the pool holds exactly the compiles the jobserver admits. Taking the size as a parameter here rather than computing one keeps that single authority intact — this module renders, it does not decide.
 //
 // memory.max and memory.high are both set from it. max is the hard ceiling that actually bounds the cgroup; high is a throttling watermark the kernel permits to be exceeded. gunbc.host_compile_pool's readiness check compares the OBSERVED memory.max against the derived size for the same reason, so the render and the check agree on which of the two is the bound.
-fn compile_pool_slice_unit_file(slice_unit: std.types.NonEmptyStr, sized: std.measure.ByteSize) -> SystemdUnitFile {
-  SliceUnitFile {
+fn compile_pool_slice_unit_file(slice_unit: std.types.NonEmptyStr, sized: std.measure.ByteSize) -> extdeps.systemd.unit_file.SystemdUnitFile {
+  extdeps.systemd.unit_file.SliceUnitFile {
     unit: [
-      Description {
+      extdeps.systemd.unit_file.Description {
         text: concat(
           concat("gunbc managed compile pool ", slice_unit as String),
           " (parents every cache-miss compiler)",
         ) as std.types.NonEmptyStr,
       },
-      Before { target: "slices.target" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.Before { target: "slices.target" as std.types.NonEmptyStr },
     ],
     slice: [
-      SliceMemoryMax { bytes: to_string(byte_size_count(b: sized)) as std.types.NonEmptyStr },
-      SliceMemoryHigh { bytes: to_string(byte_size_count(b: sized)) as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.SliceMemoryMax { bytes: to_string(std.measure.byte_size_count(b: sized)) as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.SliceMemoryHigh { bytes: to_string(std.measure.byte_size_count(b: sized)) as std.types.NonEmptyStr },
     ],
-    install: NotInstallable,
+    install: extdeps.systemd.unit_file.NotInstallable,
   }
 }
 
 fn render_compile_pool_slice(slice_unit: std.types.NonEmptyStr, sized: std.measure.ByteSize) -> List<String> {
-  systemd_unit_file_lines(
+  extdeps.systemd.unit_file.systemd_unit_file_lines(
     file: compile_pool_slice_unit_file(slice_unit: slice_unit, sized: sized),
   )
 }

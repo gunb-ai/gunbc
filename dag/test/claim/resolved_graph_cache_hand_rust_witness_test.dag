@@ -6,26 +6,26 @@ data resolved_graph_cache_hand_rust_witness_note: String = "HAND-RUST checkable 
 
 test fn resolved_graph_cache_hand_rust_scaffold_is_seed_retained() -> Bool {
   match gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn resolved_graph_cache_hand_rust_receipt_is_checkable() -> Bool {
-  !(dissolution_description(condition: gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_dissolve_trigger) == "")
-    && !(resolved_graph_cache_hand_rust_receipt_plan_anchor == "")
-    && !(resolved_graph_cache_hand_rust_roadmap_lane_anchor == "")
-    && resolved_graph_cache_hand_rust_receipt_witness_entry ==
+  !(std.dissolution.dissolution_description(condition: gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_dissolve_trigger) == "")
+    && !(gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_receipt_plan_anchor == "")
+    && !(gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_roadmap_lane_anchor == "")
+    && gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_receipt_witness_entry ==
       "dag/test/claim/resolved_graph_cache_hand_rust_witness_test.dag"
-    && resolved_graph_cache_hand_rust_deferred_consumer_scaffold_module ==
+    && gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_deferred_consumer_scaffold_module ==
       "gunbc.materialization_provider_consumer_scaffold"
-    && resolved_graph_cache_hand_rust_deferred_consumer_witness_entry ==
+    && gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_deferred_consumer_witness_entry ==
       "dag/test/claim/materialization_provider_consumer_hand_rust_witness_test.dag"
-    && length(xs: resolved_graph_cache_hand_rust_paths) == 4
-    && length(xs: resolved_graph_cache_hand_rust_path_loc_deltas_net) == 4
-    && resolved_graph_cache_hand_rust_loc_delta_net ==
+    && v2.std.algebra.length(xs: gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_paths) == 4
+    && v2.std.algebra.length(xs: gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_path_loc_deltas_net) == 4
+    && gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_loc_delta_net ==
       fold(
-        resolved_graph_cache_hand_rust_path_loc_deltas_net,
+        gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_path_loc_deltas_net,
         init: 0,
         f: (acc, delta) => acc + delta
       )
@@ -46,7 +46,7 @@ fn censused_path_exists(path: String) -> Bool {
 }
 
 fn every_censused_path_exists() -> Bool {
-  resolved_graph_cache_hand_rust_paths |> all(p => censused_path_exists(path: p))
+  gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_paths |> all(p => censused_path_exists(path: p))
 }
 
 // THE NEGATIVE CONTROL IS NOT A test fn HERE, and the reason is a measurement.

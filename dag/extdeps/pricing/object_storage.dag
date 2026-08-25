@@ -4,7 +4,7 @@ module extdeps.pricing.object_storage
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/us-east-1/index.csv"
   }
 }
@@ -101,7 +101,7 @@ data s3_standard_first_50tb: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: AwsS3,
   storage_class_label: "Standard",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 23000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 23000), currency: std.currency.Usd },
     quoted_unit_label: "GB-Mo",
     byte_basis: ByteBasisUnstated,
   },
@@ -115,7 +115,7 @@ data s3_standard_next_450tb: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: AwsS3,
   storage_class_label: "Standard",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 22000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 22000), currency: std.currency.Usd },
     quoted_unit_label: "GB-Mo",
     byte_basis: ByteBasisUnstated,
   },
@@ -129,7 +129,7 @@ data s3_standard_over_500tb: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: AwsS3,
   storage_class_label: "Standard",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 21000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 21000), currency: std.currency.Usd },
     quoted_unit_label: "GB-Mo",
     byte_basis: ByteBasisUnstated,
   },
@@ -143,7 +143,7 @@ data s3_standard_infrequent_access: ObjectStorageClassRow = ObjectStorageClassRo
   vendor: AwsS3,
   storage_class_label: "Standard - Infrequent Access",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 12500), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 12500), currency: std.currency.Usd },
     quoted_unit_label: "GB-Mo",
     byte_basis: ByteBasisUnstated,
   },
@@ -159,7 +159,7 @@ data gcs_standard_regional: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: GoogleCloudStorage,
   storage_class_label: "Standard storage",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 20000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 20000), currency: std.currency.Usd },
     quoted_unit_label: "1 gibibyte hour (x730h billing month)",
     byte_basis: BinaryGibibyte,
   },
@@ -173,7 +173,7 @@ data r2_standard: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: CloudflareR2,
   storage_class_label: "Standard storage",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 15000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 15000), currency: std.currency.Usd },
     quoted_unit_label: "GB-month",
     byte_basis: ByteBasisUnstated,
   },
@@ -187,7 +187,7 @@ data r2_infrequent_access: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: CloudflareR2,
   storage_class_label: "Infrequent Access storage",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 10000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 10000), currency: std.currency.Usd },
     quoted_unit_label: "GB-month",
     byte_basis: ByteBasisUnstated,
   },
@@ -225,7 +225,7 @@ data hetzner_object_storage_rate_unavailable: ObjectStorageClassRow = ObjectStor
 data s3_egress_first_10tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: AwsS3,
   egress_rate: TransferCited {
-    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: money_amount_micro(count: 90000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: std.measure.money_amount_micro(count: 90000), currency: std.currency.Usd },
     quoted_unit_label: "GB",
     byte_basis: ByteBasisUnstated,
   },
@@ -236,7 +236,7 @@ data s3_egress_first_10tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
 data s3_egress_next_40tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: AwsS3,
   egress_rate: TransferCited {
-    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: money_amount_micro(count: 85000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: std.measure.money_amount_micro(count: 85000), currency: std.currency.Usd },
     quoted_unit_label: "GB",
     byte_basis: ByteBasisUnstated,
   },
@@ -247,7 +247,7 @@ data s3_egress_next_40tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
 data s3_egress_next_100tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: AwsS3,
   egress_rate: TransferCited {
-    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: money_amount_micro(count: 70000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: std.measure.money_amount_micro(count: 70000), currency: std.currency.Usd },
     quoted_unit_label: "GB",
     byte_basis: ByteBasisUnstated,
   },
@@ -258,7 +258,7 @@ data s3_egress_next_100tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
 data s3_egress_over_150tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: AwsS3,
   egress_rate: TransferCited {
-    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: money_amount_micro(count: 50000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: std.measure.money_amount_micro(count: 50000), currency: std.currency.Usd },
     quoted_unit_label: "GB",
     byte_basis: ByteBasisUnstated,
   },
@@ -278,7 +278,7 @@ data r2_egress_free: ObjectStorageEgressRow = ObjectStorageEgressRow {
 data b2_egress_beyond_free_allowance: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: BackblazeB2,
   egress_rate: TransferCited {
-    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: money_amount_micro(count: 10000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: std.measure.money_amount_micro(count: 10000), currency: std.currency.Usd },
     quoted_unit_label: "GB (beyond 3x average monthly stored, which is free)",
     byte_basis: ByteBasisUnstated,
   },
@@ -290,7 +290,7 @@ data b2_egress_beyond_free_allowance: ObjectStorageEgressRow = ObjectStorageEgre
 data gcs_default_replication: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: GoogleCloudStorage,
   egress_rate: TransferCited {
-    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: money_amount_micro(count: 20000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: std.measure.money_amount_micro(count: 20000), currency: std.currency.Usd },
     quoted_unit_label: "GiB replicated (default, North America / Europe dual- and multi-region)",
     byte_basis: BinaryGibibyte,
   },
@@ -301,28 +301,28 @@ data gcs_default_replication: ObjectStorageEgressRow = ObjectStorageEgressRow {
 data s3_tier1_requests: ObjectStorageRequestRow = ObjectStorageRequestRow {
   vendor: AwsS3,
   operation_class_label: "Tier1 (PUT/COPY/POST or LIST requests)",
-  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: money_amount_micro(count: 5000000), currency: Usd },
+  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: std.measure.money_amount_micro(count: 5000000), currency: std.currency.Usd },
   pricing_citation: "AmazonS3/us-east-1#S3-API-Tier1",
 }
 
 data s3_tier2_requests: ObjectStorageRequestRow = ObjectStorageRequestRow {
   vendor: AwsS3,
   operation_class_label: "Tier2 (GET and all other requests)",
-  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: money_amount_micro(count: 400000), currency: Usd },
+  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: std.measure.money_amount_micro(count: 400000), currency: std.currency.Usd },
   pricing_citation: "AmazonS3/us-east-1#S3-API-Tier2",
 }
 
 data r2_class_a_operations: ObjectStorageRequestRow = ObjectStorageRequestRow {
   vendor: CloudflareR2,
   operation_class_label: "Class A Operations (mutating: writes, lists)",
-  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: money_amount_micro(count: 4500000), currency: Usd },
+  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: std.measure.money_amount_micro(count: 4500000), currency: std.currency.Usd },
   pricing_citation: "developers.cloudflare.com/r2/pricing#class-a",
 }
 
 data r2_class_b_operations: ObjectStorageRequestRow = ObjectStorageRequestRow {
   vendor: CloudflareR2,
   operation_class_label: "Class B Operations (reads)",
-  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: money_amount_micro(count: 360000), currency: Usd },
+  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: std.measure.money_amount_micro(count: 360000), currency: std.currency.Usd },
   pricing_citation: "developers.cloudflare.com/r2/pricing#class-b",
 }
 
@@ -355,7 +355,7 @@ fn object_storage_egress_catalog() -> List<ObjectStorageEgressRow> {
 fn storage_rate_micros(row: ObjectStorageClassRow) -> std.nat.Nat? {
   match row.storage_rate {
     RateCited { rate: r, quoted_unit_label: _, byte_basis: _ } =>
-      Present { value: money_rate_micros(q: r) }
+      Present { value: std.measure.money_rate_micros(q: r) }
     RateUnavailable { cause: _ } => none
   }
 }
@@ -363,7 +363,7 @@ fn storage_rate_micros(row: ObjectStorageClassRow) -> std.nat.Nat? {
 fn egress_rate_micros(row: ObjectStorageEgressRow) -> std.nat.Nat? {
   match row.egress_rate {
     TransferCited { rate: r, quoted_unit_label: _, byte_basis: _ } =>
-      Present { value: money_rate_micros(q: r) }
+      Present { value: std.measure.money_rate_micros(q: r) }
     TransferIncludedAtNoCharge { terms: _ } => Present { value: 0 }
     TransferUnavailable { cause: _ } => none
   }
@@ -386,7 +386,7 @@ data azure_hot_lrs_tier0: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: AzureBlobStorage,
   storage_class_label: "Hot LRS (locally redundant)",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 20800), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 20800), currency: std.currency.Usd },
     quoted_unit_label: "1 GB/Month",
     byte_basis: ByteBasisUnstated,
   },
@@ -400,7 +400,7 @@ data azure_hot_lrs_tier_50tb: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: AzureBlobStorage,
   storage_class_label: "Hot LRS (locally redundant)",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 19968), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 19968), currency: std.currency.Usd },
     quoted_unit_label: "1 GB/Month",
     byte_basis: ByteBasisUnstated,
   },
@@ -414,7 +414,7 @@ data azure_hot_lrs_tier_500tb: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: AzureBlobStorage,
   storage_class_label: "Hot LRS (locally redundant)",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 19136), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 19136), currency: std.currency.Usd },
     quoted_unit_label: "1 GB/Month",
     byte_basis: ByteBasisUnstated,
   },
@@ -428,7 +428,7 @@ data azure_hot_zrs_tier0: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: AzureBlobStorage,
   storage_class_label: "Hot ZRS (zone redundant)",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 26000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 26000), currency: std.currency.Usd },
     quoted_unit_label: "1 GB/Month",
     byte_basis: ByteBasisUnstated,
   },
@@ -442,7 +442,7 @@ data azure_hot_zrs_tier_50tb: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: AzureBlobStorage,
   storage_class_label: "Hot ZRS (zone redundant)",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 24960), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 24960), currency: std.currency.Usd },
     quoted_unit_label: "1 GB/Month",
     byte_basis: ByteBasisUnstated,
   },
@@ -456,7 +456,7 @@ data azure_hot_zrs_tier_500tb: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: AzureBlobStorage,
   storage_class_label: "Hot ZRS (zone redundant)",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 23920), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 23920), currency: std.currency.Usd },
     quoted_unit_label: "1 GB/Month",
     byte_basis: ByteBasisUnstated,
   },
@@ -470,7 +470,7 @@ data azure_hot_gzrs_tier0: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: AzureBlobStorage,
   storage_class_label: "Hot GZRS (geo-zone redundant)",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 46800), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 46800), currency: std.currency.Usd },
     quoted_unit_label: "1 GB/Month",
     byte_basis: ByteBasisUnstated,
   },
@@ -484,7 +484,7 @@ data azure_hot_gzrs_tier_50tb: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: AzureBlobStorage,
   storage_class_label: "Hot GZRS (geo-zone redundant)",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 44928), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 44928), currency: std.currency.Usd },
     quoted_unit_label: "1 GB/Month",
     byte_basis: ByteBasisUnstated,
   },
@@ -498,7 +498,7 @@ data azure_hot_gzrs_tier_500tb: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: AzureBlobStorage,
   storage_class_label: "Hot GZRS (geo-zone redundant)",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 43056), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 43056), currency: std.currency.Usd },
     quoted_unit_label: "1 GB/Month",
     byte_basis: ByteBasisUnstated,
   },
@@ -512,7 +512,7 @@ data azure_hot_ra_gzrs_tier0: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: AzureBlobStorage,
   storage_class_label: "Hot RA-GZRS (read-access geo-zone redundant)",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 58500), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 58500), currency: std.currency.Usd },
     quoted_unit_label: "1 GB/Month",
     byte_basis: ByteBasisUnstated,
   },
@@ -527,7 +527,7 @@ data wasabi_hot_storage: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: Wasabi,
   storage_class_label: "Hot Cloud Storage (pay as you go)",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 7990), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 7990), currency: std.currency.Usd },
     quoted_unit_label: "7.99 USD per TB/month (carried per unit-month)",
     byte_basis: ByteBasisUnstated,
   },
@@ -551,7 +551,7 @@ data storj_standard_storage: ObjectStorageClassRow = ObjectStorageClassRow {
   vendor: Storj,
   storage_class_label: "Standard (distributed)",
   storage_rate: RateCited {
-    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: money_amount_micro(count: 7000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth { amount: std.measure.money_amount_micro(count: 7000), currency: std.currency.Usd },
     quoted_unit_label: "7 USD per TB/month (carried per unit-month)",
     byte_basis: ByteBasisUnstated,
   },
@@ -564,7 +564,7 @@ data storj_standard_storage: ObjectStorageClassRow = ObjectStorageClassRow {
 data storj_egress: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: Storj,
   egress_rate: TransferCited {
-    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: money_amount_micro(count: 7000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: std.measure.money_amount_micro(count: 7000), currency: std.currency.Usd },
     quoted_unit_label: "7 USD per TB (carried per unit)",
     byte_basis: ByteBasisUnstated,
   },
@@ -576,7 +576,7 @@ data storj_egress: ObjectStorageEgressRow = ObjectStorageEgressRow {
 data gcs_egress_worldwide_first_10tib: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: GoogleCloudStorage,
   egress_rate: TransferCited {
-    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: money_amount_micro(count: 120000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: std.measure.money_amount_micro(count: 120000), currency: std.currency.Usd },
     quoted_unit_label: "1 gibibyte",
     byte_basis: BinaryGibibyte,
   },
@@ -589,7 +589,7 @@ data azure_egress_tier_ladder_note: String = "Azure's retail API returns MORE TH
 data azure_egress_first_10tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: AzureBlobStorage,
   egress_rate: TransferCited {
-    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: money_amount_micro(count: 87000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: std.measure.money_amount_micro(count: 87000), currency: std.currency.Usd },
     quoted_unit_label: "1 GB",
     byte_basis: ByteBasisUnstated,
   },
@@ -600,7 +600,7 @@ data azure_egress_first_10tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
 data azure_egress_next_40tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: AzureBlobStorage,
   egress_rate: TransferCited {
-    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: money_amount_micro(count: 83000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: std.measure.money_amount_micro(count: 83000), currency: std.currency.Usd },
     quoted_unit_label: "1 GB",
     byte_basis: ByteBasisUnstated,
   },
@@ -611,7 +611,7 @@ data azure_egress_next_40tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
 data azure_egress_next_100tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: AzureBlobStorage,
   egress_rate: TransferCited {
-    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: money_amount_micro(count: 70000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: std.measure.money_amount_micro(count: 70000), currency: std.currency.Usd },
     quoted_unit_label: "1 GB",
     byte_basis: ByteBasisUnstated,
   },
@@ -622,7 +622,7 @@ data azure_egress_next_100tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
 data azure_egress_over_150tb: ObjectStorageEgressRow = ObjectStorageEgressRow {
   vendor: AzureBlobStorage,
   egress_rate: TransferCited {
-    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: money_amount_micro(count: 50000), currency: Usd },
+    rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit { amount: std.measure.money_amount_micro(count: 50000), currency: std.currency.Usd },
     quoted_unit_label: "1 GB",
     byte_basis: ByteBasisUnstated,
   },
@@ -689,20 +689,20 @@ fn evaluate_redundancy_only(row: ObjectStorageClassRow, req: ReliabilityRequirem
 data azure_hot_lrs_write_operations: ObjectStorageRequestRow = ObjectStorageRequestRow {
   vendor: AzureBlobStorage,
   operation_class_label: "Hot LRS Write Operations",
-  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: money_amount_micro(count: 5000000), currency: Usd },
+  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: std.measure.money_amount_micro(count: 5000000), currency: std.currency.Usd },
   pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotLRSWriteOperations",
 }
 
 data azure_hot_gzrs_write_operations: ObjectStorageRequestRow = ObjectStorageRequestRow {
   vendor: AzureBlobStorage,
   operation_class_label: "Hot GZRS Write Operations",
-  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: money_amount_micro(count: 11750000), currency: Usd },
+  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: std.measure.money_amount_micro(count: 11750000), currency: std.currency.Usd },
   pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotGZRSWriteOperations",
 }
 
 data azure_hot_read_operations: ObjectStorageRequestRow = ObjectStorageRequestRow {
   vendor: AzureBlobStorage,
   operation_class_label: "Hot Read Operations",
-  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: money_amount_micro(count: 400000), currency: Usd },
+  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests { amount: std.measure.money_amount_micro(count: 400000), currency: std.currency.Usd },
   pricing_citation: "prices.azure.com#eastus/GeneralBlockBlobv2/HotReadOperations",
 }

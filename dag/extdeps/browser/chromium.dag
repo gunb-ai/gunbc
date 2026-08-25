@@ -3,14 +3,14 @@ module extdeps.browser.chromium
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "chromium.googlesource.com/chromium/src/+/782af9cb30a53f54487e5d2e44738645a8ec457c"
   }
 }
 
 data chromium_net_error_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "chromium.googlesource.com/chromium/src/+/782af9cb30a53f54487e5d2e44738645a8ec457c/net/base/net_error_list.h"
   }
 }
@@ -25,11 +25,11 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.browser.chromium",
       decl_name: "chromium",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.browser.chromium.extdeps_external_authority_anchor,
-  further_citations: [extdeps.browser.chromium.chromium_net_error_authority]
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [chromium_net_error_authority]
 }
 
 type ChromiumVersion = std.types.NonEmptyStr where brand("ChromiumVersion")

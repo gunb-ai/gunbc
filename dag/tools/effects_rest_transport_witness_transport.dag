@@ -2,7 +2,7 @@ module tools.effects_rest_transport_witness_transport
 
 
 fn run_effects_rest_transport_witness() -> Bool {
-  run_witness_bin(
+  tools.host_prelude.run_witness_bin(
     var_name: "EFFECTS_REST_TRANSPORT_WITNESS",
     bin_name: "effects_rest_transport_witness",
     args: []

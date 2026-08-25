@@ -5,16 +5,16 @@ module v2.test.nat_semiring.rung_0_to_2_three_targets
 data phase1_nat_semiring_rung_subject: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^phase1_nat_semiring_rung_subject_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 fn phase1_rung_compiles_claim(label: String) -> v2.std.verification.TestClaim {
   v2.std.verification.CompilesClaim {
     label: label,
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
     input: phase1_nat_semiring_rung_subject,
     expected_value: phase1_nat_semiring_rung_subject,
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Integration }
+    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Integration }
   }
 }
 
@@ -70,4 +70,4 @@ data phase1_nat_semiring_fixture_law_roster: List<v2.std.verification.TestClaim>
   v2.test.algebra_laws.nat_semiring.claim_nat_mul_associativity
 ]
 
-data phase1_nat_semiring_rung_gate_canonical_subject: v2.std.node.Node = nat_add_left_identity_input
+data phase1_nat_semiring_rung_gate_canonical_subject: v2.std.node.Node = v2.test.algebra_laws.nat_semiring.nat_add_left_identity_input

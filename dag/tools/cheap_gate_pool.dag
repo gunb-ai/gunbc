@@ -12,7 +12,7 @@ fn claim_key(c: tools.host_prelude.ClaimRun) -> String {
 }
 
 fn cheap_claim_pool_claims() -> List<tools.host_prelude.ClaimRun> {
-  extdeps_external_authority_claims()
+  tools.extdeps_external_authority_transport.extdeps_external_authority_claims()
 }
 
 type CheapPoolChunkAcc {
@@ -56,7 +56,7 @@ fn run_cheap_claim_pool() -> Bool {
     max_per_child: cheap_gate_pool_max_claims_per_child
   )
   fold(chunks, init: true, f: fn(acc, chunk) {
-    let ok = run_gunbc_claims(source_roots: gunbc.ci_layer_roots.witness_layer_roots, claims: chunk)
+    let ok = tools.host_prelude.run_gunbc_claims(source_roots: gunbc.ci_layer_roots.witness_layer_roots, claims: chunk)
     acc && ok
   })
 }

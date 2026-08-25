@@ -1,45 +1,45 @@
 module test.claim.roadmap_identity_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data identity_witness_scope_note: String = "WHAT THESE PROVE, AND THE ONE THING THEY CANNOT. They prove the registry is well formed here and now — identities unique across active and tombstoned rows, active slugs unique, the index total over declared nodes, resolution exactly-one in all three outcomes. They CANNOT prove permanence: an identity silently REPLACED between the base revision and this head produces a tree satisfying every claim below, because a snapshot cannot see history. Claiming otherwise would be the coverage-by-illusion this repository names, so the base-versus-head gate is declared owed on the carrier rather than implied here.\\n\\nThe rename claim is the discriminating one. Identity's whole purpose is surviving a slug change, and nothing else in this file would notice if identity silently tracked the slug — every uniqueness and totality claim holds just as well for a registry where identity IS the slug. Constructing a node, renaming its slug, and asserting the identity is unchanged is the only claim here that fails if the separation collapses."
 
 fn declared_identities() -> List<String> {
-  declared_roadmap_nodes() |> map(n => n.identity as String)
+  gunbc.roadmap_authority.declared_roadmap_nodes() |> map(n => n.identity as String)
 }
 
 test fn every_declared_node_carries_an_identity() -> Bool {
   all(declared_identities(), i => !(i == ""))
-    && count(declared_identities()) == count(declared_roadmap_nodes())
+    && count(declared_identities()) == count(gunbc.roadmap_authority.declared_roadmap_nodes())
 }
 
 test fn identities_are_unique_across_the_registry() -> Bool {
-  distinct_identity_count() == identity_count()
+  gunbc.roadmap_identity.distinct_identity_count() == gunbc.roadmap_identity.identity_count()
 }
 
 test fn active_slugs_are_unique() -> Bool {
-  distinct_active_slug_count() == active_identity_count()
+  gunbc.roadmap_identity.distinct_active_slug_count() == gunbc.roadmap_identity.active_identity_count()
 }
 
 test fn index_is_total_over_declared_nodes() -> Bool {
-  active_identity_count() == count(declared_roadmap_nodes())
+  gunbc.roadmap_identity.active_identity_count() == count(gunbc.roadmap_authority.declared_roadmap_nodes())
 }
 
 test fn resolution_is_exactly_one_not_first_pick() -> Bool {
-  all(roadmap_active_identities(), r =>
-    match resolve_slug(slug: record_slug(r: r)) {
-      IdentityResolved { identity } => (identity as String) == record_identity(r: r)
-      IdentityUnknown { slug: _ } => false
-      IdentityAmbiguous { slug: _, matches: _ } => false
+  all(gunbc.roadmap_identity.roadmap_active_identities(), r =>
+    match gunbc.roadmap_identity.resolve_slug(slug: gunbc.roadmap_identity.record_slug(r: r)) {
+      gunbc.roadmap_identity.IdentityResolved { identity } => (identity as String) == gunbc.roadmap_identity.record_identity(r: r)
+      gunbc.roadmap_identity.IdentityUnknown { slug: _ } => false
+      gunbc.roadmap_identity.IdentityAmbiguous { slug: _, matches: _ } => false
     })
 }
 
 test fn an_unknown_slug_is_unknown_not_a_plausible_first_row() -> Bool {
-  match resolve_slug(slug: "no-such-roadmap-node") {
-    IdentityUnknown { slug } => slug == "no-such-roadmap-node"
-    IdentityResolved { identity: _ } => false
-    IdentityAmbiguous { slug: _, matches: _ } => false
+  match gunbc.roadmap_identity.resolve_slug(slug: "no-such-roadmap-node") {
+    gunbc.roadmap_identity.IdentityUnknown { slug } => slug == "no-such-roadmap-node"
+    gunbc.roadmap_identity.IdentityResolved { identity: _ } => false
+    gunbc.roadmap_identity.IdentityAmbiguous { slug: _, matches: _ } => false
   }
 }
 
@@ -58,7 +58,7 @@ fn renamed(n: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_model.RoadmapNod
 }
 
 test fn identity_survives_a_slug_rename() -> Bool {
-  match declared_roadmap_nodes() |> first {
+  match gunbc.roadmap_authority.declared_roadmap_nodes() |> first {
     Present { value: n } =>
       (renamed(n: n).identity as String) == (n.identity as String)
         && !((renamed(n: n).node as String) == (n.node as String))
@@ -69,10 +69,10 @@ test fn identity_survives_a_slug_rename() -> Bool {
 data tombstone_witness_note: String = "These claims are shaped to stay honest as the tombstone roster grows (written when it was empty; the first retirement landed 2026-07-31 and the 2026-08-01 spine recut added four more — the note's original 'empty today' opening rotted within a day, which is its own small receipt for why nothing here pins a population). The first asserts the registry equals active plus tombstoned — arithmetic that holds at zero and keeps holding as retirements land. The second asserts every tombstoned record reports itself inactive, load-bearing since the first row. Neither asserts a count, because pinning one would red on the next legitimate retirement."
 
 test fn registry_is_active_plus_tombstoned() -> Bool {
-  identity_count() == active_identity_count() + count(roadmap_tombstoned_identities())
+  gunbc.roadmap_identity.identity_count() == gunbc.roadmap_identity.active_identity_count() + count(gunbc.roadmap_identity.roadmap_tombstoned_identities())
 }
 
 test fn tombstoned_records_are_not_active() -> Bool {
-  all(roadmap_tombstoned_identities(), r => !record_is_active(r: r))
-    && all(roadmap_active_identities(), r => record_is_active(r: r))
+  all(gunbc.roadmap_identity.roadmap_tombstoned_identities(), r => !gunbc.roadmap_identity.record_is_active(r: r))
+    && all(gunbc.roadmap_identity.roadmap_active_identities(), r => gunbc.roadmap_identity.record_is_active(r: r))
 }

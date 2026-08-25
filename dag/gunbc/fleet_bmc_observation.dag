@@ -65,10 +65,10 @@ type BmcFanRebootPersistenceReceipt {
 data srv3_bmc_firmware_2_07_00_observation: extdeps.bmc.capability.BmcFirmwareObservation = extdeps.bmc.capability.BmcFirmwareObservation {
   endpoint: srv3_baseboard.bmc,
   firmware: extdeps.bmc.capability.BmcFirmwareVersion {
-    family: OpenBmc,
-    version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
+    family: std.bmc.OpenBmc,
+    version: extdeps.firmware.types.firmware_semantic_version(major: 2, minor: 7, patch: 0),
   },
-  evidence_scope: HistoricalEvidenceSnapshot,
+  evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
   observed_at: 1785110400000,
 }
 
@@ -77,10 +77,10 @@ data srv3_bmc_firmware_2_07_00_observation: extdeps.bmc.capability.BmcFirmwareOb
 data srv3_bmc_firmware_3_22_00_observation: extdeps.bmc.capability.BmcFirmwareObservation = extdeps.bmc.capability.BmcFirmwareObservation {
   endpoint: srv3_baseboard.bmc,
   firmware: extdeps.bmc.capability.BmcFirmwareVersion {
-    family: OpenBmc,
-    version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
+    family: std.bmc.OpenBmc,
+    version: extdeps.firmware.types.firmware_semantic_version(major: 3, minor: 22, patch: 0),
   },
-  evidence_scope: HistoricalEvidenceSnapshot,
+  evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
   observed_at: 1786843200000,
 }
 
@@ -91,10 +91,10 @@ data srv3_bmc_firmware_observation: extdeps.bmc.capability.BmcFirmwareObservatio
 data srv4_bmc_firmware_observation: extdeps.bmc.capability.BmcFirmwareObservation = extdeps.bmc.capability.BmcFirmwareObservation {
   endpoint: srv4_baseboard.bmc,
   firmware: extdeps.bmc.capability.BmcFirmwareVersion {
-    family: OpenBmc,
-    version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
+    family: std.bmc.OpenBmc,
+    version: extdeps.firmware.types.firmware_semantic_version(major: 3, minor: 22, patch: 0),
   },
-  evidence_scope: HistoricalEvidenceSnapshot,
+  evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
   observed_at: 1785110400000,
 }
 
@@ -103,13 +103,13 @@ data srv4_bmc_firmware_observation: extdeps.bmc.capability.BmcFirmwareObservatio
 // staleness class: after srv3's 2026-08-11 flash there is no per-host copy
 // left to go stale, and updating its firmware observation below moves its
 // surface with it in one motion.
-data srv3_bmc_redfish_surface: extdeps.bmc.types.BmcRedfishSurfaceDerivation = bmc_redfish_surface_of_host(
-  catalog: asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+data srv3_bmc_redfish_surface: extdeps.bmc.types.BmcRedfishSurfaceDerivation = extdeps.bmc.types.bmc_redfish_surface_of_host(
+  catalog: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
   observation: srv3_bmc_firmware_observation,
 )
 
-data srv4_bmc_redfish_surface: extdeps.bmc.types.BmcRedfishSurfaceDerivation = bmc_redfish_surface_of_host(
-  catalog: asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+data srv4_bmc_redfish_surface: extdeps.bmc.types.BmcRedfishSurfaceDerivation = extdeps.bmc.types.bmc_redfish_surface_of_host(
+  catalog: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
   observation: srv4_bmc_firmware_observation,
 )
 
@@ -141,24 +141,24 @@ data srv4_bmc_update_service_observation: extdeps.bmc.types.BmcUpdateServiceObse
 }
 
 data srv4_bmc_fan_observed_curve_steps: List<extdeps.bmc.types.BmcFanCurveStep> = [
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(75), duty: percent(75) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(40), duty: std.measure.percent(30) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(55), duty: std.measure.percent(40) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(65), duty: std.measure.percent(50) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(75), duty: std.measure.percent(75) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(85), duty: std.measure.percent(100) },
 ]
 
 data srv4_bmc_fan_observed_curve: extdeps.bmc.types.BmcFanCurve = extdeps.bmc.types.BmcFanCurve {
   control_sensor: "TEMP_SOC",
   steps: srv4_bmc_fan_observed_curve_steps,
-  minimum_duty: percent(30),
-  sensor_unavailable_duty: percent(75),
-  zone_failsafe_duty: percent(30),
-  positive_hysteresis: positive_celsius_delta(
-    count: positive_measure_count(predecessor: 0),
+  minimum_duty: std.measure.percent(30),
+  sensor_unavailable_duty: std.measure.percent(75),
+  zone_failsafe_duty: std.measure.percent(30),
+  positive_hysteresis: std.measure.positive_celsius_delta(
+    count: std.measure.positive_measure_count(predecessor: 0),
   ),
-  negative_hysteresis: positive_celsius_delta(
-    count: positive_measure_count(predecessor: 0),
+  negative_hysteresis: std.measure.positive_celsius_delta(
+    count: std.measure.positive_measure_count(predecessor: 0),
   ),
 }
 
@@ -168,7 +168,7 @@ data srv4_bmc_fan_observed_controller_zone_path: std.types.NonEmptyStr = "/xyz/o
 data srv4_bmc_fan_observed_aggregate_entry: std.types.NonEmptyStr = "FAN1"
 data srv4_bmc_fan_observed_tach_inputs: List<std.types.NonEmptyStr> = ["FAN1", "FAN2", "FAN3", "FAN4"]
 
-data srv4_bmc_fan_active_config_digest: extdeps.crypto.hash.Digest = sha256_digest(
+data srv4_bmc_fan_active_config_digest: extdeps.crypto.hash.Digest = extdeps.crypto.hash.sha256_digest(
   hex: gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
 )
 
@@ -179,7 +179,7 @@ fn bmc_fan_caller_asserted_definition_linkage(
 ) -> std.state_durability.StateDefinitionLinkage {
   std.state_durability.CallerAssertedDefinitionLinkage {
     reason: reason,
-    dissolution: symbol_index_subtree_digest_dissolution,
+    dissolution: std.state_durability.symbol_index_subtree_digest_dissolution,
   }
 }
 
@@ -221,7 +221,7 @@ data srv4_bmc_fan_perturbation_generation: std.state_durability.StatePerturbatio
 
 data srv4_bmc_fan_converged_policy_observation: extdeps.bmc.types.BmcFanPolicyObservation = extdeps.bmc.types.BmcFanPolicyObservation {
   firmware: srv4_bmc_firmware_observation.firmware,
-  evidence_scope: HistoricalEvidenceSnapshot,
+  evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
   active_config_digest: srv4_bmc_fan_active_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
@@ -239,19 +239,19 @@ data srv4_bmc_root_overlay_observation: extdeps.filesystem.linux.LinuxOverlayObs
   merged_mount: extdeps.filesystem.linux.LinuxMountObservation {
     source: "cow",
     target: "/",
-    filesystem: LinuxOverlayFs,
+    filesystem: extdeps.filesystem.linux.LinuxOverlayFs,
   },
   lower_directory: "/run/initramfs/ro",
   upper_directory: "/run/initramfs/rw/cow",
   lower_backing_mount: extdeps.filesystem.linux.LinuxMountObservation {
     source: "/dev/mtdblock4",
     target: "/run/initramfs/ro",
-    filesystem: LinuxSquashFs,
+    filesystem: extdeps.filesystem.linux.LinuxSquashFs,
   },
   upper_backing_mount: extdeps.filesystem.linux.LinuxMountObservation {
     source: "/dev/mtdblock5",
     target: "/run/initramfs/rw",
-    filesystem: LinuxJffs2,
+    filesystem: extdeps.filesystem.linux.LinuxJffs2,
   },
 }
 
@@ -261,38 +261,38 @@ data srv4_bmc_config_persistence_observation: extdeps.bmc.types.BmcConfigPersist
   overlay: srv4_bmc_root_overlay_observation,
   writable: true,
   upper_override_present: true,
-  available_bytes: byte_size(20365312),
-  evidence_scope: HistoricalEvidenceSnapshot,
+  available_bytes: std.measure.byte_size(20365312),
+  evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
   observed_at: 1785432700000,
 }
 
 data srv4_bmc_fan_convergence_receipt: BmcFanConvergenceReceipt = BmcFanConvergenceReceipt {
-  evidence_scope: HistoricalEvidenceSnapshot,
+  evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
   host: srv4_host.identity,
   policy: srv4_bmc_fan_converged_policy_observation,
   persistence: srv4_bmc_config_persistence_observation,
   active_config_digest: srv4_bmc_fan_active_config_digest,
-  previous_config_digest: asrock_altrad8ud_factory_fan_config_digest,
+  previous_config_digest: extdeps.boards.asrock_rack.asrock_altrad8ud_factory_fan_config_digest,
   zone_control_path: srv4_bmc_fan_observed_controller_zone_path,
   zone_failsafe_active: false,
   monitoring_sample_count: 12,
-  monitoring_duration: second(count: 120),
-  temp_soc_minimum: celsius(60),
-  temp_soc_maximum: celsius(63),
-  temp_soc_final: celsius(61),
-  guarded_component_maximum: celsius(69),
+  monitoring_duration: std.measure.second(count: 120),
+  temp_soc_minimum: std.measure.celsius(60),
+  temp_soc_maximum: std.measure.celsius(63),
+  temp_soc_final: std.measure.celsius(61),
+  guarded_component_maximum: std.measure.celsius(69),
   final_tachs: [
-    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(4600) },
-    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(1200) },
-    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(1200) },
-    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(1200) },
+    BmcFanTachReceipt { sensor: "FAN1", reading: std.measure.rpm(4600) },
+    BmcFanTachReceipt { sensor: "FAN2", reading: std.measure.rpm(1200) },
+    BmcFanTachReceipt { sensor: "FAN3", reading: std.measure.rpm(1200) },
+    BmcFanTachReceipt { sensor: "FAN4", reading: std.measure.rpm(1200) },
   ],
   observed_at: 1785432700000,
 }
 
 data srv4_bmc_fan_post_reboot_policy_observation: extdeps.bmc.types.BmcFanPolicyObservation = extdeps.bmc.types.BmcFanPolicyObservation {
   firmware: srv4_bmc_firmware_observation.firmware,
-  evidence_scope: HistoricalEvidenceSnapshot,
+  evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
   active_config_digest: srv4_bmc_fan_active_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
@@ -316,4 +316,4 @@ data fleet_bmc_surface_observation_note: String = "Authenticated read-only Redfi
 
 data fleet_bmc_update_service_observation_note: String = "Authenticated read-only Redfish observations, 2026-07-27. Both srv3 2.07.00 and srv4 3.22.00 advertise /redfish/v1/UpdateService/update through HttpPushUri and MultipartHttpPushUri, and each active BMC image is Updateable=true. Each FirmwareInventory exposed exactly one BMC image plus non-BMC members; neither exposed a backup BMC image. This is update-surface capability evidence, not an approved image, apply receipt, or recovery proof."
 
-data bmc_fan_symbol_index_subtree_digest_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "namespace content-addressed SymbolIndex subtree digest")
+data bmc_fan_symbol_index_subtree_digest_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "namespace content-addressed SymbolIndex subtree digest")

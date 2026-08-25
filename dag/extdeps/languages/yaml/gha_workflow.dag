@@ -3,28 +3,28 @@ module extdeps.languages.yaml.gha_workflow
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
   }
 }
 
 fn permission_level_yaml(level: extdeps.github.actions.PermissionLevel) -> extdeps.languages.yaml.types.YamlValue {
   match level {
-    PermRead => yaml_string(s: "read")
-    PermWrite => yaml_string(s: "write")
-    PermNone => yaml_string(s: "none")
+    extdeps.github.actions.PermRead => extdeps.languages.yaml.types.yaml_string(s: "read")
+    extdeps.github.actions.PermWrite => extdeps.languages.yaml.types.yaml_string(s: "write")
+    extdeps.github.actions.PermNone => extdeps.languages.yaml.types.yaml_string(s: "none")
   }
 }
 
 fn optional_permission_key(key: String, level: extdeps.github.actions.PermissionLevel?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match level {
     Absent => []
-    Present { value: l } => [kv(key: key, value: permission_level_yaml(level: l))]
+    Present { value: l } => [extdeps.languages.yaml.types.kv(key: key, value: permission_level_yaml(level: l))]
   }
 }
 
 fn workflow_permissions_yaml(perms: extdeps.github.actions.WorkflowPermissions) -> extdeps.languages.yaml.types.YamlValue {
-  yaml_mapping(entries: concat(
+  extdeps.languages.yaml.types.yaml_mapping(entries: concat(
     optional_permission_key(key: "contents", level: perms.contents),
     concat(
       optional_permission_key(key: "pull-requests", level: perms.pull_requests),
@@ -41,72 +41,72 @@ fn workflow_permissions_yaml(perms: extdeps.github.actions.WorkflowPermissions) 
 
 fn pr_activity_string(a: extdeps.github.actions.PullRequestActivity) -> String {
   match a {
-    Opened => "opened"
-    Synchronize => "synchronize"
-    Reopened => "reopened"
-    ReadyForReview => "ready_for_review"
-    Closed => "closed"
+    extdeps.github.actions.Opened => "opened"
+    extdeps.github.actions.Synchronize => "synchronize"
+    extdeps.github.actions.Reopened => "reopened"
+    extdeps.github.actions.ReadyForReview => "ready_for_review"
+    extdeps.github.actions.Closed => "closed"
   }
 }
 
 fn string_list_flow(items: List<String>) -> extdeps.languages.yaml.types.YamlValue {
-  yaml_sequence(elements: fold(items, init: empty_yaml_values, f: (acc, s) => concat(acc, [yaml_string(s: s)])))
+  extdeps.languages.yaml.types.yaml_sequence(elements: fold(items, init: extdeps.languages.yaml.types.empty_yaml_values, f: (acc, s) => concat(acc, [extdeps.languages.yaml.types.yaml_string(s: s)])))
 }
 
 fn pr_activities_flow(types: List<extdeps.github.actions.PullRequestActivity>) -> extdeps.languages.yaml.types.YamlValue {
-  yaml_sequence(elements: fold(types, init: empty_yaml_values, f: (acc, t) => concat(acc, [yaml_string(s: pr_activity_string(a: t))])))
+  extdeps.languages.yaml.types.yaml_sequence(elements: fold(types, init: extdeps.languages.yaml.types.empty_yaml_values, f: (acc, t) => concat(acc, [extdeps.languages.yaml.types.yaml_string(s: pr_activity_string(a: t))])))
 }
 
 fn push_trigger_yaml(branches: List<String>, paths: List<String>) -> extdeps.languages.yaml.types.YamlKeyValue {
   let entries = if paths.length() == 0 {
-    [kv(key: "branches", value: string_list_flow(items: branches))]
+    [extdeps.languages.yaml.types.kv(key: "branches", value: string_list_flow(items: branches))]
   } else {
     concat(
-      [kv(key: "branches", value: string_list_flow(items: branches))],
-      [kv(key: "paths", value: string_list_flow(items: paths))]
+      [extdeps.languages.yaml.types.kv(key: "branches", value: string_list_flow(items: branches))],
+      [extdeps.languages.yaml.types.kv(key: "paths", value: string_list_flow(items: paths))]
     )
   }
-  kv(key: "push", value: yaml_mapping(entries: entries))
+  extdeps.languages.yaml.types.kv(key: "push", value: extdeps.languages.yaml.types.yaml_mapping(entries: entries))
 }
 
 fn dispatch_input_type_label(t: extdeps.github.actions.DispatchInputType) -> String {
   match t {
-    InputString => "string"
-    InputBoolean => "boolean"
-    InputChoice { options: _ } => "choice"
-    InputEnvironment => "environment"
+    extdeps.github.actions.InputString => "string"
+    extdeps.github.actions.InputBoolean => "boolean"
+    extdeps.github.actions.InputChoice { options: _ } => "choice"
+    extdeps.github.actions.InputEnvironment => "environment"
   }
 }
 
 fn dispatch_input_type_extra_fields(t: extdeps.github.actions.DispatchInputType) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match t {
-    InputChoice { options: opts } =>
-      [kv(key: "options", value: string_list_flow(items: opts))]
-    InputString => []
-    InputBoolean => []
-    InputEnvironment => []
+    extdeps.github.actions.InputChoice { options: opts } =>
+      [extdeps.languages.yaml.types.kv(key: "options", value: string_list_flow(items: opts))]
+    extdeps.github.actions.InputString => []
+    extdeps.github.actions.InputBoolean => []
+    extdeps.github.actions.InputEnvironment => []
   }
 }
 
 fn dispatch_input_optional_string(key: String, value: String?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match value {
-    Present { value: s } => [kv(key: key, value: yaml_string(s: s))]
+    Present { value: s } => [extdeps.languages.yaml.types.kv(key: key, value: extdeps.languages.yaml.types.yaml_string(s: s))]
     Absent => []
   }
 }
 
 fn dispatch_input_yaml(input: extdeps.github.actions.DispatchInput) -> extdeps.languages.yaml.types.YamlKeyValue {
-  kv(
+  extdeps.languages.yaml.types.kv(
     key: input.name,
-    value: yaml_mapping(entries: concat(
+    value: extdeps.languages.yaml.types.yaml_mapping(entries: concat(
       dispatch_input_optional_string(key: "description", value: input.description),
       concat(
-        [kv(key: "required", value: yaml_bool(b: input.required))],
+        [extdeps.languages.yaml.types.kv(key: "required", value: extdeps.languages.yaml.types.yaml_bool(b: input.required))],
         concat(
           dispatch_input_optional_string(key: "default", value: input.default),
           concat(
             dispatch_input_type_extra_fields(t: input.type),
-            [kv(key: "type", value: yaml_string(s: dispatch_input_type_label(t: input.type)))]
+            [extdeps.languages.yaml.types.kv(key: "type", value: extdeps.languages.yaml.types.yaml_string(s: dispatch_input_type_label(t: input.type)))]
           )
         )
       )
@@ -118,10 +118,10 @@ fn workflow_dispatch_yaml(inputs: List<extdeps.github.actions.DispatchInput>) ->
   if length(inputs) == 0 {
     YamlNull
   } else {
-    yaml_mapping(entries: [
-      kv(
+    extdeps.languages.yaml.types.yaml_mapping(entries: [
+      extdeps.languages.yaml.types.kv(
         key: "inputs",
-        value: yaml_mapping(entries: map(inputs, input => dispatch_input_yaml(input: input)))
+        value: extdeps.languages.yaml.types.yaml_mapping(entries: map(inputs, input => dispatch_input_yaml(input: input)))
       )
     ])
   }
@@ -131,47 +131,47 @@ data workflow_dispatch_input_projection_note: String = "WorkflowDispatch.inputs 
 
 fn workflow_trigger_entry(trigger: extdeps.github.actions.WorkflowTrigger) -> extdeps.languages.yaml.types.YamlKeyValue {
   match trigger {
-    WorkflowDispatch { inputs: inputs } =>
-      kv(key: "workflow_dispatch", value: workflow_dispatch_yaml(inputs: inputs))
-    Push { branches: bs, paths: ps } =>
+    extdeps.github.actions.WorkflowDispatch { inputs: inputs } =>
+      extdeps.languages.yaml.types.kv(key: "workflow_dispatch", value: workflow_dispatch_yaml(inputs: inputs))
+    extdeps.github.actions.Push { branches: bs, paths: ps } =>
       push_trigger_yaml(branches: bs, paths: ps)
-    PullRequest { branches: bs, types: ts } =>
-      kv(key: "pull_request", value: yaml_mapping(entries: [
-        kv(key: "branches", value: string_list_flow(items: bs)),
-        kv(key: "types", value: pr_activities_flow(types: ts))
+    extdeps.github.actions.PullRequest { branches: bs, types: ts } =>
+      extdeps.languages.yaml.types.kv(key: "pull_request", value: extdeps.languages.yaml.types.yaml_mapping(entries: [
+        extdeps.languages.yaml.types.kv(key: "branches", value: string_list_flow(items: bs)),
+        extdeps.languages.yaml.types.kv(key: "types", value: pr_activities_flow(types: ts))
       ]))
-    Schedule { cron: c } =>
-      kv(key: "schedule", value: yaml_sequence(elements: [
-        yaml_mapping(entries: [kv(key: "cron", value: yaml_string(s: render_cron_schedule(s: c)))])
+    extdeps.github.actions.Schedule { cron: c } =>
+      extdeps.languages.yaml.types.kv(key: "schedule", value: extdeps.languages.yaml.types.yaml_sequence(elements: [
+        extdeps.languages.yaml.types.yaml_mapping(entries: [extdeps.languages.yaml.types.kv(key: "cron", value: extdeps.languages.yaml.types.yaml_string(s: extdeps.cron.schedule_model.render_cron_schedule(s: c)))])
       ]))
     WorkflowCall { inputs: _ } =>
-      kv(key: "workflow_call", value: YamlNull)
-    WorkflowRunCompleted { workflows: ws, branches: bs } =>
-      kv(key: "workflow_run", value: yaml_mapping(entries: [
-        kv(key: "workflows", value: string_list_flow(items: ws)),
-        kv(key: "branches", value: string_list_flow(items: bs)),
-        kv(key: "types", value: string_list_flow(items: [workflow_run_activity_completed]))
+      extdeps.languages.yaml.types.kv(key: "workflow_call", value: YamlNull)
+    extdeps.github.actions.WorkflowRunCompleted { workflows: ws, branches: bs } =>
+      extdeps.languages.yaml.types.kv(key: "workflow_run", value: extdeps.languages.yaml.types.yaml_mapping(entries: [
+        extdeps.languages.yaml.types.kv(key: "workflows", value: string_list_flow(items: ws)),
+        extdeps.languages.yaml.types.kv(key: "branches", value: string_list_flow(items: bs)),
+        extdeps.languages.yaml.types.kv(key: "types", value: string_list_flow(items: [extdeps.github.actions.workflow_run_activity_completed]))
       ]))
-    MergeGroup =>
-      kv(key: "merge_group", value: extdeps.languages.yaml.types.YamlNull)
+    extdeps.github.actions.MergeGroup =>
+      extdeps.languages.yaml.types.kv(key: "merge_group", value: YamlNull)
   }
 }
 
 fn workflow_triggers_yaml(triggers: List<extdeps.github.actions.WorkflowTrigger>) -> extdeps.languages.yaml.types.YamlValue {
-  yaml_mapping(entries: fold(triggers, init: [], f: (acc, t) => concat(acc, [workflow_trigger_entry(trigger: t)])))
+  extdeps.languages.yaml.types.yaml_mapping(entries: fold(triggers, init: [], f: (acc, t) => concat(acc, [workflow_trigger_entry(trigger: t)])))
 }
 
 fn cancel_in_progress_yaml(spec: extdeps.github.actions.CancelInProgressSpec) -> extdeps.languages.yaml.types.YamlValue {
   match spec {
-    CancelInProgressBool { value: b } => yaml_bool(b: b)
-    CancelInProgressExpression { expression: e } => yaml_string(s: e)
+    extdeps.github.actions.CancelInProgressBool { value: b } => extdeps.languages.yaml.types.yaml_bool(b: b)
+    extdeps.github.actions.CancelInProgressExpression { expression: e } => extdeps.languages.yaml.types.yaml_string(s: e)
   }
 }
 
 fn cancel_in_progress_when_queue_max_yaml(spec: extdeps.github.actions.CancelInProgressWhenQueueMax) -> extdeps.languages.yaml.types.YamlValue {
   match spec {
-    QueueMaxCancelInProgressFalse => yaml_bool(b: false)
-    QueueMaxCancelInProgressExpression { expression: e } => yaml_string(s: e)
+    extdeps.github.actions.QueueMaxCancelInProgressFalse => extdeps.languages.yaml.types.yaml_bool(b: false)
+    extdeps.github.actions.QueueMaxCancelInProgressExpression { expression: e } => extdeps.languages.yaml.types.yaml_string(s: e)
   }
 }
 
@@ -181,38 +181,38 @@ data concurrency_queue_max_emission_note: String = "ConcurrencyMappingQueueMax e
 
 fn concurrency_mapping_queue_max(group: String, cip: extdeps.github.actions.CancelInProgressWhenQueueMax?) -> extdeps.languages.yaml.types.YamlValue {
   let base = [
-    kv(key: "queue", value: yaml_string(s: "max")),
-    kv(key: "group", value: yaml_string(s: group))
+    extdeps.languages.yaml.types.kv(key: "queue", value: extdeps.languages.yaml.types.yaml_string(s: "max")),
+    extdeps.languages.yaml.types.kv(key: "group", value: extdeps.languages.yaml.types.yaml_string(s: group))
   ]
   let with_cancel = match cip {
     Absent => base
-    Present { value: c } => concat(base, [kv(key: "cancel-in-progress", value: cancel_in_progress_when_queue_max_yaml(spec: c))])
+    Present { value: c } => concat(base, [extdeps.languages.yaml.types.kv(key: "cancel-in-progress", value: cancel_in_progress_when_queue_max_yaml(spec: c))])
   }
-  yaml_mapping(entries: with_cancel)
+  extdeps.languages.yaml.types.yaml_mapping(entries: with_cancel)
 }
 
 fn concurrency_mapping_with_cancel(group: String, cip: extdeps.github.actions.CancelInProgressSpec?) -> extdeps.languages.yaml.types.YamlValue {
-  let base = [kv(key: "group", value: yaml_string(s: group))]
+  let base = [extdeps.languages.yaml.types.kv(key: "group", value: extdeps.languages.yaml.types.yaml_string(s: group))]
   let with_cancel = match cip {
     Absent => base
-    Present { value: c } => concat(base, [kv(key: "cancel-in-progress", value: cancel_in_progress_yaml(spec: c))])
+    Present { value: c } => concat(base, [extdeps.languages.yaml.types.kv(key: "cancel-in-progress", value: cancel_in_progress_yaml(spec: c))])
   }
-  yaml_mapping(entries: with_cancel)
+  extdeps.languages.yaml.types.yaml_mapping(entries: with_cancel)
 }
 
 fn concurrency_yaml(spec: extdeps.github.actions.ConcurrencySpec) -> extdeps.languages.yaml.types.YamlValue {
   match spec {
-    ConcurrencyScalar { group: g } => yaml_string(s: g)
-    ConcurrencyMappingQueueMax { group: g, cancel_in_progress: cip } =>
+    extdeps.github.actions.ConcurrencyScalar { group: g } => extdeps.languages.yaml.types.yaml_string(s: g)
+    extdeps.github.actions.ConcurrencyMappingQueueMax { group: g, cancel_in_progress: cip } =>
       concurrency_mapping_queue_max(group: g, cip: cip)
-    ConcurrencyMappingQueueNotMax { group: g, cancel_in_progress: cip, explicit_single: _ } =>
+    extdeps.github.actions.ConcurrencyMappingQueueNotMax { group: g, cancel_in_progress: cip, explicit_single: _ } =>
       concurrency_mapping_with_cancel(group: g, cip: cip)
   }
 }
 
 fn runner_label_string(label: extdeps.github.actions.RunnerLabel) -> String {
   match label {
-    UbuntuLatest => "ubuntu-latest"
+    extdeps.github.actions.UbuntuLatest => "ubuntu-latest"
     Ubuntu2404 => "ubuntu-24.04"
     Ubuntu2404Arm => "ubuntu-24.04-arm"
     Ubuntu2204 => "ubuntu-22.04"
@@ -225,9 +225,9 @@ fn runner_label_string(label: extdeps.github.actions.RunnerLabel) -> String {
 
 fn runner_yaml(spec: extdeps.github.actions.RunnerSpec) -> extdeps.languages.yaml.types.YamlValue {
   match spec {
-    HostedRunner { label: l } => yaml_string(s: runner_label_string(label: l))
-    SelfHosted { labels: ls } => string_list_flow(items: ls)
-    RunsOnExpression { expression: e } => yaml_string(s: e)
+    extdeps.github.actions.HostedRunner { label: l } => extdeps.languages.yaml.types.yaml_string(s: runner_label_string(label: l))
+    extdeps.github.actions.SelfHosted { labels: ls } => string_list_flow(items: ls)
+    extdeps.github.actions.RunsOnExpression { expression: e } => extdeps.languages.yaml.types.yaml_string(s: e)
   }
 }
 
@@ -245,41 +245,41 @@ fn yaml_key_values(entries: List<extdeps.languages.yaml.types.YamlKeyValue>?) ->
 fn optional_kv_mapping(entries: List<extdeps.languages.yaml.types.YamlKeyValue>?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match entries {
     Absent => []
-    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "with", value: yaml_mapping(entries: es))] }
+    Present { value: es } => if es.length() == 0 { [] } else { [extdeps.languages.yaml.types.kv(key: "with", value: extdeps.languages.yaml.types.yaml_mapping(entries: es))] }
   }
 }
 
 fn optional_env_mapping(entries: List<extdeps.languages.yaml.types.YamlKeyValue>?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match entries {
     Absent => []
-    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "env", value: yaml_mapping(entries: es))] }
+    Present { value: es } => if es.length() == 0 { [] } else { [extdeps.languages.yaml.types.kv(key: "env", value: extdeps.languages.yaml.types.yaml_mapping(entries: es))] }
   }
 }
 
 fn optional_string_kv(key: String, value: String?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match value {
     Absent => []
-    Present { value: s } => [kv(key: key, value: yaml_string(s: s))]
+    Present { value: s } => [extdeps.languages.yaml.types.kv(key: key, value: extdeps.languages.yaml.types.yaml_string(s: s))]
   }
 }
 
 fn optional_int_kv(key: String, value: Int?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match value {
     Absent => []
-    Present { value: n } => [kv(key: key, value: yaml_int(n: n))]
+    Present { value: n } => [extdeps.languages.yaml.types.kv(key: key, value: extdeps.languages.yaml.types.yaml_int(n: n))]
   }
 }
 
 fn optional_bool_kv(key: String, value: Bool?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match value {
     Absent => []
-    Present { value: b } => if b { [kv(key: key, value: yaml_bool(b: true))] } else { [] }
+    Present { value: b } => if b { [extdeps.languages.yaml.types.kv(key: key, value: extdeps.languages.yaml.types.yaml_bool(b: true))] } else { [] }
   }
 }
 
 fn shell_type_string(shell: extdeps.github.actions.ShellType) -> String {
   match shell {
-    Bash => "bash"
+    extdeps.github.actions.Bash => "bash"
     Sh => "sh"
     Pwsh => "pwsh"
     Python => "python"
@@ -290,17 +290,17 @@ fn shell_type_string(shell: extdeps.github.actions.ShellType) -> String {
 fn optional_shell_kv(shell: extdeps.github.actions.ShellType?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match shell {
     Absent => []
-    Present { value: s } => [kv(key: "shell", value: yaml_string(s: shell_type_string(shell: s)))]
+    Present { value: s } => [extdeps.languages.yaml.types.kv(key: "shell", value: extdeps.languages.yaml.types.yaml_string(s: shell_type_string(shell: s)))]
   }
 }
 
 fn run_step_yaml(n: String?, i: String?, r: String, sh: extdeps.github.actions.ShellType?, e: List<extdeps.languages.yaml.types.YamlKeyValue>?, wd: String?, ic: String?, coe: Bool?, tm: Int?) -> extdeps.languages.yaml.types.YamlValue {
-  yaml_mapping(entries: concat(
+  extdeps.languages.yaml.types.yaml_mapping(entries: concat(
     optional_string_kv(key: "name", value: n),
     concat(
       optional_string_kv(key: "id", value: i),
       concat(
-        [kv(key: "run", value: yaml_string(s: r))],
+        [extdeps.languages.yaml.types.kv(key: "run", value: extdeps.languages.yaml.types.yaml_string(s: r))],
         concat(
           optional_shell_kv(shell: sh),
           concat(
@@ -323,12 +323,12 @@ fn run_step_yaml(n: String?, i: String?, r: String, sh: extdeps.github.actions.S
 }
 
 fn uses_step_yaml(n: String?, i: String?, u: extdeps.github.actions.ActionRef, w: List<extdeps.languages.yaml.types.YamlKeyValue>?, e: List<extdeps.languages.yaml.types.YamlKeyValue>?, ic: String?, coe: Bool?, tm: Int?) -> extdeps.languages.yaml.types.YamlValue {
-  yaml_mapping(entries: concat(
+  extdeps.languages.yaml.types.yaml_mapping(entries: concat(
     optional_string_kv(key: "name", value: n),
     concat(
       optional_string_kv(key: "id", value: i),
       concat(
-        [kv(key: "uses", value: yaml_string(s: action_ref_uses(ref: u)))],
+        [extdeps.languages.yaml.types.kv(key: "uses", value: extdeps.languages.yaml.types.yaml_string(s: action_ref_uses(ref: u)))],
         concat(
           optional_kv_mapping(entries: w),
           concat(
@@ -349,29 +349,29 @@ fn uses_step_yaml(n: String?, i: String?, u: extdeps.github.actions.ActionRef, w
 
 fn step_yaml(step: extdeps.github.actions.Step) -> extdeps.languages.yaml.types.YamlValue {
   match step {
-    RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: wd, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
+    extdeps.github.actions.RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: wd, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
       run_step_yaml(n: n, i: i, r: r, sh: sh, e: e, wd: wd, ic: ic, coe: coe, tm: tm)
-    UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
+    extdeps.github.actions.UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
       uses_step_yaml(n: n, i: i, u: u, w: w, e: e, ic: ic, coe: coe, tm: tm)
   }
 }
 
 fn steps_yaml(steps: List<extdeps.github.actions.Step>) -> extdeps.languages.yaml.types.YamlValue {
-  yaml_sequence(elements: fold(steps, init: empty_yaml_values, f: (acc, s) => concat(acc, [step_yaml(step: s)])))
+  extdeps.languages.yaml.types.yaml_sequence(elements: fold(steps, init: extdeps.languages.yaml.types.empty_yaml_values, f: (acc, s) => concat(acc, [step_yaml(step: s)])))
 }
 
 fn optional_string_list_kv(key: String, items: List<String>) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   if items.length() == 0 {
     []
   } else {
-    [kv(key: key, value: string_list_flow(items: items))]
+    [extdeps.languages.yaml.types.kv(key: key, value: string_list_flow(items: items))]
   }
 }
 
 fn optional_job_permissions_kv(perms: extdeps.github.actions.WorkflowPermissions?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match perms {
     Absent => []
-    Present { value: p } => [kv(key: "permissions", value: workflow_permissions_yaml(perms: p))]
+    Present { value: p } => [extdeps.languages.yaml.types.kv(key: "permissions", value: workflow_permissions_yaml(perms: p))]
   }
 }
 
@@ -380,22 +380,22 @@ data job_field_projection_completeness_note: String = "job_yaml projected SEVEN 
 fn optional_job_concurrency_kv(spec: extdeps.github.actions.ConcurrencySpec?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match spec {
     Absent => []
-    Present { value: c } => [kv(key: "concurrency", value: concurrency_yaml(spec: c))]
+    Present { value: c } => [extdeps.languages.yaml.types.kv(key: "concurrency", value: concurrency_yaml(spec: c))]
   }
 }
 
 fn optional_job_outputs_kv(entries: List<extdeps.languages.yaml.types.YamlKeyValue>?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match entries {
     Absent => []
-    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "outputs", value: yaml_mapping(entries: es))] }
+    Present { value: es } => if es.length() == 0 { [] } else { [extdeps.languages.yaml.types.kv(key: "outputs", value: extdeps.languages.yaml.types.yaml_mapping(entries: es))] }
   }
 }
 
 fn job_yaml(job: extdeps.github.actions.Job) -> extdeps.languages.yaml.types.YamlValue {
-  yaml_mapping(entries: concat(
+  extdeps.languages.yaml.types.yaml_mapping(entries: concat(
     optional_string_kv(key: "name", value: job.name),
     concat(
-      [kv(key: "runs-on", value: runner_yaml(spec: job.runner))],
+      [extdeps.languages.yaml.types.kv(key: "runs-on", value: runner_yaml(spec: job.runner))],
       concat(
         optional_string_list_kv(key: "needs", items: job.needs),
         concat(
@@ -409,7 +409,7 @@ fn job_yaml(job: extdeps.github.actions.Job) -> extdeps.languages.yaml.types.Yam
                 concat(
                   optional_job_outputs_kv(entries: job.outputs),
                   concat(
-                    [kv(key: "steps", value: steps_yaml(steps: job.steps))],
+                    [extdeps.languages.yaml.types.kv(key: "steps", value: steps_yaml(steps: job.steps))],
                     concat(
                       optional_env_mapping(entries: job.env),
                       optional_bool_kv(key: "continue-on-error", value: job.continue_on_error)
@@ -426,34 +426,34 @@ fn job_yaml(job: extdeps.github.actions.Job) -> extdeps.languages.yaml.types.Yam
 }
 
 fn jobs_yaml(jobs: List<extdeps.github.actions.Job>) -> extdeps.languages.yaml.types.YamlValue {
-  yaml_mapping(entries: fold(jobs, init: [], f: (acc, j) => concat(acc, [kv(key: j.id, value: job_yaml(job: j))])))
+  extdeps.languages.yaml.types.yaml_mapping(entries: fold(jobs, init: [], f: (acc, j) => concat(acc, [extdeps.languages.yaml.types.kv(key: j.id, value: job_yaml(job: j))])))
 }
 
 fn optional_env_top(entries: List<extdeps.languages.yaml.types.YamlKeyValue>?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match entries {
     Absent => []
-    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "env", value: yaml_mapping(entries: es))] }
+    Present { value: es } => if es.length() == 0 { [] } else { [extdeps.languages.yaml.types.kv(key: "env", value: extdeps.languages.yaml.types.yaml_mapping(entries: es))] }
   }
 }
 
 fn project_workflow_to_yaml(workflow: extdeps.github.actions.Workflow) -> extdeps.languages.yaml.types.YamlValue {
-  yaml_mapping(entries: concat(
-    [kv(key: "name", value: yaml_string(s: workflow.name))],
+  extdeps.languages.yaml.types.yaml_mapping(entries: concat(
+    [extdeps.languages.yaml.types.kv(key: "name", value: extdeps.languages.yaml.types.yaml_string(s: workflow.name))],
     concat(
-      [kv(key: "on", value: workflow_triggers_yaml(triggers: workflow.on))],
+      [extdeps.languages.yaml.types.kv(key: "on", value: workflow_triggers_yaml(triggers: workflow.on))],
       concat(
         match workflow.permissions {
           Absent => []
-          Present { value: p } => [kv(key: "permissions", value: workflow_permissions_yaml(perms: p))]
+          Present { value: p } => [extdeps.languages.yaml.types.kv(key: "permissions", value: workflow_permissions_yaml(perms: p))]
         },
         concat(
           match workflow.concurrency {
             Absent => []
-            Present { value: c } => [kv(key: "concurrency", value: concurrency_yaml(spec: c))]
+            Present { value: c } => [extdeps.languages.yaml.types.kv(key: "concurrency", value: concurrency_yaml(spec: c))]
           },
           concat(
             optional_env_top(entries: workflow.env),
-            [kv(key: "jobs", value: jobs_yaml(jobs: workflow.jobs))]
+            [extdeps.languages.yaml.types.kv(key: "jobs", value: jobs_yaml(jobs: workflow.jobs))]
           )
         )
       )

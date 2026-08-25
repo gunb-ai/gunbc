@@ -109,10 +109,10 @@ fn coverage_causes(
   cov: CoverageClaim,
 ) -> List<CutRefusalCause> {
   match cov {
-    CoverageOpen => std.algebra.Cons { head: UncoveredSurvivingConsumer { consumer: consumer }, tail: acc }
+    CoverageOpen => Cons { head: UncoveredSurvivingConsumer { consumer: consumer }, tail: acc }
     Covered { by: authority } =>
       match nes_eq(a: authority, b: old_root_consumer) {
-        true => std.algebra.Cons { head: CoveredByOldRoot { consumer: consumer }, tail: acc }
+        true => Cons { head: CoveredByOldRoot { consumer: consumer }, tail: acc }
         false => acc
       }
   }
@@ -124,14 +124,14 @@ fn consumer_causes(
   c: BoundaryConsumer,
 ) -> List<CutRefusalCause> {
   match c.disposition {
-    Undecided => std.algebra.Cons { head: UndispositionedConsumer { consumer: c.consumer }, tail: acc }
+    Undecided => Cons { head: UndispositionedConsumer { consumer: c.consumer }, tail: acc }
     RetainSameContract { justification: _, coverage: cov } =>
       coverage_causes(acc: acc, consumer: c.consumer, old_root_consumer: old_root_consumer, cov: cov)
     RetainChangedContract { terminal_contract: _, justification: _, coverage: cov } =>
       coverage_causes(acc: acc, consumer: c.consumer, old_root_consumer: old_root_consumer, cov: cov)
     ReplacedByY { new_authority: authority } =>
       match nes_eq(a: authority, b: old_root_consumer) {
-        true => std.algebra.Cons { head: ReplacementNamesOldRoot { consumer: c.consumer }, tail: acc }
+        true => Cons { head: ReplacementNamesOldRoot { consumer: c.consumer }, tail: acc }
         false => acc
       }
     EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => acc
@@ -141,7 +141,7 @@ fn consumer_causes(
 
 fn evidence_causes(acc: List<CutRefusalCause>, e: EvidenceDisposition) -> List<CutRefusalCause> {
   match e {
-    EvidenceUndecided { evidence: w } => std.algebra.Cons { head: UndispositionedEvidence { evidence: w }, tail: acc }
+    EvidenceUndecided { evidence: w } => Cons { head: UndispositionedEvidence { evidence: w }, tail: acc }
     ReenrollAgainstY { evidence: _, surviving_claim: _ } => acc
     ReplaceEvidence { old_evidence: _, new_evidence: _ } => acc
     RetireEvidence { evidence: _, retired_subject: _, retirement_reason: _ } => acc
@@ -170,10 +170,10 @@ fn consumer_duplicate_causes(
       match nes_seen(xs: state.seen, x: c.consumer) {
         true => ConsumerDupState {
           seen: state.seen,
-          causes: std.algebra.Cons { head: ConsumerDuplicated { consumer: c.consumer }, tail: state.causes },
+          causes: Cons { head: ConsumerDuplicated { consumer: c.consumer }, tail: state.causes },
         }
         false => ConsumerDupState {
-          seen: std.algebra.Cons { head: c.consumer, tail: state.seen },
+          seen: Cons { head: c.consumer, tail: state.seen },
           causes: state.causes,
         }
       }
@@ -186,10 +186,10 @@ fn evidence_dup_step(state: ConsumerDupState, key: std.types.NonEmptyStr) -> Con
   match nes_seen(xs: state.seen, x: key) {
     true => ConsumerDupState {
       seen: state.seen,
-      causes: std.algebra.Cons { head: EvidenceDuplicated { evidence: key }, tail: state.causes },
+      causes: Cons { head: EvidenceDuplicated { evidence: key }, tail: state.causes },
     }
     false => ConsumerDupState {
-      seen: std.algebra.Cons { head: key, tail: state.seen },
+      seen: Cons { head: key, tail: state.seen },
       causes: state.causes,
     }
   }
@@ -202,7 +202,7 @@ fn evidence_duplicate_causes(
   let end_state = fold(
     rows,
     init: ConsumerDupState { seen: [], causes: acc },
-    f: fn(state, e) { evidence_dup_step(state: state, key: gunbc.replacement_cut.evidence_key(e: e)) },
+    f: fn(state, e) { evidence_dup_step(state: state, key: evidence_key(e: e)) },
   )
   end_state.causes
 }
@@ -215,17 +215,17 @@ fn region_causes(acc: List<CutRefusalCause>, region: List<std.types.NonEmptyStr>
       match nes_seen(xs: state.seen, x: member) {
         true => ConsumerDupState {
           seen: state.seen,
-          causes: std.algebra.Cons { head: RegionMemberDuplicated { member: member }, tail: state.causes },
+          causes: Cons { head: RegionMemberDuplicated { member: member }, tail: state.causes },
         }
         false => ConsumerDupState {
-          seen: std.algebra.Cons { head: member, tail: state.seen },
+          seen: Cons { head: member, tail: state.seen },
           causes: state.causes,
         }
       }
     },
   )
-  match count_standing(count: list_length(items: region)) {
-    CountZero => std.algebra.Cons { head: EmptyCoveredRegion, tail: dup_state.causes }
+  match count_standing(count: std.types.list_length(items: region)) {
+    CountZero => Cons { head: EmptyCoveredRegion, tail: dup_state.causes }
     CountPositive => dup_state.causes
   }
 }
@@ -251,8 +251,8 @@ fn census_causes(
   match census {
     BoundaryDeclaredEmpty { basis: _ } => acc
     ConsumersEnumerated { consumers: rows } =>
-      match count_standing(count: list_length(items: rows)) {
-        CountZero => std.algebra.Cons { head: EnumeratedCensusEmpty, tail: acc }
+      match count_standing(count: std.types.list_length(items: rows)) {
+        CountZero => Cons { head: EnumeratedCensusEmpty, tail: acc }
         CountPositive => enumerated_consumer_causes(acc: acc, old_root_consumer: old_root_consumer, rows: rows)
       }
   }
@@ -262,8 +262,8 @@ fn external_x_causes(acc: List<CutRefusalCause>, x: ExternalXAnswer) -> List<Cut
   match x {
     NoExternalOracleRequired { justification: _ } => acc
     ExternalXRoles { roles: rs } =>
-      match count_standing(count: list_length(items: rs)) {
-        CountZero => std.algebra.Cons { head: ExternalRolesEnumeratedEmpty, tail: acc }
+      match count_standing(count: std.types.list_length(items: rs)) {
+        CountZero => Cons { head: ExternalRolesEnumeratedEmpty, tail: acc }
         CountPositive => acc
       }
   }
@@ -271,19 +271,19 @@ fn external_x_causes(acc: List<CutRefusalCause>, x: ExternalXAnswer) -> List<Cut
 
 fn root_identity_causes(acc: List<CutRefusalCause>, cut: ReplacementCut) -> List<CutRefusalCause> {
   let after_root = match nes_eq(a: cut.new_root, b: cut.old_root_consumer) {
-    true => std.algebra.Cons { head: NewRootEqualsOldRoot, tail: acc }
+    true => Cons { head: NewRootEqualsOldRoot, tail: acc }
     false => acc
   }
   match cut.why_not_higher {
     OutermostBoundary => after_root
     DescendedFromRefusedCut { parent_cut: parent, refusal_summary: _ } =>
       match nes_eq(a: parent as std.types.NonEmptyStr, b: cut.identity as std.types.NonEmptyStr) {
-        true => std.algebra.Cons { head: SelfReferentialDescent, tail: after_root }
+        true => Cons { head: SelfReferentialDescent, tail: after_root }
         false => after_root
       }
     DescentParentUnauthored { intended_parent_boundary: boundary, basis: _ } =>
       match nes_eq(a: boundary, b: cut.old_root_consumer) {
-        true => std.algebra.Cons { head: SelfReferentialDescent, tail: after_root }
+        true => Cons { head: SelfReferentialDescent, tail: after_root }
         false => after_root
       }
   }
@@ -328,24 +328,24 @@ fn count_dispositions(consumers: List<BoundaryConsumer>) -> DispositionCounts {
 }
 
 fn nes_digest(value: std.types.NonEmptyStr) -> std.content_hash.Fnv1a64Structural {
-  content_hash_atom(value: value)
+  std.content_hash.content_hash_atom(value: value)
 }
 
 fn tag_digest(tag: std.types.NonEmptyStr) -> std.content_hash.Fnv1a64Structural {
-  content_hash_atom(value: tag)
+  std.content_hash.content_hash_atom(value: tag)
 }
 
 fn nes_list_digest(tag: std.types.NonEmptyStr, items: List<std.types.NonEmptyStr>) -> std.content_hash.Fnv1a64Structural {
   fold(
     items,
     init: tag_digest(tag: tag),
-    f: fn(acc, item) { content_hash_combine_structural(left: acc, right: nes_digest(value: item)) },
+    f: fn(acc, item) { std.content_hash.content_hash_combine_structural(left: acc, right: nes_digest(value: item)) },
   )
 }
 
 fn coverage_digest(cov: CoverageClaim) -> std.content_hash.Fnv1a64Structural {
   match cov {
-    Covered { by: authority } => content_hash_tagged_structural(tag: "covered" as std.types.NonEmptyStr, payload: nes_digest(value: authority))
+    Covered { by: authority } => std.content_hash.content_hash_tagged_structural(tag: "covered" as std.types.NonEmptyStr, payload: nes_digest(value: authority))
     CoverageOpen => tag_digest(tag: "coverage-open" as std.types.NonEmptyStr)
   }
 }
@@ -353,27 +353,27 @@ fn coverage_digest(cov: CoverageClaim) -> std.content_hash.Fnv1a64Structural {
 fn disposition_digest(d: ConsumerDisposition) -> std.content_hash.Fnv1a64Structural {
   match d {
     RetainSameContract { justification: j, coverage: cov } =>
-      content_hash_tagged_structural(
+      std.content_hash.content_hash_tagged_structural(
         tag: "retain-same" as std.types.NonEmptyStr,
-        payload: content_hash_combine_structural(left: nes_digest(value: j), right: coverage_digest(cov: cov)),
+        payload: std.content_hash.content_hash_combine_structural(left: nes_digest(value: j), right: coverage_digest(cov: cov)),
       )
     RetainChangedContract { terminal_contract: t, justification: j, coverage: cov } =>
-      content_hash_tagged_structural(
+      std.content_hash.content_hash_tagged_structural(
         tag: "retain-changed" as std.types.NonEmptyStr,
-        payload: content_hash_combine_structural(
-          left: content_hash_combine_structural(left: nes_digest(value: t), right: nes_digest(value: j)),
+        payload: std.content_hash.content_hash_combine_structural(
+          left: std.content_hash.content_hash_combine_structural(left: nes_digest(value: t), right: nes_digest(value: j)),
           right: coverage_digest(cov: cov),
         ),
       )
     ReplacedByY { new_authority: a } =>
-      content_hash_tagged_structural(tag: "replaced-by-y" as std.types.NonEmptyStr, payload: nes_digest(value: a))
+      std.content_hash.content_hash_tagged_structural(tag: "replaced-by-y" as std.types.NonEmptyStr, payload: nes_digest(value: a))
     EvidenceOnly { surviving_claim: sc, reenrolled_witness: w } =>
-      content_hash_tagged_structural(
+      std.content_hash.content_hash_tagged_structural(
         tag: "evidence-only" as std.types.NonEmptyStr,
-        payload: content_hash_combine_structural(left: nes_digest(value: sc), right: nes_digest(value: w)),
+        payload: std.content_hash.content_hash_combine_structural(left: nes_digest(value: sc), right: nes_digest(value: w)),
       )
     Retire { reason: r } =>
-      content_hash_tagged_structural(tag: "retire" as std.types.NonEmptyStr, payload: nes_digest(value: r))
+      std.content_hash.content_hash_tagged_structural(tag: "retire" as std.types.NonEmptyStr, payload: nes_digest(value: r))
     Undecided => tag_digest(tag: "undecided" as std.types.NonEmptyStr)
   }
 }
@@ -381,15 +381,15 @@ fn disposition_digest(d: ConsumerDisposition) -> std.content_hash.Fnv1a64Structu
 fn census_digest(census: BoundaryCensus) -> std.content_hash.Fnv1a64Structural {
   match census {
     BoundaryDeclaredEmpty { basis: b } =>
-      content_hash_tagged_structural(tag: "boundary-declared-empty" as std.types.NonEmptyStr, payload: nes_digest(value: b))
+      std.content_hash.content_hash_tagged_structural(tag: "boundary-declared-empty" as std.types.NonEmptyStr, payload: nes_digest(value: b))
     ConsumersEnumerated { consumers: rows } =>
       fold(
         rows,
         init: tag_digest(tag: "consumers-enumerated" as std.types.NonEmptyStr),
         f: fn(acc, c) {
-          content_hash_combine_structural(
+          std.content_hash.content_hash_combine_structural(
             left: acc,
-            right: content_hash_combine_structural(left: nes_digest(value: c.consumer), right: disposition_digest(d: c.disposition)),
+            right: std.content_hash.content_hash_combine_structural(left: nes_digest(value: c.consumer), right: disposition_digest(d: c.disposition)),
           )
         },
       )
@@ -399,25 +399,25 @@ fn census_digest(census: BoundaryCensus) -> std.content_hash.Fnv1a64Structural {
 fn evidence_row_digest(e: EvidenceDisposition) -> std.content_hash.Fnv1a64Structural {
   match e {
     ReenrollAgainstY { evidence: w, surviving_claim: sc } =>
-      content_hash_tagged_structural(
+      std.content_hash.content_hash_tagged_structural(
         tag: "reenroll" as std.types.NonEmptyStr,
-        payload: content_hash_combine_structural(left: nes_digest(value: w), right: nes_digest(value: sc)),
+        payload: std.content_hash.content_hash_combine_structural(left: nes_digest(value: w), right: nes_digest(value: sc)),
       )
     ReplaceEvidence { old_evidence: o, new_evidence: n } =>
-      content_hash_tagged_structural(
+      std.content_hash.content_hash_tagged_structural(
         tag: "replace-evidence" as std.types.NonEmptyStr,
-        payload: content_hash_combine_structural(left: nes_digest(value: o), right: nes_digest(value: n)),
+        payload: std.content_hash.content_hash_combine_structural(left: nes_digest(value: o), right: nes_digest(value: n)),
       )
     RetireEvidence { evidence: w, retired_subject: s, retirement_reason: r } =>
-      content_hash_tagged_structural(
+      std.content_hash.content_hash_tagged_structural(
         tag: "retire-evidence" as std.types.NonEmptyStr,
-        payload: content_hash_combine_structural(
-          left: content_hash_combine_structural(left: nes_digest(value: w), right: nes_digest(value: s)),
+        payload: std.content_hash.content_hash_combine_structural(
+          left: std.content_hash.content_hash_combine_structural(left: nes_digest(value: w), right: nes_digest(value: s)),
           right: nes_digest(value: r),
         ),
       )
     EvidenceUndecided { evidence: w } =>
-      content_hash_tagged_structural(tag: "evidence-undecided" as std.types.NonEmptyStr, payload: nes_digest(value: w))
+      std.content_hash.content_hash_tagged_structural(tag: "evidence-undecided" as std.types.NonEmptyStr, payload: nes_digest(value: w))
   }
 }
 
@@ -425,14 +425,14 @@ fn higher_boundary_digest(h: HigherBoundaryAnswer) -> std.content_hash.Fnv1a64St
   match h {
     OutermostBoundary => tag_digest(tag: "outermost" as std.types.NonEmptyStr)
     DescendedFromRefusedCut { parent_cut: parent, refusal_summary: r } =>
-      content_hash_tagged_structural(
+      std.content_hash.content_hash_tagged_structural(
         tag: "descended" as std.types.NonEmptyStr,
-        payload: content_hash_combine_structural(left: nes_digest(value: parent as std.types.NonEmptyStr), right: nes_digest(value: r)),
+        payload: std.content_hash.content_hash_combine_structural(left: nes_digest(value: parent as std.types.NonEmptyStr), right: nes_digest(value: r)),
       )
     DescentParentUnauthored { intended_parent_boundary: boundary, basis: b } =>
-      content_hash_tagged_structural(
+      std.content_hash.content_hash_tagged_structural(
         tag: "descent-parent-unauthored" as std.types.NonEmptyStr,
-        payload: content_hash_combine_structural(left: nes_digest(value: boundary), right: nes_digest(value: b)),
+        payload: std.content_hash.content_hash_combine_structural(left: nes_digest(value: boundary), right: nes_digest(value: b)),
       )
   }
 }
@@ -449,40 +449,40 @@ fn external_x_role_digest(r: ExternalXRole) -> std.content_hash.Fnv1a64Structura
 fn external_x_digest(a: ExternalXAnswer) -> std.content_hash.Fnv1a64Structural {
   match a {
     NoExternalOracleRequired { justification: j } =>
-      content_hash_tagged_structural(tag: "no-external-oracle" as std.types.NonEmptyStr, payload: nes_digest(value: j))
+      std.content_hash.content_hash_tagged_structural(tag: "no-external-oracle" as std.types.NonEmptyStr, payload: nes_digest(value: j))
     ExternalXRoles { roles: rs } =>
       fold(
         rs,
         init: tag_digest(tag: "external-x-roles" as std.types.NonEmptyStr),
-        f: fn(acc, r) { content_hash_combine_structural(left: acc, right: external_x_role_digest(r: r)) },
+        f: fn(acc, r) { std.content_hash.content_hash_combine_structural(left: acc, right: external_x_role_digest(r: r)) },
       )
   }
 }
 
 fn replacement_cut_plan_digest(cut: ReplacementCut) -> std.content_hash.Fnv1a64Structural {
-  let identity_part = content_hash_combine_structural(
+  let identity_part = std.content_hash.content_hash_combine_structural(
     left: nes_digest(value: cut.identity as std.types.NonEmptyStr),
     right: nes_digest(value: cut.old_root_consumer),
   )
-  let contract_part = content_hash_combine_structural(
+  let contract_part = std.content_hash.content_hash_combine_structural(
     left: nes_digest(value: cut.subject),
-    right: content_hash_combine_structural(left: nes_digest(value: cut.contract), right: nes_digest(value: cut.new_root)),
+    right: std.content_hash.content_hash_combine_structural(left: nes_digest(value: cut.contract), right: nes_digest(value: cut.new_root)),
   )
-  let structure_part = content_hash_combine_structural(
+  let structure_part = std.content_hash.content_hash_combine_structural(
     left: higher_boundary_digest(h: cut.why_not_higher),
     right: nes_list_digest(tag: "covered-region" as std.types.NonEmptyStr, items: cut.covered_region),
   )
-  let population_part = content_hash_combine_structural(
+  let population_part = std.content_hash.content_hash_combine_structural(
     left: census_digest(census: cut.boundary_census),
     right: fold(
       cut.evidence_dispositions,
       init: external_x_digest(a: cut.external_x),
-      f: fn(acc, e) { content_hash_combine_structural(left: acc, right: evidence_row_digest(e: e)) },
+      f: fn(acc, e) { std.content_hash.content_hash_combine_structural(left: acc, right: evidence_row_digest(e: e)) },
     ),
   )
-  content_hash_combine_structural(
-    left: content_hash_combine_structural(left: identity_part, right: contract_part),
-    right: content_hash_combine_structural(left: structure_part, right: population_part),
+  std.content_hash.content_hash_combine_structural(
+    left: std.content_hash.content_hash_combine_structural(left: identity_part, right: contract_part),
+    right: std.content_hash.content_hash_combine_structural(left: structure_part, right: population_part),
   )
 }
 
@@ -498,7 +498,7 @@ fn mint_admitted(cut: ReplacementCut, counts: DispositionCounts) -> PlanAdmissio
       replaced_count: counts.replaced,
       evidence_only_count: counts.evidence_only,
       retired_count: counts.retired,
-      covered_region_count: list_length(items: cut.covered_region),
+      covered_region_count: std.types.list_length(items: cut.covered_region),
     },
   }
 
@@ -513,7 +513,7 @@ fn admit_replacement_cut_plan(cut: ReplacementCut) -> PlanAdmission {
   )
   let evidence_acc = evidence_duplicate_causes(acc: evidence_disposition_acc, rows: cut.evidence_dispositions)
   let all_causes = region_causes(acc: evidence_acc, region: cut.covered_region)
-  match count_standing(count: list_length(items: all_causes)) {
+  match count_standing(count: std.types.list_length(items: all_causes)) {
     CountZero => mint_admitted(cut: cut, counts: count_dispositions(consumers: census_consumers(census: cut.boundary_census)))
     CountPositive => PlanRefused { causes: all_causes }
   }
@@ -521,5 +521,5 @@ fn admit_replacement_cut_plan(cut: ReplacementCut) -> PlanAdmission {
 
 fn admitted_matches_plan(admitted: AdmittedReplacementCutPlan, cut: ReplacementCut) -> Bool {
   nes_eq(a: admitted.cut_identity as std.types.NonEmptyStr, b: cut.identity as std.types.NonEmptyStr)
-    && content_hash_eq_structural(left: admitted.criteria_digest, right: replacement_cut_plan_digest(cut: cut))
+    && std.content_hash.content_hash_eq_structural(left: admitted.criteria_digest, right: replacement_cut_plan_digest(cut: cut))
 }

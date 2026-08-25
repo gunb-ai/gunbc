@@ -5,7 +5,7 @@ data gunbc_srv3_os_install_actuate_scope_boundary: std.disposition.Disposition =
   reason: "prefix:os-install-actuated boundary — actuator prep (stock ISO fetch, seeded-ISO remaster, derived actuator host, NBD serve/boot-once/SOL capture runnable entrypoints) + operator runbook ONLY; NOT srv3 OS install solved. Legacy solver plan (srv3_os_install_plan, NoCloudNet) seed gap stays fail-closed; actuator prep binds srv3_seeded_os_install_plan + srv3_actuator_virtual_media_iso_install_path (NoCloudLocal on-ISO). BMC runtime login resolves intent vs observed credential phase (gunbc.srv3_bmc_credential_resolve); destructive boot-once gated by workflow escalation (gunbc.srv3_os_install_actuate_workflow)."
 }
 
-data srv3_actuator_virtual_media_iso_install_path: std.types.NonEmptyStr = srv3_seeded_ubuntu_install_media_install_path
+data srv3_actuator_virtual_media_iso_install_path: std.types.NonEmptyStr = gunbc.srv3_seeded_install_media_artifact.srv3_seeded_ubuntu_install_media_install_path
 
 type AutoinstallSeedDeliveryRefusal {
   install_server_count: Int
@@ -14,31 +14,31 @@ type AutoinstallSeedDeliveryRefusal {
 }
 
 fn srv3_autoinstall_seed_delivery_refusal() -> AutoinstallSeedDeliveryRefusal? {
-  match srv3_install_mechanism_solution {
-    OsInstallMechanismRefused { cause: _ } => none
-    OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall } =>
+  match gunbc.os_install_mechanism.srv3_install_mechanism_solution {
+    gunbc.os_install_mechanism.OsInstallMechanismRefused { cause: _ } => none
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: gunbc.os_install_mechanism.NbdProxyVirtualMediaInstall } =>
       if fleet_install_server_specs.length() == 0 {
-        match srv3_os_install_plan_standing {
-          OsInstallPlanRefused { cause: _ } => none
-          OsInstallPlanReady { plan: p } =>
-        match srv3_os_install_plan_autoinstall(plan: p).delivery {
-          NoCloudNet { seed_url: url } =>
+        match gunbc.os_install.srv3_os_install_plan_standing {
+          gunbc.os_install.OsInstallPlanRefused { cause: _ } => none
+          gunbc.os_install.OsInstallPlanReady { plan: p } =>
+        match gunbc.os_install.srv3_os_install_plan_autoinstall(plan: p).delivery {
+          extdeps.os.ubuntu_autoinstall.NoCloudNet { seed_url: url } =>
             Present {
               value: AutoinstallSeedDeliveryRefusal {
                 install_server_count: fleet_install_server_specs.length(),
-                seed_url: uri_wire(uri: url),
+                seed_url: extdeps.uri.uri_wire(uri: url),
                 refusal: "fail-closed: NoCloudNet autoinstall seed unreachable on NbdProxyVirtualMediaInstall path — fleet_install_server_specs empty; stock ISO may boot interactive installer or hang waiting for network seed; prefix:os-install-actuated does NOT solve seed delivery" as std.types.NonEmptyStr,
               }
             }
-          NoCloudLocal => none
+          extdeps.os.ubuntu_autoinstall.NoCloudLocal => none
         }
         }
       } else {
         none
       }
-    OsInstallMechanismSelected { mechanism: VirtualMediaInstall } => none
-    OsInstallMechanismSelected { mechanism: PxeHttpInstall } => none
-    OsInstallMechanismSelected { mechanism: FirmwareUpdateThenVirtualMedia } => none
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: gunbc.os_install_mechanism.VirtualMediaInstall } => none
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: gunbc.os_install_mechanism.PxeHttpInstall } => none
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: gunbc.os_install_mechanism.FirmwareUpdateThenVirtualMedia } => none
   }
 }
 
@@ -60,44 +60,44 @@ fn srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses() -> Bool {
 // NoCloudLocal delivery this used to assert is not readable off a plan that does
 // not exist, and reading it anyway is the substitution this lane keeps finding.
 fn srv3_seeded_plan_refuses_with_the_solve() -> Bool {
-  match srv3_seeded_os_install_plan_standing {
-    OsInstallPlanRefused { cause: _ } => true
-    OsInstallPlanReady { plan: _ } => false
+  match gunbc.os_install.srv3_seeded_os_install_plan_standing {
+    gunbc.os_install.OsInstallPlanRefused { cause: _ } => true
+    gunbc.os_install.OsInstallPlanReady { plan: _ } => false
   }
 }
 
 data srv3_os_install_actuate_credential_source_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.roadmap_authority",
     decl_name: "roadmap_document",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 data srv3_os_install_actuate_credential_debt_marker: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.srv3_bmc_credential_resolve",
     decl_name: "resolve_bmc_credential",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 fn srv3_os_install_actuate_credential_resolution_is_wired() -> Bool {
   match srv3_os_install_actuate_credential_debt_marker {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
 fn srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref() -> Bool {
-  gunbc.assimilate.bmc_wif_delegation_chain.bmc_srv3_admin_secret_ref.secret == (bmc_srv3_secret_name as std.types.NonEmptyStr)
+  bmc_srv3_admin_secret_ref.secret == (gunbc.assimilate.bmc_token_federation.bmc_srv3_secret_name as std.types.NonEmptyStr)
 }
 
 
 fn srv3_actuator_prep_binds_seeded_iso_path() -> Bool {
-  srv3_actuator_virtual_media_iso_install_path == srv3_seeded_ubuntu_install_media_install_path
+  srv3_actuator_virtual_media_iso_install_path == gunbc.srv3_seeded_install_media_artifact.srv3_seeded_ubuntu_install_media_install_path
     && string_contains(
       s: srv3_actuator_virtual_media_iso_install_path as String,
       pattern: "srv3-seeded.iso",

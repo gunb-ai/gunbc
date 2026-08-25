@@ -1,29 +1,29 @@
 module test.claim.instrument_sandbox_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data instrument_sandbox_witness_note: String = "RESHAPED AROUND THE PRODUCTION JOINS, because the first set proved less than it claimed (review finding, 2026-08-05). Three of its claims were substring theatre: the role witness searched the page for the words focal / supporting / ground / critical, which any page mentioning salience contains whether or not a single role was derived; the theme-block helper checked that one variable existed somewhere and that three selectors existed somewhere, never that the variable appeared INSIDE each block; and the press witness equated one translateY rule with a realized CRT glitch. Worst of all, nothing tested the property that turned out to be broken — that a REFUSED audition cannot paint."
 
 data mechanism_half_note: String = "THE MECHANISM HALF, and the split is measured rather than aesthetic. Every claim below is a property of the register's own gates — which role the projection derives, whether emission is granted, whether a refused role can paint, whether the emission variable lands inside each theme block — and each measured 0-2ms by execution (claim_batch attribution, 2026-08-05). None of them renders the served page or reads the live program view, which is why they are cheap and why they belong per-PR: the 2026-08-04 admission ruling holds that the mechanism half of a live-population subject is NEVER the part that gets deferred. The page-rendering and live-view claims measured 5074ms thread-CPU together, exceeded the fast-lane budget, and moved to dag/test/claim/long/instrument_sandbox_live_witness_test.dag with a declared ceiling and a named executing consumer — not deleted, and not left in a directory that quietly removes them from discovery. Read that file's header for the cost attribution and the dissolve-on that brings these back together."
 
 fn emission_var_ref(i: gunbc.design.instrument_audition.AuditionIntensity) -> String {
-  concat("--", concat(audition_emission_var(i: i), ":"))
+  concat("--", concat(gunbc.roadmap_instrument_sandbox.audition_emission_var(i: i), ":"))
 }
 
 fn emission_is_none_for(role: gunbc.design.salience.SalienceRole, i: gunbc.design.instrument_audition.AuditionIntensity) -> Bool {
   string_contains(
-    s: instrument_emission_root_css_for(role: role),
+    s: gunbc.roadmap_instrument_sandbox.instrument_emission_root_css_for(role: role),
     pattern: concat(emission_var_ref(i: i), " none"),
   )
 }
 
 fn admission_grants(role: gunbc.design.salience.SalienceRole, i: gunbc.design.instrument_audition.AuditionIntensity) -> Bool {
-  match admit_audition(i: i, role: role, subject_key: audition_subject_key()) {
-    AuditionAdmitted { intensity, emission, attraction, displacement_px } => true
-    AuditionEmissionRefused { intensity, grant } => false
-    AuditionAttractionOutsideEnvelope { intensity } => false
-    AuditionDisplacementOverBudget { intensity, total_px, max_px } => false
+  match gunbc.design.instrument_audition.admit_audition(i: i, role: role, subject_key: gunbc.roadmap_instrument_sandbox.audition_subject_key()) {
+    gunbc.design.instrument_audition.AuditionAdmitted { intensity, emission, attraction, displacement_px } => true
+    gunbc.design.instrument_audition.AuditionEmissionRefused { intensity, grant } => false
+    gunbc.design.instrument_audition.AuditionAttractionOutsideEnvelope { intensity } => false
+    gunbc.design.instrument_audition.AuditionDisplacementOverBudget { intensity, total_px, max_px } => false
   }
 }
 
@@ -37,39 +37,39 @@ fn first_segment(s: String, marker: String) -> String {
 
 // The load-bearing claim: the role the audition is admitted at is the one the projection derived for the selected subject, not a literal.
 fn witness_the_served_role_is_the_derived_one() -> Bool {
-  salience_key(role: audition_subject_role()) == salience_key(role: SalienceFocal)
-    && audition_subject_key() == "compiler-fixed-point"
+  gunbc.design.salience.salience_key(role: gunbc.roadmap_instrument_sandbox.audition_subject_role()) == gunbc.design.salience.salience_key(role: gunbc.design.salience.SalienceFocal)
+    && gunbc.roadmap_instrument_sandbox.audition_subject_key() == "compiler-fixed-point"
 }
 
 fn witness_emission_is_present_exactly_when_the_admission_grants_it() -> Bool {
-  let role = audition_subject_role()
-  admission_grants(role: role, i: AuditionExpressive)
-    && admission_grants(role: role, i: AuditionHero)
-    && !emission_is_none_for(role: role, i: AuditionExpressive)
-    && !emission_is_none_for(role: role, i: AuditionHero)
-    && emission_is_none_for(role: role, i: AuditionRestrained)
+  let role = gunbc.roadmap_instrument_sandbox.audition_subject_role()
+  admission_grants(role: role, i: gunbc.design.instrument_audition.AuditionExpressive)
+    && admission_grants(role: role, i: gunbc.design.instrument_audition.AuditionHero)
+    && !emission_is_none_for(role: role, i: gunbc.design.instrument_audition.AuditionExpressive)
+    && !emission_is_none_for(role: role, i: gunbc.design.instrument_audition.AuditionHero)
+    && emission_is_none_for(role: role, i: gunbc.design.instrument_audition.AuditionRestrained)
 }
 
 data refused_cannot_paint_note: String = "THE CONTROL THE FIRST WITNESS SET DID NOT HAVE. Render the same study at a role the register refuses emission for; no emission may appear in the emitted CSS at all. This is the property that was actually broken — the glow painted while the verdict printed refused underneath it — so it is the one claim here whose failure would have caught the original defect."
 
 fn witness_red_a_refused_audition_paints_nothing() -> Bool {
-  !admission_grants(role: SalienceSupporting, i: AuditionHero)
-    && !admission_grants(role: SalienceGround, i: AuditionHero)
-    && emission_is_none_for(role: SalienceSupporting, i: AuditionRestrained)
-    && emission_is_none_for(role: SalienceSupporting, i: AuditionExpressive)
-    && emission_is_none_for(role: SalienceSupporting, i: AuditionHero)
-    && emission_is_none_for(role: SalienceGround, i: AuditionHero)
-    && !string_contains(s: instrument_css_at_role(role: SalienceSupporting), pattern: "0 0 20px")
-    && !string_contains(s: instrument_css_at_role(role: SalienceSupporting), pattern: "0 0 48px")
+  !admission_grants(role: gunbc.design.salience.SalienceSupporting, i: gunbc.design.instrument_audition.AuditionHero)
+    && !admission_grants(role: gunbc.design.salience.SalienceGround, i: gunbc.design.instrument_audition.AuditionHero)
+    && emission_is_none_for(role: gunbc.design.salience.SalienceSupporting, i: gunbc.design.instrument_audition.AuditionRestrained)
+    && emission_is_none_for(role: gunbc.design.salience.SalienceSupporting, i: gunbc.design.instrument_audition.AuditionExpressive)
+    && emission_is_none_for(role: gunbc.design.salience.SalienceSupporting, i: gunbc.design.instrument_audition.AuditionHero)
+    && emission_is_none_for(role: gunbc.design.salience.SalienceGround, i: gunbc.design.instrument_audition.AuditionHero)
+    && !string_contains(s: gunbc.roadmap_instrument_sandbox.instrument_css_at_role(role: gunbc.design.salience.SalienceSupporting), pattern: "0 0 20px")
+    && !string_contains(s: gunbc.roadmap_instrument_sandbox.instrument_css_at_role(role: gunbc.design.salience.SalienceSupporting), pattern: "0 0 48px")
 }
 
 // Occurrence INSIDE each theme block, not merely somewhere in the stylesheet: the CSS is split on the two later block selectors and the variable is required in every resulting piece. The first version asserted the variable existed and the selectors existed, which one hand-written block would have satisfied while the toggle silently did nothing.
 fn witness_the_emission_var_occurs_inside_every_theme_block() -> Bool {
-  let css = instrument_emission_root_css_for(role: audition_subject_role())
-  let v = emission_var_ref(i: AuditionHero)
+  let css = gunbc.roadmap_instrument_sandbox.instrument_emission_root_css_for(role: gunbc.roadmap_instrument_sandbox.audition_subject_role())
+  let v = emission_var_ref(i: gunbc.design.instrument_audition.AuditionHero)
   let day_block = first_segment(s: css, marker: ":root[data-theme=")
-  let media_block = test.claim.instrument_sandbox_witness.last_segment(s: css, marker: "@media (prefers-color-scheme:")
-  let alt_block = first_segment(s: test.claim.instrument_sandbox_witness.last_segment(s: css, marker: ":root[data-theme="), marker: "@media")
+  let media_block = last_segment(s: css, marker: "@media (prefers-color-scheme:")
+  let alt_block = first_segment(s: last_segment(s: css, marker: ":root[data-theme="), marker: "@media")
   string_contains(s: day_block, pattern: v)
     && string_contains(s: alt_block, pattern: v)
     && string_contains(s: media_block, pattern: v)
@@ -79,10 +79,10 @@ fn witness_the_emission_var_occurs_inside_every_theme_block() -> Bool {
 data press_css_note: String = "The CSS half of the press specimen — the bounded translation on the focusable control and the displacement budget behind it. The markup half (that the rendered page actually carries a button) needs the page, so it lives with the live claims; keeping the two halves apart is what lets the cheap half stay per-PR instead of riding the expensive one's budget."
 
 fn witness_the_press_response_is_a_bounded_translation() -> Bool {
-  let css = instrument_css()
+  let css = gunbc.roadmap_instrument_sandbox.instrument_css()
   string_contains(s: css, pattern: ".instrument-frame:active")
     && string_contains(s: css, pattern: "translateY(-3px)")
-    && instrument_displacement_px(p: preference_default) == 6
+    && gunbc.design.instrument_physical.instrument_displacement_px(p: gunbc.design.instrument_physical.preference_default) == 6
 }
 
 data program_grain_fixture_note: String = "A PLANTED VIEW, because this claim's oracle must be independent of the live roadmap. The fixture's PROGRAM remaining and its one FINISH LINE's remaining are deliberately different numbers (open_fronts 7 versus 1, startable_now 5 versus 0), so a reader that collapses program grain onto outcome grain is caught by VALUE and not merely by variant — asserting the variant alone would still pass if some future arm returned a program-shaped reading built from the line's own shape. Cheap by construction: the record is built directly rather than derived through program_view, so this mechanism claim costs microseconds and stays per-PR while the live half runs on the falsifier lane."
@@ -105,20 +105,20 @@ fn fixture_view() -> gunbc.roadmap_program_view.V1DeletionProgramView {
   gunbc.roadmap_program_view.V1DeletionProgramView {
     finish_lines: [
       gunbc.roadmap_program_view.FinishLineView {
-        line: CompilerFixedPoint,
+        line: gunbc.v1_deletion_plan.CompilerFixedPoint,
         key: "compiler-fixed-point",
         name: "Compiler fixed point",
         claim: "fixture",
         node: "fixture-node" as gunbc.roadmap_model.RoadmapNodeId,
         accepted: false,
-        contributing_fronts: [NamespacePDeriveFront],
+        contributing_fronts: [gunbc.roadmap_program_view.NamespacePDeriveFront],
         remaining: fixture_line_remaining(),
         constraint: v2.std.optional.Absent,
       },
     ],
     fronts: [],
     remaining: fixture_program_remaining(),
-    proposed: ProposedCarrierAbsent,
+    proposed: gunbc.roadmap_program_view.ProposedCarrierAbsent,
   }
 }
 
@@ -129,42 +129,42 @@ fn focused_camera(m: gunbc.design.instrument_camera.ProgramMode, d: gunbc.design
 data program_grain_witness_note: String = "The claim review 48719 found missing. With a subject FOCUSED, the program detent must still read the whole program's shape — before the fix read_camera_at routed a focused DepthProgram into read_line_view, whose DepthProgram arm was byte-identical to its DepthOutcome one, so the page rendered outcome-grain numbers under a program label. This reds on that exact behaviour: it demands the program's own remaining (open_fronts 7), which the collapsed reader could not produce because it only ever saw the line's 1."
 
 fn witness_the_program_detent_reads_program_grain_even_when_focused() -> Bool {
-  let status = read_camera(camera: focused_camera(m: ModeStatus, d: DepthProgram), view: test.claim.instrument_sandbox_witness.fixture_view())
-  let remaining = read_camera(camera: focused_camera(m: ModeRemaining, d: DepthProgram), view: test.claim.instrument_sandbox_witness.fixture_view())
+  let status = gunbc.design.instrument_audition.read_camera(camera: focused_camera(m: gunbc.design.instrument_camera.ModeStatus, d: gunbc.design.instrument_camera.DepthProgram), view: fixture_view())
+  let remaining = gunbc.design.instrument_audition.read_camera(camera: focused_camera(m: gunbc.design.instrument_camera.ModeRemaining, d: gunbc.design.instrument_camera.DepthProgram), view: fixture_view())
   match status {
-    ReadingProgramShape { remaining: rs } => rs.open_fronts == 7 && rs.startable_now == 5
-    ReadingNoSubject => false
-    ReadingOutcomeStatus { name, node, accepted, open_fronts } => false
-    ReadingOutcomeRemaining { name, remaining: r } => false
-    ReadingConstraint { subject, kind, headline, in_flight, depth } => false
-    ReadingNoConstraint { subject_key, reason } => false
-    ReadingFront { key, name, closed, gates_accepted, gates_total } => false
-    ReadingUnavailable { mode, subject_key, cause } => false
+    gunbc.design.instrument_audition.ReadingProgramShape { remaining: rs } => rs.open_fronts == 7 && rs.startable_now == 5
+    gunbc.design.instrument_audition.ReadingNoSubject => false
+    gunbc.design.instrument_audition.ReadingOutcomeStatus { name, node, accepted, open_fronts } => false
+    gunbc.design.instrument_audition.ReadingOutcomeRemaining { name, remaining: r } => false
+    gunbc.design.instrument_audition.ReadingConstraint { subject, kind, headline, in_flight, depth } => false
+    gunbc.design.instrument_audition.ReadingNoConstraint { subject_key, reason } => false
+    gunbc.design.instrument_audition.ReadingFront { key, name, closed, gates_accepted, gates_total } => false
+    gunbc.design.instrument_audition.ReadingUnavailable { mode, subject_key, cause } => false
   }
     && match remaining {
-      ReadingProgramShape { remaining: rs } => rs.open_fronts == 7
-      ReadingNoSubject => false
-      ReadingOutcomeStatus { name, node, accepted, open_fronts } => false
-      ReadingOutcomeRemaining { name, remaining: r } => false
-      ReadingConstraint { subject, kind, headline, in_flight, depth } => false
-      ReadingNoConstraint { subject_key, reason } => false
-      ReadingFront { key, name, closed, gates_accepted, gates_total } => false
-      ReadingUnavailable { mode, subject_key, cause } => false
+      gunbc.design.instrument_audition.ReadingProgramShape { remaining: rs } => rs.open_fronts == 7
+      gunbc.design.instrument_audition.ReadingNoSubject => false
+      gunbc.design.instrument_audition.ReadingOutcomeStatus { name, node, accepted, open_fronts } => false
+      gunbc.design.instrument_audition.ReadingOutcomeRemaining { name, remaining: r } => false
+      gunbc.design.instrument_audition.ReadingConstraint { subject, kind, headline, in_flight, depth } => false
+      gunbc.design.instrument_audition.ReadingNoConstraint { subject_key, reason } => false
+      gunbc.design.instrument_audition.ReadingFront { key, name, closed, gates_accepted, gates_total } => false
+      gunbc.design.instrument_audition.ReadingUnavailable { mode, subject_key, cause } => false
     }
 }
 
 data outcome_grain_still_line_scoped_note: String = "The other half of the same law, so the fix cannot be satisfied by making EVERY depth answer program-grain: at outcome depth the reading must still be the LINE's shape (open_fronts 1), not the program's 7."
 
 fn witness_red_the_outcome_detent_still_reads_the_line() -> Bool {
-  match read_camera(camera: focused_camera(m: ModeRemaining, d: DepthOutcome), view: test.claim.instrument_sandbox_witness.fixture_view()) {
-    ReadingOutcomeRemaining { name, remaining: r } => r.open_fronts == 1 && name == "Compiler fixed point"
-    ReadingNoSubject => false
-    ReadingProgramShape { remaining: rs } => false
-    ReadingOutcomeStatus { name, node, accepted, open_fronts } => false
-    ReadingConstraint { subject, kind, headline, in_flight, depth } => false
-    ReadingNoConstraint { subject_key, reason } => false
-    ReadingFront { key, name, closed, gates_accepted, gates_total } => false
-    ReadingUnavailable { mode, subject_key, cause } => false
+  match gunbc.design.instrument_audition.read_camera(camera: focused_camera(m: gunbc.design.instrument_camera.ModeRemaining, d: gunbc.design.instrument_camera.DepthOutcome), view: fixture_view()) {
+    gunbc.design.instrument_audition.ReadingOutcomeRemaining { name, remaining: r } => r.open_fronts == 1 && name == "Compiler fixed point"
+    gunbc.design.instrument_audition.ReadingNoSubject => false
+    gunbc.design.instrument_audition.ReadingProgramShape { remaining: rs } => false
+    gunbc.design.instrument_audition.ReadingOutcomeStatus { name, node, accepted, open_fronts } => false
+    gunbc.design.instrument_audition.ReadingConstraint { subject, kind, headline, in_flight, depth } => false
+    gunbc.design.instrument_audition.ReadingNoConstraint { subject_key, reason } => false
+    gunbc.design.instrument_audition.ReadingFront { key, name, closed, gates_accepted, gates_total } => false
+    gunbc.design.instrument_audition.ReadingUnavailable { mode, subject_key, cause } => false
   }
 }
 

@@ -4,18 +4,18 @@ module extdeps.cache.key_completeness
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/cache"
   }
 }
 
 fn cache_key_derivation_complete(facts: extdeps.cache.types.CatalogKeyDerivationFacts) -> Bool {
   match facts.key_inputs {
-    ContentAddressed => true
-    HandAuthored { cited_inputs: _ } => true
-    NativeInternal { cited_inputs: cited } =>
-      if invalidation_triggers_on_toolchain_change(triggers: facts.invalidation_triggers) {
-        catalog_has_vendor_only_key_inputs(inputs: cited)
+    extdeps.cache.types.ContentAddressed => true
+    extdeps.cache.types.HandAuthored { cited_inputs: _ } => true
+    extdeps.cache.types.NativeInternal { cited_inputs: cited } =>
+      if extdeps.cache.types.invalidation_triggers_on_toolchain_change(triggers: facts.invalidation_triggers) {
+        extdeps.cache.types.catalog_has_vendor_only_key_inputs(inputs: cited)
       } else {
         true
       }

@@ -3,7 +3,7 @@ module extdeps.tcgplayer.tcgplayer
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.tcgplayer.com/docs/getting-started"
   }
 }
@@ -28,9 +28,9 @@ type TcgplayerTokenResponse {
 data structural_coverage_gap_token_response_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "TcgplayerTokenResponse" },
-      extdeps.coverage.JsonPending { field: ".issued" },
-      extdeps.coverage.JsonPending { field: ".expires" }
+      Subject { path: "TcgplayerTokenResponse" },
+      JsonPending { field: ".issued" },
+      JsonPending { field: ".expires" }
     ],
     trigger: "token cache consumer needs the upstream dotted timestamp fields"
   }
@@ -63,7 +63,7 @@ service tcgplayer.Auth {
       method: POST,
       path: "/token",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: { grant_type: extdeps.tcgplayer.tcgplayer.client_credentials_grant_type, client_id: client_id, client_secret: client_secret }
+      body: { grant_type: client_credentials_grant_type, client_id: client_id, client_secret: client_secret }
     }
     response {
       200 => TcgplayerTokenResponse

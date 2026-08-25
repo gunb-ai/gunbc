@@ -1,43 +1,43 @@
 module test.claim.fleet_main_revision_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn fixture_rev(hex_char: String) -> extdeps.git.object_store.GitObjectId? {
-  git_sha1_object_id(hex: join([hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char], ""))
+  extdeps.git.object_store.git_sha1_object_id(hex: join([hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char], ""))
 }
 
-fn accepted_at(revision: GitObjectId) -> AcceptedFleetRevision<String, String> {
-  AcceptedFleetRevision {
+fn accepted_at(revision: extdeps.git.object_store.GitObjectId) -> gunbc.fleet_revision_acceptance.AcceptedFleetRevision<String, String> {
+  gunbc.fleet_revision_acceptance.AcceptedFleetRevision {
     revision: revision,
-    required_ci_contract: required_ci_contract(),
+    required_ci_contract: gunbc.fleet_revision_acceptance.required_ci_contract(),
     required_ci_evidence: "required-ci evidence",
     default_branch_evidence: "default-branch evidence",
   }
 }
 
-fn observed_at(current: GitObjectId) -> FleetDesiredRevision {
-  FleetDesiredAdmitted { revision: current }
+fn observed_at(current: extdeps.git.object_store.GitObjectId) -> gunbc.fleet_main_revision.FleetDesiredRevision {
+  gunbc.fleet_main_revision.FleetDesiredAdmitted { revision: current }
 }
 
 fn relation_between(
-  current: GitObjectId,
-  accepted: GitObjectId,
-  relation: DeployRevisionRelation,
-) -> FleetRevisionRelationObservation {
-  FleetRevisionRelationObservation { current: current, accepted: accepted, relation: relation }
+  current: extdeps.git.object_store.GitObjectId,
+  accepted: extdeps.git.object_store.GitObjectId,
+  relation: gunbc.live_deploy.revision.DeployRevisionRelation,
+) -> gunbc.fleet_main_revision.FleetRevisionRelationObservation {
+  gunbc.fleet_main_revision.FleetRevisionRelationObservation { current: current, accepted: accepted, relation: relation }
 }
 
 // Every row below decides ONE pair through the real seam. Note what the helper no longer needs: a
 // relation for cases that have no current revision. The input sum means the create and refusal
 // rows cannot supply one, so no fixture here invents a fact to satisfy a parameter.
 fn decide_observed(
-  current: GitObjectId,
-  accepted: GitObjectId,
-  relation: DeployRevisionRelation,
-) -> FleetDesiredAdvanceDecision<String, String> {
-  decide_fleet_desired_advance(
-    input: FleetDesiredObservedCurrentInput {
+  current: extdeps.git.object_store.GitObjectId,
+  accepted: extdeps.git.object_store.GitObjectId,
+  relation: gunbc.live_deploy.revision.DeployRevisionRelation,
+) -> gunbc.fleet_main_revision.FleetDesiredAdvanceDecision<String, String> {
+  gunbc.fleet_main_revision.decide_fleet_desired_advance(
+    input: gunbc.fleet_main_revision.FleetDesiredObservedCurrentInput {
       accepted: accepted_at(revision: accepted),
       current: current,
       relation: relation_between(current: current, accepted: accepted, relation: relation),
@@ -57,12 +57,12 @@ fn decide_observed(
 test fn an_absent_ref_is_a_precondition_not_an_authorization_to_create() -> Bool {
   match fixture_rev(hex_char: "a") {
     Present { value: acc } =>
-      match decide_fleet_desired_advance(
-        input: FleetDesiredRefAbsentInput { accepted: accepted_at(revision: acc) },
+      match gunbc.fleet_main_revision.decide_fleet_desired_advance(
+        input: gunbc.fleet_main_revision.FleetDesiredRefAbsentInput { accepted: accepted_at(revision: acc) },
       ) {
-        FleetDesiredAdvanceRefused {
-          cause: InitialFleetDesiredCreationNotAuthorized { accepted: named },
-        } => git_object_id_eq(left: named, right: acc)
+        gunbc.fleet_main_revision.FleetDesiredAdvanceRefused {
+          cause: gunbc.fleet_main_revision.InitialFleetDesiredCreationNotAuthorized { accepted: named },
+        } => extdeps.git.object_store.git_object_id_eq(left: named, right: acc)
         _ => false
       }
     _ => false
@@ -77,15 +77,15 @@ test fn a_current_ancestor_admits_a_forward_advance_leasing_that_exact_prior() -
     Present { value: cur } =>
       match fixture_rev(hex_char: "c") {
         Present { value: acc } =>
-          match decide_observed(current: cur, accepted: acc, relation: DeployedIsAncestor) {
-            FleetDesiredAdvanceAdmitted { accepted: a, expected_prior: prior } =>
-              git_object_id_eq(left: a.revision, right: acc)
-                && git_object_id_eq(left: prior, right: cur)
-                && match fleet_desired_admitted_expectation(
-                  decision: decide_observed(current: cur, accepted: acc, relation: DeployedIsAncestor),
+          match decide_observed(current: cur, accepted: acc, relation: gunbc.live_deploy.revision.DeployedIsAncestor) {
+            gunbc.fleet_main_revision.FleetDesiredAdvanceAdmitted { accepted: a, expected_prior: prior } =>
+              extdeps.git.object_store.git_object_id_eq(left: a.revision, right: acc)
+                && extdeps.git.object_store.git_object_id_eq(left: prior, right: cur)
+                && match gunbc.fleet_main_revision.fleet_desired_admitted_expectation(
+                  decision: decide_observed(current: cur, accepted: acc, relation: gunbc.live_deploy.revision.DeployedIsAncestor),
                 ) {
-                  Present { value: RemoteRefMustEqual { oid: leased } } =>
-                    git_object_id_eq(left: leased, right: cur)
+                  Present { value: extdeps.git.publication_transport.RemoteRefMustEqual { oid: leased } } =>
+                    extdeps.git.object_store.git_object_id_eq(left: leased, right: cur)
                   _ => false
                 }
             _ => false
@@ -104,12 +104,12 @@ test fn a_current_ancestor_admits_a_forward_advance_leasing_that_exact_prior() -
 test fn already_converged_and_superseded_are_successes_that_write_nothing() -> Bool {
   match fixture_rev(hex_char: "d") {
     Present { value: rev } =>
-      match decide_observed(current: rev, accepted: rev, relation: SameRevision) {
-        FleetDesiredAlreadyConverged { accepted: a } => git_object_id_eq(left: a.revision, right: rev)
+      match decide_observed(current: rev, accepted: rev, relation: gunbc.live_deploy.revision.SameRevision) {
+        gunbc.fleet_main_revision.FleetDesiredAlreadyConverged { accepted: a } => extdeps.git.object_store.git_object_id_eq(left: a.revision, right: rev)
         _ => false
       }
-        && match fleet_desired_admitted_expectation(
-          decision: decide_observed(current: rev, accepted: rev, relation: SameRevision),
+        && match gunbc.fleet_main_revision.fleet_desired_admitted_expectation(
+          decision: decide_observed(current: rev, accepted: rev, relation: gunbc.live_deploy.revision.SameRevision),
         ) {
           Present { value: _ } => false
           _ => true
@@ -120,14 +120,14 @@ test fn already_converged_and_superseded_are_successes_that_write_nothing() -> B
       Present { value: cur } =>
         match fixture_rev(hex_char: "f") {
           Present { value: acc } =>
-            match decide_observed(current: cur, accepted: acc, relation: CandidateIsAncestor) {
-              FleetDesiredSupersededNoOp { accepted: a, current: c } =>
-                git_object_id_eq(left: a.revision, right: acc)
-                  && git_object_id_eq(left: c, right: cur)
+            match decide_observed(current: cur, accepted: acc, relation: gunbc.live_deploy.revision.CandidateIsAncestor) {
+              gunbc.fleet_main_revision.FleetDesiredSupersededNoOp { accepted: a, current: c } =>
+                extdeps.git.object_store.git_object_id_eq(left: a.revision, right: acc)
+                  && extdeps.git.object_store.git_object_id_eq(left: c, right: cur)
               _ => false
             }
-              && match fleet_desired_admitted_expectation(
-                decision: decide_observed(current: cur, accepted: acc, relation: CandidateIsAncestor),
+              && match gunbc.fleet_main_revision.fleet_desired_admitted_expectation(
+                decision: decide_observed(current: cur, accepted: acc, relation: gunbc.live_deploy.revision.CandidateIsAncestor),
               ) {
                 Present { value: _ } => false
                 _ => true
@@ -148,19 +148,19 @@ test fn unrelated_and_unverifiable_both_refuse_though_the_lease_would_have_match
     Present { value: cur } =>
       match fixture_rev(hex_char: "2") {
         Present { value: acc } =>
-          match decide_observed(current: cur, accepted: acc, relation: UnrelatedHistories) {
-            FleetDesiredAdvanceRefused {
-              cause: AdvanceHistoriesUnrelated { current: c, accepted: a },
-            } => git_object_id_eq(left: c, right: cur) && git_object_id_eq(left: a, right: acc)
+          match decide_observed(current: cur, accepted: acc, relation: gunbc.live_deploy.revision.UnrelatedHistories) {
+            gunbc.fleet_main_revision.FleetDesiredAdvanceRefused {
+              cause: gunbc.fleet_main_revision.AdvanceHistoriesUnrelated { current: c, accepted: a },
+            } => extdeps.git.object_store.git_object_id_eq(left: c, right: cur) && extdeps.git.object_store.git_object_id_eq(left: a, right: acc)
             _ => false
           }
             && match decide_observed(
               current: cur,
               accepted: acc,
-              relation: RelationUnverifiable { cause: "shallow clone: merge base unreachable" },
+              relation: gunbc.live_deploy.revision.RelationUnverifiable { cause: "shallow clone: merge base unreachable" },
             ) {
-              FleetDesiredAdvanceRefused {
-                cause: AdvanceRelationUnobservable { current: _, accepted: _, cause: _ },
+              gunbc.fleet_main_revision.FleetDesiredAdvanceRefused {
+                cause: gunbc.fleet_main_revision.AdvanceRelationUnobservable { current: _, accepted: _, cause: _ },
               } => true
               _ => false
             }
@@ -181,27 +181,27 @@ test fn a_relation_about_another_pair_is_refused_however_true_it_is() -> Bool {
         Present { value: acc } =>
           match fixture_rev(hex_char: "7") {
             Present { value: stranger } =>
-              match decide_fleet_desired_advance(
-                input: FleetDesiredObservedCurrentInput {
+              match gunbc.fleet_main_revision.decide_fleet_desired_advance(
+                input: gunbc.fleet_main_revision.FleetDesiredObservedCurrentInput {
                   accepted: accepted_at(revision: acc),
                   current: cur,
                   relation: relation_between(
                     current: stranger,
                     accepted: acc,
-                    relation: DeployedIsAncestor,
+                    relation: gunbc.live_deploy.revision.DeployedIsAncestor,
                   ),
                 },
               ) {
-                FleetDesiredAdvanceRefused {
-                  cause: AdvanceRelationIsAboutAnotherPair {
+                gunbc.fleet_main_revision.FleetDesiredAdvanceRefused {
+                  cause: gunbc.fleet_main_revision.AdvanceRelationIsAboutAnotherPair {
                     relation_current: rc,
                     relation_accepted: _,
                     actual_current: ac,
                     actual_accepted: _,
                   },
                 } =>
-                  git_object_id_eq(left: rc, right: stranger)
-                    && git_object_id_eq(left: ac, right: cur)
+                  extdeps.git.object_store.git_object_id_eq(left: rc, right: stranger)
+                    && extdeps.git.object_store.git_object_id_eq(left: ac, right: cur)
                 _ => false
               }
             _ => false
@@ -219,25 +219,25 @@ test fn a_relation_about_another_pair_is_refused_however_true_it_is() -> Bool {
 test fn the_refusal_remedy_survives_to_the_final_decision() -> Bool {
   match fixture_rev(hex_char: "8") {
     Present { value: acc } =>
-      match decide_fleet_desired_advance(
-        input: FleetDesiredExpectationRefusedInput {
+      match gunbc.fleet_main_revision.decide_fleet_desired_advance(
+        input: gunbc.fleet_main_revision.FleetDesiredExpectationRefusedInput {
           accepted: accepted_at(revision: acc),
           cause: FleetDesiredRefUnobserved { cause: "ls-remote refused" },
         },
       ) {
-        FleetDesiredAdvanceRefused {
-          cause: AdvanceExpectationUnavailable { cause: FleetDesiredRefUnobserved { cause: _ } },
+        gunbc.fleet_main_revision.FleetDesiredAdvanceRefused {
+          cause: gunbc.fleet_main_revision.AdvanceExpectationUnavailable { cause: FleetDesiredRefUnobserved { cause: _ } },
         } => true
         _ => false
       }
-        && match decide_fleet_desired_advance(
-          input: FleetDesiredExpectationRefusedInput {
+        && match gunbc.fleet_main_revision.decide_fleet_desired_advance(
+          input: gunbc.fleet_main_revision.FleetDesiredExpectationRefusedInput {
             accepted: accepted_at(revision: acc),
             cause: FleetDesiredRefUndecodable { advertised: "not-a-sha" },
           },
         ) {
-          FleetDesiredAdvanceRefused {
-            cause: AdvanceExpectationUnavailable {
+          gunbc.fleet_main_revision.FleetDesiredAdvanceRefused {
+            cause: gunbc.fleet_main_revision.AdvanceExpectationUnavailable {
               cause: FleetDesiredRefUndecodable { advertised: line },
             },
           } => line == "not-a-sha"
@@ -263,29 +263,29 @@ test fn exit_one_is_an_answer_and_exit_one_two_eight_is_an_absence_of_one() -> B
     Present { value: cur } =>
       match fixture_rev(hex_char: "2") {
         Present { value: acc } =>
-          match fleet_revision_relation_from_merge_base(
+          match gunbc.fleet_main_revision.fleet_revision_relation_from_merge_base(
             current: cur,
             accepted: acc,
             exit_code: 1,
             base_hex: "",
             stderr: "",
           ) {
-            FleetRevisionRelationObservation { current: c, accepted: a, relation: rel } =>
-              git_object_id_eq(left: c, right: cur)
-                && git_object_id_eq(left: a, right: acc)
+            gunbc.fleet_main_revision.FleetRevisionRelationObservation { current: c, accepted: a, relation: rel } =>
+              extdeps.git.object_store.git_object_id_eq(left: c, right: cur)
+                && extdeps.git.object_store.git_object_id_eq(left: a, right: acc)
                 && match rel {
-                  UnrelatedHistories => true
+                  gunbc.live_deploy.revision.UnrelatedHistories => true
                   _ => false
                 }
           }
-            && match merge_base_relation(
+            && match gunbc.fleet_main_revision.merge_base_relation(
               current: cur,
               accepted: acc,
               exit_code: 128,
               base_hex: "",
               stderr: "fatal: not a git repository",
             ) {
-              RelationUnverifiable { cause: _ } => true
+              gunbc.live_deploy.revision.RelationUnverifiable { cause: _ } => true
               _ => false
             }
         _ => false
@@ -304,9 +304,9 @@ test fn one_merge_base_decides_both_directions() -> Bool {
         Present { value: acc } =>
           match fixture_rev(hex_char: "5") {
             Present { value: third } =>
-              relation_from_merge_base_oid(current: cur, accepted: acc, base: cur) == DeployedIsAncestor
-                && relation_from_merge_base_oid(current: cur, accepted: acc, base: acc) == CandidateIsAncestor
-                && relation_from_merge_base_oid(current: cur, accepted: acc, base: third) == UnrelatedHistories
+              gunbc.fleet_main_revision.relation_from_merge_base_oid(current: cur, accepted: acc, base: cur) == gunbc.live_deploy.revision.DeployedIsAncestor
+                && gunbc.fleet_main_revision.relation_from_merge_base_oid(current: cur, accepted: acc, base: acc) == gunbc.live_deploy.revision.CandidateIsAncestor
+                && gunbc.fleet_main_revision.relation_from_merge_base_oid(current: cur, accepted: acc, base: third) == gunbc.live_deploy.revision.UnrelatedHistories
             _ => false
           }
         _ => false
@@ -321,14 +321,14 @@ test fn one_merge_base_decides_both_directions() -> Bool {
 test fn an_equal_pair_is_converged_without_consulting_the_probe() -> Bool {
   match fixture_rev(hex_char: "6") {
     Present { value: rev } =>
-      match merge_base_relation(
+      match gunbc.fleet_main_revision.merge_base_relation(
         current: rev,
         accepted: rev,
         exit_code: 128,
         base_hex: "",
         stderr: "fatal: not a git repository",
       ) {
-        SameRevision => true
+        gunbc.live_deploy.revision.SameRevision => true
         _ => false
       }
     _ => false
@@ -342,14 +342,14 @@ test fn a_successful_probe_with_undecodable_output_refuses() -> Bool {
     Present { value: cur } =>
       match fixture_rev(hex_char: "8") {
         Present { value: acc } =>
-          match merge_base_relation(
+          match gunbc.fleet_main_revision.merge_base_relation(
             current: cur,
             accepted: acc,
             exit_code: 0,
             base_hex: "not-a-sha",
             stderr: "",
           ) {
-            RelationUnverifiable { cause: _ } => true
+            gunbc.live_deploy.revision.RelationUnverifiable { cause: _ } => true
             _ => false
           }
         _ => false
@@ -366,22 +366,22 @@ test fn the_folded_relation_drives_the_decision_and_leases_the_right_prior() -> 
     Present { value: cur } =>
       match fixture_rev(hex_char: "a") {
         Present { value: acc } =>
-          match decide_fleet_desired_advance(
-            input: FleetDesiredObservedCurrentInput {
+          match gunbc.fleet_main_revision.decide_fleet_desired_advance(
+            input: gunbc.fleet_main_revision.FleetDesiredObservedCurrentInput {
               accepted: accepted_at(revision: acc),
               current: cur,
-              relation: fleet_revision_relation_from_merge_base(
+              relation: gunbc.fleet_main_revision.fleet_revision_relation_from_merge_base(
                 current: cur,
                 accepted: acc,
                 exit_code: 0,
-                base_hex: git_object_id_wire_hex(oid: cur) as String,
+                base_hex: extdeps.git.object_store.git_object_id_wire_hex(oid: cur) as String,
                 stderr: "",
               ),
             },
           ) {
-            FleetDesiredAdvanceAdmitted { accepted: a, expected_prior: prior } =>
-              git_object_id_eq(left: a.revision, right: acc)
-                && git_object_id_eq(left: prior, right: cur)
+            gunbc.fleet_main_revision.FleetDesiredAdvanceAdmitted { accepted: a, expected_prior: prior } =>
+              extdeps.git.object_store.git_object_id_eq(left: a.revision, right: acc)
+                && extdeps.git.object_store.git_object_id_eq(left: prior, right: cur)
             _ => false
           }
         _ => false
@@ -393,13 +393,13 @@ test fn the_folded_relation_drives_the_decision_and_leases_the_right_prior() -> 
 // An unobserved desired ref yields NO converge target — never a fabricated one, never
 // the invoking tree. Admitted yields exactly the admitted revision.
 test fn converge_target_derives_only_from_admitted_ref() -> Bool {
-  match converge_target_revision(observed: gunbc.fleet_main_revision.FleetDesiredUnobserved { cause: "ref unreadable" }) {
+  match gunbc.fleet_main_revision.converge_target_revision(observed: gunbc.fleet_main_revision.FleetDesiredUnobserved { cause: "ref unreadable" }) {
     Present { value: _ } => false
     _ => true
   }
     && match fixture_rev(hex_char: "c") {
       Present { value: rev } =>
-        match converge_target_revision(observed: gunbc.fleet_main_revision.FleetDesiredAdmitted { revision: rev }) {
+        match gunbc.fleet_main_revision.converge_target_revision(observed: gunbc.fleet_main_revision.FleetDesiredAdmitted { revision: rev }) {
           Present { value: _ } => true
           _ => false
         }
@@ -409,5 +409,5 @@ test fn converge_target_derives_only_from_admitted_ref() -> Bool {
 
 // The ref name is the single authority and is a fleet-scoped ref, not a branch.
 test fn desired_ref_name_is_the_fleet_scoped_authority() -> Bool {
-  fleet_desired_ref_name == "refs/fleet/desired"
+  gunbc.fleet_main_revision.fleet_desired_ref_name == "refs/fleet/desired"
 }

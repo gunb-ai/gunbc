@@ -1,12 +1,12 @@
 module test.claim.legacy_test_behavior_disposition_acceptance_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data legacy_test_behavior_acceptance_note: String = "THE CLOSING VALIDATION FOR v1-test-migration. It is RED on purpose while any discovered legacy #[test] function lacks exactly one admitted behavior disposition. Unlike the diff-scoped deletion guard, doing no migration work cannot make this pass: the live legacy-function population is independently discovered, unclassified is its set difference from the disposition graph, CoveredByWitness references must resolve to discovered floor `test fn`s, and stale or duplicate dispositions refuse. The numeric live count is observation only; zero set difference is the contract."
 
 data legacy_test_behavior_acceptance_dissolution_note: String = "DISSOLVES BY GREENING, never deletion. When the last discovered legacy behavior receives an admitted disposition, this witness becomes green and its QuarantineProbeExpectRed exclusion and known-red probe rows must be removed in the same change. The witness then joins ordinary DiscoverySelection as the permanent regression wall."
 
 test fn legacy_test_behavior_unclassified_frontier_is_zero() -> Bool {
-  legacy_test_behavior_closing_contract_holds()
+  gunbc.legacy_test_behavior_disposition.legacy_test_behavior_closing_contract_holds()
 }

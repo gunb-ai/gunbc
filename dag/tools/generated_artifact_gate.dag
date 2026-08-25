@@ -9,13 +9,13 @@ fn exit_ok(e: std.process.ProcessExit) -> Bool {
 data run_generated_artifact_drift_gate_body_note: String = "One live pass: observe_generated_artifact_population() reads each committed file and generates each artifact exactly once (gunbc.generated_artifact_observation). The pure group and leaf assessments, and the failure diagnostic, all read that SAME retained population — no re-invocation of the producer (operator ruling: cost and correctness must not ride on incidental memoization of a repeated producer call)."
 
 func run_generated_artifact_drift_gate_body() -> std.process.ProcessExit {
-  let observations = observe_generated_artifact_population()
-  let all_ok = assess_generated_artifact_population(expected: committed_generated_artifacts(), observations: observations)
+  let observations = gunbc.generated_artifact_observation.observe_generated_artifact_population()
+  let all_ok = gunbc.generated_artifact_assessment.assess_generated_artifact_population(expected: gunbc.generated_artifact.committed_generated_artifacts(), observations: observations)
   let reason = if all_ok {
     ""
   } else {
     concat(
-      concat("generated-artifact drift/validation failed: ", first_failing_diagnostic_path(expected: committed_generated_artifacts(), observations: observations)),
+      concat("generated-artifact drift/validation failed: ", gunbc.generated_artifact_assessment.first_failing_diagnostic_path(expected: gunbc.generated_artifact.committed_generated_artifacts(), observations: observations)),
       " — it is a GENERATED projection of its .dag authority; do not hand-edit, regenerate via main_wet on dag/tools/generated_artifact_gate.dag"
     )
   }
@@ -25,7 +25,7 @@ func run_generated_artifact_drift_gate_body() -> std.process.ProcessExit {
   return if all_ok {
     std.process.ExitSuccess
   } else {
-    exit_failure(reason: reason)
+    std.process.exit_failure(reason: reason)
   }
 }
 
@@ -41,7 +41,7 @@ data generated_artifact_drift_failure_receipt_note: String = "The loudness half:
 
 fn generated_artifact_drift_failure_reason(exit: std.process.ProcessExit) -> String {
   match exit {
-    ExitSuccess => ""
+    std.process.ExitSuccess => ""
     ExitFailure { code: _, reason: reason } => reason
   }
 }
@@ -51,13 +51,13 @@ func generated_artifact_drift_failure_receipt() -> String {
 }
 
 func main_wet() -> std.process.ProcessExit {
-  fold(committed_generated_artifacts(), init: std.process.ExitSuccess, f: fn(acc, a) {
-    if tools.generated_artifact_gate.exit_ok(e: acc) {
-      match artifact_generate(a: a) {
-        ArtifactGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", artifact_path(a: a)), concat(": ", reason)))
-        ArtifactGenerated { content } => {
-          let w = Filesystem.Write(path: artifact_path(a: a), content: content)
-          if w.success { std.process.ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error))) }
+  fold(gunbc.generated_artifact.committed_generated_artifacts(), init: std.process.ExitSuccess, f: fn(acc, a) {
+    if exit_ok(e: acc) {
+      match gunbc.generated_artifact_emit.artifact_generate(a: a) {
+        gunbc.generated_artifact_emit.ArtifactGenerationRefused { reason } => std.process.exit_failure(reason: concat(concat("generation refused for ", gunbc.generated_artifact.artifact_path(a: a)), concat(": ", reason)))
+        gunbc.generated_artifact_emit.ArtifactGenerated { content } => {
+          let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: gunbc.generated_artifact.artifact_path(a: a), content: content)
+          if w.success { std.process.ExitSuccess } else { std.process.exit_failure(reason: concat(concat("write failed for ", gunbc.generated_artifact.artifact_path(a: a)), concat(": ", w.error))) }
         }
       }
     } else {

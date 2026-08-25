@@ -1,74 +1,74 @@
 module test.claim.repo_local_git_config_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_note: String = "Lane 2 model witnesses for repository-local Git config desired state (generated-file conflict policy charter). Reconcile from empty yields one upsert per desired binding; matching observed state is converged with zero upserts; read-back requires exact value equality at local scope. RED controls: wrong observed value fails read-back and fails convergence; global-scope get argv is not the read-back authority. Install/read-back argv shapes route through extdeps.git cited shapes — no hand-rolled git argv in this module. Wet execution of the idempotent actuator lives in repo_local_git_config_real_execution_witness_test.dag."
 
 test fn witness_desired_binding_count_holds() -> Bool {
-  count(desired_repo_local_git_config_bindings()) == 2
+  count(gunbc.repo_local_git_config.desired_repo_local_git_config_bindings()) == 2
 }
 
 test fn witness_converge_entry_is_declared() -> Bool {
   gunbc.repo_local_git_config.repo_local_git_config_converge_function == "converge"
-    && repo_local_git_config_converge_entry == "dag/gunbc/repo_local_git_config.dag"
+    && gunbc.repo_local_git_config.repo_local_git_config_converge_entry == "dag/gunbc/repo_local_git_config.dag"
 }
 
 test fn witness_empty_observed_reconcile_upserts_holds() -> Bool {
-  let plan = repo_local_git_config_reconcile(desired: desired_repo_local_git_config_bindings(), observed: [])
-  membership_write_count(plan: plan) == 2
-    && membership_removal_count(plan: plan) == 0
-    && membership_refusal_count(plan: plan) == 0
+  let plan = gunbc.repo_local_git_config.repo_local_git_config_reconcile(desired: gunbc.repo_local_git_config.desired_repo_local_git_config_bindings(), observed: [])
+  gunbc.membership_reconcile.membership_write_count(plan: plan) == 2
+    && gunbc.membership_reconcile.membership_removal_count(plan: plan) == 0
+    && gunbc.membership_reconcile.membership_refusal_count(plan: plan) == 0
 }
 
 test fn witness_matching_observed_converged_holds() -> Bool {
-  repo_local_git_config_converged(observed: [
-    observed_binding(key: generated_artifact_merge_driver_key, value: generated_artifact_merge_driver_value),
-    observed_binding(key: core_hooks_path_key, value: core_hooks_path_value),
+  gunbc.repo_local_git_config.repo_local_git_config_converged(observed: [
+    gunbc.repo_local_git_config.observed_binding(key: gunbc.repo_local_git_config.generated_artifact_merge_driver_key, value: gunbc.repo_local_git_config.generated_artifact_merge_driver_value),
+    gunbc.repo_local_git_config.observed_binding(key: gunbc.repo_local_git_config.core_hooks_path_key, value: gunbc.repo_local_git_config.core_hooks_path_value),
   ])
 }
 
 test fn witness_read_back_all_desired_holds() -> Bool {
-  all_desired_bindings_read_back(observed: [
-    observed_binding(key: generated_artifact_merge_driver_key, value: generated_artifact_merge_driver_value),
-    observed_binding(key: core_hooks_path_key, value: core_hooks_path_value),
+  gunbc.repo_local_git_config.all_desired_bindings_read_back(observed: [
+    gunbc.repo_local_git_config.observed_binding(key: gunbc.repo_local_git_config.generated_artifact_merge_driver_key, value: gunbc.repo_local_git_config.generated_artifact_merge_driver_value),
+    gunbc.repo_local_git_config.observed_binding(key: gunbc.repo_local_git_config.core_hooks_path_key, value: gunbc.repo_local_git_config.core_hooks_path_value),
   ])
 }
 
 test fn witness_red_wrong_value_fails_read_back_holds() -> Bool {
-  !all_desired_bindings_read_back(observed: [
-    observed_binding(key: generated_artifact_merge_driver_key, value: "false"),
-    observed_binding(key: core_hooks_path_key, value: core_hooks_path_value),
+  !gunbc.repo_local_git_config.all_desired_bindings_read_back(observed: [
+    gunbc.repo_local_git_config.observed_binding(key: gunbc.repo_local_git_config.generated_artifact_merge_driver_key, value: "false"),
+    gunbc.repo_local_git_config.observed_binding(key: gunbc.repo_local_git_config.core_hooks_path_key, value: gunbc.repo_local_git_config.core_hooks_path_value),
   ])
 }
 
 test fn witness_red_wrong_value_not_converged_holds() -> Bool {
-  !repo_local_git_config_converged(observed: [
-    observed_binding(key: generated_artifact_merge_driver_key, value: "false"),
-    observed_binding(key: core_hooks_path_key, value: core_hooks_path_value),
+  !gunbc.repo_local_git_config.repo_local_git_config_converged(observed: [
+    gunbc.repo_local_git_config.observed_binding(key: gunbc.repo_local_git_config.generated_artifact_merge_driver_key, value: "false"),
+    gunbc.repo_local_git_config.observed_binding(key: gunbc.repo_local_git_config.core_hooks_path_key, value: gunbc.repo_local_git_config.core_hooks_path_value),
   ])
 }
 
 test fn witness_install_argv_uses_extdeps_shape_holds() -> Bool {
-  let binding = observed_binding(key: core_hooks_path_key, value: core_hooks_path_value)
-  reconcile_install_argv(binding: binding) == shape_git_config_local_argv(key: core_hooks_path_key, value: core_hooks_path_value)
-    && reconcile_read_back_argv(binding: binding) == shape_git_config_local_get_argv(key: core_hooks_path_key)
+  let binding = gunbc.repo_local_git_config.observed_binding(key: gunbc.repo_local_git_config.core_hooks_path_key, value: gunbc.repo_local_git_config.core_hooks_path_value)
+  gunbc.repo_local_git_config.reconcile_install_argv(binding: binding) == extdeps.git.shape_git_config_local_argv(key: gunbc.repo_local_git_config.core_hooks_path_key, value: gunbc.repo_local_git_config.core_hooks_path_value)
+    && gunbc.repo_local_git_config.reconcile_read_back_argv(binding: binding) == extdeps.git.shape_git_config_local_get_argv(key: gunbc.repo_local_git_config.core_hooks_path_key)
 }
 
 test fn witness_actuator_in_repo_argv_derives_from_extdeps_shape_holds() -> Bool {
   let repo = "/tmp/gunbc-repo-local-git-config-witness" as std.types.FilePath
-  let binding = observed_binding(key: core_hooks_path_key, value: core_hooks_path_value)
-  let in_repo_set = shape_git_config_local_in_repo_argv(repo: repo, key: binding.key, value: binding.value)
-  let in_repo_get = shape_git_config_local_get_in_repo_argv(repo: repo, key: binding.key)
-  let install_argv = reconcile_install_argv(binding: binding)
+  let binding = gunbc.repo_local_git_config.observed_binding(key: gunbc.repo_local_git_config.core_hooks_path_key, value: gunbc.repo_local_git_config.core_hooks_path_value)
+  let in_repo_set = extdeps.git.shape_git_config_local_in_repo_argv(repo: repo, key: binding.key, value: binding.value)
+  let in_repo_get = extdeps.git.shape_git_config_local_get_in_repo_argv(repo: repo, key: binding.key)
+  let install_argv = gunbc.repo_local_git_config.reconcile_install_argv(binding: binding)
   in_repo_set == ["git", "-C", repo as String, "config", "--local", binding.key, binding.value]
     && in_repo_get == ["git", "-C", repo as String, "config", "--local", "--get", binding.key]
-    && install_argv == shape_git_config_local_argv(key: binding.key, value: binding.value)
+    && install_argv == extdeps.git.shape_git_config_local_argv(key: binding.key, value: binding.value)
 }
 
 test fn witness_red_global_get_argv_not_read_back_authority_holds() -> Bool {
-  let binding = observed_binding(key: core_hooks_path_key, value: core_hooks_path_value)
-  reconcile_read_back_argv(binding: binding) != shape_git_config_get_argv(key: core_hooks_path_key)
+  let binding = gunbc.repo_local_git_config.observed_binding(key: gunbc.repo_local_git_config.core_hooks_path_key, value: gunbc.repo_local_git_config.core_hooks_path_value)
+  gunbc.repo_local_git_config.reconcile_read_back_argv(binding: binding) != extdeps.git.shape_git_config_get_argv(key: gunbc.repo_local_git_config.core_hooks_path_key)
 }
 
 test fn witness_holds() -> Bool {

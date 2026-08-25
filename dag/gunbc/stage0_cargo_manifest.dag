@@ -24,8 +24,8 @@ data stage0_package_root: String = "src/v1/stage0/"
 // which would have been a second, uncited spelling of the emitter's own root.
 data stage0_source_dir_relative_to_package: String = "src/"
 
-data stage0_cargo_bin_paths_observation_ref: DeclarationRef = DeclarationRef {
+data stage0_cargo_bin_paths_observation_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.stage0_rust_host_observation",
   decl_name: "current_stage0_rust_source_observation",
-  field: WholeDeclaration
+  field: std.decl_ref.WholeDeclaration
 }

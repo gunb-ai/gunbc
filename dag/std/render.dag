@@ -119,7 +119,7 @@ fn list_item(prefix: String, value: String) -> String {
 }
 
 fn indented_list_item(level: Int, unit: String, prefix: String, value: String) -> String {
-  indent_text(level: level, unit: unit, text: std.render.list_item(prefix: prefix, value: value))
+  indent_text(level: level, unit: unit, text: list_item(prefix: prefix, value: value))
 }
 
 fn text_block(header: String, level: Int, unit: String, items: List<String>) -> String {

@@ -1,5 +1,6 @@
 module gunbc.guarantee_rung_drop
 
+
 // THE TYPED CARRIER FOR A DESIGN section 4b(3) RUNG DROP.
 //
 // DESIGN section 4b(3) states the obligation: "a change may lower a rung only by declaring

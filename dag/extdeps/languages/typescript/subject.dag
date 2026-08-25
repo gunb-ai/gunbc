@@ -3,14 +3,14 @@ module extdeps.languages.typescript.subject
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.typescriptlang.org/docs/handbook/intro.html"
   }
 }
 
 data typescript_language_further_authority_1: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "github.com/microsoft/TypeScript"
   }
 }
@@ -27,10 +27,10 @@ data typescript_language_model_scope: extdeps.external_authority.ExternalModelSc
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.languages.typescript.subject",
       decl_name: "typescript_language_subject",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.languages.typescript.subject.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [typescript_language_further_authority_1]
 }
 

@@ -1,5 +1,7 @@
 module gunbc.cli_invoke
 
+
+
 data cli_invoke_shell_spelling_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: cli_invoke claim_executor _shell builders (claim_executor_run_plan_shell, claim_executor_verify_artifacts_shell, source_roots_shell_flags and the SourceRootShellStyle they read) — interim GHA emit surface for Phase 3a; delete when claim_executor call sites render through bash emit (shell→intent open thread, docs/plans/shell-intent-emit-realization-design.md Phase 3 completion). THE gunbc run HALF IS DONE, not deferred: gunbc_run_shell and gunbc_bin_shell are DELETED and every emitted gunbc run step now renders from the one typed invocation shape gunbc_run_invocation_words through v2.workflow.gunbc_invoke_step_emit. This row is narrowed rather than retired because the claim_executor lane still carries its own shell spelling beside claim_executor_run_plan_transport_argv, which is the same fork one authority up.")
 
 type SourceRootShellStyle

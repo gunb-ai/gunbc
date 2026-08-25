@@ -4,17 +4,17 @@ module test.claim.walk_plan_stage_fixture_hand_rust_witness
 
 test fn walk_plan_stage_fixture_hand_rust_scaffold_is_seed_retained() -> Bool {
   match gunbc.walk_plan_stage_fixture_scaffold.walk_plan_stage_fixture_hand_rust_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn walk_plan_stage_fixture_hand_rust_receipt_is_checkable() -> Bool {
-  !(dissolution_description(condition: gunbc.walk_plan_stage_fixture_scaffold.walk_plan_stage_fixture_hand_rust_dissolve_trigger) == "")
-    && !(walk_plan_stage_fixture_hand_rust_receipt_plan_anchor == "")
+  !(std.dissolution.dissolution_description(condition: gunbc.walk_plan_stage_fixture_scaffold.walk_plan_stage_fixture_hand_rust_dissolve_trigger) == "")
+    && !(gunbc.walk_plan_stage_fixture_scaffold.walk_plan_stage_fixture_hand_rust_receipt_plan_anchor == "")
     && !(gunbc.walk_plan_stage_fixture_scaffold.walk_plan_stage_fixture_hand_rust_roadmap_lane_anchor == "")
-    && walk_plan_stage_fixture_hand_rust_receipt_witness_entry == "dag/test/claim/walk_plan_stage_fixture_hand_rust_witness_test.dag"
-    && walk_plan_stage_fixture_hand_rust_loc_delta_net == length(xs: walk_plan_stage_fixture_hand_rust_paths)
+    && gunbc.walk_plan_stage_fixture_scaffold.walk_plan_stage_fixture_hand_rust_receipt_witness_entry == "dag/test/claim/walk_plan_stage_fixture_hand_rust_witness_test.dag"
+    && gunbc.walk_plan_stage_fixture_scaffold.walk_plan_stage_fixture_hand_rust_loc_delta_net == v2.std.algebra.length(xs: gunbc.walk_plan_stage_fixture_scaffold.walk_plan_stage_fixture_hand_rust_paths)
 }
 
 test fn walk_plan_stage_fixture_hand_rust_roadmap_anchor_names_row() -> Bool {
@@ -27,7 +27,7 @@ test fn walk_plan_stage_fixture_hand_rust_roadmap_anchor_names_row() -> Bool {
       pattern: "v1-materialization-kernel"
     )
     && string_contains(
-      s: dissolution_description(condition: gunbc.walk_plan_stage_fixture_scaffold.walk_plan_stage_fixture_hand_rust_dissolve_trigger),
+      s: std.dissolution.dissolution_description(condition: gunbc.walk_plan_stage_fixture_scaffold.walk_plan_stage_fixture_hand_rust_dissolve_trigger),
       pattern: "v1-materialization-kernel"
     )
 }

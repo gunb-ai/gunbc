@@ -1,5 +1,6 @@
 module v2.test.manual.resolve_compile_anchor
 
+
 fn service_atom_conj_tree() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -63,8 +64,8 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> v2.std.diagnostic.O
 },
     diagnostics: v2.std.diagnostic.None
   ) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: v2.extdeps.languages.dag.dag_language_model_void())
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: v2.extdeps.languages.dag.dag_language_model_void())
   }
 }
 
@@ -117,8 +118,8 @@ fn anchor_resolve_bind_binder_use() -> v2.std.diagnostic.Outcome<v2.compiler.res
 },
     diagnostics: v2.std.diagnostic.None
   ) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: v2.extdeps.languages.dag.dag_language_model_void())
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: v2.extdeps.languages.dag.dag_language_model_void())
   }
 }
 
@@ -242,10 +243,10 @@ fn resolve_import_target() -> v2.std.qualified_name.QualifiedName {
   std.algebra.Cons { head: ^anchor_imported_path_segment, tail: std.algebra.Empty }
 }
 
-test fn resolve_with_admission_imported_binding_accepts() -> v2.std.logic.Bool {
+test fn resolve_with_admission_imported_binding_accepts() -> Bool {
   match resolve_roots_single_import() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: admitted, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
     match v2.compiler.name_resolve.resolve_with_admission_policy(
       lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude(),
       roots: admitted,
@@ -265,8 +266,8 @@ test fn resolve_with_admission_imported_binding_accepts() -> v2.std.logic.Bool {
       active_roots: std.algebra.Empty,
       policy: v2.std.resolution_policy.ImportScoped
     ) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }

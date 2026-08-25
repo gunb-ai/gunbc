@@ -2,7 +2,7 @@ module dag.test.claim.witness_deferral_freeze_witness
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_deferral_freeze_witness_note: String = "MECHANISM ON FIXTURES, per the decomposition rule this lane's own wall enforces: a corpus census may be irreducible but a mechanism never is, so every claim here plants its own tiny rosters and the live-population join runs where it is already paid for — the host admission step the floor executes per PR (cli_run collect_unexecuted_deferred_witnesses / collect_stale_frozen_path_deferrals, pinned by unfrozen_offline_path_row_refuses_as_unclassified_path_deferral and frozen_path_deferral_roster_carries_no_stale_rows). Folding the whole live roster through the live refusal here would be quadratic and would put this file over the very budget whose evasion it exists to close.
 
@@ -42,31 +42,31 @@ fn probe_standing(entry: String, function: String, frozen: List<gunbc.witness_de
 
 fn standing_is_unclassified_path_deferral(r: std.witness_admission.WitnessExecutionStanding) -> Bool {
   match r {
-    UnclassifiedPathDeferral { entry: _, function: _ } => true
-    UnexecutedDeferredWitness { entry: _, function: _ } => false
-    LegacyFrozenPathDeferral { entry: _, function: _ } => false
-    WitnessHasExecutingConsumer { cadence: _ } => false
-    DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
+    std.witness_admission.UnclassifiedPathDeferral { entry: _, function: _ } => true
+    std.witness_admission.UnexecutedDeferredWitness { entry: _, function: _ } => false
+    std.witness_admission.LegacyFrozenPathDeferral { entry: _, function: _ } => false
+    std.witness_admission.WitnessHasExecutingConsumer { cadence: _ } => false
+    std.witness_admission.DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
   }
 }
 
 fn standing_is_unexecuted_deferred(r: std.witness_admission.WitnessExecutionStanding) -> Bool {
   match r {
-    UnexecutedDeferredWitness { entry: _, function: _ } => true
-    UnclassifiedPathDeferral { entry: _, function: _ } => false
-    LegacyFrozenPathDeferral { entry: _, function: _ } => false
-    WitnessHasExecutingConsumer { cadence: _ } => false
-    DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
+    std.witness_admission.UnexecutedDeferredWitness { entry: _, function: _ } => true
+    std.witness_admission.UnclassifiedPathDeferral { entry: _, function: _ } => false
+    std.witness_admission.LegacyFrozenPathDeferral { entry: _, function: _ } => false
+    std.witness_admission.WitnessHasExecutingConsumer { cadence: _ } => false
+    std.witness_admission.DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
   }
 }
 
 fn standing_is_legacy_frozen(r: std.witness_admission.WitnessExecutionStanding) -> Bool {
   match r {
-    LegacyFrozenPathDeferral { entry: _, function: _ } => true
-    UnexecutedDeferredWitness { entry: _, function: _ } => false
-    UnclassifiedPathDeferral { entry: _, function: _ } => false
-    WitnessHasExecutingConsumer { cadence: _ } => false
-    DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
+    std.witness_admission.LegacyFrozenPathDeferral { entry: _, function: _ } => true
+    std.witness_admission.UnexecutedDeferredWitness { entry: _, function: _ } => false
+    std.witness_admission.UnclassifiedPathDeferral { entry: _, function: _ } => false
+    std.witness_admission.WitnessHasExecutingConsumer { cadence: _ } => false
+    std.witness_admission.DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
   }
 }
 
@@ -106,7 +106,7 @@ test fn witness_deferral_freeze_frozen_row_is_tolerated_by_the_floor() -> Bool {
       function: "already_frozen_holds",
       frozen: probe_frozen_roster()
     ),
-    baseline: FrozenBaselineDebtAllowed
+    baseline: std.witness_admission.FrozenBaselineDebtAllowed
   )
 }
 
@@ -161,12 +161,12 @@ test fn witness_deferral_freeze_included_row_is_never_refused() -> Bool {
 }
 
 test fn witness_deferral_freeze_join_is_by_identity_not_by_entry() -> Bool {
-  !frozen_path_deferral_covers_in(
+  !gunbc.witness_deferral_freeze.frozen_path_deferral_covers_in(
     rows: probe_frozen_roster(),
     entry: probe_entry(),
     function: "added_after_the_freeze_holds"
   )
-    && frozen_path_deferral_covers_in(
+    && gunbc.witness_deferral_freeze.frozen_path_deferral_covers_in(
       rows: probe_frozen_roster(),
       entry: probe_entry(),
       function: "already_frozen_holds"
@@ -178,7 +178,7 @@ fn probe_discovered_population() -> List<std.realization_schedule.ScheduleWitnes
     std.realization_schedule.ScheduleWitnessEntry {
       entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag",
       function: "already_frozen_holds",
-      kind: CorpusWitnessKind
+      kind: std.realization_schedule.CorpusWitnessKind
     }
   ]
 }
@@ -203,13 +203,13 @@ test fn witness_deferral_freeze_departed_row_fails_the_join() -> Bool {
 }
 
 test fn witness_deferral_freeze_empty_function_list_is_malformed() -> Bool {
-  !frozen_path_deferral_row_well_formed(
+  !gunbc.witness_deferral_freeze.frozen_path_deferral_row_well_formed(
     row: gunbc.witness_deferral_freeze.FrozenPathDeferral {
       entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag",
       functions: []
     }
   )
-    && frozen_path_deferral_row_well_formed(
+    && gunbc.witness_deferral_freeze.frozen_path_deferral_row_well_formed(
       row: gunbc.witness_deferral_freeze.FrozenPathDeferral {
         entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag",
         functions: ["x_holds"]
@@ -218,7 +218,7 @@ test fn witness_deferral_freeze_empty_function_list_is_malformed() -> Bool {
 }
 
 test fn witness_deferral_freeze_live_roster_is_well_formed() -> Bool {
-  frozen_path_deferrals_well_formed()
+  gunbc.witness_deferral_freeze.frozen_path_deferrals_well_formed()
 }
 
 data commit_roster_consumer_control_note: String = "THE FALSE-POSITIVE CONTROL, and it caught a real one. A CommitWitnessClaim enrollment on an executing surface makes a witness run as an explicit entry, and explicit rows merge after discovery with no exclusion filter — so an enrolled witness under an offline path executes even though the path excludes it. The first revision of this wall did not read that authority and would have refused 31 such identities: fail-closed, and still a wrong answer. This pair is the discriminator, on a LIVE row rather than a fixture, because the defect was precisely that the live authority was unread: the identity below is admitted while being absent from the frozen population, so its admission can only be coming from its enrollment."
@@ -231,7 +231,7 @@ test fn witness_deferral_freeze_commit_roster_enrollment_admits() -> Bool {
 }
 
 test fn witness_deferral_freeze_commit_roster_row_is_not_frozen() -> Bool {
-  !frozen_path_deferral_covers(
+  !gunbc.witness_deferral_freeze.frozen_path_deferral_covers(
     entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
     function: "witness_content_key_subject_stable"
   )
@@ -241,12 +241,12 @@ data rust_realization_disposition_note: String = "THE REALIZATION IS ACCOUNTED F
 
 test fn witness_deferral_freeze_rust_realization_is_declared_scaffold() -> Bool {
   match gunbc.cli_run_witness_deferral_freeze_scaffold.cli_run_witness_deferral_freeze_scaffold {
-    Scaffold { dissolves_to: _, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
     _ => false
   }
 }
 
 test fn witness_deferral_freeze_rust_realization_names_a_dissolution() -> Bool {
-  !(dissolution_description(condition: gunbc.cli_run_witness_deferral_freeze_scaffold.cli_run_witness_deferral_freeze_dissolve_trigger) == "")
-    && !(cli_run_witness_deferral_freeze_loc_delta_basis == "")
+  !(std.dissolution.dissolution_description(condition: gunbc.cli_run_witness_deferral_freeze_scaffold.cli_run_witness_deferral_freeze_dissolve_trigger) == "")
+    && !(gunbc.cli_run_witness_deferral_freeze_scaffold.cli_run_witness_deferral_freeze_loc_delta_basis == "")
 }

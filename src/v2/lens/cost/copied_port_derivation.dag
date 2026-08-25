@@ -8,40 +8,40 @@ type CombinerArrowCitation {
   arrow: v2.std.node.Node
 }
 
-fn cost_linear_in_node(cost: SymbolicCost, n: v2.std.node.Node) -> v2.std.logic.Bool {
+fn cost_linear_in_node(cost: v2.lens.cost.SymbolicCost, n: v2.std.node.Node) -> Bool {
   match cost {
     ConstantCost { value: _ } => false
-    LinearCost { variable: sv } => sv.source == n
+    v2.lens.cost.LinearCost { variable: sv } => sv.source == n
     LogCost { variable: _ } => false
     PolynomialCost { variable: _, degree: _ } => false
     PolyLogCost { variable: _, exponent: _ } => false
     ExponentialCost { variable: _, base: _ } => false
     FactorialCost { variable: _ } => false
-    SumCost { lhs: lhs, rhs: rhs } =>
+    v2.lens.cost.SumCost { lhs: lhs, rhs: rhs } =>
       cost_linear_in_node(cost: lhs, n: n) || cost_linear_in_node(cost: rhs, n: n)
-    ProductCost { lhs: lhs, rhs: rhs } =>
+    v2.lens.cost.ProductCost { lhs: lhs, rhs: rhs } =>
       cost_linear_in_node(cost: lhs, n: n) || cost_linear_in_node(cost: rhs, n: n)
-    UnknownCost { diagnostic: _ } => false
+    v2.lens.cost.UnknownCost { diagnostic: _ } => false
   }
 }
 
 fn arrow_domain_param_nodes(arrow: v2.std.node.Node) -> List<v2.std.node.Node> {
   match arrow.kind {
-    TypeNode { connective: Arrow } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Arrow } =>
       fold(arrow.children, init: std.algebra.Empty, f: fn(acc, e) {
         match e.label {
-          Positional =>
+          v2.std.node.Positional =>
             match e.target.kind {
-              TypeNode { connective: Conj } =>
+              v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
                 fold(e.target.children, init: acc, f: fn(a, de) {
                   match de.label {
-                    Named { name: _ } => std.algebra.Cons { head: de.target, tail: a }
-                    Positional => a
+                    v2.std.node.Named { name: _ } => std.algebra.Cons { head: de.target, tail: a }
+                    v2.std.node.Positional => a
                   }
                 })
               _ => acc
             }
-          Named { name: _ } => acc
+          v2.std.node.Named { name: _ } => acc
         }
       })
     _ => std.algebra.Empty
@@ -52,14 +52,14 @@ fn param_list_reverse_to_forward(xs: List<v2.std.node.Node>) -> List<v2.std.node
   fold(xs, init: std.algebra.Empty, f: fn(acc, n) { std.algebra.Cons { head: n, tail: acc } })
 }
 
-fn int_list_prepend(item: v2.std.integer.Int, xs: List<v2.std.integer.Int>) -> List<v2.std.integer.Int> {
+fn int_list_prepend(item: Int, xs: List<Int>) -> List<Int> {
   std.algebra.Cons { head: item, tail: xs }
 }
 
-fn linear_param_indices(cost: SymbolicCost, params: std.algebra.FreeMonoid<v2.std.node.Node>, idx: v2.std.integer.Int, acc: std.algebra.FreeMonoid<v2.std.integer.Int>) -> std.algebra.FreeMonoid<v2.std.integer.Int> {
+fn linear_param_indices(cost: v2.lens.cost.SymbolicCost, params: List<v2.std.node.Node>, idx: Int, acc: List<Int>) -> List<Int> {
   match params {
-    Empty => acc
-    Cons { head: param, tail: rest } =>
+    std.algebra.Empty => acc
+    std.algebra.Cons { head: param, tail: rest } =>
       linear_param_indices(
         cost: cost,
         params: rest,
@@ -73,26 +73,26 @@ fn linear_param_indices(cost: SymbolicCost, params: std.algebra.FreeMonoid<v2.st
   }
 }
 
-fn derive_copied_port_index_from_arrow(arrow: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.integer.Int> {
-  match arrow_body_target_lookup(children: arrow.children) {
+fn derive_copied_port_index_from_arrow(arrow: v2.std.node.Node) -> v2.std.optional.Optional<Int> {
+  match v2.std.node.arrow_body_target_lookup(children: arrow.children) {
     Found { target: body } =>
       let params = param_list_reverse_to_forward(xs: arrow_domain_param_nodes(arrow: arrow))
-      let body_cost = symbolic_cost_of_node(n: body)
+      let body_cost = v2.lens.cost.symbolic_cost_of_node(n: body)
       let linear_indices = linear_param_indices(cost: body_cost, params: params, idx: 0, acc: std.algebra.Empty)
       match linear_indices {
-        Empty => v2.std.optional.Absent
-        Cons { head: only, tail: Empty } => v2.std.optional.Present { value: only }
+        std.algebra.Empty => v2.std.optional.Absent
+        std.algebra.Cons { head: only, tail: std.algebra.Empty } => v2.std.optional.Present { value: only }
         _ => v2.std.optional.Absent
       }
     Ambiguous => v2.std.optional.Absent
-    Absent => v2.std.optional.Absent
+    v2.std.optional.Absent => v2.std.optional.Absent
   }
 }
 
 fn derive_copied_port_fact(combiner: v2.std.node.Symbol, arrow: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.algebra.CopiedPortFact> {
   match derive_copied_port_index_from_arrow(arrow: arrow) {
-    Absent => v2.std.optional.Absent
-    Present { value: idx } =>
+    v2.std.optional.Absent => v2.std.optional.Absent
+    v2.std.optional.Present { value: idx } =>
       v2.std.optional.Present {
         value: v2.std.algebra.CopiedPortFact {
           combiner: combiner,
@@ -102,22 +102,22 @@ fn derive_copied_port_fact(combiner: v2.std.node.Symbol, arrow: v2.std.node.Node
   }
 }
 
-fn row_matches_combiner(row: v2.std.algebra.CopiedPortFact, combiner: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn row_matches_combiner(row: v2.std.algebra.CopiedPortFact, combiner: v2.std.node.Symbol) -> Bool {
   row.combiner == combiner
 }
 
-fn some_copied_port_index(idx: v2.std.integer.Int) -> v2.std.optional.Optional<v2.std.integer.Int> {
+fn some_copied_port_index(idx: Int) -> v2.std.optional.Optional<Int> {
   v2.std.optional.Present { value: idx }
 }
 
-fn copied_port_index_from_registry(rows: List<v2.std.algebra.CopiedPortFact>, combiner: v2.std.node.Symbol) -> v2.std.optional.Optional<v2.std.integer.Int> {
-  fold_list(
+fn copied_port_index_from_registry(rows: List<v2.std.algebra.CopiedPortFact>, combiner: v2.std.node.Symbol) -> v2.std.optional.Optional<Int> {
+  v2.std.algebra.fold_list(
     xs: rows,
     empty: v2.std.optional.Absent,
     cons: fn(acc, row) {
       match acc {
-        Present { value: _ } => acc
-        Absent =>
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent =>
           if row_matches_combiner(row: row, combiner: combiner) {
             some_copied_port_index(idx: row.copied_port_index)
           } else {

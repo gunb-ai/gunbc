@@ -5,7 +5,7 @@ data shell_conformance_join_note: String = "THE CONFORMANCE JOIN, homed in the p
 
 data gnu_bash_posix_conformance_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.gnu.org/software/bash/manual/bash.html#Bash-POSIX-Mode"
   }
 }
@@ -25,7 +25,7 @@ type ShellConformanceFact {
 data posix_shell_subject_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "extdeps.posix.shell_command_language",
   decl_name: "posix_shell_command_language",
-  field: WholeDeclaration
+  field: std.decl_ref.WholeDeclaration
 }
 
 data shell_conformance_facts: List<ShellConformanceFact> = [
@@ -39,12 +39,12 @@ data shell_conformance_facts: List<ShellConformanceFact> = [
 
 fn conformance_for_implementation(implementation: std.decl_ref.DeclarationRef) -> ShellConformanceFact? {
   fold(shell_conformance_facts, init: none, f: fn(acc, c) {
-    if declaration_ref_eq(a: c.implementation, b: implementation) { Present { value: c } } else { acc }
+    if std.decl_ref.declaration_ref_eq(a: c.implementation, b: implementation) { Present { value: c } } else { acc }
   })
 }
 
 fn implementation_and_specification_are_distinct_subjects() -> Bool {
   fold(shell_conformance_facts, init: true, f: fn(acc, c) {
-    acc && !declaration_ref_eq(a: c.implementation, b: c.specification)
+    acc && !std.decl_ref.declaration_ref_eq(a: c.implementation, b: c.specification)
   })
 }

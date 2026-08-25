@@ -2,80 +2,80 @@ module test.claim.design_argument_witness
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn design_s1_argument_form_is_valid() -> Bool {
-  std.syllogism.argument_form_is_valid(gunbc.design_argument.design_section_1_argument)
+  argument_form_is_valid(gunbc.design_argument.design_section_1_argument)
 }
 
 test fn design_s1_argument_is_non_vacuous() -> Bool {
-  std.syllogism.argument_is_non_vacuous(gunbc.design_argument.design_section_1_argument)
+  argument_is_non_vacuous(gunbc.design_argument.design_section_1_argument)
 }
 
 test fn design_full_argument_form_is_valid() -> Bool {
-  std.syllogism.argument_form_is_valid(gunbc.design_argument.design_argument)
+  argument_form_is_valid(gunbc.design_argument.design_argument)
 }
 
 test fn design_full_argument_has_no_orphan() -> Bool {
-  std.syllogism.argument_has_no_orphan(gunbc.design_argument.design_argument)
+  argument_has_no_orphan(gunbc.design_argument.design_argument)
 }
 
 test fn design_full_argument_is_acyclic() -> Bool {
-  std.syllogism.argument_is_acyclic(gunbc.design_argument.design_argument)
+  argument_is_acyclic(gunbc.design_argument.design_argument)
 }
 
 test fn design_full_argument_axiom_set_is_closed() -> Bool {
-  std.syllogism.argument_axiom_set_is_closed(gunbc.design_argument.design_argument)
+  argument_axiom_set_is_closed(gunbc.design_argument.design_argument)
 }
 
-fn orphaned_variant() -> std.syllogism.Argument {
-  std.syllogism.Argument {
+fn orphaned_variant() -> Argument {
+  Argument {
     axioms: gunbc.design_argument.design_axioms,
     propositions: [
-      std.syllogism.Proposition { id: "s1.minimal-safe-efficient", statement: "mse", premises: ["s1.grounding-intersubjective"] },
-      std.syllogism.Proposition { id: "s1.grounding-intersubjective", statement: "gi", premises: ["s1.minimal-safe-efficient"] }
+      Proposition { id: "s1.minimal-safe-efficient", statement: "mse", premises: ["s1.grounding-intersubjective"] },
+      Proposition { id: "s1.grounding-intersubjective", statement: "gi", premises: ["s1.minimal-safe-efficient"] }
     ]
   }
 }
 
 test fn orphan_is_detected() -> Bool {
-  std.syllogism.argument_has_no_orphan(orphaned_variant()) == false
+  argument_has_no_orphan(orphaned_variant()) == false
 }
 
-fn cyclic_variant() -> std.syllogism.Argument {
-  std.syllogism.Argument {
+fn cyclic_variant() -> Argument {
+  Argument {
     axioms: gunbc.design_argument.design_axioms,
     propositions: [
-      std.syllogism.Proposition { id: "p", statement: "x", premises: ["A1", "q"] },
-      std.syllogism.Proposition { id: "q", statement: "y", premises: ["p"] }
+      Proposition { id: "p", statement: "x", premises: ["A1", "q"] },
+      Proposition { id: "q", statement: "y", premises: ["p"] }
     ]
   }
 }
 
 test fn cycle_is_detected() -> Bool {
-  std.syllogism.argument_is_acyclic(cyclic_variant()) == false
+  argument_is_acyclic(cyclic_variant()) == false
 }
 
-fn smuggled_axiom_variant() -> std.syllogism.Argument {
-  std.syllogism.Argument {
+fn smuggled_axiom_variant() -> Argument {
+  Argument {
     axioms: gunbc.design_argument.design_axioms,
     propositions: [
-      std.syllogism.Proposition { id: "s1.minimal-safe-efficient", statement: "mse", premises: ["A1", "A2"] },
-      std.syllogism.Proposition { id: "A4", statement: "a smuggled fourth axiom", premises: [] }
+      Proposition { id: "s1.minimal-safe-efficient", statement: "mse", premises: ["A1", "A2"] },
+      Proposition { id: "A4", statement: "a smuggled fourth axiom", premises: [] }
     ]
   }
 }
 
 test fn smuggled_axiom_is_detected() -> Bool {
-  std.syllogism.argument_axiom_set_is_closed(smuggled_axiom_variant()) == false
+  argument_axiom_set_is_closed(smuggled_axiom_variant()) == false
 }
 
-fn empty_variant() -> std.syllogism.Argument {
-  std.syllogism.Argument { axioms: [], propositions: [] }
+fn empty_variant() -> Argument {
+  Argument { axioms: [], propositions: [] }
 }
 
 test fn vacuous_argument_is_rejected() -> Bool {
 
-  (std.syllogism.argument_is_non_vacuous(empty_variant()) == false)
-    && (std.syllogism.argument_form_is_valid(empty_variant()) == false)
+  (argument_is_non_vacuous(empty_variant()) == false)
+    && (argument_form_is_valid(empty_variant()) == false)
 }

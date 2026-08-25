@@ -1,30 +1,31 @@
 module v2.lens.no_dual_representation_test
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-fn module_refs_from_declaration_facts(pool_roots: List<String>) -> List<DualRepModuleRef> {
-  fold_list(
-    xs: module_declaration_facts_live(pool_roots: pool_roots),
-    empty: empty_dual_rep_module_refs,
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
+
+fn module_refs_from_declaration_facts(pool_roots: List<String>) -> List<v2.lens.no_dual_representation_test.scan.DualRepModuleRef> {
+  v2.std.algebra.fold_list(
+    xs: v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool_roots),
+    empty: v2.lens.no_dual_representation_test.scan.empty_dual_rep_module_refs,
     cons: fn(acc, decl) {
-      list_snoc_item(
+      v2.std.algebra.list_snoc_item(
         xs: acc,
-        item: DualRepModuleRef { module: decl.module, path: decl.path }
+        item: v2.lens.no_dual_representation_test.scan.DualRepModuleRef { module: decl.module, path: decl.path }
       )
     }
   )
 }
 
-fn dual_rep_live_module_scans() -> List<DualRepModuleScan> {
-  dual_rep_module_scans_from_fn_index(
-    modules: module_refs_from_declaration_facts(pool_roots: witness_layer_roots)
+fn dual_rep_live_module_scans() -> List<v2.lens.no_dual_representation_test.scan.DualRepModuleScan> {
+  v2.lens.no_dual_representation_test.scan.dual_rep_module_scans_from_fn_index(
+    modules: module_refs_from_declaration_facts(pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
   )
 }
 
 data no_dual_representation_body_partial_frontier_note: String = "body-partial frontier: live scan reads fn_arrow_decl_facts_live output skeletons only (fn_body_reflection_blocker in v2.lens.enforcement.receipts), not fn bodies; eq-sites are collected from output skeletons and data-inits only (skeleton-scoped, not full body coverage); a clean result is scoped to the examined eq-sites, not corpus cleanliness; dissolves when fn-body reflection lands via front-end ingest and symbol_index_fill"
 
 fn no_dual_representation_test_live_eq_site_count() -> Int {
-  dual_rep_eq_site_count_from_scans(scans: dual_rep_live_module_scans())
+  v2.lens.no_dual_representation_test.scan.dual_rep_eq_site_count_from_scans(scans: dual_rep_live_module_scans())
 }
 
 fn no_dual_representation_body_partial_frontier_declared() -> Bool {
@@ -32,16 +33,20 @@ fn no_dual_representation_body_partial_frontier_declared() -> Bool {
 }
 
 test fn no_dual_representation_test_coverage_honesty_holds() -> Bool {
-  dual_rep_coverage_honesty_holds(
+  v2.lens.no_dual_representation_test.scan.dual_rep_coverage_honesty_holds(
     eq_site_count: no_dual_representation_test_live_eq_site_count(),
     frontier_declared: no_dual_representation_body_partial_frontier_declared()
   )
 }
 
 test fn no_dual_representation_test_clean_holds() -> Bool {
-  dual_rep_clean_holds_for_scans(scans: dual_rep_live_module_scans())
+  v2.lens.no_dual_representation_test.scan.dual_rep_clean_holds_for_scans(scans: dual_rep_live_module_scans())
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+
+
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch }
 }
+
+

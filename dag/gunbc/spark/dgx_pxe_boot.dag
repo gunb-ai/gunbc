@@ -124,9 +124,9 @@ fn pxe_network_present_authorities(
 fn pxe_network_isolation_dhcp_direction(isolation: PxeNetworkIsolation) -> extdeps.provisioning.network_boot.DhcpBootDirection {
   match isolation {
     ProxyDhcpPxeOnly => extdeps.provisioning.network_boot.ProxyDhcp
-    IsolatedProvisioningSegment => NativeDhcpBootOptions
-    DedicatedNicDirectCable => NativeDhcpBootOptions
-    AdmittedRouterDhcpChange => NativeDhcpBootOptions
+    IsolatedProvisioningSegment => extdeps.provisioning.network_boot.NativeDhcpBootOptions
+    DedicatedNicDirectCable => extdeps.provisioning.network_boot.NativeDhcpBootOptions
+    AdmittedRouterDhcpChange => extdeps.provisioning.network_boot.NativeDhcpBootOptions
   }
 }
 
@@ -235,7 +235,7 @@ fn spark_pxe_firmware_enablement_intervention() -> std.human_intervention.HumanI
     instruction: concat(
       "At this unit's console, either disable secure boot or enroll ",
       concat(
-        spark_pxe_bootloader_filename as String,
+        extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_bootloader_filename as String,
         ", then enable PXE on the chosen interface under Network Stack Configuration.",
       ),
     ),
@@ -246,9 +246,9 @@ fn spark_pxe_firmware_enablement_intervention() -> std.human_intervention.HumanI
 fn spark_pxe_firmware_gaps(config: SparkUefiPxeConfiguration) -> List<SparkPxeFirmwareGap> {
   concat(
     match config.secure_boot {
-      SecureBootDisabledForPxe => []
-      BootloaderEnrolledForPxe { bootloader: b } =>
-        if b == spark_pxe_bootloader_filename { [] } else { [SecureBootBlocksPxe] }
+      extdeps.systems.nvidia_dgx_spark_pxe.SecureBootDisabledForPxe => []
+      extdeps.systems.nvidia_dgx_spark_pxe.BootloaderEnrolledForPxe { bootloader: b } =>
+        if b == extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_bootloader_filename { [] } else { [SecureBootBlocksPxe] }
     },
     concat(
       if config.network_stack_enabled { [] } else { [NetworkStackDisabled] },
@@ -290,18 +290,18 @@ fn spark_unattended_image_boot(
   SparkUnattendedImageBoot {
     image_kind: image_kind,
     network_chain: extdeps.provisioning.network_boot.NetworkBootChain {
-      boot_mode: spark_pxe_client_boot_mode(tftp_root: tftp_root),
+      boot_mode: extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_client_boot_mode(tftp_root: tftp_root),
       dhcp_direction: pxe_network_isolation_dhcp_direction(isolation: isolation),
       image_http_root: http_image_root,
     },
-    tftp_bootloader: spark_pxe_tftp_relative_path(p: extdeps.systems.nvidia_dgx_spark_pxe.TftpBootloader, image: image_kind),
-    tftp_grub_config: spark_pxe_tftp_relative_path(p: extdeps.systems.nvidia_dgx_spark_pxe.TftpGrubConfig, image: image_kind),
-    tftp_kernel: spark_pxe_tftp_relative_path(p: extdeps.systems.nvidia_dgx_spark_pxe.TftpKernelImage, image: image_kind),
-    tftp_initrd: spark_pxe_tftp_relative_path(p: extdeps.systems.nvidia_dgx_spark_pxe.TftpInitrdImage, image: image_kind),
-    http_install_image: spark_pxe_http_install_image_path(image: image_kind),
+    tftp_bootloader: extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_tftp_relative_path(p: extdeps.systems.nvidia_dgx_spark_pxe.TftpBootloader, image: image_kind),
+    tftp_grub_config: extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_tftp_relative_path(p: extdeps.systems.nvidia_dgx_spark_pxe.TftpGrubConfig, image: image_kind),
+    tftp_kernel: extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_tftp_relative_path(p: extdeps.systems.nvidia_dgx_spark_pxe.TftpKernelImage, image: image_kind),
+    tftp_initrd: extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_tftp_relative_path(p: extdeps.systems.nvidia_dgx_spark_pxe.TftpInitrdImage, image: image_kind),
+    http_install_image: extdeps.systems.nvidia_dgx_spark_pxe.spark_pxe_http_install_image_path(image: image_kind),
     kernel_cmdline: match image_kind {
-      FastOsRecoveryTarball => spark_fastos_unattended_kernel_cmdline(http_image_root: http_image_root)
-      DgxOsIsoImage => spark_dgx_os_unattended_kernel_cmdline(http_image_root: http_image_root)
+      extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball => extdeps.systems.nvidia_dgx_spark_pxe.spark_fastos_unattended_kernel_cmdline(http_image_root: http_image_root)
+      extdeps.systems.nvidia_dgx_spark_pxe.DgxOsIsoImage => extdeps.systems.nvidia_dgx_spark_pxe.spark_dgx_os_unattended_kernel_cmdline(http_image_root: http_image_root)
     },
   }
 }

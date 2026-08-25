@@ -15,68 +15,68 @@ data bash_emit_empty_nodes: List<v2.std.node.Node> = []
 data bash_emit_authority_note: String = "Node-tree shell emission via bash_build constructors + bash_command_fold_serialize (grammar-row emit). Replaces extdeps.languages.bash.program serialize_bash and v2.workflow.bash_program_sidecar_fold (sidecar FULL DELETE PR-C)."
 
 fn bash_emit_from_target(emitted: v2.std.node.Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<String> {
-  bash_fold_serialize_emit_from_node(emitted: emitted, target: target)
+  v2.workflow.bash_command_fold_serialize.bash_fold_serialize_emit_from_node(emitted: emitted, target: target)
 }
 
 fn bash_emit_tagged(stmt: BashEmitStmt) -> v2.std.diagnostic.Outcome<String> {
-  bash_fold_serialize_node(stmt: stmt.node)
+  v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node(stmt: stmt.node)
 }
 
 fn bash_emit_special_nodes(specials: List<BashEmitSpecial>) -> List<v2.std.node.Node> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: specials,
     empty: bash_emit_empty_nodes,
     cons: fn(acc, item) {
       match item {
         BashEmitTagged { stmt: s } =>
-          list_snoc_item(xs: acc, item: s.node)
+          v2.std.algebra.list_snoc_item(xs: acc, item: s.node)
       }
     }
   )
 }
 
-fn bash_emit_program(statements: List<BashEmitSpecial>, set_e: v2.std.logic.Bool) -> v2.std.diagnostic.Outcome<String> {
-  bash_fold_serialize_program(
+fn bash_emit_program(statements: List<BashEmitSpecial>, set_e: Bool) -> v2.std.diagnostic.Outcome<String> {
+  v2.workflow.bash_command_fold_serialize.bash_fold_serialize_program(
     stmts: bash_emit_special_nodes(specials: statements),
     set_e: set_e
   )
 }
 
-fn bash_emit_stmts(statements: List<v2.std.node.Node>, set_e: v2.std.logic.Bool) -> v2.std.diagnostic.Outcome<String> {
-  bash_fold_serialize_program(stmts: statements, set_e: set_e)
+fn bash_emit_stmts(statements: List<v2.std.node.Node>, set_e: Bool) -> v2.std.diagnostic.Outcome<String> {
+  v2.workflow.bash_command_fold_serialize.bash_fold_serialize_program(stmts: statements, set_e: set_e)
 }
 
-fn bash_emit_matches_golden(stmt: BashEmitStmt, golden: String) -> v2.std.logic.Bool {
-  match bash_fold_serialize_node(stmt: stmt.node) {
-    Accepted { value: folded, diagnostics: _ } => folded == golden
-    Rejected { diagnostics: _ } => false
+fn bash_emit_matches_golden(stmt: BashEmitStmt, golden: String) -> Bool {
+  match v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node(stmt: stmt.node) {
+    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn bash_emit_raw_line_matches_golden(text: String, golden: String) -> v2.std.logic.Bool {
+fn bash_emit_raw_line_matches_golden(text: String, golden: String) -> Bool {
   match bash_emit_from_target(
-    emitted: bash_word_pass_emitted,
-    target: bash_word_pass_target_model(spelling: text)
+    emitted: v2.extdeps.languages.bash.bash_word_pass_emitted,
+    target: v2.extdeps.languages.bash.bash_word_pass_target_model(spelling: text)
   ) {
-    Accepted { value: folded, diagnostics: _ } => folded == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn bash_emit_program_matches_golden(
   statements: List<BashEmitSpecial>,
-  set_e: v2.std.logic.Bool,
+  set_e: Bool,
   golden: String
-) -> v2.std.logic.Bool {
+) -> Bool {
   match bash_emit_program(statements: statements, set_e: set_e) {
-    Accepted { value: folded, diagnostics: _ } => folded == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded == golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn bash_emit_heredoc(path_spelling: String, delimiter: String, body: String) -> v2.std.diagnostic.Outcome<String> {
   v2.std.diagnostic.Accepted {
-    value: bash_stmt_heredoc_source_text(
+    value: v2.extdeps.languages.bash.bash_stmt_heredoc_source_text(
       path: path_spelling,
       delimiter: delimiter,
       body: body
@@ -87,13 +87,13 @@ fn bash_emit_heredoc(path_spelling: String, delimiter: String, body: String) -> 
 
 fn bash_emit_negation_spelling(inner_spelling: String) -> v2.std.diagnostic.Outcome<String> {
   bash_emit_from_target(
-    emitted: bash_stmt_negation_emitted,
-    target: bash_stmt_negation_target_model(inner: inner_spelling)
+    emitted: v2.extdeps.languages.bash.bash_stmt_negation_emitted,
+    target: v2.extdeps.languages.bash.bash_stmt_negation_target_model(inner: inner_spelling)
   )
 }
 
 fn bash_emit_negation(inner: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
-  bash_fold_serialize_node(stmt: bash_build_negation(inner: inner))
+  v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node(stmt: v2.extdeps.languages.bash_build.bash_build_negation(inner: inner))
 }
 
 fn bash_emit_env_prefixed(
@@ -102,7 +102,7 @@ fn bash_emit_env_prefixed(
   command_spelling: String
 ) -> v2.std.diagnostic.Outcome<String> {
   v2.std.diagnostic.Accepted {
-    value: bash_stmt_env_prefixed_source_text(
+    value: v2.extdeps.languages.bash.bash_stmt_env_prefixed_source_text(
       name: name,
       value: value_spelling,
       command: command_spelling
@@ -115,20 +115,20 @@ fn bash_emit_wrong_target_oracle_holds(
   emitted: v2.std.node.Node,
   golden: String,
   wrong_target_witness: Witness<v2.std.compilers.target_model.TargetModel>
-) -> v2.std.logic.Bool {
+) -> Bool {
   match wrong_target_witness {
-    Holds { value: target } =>
+    v2.std.witness.Holds { value: target } =>
       match bash_emit_from_target(emitted: emitted, target: target) {
-        Accepted { value: folded, diagnostics: _ } => folded != golden
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded != golden
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-fn bash_emit_wrong_spelling_oracle_holds(emit_o: v2.std.diagnostic.Outcome<String>, golden: String) -> v2.std.logic.Bool {
+fn bash_emit_wrong_spelling_oracle_holds(emit_o: v2.std.diagnostic.Outcome<String>, golden: String) -> Bool {
   match emit_o {
-    Accepted { value: folded, diagnostics: _ } => folded != golden
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: folded, diagnostics: _ } => folded != golden
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }

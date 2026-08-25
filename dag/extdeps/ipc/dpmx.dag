@@ -3,7 +3,7 @@ module extdeps.ipc.dpmx
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.ipc2581.com/"
   }
 }
@@ -54,42 +54,42 @@ data ipc_dpmx_semantic_carriage: List<FormatSemanticRow> = [
   FormatSemanticRow {
     semantic: LayerImagery,
     carriage: CarriedInFormat,
-    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
+    authority: extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: Stackup,
     carriage: CarriedInFormat,
-    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
+    authority: extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: NetlistConnectivity,
     carriage: CarriedInFormat,
-    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
+    authority: extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: DrillData,
     carriage: CarriedInFormat,
-    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
+    authority: extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: ComponentPlacement,
     carriage: CarriedInFormat,
-    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
+    authority: extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: BillOfMaterials,
     carriage: CarriedInFormat,
-    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
+    authority: extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: AssemblyInstruction,
     carriage: CarriedInFormat,
-    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
+    authority: extdeps_external_authority_anchor,
   },
   FormatSemanticRow {
     semantic: ImpedanceRequirement,
     carriage: CarriedInFormat,
-    authority: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
+    authority: extdeps_external_authority_anchor,
   },
 ]
 
@@ -98,10 +98,10 @@ data ipc_dpmx_model_scope: extdeps.external_authority.ExternalModelScope = extde
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ipc.dpmx",
       decl_name: "ipc_dpmx_format",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.ipc.dpmx.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 

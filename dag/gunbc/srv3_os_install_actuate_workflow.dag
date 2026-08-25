@@ -44,7 +44,7 @@ fn srv3_os_install_actuate_workflow_step_count() -> Int {
 }
 
 fn srv3_boot_once_cd_workflow_disposition(approval: gunbc.workflow_escalation.WorkflowApprovalState) -> gunbc.workflow_escalation.WorkflowStepDisposition {
-  workflow_step_disposition_for_approval(
+  gunbc.workflow_escalation.workflow_step_disposition_for_approval(
     escalation: srv3_boot_once_cd_escalation,
     approval: approval,
   )
@@ -52,7 +52,7 @@ fn srv3_boot_once_cd_workflow_disposition(approval: gunbc.workflow_escalation.Wo
 
 fn srv3_boot_once_cd_is_runnable_with_approval(approval: gunbc.workflow_escalation.WorkflowApprovalState) -> Bool {
   match srv3_boot_once_cd_workflow_disposition(approval: approval) {
-    StepRunnable => true
+    gunbc.workflow_escalation.StepRunnable => true
     _ => false
   }
 }
@@ -72,12 +72,12 @@ fn srv3_os_install_actuate_workflow_includes_operator_approval_before_boot() -> 
 }
 
 fn srv3_os_install_actuate_workflow_credential_intent_is_declared() -> Bool {
-  srv3_os_install_actuate_credential_intent().rotated_secret_ref.secret == "bmc-srv3-admin" as std.types.NonEmptyStr
+  gunbc.srv3_bmc_credential_resolve.srv3_os_install_actuate_credential_intent().rotated_secret_ref.secret == "bmc-srv3-admin" as std.types.NonEmptyStr
 }
 
 fn srv3_os_install_actuator_plan_step_count_matches_workflow_tail() -> Bool {
-  match srv3_os_install_actuator_plan_standing {
-    ActuatorPlanReady { plan: p, intents: _ } => p.steps.length() == 3
-    ActuatorPlanRefused { cause: _ } => false
+  match gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan_standing {
+    gunbc.nbd_proxy_virtual_media_install.ActuatorPlanReady { plan: p, intents: _ } => p.steps.length() == 3
+    gunbc.nbd_proxy_virtual_media_install.ActuatorPlanRefused { cause: _ } => false
   }
 }

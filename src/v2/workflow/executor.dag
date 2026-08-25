@@ -36,7 +36,7 @@ fn executor_job_for_node(node: v2.std.node.Node) -> ExecutorJob {
 
 fn executor_jobs_for_frontier(frontier: v2.workflow.scheduler.RunnableFrontier<v2.std.node.Node>) -> List<ExecutorJob> {
   fold(frontier.ready, init: [], f: fn(jobs, node) {
-    list_snoc_item(xs: jobs, item: executor_job_for_node(node: node))
+    v2.std.algebra.list_snoc_item(xs: jobs, item: executor_job_for_node(node: node))
   })
 }
 
@@ -48,13 +48,13 @@ fn executor_batch_for_frontier(frontier: v2.workflow.scheduler.RunnableFrontier<
 
 fn executor_job_nodes(jobs: List<ExecutorJob>) -> List<v2.std.node.Node> {
   fold(jobs, init: [], f: fn(nodes, job) {
-    list_snoc_item(xs: nodes, item: job.node)
+    v2.std.algebra.list_snoc_item(xs: nodes, item: job.node)
   })
 }
 
 fn executor_append_batch(batches: List<ExecutorBatch>, batch: ExecutorBatch) -> List<ExecutorBatch> {
-  if non_empty(xs: batch.jobs) {
-    list_snoc_item(xs: batches, item: batch)
+  if v2.std.algebra.non_empty(xs: batch.jobs) {
+    v2.std.algebra.list_snoc_item(xs: batches, item: batch)
   } else {
     batches
   }
@@ -66,7 +66,7 @@ fn parallel_executor_plan_from_dependencies(
   scheduled: List<v2.std.node.Node>
 ) -> ExecutorRunPlan {
   executor_plan_from_scheduler_plan(
-    scheduler_plan: scheduler_plan_from_dependencies(
+    scheduler_plan: v2.workflow.scheduler.scheduler_plan_from_dependencies(
       nodes: nodes,
       dependencies: dependencies,
       scheduled: scheduled
@@ -80,7 +80,7 @@ fn parallel_executor_step_plan_from_dependencies(
   scheduled: List<v2.std.node.Node>
 ) -> ExecutorRunPlan {
   executor_plan_from_scheduler_plan(
-    scheduler_plan: scheduler_step_plan_from_dependencies(
+    scheduler_plan: v2.workflow.scheduler.scheduler_step_plan_from_dependencies(
       nodes: nodes,
       dependencies: dependencies,
       scheduled: scheduled
@@ -90,16 +90,16 @@ fn parallel_executor_step_plan_from_dependencies(
 
 fn executor_plan_from_scheduler_plan(scheduler_plan: v2.workflow.scheduler.SchedulerPlan<v2.std.node.Node>) -> ExecutorRunPlan {
   match scheduler_plan {
-    SchedulerPlanComplete { layers: layers, scheduled: scheduled_nodes } => ExecutorRunComplete {
+    v2.workflow.scheduler.SchedulerPlanComplete { layers: layers, scheduled: scheduled_nodes } => ExecutorRunComplete {
       batches: executor_batches_for_layers(layers: layers),
       scheduled: scheduled_nodes
     }
-    SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled_nodes, remaining: remaining, layers: _ } => ExecutorRunRunnable {
+    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled_nodes, remaining: remaining, layers: _ } => ExecutorRunRunnable {
       batch: executor_batch_for_frontier(frontier: frontier),
       scheduled: scheduled_nodes,
       remaining: remaining
     }
-    SchedulerPlanBlocked { evidence: evidence, scheduled: scheduled_nodes, remaining: remaining, layers: layers } => ExecutorRunBlocked {
+    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: evidence, scheduled: scheduled_nodes, remaining: remaining, layers: layers } => ExecutorRunBlocked {
       evidence: ExecutorSchedulerBlocked { evidence: evidence },
       batches: executor_batches_for_layers(layers: layers),
       scheduled: scheduled_nodes,
@@ -115,13 +115,13 @@ fn parallel_executor_plan_from_layers(layers: List<v2.std.dependency.ReadinessLa
   }
 }
 
-fn executor_batch_contains_node(batch: ExecutorBatch, node: v2.std.node.Node) -> v2.std.logic.Bool {
-  contains(xs: executor_job_nodes(jobs: batch.jobs), item: node, eq: fn(left, right) { left == right })
+fn executor_batch_contains_node(batch: ExecutorBatch, node: v2.std.node.Node) -> Bool {
+  v2.std.algebra.contains(xs: executor_job_nodes(jobs: batch.jobs), item: node, eq: fn(left, right) { left == right })
 }
 
-fn executor_batches_preserve_frontiers(batches: List<ExecutorBatch>, layers: List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>>) -> v2.std.logic.Bool {
+fn executor_batches_preserve_frontiers(batches: List<ExecutorBatch>, layers: List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>>) -> Bool {
   fold(layers, init: true, f: fn(ok, layer) {
-    ok && contains(
+    ok && v2.std.algebra.contains(
       xs: batches,
       item: executor_batch_for_frontier(frontier: v2.workflow.scheduler.RunnableFrontier { ready: layer.ready }),
       eq: fn(left, right) { left == right }
@@ -141,7 +141,7 @@ fn executor_batches_for_layers(layers: List<v2.std.dependency.ReadinessLayer<v2.
 fn executor_nodes_from_batches(batches: List<ExecutorBatch>) -> List<v2.std.node.Node> {
   fold(batches, init: [], f: fn(nodes, batch) {
     fold(batch.jobs, init: nodes, f: fn(acc, job) {
-      list_snoc_item(xs: acc, item: job.node)
+      v2.std.algebra.list_snoc_item(xs: acc, item: job.node)
     })
   })
 }

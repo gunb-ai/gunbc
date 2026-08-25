@@ -3,7 +3,7 @@ module extdeps.process.gnu_bash_exit
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.gnu.org/software/bash/manual/html_node/Exit-Status.html"
   }
 }

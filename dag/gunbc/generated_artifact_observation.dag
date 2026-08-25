@@ -1,40 +1,40 @@
 module gunbc.generated_artifact_observation
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data generated_artifact_observation_note: String = "P0 (operator-directed, 2026-08-05; module-split per loyal-ram-550 review of #7823): the prior shape called artifact_generate up to four times and re-read the committed file a second time per artifact across gate_ok/red_receipt_ok, and the fast .dag witness independently called artifact_generate three more times per artifact to fake a drift with a live perturb — the semantic graph asking the same expensive fact repeatedly, cost and correctness riding on incidental memoization (operator ruling). This module is the ONLY live producer: one Filesystem.Read, one artifact_generate, one artifact_extra_valid per artifact, captured once as a typed receipt. The carrier type and every pure leaf/group/diagnostic predicate live in the sibling module gunbc.generated_artifact_assessment, which cannot import Filesystem or the generator — purity by construction, not by convention. This module depends on that one (never the reverse), so nothing here can be reached by an assessment."
 
 fn observe_generated_artifact(a: gunbc.generated_artifact.GeneratedArtifact) -> gunbc.generated_artifact_assessment.GeneratedArtifactObservation {
-  let path = artifact_path(a: a)
-  let committed = Filesystem.Read(path: path)
+  let path = gunbc.generated_artifact.artifact_path(a: a)
+  let committed = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path)
   if !committed.success {
     gunbc.generated_artifact_assessment.GeneratedArtifactObservationRefused { artifact: a, path: path, cause: concat("committed read failed: ", committed.error) }
   } else {
-    match artifact_generate(a: a) {
-      ArtifactGenerationRefused { reason } =>
+    match gunbc.generated_artifact_emit.artifact_generate(a: a) {
+      gunbc.generated_artifact_emit.ArtifactGenerationRefused { reason } =>
         gunbc.generated_artifact_assessment.GeneratedArtifactObservationRefused { artifact: a, path: path, cause: concat("generation refused: ", reason) }
-      ArtifactGenerated { content } =>
+      gunbc.generated_artifact_emit.ArtifactGenerated { content } =>
         gunbc.generated_artifact_assessment.GeneratedArtifactObserved {
           artifact: a,
           path: path,
           generated_content: content,
           committed_content: committed.content,
-          extra_validation: artifact_extra_valid(a: a, generated: gunbc.generated_artifact_emit.ArtifactGenerated { content: content })
+          extra_validation: gunbc.generated_artifact_emit.artifact_extra_valid(a: a, generated: gunbc.generated_artifact_emit.ArtifactGenerated { content: content })
         }
     }
   }
 }
 
 fn observe_generated_artifact_population() -> List<gunbc.generated_artifact_assessment.GeneratedArtifactObservation> {
-  map(committed_generated_artifacts(), a => observe_generated_artifact(a: a))
+  map(gunbc.generated_artifact.committed_generated_artifacts(), a => observe_generated_artifact(a: a))
 }
 
 data assess_generated_artifact_live_population_note: String = "The one function that legitimately spans both sides — produce, then assess. Lives here (the producer side), never in gunbc.generated_artifact_assessment; a witness meant to be pure must not call it."
 
 fn assess_generated_artifact_live_population() -> Bool {
-  assess_generated_artifact_population(
-    expected: committed_generated_artifacts(),
+  gunbc.generated_artifact_assessment.assess_generated_artifact_population(
+    expected: gunbc.generated_artifact.committed_generated_artifacts(),
     observations: observe_generated_artifact_population()
   )
 }

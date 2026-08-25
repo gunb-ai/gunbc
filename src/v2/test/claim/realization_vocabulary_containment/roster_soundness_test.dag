@@ -1,7 +1,7 @@
 module v2.test.realization_vocabulary_containment.roster_soundness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data typescript_sidecar_module: String = "extdeps.languages.typescript.program"
 
@@ -11,27 +11,27 @@ data roster_soundness_fast_lane_note: String = "Live-corpus roster soundness rec
 
 data ts0_frozen_census_facts: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/roadmap_component.dag",
     import_module: typescript_sidecar_module
   },
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/design/theme_transition.dag",
     import_module: typescript_sidecar_module
   },
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/node_http_server_emit.dag",
     import_module: typescript_sidecar_module
   },
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixWorkflow,
+    layer: v2.std.layer.LayerPrefixWorkflow,
     path: "src/v2/workflow/effect_plan_bash_materialize.dag",
     import_module: bash_build_module
   },
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/tools/build_step.dag",
     import_module: bash_build_module
   }
@@ -39,46 +39,46 @@ data ts0_frozen_census_facts: List<v2.std.layer.LayerImportFact> = [
 
 data ts0_frozen_census_facts_missing_build_step: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/roadmap_component.dag",
     import_module: typescript_sidecar_module
   },
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/design/theme_transition.dag",
     import_module: typescript_sidecar_module
   },
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/node_http_server_emit.dag",
     import_module: typescript_sidecar_module
   },
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixWorkflow,
+    layer: v2.std.layer.LayerPrefixWorkflow,
     path: "src/v2/workflow/effect_plan_bash_materialize.dag",
     import_module: bash_build_module
   }
 ]
 
-test fn realization_vocab_roster_soundness_census_complete_holds() -> v2.std.logic.Bool {
-  realization_vocab_roster_sound(
-    live_leak_edges: realization_vocab_live_leak_edges_from_facts(facts: ts0_frozen_census_facts)
+test fn realization_vocab_roster_soundness_census_complete_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_roster_sound(
+    live_leak_edges: v2.lens.realization_vocabulary_containment.realization_vocab_live_leak_edges_from_facts(facts: ts0_frozen_census_facts)
   )
 }
 
-test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> v2.std.logic.Bool {
-  realization_vocab_roster_sound(
-    live_leak_edges: realization_vocab_live_leak_edges_from_facts(
+test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_roster_sound(
+    live_leak_edges: v2.lens.realization_vocabulary_containment.realization_vocab_live_leak_edges_from_facts(
       facts: ts0_frozen_census_facts_missing_build_step
     )
   ) == false
 }
 
-test fn realization_vocab_grandfathered_edge_roster_keys_are_distinct_holds() -> v2.std.logic.Bool {
-  realization_vocab_grandfathered_edge_roster_well_formed()
+test fn realization_vocab_grandfathered_edge_roster_keys_are_distinct_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edge_roster_well_formed()
 }
 
-test fn realization_vocab_grandfathered_edge_keys_distinct_red_on_planted_duplicate_holds() -> v2.std.logic.Bool {
+test fn realization_vocab_grandfathered_edge_keys_distinct_red_on_planted_duplicate_holds() -> Bool {
   let planted = [
     "dag/gunbc/roadmap_component.dag -> extdeps.languages.typescript.program",
     "dag/tools/build_step.dag -> v2.extdeps.languages.bash_build",
@@ -88,9 +88,9 @@ test fn realization_vocab_grandfathered_edge_keys_distinct_red_on_planted_duplic
     "dag/gunbc/roadmap_component.dag -> extdeps.languages.typescript.program",
     "dag/tools/build_step.dag -> v2.extdeps.languages.bash_build"
   ]
-  !realization_vocab_grandfathered_edge_keys_are_distinct(keys: planted)
-    && realization_vocab_grandfathered_edge_keys_are_distinct(keys: distinct)
-    && realization_vocab_grandfathered_edge_keys_are_distinct(
-      keys: realization_vocab_grandfathered_edge_keys()
+  !v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edge_keys_are_distinct(keys: planted)
+    && v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edge_keys_are_distinct(keys: distinct)
+    && v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edge_keys_are_distinct(
+      keys: v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edge_keys()
     )
 }

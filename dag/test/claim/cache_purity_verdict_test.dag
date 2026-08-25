@@ -1,33 +1,33 @@
 module test.claim.cache_purity_verdict
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn sample_violation() -> extdeps.realization.cache_purity.CachePurityViolation {
   extdeps.realization.cache_purity.CachePurityViolation {
-    content_key: as_content_hash_structural(
-      structural: structural_content_hash(digest: "deadbeefdeadbeef" as std.content_hash.Fnv1a64StructuralDigestHex),
+    content_key: std.content_hash.as_content_hash_structural(
+      structural: std.content_hash.structural_content_hash(digest: "deadbeefdeadbeef" as std.content_hash.Fnv1a64StructuralDigestHex),
     ),
     unkeyed_axis: "session_intern_state",
-    warm_digest: as_content_hash_structural(
-      structural: structural_content_hash(digest: "1111111111111111" as std.content_hash.Fnv1a64StructuralDigestHex),
+    warm_digest: std.content_hash.as_content_hash_structural(
+      structural: std.content_hash.structural_content_hash(digest: "1111111111111111" as std.content_hash.Fnv1a64StructuralDigestHex),
     ),
-    cold_digest: as_content_hash_structural(
-      structural: structural_content_hash(digest: "2222222222222222" as std.content_hash.Fnv1a64StructuralDigestHex),
+    cold_digest: std.content_hash.as_content_hash_structural(
+      structural: std.content_hash.structural_content_hash(digest: "2222222222222222" as std.content_hash.Fnv1a64StructuralDigestHex),
     ),
   }
 }
 
 test fn witness_pure_on_match() -> Bool {
-  match cache_purity_verdict(warm_equals_cold: true, violation: test.claim.cache_purity_verdict.sample_violation()) {
-    Pure => true
+  match extdeps.realization.cache_purity.cache_purity_verdict(warm_equals_cold: true, violation: sample_violation()) {
+    extdeps.realization.cache_purity.Pure => true
     _ => false
   }
 }
 
 test fn witness_impure_on_divergence() -> Bool {
-  match cache_purity_verdict(warm_equals_cold: false, violation: test.claim.cache_purity_verdict.sample_violation()) {
-    Impure { violation: _ } => true
+  match extdeps.realization.cache_purity.cache_purity_verdict(warm_equals_cold: false, violation: sample_violation()) {
+    extdeps.realization.cache_purity.Impure { violation: _ } => true
     _ => false
   }
 }

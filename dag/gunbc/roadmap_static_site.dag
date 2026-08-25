@@ -33,31 +33,31 @@ type StaticSiteAllocation {
 }
 
 data roadmap_site_readback_script_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.emit",
     decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
 data served_surface_digest_note: String = "healthz is the served surface's FINGERPRINT DOCUMENT, not just a liveness ping. It already published digests for the two text artifacts; it now covers the whole surface a browser can observe — both HTML pages and the modeled dispatch asset — because those are exactly the bodies that went stale. The motivating incident (2026-07-24): the live srv1 page served `.node-superseded &gt; .title` (the escaped selector that kills the strikethrough), `width` instead of `min-width` on the status chip, no `<details>` disclosure and no centering, while the tree carried all four fixes — and nothing anywhere could observe the gap, because `gunbc serve` binds its compiled graph ONCE at process start, so a served page lags the tree until the unit is restarted AND nothing compares the two. Publishing the digests makes the comparison a plain body equality against this same function evaluated on the deploying tree (roadmap_site_healthz_surface_current), so there is no second definition of the page to drift from: the digest is taken over the SAME body the route serves, via the shared served_page_body / page_render_refusal_body pair in gunbc.roadmap_site_surface_render. Cost measured before it was adopted rather than assumed, because the readiness poll calls this repeatedly: a live srv1 render is ~18 ms for the 223 KB roadmap page and ~15 ms for the daily page, so the added per-probe cost is tens of milliseconds against a poll bound in the tens of seconds."
 
 fn roadmap_site_roadmap_md_body() -> String {
-  expected_roadmap_md()
+  gunbc.roadmap_authority.expected_roadmap_md()
 }
 
 fn roadmap_site_dispatch_json_body() -> String {
-  roadmap_dispatch_file_content()
+  gunbc.roadmap_spawner.roadmap_dispatch_file_content()
 }
 
 fn roadmap_site_roadmap_md_artifact() -> SiteArtifact {
   let body = roadmap_site_roadmap_md_body()
   SiteArtifact {
     kind: RoadmapMarkdown,
-    url_path: roadmap_site_roadmap_url_path,
+    url_path: gunbc.roadmap_site_surface_render.roadmap_site_roadmap_url_path,
     body: body,
-    digest: site_artifact_digest(body: body),
+    digest: gunbc.roadmap_site_surface_render.site_artifact_digest(body: body),
   }
 }
 
@@ -65,9 +65,9 @@ fn roadmap_site_dispatch_json_artifact() -> SiteArtifact {
   let body = roadmap_site_dispatch_json_body()
   SiteArtifact {
     kind: RoadmapDispatchJson,
-    url_path: roadmap_site_dispatch_url_path,
+    url_path: gunbc.roadmap_site_surface_render.roadmap_site_dispatch_url_path,
     body: body,
-    digest: site_artifact_digest(body: body),
+    digest: gunbc.roadmap_site_surface_render.site_artifact_digest(body: body),
   }
 }
 
@@ -80,11 +80,11 @@ fn roadmap_site_text_artifacts() -> List<SiteArtifact> {
 
 fn roadmap_site_web_service_shape() -> WebServiceShape {
   WebServiceShape {
-    cpu: millicore(count: 100),
-    memory: mebibyte(count: 128),
+    cpu: std.measure.millicore(count: 100),
+    memory: std.measure.mebibyte(count: 128),
     port: 8080,
     stateless: true,
-    health_path: roadmap_site_health_path,
+    health_path: gunbc.roadmap_site_surface_render.roadmap_site_health_path,
   }
 }
 
@@ -104,24 +104,24 @@ fn roadmap_site_static_allocation() -> StaticSiteAllocation {
 }
 
 fn roadmap_site_path_template(raw: String) -> std.http_path.PathTemplate {
-  match parse_path_template(raw: raw) {
-    ParsedPathTemplate { template: t } => t
-    MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
+  match extdeps.uri_path.parse_path_template(raw: raw) {
+    extdeps.uri_path.ParsedPathTemplate { template: t } => t
+    extdeps.uri_path.MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
       std.http_path.PathTemplate { tokens: [std.http_path.LiteralToken { text: raw }] }
   }
 }
 
 fn served_surface_digest_kv(url_path: std.types.NonEmptyStr, body: String) -> extdeps.languages.json.emit.JsonKeyValue {
-  json_kv(key: url_path as String, value: json_string(s: site_artifact_digest(body: body).digest as String))
+  extdeps.languages.json.emit.json_kv(key: url_path as String, value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_site_surface_render.site_artifact_digest(body: body).digest as String))
 }
 
 fn roadmap_site_healthz_body() -> String {
-  materialize_live_roadmap_site_surface_bundle().healthz_body
+  gunbc.roadmap_site_surface_observe.materialize_live_roadmap_site_surface_bundle().healthz_body
 }
 
 fn roadmap_site_healthz_body_for_release(release_revision: std.types.CommitSha) -> String {
-  let bundle = materialize_live_roadmap_site_surface_bundle()
-  healthz_body_with_release_identity(
+  let bundle = gunbc.roadmap_site_surface_observe.materialize_live_roadmap_site_surface_bundle()
+  gunbc.roadmap_site_surface_render.healthz_body_with_release_identity(
     roadmap: bundle.roadmap_md,
     dispatch: bundle.dispatch_json,
     daily: bundle.daily_html,
@@ -137,9 +137,9 @@ data roadmap_site_healthz_body_for_release_note: String = "THE SERVED /healthz D
 fn roadmap_site_healthz_route() -> extdeps.http.server.ServedStaticRoute {
   extdeps.http.server.ServedStaticRoute {
     method: std.types.GET,
-    path_pattern: roadmap_site_path_template(raw: roadmap_site_health_path),
+    path_pattern: roadmap_site_path_template(raw: gunbc.roadmap_site_surface_render.roadmap_site_health_path),
     body: roadmap_site_healthz_body(),
-    content_type: application_json_utf8,
+    content_type: extdeps.http.server.application_json_utf8,
     status_on_hit: 200,
   }
 }
@@ -158,11 +158,11 @@ fn roadmap_site_text_static_routes() -> List<extdeps.http.server.ServedStaticRou
   [
     roadmap_site_text_route(
       artifact: roadmap_site_roadmap_md_artifact(),
-      content_type: text_plain_utf8,
+      content_type: extdeps.http.server.text_plain_utf8,
     ),
     roadmap_site_text_route(
       artifact: roadmap_site_dispatch_json_artifact(),
-      content_type: application_json_utf8,
+      content_type: extdeps.http.server.application_json_utf8,
     ),
     roadmap_site_healthz_route(),
   ]
@@ -171,14 +171,14 @@ fn roadmap_site_text_static_routes() -> List<extdeps.http.server.ServedStaticRou
 fn roadmap_site_static_route_authority_paths() -> List<String> {
   concat(
     map(roadmap_site_text_artifacts(), a => a.url_path as String),
-    [roadmap_site_health_path as String]
+    [gunbc.roadmap_site_surface_render.roadmap_site_health_path as String]
   )
 }
 
 fn served_static_route_literal_path(route: extdeps.http.server.ServedStaticRoute) -> String {
   fold(route.path_pattern.tokens, init: "", f: (acc, tok) => match tok {
-    LiteralToken { text: t } => concat(acc, t)
-    ParamToken { name: _ } => acc
+    std.http_path.LiteralToken { text: t } => concat(acc, t)
+    std.http_path.ParamToken { name: _ } => acc
   })
 }
 
@@ -195,7 +195,7 @@ fn roadmap_site_fnv1a_digest_script() -> String {
 
 fn roadmap_site_readback_curl_digest_check(url: String, expected: std.content_hash.Fnv1a64Structural) -> String {
   let curl_part = concat(
-    concat("ACTUAL=$(", curl_localhost_bounded_get_argv_prefix()),
+    concat("ACTUAL=$(", extdeps.tools.curl.curl_localhost_bounded_get_argv_prefix()),
     concat(" ", sh_single_quote(s: url)),
     concat(" | node -e ", sh_single_quote(s: roadmap_site_fnv1a_digest_script()))
   )
@@ -220,12 +220,12 @@ fn sh_single_quote(s: String) -> String {
 fn roadmap_site_deploy_receipt_line(host: String, port: Int) -> String {
   let roadmap = roadmap_site_roadmap_md_artifact()
   let dispatch = roadmap_site_dispatch_json_artifact()
-  let model_hash = content_hash_atom(value: "gunbc.roadmap_static_site/v1" as std.types.NonEmptyStr)
+  let model_hash = std.content_hash.content_hash_atom(value: "gunbc.roadmap_static_site/v1" as std.types.NonEmptyStr)
   concat(
     concat(
       concat(concat("echo roadmap-site-receipt host=", host), concat(" port=", to_string(port))),
       concat(
-        concat(concat(" url=http://127.0.0.1:", to_string(port)), roadmap_site_health_path),
+        concat(concat(" url=http://127.0.0.1:", to_string(port)), gunbc.roadmap_site_surface_render.roadmap_site_health_path),
         concat(" roadmap_digest=", roadmap.digest.digest as String)
       )
     ),
@@ -249,7 +249,7 @@ fn roadmap_site_digest_readback_script(port: Int) -> String {
       concat(roadmap_site_readback_curl_digest_check(url: concat(base, dispatch.url_path), expected: dispatch.digest), "\n"),
       concat(
         concat(
-          concat(curl_localhost_bounded_get_argv_prefix(), " ", sh_single_quote(s: concat(base, dispatch.url_path))),
+          concat(extdeps.tools.curl.curl_localhost_bounded_get_argv_prefix(), " ", sh_single_quote(s: concat(base, dispatch.url_path))),
           " | node -e 'JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"))' || \{ echo roadmap-site-readback: dispatch json parse failed >&2; exit 1; \}\n"
         ),
         concat(roadmap_site_deploy_receipt_line(host: "srv1", port: port), "\n")
@@ -260,7 +260,7 @@ fn roadmap_site_digest_readback_script(port: Int) -> String {
 
 fn roadmap_site_readback_script(port: Int) -> String {
   let base = concat("http://127.0.0.1:", to_string(port))
-  let health_url = concat(base, roadmap_site_health_path)
+  let health_url = concat(base, gunbc.roadmap_site_surface_render.roadmap_site_health_path)
   let roadmap = roadmap_site_roadmap_md_artifact()
   let dispatch = roadmap_site_dispatch_json_artifact()
   concat(
@@ -268,7 +268,7 @@ fn roadmap_site_readback_script(port: Int) -> String {
       concat(
         concat("set -euo pipefail\n", "# roadmap static-site read-back host=srv1\n"),
         concat(
-          concat(curl_localhost_bounded_get_argv_prefix(), " ", sh_single_quote(s: health_url)),
+          concat(extdeps.tools.curl.curl_localhost_bounded_get_argv_prefix(), " ", sh_single_quote(s: health_url)),
           " | node -e 'JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"))' || \{ echo roadmap-site-readback: healthz json parse failed >&2; exit 1; \}\n"
         )
       ),
@@ -278,7 +278,7 @@ fn roadmap_site_readback_script(port: Int) -> String {
       concat(roadmap_site_readback_curl_digest_check(url: concat(base, dispatch.url_path), expected: dispatch.digest), "\n"),
       concat(
         concat(
-          concat(curl_localhost_bounded_get_argv_prefix(), " ", sh_single_quote(s: concat(base, dispatch.url_path))),
+          concat(extdeps.tools.curl.curl_localhost_bounded_get_argv_prefix(), " ", sh_single_quote(s: concat(base, dispatch.url_path))),
           " | node -e 'JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"))' || \{ echo roadmap-site-readback: dispatch json parse failed >&2; exit 1; \}\n"
         ),
         concat(roadmap_site_deploy_receipt_line(host: "srv1", port: port), "\n")

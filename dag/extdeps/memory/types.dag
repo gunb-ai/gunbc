@@ -4,7 +4,7 @@ module extdeps.memory.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Registered_memory"
   }
 }
@@ -117,7 +117,7 @@ fn dram_module_class_eq(a: DramModuleClass, b: DramModuleClass) -> Bool {
 // (DESIGN 3, external upstream decomposition).
 type DramModuleCatalogRow {
   part_number: std.types.NonEmptyStr
-  manufacturer: Vendor<extdeps.hardware.Hardware>
+  manufacturer: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
 
   generation: DramGeneration
 
@@ -133,26 +133,26 @@ type DramModuleCatalogRow {
   rank_count: Int
 }
 
-data dram_data_word_width: std.measure.BitWidth = bit_width(count: 64)
-data dram_ecc_word_width: std.measure.BitWidth = bit_width(count: 72)
+data dram_data_word_width: std.measure.BitWidth = std.measure.bit_width(count: 64)
+data dram_ecc_word_width: std.measure.BitWidth = std.measure.bit_width(count: 72)
 
 fn dram_chips_per_rank(module: DramModuleCatalogRow) -> Int {
-  bit_width_count(b: dram_ecc_word_width) / bit_width_count(b: module.chip_width)
+  std.measure.bit_width_count(b: dram_ecc_word_width) / std.measure.bit_width_count(b: module.chip_width)
 }
 
 fn dram_data_chips_per_rank(module: DramModuleCatalogRow) -> Int {
-  bit_width_count(b: dram_data_word_width) / bit_width_count(b: module.chip_width)
+  std.measure.bit_width_count(b: dram_data_word_width) / std.measure.bit_width_count(b: module.chip_width)
 }
 
 fn dram_module_required_die_density(module: DramModuleCatalogRow) -> std.measure.ByteSize {
-  byte_size(count: byte_size_count(b: module.capacity_bytes) / (dram_data_chips_per_rank(module: module) * module.rank_count))
+  byte_size(count: std.measure.byte_size_count(b: module.capacity_bytes) / (dram_data_chips_per_rank(module: module) * module.rank_count))
 }
 
 fn dram_module_is_realizable(module: DramModuleCatalogRow, jedec: JedecDdrGenerationCatalogRow) -> Bool {
   if !dram_generation_eq(a: module.generation, b: jedec.generation) {
     false
   } else {
-    byte_size_count(b: dram_module_required_die_density(module: module)) <= byte_size_count(b: jedec.max_monolithic_die_density)
+    std.measure.byte_size_count(b: dram_module_required_die_density(module: module)) <= std.measure.byte_size_count(b: jedec.max_monolithic_die_density)
   }
 }
 
@@ -168,9 +168,9 @@ fn dram_module_is_realizable(module: DramModuleCatalogRow, jedec: JedecDdrGenera
 // So the offering REFERENCES the module rather than restating it. Adding a second OEM that
 // resells the same Samsung part is then a new offering row and no edit at all to the module.
 type OemModuleOffering {
-  oem: Vendor<Hardware>
-  oem_product_id: NonEmptyStr
-  oem_part_number: NonEmptyStr
+  oem: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
+  oem_product_id: std.types.NonEmptyStr
+  oem_part_number: std.types.NonEmptyStr
   underlying_module: DramModuleCatalogRow
   link_evidence: OemModuleLinkEvidence
 }
@@ -182,8 +182,8 @@ type OemModuleOffering {
 // though the OEM had documented it. Recording which one we have is the difference between a
 // grounded row and one that merely looks grounded (DESIGN 4b, rung honesty).
 type OemModuleLinkEvidence
-  = OemLinkDocumentedBySupplier { citation: ExternalAuthority }
-  | OemLinkPhysicalLabelObserved { label_text: NonEmptyStr, observer: NonEmptyStr }
+  = OemLinkDocumentedBySupplier { citation: extdeps.external_authority.ExternalAuthority }
+  | OemLinkPhysicalLabelObserved { label_text: std.types.NonEmptyStr, observer: std.types.NonEmptyStr }
 
 type MemoryPopulationRow {
   module: DramModuleCatalogRow

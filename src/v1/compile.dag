@@ -166,7 +166,7 @@ fn emit_artifact(typed: v1.compiler.infer_items.ResolvedGraph, artifact: v1.comp
     Rust => v1.compiler.emit_rust.emit_rust(typed: typed)
     Python => v1.compiler.emit_python.emit_python(typed: typed)
     Go => v1.compiler.emit_go.emit_go(typed: typed)
-    Dag => emit_dag_artifact(typed: typed)
+    v1.compiler.artifact.Dag => emit_dag_artifact(typed: typed)
   }
 }
 
@@ -486,11 +486,11 @@ fn serialize_method_semantics(value: v1.std.core.MethodSemantics?, source_indice
 
 fn serialize_recursion_shape(shape: std.induction.RecursionShape) -> String {
   match shape {
-    DirectRecursion => "{\"_variant\": \"DirectRecursion\"}"
-    ListRecursion => "{\"_variant\": \"ListRecursion\"}"
-    OptionalRecursion => "{\"_variant\": \"OptionalRecursion\"}"
-    SetRecursion => "{\"_variant\": \"SetRecursion\"}"
-    MapValueRecursion => "{\"_variant\": \"MapValueRecursion\"}"
+    std.induction.DirectRecursion => "{\"_variant\": \"DirectRecursion\"}"
+    std.induction.ListRecursion => "{\"_variant\": \"ListRecursion\"}"
+    std.induction.OptionalRecursion => "{\"_variant\": \"OptionalRecursion\"}"
+    std.induction.SetRecursion => "{\"_variant\": \"SetRecursion\"}"
+    std.induction.MapValueRecursion => "{\"_variant\": \"MapValueRecursion\"}"
   }
 }
 
@@ -505,7 +505,7 @@ fn serialize_inductive_field(field: std.induction.InductiveField) -> String {
 
 fn serialize_positive_descent_amount(steps: std.termination.PositiveDescentAmount) -> String {
   match steps {
-    OneStep => "{\"_variant\": \"OneStep\"}"
+    std.termination.OneStep => "{\"_variant\": \"OneStep\"}"
     std.termination.AdditionalStep { previous: p } =>
       concat("{\"_variant\": \"AdditionalStep\", \"previous\": ", serialize_positive_descent_amount(steps: p), "}")
   }
@@ -513,7 +513,7 @@ fn serialize_positive_descent_amount(steps: std.termination.PositiveDescentAmoun
 
 fn serialize_proportional_divisor(d: std.termination.ProportionalDivisor) -> String {
   match d {
-    DivideByTwo => "{\"_variant\": \"DivideByTwo\"}"
+    std.termination.DivideByTwo => "{\"_variant\": \"DivideByTwo\"}"
     std.termination.StrictlyLarger { inner: i } =>
       concat("{\"_variant\": \"StrictlyLarger\", \"inner\": ", serialize_proportional_divisor(d: i), "}")
   }
@@ -521,7 +521,7 @@ fn serialize_proportional_divisor(d: std.termination.ProportionalDivisor) -> Str
 
 fn serialize_shrink_factor(factor: std.computation.ShrinkFactor) -> String {
   match factor {
-    UnitShrink => "{\"_variant\": \"UnitShrink\"}"
+    std.computation.UnitShrink => "{\"_variant\": \"UnitShrink\"}"
     std.computation.ConstantShrink { steps: s } =>
       concat("{\"_variant\": \"ConstantShrink\", \"steps\": ", serialize_positive_descent_amount(steps: s), "}")
     std.computation.ProportionalShrink { divisor: d } =>
@@ -539,11 +539,11 @@ fn serialize_sub_value_relation(rel: std.induction.SubValueRelation) -> String {
       concat("{\"_variant\": \"IteratedSubValue\", \"field\": ", serialize_inductive_field(field: f), "}")
     std.induction.ArithmeticDescent { param: p, factor: fac } =>
       concat("{\"_variant\": \"ArithmeticDescent\", \"param\": ", v1.compiler.dag_collect_support.json_quote(s: p), ", \"factor\": ", serialize_shrink_factor(factor: fac), "}")
-    PreservedValue => "{\"_variant\": \"PreservedValue\"}"
-    NonIncreasingValue => "{\"_variant\": \"NonIncreasingValue\"}"
-    StrictAxisErased => "{\"_variant\": \"StrictAxisErased\"}"
-    MixedTop => "{\"_variant\": \"MixedTop\"}"
-    SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}"
+    std.induction.PreservedValue => "{\"_variant\": \"PreservedValue\"}"
+    std.induction.NonIncreasingValue => "{\"_variant\": \"NonIncreasingValue\"}"
+    std.induction.StrictAxisErased => "{\"_variant\": \"StrictAxisErased\"}"
+    std.induction.MixedTop => "{\"_variant\": \"MixedTop\"}"
+    std.induction.SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}"
   }
 }
 
@@ -769,8 +769,8 @@ fn serialize_node_record(node: v1.std.core.Node, source_indices: Map<String, v1.
     match node.connective {
       Conj => v1.compiler.dag_collect_support.json_quote(s: v1.compiler.dag_collect_support.connective_name(value: Conj))
       Disj => v1.compiler.dag_collect_support.json_quote(s: v1.compiler.dag_collect_support.connective_name(value: Disj))
-      NoConnective => "null"
-      Arrow => v1.compiler.dag_collect_support.json_quote(s: v1.compiler.dag_collect_support.connective_name(value: v1.std.core.Arrow))
+      v1.std.core.NoConnective => "null"
+      v1.std.core.Arrow => v1.compiler.dag_collect_support.json_quote(s: v1.compiler.dag_collect_support.connective_name(value: v1.std.core.Arrow))
     },
     ", \"params\": ", serialize_node_params_json(node: node, source_indices: source_indices, key_to_id: key_to_id),
     ", \"inferred\": ", json_optional_inferred_node_ref(value: node.inferred, key_to_id: key_to_id),

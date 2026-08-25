@@ -1,7 +1,7 @@
 module test.claim.optional_cast_wall_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 // THE EXECUTED EVIDENCE FOR THE LEAKED-OPTIONAL WALL, on the source -> .dag-acceptance path.
 // `test.claim.probed_at_word_witness_test` guards what the rendering authority DOES and states,
@@ -22,8 +22,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn violation_count(source: String, wanted: String) -> Int {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
-    CensusNotRunnable { cause: _ } => 0 - 1
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: wanted))
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 

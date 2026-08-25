@@ -3,8 +3,8 @@ module v2.lens.unit_modeling
 
 
 type UnitFieldRow {
-  field: v2.std.node.Symbol
-  carrier: v2.std.node.Symbol
+  field: Symbol
+  carrier: Symbol
 }
 
 data unit_field_rows: List<UnitFieldRow> = [
@@ -45,94 +45,94 @@ data unit_field_rows: List<UnitFieldRow> = [
   UnitFieldRow { field: ^dt_microseconds, carrier: ^DurationMicro }
 ]
 
-fn unit_field_token_map() -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
+fn unit_field_token_map() -> Map<Symbol, Symbol> {
   fold(unit_field_rows, init: empty_map(), f: fn(acc, row) {
     map_insert(m: acc, key: row.field, value: row.carrier)
   })
 }
 
-fn field_name_has_known_carrier(name: v2.std.node.Symbol) -> Bool {
-  match v2.std.collection.map_get(m: unit_field_token_map(), key: name) {
+fn field_name_has_known_carrier(name: Symbol) -> Bool {
+  match map_get(m: unit_field_token_map(), key: name) {
     Accepted { value: Present { value: _ } } => true
     _ => false
   }
 }
 
-data exemption_marker_rows: List<v2.std.node.Symbol> = [
+data exemption_marker_rows: List<Symbol> = [
 
   ^version, ^opcode, ^id, ^kind, ^tag, ^discriminant, ^status, ^code, ^enum,
 
   ^index, ^idx, ^ordinal, ^position, ^pos, ^offset, ^line, ^column, ^col
 ]
 
-fn exemption_marker_set() -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
+fn exemption_marker_set() -> Map<Symbol, Symbol> {
   fold(exemption_marker_rows, init: empty_map(), f: fn(acc, mk) {
     map_insert(m: acc, key: mk, value: mk)
   })
 }
 
-fn name_is_exempt(name: v2.std.node.Symbol) -> Bool {
-  match v2.std.collection.map_get(m: exemption_marker_set(), key: name) {
+fn name_is_exempt(name: Symbol) -> Bool {
+  match map_get(m: exemption_marker_set(), key: name) {
     Accepted { value: Present { value: _ } } => true
     _ => false
   }
 }
 
-fn type_is_flat_scalar(target: v2.std.node.Node) -> Bool {
-  edge_field_type_name(target: target) == ^dag_binding_type_int
+fn type_is_flat_scalar(target: Node) -> Bool {
+  v2.std.node_query.edge_field_type_name(target: target) == ^dag_binding_type_int
 }
 
-fn field_unit_violation(carrier: v2.std.node.Node, edge: v2.std.node.Edge) -> Optional<v2.std.diagnostic.Diagnostic> {
+fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
   match edge.label {
     Named { name: nm } =>
       if type_is_flat_scalar(target: edge.target) {
         if name_is_exempt(name: nm) {
-          optional_absent()
+          v2.std.optional.optional_absent()
         } else {
-          optional_present(value: unit_modeling_diagnostic(carrier: carrier, name: nm))
+          v2.std.optional.optional_present(value: unit_modeling_diagnostic(carrier: carrier, name: nm))
         }
       } else {
-        optional_absent()
+        v2.std.optional.optional_absent()
       }
-    Positional => optional_absent()
+    Positional => v2.std.optional.optional_absent()
   }
 }
 
-fn carrier_first_unit_violation(carrier: v2.std.node.Node) -> Optional<v2.std.diagnostic.Diagnostic> {
+fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
   match carrier.kind {
     TypeNode { connective: _ } =>
-      fold(carrier.children, init: optional_absent(), f: fn(acc, edge) {
-        optional_prefer_first_present(left: acc, right: field_unit_violation(carrier: carrier, edge: edge))
+      fold(carrier.children, init: v2.std.optional.optional_absent(), f: fn(acc, edge) {
+        v2.std.optional.optional_prefer_first_present(left: acc, right: field_unit_violation(carrier: carrier, edge: edge))
       })
     ComputationNode { behavior: _ } => Absent
   }
 }
 
-fn unit_modeling_diagnostic(carrier: v2.std.node.Node, name: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+fn unit_modeling_diagnostic(carrier: Node, name: Symbol) -> Diagnostic {
   if field_name_has_known_carrier(name: name) {
-    v2.std.diagnostic.Diagnostic {
+    Diagnostic {
       reason: ^unit_modeling_flat_scalar_unit_leaf_fixable,
-      at: node_locus(node: carrier),
-      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+      at: v2.std.diagnostic.node_locus(node: carrier),
+      correction: Unavailable { reason: ExternalContractUnknown }
     }
   } else {
-    v2.std.diagnostic.Diagnostic {
+    Diagnostic {
       reason: ^unit_modeling_flat_scalar_blocked_pending_carrier,
-      at: node_locus(node: carrier),
-      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+      at: v2.std.diagnostic.node_locus(node: carrier),
+      correction: Unavailable { reason: ExternalContractUnknown }
     }
   }
 }
 
 data unit_modeling_gate_cost_note: String = "Node-local predicate on the per-subtree-node roster (same grain as fact_density): carrier_first_unit_violation reads only the node's direct children. A subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)."
 
-fn unit_modeling_gate(node: v2.std.node.Node) -> Outcome<Witness<v2.std.node.Node>> {
+fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
   match carrier_first_unit_violation(carrier: node) {
-    Present { value: d } => outcome_rejected(d)
-    Absent => outcome_accepted(value: v2.std.witness.Holds { value: node })
+    Present { value: d } => v2.std.diagnostic.outcome_rejected(d)
+    Absent => v2.std.diagnostic.outcome_accepted(value: v2.std.witness.Holds { value: node })
   }
 }
 
-data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
+data construction_justification: ConstructionJustification = ConstructionJustification {
   class: RatchetForever
 }

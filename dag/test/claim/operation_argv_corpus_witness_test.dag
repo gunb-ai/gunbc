@@ -1,7 +1,7 @@
 module test.claim.operation_argv_corpus_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data operation_argv_corpus_note: String = "The RED corpus for argv materializer route (b), DERIVED rather than rostered: shell_transport_operation_rows() enumerates every shell-transport operation declared under dag/ and src/v2/ from the declarations themselves, so a newly authored operation enrolls by existing and coverage is a corpus fact rather than a claim (DESIGN 3 and 6 -- a hand roster would be the parallel-ledger form of exactly this fact). Each row is bound GENERICALLY: every input the operation declares, and nothing else. Measured at authoring time by execution: 141 rows (139 corpus operations plus the 2 executable-position fixture operations), of which 133 materialize, 96 reference at least one input outside the seed's prior five-name vocabulary (package, bin, args, unit, property) and so could not be materialized AT ALL before this change, and 92 of those 96 now materialize -- the remaining 4 are in the counted expression residue below."
 
@@ -38,7 +38,7 @@ fn operation_argv_flag(b: Bool) -> Int {
 }
 
 fn operation_argv_name_is_legacy_vocabulary(name: String) -> Bool {
-  any(xs: operation_argv_legacy_vocabulary, predicate: fn(v) { v == name })
+  v2.std.algebra.any(xs: operation_argv_legacy_vocabulary, predicate: fn(v) { v == name })
 }
 
 fn operation_argv_row_is_outside_legacy_vocabulary(row: v2.std.operation_argv.ShellTransportOperationRow) -> Bool {
@@ -59,10 +59,10 @@ fn operation_argv_row_materialization(row: v2.std.operation_argv.ShellTransportO
 
 fn operation_argv_tally_row(acc: ArgvCorpusTally, row: v2.std.operation_argv.ShellTransportOperationRow) -> ArgvCorpusTally {
   let classification = v2.std.operation_argv.operation_argv_classify(m: operation_argv_row_materialization(row: row))
-  let materialized = match classification { ArgvRowMaterialized => true, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowOtherRefusal => false }
-  let residue = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => true, ArgvRowExecutablePositionRefused => false, ArgvRowOtherRefusal => false }
-  let exec_position = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => true, ArgvRowOtherRefusal => false }
-  let unexplained = match classification { ArgvRowMaterialized => false, ArgvRowExpressionResidue => false, ArgvRowExecutablePositionRefused => false, ArgvRowOtherRefusal => true }
+  let materialized = match classification { v2.std.operation_argv.ArgvRowMaterialized => true, v2.std.operation_argv.ArgvRowExpressionResidue => false, v2.std.operation_argv.ArgvRowExecutablePositionRefused => false, v2.std.operation_argv.ArgvRowOtherRefusal => false }
+  let residue = match classification { v2.std.operation_argv.ArgvRowMaterialized => false, v2.std.operation_argv.ArgvRowExpressionResidue => true, v2.std.operation_argv.ArgvRowExecutablePositionRefused => false, v2.std.operation_argv.ArgvRowOtherRefusal => false }
+  let exec_position = match classification { v2.std.operation_argv.ArgvRowMaterialized => false, v2.std.operation_argv.ArgvRowExpressionResidue => false, v2.std.operation_argv.ArgvRowExecutablePositionRefused => true, v2.std.operation_argv.ArgvRowOtherRefusal => false }
+  let unexplained = match classification { v2.std.operation_argv.ArgvRowMaterialized => false, v2.std.operation_argv.ArgvRowExpressionResidue => false, v2.std.operation_argv.ArgvRowExecutablePositionRefused => false, v2.std.operation_argv.ArgvRowOtherRefusal => true }
   let outside = operation_argv_row_is_outside_legacy_vocabulary(row: row)
   let exec_outside_fixture = exec_position && (row.at.path != operation_argv_fixture_path)
   ArgvCorpusTally {
@@ -145,12 +145,12 @@ test fn operation_argv_corpus_RED_literal_executable_control_materializes() -> B
     "LiteralExecutable",
     [v2.std.operation_argv.operation_argv_bind_text(name: "flag", text: "--version")]
   ) {
-    ArgvMaterialized { argv: argv } =>
-      length(xs: argv) == 2
+    v2.std.operation_argv.ArgvMaterialized { argv: argv } =>
+      v2.std.algebra.length(xs: argv) == 2
         && match v2.std.algebra.list_head(xs: argv) {
-          HeadFound { value: head } => head == "true"
-          HeadAbsent => false
+          v2.std.algebra.HeadFound { value: head } => head == "true"
+          v2.std.algebra.HeadAbsent => false
         }
-    ArgvMaterializationRefused { at: _, cause: _ } => false
+    v2.std.operation_argv.ArgvMaterializationRefused { at: _, cause: _ } => false
   }
 }

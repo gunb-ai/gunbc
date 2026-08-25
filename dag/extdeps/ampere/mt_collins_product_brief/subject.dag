@@ -3,7 +3,7 @@ module extdeps.ampere.mt_collins_product_brief.subject
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "uawartifacts.blob.core.windows.net/upload-files/data/uawbrochures/cloud_native_demo/Mt._Collins_2U_2022_V2.pdf",
   }
 }
@@ -23,14 +23,14 @@ data mt_collins_product_brief_title: std.types.NonEmptyStr = "Mt. Collins 2U pro
 data mt_collins_product_brief_version_label: std.types.NonEmptyStr = "2022 V2"
 
 data mt_collins_engineering_facts_route: EngineeringFactsRoute = EngineeringFactsUnderNda {
-  access_route: ampere_customer_reference_boards_authority,
+  access_route: extdeps.vendor.ampere.ampere_customer_reference_boards_authority,
 }
 
 type MtCollinsPublicProductBrief {
   marketing_name: std.types.NonEmptyStr
   revision: MtCollinsProductBriefRevision
   version_label: std.types.NonEmptyStr
-  publisher: Vendor<extdeps.hardware.Hardware>
+  publisher: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   engineering_facts_route: EngineeringFactsRoute
 }
 
@@ -38,7 +38,7 @@ data mt_collins_public_product_brief: MtCollinsPublicProductBrief = MtCollinsPub
   marketing_name: "Mt. Collins",
   revision: MtCollinsBrief2022V2 {},
   version_label: mt_collins_product_brief_version_label,
-  publisher: ampere_vendor,
+  publisher: extdeps.vendor.ampere.ampere_vendor,
   engineering_facts_route: mt_collins_engineering_facts_route,
 }
 
@@ -47,10 +47,10 @@ data mt_collins_product_brief_model_scope: extdeps.external_authority.ExternalMo
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ampere.mt_collins_product_brief.subject",
       decl_name: "mt_collins_public_product_brief",
-      field: WholeDeclaration,
+      field: std.decl_ref.WholeDeclaration,
     }
   },
-  first_citation: extdeps.ampere.mt_collins_product_brief.subject.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [],
 }
 

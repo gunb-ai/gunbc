@@ -59,7 +59,7 @@ fn human_intervention_frequency_eq(a: HumanInterventionFrequency, b: HumanInterv
 // DERIVED. No burden carries a stored count; a stored one is a second representation of
 // the list beside it and goes stale the moment an intervention is added (DESIGN §2/§3).
 // The result is an Int rather than std.nat.Nat because Nat at this layer is the algebraic
-// CommutativeSemiring<std.magnitude.Magnitude> alias with no counting surface, and list_length — the one
+// CommutativeSemiring<Magnitude> alias with no counting surface, and list_length — the one
 // authority for "how many elements" — answers in Int; minting a second cardinal here to
 // satisfy a name would be exactly the re-invention the decomposition test forbids.
 fn human_intervention_count_at(
@@ -78,7 +78,7 @@ fn human_intervention_count_at(
 // not cheaper for being rare, it is a different kind of thing, and pricing it as routine
 // would let a strategy buy a better score by moving work into the emergency path.
 fn compare_int_ascending(a: Int, b: Int) -> std.algebra.Ordering {
-  if a < b { Less } else if a > b { Greater } else { Equal }
+  if a < b { std.algebra.Less } else if a > b { std.algebra.Greater } else { std.algebra.Equal }
 }
 
 fn compare_routine_human_burden(
@@ -89,15 +89,15 @@ fn compare_routine_human_burden(
     a: human_intervention_count_at(burden: a, frequency: EveryProvision),
     b: human_intervention_count_at(burden: b, frequency: EveryProvision)
   ) {
-    Less => Less
-    Greater => Greater
-    Equal => match compare_int_ascending(
+    std.algebra.Less => std.algebra.Less
+    std.algebra.Greater => std.algebra.Greater
+    std.algebra.Equal => match compare_int_ascending(
       a: human_intervention_count_at(burden: a, frequency: DeviceOnce),
       b: human_intervention_count_at(burden: b, frequency: DeviceOnce)
     ) {
-      Less => Less
-      Greater => Greater
-      Equal => compare_int_ascending(
+      std.algebra.Less => std.algebra.Less
+      std.algebra.Greater => std.algebra.Greater
+      std.algebra.Equal => compare_int_ascending(
         a: human_intervention_count_at(burden: a, frequency: FleetOnce),
         b: human_intervention_count_at(burden: b, frequency: FleetOnce)
       )

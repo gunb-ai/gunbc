@@ -1,6 +1,7 @@
 module test.claim.roadmap_belt_actuate_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn roadmap_belt_actuate_nid(s: String) -> gunbc.roadmap_model.RoadmapNodeId { s }
 
@@ -47,47 +48,47 @@ fn live_session_with_process(
 
 fn is_exec_ok(o: gunbc.roadmap_belt_actuate.BeltExecOutcome) -> Bool {
   match o {
-    ExecOk { stdout: _ } => true
-    ExecFailed { program: _, exit_code: _, stderr: _ } => false
-    ExecRefused { program: _, reason: _ } => false
+    gunbc.roadmap_belt_actuate.ExecOk { stdout: _ } => true
+    gunbc.roadmap_belt_actuate.ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    gunbc.roadmap_belt_actuate.ExecRefused { program: _, reason: _ } => false
   }
 }
 
 fn exec_ok_stdout_contains(o: gunbc.roadmap_belt_actuate.BeltExecOutcome, pattern: String) -> Bool {
   match o {
-    ExecOk { stdout: out } => string_contains(s: out, pattern: pattern)
-    ExecFailed { program: _, exit_code: _, stderr: _ } => false
-    ExecRefused { program: _, reason: _ } => false
+    gunbc.roadmap_belt_actuate.ExecOk { stdout: out } => string_contains(s: out, pattern: pattern)
+    gunbc.roadmap_belt_actuate.ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    gunbc.roadmap_belt_actuate.ExecRefused { program: _, reason: _ } => false
   }
 }
 
 fn is_exec_failed(o: gunbc.roadmap_belt_actuate.BeltExecOutcome) -> Bool {
   match o {
-    ExecFailed { program: _, exit_code: _, stderr: _ } => true
-    ExecOk { stdout: _ } => false
-    ExecRefused { program: _, reason: _ } => false
+    gunbc.roadmap_belt_actuate.ExecFailed { program: _, exit_code: _, stderr: _ } => true
+    gunbc.roadmap_belt_actuate.ExecOk { stdout: _ } => false
+    gunbc.roadmap_belt_actuate.ExecRefused { program: _, reason: _ } => false
   }
 }
 
 fn is_exec_refused(o: gunbc.roadmap_belt_actuate.BeltExecOutcome) -> Bool {
   match o {
-    ExecRefused { program: _, reason: _ } => true
-    ExecOk { stdout: _ } => false
-    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    gunbc.roadmap_belt_actuate.ExecRefused { program: _, reason: _ } => true
+    gunbc.roadmap_belt_actuate.ExecOk { stdout: _ } => false
+    gunbc.roadmap_belt_actuate.ExecFailed { program: _, exit_code: _, stderr: _ } => false
   }
 }
 
 fn is_spawn_failed(o: gunbc.roadmap_belt_actuate.BeltSpawnOutcome) -> Bool {
   match o {
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => true
-    Spawned { node_id: _, session_name: _, provider: _ } => false
+    gunbc.roadmap_belt_actuate.SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => true
+    gunbc.roadmap_belt_actuate.Spawned { node_id: _, session_name: _, provider: _ } => false
   }
 }
 
 fn is_teardown_failed(o: gunbc.roadmap_belt_actuate.BeltTeardownOutcome) -> Bool {
   match o {
-    TeardownFailed { session_name: _, detail: _ } => true
-    ReapedSession { session_name: _ } => false
+    gunbc.roadmap_belt_actuate.TeardownFailed { session_name: _, detail: _ } => true
+    gunbc.roadmap_belt_actuate.ReapedSession { session_name: _ } => false
   }
 }
 
@@ -160,8 +161,8 @@ test fn witness_named_exec_steps_locate_the_first_failure() -> Bool {
     ],
     workdir: "/",
   ) {
-    ExecStepsOk => false
-    ExecStepFailed { step, detail } =>
+    gunbc.roadmap_belt_actuate.ExecStepsOk => false
+    gunbc.roadmap_belt_actuate.ExecStepFailed { step, detail } =>
       step == "tmux-event-pipe"
         && string_contains(s: detail, pattern: "exit 1")
   }
@@ -179,15 +180,15 @@ test fn witness_teardown_member_refuses_desired_shape() -> Bool {
 
 fn observe_live_count(o: gunbc.roadmap_belt_actuate.BeltObserve) -> Int {
   match o {
-    Observed { live: live } => count(live)
-    ObserveRefused { reason: _ } => -1
+    gunbc.roadmap_belt_actuate.Observed { live: live } => count(live)
+    gunbc.roadmap_belt_actuate.ObserveRefused { reason: _ } => -1
   }
 }
 
 fn is_observe_refused(o: gunbc.roadmap_belt_actuate.BeltObserve) -> Bool {
   match o {
-    ObserveRefused { reason: _ } => true
-    Observed { live: _ } => false
+    gunbc.roadmap_belt_actuate.ObserveRefused { reason: _ } => true
+    gunbc.roadmap_belt_actuate.Observed { live: _ } => false
   }
 }
 
@@ -197,7 +198,7 @@ test fn witness_observe_parses_live_on_success() -> Bool {
     stdout: "gunbc-dispatch-a: 1 windows",
     stderr: "",
   ) {
-    TmuxSessionsListed { entries } =>
+    extdeps.tmux.TmuxSessionsListed { entries } =>
       count(gunbc.roadmap_dispatch_actuator.filter_dispatch_tmux_sessions(entries: entries)) == 1
     _ => false
   }
@@ -230,8 +231,8 @@ test fn witness_observe_empty_on_no_server_enoent() -> Bool {
 test fn witness_observe_refuses_connection_refused() -> Bool {
   let stderr = "error connecting to /tmp/tmux-1000/srv1-green (Connection refused)"
   match gunbc.roadmap_belt_actuate.belt_observe_from_result(success: false, stdout: "", stderr: stderr) {
-    ObserveRefused { reason } => string_contains(s: reason, pattern: stderr)
-    Observed { live: _ } => false
+    gunbc.roadmap_belt_actuate.ObserveRefused { reason } => string_contains(s: reason, pattern: stderr)
+    gunbc.roadmap_belt_actuate.Observed { live: _ } => false
   }
 }
 
@@ -249,10 +250,10 @@ test fn witness_observe_refuses_malformed_stdout() -> Bool {
     stdout: "gunbc-dispatch-a: malformed\n",
     stderr: "",
   ) {
-    ObserveRefused { reason } =>
+    gunbc.roadmap_belt_actuate.ObserveRefused { reason } =>
       string_contains(s: reason, pattern: "stdout parse refused")
         && string_contains(s: reason, pattern: "malformed")
-    Observed { live: _ } => false
+    gunbc.roadmap_belt_actuate.Observed { live: _ } => false
   }
 }
 
@@ -293,9 +294,9 @@ test fn witness_uuid_rfc4122_shape() -> Bool {
 
 fn is_node_found(l: gunbc.roadmap_belt_actuate.BeltNodeLookup) -> Bool {
   match l {
-    NodeFound { node: _ } => true
-    NodeMissing => false
-    AuthorityProjectionRefused { detail: _ } => false
+    gunbc.roadmap_belt_actuate.NodeFound { node: _ } => true
+    gunbc.roadmap_belt_actuate.NodeMissing => false
+    gunbc.roadmap_belt_actuate.AuthorityProjectionRefused { detail: _ } => false
   }
 }
 
@@ -322,9 +323,9 @@ fn owned_node(id: String, owner: String) -> gunbc.roadmap_model.RoadmapNode {
 
 fn found_owner(l: gunbc.roadmap_belt_actuate.BeltNodeLookup) -> String {
   match l {
-    NodeFound { node: n } => n.owner
-    NodeMissing => ""
-    AuthorityProjectionRefused { detail: _ } => ""
+    gunbc.roadmap_belt_actuate.NodeFound { node: n } => n.owner
+    gunbc.roadmap_belt_actuate.NodeMissing => ""
+    gunbc.roadmap_belt_actuate.AuthorityProjectionRefused { detail: _ } => ""
   }
 }
 
@@ -350,7 +351,7 @@ test fn witness_node_session_running_is_live() -> Bool {
     )],
     node_id: "a",
   ) {
-    BeltSessionRunning { session_name: _, command: c } => c == "codex"
+    gunbc.roadmap_belt_actuate.BeltSessionRunning { session_name: _, command: c } => c == "codex"
     _ => false
   }
 }
@@ -363,7 +364,7 @@ test fn witness_node_session_absent_is_not_live() -> Bool {
     )],
     node_id: "b",
   ) {
-    BeltSessionAbsent => true
+    gunbc.roadmap_belt_actuate.BeltSessionAbsent => true
     _ => false
   }
 }
@@ -379,7 +380,7 @@ test fn witness_retained_dead_pane_is_not_live() -> Bool {
     )],
     node_id: "a",
   ) {
-    BeltSessionStaleTerminal { session_name: _, detail: _ } => true
+    gunbc.roadmap_belt_actuate.BeltSessionStaleTerminal { session_name: _, detail: _ } => true
     _ => false
   }
 }
@@ -392,7 +393,7 @@ test fn witness_unobserved_liveness_is_not_live() -> Bool {
     live: [live_session(node_id: "a", verdict: std.upsert_decision.Converged)],
     node_id: "a",
   ) {
-    BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true
+    gunbc.roadmap_belt_actuate.BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true
     _ => false
   }
 }
@@ -417,10 +418,10 @@ test fn witness_session_liveness_is_four_valued() -> Bool {
     node_id: "a",
   )
   let absent = gunbc.roadmap_belt_actuate.belt_node_session_liveness(live: [], node_id: "a")
-  (match running { BeltSessionRunning { session_name: _, command: c } => c == "codex" _ => false })
-    && (match dead { BeltSessionStaleTerminal { session_name: _, detail: d } => string_contains(s: d, pattern: "status 3") _ => false })
-    && (match unobserved { BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true _ => false })
-    && (match absent { BeltSessionAbsent => true _ => false })
+  (match running { gunbc.roadmap_belt_actuate.BeltSessionRunning { session_name: _, command: c } => c == "codex" _ => false })
+    && (match dead { gunbc.roadmap_belt_actuate.BeltSessionStaleTerminal { session_name: _, detail: d } => string_contains(s: d, pattern: "status 3") _ => false })
+    && (match unobserved { gunbc.roadmap_belt_actuate.BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true _ => false })
+    && (match absent { gunbc.roadmap_belt_actuate.BeltSessionAbsent => true _ => false })
 }
 
 // The stale and unobserved arms must never reach the ok band — an accepted no-op is the
@@ -569,15 +570,15 @@ test fn witness_exemplar_roster_missing_variant_reds() -> Bool {
 
 fn preflight_refused_step(p: gunbc.roadmap_belt_actuate.BeltClaudePreflight) -> String {
   match p {
-    ClaudePreflightRefused { step: st, detail: _ } => st
-    ClaudePreflightOk => ""
+    gunbc.roadmap_belt_actuate.ClaudePreflightRefused { step: st, detail: _ } => st
+    gunbc.roadmap_belt_actuate.ClaudePreflightOk => ""
   }
 }
 
 fn preflight_ok(p: gunbc.roadmap_belt_actuate.BeltClaudePreflight) -> Bool {
   match p {
-    ClaudePreflightOk => true
-    ClaudePreflightRefused { step: _, detail: _ } => false
+    gunbc.roadmap_belt_actuate.ClaudePreflightOk => true
+    gunbc.roadmap_belt_actuate.ClaudePreflightRefused { step: _, detail: _ } => false
   }
 }
 
@@ -650,8 +651,8 @@ test fn witness_preflight_ok_on_enriched_entry() -> Bool {
 
 fn codex_preflight_refused_step(p: gunbc.roadmap_belt_actuate.BeltCodexPreflight) -> String {
   match p {
-    CodexPreflightRefused { step: st, detail: _ } => st
-    CodexPreflightOk { auth_method: _ } => ""
+    gunbc.roadmap_belt_actuate.CodexPreflightRefused { step: st, detail: _ } => st
+    gunbc.roadmap_belt_actuate.CodexPreflightOk { auth_method: _ } => ""
   }
 }
 
@@ -709,8 +710,8 @@ test fn witness_codex_preflight_separates_broken_runtime_from_auth() -> Bool {
     login_status_stdout: "",
     login_status_stderr: "",
   ) {
-    CodexPreflightOk { auth_method: _ } => false
-    CodexPreflightRefused { step, detail } =>
+    gunbc.roadmap_belt_actuate.CodexPreflightOk { auth_method: _ } => false
+    gunbc.roadmap_belt_actuate.CodexPreflightRefused { step, detail } =>
       step == "codex-identity"
         && string_contains(s: detail, pattern: "node")
   }
@@ -728,8 +729,8 @@ test fn witness_codex_preflight_refuses_wrong_executable_identity() -> Bool {
     login_status_stdout: "Logged in using ChatGPT",
     login_status_stderr: "",
   ) {
-    CodexPreflightOk { auth_method: _ } => false
-    CodexPreflightRefused { step, detail } =>
+    gunbc.roadmap_belt_actuate.CodexPreflightOk { auth_method: _ } => false
+    gunbc.roadmap_belt_actuate.CodexPreflightRefused { step, detail } =>
       step == "codex-identity"
         && string_contains(s: detail, pattern: "codex-cli")
   }
@@ -749,9 +750,9 @@ test fn witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording
     login_status_stdout: "future CLI auth method wording",
     login_status_stderr: "",
   ) {
-    CodexPreflightOk { auth_method } =>
+    gunbc.roadmap_belt_actuate.CodexPreflightOk { auth_method } =>
       string_contains(s: auth_method as String, pattern: "future CLI auth method wording")
-    CodexPreflightRefused { step: _, detail: _ } => false
+    gunbc.roadmap_belt_actuate.CodexPreflightRefused { step: _, detail: _ } => false
   }
 }
 
@@ -866,19 +867,20 @@ test fn attempt_wire_carries_decided_activity() -> Bool {
     && string_contains(s: j, pattern: "\"segments\": [")
 }
 
+
 test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool {
   match gunbc.roadmap_belt_actuate.belt_verify_attempt_for_instance(
     instance: srv2_preview_dashboard_instance(),
     progress: completed_attempt_progress(node_id: "belt-verify-probe-node"),
   ) {
-    VerifyDeferred { node_id, reason } =>
+    gunbc.roadmap_belt_actuate.VerifyDeferred { node_id, reason } =>
       node_id == "belt-verify-probe-node"
         && (string_contains(s: reason, pattern: "exact head")
             || string_contains(s: reason, pattern: "no node"))
-    VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
-    VerifyRefused { node_id: _, cause: _ } => false
-    VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
-    VerifyWriteFailed { node_id: _, detail: _ } => false
+    gunbc.roadmap_belt_actuate.VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+    gunbc.roadmap_belt_actuate.VerifyRefused { node_id: _, cause: _ } => false
+    gunbc.roadmap_belt_actuate.VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
+    gunbc.roadmap_belt_actuate.VerifyWriteFailed { node_id: _, detail: _ } => false
   }
 }
 
@@ -923,12 +925,12 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       publication_source: gunbc.roadmap_publish.ReceiptSourceAbsent,
     }),
   ) {
-    VerifyDeferred { node_id: _, reason } =>
+    gunbc.roadmap_belt_actuate.VerifyDeferred { node_id: _, reason } =>
       string_contains(s: reason, pattern: "agent obligation is not satisfied")
-    VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
-    VerifyRefused { node_id: _, cause: _ } => false
-    VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
-    VerifyWriteFailed { node_id: _, detail: _ } => false
+    gunbc.roadmap_belt_actuate.VerifyEvidenceUnreadable { node_id: _, detail: _ } => false
+    gunbc.roadmap_belt_actuate.VerifyRefused { node_id: _, cause: _ } => false
+    gunbc.roadmap_belt_actuate.VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
+    gunbc.roadmap_belt_actuate.VerifyWriteFailed { node_id: _, detail: _ } => false
   }
 }
 
@@ -964,8 +966,8 @@ test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
 
 test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
   match gunbc.roadmap_belt_actuate.belt_dashboard_instance_lookup_for_spawn_workdir(workdir: "/typo/gunbc") {
-    UnknownSpawnWorkdir { workdir: w } => w == "/typo/gunbc"
-    SpawnWorkdirInstanceResolved { instance: _ } => false
+    gunbc.roadmap_belt_actuate.UnknownSpawnWorkdir { workdir: w } => w == "/typo/gunbc"
+    gunbc.roadmap_belt_actuate.SpawnWorkdirInstanceResolved { instance: _ } => false
   }
 }
 
@@ -985,9 +987,9 @@ test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
 test fn the_known_spawn_workdir_resolves_to_its_own_instance() -> Bool {
   let live = gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()
   match gunbc.roadmap_belt_actuate.belt_dashboard_instance_lookup_for_spawn_workdir(workdir: live.repo_root as String) {
-    SpawnWorkdirInstanceResolved { instance: resolved } =>
+    gunbc.roadmap_belt_actuate.SpawnWorkdirInstanceResolved { instance: resolved } =>
       (resolved.instance_id as String) == (live.instance_id as String)
-    UnknownSpawnWorkdir { workdir: _ } => false
+    gunbc.roadmap_belt_actuate.UnknownSpawnWorkdir { workdir: _ } => false
   }
 }
 
@@ -997,7 +999,7 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
   let result = gunbc.roadmap_belt_actuate.BeltTickResult {
     observe_refused: true,
     observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
-    reconcile: gunbc.roadmap_belt_actuate.belt_tick_empty_reconcile(state: gunbc.roadmap_belt.Running),
+    reconcile: gunbc.roadmap_belt_actuate.belt_tick_empty_reconcile(state: gunbc.roadmap_belt_actuate.Running),
     spawn_outcomes: [],
     teardown_outcomes: [],
     verify_outcomes: [
@@ -1014,11 +1016,11 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
     observed_at: "2026-08-02T02:00:00Z",
   )
   match receipt.spawn_pass {
-    BeltPassRefused { reason: _ } => true
+    gunbc.roadmap_belt_actuate.BeltPassRefused { reason: _ } => true
     _ => false
   }
     && match receipt.verify_pass {
-      BeltPassRecorded => true
+      gunbc.roadmap_belt_actuate.BeltPassRecorded => true
       _ => false
     }
 }
@@ -1027,7 +1029,7 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
   let result = gunbc.roadmap_belt_actuate.BeltTickResult {
     observe_refused: true,
     observe_refusal_reason: "tmux refused",
-    reconcile: gunbc.roadmap_belt_actuate.belt_tick_empty_reconcile(state: gunbc.roadmap_belt.Running),
+    reconcile: gunbc.roadmap_belt_actuate.belt_tick_empty_reconcile(state: gunbc.roadmap_belt_actuate.Running),
     spawn_outcomes: [],
     teardown_outcomes: [],
     verify_outcomes: [
@@ -1042,10 +1044,10 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
     result: result,
     observed_at: "2026-08-02T02:00:00Z",
   ).verify_pass {
-    BeltPassDeferred { reason: _ } => true
-    BeltPassRecorded => false
-    BeltPassRefused { reason: _ } => false
-    BeltPassFailed { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassDeferred { reason: _ } => true
+    gunbc.roadmap_belt_actuate.BeltPassRecorded => false
+    gunbc.roadmap_belt_actuate.BeltPassRefused { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassFailed { reason: _ } => false
   }
 }
 
@@ -1072,7 +1074,7 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
     result: gunbc.roadmap_belt_actuate.BeltTickResult {
       observe_refused: true,
       observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
-      reconcile: gunbc.roadmap_belt_actuate.belt_tick_empty_reconcile(state: gunbc.roadmap_belt.Running),
+      reconcile: gunbc.roadmap_belt_actuate.belt_tick_empty_reconcile(state: gunbc.roadmap_belt_actuate.Running),
       spawn_outcomes: [],
       teardown_outcomes: [],
       verify_outcomes: [
@@ -1142,10 +1144,10 @@ test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
     "\"publish_pass\":{\"outcome\":\"recorded\"}}",
   ], "")
   match gunbc.roadmap_belt_actuate.belt_tick_receipt_decode(raw: raw) {
-    BeltTickReceiptUnreadable { reason: r } =>
+    gunbc.roadmap_belt_actuate.BeltTickReceiptUnreadable { reason: r } =>
       string_contains(s: r, pattern: "refused without reason")
-    BeltTickReceiptPresent { receipt: _ } => false
-    BeltTickReceiptAbsent => false
+    gunbc.roadmap_belt_actuate.BeltTickReceiptPresent { receipt: _ } => false
+    gunbc.roadmap_belt_actuate.BeltTickReceiptAbsent => false
   }
 }
 
@@ -1155,9 +1157,9 @@ test fn belt_tick_receipt_missing_file_read_is_absent() -> Bool {
     content: "",
     error: "No such file or directory (os error 2)",
   ) {
-    BeltTickReceiptAbsent => true
-    BeltTickReceiptPresent { receipt: _ } => false
-    BeltTickReceiptUnreadable { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltTickReceiptAbsent => true
+    gunbc.roadmap_belt_actuate.BeltTickReceiptPresent { receipt: _ } => false
+    gunbc.roadmap_belt_actuate.BeltTickReceiptUnreadable { reason: _ } => false
   }
 }
 
@@ -1167,10 +1169,10 @@ test fn belt_tick_receipt_io_failure_read_is_unreadable() -> Bool {
     content: "",
     error: "Permission denied (os error 13)",
   ) {
-    BeltTickReceiptUnreadable { reason: r } =>
+    gunbc.roadmap_belt_actuate.BeltTickReceiptUnreadable { reason: r } =>
       string_contains(s: r, pattern: "Permission denied")
-    BeltTickReceiptPresent { receipt: _ } => false
-    BeltTickReceiptAbsent => false
+    gunbc.roadmap_belt_actuate.BeltTickReceiptPresent { receipt: _ } => false
+    gunbc.roadmap_belt_actuate.BeltTickReceiptAbsent => false
   }
 }
 
@@ -1189,13 +1191,13 @@ test fn observe_only_instance_refuses_dispatch_and_stop() -> Bool {
     node_id: "namespace-canonical-binding",
   )
   match dispatched {
-    DispatchDisabled { node_id, instance_id, reason: _ } =>
+    gunbc.roadmap_belt_actuate.DispatchDisabled { node_id, instance_id, reason: _ } =>
       node_id == "namespace-canonical-binding"
         && instance_id == (preview.instance_id as String)
     _ => false
   }
     && match stopped {
-      StopDisabled { node_id, instance_id, reason: _ } =>
+      gunbc.roadmap_belt_actuate.StopDisabled { node_id, instance_id, reason: _ } =>
         node_id == "namespace-canonical-binding"
           && instance_id == (preview.instance_id as String)
       _ => false
@@ -1221,8 +1223,8 @@ fn footprint_obs(
 
 fn footprint_refusal_step(admission: gunbc.roadmap_belt_actuate.BeltFootprintAdmission) -> String {
   match admission {
-    FootprintAdmitted => "admitted"
-    FootprintRefused { step: st, detail: _ } => st
+    gunbc.roadmap_belt_actuate.FootprintAdmitted => "admitted"
+    gunbc.roadmap_belt_actuate.FootprintRefused { step: st, detail: _ } => st
   }
 }
 
@@ -1263,9 +1265,9 @@ test fn witness_footprint_refusal_names_the_first_bad_root() -> Bool {
   ])
   let step_is_first = footprint_refusal_step(admission: verdict) == "footprint-root-absent"
   let names_first = match verdict {
-    FootprintRefused { step: _, detail: d } =>
+    gunbc.roadmap_belt_actuate.FootprintRefused { step: _, detail: d } =>
       string_contains(s: d, pattern: "dispatch-worktrees")
-    FootprintAdmitted => false
+    gunbc.roadmap_belt_actuate.FootprintAdmitted => false
   }
   step_is_first && names_first
 }
@@ -1340,14 +1342,14 @@ fn belt_pub_receipt(head: std.types.CommitSha, node_id: String) -> String {
 
 fn belt_pub_gate_key(gate: gunbc.roadmap_belt_actuate.BeltPublishGate) -> String {
   match gate {
-    PublishProceed => "proceed"
-    PublishHalted { outcome } =>
+    gunbc.roadmap_belt_actuate.PublishProceed => "proceed"
+    gunbc.roadmap_belt_actuate.PublishHalted { outcome } =>
       match outcome {
-        PublishAlreadyRecorded { node_id: _, head_sha: _ } => "already-recorded"
-        PublishEvidenceUnreadable { node_id: _, detail: _ } => "evidence-unreadable"
-        PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => "recorded"
-        PublishWriteFailed { node_id: _, detail: _ } => "write-failed"
-        PublishDeferred { node_id: _, reason: _ } => "deferred"
+        gunbc.roadmap_belt_actuate.PublishAlreadyRecorded { node_id: _, head_sha: _ } => "already-recorded"
+        gunbc.roadmap_belt_actuate.PublishEvidenceUnreadable { node_id: _, detail: _ } => "evidence-unreadable"
+        gunbc.roadmap_belt_actuate.PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => "recorded"
+        gunbc.roadmap_belt_actuate.PublishWriteFailed { node_id: _, detail: _ } => "write-failed"
+        gunbc.roadmap_belt_actuate.PublishDeferred { node_id: _, reason: _ } => "deferred"
       }
   }
 }
@@ -1378,18 +1380,18 @@ test fn a_receipt_about_another_subject_is_not_overwritten() -> Bool {
     subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
     existing: gunbc.roadmap_publish.ReceiptSourcePresent { text: belt_pub_receipt(head: belt_pub_head, node_id: "another-node") },
   ) {
-    PublishProceed => false
-    PublishHalted { outcome } =>
+    gunbc.roadmap_belt_actuate.PublishProceed => false
+    gunbc.roadmap_belt_actuate.PublishHalted { outcome } =>
       match outcome {
-        PublishEvidenceUnreadable { node_id, detail } =>
+        gunbc.roadmap_belt_actuate.PublishEvidenceUnreadable { node_id, detail } =>
           node_id == "belt-pub-node"
             && string_contains(s: detail, pattern: "another subject")
             && string_contains(s: detail, pattern: "node_id")
             && string_contains(s: detail, pattern: "refuses to overwrite")
-        PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
-        PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
-        PublishWriteFailed { node_id: _, detail: _ } => false
-        PublishDeferred { node_id: _, reason: _ } => false
+        gunbc.roadmap_belt_actuate.PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+        gunbc.roadmap_belt_actuate.PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+        gunbc.roadmap_belt_actuate.PublishWriteFailed { node_id: _, detail: _ } => false
+        gunbc.roadmap_belt_actuate.PublishDeferred { node_id: _, reason: _ } => false
       }
   }
 }
@@ -1402,16 +1404,16 @@ test fn an_unreadable_receipt_halts_rather_than_being_overwritten() -> Bool {
     subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
     existing: gunbc.roadmap_publish.ReceiptSourceUnreadable { detail: "input/output error" },
   ) {
-    PublishProceed => false
-    PublishHalted { outcome } =>
+    gunbc.roadmap_belt_actuate.PublishProceed => false
+    gunbc.roadmap_belt_actuate.PublishHalted { outcome } =>
       match outcome {
-        PublishEvidenceUnreadable { node_id: _, detail } =>
+        gunbc.roadmap_belt_actuate.PublishEvidenceUnreadable { node_id: _, detail } =>
           string_contains(s: detail, pattern: "cannot read")
             && string_contains(s: detail, pattern: "input/output error")
-        PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
-        PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
-        PublishWriteFailed { node_id: _, detail: _ } => false
-        PublishDeferred { node_id: _, reason: _ } => false
+        gunbc.roadmap_belt_actuate.PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+        gunbc.roadmap_belt_actuate.PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+        gunbc.roadmap_belt_actuate.PublishWriteFailed { node_id: _, detail: _ } => false
+        gunbc.roadmap_belt_actuate.PublishDeferred { node_id: _, reason: _ } => false
       }
   }
 }
@@ -1422,14 +1424,14 @@ test fn a_present_but_empty_receipt_is_a_fault_not_an_absence() -> Bool {
     subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
     existing: gunbc.roadmap_publish.ReceiptSourcePresent { text: "  " },
   ) {
-    PublishProceed => false
-    PublishHalted { outcome } =>
+    gunbc.roadmap_belt_actuate.PublishProceed => false
+    gunbc.roadmap_belt_actuate.PublishHalted { outcome } =>
       match outcome {
-        PublishEvidenceUnreadable { node_id: _, detail: _ } => true
-        PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
-        PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
-        PublishWriteFailed { node_id: _, detail: _ } => false
-        PublishDeferred { node_id: _, reason: _ } => false
+        gunbc.roadmap_belt_actuate.PublishEvidenceUnreadable { node_id: _, detail: _ } => true
+        gunbc.roadmap_belt_actuate.PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+        gunbc.roadmap_belt_actuate.PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+        gunbc.roadmap_belt_actuate.PublishWriteFailed { node_id: _, detail: _ } => false
+        gunbc.roadmap_belt_actuate.PublishDeferred { node_id: _, reason: _ } => false
       }
   }
 }
@@ -1453,16 +1455,16 @@ test fn an_undecodable_receipt_is_not_overwritten_either() -> Bool {
     subject: belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node"),
     existing: gunbc.roadmap_publish.ReceiptSourcePresent { text: "not a receipt" },
   ) {
-    PublishProceed => false
-    PublishHalted { outcome } =>
+    gunbc.roadmap_belt_actuate.PublishProceed => false
+    gunbc.roadmap_belt_actuate.PublishHalted { outcome } =>
       match outcome {
-        PublishEvidenceUnreadable { node_id: _, detail } =>
+        gunbc.roadmap_belt_actuate.PublishEvidenceUnreadable { node_id: _, detail } =>
           string_contains(s: detail, pattern: "cannot read")
             && !string_contains(s: detail, pattern: "another subject")
-        PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
-        PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
-        PublishWriteFailed { node_id: _, detail: _ } => false
-        PublishDeferred { node_id: _, reason: _ } => false
+        gunbc.roadmap_belt_actuate.PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+        gunbc.roadmap_belt_actuate.PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+        gunbc.roadmap_belt_actuate.PublishWriteFailed { node_id: _, detail: _ } => false
+        gunbc.roadmap_belt_actuate.PublishDeferred { node_id: _, reason: _ } => false
       }
   }
 }
@@ -1497,29 +1499,29 @@ test fn a_failed_write_reports_loss_rather_than_the_outcome_it_computed() -> Boo
     write_error: "read-only file system",
   )
   match ok {
-    PublishRecorded { node_id: _, head_sha, outcome_key } =>
+    gunbc.roadmap_belt_actuate.PublishRecorded { node_id: _, head_sha, outcome_key } =>
       head_sha == (belt_pub_head as String)
         && outcome_key == "branch-not-published"
         && match lost {
-          PublishWriteFailed { node_id: _, detail } =>
+          gunbc.roadmap_belt_actuate.PublishWriteFailed { node_id: _, detail } =>
             string_contains(s: detail, pattern: "read-only file system")
               && string_contains(s: detail, pattern: "reached and then lost")
-          PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
-          PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
-          PublishEvidenceUnreadable { node_id: _, detail: _ } => false
-          PublishDeferred { node_id: _, reason: _ } => false
+          gunbc.roadmap_belt_actuate.PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
+          gunbc.roadmap_belt_actuate.PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+          gunbc.roadmap_belt_actuate.PublishEvidenceUnreadable { node_id: _, detail: _ } => false
+          gunbc.roadmap_belt_actuate.PublishDeferred { node_id: _, reason: _ } => false
         }
-    PublishWriteFailed { node_id: _, detail: _ } => false
-    PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
-    PublishEvidenceUnreadable { node_id: _, detail: _ } => false
-    PublishDeferred { node_id: _, reason: _ } => false
+    gunbc.roadmap_belt_actuate.PublishWriteFailed { node_id: _, detail: _ } => false
+    gunbc.roadmap_belt_actuate.PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
+    gunbc.roadmap_belt_actuate.PublishEvidenceUnreadable { node_id: _, detail: _ } => false
+    gunbc.roadmap_belt_actuate.PublishDeferred { node_id: _, reason: _ } => false
   }
 }
 
 fn subject_key(observation: gunbc.roadmap_publish.PublicationSubjectObservation) -> String {
   match observation {
-    PublicationSubjectObserved { subject } => subject.expected_head as String
-    PublicationSubjectUnobserved { reason: _ } => ""
+    gunbc.roadmap_publish.PublicationSubjectObserved { subject } => subject.expected_head as String
+    gunbc.roadmap_publish.PublicationSubjectUnobserved { reason: _ } => ""
   }
 }
 
@@ -1547,10 +1549,10 @@ test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool {
   subject_key(observation: missing) == ""
     && subject_key(observation: observed) == (belt_pub_head as String)
     && match missing {
-      PublicationSubjectUnobserved { reason } =>
+      gunbc.roadmap_publish.PublicationSubjectUnobserved { reason } =>
         string_contains(s: reason, pattern: "exact head")
           && string_contains(s: reason, pattern: "not a git repository")
-      PublicationSubjectObserved { subject: _ } => false
+      gunbc.roadmap_publish.PublicationSubjectObserved { subject: _ } => false
     }
 }
 
@@ -1558,9 +1560,9 @@ data zero_exit_empty_stdout_is_unobserved_note: String = "THE DISCRIMINATING CON
 
 test fn a_zero_exit_with_no_revision_is_unobserved_not_an_empty_head() -> Bool {
   match gunbc.roadmap_belt_actuate.worktree_head_observation_of(outcome: gunbc.roadmap_belt_actuate.ExecOk { stdout: "\n" }) {
-    WorktreeHeadUnobserved { reason } =>
+    gunbc.roadmap_belt_actuate.WorktreeHeadUnobserved { reason } =>
       string_contains(s: reason, pattern: "no revision")
-    WorktreeHeadObserved { revision: _ } => false
+    gunbc.roadmap_belt_actuate.WorktreeHeadObserved { revision: _ } => false
   }
 }
 
@@ -1658,19 +1660,19 @@ fn dup_stale() -> gunbc.roadmap_dispatch_actuator.DispatchLiveSession {
 
 test fn witness_two_sessions_for_one_node_refuse_and_name_both() -> Bool {
   match gunbc.roadmap_belt_actuate.belt_node_session_liveness(live: [dup_running(), dup_stale()], node_id: "a") {
-    BeltSessionMultiplicityConflict { session_names: names, session_count: n } =>
+    gunbc.roadmap_belt_actuate.BeltSessionMultiplicityConflict { session_names: names, session_count: n } =>
       n == 2 && string_contains(s: names, pattern: ",")
     _ => false
   }
 }
 
-// THE DISCRIMINATING ONE: under first() these two orders answered gunbc.roadmap_belt_actuate.Running and
+// THE DISCRIMINATING ONE: under first() these two orders answered Running and
 // StaleTerminal respectively — same observation, different verdict, no signal.
 test fn witness_multiplicity_verdict_is_order_independent() -> Bool {
   let forward = gunbc.roadmap_belt_actuate.belt_node_session_liveness(live: [dup_running(), dup_stale()], node_id: "a")
   let reverse = gunbc.roadmap_belt_actuate.belt_node_session_liveness(live: [dup_stale(), dup_running()], node_id: "a")
-  (match forward { BeltSessionMultiplicityConflict { session_names: _, session_count: a } =>
-    match reverse { BeltSessionMultiplicityConflict { session_names: _, session_count: b } => a == b _ => false }
+  (match forward { gunbc.roadmap_belt_actuate.BeltSessionMultiplicityConflict { session_names: _, session_count: a } =>
+    match reverse { gunbc.roadmap_belt_actuate.BeltSessionMultiplicityConflict { session_names: _, session_count: b } => a == b _ => false }
     _ => false })
 }
 
@@ -1694,13 +1696,13 @@ test fn witness_revision_admission_fold_drives_all_three_arms() -> Bool {
             standing: gunbc.fleet_desired_observe.RevisionConverged { revision: d_oid })
           let drifted = gunbc.roadmap_belt_actuate.belt_revision_admission(
             standing: gunbc.fleet_desired_observe.RevisionDrifted { desired: d_oid, local: l_oid })
-          (match converged { BeltRevisionAdmitted { revision: _ } => true _ => false })
+          (match converged { gunbc.roadmap_belt_actuate.BeltRevisionAdmitted { revision: _ } => true _ => false })
             && (match drifted {
-              BeltRevisionRefusedDrifted { desired: d, local: l } => d != l
+              gunbc.roadmap_belt_actuate.BeltRevisionRefusedDrifted { desired: d, local: l } => d != l
               _ => false
             })
             && (match unobserved {
-              BeltRevisionRefusedUnobserved { cause: c } => c == "HEAD undecodable"
+              gunbc.roadmap_belt_actuate.BeltRevisionRefusedUnobserved { cause: c } => c == "HEAD undecodable"
               _ => false
             })
         }
@@ -1766,7 +1768,7 @@ test fn witness_tick_multiplicity_is_a_node_fact() -> Bool {
 
 // ── The located spawn cause reaches the receipt ─────────────────────────────────────────────────
 //
-// THE DEFECT THIS CLOSES: gunbc.roadmap_belt_actuate.SpawnFailed carries node_id, step, detail and provider, and the pass fold
+// THE DEFECT THIS CLOSES: SpawnFailed carries node_id, step, detail and provider, and the pass fold
 // discarded all four for the sentence "one or more spawn outcomes failed". The receipt is a tick's
 // only durable record, so the cause was computed and erased every time. On srv1 that turned a
 // missing provider binary into weeks of a dashboard saying "belt fault" with no way to ask why —
@@ -1788,14 +1790,14 @@ test fn a_failed_spawn_names_its_node_gate_and_detail_in_the_receipt() -> Bool {
       },
     ],
   ) {
-    BeltPassFailed { reason: r } =>
+    gunbc.roadmap_belt_actuate.BeltPassFailed { reason: r } =>
       string_contains(s: r, pattern: "v2-emitter-direct-rust-door")
         && string_contains(s: r, pattern: "codex-cli")
         && string_contains(s: r, pattern: "codex not found at the pinned bundled path")
         && string_contains(s: r, pattern: "codex")
-    BeltPassRecorded => false
-    BeltPassDeferred { reason: _ } => false
-    BeltPassRefused { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassRecorded => false
+    gunbc.roadmap_belt_actuate.BeltPassDeferred { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassRefused { reason: _ } => false
   }
 }
 
@@ -1812,10 +1814,10 @@ test fn a_tick_with_no_failed_spawn_records_instead_of_reporting_a_cause() -> Bo
       gunbc.roadmap_belt_actuate.Spawned { node_id: "n2", session_name: "s2", provider: "codex" },
     ],
   ) {
-    BeltPassRecorded => true
-    BeltPassFailed { reason: _ } => false
-    BeltPassDeferred { reason: _ } => false
-    BeltPassRefused { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassRecorded => true
+    gunbc.roadmap_belt_actuate.BeltPassFailed { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassDeferred { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassRefused { reason: _ } => false
   }
 }
 
@@ -1835,13 +1837,13 @@ test fn a_mixed_tick_names_only_the_failed_spawn() -> Bool {
       },
     ],
   ) {
-    BeltPassFailed { reason: r } =>
+    gunbc.roadmap_belt_actuate.BeltPassFailed { reason: r } =>
       string_contains(s: r, pattern: "broken-node")
         && string_contains(s: r, pattern: "codex-auth")
         && !string_contains(s: r, pattern: "healthy-node")
-    BeltPassRecorded => false
-    BeltPassDeferred { reason: _ } => false
-    BeltPassRefused { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassRecorded => false
+    gunbc.roadmap_belt_actuate.BeltPassDeferred { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassRefused { reason: _ } => false
   }
 }
 
@@ -1855,9 +1857,9 @@ test fn an_observation_refusal_still_outranks_the_spawn_summary() -> Bool {
       gunbc.roadmap_belt_actuate.SpawnFailed { node_id: "n", step: "codex-cli", detail: "d", provider: "codex" },
     ],
   ) {
-    BeltPassRefused { reason: r } => r == "tmux list refused"
-    BeltPassFailed { reason: _ } => false
-    BeltPassRecorded => false
-    BeltPassDeferred { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassRefused { reason: r } => r == "tmux list refused"
+    gunbc.roadmap_belt_actuate.BeltPassFailed { reason: _ } => false
+    gunbc.roadmap_belt_actuate.BeltPassRecorded => false
+    gunbc.roadmap_belt_actuate.BeltPassDeferred { reason: _ } => false
   }
 }

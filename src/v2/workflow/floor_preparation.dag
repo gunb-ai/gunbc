@@ -35,16 +35,16 @@ type PreparedFloorEntryArtifact {
 }
 
 type PreparedFloorSubjectRefusal
-  = PreparedFloorDuplicateSelectedIdentities { duplicates: std.algebra.FreeMonoid<std.realization_schedule.ScheduleWitnessEntry> }
-  | PreparedFloorDuplicateProbeIdentities { duplicates: std.algebra.FreeMonoid<std.realization_schedule.ScheduleWitnessEntry> }
-  | PreparedFloorMissingProbeIdentities { missing: std.algebra.FreeMonoid<std.realization_schedule.ScheduleWitnessEntry> }
-  | PreparedFloorUnexpectedProbeIdentities { unexpected: std.algebra.FreeMonoid<std.realization_schedule.ScheduleWitnessEntry> }
+  = PreparedFloorDuplicateSelectedIdentities { duplicates: List<std.realization_schedule.ScheduleWitnessEntry> }
+  | PreparedFloorDuplicateProbeIdentities { duplicates: List<std.realization_schedule.ScheduleWitnessEntry> }
+  | PreparedFloorMissingProbeIdentities { missing: List<std.realization_schedule.ScheduleWitnessEntry> }
+  | PreparedFloorUnexpectedProbeIdentities { unexpected: List<std.realization_schedule.ScheduleWitnessEntry> }
   | PreparedFloorProviderRefused { witness: std.realization_schedule.ScheduleWitnessEntry, lookup: std.materialization_provider.ProviderLookup }
 
 type PreparedFloorSubjectServe
   = PreparedFloorSubjectReady {
-      identity: v2.workflow.floor_preparation.PreparedClaimSubjectIdentity
-      entries: List<v2.workflow.floor_preparation.PreparedFloorEntryArtifact>
+      identity: PreparedClaimSubjectIdentity
+      entries: List<PreparedFloorEntryArtifact>
     }
   | PreparedFloorSubjectRefused { cause: PreparedFloorSubjectRefusal }
 
@@ -56,9 +56,9 @@ fn floor_preparation_policy_identity(policy: FloorPreparationPolicy) -> std.cont
 
 fn prepared_floor_witness_kind_identity(witness: std.realization_schedule.ScheduleWitnessEntry) -> String {
   match witness.kind {
-    CorpusWitnessKind => "corpus"
-    ExecutionWitnessKind => "execution"
-    NativeBundleWitnessKind => "native-bundle"
+    std.realization_schedule.CorpusWitnessKind => "corpus"
+    std.realization_schedule.ExecutionWitnessKind => "execution"
+    std.realization_schedule.NativeBundleWitnessKind => "native-bundle"
   }
 }
 
@@ -122,9 +122,9 @@ fn prepared_floor_artifact_set_identity(
 
 fn prepared_claim_subject_identity(
   request: PreparedFloorSubjectRequest,
-) -> v2.workflow.floor_preparation.PreparedClaimSubjectIdentity {
-  v2.workflow.floor_preparation.PreparedClaimSubjectIdentity {
-    discovery_request_identity: floor_discovery_request_identity(request: request.discovery),
+) -> PreparedClaimSubjectIdentity {
+  PreparedClaimSubjectIdentity {
+    discovery_request_identity: v2.workflow.floor_discovery.floor_discovery_request_identity(request: request.discovery),
     selected_identity_digest: prepared_floor_selected_identity(selected: request.selected),
     preparation_policy_identity: floor_preparation_policy_identity(policy: request.policy),
     artifact_set_identity: prepared_floor_artifact_set_identity(request: request),
@@ -141,8 +141,8 @@ fn prepared_floor_identity_map_contains(
   witness: std.realization_schedule.ScheduleWitnessEntry,
 ) -> Bool {
   match identities.lookup(witness) {
-    Absent => false
-    Present { value: _ } => true
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: _ } => true
   }
 }
 
@@ -300,19 +300,19 @@ fn prepared_floor_serve_one(
         index: index,
         witness: entry.witness,
       ) {
-        Absent => PreparedFloorServeStopped {
+        v2.std.optional.Absent => PreparedFloorServeStopped {
           cause: PreparedFloorMissingProbeIdentities { missing: [entry.witness] }
         }
-        Present { value: prepared_probe } => match std.materialization_provider.provider_serve(
+        v2.std.optional.Present { value: prepared_probe } => match std.materialization_provider.provider_serve(
           req: prepared_floor_entry_artifact_request(
             discovery: request.discovery,
             entry: entry,
           ),
           probe: prepared_probe.probe,
         ) {
-          ProviderHit { artifact: artifact, identity: _ } =>
+          std.materialization_provider.ProviderHit { artifact: artifact, identity: _ } =>
             PreparedFloorServeContinue {
-              entries: concat([v2.workflow.floor_preparation.PreparedFloorEntryArtifact {
+              entries: concat([PreparedFloorEntryArtifact {
                 witness: entry.witness,
                 artifact: artifact,
               }], entries),
@@ -380,7 +380,7 @@ fn prepared_floor_subject_serve(
     ) {
       PreparedFloorServeContinue { entries: entries } => PreparedFloorSubjectReady {
         identity: prepared_claim_subject_identity(request: request),
-        entries: list_reverse(xs: entries),
+        entries: v2.std.algebra.list_reverse(xs: entries),
       }
       PreparedFloorServeStopped { cause: cause } => PreparedFloorSubjectRefused { cause: cause }
     }

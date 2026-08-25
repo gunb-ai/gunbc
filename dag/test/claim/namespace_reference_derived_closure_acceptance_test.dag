@@ -1,12 +1,12 @@
 module test.claim.namespace_reference_derived_closure_acceptance
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data namespace_reference_derived_closure_acceptance_note: String = "THE DISCRIMINATING CLOSING VALIDATION for roadmap node namespace-reference-derived-closure. It is RED ON PURPOSE and enrolled QuarantineProbeExpectRed. The validation consumes only the production-admission seam, never the controlled fixtures that prove the fold itself: today that seam carries one typed unavailable status per clause, so the derived six-capability frontier cannot green on zero work. Clauses (a-d) name P2aStructuralCandidateProducer7515; (e) names P2aReferenceDependencyProjection7515; (f), the Class-B pool-membership-coincidence wall, names P2aPoolIndependentDependencyProjection7515. The gated implementation must run the real candidate producer and dependency projection for all six scenarios, feed those observations through the sole-constructor assessment boundary, and leave this predicate unchanged."
 
 test fn witness_namespace_reference_derived_closure_closing_contract_holds() -> Bool {
-  reference_derived_closure_closing_contract_holds(
-    admissions: namespace_reference_derived_closure_acceptance_admissions(),
+  gunbc.namespace_reference_derived_closure_contract.reference_derived_closure_closing_contract_holds(
+    admissions: gunbc.namespace_reference_derived_closure_contract.namespace_reference_derived_closure_acceptance_admissions(),
   )
 }

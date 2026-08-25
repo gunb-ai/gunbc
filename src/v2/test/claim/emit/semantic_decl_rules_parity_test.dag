@@ -3,47 +3,47 @@ module v2.test.emit.semantic_decl_rules_parity_test
 
 fn bool_coproduct() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Disj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Disj },
     children: [
-      v2.std.node.Edge { label: v2.std.node.Named { name: ^True }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } },
-      v2.std.node.Edge { label: v2.std.node.Named { name: ^False }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^True }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: [], occurrence_id: v2.std.node.SyntheticOccurrence } },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^False }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: [], occurrence_id: v2.std.node.SyntheticOccurrence } }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
-fn tokens_for_rules(surface: v2.std.node.Node, rules: v2.std.node.Node) -> v2.std.logic.Bool {
-  match grammar_relation_row_for_emitted(rules: rules, emitted: surface) {
-    Accepted { value: row, diagnostics: _ } =>
-      match grammar_relation_row_tokens_root(row: row) {
-        Accepted { value: tokens_root, diagnostics: _ } =>
-          match concrete_syntax_token_list_from_node(list_node: tokens_root) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
+fn tokens_for_rules(surface: v2.std.node.Node, rules: v2.std.node.Node) -> Bool {
+  match v2.compiler.translate.grammar_relation_row_for_emitted(rules: rules, emitted: surface) {
+    v2.std.diagnostic.Accepted { value: row, diagnostics: _ } =>
+      match v2.compiler.translate.grammar_relation_row_tokens_root(row: row) {
+        v2.std.diagnostic.Accepted { value: tokens_root, diagnostics: _ } =>
+          match v2.std.compilers.target_model.concrete_syntax_token_list_from_node(list_node: tokens_root) {
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn emission_rules_match_rust_rules_for_generic_surface() -> v2.std.logic.Bool {
-  match semantic_decl_emission_from_target(target: rust_target_model()) {
-    Accepted { value: emission, diagnostics: _ } =>
-      match target_semantic_enum_surface_from_coproduct(
+test fn emission_rules_match_rust_rules_for_generic_surface() -> Bool {
+  match v2.std.compilers.semantic_decl_emission.semantic_decl_emission_from_target(target: v2.extdeps.languages.rust.rust_target_model()) {
+    v2.std.diagnostic.Accepted { value: emission, diagnostics: _ } =>
+      match v2.std.compilers.semantic_decl_emission.target_semantic_enum_surface_from_coproduct(
         projection: emission.surface,
-        name: ^v2.std.logic.Bool,
+        name: ^Bool,
         params: std.algebra.Empty,
-        coproduct: v2.test.emit.semantic_decl_rules_parity_test.bool_coproduct()
+        coproduct: bool_coproduct()
       ) {
-        Accepted { value: surface, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: surface, diagnostics: _ } =>
           tokens_for_rules(surface: surface, rules: emission.enum_translation_rules)
             && tokens_for_rules(
               surface: surface,
-              rules: rust_enum_general_decl_productions_only_translation_rules()
+              rules: v2.extdeps.languages.rust.rust_enum_general_decl_productions_only_translation_rules()
             )
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

@@ -2,15 +2,15 @@ module test.claim.wc_byte_count_verification_witness
 
 
 test fn witness_byte_count_verification_preserves_nonmatching_arms() -> Bool {
-  verify_file_byte_count(
+  extdeps.tools.wc.verify_file_byte_count(
     read: extdeps.tools.wc.FileByteCountObserved { count: 3 },
-    expected: byte_size(4)) == extdeps.tools.wc.FileByteCountDiffers {
+    expected: std.measure.byte_size(4)) == extdeps.tools.wc.FileByteCountDiffers {
       observed_count: 3,
-      expected: byte_size(4),
+      expected: std.measure.byte_size(4),
     }
-    && verify_file_byte_count(
+    && extdeps.tools.wc.verify_file_byte_count(
       read: extdeps.tools.wc.FileByteCountUnavailable { reason: "wc unavailable" as std.types.NonEmptyStr },
-      expected: byte_size(4)) == extdeps.tools.wc.FileByteCountVerificationUnavailable {
+      expected: std.measure.byte_size(4)) == extdeps.tools.wc.FileByteCountVerificationUnavailable {
         reason: "wc unavailable" as std.types.NonEmptyStr,
       }
 }

@@ -2,28 +2,28 @@ module v2.test.synthesis_gate.subject_technique_roster
 
 
 type SynthesisSubjectRow {
-  subject_producer: fn() -> Outcome<v2.std.node.Node>
+  subject_producer: fn() -> v2.std.diagnostic.Outcome<v2.std.node.Node>
   declared_technique: v2.lens.synthesis.LowerBoundTechnique
 }
 
 data synthesis_subject_row_add: SynthesisSubjectRow = SynthesisSubjectRow {
   subject_producer: v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body,
-  declared_technique: DecisionTree
+  declared_technique: v2.lens.synthesis.DecisionTree
 }
 
 data synthesis_subject_row_bind: SynthesisSubjectRow = SynthesisSubjectRow {
   subject_producer: v2.test.complexity_gate.table_fixture_bind_subject_producer.table_fixture_bind_arrow_with_body,
-  declared_technique: DecisionTree
+  declared_technique: v2.lens.synthesis.DecisionTree
 }
 
 data synthesis_subject_row_branch: SynthesisSubjectRow = SynthesisSubjectRow {
   subject_producer: v2.test.complexity_gate.table_fixture_branch_subject_producer.table_fixture_pick_if_arrow_with_body,
-  declared_technique: DecisionTree
+  declared_technique: v2.lens.synthesis.DecisionTree
 }
 
 data synthesis_subject_row_loop: SynthesisSubjectRow = SynthesisSubjectRow {
   subject_producer: v2.test.complexity_gate.table_fixture_loop_subject_producer.table_fixture_loop_arrow_with_body,
-  declared_technique: DecisionTree
+  declared_technique: v2.lens.synthesis.DecisionTree
 }
 
 data synthesis_subject_rows: List<SynthesisSubjectRow> = [

@@ -4,7 +4,7 @@ module extdeps.cache.buildbuddy
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.buildbuddy.io/docs/remote-cache"
   }
 }
@@ -14,29 +14,29 @@ data buildbuddy_cas_id: std.cache_identity.CacheInterfaceId = "buildbuddy_cas"
 data buildbuddy_cas_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: buildbuddy_cas_id
   backing_surface: "buildbuddy-remote-cas"
-  transport_encoding: CatalogCasContentEncoding
+  transport_encoding: extdeps.cache.types.CatalogCasContentEncoding
   key_derivation: {
 
-    key_inputs: ContentAddressed
+    key_inputs: extdeps.cache.types.ContentAddressed
     overwritable: false
     prefix_fallback_allowed: false
     content_verified_on_read: true
     visibility_scope: std.cache_interface.Network
-    invalidation_triggers: [ManualPurge]
+    invalidation_triggers: [std.cache_interface.ManualPurge]
   }
   io: {
-    lookup_semantics: ContentAddressLookup
-    write_semantics: WriteOnce
-    miss_semantics: MissThenCreate
+    lookup_semantics: std.cache_interface.ContentAddressLookup
+    write_semantics: std.cache_interface.WriteOnce
+    miss_semantics: std.cache_interface.MissThenCreate
   }
   placement: {
-    value_shape: RawBytes
-    locality: CrossHostNetwork
-    retention: { release_policy: ReleasedNever, capacity: CapacityUnobserved }
-    atomicity: WriteThenCommit
+    value_shape: std.cache_interface.RawBytes
+    locality: std.cache_interface.CrossHostNetwork
+    retention: { release_policy: std.cache_interface.ReleasedNever, capacity: std.cache_interface.CapacityUnobserved }
+    atomicity: std.cache_interface.WriteThenCommit
     auth: std.cache_interface.ApiKey
-    read_latency: LanMs
-    consistency: Strong
+    read_latency: std.cache_interface.LanMs
+    consistency: std.cache_interface.Strong
   }
   evidence: [
     {

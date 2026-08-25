@@ -3,7 +3,7 @@ module extdeps.ollama.capability
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/ollama/ollama/releases"
   }
 }
@@ -13,10 +13,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ollama.capability",
       decl_name: "OllamaModelSupportRow",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.ollama.capability.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -133,14 +133,14 @@ fn ollama_model_support_verdict(
       match ollama_model_support_row_for(model: model, catalog: ollama_model_support_catalog) {
         Absent =>
           OllamaModelSupportUncatalogued {
-            model_wire: ollama_model_ref_wire(ref: model),
+            model_wire: extdeps.ollama.api.ollama_model_ref_wire(ref: model),
           }
         Present { value: row } =>
           if ollama_semantic_version_at_least(observed: observed, minimum: row.minimum_runtime) {
             OllamaModelSupportApplicable
           } else {
             OllamaModelSupportUnmet {
-              model_wire: ollama_model_ref_wire(ref: model),
+              model_wire: extdeps.ollama.api.ollama_model_ref_wire(ref: model),
               observed: observed,
               minimum: row.minimum_runtime,
             }
@@ -162,11 +162,11 @@ type OllamaPlatformSupportRow {
 
 data ollama_gb10_linux_arm64_support_row: OllamaPlatformSupportRow = OllamaPlatformSupportRow {
   platform: OllamaNvidiaGb10Spark,
-  architecture: OllamaLinuxArm64,
-  required_variant: OllamaLinuxGenericCuda,
-  gpu_support: ollama_gb10_gpu_support_row,
-  minimum_nvidia_driver: ollama_gb10_minimum_nvidia_driver,
-  binary_release: ollama_required_release,
+  architecture: extdeps.ollama.binary_release.OllamaLinuxArm64,
+  required_variant: extdeps.ollama.binary_release.OllamaLinuxGenericCuda,
+  gpu_support: extdeps.ollama.gpu_support.ollama_gb10_gpu_support_row,
+  minimum_nvidia_driver: extdeps.ollama.gpu_support.ollama_gb10_minimum_nvidia_driver,
+  binary_release: extdeps.ollama.binary_release.ollama_required_release,
 }
 
 data ollama_platform_support_catalog: List<OllamaPlatformSupportRow> = [ollama_gb10_linux_arm64_support_row]
@@ -188,7 +188,7 @@ fn ollama_platform_support_verdict(
       row.platform == platform
         && row.architecture == architecture
         && binary_release.variant == row.required_variant
-        && ollama_binary_release_eq(a: row.binary_release, b: binary_release),
+        && extdeps.ollama.binary_release.ollama_binary_release_eq(a: row.binary_release, b: binary_release),
   )
   let n = count(hits)
   if n == 0 {
@@ -261,18 +261,18 @@ fn ollama_runtime_admission_verdict(
     model: model,
   ) {
     OllamaPlatformSupportApplicable =>
-      match ollama_nvidia_driver_requirement_verdict(
+      match extdeps.ollama.gpu_support.ollama_nvidia_driver_requirement_verdict(
         observed: observed_nvidia_driver,
-        minimum: ollama_gb10_minimum_nvidia_driver,
+        minimum: extdeps.ollama.gpu_support.ollama_gb10_minimum_nvidia_driver,
       ) {
-        OllamaNvidiaDriverRequirementSatisfied => OllamaRuntimeAdmissionApplicable
-        OllamaNvidiaDriverRequirementUnmet { observed: o, minimum: m } =>
+        extdeps.ollama.gpu_support.OllamaNvidiaDriverRequirementSatisfied => OllamaRuntimeAdmissionApplicable
+        extdeps.ollama.gpu_support.OllamaNvidiaDriverRequirementUnmet { observed: o, minimum: m } =>
           OllamaRuntimeAdmissionUnmet {
             cause: join([
               "nvidia driver ", to_string(o.major), " is below minimum ", to_string(m.major),
             ], "") as std.types.NonEmptyStr,
           }
-        OllamaNvidiaDriverRequirementUnobserved { cause: c } =>
+        extdeps.ollama.gpu_support.OllamaNvidiaDriverRequirementUnobserved { cause: c } =>
           OllamaRuntimeAdmissionUnobserved { cause: c }
       }
     OllamaPlatformSupportUnmet { cause: c } => OllamaRuntimeAdmissionUnmet { cause: c }

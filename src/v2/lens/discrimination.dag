@@ -1,14 +1,16 @@
 module v2.lens.discrimination
 
+
+
 type WitnessPolarity
   = AssertsGreen
   | AssertsRed
 
 type DiscriminatingWitness {
-  unit: List<v2.std.verification.TestClaim>
+  unit: List<TestClaim>
 }
 
-fn test_claim_polarity(c: v2.std.verification.TestClaim) -> WitnessPolarity {
+fn test_claim_polarity(c: TestClaim) -> WitnessPolarity {
   match c {
     CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
       AssertsGreen
@@ -23,29 +25,29 @@ fn test_claim_polarity(c: v2.std.verification.TestClaim) -> WitnessPolarity {
   }
 }
 
-fn claim_asserts_green(c: v2.std.verification.TestClaim) -> Bool {
+fn claim_asserts_green(c: TestClaim) -> Bool {
   match test_claim_polarity(c: c) {
     AssertsGreen => true
     AssertsRed => false
   }
 }
 
-fn claim_asserts_red(c: v2.std.verification.TestClaim) -> Bool {
+fn claim_asserts_red(c: TestClaim) -> Bool {
   match test_claim_polarity(c: c) {
     AssertsRed => true
     AssertsGreen => false
   }
 }
 
-fn unit_greens(unit: List<v2.std.verification.TestClaim>) -> List<v2.std.verification.TestClaim> {
+fn unit_greens(unit: List<TestClaim>) -> List<TestClaim> {
   filter(xs: unit, predicate: claim_asserts_green)
 }
 
-fn unit_reds(unit: List<v2.std.verification.TestClaim>) -> List<v2.std.verification.TestClaim> {
+fn unit_reds(unit: List<TestClaim>) -> List<TestClaim> {
   filter(xs: unit, predicate: claim_asserts_red)
 }
 
-fn red_coincides_with_a_green(unit: List<v2.std.verification.TestClaim>) -> Bool {
+fn red_coincides_with_a_green(unit: List<TestClaim>) -> Bool {
   any(
     xs: unit_reds(unit: unit),
     predicate: fn(r) {
@@ -59,19 +61,19 @@ fn red_coincides_with_a_green(unit: List<v2.std.verification.TestClaim>) -> Bool
   )
 }
 
-fn unit_has_perturbation(unit: List<v2.std.verification.TestClaim>) -> Bool {
+fn unit_has_perturbation(unit: List<TestClaim>) -> Bool {
   !red_coincides_with_a_green(unit: unit)
 }
 
-fn discrimination_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
-  v2.std.diagnostic.Diagnostic {
+fn discrimination_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
     reason: reason,
-    at: v2.std.diagnostic.Textual { file: ^discrimination_virtual_file, extent: WholeFile },
-    correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
+    at: Textual { file: ^discrimination_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
-fn discrimination_lens(unit: List<v2.std.verification.TestClaim>) -> Witness<DiscriminatingWitness> {
+fn discrimination_lens(unit: List<TestClaim>) -> Witness<DiscriminatingWitness> {
   if is_empty(xs: unit_greens(unit: unit)) {
     v2.std.witness.Violates {
       diagnostic: discrimination_diagnostic(reason: ^discrimination_reason_no_positive)
@@ -89,13 +91,13 @@ fn discrimination_lens(unit: List<v2.std.verification.TestClaim>) -> Witness<Dis
   }
 }
 
-fn unit_is_discriminating(unit: List<v2.std.verification.TestClaim>) -> Bool {
+fn unit_is_discriminating(unit: List<TestClaim>) -> Bool {
   match discrimination_lens(unit: unit) {
-    Holds { value: _ } => true
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Holds { value: _ } => true
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

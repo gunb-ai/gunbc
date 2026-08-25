@@ -1,5 +1,6 @@
 module product.build_fulfillment
 
+
 // INVENTORY-AWARE BUILD FULFILLMENT. Given a node recipe — a board, a processor
 // count, and a DIMM population derived upstream by gunbc.memory_provisioning —
 // this module derives the bill of materials and resolves EVERY line to exactly
@@ -165,15 +166,15 @@ type LineCompatibility
 // records having shipped once.
 fn compatibility_of(implication: gunbc.host_memory_qualification.PartImplication) -> LineCompatibility {
   match implication {
-    PartNotImplicated => CompatibilityEstablished
-    PartSampleQualificationRequired { step: s, standing: _ } =>
+    gunbc.host_memory_qualification.PartNotImplicated => CompatibilityEstablished
+    gunbc.host_memory_qualification.PartSampleQualificationRequired { step: s, standing: _ } =>
       CompatibilityEvidenceUnread {
         obligation: join(
           ["sample-qualify one unit on this platform: it must execute ", extdeps.memory.training.memory_training_step_label(step: s) as String, ", which this platform has been observed to fail"],
           "",
         ) as std.types.NonEmptyStr,
       }
-    PartImplicatedByFailingStep { step: s, standing: _ } =>
+    gunbc.host_memory_qualification.PartImplicatedByFailingStep { step: s, standing: _ } =>
       CompatibilityRefutedForPlatform {
         reason: join(
           ["this platform's own syndrome register named ", extdeps.memory.training.memory_training_step_label(step: s) as String, " as failing, and this part must execute it"],
@@ -384,12 +385,12 @@ fn resolve_from_offering(
   holder: std.types.NonEmptyStr,
 ) -> LineResolution {
   match product.inventory.derive_inventory_balance(lot: offering.lot, events: offering.events) {
-    BalanceRefused { cause: c, event_ordinal: o, event_label: l } =>
+    product.inventory.BalanceRefused { cause: c, event_ordinal: o, event_label: l } =>
       LineRefused {
         line: line,
         cause: LotLedgerDoesNotReconcile { cause: c, event_ordinal: o, event_label: l },
       }
-    BalanceDerived { balance: b } =>
+    product.inventory.BalanceDerived { balance: b } =>
       match product.inventory.admit_consumption(
         lot: offering.lot,
         events: offering.events,
@@ -399,7 +400,7 @@ fn resolve_from_offering(
           holder: holder,
         },
       ) {
-        ConsumptionAdmissible { available_after: after } =>
+        product.inventory.ConsumptionAdmissible { available_after: after } =>
           LineResolved {
             line: line,
             fulfillment: OwnedInventory {
@@ -413,9 +414,9 @@ fn resolve_from_offering(
               available_after: after,
             },
           }
-        ConsumptionRefused { cause: c, requested: req, available: avail } =>
+        product.inventory.ConsumptionRefused { cause: c, requested: req, available: avail } =>
           match c {
-            InsufficientStock { position: _, requested: _, held: _ } =>
+            product.inventory.InsufficientStock { position: _, requested: _, held: _ } =>
               resolve_from_market(line: line, market: market, owned_available: b.available)
             _ =>
               LineRefused {
@@ -532,7 +533,7 @@ type CashRefusalCause
   | CashLineUnfulfilled { part: std.decl_ref.DeclarationRef }
   | CashCurrencyMismatch { declared: std.currency.CurrencyCode, line_currency: std.currency.CurrencyCode }
 
-// MONEY RIDES std.measure's CARRIER, never a bare std.nat.Nat beside a currency code.
+// MONEY RIDES std.measure's CARRIER, never a bare Nat beside a currency code.
 // An amount and its currency are ONE fact — MoneyOnce is exactly that carrier —
 // and splitting them across two fields is the second representation DESIGN
 // section 3 forbids: nothing would stop a fold carrying 90,000,000 micros
@@ -675,7 +676,8 @@ type BasisRefusalCause
   | BasisLandedCurrencyUnrecorded { lot: product.inventory.InventoryLotIdentity }
   | BasisCurrencyMismatchAcrossLots { first: std.currency.CurrencyCode, other: std.currency.CurrencyCode }
 
-// THE BASIS RIDES THE SAME CARRIER, and typing it exposed a hole the bare std.nat.Nat
+
+// THE BASIS RIDES THE SAME CARRIER, and typing it exposed a hole the bare Nat
 // was hiding: a basis summed across lots landed in DIFFERENT currencies was
 // being added up as though the numbers were commensurable. product.inventory's
 // own sum_landed_cost refuses that case; so does this, with the same shape.
@@ -713,12 +715,12 @@ fn lot_for(lots: List<product.inventory.ProcurementLot>, identity: product.inven
 
 fn basis_for_draw(lot: product.inventory.ProcurementLot, draw: LotDraw) -> BasisProjection {
   match product.inventory.lot_landed_cost_reading(lot: lot) {
-    LandedCostReadingUnsettled => BasisRefused { cause: BasisLandedCostUnsettled { lot: draw.lot } }
-    LandedCostReadingHeldPrivately => BasisRefused { cause: BasisLandedCostHeldPrivately { lot: draw.lot } }
-    LandedCostReadingMicros { micros: c } =>
+    product.inventory.LandedCostReadingUnsettled => BasisRefused { cause: BasisLandedCostUnsettled { lot: draw.lot } }
+    product.inventory.LandedCostReadingHeldPrivately => BasisRefused { cause: BasisLandedCostHeldPrivately { lot: draw.lot } }
+    product.inventory.LandedCostReadingMicros { micros: c } =>
       match product.inventory.lot_landed_cost_currency(lot: lot) {
-        LandedCostCurrencyUnrecorded => BasisRefused { cause: BasisLandedCurrencyUnrecorded { lot: draw.lot } }
-        LandedCostCurrencyKnown { currency: ccy } => {
+        product.inventory.LandedCostCurrencyUnrecorded => BasisRefused { cause: BasisLandedCurrencyUnrecorded { lot: draw.lot } }
+        product.inventory.LandedCostCurrencyKnown { currency: ccy } => {
           let total = c * draw.quantity
           BasisDerived {
             basis: std.measure.MoneyOnce { amount: std.measure.money_amount_micro(count: total / lot.quantity_acquired), currency: ccy },
@@ -800,9 +802,9 @@ fn market_units(market: MarketDepth, part: std.decl_ref.DeclarationRef) -> LineD
 
 fn offering_depth(offering: LotOffering) -> LineDepth {
   match product.inventory.derive_inventory_balance(lot: offering.lot, events: offering.events) {
-    BalanceRefused { cause: c, event_ordinal: o, event_label: l } =>
+    product.inventory.BalanceRefused { cause: c, event_ordinal: o, event_label: l } =>
       DepthRefused { cause: LotLedgerDoesNotReconcile { cause: c, event_ordinal: o, event_label: l } }
-    BalanceDerived { balance: b } => DepthUnits { units: b.available }
+    product.inventory.BalanceDerived { balance: b } => DepthUnits { units: b.available }
   }
 }
 

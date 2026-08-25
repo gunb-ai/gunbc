@@ -1,5 +1,6 @@
 module test.claim.spark_serving_terminal_health_witness_test
 
+
 // The version the cited release row carries, as the API reports it: bare, without the `v` the
 // release tag carries. Written here as the API would send it so the fixture exercises the prefix
 // rule in `ollama_reported_version_matches_release` rather than sidestepping it.
@@ -13,25 +14,25 @@ fn good_generation() -> String {
   generation(model: "gpt-oss:20b", done: "true", response: "pong")
 }
 
-fn health(version_stdout: String, generate_stdout: String) -> SparkServingTerminalHealth {
-  spark_serving_health_from_captures(
-    version: ProbeAnswered { stdout: version_stdout },
-    generate: ProbeAnswered { stdout: generate_stdout },
+fn health(version_stdout: String, generate_stdout: String) -> gunbc.spark.serving_terminal_health.SparkServingTerminalHealth {
+  gunbc.spark.serving_terminal_health.spark_serving_health_from_captures(
+    version: gunbc.spark.serving_terminal_health.ProbeAnswered { stdout: version_stdout },
+    generate: gunbc.spark.serving_terminal_health.ProbeAnswered { stdout: generate_stdout },
   )
 }
 
-fn defect_wire(h: SparkServingTerminalHealth) -> String {
+fn defect_wire(h: gunbc.spark.serving_terminal_health.SparkServingTerminalHealth) -> String {
   match h {
-    ServingConverged { reported_version: _, served_model: _ } => "<converged>"
-    ServingHealthUnobserved { cause: _ } => "<unobserved>"
-    ResourcesConvergedButServingUnhealthy { defect: d } =>
+    gunbc.spark.serving_terminal_health.ServingConverged { reported_version: _, served_model: _ } => "<converged>"
+    gunbc.spark.serving_terminal_health.ServingHealthUnobserved { cause: _ } => "<unobserved>"
+    gunbc.spark.serving_terminal_health.ResourcesConvergedButServingUnhealthy { defect: d } =>
       match d {
-        HealthVersionDisagrees { observed: _ } => "version-disagrees"
-        HealthVersionUndecodable { detail: _ } => "version-undecodable"
-        HealthGenerationUndecodable { detail: _ } => "generation-undecodable"
-        HealthGenerationIncomplete => "generation-incomplete"
-        HealthGenerationWrongModel { observed: _ } => "generation-wrong-model"
-        HealthGenerationUnexpectedText { observed: _ } => "generation-unexpected-text"
+        gunbc.spark.serving_terminal_health.HealthVersionDisagrees { observed: _ } => "version-disagrees"
+        gunbc.spark.serving_terminal_health.HealthVersionUndecodable { detail: _ } => "version-undecodable"
+        gunbc.spark.serving_terminal_health.HealthGenerationUndecodable { detail: _ } => "generation-undecodable"
+        gunbc.spark.serving_terminal_health.HealthGenerationIncomplete => "generation-incomplete"
+        gunbc.spark.serving_terminal_health.HealthGenerationWrongModel { observed: _ } => "generation-wrong-model"
+        gunbc.spark.serving_terminal_health.HealthGenerationUnexpectedText { observed: _ } => "generation-unexpected-text"
       }
   }
 }
@@ -39,7 +40,7 @@ fn defect_wire(h: SparkServingTerminalHealth) -> String {
 // THE POSITIVE CONTROL. Without it every claim below is satisfied by a function that calls
 // everything unhealthy, which is the cheapest way to pass a suite of negative claims.
 test fn a_serving_host_that_answers_correctly_is_converged() -> Bool {
-  spark_serving_health_is_converged(health: health(version_stdout: good_version, generate_stdout: good_generation()))
+  gunbc.spark.serving_terminal_health.spark_serving_health_is_converged(health: health(version_stdout: good_version, generate_stdout: good_generation()))
 }
 
 // THE DISCRIMINATING CLAIM. `done:false` carries the right model and the right text, so every check
@@ -50,7 +51,7 @@ test fn an_unfinished_generation_is_not_converged() -> Bool {
     version_stdout: good_version,
     generate_stdout: generation(model: "gpt-oss:20b", done: "false", response: "pong"),
   )
-  !spark_serving_health_is_converged(health: h)
+  !gunbc.spark.serving_terminal_health.spark_serving_health_is_converged(health: h)
     && defect_wire(h: h) == "generation-incomplete"
 }
 
@@ -61,7 +62,7 @@ test fn a_host_serving_a_different_model_is_not_converged() -> Bool {
     version_stdout: good_version,
     generate_stdout: generation(model: "llama3:8b", done: "true", response: "pong"),
   )
-  !spark_serving_health_is_converged(health: h)
+  !gunbc.spark.serving_terminal_health.spark_serving_health_is_converged(health: h)
     && defect_wire(h: h) == "generation-wrong-model"
 }
 
@@ -72,7 +73,7 @@ test fn an_unexpected_completion_is_not_converged() -> Bool {
     version_stdout: good_version,
     generate_stdout: generation(model: "gpt-oss:20b", done: "true", response: "I cannot help with that"),
   )
-  !spark_serving_health_is_converged(health: h)
+  !gunbc.spark.serving_terminal_health.spark_serving_health_is_converged(health: h)
     && defect_wire(h: h) == "generation-unexpected-text"
 }
 
@@ -80,7 +81,7 @@ test fn an_unexpected_completion_is_not_converged() -> Bool {
 // the model member -- a stale root on PATH, or a unit pointing at a previous materialization.
 test fn a_disagreeing_runtime_version_is_not_converged() -> Bool {
   let h = health(version_stdout: "{\"version\":\"0.1.0\"}", generate_stdout: good_generation())
-  !spark_serving_health_is_converged(health: h)
+  !gunbc.spark.serving_terminal_health.spark_serving_health_is_converged(health: h)
     && defect_wire(h: h) == "version-disagrees"
 }
 
@@ -93,9 +94,9 @@ test fn a_disagreeing_runtime_version_is_not_converged() -> Bool {
 test fn an_unobserved_probe_is_neither_healthy_nor_a_defect() -> Bool {
   let no_version = health(version_stdout: "", generate_stdout: good_generation())
   let no_generation = health(version_stdout: good_version, generate_stdout: "   ")
-  !spark_serving_health_is_converged(health: no_version)
+  !gunbc.spark.serving_terminal_health.spark_serving_health_is_converged(health: no_version)
     && defect_wire(h: no_version) == "<unobserved>"
-    && !spark_serving_health_is_converged(health: no_generation)
+    && !gunbc.spark.serving_terminal_health.spark_serving_health_is_converged(health: no_generation)
     && defect_wire(h: no_generation) == "<unobserved>"
 }
 
@@ -106,7 +107,7 @@ test fn a_duplicated_response_member_refuses_rather_than_taking_the_first() -> B
     version_stdout: good_version,
     generate_stdout: "{\"model\":\"gpt-oss:20b\",\"model\":\"llama3:8b\",\"done\":true,\"response\":\"pong\"}",
   )
-  !spark_serving_health_is_converged(health: h)
+  !gunbc.spark.serving_terminal_health.spark_serving_health_is_converged(health: h)
     && defect_wire(h: h) == "generation-undecodable"
 }
 
@@ -114,7 +115,7 @@ test fn a_duplicated_response_member_refuses_rather_than_taking_the_first() -> B
 // to receive on this port, and it must not decode into a confident statement about the model.
 test fn a_non_json_response_is_undecodable() -> Bool {
   let h = health(version_stdout: good_version, generate_stdout: "<html>502 Bad Gateway</html>")
-  !spark_serving_health_is_converged(health: h)
+  !gunbc.spark.serving_terminal_health.spark_serving_health_is_converged(health: h)
     && defect_wire(h: h) == "generation-undecodable"
 }
 
@@ -132,10 +133,10 @@ test fn a_non_json_response_is_undecodable() -> Bool {
 // The claim asserts the whole argv is admitted rather than spot-checking the URL, because it is the
 // body path and the Content-Type header that were most at risk.
 test fn both_health_probe_argvs_are_portable_remote_words() -> Bool {
-  match portable_remote_words(raws: spark_serving_health_version_probe_argv()) {
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: gunbc.spark.serving_terminal_health.spark_serving_health_version_probe_argv()) {
     Absent => false
     Present { value: _ } =>
-      match portable_remote_words(raws: spark_serving_health_generate_probe_argv()) {
+      match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: gunbc.spark.serving_terminal_health.spark_serving_health_generate_probe_argv()) {
         Absent => false
         Present { value: _ } => true
       }
@@ -145,7 +146,7 @@ test fn both_health_probe_argvs_are_portable_remote_words() -> Bool {
 // THE CONTROL THAT PROVES THE ADMISSION ABOVE CAN SAY NO. Without it the claim passes on an
 // admission function that accepts everything, which would make it decoration.
 test fn an_inlined_json_body_would_be_refused_as_argv() -> Bool {
-  match portable_remote_words(raws: ["curl", "--data", spark_serving_health_request_body()]) {
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: ["curl", "--data", gunbc.spark.serving_terminal_health.spark_serving_health_request_body()]) {
     Absent => true
     Present { value: _ } => false
   }
@@ -154,10 +155,10 @@ test fn an_inlined_json_body_would_be_refused_as_argv() -> Bool {
 // The wire rendering names the verdict, so a receipt line distinguishes the three states rather than
 // printing one word for all of them.
 test fn the_health_wire_distinguishes_the_three_states() -> Bool {
-  string_contains(spark_serving_health_wire(health: health(version_stdout: good_version, generate_stdout: good_generation())), "serving-converged")
-    && string_contains(spark_serving_health_wire(health: health(version_stdout: "", generate_stdout: "")), "serving-health-unobserved")
+  string_contains(gunbc.spark.serving_terminal_health.spark_serving_health_wire(health: health(version_stdout: good_version, generate_stdout: good_generation())), "serving-converged")
+    && string_contains(gunbc.spark.serving_terminal_health.spark_serving_health_wire(health: health(version_stdout: "", generate_stdout: "")), "serving-health-unobserved")
     && string_contains(
-         spark_serving_health_wire(health: health(version_stdout: good_version, generate_stdout: generation(model: "gpt-oss:20b", done: "false", response: "pong"))),
+         gunbc.spark.serving_terminal_health.spark_serving_health_wire(health: health(version_stdout: good_version, generate_stdout: generation(model: "gpt-oss:20b", done: "false", response: "pong"))),
          "resources-converged-but-serving-unhealthy",
        )
 }
@@ -168,33 +169,33 @@ test fn the_health_wire_distinguishes_the_three_states() -> Bool {
 // asserted a specific explanation the code had not observed. These witnesses go red the moment the
 // three collapse again, because they assert the causes are pairwise DISTINCT rather than asserting
 // any particular wording -- wording is prose and would make this a change detector.
-fn cause_of(h: SparkServingTerminalHealth) -> String {
+fn cause_of(h: gunbc.spark.serving_terminal_health.SparkServingTerminalHealth) -> String {
   match h {
-    ServingHealthUnobserved { cause: c } => c as String
-    ServingConverged { reported_version: _, served_model: _ } => ""
-    ResourcesConvergedButServingUnhealthy { defect: _ } => ""
+    gunbc.spark.serving_terminal_health.ServingHealthUnobserved { cause: c } => c as String
+    gunbc.spark.serving_terminal_health.ServingConverged { reported_version: _, served_model: _ } => ""
+    gunbc.spark.serving_terminal_health.ResourcesConvergedButServingUnhealthy { defect: _ } => ""
   }
 }
 
-fn cause_for_version(capture: SparkServingProbeCapture) -> String {
+fn cause_for_version(capture: gunbc.spark.serving_terminal_health.SparkServingProbeCapture) -> String {
   cause_of(
-    h: spark_serving_health_from_captures(
+    h: gunbc.spark.serving_terminal_health.spark_serving_health_from_captures(
       version: capture,
-      generate: ProbeAnswered { stdout: good_generation() },
+      generate: gunbc.spark.serving_terminal_health.ProbeAnswered { stdout: good_generation() },
     ),
   )
 }
 
-fn never_ran_capture() -> SparkServingProbeCapture {
-  ProbeNeverRan { cause: "no transport result" as NonEmptyStr }
+fn never_ran_capture() -> gunbc.spark.serving_terminal_health.SparkServingProbeCapture {
+  gunbc.spark.serving_terminal_health.ProbeNeverRan { cause: "no transport result" as std.types.NonEmptyStr }
 }
 
-fn failed_capture() -> SparkServingProbeCapture {
-  ProbeFailed { exit_code: 7, stderr: "curl: could not connect" }
+fn failed_capture() -> gunbc.spark.serving_terminal_health.SparkServingProbeCapture {
+  gunbc.spark.serving_terminal_health.ProbeFailed { exit_code: 7, stderr: "curl: could not connect" }
 }
 
-fn empty_answer_capture() -> SparkServingProbeCapture {
-  ProbeAnswered { stdout: "" }
+fn empty_answer_capture() -> gunbc.spark.serving_terminal_health.SparkServingProbeCapture {
+  gunbc.spark.serving_terminal_health.ProbeAnswered { stdout: "" }
 }
 
 test fn a_never_ran_differs_from_ran_and_failed() -> Bool {
@@ -226,9 +227,9 @@ test fn d_every_unobserved_cause_is_non_empty() -> Bool {
 // capture and a good generation capture still decode to converged.
 test fn e_control_good_captures_still_converge() -> Bool {
   match health(version_stdout: good_version, generate_stdout: good_generation()) {
-    ServingConverged { reported_version: _, served_model: _ } => true
-    ServingHealthUnobserved { cause: _ } => false
-    ResourcesConvergedButServingUnhealthy { defect: _ } => false
+    gunbc.spark.serving_terminal_health.ServingConverged { reported_version: _, served_model: _ } => true
+    gunbc.spark.serving_terminal_health.ServingHealthUnobserved { cause: _ } => false
+    gunbc.spark.serving_terminal_health.ResourcesConvergedButServingUnhealthy { defect: _ } => false
   }
 }
 
@@ -242,8 +243,8 @@ data ps_other_model: String = "{\"models\":[{\"name\":\"llama3:8b\",\"size_vram\
 // helper must walk the same route production does: a converged verdict or nothing. That is the
 // ordering claim being asserted rather than described -- if it ever stops holding, every
 // residency witness below reads "no-proof" and reds, instead of quietly testing a fiction.
-fn served_proof() -> SparkServingServedProof? {
-  spark_serving_served_proof(
+fn served_proof() -> gunbc.spark.serving_terminal_health.SparkServingServedProof? {
+  gunbc.spark.serving_terminal_health.spark_serving_served_proof(
     health: health(version_stdout: good_version, generate_stdout: good_generation()),
   )
 }
@@ -252,21 +253,21 @@ fn residency_tag_of(stdout: String) -> String {
   match served_proof() {
     Present { value: p } =>
       residency_tag(
-        r: spark_serving_residency_from_capture(
+        r: gunbc.spark.serving_terminal_health.spark_serving_residency_from_capture(
           proof: p,
-          capture: ProbeAnswered { stdout: stdout },
+          capture: gunbc.spark.serving_terminal_health.ProbeAnswered { stdout: stdout },
         ),
       )
     Absent => "no-proof"
   }
 }
 
-fn residency_tag(r: SparkServingResidency) -> String {
+fn residency_tag(r: gunbc.spark.serving_terminal_health.SparkServingResidency) -> String {
   match r {
-    ResidencyUnobserved { cause: _ } => "unobserved"
-    NothingResident => "nothing-resident"
-    ResidentInVram { vram_lexeme: _ } => "in-vram"
-    ResidentOutsideVram => "outside-vram"
+    gunbc.spark.serving_terminal_health.ResidencyUnobserved { cause: _ } => "unobserved"
+    gunbc.spark.serving_terminal_health.NothingResident => "nothing-resident"
+    gunbc.spark.serving_terminal_health.ResidentInVram { vram_lexeme: _ } => "in-vram"
+    gunbc.spark.serving_terminal_health.ResidentOutsideVram => "outside-vram"
   }
 }
 
@@ -296,10 +297,10 @@ test fn j_unparseable_ps_refuses_rather_than_guessing() -> Bool {
 // ORDERING IS STRUCTURAL: a proof exists only for a converged verdict, so residency cannot be
 // decoded off an unhealthy or unobserved host at all.
 test fn k_no_proof_from_unobserved_health() -> Bool {
-  match spark_serving_served_proof(
-    health: spark_serving_health_from_captures(
+  match gunbc.spark.serving_terminal_health.spark_serving_served_proof(
+    health: gunbc.spark.serving_terminal_health.spark_serving_health_from_captures(
       version: never_ran_capture(),
-      generate: ProbeAnswered { stdout: good_generation() },
+      generate: gunbc.spark.serving_terminal_health.ProbeAnswered { stdout: good_generation() },
     ),
   ) {
     Present { value: _ } => false
@@ -308,7 +309,7 @@ test fn k_no_proof_from_unobserved_health() -> Bool {
 }
 
 test fn l_proof_exists_for_converged_health() -> Bool {
-  match spark_serving_served_proof(
+  match gunbc.spark.serving_terminal_health.spark_serving_served_proof(
     health: health(version_stdout: good_version, generate_stdout: good_generation()),
   ) {
     Present { value: p } => p.served_model as String == "gpt-oss:20b"

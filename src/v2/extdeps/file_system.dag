@@ -1,7 +1,7 @@
 module v2.extdeps.file_system
 
 
-type PosixByteString = std.algebra.FreeMonoid<std.bit.Byte>
+type PosixByteString = std.algebra.FreeMonoid<v2.std.machine.Byte>
 
 type NamedPathComponent {
   bytes: PosixByteString
@@ -40,7 +40,7 @@ type FileKindResolutionPolicy
 
 type Filesystem
 
-type FileBody = std.algebra.FreeMonoid<std.bit.Byte>
+type FileBody = std.algebra.FreeMonoid<v2.std.machine.Byte>
 
 type FileResource {
   filesystem: Filesystem
@@ -54,12 +54,12 @@ type FileContent = FileBody
 
 type FileRead {
   resource: FileResource,
-  path: std.types.FilePath
+  path: FilePath
 }
 
 type FileWrite {
   resource: FileResource,
-  path: std.types.FilePath,
+  path: FilePath,
   content: FileContent
 }
 

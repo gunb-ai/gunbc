@@ -7,13 +7,13 @@ module test.claim.devboot_reuse_seams_witness
 // The decisions are witnessed here and the transports are not, because the transports are git's and are cited to it. What this repository owns is which arm each observation maps to.
 
 fn probe_subject(profile: String) -> gunbc.devboot.subject.BuildSubject? {
-  match git_object_id_from_untagged_hex(hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3") {
+  match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3") {
     Absent => none
     Present { value: tree } =>
-      match parse_rust_target_triple(spelling: "aarch64-unknown-linux-gnu") {
+      match extdeps.rust.target_triple.parse_rust_target_triple(spelling: "aarch64-unknown-linux-gnu") {
         Absent => none
         Present { value: host } =>
-          match admit_build_subject(
+          match gunbc.devboot.subject.admit_build_subject(
             tree_oid: tree,
             package: "v1-compiler",
             cargo_target: extdeps.cargo.Bin { name: "gunbc" },
@@ -27,51 +27,51 @@ fn probe_subject(profile: String) -> gunbc.devboot.subject.BuildSubject? {
             cargo_config: [],
             platform_c_library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr },
           ) {
-            SubjectRefused { cause } => none
-            SubjectAdmitted { subject } => Present { value: subject }
+            gunbc.devboot.subject.SubjectRefused { cause } => none
+            gunbc.devboot.subject.SubjectAdmitted { subject } => Present { value: subject }
           }
       }
   }
 }
 
-// THE POSITIVE CONTROL. A stored record that is exactly this subject's rendering matches it. Without this, the refusal witnesses below would all pass on a comparison that answered gunbc.devboot.outcome.SubjectDiffers unconditionally -- which is precisely the defect this seam shipped with once: an equality against a blob carrying an appended digest could never match, and every caller refused a request identical to the one that produced it.
+// THE POSITIVE CONTROL. A stored record that is exactly this subject's rendering matches it. Without this, the refusal witnesses below would all pass on a comparison that answered SubjectDiffers unconditionally -- which is precisely the defect this seam shipped with once: an equality against a blob carrying an appended digest could never match, and every caller refused a request identical to the one that produced it.
 test fn a_record_holding_exactly_this_subject_matches() -> Bool {
-  match test.claim.devboot_reuse_seams_witness.probe_subject(profile: "release") {
+  match probe_subject(profile: "release") {
     Absent => false
     Present { value: subject } =>
-      match stored_subject_match(record_text: render_build_subject(subject: subject), subject: subject) {
-        SubjectMatches => true
-        SubjectDiffers => false
+      match gunbc.devboot.produce.stored_subject_match(record_text: gunbc.devboot.subject.render_build_subject(subject: subject), subject: subject) {
+        gunbc.devboot.outcome.SubjectMatches => true
+        gunbc.devboot.outcome.SubjectDiffers => false
       }
   }
 }
 
-// THE PREFIX CASE, PINNED RED. This is the exact false match the comparison was changed to prevent: the request's rendering is a strict PREFIX of the stored record, which is what happens whenever the stored subject carries an axis the request does not. Under prefix matching this answered gunbc.devboot.outcome.SubjectMatches and the requester asking for LESS received a binary built with configuration it never asked for. The suffix here stands for any appended axis; what the witness pins is that being a prefix is not being equal.
+// THE PREFIX CASE, PINNED RED. This is the exact false match the comparison was changed to prevent: the request's rendering is a strict PREFIX of the stored record, which is what happens whenever the stored subject carries an axis the request does not. Under prefix matching this answered SubjectMatches and the requester asking for LESS received a binary built with configuration it never asked for. The suffix here stands for any appended axis; what the witness pins is that being a prefix is not being equal.
 test fn a_record_whose_subject_extends_this_one_refuses() -> Bool {
-  match test.claim.devboot_reuse_seams_witness.probe_subject(profile: "release") {
+  match probe_subject(profile: "release") {
     Absent => false
     Present { value: subject } =>
-      match stored_subject_match(
-        record_text: concat(render_build_subject(subject: subject), "cargo_config.0=target.linker=lld\n"),
+      match gunbc.devboot.produce.stored_subject_match(
+        record_text: concat(gunbc.devboot.subject.render_build_subject(subject: subject), "cargo_config.0=target.linker=lld\n"),
         subject: subject,
       ) {
-        SubjectMatches => false
-        SubjectDiffers => true
+        gunbc.devboot.outcome.SubjectMatches => false
+        gunbc.devboot.outcome.SubjectDiffers => true
       }
   }
 }
 
 // A DIFFERENT SUBJECT REFUSES. Two subjects differing in one axis must not match each other; profile is the axis varied because it participates in the rendering and in the digest, so a comparison that ignored it would be caught here rather than at the store.
 test fn a_record_for_a_different_profile_refuses() -> Bool {
-  match test.claim.devboot_reuse_seams_witness.probe_subject(profile: "release") {
+  match probe_subject(profile: "release") {
     Absent => false
     Present { value: released } =>
-      match test.claim.devboot_reuse_seams_witness.probe_subject(profile: "dev") {
+      match probe_subject(profile: "dev") {
         Absent => false
         Present { value: dev } =>
-          match stored_subject_match(record_text: render_build_subject(subject: dev), subject: released) {
-            SubjectMatches => false
-            SubjectDiffers => true
+          match gunbc.devboot.produce.stored_subject_match(record_text: gunbc.devboot.subject.render_build_subject(subject: dev), subject: released) {
+            gunbc.devboot.outcome.SubjectMatches => false
+            gunbc.devboot.outcome.SubjectDiffers => true
           }
       }
   }
@@ -79,42 +79,42 @@ test fn a_record_for_a_different_profile_refuses() -> Bool {
 
 // AN EMPTY RECORD REFUSES. A store that answered nothing -- a pruned ref, an unreadable blob -- must not read as agreement. An empty string is a prefix of everything, so under the old comparison this was the widest false match available.
 test fn an_empty_record_refuses() -> Bool {
-  match test.claim.devboot_reuse_seams_witness.probe_subject(profile: "release") {
+  match probe_subject(profile: "release") {
     Absent => false
     Present { value: subject } =>
-      match stored_subject_match(record_text: "", subject: subject) {
-        SubjectMatches => false
-        SubjectDiffers => true
+      match gunbc.devboot.produce.stored_subject_match(record_text: "", subject: subject) {
+        gunbc.devboot.outcome.SubjectMatches => false
+        gunbc.devboot.outcome.SubjectDiffers => true
       }
   }
 }
 
 // THE WAIT ABSORBS ONCE THE ARTIFACT HAS APPEARED. Every remaining tick must return the same answer rather than looking again: a later poll could observe a different state and overwrite a settled terminal one, so a waiter holding its artifact could end up reporting a refusal from a subsequent hiccup.
 test fn a_wait_that_found_its_artifact_is_settled() -> Bool {
-  attach_wait_settled(acc: gunbc.devboot.produce.AttachArtifactAppeared { oid: "e503761a" })
+  gunbc.devboot.produce.attach_wait_settled(acc: gunbc.devboot.produce.AttachArtifactAppeared { oid: "e503761a" })
 }
 
 // AND ABSORBS ON REFUSAL, for the mirror reason: a store that could not be read must not be re-read into an accidental success by a later tick.
 test fn a_wait_that_refused_is_settled() -> Bool {
-  attach_wait_settled(acc: gunbc.devboot.produce.AttachWaitRefused { detail: "store unreadable" })
+  gunbc.devboot.produce.attach_wait_settled(acc: gunbc.devboot.produce.AttachWaitRefused { detail: "store unreadable" })
 }
 
 // THE DISCRIMINATING NEGATIVE. Still producing is NOT settled, so the fold keeps polling. Without this the two witnesses above would pass on a function that answered true unconditionally -- and a wait that is always settled never waits at all, which would return the caller to the attach-without-an-artifact behaviour this vertical deleted.
 test fn a_wait_still_producing_is_not_settled() -> Bool {
-  !attach_wait_settled(acc: AttachStillProducing)
+  !gunbc.devboot.produce.attach_wait_settled(acc: gunbc.devboot.produce.AttachStillProducing)
 }
 
 // The fixture hex decodes, so the Absent arm is not the state under test -- and it is written to
 // REFUSE rather than to substitute a plausible observation, so a fixture that stopped decoding
 // fails these witnesses instead of silently changing which arm they exercise.
-fn lease_break_other_observed() -> GitRefObservation {
-  match git_object_id_from_untagged_hex(hex: lease_break_other_hex) {
+fn lease_break_other_observed() -> extdeps.git.plumbing.GitRefObservation {
+  match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: lease_break_other_hex) {
     Absent =>
-      GitRefObservationRefused {
+      extdeps.git.plumbing.GitRefObservationRefused {
         exit_code: 0,
         stderr: "the fixture object id did not decode",
       }
-    Present { value: oid } => GitRefObserved { oid: oid }
+    Present { value: oid } => extdeps.git.plumbing.GitRefObserved { oid: oid }
   }
 }
 
@@ -122,14 +122,14 @@ data lease_break_holder_hex: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 data lease_break_other_hex: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-fn lease_break_outcome(exit_code: Int, stderr: String, observed_after: GitRefObservation) -> GitRefMutationOutcome? {
-  match git_object_id_from_untagged_hex(hex: lease_break_holder_hex) {
+fn lease_break_outcome(exit_code: Int, stderr: String, observed_after: extdeps.git.plumbing.GitRefObservation) -> extdeps.git.plumbing.GitRefMutationOutcome? {
+  match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: lease_break_holder_hex) {
     Absent => none
     Present { value: holder } =>
       Present {
-        value: git_ref_mutation_outcome(
-          mutation: GitDeleteRefIfExpected {
-            name: "refs/devboot/lease/fnv1a64-deadbeef" as GitRefName,
+        value: extdeps.git.plumbing.git_ref_mutation_outcome(
+          mutation: extdeps.git.plumbing.GitDeleteRefIfExpected {
+            name: "refs/devboot/lease/fnv1a64-deadbeef" as extdeps.git.object_store.GitRefName,
             expected_old: holder,
           },
           exit_code: exit_code,
@@ -140,12 +140,12 @@ fn lease_break_outcome(exit_code: Int, stderr: String, observed_after: GitRefObs
   }
 }
 
-fn lease_recovery_of(exit_code: Int, stderr: String, observed_after: GitRefObservation) -> LeaseRecovery? {
+fn lease_recovery_of(exit_code: Int, stderr: String, observed_after: extdeps.git.plumbing.GitRefObservation) -> gunbc.devboot.produce.LeaseRecovery? {
   match lease_break_outcome(exit_code: exit_code, stderr: stderr, observed_after: observed_after) {
     Absent => none
     Present { value: outcome } =>
       Present {
-        value: lease_recovery_from_outcome(
+        value: gunbc.devboot.produce.lease_recovery_from_outcome(
           outcome: outcome,
           token: "fnv1a64-deadbeef",
           expected_holder: lease_break_holder_hex,
@@ -154,26 +154,26 @@ fn lease_recovery_of(exit_code: Int, stderr: String, observed_after: GitRefObser
   }
 }
 
-fn lease_recovery_refusal_text(recovery: LeaseRecovery?) -> String? {
+fn lease_recovery_refusal_text(recovery: gunbc.devboot.produce.LeaseRecovery?) -> String? {
   match recovery {
     Absent => none
     Present { value: settled } =>
       match settled {
-        LeaseBroken { token, former_holder } => none
-        LeaseRecoveryRefused { detail } => Present { value: detail }
+        gunbc.devboot.produce.LeaseBroken { token, former_holder } => none
+        gunbc.devboot.produce.LeaseRecoveryRefused { detail } => Present { value: detail }
       }
   }
 }
 
 // RECOVERY ON A SUCCESSFUL SWAP IS A BROKEN LEASE, and it names the holder it removed so the receipt says whose lease was broken rather than merely that one was. The delete's desired state is ABSENCE, so this is also the arm that could not be expressed by comparing observed object ids -- absence has to be a value for a delete to be confirmable at all.
 test fn a_successful_swap_reports_the_lease_broken() -> Bool {
-  match lease_recovery_of(exit_code: 0, stderr: "", observed_after: GitRefAbsent) {
+  match lease_recovery_of(exit_code: 0, stderr: "", observed_after: extdeps.git.plumbing.GitRefAbsent) {
     Absent => false
     Present { value: settled } =>
       match settled {
-        LeaseBroken { token, former_holder } =>
+        gunbc.devboot.produce.LeaseBroken { token, former_holder } =>
           token == "fnv1a64-deadbeef" && former_holder == lease_break_holder_hex
-        LeaseRecoveryRefused { detail } => false
+        gunbc.devboot.produce.LeaseRecoveryRefused { detail } => false
       }
   }
 }
@@ -199,7 +199,7 @@ test fn an_unreachable_store_is_not_reported_as_someone_elses_lease() -> Bool {
     recovery: lease_recovery_of(
       exit_code: 128,
       stderr: "error: cannot lock ref: is at bbbb but expected aaaa",
-      observed_after: GitRefObservationRefused { exit_code: 128, stderr: "not a git repository" },
+      observed_after: extdeps.git.plumbing.GitRefObservationRefused { exit_code: 128, stderr: "not a git repository" },
     ),
   ) {
     Absent => false
@@ -225,23 +225,23 @@ test fn a_delete_that_reported_success_and_left_the_ref_present_refuses() -> Boo
 
 // A DIGEST MISMATCH REPORTS CORRUPTION AND NAMES BOTH SIDES. This arm existed in the model with nothing constructing it on the live path -- the observation reported an unreadable store instead -- so the distinction the availability sum draws was not one the system actually made. A variant nothing produces is not a distinction; this witness is what makes it one.
 test fn a_digest_mismatch_is_corruption_carrying_both_digests() -> Bool {
-  match corrupt_artifact_observation(
+  match gunbc.devboot.produce.corrupt_artifact_observation(
     expected_hex: "5af0bd8e23a794a5edea9d8cd8d4d0b533b0feab00196ce54c32e83f3339e48e",
     observed_hex: "0000000000000000000000000000000000000000000000000000000000000000",
   ) {
-    ArtifactCorrupt { expected, observed } => !(expected == observed)
-    ArtifactAvailable { artifact } => false
-    ArtifactMissing => false
-    ArtifactUnreadable { detail } => false
+    gunbc.devboot.outcome.ArtifactCorrupt { expected, observed } => !(expected == observed)
+    gunbc.devboot.outcome.ArtifactAvailable { artifact } => false
+    gunbc.devboot.outcome.ArtifactMissing => false
+    gunbc.devboot.outcome.ArtifactUnreadable { detail } => false
   }
 }
 
 // AND AN UNUSABLE DIGEST REFUSES AS UNREADABLE RATHER THAN AS CORRUPTION, because a corruption report that cannot name what it compared is not a report. This is the discriminating negative for the arm above: without it, a function answering ArtifactCorrupt unconditionally would pass.
 test fn a_corruption_report_without_a_usable_digest_is_unreadable() -> Bool {
-  match corrupt_artifact_observation(expected_hex: "not-a-digest", observed_hex: "also-not") {
-    ArtifactUnreadable { detail } => true
-    ArtifactCorrupt { expected, observed } => false
-    ArtifactAvailable { artifact } => false
-    ArtifactMissing => false
+  match gunbc.devboot.produce.corrupt_artifact_observation(expected_hex: "not-a-digest", observed_hex: "also-not") {
+    gunbc.devboot.outcome.ArtifactUnreadable { detail } => true
+    gunbc.devboot.outcome.ArtifactCorrupt { expected, observed } => false
+    gunbc.devboot.outcome.ArtifactAvailable { artifact } => false
+    gunbc.devboot.outcome.ArtifactMissing => false
   }
 }

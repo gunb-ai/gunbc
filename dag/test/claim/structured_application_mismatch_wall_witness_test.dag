@@ -1,7 +1,7 @@
 module test.claim.structured_application_mismatch_wall_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data structured_application_mismatch_wall_witness_note: String = "Permanent regression controls for the structured application mismatch wall (PR #8262). The pre-wall decl_facts missing_variant specimen inlined Terminal at a ConstructionMechanism field (dissolves_to); compile-clean now refuses that state, so reflection MissingProjection probes were converted per DESIGN §4b dissolution-on-climb — not deleted without replacement. compile_dag_rust_emit_check pins the old specimen source; if the wall loosens, the RED greens and this witness fails. Record-literal call-arg handoff controls live in record_literal_call_arg_handoff_witness_test.dag plus diagnostics_witness record_literal_field_walls."
 

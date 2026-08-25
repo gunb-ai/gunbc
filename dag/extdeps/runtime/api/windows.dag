@@ -4,7 +4,7 @@ module extdeps.runtime.api.windows
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew"
   }
 }
@@ -93,7 +93,7 @@ fn witness_ntdll_nt_read_file_module() -> Bool {
 
 fn witness_windows_boundary_exports_match_user_mode() -> Bool {
   match windows_11_library_api_surface {
-    LibraryApiBoundarySurface { boundary: b } => b.exports == windows_11_user_mode_exports
+    std.os.invocation.LibraryApiBoundarySurface { boundary: b } => b.exports == windows_11_user_mode_exports
     _ => false
   }
 }

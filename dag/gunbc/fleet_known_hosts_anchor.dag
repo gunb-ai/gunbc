@@ -216,18 +216,18 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
     let fragment = fleet_known_hosts_fragment()
     let path = fleet_known_hosts_anchor_path(attempt: attempt)
     let registry_identity = fleet_known_hosts_registry_identity()
-    let existing = Filesystem.Read(path: path as String)
+    let existing = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path as String)
     let already = existing.success && existing.content == fragment
     let written = if already { true } else {
-      let w = Filesystem.Write(path: path as String, content: fragment)
+      let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: path as String, content: fragment)
       w.success
     }
     if written {
-      let back = Filesystem.Read(path: path as String)
+      let back = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path as String)
       if back.success {
         let materialized_identity = std.content_hash.content_hash_of_value(value: back.content as std.types.NonEmptyStr)
         match std.content_hash.compare_content_hash(left: registry_identity, right: materialized_identity) {
-          ContentHashEqual => {
+          std.content_hash.ContentHashEqual => {
             let anchor = known_hosts_anchor_seal(
               path: path,
               registry_identity: registry_identity,
@@ -254,7 +254,7 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
               KnownHostsReady { anchor: anchor, receipt: receipt }
             }
           }
-          ContentHashDifferent => KnownHostsRefused {
+          std.content_hash.ContentHashDifferent => KnownHostsRefused {
             first: join([
               "known-hosts materialization refused: the bytes read back from ", path as String,
               " do not hash-equal the enrollment registry (registry ",
@@ -265,7 +265,7 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
             ], ""),
             more: [],
           }
-          ContentHashCrossFamilyIncomparable => KnownHostsRefused {
+          std.content_hash.ContentHashCrossFamilyIncomparable => KnownHostsRefused {
             first: "known-hosts materialization refused: registry and materialized identities are in different hash families and are therefore incomparable, so agreement was not established",
             more: [],
           }
@@ -330,9 +330,9 @@ type FleetOpenSshTrustPolicy sole_constructor {
 // Adding it records a caller that was always there rather than granting a new one.
 fn fleet_openssh_trust_policy_seal(anchor: KnownHostsAnchor) -> FleetOpenSshTrustPolicy
   admit_callers: [
-    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_openssh_trust_policy_of"),
-    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_execution_context_of"),
-    decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "fleet_openssh_trust_policy_hermetic_witness_fixture"),
+    std.decl_ref.decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_openssh_trust_policy_of"),
+    std.decl_ref.decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_execution_context_of"),
+    std.decl_ref.decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "fleet_openssh_trust_policy_hermetic_witness_fixture"),
   ]
   = FleetOpenSshTrustPolicy { anchor: anchor }
 
@@ -569,7 +569,7 @@ fn portable_remote_word_text_ok(text: String, i: Int, len: Int) -> Bool {
 // typed-argv edge already enforces, reused rather than re-spelled.
 fn portable_remote_word(raw: String) -> PortableRemoteWord? {
   if raw != "" && portable_remote_word_text_ok(text: raw, i: 0, len: length(raw)) {
-    Present { value: PortableRemoteWord { value: raw as NonEmptyStr } }
+    Present { value: PortableRemoteWord { value: raw as std.types.NonEmptyStr } }
   } else {
     none
   }
@@ -595,11 +595,11 @@ fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
   })
   match admitted {
     Absent => none
-    Present { value: ws } => match list_head(ws) {
-      HeadAbsent => none
-      HeadFound { value: h } => match list_tail(ws) {
-        TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
-        TailAbsent => Present { value: PortableRemoteWords { first: h, more: [] } }
+    Present { value: ws } => match v2.std.algebra.list_head(ws) {
+      v2.std.algebra.HeadAbsent => none
+      v2.std.algebra.HeadFound { value: h } => match v2.std.algebra.list_tail(ws) {
+        v2.std.algebra.TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
+        v2.std.algebra.TailAbsent => Present { value: PortableRemoteWords { first: h, more: [] } }
       }
     }
   }
@@ -625,22 +625,22 @@ fn shape_fleet_ssh_exec(
   target: SshTarget,
   words: PortableRemoteWords,
 ) -> List<String> {
-  let config_suppression = openssh_suppress_ambient_configuration_options()
+  let config_suppression = extdeps.ssh.client_options.openssh_suppress_ambient_configuration_options()
   let derived = concat(
     fleet_openssh_trust_options(policy: context.trust),
     concat(
       fleet_ssh_credential_options(binding: context.credential),
       [
-        User { name: target.principal },
-        BatchMode { enabled: true },
-        ConnectTimeout { seconds: second(count: 10) },
+        extdeps.ssh.client_options.User { name: target.principal },
+        extdeps.ssh.client_options.BatchMode { enabled: true },
+        extdeps.ssh.client_options.ConnectTimeout { seconds: std.measure.second(count: 10) },
       ],
     ),
   )
   concat(
     concat(
-      flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
-      serialize_ssh_client_options(options: derived),
+      flat_map(config_suppression, o => extdeps.ssh.client_options.serialize_ssh_config_file_flag(option: o)),
+      extdeps.ssh.client_options.serialize_ssh_client_options(options: derived),
     ),
     concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),
   )

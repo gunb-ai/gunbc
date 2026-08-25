@@ -2,7 +2,7 @@ module tools.v1_dag_parse_transport
 
 
 fn run_v1_dag_parse() -> Bool {
-  run_witness_bin(
+  tools.host_prelude.run_witness_bin(
     var_name: "V1_SRC_DAG_PARSE",
     bin_name: "v1_src_dag_parse",
     args: []

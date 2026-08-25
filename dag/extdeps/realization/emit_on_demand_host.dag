@@ -3,7 +3,7 @@ module extdeps.realization.emit_on_demand_host
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "doc.rust-lang.org/cargo/"
   }
 }
@@ -58,7 +58,7 @@ fn emit_host_structural_identity_outcome(
   identity: std.content_hash.ContentHash,
 ) -> EmitHostStructuralIdentityOutcome {
   match identity {
-    std.content_hash.Fnv1a64(s) => EmitHostStructuralIdentityPresent { structural: s }
+    Fnv1a64(s) => EmitHostStructuralIdentityPresent { structural: s }
     Sha256Hash(_) =>
       EmitHostStructuralIdentityRefusedCrypto {
         component: component,
@@ -83,7 +83,7 @@ fn toolchain_identity_structural_outcome(
   fold(
     context.observed_tool_identities,
     init: EmitHostStructuralIdentityPresent {
-      structural: content_hash_atom(value: "emit-host-resolved-build-toolchain-v1")
+      structural: std.content_hash.content_hash_atom(value: "emit-host-resolved-build-toolchain-v1")
     },
     f: (acc, observed_tool_identity) => match acc {
       EmitHostStructuralIdentityPresent { structural: acc_structural } =>
@@ -93,7 +93,7 @@ fn toolchain_identity_structural_outcome(
         ) {
           EmitHostStructuralIdentityPresent { structural: right } =>
             EmitHostStructuralIdentityPresent {
-              structural: content_hash_combine_structural(
+              structural: std.content_hash.content_hash_combine_structural(
                 left: acc_structural,
                 right: right
               )
@@ -117,7 +117,7 @@ fn toolchain_identity_outcome(context: ResolvedBuildContext) -> ToolchainIdentit
   match toolchain_identity_structural_outcome(context: context) {
     EmitHostStructuralIdentityPresent { structural: s } =>
       ToolchainIdentityPresent {
-        identity: as_content_hash_structural(structural: s)
+        identity: std.content_hash.as_content_hash_structural(structural: s)
       }
     EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i } =>
       ToolchainIdentityRefusedCrypto {
@@ -136,8 +136,8 @@ fn observed_tool_identity(
     ObservedToolIdentityMissing { tool_name: tool_name }
   } else if count(matching) == 1 {
     match matching |> first {
-      Present { value: row } => ObservedToolIdentityFound { row: row }
-      Absent => ObservedToolIdentityMissing { tool_name: tool_name }
+      v2.std.optional.Present { value: row } => ObservedToolIdentityFound { row: row }
+      v2.std.optional.Absent => ObservedToolIdentityMissing { tool_name: tool_name }
     }
   } else {
     ObservedToolIdentityDuplicate { tool_name: tool_name, count: count(matching) }
@@ -160,7 +160,7 @@ fn resolved_build_context_identity_outcome(
           ) {
             EmitHostStructuralIdentityPresent { structural: cargo_configuration } =>
               ResolvedBuildContextIdentityPresent {
-                identity: artifact_realization_digest(inputs: [
+                identity: std.artifact_store.artifact_realization_digest(inputs: [
                   std.artifact_store.ArtifactRealizationInput {
                     identity: "resolved-build-toolchain",
                     content_digest: toolchain
@@ -196,14 +196,14 @@ fn resolved_build_context_identity_outcome(
 }
 
 fn native_cache_workspace_root(cache_root: String, key: std.content_hash.ContentHash) -> String {
-  concat(cache_root, "/", serialize_content_hash(hash: key) as String)
+  concat(cache_root, "/", std.content_hash.serialize_content_hash(hash: key) as String)
 }
 
 fn native_cache_realization_workspace_root(
   workspace_root: String,
   realization_digest: std.content_hash.ContentHash
 ) -> String {
-  concat(workspace_root, "/", serialize_content_hash(hash: realization_digest) as String)
+  concat(workspace_root, "/", std.content_hash.serialize_content_hash(hash: realization_digest) as String)
 }
 
 fn native_cache_resolved_build_context_workspace_root(
@@ -213,7 +213,7 @@ fn native_cache_resolved_build_context_workspace_root(
   concat(
     realization_workspace_root,
     "/",
-    serialize_content_hash(hash: resolved_build_context_identity) as String
+    std.content_hash.serialize_content_hash(hash: resolved_build_context_identity) as String
   )
 }
 

@@ -97,24 +97,24 @@ type BmcProjectedConfigContentIdentity {
 }
 
 data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve_steps: List<extdeps.bmc.types.BmcFanCurveStep> = [
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(75), duty: percent(75) },
-  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(40), duty: std.measure.percent(30) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(55), duty: std.measure.percent(40) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(65), duty: std.measure.percent(50) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(75), duty: std.measure.percent(75) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: std.measure.celsius(85), duty: std.measure.percent(100) },
 ]
 
 data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve: extdeps.bmc.types.BmcFanCurve = extdeps.bmc.types.BmcFanCurve {
   control_sensor: "TEMP_SOC",
   steps: altrad8ud_openbmc_322_fleet_quiet_projected_config_curve_steps,
-  minimum_duty: percent(30),
-  sensor_unavailable_duty: percent(75),
-  zone_failsafe_duty: percent(30),
-  positive_hysteresis: positive_celsius_delta(
-    count: positive_measure_count(predecessor: 0),
+  minimum_duty: std.measure.percent(30),
+  sensor_unavailable_duty: std.measure.percent(75),
+  zone_failsafe_duty: std.measure.percent(30),
+  positive_hysteresis: std.measure.positive_celsius_delta(
+    count: std.measure.positive_measure_count(predecessor: 0),
   ),
-  negative_hysteresis: positive_celsius_delta(
-    count: positive_measure_count(predecessor: 0),
+  negative_hysteresis: std.measure.positive_celsius_delta(
+    count: std.measure.positive_measure_count(predecessor: 0),
   ),
 }
 
@@ -127,7 +127,7 @@ data altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity: BmcPro
 
 data altrad8ud_openbmc_322_fleet_quiet_projected_config_probe_note: String = "SHA-256 of /usr/share/swampd/config-asrr.json after applying altrad8ud_openbmc_322_fleet_quiet_projected_config_curve (the srv3 2.07.00 vendor stock aggressive curve) through the altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1 realization, measured on srv4 by authenticated BMC SSH 2026-07-30: the jq realization was run on srv4's pre-onboarding base config with the stock aggressive desired params, the resulting canonical bytes were written to srv4 by staged same-filesystem atomic rename, and the live config-asrr.json digest read back equal to this hex. Unlike the earlier lazy row (whose hex was the raw onboarding file, idempotent only in structure), this hex IS the realization's own output — the realization reproduces the cited digest byte-for-byte. altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity is the immutable content identity binding realization, config path, probed curve bytes, and cited sha256 hex; bmc_fan_projected_config_digest admits that hex only when every input matches that row exactly. Live intent curves must be witnessed against the frozen probed curve before projection can qualify new bytes."
 
-data altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest: extdeps.crypto.hash.Digest = sha256_digest(
+data altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest: extdeps.crypto.hash.Digest = extdeps.crypto.hash.sha256_digest(
   hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
 )
 
@@ -164,13 +164,13 @@ fn bmc_fan_projected_config_digest(
   ) {
     Present { value: hex } =>
       ProjectedConfigDigestKnown {
-        digest: sha256_digest(hex: hex),
+        digest: extdeps.crypto.hash.sha256_digest(hex: hex),
       }
     Absent => ProjectedConfigDigestUnavailable
   }
 }
 
-data bmc_fan_witness_digest_mismatch_sentinel: extdeps.crypto.hash.Digest = sha256_digest(
+data bmc_fan_witness_digest_mismatch_sentinel: extdeps.crypto.hash.Digest = extdeps.crypto.hash.sha256_digest(
   hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 )
 
@@ -268,11 +268,11 @@ fn bmc_fan_policy_projection_topology_suitability(
   capability: BmcFanPolicyProjectionCapability,
   observation: extdeps.bmc.types.BmcFanPolicyObservation,
 ) -> BmcFanProjectionTopologySuitability {
-  match bmc_fan_controller_shape_aggregated_topology(
+  match extdeps.bmc.types.bmc_fan_controller_shape_aggregated_topology(
     shape: observation.controller_shape,
   ) {
     Present {
-      value: BmcFanAggregatedControllerTopology {
+      value: extdeps.bmc.types.BmcFanAggregatedControllerTopology {
         entry_name: entry_name,
         tach_inputs: tach_inputs,
       },
@@ -337,13 +337,13 @@ fn bmc_fan_state_durability_capability(
     capability_version: capability_version,
     supported_boundaries: boundaries,
     commit_barrier: match publication_protocol {
-      LinuxSynchronizedRenameReplacePublication => SynchronizedCommit
-      LinuxFilePublicationProtocolUnsynchronized {
+      extdeps.filesystem.linux.LinuxSynchronizedRenameReplacePublication => std.state_durability.SynchronizedCommit
+      extdeps.filesystem.linux.LinuxFilePublicationProtocolUnsynchronized {
         stage_in_target_directory: _,
         staged_content_validated: _,
         replacement: _,
         synchronization: _,
-      } => NoDurabilityCommitBarrier
+      } => std.state_durability.NoDurabilityCommitBarrier
     },
   }
 }

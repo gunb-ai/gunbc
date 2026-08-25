@@ -3,7 +3,7 @@ module extdeps.sudo.nopasswd_execute_probe_check_op
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.sudo.ws/docs/man/sudo.man/"
   }
 }
@@ -23,7 +23,7 @@ fn sudo_nopasswd_grant_list_line_admits_probe(
   probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape,
 ) -> Bool {
   let parts = split(s: line.trim(), delimiter: "NOPASSWD:")
-  if length(xs: parts) != 2 {
+  if v2.std.algebra.length(xs: parts) != 2 {
     false
   } else {
     parts.skip(n: 1).first().trim() == probe as String
@@ -34,7 +34,7 @@ fn sudo_nopasswd_grant_list_admits_probe(
   listing: String,
   probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape,
 ) -> Bool {
-  any(
+  v2.std.algebra.any(
     xs: split(s: listing, delimiter: "\n"),
     predicate: fn(line) {
       sudo_nopasswd_grant_list_line_admits_probe(line: line, probe: probe)

@@ -3,13 +3,13 @@ module extdeps.tools.rustfmt
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "doc.rust-lang.org/stable/edition-guide/rust-2018/rustfmt.html"
   }
 }
 
-data rustfmt_cli_tool: CliTool = CliTool {
+data rustfmt_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "rustfmt",
   min_version: Absent,
-  installable_via: [SourceRustup],
+  installable_via: [extdeps.tools.SourceRustup],
 }

@@ -3,7 +3,7 @@ module extdeps.tcgplayer.catalog
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.tcgplayer.com/reference/catalog_getproducts-1"
   }
 }
@@ -22,9 +22,9 @@ type CatalogProduct {
 data structural_coverage_gap_catalog_product_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "CatalogProduct" },
-      extdeps.coverage.JsonPending { field: "extendedData" },
-      extdeps.coverage.JsonPending { field: "skus" }
+      Subject { path: "CatalogProduct" },
+      JsonPending { field: "extendedData" },
+      JsonPending { field: "skus" }
     ],
     trigger: "catalog consumer needs extended fields or inline sku rows (getExtendedFields, includeSkus)"
   }
@@ -122,9 +122,9 @@ service tcgplayer.Catalog {
     }
     response {
       200 => CatalogProductsResponse
-      401 => TcgplayerErrorEnvelope
-      404 => TcgplayerErrorEnvelope
-      5xx => TcgplayerErrorEnvelope
+      401 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      404 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      5xx => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
     }
   }
 
@@ -143,9 +143,9 @@ service tcgplayer.Catalog {
     }
     response {
       200 => ProductSkusResponse
-      401 => TcgplayerErrorEnvelope
-      404 => TcgplayerErrorEnvelope
-      5xx => TcgplayerErrorEnvelope
+      401 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      404 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      5xx => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
     }
   }
 
@@ -164,9 +164,9 @@ service tcgplayer.Catalog {
     }
     response {
       200 => CategoryConditionsResponse
-      401 => TcgplayerErrorEnvelope
-      404 => TcgplayerErrorEnvelope
-      5xx => TcgplayerErrorEnvelope
+      401 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      404 => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
+      5xx => extdeps.tcgplayer.tcgplayer.TcgplayerErrorEnvelope
     }
   }
 }

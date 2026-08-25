@@ -1,18 +1,18 @@
 module test.claim.roadmap_receipt_continuity_live_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data live_witness_split_note: String = "SPLIT OUT OF roadmap_receipt_continuity_acceptance_test.dag AND roadmap_authority_test.dag SO THE HERMETIC DISCOVERY CORPUS CAN RUN. roadmap_acceptance_history_integrity_holds reaches git.Inspect.HeadCommit, git.Inspect.MergeBase, and git.Core.Show without mock_response, so under the hermetic envelope the observation REFUSES rather than skipping — and a planted git refusal must refuse integrity rather than fabricate prior_history = current. The hermetic contract keeps planted red controls only; this file executes the live git-observed integrity path on the wet corpora batch."
 
 data live_witness_failure_receipt_note: String = "claim_executor invokes live_roadmap_acceptance_history_integrity_failure_receipt on Bool(false) via the _holds → _failure_receipt naming convention (gunbc#7644 / v2.std.native_agreement pattern). The verdict detail names the refusing arm so a live-tree integrity failure is diagnosable without re-running git by hand."
 
 test fn live_roadmap_acceptance_history_integrity_holds() -> Bool {
-  roadmap_acceptance_history_integrity_holds()
+  gunbc.roadmap_authority.roadmap_acceptance_history_integrity_holds()
 }
 
 func live_roadmap_acceptance_history_integrity_failure_receipt() -> String {
-  acceptance_history_integrity_verdict_detail(
-    verdict: roadmap_acceptance_history_integrity_verdict_on_authority(),
+  gunbc.roadmap_model.acceptance_history_integrity_verdict_detail(
+    verdict: gunbc.roadmap_authority.roadmap_acceptance_history_integrity_verdict_on_authority(),
   )
 }

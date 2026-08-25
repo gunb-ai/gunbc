@@ -24,10 +24,10 @@ fn systemctl_list_units_line_nonempty(line: String) -> Bool {
 // text was the word `Absent`. Callers filter blank lines through
 // `systemctl_list_units_line_nonempty`, so the absent arm is unreachable there; it is a loud word
 // rather than a plausible unit name so a receipt reader cannot mistake the failure for a unit.
-fn systemctl_list_units_line_as_unit(line: String) -> NonEmptyStr {
+fn systemctl_list_units_line_as_unit(line: String) -> std.types.NonEmptyStr {
   match split(s: systemctl_list_units_line_trimmed(line: line), delimiter: " ").first() {
-    Present { value: unit } => unit as NonEmptyStr
-    Absent => "systemctl-unit-line-empty" as NonEmptyStr
+    Present { value: unit } => unit as std.types.NonEmptyStr
+    Absent => "systemctl-unit-line-empty" as std.types.NonEmptyStr
   }
 }
 

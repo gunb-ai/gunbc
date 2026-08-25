@@ -3,7 +3,7 @@ module extdeps.audit.cloudevents
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md"
   }
 }

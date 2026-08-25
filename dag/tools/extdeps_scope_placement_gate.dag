@@ -15,30 +15,30 @@ data extdeps_scope_placement_gate_note: String = "Server-side per-PR wall for th
 // ONE fold over a name-status diff, read at two different bases (DESIGN section 2 horizontal: one concept, every breadth). The base is the caller's parameter because WHICH base answers WHICH question is a workflow fact, not a property of the git operation (DESIGN section 3: business policy must not fuse into the extdeps interface).
 fn diff_added_paths_observation(success: Bool, raw: String) -> gunbc.extdeps_scope_frontier.DiffAddedObservation {
   if success {
-    match git_diff_name_status_parse(raw: raw) {
-      GitDiffNameStatusTruncated { pending: _, entries: _ } => DiffParseTruncated
-      GitDiffNameStatusComplete { entries: entries } =>
+    match extdeps.git.git_diff_name_status_parse(raw: raw) {
+      extdeps.git.GitDiffNameStatusTruncated { pending: _, entries: _ } => gunbc.extdeps_scope_frontier.DiffParseTruncated
+      extdeps.git.GitDiffNameStatusComplete { entries: entries } =>
         gunbc.extdeps_scope_frontier.AddedPathsObserved {
           paths: fold(entries, init: [], f: fn(acc, entry) {
             match entry.status {
-              DiffAddedStatus => concat(acc, [entry.path])
-              DiffCopiedStatus { similarity: _ } => concat(acc, [entry.path])
-              DiffRenamedStatus { similarity: _ } => concat(acc, [entry.path])
+              extdeps.git.DiffAddedStatus => concat(acc, [entry.path])
+              extdeps.git.DiffCopiedStatus { similarity: _ } => concat(acc, [entry.path])
+              extdeps.git.DiffRenamedStatus { similarity: _ } => concat(acc, [entry.path])
               _ => acc
             }
           })
         }
     }
   } else {
-    DiffObserveFailed
+    gunbc.extdeps_scope_frontier.DiffObserveFailed
   }
 }
 
 fn scope_placement_added_paths() -> gunbc.extdeps_scope_frontier.DiffAddedObservation {
   let diff = git.Core.DiffNameStatus(
-    base: legacy_manifest_freeze_sha as std.types.GitRef,
+    base: gunbc.extdeps_scope_frontier.legacy_manifest_freeze_sha as std.types.GitRef,
     head: "HEAD" as std.types.GitRef,
-    range: TwoDot,
+    range: extdeps.git.TwoDot,
   )
   diff_added_paths_observation(success: diff.success, raw: diff.raw)
 }
@@ -47,7 +47,7 @@ fn scope_placement_change_added_paths() -> gunbc.extdeps_scope_frontier.DiffAdde
   let diff = git.Core.DiffNameStatus(
     base: "origin/main" as std.types.GitRef,
     head: "HEAD" as std.types.GitRef,
-    range: ThreeDot,
+    range: extdeps.git.ThreeDot,
   )
   diff_added_paths_observation(success: diff.success, raw: diff.raw)
 }
@@ -56,15 +56,15 @@ data manifest_remove_only_exit_note: String = "THE one verdict surface over Mani
 
 fn manifest_remove_only_exit(observation: gunbc.extdeps_scope_frontier.ManifestLineObservation) -> std.process.ProcessExit {
   match observation {
-    ManifestUntouched => std.process.ExitSuccess
-    ManifestIntroduced => std.process.ExitSuccess
-    ManifestLinesAdded { rows: rows } => exit_failure(
+    gunbc.extdeps_scope_frontier.ManifestUntouched => std.process.ExitSuccess
+    gunbc.extdeps_scope_frontier.ManifestIntroduced => std.process.ExitSuccess
+    gunbc.extdeps_scope_frontier.ManifestLinesAdded { rows: rows } => std.process.exit_failure(
       reason: concat(
         "extdeps scope placement gate: this change ADDS row(s) to the frozen legacy manifest, which is remove-only — a migrated or new module can never (re-)enter the legacy population: ",
         join(rows, ", ")
       )
     )
-    ManifestDiffUnreadable => exit_failure(
+    gunbc.extdeps_scope_frontier.ManifestDiffUnreadable => std.process.exit_failure(
       reason: "extdeps scope placement gate: manifest remove-only diff observation unreadable — refusing, never skipping (DESIGN section 5)"
     )
   }
@@ -74,12 +74,12 @@ fn manifest_remove_only_verdict() -> std.process.ProcessExit {
   let diff = git.Core.DiffUnified0(
     base: "origin/main" as std.types.GitRef,
     head: "HEAD" as std.types.GitRef,
-    range: ThreeDot,
+    range: extdeps.git.ThreeDot,
   )
   if diff.success {
-    manifest_remove_only_exit(observation: manifest_line_observation(diff_text: diff.diff))
+    manifest_remove_only_exit(observation: gunbc.extdeps_scope_frontier.manifest_line_observation(diff_text: diff.diff))
   } else {
-    exit_failure(
+    std.process.exit_failure(
       reason: "extdeps scope placement gate: git.Core.DiffUnified0(origin/main...HEAD) failed — refusing, never skipping (DESIGN section 5)"
     )
   }
@@ -89,20 +89,20 @@ data scope_placement_base_split_note: String = "The two arms read DIFFERENT base
 
 fn scope_placement_membership_verdict(observation: gunbc.extdeps_scope_frontier.DiffAddedObservation) -> std.process.ProcessExit {
   match observation {
-    DiffObserveFailed => exit_failure(
+    gunbc.extdeps_scope_frontier.DiffObserveFailed => std.process.exit_failure(
       reason: "extdeps scope placement gate: git.Core.DiffNameStatus(origin/main...HEAD) failed — refusing, never skipping (DESIGN section 5)"
     )
-    DiffParseTruncated => exit_failure(
+    gunbc.extdeps_scope_frontier.DiffParseTruncated => std.process.exit_failure(
       reason: "extdeps scope placement gate: merge-base diff parse truncated — refusing, never skipping (DESIGN section 5)"
     )
-    AddedPathsObserved { paths: added } => {
-      let refused = scope_placement_refused_paths(
+    gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: added } => {
+      let refused = gunbc.extdeps_scope_frontier.scope_placement_refused_paths(
         added: added,
-        carriers: scope_carrier_paths,
-        machinery: scope_machinery_exempt_paths,
+        carriers: gunbc.extdeps_scope_frontier.scope_carrier_paths,
+        machinery: gunbc.extdeps_scope_frontier.scope_machinery_exempt_paths,
       )
       if (refused |> count) > 0 {
-        exit_failure(
+        std.process.exit_failure(
           reason: concat(
             "extdeps scope placement gate: THIS CHANGE adds dag/extdeps file(s) enrolled in neither scope_carrier_paths nor scope_machinery_exempt_paths (a new extdeps module must declare extdeps_model_scope: ExternalModelScope and join scope_carrier_paths, or be genuinely citation/mock machinery; the frozen legacy manifest is not a landing state): ",
             join(refused, ", ")
@@ -117,20 +117,20 @@ fn scope_placement_membership_verdict(observation: gunbc.extdeps_scope_frontier.
 
 fn scope_placement_freeze_verdict(observation: gunbc.extdeps_scope_frontier.DiffAddedObservation) -> std.process.ProcessExit {
   match observation {
-    DiffObserveFailed => exit_failure(
+    gunbc.extdeps_scope_frontier.DiffObserveFailed => std.process.exit_failure(
       reason: "extdeps scope placement gate: git.Core.DiffNameStatus(freeze..HEAD) failed — refusing, never skipping (DESIGN section 5)"
     )
-    DiffParseTruncated => exit_failure(
+    gunbc.extdeps_scope_frontier.DiffParseTruncated => std.process.exit_failure(
       reason: "extdeps scope placement gate: freeze-base diff parse truncated — refusing, never skipping (DESIGN section 5)"
     )
-    AddedPathsObserved { paths: added } => {
-      let manifest = parse_frontier_manifest(
-        content: filesystem_read(path: legacy_extdeps_scope_frontier_manifest_path).content
+    gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: added } => {
+      let manifest = gunbc.extdeps_scope_frontier.parse_frontier_manifest(
+        content: filesystem_read(path: gunbc.extdeps_scope_frontier.legacy_extdeps_scope_frontier_manifest_path).content
       )
-      if manifest_freeze_holds(manifest: manifest, observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: added }) {
+      if gunbc.extdeps_scope_frontier.manifest_freeze_holds(manifest: manifest, observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: added }) {
         std.process.ExitSuccess
       } else {
-        exit_failure(
+        std.process.exit_failure(
           reason: "extdeps scope placement gate: a frozen-manifest row names a file added after legacy_manifest_freeze_sha — the manifest is remove-only and a new module cannot be smuggled into the legacy population"
         )
       }
@@ -142,16 +142,16 @@ data language_module_home_arm_note: String = "The language-module homing arm (op
 
 fn language_module_home_verdict(observation: gunbc.extdeps_scope_frontier.DiffAddedObservation) -> std.process.ProcessExit {
   match observation {
-    DiffObserveFailed => exit_failure(
+    gunbc.extdeps_scope_frontier.DiffObserveFailed => std.process.exit_failure(
       reason: "extdeps scope placement gate: git.Core.DiffNameStatus(origin/main...HEAD) failed for the language-module homing arm — refusing, never skipping (DESIGN section 5)"
     )
-    DiffParseTruncated => exit_failure(
+    gunbc.extdeps_scope_frontier.DiffParseTruncated => std.process.exit_failure(
       reason: "extdeps scope placement gate: merge-base diff parse truncated for the language-module homing arm — refusing, never skipping (DESIGN section 5)"
     )
-    AddedPathsObserved { paths: added } => {
-      let refused = added_language_paths_refused(added: added)
+    gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: added } => {
+      let refused = gunbc.language_module_home.added_language_paths_refused(added: added)
       if (refused |> count) > 0 {
-        exit_failure(
+        std.process.exit_failure(
           reason: concat(
             "extdeps scope placement gate: THIS CHANGE adds file(s) under dag/extdeps/languages/ that sit in no declared target directory and are not on the legacy flat-module frontier — a new module must live inside some target's declared canonical_prefix (declare a LanguageTargetHome for its target in this change if none exists), and the four legacy flat modules are an exact frozen frontier that may only shrink. This arm checks DIRECTORY MEMBERSHIP, not that the module sits under ITS OWN target's home: ",
             join(refused, ", ")
@@ -170,16 +170,16 @@ fn scope_placement_gate_verdict(
 ) -> std.process.ProcessExit {
   let membership = scope_placement_membership_verdict(observation: change_observation)
   match membership {
-    ExitFailure { code: _, reason: _ } => membership
-    ExitSuccess => {
+    std.process.ExitFailure { code: _, reason: _ } => membership
+    std.process.ExitSuccess => {
       let freeze = scope_placement_freeze_verdict(observation: freeze_observation)
       match freeze {
-        ExitFailure { code: _, reason: _ } => freeze
-        ExitSuccess => {
+        std.process.ExitFailure { code: _, reason: _ } => freeze
+        std.process.ExitSuccess => {
           let homing = language_module_home_verdict(observation: change_observation)
           match homing {
-            ExitFailure { code: _, reason: _ } => homing
-            ExitSuccess => manifest_remove_only_verdict()
+            std.process.ExitFailure { code: _, reason: _ } => homing
+            std.process.ExitSuccess => manifest_remove_only_verdict()
           }
         }
       }
@@ -198,8 +198,8 @@ data scope_placement_failure_receipt_note: String = "The loudness half (gunbc#76
 
 fn scope_placement_failure_reason(exit: std.process.ProcessExit) -> String {
   match exit {
-    ExitSuccess => ""
-    ExitFailure { code: _, reason: reason } => reason
+    std.process.ExitSuccess => ""
+    std.process.ExitFailure { code: _, reason: reason } => reason
   }
 }
 

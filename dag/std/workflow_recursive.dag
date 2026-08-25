@@ -13,7 +13,7 @@ fn settle_verdict_tree(w: VerdictTree) -> std.reducible.ReduceVerdict {
 }
 
 fn settle_verdict_children(cs: List<VerdictTree>) -> std.reducible.ReduceVerdict {
-  reduce_verdicts_located(
+  std.reducible.reduce_verdicts_located(
     verdicts: map(
       collection: cs,
       f: fn(w) { settle_verdict_tree(w: w) }

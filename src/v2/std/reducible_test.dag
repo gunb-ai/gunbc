@@ -1,23 +1,23 @@
 module v2.test.std.reducible
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-test fn classify_leaf_empty_is_unknown() -> v2.std.logic.Bool {
+test fn classify_leaf_empty_is_unknown() -> Bool {
   std.reducible.verdict_eq(
     a: std.reducible.classify_leaf(witness: ""),
     b: std.reducible.Unknown { missing: "witness" }
   )
 }
 
-test fn classify_leaf_named_is_irreducible() -> v2.std.logic.Bool {
+test fn classify_leaf_named_is_irreducible() -> Bool {
   std.reducible.verdict_eq(
     a: std.reducible.classify_leaf(witness: "grounded-atom"),
     b: std.reducible.Irreducible { witness: "grounded-atom" }
   )
 }
 
-fn verdict_eq_discriminates_variants() -> v2.std.logic.Bool {
+fn verdict_eq_discriminates_variants() -> Bool {
   std.reducible.verdict_eq(a: std.reducible.Reduced { last_parts: 1 }, b: std.reducible.Reduced { last_parts: 1 })
     && !std.reducible.verdict_eq(a: std.reducible.Reduced { last_parts: 1 }, b: std.reducible.Reduced { last_parts: 2 })
     && std.reducible.verdict_eq(
@@ -42,7 +42,7 @@ fn mixed_verdicts_unknown_absorbs_leftmost() -> List<std.reducible.ReduceVerdict
   ]
 }
 
-fn reduce_verdicts_located_unknown_latch_holds() -> v2.std.logic.Bool {
+fn reduce_verdicts_located_unknown_latch_holds() -> Bool {
   std.reducible.verdict_eq(
     a: std.reducible.reduce_verdicts_located(
       verdicts: mixed_verdicts_unknown_absorbs_leftmost(),
@@ -52,7 +52,7 @@ fn reduce_verdicts_located_unknown_latch_holds() -> v2.std.logic.Bool {
   )
 }
 
-data witness_reduce_verdicts_located_RED: v2.std.logic.Bool = std.reducible.verdict_eq(
+data witness_reduce_verdicts_located_RED: Bool = std.reducible.verdict_eq(
   a: std.reducible.reduce_verdicts_located(
     verdicts: mixed_verdicts_unknown_absorbs_leftmost(),
     empty_missing: "verdict-list:empty"
@@ -60,14 +60,14 @@ data witness_reduce_verdicts_located_RED: v2.std.logic.Bool = std.reducible.verd
   b: std.reducible.Reduced { last_parts: 9 }
 )
 
-test fn reducible_verdict_eq_holds() -> v2.std.logic.Bool {
+test fn reducible_verdict_eq_holds() -> Bool {
   verdict_eq_discriminates_variants()
 }
 
-test fn reducible_reduce_verdicts_located_holds() -> v2.std.logic.Bool {
+test fn reducible_reduce_verdicts_located_holds() -> Bool {
   reduce_verdicts_located_unknown_latch_holds()
 }
 
-test fn reducible_reduce_verdicts_located_RED() -> v2.std.logic.Bool {
+test fn reducible_reduce_verdicts_located_RED() -> Bool {
   witness_reduce_verdicts_located_RED == false
 }

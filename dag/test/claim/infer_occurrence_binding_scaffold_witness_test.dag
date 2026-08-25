@@ -3,12 +3,12 @@ module test.claim.infer_occurrence_binding_scaffold_witness_test
 
 test fn infer_occurrence_binding_v1_adapter_scaffold_is_seed_retained() -> Bool {
   match gunbc.infer_occurrence_binding_scaffold.infer_occurrence_binding_v1_adapter_scaffold {
-    Scaffold {
-      dissolves_to: SingleAuthority,
-      bind: DeclarationRef {
+    std.disposition.Scaffold {
+      dissolves_to: std.disposition.SingleAuthority,
+      bind: std.decl_ref.DeclarationRef {
         module_path: "std.occurrence_binding",
         decl_name: "occurrence_binding_from_candidates",
-        field: WholeDeclaration
+        field: std.decl_ref.WholeDeclaration
       }
     } => true
     _ => false
@@ -17,11 +17,11 @@ test fn infer_occurrence_binding_v1_adapter_scaffold_is_seed_retained() -> Bool 
 
 test fn infer_occurrence_binding_v1_adapter_dissolve_trigger_names_authority_and_lane() -> Bool {
   string_contains(
-    s: dissolution_description(condition: gunbc.infer_occurrence_binding_scaffold.infer_occurrence_binding_v1_adapter_dissolve_trigger),
+    s: std.dissolution.dissolution_description(condition: gunbc.infer_occurrence_binding_scaffold.infer_occurrence_binding_v1_adapter_dissolve_trigger),
     pattern: "occurrence_binding_from_candidates",
   ) &&
     string_contains(
-      s: dissolution_description(condition: gunbc.infer_occurrence_binding_scaffold.infer_occurrence_binding_v1_adapter_dissolve_trigger),
+      s: std.dissolution.dissolution_description(condition: gunbc.infer_occurrence_binding_scaffold.infer_occurrence_binding_v1_adapter_dissolve_trigger),
       pattern: "namespace-binding-kernel",
     )
 }

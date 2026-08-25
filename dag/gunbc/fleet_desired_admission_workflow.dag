@@ -84,8 +84,8 @@ fn fleet_desired_admission_stage_payload_step() -> extdeps.github.actions.Step {
       "set -eu\n",
       "ROOT=", gunbc.merge_admission_produce.ci_repo_root_shell(), "\n",
       "mkdir -p \"$ROOT/target\"\n",
-      "rm -f \"$ROOT/", fleet_desired_admission_authorized_action_path, "\"\n",
-      "cp \"$", github_event_path_env, "\" \"$ROOT/", fleet_desired_admission_event_payload_path, "\"\n",
+      "rm -f \"$ROOT/", gunbc.fleet_desired_admission.fleet_desired_admission_authorized_action_path, "\"\n",
+      "cp \"$", extdeps.github.actions.github_event_path_env, "\" \"$ROOT/", gunbc.fleet_desired_admission.fleet_desired_admission_event_payload_path, "\"\n",
     ], ""),
     shell: none,
     env: none,
@@ -127,14 +127,14 @@ fn fleet_desired_admission_decide_step() -> extdeps.github.actions.Step {
 // ref at all -- already-converged and superseded -- and they still render a nonempty script, so
 // `test -s` continues to separate "nothing was written" from "nothing was to be done".
 fn fleet_desired_admission_action_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: v2.std.optional.Present { value: "Execute the authorized fleet-desired advance" },
     id: none,
     run: join([
       "set -eu\n",
-      "ROOT=", ci_repo_root_shell(), "\n",
-      "test -s \"$ROOT/", fleet_desired_admission_authorized_action_path, "\"\n",
-      "sh \"$ROOT/", fleet_desired_admission_authorized_action_path, "\"\n",
+      "ROOT=", gunbc.merge_admission_produce.ci_repo_root_shell(), "\n",
+      "test -s \"$ROOT/", gunbc.fleet_desired_admission.fleet_desired_admission_authorized_action_path, "\"\n",
+      "sh \"$ROOT/", gunbc.fleet_desired_admission.fleet_desired_admission_authorized_action_path, "\"\n",
     ], ""),
     shell: none,
     env: none,
@@ -326,15 +326,15 @@ fn fleet_desired_admission_job() -> extdeps.github.actions.Job {
 data fleet_desired_admission_workflow: extdeps.github.actions.Workflow = extdeps.github.actions.Workflow {
   name: "fleet-desired",
   on: [
-    WorkflowRunCompleted {
-      workflows: [witness_floor_workflow_name],
-      branches: [gunbc_default_branch_name],
+    extdeps.github.actions.WorkflowRunCompleted {
+      workflows: [gunbc.witness_floor_workflow.witness_floor_workflow_name],
+      branches: [gunbc.repo_identity.gunbc_default_branch_name],
     }
   ],
   concurrency: v2.std.optional.Present {
-    value: ConcurrencyMappingQueueMax {
+    value: extdeps.github.actions.ConcurrencyMappingQueueMax {
       group: fleet_desired_admission_workflow_concurrency_group,
-      cancel_in_progress: v2.std.optional.Present { value: QueueMaxCancelInProgressFalse }
+      cancel_in_progress: v2.std.optional.Present { value: extdeps.github.actions.QueueMaxCancelInProgressFalse }
     }
   },
   env: none,

@@ -22,7 +22,7 @@ type MultiplicityPolicy
   = UniqueOnly
   | TargetSelection { policy: TargetSelectionPolicy }
 fn preservation_rule_is_realized(rule: v2.std.node.Symbol) -> Bool {
-  contains(
+  v2.std.algebra.contains(
     xs: realized_preservation_rules(),
     item: rule,
     eq: fn(left, right) { left == right }
@@ -39,29 +39,29 @@ fn realized_preservation_rules() -> List<v2.std.node.Symbol> {
 fn find_witness_no_candidate_diagnostic(source_facts: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_no_candidate,
-    at: node_locus(node: source_facts),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: source_facts),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 fn find_witness_ambiguous_candidate_diagnostic(source_facts: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_ambiguous_candidate,
-    at: node_locus(node: source_facts),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: source_facts),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 fn find_witness_not_realized_diagnostic(source_facts: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_not_realized,
-    at: node_locus(node: source_facts),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: source_facts),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 fn find_witness_invalid_witness_diagnostic(source_facts: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_invalid_witness,
-    at: node_locus(node: source_facts),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: source_facts),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -127,27 +127,27 @@ fn only_passing_candidate(
   candidates: CandidateSet,
   predicate: PreservationPredicate
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  match fold(enumeration_candidate_list(candidates: candidates, predicate: predicate), init: NoPassingCandidate, f: fn(acc, candidate) {
+  match fold(enumeration_candidate_list(candidates: candidates, predicate: predicate), init: v2.std.passing_candidate_fold.NoPassingCandidate, f: fn(acc, candidate) {
     if preservation_predicate_holds(
       source_facts: source_facts,
       candidate: candidate,
       predicate: predicate
     ) {
       match acc {
-        NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: candidate }
-        OnePassingCandidate { candidate: _ } => ManyPassingCandidates
-        ManyPassingCandidates => ManyPassingCandidates
+        v2.std.passing_candidate_fold.NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: candidate }
+        v2.std.passing_candidate_fold.OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
+        v2.std.passing_candidate_fold.ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
       }
     } else {
       acc
     }
   }) {
-    NoPassingCandidate =>
-      outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
-    OnePassingCandidate { candidate: only } =>
+    v2.std.passing_candidate_fold.NoPassingCandidate =>
+      v2.std.diagnostic.outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
+    v2.std.passing_candidate_fold.OnePassingCandidate { candidate: only } =>
       v2.std.diagnostic.Accepted { value: only, diagnostics: v2.std.diagnostic.None }
-    ManyPassingCandidates =>
-      outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
+    v2.std.passing_candidate_fold.ManyPassingCandidates =>
+      v2.std.diagnostic.outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
   }
 }
 fn selected_candidate_count(
@@ -202,8 +202,8 @@ fn resolve_selected_candidate(
       candidates: candidates,
       predicate: predicate
     )
-    0 => outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
-    _ => outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
+    0 => v2.std.diagnostic.outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
+    _ => v2.std.diagnostic.outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
   }
 }
 fn find_witness(
@@ -220,7 +220,7 @@ fn find_witness(
       multiplicity_policy: multiplicity_policy
     )
   } else {
-    outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
+    v2.std.diagnostic.outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
   }
 }
 fn derivation_predicate_for_rule(
@@ -258,11 +258,11 @@ fn find_witness_derivation_rejection_better(
   candidate: v2.std.diagnostic.Outcome<FindWitnessResult>
 ) -> v2.std.diagnostic.Outcome<FindWitnessResult> {
   match current {
-    Accepted { value: _, diagnostics: _ } => current
-    Rejected { diagnostics: current_diagnostics } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => current
+    v2.std.diagnostic.Rejected { diagnostics: current_diagnostics } =>
       match candidate {
-        Accepted { value: _, diagnostics: _ } => candidate
-        Rejected { diagnostics: candidate_diagnostics } =>
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => candidate
+        v2.std.diagnostic.Rejected { diagnostics: candidate_diagnostics } =>
           if find_witness_rejection_priority(reason: candidate_diagnostics.head.reason) > find_witness_rejection_priority(reason: current_diagnostics.head.reason) {
             candidate
           } else {
@@ -280,11 +280,11 @@ fn find_witness_derives(
 ) -> v2.std.diagnostic.Outcome<FindWitnessResult> {
   fold(
     realized_preservation_rules(),
-    init: outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts)),
+    init: v2.std.diagnostic.outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts)),
     f: fn(acc, rule) {
 	      match acc {
-	        Accepted { value: _, diagnostics: _ } => acc
-	        Rejected { diagnostics: _ } =>
+	        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => acc
+	        v2.std.diagnostic.Rejected { diagnostics: _ } =>
 	          match find_witness(
 	            source_facts: source_facts,
 	            candidates: candidates,
@@ -295,8 +295,8 @@ fn find_witness_derives(
             ),
 	            multiplicity_policy: multiplicity_policy
 	          ) {
-	            Accepted { value: fw, diagnostics: d } => v2.std.diagnostic.Accepted { value: fw, diagnostics: d }
-	            Rejected { diagnostics: r } =>
+	            v2.std.diagnostic.Accepted { value: fw, diagnostics: d } => v2.std.diagnostic.Accepted { value: fw, diagnostics: d }
+	            v2.std.diagnostic.Rejected { diagnostics: r } =>
 	              find_witness_derivation_rejection_better(
 	                current: acc,
 	                candidate: v2.std.diagnostic.Rejected { diagnostics: r }
@@ -313,7 +313,7 @@ fn find_witness_realized(
   multiplicity_policy: MultiplicityPolicy
 ) -> v2.std.diagnostic.Outcome<FindWitnessResult> {
   if preservation_rule_is_realized(rule: predicate.preservation_rule) == false {
-    outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
+    v2.std.diagnostic.outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
   } else {
   let passing_count = passing_candidate_count(
     source_facts: source_facts,
@@ -321,22 +321,22 @@ fn find_witness_realized(
     predicate: predicate
   )
   match passing_count {
-    0 => outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
+    0 => v2.std.diagnostic.outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
     1 => match only_passing_candidate(
       source_facts: source_facts,
       candidates: candidates,
       predicate: predicate
     ) {
-      Accepted { value: only, diagnostics: _ } => accepted_witness_result(
+      v2.std.diagnostic.Accepted { value: only, diagnostics: _ } => accepted_witness_result(
         candidate: only,
         candidates: candidates,
         predicate: predicate
       )
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
     _ => match multiplicity_policy {
       UniqueOnly =>
-        outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
+        v2.std.diagnostic.outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
       TargetSelection { policy: p } => match p {
         TargetDeclaredPriority { priority: priority } =>
           resolve_selected_candidate(
@@ -371,7 +371,7 @@ fn verify_witness(
       witness: witness
     )
   } else {
-    outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
+    v2.std.diagnostic.outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
   }
 }
 fn verify_witness_realized(
@@ -387,6 +387,6 @@ fn verify_witness_realized(
   ) && (witness.property == predicate.preservation_rule) && (witness.evidence == candidate) {
     v2.std.diagnostic.Accepted { value: witness, diagnostics: v2.std.diagnostic.None }
   } else {
-    outcome_rejected(find_witness_invalid_witness_diagnostic(source_facts: source_facts))
+    v2.std.diagnostic.outcome_rejected(find_witness_invalid_witness_diagnostic(source_facts: source_facts))
   }
 }

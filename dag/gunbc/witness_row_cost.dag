@@ -1,5 +1,6 @@
 module gunbc.witness_row_cost
 
+
 data witness_row_cost_spine_note: String = "Per-witness cost receipts (placement workstream #5 spine). THE RECORD is std.observation.ObservationEvent (progress-observation-design §2/§3c) — not a TSV schema and not WitnessTimingRow. Production shape is N+1 per entry: exactly ONE entry resolve-phase Concluded event (entry-level/shared resolve wall) plus one declaration-grain Concluded event per witness (eval wall + actual outcome; Refused distinct from Failed). RSS is MeasuredUnavailable with an explicit cause. The canonical event and joined receipt retain exact Nanosecond eval, resolve, and warm values; histogram, ordering, and attribution consume those exact values. The TSV/drift/placement wires are named Millisecond presentation and policy boundaries and may floor only there. The resolve column repeats the observed full entry resolve for each child — never divided across witnesses and never summed N times into a corpus total. W2 filters the SAME events via AttentionLevel/ObservationDensity (Ambient may suppress a render line while the complete receipt still retains the row). Basis values MUST cite an arm64 srv-fleet run id (never local x86). A row with no dated basis is BasisAbsent. Drift is falsifier-cadence counted, not merge-refusing. Executing consumers: dag/test/claim/witness_row_cost_drift_witness_test.dag and dag/test/claim/witness_row_cost_projection_witness_test.dag."
 
 data coverage_is_a_join_of_two_instruments_note: String = "WHAT A ROSTER CAN DETECT AND WHICH ROWS GET TO TRY ARE DIFFERENT FACTS, AND NEITHER ALONE IS A COVERAGE STATEMENT (derived 2026-08-18, sharp-raven-273, from two instruments run against the same corpus on the same day). A MUTATION BATTERY answers the first: break the thing a row discriminates, run the row, and see whether it reds -- executed in a session, where rows run to completion. A BUDGET-REFUSAL CENSUS answers the second: which enrolled rows were killed on their cost budget before they finished. A row that is sharp in a dispatch and killed on budget in CI is UNDISCRIMINATING IN CI, however good the row is, so a battery alone overstates coverage and a budget census alone says nothing about whether the surviving rows discriminate anything. The coverage claim is the JOIN: rows that both complete and red when their subject breaks. MEASURED, both halves: a four-cluster battery found exactly one mutation that reds nothing where its cluster should discriminate it (a dangling DeclarationRef bind), while the same day's main run reported 131 BUDGET-REFUSED identities -- among them all 28 rows of the decl_facts reflection cluster, at 2.1-2.3s against the ceiling then in force. So that cluster's battery result and its CI coverage disagree completely, which is the whole point of stating this. TWO DISCIPLINES THE BATTERY HALF NEEDS, both learned by getting them wrong first. An entry passed with no function selector runs ZERO rows and reports zero failures, which is indistinguishable from a cluster that survived every mutation -- an empty run is not a green run, and it produced three false 'no data' lines here before it was caught. And REDS-NOTHING IS NOT FAILS-TO-DISCRIMINATE: a construction census that ignores a changed field value, or an edge claim that ignores a changed function body, is answering the question it declared, so counting those as coverage holes inflates the artifact with defects nobody claimed -- four of the seven zeros measured here were scope, not gaps. THE THRESHOLD SIDE IS DELIBERATELY NOT NAMED IN THIS ROW: witness_row_cost_migration_threshold_note derives it (gunbc_ci_fast_lane_eval_budget_ms / order-of-magnitude), and restating a number here would be the second hand-maintained copy DESIGN section 3 forbids. What this row asserts is only that cost refusal and detection power are orthogonal axes and a coverage claim needs both."
@@ -44,18 +45,18 @@ fn witness_row_cost_drift_ratio_numerator() -> std.nat.Nat {
 }
 
 fn witness_row_cost_exceeds_basis(observed: std.measure.Millisecond, basis: std.measure.Millisecond) -> Bool {
-  millisecond_count(m: observed) > millisecond_count(m: basis) * witness_row_cost_drift_ratio_numerator()
+  std.measure.millisecond_count(m: observed) > std.measure.millisecond_count(m: basis) * witness_row_cost_drift_ratio_numerator()
 }
 
 fn witness_row_cost_verdict(
   observed: std.measure.Millisecond,
   observed_clock: std.measure.ClockBasis,
-  basis: v2.std.optional.Optional<gunbc.witness_row_cost.WitnessRowCostDatedBasis>,
-) -> gunbc.witness_row_cost.WitnessRowCostVerdict {
+  basis: v2.std.optional.Optional<WitnessRowCostDatedBasis>,
+) -> WitnessRowCostVerdict {
   match basis {
-    Absent => BasisAbsent
-    Present { value: b } =>
-      if !clock_basis_eq(a: observed_clock, b: b.clock) {
+    v2.std.optional.Absent => BasisAbsent
+    v2.std.optional.Present { value: b } =>
+      if !std.measure.clock_basis_eq(a: observed_clock, b: b.clock) {
         BasisClockMismatch { observed: observed_clock, basis: b.clock }
       } else if witness_row_cost_exceeds_basis(observed: observed, basis: b.eval) {
         DriftExceeded { observed: observed, basis: b.eval }
@@ -79,42 +80,42 @@ type MigrationDisclosureVerdict
   = BelowMigrationThreshold
   | MandatoryMigration { observed: std.measure.Millisecond, threshold: std.measure.Millisecond }
 
-fn witness_row_cost_migration_verdict(observed: std.measure.Millisecond) -> gunbc.witness_row_cost.MigrationDisclosureVerdict {
-  let threshold = millisecond(count: witness_row_cost_migration_threshold_ms())
-  if millisecond_count(m: observed) >= millisecond_count(m: threshold) {
+fn witness_row_cost_migration_verdict(observed: std.measure.Millisecond) -> MigrationDisclosureVerdict {
+  let threshold = std.measure.millisecond(count: witness_row_cost_migration_threshold_ms())
+  if std.measure.millisecond_count(m: observed) >= std.measure.millisecond_count(m: threshold) {
     MandatoryMigration { observed: observed, threshold: threshold }
   } else {
     BelowMigrationThreshold
   }
 }
 
-fn witness_row_cost_receipt_row_wall_eval_ms(row: gunbc.witness_row_cost.WitnessCostReceiptRow) -> v2.std.optional.Optional<std.measure.Millisecond> {
-  match observation_duration_of(durations: row.eval, basis: WallClock) {
-    MeasuredValue { value: v } => v2.std.optional.Present { value: nanosecond_to_millisecond_floor(n: v) }
-    MeasuredUnavailable { cause: _ } => v2.std.optional.Absent
+fn witness_row_cost_receipt_row_wall_eval_ms(row: WitnessCostReceiptRow) -> v2.std.optional.Optional<std.measure.Millisecond> {
+  match std.observation.observation_duration_of(durations: row.eval, basis: std.measure.WallClock) {
+    std.observation.MeasuredValue { value: v } => v2.std.optional.Present { value: std.measure.nanosecond_to_millisecond_floor(n: v) }
+    std.observation.MeasuredUnavailable { cause: _ } => v2.std.optional.Absent
   }
 }
 
-fn witness_row_cost_receipt_row_migration_verdict(row: gunbc.witness_row_cost.WitnessCostReceiptRow) -> v2.std.optional.Optional<gunbc.witness_row_cost.MigrationDisclosureVerdict> {
+fn witness_row_cost_receipt_row_migration_verdict(row: WitnessCostReceiptRow) -> v2.std.optional.Optional<MigrationDisclosureVerdict> {
   match witness_row_cost_receipt_row_wall_eval_ms(row: row) {
-    Absent => v2.std.optional.Absent
-    Present { value: observed } =>
+    v2.std.optional.Absent => v2.std.optional.Absent
+    v2.std.optional.Present { value: observed } =>
       v2.std.optional.Present { value: witness_row_cost_migration_verdict(observed: observed) }
   }
 }
 
-fn witness_row_cost_mandatory_migration_rows(rows: List<gunbc.witness_row_cost.WitnessCostReceiptRow>) -> List<gunbc.witness_row_cost.WitnessCostReceiptRow> {
-  filter(rows, row =>
+fn witness_row_cost_mandatory_migration_rows(rows: List<WitnessCostReceiptRow>) -> List<WitnessCostReceiptRow> {
+  v2.std.algebra.filter(rows, row =>
     match witness_row_cost_receipt_row_migration_verdict(row: row) {
-      Present { value: MandatoryMigration { observed: _, threshold: _ } } => true
-      Present { value: BelowMigrationThreshold } => false
-      Absent => false
+      v2.std.optional.Present { value: MandatoryMigration { observed: _, threshold: _ } } => true
+      v2.std.optional.Present { value: BelowMigrationThreshold } => false
+      v2.std.optional.Absent => false
     }
   )
 }
 
-fn witness_row_cost_mandatory_migration_count(rows: List<gunbc.witness_row_cost.WitnessCostReceiptRow>) -> Int {
-  length(xs: witness_row_cost_mandatory_migration_rows(rows: rows))
+fn witness_row_cost_mandatory_migration_count(rows: List<WitnessCostReceiptRow>) -> Int {
+  v2.std.algebra.length(xs: witness_row_cost_mandatory_migration_rows(rows: rows))
 }
 
 data witness_row_cost_seed_verdict_note: String = "The seed's drift wire calls THESE, not the ratio predicate, so the verdict arms are named in exactly one place. Before this the seed called witness_row_cost_exceeds_basis and rebuilt DriftExceeded / WithinBasis / BasisAbsent as Rust string literals — a second representation of this module's sum, which is how a wall can exist here and not stand on the production path (the state witness_row_cost_clock_mismatch_note declared and this pair dissolves). The seed now reads the returned variant NAME and renders it, so adding an arm here reaches the receipt without a Rust edit, and a cross-clock pair refuses on the cadence exactly as it does in the witness. TWO ENTRY POINTS rather than an Optional crossing the boundary: the seed constructs no carrier, which is the same discipline witness_cost_timed_out_seed_deferral_note states for this seam, and whether a dated basis EXISTS is a map-lookup fact the seed already holds — it is presence of data, not a judgement about cost. The seed keeps deciding comparability first (its ObservationAbsent arm, for a row that never ran) because an absent OBSERVATION has no counterpart in this sum: there is nothing to judge, and inventing an arm for it here would let a row with no measurement reach a comparator at all. Dissolve-on: the same trigger as the rest of this seam, the witness-realization lane, where a realized runner holds the row and calls the verdict directly."
@@ -125,12 +126,12 @@ fn witness_row_cost_seed_verdict_dated(
   basis_clock: std.measure.ClockBasis,
   basis_eval: std.measure.Millisecond,
   run_ref: String,
-) -> gunbc.witness_row_cost.WitnessRowCostVerdict {
+) -> WitnessRowCostVerdict {
   witness_row_cost_verdict(
     observed: observed,
     observed_clock: observed_clock,
     basis: v2.std.optional.Present {
-      value: gunbc.witness_row_cost.WitnessRowCostDatedBasis {
+      value: WitnessRowCostDatedBasis {
         clock: basis_clock,
         eval: basis_eval,
         run_ref: run_ref
@@ -142,7 +143,7 @@ fn witness_row_cost_seed_verdict_dated(
 fn witness_row_cost_seed_verdict_undated(
   observed: std.measure.Millisecond,
   observed_clock: std.measure.ClockBasis,
-) -> gunbc.witness_row_cost.WitnessRowCostVerdict {
+) -> WitnessRowCostVerdict {
   witness_row_cost_verdict(
     observed: observed,
     observed_clock: observed_clock,
@@ -151,29 +152,29 @@ fn witness_row_cost_seed_verdict_undated(
 }
 
 fn witness_cost_warm(eval: std.measure.Nanosecond, resolve: std.measure.Nanosecond) -> std.measure.Nanosecond {
-  nanosecond(count: nanosecond_count(n: eval) + nanosecond_count(n: resolve))
+  std.measure.nanosecond(count: std.measure.nanosecond_count(n: eval) + std.measure.nanosecond_count(n: resolve))
 }
 
 fn witness_cost_subject_entry(subject: std.observation.ObservationSubject) -> v2.std.optional.Optional<std.types.NonEmptyStr> {
-  observation_subject_entry_path(subject: subject)
+  std.observation.observation_subject_entry_path(subject: subject)
 }
 
 fn witness_cost_subject_declaration(subject: std.observation.ObservationSubject) -> v2.std.optional.Optional<std.decl_ref.DeclarationRef> {
-  observation_subject_declaration(subject: subject)
+  std.observation.observation_subject_declaration(subject: subject)
 }
 
 fn witness_cost_measured_wall(wall: std.observation.Measured<std.measure.Nanosecond>) -> v2.std.optional.Optional<std.measure.Nanosecond> {
   match wall {
-    MeasuredValue { value: v } => v2.std.optional.Present { value: v }
-    MeasuredUnavailable { cause: _ } => v2.std.optional.Absent
+    std.observation.MeasuredValue { value: v } => v2.std.optional.Present { value: v }
+    std.observation.MeasuredUnavailable { cause: _ } => v2.std.optional.Absent
   }
 }
 
 fn witness_cost_concluded_outcome(event: std.observation.ObservationEvent) -> v2.std.optional.Optional<std.observation.ObservationOutcome> {
   match event.transition {
-    Concluded { outcome: o } => v2.std.optional.Present { value: o }
-    Begin => v2.std.optional.Absent
-    Step { k: _, n: _ } => v2.std.optional.Absent
+    std.observation.Concluded { outcome: o } => v2.std.optional.Present { value: o }
+    std.observation.Begin => v2.std.optional.Absent
+    std.observation.Step { k: _, n: _ } => v2.std.optional.Absent
   }
 }
 
@@ -181,35 +182,35 @@ type WitnessCostEventRole
   = EntryResolveParent
   | DeclarationWitness
 
-fn witness_cost_event_role(event: std.observation.ObservationEvent) -> v2.std.optional.Optional<gunbc.witness_row_cost.WitnessCostEventRole> {
+fn witness_cost_event_role(event: std.observation.ObservationEvent) -> v2.std.optional.Optional<WitnessCostEventRole> {
   match witness_cost_concluded_outcome(event: event) {
-    Absent => v2.std.optional.Absent
-    Present { value: _ } =>
+    v2.std.optional.Absent => v2.std.optional.Absent
+    v2.std.optional.Present { value: _ } =>
       match witness_cost_subject_entry(subject: event.subject) {
-        Absent => v2.std.optional.Absent
-        Present { value: _ } =>
-          match observation_subject_grain(subject: event.subject) {
-            DeclarationGrain => v2.std.optional.Present { value: DeclarationWitness }
-            RunGrain => witness_cost_entry_resolve_role_if_shaped(subject: event.subject)
-            BatchGrain => witness_cost_entry_resolve_role_if_shaped(subject: event.subject)
-            EntryGrain => witness_cost_entry_resolve_role_if_shaped(subject: event.subject)
-            ModuleGrain => v2.std.optional.Absent
-            PhaseGrain => witness_cost_entry_resolve_role_if_shaped(subject: event.subject)
+        v2.std.optional.Absent => v2.std.optional.Absent
+        v2.std.optional.Present { value: _ } =>
+          match std.observation.observation_subject_grain(subject: event.subject) {
+            std.observation.DeclarationGrain => v2.std.optional.Present { value: DeclarationWitness }
+            std.observation.RunGrain => witness_cost_entry_resolve_role_if_shaped(subject: event.subject)
+            std.observation.BatchGrain => witness_cost_entry_resolve_role_if_shaped(subject: event.subject)
+            std.observation.EntryGrain => witness_cost_entry_resolve_role_if_shaped(subject: event.subject)
+            std.observation.ModuleGrain => v2.std.optional.Absent
+            std.observation.PhaseGrain => witness_cost_entry_resolve_role_if_shaped(subject: event.subject)
           }
       }
   }
 }
 
-fn witness_cost_entry_resolve_role_if_shaped(subject: std.observation.ObservationSubject) -> v2.std.optional.Optional<gunbc.witness_row_cost.WitnessCostEventRole> {
-  match observation_subject_declaration(subject: subject) {
-    Present { value: _ } => v2.std.optional.Absent
-    Absent =>
-      match observation_subject_module_path(subject: subject) {
-        Present { value: _ } => v2.std.optional.Absent
-        Absent =>
-          match observation_subject_phase_name(subject: subject) {
-            Absent => v2.std.optional.Absent
-            Present { value: n } =>
+fn witness_cost_entry_resolve_role_if_shaped(subject: std.observation.ObservationSubject) -> v2.std.optional.Optional<WitnessCostEventRole> {
+  match std.observation.observation_subject_declaration(subject: subject) {
+    v2.std.optional.Present { value: _ } => v2.std.optional.Absent
+    v2.std.optional.Absent =>
+      match std.observation.observation_subject_module_path(subject: subject) {
+        v2.std.optional.Present { value: _ } => v2.std.optional.Absent
+        v2.std.optional.Absent =>
+          match std.observation.observation_subject_phase_name(subject: subject) {
+            v2.std.optional.Absent => v2.std.optional.Absent
+            v2.std.optional.Present { value: n } =>
               match n == ("resolve" as std.types.NonEmptyStr) {
                 true => v2.std.optional.Present { value: EntryResolveParent }
                 false => v2.std.optional.Absent
@@ -222,18 +223,18 @@ fn witness_cost_entry_resolve_role_if_shaped(subject: std.observation.Observatio
 fn witness_cost_count_resolve_for_entry(events: List<std.observation.ObservationEvent>, entry: std.types.NonEmptyStr) -> std.nat.Nat {
   fold(events, init: 0, f: (acc, event) =>
     match witness_cost_event_role(event: event) {
-      Present { value: EntryResolveParent } =>
+      v2.std.optional.Present { value: EntryResolveParent } =>
         match witness_cost_subject_entry(subject: event.subject) {
-          Present { value: p } =>
+          v2.std.optional.Present { value: p } =>
             if p == entry {
               acc + 1
             } else {
               acc
             }
-          Absent => acc
+          v2.std.optional.Absent => acc
         }
-      Present { value: DeclarationWitness } => acc
-      Absent => acc
+      v2.std.optional.Present { value: DeclarationWitness } => acc
+      v2.std.optional.Absent => acc
     }
   )
 }
@@ -245,22 +246,22 @@ fn witness_cost_count_declaration_for_entry(
 ) -> std.nat.Nat {
   fold(events, init: 0, f: (acc, event) =>
     match witness_cost_event_role(event: event) {
-      Present { value: DeclarationWitness } =>
+      v2.std.optional.Present { value: DeclarationWitness } =>
         match witness_cost_subject_entry(subject: event.subject) {
-          Present { value: p } =>
+          v2.std.optional.Present { value: p } =>
             match witness_cost_subject_declaration(subject: event.subject) {
-              Present { value: d } =>
+              v2.std.optional.Present { value: d } =>
                 if p == entry && d == declaration {
                   acc + 1
                 } else {
                   acc
                 }
-              Absent => acc
+              v2.std.optional.Absent => acc
             }
-          Absent => acc
+          v2.std.optional.Absent => acc
         }
-      Present { value: EntryResolveParent } => acc
-      Absent => acc
+      v2.std.optional.Present { value: EntryResolveParent } => acc
+      v2.std.optional.Absent => acc
     }
   )
 }
@@ -272,18 +273,18 @@ fn witness_cost_unique_resolve_wall(
   if witness_cost_count_resolve_for_entry(events: events, entry: entry) == 1 {
     fold(events, init: v2.std.optional.Absent, f: (acc, event) =>
       match witness_cost_event_role(event: event) {
-        Present { value: EntryResolveParent } =>
+        v2.std.optional.Present { value: EntryResolveParent } =>
           match witness_cost_subject_entry(subject: event.subject) {
-            Present { value: p } =>
+            v2.std.optional.Present { value: p } =>
               if p == entry {
-                witness_cost_measured_wall(wall: observation_wall(event: event))
+                witness_cost_measured_wall(wall: std.observation.observation_wall(event: event))
               } else {
                 acc
               }
-            Absent => acc
+            v2.std.optional.Absent => acc
           }
-        Present { value: DeclarationWitness } => acc
-        Absent => acc
+        v2.std.optional.Present { value: DeclarationWitness } => acc
+        v2.std.optional.Absent => acc
       }
     )
   } else {
@@ -304,19 +305,19 @@ data witness_cost_row_eval_clocks_note: String = "The row's eval term carries EV
 
 
 type WitnessCostProjection
-  = WitnessCostProjectionComplete { rows: List<gunbc.witness_row_cost.WitnessCostReceiptRow> }
+  = WitnessCostProjectionComplete { rows: List<WitnessCostReceiptRow> }
   | WitnessCostProjectionRefused { cause: std.types.NonEmptyStr }
 
 fn witness_cost_project_one_witness(
   events: List<std.observation.ObservationEvent>,
   event: std.observation.ObservationEvent,
-) -> gunbc.witness_row_cost.WitnessCostProjection {
+) -> WitnessCostProjection {
   match witness_cost_subject_entry(subject: event.subject) {
-    Absent =>
+    v2.std.optional.Absent =>
       WitnessCostProjectionRefused {
         cause: "declaration-grain witness event missing EntrySegment" as std.types.NonEmptyStr
       }
-    Present { value: entry } => {
+    v2.std.optional.Present { value: entry } => {
       let n = witness_cost_count_resolve_for_entry(events: events, entry: entry)
       if n == 0 {
         WitnessCostProjectionRefused {
@@ -328,23 +329,23 @@ fn witness_cost_project_one_witness(
         }
       } else {
         match witness_cost_unique_resolve_wall(events: events, entry: entry) {
-          Absent =>
+          v2.std.optional.Absent =>
             WitnessCostProjectionRefused {
               cause: "parent resolve wall MeasuredUnavailable (refuse; never fabricate)" as std.types.NonEmptyStr
             }
-          Present { value: resolve } =>
-            match witness_cost_measured_wall(wall: observation_wall(event: event)) {
-              Absent =>
+          v2.std.optional.Present { value: resolve } =>
+            match witness_cost_measured_wall(wall: std.observation.observation_wall(event: event)) {
+              v2.std.optional.Absent =>
                 WitnessCostProjectionRefused {
                   cause: "witness eval wall MeasuredUnavailable (refuse; never fabricate)" as std.types.NonEmptyStr
                 }
-              Present { value: eval_wall } =>
+              v2.std.optional.Present { value: eval_wall } =>
                 match witness_cost_subject_declaration(subject: event.subject) {
-                  Absent =>
+                  v2.std.optional.Absent =>
                     WitnessCostProjectionRefused {
                       cause: "declaration-grain witness missing DeclarationSegment" as std.types.NonEmptyStr
                     }
-                  Present { value: decl } =>
+                  v2.std.optional.Present { value: decl } =>
                     if witness_cost_count_declaration_for_entry(
                       events: events,
                       entry: entry,
@@ -355,11 +356,11 @@ fn witness_cost_project_one_witness(
                       }
                     } else {
                       match witness_cost_concluded_outcome(event: event) {
-                        Absent =>
+                        v2.std.optional.Absent =>
                           WitnessCostProjectionRefused {
                             cause: "declaration-grain witness is not Concluded" as std.types.NonEmptyStr
                           }
-                        Present { value: outcome } =>
+                        v2.std.optional.Present { value: outcome } =>
                           WitnessCostProjectionComplete {
                             rows: [
                               WitnessCostReceiptRow {
@@ -383,9 +384,9 @@ fn witness_cost_project_one_witness(
 }
 
 fn witness_cost_append_projection(
-  left: gunbc.witness_row_cost.WitnessCostProjection,
-  right: gunbc.witness_row_cost.WitnessCostProjection,
-) -> gunbc.witness_row_cost.WitnessCostProjection {
+  left: WitnessCostProjection,
+  right: WitnessCostProjection,
+) -> WitnessCostProjection {
   match left {
     WitnessCostProjectionRefused { cause: c } => WitnessCostProjectionRefused { cause: c }
     WitnessCostProjectionComplete { rows: a } =>
@@ -400,13 +401,13 @@ fn witness_cost_append_projection(
 fn witness_cost_check_unique_resolve_parent(
   events: List<std.observation.ObservationEvent>,
   event: std.observation.ObservationEvent,
-) -> gunbc.witness_row_cost.WitnessCostProjection {
+) -> WitnessCostProjection {
   match witness_cost_subject_entry(subject: event.subject) {
-    Absent =>
+    v2.std.optional.Absent =>
       WitnessCostProjectionRefused {
         cause: "entry resolve parent missing EntrySegment" as std.types.NonEmptyStr
       }
-    Present { value: entry } => {
+    v2.std.optional.Present { value: entry } => {
       let n = witness_cost_count_resolve_for_entry(events: events, entry: entry)
       match n == 1 {
         true => WitnessCostProjectionComplete { rows: [] }
@@ -419,24 +420,24 @@ fn witness_cost_check_unique_resolve_parent(
   }
 }
 
-fn project_witness_cost_receipt(events: List<std.observation.ObservationEvent>) -> gunbc.witness_row_cost.WitnessCostProjection {
+fn project_witness_cost_receipt(events: List<std.observation.ObservationEvent>) -> WitnessCostProjection {
   fold(events, init: WitnessCostProjectionComplete { rows: [] }, f: (acc, event) =>
     match acc {
       WitnessCostProjectionRefused { cause: c } =>
         WitnessCostProjectionRefused { cause: c }
       WitnessCostProjectionComplete { rows: _ } =>
         match witness_cost_event_role(event: event) {
-          Present { value: DeclarationWitness } =>
+          v2.std.optional.Present { value: DeclarationWitness } =>
             witness_cost_append_projection(
               left: acc,
               right: witness_cost_project_one_witness(events: events, event: event)
             )
-          Present { value: EntryResolveParent } =>
+          v2.std.optional.Present { value: EntryResolveParent } =>
             witness_cost_append_projection(
               left: acc,
               right: witness_cost_check_unique_resolve_parent(events: events, event: event)
             )
-          Absent =>
+          v2.std.optional.Absent =>
             WitnessCostProjectionRefused {
               cause: "malformed or non-concluded witness timing event (refuse; never drop)" as std.types.NonEmptyStr
             }
@@ -461,7 +462,7 @@ fn witness_cost_entry_resolve_event(
       ]
     },
     transition: std.observation.Concluded { outcome: std.observation.Done },
-    durations: observation_durations_wall(elapsed: resolve),
+    durations: std.observation.observation_durations_wall(elapsed: resolve),
     rss: std.observation.MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
   }
 }
@@ -480,7 +481,7 @@ fn witness_cost_nested_resolve_under_declaration_event(
       ]
     },
     transition: std.observation.Concluded { outcome: std.observation.Done },
-    durations: observation_durations_wall(elapsed: resolve),
+    durations: std.observation.observation_durations_wall(elapsed: resolve),
     rss: std.observation.MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
   }
 }
@@ -499,7 +500,7 @@ fn witness_cost_module_resolve_event(
       ]
     },
     transition: std.observation.Concluded { outcome: std.observation.Done },
-    durations: observation_durations_wall(elapsed: resolve),
+    durations: std.observation.observation_durations_wall(elapsed: resolve),
     rss: std.observation.MeasuredUnavailable { cause: witness_cost_rss_unavailable_cause() }
   }
 }
@@ -530,7 +531,7 @@ fn witness_cost_seed_declaration(
   std.decl_ref.DeclarationRef {
     module_path: module_path,
     decl_name: function,
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -613,10 +614,10 @@ fn witness_cost_seed_timed_out_event(
 // plus the migration-threshold note and its witness. DESIGN §3 rules that a citation names the
 // SYMBOL, precisely so it survives a move; a rename during a move is the one edit that defeats
 // that, and it defeats it silently, because no citation is checked. A move keeps the name.
-data gunbc_ci_fast_lane_witness_eval_budget: std.measure.Second = second(count: 5)
+data gunbc_ci_fast_lane_witness_eval_budget: std.measure.Second = std.measure.second(count: 5)
 
-fn gunbc_ci_fast_lane_eval_budget_ms() -> v2.std.nat.Nat {
-  second_count(s: gunbc_ci_fast_lane_witness_eval_budget) * 1000
+fn gunbc_ci_fast_lane_eval_budget_ms() -> std.nat.Nat {
+  std.measure.second_count(s: gunbc_ci_fast_lane_witness_eval_budget) * 1000
 }
 
 data gunbc_ci_fast_lane_rule_note: String = "Fast-lane 5-second rule (operator ruling 2026-07-12). RE-HOMED HERE 2026-08-15 from v2.workflow.ci_floor_plan, deleted by the CI wipe, and CORRECTED IN THE SAME MOTION rather than restored verbatim — the original text asserted an enforcement mechanism this cut removed, and re-homing it unchanged would have carried a false claim into a live carrier under a name 25 other rows cite. WHAT SURVIVES: a witness whose OWN eval takes 5 seconds or longer does not run in per-PR discovery — it lives under a long/ test dir (dag/test/claim/long/, src/v2/test/claim/long/), excluded from discovery at dir grain (gunbc.ci_layer_roots long_lane_exclusion_note) and triggered independently (local recipe: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>). The threshold itself is gunbc_ci_fast_lane_witness_eval_budget above, this module's own row. WHAT DIED, STATED PLAINLY: enforcement. The original read 'Enforcement is by execution, not census: the executor arms a cooperative per-witness eval deadline from the budget row (v1_interpreter EvalBudgetExceeded — a typed FAIL row naming the over-budget witness; the bound unwinds from INSIDE eval because in-process worker threads have no kill authority, the Phase A governor lesson)', and the executor that armed it is deleted. NO CONSUMER ARMS THIS BUDGET TODAY. So the dir policy is a placement convention with no execution behind it, and an over-budget witness in per-PR discovery now runs to completion instead of failing red in seconds with its name in the log. THE RISK THAT RE-OPENS, kept because it is the receipt that justified the deadline and it is exactly what is unguarded again: an unbounded eval previously burned the 270-minute step cap in billed silence (run 29183446733: 243 of 270 minutes after the last progress line, zero witnesses completed). RUNG: this class drops from mechanically preventable to unguarded for the duration of the cut, declared here rather than left to be rediscovered by a runner that hangs. RESTORATION TRIGGER: the re-added floor arms a per-witness eval deadline from this row again, at which point this paragraph deletes and the enforcement sentence returns. Dissolve-on (unchanged, and it outlives the restoration): per-witness declared cost envelopes (the witness-cost-locality admission law) replace the blanket lane budget with declared rows."
@@ -652,9 +653,9 @@ type SharedFillDisposition
 // fill paid outside the fold, and is answered by the payer arm before the count is consulted, so
 // no arm has to invent a meaning for "nobody touched a computation that happened".
 fn shared_fill_disposition(
-  payer: gunbc.witness_row_cost.SharedFillPayer,
+  payer: SharedFillPayer,
   consumer_modules: std.nat.Nat,
-) -> gunbc.witness_row_cost.SharedFillDisposition {
+) -> SharedFillDisposition {
   match payer {
     SharedFillPaidOutsideFold => SharedFillOutsideFold
     SharedFillPaidByClaim { qualified: _ } =>
@@ -666,7 +667,7 @@ fn shared_fill_disposition(
   }
 }
 
-fn shared_fill_disposition_tag(disposition: gunbc.witness_row_cost.SharedFillDisposition) -> String {
+fn shared_fill_disposition_tag(disposition: SharedFillDisposition) -> String {
   match disposition {
     SharedFillOutsideFold => "outside-fold"
     SharedFillExclusiveToOneModule => "exclusive"
@@ -674,7 +675,7 @@ fn shared_fill_disposition_tag(disposition: gunbc.witness_row_cost.SharedFillDis
   }
 }
 
-fn shared_fill_payer_tag(payer: gunbc.witness_row_cost.SharedFillPayer) -> String {
+fn shared_fill_payer_tag(payer: SharedFillPayer) -> String {
   match payer {
     SharedFillPaidOutsideFold => "<outside-fold>"
     SharedFillPaidByClaim { qualified: q } => q

@@ -3,7 +3,7 @@ module extdeps.languages.bash.subject
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.gnu.org/software/bash/manual/bash.html"
   }
 }
@@ -24,10 +24,10 @@ data gnu_bash_model_scope: extdeps.external_authority.ExternalModelScope = extde
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.languages.bash.subject",
       decl_name: "gnu_bash",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.languages.bash.subject.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 

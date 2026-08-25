@@ -1,10 +1,11 @@
 module test.claim.bmc_typed_operations_witness
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn object_mapper_zero_cardinality_is_preserved() -> Bool {
   match extdeps.bmc.openbmc_fan_control.openbmc_collection_from_values(values: []) {
-    OpenBmcCollectionZero => true
+    extdeps.bmc.openbmc_fan_control.OpenBmcCollectionZero => true
     _ => false
   }
 }
@@ -13,7 +14,7 @@ test fn object_mapper_one_cardinality_is_preserved() -> Bool {
   match extdeps.bmc.openbmc_fan_control.openbmc_collection_from_values(
     values: ["xyz.openbmc_project.Hwmon-1"],
   ) {
-    OpenBmcCollectionOne { value: selected_service } =>
+    extdeps.bmc.openbmc_fan_control.OpenBmcCollectionOne { value: selected_service } =>
       selected_service == "xyz.openbmc_project.Hwmon-1"
     _ => false
   }
@@ -26,7 +27,7 @@ test fn duplicate_object_mapper_matches_remain_many() -> Bool {
       "xyz.openbmc_project.Hwmon-2",
     ],
   ) {
-    OpenBmcCollectionMany { values } => values.length() == 2
+    extdeps.bmc.openbmc_fan_control.OpenBmcCollectionMany { values } => values.length() == 2
     _ => false
   }
 }
@@ -40,7 +41,7 @@ test fn failed_threshold_transport_cannot_become_threshold_unstated() -> Bool {
       stderr: "SSH host identity verification failed",
     },
   ) {
-    OpenBmcSensorValueRefused { reason } =>
+    extdeps.bmc.openbmc_fan_control.OpenBmcSensorValueRefused { reason } =>
       reason == "SSH host identity verification failed"
     _ => false
   }
@@ -56,7 +57,7 @@ test fn failed_sensor_projection_cannot_become_absent() -> Bool {
   match extdeps.bmc.openbmc_fan_control.openbmc_sensor_integer_projection_result(
     outcome: extdeps.tools.jq.JqExecutionRefused { exit_code: 2, stderr: "malformed OpenBMC JSON" },
   ) {
-    OpenBmcSensorValueRefused { reason } => reason == "malformed OpenBMC JSON"
+    extdeps.bmc.openbmc_fan_control.OpenBmcSensorValueRefused { reason } => reason == "malformed OpenBMC JSON"
     _ => false
   }
 }
@@ -65,7 +66,7 @@ test fn successful_empty_sensor_projection_is_absent() -> Bool {
   match extdeps.bmc.openbmc_fan_control.openbmc_sensor_integer_projection_result(
     outcome: extdeps.tools.jq.JqOutputAbsent,
   ) {
-    OpenBmcSensorValueAbsent => true
+    extdeps.bmc.openbmc_fan_control.OpenBmcSensorValueAbsent => true
     _ => false
   }
 }
@@ -76,7 +77,7 @@ test fn present_numeric_sensor_projection_is_observed() -> Bool {
   match extdeps.bmc.openbmc_fan_control.openbmc_sensor_integer_projection_result(
     outcome: extdeps.tools.jq.JqOutputPresent { text: "42" },
   ) {
-    OpenBmcSensorValueObserved { value } => value == 42
+    extdeps.bmc.openbmc_fan_control.OpenBmcSensorValueObserved { value } => value == 42
     _ => false
   }
 }
@@ -88,7 +89,7 @@ test fn tach_below_controller_threshold_is_not_healthy() -> Bool {
     minimum: std.measure.rpm(900),
     source: extdeps.bmc.openbmc_fan_control.OpenBmcWarningLowThreshold,
   ) {
-    OpenBmcTachHealthObserved {
+    extdeps.bmc.openbmc_fan_control.OpenBmcTachHealthObserved {
       health: extdeps.bmc.openbmc_fan_control.OpenBmcTachBelowThreshold {
         sensor,
         reading_rpm,
@@ -107,7 +108,7 @@ test fn tach_at_controller_threshold_is_healthy() -> Bool {
     minimum: std.measure.rpm(900),
     source: extdeps.bmc.openbmc_fan_control.OpenBmcWarningLowThreshold,
   ) {
-    OpenBmcTachHealthObserved {
+    extdeps.bmc.openbmc_fan_control.OpenBmcTachHealthObserved {
       health: extdeps.bmc.openbmc_fan_control.OpenBmcTachAtOrAboveThreshold {
         sensor,
         reading_rpm,
@@ -153,7 +154,7 @@ test fn path_transport_whitespace_becomes_one_typed_path() -> Bool {
       stderr: "",
     },
   ) {
-    OpenBmcPathObserved { path } =>
+    extdeps.bmc.openbmc_fan_control.OpenBmcPathObserved { path } =>
       path == "/usr/share/swampd/config-asrr.json"
     _ => false
   }
@@ -168,7 +169,7 @@ test fn multiple_nonempty_paths_are_refused() -> Bool {
       stderr: "",
     },
   ) {
-    OpenBmcPathRefused { reason: _ } => true
+    extdeps.bmc.openbmc_fan_control.OpenBmcPathRefused { reason: _ } => true
     _ => false
   }
 }
@@ -182,7 +183,7 @@ test fn empty_path_transport_is_refused() -> Bool {
       stderr: "",
     },
   ) {
-    OpenBmcPathRefused { reason: _ } => true
+    extdeps.bmc.openbmc_fan_control.OpenBmcPathRefused { reason: _ } => true
     _ => false
   }
 }
@@ -196,7 +197,7 @@ test fn zone_failsafe_transport_becomes_typed_bool() -> Bool {
       stderr: "",
     },
   ) {
-    OpenBmcBoolObserved { value } => value
+    extdeps.bmc.openbmc_fan_control.OpenBmcBoolObserved { value } => value
     _ => false
   }
 }
@@ -210,7 +211,7 @@ test fn wrong_busctl_type_cannot_become_zone_failsafe_bool() -> Bool {
       stderr: "",
     },
   ) {
-    OpenBmcBoolRefused { reason: _ } => true
+    extdeps.bmc.openbmc_fan_control.OpenBmcBoolRefused { reason: _ } => true
     _ => false
   }
 }
@@ -224,7 +225,7 @@ test fn disk_usage_transport_becomes_typed_byte_size() -> Bool {
       stderr: "",
     },
   ) {
-    OpenBmcByteSizeObserved { value } => std.measure.byte_size_count(value) == 2560000
+    extdeps.bmc.openbmc_fan_control.OpenBmcByteSizeObserved { value } => std.measure.byte_size_count(value) == 2560000
     _ => false
   }
 }
@@ -238,7 +239,7 @@ test fn utc_epoch_seconds_become_epoch_milliseconds() -> Bool {
       stderr: "",
     },
   ) {
-    OpenBmcInstantObserved { observed_at } => observed_at == 1722345678000
+    extdeps.bmc.openbmc_fan_control.OpenBmcInstantObserved { observed_at } => observed_at == 1722345678000
     _ => false
   }
 }
@@ -252,7 +253,7 @@ test fn false_path_probe_is_observed_not_transport_refused() -> Bool {
       stderr: "",
     },
   ) {
-    OpenBmcBoolObserved { value } => !value
+    extdeps.bmc.openbmc_fan_control.OpenBmcBoolObserved { value } => !value
     _ => false
   }
 }
@@ -266,7 +267,7 @@ test fn exit_one_path_probe_with_stderr_is_refused() -> Bool {
       stderr: "test: /usr/share/swampd/config.json: permission denied",
     },
   ) {
-    OpenBmcBoolRefused { reason } =>
+    extdeps.bmc.openbmc_fan_control.OpenBmcBoolRefused { reason } =>
       reason == "test: /usr/share/swampd/config.json: permission denied"
     _ => false
   }
@@ -281,7 +282,7 @@ test fn ssh_failure_cannot_masquerade_as_false_path_probe() -> Bool {
       stderr: "SSH host identity verification failed",
     },
   ) {
-    OpenBmcBoolRefused { reason } =>
+    extdeps.bmc.openbmc_fan_control.OpenBmcBoolRefused { reason } =>
       reason == "SSH host identity verification failed"
     _ => false
   }
@@ -296,7 +297,7 @@ test fn inconsistent_success_projection_is_refused() -> Bool {
       stderr: "inconsistent transport projection",
     },
   ) {
-    OpenBmcBoolRefused { reason } => reason == "inconsistent transport projection"
+    extdeps.bmc.openbmc_fan_control.OpenBmcBoolRefused { reason } => reason == "inconsistent transport projection"
     _ => false
   }
 }
@@ -310,7 +311,7 @@ test fn inactive_service_is_observed_not_transport_refused() -> Bool {
       stderr: "",
     },
   ) {
-    OpenBmcBoolObserved { value } => !value
+    extdeps.bmc.openbmc_fan_control.OpenBmcBoolObserved { value } => !value
     _ => false
   }
 }
@@ -324,7 +325,7 @@ test fn exit_three_service_probe_with_stderr_is_refused() -> Bool {
       stderr: "systemctl: failed to query unit state",
     },
   ) {
-    OpenBmcBoolRefused { reason } =>
+    extdeps.bmc.openbmc_fan_control.OpenBmcBoolRefused { reason } =>
       reason == "systemctl: failed to query unit state"
     _ => false
   }
@@ -339,7 +340,7 @@ test fn failed_service_state_is_preserved_in_refusal() -> Bool {
       stderr: "",
     },
   ) {
-    OpenBmcBoolRefused { reason } =>
+    extdeps.bmc.openbmc_fan_control.OpenBmcBoolRefused { reason } =>
       reason == "service-active response is not the expected active or inactive shape; observed stdout: failed"
     _ => false
   }
@@ -354,7 +355,7 @@ test fn nonzero_exit_cannot_become_observed_path_when_success_flag_is_true() -> 
       stderr: "",
     },
   ) {
-    OpenBmcPathRefused { reason } =>
+    extdeps.bmc.openbmc_fan_control.OpenBmcPathRefused { reason } =>
       reason == "path transport did not report exit-zero success"
     _ => false
   }
@@ -369,7 +370,7 @@ test fn nonzero_exit_cannot_become_observed_zone_when_success_flag_is_true() -> 
       stderr: "",
     },
   ) {
-    OpenBmcBoolRefused { reason } =>
+    extdeps.bmc.openbmc_fan_control.OpenBmcBoolRefused { reason } =>
       reason == "zone failsafe transport did not report exit-zero success"
     _ => false
   }
@@ -384,7 +385,7 @@ test fn nonzero_exit_cannot_become_observed_disk_when_success_flag_is_true() -> 
       stderr: "",
     },
   ) {
-    OpenBmcByteSizeRefused { reason } =>
+    extdeps.bmc.openbmc_fan_control.OpenBmcByteSizeRefused { reason } =>
       reason == "disk usage transport did not report exit-zero success"
     _ => false
   }
@@ -399,7 +400,7 @@ test fn nonzero_exit_cannot_become_observed_time_when_success_flag_is_true() -> 
       stderr: "",
     },
   ) {
-    OpenBmcInstantRefused { reason } =>
+    extdeps.bmc.openbmc_fan_control.OpenBmcInstantRefused { reason } =>
       reason == "UTC timestamp transport did not report exit-zero success"
     _ => false
   }
@@ -414,7 +415,7 @@ test fn exit_zero_service_probe_requires_exact_active_token() -> Bool {
       stderr: "",
     },
   ) {
-    OpenBmcBoolRefused { reason } =>
+    extdeps.bmc.openbmc_fan_control.OpenBmcBoolRefused { reason } =>
       reason == "service-active response is not the expected active or inactive shape; observed stdout: activating"
     _ => false
   }

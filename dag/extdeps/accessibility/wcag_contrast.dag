@@ -3,7 +3,7 @@ module extdeps.accessibility.wcag_contrast
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.w3.org/TR/WCAG22/#dfn-relative-luminance"
   }
 }
@@ -22,7 +22,7 @@ fn fifth_root_iterate(y: Int, target: Int, fuel: Int) -> Int {
   if fuel <= 0 {
     y
   } else {
-    let y_safe = extdeps.accessibility.wcag_contrast.imax(a: y, b: 1)
+    let y_safe = imax(a: y, b: 1)
     let y4 = y_safe * y_safe * y_safe * y_safe
     let next = (4 * y_safe + target / y4) / 5
     fifth_root_iterate(y: next, target: target, fuel: fuel - 1)
@@ -63,15 +63,15 @@ fn rgb_scaled_luminance(rgb: extdeps.color.srgb.RgbScaled) -> Int {
 }
 
 fn relative_luminance_scaled(hue: Int, sat_pct: Int, light_pct: Int) -> Int {
-  rgb_scaled_luminance(rgb: hsl_to_rgb_scaled(hue: hue, sat_pct: sat_pct, light_pct: light_pct))
+  rgb_scaled_luminance(rgb: extdeps.color.srgb.hsl_to_rgb_scaled(hue: hue, sat_pct: sat_pct, light_pct: light_pct))
 }
 
 fn srgb8_relative_luminance_scaled_for_max(c: extdeps.color.srgb.Srgb8, maxv: Int) -> Int {
-  rgb_scaled_luminance(rgb: srgb8_to_scaled_for_max(c: c, maxv: maxv))
+  rgb_scaled_luminance(rgb: extdeps.color.srgb.srgb8_to_scaled_for_max(c: c, maxv: maxv))
 }
 
 fn srgb8_relative_luminance_scaled(c: extdeps.color.srgb.Srgb8) -> Int? {
-  match srgb8_to_scaled(c: c) {
+  match extdeps.color.srgb.srgb8_to_scaled(c: c) {
     Present { value: rgb } => Present { value: rgb_scaled_luminance(rgb: rgb) }
     Absent => none
   }
@@ -107,14 +107,14 @@ fn srgb8_contrast_at_least(a: extdeps.color.srgb.Srgb8, b: extdeps.color.srgb.Sr
 }
 
 fn contrast_at_least_hundredths(lum_a_scaled: Int, lum_b_scaled: Int, threshold_hundredths: Int) -> Bool {
-  let hi = extdeps.accessibility.wcag_contrast.imax(a: lum_a_scaled, b: lum_b_scaled)
-  let lo = extdeps.accessibility.wcag_contrast.imin(a: lum_a_scaled, b: lum_b_scaled)
+  let hi = imax(a: lum_a_scaled, b: lum_b_scaled)
+  let lo = imin(a: lum_a_scaled, b: lum_b_scaled)
   100 * (hi + 500) >= threshold_hundredths * (lo + 500)
 }
 
 fn contrast_ratio_x100(lum_a_scaled: Int, lum_b_scaled: Int) -> Int {
-  let hi = extdeps.accessibility.wcag_contrast.imax(a: lum_a_scaled, b: lum_b_scaled)
-  let lo = extdeps.accessibility.wcag_contrast.imin(a: lum_a_scaled, b: lum_b_scaled)
+  let hi = imax(a: lum_a_scaled, b: lum_b_scaled)
+  let lo = imin(a: lum_a_scaled, b: lum_b_scaled)
   ((hi + 500) * 100) / (lo + 500)
 }
 

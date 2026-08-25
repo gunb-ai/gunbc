@@ -1,28 +1,28 @@
 module test.claim.altra_placement_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn plan_or_empty() -> product.altra_motherboard.placement.BoardPlacementPlan? {
-  match altra_reference_plan() {
-    OrthogonalReady { value: p } => Present { value: p }
-    OrthogonalRefused { cause: _ } => none
+  match product.altra_motherboard.placement.altra_reference_plan() {
+    std.orthogonal_geometry.OrthogonalReady { value: p } => Present { value: p }
+    std.orthogonal_geometry.OrthogonalRefused { cause: _ } => none
   }
 }
 
 fn cause_tag(r: product.altra_motherboard.placement.PlacementRefusal) -> std.types.NonEmptyStr {
   match r {
-    ComponentEnvelopeNotEstablished { component: _, gap: _ } => "EnvelopeMissing"
-    RequiredRoleUnfilled { role: _ } => "RoleUnfilled"
-    ComponentFillsNoRequiredRole { component: _, role_named: _ } => "RoleUnjustified"
-    PlannedIdentityRepeated { component: _ } => "IdentityRepeated"
-    RoleFilledMoreThanOnce { role: _, fills: _ } => "RoleFilledTwice"
-    PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => "DesignMismatch"
+    product.altra_motherboard.placement.ComponentEnvelopeNotEstablished { component: _, gap: _ } => "EnvelopeMissing"
+    product.altra_motherboard.placement.RequiredRoleUnfilled { role: _ } => "RoleUnfilled"
+    product.altra_motherboard.placement.ComponentFillsNoRequiredRole { component: _, role_named: _ } => "RoleUnjustified"
+    product.altra_motherboard.placement.PlannedIdentityRepeated { component: _ } => "IdentityRepeated"
+    product.altra_motherboard.placement.RoleFilledMoreThanOnce { role: _, fills: _ } => "RoleFilledTwice"
+    product.altra_motherboard.placement.PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => "DesignMismatch"
     RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => "FunctionMissing"
   }
 }
 
-fn count_tagged(cs: List<product.altra_motherboard.placement.PlacementRefusal>, wanted: String) -> std.integer.Int {
+fn count_tagged(cs: List<product.altra_motherboard.placement.PlacementRefusal>, wanted: String) -> Int {
   fold(cs, init: 0, f: fn(acc, r) { if (cause_tag(r: r) as String) == wanted { acc + 1 } else { acc } })
 }
 
@@ -44,9 +44,9 @@ test fn w_the_reference_plan_refuses_because_envelopes_are_outstanding() -> Bool
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      match admit_placement(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p) {
-        PlacementAdmitted { plan: _ } => false
-        PlacementRefused { causes: cs } => count_tagged(cs: cs, wanted: "EnvelopeMissing") > 0
+      match product.altra_motherboard.placement.admit_placement(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: p) {
+        product.altra_motherboard.placement.PlacementAdmitted { plan: _ } => false
+        product.altra_motherboard.placement.PlacementRefused { causes: cs } => count_tagged(cs: cs, wanted: "EnvelopeMissing") > 0
       }
   }
 }
@@ -58,8 +58,8 @@ test fn w_the_population_is_complete_so_the_refusal_is_only_about_envelopes() ->
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      count_tagged(cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p), wanted: "RoleUnfilled") == 0
-        && count_tagged(cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p), wanted: "RoleUnjustified") == 0
+      count_tagged(cs: product.altra_motherboard.placement.placement_causes(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: p), wanted: "RoleUnfilled") == 0
+        && count_tagged(cs: product.altra_motherboard.placement.placement_causes(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: p), wanted: "RoleUnjustified") == 0
   }
 }
 
@@ -70,8 +70,8 @@ test fn w_the_outstanding_obligations_are_counted_exactly() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      established_envelope_count(plan: p) == 5
-        && outstanding_obligation_count(plan: p) == 12
+      product.altra_motherboard.placement.established_envelope_count(plan: p) == 5
+        && product.altra_motherboard.placement.outstanding_obligation_count(plan: p) == 12
   }
 }
 
@@ -82,11 +82,11 @@ test fn w_the_outstanding_obligations_are_counted_exactly() -> Bool {
 // binding; asserting it separately keeps the control below from passing vacuously if the two
 // standings ever converge.
 test fn w_the_socket_and_package_standings_are_distinguishable() -> Bool {
-  let socket_has_blocker = match subject_blocker(fact: socket_standing.fact, carriage: socket_standing.carriage) {
+  let socket_has_blocker = match product.altra_motherboard.attachment_stack.subject_blocker(fact: socket_standing.fact, carriage: socket_standing.carriage) {
     Present { value: _ } => true
     Absent => false
   }
-  let package_has_none = match subject_blocker(fact: processor_package_standing.fact, carriage: processor_package_standing.carriage) {
+  let package_has_none = match product.altra_motherboard.attachment_stack.subject_blocker(fact: processor_package_standing.fact, carriage: processor_package_standing.carriage) {
     Absent => true
     Present { value: _ } => false
   }
@@ -105,16 +105,16 @@ test fn w_the_socket_and_package_standings_are_distinguishable() -> Bool {
 // socket gap IS the socket layer's blocker, and that claim should survive the layer changing kind.
 fn blocker_payload(b: product.altra_motherboard.attachment_stack.FactAuthorityBlocker) -> String {
   match b {
-    NeedsSomeoneToFindTheDocument { what_is_missing: w } => w as String
-    NeedsCommercialAccess { subject: sj, access_route: _ } => sj as String
-    NeedsARedistributionDecision { reason: r } => r as String
-    NeedsAHumanToReadTheDrawing { figure: _, what_is_drawn: d } => d as String
-    NeedsTheStandingItselfRepaired { refusal: _ } => "standing-self-contradictory"
+    product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: w } => w as String
+    product.altra_motherboard.attachment_stack.NeedsCommercialAccess { subject: sj, access_route: _ } => sj as String
+    product.altra_motherboard.attachment_stack.NeedsARedistributionDecision { reason: r } => r as String
+    product.altra_motherboard.attachment_stack.NeedsAHumanToReadTheDrawing { figure: _, what_is_drawn: d } => d as String
+    product.altra_motherboard.attachment_stack.NeedsTheStandingItselfRepaired { refusal: _ } => "standing-self-contradictory"
   }
 }
 
 fn socket_layer_gap_text() -> String {
-  match subject_blocker(fact: socket_standing.fact, carriage: socket_standing.carriage) {
+  match product.altra_motherboard.attachment_stack.subject_blocker(fact: socket_standing.fact, carriage: socket_standing.carriage) {
     Present { value: b } => blocker_payload(b: b)
     Absent => ""
   }
@@ -126,12 +126,12 @@ test fn w_the_plan_socket_obligation_carries_the_socket_layers_own_blocker() -> 
     Present { value: p } =>
       (socket_layer_gap_text() as String) != ""
         && fold(p.components, init: false, f: fn(acc, c) {
-          if !roles_equal(a: c.role, b: ProcessorSocket) {
+          if !product.altra_motherboard.placement.roles_equal(a: c.role, b: product.altra_motherboard.placement.ProcessorSocket) {
             acc
           } else {
             match c.envelope {
-              EnvelopeEstablished { envelope: _, source: _ } => acc
-              EnvelopeNotEstablished { gap: g } =>
+              product.altra_motherboard.placement.EnvelopeEstablished { envelope: _, source: _ } => acc
+              product.altra_motherboard.placement.EnvelopeNotEstablished { gap: g } =>
                 acc || (blocker_payload(b: g) as String) == (socket_layer_gap_text() as String)
             }
           }
@@ -150,23 +150,23 @@ test fn w_only_established_components_reach_the_geometry_bridge() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      fold(placeable_components(plan: p), init: 0, f: fn(acc, _c) { acc + 1 }) == 5
-        && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
+      fold(product.altra_motherboard.placement.placeable_components(plan: p), init: 0, f: fn(acc, _c) { acc + 1 }) == 5
+        && fold(product.altra_motherboard.placement.placeable_components(plan: p), init: false, f: fn(acc, c) {
           acc || (c.identity as String) == "board_control_cpld"
         })
-        && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
+        && fold(product.altra_motherboard.placement.placeable_components(plan: p), init: false, f: fn(acc, c) {
           acc || (c.identity as String) == "processor_package"
         })
-        && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
+        && fold(product.altra_motherboard.placement.placeable_components(plan: p), init: false, f: fn(acc, c) {
           acc || (c.identity as String) == "host_phy"
         })
-        && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
+        && fold(product.altra_motherboard.placement.placeable_components(plan: p), init: false, f: fn(acc, c) {
           acc || (c.identity as String) == "power_stage"
         })
-        && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
+        && fold(product.altra_motherboard.placement.placeable_components(plan: p), init: false, f: fn(acc, c) {
           acc || (c.identity as String) == "power_good"
         })
-        && fold(placeable_components(plan: p), init: true, f: fn(acc, c) {
+        && fold(product.altra_motherboard.placement.placeable_components(plan: p), init: true, f: fn(acc, c) {
           acc && (c.identity as String) != "cpu_socket"
         })
   }
@@ -178,11 +178,11 @@ test fn w_only_established_components_reach_the_geometry_bridge() -> Bool {
 // the row currently says. Micrometres because the datasheet's third decimal place is significant:
 // 77.080 mm is 77080 um exactly, and a carrier in millimetres would have to round it.
 test fn w_the_package_envelope_carries_the_cited_body_extent() -> Bool {
-  match processor_package_envelope {
-    EnvelopeNotEstablished { gap: _ } => false
-    EnvelopeEstablished { envelope: e, source: _ } =>
-      micrometer_count(m: e.body_width) == 77080
-        && micrometer_count(m: e.body_height) == 67000
+  match product.altra_motherboard.placement.processor_package_envelope {
+    product.altra_motherboard.placement.EnvelopeNotEstablished { gap: _ } => false
+    product.altra_motherboard.placement.EnvelopeEstablished { envelope: e, source: _ } =>
+      std.measure.micrometer_count(m: e.body_width) == 77080
+        && std.measure.micrometer_count(m: e.body_height) == 67000
         && (e.package_designator as String) == "FCLGA4926"
   }
 }
@@ -193,33 +193,33 @@ test fn w_the_package_envelope_carries_the_cited_body_extent() -> Bool {
 // ordering against a package whose dimensions came from a different authority entirely is what
 // makes the scale claim independent of the row being tested.
 test fn w_the_package_is_larger_than_the_cpld_by_orders_of_magnitude() -> Bool {
-  match processor_package_envelope {
-    EnvelopeNotEstablished { gap: _ } => false
-    EnvelopeEstablished { envelope: pkg, source: _ } =>
-      match board_control_envelope {
-        EnvelopeNotEstablished { gap: _ } => false
-        EnvelopeEstablished { envelope: cpld, source: _ } =>
-          micrometer_count(m: pkg.body_width) > (micrometer_count(m: cpld.body_width) * 3)
-            && micrometer_count(m: pkg.body_height) > (micrometer_count(m: cpld.body_height) * 3)
+  match product.altra_motherboard.placement.processor_package_envelope {
+    product.altra_motherboard.placement.EnvelopeNotEstablished { gap: _ } => false
+    product.altra_motherboard.placement.EnvelopeEstablished { envelope: pkg, source: _ } =>
+      match product.altra_motherboard.placement.board_control_envelope {
+        product.altra_motherboard.placement.EnvelopeNotEstablished { gap: _ } => false
+        product.altra_motherboard.placement.EnvelopeEstablished { envelope: cpld, source: _ } =>
+          std.measure.micrometer_count(m: pkg.body_width) > (std.measure.micrometer_count(m: cpld.body_width) * 3)
+            && std.measure.micrometer_count(m: pkg.body_height) > (std.measure.micrometer_count(m: cpld.body_height) * 3)
       }
   }
 }
 
-fn memory_role_count(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> std.integer.Int {
-  fold(required_roles(d: d), init: 0, f: fn(acc, r) {
-    if (role_tag(r: r) as String) == "MemoryModuleSlot" { acc + 1 } else { acc }
+fn memory_role_count(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> Int {
+  fold(product.altra_motherboard.placement.required_roles(d: d), init: 0, f: fn(acc, r) {
+    if (product.altra_motherboard.placement.role_tag(r: r) as String) == "MemoryModuleSlot" { acc + 1 } else { acc }
   })
 }
 
 fn requires_slot(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, c: product.altra_motherboard.minimal_design.DdrChannelIdentity, p: product.altra_motherboard.minimal_design.DimmSlotPosition) -> Bool {
-  fold(required_roles(d: d), init: false, f: fn(acc, r) {
-    acc || roles_equal(a: r, b: product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: c, position: p } })
+  fold(product.altra_motherboard.placement.required_roles(d: d), init: false, f: fn(acc, r) {
+    acc || product.altra_motherboard.placement.roles_equal(a: r, b: product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: c, position: p } })
   })
 }
 
 fn design_over(t: product.altra_motherboard.minimal_design.ActiveDdrTopology) -> product.altra_motherboard.minimal_design.AltraMinimalMotherboard {
   product.altra_motherboard.minimal_design.AltraMinimalMotherboard {
-    intent: Production,
+    intent: product.altra_motherboard.minimal_design.Production,
     memory: product.altra_motherboard.minimal_design.MemoryConfiguration { topology: t },
     pcie_lanes_broken_out: 4,
   }
@@ -233,13 +233,13 @@ fn design_over(t: product.altra_motherboard.minimal_design.ActiveDdrTopology) ->
 // authored sets, so this witness fails if either axis stops being consulted.
 test fn w_the_required_roles_are_the_named_slots_not_a_generated_range() -> Bool {
   let split = design_over(t: product.altra_motherboard.minimal_design.ActiveDdrTopology {
-    populated_channels: [DdrChannel0, DdrChannel1, DdrChannel4, DdrChannel5],
-    positions_per_channel: [FirstDimmOnChannel, SecondDimmOnChannel],
+    populated_channels: [product.altra_motherboard.minimal_design.DdrChannel0, product.altra_motherboard.minimal_design.DdrChannel1, product.altra_motherboard.minimal_design.DdrChannel4, product.altra_motherboard.minimal_design.DdrChannel5],
+    positions_per_channel: [product.altra_motherboard.minimal_design.FirstDimmOnChannel, product.altra_motherboard.minimal_design.SecondDimmOnChannel],
   })
-  memory_role_count(d: altra_1p_minimum) == 4
+  memory_role_count(d: product.altra_motherboard.minimal_design.altra_1p_minimum) == 4
     && memory_role_count(d: split) == 8
-    && requires_slot(d: split, c: DdrChannel5, p: SecondDimmOnChannel)
-    && !requires_slot(d: split, c: DdrChannel2, p: FirstDimmOnChannel)
+    && requires_slot(d: split, c: product.altra_motherboard.minimal_design.DdrChannel5, p: product.altra_motherboard.minimal_design.SecondDimmOnChannel)
+    && !requires_slot(d: split, c: product.altra_motherboard.minimal_design.DdrChannel2, p: product.altra_motherboard.minimal_design.FirstDimmOnChannel)
 }
 
 // A ROLE IS COMPARED STRUCTURALLY, ON BOTH SLOT COORDINATES. Two memory slots on different
@@ -247,14 +247,14 @@ test fn w_the_required_roles_are_the_named_slots_not_a_generated_range() -> Bool
 // position would report a two-DIMM channel as filled by its first slot alone, and the second
 // connector would vanish from the population join without any refusal naming it.
 test fn w_memory_slots_are_distinguished_on_both_coordinates() -> Bool {
-  let c0p0 = product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel0, position: FirstDimmOnChannel } }
-  let c0p1 = product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel0, position: SecondDimmOnChannel } }
-  let c1p0 = product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel1, position: FirstDimmOnChannel } }
-  !roles_equal(a: c0p0, b: c1p0)
-    && !roles_equal(a: c0p0, b: c0p1)
-    && roles_equal(a: c0p1, b: c0p1)
-    && !roles_equal(a: c0p0, b: ProcessorSocket)
-    && roles_equal(a: DebugConnector, b: DebugConnector)
+  let c0p0 = product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: product.altra_motherboard.minimal_design.DdrChannel0, position: product.altra_motherboard.minimal_design.FirstDimmOnChannel } }
+  let c0p1 = product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: product.altra_motherboard.minimal_design.DdrChannel0, position: product.altra_motherboard.minimal_design.SecondDimmOnChannel } }
+  let c1p0 = product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: product.altra_motherboard.minimal_design.DdrChannel1, position: product.altra_motherboard.minimal_design.FirstDimmOnChannel } }
+  !product.altra_motherboard.placement.roles_equal(a: c0p0, b: c1p0)
+    && !product.altra_motherboard.placement.roles_equal(a: c0p0, b: c0p1)
+    && product.altra_motherboard.placement.roles_equal(a: c0p1, b: c0p1)
+    && !product.altra_motherboard.placement.roles_equal(a: c0p0, b: product.altra_motherboard.placement.ProcessorSocket)
+    && product.altra_motherboard.placement.roles_equal(a: product.altra_motherboard.placement.DebugConnector, b: product.altra_motherboard.placement.DebugConnector)
 }
 
 // THE DISCRIMINATING RED FOR THE POPULATION JOIN. A plan holding only the CPLD is missing sixteen
@@ -269,11 +269,11 @@ test fn w_a_plan_missing_roles_names_every_one_of_them() -> Bool {
     Absent => false
     Present { value: p } =>
       count_tagged(
-        cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: plan_with_only(cs: [product.altra_motherboard.placement.PlannedComponent {
+        cs: product.altra_motherboard.placement.placement_causes(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: plan_with_only(cs: [product.altra_motherboard.placement.PlannedComponent {
           identity: "board_control_cpld",
-          role: BoardControlCpld,
-          envelope: board_control_envelope,
-          origin: point2(frame: altra_board_frame(), x: 240000, y: 200000),
+          role: product.altra_motherboard.placement.BoardControlCpld,
+          envelope: product.altra_motherboard.placement.board_control_envelope,
+          origin: std.affine_space.point2(frame: product.altra_motherboard.placement.altra_board_frame(), x: 240000, y: 200000),
         }], template: p)),
         wanted: "RoleUnfilled"
       ) == 16
@@ -287,11 +287,11 @@ test fn w_a_component_filling_no_required_role_refuses() -> Bool {
     Absent => false
     Present { value: p } =>
       count_tagged(
-        cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: plan_with_only(cs: [product.altra_motherboard.placement.PlannedComponent {
+        cs: product.altra_motherboard.placement.placement_causes(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: plan_with_only(cs: [product.altra_motherboard.placement.PlannedComponent {
           identity: "dimm_slot_spurious",
-          role: product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel5, position: SecondDimmOnChannel } },
-          envelope: board_control_envelope,
-          origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
+          role: product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: product.altra_motherboard.minimal_design.DdrChannel5, position: product.altra_motherboard.minimal_design.SecondDimmOnChannel } },
+          envelope: product.altra_motherboard.placement.board_control_envelope,
+          origin: std.affine_space.point2(frame: product.altra_motherboard.placement.altra_board_frame(), x: 10000, y: 10000),
         }], template: p)),
         wanted: "RoleUnjustified"
       ) == 1
@@ -307,7 +307,7 @@ test fn w_every_planned_component_has_a_distinct_identity() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      count_tagged(cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p), wanted: "IdentityRepeated") == 0
+      count_tagged(cs: product.altra_motherboard.placement.placement_causes(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: p), wanted: "IdentityRepeated") == 0
   }
 }
 
@@ -319,14 +319,14 @@ test fn w_two_components_sharing_an_identity_refuse_once() -> Bool {
     Absent => false
     Present { value: p } =>
       count_tagged(
-        cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: plan_with_only(cs: [
+        cs: product.altra_motherboard.placement.placement_causes(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: plan_with_only(cs: [
           product.altra_motherboard.placement.PlannedComponent {
-            identity: "collides", role: BoardControlCpld, envelope: board_control_envelope,
-            origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
+            identity: "collides", role: product.altra_motherboard.placement.BoardControlCpld, envelope: product.altra_motherboard.placement.board_control_envelope,
+            origin: std.affine_space.point2(frame: product.altra_motherboard.placement.altra_board_frame(), x: 10000, y: 10000),
           },
           product.altra_motherboard.placement.PlannedComponent {
-            identity: "collides", role: ResetController, envelope: board_control_envelope,
-            origin: point2(frame: altra_board_frame(), x: 20000, y: 20000),
+            identity: "collides", role: ResetController, envelope: product.altra_motherboard.placement.board_control_envelope,
+            origin: std.affine_space.point2(frame: product.altra_motherboard.placement.altra_board_frame(), x: 20000, y: 20000),
           },
         ], template: p)),
         wanted: "IdentityRepeated"
@@ -342,11 +342,11 @@ test fn w_a_partial_board_reports_the_subset_arm_carrying_what_it_did_not_check(
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      match board_body_layout_standing(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p) {
-        BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n, geometry: _ } =>
-          n == 12 && n == parts_not_geometrically_checked(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p)
-        BodyLayoutAdmittedOverEveryRequiredPart { article: _ } => false
-        BodyLayoutRefused { causes: _ } => false
+      match product.altra_motherboard.placement.board_body_layout_standing(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: p) {
+        product.altra_motherboard.placement.BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n, geometry: _ } =>
+          n == 12 && n == product.altra_motherboard.placement.parts_not_geometrically_checked(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: p)
+        product.altra_motherboard.placement.BodyLayoutAdmittedOverEveryRequiredPart { article: _ } => false
+        product.altra_motherboard.placement.BodyLayoutRefused { causes: _ } => false
       }
   }
 }
@@ -358,14 +358,14 @@ test fn w_a_present_but_unjustified_part_is_not_counted_as_unchecked() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      parts_not_geometrically_checked(
-        d: altra_1p_minimum,
-        d_ref: altra_1p_minimum_ref(),
+      product.altra_motherboard.placement.parts_not_geometrically_checked(
+        d: product.altra_motherboard.minimal_design.altra_1p_minimum,
+        d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(),
         plan: plan_with_only(cs: concat(p.components, [product.altra_motherboard.placement.PlannedComponent {
           identity: "spurious_extra",
-          role: product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: DdrChannel2, position: SecondDimmOnChannel } },
-          envelope: board_control_envelope,
-          origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
+          role: product.altra_motherboard.placement.MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity { channel: product.altra_motherboard.minimal_design.DdrChannel2, position: product.altra_motherboard.minimal_design.SecondDimmOnChannel } },
+          envelope: product.altra_motherboard.placement.board_control_envelope,
+          origin: std.affine_space.point2(frame: product.altra_motherboard.placement.altra_board_frame(), x: 10000, y: 10000),
         }]), template: p)
       ) == 12
   }
@@ -376,7 +376,7 @@ test fn w_a_present_but_unjustified_part_is_not_counted_as_unchecked() -> Bool {
 // that always answers partial. Every required role is given an established envelope on a grid that
 // fits inside the outline and does not overlap, and the complete arm is reached.
 fn every_role_established(template: product.altra_motherboard.placement.BoardPlacementPlan) -> product.altra_motherboard.placement.BoardPlacementPlan {
-  let built = fold(required_roles(d: altra_1p_minimum), init: IndexedComponents { index: 0, out: [] }, f: fn(acc, r) {
+  let built = fold(product.altra_motherboard.placement.required_roles(d: product.altra_motherboard.minimal_design.altra_1p_minimum), init: IndexedComponents { index: 0, out: [] }, f: fn(acc, r) {
     let col = acc.index - ((acc.index / 5) * 5)
     let row = acc.index / 5
     IndexedComponents {
@@ -384,8 +384,8 @@ fn every_role_established(template: product.altra_motherboard.placement.BoardPla
       out: concat(acc.out, [product.altra_motherboard.placement.PlannedComponent {
         identity: "grid_part_{acc.index}",
         role: r,
-        envelope: board_control_envelope,
-        origin: point2(frame: altra_board_frame(), x: 10000 + (col * 30000), y: 10000 + (row * 30000)),
+        envelope: product.altra_motherboard.placement.board_control_envelope,
+        origin: std.affine_space.point2(frame: product.altra_motherboard.placement.altra_board_frame(), x: 10000 + (col * 30000), y: 10000 + (row * 30000)),
       }]),
     }
   })
@@ -393,7 +393,7 @@ fn every_role_established(template: product.altra_motherboard.placement.BoardPla
 }
 
 type IndexedComponents {
-  index: std.integer.Int
+  index: Int
   out: List<product.altra_motherboard.placement.PlannedComponent>
 }
 
@@ -401,10 +401,10 @@ test fn w_a_complete_board_reaches_the_admitted_arm() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      match board_body_layout_standing(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: every_role_established(template: p)) {
-        BodyLayoutAdmittedOverEveryRequiredPart { article: _ } => true
-        BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: _, geometry: _ } => false
-        BodyLayoutRefused { causes: _ } => false
+      match product.altra_motherboard.placement.board_body_layout_standing(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: every_role_established(template: p)) {
+        product.altra_motherboard.placement.BodyLayoutAdmittedOverEveryRequiredPart { article: _ } => true
+        product.altra_motherboard.placement.BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: _, geometry: _ } => false
+        product.altra_motherboard.placement.BodyLayoutRefused { causes: _ } => false
       }
   }
 }
@@ -417,20 +417,20 @@ test fn w_a_complete_board_with_overlapping_bodies_is_refused() -> Bool {
     Absent => false
     Present { value: p } =>
       let complete = every_role_established(template: p)
-      match board_body_layout_standing(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: plan_with_only(
+      match product.altra_motherboard.placement.board_body_layout_standing(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: plan_with_only(
         cs: fold(complete.components, init: [], f: fn(acc, c) {
           concat(acc, [product.altra_motherboard.placement.PlannedComponent {
             identity: c.identity,
             role: c.role,
             envelope: c.envelope,
-            origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
+            origin: std.affine_space.point2(frame: product.altra_motherboard.placement.altra_board_frame(), x: 10000, y: 10000),
           }])
         }),
         template: p
       )) {
-        BodyLayoutRefused { causes: _ } => true
-        BodyLayoutAdmittedOverEveryRequiredPart { article: _ } => false
-        BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: _, geometry: _ } => false
+        product.altra_motherboard.placement.BodyLayoutRefused { causes: _ } => true
+        product.altra_motherboard.placement.BodyLayoutAdmittedOverEveryRequiredPart { article: _ } => false
+        product.altra_motherboard.placement.BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: _, geometry: _ } => false
       }
   }
 }
@@ -445,24 +445,24 @@ test fn w_a_role_filled_twice_refuses_naming_how_many_fill_it() -> Bool {
     Absent => false
     Present { value: p } =>
       fold(
-        placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: plan_with_only(
+        product.altra_motherboard.placement.placement_causes(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: plan_with_only(
           cs: concat(p.components, [product.altra_motherboard.placement.PlannedComponent {
             identity: "second_cpu_socket",
-            role: ProcessorSocket,
-            envelope: board_control_envelope,
-            origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
+            role: product.altra_motherboard.placement.ProcessorSocket,
+            envelope: product.altra_motherboard.placement.board_control_envelope,
+            origin: std.affine_space.point2(frame: product.altra_motherboard.placement.altra_board_frame(), x: 10000, y: 10000),
           }]),
           template: p
         )),
         init: false,
         f: fn(acc, c) {
           acc || match c {
-            RoleFilledMoreThanOnce { role: r, fills: n } => (role_tag(r: r) as String) == "ProcessorSocket" && n == 2
-            RequiredRoleUnfilled { role: _ } => false
-            ComponentEnvelopeNotEstablished { component: _, gap: _ } => false
-            ComponentFillsNoRequiredRole { component: _, role_named: _ } => false
-            PlannedIdentityRepeated { component: _ } => false
-            PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
+            product.altra_motherboard.placement.RoleFilledMoreThanOnce { role: r, fills: n } => (product.altra_motherboard.placement.role_tag(r: r) as String) == "ProcessorSocket" && n == 2
+            product.altra_motherboard.placement.RequiredRoleUnfilled { role: _ } => false
+            product.altra_motherboard.placement.ComponentEnvelopeNotEstablished { component: _, gap: _ } => false
+            product.altra_motherboard.placement.ComponentFillsNoRequiredRole { component: _, role_named: _ } => false
+            product.altra_motherboard.placement.PlannedIdentityRepeated { component: _ } => false
+            product.altra_motherboard.placement.PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
             RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => false
           }
         }
@@ -476,7 +476,7 @@ test fn w_the_reference_plan_fills_every_role_exactly_once() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      count_tagged(cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p), wanted: "RoleFilledTwice") == 0
+      count_tagged(cs: product.altra_motherboard.placement.placement_causes(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: p), wanted: "RoleFilledTwice") == 0
   }
 }
 
@@ -490,10 +490,10 @@ test fn w_a_plan_from_another_design_is_refused_as_incomparable() -> Bool {
     Absent => false
     Present { value: p } =>
       count_tagged(
-        cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: product.altra_motherboard.placement.BoardPlacementPlan {
+        cs: product.altra_motherboard.placement.placement_causes(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: product.altra_motherboard.placement.BoardPlacementPlan {
           frame: p.frame,
           outline: p.outline,
-          design: decl_ref(module_path: "product.altra_motherboard.minimal_design", decl_name: "some_other_board"),
+          design: std.decl_ref.decl_ref(module_path: "product.altra_motherboard.minimal_design", decl_name: "some_other_board"),
           components: p.components,
         }),
         wanted: "DesignMismatch"
@@ -507,15 +507,15 @@ test fn w_the_reference_plan_names_the_design_it_came_from() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      declaration_ref_eq(a: p.design, b: altra_1p_minimum_ref())
-        && count_tagged(cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p), wanted: "DesignMismatch") == 0
+      std.decl_ref.declaration_ref_eq(a: p.design, b: product.altra_motherboard.placement.altra_1p_minimum_ref())
+        && count_tagged(cs: product.altra_motherboard.placement.placement_causes(d: product.altra_motherboard.minimal_design.altra_1p_minimum, d_ref: product.altra_motherboard.placement.altra_1p_minimum_ref(), plan: p), wanted: "DesignMismatch") == 0
   }
 }
 
 fn envelope_source(e: product.altra_motherboard.placement.ComponentEnvelopeStanding) -> std.decl_ref.DeclarationRef? {
   match e {
-    EnvelopeEstablished { envelope: _, source: sc } => Present { value: sc }
-    EnvelopeNotEstablished { gap: _ } => none
+    product.altra_motherboard.placement.EnvelopeEstablished { envelope: _, source: sc } => Present { value: sc }
+    product.altra_motherboard.placement.EnvelopeNotEstablished { gap: _ } => none
   }
 }
 
@@ -525,12 +525,12 @@ fn envelope_source(e: product.altra_motherboard.placement.ComponentEnvelopeStand
 // board claiming the processor package's extent came from the CPLD's datasheet or the reverse.
 // Comparing declarations makes that a decidable question, and this asserts the answer.
 test fn w_the_established_envelopes_cite_distinct_declarations() -> Bool {
-  match envelope_source(e: processor_package_envelope) {
+  match envelope_source(e: product.altra_motherboard.placement.processor_package_envelope) {
     Absent => false
     Present { value: pkg } =>
-      match envelope_source(e: board_control_envelope) {
+      match envelope_source(e: product.altra_motherboard.placement.board_control_envelope) {
         Absent => false
-        Present { value: cpld } => !declaration_ref_eq(a: pkg, b: cpld)
+        Present { value: cpld } => !std.decl_ref.declaration_ref_eq(a: pkg, b: cpld)
       }
   }
 }
@@ -539,10 +539,10 @@ test fn w_the_established_envelopes_cite_distinct_declarations() -> Bool {
 // the same, so the claim above is capable of failing rather than asserting that two things somebody
 // wrote differently are different.
 test fn w_two_envelopes_citing_one_declaration_are_seen_as_the_same() -> Bool {
-  let one = decl_ref(module_path: "planted.module", decl_name: "planted_row")
-  let same = decl_ref(module_path: "planted.module", decl_name: "planted_row")
-  let other = decl_ref(module_path: "planted.module", decl_name: "a_different_row")
-  declaration_ref_eq(a: one, b: same) && !declaration_ref_eq(a: one, b: other)
+  let one = std.decl_ref.decl_ref(module_path: "planted.module", decl_name: "planted_row")
+  let same = std.decl_ref.decl_ref(module_path: "planted.module", decl_name: "planted_row")
+  let other = std.decl_ref.decl_ref(module_path: "planted.module", decl_name: "a_different_row")
+  std.decl_ref.declaration_ref_eq(a: one, b: same) && !std.decl_ref.declaration_ref_eq(a: one, b: other)
 }
 
 // THE BOARD FRAME REGISTERS, AND THE STANDING SAYS SO RATHER THAN AN EMPTY REGISTRY SAYING
@@ -555,9 +555,9 @@ test fn w_two_envelopes_citing_one_declaration_are_seen_as_the_same() -> Bool {
 // BoardFrameRegistrationRefused instead of being replaced downstream by BoardFrameUnregistered,
 // which names a different state.
 test fn w_the_board_frame_registry_is_established_not_silently_empty() -> Bool {
-  match altra_frame_registry() {
-    FrameRegistryEstablished { registry: _ } => true
-    FrameRegistryRefused { cause: _ } => false
+  match product.altra_motherboard.placement.altra_frame_registry() {
+    product.altra_motherboard.placement.FrameRegistryEstablished { registry: _ } => true
+    product.altra_motherboard.placement.FrameRegistryRefused { cause: _ } => false
   }
 }
 
@@ -571,21 +571,21 @@ test fn w_the_board_frame_registry_is_established_not_silently_empty() -> Bool {
 // a gate that dropped roles under every intent would satisfy a one-sided check while quietly
 // removing them from the production board too.
 test fn w_bring_up_drops_exactly_the_three_production_features() -> Bool {
-  let prod = altra_1p_minimum
-  let fixture = AltraMinimalMotherboard {
-    intent: EngineeringBringUp,
+  let prod = product.altra_motherboard.minimal_design.altra_1p_minimum
+  let fixture = product.altra_motherboard.minimal_design.AltraMinimalMotherboard {
+    intent: product.altra_motherboard.minimal_design.EngineeringBringUp,
     memory: prod.memory,
     pcie_lanes_broken_out: prod.pcie_lanes_broken_out,
   }
-  let prod_roles = list_length(items: required_roles(d: prod))
-  let fixture_roles = list_length(items: required_roles(d: fixture))
+  let prod_roles = std.types.list_length(items: product.altra_motherboard.placement.required_roles(d: prod))
+  let fixture_roles = std.types.list_length(items: product.altra_motherboard.placement.required_roles(d: fixture))
   prod_roles - fixture_roles == 3
-    && role_is_required_under(r: HostNetworkPhy, intent: Production)
-    && !role_is_required_under(r: HostNetworkPhy, intent: EngineeringBringUp)
-    && role_is_required_under(r: ManagementNetworkPath, intent: Production)
-    && !role_is_required_under(r: ManagementNetworkPath, intent: EngineeringBringUp)
-    && role_is_required_under(r: StorageEndpoint, intent: Production)
-    && !role_is_required_under(r: StorageEndpoint, intent: EngineeringBringUp)
+    && product.altra_motherboard.placement.role_is_required_under(r: product.altra_motherboard.placement.HostNetworkPhy, intent: product.altra_motherboard.minimal_design.Production)
+    && !product.altra_motherboard.placement.role_is_required_under(r: product.altra_motherboard.placement.HostNetworkPhy, intent: product.altra_motherboard.minimal_design.EngineeringBringUp)
+    && product.altra_motherboard.placement.role_is_required_under(r: product.altra_motherboard.placement.ManagementNetworkPath, intent: product.altra_motherboard.minimal_design.Production)
+    && !product.altra_motherboard.placement.role_is_required_under(r: product.altra_motherboard.placement.ManagementNetworkPath, intent: product.altra_motherboard.minimal_design.EngineeringBringUp)
+    && product.altra_motherboard.placement.role_is_required_under(r: product.altra_motherboard.placement.StorageEndpoint, intent: product.altra_motherboard.minimal_design.Production)
+    && !product.altra_motherboard.placement.role_is_required_under(r: product.altra_motherboard.placement.StorageEndpoint, intent: product.altra_motherboard.minimal_design.EngineeringBringUp)
 }
 
 // THE BOOT PATH IS NOT NEGOTIABLE BY INTENT. Power sequencing, supervision, reset, firmware and
@@ -595,15 +595,15 @@ test fn w_bring_up_drops_exactly_the_three_production_features() -> Bool {
 // supervisor bring-up-only -- the kind of "minimisation" that produces a board which cannot tell a
 // rail that came up from one that did not -- fails here without anyone having to name that role.
 test fn w_every_role_but_the_three_features_survives_the_bring_up_gate() -> Bool {
-  fold(every_non_slot_role(), init: true, f: fn(acc, r) {
-    let is_feature = roles_equal(a: r, b: HostNetworkPhy)
-      || roles_equal(a: r, b: ManagementNetworkPath)
-      || roles_equal(a: r, b: StorageEndpoint)
+  fold(product.altra_motherboard.placement.every_non_slot_role(), init: true, f: fn(acc, r) {
+    let is_feature = product.altra_motherboard.placement.roles_equal(a: r, b: product.altra_motherboard.placement.HostNetworkPhy)
+      || product.altra_motherboard.placement.roles_equal(a: r, b: product.altra_motherboard.placement.ManagementNetworkPath)
+      || product.altra_motherboard.placement.roles_equal(a: r, b: product.altra_motherboard.placement.StorageEndpoint)
     if is_feature {
-      acc && !role_is_required_under(r: r, intent: EngineeringBringUp)
+      acc && !product.altra_motherboard.placement.role_is_required_under(r: r, intent: product.altra_motherboard.minimal_design.EngineeringBringUp)
     } else {
-      acc && role_is_required_under(r: r, intent: EngineeringBringUp)
-        && role_is_required_under(r: r, intent: Production)
+      acc && product.altra_motherboard.placement.role_is_required_under(r: r, intent: product.altra_motherboard.minimal_design.EngineeringBringUp)
+        && product.altra_motherboard.placement.role_is_required_under(r: r, intent: product.altra_motherboard.minimal_design.Production)
     }
   })
 }
@@ -616,21 +616,21 @@ test fn w_every_role_but_the_three_features_survives_the_bring_up_gate() -> Bool
 // check can run would be a decoration -- permanently green by construction and worse than absent,
 // because it would be cited as coverage.
 test fn w_red_the_bring_up_only_arm_is_reachable_and_discriminates() -> Bool {
-  let planted = RequiredOnlyUnderBringUp {
-    basis: RepositoryDesignPolicy { because: "planted: no production role currently claims this arm" },
+  let planted = product.altra_motherboard.placement.RequiredOnlyUnderBringUp {
+    basis: product.altra_motherboard.placement.RepositoryDesignPolicy { because: "planted: no production role currently claims this arm" },
   }
-  let every = RequiredUnderEveryIntent {
-    basis: RepositoryDesignPolicy { because: "planted control" },
+  let every = product.altra_motherboard.placement.RequiredUnderEveryIntent {
+    basis: product.altra_motherboard.placement.RepositoryDesignPolicy { because: "planted control" },
   }
-  let prod_only = RequiredOnlyUnderProduction {
-    basis: RepositoryDesignPolicy { because: "planted control" },
+  let prod_only = product.altra_motherboard.placement.RequiredOnlyUnderProduction {
+    basis: product.altra_motherboard.placement.RepositoryDesignPolicy { because: "planted control" },
   }
-  requirement_applies_under(req: planted, intent: EngineeringBringUp)
-    && !requirement_applies_under(req: planted, intent: Production)
-    && requirement_applies_under(req: every, intent: EngineeringBringUp)
-    && requirement_applies_under(req: every, intent: Production)
-    && !requirement_applies_under(req: prod_only, intent: EngineeringBringUp)
-    && requirement_applies_under(req: prod_only, intent: Production)
+  product.altra_motherboard.placement.requirement_applies_under(req: planted, intent: product.altra_motherboard.minimal_design.EngineeringBringUp)
+    && !product.altra_motherboard.placement.requirement_applies_under(req: planted, intent: product.altra_motherboard.minimal_design.Production)
+    && product.altra_motherboard.placement.requirement_applies_under(req: every, intent: product.altra_motherboard.minimal_design.EngineeringBringUp)
+    && product.altra_motherboard.placement.requirement_applies_under(req: every, intent: product.altra_motherboard.minimal_design.Production)
+    && !product.altra_motherboard.placement.requirement_applies_under(req: prod_only, intent: product.altra_motherboard.minimal_design.EngineeringBringUp)
+    && product.altra_motherboard.placement.requirement_applies_under(req: prod_only, intent: product.altra_motherboard.minimal_design.Production)
 }
 
 // MEMORY SLOTS FOLLOW THE TOPOLOGY, NOT THE GATE. The slot roles are already selected against
@@ -638,9 +638,9 @@ test fn w_red_the_bring_up_only_arm_is_reachable_and_discriminates() -> Bool {
 // intent. This asserts the two mechanisms compose rather than double-count: changing intent alone,
 // with the topology held fixed, must not add or remove a single memory slot.
 test fn w_the_role_gate_does_not_touch_the_memory_slots() -> Bool {
-  let prod = altra_1p_minimum
-  let fixture = AltraMinimalMotherboard {
-    intent: EngineeringBringUp,
+  let prod = product.altra_motherboard.minimal_design.altra_1p_minimum
+  let fixture = product.altra_motherboard.minimal_design.AltraMinimalMotherboard {
+    intent: product.altra_motherboard.minimal_design.EngineeringBringUp,
     memory: prod.memory,
     pcie_lanes_broken_out: prod.pcie_lanes_broken_out,
   }

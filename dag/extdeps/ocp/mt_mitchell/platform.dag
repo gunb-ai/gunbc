@@ -1,22 +1,22 @@
 module extdeps.ocp.mt_mitchell.platform
 
 
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = mt_mitchell_subject_authority_anchor
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.ocp.mt_mitchell.subject.mt_mitchell_subject_authority_anchor
 
 data platform_subject_edge_note: String = "THE SPECIFICATION IDENTITY IS NOT RE-DECLARED HERE. extdeps.ocp.mt_mitchell.subject owns the marketing name, revision, version label, contributor and licence rows; this module carries the board facts the specification states and binds them to that declaration through the subject edge below — the extdeps.ocp.mt_jade.platform shape. Mt. Mitchell and the Ampere Altra Platform Hardware Design Specification stay separate authorities for the reason DESIGN section 3 gives: OCP publishes and licenses this document under the Open Web Foundation agreements with its own revision series and contributor population, Ampere publishes the other under a proprietary marking, and neither may require editing the other's module. Nothing here dispatches between them and neither module imports the other; a consumer that needs both joins them downstream. This module likewise does not widen extdeps.boards.types BaseboardModel — adding a board must not edit a generic product enum."
 
-data mt_mitchell_platform_subject: extdeps.ocp.mt_mitchell.subject.MtMitchellReferencePlatform = mt_mitchell_reference_platform
+data mt_mitchell_platform_subject: extdeps.ocp.mt_mitchell.subject.MtMitchellReferencePlatform = extdeps.ocp.mt_mitchell.subject.mt_mitchell_reference_platform
 
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
   subject: extdeps.external_authority.ExternalSubjectRef {
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ocp.mt_mitchell.subject",
       decl_name: "mt_mitchell_reference_platform",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.ocp.mt_mitchell.platform.extdeps_external_authority_anchor,
-  further_citations: [internet_archive_mt_mitchell_capture_authority]
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [extdeps.ocp.mt_mitchell.subject.internet_archive_mt_mitchell_capture_authority]
 }
 
 data mt_mitchell_ingestion_note: String = "READ, NOT RECALLED — AND READ FROM A CAPTURE, NOT FROM THE PUBLISHER. The publisher locator is the anchor because that is where the document lives, and an unauthenticated fetch of it returned HTTP 403 on 2026-08-14; the bytes behind every row here came from the dated Internet Archive capture of that same URL, which the subject module owns as internet_archive_mt_mitchell_capture_authority and this module cites rather than re-mints (review 51969). Saying we read Mt. Mitchell without that distinction would assert we read the publisher copy, which we did not. The licence is what makes carrying it admissible: usage is under the Open Web Foundation Modified Final Specification Agreement quoted in the document's own licence section, and that section states the licence does NOT apply to the Appendices, which are reference-only and non-normative. No row in this module is attributed to an appendix. The revision-table rows below are the document's section 3 and are carried because the subject module fixes ONE revision label: the series is what makes 0.80 the current one rather than a bare string, and a later revision would join against these rows instead of silently replacing a literal."
@@ -56,9 +56,9 @@ data mt_mitchell_revision_table: List<OcpSpecificationRevisionRow> = [
 // DERIVED from the option instead of stored, so an option whose slot count does
 // not divide by its channel count fails a join rather than reading plausibly.
 type MtMitchellArchitectureOption {
-  socket_count: std.integer.Int
-  ddr_channels_per_socket: std.integer.Int
-  dimm_slot_total: std.integer.Int
+  socket_count: Int
+  ddr_channels_per_socket: Int
+  dimm_slot_total: Int
 }
 
 data mt_mitchell_two_socket_eight_channel: MtMitchellArchitectureOption = MtMitchellArchitectureOption {
@@ -85,11 +85,11 @@ data mt_mitchell_architecture_options: List<MtMitchellArchitectureOption> = [
   mt_mitchell_one_socket_twelve_channel,
 ]
 
-fn architecture_channel_total(option: MtMitchellArchitectureOption) -> std.integer.Int {
+fn architecture_channel_total(option: MtMitchellArchitectureOption) -> Int {
   option.socket_count * option.ddr_channels_per_socket
 }
 
-fn architecture_dimms_per_channel(option: MtMitchellArchitectureOption) -> std.integer.Int {
+fn architecture_dimms_per_channel(option: MtMitchellArchitectureOption) -> Int {
   option.dimm_slot_total / architecture_channel_total(option: option)
 }
 
@@ -100,25 +100,25 @@ fn architecture_slot_count_divides_channels(option: MtMitchellArchitectureOption
 }
 
 // MEMORY (section 7.1 feature table): DDR5 RDIMM with ECC.
-data mt_mitchell_memory_generation: extdeps.memory.types.DramGeneration = dram_generation_ddr5
+data mt_mitchell_memory_generation: extdeps.memory.types.DramGeneration = extdeps.memory.types.dram_generation_ddr5
 
-data mt_mitchell_dimm_buffering: extdeps.memory.types.DimmBuffering = Registered
+data mt_mitchell_dimm_buffering: extdeps.memory.types.DimmBuffering = extdeps.memory.types.Registered
 
 data mt_mitchell_dimm_ecc_required: Bool = true
 
 // EXPANSION (sections 7.1 and 7.5): the board's PCIe generation is Gen5.
-data mt_mitchell_pcie_generation: extdeps.storage.types.PcieGeneration = Gen5
+data mt_mitchell_pcie_generation: extdeps.storage.types.PcieGeneration = extdeps.storage.types.Gen5
 
 // CONNECTORS (section 7.2). Thirteen MCIO connectors, six carrying CPU0 PCIe
 // ports and seven carrying CPU1 ports; the total is derived so the document's
 // own cross-foot is the check rather than three independent literals.
-data mt_mitchell_mcio_connectors_cpu0: std.integer.Int = 6
+data mt_mitchell_mcio_connectors_cpu0: Int = 6
 
-data mt_mitchell_mcio_connectors_cpu1: std.integer.Int = 7
+data mt_mitchell_mcio_connectors_cpu1: Int = 7
 
-data mt_mitchell_mcio_connector_total: std.integer.Int = 13
+data mt_mitchell_mcio_connector_total: Int = 13
 
-fn mt_mitchell_derived_mcio_connector_total() -> std.integer.Int {
+fn mt_mitchell_derived_mcio_connector_total() -> Int {
   mt_mitchell_mcio_connectors_cpu0 + mt_mitchell_mcio_connectors_cpu1
 }
 
@@ -132,11 +132,11 @@ type OcpNicHostMode
   | SingleHostX16
   | MultiHostX16
 
-data mt_mitchell_ocp_nic_connector_count: std.integer.Int = 2
+data mt_mitchell_ocp_nic_connector_count: Int = 2
 
 data mt_mitchell_ocp_nic_connector_family: std.types.NonEmptyStr = "SFF-TA-1002 4C+"
 
-fn ocp_nic_host_mode_lane_count(mode: OcpNicHostMode) -> std.integer.Int {
+fn ocp_nic_host_mode_lane_count(mode: OcpNicHostMode) -> Int {
   match mode {
     SingleHostX8 => 8
     SingleHostX16 => 16
@@ -173,7 +173,7 @@ data mt_mitchell_inter_processor_link_ports: List<MtMitchellInterProcessorLinkPo
   Socket1RootComplex6,
 ]
 
-fn inter_processor_link_socket(port: MtMitchellInterProcessorLinkPort) -> std.integer.Int {
+fn inter_processor_link_socket(port: MtMitchellInterProcessorLinkPort) -> Int {
   match port {
     Socket0RootComplex0 => 0
     Socket0RootComplex5 => 0
@@ -198,11 +198,11 @@ data mt_mitchell_bmc_placement: MtMitchellBmcPlacement = BmcOnDcScmModule {
 // MECHANICAL (section 7.2). Micrometres keep 424.9 mm and 422.9 mm exact: both
 // are tenths of a millimetre, so a millimetre-grained carrier would have had to
 // round the specification's own figures.
-data mt_mitchell_board_width: std.measure.Micrometer = micrometer(count: 424900)
+data mt_mitchell_board_width: std.measure.Micrometer = std.measure.micrometer(count: 424900)
 
-data mt_mitchell_board_depth: std.measure.Micrometer = micrometer(count: 422900)
+data mt_mitchell_board_depth: std.measure.Micrometer = std.measure.micrometer(count: 422900)
 
-data mt_mitchell_chassis_height: std.measure.RackUnit = rack_unit(count: 2)
+data mt_mitchell_chassis_height: std.measure.RackUnit = std.measure.rack_unit(count: 2)
 
 data mt_mitchell_master_socket_boot_note: String = "Section 7.2: the master CPU socket sits on the right side of the motherboard and is REQUIRED to boot the system when a single CPU is populated. That is an asymmetry between the two sockets, so a dual-socket board with one socket filled is not the one-socket architecture option — it is a specific population of the dual-socket board, and which socket is filled decides whether it boots at all."
 

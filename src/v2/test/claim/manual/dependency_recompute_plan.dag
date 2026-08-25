@@ -4,46 +4,46 @@ module v2.test.manual.dependency_recompute_plan
 data refinement_subject_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^refinement_subject_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data refinement_new_field_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^refinement_new_field_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data refinement_after_node: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
     v2.std.node.Edge {
       label: v2.std.node.Named { name: ^refinement_new_field_symbol },
       target: refinement_new_field_node
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data testclaim_lens_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^testclaim_lens_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data boundary_test_lens_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^boundary_test_lens_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data target_test_projection_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^target_test_projection_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data dependency_projection_subgraph: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
     v2.std.node.Edge {
       label: v2.std.node.Named { name: ^testclaim_lens_symbol },
@@ -58,7 +58,7 @@ data dependency_projection_subgraph: v2.std.node.Node = v2.std.node.Node {
       target: target_test_projection_node
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data refinement_change_path: v2.std.node.Path = v2.std.node.Path {
@@ -66,7 +66,7 @@ data refinement_change_path: v2.std.node.Path = v2.std.node.Path {
 }
 
 data refinement_change: v2.std.change.Change = v2.std.change.Change {
-  kind: NodeChanged,
+  kind: v2.std.change.NodeChanged,
   subject: refinement_after_node,
   at: refinement_change_path
 }
@@ -78,21 +78,21 @@ data refinement_change_set: v2.std.change.ChangeSet = v2.std.change.ChangeSet {
 data testclaim_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: refinement_after_node,
   dependent: testclaim_lens_node,
-  kind: VerifiedBy,
+  kind: v2.std.dependency.VerifiedBy,
   usage_site: testclaim_lens_node
 }
 
 data boundary_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: refinement_after_node,
   dependent: boundary_test_lens_node,
-  kind: VerifiedBy,
+  kind: v2.std.dependency.VerifiedBy,
   usage_site: boundary_test_lens_node
 }
 
 data target_projection_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: boundary_test_lens_node,
   dependent: target_test_projection_node,
-  kind: ProjectionDependsOn,
+  kind: v2.std.dependency.ProjectionDependsOn,
   usage_site: target_test_projection_node
 }
 
@@ -102,25 +102,25 @@ data refinement_affected_set: v2.std.change.AffectedSet = v2.std.change.Affected
     v2.std.change.AffectedDependency {
       change: refinement_change,
       dependency: testclaim_dependency,
-      target: DependencyDependent
+      target: v2.std.change.DependencyDependent
     },
     v2.std.change.AffectedDependency {
       change: refinement_change,
       dependency: boundary_dependency,
-      target: DependencyDependent
+      target: v2.std.change.DependencyDependent
     },
     v2.std.change.AffectedDependency {
       change: refinement_change,
       dependency: target_projection_dependency,
-      target: DependencyDependent
+      target: v2.std.change.DependencyDependent
     }
   ],
   exclusions: [],
-  restricted_to: [ProjectionDependsOn, VerifiedBy]
+  restricted_to: [v2.std.dependency.ProjectionDependsOn, v2.std.dependency.VerifiedBy]
 }
 
 data refinement_recompute_plan: v2.std.change.RecomputePlan = v2.std.change.RecomputePlan {
   affected: refinement_affected_set,
-  layers: topological_layers(graph_node: dependency_projection_subgraph),
+  layers: v2.std.dependency.topological_layers(graph_node: dependency_projection_subgraph),
   diagnostic: v2.std.diagnostic.Accepted { value: ^dependency_recompute_ok, diagnostics: v2.std.diagnostic.None }
 }

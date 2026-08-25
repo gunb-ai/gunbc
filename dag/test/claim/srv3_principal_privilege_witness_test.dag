@@ -1,6 +1,7 @@
 module test.claim.srv3_principal_privilege_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // WHAT THESE WITNESS. The predecessor composed a privileged chown's owner argument as
 // uid + ":" + gid from two raw stdout captures, so there was no state in which a bad `id` read
@@ -8,27 +9,27 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // used to be unrepresentable, not about the happy path.
 
 test fn a_decimal_uid_decodes() -> Bool {
-  match posix_user_id_from_text(text: "1000") {
-    Absent => false
-    Present { value: u } => u.value == 1000
+  match extdeps.posix.identity.posix_user_id_from_text(text: "1000") {
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: u } => u.value == 1000
   }
 }
 
 // `id` terminates its output with a newline. The ssh arms trimmed and the local arm did not, so
 // the two transports disagreed about what the same command returned.
 test fn surrounding_whitespace_is_trimmed_before_decoding() -> Bool {
-  match posix_user_id_from_text(text: " 1000\n") {
-    Absent => false
-    Present { value: u } => u.value == 1000
+  match extdeps.posix.identity.posix_user_id_from_text(text: " 1000\n") {
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: u } => u.value == 1000
   }
 }
 
 // THE DISCRIMINATING RED FOR THE DECODE. Each of these composed into a syntactically plausible
 // owner argument under the String predecessor.
 test fn non_numeric_output_does_not_decode() -> Bool {
-  match posix_user_id_from_text(text: "id: cannot find name for user ID 1000") {
-    Present { value: _ } => false
-    Absent => true
+  match extdeps.posix.identity.posix_user_id_from_text(text: "id: cannot find name for user ID 1000") {
+    v2.std.optional.Present { value: _ } => false
+    v2.std.optional.Absent => true
   }
 }
 
@@ -37,53 +38,53 @@ test fn non_numeric_output_does_not_decode() -> Bool {
 // that printed nothing decoded to the most privileged principal on the host and was chowned to.
 // The decode alone did not close the hole; the decoder's empty case had to be answered.
 test fn empty_output_does_not_decode() -> Bool {
-  match posix_group_id_from_text(text: "") {
-    Present { value: _ } => false
-    Absent => true
+  match extdeps.posix.identity.posix_group_id_from_text(text: "") {
+    v2.std.optional.Present { value: _ } => false
+    v2.std.optional.Absent => true
   }
 }
 
 // POSIX ids are non-negative. A negative lexeme decodes cleanly and means nothing, which is the
 // same shape as the empty case: a decode that succeeds is not the same as a value that is real.
 test fn a_negative_id_does_not_decode() -> Bool {
-  match posix_user_id_from_text(text: "-1") {
-    Present { value: _ } => false
-    Absent => true
+  match extdeps.posix.identity.posix_user_id_from_text(text: "-1") {
+    v2.std.optional.Present { value: _ } => false
+    v2.std.optional.Absent => true
   }
 }
 
 // Whitespace-only is the empty case after trimming, and it is spelled separately because that is
 // what a probe that captured a newline and nothing else actually produces.
 test fn whitespace_only_output_does_not_decode() -> Bool {
-  match posix_user_id_from_text(text: "  \n ") {
-    Present { value: _ } => false
-    Absent => true
+  match extdeps.posix.identity.posix_user_id_from_text(text: "  \n ") {
+    v2.std.optional.Present { value: _ } => false
+    v2.std.optional.Absent => true
   }
 }
 
 // THE LAW IS NOT "ZERO IS INVALID" -- root is a real principal and uid 0 is a real id. It is that
 // only the explicit lexical representation of zero may construct it. Absence of text may not.
 test fn an_explicit_zero_decodes_to_root() -> Bool {
-  match posix_user_id_from_text(text: "0") {
-    Absent => false
-    Present { value: u } => u.value == 0
+  match extdeps.posix.identity.posix_user_id_from_text(text: "0") {
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: u } => u.value == 0
   }
 }
 
 test fn owner_spec_renders_as_uid_colon_gid() -> Bool {
-  posix_owner_spec_text(
-    spec: PosixOwnerSpec {
-      user: PosixUserId { value: 1000 },
-      group: PosixGroupId { value: 2000 },
+  extdeps.posix.identity.posix_owner_spec_text(
+    spec: extdeps.posix.identity.PosixOwnerSpec {
+      user: extdeps.posix.identity.PosixUserId { value: 1000 },
+      group: extdeps.posix.identity.PosixGroupId { value: 2000 },
     },
   ) == "1000:2000"
 }
 
 test fn chown_argv_names_the_binary_then_the_owner_then_the_path() -> Bool {
-  chown_argv(
-    owner: PosixOwnerSpec {
-      user: PosixUserId { value: 1000 },
-      group: PosixGroupId { value: 1000 },
+  extdeps.tools.chown.chown_argv(
+    owner: extdeps.posix.identity.PosixOwnerSpec {
+      user: extdeps.posix.identity.PosixUserId { value: 1000 },
+      group: extdeps.posix.identity.PosixGroupId { value: 1000 },
     },
     path: "/opt/gunbc",
   ) == ["/usr/bin/chown", "1000:1000", "/opt/gunbc"]
@@ -92,20 +93,20 @@ test fn chown_argv_names_the_binary_then_the_owner_then_the_path() -> Bool {
 // ELEVATION IS APPLIED TO A COMMAND, so the elevated form is the unelevated argv with sudo and its
 // flag in front -- one place, rather than the four call sites that each spelled both.
 test fn elevation_prefixes_sudo_and_the_non_interactive_flag() -> Bool {
-  let elevated = sudo_elevate(command: ["/usr/bin/chown", "1000:1000", "/opt/gunbc"])
-  elevated.bin_path == sudo_binary_path as String &&
+  let elevated = extdeps.sudo.elevation.sudo_elevate(command: ["/usr/bin/chown", "1000:1000", "/opt/gunbc"])
+  elevated.bin_path == extdeps.sudo.elevation.sudo_binary_path as String &&
     elevated.args == ["-n", "/usr/bin/chown", "1000:1000", "/opt/gunbc"]
 }
 
 test fn elevating_an_empty_command_is_the_flag_alone() -> Bool {
-  sudo_elevate(command: []).args == ["-n"]
+  extdeps.sudo.elevation.sudo_elevate(command: []).args == ["-n"]
 }
 
 // THE SYMBOLIC MODE IS THE MODEL, not an octal literal. `+x` ADDS the execute bit; an octal mode
 // REPLACES the whole set, so the two are not interchangeable spellings of "make it executable" --
 // one preserves the other bits and one silently decides them.
 test fn chmod_argv_adds_the_execute_bit_rather_than_replacing_the_mode() -> Bool {
-  chmod_add_executable_argv(path: "/opt/gunbc/bin/websocat") ==
+  extdeps.tools.chmod.chmod_add_executable_argv(path: "/opt/gunbc/bin/websocat") ==
     ["/bin/chmod", "+x", "/opt/gunbc/bin/websocat"]
 }
 
@@ -117,13 +118,13 @@ test fn chmod_argv_adds_the_execute_bit_rather_than_replacing_the_mode() -> Bool
 // editor would helpfully point at the path. Both values are literals here, so the assertion is an
 // independent oracle rather than the module restating itself.
 test fn the_path_resolved_chmod_is_a_second_fact_not_the_binary_path() -> Bool {
-  (chmod_binary_path as String) == "/bin/chmod"
-    && (chmod_path_resolved_program as String) == "chmod"
-    && (chmod_binary_path as String) != (chmod_path_resolved_program as String)
+  (extdeps.tools.chmod.chmod_binary_path as String) == "/bin/chmod"
+    && (extdeps.tools.chmod.chmod_path_resolved_program as String) == "chmod"
+    && (extdeps.tools.chmod.chmod_binary_path as String) != (extdeps.tools.chmod.chmod_path_resolved_program as String)
 }
 
 test fn mkdir_parents_argv_is_the_idempotent_form() -> Bool {
-  mkdir_parents_argv(path: "/opt/gunbc/bin") == ["/usr/bin/mkdir", "-p", "/opt/gunbc/bin"]
+  extdeps.tools.mkdir.mkdir_parents_argv(path: "/opt/gunbc/bin") == ["/usr/bin/mkdir", "-p", "/opt/gunbc/bin"]
 }
 
 // THE CENTRAL RED. An undecodable id must refuse before any privileged mutation is attempted, and
@@ -138,36 +139,36 @@ test fn mkdir_parents_argv_is_the_idempotent_form() -> Bool {
 // existed and could not resolve. Caught in review of #8760 (review 54354), not by me: I ran the new
 // witness file after that change and not the neighbouring one whose subject I had just removed.
 test fn an_undecodable_uid_refuses_the_owner() -> Bool {
-  match srv3_owner_from_texts(
+  match gunbc.host_effect_realize.srv3_owner_from_texts(
     uid_text: "id: cannot find name for user ID 1000",
     gid_text: "1000",
   ) {
-    Srv3EffectiveOwnerObserved { owner: _ } => false
-    Srv3EffectiveOwnerUnobserved { reason: _ } => true
+    gunbc.host_effect_realize.Srv3EffectiveOwnerObserved { owner: _ } => false
+    gunbc.host_effect_realize.Srv3EffectiveOwnerUnobserved { reason: _ } => true
   }
 }
 
 test fn an_undecodable_gid_refuses_the_owner() -> Bool {
-  match srv3_owner_from_texts(uid_text: "1000", gid_text: "") {
-    Srv3EffectiveOwnerObserved { owner: _ } => false
-    Srv3EffectiveOwnerUnobserved { reason: _ } => true
+  match gunbc.host_effect_realize.srv3_owner_from_texts(uid_text: "1000", gid_text: "") {
+    gunbc.host_effect_realize.Srv3EffectiveOwnerObserved { owner: _ } => false
+    gunbc.host_effect_realize.Srv3EffectiveOwnerUnobserved { reason: _ } => true
   }
 }
 
 // The refusal NAMES the text it could not read. A bare "unobserved" would leave an operator with an
 // ensure that refuses and no way to see that `id` is the thing that is wrong.
 test fn the_refusal_carries_the_text_it_could_not_decode() -> Bool {
-  match srv3_owner_from_texts(uid_text: "not-a-uid", gid_text: "1000") {
-    Srv3EffectiveOwnerObserved { owner: _ } => false
-    Srv3EffectiveOwnerUnobserved { reason: why } => string_contains(s: why, pattern: "not-a-uid")
+  match gunbc.host_effect_realize.srv3_owner_from_texts(uid_text: "not-a-uid", gid_text: "1000") {
+    gunbc.host_effect_realize.Srv3EffectiveOwnerObserved { owner: _ } => false
+    gunbc.host_effect_realize.Srv3EffectiveOwnerUnobserved { reason: why } => string_contains(s: why, pattern: "not-a-uid")
   }
 }
 
 // THE POSITIVE CONTROL for the three above: without it they are satisfied by a function that
 // refuses every input.
 test fn two_decodable_ids_observe_an_owner() -> Bool {
-  match srv3_owner_from_texts(uid_text: "1000", gid_text: "2000") {
-    Srv3EffectiveOwnerUnobserved { reason: _ } => false
-    Srv3EffectiveOwnerObserved { owner: o } => o.user.value == 1000 && o.group.value == 2000
+  match gunbc.host_effect_realize.srv3_owner_from_texts(uid_text: "1000", gid_text: "2000") {
+    gunbc.host_effect_realize.Srv3EffectiveOwnerUnobserved { reason: _ } => false
+    gunbc.host_effect_realize.Srv3EffectiveOwnerObserved { owner: o } => o.user.value == 1000 && o.group.value == 2000
   }
 }

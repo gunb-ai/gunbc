@@ -28,7 +28,7 @@ fn symbol_atom_node(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -201,7 +201,8 @@ fn interpretation_bind_interpreter_slot_coherent(b: v2.std.runtime.BindInterpret
 }
 
 fn interpretation_match_interpreter_slot_coherent(m: v2.std.runtime.MatchInterpreter, witness_sym: v2.std.node.Symbol) -> Bool {
-  m.identity == witness_sym}
+  m.identity == witness_sym
+}
 
 fn interpretation_structure_witness_coherent(
   interpretation: v2.std.runtime.InterpretationAlgebra,
@@ -361,7 +362,7 @@ fn test_claim_cache_digest_tag_node(tag: v2.std.node.Symbol) -> v2.std.node.Node
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: tag } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -377,11 +378,11 @@ fn test_claim_evaluation_nodes_digest(c: v2.std.verification.TestClaim) -> v2.st
 
 fn no_correction_reason_digest(reason: v2.std.diagnostic.NoCorrectionReason) -> v2.std.node.Hash {
   match reason {
-    UserInputBoundary =>
+    v2.std.diagnostic.UserInputBoundary =>
       test_claim_symbol_digest(sym: ^test_claim_no_correction_user_input_boundary_tag)
-    AmbiguousIntent =>
+    v2.std.diagnostic.AmbiguousIntent =>
       test_claim_symbol_digest(sym: ^test_claim_no_correction_ambiguous_intent_tag)
-    ExternalContractUnknown =>
+    v2.std.diagnostic.ExternalContractUnknown =>
       test_claim_symbol_digest(sym: ^test_claim_no_correction_external_contract_unknown_tag)
     CorrectionNotModeled =>
       test_claim_symbol_digest(sym: ^test_claim_no_correction_correction_not_modeled_tag)
@@ -390,12 +391,12 @@ fn no_correction_reason_digest(reason: v2.std.diagnostic.NoCorrectionReason) -> 
 
 fn correction_verdict_digest(c: v2.std.diagnostic.Correction) -> v2.std.node.Hash {
   match c {
-    Suggested { node: n } =>
+    v2.std.diagnostic.Suggested { node: n } =>
       v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_correction_suggested_tag),
         b: v2.std.node.content_hash(n: n)
       )
-    Unavailable { reason: r } =>
+    v2.std.diagnostic.Unavailable { reason: r } =>
       v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_correction_unavailable_tag),
         b: no_correction_reason_digest(reason: r)
@@ -405,8 +406,8 @@ fn correction_verdict_digest(c: v2.std.diagnostic.Correction) -> v2.std.node.Has
 
 fn byte_offset_cache_key_extent_component(key: v2.std.node.ByteOffsetCacheKey) -> v2.std.node.Hash {
   match key {
-    ByteOffsetCacheEligible { digest: digest } => digest
-    ByteOffsetCacheIneligible {
+    v2.std.node.ByteOffsetCacheEligible { digest: digest } => digest
+    v2.std.node.ByteOffsetCacheIneligible {
       boundary_tag: boundary_tag,
       witness: witness
     } =>
@@ -422,9 +423,9 @@ fn byte_offset_cache_key_extent_component(key: v2.std.node.ByteOffsetCacheKey) -
 
 fn extent_cache_digest(e: v2.std.diagnostic.Extent) -> v2.std.node.Hash {
   match e {
-    WholeFile =>
+    v2.std.diagnostic.WholeFile =>
       test_claim_symbol_digest(sym: ^test_claim_cache_extent_whole_file_tag)
-    ByteRange { start: sa, end: ea } =>
+    v2.std.diagnostic.ByteRange { start: sa, end: ea } =>
       v2.std.node.combine_hash(
         a: v2.std.node.combine_hash(
           a: test_claim_symbol_digest(sym: ^test_claim_cache_extent_byte_range_tag),
@@ -437,17 +438,17 @@ fn extent_cache_digest(e: v2.std.diagnostic.Extent) -> v2.std.node.Hash {
 
 fn locus_cache_digest(at: v2.std.diagnostic.Locus) -> v2.std.node.Hash {
   match at {
-    NodeLocus { anchor: a } =>
+    v2.std.diagnostic.NodeLocus { anchor: a } =>
       v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_node_tag),
         b: v2.std.node.content_hash(n: a.at)
       )
-    PortLocus { anchor: a } =>
+    v2.std.diagnostic.PortLocus { anchor: a } =>
       v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_port_tag),
         b: test_claim_symbol_digest(sym: a.at)
       )
-    Textual { file: f, extent: e } =>
+    v2.std.diagnostic.Textual { file: f, extent: e } =>
       v2.std.node.combine_hash(
         a: test_claim_symbol_digest(sym: ^test_claim_cache_locus_textual_tag),
         b: v2.std.node.combine_hash(
@@ -484,15 +485,15 @@ fn non_empty_diagnostics_cache_digest(d: v2.std.diagnostic.NonEmptyDiagnostics) 
 
 fn test_claim_variant_cache_digest(c: v2.std.verification.TestClaim) -> v2.std.node.Hash {
   match v2.std.verification.test_claim_coproduct_variant(c: c) {
-    TestClaimCompilesClaimVariant =>
+    v2.std.verification.TestClaimCompilesClaimVariant =>
       test_claim_symbol_digest(sym: ^test_claim_cache_variant_compiles_tag)
-    TestClaimDiagnosticClaimVariant =>
+    v2.std.verification.TestClaimDiagnosticClaimVariant =>
       test_claim_symbol_digest(sym: ^test_claim_cache_variant_diagnostic_tag)
-    TestClaimEqualsClaimVariant =>
+    v2.std.verification.TestClaimEqualsClaimVariant =>
       test_claim_symbol_digest(sym: ^test_claim_cache_variant_equals_tag)
-    TestClaimStructuralEqualsClaimVariant =>
+    v2.std.verification.TestClaimStructuralEqualsClaimVariant =>
       test_claim_symbol_digest(sym: ^test_claim_cache_variant_structural_equals_tag)
-    TestClaimRoundTripClaimVariant =>
+    v2.std.verification.TestClaimRoundTripClaimVariant =>
       test_claim_symbol_digest(sym: ^test_claim_cache_variant_roundtrip_tag)
   }
 }
@@ -500,15 +501,15 @@ fn test_claim_variant_cache_digest(c: v2.std.verification.TestClaim) -> v2.std.n
 fn test_claim_claim_body_cache_digest(c: v2.std.verification.TestClaim) -> v2.std.node.Hash {
   let nodes_digest = test_claim_evaluation_nodes_digest(c: c)
   match c {
-    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
+    v2.std.verification.CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
       nodes_digest
-    DiagnosticClaim { expected_rejection: e, label: _, anchor: _, classification: _, input: _ } =>
+    v2.std.verification.DiagnosticClaim { expected_rejection: e, label: _, anchor: _, classification: _, input: _ } =>
       v2.std.node.combine_hash(a: nodes_digest, b: non_empty_diagnostics_cache_digest(d: e))
-    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+    v2.std.verification.EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
       nodes_digest
-    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+    v2.std.verification.StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
       nodes_digest
-    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+    v2.std.verification.RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
       nodes_digest
   }
 }
@@ -564,9 +565,9 @@ fn witness_cache_violates_digest(diag: v2.std.diagnostic.Diagnostic) -> v2.std.n
 
 fn descent_witness_digest(d: Witness<v2.std.cardinality.TerminationProof>) -> v2.std.node.Hash {
   match d {
-    Holds { value: proof } =>
+    v2.std.witness.Holds { value: proof } =>
       witness_cache_holds_digest(payload: termination_proof_digest(proof: proof))
-    Violates { diagnostic: diag } => witness_cache_violates_digest(diag: diag)
+    v2.std.witness.Violates { diagnostic: diag } => witness_cache_violates_digest(diag: diag)
   }
 }
 
@@ -574,13 +575,13 @@ fn eval_grounding_not_derived_digest_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^eval_grounding_not_derived_digest_tag } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn inferred_facts_digest(facts: v2.compiler.inferred_tree.InferredFacts) -> v2.std.node.Hash {
   match facts.grounding {
-    DerivedGrounding { grounding: g } =>
+    v2.compiler.inferred_tree.DerivedGrounding { grounding: g } =>
       v2.std.node.combine_hash(
         a: v2.std.node.content_hash(n: g.node),
         b: v2.std.node.combine_hash(
@@ -591,7 +592,7 @@ fn inferred_facts_digest(facts: v2.compiler.inferred_tree.InferredFacts) -> v2.s
           b: descent_witness_digest(d: v2.compiler.infer.inferred_facts_descent(facts: facts))
         )
       )
-    GroundingNotDerived { node: n } =>
+    v2.compiler.inferred_tree.GroundingNotDerived { node: n } =>
       v2.std.node.combine_hash(
         a: v2.std.node.combine_hash(
           a: v2.std.node.content_hash(n: eval_grounding_not_derived_digest_node()),
@@ -606,9 +607,9 @@ fn inferred_node_facts_cache_digest(tree: v2.compiler.inferred_tree.InferredTree
   v2.std.node.combine_hash(
     a: v2.std.node.content_hash(n: node),
     b: match inferred_facts_witness_for_eval(tree: tree, node: node) {
-      Holds { value: facts } =>
+      v2.std.witness.Holds { value: facts } =>
         witness_cache_holds_digest(payload: inferred_facts_digest(facts: facts))
-      Violates { diagnostic: diag } => witness_cache_violates_digest(diag: diag)
+      v2.std.witness.Violates { diagnostic: diag } => witness_cache_violates_digest(diag: diag)
     }
   )
 }
@@ -752,7 +753,7 @@ fn eval_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node) -> v2.std
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: v2.std.diagnostic.node_locus(node: node),
-    correction: v2.std.diagnostic.Unavailable { reason: AmbiguousIntent }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.AmbiguousIntent }
   }
 }
 
@@ -760,8 +761,8 @@ fn runtime_binding_lookup_miss(key: v2.std.runtime.EnvironmentBindingKey) -> v2.
   v2.std.optional.optional_absent()
 }
 
-fn empty_runtime_bindings() -> std.algebra.PartialFunction<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
-  std.algebra.PartialFunction {
+fn empty_runtime_bindings() -> PartialFunction<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
+  PartialFunction {
     lookup: runtime_binding_lookup_miss
   }
 }
@@ -786,7 +787,7 @@ fn inferred_facts_witness_for_eval(tree: v2.compiler.inferred_tree.InferredTree,
 
 fn inferred_facts_for_eval(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredFacts> {
   match inferred_facts_witness_for_eval(tree: tree, node: node) {
-    Holds { value: facts } =>
+    v2.std.witness.Holds { value: facts } =>
       if !v2.compiler.infer.inferred_facts_grounding_derived(facts: facts) {
         v2.std.diagnostic.Rejected {
           diagnostics: v2.std.diagnostic.diagnostics_singleton(
@@ -807,13 +808,13 @@ fn inferred_facts_for_eval(tree: v2.compiler.inferred_tree.InferredTree, node: v
         }
       } else {
         match v2.compiler.infer.inferred_facts_descent(facts: facts) {
-          Holds { value: _ } =>
+          v2.std.witness.Holds { value: _ } =>
             v2.std.diagnostic.Accepted { value: facts, diagnostics: v2.std.diagnostic.None }
-          Violates { diagnostic: d } =>
+          v2.std.witness.Violates { diagnostic: d } =>
             v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
         }
       }
-    Violates { diagnostic: d } =>
+    v2.std.witness.Violates { diagnostic: d } =>
       v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
   }
 }
@@ -828,7 +829,7 @@ fn eval_structural_node_for_eval(tree: v2.compiler.inferred_tree.InferredTree, n
 }
 
 fn eval_short_circuit_policy() -> v2.std.diagnostic.StageDiagnosticPolicy {
-  v2.std.diagnostic.StageDiagnosticPolicy { accumulation: ShortCircuit }
+  v2.std.diagnostic.StageDiagnosticPolicy { accumulation: v2.std.diagnostic.ShortCircuit }
 }
 
 fn eval_absorb_structural_child(
@@ -867,11 +868,11 @@ fn eval_runtime_value_acceptance_witness(
 ) -> RuntimeValueAcceptanceWitness {
   RuntimeValueAcceptanceWitness {
     resolved_type: match v2.compiler.infer.inferred_facts_resolved_type(facts: facts) {
-      Violates { diagnostic: _ } =>
+      v2.std.witness.Violates { diagnostic: _ } =>
         v2.std.witness.Violates {
           diagnostic: eval_diagnostic(reason: ^eval_rejected_grounding_not_derived, node: node)
         }
-      Holds { value: declared } =>
+      v2.std.witness.Holds { value: declared } =>
         if declared == v2.std.runtime.runtime_value_resolved_type(value: value) {
           v2.std.witness.Holds { value: v2.std.runtime.runtime_value_resolved_type(value: value) }
         } else {
@@ -904,12 +905,12 @@ fn eval_accept_runtime_value_with_facts(
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   let witness = eval_runtime_value_acceptance_witness(node: node, facts: facts, value: value)
   match witness.resolved_type {
-    Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
-    Holds { value: _ } => match witness.inhabitance {
-      Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
-      Holds { value: _ } => match witness.canonical {
-        Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
-        Holds { value: _ } => v2.std.diagnostic.Accepted { value: value, diagnostics: v2.std.diagnostic.None }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
+    v2.std.witness.Holds { value: _ } => match witness.inhabitance {
+      v2.std.witness.Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
+      v2.std.witness.Holds { value: _ } => match witness.canonical {
+        v2.std.witness.Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
+        v2.std.witness.Holds { value: _ } => v2.std.diagnostic.Accepted { value: value, diagnostics: v2.std.diagnostic.None }
       }
     }
   }
@@ -917,8 +918,8 @@ fn eval_accept_runtime_value_with_facts(
 
 fn eval_witness_outcome<T>(witness: Witness<T>) -> v2.std.diagnostic.Outcome<T> {
   match witness {
-    Holds { value: v } => v2.std.diagnostic.Accepted { value: v, diagnostics: v2.std.diagnostic.None }
-    Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
+    v2.std.witness.Holds { value: v } => v2.std.diagnostic.Accepted { value: v, diagnostics: v2.std.diagnostic.None }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
   }
 }
 
@@ -1000,7 +1001,7 @@ fn eval_binding_key_node(sym: v2.std.node.Symbol) -> v2.std.node.Node {
 
 fn eval_binding_key_from_atom(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.runtime.EnvironmentBindingKey> {
   match node.kind {
-    TypeNode { connective: Atom { identity: sym } } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
       v2.std.optional.optional_present(value: v2.std.runtime.environment_binding_key_for_symbol(sym: sym))
     _ => v2.std.optional.optional_absent()
   }
@@ -1008,9 +1009,9 @@ fn eval_binding_key_from_atom(node: v2.std.node.Node) -> v2.std.optional.Optiona
 
 fn eval_environment_binding_key_from_node(declaration: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.EnvironmentBindingKey> {
   match eval_binding_key_from_atom(node: declaration) {
-    Present { value: key } =>
+    v2.std.optional.Present { value: key } =>
       v2.std.diagnostic.Accepted { value: key, diagnostics: v2.std.diagnostic.None }
-    Absent =>
+    v2.std.optional.Absent =>
       v2.std.diagnostic.outcome_rejected(
         d: eval_diagnostic(reason: ^eval_rejected_bind_key_absent, node: declaration)
       )
@@ -1040,25 +1041,25 @@ fn eval_type_node_atom(
   environment: v2.std.runtime.EvaluationEnvironment
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match node.kind {
-    TypeNode { connective: Atom { identity: _ } } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: _ } } =>
       if v2.extdeps.runtimes.v2_evaluator.v2_eval_is_literal_shaped_node(node: node) {
         interpretation.value.allocate_literal(node, environment)
       } else {
         match eval_runtime_binding_lookup(node: node, environment: environment) {
-          Accepted { value: v, diagnostics: d } =>
+          v2.std.diagnostic.Accepted { value: v, diagnostics: d } =>
             v2.std.diagnostic.Accepted { value: v, diagnostics: d }
-          Rejected { diagnostics: bind_ds } =>
+          v2.std.diagnostic.Rejected { diagnostics: bind_ds } =>
             match interpretation.value.allocate_literal(node, environment) {
-              Accepted { value: v, diagnostics: d } =>
+              v2.std.diagnostic.Accepted { value: v, diagnostics: d } =>
                 v2.std.diagnostic.Accepted { value: v, diagnostics: d }
-              Rejected { diagnostics: _ } =>
+              v2.std.diagnostic.Rejected { diagnostics: _ } =>
                 v2.std.diagnostic.Rejected { diagnostics: bind_ds }
             }
         }
       }
-    TypeNode { connective: _ } =>
+    v2.std.node.TypeNode { connective: _ } =>
       interpretation.value.allocate_literal(node, environment)
-    ComputationNode { behavior: _ } =>
+    v2.std.node.ComputationNode { behavior: _ } =>
       v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
@@ -1076,11 +1077,11 @@ fn eval_bind_param_edge_step(
   node: v2.std.node.Node
 ) -> EvalParamBindAcc {
   match state.acc {
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       EvalParamBindAcc { idx: state.idx + 1, acc: v2.std.diagnostic.Rejected { diagnostics: r } }
-    Accepted { value: env, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: env, diagnostics: _ } =>
       match param_edge.label {
-        Named { name: binding_id } =>
+        v2.std.node.Named { name: binding_id } =>
           EvalParamBindAcc {
             idx: state.idx + 1,
             acc: v2.std.diagnostic.bind_outcome(
@@ -1100,7 +1101,7 @@ fn eval_bind_param_edge_step(
               }
             )
           }
-        Positional =>
+        v2.std.node.Positional =>
           EvalParamBindAcc { idx: state.idx, acc: v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None } }
       }
   }
@@ -1148,8 +1149,8 @@ fn eval_actual_present(args: List<v2.std.runtime.RuntimeValue>, wanted: Int, nod
     wanted: wanted,
     absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
   ) {
-    Holds { value: _ } => true
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Holds { value: _ } => true
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
@@ -1163,15 +1164,15 @@ fn eval_transform_callee_edge(node: v2.std.node.Node) -> v2.std.diagnostic.Outco
 
 fn eval_node_is_arrow(node: v2.std.node.Node) -> Bool {
   match node.kind {
-    TypeNode { connective: Arrow } => true
+    v2.std.node.TypeNode { connective: v2.std.node.Arrow } => true
     _ => false
   }
 }
 
 fn eval_node_is_callee_reference(node: v2.std.node.Node) -> Bool {
   match node.kind {
-    TypeNode { connective: Arrow } => true
-    TypeNode { connective: Atom { identity: _ } } => true
+    v2.std.node.TypeNode { connective: v2.std.node.Arrow } => true
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: _ } } => true
     _ => false
   }
 }
@@ -1182,33 +1183,33 @@ fn eval_child_absent(node: v2.std.node.Node, wanted: Int) -> Bool {
     wanted: wanted,
     absent_reason: ^eval_rejected_unsupported_callee
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
 fn eval_arrow_admits_callee_dispatch(arrow: v2.std.node.Node) -> Bool {
 
   match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: arrow), index: 3) {
-    Present { value: _ } => false
-    Absent => true
+    v2.std.optional.Present { value: _ } => false
+    v2.std.optional.Absent => true
   }
 }
 
 fn eval_transform_has_callee_reference(node: v2.std.node.Node) -> Bool {
   match node.kind {
-    ComputationNode { behavior: v2.std.node.Transform } =>
+    v2.std.node.ComputationNode { behavior: v2.std.node.Transform } =>
       match eval_nth_child(
         node: node,
         wanted: 0,
         absent_reason: ^eval_rejected_callee_absent
       ) {
-        Accepted { value: e0, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: e0, diagnostics: _ } =>
           match e0.label {
-            Positional => eval_node_is_callee_reference(node: e0.target)
-            Named { name: _ } => false
+            v2.std.node.Positional => eval_node_is_callee_reference(node: e0.target)
+            v2.std.node.Named { name: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
     _ => false
   }
@@ -1216,14 +1217,14 @@ fn eval_transform_has_callee_reference(node: v2.std.node.Node) -> Bool {
 
 fn eval_node_is_branch(node: v2.std.node.Node) -> Bool {
   match node.kind {
-    ComputationNode { behavior: Branch } => true
+    v2.std.node.ComputationNode { behavior: v2.std.node.Branch } => true
     _ => false
   }
 }
 
 fn eval_node_is_loop(node: v2.std.node.Node) -> Bool {
   match node.kind {
-    ComputationNode { behavior: Loop } => true
+    v2.std.node.ComputationNode { behavior: v2.std.node.Loop } => true
     _ => false
   }
 }
@@ -1232,10 +1233,10 @@ fn effect_io_roundtrip_transform(locator: v2.std.node.Node, payload: v2.std.node
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
-      v2.std.node.Edge { label: Positional, target: locator },
-      v2.std.node.Edge { label: Positional, target: payload }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: locator },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: payload }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -1244,7 +1245,7 @@ fn eval_node_is_effect_io_roundtrip(node: v2.std.node.Node, effect_io: EffectIoE
     EffectIoEvalAbsent => false
     EffectIoEvalPresent { bundle: _ } =>
       match node.kind {
-        ComputationNode { behavior: v2.std.node.Transform } =>
+        v2.std.node.ComputationNode { behavior: v2.std.node.Transform } =>
           !eval_transform_has_callee_reference(node: node) && count(node.children) == 2
         _ => false
       }
@@ -1292,7 +1293,7 @@ fn eval_yield_effect_request(
         value: EffectIoYieldOutcome { bundle: logged_bundle, value: v },
         diagnostics: ds
       }
-    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 
@@ -1327,7 +1328,7 @@ fn eval_effect_io_roundtrip(
                     backend: bundle.backend,
                     args: write_args
                   ) {
-                    Holds { value: locator } =>
+                    v2.std.witness.Holds { value: locator } =>
                       let store1 = v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_apply_write(
                         store: bundle.store,
                         locator: locator,
@@ -1348,7 +1349,7 @@ fn eval_effect_io_roundtrip(
                           v2.std.diagnostic.Accepted { value: read_yield.value, diagnostics: v2.std.diagnostic.None }
                         }
                       )
-                    Violates { diagnostic: d } =>
+                    v2.std.witness.Violates { diagnostic: d } =>
                       v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
                   }
                 } else {
@@ -1379,7 +1380,7 @@ fn eval_value_node(
   _runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
-    ValueRuntimeInterpreter { interpreter: value } =>
+    v2.std.runtime.ValueRuntimeInterpreter { interpreter: value } =>
       value.allocate_literal(node, environment)
     _ => v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
@@ -1397,7 +1398,7 @@ fn eval_transform_node(
   effect_io: EffectIoEvalContext
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
-    TransformRuntimeInterpreter { interpreter: transform } =>
+    v2.std.runtime.TransformRuntimeInterpreter { interpreter: transform } =>
       if eval_node_is_effect_io_roundtrip(node: node, effect_io: effect_io) {
         match effect_io {
           EffectIoEvalPresent { bundle: b } =>
@@ -1413,7 +1414,7 @@ fn eval_transform_node(
           o: eval_transform_callee_edge(node: node),
           f: fn(callee_edge) {
             match v2.std.node_query.find_arrow_body_child(root: callee_edge.target) {
-              Accepted { value: body, diagnostics: _ } =>
+              v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
                 let body_form = v2.std.node.classify_arrow_body_form(target: body)
                 if eval_arrow_admits_callee_dispatch(arrow: callee_edge.target)
                   && v2.std.node.arrow_body_admits_eval_entry(form: body_form) {
@@ -1427,7 +1428,7 @@ fn eval_transform_node(
                     ),
                     f: fn(call_environment) {
                       match body_form {
-                        DirectAtomBody =>
+                        v2.std.node.DirectAtomBody =>
                           eval_type_node_atom(
                             node: body,
                             interpretation: interpretation,
@@ -1450,7 +1451,7 @@ fn eval_transform_node(
                     d: eval_diagnostic(reason: ^eval_rejected_unsupported_callee, node: callee_edge.target)
                   )
                 }
-              Rejected { diagnostics: _ } =>
+              v2.std.diagnostic.Rejected { diagnostics: _ } =>
                 if eval_node_is_arrow(node: callee_edge.target) {
                   v2.std.diagnostic.outcome_rejected(
                     d: eval_diagnostic(reason: ^eval_rejected_unsupported_callee, node: callee_edge.target)
@@ -1478,7 +1479,7 @@ fn eval_branch_node_eval(
   effect_io: EffectIoEvalContext
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
-    BranchRuntimeInterpreter { interpreter: branch } =>
+    v2.std.runtime.BranchRuntimeInterpreter { interpreter: branch } =>
       v2.std.diagnostic.bind_outcome(
         o: eval_branch_condition_edge(node: node),
         f: fn(cond_edge) {
@@ -1545,7 +1546,7 @@ fn eval_loop_node(
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
-    LoopRuntimeInterpreter { interpreter: loop_interpreter } =>
+    v2.std.runtime.LoopRuntimeInterpreter { interpreter: loop_interpreter } =>
       v2.std.diagnostic.bind_outcome(
         o: loop_interpreter.step_loop(node, environment),
         f: fn(control) {
@@ -1571,17 +1572,17 @@ fn eval_bind_node_eval(
   effect_io: EffectIoEvalContext
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
-    ValueRuntimeInterpreter { interpreter: _ } =>
+    v2.std.runtime.ValueRuntimeInterpreter { interpreter: _ } =>
       v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
-    TransformRuntimeInterpreter { interpreter: _ } =>
+    v2.std.runtime.TransformRuntimeInterpreter { interpreter: _ } =>
       v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
-    BranchRuntimeInterpreter { interpreter: _ } =>
+    v2.std.runtime.BranchRuntimeInterpreter { interpreter: _ } =>
       v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
-    LoopRuntimeInterpreter { interpreter: _ } =>
+    v2.std.runtime.LoopRuntimeInterpreter { interpreter: _ } =>
       v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
-    MatchRuntimeInterpreter { interpreter: _ } =>
+    v2.std.runtime.MatchRuntimeInterpreter { interpreter: _ } =>
       v2.std.diagnostic.outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
-    BindRuntimeInterpreter { interpreter: bind } =>
+    v2.std.runtime.BindRuntimeInterpreter { interpreter: bind } =>
       v2.std.diagnostic.bind_outcome(
         o: eval_bind_key(node: node),
         f: fn(key) {
@@ -1665,7 +1666,7 @@ fn eval_match_node_eval(
   effect_io: EffectIoEvalContext
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match interpreter {
-    MatchRuntimeInterpreter { interpreter: match_interpreter } =>
+    v2.std.runtime.MatchRuntimeInterpreter { interpreter: match_interpreter } =>
       v2.std.diagnostic.bind_outcome(
         o: eval_match_scrutinee_edge(node: node),
         f: fn(scrutinee_edge) {
@@ -1742,7 +1743,7 @@ fn eval_computation_node(
   )
   v2.std.diagnostic.bind_outcome(
     o: match dispatch {
-      ValueRuntimeInterpreter { interpreter: _ } =>
+      v2.std.runtime.ValueRuntimeInterpreter { interpreter: _ } =>
         eval_value_node(
           node: node,
           args: args,
@@ -1752,7 +1753,7 @@ fn eval_computation_node(
           environment: environment,
           runtime: runtime
         )
-      TransformRuntimeInterpreter { interpreter: _ } =>
+      v2.std.runtime.TransformRuntimeInterpreter { interpreter: _ } =>
         eval_transform_node(
           node: node,
           args: args,
@@ -1764,7 +1765,7 @@ fn eval_computation_node(
           runtime: runtime,
           effect_io: effect_io
         )
-      BranchRuntimeInterpreter { interpreter: _ } =>
+      v2.std.runtime.BranchRuntimeInterpreter { interpreter: _ } =>
         eval_branch_node(
           node: node,
           args: args,
@@ -1776,7 +1777,7 @@ fn eval_computation_node(
           runtime: runtime,
           effect_io: effect_io
         )
-      LoopRuntimeInterpreter { interpreter: _ } =>
+      v2.std.runtime.LoopRuntimeInterpreter { interpreter: _ } =>
         eval_loop_node(
           node: node,
           args: args,
@@ -1786,7 +1787,7 @@ fn eval_computation_node(
           environment: environment,
           runtime: runtime
         )
-      BindRuntimeInterpreter { interpreter: _ } =>
+      v2.std.runtime.BindRuntimeInterpreter { interpreter: _ } =>
         eval_bind_node(
           node: node,
           args: args,
@@ -1798,7 +1799,7 @@ fn eval_computation_node(
           runtime: runtime,
           effect_io: effect_io
         )
-      MatchRuntimeInterpreter { interpreter: _ } =>
+      v2.std.runtime.MatchRuntimeInterpreter { interpreter: _ } =>
         eval_match_node(
           node: node,
           args: args,
@@ -1830,7 +1831,7 @@ fn eval_interpret_node(
     o: inferred_facts_for_eval(tree: tree, node: node),
     f: fn(facts) {
       match node.kind {
-        ComputationNode { behavior: b } =>
+        v2.std.node.ComputationNode { behavior: b } =>
           eval_computation_node(
             behavior: b,
             node: node,
@@ -1842,7 +1843,7 @@ fn eval_interpret_node(
             runtime: runtime,
             effect_io: effect_io
           )
-        TypeNode { connective: _ } =>
+        v2.std.node.TypeNode { connective: _ } =>
           eval_type_node_atom(
             node: node,
             interpretation: interpretation,
@@ -1861,14 +1862,14 @@ fn eval_edge_is_runtime_argument(parent: v2.std.node.Node, progress: EvalProgres
   if eval_transform_has_callee_reference(node: parent) {
     match progress {
       AwaitingChildren { processed: p } =>
-        if gunbc.plans.md_helpers.p == 0 { false } else { v2.std.node.is_positional(e: edge) }
+        if p == 0 { false } else { v2.std.node.is_positional(e: edge) }
       ReadyToInterpret => v2.std.node.is_positional(e: edge)
       Interpreted => v2.std.node.is_positional(e: edge)
     }
   } else if eval_node_is_branch(node: parent) {
     match progress {
       AwaitingChildren { processed: p } =>
-        if gunbc.plans.md_helpers.p == 0 { v2.std.node.is_positional(e: edge) } else { false }
+        if p == 0 { v2.std.node.is_positional(e: edge) } else { false }
       ReadyToInterpret => false
       Interpreted => false
     }
@@ -1968,7 +1969,7 @@ fn eval_fold_is_callee_reference_edge(
 ) -> Bool {
   if eval_transform_has_callee_reference(node: parent) {
     match progress {
-      AwaitingChildren { processed: p } => gunbc.plans.md_helpers.p == 0 && v2.std.node.is_positional(e: edge)
+      AwaitingChildren { processed: p } => p == 0 && v2.std.node.is_positional(e: edge)
       ReadyToInterpret => false
       Interpreted => false
     }
@@ -2165,7 +2166,7 @@ fn eval_maybe_complete_node(
 fn eval_advance_progress(progress: EvalProgress, node: v2.std.node.Node) -> EvalProgress {
   match progress {
     AwaitingChildren { processed: p } => {
-      let processed = gunbc.plans.md_helpers.p + 1
+      let processed = p + 1
       if processed == count(node.children) { ReadyToInterpret } else { AwaitingChildren { processed: processed } }
     }
     ReadyToInterpret => Interpreted
@@ -2221,10 +2222,10 @@ fn eval_fold_step(
 
 fn eval_runtime_node_is_control_transfer(node: v2.std.node.Node) -> Bool {
   match node.kind {
-    ComputationNode { behavior: Branch } => true
-    ComputationNode { behavior: Loop } => true
-    ComputationNode { behavior: v2.std.node.Bind } => true
-    ComputationNode { behavior: Match } => true
+    v2.std.node.ComputationNode { behavior: v2.std.node.Branch } => true
+    v2.std.node.ComputationNode { behavior: v2.std.node.Loop } => true
+    v2.std.node.ComputationNode { behavior: v2.std.node.Bind } => true
+    v2.std.node.ComputationNode { behavior: Match } => true
     _ => false
   }
 }
@@ -2241,7 +2242,7 @@ fn eval_runtime_control_node(
     o: inferred_facts_for_eval(tree: tree, node: node),
     f: fn(facts) {
       let dispatch = match node.kind {
-        ComputationNode { behavior: b } =>
+        v2.std.node.ComputationNode { behavior: b } =>
           v2.std.runtime.interpretation_behavior_dispatch(interpretation: interpretation, behavior: b)
         _ =>
           v2.std.runtime.TransformRuntimeInterpreter {
@@ -2250,7 +2251,7 @@ fn eval_runtime_control_node(
       }
       v2.std.diagnostic.bind_outcome(
         o: match node.kind {
-          ComputationNode { behavior: Branch } =>
+          v2.std.node.ComputationNode { behavior: v2.std.node.Branch } =>
             eval_branch_node_eval(
               node: node,
               tree: tree,
@@ -2260,7 +2261,7 @@ fn eval_runtime_control_node(
               runtime: runtime,
               effect_io: effect_io
             )
-          ComputationNode { behavior: Loop } =>
+          v2.std.node.ComputationNode { behavior: v2.std.node.Loop } =>
             eval_loop_node(
               node: node,
               args: empty_runtime_values(),
@@ -2270,7 +2271,7 @@ fn eval_runtime_control_node(
               environment: environment,
               runtime: runtime
             )
-          ComputationNode { behavior: v2.std.node.Bind } =>
+          v2.std.node.ComputationNode { behavior: v2.std.node.Bind } =>
             eval_bind_node_eval(
               node: node,
               tree: tree,
@@ -2280,7 +2281,7 @@ fn eval_runtime_control_node(
               runtime: runtime,
               effect_io: effect_io
             )
-          ComputationNode { behavior: Match } =>
+          v2.std.node.ComputationNode { behavior: Match } =>
             eval_match_node_eval(
               node: node,
               tree: tree,
@@ -2396,9 +2397,9 @@ fn eval_node(tree: v2.compiler.inferred_tree.InferredTree, inputs: Inputs) -> v2
     o: eval(tree: tree, interpretation: eval_default_interpretation(), inputs: inputs),
     f: fn(value) {
       match v2.std.runtime.runtime_value_node_projection(value: value) {
-        RuntimeValueNodeProjected { node: n } =>
+        v2.std.runtime.RuntimeValueNodeProjected { node: n } =>
           v2.std.diagnostic.Accepted { value: n, diagnostics: v2.std.diagnostic.None }
-        RuntimeValueNodeUnrepresentable =>
+        v2.std.runtime.RuntimeValueNodeUnrepresentable =>
           v2.std.diagnostic.outcome_rejected(
             d: eval_diagnostic(
               reason: ^eval_rejected_runtime_value_node_unrepresentable,
@@ -2427,8 +2428,8 @@ fn run_test_claim_round_trip_verdict(
   at: v2.std.node.Node
 ) -> v2.std.verdict.Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.node.Node> {
   match actual {
-    Rejected { diagnostics: _ } => v2.std.verdict.verdict_fail(actual: actual)
-    Accepted { value: _, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.verdict.verdict_fail(actual: actual)
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
       if v2.extdeps.languages.dag.dag_round_trip_authorities_ready() {
         Pass
       } else {
@@ -2446,13 +2447,13 @@ fn run_test_claim_round_trip_verdict_runtime(
   at: v2.std.node.Node
 ) -> v2.std.verdict.Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue> {
   match actual {
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       v2.std.verdict.verdict_fail(
         actual: v2.std.diagnostic.outcome_rejected(
           d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)
         )
       )
-    Accepted { value: _, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
       if v2.extdeps.languages.dag.dag_round_trip_authorities_ready() {
         Pass
       } else {
@@ -2479,13 +2480,13 @@ fn run_test_claim_structural_equals_verdict(
   at: v2.std.node.Node
 ) -> v2.std.verdict.Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue> {
   match actual {
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       v2.std.verdict.verdict_fail(
         actual: v2.std.diagnostic.outcome_rejected(
           d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)
         )
       )
-    Accepted { value: admitted, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: admitted, diagnostics: _ } =>
       if v2.std.diagnostic.outcome_node_eq(
         a: v2.std.diagnostic.Accepted { value: admitted, diagnostics: v2.std.diagnostic.None },
         b: v2.std.diagnostic.Accepted { value: rhs, diagnostics: v2.std.diagnostic.None }
@@ -2507,19 +2508,19 @@ fn run_test_claim_assert_decided(
   at: v2.std.node.Node
 ) -> v2.std.verdict.Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.node.Node> {
   match claim {
-    EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
+    v2.std.verification.EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
       if v2.std.diagnostic.outcome_node_eq(a: actual, b: v2.std.diagnostic.Accepted { value: rhs, diagnostics: v2.std.diagnostic.None }) {
         Pass
       } else {
         v2.std.verdict.verdict_fail(actual: actual)
       }
-    StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
+    v2.std.verification.StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
       if v2.std.diagnostic.outcome_node_eq(a: actual, b: v2.std.diagnostic.Accepted { value: rhs, diagnostics: v2.std.diagnostic.None }) {
         Pass
       } else {
         v2.std.verdict.verdict_fail(actual: actual)
       }
-    CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } =>
+    v2.std.verification.CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } =>
       if v2.std.diagnostic.outcome_node_eq(
         a: actual,
         b: v2.std.diagnostic.Accepted { value: expected, diagnostics: v2.std.diagnostic.None }
@@ -2528,14 +2529,14 @@ fn run_test_claim_assert_decided(
       } else {
         v2.std.verdict.verdict_fail(actual: actual)
       }
-    RoundTripClaim { label: _, anchor: _, input: input, classification: _ } =>
+    v2.std.verification.RoundTripClaim { label: _, anchor: _, input: input, classification: _ } =>
       run_test_claim_round_trip_verdict(
         actual: eval_round_trip_claim_input_for_verdict(input: input),
         at: at
       )
-    DiagnosticClaim { expected_rejection: expected, input: input, label: _, anchor: _, classification: _ } =>
+    v2.std.verification.DiagnosticClaim { expected_rejection: expected, input: input, label: _, anchor: _, classification: _ } =>
       match actual {
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           if v2.std.diagnostic.outcome_node_eq(a: actual, b: v2.std.diagnostic.Rejected { diagnostics: expected }) {
             Pass
           } else {
@@ -2556,8 +2557,8 @@ fn outcome_runtime_value_eq(a: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeV
 
 fn accepted_runtime_value_outcome_eq(a: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>, b: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>) -> Bool {
   match b {
-    Accepted { value: _, diagnostics: _ } => outcome_runtime_value_eq(a: a, b: b)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => outcome_runtime_value_eq(a: a, b: b)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -2569,7 +2570,7 @@ fn run_test_claim_runtime_assert(
   at: v2.std.node.Node
 ) -> v2.std.verdict.Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.runtime.RuntimeValue> {
   match claim {
-    EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
+    v2.std.verification.EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
       let expected = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: rhs))
       if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
         Pass
@@ -2578,7 +2579,7 @@ fn run_test_claim_runtime_assert(
       }
     }
 
-    StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
+    v2.std.verification.StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
       let expected = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: rhs))
       if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
         Pass
@@ -2586,7 +2587,7 @@ fn run_test_claim_runtime_assert(
         v2.std.verdict.verdict_fail(actual: actual)
       }
     }
-    CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } => {
+    v2.std.verification.CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } => {
       let expected_outcome = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: expected))
       if accepted_runtime_value_outcome_eq(a: actual, b: expected_outcome) {
         Pass
@@ -2594,14 +2595,14 @@ fn run_test_claim_runtime_assert(
         v2.std.verdict.verdict_fail(actual: actual)
       }
     }
-    RoundTripClaim { label: _, anchor: _, input: input, classification: _ } =>
+    v2.std.verification.RoundTripClaim { label: _, anchor: _, input: input, classification: _ } =>
       run_test_claim_round_trip_verdict_runtime(
         actual: eval_round_trip_claim_input_for_verdict(input: input),
         at: at
       )
-    DiagnosticClaim { expected_rejection: expected, input: _, label: _, anchor: _, classification: _ } =>
+    v2.std.verification.DiagnosticClaim { expected_rejection: expected, input: _, label: _, anchor: _, classification: _ } =>
       match actual {
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           if outcome_runtime_value_eq(a: actual, b: v2.std.diagnostic.Rejected { diagnostics: expected }) {
             Pass
           } else {
@@ -2631,7 +2632,7 @@ fn run_test_claim(
 ) -> TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   let at = v2.std.verification.test_claim_input(c: subject.claim)
   match subject.claim {
-    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+    v2.std.verification.RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
       TestClaimRun {
         cache: test_claim_cache_receipt_node(subject: subject),
         verdict: run_test_claim_round_trip_verdict_runtime(
@@ -2642,7 +2643,7 @@ fn run_test_claim(
         )
       }
 
-    StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
+    v2.std.verification.StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
       TestClaimRun {
         cache: test_claim_cache_receipt_node(subject: subject),
         verdict: run_test_claim_structural_equals_verdict(

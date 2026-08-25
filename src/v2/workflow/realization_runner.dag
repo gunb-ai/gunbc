@@ -18,7 +18,7 @@ fn node_keyed_store_empty<V>() -> NodeKeyedStore<V> {
   NodeKeyedStore { entries: [] }
 }
 
-fn node_keyed_store_has_node<V>(store: NodeKeyedStore<V>, node: v2.std.node.Node) -> v2.std.logic.Bool {
+fn node_keyed_store_has_node<V>(store: NodeKeyedStore<V>, node: v2.std.node.Node) -> Bool {
   fold(store.entries, init: false, f: fn(found, entry) {
     found || (entry.node == node)
   })
@@ -26,7 +26,7 @@ fn node_keyed_store_has_node<V>(store: NodeKeyedStore<V>, node: v2.std.node.Node
 
 fn node_keyed_store_put<V>(store: NodeKeyedStore<V>, node: v2.std.node.Node, value: V) -> NodeKeyedStore<V> {
   NodeKeyedStore {
-    entries: list_snoc_item(
+    entries: v2.std.algebra.list_snoc_item(
       xs: store.entries,
       item: NodeKeyedStoreEntry { node: node, value: value }
     )
@@ -66,22 +66,22 @@ type NodeKeyedGraphArtifact {
   entries: List<NodeKeyedGraphArtifactEntry>
 }
 
-fn node_keyed_graph_contains_hash(hashes: List<std.content_hash.ContentHash>, content_hash: std.content_hash.ContentHash) -> v2.std.logic.Bool {
-  contains(xs: hashes, item: content_hash, eq: fn(left, right) { left == right })
+fn node_keyed_graph_contains_hash(hashes: List<std.content_hash.ContentHash>, content_hash: std.content_hash.ContentHash) -> Bool {
+  v2.std.algebra.contains(xs: hashes, item: content_hash, eq: fn(left, right) { left == right })
 }
 
 type NodeKeyedGraphInternCheck {
   seen: List<std.content_hash.ContentHash>
-  interned: v2.std.logic.Bool
+  interned: Bool
 }
 
-fn node_keyed_graph_rows_interned(rows: List<NodeKeyedGraphRow>) -> v2.std.logic.Bool {
+fn node_keyed_graph_rows_interned(rows: List<NodeKeyedGraphRow>) -> Bool {
   let checked = fold(rows, init: NodeKeyedGraphInternCheck { seen: [], interned: true }, f: fn(check, row) {
     if node_keyed_graph_contains_hash(hashes: check.seen, content_hash: row.content_hash) {
       NodeKeyedGraphInternCheck { seen: check.seen, interned: false }
     } else {
       NodeKeyedGraphInternCheck {
-        seen: list_snoc_item(xs: check.seen, item: row.content_hash),
+        seen: v2.std.algebra.list_snoc_item(xs: check.seen, item: row.content_hash),
         interned: check.interned
       }
     }
@@ -140,8 +140,8 @@ fn node_keyed_graph_reach_step(
                   NodeKeyedGraphReachMissingRow { missing: missing }
                 NodeKeyedGraphRowFound { row: row } =>
                   NodeKeyedGraphReachActive {
-                    visited: list_snoc_item(xs: seen, item: content_hash),
-                    frontier: list_append(left: next, right: row.child_refs),
+                    visited: v2.std.algebra.list_snoc_item(xs: seen, item: content_hash),
+                    frontier: v2.std.algebra.list_append(left: next, right: row.child_refs),
                     bytes: std.measure.measure_add(a: acc, b: row.encoded_length)
                   }
               }
@@ -175,7 +175,7 @@ fn node_keyed_graph_transitive_bytes(
     NodeKeyedGraphReachMissingRow { missing: missing } =>
       NodeKeyedGraphTransitiveBytesMissingRow { missing: missing }
     NodeKeyedGraphReachActive { visited: _, frontier: frontier, bytes: bytes } =>
-      if non_empty(xs: frontier) {
+      if v2.std.algebra.non_empty(xs: frontier) {
         NodeKeyedGraphTransitiveBytesUnsettled { pending: frontier }
       } else {
         NodeKeyedGraphTransitiveBytesSettled { bytes: bytes }
@@ -191,14 +191,14 @@ fn node_keyed_graph_entry_value_bytes(
 }
 
 fn runner_execution_dependencies(dependencies: List<v2.std.dependency.DependencyView>) -> List<v2.std.dependency.DependencyView> {
-  scheduler_execution_dependencies(dependencies: dependencies)
+  v2.workflow.scheduler.scheduler_execution_dependencies(dependencies: dependencies)
 }
 
 fn runner_dependency_satisfied<V>(
   dependency: v2.std.dependency.DependencyView,
   store: NodeKeyedStore<V>,
   candidate: v2.std.node.Node
-) -> v2.std.logic.Bool {
+) -> Bool {
   if dependency.dependent == candidate {
     node_keyed_store_has_node(store: store, node: dependency.source)
   } else {
@@ -210,7 +210,7 @@ fn runner_node_ready<V>(
   dependencies: List<v2.std.dependency.DependencyView>,
   store: NodeKeyedStore<V>,
   candidate: v2.std.node.Node
-) -> v2.std.logic.Bool {
+) -> Bool {
   fold(dependencies, init: true, f: fn(ok, dependency) {
     ok && runner_dependency_satisfied(
       dependency: dependency,
@@ -350,12 +350,12 @@ fn runner_schedule_plan_from_dependencies<V>(
   value: V
 ) -> RunnerSchedulePlan<V> {
   let execution_dependencies = runner_execution_dependencies(dependencies: dependencies)
-  match parallel_executor_plan_from_dependencies(
+  match v2.workflow.executor.parallel_executor_plan_from_dependencies(
     nodes: nodes,
     dependencies: dependencies,
     scheduled: []
   ) {
-    ExecutorRunComplete { batches: batches, scheduled: _ } =>
+    v2.workflow.executor.ExecutorRunComplete { batches: batches, scheduled: _ } =>
       match runner_walk_batches(
         batches: batches,
         dependencies: execution_dependencies,
@@ -367,11 +367,11 @@ fn runner_schedule_plan_from_dependencies<V>(
         RunnerDispatchBlocked { evidence: evidence } =>
           RunnerScheduleBlocked { evidence: evidence }
       }
-    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } =>
+    v2.workflow.executor.ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } =>
       RunnerScheduleBlocked {
         evidence: RunnerExecutorBlocked { evidence: v2.workflow.executor.ExecutorEmptyFrontier {} }
       }
-    ExecutorRunBlocked { evidence: evidence, batches: _, scheduled: _, remaining: _ } =>
+    v2.workflow.executor.ExecutorRunBlocked { evidence: evidence, batches: _, scheduled: _, remaining: _ } =>
       RunnerScheduleBlocked {
         evidence: RunnerExecutorBlocked { evidence: evidence }
       }
@@ -381,7 +381,7 @@ fn runner_schedule_plan_from_dependencies<V>(
 fn runner_schedule_store_covers_nodes<V>(
   store: NodeKeyedStore<V>,
   nodes: List<v2.std.node.Node>
-) -> v2.std.logic.Bool {
+) -> Bool {
   fold(nodes, init: true, f: fn(ok, node) {
     ok && node_keyed_store_has_node(store: store, node: node)
   })
@@ -394,6 +394,6 @@ fn runner_schedule_batch_count(batches: List<v2.workflow.executor.ExecutorBatch>
 fn runner_schedule_contains_batch(
   batches: List<v2.workflow.executor.ExecutorBatch>,
   batch: v2.workflow.executor.ExecutorBatch
-) -> v2.std.logic.Bool {
-  contains(xs: batches, item: batch, eq: fn(left, right) { left == right })
+) -> Bool {
+  v2.std.algebra.contains(xs: batches, item: batch, eq: fn(left, right) { left == right })
 }

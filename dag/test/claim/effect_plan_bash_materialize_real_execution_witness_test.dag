@@ -2,7 +2,7 @@ module test.claim.effect_plan_bash_materialize_real_execution_witness
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data effect_plan_bash_real_execution_note: String = "T1/T2 wet model evidence only, not the Wave-B gate consumer or policy activation. The controls execute emitted carriers through Bash using read-only test/id operations over fixed paths: no file write, environment mutation, network, repo state, or cleanup obligation. They prove two typed declared operations run, metachar/newline arguments stay one word, and grammar-owned && enforces FailFast by preventing the observable second command after the first fails."
 
@@ -41,13 +41,13 @@ fn wet_id_uid() -> v2.workflow.effect_plan_bash_materialize.BashBoundOperationIn
 }
 
 fn wet_plan(
-  steps: List<EffectPlanStep<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>>
-) -> EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation> {
-  v2.std.effect_plan.EffectPlan { steps: steps, on_failure: FailFast }
+  steps: List<v2.std.effect_plan.EffectPlanStep<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>>
+) -> v2.std.effect_plan.EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation> {
+  v2.std.effect_plan.EffectPlan { steps: steps, on_failure: v2.std.orchestration.FailFast }
 }
 
-fn wet_exec_succeeds_with_output(plan: EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>) -> Bool {
-  match bash_materialized_transport(materialization: v2.workflow.effect_plan_bash_materialize.effect_plan_bash_materialize(plan: plan)) {
+fn wet_exec_succeeds_with_output(plan: v2.std.effect_plan.EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>) -> Bool {
+  match gunbc.bash_materialized_transport.bash_materialized_transport(materialization: v2.workflow.effect_plan_bash_materialize.effect_plan_bash_materialize(plan: plan)) {
     Present { value: script } => {
       let result = shell.Exec.Run(script: script)
       result.success && string_length(s: std.algebra.trim(s: result.stdout)) > 0
@@ -56,10 +56,10 @@ fn wet_exec_succeeds_with_output(plan: EffectPlan<v2.workflow.effect_plan_bash_m
   }
 }
 
-fn wet_exec_fails_without_output(plan: EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>) -> Bool {
-  match bash_materialized_transport(materialization: v2.workflow.effect_plan_bash_materialize.effect_plan_bash_materialize(plan: plan)) {
+fn wet_exec_fails_without_output(plan: v2.std.effect_plan.EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>) -> Bool {
+  match gunbc.bash_materialized_transport.bash_materialized_transport(materialization: v2.workflow.effect_plan_bash_materialize.effect_plan_bash_materialize(plan: plan)) {
     Present { value: script } => {
-      let result = shell.Exec.Run(script: script, expect: ExpectFailure)
+      let result = shell.Exec.Run(script: script, expect: gunbc.output_policy.ExpectFailure)
       !result.success && std.algebra.trim(s: result.stdout) == ""
     }
     Absent => false

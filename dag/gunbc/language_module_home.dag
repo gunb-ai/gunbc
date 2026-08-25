@@ -16,27 +16,27 @@ data language_target_homes: List<LanguageTargetHome> = [
     canonical_prefix: "dag/extdeps/languages/bash/"
   },
   LanguageTargetHome {
-    target: c_language_subject_ref,
+    target: gunbc.language_target_registry.c_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/c/"
   },
   LanguageTargetHome {
-    target: cpp_language_subject_ref,
+    target: gunbc.language_target_registry.cpp_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/cpp/"
   },
   LanguageTargetHome {
-    target: css_language_subject_ref,
+    target: gunbc.language_target_registry.css_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/css/"
   },
   LanguageTargetHome {
-    target: dag_subject_ref,
+    target: gunbc.language_target_registry.dag_subject_ref,
     canonical_prefix: "dag/extdeps/languages/dag/"
   },
   LanguageTargetHome {
-    target: ecmascript_language_subject_ref,
+    target: gunbc.language_target_registry.ecmascript_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/ecmascript/"
   },
   LanguageTargetHome {
-    target: go_language_subject_ref,
+    target: gunbc.language_target_registry.go_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/go/"
   },
   LanguageTargetHome {
@@ -44,71 +44,71 @@ data language_target_homes: List<LanguageTargetHome> = [
     canonical_prefix: "dag/extdeps/languages/html/"
   },
   LanguageTargetHome {
-    target: java_language_subject_ref,
+    target: gunbc.language_target_registry.java_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/java/"
   },
   LanguageTargetHome {
-    target: json_format_subject_ref,
+    target: gunbc.language_target_registry.json_format_subject_ref,
     canonical_prefix: "dag/extdeps/languages/json/"
   },
   LanguageTargetHome {
-    target: jsx_language_subject_ref,
+    target: gunbc.language_target_registry.jsx_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/jsx/"
   },
   LanguageTargetHome {
-    target: kotlin_language_subject_ref,
+    target: gunbc.language_target_registry.kotlin_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/kotlin/"
   },
   LanguageTargetHome {
-    target: lean_language_subject_ref,
+    target: gunbc.language_target_registry.lean_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/lean/"
   },
   LanguageTargetHome {
-    target: llvm_ir_language_subject_ref,
+    target: gunbc.language_target_registry.llvm_ir_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/llvm_ir/"
   },
   LanguageTargetHome {
-    target: commonmark_format_subject_ref,
+    target: gunbc.language_target_registry.commonmark_format_subject_ref,
     canonical_prefix: "dag/extdeps/languages/markdown/"
   },
   LanguageTargetHome {
-    target: ptx_language_subject_ref,
+    target: gunbc.language_target_registry.ptx_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/ptx/"
   },
   LanguageTargetHome {
-    target: python_language_subject_ref,
+    target: gunbc.language_target_registry.python_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/python/"
   },
   LanguageTargetHome {
-    target: riscv_isa_subject_ref,
+    target: gunbc.language_target_registry.riscv_isa_subject_ref,
     canonical_prefix: "dag/extdeps/languages/riscv/"
   },
   LanguageTargetHome {
-    target: rust_language_subject_ref,
+    target: gunbc.language_target_registry.rust_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/rust/"
   },
   LanguageTargetHome {
-    target: spice_netlist_language_subject_ref,
+    target: gunbc.language_target_registry.spice_netlist_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/spice/"
   },
   LanguageTargetHome {
-    target: swift_language_subject_ref,
+    target: gunbc.language_target_registry.swift_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/swift/"
   },
   LanguageTargetHome {
-    target: typescript_language_subject_ref,
+    target: gunbc.language_target_registry.typescript_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/typescript/"
   },
   LanguageTargetHome {
-    target: verilog_language_subject_ref,
+    target: gunbc.language_target_registry.verilog_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/verilog/"
   },
   LanguageTargetHome {
-    target: webassembly_language_subject_ref,
+    target: gunbc.language_target_registry.webassembly_language_subject_ref,
     canonical_prefix: "dag/extdeps/languages/wasm/"
   },
   LanguageTargetHome {
-    target: yaml_format_subject_ref,
+    target: gunbc.language_target_registry.yaml_format_subject_ref,
     canonical_prefix: "dag/extdeps/languages/yaml/"
   }
 ]
@@ -129,28 +129,28 @@ data legacy_language_module_homes: List<LegacyLanguageModuleHome> = [
     module_path: "extdeps.languages.html",
     target: gunbc.language_target_registry.html_language_subject_ref,
     moves_to: "dag/extdeps/languages/html/medium.dag",
-    dissolution: unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes")
+    dissolution: std.dissolution.unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes")
   },
   LegacyLanguageModuleHome {
     file_path: "dag/extdeps/languages/html_fragment.dag",
     module_path: "extdeps.languages.html_fragment",
     target: gunbc.language_target_registry.html_language_subject_ref,
     moves_to: "dag/extdeps/languages/html/fragment.dag",
-    dissolution: unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes")
+    dissolution: std.dissolution.unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes")
   },
   LegacyLanguageModuleHome {
     file_path: "dag/extdeps/languages/markdown.dag",
     module_path: "extdeps.languages.markdown",
-    target: commonmark_format_subject_ref,
+    target: gunbc.language_target_registry.commonmark_format_subject_ref,
     moves_to: "dag/extdeps/languages/markdown/commonmark_emit.dag",
-    dissolution: unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes")
+    dissolution: std.dissolution.unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes")
   },
   LegacyLanguageModuleHome {
     file_path: "dag/extdeps/languages/react_jsx.dag",
     module_path: "extdeps.languages.react_jsx",
-    target: jsx_language_subject_ref,
+    target: gunbc.language_target_registry.jsx_language_subject_ref,
     moves_to: "dag/extdeps/languages/jsx/emit.dag",
-    dissolution: unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes; the module name drops React, which names a framework this repository does not target, in favour of the JSX subject D0 registered")
+    dissolution: std.dissolution.unbound_dissolution(description: "a typed move receipt records the file at its canonical address and this row deletes; the module name drops React, which names a framework this repository does not target, in favour of the JSX subject D0 registered")
   }
 ]
 

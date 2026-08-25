@@ -12,23 +12,23 @@ test fn witness_admission_source_scan_is_declared_scaffold() -> Bool {
 
 test fn witness_admission_dissolve_trigger_names_site_and_lane() -> Bool {
   string_contains(
-    s: dissolution_description(condition: gunbc.cli_run_witness_admission_scaffold.cli_run_witness_admission_source_scan_dissolve_trigger),
+    s: std.dissolution.dissolution_description(condition: gunbc.cli_run_witness_admission_scaffold.cli_run_witness_admission_source_scan_dissolve_trigger),
     pattern: "witness_admission_explicit_consumer_keys"
   ) &&
     string_contains(
-      s: dissolution_description(condition: gunbc.cli_run_witness_admission_scaffold.cli_run_witness_admission_source_scan_dissolve_trigger),
+      s: std.dissolution.dissolution_description(condition: gunbc.cli_run_witness_admission_scaffold.cli_run_witness_admission_source_scan_dissolve_trigger),
       pattern: "seed_emitter_behavioral_wet_known_red_entries"
     ) &&
     string_contains(
-      s: dissolution_description(condition: gunbc.cli_run_witness_admission_scaffold.cli_run_witness_admission_source_scan_dissolve_trigger),
+      s: std.dissolution.dissolution_description(condition: gunbc.cli_run_witness_admission_scaffold.cli_run_witness_admission_source_scan_dissolve_trigger),
       pattern: "witness_admission_explicit_consumer_manifest"
     ) &&
     string_contains(
-      s: dissolution_description(condition: gunbc.cli_run_witness_admission_scaffold.cli_run_witness_admission_source_scan_dissolve_trigger),
+      s: std.dissolution.dissolution_description(condition: gunbc.cli_run_witness_admission_scaffold.cli_run_witness_admission_source_scan_dissolve_trigger),
       pattern: "module-identity-storage-binding"
     ) &&
     string_contains(
-      s: dissolution_description(condition: gunbc.cli_run_witness_admission_scaffold.cli_run_witness_admission_source_scan_dissolve_trigger),
+      s: std.dissolution.dissolution_description(condition: gunbc.cli_run_witness_admission_scaffold.cli_run_witness_admission_source_scan_dissolve_trigger),
       pattern: "5-dissolve-patches"
     )
 }
@@ -37,7 +37,7 @@ test fn witness_admission_hand_rust_receipt_plan_anchor_is_checkable() -> Bool {
   string_contains(
     s: gunbc.cli_run_witness_admission_scaffold.cli_run_witness_admission_hand_rust_receipt_plan_anchor,
     pattern: "module-identity-storage-binding-design.md"
-  ) && cli_run_witness_admission_hand_rust_loc_delta_net > 0
+  ) && gunbc.cli_run_witness_admission_scaffold.cli_run_witness_admission_hand_rust_loc_delta_net > 0
 }
 
 test fn witness_admission_discriminating_tests_named() -> Bool {
@@ -46,7 +46,7 @@ test fn witness_admission_discriminating_tests_named() -> Bool {
     pattern: "known_red"
   ) &&
     string_contains(
-      s: cli_run_witness_admission_test_discriminator_file_grain_expand,
+      s: gunbc.cli_run_witness_admission_scaffold.cli_run_witness_admission_test_discriminator_file_grain_expand,
       pattern: "file_grain"
     )
 }

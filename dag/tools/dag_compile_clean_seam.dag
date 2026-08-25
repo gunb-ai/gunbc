@@ -17,9 +17,9 @@ fn cross_shard_seam_receipt_from(probe: tools.dag_compile_clean_seam_transport.C
     y_reds: !probe.y_exit_zero,
     x_reds: !probe.x_exit_zero,
     m_reds: !probe.m_exit_zero,
-    y_names_class: string_contains(s: probe.y_output, pattern: cross_shard_seam_class_marker),
-    x_names_class: string_contains(s: probe.x_output, pattern: cross_shard_seam_class_marker),
-    m_names_class: string_contains(s: probe.m_output, pattern: cross_shard_seam_class_marker)
+    y_names_class: string_contains(s: probe.y_output, pattern: tools.dag_compile_clean_seam_transport.cross_shard_seam_class_marker),
+    x_names_class: string_contains(s: probe.x_output, pattern: tools.dag_compile_clean_seam_transport.cross_shard_seam_class_marker),
+    m_names_class: string_contains(s: probe.m_output, pattern: tools.dag_compile_clean_seam_transport.cross_shard_seam_class_marker)
   }
 }
 
@@ -37,22 +37,22 @@ fn monolith_control_reds_with_same_diagnostic_class(receipt: CrossShardSeamRecei
 
 fn cross_shard_seam_composed_verdict(receipt: CrossShardSeamReceipt) -> tools.dag_compile_clean_partition.CompileCleanShardVerdict {
   let verdict_y = if shard_y_reds(receipt: receipt) {
-    tools.dag_compile_clean_partition.ShardFailed { entry_path: cross_shard_seam_importee_entry_path }
+    tools.dag_compile_clean_partition.ShardFailed { entry_path: tools.dag_compile_clean_seam_transport.cross_shard_seam_importee_entry_path }
   } else {
-    ShardClean
+    tools.dag_compile_clean_partition.ShardClean
   }
   let verdict_x = if shard_x_reds_with_seam_attribution(receipt: receipt) {
-    tools.dag_compile_clean_partition.ShardFailed { entry_path: cross_shard_seam_importer_entry_path }
+    tools.dag_compile_clean_partition.ShardFailed { entry_path: tools.dag_compile_clean_seam_transport.cross_shard_seam_importer_entry_path }
   } else {
-    ShardClean
+    tools.dag_compile_clean_partition.ShardClean
   }
-  compose_compile_clean_shard_verdicts(verdicts: [verdict_y, verdict_x])
+  tools.dag_compile_clean_partition.compose_compile_clean_shard_verdicts(verdicts: [verdict_y, verdict_x])
 }
 
 fn composed_verdict_reds_and_names_cause(receipt: CrossShardSeamReceipt) -> Bool {
   match cross_shard_seam_composed_verdict(receipt: receipt) {
-    ShardFailed { entry_path: p } => p != ""
-    ShardClean => false
+    tools.dag_compile_clean_partition.ShardFailed { entry_path: p } => p != ""
+    tools.dag_compile_clean_partition.ShardClean => false
   }
 }
 
@@ -66,7 +66,7 @@ fn witness_cross_shard_seam_preservation_holds_from(receipt: CrossShardSeamRecei
 
 fn witness_cross_shard_seam_preservation_holds() -> Bool {
   witness_cross_shard_seam_preservation_holds_from(
-    receipt: cross_shard_seam_receipt_from(probe: run_cross_shard_seam_probe())
+    receipt: cross_shard_seam_receipt_from(probe: tools.dag_compile_clean_seam_transport.run_cross_shard_seam_probe())
   )
 }
 

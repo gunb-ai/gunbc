@@ -117,19 +117,19 @@ fn canonical_hostname_in_roster(
 
 data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {
-    fleet_slot: operator_host_srv1,
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv1,
     canonical_hostname: "srv1" as extdeps.dns.domain_name.DnsLabel,
   },
   HostnameAllocation {
-    fleet_slot: operator_host_srv2,
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv2,
     canonical_hostname: "srv2" as extdeps.dns.domain_name.DnsLabel,
   },
   HostnameAllocation {
-    fleet_slot: operator_host_srv3,
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv3,
     canonical_hostname: "srv3" as extdeps.dns.domain_name.DnsLabel,
   },
   HostnameAllocation {
-    fleet_slot: operator_host_srv4,
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv4,
     canonical_hostname: "srv4" as extdeps.dns.domain_name.DnsLabel,
   },
 ]

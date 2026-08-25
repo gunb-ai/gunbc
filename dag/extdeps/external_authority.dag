@@ -28,7 +28,7 @@ fn external_model_scope_citations(scope: ExternalModelScope) -> List<ExternalAut
 }
 
 fn external_subject_ref_eq(a: ExternalSubjectRef, b: ExternalSubjectRef) -> Bool {
-  declaration_ref_eq(a: a.declaration, b: b.declaration)
+  std.decl_ref.declaration_ref_eq(a: a.declaration, b: b.declaration)
 }
 
 data fact_authority_override_ref_note: String = "FactAuthorityOverride.fact is a DeclarationRef, not prose (operator verdict on gunbc#7556; the §3 cite-the-symbol rule applied to the override carrier): the overridden fact is named by module + declaration in the containment tree's own key space, so a stale override is decidable by symbol resolution rather than rotting as free text."
@@ -115,7 +115,7 @@ type DownstreamSupportRoster {
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: File
+    scheme: extdeps.uri.File
     locator: "DESIGN.md#3-single-authority"
   }
 }

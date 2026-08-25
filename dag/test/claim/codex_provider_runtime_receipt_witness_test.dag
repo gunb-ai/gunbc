@@ -3,27 +3,27 @@ module test.claim.codex_provider_runtime_receipt_witness
 
 test fn witness_runtime_receipt_derives_three_roots_and_honest_fingerprint() -> Bool {
   let host = "srv1" as product.placement_supply.HostIdentity
-  match codex_bundled_executable_for_srv1() {
+  match gunbc.package_delivery.codex_bundled_executable_for_srv1() {
     Absent => false
     Present { value: executable } =>
-      match derive_codex_provider_runtime_receipt(
+      match gunbc.codex_provider_runtime_receipt.derive_codex_provider_runtime_receipt(
         host: host,
         bundled_executable: executable,
         bundle_receipt_identity_hex: "abc123" as std.types.NonEmptyStr,
       ) {
         Absent => false
         Present { value: receipt } =>
-          codex_provider_runtime_receipt_converges_three_roots(receipt: receipt)
+          gunbc.codex_provider_runtime_receipt.codex_provider_runtime_receipt_converges_three_roots(receipt: receipt)
             && receipt.bundled_executable == executable
-            && receipt.version_marker == codex_runtime_version_identity_marker() as std.types.NonEmptyStr
+            && receipt.version_marker == gunbc.package_delivery.codex_runtime_version_identity_marker() as std.types.NonEmptyStr
             && receipt.bundle_receipt_identity_hex == ("abc123" as std.types.NonEmptyStr)
             && match receipt.process_fingerprint {
-              CodexProcessFingerprintUnobserved { reason: _ } => true
+              gunbc.codex_provider_runtime_receipt.CodexProcessFingerprintUnobserved { reason: _ } => true
               _ => false
             }
-            && codex_provider_runtime_receipt_process_fingerprint_observed(receipt: receipt) == none
-            && codex_provider_runtime_receipt_wire_path(
-              placement: srv1_provider_runtime_placement(),
+            && gunbc.codex_provider_runtime_receipt.codex_provider_runtime_receipt_process_fingerprint_observed(receipt: receipt) == none
+            && gunbc.codex_provider_runtime_receipt.codex_provider_runtime_receipt_wire_path(
+              placement: gunbc.host_layout.srv1_provider_runtime_placement(),
               host: host,
             ) == (
               "/opt/gunbc/provider-runtime/evidence/codex-provider-runtime/srv1.json" as std.types.FilePath
@@ -33,10 +33,10 @@ test fn witness_runtime_receipt_derives_three_roots_and_honest_fingerprint() -> 
 }
 
 test fn witness_runtime_receipt_refuses_unknown_host() -> Bool {
-  match codex_bundled_executable_for_srv1() {
+  match gunbc.package_delivery.codex_bundled_executable_for_srv1() {
     Absent => true
     Present { value: executable } =>
-      derive_codex_provider_runtime_receipt(
+      gunbc.codex_provider_runtime_receipt.derive_codex_provider_runtime_receipt(
         host: "unknown-host" as product.placement_supply.HostIdentity,
         bundled_executable: executable,
         bundle_receipt_identity_hex: "abc123" as std.types.NonEmptyStr,

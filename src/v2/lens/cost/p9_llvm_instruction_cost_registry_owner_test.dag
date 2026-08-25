@@ -1,5 +1,6 @@
 module v2.test.lens_cost.p9_llvm_instruction_cost_registry_owner
 
+
 fn p9_owned_fn_name_eq(left: v2.lens.registry.LensOwnedFnV0, right: v2.lens.registry.LensOwnedFnV0) -> Bool {
   left.fn_name == right.fn_name
 }

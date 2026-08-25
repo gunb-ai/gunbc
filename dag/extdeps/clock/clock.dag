@@ -4,7 +4,7 @@ module extdeps.clock
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/date.html"
   }
 }
@@ -59,7 +59,7 @@ fn clock_unix_millis_read() -> ClockUnixMillisRead {
       ClockUnixMillisRefused {
         detail: concat("clock unix millis reading is not an integer: ", result.unix_millis)
       }
-    Present { value: n } =>
+    v2.std.optional.Present { value: n } =>
       if n < 0 {
         ClockUnixMillisRefused {
           detail: concat("clock unix millis reading is negative: ", result.unix_millis)

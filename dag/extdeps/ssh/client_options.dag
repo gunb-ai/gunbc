@@ -12,7 +12,7 @@ module extdeps.ssh.client_options
 // citation defect DESIGN section 3 names.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "man.openbsd.org/ssh_config.5"
   }
 }
@@ -27,10 +27,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ssh.client_options",
       decl_name: "SshClientOption",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.ssh.client_options.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -180,7 +180,7 @@ fn ssh_client_option_value(option: SshClientOption) -> String {
     VerifyHostKeyDNS { value: v } => verify_host_key_dns_wire(value: v)
     UpdateHostKeys { value: v } => update_host_keys_wire(value: v)
     BatchMode { enabled: e } => if e { "yes" } else { "no" }
-    ConnectTimeout { seconds: s } => to_string(second_count(s: s))
+    ConnectTimeout { seconds: s } => to_string(std.measure.second_count(s: s))
     ConfigFile { path: p } => p as String
     IdentityFile { path: p } => p as String
     IdentitiesOnly { enabled: e } => if e { "yes" } else { "no" }

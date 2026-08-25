@@ -3,14 +3,14 @@ module extdeps.npm
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.npmjs.com/cli/v10/configuring-npm/package-lock-json"
   }
 }
 
 data npm_sri_w3c_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.w3.org/TR/SRI/"
   }
 }
@@ -20,10 +20,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.npm",
       decl_name: "NpmPackageLockFormat",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.npm.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [npm_sri_w3c_authority]
 }
 
@@ -111,7 +111,7 @@ type NpmRegistryIntegrity
     }
 
 type NpmRegistryArtifact {
-  package: PackageCoordinate<NpmRegistry>
+  package: extdeps.package.PackageCoordinate<NpmRegistry>
   version: extdeps.version.VersionIdentity
   resolved: NpmResolvedRegistryArtifact
   expected_integrity: NpmRegistryIntegrity
@@ -138,21 +138,21 @@ data npm_lock_node_selection_note: String = "FIRST CODEX PROFILE supports only r
 
 fn npm_registry_integrity_content_hash(integrity: NpmRegistryIntegrity) -> std.content_hash.ContentHash {
   match integrity {
-    NpmRegistrySha512Integrity { digest } => as_content_hash_sha512(digest: digest)
-    NpmRegistrySha1Integrity { digest } => as_content_hash_sha1(digest: digest)
+    NpmRegistrySha512Integrity { digest } => std.content_hash.as_content_hash_sha512(digest: digest)
+    NpmRegistrySha1Integrity { digest } => std.content_hash.as_content_hash_sha1(digest: digest)
   }
 }
 
 fn npm_registry_artifact_pin(
   artifact: NpmRegistryArtifact,
-) -> Pin<PackageCoordinate<NpmRegistry>> {
+) -> extdeps.pin.Pin<extdeps.package.PackageCoordinate<NpmRegistry>> {
   extdeps.pin.Pin {
     subject: artifact.package,
     version: artifact.version,
     expected_identity: npm_registry_integrity_content_hash(
       integrity: artifact.expected_integrity,
     ),
-    selection: ExactPin,
+    selection: extdeps.pin.ExactPin,
   }
 }
 
@@ -199,11 +199,11 @@ fn npm_registry_integrity_from_decode(
 }
 
 fn npm_octets_to_lower_hex(octets: List<std.integer.UInt8>) -> String {
-  map(octets, octet => byte_hex_lower(v: octet)) |> join(separator: "")
+  map(octets, octet => extdeps.numeric.base16.byte_hex_lower(v: octet)) |> join(separator: "")
 }
 
 fn npm_sri_base64_payload_is_canonical(encoded: String, octets: List<std.integer.UInt8>) -> Bool {
-  encoded == base64_encode(octets: octets, variant: std.encoding.Standard)
+  encoded == std.encoding.base64_encode(octets: octets, variant: std.encoding.Standard)
 }
 
 fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
@@ -211,11 +211,11 @@ fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
     NpmIntegrityOptionsUnsupported
   } else if expression.starts_with(prefix: "sha512-") {
     let encoded = expression.substring(start: 7, end: expression.length())
-    match base64_decode(s: encoded, variant: std.encoding.Standard) {
+    match std.encoding.base64_decode(s: encoded, variant: std.encoding.Standard) {
       Present { value: octets } =>
         if count(octets) == 64 {
           if npm_sri_base64_payload_is_canonical(encoded: encoded, octets: octets) {
-            match sha512_hex_digest(hex: npm_octets_to_lower_hex(octets: octets)) {
+            match std.content_hash.sha512_hex_digest(hex: npm_octets_to_lower_hex(octets: octets)) {
               Present { value: digest } => NpmSingleSha512Integrity { digest: digest }
               Absent =>
                 NpmIntegrityMalformed {
@@ -239,11 +239,11 @@ fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
     }
   } else if expression.starts_with(prefix: "sha1-") {
     let encoded = expression.substring(start: 5, end: expression.length())
-    match base64_decode(s: encoded, variant: std.encoding.Standard) {
+    match std.encoding.base64_decode(s: encoded, variant: std.encoding.Standard) {
       Present { value: octets } =>
         if count(octets) == 20 {
           if npm_sri_base64_payload_is_canonical(encoded: encoded, octets: octets) {
-            match sha1_hex_digest(hex: npm_octets_to_lower_hex(octets: octets)) {
+            match std.content_hash.sha1_hex_digest(hex: npm_octets_to_lower_hex(octets: octets)) {
               Present { value: digest } => NpmSingleSha1Integrity { digest: digest }
               Absent =>
                 NpmIntegrityMalformed {
@@ -303,7 +303,7 @@ type NpmPackageLockGraph = extdeps.package.PackageLockGraph<NpmPackageLockManage
 type NpmPackageLockParse
   = NpmPackageLockParsed {
       manager: NpmPackageLockManager
-      nodes: List<PackageLockNode<NpmLockPathKey, NpmLockNodeSelection, NpmLockNodeMetadata>>
+      nodes: List<extdeps.package.PackageLockNode<NpmLockPathKey, NpmLockNodeSelection, NpmLockNodeMetadata>>
       unsupported: List<NpmLockNodeFormUnsupportedCarrier>
       graph: NpmPackageLockGraph
     }
@@ -317,7 +317,7 @@ type NpmLockNodeFormUnsupportedCarrier {
 }
 
 type NpmLockDecodeAcc {
-  accepted: List<PackageLockNode<NpmLockPathKey, NpmLockNodeSelection, NpmLockNodeMetadata>>
+  accepted: List<extdeps.package.PackageLockNode<NpmLockPathKey, NpmLockNodeSelection, NpmLockNodeMetadata>>
   unsupported: List<NpmLockNodeFormUnsupportedCarrier>
 }
 
@@ -330,19 +330,19 @@ fn npm_lock_path_key_from_json_key(key: String) -> NpmLockPathKey {
 }
 
 fn npm_json_string_member(v: extdeps.languages.json.emit.JsonValue, key: String) -> String? {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
+    extdeps.languages.json.parse.JsonMemberFound { value } =>
       match value {
-        JsonString { value: s } => Present { value: s }
-        JsonNull => none
-        JsonBool { value: _ } => none
-        JsonNumber { lexeme: _ } => none
-        JsonArray { elements: _ } => none
-        JsonObject { members: _ } => none
+        extdeps.languages.json.emit.JsonString { value: s } => Present { value: s }
+        extdeps.languages.json.emit.JsonNull => none
+        extdeps.languages.json.emit.JsonBool { value: _ } => none
+        extdeps.languages.json.emit.JsonNumber { lexeme: _ } => none
+        extdeps.languages.json.emit.JsonArray { elements: _ } => none
+        extdeps.languages.json.emit.JsonObject { members: _ } => none
       }
-    JsonMemberAbsent => none
-    JsonMemberDuplicated { count: _ } => none
-    JsonMemberNotAnObject => none
+    extdeps.languages.json.parse.JsonMemberAbsent => none
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => none
+    extdeps.languages.json.parse.JsonMemberNotAnObject => none
   }
 }
 
@@ -362,15 +362,15 @@ type NpmBooleanMemberObservation
 data npm_boolean_member_observation_note: String = "Absent / observed / duplicate / wrong-type are DISTINCT. package-lock defaults apply only on Absent (npm docs: missing Boolean flags are false). Duplicate and wrong-type refuse — never collapse to false."
 
 fn npm_json_boolean_member(v: extdeps.languages.json.emit.JsonValue, key: String) -> NpmBooleanMemberObservation {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
+    extdeps.languages.json.parse.JsonMemberFound { value } =>
       match value {
-        JsonBool { value: b } => NpmBooleanMemberObserved { value: b }
+        extdeps.languages.json.emit.JsonBool { value: b } => NpmBooleanMemberObserved { value: b }
         other => NpmBooleanMemberWrongType { observed: other }
       }
-    JsonMemberAbsent => NpmBooleanMemberAbsent
-    JsonMemberDuplicated { count } => NpmBooleanMemberDuplicate { count: count }
-    JsonMemberNotAnObject => NpmBooleanMemberNotAnObject
+    extdeps.languages.json.parse.JsonMemberAbsent => NpmBooleanMemberAbsent
+    extdeps.languages.json.parse.JsonMemberDuplicated { count } => NpmBooleanMemberDuplicate { count: count }
+    extdeps.languages.json.parse.JsonMemberNotAnObject => NpmBooleanMemberNotAnObject
   }
 }
 
@@ -404,10 +404,10 @@ fn npm_json_string_list_member_observation(
   v: extdeps.languages.json.emit.JsonValue,
   key: String,
 ) -> NpmStringListMemberObservation {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value } =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
+    extdeps.languages.json.parse.JsonMemberFound { value } =>
       match value {
-        JsonArray { elements } => {
+        extdeps.languages.json.emit.JsonArray { elements } => {
           let acc = fold(
             elements,
             init: NpmStringListFoldOk { values: [] },
@@ -416,7 +416,7 @@ fn npm_json_string_list_member_observation(
                 NpmStringListFoldBadElement { observed: observed }
               NpmStringListFoldOk { values: xs } =>
                 match el {
-                  JsonString { value: s } =>
+                  extdeps.languages.json.emit.JsonString { value: s } =>
                     if s == "" {
                       NpmStringListFoldOk { values: xs }
                     } else {
@@ -437,9 +437,9 @@ fn npm_json_string_list_member_observation(
         }
         other => NpmStringListMemberWrongType { observed: other }
       }
-    JsonMemberAbsent => NpmStringListMemberAbsent
-    JsonMemberDuplicated { count } => NpmStringListMemberDuplicate { count: count }
-    JsonMemberNotAnObject => NpmStringListMemberNotAnObject
+    extdeps.languages.json.parse.JsonMemberAbsent => NpmStringListMemberAbsent
+    extdeps.languages.json.parse.JsonMemberDuplicated { count } => NpmStringListMemberDuplicate { count: count }
+    extdeps.languages.json.parse.JsonMemberNotAnObject => NpmStringListMemberNotAnObject
   }
 }
 
@@ -612,7 +612,7 @@ fn npm_decode_lock_node(path_key: NpmLockPathKey, node: extdeps.languages.json.e
       }
       NpmLockNodeDecoded {
         selection: NpmRootProject {
-          manifest_identity: content_hash_of_value(value: identity_seed),
+          manifest_identity: std.content_hash.content_hash_of_value(value: identity_seed),
         },
       }
     }
@@ -746,16 +746,16 @@ fn npm_decode_registry_lock_node(
 }
 
 fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
-  match parse_json(s: text) {
+  match extdeps.languages.json.parse.parse_json(s: text) {
     Absent =>
       NpmPackageLockParseRefused {
         cause: "package-lock JSON parse refused" as std.types.NonEmptyStr,
       }
     Present { value: doc } =>
-      match json_object_unique_member(v: doc, key: "lockfileVersion") {
-        JsonMemberFound { value: ver_v } =>
+      match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: "lockfileVersion") {
+        extdeps.languages.json.parse.JsonMemberFound { value: ver_v } =>
           match ver_v {
-            JsonNumber { lexeme: lx } =>
+            extdeps.languages.json.emit.JsonNumber { lexeme: lx } =>
               match parse_int(s: lx as String) {
                 Present { value: observed } =>
                   match npm_decode_package_lock_format(observed: observed) {
@@ -764,10 +764,10 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
                         cause: "unsupported lockfileVersion" as std.types.NonEmptyStr,
                       }
                     NpmPackageLockFormatDecoded { format } =>
-                      match json_object_unique_member(v: doc, key: "packages") {
-                        JsonMemberFound { value: pkgs_v } =>
+                      match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: "packages") {
+                        extdeps.languages.json.parse.JsonMemberFound { value: pkgs_v } =>
                           match pkgs_v {
-                            JsonObject { members } => {
+                            extdeps.languages.json.emit.JsonObject { members } => {
                               let decoded = fold(
                                 members,
                                 init: NpmLockDecodeAcc { accepted: [], unsupported: [] },
@@ -827,36 +827,36 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
                                 },
                               }
                             }
-                            JsonNull =>
+                            extdeps.languages.json.emit.JsonNull =>
                               NpmPackageLockParseRefused {
                                 cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
-                            JsonBool { value: _ } =>
+                            extdeps.languages.json.emit.JsonBool { value: _ } =>
                               NpmPackageLockParseRefused {
                                 cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
-                            JsonString { value: _ } =>
+                            extdeps.languages.json.emit.JsonString { value: _ } =>
                               NpmPackageLockParseRefused {
                                 cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
-                            JsonNumber { lexeme: _ } =>
+                            extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
                               NpmPackageLockParseRefused {
                                 cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
-                            JsonArray { elements: _ } =>
+                            extdeps.languages.json.emit.JsonArray { elements: _ } =>
                               NpmPackageLockParseRefused {
                                 cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
                           }
-                        JsonMemberAbsent =>
+                        extdeps.languages.json.parse.JsonMemberAbsent =>
                           NpmPackageLockParseRefused {
                             cause: "packages member absent" as std.types.NonEmptyStr,
                           }
-                        JsonMemberDuplicated { count: _ } =>
+                        extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
                           NpmPackageLockParseRefused {
                             cause: "packages member duplicated" as std.types.NonEmptyStr,
                           }
-                        JsonMemberNotAnObject =>
+                        extdeps.languages.json.parse.JsonMemberNotAnObject =>
                           NpmPackageLockParseRefused {
                             cause: "lock root is not an object" as std.types.NonEmptyStr,
                           }
@@ -867,36 +867,36 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
                     cause: "lockfileVersion is not an integer" as std.types.NonEmptyStr,
                   }
               }
-            JsonNull =>
+            extdeps.languages.json.emit.JsonNull =>
               NpmPackageLockParseRefused {
                 cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
-            JsonBool { value: _ } =>
+            extdeps.languages.json.emit.JsonBool { value: _ } =>
               NpmPackageLockParseRefused {
                 cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
-            JsonString { value: _ } =>
+            extdeps.languages.json.emit.JsonString { value: _ } =>
               NpmPackageLockParseRefused {
                 cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
-            JsonArray { elements: _ } =>
+            extdeps.languages.json.emit.JsonArray { elements: _ } =>
               NpmPackageLockParseRefused {
                 cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
-            JsonObject { members: _ } =>
+            extdeps.languages.json.emit.JsonObject { members: _ } =>
               NpmPackageLockParseRefused {
                 cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
           }
-        JsonMemberAbsent =>
+        extdeps.languages.json.parse.JsonMemberAbsent =>
           NpmPackageLockParseRefused {
             cause: "lockfileVersion absent" as std.types.NonEmptyStr,
           }
-        JsonMemberDuplicated { count: _ } =>
+        extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
           NpmPackageLockParseRefused {
             cause: "lockfileVersion duplicated" as std.types.NonEmptyStr,
           }
-        JsonMemberNotAnObject =>
+        extdeps.languages.json.parse.JsonMemberNotAnObject =>
           NpmPackageLockParseRefused {
             cause: "lock root is not an object" as std.types.NonEmptyStr,
           }

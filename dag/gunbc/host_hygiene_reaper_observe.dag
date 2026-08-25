@@ -27,7 +27,7 @@ fn host_hygiene_read_control_group(unit: std.types.NonEmptyStr) -> String? {
 
 fn host_hygiene_read_procs(control_group: String) -> List<std.types.NonEmptyStr> {
   let raw = filesystem_read(path: join([host_hygiene_cgroupfs_root, control_group, "/cgroup.procs"], "")).content
-  let nonempty_lines = v2.std.algebra.filter(map(split(s: std.algebra.trim(raw), delimiter: "\n"), s => std.algebra.trim(s)), s => s != "")
+  let nonempty_lines = filter(map(split(s: trim(raw), delimiter: "\n"), s => trim(s)), s => s != "")
   map(nonempty_lines, p => p as std.types.NonEmptyStr)
 }
 
@@ -39,10 +39,10 @@ fn host_hygiene_pid_cmdline_is_build_cache(pid: std.types.NonEmptyStr) -> Bool {
 }
 
 fn host_hygiene_classify_occupant(pids: List<std.types.NonEmptyStr>) -> gunbc.host_hygiene_reaper.CgroupOccupant {
-  if v2.std.algebra.length(pids) == 0 {
+  if length(pids) == 0 {
     gunbc.host_hygiene_reaper.CgroupEmpty
   } else {
-    if v2.std.algebra.length(v2.std.algebra.filter(pids, host_hygiene_pid_cmdline_is_build_cache)) > 0 {
+    if length(filter(pids, host_hygiene_pid_cmdline_is_build_cache)) > 0 {
       gunbc.host_hygiene_reaper.CgroupBuildCacheServerOccupant
     } else {
       gunbc.host_hygiene_reaper.CgroupOrdinaryProcesses
@@ -93,7 +93,7 @@ fn observe_all_residual_slots() -> ResidualFleetObserveReceipt {
   match gunbc.systemctl_list_units.systemctl_list_units_all_states(instance_glob: host_hygiene_reap_instance_glob) {
     Absent => ResidualFleetObserveRefused { cause: "unit enumeration refused (systemctl list-units transport)" }
     Present { value: units } =>
-      if v2.std.algebra.length(units) == 0 {
+      if length(units) == 0 {
         ResidualFleetObserveRefused { cause: "unit enumeration returned zero actions-runner@* units — refusing an empty observation rather than reporting a vacuous receipt" }
       } else {
         ResidualFleetObserved { outcomes: map(units, u => observe_residual_slot(unit: u)) }
@@ -120,8 +120,8 @@ fn residual_fleet_observed_slots(outcomes: List<ResidualSlotObserveOutcome>) -> 
       Absent => acc
     }
   })
-  let refused = v2.std.algebra.filter(outcomes, o => match residual_slot_observe_outcome_slot(o: o) { Absent => true, Present { value: _ } => false })
-  if v2.std.algebra.length(refused) > 0 { none } else { Present { value: slots } }
+  let refused = filter(outcomes, o => match residual_slot_observe_outcome_slot(o: o) { Absent => true, Present { value: _ } => false })
+  if length(refused) > 0 { none } else { Present { value: slots } }
 }
 
 fn gunbc_host_hygiene_reaper_live_show_effective_read() -> std.realization_reconcile.ShowEffectiveRead<List<gunbc.host_hygiene_reaper.ResidualSlotObservation>> {

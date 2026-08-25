@@ -1,6 +1,7 @@
 module test.claim.ci_deploy_target_host_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_srv1_hostname_proves_target() -> Bool {
   let proof = deploy_target_proof_from_access(access: ci_deploy_srv1_access)

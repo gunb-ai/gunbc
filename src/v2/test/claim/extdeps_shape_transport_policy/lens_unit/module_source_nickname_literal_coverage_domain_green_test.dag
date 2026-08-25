@@ -2,10 +2,10 @@ module v2.test.extdeps_shape_transport_policy.lens_unit.module_source_nickname_l
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn module_source_nickname_literal_coverage_domain_is_green_holds() -> Bool {
-  v2.lens.extdeps_shape_transport_policy.extdeps_live_module_source_nickname_literal_count(
+  extdeps_live_module_source_nickname_literal_count(
     module: v2.lens.extdeps_shape_transport_policy.module_refs.coverage_domain_equivalence_module
   ) == 0
 }

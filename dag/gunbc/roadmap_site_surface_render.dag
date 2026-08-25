@@ -15,18 +15,18 @@ fn page_render_refusal_body(reason: String) -> String {
 }
 
 fn site_artifact_digest(body: String) -> std.content_hash.Fnv1a64Structural {
-  content_hash_atom(value: body as std.types.NonEmptyStr)
+  std.content_hash.content_hash_atom(value: body as std.types.NonEmptyStr)
 }
 
 fn served_page_body(page: std.markup.Fragment) -> String {
-  match try_serialize_html_source(node: page) {
-    EmitOk { html: h } => h
-    EmitRejected { reason: r } => page_render_refusal_body(reason: r)
+  match extdeps.languages.html.try_serialize_html_source(node: page) {
+    extdeps.languages.html.EmitOk { html: h } => h
+    extdeps.languages.html.EmitRejected { reason: r } => page_render_refusal_body(reason: r)
   }
 }
 
 fn served_surface_digest_kv(url_path: std.types.NonEmptyStr, body: String) -> extdeps.languages.json.emit.JsonKeyValue {
-  json_kv(key: url_path as String, value: json_string(s: site_artifact_digest(body: body).digest as String))
+  extdeps.languages.json.emit.json_kv(key: url_path as String, value: extdeps.languages.json.emit.json_string(s: site_artifact_digest(body: body).digest as String))
 }
 
 fn healthz_surface_members(
@@ -37,14 +37,14 @@ fn healthz_surface_members(
   dispatch_js: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
 ) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   [
-    json_kv(key: "status", value: json_string(s: "ok")),
-    json_kv(key: "service", value: json_string(s: roadmap_site_service_name)),
-    json_kv(key: "artifacts", value: json_object(members: [
-      json_kv(key: roadmap.url_path as String, value: json_string(s: roadmap.digest.digest as String)),
-      json_kv(key: dispatch.url_path as String, value: json_string(s: dispatch.digest.digest as String)),
-      gunbc.roadmap_site_surface_render.served_surface_digest_kv(url_path: daily.url_path, body: daily.body),
-      gunbc.roadmap_site_surface_render.served_surface_digest_kv(url_path: full.url_path, body: full.body),
-      gunbc.roadmap_site_surface_render.served_surface_digest_kv(url_path: dispatch_js.url_path, body: dispatch_js.body),
+    extdeps.languages.json.emit.json_kv(key: "status", value: extdeps.languages.json.emit.json_string(s: "ok")),
+    extdeps.languages.json.emit.json_kv(key: "service", value: extdeps.languages.json.emit.json_string(s: roadmap_site_service_name)),
+    extdeps.languages.json.emit.json_kv(key: "artifacts", value: extdeps.languages.json.emit.json_object(members: [
+      extdeps.languages.json.emit.json_kv(key: roadmap.url_path as String, value: extdeps.languages.json.emit.json_string(s: roadmap.digest.digest as String)),
+      extdeps.languages.json.emit.json_kv(key: dispatch.url_path as String, value: extdeps.languages.json.emit.json_string(s: dispatch.digest.digest as String)),
+      served_surface_digest_kv(url_path: daily.url_path, body: daily.body),
+      served_surface_digest_kv(url_path: full.url_path, body: full.body),
+      served_surface_digest_kv(url_path: dispatch_js.url_path, body: dispatch_js.body),
     ])),
   ]
 }
@@ -58,7 +58,7 @@ fn healthz_body_from_surface_artifacts(
   full: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
   dispatch_js: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
 ) -> String {
-  serialize_json(v: json_object(members: healthz_surface_members(
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: healthz_surface_members(
     roadmap: roadmap,
     dispatch: dispatch,
     daily: daily,
@@ -76,7 +76,7 @@ fn healthz_body_with_release_identity(
   release_revision: std.types.CommitSha,
   surface_bundle_identity: std.content_hash.Fnv1a64Structural,
 ) -> String {
-  serialize_json(v: json_object(members: v2.std.algebra.list_append(
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: list_append(
     healthz_surface_members(
       roadmap: roadmap,
       dispatch: dispatch,
@@ -84,7 +84,7 @@ fn healthz_body_with_release_identity(
       full: full,
       dispatch_js: dispatch_js,
     ),
-    running_release_healthz_members(
+    gunbc.running_release_identity.running_release_healthz_members(
       revision: release_revision,
       surface_bundle_identity: surface_bundle_identity,
     ),

@@ -10,7 +10,7 @@ type ModuleBehavioralTransportConfig {
   driver_rel: String
   pass_marker: String
   claim_runs: List<tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedClaimRun>
-  run_closure_assembly: v2.std.logic.Bool
+  run_closure_assembly: Bool
 }
 
 data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransportConfig> = [
@@ -295,16 +295,16 @@ fn module_behavioral_transport_config_for(module_path: String) -> v2.std.optiona
     empty: v2.std.optional.Absent,
     cons: fn(acc, cfg) {
       match acc {
-        Present { value: _ } => acc
-        Absent => module_behavioral_transport_config_if_matches(module_path: module_path, cfg: cfg)
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent => module_behavioral_transport_config_if_matches(module_path: module_path, cfg: cfg)
       }
     }
   )
 }
 
-fn compiler_module_behavioral_receipt_for(module_path: String) -> v2.std.logic.Bool {
+fn compiler_module_behavioral_receipt_for(module_path: String) -> Bool {
   match module_behavioral_transport_config_for(module_path: module_path) {
-    Present { value: cfg } => cssl_seed_linked_behavioral_receipt(
+    v2.std.optional.Present { value: cfg } => tools.self_host_curated_seed_linked_harness.cssl_seed_linked_behavioral_receipt(
       source_rel: cfg.module_path,
       shim_lib_rel: cfg.shim_lib_rel,
       shim_writes: cfg.shim_writes,
@@ -313,6 +313,6 @@ fn compiler_module_behavioral_receipt_for(module_path: String) -> v2.std.logic.B
       claim_runs: cfg.claim_runs,
       run_closure_assembly: cfg.run_closure_assembly
     )
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }

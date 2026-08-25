@@ -1,13 +1,13 @@
 module test.claim.claude_sdk_parser_drop_live_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data claude_sdk_parser_drop_live_witness_note: String = "Wet half of audit §4.1 parser-drop evidence, split out of claude_sdk_parser_drop_witness_test.dag so hermetic discovery can run the fixture/RED controls without a lying SubstrateInputsOnly disposition on a filesystem_read witness. Reads the committed probe receipt and re-derives control_response parser-drop through claude_sdk_parser_drop_receipt_holds."
 
 data real_execution_home_doc: String = "This witness drives a real Filesystem.Read effect (extdeps.filesystem.filesystem_io has no mock_response), so the hermetic discovery corpus refuses it by construction. Excluded from discovery (gunbc.ci_layer_roots witness_exclusion_frontier) and re-enrolled as a declared Wet explicit entry (bin_witness_wet_entries), same lane as push_event_witness_wet_test.dag. The subprocess capture that produced the receipt lives in docs/probes/claude_paired_entitlement_probe/ and is not re-run here — only the committed JSON frame is read and checked by the pure predicate."
 
 test fn witness_wet_receipt_control_response_parser_drop_holds() -> Bool {
-  let result = filesystem_read(path: claude_sdk_parser_drop_receipt_path)
-  claude_sdk_parser_drop_receipt_holds(text: result.content)
+  let result = filesystem_read(path: extdeps.llm.claude_agent_sdk_stream.claude_sdk_parser_drop_receipt_path)
+  extdeps.llm.claude_agent_sdk_stream.claude_sdk_parser_drop_receipt_holds(text: result.content)
 }

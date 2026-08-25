@@ -5,12 +5,12 @@ module tools.gunbc_ci
 
 
 func main() -> std.process.ProcessExit {
-  let script = v2.workflow.ci_release_build_emit.gunbc_ci_run_script(spec: gunbc_ci_spec)
-  let result = shell.Exec.Run(script: retained_foreign(body: script, reason: "gunbc ci generate + run ci floor script"))
+  let script = v2.workflow.ci_release_build_emit.gunbc_ci_run_script(spec: gunbc.ci_spec.gunbc_ci_spec)
+  let result = shell.Exec.Run(script: gunbc.retained_shell_script.retained_foreign(body: script, reason: "gunbc ci generate + run ci floor script"))
   return if result.success {
     std.process.ExitSuccess
   } else {
-    exit_failure(
+    std.process.exit_failure(
       reason: concat(
         concat("gunbc ci failed (exit ", to_string(result.exit_code)),
         concat("): ", result.stderr)

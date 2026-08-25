@@ -10,48 +10,48 @@ fn fixture_request(method: std.types.HttpMethod, path: String) -> extdeps.http.s
 }
 
 fn motion_page_body() -> String {
-  roadmap_serve_invoke(
-    handler: InstrumentMotionPageHandler,
+  gunbc.roadmap_serve.roadmap_serve_invoke(
+    handler: gunbc.roadmap_serve.InstrumentMotionPageHandler,
     params: [],
-    request: test.claim.instrument_motion_page_witness.fixture_request(method: GET, path: instrument_motion_page_path),
+    request: fixture_request(method: std.types.GET, path: gunbc.roadmap_component.instrument_motion_page_path),
     release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   ).body
 }
 
 fn motion_asset_body() -> String {
-  roadmap_serve_invoke(
-    handler: InstrumentMotionAssetHandler,
+  gunbc.roadmap_serve.roadmap_serve_invoke(
+    handler: gunbc.roadmap_serve.InstrumentMotionAssetHandler,
     params: [],
-    request: test.claim.instrument_motion_page_witness.fixture_request(method: GET, path: instrument_motion_asset_path),
+    request: fixture_request(method: std.types.GET, path: gunbc.roadmap_component.instrument_motion_asset_path),
     release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   ).body
 }
 
 test fn witness_motion_page_renders_through_its_route() -> Bool {
-  let r = roadmap_serve_invoke(
-    handler: InstrumentMotionPageHandler,
+  let r = gunbc.roadmap_serve.roadmap_serve_invoke(
+    handler: gunbc.roadmap_serve.InstrumentMotionPageHandler,
     params: [],
-    request: test.claim.instrument_motion_page_witness.fixture_request(method: GET, path: instrument_motion_page_path),
+    request: fixture_request(method: std.types.GET, path: gunbc.roadmap_component.instrument_motion_page_path),
     release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   )
   let html = r.body
   r.status == 200
-    && string_contains(s: html, pattern: motion_plate_class)
-    && string_contains(s: html, pattern: motion_tap_btn_class)
-    && string_contains(s: html, pattern: motion_receipt_class)
-    && string_contains(s: html, pattern: motion_plate_id)
-    && string_contains(s: html, pattern: motion_receipt_id)
-    && string_contains(s: html, pattern: motion_probe_run_id)
-    && string_contains(s: html, pattern: instrument_motion_asset_path)
+    && string_contains(s: html, pattern: gunbc.roadmap_component.motion_plate_class)
+    && string_contains(s: html, pattern: gunbc.roadmap_component.motion_tap_btn_class)
+    && string_contains(s: html, pattern: gunbc.roadmap_component.motion_receipt_class)
+    && string_contains(s: html, pattern: gunbc.roadmap_component.motion_plate_id)
+    && string_contains(s: html, pattern: gunbc.roadmap_component.motion_receipt_id)
+    && string_contains(s: html, pattern: gunbc.roadmap_component.motion_probe_run_id)
+    && string_contains(s: html, pattern: gunbc.roadmap_component.instrument_motion_asset_path)
 }
 
 data nonempty_wire_note: String = "EVERY WIRE ASSERTION CHECKS THE WIRE IS NON-EMPTY BEFORE CHECKING THE PAGE CARRIES IT (review finding, 2026-08-07). string_contains(anything, \"\") is true, so a control written as contains(html, wire) passes on a page that ships nothing the moment the wire collapses to the empty string. That is not a hypothetical: the helper this file used to call answered a refused sequence with an empty list, and these three claims would all have gone green over an empty attribute. Each claim now reaches the wire only through a settled sequence, and asserts the wire is non-empty in the same breath."
 
 fn page_ships_full_wire(t: gunbc.capability_binding.SyntheticTapStrength) -> Bool {
-  match sequence_for(t: t, m: MotionFull) {
-    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
-    BobSequenceSettled { frames: fs } => {
-      let w = frames_wire(frames: fs)
+  match gunbc.roadmap_instrument_motion.sequence_for(t: t, m: gunbc.design.instrument_bob.MotionFull) {
+    gunbc.design.instrument_bob.BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    gunbc.design.instrument_bob.BobSequenceSettled { frames: fs } => {
+      let w = gunbc.roadmap_instrument_motion.frames_wire(frames: fs)
       w != "" && string_contains(s: motion_page_body(), pattern: w)
     }
   }
@@ -59,24 +59,24 @@ fn page_ships_full_wire(t: gunbc.capability_binding.SyntheticTapStrength) -> Boo
 
 test fn witness_page_ships_both_decided_sequences() -> Bool {
   let html = motion_page_body()
-  string_contains(s: html, pattern: motion_frame_data_attr)
-    && string_contains(s: html, pattern: motion_reduced_frame_data_attr)
-    && string_contains(s: html, pattern: motion_frame_interval_attr)
-    && string_contains(s: html, pattern: concat(motion_frame_interval_attr, concat("=\"", concat(to_string(motion_frame_interval_ms), "\""))))
-    && page_ships_full_wire(t: SyntheticTapKnock)
-    && page_ships_full_wire(t: SyntheticTapLight)
-    && page_ships_full_wire(t: SyntheticTapFirm)
+  string_contains(s: html, pattern: gunbc.roadmap_component.motion_frame_data_attr)
+    && string_contains(s: html, pattern: gunbc.roadmap_component.motion_reduced_frame_data_attr)
+    && string_contains(s: html, pattern: gunbc.roadmap_component.motion_frame_interval_attr)
+    && string_contains(s: html, pattern: concat(gunbc.roadmap_component.motion_frame_interval_attr, concat("=\"", concat(to_string(gunbc.roadmap_instrument_motion.motion_frame_interval_ms), "\""))))
+    && page_ships_full_wire(t: gunbc.capability_binding.SyntheticTapKnock)
+    && page_ships_full_wire(t: gunbc.capability_binding.SyntheticTapLight)
+    && page_ships_full_wire(t: gunbc.capability_binding.SyntheticTapFirm)
 }
 
 test fn witness_reduced_is_a_decided_answer_not_an_opt_out() -> Bool {
-  match sequence_for(t: SyntheticTapKnock, m: MotionFull) {
-    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
-    BobSequenceSettled { frames: fulls } =>
-      match sequence_for(t: SyntheticTapKnock, m: MotionReduced) {
-        BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
-        BobSequenceSettled { frames: reduceds } => {
-          let full = frames_wire(frames: fulls)
-          let reduced = frames_wire(frames: reduceds)
+  match gunbc.roadmap_instrument_motion.sequence_for(t: gunbc.capability_binding.SyntheticTapKnock, m: gunbc.design.instrument_bob.MotionFull) {
+    gunbc.design.instrument_bob.BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    gunbc.design.instrument_bob.BobSequenceSettled { frames: fulls } =>
+      match gunbc.roadmap_instrument_motion.sequence_for(t: gunbc.capability_binding.SyntheticTapKnock, m: gunbc.design.instrument_bob.MotionReduced) {
+        gunbc.design.instrument_bob.BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+        gunbc.design.instrument_bob.BobSequenceSettled { frames: reduceds } => {
+          let full = gunbc.roadmap_instrument_motion.frames_wire(frames: fulls)
+          let reduced = gunbc.roadmap_instrument_motion.frames_wire(frames: reduceds)
           reduced == "0" && full != reduced && count(reduceds) == 1 && count(fulls) > 3
         }
       }
@@ -84,11 +84,11 @@ test fn witness_reduced_is_a_decided_answer_not_an_opt_out() -> Bool {
 }
 
 test fn witness_shipped_sequence_respects_the_modelled_bound() -> Bool {
-  match sequence_for(t: SyntheticTapKnock, m: MotionFull) {
-    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
-    BobSequenceSettled { frames: fs } =>
+  match gunbc.roadmap_instrument_motion.sequence_for(t: gunbc.capability_binding.SyntheticTapKnock, m: gunbc.design.instrument_bob.MotionFull) {
+    gunbc.design.instrument_bob.BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    gunbc.design.instrument_bob.BobSequenceSettled { frames: fs } =>
       count(fs) > 0
-        && all(fs, f => f.displacement_px <= bob_max_travel_px && f.displacement_px >= (0 - bob_max_travel_px))
+        && all(fs, f => f.displacement_px <= gunbc.design.instrument_bob.bob_max_travel_px && f.displacement_px >= (0 - gunbc.design.instrument_bob.bob_max_travel_px))
   }
 }
 
@@ -97,19 +97,19 @@ data shipped_sequence_control_note: String = "THE ROUTE-LEVEL CONTROL ON THE ACT
 Seven conjuncts, one per property the review named: the sequence is ADMITTED rather than truncated; it starts at rest; its first movement is downward; it occupies positions that are neither rest nor an extreme; it appears on both sides of rest; its reach falls between the first third and the last; it contains exactly one settled frame; and it ends at zero on its own, which the client no longer manufactures."
 
 test fn witness_the_shipped_sequence_moves_decays_and_settles() -> Bool {
-  match sequence_for(t: SyntheticTapKnock, m: MotionFull) {
-    BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
-    BobSequenceSettled { frames: fs } => {
-      let settle = max_settle_time_ms()
+  match gunbc.roadmap_instrument_motion.sequence_for(t: gunbc.capability_binding.SyntheticTapKnock, m: gunbc.design.instrument_bob.MotionFull) {
+    gunbc.design.instrument_bob.BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
+    gunbc.design.instrument_bob.BobSequenceSettled { frames: fs } => {
+      let settle = gunbc.design.instrument_bob.max_settle_time_ms()
       fs.length() > 8
-        && frames_max_abs_between(fs: fs, from_ms: 0, to_ms: 1) == 0
+        && gunbc.design.instrument_bob.frames_max_abs_between(fs: fs, from_ms: 0, to_ms: 1) == 0
         && frames_first_movement_is_downward(fs: fs)
-        && frames_visit_an_intermediate_position(fs: fs)
-        && frames_cross_rest(fs: fs)
-        && frames_max_abs_between(fs: fs, from_ms: 0, to_ms: settle / 3) >
-             frames_max_abs_between(fs: fs, from_ms: (settle * 2) / 3, to_ms: settle * 4)
-        && frames_terminate_exactly_once(fs: fs)
-        && frames_last_displacement(fs: fs) == 0
+        && gunbc.design.instrument_bob.frames_visit_an_intermediate_position(fs: fs)
+        && gunbc.design.instrument_bob.frames_cross_rest(fs: fs)
+        && gunbc.design.instrument_bob.frames_max_abs_between(fs: fs, from_ms: 0, to_ms: settle / 3) >
+             gunbc.design.instrument_bob.frames_max_abs_between(fs: fs, from_ms: (settle * 2) / 3, to_ms: settle * 4)
+        && gunbc.design.instrument_bob.frames_terminate_exactly_once(fs: fs)
+        && gunbc.design.instrument_bob.frames_last_displacement(fs: fs) == 0
     }
   }
 }
@@ -122,7 +122,7 @@ fn frames_first_movement_is_downward(fs: List<gunbc.design.instrument_bob.BobFra
 
 test fn witness_asset_route_serves_the_modeled_client() -> Bool {
   let js = motion_asset_body()
-  js == instrument_motion_client_js_source()
+  js == gunbc.roadmap_component.instrument_motion_client_js_source()
     && string_contains(s: js, pattern: "addEventListener('devicemotion'")
     && string_contains(s: js, pattern: "LinearAccelerationSensor")
     && string_contains(s: js, pattern: "try {")
@@ -166,9 +166,9 @@ test fn witness_receipt_starts_unanswered() -> Bool {
 data shared_note_class_note: String = "THE NOTE CLASS IS A WIRE VALUE, NOT A SYMBOL. A repo-wide rename of the fn homonym note matched inside the string literal too, because in \"instrument-note\" the token sits between a hyphen and a quote and neither is a word character. The declaration kept compiling, both pages kept rendering, and the motion page's notes silently stopped matching the stylesheet rule that styles them — a class name is resolved by the browser against CSS text, so nothing in this repository could refuse it. There is now ONE helper: motion imported the sandbox's instrument_note rather than carrying a second copy, so the two cannot drift apart at all. This pins the remaining fact the type system still cannot see — that the emitted class equals the selector the stylesheet defines. The controls are the two exact corrupted spellings: either one reappearing reds this, which the rename that caused it would not have."
 
 test fn witness_note_class_wire_matches_stylesheet_selector() -> Bool {
-  let css = instrument_css()
+  let css = gunbc.roadmap_instrument_sandbox.instrument_css()
   let html = motion_page_body()
-  instrument_note_class == "instrument-note"
+  gunbc.roadmap_instrument_sandbox.instrument_note_class == "instrument-note"
     && string_contains(s: css, pattern: ".instrument-note")
     && string_contains(s: html, pattern: "instrument-note")
     && !string_contains(s: html, pattern: "instrument-motion_note")

@@ -152,9 +152,9 @@ fn configfs_reinstall_path_standing(
 ) -> ReinstallPathStanding {
   let absent = requirements_observed_absent(observations: observations)
   let unobserved = requirements_unobserved(observations: observations)
-  if list_length(items: absent) > 0 {
+  if std.types.list_length(items: absent) > 0 {
     ReinstallPathRefused { observed_absent: absent }
-  } else if list_length(items: unobserved) > 0 {
+  } else if std.types.list_length(items: unobserved) > 0 {
     ReinstallPathUnestablished { missing_probes: unobserved }
   } else {
     ReinstallPathEstablished { qualified_by: observations }

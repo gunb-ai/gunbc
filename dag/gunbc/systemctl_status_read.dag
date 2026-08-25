@@ -2,10 +2,6 @@ module gunbc.systemctl_status_read
 
 
 
-data systemctl_status_path: String = "dag/extdeps/systemd/systemctl.dag"
-data systemctl_status_service: String = "systemd.Systemctl"
-data systemctl_status_operation: String = "Status"
-
 type UnitStatusCapture =
     UnitStatusCaptured { text: String }
   | UnitStatusCaptureRefused { reason: String }
@@ -44,8 +40,8 @@ fn unit_status_capture_text(capture: UnitStatusCapture) -> String {
 
 fn systemctl_status_operation_argv_matches_authority(unit: std.types.NonEmptyStr) -> Bool {
   let authority = ["systemctl", "status", "--no-pager", "--full", unit as String]
-  match host_operation_materialize_argv(operation: SystemctlStatus { unit: unit }) {
-    ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
-    ArgvMaterializationRefused { at: _, cause: _ } => false
+  match gunbc.host_operation_exec.host_operation_materialize_argv(operation: gunbc.host_operation_exec.SystemctlStatus { unit: unit }) {
+    v2.std.operation_argv.ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
+    v2.std.operation_argv.ArgvMaterializationRefused { at: _, cause: _ } => false
   }
 }

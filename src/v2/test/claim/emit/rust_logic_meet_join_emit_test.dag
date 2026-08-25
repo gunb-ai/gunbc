@@ -1,24 +1,24 @@
 module v2.test.emit.rust_logic_meet_join_emit
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn meet_join_emit_facts_miss(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_absent()
+  v2.std.optional.optional_absent()
 }
 
 fn meet_join_emit_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.algebra.PartialFunction { lookup: meet_join_emit_facts_miss }
+    facts: PartialFunction { lookup: meet_join_emit_facts_miss }
   }
 }
 
-fn meet_join_emit_source_equals(root: v2.std.node.Node, target: v2.std.compilers.target_model.TargetModel, expected: String) -> v2.std.logic.Bool {
+fn meet_join_emit_source_equals(root: v2.std.node.Node, target: v2.std.compilers.target_model.TargetModel, expected: String) -> Bool {
   match v2.compiler.emit.emit(tree: meet_join_emit_tree_for(root: root), target: target) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == expected) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -27,39 +27,39 @@ fn meet_join_emit_discriminates(
   target: v2.std.compilers.target_model.TargetModel,
   expected: String,
   wrong: String
-) -> v2.std.logic.Bool {
+) -> Bool {
   match v2.compiler.emit.emit(tree: meet_join_emit_tree_for(root: root), target: target) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == expected) && (source.carried != wrong) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_logic_meet_emit_holds() -> v2.std.logic.Bool {
+test fn rust_logic_meet_emit_holds() -> Bool {
   meet_join_emit_source_equals(
-    root: dag_meet_arrow_with_body_fixture,
-    target: rust_logic_meet_target_model_staging(),
-    expected: rust_logic_meet_source_text
+    root: v2.extdeps.languages.dag.dag_meet_arrow_with_body_fixture,
+    target: v2.extdeps.languages.rust_test.rust_logic_meet_target_model_staging(),
+    expected: v2.extdeps.languages.rust_test.rust_logic_meet_source_text
   )
     && meet_join_emit_discriminates(
-      root: dag_meet_arrow_with_body_swapped_arms_fixture,
-      target: rust_logic_meet_target_model_staging(),
-      expected: rust_logic_meet_swapped_arms_source_text,
-      wrong: rust_logic_meet_source_text
+      root: v2.extdeps.languages.dag.dag_meet_arrow_with_body_swapped_arms_fixture,
+      target: v2.extdeps.languages.rust_test.rust_logic_meet_target_model_staging(),
+      expected: v2.extdeps.languages.rust_test.rust_logic_meet_swapped_arms_source_text,
+      wrong: v2.extdeps.languages.rust_test.rust_logic_meet_source_text
     )
 }
 
-test fn rust_logic_join_emit_holds() -> v2.std.logic.Bool {
+test fn rust_logic_join_emit_holds() -> Bool {
   meet_join_emit_source_equals(
-    root: dag_join_arrow_with_body_fixture,
-    target: rust_logic_join_target_model_staging(),
-    expected: rust_logic_join_source_text
+    root: v2.extdeps.languages.dag.dag_join_arrow_with_body_fixture,
+    target: v2.extdeps.languages.rust_test.rust_logic_join_target_model_staging(),
+    expected: v2.extdeps.languages.rust_test.rust_logic_join_source_text
   )
     && meet_join_emit_discriminates(
-      root: dag_join_arrow_with_body_swapped_arms_fixture,
-      target: rust_logic_join_target_model_staging(),
-      expected: rust_logic_join_swapped_arms_source_text,
-      wrong: rust_logic_join_source_text
+      root: v2.extdeps.languages.dag.dag_join_arrow_with_body_swapped_arms_fixture,
+      target: v2.extdeps.languages.rust_test.rust_logic_join_target_model_staging(),
+      expected: v2.extdeps.languages.rust_test.rust_logic_join_swapped_arms_source_text,
+      wrong: v2.extdeps.languages.rust_test.rust_logic_join_source_text
     )
 }
 

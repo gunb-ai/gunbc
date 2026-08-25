@@ -1,7 +1,7 @@
 module v2.test.claim.staged_front_end
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data staged_front_end_test_note: String = "THE DISCRIMINATING PAIR IS THE POINT OF THE DECOMPOSITION. Before it, the front end answered one Outcome<Node> for four stages, so a candidate that died at parse and a candidate that died at resolve were the same observation. These two candidates must land on DIFFERENT stages; if they ever land on the same one, the decomposition carries nothing and the harness's per-stage evidence is decorative. The tokenize candidate is the third point on the same axis, and the accepted candidate is the positive control that keeps the whole set from passing vacuously."
 
@@ -9,99 +9,99 @@ data candidate_accepted_source: String = "module m\n\nfn add(x: Int, y: Int) -> 
 data candidate_dies_at_parse_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { x + y\n"
 data candidate_dies_at_resolve_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { undefined_name }\n"
 
-fn stage_of_first_rejection(run: FrontEndRun) -> v2.std.optional.Optional<FrontEndStage> {
+fn stage_of_first_rejection(run: v2.compiler.staged_front_end.FrontEndRun) -> v2.std.optional.Optional<v2.compiler.staged_front_end.FrontEndStage> {
   fold(run.steps, init: v2.std.optional.Absent, f: fn(acc, step) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent =>
         match step {
-          FrontEndStageRejected { stage: s, diagnostics: _ } => v2.std.optional.Present { value: s }
-          FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => v2.std.optional.Absent
+          v2.compiler.staged_front_end.FrontEndStageRejected { stage: s, diagnostics: _ } => v2.std.optional.Present { value: s }
+          v2.compiler.staged_front_end.FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => v2.std.optional.Absent
         }
     }
   })
 }
 
-fn rejected_at_index(source: String, index: Int) -> v2.std.logic.Bool {
-  match stage_of_first_rejection(run: run_front_end(source: source, file: ^candidate_module)) {
-    Absent => false
-    Present { value: stage } => front_end_stage_index(stage: stage) == index
+fn rejected_at_index(source: String, index: Int) -> Bool {
+  match stage_of_first_rejection(run: v2.compiler.staged_front_end.run_front_end(source: source, file: ^candidate_module)) {
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: stage } => v2.compiler.staged_front_end.front_end_stage_index(stage: stage) == index
   }
 }
 
-fn passed_stage_count(run: FrontEndRun) -> Int {
+fn passed_stage_count(run: v2.compiler.staged_front_end.FrontEndRun) -> Int {
   fold(run.steps, init: 0, f: fn(acc, step) {
     match step {
-      FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => acc + 1
-      FrontEndStageRejected { stage: _, diagnostics: _ } => acc
+      v2.compiler.staged_front_end.FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => acc + 1
+      v2.compiler.staged_front_end.FrontEndStageRejected { stage: _, diagnostics: _ } => acc
     }
   })
 }
 
-test fn staged_front_end_accepts_a_well_formed_module() -> v2.std.logic.Bool {
-  let run = run_front_end(source: candidate_accepted_source, file: ^candidate_module)
+test fn staged_front_end_accepts_a_well_formed_module() -> Bool {
+  let run = v2.compiler.staged_front_end.run_front_end(source: candidate_accepted_source, file: ^candidate_module)
   match run.completion {
-    FrontEndResolvedModule { resolved: _ } => passed_stage_count(run: run) == 4
-    FrontEndBoundReached { last: _ } => false
-    FrontEndRefused => false
+    v2.compiler.staged_front_end.FrontEndResolvedModule { resolved: _ } => passed_stage_count(run: run) == 4
+    v2.compiler.staged_front_end.FrontEndBoundReached { last: _ } => false
+    v2.compiler.staged_front_end.FrontEndRefused => false
   }
 }
 
-test fn staged_front_end_parse_and_resolve_deaths_land_on_different_stages() -> v2.std.logic.Bool {
+test fn staged_front_end_parse_and_resolve_deaths_land_on_different_stages() -> Bool {
   rejected_at_index(source: candidate_dies_at_parse_source, index: 2)
     && rejected_at_index(source: candidate_dies_at_resolve_source, index: 4)
 }
 
-test fn staged_front_end_resolve_death_still_passes_parse() -> v2.std.logic.Bool {
+test fn staged_front_end_resolve_death_still_passes_parse() -> Bool {
   passed_stage_count(
-    run: run_front_end(source: candidate_dies_at_resolve_source, file: ^candidate_module)
+    run: v2.compiler.staged_front_end.run_front_end(source: candidate_dies_at_resolve_source, file: ^candidate_module)
   ) == 3
 }
 
-test fn staged_front_end_projection_agrees_with_the_staged_steps() -> v2.std.logic.Bool {
-  match front_end_run_outcome(
-    run: run_front_end(source: candidate_accepted_source, file: ^candidate_module)
+test fn staged_front_end_projection_agrees_with_the_staged_steps() -> Bool {
+  match v2.compiler.staged_front_end.front_end_run_outcome(
+    run: v2.compiler.staged_front_end.run_front_end(source: candidate_accepted_source, file: ^candidate_module)
   ) {
-    Accepted { value: _, diagnostics: _ } =>
-      match front_end_run_outcome(
-        run: run_front_end(source: candidate_dies_at_resolve_source, file: ^candidate_module)
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+      match v2.compiler.staged_front_end.front_end_run_outcome(
+        run: v2.compiler.staged_front_end.run_front_end(source: candidate_dies_at_resolve_source, file: ^candidate_module)
       ) {
-        Rejected { diagnostics: _ } => true
-        Accepted { value: _, diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn staged_front_end_bound_stops_before_the_stages_it_was_not_asked_for() -> v2.std.logic.Bool {
-  let run = run_front_end_to(source: candidate_dies_at_resolve_source, file: ^candidate_module, depth: 2)
+test fn staged_front_end_bound_stops_before_the_stages_it_was_not_asked_for() -> Bool {
+  let run = v2.compiler.staged_front_end.run_front_end_to(source: candidate_dies_at_resolve_source, file: ^candidate_module, depth: 2)
   match run.completion {
-    FrontEndBoundReached { last: last } => front_end_stage_index(stage: last) == 2
-    FrontEndResolvedModule { resolved: _ } => false
-    FrontEndRefused => false
+    v2.compiler.staged_front_end.FrontEndBoundReached { last: last } => v2.compiler.staged_front_end.front_end_stage_index(stage: last) == 2
+    v2.compiler.staged_front_end.FrontEndResolvedModule { resolved: _ } => false
+    v2.compiler.staged_front_end.FrontEndRefused => false
   }
 }
 
-test fn staged_front_end_bounded_run_refuses_the_whole_front_end_question() -> v2.std.logic.Bool {
-  match front_end_run_outcome(
-    run: run_front_end_to(source: candidate_accepted_source, file: ^candidate_module, depth: 2)
+test fn staged_front_end_bounded_run_refuses_the_whole_front_end_question() -> Bool {
+  match v2.compiler.staged_front_end.front_end_run_outcome(
+    run: v2.compiler.staged_front_end.run_front_end_to(source: candidate_accepted_source, file: ^candidate_module, depth: 2)
   ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
 data unbound_symbol_reason_note: String = "The floor property, pinned in the direction it should hold. An undeclared name in VALUE position must refuse at resolve, and it must refuse with the reason that names what went wrong rather than with any refusal at all — a stage that refuses for an unrelated cause would satisfy a looser assertion while the diagnostic vocabulary rotted. Only this direction is pinned: the sibling measurement, that an undeclared CALLEE passes resolve silently on the v2 path, is recorded in v2.test.claim.dag_acceptance frontier_arm_note as a dated measurement and is deliberately NOT asserted here, because a test that goes red when the compiler starts refusing the callee would be a defender for the gap rather than a check on it."
 
 fn first_refusal_reason(source: String) -> Symbol {
-  fold(run_front_end(source: source, file: ^candidate_module).steps, init: ^no_refusal, f: fn(acc, step) {
+  fold(v2.compiler.staged_front_end.run_front_end(source: source, file: ^candidate_module).steps, init: ^no_refusal, f: fn(acc, step) {
     match step {
-      FrontEndStageRejected { stage: _, diagnostics: d } => d.head.reason
-      FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => acc
+      v2.compiler.staged_front_end.FrontEndStageRejected { stage: _, diagnostics: d } => d.head.reason
+      v2.compiler.staged_front_end.FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => acc
     }
   })
 }
 
-test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> v2.std.logic.Bool {
+test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Bool {
   first_refusal_reason(source: candidate_dies_at_resolve_source) == ^resolve_reason_unbound_symbol
 }

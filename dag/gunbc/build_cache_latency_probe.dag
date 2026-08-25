@@ -26,39 +26,39 @@ type BuildLatencyPopulation {
 data build_latency_observation_window: std.types.NonEmptyStr = "workflow=ci.yml job=build conclusion=success, all runs on 2026-08-05 UTC reachable from `gh run list --workflow ci.yml --limit 600` (285 completed runs, 937 job placements); duration = completed_at - started_at from the Actions jobs API"
 
 data srv1_build_latency: BuildLatencyPopulation = BuildLatencyPopulation {
-  host: operator_host_srv1,
+  host: gunbc.fleet_intent_network.operator_host_srv1,
   observation_window: build_latency_observation_window,
   durations: [
-    millisecond(count: 78000), millisecond(count: 80000), millisecond(count: 80000),
-    millisecond(count: 81000), millisecond(count: 81000), millisecond(count: 83000),
-    millisecond(count: 85000), millisecond(count: 86000), millisecond(count: 87000),
-    millisecond(count: 112000), millisecond(count: 505000), millisecond(count: 527000),
-    millisecond(count: 552000), millisecond(count: 555000), millisecond(count: 570000),
-    millisecond(count: 581000), millisecond(count: 584000), millisecond(count: 593000),
-    millisecond(count: 598000), millisecond(count: 604000), millisecond(count: 605000),
-    millisecond(count: 607000), millisecond(count: 611000), millisecond(count: 614000),
-    millisecond(count: 616000), millisecond(count: 626000), millisecond(count: 627000),
-    millisecond(count: 629000), millisecond(count: 632000), millisecond(count: 640000),
-    millisecond(count: 680000), millisecond(count: 790000), millisecond(count: 874000),
-    millisecond(count: 877000), millisecond(count: 904000), millisecond(count: 946000),
-    millisecond(count: 977000), millisecond(count: 1018000), millisecond(count: 1035000),
-    millisecond(count: 1107000), millisecond(count: 1135000), millisecond(count: 1350000),
-    millisecond(count: 1359000), millisecond(count: 1640000),
+    std.measure.millisecond(count: 78000), std.measure.millisecond(count: 80000), std.measure.millisecond(count: 80000),
+    std.measure.millisecond(count: 81000), std.measure.millisecond(count: 81000), std.measure.millisecond(count: 83000),
+    std.measure.millisecond(count: 85000), std.measure.millisecond(count: 86000), std.measure.millisecond(count: 87000),
+    std.measure.millisecond(count: 112000), std.measure.millisecond(count: 505000), std.measure.millisecond(count: 527000),
+    std.measure.millisecond(count: 552000), std.measure.millisecond(count: 555000), std.measure.millisecond(count: 570000),
+    std.measure.millisecond(count: 581000), std.measure.millisecond(count: 584000), std.measure.millisecond(count: 593000),
+    std.measure.millisecond(count: 598000), std.measure.millisecond(count: 604000), std.measure.millisecond(count: 605000),
+    std.measure.millisecond(count: 607000), std.measure.millisecond(count: 611000), std.measure.millisecond(count: 614000),
+    std.measure.millisecond(count: 616000), std.measure.millisecond(count: 626000), std.measure.millisecond(count: 627000),
+    std.measure.millisecond(count: 629000), std.measure.millisecond(count: 632000), std.measure.millisecond(count: 640000),
+    std.measure.millisecond(count: 680000), std.measure.millisecond(count: 790000), std.measure.millisecond(count: 874000),
+    std.measure.millisecond(count: 877000), std.measure.millisecond(count: 904000), std.measure.millisecond(count: 946000),
+    std.measure.millisecond(count: 977000), std.measure.millisecond(count: 1018000), std.measure.millisecond(count: 1035000),
+    std.measure.millisecond(count: 1107000), std.measure.millisecond(count: 1135000), std.measure.millisecond(count: 1350000),
+    std.measure.millisecond(count: 1359000), std.measure.millisecond(count: 1640000),
   ],
 }
 
 data srv1_build_latency_exemplars: List<BuildLatencySample> = [
   BuildLatencySample {
-    host: operator_host_srv1,
+    host: gunbc.fleet_intent_network.operator_host_srv1,
     run_id: "31001447946",
     job_id: "92291104649",
-    duration: millisecond(count: 78000),
+    duration: std.measure.millisecond(count: 78000),
   },
   BuildLatencySample {
-    host: operator_host_srv1,
+    host: gunbc.fleet_intent_network.operator_host_srv1,
     run_id: "31040650507",
     job_id: "92423873975",
-    duration: millisecond(count: 1640000),
+    duration: std.measure.millisecond(count: 1640000),
   },
 ]
 
@@ -72,12 +72,12 @@ type BuildLatencyReference {
 }
 
 data peer_build_latency_references: List<BuildLatencyReference> = [
-  BuildLatencyReference { host: operator_host_srv2, sample_count: 57, median: millisecond(count: 255000) },
-  BuildLatencyReference { host: operator_host_srv3, sample_count: 86, median: millisecond(count: 240000) },
-  BuildLatencyReference { host: operator_host_srv4, sample_count: 58, median: millisecond(count: 229000) },
+  BuildLatencyReference { host: gunbc.fleet_intent_network.operator_host_srv2, sample_count: 57, median: std.measure.millisecond(count: 255000) },
+  BuildLatencyReference { host: gunbc.fleet_intent_network.operator_host_srv3, sample_count: 86, median: std.measure.millisecond(count: 240000) },
+  BuildLatencyReference { host: gunbc.fleet_intent_network.operator_host_srv4, sample_count: 58, median: std.measure.millisecond(count: 229000) },
 ]
 
-data peer_combined_median: std.measure.Millisecond = millisecond(count: 238000)
+data peer_combined_median: std.measure.Millisecond = std.measure.millisecond(count: 238000)
 
 type MedianScan {
   index: Int
@@ -91,7 +91,7 @@ fn population_median(p: BuildLatencyPopulation) -> std.measure.Millisecond? {
   if n == 0 {
     none
   } else {
-    let sorted = p.durations |> sort_by(d => measure_count(m: d))
+    let sorted = p.durations |> sort_by(d => std.measure.measure_count(m: d))
     let target = (n - 1) / 2
     fold(
       sorted,
@@ -135,7 +135,7 @@ fn build_latency_verdict(
         reason: "no successful build-job samples in the observation window: the host either took no build work or completed none, and neither is a latency verdict — refuse rather than reporting convergence for a host that produced no evidence",
       }
     Present { value: m } =>
-      if measure_count(m: m) * policy.ratio_denominator > measure_count(m: reference) * policy.ratio_numerator {
+      if std.measure.measure_count(m: m) * policy.ratio_denominator > std.measure.measure_count(m: reference) * policy.ratio_numerator {
         BuildLatencyDiverged { host: p.host, host_median: m, reference: reference }
       } else {
         BuildLatencyConverged { host: p.host, host_median: m, reference: reference }
@@ -161,7 +161,7 @@ data acceptance_criterion_note: String = "THE FALSIFIER FOR THE FIX, declared BE
 
 data live_producer_frontier_note: String = "THE LIVE PRODUCER IS MODELED BUT NOT YET SCHEDULED. build_latency_population_from_actions_api folds a list of ActionsBuildJobObservation rows — the fields the GitHub Actions jobs API returns for each job — into per-host BuildLatencyPopulation values filtered to the CI build job with conclusion=success. A thin collector (gh api / gh run list + jobs) is the only missing seam; it needs no host access and no fleet SSH key. The 2026-08-05 hand-entered populations remain the pre-actuation baseline until a fresh window is collected through this fold and written back. WET ACTUATION of the srv1 repair is a separate gate: this instrument only measures whether the repair worked once builds run again."
 
-data build_cache_latency_producer_disposition: std.disposition.Disposition = SingleAuthority
+data build_cache_latency_producer_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 type ActionsBuildJobObservation {
   run_id: std.types.NonEmptyStr
@@ -184,13 +184,13 @@ fn actions_build_job_matches(
 
 fn host_from_runner_name(runner: std.types.NonEmptyStr) -> product.placement_supply.HostIdentity? {
   if starts_with(s: runner as String, prefix: "srv1-") {
-    Present { value: operator_host_srv1 }
+    Present { value: gunbc.fleet_intent_network.operator_host_srv1 }
   } else if starts_with(s: runner as String, prefix: "srv2-") {
-    Present { value: operator_host_srv2 }
+    Present { value: gunbc.fleet_intent_network.operator_host_srv2 }
   } else if starts_with(s: runner as String, prefix: "srv3-") {
-    Present { value: operator_host_srv3 }
+    Present { value: gunbc.fleet_intent_network.operator_host_srv3 }
   } else if starts_with(s: runner as String, prefix: "srv4-") {
-    Present { value: operator_host_srv4 }
+    Present { value: gunbc.fleet_intent_network.operator_host_srv4 }
   } else {
     none
   }
@@ -229,28 +229,28 @@ fn build_latency_population_from_actions_api(
   [
     build_latency_population_for_host(
       jobs: jobs,
-      host: operator_host_srv1,
+      host: gunbc.fleet_intent_network.operator_host_srv1,
       job_name: gunbc_ci_build_job_name,
       conclusion: gunbc_ci_build_success_conclusion,
       window: window,
     ),
     build_latency_population_for_host(
       jobs: jobs,
-      host: operator_host_srv2,
+      host: gunbc.fleet_intent_network.operator_host_srv2,
       job_name: gunbc_ci_build_job_name,
       conclusion: gunbc_ci_build_success_conclusion,
       window: window,
     ),
     build_latency_population_for_host(
       jobs: jobs,
-      host: operator_host_srv3,
+      host: gunbc.fleet_intent_network.operator_host_srv3,
       job_name: gunbc_ci_build_job_name,
       conclusion: gunbc_ci_build_success_conclusion,
       window: window,
     ),
     build_latency_population_for_host(
       jobs: jobs,
-      host: operator_host_srv4,
+      host: gunbc.fleet_intent_network.operator_host_srv4,
       job_name: gunbc_ci_build_job_name,
       conclusion: gunbc_ci_build_success_conclusion,
       window: window,

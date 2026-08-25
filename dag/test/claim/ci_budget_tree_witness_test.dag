@@ -1,7 +1,7 @@
 module test.claim.ci_budget_tree_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn fitting_slice() -> Int {
   53687091200
@@ -12,18 +12,18 @@ fn oversized_slice() -> Int {
 }
 
 test fn witness_live_trees_conserve() -> Bool {
-  node_conserves(node: srv1_budget_tree)
+  node_conserves(node: gunbc.ci_budget_tree.srv1_budget_tree)
     && node_conserves(node: srv2_budget_tree)
     && node_conserves(node: srv3_budget_tree)
 }
 
 test fn witness_live_is_fail_closed() -> Bool {
-  byte_size_count(b: srv1_gha_runner_pool_budget()) == 0
+  byte_size_count(b: gunbc.ci_budget_tree.srv1_gha_runner_pool_budget()) == 0
     && byte_size_count(b: srv1_dashboard_session_pool_budget()) == byte_size_count(b: host_allocatable_bytes(offer: srv1_offer))
 }
 
 test fn witness_measured_fixture_derives_positive_runner_pool() -> Bool {
-  let tree = host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(fitting_slice()))
+  let tree = gunbc.ci_budget_tree.host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(fitting_slice()))
   let runner_pool = match budget_tree_gha_runner_pool_node(tree: tree) {
     BudgetChildFound { node: n } => byte_size_count(b: n.appropriation.ceiling)
     BudgetChildMissing => 0
@@ -33,7 +33,7 @@ test fn witness_measured_fixture_derives_positive_runner_pool() -> Bool {
 }
 
 test fn witness_overcommit_fails_conservation() -> Bool {
-  let tree = host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(oversized_slice()))
+  let tree = gunbc.ci_budget_tree.host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(oversized_slice()))
   let runner_pool = match budget_tree_gha_runner_pool_node(tree: tree) {
     BudgetChildFound { node: n } => byte_size_count(b: n.appropriation.ceiling)
     BudgetChildMissing => 0
@@ -42,15 +42,15 @@ test fn witness_overcommit_fails_conservation() -> Bool {
 }
 
 test fn witness_three_way_conservation_live() -> Bool {
-  let overhead = byte_size_count(b: srv1_fixed_overhead_bytes())
-  let gha = byte_size_count(b: srv1_gha_runner_pool_budget())
+  let overhead = byte_size_count(b: gunbc.ci_budget_tree.srv1_fixed_overhead_bytes())
+  let gha = byte_size_count(b: gunbc.ci_budget_tree.srv1_gha_runner_pool_budget())
   let dash = byte_size_count(b: srv1_dashboard_session_pool_budget())
   overhead + gha + dash <= byte_size_count(b: srv1_host_ram())
 }
 
 test fn witness_srv2_symmetric_to_srv1() -> Bool {
-  let s1 = host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(fitting_slice()))
-  let s2 = host_budget_tree_at(name: "srv2", offer: srv2_offer, session_slice: byte_size(fitting_slice()))
+  let s1 = gunbc.ci_budget_tree.host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(fitting_slice()))
+  let s2 = gunbc.ci_budget_tree.host_budget_tree_at(name: "srv2", offer: srv2_offer, session_slice: byte_size(fitting_slice()))
   let p1 = match budget_tree_gha_runner_pool_node(tree: s1) {
     BudgetChildFound { node: n } => byte_size_count(b: n.appropriation.ceiling)
     BudgetChildMissing => 0
@@ -63,11 +63,11 @@ test fn witness_srv2_symmetric_to_srv1() -> Bool {
 }
 
 test fn witness_two_pools_present() -> Bool {
-  let gha_found = match budget_tree_gha_runner_pool_node(tree: srv1_budget_tree) {
+  let gha_found = match budget_tree_gha_runner_pool_node(tree: gunbc.ci_budget_tree.srv1_budget_tree) {
     BudgetChildFound { node: _ } => true
     BudgetChildMissing => false
   }
-  let dash_found = match budget_tree_dashboard_session_pool_node(tree: srv1_budget_tree) {
+  let dash_found = match budget_tree_dashboard_session_pool_node(tree: gunbc.ci_budget_tree.srv1_budget_tree) {
     BudgetChildFound { node: _ } => true
     BudgetChildMissing => false
   }
@@ -75,22 +75,22 @@ test fn witness_two_pools_present() -> Bool {
 }
 
 test fn witness_unknown_child_is_absent() -> Bool {
-  match budget_child_named(node: srv1_budget_tree, name: "__no_such_child__") {
+  match budget_child_named(node: gunbc.ci_budget_tree.srv1_budget_tree, name: "__no_such_child__") {
     BudgetChildFound { node: _ } => false
     BudgetChildMissing => true
   }
 }
 
 test fn witness_spawn_width_budget_within_per_runner_cap() -> Bool {
-  let fleet_budget = byte_size_count(b: ci_runner_target_ram_speed_budget(target: FleetSelfHosted))
-  byte_size_count(b: srv1_floor_memory_budget()) > 0
+  let fleet_budget = byte_size_count(b: gunbc.ci_runner_target.ci_runner_target_ram_speed_budget(target: gunbc.ci_runner_target.FleetSelfHosted))
+  byte_size_count(b: gunbc.ci_budget_tree.srv1_floor_memory_budget()) > 0
     && fleet_budget <= byte_size_count(b: gunbc_ci_runner_slot_memory_max_live)
     && fleet_budget <= byte_size_count(b: gunbc_per_runner_memory_cap)
     && fleet_budget < byte_size_count(b: srv1_host_ram())
 }
 
 test fn witness_hard_cap_is_runner_cgroup_cap() -> Bool {
-  byte_size_count(b: srv1_ci_run_container_hard_cap()) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+  byte_size_count(b: gunbc.ci_budget_tree.srv1_ci_run_container_hard_cap()) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
 }
 
 test fn witness_cap_split_runner_lt_session() -> Bool {
@@ -99,14 +99,14 @@ test fn witness_cap_split_runner_lt_session() -> Bool {
 }
 
 test fn witness_floor_budget_equals_selected_target_budget_holds() -> Bool {
-  witness_floor_budget_equals_selected_target_budget()
+  gunbc.ci_budget_tree.witness_floor_budget_equals_selected_target_budget()
 }
 
 data srv3_asymmetry_supersedes_symmetry_note: String = "THIS WITNESS ASSERTED THE OPPOSITE UNTIL 2026-08-05 and the inversion is the change, not a broken test. witness_srv3_symmetric_to_srv1 held that srv1 and srv3 derive the SAME runner pool from the same session slice, which was true while every host shared one fixed-overhead number, and it was worth asserting then: srv3 had just been stood up and the claim being defended was that a FreshStandup host is budgeted identically to an established one rather than getting a special case.\n\nWhat changed is not the claim's importance but its truth. gunbc.ci_floor_measurement now carries a MEASURED overhead bound for the managed hosts (srv3/srv4) and an operator ALLOWANCE for the legacy pair (srv1/srv2), because srv1 and srv2 host hand-built deployments the corpus does not model and srv3 does not. Same board, same RAM, same per-slot row — different unmodeled residents, so different allocatable memory. Asserting equality now would require charging srv3 for srv1's mess, which is exactly the 10.4GiB per host this split exists to stop spending.\n\nWhat is asserted instead is STRICTLY STRONGER than the old equality: not merely that the two differ, but that they differ in the right DIRECTION and by exactly the overhead gap. A witness that only checked p1 != p3 would pass if the numbers were swapped — srv1 handed the measured bound and srv3 the legacy allowance — which is the same bug with the hosts transposed and is precisely the failure a bare inequality cannot see."
 
 test fn witness_srv3_outbudgets_srv1_by_exactly_the_overhead_gap() -> Bool {
-  let s1 = host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(fitting_slice()))
-  let s3 = host_budget_tree_at(name: "srv3", offer: srv3_offer, session_slice: byte_size(fitting_slice()))
+  let s1 = gunbc.ci_budget_tree.host_budget_tree_at(name: "srv1", offer: srv1_offer, session_slice: byte_size(fitting_slice()))
+  let s3 = gunbc.ci_budget_tree.host_budget_tree_at(name: "srv3", offer: srv3_offer, session_slice: byte_size(fitting_slice()))
   let p1 = match budget_tree_gha_runner_pool_node(tree: s1) {
     BudgetChildFound { node: n } => byte_size_count(b: n.appropriation.ceiling)
     BudgetChildMissing => 0
@@ -115,14 +115,14 @@ test fn witness_srv3_outbudgets_srv1_by_exactly_the_overhead_gap() -> Bool {
     BudgetChildFound { node: n } => byte_size_count(b: n.appropriation.ceiling)
     BudgetChildMissing => 0
   }
-  let gap = byte_size_count(b: host_overhead_bytes(offer: srv1_offer)) - byte_size_count(b: host_overhead_bytes(offer: srv3_offer))
+  let gap = byte_size_count(b: gunbc.ci_budget_tree.host_overhead_bytes(offer: srv1_offer)) - byte_size_count(b: gunbc.ci_budget_tree.host_overhead_bytes(offer: srv3_offer))
   p3 > p1 && p3 > 0 && (p3 - p1) == gap && gap > 0
 }
 
 test fn witness_managed_hosts_share_one_overhead_and_legacy_hosts_share_another() -> Bool {
-  let legacy1 = byte_size_count(b: host_overhead_bytes(offer: srv1_offer))
-  let legacy2 = byte_size_count(b: host_overhead_bytes(offer: srv2_offer))
-  let managed3 = byte_size_count(b: host_overhead_bytes(offer: srv3_offer))
-  let managed4 = byte_size_count(b: host_overhead_bytes(offer: srv4_offer))
+  let legacy1 = byte_size_count(b: gunbc.ci_budget_tree.host_overhead_bytes(offer: srv1_offer))
+  let legacy2 = byte_size_count(b: gunbc.ci_budget_tree.host_overhead_bytes(offer: srv2_offer))
+  let managed3 = byte_size_count(b: gunbc.ci_budget_tree.host_overhead_bytes(offer: srv3_offer))
+  let managed4 = byte_size_count(b: gunbc.ci_budget_tree.host_overhead_bytes(offer: srv4_offer))
   legacy1 == legacy2 && managed3 == managed4 && legacy1 > managed3
 }

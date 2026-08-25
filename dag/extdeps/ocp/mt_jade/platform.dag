@@ -5,7 +5,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data platform_subject_edge_note: String = "PLATFORM FACTS MUST JOIN THE ENTITY THEY DESCRIBE IN THE GRAPH, NOT ONLY THE SHARED OCP LOCATOR. extdeps.ocp.mt_jade.subject owns mt_jade_reference_platform; this row is the typed subject edge that binds every mechanical, sequencing, CPLD, clock and reference-part fact in this module to that declaration — the same pattern as extdeps.sec.issuer.gitlab_facts gitlab_facts_subject."
 
-data mt_jade_platform_subject: extdeps.ocp.mt_jade.subject.MtJadeReferencePlatform = mt_jade_reference_platform
+data mt_jade_platform_subject: extdeps.ocp.mt_jade.subject.MtJadeReferencePlatform = extdeps.ocp.mt_jade.subject.mt_jade_reference_platform
 
 data platform_note: String = "PLATFORM FACTS FROM THE PUBLIC OCP MT. JADE SPECIFICATION, REV 1.0 (2021-09-17). Section 7.2 carries the motherboard outline; section 7.3 names the ILM4926 socket; section 7.10 carries clocks, reset and power-on sequence; sections 7.6–7.8 carry BMC, I2C, JTAG and GPIO facts that define the board CPLD's role. Nothing here transcribes pin tables or Appendix A/B content."
 
@@ -15,13 +15,13 @@ type MtJadeMotherboardMechanical {
   outline_width: std.measure.Micrometer
   outline_depth: std.measure.Micrometer
   cpu_socket_designation: std.types.NonEmptyStr
-  processor_socket_count: std.integer.Int
-  ddr4_dimms_total: std.integer.Int
+  processor_socket_count: Int
+  ddr4_dimms_total: Int
 }
 
 data mt_jade_motherboard_mechanical: MtJadeMotherboardMechanical = MtJadeMotherboardMechanical {
-  outline_width: micrometer(count: 428000),
-  outline_depth: micrometer(count: 479360),
+  outline_width: std.measure.micrometer(count: 428000),
+  outline_depth: std.measure.micrometer(count: 479360),
   cpu_socket_designation: "ILM4926",
   processor_socket_count: 2,
   ddr4_dimms_total: 32,
@@ -77,9 +77,9 @@ data processor_power_rail_enable_order: List<ProcessorPowerRail> = [
 ]
 
 // SOC_PWRGD must be asserted for more than thirty-two system clock cycles before the reset
-// release chain continues. The count is carried as an std.integer.Int from the cited text rather than as a
+// release chain continues. The count is carried as an Int from the cited text rather than as a
 // duration because the specification states a cycle count against the system clock, not a time.
-data soc_pwrgd_minimum_system_clock_cycles: std.integer.Int = 32
+data soc_pwrgd_minimum_system_clock_cycles: Int = 32
 
 // THE RESET AND FIRMWARE-HANDSHAKE CHAIN AFTER POWER GOOD. These are separate named steps
 // rather than one "booted" Bool because each step has a different owner and a different remedy
@@ -100,7 +100,7 @@ type PlatformSequencingHandshake
 // names a one-microsecond delay on ALERT3_N; carrying it as Microsecond makes the unit part of
 // the fact rather than a comment that a reader could misread as a cycle count or an arbitrary
 // delay.
-data slave_socket_alert3_pulse_width: std.measure.Microsecond = microsecond(count: 1)
+data slave_socket_alert3_pulse_width: std.measure.Microsecond = std.measure.microsecond(count: 1)
 
 data platform_sequencing_handshake_chain: List<PlatformSequencingHandshake> = [
   SocPwrgdObserved { socket: MasterSocket },
@@ -181,8 +181,8 @@ type CpldDerivedClock {
 }
 
 data mt_jade_cpld_timer_clock: CpldDerivedClock = CpldDerivedClock {
-  input_frequency: hertz(count: 50000000),
-  output_frequency: hertz(count: 25000000),
+  input_frequency: std.measure.hertz(count: 50000000),
+  output_frequency: std.measure.hertz(count: 25000000),
   consumers: [
     "master socket global timer clock",
     "slave socket global timer clock",
@@ -194,7 +194,7 @@ data mt_jade_clock_tree: List<ClockTreeNode> = [
     ordering_part_number: "9FGV1006B",
     vendor_label: "Renesas (IDT)",
     role: ProcessorPcieReferenceClock,
-    output_frequency: hertz(count: 100000000),
+    output_frequency: std.measure.hertz(count: 100000000),
     consumers: [
       "Altra/AltraMax processor system reference clock",
       "25G CCIX 2P serdes reference clock",
@@ -204,7 +204,7 @@ data mt_jade_clock_tree: List<ClockTreeNode> = [
     ordering_part_number: "9FGL0841",
     vendor_label: "Renesas (IDT)",
     role: PcieFanoutClock,
-    output_frequency: hertz(count: 100000000),
+    output_frequency: std.measure.hertz(count: 100000000),
     consumers: [
       "Altra/AltraMax processors",
       "onboard PCIe devices",
@@ -217,7 +217,7 @@ data mt_jade_clock_tree: List<ClockTreeNode> = [
     ordering_part_number: "92XL1231",
     vendor_label: "Renesas (IDT)",
     role: PcieFanoutClock,
-    output_frequency: hertz(count: 100000000),
+    output_frequency: std.measure.hertz(count: 100000000),
     consumers: [
       "PCIe reference clock buffer downstream of 9FGL0841",
     ],
@@ -236,7 +236,7 @@ data mt_jade_clock_tree: List<ClockTreeNode> = [
     ordering_part_number: "1.8432 MHz oscillator",
     vendor_label: "unspecified in OCP Rev 1.0",
     role: ProcessorUartBaudClock,
-    output_frequency: hertz(count: 1843200),
+    output_frequency: std.measure.hertz(count: 1843200),
     consumers: [
       "Altra/AltraMax UART baud reference for 115200 bps",
     ],
@@ -245,7 +245,7 @@ data mt_jade_clock_tree: List<ClockTreeNode> = [
     ordering_part_number: "25 MHz crystal",
     vendor_label: "unspecified in OCP Rev 1.0",
     role: CrystalReferenceInput,
-    output_frequency: hertz(count: 25000000),
+    output_frequency: std.measure.hertz(count: 25000000),
     consumers: [
       "5P35023 input",
       "9FGL0841 input",
@@ -277,7 +277,7 @@ type MtJadeReferencePartRow {
 // THE OCP REFERENCE-PART ROW NAMES AST2500 IN PROSE; THE CHIP FACTS LIVE IN THE ASPEED
 // AUTHORITY. This edge joins the platform BMC role to extdeps.bmc.aspeed_ast2500 rather than
 // retyping the part number as the only source of chip identity.
-data mt_jade_bmc_chip_catalog: extdeps.bmc.aspeed_ast2500.AspeedAst2500CatalogRow = aspeed_ast2500_catalog
+data mt_jade_bmc_chip_catalog: extdeps.bmc.aspeed_ast2500.AspeedAst2500CatalogRow = extdeps.bmc.aspeed_ast2500.aspeed_ast2500_catalog
 
 data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
   MtJadeReferencePartRow {

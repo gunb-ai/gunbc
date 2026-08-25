@@ -3,22 +3,22 @@ module extdeps.github.pulls_contracts
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/rest/pulls/pulls"
   }
 }
 
 data pull_request_state_wire_contract: std.serialization.CoproductWireContract = {
-  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.github.pulls", decl_name: "PullRequestState", field: WholeDeclaration },
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.github.pulls", decl_name: "PullRequestState", field: std.decl_ref.WholeDeclaration },
   encoding: std.serialization.StringVariant { naming: std.serialization.SnakeCase }
 }
 
 data review_state_wire_contract: std.serialization.CoproductWireContract = {
-  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.github.pulls", decl_name: "ReviewState", field: WholeDeclaration },
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.github.pulls", decl_name: "ReviewState", field: std.decl_ref.WholeDeclaration },
   encoding: std.serialization.StringVariant { naming: std.serialization.ScreamingSnakeCase }
 }
 
 data review_event_wire_contract: std.serialization.CoproductWireContract = {
-  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.github.pulls", decl_name: "ReviewEvent", field: WholeDeclaration },
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.github.pulls", decl_name: "ReviewEvent", field: std.decl_ref.WholeDeclaration },
   encoding: std.serialization.StringVariant { naming: std.serialization.ScreamingSnakeCase }
 }

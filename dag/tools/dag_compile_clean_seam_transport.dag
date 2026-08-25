@@ -55,7 +55,7 @@ fn cross_shard_seam_break_module(broken_dag: String) -> Bool {
 
 fn run_cross_shard_seam_probe() -> CrossShardSeamProbeResult {
   let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
+  if tools.dag_compile_clean_transport.dcc_gunbc_ready(root: root.path) {
     let broken = shell.Mktemp.Dir()
     let stage_y = shell.Mktemp.Dir()
     let stage_x = shell.Mktemp.Dir()
@@ -74,18 +74,18 @@ fn run_cross_shard_seam_probe() -> CrossShardSeamProbeResult {
         source: concat(broken.path, concat("/", cross_shard_seam_importer_entry_path)),
         destination: stage_x.path
       )
-      let gunbc_path = dcc_gunbc_path(root: root.path)
-      let compile_y = gunbc.WitnessBin.Run(
+      let gunbc_path = tools.dag_compile_clean_transport.dcc_gunbc_path(root: root.path)
+      let compile_y = WitnessBin.Run(
         workdir: root.path,
         bin_path: gunbc_path,
         args: cross_shard_seam_compile_args(stage: stage_y.path, broken_dag: broken_dag, out_dir: out_y.path)
       )
-      let compile_x = gunbc.WitnessBin.Run(
+      let compile_x = WitnessBin.Run(
         workdir: root.path,
         bin_path: gunbc_path,
         args: cross_shard_seam_compile_args(stage: stage_x.path, broken_dag: broken_dag, out_dir: out_x.path)
       )
-      let compile_m = gunbc.WitnessBin.Run(
+      let compile_m = WitnessBin.Run(
         workdir: root.path,
         bin_path: gunbc_path,
         args: cross_shard_seam_compile_args(stage: "", broken_dag: broken_dag, out_dir: out_m.path)

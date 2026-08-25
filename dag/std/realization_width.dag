@@ -9,12 +9,12 @@ fn int_max(a: Int, b: Int) -> Int {
   if a > b { a } else { b }
 }
 
-fn nano_time(count: std.nat.Nat) -> Measure<Time, Nano, std.nat.Nat> {
-  time_measure(count: count)
+fn nano_time(count: std.nat.Nat) -> std.measure.Measure<std.measure.Time, std.measure.Nano, std.nat.Nat> {
+  std.measure.time_measure(count: count)
 }
 
 fn nano_predicted_zero() -> std.realization_schedule.CostAccount<std.measure.Nano> {
-  cost_account_predicted_zero()
+  std.realization_schedule.cost_account_predicted_zero()
 }
 
 fn shard_count_positive(shard_count: Int) -> Int {
@@ -23,9 +23,9 @@ fn shard_count_positive(shard_count: Int) -> Int {
 
 fn bounded_host_spawn_width(shard_count: Int, hardware_threads: std.measure.HardwareThreadCount) -> std.measure.HardwareThreadCount {
   let demand = shard_count_positive(shard_count: shard_count)
-  let cores = hardware_thread_count_value(t: hardware_threads)
+  let cores = std.measure.hardware_thread_count_value(t: hardware_threads)
   let width = int_min(a: demand, b: cores)
-  hardware_thread_count(count: width)
+  std.measure.hardware_thread_count(count: width)
 }
 
 fn cpu_cores_available(nproc: std.measure.HardwareThreadCount, margin: std.measure.HardwareThreadCount) -> std.measure.HardwareThreadCount {
@@ -33,19 +33,19 @@ fn cpu_cores_available(nproc: std.measure.HardwareThreadCount, margin: std.measu
 }
 
 fn budget_safety_fraction_apply(budget: std.measure.ByteSize) -> std.measure.ByteSize {
-  measure_scale_fraction_floor(m: budget, num: 4, den: 5)
+  std.measure.measure_scale_fraction_floor(m: budget, num: 4, den: 5)
 }
 
 fn byte_size_saturating_sub(total: std.measure.ByteSize, reserved: std.measure.ByteSize) -> std.measure.ByteSize {
-  let total_bytes = byte_size_count(b: total)
-  let reserved_bytes = byte_size_count(b: reserved)
-  if total_bytes > reserved_bytes { byte_size(total_bytes - reserved_bytes) } else { byte_size(0) }
+  let total_bytes = std.measure.byte_size_count(b: total)
+  let reserved_bytes = std.measure.byte_size_count(b: reserved)
+  if total_bytes > reserved_bytes { std.measure.byte_size(total_bytes - reserved_bytes) } else { std.measure.byte_size(0) }
 }
 
 fn hardware_thread_count_saturating_sub(a: std.measure.HardwareThreadCount, b: std.measure.HardwareThreadCount) -> std.measure.HardwareThreadCount {
-  let av = hardware_thread_count_value(t: a)
-  let bv = hardware_thread_count_value(t: b)
-  if av > bv { hardware_thread_count(count: av - bv) } else { hardware_thread_count(count: 0) }
+  let av = std.measure.hardware_thread_count_value(t: a)
+  let bv = std.measure.hardware_thread_count_value(t: b)
+  if av > bv { std.measure.hardware_thread_count(count: av - bv) } else { std.measure.hardware_thread_count(count: 0) }
 }
 
 fn memory_effective_budget(budget: std.measure.ByteSize, reserved: std.measure.ByteSize) -> std.measure.ByteSize {
@@ -53,19 +53,19 @@ fn memory_effective_budget(budget: std.measure.ByteSize, reserved: std.measure.B
 }
 
 fn memory_bounded_fit_count(budget: std.measure.ByteSize, unit_peak: std.measure.ByteSize, reserved: std.measure.ByteSize) -> Int {
-  measure_fit_count_floor(
+  std.measure.measure_fit_count_floor(
     capacity: memory_effective_budget(budget: budget, reserved: reserved),
     each: unit_peak
   )
 }
 
 fn measure_max(a: std.measure.ByteSize, b: std.measure.ByteSize) -> std.measure.ByteSize {
-  if byte_size_count(b: a) >= byte_size_count(b: b) { a } else { b }
+  if std.measure.byte_size_count(b: a) >= std.measure.byte_size_count(b: b) { a } else { b }
 }
 
 fn memory_bounded_shard_count(memory_budget: std.measure.ByteSize, per_shard_peak: std.measure.ByteSize) -> Int {
   std.nat.nat_max(
-    a: memory_bounded_fit_count(budget: memory_budget, unit_peak: per_shard_peak, reserved: byte_size(0)),
+    a: memory_bounded_fit_count(budget: memory_budget, unit_peak: per_shard_peak, reserved: std.measure.byte_size(0)),
     b: 1
   )
 }
@@ -77,18 +77,18 @@ fn memory_aware_spawn_width(
   per_shard_peak: std.measure.ByteSize,
   conservative_fallback_width: Int
 ) -> std.measure.HardwareThreadCount {
-  let budget_bytes = byte_size_count(b: memory_budget)
+  let budget_bytes = std.measure.byte_size_count(b: memory_budget)
   if budget_bytes == 0 {
-    hardware_thread_count(count: conservative_fallback_width)
+    std.measure.hardware_thread_count(count: conservative_fallback_width)
   } else {
-    let cpu_width = hardware_thread_count_value(
+    let cpu_width = std.measure.hardware_thread_count_value(
       t: bounded_host_spawn_width(shard_count: shard_count, hardware_threads: hardware_threads)
     )
     let mem_width = memory_bounded_shard_count(
       memory_budget: memory_budget,
       per_shard_peak: per_shard_peak
     )
-    hardware_thread_count(count: int_min(a: cpu_width, b: mem_width))
+    std.measure.hardware_thread_count(count: int_min(a: cpu_width, b: mem_width))
   }
 }
 
@@ -109,24 +109,24 @@ fn process_memory_aware_spawn_width(
   procs_per_job: Int,
   conservative_fallback_width: Int
 ) -> std.measure.HardwareThreadCount {
-  let mem_bytes = byte_size_count(b: memory_budget)
+  let mem_bytes = std.measure.byte_size_count(b: memory_budget)
   if mem_bytes == 0 {
-    hardware_thread_count(count: conservative_fallback_width)
+    std.measure.hardware_thread_count(count: conservative_fallback_width)
   } else if pids_budget == 0 {
-    hardware_thread_count(count: conservative_fallback_width)
+    std.measure.hardware_thread_count(count: conservative_fallback_width)
   } else {
-    let cores = hardware_thread_count_value(t: hardware_threads)
+    let cores = std.measure.hardware_thread_count_value(t: hardware_threads)
     let mem_width = memory_bounded_shard_count(
       memory_budget: memory_budget,
       per_shard_peak: per_job_peak
     )
     let pids_width = process_bounded_job_count(pids_budget: pids_budget, procs_per_job: procs_per_job)
-    hardware_thread_count(count: int_min(a: int_min(a: cores, b: mem_width), b: pids_width))
+    std.measure.hardware_thread_count(count: int_min(a: int_min(a: cores, b: mem_width), b: pids_width))
   }
 }
 
 fn width_fold_objective_goals() -> List<std.pareto.AxisGoal> {
-  [LowerIsBetter, LowerIsBetter]
+  [std.pareto.LowerIsBetter, std.pareto.LowerIsBetter]
 }
 
 type WidthBoundedRealization<S> {
@@ -155,7 +155,7 @@ fn witness_width_fold_preserves_schedule_topology<S>(
     shard_count: shard_count,
     hardware_threads: hardware_threads
   )
-  schedule_eq(left: plan.schedule, right: bounded.plan.schedule)
+  std.realization_schedule.schedule_eq(left: plan.schedule, right: bounded.plan.schedule)
 }
 
 fn witness_spawn_width_capped_by_hardware(
@@ -163,7 +163,7 @@ fn witness_spawn_width_capped_by_hardware(
   hardware_threads: std.measure.HardwareThreadCount,
   expected: Int
 ) -> Bool {
-  hardware_thread_count_value(
+  std.measure.hardware_thread_count_value(
     t: bounded_host_spawn_width(shard_count: shard_count, hardware_threads: hardware_threads)
   ) == expected
 }
@@ -172,21 +172,21 @@ fn witness_budget_ignoring_fold_fails(
   shard_count: Int,
   hardware_threads: std.measure.HardwareThreadCount
 ) -> Bool {
-  hardware_thread_count_value(
+  std.measure.hardware_thread_count_value(
     t: bounded_host_spawn_width(shard_count: shard_count, hardware_threads: hardware_threads)
   ) != shard_count
 }
 
 fn shard_balance_slot_for_cost(cost: std.realization_schedule.CostAccount<std.measure.Nano>, baseline: std.realization_schedule.CostAccount<std.measure.Nano>) -> Int {
   match cost.basis {
-    Measured => cost_account_time_count(account: cost)
-    Predicted => cost_account_time_count(account: baseline)
+    Measured => std.realization_schedule.cost_account_time_count(account: cost)
+    Predicted => std.realization_schedule.cost_account_time_count(account: baseline)
   }
 }
 
 fn witness_measured_cost_affects_shard_balance() -> Bool {
-  let high = cost_account_measured(time: nano_time(count: 100))
-  let low = cost_account_measured(time: nano_time(count: 10))
+  let high = std.realization_schedule.cost_account_measured(time: nano_time(count: 100))
+  let low = std.realization_schedule.cost_account_measured(time: nano_time(count: 10))
   let baseline = nano_predicted_zero()
   let left = shard_balance_slot_for_cost(cost: high, baseline: baseline)
   let right = shard_balance_slot_for_cost(cost: low, baseline: baseline)
@@ -200,7 +200,7 @@ fn memory_aware_width_value(
   per_shard_peak: std.measure.ByteSize,
   conservative_fallback_width: Int
 ) -> Int {
-  hardware_thread_count_value(
+  std.measure.hardware_thread_count_value(
     t: memory_aware_spawn_width(
       shard_count: shard_count,
       hardware_threads: hardware_threads,
@@ -218,8 +218,8 @@ fn witness_memory_term_non_binding_uses_shard_count(
   memory_aware_width_value(
     shard_count: shard_count,
     hardware_threads: hardware_threads,
-    memory_budget: byte_size(67108864000),
-    per_shard_peak: byte_size(2100028416),
+    memory_budget: std.measure.byte_size(67108864000),
+    per_shard_peak: std.measure.byte_size(2100028416),
     conservative_fallback_width: 4
   ) == shard_count
 }
@@ -232,21 +232,21 @@ fn witness_memory_aware_width_stamp_holds(stamp: MemoryAwareWidthWitnessStamp) -
 }
 
 fn process_memory_aware_width_value(hardware_threads: std.measure.HardwareThreadCount, memory_budget: std.measure.ByteSize, per_job_peak: std.measure.ByteSize, pids_budget: Int, procs_per_job: Int, conservative_fallback_width: Int) -> Int {
-  hardware_thread_count_value(t: process_memory_aware_spawn_width(hardware_threads: hardware_threads, memory_budget: memory_budget, per_job_peak: per_job_peak, pids_budget: pids_budget, procs_per_job: procs_per_job, conservative_fallback_width: conservative_fallback_width))
+  std.measure.hardware_thread_count_value(t: process_memory_aware_spawn_width(hardware_threads: hardware_threads, memory_budget: memory_budget, per_job_peak: per_job_peak, pids_budget: pids_budget, procs_per_job: procs_per_job, conservative_fallback_width: conservative_fallback_width))
 }
 
 fn witness_process_memory_aware_width_stamp_holds(stamp: ProcessMemoryAwareWidthWitnessStamp) -> Bool {
   process_memory_aware_width_value(hardware_threads: stamp.hardware_threads, memory_budget: stamp.memory_budget, per_job_peak: stamp.per_job_peak, pids_budget: stamp.pids_budget, procs_per_job: stamp.procs_per_job, conservative_fallback_width: stamp.conservative_fallback_width) == stamp.expected
 }
 
-data witness_stamp_tight_budget_backs_off_below_shard_count: MemoryAwareWidthWitnessStamp = MemoryAwareWidthWitnessStamp { shard_count: 7, hardware_threads: hardware_thread_count(128), memory_budget: byte_size(6442450944), per_shard_peak: byte_size(2100028416), conservative_fallback_width: 4, expected: 2 }
-data witness_stamp_unreadable_budget_falls_back_conservative: MemoryAwareWidthWitnessStamp = MemoryAwareWidthWitnessStamp { shard_count: 7, hardware_threads: hardware_thread_count(128), memory_budget: byte_size(0), per_shard_peak: byte_size(2100028416), conservative_fallback_width: 4, expected: 4 }
-data witness_stamp_subunit_budget_admits_one: MemoryAwareWidthWitnessStamp = MemoryAwareWidthWitnessStamp { shard_count: 7, hardware_threads: hardware_thread_count(128), memory_budget: byte_size(1000000000), per_shard_peak: byte_size(2100028416), conservative_fallback_width: 4, expected: 1 }
-data witness_stamp_safety_fraction_is_load_bearing: MemoryAwareWidthWitnessStamp = MemoryAwareWidthWitnessStamp { shard_count: 7, hardware_threads: hardware_thread_count(128), memory_budget: byte_size(4200056832), per_shard_peak: byte_size(2100028416), conservative_fallback_width: 4, expected: 1 }
-data witness_stamp_pids_term_binds_below_cores_and_memory: ProcessMemoryAwareWidthWitnessStamp = ProcessMemoryAwareWidthWitnessStamp { hardware_threads: hardware_thread_count(128), memory_budget: byte_size(137438953472), per_job_peak: byte_size(2100028416), pids_budget: 24, procs_per_job: 3, conservative_fallback_width: 1, expected: 8 }
-data witness_stamp_memory_term_still_binds_under_three_term_fold: ProcessMemoryAwareWidthWitnessStamp = ProcessMemoryAwareWidthWitnessStamp { hardware_threads: hardware_thread_count(128), memory_budget: byte_size(6442450944), per_job_peak: byte_size(2100028416), pids_budget: 4096, procs_per_job: 3, conservative_fallback_width: 1, expected: 2 }
-data witness_stamp_unreadable_pids_budget_falls_back_conservative: ProcessMemoryAwareWidthWitnessStamp = ProcessMemoryAwareWidthWitnessStamp { hardware_threads: hardware_thread_count(128), memory_budget: byte_size(137438953472), per_job_peak: byte_size(2100028416), pids_budget: 0, procs_per_job: 3, conservative_fallback_width: 4, expected: 4 }
-data witness_stamp_subunit_pids_budget_admits_one: ProcessMemoryAwareWidthWitnessStamp = ProcessMemoryAwareWidthWitnessStamp { hardware_threads: hardware_thread_count(128), memory_budget: byte_size(137438953472), per_job_peak: byte_size(2100028416), pids_budget: 2, procs_per_job: 3, conservative_fallback_width: 4, expected: 1 }
+data witness_stamp_tight_budget_backs_off_below_shard_count: MemoryAwareWidthWitnessStamp = MemoryAwareWidthWitnessStamp { shard_count: 7, hardware_threads: std.measure.hardware_thread_count(128), memory_budget: std.measure.byte_size(6442450944), per_shard_peak: std.measure.byte_size(2100028416), conservative_fallback_width: 4, expected: 2 }
+data witness_stamp_unreadable_budget_falls_back_conservative: MemoryAwareWidthWitnessStamp = MemoryAwareWidthWitnessStamp { shard_count: 7, hardware_threads: std.measure.hardware_thread_count(128), memory_budget: std.measure.byte_size(0), per_shard_peak: std.measure.byte_size(2100028416), conservative_fallback_width: 4, expected: 4 }
+data witness_stamp_subunit_budget_admits_one: MemoryAwareWidthWitnessStamp = MemoryAwareWidthWitnessStamp { shard_count: 7, hardware_threads: std.measure.hardware_thread_count(128), memory_budget: std.measure.byte_size(1000000000), per_shard_peak: std.measure.byte_size(2100028416), conservative_fallback_width: 4, expected: 1 }
+data witness_stamp_safety_fraction_is_load_bearing: MemoryAwareWidthWitnessStamp = MemoryAwareWidthWitnessStamp { shard_count: 7, hardware_threads: std.measure.hardware_thread_count(128), memory_budget: std.measure.byte_size(4200056832), per_shard_peak: std.measure.byte_size(2100028416), conservative_fallback_width: 4, expected: 1 }
+data witness_stamp_pids_term_binds_below_cores_and_memory: ProcessMemoryAwareWidthWitnessStamp = ProcessMemoryAwareWidthWitnessStamp { hardware_threads: std.measure.hardware_thread_count(128), memory_budget: std.measure.byte_size(137438953472), per_job_peak: std.measure.byte_size(2100028416), pids_budget: 24, procs_per_job: 3, conservative_fallback_width: 1, expected: 8 }
+data witness_stamp_memory_term_still_binds_under_three_term_fold: ProcessMemoryAwareWidthWitnessStamp = ProcessMemoryAwareWidthWitnessStamp { hardware_threads: std.measure.hardware_thread_count(128), memory_budget: std.measure.byte_size(6442450944), per_job_peak: std.measure.byte_size(2100028416), pids_budget: 4096, procs_per_job: 3, conservative_fallback_width: 1, expected: 2 }
+data witness_stamp_unreadable_pids_budget_falls_back_conservative: ProcessMemoryAwareWidthWitnessStamp = ProcessMemoryAwareWidthWitnessStamp { hardware_threads: std.measure.hardware_thread_count(128), memory_budget: std.measure.byte_size(137438953472), per_job_peak: std.measure.byte_size(2100028416), pids_budget: 0, procs_per_job: 3, conservative_fallback_width: 4, expected: 4 }
+data witness_stamp_subunit_pids_budget_admits_one: ProcessMemoryAwareWidthWitnessStamp = ProcessMemoryAwareWidthWitnessStamp { hardware_threads: std.measure.hardware_thread_count(128), memory_budget: std.measure.byte_size(137438953472), per_job_peak: std.measure.byte_size(2100028416), pids_budget: 2, procs_per_job: 3, conservative_fallback_width: 4, expected: 1 }
 
 fn witness_tight_budget_backs_off_below_shard_count() -> Bool { witness_memory_aware_width_stamp_holds(stamp: witness_stamp_tight_budget_backs_off_below_shard_count) }
 fn witness_unreadable_budget_falls_back_conservative() -> Bool { witness_memory_aware_width_stamp_holds(stamp: witness_stamp_unreadable_budget_falls_back_conservative) }

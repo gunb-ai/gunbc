@@ -1,8 +1,8 @@
 module v2.test.claim.complexity.accumulator_copy_roster_gate_swift
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
-test fn roster_swift_zero_suspects_within_ratchet() -> v2.std.logic.Bool {
+test fn roster_swift_zero_suspects_within_ratchet() -> Bool {
   v2.lens.complexity_accumulator_copy.roster_gate.file_gate(path: "src/v2/extdeps/languages/swift.dag", refusal_ceiling: 4)
 }

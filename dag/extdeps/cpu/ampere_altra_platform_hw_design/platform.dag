@@ -1,21 +1,21 @@
 module extdeps.cpu.ampere_altra_platform_hw_design.platform
 
 
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = altra_platform_hw_design_subject_authority_anchor
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.cpu.ampere_altra_platform_hw_design.subject.altra_platform_hw_design_subject_authority_anchor
 
 data platform_subject_edge_note: String = "THE DOCUMENT IDENTITY IS NOT RE-DECLARED HERE. extdeps.cpu.ampere_altra_platform_hw_design.subject owns the title, revision label, publication date, publisher and citation-read provenance of this specification; this module carries the design facts the document states in running text and binds every one of them to that declaration through the subject edge below, the same shape extdeps.ocp.mt_jade.platform uses. A second identity row beside the first is the fork the subject/platform split exists to prevent."
 
-data altra_platform_hw_design_subject: extdeps.cpu.ampere_altra_platform_hw_design.subject.AltraPlatformHwDesignSpecification = altra_platform_hw_design_specification
+data altra_platform_hw_design_subject: extdeps.cpu.ampere_altra_platform_hw_design.subject.AltraPlatformHwDesignSpecification = extdeps.cpu.ampere_altra_platform_hw_design.subject.altra_platform_hw_design_specification
 
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
   subject: extdeps.external_authority.ExternalSubjectRef {
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
       decl_name: "altra_platform_hw_design_specification",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.cpu.ampere_altra_platform_hw_design.platform.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -33,12 +33,12 @@ data platform_ingestion_note: String = "READ, NOT RECALLED. The v1.00 PDF at the
 // summarised or assumed unchanged.
 fn platform_facts_are_from_the_latest_revision() -> Bool {
   match altra_platform_hw_design_subject.supersession_standing {
-    HeldRevisionIsCurrentPublicCopy => true
-    NewerRevisionExistsUnretrieved { newer_version_label, newer_publication_date, index_authority, held_version_label, detail } => false
+    extdeps.cpu.ampere_altra_platform_hw_design.subject.HeldRevisionIsCurrentPublicCopy => true
+    extdeps.cpu.ampere_altra_platform_hw_design.subject.NewerRevisionExistsUnretrieved { newer_version_label, newer_publication_date, index_authority, held_version_label, detail } => false
   }
 }
 
-data altra_platform_memory_generation: extdeps.memory.types.DramGeneration = dram_generation_ddr4
+data altra_platform_memory_generation: extdeps.memory.types.DramGeneration = extdeps.memory.types.dram_generation_ddr4
 
 // MEMORY TOPOLOGY (section 2.2.1). The specification admits exactly two linear
 // topologies. A population outside them is not a smaller version of a supported
@@ -47,7 +47,7 @@ type DimmsPerChannelTopology
   = OneDimmPerChannel
   | TwoDimmsPerChannel
 
-fn dimms_per_channel_count(topology: DimmsPerChannelTopology) -> std.integer.Int {
+fn dimms_per_channel_count(topology: DimmsPerChannelTopology) -> Int {
   match topology {
     OneDimmPerChannel => 1
     TwoDimmsPerChannel => 2
@@ -55,16 +55,16 @@ fn dimms_per_channel_count(topology: DimmsPerChannelTopology) -> std.integer.Int
 }
 
 // Derived from the package authority's channel count, never a second literal.
-fn dimm_slots_per_socket(topology: DimmsPerChannelTopology) -> std.integer.Int {
-  altra_ddr4_channel_count * dimms_per_channel_count(topology: topology)
+fn dimm_slots_per_socket(topology: DimmsPerChannelTopology) -> Int {
+  extdeps.cpu.ampere_altra_package.altra_ddr4_channel_count * dimms_per_channel_count(topology: topology)
 }
 
-fn altra_platform_max_dimm_slots_per_socket() -> std.integer.Int {
+fn altra_platform_max_dimm_slots_per_socket() -> Int {
   dimm_slots_per_socket(topology: TwoDimmsPerChannel)
 }
 
-fn altra_platform_package_dimm_ceiling() -> std.integer.Int {
-  altra_max_dimms_per_socket
+fn altra_platform_package_dimm_ceiling() -> Int {
+  extdeps.cpu.ampere_altra_package.altra_max_dimms_per_socket
 }
 
 // Section 2.2.3, and it is a REQUIREMENT on slot assignment rather than a note
@@ -86,27 +86,27 @@ fn one_dimm_per_channel_populated_slot() -> DimmSlotPosition {
 // two Ampere documents disagreeing surfaces as a failing join.
 type RootComplexType = RootComplexTypeA | RootComplexTypeB
 
-data altra_root_complex_lane_width: std.integer.Int = 16
+data altra_root_complex_lane_width: Int = 16
 
-data altra_type_a_root_complex_count: std.integer.Int = 4
+data altra_type_a_root_complex_count: Int = 4
 
-data altra_type_b_root_complex_count: std.integer.Int = 4
+data altra_type_b_root_complex_count: Int = 4
 
-data altra_pcie_controller_count: std.integer.Int = 48
+data altra_pcie_controller_count: Int = 48
 
-fn altra_root_complex_count() -> std.integer.Int {
+fn altra_root_complex_count() -> Int {
   altra_type_a_root_complex_count + altra_type_b_root_complex_count
 }
 
-fn altra_derived_lane_total() -> std.integer.Int {
+fn altra_derived_lane_total() -> Int {
   altra_root_complex_count() * altra_root_complex_lane_width
 }
 
-fn altra_declared_lane_total() -> std.integer.Int {
-  altra_pcie_gen4_lane_count
+fn altra_declared_lane_total() -> Int {
+  extdeps.cpu.ampere_altra_package.altra_pcie_gen4_lane_count
 }
 
-fn root_complex_count_of_type(kind: RootComplexType) -> std.integer.Int {
+fn root_complex_count_of_type(kind: RootComplexType) -> Int {
   match kind {
     RootComplexTypeA => altra_type_a_root_complex_count
     RootComplexTypeB => altra_type_b_root_complex_count
@@ -132,7 +132,7 @@ type TypeALaneGrouping
   | TypeAOneX8AndTwoX4
   | TypeAFourX4
 
-fn type_a_grouping_lane_total(grouping: TypeALaneGrouping) -> std.integer.Int {
+fn type_a_grouping_lane_total(grouping: TypeALaneGrouping) -> Int {
   match grouping {
     TypeAOneX16 => 16
     TypeATwoX8 => 8 + 8
@@ -147,24 +147,24 @@ type TypeBHalfGrouping
   = TypeBOneX8
   | TypeBTwoX4
 
-data altra_type_b_half_lane_width: std.integer.Int = 8
+data altra_type_b_half_lane_width: Int = 8
 
-fn type_b_half_grouping_lane_total(grouping: TypeBHalfGrouping) -> std.integer.Int {
+fn type_b_half_grouping_lane_total(grouping: TypeBHalfGrouping) -> Int {
   match grouping {
     TypeBOneX8 => 8
     TypeBTwoX4 => 4 + 4
   }
 }
 
-data altra_ccix_x16_links_per_socket: std.integer.Int = 2
+data altra_ccix_x16_links_per_socket: Int = 2
 
-data altra_pcie_only_lane_count: std.integer.Int = 96
+data altra_pcie_only_lane_count: Int = 96
 
 data altra_ccix_link_framing_note: String = "TWO STATEMENTS IN ONE DOCUMENT, CARRIED AS THEY STAND. Section 2.3.1 says Altra provides 128 PCIe Gen4 lanes with 48 controllers to support 96 lanes of PCIe and up to 2 x16 Cache Coherent Interconnect for Accelerators links. The overview, section 1.4, instead lists 4 CCIX links beside 192 lanes in 2P configuration. The two are NOT reconciled here and no third number is derived from them: the section 2.3.1 figures are per socket at a stated split, the overview bullets are family-level and their grain is not stated, and inventing a reconciliation would be the fabricated-plausible-output failure DESIGN section 5 forbids. Consumers take the per-socket rows; a grain the document itself states is the only thing that retires this note."
 
-data altra_overview_ccix_link_count: std.integer.Int = 4
+data altra_overview_ccix_link_count: Int = 4
 
-data altra_overview_two_socket_lane_count: std.integer.Int = 192
+data altra_overview_two_socket_lane_count: Int = 192
 
 // DUAL-SOCKET INTERCONNECT (section 2.1, running text): a dual-socket
 // implementation uses TWO x16 CCIX ports. The signalling rate printed inside
@@ -172,9 +172,9 @@ data altra_overview_two_socket_lane_count: std.integer.Int = 192
 // running-text boundary this module holds while the proprietary-marking
 // question is open, and a rate is exactly the kind of number that boundary is
 // drawn around.
-data altra_two_socket_ccix_lane_width: std.integer.Int = 16
+data altra_two_socket_ccix_lane_width: Int = 16
 
-data altra_two_socket_ccix_port_count: std.integer.Int = 2
+data altra_two_socket_ccix_port_count: Int = 2
 
 // REFERENCE CLOCKS (section 2.3.2). Two defined refclk inputs, both 100 MHz
 // PCIe-compliant differential HCSL inputs. REFCLK_SRNS 'is always needed and
@@ -183,7 +183,7 @@ data altra_two_socket_ccix_port_count: std.integer.Int = 2
 // than being a flag a board designer may set either way.
 type AltraRefclkInput = RefclkSrns | RefclkSris
 
-data altra_refclk_frequency: std.measure.Hertz = hertz(count: 100000000)
+data altra_refclk_frequency: std.measure.Hertz = std.measure.hertz(count: 100000000)
 
 fn refclk_always_required(input: AltraRefclkInput) -> Bool {
   match input {
@@ -198,7 +198,7 @@ fn refclk_always_required(input: AltraRefclkInput) -> Bool {
 // absence of per-controller PERST is a structural constraint on any board built
 // to this document rather than an omission a designer may assume away.
 type AltraPcieResetScheme
-  = CpldDecodedPerst { gpio_output_max: std.integer.Int }
+  = CpldDecodedPerst { gpio_output_max: Int }
 
 data altra_pcie_reset_scheme: AltraPcieResetScheme = CpldDecodedPerst {
   gpio_output_max: 6,
@@ -286,29 +286,29 @@ data altra_platform_pad_array_geometry_availability: MechanicalFactAvailability 
 // instead of the two unjoined literals that were here before -- the defect was never the second
 // number, it was that nothing compared them. This is the same shape altra_pad_count already used
 // against the package's contact count.
-data altra_package_outline_width: std.measure.Micrometer = micrometer(count: 77080)
+data altra_package_outline_width: std.measure.Micrometer = std.measure.micrometer(count: 77080)
 
-data altra_package_outline_depth: std.measure.Micrometer = micrometer(count: 67000)
+data altra_package_outline_depth: std.measure.Micrometer = std.measure.micrometer(count: 67000)
 
-data altra_pad_pitch_dx: std.measure.Micrometer = micrometer(count: 870)
+data altra_pad_pitch_dx: std.measure.Micrometer = std.measure.micrometer(count: 870)
 
-data altra_pad_pitch_dy: std.measure.Micrometer = micrometer(count: 500)
+data altra_pad_pitch_dy: std.measure.Micrometer = std.measure.micrometer(count: 500)
 
-data altra_pad_count: std.integer.Int = 4926
+data altra_pad_count: Int = 4926
 
-data altra_pad_column_count: std.integer.Int = 84
+data altra_pad_column_count: Int = 84
 
-data altra_pad_row_count: std.integer.Int = 126
+data altra_pad_row_count: Int = 126
 
 // The pad population this document states, joined against the package
 // authority's socket row, so the platform specification and the datasheet
 // disagreeing surfaces as a failing join instead of two literals drifting.
-fn altra_platform_declared_pad_count() -> std.integer.Int {
+fn altra_platform_declared_pad_count() -> Int {
   altra_pad_count
 }
 
-fn altra_package_declared_contact_count() -> std.integer.Int {
-  altra_declared_contact_count()
+fn altra_package_declared_contact_count() -> Int {
+  extdeps.cpu.ampere_altra_package.altra_declared_contact_count()
 }
 
 // Nx times Ny is the bounding grid, NOT a pad count, and the gap between them
@@ -318,7 +318,7 @@ fn altra_package_declared_contact_count() -> std.integer.Int {
 // depopulated ball region is a second, independent reason positions are empty.
 // The document separates neither effect in text, so this module reports only
 // that the grid exceeds the population and refuses to attribute the difference.
-fn altra_pad_grid_position_count() -> std.integer.Int {
+fn altra_pad_grid_position_count() -> Int {
   altra_pad_column_count * altra_pad_row_count
 }
 

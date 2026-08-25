@@ -23,10 +23,10 @@ fn ten_unit_lot() -> product.inventory.ProcurementLot {
   product.inventory.ProcurementLot {
     identity: first_lot_identity(),
     receipt: product.inventory.ReceiptRecorded { receipt: "receipt-a" as product.placement_supply.ProcurementReceiptIdentity },
-    catalog: product.inventory.CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
+    catalog: product.inventory.CatalogRowExact { row: std.decl_ref.decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
     display_label: "Ampere Altra Max M128-30, tray" as std.types.NonEmptyStr,
     quantity_acquired: 10,
-    landed_cost: product.inventory.LandedCostRecorded { cost: test.claim.inventory_ledger_witness.usd_micros(count: 1000003) },
+    landed_cost: product.inventory.LandedCostRecorded { cost: usd_micros(count: 1000003) },
   }
 }
 
@@ -40,8 +40,8 @@ fn acquire_and_receive_all() -> List<product.inventory.InventoryEvent> {
 
 fn balance_of(lot: product.inventory.ProcurementLot, events: List<product.inventory.InventoryEvent>) -> product.inventory.InventoryBalance? {
   match product.inventory.derive_inventory_balance(lot: lot, events: events) {
-    BalanceDerived { balance: b } => Present { value: b }
-    BalanceRefused { cause: _, event_ordinal: _, event_label: _ } => none
+    product.inventory.BalanceDerived { balance: b } => Present { value: b }
+    product.inventory.BalanceRefused { cause: _, event_ordinal: _, event_label: _ } => none
   }
 }
 
@@ -54,22 +54,22 @@ test fn w_over_draw_refuses_with_located_shortfall() -> Bool {
     product.inventory.QuantityReserved { lot: first_lot_identity(), quantity: 40, holder: "rack-3" as std.types.NonEmptyStr },
   ])
   match product.inventory.derive_inventory_balance(lot: ten_unit_lot(), events: events) {
-    BalanceDerived { balance: _ } => false
-    BalanceRefused { cause: c, event_ordinal: o, event_label: l } =>
+    product.inventory.BalanceDerived { balance: _ } => false
+    product.inventory.BalanceRefused { cause: c, event_ordinal: o, event_label: l } =>
       match c {
-        InsufficientStock { position: p, requested: r, held: h } =>
+        product.inventory.InsufficientStock { position: p, requested: r, held: h } =>
           (product.inventory.stock_position_label(position: p) as String) == "available"
             && r == 40
             && h == 10
             && o == 3
             && (l as String) == "QuantityReserved"
-        EventLotMismatch => false
-        EventBeforeAcquisition => false
-        LotAlreadyAcquired => false
-        ZeroQuantityEvent => false
-        ReservationHolderUnknown { holder: _ } => false
-        ReservationOverRelease { holder: _, requested: _, held: _ } => false
-        MoreAssetsThanUnits { assets: _, quantity: _ } => false
+        product.inventory.EventLotMismatch => false
+        product.inventory.EventBeforeAcquisition => false
+        product.inventory.LotAlreadyAcquired => false
+        product.inventory.ZeroQuantityEvent => false
+        product.inventory.ReservationHolderUnknown { holder: _ } => false
+        product.inventory.ReservationOverRelease { holder: _, requested: _, held: _ } => false
+        product.inventory.MoreAssetsThanUnits { assets: _, quantity: _ } => false
       }
   }
 }
@@ -165,8 +165,8 @@ test fn w_consumption_within_available_is_admissible() -> Bool {
       holder: "rack-3" as std.types.NonEmptyStr,
     },
   ) {
-    ConsumptionAdmissible { available_after: after } => after == 6
-    ConsumptionRefused { cause: _, requested: _, available: _ } => false
+    product.inventory.ConsumptionAdmissible { available_after: after } => after == 6
+    product.inventory.ConsumptionRefused { cause: _, requested: _, available: _ } => false
   }
 }
 
@@ -180,20 +180,20 @@ test fn w_over_request_refuses_and_reports_both_numbers() -> Bool {
       holder: "rack-3" as std.types.NonEmptyStr,
     },
   ) {
-    ConsumptionAdmissible { available_after: _ } => false
-    ConsumptionRefused { cause: c, requested: r, available: a } =>
+    product.inventory.ConsumptionAdmissible { available_after: _ } => false
+    product.inventory.ConsumptionRefused { cause: c, requested: r, available: a } =>
       r == 12
         && a == 10
         && match c {
-          InsufficientStock { position: p, requested: cr, held: ch } =>
+          product.inventory.InsufficientStock { position: p, requested: cr, held: ch } =>
             (product.inventory.stock_position_label(position: p) as String) == "available" && cr == 12 && ch == 10
-          EventLotMismatch => false
-          EventBeforeAcquisition => false
-          LotAlreadyAcquired => false
-          ZeroQuantityEvent => false
-          ReservationHolderUnknown { holder: _ } => false
-          ReservationOverRelease { holder: _, requested: _, held: _ } => false
-          MoreAssetsThanUnits { assets: _, quantity: _ } => false
+          product.inventory.EventLotMismatch => false
+          product.inventory.EventBeforeAcquisition => false
+          product.inventory.LotAlreadyAcquired => false
+          product.inventory.ZeroQuantityEvent => false
+          product.inventory.ReservationHolderUnknown { holder: _ } => false
+          product.inventory.ReservationOverRelease { holder: _, requested: _, held: _ } => false
+          product.inventory.MoreAssetsThanUnits { assets: _, quantity: _ } => false
         }
   }
 }
@@ -210,8 +210,8 @@ test fn w_one_past_available_still_refuses() -> Bool {
       holder: "rack-3" as std.types.NonEmptyStr,
     },
   ) {
-    ConsumptionAdmissible { available_after: _ } => false
-    ConsumptionRefused { cause: _, requested: r, available: a } => r == 11 && a == 10
+    product.inventory.ConsumptionAdmissible { available_after: _ } => false
+    product.inventory.ConsumptionRefused { cause: _, requested: r, available: a } => r == 11 && a == 10
   }
 }
 
@@ -228,8 +228,8 @@ test fn w_reserved_stock_is_not_available() -> Bool {
       holder: "rack-9" as std.types.NonEmptyStr,
     },
   ) {
-    ConsumptionAdmissible { available_after: _ } => false
-    ConsumptionRefused { cause: _, requested: r, available: a } => r == 4 && a == 3
+    product.inventory.ConsumptionAdmissible { available_after: _ } => false
+    product.inventory.ConsumptionRefused { cause: _, requested: r, available: a } => r == 4 && a == 3
   }
 }
 
@@ -241,19 +241,19 @@ test fn w_release_by_a_holder_that_never_reserved_refuses() -> Bool {
     product.inventory.ReservationReleased { lot: first_lot_identity(), quantity: 5, holder: "rack-9" as std.types.NonEmptyStr },
   ])
   match product.inventory.derive_inventory_balance(lot: ten_unit_lot(), events: events) {
-    BalanceDerived { balance: _ } => false
-    BalanceRefused { cause: c, event_ordinal: o, event_label: l } =>
+    product.inventory.BalanceDerived { balance: _ } => false
+    product.inventory.BalanceRefused { cause: c, event_ordinal: o, event_label: l } =>
       o == 4
         && (l as String) == "ReservationReleased"
         && match c {
-          ReservationHolderUnknown { holder: h } => (h as String) == "rack-9"
-          EventLotMismatch => false
-          EventBeforeAcquisition => false
-          LotAlreadyAcquired => false
-          ZeroQuantityEvent => false
-          InsufficientStock { position: _, requested: _, held: _ } => false
-          ReservationOverRelease { holder: _, requested: _, held: _ } => false
-          MoreAssetsThanUnits { assets: _, quantity: _ } => false
+          product.inventory.ReservationHolderUnknown { holder: h } => (h as String) == "rack-9"
+          product.inventory.EventLotMismatch => false
+          product.inventory.EventBeforeAcquisition => false
+          product.inventory.LotAlreadyAcquired => false
+          product.inventory.ZeroQuantityEvent => false
+          product.inventory.InsufficientStock { position: _, requested: _, held: _ } => false
+          product.inventory.ReservationOverRelease { holder: _, requested: _, held: _ } => false
+          product.inventory.MoreAssetsThanUnits { assets: _, quantity: _ } => false
         }
   }
 }
@@ -264,18 +264,18 @@ test fn w_release_beyond_holder_reservation_refuses() -> Bool {
     product.inventory.ReservationReleased { lot: first_lot_identity(), quantity: 6, holder: "rack-3" as std.types.NonEmptyStr },
   ])
   match product.inventory.derive_inventory_balance(lot: ten_unit_lot(), events: events) {
-    BalanceDerived { balance: _ } => false
-    BalanceRefused { cause: c, event_ordinal: _, event_label: _ } =>
+    product.inventory.BalanceDerived { balance: _ } => false
+    product.inventory.BalanceRefused { cause: c, event_ordinal: _, event_label: _ } =>
       match c {
-        ReservationOverRelease { holder: h, requested: r, held: hh } =>
+        product.inventory.ReservationOverRelease { holder: h, requested: r, held: hh } =>
           (h as String) == "rack-3" && r == 6 && hh == 5
-        EventLotMismatch => false
-        EventBeforeAcquisition => false
-        LotAlreadyAcquired => false
-        ZeroQuantityEvent => false
-        InsufficientStock { position: _, requested: _, held: _ } => false
-        ReservationHolderUnknown { holder: _ } => false
-        MoreAssetsThanUnits { assets: _, quantity: _ } => false
+        product.inventory.EventLotMismatch => false
+        product.inventory.EventBeforeAcquisition => false
+        product.inventory.LotAlreadyAcquired => false
+        product.inventory.ZeroQuantityEvent => false
+        product.inventory.InsufficientStock { position: _, requested: _, held: _ } => false
+        product.inventory.ReservationHolderUnknown { holder: _ } => false
+        product.inventory.MoreAssetsThanUnits { assets: _, quantity: _ } => false
       }
   }
 }
@@ -287,18 +287,18 @@ test fn w_event_before_acquisition_refuses() -> Bool {
     lot: ten_unit_lot(),
     events: [product.inventory.LotReceived { lot: first_lot_identity(), quantity: 1 }],
   ) {
-    BalanceDerived { balance: _ } => false
-    BalanceRefused { cause: c, event_ordinal: o, event_label: _ } =>
+    product.inventory.BalanceDerived { balance: _ } => false
+    product.inventory.BalanceRefused { cause: c, event_ordinal: o, event_label: _ } =>
       o == 0
         && match c {
-          EventBeforeAcquisition => true
-          EventLotMismatch => false
-          LotAlreadyAcquired => false
-          ZeroQuantityEvent => false
-          InsufficientStock { position: _, requested: _, held: _ } => false
-          ReservationHolderUnknown { holder: _ } => false
-          ReservationOverRelease { holder: _, requested: _, held: _ } => false
-          MoreAssetsThanUnits { assets: _, quantity: _ } => false
+          product.inventory.EventBeforeAcquisition => true
+          product.inventory.EventLotMismatch => false
+          product.inventory.LotAlreadyAcquired => false
+          product.inventory.ZeroQuantityEvent => false
+          product.inventory.InsufficientStock { position: _, requested: _, held: _ } => false
+          product.inventory.ReservationHolderUnknown { holder: _ } => false
+          product.inventory.ReservationOverRelease { holder: _, requested: _, held: _ } => false
+          product.inventory.MoreAssetsThanUnits { assets: _, quantity: _ } => false
         }
   }
 }
@@ -308,18 +308,18 @@ test fn w_second_acquisition_of_one_lot_refuses() -> Bool {
     lot: ten_unit_lot(),
     events: [product.inventory.LotAcquired { lot: first_lot_identity() }, product.inventory.LotAcquired { lot: first_lot_identity() }],
   ) {
-    BalanceDerived { balance: _ } => false
-    BalanceRefused { cause: c, event_ordinal: o, event_label: _ } =>
+    product.inventory.BalanceDerived { balance: _ } => false
+    product.inventory.BalanceRefused { cause: c, event_ordinal: o, event_label: _ } =>
       o == 1
         && match c {
-          LotAlreadyAcquired => true
-          EventLotMismatch => false
-          EventBeforeAcquisition => false
-          ZeroQuantityEvent => false
-          InsufficientStock { position: _, requested: _, held: _ } => false
-          ReservationHolderUnknown { holder: _ } => false
-          ReservationOverRelease { holder: _, requested: _, held: _ } => false
-          MoreAssetsThanUnits { assets: _, quantity: _ } => false
+          product.inventory.LotAlreadyAcquired => true
+          product.inventory.EventLotMismatch => false
+          product.inventory.EventBeforeAcquisition => false
+          product.inventory.ZeroQuantityEvent => false
+          product.inventory.InsufficientStock { position: _, requested: _, held: _ } => false
+          product.inventory.ReservationHolderUnknown { holder: _ } => false
+          product.inventory.ReservationOverRelease { holder: _, requested: _, held: _ } => false
+          product.inventory.MoreAssetsThanUnits { assets: _, quantity: _ } => false
         }
   }
 }
@@ -329,17 +329,17 @@ test fn w_another_lots_event_refuses_rather_than_being_ignored() -> Bool {
     product.inventory.QuantityReserved { lot: second_lot_identity(), quantity: 1, holder: "rack-3" as std.types.NonEmptyStr },
   ])
   match product.inventory.derive_inventory_balance(lot: ten_unit_lot(), events: events) {
-    BalanceDerived { balance: _ } => false
-    BalanceRefused { cause: c, event_ordinal: _, event_label: _ } =>
+    product.inventory.BalanceDerived { balance: _ } => false
+    product.inventory.BalanceRefused { cause: c, event_ordinal: _, event_label: _ } =>
       match c {
-        EventLotMismatch => true
-        EventBeforeAcquisition => false
-        LotAlreadyAcquired => false
-        ZeroQuantityEvent => false
-        InsufficientStock { position: _, requested: _, held: _ } => false
-        ReservationHolderUnknown { holder: _ } => false
-        ReservationOverRelease { holder: _, requested: _, held: _ } => false
-        MoreAssetsThanUnits { assets: _, quantity: _ } => false
+        product.inventory.EventLotMismatch => true
+        product.inventory.EventBeforeAcquisition => false
+        product.inventory.LotAlreadyAcquired => false
+        product.inventory.ZeroQuantityEvent => false
+        product.inventory.InsufficientStock { position: _, requested: _, held: _ } => false
+        product.inventory.ReservationHolderUnknown { holder: _ } => false
+        product.inventory.ReservationOverRelease { holder: _, requested: _, held: _ } => false
+        product.inventory.MoreAssetsThanUnits { assets: _, quantity: _ } => false
       }
   }
 }
@@ -354,17 +354,17 @@ test fn w_more_assets_than_units_refuses() -> Bool {
     },
   ])
   match product.inventory.derive_inventory_balance(lot: ten_unit_lot(), events: events) {
-    BalanceDerived { balance: _ } => false
-    BalanceRefused { cause: c, event_ordinal: _, event_label: _ } =>
+    product.inventory.BalanceDerived { balance: _ } => false
+    product.inventory.BalanceRefused { cause: c, event_ordinal: _, event_label: _ } =>
       match c {
-        MoreAssetsThanUnits { assets: a, quantity: q } => a == 2 && q == 1
-        EventLotMismatch => false
-        EventBeforeAcquisition => false
-        LotAlreadyAcquired => false
-        ZeroQuantityEvent => false
-        InsufficientStock { position: _, requested: _, held: _ } => false
-        ReservationHolderUnknown { holder: _ } => false
-        ReservationOverRelease { holder: _, requested: _, held: _ } => false
+        product.inventory.MoreAssetsThanUnits { assets: a, quantity: q } => a == 2 && q == 1
+        product.inventory.EventLotMismatch => false
+        product.inventory.EventBeforeAcquisition => false
+        product.inventory.LotAlreadyAcquired => false
+        product.inventory.ZeroQuantityEvent => false
+        product.inventory.InsufficientStock { position: _, requested: _, held: _ } => false
+        product.inventory.ReservationHolderUnknown { holder: _ } => false
+        product.inventory.ReservationOverRelease { holder: _, requested: _, held: _ } => false
       }
   }
 }
@@ -373,9 +373,9 @@ test fn w_more_assets_than_units_refuses() -> Bool {
 
 fn reading_is_micros(reading: product.inventory.LandedCostReading, expected: Int) -> Bool {
   match reading {
-    LandedCostReadingMicros { micros: m } => m == expected
-    LandedCostReadingUnsettled => false
-    LandedCostReadingHeldPrivately => false
+    product.inventory.LandedCostReadingMicros { micros: m } => m == expected
+    product.inventory.LandedCostReadingUnsettled => false
+    product.inventory.LandedCostReadingHeldPrivately => false
   }
 }
 
@@ -394,13 +394,13 @@ test fn w_consumption_leaves_basis_and_cash_untouched() -> Bool {
     },
     product.inventory.QuantitySold { lot: first_lot_identity(), quantity: 4, origin: product.inventory.DepartFromAvailable },
   ])
-  let basis_before = reading_is_micros(reading: lot_landed_cost_reading(lot: lot), expected: 1000003)
+  let basis_before = reading_is_micros(reading: product.inventory.lot_landed_cost_reading(lot: lot), expected: 1000003)
   let cash_before = reading_is_micros(
-    reading: ledger_incremental_purchase_cash(lot: lot, events: short),
+    reading: product.inventory.ledger_incremental_purchase_cash(lot: lot, events: short),
     expected: 1000003,
   )
   let cash_after = reading_is_micros(
-    reading: ledger_incremental_purchase_cash(lot: lot, events: consumed),
+    reading: product.inventory.ledger_incremental_purchase_cash(lot: lot, events: consumed),
     expected: 1000003,
   )
   basis_before
@@ -416,10 +416,10 @@ data w_no_per_unit_average_note: String = "The RED control for the per-unit aver
 
 test fn w_aggregate_basis_is_not_recoverable_from_a_per_unit_floor() -> Bool {
   let lot = ten_unit_lot()
-  match lot_landed_cost_reading(lot: lot) {
-    LandedCostReadingUnsettled => false
-    LandedCostReadingHeldPrivately => false
-    LandedCostReadingMicros { micros: m } => {
+  match product.inventory.lot_landed_cost_reading(lot: lot) {
+    product.inventory.LandedCostReadingUnsettled => false
+    product.inventory.LandedCostReadingHeldPrivately => false
+    product.inventory.LandedCostReadingMicros { micros: m } => {
       let per_unit_floor = m / 10
       per_unit_floor * 10 != m && m == 1000003
     }
@@ -431,34 +431,34 @@ test fn w_landed_cost_sums_within_one_currency_and_refuses_across() -> Bool {
   let sibling = product.inventory.ProcurementLot {
     identity: second_lot_identity(),
     receipt: product.inventory.ReceiptRecorded { receipt: "receipt-b" as product.placement_supply.ProcurementReceiptIdentity },
-    catalog: product.inventory.CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
+    catalog: product.inventory.CatalogRowExact { row: std.decl_ref.decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
     display_label: "Ampere Altra Max M128-30, tray" as std.types.NonEmptyStr,
     quantity_acquired: 5,
-    landed_cost: product.inventory.LandedCostRecorded { cost: test.claim.inventory_ledger_witness.usd_micros(count: 500000) },
+    landed_cost: product.inventory.LandedCostRecorded { cost: usd_micros(count: 500000) },
   }
   let euro_lot = product.inventory.ProcurementLot {
     identity: second_lot_identity(),
     receipt: product.inventory.ReceiptRecorded { receipt: "receipt-c" as product.placement_supply.ProcurementReceiptIdentity },
-    catalog: product.inventory.CatalogRowExact { row: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
+    catalog: product.inventory.CatalogRowExact { row: std.decl_ref.decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_m12830_thermal_limits") },
     display_label: "Ampere Altra Max M128-30, tray" as std.types.NonEmptyStr,
     quantity_acquired: 5,
-    landed_cost: product.inventory.LandedCostRecorded { cost: std.measure.MoneyOnce { amount: money_amount_micro(count: 500000), currency: Eur } },
+    landed_cost: product.inventory.LandedCostRecorded { cost: std.measure.MoneyOnce { amount: std.measure.money_amount_micro(count: 500000), currency: std.currency.Eur } },
   }
-  match sum_landed_cost(lots: [lot, sibling]) {
-    LandedCostTotal { total: t } =>
-      money_once_micros(q: t) == 1500003
-        && match sum_landed_cost(lots: [lot, euro_lot]) {
-          LandedCostTotal { total: _ } => false
-          LandedCostEmpty => false
-          LandedCostSumRefused { cause: c } =>
+  match product.inventory.sum_landed_cost(lots: [lot, sibling]) {
+    product.inventory.LandedCostTotal { total: t } =>
+      std.measure.money_once_micros(q: t) == 1500003
+        && match product.inventory.sum_landed_cost(lots: [lot, euro_lot]) {
+          product.inventory.LandedCostTotal { total: _ } => false
+          product.inventory.LandedCostEmpty => false
+          product.inventory.LandedCostSumRefused { cause: c } =>
             match c {
-              CurrencyMismatchAcrossLots { left: l, right: r } => l == Usd && r == Eur
-              LotLandedCostUnsettled { lot: _ } => false
-              LotLandedCostHeldPrivately { lot: _ } => false
+              product.inventory.CurrencyMismatchAcrossLots { left: l, right: r } => l == std.currency.Usd && r == std.currency.Eur
+              product.inventory.LotLandedCostUnsettled { lot: _ } => false
+              product.inventory.LotLandedCostHeldPrivately { lot: _ } => false
             }
         }
-    LandedCostEmpty => false
-    LandedCostSumRefused { cause: _ } => false
+    product.inventory.LandedCostEmpty => false
+    product.inventory.LandedCostSumRefused { cause: _ } => false
   }
 }
 
@@ -472,26 +472,26 @@ test fn w_summing_no_lots_is_empty_not_refused() -> Bool {
     catalog: lot.catalog,
     display_label: lot.display_label,
     quantity_acquired: 5,
-    landed_cost: product.inventory.LandedCostRecorded { cost: std.measure.MoneyOnce { amount: money_amount_micro(count: 500000), currency: Eur } },
+    landed_cost: product.inventory.LandedCostRecorded { cost: std.measure.MoneyOnce { amount: std.measure.money_amount_micro(count: 500000), currency: std.currency.Eur } },
   }
   match product.inventory.sum_landed_cost(lots: []) {
-    LandedCostEmpty => true
-    LandedCostTotal { total: _ } => false
-    LandedCostSumRefused { cause: _ } => false
+    product.inventory.LandedCostEmpty => true
+    product.inventory.LandedCostTotal { total: _ } => false
+    product.inventory.LandedCostSumRefused { cause: _ } => false
   }
     && match product.inventory.sum_landed_cost(lots: [lot]) {
-      LandedCostEmpty => false
-      LandedCostTotal { total: t } => std.measure.money_once_micros(q: t) == 1000003
-      LandedCostSumRefused { cause: _ } => false
+      product.inventory.LandedCostEmpty => false
+      product.inventory.LandedCostTotal { total: t } => std.measure.money_once_micros(q: t) == 1000003
+      product.inventory.LandedCostSumRefused { cause: _ } => false
     }
-    && match sum_landed_cost(lots: [lot, euro_lot]) {
-      LandedCostEmpty => false
-      LandedCostTotal { total: _ } => false
-      LandedCostSumRefused { cause: c } =>
+    && match product.inventory.sum_landed_cost(lots: [lot, euro_lot]) {
+      product.inventory.LandedCostEmpty => false
+      product.inventory.LandedCostTotal { total: _ } => false
+      product.inventory.LandedCostSumRefused { cause: c } =>
             match c {
-              CurrencyMismatchAcrossLots { left: l, right: r } => l == Usd && r == Eur
-              LotLandedCostUnsettled { lot: _ } => false
-              LotLandedCostHeldPrivately { lot: _ } => false
+              product.inventory.CurrencyMismatchAcrossLots { left: l, right: r } => l == std.currency.Usd && r == std.currency.Eur
+              product.inventory.LotLandedCostUnsettled { lot: _ } => false
+              product.inventory.LotLandedCostHeldPrivately { lot: _ } => false
             }
     }
 }
@@ -558,46 +558,46 @@ data w_landed_cost_states_note: String = "The three landed-cost arms are asserte
 fn unsettled_lot() -> product.inventory.ProcurementLot {
   product.inventory.ProcurementLot {
     identity: first_lot_identity(),
-    receipt: ReceiptHeldPrivately,
+    receipt: product.inventory.ReceiptHeldPrivately,
     catalog: product.inventory.CatalogRowUnread {
       observed_family: "64GiB DDR4 RDIMM" as std.types.NonEmptyStr,
       read_obligation: "read the exact part number off the delivered sticks" as std.types.NonEmptyStr,
     },
     display_label: "in-transit lot" as std.types.NonEmptyStr,
     quantity_acquired: 32,
-    landed_cost: LandedCostUnsettled,
+    landed_cost: product.inventory.LandedCostUnsettled,
   }
 }
 
 fn privately_costed_lot() -> product.inventory.ProcurementLot {
   product.inventory.ProcurementLot {
     identity: first_lot_identity(),
-    receipt: ReceiptHeldPrivately,
+    receipt: product.inventory.ReceiptHeldPrivately,
     catalog: product.inventory.CatalogRowUnread {
       observed_family: "64GiB DDR4 RDIMM" as std.types.NonEmptyStr,
       read_obligation: "read the exact part number off the delivered sticks" as std.types.NonEmptyStr,
     },
     display_label: "settled lot, cost off-public" as std.types.NonEmptyStr,
     quantity_acquired: 32,
-    landed_cost: LandedCostHeldPrivately,
+    landed_cost: product.inventory.LandedCostHeldPrivately,
   }
 }
 
 test fn w_the_three_landed_cost_readings_are_distinguishable() -> Bool {
-  let recorded = match lot_landed_cost_reading(lot: ten_unit_lot()) {
-    LandedCostReadingMicros { micros: m } => m == 1000003
-    LandedCostReadingUnsettled => false
-    LandedCostReadingHeldPrivately => false
+  let recorded = match product.inventory.lot_landed_cost_reading(lot: ten_unit_lot()) {
+    product.inventory.LandedCostReadingMicros { micros: m } => m == 1000003
+    product.inventory.LandedCostReadingUnsettled => false
+    product.inventory.LandedCostReadingHeldPrivately => false
   }
-  let unsettled = match lot_landed_cost_reading(lot: unsettled_lot()) {
-    LandedCostReadingUnsettled => true
-    LandedCostReadingMicros { micros: _ } => false
-    LandedCostReadingHeldPrivately => false
+  let unsettled = match product.inventory.lot_landed_cost_reading(lot: unsettled_lot()) {
+    product.inventory.LandedCostReadingUnsettled => true
+    product.inventory.LandedCostReadingMicros { micros: _ } => false
+    product.inventory.LandedCostReadingHeldPrivately => false
   }
-  let private = match lot_landed_cost_reading(lot: privately_costed_lot()) {
-    LandedCostReadingHeldPrivately => true
-    LandedCostReadingMicros { micros: _ } => false
-    LandedCostReadingUnsettled => false
+  let private = match product.inventory.lot_landed_cost_reading(lot: privately_costed_lot()) {
+    product.inventory.LandedCostReadingHeldPrivately => true
+    product.inventory.LandedCostReadingMicros { micros: _ } => false
+    product.inventory.LandedCostReadingUnsettled => false
   }
   recorded && unsettled && private
 }
@@ -606,33 +606,33 @@ test fn w_the_three_landed_cost_readings_are_distinguishable() -> Bool {
 // obvious wrong implementation of the split, in which the reader falls back to no-cost and every
 // total built on it silently understates spend.
 test fn w_an_unreadable_cost_never_reads_as_zero_micros() -> Bool {
-  !reading_is_micros(reading: lot_landed_cost_reading(lot: unsettled_lot()), expected: 0)
-    && !reading_is_micros(reading: lot_landed_cost_reading(lot: privately_costed_lot()), expected: 0)
+  !reading_is_micros(reading: product.inventory.lot_landed_cost_reading(lot: unsettled_lot()), expected: 0)
+    && !reading_is_micros(reading: product.inventory.lot_landed_cost_reading(lot: privately_costed_lot()), expected: 0)
 }
 
 // A sum containing an unreadable lot refuses, names WHICH lot, and says which of the two ways it
 // was unreadable - it is not skipped and it does not contribute zero. Both causes are asserted so
 // the two arms cannot collapse into one.
 test fn w_a_sum_over_an_unreadable_lot_refuses_and_names_it() -> Bool {
-  let unsettled = match sum_landed_cost(lots: [ten_unit_lot(), unsettled_lot()]) {
-    LandedCostSumRefused { cause: c } =>
+  let unsettled = match product.inventory.sum_landed_cost(lots: [ten_unit_lot(), unsettled_lot()]) {
+    product.inventory.LandedCostSumRefused { cause: c } =>
       match c {
-        LotLandedCostUnsettled { lot: l } => inventory_lot_identity_eq(left: l, right: first_lot_identity())
-        LotLandedCostHeldPrivately { lot: _ } => false
-        CurrencyMismatchAcrossLots { left: _, right: _ } => false
+        product.inventory.LotLandedCostUnsettled { lot: l } => product.inventory.inventory_lot_identity_eq(left: l, right: first_lot_identity())
+        product.inventory.LotLandedCostHeldPrivately { lot: _ } => false
+        product.inventory.CurrencyMismatchAcrossLots { left: _, right: _ } => false
       }
-    LandedCostTotal { total: _ } => false
-    LandedCostEmpty => false
+    product.inventory.LandedCostTotal { total: _ } => false
+    product.inventory.LandedCostEmpty => false
   }
-  let private = match sum_landed_cost(lots: [ten_unit_lot(), privately_costed_lot()]) {
-    LandedCostSumRefused { cause: c } =>
+  let private = match product.inventory.sum_landed_cost(lots: [ten_unit_lot(), privately_costed_lot()]) {
+    product.inventory.LandedCostSumRefused { cause: c } =>
       match c {
-        LotLandedCostHeldPrivately { lot: l } => inventory_lot_identity_eq(left: l, right: first_lot_identity())
-        LotLandedCostUnsettled { lot: _ } => false
-        CurrencyMismatchAcrossLots { left: _, right: _ } => false
+        product.inventory.LotLandedCostHeldPrivately { lot: l } => product.inventory.inventory_lot_identity_eq(left: l, right: first_lot_identity())
+        product.inventory.LotLandedCostUnsettled { lot: _ } => false
+        product.inventory.CurrencyMismatchAcrossLots { left: _, right: _ } => false
       }
-    LandedCostTotal { total: _ } => false
-    LandedCostEmpty => false
+    product.inventory.LandedCostTotal { total: _ } => false
+    product.inventory.LandedCostEmpty => false
   }
   unsettled && private
 }
@@ -642,20 +642,20 @@ test fn w_a_sum_over_an_unreadable_lot_refuses_and_names_it() -> Bool {
 // from being mistaken for the fabricated one.
 test fn w_cash_separates_a_real_zero_from_an_unreadable_cost() -> Bool {
   let no_events = reading_is_micros(
-    reading: ledger_incremental_purchase_cash(lot: unsettled_lot(), events: []),
+    reading: product.inventory.ledger_incremental_purchase_cash(lot: unsettled_lot(), events: []),
     expected: 0,
   )
-  let acquired = match ledger_incremental_purchase_cash(
+  let acquired = match product.inventory.ledger_incremental_purchase_cash(
     lot: unsettled_lot(),
     events: [product.inventory.LotAcquired { lot: first_lot_identity() }],
   ) {
-    LandedCostReadingUnsettled => true
-    LandedCostReadingMicros { micros: _ } => false
-    LandedCostReadingHeldPrivately => false
+    product.inventory.LandedCostReadingUnsettled => true
+    product.inventory.LandedCostReadingMicros { micros: _ } => false
+    product.inventory.LandedCostReadingHeldPrivately => false
   }
   no_events && acquired
 }
 
 test fn w_a_privately_held_receipt_is_distinguishable_from_a_recorded_one() -> Bool {
-  lot_receipt_is_recorded(lot: ten_unit_lot()) && !lot_receipt_is_recorded(lot: unsettled_lot())
+  product.inventory.lot_receipt_is_recorded(lot: ten_unit_lot()) && !product.inventory.lot_receipt_is_recorded(lot: unsettled_lot())
 }

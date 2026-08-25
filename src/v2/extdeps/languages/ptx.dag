@@ -105,7 +105,7 @@ fn ptx_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.Gramm
 }
 
 fn ptx_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  v2.std.grammar.Sequence { left: left, right: right }
+  Sequence { left: left, right: right }
 }
 
 fn ptx_identifier_pattern() -> v2.std.compilers.lexing.LexPattern {

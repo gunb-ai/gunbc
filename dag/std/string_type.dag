@@ -3,22 +3,22 @@ module std.string_type
 
 type String = std.algebra.FreeMonoid<std.types.Char>
 
-fn string_lex_compare(left: std.string_type.String, right: std.string_type.String) -> std.algebra.Ordering {
+fn string_lex_compare(left: String, right: String) -> std.algebra.Ordering {
   let left_len = string_length(s: left)
   let right_len = string_length(s: right)
   if left_len == 0 && right_len == 0 {
-    Equal
+    std.algebra.Equal
   } else if left_len == 0 {
-    Less
+    std.algebra.Less
   } else if right_len == 0 {
-    Greater
+    std.algebra.Greater
   } else {
     let left_cp = code_point(ch: char_at(s: left, i: 0))
     let right_cp = code_point(ch: char_at(s: right, i: 0))
     if left_cp < right_cp {
-      Less
+      std.algebra.Less
     } else if left_cp > right_cp {
-      Greater
+      std.algebra.Greater
     } else {
       string_lex_compare(
         left: substring(s: left, start: 1, end: left_len),
@@ -28,6 +28,6 @@ fn string_lex_compare(left: std.string_type.String, right: std.string_type.Strin
   }
 }
 
-fn string_is_lexicographically_before(left: std.string_type.String, right: std.string_type.String) -> Bool {
-  ordering_is_less(o: string_lex_compare(left: left, right: right))
+fn string_is_lexicographically_before(left: String, right: String) -> Bool {
+  std.algebra.ordering_is_less(o: string_lex_compare(left: left, right: right))
 }

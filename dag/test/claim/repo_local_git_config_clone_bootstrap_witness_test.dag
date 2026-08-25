@@ -7,11 +7,11 @@ test fn clone_bootstrap_population_records_missing_session_worktree_enrollment()
 }
 
 test fn clone_bootstrap_points_at_modeled_converge_entry() -> Bool {
-  (repo_local_git_config_clone_bootstrap_converge_invoke_function == "converge")
-    && (repo_local_git_config_clone_bootstrap_converge_invoke_entry == "dag/gunbc/repo_local_git_config.dag")
+  (gunbc.repo_local_git_config_clone_bootstrap.repo_local_git_config_clone_bootstrap_converge_invoke_function == "converge")
+    && (gunbc.repo_local_git_config_clone_bootstrap.repo_local_git_config_clone_bootstrap_converge_invoke_entry == "dag/gunbc/repo_local_git_config.dag")
 }
 
 test fn clone_bootstrap_has_enrolled_paths() -> Bool {
-  repo_local_git_config_clone_bootstrap_enrolled_path_count() >= 4
+  gunbc.repo_local_git_config_clone_bootstrap.repo_local_git_config_clone_bootstrap_enrolled_path_count() >= 4
 }
 

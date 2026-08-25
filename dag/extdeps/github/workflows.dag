@@ -3,7 +3,7 @@ module extdeps.github.workflows
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event"
   }
 }
@@ -20,7 +20,7 @@ type WorkflowDispatchReceipt {
 
 service github.Workflows {
   config {
-    endpoint: default_api_base
+    endpoint: extdeps.github.github.default_api_base
     auth: Bearer
     auth_source: std.credentials.EnvVar { name: "GITHUB_TOKEN" }
 
@@ -51,12 +51,12 @@ service github.Workflows {
     }
     response {
       200 => WorkflowDispatchReceipt
-      401 => GitHubErrorShape
-      403 => GitHubErrorShape
-      404 => GitHubErrorShape
-      422 => GitHubErrorShape
-      429 => GitHubErrorShape
-      5xx => GitHubErrorShape
+      401 => extdeps.github.errors.GitHubErrorShape
+      403 => extdeps.github.errors.GitHubErrorShape
+      404 => extdeps.github.errors.GitHubErrorShape
+      422 => extdeps.github.errors.GitHubErrorShape
+      429 => extdeps.github.errors.GitHubErrorShape
+      5xx => extdeps.github.errors.GitHubErrorShape
     }
   }
 }

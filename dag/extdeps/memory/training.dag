@@ -1,18 +1,19 @@
 module extdeps.memory.training
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.jedec.org/standards-documents/docs/jesd79-4a"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.memory.training",
       decl_name: "MemoryTrainingStep",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
@@ -63,11 +64,11 @@ data lrdimm_data_buffer_training_steps: List<MemoryTrainingStep> = [
 // The step set a module must complete, DERIVED from its construction. This is
 // the single place the RDIMM/LRDIMM distinction becomes a set difference
 // rather than a preference.
-fn training_steps_required(module: DramModuleCatalogRow) -> List<MemoryTrainingStep> {
+fn training_steps_required(module: extdeps.memory.types.DramModuleCatalogRow) -> List<MemoryTrainingStep> {
   match module.buffering {
-    LoadReduced => concat(phy_training_steps, lrdimm_data_buffer_training_steps)
-    Registered => phy_training_steps
-    Unbuffered => phy_training_steps
+    extdeps.memory.types.LoadReduced => concat(phy_training_steps, lrdimm_data_buffer_training_steps)
+    extdeps.memory.types.Registered => phy_training_steps
+    extdeps.memory.types.Unbuffered => phy_training_steps
   }
 }
 
@@ -75,19 +76,19 @@ fn training_steps_required(module: DramModuleCatalogRow) -> List<MemoryTrainingS
 // that has to say WHICH step. A projection of the closed coproduct, so it lives
 // beside the coproduct rather than being re-spelled by each consumer that needs
 // to name a step in a refusal.
-fn memory_training_step_label(step: MemoryTrainingStep) -> NonEmptyStr {
+fn memory_training_step_label(step: MemoryTrainingStep) -> std.types.NonEmptyStr {
   match step {
-    PhyWriteLeveling => "PHY write leveling" as NonEmptyStr
-    PhyReadGateLeveling => "PHY read gate leveling" as NonEmptyStr
-    PhyReadLeveling => "PHY read leveling" as NonEmptyStr
-    PhyVrefdqCalibration => "PHY VREFDQ calibration" as NonEmptyStr
-    LrdimmDataBufferMrep => "LRDIMM data-buffer read-phase calibration (MREP)" as NonEmptyStr
-    LrdimmDataBufferWriteLeveling => "LRDIMM data-buffer write leveling" as NonEmptyStr
-    LrdimmDataBufferReadTraining => "LRDIMM data-buffer read training" as NonEmptyStr
+    PhyWriteLeveling => "PHY write leveling" as std.types.NonEmptyStr
+    PhyReadGateLeveling => "PHY read gate leveling" as std.types.NonEmptyStr
+    PhyReadLeveling => "PHY read leveling" as std.types.NonEmptyStr
+    PhyVrefdqCalibration => "PHY VREFDQ calibration" as std.types.NonEmptyStr
+    LrdimmDataBufferMrep => "LRDIMM data-buffer read-phase calibration (MREP)" as std.types.NonEmptyStr
+    LrdimmDataBufferWriteLeveling => "LRDIMM data-buffer write leveling" as std.types.NonEmptyStr
+    LrdimmDataBufferReadTraining => "LRDIMM data-buffer read training" as std.types.NonEmptyStr
   }
 }
 
-fn module_executes_step(module: DramModuleCatalogRow, step: MemoryTrainingStep) -> Bool {
+fn module_executes_step(module: extdeps.memory.types.DramModuleCatalogRow, step: MemoryTrainingStep) -> Bool {
   any(training_steps_required(module: module), s => s == step)
 }
 
@@ -107,18 +108,18 @@ fn module_executes_step(module: DramModuleCatalogRow, step: MemoryTrainingStep) 
 // stacking. Propagating module.die_stacking would ask "is this capacity reachable given that it
 // is already stacked", which is trivially yes and answers nothing.
 fn hypothetical_module_at_rank_count(
-  module: DramModuleCatalogRow,
+  module: extdeps.memory.types.DramModuleCatalogRow,
   rank_count: Int,
-) -> DramModuleCatalogRow {
-  DramModuleCatalogRow {
+) -> extdeps.memory.types.DramModuleCatalogRow {
+  extdeps.memory.types.DramModuleCatalogRow {
     part_number: module.part_number,
     manufacturer: module.manufacturer,
     generation: module.generation,
     capacity_bytes: module.capacity_bytes,
     data_rate_mts: module.data_rate_mts,
     ecc: module.ecc,
-    buffering: Registered,
-    die_stacking: MonolithicDie,
+    buffering: extdeps.memory.types.Registered,
+    die_stacking: extdeps.memory.types.MonolithicDie,
     chip_width: module.chip_width,
     rank_count: rank_count,
   }
@@ -127,10 +128,10 @@ fn hypothetical_module_at_rank_count(
 // Can this capacity be built as an ordinary low-rank registered module in this
 // generation, or does reaching it REQUIRE extra ranks or die stacking?
 fn capacity_reachable_as_dual_rank_registered(
-  module: DramModuleCatalogRow,
-  jedec: JedecDdrGenerationCatalogRow,
+  module: extdeps.memory.types.DramModuleCatalogRow,
+  jedec: extdeps.memory.types.JedecDdrGenerationCatalogRow,
 ) -> Bool {
-  dram_module_is_realizable(
+  extdeps.memory.types.dram_module_is_realizable(
     module: hypothetical_module_at_rank_count(module: module, rank_count: 2),
     jedec: jedec,
   )

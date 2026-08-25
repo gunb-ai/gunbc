@@ -5,7 +5,7 @@ data instrument_motion_note: String = "THE MOTION LAB, at /sandbox/instrument/mo
 
 WHAT THIS PAGE MAY NOT DO, and the reason the whole lane exists: it may not claim a physical source it did not observe. The two web probes report exactly what happened — how many events arrived, how many carried values, how long the window was, which lifecycle state a sensor reached, and which named error refused it — and an unanswered question renders as unanswered. A page that showed a moving plate and implied a sensor had moved it would be the fabricated plausible output aimed at the one place a person cannot check by looking.
 
-THE PHYSICS IS NOT COMPUTED HERE. The frame sequence is decided in gunbc.design.instrument_bob and emitted into the page as data; the client replays it. So the substrate is the authority for how the plate moves, the browser is a renderer of a decided sequence, and a physics change is a diff in a witness rather than something to watch for on screen."
+THE PHYSICS IS NOT COMPUTED HERE. The frame sequence is decided in instrument_bob and emitted into the page as data; the client replays it. So the substrate is the authority for how the plate moves, the browser is a renderer of a decided sequence, and a physics change is a diff in a witness rather than something to watch for on screen."
 
 data motion_page_title: String = "gunbc — instrument motion lab"
 
@@ -14,8 +14,8 @@ data frames_are_emitted_not_computed_note: String = "The client receives a decid
 data motion_frame_interval_ms: std.types.Milliseconds = 16
 
 fn sequence_for(t: gunbc.capability_binding.SyntheticTapStrength, m: gunbc.design.instrument_bob.MotionPreference) -> gunbc.design.instrument_bob.BobSequence {
-  bob_sequence(
-    i: synthetic_tap_impulse(t: t, at_ms: 0),
+  gunbc.design.instrument_bob.bob_sequence(
+    i: gunbc.capability_binding.synthetic_tap_impulse(t: t, at_ms: 0),
     m: m,
     interval_ms: motion_frame_interval_ms)
 }
@@ -28,7 +28,7 @@ data refusal_removes_the_attribute_note: String = "A REFUSED SEQUENCE SHIPS NO W
 
 data wire_takes_frames_not_a_tap_note: String = "THE SERIALIZER TAKES FRAMES, NOT A TAP (review finding, 2026-08-07). It used to take a strength and a preference and resolve the sequence itself, which meant it had to answer for a refusal — and it answered by rendering the empty string, exactly the absorbing fallback this lane exists to remove. Two things went wrong at once: a refused sequence became indistinguishable from a settled sequence of no frames, and every assertion of the form string_contains(html, wire) went VACUOUSLY TRUE, because every string contains the empty one. So the control that was supposed to pin the shipped sequence would have passed on a page that shipped nothing.
 
-The repair is that the function can no longer be reached with a refusal in hand: it takes the frames a caller obtained by matching BobSequenceSettled, so the refusal arm is answered where the refusal is known — as a rendered line naming its cause — and there is no arm here to answer it wrongly."
+The repair is that the function can no longer be reached with a refusal in hand: it takes the frames a caller obtained by matching gunbc.design.instrument_bob.BobSequenceSettled, so the refusal arm is answered where the refusal is known — as a rendered line naming its cause — and there is no arm here to answer it wrongly."
 
 fn frames_wire(frames: List<gunbc.design.instrument_bob.BobFrame>) -> String {
   join(map(frames, f => frame_wire(f: f)), ",")
@@ -41,37 +41,37 @@ fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
 fn motion_rules() -> List<gunbc.design.material.BuildRule> {
   [
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_instrument_motion.cls(name: motion_plate_class),
+      selector: cls(name: gunbc.roadmap_component.motion_plate_class),
       decls: [
-        decl(prop: Display, value: "block"),
-        decl(prop: Padding, value: scale_var(t: space_6)),
-        decl(prop: Border, value: concat("1px solid ", role_var(r: BorderRole))),
-        decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-        decl(prop: Background, value: role_var(r: SurfaceRole)),
-        decl(prop: FontFamily, value: scale_var(t: font_mono)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Display, value: "block"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Padding, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_6)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Border, value: concat("1px solid ", gunbc.design.theme.role_var(r: gunbc.design.theme.BorderRole))),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.BorderRadius, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.radius_3)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Background, value: gunbc.design.theme.role_var(r: gunbc.design.theme.SurfaceRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_instrument_motion.cls(name: motion_tap_btn_class),
+      selector: cls(name: gunbc.roadmap_component.motion_tap_btn_class),
       decls: [
-        decl(prop: Padding, value: scale_var(t: space_2)),
-        decl(prop: Border, value: concat("1px solid ", role_var(r: BorderRole))),
-        decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-        decl(prop: Background, value: role_var(r: SurfaceRole)),
-        decl(prop: Color, value: role_var(r: TextRole)),
-        decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
-        decl(prop: FontFamily, value: scale_var(t: font_mono)),
-        decl(prop: FontSize, value: scale_var(t: text_12)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Padding, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_2)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Border, value: concat("1px solid ", gunbc.design.theme.role_var(r: gunbc.design.theme.BorderRole))),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.BorderRadius, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.radius_3)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Background, value: gunbc.design.theme.role_var(r: gunbc.design.theme.SurfaceRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Color, value: gunbc.design.theme.role_var(r: gunbc.design.theme.TextRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontSize, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.text_12)),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_instrument_motion.cls(name: motion_receipt_class),
+      selector: cls(name: gunbc.roadmap_component.motion_receipt_class),
       decls: [
-        decl(prop: Display, value: "grid"),
-        decl(prop: Gap, value: scale_var(t: space_2)),
-        decl(prop: FontFamily, value: scale_var(t: font_mono)),
-        decl(prop: FontSize, value: scale_var(t: text_12)),
-        decl(prop: Color, value: role_var(r: TextRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Display, value: "grid"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Gap, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_2)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontSize, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.text_12)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Color, value: gunbc.design.theme.role_var(r: gunbc.design.theme.TextRole)),
       ],
     },
   ]
@@ -80,46 +80,46 @@ fn motion_rules() -> List<gunbc.design.material.BuildRule> {
 data motion_css_composes_the_register_note: String = "The page's stylesheet is the instrument register's own sheet plus this page's three rules, in that order, because the plate and the buttons are painted in role variables the register defines. Emitting only the local rules would leave every role_var undefined and the page would render unstyled while every rule in it was correct — a failure that looks like a styling bug and is actually a missing composition."
 
 fn instrument_motion_css() -> String {
-  join([instrument_css(), serialize_rules(rules: motion_rules())], "\n")
+  join([gunbc.roadmap_instrument_sandbox.instrument_css(), gunbc.design.material.serialize_rules(rules: motion_rules())], "\n")
 }
 
 
 fn tap_label(t: gunbc.capability_binding.SyntheticTapStrength) -> String {
   join([
-    "synthetic tap · ", synthetic_tap_strength_key(t: t),
-    " · ", to_string(synthetic_tap_magnitude_milli(t: t)), " milli-m/s²",
+    "synthetic tap · ", gunbc.capability_binding.synthetic_tap_strength_key(t: t),
+    " · ", to_string(gunbc.capability_binding.synthetic_tap_magnitude_milli(t: t)), " milli-m/s²",
   ], "")
 }
 
 fn tap_refused_fragment(t: gunbc.capability_binding.SyntheticTapStrength, c: gunbc.design.instrument_bob.BobSequenceRefusal, n: Int, b: Int) -> std.markup.Fragment {
-  el_class("div", "motion-tap-refused", [
-    txt(join([
-      tap_label(t: t), " — sequence refused · ", bob_sequence_refusal_key(r: c),
+  gunbc.site.markup.el_class("div", "motion-tap-refused", [
+    gunbc.site.markup.txt(join([
+      tap_label(t: t), " — sequence refused · ", gunbc.design.instrument_bob.bob_sequence_refusal_key(r: c),
       " · ", to_string(n), " frames emitted against an allowed budget of ", to_string(b),
     ], "")),
   ])
 }
 
 fn tap_button_with(t: gunbc.capability_binding.SyntheticTapStrength, full: String) -> std.markup.Fragment {
-  match sequence_for(t: t, m: MotionReduced) {
-    BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: b } =>
+  match sequence_for(t: t, m: gunbc.design.instrument_bob.MotionReduced) {
+    gunbc.design.instrument_bob.BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: b } =>
       tap_refused_fragment(t: t, c: c, n: n, b: b)
-    BobSequenceSettled { frames: rs } =>
-      el_attrs("button", [
-        attr(name: "class", value: motion_tap_btn_class),
-        attr(name: "type", value: "button"),
-        attr(name: "data-strength", value: synthetic_tap_strength_key(t: t)),
-        attr(name: motion_frame_data_attr, value: full),
-        attr(name: motion_reduced_frame_data_attr, value: frames_wire(frames: rs)),
-      ], [ txt(tap_label(t: t)) ])
+    gunbc.design.instrument_bob.BobSequenceSettled { frames: rs } =>
+      gunbc.site.markup.el_attrs("button", [
+        std.markup.attr(name: "class", value: gunbc.roadmap_component.motion_tap_btn_class),
+        std.markup.attr(name: "type", value: "button"),
+        std.markup.attr(name: "data-strength", value: gunbc.capability_binding.synthetic_tap_strength_key(t: t)),
+        std.markup.attr(name: gunbc.roadmap_component.motion_frame_data_attr, value: full),
+        std.markup.attr(name: gunbc.roadmap_component.motion_reduced_frame_data_attr, value: frames_wire(frames: rs)),
+      ], [ gunbc.site.markup.txt(tap_label(t: t)) ])
   }
 }
 
 fn tap_button(t: gunbc.capability_binding.SyntheticTapStrength) -> std.markup.Fragment {
-  match sequence_for(t: t, m: MotionFull) {
-    BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: b } =>
+  match sequence_for(t: t, m: gunbc.design.instrument_bob.MotionFull) {
+    gunbc.design.instrument_bob.BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: b } =>
       tap_refused_fragment(t: t, c: c, n: n, b: b)
-    BobSequenceSettled { frames: fs } =>
+    gunbc.design.instrument_bob.BobSequenceSettled { frames: fs } =>
       tap_button_with(t: t, full: frames_wire(frames: fs))
   }
 }
@@ -127,18 +127,18 @@ fn tap_button(t: gunbc.capability_binding.SyntheticTapStrength) -> std.markup.Fr
 data straddle_is_shown_note: String = "The three buttons are labelled with their magnitudes and with whether each clears the discriminating floor, because the straddle is the argument: a light tap is below the threshold a real knock would have to clear, and showing that is what stops the control from reading as a volume knob."
 
 fn tap_row() -> std.markup.Fragment {
-  el_class("div", "motion-taps", [
-    tap_button(t: SyntheticTapLight),
-    tap_button(t: SyntheticTapFirm),
-    tap_button(t: SyntheticTapKnock),
+  gunbc.site.markup.el_class("div", "motion-taps", [
+    tap_button(t: gunbc.capability_binding.SyntheticTapLight),
+    tap_button(t: gunbc.capability_binding.SyntheticTapFirm),
+    tap_button(t: gunbc.capability_binding.SyntheticTapKnock),
   ])
 }
 
 fn straddle_row(t: gunbc.capability_binding.SyntheticTapStrength) -> std.markup.Fragment {
-  el_class("div", "motion-straddle", [
-    txt(join([
-      synthetic_tap_strength_key(t: t), " — ",
-      if synthetic_tap_clears_requirement(t: t, r: bob_impulse_requirement_candidate) {
+  gunbc.site.markup.el_class("div", "motion-straddle", [
+    gunbc.site.markup.txt(join([
+      gunbc.capability_binding.synthetic_tap_strength_key(t: t), " — ",
+      if gunbc.capability_binding.synthetic_tap_clears_requirement(t: t, r: gunbc.capability_binding.bob_impulse_requirement_candidate) {
         "clears the discriminating floor"
       } else {
         "below the discriminating floor"
@@ -149,33 +149,33 @@ fn straddle_row(t: gunbc.capability_binding.SyntheticTapStrength) -> std.markup.
 
 fn requirement_standing_text() -> String {
   match bob_impulse_requirement_candidate.standing {
-    AuditionProvisional { pending } => join(["PROVISIONAL — ", pending], "")
-    RequirementSigned { audition_receipt } => "signed"
+    gunbc.capability_binding.AuditionProvisional { pending } => join(["PROVISIONAL — ", pending], "")
+    gunbc.capability_binding.RequirementSigned { audition_receipt } => "signed"
   }
 }
 
 fn plate_section() -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("the plate") ]),
-    instrument_note(s: "Press a tap. The inner plate rides and settles; the outer frame does not move. Nothing here reads a sensor, and nothing here changes a roadmap fact, an acceptance, a focus or an operation — the displacement is renderer-local by construction."),
-    el_attrs("div", [
-      attr(name: "class", value: motion_plate_class),
-      attr(name: "id", value: motion_plate_id),
-      attr(name: motion_frame_interval_attr, value: to_string(motion_frame_interval_ms)),
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("the plate") ]),
+    gunbc.roadmap_instrument_sandbox.instrument_note(s: "Press a tap. The inner plate rides and settles; the outer frame does not move. Nothing here reads a sensor, and nothing here changes a roadmap fact, an acceptance, a focus or an operation — the displacement is renderer-local by construction."),
+    gunbc.site.markup.el_attrs("div", [
+      std.markup.attr(name: "class", value: gunbc.roadmap_component.motion_plate_class),
+      std.markup.attr(name: "id", value: gunbc.roadmap_component.motion_plate_id),
+      std.markup.attr(name: gunbc.roadmap_component.motion_frame_interval_attr, value: to_string(motion_frame_interval_ms)),
     ], [
-      el("p", [ txt("v1 deletion — inner display") ]),
-      el("p", [ txt("still until touched") ]),
+      gunbc.site.markup.el("p", [ gunbc.site.markup.txt("v1 deletion — inner display") ]),
+      gunbc.site.markup.el("p", [ gunbc.site.markup.txt("still until touched") ]),
     ]),
     tap_row(),
-    el_class("div", "motion-straddles", [
-      straddle_row(t: SyntheticTapLight),
-      straddle_row(t: SyntheticTapFirm),
-      straddle_row(t: SyntheticTapKnock),
+    gunbc.site.markup.el_class("div", "motion-straddles", [
+      straddle_row(t: gunbc.capability_binding.SyntheticTapLight),
+      straddle_row(t: gunbc.capability_binding.SyntheticTapFirm),
+      straddle_row(t: gunbc.capability_binding.SyntheticTapKnock),
     ]),
-    instrument_note(s: join([
-      "Bound ", to_string(bob_max_travel_px), "px · half-life ",
-      to_string(bob_half_life_ms), "ms · settles within ",
-      to_string(max_settle_time_ms()), "ms. Requirement standing: ",
+    gunbc.roadmap_instrument_sandbox.instrument_note(s: join([
+      "Bound ", to_string(gunbc.design.instrument_bob.bob_max_travel_px), "px · half-life ",
+      to_string(gunbc.design.instrument_bob.bob_half_life_ms), "ms · settles within ",
+      to_string(gunbc.design.instrument_bob.max_settle_time_ms()), "ms. Requirement standing: ",
       requirement_standing_text(),
     ], "")),
   ])
@@ -184,41 +184,41 @@ fn plate_section() -> std.markup.Fragment {
 data probe_section_note: String = "Two probes, run separately and reported separately, because they answer different questions. DeviceMotion is the cross-engine route the Accelerometer specification itself points new projects at; LinearAccelerationSensor is the route whose lifecycle produces a NAMED error when it cannot connect, which is the only way to tell a missing backend from a missing permission from missing hardware. Neither is dropped in favour of the other."
 
 fn probe_section() -> std.markup.Fragment {
-  el("section", [
-    el("h2", [ txt("capability probes") ]),
-    instrument_note(s: join([
+  gunbc.site.markup.el("section", [
+    gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("capability probes") ]),
+    gunbc.roadmap_instrument_sandbox.instrument_note(s: join([
       "Both routes are exercised. The upstream Accelerometer specification is maintained for existing deployments and points new projects at Device Orientation and Motion, so DeviceMotion is primary — but only the sensor lifecycle names its failures, so both run. Dispatch of ",
-      devicemotion_event_type, " requires the ", device_motion_accelerometer_permission_name,
-      " and ", gyroscope_permission_name, " permissions together.",
+      extdeps.w3c.device_orientation_and_motion.devicemotion_event_type, " requires the ", extdeps.w3c.device_orientation_and_motion.device_motion_accelerometer_permission_name,
+      " and ", extdeps.w3c.device_orientation_and_motion.gyroscope_permission_name, " permissions together.",
     ], "")),
-    el_attrs("button", [
-      attr(name: "class", value: motion_tap_btn_class),
-      attr(name: "type", value: "button"),
-      attr(name: "id", value: motion_probe_run_id),
-    ], [ txt("run both probes") ]),
-    el_attrs("div", [
-      attr(name: "class", value: motion_receipt_class),
-      attr(name: "id", value: motion_receipt_id),
+    gunbc.site.markup.el_attrs("button", [
+      std.markup.attr(name: "class", value: gunbc.roadmap_component.motion_tap_btn_class),
+      std.markup.attr(name: "type", value: "button"),
+      std.markup.attr(name: "id", value: gunbc.roadmap_component.motion_probe_run_id),
+    ], [ gunbc.site.markup.txt("run both probes") ]),
+    gunbc.site.markup.el_attrs("div", [
+      std.markup.attr(name: "class", value: gunbc.roadmap_component.motion_receipt_class),
+      std.markup.attr(name: "id", value: gunbc.roadmap_component.motion_receipt_id),
     ], [
-      el("div", [ txt(join([device_motion_event_interface, " · not yet run"], "")) ]),
-      el("div", [ txt(join([accelerometer_interface_name(i: LinearAccelerationSensor), " · not yet run"], "")) ]),
+      gunbc.site.markup.el("div", [ gunbc.site.markup.txt(join([extdeps.w3c.device_orientation_and_motion.device_motion_event_interface, " · not yet run"], "")) ]),
+      gunbc.site.markup.el("div", [ gunbc.site.markup.txt(join([extdeps.w3c.accelerometer.accelerometer_interface_name(i: extdeps.w3c.accelerometer.LinearAccelerationSensor), " · not yet run"], "")) ]),
     ]),
-    instrument_note(s: "An unanswered question renders as unanswered. A probe that has not run says so, and a silent stream is reported as silence with its window rather than as an absent sensor."),
+    gunbc.roadmap_instrument_sandbox.instrument_note(s: "An unanswered question renders as unanswered. A probe that has not run says so, and a silent stream is reported as silence with its window rather than as an absent sensor."),
   ])
 }
 
 fn coverage_provider_text(p: gunbc.capability_binding.CoverageProvider) -> String {
   match p {
-    ProviderModelled { declaration } => declaration.module_path
-    ProviderNotYetModelled { intended_upstream } => join(["not yet modelled — ", intended_upstream], "")
+    gunbc.capability_binding.ProviderModelled { declaration } => declaration.module_path
+    gunbc.capability_binding.ProviderNotYetModelled { intended_upstream } => join(["not yet modelled — ", intended_upstream], "")
   }
 }
 
 fn coverage_row(t: gunbc.capability_binding.BindingCoverageTarget) -> std.markup.Fragment {
-  el_class("div", "motion-coverage-row", [
-    txt(join([
+  gunbc.site.markup.el_class("div", "motion-coverage-row", [
+    gunbc.site.markup.txt(join([
       t.platform, " · ", coverage_provider_text(p: t.provider),
-      " · ", coverage_state_key(implementation: t.implementation, probe: t.probe),
+      " · ", gunbc.capability_binding.coverage_state_key(implementation: t.implementation, probe: t.probe),
     ], "")),
   ])
 }
@@ -228,16 +228,16 @@ data coverage_section_note: String = "The coverage frontier, rendered so the gap
 EACH ROW SHOWS TWO STATES BECAUSE THERE ARE TWO FACTS. Whether the binding is written and whether anything has run against it are independent, and rendering them as one word let a written-but-unprobed target read the same as a probed one. A reader wants exactly this pair: the second half is the column that is almost entirely 'probe required', which is the honest shape of a lane whose hardware receipts do not exist yet."
 
 fn coverage_section() -> std.markup.Fragment {
-  el("section", concat(
+  gunbc.site.markup.el("section", concat(
     [
-      el("h2", [ txt("coverage obligations") ]),
-      instrument_note(s: "Obligations, not support claims. A deferred target names the consumer whose arrival is its trigger; a target nobody has a reason to reach has no row at all, because an empty space is more honest than a placeholder."),
+      gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("coverage obligations") ]),
+      gunbc.roadmap_instrument_sandbox.instrument_note(s: "Obligations, not support claims. A deferred target names the consumer whose arrival is its trigger; a target nobody has a reason to reach has no row at all, because an empty space is more honest than a placeholder."),
     ],
-    map(coverage_targets, t => gunbc.roadmap_instrument_motion.coverage_row(t: t))))
+    map(gunbc.capability_binding.coverage_targets, t => coverage_row(t: t))))
 }
 
 fn motion_main() -> std.markup.Fragment {
-  el("main", [
+  gunbc.site.markup.el("main", [
     plate_section(),
     probe_section(),
     coverage_section(),
@@ -245,38 +245,38 @@ fn motion_main() -> std.markup.Fragment {
 }
 
 fn instrument_motion_page() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "html",
-    attributes: [ attr(name: "lang", value: "en") ],
+    attributes: [ std.markup.attr(name: "lang", value: "en") ],
     children: [
-      el("head", [
-        std.markup.Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8") ], children: [] },
+      gunbc.site.markup.el("head", [
+        std.markup.Element { tag: "meta", attributes: [ std.markup.attr(name: "charset", value: "utf-8") ], children: [] },
         std.markup.Element {
           tag: "meta",
           attributes: [
-            attr(name: "name", value: "viewport"),
-            attr(name: "content", value: "width=device-width, initial-scale=1"),
+            std.markup.attr(name: "name", value: "viewport"),
+            std.markup.attr(name: "content", value: "width=device-width, initial-scale=1"),
           ],
           children: [],
         },
-        el("style", [ txt(instrument_motion_css()) ]),
-        el("title", [ txt(motion_page_title) ]),
+        gunbc.site.markup.el("style", [ gunbc.site.markup.txt(instrument_motion_css()) ]),
+        gunbc.site.markup.el("title", [ gunbc.site.markup.txt(motion_page_title) ]),
       ]),
-      el("body", [
-        el("header", [
-          el_class("div", "header-inner", [
-            el_class("span", "wordmark", [ txt("gunbc") ]),
-            el("h1", [ txt("instrument motion lab") ]),
-            el_attrs("a", [ attr(name: "href", value: instrument_sandbox_page_path) ], [ txt("← instrument") ]),
-            el_attrs("a", [ attr(name: "href", value: instrument_tuner_page_path) ], [ txt("tuner") ]),
+      gunbc.site.markup.el("body", [
+        gunbc.site.markup.el("header", [
+          gunbc.site.markup.el_class("div", "header-inner", [
+            gunbc.site.markup.el_class("span", "wordmark", [ gunbc.site.markup.txt("gunbc") ]),
+            gunbc.site.markup.el("h1", [ gunbc.site.markup.txt("instrument motion lab") ]),
+            gunbc.site.markup.el_attrs("a", [ std.markup.attr(name: "href", value: gunbc.roadmap_component.instrument_sandbox_page_path) ], [ gunbc.site.markup.txt("← instrument") ]),
+            gunbc.site.markup.el_attrs("a", [ std.markup.attr(name: "href", value: gunbc.roadmap_component.instrument_tuner_page_path) ], [ gunbc.site.markup.txt("tuner") ]),
           ]),
         ]),
         motion_main(),
         std.markup.Element {
           tag: "script",
           attributes: [
-            attr(name: "src", value: instrument_motion_asset_path),
-            attr(name: "defer", value: ""),
+            std.markup.attr(name: "src", value: gunbc.roadmap_component.instrument_motion_asset_path),
+            std.markup.attr(name: "defer", value: ""),
           ],
           children: [],
         },

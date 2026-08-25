@@ -5,7 +5,7 @@ module extdeps.systemd.oomd
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.freedesktop.org/software/systemd/man/latest/oomd.conf.html"
   }
 }
@@ -26,9 +26,9 @@ type OomdGlobalConfig {
 }
 
 data oomd_default_global_config: OomdGlobalConfig = OomdGlobalConfig {
-  swap_used_limit: percent(90),
-  default_memory_pressure_limit: percent(60),
-  default_memory_pressure_duration: second(30),
+  swap_used_limit: std.measure.percent(90),
+  default_memory_pressure_limit: std.measure.percent(60),
+  default_memory_pressure_duration: std.measure.second(30),
 }
 
 type UnitManagedOomPolicy {
@@ -49,7 +49,7 @@ data oomd_managed_value_auto: std.types.NonEmptyStr = "auto"
 data systemd_managed_oom_pressure_limit_show_scale: Int = 4294967295
 
 fn managed_oom_pressure_limit_show_value(p: std.measure.Percent) -> Int {
-  percent_count(p: p) * systemd_managed_oom_pressure_limit_show_scale / 100
+  std.measure.percent_count(p: p) * systemd_managed_oom_pressure_limit_show_scale / 100
 }
 
 fn parse_managed_oom_pressure_limit_show(raw: String) -> std.measure.Percent? {
@@ -59,7 +59,7 @@ fn parse_managed_oom_pressure_limit_show(raw: String) -> std.measure.Percent? {
   } else {
     match parse_int(s: trimmed) {
       Present { value: wire } =>
-        Present { value: percent(wire * 100 / systemd_managed_oom_pressure_limit_show_scale) }
+        Present { value: std.measure.percent(wire * 100 / systemd_managed_oom_pressure_limit_show_scale) }
       Absent => none
     }
   }

@@ -1,181 +1,181 @@
 module test.claim.instrument_camera_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data instrument_camera_witness_note: String = "First v1-deletion instrument, model layer. Each claim is a decided law with the control that reds when it breaks: the camera cannot write a program fact and cannot skip a detent; the salience role is DERIVED from selection rather than handed in (firing salience_note's dissolve-on); and the derived assignments are judged by the same focal-admission fold that judges hand-authored ones, so the projection is checked by the register's own authority instead of by a second copy of its rule. The subjects are V0's four real v1-deletion finish lines read from gunbc.v1_deletion_plan, not a demo roster, so a fifth line reaches the instrument by being declared once."
 
 fn role_key_for(assignments: List<gunbc.design.salience.SalienceAssignment>, subject: String) -> String {
-  salience_key(role: assignment_role_for(assignments: assignments, subject: subject))
+  gunbc.design.salience.salience_key(role: gunbc.design.instrument_projection.assignment_role_for(assignments: assignments, subject: subject))
 }
 
 fn camera_on(l: gunbc.v1_deletion_plan.V1FinishLine) -> gunbc.design.instrument_camera.ProgramCamera {
-  camera_select(c: camera_initial, f: focus_finish_line(l: l))
+  gunbc.design.instrument_camera.camera_select(c: gunbc.design.instrument_camera.camera_initial, f: gunbc.design.instrument_camera.focus_finish_line(l: l))
 }
 
 fn witness_only_the_authoritative_view_may_write_a_domain_fact() -> Bool {
-  owner_may_write_domain_fact(o: AuthoritativeProgramView)
-    && state_owner_key(o: AuthoritativeProgramView) == "authoritative-program-view"
+  gunbc.design.instrument_camera.owner_may_write_domain_fact(o: gunbc.design.instrument_camera.AuthoritativeProgramView)
+    && gunbc.design.instrument_camera.state_owner_key(o: gunbc.design.instrument_camera.AuthoritativeProgramView) == "authoritative-program-view"
 }
 
 fn witness_red_no_instrument_owner_may_write_a_domain_fact() -> Bool {
-  !owner_may_write_domain_fact(o: LocalInstrumentState)
-    && !owner_may_write_domain_fact(o: InstrumentObservation)
-    && !owner_may_write_domain_fact(o: RendererEphemera)
+  !gunbc.design.instrument_camera.owner_may_write_domain_fact(o: gunbc.design.instrument_camera.LocalInstrumentState)
+    && !gunbc.design.instrument_camera.owner_may_write_domain_fact(o: gunbc.design.instrument_camera.InstrumentObservation)
+    && !gunbc.design.instrument_camera.owner_may_write_domain_fact(o: gunbc.design.instrument_camera.RendererEphemera)
 }
 
 fn witness_camera_opens_outermost_with_nothing_selected() -> Bool {
-  program_depth_key(d: camera_initial.depth) == "program"
-    && program_mode_key(m: camera_initial.mode) == "status"
-    && focus_subject_key(f: camera_initial.focus) == "none"
+  gunbc.design.instrument_camera.program_depth_key(d: camera_initial.depth) == "program"
+    && gunbc.design.instrument_camera.program_mode_key(m: camera_initial.mode) == "status"
+    && gunbc.design.instrument_camera.focus_subject_key(f: camera_initial.focus) == "none"
 }
 
 fn witness_depth_crosses_exactly_one_detent() -> Bool {
-  program_depth_index(d: step_depth(d: DepthProgram, step: Inward)) == program_depth_index(d: DepthProgram) + 1
-    && program_depth_index(d: step_depth(d: DepthOutcome, step: Inward)) == program_depth_index(d: DepthOutcome) + 1
-    && program_depth_index(d: step_depth(d: DepthFront, step: Inward)) == program_depth_index(d: DepthFront) + 1
-    && program_depth_index(d: step_depth(d: DepthNode, step: Inward)) == program_depth_index(d: DepthNode) + 1
-    && program_depth_index(d: step_depth(d: DepthEvidence, step: Outward)) == program_depth_index(d: DepthEvidence) - 1
-    && program_depth_index(d: step_depth(d: DepthNode, step: Outward)) == program_depth_index(d: DepthNode) - 1
+  gunbc.design.instrument_camera.program_depth_index(d: gunbc.design.instrument_camera.step_depth(d: gunbc.design.instrument_camera.DepthProgram, step: gunbc.design.instrument_camera.Inward)) == gunbc.design.instrument_camera.program_depth_index(d: gunbc.design.instrument_camera.DepthProgram) + 1
+    && gunbc.design.instrument_camera.program_depth_index(d: gunbc.design.instrument_camera.step_depth(d: gunbc.design.instrument_camera.DepthOutcome, step: gunbc.design.instrument_camera.Inward)) == gunbc.design.instrument_camera.program_depth_index(d: gunbc.design.instrument_camera.DepthOutcome) + 1
+    && gunbc.design.instrument_camera.program_depth_index(d: gunbc.design.instrument_camera.step_depth(d: gunbc.design.instrument_camera.DepthFront, step: gunbc.design.instrument_camera.Inward)) == gunbc.design.instrument_camera.program_depth_index(d: gunbc.design.instrument_camera.DepthFront) + 1
+    && gunbc.design.instrument_camera.program_depth_index(d: gunbc.design.instrument_camera.step_depth(d: gunbc.design.instrument_camera.DepthNode, step: gunbc.design.instrument_camera.Inward)) == gunbc.design.instrument_camera.program_depth_index(d: gunbc.design.instrument_camera.DepthNode) + 1
+    && gunbc.design.instrument_camera.program_depth_index(d: gunbc.design.instrument_camera.step_depth(d: gunbc.design.instrument_camera.DepthEvidence, step: gunbc.design.instrument_camera.Outward)) == gunbc.design.instrument_camera.program_depth_index(d: gunbc.design.instrument_camera.DepthEvidence) - 1
+    && gunbc.design.instrument_camera.program_depth_index(d: gunbc.design.instrument_camera.step_depth(d: gunbc.design.instrument_camera.DepthNode, step: gunbc.design.instrument_camera.Outward)) == gunbc.design.instrument_camera.program_depth_index(d: gunbc.design.instrument_camera.DepthNode) - 1
 }
 
 fn witness_red_depth_clamps_at_both_ends_instead_of_wrapping() -> Bool {
-  program_depth_key(d: step_depth(d: DepthEvidence, step: Inward)) == "evidence"
-    && program_depth_key(d: step_depth(d: DepthProgram, step: Outward)) == "program"
+  gunbc.design.instrument_camera.program_depth_key(d: gunbc.design.instrument_camera.step_depth(d: gunbc.design.instrument_camera.DepthEvidence, step: gunbc.design.instrument_camera.Inward)) == "evidence"
+    && gunbc.design.instrument_camera.program_depth_key(d: gunbc.design.instrument_camera.step_depth(d: gunbc.design.instrument_camera.DepthProgram, step: gunbc.design.instrument_camera.Outward)) == "program"
 }
 
 fn witness_camera_moves_carry_the_subject_unchanged() -> Bool {
-  let c = camera_on(l: InterpreterDeleted)
-  camera_preserves_subject_across_depth(c: c, step: Inward)
-    && camera_preserves_subject_across_depth(c: c, step: Outward)
-    && camera_preserves_subject_across_mode(c: c, m: ModeWhy)
-    && camera_preserves_subject_across_mode(c: c, m: ModeRemaining)
-    && focus_subject_key(f: camera_set_mode(c: c, m: ModeWhy).focus) == "interpreter-deleted"
+  let c = camera_on(l: gunbc.v1_deletion_plan.InterpreterDeleted)
+  gunbc.design.instrument_camera.camera_preserves_subject_across_depth(c: c, step: gunbc.design.instrument_camera.Inward)
+    && gunbc.design.instrument_camera.camera_preserves_subject_across_depth(c: c, step: gunbc.design.instrument_camera.Outward)
+    && gunbc.design.instrument_camera.camera_preserves_subject_across_mode(c: c, m: gunbc.design.instrument_camera.ModeWhy)
+    && gunbc.design.instrument_camera.camera_preserves_subject_across_mode(c: c, m: gunbc.design.instrument_camera.ModeRemaining)
+    && gunbc.design.instrument_camera.focus_subject_key(f: gunbc.design.instrument_camera.camera_set_mode(c: c, m: gunbc.design.instrument_camera.ModeWhy).focus) == "interpreter-deleted"
 }
 
 fn witness_selecting_the_selected_subject_clears_it() -> Bool {
-  let c = camera_on(l: ProductsV1Free)
-  focus_subject_key(f: c.focus) == "products-v1-free"
-    && focus_subject_key(f: camera_select(c: c, f: focus_finish_line(l: ProductsV1Free)).focus) == "none"
-    && focus_subject_key(f: camera_select(c: c, f: focus_finish_line(l: CompilerFixedPoint)).focus) == "compiler-fixed-point"
+  let c = camera_on(l: gunbc.v1_deletion_plan.ProductsV1Free)
+  gunbc.design.instrument_camera.focus_subject_key(f: c.focus) == "products-v1-free"
+    && gunbc.design.instrument_camera.focus_subject_key(f: gunbc.design.instrument_camera.camera_select(c: c, f: gunbc.design.instrument_camera.focus_finish_line(l: gunbc.v1_deletion_plan.ProductsV1Free)).focus) == "none"
+    && gunbc.design.instrument_camera.focus_subject_key(f: gunbc.design.instrument_camera.camera_select(c: c, f: gunbc.design.instrument_camera.focus_finish_line(l: gunbc.v1_deletion_plan.CompilerFixedPoint)).focus) == "compiler-fixed-point"
 }
 
 fn witness_instrument_subjects_are_the_real_v0_finish_lines() -> Bool {
-  let placements = finish_line_placements()
-  count(placements) == count(v1_exit_finish_lines())
+  let placements = gunbc.design.instrument_projection.finish_line_placements()
+  count(placements) == count(gunbc.v1_deletion_plan.v1_exit_finish_lines())
     && count(placements) == 4
-    && (placements |> any(p => p.key == v1_finish_line_key(l: ZeroHandMaintainedRust)))
-    && (placements |> any(p => p.key == v1_finish_line_key(l: CompilerFixedPoint)))
-    && count(placements |> filter(p => p.region == finish_line_region)) == 4
+    && (placements |> any(p => p.key == gunbc.v1_deletion_plan.v1_finish_line_key(l: gunbc.v1_deletion_plan.ZeroHandMaintainedRust)))
+    && (placements |> any(p => p.key == gunbc.v1_deletion_plan.v1_finish_line_key(l: gunbc.v1_deletion_plan.CompilerFixedPoint)))
+    && count(placements |> filter(p => p.region == gunbc.design.instrument_projection.finish_line_region)) == 4
 }
 
 fn witness_selection_derives_focal_and_siblings_derive_supporting() -> Bool {
-  let a = project_finish_line_salience(camera: camera_on(l: CompilerFixedPoint), refusal: NoActiveRefusal)
-  role_key_for(assignments: a, subject: "compiler-fixed-point") == salience_key(role: SalienceFocal)
-    && role_key_for(assignments: a, subject: "interpreter-deleted") == salience_key(role: SalienceSupporting)
-    && role_key_for(assignments: a, subject: "products-v1-free") == salience_key(role: SalienceSupporting)
-    && role_key_for(assignments: a, subject: "zero-hand-maintained-rust") == salience_key(role: SalienceSupporting)
+  let a = gunbc.design.instrument_projection.project_finish_line_salience(camera: camera_on(l: gunbc.v1_deletion_plan.CompilerFixedPoint), refusal: gunbc.design.instrument_projection.NoActiveRefusal)
+  role_key_for(assignments: a, subject: "compiler-fixed-point") == gunbc.design.salience.salience_key(role: gunbc.design.salience.SalienceFocal)
+    && role_key_for(assignments: a, subject: "interpreter-deleted") == gunbc.design.salience.salience_key(role: gunbc.design.salience.SalienceSupporting)
+    && role_key_for(assignments: a, subject: "products-v1-free") == gunbc.design.salience.salience_key(role: gunbc.design.salience.SalienceSupporting)
+    && role_key_for(assignments: a, subject: "zero-hand-maintained-rust") == gunbc.design.salience.salience_key(role: gunbc.design.salience.SalienceSupporting)
 }
 
 fn witness_red_nothing_selected_spends_no_focal_energy() -> Bool {
-  let a = project_finish_line_salience(camera: camera_initial, refusal: NoActiveRefusal)
-  count(a |> filter(x => salience_key(role: x.role) == salience_key(role: SalienceFocal))) == 0
-    && role_key_for(assignments: a, subject: "compiler-fixed-point") == salience_key(role: SalienceGround)
-    && role_key_for(assignments: a, subject: "interpreter-deleted") == salience_key(role: SalienceGround)
+  let a = gunbc.design.instrument_projection.project_finish_line_salience(camera: gunbc.design.instrument_camera.camera_initial, refusal: gunbc.design.instrument_projection.NoActiveRefusal)
+  count(a |> filter(x => gunbc.design.salience.salience_key(role: x.role) == gunbc.design.salience.salience_key(role: gunbc.design.salience.SalienceFocal))) == 0
+    && role_key_for(assignments: a, subject: "compiler-fixed-point") == gunbc.design.salience.salience_key(role: gunbc.design.salience.SalienceGround)
+    && role_key_for(assignments: a, subject: "interpreter-deleted") == gunbc.design.salience.salience_key(role: gunbc.design.salience.SalienceGround)
 }
 
 fn witness_a_subject_outside_the_focal_region_stays_ground() -> Bool {
   let placements = [
-    gunbc.design.instrument_projection.SubjectPlacement { key: "compiler-fixed-point", region: finish_line_region },
-    gunbc.design.instrument_projection.SubjectPlacement { key: "interpreter-deleted", region: finish_line_region },
+    gunbc.design.instrument_projection.SubjectPlacement { key: "compiler-fixed-point", region: gunbc.design.instrument_projection.finish_line_region },
+    gunbc.design.instrument_projection.SubjectPlacement { key: "interpreter-deleted", region: gunbc.design.instrument_projection.finish_line_region },
     gunbc.design.instrument_projection.SubjectPlacement { key: "instrument-chrome", region: "instrument-chrome" },
   ]
-  let a = project_salience(
-    camera: camera_on(l: CompilerFixedPoint),
+  let a = gunbc.design.instrument_projection.project_salience(
+    camera: camera_on(l: gunbc.v1_deletion_plan.CompilerFixedPoint),
     placements: placements,
-    refusal: NoActiveRefusal,
+    refusal: gunbc.design.instrument_projection.NoActiveRefusal,
   )
-  role_key_for(assignments: a, subject: "compiler-fixed-point") == salience_key(role: SalienceFocal)
-    && role_key_for(assignments: a, subject: "interpreter-deleted") == salience_key(role: SalienceSupporting)
-    && role_key_for(assignments: a, subject: "instrument-chrome") == salience_key(role: SalienceGround)
+  role_key_for(assignments: a, subject: "compiler-fixed-point") == gunbc.design.salience.salience_key(role: gunbc.design.salience.SalienceFocal)
+    && role_key_for(assignments: a, subject: "interpreter-deleted") == gunbc.design.salience.salience_key(role: gunbc.design.salience.SalienceSupporting)
+    && role_key_for(assignments: a, subject: "instrument-chrome") == gunbc.design.salience.salience_key(role: gunbc.design.salience.SalienceGround)
 }
 
 fn witness_an_active_refusal_is_one_critical_subject_however_many_refuse() -> Bool {
-  let a = project_finish_line_salience(
-    camera: camera_on(l: CompilerFixedPoint),
+  let a = gunbc.design.instrument_projection.project_finish_line_salience(
+    camera: camera_on(l: gunbc.v1_deletion_plan.CompilerFixedPoint),
     refusal: gunbc.design.instrument_projection.ActiveRefusals { refused_count: 3 },
   )
-  count(a |> filter(x => salience_key(role: x.role) == salience_key(role: SalienceCritical))) == 1
-    && role_key_for(assignments: a, subject: refusal_subject_key) == salience_key(role: SalienceCritical)
+  count(a |> filter(x => gunbc.design.salience.salience_key(role: x.role) == gunbc.design.salience.salience_key(role: gunbc.design.salience.SalienceCritical))) == 1
+    && role_key_for(assignments: a, subject: gunbc.design.instrument_projection.refusal_subject_key) == gunbc.design.salience.salience_key(role: gunbc.design.salience.SalienceCritical)
     && gunbc.design.instrument_projection.refusal_count(r: gunbc.design.instrument_projection.ActiveRefusals { refused_count: 3 }) == 3
-    && gunbc.design.instrument_projection.refusal_count(r: NoActiveRefusal) == 0
+    && gunbc.design.instrument_projection.refusal_count(r: gunbc.design.instrument_projection.NoActiveRefusal) == 0
 }
 
 fn witness_critical_interrupts_without_dethroning_the_derived_focal_subject() -> Bool {
-  match project_admission(
-    camera: camera_on(l: ZeroHandMaintainedRust),
-    placements: finish_line_placements(),
+  match gunbc.design.instrument_projection.project_admission(
+    camera: camera_on(l: gunbc.v1_deletion_plan.ZeroHandMaintainedRust),
+    placements: gunbc.design.instrument_projection.finish_line_placements(),
     refusal: gunbc.design.instrument_projection.ActiveRefusals { refused_count: 2 },
   ) {
-    FocalAdmitted { focal_count, critical_count } => focal_count == 1 && critical_count == 1
-    FocalBudgetExceeded { region, focal_count } => false
+    gunbc.design.salience.FocalAdmitted { focal_count, critical_count } => focal_count == 1 && critical_count == 1
+    gunbc.design.salience.FocalBudgetExceeded { region, focal_count } => false
   }
 }
 
 fn witness_red_the_projection_never_spends_two_focal_budgets() -> Bool {
-  match project_admission(
-    camera: camera_on(l: InterpreterDeleted),
-    placements: finish_line_placements(),
-    refusal: NoActiveRefusal,
+  match gunbc.design.instrument_projection.project_admission(
+    camera: camera_on(l: gunbc.v1_deletion_plan.InterpreterDeleted),
+    placements: gunbc.design.instrument_projection.finish_line_placements(),
+    refusal: gunbc.design.instrument_projection.NoActiveRefusal,
   ) {
-    FocalAdmitted { focal_count, critical_count } => focal_count == 1 && critical_count == 0
-    FocalBudgetExceeded { region, focal_count } => false
+    gunbc.design.salience.FocalAdmitted { focal_count, critical_count } => focal_count == 1 && critical_count == 0
+    gunbc.design.salience.FocalBudgetExceeded { region, focal_count } => false
   }
 }
 
 fn witness_camera_wire_round_trips() -> Bool {
-  let c = camera_on(l: ProductsV1Free)
-  camera_wire_valid(w: camera_wire(c: c))
-    && camera_wire(c: camera_from_wire(w: camera_wire(c: c))) == camera_wire(c: c)
-    && focus_subject_key(f: camera_from_wire(w: camera_wire(c: c)).focus) == "products-v1-free"
+  let c = camera_on(l: gunbc.v1_deletion_plan.ProductsV1Free)
+  gunbc.design.instrument_camera.camera_wire_valid(w: gunbc.design.instrument_camera.camera_wire(c: c))
+    && gunbc.design.instrument_camera.camera_wire(c: gunbc.design.instrument_camera.camera_from_wire(w: gunbc.design.instrument_camera.camera_wire(c: c))) == gunbc.design.instrument_camera.camera_wire(c: c)
+    && gunbc.design.instrument_camera.focus_subject_key(f: gunbc.design.instrument_camera.camera_from_wire(w: gunbc.design.instrument_camera.camera_wire(c: c)).focus) == "products-v1-free"
 }
 
 fn witness_red_invalid_camera_wire_resets_to_initial() -> Bool {
-  focus_subject_key(f: camera_from_wire(w: "not-a-camera").focus) == "none"
-    && program_depth_key(d: camera_from_wire(w: "not-a-camera").depth) == "program"
-    && camera_storage_key == "gunbc.instrument.camera"
+  gunbc.design.instrument_camera.focus_subject_key(f: gunbc.design.instrument_camera.camera_from_wire(w: "not-a-camera").focus) == "none"
+    && gunbc.design.instrument_camera.program_depth_key(d: gunbc.design.instrument_camera.camera_from_wire(w: "not-a-camera").depth) == "program"
+    && gunbc.design.instrument_camera.camera_storage_key == "gunbc.instrument.camera"
 }
 
 fn witness_seek_traverses_each_intermediate_detent() -> Bool {
-  program_depth_key(d: camera_seek_depth(c: camera_initial, target: DepthFront).depth) == "front"
-    && program_depth_key(d: camera_step_depth(c: camera_initial, step: Inward).depth) == "outcome"
+  gunbc.design.instrument_camera.program_depth_key(d: gunbc.design.instrument_camera.camera_seek_depth(c: gunbc.design.instrument_camera.camera_initial, target: gunbc.design.instrument_camera.DepthFront).depth) == "front"
+    && gunbc.design.instrument_camera.program_depth_key(d: gunbc.design.instrument_camera.camera_step_depth(c: gunbc.design.instrument_camera.camera_initial, step: gunbc.design.instrument_camera.Inward).depth) == "outcome"
 }
 
 fn witness_wheel_below_threshold_accumulates_without_stepping() -> Bool {
-  let i = wheel_integrator_absorb(
-    i: wheel_integrator_absorb(i: wheel_integrator_initial(), delta_px: 30),
+  let i = gunbc.design.instrument_camera.wheel_integrator_absorb(
+    i: gunbc.design.instrument_camera.wheel_integrator_absorb(i: gunbc.design.instrument_camera.wheel_integrator_initial(), delta_px: 30),
     delta_px: 30,
   )
-  wheel_integrator_steps_available(i: i, threshold: wheel_detent_threshold_px) == 0
+  gunbc.design.instrument_camera.wheel_integrator_steps_available(i: i, threshold: gunbc.design.instrument_camera.wheel_detent_threshold_px) == 0
 }
 
 fn witness_wheel_threshold_crossing_admits_one_step() -> Bool {
-  let i = wheel_integrator_absorb(
-    i: wheel_integrator_initial(),
-    delta_px: wheel_detent_threshold_px,
+  let i = gunbc.design.instrument_camera.wheel_integrator_absorb(
+    i: gunbc.design.instrument_camera.wheel_integrator_initial(),
+    delta_px: gunbc.design.instrument_camera.wheel_detent_threshold_px,
   )
-  wheel_integrator_steps_available(i: i, threshold: wheel_detent_threshold_px) == 1
-    && program_depth_key(
-      d: camera_step_depth(
-        c: camera_initial,
-        step: if i.travel_px > 0 { Inward } else { Outward },
+  gunbc.design.instrument_camera.wheel_integrator_steps_available(i: i, threshold: gunbc.design.instrument_camera.wheel_detent_threshold_px) == 1
+    && gunbc.design.instrument_camera.program_depth_key(
+      d: gunbc.design.instrument_camera.camera_step_depth(
+        c: gunbc.design.instrument_camera.camera_initial,
+        step: if i.travel_px > 0 { gunbc.design.instrument_camera.Inward } else { gunbc.design.instrument_camera.Outward },
       ).depth,
     ) == "outcome"
 }
 
 fn witness_wheel_releases_scroll_at_outermost_clamp() -> Bool {
-  !wheel_owns_scroll_at_clamp(c: camera_initial, delta_px: -40)
-    && wheel_owns_scroll_at_clamp(c: camera_initial, delta_px: 40)
+  !gunbc.design.instrument_camera.wheel_owns_scroll_at_clamp(c: gunbc.design.instrument_camera.camera_initial, delta_px: -40)
+    && gunbc.design.instrument_camera.wheel_owns_scroll_at_clamp(c: gunbc.design.instrument_camera.camera_initial, delta_px: 40)
 }
 
 test fn instrument_camera_keystone_holds() -> Bool {

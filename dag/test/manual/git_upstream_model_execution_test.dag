@@ -2,7 +2,7 @@ module test.manual.git_upstream_model_execution
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data git_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Git R0 fixture. This is a runtime-present typed effect graph: shell.Mktemp, Filesystem.Write, shell.Mkdir, shell.Test, shell.Remove, and individual gunbc.WitnessBin.Run argv invocations. No shell program is serialized. Real Git hashes SHA-1 and SHA-256 blobs, writes the tree, commits and annotated tag, validates five tree modes plus a non-ASCII path, checks the index/worktree, runs fsck, performs exact-old-OID compare-and-swap through symbolic HEAD while retaining its target, proves stale and nonexistent-object updates refuse, and independently reads the ref/tag/tree state back. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/git_upstream_model_execution_test.dag --function witness_git_cli_fixture_hashes_projects_and_independently_reads_back."
 
@@ -20,7 +20,7 @@ fn observed_sha1_oid(stdout: String) -> extdeps.git.object_store.GitObjectId {
 }
 
 fn complete_fixture_repository() -> extdeps.git.object_store.GitRepositoryState {
-  let repo = git_fixture_repository()
+  let repo = test.claim.git_upstream_model_witness.git_fixture_repository()
   extdeps.git.object_store.GitRepositoryState {
     object_format: repo.object_format,
     objects: repo.objects,
@@ -55,60 +55,60 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
       let src_keep_path = concat(src_path, "/keep")
       let sha256_source_path = concat(sha256_fixture.path, "/source")
 
-      let initialized = gunbc.WitnessBin.Run(
+      let initialized = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["init", "-q", "--object-format=sha1", "."],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
       let readme_written = Filesystem.Write(path: readme_path, content: "source")
       let run_written = Filesystem.Write(path: run_path, content: "run")
       let raw_written = Filesystem.Write(path: raw_path, content: "source")
       let src_created = shell.Mkdir.Parents(path: src_path)
       let src_keep_written = Filesystem.Write(path: src_keep_path, content: "")
-      let run_executable = gunbc.WitnessBin.Run(
+      let run_executable = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "/bin/chmod",
         args: ["+x", "run"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let link_created = gunbc.WitnessBin.Run(
+      let link_created = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "/bin/ln",
         args: ["-s", "readme", "link"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let added = gunbc.WitnessBin.Run(
+      let added = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["add", "--", "readme", "run", "link", "src/keep", raw_name],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let regular_oid = gunbc.WitnessBin.Run(
+      let regular_oid = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["rev-parse", ":readme"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let executable_oid = gunbc.WitnessBin.Run(
+      let executable_oid = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["rev-parse", ":run"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let symlink_oid = gunbc.WitnessBin.Run(
+      let symlink_oid = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["rev-parse", ":link"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let empty_tree = gunbc.WitnessBin.Run(
+      let empty_tree = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["hash-object", "-t", "tree", "-w", "/dev/null"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let gitlink_commit = gunbc.WitnessBin.Run(
+      let gitlink_commit = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "/usr/bin/env",
         args: [
@@ -124,9 +124,9 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "-m",
           "gitlink",
         ],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let gitlink_indexed = gunbc.WitnessBin.Run(
+      let gitlink_indexed = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: [
@@ -137,27 +137,27 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           std.algebra.trim(s: gitlink_commit.stdout),
           "vendor",
         ],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let root_tree = gunbc.WitnessBin.Run(
+      let root_tree = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["write-tree"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let empty_blob_oid = gunbc.WitnessBin.Run(
+      let empty_blob_oid = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["rev-parse", ":src/keep"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let subtree_oid = gunbc.WitnessBin.Run(
+      let subtree_oid = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["rev-parse", concat(std.algebra.trim(s: root_tree.stdout), ":src")],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let parent_commit = gunbc.WitnessBin.Run(
+      let parent_commit = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "/usr/bin/env",
         args: [
@@ -173,9 +173,9 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "-m",
           "parent",
         ],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let next_commit = gunbc.WitnessBin.Run(
+      let next_commit = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "/usr/bin/env",
         args: [
@@ -193,21 +193,21 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "-m",
           "next",
         ],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let main_seeded = gunbc.WitnessBin.Run(
+      let main_seeded = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["update-ref", "refs/heads/main", std.algebra.trim(s: parent_commit.stdout)],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let head_symbolic = gunbc.WitnessBin.Run(
+      let head_symbolic = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["symbolic-ref", "HEAD", "refs/heads/main"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let tag_created = gunbc.WitnessBin.Run(
+      let tag_created = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "/usr/bin/env",
         args: [
@@ -225,33 +225,33 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "-m",
           "bounded annotated tag",
         ],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
 
-      let sha256_initialized = gunbc.WitnessBin.Run(
+      let sha256_initialized = WitnessBin.Run(
         workdir: sha256_fixture.path,
         bin_path: "git",
         args: ["init", "-q", "--bare", "--object-format=sha256", "."],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
       let sha256_source_written = Filesystem.Write(
         path: sha256_source_path,
         content: "source",
       )
-      let sha256_blob = gunbc.WitnessBin.Run(
+      let sha256_blob = WitnessBin.Run(
         workdir: sha256_fixture.path,
         bin_path: "git",
         args: ["--git-dir=.", "hash-object", "-w", "source"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let sha256_format = gunbc.WitnessBin.Run(
+      let sha256_format = WitnessBin.Run(
         workdir: sha256_fixture.path,
         bin_path: "git",
         args: ["--git-dir=.", "rev-parse", "--show-object-format"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
 
-      let head_advanced = gunbc.WitnessBin.Run(
+      let head_advanced = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: [
@@ -260,9 +260,9 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           std.algebra.trim(s: next_commit.stdout),
           std.algebra.trim(s: parent_commit.stdout),
         ],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let stale_refused = gunbc.WitnessBin.Run(
+      let stale_refused = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: [
@@ -271,9 +271,9 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           std.algebra.trim(s: parent_commit.stdout),
           std.algebra.trim(s: parent_commit.stdout),
         ],
-        expect: ExpectFailure,
+        expect: gunbc.output_policy.ExpectFailure,
       )
-      let missing_target_refused = gunbc.WitnessBin.Run(
+      let missing_target_refused = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: [
@@ -281,46 +281,46 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "refs/heads/nonexistent",
           "cccccccccccccccccccccccccccccccccccccccc",
         ],
-        expect: ExpectFailure,
+        expect: gunbc.output_policy.ExpectFailure,
       )
-      let fsck = gunbc.WitnessBin.Run(
+      let fsck = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["fsck", "--strict", "--no-dangling"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
 
-      let main_read_back = gunbc.WitnessBin.Run(
+      let main_read_back = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["rev-parse", "refs/heads/main"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let head_read_back = gunbc.WitnessBin.Run(
+      let head_read_back = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["symbolic-ref", "HEAD"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let tag_oid = gunbc.WitnessBin.Run(
+      let tag_oid = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["rev-parse", "refs/tags/v0"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let tag_type = gunbc.WitnessBin.Run(
+      let tag_type = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["cat-file", "-t", "refs/tags/v0"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let git_version = gunbc.WitnessBin.Run(
+      let git_version = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: ["--version"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let tree_wire = gunbc.WitnessBin.Run(
+      let tree_wire = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: [
@@ -331,9 +331,9 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "--format=%(objectmode)%x00%(objecttype)%x00%(objectname)%x00%(path)",
           std.algebra.trim(s: root_tree.stdout),
         ],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let modes = gunbc.WitnessBin.Run(
+      let modes = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: [
@@ -341,9 +341,9 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "--format=%(objectmode)",
           std.algebra.trim(s: root_tree.stdout),
         ],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let paths = gunbc.WitnessBin.Run(
+      let paths = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: [
@@ -353,9 +353,9 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "--format=%(path)",
           std.algebra.trim(s: root_tree.stdout),
         ],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let index = gunbc.WitnessBin.Run(
+      let index = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: [
@@ -363,19 +363,19 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "-z",
           "--format=%(objectmode)%x00%(objectname)%x00%(stage)%x00%(path)",
         ],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let link_target = gunbc.WitnessBin.Run(
+      let link_target = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "/usr/bin/readlink",
         args: ["link"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
-      let link_is_symlink = gunbc.WitnessBin.Run(
+      let link_is_symlink = WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "/usr/bin/test",
         args: ["-L", "link"],
-        expect: ExpectSuccess,
+        expect: gunbc.output_policy.ExpectSuccess,
       )
       let executable_is_executable = shell.Test.IsExecutable(path: run_path)
       let readme_read_back = Filesystem.Read(path: readme_path)
@@ -436,18 +436,18 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           && cleaned_fixture.success
           && cleaned_sha256.success
 
-      let content_addresses_grounded = std.algebra.trim(s: regular_oid.stdout) == (git_object_id_wire_hex(oid: sha1_blob_regular) as String)
-          && std.algebra.trim(s: executable_oid.stdout) == (git_object_id_wire_hex(oid: sha1_blob_executable) as String)
-          && std.algebra.trim(s: symlink_oid.stdout) == (git_object_id_wire_hex(oid: sha1_blob_symlink) as String)
-          && std.algebra.trim(s: empty_blob_oid.stdout) == (git_object_id_wire_hex(oid: sha1_empty_blob) as String)
-          && std.algebra.trim(s: empty_tree.stdout) == (git_object_id_wire_hex(oid: sha1_empty_tree) as String)
-          && std.algebra.trim(s: subtree_oid.stdout) == (git_object_id_wire_hex(oid: sha1_subtree) as String)
-          && std.algebra.trim(s: gitlink_commit.stdout) == (git_object_id_wire_hex(oid: sha1_gitlink) as String)
-          && std.algebra.trim(s: root_tree.stdout) == (git_object_id_wire_hex(oid: sha1_root_tree) as String)
-          && std.algebra.trim(s: parent_commit.stdout) == (git_object_id_wire_hex(oid: sha1_parent_commit) as String)
-          && std.algebra.trim(s: next_commit.stdout) == (git_object_id_wire_hex(oid: sha1_next_commit) as String)
-          && std.algebra.trim(s: tag_oid.stdout) == (git_object_id_wire_hex(oid: sha1_tag) as String)
-          && std.algebra.trim(s: sha256_blob.stdout) == (git_object_id_wire_hex(oid: sha256_object) as String)
+      let content_addresses_grounded = std.algebra.trim(s: regular_oid.stdout) == (extdeps.git.object_store.git_object_id_wire_hex(oid: test.claim.git_upstream_model_witness.sha1_blob_regular) as String)
+          && std.algebra.trim(s: executable_oid.stdout) == (extdeps.git.object_store.git_object_id_wire_hex(oid: test.claim.git_upstream_model_witness.sha1_blob_executable) as String)
+          && std.algebra.trim(s: symlink_oid.stdout) == (extdeps.git.object_store.git_object_id_wire_hex(oid: test.claim.git_upstream_model_witness.sha1_blob_symlink) as String)
+          && std.algebra.trim(s: empty_blob_oid.stdout) == (extdeps.git.object_store.git_object_id_wire_hex(oid: test.claim.git_upstream_model_witness.sha1_empty_blob) as String)
+          && std.algebra.trim(s: empty_tree.stdout) == (extdeps.git.object_store.git_object_id_wire_hex(oid: test.claim.git_upstream_model_witness.sha1_empty_tree) as String)
+          && std.algebra.trim(s: subtree_oid.stdout) == (extdeps.git.object_store.git_object_id_wire_hex(oid: test.claim.git_upstream_model_witness.sha1_subtree) as String)
+          && std.algebra.trim(s: gitlink_commit.stdout) == (extdeps.git.object_store.git_object_id_wire_hex(oid: test.claim.git_upstream_model_witness.sha1_gitlink) as String)
+          && std.algebra.trim(s: root_tree.stdout) == (extdeps.git.object_store.git_object_id_wire_hex(oid: test.claim.git_upstream_model_witness.sha1_root_tree) as String)
+          && std.algebra.trim(s: parent_commit.stdout) == (extdeps.git.object_store.git_object_id_wire_hex(oid: test.claim.git_upstream_model_witness.sha1_parent_commit) as String)
+          && std.algebra.trim(s: next_commit.stdout) == (extdeps.git.object_store.git_object_id_wire_hex(oid: test.claim.git_upstream_model_witness.sha1_next_commit) as String)
+          && std.algebra.trim(s: tag_oid.stdout) == (extdeps.git.object_store.git_object_id_wire_hex(oid: test.claim.git_upstream_model_witness.sha1_tag) as String)
+          && std.algebra.trim(s: sha256_blob.stdout) == (extdeps.git.object_store.git_object_id_wire_hex(oid: test.claim.git_upstream_model_witness.sha256_object) as String)
           && std.algebra.trim(s: sha256_format.stdout) == "sha256"
 
       let tree_modes_grounded = count(split(s: std.algebra.trim(s: modes.stdout), delimiter: "\n")) == 6
@@ -472,46 +472,46 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
         && content_addresses_grounded
         && tree_modes_grounded
         && read_back_grounded {
-        match git_decode_ls_tree_z(
-          payload: utf8_encode_bytes(s: tree_wire.stdout),
-          format: GitObjectFormatSha1,
+        match extdeps.git.object_store.git_decode_ls_tree_z(
+          payload: std.bytes.utf8_encode_bytes(s: tree_wire.stdout),
+          format: extdeps.git.object_store.GitObjectFormatSha1,
         ) {
-          GitLsTreeZRefused { cause: _ } =>
+          extdeps.git.object_store.GitLsTreeZRefused { cause: _ } =>
             GitR0LiveFixtureExecutionRefused {
               diagnostic: "git-ls-tree-z-decode-refused",
             }
-          GitLsTreeZDecoded { entries: observed_tree_entries } =>
-            match git_decode_ls_files_stage_z(
-              payload: utf8_encode_bytes(s: index.stdout),
-              format: GitObjectFormatSha1,
+          extdeps.git.object_store.GitLsTreeZDecoded { entries: observed_tree_entries } =>
+            match extdeps.git.object_store.git_decode_ls_files_stage_z(
+              payload: std.bytes.utf8_encode_bytes(s: index.stdout),
+              format: extdeps.git.object_store.GitObjectFormatSha1,
             ) {
-              GitLsFilesStageZRefused { cause: _ } =>
+              extdeps.git.object_store.GitLsFilesStageZRefused { cause: _ } =>
                 GitR0LiveFixtureExecutionRefused {
                   diagnostic: "git-ls-files-stage-z-decode-refused",
                 }
-              GitLsFilesStageZDecoded { entries: observed_index_entries } =>
-                match git_model_update_ref_exact(
+              extdeps.git.object_store.GitLsFilesStageZDecoded { entries: observed_index_entries } =>
+                match extdeps.git.object_store.git_model_update_ref_exact(
                   repo: complete_fixture_repository(),
                   name: "HEAD",
-                  new_oid: sha1_next_commit,
-                  expected_old: sha1_parent_commit,
+                  new_oid: test.claim.git_upstream_model_witness.sha1_next_commit,
+                  expected_old: test.claim.git_upstream_model_witness.sha1_parent_commit,
                 ) {
-                  GitRefTransitionModeled { repository, transition: _ } =>
-                    match git_project_repository(
+                  extdeps.git.object_store.GitRefTransitionModeled { repository, transition: _ } =>
+                    match extdeps.git.object_store.git_project_repository(
                       repo: repository,
-                      tree_oid: sha1_root_tree,
+                      tree_oid: test.claim.git_upstream_model_witness.sha1_root_tree,
                     ) {
-                      GitProjectionRefused { cause: _ } =>
+                      extdeps.git.object_store.GitProjectionRefused { cause: _ } =>
                         GitR0LiveFixtureExecutionRefused {
                           diagnostic: "modeled-projection-refused",
                         }
-                      GitProjected { projection } =>
+                      extdeps.git.object_store.GitProjected { projection } =>
                         let observed_main = observed_sha1_oid(
                           stdout: main_read_back.stdout,
                         )
                         let observation = extdeps.git.object_store.GitR0ReadBackObservation {
                           git_version: std.algebra.trim(s: git_version.stdout),
-                          object_format: GitObjectFormatSha1,
+                          object_format: extdeps.git.object_store.GitObjectFormatSha1,
                           tree_oid: observed_sha1_oid(stdout: root_tree.stdout),
                           tree_entries: observed_tree_entries,
                           tag_oids: [observed_sha1_oid(stdout: tag_oid.stdout)],
@@ -530,36 +530,36 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
                           index: observed_index_entries,
                           worktree: [
                             extdeps.git.object_store.GitWorktreeRegular {
-                              path: path_regular,
+                              path: test.claim.git_upstream_model_witness.path_regular,
                               executable: false,
-                              content: utf8_encode_bytes(
+                              content: std.bytes.utf8_encode_bytes(
                                 s: readme_read_back.content,
                               ),
                             },
                             extdeps.git.object_store.GitWorktreeRegular {
-                              path: path_executable,
+                              path: test.claim.git_upstream_model_witness.path_executable,
                               executable: executable_is_executable.executable,
-                              content: utf8_encode_bytes(
+                              content: std.bytes.utf8_encode_bytes(
                                 s: run_read_back.content,
                               ),
                             },
                             extdeps.git.object_store.GitWorktreeRegular {
-                              path: path_non_ascii,
+                              path: test.claim.git_upstream_model_witness.path_non_ascii,
                               executable: false,
-                              content: utf8_encode_bytes(
+                              content: std.bytes.utf8_encode_bytes(
                                 s: raw_read_back.content,
                               ),
                             },
                             extdeps.git.object_store.GitWorktreeRegular {
-                              path: path_subtree_member,
+                              path: test.claim.git_upstream_model_witness.path_subtree_member,
                               executable: false,
-                              content: utf8_encode_bytes(
+                              content: std.bytes.utf8_encode_bytes(
                                 s: src_keep_read_back.content,
                               ),
                             },
                             extdeps.git.object_store.GitWorktreeSymlink {
-                              path: path_symlink,
-                              target: utf8_encode_bytes(
+                              path: test.claim.git_upstream_model_witness.path_symlink,
+                              target: std.bytes.utf8_encode_bytes(
                                 s: std.algebra.trim(s: link_target.stdout),
                               ),
                             },
@@ -567,7 +567,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
                           unavailable: [],
                         }
                         GitR0LiveFixtureObserved {
-                          outcome: git_verify_independent_read_back(
+                          outcome: extdeps.git.object_store.git_verify_independent_read_back(
                             projection: projection,
                             observation: observation,
                           ),
@@ -622,11 +622,11 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
 test fn witness_git_cli_fixture_hashes_projects_and_independently_reads_back() -> Bool {
   match git_r0_typed_execution_read_back() {
     GitR0LiveFixtureObserved {
-      outcome: GitReadBackVerified { observation },
+      outcome: extdeps.git.object_store.GitReadBackVerified { observation },
       observed_tree_entries: _,
     } =>
-      observation.tree_oid == sha1_root_tree
-        && observation.tag_oids == [sha1_tag]
+      observation.tree_oid == test.claim.git_upstream_model_witness.sha1_root_tree
+        && observation.tag_oids == [test.claim.git_upstream_model_witness.sha1_tag]
         && count(observation.tree_entries) == 6
         && count(observation.index) == 6
         && count(observation.worktree) == 5

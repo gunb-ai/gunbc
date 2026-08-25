@@ -1,7 +1,7 @@
 module test.claim.eval_cast_identity
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn list_identity(xs: List<Int>) -> List<Int> {
   xs as List<Int>

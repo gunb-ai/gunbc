@@ -1,7 +1,7 @@
 module v2.test.realization_vocabulary_containment.no_new_debt_gate
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data ts0_no_new_debt_gate_note: String = "TS-0 exact-edge no-new-debt gate (language-support-completion design LANG-2/TS-0, census re-run 2026-08-06): the five current live-corpus leak edges are frozen at (importer_path, vocab_module) identity grain on v2.lens.realization_vocabulary_containment realization_vocab_grandfathered_edge_roster; a NEW exact edge outside that roster still refuses. Per-PR mechanism coverage only — synthetic predicate receipts over hand-built LayerImportFact rows, not a second live-tree census. The irreducible live-corpus receipt runs on the falsifier substrate long lane (realization_vocab_live_corpus_receipt_holds)."
 
@@ -34,43 +34,43 @@ data ts0_census_build_step_edge: v2.lens.realization_vocabulary_containment.Real
   vocab_module: bash_build_module
 }
 
-fn edge_in_grandfathered_roster(edge: v2.lens.realization_vocabulary_containment.RealizationVocabImportEdge) -> v2.std.logic.Bool {
+fn edge_in_grandfathered_roster(edge: v2.lens.realization_vocabulary_containment.RealizationVocabImportEdge) -> Bool {
   fold(
-    realization_vocab_grandfathered_edges(),
+    v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edges(),
     init: false,
     f: fn(found, candidate) {
-      found || realization_vocab_import_edge_eq(a: candidate, b: edge)
+      found || v2.lens.realization_vocabulary_containment.realization_vocab_import_edge_eq(a: candidate, b: edge)
     }
   )
 }
 
-fn list_contains_str(xs: List<String>, target: String) -> v2.std.logic.Bool {
+fn list_contains_str(xs: List<String>, target: String) -> Bool {
   fold(xs, init: false, f: fn(acc, s) { acc || (s == target) })
 }
 
-test fn ts0_census_roadmap_component_edge_is_grandfathered_holds() -> v2.std.logic.Bool {
-  v2.test.realization_vocabulary_containment.no_new_debt_gate.edge_in_grandfathered_roster(edge: ts0_census_roadmap_component_edge)
+test fn ts0_census_roadmap_component_edge_is_grandfathered_holds() -> Bool {
+  edge_in_grandfathered_roster(edge: ts0_census_roadmap_component_edge)
 }
 
-test fn ts0_census_theme_transition_edge_is_grandfathered_holds() -> v2.std.logic.Bool {
-  v2.test.realization_vocabulary_containment.no_new_debt_gate.edge_in_grandfathered_roster(edge: ts0_census_theme_transition_edge)
+test fn ts0_census_theme_transition_edge_is_grandfathered_holds() -> Bool {
+  edge_in_grandfathered_roster(edge: ts0_census_theme_transition_edge)
 }
 
-test fn ts0_census_node_http_server_emit_edge_is_grandfathered_holds() -> v2.std.logic.Bool {
-  v2.test.realization_vocabulary_containment.no_new_debt_gate.edge_in_grandfathered_roster(edge: ts0_census_node_http_server_emit_edge)
+test fn ts0_census_node_http_server_emit_edge_is_grandfathered_holds() -> Bool {
+  edge_in_grandfathered_roster(edge: ts0_census_node_http_server_emit_edge)
 }
 
-test fn ts0_census_effect_plan_bash_materialize_edge_is_grandfathered_holds() -> v2.std.logic.Bool {
-  v2.test.realization_vocabulary_containment.no_new_debt_gate.edge_in_grandfathered_roster(edge: ts0_census_effect_plan_bash_materialize_edge)
+test fn ts0_census_effect_plan_bash_materialize_edge_is_grandfathered_holds() -> Bool {
+  edge_in_grandfathered_roster(edge: ts0_census_effect_plan_bash_materialize_edge)
 }
 
-test fn ts0_census_build_step_edge_is_grandfathered_holds() -> v2.std.logic.Bool {
-  v2.test.realization_vocabulary_containment.no_new_debt_gate.edge_in_grandfathered_roster(edge: ts0_census_build_step_edge)
+test fn ts0_census_build_step_edge_is_grandfathered_holds() -> Bool {
+  edge_in_grandfathered_roster(edge: ts0_census_build_step_edge)
 }
 
 data ts0_frozen_roadmap_component_fact: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/roadmap_component.dag",
     import_module: typescript_sidecar_module
   }
@@ -78,7 +78,7 @@ data ts0_frozen_roadmap_component_fact: List<v2.std.layer.LayerImportFact> = [
 
 data ts0_frozen_theme_transition_fact: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/design/theme_transition.dag",
     import_module: typescript_sidecar_module
   }
@@ -86,109 +86,109 @@ data ts0_frozen_theme_transition_fact: List<v2.std.layer.LayerImportFact> = [
 
 data ts0_frozen_effect_plan_bash_materialize_fact: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixWorkflow,
+    layer: v2.std.layer.LayerPrefixWorkflow,
     path: "src/v2/workflow/effect_plan_bash_materialize.dag",
     import_module: bash_build_module
   }
 ]
 
-test fn ts0_frozen_roadmap_component_import_is_not_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: ts0_frozen_roadmap_component_fact) == 0
+test fn ts0_frozen_roadmap_component_import_is_not_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: ts0_frozen_roadmap_component_fact) == 0
 }
 
-test fn ts0_frozen_theme_transition_import_is_not_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: ts0_frozen_theme_transition_fact) == 0
+test fn ts0_frozen_theme_transition_import_is_not_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: ts0_frozen_theme_transition_fact) == 0
 }
 
-test fn ts0_frozen_effect_plan_bash_materialize_import_is_not_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: ts0_frozen_effect_plan_bash_materialize_fact) == 0
+test fn ts0_frozen_effect_plan_bash_materialize_import_is_not_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: ts0_frozen_effect_plan_bash_materialize_fact) == 0
 }
 
 data ts0_fresh_unrostered_leak_facts: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/_perturb_ts0_fresh_consumer.dag",
     import_module: typescript_sidecar_module
   }
 ]
 
-test fn ts0_unrostered_non_edge_import_is_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: ts0_fresh_unrostered_leak_facts) == 1
+test fn ts0_unrostered_non_edge_import_is_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: ts0_fresh_unrostered_leak_facts) == 1
 }
 
 data ts0_grandfathered_file_second_vocab_facts: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/roadmap_component.dag",
     import_module: typescript_sidecar_module
   },
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/roadmap_component.dag",
     import_module: bash_build_module
   }
 ]
 
-test fn ts0_grandfathered_file_cannot_acquire_second_vocab_edge_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: ts0_grandfathered_file_second_vocab_facts) == 1
+test fn ts0_grandfathered_file_cannot_acquire_second_vocab_edge_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: ts0_grandfathered_file_second_vocab_facts) == 1
 }
 
 data ts0_different_importer_same_vocab_facts: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/roadmap_component.dag",
     import_module: typescript_sidecar_module
   },
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/_perturb_ts0_second_typescript_consumer.dag",
     import_module: typescript_sidecar_module
   }
 ]
 
-test fn ts0_different_importer_same_vocab_new_edge_is_leak_holds() -> v2.std.logic.Bool {
-  realization_vocab_leak_count_canonical(facts: ts0_different_importer_same_vocab_facts) == 1
+test fn ts0_different_importer_same_vocab_new_edge_is_leak_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_leak_count_canonical(facts: ts0_different_importer_same_vocab_facts) == 1
 }
 
 data ts0_frozen_facts_union: List<v2.std.layer.LayerImportFact> = [
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/roadmap_component.dag",
     import_module: typescript_sidecar_module
   },
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/design/theme_transition.dag",
     import_module: typescript_sidecar_module
   },
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/gunbc/node_http_server_emit.dag",
     import_module: typescript_sidecar_module
   },
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixWorkflow,
+    layer: v2.std.layer.LayerPrefixWorkflow,
     path: "src/v2/workflow/effect_plan_bash_materialize.dag",
     import_module: bash_build_module
   },
   v2.std.layer.LayerImportFact {
-    layer: LayerPrefixStd,
+    layer: v2.std.layer.LayerPrefixStd,
     path: "dag/tools/build_step.dag",
     import_module: bash_build_module
   }
 ]
 
-test fn ts0_frozen_population_containment_holds_holds() -> v2.std.logic.Bool {
-  realization_vocab_containment_holds_canonical(facts: ts0_frozen_facts_union)
+test fn ts0_frozen_population_containment_holds_holds() -> Bool {
+  v2.lens.realization_vocabulary_containment.realization_vocab_containment_holds_canonical(facts: ts0_frozen_facts_union)
 }
 
-test fn ts0_grandfathered_edge_keys_use_exact_edge_identity_holds() -> v2.std.logic.Bool {
-  v2.test.realization_vocabulary_containment.no_new_debt_gate.list_contains_str(
-    xs: realization_vocab_grandfathered_edge_keys(),
+test fn ts0_grandfathered_edge_keys_use_exact_edge_identity_holds() -> Bool {
+  list_contains_str(
+    xs: v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edge_keys(),
     target: "dag/gunbc/roadmap_component.dag -> extdeps.languages.typescript.program"
   )
-    && v2.test.realization_vocabulary_containment.no_new_debt_gate.list_contains_str(
-      xs: realization_vocab_grandfathered_edge_keys(),
+    && list_contains_str(
+      xs: v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edge_keys(),
       target: "src/v2/workflow/effect_plan_bash_materialize.dag -> v2.extdeps.languages.bash_build"
     )
 }

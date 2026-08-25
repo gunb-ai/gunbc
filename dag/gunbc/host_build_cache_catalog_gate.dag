@@ -9,7 +9,7 @@ type ProvisionBuildCacheCatalogGateVerdict
 
 fn catalog_id_is_known(catalog_id: std.cache_identity.CacheInterfaceId) -> Bool {
   fold(
-    cache_catalog,
+    extdeps.cache.cache_catalog,
     init: false,
     f: (acc, row) => acc || row.identity == catalog_id,
   )
@@ -22,11 +22,11 @@ fn provision_build_cache_catalog_gate_verdict(
     ProvisionBuildCacheCatalogRefused {
       reason: concat("host_build_cache_provision: unknown catalog_id ", catalog_id) as std.types.NonEmptyStr,
     }
-  } else if catalog_id != sccache_local_id {
+  } else if catalog_id != extdeps.cache.sccache.sccache_local_id {
     ProvisionBuildCacheCatalogRefused {
       reason: concat(
         concat("host_build_cache_provision: catalog_id ", catalog_id),
-        concat(" not yet realized; only ", sccache_local_id),
+        concat(" not yet realized; only ", extdeps.cache.sccache.sccache_local_id),
       ) as std.types.NonEmptyStr,
     }
   } else {

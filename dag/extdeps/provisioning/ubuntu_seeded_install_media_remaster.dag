@@ -3,7 +3,7 @@ module extdeps.provisioning.ubuntu_seeded_install_media_remaster
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "canonical-subiquity.readthedocs-hosted.com/en/latest/tutorial/providing-autoinstall.html"
   }
 }
@@ -34,14 +34,14 @@ data install_media_remaster_boot_fidelity_doc: String = "xorriso -boot_image any
 
 data el_torito_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "pdos.csail.mit.edu/6.828/2014/readings/boot-cdrom.pdf"
   }
 }
 
 data esp_boot_structure_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "uefi.org/specs/UEFI/2.10/13_Protocols_Media_Access.html"
   }
 }
@@ -108,7 +108,7 @@ fn install_media_remaster_probe_verdict(artifact: extdeps.provisioning.ubuntu_se
 }
 
 fn observe_install_media_remaster(artifact: extdeps.provisioning.ubuntu_seeded_install_media.UbuntuSeededInstallMediaArtifactRow) -> InstallMediaRemasterObservation {
-  let final_path = ubuntu_seeded_install_media_install_path(artifact: artifact)
+  let final_path = extdeps.provisioning.ubuntu_seeded_install_media.ubuntu_seeded_install_media_install_path(artifact: artifact)
   let present = shell.Test.IsFile(path: final_path as std.types.FilePath)
   if present.is_file == false {
     InstallMediaRemasterAbsent
@@ -123,7 +123,7 @@ fn observe_install_media_remaster(artifact: extdeps.provisioning.ubuntu_seeded_i
 
 // grep exits non-zero when the pattern is ABSENT, and absence is precisely the question this fn asks — it is the idempotence probe that decides whether to substitute or leave the file alone. Both answers are ordinary: on a fresh image the cmdline is missing and gets inserted, on a re-run it is present and nothing happens. The §5 guard holds on the belt_program_available shape: the Bool is consumed as the branch discriminator, never discarded. A grep that could not RUN is a different event and does not travel this arm.
 fn install_media_remaster_ensure_grub_cmdline(grub_cfg: std.types.NonEmptyStr, cmdline: std.types.NonEmptyStr) -> Bool {
-  let already_present = grep.Grep.MatchesFixedString(pattern: cmdline, path: grub_cfg, expect: OutcomeIsData).matches
+  let already_present = grep.Grep.MatchesFixedString(pattern: cmdline, path: grub_cfg, expect: gunbc.output_policy.OutcomeIsData).matches
   let substituted = if already_present {
     true
   } else {
@@ -250,16 +250,16 @@ fn install_media_remaster_build(
 }
 
 fn install_media_remaster_apply(artifact: extdeps.provisioning.ubuntu_seeded_install_media.UbuntuSeededInstallMediaArtifactRow) -> InstallMediaRemasterOutcome {
-  let stock_path = ubuntu_install_media_install_path(artifact: artifact.stock_artifact)
-  let final_path = ubuntu_seeded_install_media_install_path(artifact: artifact)
-  let part_path = ubuntu_seeded_install_media_part_path(install_path: final_path)
+  let stock_path = extdeps.provisioning.ubuntu_install_media.ubuntu_install_media_install_path(artifact: artifact.stock_artifact)
+  let final_path = extdeps.provisioning.ubuntu_seeded_install_media.ubuntu_seeded_install_media_install_path(artifact: artifact)
+  let part_path = extdeps.provisioning.ubuntu_seeded_install_media.ubuntu_seeded_install_media_part_path(install_path: final_path)
   let stock_present = shell.Test.IsFile(path: stock_path as std.types.FilePath)
   if stock_present.is_file == false {
     InstallMediaRemasterRefused {
       reason: concat("InstallMediaRemasterRefusal: stock ISO missing at ", stock_path as String) as std.types.NonEmptyStr
     }
   } else {
-    let mkdir = shell.Mkdir.Parents(path: ubuntu_install_media_artifacts_dir() as std.types.FilePath)
+    let mkdir = shell.Mkdir.Parents(path: extdeps.provisioning.ubuntu_install_media.ubuntu_install_media_artifacts_dir() as std.types.FilePath)
     if mkdir.success == false {
       InstallMediaRemasterRefused { reason: "mkdir -p failed" as std.types.NonEmptyStr }
     } else {
@@ -282,7 +282,7 @@ fn install_media_remaster_apply(artifact: extdeps.provisioning.ubuntu_seeded_ins
 }
 
 fn install_media_remaster_reconcile(artifact: extdeps.provisioning.ubuntu_seeded_install_media.UbuntuSeededInstallMediaArtifactRow) -> InstallMediaRemasterOutcome {
-  let final_path = ubuntu_seeded_install_media_install_path(artifact: artifact)
+  let final_path = extdeps.provisioning.ubuntu_seeded_install_media.ubuntu_seeded_install_media_install_path(artifact: artifact)
   match observe_install_media_remaster(artifact: artifact) {
     InstallMediaRemasterValid => InstallMediaRemasterAlreadyPresent { path: final_path }
     InstallMediaRemasterAbsent => install_media_remaster_apply(artifact: artifact)

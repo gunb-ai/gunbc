@@ -1,18 +1,18 @@
 module test.claim.scm_compatibility_mercurial_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn mercurial_fixture_observation() -> extdeps.mercurial.MercurialReadBackObservation {
   extdeps.mercurial.MercurialReadBackObservation {
-    projection: mercurial_r0_fixture_projection(),
+    projection: test.claim.mercurial_upstream_model_witness.mercurial_r0_fixture_projection(),
     observed_by: "mercurial-r1-independent-fixture",
   }
 }
 
 fn mercurial_fixture_binding() -> gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingOutcome {
-  mercurial_compatibility_bind(
-    projection: mercurial_r0_fixture_projection(),
+  gunbc.scm_compatibility.mercurial.mercurial_compatibility_bind(
+    projection: test.claim.mercurial_upstream_model_witness.mercurial_r0_fixture_projection(),
     target: "default",
     read_back: mercurial_fixture_observation(),
   )
@@ -20,39 +20,39 @@ fn mercurial_fixture_binding() -> gunbc.scm_compatibility.mercurial.MercurialCom
 
 test fn witness_mercurial_r1_consumes_native_projection_and_readback() -> Bool {
   match mercurial_fixture_binding() {
-    MercurialCompatibilityBindingRefused { cause: _ } => false
-    MercurialCompatibilityBound { receipt } =>
+    gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.mercurial.MercurialCompatibilityBound { receipt } =>
       receipt.target == "default"
         && count(receipt.portable_history) == 3
         && count(receipt.target_history) == 3
-        && match mercurial_compatibility_projection_receipt(
+        && match gunbc.scm_compatibility.mercurial.mercurial_compatibility_projection_receipt(
           receipt: receipt,
         ).advance {
-          CompatibilityAdvanceUnavailable { cause: _ } => true
+          gunbc.scm_compatibility_shape.CompatibilityAdvanceUnavailable { cause: _ } => true
           _ => false
         }
   }
 }
 
 test fn witness_mercurial_realization_preserves_c0_primary_behavior() -> Bool {
-  let original = native_scm_receipt_for(
-    scenario: TwoIndependentChangesLand,
+  let original = test.claim.native_scm_interaction_scenario_fixture.native_scm_receipt_for(
+    scenario: test.claim.native_scm_interaction_scenario_fixture.TwoIndependentChangesLand,
   )
   match mercurial_fixture_binding() {
-    MercurialCompatibilityBindingRefused { cause: _ } => false
-    MercurialCompatibilityBound { receipt } => {
-      let projection = compatibility_projection_from_handler(
-        handler: mercurial_compatibility_projection_handler(),
+    gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.mercurial.MercurialCompatibilityBound { receipt } => {
+      let projection = gunbc.scm_compatibility_shape.compatibility_projection_from_handler(
+        handler: gunbc.scm_compatibility.mercurial.mercurial_compatibility_projection_handler(),
         receipt: receipt,
       )
-      let attached = native_scm_attach_projection(
+      let attached = gunbc.native_scm_interaction_contract.native_scm_attach_projection(
         receipt: original,
         projection: projection,
       )
       attached.identity == original.identity
         && attached.transition == original.transition
         && attached.primary == original.primary
-        && native_scm_primary_label(primary: attached.primary) == "Landed"
+        && gunbc.native_scm_interaction_contract.native_scm_primary_label(primary: attached.primary) == "Landed"
         && projection.realization == "mercurial-r0"
     }
   }
@@ -60,29 +60,29 @@ test fn witness_mercurial_realization_preserves_c0_primary_behavior() -> Bool {
 
 test fn witness_mercurial_missing_advance_refuses_required_capability() -> Bool {
   match mercurial_fixture_binding() {
-    MercurialCompatibilityBindingRefused { cause: _ } => false
-    MercurialCompatibilityBound { receipt } => {
-      let capability = mercurial_compatibility_projection_receipt(
+    gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.mercurial.MercurialCompatibilityBound { receipt } => {
+      let capability = gunbc.scm_compatibility.mercurial.mercurial_compatibility_projection_receipt(
         receipt: receipt,
       ).advance
-      match compatibility_check_advance_requirement(
-        requirement: CompatibilityObservationOnly,
+      match gunbc.scm_compatibility_shape.compatibility_check_advance_requirement(
+        requirement: gunbc.scm_compatibility_shape.CompatibilityObservationOnly,
         observed: capability,
       ) {
-        CompatibilityCapabilitySatisfied =>
-          match compatibility_check_advance_requirement(
+        gunbc.scm_compatibility_shape.CompatibilityCapabilitySatisfied =>
+          match gunbc.scm_compatibility_shape.compatibility_check_advance_requirement(
             requirement: gunbc.scm_compatibility_shape.CompatibilityModeledAdvanceRequired {
-              guarantee: CompatibilityExactCompareAndAdvance,
+              guarantee: gunbc.scm_compatibility_shape.CompatibilityExactCompareAndAdvance,
             },
             observed: capability,
           ) {
-            CompatibilityCapabilityRefused {
+            gunbc.scm_compatibility_shape.CompatibilityCapabilityRefused {
               requirement: _,
               observed: _,
             } => true
-            CompatibilityCapabilitySatisfied => false
+            gunbc.scm_compatibility_shape.CompatibilityCapabilitySatisfied => false
           }
-        CompatibilityCapabilityRefused {
+        gunbc.scm_compatibility_shape.CompatibilityCapabilityRefused {
           requirement: _,
           observed: _,
         } => false
@@ -93,13 +93,13 @@ test fn witness_mercurial_missing_advance_refuses_required_capability() -> Bool 
 
 test fn witness_mercurial_history_does_not_claim_authored_operation() -> Bool {
   match mercurial_fixture_binding() {
-    MercurialCompatibilityBindingRefused { cause: _ } => false
-    MercurialCompatibilityBound { receipt } => {
-      let profile = mercurial_compatibility_projection_receipt(
+    gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.mercurial.MercurialCompatibilityBound { receipt } => {
+      let profile = gunbc.scm_compatibility.mercurial.mercurial_compatibility_projection_receipt(
         receipt: receipt,
       ).fidelity
       match profile.upstream_change_evidence {
-        CompatibilityFidelityDowngraded { cause: _ } => true
+        gunbc.scm_compatibility_shape.CompatibilityFidelityDowngraded { cause: _ } => true
         _ => false
       }
     }
@@ -107,8 +107,8 @@ test fn witness_mercurial_history_does_not_claim_authored_operation() -> Bool {
 }
 
 test fn witness_mercurial_unavailable_readback_refuses_binding() -> Bool {
-  match mercurial_compatibility_bind(
-    projection: mercurial_r0_fixture_projection(),
+  match gunbc.scm_compatibility.mercurial.mercurial_compatibility_bind(
+    projection: test.claim.mercurial_upstream_model_witness.mercurial_r0_fixture_projection(),
     target: "default",
     read_back: extdeps.mercurial.MercurialReadBackObservation {
       projection: extdeps.mercurial.MercurialInaccessibleProjection {
@@ -117,20 +117,20 @@ test fn witness_mercurial_unavailable_readback_refuses_binding() -> Bool {
       observed_by: "mercurial-r1-independent-fixture",
     },
   ) {
-    MercurialCompatibilityBindingRefused { cause: _ } => true
-    MercurialCompatibilityBound { receipt: _ } => false
+    gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingRefused { cause: _ } => true
+    gunbc.scm_compatibility.mercurial.MercurialCompatibilityBound { receipt: _ } => false
   }
 }
 
 test fn witness_mercurial_readback_identity_changes_with_observed_state() -> Bool {
-  let other_projection = projection_with_publishing(
-    projection: mercurial_r0_fixture_projection(),
-    publishing: MercurialPublishingServer,
+  let other_projection = test.claim.mercurial_upstream_model_witness.projection_with_publishing(
+    projection: test.claim.mercurial_upstream_model_witness.mercurial_r0_fixture_projection(),
+    publishing: extdeps.mercurial.MercurialPublishingServer,
   )
   match mercurial_fixture_binding() {
-    MercurialCompatibilityBindingRefused { cause: _ } => false
-    MercurialCompatibilityBound { receipt: expected } =>
-      match mercurial_compatibility_bind(
+    gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingRefused { cause: _ } => false
+    gunbc.scm_compatibility.mercurial.MercurialCompatibilityBound { receipt: expected } =>
+      match gunbc.scm_compatibility.mercurial.mercurial_compatibility_bind(
         projection: other_projection,
         target: "default",
         read_back: extdeps.mercurial.MercurialReadBackObservation {
@@ -138,12 +138,12 @@ test fn witness_mercurial_readback_identity_changes_with_observed_state() -> Boo
           observed_by: "mercurial-r1-independent-fixture",
         },
       ) {
-        MercurialCompatibilityBindingRefused { cause: _ } => false
-        MercurialCompatibilityBound { receipt: other_state } => {
-          let expected_projection = mercurial_compatibility_projection_receipt(
+        gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingRefused { cause: _ } => false
+        gunbc.scm_compatibility.mercurial.MercurialCompatibilityBound { receipt: other_state } => {
+          let expected_projection = gunbc.scm_compatibility.mercurial.mercurial_compatibility_projection_receipt(
             receipt: expected,
           )
-          let other_state_projection = mercurial_compatibility_projection_receipt(
+          let other_state_projection = gunbc.scm_compatibility.mercurial.mercurial_compatibility_projection_receipt(
             receipt: other_state,
           )
           expected_projection.generation_evidence == other_state_projection.generation_evidence

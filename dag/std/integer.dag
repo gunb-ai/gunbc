@@ -40,11 +40,11 @@ type NonNegativeInt = std.nat.Nat
 type PositiveInt    = std.nat.Nat where gt_zero
 
 fn uint8_channel_bit_width_int() -> Int {
-  bit_width_count(b: bit_width(count: bits_per_byte()))
+  std.measure.bit_width_count(b: std.measure.bit_width(count: std.measure.bits_per_byte()))
 }
 
 fn uint8_channel_inclusive_max_value_derived() -> Int? {
-  match int_pow_bounded(base: 2, exp: uint8_channel_bit_width_int()) {
+  match std.induction.int_pow_bounded(base: 2, exp: uint8_channel_bit_width_int()) {
     Present { value: two_pow } => Present { value: two_pow - 1 }
     Absent => none
   }

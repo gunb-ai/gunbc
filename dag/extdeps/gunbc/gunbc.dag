@@ -3,7 +3,7 @@ module extdeps.gunbc
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/gunbc"
   }
 }
@@ -86,7 +86,7 @@ data packages: List<WorkspacePackage> = [
 
 ]
 
-service gunbc.WitnessBin {
+service WitnessBin {
   operation Run {
     input { workdir: std.types.FilePath, bin_path: std.types.FilePath, args: List<String> = [] }
     output {

@@ -4,7 +4,7 @@ module extdeps.linux.usb_gadget
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "docs.kernel.org/usb/gadget_configfs.html",
   }
 }
@@ -93,8 +93,8 @@ fn usb_gadget_teardown_ops(gadget: UsbGadget) -> List<ConfigfsOp> {
 // Filesystem.Write effect — WriteAttr to Filesystem.Write, Mkdir/Symlink/Rmdir to typed
 // FS ops — over the ssh transport. That removal is observable exactly as the
 // disappearance of `configfs_op_line`, which is what the trigger names.
-data configfs_op_render_dissolution_trigger: DissolutionCondition = retires_dissolution(
-  ref: decl_ref(module_path: "extdeps.linux.usb_gadget", decl_name: "configfs_op_line")
+data configfs_op_render_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.retires_dissolution(
+  ref: std.decl_ref.decl_ref(module_path: "extdeps.linux.usb_gadget", decl_name: "configfs_op_line")
 )
 
 fn configfs_op_line(op: ConfigfsOp) -> String {

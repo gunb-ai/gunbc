@@ -1,7 +1,7 @@
 module test.claim.firmware_applicability_and_loop_cause_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // These bind the PRODUCTION release rows, not fixtures, so the gate is
 // exercised against the prerequisite the catalog actually declares.
@@ -10,14 +10,14 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // version as null through Redfish. "We could not read it" must refuse rather
 // than collapse into either pole.
 test fn unreadable_target_version_refuses_rather_than_assuming() -> Bool {
-  match firmware_release_applicability(
+  match extdeps.firmware.types.firmware_release_applicability(
     prerequisite: asrock_altrad8ud_bios_3_10_openbmc_release.prerequisite,
     observed: v2.std.optional.Absent,
   ) {
-    FirmwarePrerequisiteUnobserved { target: t, minimum: m } =>
+    extdeps.firmware.types.FirmwarePrerequisiteUnobserved { target: t, minimum: m } =>
       t == extdeps.firmware.types.BmcController && m.major == 3 && m.minor == 22
-    FirmwareApplicable => false
-    FirmwarePrerequisiteUnmet { target: _, minimum: _, observed: _ } => false
+    extdeps.firmware.types.FirmwareApplicable => false
+    extdeps.firmware.types.FirmwarePrerequisiteUnmet { target: _, minimum: _, observed: _ } => false
   }
 }
 
@@ -25,13 +25,13 @@ test fn unreadable_target_version_refuses_rather_than_assuming() -> Bool {
 // 3.22.00. Unmet, and the verdict carries the observed version so the refusal
 // can say what it saw rather than only that it refused.
 test fn the_srv3_push_is_refused_by_the_catalog() -> Bool {
-  match firmware_release_applicability(
+  match extdeps.firmware.types.firmware_release_applicability(
     prerequisite: asrock_altrad8ud_bios_3_10_openbmc_release.prerequisite,
     observed: v2.std.optional.Present {
-      value: firmware_semantic_version(major: 2, minor: 7, patch: 0),
+      value: extdeps.firmware.types.firmware_semantic_version(major: 2, minor: 7, patch: 0),
     },
   ) {
-    FirmwarePrerequisiteUnmet { target: _, minimum: _, observed: o } =>
+    extdeps.firmware.types.FirmwarePrerequisiteUnmet { target: _, minimum: _, observed: o } =>
       o.major == 2 && o.minor == 7
     _ => false
   }
@@ -39,13 +39,13 @@ test fn the_srv3_push_is_refused_by_the_catalog() -> Bool {
 
 // Positive control: the srv4 push, same bytes, same row, accepted.
 test fn the_srv4_push_is_admitted_by_the_catalog() -> Bool {
-  match firmware_release_applicability(
+  match extdeps.firmware.types.firmware_release_applicability(
     prerequisite: asrock_altrad8ud_bios_3_10_openbmc_release.prerequisite,
     observed: v2.std.optional.Present {
-      value: firmware_semantic_version(major: 3, minor: 22, patch: 0),
+      value: extdeps.firmware.types.firmware_semantic_version(major: 3, minor: 22, patch: 0),
     },
   ) {
-    FirmwareApplicable => true
+    extdeps.firmware.types.FirmwareApplicable => true
     _ => false
   }
 }
@@ -55,13 +55,13 @@ test fn the_srv4_push_is_admitted_by_the_catalog() -> Bool {
 // version is also a real catalogued image for this board, so this is a push
 // someone could actually attempt.
 test fn a_higher_major_with_lower_minor_is_still_unmet() -> Bool {
-  match firmware_release_applicability(
+  match extdeps.firmware.types.firmware_release_applicability(
     prerequisite: asrock_altrad8ud_bios_3_10_openbmc_release.prerequisite,
     observed: v2.std.optional.Present {
-      value: firmware_semantic_version(major: 3, minor: 6, patch: 0),
+      value: extdeps.firmware.types.firmware_semantic_version(major: 3, minor: 6, patch: 0),
     },
   ) {
-    FirmwarePrerequisiteUnmet { target: _, minimum: _, observed: o } =>
+    extdeps.firmware.types.FirmwarePrerequisiteUnmet { target: _, minimum: _, observed: o } =>
       o.major == 3 && o.minor == 6
     _ => false
   }
@@ -72,11 +72,11 @@ test fn a_higher_major_with_lower_minor_is_still_unmet() -> Bool {
 // version is unreadable — the exact input that refuses on the tar row above.
 // Same observation, opposite verdict, because the packaging differs.
 test fn the_rom_packaging_is_applicable_with_no_readable_bmc_version() -> Bool {
-  match firmware_release_applicability(
+  match extdeps.firmware.types.firmware_release_applicability(
     prerequisite: asrock_altrad8ud_bios_3_10_instant_flash_release.prerequisite,
     observed: v2.std.optional.Absent,
   ) {
-    FirmwareApplicable => true
+    extdeps.firmware.types.FirmwareApplicable => true
     _ => false
   }
 }
@@ -95,12 +95,12 @@ data srv4_e588_signature: gunbc.host_boot_supervision.HostBootStallSignature = g
 // loop's PERIOD never decides this — a 306-second cycle looks identical whether
 // or not a 306-second timeout causes it. Only the intervention discriminates.
 test fn loop_persisting_after_supervisor_stop_is_host_self_reset() -> Bool {
-  match host_boot_loop_cause(
+  match gunbc.host_boot_supervision.host_boot_loop_cause(
     signature: srv4_e588_signature,
     supervisor_stopped: true,
     looped_after_stop: true,
   ) {
-    HostSelfResetOnError { code: c } => c == "E588"
+    gunbc.host_boot_supervision.HostSelfResetOnError { code: c } => c == "E588"
     _ => false
   }
 }
@@ -110,15 +110,15 @@ test fn loop_persisting_after_supervisor_stop_is_host_self_reset() -> Bool {
 // while the watchdog theory looked plausible, and the function must not
 // resolve it — the discriminating fact is the intervention, not the signature.
 test fn the_same_signature_without_the_intervention_is_confounded() -> Bool {
-  match host_boot_loop_cause(
+  match gunbc.host_boot_supervision.host_boot_loop_cause(
     signature: srv4_e588_signature,
     supervisor_stopped: false,
     looped_after_stop: false,
   ) {
-    LoopCauseConfounded { candidates: _ } => true
-    HostSelfResetOnError { code: _ } => false
-    SupervisorForcedReset { supervisor: _ } => false
-    LoopCauseUnobserved => false
+    gunbc.host_boot_supervision.LoopCauseConfounded { candidates: _ } => true
+    gunbc.host_boot_supervision.HostSelfResetOnError { code: _ } => false
+    gunbc.host_boot_supervision.SupervisorForcedReset { supervisor: _ } => false
+    gunbc.host_boot_supervision.LoopCauseUnobserved => false
   }
 }
 
@@ -127,7 +127,7 @@ test fn the_same_signature_without_the_intervention_is_confounded() -> Bool {
 // nothing left to attribute to, so the answer is Unobserved rather than a
 // supervisor verdict inferred from silence.
 test fn no_error_code_after_a_clean_stop_is_unobserved_not_attributed() -> Bool {
-  match host_boot_loop_cause(
+  match gunbc.host_boot_supervision.host_boot_loop_cause(
     signature: gunbc.host_boot_supervision.HostBootStallSignature {
       host: "srv4",
       last_checkpoint: "P012",
@@ -138,7 +138,7 @@ test fn no_error_code_after_a_clean_stop_is_unobserved_not_attributed() -> Bool 
     supervisor_stopped: true,
     looped_after_stop: true,
   ) {
-    LoopCauseUnobserved => true
+    gunbc.host_boot_supervision.LoopCauseUnobserved => true
     _ => false
   }
 }

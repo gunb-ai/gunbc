@@ -4,25 +4,25 @@ module extdeps.os.macos
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "developer.apple.com/documentation/macos-release-notes/macos-15-release-notes"
   }
 }
 
 data sequoia_15_catalog: std.os.types.MacosDistributionCatalogRow = std.os.types.MacosDistributionCatalogRow {
-  distribution: Sequoia15,
+  distribution: std.os.types.Sequoia15,
   release_label: "macOS 15 Sequoia",
 
   darwin_version: none,
 
-  package_manager: HomebrewDeFacto,
-  libc: LibSystem,
+  package_manager: std.os.types.HomebrewDeFacto,
+  libc: std.os.types.LibSystem,
   libc_version: none,
   annual_release_label: "15",
 }
 
 fn macos_distribution_catalog_row(distro: std.os.types.MacosDistribution) -> std.os.types.MacosDistributionCatalogRow {
   match distro {
-    Sequoia15 => sequoia_15_catalog
+    std.os.types.Sequoia15 => sequoia_15_catalog
   }
 }

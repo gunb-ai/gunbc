@@ -1,4 +1,4 @@
 module test.fixture.decl_facts_reflection.ambiguous_specimen
 
 
-data ambiguous_arm_specimen: test.fixture.decl_facts_reflection.ambiguous_shared_a.SharedBareArm = test.fixture.decl_facts_reflection.ambiguous_shared_a.SharedArm
+data ambiguous_arm_specimen: test.fixture.decl_facts_reflection.ambiguous_shared_a.SharedBareArm = SharedArm

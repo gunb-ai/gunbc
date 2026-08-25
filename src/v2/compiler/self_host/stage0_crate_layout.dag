@@ -14,8 +14,8 @@ data stage0_crate_layout_carve_out_note: String = "CARVED OUT of v2.compiler.sel
 
 type SeedRetainedIntrinsicRegistration {
   basename: String
-  has_pub_mod: v2.std.logic.Bool
-  is_dir: v2.std.logic.Bool
+  has_pub_mod: Bool
+  is_dir: Bool
 }
 
 type SeedRetainedScaffoldRegistration {
@@ -71,7 +71,6 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "data_initializer_identity", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "shared_typecheck_store", has_pub_mod: true, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "source_closure", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "recorded_fixture", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "phase_profile", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "pre_push", has_pub_mod: false, is_dir: false },
@@ -305,5 +304,5 @@ fn wet_actuator_generated_stage0_files() -> List<String> {
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch }
 }

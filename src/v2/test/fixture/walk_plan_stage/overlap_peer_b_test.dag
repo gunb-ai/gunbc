@@ -2,5 +2,5 @@ module v2.test.fixture.walk_plan_stage.overlap_peer_b
 
 
 test fn walk_plan_stage_overlap_peer_b_holds() -> Bool {
-  walk_plan_stage_overlap_record_peer(peer: OverlapPeerB)
+  v2.test.fixture.walk_plan_stage.overlap_coordination.walk_plan_stage_overlap_record_peer(peer: v2.test.fixture.walk_plan_stage.overlap_coordination.OverlapPeerB)
 }

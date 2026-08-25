@@ -1,7 +1,7 @@
 module v2.test.claim.bash_build_round_trip
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data bash_build_round_trip_cmd_echo_hi_golden: String = "'echo' 'hi'"
 data bash_build_round_trip_assign_foo_golden: String = "FOO='bar'"
@@ -10,18 +10,18 @@ data bash_build_round_trip_and_then_golden: String = "'true' && 'false'"
 data bash_build_round_trip_pipe_golden: String = "'echo' 'hi' | 'wc' '-c'"
 
 fn bash_build_round_trip_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_absent()
+  v2.std.optional.optional_absent()
 }
 
 fn bash_build_round_trip_emit_matches_golden(
   emitted: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel,
   golden: String
-) -> v2.std.logic.Bool {
-  match target_serialize_source_from_model(target: target, emitted: emitted) {
-    Accepted { value: source, diagnostics: d } =>
+) -> Bool {
+  match v2.compiler.translate.target_serialize_source_from_model(target: target, emitted: emitted) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == golden) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -29,18 +29,18 @@ fn bash_build_round_trip_via_emit_matches_golden(
   emitted: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel,
   golden: String
-) -> v2.std.logic.Bool {
+) -> Bool {
   let tree = v2.compiler.inferred_tree.InferredTree {
     root: emitted,
-    facts: std.algebra.PartialFunction { lookup: bash_build_round_trip_facts_lookup }
+    facts: PartialFunction { lookup: bash_build_round_trip_facts_lookup }
   }
   match v2.compiler.emit.emit(tree: tree, target: target) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       match d {
-        None => source.carried == golden
+        v2.std.diagnostic.None => source.carried == golden
         Some { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -50,7 +50,7 @@ fn bash_build_round_trip_target_for(
   production_binding: v2.std.node.Symbol,
   rule_name: v2.std.node.Symbol
 ) -> Witness<v2.std.compilers.target_model.TargetModel> {
-  bash_fold_target_model_for_emitted_witness(
+  v2.extdeps.languages.bash_command_fold.bash_fold_target_model_for_emitted_witness(
     emitted: emitted,
     source_literal: ^bash_fold_dynamic_source_literal,
     source_text: source_text,
@@ -59,64 +59,64 @@ fn bash_build_round_trip_target_for(
   )
 }
 
-fn bash_build_round_trip_command_echo_hi_holds() -> v2.std.logic.Bool {
-  let emitted = bash_build_command_from_lits(lits: ["echo", "hi"])
+fn bash_build_round_trip_command_echo_hi_holds() -> Bool {
+  let emitted = v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["echo", "hi"])
   match bash_build_round_trip_target_for(
     emitted: emitted,
     source_text: bash_build_round_trip_cmd_echo_hi_golden,
     production_binding: ^bash_production_fold_command,
     rule_name: ^bash_relation_rule_fold_command
   ) {
-    Holds { value: target } =>
+    v2.std.witness.Holds { value: target } =>
       bash_build_round_trip_emit_matches_golden(
         emitted: emitted,
         target: target,
         golden: bash_build_round_trip_cmd_echo_hi_golden
       )
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_build_round_trip_assign_foo_bar_holds() -> v2.std.logic.Bool {
-  let emitted = bash_build_assign_lit(name: "FOO", text: "bar")
+test fn bash_build_round_trip_assign_foo_bar_holds() -> Bool {
+  let emitted = v2.extdeps.languages.bash_build.bash_build_assign_lit(name: "FOO", text: "bar")
   match bash_build_round_trip_target_for(
     emitted: emitted,
     source_text: bash_build_round_trip_assign_foo_golden,
     production_binding: ^bash_production_fold_assign,
     rule_name: ^bash_relation_rule_fold_assign
   ) {
-    Holds { value: target } =>
+    v2.std.witness.Holds { value: target } =>
       bash_build_round_trip_via_emit_matches_golden(
         emitted: emitted,
         target: target,
         golden: bash_build_round_trip_assign_foo_golden
       )
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_build_round_trip_exit_42_holds() -> v2.std.logic.Bool {
-  let emitted = bash_build_exit(code: "42")
+test fn bash_build_round_trip_exit_42_holds() -> Bool {
+  let emitted = v2.extdeps.languages.bash_build.bash_build_exit(code: "42")
   match bash_build_round_trip_target_for(
     emitted: emitted,
     source_text: bash_build_round_trip_exit_42_golden,
     production_binding: ^bash_production_fold_exit,
     rule_name: ^bash_relation_rule_fold_exit
   ) {
-    Holds { value: target } =>
+    v2.std.witness.Holds { value: target } =>
       bash_build_round_trip_emit_matches_golden(
         emitted: emitted,
         target: target,
         golden: bash_build_round_trip_exit_42_golden
       )
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_build_round_trip_and_then_holds() -> v2.std.logic.Bool {
-  let emitted = bash_build_and_then(
-    left: bash_fold_cmd_true_emitted,
-    right: bash_fold_cmd_false_emitted
+test fn bash_build_round_trip_and_then_holds() -> Bool {
+  let emitted = v2.extdeps.languages.bash_build.bash_build_and_then(
+    left: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_true_emitted,
+    right: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_false_emitted
   )
   match bash_build_round_trip_target_for(
     emitted: emitted,
@@ -124,20 +124,20 @@ test fn bash_build_round_trip_and_then_holds() -> v2.std.logic.Bool {
     production_binding: ^bash_production_fold_and_then,
     rule_name: ^bash_relation_rule_fold_and_then
   ) {
-    Holds { value: target } =>
+    v2.std.witness.Holds { value: target } =>
       bash_build_round_trip_emit_matches_golden(
         emitted: emitted,
         target: target,
         golden: bash_build_round_trip_and_then_golden
       )
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_build_round_trip_pipe_holds() -> v2.std.logic.Bool {
-  let emitted = bash_build_pipe(
-    left: bash_build_command_from_lits(lits: ["echo", "hi"]),
-    right: bash_fold_cmd_wc_minus_c_emitted
+test fn bash_build_round_trip_pipe_holds() -> Bool {
+  let emitted = v2.extdeps.languages.bash_build.bash_build_pipe(
+    left: v2.extdeps.languages.bash_build.bash_build_command_from_lits(lits: ["echo", "hi"]),
+    right: v2.extdeps.languages.bash_command_fold.bash_fold_cmd_wc_minus_c_emitted
   )
   match bash_build_round_trip_target_for(
     emitted: emitted,
@@ -145,17 +145,17 @@ test fn bash_build_round_trip_pipe_holds() -> v2.std.logic.Bool {
     production_binding: ^bash_production_fold_pipe,
     rule_name: ^bash_relation_rule_fold_pipe
   ) {
-    Holds { value: target } =>
+    v2.std.witness.Holds { value: target } =>
       bash_build_round_trip_emit_matches_golden(
         emitted: emitted,
         target: target,
         golden: bash_build_round_trip_pipe_golden
       )
-    Violates { diagnostic: _ } => false
+    v2.std.witness.Violates { diagnostic: _ } => false
   }
 }
 
-test fn bash_build_round_trip_command_tier_holds() -> v2.std.logic.Bool {
+test fn bash_build_round_trip_command_tier_holds() -> Bool {
   bash_build_round_trip_command_echo_hi_holds()
 }
 

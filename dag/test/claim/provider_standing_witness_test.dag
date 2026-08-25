@@ -3,23 +3,23 @@ module test.claim.provider_standing_witness
 
 test fn witness_limit_warning_does_not_block_selection() -> Bool {
   let bundle = gunbc.provider_standing.ProviderStandingBundle {
-    installation: InstallationReady,
-    authentication: AuthenticationAuthenticated,
-    entitlement: EntitlementObservedAvailable,
+    installation: gunbc.provider_standing.InstallationReady,
+    authentication: gunbc.provider_standing.AuthenticationAuthenticated,
+    entitlement: gunbc.provider_standing.EntitlementObservedAvailable,
     limits: [
       gunbc.provider_standing.LimitWarning {
-        subject: gunbc.provider_standing.ProviderAccountLimit { credential: LimitCredentialUnspecified },
+        subject: gunbc.provider_standing.ProviderAccountLimit { credential: gunbc.provider_standing.LimitCredentialUnspecified },
         native_token: "seven_day_opus" as std.types.NonEmptyStr,
-        utilization_basis_points: basis_point(count: 9500),
+        utilization_basis_points: std.measure.basis_point(count: 9500),
       },
     ],
-    turn: TurnNotStarted,
-    tool_environment: ToolEnvironmentReady,
+    turn: gunbc.provider_standing.TurnNotStarted,
+    tool_environment: gunbc.provider_standing.ToolEnvironmentReady,
   }
-  provider_standing_is_selection_eligible(
-    standing: provider_standing_from_fixture_bundle(
+  gunbc.provider_standing.provider_standing_is_selection_eligible(
+    standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: ClaudeCliProvider,
+        kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "claude" as std.types.NonEmptyStr,
         observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -29,35 +29,35 @@ test fn witness_limit_warning_does_not_block_selection() -> Bool {
       },
       bundle: bundle,
     ),
-    draw: LimitDispatchDrawAutomatic,
+    draw: gunbc.provider_standing.LimitDispatchDrawAutomatic,
   )
 }
 
 test fn witness_model_limit_rejection_does_not_block_account_selection() -> Bool {
   let bundle = gunbc.provider_standing.ProviderStandingBundle {
-    installation: InstallationReady,
-    authentication: AuthenticationAuthenticated,
-    entitlement: EntitlementObservedAvailable,
+    installation: gunbc.provider_standing.InstallationReady,
+    authentication: gunbc.provider_standing.AuthenticationAuthenticated,
+    entitlement: gunbc.provider_standing.EntitlementObservedAvailable,
     limits: [
       gunbc.provider_standing.LimitRejected {
         subject: gunbc.provider_standing.ProviderModelLimit {
-          credential: LimitCredentialUnspecified,
+          credential: gunbc.provider_standing.LimitCredentialUnspecified,
           model: "fable" as std.types.NonEmptyStr,
         },
         native_token: "fable" as std.types.NonEmptyStr,
         reason: "fable bucket rejected" as std.types.NonEmptyStr,
       },
       gunbc.provider_standing.LimitObservedAvailable {
-        subject: gunbc.provider_standing.ProviderAccountLimit { credential: LimitCredentialUnspecified },
+        subject: gunbc.provider_standing.ProviderAccountLimit { credential: gunbc.provider_standing.LimitCredentialUnspecified },
       },
     ],
-    turn: TurnNotStarted,
-    tool_environment: ToolEnvironmentReady,
+    turn: gunbc.provider_standing.TurnNotStarted,
+    tool_environment: gunbc.provider_standing.ToolEnvironmentReady,
   }
-  provider_standing_is_selection_eligible(
-    standing: provider_standing_from_fixture_bundle(
+  gunbc.provider_standing.provider_standing_is_selection_eligible(
+    standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: ClaudeCliProvider,
+        kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "claude" as std.types.NonEmptyStr,
         observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -68,7 +68,7 @@ test fn witness_model_limit_rejection_does_not_block_account_selection() -> Bool
       bundle: bundle,
     ),
     draw: gunbc.provider_standing.LimitDispatchDrawModel {
-      credential: LimitCredentialUnspecified,
+      credential: gunbc.provider_standing.LimitCredentialUnspecified,
       model: "opus" as std.types.NonEmptyStr,
     },
   )
@@ -76,28 +76,28 @@ test fn witness_model_limit_rejection_does_not_block_account_selection() -> Bool
 
 test fn witness_claude_native_bucket_exhaustion_blocks_model_draw() -> Bool {
   let bundle = gunbc.provider_standing.ProviderStandingBundle {
-    installation: InstallationReady,
-    authentication: AuthenticationAuthenticated,
-    entitlement: EntitlementObservedAvailable,
+    installation: gunbc.provider_standing.InstallationReady,
+    authentication: gunbc.provider_standing.AuthenticationAuthenticated,
+    entitlement: gunbc.provider_standing.EntitlementObservedAvailable,
     limits: [
       gunbc.provider_standing.LimitExhausted {
         subject: gunbc.provider_standing.ProviderNativeLimitBucket {
-          credential: LimitCredentialUnspecified,
+          credential: gunbc.provider_standing.LimitCredentialUnspecified,
           native_key: "seven_day_opus" as std.types.NonEmptyStr,
         },
         native_token: "seven_day_opus" as std.types.NonEmptyStr,
       },
       gunbc.provider_standing.LimitObservedAvailable {
-        subject: gunbc.provider_standing.ProviderAccountLimit { credential: LimitCredentialUnspecified },
+        subject: gunbc.provider_standing.ProviderAccountLimit { credential: gunbc.provider_standing.LimitCredentialUnspecified },
       },
     ],
-    turn: TurnNotStarted,
-    tool_environment: ToolEnvironmentReady,
+    turn: gunbc.provider_standing.TurnNotStarted,
+    tool_environment: gunbc.provider_standing.ToolEnvironmentReady,
   }
-  !provider_standing_is_selection_eligible(
-    standing: provider_standing_from_fixture_bundle(
+  !gunbc.provider_standing.provider_standing_is_selection_eligible(
+    standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: ClaudeCliProvider,
+        kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "claude" as std.types.NonEmptyStr,
         observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -108,7 +108,7 @@ test fn witness_claude_native_bucket_exhaustion_blocks_model_draw() -> Bool {
       bundle: bundle,
     ),
     draw: gunbc.provider_standing.LimitDispatchDrawModel {
-      credential: LimitCredentialUnspecified,
+      credential: gunbc.provider_standing.LimitCredentialUnspecified,
       model: "opus" as std.types.NonEmptyStr,
     },
   )
@@ -118,28 +118,28 @@ test fn witness_model_limit_rejection_does_not_block_unspecified_draw() -> Bool 
   let limits = [
     gunbc.provider_standing.LimitRejected {
       subject: gunbc.provider_standing.ProviderModelLimit {
-        credential: LimitCredentialUnspecified,
+        credential: gunbc.provider_standing.LimitCredentialUnspecified,
         model: "fable" as std.types.NonEmptyStr,
       },
       native_token: "fable" as std.types.NonEmptyStr,
       reason: "fable bucket rejected" as std.types.NonEmptyStr,
     },
     gunbc.provider_standing.LimitObservedAvailable {
-      subject: gunbc.provider_standing.ProviderAccountLimit { credential: LimitCredentialUnspecified },
+      subject: gunbc.provider_standing.ProviderAccountLimit { credential: gunbc.provider_standing.LimitCredentialUnspecified },
     },
   ]
-  limit_observations_are_selection_eligible(
+  gunbc.provider_standing.limit_observations_are_selection_eligible(
     observations: limits,
-    draw: LimitDispatchDrawUnspecified,
+    draw: gunbc.provider_standing.LimitDispatchDrawUnspecified,
   )
 }
 
 test fn witness_unspecified_draw_refuses_selection_eligibility() -> Bool {
-  let bundle = fixture_standing_bundle_authenticated_available()
-  !provider_standing_is_selection_eligible(
-    standing: provider_standing_from_fixture_bundle(
+  let bundle = gunbc.provider_standing.fixture_standing_bundle_authenticated_available()
+  !gunbc.provider_standing.provider_standing_is_selection_eligible(
+    standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: ClaudeCliProvider,
+        kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "claude" as std.types.NonEmptyStr,
         observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -149,32 +149,32 @@ test fn witness_unspecified_draw_refuses_selection_eligibility() -> Bool {
       },
       bundle: bundle,
     ),
-    draw: LimitDispatchDrawUnspecified,
+    draw: gunbc.provider_standing.LimitDispatchDrawUnspecified,
   )
 }
 
 test fn witness_native_bucket_rejection_blocks_automatic_draw() -> Bool {
   let bundle = gunbc.provider_standing.ProviderStandingBundle {
-    installation: InstallationReady,
-    authentication: AuthenticationAuthenticated,
-    entitlement: EntitlementObservedAvailable,
+    installation: gunbc.provider_standing.InstallationReady,
+    authentication: gunbc.provider_standing.AuthenticationAuthenticated,
+    entitlement: gunbc.provider_standing.EntitlementObservedAvailable,
     limits: [
       gunbc.provider_standing.LimitRejected {
         subject: gunbc.provider_standing.ProviderNativeLimitBucket {
-          credential: LimitCredentialUnspecified,
+          credential: gunbc.provider_standing.LimitCredentialUnspecified,
           native_key: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
         },
         native_token: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
         reason: "rate_limit_reached" as std.types.NonEmptyStr,
       },
     ],
-    turn: TurnNotStarted,
-    tool_environment: ToolEnvironmentReady,
+    turn: gunbc.provider_standing.TurnNotStarted,
+    tool_environment: gunbc.provider_standing.ToolEnvironmentReady,
   }
-  !provider_standing_is_selection_eligible(
-    standing: provider_standing_from_fixture_bundle(
+  !gunbc.provider_standing.provider_standing_is_selection_eligible(
+    standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: CodexCliProvider,
+        kind: extdeps.llm.cli_lifecycle.CodexCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "codex" as std.types.NonEmptyStr,
         observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -184,36 +184,36 @@ test fn witness_native_bucket_rejection_blocks_automatic_draw() -> Bool {
       },
       bundle: bundle,
     ),
-    draw: LimitDispatchDrawAutomatic,
+    draw: gunbc.provider_standing.LimitDispatchDrawAutomatic,
   )
 }
 
 test fn witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfox_admitted() -> Bool {
   let bundle = gunbc.provider_standing.ProviderStandingBundle {
-    installation: InstallationReady,
-    authentication: AuthenticationAuthenticated,
-    entitlement: EntitlementObservedAvailable,
+    installation: gunbc.provider_standing.InstallationReady,
+    authentication: gunbc.provider_standing.AuthenticationAuthenticated,
+    entitlement: gunbc.provider_standing.EntitlementObservedAvailable,
     limits: [
       gunbc.provider_standing.LimitExhausted {
         subject: gunbc.provider_standing.ProviderNativeLimitBucket {
-          credential: LimitCredentialUnspecified,
+          credential: gunbc.provider_standing.LimitCredentialUnspecified,
           native_key: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
         },
         native_token: extdeps.llm.codex_app_server.codex_default_rate_limit_id,
       },
       gunbc.provider_standing.LimitObservedAvailable {
         subject: gunbc.provider_standing.ProviderNativeLimitBucket {
-          credential: LimitCredentialUnspecified,
-          native_key: codex_bengalfox_rate_limit_id,
+          credential: gunbc.provider_standing.LimitCredentialUnspecified,
+          native_key: extdeps.llm.codex_app_server.codex_bengalfox_rate_limit_id,
         },
       },
     ],
-    turn: TurnNotStarted,
-    tool_environment: ToolEnvironmentReady,
+    turn: gunbc.provider_standing.TurnNotStarted,
+    tool_environment: gunbc.provider_standing.ToolEnvironmentReady,
   }
-  let standing = provider_standing_from_fixture_bundle(
+  let standing = gunbc.provider_standing.provider_standing_from_fixture_bundle(
     provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-      kind: CodexCliProvider,
+      kind: extdeps.llm.cli_lifecycle.CodexCliProvider,
       host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       executable: "codex" as std.types.NonEmptyStr,
       observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -223,33 +223,33 @@ test fn witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfo
     },
     bundle: bundle,
   )
-  !provider_standing_is_selection_eligible(
+  !gunbc.provider_standing.provider_standing_is_selection_eligible(
     standing: standing,
-    draw: LimitDispatchDrawAutomatic,
+    draw: gunbc.provider_standing.LimitDispatchDrawAutomatic,
   )
-    && provider_standing_is_selection_eligible(
+    && gunbc.provider_standing.provider_standing_is_selection_eligible(
       standing: standing,
       draw: gunbc.provider_standing.LimitDispatchDrawNativeBucket {
-        credential: LimitCredentialUnspecified,
-        native_key: codex_bengalfox_rate_limit_id,
+        credential: gunbc.provider_standing.LimitCredentialUnspecified,
+        native_key: extdeps.llm.codex_app_server.codex_bengalfox_rate_limit_id,
       },
     )
 }
 
 test fn witness_unobserved_standing_is_ineligible() -> Bool {
-  !provider_standing_is_selection_eligible(
+  !gunbc.provider_standing.provider_standing_is_selection_eligible(
     standing: gunbc.provider_standing.ProviderStandingUnobserved {
       reason: "inventory row is declared, not observed at selection time" as std.types.NonEmptyStr,
     },
-    draw: LimitDispatchDrawAutomatic,
+    draw: gunbc.provider_standing.LimitDispatchDrawAutomatic,
   )
 }
 
 test fn witness_cursor_capability_gap_is_eligible() -> Bool {
-  provider_standing_is_selection_eligible(
-    standing: provider_standing_from_fixture_bundle(
+  gunbc.provider_standing.provider_standing_is_selection_eligible(
+    standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: CodexCliProvider,
+        kind: extdeps.llm.cli_lifecycle.CodexCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "cursor-agent" as std.types.NonEmptyStr,
         observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -257,19 +257,19 @@ test fn witness_cursor_capability_gap_is_eligible() -> Bool {
         credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
-      bundle: fixture_standing_bundle_cursor_capability_gap(),
+      bundle: gunbc.provider_standing.fixture_standing_bundle_cursor_capability_gap(),
     ),
-    draw: LimitDispatchDrawAutomatic,
+    draw: gunbc.provider_standing.LimitDispatchDrawAutomatic,
   )
 }
 
 test fn witness_codex_unavailable_prefers_claude_over_codex() -> Bool {
-  let instance = srv1_live_dashboard_instance()
-  let inventory = fixture_inventory_codex_then_claude(
+  let instance = gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()
+  let inventory = gunbc.dispatch_selection.fixture_inventory_codex_then_claude(
     instance: instance,
-    codex_standing: provider_standing_from_fixture_bundle(
+    codex_standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: CodexCliProvider,
+        kind: extdeps.llm.cli_lifecycle.CodexCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "codex" as std.types.NonEmptyStr,
         observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -277,11 +277,11 @@ test fn witness_codex_unavailable_prefers_claude_over_codex() -> Bool {
         credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
-      bundle: fixture_standing_bundle_authenticated_unavailable_until_reset(),
+      bundle: gunbc.provider_standing.fixture_standing_bundle_authenticated_unavailable_until_reset(),
     ),
-    claude_standing: provider_standing_from_fixture_bundle(
+    claude_standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: ClaudeCliProvider,
+        kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "claude" as std.types.NonEmptyStr,
         observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -289,20 +289,20 @@ test fn witness_codex_unavailable_prefers_claude_over_codex() -> Bool {
         credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
-      bundle: fixture_standing_bundle_authenticated_available(),
+      bundle: gunbc.provider_standing.fixture_standing_bundle_authenticated_available(),
     ),
   )
-  match automatic_selection_selected_kind(inventory: inventory) {
-    Present { value: kind } => kind == ClaudeCliProvider
+  match gunbc.dispatch_selection.automatic_selection_selected_kind(inventory: inventory) {
+    Present { value: kind } => kind == extdeps.llm.cli_lifecycle.ClaudeCliProvider
     Absent => false
   }
 }
 
 test fn witness_offer_list_order_does_not_change_automatic_selection() -> Bool {
-  let instance = srv1_live_dashboard_instance()
-  let codex_standing = provider_standing_from_fixture_bundle(
+  let instance = gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()
+  let codex_standing = gunbc.provider_standing.provider_standing_from_fixture_bundle(
     provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-      kind: CodexCliProvider,
+      kind: extdeps.llm.cli_lifecycle.CodexCliProvider,
       host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       executable: "codex" as std.types.NonEmptyStr,
       observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -310,11 +310,11 @@ test fn witness_offer_list_order_does_not_change_automatic_selection() -> Bool {
       credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
     },
-    bundle: fixture_standing_bundle_authenticated_unavailable_until_reset(),
+    bundle: gunbc.provider_standing.fixture_standing_bundle_authenticated_unavailable_until_reset(),
   )
-  let claude_standing = provider_standing_from_fixture_bundle(
+  let claude_standing = gunbc.provider_standing.provider_standing_from_fixture_bundle(
     provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-      kind: ClaudeCliProvider,
+      kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
       host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       executable: "claude" as std.types.NonEmptyStr,
       observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -322,24 +322,24 @@ test fn witness_offer_list_order_does_not_change_automatic_selection() -> Bool {
       credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
     },
-    bundle: fixture_standing_bundle_authenticated_available(),
+    bundle: gunbc.provider_standing.fixture_standing_bundle_authenticated_available(),
   )
-  let codex_first = fixture_inventory_codex_then_claude(
+  let codex_first = gunbc.dispatch_selection.fixture_inventory_codex_then_claude(
     instance: instance,
     codex_standing: codex_standing,
     claude_standing: claude_standing,
   )
-  let claude_first = fixture_inventory_claude_then_codex(
+  let claude_first = gunbc.dispatch_selection.fixture_inventory_claude_then_codex(
     instance: instance,
     codex_standing: codex_standing,
     claude_standing: claude_standing,
   )
-  let codex_first_kind = automatic_selection_selected_kind(inventory: codex_first)
-  let claude_first_kind = automatic_selection_selected_kind(inventory: claude_first)
+  let codex_first_kind = gunbc.dispatch_selection.automatic_selection_selected_kind(inventory: codex_first)
+  let claude_first_kind = gunbc.dispatch_selection.automatic_selection_selected_kind(inventory: claude_first)
   match codex_first_kind {
     Present { value: a } =>
       match claude_first_kind {
-        Present { value: b } => a == b && a == ClaudeCliProvider
+        Present { value: b } => a == b && a == extdeps.llm.cli_lifecycle.ClaudeCliProvider
         Absent => false
       }
     Absent => false
@@ -347,12 +347,12 @@ test fn witness_offer_list_order_does_not_change_automatic_selection() -> Bool {
 }
 
 test fn witness_standing_ineligible_codex_selects_claude_before_resolve() -> Bool {
-  let instance = srv1_live_dashboard_instance()
-  let inventory = fixture_inventory_codex_then_claude(
+  let instance = gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()
+  let inventory = gunbc.dispatch_selection.fixture_inventory_codex_then_claude(
     instance: instance,
-    codex_standing: provider_standing_from_fixture_bundle(
+    codex_standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: CodexCliProvider,
+        kind: extdeps.llm.cli_lifecycle.CodexCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "codex" as std.types.NonEmptyStr,
         observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -360,11 +360,11 @@ test fn witness_standing_ineligible_codex_selects_claude_before_resolve() -> Boo
         credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
-      bundle: fixture_standing_bundle_authenticated_unavailable_until_reset(),
+      bundle: gunbc.provider_standing.fixture_standing_bundle_authenticated_unavailable_until_reset(),
     ),
-    claude_standing: provider_standing_from_fixture_bundle(
+    claude_standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: ClaudeCliProvider,
+        kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "claude" as std.types.NonEmptyStr,
         observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -372,24 +372,24 @@ test fn witness_standing_ineligible_codex_selects_claude_before_resolve() -> Boo
         credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
-      bundle: fixture_standing_bundle_authenticated_available(),
+      bundle: gunbc.provider_standing.fixture_standing_bundle_authenticated_available(),
     ),
   )
-  match resolve_dispatch_selection(
+  match gunbc.dispatch_selection.resolve_dispatch_selection(
     inventory: inventory,
-    request: default_provider_selection_request(),
-    node_sizing: Unsized,
+    request: gunbc.dispatch_selection.default_provider_selection_request(),
+    node_sizing: gunbc.roadmap_model.Unsized,
   ) {
-    DispatchSelectionResolved { receipt } => receipt.provider_kind == ClaudeCliProvider
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+    gunbc.dispatch_selection.DispatchSelectionResolved { receipt } => receipt.provider_kind == extdeps.llm.cli_lifecycle.ClaudeCliProvider
+    gunbc.dispatch_selection.DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 
 test fn witness_profile_present_token_absent_not_selection_eligible() -> Bool {
-  !provider_standing_is_selection_eligible(
-    standing: provider_standing_from_fixture_bundle(
+  !gunbc.provider_standing.provider_standing_is_selection_eligible(
+    standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: ClaudeCliProvider,
+        kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
@@ -407,31 +407,31 @@ test fn witness_profile_present_token_absent_not_selection_eligible() -> Bool {
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
       },
-      bundle: fixture_standing_bundle_claude_profile_present_token_absent(),
+      bundle: gunbc.provider_standing.fixture_standing_bundle_claude_profile_present_token_absent(),
     ),
-    draw: LimitDispatchDrawAutomatic,
+    draw: gunbc.provider_standing.LimitDispatchDrawAutomatic,
   )
 }
 
 test fn witness_profile_present_token_absent_not_authenticated_standing() -> Bool {
-  match fixture_standing_bundle_claude_profile_present_token_absent().authentication {
-    AuthenticationProfilePresentTokenAbsent {
+  match gunbc.provider_standing.fixture_standing_bundle_claude_profile_present_token_absent().authentication {
+    gunbc.provider_standing.AuthenticationProfilePresentTokenAbsent {
       subscription_tier: tier,
       token_source: source,
     } =>
       tier == ("claude_max" as std.types.NonEmptyStr) && source == ("none" as std.types.NonEmptyStr)
-    AuthenticationAuthenticated => false
+    gunbc.provider_standing.AuthenticationAuthenticated => false
     _ => false
   }
 }
 
 test fn witness_profile_present_token_absent_claude_skipped_for_codex() -> Bool {
-  let instance = srv1_live_dashboard_instance()
-  let inventory = fixture_inventory_codex_then_claude(
+  let instance = gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()
+  let inventory = gunbc.dispatch_selection.fixture_inventory_codex_then_claude(
     instance: instance,
-    codex_standing: provider_standing_from_fixture_bundle(
+    codex_standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: CodexCliProvider,
+        kind: extdeps.llm.cli_lifecycle.CodexCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "codex" as std.types.NonEmptyStr,
         observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -439,11 +439,11 @@ test fn witness_profile_present_token_absent_claude_skipped_for_codex() -> Bool 
         credential_storage_method: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         service_identity: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
       },
-      bundle: fixture_standing_bundle_authenticated_available(),
+      bundle: gunbc.provider_standing.fixture_standing_bundle_authenticated_available(),
     ),
-    claude_standing: provider_standing_from_fixture_bundle(
+    claude_standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: ClaudeCliProvider,
+        kind: extdeps.llm.cli_lifecycle.ClaudeCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved {
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
@@ -461,34 +461,34 @@ test fn witness_profile_present_token_absent_claude_skipped_for_codex() -> Bool 
           reason: "eager-raven-845 live claude credential home" as std.types.NonEmptyStr,
         },
       },
-      bundle: fixture_standing_bundle_claude_profile_present_token_absent(),
+      bundle: gunbc.provider_standing.fixture_standing_bundle_claude_profile_present_token_absent(),
     ),
   )
-  match automatic_selection_selected_kind(inventory: inventory) {
-    Present { value: kind } => kind == CodexCliProvider
+  match gunbc.dispatch_selection.automatic_selection_selected_kind(inventory: inventory) {
+    Present { value: kind } => kind == extdeps.llm.cli_lifecycle.CodexCliProvider
     Absent => false
   }
 }
 
 test fn witness_turn_outcome_unobserved_is_ineligible() -> Bool {
   let bundle = gunbc.provider_standing.ProviderStandingBundle {
-    installation: InstallationReady,
-    authentication: AuthenticationAuthenticated,
-    entitlement: EntitlementObservedAvailable,
+    installation: gunbc.provider_standing.InstallationReady,
+    authentication: gunbc.provider_standing.AuthenticationAuthenticated,
+    entitlement: gunbc.provider_standing.EntitlementObservedAvailable,
     limits: [
       gunbc.provider_standing.LimitObservedAvailable {
-        subject: gunbc.provider_standing.ProviderAccountLimit { credential: LimitCredentialUnspecified },
+        subject: gunbc.provider_standing.ProviderAccountLimit { credential: gunbc.provider_standing.LimitCredentialUnspecified },
       },
     ],
     turn: gunbc.provider_standing.TurnOutcomeUnobserved {
       reason: "no turn outcome observed at selection time" as std.types.NonEmptyStr,
     },
-    tool_environment: ToolEnvironmentReady,
+    tool_environment: gunbc.provider_standing.ToolEnvironmentReady,
   }
-  !provider_standing_is_selection_eligible(
-    standing: provider_standing_from_fixture_bundle(
+  !gunbc.provider_standing.provider_standing_is_selection_eligible(
+    standing: gunbc.provider_standing.provider_standing_from_fixture_bundle(
       provider: extdeps.llm.cli_lifecycle.ProviderInstance {
-        kind: CodexCliProvider,
+        kind: extdeps.llm.cli_lifecycle.CodexCliProvider,
         host: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
         executable: "codex" as std.types.NonEmptyStr,
         observed_version: extdeps.llm.cli_lifecycle.ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
@@ -498,7 +498,7 @@ test fn witness_turn_outcome_unobserved_is_ineligible() -> Bool {
       },
       bundle: bundle,
     ),
-    draw: LimitDispatchDrawAutomatic,
+    draw: gunbc.provider_standing.LimitDispatchDrawAutomatic,
   )
 }
 

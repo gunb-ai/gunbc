@@ -1,5 +1,6 @@
 module product.electrical.connectivity
 
+
 // ELECTRICAL CONNECTIVITY IS NOT A PROPERTY OF ONE PRODUCT'S CIRCUIT. These identities and the net
 // relation over them were first written inside product.compute_board.analog, the little RC specimen
 // that emits a SPICE deck, because that is where the first consumer happened to be. The copper

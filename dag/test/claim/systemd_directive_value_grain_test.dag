@@ -1,6 +1,7 @@
 module test.claim.systemd_directive_value_grain
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // WHAT THESE WITNESSES COVER, given the carrier records a residue rather than repairing one.
 //
@@ -19,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the row, so both sides move together -- and it was caught by mutating the row and watching the
 // witness stay green. The carrier's own annotation carries that receipt.
 test fn one_upstream_interface_is_named_by_two_authorities() -> Bool {
-  environment_name_authority_is_split()
+  gunbc.systemd_directive_value_grain.environment_name_authority_is_split()
 }
 
 // THE DISCRIMINATING CONTROL FOR THE PREDICATE ITSELF. Inhabitance predicates are easy to write in
@@ -27,12 +28,12 @@ test fn one_upstream_interface_is_named_by_two_authorities() -> Bool {
 // tags at named members. Without this, environment_name_authority_is_split could be satisfied by a
 // roster where every row carried the same authority and the predicate had a bug in one arm.
 test fn the_roster_carries_both_authorities_at_named_members() -> Bool {
-  (build_cache_environment_variables
+  (gunbc.systemd_directive_value_grain.build_cache_environment_variables
      |> any(v => (v.name as String) == "SCCACHE_START_SERVER"
-                   && match v.authority { ModeledUpstream => true SpelledInConsumer => false }))
-    && (build_cache_environment_variables
+                   && match v.authority { gunbc.systemd_directive_value_grain.ModeledUpstream => true gunbc.systemd_directive_value_grain.SpelledInConsumer => false }))
+    && (gunbc.systemd_directive_value_grain.build_cache_environment_variables
           |> any(v => (v.name as String) == "SCCACHE_ERROR_LOG"
-                        && match v.authority { ModeledUpstream => false SpelledInConsumer => true }))
+                        && match v.authority { gunbc.systemd_directive_value_grain.ModeledUpstream => false gunbc.systemd_directive_value_grain.SpelledInConsumer => true }))
 }
 
 // THE TRIGGER MUST STAY UNBOUND, and this is asserted rather than left to prose because the
@@ -42,8 +43,8 @@ test fn the_roster_carries_both_authorities_at_named_members() -> Bool {
 // would have to name a symbol nobody has declared. If this witness ever reds because the row was
 // bound, the question to ask is which declaration was named and whether it exists.
 test fn the_dissolution_stays_unbound_because_the_subject_survives() -> Bool {
-  match systemd_directive_value_grain_dissolution {
-    UnboundDissolution { description: d } => (d as String).contains("Environment")
-    BoundDissolution { trigger: _ } => false
+  match gunbc.systemd_directive_value_grain.systemd_directive_value_grain_dissolution {
+    std.dissolution.UnboundDissolution { description: d } => (d as String).contains("Environment")
+    std.dissolution.BoundDissolution { trigger: _ } => false
   }
 }

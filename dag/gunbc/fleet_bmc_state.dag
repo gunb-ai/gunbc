@@ -1,62 +1,62 @@
 module gunbc.fleet_bmc_state
 
 
-data srv4_bmc_fan_publication_protocol: extdeps.filesystem.linux.LinuxFilePublicationProtocol = linux_synchronized_rename_replace_publication
+data srv4_bmc_fan_publication_protocol: extdeps.filesystem.linux.LinuxFilePublicationProtocol = extdeps.filesystem.linux.linux_synchronized_rename_replace_publication
 
-data srv4_bmc_fan_projection_capability: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability = bmc_fan_policy_projection_capability(
+data srv4_bmc_fan_projection_capability: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability = gunbc.bmc_fan_projection.bmc_fan_policy_projection_capability(
   board: srv4_baseboard.catalog.model,
   firmware: srv4_bmc_firmware_observation.firmware,
   projected_curve: fleet_bmc_valid_state.fan_policy.curve,
-  projected_config_digest: altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
-  config_path: srv4_bmc_fan_observed_config_path,
-  controller_service: srv4_bmc_fan_observed_controller_service,
-  controller_zone_path: srv4_bmc_fan_observed_controller_zone_path,
-  aggregate_fan_pid_entry: srv4_bmc_fan_observed_aggregate_entry,
-  realization: srv4_bmc_fan_realization,
-  durability_capability_version: srv4_bmc_fan_durability_capability_version,
+  projected_config_digest: gunbc.bmc_fan_projection.altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
+  config_path: gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_config_path,
+  controller_service: gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_controller_service,
+  controller_zone_path: gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_controller_zone_path,
+  aggregate_fan_pid_entry: gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_aggregate_entry,
+  realization: gunbc.fleet_bmc_observation.srv4_bmc_fan_realization,
+  durability_capability_version: gunbc.fleet_bmc_observation.srv4_bmc_fan_durability_capability_version,
   publication_protocol: srv4_bmc_fan_publication_protocol,
-  durability_boundaries: [fleet_bmc_fan_graceful_restart_boundary],
-  required_tach_inputs: srv4_bmc_fan_observed_tach_inputs,
+  durability_boundaries: [gunbc.bmc_intent.fleet_bmc_fan_graceful_restart_boundary],
+  required_tach_inputs: gunbc.fleet_bmc_observation.srv4_bmc_fan_observed_tach_inputs,
 )
 
 data srv4_bmc_fan_reboot_persistence_receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt = gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt {
-  evidence_scope: HistoricalEvidenceSnapshot,
+  evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
   host: srv4_host.identity,
   perturbation_receipt_id: "srv4-bmc-graceful-restart-2026-07-30T22:53:06Z",
-  perturbation_generation: srv4_bmc_fan_perturbation_generation,
+  perturbation_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
   perturbation_capability: srv4_bmc_fan_projection_capability,
-  before: srv4_bmc_fan_convergence_receipt,
-  post_reboot_policy: srv4_bmc_fan_post_reboot_policy_observation,
+  before: gunbc.fleet_bmc_observation.srv4_bmc_fan_convergence_receipt,
+  post_reboot_policy: gunbc.fleet_bmc_observation.srv4_bmc_fan_post_reboot_policy_observation,
   reset: extdeps.bmc.types.RedfishManagerResetObservation {
     action_target: "/redfish/v1/Managers/bmc/Actions/Manager.Reset",
-    reset_type: ResetGracefulRestart,
+    reset_type: extdeps.bmc.types.ResetGracefulRestart,
     http_status: 200,
     accepted: true,
-    evidence_scope: HistoricalEvidenceSnapshot,
+    evidence_scope: extdeps.bmc.capability.HistoricalEvidenceSnapshot,
     observed_at: 1785432780000,
   },
   bmc_down_observed: true,
   bmc_returned: true,
   bmc_down_observed_at: 1785432786000,
   bmc_returned_at: 1785432956000,
-  host_power_before: On,
-  host_power_after: On,
+  host_power_before: extdeps.bmc.types.On,
+  host_power_after: extdeps.bmc.types.On,
   host_os_ssh_reachable_throughout: true,
-  pre_reboot_temp_soc: celsius(60),
-  post_reboot_temp_soc: celsius(61),
+  pre_reboot_temp_soc: std.measure.celsius(60),
+  post_reboot_temp_soc: std.measure.celsius(61),
   pre_reboot_tachs: [
-    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN1", reading: rpm(4600) },
-    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN2", reading: rpm(1200) },
-    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN3", reading: rpm(1200) },
-    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN4", reading: rpm(1200) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN1", reading: std.measure.rpm(4600) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN2", reading: std.measure.rpm(1200) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN3", reading: std.measure.rpm(1200) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN4", reading: std.measure.rpm(1200) },
   ],
   post_reboot_tachs: [
-    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN1", reading: rpm(4600) },
-    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN2", reading: rpm(1200) },
-    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN3", reading: rpm(1200) },
-    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN4", reading: rpm(1200) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN1", reading: std.measure.rpm(4600) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN2", reading: std.measure.rpm(1200) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN3", reading: std.measure.rpm(1200) },
+    gunbc.fleet_bmc_observation.BmcFanTachReceipt { sensor: "FAN4", reading: std.measure.rpm(1200) },
   ],
-  post_reboot_active_config_digest: srv4_bmc_fan_active_config_digest,
+  post_reboot_active_config_digest: gunbc.fleet_bmc_observation.srv4_bmc_fan_active_config_digest,
   post_reboot_controller_active: true,
   post_reboot_zone_failsafe_active: false,
   post_reboot_observer_exit_success: true,
@@ -64,10 +64,10 @@ data srv4_bmc_fan_reboot_persistence_receipt: gunbc.fleet_bmc_observation.BmcFan
   observed_at: 1785433000000,
 }
 
-data srv4_bmc_fan_durability_admission: gunbc.bmc_fan_projection.BmcFanDurabilityAdmission = bmc_fan_policy_projection_durability_admission(
+data srv4_bmc_fan_durability_admission: gunbc.bmc_fan_projection.BmcFanDurabilityAdmission = gunbc.bmc_fan_projection.bmc_fan_policy_projection_durability_admission(
   host: srv4_host.identity,
   capability: srv4_bmc_fan_projection_capability,
-  perturbation_generation: srv4_bmc_fan_perturbation_generation,
+  perturbation_generation: gunbc.fleet_bmc_observation.srv4_bmc_fan_perturbation_generation,
 )
 
 type BmcFanDurabilityEvidenceConstructionRefusal
@@ -100,35 +100,35 @@ type BmcFanRebootTimingReceipt
 fn bmc_fan_reboot_timing_receipt(
   receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt,
 ) -> BmcFanRebootTimingReceipt {
-  match positive_measure_count_from_int(
+  match std.measure.positive_measure_count_from_int(
     count: receipt.reset.observed_at - receipt.before.observed_at,
   ) {
-    PositiveMeasureCountRefused { cause: cause } =>
+    std.measure.PositiveMeasureCountRefused { cause: cause } =>
       BmcFanRebootTimingReceiptRefused {
         cause: DurabilityReceiptNonPositiveInterval { cause: cause },
       }
-    PositiveMeasureCountBuilt { count: started } =>
-      match positive_measure_count_from_int(
+    std.measure.PositiveMeasureCountBuilt { count: started } =>
+      match std.measure.positive_measure_count_from_int(
         count: receipt.bmc_returned_at - receipt.reset.observed_at,
       ) {
-        PositiveMeasureCountRefused { cause: cause } =>
+        std.measure.PositiveMeasureCountRefused { cause: cause } =>
           BmcFanRebootTimingReceiptRefused {
             cause: DurabilityReceiptNonPositiveInterval { cause: cause },
           }
-        PositiveMeasureCountBuilt { count: duration } =>
-          match positive_measure_count_from_int(
+        std.measure.PositiveMeasureCountBuilt { count: duration } =>
+          match std.measure.positive_measure_count_from_int(
             count: receipt.observed_at - receipt.bmc_returned_at,
           ) {
-            PositiveMeasureCountRefused { cause: cause } =>
+            std.measure.PositiveMeasureCountRefused { cause: cause } =>
               BmcFanRebootTimingReceiptRefused {
                 cause: DurabilityReceiptNonPositiveInterval { cause: cause },
               }
-            PositiveMeasureCountBuilt { count: after_completion } =>
+            std.measure.PositiveMeasureCountBuilt { count: after_completion } =>
               BmcFanRebootTimingReceiptBuilt {
                 timing: BmcFanRebootTimingBuilt {
-                  started_after_before_readback: positive_millisecond(count: started),
-                  duration: positive_millisecond(count: duration),
-                  observed_after_perturbation_completion: positive_millisecond(
+                  started_after_before_readback: std.measure.positive_millisecond(count: started),
+                  duration: std.measure.positive_millisecond(count: duration),
+                  observed_after_perturbation_completion: std.measure.positive_millisecond(
                     count: after_completion,
                   ),
                 },
@@ -141,17 +141,17 @@ fn bmc_fan_reboot_timing_receipt(
 fn bmc_fan_reboot_activation_evidence(
   receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt,
   admission: std.state_durability.StateDurabilityAdmission<product.placement_supply.HostIdentity, gunbc.bmc_fan_projection.BmcFanConfigReadbackSubject>,
-) -> StateActivationEvidence<product.placement_supply.HostIdentity, BmcFanConfigReadbackSubject> {
-  match redfish_host_power_state_continuity_verdict(
+) -> std.state_durability.StateActivationEvidence<product.placement_supply.HostIdentity, gunbc.bmc_fan_projection.BmcFanConfigReadbackSubject> {
+  match extdeps.bmc.types.redfish_host_power_state_continuity_verdict(
     power_before: receipt.host_power_before,
     power_after: receipt.host_power_after,
   ) {
-    RedfishHostPowerStateChanged { power_before: _, power_after: _ } =>
+    extdeps.bmc.types.RedfishHostPowerStateChanged { power_before: _, power_after: _ } =>
       std.state_durability.ActivationUnverified {
         reason: "host ComputerSystem PowerState did not remain On across BMC restart",
       }
-    RedfishHostPowerStateRemainedOn =>
-      if receipt.reset.reset_type == ResetGracefulRestart
+    extdeps.bmc.types.RedfishHostPowerStateRemainedOn =>
+      if receipt.reset.reset_type == extdeps.bmc.types.ResetGracefulRestart
         && receipt.reset.http_status == 200
         && receipt.reset.accepted
         && receipt.bmc_down_observed
@@ -184,7 +184,7 @@ fn bmc_fan_reboot_preservation_outcome(
   receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt,
   admission: std.state_durability.StateDurabilityAdmission<product.placement_supply.HostIdentity, gunbc.bmc_fan_projection.BmcFanConfigReadbackSubject>,
   timing: BmcFanRebootTimingBuilt,
-) -> StatePreservationOutcome<product.placement_supply.HostIdentity, BmcFanConfigReadbackSubject> {
+) -> std.state_durability.StatePreservationOutcome<product.placement_supply.HostIdentity, gunbc.bmc_fan_projection.BmcFanConfigReadbackSubject> {
   if receipt.bmc_returned {
     std.state_durability.StatePreserved {
       before: std.state_durability.StateBeforeReadbackReceipt {
@@ -225,26 +225,26 @@ fn bmc_fan_reboot_durability_evidence_refusal(
     Present { value: DurabilityReceiptDigestMismatch }
   } else {
     match receipt.reset.reset_type {
-      ResetGracefulRestart => none
-      ResetForceOff =>
+      extdeps.bmc.types.ResetGracefulRestart => none
+      extdeps.bmc.types.ResetForceOff =>
         Present {
-          value: DurabilityReceiptBoundaryMismatch { reset_type: ResetForceOff },
+          value: DurabilityReceiptBoundaryMismatch { reset_type: extdeps.bmc.types.ResetForceOff },
         }
-      ResetForceOn =>
+      extdeps.bmc.types.ResetForceOn =>
         Present {
-          value: DurabilityReceiptBoundaryMismatch { reset_type: ResetForceOn },
+          value: DurabilityReceiptBoundaryMismatch { reset_type: extdeps.bmc.types.ResetForceOn },
         }
-      ResetForceRestart =>
+      extdeps.bmc.types.ResetForceRestart =>
         Present {
-          value: DurabilityReceiptBoundaryMismatch { reset_type: ResetForceRestart },
+          value: DurabilityReceiptBoundaryMismatch { reset_type: extdeps.bmc.types.ResetForceRestart },
         }
-      ResetGracefulShutdown =>
+      extdeps.bmc.types.ResetGracefulShutdown =>
         Present {
-          value: DurabilityReceiptBoundaryMismatch { reset_type: ResetGracefulShutdown },
+          value: DurabilityReceiptBoundaryMismatch { reset_type: extdeps.bmc.types.ResetGracefulShutdown },
         }
-      ResetPowerCycle =>
+      extdeps.bmc.types.ResetPowerCycle =>
         Present {
-          value: DurabilityReceiptBoundaryMismatch { reset_type: ResetPowerCycle },
+          value: DurabilityReceiptBoundaryMismatch { reset_type: extdeps.bmc.types.ResetPowerCycle },
         }
     }
   }
@@ -254,7 +254,7 @@ fn bmc_fan_reboot_durability_evidence_built(
   receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt,
   timing: BmcFanRebootTimingBuilt,
 ) -> BmcFanDurabilityEvidenceConstruction {
-  let admission = bmc_fan_policy_projection_durability_admission(
+  let admission = gunbc.bmc_fan_projection.bmc_fan_policy_projection_durability_admission(
     host: receipt.host,
     capability: receipt.perturbation_capability,
     perturbation_generation: receipt.perturbation_generation,
@@ -265,7 +265,7 @@ fn bmc_fan_reboot_durability_evidence_built(
       perturbation: std.state_durability.StatePerturbationReceipt {
         receipt_id: receipt.perturbation_receipt_id,
         target: receipt.host,
-        boundary: fleet_bmc_fan_graceful_restart_boundary,
+        boundary: gunbc.bmc_intent.fleet_bmc_fan_graceful_restart_boundary,
         generation: receipt.perturbation_generation,
         started_after_before_readback: timing.started_after_before_readback,
         duration: timing.duration,
@@ -307,7 +307,7 @@ fn bmc_fan_durability_evidence_construction_refusal_reason(
     DurabilityReceiptBoundaryMismatch { reset_type: reset_type } =>
       concat(
         "reboot persistence receipt reset boundary is not ResetGracefulRestart: ",
-        redfish_reset_type_wire(r: reset_type) as String,
+        extdeps.bmc.types.redfish_reset_type_wire(r: reset_type) as String,
       )
     DurabilityReceiptNonPositiveInterval { cause: cause } =>
       concat(

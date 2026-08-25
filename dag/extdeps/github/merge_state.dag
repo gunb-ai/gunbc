@@ -3,7 +3,7 @@ module extdeps.github.merge_state
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/graphql/reference/enums#mergestatestatus"
   }
 }
@@ -20,8 +20,8 @@ type MergeStateStatus
 
 data merge_state_graphql_transport_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.github.merge_state", decl_name: "MergeStateStatus"),
+    ref: std.decl_ref.decl_ref(module_path: "extdeps.github.merge_state", decl_name: "MergeStateStatus"),
     reason: "MergeStateStatus|transport:graphql-only",
-    dissolution: unbound_dissolution(description: "dashboard shadow lane adds graphql transport handler when extdeps.github.graphql module lands"),
+    dissolution: std.dissolution.unbound_dissolution(description: "dashboard shadow lane adds graphql transport handler when extdeps.github.graphql module lands"),
   )
 ]

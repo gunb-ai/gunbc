@@ -3,10 +3,10 @@ module v2.test.complexity_gate.table_fixture_bind_subject_producer
 
 data table_fixture_bind_subject_producer_note: String = "Fast-lane subject producer: table fixture Arrows. Census ingest proofs live in ingested_fixture_arrows + long lane."
 
-fn table_fixture_bind_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  outcome_accepted(value: dag_bind_arrow_with_body_fixture)
+fn table_fixture_bind_arrow_with_body() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  v2.std.diagnostic.outcome_accepted(value: v2.extdeps.languages.dag.dag_bind_arrow_with_body_fixture)
 }
 
-fn table_fixture_bind_wrong_value_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  outcome_accepted(value: dag_bind_arrow_with_body_wrong_value_fixture)
+fn table_fixture_bind_wrong_value_arrow_with_body() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  v2.std.diagnostic.outcome_accepted(value: v2.extdeps.languages.dag.dag_bind_arrow_with_body_wrong_value_fixture)
 }

@@ -1,7 +1,7 @@
 module v2.lens.registry.completeness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data lens_registry_completeness_pool_roots: List<String> = ["src/v2/lens"]
 
@@ -47,33 +47,33 @@ data lens_registry_completeness_consolidated_roster: List<std.roster_frontier.Fr
   )
 ]
 
-fn string_member(xs: List<String>, x: String) -> v2.std.logic.Bool {
-  contains(xs: xs, item: x, eq: fn(a, b) { a == b })
+fn string_member(xs: List<String>, x: String) -> Bool {
+  v2.std.algebra.contains(xs: xs, item: x, eq: fn(a, b) { a == b })
 }
 
-fn lens_registry_completeness_under_nested_prefix(module_name: String) -> v2.std.logic.Bool {
-  length(xs: module_name.split(delimiter: ".")) > 3
+fn lens_registry_completeness_under_nested_prefix(module_name: String) -> Bool {
+  v2.std.algebra.length(xs: module_name.split(delimiter: ".")) > 3
 }
 
-fn lens_registry_completeness_excluded(module_name: String) -> v2.std.logic.Bool {
-  v2.lens.registry.completeness.string_member(xs: std.roster_frontier.frontier_units(rows: lens_registry_completeness_known_infra_roster), x: module_name)
-    || v2.lens.registry.completeness.string_member(xs: std.roster_frontier.frontier_units(rows: lens_registry_completeness_consolidated_roster), x: module_name)
+fn lens_registry_completeness_excluded(module_name: String) -> Bool {
+  string_member(xs: std.roster_frontier.frontier_units(rows: lens_registry_completeness_known_infra_roster), x: module_name)
+    || string_member(xs: std.roster_frontier.frontier_units(rows: lens_registry_completeness_consolidated_roster), x: module_name)
     || ends_with(s: module_name, suffix: "_test")
     || lens_registry_completeness_under_nested_prefix(module_name)
 }
 
-fn lens_registry_completeness_is_candidate(module_name: String) -> v2.std.logic.Bool {
+fn lens_registry_completeness_is_candidate(module_name: String) -> Bool {
   starts_with(s: module_name, prefix: "v2.lens.") && !lens_registry_completeness_excluded(module_name)
 }
 
 fn lens_registry_completeness_bound_module_paths() -> List<String> {
-  fold_list(
-    xs: lens_registry_v0,
+  v2.std.algebra.fold_list(
+    xs: v2.lens.registry.lens_registry_v0,
     empty: lens_registry_completeness_empty_paths,
     cons: fn(acc, entry) {
       match entry.module_path {
-        Bound { path: p } => list_snoc_item(xs: acc, item: p)
-        Unbound => acc
+        v2.lens.registry.Bound { path: p } => v2.std.algebra.list_snoc_item(xs: acc, item: p)
+        v2.lens.registry.Unbound => acc
       }
     }
   )
@@ -82,27 +82,27 @@ fn lens_registry_completeness_bound_module_paths() -> List<String> {
 fn lens_registry_completeness_unenrolled_count_from_facts(
   facts: List<v2.lens.module_graph.ModuleDeclarationFact>,
   bound_module_paths: List<String>
-) -> v2.std.integer.Int {
-  count_where(xs: facts, predicate: fn(fact) {
-    lens_registry_completeness_is_candidate(fact.module) && !v2.lens.registry.completeness.string_member(xs: bound_module_paths, x: fact.module)
+) -> Int {
+  v2.std.algebra.count_where(xs: facts, predicate: fn(fact) {
+    lens_registry_completeness_is_candidate(fact.module) && !string_member(xs: bound_module_paths, x: fact.module)
   })
 }
 
 fn lens_registry_completeness_live_facts() -> List<v2.lens.module_graph.ModuleDeclarationFact> {
-  module_declaration_facts_live(pool_roots: lens_registry_completeness_pool_roots)
+  v2.lens.module_graph.module_declaration_facts_live(pool_roots: lens_registry_completeness_pool_roots)
 }
 
-fn lens_registry_completeness_unenrolled_count() -> v2.std.integer.Int {
+fn lens_registry_completeness_unenrolled_count() -> Int {
   lens_registry_completeness_unenrolled_count_from_facts(
     facts: lens_registry_completeness_live_facts(),
     bound_module_paths: lens_registry_completeness_bound_module_paths()
   )
 }
 
-fn lens_registry_completeness_holds() -> v2.std.logic.Bool {
+fn lens_registry_completeness_holds() -> Bool {
   lens_registry_completeness_unenrolled_count() == 0
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch }
 }

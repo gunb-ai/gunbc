@@ -25,8 +25,8 @@ test fn w_severed_fixture_refuses_with_named_causes() -> Bool {
     aggregator_qualified_name: fixture_aggregator_qn,
     evaluated_roster: test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_roster()
   ) {
-    ChunkCoherenceRefused { causes } => v2.std.algebra.length(xs: causes) > 0
-    ChunkCoherenceCoherent { checked_chunk_count: _, checked_identity_count: _ } => false
+    v2.workflow.floor_expected_red_coherence.ChunkCoherenceRefused { causes } => v2.std.algebra.length(xs: causes) > 0
+    v2.workflow.floor_expected_red_coherence.ChunkCoherenceCoherent { checked_chunk_count: _, checked_identity_count: _ } => false
   }
 }
 
@@ -37,15 +37,15 @@ test fn w_severed_fixture_names_the_orphaned_identities() -> Bool {
     aggregator_qualified_name: fixture_aggregator_qn,
     evaluated_roster: test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_roster()
   ) {
-    ChunkCoherenceRefused { causes } =>
+    v2.workflow.floor_expected_red_coherence.ChunkCoherenceRefused { causes } =>
       v2.std.algebra.count_where(xs: causes, predicate: fn(c) {
         match c {
-          AuthoredIdentityMissingFromRoster { identity, source_chunk_qualified_name: _, message: _ } =>
+          v2.workflow.floor_expected_red_coherence.AuthoredIdentityMissingFromRoster { identity, source_chunk_qualified_name: _, message: _ } =>
             identity == "fixture.severed.orphaned_first" || identity == "fixture.severed.orphaned_second"
           _ => false
         }
       }) == 2
-    ChunkCoherenceCoherent { checked_chunk_count: _, checked_identity_count: _ } => false
+    v2.workflow.floor_expected_red_coherence.ChunkCoherenceCoherent { checked_chunk_count: _, checked_identity_count: _ } => false
   }
 }
 
@@ -56,15 +56,15 @@ test fn w_severed_fixture_names_the_broken_link() -> Bool {
     aggregator_qualified_name: fixture_aggregator_qn,
     evaluated_roster: test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_roster()
   ) {
-    ChunkCoherenceRefused { causes } =>
+    v2.workflow.floor_expected_red_coherence.ChunkCoherenceRefused { causes } =>
       v2.std.algebra.count_where(xs: causes, predicate: fn(c) {
         match c {
-          ChunkNotLinkedIntoAggregator { chunk_qualified_name: _, chunk_short_name, aggregator_qualified_name: _ } =>
+          v2.workflow.floor_expected_red_coherence.ChunkNotLinkedIntoAggregator { chunk_qualified_name: _, chunk_short_name, aggregator_qualified_name: _ } =>
             chunk_short_name == "severed_fixture_chunk_severed"
           _ => false
         }
       }) == 1
-    ChunkCoherenceCoherent { checked_chunk_count: _, checked_identity_count: _ } => false
+    v2.workflow.floor_expected_red_coherence.ChunkCoherenceCoherent { checked_chunk_count: _, checked_identity_count: _ } => false
   }
 }
 
@@ -75,16 +75,16 @@ test fn w_severed_fixture_refusal_message_names_the_derivation_not_an_exclusion(
     aggregator_qualified_name: fixture_aggregator_qn,
     evaluated_roster: test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_roster()
   ) {
-    ChunkCoherenceRefused { causes } =>
+    v2.workflow.floor_expected_red_coherence.ChunkCoherenceRefused { causes } =>
       v2.std.algebra.count_where(xs: causes, predicate: fn(c) {
         match c {
-          AuthoredIdentityMissingFromRoster { identity: _, source_chunk_qualified_name: _, message } =>
+          v2.workflow.floor_expected_red_coherence.AuthoredIdentityMissingFromRoster { identity: _, source_chunk_qualified_name: _, message } =>
             string_contains(s: message, pattern: "node_skeleton_authored_non_construction_atom_lexemes")
               && string_contains(s: message, pattern: "NOT to add an exclusion lexeme")
           _ => false
         }
       }) > 0
-    ChunkCoherenceCoherent { checked_chunk_count: _, checked_identity_count: _ } => false
+    v2.workflow.floor_expected_red_coherence.ChunkCoherenceCoherent { checked_chunk_count: _, checked_identity_count: _ } => false
   }
 }
 
@@ -109,8 +109,8 @@ test fn w_severed_fixture_linked_chunks_only_is_coherent() -> Bool {
     aggregator_qualified_name: fixture_aggregator_qn,
     evaluated_roster: test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_roster()
   ) {
-    ChunkCoherenceCoherent { checked_chunk_count, checked_identity_count } =>
+    v2.workflow.floor_expected_red_coherence.ChunkCoherenceCoherent { checked_chunk_count, checked_identity_count } =>
       checked_chunk_count == 2 && checked_identity_count == 3
-    ChunkCoherenceRefused { causes: _ } => false
+    v2.workflow.floor_expected_red_coherence.ChunkCoherenceRefused { causes: _ } => false
   }
 }

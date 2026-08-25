@@ -5,11 +5,11 @@ data direct_rust_door_group_algebra_note: String = "FAST lane: discriminates the
 
 fn planted_emission_rejected() -> v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation {
   v2.compiler.self_host.candidate_generation.EmissionRejected {
-    diagnostics: diagnostics_singleton(
+    diagnostics: v2.std.diagnostic.diagnostics_singleton(
       d: v2.std.diagnostic.Diagnostic {
         reason: ^direct_rust_door_group_algebra_planted_emission_refusal,
-        at: port_locus(port: ^direct_rust_door_group_algebra),
-        correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.port_locus(port: ^direct_rust_door_group_algebra),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
     )
   }
@@ -21,135 +21,135 @@ fn planted_artifact(
   closure: v2.compiler.self_host.emitter_producer_provenance.RealizedEmitterClosure,
   qualifications: List<v2.compiler.self_host.emitter_producer_provenance.EmissionQualification>
 ) -> v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation {
-  match mint_producer_emission_receipt(
+  match v2.compiler.self_host.emitter_producer_provenance.mint_producer_emission_receipt(
     module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path,
     producer: producer,
     qualifications: qualifications,
     build_result: v2.compiler.self_host.emitter_producer_provenance.BuildRefused { cause: ^direct_rust_door_group_algebra_planted_build },
-    behavioral_probe: BehavioralProbeUnbound,
+    behavioral_probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeUnbound,
     realized_closure: closure
   ) {
-    Present { value: receipt } =>
+    v2.std.optional.Present { value: receipt } =>
       v2.compiler.self_host.candidate_generation.ArtifactProduced {
         artifact: v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact {
           source: extdeps.communication.medium.Medium { carried: source_text, fidelity: extdeps.communication.medium.Lossless },
-          emitted: rust_fixture_emitted_add_fn,
+          emitted: v2.extdeps.languages.rust.rust_fixture_emitted_add_fn,
           producer_receipt: receipt
         }
       }
-    Absent => planted_emission_rejected()
+    v2.std.optional.Absent => planted_emission_rejected()
   }
 }
 
 fn planted_artifact_with_source(source_text: String) -> v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation {
   planted_artifact(
     source_text: source_text,
-    producer: V2EmitterInterpreted,
-    closure: realized_closure_for_v2_direct_rust_door_emit_run(),
-    qualifications: source_produced_qualifications
+    producer: v2.compiler.self_host.emitter_producer_provenance.V2EmitterInterpreted,
+    closure: v2.compiler.self_host.emitter_producer_provenance.realized_closure_for_v2_direct_rust_door_emit_run(),
+    qualifications: v2.compiler.self_host.emitter_producer_provenance.source_produced_qualifications
   )
 }
 
 fn missing_rule_established() -> v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorAdmission {
-  DirectRustDoorEstablished
+  v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorEstablished
 }
 
-test fn emission_rejection_makes_artifact_leaf_not_reached() -> v2.std.logic.Bool {
-  match direct_rust_door_source_fidelity_leaf(
-    group: direct_rust_door_group_from_observations(
+test fn emission_rejection_makes_artifact_leaf_not_reached() -> Bool {
+  match v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_source_fidelity_leaf(
+    group: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_group_from_observations(
       emission: planted_emission_rejected(),
       missing_rule: missing_rule_established()
     )
   ) {
-    LeafNotReached { cause: _ } => true
-    LeafEstablished => false
-    LeafRefused { cause: _ } => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafNotReached { cause: _ } => true
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafEstablished => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafRefused { cause: _ } => false
   }
 }
 
-test fn artifact_with_wrong_source_makes_leaf_refused() -> v2.std.logic.Bool {
-  match direct_rust_door_source_fidelity_leaf(
-    group: direct_rust_door_group_from_observations(
+test fn artifact_with_wrong_source_makes_leaf_refused() -> Bool {
+  match v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_source_fidelity_leaf(
+    group: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_group_from_observations(
       emission: planted_artifact_with_source(source_text: "fn not_the_expected_source() {}"),
       missing_rule: missing_rule_established()
     )
   ) {
-    LeafRefused { cause: _ } => true
-    LeafEstablished => false
-    LeafNotReached { cause: _ } => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafRefused { cause: _ } => true
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafEstablished => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafNotReached { cause: _ } => false
   }
 }
 
-test fn artifact_with_expected_source_makes_leaf_established() -> v2.std.logic.Bool {
-  match direct_rust_door_source_fidelity_leaf(
-    group: direct_rust_door_group_from_observations(
-      emission: planted_artifact_with_source(source_text: direct_rust_door_expected_source),
+test fn artifact_with_expected_source_makes_leaf_established() -> Bool {
+  match v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_source_fidelity_leaf(
+    group: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_group_from_observations(
+      emission: planted_artifact_with_source(source_text: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_expected_source),
       missing_rule: missing_rule_established()
     )
   ) {
-    LeafEstablished => true
-    LeafRefused { cause: _ } => false
-    LeafNotReached { cause: _ } => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafEstablished => true
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafRefused { cause: _ } => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafNotReached { cause: _ } => false
   }
 }
 
-test fn all_established_leaves_close_the_parent() -> v2.std.logic.Bool {
-  direct_rust_door_production_group_holds(
-    group: direct_rust_door_group_from_observations(
-      emission: planted_artifact_with_source(source_text: direct_rust_door_expected_source),
+test fn all_established_leaves_close_the_parent() -> Bool {
+  v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_production_group_holds(
+    group: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_group_from_observations(
+      emission: planted_artifact_with_source(source_text: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_expected_source),
       missing_rule: missing_rule_established()
     )
   )
 }
 
-test fn one_refused_leaf_keeps_the_parent_open() -> v2.std.logic.Bool {
-  !direct_rust_door_production_group_holds(
-    group: direct_rust_door_group_from_observations(
-      emission: planted_artifact_with_source(source_text: direct_rust_door_expected_source),
-      missing_rule: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorRefused { failure: MissingRuleAcceptedDespiteGap }
+test fn one_refused_leaf_keeps_the_parent_open() -> Bool {
+  !v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_production_group_holds(
+    group: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_group_from_observations(
+      emission: planted_artifact_with_source(source_text: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_expected_source),
+      missing_rule: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorRefused { failure: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.MissingRuleAcceptedDespiteGap }
     )
   )
 }
 
-test fn not_reached_leaf_keeps_the_parent_open() -> v2.std.logic.Bool {
-  !direct_rust_door_production_group_holds(
-    group: direct_rust_door_group_from_observations(
+test fn not_reached_leaf_keeps_the_parent_open() -> Bool {
+  !v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_production_group_holds(
+    group: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_group_from_observations(
       emission: planted_emission_rejected(),
       missing_rule: missing_rule_established()
     )
   )
 }
 
-test fn missing_rule_leaf_projects_its_admission() -> v2.std.logic.Bool {
-  let established = match direct_rust_door_missing_rule_leaf(
-    group: direct_rust_door_group_from_observations(
+test fn missing_rule_leaf_projects_its_admission() -> Bool {
+  let established = match v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_missing_rule_leaf(
+    group: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_group_from_observations(
       emission: planted_emission_rejected(),
       missing_rule: missing_rule_established()
     )
   ) {
-    LeafEstablished => true
-    LeafRefused { cause: _ } => false
-    LeafNotReached { cause: _ } => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafEstablished => true
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafRefused { cause: _ } => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafNotReached { cause: _ } => false
   }
-  let refused = match direct_rust_door_missing_rule_leaf(
-    group: direct_rust_door_group_from_observations(
+  let refused = match v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_missing_rule_leaf(
+    group: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_group_from_observations(
       emission: planted_emission_rejected(),
-      missing_rule: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorRefused { failure: MissingRuleAcceptedDespiteGap }
+      missing_rule: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorRefused { failure: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.MissingRuleAcceptedDespiteGap }
     )
   ) {
-    LeafRefused { cause: _ } => true
-    LeafEstablished => false
-    LeafNotReached { cause: _ } => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafRefused { cause: _ } => true
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafEstablished => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafNotReached { cause: _ } => false
   }
   established && refused
 }
 
 fn planted_diag() -> v2.std.diagnostic.NonEmptyDiagnostics {
-  diagnostics_singleton(
+  v2.std.diagnostic.diagnostics_singleton(
     d: v2.std.diagnostic.Diagnostic {
       reason: ^direct_rust_door_group_algebra_planted_stage_refusal,
-      at: port_locus(port: ^direct_rust_door_group_algebra),
-      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+      at: v2.std.diagnostic.port_locus(port: ^direct_rust_door_group_algebra),
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
     }
   )
 }
@@ -157,189 +157,189 @@ fn planted_diag() -> v2.std.diagnostic.NonEmptyDiagnostics {
 fn leaf_not_reached_cause_is(
   leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorLeafResult,
   wanted: v2.std.node.Symbol
-) -> v2.std.logic.Bool {
+) -> Bool {
   match leaf {
-    LeafNotReached { cause } => cause == wanted
-    LeafEstablished => false
-    LeafRefused { cause: _ } => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafNotReached { cause } => cause == wanted
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafEstablished => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafRefused { cause: _ } => false
   }
 }
 
-fn leaf_refused(leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorLeafResult) -> v2.std.logic.Bool {
+fn leaf_refused(leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorLeafResult) -> Bool {
   match leaf {
-    LeafRefused { cause: _ } => true
-    LeafEstablished => false
-    LeafNotReached { cause: _ } => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafRefused { cause: _ } => true
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafEstablished => false
+    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.LeafNotReached { cause: _ } => false
   }
 }
 
 fn group_of(emission: v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation) -> v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorProductionGroup {
-  direct_rust_door_group_from_observations(
+  v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_group_from_observations(
     emission: emission,
     missing_rule: missing_rule_established()
   )
 }
 
-test fn each_stage_rejection_names_its_own_not_reached_cause() -> v2.std.logic.Bool {
+test fn each_stage_rejection_names_its_own_not_reached_cause() -> Bool {
   leaf_not_reached_cause_is(
-    leaf: direct_rust_door_source_fidelity_leaf(
+    leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_source_fidelity_leaf(
       group: group_of(emission: v2.compiler.self_host.candidate_generation.AssemblyRejected { diagnostics: planted_diag() })
     ),
-    wanted: direct_rust_door_leaf_not_reached_assembly
+    wanted: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_leaf_not_reached_assembly
   )
     && leaf_not_reached_cause_is(
-      leaf: direct_rust_door_source_fidelity_leaf(
+      leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_source_fidelity_leaf(
         group: group_of(emission: v2.compiler.self_host.candidate_generation.InferenceRejected { diagnostics: planted_diag() })
       ),
-      wanted: direct_rust_door_leaf_not_reached_inference
+      wanted: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_leaf_not_reached_inference
     )
     && leaf_not_reached_cause_is(
-      leaf: direct_rust_door_source_fidelity_leaf(
+      leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_source_fidelity_leaf(
         group: group_of(emission: v2.compiler.self_host.candidate_generation.EmissionRejected { diagnostics: planted_diag() })
       ),
-      wanted: direct_rust_door_leaf_not_reached_emission
+      wanted: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_leaf_not_reached_emission
     )
     && leaf_not_reached_cause_is(
-      leaf: direct_rust_door_source_fidelity_leaf(
+      leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_source_fidelity_leaf(
         group: group_of(emission: v2.compiler.self_host.candidate_generation.ProducerReceiptRejected { diagnostics: planted_diag() })
       ),
-      wanted: direct_rust_door_leaf_not_reached_receipt
+      wanted: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_leaf_not_reached_receipt
     )
 }
 
-test fn wrong_producer_refuses_producer_leaf_and_not_the_seed_leaf() -> v2.std.logic.Bool {
+test fn wrong_producer_refuses_producer_leaf_and_not_the_seed_leaf() -> Bool {
   let g = group_of(
     emission: planted_artifact(
-      source_text: direct_rust_door_expected_source,
-      producer: V1SeedEmitter,
-      closure: realized_closure_for_v2_direct_rust_door_emit_run(),
-      qualifications: source_produced_qualifications
+      source_text: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_expected_source,
+      producer: v2.compiler.self_host.emitter_producer_provenance.V1SeedEmitter,
+      closure: v2.compiler.self_host.emitter_producer_provenance.realized_closure_for_v2_direct_rust_door_emit_run(),
+      qualifications: v2.compiler.self_host.emitter_producer_provenance.source_produced_qualifications
     )
   )
-  leaf_refused(leaf: direct_rust_door_producer_identity_leaf(group: g))
-    && !leaf_refused(leaf: direct_rust_door_seed_emitter_absence_leaf(group: g))
+  leaf_refused(leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_producer_identity_leaf(group: g))
+    && !leaf_refused(leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_seed_emitter_absence_leaf(group: g))
 }
 
 data seed_reachable_unmintable_note: String = "The seed-reachable-with-correct-producer world is NOT tested as a leaf refusal because it is UNCONSTRUCTIBLE: emitter_producer_mint_admission refuses V2Emitter* whenever v1.compiler.emit_rust is in the realized closure, so no such artifact can exist to project a leaf from. Asserting the wall is the honest control — a leaf test would have had to forge a receipt past the construction wall that makes the state unwritable (DESIGN 4b: the higher rung replaces the validator, it does not accumulate beside it). The seed leaf's refusal arm stays reachable for a V1SeedEmitter artifact, which the producer-identity test covers."
 
-test fn v2_producer_with_seed_reachable_closure_is_unmintable() -> v2.std.logic.Bool {
-  match mint_producer_emission_receipt(
+test fn v2_producer_with_seed_reachable_closure_is_unmintable() -> Bool {
+  match v2.compiler.self_host.emitter_producer_provenance.mint_producer_emission_receipt(
     module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path,
-    producer: V2EmitterInterpreted,
-    qualifications: source_produced_qualifications,
+    producer: v2.compiler.self_host.emitter_producer_provenance.V2EmitterInterpreted,
+    qualifications: v2.compiler.self_host.emitter_producer_provenance.source_produced_qualifications,
     build_result: v2.compiler.self_host.emitter_producer_provenance.BuildRefused { cause: ^direct_rust_door_group_algebra_planted_build },
-    behavioral_probe: BehavioralProbeUnbound,
+    behavioral_probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeUnbound,
     realized_closure: v2.compiler.self_host.emitter_producer_provenance.RealizedEmitterClosure {
       emitter_module_paths: ["v1.compiler.emit_rust"]
     }
   ) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }
 
-test fn missing_qualification_refuses_only_the_qualification_leaf() -> v2.std.logic.Bool {
+test fn missing_qualification_refuses_only_the_qualification_leaf() -> Bool {
   let g = group_of(
     emission: planted_artifact(
-      source_text: direct_rust_door_expected_source,
-      producer: V2EmitterInterpreted,
-      closure: realized_closure_for_v2_direct_rust_door_emit_run(),
+      source_text: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_expected_source,
+      producer: v2.compiler.self_host.emitter_producer_provenance.V2EmitterInterpreted,
+      closure: v2.compiler.self_host.emitter_producer_provenance.realized_closure_for_v2_direct_rust_door_emit_run(),
       qualifications: []
     )
   )
-  leaf_refused(leaf: direct_rust_door_source_produced_leaf(group: g))
-    && !leaf_refused(leaf: direct_rust_door_source_fidelity_leaf(group: g))
-    && !leaf_refused(leaf: direct_rust_door_producer_identity_leaf(group: g))
+  leaf_refused(leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_source_produced_leaf(group: g))
+    && !leaf_refused(leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_source_fidelity_leaf(group: g))
+    && !leaf_refused(leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_producer_identity_leaf(group: g))
 }
 
 data direct_rust_door_observation_projection_note: String = "THE EXECUTING CONSUMER for the first-failure observation vocabulary. Without these rows the projection would be specification-without-execution (DESIGN 5): the module's long witness was deleted as a duplicate production walk, so nothing else reaches it. These run over PLANTED groups and pay no production cost, which is the whole point — the vocabulary is exercised without reconstructing the compiler graph."
 
-test fn projection_names_the_refusing_stage() -> v2.std.logic.Bool {
-  match project_direct_rust_door_observation(
+test fn projection_names_the_refusing_stage() -> Bool {
+  match v2.compiler.self_host.direct_rust_door_observation.project_direct_rust_door_observation(
     group: group_of(emission: v2.compiler.self_host.candidate_generation.EmissionRejected { diagnostics: planted_diag() })
   ) {
-    CandidateRejected { reason: _ } => true
+    v2.compiler.self_host.direct_rust_door_observation.CandidateRejected { reason: _ } => true
     _ => false
   }
 }
 
-test fn projection_names_wrong_producer_not_seed_reachable() -> v2.std.logic.Bool {
-  match project_direct_rust_door_observation(
+test fn projection_names_wrong_producer_not_seed_reachable() -> Bool {
+  match v2.compiler.self_host.direct_rust_door_observation.project_direct_rust_door_observation(
     group: group_of(
       emission: planted_artifact(
-        source_text: direct_rust_door_expected_source,
-        producer: V1SeedEmitter,
-        closure: realized_closure_for_v2_direct_rust_door_emit_run(),
-        qualifications: source_produced_qualifications
+        source_text: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_expected_source,
+        producer: v2.compiler.self_host.emitter_producer_provenance.V1SeedEmitter,
+        closure: v2.compiler.self_host.emitter_producer_provenance.realized_closure_for_v2_direct_rust_door_emit_run(),
+        qualifications: v2.compiler.self_host.emitter_producer_provenance.source_produced_qualifications
       )
     )
   ) {
-    WrongProducer => true
+    v2.compiler.self_host.direct_rust_door_observation.WrongProducer => true
     _ => false
   }
 }
 
-test fn projection_names_source_mismatch_before_producer() -> v2.std.logic.Bool {
-  match project_direct_rust_door_observation(
+test fn projection_names_source_mismatch_before_producer() -> Bool {
+  match v2.compiler.self_host.direct_rust_door_observation.project_direct_rust_door_observation(
     group: group_of(
       emission: planted_artifact(
         source_text: "fn not_the_expected_source() {}",
-        producer: V1SeedEmitter,
-        closure: realized_closure_for_v2_direct_rust_door_emit_run(),
-        qualifications: source_produced_qualifications
+        producer: v2.compiler.self_host.emitter_producer_provenance.V1SeedEmitter,
+        closure: v2.compiler.self_host.emitter_producer_provenance.realized_closure_for_v2_direct_rust_door_emit_run(),
+        qualifications: v2.compiler.self_host.emitter_producer_provenance.source_produced_qualifications
       )
     )
   ) {
-    EmittedSourceMismatch => true
+    v2.compiler.self_host.direct_rust_door_observation.EmittedSourceMismatch => true
     _ => false
   }
 }
 
-test fn projection_establishes_on_a_fully_good_artifact() -> v2.std.logic.Bool {
-  match project_direct_rust_door_observation(
-    group: group_of(emission: planted_artifact_with_source(source_text: direct_rust_door_expected_source))
+test fn projection_establishes_on_a_fully_good_artifact() -> Bool {
+  match v2.compiler.self_host.direct_rust_door_observation.project_direct_rust_door_observation(
+    group: group_of(emission: planted_artifact_with_source(source_text: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_expected_source))
   ) {
-    DirectRustDoorSourceProduced => true
+    v2.compiler.self_host.direct_rust_door_observation.DirectRustDoorSourceProduced => true
     _ => false
   }
 }
 
-test fn observation_establishes_only_on_source_produced() -> v2.std.logic.Bool {
-  let good = project_direct_rust_door_observation(
-    group: group_of(emission: planted_artifact_with_source(source_text: direct_rust_door_expected_source))
+test fn observation_establishes_only_on_source_produced() -> Bool {
+  let good = v2.compiler.self_host.direct_rust_door_observation.project_direct_rust_door_observation(
+    group: group_of(emission: planted_artifact_with_source(source_text: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_expected_source))
   )
-  let stopped = project_direct_rust_door_observation(
+  let stopped = v2.compiler.self_host.direct_rust_door_observation.project_direct_rust_door_observation(
     group: group_of(emission: v2.compiler.self_host.candidate_generation.EmissionRejected { diagnostics: planted_diag() })
   )
-  direct_rust_door_observation_establishes(o: good)
-    && !direct_rust_door_observation_establishes(o: stopped)
+  v2.compiler.self_host.direct_rust_door_observation.direct_rust_door_observation_establishes(o: good)
+    && !v2.compiler.self_host.direct_rust_door_observation.direct_rust_door_observation_establishes(o: stopped)
 }
 
-test fn observation_candidate_rejection_names_only_the_emission_stop() -> v2.std.logic.Bool {
-  let stopped = project_direct_rust_door_observation(
+test fn observation_candidate_rejection_names_only_the_emission_stop() -> Bool {
+  let stopped = v2.compiler.self_host.direct_rust_door_observation.project_direct_rust_door_observation(
     group: group_of(emission: v2.compiler.self_host.candidate_generation.EmissionRejected { diagnostics: planted_diag() })
   )
-  let assembly = project_direct_rust_door_observation(
+  let assembly = v2.compiler.self_host.direct_rust_door_observation.project_direct_rust_door_observation(
     group: group_of(emission: v2.compiler.self_host.candidate_generation.AssemblyRejected { diagnostics: planted_diag() })
   )
-  direct_rust_door_observation_is_candidate_rejection(o: stopped)
-    && !direct_rust_door_observation_is_candidate_rejection(o: assembly)
+  v2.compiler.self_host.direct_rust_door_observation.direct_rust_door_observation_is_candidate_rejection(o: stopped)
+    && !v2.compiler.self_host.direct_rust_door_observation.direct_rust_door_observation_is_candidate_rejection(o: assembly)
 }
 
-test fn seed_reachable_closure_refuses_the_seed_absence_leaf() -> v2.std.logic.Bool {
+test fn seed_reachable_closure_refuses_the_seed_absence_leaf() -> Bool {
   let g = group_of(
     emission: planted_artifact(
-      source_text: direct_rust_door_expected_source,
-      producer: V1SeedEmitter,
+      source_text: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_expected_source,
+      producer: v2.compiler.self_host.emitter_producer_provenance.V1SeedEmitter,
       closure: v2.compiler.self_host.emitter_producer_provenance.RealizedEmitterClosure {
         emitter_module_paths: ["v1.compile", "v1.compiler.emit_rust"]
       },
-      qualifications: source_produced_qualifications
+      qualifications: v2.compiler.self_host.emitter_producer_provenance.source_produced_qualifications
     )
   )
-  leaf_refused(leaf: direct_rust_door_seed_emitter_absence_leaf(group: g))
-    && leaf_refused(leaf: direct_rust_door_producer_identity_leaf(group: g))
-    && !leaf_refused(leaf: direct_rust_door_source_fidelity_leaf(group: g))
+  leaf_refused(leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_seed_emitter_absence_leaf(group: g))
+    && leaf_refused(leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_producer_identity_leaf(group: g))
+    && !leaf_refused(leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_source_fidelity_leaf(group: g))
 }
 
 data behavioral_probe_promotion_wall_note: String = "CONTROLS for the probe/qualification admission wall (operator finding 2026-08-05). BehavioralProbeUnbound previously DESCRIBED the absence of behavioral evidence without preventing the strongest behavioral qualification from sitting beside it — mint reconciled producer against closure but not qualifications against the probe, and the behavioral advance read build result and qualifications and never looked at the probe. These rows fix both directions at once: the legal pre-behavior receipts must stay mintable (walling them would make an ordinary source-produced or cargo-green receipt unwritable, which is a worse defect than the one being closed), and the promotion must refuse through BOTH doors, direct mint and advance. The last row is the positive control: with a BOUND probe the existing advance path is still reachable, so the wall is discriminating rather than blanket. NOT claimed here: that the Boolean advance argument is itself executed evidence — that remains the separate executed-verdict obligation, and this wall only makes the Unbound state non-promotable. The negative fixture above changed WITH this wall: it used to plant behavioral_equivalent_qualifications to exercise a missing SourceProduced, which the wall now makes unmintable, so it plants an empty qualification list — still missing SourceProduced, and legal."
@@ -348,80 +348,80 @@ fn probe_mint(
   qualifications: List<v2.compiler.self_host.emitter_producer_provenance.EmissionQualification>,
   probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeBinding
 ) -> Optional<v2.compiler.self_host.emitter_producer_provenance.ProducerEmissionReceipt> {
-  mint_producer_emission_receipt(
+  v2.compiler.self_host.emitter_producer_provenance.mint_producer_emission_receipt(
     module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path,
-    producer: V2EmitterInterpreted,
+    producer: v2.compiler.self_host.emitter_producer_provenance.V2EmitterInterpreted,
     qualifications: qualifications,
     build_result: v2.compiler.self_host.emitter_producer_provenance.BuildGreen,
     behavioral_probe: probe,
-    realized_closure: realized_closure_for_v2_direct_rust_door_emit_run()
+    realized_closure: v2.compiler.self_host.emitter_producer_provenance.realized_closure_for_v2_direct_rust_door_emit_run()
   )
 }
 
 fn probe_mint_succeeds(
   qualifications: List<v2.compiler.self_host.emitter_producer_provenance.EmissionQualification>,
   probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeBinding
-) -> v2.std.logic.Bool {
+) -> Bool {
   match probe_mint(qualifications: qualifications, probe: probe) {
-    Present { value: _ } => true
-    Absent => false
+    v2.std.optional.Present { value: _ } => true
+    v2.std.optional.Absent => false
   }
 }
 
-test fn source_produced_with_unbound_probe_still_mints() -> v2.std.logic.Bool {
+test fn source_produced_with_unbound_probe_still_mints() -> Bool {
   probe_mint_succeeds(
-    qualifications: source_produced_qualifications,
-    probe: BehavioralProbeUnbound
+    qualifications: v2.compiler.self_host.emitter_producer_provenance.source_produced_qualifications,
+    probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeUnbound
   )
 }
 
-test fn cargo_green_with_unbound_probe_remains_a_legal_pre_behavior_receipt() -> v2.std.logic.Bool {
+test fn cargo_green_with_unbound_probe_remains_a_legal_pre_behavior_receipt() -> Bool {
   probe_mint_succeeds(
-    qualifications: cargo_green_qualifications,
-    probe: BehavioralProbeUnbound
+    qualifications: v2.compiler.self_host.emitter_producer_provenance.cargo_green_qualifications,
+    probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeUnbound
   )
 }
 
-test fn behavioral_equivalent_with_unbound_probe_refuses_direct_mint() -> v2.std.logic.Bool {
+test fn behavioral_equivalent_with_unbound_probe_refuses_direct_mint() -> Bool {
   !probe_mint_succeeds(
-    qualifications: behavioral_equivalent_with_cargo_qualifications,
-    probe: BehavioralProbeUnbound
+    qualifications: v2.compiler.self_host.emitter_producer_provenance.behavioral_equivalent_with_cargo_qualifications,
+    probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeUnbound
   )
 }
 
-test fn behavioral_advance_refuses_an_unbound_probe_even_when_told_true() -> v2.std.logic.Bool {
+test fn behavioral_advance_refuses_an_unbound_probe_even_when_told_true() -> Bool {
   match probe_mint(
-    qualifications: cargo_green_qualifications,
-    probe: BehavioralProbeUnbound
+    qualifications: v2.compiler.self_host.emitter_producer_provenance.cargo_green_qualifications,
+    probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeUnbound
   ) {
-    Present { value: receipt } =>
-      match advance_producer_emission_receipt_behavioral_equivalent(
+    v2.std.optional.Present { value: receipt } =>
+      match v2.compiler.self_host.emitter_producer_provenance.advance_producer_emission_receipt_behavioral_equivalent(
         prior: receipt,
         behavioral_equivalent: true
       ) {
-        Absent => true
-        Present { value: _ } => false
+        v2.std.optional.Absent => true
+        v2.std.optional.Present { value: _ } => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn behavioral_advance_still_reachable_with_a_bound_probe() -> v2.std.logic.Bool {
+test fn behavioral_advance_still_reachable_with_a_bound_probe() -> Bool {
   match probe_mint(
-    qualifications: cargo_green_qualifications,
+    qualifications: v2.compiler.self_host.emitter_producer_provenance.cargo_green_qualifications,
     probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeBound {
       entry: "src/v2/test/claim/self_host/direct_rust_door_group_algebra_test.dag",
       function: "behavioral_advance_still_reachable_with_a_bound_probe"
     }
   ) {
-    Present { value: receipt } =>
-      match advance_producer_emission_receipt_behavioral_equivalent(
+    v2.std.optional.Present { value: receipt } =>
+      match v2.compiler.self_host.emitter_producer_provenance.advance_producer_emission_receipt_behavioral_equivalent(
         prior: receipt,
         behavioral_equivalent: true
       ) {
-        Present { value: _ } => true
-        Absent => false
+        v2.std.optional.Present { value: _ } => true
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }

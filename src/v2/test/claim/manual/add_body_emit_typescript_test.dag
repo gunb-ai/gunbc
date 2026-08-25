@@ -1,7 +1,7 @@
 module v2.test.manual.add_body_emit_typescript
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data add_body_ts_emit_operand_swap_source_text: String = "function add(x: number, y: number): number { return y + x; }"
 
@@ -12,44 +12,44 @@ fn add_body_ts_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) ->
 }
 
 fn add_body_ts_add_operator_row_minus() -> v2.std.node.Node {
-  target_operator_realization_node(
-    operation: canonical_operation_op_add(),
+  v2.std.compilers.target_model.target_operator_realization_node(
+    operation: v2.std.compilers.target_model.canonical_operation_op_add(),
     shape: v2.std.compilers.target_model.InfixToken { token: ^ts_token_minus }
   )
 }
 
 fn add_body_ts_operator_catalog_minus() -> v2.std.node.Node {
-  target_operator_realizations_catalog_node(rows: [add_body_ts_add_operator_row_minus()])
+  v2.std.compilers.target_model.target_operator_realizations_catalog_node(rows: [add_body_ts_add_operator_row_minus()])
 }
 
 fn add_body_ts_operator_catalog_empty() -> v2.std.node.Node {
-  target_operator_realizations_catalog_node(rows: [])
+  v2.std.compilers.target_model.target_operator_realizations_catalog_node(rows: [])
 }
 
 fn add_body_ts_target_model_bundle(operator_catalog: v2.std.node.Node) -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Conj },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       add_body_ts_named_edge(
         name: ^target_model_edge_selection_policy,
-        target: ts_selection_policy_node()
+        target: v2.extdeps.languages.typescript.ts_selection_policy_node()
       ),
       add_body_ts_named_edge(
         name: ^target_model_edge_declared_inhabitants,
-        target: ts_add_declared_inhabitants_root()
+        target: v2.extdeps.languages.typescript.ts_add_declared_inhabitants_root()
       ),
       add_body_ts_named_edge(
         name: ^target_model_edge_translation_rules,
-        target: ts_translation_rules_node()
+        target: v2.extdeps.languages.typescript.ts_translation_rules_node()
       ),
       add_body_ts_named_edge(
         name: ^target_model_edge_serialize_source,
-        target: ts_serialize_source_node()
+        target: v2.extdeps.languages.typescript.ts_serialize_source_node()
       ),
       add_body_ts_named_edge(
         name: ^target_model_edge_value_expression_projection,
-        target: value_expr_projection_bundle_node(
-          projection: ts_value_expression_projection()
+        target: v2.std.compilers.target_model.value_expr_projection_bundle_node(
+          projection: v2.extdeps.languages.typescript.ts_value_expression_projection()
         )
       ),
       add_body_ts_named_edge(
@@ -61,13 +61,13 @@ fn add_body_ts_target_model_bundle(operator_catalog: v2.std.node.Node) -> v2.std
 }
 
 fn add_body_ts_lex_with_minus() -> v2.std.compilers.lexing.LexRules {
-  let base = ts_fn_add_lex_rules()
+  let base = v2.extdeps.languages.typescript.ts_fn_add_lex_rules()
   v2.std.compilers.lexing.ModeledLexRules {
     root: v2.std.compilers.lexing.LexRuleSet {
-      rules: list_append(
+      rules: v2.std.algebra.list_append(
         left: base.rules,
         right: std.algebra.Cons {
-          head: ts_lex_rule(token_class: ^ts_token_minus, text: " - "),
+          head: v2.extdeps.languages.typescript.ts_lex_rule(token_class: ^ts_token_minus, text: " - "),
           tail: std.algebra.Empty
         }
       )
@@ -77,25 +77,25 @@ fn add_body_ts_lex_with_minus() -> v2.std.compilers.lexing.LexRules {
 
 fn add_body_ts_target_model_minus_catalog() -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
     bundle: add_body_ts_target_model_bundle(operator_catalog: add_body_ts_operator_catalog_minus()),
     lex: add_body_ts_lex_with_minus(),
-    binding_spellings: ts_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: ts_source_text_authority(),
-    runtime_row: target_emit_host_runtime_row_unconfigured
+    binding_spellings: v2.extdeps.languages.typescript.ts_binding_spellings(),
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
+    authority_source_text: v2.extdeps.languages.typescript.ts_source_text_authority(),
+    runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
   }
 }
 
 fn add_body_ts_target_model_missing_operator_catalog() -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
     bundle: add_body_ts_target_model_bundle(operator_catalog: add_body_ts_operator_catalog_empty()),
-    lex: ts_fn_add_lex(),
-    binding_spellings: ts_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: ts_source_text_authority(),
-    runtime_row: target_emit_host_runtime_row_unconfigured
+    lex: v2.extdeps.languages.typescript.ts_fn_add_lex(),
+    binding_spellings: v2.extdeps.languages.typescript.ts_binding_spellings(),
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
+    authority_source_text: v2.extdeps.languages.typescript.ts_source_text_authority(),
+    runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -115,29 +115,29 @@ fn add_body_ts_canonical_grounding(node: v2.std.node.Node, algebra: v2.std.node.
   }
 }
 
-data add_body_ts_number_inhabitant: v2.std.node.Node = ts_inhabitant_number_node()
-data add_body_ts_number_facts_node: v2.std.node.Node = ts_number_facts_node(facts: ts_facts_number)
-data add_body_ts_arithmetic_semantics_node: v2.std.node.Node = ts_number_arithmetic_semantics_node()
-data add_body_ts_bitwise_semantics_node: v2.std.node.Node = ts_number_bitwise_semantics_node()
+data add_body_ts_number_inhabitant: v2.std.node.Node = v2.extdeps.languages.typescript.ts_inhabitant_number_node()
+data add_body_ts_number_facts_node: v2.std.node.Node = v2.extdeps.languages.typescript.ts_number_facts_node(facts: v2.extdeps.languages.typescript.ts_facts_number)
+data add_body_ts_arithmetic_semantics_node: v2.std.node.Node = v2.extdeps.languages.typescript.ts_number_arithmetic_semantics_node()
+data add_body_ts_bitwise_semantics_node: v2.std.node.Node = v2.extdeps.languages.typescript.ts_number_bitwise_semantics_node()
 
 fn add_body_ts_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
-  if node == dag_add_arrow_with_body_fixture {
+  if node == v2.extdeps.languages.dag.dag_add_arrow_with_body_fixture {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_add_arrow_signature_fixture {
+  } else if node == v2.extdeps.languages.dag.dag_add_arrow_signature_fixture {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_add_binary_body_fixture {
+  } else if node == v2.extdeps.languages.dag.dag_add_binary_body_fixture {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_add_arrow_with_body_swapped_operands_fixture {
+  } else if node == v2.extdeps.languages.dag.dag_add_arrow_with_body_swapped_operands_fixture {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == dag_add_binary_body_swapped_operands_fixture {
+  } else if node == v2.extdeps.languages.dag.dag_add_binary_body_swapped_operands_fixture {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
@@ -148,7 +148,7 @@ fn add_body_ts_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std
         algebra: add_body_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ^ts_inhabitant_number) {
+  } else if node == v2.extdeps.languages.typescript.ts_inhabitant_atom(id: ^ts_inhabitant_number) {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
@@ -159,7 +159,7 @@ fn add_body_ts_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_inhabitant_atom(id: ^ts_surface_spelling_number) {
+  } else if node == v2.extdeps.languages.typescript.ts_inhabitant_atom(id: ^ts_surface_spelling_number) {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
@@ -173,7 +173,7 @@ fn add_body_ts_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std
         algebra: add_body_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ^ts_tag_number_ieee754_binary64) {
+  } else if node == v2.extdeps.languages.typescript.ts_inhabitant_atom(id: ^ts_tag_number_ieee754_binary64) {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
@@ -187,47 +187,47 @@ fn add_body_ts_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std
         algebra: add_body_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ^ts_tag_number_bitwise_int32_uint32) {
+  } else if node == v2.extdeps.languages.typescript.ts_inhabitant_atom(id: ^ts_tag_number_bitwise_int32_uint32) {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_bitwise_semantics_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ^ts_tag_bits64) {
+  } else if node == v2.extdeps.languages.typescript.ts_inhabitant_atom(id: ^ts_tag_bits64) {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ^ts_ieee754_binary64) {
+  } else if node == v2.extdeps.languages.typescript.ts_inhabitant_atom(id: ^ts_ieee754_binary64) {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ^std_projection_additive_numeric) {
+  } else if node == v2.extdeps.languages.typescript.ts_inhabitant_atom(id: ^std_projection_additive_numeric) {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
         algebra: add_body_ts_number_facts_node
       )
     }
-  } else if node == ts_inhabitant_atom(id: ^dag_token_plus) {
+  } else if node == v2.extdeps.languages.typescript.ts_inhabitant_atom(id: ^dag_token_plus) {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_inhabitant_atom(id: ^dag_binding_param_x) {
+  } else if node == v2.extdeps.languages.typescript.ts_inhabitant_atom(id: ^dag_binding_param_x) {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_inhabitant_atom(id: ^dag_binding_param_y) {
+  } else if node == v2.extdeps.languages.typescript.ts_inhabitant_atom(id: ^dag_binding_param_y) {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_inhabitant_atom(id: ^dag_binding_type_int) {
+  } else if node == v2.extdeps.languages.typescript.ts_inhabitant_atom(id: ^dag_binding_type_int) {
     v2.std.witness.Holds {
       value: add_body_ts_canonical_grounding(
         node: node,
@@ -236,7 +236,7 @@ fn add_body_ts_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std
     }
   } else {
     match node.kind {
-      TypeNode { connective: Atom { identity: id } } =>
+      v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
         if id == ^dag_binding_type_int {
           v2.std.witness.Holds {
             value: add_body_ts_canonical_grounding(
@@ -260,8 +260,8 @@ fn add_body_ts_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std
           v2.std.witness.Violates {
             diagnostic: v2.std.diagnostic.Diagnostic {
               reason: ^add_body_ts_body_grounding_miss,
-              at: node_locus(node: node),
-              correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+              at: v2.std.diagnostic.node_locus(node: node),
+              correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
             }
           }
         }
@@ -269,8 +269,8 @@ fn add_body_ts_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std
         v2.std.witness.Violates {
           diagnostic: v2.std.diagnostic.Diagnostic {
             reason: ^add_body_ts_body_grounding_miss,
-            at: node_locus(node: node),
-            correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+            at: v2.std.diagnostic.node_locus(node: node),
+            correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
           }
         }
     }
@@ -279,12 +279,12 @@ fn add_body_ts_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std
 
 fn add_body_ts_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match add_body_ts_canonical_grounding_for(node: node) {
-    Violates { diagnostic: d } => optional_absent()
-    Holds { value: grounding } =>
-      match termination_proof_witness_for_node(n: node) {
-        Violates { diagnostic: d } => optional_absent()
-        Holds { value: proof } =>
-          optional_present(value: claim_inferred_facts_witness(
+    v2.std.witness.Violates { diagnostic: d } => v2.std.optional.optional_absent()
+    v2.std.witness.Holds { value: grounding } =>
+      match v2.std.cardinality.termination_proof_witness_for_node(n: node) {
+        v2.std.witness.Violates { diagnostic: d } => v2.std.optional.optional_absent()
+        v2.std.witness.Holds { value: proof } =>
+          v2.std.optional.optional_present(value: v2.test.lens_common.infer_fixture.claim_inferred_facts_witness(
               grounding: grounding,
               descent: v2.std.witness.Holds { value: proof }
             ))
@@ -299,34 +299,34 @@ fn add_body_ts_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v
 fn add_body_ts_inferred_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.algebra.PartialFunction { lookup: add_body_ts_facts_lookup }
+    facts: PartialFunction { lookup: add_body_ts_facts_lookup }
   }
 }
 
 fn add_body_ts_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
-    Accepted { value: root, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: add_body_ts_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn add_body_ts_producer_swapped_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
-  match table_fixture_add_arrow_with_body_swapped_operands() {
-    Accepted { value: root, diagnostics: d } =>
+  match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body_swapped_operands() {
+    v2.std.diagnostic.Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: add_body_ts_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn add_body_ts_emit_from_producer_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: add_body_ts_producer_inferred_tree(),
     f: fn(tree) {
       v2.compiler.emit.emit(tree: tree, target: target)
@@ -335,7 +335,7 @@ fn add_body_ts_emit_from_producer_tree(target: v2.std.compilers.target_model.Tar
 }
 
 fn add_body_ts_emit_from_producer_swapped_tree(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  bind_outcome(
+  v2.std.diagnostic.bind_outcome(
     o: add_body_ts_producer_swapped_inferred_tree(),
     f: fn(tree) {
       v2.compiler.emit.emit(tree: tree, target: target)
@@ -343,39 +343,39 @@ fn add_body_ts_emit_from_producer_swapped_tree(target: v2.std.compilers.target_m
   )
 }
 
-test fn add_body_ts_emit_add_fn_accepts_holds() -> v2.std.logic.Bool {
-  match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == ts_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+test fn add_body_ts_emit_add_fn_accepts_holds() -> Bool {
+  match add_body_ts_emit_from_producer_tree(target: v2.extdeps.languages.typescript.ts_target_model()) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
+      (source.carried == v2.extdeps.languages.typescript.ts_source_text) && (d == v2.std.diagnostic.None)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn add_body_ts_emit_operand_swap_discriminates() -> v2.std.logic.Bool {
-  match add_body_ts_emit_from_producer_swapped_tree(target: ts_target_model()) {
-    Accepted { value: source, diagnostics: d } =>
+test fn add_body_ts_emit_operand_swap_discriminates() -> Bool {
+  match add_body_ts_emit_from_producer_swapped_tree(target: v2.extdeps.languages.typescript.ts_target_model()) {
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == add_body_ts_emit_operand_swap_source_text) &&
-      (source.carried != ts_source_text) &&
+      (source.carried != v2.extdeps.languages.typescript.ts_source_text) &&
       (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn add_body_ts_emit_catalog_minus_discriminates() -> v2.std.logic.Bool {
+test fn add_body_ts_emit_catalog_minus_discriminates() -> Bool {
   match add_body_ts_emit_from_producer_tree(target: add_body_ts_target_model_minus_catalog()) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == add_body_ts_emit_catalog_minus_source_text) &&
-      (source.carried != ts_source_text) &&
+      (source.carried != v2.extdeps.languages.typescript.ts_source_text) &&
       (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn add_body_ts_emit_missing_catalog_rejects() -> v2.std.logic.Bool {
+test fn add_body_ts_emit_missing_catalog_rejects() -> Bool {
   match add_body_ts_emit_from_producer_tree(
     target: add_body_ts_target_model_missing_operator_catalog()
   ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }

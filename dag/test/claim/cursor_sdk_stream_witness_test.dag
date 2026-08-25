@@ -11,87 +11,87 @@ data local_result_event: String = "{\"schemaVersion\":1,\"type\":\"result\",\"ag
 data unknown_event: String = "{\"type\":\"future_shape\",\"agentId\":\"a1\"}"
 
 test fn finished_run_result_reconciles() -> Bool {
-  match cursor_sdk_stream_reconcile_run_result(raw: finished_result) {
-    CursorSdkStreamTerminalsReconciled { status: CursorSdkTerminalFinished, error: _, raw: _ } => true
-    CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
+  match extdeps.llm.cursor_stream.cursor_sdk_stream_reconcile_run_result(raw: finished_result) {
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsReconciled { status: extdeps.llm.cursor_stream.CursorSdkTerminalFinished, error: _, raw: _ } => true
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
   }
 }
 
 test fn auth_error_classifies() -> Bool {
-  match cursor_sdk_stream_reconcile_run_result(raw: auth_error_result) {
-    CursorSdkStreamTerminalsReconciled { error: err, status: CursorSdkTerminalError, raw: _ } =>
+  match extdeps.llm.cursor_stream.cursor_sdk_stream_reconcile_run_result(raw: auth_error_result) {
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsReconciled { error: err, status: extdeps.llm.cursor_stream.CursorSdkTerminalError, raw: _ } =>
       match err {
-        CursorSdkTerminalErrorObserved { message: _, code: CursorSdkAuthenticationError } => true
-        CursorSdkTerminalErrorObserved { message: _, code: _ } => false
+        extdeps.llm.cursor_stream.CursorSdkTerminalErrorObserved { message: _, code: extdeps.llm.cursor_sdk_errors.CursorSdkAuthenticationError } => true
+        extdeps.llm.cursor_stream.CursorSdkTerminalErrorObserved { message: _, code: _ } => false
         CursorSdkTerminalErrorAbsent => false
       }
-    CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
   }
 }
 
 test fn rate_limit_error_classifies() -> Bool {
-  match cursor_sdk_stream_reconcile_run_result(raw: rate_limit_result) {
-    CursorSdkStreamTerminalsReconciled { error: err, status: CursorSdkTerminalError, raw: _ } =>
+  match extdeps.llm.cursor_stream.cursor_sdk_stream_reconcile_run_result(raw: rate_limit_result) {
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsReconciled { error: err, status: extdeps.llm.cursor_stream.CursorSdkTerminalError, raw: _ } =>
       match err {
-        CursorSdkTerminalErrorObserved { message: _, code: CursorSdkRateLimitError } => true
-        CursorSdkTerminalErrorObserved { message: _, code: _ } => false
+        extdeps.llm.cursor_stream.CursorSdkTerminalErrorObserved { message: _, code: extdeps.llm.cursor_sdk_errors.CursorSdkRateLimitError } => true
+        extdeps.llm.cursor_stream.CursorSdkTerminalErrorObserved { message: _, code: _ } => false
         CursorSdkTerminalErrorAbsent => false
       }
-    CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
   }
 }
 
 test fn malformed_result_refuses() -> Bool {
-  match cursor_sdk_stream_reconcile_run_result(raw: malformed_result) {
-    CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => true
-    CursorSdkStreamTerminalsReconciled { status: _, error: _, raw: _ } => false
+  match extdeps.llm.cursor_stream.cursor_sdk_stream_reconcile_run_result(raw: malformed_result) {
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => true
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsReconciled { status: _, error: _, raw: _ } => false
   }
 }
 
 test fn assistant_message_classifies() -> Bool {
-  match cursor_sdk_stream_classify_message_line(raw: assistant_message) {
-    Present { value: CursorSdkMessageAssistant } => true
+  match extdeps.llm.cursor_stream.cursor_sdk_stream_classify_message_line(raw: assistant_message) {
+    Present { value: extdeps.llm.cursor_stream.CursorSdkMessageAssistant } => true
     Present { value: _ } => false
     Absent => false
   }
 }
 
 test fn usage_message_classifies() -> Bool {
-  match cursor_sdk_stream_classify_message_line(raw: usage_message) {
-    Present { value: CursorSdkMessageUsage } => true
+  match extdeps.llm.cursor_stream.cursor_sdk_stream_classify_message_line(raw: usage_message) {
+    Present { value: extdeps.llm.cursor_stream.CursorSdkMessageUsage } => true
     Present { value: _ } => false
     Absent => false
   }
 }
 
 test fn local_result_event_classifies() -> Bool {
-  match cursor_sdk_stream_classify_local_run_event(raw: local_result_event) {
-    Present { value: CursorSdkLocalRunStreamResult } => true
+  match extdeps.llm.cursor_stream.cursor_sdk_stream_classify_local_run_event(raw: local_result_event) {
+    Present { value: extdeps.llm.cursor_stream.CursorSdkLocalRunStreamResult } => true
     Present { value: _ } => false
     Absent => false
   }
 }
 
 test fn unknown_event_stays_unclassified() -> Bool {
-  match cursor_sdk_stream_classify_local_run_event(raw: unknown_event) {
-    Present { value: CursorSdkLocalRunStreamUnclassified { wire_type: _ } } => true
+  match extdeps.llm.cursor_stream.cursor_sdk_stream_classify_local_run_event(raw: unknown_event) {
+    Present { value: extdeps.llm.cursor_stream.CursorSdkLocalRunStreamUnclassified { wire_type: _ } } => true
     Present { value: _ } => false
     Absent => false
   }
 }
 
 test fn agent_report_text_does_not_classify_as_terminal_error() -> Bool {
-  match cursor_sdk_stream_reconcile_run_result(
+  match extdeps.llm.cursor_stream.cursor_sdk_stream_reconcile_run_result(
     raw: "{\"status\":\"error\",\"error\":{\"message\":\"you hit your usage limit\",\"code\":\"other\"}}",
   ) {
-    CursorSdkStreamTerminalsReconciled { error: err, status: CursorSdkTerminalError, raw: _ } =>
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsReconciled { error: err, status: extdeps.llm.cursor_stream.CursorSdkTerminalError, raw: _ } =>
       match err {
-        CursorSdkTerminalErrorObserved { message: _, code: CursorSdkRateLimitError } => false
-        CursorSdkTerminalErrorObserved { message: _, code: CursorSdkErrorCodeOther { raw: _ } } => true
-        CursorSdkTerminalErrorObserved { message: _, code: _ } => true
+        extdeps.llm.cursor_stream.CursorSdkTerminalErrorObserved { message: _, code: extdeps.llm.cursor_sdk_errors.CursorSdkRateLimitError } => false
+        extdeps.llm.cursor_stream.CursorSdkTerminalErrorObserved { message: _, code: extdeps.llm.cursor_sdk_errors.CursorSdkErrorCodeOther { raw: _ } } => true
+        extdeps.llm.cursor_stream.CursorSdkTerminalErrorObserved { message: _, code: _ } => true
         CursorSdkTerminalErrorAbsent => true
       }
-    CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsUnclassified { reason: _, raw: _ } => false
   }
 }
 
@@ -99,23 +99,23 @@ data malformed_error_subobject: String = "{\"status\":\"error\",\"error\":[{\"me
 data malformed_error_missing_message: String = "{\"status\":\"error\",\"error\":{\"code\":\"authentication_error\"}}"
 
 test fn malformed_error_subobject_refuses_not_absent() -> Bool {
-  match cursor_sdk_stream_reconcile_run_result(raw: malformed_error_subobject) {
-    CursorSdkStreamTerminalsUnclassified { reason, raw: _ } =>
+  match extdeps.llm.cursor_stream.cursor_sdk_stream_reconcile_run_result(raw: malformed_error_subobject) {
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsUnclassified { reason, raw: _ } =>
       string_contains(s: reason as String, pattern: "malformed error object")
-    CursorSdkStreamTerminalsReconciled { status: _, error: _, raw: _ } => false
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsReconciled { status: _, error: _, raw: _ } => false
   }
 }
 
 test fn malformed_error_missing_message_refuses_not_absent() -> Bool {
-  match cursor_sdk_stream_reconcile_run_result(raw: malformed_error_missing_message) {
-    CursorSdkStreamTerminalsUnclassified { reason, raw: _ } =>
+  match extdeps.llm.cursor_stream.cursor_sdk_stream_reconcile_run_result(raw: malformed_error_missing_message) {
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsUnclassified { reason, raw: _ } =>
       string_contains(s: reason as String, pattern: "malformed error object")
-    CursorSdkStreamTerminalsReconciled {
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsReconciled {
       status: _,
       error: CursorSdkTerminalErrorAbsent,
       raw: _,
     } => false
-    CursorSdkStreamTerminalsReconciled { status: _, error: _, raw: _ } => false
+    extdeps.llm.cursor_stream.CursorSdkStreamTerminalsReconciled { status: _, error: _, raw: _ } => false
   }
 }
 

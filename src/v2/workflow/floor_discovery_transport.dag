@@ -116,8 +116,8 @@ fn floor_discovery_transport_observe(
     }
     TransportNeedsTrackedWorktree { request: request } => match observation {
       TrackedWorktreeObserved { modified_paths: paths } => match paths.first() {
-        Present { value: _ } => TransportRefused { cause: TransportTrackedWorktreeDirty }
-        Absent => TransportNeedsUntrackedWorktree { request: request }
+        v2.std.optional.Present { value: _ } => TransportRefused { cause: TransportTrackedWorktreeDirty }
+        v2.std.optional.Absent => TransportNeedsUntrackedWorktree { request: request }
       }
       TransportObservationRefused { cause: cause } =>
         TransportRefused { cause: TransportObservationRefusalCause { cause: cause } }
@@ -127,9 +127,9 @@ fn floor_discovery_transport_observe(
     }
     TransportNeedsUntrackedWorktree { request: request } => match observation {
       UntrackedWorktreeObserved { paths: paths } => match paths.first() {
-        Present { value: path } =>
+        v2.std.optional.Present { value: path } =>
           TransportRefused { cause: TransportUntrackedWorktree { path: path } }
-        Absent => TransportNeedsPublication { request: request }
+        v2.std.optional.Absent => TransportNeedsPublication { request: request }
       }
       TransportObservationRefused { cause: cause } =>
         TransportRefused { cause: TransportObservationRefusalCause { cause: cause } }
@@ -139,7 +139,7 @@ fn floor_discovery_transport_observe(
     }
     TransportNeedsPublication { request: request } => match observation {
       SnapshotPublished { receipt: receipt } => {
-        if receipt.artifact.request_identity_digest == floor_discovery_request_identity(request: request) {
+        if receipt.artifact.request_identity_digest == v2.workflow.floor_discovery.floor_discovery_request_identity(request: request) {
           TransportReady
         } else {
           TransportRefused {

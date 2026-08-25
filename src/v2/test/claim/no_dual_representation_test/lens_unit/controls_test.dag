@@ -1,48 +1,48 @@
 module v2.test.no_dual_representation_test.lens_unit.controls
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-test fn same_symbol_equality_is_red() -> v2.std.logic.Bool {
-  dual_rep_violation_count_from_scans(scans: [synthetic_same_symbol_scan()]) == 1
+test fn same_symbol_equality_is_red() -> Bool {
+  v2.lens.no_dual_representation_test.scan.dual_rep_violation_count_from_scans(scans: [v2.lens.no_dual_representation_test.scan.synthetic_same_symbol_scan()]) == 1
 }
 
-test fn literal_mirror_is_red() -> v2.std.logic.Bool {
-  dual_rep_violation_count_from_scans(scans: [synthetic_literal_mirror_scan()]) == 1
+test fn literal_mirror_is_red() -> Bool {
+  v2.lens.no_dual_representation_test.scan.dual_rep_violation_count_from_scans(scans: [v2.lens.no_dual_representation_test.scan.synthetic_literal_mirror_scan()]) == 1
 }
 
-test fn bool_literal_mirror_is_red() -> v2.std.logic.Bool {
-  dual_rep_violation_count_from_scans(scans: [synthetic_bool_literal_mirror_scan()]) == 1
+test fn bool_literal_mirror_is_red() -> Bool {
+  v2.lens.no_dual_representation_test.scan.dual_rep_violation_count_from_scans(scans: [v2.lens.no_dual_representation_test.scan.synthetic_bool_literal_mirror_scan()]) == 1
 }
 
-test fn independent_oracle_is_green() -> v2.std.logic.Bool {
-  dual_rep_clean_holds_for_scans(scans: [synthetic_independent_oracle_scan()])
+test fn independent_oracle_is_green() -> Bool {
+  v2.lens.no_dual_representation_test.scan.dual_rep_clean_holds_for_scans(scans: [v2.lens.no_dual_representation_test.scan.synthetic_independent_oracle_scan()])
 }
 
-test fn distinct_symbol_equality_is_green() -> v2.std.logic.Bool {
-  dual_rep_clean_holds_for_scans(scans: [synthetic_distinct_symbol_scan()])
+test fn distinct_symbol_equality_is_green() -> Bool {
+  v2.lens.no_dual_representation_test.scan.dual_rep_clean_holds_for_scans(scans: [v2.lens.no_dual_representation_test.scan.synthetic_distinct_symbol_scan()])
 }
 
-test fn body_mirror_is_red() -> v2.std.logic.Bool {
-  length(xs: dual_rep_violations_from_module(scan: synthetic_body_mirror_scan())) == 1
+test fn body_mirror_is_red() -> Bool {
+  v2.std.algebra.length(xs: v2.lens.no_dual_representation_test.scan.dual_rep_violations_from_module(scan: v2.lens.no_dual_representation_test.scan.synthetic_body_mirror_scan())) == 1
 }
 
-test fn parse_path_helper_tautology_is_red() -> v2.std.logic.Bool {
-  dual_rep_violation_count_from_scans(scans: [parse_path_helper_tautology_scan()]) == 1
+test fn parse_path_helper_tautology_is_red() -> Bool {
+  v2.lens.no_dual_representation_test.scan.dual_rep_violation_count_from_scans(scans: [v2.lens.no_dual_representation_test.scan.parse_path_helper_tautology_scan()]) == 1
 }
 
-test fn synthetic_same_symbol_eq_site_count_is_one() -> v2.std.logic.Bool {
-  dual_rep_eq_site_count_from_scans(scans: [synthetic_same_symbol_scan()]) == 1
+test fn synthetic_same_symbol_eq_site_count_is_one() -> Bool {
+  v2.lens.no_dual_representation_test.scan.dual_rep_eq_site_count_from_scans(scans: [v2.lens.no_dual_representation_test.scan.synthetic_same_symbol_scan()]) == 1
 }
 
-test fn body_blind_without_frontier_honesty_is_red() -> v2.std.logic.Bool {
-  dual_rep_coverage_honesty_holds(eq_site_count: 0, frontier_declared: false) == false
+test fn body_blind_without_frontier_honesty_is_red() -> Bool {
+  v2.lens.no_dual_representation_test.scan.dual_rep_coverage_honesty_holds(eq_site_count: 0, frontier_declared: false) == false
 }
 
-test fn body_blind_with_frontier_honesty_is_green() -> v2.std.logic.Bool {
-  dual_rep_coverage_honesty_holds(eq_site_count: 0, frontier_declared: true)
+test fn body_blind_with_frontier_honesty_is_green() -> Bool {
+  v2.lens.no_dual_representation_test.scan.dual_rep_coverage_honesty_holds(eq_site_count: 0, frontier_declared: true)
 }
 
-test fn body_covered_honesty_is_green() -> v2.std.logic.Bool {
-  dual_rep_coverage_honesty_holds(eq_site_count: 1, frontier_declared: false)
+test fn body_covered_honesty_is_green() -> Bool {
+  v2.lens.no_dual_representation_test.scan.dual_rep_coverage_honesty_holds(eq_site_count: 1, frontier_declared: false)
 }

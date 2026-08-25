@@ -3,15 +3,15 @@ module extdeps.tools.nbdkit
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "libguestfs.org/nbdkit.1.html"
   }
 }
 
 data nbdkit_pinned_version: extdeps.version.VersionConstraint = ">= 1.34"
 
-data nbdkit_cli_tool: CliTool = CliTool {
+data nbdkit_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "nbdkit",
   min_version: Present { value: nbdkit_pinned_version },
-  installable_via: [SourceApt { package: package_nbdkit }],
+  installable_via: [extdeps.tools.SourceApt { package: extdeps.apt.package_nbdkit }],
 }

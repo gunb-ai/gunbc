@@ -3,65 +3,65 @@ module v2.test.impossible_bug.suboptimal_complexity
 
 fn atom_node(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn complexity_contract(body: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: v2.std.node.Named { name: ^complexity_bound_field }, target: v2.test.impossible_bug.suboptimal_complexity.atom_node(s: ^complexity_contract_symbol) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^complexity_bound_field }, target: atom_node(s: ^complexity_contract_symbol) },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^complexity_body_field }, target: body },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn expected_complexity_rejection(input: v2.std.node.Node, reason: v2.std.node.Symbol, correction: v2.std.node.Node) -> v2.std.diagnostic.NonEmptyDiagnostics {
-  diagnostics_singleton(
+  v2.std.diagnostic.diagnostics_singleton(
     d: v2.std.diagnostic.Diagnostic {
       reason: reason,
-      at: node_locus(node: input),
+      at: v2.std.diagnostic.node_locus(node: input),
       correction: v2.std.diagnostic.Suggested { node: correction }
     }
   )
 }
 
-data within_bound_input: v2.std.node.Node = complexity_contract(body: v2.test.impossible_bug.suboptimal_complexity.atom_node(s: ^complexity_body_linear_symbol))
+data within_bound_input: v2.std.node.Node = complexity_contract(body: atom_node(s: ^complexity_body_linear_symbol))
 
-data falsification_overcost_against_structural_bound: v2.std.node.Node = complexity_contract(body: v2.test.impossible_bug.suboptimal_complexity.atom_node(s: ^complexity_body_quadratic_symbol))
+data falsification_overcost_against_structural_bound: v2.std.node.Node = complexity_contract(body: atom_node(s: ^complexity_body_quadratic_symbol))
 
 data claim_within_structural_bound_passes: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "complexity bound accepts lens-derived in-bound body",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: within_bound_input,
   expected_value: within_bound_input,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
 data claim_overcost_against_structural_bound_violates: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "complexity bound rejects lens-derived over-cost body",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: falsification_overcost_against_structural_bound,
   expected_rejection: expected_complexity_rejection(
     input: falsification_overcost_against_structural_bound,
     reason: ^impossible_bug_reason_suboptimal_complexity,
     correction: within_bound_input
   ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
-data falsification_cost_contradicts_inhabitance: v2.std.node.Node = complexity_contract(body: v2.test.impossible_bug.suboptimal_complexity.atom_node(s: ^complexity_body_contradictory_inhabitant_symbol))
+data falsification_cost_contradicts_inhabitance: v2.std.node.Node = complexity_contract(body: atom_node(s: ^complexity_body_contradictory_inhabitant_symbol))
 
 data claim_cost_contradicts_inhabitance_caught: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "complexity inhabitance rejects contradictory body cost",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: falsification_cost_contradicts_inhabitance,
   expected_rejection: expected_complexity_rejection(
     input: falsification_cost_contradicts_inhabitance,
     reason: ^impossible_bug_reason_suboptimal_inhabitance,
     correction: within_bound_input
   ),
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }

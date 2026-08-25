@@ -77,27 +77,27 @@ fn structural_binding_resolution_from_candidates(
   inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
   reference: std.occurrence_identity.ReferenceOccurrence,
 ) -> StructuralBindingResolution {
-  match occurrence_candidate_index_build(transport: transport, inputs: inputs) {
-    OccurrenceCandidateIndexReady { index: index } =>
+  match std.occurrence_binding_candidates.occurrence_candidate_index_build(transport: transport, inputs: inputs) {
+    std.occurrence_binding_candidates.OccurrenceCandidateIndexReady { index: index } =>
       StructuralBindingResolved {
-        binding_outcome: resolve_reference_occurrence_binding(
+        binding_outcome: std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
           transport: transport,
           occurrence: reference.occurrence,
-          supplied_candidates: candidate_occurrence_ids_for_reference(
+          supplied_candidates: std.occurrence_binding_candidates.candidate_occurrence_ids_for_reference(
             index: index,
             reference: reference,
           ),
         ),
       }
-    OccurrenceCandidateIndexTransportRefused { refusal: refusal } =>
+    std.occurrence_binding_candidates.OccurrenceCandidateIndexTransportRefused { refusal: refusal } =>
       StructuralBindingIndexTransportRefused { refusal: refusal }
-    OccurrenceCandidateIndexModulePathRefused { refusal: refusal } =>
+    std.occurrence_binding_candidates.OccurrenceCandidateIndexModulePathRefused { refusal: refusal } =>
       StructuralBindingIndexModulePathRefused { refusal: refusal }
-    OccurrenceCandidateIndexExposureRefused { refusal: refusal } =>
+    std.occurrence_binding_candidates.OccurrenceCandidateIndexExposureRefused { refusal: refusal } =>
       StructuralBindingIndexExposureRefused { refusal: refusal }
-    OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal } =>
+    std.occurrence_binding_candidates.OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal } =>
       StructuralBindingIndexAuthoredOrderRefused { refusal: refusal }
-    OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: occurrence } =>
+    std.occurrence_binding_candidates.OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: occurrence } =>
       StructuralBindingIndexDeclarationBucketRefused { occurrence: occurrence }
   }
 }

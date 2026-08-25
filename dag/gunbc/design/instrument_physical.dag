@@ -33,7 +33,7 @@ fn channel_may_carry_domain_fact(c: InstrumentChannel) -> Bool {
 
 data glitch_vocabulary_note: String = "WE ADOPTED THE UPSTREAM'S WORD AND CHANGED ITS MEANING, WHICH IS WORSE THAN NOT ADOPTING IT (review finding, 2026-08-05). The first cut declared GlitchOff / GlitchShort / GlitchPersistent and claimed the set was taken verbatim from the cited Pip-Boy 3000's Glitch-on-tap setting — then defined Persistent as a slightly longer decay. The upstream word does not mean that. A persistent glitch on the reference device is a LATCHED out-of-sync display state that stays wrong until a later tap reseats it, which is precisely the unnecessary tactile detail that makes the thing read as equipment rather than as a themed screen. Redefining a cited word to mean the nearest thing we had implemented is nicknaming pointed at the upstream: a reader who trusts the adoption claim gets a fact that is false about the device.
 
-So the local vocabulary now says what it actually does. ImpulseOff and ImpulseBrief and ImpulseLong are transient decays of our own, named as ours. The cited Persistent behaviour is NOT adopted and is not silently approximated by ImpulseLong — it is a distinct interaction (latch, hold, reseat on a later impulse) that this study does not model. DISSOLVE-ON: a latched glitch state lands with the operable instrument, at which point it carries the upstream's own word because it will finally mean the same thing. The cited rows themselves live in extdeps.instrument.pip_boy_3000 and are referenced below rather than restated."
+So the local vocabulary now says what it actually does. ImpulseOff and ImpulseBrief and ImpulseLong are transient decays of our own, named as ours. The cited Persistent behaviour is NOT adopted and is not silently approximated by ImpulseLong — it is a distinct interaction (latch, hold, reseat on a later impulse) that this study does not model. DISSOLVE-ON: a latched glitch state lands with the operable instrument, at which point it carries the upstream's own word because it will finally mean the same thing. The cited rows themselves live in pip_boy_3000 and are referenced below rather than restated."
 
 type ImpulseGlitchDuration
   = ImpulseOff
@@ -60,9 +60,9 @@ fn glitch_is_armed(g: ImpulseGlitchDuration) -> Bool {
 
 fn glitch_settle(g: ImpulseGlitchDuration) -> gunbc.design.material.TimingToken {
   match g {
-    ImpulseOff => respond_fast
-    ImpulseBrief => respond_fast
-    ImpulseLong => restore_gentle
+    ImpulseOff => gunbc.design.material.respond_fast
+    ImpulseBrief => gunbc.design.material.respond_fast
+    ImpulseLong => gunbc.design.material.restore_gentle
   }
 }
 
@@ -70,7 +70,7 @@ data amplitude_note: String = "AN AMPLITUDE IS A NONNEGATIVE MAGNITUDE, and the 
 
 type ChannelAmplitude
   = ChannelDisabled
-  | ChannelAmplitudePx { px: std.nat.Nat }
+  | ChannelAmplitudePx { px: std.integer.Nat }
 
 fn amplitude_px(a: ChannelAmplitude) -> Int {
   match a {
@@ -132,9 +132,9 @@ fn instrument_displacement_px(p: InstrumentPreference) -> Int {
 data composed_displacement_note: String = "Every positional contribution the register can grant a single subject, carried as nonnegative magnitudes so the sum cannot cancel. focal_attraction_px is the plate travel a focal control may be granted; it is zero for a subject with no attraction. The record has no direction field on purpose: a direction would let two contributions be argued to oppose, which is how a composed budget gets talked out of being composed."
 
 type ComposedVisualDisplacement {
-  enclosure_character_px: std.nat.Nat
-  focal_attraction_px: std.nat.Nat
-  impulse_transient_px: std.nat.Nat
+  enclosure_character_px: std.integer.Nat
+  focal_attraction_px: std.integer.Nat
+  impulse_transient_px: std.integer.Nat
 }
 
 fn composed_total_px(d: ComposedVisualDisplacement) -> Int {
@@ -146,7 +146,7 @@ type DisplacementAdmission
   | DisplacementOverBudget { total_px: Int, max_px: Int }
   | EnclosureCharacterReachesResponseTravel { character_px: Int, max_px: Int }
 
-fn compose_displacement(p: InstrumentPreference, focal_attraction_px: std.nat.Nat) -> ComposedVisualDisplacement {
+fn compose_displacement(p: InstrumentPreference, focal_attraction_px: std.integer.Nat) -> ComposedVisualDisplacement {
   ComposedVisualDisplacement {
     enclosure_character_px: amplitude_px(a: p.optical_jitter) +
       amplitude_px(a: p.vertical_shift) +
@@ -186,19 +186,19 @@ data provenance_edge_note: String = "THE PROVENANCE IS A TYPED EDGE NOW, NOT A P
 
 fn channel_behaviour_axis(c: InstrumentChannel) -> gunbc.design.reference_instrument.InstrumentBehaviourAxis {
   match c {
-    ChannelOpticalJitter => OpticalInstability
-    ChannelVerticalShift => RestingOffsetCalibration
-    ChannelBuoyantDrift => BuoyantDrift
-    ChannelImpulseGlitch => ImpulseGlitch
+    ChannelOpticalJitter => gunbc.design.reference_instrument.OpticalInstability
+    ChannelVerticalShift => gunbc.design.reference_instrument.RestingOffsetCalibration
+    ChannelBuoyantDrift => gunbc.design.reference_instrument.BuoyantDrift
+    ChannelImpulseGlitch => gunbc.design.reference_instrument.ImpulseGlitch
   }
 }
 
 fn channel_provenance(c: InstrumentChannel) -> gunbc.design.reference_instrument.AxisProvenance {
-  axis_provenance(a: channel_behaviour_axis(c: c))
+  gunbc.design.reference_instrument.axis_provenance(a: channel_behaviour_axis(c: c))
 }
 
 fn channel_is_cited_precedent(c: InstrumentChannel) -> Bool {
-  !axis_is_originated(axis: channel_behaviour_axis(c: c))
+  !gunbc.design.reference_instrument.axis_is_originated(axis: channel_behaviour_axis(c: c))
 }
 
 data impulse_source_note: String = "NOT ANCHORED TO A BROWSER (operator standing directive: focus on the vision, then work backwards to what is available). An accelerometer is a HOST capability, so the variants name the capability and not the runtime that exposes it — HostAccelerometer and HostDeviceMotion are equally inhabited by a browser sensor API, a desktop application's platform binding, or a physical enclosure's own hardware, and choosing a desktop realization later adds a binding row rather than editing this coproduct. SyntheticImpulse is not a fallback for a missing sensor: it is the audition path, an authored impulse that lets the glitch be designed, reviewed and witnessed on a machine that has no accelerometer at all, which is every CI runner."
@@ -218,9 +218,9 @@ fn impulse_source_key(s: PhysicalImpulseSource) -> String {
 
 data superseded_impulse_authority_note: String = "THIS MODULE'S SOURCE AND AVAILABILITY VOCABULARY IS SUPERSEDED, AND THE ADAPTER BELOW IT IS A DECLARED SCAFFOLD RATHER THAN A SECOND AUTHORITY (review finding, 2026-08-06). PhysicalImpulseSource, SensorAvailability, ImpulseAdmission and admit_impulse were authored before the capability model existed, and they answer the same questions less exactly: a three-arm source enum cannot name WHICH interface produced a reading, and a five-state availability projection cannot distinguish a policy refusal from a permission refusal from a backend that would not connect, nor say anything about whether a stream was FIT for the interaction.
 
-The replacements live downstream: gunbc.capability_binding carries PhysicalImpulse with a symbolic source binding, the qualification receipt, and the per-host verdict; gunbc.web_motion_binding carries the exact web axes. The physics in this module CONSUMES a PhysicalImpulse and applies displacement; it no longer needs to know what a sensor is.
+The replacements live downstream: capability_binding carries PhysicalImpulse with a symbolic source binding, the qualification receipt, and the per-host verdict; web_motion_binding carries the exact web axes. The physics in this module CONSUMES a PhysicalImpulse and applies displacement; it no longer needs to know what a sensor is.
 
-WHY BOTH EXIST RIGHT NOW: the sandbox page still renders the old impulse matrix and is owned by an open change, so deleting these types in this change would break a page mid-flight for no gain. gunbc.web_motion_binding's project_sensor_availability is therefore the declared bridge — deliberately lossy, with its losses named at the projection — and it is a scaffold, not a design.
+WHY BOTH EXIST RIGHT NOW: the sandbox page still renders the old impulse matrix and is owned by an open change, so deleting these types in this change would break a page mid-flight for no gain. web_motion_binding's project_sensor_availability is therefore the declared bridge — deliberately lossy, with its losses named at the projection — and it is a scaffold, not a design.
 
 DISSOLVE-ON, all three together and countable: when the sandbox page's physical section reads TargetCapabilityVerdict instead of SensorAvailability, then PhysicalImpulseSource, SensorAvailability, ImpulseAdmission, admit_impulse, source_availability, sensor_may_deliver_impulses and sensor_availability_key delete, and project_sensor_availability deletes with them. Nothing here is intended to survive that page's migration."
 

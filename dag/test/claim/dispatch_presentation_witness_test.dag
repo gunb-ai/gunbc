@@ -1,87 +1,87 @@
 module test.claim.dispatch_presentation_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data dispatch_presentation_witness_note: String = "P3 keystone, re-grounded by remodel W1d (2026-07-24) and lifecycle correction (2026-07-27): the dispatch button's presentation is a projection of modeled rows, not hand pixels/colors. Reserved width derives from every caption it can wear, including dispatch receipts and observed-session presence; each state class paints its BAND's exact fill/ink vars; located fields surface in the title; and client plus stylesheet share one class vocabulary."
 
 fn role_var_for_label(wire_label: String) -> String {
-  fold(component_state_for_label(c: dispatch_button_component(), wire_label: wire_label),
-    init: "", f: (acc, s) => role_var(r: s.role))
+  fold(gunbc.design.component.component_state_for_label(c: gunbc.roadmap_component.dispatch_button_component(), wire_label: wire_label),
+    init: "", f: (acc, s) => gunbc.design.theme.role_var(r: s.role))
 }
 
 test fn witness_reserved_width_is_caption_projection() -> Bool {
-  let captions = dispatch_caption_set()
-  let real = dispatch_reserved_ch()
-  real == longest_label_len(labels: captions) + 2
-    && real >= longest_label_len(labels: captions)
-    && dispatch_reserved_ch_for(labels: ["short"]) == 7
-    && dispatch_reserved_ch_for(labels: ["already_done_signed_off"]) > dispatch_reserved_ch_for(labels: ["short"])
-    && string_contains(s: roadmap_css(), pattern: join([to_string(real), "ch"], ""))
+  let captions = gunbc.roadmap_component.dispatch_caption_set()
+  let real = gunbc.roadmap_component.dispatch_reserved_ch()
+  real == gunbc.roadmap_component.longest_label_len(labels: captions) + 2
+    && real >= gunbc.roadmap_component.longest_label_len(labels: captions)
+    && gunbc.roadmap_component.dispatch_reserved_ch_for(labels: ["short"]) == 7
+    && gunbc.roadmap_component.dispatch_reserved_ch_for(labels: ["already_done_signed_off"]) > gunbc.roadmap_component.dispatch_reserved_ch_for(labels: ["short"])
+    && string_contains(s: gunbc.roadmap_style.roadmap_css(), pattern: join([to_string(real), "ch"], ""))
 }
 
 test fn witness_chip_material_is_band_paint() -> Bool {
-  let css = roadmap_css()
-  let ok_block = css_block(
-    selector: join([".dispatch-btn.", dispatch_class_ok], ""),
+  let css = gunbc.roadmap_style.roadmap_css()
+  let ok_block = gunbc.design.material.css_block(
+    selector: join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_ok], ""),
     decls: [
-      decl(prop: Color, value: "var(--band-ok-ink)"),
-      decl(prop: Background, value: "var(--band-ok)"),
-      decl(prop: BorderColor, value: "var(--band-ok)"),
+      gunbc.design.material.decl(prop: Color, value: "var(--band-ok-ink)"),
+      gunbc.design.material.decl(prop: Background, value: "var(--band-ok)"),
+      gunbc.design.material.decl(prop: BorderColor, value: "var(--band-ok)"),
     ])
-  let refused_block = css_block(
-    selector: join([".dispatch-btn.", dispatch_class_refused], ""),
+  let refused_block = gunbc.design.material.css_block(
+    selector: join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_refused], ""),
     decls: [
-      decl(prop: Color, value: "var(--band-fail-ink)"),
-      decl(prop: Background, value: "var(--band-fail)"),
-      decl(prop: BorderColor, value: "var(--band-fail)"),
+      gunbc.design.material.decl(prop: Color, value: "var(--band-fail-ink)"),
+      gunbc.design.material.decl(prop: Background, value: "var(--band-fail)"),
+      gunbc.design.material.decl(prop: BorderColor, value: "var(--band-fail)"),
     ])
   string_contains(s: css, pattern: ok_block)
     && string_contains(s: css, pattern: refused_block)
-    && belt_dispatch_label_band_key(wire_label: "spawned") == "ok"
-    && belt_dispatch_label_band_key(wire_label: "spawn_failed") == "loud"
-    && role_var_for_label(wire_label: "spawned") == role_var(r: FigureRole)
+    && gunbc.roadmap_belt_actuate.belt_dispatch_label_band_key(wire_label: "spawned") == "ok"
+    && gunbc.roadmap_belt_actuate.belt_dispatch_label_band_key(wire_label: "spawn_failed") == "loud"
+    && role_var_for_label(wire_label: "spawned") == gunbc.design.theme.role_var(r: gunbc.design.theme.FigureRole)
 }
 
 test fn witness_chip_wrong_paint_not_shipped() -> Bool {
-  let wrong = css_block(
-    selector: join([".dispatch-btn.", dispatch_class_ok], ""),
+  let wrong = gunbc.design.material.css_block(
+    selector: join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_ok], ""),
     decls: [
-      decl(prop: Color, value: "var(--band-fail-ink)"),
-      decl(prop: Background, value: "var(--band-fail)"),
-      decl(prop: BorderColor, value: "var(--band-fail)"),
+      gunbc.design.material.decl(prop: Color, value: "var(--band-fail-ink)"),
+      gunbc.design.material.decl(prop: Background, value: "var(--band-fail)"),
+      gunbc.design.material.decl(prop: BorderColor, value: "var(--band-fail)"),
     ])
-  !string_contains(s: roadmap_css(), pattern: wrong)
+  !string_contains(s: gunbc.roadmap_style.roadmap_css(), pattern: wrong)
 }
 
 test fn witness_located_fields_surface_to_title() -> Bool {
-  let js = dispatch_client_js_source()
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
   string_contains(s: js, pattern: "b.title =")
     && string_contains(s: js, pattern: "j.step")
     && string_contains(s: js, pattern: "j.detail")
 }
 
 test fn witness_dispatch_receipt_is_provider_agnostic() -> Bool {
-  let js = dispatch_client_js_source()
-  let captions = dispatch_caption_set()
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
+  let captions = gunbc.roadmap_component.dispatch_caption_set()
   any(captions, c => c == "dispatch · accepted")
     && any(captions, c => c == "dispatch · disabled")
     && !any(
       captions,
-      c => string_contains(s: c, pattern: belt_dispatch_provider_label()),
+      c => string_contains(s: c, pattern: gunbc.roadmap_belt_actuate.belt_dispatch_provider_label()),
     )
     && !string_contains(s: js, pattern: "j.provider")
     && string_contains(s: js, pattern: "dispatch · accepted")
-    && string_contains(s: js, pattern: belt_dispatch_disabled_status_label())
+    && string_contains(s: js, pattern: gunbc.roadmap_belt_actuate.belt_dispatch_disabled_status_label())
 }
 
 test fn witness_js_and_css_share_class_authority() -> Bool {
-  let js = dispatch_client_js_source()
-  let css = roadmap_css()
-  string_contains(s: js, pattern: dispatch_class_ok)
-    && string_contains(s: js, pattern: dispatch_class_refused)
-    && string_contains(s: js, pattern: dispatch_class_requested)
-    && string_contains(s: css, pattern: join([".dispatch-btn.", dispatch_class_ok], ""))
-    && string_contains(s: css, pattern: join([".dispatch-btn.", dispatch_class_refused], ""))
-    && string_contains(s: css, pattern: join([".dispatch-btn.", dispatch_class_requested], ""))
+  let js = gunbc.roadmap_component.dispatch_client_js_source()
+  let css = gunbc.roadmap_style.roadmap_css()
+  string_contains(s: js, pattern: gunbc.roadmap_component.dispatch_class_ok)
+    && string_contains(s: js, pattern: gunbc.roadmap_component.dispatch_class_refused)
+    && string_contains(s: js, pattern: gunbc.roadmap_component.dispatch_class_requested)
+    && string_contains(s: css, pattern: join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_ok], ""))
+    && string_contains(s: css, pattern: join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_refused], ""))
+    && string_contains(s: css, pattern: join([".dispatch-btn.", gunbc.roadmap_component.dispatch_class_requested], ""))
 }

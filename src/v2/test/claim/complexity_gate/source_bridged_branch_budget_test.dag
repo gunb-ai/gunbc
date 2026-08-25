@@ -1,11 +1,11 @@
 module v2.test.complexity_gate.source_bridged_branch_budget
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn table_fixture_branch_cost_lens_holds(body: v2.std.node.Node) -> v2.std.logic.Bool {
-  match cost_lens(n: body) {
-    Holds { value: _ } => true
+fn table_fixture_branch_cost_lens_holds(body: v2.std.node.Node) -> Bool {
+  match v2.lens.cost.cost_lens(n: body) {
+    v2.std.witness.Holds { value: _ } => true
     _ => false
   }
 }
@@ -13,24 +13,24 @@ fn table_fixture_branch_cost_lens_holds(body: v2.std.node.Node) -> v2.std.logic.
 fn table_fixture_branch_tightened_budget_fails_dominance(
   body: v2.std.node.Node,
   row: v2.test.complexity_gate.subject_complexity_budget_roster.LensSubjectComplexityBudgetRow
-) -> v2.std.logic.Bool {
-  let computed = complexity_lens(n: body)
-  !complexity_bound_dominates(
-    a: ConstantComplexity,
-    b: linear_complexity(size_var: v2.lens.cost.SizeVariable { source: body })
+) -> Bool {
+  let computed = v2.lens.complexity.complexity_lens(n: body)
+  !v2.lens.complexity.complexity_bound_dominates(
+    a: v2.lens.complexity.ConstantComplexity,
+    b: v2.lens.complexity.linear_complexity(size_var: v2.lens.cost.SizeVariable { source: body })
   )
-  && complexity_bound_dominates(
-    a: complexity_declared_budget_for_row(row: row, body: body),
+  && v2.lens.complexity.complexity_bound_dominates(
+    a: v2.test.complexity_gate.subject_complexity_budget_roster.complexity_declared_budget_for_row(row: row, body: body),
     b: computed
   )
 }
 
-test fn table_fixture_branch_budget_claim_holds() -> v2.std.logic.Bool {
-  let row = complexity_budget_row_table_fixture_branch
-  match lens_subject_arrow_body_for_budget_row(row: row) {
-    Accepted { value: body, diagnostics: _ } =>
+test fn table_fixture_branch_budget_claim_holds() -> Bool {
+  let row = v2.test.complexity_gate.subject_complexity_budget_roster.complexity_budget_row_table_fixture_branch
+  match v2.test.complexity_gate.lens_subject_body_supply.lens_subject_arrow_body_for_budget_row(row: row) {
+    v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
       table_fixture_branch_cost_lens_holds(body: body)
         && table_fixture_branch_tightened_budget_fails_dominance(body: body, row: row)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

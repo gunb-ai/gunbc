@@ -51,7 +51,7 @@ fn dissolution_trigger_ref(trigger: DissolutionTrigger) -> std.decl_ref.Declarat
 // discharges the retirement trigger. Both read the same `present_decls` evidence, so a
 // consumer that can answer one can already answer the other.
 fn dissolution_trigger_fired(trigger: DissolutionTrigger, present_decls: List<std.decl_ref.DeclarationRef>) -> Bool {
-  let present = declaration_ref_in_list(target: dissolution_trigger_ref(trigger: trigger), refs: present_decls)
+  let present = std.decl_ref.declaration_ref_in_list(target: dissolution_trigger_ref(trigger: trigger), refs: present_decls)
   match trigger {
     DeclarationAppears { ref: _ } => present
     DeclarationRetires { ref: _ } => !present
@@ -108,7 +108,7 @@ fn dissolution_is_bound(condition: DissolutionCondition) -> Bool {
 fn dissolution_description(condition: DissolutionCondition) -> String {
   match condition {
     BoundDissolution { trigger: t } =>
-      declaration_ref_display_key(ref: dissolution_trigger_ref(trigger: t))
+      std.decl_ref.declaration_ref_display_key(ref: dissolution_trigger_ref(trigger: t))
     UnboundDissolution { description: d } => d as String
   }
 }

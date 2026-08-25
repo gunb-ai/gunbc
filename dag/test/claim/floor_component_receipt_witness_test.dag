@@ -1,6 +1,7 @@
 module test.claim.floor_component_receipt_witness_test
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data fcr_witness_note: String = "Executing consumer for gunbc.floor_component_receipt. THE PAIR IS THE PROOF: the receipt built from run 30509024051's real component states must report the affected-set cold control VERIFIED (it concluded Done over 5217 witnesses) while still naming the silent-pick gate as the failed component — and the same projection must report NOT verified when that control itself is red, absent, or ambiguous. Either direction alone is satisfiable by a broken projection: always-verified reproduces the alert defect this module exists to kill, always-unverified reproduces the hardcoded 'cold control is dark' story it replaces."
 
@@ -11,68 +12,68 @@ data fcr_workflow_name: std.types.NonEmptyStr = "affected-set-falsifier" as std.
 data fcr_head_sha: std.types.CommitSha = "0123456789abcdef0123456789abcdef01234567" as std.types.CommitSha
 
 fn fcr_control_row_with(outcome_tag: std.types.NonEmptyStr, detail: std.types.NonEmptyStr) -> gunbc.floor_component_receipt.FloorComponentRow? {
-  floor_component_row(
+  gunbc.floor_component_receipt.floor_component_row(
     run_id: fcr_run_id,
     index: 1,
     label: "discovery-corpus predict-only" as std.types.NonEmptyStr,
     witnesses: 5217,
     outcome_tag: outcome_tag,
     detail: detail,
-    basis: WallClock,
-    budget: millisecond(count: 0),
-    elapsed: millisecond(count: 0),
+    basis: std.measure.WallClock,
+    budget: std.measure.millisecond(count: 0),
+    elapsed: std.measure.millisecond(count: 0),
     shown_failures: 0,
-    wall: millisecond(count: 1170401)
+    wall: std.measure.millisecond(count: 1170401)
   )
 }
 
 data fcr_silent_pick_diagnostic: std.types.NonEmptyStr = "resolution_divergence_silent_pick_gate_keystone_holds: witness receipt wall budget exceeded: 900001ms elapsed > 900000ms whole-receipt budget" as std.types.NonEmptyStr
 
 fn fcr_silent_pick_row() -> gunbc.floor_component_receipt.FloorComponentRow? {
-  floor_component_row(
+  gunbc.floor_component_receipt.floor_component_row(
     run_id: fcr_run_id,
     index: 4,
     label: "discovery-corpus silent-pick gate" as std.types.NonEmptyStr,
     witnesses: 1,
     outcome_tag: "refused" as std.types.NonEmptyStr,
     detail: fcr_silent_pick_diagnostic,
-    basis: WallClock,
-    budget: millisecond(count: 0),
-    elapsed: millisecond(count: 0),
+    basis: std.measure.WallClock,
+    budget: std.measure.millisecond(count: 0),
+    elapsed: std.measure.millisecond(count: 0),
     shown_failures: 0,
-    wall: millisecond(count: 905745)
+    wall: std.measure.millisecond(count: 905745)
   )
 }
 
 fn fcr_timed_out_row() -> gunbc.floor_component_receipt.FloorComponentRow? {
-  floor_component_row(
+  gunbc.floor_component_receipt.floor_component_row(
     run_id: fcr_run_id,
     index: 4,
     label: "discovery-corpus silent-pick gate" as std.types.NonEmptyStr,
     witnesses: 1,
     outcome_tag: "timed_out" as std.types.NonEmptyStr,
     detail: "unused by the TimedOut arm" as std.types.NonEmptyStr,
-    basis: WallClock,
-    budget: millisecond(count: 900000),
-    elapsed: millisecond(count: 900766),
+    basis: std.measure.WallClock,
+    budget: std.measure.millisecond(count: 900000),
+    elapsed: std.measure.millisecond(count: 900766),
     shown_failures: 0,
-    wall: millisecond(count: 905745)
+    wall: std.measure.millisecond(count: 905745)
   )
 }
 
 fn fcr_expect_red_row(index: std.nat.Nat) -> gunbc.floor_component_receipt.FloorComponentRow? {
-  floor_component_row(
+  gunbc.floor_component_receipt.floor_component_row(
     run_id: fcr_run_id,
     index: index,
     label: "discovery-corpus expect_red" as std.types.NonEmptyStr,
     witnesses: 6,
     outcome_tag: "done" as std.types.NonEmptyStr,
     detail: "expect_red still-red OK" as std.types.NonEmptyStr,
-    basis: WallClock,
-    budget: millisecond(count: 0),
-    elapsed: millisecond(count: 0),
+    basis: std.measure.WallClock,
+    budget: std.measure.millisecond(count: 0),
+    elapsed: std.measure.millisecond(count: 0),
     shown_failures: 0,
-    wall: millisecond(count: 1974836)
+    wall: std.measure.millisecond(count: 1974836)
   )
 }
 
@@ -99,8 +100,8 @@ fn fcr_real_run_rows() -> List<gunbc.floor_component_receipt.FloorComponentRow> 
 
 test fn fcr_real_run_names_the_silent_pick_component() -> Bool {
   let rows = fcr_real_run_rows()
-  let failed = floor_unsuccessful_component_rows(rows: rows)
-  let doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows)
+  let failed = gunbc.floor_component_receipt.floor_unsuccessful_component_rows(rows: rows)
+  let doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows)
   count(rows) == 4
     && count(failed) == 1
     && string_contains(s: doc, pattern: "\"schema\": \"floor-component-receipt/v1\"")
@@ -112,7 +113,7 @@ test fn fcr_real_run_names_the_silent_pick_component() -> Bool {
 
 test fn fcr_timed_out_arm_projects_budget_and_elapsed() -> Bool {
   let rows = fcr_rows_of(opts: [fcr_timed_out_row()])
-  let doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows)
+  let doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows)
   count(rows) == 1
     && string_contains(s: doc, pattern: "\"outcome\": \"timed_out\"")
     && string_contains(s: doc, pattern: "\"budget_ms\": 900000")
@@ -120,18 +121,18 @@ test fn fcr_timed_out_arm_projects_budget_and_elapsed() -> Bool {
 }
 
 test fn fcr_red_control_unknown_tags_fail_closed() -> Bool {
-  let bad_outcome = floor_component_row(
+  let bad_outcome = gunbc.floor_component_receipt.floor_component_row(
     run_id: fcr_run_id,
     index: 1,
     label: "x" as std.types.NonEmptyStr,
     witnesses: 1,
     outcome_tag: "probably_fine" as std.types.NonEmptyStr,
     detail: "d" as std.types.NonEmptyStr,
-    basis: WallClock,
-    budget: millisecond(count: 0),
-    elapsed: millisecond(count: 0),
+    basis: std.measure.WallClock,
+    budget: std.measure.millisecond(count: 0),
+    elapsed: std.measure.millisecond(count: 0),
     shown_failures: 0,
-    wall: millisecond(count: 1)
+    wall: std.measure.millisecond(count: 1)
   )
   (match bad_outcome { Absent => true  Present { value: _ } => false })
     && fcr_all_present(opts: [
@@ -146,8 +147,8 @@ test fn fcr_refused_is_distinct_from_failed() -> Bool {
   let failed_rows = fcr_rows_of(opts: [
     fcr_control_row_with(outcome_tag: "failed" as std.types.NonEmptyStr, detail: "provenance gap" as std.types.NonEmptyStr)
   ])
-  let refused_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: refused_rows)
-  let failed_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: failed_rows)
+  let refused_doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: refused_rows)
+  let failed_doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: failed_rows)
   string_contains(s: refused_doc, pattern: "\"outcome\": \"refused\"")
     && string_contains(s: refused_doc, pattern: "\"diagnostic\"")
     && string_contains(s: failed_doc, pattern: "\"outcome\": \"failed\"")
@@ -156,19 +157,19 @@ test fn fcr_refused_is_distinct_from_failed() -> Bool {
 }
 
 fn fcr_mode_row(mode: std.types.NonEmptyStr) -> gunbc.floor_component_receipt.FloorComponentRow? {
-  floor_component_row_of_failure_mode(
+  gunbc.floor_component_receipt.floor_component_row_of_failure_mode(
     run_id: fcr_run_id,
     index: 4,
     label: "discovery-corpus silent-pick gate" as std.types.NonEmptyStr,
     witnesses: 1,
     failure_mode: mode,
     detail: fcr_silent_pick_diagnostic,
-    wall: millisecond(count: 905745)
+    wall: std.measure.millisecond(count: 905745)
   )
 }
 
 fn fcr_not_concluded_mode_row(mode: std.types.NonEmptyStr, detail: std.types.NonEmptyStr) -> gunbc.floor_component_receipt.FloorComponentRow? {
-  floor_component_row_not_concluded(
+  gunbc.floor_component_receipt.floor_component_row_not_concluded(
     run_id: fcr_run_id,
     index: 7,
     label: "discovery-corpus wet self-host" as std.types.NonEmptyStr,
@@ -186,7 +187,7 @@ fn fcr_not_concluded_outcome_is(mode: std.types.NonEmptyStr, expected_outcome: S
   ])
   count(rows) == 1
     && string_contains(
-         s: floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows),
+         s: gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows),
          pattern: concat(concat("\"outcome\": \"", expected_outcome), "\"")
        )
 }
@@ -195,7 +196,7 @@ fn fcr_mode_outcome_is(mode: std.types.NonEmptyStr, expected_outcome: String) ->
   let rows = fcr_rows_of(opts: [fcr_mode_row(mode: mode)])
   count(rows) == 1
     && string_contains(
-         s: floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows),
+         s: gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows),
          pattern: concat(concat("\"outcome\": \"", expected_outcome), "\"")
        )
 }
@@ -233,7 +234,7 @@ test fn fcr_deadline_reached_is_distinct_from_both_skipped_causes() -> Bool {
 
 fn fcr_not_concluded_mode_of(mode: std.types.NonEmptyStr, detail: std.types.NonEmptyStr) -> String {
   let rows = fcr_rows_of(opts: [fcr_not_concluded_mode_row(mode: mode, detail: detail)])
-  fold(rows, init: "no-row", f: (acc, r) => floor_component_failure_mode_tag(m: r.failure_mode))
+  fold(rows, init: "no-row", f: (acc, r) => gunbc.floor_component_receipt_document.floor_component_failure_mode_tag(m: r.failure_mode))
 }
 
 test fn fcr_run_incomplete_is_a_distinct_mode_from_not_reached() -> Bool {
@@ -253,14 +254,14 @@ data fcr_failure_mode_edge_note: String = "The row-grain failure-mode edge, and 
 
 fn fcr_mode_of(mode: std.types.NonEmptyStr) -> String {
   let rows = fcr_rows_of(opts: [fcr_mode_row(mode: mode)])
-  fold(rows, init: "no-row", f: (acc, r) => floor_component_failure_mode_tag(m: r.failure_mode))
+  fold(rows, init: "no-row", f: (acc, r) => gunbc.floor_component_receipt_document.floor_component_failure_mode_tag(m: r.failure_mode))
 }
 
 test fn fcr_infra_and_witness_red_share_an_outcome_but_not_a_mode() -> Bool {
   let infra_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "Infra" as std.types.NonEmptyStr)])
   let red_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "WitnessRed" as std.types.NonEmptyStr)])
-  let infra_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: infra_rows)
-  let red_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: red_rows)
+  let infra_doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: infra_rows)
+  let red_doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: red_rows)
   count(infra_rows) == 1
     && count(red_rows) == 1
     && string_contains(s: infra_doc, pattern: "\"outcome\": \"failed\"")
@@ -285,8 +286,8 @@ data fcr_stale_known_red_note: String = "A known-red witness that starts PASSING
 test fn fcr_stale_known_red_is_a_refusal_distinct_from_witness_red_and_from_done() -> Bool {
   let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as std.types.NonEmptyStr)])
   let red_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "WitnessRed" as std.types.NonEmptyStr)])
-  let stale_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
-  let red_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: red_rows)
+  let stale_doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
+  let red_doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: red_rows)
   count(stale_rows) == 1
     && string_contains(s: stale_doc, pattern: "\"failure_mode\": \"StaleKnownRed\"")
     && string_contains(s: stale_doc, pattern: "\"outcome\": \"refused\"")
@@ -301,9 +302,9 @@ test fn fcr_pre_verdict_unverified_is_a_refusal_distinct_from_both_siblings() ->
   let unverified_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedPreVerdictUnverified" as std.types.NonEmptyStr)])
   let absent_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedEvidenceAbsent" as std.types.NonEmptyStr)])
   let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as std.types.NonEmptyStr)])
-  let unverified_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: unverified_rows)
-  let absent_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: absent_rows)
-  let stale_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
+  let unverified_doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: unverified_rows)
+  let absent_doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: absent_rows)
+  let stale_doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
   count(unverified_rows) == 1
     && string_contains(s: unverified_doc, pattern: "\"failure_mode\": \"ExpectedRedPreVerdictUnverified\"")
     && string_contains(s: unverified_doc, pattern: "\"outcome\": \"refused\"")
@@ -317,8 +318,8 @@ data fcr_expected_red_evidence_absent_note: String = "The COVERAGE half of the s
 test fn fcr_expected_red_evidence_absent_is_a_refusal_distinct_from_stale_and_from_done() -> Bool {
   let absent_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedEvidenceAbsent" as std.types.NonEmptyStr)])
   let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as std.types.NonEmptyStr)])
-  let absent_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: absent_rows)
-  let stale_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
+  let absent_doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: absent_rows)
+  let stale_doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
   count(absent_rows) == 1
     && string_contains(s: absent_doc, pattern: "\"failure_mode\": \"ExpectedRedEvidenceAbsent\"")
     && string_contains(s: absent_doc, pattern: "\"outcome\": \"refused\"")
@@ -330,7 +331,7 @@ test fn fcr_red_control_tag_built_row_records_no_mode_rather_than_guessing() -> 
   let rows = fcr_rows_of(opts: [
     fcr_control_row_with(outcome_tag: "done" as std.types.NonEmptyStr, detail: "ok" as std.types.NonEmptyStr)
   ])
-  let doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows)
+  let doc = gunbc.floor_component_receipt.floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows)
   count(rows) == 1
     && string_contains(s: doc, pattern: "\"failure_mode\": \"unrecorded\"")
     && !string_contains(s: doc, pattern: "\"failure_mode\": \"none\"")
@@ -339,14 +340,14 @@ test fn fcr_red_control_tag_built_row_records_no_mode_rather_than_guessing() -> 
 data receipt_round_trip_note: String = "THE WRITER'S OUTPUT DECODES THROUGH THE STRICT READER, and this witness exists because that once stopped being true. The writer emitted a selection_degradation member only when a selection snapshot existed, while the reader REQUIRED it, so the no-selection path produced a document the reader refused (review 49594). Both members are now deleted with affected-set selection itself — the writer no longer emits them and the reader no longer requires them — so the specific break is gone. The round trip is still witnessed, because what made that defect possible is structural rather than incidental: the writer and the reader are two hand-maintained member lists, and nothing but this execution joins them. Dissolve-on: the document type derives both projections, at which point a writer that omits a required member is unrepresentable and this witness becomes redundant with the type."
 
 test fn fcr_receipt_decodes_through_the_strict_reader() -> Bool {
-  let doc = floor_component_receipt_document(
+  let doc = gunbc.floor_component_receipt.floor_component_receipt_document(
     workflow_name: fcr_workflow_name,
     run_id: fcr_run_id,
     head_sha: fcr_head_sha,
     rows: fcr_real_run_rows()
   )
-  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr) {
-    ReceiptDecoded { document: d } => (d.subject.run_id as String) == (fcr_run_id as String)
+  match gunbc.floor_component_receipt_document.floor_component_receipt_decode_with(text: doc, expected_schema: gunbc.floor_component_receipt.floor_component_receipt_schema as std.types.NonEmptyStr) {
+    gunbc.floor_component_receipt_document.ReceiptDecoded { document: d } => (d.subject.run_id as String) == (fcr_run_id as String)
     _ => false
   }
 }
@@ -356,11 +357,11 @@ data fcr_run_terminal_legacy_absent_note: String = "Pre-PR receipts under artifa
 data fcr_legacy_receipt_without_run_terminal: String = "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":\"affected-set-falsifier\",\"run_id\":\"30509024051\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"component_count\":0,\"unsuccessful_components\":[],\"components\":[]}"
 
 test fn fcr_legacy_receipt_without_run_terminal_member_decodes() -> Bool {
-  match floor_component_receipt_decode_with(
+  match gunbc.floor_component_receipt_document.floor_component_receipt_decode_with(
     text: fcr_legacy_receipt_without_run_terminal,
-    expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr
+    expected_schema: gunbc.floor_component_receipt.floor_component_receipt_schema as std.types.NonEmptyStr
   ) {
-    ReceiptDecoded { document: d } =>
+    gunbc.floor_component_receipt_document.ReceiptDecoded { document: d } =>
       (d.subject.run_id as String) == "30509024051"
         && !string_contains(s: fcr_legacy_receipt_without_run_terminal, pattern: "\"run_terminal\"")
     _ => false
@@ -377,7 +378,7 @@ test fn fcr_incomplete_checkpoint_receipt_decodes_through_the_strict_reader() ->
       detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as std.types.NonEmptyStr
     )
   ])
-  let doc = floor_component_receipt_document_incomplete(
+  let doc = gunbc.floor_component_receipt.floor_component_receipt_document_incomplete(
     workflow_name: fcr_workflow_name,
     run_id: fcr_run_id,
     head_sha: fcr_head_sha,
@@ -386,8 +387,8 @@ test fn fcr_incomplete_checkpoint_receipt_decodes_through_the_strict_reader() ->
     concluded_count: 1,
     pending_from_index: 2
   )
-  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr) {
-    ReceiptDecoded { document: d } =>
+  match gunbc.floor_component_receipt_document.floor_component_receipt_decode_with(text: doc, expected_schema: gunbc.floor_component_receipt.floor_component_receipt_schema as std.types.NonEmptyStr) {
+    gunbc.floor_component_receipt_document.ReceiptDecoded { document: d } =>
       (d.subject.run_id as String) == (fcr_run_id as String)
         && string_contains(s: doc, pattern: "\"disposition\": \"incomplete\"")
         && string_contains(s: doc, pattern: "\"outcome\": \"pending\"")
@@ -404,7 +405,7 @@ test fn fcr_incomplete_checkpoint_receipt_reencodes_through_document_encoder() -
       detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as std.types.NonEmptyStr
     )
   ])
-  let doc = floor_component_receipt_document_incomplete(
+  let doc = gunbc.floor_component_receipt.floor_component_receipt_document_incomplete(
     workflow_name: fcr_workflow_name,
     run_id: fcr_run_id,
     head_sha: fcr_head_sha,
@@ -413,16 +414,16 @@ test fn fcr_incomplete_checkpoint_receipt_reencodes_through_document_encoder() -
     concluded_count: 1,
     pending_from_index: 2
   )
-  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr) {
-    ReceiptDecoded { document: d } =>
-      match floor_component_receipt_decode_with(
-        text: floor_component_receipt_document_text(doc: d),
-        expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr
+  match gunbc.floor_component_receipt_document.floor_component_receipt_decode_with(text: doc, expected_schema: gunbc.floor_component_receipt.floor_component_receipt_schema as std.types.NonEmptyStr) {
+    gunbc.floor_component_receipt_document.ReceiptDecoded { document: d } =>
+      match gunbc.floor_component_receipt_document.floor_component_receipt_decode_with(
+        text: gunbc.floor_component_receipt_document.floor_component_receipt_document_text(doc: d),
+        expected_schema: gunbc.floor_component_receipt.floor_component_receipt_schema as std.types.NonEmptyStr
       ) {
-        ReceiptDecoded { document: roundtrip } =>
+        gunbc.floor_component_receipt_document.ReceiptDecoded { document: roundtrip } =>
           (roundtrip.subject.run_id as String) == (fcr_run_id as String)
             && string_contains(
-                 s: floor_component_receipt_document_text(doc: roundtrip),
+                 s: gunbc.floor_component_receipt_document.floor_component_receipt_document_text(doc: roundtrip),
                  pattern: "\"disposition\": \"incomplete\""
                )
         _ => false

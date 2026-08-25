@@ -33,9 +33,9 @@ fn hostname_short_read(transport: gunbc.host_effect.HostEffectTransport) -> Host
 }
 
 fn hostname_short_read_operation_argv_matches_authority() -> Bool {
-  let authority = hostname_short_read_argv()
-  match host_operation_materialize_argv(operation: HostnameReadShort) {
-    ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
-    ArgvMaterializationRefused { at: _, cause: _ } => false
+  let authority = extdeps.tools.hostname.hostname_short_read_argv()
+  match gunbc.host_operation_exec.host_operation_materialize_argv(operation: gunbc.host_operation_exec.HostnameReadShort) {
+    v2.std.operation_argv.ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
+    v2.std.operation_argv.ArgvMaterializationRefused { at: _, cause: _ } => false
   }
 }

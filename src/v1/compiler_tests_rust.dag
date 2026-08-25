@@ -802,9 +802,9 @@ fn ct_rust_btree_set_ord_eligibility_test() -> String {
 
 fn render_target_rust_enum(target: v1.compiler.artifact.RenderTarget) -> String {
   match target {
-    Rust => "RenderTarget::Rust"
-    Python => "RenderTarget::Python"
-    Go => "RenderTarget::Go"
+    v1.compiler.artifact.Rust => "RenderTarget::Rust"
+    v1.compiler.artifact.Python => "RenderTarget::Python"
+    v1.compiler.artifact.Go => "RenderTarget::Go"
     Dag => "RenderTarget::Dag"
   }
 }

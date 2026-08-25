@@ -1,54 +1,54 @@
 module v2.test.lens_inert_carrier.inert_carrier_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data roster_one: List<String> = ["KnownEntry"]
 data names_with_unknown: List<String> = ["UnknownEntry"]
 data names_known_only: List<String> = ["KnownEntry"]
 
-test fn inert_carrier_no_unrostered_or_stale() -> v2.std.logic.Bool {
-  return inert_carrier_clean_holds()
+test fn inert_carrier_no_unrostered_or_stale() -> Bool {
+  return v2.lens.inert_carrier.inert_carrier_clean_holds()
 }
 
-test fn inert_carrier_universe_is_nonempty() -> v2.std.logic.Bool {
-  return inert_carrier_live_declared_count() > 0
+test fn inert_carrier_universe_is_nonempty() -> Bool {
+  return v2.lens.inert_carrier.inert_carrier_live_declared_count() > 0
 }
 
-test fn count_not_in_roster_detects_unrostered() -> v2.std.logic.Bool {
-  return count_not_in_roster(names: names_with_unknown, roster: roster_one) == 1
+test fn count_not_in_roster_detects_unrostered() -> Bool {
+  return v2.lens.inert_carrier.count_not_in_roster(names: names_with_unknown, roster: roster_one) == 1
 }
 
-test fn count_stale_roster_detects_stale_entry() -> v2.std.logic.Bool {
-  return count_stale_roster(roster: roster_one, inert_names: empty_inert_carrier_names) == 1
+test fn count_stale_roster_detects_stale_entry() -> Bool {
+  return v2.lens.inert_carrier.count_stale_roster(roster: roster_one, inert_names: v2.lens.inert_carrier.empty_inert_carrier_names) == 1
 }
 
 test fn verdict_clean_when_roster_matches_live_inert_names() -> Bool {
-  return inert_carrier_verdict_is_clean(v: inert_carrier_roster_verdict(names: names_known_only, roster: roster_one))
+  return v2.lens.inert_carrier.inert_carrier_verdict_is_clean(v: v2.lens.inert_carrier.inert_carrier_roster_verdict(names: names_known_only, roster: roster_one))
 }
 
 test fn unrostered_population_names_the_carrier_needing_a_row() -> Bool {
-  let v = inert_carrier_roster_verdict(names: names_with_unknown, roster: empty_inert_carrier_names)
-  let unrostered = inert_carrier_unrostered_names(v: v)
-  return inert_carrier_verdict_is_clean(v: v) == false
+  let v = v2.lens.inert_carrier.inert_carrier_roster_verdict(names: names_with_unknown, roster: v2.lens.inert_carrier.empty_inert_carrier_names)
+  let unrostered = v2.lens.inert_carrier.inert_carrier_unrostered_names(v: v)
+  return v2.lens.inert_carrier.inert_carrier_verdict_is_clean(v: v) == false
     && length(xs: unrostered) == 1
     && v2.lens.inert_carrier.list_contains_str(xs: unrostered, target: "UnknownEntry")
-    && length(xs: inert_carrier_stale_row_names(v: v)) == 0
+    && length(xs: v2.lens.inert_carrier.inert_carrier_stale_row_names(v: v)) == 0
 }
 
 test fn stale_population_names_the_row_needing_deletion() -> Bool {
-  let v = inert_carrier_roster_verdict(names: empty_inert_carrier_names, roster: roster_one)
-  let stale = inert_carrier_stale_row_names(v: v)
-  return inert_carrier_verdict_is_clean(v: v) == false
+  let v = v2.lens.inert_carrier.inert_carrier_roster_verdict(names: v2.lens.inert_carrier.empty_inert_carrier_names, roster: roster_one)
+  let stale = v2.lens.inert_carrier.inert_carrier_stale_row_names(v: v)
+  return v2.lens.inert_carrier.inert_carrier_verdict_is_clean(v: v) == false
     && length(xs: stale) == 1
     && v2.lens.inert_carrier.list_contains_str(xs: stale, target: "KnownEntry")
-    && length(xs: inert_carrier_unrostered_names(v: v)) == 0
+    && length(xs: v2.lens.inert_carrier.inert_carrier_unrostered_names(v: v)) == 0
 }
 
 test fn the_two_populations_are_reported_separately() -> Bool {
-  let v = inert_carrier_roster_verdict(names: names_with_unknown, roster: roster_one)
-  let unrostered = inert_carrier_unrostered_names(v: v)
-  let stale = inert_carrier_stale_row_names(v: v)
+  let v = v2.lens.inert_carrier.inert_carrier_roster_verdict(names: names_with_unknown, roster: roster_one)
+  let unrostered = v2.lens.inert_carrier.inert_carrier_unrostered_names(v: v)
+  let stale = v2.lens.inert_carrier.inert_carrier_stale_row_names(v: v)
   return v2.lens.inert_carrier.list_contains_str(xs: unrostered, target: "UnknownEntry")
     && (v2.lens.inert_carrier.list_contains_str(xs: unrostered, target: "KnownEntry") == false)
     && v2.lens.inert_carrier.list_contains_str(xs: stale, target: "KnownEntry")

@@ -1,10 +1,10 @@
 module test.claim.interpreter_dispatch_bijection_real_roster_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data interpreter_dispatch_bijection_real_roster_witness_note: String = "R1 real-crate roster<->handler bijection evidence (gunbc#7825 / Lane D): falsifier_self_host_wet enrollment for the two integration tests that clone the real workspace, perturb gunbc.v1_interpreter_primitive_surface or src/v1/stage0/src/v1_interpreter.rs, run dag/tools/generated_artifact_gate.dag main_wet, and require real cargo build refusal (E0004 / macro expansion). Distinct from interpreter_dispatch_bijection_compile_red.rs (isolated temp fixture, per-PR-local cargo test) and from v1_interpreter_primitive_dispatch_authority_acceptance_test.dag (structural .dag contract). Memory envelope prediction: tools.interpreter_dispatch_bijection_real_roster_transport interpreter_dispatch_bijection_real_roster_memory_envelope_note."
 
-test fn interpreter_dispatch_bijection_real_roster_red_holds() -> v2.std.logic.Bool {
-  run_interpreter_dispatch_bijection_real_roster_red()
+test fn interpreter_dispatch_bijection_real_roster_red_holds() -> Bool {
+  tools.interpreter_dispatch_bijection_real_roster_transport.run_interpreter_dispatch_bijection_real_roster_red()
 }

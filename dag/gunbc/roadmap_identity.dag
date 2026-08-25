@@ -49,7 +49,7 @@ fn roadmap_tombstoned_identities() -> List<RoadmapIdentityRecord> {
 }
 
 fn roadmap_active_identities() -> List<RoadmapIdentityRecord> {
-  declared_roadmap_nodes() |> map(n => ActiveIdentity {
+  gunbc.roadmap_authority.declared_roadmap_nodes() |> map(n => ActiveIdentity {
     identity: n.identity,
     slug: n.node,
   })

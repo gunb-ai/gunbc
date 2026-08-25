@@ -3,14 +3,14 @@ module test.claim.plan_lens_witness
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn plan_with_trigger() -> gunbc.plan.Plan {
-  gunbc.plan.Plan { slug: "x", title: "x", body: [], retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "delete when X is witnessed") } }
+  gunbc.plan.Plan { slug: "x", title: "x", body: [], retirement: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "delete when X is witnessed") } }
 }
 
 fn plan_without_trigger() -> gunbc.plan.Plan {
-  gunbc.plan.Plan { slug: "y", title: "y", body: [], retirement: PlanHasNoRetirement }
+  gunbc.plan.Plan { slug: "y", title: "y", body: [], retirement: gunbc.plan.PlanHasNoRetirement }
 }
 
 // Reaches the empty condition through the NON-LITERAL path. The literal form is
@@ -23,35 +23,35 @@ fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
 }
 
 fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
-  unbound_dissolution(description: test.claim.plan_lens_witness.synthetic_nonliteral_text(text: text))
+  std.dissolution.unbound_dissolution(description: synthetic_nonliteral_text(text: text))
 }
 
 fn plan_with_empty_retirement() -> gunbc.plan.Plan {
-  gunbc.plan.Plan { slug: "w", title: "w", body: [], retirement: gunbc.plan.PlanRetiresWhen { condition: test.claim.plan_lens_witness.synthetic_empty_condition(text: "") } }
+  gunbc.plan.Plan { slug: "w", title: "w", body: [], retirement: gunbc.plan.PlanRetiresWhen { condition: synthetic_empty_condition(text: "") } }
 }
 
 fn plan_untitled() -> gunbc.plan.Plan {
-  gunbc.plan.Plan { slug: "z", title: "", body: [], retirement: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "t") } }
+  gunbc.plan.Plan { slug: "z", title: "", body: [], retirement: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "t") } }
 }
 
 test fn every_registered_plan_has_retirement() -> Bool {
-  plans_all_have_retirement(plans: gunbc.plan_registry.all_plans)
+  gunbc.plan.plans_all_have_retirement(plans: gunbc.plan_registry.all_plans)
 }
 
 test fn every_registered_plan_is_titled() -> Bool {
-  plans_all_titled(plans: gunbc.plan_registry.all_plans)
+  gunbc.plan.plans_all_titled(plans: gunbc.plan_registry.all_plans)
 }
 
 test fn missing_retirement_is_detected() -> Bool {
-  plan_has_retirement(p: plan_with_trigger())
-    && (plan_has_retirement(p: plan_without_trigger()) == false)
-    && (plan_has_retirement(p: plan_with_empty_retirement()) == false)
-    && (plans_all_have_retirement(plans: [plan_with_trigger(), plan_without_trigger()]) == false)
-    && (plans_all_have_retirement(plans: [plan_with_trigger(), plan_with_empty_retirement()]) == false)
+  gunbc.plan.plan_has_retirement(p: plan_with_trigger())
+    && (gunbc.plan.plan_has_retirement(p: plan_without_trigger()) == false)
+    && (gunbc.plan.plan_has_retirement(p: plan_with_empty_retirement()) == false)
+    && (gunbc.plan.plans_all_have_retirement(plans: [plan_with_trigger(), plan_without_trigger()]) == false)
+    && (gunbc.plan.plans_all_have_retirement(plans: [plan_with_trigger(), plan_with_empty_retirement()]) == false)
 }
 
 test fn missing_title_is_detected() -> Bool {
-  plan_title_is_present(p: plan_with_trigger())
-    && (plan_title_is_present(p: plan_untitled()) == false)
-    && (plans_all_titled(plans: [plan_with_trigger(), plan_untitled()]) == false)
+  gunbc.plan.plan_title_is_present(p: plan_with_trigger())
+    && (gunbc.plan.plan_title_is_present(p: plan_untitled()) == false)
+    && (gunbc.plan.plans_all_titled(plans: [plan_with_trigger(), plan_untitled()]) == false)
 }

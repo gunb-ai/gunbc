@@ -4,7 +4,7 @@ module extdeps.languages.go.module
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "go.dev/ref/mod"
   }
 }
@@ -34,36 +34,36 @@ fn go_semver_to_version_identity(v: GoSemVer) -> extdeps.version.VersionIdentity
 }
 
 fn go_semver_compare(a: GoSemVer, b: GoSemVer) -> std.algebra.Ordering {
-  let mc = if a.major < b.major { Less } else { if a.major > b.major { Greater } else { Equal } }
-  let nc = if a.minor < b.minor { Less } else { if a.minor > b.minor { Greater } else { Equal } }
-  let pc = if a.patch < b.patch { Less } else { if a.patch > b.patch { Greater } else { Equal } }
+  let mc = if a.major < b.major { std.algebra.Less } else { if a.major > b.major { std.algebra.Greater } else { std.algebra.Equal } }
+  let nc = if a.minor < b.minor { std.algebra.Less } else { if a.minor > b.minor { std.algebra.Greater } else { std.algebra.Equal } }
+  let pc = if a.patch < b.patch { std.algebra.Less } else { if a.patch > b.patch { std.algebra.Greater } else { std.algebra.Equal } }
   let pre = match a.prerelease {
     Absent => match b.prerelease {
-      Absent => Equal
-      Present { value: _bp } => Greater
+      Absent => std.algebra.Equal
+      Present { value: _bp } => std.algebra.Greater
     }
     Present { value: _ap } => match b.prerelease {
-      Absent => Less
-      Present { value: _bp } => Equal
+      Absent => std.algebra.Less
+      Present { value: _bp } => std.algebra.Equal
     }
   }
   match mc {
-    Less => Less
-    Greater => Greater
-    Equal => match nc {
-      Less => Less
-      Greater => Greater
-      Equal => match pc {
-        Less => Less
-        Greater => Greater
-        Equal => pre
+    std.algebra.Less => std.algebra.Less
+    std.algebra.Greater => std.algebra.Greater
+    std.algebra.Equal => match nc {
+      std.algebra.Less => std.algebra.Less
+      std.algebra.Greater => std.algebra.Greater
+      std.algebra.Equal => match pc {
+        std.algebra.Less => std.algebra.Less
+        std.algebra.Greater => std.algebra.Greater
+        std.algebra.Equal => pre
       }
     }
   }
 }
 
 data go_module_version_scheme: extdeps.version.VersionScheme = {
-  compare: (a, b) => if a == b { Equal } else { Less }
+  compare: (a, b) => if a == b { std.algebra.Equal } else { std.algebra.Less }
 }
 
 type GoModulePath = std.types.NonEmptyStr where brand("GoModulePath")

@@ -4,122 +4,122 @@ module test.claim.e0599_emitter_decision_census_witness_test
 data e0599_emitter_decision_census_witness_note: String = "Witness for tools.e0599_emitter_decision_census: the operation selection and the operation->cause decision that docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD realization) consumes over the real compilation path. Each GREEN pins one measured (method, receiver_expr) shape observed in the P-fn Phase B0 census to the lowering operation and typed cause it must select. The REDs are the load-bearing half: they hold the fail-closed arm open, so a future row that widens the classifier into a catch-all is caught. RED family 1 — an out-of-scope method (as_deref, root family R5) must NOT acquire a cause. RED family 2 — a receiver shape no lowering row names must NOT acquire a cause. RED family 3 (ROUTING, added 2026-07-29 on warm-dove-316 / calm-badger-682 review) — a tuple projection is a structurally distinct emitter shape from a named field access: v1.compiler.emit_rust emit_typed_field_access applies clone_value unconditionally in its TupleFirst, TupleSecond, and anonymous-record projection arms, while its StoredField arm gates clone_value by base_is_owned, so they differ on the ownership axis. These controls perturb the ROUTING rather than the destination: the absorbing-default control below proves the fail-closed arm CAN fire, but only a routing control proves an unclassifiable shape REACHES it. RED family 4 — the three causes must stay distinct, so a collapse of the TargetApi/OwnedDeconstruction/CloneShared split (the whole point of the B0 measurement) reds here."
 
 test fn e0599_b0_freemonoid_empty_test_is_target_api() -> Bool {
-  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "is_empty", receiver_expr: "__fm")) == "FreeMonoidEmptyTest"
-    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "is_empty", receiver_expr: "__fm")) == "TargetApiRequirement"
+  tools.e0599_emitter_decision_census.e0599_lowering_operation_label(operation: tools.e0599_emitter_decision_census.e0599_lowering_operation_for(method: "is_empty", receiver_expr: "__fm")) == "FreeMonoidEmptyTest"
+    && tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "is_empty", receiver_expr: "__fm")) == "TargetApiRequirement"
 }
 
 test fn e0599_b0_freemonoid_tail_iterate_is_target_api() -> Bool {
-  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "iter", receiver_expr: "(*__fm)")) == "FreeMonoidTailIterate"
-    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "iter", receiver_expr: "(*__fm)")) == "TargetApiRequirement"
+  tools.e0599_emitter_decision_census.e0599_lowering_operation_label(operation: tools.e0599_emitter_decision_census.e0599_lowering_operation_for(method: "iter", receiver_expr: "(*__fm)")) == "FreeMonoidTailIterate"
+    && tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "iter", receiver_expr: "(*__fm)")) == "TargetApiRequirement"
 }
 
 test fn e0599_b0_freemonoid_head_extract_is_owned_deconstruction() -> Bool {
-  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "(*__fm)[0]")) == "FreeMonoidHeadExtract"
-    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "(*__fm)[0]")) == "OwnedDeconstructionRequirement"
+  tools.e0599_emitter_decision_census.e0599_lowering_operation_label(operation: tools.e0599_emitter_decision_census.e0599_lowering_operation_for(method: "clone", receiver_expr: "(*__fm)[0]")) == "FreeMonoidHeadExtract"
+    && tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "clone", receiver_expr: "(*__fm)[0]")) == "OwnedDeconstructionRequirement"
 }
 
 test fn e0599_b0_freemonoid_catchall_bind_is_clone_shared() -> Bool {
-  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "__fm")) == "FreeMonoidCatchallBind"
-    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "__fm")) == "CloneSharedRequirement"
+  tools.e0599_emitter_decision_census.e0599_lowering_operation_label(operation: tools.e0599_emitter_decision_census.e0599_lowering_operation_for(method: "clone", receiver_expr: "__fm")) == "FreeMonoidCatchallBind"
+    && tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "clone", receiver_expr: "__fm")) == "CloneSharedRequirement"
 }
 
 test fn e0599_b0_deref_clone_whole_value_is_clone_shared() -> Bool {
-  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "(*acc.clone())")) == "DerefCloneWholeValue"
-    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "(*acc.clone())")) == "CloneSharedRequirement"
+  tools.e0599_emitter_decision_census.e0599_lowering_operation_label(operation: tools.e0599_emitter_decision_census.e0599_lowering_operation_for(method: "clone", receiver_expr: "(*acc.clone())")) == "DerefCloneWholeValue"
+    && tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "clone", receiver_expr: "(*acc.clone())")) == "CloneSharedRequirement"
 }
 
 test fn e0599_b0_ident_reference_clone_is_clone_shared() -> Bool {
-  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "item")) == "IdentReferenceClone"
-    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "item")) == "CloneSharedRequirement"
+  tools.e0599_emitter_decision_census.e0599_lowering_operation_label(operation: tools.e0599_emitter_decision_census.e0599_lowering_operation_for(method: "clone", receiver_expr: "item")) == "IdentReferenceClone"
+    && tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "clone", receiver_expr: "item")) == "CloneSharedRequirement"
 }
 
 test fn e0599_b0_field_access_clone_is_clone_shared() -> Bool {
-  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "left.carried")) == "FieldAccessClone"
-    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "left.carried")) == "CloneSharedRequirement"
+  tools.e0599_emitter_decision_census.e0599_lowering_operation_label(operation: tools.e0599_emitter_decision_census.e0599_lowering_operation_for(method: "clone", receiver_expr: "left.carried")) == "FieldAccessClone"
+    && tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "clone", receiver_expr: "left.carried")) == "CloneSharedRequirement"
 }
 
 test fn e0599_b0_head_extract_and_empty_test_are_different_causes() -> Bool {
-  e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "(*__fm)[0]")) != e0599_requirement_cause_label(cause: e0599_cause_for(method: "is_empty", receiver_expr: "__fm"))
+  tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "clone", receiver_expr: "(*__fm)[0]")) != tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "is_empty", receiver_expr: "__fm"))
 }
 
 test fn e0599_b0_target_api_is_not_ownership_removable() -> Bool {
-  e0599_requirement_cause_label(cause: e0599_cause_for(method: "is_empty", receiver_expr: "__fm")) != "CloneSharedRequirement"
-    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "iter", receiver_expr: "(*__fm)")) != "CloneSharedRequirement"
+  tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "is_empty", receiver_expr: "__fm")) != "CloneSharedRequirement"
+    && tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "iter", receiver_expr: "(*__fm)")) != "CloneSharedRequirement"
 }
 
 test fn e0599_b0_owned_deconstruction_is_not_ownership_removable() -> Bool {
-  e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "(*__fm)[0]")) != "CloneSharedRequirement"
+  tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "clone", receiver_expr: "(*__fm)[0]")) != "CloneSharedRequirement"
 }
 
 test fn e0599_b0_red_out_of_scope_method_refuses() -> Bool {
-  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "as_deref", receiver_expr: "opt.clone()")) == "LoweringUnidentified"
-    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "as_deref", receiver_expr: "opt.clone()")) == "Unresolved"
+  tools.e0599_emitter_decision_census.e0599_lowering_operation_label(operation: tools.e0599_emitter_decision_census.e0599_lowering_operation_for(method: "as_deref", receiver_expr: "opt.clone()")) == "LoweringUnidentified"
+    && tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "as_deref", receiver_expr: "opt.clone()")) == "Unresolved"
 }
 
 test fn e0599_b0_red_unnamed_receiver_shape_refuses() -> Bool {
-  e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "shape_no_lowering_row_names[0](x)")) == "Unresolved"
+  tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "clone", receiver_expr: "shape_no_lowering_row_names[0](x)")) == "Unresolved"
 }
 
 test fn e0599_b0_red_routing_tuple_projection_first_refuses() -> Bool {
-  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "pair.0")) == "LoweringUnidentified"
-    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "pair.0")) == "Unresolved"
+  tools.e0599_emitter_decision_census.e0599_lowering_operation_label(operation: tools.e0599_emitter_decision_census.e0599_lowering_operation_for(method: "clone", receiver_expr: "pair.0")) == "LoweringUnidentified"
+    && tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "clone", receiver_expr: "pair.0")) == "Unresolved"
 }
 
 test fn e0599_b0_red_routing_tuple_projection_second_refuses() -> Bool {
-  e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "pair.1")) == "Unresolved"
+  tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "clone", receiver_expr: "pair.1")) == "Unresolved"
 }
 
 test fn e0599_b0_routing_named_field_still_classifies() -> Bool {
-  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "left.carried")) == "FieldAccessClone"
+  tools.e0599_emitter_decision_census.e0599_lowering_operation_label(operation: tools.e0599_emitter_decision_census.e0599_lowering_operation_for(method: "clone", receiver_expr: "left.carried")) == "FieldAccessClone"
 }
 
 test fn e0599_b0_red_empty_receiver_refuses() -> Bool {
-  e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "")) == "Unresolved"
+  tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "clone", receiver_expr: "")) == "Unresolved"
 }
 
 test fn e0599_b0_red_unresolved_row_lookup_is_absent() -> Bool {
-  match e0599_row_for_operation(operation: tools.e0599_emitter_decision_census.LoweringUnidentified { method: "clone", receiver_expr: "" }) {
+  match tools.e0599_emitter_decision_census.e0599_row_for_operation(operation: tools.e0599_emitter_decision_census.LoweringUnidentified { method: "clone", receiver_expr: "" }) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn e0599_b0_classification_line_carries_seven_fields() -> Bool {
-  list_length(items: e0599_classification_line(method: "is_empty", receiver_expr: "__fm") |> split(delimiter: "\t")) == 7
+  std.types.list_length(items: tools.e0599_emitter_decision_census.e0599_classification_line(method: "is_empty", receiver_expr: "__fm") |> split(delimiter: "\t")) == 7
 }
 
 test fn e0599_b0_classification_line_carries_the_ownership_alternative() -> Bool {
-  string_contains(s: e0599_classification_line(method: "clone", receiver_expr: "item"), pattern: "EmitterArmPresent")
-    && string_contains(s: e0599_classification_line(method: "clone", receiver_expr: "(*acc.clone())"), pattern: "NoEmitterArm")
-    && string_contains(s: e0599_classification_line(method: "is_empty", receiver_expr: "__fm"), pattern: "NotApplicable")
+  string_contains(s: tools.e0599_emitter_decision_census.e0599_classification_line(method: "clone", receiver_expr: "item"), pattern: "EmitterArmPresent")
+    && string_contains(s: tools.e0599_emitter_decision_census.e0599_classification_line(method: "clone", receiver_expr: "(*acc.clone())"), pattern: "NoEmitterArm")
+    && string_contains(s: tools.e0599_emitter_decision_census.e0599_classification_line(method: "is_empty", receiver_expr: "__fm"), pattern: "NotApplicable")
 }
 
 test fn e0599_b0_classification_line_cites_the_linked_crate() -> Bool {
-  string_contains(s: e0599_classification_line(method: "is_empty", receiver_expr: "__fm"), pattern: "im 15.1.0 im::vector impl<A: Clone> Vector<A>")
+  string_contains(s: tools.e0599_emitter_decision_census.e0599_classification_line(method: "is_empty", receiver_expr: "__fm"), pattern: "im 15.1.0 im::vector impl<A: Clone> Vector<A>")
 }
 
 test fn e0599_b0_red_classification_does_not_cite_im_rc() -> Bool {
-  !string_contains(s: e0599_classification_line(method: "is_empty", receiver_expr: "__fm"), pattern: "im-rc")
+  !string_contains(s: tools.e0599_emitter_decision_census.e0599_classification_line(method: "is_empty", receiver_expr: "__fm"), pattern: "im-rc")
 }
 
 test fn e0599_b0_rollup_roster_covers_every_cause_the_classifier_can_emit() -> Bool {
-  let roster = e0599_rollup_cause_labels_blob()
-  string_contains(s: roster, pattern: e0599_requirement_cause_label(cause: e0599_cause_for(method: "is_empty", receiver_expr: "__fm")))
-    && string_contains(s: roster, pattern: e0599_requirement_cause_label(cause: e0599_cause_for(method: "head", receiver_expr: "__fm")))
-    && string_contains(s: roster, pattern: e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "item")))
-    && string_contains(s: roster, pattern: e0599_requirement_cause_label(cause: e0599_cause_for(method: "as_deref", receiver_expr: "x")))
+  let roster = tools.e0599_emitter_decision_census.e0599_rollup_cause_labels_blob()
+  string_contains(s: roster, pattern: tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "is_empty", receiver_expr: "__fm")))
+    && string_contains(s: roster, pattern: tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "head", receiver_expr: "__fm")))
+    && string_contains(s: roster, pattern: tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "clone", receiver_expr: "item")))
+    && string_contains(s: roster, pattern: tools.e0599_emitter_decision_census.e0599_requirement_cause_label(cause: tools.e0599_emitter_decision_census.e0599_cause_for(method: "as_deref", receiver_expr: "x")))
 }
 
 test fn e0599_b0_rollup_roster_retains_the_unresolved_arm() -> Bool {
-  string_contains(s: e0599_rollup_cause_labels_blob(), pattern: "Unresolved")
+  string_contains(s: tools.e0599_emitter_decision_census.e0599_rollup_cause_labels_blob(), pattern: "Unresolved")
 }
 
 test fn e0599_b0_mechanistic_scope_is_exactly_the_three_roots() -> Bool {
-  e0599_mechanistic_root_family_labels_blob() == "R1CloneBoundOnTypeParam\nR2VectorMethodBounds\nR3ContainerCloneBounds"
+  tools.e0599_probe_census.e0599_mechanistic_root_family_labels_blob() == "R1CloneBoundOnTypeParam\nR2VectorMethodBounds\nR3ContainerCloneBounds"
 }
 
 test fn e0599_b0_red_mechanistic_scope_excludes_the_tail_families() -> Bool {
-  let scope = e0599_mechanistic_root_family_labels_blob()
+  let scope = tools.e0599_probe_census.e0599_mechanistic_root_family_labels_blob()
   !string_contains(s: scope, pattern: "R4OptionalCoproductGrounding")
     && !string_contains(s: scope, pattern: "R5AsDerefUnit")
     && !string_contains(s: scope, pattern: "R6Other")

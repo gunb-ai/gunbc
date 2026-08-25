@@ -10,7 +10,7 @@ module extdeps.gnu.libc
 // WHY A COPRODUCT AND NOT A BARE STRING. An unobserved C library and a C library observed to be absent are different states with different remedies, and the state that must never exist is a build environment silently identified without one. LibcUnobserved is representable so that a consumer must handle it explicitly; it is never the same value as any observed version, so an environment carrying it can never collide with one that was actually measured.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "sourceware.org/glibc/wiki/Glibc%20Timeline"
   }
 }
@@ -20,10 +20,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.gnu.libc",
       decl_name: "PlatformCLibrary",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.gnu.libc.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 

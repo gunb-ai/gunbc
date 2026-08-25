@@ -1,10 +1,10 @@
 module v2.test.compiler.pipeline.lower_stage
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data pipeline_lower_stage_note: String = "Relationship witness: InferredTree -> emitted Node on rust_target_model via translate. Fast-lane: canonical rust_add_inferred_tree fixture. Match corpus lower lives in long lane."
 
-test fn pipeline_lower_add_fixture_relationship_green() -> v2.std.logic.Bool {
-  pipeline_lower_add_fixture_relationship_holds()
+test fn pipeline_lower_add_fixture_relationship_green() -> Bool {
+  v2.test.compiler.pipeline.stage_bridge.pipeline_lower_add_fixture_relationship_holds()
 }

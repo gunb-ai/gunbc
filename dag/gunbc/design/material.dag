@@ -46,13 +46,13 @@ fn quiet_envelope(m: Material) -> Bool {
 }
 
 fn quiet_envelope_srgb8(c: extdeps.color.srgb.Srgb8) -> Bool {
-  match uint8_channel_inclusive_max_value_derived() {
+  match std.integer.uint8_channel_inclusive_max_value_derived() {
     Absent => false
     Present { value: maxv } => {
-      let proj = srgb8_to_hsl_projection_for_max(c: c, maxv: maxv, denom: basis_point_unity_count())
+      let proj = extdeps.color.srgb.srgb8_to_hsl_projection_for_max(c: c, maxv: maxv, denom: std.measure.basis_point_unity_count())
       quiet_envelope_hsl_pct(
-        sat_pct: hsl_projection_s_pct(p: proj),
-        light_pct: hsl_projection_l_pct(p: proj),
+        sat_pct: extdeps.color.srgb.hsl_projection_s_pct(p: proj),
+        light_pct: extdeps.color.srgb.hsl_projection_l_pct(p: proj),
       )
     }
   }
@@ -120,7 +120,7 @@ data compression_scale_note: String = "A control's compression is a dimensionles
 The three values are one mechanism described at three positions rather than three independent choices. Rest is unity. Press is the pointer-down travel: 0.97, deep enough to read as give on a chip-sized control without the label reflowing. Hold is DEEPER than press, at 0.96, and that ordering is the load-bearing part — the requested state is the control still actuated with the request in flight, so it must sit at least as low as the finger left it, and it must sit far enough below unity that the spring return has visible travel to cover (an overshoot is proportional to its delta, so a token compression produces a sub-pixel bounce and no perceived settle at all)."
 
 fn compression_wire(per_mille: Int) -> String {
-  fixed_point_wire(value: per_mille, decimals: 3)
+  std.decimal.fixed_point_wire(value: per_mille, decimals: 3)
 }
 
 data rest_scale_per_mille: Int = 1000
@@ -155,10 +155,10 @@ type MotionTrigger
 
 fn css_trigger_for(cause: gunbc.design.interaction_cause.InteractionCause) -> MotionTrigger {
   match cause {
-    PointerApproach => OnHover
-    FocusAcquired => OnFocusVisible
-    PressEngaged => OnActive
-    ObservedStateEntered { state_name } => OnStateClass { class_name: state_name }
+    gunbc.design.interaction_cause.PointerApproach => OnHover
+    gunbc.design.interaction_cause.FocusAcquired => OnFocusVisible
+    gunbc.design.interaction_cause.PressEngaged => OnActive
+    gunbc.design.interaction_cause.ObservedStateEntered { state_name } => OnStateClass { class_name: state_name }
   }
 }
 
@@ -195,7 +195,7 @@ fn decl(prop: extdeps.languages.css.properties.CssPropertyName, value: String) -
 
 fn transition_decl(props: String, t: TimingToken) -> CssDecl {
   CssDecl {
-    prop: Transition,
+    prop: extdeps.languages.css.properties.Transition,
     value: join([props, " ", to_string(t.duration_ms), "ms ", t.easing], ""),
   }
 }
@@ -219,8 +219,8 @@ type BuildRule
 
 fn response_base_selector(subject: extdeps.languages.css.selectors.SelectorSubject, shape: TriggerShape) -> String {
   match shape {
-    SelfResponse => selector_subject_wire(s: subject)
-    WithinSubject { target } => join([selector_subject_wire(s: subject), " ", target], "")
+    SelfResponse => extdeps.languages.css.selectors.selector_subject_wire(s: subject)
+    WithinSubject { target } => join([extdeps.languages.css.selectors.selector_subject_wire(s: subject), " ", target], "")
     ContainerHas { container: _, target } => target
   }
 }
@@ -228,10 +228,10 @@ fn response_base_selector(subject: extdeps.languages.css.selectors.SelectorSubje
 fn response_hot_selector(subject: extdeps.languages.css.selectors.SelectorSubject, shape: TriggerShape, trigger: MotionTrigger) -> String {
   let pseudo = trigger_selector_suffix(t: trigger)
   match shape {
-    SelfResponse => concat(selector_subject_wire(s: subject), pseudo)
-    WithinSubject { target } => join([selector_subject_wire(s: subject), pseudo, " ", target], "")
+    SelfResponse => concat(extdeps.languages.css.selectors.selector_subject_wire(s: subject), pseudo)
+    WithinSubject { target } => join([extdeps.languages.css.selectors.selector_subject_wire(s: subject), pseudo, " ", target], "")
     ContainerHas { container, target } =>
-      join([container, ":has(", selector_subject_wire(s: subject), pseudo, ") ", target], "")
+      join([container, ":has(", extdeps.languages.css.selectors.selector_subject_wire(s: subject), pseudo, ") ", target], "")
   }
 }
 
@@ -244,7 +244,7 @@ fn transition_carrier_selector(subject: extdeps.languages.css.selectors.Selector
 }
 
 fn serialize_decls(decls: List<CssDecl>) -> String {
-  join(map(decls, d => join([css_property_wire(p: d.prop), ": ", d.value], "")), "; ")
+  join(map(decls, d => join([extdeps.languages.css.properties.css_property_wire(p: d.prop), ": ", d.value], "")), "; ")
 }
 
 fn css_block(selector: String, decls: List<CssDecl>) -> String {
@@ -255,7 +255,7 @@ data serialize_rule_carries_no_transition_note: String = "A rule serializes its 
 
 fn serialize_rule(rule: BuildRule) -> String {
   match rule {
-    StaticRule { selector, decls } => css_block(selector: selector_subject_wire(s: selector), decls: decls)
+    StaticRule { selector, decls } => css_block(selector: extdeps.languages.css.selectors.selector_subject_wire(s: selector), decls: decls)
     ResponseRule { subject, shape, trigger, transition_props: _, timing: _, base_decls, response_decls } => {
       let hot = css_block(
         selector: response_hot_selector(subject: subject, shape: shape, trigger: trigger),
@@ -298,7 +298,7 @@ fn transition_item_wire(i: TransitionItem) -> String {
 
 fn transition_items_decl(items: List<TransitionItem>) -> CssDecl {
   CssDecl {
-    prop: Transition,
+    prop: extdeps.languages.css.properties.Transition,
     value: join(map(items, i => transition_item_wire(i: i)), ", "),
   }
 }
@@ -399,7 +399,7 @@ fn reduced_motion_block(rules: List<BuildRule>) -> String {
   } else {
     join([
       "@media (prefers-reduced-motion: reduce) { ",
-      join(map(selectors, s => css_block(selector: s, decls: [decl(prop: Transition, value: "none")])), " "),
+      join(map(selectors, s => css_block(selector: s, decls: [decl(prop: extdeps.languages.css.properties.Transition, value: "none")])), " "),
       " }",
     ], "")
   }

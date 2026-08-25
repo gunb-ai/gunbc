@@ -3,13 +3,13 @@ module extdeps.color.okabe_ito
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "jfly.uni-koeln.de/color/"
   }
 }
 
 fn okabe_ito_authority() -> extdeps.external_authority.ExternalAuthority {
-  extdeps.color.okabe_ito.extdeps_external_authority_anchor
+  extdeps_external_authority_anchor
 }
 
 data okabe_ito_note: String = "Cited upstream: Okabe, M. & Ito, K. (2008) Color Universal Design (CUD) — eight-color CVD-safe qualitative palette. sRGB values verified against the published table at jfly.uni-koeln.de/color/ (retrieved 2026-07-21). Upstream CUD CLAIM: eight colors mutually distinguishable under simulated CVD — NOT witness-pinned here; witness pins swatch count and filed hex values only; CVD distinguishability witness lands with a simulation kernel."

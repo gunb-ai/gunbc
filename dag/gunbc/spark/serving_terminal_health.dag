@@ -1,5 +1,6 @@
 module gunbc.spark.serving_terminal_health
 
+
 // RESOURCES CONVERGED IS NOT SERVING. Membership reconciliation answers "is every declared member in
 // its desired state" -- runtime materialized, model store complete, unit written, enabled, lingering.
 // A host can satisfy every one of those and still answer nothing: the process can be up and wedged,
@@ -17,17 +18,17 @@ module gunbc.spark.serving_terminal_health
 // worse, invites the decoder to NARRATE a cause it never observed. So the capture carries what
 // happened, and the decoder is allowed to say only what the capture supports.
 type SparkServingProbeCapture
-  = ProbeNeverRan { cause: NonEmptyStr }
+  = ProbeNeverRan { cause: std.types.NonEmptyStr }
   | ProbeFailed { exit_code: Int, stderr: String }
   | ProbeAnswered { stdout: String }
 
 type SparkServingTerminalHealth
   = ServingConverged {
-      reported_version: NonEmptyStr
-      served_model: NonEmptyStr
+      reported_version: std.types.NonEmptyStr
+      served_model: std.types.NonEmptyStr
     }
   | ResourcesConvergedButServingUnhealthy { defect: SparkServingHealthDefect }
-  | ServingHealthUnobserved { cause: NonEmptyStr }
+  | ServingHealthUnobserved { cause: std.types.NonEmptyStr }
 
 // EACH DEFECT IS ITS OWN ARM because each has a different remedy, and a single "unhealthy" would
 // make them one operator question. A version disagreement means the wrong runtime is on PATH or the
@@ -35,12 +36,12 @@ type SparkServingTerminalHealth
 // an incomplete generation means the model loaded and the request did not finish. Those are three
 // different mornings.
 type SparkServingHealthDefect
-  = HealthVersionDisagrees { observed: NonEmptyStr }
-  | HealthVersionUndecodable { detail: NonEmptyStr }
-  | HealthGenerationUndecodable { detail: NonEmptyStr }
+  = HealthVersionDisagrees { observed: std.types.NonEmptyStr }
+  | HealthVersionUndecodable { detail: std.types.NonEmptyStr }
+  | HealthGenerationUndecodable { detail: std.types.NonEmptyStr }
   | HealthGenerationIncomplete
-  | HealthGenerationWrongModel { observed: NonEmptyStr }
-  | HealthGenerationUnexpectedText { observed: NonEmptyStr }
+  | HealthGenerationWrongModel { observed: std.types.NonEmptyStr }
+  | HealthGenerationUnexpectedText { observed: std.types.NonEmptyStr }
 
 // THE PROBE ASKS FOR ONE EXACT WORD. A health check that accepts any non-empty completion is
 // satisfied by a model emitting whitespace, an error string, or a refusal -- all of which are
@@ -61,9 +62,9 @@ type SparkServingHealthDefect
 // produce -- `string_contains` on "pong" is satisfied by "I cannot say pong". The defect arm carries
 // the OBSERVED text, so the first real run reports exactly what the model said, and this constant is
 // then set from that observation instead of from an assumption about how a model phrases things.
-data spark_serving_health_expected_response: NonEmptyStr = "pong" as NonEmptyStr
+data spark_serving_health_expected_response: std.types.NonEmptyStr = "pong" as std.types.NonEmptyStr
 
-data spark_serving_health_prompt: NonEmptyStr = "Reply with exactly one word: pong" as NonEmptyStr
+data spark_serving_health_prompt: std.types.NonEmptyStr = "Reply with exactly one word: pong" as std.types.NonEmptyStr
 
 // THE REQUEST TRAVELS AS FILE BYTES, NOT AS ARGV. A JSON body carries quotes, braces and spaces, and
 // every remote leg re-parses argv on the far side -- which is why `portable_remote_words` refuses
@@ -87,7 +88,7 @@ data spark_serving_health_prompt: NonEmptyStr = "Reply with exactly one word: po
 // it the way it ensures the unit -- rather than riding along with whichever effect happens to run.
 fn spark_serving_health_request_body() -> String {
   join([
-    "\{\"model\":\"", ollama_model_ref_wire(ref: spark_serving_desired_model_ref),
+    "\{\"model\":\"", extdeps.ollama.api.ollama_model_ref_wire(ref: gunbc.spark.serving_desired.spark_serving_desired_model_ref),
     "\",\"prompt\":\"", spark_serving_health_prompt as String,
     "\",\"stream\":false\}",
   ], "")
@@ -97,27 +98,27 @@ fn spark_serving_health_request_body() -> String {
 // built from the cited endpoint model, and the request body is referenced by path rather than
 // inlined. `--max-time` bounds the generation so a wedged server fails the probe at a known deadline
 // instead of hanging the convergence that called it.
-fn spark_serving_health_generate_timeout() -> Second {
-  second(count: 120)
+fn spark_serving_health_generate_timeout() -> std.measure.Second {
+  std.measure.second(count: 120)
 }
 
 fn spark_serving_health_generate_timeout_word() -> String {
-  to_string(second_count(spark_serving_health_generate_timeout()))
+  to_string(std.measure.second_count(spark_serving_health_generate_timeout()))
 }
 
-fn spark_serving_health_version_timeout() -> Second {
-  second(count: 10)
+fn spark_serving_health_version_timeout() -> std.measure.Second {
+  std.measure.second(count: 10)
 }
 
 fn spark_serving_health_version_timeout_word() -> String {
-  to_string(second_count(spark_serving_health_version_timeout()))
+  to_string(std.measure.second_count(spark_serving_health_version_timeout()))
 }
 
 fn spark_serving_health_version_probe_argv() -> List<String> {
   [
     "curl", "-fsS",
     "--max-time", spark_serving_health_version_timeout_word(),
-    spark_serving_local_api_version_url(),
+    gunbc.spark.serving_desired.spark_serving_local_api_version_url(),
   ]
 }
 
@@ -128,7 +129,7 @@ fn spark_serving_health_ps_probe_argv() -> List<String> {
   [
     "curl", "-fsS",
     "--max-time", spark_serving_health_version_timeout_word(),
-    spark_serving_local_endpoint_url(endpoint: ApiPs),
+    gunbc.spark.serving_desired.spark_serving_local_endpoint_url(endpoint: extdeps.ollama.api.ApiPs),
   ]
 }
 
@@ -138,8 +139,8 @@ fn spark_serving_health_generate_probe_argv() -> List<String> {
     "--max-time", spark_serving_health_generate_timeout_word(),
     "-X", "POST",
     "-H", "Content-Type:application/json",
-    "--data", join(["@", spark_serving_health_request_body_path() as String], ""),
-    spark_serving_local_endpoint_url(endpoint: ApiGenerate),
+    "--data", join(["@", gunbc.spark.serving_install_paths.spark_serving_health_request_body_path() as String], ""),
+    gunbc.spark.serving_desired.spark_serving_local_endpoint_url(endpoint: extdeps.ollama.api.ApiGenerate),
   ]
 }
 
@@ -157,19 +158,19 @@ fn spark_serving_health_generate_probe_argv() -> List<String> {
 // was a scratch write on our own side. A conflated state given a confident explanation is worse than
 // a conflated state, because it is actionable and wrong.
 fn spark_serving_probe_capture_unobserved_cause(
-  label: NonEmptyStr,
+  label: std.types.NonEmptyStr,
   capture: SparkServingProbeCapture,
-) -> NonEmptyStr {
+) -> std.types.NonEmptyStr {
   match capture {
     ProbeNeverRan { cause: c } =>
-      join([label as String, " probe never executed: ", c as String], "") as NonEmptyStr
+      join([label as String, " probe never executed: ", c as String], "") as std.types.NonEmptyStr
     ProbeFailed { exit_code: code, stderr: err } =>
       join([
         label as String, " probe ran and exited ", to_string(code),
         " -- the far side answered and the answer was a failure; stderr: ", err,
-      ], "") as NonEmptyStr
+      ], "") as std.types.NonEmptyStr
     ProbeAnswered { stdout: _ } =>
-      join([label as String, " probe answered with empty output"], "") as NonEmptyStr
+      join([label as String, " probe answered with empty output"], "") as std.types.NonEmptyStr
   }
 }
 
@@ -190,35 +191,35 @@ fn spark_serving_health_from_captures(
   if std.algebra.trim(s: version_stdout) == "" {
     ServingHealthUnobserved {
       cause: spark_serving_probe_capture_unobserved_cause(
-        label: "version" as NonEmptyStr,
+        label: "version" as std.types.NonEmptyStr,
         capture: version,
       ),
     }
   } else if std.algebra.trim(s: generate_stdout) == "" {
     ServingHealthUnobserved {
       cause: spark_serving_probe_capture_unobserved_cause(
-        label: "generation" as NonEmptyStr,
+        label: "generation" as std.types.NonEmptyStr,
         capture: generate,
       ),
     }
   } else {
-    match spark_serving_parse_version_json(stdout: version_stdout) {
-      SparkServingReadbackAbsent =>
+    match gunbc.spark.serving_readback_parse.spark_serving_parse_version_json(stdout: version_stdout) {
+      gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent =>
         ResourcesConvergedButServingUnhealthy {
-          defect: HealthVersionUndecodable { detail: "version member absent" as NonEmptyStr },
+          defect: HealthVersionUndecodable { detail: "version member absent" as std.types.NonEmptyStr },
         }
-      SparkServingReadbackRefused { cause: c } =>
+      gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: c } =>
         ResourcesConvergedButServingUnhealthy {
           defect: HealthVersionUndecodable { detail: c },
         }
-      SparkServingReadbackPresent { value: reported } =>
-        if !ollama_reported_version_matches_release(version: reported, rel: ollama_required_release) {
+      gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: reported } =>
+        if !extdeps.ollama.binary_release.ollama_reported_version_matches_release(version: reported, rel: extdeps.ollama.binary_release.ollama_required_release) {
           ResourcesConvergedButServingUnhealthy {
-            defect: HealthVersionDisagrees { observed: reported as NonEmptyStr },
+            defect: HealthVersionDisagrees { observed: reported as std.types.NonEmptyStr },
           }
         } else {
           spark_serving_health_from_generation(
-            reported_version: reported as NonEmptyStr,
+            reported_version: reported as std.types.NonEmptyStr,
             generate_stdout: generate_stdout,
           )
         }
@@ -234,19 +235,19 @@ fn spark_serving_health_from_captures(
 // which is exactly what a stale unit or a moved tag produces, and which every text-only check
 // accepts. And the response is compared to the expected word rather than merely being non-empty.
 fn spark_serving_health_from_generation(
-  reported_version: NonEmptyStr,
+  reported_version: std.types.NonEmptyStr,
   generate_stdout: String,
 ) -> SparkServingTerminalHealth {
-  match spark_serving_parse_generate_done(stdout: generate_stdout) {
-    SparkServingReadbackAbsent =>
+  match gunbc.spark.serving_readback_parse.spark_serving_parse_generate_done(stdout: generate_stdout) {
+    gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent =>
       ResourcesConvergedButServingUnhealthy {
-        defect: HealthGenerationUndecodable { detail: "done member absent" as NonEmptyStr },
+        defect: HealthGenerationUndecodable { detail: "done member absent" as std.types.NonEmptyStr },
       }
-    SparkServingReadbackRefused { cause: c } =>
+    gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: c } =>
       ResourcesConvergedButServingUnhealthy {
         defect: HealthGenerationUndecodable { detail: c },
       }
-    SparkServingReadbackPresent { value: done_word } =>
+    gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: done_word } =>
       if done_word != "true" {
         ResourcesConvergedButServingUnhealthy { defect: HealthGenerationIncomplete }
       } else {
@@ -259,27 +260,27 @@ fn spark_serving_health_from_generation(
 }
 
 fn spark_serving_health_from_completed_generation(
-  reported_version: NonEmptyStr,
+  reported_version: std.types.NonEmptyStr,
   generate_stdout: String,
 ) -> SparkServingTerminalHealth {
-  match spark_serving_parse_generate_member(stdout: generate_stdout, member: "model") {
-    SparkServingReadbackAbsent =>
+  match gunbc.spark.serving_readback_parse.spark_serving_parse_generate_member(stdout: generate_stdout, member: "model") {
+    gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent =>
       ResourcesConvergedButServingUnhealthy {
-        defect: HealthGenerationUndecodable { detail: "model member absent" as NonEmptyStr },
+        defect: HealthGenerationUndecodable { detail: "model member absent" as std.types.NonEmptyStr },
       }
-    SparkServingReadbackRefused { cause: c } =>
+    gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: c } =>
       ResourcesConvergedButServingUnhealthy {
         defect: HealthGenerationUndecodable { detail: c },
       }
-    SparkServingReadbackPresent { value: served_model } =>
-      if served_model != ollama_model_ref_wire(ref: spark_serving_desired_model_ref) {
+    gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: served_model } =>
+      if served_model != extdeps.ollama.api.ollama_model_ref_wire(ref: gunbc.spark.serving_desired.spark_serving_desired_model_ref) {
         ResourcesConvergedButServingUnhealthy {
-          defect: HealthGenerationWrongModel { observed: served_model as NonEmptyStr },
+          defect: HealthGenerationWrongModel { observed: served_model as std.types.NonEmptyStr },
         }
       } else {
         spark_serving_health_from_served_model(
           reported_version: reported_version,
-          served_model: served_model as NonEmptyStr,
+          served_model: served_model as std.types.NonEmptyStr,
           generate_stdout: generate_stdout,
         )
       }
@@ -287,23 +288,23 @@ fn spark_serving_health_from_completed_generation(
 }
 
 fn spark_serving_health_from_served_model(
-  reported_version: NonEmptyStr,
-  served_model: NonEmptyStr,
+  reported_version: std.types.NonEmptyStr,
+  served_model: std.types.NonEmptyStr,
   generate_stdout: String,
 ) -> SparkServingTerminalHealth {
-  match spark_serving_parse_generate_member(stdout: generate_stdout, member: "response") {
-    SparkServingReadbackAbsent =>
+  match gunbc.spark.serving_readback_parse.spark_serving_parse_generate_member(stdout: generate_stdout, member: "response") {
+    gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent =>
       ResourcesConvergedButServingUnhealthy {
-        defect: HealthGenerationUndecodable { detail: "response member absent" as NonEmptyStr },
+        defect: HealthGenerationUndecodable { detail: "response member absent" as std.types.NonEmptyStr },
       }
-    SparkServingReadbackRefused { cause: c } =>
+    gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: c } =>
       ResourcesConvergedButServingUnhealthy {
         defect: HealthGenerationUndecodable { detail: c },
       }
-    SparkServingReadbackPresent { value: text } =>
+    gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: text } =>
       if std.algebra.trim(s: text) != (spark_serving_health_expected_response as String) {
         ResourcesConvergedButServingUnhealthy {
-          defect: HealthGenerationUnexpectedText { observed: text as NonEmptyStr },
+          defect: HealthGenerationUnexpectedText { observed: text as std.types.NonEmptyStr },
         }
       } else {
         ServingConverged {
@@ -363,14 +364,14 @@ fn spark_serving_health_defect_wire(defect: SparkServingHealthDefect) -> String 
 // served model name, which is the key the residency lookup needs, so the value that orders the two
 // probes is the same value that makes the second one answerable.
 type SparkServingServedProof sole_constructor {
-  reported_version: NonEmptyStr
-  served_model: NonEmptyStr
+  reported_version: std.types.NonEmptyStr
+  served_model: std.types.NonEmptyStr
 }
 
 type SparkServingResidency
-  = ResidencyUnobserved { cause: NonEmptyStr }
+  = ResidencyUnobserved { cause: std.types.NonEmptyStr }
   | NothingResident
-  | ResidentInVram { vram_lexeme: NonEmptyStr }
+  | ResidentInVram { vram_lexeme: std.types.NonEmptyStr }
   | ResidentOutsideVram
 
 fn spark_serving_served_proof(health: SparkServingTerminalHealth) -> SparkServingServedProof? {
@@ -390,22 +391,22 @@ fn spark_serving_residency_from_capture(
   if std.algebra.trim(s: stdout) == "" {
     ResidencyUnobserved {
       cause: spark_serving_probe_capture_unobserved_cause(
-        label: "residency" as NonEmptyStr,
+        label: "residency" as std.types.NonEmptyStr,
         capture: capture,
       ),
     }
   } else {
-    match spark_serving_parse_ps_vram_for_model(
+    match gunbc.spark.serving_readback_parse.spark_serving_parse_ps_vram_for_model(
       stdout: stdout,
       model: proof.served_model as String,
     ) {
-      SparkServingReadbackAbsent => NothingResident
-      SparkServingReadbackRefused { cause: c } => ResidencyUnobserved { cause: c }
-      SparkServingReadbackPresent { value: lex } =>
+      gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent => NothingResident
+      gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: c } => ResidencyUnobserved { cause: c }
+      gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: lex } =>
         if std.algebra.trim(s: lex) == "0" {
           ResidentOutsideVram
         } else {
-          ResidentInVram { vram_lexeme: lex as NonEmptyStr }
+          ResidentInVram { vram_lexeme: lex as std.types.NonEmptyStr }
         }
     }
   }

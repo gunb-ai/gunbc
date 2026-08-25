@@ -41,7 +41,7 @@ fn swatches_of(s: SwatchSet) -> List<Swatch> {
 }
 
 fn swatch_paint(sw: Swatch) -> String {
-  srgb8_hex(c: sw.color)
+  extdeps.color.srgb.srgb8_hex(c: sw.color)
 }
 
 fn name_seen(seen: List<String>, n: String) -> Bool {
@@ -58,7 +58,7 @@ fn swatch_names_distinct(swatches: List<Swatch>) -> Bool {
 fn swatch_set_admissible(s: SwatchSet) -> Bool {
   let swatches = swatches_of(s: s)
   swatches.length() > 0
-    && all(swatches, sw => srgb8_admissible(c: sw.color))
+    && all(swatches, sw => extdeps.color.srgb.srgb8_admissible(c: sw.color))
     && swatch_names_distinct(swatches: swatches)
 }
 
@@ -87,11 +87,11 @@ fn grade_key(g: PairingGrade) -> String {
 }
 
 fn grade_of_contrast(contrast_x100: Int) -> PairingGrade {
-  if contrast_x100 >= wcag_aaa_normal_text_hundredths {
+  if contrast_x100 >= extdeps.accessibility.wcag_contrast.wcag_aaa_normal_text_hundredths {
     TextAaa
-  } else if contrast_x100 >= wcag_aa_normal_text_hundredths {
+  } else if contrast_x100 >= extdeps.accessibility.wcag_contrast.wcag_aa_normal_text_hundredths {
     TextAa
-  } else if contrast_x100 >= wcag_aa_large_text_and_graphics_hundredths {
+  } else if contrast_x100 >= extdeps.accessibility.wcag_contrast.wcag_aa_large_text_and_graphics_hundredths {
     LargeTextOrGraphicsAa
   } else {
     DecorationOnly
@@ -106,7 +106,7 @@ type GradedPairing {
 }
 
 fn grade_pairing_for_max(figure: Swatch, ground: Swatch, maxv: Int) -> GradedPairing {
-  let r = srgb8_contrast_ratio_x100_for_max(a: figure.color, b: ground.color, maxv: maxv)
+  let r = extdeps.accessibility.wcag_contrast.srgb8_contrast_ratio_x100_for_max(a: figure.color, b: ground.color, maxv: maxv)
   GradedPairing {
     figure: figure,
     ground: ground,
@@ -116,14 +116,14 @@ fn grade_pairing_for_max(figure: Swatch, ground: Swatch, maxv: Int) -> GradedPai
 }
 
 fn grade_pairing(figure: Swatch, ground: Swatch) -> GradedPairing? {
-  match uint8_channel_inclusive_max_value_derived() {
+  match std.integer.uint8_channel_inclusive_max_value_derived() {
     Present { value: maxv } => Present { value: grade_pairing_for_max(figure: figure, ground: ground, maxv: maxv) }
     Absent => none
   }
 }
 
 fn graded_pairings(s: SwatchSet) -> List<GradedPairing> {
-  match uint8_channel_inclusive_max_value_derived() {
+  match std.integer.uint8_channel_inclusive_max_value_derived() {
     Absent => []
     Present { value: maxv } => {
       let swatches = swatches_of(s: s)

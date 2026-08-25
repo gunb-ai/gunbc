@@ -1,10 +1,10 @@
 module v2.test.lens_structural_resolution.unbound_symbol_at_use
 
-data sr_unbound_claim_hash: v2.std.node.Hash = sr_unbound_claim_hash
+data sr_unbound_claim_hash: Hash = sr_unbound_claim_hash
 
-fn sr_unbound_claim_atom(s: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
+fn sr_unbound_claim_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -12,35 +12,35 @@ fn sr_unbound_claim_atom(s: v2.std.node.Symbol) -> Node {
 
 data sr_unbound_use: Node = sr_unbound_claim_atom(s: ^sr_unbound_use_symbol)
 
-data sr_unbound_decl: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+data sr_unbound_decl: Node = Node {
+  kind: TypeNode { connective: Conj },
   children: [
-    v2.std.node.Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_unbound_use }
+    Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_unbound_use }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data sr_unbound_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
+data sr_unbound_dependency: DependencyView = DependencyView {
   source: sr_unbound_decl,
   dependent: sr_unbound_use,
   kind: BindsTo,
   usage_site: sr_unbound_use
 }
 
-fn sr_unbound_canonical_witness(resolved: Node) -> v2.std.constraints.CanonicalGroundingWitness {
-  v2.std.constraints.CanonicalGroundingWitness {
-    structural: v2.std.witness.StructuralPropertyWitness {
+fn sr_unbound_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
+  CanonicalGroundingWitness {
+    structural: StructuralPropertyWitness {
       property: ^constraint_property_being_canonical,
       evidence: resolved
     },
-    closedness: v2.std.witness.StructuralPropertyWitness {
+    closedness: StructuralPropertyWitness {
       property: ^constraint_property_candidate_set_closedness,
       evidence: resolved
     }
   }
 }
 
-fn sr_unbound_resolved_facts() -> v2.compiler.inferred_tree.InferredFacts {
+fn sr_unbound_resolved_facts() -> InferredFacts {
   claim_inferred_facts(
     type_symbol: ^sr_unbound_type_symbol,
     algebra_symbol: ^sr_unbound_algebra_symbol,
@@ -48,35 +48,35 @@ fn sr_unbound_resolved_facts() -> v2.compiler.inferred_tree.InferredFacts {
   )
 }
 
-fn sr_unbound_usage_site_witness() -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_absent()
+fn sr_unbound_usage_site_witness() -> v2.std.optional.Optional<InferredFacts> {
+  v2.std.optional.optional_absent()
 }
 
-fn sr_unbound_claim_fact_map() -> std.algebra.PartialFunction<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts> {
+fn sr_unbound_claim_fact_map() -> PartialFunction<Node, InferredFacts> {
   let resolved = sr_unbound_resolved_facts()
-  std.algebra.PartialFunction {
+  PartialFunction {
     lookup: fn(key) {
       if key == sr_unbound_use {
-        optional_absent()
+        v2.std.optional.optional_absent()
       } else {
-        optional_present(value: resolved)
+        v2.std.optional.optional_present(value: resolved)
       }
     }
   }
 }
 
-fn sr_unbound_claim_tree() -> v2.compiler.inferred_tree.InferredTree {
-  v2.compiler.inferred_tree.InferredTree {
+fn sr_unbound_claim_tree() -> InferredTree {
+  InferredTree {
     root: sr_unbound_decl,
     facts: sr_unbound_claim_fact_map()
   }
 }
 
-data unbound_symbol_at_use_claim: v2.test.lens_structural_resolution.claim_carrier.LensStructuralResolutionClaim = v2.test.lens_structural_resolution.claim_carrier.LensStructuralResolutionClaim {
+data unbound_symbol_at_use_claim: LensStructuralResolutionClaim = LensStructuralResolutionClaim {
   input: sr_unbound_claim_tree(),
-  expected: v2.lens.structural_resolution.StructuralResolutionFact {
+  expected: StructuralResolutionFact {
     dependencies: [
-      v2.std.dependency.ClassifiedDependencyView {
+      ClassifiedDependencyView {
         dependency: sr_unbound_dependency,
         classification: FactsLookupMiss
       }

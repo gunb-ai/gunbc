@@ -1,23 +1,23 @@
 module test.claim.srv3_tool_acquisition_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // WHAT THESE WITNESS. Four hand-written ensure calls used to say which acquisition mechanism each
 // tool uses, and a hand-built concat chain used to report them -- naming every tool twice, once as
 // a string literal in the receipt and once as a variable in the call. The two could disagree and
 // nothing would notice. Both are now derived from one row list.
 
-fn acquisition_label(a: Srv3ToolAcquisition) -> String {
+fn acquisition_label(a: gunbc.host_effect_realize.Srv3ToolAcquisition) -> String {
   match a {
-    AcquireViaAptPackage { package: p, require_version_probe: _ } => concat("apt:", p as String)
-    AcquireViaWebsocatRelease => "release"
+    gunbc.host_effect_realize.AcquireViaAptPackage { package: p, require_version_probe: _ } => concat("apt:", p as String)
+    gunbc.host_effect_realize.AcquireViaWebsocatRelease => "release"
   }
 }
 
 fn row_labels() -> List<String> {
-  list_map(
-    xs: srv3_toolchain_rows(),
+  v2.std.algebra.list_map(
+    xs: gunbc.host_effect_realize.srv3_toolchain_rows(),
     f: fn(r) { concat(concat(r.tool_name as String, " <- "), acquisition_label(a: r.acquisition)) },
   )
 }
@@ -33,15 +33,15 @@ test fn each_tool_names_the_mechanism_that_acquires_it() -> Bool {
 // walked -- so a tool cannot be ensured and omitted from the receipt, or renamed in one and not
 // the other. This asserts the exact wire format the predecessor built by hand.
 test fn the_receipt_is_derived_from_the_rows_and_keeps_the_wire_format() -> Bool {
-  srv3_toolchain_receipt(
+  gunbc.host_effect_realize.srv3_toolchain_receipt(
     observations: [
-      Srv3ToolObservation { tool_name: "curl" as NonEmptyStr, verdict: Srv3PredicateHolds },
-      Srv3ToolObservation { tool_name: "nbdkit" as NonEmptyStr, verdict: Srv3PredicateFails },
-      Srv3ToolObservation {
-        tool_name: "socat" as NonEmptyStr,
-        verdict: Srv3PredicateUnobserved { reason: "ssh refused" },
+      gunbc.host_effect_realize.Srv3ToolObservation { tool_name: "curl" as std.types.NonEmptyStr, verdict: gunbc.host_effect_realize.Srv3PredicateHolds },
+      gunbc.host_effect_realize.Srv3ToolObservation { tool_name: "nbdkit" as std.types.NonEmptyStr, verdict: gunbc.host_effect_realize.Srv3PredicateFails },
+      gunbc.host_effect_realize.Srv3ToolObservation {
+        tool_name: "socat" as std.types.NonEmptyStr,
+        verdict: gunbc.host_effect_realize.Srv3PredicateUnobserved { reason: "ssh refused" },
       },
-      Srv3ToolObservation { tool_name: "websocat" as NonEmptyStr, verdict: Srv3PredicateHolds },
+      gunbc.host_effect_realize.Srv3ToolObservation { tool_name: "websocat" as std.types.NonEmptyStr, verdict: gunbc.host_effect_realize.Srv3PredicateHolds },
     ],
   ) == "OsInstallActuatorToolchainReceipt: curl=ok nbdkit=fail socat=unobserved websocat=ok"
 }
@@ -49,10 +49,10 @@ test fn the_receipt_is_derived_from_the_rows_and_keeps_the_wire_format() -> Bool
 // A ROW ADDED TO THE LIST APPEARS IN THE RECEIPT WITHOUT ANY EDIT TO THE RECEIPT. This is the
 // property the concat chain did not have, and it is asserted rather than described.
 test fn a_fifth_tool_needs_no_receipt_edit() -> Bool {
-  srv3_toolchain_receipt(
+  gunbc.host_effect_realize.srv3_toolchain_receipt(
     observations: [
-      Srv3ToolObservation { tool_name: "curl" as NonEmptyStr, verdict: Srv3PredicateHolds },
-      Srv3ToolObservation { tool_name: "jq" as NonEmptyStr, verdict: Srv3PredicateHolds },
+      gunbc.host_effect_realize.Srv3ToolObservation { tool_name: "curl" as std.types.NonEmptyStr, verdict: gunbc.host_effect_realize.Srv3PredicateHolds },
+      gunbc.host_effect_realize.Srv3ToolObservation { tool_name: "jq" as std.types.NonEmptyStr, verdict: gunbc.host_effect_realize.Srv3PredicateHolds },
     ],
   ) == "OsInstallActuatorToolchainReceipt: curl=ok jq=ok"
 }
@@ -60,5 +60,5 @@ test fn a_fifth_tool_needs_no_receipt_edit() -> Bool {
 // The empty case is stated rather than left to be discovered: no rows is a receipt with no
 // entries, not a crash and not a fabricated "all present".
 test fn no_observations_is_an_empty_receipt() -> Bool {
-  srv3_toolchain_receipt(observations: []) == "OsInstallActuatorToolchainReceipt: "
+  gunbc.host_effect_realize.srv3_toolchain_receipt(observations: []) == "OsInstallActuatorToolchainReceipt: "
 }

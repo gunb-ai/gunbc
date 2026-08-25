@@ -10,7 +10,7 @@ data cssl_std_seed_link_followup_note: String = "LANDED (2026-07-17): generic se
 
 data cssl_std_bridge_shims_rel: String = "dag/tools/self_host_std_bridge_shims"
 
-data cssl_std_bridge_scaffold_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: dag/tools/self_host_std_bridge_shims/* shared std-bridge (emitted-side ONLY; seed oracle uses v1_compiler real std). DISSOLVES WHEN v2 std self-emits and gunbc emits seed-linked extern imports without hand ABI bridges.")
+data cssl_std_bridge_scaffold_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: dag/tools/self_host_std_bridge_shims/* shared std-bridge (emitted-side ONLY; seed oracle uses v1_compiler real std). DISSOLVES WHEN v2 std self-emits and gunbc emits seed-linked extern imports without hand ABI bridges.")
 
 data cssl_is_not_a_seed_admission_path_note: String = "CSSL DOES NOT ADD MODULES TO THE v1 SEED, AND THE ABSENCE OF THIS SENTENCE HAS A MEASURED COST. cssl_assemble writes into out_dir ONLY -- the gunbc-emitted CANDIDATE crate. AS OF THIS REVISION IT DOES NOT READ src/v1/stage0/src AT ALL, AND THAT IS A STRENGTHENING OF THIS PARAGRAPH, NOT A CHANGE OF SUBJECT. It formerly had exactly one such read: seed_has_pub_mod, an oracle deciding whether a compiler-family module in the CANDIDATE should become a re-export of the seed rather than keep its emitted body. That oracle text-parsed the seed lib.rs for a pub mod line, which made it a SECOND authority over seed mod-tree membership beside the modeled one, v2.compiler.self_host.stage0_crate_layout -- and the two disagree exactly during drift. It is deleted with the arm it fed, which was already UNREACHABLE: the arm required a closure member to be absent from the emitted lib.rs manifest that the loop had just drawn it from, a negation false by construction. Verified by execution before deletion (a panic substituted for the arm body left all nine module tests identical in outcome), with the discriminating control closure_compiler_mod_emit_retained_when_seed_also_has_pub_mod kept enrolled. So the claim below no longer rests on reading which paths the arms write: no arm of assemble_seed_linked_closure reads OR writes any path under src/v1, so running it can never make the seed declare a module it did not already declare. THERE IS EXACTLY ONE WAY A MODULE ENTERS THE SEED: compile_stage0() emits it and the emitted bytes are committed, or v2.compiler.self_host.stage0_crate_layout registers it as seed-retained. claim_executor --required-regen refusing an unregistered committed file (committed_not_emitted) is that single path WORKING; it is not a second mechanism disagreeing with this harness. WHY THIS IS WRITTEN DOWN. cssl_closure_assembly_note beside it describes the assembly RULE correctly and never says what the rule is not, and the gap was read as a fork: an escalation concluded the repository had lost the ability to add a seed module, a lane was dispatched on it, the premise was retracted, and the re-scoped item still carried 'two paths -- cssl_assemble and --required-regen' forward until someone read what assemble_seed_linked_closure actually writes. A refusal doing its job was read as evidence of a fork. The distinction costs one paragraph here and cost a wrong work item without it."
 
@@ -103,7 +103,7 @@ fn cssl_write_shim_lib_from_repo(
 }
 
 fn cssl_uses_hand_shim_fast_path(shim_lib_rel: String, shim_writes: List<CuratedSeedLinkedShimWrite>) -> Bool {
-  shim_lib_rel != "" || length(xs: shim_writes) > 0
+  shim_lib_rel != "" || v2.std.algebra.length(xs: shim_writes) > 0
 }
 
 fn cssl_run_generic_closure_assembly(
@@ -112,7 +112,7 @@ fn cssl_run_generic_closure_assembly(
   source_rel: String,
   cssl_assemble_bin: String
 ) -> Bool {
-  let assemble = gunbc.WitnessBin.Run(
+  let assemble = WitnessBin.Run(
     workdir: root,
     bin_path: cssl_assemble_bin,
     args: [
@@ -135,7 +135,7 @@ fn cssl_supplemental_claim_run_ok(
   gunbc_bin: String,
   run: CuratedSeedLinkedClaimRun
 ) -> Bool {
-  let eval = gunbc.WitnessBin.Run(
+  let eval = WitnessBin.Run(
     workdir: root,
     bin_path: gunbc_bin,
     args: [
@@ -177,11 +177,11 @@ fn cssl_seed_linked_behavioral_receipt(
   let driver_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: driver_rel))
 
   let out_dir = shell.Mktemp.Dir()
-  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
-  let cssl_assemble_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
-  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
-  let cssl_assemble_bin = witness_bin_release_path(root: root.path, bin_name: "cssl_assemble")
-  let emit = gunbc.WitnessBin.Run(
+  let gunbc_built = tools.host_prelude.witness_bin_ready(root: root.path, bin: tools.host_prelude.witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let cssl_assemble_built = tools.host_prelude.witness_bin_ready(root: root.path, bin: tools.host_prelude.witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
+  let gunbc_bin = tools.host_prelude.witness_bin_release_path(root: root.path, bin_name: "gunbc")
+  let cssl_assemble_bin = tools.host_prelude.witness_bin_release_path(root: root.path, bin_name: "cssl_assemble")
+  let emit = WitnessBin.Run(
     workdir: root.path,
     bin_path: gunbc_bin,
     args: [
@@ -220,8 +220,8 @@ fn cssl_seed_linked_behavioral_receipt(
   )
 
   let witness_bin_path = concat(out_dir.path, "/target/release/witness")
-  let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
-  let fault_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
+  let pass_run = WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
+  let fault_run = WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
   let claim_ok = cssl_supplemental_claims_ok(
     root: root.path,
     gunbc_bin: gunbc_bin,

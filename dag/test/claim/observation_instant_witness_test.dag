@@ -1,34 +1,34 @@
 module test.claim.observation_instant_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn at(domain: std.measure.ClockDomain, basis: std.measure.ClockBasis, ns: std.nat.Nat) -> std.measure.ObservationInstant {
-  std.measure.ObservationInstant { domain: domain, basis: basis, since_origin: nanosecond(count: ns) }
+  std.measure.ObservationInstant { domain: domain, basis: basis, since_origin: std.measure.nanosecond(count: ns) }
 }
 
 fn worker(id: std.types.NonEmptyStr) -> std.measure.ClockDomain { std.measure.ProcessMonotonic { process: id } }
 
 fn is_incomparable(o: std.measure.InstantOrder) -> Bool {
-  match o { InstantIncomparable { left: _, right: _ } => true, _ => false }
+  match o { std.measure.InstantIncomparable { left: _, right: _ } => true, _ => false }
 }
 
 // Within ONE process the monotonic clock orders its own marks.
 test fn w_two_marks_from_one_producer_order_by_their_offsets() -> Bool {
   let d = worker(id: "ordinary-worker")
-  match compare_instants(
-    a: test.claim.observation_instant_witness.at(domain: d, basis: CpuClock, ns: 10),
-    b: test.claim.observation_instant_witness.at(domain: d, basis: CpuClock, ns: 90)
-  ) { InstantBefore => true, _ => false }
+  match std.measure.compare_instants(
+    a: at(domain: d, basis: std.measure.CpuClock, ns: 10),
+    b: at(domain: d, basis: std.measure.CpuClock, ns: 90)
+  ) { std.measure.InstantBefore => true, _ => false }
 }
 
 // THE CLASS THIS EXISTS FOR: two workers each report "42ns since my origin". Those origins are
 // unrelated, so the numbers are not a temporal fact about the run. Subtracting them produces a
 // plausible interval that means nothing — the fabricated-plausible-output failure at the clock.
 test fn w_RED_marks_from_two_producers_refuse_to_order() -> Bool {
-  let o = compare_instants(
-    a: test.claim.observation_instant_witness.at(domain: worker(id: "ordinary-worker"), basis: CpuClock, ns: 42),
-    b: test.claim.observation_instant_witness.at(domain: worker(id: "scoped-7"), basis: CpuClock, ns: 42)
+  let o = std.measure.compare_instants(
+    a: at(domain: worker(id: "ordinary-worker"), basis: std.measure.CpuClock, ns: 42),
+    b: at(domain: worker(id: "scoped-7"), basis: std.measure.CpuClock, ns: 42)
   )
   is_incomparable(o: o)
 }
@@ -37,9 +37,9 @@ test fn w_RED_marks_from_two_producers_refuse_to_order() -> Bool {
 // contention, which is exactly the condition a saturated floor host runs in.
 test fn w_RED_cpu_and_wall_marks_refuse_to_order_even_within_one_producer() -> Bool {
   let d = worker(id: "coordinator")
-  is_incomparable(o: compare_instants(
-    a: test.claim.observation_instant_witness.at(domain: d, basis: CpuClock, ns: 10),
-    b: test.claim.observation_instant_witness.at(domain: d, basis: WallClock, ns: 90)
+  is_incomparable(o: std.measure.compare_instants(
+    a: at(domain: d, basis: std.measure.CpuClock, ns: 10),
+    b: at(domain: d, basis: std.measure.WallClock, ns: 90)
   ))
 }
 
@@ -47,20 +47,20 @@ test fn w_RED_cpu_and_wall_marks_refuse_to_order_even_within_one_producer() -> B
 // admitting it is a modeled fact rather than a reader's assumption.
 test fn w_producers_sharing_a_declared_origin_do_order() -> Bool {
   let d = std.measure.SharedMonotonic { origin: "attempt-start" }
-  match compare_instants(
-    a: test.claim.observation_instant_witness.at(domain: d, basis: WallClock, ns: 900),
-    b: test.claim.observation_instant_witness.at(domain: d, basis: WallClock, ns: 100)
-  ) { InstantAfter => true, _ => false }
+  match std.measure.compare_instants(
+    a: at(domain: d, basis: std.measure.WallClock, ns: 900),
+    b: at(domain: d, basis: std.measure.WallClock, ns: 100)
+  ) { std.measure.InstantAfter => true, _ => false }
 }
 
 test fn w_RED_a_shared_origin_and_a_process_origin_are_not_the_same_domain() -> Bool {
-  !clock_domain_eq(a: std.measure.SharedMonotonic { origin: "attempt-start" }, b: worker(id: "attempt-start"))
+  !std.measure.clock_domain_eq(a: std.measure.SharedMonotonic { origin: "attempt-start" }, b: worker(id: "attempt-start"))
 }
 
 test fn w_equal_offsets_in_one_domain_are_the_same_instant() -> Bool {
   let d = worker(id: "coordinator")
-  match compare_instants(a: test.claim.observation_instant_witness.at(domain: d, basis: CpuClock, ns: 7), b: test.claim.observation_instant_witness.at(domain: d, basis: CpuClock, ns: 7)) {
-    InstantSame => true
+  match std.measure.compare_instants(a: at(domain: d, basis: std.measure.CpuClock, ns: 7), b: at(domain: d, basis: std.measure.CpuClock, ns: 7)) {
+    std.measure.InstantSame => true
     _ => false
   }
 }

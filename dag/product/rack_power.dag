@@ -39,7 +39,7 @@ module product.rack_power
 // comparison in integers; the range is open at neither end - zero would mean a load drawing current
 // and no power, and above one hundred is not a power factor at all.
 type DeclaredPowerFactor sole_constructor {
-  percent: std.integer.Int
+  percent: Int
 }
 
 // An asset's electrical load, and the three arms are three different epistemic states rather than
@@ -67,19 +67,19 @@ fn asset_load_subject(l: AssetLoad) -> product.placement_supply.PhysicalAssetIde
 // assumed away: the alternative is a module that silently over-subscribes the first such feed it
 // meets.
 type PowerRefusal
-  = PowerFactorOutOfRange { supplied: std.integer.Int }
+  = PowerFactorOutOfRange { supplied: Int }
   | LoadNotObserved { asset: product.placement_supply.PhysicalAssetIdentity }
   | LoadDeclaredTwice { asset: product.placement_supply.PhysicalAssetIdentity }
   | LoadDeclaredForUnmountedAsset { asset: product.placement_supply.PhysicalAssetIdentity }
   | MountedAssetHasNoLoad { asset: product.placement_supply.PhysicalAssetIdentity }
-  | OutletsExhausted { required: std.integer.Int, available: std.integer.Int }
+  | OutletsExhausted { required: Int, available: Int }
   | FeedCapacityExceeded { real_load: std.measure.Watt, apparent_load: std.measure.VoltAmpere, capacity: std.measure.VoltAmpere }
 
 type PowerConstruction<T>
   = PowerReady { value: T }
   | PowerRefused { cause: PowerRefusal }
 
-fn declared_power_factor(percent: std.integer.Int) -> PowerConstruction<DeclaredPowerFactor> {
+fn declared_power_factor(percent: Int) -> PowerConstruction<DeclaredPowerFactor> {
   if percent < 1 || percent > 100 {
     PowerRefused { cause: PowerFactorOutOfRange { supplied: percent } }
   } else {
@@ -87,7 +87,7 @@ fn declared_power_factor(percent: std.integer.Int) -> PowerConstruction<Declared
   }
 }
 
-fn power_factor_percent(f: DeclaredPowerFactor) -> std.integer.Int { f.percent }
+fn power_factor_percent(f: DeclaredPowerFactor) -> Int { f.percent }
 
 // A PDU as an installed thing rather than a catalogue row: the row says what the model can do, the
 // identity says which unit this is. The distinction is the same one RackInstance draws, and it is
@@ -104,25 +104,25 @@ fn power_feed(identity: product.placement_supply.PhysicalAssetIdentity, catalog:
 // DERIVED FROM THE CITED ROW, never stored beside it: the capacity is the product of the two figures
 // the datasheet states, so an edit to either cannot leave a stale total behind.
 fn feed_capacity(f: PowerFeed) -> std.measure.VoltAmpere {
-  apparent_power_from_supply(supply_voltage: f.catalog.nominal_supply_voltage, rated_current: f.catalog.rated_current)
+  std.measure.apparent_power_from_supply(supply_voltage: f.catalog.nominal_supply_voltage, rated_current: f.catalog.rated_current)
 }
 
-fn feed_outlet_count(f: PowerFeed) -> std.integer.Int { f.catalog.outlet_count }
+fn feed_outlet_count(f: PowerFeed) -> Int { f.catalog.outlet_count }
 
 fn asset_eq(a: product.placement_supply.PhysicalAssetIdentity, b: product.placement_supply.PhysicalAssetIdentity) -> Bool {
   (a as String) == (b as String)
 }
 
 fn mounted_assets(r: product.rack_mount.RackInstance) -> List<product.placement_supply.PhysicalAssetIdentity> {
-  fold(rack_mounts(r: r), init: [], f: (acc, m) => concat(acc, [m.asset]))
+  fold(product.rack_mount.rack_mounts(r: r), init: [], f: (acc, m) => concat(acc, [m.asset]))
 }
 
 fn contains_asset(assets: List<product.placement_supply.PhysicalAssetIdentity>, wanted: product.placement_supply.PhysicalAssetIdentity) -> Bool {
-  fold(assets, init: false, f: (hit, a) => hit || product.rack_power.asset_eq(a: a, b: wanted))
+  fold(assets, init: false, f: (hit, a) => hit || asset_eq(a: a, b: wanted))
 }
 
-fn count_loads_for(loads: List<AssetLoad>, wanted: product.placement_supply.PhysicalAssetIdentity) -> std.integer.Int {
-  fold(loads, init: 0, f: (n, l) => if product.rack_power.asset_eq(a: asset_load_subject(l: l), b: wanted) { n + 1 } else { n })
+fn count_loads_for(loads: List<AssetLoad>, wanted: product.placement_supply.PhysicalAssetIdentity) -> Int {
+  fold(loads, init: 0, f: (n, l) => if asset_eq(a: asset_load_subject(l: l), b: wanted) { n + 1 } else { n })
 }
 
 // BOTH DIRECTIONS OF THE JOIN, and they are separate scans because they are separate failures with
@@ -133,33 +133,33 @@ fn scan_loads_against_rack(r: product.rack_mount.RackInstance, loads: List<Asset
   let assets = mounted_assets(r: r)
   let orphaned = fold(loads, init: none, f: (found, l) =>
     match found {
-      Present { value: c } => Present { value: c }
-      Absent =>
+      v2.std.optional.Present { value: c } => v2.std.optional.Present { value: c }
+      v2.std.optional.Absent =>
         if !contains_asset(assets: assets, wanted: asset_load_subject(l: l)) {
-          Present { value: LoadDeclaredForUnmountedAsset { asset: asset_load_subject(l: l) } }
+          v2.std.optional.Present { value: LoadDeclaredForUnmountedAsset { asset: asset_load_subject(l: l) } }
         } else {
           none
         }
     })
   match orphaned {
-    Present { value: c } => Present { value: c }
-    Absent =>
+    v2.std.optional.Present { value: c } => v2.std.optional.Present { value: c }
+    v2.std.optional.Absent =>
       fold(assets, init: none, f: (found, a) =>
         match found {
-          Present { value: c } => Present { value: c }
-          Absent =>
+          v2.std.optional.Present { value: c } => v2.std.optional.Present { value: c }
+          v2.std.optional.Absent =>
             let n = count_loads_for(loads: loads, wanted: a)
             if n == 0 {
-              Present { value: MountedAssetHasNoLoad { asset: a } }
+              v2.std.optional.Present { value: MountedAssetHasNoLoad { asset: a } }
             } else {
-              if n > 1 { Present { value: LoadDeclaredTwice { asset: a } } } else { none }
+              if n > 1 { v2.std.optional.Present { value: LoadDeclaredTwice { asset: a } } } else { none }
             }
         })
   }
 }
 
 // THE ACCUMULATOR CARRIES MEASURES, NOT SCALARS NAMED AFTER UNITS. An earlier revision held
-// `real_watts: std.integer.Int` and `apparent_va: std.integer.Int` - the unit in the field NAME and a bare magnitude in the
+// `real_watts: Int` and `apparent_va: Int` - the unit in the field NAME and a bare magnitude in the
 // type, which is precisely the pattern std.measure exists to close, reintroduced in the one place a
 // fold makes it tempting. The public surface was already right, which is what made it easy to miss:
 // a private accumulator is where two quantities on different dimensions can be added to each other
@@ -173,15 +173,15 @@ type LoadTotals {
 
 fn add_load(acc: LoadTotals, l: AssetLoad) -> LoadTotals {
   match acc.refusal {
-    Present { value: c } => LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: Present { value: c } }
-    Absent =>
+    v2.std.optional.Present { value: c } => LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: v2.std.optional.Present { value: c } }
+    v2.std.optional.Absent =>
       match l {
         LoadUnobserved { asset: a } =>
-          LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: Present { value: LoadNotObserved { asset: a } } }
+          LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: v2.std.optional.Present { value: LoadNotObserved { asset: a } } }
         ObservedRealPower { asset: _, draw: w } =>
-          LoadTotals { real_load: measure_add(acc.real_load, w), apparent_load: acc.apparent_load, refusal: none }
+          LoadTotals { real_load: std.measure.measure_add(acc.real_load, w), apparent_load: acc.apparent_load, refusal: none }
         DeclaredApparentPower { asset: _, draw: va } =>
-          LoadTotals { real_load: acc.real_load, apparent_load: measure_add(acc.apparent_load, va), refusal: none }
+          LoadTotals { real_load: acc.real_load, apparent_load: std.measure.measure_add(acc.apparent_load, va), refusal: none }
       }
   }
 }
@@ -191,7 +191,7 @@ type PowerBudget sole_constructor {
   power_factor: DeclaredPowerFactor
   real_load: std.measure.Watt
   apparent_load: std.measure.VoltAmpere
-  outlets_used: std.integer.Int
+  outlets_used: Int
 }
 
 // THE INEQUALITY, MULTIPLIED THROUGH RATHER THAN DIVIDED. What the feed must carry is the declared
@@ -203,7 +203,7 @@ type PowerBudget sole_constructor {
 // it is the form implemented. Written the obvious way instead, a 500 W load at a factor of 95 would
 // have to choose between 526 and 527 volt-amperes, and that choice would decide admissions at the
 // margin without anyone declaring a rounding policy.
-fn feed_carries_load(capacity: std.integer.Int, apparent: std.integer.Int, real: std.integer.Int, percent: std.integer.Int) -> Bool {
+fn feed_carries_load(capacity: Int, apparent: Int, real: Int, percent: Int) -> Bool {
   apparent * percent + real * 100 <= capacity * percent
 }
 
@@ -222,22 +222,22 @@ fn rack_power_budget(
   power_factor: DeclaredPowerFactor,
 ) -> PowerConstruction<PowerBudget> {
   match scan_loads_against_rack(r: rack, loads: loads) {
-    Present { value: c } => PowerRefused { cause: c }
-    Absent =>
-      let totals = fold(loads, init: LoadTotals { real_load: watt(0), apparent_load: volt_ampere(0), refusal: none }, f: (acc, l) =>
+    v2.std.optional.Present { value: c } => PowerRefused { cause: c }
+    v2.std.optional.Absent =>
+      let totals = fold(loads, init: LoadTotals { real_load: std.measure.watt(0), apparent_load: std.measure.volt_ampere(0), refusal: none }, f: (acc, l) =>
         add_load(acc: acc, l: l))
       match totals.refusal {
-        Present { value: c } => PowerRefused { cause: c }
-        Absent =>
+        v2.std.optional.Present { value: c } => PowerRefused { cause: c }
+        v2.std.optional.Absent =>
           let required = length(mounted_assets(r: rack))
           if required > feed_outlet_count(f: feed) {
             PowerRefused { cause: OutletsExhausted { required: required, available: feed_outlet_count(f: feed) } }
           } else {
-            let capacity = volt_ampere_count(v: feed_capacity(f: feed))
+            let capacity = std.measure.volt_ampere_count(v: feed_capacity(f: feed))
             if !feed_carries_load(
               capacity: capacity,
-              apparent: volt_ampere_count(v: totals.apparent_load),
-              real: watt_count(w: totals.real_load),
+              apparent: std.measure.volt_ampere_count(v: totals.apparent_load),
+              real: std.measure.watt_count(w: totals.real_load),
               percent: power_factor.percent,
             ) {
               PowerRefused {
@@ -265,7 +265,7 @@ fn rack_power_budget(
 
 fn budget_real_load(b: PowerBudget) -> std.measure.Watt { b.real_load }
 fn budget_apparent_load(b: PowerBudget) -> std.measure.VoltAmpere { b.apparent_load }
-fn budget_outlets_used(b: PowerBudget) -> std.integer.Int { b.outlets_used }
+fn budget_outlets_used(b: PowerBudget) -> Int { b.outlets_used }
 // NO DERATING IS APPLIED, and its absence is deliberate rather than an oversight. Electrical codes
 // limit a continuous load to a fraction of a circuit's rating, and applying such a limit here would
 // mean authoring a threshold from memory under the name of a standard - the one thing extdeps

@@ -6,15 +6,15 @@ fn host_identity_precondition_verdict(
   observed: gunbc.host_identity_observation.HostIdentityObservation,
   desired: gunbc.deployed_intent_v1.DeployedIntentV1,
 ) -> gunbc.host_identity_knob.HostIdentityLeafVerdict {
-  host_identity_patch_from_intents(
-    base_hostname: deployed_intent_observed_short_hostname(d: base),
+  gunbc.host_identity_knob.host_identity_patch_from_intents(
+    base_hostname: gunbc.deployed_intent_v0.deployed_intent_observed_short_hostname(d: base),
     observed_hostname: observed.short_hostname,
     desired_hostname: desired.desired_hostname_short as String,
   )
 }
 
 fn host_identity_precondition_allows_mutation(verdict: gunbc.host_identity_knob.HostIdentityLeafVerdict) -> Bool {
-  keyed_leaf_verdict_fold(
+  std.change.keyed_leaf_verdict_fold(
     verdict: verdict,
     fold: std.change.KeyedLeafVerdictFold {
       unchanged: false,
@@ -31,7 +31,7 @@ fn host_identity_precondition_permits_apply(verdict: gunbc.host_identity_knob.Ho
 }
 
 fn host_identity_precondition_is_noop(verdict: gunbc.host_identity_knob.HostIdentityLeafVerdict) -> Bool {
-  keyed_leaf_verdict_fold(
+  std.change.keyed_leaf_verdict_fold(
     verdict: verdict,
     fold: std.change.KeyedLeafVerdictFold {
       unchanged: true,
@@ -44,7 +44,7 @@ fn host_identity_precondition_is_noop(verdict: gunbc.host_identity_knob.HostIden
 }
 
 fn host_identity_precondition_is_conflict(verdict: gunbc.host_identity_knob.HostIdentityLeafVerdict) -> Bool {
-  keyed_leaf_verdict_fold(
+  std.change.keyed_leaf_verdict_fold(
     verdict: verdict,
     fold: std.change.KeyedLeafVerdictFold {
       unchanged: false,
@@ -67,11 +67,11 @@ fn host_identity_plan_from_verdict(
   desired: extdeps.dns.domain_name.DnsLabel,
 ) -> HostIdentityPlan {
   match verdict {
-    KeyedApplyHunk { from: _, to: _ } => ApplyPlan { base: base, desired: desired }
-    KeyedUnchanged => NoopPlan
-    KeyedConflict => ConflictPlan { verdict: verdict }
-    KeyedVerdictAdded { value: _ } => ConflictPlan { verdict: verdict }
-    KeyedVerdictRemoved { value: _ } => ConflictPlan { verdict: verdict }
+    std.change.KeyedApplyHunk { from: _, to: _ } => ApplyPlan { base: base, desired: desired }
+    std.change.KeyedUnchanged => NoopPlan
+    std.change.KeyedConflict => ConflictPlan { verdict: verdict }
+    std.change.KeyedVerdictAdded { value: _ } => ConflictPlan { verdict: verdict }
+    std.change.KeyedVerdictRemoved { value: _ } => ConflictPlan { verdict: verdict }
   }
 }
 
@@ -80,7 +80,7 @@ fn host_identity_plan_effect(plan: HostIdentityPlan) -> gunbc.host_effect.HostEf
     ApplyPlan { base: b, desired: d } =>
       Present {
         value: gunbc.host_effect.SetHostnameCas {
-          hostnamectl_path: host_identity_hostnamectl_path,
+          hostnamectl_path: gunbc.host_identity_access.host_identity_hostnamectl_path,
           base: b,
           desired: d,
         }
@@ -92,7 +92,7 @@ fn host_identity_plan_effect(plan: HostIdentityPlan) -> gunbc.host_effect.HostEf
 
 data host_identity_hostname_key_source: std.effects.KeySource = std.effects.CompositeKey { fields: ["host", "hostname_short"] }
 
-data host_identity_hostname_effect_shape: EffectShape<std.effects.KeySource> = std.effects.UpsertEffect { key_source: host_identity_hostname_key_source }
+data host_identity_hostname_effect_shape: std.effects.EffectShape<std.effects.KeySource> = std.effects.UpsertEffect { key_source: host_identity_hostname_key_source }
 
 data host_identity_hostname_idempotency_evidence: std.effects.IdempotencyEvidence = std.effects.LatticeEffect { shape: host_identity_hostname_effect_shape }
 
@@ -128,7 +128,7 @@ fn host_identity_apply_gated(
   match host_identity_plan_effect(plan: plan) {
     Present { value: effect } =>
       Present {
-        value: host_effect_apply_gated(
+        value: gunbc.host_effect_realize.host_effect_apply_gated(
           access: access,
           target: target,
           effect: effect,
@@ -153,8 +153,8 @@ fn host_identity_observation_live(
   transport: gunbc.host_effect.HostEffectTransport,
   probed_at: std.types.NonEmptyStr,
 ) -> gunbc.host_identity_observation.HostIdentityObservation? {
-  match host_identity_observation_from_apply(
-    r: host_identity_observation_apply(target: target, transport: transport),
+  match gunbc.host_identity_observation.host_identity_observation_from_apply(
+    r: gunbc.host_identity_observation.host_identity_observation_apply(target: target, transport: transport),
     probed_at: probed_at,
   ) {
     Present { value: obs } => Present { value: obs }
@@ -167,13 +167,13 @@ fn host_identity_unprivileged_refusal_has_no_marker(
   marker: String,
 ) -> Bool {
   match r {
-    NotConverged { reason: why, applied: intent } =>
+    std.realization_reconcile.NotConverged { reason: why, applied: intent } =>
       !string_contains(s: why, pattern: marker)
         && match intent.privilege_denial {
           Present { value: std.access.Deny { refusal: _ } } => true
           _ => false
         }
-    Converged { evidence: _, applied: _ } => false
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => false
   }
 }
 
@@ -181,17 +181,17 @@ fn host_identity_privilege_denial_reason(
   r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>,
 ) -> String {
   match r {
-    NotConverged { reason: why, applied: intent } =>
+    std.realization_reconcile.NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
-        Present { value: d } => deploy_access_decision_reason(d: d)
+        Present { value: d } => gunbc.ci_deploy_access.deploy_access_decision_reason(d: d)
         Absent => why
       }
-    Converged { evidence: _, applied: _ } => ""
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => ""
   }
 }
 
 fn host_identity_apply_converged(
   r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>,
 ) -> Bool {
-  reconciliation_converged(r: r)
+  std.realization_reconcile.reconciliation_converged(r: r)
 }

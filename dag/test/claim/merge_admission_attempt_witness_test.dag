@@ -9,25 +9,25 @@ data head_sha_fx: std.types.CommitSha = "abc1234def5678901234567890abcd123456789
 data other_head_sha_fx: std.types.CommitSha = "0000000111111112222222233333333444444445"
 
 fn attempt_a() -> gunbc.merge_admission_subject.WalkAttemptId {
-  match walk_attempt_id(raw: attempt_a_raw) {
+  match gunbc.merge_admission_subject.walk_attempt_id(raw: attempt_a_raw) {
     Present { value: id } => id
     Absent => "unreachable-fixture" as gunbc.merge_admission_subject.WalkAttemptId
   }
 }
 
 fn attempt_b() -> gunbc.merge_admission_subject.WalkAttemptId {
-  match walk_attempt_id(raw: attempt_b_raw) {
+  match gunbc.merge_admission_subject.walk_attempt_id(raw: attempt_b_raw) {
     Present { value: id } => id
     Absent => "unreachable-fixture" as gunbc.merge_admission_subject.WalkAttemptId
   }
 }
 
 fn base_tree_fx() -> extdeps.git.object_store.GitObjectId {
-  merge_admission_witness_git_tree(label: "tree-base-current")
+  gunbc.merge_admission.merge_admission_witness_git_tree(label: "tree-base-current")
 }
 
 fn roster_fx() -> gunbc.merge_admission.GateRosterHash {
-  merge_admission_witness_gate_roster(label: "roster-current")
+  gunbc.merge_admission.merge_admission_witness_gate_roster(label: "roster-current")
 }
 
 data base_commit_fx: std.types.CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -62,17 +62,17 @@ fn receipt_fx_at(attempt: gunbc.merge_admission_subject.WalkAttemptId, head: std
 }
 
 test fn matching_attempt_and_subject_with_fresh_base_admits() -> Bool {
-  match classify_merge_admission_verdict_v2(
+  match gunbc.merge_admission.classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), head: head_sha_fx),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx),
     merge_target_commit_sha: base_commit_fx,
     current_roster_hash: roster_fx(),
   ) { gunbc.merge_admission.MergeAdmitted => true  _ => false }
 }
 
-fn synthetic_changed_roster_hash() -> std.content_hash.ContentHash {
-  gate_roster_content_hash(roster: reverse(commit_gate_roster))
+fn synthetic_changed_roster_hash() -> ContentHash {
+  gunbc.merge_admission.gate_roster_content_hash(roster: reverse(gunbc.commit_workflow.commit_gate_roster))
 }
 
 data roster_staleness_control_recut_note: String = "RECUT AFTER #7591 INVALIDATED #7583. The 2026-08-01 incident motivates the roster-identity law, but this control does not reconstruct that incident by execution. Its alternative revision reverses the exact live enrollments: identical members and surfaces, still unique and otherwise valid, but with a different order-sensitive roster hash. Order participates in roster identity even though it does not affect roster validity, so a source-only reordering is a real roster revision that refuses every in-flight admission minted under the prior order. It names no particular production gate and asserts no historical roster content. The prior control named PublicationPlacementGate; that coupled the regression control to one volatile roster member's continued existence, and the member's operator-ordered deletion invalidated the entire PR from a direction its original evidence did not watch. A control for a roster-identity law must exercise the SHAPE of a roster change, never a particular member, or its lifetime is bounded by the least stable thing it mentions. A description of a control's shape must live with that control or derive from it, so an implementation change cannot leave a remote carrier describing evidence that no longer executes. The discriminator proves staleness rather than malformedness: the alternative-revision receipt refuses against the live revision and the identical receipt admits when that alternative revision is supplied as current. The live-revision receipt also admits, so an always-admit or always-refuse implementation fails a control."
@@ -89,37 +89,37 @@ fn synthetic_changed_roster_receipt() -> gunbc.merge_admission.MergeAdmissionRec
 }
 
 test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
-  (synthetic_changed_roster_hash() != current_gate_roster_hash)
-    && match classify_merge_admission_verdict_v2(
+  (synthetic_changed_roster_hash() != gunbc.merge_admission.current_gate_roster_hash)
+    && match gunbc.merge_admission.classify_merge_admission_verdict_v2(
       current_attempt_id: attempt_a(),
-      tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), head: head_sha_fx),
+      tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
       receipt: synthetic_changed_roster_receipt(),
       merge_target_commit_sha: base_commit_fx,
-      current_roster_hash: current_gate_roster_hash,
+      current_roster_hash: gunbc.merge_admission.current_gate_roster_hash,
     ) {
-      MergeDeniedStaleRoster => true
-      MergeAdmitted => false
-      MergeDeniedStaleBase => false
-      MergeDeniedNotSuccess => false
-      MergeDeniedWrongAttempt => false
-      MergeDeniedSubjectMismatch => false
+      gunbc.merge_admission.MergeDeniedStaleRoster => true
+      gunbc.merge_admission.MergeAdmitted => false
+      gunbc.merge_admission.MergeDeniedStaleBase => false
+      gunbc.merge_admission.MergeDeniedNotSuccess => false
+      gunbc.merge_admission.MergeDeniedWrongAttempt => false
+      gunbc.merge_admission.MergeDeniedSubjectMismatch => false
     }
 }
 
 test fn synthetic_changed_roster_receipt_admits_when_revision_is_current() -> Bool {
-  match classify_merge_admission_verdict_v2(
+  match gunbc.merge_admission.classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), head: head_sha_fx),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
     receipt: synthetic_changed_roster_receipt(),
     merge_target_commit_sha: base_commit_fx,
     current_roster_hash: synthetic_changed_roster_hash(),
   ) {
-    MergeAdmitted => true
-    MergeDeniedStaleBase => false
-    MergeDeniedStaleRoster => false
-    MergeDeniedNotSuccess => false
-    MergeDeniedWrongAttempt => false
-    MergeDeniedSubjectMismatch => false
+    gunbc.merge_admission.MergeAdmitted => true
+    gunbc.merge_admission.MergeDeniedStaleBase => false
+    gunbc.merge_admission.MergeDeniedStaleRoster => false
+    gunbc.merge_admission.MergeDeniedNotSuccess => false
+    gunbc.merge_admission.MergeDeniedWrongAttempt => false
+    gunbc.merge_admission.MergeDeniedSubjectMismatch => false
   }
 }
 
@@ -129,34 +129,34 @@ test fn current_roster_receipt_admits_against_live_roster() -> Bool {
     pr_number: Present { value: 7544 },
     tested_head_sha: head_sha_fx,
     tested_base_commit_sha: base_commit_fx,
-    gate_roster_hash: current_gate_roster_hash,
+    gate_roster_hash: gunbc.merge_admission.current_gate_roster_hash,
     conclusion: extdeps.github.checks.Success,
   }
-  match classify_merge_admission_verdict_v2(
+  match gunbc.merge_admission.classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), head: head_sha_fx),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
     receipt: receipt,
     merge_target_commit_sha: base_commit_fx,
-    current_roster_hash: current_gate_roster_hash,
+    current_roster_hash: gunbc.merge_admission.current_gate_roster_hash,
   ) {
-    MergeAdmitted => true
-    MergeDeniedStaleBase => false
-    MergeDeniedStaleRoster => false
-    MergeDeniedNotSuccess => false
-    MergeDeniedWrongAttempt => false
-    MergeDeniedSubjectMismatch => false
+    gunbc.merge_admission.MergeAdmitted => true
+    gunbc.merge_admission.MergeDeniedStaleBase => false
+    gunbc.merge_admission.MergeDeniedStaleRoster => false
+    gunbc.merge_admission.MergeDeniedNotSuccess => false
+    gunbc.merge_admission.MergeDeniedWrongAttempt => false
+    gunbc.merge_admission.MergeDeniedSubjectMismatch => false
   }
 }
 
 test fn foreign_attempt_refuses_as_wrong_attempt() -> Bool {
-  let v = classify_merge_admission_verdict_v2(
+  let v = gunbc.merge_admission.classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), head: head_sha_fx),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_b(), head: head_sha_fx),
     merge_target_commit_sha: base_commit_fx,
     current_roster_hash: roster_fx(),
   )
-  match v { gunbc.merge_admission.MergeDeniedWrongAttempt => merge_admission_verdict_would_block(v: v)  _ => false }
+  match v { gunbc.merge_admission.MergeDeniedWrongAttempt => gunbc.merge_admission.merge_admission_verdict_would_block(v: v)  _ => false }
 }
 
 // EVERY OTHER REFUSAL IS STACKED HERE ON PURPOSE, so "precedes" is measured against a receipt that
@@ -173,12 +173,12 @@ test fn wrong_attempt_precedes_every_other_refusal() -> Bool {
     pr_number: none,
     tested_head_sha: other_head_sha_fx,
     tested_base_commit_sha: other_base_commit_fx,
-    gate_roster_hash: merge_admission_witness_gate_roster(label: "roster-stale"),
+    gate_roster_hash: gunbc.merge_admission.merge_admission_witness_gate_roster(label: "roster-stale"),
     conclusion: extdeps.github.checks.Failure,
   }
-  match classify_merge_admission_verdict_v2(
+  match gunbc.merge_admission.classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), head: head_sha_fx),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
     receipt: r,
     merge_target_commit_sha: base_commit_fx,
     current_roster_hash: roster_fx(),
@@ -198,14 +198,14 @@ test fn wrong_attempt_precedes_every_other_refusal() -> Bool {
 // matching_attempt_and_subject_with_fresh_base_admits is the positive control they are measured
 // against.
 test fn receipt_base_commit_that_differs_from_the_captured_subject_refuses() -> Bool {
-  let v = classify_merge_admission_verdict_v2(
+  let v = gunbc.merge_admission.classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
     tested_subject: subject_fx_at(attempt: attempt_a(), head: head_sha_fx, base_commit: base_commit_fx),
     receipt: receipt_fx_at(attempt: attempt_a(), head: head_sha_fx, base_commit: other_base_commit_fx),
     merge_target_commit_sha: other_base_commit_fx,
     current_roster_hash: roster_fx(),
   )
-  match v { gunbc.merge_admission.MergeDeniedSubjectMismatch => merge_admission_verdict_would_block(v: v)  _ => false }
+  match v { gunbc.merge_admission.MergeDeniedSubjectMismatch => gunbc.merge_admission.merge_admission_verdict_would_block(v: v)  _ => false }
 }
 
 // a_base_that_moved_to_a_same_tree_commit_refuses_as_stale WAS DRAFTED HERE and is NOT KEPT, because
@@ -223,14 +223,14 @@ test fn receipt_base_commit_that_differs_from_the_captured_subject_refuses() -> 
 data subject_binding_discriminating_note: String = "The two rows below are the ones the receipt could previously LIE past. Before the gate consumed the captured subject, a receipt in the right attempt could restate any head SHA or any base tree and be classified purely on its own say-so; both cases here classified MergeAdmitted under the old signature and are refusals now. They are the discriminating pair for the binding, not decoration: each varies exactly ONE field away from the admitting case above, so a regression that drops either comparison turns that row green while the other stays red."
 
 test fn receipt_head_that_differs_from_the_captured_subject_refuses() -> Bool {
-  let v = classify_merge_admission_verdict_v2(
+  let v = gunbc.merge_admission.classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), head: head_sha_fx),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), head: other_head_sha_fx),
     merge_target_commit_sha: base_commit_fx,
     current_roster_hash: roster_fx(),
   )
-  match v { gunbc.merge_admission.MergeDeniedSubjectMismatch => merge_admission_verdict_would_block(v: v)  _ => false }
+  match v { gunbc.merge_admission.MergeDeniedSubjectMismatch => gunbc.merge_admission.merge_admission_verdict_would_block(v: v)  _ => false }
 }
 
 // receipt_base_tree_that_differs_from_the_captured_subject_refuses WAS HERE and is DELETED, not
@@ -242,9 +242,9 @@ test fn receipt_head_that_differs_from_the_captured_subject_refuses() -> Bool {
 // implies a differing tree, so the commit comparison refuses strictly more than the tree one did.
 
 test fn subject_from_another_attempt_refuses_even_with_a_matching_receipt() -> Bool {
-  match classify_merge_admission_verdict_v2(
+  match gunbc.merge_admission.classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_b(), head: head_sha_fx),
+    tested_subject: subject_fx(attempt: attempt_b(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx),
     merge_target_commit_sha: base_commit_fx,
     current_roster_hash: roster_fx(),
@@ -258,9 +258,9 @@ test fn subject_from_another_attempt_refuses_even_with_a_matching_receipt() -> B
 // -- a base that moves to a commit with an identical tree is now caught here, and that is exactly
 // the cherry-pick-then-revert case that classified MergeAdmitted before this change.
 test fn subject_bound_receipt_on_an_advanced_target_is_stale_not_mismatched() -> Bool {
-  match classify_merge_admission_verdict_v2(
+  match gunbc.merge_admission.classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), head: head_sha_fx),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
     receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx),
     merge_target_commit_sha: other_base_commit_fx,
     current_roster_hash: roster_fx(),
@@ -269,7 +269,7 @@ test fn subject_bound_receipt_on_an_advanced_target_is_stale_not_mismatched() ->
 
 test fn wire_v2_roundtrips_all_fields_with_pr() -> Bool {
   let r = receipt_fx(attempt: attempt_a(), head: head_sha_fx)
-  match parse_receipt_wire_v2(text: render_receipt_wire_v2(receipt: r)) {
+  match gunbc.merge_admission_produce.parse_receipt_wire_v2(text: gunbc.merge_admission_produce.render_receipt_wire_v2(receipt: r)) {
     Present { value: parsed } =>
       ((parsed.attempt_id as String) == attempt_a_raw)
         && (parsed.tested_head_sha == head_sha_fx)
@@ -290,7 +290,7 @@ test fn wire_v2_roundtrips_without_pr() -> Bool {
     gate_roster_hash: roster_fx(),
     conclusion: extdeps.github.checks.Success,
   }
-  match parse_receipt_wire_v2(text: render_receipt_wire_v2(receipt: r)) {
+  match gunbc.merge_admission_produce.parse_receipt_wire_v2(text: gunbc.merge_admission_produce.render_receipt_wire_v2(receipt: r)) {
     Present { value: parsed } =>
       match parsed.pr_number { Absent => (parsed.attempt_id as String) == attempt_a_raw  Present { value: _ } => false }
     Absent => false
@@ -298,13 +298,13 @@ test fn wire_v2_roundtrips_without_pr() -> Bool {
 }
 
 test fn v1_wire_refused_by_v2_parser() -> Bool {
-  let v1 = render_receipt_wire(receipt: stamp_floor_receipt_with_conclusion(
+  let v1 = gunbc.merge_admission_produce.render_receipt_wire(receipt: gunbc.merge_admission_produce.stamp_floor_receipt_with_conclusion(
     pr_number: Present { value: 7470 },
     head_sha: head_sha_fx,
     base_tree_hash: base_tree_fx(),
     conclusion: extdeps.github.checks.Success,
   ))
-  match parse_receipt_wire_v2(text: v1) {
+  match gunbc.merge_admission_produce.parse_receipt_wire_v2(text: v1) {
     Present { value: _ } => false
     Absent => true
   }
@@ -313,15 +313,15 @@ test fn v1_wire_refused_by_v2_parser() -> Bool {
 data wire_arity_red_note: String = "Every row below was ACCEPTED by the first cut of these parsers. A trailing line rode along unread (the `>= n` superset), and a malformed seventh line silently became pr_number: none — supplied-but-unreadable collapsing into not-supplied. Each row varies one thing from a wire that parses, so a regression that relaxes arity back to a superset turns exactly that row green."
 
 test fn receipt_wire_with_a_trailing_line_refuses() -> Bool {
-  let good = render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx))
-  match parse_receipt_wire_v2(text: concat(good, "\ntrailing")) {
+  let good = gunbc.merge_admission_produce.render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx))
+  match gunbc.merge_admission_produce.parse_receipt_wire_v2(text: concat(good, "\ntrailing")) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn receipt_wire_with_a_malformed_pr_line_refuses_the_whole_receipt() -> Bool {
-  let no_pr = render_receipt_wire_v2(receipt: gunbc.merge_admission.MergeAdmissionReceiptV2 {
+  let no_pr = gunbc.merge_admission_produce.render_receipt_wire_v2(receipt: gunbc.merge_admission.MergeAdmissionReceiptV2 {
     attempt_id: attempt_a(),
     pr_number: none,
     tested_head_sha: head_sha_fx,
@@ -329,23 +329,23 @@ test fn receipt_wire_with_a_malformed_pr_line_refuses_the_whole_receipt() -> Boo
     gate_roster_hash: roster_fx(),
     conclusion: extdeps.github.checks.Success,
   })
-  match parse_receipt_wire_v2(text: concat(no_pr, "\nnot-a-number")) {
+  match gunbc.merge_admission_produce.parse_receipt_wire_v2(text: concat(no_pr, "\nnot-a-number")) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn subject_wire_with_a_trailing_line_refuses() -> Bool {
-  let good = render_tested_subject_wire(subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), head: head_sha_fx))
-  match parse_tested_subject_wire(text: concat(good, "\ntrailing")) {
+  let good = gunbc.merge_admission_subject.render_tested_subject_wire(subject: subject_fx(attempt: attempt_a(), head: head_sha_fx))
+  match gunbc.merge_admission_subject.parse_tested_subject_wire(text: concat(good, "\ntrailing")) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 test fn tested_subject_wire_roundtrips() -> Bool {
-  let subj = test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), head: head_sha_fx)
-  match parse_tested_subject_wire(text: render_tested_subject_wire(subject: subj)) {
+  let subj = subject_fx(attempt: attempt_a(), head: head_sha_fx)
+  match gunbc.merge_admission_subject.parse_tested_subject_wire(text: gunbc.merge_admission_subject.render_tested_subject_wire(subject: subj)) {
     Present { value: parsed } =>
       ((parsed.attempt_id as String) == attempt_a_raw)
         && (parsed.head_sha == head_sha_fx)
@@ -370,8 +370,8 @@ test fn merge_admission_fetch_deadline_is_a_usable_duration() -> Bool {
 // sixth line and the tag are exactly the intended change, and had either moved WITHOUT the other
 // this row would still be red.
 test fn tested_subject_wire_bytes_are_pinned_including_the_base_commit_line() -> Bool {
-  render_tested_subject_wire(
-    subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), head: head_sha_fx)
+  gunbc.merge_admission_subject.render_tested_subject_wire(
+    subject: subject_fx(attempt: attempt_a(), head: head_sha_fx)
   ) == join([
     "gunbc.merge_admission_tested_subject.v2",
     "12345-1-ci",
@@ -382,92 +382,92 @@ test fn tested_subject_wire_bytes_are_pinned_including_the_base_commit_line() ->
 }
 
 test fn subject_wire_refused_by_receipt_parser_and_vice_versa() -> Bool {
-  let subj = render_tested_subject_wire(subject: test.claim.merge_admission_attempt_witness.subject_fx(attempt: attempt_a(), head: head_sha_fx))
-  let rec = render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx))
-  match parse_receipt_wire_v2(text: subj) { Present { value: _ } => false  Absent => true }
-    && match parse_tested_subject_wire(text: rec) { Present { value: _ } => false  Absent => true }
+  let subj = gunbc.merge_admission_subject.render_tested_subject_wire(subject: subject_fx(attempt: attempt_a(), head: head_sha_fx))
+  let rec = gunbc.merge_admission_produce.render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx))
+  match gunbc.merge_admission_produce.parse_receipt_wire_v2(text: subj) { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.parse_tested_subject_wire(text: rec) { Present { value: _ } => false  Absent => true }
 }
 
 data object_id_validation_red_note: String = "Every raw value below PARSED before the wire parser consumed a validating constructor: it checked one colon, a recognized family prefix and a nonempty suffix, then cast the suffix straight into the brand. So sha1:x was a Git object id, and so was a 64-digit value labelled sha1 — family without length and syntax is not identification, and a receipt binding such a value would compare equal to nothing real while typechecking perfectly."
 
 test fn object_id_wire_refuses_wrong_length_and_nonhex() -> Bool {
   let sha256_hex = "3333333333333333333333333333333333333333333333333333333333333333"
-  match parse_git_object_id_wire(raw: "sha1:1111") { Present { value: _ } => false  Absent => true }
-    && match parse_git_object_id_wire(raw: concat("sha1:", sha256_hex)) { Present { value: _ } => false  Absent => true }
-    && match parse_git_object_id_wire(raw: "sha256:3333") { Present { value: _ } => false  Absent => true }
-    && match parse_git_object_id_wire(raw: "sha1:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz") { Present { value: _ } => false  Absent => true }
-    && match parse_git_object_id_wire(raw: "sha1:1111111111111111111111111111111111111111:extra") { Present { value: _ } => false  Absent => true }
-    && match parse_git_object_id_wire(raw: "md5:1111111111111111111111111111111111111111") { Present { value: _ } => false  Absent => true }
-    && match parse_git_object_id_wire(raw: "sha1:") { Present { value: _ } => false  Absent => true }
+  match gunbc.merge_admission_subject.parse_git_object_id_wire(raw: "sha1:1111") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.parse_git_object_id_wire(raw: concat("sha1:", sha256_hex)) { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.parse_git_object_id_wire(raw: "sha256:3333") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.parse_git_object_id_wire(raw: "sha1:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.parse_git_object_id_wire(raw: "sha1:1111111111111111111111111111111111111111:extra") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.parse_git_object_id_wire(raw: "md5:1111111111111111111111111111111111111111") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.parse_git_object_id_wire(raw: "sha1:") { Present { value: _ } => false  Absent => true }
 }
 
 test fn object_id_wire_carries_its_format_and_refuses_an_anonymous_hex() -> Bool {
-  let sha1_wire = render_git_object_id_wire(oid: base_tree_fx())
-  match parse_git_object_id_wire(raw: sha1_wire) {
-    Present { value: back } => git_object_id_eq(left: back, right: base_tree_fx())
+  let sha1_wire = gunbc.merge_admission_subject.render_git_object_id_wire(oid: base_tree_fx())
+  match gunbc.merge_admission_subject.parse_git_object_id_wire(raw: sha1_wire) {
+    Present { value: back } => extdeps.git.object_store.git_object_id_eq(left: back, right: base_tree_fx())
     Absent => false
   }
-    && match parse_git_object_id_wire(raw: git_object_id_wire_hex(oid: base_tree_fx()) as String) {
+    && match gunbc.merge_admission_subject.parse_git_object_id_wire(raw: extdeps.git.object_store.git_object_id_wire_hex(oid: base_tree_fx()) as String) {
          Present { value: _ } => false
          Absent => true
        }
-    && match parse_git_object_id_wire(raw: "md5:1111") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.parse_git_object_id_wire(raw: "md5:1111") { Present { value: _ } => false  Absent => true }
 }
 
 data gate_roster_hash_validation_red_note: String = "Before review 45474, parse_gate_roster_hash_wire cast any nonempty string to GateRosterHash. Blank, non-hex, uppercase, and wrong-length fingerprints all bound into receipts that typechecked while comparing equal to nothing real."
 
 test fn gate_roster_hash_wire_refuses_blank_malformed_and_wrong_length() -> Bool {
-  match parse_gate_roster_hash_wire(line: "") { Present { value: _ } => false  Absent => true }
-    && match parse_gate_roster_hash_wire(line: "not-hex") { Present { value: _ } => false  Absent => true }
-    && match parse_gate_roster_hash_wire(line: "ABCDEF0123456789") { Present { value: _ } => false  Absent => true }
-    && match parse_gate_roster_hash_wire(line: "abc") { Present { value: _ } => false  Absent => true }
-    && match parse_gate_roster_hash_wire(line: "1111111111111111111111111111111111") { Present { value: _ } => false  Absent => true }
+  match gunbc.merge_admission_produce.parse_gate_roster_hash_wire(line: "") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_produce.parse_gate_roster_hash_wire(line: "not-hex") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_produce.parse_gate_roster_hash_wire(line: "ABCDEF0123456789") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_produce.parse_gate_roster_hash_wire(line: "abc") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_produce.parse_gate_roster_hash_wire(line: "1111111111111111111111111111111111") { Present { value: _ } => false  Absent => true }
 }
 
 test fn gate_roster_hash_wire_roundtrips_valid_fingerprint() -> Bool {
-  let wire = render_gate_roster_hash_wire(hash: roster_fx())
-  match parse_gate_roster_hash_wire(line: wire) {
+  let wire = gunbc.merge_admission_produce.render_gate_roster_hash_wire(hash: roster_fx())
+  match gunbc.merge_admission_produce.parse_gate_roster_hash_wire(line: wire) {
     Present { value: back } => back == roster_fx()
     Absent => false
   }
 }
 
 test fn attempt_id_composes_from_nonempty_parts() -> Bool {
-  match compose_walk_attempt_id(run_id: "12345", run_attempt: "1", job: "ci") {
+  match gunbc.merge_admission_subject.compose_walk_attempt_id(run_id: "12345", run_attempt: "1", job: "ci") {
     Present { value: id } => (id as String) == "12345-1-ci"
     Absent => false
   }
 }
 
 test fn attempt_id_refuses_any_empty_part() -> Bool {
-  match compose_walk_attempt_id(run_id: "", run_attempt: "1", job: "ci") { Present { value: _ } => false  Absent => true }
-    && match compose_walk_attempt_id(run_id: "12345", run_attempt: "", job: "ci") { Present { value: _ } => false  Absent => true }
-    && match compose_walk_attempt_id(run_id: "12345", run_attempt: "1", job: "") { Present { value: _ } => false  Absent => true }
-    && match compose_explicit_walk_attempt_id(explicit: "") { Present { value: _ } => false  Absent => true }
+  match gunbc.merge_admission_subject.compose_walk_attempt_id(run_id: "", run_attempt: "1", job: "ci") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.compose_walk_attempt_id(run_id: "12345", run_attempt: "", job: "ci") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.compose_walk_attempt_id(run_id: "12345", run_attempt: "1", job: "") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.compose_explicit_walk_attempt_id(explicit: "") { Present { value: _ } => false  Absent => true }
 }
 
 data attempt_id_path_safety_red_note: String = "Each raw value below was ACCEPTED as an attempt id before walk_attempt_id existed, and each one breaks something specific once concatenated into <root>/.gunbc/merge-admission/<id>/: `../other-attempt` reads another attempt's receipt, `a/b` invents a directory level, `.` and `..` alias the parent, and an embedded newline splits the line-oriented receipt written beneath it. They are checked through BOTH constructors because both read operator-controlled environment strings."
 
 test fn attempt_id_refuses_path_traversal_and_separators() -> Bool {
-  match compose_explicit_walk_attempt_id(explicit: "../other-attempt") { Present { value: _ } => false  Absent => true }
-    && match compose_explicit_walk_attempt_id(explicit: "a/b") { Present { value: _ } => false  Absent => true }
-    && match compose_explicit_walk_attempt_id(explicit: "..") { Present { value: _ } => false  Absent => true }
-    && match compose_explicit_walk_attempt_id(explicit: ".") { Present { value: _ } => false  Absent => true }
-    && match compose_explicit_walk_attempt_id(explicit: "a\\b") { Present { value: _ } => false  Absent => true }
-    && match compose_walk_attempt_id(run_id: "12345", run_attempt: "1", job: "ci/deploy") { Present { value: _ } => false  Absent => true }
+  match gunbc.merge_admission_subject.compose_explicit_walk_attempt_id(explicit: "../other-attempt") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.compose_explicit_walk_attempt_id(explicit: "a/b") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.compose_explicit_walk_attempt_id(explicit: "..") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.compose_explicit_walk_attempt_id(explicit: ".") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.compose_explicit_walk_attempt_id(explicit: "a\\b") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.compose_walk_attempt_id(run_id: "12345", run_attempt: "1", job: "ci/deploy") { Present { value: _ } => false  Absent => true }
 }
 
 test fn attempt_id_refuses_embedded_line_terminators() -> Bool {
-  match compose_explicit_walk_attempt_id(explicit: "a\nb") { Present { value: _ } => false  Absent => true }
-    && match compose_explicit_walk_attempt_id(explicit: "a\x0db") { Present { value: _ } => false  Absent => true }
-    && match compose_explicit_walk_attempt_id(explicit: "a\x00b") { Present { value: _ } => false  Absent => true }
-    && match compose_walk_attempt_id(run_id: "12345", run_attempt: "1\n2", job: "ci") { Present { value: _ } => false  Absent => true }
+  match gunbc.merge_admission_subject.compose_explicit_walk_attempt_id(explicit: "a\nb") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.compose_explicit_walk_attempt_id(explicit: "a\x0db") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.compose_explicit_walk_attempt_id(explicit: "a\x00b") { Present { value: _ } => false  Absent => true }
+    && match gunbc.merge_admission_subject.compose_walk_attempt_id(run_id: "12345", run_attempt: "1\n2", job: "ci") { Present { value: _ } => false  Absent => true }
 }
 
 test fn attempt_paths_are_attempt_scoped_and_distinct() -> Bool {
-  let subj = merge_admission_tested_subject_path(root: "/repo", attempt_id: attempt_a())
-  let rec_a = merge_admission_floor_receipt_path(root: "/repo", attempt_id: attempt_a())
-  let rec_b = merge_admission_floor_receipt_path(root: "/repo", attempt_id: attempt_b())
+  let subj = gunbc.merge_admission_subject.merge_admission_tested_subject_path(root: "/repo", attempt_id: attempt_a())
+  let rec_a = gunbc.merge_admission_subject.merge_admission_floor_receipt_path(root: "/repo", attempt_id: attempt_a())
+  let rec_b = gunbc.merge_admission_subject.merge_admission_floor_receipt_path(root: "/repo", attempt_id: attempt_b())
   string_contains(s: subj, pattern: "/.gunbc/merge-admission/12345-1-ci/")
     && string_contains(s: rec_a, pattern: "/12345-1-ci/")
     && !(rec_a == rec_b)
@@ -489,7 +489,7 @@ test fn attempt_paths_are_attempt_scoped_and_distinct() -> Bool {
 // The distinctness conjunct stays and is doing separate work: the subject and receipt wires are
 // parsed by different readers, and a shared tag would let each accept the other's bytes.
 test fn schemas_are_distinct_and_pinned_to_their_declared_versions() -> Bool {
-  !(merge_admission_receipt_schema_v2 == merge_admission_tested_subject_schema)
-    && (merge_admission_receipt_schema_v2 == "gunbc.merge_admission_receipt.v3")
-    && (merge_admission_tested_subject_schema == "gunbc.merge_admission_tested_subject.v2")
+  !(gunbc.merge_admission_produce.merge_admission_receipt_schema_v2 == gunbc.merge_admission_subject.merge_admission_tested_subject_schema)
+    && (gunbc.merge_admission_produce.merge_admission_receipt_schema_v2 == "gunbc.merge_admission_receipt.v3")
+    && (gunbc.merge_admission_subject.merge_admission_tested_subject_schema == "gunbc.merge_admission_tested_subject.v2")
 }

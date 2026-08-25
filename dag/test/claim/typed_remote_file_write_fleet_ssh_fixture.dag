@@ -58,15 +58,15 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> gunbc.fleet_known_h
     Present { value: attempt } => {
       let anchor = known_hosts_anchor_hermetic_witness_fixture(attempt: attempt)
       match fixture_credential_verification() {
-        FleetSshCredentialVerified { binding: binding } => Present {
+        gunbc.fleet_ssh_credential_verify.FleetSshCredentialVerified { binding: binding } => Present {
           value: gunbc.fleet_known_hosts_anchor.fleet_ssh_execution_context_seal(
             attempt: attempt,
             trust: fleet_openssh_trust_policy_hermetic_witness_fixture(anchor: anchor),
             credential: binding,
           ),
         }
-        FleetSshCredentialIdentityMismatch { expected_line: _, observed_line: _ } => none
-        FleetSshCredentialDerivationRefused { cause: _ } => none
+        gunbc.fleet_ssh_credential_verify.FleetSshCredentialIdentityMismatch { expected_line: _, observed_line: _ } => none
+        gunbc.fleet_ssh_credential_verify.FleetSshCredentialDerivationRefused { cause: _ } => none
       }
     }
   }

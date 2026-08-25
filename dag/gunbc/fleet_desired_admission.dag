@@ -67,9 +67,9 @@ data fleet_desired_admission_repo_root: std.types.FilePath = "." as std.types.Fi
 // the fold rather than a structural guarantee. What it does buy is that adding a fourth action
 // cannot silently produce an empty script without deleting a literal on purpose.
 type FleetDesiredAuthorizedAction
-  = FleetDesiredRemoteAdvance { accepted: GitObjectId, expected_prior: GitObjectId }
-  | FleetDesiredAlreadyConvergedAction { revision: GitObjectId }
-  | FleetDesiredSupersededAction { accepted: GitObjectId, current: GitObjectId }
+  = FleetDesiredRemoteAdvance { accepted: extdeps.git.object_store.GitObjectId, expected_prior: extdeps.git.object_store.GitObjectId }
+  | FleetDesiredAlreadyConvergedAction { revision: extdeps.git.object_store.GitObjectId }
+  | FleetDesiredSupersededAction { accepted: extdeps.git.object_store.GitObjectId, current: extdeps.git.object_store.GitObjectId }
 
 type FleetDesiredAdmissionOutcome
   = AdmissionActionAuthorized { action: FleetDesiredAuthorizedAction }
@@ -92,36 +92,36 @@ type FleetDesiredAdmissionOutcome
 // passes. The new producers also refuse a non-push originating event, which the old wall did not
 // check at all.
 type FleetDesiredAcceptedRevision
-  = FleetDesiredRevisionAccepted { accepted: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr> }
+  = FleetDesiredRevisionAccepted { accepted: gunbc.fleet_revision_acceptance.AcceptedFleetRevision<std.types.NonEmptyStr, std.types.NonEmptyStr> }
   | FleetDesiredRevisionRefused { cause: String }
 
 // The evidence both propositions carry is the run id: both facts are read from ONE delivered
 // event, so claiming two independent provenances would be a lie about where they came from.
-fn fleet_desired_accepted_from_event(event: WorkflowRunEvent) -> FleetDesiredAcceptedRevision {
-  match accept_required_ci_workflow_run(event: event, evidence: event.run_id) {
-    RequiredCiRefused { cause: why } =>
+fn fleet_desired_accepted_from_event(event: extdeps.github.workflow_run_event.WorkflowRunEvent) -> FleetDesiredAcceptedRevision {
+  match gunbc.fleet_revision_acceptance.accept_required_ci_workflow_run(event: event, evidence: event.run_id) {
+    gunbc.fleet_revision_acceptance.RequiredCiRefused { cause: why } =>
       FleetDesiredRevisionRefused {
-        cause: concat("fleet_desired_admission: ", required_ci_refusal_message(cause: why)),
+        cause: concat("fleet_desired_admission: ", gunbc.fleet_revision_acceptance.required_ci_refusal_message(cause: why)),
       }
-    RequiredCiAdmitted { succeeded: ci } =>
-      match observe_default_branch_revision(event: event, evidence: event.run_id) {
-        DefaultBranchRefused { cause: why } =>
+    gunbc.fleet_revision_acceptance.RequiredCiAdmitted { succeeded: ci } =>
+      match gunbc.fleet_revision_acceptance.observe_default_branch_revision(event: event, evidence: event.run_id) {
+        gunbc.fleet_revision_acceptance.DefaultBranchRefused { cause: why } =>
           FleetDesiredRevisionRefused {
-            cause: concat("fleet_desired_admission: ", default_branch_refusal_message(cause: why)),
+            cause: concat("fleet_desired_admission: ", gunbc.fleet_revision_acceptance.default_branch_refusal_message(cause: why)),
           }
-        DefaultBranchAdmitted { observed: br } =>
-          match admit_fleet_revision(required_ci: ci, default_branch: br) {
-            FleetRevisionAccepted { accepted: a } => FleetDesiredRevisionAccepted { accepted: a }
-            RequiredCiAndDefaultBranchRevisionMismatch {
+        gunbc.fleet_revision_acceptance.DefaultBranchAdmitted { observed: br } =>
+          match gunbc.fleet_revision_acceptance.admit_fleet_revision(required_ci: ci, default_branch: br) {
+            gunbc.fleet_revision_acceptance.FleetRevisionAccepted { accepted: a } => FleetDesiredRevisionAccepted { accepted: a }
+            gunbc.fleet_revision_acceptance.RequiredCiAndDefaultBranchRevisionMismatch {
               required_ci_revision: ci_rev,
               default_branch_revision: br_rev,
             } =>
               FleetDesiredRevisionRefused {
                 cause: join([
                   "fleet_desired_admission: the floor proved ",
-                  git_object_id_wire_hex(oid: ci_rev) as String,
+                  extdeps.git.object_store.git_object_id_wire_hex(oid: ci_rev) as String,
                   " while the default branch carries ",
-                  git_object_id_wire_hex(oid: br_rev) as String,
+                  extdeps.git.object_store.git_object_id_wire_hex(oid: br_rev) as String,
                   " -- both facts are true of different revisions, and only their conjunction would license an advance",
                 ], ""),
               }
@@ -133,24 +133,24 @@ fn fleet_desired_accepted_from_event(event: WorkflowRunEvent) -> FleetDesiredAcc
 // Decision to action. Every admitted decision becomes exactly one positive action; every refusal
 // becomes a cause and NO action, so the absent file continues to mean only that.
 fn fleet_desired_action_from_decision(
-  decision: FleetDesiredAdvanceDecision<NonEmptyStr, NonEmptyStr>,
+  decision: gunbc.fleet_main_revision.FleetDesiredAdvanceDecision<std.types.NonEmptyStr, std.types.NonEmptyStr>,
 ) -> FleetDesiredAdmissionOutcome {
   match decision {
-    FleetDesiredAdvanceAdmitted { accepted: a, expected_prior: prior } =>
+    gunbc.fleet_main_revision.FleetDesiredAdvanceAdmitted { accepted: a, expected_prior: prior } =>
       AdmissionActionAuthorized {
         action: FleetDesiredRemoteAdvance { accepted: a.revision, expected_prior: prior },
       }
-    FleetDesiredAlreadyConverged { accepted: a } =>
+    gunbc.fleet_main_revision.FleetDesiredAlreadyConverged { accepted: a } =>
       AdmissionActionAuthorized {
         action: FleetDesiredAlreadyConvergedAction { revision: a.revision },
       }
-    FleetDesiredSupersededNoOp { accepted: a, current: cur } =>
+    gunbc.fleet_main_revision.FleetDesiredSupersededNoOp { accepted: a, current: cur } =>
       AdmissionActionAuthorized {
         action: FleetDesiredSupersededAction { accepted: a.revision, current: cur },
       }
-    FleetDesiredAdvanceRefused { cause: why } =>
+    gunbc.fleet_main_revision.FleetDesiredAdvanceRefused { cause: why } =>
       AdmissionRefused {
-        cause: concat("fleet_desired_admission: ", fleet_desired_advance_refusal_message(cause: why)),
+        cause: concat("fleet_desired_admission: ", gunbc.fleet_main_revision.fleet_desired_advance_refusal_message(cause: why)),
       }
   }
 }
@@ -165,16 +165,16 @@ fn fleet_desired_action_from_decision(
 // its dissolution binding and says nothing about permission — the operator verdict is an external
 // fact bound to the current head, and unmarked debt is not a way to defer it (it is marked debt's
 // violation plus concealment). Declaring the population is what makes the verdict decidable.
-data fleet_desired_authorized_action_shell_scaffold: Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+data fleet_desired_authorized_action_shell_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.fleet_desired_admission",
     decl_name: "fleet_desired_authorized_action_script",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data fleet_desired_authorized_action_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_desired_authorized_action_script + gunbc.fleet_desired_admission_workflow fleet_desired_admission_action_step — the admitted advance is a model-rendered shell script executed by `sh`. THE PREMISE THIS ROW CARRIED UNTIL 2026-08-21 WAS THAT NO TYPED COMPARE-AND-SWAP CARRIER EXISTED; that is now false and the honest remaining debt is narrower. extdeps.git.publication_transport PushRefUpdateWithLease IS the typed leased-push wire capability, and its own annotation states its rung: it takes `lease` and `refspec` as three independent NonEmptyStr, so nothing at that boundary requires them to have been derived from one GitRemoteRefCasRequest, and it collapses a REFUSED LEASE (an answer — the remote moved, re-observe and retry) into the same nonzero-plus-String as a TRANSPORT FAILURE (no answer at all). It has zero consumers. So what is missing is not the capability but the three things that would make it safe to be its first consumer: the sole request-to-wire binder push_remote_ref_compare_and_swap, a cited decoder for git's push-rejection output that separates a stale lease from a failed push, and an independent remote readback confirming the ref landed where the decision said. DISSOLVES WHEN those three land and this module reaches the remote through the binder instead of through rendered argv, at which point the renderer and the sh step are deleted together — not before, because moving to the typed row today would trade a shell that is honestly untyped for a typed call whose refusal semantics this gate cannot yet read.")
+data fleet_desired_authorized_action_shell_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: fleet_desired_authorized_action_script + gunbc.fleet_desired_admission_workflow fleet_desired_admission_action_step — the admitted advance is a model-rendered shell script executed by `sh`. THE PREMISE THIS ROW CARRIED UNTIL 2026-08-21 WAS THAT NO TYPED COMPARE-AND-SWAP CARRIER EXISTED; that is now false and the honest remaining debt is narrower. extdeps.git.publication_transport PushRefUpdateWithLease IS the typed leased-push wire capability, and its own annotation states its rung: it takes `lease` and `refspec` as three independent NonEmptyStr, so nothing at that boundary requires them to have been derived from one GitRemoteRefCasRequest, and it collapses a REFUSED LEASE (an answer — the remote moved, re-observe and retry) into the same nonzero-plus-String as a TRANSPORT FAILURE (no answer at all). It has zero consumers. So what is missing is not the capability but the three things that would make it safe to be its first consumer: the sole request-to-wire binder push_remote_ref_compare_and_swap, a cited decoder for git's push-rejection output that separates a stale lease from a failed push, and an independent remote readback confirming the ref landed where the decision said. DISSOLVES WHEN those three land and this module reaches the remote through the binder instead of through rendered argv, at which point the renderer and the sh step are deleted together — not before, because moving to the typed row today would trade a shell that is honestly untyped for a typed call whose refusal semantics this gate cannot yet read.")
 
 // THE REFUSAL AN OPERATOR ACTUALLY READS, FACTORED OUT SO A WITNESS CAN CONSUME IT. This text
 // was twice stronger than the mechanism -- first claiming the run recorded "which code
@@ -221,43 +221,43 @@ fn fleet_desired_unobservable_judge_source_refusal_reason() -> String {
 // that can still tell them apart, and a dropped authorization would read as a converged fleet.
 fn fleet_desired_authorized_action_script(
   action: FleetDesiredAuthorizedAction,
-  judge_source_observed: GitObjectId,
-) -> NonEmptyStr {
+  judge_source_observed: extdeps.git.object_store.GitObjectId,
+) -> std.types.NonEmptyStr {
   match action {
     FleetDesiredRemoteAdvance { accepted: to, expected_prior: prior } => {
-      let request = GitRemoteRefCasRequest {
-        remote: "origin" as NonEmptyStr,
-        ref_name: fleet_desired_ref_name as GitRefName,
+      let request = extdeps.git.publication_transport.GitRemoteRefCasRequest {
+        remote: "origin" as std.types.NonEmptyStr,
+        ref_name: gunbc.fleet_main_revision.fleet_desired_ref_name as extdeps.git.object_store.GitRefName,
         new_oid: to,
-        expected: RemoteRefMustEqual { oid: prior },
+        expected: extdeps.git.publication_transport.RemoteRefMustEqual { oid: prior },
       }
       join([
         "set -eu\n",
-        "git push ", git_remote_ref_lease_word(request: request) as String,
+        "git push ", extdeps.git.publication_transport.git_remote_ref_lease_word(request: request) as String,
         " ", request.remote as String,
-        " ", git_remote_ref_cas_refspec(request: request) as String, "\n",
-        "echo \"[fleet-desired] admitted ", git_object_id_wire_hex(oid: to) as String,
-        " expected-prior ", git_object_id_wire_hex(oid: prior) as String,
-        " judge-source-observed ", git_object_id_wire_hex(oid: judge_source_observed) as String, "\"\n",
-      ], "") as NonEmptyStr
+        " ", extdeps.git.publication_transport.git_remote_ref_cas_refspec(request: request) as String, "\n",
+        "echo \"[fleet-desired] admitted ", extdeps.git.object_store.git_object_id_wire_hex(oid: to) as String,
+        " expected-prior ", extdeps.git.object_store.git_object_id_wire_hex(oid: prior) as String,
+        " judge-source-observed ", extdeps.git.object_store.git_object_id_wire_hex(oid: judge_source_observed) as String, "\"\n",
+      ], "") as std.types.NonEmptyStr
     }
     FleetDesiredAlreadyConvergedAction { revision: rev } =>
       join([
         "set -eu\n",
         "echo \"[fleet-desired] already converged at ",
-        git_object_id_wire_hex(oid: rev) as String,
-        " judge-source-observed ", git_object_id_wire_hex(oid: judge_source_observed) as String,
+        extdeps.git.object_store.git_object_id_wire_hex(oid: rev) as String,
+        " judge-source-observed ", extdeps.git.object_store.git_object_id_wire_hex(oid: judge_source_observed) as String,
         "; no ref mutation\"\n",
-      ], "") as NonEmptyStr
+      ], "") as std.types.NonEmptyStr
     FleetDesiredSupersededAction { accepted: acc, current: cur } =>
       join([
         "set -eu\n",
         "echo \"[fleet-desired] superseded: accepted ",
-        git_object_id_wire_hex(oid: acc) as String,
-        " is an ancestor of the current ", git_object_id_wire_hex(oid: cur) as String,
-        " judge-source-observed ", git_object_id_wire_hex(oid: judge_source_observed) as String,
+        extdeps.git.object_store.git_object_id_wire_hex(oid: acc) as String,
+        " is an ancestor of the current ", extdeps.git.object_store.git_object_id_wire_hex(oid: cur) as String,
+        " judge-source-observed ", extdeps.git.object_store.git_object_id_wire_hex(oid: judge_source_observed) as String,
         "; no ref mutation\"\n",
-      ], "") as NonEmptyStr
+      ], "") as std.types.NonEmptyStr
   }
 }
 
@@ -280,21 +280,21 @@ fn fleet_desired_authorized_action_script(
 // stray symbol is not evidence of which repair is wanted, and only the policy separates them.
 // (Pinned by nimble-fox-671 while independently verifying the retraction at fa2290eb6c5.)
 fn fleet_desired_advance_input_wet(
-  accepted: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr>,
-) -> FleetDesiredAdvanceInput<NonEmptyStr, NonEmptyStr> {
-  match fleet_desired_advance_expectation(
-    observed: observe_fleet_desired_revision(repo: fleet_desired_admission_repo_root),
+  accepted: gunbc.fleet_revision_acceptance.AcceptedFleetRevision<std.types.NonEmptyStr, std.types.NonEmptyStr>,
+) -> gunbc.fleet_main_revision.FleetDesiredAdvanceInput<std.types.NonEmptyStr, std.types.NonEmptyStr> {
+  match gunbc.fleet_main_revision.fleet_desired_advance_expectation(
+    observed: gunbc.fleet_desired_observe.observe_fleet_desired_revision(repo: fleet_desired_admission_repo_root),
   ) {
-    FleetDesiredExpectationRefused { cause: why } =>
-      FleetDesiredExpectationRefusedInput { accepted: accepted, cause: why }
-    FleetDesiredExpectationReady { expectation: e } =>
+    gunbc.fleet_main_revision.FleetDesiredExpectationRefused { cause: why } =>
+      gunbc.fleet_main_revision.FleetDesiredExpectationRefusedInput { accepted: accepted, cause: why }
+    gunbc.fleet_main_revision.FleetDesiredExpectationReady { expectation: e } =>
       match e {
-        RemoteRefMustBeAbsent => FleetDesiredRefAbsentInput { accepted: accepted }
-        RemoteRefMustEqual { oid: current } =>
-          FleetDesiredObservedCurrentInput {
+        extdeps.git.publication_transport.RemoteRefMustBeAbsent => gunbc.fleet_main_revision.FleetDesiredRefAbsentInput { accepted: accepted }
+        extdeps.git.publication_transport.RemoteRefMustEqual { oid: current } =>
+          gunbc.fleet_main_revision.FleetDesiredObservedCurrentInput {
             accepted: accepted,
             current: current,
-            relation: observe_fleet_revision_relation(
+            relation: gunbc.fleet_desired_observe.observe_fleet_revision_relation(
               current: current,
               accepted: accepted.revision,
             ),
@@ -303,24 +303,24 @@ fn fleet_desired_advance_input_wet(
   }
 }
 
-func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
-  match workflow_run_event_from_event_path(path: fleet_desired_admission_event_payload_path) {
-    WorkflowRunEventObserved { event: event } =>
+func admit_fleet_desired_from_floor_event_wet() -> std.process.ProcessExit {
+  match extdeps.github.workflow_run_event.workflow_run_event_from_event_path(path: fleet_desired_admission_event_payload_path) {
+    extdeps.github.workflow_run_event.WorkflowRunEventObserved { event: event } =>
       match fleet_desired_accepted_from_event(event: event) {
-        FleetDesiredRevisionRefused { cause: why } => exit_failure(reason: why)
+        FleetDesiredRevisionRefused { cause: why } => std.process.exit_failure(reason: why)
         FleetDesiredRevisionAccepted { accepted: accepted } =>
           match fleet_desired_action_from_decision(
-            decision: decide_fleet_desired_advance(
+            decision: gunbc.fleet_main_revision.decide_fleet_desired_advance(
               input: fleet_desired_advance_input_wet(accepted: accepted),
             ),
           ) {
-            AdmissionRefused { cause: why } => exit_failure(reason: why)
+            AdmissionRefused { cause: why } => std.process.exit_failure(reason: why)
             AdmissionActionAuthorized { action: action } =>
-              match observe_local_tree_revision(repo: fleet_desired_admission_repo_root) {
+              match gunbc.fleet_desired_observe.observe_local_tree_revision(repo: fleet_desired_admission_repo_root) {
                 Absent =>
-                  exit_failure(reason: fleet_desired_unobservable_judge_source_refusal_reason())
+                  std.process.exit_failure(reason: fleet_desired_unobservable_judge_source_refusal_reason())
                 Present { value: judge_source_observed } => {
-                  let wrote = Filesystem.Write(
+                  let wrote = extdeps.filesystem.filesystem_io.Filesystem.Write(
                     path: fleet_desired_admission_authorized_action_path,
                     content: fleet_desired_authorized_action_script(
                       action: action,
@@ -328,9 +328,9 @@ func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
                     ) as String,
                   )
                   if wrote.success {
-                    ExitSuccess
+                    std.process.ExitSuccess
                   } else {
-                    exit_failure(
+                    std.process.exit_failure(
                       reason: join([
                         "fleet_desired_admission: the action was authorized but could not be written to ",
                         fleet_desired_admission_authorized_action_path,
@@ -343,13 +343,13 @@ func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
               }
           }
       }
-    WorkflowRunEventMemberAbsent { member: m } =>
+    extdeps.github.workflow_run_event.WorkflowRunEventMemberAbsent { member: m } =>
       std.process.exit_failure(reason: concat("fleet_desired_admission: floor run event payload is missing a required member: ", m))
-    WorkflowRunEventMemberMalformed { member: m, detail: d } =>
+    extdeps.github.workflow_run_event.WorkflowRunEventMemberMalformed { member: m, detail: d } =>
       std.process.exit_failure(reason: join(["fleet_desired_admission: floor run event member ", m, " is malformed: ", d], ""))
-    WorkflowRunEventMalformed { detail: d } =>
+    extdeps.github.workflow_run_event.WorkflowRunEventMalformed { detail: d } =>
       std.process.exit_failure(reason: concat("fleet_desired_admission: floor run event payload is malformed: ", d))
-    WorkflowRunEventPayloadReadRefused { path: p, cause: c } =>
+    extdeps.github.workflow_run_event.WorkflowRunEventPayloadReadRefused { path: p, cause: c } =>
       std.process.exit_failure(reason: join(["fleet_desired_admission: floor run event payload could not be read at ", p, ": ", c], ""))
   }
 }

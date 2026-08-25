@@ -20,7 +20,7 @@ fn zero_pad_left(digits: String, width: Int) -> String {
   if have >= width {
     digits
   } else {
-    join([repeat_string(s: "0", n: width - have), digits], "")
+    join([std.render_repeat_string_bootstrap.repeat_string(s: "0", n: width - have), digits], "")
   }
 }
 

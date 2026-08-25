@@ -1,5 +1,6 @@
 module v2.workflow.floor_terminal_ledger_wire
 
+
 // ONE GRAMMAR, READ IN BOTH DIRECTIONS, FOR THE ARTIFACT THE SCHEMA ALREADY DESCRIBES.
 //
 // `v2.workflow.floor_terminal_ledger` says a ledger "is published atomically under its final
@@ -72,25 +73,25 @@ data ledger_unpublished_snapshot_wire: String = "unpublished"
 // `GITHUB_SHA` is. Nothing is re-derived locally: the width-to-family inference stays inside the
 // authority that owns it, and this wire's own format token already discriminates it, so the
 // family prefix would be carrying a distinction the header line makes anyway.
-fn render_repository_snapshot(snapshot: RepositorySnapshot) -> String {
+fn render_repository_snapshot(snapshot: v2.workflow.floor_terminal_ledger.RepositorySnapshot) -> String {
   match snapshot {
-    UnpublishedWorkingTree => ledger_unpublished_snapshot_wire
-    PublishedCommit { commit: c } => git_object_id_wire_hex(oid: c) as String
+    v2.workflow.floor_terminal_ledger.UnpublishedWorkingTree => ledger_unpublished_snapshot_wire
+    v2.workflow.floor_terminal_ledger.PublishedCommit { commit: c } => extdeps.git.object_store.git_object_id_wire_hex(oid: c) as String
   }
 }
 
 type RepositorySnapshotAdmission
-  = SnapshotAdmitted { snapshot: RepositorySnapshot }
+  = SnapshotAdmitted { snapshot: v2.workflow.floor_terminal_ledger.RepositorySnapshot }
   | SnapshotWireUnrecognized { offending: String }
 
 fn admit_repository_snapshot_wire(wire: String) -> RepositorySnapshotAdmission {
   if wire == ledger_unpublished_snapshot_wire {
-    SnapshotAdmitted { snapshot: UnpublishedWorkingTree }
+    SnapshotAdmitted { snapshot: v2.workflow.floor_terminal_ledger.UnpublishedWorkingTree }
   } else {
-    match git_object_id_from_untagged_hex(hex: wire) {
+    match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: wire) {
       Absent => SnapshotWireUnrecognized { offending: wire }
       Present { value: oid } =>
-        SnapshotAdmitted { snapshot: PublishedCommit { commit: oid } }
+        SnapshotAdmitted { snapshot: v2.workflow.floor_terminal_ledger.PublishedCommit { commit: oid } }
     }
   }
 }
@@ -132,18 +133,18 @@ fn ledger_wire_join_lines(lines: List<String>) -> String {
   }
 }
 
-fn render_expectation(expectation: ClaimExpectation) -> String {
+fn render_expectation(expectation: v2.workflow.floor_terminal_ledger.ClaimExpectation) -> String {
   match expectation {
-    ExpectedToHold => "expect-hold"
-    ExpectedRed => "expect-red"
+    v2.workflow.floor_terminal_ledger.ExpectedToHold => "expect-hold"
+    v2.workflow.floor_terminal_ledger.ExpectedRed => "expect-red"
   }
 }
 
-fn parse_expectation(wire: String) -> ClaimExpectation? {
+fn parse_expectation(wire: String) -> v2.workflow.floor_terminal_ledger.ClaimExpectation? {
   if wire == "expect-hold" {
-    Present { value: ExpectedToHold }
+    Present { value: v2.workflow.floor_terminal_ledger.ExpectedToHold }
   } else {
-    if wire == "expect-red" { Present { value: ExpectedRed } } else { none }
+    if wire == "expect-red" { Present { value: v2.workflow.floor_terminal_ledger.ExpectedRed } } else { none }
   }
 }
 
@@ -163,53 +164,53 @@ fn parse_expectation(wire: String) -> ClaimExpectation? {
 // A BUDGET TERMINAL CARRYING "WITHIN LIMITS" IS A CONTRADICTORY PAIRING, not a third reading of
 // the cost. It gets its own tag rather than being folded into either real arm: folding it would
 // publish a refusal or a completion that no measurement supports.
-fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
+fn render_terminal_tag(terminal: v2.workflow.floor_terminal_ledger.ClaimAttemptTerminal) -> String {
   match terminal {
-    Returned { observation: o } =>
+    v2.workflow.floor_terminal_ledger.Returned { observation: o } =>
       match o {
-        ObservedVerdict { holds: h } => if h { "returned-true" } else { "returned-false" }
-        ObservationUnrepresentable { reason: _ } => "returned-unreadable"
+        v2.workflow.floor_terminal_ledger.ObservedVerdict { holds: h } => if h { "returned-true" } else { "returned-false" }
+        v2.workflow.floor_terminal_ledger.ObservationUnrepresentable { reason: _ } => "returned-unreadable"
       }
-    RuntimeErrored { message: _ } => "runtime-errored"
-    BudgetRefused { safety: s } =>
+    v2.workflow.floor_terminal_ledger.RuntimeErrored { message: _ } => "runtime-errored"
+    v2.workflow.floor_terminal_ledger.BudgetRefused { safety: s } =>
       match s {
-        SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } =>
+        v2.workflow.required_floor.SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } =>
           "budget-refused"
-        CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } =>
+        v2.workflow.required_floor.CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } =>
           "passed-over-budget"
-        CompletedWithinSafetyLimits => "budget-terminal-without-safety-cause"
+        v2.workflow.required_floor.CompletedWithinSafetyLimits => "budget-terminal-without-safety-cause"
       }
-    HostToolUnresolved { name: _, probed: _ } => "host-tool-unresolved"
-    RouteGap { route: _ } => "route-gap"
+    v2.workflow.floor_terminal_ledger.HostToolUnresolved { name: _, probed: _ } => "host-tool-unresolved"
+    v2.workflow.floor_terminal_ledger.RouteGap { route: _ } => "route-gap"
   }
 }
 
-fn render_safety_detail(safety: ClaimSafetyOutcome) -> String {
+fn render_safety_detail(safety: v2.workflow.required_floor.ClaimSafetyOutcome) -> String {
   match safety {
-    CompletedWithinSafetyLimits => "completed-within-limits"
-    SafetyInterrupted { raised_by: r, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => r
-    CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } =>
+    v2.workflow.required_floor.CompletedWithinSafetyLimits => "completed-within-limits"
+    v2.workflow.required_floor.SafetyInterrupted { raised_by: r, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => r
+    v2.workflow.required_floor.CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } =>
       "completed-past-limit"
   }
 }
 
-fn render_terminal_detail(terminal: ClaimAttemptTerminal) -> String {
+fn render_terminal_detail(terminal: v2.workflow.floor_terminal_ledger.ClaimAttemptTerminal) -> String {
   match terminal {
-    Returned { observation: o } =>
+    v2.workflow.floor_terminal_ledger.Returned { observation: o } =>
       match o {
-        ObservedVerdict { holds: _ } => ""
-        ObservationUnrepresentable { reason: r } => r as String
+        v2.workflow.floor_terminal_ledger.ObservedVerdict { holds: _ } => ""
+        v2.workflow.floor_terminal_ledger.ObservationUnrepresentable { reason: r } => r as String
       }
-    RuntimeErrored { message: m } => m
-    BudgetRefused { safety: s } => render_safety_detail(safety: s)
-    HostToolUnresolved { name: n, probed: _ } => n
-    RouteGap { route: r } => r
+    v2.workflow.floor_terminal_ledger.RuntimeErrored { message: m } => m
+    v2.workflow.floor_terminal_ledger.BudgetRefused { safety: s } => render_safety_detail(safety: s)
+    v2.workflow.floor_terminal_ledger.HostToolUnresolved { name: n, probed: _ } => n
+    v2.workflow.floor_terminal_ledger.RouteGap { route: r } => r
   }
 }
 
-fn render_row(row: ClaimTerminalRow) -> String {
+fn render_row(row: v2.workflow.floor_terminal_ledger.ClaimTerminalRow) -> String {
   ledger_wire_join(fields: [
-    witness_identity_qualified_name(identity: row.identity),
+    v2.workflow.floor2_prepared_subject.witness_identity_qualified_name(identity: row.identity),
     render_expectation(expectation: row.expectation),
     render_terminal_tag(terminal: row.terminal),
     render_terminal_detail(terminal: row.terminal)
@@ -221,31 +222,31 @@ fn render_row(row: ClaimTerminalRow) -> String {
 // by anyone, and an unrecomputable digest is decoration. Every hashed line is prefixed, so no
 // input to `content_hash_atom` can be empty -- the `NonEmptyStr` refinement then has no reachable
 // refusal here rather than a runtime one nobody would expect at a serialization boundary.
-fn ledger_rows_digest(rows: List<ClaimTerminalRow>) -> Fnv1a64Structural {
+fn ledger_rows_digest(rows: List<v2.workflow.floor_terminal_ledger.ClaimTerminalRow>) -> std.content_hash.Fnv1a64Structural {
   fold(
     rows,
-    content_hash_atom(value: ledger_wire_format),
-    (acc, row) => content_hash_combine_structural(
+    std.content_hash.content_hash_atom(value: ledger_wire_format),
+    (acc, row) => std.content_hash.content_hash_combine_structural(
       left: acc,
-      right: content_hash_atom(value: concat("row:", render_row(row: row)))
+      right: std.content_hash.content_hash_atom(value: concat("row:", render_row(row: row)))
     )
   )
 }
 
-fn typed_roster_identity(rows: List<ClaimTerminalRow>) -> Fnv1a64Structural {
+fn typed_roster_identity(rows: List<v2.workflow.floor_terminal_ledger.ClaimTerminalRow>) -> std.content_hash.Fnv1a64Structural {
   fold(
     rows,
-    content_hash_atom(value: ledger_wire_format),
-    (acc, row) => content_hash_combine_structural(
+    std.content_hash.content_hash_atom(value: ledger_wire_format),
+    (acc, row) => std.content_hash.content_hash_combine_structural(
       left: acc,
-      right: content_hash_atom(
-        value: concat("identity:", witness_identity_qualified_name(identity: row.identity))
+      right: std.content_hash.content_hash_atom(
+        value: concat("identity:", v2.workflow.floor2_prepared_subject.witness_identity_qualified_name(identity: row.identity))
       )
     )
   )
 }
 
-fn render_header(binding: LedgerBinding, rows: List<ClaimTerminalRow>) -> String {
+fn render_header(binding: v2.workflow.floor_terminal_ledger.LedgerBinding, rows: List<v2.workflow.floor_terminal_ledger.ClaimTerminalRow>) -> String {
   ledger_wire_join(fields: [
     ledger_wire_format,
     render_repository_snapshot(snapshot: binding.repository_snapshot),
@@ -254,7 +255,7 @@ fn render_header(binding: LedgerBinding, rows: List<ClaimTerminalRow>) -> String
   ])
 }
 
-fn render_footer(rows: List<ClaimTerminalRow>) -> String {
+fn render_footer(rows: List<v2.workflow.floor_terminal_ledger.ClaimTerminalRow>) -> String {
   ledger_wire_join(fields: [
     ledger_wire_footer_tag,
     rows.length() as String,
@@ -265,12 +266,12 @@ fn render_footer(rows: List<ClaimTerminalRow>) -> String {
 // RENDER IS TOTAL OR IT REFUSES; IT NEVER PRODUCES A DAMAGED LEDGER.
 type LedgerRender
   = LedgerRendered { text: String }
-  | LedgerUnrenderable { reason: Symbol, offending: String, diagnosis: String }
+  | LedgerUnrenderable { reason: v2.std.node.Symbol, offending: String, diagnosis: String }
 
-fn ledger_unclean_fields(rows: List<ClaimTerminalRow>) -> List<String> {
+fn ledger_unclean_fields(rows: List<v2.workflow.floor_terminal_ledger.ClaimTerminalRow>) -> List<String> {
   filter(
     flat_map(rows, row => [
-      witness_identity_qualified_name(identity: row.identity),
+      v2.workflow.floor2_prepared_subject.witness_identity_qualified_name(identity: row.identity),
       render_terminal_detail(terminal: row.terminal)
     ]),
     field => !ledger_wire_field_is_clean(field: field)
@@ -307,7 +308,7 @@ fn render_partial_header(repository_snapshot: String, prepared_subject: String, 
 // observe detects the forgery, the same construction as `rows recovered vs lines read` in the
 // parser -- a self-check that cannot disagree with itself, because the number is written by the
 // same fold that writes the rows.
-fn render_partial_refusal_line(reason: Symbol, offending: String, row_count: Int) -> String {
+fn render_partial_refusal_line(reason: v2.std.node.Symbol, offending: String, row_count: Int) -> String {
   ledger_wire_join(fields: [
     ledger_partial_refusal_tag,
     reason as String,
@@ -317,13 +318,13 @@ fn render_partial_refusal_line(reason: Symbol, offending: String, row_count: Int
 }
 
 fn render_typed_diagnosis(
-  binding: LedgerBinding,
-  rows: List<ClaimTerminalRow>,
-  reason: Symbol,
+  binding: v2.workflow.floor_terminal_ledger.LedgerBinding,
+  rows: List<v2.workflow.floor_terminal_ledger.ClaimTerminalRow>,
+  reason: v2.std.node.Symbol,
   offending: String,
 ) -> String {
   ledger_wire_join_lines(
-    lines: list_append(
+    lines: v2.std.algebra.list_append(
       left: [
         render_partial_header(
           repository_snapshot: render_repository_snapshot(snapshot: binding.repository_snapshot),
@@ -352,11 +353,11 @@ fn seed_diagnosis_of(
   prepared_subject: String,
   roster_identity: String,
   rows: List<SeedLedgerRow>,
-  reason: Symbol,
+  reason: v2.std.node.Symbol,
   offending: String,
 ) -> String {
   ledger_wire_join_lines(
-    lines: list_append(
+    lines: v2.std.algebra.list_append(
       left: [
         render_partial_header(
           repository_snapshot: repository_snapshot,
@@ -370,7 +371,7 @@ fn seed_diagnosis_of(
   )
 }
 
-fn render_ledger(binding: LedgerBinding, rows: List<ClaimTerminalRow>) -> LedgerRender {
+fn render_ledger(binding: v2.workflow.floor_terminal_ledger.LedgerBinding, rows: List<v2.workflow.floor_terminal_ledger.ClaimTerminalRow>) -> LedgerRender {
   match ledger_unclean_fields(rows: rows).first() {
     Present { value: offending } =>
       LedgerUnrenderable {
@@ -386,8 +387,8 @@ fn render_ledger(binding: LedgerBinding, rows: List<ClaimTerminalRow>) -> Ledger
     Absent =>
       LedgerRendered {
         text: ledger_wire_join_lines(
-          lines: list_append(
-            left: list_append(
+          lines: v2.std.algebra.list_append(
+            left: v2.std.algebra.list_append(
               left: [render_header(binding: binding, rows: rows)],
               right: map(rows, r => render_row(row: r))
             ),
@@ -415,7 +416,7 @@ fn render_ledger(binding: LedgerBinding, rows: List<ClaimTerminalRow>) -> Ledger
 // discover it from a zero.
 type LedgerReadbackRow {
   qualified: String
-  expectation: ClaimExpectation
+  expectation: v2.workflow.floor_terminal_ledger.ClaimExpectation
   terminal_tag: String
   terminal_detail: String
 }
@@ -429,7 +430,7 @@ type LedgerReadback
       footer_row_count_wire: String
       footer_digest: String
     }
-  | LedgerUnreadable { reason: Symbol, at: String }
+  | LedgerUnreadable { reason: v2.std.node.Symbol, at: String }
 
 fn render_readback_row(row: LedgerReadbackRow) -> String {
   ledger_wire_join(fields: [
@@ -440,13 +441,13 @@ fn render_readback_row(row: LedgerReadbackRow) -> String {
   ])
 }
 
-fn readback_rows_digest(rows: List<LedgerReadbackRow>) -> Fnv1a64Structural {
+fn readback_rows_digest(rows: List<LedgerReadbackRow>) -> std.content_hash.Fnv1a64Structural {
   fold(
     rows,
-    content_hash_atom(value: ledger_wire_format),
-    (acc, row) => content_hash_combine_structural(
+    std.content_hash.content_hash_atom(value: ledger_wire_format),
+    (acc, row) => std.content_hash.content_hash_combine_structural(
       left: acc,
-      right: content_hash_atom(value: concat("row:", render_readback_row(row: row)))
+      right: std.content_hash.content_hash_atom(value: concat("row:", render_readback_row(row: row)))
     )
   )
 }
@@ -635,41 +636,41 @@ fn readback_digest_agrees(readback: LedgerReadback) -> Bool {
 // An unrecognised tag refuses. It does not fall through to a default disposition: a ledger
 // written by a newer format and read by this one must say "I cannot read this", never "everything
 // I could not parse passed".
-fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
+fn readback_disposition(row: LedgerReadbackRow) -> v2.workflow.floor_terminal_ledger.ClaimDisposition? {
   if row.terminal_tag == "runtime-errored" {
-    Present { value: RuntimeErroredBeforeVerdict }
+    Present { value: v2.workflow.floor_terminal_ledger.RuntimeErroredBeforeVerdict }
   } else {
   if row.terminal_tag == "budget-refused" {
-    Present { value: BudgetRefusedBeforeVerdict }
+    Present { value: v2.workflow.floor_terminal_ledger.BudgetRefusedBeforeVerdict }
   } else {
   if row.terminal_tag == "passed-over-budget" {
     match row.expectation {
-      ExpectedToHold => Present { value: PassedOverBudget }
-      ExpectedRed => Present { value: KnownRedNowPassing }
+      v2.workflow.floor_terminal_ledger.ExpectedToHold => Present { value: v2.workflow.floor_terminal_ledger.PassedOverBudget }
+      v2.workflow.floor_terminal_ledger.ExpectedRed => Present { value: v2.workflow.floor_terminal_ledger.KnownRedNowPassing }
     }
   } else {
   if row.terminal_tag == "budget-terminal-without-safety-cause" {
-    Present { value: BudgetTerminalWithoutSafetyCause }
+    Present { value: v2.workflow.floor_terminal_ledger.BudgetTerminalWithoutSafetyCause }
   } else {
   if row.terminal_tag == "host-tool-unresolved" {
-    Present { value: HostToolUnresolvedBeforeVerdict }
+    Present { value: v2.workflow.floor_terminal_ledger.HostToolUnresolvedBeforeVerdict }
   } else {
   if row.terminal_tag == "route-gap" {
-    Present { value: RouteGapBeforeVerdict }
+    Present { value: v2.workflow.floor_terminal_ledger.RouteGapBeforeVerdict }
   } else {
   if row.terminal_tag == "returned-unreadable" {
-    Present { value: ObservationUnreadableBeforeVerdict }
+    Present { value: v2.workflow.floor_terminal_ledger.ObservationUnreadableBeforeVerdict }
   } else {
   if row.terminal_tag == "returned-true" {
     match row.expectation {
-      ExpectedToHold => Present { value: Passed }
-      ExpectedRed => Present { value: KnownRedNowPassing }
+      v2.workflow.floor_terminal_ledger.ExpectedToHold => Present { value: v2.workflow.floor_terminal_ledger.Passed }
+      v2.workflow.floor_terminal_ledger.ExpectedRed => Present { value: v2.workflow.floor_terminal_ledger.KnownRedNowPassing }
     }
   } else {
   if row.terminal_tag == "returned-false" {
     match row.expectation {
-      ExpectedToHold => Present { value: v2.workflow.floor_terminal_ledger.Failed }
-      ExpectedRed => Present { value: KnownRedHeld }
+      v2.workflow.floor_terminal_ledger.ExpectedToHold => Present { value: v2.workflow.floor_terminal_ledger.Failed }
+      v2.workflow.floor_terminal_ledger.ExpectedRed => Present { value: v2.workflow.floor_terminal_ledger.KnownRedHeld }
     }
   } else {
     none
@@ -707,25 +708,25 @@ type SeedLedgerRow {
   seed_disposition_wire: String
 }
 
-fn render_disposition(disposition: ClaimDisposition) -> String {
+fn render_disposition(disposition: v2.workflow.floor_terminal_ledger.ClaimDisposition) -> String {
   match disposition {
-    Passed => "passed"
-    Failed => "failed"
-    KnownRedHeld => "known-red-held"
-    KnownRedNowPassing => "known-red-now-passing"
-    BudgetRefusedBeforeVerdict => "budget-refused-before-verdict"
-    PassedOverBudget => "passed-over-budget"
-    BudgetTerminalWithoutSafetyCause => "budget-terminal-without-safety-cause"
-    HostToolUnresolvedBeforeVerdict => "host-tool-unresolved-before-verdict"
-    RouteGapBeforeVerdict => "route-gap-before-verdict"
-    RuntimeErroredBeforeVerdict => "runtime-errored-before-verdict"
-    ObservationUnreadableBeforeVerdict => "observation-unreadable-before-verdict"
+    v2.workflow.floor_terminal_ledger.Passed => "passed"
+    v2.workflow.floor_terminal_ledger.Failed => "failed"
+    v2.workflow.floor_terminal_ledger.KnownRedHeld => "known-red-held"
+    v2.workflow.floor_terminal_ledger.KnownRedNowPassing => "known-red-now-passing"
+    v2.workflow.floor_terminal_ledger.BudgetRefusedBeforeVerdict => "budget-refused-before-verdict"
+    v2.workflow.floor_terminal_ledger.PassedOverBudget => "passed-over-budget"
+    v2.workflow.floor_terminal_ledger.BudgetTerminalWithoutSafetyCause => "budget-terminal-without-safety-cause"
+    v2.workflow.floor_terminal_ledger.HostToolUnresolvedBeforeVerdict => "host-tool-unresolved-before-verdict"
+    v2.workflow.floor_terminal_ledger.RouteGapBeforeVerdict => "route-gap-before-verdict"
+    v2.workflow.floor_terminal_ledger.RuntimeErroredBeforeVerdict => "runtime-errored-before-verdict"
+    v2.workflow.floor_terminal_ledger.ObservationUnreadableBeforeVerdict => "observation-unreadable-before-verdict"
   }
 }
 
 type SeedRowAdmission
   = SeedRowAdmitted { row: LedgerReadbackRow }
-  | SeedRowRefused { reason: Symbol, offending: String }
+  | SeedRowRefused { reason: v2.std.node.Symbol, offending: String }
 
 fn admit_seed_row(row: SeedLedgerRow) -> SeedRowAdmission {
   match parse_expectation(wire: row.expectation_wire) {
@@ -756,13 +757,13 @@ fn admit_seed_row(row: SeedLedgerRow) -> SeedRowAdmission {
 // roster identity described a different roster than the rows is worse than no roster identity at
 // all. The seed has no such value to hand over anyway: nothing in `run_required_floor` computes
 // one, and inventing a parameter for a fact that does not exist is how hollow carriers start.
-fn seed_roster_identity(rows: List<SeedLedgerRow>) -> Fnv1a64Structural {
+fn seed_roster_identity(rows: List<SeedLedgerRow>) -> std.content_hash.Fnv1a64Structural {
   fold(
     rows,
-    content_hash_atom(value: ledger_wire_format),
-    (acc, row) => content_hash_combine_structural(
+    std.content_hash.content_hash_atom(value: ledger_wire_format),
+    (acc, row) => std.content_hash.content_hash_combine_structural(
       left: acc,
-      right: content_hash_atom(value: concat("identity:", row.qualified))
+      right: std.content_hash.content_hash_atom(value: concat("identity:", row.qualified))
     )
   )
 }
@@ -849,8 +850,8 @@ fn render_ledger_from_seed(
         Absent =>
           LedgerRendered {
             text: ledger_wire_join_lines(
-              lines: list_append(
-                left: list_append(
+              lines: v2.std.algebra.list_append(
+                left: v2.std.algebra.list_append(
                   left: [ledger_wire_join(fields: [
                     ledger_wire_format,
                     repository_snapshot,

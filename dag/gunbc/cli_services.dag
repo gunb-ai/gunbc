@@ -1,7 +1,7 @@
 module gunbc.cli_services
 
 
-service gunbc.Cli {
+service Cli {
   operation Run {
     input {
       workdir: std.types.FilePath
@@ -23,7 +23,7 @@ service gunbc.Cli {
         "-C",
         "{workdir}",
         "{bin_path}",
-        gunbc_run_transport_argv(
+        gunbc.cli_invoke.gunbc_run_transport_argv(
           source_roots: source_roots,
           entry: entry,
           function: function,
@@ -61,7 +61,7 @@ service claim_executor.Executor {
         "-C",
         "{workdir}",
         "{bin_path}",
-        claim_executor_run_plan_transport_argv(
+        gunbc.cli_invoke.claim_executor_run_plan_transport_argv(
           source_roots: source_roots,
           plan_entry: plan_entry,
           plan_function: plan_function,
@@ -89,7 +89,7 @@ service claim_executor.Executor {
         "-C",
         "{workdir}",
         "{bin_path}",
-        claim_executor_verify_artifacts_transport_argv(artifact_paths: artifact_paths)
+        gunbc.cli_invoke.claim_executor_verify_artifacts_transport_argv(artifact_paths: artifact_paths)
       ]
     }
     exit {

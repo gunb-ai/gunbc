@@ -1,5 +1,6 @@
 module v2.std.provenance
 
+
 type OriginEvent
   = FromSource { locus: v2.std.diagnostic.Locus }
   | DerivedBy { producer: v2.std.node.Symbol, from: List<std.occurrence_identity.OccurrenceId> }
@@ -42,11 +43,11 @@ fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
       empty: base.entries,
       cons: fn(acc, id) {
         match acc.lookup(id) {
-          Present { value: _ } => acc
-          Absent =>
+          v2.std.optional.Present { value: _ } => acc
+          v2.std.optional.Absent =>
             match incoming.entries.lookup(id) {
-              Present { value: event } => v2.std.collection.map_insert(m: acc, key: id, value: event)
-              Absent => acc
+              v2.std.optional.Present { value: event } => v2.std.collection.map_insert(m: acc, key: id, value: event)
+              v2.std.optional.Absent => acc
             }
         }
       }
@@ -71,8 +72,8 @@ fn span_index_resolve_textual_locus_from_ids(
     empty: v2.std.witness.Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() },
     cons: fn(acc, id) {
       match acc {
-        Holds { value: _ } => acc
-        Violates { diagnostic: _ } =>
+        v2.std.witness.Holds { value: _ } => acc
+        v2.std.witness.Violates { diagnostic: _ } =>
           span_index_resolve_textual_locus(index: index, id: id)
       }
     }
@@ -81,11 +82,11 @@ fn span_index_resolve_textual_locus_from_ids(
 
 fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identity.OccurrenceId) -> Witness<v2.std.diagnostic.Locus> {
   match span_index_lookup(index: index, id: id) {
-    Holds { value: event } =>
+    v2.std.witness.Holds { value: event } =>
       match event {
         FromSource { locus } =>
           match locus {
-            Textual { file: _, extent: _ } => v2.std.witness.Holds { value: locus }
+            v2.std.diagnostic.Textual { file: _, extent: _ } => v2.std.witness.Holds { value: locus }
             _ => v2.std.witness.Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
           }
         DerivedBy { producer: _, from: from } =>
@@ -93,7 +94,7 @@ fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identit
         GeneratedBy { generator: _, from: from } =>
           span_index_resolve_textual_locus_from_ids(index: index, ids: from)
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 

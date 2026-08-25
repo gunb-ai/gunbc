@@ -20,7 +20,7 @@ fn ci_release_build_script() -> String {
     concat(
       concat("ROOT=", gunbc.merge_admission_produce.ci_repo_root_shell(), "\n"),
       concat(
-        ci_cargo_eagain_retry_script(command: gunbc.ci_spec.ci_release_build_line()),
+        v2.workflow.ci_retry_emit.ci_cargo_eagain_retry_script(command: gunbc.ci_spec.ci_release_build_line()),
         concat(
           gunbc.ci_spec.ci_floor_build_verify_script(),
           "sccache --show-stats 2>/dev/null || true"

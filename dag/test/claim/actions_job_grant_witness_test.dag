@@ -1,11 +1,12 @@
 module test.claim.actions_job_grant_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn live_heal_push_authority() -> gunbc.auth.github_credential.GitHubCredentialAuthority {
-  match push_binding_authority(resolution: live_heal_push_binding_resolution) {
+  match gunbc.ci_heal_credential.push_binding_authority(resolution: gunbc.ci_heal_credential.live_heal_push_binding_resolution) {
     Present { value: a } => a
-    Absent => gunbc.auth.github_credential.ActionsJobCredential { grant: fork_origin_grant() }
+    Absent => gunbc.auth.github_credential.ActionsJobCredential { grant: gunbc.ci_heal_credential.fork_origin_grant() }
   }
 }
 
@@ -17,7 +18,7 @@ fn grant_with(
   extdeps.github.actions_token.EffectiveActionsJobGrant {
     workflow: ci_heal_effective_grant.workflow,
     job: ci_heal_effective_grant.job,
-    event: PullRequestEvent,
+    event: extdeps.github.actions_token.PullRequestEvent,
     origin: origin,
     repository_policy: policy,
     permissions: extdeps.github.actions.WorkflowPermissions {
@@ -35,96 +36,96 @@ fn contents_resolution(
   origin: extdeps.github.actions_token.PullRequestOrigin,
   policy: extdeps.github.actions_token.ActionsRepositoryPolicyObservation
 ) -> extdeps.github.actions_token.ActionsGrantResolution {
-  effective_actions_grant(
+  extdeps.github.actions_token.effective_actions_grant(
     grant: grant_with(contents: contents, origin: origin, policy: policy),
-    name: ContentsAxis
+    name: extdeps.github.app.ContentsAxis
   )
 }
 
 fn is_none(r: extdeps.github.actions_token.ActionsGrantResolution) -> Bool {
-  match r { ActionsGrantNone => true  _ => false }
+  match r { extdeps.github.actions_token.ActionsGrantNone => true  _ => false }
 }
 
 fn is_write(r: extdeps.github.actions_token.ActionsGrantResolution) -> Bool {
   match r {
-    ActionsGrantResolved { access } => match access { AppAccessWrite => true  _ => false }
+    extdeps.github.actions_token.ActionsGrantResolved { access } => match access { extdeps.github.app.AppAccessWrite => true  _ => false }
     _ => false
   }
 }
 
 fn is_read(r: extdeps.github.actions_token.ActionsGrantResolution) -> Bool {
   match r {
-    ActionsGrantResolved { access } => match access { AppAccessRead => true  _ => false }
+    extdeps.github.actions_token.ActionsGrantResolved { access } => match access { extdeps.github.app.AppAccessRead => true  _ => false }
     _ => false
   }
 }
 
 fn is_fork_policy_unobserved(r: extdeps.github.actions_token.ActionsGrantResolution) -> Bool {
-  match r { ActionsGrantForkPolicyUnobserved => true  _ => false }
+  match r { extdeps.github.actions_token.ActionsGrantForkPolicyUnobserved => true  _ => false }
 }
 
 fn is_scope_unavailable(r: extdeps.github.actions_token.ActionsGrantResolution) -> Bool {
-  match r { ActionsGrantScopeUnavailable => true  _ => false }
+  match r { extdeps.github.actions_token.ActionsGrantScopeUnavailable => true  _ => false }
 }
 
 fn is_axis_not_modeled(r: extdeps.github.actions_token.ActionsGrantResolution) -> Bool {
-  match r { ActionsGrantAxisNotModeled => true  _ => false }
+  match r { extdeps.github.actions_token.ActionsGrantAxisNotModeled => true  _ => false }
 }
 
-data same_repo_policy: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyUnobserved
+data same_repo_policy: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = extdeps.github.actions_token.ActionsRepositoryPolicyUnobserved
 data fork_policy_denies: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = extdeps.github.actions_token.ActionsRepositoryPolicyObserved {
-  visibility: PrivateRepository,
+  visibility: extdeps.github.actions_token.PrivateRepository,
   send_write_tokens_to_fork_pull_requests: false
 }
 data fork_policy_allows: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = extdeps.github.actions_token.ActionsRepositoryPolicyObserved {
-  visibility: PrivateRepository,
+  visibility: extdeps.github.actions_token.PrivateRepository,
   send_write_tokens_to_fork_pull_requests: true
 }
 data public_fork_policy_allows: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = extdeps.github.actions_token.ActionsRepositoryPolicyObserved {
-  visibility: PublicRepository,
+  visibility: extdeps.github.actions_token.PublicRepository,
   send_write_tokens_to_fork_pull_requests: true
 }
 
 test fn witness_public_repository_fork_write_is_unreachable() -> Bool {
-  test.claim.actions_job_grant_witness.is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: ForkedRepositoryOrigin, policy: public_fork_policy_allows))
-    && is_write(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_allows))
-    && !fork_write_tokens_reachable(policy: public_fork_policy_allows)
-    && fork_write_tokens_reachable(policy: fork_policy_allows)
-    && !fork_write_tokens_reachable(policy: ActionsRepositoryPolicyUnobserved)
+  is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: extdeps.github.actions_token.ForkedRepositoryOrigin, policy: public_fork_policy_allows))
+    && is_write(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: extdeps.github.actions_token.ForkedRepositoryOrigin, policy: fork_policy_allows))
+    && !extdeps.github.actions_token.fork_write_tokens_reachable(policy: public_fork_policy_allows)
+    && extdeps.github.actions_token.fork_write_tokens_reachable(policy: fork_policy_allows)
+    && !extdeps.github.actions_token.fork_write_tokens_reachable(policy: extdeps.github.actions_token.ActionsRepositoryPolicyUnobserved)
 }
 
 test fn witness_declared_level_decides_the_grant_not_the_scope_name() -> Bool {
-  is_none(r: contents_resolution(contents: none, origin: SameRepositoryOrigin, policy: same_repo_policy))
-    && is_none(r: contents_resolution(contents: Present { value: PermNone }, origin: SameRepositoryOrigin, policy: same_repo_policy))
-    && test.claim.actions_job_grant_witness.is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermRead }, origin: SameRepositoryOrigin, policy: same_repo_policy))
-    && is_write(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy))
+  is_none(r: contents_resolution(contents: none, origin: extdeps.github.actions_token.SameRepositoryOrigin, policy: same_repo_policy))
+    && is_none(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermNone }, origin: extdeps.github.actions_token.SameRepositoryOrigin, policy: same_repo_policy))
+    && is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermRead }, origin: extdeps.github.actions_token.SameRepositoryOrigin, policy: same_repo_policy))
+    && is_write(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: extdeps.github.actions_token.SameRepositoryOrigin, policy: same_repo_policy))
 }
 
 test fn witness_fork_origin_downgrades_write_to_read() -> Bool {
-  test.claim.actions_job_grant_witness.is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_denies))
-    && test.claim.actions_job_grant_witness.is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermRead }, origin: ForkedRepositoryOrigin, policy: fork_policy_denies))
-    && is_write(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_allows))
+  is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: extdeps.github.actions_token.ForkedRepositoryOrigin, policy: fork_policy_denies))
+    && is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermRead }, origin: extdeps.github.actions_token.ForkedRepositoryOrigin, policy: fork_policy_denies))
+    && is_write(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: extdeps.github.actions_token.ForkedRepositoryOrigin, policy: fork_policy_allows))
 }
 
 test fn witness_unobserved_fork_policy_refuses_rather_than_assuming() -> Bool {
   is_fork_policy_unobserved(
-    r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)
+    r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: extdeps.github.actions_token.ForkedRepositoryOrigin, policy: extdeps.github.actions_token.ActionsRepositoryPolicyUnobserved)
   ) && is_write(
-    r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: SameRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)
+    r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: extdeps.github.actions_token.SameRepositoryOrigin, policy: extdeps.github.actions_token.ActionsRepositoryPolicyUnobserved)
   ) && is_write(
-    r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: OriginNotApplicable, policy: ActionsRepositoryPolicyUnobserved)
+    r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: extdeps.github.actions_token.OriginNotApplicable, policy: extdeps.github.actions_token.ActionsRepositoryPolicyUnobserved)
   )
 }
 
 test fn witness_scope_unavailable_is_not_scope_none() -> Bool {
-  let g = grant_with(contents: Present { value: extdeps.github.actions.PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
-  is_scope_unavailable(r: effective_actions_grant(grant: g, name: WorkflowsAxis))
-    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: RepositoryProjectsAxis))
-    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: AdministrationAxis))
-    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: OrganizationSelfHostedRunnersAxis))
-    && is_none(r: effective_actions_grant(grant: g, name: IssuesAxis))
-    && is_none(r: effective_actions_grant(grant: g, name: IdTokenAxis))
-    && is_axis_not_modeled(r: effective_actions_grant(grant: g, name: ChecksAxis))
+  let g = grant_with(contents: Present { value: extdeps.github.actions.PermWrite }, origin: extdeps.github.actions_token.SameRepositoryOrigin, policy: same_repo_policy)
+  is_scope_unavailable(r: extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.WorkflowsAxis))
+    && is_scope_unavailable(r: extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.RepositoryProjectsAxis))
+    && is_scope_unavailable(r: extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.AdministrationAxis))
+    && is_scope_unavailable(r: extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.OrganizationSelfHostedRunnersAxis))
+    && is_none(r: extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.IssuesAxis))
+    && is_none(r: extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.IdTokenAxis))
+    && is_axis_not_modeled(r: extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.ChecksAxis))
 }
 
 // A configurable `permissions:` key and an intrinsic job-token grant are
@@ -135,13 +136,13 @@ test fn witness_scope_unavailable_is_not_scope_none() -> Bool {
 // granted read, while the keyless axes that carry no intrinsic grant stay
 // unavailable — so re-fusing the two facts in either direction reds.
 test fn witness_undeclarable_axis_may_still_be_granted() -> Bool {
-  let g = grant_with(contents: Present { value: extdeps.github.actions.PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
-  !actions_token_may_declare_permission(name: MetadataAxis)
-    && test.claim.actions_job_grant_witness.is_read(r: effective_actions_grant(grant: g, name: MetadataAxis))
-    && !is_scope_unavailable(r: effective_actions_grant(grant: g, name: MetadataAxis))
-    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: WorkflowsAxis))
-    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: RepositoryProjectsAxis))
-    && is_scope_unavailable(r: effective_actions_grant(grant: g, name: AdministrationAxis))
+  let g = grant_with(contents: Present { value: extdeps.github.actions.PermWrite }, origin: extdeps.github.actions_token.SameRepositoryOrigin, policy: same_repo_policy)
+  !extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.MetadataAxis)
+    && is_read(r: extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.MetadataAxis))
+    && !is_scope_unavailable(r: extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.MetadataAxis))
+    && is_scope_unavailable(r: extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.WorkflowsAxis))
+    && is_scope_unavailable(r: extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.RepositoryProjectsAxis))
+    && is_scope_unavailable(r: extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.AdministrationAxis))
 }
 
 // The correction resolves an intrinsic grant at its OBSERVED access and no
@@ -149,89 +150,89 @@ test fn witness_undeclarable_axis_may_still_be_granted() -> Bool {
 // widening the intrinsic carrier to write would red here rather than silently
 // authorizing a write the live token does not carry.
 test fn witness_intrinsic_read_grant_refuses_a_write_request() -> Bool {
-  let g = grant_with(contents: Present { value: extdeps.github.actions.PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
-  match actions_job_capability(grant: g, required: extdeps.github.app.GitHubAppPermission { name: MetadataAxis, access: AppAccessRead }) {
-    CredentialGrants => true
+  let g = grant_with(contents: Present { value: extdeps.github.actions.PermWrite }, origin: extdeps.github.actions_token.SameRepositoryOrigin, policy: same_repo_policy)
+  match gunbc.auth.github_credential.actions_job_capability(grant: g, required: extdeps.github.app.GitHubAppPermission { name: extdeps.github.app.MetadataAxis, access: extdeps.github.app.AppAccessRead }) {
+    gunbc.auth.github_credential.CredentialGrants => true
     _ => false
-  } && match actions_job_capability(grant: g, required: extdeps.github.app.GitHubAppPermission { name: MetadataAxis, access: AppAccessWrite }) {
-    CredentialScopeNotGranted { missing: _ } => true
+  } && match gunbc.auth.github_credential.actions_job_capability(grant: g, required: extdeps.github.app.GitHubAppPermission { name: extdeps.github.app.MetadataAxis, access: extdeps.github.app.AppAccessWrite }) {
+    gunbc.auth.github_credential.CredentialScopeNotGranted { missing: _ } => true
     _ => false
   }
 }
 
 test fn witness_permissions_key_table_matches_cited_vocabulary() -> Bool {
-  actions_token_may_declare_permission(name: ActionsAxis)
-    && actions_token_may_declare_permission(name: ArtifactMetadataAxis)
-    && actions_token_may_declare_permission(name: AttestationsAxis)
-    && actions_token_may_declare_permission(name: ChecksAxis)
-    && actions_token_may_declare_permission(name: CodeQualityAxis)
-    && actions_token_may_declare_permission(name: ContentsAxis)
-    && actions_token_may_declare_permission(name: DeploymentsAxis)
-    && actions_token_may_declare_permission(name: DiscussionsAxis)
-    && actions_token_may_declare_permission(name: IdTokenAxis)
-    && actions_token_may_declare_permission(name: IssuesAxis)
-    && actions_token_may_declare_permission(name: PackagesAxis)
-    && actions_token_may_declare_permission(name: PagesAxis)
-    && actions_token_may_declare_permission(name: PullRequestsAxis)
-    && actions_token_may_declare_permission(name: SecurityEventsAxis)
-    && actions_token_may_declare_permission(name: StatusesAxis)
-    && actions_token_may_declare_permission(name: VulnerabilityAlertsAxis)
-    && !actions_token_may_declare_permission(name: MetadataAxis)
-    && !actions_token_may_declare_permission(name: RepositoryProjectsAxis)
-    && !actions_token_may_declare_permission(name: WorkflowsAxis)
-    && !actions_token_may_declare_permission(name: AdministrationAxis)
-    && !actions_token_may_declare_permission(name: OrganizationSelfHostedRunnersAxis)
+  extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.ActionsAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.ArtifactMetadataAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.AttestationsAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.ChecksAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.CodeQualityAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.ContentsAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.DeploymentsAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.DiscussionsAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.IdTokenAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.IssuesAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.PackagesAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.PagesAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.PullRequestsAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.SecurityEventsAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.StatusesAxis)
+    && extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.VulnerabilityAlertsAxis)
+    && !extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.MetadataAxis)
+    && !extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.RepositoryProjectsAxis)
+    && !extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.WorkflowsAxis)
+    && !extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.AdministrationAxis)
+    && !extdeps.github.actions_token.actions_token_may_declare_permission(name: extdeps.github.app.OrganizationSelfHostedRunnersAxis)
 }
 
 test fn witness_two_access_vocabularies_differ_only_by_the_absence_level() -> Bool {
-  match permission_level_access(level: PermRead) {
+  match extdeps.github.actions_token.permission_level_access(level: extdeps.github.actions.PermRead) {
     Absent => false
-    Present { value: a } => match a { AppAccessRead => true  _ => false }
+    Present { value: a } => match a { extdeps.github.app.AppAccessRead => true  _ => false }
   }
-    && match permission_level_access(level: PermWrite) {
+    && match extdeps.github.actions_token.permission_level_access(level: extdeps.github.actions.PermWrite) {
       Absent => false
-      Present { value: a } => match a { AppAccessWrite => true  _ => false }
+      Present { value: a } => match a { extdeps.github.app.AppAccessWrite => true  _ => false }
     }
-    && match permission_level_access(level: PermNone) {
+    && match extdeps.github.actions_token.permission_level_access(level: extdeps.github.actions.PermNone) {
       Absent => true
       Present { value: _ } => false
     }
 }
 
 test fn witness_cited_access_levels_are_not_uniformly_read_write() -> Bool {
-  actions_access_set_admits(set: axis_allowed_actions_access(axis: IdTokenAxis), access: AppAccessWrite)
-    && !actions_access_set_admits(set: axis_allowed_actions_access(axis: IdTokenAxis), access: AppAccessRead)
-    && actions_access_set_admits(set: axis_allowed_actions_access(axis: VulnerabilityAlertsAxis), access: AppAccessRead)
-    && !actions_access_set_admits(set: axis_allowed_actions_access(axis: VulnerabilityAlertsAxis), access: AppAccessWrite)
-    && actions_access_set_admits(set: axis_allowed_actions_access(axis: ContentsAxis), access: AppAccessWrite)
-    && actions_access_set_admits(set: axis_allowed_actions_access(axis: ContentsAxis), access: AppAccessRead)
+  extdeps.github.actions_token.actions_access_set_admits(set: extdeps.github.actions_token.axis_allowed_actions_access(axis: extdeps.github.app.IdTokenAxis), access: extdeps.github.app.AppAccessWrite)
+    && !extdeps.github.actions_token.actions_access_set_admits(set: extdeps.github.actions_token.axis_allowed_actions_access(axis: extdeps.github.app.IdTokenAxis), access: extdeps.github.app.AppAccessRead)
+    && extdeps.github.actions_token.actions_access_set_admits(set: extdeps.github.actions_token.axis_allowed_actions_access(axis: extdeps.github.app.VulnerabilityAlertsAxis), access: extdeps.github.app.AppAccessRead)
+    && !extdeps.github.actions_token.actions_access_set_admits(set: extdeps.github.actions_token.axis_allowed_actions_access(axis: extdeps.github.app.VulnerabilityAlertsAxis), access: extdeps.github.app.AppAccessWrite)
+    && extdeps.github.actions_token.actions_access_set_admits(set: extdeps.github.actions_token.axis_allowed_actions_access(axis: extdeps.github.app.ContentsAxis), access: extdeps.github.app.AppAccessWrite)
+    && extdeps.github.actions_token.actions_access_set_admits(set: extdeps.github.actions_token.axis_allowed_actions_access(axis: extdeps.github.app.ContentsAxis), access: extdeps.github.app.AppAccessRead)
 }
 
 data workflow_effect: extdeps.github.effect.GitHubEffect = extdeps.github.effect.AdvanceRepositoryBranch {
-  repository: gunbc_repository,
+  repository: gunbc.repository.gunbc_repository,
   branch: extdeps.github.effect.GitBranchRef { name: "refs/heads/attempt" },
   changed_paths: [extdeps.github.effect.RepositoryPath { value: ".github/workflows/ci.yml" }]
 }
 
 data ordinary_effect: extdeps.github.effect.GitHubEffect = extdeps.github.effect.AdvanceRepositoryBranch {
-  repository: gunbc_repository,
+  repository: gunbc.repository.gunbc_repository,
   branch: extdeps.github.effect.GitBranchRef { name: "refs/heads/attempt" },
   changed_paths: [extdeps.github.effect.RepositoryPath { value: ".gitignore" }]
 }
 
 test fn witness_fork_pull_request_cannot_advance_any_branch() -> Bool {
-  let fork_credential = gunbc.auth.github_credential.ActionsJobCredential { grant: fork_origin_grant() }
-  !credential_authorizes(
+  let fork_credential = gunbc.auth.github_credential.ActionsJobCredential { grant: gunbc.ci_heal_credential.fork_origin_grant() }
+  !gunbc.auth.github_credential.credential_authorizes(
     authority: fork_credential,
-    control_plane: live_heal_control_plane,
+    control_plane: gunbc.ci_heal_credential.live_heal_control_plane,
     effect: ordinary_effect
-  ) && !credential_authorizes(
+  ) && !gunbc.auth.github_credential.credential_authorizes(
     authority: fork_credential,
-    control_plane: live_heal_control_plane,
+    control_plane: gunbc.ci_heal_credential.live_heal_control_plane,
     effect: workflow_effect
-  ) && credential_authorizes(
-    authority: test.claim.actions_job_grant_witness.live_heal_push_authority(),
-    control_plane: live_heal_control_plane,
+  ) && gunbc.auth.github_credential.credential_authorizes(
+    authority: live_heal_push_authority(),
+    control_plane: gunbc.ci_heal_credential.live_heal_control_plane,
     effect: ordinary_effect
   )
 }
@@ -240,7 +241,7 @@ fn checkout_variant(rows: List<extdeps.languages.yaml.types.YamlKeyValue>) -> ex
   extdeps.github.actions.UsesStep {
     name: Present { value: "Checkout" },
     id: none,
-    uses: checkout_action,
+    uses: extdeps.github.actions.checkout_action,
     with: Present { value: rows },
     env: none,
     if_condition: none,
@@ -250,13 +251,13 @@ fn checkout_variant(rows: List<extdeps.languages.yaml.types.YamlKeyValue>) -> ex
 }
 
 test fn witness_push_binding_is_projected_from_the_actual_checkout_step() -> Bool {
-  match resolve_push_binding(step: ci_heal_branch_head_checkout_step(), grant: ci_heal_effective_grant) {
-    PushBindingResolved { binding, authority } =>
+  match gunbc.ci_heal_credential.resolve_push_binding(step: gunbc.ci_heal_credential.ci_heal_branch_head_checkout_step(), grant: gunbc.ci_heal_credential.ci_heal_effective_grant) {
+    gunbc.auth.github_credential.PushBindingResolved { binding, authority } =>
       match binding {
-        CheckoutPersistedActionsCredential { checkout_step } =>
+        gunbc.auth.github_credential.CheckoutPersistedActionsCredential { checkout_step } =>
           checkout_step.decl_name == "ci_heal_branch_head_checkout_step"
       } && match authority {
-        ActionsJobCredential { grant } => grant.permissions == ci_heal_job_permissions
+        gunbc.auth.github_credential.ActionsJobCredential { grant } => grant.permissions == gunbc.ci_heal_credential.ci_heal_job_permissions
         _ => false
       }
     _ => false
@@ -265,26 +266,26 @@ test fn witness_push_binding_is_projected_from_the_actual_checkout_step() -> Boo
 
 test fn witness_persist_credentials_false_unbinds_the_push_credential() -> Bool {
   let disabled = checkout_variant(rows: [
-    kv(key: "fetch-depth", value: yaml_int(n: 0)),
-    kv(key: "persist-credentials", value: yaml_bool(b: false))
+    extdeps.languages.yaml.types.kv(key: "fetch-depth", value: extdeps.languages.yaml.types.yaml_int(n: 0)),
+    extdeps.languages.yaml.types.kv(key: "persist-credentials", value: extdeps.languages.yaml.types.yaml_bool(b: false))
   ])
   let disabled_string = checkout_variant(rows: [
-    kv(key: "persist-credentials", value: yaml_string(s: "false"))
+    extdeps.languages.yaml.types.kv(key: "persist-credentials", value: extdeps.languages.yaml.types.yaml_string(s: "false"))
   ])
   let leased = checkout_variant(rows: [
-    kv(key: "token", value: yaml_string(s: "${{ steps.app_token.outputs.token }}"))
+    extdeps.languages.yaml.types.kv(key: "token", value: extdeps.languages.yaml.types.yaml_string(s: "${{ steps.app_token.outputs.token }}"))
   ])
-  match resolve_push_binding(step: disabled, grant: ci_heal_effective_grant) {
-    PushCredentialBindingMissing { checkout_step: _ } => true
+  match gunbc.ci_heal_credential.resolve_push_binding(step: disabled, grant: gunbc.ci_heal_credential.ci_heal_effective_grant) {
+    gunbc.auth.github_credential.PushCredentialBindingMissing { checkout_step: _ } => true
     _ => false
-  } && match resolve_push_binding(step: disabled_string, grant: ci_heal_effective_grant) {
-    PushCredentialBindingMissing { checkout_step: _ } => true
+  } && match gunbc.ci_heal_credential.resolve_push_binding(step: disabled_string, grant: gunbc.ci_heal_credential.ci_heal_effective_grant) {
+    gunbc.auth.github_credential.PushCredentialBindingMissing { checkout_step: _ } => true
     _ => false
-  } && match resolve_push_binding(step: leased, grant: ci_heal_effective_grant) {
-    PushCredentialLeaseUnresolved { checkout_step: _ } => true
+  } && match gunbc.ci_heal_credential.resolve_push_binding(step: leased, grant: gunbc.ci_heal_credential.ci_heal_effective_grant) {
+    gunbc.auth.github_credential.PushCredentialLeaseUnresolved { checkout_step: _ } => true
     _ => false
-  } && match push_binding_authority(
-    resolution: resolve_push_binding(step: disabled, grant: ci_heal_effective_grant)
+  } && match gunbc.ci_heal_credential.push_binding_authority(
+    resolution: gunbc.ci_heal_credential.resolve_push_binding(step: disabled, grant: gunbc.ci_heal_credential.ci_heal_effective_grant)
   ) {
     Absent => true
     Present { value: _ } => false
@@ -292,17 +293,17 @@ test fn witness_persist_credentials_false_unbinds_the_push_credential() -> Bool 
 }
 
 test fn witness_heal_condition_and_origin_share_one_binding() -> Bool {
-  let no_dependabot_clause = heal_origin_binding(
+  let no_dependabot_clause = gunbc.ci_heal_credential.heal_origin_binding(
     guard: gunbc.ci_heal_credential.HealOriginGuard { exclude_dependabot: false }
   )
-  string_contains(s: ci_regen_heal_if, pattern: "github.event_name == 'pull_request'")
-    && string_contains(s: ci_regen_heal_if, pattern: "github.event.pull_request.head.repo.full_name == github.repository")
-    && string_contains(s: ci_regen_heal_if, pattern: "github.actor != 'dependabot[bot]'")
-    && (ci_regen_heal_if == ci_heal_origin_binding.condition)
-    && match ci_heal_pull_request_origin { SameRepositoryOrigin => true  _ => false }
+  string_contains(s: gunbc.ci_heal_credential.ci_regen_heal_if, pattern: "github.event_name == 'pull_request'")
+    && string_contains(s: gunbc.ci_heal_credential.ci_regen_heal_if, pattern: "github.event.pull_request.head.repo.full_name == github.repository")
+    && string_contains(s: gunbc.ci_heal_credential.ci_regen_heal_if, pattern: "github.actor != 'dependabot[bot]'")
+    && (gunbc.ci_heal_credential.ci_regen_heal_if == ci_heal_origin_binding.condition)
+    && match gunbc.ci_heal_credential.ci_heal_pull_request_origin { extdeps.github.actions_token.SameRepositoryOrigin => true  _ => false }
     && string_contains(s: no_dependabot_clause.condition, pattern: "head.repo.full_name")
     && !string_contains(s: no_dependabot_clause.condition, pattern: "dependabot")
-    && match no_dependabot_clause.origin { SameRepositoryOrigin => true  _ => false }
+    && match no_dependabot_clause.origin { extdeps.github.actions_token.SameRepositoryOrigin => true  _ => false }
 }
 
 test fn witness_only_a_real_checkout_action_binds_the_push_credential() -> Bool {
@@ -320,7 +321,7 @@ test fn witness_only_a_real_checkout_action_binds_the_push_credential() -> Bool 
   let other_action = extdeps.github.actions.UsesStep {
     name: Present { value: "upload" },
     id: none,
-    uses: upload_artifact_action,
+    uses: extdeps.github.actions.upload_artifact_action,
     with: none,
     env: none,
     if_condition: none,
@@ -328,24 +329,24 @@ test fn witness_only_a_real_checkout_action_binds_the_push_credential() -> Bool 
     timeout_minutes: none
   }
   let duplicate_token = checkout_variant(rows: [
-    kv(key: "token", value: yaml_string(s: "a")),
-    kv(key: "token", value: yaml_string(s: "b"))
+    extdeps.languages.yaml.types.kv(key: "token", value: extdeps.languages.yaml.types.yaml_string(s: "a")),
+    extdeps.languages.yaml.types.kv(key: "token", value: extdeps.languages.yaml.types.yaml_string(s: "b"))
   ])
   let duplicate_persist = checkout_variant(rows: [
-    kv(key: "persist-credentials", value: yaml_bool(b: true)),
-    kv(key: "persist-credentials", value: yaml_bool(b: false))
+    extdeps.languages.yaml.types.kv(key: "persist-credentials", value: extdeps.languages.yaml.types.yaml_bool(b: true)),
+    extdeps.languages.yaml.types.kv(key: "persist-credentials", value: extdeps.languages.yaml.types.yaml_bool(b: false))
   ])
-  match resolve_push_binding(step: run_step, grant: ci_heal_effective_grant) {
-    PushBindingStepKindUnsupported { checkout_step: _ } => true
+  match gunbc.ci_heal_credential.resolve_push_binding(step: run_step, grant: gunbc.ci_heal_credential.ci_heal_effective_grant) {
+    gunbc.auth.github_credential.PushBindingStepKindUnsupported { checkout_step: _ } => true
     _ => false
-  } && match resolve_push_binding(step: other_action, grant: ci_heal_effective_grant) {
-    PushBindingActionMismatch { checkout_step: _ } => true
+  } && match gunbc.ci_heal_credential.resolve_push_binding(step: other_action, grant: gunbc.ci_heal_credential.ci_heal_effective_grant) {
+    gunbc.auth.github_credential.PushBindingActionMismatch { checkout_step: _ } => true
     _ => false
-  } && match resolve_push_binding(step: duplicate_token, grant: ci_heal_effective_grant) {
-    PushBindingInputDuplicated { checkout_step: _, input } => input == "token"
+  } && match gunbc.ci_heal_credential.resolve_push_binding(step: duplicate_token, grant: gunbc.ci_heal_credential.ci_heal_effective_grant) {
+    gunbc.auth.github_credential.PushBindingInputDuplicated { checkout_step: _, input } => input == "token"
     _ => false
-  } && match resolve_push_binding(step: duplicate_persist, grant: ci_heal_effective_grant) {
-    PushBindingInputDuplicated { checkout_step: _, input } =>
+  } && match gunbc.ci_heal_credential.resolve_push_binding(step: duplicate_persist, grant: gunbc.ci_heal_credential.ci_heal_effective_grant) {
+    gunbc.auth.github_credential.PushBindingInputDuplicated { checkout_step: _, input } =>
       input == "persist-credentials"
     _ => false
   }
@@ -353,22 +354,22 @@ test fn witness_only_a_real_checkout_action_binds_the_push_credential() -> Bool 
 
 test fn witness_malformed_checkout_input_is_not_reported_as_duplicated() -> Bool {
   let malformed = checkout_variant(rows: [
-    kv(key: "persist-credentials", value: yaml_string(s: "maybe"))
+    extdeps.languages.yaml.types.kv(key: "persist-credentials", value: extdeps.languages.yaml.types.yaml_string(s: "maybe"))
   ])
   let sequence_valued = checkout_variant(rows: [
-    kv(key: "persist-credentials", value: extdeps.languages.yaml.types.YamlSequence { elements: [] })
+    extdeps.languages.yaml.types.kv(key: "persist-credentials", value: extdeps.languages.yaml.types.YamlSequence { elements: [] })
   ])
-  match resolve_push_binding(step: malformed, grant: ci_heal_effective_grant) {
-    PushBindingInputUnsupported { checkout_step: _, input, observed_kind } =>
+  match gunbc.ci_heal_credential.resolve_push_binding(step: malformed, grant: gunbc.ci_heal_credential.ci_heal_effective_grant) {
+    gunbc.auth.github_credential.PushBindingInputUnsupported { checkout_step: _, input, observed_kind } =>
       input == "persist-credentials"
-        && yaml_value_kind_token(k: observed_kind) == "str"
+        && extdeps.languages.yaml.types.yaml_value_kind_token(k: observed_kind) == "str"
     _ => false
-  } && match resolve_push_binding(step: sequence_valued, grant: ci_heal_effective_grant) {
-    PushBindingInputUnsupported { checkout_step: _, input: _, observed_kind } =>
-      yaml_value_kind_token(k: observed_kind) == "seq"
+  } && match gunbc.ci_heal_credential.resolve_push_binding(step: sequence_valued, grant: gunbc.ci_heal_credential.ci_heal_effective_grant) {
+    gunbc.auth.github_credential.PushBindingInputUnsupported { checkout_step: _, input: _, observed_kind } =>
+      extdeps.languages.yaml.types.yaml_value_kind_token(k: observed_kind) == "seq"
     _ => false
-  } && !match resolve_push_binding(step: malformed, grant: ci_heal_effective_grant) {
-    PushBindingInputDuplicated { checkout_step: _, input: _ } => true
+  } && !match gunbc.ci_heal_credential.resolve_push_binding(step: malformed, grant: gunbc.ci_heal_credential.ci_heal_effective_grant) {
+    gunbc.auth.github_credential.PushBindingInputDuplicated { checkout_step: _, input: _ } => true
     _ => false
   }
 }
@@ -377,9 +378,9 @@ test fn witness_invalid_declared_access_refuses_rather_than_capping() -> Bool {
   let id_token_read = extdeps.github.actions_token.EffectiveActionsJobGrant {
     workflow: ci_heal_effective_grant.workflow,
     job: ci_heal_effective_grant.job,
-    event: PullRequestEvent,
-    origin: SameRepositoryOrigin,
-    repository_policy: ActionsRepositoryPolicyUnobserved,
+    event: extdeps.github.actions_token.PullRequestEvent,
+    origin: extdeps.github.actions_token.SameRepositoryOrigin,
+    repository_policy: extdeps.github.actions_token.ActionsRepositoryPolicyUnobserved,
     permissions: extdeps.github.actions.WorkflowPermissions {
       contents: none,
       pull_requests: none,
@@ -388,35 +389,35 @@ test fn witness_invalid_declared_access_refuses_rather_than_capping() -> Bool {
       id_token: Present { value: extdeps.github.actions.PermRead }
     }
   }
-  match effective_actions_grant(grant: id_token_read, name: IdTokenAxis) {
-    ActionsGrantDeclaredAccessInvalid { axis: _, declared, allowed } =>
-      match declared { AppAccessRead => true  _ => false }
-        && match allowed { ActionsAccessWriteOnly => true  _ => false }
+  match extdeps.github.actions_token.effective_actions_grant(grant: id_token_read, name: extdeps.github.app.IdTokenAxis) {
+    extdeps.github.actions_token.ActionsGrantDeclaredAccessInvalid { axis: _, declared, allowed } =>
+      match declared { extdeps.github.app.AppAccessRead => true  _ => false }
+        && match allowed { extdeps.github.actions_token.ActionsAccessWriteOnly => true  _ => false }
     _ => false
-  } && match axis_allowed_actions_access(axis: ModelsAxis) {
-    ActionsAccessReadOnly => true
+  } && match extdeps.github.actions_token.axis_allowed_actions_access(axis: extdeps.github.app.ModelsAxis) {
+    extdeps.github.actions_token.ActionsAccessReadOnly => true
     _ => false
-  } && match axis_allowed_actions_access(axis: ContentsAxis) {
-    ActionsAccessReadOrWrite => true
+  } && match extdeps.github.actions_token.axis_allowed_actions_access(axis: extdeps.github.app.ContentsAxis) {
+    extdeps.github.actions_token.ActionsAccessReadOrWrite => true
     _ => false
   }
 }
 
 test fn witness_unmodeled_axis_is_not_reported_as_scope_none() -> Bool {
-  let g = grant_with(contents: Present { value: extdeps.github.actions.PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
-  match effective_actions_grant(grant: g, name: ChecksAxis) {
-    ActionsGrantAxisNotModeled => true
+  let g = grant_with(contents: Present { value: extdeps.github.actions.PermWrite }, origin: extdeps.github.actions_token.SameRepositoryOrigin, policy: same_repo_policy)
+  match extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.ChecksAxis) {
+    extdeps.github.actions_token.ActionsGrantAxisNotModeled => true
     _ => false
-  } && match effective_actions_grant(grant: g, name: IssuesAxis) {
-    ActionsGrantNone => true
+  } && match extdeps.github.actions_token.effective_actions_grant(grant: g, name: extdeps.github.app.IssuesAxis) {
+    extdeps.github.actions_token.ActionsGrantNone => true
     _ => false
   }
 }
 
 test fn witness_fork_policy_is_required_only_for_a_declared_write() -> Bool {
-  test.claim.actions_job_grant_witness.is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermRead }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved))
+  is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermRead }, origin: extdeps.github.actions_token.ForkedRepositoryOrigin, policy: extdeps.github.actions_token.ActionsRepositoryPolicyUnobserved))
     && is_fork_policy_unobserved(
-         r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)
+         r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: extdeps.github.actions_token.ForkedRepositoryOrigin, policy: extdeps.github.actions_token.ActionsRepositoryPolicyUnobserved)
        )
-    && is_none(r: contents_resolution(contents: Present { value: PermNone }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved))
+    && is_none(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermNone }, origin: extdeps.github.actions_token.ForkedRepositoryOrigin, policy: extdeps.github.actions_token.ActionsRepositoryPolicyUnobserved))
 }

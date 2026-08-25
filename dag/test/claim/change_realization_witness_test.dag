@@ -1,7 +1,7 @@
 module test.claim.change_realization_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn str_eq(a: String, b: String) -> Bool { a == b }
 
@@ -11,63 +11,63 @@ fn one_intermediate(step: gunbc.change_realization.StagedIntermediate) -> gunbc.
 
 fn is_realized_staged(c: gunbc.change_realization.ChangeRealizationClassification) -> Bool {
   match c {
-    ChangeRealized { realization: r } =>
+    gunbc.change_realization.ChangeRealized { realization: r } =>
       match r {
-        StagedReplacement { intermediates: _ } => true
-        AtomicCompareAndSwap => false
-        AtomicTreeTransformation => false
-        InPlaceUpdate => false
+        gunbc.change_realization.StagedReplacement { intermediates: _ } => true
+        gunbc.change_realization.AtomicCompareAndSwap => false
+        gunbc.change_realization.AtomicTreeTransformation => false
+        gunbc.change_realization.InPlaceUpdate => false
       }
-    ChangeRefused { cause: _ } => false
+    gunbc.change_realization.ChangeRefused { cause: _ } => false
   }
 }
 
 fn is_realized(c: gunbc.change_realization.ChangeRealizationClassification, expected_in_place: Bool) -> Bool {
   match c {
-    ChangeRealized { realization: r } =>
+    gunbc.change_realization.ChangeRealized { realization: r } =>
       match r {
-        InPlaceUpdate => expected_in_place
-        AtomicCompareAndSwap => !expected_in_place
-        AtomicTreeTransformation => false
-        StagedReplacement { intermediates: _ } => false
+        gunbc.change_realization.InPlaceUpdate => expected_in_place
+        gunbc.change_realization.AtomicCompareAndSwap => !expected_in_place
+        gunbc.change_realization.AtomicTreeTransformation => false
+        gunbc.change_realization.StagedReplacement { intermediates: _ } => false
       }
-    ChangeRefused { cause: _ } => false
+    gunbc.change_realization.ChangeRefused { cause: _ } => false
   }
 }
 
 data w_scm_ref_is_cas_note: String = "An SCM ref update classifies as a compare-and-swap because git update-ref <ref> <new> <old> NAMES the expected prior — the from side of MemberChanged. This is the row that shows the from side UNLOCKS a realization rather than merely documenting one: with only `to` in hand the sole reachable realization is the unconditional write, and a concurrent update would be silently overwritten instead of losing."
 
 test fn w_scm_ref_update_is_compare_and_swap() -> Bool {
-  match classify_change(subject: ScmRefSubject, subject_label: "refs/heads/main" as std.types.NonEmptyStr, continuity: AddressPreserved, declared_intermediates: none) {
-    ChangeRealized { realization: r } =>
+  match gunbc.change_realization.classify_change(subject: gunbc.change_realization.ScmRefSubject, subject_label: "refs/heads/main" as std.types.NonEmptyStr, continuity: gunbc.change_realization.AddressPreserved, declared_intermediates: none) {
+    gunbc.change_realization.ChangeRealized { realization: r } =>
       match r {
-        AtomicCompareAndSwap => true
-        AtomicTreeTransformation => false
-        InPlaceUpdate => false
-        StagedReplacement { intermediates: _ } => false
+        gunbc.change_realization.AtomicCompareAndSwap => true
+        gunbc.change_realization.AtomicTreeTransformation => false
+        gunbc.change_realization.InPlaceUpdate => false
+        gunbc.change_realization.StagedReplacement { intermediates: _ } => false
       }
-    ChangeRefused { cause: _ } => false
+    gunbc.change_realization.ChangeRefused { cause: _ } => false
   }
 }
 
 data w_source_move_is_not_host_migration_note: String = "THE CONFLATION THIS TABLE KILLS. A .dag module re-home is an atomic SCM TREE TRANSFORMATION: it changes no runtime address, unlinks no socket, restarts no unit, and needs no intermediates. Treating it as a host migration is what made an ordinary source cleanup look like it required an operational migration plan. Discriminating against the host row below: the SAME AddressChanged input yields a tree transformation for a source declaration and a staged replacement for a host resource — so the subject, not the address delta alone, decides."
 
 test fn w_source_declaration_move_is_tree_transformation_not_migration() -> Bool {
-  let moved = classify_change(
-    subject: SourceDeclarationSubject,
+  let moved = gunbc.change_realization.classify_change(
+    subject: gunbc.change_realization.SourceDeclarationSubject,
     subject_label: "gunbc.membership_reconcile.MemberChanged" as std.types.NonEmptyStr,
-    continuity: AddressChanged,
+    continuity: gunbc.change_realization.AddressChanged,
     declared_intermediates: none,
   )
   match moved {
-    ChangeRealized { realization: r } =>
+    gunbc.change_realization.ChangeRealized { realization: r } =>
       match r {
-        AtomicTreeTransformation => true
-        AtomicCompareAndSwap => false
-        InPlaceUpdate => false
-        StagedReplacement { intermediates: _ } => false
+        gunbc.change_realization.AtomicTreeTransformation => true
+        gunbc.change_realization.AtomicCompareAndSwap => false
+        gunbc.change_realization.InPlaceUpdate => false
+        gunbc.change_realization.StagedReplacement { intermediates: _ } => false
       }
-    ChangeRefused { cause: _ } => false
+    gunbc.change_realization.ChangeRefused { cause: _ } => false
   }
 }
 
@@ -75,10 +75,10 @@ data w_host_address_decides_note: String = "For a host resource the deciding fac
 
 test fn w_host_resource_address_preserved_is_in_place() -> Bool {
   is_realized(
-    c: classify_change(
+    c: gunbc.change_realization.classify_change(
       subject: gunbc.change_realization.HostResourceSubject,
       subject_label: "srv4/build-cache" as std.types.NonEmptyStr,
-      continuity: address_continuity(from: "gunbc-cache.service", to: "gunbc-cache.service", address_eq: test.claim.change_realization_witness.str_eq),
+      continuity: gunbc.change_realization.address_continuity(from: "gunbc-cache.service", to: "gunbc-cache.service", address_eq: str_eq),
       declared_intermediates: none,
     ),
     expected_in_place: true,
@@ -87,10 +87,10 @@ test fn w_host_resource_address_preserved_is_in_place() -> Bool {
 
 test fn w_host_resource_address_changed_is_staged_replacement() -> Bool {
   is_realized_staged(
-    c: classify_change(
+    c: gunbc.change_realization.classify_change(
       subject: gunbc.change_realization.HostResourceSubject,
       subject_label: "srv4/build-cache" as std.types.NonEmptyStr,
-      continuity: address_continuity(from: "gunbc-cache.service", to: "gunbc-buildcache.service", address_eq: test.claim.change_realization_witness.str_eq),
+      continuity: gunbc.change_realization.address_continuity(from: "gunbc-cache.service", to: "gunbc-buildcache.service", address_eq: str_eq),
       declared_intermediates: Present {
         value: one_intermediate(step: gunbc.change_realization.RetirePriorEndpoint { endpoint: "/run/sccache.sock" as std.types.NonEmptyStr })
       },
@@ -101,18 +101,18 @@ test fn w_host_resource_address_changed_is_staged_replacement() -> Bool {
 data w_srv4_undeclared_intermediates_refuses_note: String = "THE srv4 SPECIMEN, made executable. srv4's build-cache server died with its cgroup, never unlinked its socket, and ran uncached for weeks because nobody modeled the intermediate state. gunbc.build_cache_instance says in PROSE that a managed unit must clear a stale endpoint on start, and a sentence in prose is the one place no machine can read it (DESIGN §4c). This row is the machine reading it: a staged replacement whose intermediates were never declared REFUSES, typed and located. It does NOT silently degrade to an in-place update and it does NOT proceed with an empty plan — the first is the absorbing fallback DESIGN §5 forbids, and the second IS the srv4 outcome. The discriminating half is that the ONLY difference from the accepted row above is the missing declaration."
 
 test fn w_staged_replacement_without_declared_intermediates_refuses() -> Bool {
-  match classify_change(
+  match gunbc.change_realization.classify_change(
     subject: gunbc.change_realization.HostResourceSubject,
     subject_label: "srv4/build-cache" as std.types.NonEmptyStr,
-    continuity: AddressChanged,
+    continuity: gunbc.change_realization.AddressChanged,
     declared_intermediates: none,
   ) {
-    ChangeRefused { cause: c } =>
+    gunbc.change_realization.ChangeRefused { cause: c } =>
       match c {
-        StagedReplacementIntermediatesUndeclared { subject_label: label } =>
+        gunbc.change_realization.StagedReplacementIntermediatesUndeclared { subject_label: label } =>
           (label as String) == "srv4/build-cache"
       }
-    ChangeRealized { realization: _ } => false
+    gunbc.change_realization.ChangeRealized { realization: _ } => false
   }
 }
 
@@ -127,18 +127,18 @@ test fn w_staged_intermediates_are_never_empty() -> Bool {
       gunbc.change_realization.DrainPriorConsumers { description: "in-flight compiles" as std.types.NonEmptyStr },
     ],
   }
-  staged_intermediates_count(steps: single) == 1
-    && count(staged_intermediates_all(steps: single)) == 1
-    && staged_intermediates_count(steps: many) == 3
-    && count(staged_intermediates_all(steps: many)) == 3
+  gunbc.change_realization.staged_intermediates_count(steps: single) == 1
+    && count(gunbc.change_realization.staged_intermediates_all(steps: single)) == 1
+    && gunbc.change_realization.staged_intermediates_count(steps: many) == 3
+    && count(gunbc.change_realization.staged_intermediates_all(steps: many)) == 3
 }
 
 data w_identity_minted_not_derived_note: String = "Identity is MINTED BY THE ALLOCATOR, never derived from content, path, or unit name. This is what makes a rename ONE change rather than a delete-plus-create that some key function has to be clever enough to re-pair: git does not track renames, it INFERS them from content similarity after the fact, and DESIGN §4 rules a heuristic never necessary in a closed system. The row asserts the property that inference cannot give you — a resource whose unit name AND storage path both changed still compares as the SAME occurrence, because the occurrence was allocated, not computed."
 
 test fn w_occurrence_survives_total_value_change() -> Bool {
-  let a0 = resource_occurrence_allocator_initial()
-  let first = alloc_resource_occurrence(alloc: a0)
-  let second = alloc_resource_occurrence(alloc: first.alloc)
+  let a0 = gunbc.host_resource.resource_occurrence_allocator_initial()
+  let first = gunbc.host_resource.alloc_resource_occurrence(alloc: a0)
+  let second = gunbc.host_resource.alloc_resource_occurrence(alloc: first.alloc)
   let id = gunbc.host_resource.HostResourceIdentity { host: "srv4" as product.placement_supply.HostIdentity, occurrence: first.id }
   let before = gunbc.host_resource.HostResource { identity: id, role: "BuildCache", value: "gunbc-cache.service@/run/sccache.sock" }
   let after = gunbc.host_resource.HostResource { identity: id, role: "BuildCache", value: "gunbc-buildcache.service@/run/buildcache.sock" }
@@ -147,18 +147,18 @@ test fn w_occurrence_survives_total_value_change() -> Bool {
     role: "BuildCache",
     value: "gunbc-cache.service@/run/sccache.sock",
   }
-  host_resource_same_occurrence(left: before, right: after)
-    && !host_resource_same_occurrence(left: before, right: unrelated)
-    && !resource_occurrence_eq(left: first.id, right: second.id)
+  gunbc.host_resource.host_resource_same_occurrence(left: before, right: after)
+    && !gunbc.host_resource.host_resource_same_occurrence(left: before, right: unrelated)
+    && !gunbc.host_resource.resource_occurrence_eq(left: first.id, right: second.id)
 }
 
 data w_identity_is_host_scoped_note: String = "The occurrence is scoped BY HOST: HostResourceIdentity pairs a HostIdentity with the occurrence, so the same occurrence ordinal on two different hosts is two different resources. Without the host component a per-host allocator's ordinals would collide across the fleet and two unrelated resources would compare equal — the same numeric-coincidence failure that keeps this carrier separate from std.occurrence_identity in the first place."
 
 test fn w_same_occurrence_different_host_is_different_identity() -> Bool {
-  let a0 = resource_occurrence_allocator_initial()
-  let first = alloc_resource_occurrence(alloc: a0)
+  let a0 = gunbc.host_resource.resource_occurrence_allocator_initial()
+  let first = gunbc.host_resource.alloc_resource_occurrence(alloc: a0)
   let on_srv3 = gunbc.host_resource.HostResourceIdentity { host: "srv3" as product.placement_supply.HostIdentity, occurrence: first.id }
   let on_srv4 = gunbc.host_resource.HostResourceIdentity { host: "srv4" as product.placement_supply.HostIdentity, occurrence: first.id }
-  !host_resource_identity_eq(left: on_srv3, right: on_srv4)
-    && host_resource_identity_eq(left: on_srv3, right: on_srv3)
+  !gunbc.host_resource.host_resource_identity_eq(left: on_srv3, right: on_srv4)
+    && gunbc.host_resource.host_resource_identity_eq(left: on_srv3, right: on_srv3)
 }

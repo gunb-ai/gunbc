@@ -1,199 +1,200 @@
 module gunbc.gitignore_emit
 
-fn artifact_pattern(a: IgnoreArtifact) -> String {
+
+fn artifact_pattern(a: gunbc.gitignore_model.IgnoreArtifact) -> String {
   match a {
-    CargoTargetDir => "/target/"
-    CargoTargetCodexDir => "/target-codex/"
-    LocalCargoHome => "/.cargo-home/"
-    CodegenBinSymlink => "/bin/"
-    TarpaulinHtmlReport => "tarpaulin-report.html"
-    TarpaulinJsonReport => "tarpaulin-report.json"
-    CoberturaReport => "cobertura.xml"
-    LcovReport => "lcov.info"
-    CoverageOutputDir => "/coverage/"
-    JetBrainsProjectDir => ".idea/"
-    VSCodeWorkspaceDir => ".vscode/"
-    VimSwapFile => "*.swp"
-    VimSwapFileAlt => "*.swo"
-    EmacsBackupFile => "*~"
-    GenericBackupFile => "*.bak"
-    MacOSFinderMetadata => ".DS_Store"
-    WindowsThumbnailCache => "Thumbs.db"
-    TmuxLogFile => "tmux-*.log"
-    DotEnvFile => ".env"
-    DotEnvLocalFile => ".env.local"
-    DotEnvLocalWildcard => ".env.*.local"
-    GeneratorStampFile => ".*-stamp"
-    GunbcWorkflowDir => "/.gunbc/"
-    TestgenOutputDir => "src/v1/10_test/generated-tests/src/generated/"
-    NodeModulesDir => "node_modules/"
-    ClaudeSessionDir => ".claude/"
-    RegenSourcesDir => ".regen-sources/"
-    RegenOutputDir => ".regen-output/"
-    RegenGeneratedSourceRootDir => ".regen-generated-source-root/"
-    FreshnessCheckDir => ".freshness-check/"
-    AuthTranscriptFile => "out.txt"
-    OpenClawControlDir => "/.openclaw/"
-    OpenClawAgentsFile => "/AGENTS.md"
-    OpenClawHeartbeatFile => "/HEARTBEAT.md"
-    OpenClawIdentityFile => "/IDENTITY.md"
-    OpenClawSoulFile => "/SOUL.md"
-    OpenClawToolsFile => "/TOOLS.md"
-    OpenClawUserFile => "/USER.md"
-    OpenClawWorkboardFile => "/WORKBOARD.md"
-    OpenClawScriptsDir => "/scripts/openclaw/"
-    V2InspectFile => ".v2-inspect"
-    V2InspectErrorsFile => ".v2-inspect-errors.txt"
-    GithubCLICacheDir => ".gh-cache/"
-    PythonLocalDevScriptFile => "*.py"
-    PythonAuditScriptAllowlisted => "!docs/plans/witness-subject-execution-audit.py"
-    PythonProbeScriptAllowlisted => "!docs/probes/e0369_b1_operator_classify.py"
-    FloorCutNameResolutionPartitionScriptAllowlisted => "!docs/probes/floor_cut_name_resolution_partition.py"
-    ShadowDirectCallArgConformanceSummarizeScriptAllowlisted => "!docs/probes/shadow_direct_call_arg_conformance_2026-08-22/summarize.py"
-    ShadowDirectCallArgConformanceAdjudicateScriptAllowlisted => "!docs/probes/shadow_direct_call_arg_conformance_2026-08-22/adjudicate.py"
-    ShadowDirectCallArgConformanceJoinBoardScriptAllowlisted => "!docs/probes/shadow_direct_call_arg_conformance_2026-08-22/join_board.py"
-    E0308ClassifySitesScriptAllowlisted => "!docs/probes/e0308_classify_sites.py"
-    PythonBytecodeCacheDir => "__pycache__/"
-    PythonCompiledBytecode => "*.pyc"
-    ClaimMapDir => ".claim-map/"
-    ScratchProbeFile => "src/v2/test/claim/manual/sg2_scratch_probe.dag"
-    GunbcPlanningDir => "/gunbc-planning/"
-    ScriptsFixturesDir => "/scripts/fixtures/"
+    gunbc.gitignore_model.CargoTargetDir => "/target/"
+    gunbc.gitignore_model.CargoTargetCodexDir => "/target-codex/"
+    gunbc.gitignore_model.LocalCargoHome => "/.cargo-home/"
+    gunbc.gitignore_model.CodegenBinSymlink => "/bin/"
+    gunbc.gitignore_model.TarpaulinHtmlReport => "tarpaulin-report.html"
+    gunbc.gitignore_model.TarpaulinJsonReport => "tarpaulin-report.json"
+    gunbc.gitignore_model.CoberturaReport => "cobertura.xml"
+    gunbc.gitignore_model.LcovReport => "lcov.info"
+    gunbc.gitignore_model.CoverageOutputDir => "/coverage/"
+    gunbc.gitignore_model.JetBrainsProjectDir => ".idea/"
+    gunbc.gitignore_model.VSCodeWorkspaceDir => ".vscode/"
+    gunbc.gitignore_model.VimSwapFile => "*.swp"
+    gunbc.gitignore_model.VimSwapFileAlt => "*.swo"
+    gunbc.gitignore_model.EmacsBackupFile => "*~"
+    gunbc.gitignore_model.GenericBackupFile => "*.bak"
+    gunbc.gitignore_model.MacOSFinderMetadata => ".DS_Store"
+    gunbc.gitignore_model.WindowsThumbnailCache => "Thumbs.db"
+    gunbc.gitignore_model.TmuxLogFile => "tmux-*.log"
+    gunbc.gitignore_model.DotEnvFile => ".env"
+    gunbc.gitignore_model.DotEnvLocalFile => ".env.local"
+    gunbc.gitignore_model.DotEnvLocalWildcard => ".env.*.local"
+    gunbc.gitignore_model.GeneratorStampFile => ".*-stamp"
+    gunbc.gitignore_model.GunbcWorkflowDir => "/.gunbc/"
+    gunbc.gitignore_model.TestgenOutputDir => "src/v1/10_test/generated-tests/src/generated/"
+    gunbc.gitignore_model.NodeModulesDir => "node_modules/"
+    gunbc.gitignore_model.ClaudeSessionDir => ".claude/"
+    gunbc.gitignore_model.RegenSourcesDir => ".regen-sources/"
+    gunbc.gitignore_model.RegenOutputDir => ".regen-output/"
+    gunbc.gitignore_model.RegenGeneratedSourceRootDir => ".regen-generated-source-root/"
+    gunbc.gitignore_model.FreshnessCheckDir => ".freshness-check/"
+    gunbc.gitignore_model.AuthTranscriptFile => "out.txt"
+    gunbc.gitignore_model.OpenClawControlDir => "/.openclaw/"
+    gunbc.gitignore_model.OpenClawAgentsFile => "/AGENTS.md"
+    gunbc.gitignore_model.OpenClawHeartbeatFile => "/HEARTBEAT.md"
+    gunbc.gitignore_model.OpenClawIdentityFile => "/IDENTITY.md"
+    gunbc.gitignore_model.OpenClawSoulFile => "/SOUL.md"
+    gunbc.gitignore_model.OpenClawToolsFile => "/TOOLS.md"
+    gunbc.gitignore_model.OpenClawUserFile => "/USER.md"
+    gunbc.gitignore_model.OpenClawWorkboardFile => "/WORKBOARD.md"
+    gunbc.gitignore_model.OpenClawScriptsDir => "/scripts/openclaw/"
+    gunbc.gitignore_model.V2InspectFile => ".v2-inspect"
+    gunbc.gitignore_model.V2InspectErrorsFile => ".v2-inspect-errors.txt"
+    gunbc.gitignore_model.GithubCLICacheDir => ".gh-cache/"
+    gunbc.gitignore_model.PythonLocalDevScriptFile => "*.py"
+    gunbc.gitignore_model.PythonAuditScriptAllowlisted => "!docs/plans/witness-subject-execution-audit.py"
+    gunbc.gitignore_model.PythonProbeScriptAllowlisted => "!docs/probes/e0369_b1_operator_classify.py"
+    gunbc.gitignore_model.FloorCutNameResolutionPartitionScriptAllowlisted => "!docs/probes/floor_cut_name_resolution_partition.py"
+    gunbc.gitignore_model.ShadowDirectCallArgConformanceSummarizeScriptAllowlisted => "!docs/probes/shadow_direct_call_arg_conformance_2026-08-22/summarize.py"
+    gunbc.gitignore_model.ShadowDirectCallArgConformanceAdjudicateScriptAllowlisted => "!docs/probes/shadow_direct_call_arg_conformance_2026-08-22/adjudicate.py"
+    gunbc.gitignore_model.ShadowDirectCallArgConformanceJoinBoardScriptAllowlisted => "!docs/probes/shadow_direct_call_arg_conformance_2026-08-22/join_board.py"
+    gunbc.gitignore_model.E0308ClassifySitesScriptAllowlisted => "!docs/probes/e0308_classify_sites.py"
+    gunbc.gitignore_model.PythonBytecodeCacheDir => "__pycache__/"
+    gunbc.gitignore_model.PythonCompiledBytecode => "*.pyc"
+    gunbc.gitignore_model.ClaimMapDir => ".claim-map/"
+    gunbc.gitignore_model.ScratchProbeFile => "src/v2/test/claim/manual/sg2_scratch_probe.dag"
+    gunbc.gitignore_model.GunbcPlanningDir => "/gunbc-planning/"
+    gunbc.gitignore_model.ScriptsFixturesDir => "/scripts/fixtures/"
   }
 }
 
-fn producer_display(p: Producer) -> String {
+fn producer_display(p: gunbc.gitignore_model.Producer) -> String {
   match p {
-    Derivable { kind: CargoArtifacts } => "Cargo build artifacts (from cargo)"
-    Derivable { kind: CargoCacheLocal } => "Cargo cache (local CARGO_HOME) (from tool/rust)"
-    Derivable { kind: CodegenSymlink } => "Codegen bin symlink (from codegen)"
-    Derivable { kind: CoverageReport } => "Coverage reports (from cargo-tarpaulin)"
-    Derivable { kind: GeneratorStamp } => "Generator stamp files (from generators)"
-    Derivable { kind: WorkflowRuntime } => "Workflow runtime state (from workflow)"
-    Derivable { kind: TestgenOutput } => "testgen outputs (from testgen)"
-    Derivable { kind: RegenTempDir } => "Stage0 regeneration temp dirs"
-    Derivable { kind: ClaudeCodeSession } => "Claude Code session state"
-    Derivable { kind: ClaimMapOutput } => "claim-corpus execution-map output"
-    Derivable { kind: OpenClawArtifact } => "OpenClaw workspace artifacts"
-    Derivable { kind: GithubCLICache } => "GitHub CLI local cache (dashboard / gh API)"
-    Derivable { kind: AuthSessionTranscript } => "Interactive auth/session transcripts"
-    Derivable { kind: PythonLocalDevScript } => "Python local dev scripts"
-    Derivable { kind: SupersededPlanningDir } => "Superseded planning scratch directories (canonical home: docs/plans/ or DESIGN.md)"
-    Cited { kind: JetBrainsIDE, upstream: u } => concat("JetBrains IDE project state [cited: ", concat(u, "]"))
-    Cited { kind: VSCodeIDE, upstream: u } => concat("VS Code workspace state [cited: ", concat(u, "]"))
-    Cited { kind: VimEditor, upstream: u } => concat("Vim editor state [cited: ", concat(u, "]"))
-    Cited { kind: EmacsEditor, upstream: u } => concat("Emacs backup convention [cited: ", concat(u, "]"))
-    Cited { kind: GenericEditorBackup, upstream: u } => concat("Generic editor backup files [cited: ", concat(u, "]"))
-    Cited { kind: MacOSFinder, upstream: u } => concat("macOS Finder metadata [cited: ", concat(u, "]"))
-    Cited { kind: WindowsExplorer, upstream: u } => concat("Windows Explorer cache [cited: ", concat(u, "]"))
-    Cited { kind: Tmux, upstream: u } => concat("tmux terminal multiplexer logs [cited: ", concat(u, "]"))
-    Cited { kind: NodeJS, upstream: u } => concat("Node.js [cited: ", concat(u, "]"))
-    Cited { kind: SecretsConvention, upstream: u } => concat("Secrets and local config [cited: ", concat(u, "]"))
-    Cited { kind: CPythonInterpreter, upstream: u } => concat("CPython bytecode cache (PEP 3147) [cited: ", concat(u, "]"))
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.CargoArtifacts } => "Cargo build artifacts (from cargo)"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.CargoCacheLocal } => "Cargo cache (local CARGO_HOME) (from tool/rust)"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.CodegenSymlink } => "Codegen bin symlink (from codegen)"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.CoverageReport } => "Coverage reports (from cargo-tarpaulin)"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.GeneratorStamp } => "Generator stamp files (from generators)"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.WorkflowRuntime } => "Workflow runtime state (from workflow)"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.TestgenOutput } => "testgen outputs (from testgen)"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.RegenTempDir } => "Stage0 regeneration temp dirs"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.ClaudeCodeSession } => "Claude Code session state"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.ClaimMapOutput } => "claim-corpus execution-map output"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.OpenClawArtifact } => "OpenClaw workspace artifacts"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.GithubCLICache } => "GitHub CLI local cache (dashboard / gh API)"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.AuthSessionTranscript } => "Interactive auth/session transcripts"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.PythonLocalDevScript } => "Python local dev scripts"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.SupersededPlanningDir } => "Superseded planning scratch directories (canonical home: docs/plans/ or DESIGN.md)"
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.JetBrainsIDE, upstream: u } => concat("JetBrains IDE project state [cited: ", concat(u, "]"))
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.VSCodeIDE, upstream: u } => concat("VS Code workspace state [cited: ", concat(u, "]"))
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.VimEditor, upstream: u } => concat("Vim editor state [cited: ", concat(u, "]"))
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.EmacsEditor, upstream: u } => concat("Emacs backup convention [cited: ", concat(u, "]"))
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.GenericEditorBackup, upstream: u } => concat("Generic editor backup files [cited: ", concat(u, "]"))
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.MacOSFinder, upstream: u } => concat("macOS Finder metadata [cited: ", concat(u, "]"))
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.WindowsExplorer, upstream: u } => concat("Windows Explorer cache [cited: ", concat(u, "]"))
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.Tmux, upstream: u } => concat("tmux terminal multiplexer logs [cited: ", concat(u, "]"))
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.NodeJS, upstream: u } => concat("Node.js [cited: ", concat(u, "]"))
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.SecretsConvention, upstream: u } => concat("Secrets and local config [cited: ", concat(u, "]"))
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.CPythonInterpreter, upstream: u } => concat("CPython bytecode cache (PEP 3147) [cited: ", concat(u, "]"))
   }
 }
 
-fn producer_rationale_line(p: Producer) -> String {
+fn producer_rationale_line(p: gunbc.gitignore_model.Producer) -> String {
   match p {
-    Derivable { kind: CargoArtifacts } => "Reproducible from source via cargo build"
-    Derivable { kind: CargoCacheLocal } => "Local Cargo cache may include git checkouts; not project state"
-    Derivable { kind: CodegenSymlink } => "Symlink to target/release created by codegen"
-    Derivable { kind: CoverageReport } => "Generated, often large, reproducible"
-    Derivable { kind: GeneratorStamp } => "Producer-centric model stamps"
-    Derivable { kind: WorkflowRuntime } => "Local execution ledger and config; not source-of-truth"
-    Derivable { kind: TestgenOutput } => "Generated by testgen; not source-of-truth"
-    Derivable { kind: RegenTempDir } => ""
-    Derivable { kind: ClaudeCodeSession } => ""
-    Derivable { kind: ClaimMapOutput } => ""
-    Derivable { kind: OpenClawArtifact } => "The OpenClaw control plane lives in ~/ctrl, not in this repo"
-    Derivable { kind: GithubCLICache } => ""
-    Derivable { kind: AuthSessionTranscript } => "Should never be committed; may contain OAuth URLs or session state"
-    Derivable { kind: PythonLocalDevScript } => "Python is used only for local dev tooling; never committed to the .dag/.rs substrate"
-    Derivable { kind: SupersededPlanningDir } => "Superseded by docs/plans/ (generated PlanArtifact) and DESIGN.md/ROADMAP.md as canonical authorities"
-    Cited { kind: JetBrainsIDE, upstream: _ } => "Per-developer configuration, not project state"
-    Cited { kind: VSCodeIDE, upstream: _ } => "Per-developer configuration, not project state"
-    Cited { kind: VimEditor, upstream: _ } => "Per-developer configuration, not project state"
-    Cited { kind: EmacsEditor, upstream: _ } => "Per-developer configuration, not project state"
-    Cited { kind: GenericEditorBackup, upstream: _ } => "Per-developer configuration, not project state"
-    Cited { kind: MacOSFinder, upstream: _ } => "OS-generated, not project state"
-    Cited { kind: WindowsExplorer, upstream: _ } => "OS-generated, not project state"
-    Cited { kind: Tmux, upstream: _ } => "Session log; not project state"
-    Cited { kind: NodeJS, upstream: _ } => "Not part of this project"
-    Cited { kind: SecretsConvention, upstream: _ } => "Environment-specific, may contain secrets"
-    Cited { kind: CPythonInterpreter, upstream: _ } => ""
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.CargoArtifacts } => "Reproducible from source via cargo build"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.CargoCacheLocal } => "Local Cargo cache may include git checkouts; not project state"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.CodegenSymlink } => "Symlink to target/release created by codegen"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.CoverageReport } => "Generated, often large, reproducible"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.GeneratorStamp } => "Producer-centric model stamps"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.WorkflowRuntime } => "Local execution ledger and config; not source-of-truth"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.TestgenOutput } => "Generated by testgen; not source-of-truth"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.RegenTempDir } => ""
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.ClaudeCodeSession } => ""
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.ClaimMapOutput } => ""
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.OpenClawArtifact } => "The OpenClaw control plane lives in ~/ctrl, not in this repo"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.GithubCLICache } => ""
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.AuthSessionTranscript } => "Should never be committed; may contain OAuth URLs or session state"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.PythonLocalDevScript } => "Python is used only for local dev tooling; never committed to the .dag/.rs substrate"
+    gunbc.gitignore_model.Derivable { kind: gunbc.gitignore_model.SupersededPlanningDir } => "Superseded by docs/plans/ (generated PlanArtifact) and DESIGN.md/ROADMAP.md as canonical authorities"
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.JetBrainsIDE, upstream: _ } => "Per-developer configuration, not project state"
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.VSCodeIDE, upstream: _ } => "Per-developer configuration, not project state"
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.VimEditor, upstream: _ } => "Per-developer configuration, not project state"
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.EmacsEditor, upstream: _ } => "Per-developer configuration, not project state"
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.GenericEditorBackup, upstream: _ } => "Per-developer configuration, not project state"
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.MacOSFinder, upstream: _ } => "OS-generated, not project state"
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.WindowsExplorer, upstream: _ } => "OS-generated, not project state"
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.Tmux, upstream: _ } => "Session log; not project state"
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.NodeJS, upstream: _ } => "Not part of this project"
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.SecretsConvention, upstream: _ } => "Environment-specific, may contain secrets"
+    gunbc.gitignore_model.Cited { kind: gunbc.gitignore_model.CPythonInterpreter, upstream: _ } => ""
   }
 }
 
-data gitignore_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+data gitignore_protocol: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "" }
 
-fn gitignore_comment_line(text: String) -> Doc {
-  let prefix = config_comment_prefix(format: gitignore_format)
+fn gitignore_comment_line(text: String) -> std.layout.Doc {
+  let prefix = std.render.config_comment_prefix(format: std.languages.gitignore_format)
   let line = if text == "" { prefix } else { concat(concat(prefix, " "), text) }
-  doc_line_of(text: line)
+  std.layout.doc_line_of(text: line)
 }
 
-fn gitignore_section_header(title: String) -> Doc {
+fn gitignore_section_header(title: String) -> std.layout.Doc {
   gitignore_comment_line(text: concat("--- ", concat(title, " ---")))
 }
 
-fn group_doc(g: IgnoreGroup) -> Doc {
+fn group_doc(g: gunbc.gitignore_model.IgnoreGroup) -> std.layout.Doc {
   let header = gitignore_section_header(title: producer_display(p: g.producer))
   let rationale = producer_rationale_line(p: g.producer)
-  let rat_doc = if rationale == "" { DocEmpty } else { gitignore_comment_line(text: rationale) }
-  let pattern_docs = map(g.artifacts, a => doc_line_of(text: artifact_pattern(a: a)))
-  doc_concat(parts: append([header, rat_doc], items: pattern_docs))
+  let rat_doc = if rationale == "" { std.layout.DocEmpty } else { gitignore_comment_line(text: rationale) }
+  let pattern_docs = map(g.artifacts, a => std.layout.doc_line_of(text: artifact_pattern(a: a)))
+  std.layout.doc_concat(parts: append([header, rat_doc], items: pattern_docs))
 }
 
-fn gitignore_header_doc() -> Doc {
-  doc_concat(parts: [
+fn gitignore_header_doc() -> std.layout.Doc {
+  std.layout.doc_concat(parts: [
     gitignore_comment_line(text: "gunbc .gitignore — generated from dag/gunbc/gitignore_authority.dag — do not hand-edit."),
     gitignore_comment_line(text: ""),
     gitignore_comment_line(text: "Rule: Ignore anything that is (a) reproducible from committed source-of-truth files, or (b) environment-specific and not shared across developers."),
-    doc_blank()
+    std.layout.doc_blank()
   ])
 }
 
-fn groups_doc(groups: List<IgnoreGroup>) -> Doc {
-  doc_concat(parts: fold(groups, init: [], f: fn(acc, g) {
+fn groups_doc(groups: List<gunbc.gitignore_model.IgnoreGroup>) -> std.layout.Doc {
+  std.layout.doc_concat(parts: fold(groups, init: [], f: fn(acc, g) {
     let gd = group_doc(g: g)
-    if count(acc) == 0 { [gd] } else { append(acc, items: [doc_blank(), gd]) }
+    if count(acc) == 0 { [gd] } else { append(acc, items: [std.layout.doc_blank(), gd]) }
   }))
 }
 
-fn project_gitignore_to_doc(groups: List<IgnoreGroup>) -> Doc {
-  doc_concat(parts: [gitignore_header_doc(), groups_doc(groups: groups), doc_blank(), generated_artifacts_section_doc()])
+fn project_gitignore_to_doc(groups: List<gunbc.gitignore_model.IgnoreGroup>) -> std.layout.Doc {
+  std.layout.doc_concat(parts: [gitignore_header_doc(), groups_doc(groups: groups), std.layout.doc_blank(), generated_artifacts_section_doc()])
 }
 
 fn expected_gitignore() -> String {
-  render(doc: project_gitignore_to_doc(groups: gitignore_authority), proto: gitignore_protocol)
+  std.layout.render(doc: project_gitignore_to_doc(groups: gunbc.gitignore_authority.gitignore_authority), proto: gitignore_protocol)
 }
 
 fn gitignore_drifted(committed: String) -> Bool {
   !(committed == expected_gitignore())
 }
 
-fn group_patterns(g: IgnoreGroup) -> List<String> {
+fn group_patterns(g: gunbc.gitignore_model.IgnoreGroup) -> List<String> {
   fold(g.artifacts, init: [], f: fn(acc, a) { concat(acc, [artifact_pattern(a: a)]) })
 }
 
 fn ignore_patterns() -> List<String> {
-  let tool_patterns = fold(gitignore_authority, init: [], f: fn(acc, g) { concat(acc, group_patterns(g: g)) })
+  let tool_patterns = fold(gunbc.gitignore_authority.gitignore_authority, init: [], f: fn(acc, g) { concat(acc, group_patterns(g: g)) })
   concat(tool_patterns, map(non_committed_artifacts(), a => generated_artifact_ignore_pattern(a: a)))
 }
 
 fn generated_artifact_ignore_pattern(a: gunbc.generated_artifact.GeneratedArtifact) -> String {
-  concat("/", artifact_path(a: a))
+  concat("/", gunbc.generated_artifact.artifact_path(a: a))
 }
 
 fn non_committed_artifacts() -> List<gunbc.generated_artifact.GeneratedArtifact> {
-  filter(generated_artifact_registry, a => !artifact_is_committed(a: a))
+  filter(gunbc.generated_artifact.generated_artifact_registry, a => !gunbc.generated_artifact.artifact_is_committed(a: a))
 }
 
-fn generated_artifacts_section_doc() -> Doc {
+fn generated_artifacts_section_doc() -> std.layout.Doc {
   let header = gitignore_section_header(title: "Generated artifacts (gitignored-by-default, derived from generated_artifact_registry)")
   let rationale = gitignore_comment_line(text: "Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).")
-  let pattern_docs = map(non_committed_artifacts(), a => doc_line_of(text: generated_artifact_ignore_pattern(a: a)))
-  doc_concat(parts: append([header, rationale], items: pattern_docs))
+  let pattern_docs = map(non_committed_artifacts(), a => std.layout.doc_line_of(text: generated_artifact_ignore_pattern(a: a)))
+  std.layout.doc_concat(parts: append([header, rationale], items: pattern_docs))
 }
 
 fn without_prefix(s: String, prefix: String) -> String {

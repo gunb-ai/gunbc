@@ -6,18 +6,18 @@ data verification_receipt_witness_note: String = "GREEN-BY-CONSTRUCTION witness 
 fn subject_at(head: std.types.CommitSha) -> gunbc.roadmap_verification_receipt.VerificationSubject {
   gunbc.roadmap_verification_receipt.VerificationSubject {
     node_identity: "node-identity-019" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeIdentity,
-    criteria_digest: content_hash_atom(value: "criteria-v3"),
+    criteria_digest: std.content_hash.content_hash_atom(value: "criteria-v3"),
     attempt_key: "feedfacefeedface",
     branch: "dispatch/exact-head-afeedfacefeedface" as std.types.NonEmptyStr,
     head_sha: head,
-    change_window_identity: git_diff_window_absent_identity(),
+    change_window_identity: gunbc.git_diff_change_window.git_diff_window_absent_identity(),
   }
 }
 
 fn exact_head_receipt(head: std.types.CommitSha) -> gunbc.roadmap_verification_receipt.VerificationReceipt {
   gunbc.roadmap_verification_receipt.VerificationReceipt {
     subject: subject_at(head: head),
-    oracle_identity: content_hash_of_value(value: "pinned-oracle"),
+    oracle_identity: std.content_hash.content_hash_of_value(value: "pinned-oracle"),
     executions: [
       gunbc.roadmap_verification_receipt.ValidationExecution {
         validation: gunbc.roadmap_execution_contract.GunbcClaimValidation {
@@ -39,7 +39,7 @@ fn exact_head_receipt(head: std.types.CommitSha) -> gunbc.roadmap_verification_r
     ],
     verdict: gunbc.roadmap_validation_oracle.ValidationPassed {
       command: "/opt/gunbc/bin/gunbc run --claim-run",
-      oracle_identity: content_hash_of_value(value: "pinned-oracle"),
+      oracle_identity: std.content_hash.content_hash_of_value(value: "pinned-oracle"),
     },
   }
 }
@@ -48,16 +48,16 @@ data head_a: std.types.CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as
 data head_b: std.types.CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as std.types.CommitSha
 
 test fn complete_exact_head_receipt_constructs_and_matches() -> Bool {
-  let expected = subject_at(head: test.claim.roadmap_verification_receipt_witness_test.head_a)
-  let receipt = exact_head_receipt(head: test.claim.roadmap_verification_receipt_witness_test.head_a)
-  match verification_evidence_for(
+  let expected = subject_at(head: head_a)
+  let receipt = exact_head_receipt(head: head_a)
+  match gunbc.roadmap_verification_receipt.verification_evidence_for(
     expected: expected,
     source: gunbc.roadmap_verification_receipt.ExactHeadVerificationReceipt { receipt: receipt },
   ) {
-    VerificationEvidenceForSubject { receipt: found } =>
+    gunbc.roadmap_verification_receipt.VerificationEvidenceForSubject { receipt: found } =>
       count(found.executions) == 1
         && found.executions.first().command.args.first() == "run"
-        && verification_evidence_moves_lamp(
+        && gunbc.roadmap_verification_receipt.verification_evidence_moves_lamp(
           evidence: gunbc.roadmap_verification_receipt.VerificationEvidenceForSubject { receipt: found },
         )
     _ => false
@@ -65,50 +65,50 @@ test fn complete_exact_head_receipt_constructs_and_matches() -> Bool {
 }
 
 test fn passed_receipt_for_old_head_refuses_to_move_new_head_lamp() -> Bool {
-  let evidence = verification_evidence_for(
-    expected: subject_at(head: test.claim.roadmap_verification_receipt_witness_test.head_b),
+  let evidence = gunbc.roadmap_verification_receipt.verification_evidence_for(
+    expected: subject_at(head: head_b),
     source: gunbc.roadmap_verification_receipt.ExactHeadVerificationReceipt {
-      receipt: exact_head_receipt(head: test.claim.roadmap_verification_receipt_witness_test.head_a),
+      receipt: exact_head_receipt(head: head_a),
     },
   )
   match evidence {
-    VerificationEvidenceForAnotherSubject { field, expected, found } =>
+    gunbc.roadmap_verification_receipt.VerificationEvidenceForAnotherSubject { field, expected, found } =>
       (field as String) == "head_sha"
-        && expected == (test.claim.roadmap_verification_receipt_witness_test.head_b as String)
-        && found == (test.claim.roadmap_verification_receipt_witness_test.head_a as String)
-        && !verification_evidence_moves_lamp(evidence: evidence)
+        && expected == (head_b as String)
+        && found == (head_a as String)
+        && !gunbc.roadmap_verification_receipt.verification_evidence_moves_lamp(evidence: evidence)
     _ => false
   }
 }
 
 test fn attempt_level_pass_is_typed_legacy_and_never_evidence() -> Bool {
-  let evidence = verification_evidence_for(
-    expected: subject_at(head: test.claim.roadmap_verification_receipt_witness_test.head_a),
+  let evidence = gunbc.roadmap_verification_receipt.verification_evidence_for(
+    expected: subject_at(head: head_a),
     source: gunbc.roadmap_verification_receipt.LegacyAttemptValidationReceipt { verdict_key: "passed" },
   )
   match evidence {
-    VerificationEvidenceLegacyAttemptLevel { verdict_key } =>
+    gunbc.roadmap_verification_receipt.VerificationEvidenceLegacyAttemptLevel { verdict_key } =>
       verdict_key == "passed"
-        && !verification_evidence_moves_lamp(evidence: evidence)
+        && !gunbc.roadmap_verification_receipt.verification_evidence_moves_lamp(evidence: evidence)
     _ => false
   }
 }
 
 test fn one_attempt_addresses_multiple_heads_without_overwrite() -> Bool {
-  let instance = srv2_lab_dashboard_instance()
-  let absent_identity = git_diff_window_absent_identity().digest as String
-  let path_a = dispatch_attempt_verification_receipt_path_for_instance(
+  let instance = gunbc.roadmap_dashboard_instance.srv2_lab_dashboard_instance()
+  let absent_identity = gunbc.git_diff_change_window.git_diff_window_absent_identity().digest as String
+  let path_a = gunbc.roadmap_dispatch_actuator.dispatch_attempt_verification_receipt_path_for_instance(
     instance: instance,
     node_id: "exact-head-node" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeId,
     attempt_key: "feedfacefeedface",
-    head_sha: test.claim.roadmap_verification_receipt_witness_test.head_a as String,
+    head_sha: head_a as String,
     window_identity_hex: absent_identity,
   )
-  let path_b = dispatch_attempt_verification_receipt_path_for_instance(
+  let path_b = gunbc.roadmap_dispatch_actuator.dispatch_attempt_verification_receipt_path_for_instance(
     instance: instance,
     node_id: "exact-head-node" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeId,
     attempt_key: "feedfacefeedface",
-    head_sha: test.claim.roadmap_verification_receipt_witness_test.head_b as String,
+    head_sha: head_b as String,
     window_identity_hex: absent_identity,
   )
   path_a != path_b
@@ -123,26 +123,26 @@ test fn one_attempt_addresses_multiple_heads_without_overwrite() -> Bool {
 }
 
 test fn exact_head_receipt_round_trips_through_json_codec() -> Bool {
-  let receipt = exact_head_receipt(head: test.claim.roadmap_verification_receipt_witness_test.head_a)
-  let wire = verification_receipt_json(receipt: receipt)
-  match verification_receipt_decode(receipt: wire) {
-    VerificationReceiptDecoded { receipt: decoded } =>
-      match verification_subject_match(expected: receipt.subject, found: decoded.subject) {
-        VerificationSubjectMatches =>
+  let receipt = exact_head_receipt(head: head_a)
+  let wire = gunbc.roadmap_verification_receipt.verification_receipt_json(receipt: receipt)
+  match gunbc.roadmap_verification_receipt.verification_receipt_decode(receipt: wire) {
+    gunbc.roadmap_verification_receipt.VerificationReceiptDecoded { receipt: decoded } =>
+      match gunbc.roadmap_verification_receipt.verification_subject_match(expected: receipt.subject, found: decoded.subject) {
+        gunbc.roadmap_verification_receipt.VerificationSubjectMatches =>
           count(decoded.executions) == count(receipt.executions)
-            && verification_evidence_moves_lamp(
+            && gunbc.roadmap_verification_receipt.verification_evidence_moves_lamp(
               evidence: gunbc.roadmap_verification_receipt.VerificationEvidenceForSubject { receipt: decoded },
             )
-        VerificationSubjectDiffers { field: _, expected: _, found: _ } => false
+        gunbc.roadmap_verification_receipt.VerificationSubjectDiffers { field: _, expected: _, found: _ } => false
       }
-    VerificationReceiptUndecodable { reason: _ } => false
+    gunbc.roadmap_verification_receipt.VerificationReceiptUndecodable { reason: _ } => false
   }
 }
 
 test fn change_window_refused_verdict_round_trips_through_json_codec() -> Bool {
   let receipt = gunbc.roadmap_verification_receipt.VerificationReceipt {
-    subject: subject_at(head: test.claim.roadmap_verification_receipt_witness_test.head_a),
-    oracle_identity: content_hash_of_value(value: "pinned-oracle"),
+    subject: subject_at(head: head_a),
+    oracle_identity: std.content_hash.content_hash_of_value(value: "pinned-oracle"),
     executions: [],
     verdict: gunbc.roadmap_validation_oracle.ValidationRefused {
       cause: gunbc.roadmap_validation_oracle.ValidationChangeWindowRefused {
@@ -153,20 +153,20 @@ test fn change_window_refused_verdict_round_trips_through_json_codec() -> Bool {
       },
     },
   }
-  let wire = verification_receipt_json(receipt: receipt)
-  match verification_receipt_decode(receipt: wire) {
-    VerificationReceiptDecoded { receipt: decoded } =>
+  let wire = gunbc.roadmap_verification_receipt.verification_receipt_json(receipt: receipt)
+  match gunbc.roadmap_verification_receipt.verification_receipt_decode(receipt: wire) {
+    gunbc.roadmap_verification_receipt.VerificationReceiptDecoded { receipt: decoded } =>
       match decoded.verdict {
-        ValidationRefused { cause } =>
-          validation_refusal_cause_key(cause: cause) == "change-window-refused"
+        gunbc.roadmap_validation_oracle.ValidationRefused { cause } =>
+          gunbc.roadmap_validation_oracle.validation_refusal_cause_key(cause: cause) == "change-window-refused"
         _ => false
       }
-    VerificationReceiptUndecodable { reason: _ } => false
+    gunbc.roadmap_verification_receipt.VerificationReceiptUndecodable { reason: _ } => false
   }
 }
 
 test fn verification_receipt_schema_is_v2() -> Bool {
-  (verification_receipt_schema as String) == "roadmap-verification-receipt/v2"
+  (gunbc.roadmap_verification_receipt.verification_receipt_schema as String) == "roadmap-verification-receipt/v2"
 }
 
 test fn roadmap_verification_receipt_keystone_holds() -> Bool {

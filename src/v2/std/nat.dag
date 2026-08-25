@@ -18,12 +18,12 @@ fn nat_mul(a: Nat, b: Nat) -> Nat {
 
 fn nat_compare(a: Nat, b: Nat) -> std.algebra.Ordering {
   if a == b {
-    Equal
+    std.algebra.Equal
   } else {
     if a < b {
-      Less
+      std.algebra.Less
     } else {
-      Greater
+      std.algebra.Greater
     }
   }
 }
@@ -36,35 +36,35 @@ fn is_zero(n: Nat) -> Bool {
 }
 
 fn nat_lte(a: Nat, b: Nat) -> Bool {
-  match v2.std.nat.nat_compare(a: a, b: b) {
-    Less => true
-    Equal => true
-    Greater => false
+  match nat_compare(a: a, b: b) {
+    std.algebra.Less => true
+    std.algebra.Equal => true
+    std.algebra.Greater => false
   }
 }
 
 data nat_max_two_nat_authorities_note: String = "This is NOT a duplicate of std.nat nat_max, and the distinction is worth stating because the name alone suggests otherwise. std.nat Nat is CommutativeSemiring<Magnitude> - an algebra alias whose max is written with the host comparison operators - while v2.std.nat Nat is the Peano coproduct Zero | Succ, and the two are different types that no single function can serve. So this sits beside nat_add and nat_mul, which are forked for exactly the same reason and were not remarked on. What IS a real defect is that two Nat authorities exist at all; it predates this declaration and is the numeric-tower grounding thread's subject, not something a max function can close. Because v1-seed function names are not module-scoped, a bare nat_max reference in any closure containing both modules is ambiguous and must be qualified - v2.lens.cost.valuation does exactly that. Dissolve-on: one Nat authority, at which point one of the two nat_max declarations goes with it."
 
 fn nat_max(a: Nat, b: Nat) -> Nat {
-  match v2.std.nat.nat_compare(a: a, b: b) {
-    Less => b
-    Equal => a
-    Greater => a
+  match nat_compare(a: a, b: b) {
+    std.algebra.Less => b
+    std.algebra.Equal => a
+    std.algebra.Greater => a
   }
 }
 
 fn nat_gte(a: Nat, b: Nat) -> Bool {
-  match v2.std.nat.nat_compare(a: a, b: b) {
-    Less => false
-    Equal => true
-    Greater => true
+  match nat_compare(a: a, b: b) {
+    std.algebra.Less => false
+    std.algebra.Equal => true
+    std.algebra.Greater => true
   }
 }
-data nat_additive_commutative_monoid: CommutativeMonoid<Nat> = std.algebra.CommutativeMonoid {
+data nat_additive_commutative_monoid: std.algebra.CommutativeMonoid<Nat> = std.algebra.CommutativeMonoid {
   op: nat_add,
   identity: Zero
 }
-data nat_semiring: CommutativeSemiring<Nat> = std.algebra.CommutativeSemiring {
+data nat_semiring: std.algebra.CommutativeSemiring<Nat> = std.algebra.CommutativeSemiring {
   add: nat_add,
   zero: Zero,
   mul: nat_mul,

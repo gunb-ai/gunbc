@@ -3,17 +3,17 @@ module extdeps.tools.xorriso
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.gnu.org/software/xorriso/"
   }
 }
 
 data xorriso_pinned_version: extdeps.version.VersionConstraint = ">= 1.5"
 
-data xorriso_cli_tool: CliTool = CliTool {
+data xorriso_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "xorriso",
   min_version: Present { value: xorriso_pinned_version },
-  installable_via: [SourceApt { package: package_xorriso }],
+  installable_via: [extdeps.tools.SourceApt { package: extdeps.apt.package_xorriso }],
 }
 
 service xorriso.Iso {

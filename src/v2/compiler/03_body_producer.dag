@@ -4,18 +4,18 @@ module v2.compiler.body_producer
 fn body_producer_diagnostic(reason: v2.std.node.Symbol, n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: node_locus(node: n),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: n),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
-fn attach_arrow_body(arrow: v2.std.node.Node, body: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
+fn attach_arrow_body(arrow: v2.std.node.Node, body: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match arrow.kind {
-    TypeNode { connective: Arrow } =>
-      outcome_accepted(
-        value: node_rebuild(
+    v2.std.node.TypeNode { connective: v2.std.node.Arrow } =>
+      v2.std.diagnostic.outcome_accepted(
+        value: v2.std.node.node_rebuild(
           n: arrow,
-          children: list_snoc_item(
+          children: v2.std.algebra.list_snoc_item(
             xs: arrow.children,
             item: v2.std.node.Edge {
               label: v2.std.node.Named { name: ^arrow_body_edge },
@@ -25,7 +25,7 @@ fn attach_arrow_body(arrow: v2.std.node.Node, body: v2.std.node.Node) -> Outcome
         )
       )
     _ =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         d: body_producer_diagnostic(
           reason: ^body_producer_reason_malformed_attachment,
           n: arrow
@@ -34,11 +34,11 @@ fn attach_arrow_body(arrow: v2.std.node.Node, body: v2.std.node.Node) -> Outcome
   }
 }
 
-fn body_producer_validated_behavior(body: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
-  if well_formed(n: body) {
-    outcome_accepted(value: body)
+fn body_producer_validated_behavior(body: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  if v2.std.node.well_formed(n: body) {
+    v2.std.diagnostic.outcome_accepted(value: body)
   } else {
-    outcome_rejected(
+    v2.std.diagnostic.outcome_rejected(
       d: body_producer_diagnostic(
         reason: ^body_producer_reason_post_produce_not_well_formed,
         n: body
@@ -47,11 +47,11 @@ fn body_producer_validated_behavior(body: v2.std.node.Node) -> Outcome<v2.std.no
   }
 }
 
-fn body_producer_dispatch_structured_body(body: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
+fn body_producer_dispatch_structured_body(body: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match body.kind {
-    ComputationNode { behavior: _ } => body_producer_validated_behavior(body: body)
+    v2.std.node.ComputationNode { behavior: _ } => body_producer_validated_behavior(body: body)
     _ =>
-      outcome_rejected(
+      v2.std.diagnostic.outcome_rejected(
         d: body_producer_diagnostic(
           reason: ^body_producer_reason_resolved_shape,
           n: body
@@ -60,8 +60,8 @@ fn body_producer_dispatch_structured_body(body: v2.std.node.Node) -> Outcome<v2.
   }
 }
 
-fn produce_arrow_with_structured_body(signature: v2.std.node.Node, structured_body: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
-  bind_outcome(
+fn produce_arrow_with_structured_body(signature: v2.std.node.Node, structured_body: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  v2.std.diagnostic.bind_outcome(
     o: body_producer_dispatch_structured_body(body: structured_body),
     f: fn(validated) {
       attach_arrow_body(arrow: signature, body: validated)

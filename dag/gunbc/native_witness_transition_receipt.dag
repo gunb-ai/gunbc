@@ -41,7 +41,7 @@ fn native_at_small_scale_transition_receipt() -> NativeSelectedWitnessTransition
     landed_pull_request: 7599,
     landed_merge_commit: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
     evaluated_head: "2f9e780e6d2130680c4d9fb49739bf0c6cc7c746",
-    executed_evidence: decl_ref(
+    executed_evidence: std.decl_ref.decl_ref(
       module_path: "v2.test.execution.native_selected_witness_bundle",
       decl_name: "native_selected_witness_bundle_cutover_evidence_holds",
     ),

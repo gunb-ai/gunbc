@@ -84,8 +84,8 @@ type ComputeBoardIntent {
 data narrow_compute_node_intent: ComputeBoardIntent = ComputeBoardIntent {
   workload: "serve web workloads on a headless rack-resident compute node",
   requirements: [
-    ComputeCores { minimum_cores: hardware_thread_count(128) },
-    MemoryCapacity { minimum_capacity: byte_size(274877906944) },
+    ComputeCores { minimum_cores: std.measure.hardware_thread_count(128) },
+    MemoryCapacity { minimum_capacity: std.measure.byte_size(274877906944) },
     NetworkPaths { minimum_paths: 1 },
     BootStoragePaths { minimum_paths: 1 },
     RemoteManagement { power_control: true, console: true, recovery: true },

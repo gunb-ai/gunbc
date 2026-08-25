@@ -4,12 +4,12 @@ module extdeps.sec.issuer.microsoft
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=0000789019"
   }
 }
 
-data microsoft_cik_digits: std.types.NonEmptyStr = "789019"
+data microsoft_cik_digits: NonEmptyStr = "789019"
 
 data microsoft_cik: extdeps.sec.types.Cik = extdeps.sec.types.Cik { digits: microsoft_cik_digits }
 
@@ -19,6 +19,6 @@ data microsoft_issuer_catalog: extdeps.sec.types.IssuerCatalogRow = extdeps.sec.
   cik: microsoft_cik,
   registrant_name: "MICROSOFT CORP",
   primary_ticker: microsoft_ticker,
-  exchange: Nasdaq,
-  vendor: microsoft,
+  exchange: extdeps.sec.types.Nasdaq,
+  vendor: extdeps.vendor.microsoft.microsoft,
 }

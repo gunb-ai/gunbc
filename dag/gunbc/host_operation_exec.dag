@@ -72,11 +72,11 @@ module gunbc.host_operation_exec
 // this cut rather than being quietly opened by it. Adding an operation REQUIRES adding a variant,
 // which is what keeps growth reviewable and exhaustive rather than incidental.
 type HostOperation =
-    SystemctlIsActive { unit: NonEmptyStr }
-  | SystemctlStatus { unit: NonEmptyStr }
-  | SystemctlStop { unit: NonEmptyStr }
-  | SystemctlShowProperty { unit: NonEmptyStr, property: extdeps.systemd.SystemdUnitProperty }
-  | SystemctlShowLoadState { unit: NonEmptyStr }
+    SystemctlIsActive { unit: std.types.NonEmptyStr }
+  | SystemctlStatus { unit: std.types.NonEmptyStr }
+  | SystemctlStop { unit: std.types.NonEmptyStr }
+  | SystemctlShowProperty { unit: std.types.NonEmptyStr, property: extdeps.systemd.SystemdUnitProperty }
+  | SystemctlShowLoadState { unit: std.types.NonEmptyStr }
   | HostnameReadShort
 
 // THE OUTCOME IS DELIBERATELY NOT SshSessionExecResult. Three of the four legs produce one, but
@@ -111,13 +111,13 @@ fn host_operation_invocation(operation: HostOperation) -> v2.std.operation_argv.
       at: systemctl_operation_ref(operation: "Stop"),
       bindings: [v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: u as String)],
     )
-    SystemctlShowProperty { unit: u, property: gunbc.plans.md_helpers.p } => v2.std.operation_argv.bind_operation_invocation(
+    SystemctlShowProperty { unit: u, property: p } => v2.std.operation_argv.bind_operation_invocation(
       at: systemctl_operation_ref(operation: "ShowProperty"),
       bindings: [
         v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: u as String),
         v2.std.operation_argv.operation_argv_bind_text(
           name: "property",
-          text: extdeps.systemd.systemd_unit_property_wire(property: gunbc.plans.md_helpers.p) as String,
+          text: extdeps.systemd.systemd_unit_property_wire(property: p) as String,
         ),
       ],
     )
@@ -195,8 +195,8 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
       let result = systemd.Systemctl.Stop(unit: u)
       HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
     }
-    SystemctlShowProperty { unit: u, property: gunbc.plans.md_helpers.p } => {
-      let result = systemd.Systemctl.ShowProperty(unit: u, property: gunbc.plans.md_helpers.p)
+    SystemctlShowProperty { unit: u, property: p } => {
+      let result = systemd.Systemctl.ShowProperty(unit: u, property: p)
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
     SystemctlShowLoadState { unit: u } => {
@@ -215,7 +215,7 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
 // this one on typed_argv_shell_safe_refusal_argv at the edge, the fleet one on portable_remote_words,
 // which refuses INTO A TYPE -- so collapsing them into one pre-check would silently change behaviour
 // on both.
-fn host_operation_exec_ssh(operation: HostOperation, host: NonEmptyStr) -> HostOperationOutcome {
+fn host_operation_exec_ssh(operation: HostOperation, host: std.types.NonEmptyStr) -> HostOperationOutcome {
   let m = host_operation_materialize_argv(operation: operation)
   match m {
     v2.std.operation_argv.ArgvMaterialized { argv: argv } =>
@@ -255,8 +255,8 @@ fn host_operation_exec(transport: gunbc.host_effect.HostEffectTransport, operati
   match transport {
     gunbc.host_effect.LocalShell => host_operation_exec_local(operation: operation)
     gunbc.host_effect.SshShell { ssh_host: h } => host_operation_exec_ssh(operation: operation, host: h)
-    gunbc.host_effect.FleetSsh { target: test.claim.pcb_footprint_witness.t, context: c } =>
-      host_operation_exec_fleet_ssh(operation: operation, target: test.claim.pcb_footprint_witness.t, context: c)
+    gunbc.host_effect.FleetSsh { target: t, context: c } =>
+      host_operation_exec_fleet_ssh(operation: operation, target: t, context: c)
     gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostOperationRefused {
         operation: host_operation_label(operation: operation),

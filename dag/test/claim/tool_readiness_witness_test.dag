@@ -19,10 +19,10 @@ data witness_unpinned_frontier_row: gunbc.tool_readiness.UnpinnedToolFrontierRow
   }
 }
 
-data expected_rustfmt_identity: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "rustfmt-hermetic-expected" as std.types.NonEmptyStr)
-data other_rustfmt_identity: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "rustfmt-host-other" as std.types.NonEmptyStr)
-data unrelated_cargo_identity_a: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "cargo-a" as std.types.NonEmptyStr)
-data unrelated_cargo_identity_b: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "cargo-b" as std.types.NonEmptyStr)
+data expected_rustfmt_identity: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "rustfmt-hermetic-expected" as NonEmptyStr)
+data other_rustfmt_identity: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "rustfmt-host-other" as NonEmptyStr)
+data unrelated_cargo_identity_a: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "cargo-a" as NonEmptyStr)
+data unrelated_cargo_identity_b: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "cargo-b" as NonEmptyStr)
 
 data rustfmt_pin: extdeps.pin.Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
   subject: extdeps.tools.rustfmt.rustfmt_cli_tool,
@@ -51,8 +51,8 @@ fn observed(tool_name: String, identity: std.content_hash.ContentHash) -> extdep
 fn context(rows: List<extdeps.realization.emit_on_demand_host.ObservedToolIdentity>) -> extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
   extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: rows,
-    environment_identity: std.content_hash.content_hash_of_value(value: "environment" as std.types.NonEmptyStr),
-    cargo_configuration_identity: std.content_hash.content_hash_of_value(value: "cargo-config" as std.types.NonEmptyStr),
+    environment_identity: std.content_hash.content_hash_of_value(value: "environment" as NonEmptyStr),
+    cargo_configuration_identity: std.content_hash.content_hash_of_value(value: "cargo-config" as NonEmptyStr),
   }
 }
 
@@ -66,12 +66,12 @@ test fn matching_pinned_tool_is_admitted_with_zero_hunks() -> Bool {
       observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
     ]),
   ) {
-    PinnedAdmitted { pin: admitted, plan: plan } =>
+    gunbc.tool_readiness.PinnedAdmitted { pin: admitted, plan: plan } =>
       ((admitted.subject.name as String) == "rustfmt")
         && gunbc.membership_reconcile.membership_write_count(plan: plan) == 0
         && gunbc.membership_reconcile.membership_refusal_count(plan: plan) == 0
-    PinnedRefused { refusals: _ } => false
-    UnpinnedFrontier { row: _, observed: _ } => false
+    gunbc.tool_readiness.PinnedRefused { refusals: _ } => false
+    gunbc.tool_readiness.UnpinnedFrontier { row: _, observed: _ } => false
   }
 }
 
@@ -84,29 +84,29 @@ test fn digest_mismatch_refuses_and_frontier_cannot_bypass_it() -> Bool {
     ]),
   )
   match readiness {
-    PinnedRefused { refusals: rows } =>
+    gunbc.tool_readiness.PinnedRefused { refusals: rows } =>
       gunbc.tool_readiness.tool_readiness_refusal_count(readiness: readiness) == 1
         && match rows |> first {
           Present { value: refusal } =>
             ((refusal.tool.name as String) == "rustfmt")
               && match refusal.cause {
-                ToolMembershipNotConverged { plan: plan, admission: admission } =>
+                gunbc.tool_readiness.ToolMembershipNotConverged { plan: plan, admission: admission } =>
                   gunbc.membership_reconcile.membership_write_count(plan: plan) == 1
                     && match admission {
-                      PinRefused { subject: _, cause: cause } =>
+                      extdeps.pin.PinRefused { subject: _, cause: cause } =>
                         match cause {
-                          ObservedIdentityMismatch { expected: e, observed: o } =>
+                          extdeps.pin.ObservedIdentityMismatch { expected: e, observed: o } =>
                             e == expected_rustfmt_identity && o == other_rustfmt_identity
                           _ => false
                         }
-                      PinIntegrityAdmitted { pin: _ } => false
+                      extdeps.pin.PinIntegrityAdmitted { pin: _ } => false
                     }
                 _ => false
               }
           Absent => false
         }
-    PinnedAdmitted { pin: _, plan: _ } => false
-    UnpinnedFrontier { row: _, observed: _ } => false
+    gunbc.tool_readiness.PinnedAdmitted { pin: _, plan: _ } => false
+    gunbc.tool_readiness.UnpinnedFrontier { row: _, observed: _ } => false
   }
 }
 
@@ -118,14 +118,14 @@ test fn unchanged_tracked_pin_still_refuses_integrity() -> Bool {
       observed(tool_name: "rustfmt", identity: expected_rustfmt_identity),
     ]),
   ) {
-    PinnedRefused { refusals: rows } =>
+    gunbc.tool_readiness.PinnedRefused { refusals: rows } =>
       match rows |> first {
         Present { value: refusal } =>
           match refusal.cause {
-            ToolPinIntegrityRefused { cause: cause, plan: plan } =>
+            gunbc.tool_readiness.ToolPinIntegrityRefused { cause: cause, plan: plan } =>
               gunbc.membership_reconcile.membership_write_count(plan: plan) == 0
                 && match cause {
-                  TrackedResolutionUnrecorded { channel: channel } =>
+                  extdeps.pin.TrackedResolutionUnrecorded { channel: channel } =>
                     (channel as String) == "stable"
                   _ => false
                 }
@@ -133,8 +133,8 @@ test fn unchanged_tracked_pin_still_refuses_integrity() -> Bool {
           }
         Absent => false
       }
-    PinnedAdmitted { pin: _, plan: _ } => false
-    UnpinnedFrontier { row: _, observed: _ } => false
+    gunbc.tool_readiness.PinnedAdmitted { pin: _, plan: _ } => false
+    gunbc.tool_readiness.UnpinnedFrontier { row: _, observed: _ } => false
   }
 }
 
@@ -156,10 +156,10 @@ test fn unrelated_tool_identity_does_not_change_rustfmt_readiness() -> Bool {
     ]),
   )
   match before {
-    PinnedAdmitted { pin: _, plan: before_plan } =>
+    gunbc.tool_readiness.PinnedAdmitted { pin: _, plan: before_plan } =>
       gunbc.membership_reconcile.membership_write_count(plan: before_plan) == 0
         && match after {
-          PinnedAdmitted { pin: _, plan: after_plan } =>
+          gunbc.tool_readiness.PinnedAdmitted { pin: _, plan: after_plan } =>
             gunbc.membership_reconcile.membership_write_count(plan: after_plan) == 0
           _ => false
         }
@@ -181,12 +181,12 @@ test fn missing_observed_tool_identity_refuses_located_and_counted() -> Bool {
     context: context(rows: []),
   )
   match readiness {
-    PinnedRefused { refusals: rows } =>
+    gunbc.tool_readiness.PinnedRefused { refusals: rows } =>
       gunbc.tool_readiness.tool_readiness_refusal_count(readiness: readiness) == 1
         && match rows |> first {
           Present { value: refusal } =>
             match refusal.cause {
-              ToolObservationMissing { tool_name: name } =>
+              gunbc.tool_readiness.ToolObservationMissing { tool_name: name } =>
                 (name as String) == "rustfmt"
               _ => false
             }
@@ -206,12 +206,12 @@ test fn duplicate_observed_tool_identity_refuses_located_and_counted() -> Bool {
     ]),
   )
   match readiness {
-    PinnedRefused { refusals: rows } =>
+    gunbc.tool_readiness.PinnedRefused { refusals: rows } =>
       gunbc.tool_readiness.tool_readiness_refusal_count(readiness: readiness) == 1
         && match rows |> first {
           Present { value: refusal } =>
             match refusal.cause {
-              ToolObservationDuplicate { tool_name: name, count: n } =>
+              gunbc.tool_readiness.ToolObservationDuplicate { tool_name: name, count: n } =>
                 (name as String) == "rustfmt" && n == 2
               _ => false
             }
@@ -231,12 +231,12 @@ test fn declared_unpinned_rustfmt_frontier_is_explicit() -> Bool {
       observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
     ]),
   ) {
-    UnpinnedFrontier { row: row, observed: observation } =>
+    gunbc.tool_readiness.UnpinnedFrontier { row: row, observed: observation } =>
       (row.tool.name as String) == "rustfmt"
         && (observation.tool_name as String) == "rustfmt"
         && row.trigger.decl_name == "witness_unpinned_frontier_row"
-    PinnedAdmitted { pin: _, plan: _ } => false
-    PinnedRefused { refusals: _ } => false
+    gunbc.tool_readiness.PinnedAdmitted { pin: _, plan: _ } => false
+    gunbc.tool_readiness.PinnedRefused { refusals: _ } => false
   }
 }
 
@@ -248,11 +248,11 @@ test fn unlisted_unpinned_tool_refuses() -> Bool {
       observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
     ]),
   ) {
-    PinnedRefused { refusals: rows } =>
+    gunbc.tool_readiness.PinnedRefused { refusals: rows } =>
       match rows |> first {
         Present { value: refusal } =>
           match refusal.cause {
-            UnpinnedToolUndeclared => true
+            gunbc.tool_readiness.UnpinnedToolUndeclared => true
             _ => false
           }
         Absent => false
@@ -272,11 +272,11 @@ test fn duplicate_unpinned_frontier_rows_refuse() -> Bool {
       observed(tool_name: "rustfmt", identity: other_rustfmt_identity),
     ]),
   ) {
-    PinnedRefused { refusals: rows } =>
+    gunbc.tool_readiness.PinnedRefused { refusals: rows } =>
       match rows |> first {
         Present { value: refusal } =>
           match refusal.cause {
-            UnpinnedToolFrontierDuplicate { count: n } => n == 2
+            gunbc.tool_readiness.UnpinnedToolFrontierDuplicate { count: n } => n == 2
             _ => false
           }
         Absent => false

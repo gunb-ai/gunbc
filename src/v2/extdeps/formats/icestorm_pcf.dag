@@ -26,13 +26,13 @@ data pcf_forbidden_name_characters: List<String> = [
   " ", "\t", "\n", "#", "\"", "'", "[", "]", "(", ")", "{", "}", ",", ";",
 ]
 
-fn pcf_name_contains_forbidden(spelling: String) -> v2.std.logic.Bool {
+fn pcf_name_contains_forbidden(spelling: String) -> Bool {
   fold(pcf_forbidden_name_characters, init: false, f: fn(acc, ch) {
-    acc || std.types.list_length(items: split(s: spelling, delimiter: ch)) > 1
+    acc || list_length(items: split(s: spelling, delimiter: ch)) > 1
   })
 }
 
-fn pcf_name_is_admissible(spelling: String) -> v2.std.logic.Bool {
+fn pcf_name_is_admissible(spelling: String) -> Bool {
   spelling != "" && !pcf_name_contains_forbidden(spelling: spelling)
 }
 
@@ -44,14 +44,14 @@ fn pcf_statement_line(s: PcfStatement) -> v2.std.optional.Optional<String> {
   match s {
     SetIo { port: p, pin: n } =>
       if pcf_name_is_admissible(spelling: p as String) && pcf_name_is_admissible(spelling: n as String) {
-        optional_present(
+        v2.std.optional.optional_present(
           value: pcf_text_concat(
             left: pcf_text_concat(left: "set_io ", right: p as String),
             right: pcf_text_concat(left: " ", right: n as String)
           )
         )
       } else {
-        optional_absent()
+        v2.std.optional.optional_absent()
       }
   }
 }
@@ -61,26 +61,26 @@ fn pcf_statement_line(s: PcfStatement) -> v2.std.optional.Optional<String> {
 // would then assign it somewhere, and the board would be wired to a pin nobody chose. The whole
 // emission refuses instead.
 fn pcf_emit(c: PcfConstraints) -> PcfEmission {
-  match fold_list(
+  match v2.std.algebra.fold_list(
     xs: c.statements,
-    empty: optional_present(value: ""),
+    empty: v2.std.optional.optional_present(value: ""),
     cons: fn(acc, s) {
       match acc {
-        Absent => optional_absent()
-        Present { value: text } =>
+        v2.std.optional.Absent => v2.std.optional.optional_absent()
+        v2.std.optional.Present { value: text } =>
           match pcf_statement_line(s: s) {
-            Absent => optional_absent()
-            Present { value: line } =>
+            v2.std.optional.Absent => v2.std.optional.optional_absent()
+            v2.std.optional.Present { value: line } =>
               if text == "" {
-                optional_present(value: line)
+                v2.std.optional.optional_present(value: line)
               } else {
-                optional_present(value: pcf_text_concat(left: pcf_text_concat(left: text, right: "\n"), right: line))
+                v2.std.optional.optional_present(value: pcf_text_concat(left: pcf_text_concat(left: text, right: "\n"), right: line))
               }
           }
       }
     }
   ) {
-    Present { value: text } => PcfEmitted { source: pcf_text_concat(left: text, right: "\n") }
-    Absent => PcfEmissionRefused { reason: "a port or pin name is not spellable in a physical constraint file" }
+    v2.std.optional.Present { value: text } => PcfEmitted { source: pcf_text_concat(left: text, right: "\n") }
+    v2.std.optional.Absent => PcfEmissionRefused { reason: "a port or pin name is not spellable in a physical constraint file" }
   }
 }

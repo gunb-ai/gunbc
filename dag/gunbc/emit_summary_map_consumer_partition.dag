@@ -46,7 +46,7 @@ type AskIdentity
 // WHAT HAPPENS TO THE SUMMARY ONCE THE SITE HAS IT.
 //
 // TerminalAtSite is the only arm an identity-keyed map repairs on its own: the summary decides a
-// std.types.Bool or is consumed structurally, and no spelling leaves the site.
+// Bool or is consumed structurally, and no spelling leaves the site.
 //
 // ReKeyedIntoSameMap is the kind-3 class wearing a better hat: the site queried with a node in hand
 // and then keys a SECOND lookup on a String drawn out of the summary it just received.
@@ -238,56 +238,56 @@ data emit_summary_map_consumers: List<SummaryMapConsumer> = [
   },
 ]
 
-fn consumer_holds_node_at_ask(c: SummaryMapConsumer) -> std.types.Bool {
+fn consumer_holds_node_at_ask(c: SummaryMapConsumer) -> Bool {
   match c.ask {
     NodeHeldAtAsk { holder_expression: _ } => true
     _ => false
   }
 }
 
-fn consumer_ask_is_spelling_only(c: SummaryMapConsumer) -> std.types.Bool {
+fn consumer_ask_is_spelling_only(c: SummaryMapConsumer) -> Bool {
   match c.ask {
     SpellingOnlyFromMapValue { severed_at: _, map_field: _ } => true
     _ => false
   }
 }
 
-fn consumer_ask_is_composite(c: SummaryMapConsumer) -> std.types.Bool {
+fn consumer_ask_is_composite(c: SummaryMapConsumer) -> Bool {
   match c.ask {
     CompositeOfTwoSpellings { parts: _, second_part_source: _ } => true
     _ => false
   }
 }
 
-fn consumer_ask_is_scan(c: SummaryMapConsumer) -> std.types.Bool {
+fn consumer_ask_is_scan(c: SummaryMapConsumer) -> Bool {
   match c.ask {
     NoKeyWholeMapScan { what_is_scanned: _ } => true
     _ => false
   }
 }
 
-fn consumer_use_is_terminal(c: SummaryMapConsumer) -> std.types.Bool {
+fn consumer_use_is_terminal(c: SummaryMapConsumer) -> Bool {
   match c.use {
     TerminalAtSite { what_is_decided: _ } => true
     _ => false
   }
 }
 
-fn consumer_use_rekeys(c: SummaryMapConsumer) -> std.types.Bool {
+fn consumer_use_rekeys(c: SummaryMapConsumer) -> Bool {
   match c.use {
     ReKeyedIntoSameMap { second_key_source: _, second_lookup_decides: _ } => true
     _ => false
   }
 }
 
-fn consumer_use_escapes(c: SummaryMapConsumer) -> std.types.Bool {
+fn consumer_use_escapes(c: SummaryMapConsumer) -> Bool {
   match c.use {
     SpellingEscapesToCaller { escapes_as: _, consumed_by: _ } => true
     _ => false
   }
 }
 
-fn consumer_use_leaves_the_map(c: SummaryMapConsumer) -> std.types.Bool {
+fn consumer_use_leaves_the_map(c: SummaryMapConsumer) -> Bool {
   match c.use {
     ReKeyedIntoForeignNameTable { table: _, why_a_rekey_cannot_reach_it: _ } => true
     _ => false
@@ -431,7 +431,7 @@ data emit_summary_map_severance_points: List<SeverancePoint> = [
 // THE JOIN BETWEEN THE TWO ROSTERS, derived here so a spelling-only row cannot name a fold that the
 // severance roster does not carry. Without it a row could file "the identity is gone" without
 // saying where it went.
-fn consumer_severance_is_rostered(c: SummaryMapConsumer) -> std.types.Bool {
+fn consumer_severance_is_rostered(c: SummaryMapConsumer) -> Bool {
   match c.ask {
     SpellingOnlyFromMapValue { severed_at: sa, map_field: _ } =>
       emit_summary_map_severance_points |> any(s => s.fold.decl_name == sa.decl_name && s.fold.module_path == sa.module_path)
@@ -607,7 +607,7 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 //
 // AND IT IS LIVE, measured by a sibling lane inside a real emit of the 03_ingest closure with both
 // roots (instrumented build_emit_graph_info, tree pinned inside the run): modules=171,
-// top_level_summaries=1059, distinct_names=1056, colliding_names=3 -- std.types.Bool (dag/std/types.dag versus
+// top_level_summaries=1059, distinct_names=1056, colliding_names=3 -- Bool (dag/std/types.dag versus
 // src/v2/std/logic.dag), RankingDimension and TerminationProof (dag/std/termination.dag versus
 // src/v2/std/cardinality.dag). 1059 minus 1056 is 3, so the arithmetic closes on three genuinely
 // destroyed summaries.
@@ -618,7 +618,7 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // declares `type Nat = CommutativeSemiring<Magnitude>`, an ALIAS, and build_type_summary returns none
 // when item.connective == NoConnective, so the seed's Nat never becomes a summary and there is no
 // second entry to destroy. Co-residency of two DECLARATIONS is not co-residency of two SUMMARIES, and
-// I conflated them. std.types.Bool is the specimen that survives: coproduct against coproduct, both
+// I conflated them. Bool is the specimen that survives: coproduct against coproduct, both
 // summary-producing, and in the live three.
 //
 // THE STATIC BOUND NARROWS, AND THE NARROWING IS ROBUST WHILE THE NUMBER IS NOT. Of the 116
@@ -679,7 +679,7 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // once. Those rows count DECLARATION collisions in a pool: that is what the walk measures and it is
 // the right denominator for the question they answer. They are NOT map collisions. Int and Nat are
 // both named there as specimens and both are now known to be alias-excluded, so neither is a live
-// collision in type_summaries. std.types.Bool, RankingDimension and TerminationProof are the three that are.
+// collision in type_summaries. Bool, RankingDimension and TerminationProof are the three that are.
 //
 // THE FIVE NAMES GROUND TRUTH COVERS VALIDATE BOTH CLASSIFIERS AND DISCRIMINATE NEITHER, and this
 // clause previously overstated that. It read as a five-point validation OF THIS CARRIER'S classifier,
@@ -690,7 +690,7 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // about whose four names are wrong, which is the only open question between 79 and 83.
 //
 // WHAT THE FIVE DO ESTABLISH, kept because it is real: both classifiers agree with the connective on
-// Int (alias/alias, neither side produces), Nat (alias/coproduct, exactly one), and std.types.Bool,
+// Int (alias/alias, neither side produces), Nat (alias/coproduct, exactly one), and Bool,
 // RankingDimension and TerminationProof (both sides producing -- exactly the live three). So the
 // four-name disagreement lies OUTSIDE every name ground truth has been read for. That is a constraint
 // on WHERE the gap is and carries nothing about WHOSE side it falls on.
@@ -774,7 +774,7 @@ type GuardRow {
   site: std.decl_ref.DeclarationRef
   trigger_preservation: GuardCondition
   refusal: GuardCondition
-  return_type_can_express_the_answer: std.types.Bool
+  return_type_can_express_the_answer: Bool
 }
 
 data emit_summary_map_guard_rows: List<GuardRow> = [
@@ -823,19 +823,19 @@ data emit_summary_map_guard_rows: List<GuardRow> = [
 ]
 
 // is_known_variant's return type is the half a repaired map does not reach. Even with a faithful
-// index a std.types.Bool cannot distinguish UNIQUELY KNOWN from AMBIGUOUSLY KNOWN, so the caller cannot refuse
+// index a Bool cannot distinguish UNIQUELY KNOWN from AMBIGUOUSLY KNOWN, so the caller cannot refuse
 // what it cannot be told. "Fix the map and this row is fine" is the natural inference and it is
 // wrong; the same holds for variant_belongs_to_enum, type_has_fn_fields and is_optional_struct_field,
 // whose false arm already conflates absent with wrong-provider.
 
-fn guard_fails_trigger_preservation(g: GuardRow) -> std.types.Bool {
+fn guard_fails_trigger_preservation(g: GuardRow) -> Bool {
   match g.trigger_preservation {
     FailsHere { what_merged_the_input: _, what_is_lost: _ } => true
     _ => false
   }
 }
 
-fn guard_refuses(g: GuardRow) -> std.types.Bool {
+fn guard_refuses(g: GuardRow) -> Bool {
   match g.refusal {
     HoldsHere { how: _ } => true
     _ => false
@@ -888,7 +888,7 @@ fn collision_row_colliding_names(r: CollisionPopulation) -> Int {
   }
 }
 
-fn collision_row_is_pool_measured(r: CollisionPopulation) -> std.types.Bool {
+fn collision_row_is_pool_measured(r: CollisionPopulation) -> Bool {
   match r {
     PoolMeasured { pool_rule: _, pool_subject: _, modules_in_pool: _, type_declarations: _, distinct_colliding_names: _, specimens: _ } => true
     _ => false

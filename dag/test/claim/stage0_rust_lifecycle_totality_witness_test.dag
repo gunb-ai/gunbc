@@ -2,21 +2,21 @@ module test.claim.stage0_rust_lifecycle_totality_witness
 
 
 test fn lifecycle_totality_note_cites_identity_join() -> Bool {
-  string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "identity join")
-    && string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "C1 carrier")
+  string_contains(s: gunbc.stage0_rust_lifecycle_totality.stage0_rust_lifecycle_totality_note, pattern: "identity join")
+    && string_contains(s: gunbc.stage0_rust_lifecycle_totality.stage0_rust_lifecycle_totality_note, pattern: "C1 carrier")
 }
 
 test fn lifecycle_totality_exact_unclassified_preserves_identity() -> Bool {
-  exact_unclassified_tracked_paths(
+  gunbc.stage0_rust_lifecycle_totality.exact_unclassified_tracked_paths(
     tracked_paths: ["a.rs", "classified.rs", "b.rs"],
     classified_paths: ["classified.rs"]
   ) == ["a.rs", "b.rs"]
 }
 
 test fn lifecycle_totality_red_control_reports_exact_unclassified_path() -> Bool {
-  let observation = lifecycle_totality_witness_observation(extra_paths: ["orphan.rs"])
-  match lifecycle_totality_receipt(observation: observation) {
-    LifecycleTotalityDerived {
+  let observation = gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_witness_observation(extra_paths: ["orphan.rs"])
+  match gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_receipt(observation: observation) {
+    gunbc.stage0_rust_lifecycle_totality.LifecycleTotalityDerived {
       tracked_paths: tracked_paths,
       generated_paths: generated_paths,
       maintenance_disposition_paths: maintenance_disposition_paths,
@@ -30,44 +30,44 @@ test fn lifecycle_totality_red_control_reports_exact_unclassified_path() -> Bool
       ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
     } =>
       paths == ["orphan.rs"]
-        && !lifecycle_decision_complete(
-          receipt: lifecycle_totality_receipt(observation: observation)
+        && !gunbc.stage0_rust_lifecycle_totality.lifecycle_decision_complete(
+          receipt: gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_receipt(observation: observation)
         )
     _ => false
   }
 }
 
 test fn lifecycle_totality_discovery_and_decision_are_separate() -> Bool {
-  let receipt = lifecycle_totality_receipt(
-    observation: lifecycle_totality_witness_observation(extra_paths: ["orphan.rs"])
+  let receipt = gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_receipt(
+    observation: gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_witness_observation(extra_paths: ["orphan.rs"])
   )
-  lifecycle_discovery_complete(receipt: receipt)
-    && !lifecycle_decision_complete(receipt: receipt)
+  gunbc.stage0_rust_lifecycle_totality.lifecycle_discovery_complete(receipt: receipt)
+    && !gunbc.stage0_rust_lifecycle_totality.lifecycle_decision_complete(receipt: receipt)
 }
 
 test fn lifecycle_totality_counts_retirement_trigger_as_underived_axis() -> Bool {
-  length(xs: stage0_rust_lifecycle_totality_underived_axes) == 1
-    && string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "stage0_rust_lifecycle_totality_underived_axes")
+  v2.std.algebra.length(xs: gunbc.stage0_rust_lifecycle_totality.stage0_rust_lifecycle_totality_underived_axes) == 1
+    && string_contains(s: gunbc.stage0_rust_lifecycle_totality.stage0_rust_lifecycle_totality_note, pattern: "stage0_rust_lifecycle_totality_underived_axes")
     && string_contains(
-      s: lifecycle_totality_retirement_trigger_underived_reason,
+      s: gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_retirement_trigger_underived_reason,
       pattern: "RetirementTrigger carrier not modeled"
     )
 }
 
 test fn lifecycle_totality_positive_control_discovery_complete() -> Bool {
-  lifecycle_discovery_complete(
-    receipt: lifecycle_totality_receipt(
-      observation: lifecycle_totality_witness_observation(extra_paths: [])
+  gunbc.stage0_rust_lifecycle_totality.lifecycle_discovery_complete(
+    receipt: gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_receipt(
+      observation: gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_witness_observation(extra_paths: [])
     )
   )
 }
 
 test fn lifecycle_totality_red_control_cargo_role_without_disposition_blocks_decision() -> Bool {
-  let receipt = lifecycle_totality_receipt(
-    observation: lifecycle_totality_witness_observation(extra_paths: [])
+  let receipt = gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_receipt(
+    observation: gunbc.stage0_rust_lifecycle_totality.lifecycle_totality_witness_observation(extra_paths: [])
   )
   match receipt {
-    LifecycleTotalityDerived {
+    gunbc.stage0_rust_lifecycle_totality.LifecycleTotalityDerived {
       unclassified_paths: unclassified,
       role_without_disposition_paths: role_without,
       tracked_paths: tracked_paths,
@@ -80,9 +80,9 @@ test fn lifecycle_totality_red_control_cargo_role_without_disposition_blocks_dec
       cross_axis_overlap_paths: cross_axis_overlap_paths,
       ill_formed_maintenance_disposition_paths: ill_formed_maintenance_disposition_paths
     } =>
-      length(xs: unclassified) == 0
-        && path_in_list(path: "src/v1/stage0/src/main.rs", paths: role_without)
-        && !lifecycle_decision_complete(receipt: receipt)
+      v2.std.algebra.length(xs: unclassified) == 0
+        && gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(path: "src/v1/stage0/src/main.rs", paths: role_without)
+        && !gunbc.stage0_rust_lifecycle_totality.lifecycle_decision_complete(receipt: receipt)
     _ => false
   }
 }

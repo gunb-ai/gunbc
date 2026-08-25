@@ -1,7 +1,7 @@
 module extdeps.llm.claude_setup_token_cli
 
 
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = claude_cli_external_authority_anchor
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.llm.cli.claude_cli_external_authority_anchor
 
 data claude_setup_token_command: std.types.NonEmptyStr = "setup-token" as std.types.NonEmptyStr
 
@@ -14,10 +14,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.llm.claude_setup_token_cli",
       decl_name: "claude_setup_token_command",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.llm.claude_setup_token_cli.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -81,8 +81,8 @@ fn first_https_url_token(line: String) -> String? {
   let tokens = split(s: line, delimiter: " ")
   fold(tokens, init: v2.std.optional.Absent, f: fn(acc, token) {
     match acc {
-      Present { value: _ } => acc
-      Absent => {
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent => {
         let trimmed = std.algebra.trim(token)
         match starts_with(s: trimmed, prefix: setup_token_challenge_url_marker) {
           true => v2.std.optional.Present { value: trimmed }
@@ -101,15 +101,15 @@ fn parse_setup_token_challenge_from_terminal(
     |> filter(l => string_contains(s: l, pattern: setup_token_challenge_url_marker))
     |> first
   match url_hit {
-    Absent => SetupTokenChallengeParseRefused {
+    v2.std.optional.Absent => SetupTokenChallengeParseRefused {
       reason: "no verification uri in setup-token terminal output" as std.types.NonEmptyStr,
     }
-    Present { value: url_line } =>
+    v2.std.optional.Present { value: url_line } =>
       match first_https_url_token(line: url_line) {
-        Absent => SetupTokenChallengeParseRefused {
+        v2.std.optional.Absent => SetupTokenChallengeParseRefused {
           reason: "verification uri line contains no extractable https url token" as std.types.NonEmptyStr,
         }
-        Present { value: url } =>
+        v2.std.optional.Present { value: url } =>
           match setup_token_code_scan(lines: lines) {
             SetupTokenCodeScanSeeking => SetupTokenChallengeParseRefused {
               reason: "verification uri present but user code marker missing" as std.types.NonEmptyStr,
@@ -158,8 +158,8 @@ fn extract_setup_token_candidate(
   let lines = split(s: pane as String, delimiter: "\n") |> map(l => std.algebra.trim(l))
   fold(lines, init: v2.std.optional.Absent, f: fn(found, line) {
     match found {
-      Present { value: _ } => found
-      Absent =>
+      v2.std.optional.Present { value: _ } => found
+      v2.std.optional.Absent =>
         match line_is_setup_token_candidate(line: line, prefix: prefix) {
           true => v2.std.optional.Present { value: line }
           false => v2.std.optional.Absent
@@ -173,6 +173,6 @@ fn setup_token_candidate_length_ok(
   min_length: std.measure.CharacterCount,
   max_length: std.measure.CharacterCount,
 ) -> Bool {
-  let observed = character_count(count: string_length(s: token))
-  measure_le(a: min_length, b: observed) && measure_le(a: observed, b: max_length)
+  let observed = std.measure.character_count(count: string_length(s: token))
+  std.measure.measure_le(a: min_length, b: observed) && std.measure.measure_le(a: observed, b: max_length)
 }

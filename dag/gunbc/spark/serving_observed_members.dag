@@ -70,12 +70,12 @@ fn spark_serving_observed_linger_members(
 ) -> List<gunbc.spark.serving_membership.SparkServingMember> {
   match linger {
     LingerObservedEnabled => [
-      spark_serving_member(
+      gunbc.spark.serving_membership.spark_serving_member(
         host: host,
-        principal: spark_serving_serving_principal(),
+        principal: gunbc.spark.serving_membership.spark_serving_serving_principal(),
         address: gunbc.spark.serving_membership.SparkServingLingerAddress,
-        state_digest: spark_serving_executor_linger_state_digest(),
-        ownership: Ensured,
+        state_digest: gunbc.spark.serving_membership.spark_serving_executor_linger_state_digest(),
+        ownership: gunbc.ownership.Ensured,
       ),
     ]
     LingerObservedDisabled => []
@@ -89,12 +89,12 @@ fn spark_serving_observed_unit_members(
 ) -> List<gunbc.spark.serving_membership.SparkServingMember> {
   match unit {
     UserUnitStateObserved { unit_state_digest: d } => [
-      spark_serving_member(
+      gunbc.spark.serving_membership.spark_serving_member(
         host: host,
-        principal: spark_serving_serving_principal(),
+        principal: gunbc.spark.serving_membership.spark_serving_serving_principal(),
         address: gunbc.spark.serving_membership.SparkServingUserUnitAddress,
         state_digest: d,
-        ownership: extdeps.languages.rust.types.Owned,
+        ownership: gunbc.ownership.Owned,
       ),
     ]
     UserUnitStateAbsent => []
@@ -123,15 +123,15 @@ fn spark_serving_observed_runtime_members(
   host: product.placement_supply.HostIdentity,
   runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservation,
 ) -> List<gunbc.spark.serving_membership.SparkServingMember> {
-  match runtime_materialization_state_digest(observation: runtime) {
+  match gunbc.ollama_runtime_bundle.runtime_materialization_state_digest(observation: runtime) {
     Absent => []
     Present { value: d } => [
-      spark_serving_member(
+      gunbc.spark.serving_membership.spark_serving_member(
         host: host,
-        principal: spark_serving_serving_principal(),
+        principal: gunbc.spark.serving_membership.spark_serving_serving_principal(),
         address: gunbc.spark.serving_membership.SparkServingRuntimeRootAddress,
         state_digest: d,
-        ownership: extdeps.languages.rust.types.Owned,
+        ownership: gunbc.ownership.Owned,
       ),
     ]
   }
@@ -158,15 +158,15 @@ fn spark_serving_observed_model_members(
   host: product.placement_supply.HostIdentity,
   store: gunbc.ollama_runtime_bundle.ModelStoreObservation,
 ) -> List<gunbc.spark.serving_membership.SparkServingMember> {
-  match model_store_state_digest(observation: store) {
+  match gunbc.ollama_runtime_bundle.model_store_state_digest(observation: store) {
     Absent => []
     Present { value: d } => [
-      spark_serving_member(
+      gunbc.spark.serving_membership.spark_serving_member(
         host: host,
-        principal: spark_serving_serving_principal(),
-        address: gunbc.spark.serving_membership.SparkServingModelSlotAddress { slot: spark_serving_primary_model_slot },
+        principal: gunbc.spark.serving_membership.spark_serving_serving_principal(),
+        address: gunbc.spark.serving_membership.SparkServingModelSlotAddress { slot: gunbc.spark.serving_membership.spark_serving_primary_model_slot },
         state_digest: d,
-        ownership: extdeps.languages.rust.types.Owned,
+        ownership: gunbc.ownership.Owned,
       ),
     ]
   }
@@ -261,8 +261,8 @@ fn spark_serving_reached_host_members(
         spark_serving_observed_linger_members(host: host, linger: linger),
       ),
     ),
-    runtime_observed: runtime_materialization_was_observed(observation: runtime),
-    model_observed: model_store_was_observed(observation: store),
+    runtime_observed: gunbc.ollama_runtime_bundle.runtime_materialization_was_observed(observation: runtime),
+    model_observed: gunbc.ollama_runtime_bundle.model_store_was_observed(observation: store),
     unit_observed: spark_serving_unit_state_was_observed(unit: unit),
     registration_observed: spark_serving_enablement_was_observed(manager: enablement),
     enablement_observed: spark_serving_enablement_was_observed(manager: enablement),
@@ -359,11 +359,11 @@ fn spark_serving_projection_supports_empty_replan(
 // If base64 is absent or rejects -w, the leg fails and the state is Unobserved, which refuses the
 // plan. That is the correct arm: an unreadable unit must not be planned as an absent one.
 fn spark_serving_user_unit_read_argv() -> List<String> {
-  ["base64", "-w", "0", spark_serving_user_unit_path() as String]
+  ["base64", "-w", "0", gunbc.spark.serving_install_paths.spark_serving_user_unit_path() as String]
 }
 
 fn spark_serving_user_unit_is_enabled_argv() -> List<String> {
-  systemctl_user_is_enabled_argv(unit: spark_serving_unit_name as std.types.NonEmptyStr)
+  extdeps.systemd.systemctl.systemctl_user_is_enabled_argv(unit: gunbc.spark.serving_unit_identity.spark_serving_unit_name as std.types.NonEmptyStr)
 }
 
 // CLASSIFYING THE READ, without ever deriving the answer from the desired state.
@@ -424,7 +424,7 @@ fn classify_observed_user_unit(
 ) -> SparkServingObservedUnitState {
   if read_succeeded {
     UserUnitStateObserved {
-      unit_state_digest: spark_serving_user_unit_content_identity(wire_base64: read_stdout),
+      unit_state_digest: gunbc.spark.serving_unit_render.spark_serving_user_unit_content_identity(wire_base64: read_stdout),
     }
   } else {
     if file_absent { UserUnitStateAbsent } else { UserUnitStateUnobserved }
@@ -492,21 +492,21 @@ fn spark_serving_observed_unit_activity_members(
     UnitActivityUnobserved => []
     UnitActivityNoSuchUnit => []
     UnitActivityRunning => [
-      spark_serving_member(
+      gunbc.spark.serving_membership.spark_serving_member(
         host: host,
-        principal: spark_serving_serving_principal(),
-        address: gunbc.spark.serving_membership.SparkServingUserUnitActivityAddress,
+        principal: gunbc.spark.serving_membership.spark_serving_serving_principal(),
+        address: SparkServingUserUnitActivityAddress,
         state_digest: spark_serving_user_unit_active_state,
-        ownership: extdeps.languages.rust.types.Owned,
+        ownership: gunbc.ownership.Owned,
       ),
     ]
     UnitActivityStopped => [
-      spark_serving_member(
+      gunbc.spark.serving_membership.spark_serving_member(
         host: host,
-        principal: spark_serving_serving_principal(),
-        address: gunbc.spark.serving_membership.SparkServingUserUnitActivityAddress,
+        principal: gunbc.spark.serving_membership.spark_serving_serving_principal(),
+        address: SparkServingUserUnitActivityAddress,
         state_digest: spark_serving_user_unit_stopped_state,
-        ownership: extdeps.languages.rust.types.Owned,
+        ownership: gunbc.ownership.Owned,
       ),
     ]
   }
@@ -520,21 +520,21 @@ fn spark_serving_observed_unit_enablement_members(
     UserUnitManagerUnobserved => []
     UserUnitManagerNotRegistered => []
     UserUnitManagerEnabled => [
-      spark_serving_member(
+      gunbc.spark.serving_membership.spark_serving_member(
         host: host,
-        principal: spark_serving_serving_principal(),
-        address: gunbc.spark.serving_membership.SparkServingUserUnitEnablementAddress,
+        principal: gunbc.spark.serving_membership.spark_serving_serving_principal(),
+        address: SparkServingUserUnitEnablementAddress,
         state_digest: spark_serving_user_unit_enabled_state,
-        ownership: extdeps.languages.rust.types.Owned,
+        ownership: gunbc.ownership.Owned,
       ),
     ]
     UserUnitManagerDisabled => [
-      spark_serving_member(
+      gunbc.spark.serving_membership.spark_serving_member(
         host: host,
-        principal: spark_serving_serving_principal(),
-        address: gunbc.spark.serving_membership.SparkServingUserUnitEnablementAddress,
+        principal: gunbc.spark.serving_membership.spark_serving_serving_principal(),
+        address: SparkServingUserUnitEnablementAddress,
         state_digest: spark_serving_user_unit_disabled_state,
-        ownership: extdeps.languages.rust.types.Owned,
+        ownership: gunbc.ownership.Owned,
       ),
     ]
   }
@@ -563,12 +563,12 @@ fn spark_serving_observed_unit_registration_members(
   match manager {
     UserUnitManagerUnobserved => []
     UserUnitManagerNotRegistered => [
-      spark_serving_member(
+      gunbc.spark.serving_membership.spark_serving_member(
         host: host,
-        principal: spark_serving_serving_principal(),
-        address: gunbc.spark.serving_membership.SparkServingUserUnitRegistrationAddress,
+        principal: gunbc.spark.serving_membership.spark_serving_serving_principal(),
+        address: SparkServingUserUnitRegistrationAddress,
         state_digest: spark_serving_user_unit_not_registered_state,
-        ownership: extdeps.languages.rust.types.Owned,
+        ownership: gunbc.ownership.Owned,
       ),
     ]
     UserUnitManagerEnabled =>
@@ -587,21 +587,21 @@ fn spark_serving_registered_member_for_content(
 ) -> List<gunbc.spark.serving_membership.SparkServingMember> {
   match unit {
     UserUnitStateObserved { unit_state_digest: d } => [
-      spark_serving_member(
+      gunbc.spark.serving_membership.spark_serving_member(
         host: host,
-        principal: spark_serving_serving_principal(),
-        address: gunbc.spark.serving_membership.SparkServingUserUnitRegistrationAddress,
+        principal: gunbc.spark.serving_membership.spark_serving_serving_principal(),
+        address: SparkServingUserUnitRegistrationAddress,
         state_digest: spark_serving_user_unit_registration_state(content_digest: d),
-        ownership: extdeps.languages.rust.types.Owned,
+        ownership: gunbc.ownership.Owned,
       ),
     ]
     UserUnitStateAbsent => [
-      spark_serving_member(
+      gunbc.spark.serving_membership.spark_serving_member(
         host: host,
-        principal: spark_serving_serving_principal(),
-        address: gunbc.spark.serving_membership.SparkServingUserUnitRegistrationAddress,
+        principal: gunbc.spark.serving_membership.spark_serving_serving_principal(),
+        address: SparkServingUserUnitRegistrationAddress,
         state_digest: spark_serving_user_unit_registered_without_content_state,
-        ownership: extdeps.languages.rust.types.Owned,
+        ownership: gunbc.ownership.Owned,
       ),
     ]
     UserUnitStateUnobserved => []

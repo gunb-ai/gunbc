@@ -9,23 +9,23 @@ module extdeps.vendor.texas_instruments
 // appears in the scope clause together with its registered address. Pulled 2026-08-14.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.ti.com/legal/terms-conditions/terms-of-use.html"
   }
 }
 
 data texas_instruments_registrant_note: String = "extdeps.vendor.texas_instruments cites the vendor's own terms of use, whose scope clause reads 'Texas Instruments Incorporated, 12500 TI Boulevard, Dallas, Texas 75243, USA and its subsidiaries'. The stronger authority for a registrant's legal name is its own filing, and this repository already reaches EDGAR directly for the SCM issuer rows; both data.sec.gov and the EDGAR browse endpoint refused the fetch performed while authoring this module with HTTP 403, so the weaker-but-read authority is cited rather than a stronger one asserted unread."
 
-data texas_instruments: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "Texas Instruments Incorporated" }
+data texas_instruments: extdeps.vendor.Vendor<extdeps.hardware.Hardware> = extdeps.vendor.Vendor { legal_name: "Texas Instruments Incorporated" }
 
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
   subject: extdeps.external_authority.ExternalSubjectRef {
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.vendor.texas_instruments",
       decl_name: "texas_instruments",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.vendor.texas_instruments.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }

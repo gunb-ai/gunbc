@@ -1,5 +1,6 @@
 module v2.test.manual.llvm_ir_b2_omni_in_b_probe
 
+
 fn llvm_probe_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: v2.std.node.SyntheticOccurrence

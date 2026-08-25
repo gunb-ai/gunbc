@@ -1,8 +1,9 @@
 module extdeps.tools.chmod
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/chmod.html"
   }
 }
@@ -11,7 +12,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // extdeps.tools.mkdir: a sudoers NOPASSWD rule names a command by path. chmod sits at /bin rather
 // than /usr/bin on the hosts this actuator targets, and that is a fact about those hosts recorded
 // here rather than assumed at a call site.
-data chmod_binary_path: NonEmptyStr = "/bin/chmod"
+data chmod_binary_path: std.types.NonEmptyStr = "/bin/chmod"
 
 // THE SECOND SPELLING WAS NOT A STYLE VARIANT, IT WAS A DISAGREEMENT. gunbc.roadmap_dashboard_
 // instance_apply carried "/usr/bin/chmod" twice -- once as the program its install step executes,
@@ -26,7 +27,7 @@ data chmod_binary_path: NonEmptyStr = "/bin/chmod"
 // length in extdeps.tools.env: an absolute path is a claim about an observed filesystem, and
 // asserting one for a remote target this repository has not observed would fabricate it. A caller
 // reaching a host we do not model cites this row; a caller reaching one we do cites the path above.
-data chmod_path_resolved_program: NonEmptyStr = "chmod"
+data chmod_path_resolved_program: std.types.NonEmptyStr = "chmod"
 
 // THE SYMBOLIC MODE, NOT AN OCTAL LITERAL. `+x` adds the execute bit to whatever permissions the
 // file already carries; an octal mode REPLACES them, so the two are not interchangeable spellings
@@ -57,6 +58,6 @@ fn chmod_add_executable_argv(path: String) -> List<String> {
 // every caller's behalf and would have changed a live actuation the moment it was introduced --
 // gunbc.fleet_converge_plan_cli writes its apply script on a fleet host and cites the resolved row.
 // The caller says which claim it is making; neither spelling is this builder's to assume.
-fn chmod_set_mode_command(chmod_program: NonEmptyStr, mode: NonEmptyStr, path: String) -> ArgvCommand {
-  argv_command(program: chmod_program, arguments: [mode as String, path])
+fn chmod_set_mode_command(chmod_program: std.types.NonEmptyStr, mode: std.types.NonEmptyStr, path: String) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(program: chmod_program, arguments: [mode as String, path])
 }

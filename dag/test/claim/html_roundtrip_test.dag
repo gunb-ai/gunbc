@@ -1,7 +1,7 @@
 module test.claim.html_roundtrip
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn roundtrip_core_node() -> std.markup.Fragment {
   std.markup.Element {
@@ -24,19 +24,19 @@ fn roundtrip_core_node() -> std.markup.Fragment {
 
 test fn witness_roundtrip_core() -> Bool {
   match extdeps.languages.html.ingest_html_source(src: extdeps.languages.html.serialize_html_source(node: roundtrip_core_node())) {
-    IngestedNode { node } => node == roundtrip_core_node()
-    IngestRejected { reason: _ } => false
+    extdeps.languages.html.IngestedNode { node } => node == roundtrip_core_node()
+    extdeps.languages.html.IngestRejected { reason: _ } => false
   }
 }
 
 fn perturbed_spellings() -> std.markup.MarkupBracket {
   std.markup.MarkupBracket {
-    tag_open: extdeps.languages.html.canonical_html_spellings.tag_open,
-    end_tag_open: extdeps.languages.html.canonical_html_spellings.end_tag_open,
-    tag_close: extdeps.languages.html.canonical_html_spellings.tag_close,
-    attr_sep: extdeps.languages.html.canonical_html_spellings.attr_sep,
+    tag_open: canonical_html_spellings.tag_open,
+    end_tag_open: canonical_html_spellings.end_tag_open,
+    tag_close: canonical_html_spellings.tag_close,
+    attr_sep: canonical_html_spellings.attr_sep,
     attr_assign: ":=",
-    attr_quote: extdeps.languages.html.canonical_html_spellings.attr_quote,
+    attr_quote: canonical_html_spellings.attr_quote,
   }
 }
 
@@ -51,8 +51,8 @@ fn perturbed_node() -> std.markup.Fragment {
 test fn witness_roundtrip_under_perturbed_rows() -> Bool {
   let sp = perturbed_spellings()
   match extdeps.languages.html.ingest_html_source_with(src: extdeps.languages.html.serialize_html_source_with(node: perturbed_node(), sp: sp), sp: sp) {
-    IngestedNode { node } => node == perturbed_node()
-    IngestRejected { reason: _ } => false
+    extdeps.languages.html.IngestedNode { node } => node == perturbed_node()
+    extdeps.languages.html.IngestRejected { reason: _ } => false
   }
 }
 
@@ -67,8 +67,8 @@ fn attr_node() -> std.markup.Fragment {
 test fn witness_ingest_reads_attr_assign_row() -> Bool {
   let emitted_perturbed = extdeps.languages.html.serialize_html_source_with(node: attr_node(), sp: perturbed_spellings())
   match extdeps.languages.html.ingest_html_source(src: emitted_perturbed) {
-    IngestedNode { node } => !(node == attr_node())
-    IngestRejected { reason: _ } => false
+    extdeps.languages.html.IngestedNode { node } => !(node == attr_node())
+    extdeps.languages.html.IngestRejected { reason: _ } => false
   }
 }
 
@@ -76,8 +76,8 @@ test fn witness_core_advertised_lossless() -> Bool {
   let node = roundtrip_core_node()
   let m = extdeps.languages.html.html_medium_lossless(node: node)
   match m.fidelity {
-    Lossless => m.carried == node
-    Lossy => false
+    extdeps.communication.medium.Lossless => m.carried == node
+    extdeps.communication.medium.Lossy => false
   }
 }
 
@@ -88,8 +88,8 @@ test fn witness_frontier_unsafe_href_rejected() -> Bool {
     children: [std.markup.FragmentText { content: "x" }],
   })
   match extdeps.languages.html.ingest_html_source(src: serialized) {
-    IngestRejected { reason: _ } => true
-    IngestedNode { node: _ } => false
+    extdeps.languages.html.IngestRejected { reason: _ } => true
+    extdeps.languages.html.IngestedNode { node: _ } => false
   }
 }
 
@@ -106,8 +106,8 @@ fn adjacent_text_node() -> std.markup.Fragment {
 
 test fn witness_frontier_not_roundtripped() -> Bool {
   match extdeps.languages.html.ingest_html_source(src: extdeps.languages.html.serialize_html_source(node: adjacent_text_node())) {
-    IngestedNode { node } => !(node == adjacent_text_node())
-    IngestRejected { reason: _ } => false
+    extdeps.languages.html.IngestedNode { node } => !(node == adjacent_text_node())
+    extdeps.languages.html.IngestRejected { reason: _ } => false
   }
 }
 

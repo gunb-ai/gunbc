@@ -1,5 +1,6 @@
 module gunbc.typed_remote_file_write
 
+
 data typed_remote_file_write_authority_note: String = "Typed remote file-bytes write at the FleetSsh seam. TypedRemoteFileWrite is sole_constructor: the ONLY representable meaning is write these exact bytes to this exact path. Remote realization is portable argv [tee, path] with content on stdin — bytes are DATA, never interpreted as shell. No script body arm, no sh -c, no command string constructor. Path containment uses gunbc.file_access path_within_file_tree_scope (exact root, root/…, .. rejected); portable-word allowlist uses gunbc.fleet_known_hosts_anchor portable_remote_word at seal and portable_remote_words at execute (one authority, no typed_argv fork). typed_remote_file_write_over_fleet_ssh accepts only TypedRemoteFileWriteAdmitted. TypedRemoteFileWriteOutcome success arm is TypedRemoteFileWriteRemoteExecAccepted (tee exit 0 only) — NOT convergence. A zero tee exit proves only that the remote process accepted stdin — not that bytes landed at the declared path with declared mode/ownership. A future TypedRemoteFileWriteConverged variant requires independent read-back digest match (operator ruling msg_71f67aa9); stage-and-rename + mode/ownership + read-back land before that arm is writable."
 
 data typed_remote_file_write_wet_fleet_ssh_execute_deferred_note: String = "Operator ruling msg_71f67aa9 authorizes substrate-before-consumer landing on this PR: generic FleetSsh tee+stdin here; wet roundtrip, stage-and-rename, mode/ownership, read-back digest, and first production consumer follow on #8281 integration branch — not a Scaffold row and no DissolutionCondition in this diff. Hermetic witnesses exercise seal, argv, preflight, and RemoteExecAccepted routing via ssh.Session.ExecPortableWordsWithStdin mock_response only."
@@ -11,10 +12,10 @@ type TypedRemoteFileWrite sole_constructor {
 
 type TypedRemoteFileWriteAdmission
   = TypedRemoteFileWriteAdmitted { write: TypedRemoteFileWrite }
-  | TypedRemoteFileWriteAdmissionRefused { cause: NonEmptyStr }
+  | TypedRemoteFileWriteAdmissionRefused { cause: std.types.NonEmptyStr }
 
 type TypedRemoteFileWriteOutcome
-  = TypedRemoteFileWriteRemoteExecAccepted { result: SshSessionExecResult }
+  = TypedRemoteFileWriteRemoteExecAccepted { result: extdeps.ssh.session.SshSessionExecResult }
   | TypedRemoteFileWriteOutcomeRefused { reason: String }
 
 // ── Convergence ─────────────────────────────────────────────────────────────────────────────────
@@ -75,7 +76,7 @@ fn typed_remote_file_stage_argv(write: TypedRemoteFileWrite) -> List<String> {
 }
 
 fn typed_remote_file_chmod_argv(write: TypedRemoteFileWrite, mode: RemoteFileMode) -> List<String> {
-  [chmod_path_resolved_program as String, remote_file_mode_octal(mode: mode), typed_remote_file_staging_path(write: write)]
+  [extdeps.tools.chmod.chmod_path_resolved_program as String, remote_file_mode_octal(mode: mode), typed_remote_file_staging_path(write: write)]
 }
 
 fn typed_remote_file_rename_argv(write: TypedRemoteFileWrite) -> List<String> {
@@ -148,9 +149,9 @@ data typed_remote_file_write_tee_command: String = "tee"
 fn typed_remote_file_write_seal(
   path: std.types.FilePath,
   content: String,
-  allowed_scope: FileTreeScope,
+  allowed_scope: gunbc.file_access.FileTreeScope,
 ) -> TypedRemoteFileWriteAdmission {
-  if !path_within_file_tree_scope(scope: allowed_scope, path: path as NonEmptyStr) {
+  if !gunbc.file_access.path_within_file_tree_scope(scope: allowed_scope, path: path as std.types.NonEmptyStr) {
     TypedRemoteFileWriteAdmissionRefused {
       cause: join(
         [
@@ -160,10 +161,10 @@ fn typed_remote_file_write_seal(
           allowed_scope.root_path as String,
         ],
         "",
-      ) as NonEmptyStr,
+      ) as std.types.NonEmptyStr,
     }
   } else {
-    match portable_remote_word(raw: path as String) {
+    match gunbc.fleet_known_hosts_anchor.portable_remote_word(raw: path as String) {
       Absent =>
         TypedRemoteFileWriteAdmissionRefused {
           cause: join(
@@ -173,7 +174,7 @@ fn typed_remote_file_write_seal(
               " is not portable under the far-side shell re-parse allowlist",
             ],
             "",
-          ) as NonEmptyStr,
+          ) as std.types.NonEmptyStr,
         }
       Present { value: _ } =>
         TypedRemoteFileWriteAdmitted {
@@ -193,14 +194,14 @@ fn typed_remote_file_write_remote_argv(write: TypedRemoteFileWrite) -> List<Stri
 }
 
 fn typed_remote_file_write_content_digest_hex(write: TypedRemoteFileWrite) -> String {
-  content_hash_atom(value: write.content as NonEmptyStr).digest as String
+  std.content_hash.content_hash_atom(value: write.content as std.types.NonEmptyStr).digest as String
 }
 
 fn typed_remote_file_write_execute_preflight_outcome(
-  target: SshTarget,
+  target: gunbc.fleet_known_hosts_anchor.SshTarget,
   write: TypedRemoteFileWrite,
 ) -> TypedRemoteFileWriteOutcome? {
-  match portable_remote_words(raws: typed_remote_file_write_remote_argv(write: write)) {
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: typed_remote_file_write_remote_argv(write: write)) {
     Absent =>
       Present {
         value: TypedRemoteFileWriteOutcomeRefused {
@@ -216,7 +217,7 @@ fn typed_remote_file_write_execute_preflight_outcome(
 
 fn typed_remote_file_write_outcome_after_ssh_exec(
   write: TypedRemoteFileWrite,
-  result: SshSessionExecResult,
+  result: extdeps.ssh.session.SshSessionExecResult,
 ) -> TypedRemoteFileWriteOutcome {
   if result.success {
     TypedRemoteFileWriteRemoteExecAccepted { result: result }
@@ -231,15 +232,15 @@ fn typed_remote_file_write_outcome_after_ssh_exec(
 }
 
 fn typed_remote_file_write_over_fleet_ssh(
-  target: SshTarget,
-  context: FleetSshExecutionContext,
+  target: gunbc.fleet_known_hosts_anchor.SshTarget,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   admission: TypedRemoteFileWriteAdmission,
 ) -> TypedRemoteFileWriteOutcome {
   match admission {
     TypedRemoteFileWriteAdmissionRefused { cause: cause } =>
       TypedRemoteFileWriteOutcomeRefused { reason: cause as String }
     TypedRemoteFileWriteAdmitted { write: write } =>
-      match portable_remote_words(raws: typed_remote_file_write_remote_argv(write: write)) {
+      match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: typed_remote_file_write_remote_argv(write: write)) {
         Absent =>
           TypedRemoteFileWriteOutcomeRefused {
             reason: concat(
@@ -250,8 +251,8 @@ fn typed_remote_file_write_over_fleet_ssh(
         Present { value: words } =>
           typed_remote_file_write_outcome_after_ssh_exec(
             write: write,
-            result: ssh_session_exec_portable_words_with_stdin(
-              client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
+            result: extdeps.ssh.session.ssh_session_exec_portable_words_with_stdin(
+              client_args: gunbc.fleet_known_hosts_anchor.shape_fleet_ssh_exec(context: context, target: target, words: words),
               stdin_payload: typed_remote_file_write_stdin_payload(write: write),
             ),
           )
@@ -264,16 +265,16 @@ fn typed_remote_file_write_over_fleet_ssh(
 // One remote step: portable-word admission, then the leg. A non-portable argv refuses BEFORE the
 // leg rather than being quoted into something the far-side shell may re-split.
 fn typed_remote_file_step(
-  target: SshTarget,
-  context: FleetSshExecutionContext,
+  target: gunbc.fleet_known_hosts_anchor.SshTarget,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   raws: List<String>,
   stdin_payload: String,
-) -> SshSessionExecResult? {
-  match portable_remote_words(raws: raws) {
+) -> extdeps.ssh.session.SshSessionExecResult? {
+  match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: raws) {
     Absent => none
     Present { value: words } => Present {
-      value: ssh_session_exec_portable_words_with_stdin(
-        client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
+      value: extdeps.ssh.session.ssh_session_exec_portable_words_with_stdin(
+        client_args: gunbc.fleet_known_hosts_anchor.shape_fleet_ssh_exec(context: context, target: target, words: words),
         stdin_payload: stdin_payload,
       ),
     }
@@ -283,8 +284,8 @@ fn typed_remote_file_step(
 // A step that carries no stdin still goes through the stdin-bearing operation with an empty payload,
 // so there is ONE leg shape rather than two that could drift apart.
 fn typed_remote_file_step_outcome(
-  target: SshTarget,
-  context: FleetSshExecutionContext,
+  target: gunbc.fleet_known_hosts_anchor.SshTarget,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   step: String,
   raws: List<String>,
   stdin_payload: String,
@@ -313,8 +314,8 @@ fn typed_remote_file_step_outcome(
 // single opaque false. Nothing is published under the destination name until the rename, and nothing
 // is called converged until the destination has been read back and compared.
 func converge_typed_remote_file(
-  target: SshTarget,
-  context: FleetSshExecutionContext,
+  target: gunbc.fleet_known_hosts_anchor.SshTarget,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   admission: TypedRemoteFileWriteAdmission,
   mode: RemoteFileMode,
 ) -> TypedRemoteFileConvergence {

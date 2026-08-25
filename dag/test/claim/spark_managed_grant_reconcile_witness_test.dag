@@ -17,28 +17,28 @@ data srv6_listing_before: String = "Matching Defaults entries for gunbc-automati
 data srv6_listing_after: String = "User gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger gunbc-automation\n    (root) NOPASSWD: /usr/bin/systemctl reboot\n"
 
 test fn a_listing_naming_only_linger_puts_reboot_in_the_install_set() -> Bool {
-  let missing = spark_managed_grants_to_install(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before })
+  let missing = gunbc.spark.managed_grant_reconcile.spark_managed_grants_to_install(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before })
   missing.length() == 1
     && any(missing, m => match m {
-         RebootThisHost => true
-         EnableLingerForOwnAccount { subject: _ } => false
+         gunbc.spark.managed_access_bootstrap.RebootThisHost => true
+         gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount { subject: _ } => false
        })
 }
 
 // THE DISCRIMINATING PAIR. The same function over the same shape of input answers differently once
 // the grant is present, which is what makes it a reconcile rather than a constant.
 test fn the_same_listing_with_reboot_added_installs_nothing() -> Bool {
-  spark_managed_grants_to_install(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_after }).length() == 0
-    && spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_after })
-    && !spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before })
+  gunbc.spark.managed_grant_reconcile.spark_managed_grants_to_install(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_after }).length() == 0
+    && gunbc.spark.managed_grant_reconcile.spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_after })
+    && !gunbc.spark.managed_grant_reconcile.spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before })
 }
 
 // Sudo demanding a password IS the answer "none", successfully obtained, so every desired grant is
 // missing and the remedy is to install them.
 test fn a_password_demand_is_an_observation_that_no_grant_is_held() -> Bool {
   let o = gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: "exit=1 stderr=sudo: a password is required" }
-  spark_managed_grants_to_install(outcome: o).length() == spark_managed_grant_population.length()
-    && spark_managed_grants_unobserved(outcome: o).length() == 0
+  gunbc.spark.managed_grant_reconcile.spark_managed_grants_to_install(outcome: o).length() == spark_managed_grant_population.length()
+    && gunbc.spark.managed_grant_reconcile.spark_managed_grants_unobserved(outcome: o).length() == 0
 }
 
 // THE ARM THAT KEEPS IGNORANCE OUT OF THE INSTALL SET, and the reason the standing is three-way. A
@@ -47,16 +47,16 @@ test fn a_password_demand_is_an_observation_that_no_grant_is_held() -> Bool {
 // absorbing fallback the repo forbids.
 test fn a_probe_that_failed_for_another_reason_installs_nothing() -> Bool {
   let o = gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: "exit=255 stderr=ssh: connect to host srv6 port 22: No route to host" }
-  spark_managed_grants_to_install(outcome: o).length() == 0
-    && spark_managed_grants_unobserved(outcome: o).length() == spark_managed_grant_population.length()
-    && !spark_managed_grants_converged(outcome: o)
+  gunbc.spark.managed_grant_reconcile.spark_managed_grants_to_install(outcome: o).length() == 0
+    && gunbc.spark.managed_grant_reconcile.spark_managed_grants_unobserved(outcome: o).length() == spark_managed_grant_population.length()
+    && !gunbc.spark.managed_grant_reconcile.spark_managed_grants_converged(outcome: o)
 }
 
 // A refused leg is unobserved for the same reason, on a different channel.
 test fn a_refused_probe_leg_is_unobserved_and_never_converged() -> Bool {
   let o = gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: "non-portable-remote-word" }
-  spark_managed_grants_to_install(outcome: o).length() == 0
-    && !spark_managed_grants_converged(outcome: o)
+  gunbc.spark.managed_grant_reconcile.spark_managed_grants_to_install(outcome: o).length() == 0
+    && !gunbc.spark.managed_grant_reconcile.spark_managed_grants_converged(outcome: o)
 }
 
 // AN EMPTY INSTALL LIST IS NOT CONVERGENCE. A fully unobserved host produces one, and reading it as
@@ -64,15 +64,15 @@ test fn a_refused_probe_leg_is_unobserved_and_never_converged() -> Bool {
 // precisely when it learned nothing about it.
 test fn nothing_to_install_does_not_imply_converged() -> Bool {
   let unobserved = gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: "leg refused" }
-  spark_managed_grants_to_install(outcome: unobserved).length() == 0
-    && !spark_managed_grants_converged(outcome: unobserved)
-    && spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_after })
+  gunbc.spark.managed_grant_reconcile.spark_managed_grants_to_install(outcome: unobserved).length() == 0
+    && !gunbc.spark.managed_grant_reconcile.spark_managed_grants_converged(outcome: unobserved)
+    && gunbc.spark.managed_grant_reconcile.spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_after })
 }
 
 // The subject the live hosts actually grant. Named once so the assertions below join against one
 // value rather than each re-spelling the login.
-fn linger_grant() -> SparkManagedGrant {
-  EnableLingerForOwnAccount { subject: "gunbc-automation" as NonEmptyStr }
+fn linger_grant() -> gunbc.spark.managed_access_bootstrap.SparkManagedGrant {
+  gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount { subject: "gunbc-automation" as std.types.NonEmptyStr }
 }
 
 // THE LINE THIS REPOSITORY WOULD INSTALL, held against the line srv5 and srv6 ACTUALLY HOLD,
@@ -94,8 +94,8 @@ data measured_installed_reboot_command: String = "/usr/bin/systemctl reboot"
 // The replacement joins at ARGV GRAIN and against the MEASURED line: every word of the argv after
 // `sudo -n` must appear in the command in order, and the command must equal what the host holds.
 test fn the_sudoers_command_equals_the_line_the_hosts_actually_hold() -> Bool {
-  spark_managed_grant_sudoers_command(grant: linger_grant()) as String == measured_installed_linger_command
-    && spark_managed_grant_sudoers_command(grant: RebootThisHost) as String == measured_installed_reboot_command
+  gunbc.spark.managed_access_bootstrap.spark_managed_grant_sudoers_command(grant: linger_grant()) as String == measured_installed_linger_command
+    && gunbc.spark.managed_access_bootstrap.spark_managed_grant_sudoers_command(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost) as String == measured_installed_reboot_command
 }
 
 // THE ARGV AND THE COMMAND ARE THE SAME WORDS, asserted as an equality over the word list rather
@@ -103,13 +103,13 @@ test fn the_sudoers_command_equals_the_line_the_hosts_actually_hold() -> Bool {
 // binary made absolute. Reconstructing one from the other and comparing is what the old ANY could
 // not do.
 test fn the_sudoers_line_authorizes_exactly_the_argv_the_actuator_runs() -> Bool {
-  fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
-    let words = spark_managed_grant_argv(grant: g).skip(n: 2)
-    let command = spark_managed_grant_sudoers_command(grant: g) as String
-    let content = spark_managed_grant_sudoers_content(grant: g)
+  fold(gunbc.spark.managed_access_bootstrap.spark_managed_grant_population, init: true, f: fn(acc, g) {
+    let words = gunbc.spark.managed_access_bootstrap.spark_managed_grant_argv(grant: g).skip(n: 2)
+    let command = gunbc.spark.managed_access_bootstrap.spark_managed_grant_sudoers_command(grant: g) as String
+    let content = gunbc.spark.managed_grant_reconcile.spark_managed_grant_sudoers_content(grant: g)
     acc
-      && spark_managed_grant_argv(grant: g).length() == words.length() + 2
-      && command == concat(systemd_binary_directory as String, concat("/", join(words, " ")))
+      && gunbc.spark.managed_access_bootstrap.spark_managed_grant_argv(grant: g).length() == words.length() + 2
+      && command == concat(extdeps.systemd.systemd_binary_directory as String, concat("/", join(words, " ")))
       && string_contains(content, "gunbc-automation ALL=(root) NOPASSWD: ")
       && string_contains(content, command)
   })
@@ -123,39 +123,39 @@ test fn the_pre_change_spelling_without_the_subject_is_refused() -> Bool {
   let pre_change = "/usr/bin/loginctl enable-linger"
   pre_change != measured_installed_linger_command
     && !string_contains(pre_change, "gunbc-automation")
-    && spark_managed_grant_sudoers_command(grant: linger_grant()) as String != pre_change
+    && gunbc.spark.managed_access_bootstrap.spark_managed_grant_sudoers_command(grant: linger_grant()) as String != pre_change
 }
 
 // AND THE MIRROR OF IT ON THE ARGV, because the two halves of the fork failed differently: the
 // command dropped the subject, the argv dropped the subject AND the absolute path. An argv that
 // cannot execute under the installed grant must not be derivable.
 test fn the_derived_argv_carries_the_subject_the_grant_requires() -> Bool {
-  join(spark_managed_grant_argv(grant: linger_grant()), " ")
+  join(gunbc.spark.managed_access_bootstrap.spark_managed_grant_argv(grant: linger_grant()), " ")
     == "sudo -n loginctl enable-linger gunbc-automation"
-    && join(spark_managed_grant_argv(grant: RebootThisHost), " ") == "sudo -n systemctl reboot"
+    && join(gunbc.spark.managed_access_bootstrap.spark_managed_grant_argv(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost), " ") == "sudo -n systemctl reboot"
 }
 
 // Narrow on every axis sudoers offers. A wildcard command would make the population decorative,
 // since one entry would then authorize everything the others name.
 test fn no_grant_is_written_as_a_wildcard() -> Bool {
-  fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
-    acc && !string_contains(spark_managed_grant_sudoers_content(grant: g), "ALL\n")
-        && !string_contains(spark_managed_grant_sudoers_content(grant: g), "NOPASSWD: ALL")
+  fold(gunbc.spark.managed_access_bootstrap.spark_managed_grant_population, init: true, f: fn(acc, g) {
+    acc && !string_contains(gunbc.spark.managed_grant_reconcile.spark_managed_grant_sudoers_content(grant: g), "ALL\n")
+        && !string_contains(gunbc.spark.managed_grant_reconcile.spark_managed_grant_sudoers_content(grant: g), "NOPASSWD: ALL")
   })
 }
 
 // Distinct files per grant: appending to one file has no idempotent form, so a second reconcile run
 // would differ from the first.
 test fn each_grant_lands_in_its_own_dropin_file() -> Bool {
-  spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost) as String
-    != spark_managed_grant_dropin_path(grant: linger_grant()) as String
-    && string_contains(spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost) as String, "/etc/sudoers.d/")
+  gunbc.spark.managed_grant_reconcile.spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost) as String
+    != gunbc.spark.managed_grant_reconcile.spark_managed_grant_dropin_path(grant: linger_grant()) as String
+    && string_contains(gunbc.spark.managed_grant_reconcile.spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost) as String, "/etc/sudoers.d/")
 }
 
 // The report names the gap and its remedy in the same line, because the failure this replaces said
 // only "a password is required" -- naming neither the grant nor where it goes.
 test fn the_report_names_the_missing_grant_and_where_it_goes() -> Bool {
-  let text = spark_managed_grant_report(host: "srv6", outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before })
+  let text = gunbc.spark.managed_grant_reconcile.spark_managed_grant_report(host: "srv6", outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before })
   string_contains(text, "converged=false")
     && string_contains(text, "standing=not-held")
     && string_contains(text, "/etc/sudoers.d/gunbc-reboot")
@@ -163,13 +163,13 @@ test fn the_report_names_the_missing_grant_and_where_it_goes() -> Bool {
 }
 
 test fn a_held_grant_reports_held_rather_than_silence() -> Bool {
-  match spark_managed_grant_standing_from_outcome(
+  match gunbc.spark.managed_grant_reconcile.spark_managed_grant_standing_from_outcome(
     grant: linger_grant(),
     outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before },
   ) {
-    GrantHeld { grant: _ } => true
-    GrantNotHeld { grant: _ } => false
-    GrantStandingUnobserved { grant: _, cause: _ } => false
+    gunbc.spark.managed_grant_reconcile.GrantHeld { grant: _ } => true
+    gunbc.spark.managed_grant_reconcile.GrantNotHeld { grant: _ } => false
+    gunbc.spark.managed_grant_reconcile.GrantStandingUnobserved { grant: _, cause: _ } => false
   }
 }
 
@@ -196,15 +196,15 @@ data srv6_listing_wider_than_desired: String = "User gunbc-automation may run th
 // two joins disagree about: 2 under the entry-grained join (neither grant held), 1 under the
 // substring join (linger wrongly held).
 test fn an_entry_that_merely_starts_with_the_desired_command_is_not_that_grant() -> Bool {
-  spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_wider_than_desired }).length() == 2
+  gunbc.spark.managed_grant_reconcile.spark_managed_grants_to_install(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_wider_than_desired }).length() == 2
 }
 
 // A BANNER LINE CONTRIBUTES NOTHING RATHER THAN A NEGATIVE VOTE. The listing's prose header names
 // the account and the host and carries no `NOPASSWD:` marker, so it yields no command at all -- the
 // join skips it instead of counting it as an entry that failed to match.
 test fn the_listing_banner_is_not_read_as_an_entry() -> Bool {
-  spark_managed_grants_converged(outcome: GrantEnumerated { listing: srv6_listing_after })
-    && !spark_managed_grants_converged(outcome: GrantEnumerated { listing: "User gunbc-automation may run the following commands on srv6:\n" })
+  gunbc.spark.managed_grant_reconcile.spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_after })
+    && !gunbc.spark.managed_grant_reconcile.spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: "User gunbc-automation may run the following commands on srv6:\n" })
 }
 
 // THE ORDERING WITNESS. It is RED on this branch by construction and that is its whole function.
@@ -229,8 +229,8 @@ test fn the_listing_banner_is_not_read_as_an_entry() -> Bool {
 data measured_installed_linger_command: String = "/usr/bin/loginctl enable-linger gunbc-automation"
 
 test fn the_modeled_linger_command_is_byte_equal_to_the_line_the_hosts_hold() -> Bool {
-  any(spark_managed_grant_population, g =>
-    spark_managed_grant_sudoers_command(grant: g) as String == measured_installed_linger_command)
+  any(gunbc.spark.managed_access_bootstrap.spark_managed_grant_population, g =>
+    gunbc.spark.managed_access_bootstrap.spark_managed_grant_sudoers_command(grant: g) as String == measured_installed_linger_command)
 }
 
 // A MULTI-COMMAND ENTRY LINE, which sudo renders comma-separated for one Cmnd_Spec. MEASURED on
@@ -259,13 +259,13 @@ test fn the_modeled_linger_command_is_byte_equal_to_the_line_the_hosts_hold() ->
 fn spark_grant_line_naming_every_grant_on_one_line() -> String {
   join(
     ["    (root) NOPASSWD: ",
-     join(map(spark_managed_grant_population, g => spark_managed_grant_sudoers_command(grant: g) as String), ", "),
+     join(map(gunbc.spark.managed_access_bootstrap.spark_managed_grant_population, g => gunbc.spark.managed_access_bootstrap.spark_managed_grant_sudoers_command(grant: g) as String), ", "),
      "\n"],
     "")
 }
 
 test fn two_commands_on_one_entry_line_are_two_grants() -> Bool {
-  spark_managed_grants_to_install(
-    outcome: GrantEnumerated { listing: spark_grant_line_naming_every_grant_on_one_line() }
+  gunbc.spark.managed_grant_reconcile.spark_managed_grants_to_install(
+    outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: spark_grant_line_naming_every_grant_on_one_line() }
   ).length() == 0
 }

@@ -1,28 +1,31 @@
 module test.claim.record_construction_census_witness_test
 
+
 data record_construction_census_witness_note: String = "Executing consumer for the decl-fact skeleton's record_construction_spelling edge (the marshal capability that grounded the BoundedPoll deletion census, adhoc-429f6982-280). The edge carries the AUTHORED CONSTRUCTOR SPELLING — the AST node's authored lexeme, NOT a resolved declaration identity: no qualified name is resolved, no parent-enum identity is carried, and two same-spelled record types in different modules are indistinguishable at this grain. A census over it is therefore a conservative OVER-APPROXIMATION of construction sites for a spelling, sound for an emptiness verdict ONLY over declarations with at least one field (zero spelling occurrences implies zero record-literal constructions of every declaration with that spelling) and NOT an exact per-declaration authority. A FIELDLESS declaration is INVISIBLE to this edge: bare nullary-variant construction is not an ExprRecordLit — it is a bare atom on a positional edge — so the census returns a VACUOUS zero for it no matter how often it is constructed (nullary_variant_construction_invisible_at_this_edge executes that limit), and a zero over a fieldless declaration must never ground a deletion. BoundedPoll carried fields, so its zero is the sound kind — same_spelling_other_module_counts_toward_bare_target below exposes that over-approximation deliberately rather than papering it. What the named edge does discriminate, structurally: a construction occurrence from a string literal or callee atom spelling the same lexeme (those ride positional edges) and from a match pattern (which marshals no construction spelling at all). Counting is suffix-aware (census_spelling_names_target) because a qualified construction marshals its FULL DOTTED authored spelling — qualified_construction_cannot_hide_target is the executed positive control that qualified syntax cannot hide the target from the count. Resolved constructor identity — the edge carrying the resolved qualified declaration and, for variants, the parent declaration identity — is separate future work, not claimed here. The BoundedPoll deletion itself needs no standing corpus census: with the variant deleted, any future construction is an unresolved name the compile-clean gate refuses, so unwritability is structural and this witness guards the census MECHANISM, not the deleted symbol."
 
 type CensusConstructionCount {
-  constructions: v2.std.integer.Int
-  self_is_target_atom: v2.std.logic.Bool
+  constructions: Int
+  self_is_target_atom: Bool
 }
 
-fn census_edge_is_construction(e: v2.std.node.Edge) -> v2.std.logic.Bool {
+fn census_edge_is_construction(e: v2.std.node.Edge) -> Bool {
   match e.label {
-    Named { name: nm } => nm == ^record_construction_spelling
-    Positional => false
+    v2.std.node.Named { name: nm } => nm == ^record_construction_spelling
+    v2.std.node.Positional => false
   }
 }
 
-fn census_spelling_names_target(spelling: String, target: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn census_spelling_names_target(spelling: String, target: v2.std.node.Symbol) -> Bool {
   spelling == (target as String) || ends_with(spelling, "." + (target as String))
 }
 
 fn census_construction_fold(n: v2.std.node.Node, target: v2.std.node.Symbol) -> CensusConstructionCount {
-  let alg: v2.std.node.NodeFold<CensusConstructionCount> = v2.std.node.NodeFold {
+  v2.std.node.fold_node(
+    n: n,
+    algebra: v2.std.node.NodeFold {
       init: fn(n0) {
         match n0.kind {
-          TypeNode { connective: v2.std.node.Atom { identity: s } } =>
+          v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } } =>
             CensusConstructionCount { constructions: 0, self_is_target_atom: census_spelling_names_target(spelling: s as String, target: target) }
           _ => CensusConstructionCount { constructions: 0, self_is_target_atom: false }
         }
@@ -34,10 +37,10 @@ fn census_construction_fold(n: v2.std.node.Node, target: v2.std.node.Symbol) -> 
         }
       }
     }
-  v2.std.node.fold_node(n: n, algebra: alg)
+  )
 }
 
-fn census_construction_count(n: v2.std.node.Node, target: v2.std.node.Symbol) -> v2.std.integer.Int {
+fn census_construction_count(n: v2.std.node.Node, target: v2.std.node.Symbol) -> Int {
   census_construction_fold(n: n, target: target).constructions
 }
 
@@ -48,7 +51,7 @@ data census_fixture_pool_roots: List<String> = ["dag/test/fixture/record_constru
 // row. Same facts, one scan for the module instead of one per row.
 data census_fixture_facts: List<v2.std.decl_index.DeclFact> = v2.std.decl_index.decl_facts(pool_roots: census_fixture_pool_roots)
 
-fn census_count_for_decl(name: String, target: v2.std.node.Symbol) -> v2.std.integer.Int {
+fn census_count_for_decl(name: String, target: v2.std.node.Symbol) -> Int {
   fold(census_fixture_facts, init: 0 - 1, f: fn(acc, fact) {
     if fact.name == name {
       census_construction_count(n: fact.node, target: target)
@@ -58,30 +61,30 @@ fn census_count_for_decl(name: String, target: v2.std.node.Symbol) -> v2.std.int
   })
 }
 
-test fn planted_construction_counts_exactly_one() -> v2.std.logic.Bool {
+test fn planted_construction_counts_exactly_one() -> Bool {
   census_count_for_decl(name: "census_probe_constructs_subject", target: ^CensusProbeSubject) == 1
 }
 
-test fn match_pattern_only_counts_zero() -> v2.std.logic.Bool {
+test fn match_pattern_only_counts_zero() -> Bool {
   census_count_for_decl(name: "census_probe_matches_subject_only", target: ^CensusProbeSubject) == 0
 }
 
-test fn string_literal_same_lexeme_counts_zero() -> v2.std.logic.Bool {
+test fn string_literal_same_lexeme_counts_zero() -> Bool {
   census_count_for_decl(name: "census_probe_string_literal_same_lexeme", target: ^CensusProbeSubject) == 0
 }
 
-test fn missing_specimen_refuses_as_negative_sentinel() -> v2.std.logic.Bool {
+test fn missing_specimen_refuses_as_negative_sentinel() -> Bool {
   census_count_for_decl(name: "census_probe_absent_decl", target: ^CensusProbeSubject) == (0 - 1)
 }
 
-test fn qualified_construction_cannot_hide_target() -> v2.std.logic.Bool {
+test fn qualified_construction_cannot_hide_target() -> Bool {
   census_count_for_decl(name: "census_probe_constructs_subject_qualified", target: ^CensusProbeSubject) == 1
 }
 
-test fn same_spelling_other_module_counts_toward_bare_target() -> v2.std.logic.Bool {
+test fn same_spelling_other_module_counts_toward_bare_target() -> Bool {
   census_count_for_decl(name: "census_probe_constructs_homonym_subject", target: ^CensusProbeSubject) == 1
 }
 
-test fn nullary_variant_construction_invisible_at_this_edge() -> v2.std.logic.Bool {
+test fn nullary_variant_construction_invisible_at_this_edge() -> Bool {
   census_count_for_decl(name: "census_probe_constructs_nullary", target: ^CensusNullaryProbeMode) == 0
 }

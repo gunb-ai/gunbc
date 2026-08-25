@@ -2,56 +2,56 @@ module test.claim.claude_setup_token_enrollment_witness
 
 
 test fn witness_secret_version_refuses_latest() -> Bool {
-  match admit_enrollment_secret_version(version: "latest") {
-    EnrollmentSecretVersionRefusedLatest => true
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_secret_version(version: "latest") {
+    gunbc.claude_setup_token_enrollment.EnrollmentSecretVersionRefusedLatest => true
     _ => false
   }
 }
 
 test fn witness_secret_version_refuses_empty() -> Bool {
-  match admit_enrollment_secret_version(version: "") {
-    EnrollmentSecretVersionRefusedEmpty => true
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_secret_version(version: "") {
+    gunbc.claude_setup_token_enrollment.EnrollmentSecretVersionRefusedEmpty => true
     _ => false
   }
 }
 
 test fn witness_secret_version_admits_exact() -> Bool {
-  match admit_enrollment_secret_version(version: "7") {
-    EnrollmentSecretVersionAdmitted => true
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_secret_version(version: "7") {
+    gunbc.claude_setup_token_enrollment.EnrollmentSecretVersionAdmitted => true
     _ => false
   }
 }
 
 test fn witness_setup_token_capture_refuses_multiple_candidates() -> Bool {
-  match admit_setup_token_capture(
+  match gunbc.claude_setup_token_enrollment.admit_setup_token_capture(
     candidate_count: 2,
     token: v2.std.optional.Present { value: "sk-ant-oat01-test" },
     format: extdeps.llm.claude_setup_token_cli.SetupTokenFormatMeasured {
       format: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatMeasured {
         token_prefix: "sk-ant-oat01-" as std.types.NonEmptyStr,
-        min_length: character_count(count: 20),
-        max_length: character_count(count: 200),
+        min_length: std.measure.character_count(count: 20),
+        max_length: std.measure.character_count(count: 200),
       },
     },
   ) {
-    SetupTokenCaptureRefusedMultipleCandidates { count: 2 } => true
+    gunbc.claude_setup_token_enrollment.SetupTokenCaptureRefusedMultipleCandidates { count: 2 } => true
     _ => false
   }
 }
 
 test fn witness_setup_token_capture_admits_single_candidate() -> Bool {
-  match admit_setup_token_capture(
+  match gunbc.claude_setup_token_enrollment.admit_setup_token_capture(
     candidate_count: 1,
     token: v2.std.optional.Present { value: "sk-ant-oat01-abcdefghijklmnopqrstuvwxyz" },
     format: extdeps.llm.claude_setup_token_cli.SetupTokenFormatMeasured {
       format: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatMeasured {
         token_prefix: "sk-ant-oat01-" as std.types.NonEmptyStr,
-        min_length: character_count(count: 20),
-        max_length: character_count(count: 200),
+        min_length: std.measure.character_count(count: 20),
+        max_length: std.measure.character_count(count: 200),
       },
     },
   ) {
-    SetupTokenCaptureAdmitted { token_length: _ } => true
+    gunbc.claude_setup_token_enrollment.SetupTokenCaptureAdmitted { token_length: _ } => true
     _ => false
   }
 }
@@ -60,55 +60,55 @@ fn witness_setup_token_format_measured() -> extdeps.llm.claude_setup_token_cli.C
   extdeps.llm.claude_setup_token_cli.SetupTokenFormatMeasured {
     format: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatMeasured {
       token_prefix: "sk-ant-oat01-" as std.types.NonEmptyStr,
-      min_length: character_count(count: 20),
-      max_length: character_count(count: 200),
+      min_length: std.measure.character_count(count: 20),
+      max_length: std.measure.character_count(count: 200),
     },
   }
 }
 
 test fn witness_setup_token_capture_refuses_format_unobserved() -> Bool {
-  match admit_setup_token_capture(
+  match gunbc.claude_setup_token_enrollment.admit_setup_token_capture(
     candidate_count: 1,
     token: v2.std.optional.Present { value: "sk-ant-oat01-abcdefghijklmnopqrstuvwxyz" },
     format: extdeps.llm.claude_setup_token_cli.SetupTokenFormatUnobserved {
       reason: "pinned executable format not yet measured" as std.types.NonEmptyStr,
     },
   ) {
-    SetupTokenCaptureRefusedFormatUnobserved { reason } =>
+    gunbc.claude_setup_token_enrollment.SetupTokenCaptureRefusedFormatUnobserved { reason } =>
       reason == ("pinned executable format not yet measured" as std.types.NonEmptyStr)
     _ => false
   }
 }
 
 test fn witness_setup_token_capture_refuses_no_candidate() -> Bool {
-  match admit_setup_token_capture(
+  match gunbc.claude_setup_token_enrollment.admit_setup_token_capture(
     candidate_count: 0,
     token: v2.std.optional.Absent,
     format: witness_setup_token_format_measured(),
   ) {
-    SetupTokenCaptureRefusedNoCandidate => true
+    gunbc.claude_setup_token_enrollment.SetupTokenCaptureRefusedNoCandidate => true
     _ => false
   }
 }
 
 test fn witness_setup_token_capture_refuses_malformed_prefix() -> Bool {
-  match admit_setup_token_capture(
+  match gunbc.claude_setup_token_enrollment.admit_setup_token_capture(
     candidate_count: 1,
     token: v2.std.optional.Present { value: "wrong-prefix-abcdefghijklmnopqrstuvwxyz" },
     format: witness_setup_token_format_measured(),
   ) {
-    SetupTokenCaptureRefusedMalformedPrefix => true
+    gunbc.claude_setup_token_enrollment.SetupTokenCaptureRefusedMalformedPrefix => true
     _ => false
   }
 }
 
 test fn witness_setup_token_capture_refuses_malformed_length() -> Bool {
-  match admit_setup_token_capture(
+  match gunbc.claude_setup_token_enrollment.admit_setup_token_capture(
     candidate_count: 1,
     token: v2.std.optional.Present { value: "sk-ant-oat01-short" },
     format: witness_setup_token_format_measured(),
   ) {
-    SetupTokenCaptureRefusedMalformedLength { observed: _, min: _, max: _ } => true
+    gunbc.claude_setup_token_enrollment.SetupTokenCaptureRefusedMalformedLength { observed: _, min: _, max: _ } => true
     _ => false
   }
 }
@@ -116,22 +116,22 @@ test fn witness_setup_token_capture_refuses_malformed_length() -> Bool {
 test fn witness_paired_probe_native_limit_encoding() -> Bool {
   let seven_day_opus = "seven_day_opus" as std.types.NonEmptyStr
   let five_hour = "five_hour" as std.types.NonEmptyStr
-  let bundle = claude_enrollment_standing_bundle_from_paired_probe_verdict(
+  let bundle = gunbc.claude_setup_token_enrollment.claude_enrollment_standing_bundle_from_paired_probe_verdict(
     auth_succeeded: true,
     observed_native_limit_keys: [seven_day_opus, five_hour],
     auth_failure_reason: "unused" as std.types.NonEmptyStr,
     credential_label: "managed-enrollment" as std.types.NonEmptyStr,
   )
-  let subject = claude_enrollment_limit_subject(
+  let subject = gunbc.claude_setup_token_enrollment.claude_enrollment_limit_subject(
     credential_label: "managed-enrollment" as std.types.NonEmptyStr,
     native_key: seven_day_opus,
   )
-  bundle.authentication == AuthenticationAuthenticated
-    && bundle.entitlement == EntitlementObservedAvailable
-    && list_length(items: bundle.limits) == 2
+  bundle.authentication == gunbc.provider_standing.AuthenticationAuthenticated
+    && bundle.entitlement == gunbc.provider_standing.EntitlementObservedAvailable
+    && std.types.list_length(items: bundle.limits) == 2
     && match subject {
-      ProviderNativeLimitBucket {
-        credential: LimitCredentialLabel { label },
+      gunbc.provider_standing.ProviderNativeLimitBucket {
+        credential: gunbc.provider_standing.LimitCredentialLabel { label },
         native_key,
       } =>
         label == ("managed-enrollment" as std.types.NonEmptyStr)
@@ -141,28 +141,28 @@ test fn witness_paired_probe_native_limit_encoding() -> Bool {
 }
 
 test fn witness_rejected_credential_emits_reconnect_action() -> Bool {
-  match claude_enrollment_action_for_credential_standing(
+  match gunbc.claude_setup_token_enrollment.claude_enrollment_action_for_credential_standing(
     standing: gunbc.claude_setup_token_enrollment.ClaudeCredentialRejected { reason: "token revoked" as std.types.NonEmptyStr },
   ) {
-    ReconnectClaude { cause } => cause == ("token revoked" as std.types.NonEmptyStr)
-    ConnectClaude => false
-    EnrollmentActionNotRequired => false
+    gunbc.claude_setup_token_enrollment.ReconnectClaude { cause } => cause == ("token revoked" as std.types.NonEmptyStr)
+    gunbc.claude_setup_token_enrollment.ConnectClaude => false
+    gunbc.claude_setup_token_enrollment.EnrollmentActionNotRequired => false
   }
 }
 
 test fn witness_usable_credential_emits_no_enrollment_action() -> Bool {
-  claude_enrollment_action_for_credential_standing(
-    standing: ClaudeCredentialUsable,
-  ) == EnrollmentActionNotRequired
+  gunbc.claude_setup_token_enrollment.claude_enrollment_action_for_credential_standing(
+    standing: gunbc.claude_setup_token_enrollment.ClaudeCredentialUsable,
+  ) == gunbc.claude_setup_token_enrollment.EnrollmentActionNotRequired
 }
 
 test fn witness_absent_credential_emits_connect_action() -> Bool {
-  claude_enrollment_action_for_absent_credential() == ConnectClaude
+  gunbc.claude_setup_token_enrollment.claude_enrollment_action_for_absent_credential() == gunbc.claude_setup_token_enrollment.ConnectClaude
 }
 
 test fn witness_enrollment_initiation_refuses_sdk_path() -> Bool {
-  match admit_enrollment_initiation(surface: EnrollmentInitiationSdkAttempt) {
-    EnrollmentInitiationRefusedSdkPath { reason } =>
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_initiation(surface: gunbc.claude_setup_token_enrollment.EnrollmentInitiationSdkAttempt) {
+    gunbc.claude_setup_token_enrollment.EnrollmentInitiationRefusedSdkPath { reason } =>
       string_contains(
         s: reason as String,
         pattern: "setup-token CLI",
@@ -172,26 +172,26 @@ test fn witness_enrollment_initiation_refuses_sdk_path() -> Bool {
 }
 
 test fn witness_enrollment_initiation_admits_cli_path() -> Bool {
-  match admit_enrollment_initiation(surface: EnrollmentInitiationClaudeCli) {
-    EnrollmentInitiationAdmitted => true
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_initiation(surface: gunbc.claude_setup_token_enrollment.EnrollmentInitiationClaudeCli) {
+    gunbc.claude_setup_token_enrollment.EnrollmentInitiationAdmitted => true
     _ => false
   }
 }
 
 test fn witness_cold_start_refuses_ambient_prerequisite() -> Bool {
-  match admit_enrollment_cold_start(
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_cold_start(
     relies_on_ambient_enrollment_host_credential: true,
   ) {
-    EnrollmentColdStartRefusedAmbientPrerequisite { reason: _ } => true
+    gunbc.claude_setup_token_enrollment.EnrollmentColdStartRefusedAmbientPrerequisite { reason: _ } => true
     _ => false
   }
 }
 
 test fn witness_cold_start_admits_isolated_context() -> Bool {
-  match admit_enrollment_cold_start(
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_cold_start(
     relies_on_ambient_enrollment_host_credential: false,
   ) {
-    EnrollmentColdStartAdmitted => true
+    gunbc.claude_setup_token_enrollment.EnrollmentColdStartAdmitted => true
     _ => false
   }
 }
@@ -200,7 +200,7 @@ test fn witness_credential_write_back_refuses_unchanged_digest() -> Bool {
   let digest = gunbc.claude_setup_token_enrollment.ClaudeAmbientOAuthArtifactDigest {
     digest: "sha256:deadbeef" as std.types.NonEmptyStr,
   }
-  match admit_ambient_oauth_home_write_back(
+  match gunbc.claude_setup_token_enrollment.admit_ambient_oauth_home_write_back(
     observation: v2.std.optional.Present {
       value: gunbc.claude_setup_token_enrollment.ClaudeAmbientOAuthArtifactObservationPair {
         before_use: digest,
@@ -208,14 +208,14 @@ test fn witness_credential_write_back_refuses_unchanged_digest() -> Bool {
       },
     },
   ) {
-    AmbientOAuthWriteBackRefusedUnchanged { digest: observed } =>
+    gunbc.claude_setup_token_enrollment.AmbientOAuthWriteBackRefusedUnchanged { digest: observed } =>
       observed.digest == ("sha256:deadbeef" as std.types.NonEmptyStr)
     _ => false
   }
 }
 
 test fn witness_credential_write_back_admits_changed_digest() -> Bool {
-  match admit_ambient_oauth_home_write_back(
+  match gunbc.claude_setup_token_enrollment.admit_ambient_oauth_home_write_back(
     observation: v2.std.optional.Present {
       value: gunbc.claude_setup_token_enrollment.ClaudeAmbientOAuthArtifactObservationPair {
         before_use: gunbc.claude_setup_token_enrollment.ClaudeAmbientOAuthArtifactDigest {
@@ -227,29 +227,29 @@ test fn witness_credential_write_back_admits_changed_digest() -> Bool {
       },
     },
   ) {
-    AmbientOAuthWriteBackAdmitted { prior: _, observed: observed } =>
+    gunbc.claude_setup_token_enrollment.AmbientOAuthWriteBackAdmitted { prior: _, observed: observed } =>
       observed.digest == ("sha256:after" as std.types.NonEmptyStr)
     _ => false
   }
 }
 
 test fn witness_credential_write_back_refuses_missing_observation() -> Bool {
-  match admit_ambient_oauth_home_write_back(observation: v2.std.optional.Absent) {
-    AmbientOAuthWriteBackRefusedMissingObservation { reason: _ } => true
+  match gunbc.claude_setup_token_enrollment.admit_ambient_oauth_home_write_back(observation: v2.std.optional.Absent) {
+    gunbc.claude_setup_token_enrollment.AmbientOAuthWriteBackRefusedMissingObservation { reason: _ } => true
     _ => false
   }
 }
 
 test fn witness_setup_token_standing_is_rotation_unobserved_by_default() -> Bool {
-  claude_setup_token_standing_from_capture(
+  gunbc.claude_setup_token_enrollment.claude_setup_token_standing_from_capture(
     capture: gunbc.claude_setup_token_enrollment.SetupTokenCaptureAdmitted {
-      token_length: character_count(count: 42),
+      token_length: std.measure.character_count(count: 42),
     },
-  ) == SetupTokenUsable
+  ) == gunbc.claude_setup_token_enrollment.SetupTokenUsable
 }
 
 test fn witness_enrollment_placement_refuses_unbound_operator_choices() -> Bool {
-  match admit_enrollment_placement(
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_placement(
     choices: gunbc.claude_setup_token_enrollment.ClaudeEnrollmentOperatorChoices {
       enrollment_host: v2.std.optional.Absent,
       run_as_principal: v2.std.optional.Absent,
@@ -266,15 +266,15 @@ test fn witness_enrollment_placement_refuses_unbound_operator_choices() -> Bool 
       version_pin: "0.3.220" as std.types.NonEmptyStr,
     },
   ) {
-    EnrollmentPlacementRefusedUnbound { missing_axes } =>
-      list_length(items: missing_axes) == 5
+    gunbc.claude_setup_token_enrollment.EnrollmentPlacementRefusedUnbound { missing_axes } =>
+      std.types.list_length(items: missing_axes) == 5
     _ => false
   }
 }
 
 test fn witness_enrollment_workflow_refuses_host_effects_scaffold() -> Bool {
-  match admit_enrollment_workflow_start(
-    placement_admission: admit_enrollment_placement(
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_workflow_start(
+    placement_admission: gunbc.claude_setup_token_enrollment.admit_enrollment_placement(
       choices: gunbc.claude_setup_token_enrollment.ClaudeEnrollmentOperatorChoices {
         enrollment_host: v2.std.optional.Present { value: "enrollment-host.example" as std.types.NonEmptyStr },
         run_as_principal: v2.std.optional.Present { value: "claude-enrollment" as std.types.NonEmptyStr },
@@ -294,13 +294,13 @@ test fn witness_enrollment_workflow_refuses_host_effects_scaffold() -> Bool {
       },
     ),
   ) {
-    EnrollmentWorkflowRefusedDeploymentModelGap { reason: _ } => true
+    gunbc.claude_setup_token_enrollment.EnrollmentWorkflowRefusedDeploymentModelGap { reason: _ } => true
     _ => false
   }
 }
 
 test fn witness_exact_secret_version_binding_admits_write_and_readback() -> Bool {
-  match admit_exact_secret_version_binding(
+  match gunbc.claude_setup_token_enrollment.admit_exact_secret_version_binding(
     target: gunbc.claude_setup_token_enrollment.EnrollmentSecretTargetSpecified {
       project: "operator-selected-project" as std.types.NonEmptyStr,
       secret: "operator-selected-secret" as std.types.NonEmptyStr,
@@ -312,7 +312,7 @@ test fn witness_exact_secret_version_binding_admits_write_and_readback() -> Bool
       digest_matches: true,
     },
   ) {
-    ExactSecretVersionBindingAdmitted { binding } =>
+    gunbc.claude_setup_token_enrollment.ExactSecretVersionBindingAdmitted { binding } =>
       binding.version == ("7" as std.types.NonEmptyStr)
         && binding.private_content_identity == ("sha256:managed-token" as std.types.NonEmptyStr)
     _ => false
@@ -320,14 +320,14 @@ test fn witness_exact_secret_version_binding_admits_write_and_readback() -> Bool
 }
 
 test fn witness_writer_lease_refuses_concurrent_holder() -> Bool {
-  match admit_enrollment_writer_lease(
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_writer_lease(
     holder: "host-b" as std.types.NonEmptyStr,
     holder_epoch: 1,
     incumbent_holder: v2.std.optional.Present { value: "host-a" as std.types.NonEmptyStr },
     incumbent_version: v2.std.optional.Present { value: "7" as std.types.NonEmptyStr },
     incumbent_epoch: v2.std.optional.Present { value: 2 },
   ) {
-    EnrollmentLeaseRefusedConcurrent {
+    gunbc.claude_setup_token_enrollment.EnrollmentLeaseRefusedConcurrent {
       incumbent_holder,
       incumbent_binding_version,
       incumbent_epoch,
@@ -340,7 +340,7 @@ test fn witness_writer_lease_refuses_concurrent_holder() -> Bool {
 }
 
 test fn witness_writer_lease_refuses_newer_binding() -> Bool {
-  match admit_enrollment_writer_lease_against_binding(
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_writer_lease_against_binding(
     holder: "host-a" as std.types.NonEmptyStr,
     holder_epoch: 1,
     incumbent_holder: v2.std.optional.Absent,
@@ -349,7 +349,7 @@ test fn witness_writer_lease_refuses_newer_binding() -> Bool {
     attempted_version: "8" as std.types.NonEmptyStr,
     incumbent_version_is_newer: true,
   ) {
-    EnrollmentLeaseRefusedNewerBindingExists {
+    gunbc.claude_setup_token_enrollment.EnrollmentLeaseRefusedNewerBindingExists {
       incumbent_version,
       attempted_version,
     } =>
@@ -360,22 +360,22 @@ test fn witness_writer_lease_refuses_newer_binding() -> Bool {
 }
 
 test fn witness_writer_lease_grants_absent_incumbent() -> Bool {
-  match admit_enrollment_writer_lease(
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_writer_lease(
     holder: "host-a" as std.types.NonEmptyStr,
     holder_epoch: 1,
     incumbent_holder: v2.std.optional.Absent,
     incumbent_version: v2.std.optional.Absent,
     incumbent_epoch: v2.std.optional.Absent,
   ) {
-    EnrollmentLeaseGranted { holder, epoch } =>
+    gunbc.claude_setup_token_enrollment.EnrollmentLeaseGranted { holder, epoch } =>
       holder == ("host-a" as std.types.NonEmptyStr) && epoch == 1
     _ => false
   }
 }
 
 test fn witness_writer_lease_publish_refuses_stale_epoch() -> Bool {
-  match admit_enrollment_writer_lease_publish(holder_epoch: 2, current_epoch: 3) {
-    EnrollmentLeasePublishRefusedStaleEpoch {
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_writer_lease_publish(holder_epoch: 2, current_epoch: 3) {
+    gunbc.claude_setup_token_enrollment.EnrollmentLeasePublishRefusedStaleEpoch {
       holder_epoch,
       current_epoch,
     } =>
@@ -385,8 +385,8 @@ test fn witness_writer_lease_publish_refuses_stale_epoch() -> Bool {
 }
 
 test fn witness_writer_lease_publish_grants_current_epoch() -> Bool {
-  match admit_enrollment_writer_lease_publish(holder_epoch: 3, current_epoch: 3) {
-    EnrollmentLeasePublishGranted => true
+  match gunbc.claude_setup_token_enrollment.admit_enrollment_writer_lease_publish(holder_epoch: 3, current_epoch: 3) {
+    gunbc.claude_setup_token_enrollment.EnrollmentLeasePublishGranted => true
     _ => false
   }
 }
@@ -396,15 +396,15 @@ test fn witness_setup_token_challenge_extracts_https_url_from_sentence() -> Bool
     concat("Open https://claude.ai/oauth/verify in your browser", "\n"),
     concat(concat("Enter this code", "\n"), "ABCD-1234"),
   ) as std.types.RenderedTerminalText
-  match parse_setup_token_challenge_from_terminal(pane: pane) {
-    SetupTokenChallengeParsed {
-      challenge: ClaudeSetupTokenBrowserChallenge {
+  match extdeps.llm.claude_setup_token_cli.parse_setup_token_challenge_from_terminal(pane: pane) {
+    extdeps.llm.claude_setup_token_cli.SetupTokenChallengeParsed {
+      challenge: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenBrowserChallenge {
         verification_uri: uri,
         user_code: _,
       },
     } =>
       uri == "https://claude.ai/oauth/verify" as std.types.NonEmptyStr
-    SetupTokenChallengeParseRefused { reason: _ } => false
+    extdeps.llm.claude_setup_token_cli.SetupTokenChallengeParseRefused { reason: _ } => false
   }
 }
 
@@ -413,9 +413,9 @@ test fn witness_setup_token_challenge_refuses_url_line_without_token() -> Bool {
     concat("Openhttps://claude.ai/oauth/verify", "\n"),
     concat(concat("Enter this code", "\n"), "ABCD-1234"),
   ) as std.types.RenderedTerminalText
-  match parse_setup_token_challenge_from_terminal(pane: pane) {
-    SetupTokenChallengeParseRefused { reason: _ } => true
-    SetupTokenChallengeParsed { challenge: _ } => false
+  match extdeps.llm.claude_setup_token_cli.parse_setup_token_challenge_from_terminal(pane: pane) {
+    extdeps.llm.claude_setup_token_cli.SetupTokenChallengeParseRefused { reason: _ } => true
+    extdeps.llm.claude_setup_token_cli.SetupTokenChallengeParsed { challenge: _ } => false
   }
 }
 

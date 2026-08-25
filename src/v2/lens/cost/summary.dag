@@ -10,14 +10,14 @@ type ComplexitySummary {
 
 fn summary_sequential(left: ComplexitySummary, right: ComplexitySummary) -> ComplexitySummary {
   ComplexitySummary {
-    work: cost_expr_seq(a: left.work, b: right.work),
-    span: cost_expr_seq(a: left.span, b: right.span)
+    work: v2.lens.cost.expr.cost_expr_seq(a: left.work, b: right.work),
+    span: v2.lens.cost.expr.cost_expr_seq(a: left.span, b: right.span)
   }
 }
 
 fn summary_parallel(left: ComplexitySummary, right: ComplexitySummary) -> ComplexitySummary {
   ComplexitySummary {
-    work: cost_expr_seq(a: left.work, b: right.work),
-    span: cost_expr_par(a: left.span, b: right.span)
+    work: v2.lens.cost.expr.cost_expr_seq(a: left.work, b: right.work),
+    span: v2.lens.cost.expr.cost_expr_par(a: left.span, b: right.span)
   }
 }

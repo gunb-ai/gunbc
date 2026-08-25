@@ -47,7 +47,7 @@ type RustClaimExpectation
     }
   | RustEmitProjectionEqualityExpectation {
       atom_realization_row: v2.std.node.Node
-      type_emit_must_change: v2.std.logic.Bool
-      value_emit_must_change: v2.std.logic.Bool
+      type_emit_must_change: Bool
+      value_emit_must_change: Bool
     }
   | RustGrammarRoundTripExpectation { production: v2.std.grammar.GrammarProduction }

@@ -2,7 +2,7 @@ module test.claim.language_source_scaffold_index_test
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data language_source_scaffold_index_test_note: String = "B2/B4/B5 control for the language-source scaffold inventory. Two distinct obligations are asserted separately. (1) DISPOSITION: every rostered blob carries a Disposition that names something — a Scaffold binding the construction that subsumes it, or a Terminal stating why it is irreducible. Because Disposition has no prose arm, an unmarked row is unwritable, so the discriminating case is a Scaffold with an empty bind. A Terminal WITH a reason is legitimate (fnv1a64 is a named irreducible kernel), so the control is deliberately not 'Terminal is bad'. The empty-bind RED control moved to dag/test/claim/where_refinement_enforcement_witness_test.dag once NonEmptyStr where non_empty is construction-enforced — an empty DeclarationRef module_path/decl_name is now unwritable at compile time rather than caught only by language_source_scaffold_row_is_dispositioned. (2) COVERAGE: the roster must actually cover its carriers. Asserting hardcoded census counts alone would let a new rt_/ct_ blob land unmarked and stay green until someone bumped the number by hand (review 43161), so coverage is read from the LIVE TREE: the rt_ and ct_ declaration counts in the carrier sources are compared against the roster, and a newly added blob reds this witness instead of sitting unrostered. The comparison is EXACT equality with no offset: an earlier version used declared == rostered + 1 to absorb ct_coercion_tests, which was itself an absorbing fallback (review 43177) — that blob is a hybrid (row-driven core via extract_coercion_tests, but it still emits a hand-authored header and aggregates three hand blobs), so it is rostered like any other and the fudge is gone."
 
@@ -16,7 +16,7 @@ data legitimate_terminal_control_row: gunbc.language_source_scaffold_index.Langu
 }
 
 fn rostered_count_for(carrier: String) -> Int {
-  language_source_scaffold_roster |> filter(r => r.carrier_module == carrier) |> count
+  gunbc.language_source_scaffold_index.language_source_scaffold_roster |> filter(r => r.carrier_module == carrier) |> count
 }
 
 fn declared_fn_count(path: String, prefix: String) -> Int {
@@ -25,7 +25,7 @@ fn declared_fn_count(path: String, prefix: String) -> Int {
 }
 
 test fn language_source_scaffold_roster_is_fully_dispositioned() -> Bool {
-  language_source_scaffold_roster_all_dispositioned()
+  gunbc.language_source_scaffold_index.language_source_scaffold_roster_all_dispositioned()
 }
 
 test fn runtime_rust_blobs_are_all_rostered() -> Bool {
@@ -42,18 +42,18 @@ test fn compiler_tests_rust_blobs_are_all_rostered() -> Bool {
 
 test fn reasoned_terminal_is_accepted() -> Bool {
   let is_scaffold = match legitimate_terminal_control_row.disposition {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+    std.disposition.Terminal { reason: _ } => false
   }
-  language_source_scaffold_row_is_dispositioned(row: legitimate_terminal_control_row) && is_scaffold == false
+  gunbc.language_source_scaffold_index.language_source_scaffold_row_is_dispositioned(row: legitimate_terminal_control_row) && is_scaffold == false
 }
 
 test fn pair_completion_spelling_binds_the_derivation_authority() -> Bool {
-  match rust_pair_completion_spelling_scaffold_trigger {
-    Scaffold { dissolves_to: _, bind: bind } =>
+  match gunbc.language_source_scaffold_index.rust_pair_completion_spelling_scaffold_trigger {
+    std.disposition.Scaffold { dissolves_to: _, bind: bind } =>
       bind.module_path == "std.trait_derive_shape" && bind.decl_name == "pair_completion_op_rows"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
-data coverage_scan_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: declared_fn_count below. It counts declarations by splitting the carrier SOURCE TEXT on a fn-name prefix, which is string-shape scanning and is anemic against the Node tree the substrate already has — the same class of debt as pair_completion_uses_rhs, and marked the same way rather than left implicit (review 43195). It is a deliberate interim, strictly better than the hardcoded censu")
+data coverage_scan_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: declared_fn_count below. It counts declarations by splitting the carrier SOURCE TEXT on a fn-name prefix, which is string-shape scanning and is anemic against the Node tree the substrate already has — the same class of debt as pair_completion_uses_rhs, and marked the same way rather than left implicit (review 43195). It is a deliberate interim, strictly better than the hardcoded censu")

@@ -1,43 +1,43 @@
 module test.claim.markup_medium_convergence
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn em_hi() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "em", attributes: [], children: [ std.markup.FragmentText { content: "hi" } ] }
+  std.markup.Element { tag: "em", attributes: [], children: [ std.markup.FragmentText { content: "hi" } ] }
 }
 
 fn md_medium() -> std.markup.MarkupMedium {
-  markdown_markup_medium(sp: commonmark_gfm_spellings)
+  extdeps.languages.markdown.markdown_markup_medium(sp: extdeps.languages.markdown.commonmark_gfm_spellings)
 }
 
 test fn witness_same_fold_html_vs_md() -> Bool {
-  let html = serialize_fragment_with(frag: em_hi(), medium: html_markup_medium())
-  let md = serialize_fragment_with(frag: em_hi(), medium: md_medium())
+  let html = std.markup.serialize_fragment_with(frag: em_hi(), medium: extdeps.languages.html.html_markup_medium())
+  let md = std.markup.serialize_fragment_with(frag: em_hi(), medium: md_medium())
   (html == "<em>hi</em>") && (md == "*hi*") && (html != md)
 }
 
 fn md_medium_underscore() -> std.markup.MarkupMedium {
   std.markup.MarkupMedium {
     tag_overrides: [ std.markup.TagDelimiter { tag: "em", open: "_", close: "_" } ],
-    bracket: canonical_html_spellings,
-    text_escape: EscapeRaw,
+    bracket: extdeps.languages.html.canonical_html_spellings,
+    text_escape: std.markup.EscapeRaw,
     void_tags: [],
-    void_rendering: OmitClose,
+    void_rendering: std.markup.OmitClose,
     raw_text_tags: [],
   }
 }
 
 test fn witness_perturb_row_flips_output() -> Bool {
-  let base = serialize_fragment_with(frag: em_hi(), medium: md_medium())
-  let perturbed = serialize_fragment_with(frag: em_hi(), medium: md_medium_underscore())
+  let base = std.markup.serialize_fragment_with(frag: em_hi(), medium: md_medium())
+  let perturbed = std.markup.serialize_fragment_with(frag: em_hi(), medium: md_medium_underscore())
   (base == "*hi*") && (perturbed == "_hi_") && (base != perturbed)
 }
 
 fn button_node() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "button",
-    attributes: [ attr(name: "class", value: "primary" ) ],
+    attributes: [ std.markup.attr(name: "class", value: "primary" ) ],
     children: [ std.markup.FragmentText { content: "Go" } ],
   }
 }
@@ -53,16 +53,16 @@ fn single_quote_medium() -> std.markup.MarkupMedium {
       attr_assign: "=",
       attr_quote: "'",
     },
-    text_escape: EscapeHtml,
+    text_escape: std.markup.EscapeHtml,
     void_tags: [],
-    void_rendering: OmitClose,
+    void_rendering: std.markup.OmitClose,
     raw_text_tags: [],
   }
 }
 
 test fn witness_third_medium_is_one_row() -> Bool {
-  let html = serialize_fragment_with(frag: button_node(), medium: html_markup_medium())
-  let single_quote = serialize_fragment_with(frag: button_node(), medium: single_quote_medium())
+  let html = std.markup.serialize_fragment_with(frag: button_node(), medium: extdeps.languages.html.html_markup_medium())
+  let single_quote = std.markup.serialize_fragment_with(frag: button_node(), medium: single_quote_medium())
   (html == "<button class=\"primary\">Go</button>")
     && (single_quote == "<button class='primary'>Go</button>")
     && (html != single_quote)
@@ -83,7 +83,7 @@ fn md_mixed_doc() -> std.markdown.MarkdownDocument {
 }
 
 test fn witness_md_inline_emission_bytes() -> Bool {
-  let out = serialize_markdown_source_with(doc: md_mixed_doc(), sp: commonmark_gfm_spellings)
+  let out = extdeps.languages.markdown.serialize_markdown_source_with(doc: md_mixed_doc(), sp: extdeps.languages.markdown.commonmark_gfm_spellings)
   out == "**bold** and *em*\n"
 }
 
@@ -100,22 +100,22 @@ fn md_link_doc() -> std.markdown.MarkdownDocument {
 }
 
 test fn witness_md_link_named_arm_bytes() -> Bool {
-  let out = serialize_markdown_source_with(doc: md_link_doc(), sp: commonmark_gfm_spellings)
+  let out = extdeps.languages.markdown.serialize_markdown_source_with(doc: md_link_doc(), sp: extdeps.languages.markdown.commonmark_gfm_spellings)
   out == "[text](https://x.com)\n"
 }
 
 fn hostile_href_node() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "a",
-    attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
+    attributes: [ std.markup.attr(name: "href", value: "javascript:alert(1)" ) ],
     children: [ std.markup.FragmentText { content: "x" } ],
   }
 }
 
 test fn witness_xss_still_rejected_through_fold() -> Bool {
-  match try_serialize_html_source(node: hostile_href_node()) {
-    EmitRejected { reason: _ } => true
-    EmitOk { html: _ } => false
+  match extdeps.languages.html.try_serialize_html_source(node: hostile_href_node()) {
+    extdeps.languages.html.EmitRejected { reason: _ } => true
+    extdeps.languages.html.EmitOk { html: _ } => false
   }
 }
 

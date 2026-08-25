@@ -3,7 +3,7 @@ module extdeps.languages.gpu.wgsl.kernel
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.w3.org/TR/WGSL/"
   }
 }
@@ -19,10 +19,10 @@ type WgslKernelEmitSurface {
   workgroup_size: Int
 }
 
-fn wgsl_kernel_medium(surface: WgslKernelEmitSurface) -> Medium<WgslKernelEmitSurface> {
+fn wgsl_kernel_medium(surface: WgslKernelEmitSurface) -> extdeps.communication.medium.Medium<WgslKernelEmitSurface> {
   extdeps.communication.medium.Medium {
     carried: surface
-    fidelity: Lossless
+    fidelity: extdeps.communication.medium.Lossless
   }
 }
 
@@ -41,7 +41,7 @@ fn witness_wgsl_relu_mul_add_kernel_surface_shape() -> Bool {
 fn witness_wgsl_reuses_simd_op_code_authority() -> Bool {
   relu_mul_add_wire_op_codes.length() == 3
     && match relu_mul_add_wire_op_codes.first() {
-      Present { value: c0 } => c0 == elemwise_mul_wire_op_code
+      Present { value: c0 } => c0 == extdeps.languages.simd.kernel.elemwise_mul_wire_op_code
       Absent => false
     }
 }
@@ -63,7 +63,7 @@ fn wgsl_relu_mul_add_int_kernel_execute(
   b: List<Int>,
   c: List<Int>
 ) -> List<Int> {
-  [pure_dag_seam_unreachable()]
+  [std.bytes.pure_dag_seam_unreachable()]
 }
 
 fn wgsl_relu_mul_add_float_kernel_execute(
@@ -72,50 +72,50 @@ fn wgsl_relu_mul_add_float_kernel_execute(
   b: List<Float>,
   c: List<Float>
 ) -> List<Float> {
-  [pure_dag_seam_unreachable_float()]
+  [std.bytes.pure_dag_seam_unreachable_float()]
 }
 
 data wgsl_kernel_int_execution_host_realization_marker: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.gpu.wgsl.kernel",
     decl_name: "wgsl_relu_mul_add_int_kernel_execute",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data wgsl_kernel_float_execution_host_realization_marker: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.gpu.wgsl.kernel",
     decl_name: "wgsl_relu_mul_add_float_kernel_execute",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 
 data wgsl_relu_mul_add_int_kernel_source_grammar_scaffold_marker: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.gpu.wgsl.kernel",
     decl_name: "wgsl_relu_mul_add_int_kernel_source",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.gpu.wgsl.kernel",
     decl_name: "wgsl_relu_mul_add_float_kernel_source",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 fn witness_wgsl_kernel_sources_grammar_scaffold_documented() -> Bool {
   match wgsl_relu_mul_add_int_kernel_source_grammar_scaffold_marker {
-    Scaffold { dissolves_to: _, bind: _ } => match wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker {
-      Scaffold { dissolves_to: _, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => match wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker {
+      std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
       Terminal { reason: _ } => false
     }
     Terminal { reason: _ } => false

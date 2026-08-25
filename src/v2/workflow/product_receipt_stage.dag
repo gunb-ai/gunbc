@@ -25,9 +25,9 @@ data product_receipt_stage_ledger_rel: String = "/b4-diagnostic-ledger.txt"
 
 fn stage_identity_from_hex(hex: String, file_count: Int) -> v2.workflow.product_receipt.ArtifactIdentity {
   match std.content_hash.fnv1a64_structural_hex_digest(hex: hex) {
-    Present { value: digest } =>
+    v2.std.optional.Present { value: digest } =>
       v2.workflow.product_receipt.ArtifactIdentityKnown { digest: digest, file_count: file_count }
-    Absent => v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.ProducerReportedNoArtifact }
+    v2.std.optional.Absent => v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.ProducerReportedNoArtifact }
   }
 }
 
@@ -74,33 +74,33 @@ fn stage_admission_cause(reason: v2.std.node.Symbol) -> v2.workflow.product_rece
 // Boundary 2 owns the population checks and boundary 3 owns the read. The
 // admission ladder short-circuits, so a refusal on a boundary-2 cause leaves
 // boundary 3 NotExercised -- which is the honest answer, not a failure.
-fn stage_cause_belongs_to_read(cause: v2.workflow.product_receipt.BoundaryRefusalCause) -> v2.std.logic.Bool {
+fn stage_cause_belongs_to_read(cause: v2.workflow.product_receipt.BoundaryRefusalCause) -> Bool {
   match cause {
-    ManifestSourceReadFailed => true
-    IngestRowShortfall => true
-    AdmissionReasonUnrecognized { reason: _ } => false
-    ManifestNotProduced => false
-    ManifestOverlayNotResolved => false
-    ManifestPopulationEmpty => false
-    ManifestCoverageIncomplete => false
-    ManifestPopulationPartial => false
-    PopulationDigestMismatch => false
-    EmitterRejected { causes: _ } => false
-    EmittedHardRefusalsPresent { count: _ } => false
-    AssemblyRefused => false
-    CargoManifestWriteFailed => false
-    CargoBuildFailed => false
+    v2.workflow.product_receipt.ManifestSourceReadFailed => true
+    v2.workflow.product_receipt.IngestRowShortfall => true
+    v2.workflow.product_receipt.AdmissionReasonUnrecognized { reason: _ } => false
+    v2.workflow.product_receipt.ManifestNotProduced => false
+    v2.workflow.product_receipt.ManifestOverlayNotResolved => false
+    v2.workflow.product_receipt.ManifestPopulationEmpty => false
+    v2.workflow.product_receipt.ManifestCoverageIncomplete => false
+    v2.workflow.product_receipt.ManifestPopulationPartial => false
+    v2.workflow.product_receipt.PopulationDigestMismatch => false
+    v2.workflow.product_receipt.EmitterRejected { causes: _ } => false
+    v2.workflow.product_receipt.EmittedHardRefusalsPresent { count: _ } => false
+    v2.workflow.product_receipt.AssemblyRefused => false
+    v2.workflow.product_receipt.CargoManifestWriteFailed => false
+    v2.workflow.product_receipt.CargoBuildFailed => false
   }
 }
 
 fn stage_population_digest_identity() -> v2.workflow.product_receipt.ArtifactIdentity {
   match v2.compiler.source_authority.discovered_source_refs_digest_for_refs(refs: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs) {
-    DiscoveredSourceRefsDigestFromList { digest: digest } =>
+    v2.compiler.source_authority.DiscoveredSourceRefsDigestFromList { digest: digest } =>
       v2.workflow.product_receipt.ArtifactIdentityKnown {
         digest: digest,
-        file_count: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt.ingest_read_count
+        file_count: host_source_root_ingest_coverage_receipt.ingest_read_count
       }
-    DiscoveredSourceRefsDigestUnavailable { cause: _ } =>
+    v2.compiler.source_authority.DiscoveredSourceRefsDigestUnavailable { cause: _ } =>
       v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.ProducerReportedNoArtifact }
   }
 }
@@ -148,7 +148,7 @@ fn emitter_diagnostic_causes(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> List<
   v2.std.algebra.fold_list(
     xs: ds.tail,
     empty: v2.workflow.product_receipt.diagnostic_tally_bump(
-      tally: std.algebra.Empty,
+      tally: v2.std.algebra.Empty,
       reason: v2.std.compilers.lexing.symbol_lexeme(sym: ds.head.reason)
     ),
     cons: fn(acc, d) {
@@ -160,8 +160,8 @@ fn emitter_diagnostic_causes(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> List<
 type ProductReceiptCandidate {
   observation: v2.workflow.product_receipt.BoundaryObservation
   emitted_source: String
-  census: B4EvidenceOutcome
-  ledger: B4EvidenceOutcome
+  census: v2.workflow.body_lowering_retention_census.B4EvidenceOutcome
+  ledger: v2.workflow.body_lowering_retention_census.B4EvidenceOutcome
 }
 
 func product_receipt_candidate(
@@ -175,13 +175,13 @@ func product_receipt_candidate(
     admission: v2.test.workflow.host_source_root_ingest_manifest.host_compiler_closure_admission,
     target: v2.extdeps.languages.rust.rust_target_model()
   ) {
-    Rejected { diagnostics: ds } =>
+    v2.std.diagnostic.Rejected { diagnostics: ds } =>
       product_receipt_candidate_refused(
         txn: txn,
         ds: ds,
         population_digest: population_digest
       )
-    Accepted { value: value, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: value, diagnostics: _ } =>
       product_receipt_candidate_materialize(
         candidate_dir: candidate_dir,
         population_digest: population_digest,
@@ -200,13 +200,13 @@ func product_receipt_candidate_refused(
   ds: v2.std.diagnostic.NonEmptyDiagnostics,
   population_digest: v2.workflow.product_receipt.ArtifactIdentity
 ) -> ProductReceiptCandidate {
-  let census_write = Filesystem.Write(
+  let census_write = extdeps.filesystem.filesystem_io.Filesystem.Write(
     path: concat(txn, product_receipt_stage_census_rel),
-    content: retention_census_render(families: retention_census(ds: ds))
+    content: v2.workflow.body_lowering_retention_census.retention_census_render(families: v2.workflow.body_lowering_retention_census.retention_census(ds: ds))
   )
-  let ledger_write = Filesystem.Write(
+  let ledger_write = extdeps.filesystem.filesystem_io.Filesystem.Write(
     path: concat(txn, product_receipt_stage_ledger_rel),
-    content: diagnostic_ledger_render(ds: ds)
+    content: v2.workflow.body_lowering_retention_census.diagnostic_ledger_render(ds: ds)
   )
   ProductReceiptCandidate {
     observation: stage_refused(
@@ -215,8 +215,8 @@ func product_receipt_candidate_refused(
       consumed: population_digest
     ),
     emitted_source: "",
-    census: if census_write.success { EvidenceWritten } else { EvidenceWriteFailed },
-    ledger: if ledger_write.success { EvidenceWritten } else { EvidenceWriteFailed }
+    census: if census_write.success { v2.workflow.body_lowering_retention_census.EvidenceWritten } else { v2.workflow.body_lowering_retention_census.EvidenceWriteFailed },
+    ledger: if ledger_write.success { v2.workflow.body_lowering_retention_census.EvidenceWritten } else { v2.workflow.body_lowering_retention_census.EvidenceWriteFailed }
   }
 }
 
@@ -234,8 +234,8 @@ func product_receipt_candidate_materialize(
         consumed: population_digest
       ),
       emitted_source: emitted_source,
-      census: EvidenceNotApplicable,
-      ledger: EvidenceNotApplicable
+      census: v2.workflow.body_lowering_retention_census.EvidenceNotApplicable,
+      ledger: v2.workflow.body_lowering_retention_census.EvidenceNotApplicable
     }
   } else {
     let made = shell.Mkdir.Parents(path: concat(candidate_dir, "/src"))
@@ -251,19 +251,19 @@ func product_receipt_candidate_materialize(
           produced: v2.workflow.product_receipt.product_artifact_identity(value: emitted_source, file_count: 1)
         ),
         emitted_source: emitted_source,
-        census: EvidenceNotApplicable,
-        ledger: EvidenceNotApplicable
+        census: v2.workflow.body_lowering_retention_census.EvidenceNotApplicable,
+        ledger: v2.workflow.body_lowering_retention_census.EvidenceNotApplicable
       }
     } else {
       ProductReceiptCandidate {
         observation: stage_refused(
           boundary: v2.workflow.product_receipt.ClosureCandidateEmitted,
-          cause: v2.workflow.product_receipt.EmitterRejected { causes: std.algebra.Empty },
+          cause: v2.workflow.product_receipt.EmitterRejected { causes: v2.std.algebra.Empty },
           consumed: population_digest
         ),
         emitted_source: emitted_source,
-        census: EvidenceNotApplicable,
-        ledger: EvidenceNotApplicable
+        census: v2.workflow.body_lowering_retention_census.EvidenceNotApplicable,
+        ledger: v2.workflow.body_lowering_retention_census.EvidenceNotApplicable
       }
     }
   }
@@ -341,13 +341,13 @@ func product_receipt_tail(
   entry: String,
   candidate_dir: String,
   emitted_source: String,
-  b4_ok: v2.std.logic.Bool
+  b4_ok: Bool
 ) -> ProductReceiptTail {
   if !b4_ok {
     product_receipt_tail_not_exercised()
   } else {
     let candidate_identity = v2.workflow.product_receipt.product_artifact_identity(value: emitted_source, file_count: 1)
-    let assemble = gunbc.WitnessBin.Run(
+    let assemble = WitnessBin.Run(
       workdir: root,
       bin_path: concat(root, "/target/release/cssl_assemble"),
       args: [
@@ -418,12 +418,12 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
   )
 
   let admission_cause = match admission {
-    ClosureEmitPopulationRefused { reason: reason } => stage_admission_cause(reason: reason)
-    ClosureEmitPopulationAdmitted { ingest: _ } => v2.workflow.product_receipt.ManifestNotProduced
+    v2.compiler.self_host.compiler_closure_emit_driver.ClosureEmitPopulationRefused { reason: reason } => stage_admission_cause(reason: reason)
+    v2.compiler.self_host.compiler_closure_emit_driver.ClosureEmitPopulationAdmitted { ingest: _ } => v2.workflow.product_receipt.ManifestNotProduced
   }
   let admitted = match admission {
-    ClosureEmitPopulationRefused { reason: _ } => false
-    ClosureEmitPopulationAdmitted { ingest: _ } => true
+    v2.compiler.self_host.compiler_closure_emit_driver.ClosureEmitPopulationRefused { reason: _ } => false
+    v2.compiler.self_host.compiler_closure_emit_driver.ClosureEmitPopulationAdmitted { ingest: _ } => true
   }
 
   let population_digest = stage_population_digest_identity()
@@ -459,9 +459,9 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
   }
 
   let b2_ok = match b2.standing {
-    BoundaryCompleted => true
-    BoundaryRefused { cause: _ } => false
-    BoundaryNotExercised => false
+    v2.workflow.product_receipt.BoundaryCompleted => true
+    v2.workflow.product_receipt.BoundaryRefused { cause: _ } => false
+    v2.workflow.product_receipt.BoundaryNotExercised => false
   }
 
   let b3 = if !b2_ok {
@@ -483,9 +483,9 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
   }
 
   let b3_ok = match b3.standing {
-    BoundaryCompleted => true
-    BoundaryRefused { cause: _ } => false
-    BoundaryNotExercised => false
+    v2.workflow.product_receipt.BoundaryCompleted => true
+    v2.workflow.product_receipt.BoundaryRefused { cause: _ } => false
+    v2.workflow.product_receipt.BoundaryNotExercised => false
   }
 
   let candidate = if b3_ok {
@@ -498,8 +498,8 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
     ProductReceiptCandidate {
       observation: stage_not_exercised(boundary: v2.workflow.product_receipt.ClosureCandidateEmitted),
       emitted_source: "",
-      census: EvidenceNotApplicable,
-      ledger: EvidenceNotApplicable
+      census: v2.workflow.body_lowering_retention_census.EvidenceNotApplicable,
+      ledger: v2.workflow.body_lowering_retention_census.EvidenceNotApplicable
     }
   }
   let b4 = candidate.observation
@@ -508,9 +508,9 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
   let ledger_outcome = candidate.ledger
 
   let b4_ok = match b4.standing {
-    BoundaryCompleted => true
-    BoundaryRefused { cause: _ } => false
-    BoundaryNotExercised => false
+    v2.workflow.product_receipt.BoundaryCompleted => true
+    v2.workflow.product_receipt.BoundaryRefused { cause: _ } => false
+    v2.workflow.product_receipt.BoundaryNotExercised => false
   }
 
   let tail = product_receipt_tail(
@@ -549,19 +549,19 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
     content: v2.workflow.product_receipt.product_receipt_render(receipt: receipt)
   )
 
-  if !b4_evidence_outcome_admits(outcome: census_outcome) {
-    exit_failure(
+  if !v2.workflow.body_lowering_retention_census.b4_evidence_outcome_admits(outcome: census_outcome) {
+    std.process.exit_failure(
       reason: "boundary-4 retention census could not be written; the receipt would understate a population it observed"
     )
-  } else if !b4_evidence_outcome_admits(outcome: ledger_outcome) {
-    exit_failure(
+  } else if !v2.workflow.body_lowering_retention_census.b4_evidence_outcome_admits(outcome: ledger_outcome) {
+    std.process.exit_failure(
       reason: "boundary-4 diagnostic ledger could not be written; the receipt would name a refusal it cannot attribute"
     )
   } else {
-    if written.success && product_receipt_green(receipt: receipt) {
+    if written.success && v2.workflow.product_receipt.product_receipt_green(receipt: receipt) {
       std.process.ExitSuccess
     } else {
-      exit_failure(reason: "seven-boundary product receipt is RED")
+      std.process.exit_failure(reason: "seven-boundary product receipt is RED")
     }
   }
 }

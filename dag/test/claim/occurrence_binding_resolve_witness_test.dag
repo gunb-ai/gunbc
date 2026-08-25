@@ -1,13 +1,13 @@
 module test.claim.occurrence_binding_resolve_witness_test
 
 
-fn obr_fixture_span(file: String, start: Int, end: Int) -> std.types.SourceSpan {
-  std.types.SourceSpan { file: file, start: start, end: end }
+fn obr_fixture_span(file: String, start: Int, end: Int) -> SourceSpan {
+  SourceSpan { file: file, start: start, end: end }
 }
 
 fn obr_fixture_path(
-  ancestors: List<std.occurrence_identity.OccurrenceId>,
-  terminal: std.occurrence_identity.OccurrenceId
+  ancestors: List<OccurrenceId>,
+  terminal: OccurrenceId
 ) -> std.occurrence_identity.OccurrenceContainmentPath {
   std.occurrence_identity.OccurrenceContainmentPath {
     ancestors: ancestors,
@@ -16,9 +16,9 @@ fn obr_fixture_path(
 }
 
 fn obr_fixture_index_entry(
-  occurrence: std.occurrence_identity.OccurrenceId,
+  occurrence: OccurrenceId,
   authored_name: String,
-  span: std.types.SourceSpan,
+  span: SourceSpan,
   containment: std.occurrence_identity.OccurrenceContainmentPath
 ) -> std.occurrence_identity.OccurrenceIndexEntry {
   std.occurrence_identity.OccurrenceIndexEntry {
@@ -33,29 +33,29 @@ fn obr_fixture_index_entry(
 
 fn obr_supplied_population_transport() -> std.occurrence_identity.OccurrenceTransport {
   let span = obr_fixture_span(file: "supplied.dag", start: 1, end: 2)
-  let lexical_a = std.occurrence_identity.OccurrenceId { value: 10 }
-  let lexical_b = std.occurrence_identity.OccurrenceId { value: 11 }
-  let type_decl = std.occurrence_identity.OccurrenceId { value: 12 }
-  let lexical_ref = std.occurrence_identity.OccurrenceId { value: 20 }
-  let type_ref = std.occurrence_identity.OccurrenceId { value: 21 }
+  let lexical_a = OccurrenceId { value: 10 }
+  let lexical_b = OccurrenceId { value: 11 }
+  let type_decl = OccurrenceId { value: 12 }
+  let lexical_ref = OccurrenceId { value: 20 }
+  let type_ref = OccurrenceId { value: 21 }
   let lexical_a_path = obr_fixture_path(
-    ancestors: [std.occurrence_identity.OccurrenceId { value: 1 }],
+    ancestors: [OccurrenceId { value: 1 }],
     terminal: lexical_a,
   )
   let lexical_b_path = obr_fixture_path(
-    ancestors: [std.occurrence_identity.OccurrenceId { value: 2 }],
+    ancestors: [OccurrenceId { value: 2 }],
     terminal: lexical_b,
   )
   let type_decl_path = obr_fixture_path(
-    ancestors: [std.occurrence_identity.OccurrenceId { value: 3 }],
+    ancestors: [OccurrenceId { value: 3 }],
     terminal: type_decl,
   )
   let lexical_ref_path = obr_fixture_path(
-    ancestors: [std.occurrence_identity.OccurrenceId { value: 4 }],
+    ancestors: [OccurrenceId { value: 4 }],
     terminal: lexical_ref,
   )
   let type_ref_path = obr_fixture_path(
-    ancestors: [std.occurrence_identity.OccurrenceId { value: 5 }],
+    ancestors: [OccurrenceId { value: 5 }],
     terminal: type_ref,
   )
   std.occurrence_identity.OccurrenceTransport {
@@ -97,19 +97,19 @@ fn obr_supplied_population_transport() -> std.occurrence_identity.OccurrenceTran
       std.occurrence_identity.DeclarationOccurrence {
         occurrence: lexical_a,
         containment: lexical_a_path,
-        category: LexicalValueOccurrence,
+        category: std.occurrence_identity.LexicalValueOccurrence,
         diagnostic_span: span,
       },
       std.occurrence_identity.DeclarationOccurrence {
         occurrence: lexical_b,
         containment: lexical_b_path,
-        category: LexicalValueOccurrence,
+        category: std.occurrence_identity.LexicalValueOccurrence,
         diagnostic_span: span,
       },
       std.occurrence_identity.DeclarationOccurrence {
         occurrence: type_decl,
         containment: type_decl_path,
-        category: TypeOccurrence,
+        category: std.occurrence_identity.TypeOccurrence,
         diagnostic_span: span,
       },
     ],
@@ -117,71 +117,71 @@ fn obr_supplied_population_transport() -> std.occurrence_identity.OccurrenceTran
       std.occurrence_identity.ReferenceOccurrence {
         occurrence: lexical_ref,
         containment: lexical_ref_path,
-        category: LexicalValueOccurrence,
+        category: std.occurrence_identity.LexicalValueOccurrence,
         diagnostic_span: span,
       },
       std.occurrence_identity.ReferenceOccurrence {
         occurrence: type_ref,
         containment: type_ref_path,
-        category: TypeOccurrence,
+        category: std.occurrence_identity.TypeOccurrence,
         diagnostic_span: span,
       },
     ],
   }
 }
 
-fn obr_lexical_reference_id() -> std.occurrence_identity.OccurrenceId {
-  std.occurrence_identity.OccurrenceId { value: 20 }
+fn obr_lexical_reference_id() -> OccurrenceId {
+  OccurrenceId { value: 20 }
 }
 
-fn obr_type_reference_id() -> std.occurrence_identity.OccurrenceId {
-  std.occurrence_identity.OccurrenceId { value: 21 }
+fn obr_type_reference_id() -> OccurrenceId {
+  OccurrenceId { value: 21 }
 }
 
 test fn occurrence_binding_resolve_supplied_zero_is_unbound_holds() -> Bool {
-  match resolve_reference_occurrence_binding(
+  match std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
     occurrence: obr_lexical_reference_id(),
     supplied_candidates: [],
   ) {
-    OccurrenceReferenceBindingDecided {
-      result: OccurrenceUnbound { occurrence: _ },
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingDecided {
+      result: std.occurrence_binding.OccurrenceUnbound { occurrence: _ },
     } => true
     _ => false
   }
 }
 
 test fn occurrence_binding_resolve_supplied_one_is_bound_with_exact_identity_holds() -> Bool {
-  match resolve_reference_occurrence_binding(
+  match std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
     occurrence: obr_lexical_reference_id(),
-    supplied_candidates: [std.occurrence_identity.OccurrenceId { value: 10 }],
+    supplied_candidates: [OccurrenceId { value: 10 }],
   ) {
-    OccurrenceReferenceBindingDecided {
-      result: OccurrenceBound { binding: binding },
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingDecided {
+      result: std.occurrence_binding.OccurrenceBound { binding: binding },
     } =>
-      binding.candidate.containment.ancestors == [std.occurrence_identity.OccurrenceId { value: 1 }]
+      binding.candidate.containment.ancestors == [OccurrenceId { value: 1 }]
         && binding.candidate.containment.terminal.value == 10
     _ => false
   }
 }
 
 test fn occurrence_binding_resolve_supplied_many_is_ambiguous_holds() -> Bool {
-  match resolve_reference_occurrence_binding(
+  match std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
     occurrence: obr_lexical_reference_id(),
     supplied_candidates: [
-      std.occurrence_identity.OccurrenceId { value: 10 },
-      std.occurrence_identity.OccurrenceId { value: 11 },
+      OccurrenceId { value: 10 },
+      OccurrenceId { value: 11 },
     ],
   ) {
-    OccurrenceReferenceBindingDecided {
-      result: OccurrenceAmbiguous {
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingDecided {
+      result: std.occurrence_binding.OccurrenceAmbiguous {
         occurrence: _,
-        candidates: AmbiguousBindingCandidates {
+        candidates: std.occurrence_binding.AmbiguousBindingCandidates {
           first: first,
           second: second,
-          rest: Empty,
+          rest: std.algebra.Empty,
         },
       },
     } =>
@@ -192,32 +192,32 @@ test fn occurrence_binding_resolve_supplied_many_is_ambiguous_holds() -> Bool {
 }
 
 test fn occurrence_binding_resolve_duplicate_supplied_identity_refuses_holds() -> Bool {
-  match resolve_reference_occurrence_binding(
+  match std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
     occurrence: obr_lexical_reference_id(),
     supplied_candidates: [
-      std.occurrence_identity.OccurrenceId { value: 10 },
-      std.occurrence_identity.OccurrenceId { value: 10 },
+      OccurrenceId { value: 10 },
+      OccurrenceId { value: 10 },
     ],
   ) {
-    OccurrenceReferenceBindingTransportRefused {
-      refusal: DuplicateSuppliedCandidateIdentity {
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingTransportRefused {
+      refusal: std.occurrence_identity.DuplicateSuppliedCandidateIdentity {
         occurrence: duplicate,
         diagnostic_span: _,
       },
     } => duplicate.value == 10
-    OccurrenceReferenceBindingDecided { result: _ } => false
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingDecided { result: _ } => false
   }
 }
 
 test fn occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_holds() -> Bool {
-  match resolve_reference_occurrence_binding(
+  match std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
     occurrence: obr_type_reference_id(),
-    supplied_candidates: [std.occurrence_identity.OccurrenceId { value: 10 }],
+    supplied_candidates: [OccurrenceId { value: 10 }],
   ) {
-    OccurrenceReferenceBindingDecided {
-      result: OccurrenceUnbound { occurrence: _ },
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingDecided {
+      result: std.occurrence_binding.OccurrenceUnbound { occurrence: _ },
     } => true
     _ => false
   }
@@ -233,20 +233,20 @@ test fn occurrence_binding_resolve_direct_fold_is_the_single_decision_authority_
       match declaration {
         Absent => false
         Present { value: decl } =>
-          let direct = occurrence_binding_from_candidates(
-            occurrence: binding_occurrence_from_reference(reference: ref),
-            candidates: [binding_candidate_from_declaration(
+          let direct = std.occurrence_binding.occurrence_binding_from_candidates(
+            occurrence: std.occurrence_binding_resolve.binding_occurrence_from_reference(reference: ref),
+            candidates: [std.occurrence_binding_resolve.binding_candidate_from_declaration(
               declaration: decl,
             )],
           )
-          match resolve_reference_occurrence_binding(
+          match std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
             transport: transport,
             occurrence: ref.occurrence,
             supplied_candidates: [decl.occurrence],
           ) {
-            OccurrenceReferenceBindingDecided { result: decided } =>
+            std.occurrence_binding_resolve.OccurrenceReferenceBindingDecided { result: decided } =>
               decided == direct
-            OccurrenceReferenceBindingTransportRefused { refusal: _ } => false
+            std.occurrence_binding_resolve.OccurrenceReferenceBindingTransportRefused { refusal: _ } => false
           }
       }
   }
@@ -269,80 +269,80 @@ fn obr_duplicate_index_transport() -> std.occurrence_identity.OccurrenceTranspor
 }
 
 test fn occurrence_binding_resolve_malformed_transport_refuses_holds() -> Bool {
-  match resolve_reference_occurrence_binding(
+  match std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
     transport: obr_duplicate_index_transport(),
     occurrence: obr_lexical_reference_id(),
     supplied_candidates: [],
   ) {
-    OccurrenceReferenceBindingTransportRefused {
-      refusal: DuplicateAuthoredOccurrenceIdentity {
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingTransportRefused {
+      refusal: std.occurrence_identity.DuplicateAuthoredOccurrenceIdentity {
         occurrence: _,
         diagnostic_span: _,
       },
     } => true
-    OccurrenceReferenceBindingDecided { result: _ } => false
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingDecided { result: _ } => false
   }
 }
 
 test fn occurrence_binding_resolve_unknown_reference_identity_refuses_holds() -> Bool {
-  match resolve_reference_occurrence_binding(
+  match std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
-    occurrence: std.occurrence_identity.OccurrenceId { value: 999 },
+    occurrence: OccurrenceId { value: 999 },
     supplied_candidates: [],
   ) {
-    OccurrenceReferenceBindingTransportRefused {
-      refusal: UnknownOccurrenceIdentity { occurrence: observed },
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingTransportRefused {
+      refusal: std.occurrence_identity.UnknownOccurrenceIdentity { occurrence: observed },
     } => observed.value == 999
-    OccurrenceReferenceBindingDecided { result: _ } => false
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingDecided { result: _ } => false
   }
 }
 
 test fn occurrence_binding_resolve_unknown_supplied_candidate_identity_refuses_holds() -> Bool {
-  match resolve_reference_occurrence_binding(
+  match std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
     occurrence: obr_lexical_reference_id(),
-    supplied_candidates: [std.occurrence_identity.OccurrenceId { value: 999 }],
+    supplied_candidates: [OccurrenceId { value: 999 }],
   ) {
-    OccurrenceReferenceBindingTransportRefused {
-      refusal: UnknownOccurrenceIdentity { occurrence: observed },
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingTransportRefused {
+      refusal: std.occurrence_identity.UnknownOccurrenceIdentity { occurrence: observed },
     } => observed.value == 999
-    OccurrenceReferenceBindingDecided { result: _ } => false
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingDecided { result: _ } => false
   }
 }
 
 fn occurrence_binding_resolve_reference_identity_as_candidate_refuses_wrong_role() -> Bool {
-  match resolve_reference_occurrence_binding(
+  match std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
     occurrence: obr_lexical_reference_id(),
     supplied_candidates: [obr_type_reference_id()],
   ) {
-    OccurrenceReferenceBindingTransportRefused {
-      refusal: WrongOccurrenceRole {
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingTransportRefused {
+      refusal: std.occurrence_identity.WrongOccurrenceRole {
         occurrence: observed,
-        expected: DeclarationRole,
-        observed: ReferenceRole,
+        expected: std.occurrence_identity.DeclarationRole,
+        observed: std.occurrence_identity.ReferenceRole,
         diagnostic_span: _,
       },
     } => observed.value == obr_type_reference_id().value
-    OccurrenceReferenceBindingDecided { result: _ } => false
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingDecided { result: _ } => false
   }
 }
 
 test fn occurrence_binding_resolve_wrong_roles_refuse_holds() -> Bool {
   occurrence_binding_resolve_reference_identity_as_candidate_refuses_wrong_role() &&
-  match resolve_reference_occurrence_binding(
+  match std.occurrence_binding_resolve.resolve_reference_occurrence_binding(
     transport: obr_supplied_population_transport(),
-    occurrence: std.occurrence_identity.OccurrenceId { value: 10 },
+    occurrence: OccurrenceId { value: 10 },
     supplied_candidates: [],
   ) {
-    OccurrenceReferenceBindingTransportRefused {
-      refusal: WrongOccurrenceRole {
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingTransportRefused {
+      refusal: std.occurrence_identity.WrongOccurrenceRole {
         occurrence: observed,
-        expected: ReferenceRole,
-        observed: DeclarationRole,
+        expected: std.occurrence_identity.ReferenceRole,
+        observed: std.occurrence_identity.DeclarationRole,
         diagnostic_span: _,
       },
     } => observed.value == 10
-    OccurrenceReferenceBindingDecided { result: _ } => false
+    std.occurrence_binding_resolve.OccurrenceReferenceBindingDecided { result: _ } => false
   }
 }

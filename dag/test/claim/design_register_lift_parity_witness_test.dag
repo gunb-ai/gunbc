@@ -1,7 +1,7 @@
 module test.claim.design_register_lift_parity_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data lift_parity_note: String = "Phase-A emission-identical witness (design-register-library.md sect 5): pins content digests of site + roadmap CSS/HTML emissions after the gunbc.design.* lift. Pre-lift golden = post-lift output (lift-not-fork); drift reds. site_register_keystone and roadmap_register_keystone remain the behavioral receipts; this witness is the digest receipt."
 
@@ -9,7 +9,7 @@ data transition_carrier_repin_note: String = "Re-pinned for the transition-carri
 
 The proof, run 2026-07-24: old and new moodboard CSS were both emitted and compared as declaration SETS per selector rather than as text. All 68 selectors map to identical declaration sets; the 138-byte difference is entirely block placement (transitions moved out of base blocks into their own), and since CSS merges blocks sharing a selector, identical per-selector declaration sets means identical computed styles. The site's appearance and behaviour are unchanged.
 
-Two digests deliberately did NOT move, which is itself evidence the change is scoped as described: accent_study_html declares no response rules, so it has no transition carriers and its bytes are untouched; moodboard_digest covers the thesis/theme rows rather than the stylesheet. A change that had leaked past the transition machinery would have moved those too."
+Two digests deliberately did NOT move, which is itself evidence the change is scoped as described: gunbc.site.accent_study.accent_study_html declares no response rules, so it has no transition carriers and its bytes are untouched; gunbc.site.moodboard.moodboard_digest covers the thesis/theme rows rather than the stylesheet. A change that had leaked past the transition machinery would have moved those too."
 
 data moodboard_css_lift_parity_digest: String = "deaf2b36826760c2"
 data moodboard_repin_s1_selective_spectacle_note: String = "Re-pinned 2026-08-02 for the S1 selective-spectacle amendment (operator recalibration): the moodboard HTML, thesis/themes, and accent-study HTML digests move intentionally because the thesis string is revised (calm field; luminous focus; physical response; every response true) — both pages render register_thesis — and the principles table gains the three salience rows (selective-spectacle, emission-over-material, bounded-attraction, each carried by a gunbc.design.salience declaration). moodboard_css deliberately did NOT move (re-derived deaf2b36826760c2, equal to its pin) — the amendment is model-layer only, no stylesheet change, which is itself the scope evidence. Behavioral receipts: test.claim.salience_witness (budget table, focal budget refusal, emission refusals incl. sole-discriminator, attraction envelope). All three digests derived by execution (moodboard_html_derived_digest / moodboard_digest / accent_study_html_derived_digest run 2026-08-02), never chosen."
@@ -70,23 +70,23 @@ data roadmap_css_repin_fleet_capacity_panel_note: String = "Re-pinned 2026-08-23
 data moodboard_thesis_themes_lift_parity_digest: String = "98f0513aebb0dcb3"
 
 fn emission_content_digest(s: String) -> String {
-  content_hash_atom(value: s as std.types.NonEmptyStr).digest as String
+  std.content_hash.content_hash_atom(value: s as std.types.NonEmptyStr).digest as String
 }
 
 fn roadmap_css_derived_digest() -> String {
-  emission_content_digest(s: roadmap_css())
+  emission_content_digest(s: gunbc.roadmap_style.roadmap_css())
 }
 
 fn moodboard_css_derived_digest() -> String {
-  emission_content_digest(s: moodboard_css())
+  emission_content_digest(s: gunbc.site.moodboard.moodboard_css())
 }
 
 fn moodboard_html_derived_digest() -> String {
-  emission_content_digest(s: moodboard_html())
+  emission_content_digest(s: gunbc.site.moodboard.moodboard_html())
 }
 
 fn accent_study_html_derived_digest() -> String {
-  emission_content_digest(s: accent_study_html())
+  emission_content_digest(s: gunbc.site.accent_study.accent_study_html())
 }
 
 test fn witness_moodboard_css_digest_pinned() -> Bool {
@@ -106,5 +106,5 @@ test fn witness_roadmap_css_digest_pinned() -> Bool {
 }
 
 test fn witness_moodboard_thesis_themes_digest_pinned() -> Bool {
-  moodboard_digest() == moodboard_thesis_themes_lift_parity_digest
+  gunbc.site.moodboard.moodboard_digest() == moodboard_thesis_themes_lift_parity_digest
 }

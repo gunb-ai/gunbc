@@ -1,5 +1,6 @@
 module gunbc.claim_executor_cli
 
+
 // THIS REPOSITORY'S OWN BINARY, WHICH IS WHY IT HAS NO extdeps CITATION AND MUST NOT ACQUIRE ONE:
 // claim_executor is built from this tree, so its flags are a fact this repository already owns
 // rather than an upstream contract to cite. It is homed under gunbc/ for exactly that reason.
@@ -10,15 +11,15 @@ module gunbc.claim_executor_cli
 // relative because it names a build output inside the checkout the job is standing in, not an
 // installed program; that is a real difference from every extdeps tool row, whose absolute paths
 // exist because a sudoers rule or an ambient PATH would otherwise decide which binary ran.
-data claim_executor_release_path: NonEmptyStr = "target/release/claim_executor"
+data claim_executor_release_path: std.types.NonEmptyStr = "target/release/claim_executor"
 
 // The mode flag is a parameter rather than one builder per mode: the binary's modes are a growing
 // list this repository controls, and the SHAPE of the invocation -- one mode, then whatever operands
 // that mode takes -- is what this builder owns. A caller naming a mode that does not exist gets the
 // binary's own refusal, which is the authority, rather than a stale enumeration here agreeing with
 // it by coincidence.
-fn claim_executor_command(mode_flag: String, operands: List<String>) -> ArgvCommand {
-  argv_command(
+fn claim_executor_command(mode_flag: String, operands: List<String>) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(
     program: claim_executor_release_path,
     arguments: append([mode_flag], items: operands),
   )

@@ -1,5 +1,6 @@
 module gunbc.host_disk_reclaim
 
+
 // THE FLEET'S DISK CAPACITY MECHANISM, SUBSUMED. This module models what
 // ctrl-runner-reclaim.timer has been doing on every runner host since 2026-07-23, read from the
 // script itself (scripts/session-dashboard/host/reclaim-runner-disk.sh and its .service/.timer)
@@ -38,12 +39,12 @@ data host_disk_reclaim_subsumption_note: String = "Subsumes ctrl-runner-reclaim.
 type DiskReclaimConcern
   = UnrepackedPackAccretion { pack_count: Int }
   | InterruptedFetchResidue { tmp_pack_count: Int }
-  | UnrotatedDiagnosticLogs { log_bytes: ByteSize }
+  | UnrotatedDiagnosticLogs { log_bytes: std.measure.ByteSize }
   | DockerBuildCacheAccretion { rootless: Bool }
   | WedgedObjectStore { cause: StoreWedgeCause }
 
 type StoreWedgeCause
-  = BrokenReviewRef { ref_name: NonEmptyStr }
+  = BrokenReviewRef { ref_name: std.types.NonEmptyStr }
   | PoisonedGcLog
 
 // A SLOT RUNNING A JOB IS NOT A SLOT WHOSE STATE IS UNKNOWN, and collapsing the two is what would
@@ -64,22 +65,22 @@ type StoreWedgeCause
 // the hollow alias, not single authority. The import that prompted the question was simply dead and
 // is deleted.
 type SlotJobState
-  = SlotRunningJob { worker_cgroup_unit: NonEmptyStr }
+  = SlotRunningJob { worker_cgroup_unit: std.types.NonEmptyStr }
   | SlotIdle
-  | SlotJobStateUnobservable { reason: NonEmptyStr }
+  | SlotJobStateUnobservable { reason: std.types.NonEmptyStr }
 
 type CheckoutObservation {
-  git_dir: NonEmptyStr
-  owner: NonEmptyStr
+  git_dir: std.types.NonEmptyStr
+  owner: std.types.NonEmptyStr
   pack_count: Int
   tmp_pack_count: Int
-  git_dir_bytes: ByteSize
+  git_dir_bytes: std.measure.ByteSize
 }
 
 type SlotDiskObservation {
-  slot: RunnerSlotIdentity
+  slot: gunbc.build_cache_instance.RunnerSlotIdentity
   job_state: SlotJobState
-  diag_log_bytes: ByteSize
+  diag_log_bytes: std.measure.ByteSize
   checkouts: List<CheckoutObservation>
 }
 
@@ -89,11 +90,11 @@ type SlotDiskObservation {
 // not literals inlined at their use sites.
 data reclaim_fragmentation_gate_packs: Int = 8
 
-data reclaim_diag_max_age: Second = second(count: 3 * seconds_per_day())
+data reclaim_diag_max_age: std.measure.Second = std.measure.second(count: 3 * std.measure.seconds_per_day())
 
-data reclaim_tmp_pack_min_age: Second = second(count: 1 * seconds_per_day())
+data reclaim_tmp_pack_min_age: std.measure.Second = std.measure.second(count: 1 * std.measure.seconds_per_day())
 
-data reclaim_per_repo_timeout: Second = second(count: 1800)
+data reclaim_per_repo_timeout: std.measure.Second = std.measure.second(count: 1800)
 
 // THE TWO AGE FLOORS ARE DURATIONS AND NOW CARRY ONE (review 54879). They first landed as
 // `_days: Int`, a flat scalar with the unit in the identifier -- which is the unit-modeling trigger,
@@ -111,10 +112,10 @@ data reclaim_parameters_note: String = "RECLAIM_GIT_GC_MIN_PACKS=8, RECLAIM_DIAG
 // earlier shape that returned a Bool could not say which, and a consumer reading false could not
 // tell "already packed" from "we did not look".
 type RepackDecision
-  = RepackWarranted { git_dir: NonEmptyStr, owner: NonEmptyStr, pack_count: Int }
-  | RepackBelowFragmentationGate { git_dir: NonEmptyStr, pack_count: Int }
-  | RepackRefusedSlotBusy { git_dir: NonEmptyStr, worker_cgroup_unit: NonEmptyStr }
-  | RepackRefusedJobStateUnobservable { git_dir: NonEmptyStr, reason: NonEmptyStr }
+  = RepackWarranted { git_dir: std.types.NonEmptyStr, owner: std.types.NonEmptyStr, pack_count: Int }
+  | RepackBelowFragmentationGate { git_dir: std.types.NonEmptyStr, pack_count: Int }
+  | RepackRefusedSlotBusy { git_dir: std.types.NonEmptyStr, worker_cgroup_unit: std.types.NonEmptyStr }
+  | RepackRefusedJobStateUnobservable { git_dir: std.types.NonEmptyStr, reason: std.types.NonEmptyStr }
 
 fn repack_decision_for(job_state: SlotJobState, checkout: CheckoutObservation) -> RepackDecision {
   match job_state {
@@ -165,12 +166,12 @@ data reclaim_unconditional_arms_note: String = "tmp_pack sweep and _diag rotatio
 // which is the quantity a width preflight should charge. Retiring the literal is deliberately NOT
 // done here, because the operator's sequencing is that the reclaimer is subsumed before anything
 // touches the width numbers -- those numbers are downstream of whether this mechanism runs.
-fn slot_observed_bytes(obs: SlotDiskObservation) -> ByteSize {
-  byte_size(
+fn slot_observed_bytes(obs: SlotDiskObservation) -> std.measure.ByteSize {
+  std.measure.byte_size(
     count: fold_list(
       xs: obs.checkouts,
-      empty: byte_size_count(b: obs.diag_log_bytes),
-      cons: fn(acc, c) { acc + byte_size_count(b: c.git_dir_bytes) },
+      empty: std.measure.byte_size_count(b: obs.diag_log_bytes),
+      cons: fn(acc, c) { acc + std.measure.byte_size_count(b: c.git_dir_bytes) },
     ),
   )
 }

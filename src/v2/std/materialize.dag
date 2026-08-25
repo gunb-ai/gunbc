@@ -1,102 +1,103 @@
 module v2.std.materialize
 
+
 data materialize_module_note: String = "materialize is the spine's Recompute|Memoize|Share qualification step (execution-spine-design.md §2; run ≜ realize ∘ materialize ∘ dependency_view). It is the content-hash GENERALIZATION of dag/std/realization.reconcile: reconcile keys collapse on the effect-pairwise create_double_init_collapsible predicate over RealizedStep effects; materialize keys on content_hash over EVERY subtree Node, so content-identical subgraphs that a tree-fold would recompute once-per-parent are marked Share (computed once). This is Half B of the duplicate-work design (duplicate-work-graph-lens-design.md): duplication = N materializations of one computation-identity with no Share. Occurrence-independent content_hash IS the identity (src/v2/std/node.dag); node_subtree_nodes enumerates the whole DAG. MVP scope: structural identity only (ComputationIdentity.StructurallyIdentical, the decidable wall); the effect-idempotency safety gate (D3) and cost floor (D4) layer on next. Actual runtime Share (compute-once execution) is realized by emit-on-demand native artifacts (Share by content-hash), NOT by parallelizing the interpreter — the Rc→Arc gate is removed (ROADMAP §④; execution-spine-design.md reconciliation 2026-07-10, operator-signed); this analysis-side materialize lands now."
 
 type MaterializedNode {
-  hash: ContentHash
-  materialization: Materialization
+  hash: std.content_hash.ContentHash
+  materialization: std.realization.Materialization
 }
 
 data empty_materialized: List<MaterializedNode> = []
-data empty_hashes: List<ContentHash> = []
+data empty_hashes: List<std.content_hash.ContentHash> = []
 
-fn materialized_mark_peers_share(acc: List<MaterializedNode>, h: ContentHash) -> List<MaterializedNode> {
-  fold_list(
+fn materialized_mark_peers_share(acc: List<MaterializedNode>, h: std.content_hash.ContentHash) -> List<MaterializedNode> {
+  v2.std.algebra.fold_list(
     xs: acc,
     empty: empty_materialized,
     cons: fn(out, e) {
       if e.hash == h {
-        list_snoc_item(xs: out, item: MaterializedNode { hash: e.hash, materialization: Share })
+        v2.std.algebra.list_snoc_item(xs: out, item: MaterializedNode { hash: e.hash, materialization: std.realization.Share })
       } else {
-        list_snoc_item(xs: out, item: e)
+        v2.std.algebra.list_snoc_item(xs: out, item: e)
       }
     }
   )
 }
 
-fn materialized_has_peer(acc: List<MaterializedNode>, h: ContentHash) -> Bool {
-  any(xs: acc, predicate: fn(e) { e.hash == h })
+fn materialized_has_peer(acc: List<MaterializedNode>, h: std.content_hash.ContentHash) -> Bool {
+  v2.std.algebra.any(xs: acc, predicate: fn(e) { e.hash == h })
 }
 
-fn materialize_fold_step(acc: List<MaterializedNode>, n: Node) -> List<MaterializedNode> {
-  let h = Fnv1a64(content_hash(n: n))
+fn materialize_fold_step(acc: List<MaterializedNode>, n: v2.std.node.Node) -> List<MaterializedNode> {
+  let h = std.content_hash.Fnv1a64(v2.std.node.content_hash(n: n))
   if materialized_has_peer(acc: acc, h: h) {
-    list_snoc_item(
+    v2.std.algebra.list_snoc_item(
       xs: materialized_mark_peers_share(acc: acc, h: h),
-      item: MaterializedNode { hash: h, materialization: Share }
+      item: MaterializedNode { hash: h, materialization: std.realization.Share }
     )
   } else {
-    list_snoc_item(xs: acc, item: MaterializedNode { hash: h, materialization: Recompute })
+    v2.std.algebra.list_snoc_item(xs: acc, item: MaterializedNode { hash: h, materialization: std.realization.Recompute })
   }
 }
 
-fn materialize(root: Node) -> List<MaterializedNode> {
-  fold_list(
-    xs: node_subtree_nodes(root: root),
+fn materialize(root: v2.std.node.Node) -> List<MaterializedNode> {
+  v2.std.algebra.fold_list(
+    xs: v2.std.node.node_subtree_nodes(root: root),
     empty: empty_materialized,
     cons: fn(acc, n) { materialize_fold_step(acc: acc, n: n) }
   )
 }
 
-fn materialization_is_share(m: Materialization) -> Bool {
+fn materialization_is_share(m: std.realization.Materialization) -> Bool {
   match m {
-    Share => true
-    Recompute => false
-    Memoize => false
+    std.realization.Share => true
+    std.realization.Recompute => false
+    std.realization.Memoize => false
   }
 }
 
-fn hashes_contain(hs: List<ContentHash>, h: ContentHash) -> Bool {
-  any(xs: hs, predicate: fn(x) { x == h })
+fn hashes_contain(hs: List<std.content_hash.ContentHash>, h: std.content_hash.ContentHash) -> Bool {
+  v2.std.algebra.any(xs: hs, predicate: fn(x) { x == h })
 }
 
-fn distinct_hashes(root: Node) -> List<ContentHash> {
-  fold_list(
-    xs: node_subtree_nodes(root: root),
+fn distinct_hashes(root: v2.std.node.Node) -> List<std.content_hash.ContentHash> {
+  v2.std.algebra.fold_list(
+    xs: v2.std.node.node_subtree_nodes(root: root),
     empty: empty_hashes,
     cons: fn(acc, n) {
-      let h = Fnv1a64(content_hash(n: n))
-      if hashes_contain(hs: acc, h: h) { acc } else { list_snoc_item(xs: acc, item: h) }
+      let h = std.content_hash.Fnv1a64(v2.std.node.content_hash(n: n))
+      if hashes_contain(hs: acc, h: h) { acc } else { v2.std.algebra.list_snoc_item(xs: acc, item: h) }
     }
   )
 }
 
-fn materialize_node_count(root: Node) -> Int {
-  length(xs: node_subtree_nodes(root: root))
+fn materialize_node_count(root: v2.std.node.Node) -> Int {
+  v2.std.algebra.length(xs: v2.std.node.node_subtree_nodes(root: root))
 }
 
-fn materialize_distinct_computation_count(root: Node) -> Int {
-  length(xs: distinct_hashes(root: root))
+fn materialize_distinct_computation_count(root: v2.std.node.Node) -> Int {
+  v2.std.algebra.length(xs: distinct_hashes(root: root))
 }
 
-fn materialize_redundant_computation_count(root: Node) -> Int {
+fn materialize_redundant_computation_count(root: v2.std.node.Node) -> Int {
   materialize_node_count(root: root) - materialize_distinct_computation_count(root: root)
 }
 
-fn materialize_has_duplicate_computation(root: Node) -> Bool {
+fn materialize_has_duplicate_computation(root: v2.std.node.Node) -> Bool {
   materialize_redundant_computation_count(root: root) > 0
 }
 
 data materialize_identity_grade_note: String = "First consumer of std.computation_identity (census R1): a Share verdict from this module is StructurallyIdentical-grade evidence — equal occurrence-independent content_hash — and nothing weaker. Verdicts this module cannot ground (a peer equal only under normalization, or only extensionally) are IdentityUnknown with a located cause, never silently Recompute-as-distinct: the lattice arm names the missing analysis."
 
-fn materialize_share_identity_grade() -> ComputationIdentity {
-  StructurallyIdentical
+fn materialize_share_identity_grade() -> std.computation_identity.ComputationIdentity {
+  std.computation_identity.StructurallyIdentical
 }
 
 fn materialize_share_grade_permits_share() -> Bool {
-  identity_permits_share(ci: materialize_share_identity_grade())
+  std.computation_identity.identity_permits_share(ci: materialize_share_identity_grade())
 }
 
-fn materialize_ungrounded_identity(detail: String) -> ComputationIdentity {
-  IdentityUnknown { cause: MissingConcept { detail: detail } }
+fn materialize_ungrounded_identity(detail: String) -> std.computation_identity.ComputationIdentity {
+  std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: detail } }
 }

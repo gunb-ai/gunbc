@@ -3,14 +3,14 @@ module extdeps.ocp.mt_jade.subject
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
   }
 }
 
 data mt_jade_subject_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
   }
 }
@@ -40,21 +40,21 @@ data mt_jade_excluded_non_normative_appendices: List<extdeps.ocp.publication.Exc
 
 type MtJadeReferencePlatform {
   marketing_name: std.types.NonEmptyStr
-  revision: extdeps.ocp.mt_jade.subject.MtJadeSpecificationRevision
+  revision: MtJadeSpecificationRevision
   version_label: std.types.NonEmptyStr
   publication_date: extdeps.publication.SpecificationDocumentDate
-  contributor: Vendor<extdeps.hardware.Hardware>
+  contributor: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   specification_license: extdeps.ocp.publication.OcpSpecificationLicense
   contribution_license: extdeps.ocp.publication.OcpContributionLicense
   excluded_appendices: List<extdeps.ocp.publication.ExcludedNonNormativeAppendix>
 }
 
-data mt_jade_reference_platform: extdeps.ocp.mt_jade.subject.MtJadeReferencePlatform = MtJadeReferencePlatform {
+data mt_jade_reference_platform: MtJadeReferencePlatform = MtJadeReferencePlatform {
   marketing_name: "Mt. Jade",
-  revision: extdeps.ocp.mt_jade.subject.MtJadeRev1_0 {},
+  revision: MtJadeRev1_0 {},
   version_label: mt_jade_specification_version_label,
   publication_date: mt_jade_specification_publication_date,
-  contributor: ampere_vendor,
+  contributor: extdeps.vendor.ampere.ampere_vendor,
   specification_license: mt_jade_specification_license,
   contribution_license: mt_jade_contribution_license,
   excluded_appendices: mt_jade_excluded_non_normative_appendices,
@@ -65,7 +65,7 @@ data mt_jade_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.ocp.mt_jade.subject",
       decl_name: "mt_jade_reference_platform",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: mt_jade_subject_authority_anchor,

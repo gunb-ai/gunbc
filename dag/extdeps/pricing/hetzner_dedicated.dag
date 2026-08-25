@@ -4,7 +4,7 @@ module extdeps.pricing.hetzner_dedicated
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/"
   }
 }
@@ -13,13 +13,13 @@ data hetzner_dedicated_pricing_provenance_note: String = "Monthly prices excl. V
 
 data cpu_description_string_leaf_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   std.roster_frontier.frontier_row_decl(
-    ref: decl_field_ref(
+    ref: std.decl_ref.decl_field_ref(
       module_path: "extdeps.pricing.hetzner_dedicated",
       decl_name: "HetznerDedicatedServerPriceRow",
       field_name: "cpu_description",
     ),
     reason: "cpu_description: NonEmptyStr is a cited-boundary locator string at current catalog size; decompose into extdeps.cpu CpuModelCatalogRow (vendor, codename, core count, architecture) when rows grow beyond price-only facts",
-    dissolution: unbound_dissolution(description: "hetzner_dedicated rows carry CpuFacts catalog instead of cpu_description"),
+    dissolution: std.dissolution.unbound_dissolution(description: "hetzner_dedicated rows carry CpuFacts catalog instead of cpu_description"),
   )
 ]
 
@@ -32,7 +32,7 @@ type HetznerDedicatedServerType
 type HetznerDedicatedServerPriceRow {
   server_type: HetznerDedicatedServerType
   server_type_wire_label: std.types.NonEmptyStr
-  cpu: extdeps.cpu.types.CpuFacts
+  cpu: CpuFacts
   cpu_description: std.types.NonEmptyStr
   memory_bytes: std.measure.ByteSize
   storage_bytes: std.measure.ByteSize
@@ -46,15 +46,15 @@ data hetzner_ax41_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicated
   server_type_wire_label: "AX41-1-LTD",
   cpu: extdeps.cpu.amd.ryzen_5_3600_facts,
   cpu_description: "AMD Ryzen 5 3600 Hexa-Core Matisse (Zen2)",
-  memory_bytes: byte_size(68719476736),
-  storage_bytes: byte_size(1099511627776),
+  memory_bytes: std.measure.byte_size(68719476736),
+  storage_bytes: std.measure.byte_size(1099511627776),
   monthly: std.measure.MoneyPerMonth {
-    amount: money_amount_micro(count: 57300000),
-    currency: Eur,
+    amount: std.measure.money_amount_micro(count: 57300000),
+    currency: std.currency.Eur,
   },
   setup_fee: std.measure.MoneyOnce {
-    amount: money_amount_micro(count: 0),
-    currency: Eur,
+    amount: std.measure.money_amount_micro(count: 0),
+    currency: std.currency.Eur,
   },
   pricing_citation: "GE-D9256#AX41-1-LTD",
 }
@@ -62,17 +62,17 @@ data hetzner_ax41_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicated
 data hetzner_ax42_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
   server_type: Ax42_1_Ltd,
   server_type_wire_label: "AX42-1-LTD",
-  cpu: ryzen_7_pro_8700ge_facts,
+  cpu: extdeps.cpu.amd.ryzen_7_pro_8700ge_facts,
   cpu_description: "AMD Ryzen 7 PRO 8700GE Octa-Core Phoenix 1 (Zen4)",
-  memory_bytes: byte_size(68719476736),
-  storage_bytes: byte_size(1099511627776),
+  memory_bytes: std.measure.byte_size(68719476736),
+  storage_bytes: std.measure.byte_size(1099511627776),
   monthly: std.measure.MoneyPerMonth {
-    amount: money_amount_micro(count: 77300000),
-    currency: Eur,
+    amount: std.measure.money_amount_micro(count: 77300000),
+    currency: std.currency.Eur,
   },
   setup_fee: std.measure.MoneyOnce {
-    amount: money_amount_micro(count: 39000000),
-    currency: Eur,
+    amount: std.measure.money_amount_micro(count: 39000000),
+    currency: std.currency.Eur,
   },
   pricing_citation: "GE-D9256#AX42-1-LTD",
 }
@@ -80,17 +80,17 @@ data hetzner_ax42_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicated
 data hetzner_ax42_1_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
   server_type: Ax42_1,
   server_type_wire_label: "AX42-1",
-  cpu: ryzen_7_pro_8700ge_facts,
+  cpu: extdeps.cpu.amd.ryzen_7_pro_8700ge_facts,
   cpu_description: "AMD Ryzen 7 PRO 8700GE Octa-Core Phoenix 1 (Zen4)",
-  memory_bytes: byte_size(68719476736),
-  storage_bytes: byte_size(1099511627776),
+  memory_bytes: std.measure.byte_size(68719476736),
+  storage_bytes: std.measure.byte_size(1099511627776),
   monthly: std.measure.MoneyPerMonth {
-    amount: money_amount_micro(count: 97300000),
-    currency: Eur,
+    amount: std.measure.money_amount_micro(count: 97300000),
+    currency: std.currency.Eur,
   },
   setup_fee: std.measure.MoneyOnce {
-    amount: money_amount_micro(count: 49000000),
-    currency: Eur,
+    amount: std.measure.money_amount_micro(count: 49000000),
+    currency: std.currency.Eur,
   },
   pricing_citation: "GE-D9256#AX42-1",
 }
@@ -98,17 +98,17 @@ data hetzner_ax42_1_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServ
 data hetzner_ax102_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
   server_type: Ax102_1_Ltd,
   server_type_wire_label: "AX102-1-LTD",
-  cpu: ryzen_9_7950x3d_facts,
+  cpu: extdeps.cpu.amd.ryzen_9_7950x3d_facts,
   cpu_description: "AMD Ryzen 9 7950X3D 16-Core Raphael (Zen4)",
-  memory_bytes: byte_size(137438953472),
-  storage_bytes: byte_size(4123168604160),
+  memory_bytes: std.measure.byte_size(137438953472),
+  storage_bytes: std.measure.byte_size(4123168604160),
   monthly: std.measure.MoneyPerMonth {
-    amount: money_amount_micro(count: 157300000),
-    currency: Eur,
+    amount: std.measure.money_amount_micro(count: 157300000),
+    currency: std.currency.Eur,
   },
   setup_fee: std.measure.MoneyOnce {
-    amount: money_amount_micro(count: 39000000),
-    currency: Eur,
+    amount: std.measure.money_amount_micro(count: 39000000),
+    currency: std.currency.Eur,
   },
   pricing_citation: "GE-D9256#AX102-1-LTD",
 }
@@ -123,9 +123,9 @@ fn hetzner_dedicated_price_catalog() -> List<HetznerDedicatedServerPriceRow> {
 }
 
 fn hetzner_dedicated_setup_fee_micros(row: HetznerDedicatedServerPriceRow) -> std.nat.Nat {
-  money_once_micros(q: row.setup_fee)
+  std.measure.money_once_micros(q: row.setup_fee)
 }
 
 fn hetzner_dedicated_server_threads(row: HetznerDedicatedServerPriceRow) -> std.measure.HardwareThreadCount {
-  cpu_facts_threads(cpu: row.cpu)
+  extdeps.cpu.cpu_facts_threads(cpu: row.cpu)
 }

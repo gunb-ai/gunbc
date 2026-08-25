@@ -3,7 +3,7 @@ module extdeps.tools.websocat
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/vi/websocat/releases/tag/v1.14.0"
   }
 }
@@ -20,11 +20,11 @@ data websocat_asset_x86_64: std.types.NonEmptyStr = "websocat_max.x86_64-unknown
 
 data websocat_install_path: std.types.NonEmptyStr = "/var/lib/gunbc/bin/websocat"
 
-data websocat_cli_tool: CliTool = CliTool {
+data websocat_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "websocat",
   min_version: Present { value: websocat_pinned_version },
   installable_via: [
-    SourceGitHubRelease {
+    extdeps.tools.SourceGitHubRelease {
       repo: websocat_github_repo,
       tag: websocat_github_tag,
       asset_aarch64: websocat_asset_aarch64,

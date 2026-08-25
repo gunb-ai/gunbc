@@ -43,7 +43,7 @@ type ReleaseDirective<P> {
   lease: product.fabric.execution.LeaseIdentity
   money_reservation: product.fabric.execution.ReservationRef
   resource_reservations: List<product.fabric.execution.ReservationRef>
-  reason: NonEmptyStr
+  reason: std.types.NonEmptyStr
   authorized_by: product.fabric.demand.ObservationReceiptRef
   vouched_by: std.decl_ref.DeclarationRef
 }
@@ -98,7 +98,7 @@ fn grants_for_work<P>(
   grants: List<product.fabric.execution.ExecutionGrant<P>>,
   work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>,
 ) -> List<product.fabric.execution.ExecutionGrant<P>> {
-  grants |> v2.std.algebra.filter(g => product.fabric.identity.fabric_identity_eq(left: g.context.work, right: work))
+  grants |> filter(g => product.fabric.identity.fabric_identity_eq(left: g.context.work, right: work))
 }
 
 fn execution_presence<P>(
@@ -107,7 +107,7 @@ fn execution_presence<P>(
 ) -> product.fabric.demand.ExecutionPresence {
   match grants_for_work(grants: grants, work: work) {
     Empty {} => product.fabric.demand.NoExecutionInFlight
-    std.algebra.Cons { head: _, tail: _ } => product.fabric.demand.ExecutionInFlight
+    Cons { head: _, tail: _ } => product.fabric.demand.ExecutionInFlight
   }
 }
 
@@ -154,13 +154,13 @@ fn withdrawal_effect<P>(
           attempts: live |> map(g => g.context.attempt),
         }
       }
-    product.fabric.demand.WorkNoLongerRequired { work: test.claim.recorded_observation_envelope_witness.w } =>
+    product.fabric.demand.WorkNoLongerRequired { work: w } =>
       if live.length() == 0 {
-        WorkReleasedNothingRunning { population: population, work: test.claim.recorded_observation_envelope_witness.w }
+        WorkReleasedNothingRunning { population: population, work: w }
       } else {
         WorkReleasedAttemptStops {
           population: population,
-          work: test.claim.recorded_observation_envelope_witness.w,
+          work: w,
           release_plan: live |> map(g =>
             release_directive_for(
               g: g,
@@ -181,7 +181,7 @@ fn decide_demand_command<P>(
 ) -> DemandCommandEffect<P> {
   match product.fabric.demand.apply_demand_command(registry: registry, core: core) {
     product.fabric.demand.RegistrationRefused { refusal: r } => CommandRefused { refusal: r }
-    product.fabric.demand.RegistrationAdvanced { population: next, subject_work: test.claim.recorded_observation_envelope_witness.w } =>
+    product.fabric.demand.RegistrationAdvanced { population: next, subject_work: w } =>
       match core.command {
         product.fabric.demand.SubmitDemand { demand: d } =>
           DemandAdmitted {
@@ -189,7 +189,7 @@ fn decide_demand_command<P>(
             directive: product.fabric.demand.satisfaction_directive(
               s: d.satisfaction,
               terminal: terminal,
-              execution: execution_presence(grants: grants, work: test.claim.recorded_observation_envelope_witness.w),
+              execution: execution_presence(grants: grants, work: w),
             ),
           }
         product.fabric.demand.SupersedeDemand { superseded: _, replacement: r, evidence: _ } =>
@@ -198,15 +198,15 @@ fn decide_demand_command<P>(
             directive: product.fabric.demand.satisfaction_directive(
               s: r.satisfaction,
               terminal: terminal,
-              execution: execution_presence(grants: grants, work: test.claim.recorded_observation_envelope_witness.w),
+              execution: execution_presence(grants: grants, work: w),
             ),
           }
-        product.fabric.demand.WithdrawDemand { demand: _, evidence: test.claim.fleet_revision_acceptance_witness.ev } =>
+        product.fabric.demand.WithdrawDemand { demand: _, evidence: ev } =>
           withdrawal_effect(
             population: next,
             grants: grants,
-            work: test.claim.recorded_observation_envelope_witness.w,
-            authorized_by: test.claim.fleet_revision_acceptance_witness.ev,
+            work: w,
+            authorized_by: ev,
             vouched_by: core.attestation.verification_authority,
           )
       }

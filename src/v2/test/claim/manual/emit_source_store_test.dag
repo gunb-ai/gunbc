@@ -1,7 +1,7 @@
 module v2.test.manual.emit_source_store
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data emit_source_store_note: String = "P3 MVP (witness-realization plan): emit-on-demand at the SOURCE grain - the emit cache wired through the P2 store, keyed on the INPUT identity (inferred-tree digest x emitter identity x target x artifact kind; the same Hash=ContentHash authority the fnv1a64 convergence landed). Cold path: store miss -> pure emit -> put. Warm path: served from the store WITH NO EMIT CALL IN THE ARM - the second run pays zero emit - and the served bytes are asserted equal to a fresh emit (the agreement receipt, plan P3 ACCEPT (a) at the source grain). The native-artifact tier (zero BUILD, host binaries, FLAG A hermetic ruling) is the rung's remainder; this witness proves the store-wrapping shape end to end."
 
@@ -17,7 +17,7 @@ data p3_provider: std.materialization_ladder.CacheProvider = std.materialization
 
 fn p3_key(emitter: String) -> std.content_hash.ContentHash {
   std.artifact_store.artifact_key_hash(key: std.artifact_store.ArtifactKey {
-    closure_digest: inferred_tree_digest(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree),
+    closure_digest: v2.compiler.eval.inferred_tree_digest(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree),
     emitter_identity: emitter,
     target_language: "rust",
     toolchain: "source-artifact"
@@ -25,9 +25,9 @@ fn p3_key(emitter: String) -> std.content_hash.ContentHash {
 }
 
 fn fresh_emit_source() -> String {
-  match v2.compiler.emit.emit(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: rust_add_target_model) {
-    Accepted { value: m, diagnostics: _ } => m.carried
-    Rejected { diagnostics: _ } => ""
+  match v2.compiler.emit.emit(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: v2.test.manual.rust_add_emit_translate.rust_add_target_model) {
+    v2.std.diagnostic.Accepted { value: m, diagnostics: _ } => m.carried
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
 }
 
@@ -36,14 +36,14 @@ test fn emit_source_store_cold_then_warm_holds() -> Bool {
   let source = fresh_emit_source()
   let emitted_nonempty = (source == "") == false
   let put_ok = match extdeps.realization.artifact_store_fs.artifact_fs_put(store_root: emit_store_root, key: key, payload: source) {
-    ArtifactFsPutOk => true
-    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
-    ArtifactFsPutFailed { path: p } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsPutOk => true
+    extdeps.realization.artifact_store_fs.ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsPutFailed { path: p } => false
   }
   let served = match extdeps.realization.artifact_store_fs.artifact_fs_get(store_root: emit_store_root, key: key) {
-    ArtifactFsHit { payload: p } => p
-    ArtifactFsMiss { path: _ } => ""
-    ArtifactFsRefused { verb: v, target: t, frame: f } => ""
+    extdeps.realization.artifact_store_fs.ArtifactFsHit { payload: p } => p
+    extdeps.realization.artifact_store_fs.ArtifactFsMiss { path: _ } => ""
+    extdeps.realization.artifact_store_fs.ArtifactFsRefused { verb: v, target: t, frame: f } => ""
   }
   emitted_nonempty && put_ok && served == source && served == fresh_emit_source()
 }
@@ -51,22 +51,22 @@ test fn emit_source_store_cold_then_warm_holds() -> Bool {
 test fn emit_source_store_mutated_emitter_misses_holds() -> Bool {
   let key = p3_key(emitter: "v2.compiler.emit")
   let put_ok = match extdeps.realization.artifact_store_fs.artifact_fs_put(store_root: emit_store_root, key: key, payload: fresh_emit_source()) {
-    ArtifactFsPutOk => true
-    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
-    ArtifactFsPutFailed { path: p } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsPutOk => true
+    extdeps.realization.artifact_store_fs.ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsPutFailed { path: p } => false
   }
   let mutated = p3_key(emitter: "v2.compiler.emit-vNEXT")
   let miss = match extdeps.realization.artifact_store_fs.artifact_fs_get(store_root: emit_store_root, key: mutated) {
-    ArtifactFsHit { payload: _ } => false
-    ArtifactFsMiss { path: _ } => true
-    ArtifactFsRefused { verb: v, target: t, frame: f } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsHit { payload: _ } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsMiss { path: _ } => true
+    extdeps.realization.artifact_store_fs.ArtifactFsRefused { verb: v, target: t, frame: f } => false
   }
   put_ok && miss && (key == mutated) == false
 }
 
 test fn emit_source_store_provider_gate_holds() -> Bool {
   match std.artifact_store.store_over_provider(provider: p3_provider) {
-    StoreReady { store: _ } => true
-    StoreRefusedRetention { provider_id: _, declared: _ } => false
+    std.artifact_store.StoreReady { store: _ } => true
+    std.artifact_store.StoreRefusedRetention { provider_id: _, declared: _ } => false
   }
 }

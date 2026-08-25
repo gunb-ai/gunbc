@@ -3,21 +3,21 @@ module v2.test.claim.namespace_graft.zero_metadata_test
 
 data zero_metadata_note: String = "Witness for checklist add #1 remaining half: dag_surface_module_header_metadata_edge is the sole module-root metadata-edge predicate in tree today (no doc/pragma/provenance arms on module roots). Graft output must contain zero such edges — complement-based body collection dissolves only the two header arms; every other edge kind rides the graft by default."
 
-test fn namespace_graft_metadata_predicate_matches_header_edges_only_holds() -> v2.std.logic.Bool {
-  dag_surface_module_header_metadata_edge(name: ^dag_surface_module_header)
-    && dag_surface_module_header_metadata_edge(name: ^dag_surface_module_header_qualified_name)
-    && !dag_surface_module_header_metadata_edge(name: ^grammar_production_identity_node_projection)
-    && !dag_surface_module_header_metadata_edge(name: ^grammar_production_captured_node_projection)
-    && !dag_surface_module_header_metadata_edge(name: ^dag_surface_top_level_item)
+test fn namespace_graft_metadata_predicate_matches_header_edges_only_holds() -> Bool {
+  v2.extdeps.languages.dag.dag_surface_module_header_metadata_edge(name: ^dag_surface_module_header)
+    && v2.extdeps.languages.dag.dag_surface_module_header_metadata_edge(name: ^dag_surface_module_header_qualified_name)
+    && !v2.extdeps.languages.dag.dag_surface_module_header_metadata_edge(name: ^grammar_production_identity_node_projection)
+    && !v2.extdeps.languages.dag.dag_surface_module_header_metadata_edge(name: ^grammar_production_captured_node_projection)
+    && !v2.extdeps.languages.dag.dag_surface_module_header_metadata_edge(name: ^dag_surface_top_level_item)
 }
 
-test fn namespace_graft_disposition_rehomes_provenance_only_holds() -> v2.std.logic.Bool {
-  match namespace_graft_module_root_edge_disposition(name: ^dag_surface_module_header) {
-    ModuleRootEdgeDissolve =>
-      match namespace_graft_module_root_edge_disposition(name: ^grammar_production_identity_node_projection) {
-        ModuleRootEdgeRehomeProvenance =>
-          match namespace_graft_module_root_edge_disposition(name: ^NgPilotType) {
-            ModuleRootEdgeGraftBody => true
+test fn namespace_graft_disposition_rehomes_provenance_only_holds() -> Bool {
+  match v2.compiler.namespace_graft.namespace_graft_module_root_edge_disposition(name: ^dag_surface_module_header) {
+    v2.compiler.namespace_graft.ModuleRootEdgeDissolve =>
+      match v2.compiler.namespace_graft.namespace_graft_module_root_edge_disposition(name: ^grammar_production_identity_node_projection) {
+        v2.compiler.namespace_graft.ModuleRootEdgeRehomeProvenance =>
+          match v2.compiler.namespace_graft.namespace_graft_module_root_edge_disposition(name: ^NgPilotType) {
+            v2.compiler.namespace_graft.ModuleRootEdgeGraftBody => true
             _ => false
           }
         _ => false
@@ -26,9 +26,9 @@ test fn namespace_graft_disposition_rehomes_provenance_only_holds() -> v2.std.lo
   }
 }
 
-test fn namespace_graft_metadata_helper_aliases_predicate_holds() -> v2.std.logic.Bool {
-  namespace_graft_is_metadata_edge(name: ^dag_surface_module_header)
-    && !namespace_graft_is_metadata_edge(name: ^grammar_production_identity_node_projection)
-    && dag_surface_module_header_metadata_edge(name: ^dag_surface_module_header_qualified_name)
+test fn namespace_graft_metadata_helper_aliases_predicate_holds() -> Bool {
+  v2.compiler.namespace_graft.namespace_graft_is_metadata_edge(name: ^dag_surface_module_header)
+    && !v2.compiler.namespace_graft.namespace_graft_is_metadata_edge(name: ^grammar_production_identity_node_projection)
+    && v2.extdeps.languages.dag.dag_surface_module_header_metadata_edge(name: ^dag_surface_module_header_qualified_name)
 }
 

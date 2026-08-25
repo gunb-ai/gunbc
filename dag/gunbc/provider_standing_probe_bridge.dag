@@ -123,11 +123,11 @@ type CodexPersonalSubscriptionPolicy {
 }
 
 data codex_first_deployment_subscription_policy: CodexPersonalSubscriptionPolicy = CodexPersonalSubscriptionPolicy {
-  admitted_plans: [CodexPlanPro],
+  admitted_plans: [extdeps.llm.codex_app_server.CodexPlanPro],
 }
 
 fn codex_plan_eq(a: extdeps.llm.codex_app_server.CodexPlanType, b: extdeps.llm.codex_app_server.CodexPlanType) -> Bool {
-  codex_plan_type_wire_name(p: a) == codex_plan_type_wire_name(p: b)
+  extdeps.llm.codex_app_server.codex_plan_type_wire_name(p: a) == extdeps.llm.codex_app_server.codex_plan_type_wire_name(p: b)
 }
 
 fn codex_policy_admits_plan(policy: CodexPersonalSubscriptionPolicy, plan: extdeps.llm.codex_app_server.CodexPlanType) -> Bool {
@@ -145,19 +145,19 @@ fn provider_entitlement_from_codex_plan_reading(
   reading: gunbc.codex_app_server_press.CodexPlanTypeReading,
 ) -> gunbc.provider_standing.ProviderEntitlementObservation {
   match reading {
-    CodexPlanTypeObserved { plan: p } =>
+    gunbc.codex_app_server_press.CodexPlanTypeObserved { plan: p } =>
       if codex_plan_is_entitling(plan: p) {
-        EntitlementObservedAvailable
+        gunbc.provider_standing.EntitlementObservedAvailable
       } else {
         gunbc.provider_standing.EntitlementObservationUnobserved {
           reason: join([
             "codex chatgpt plan ",
-            codex_plan_type_wire_name(p: p) as String,
+            extdeps.llm.codex_app_server.codex_plan_type_wire_name(p: p) as String,
             " is not yet admitted by the deployed profile",
           ], "") as std.types.NonEmptyStr,
         }
       }
-    CodexPlanTypeUnrecognized { native: n } =>
+    gunbc.codex_app_server_press.CodexPlanTypeUnrecognized { native: n } =>
       gunbc.provider_standing.EntitlementObservationUnobserved {
         reason: join([
           "codex chatgpt planType ",
@@ -165,7 +165,7 @@ fn provider_entitlement_from_codex_plan_reading(
           " is outside the cited 0.146.0 PlanType enum; this pin is stale",
         ], "") as std.types.NonEmptyStr,
       }
-    CodexPlanTypeMalformed { cause: c } =>
+    gunbc.codex_app_server_press.CodexPlanTypeMalformed { cause: c } =>
       gunbc.provider_standing.EntitlementObservationUnobserved { reason: c }
   }
 }
@@ -174,21 +174,21 @@ fn provider_entitlement_from_codex_realm(
   realm: gunbc.codex_app_server_press.CodexAccountRealm,
 ) -> gunbc.provider_standing.ProviderEntitlementObservation {
   match realm {
-    CodexChatgptRealm { plan: reading } =>
+    gunbc.codex_app_server_press.CodexChatgptRealm { plan: reading } =>
       provider_entitlement_from_codex_plan_reading(reading: reading)
-    CodexApiKeyRealm =>
+    gunbc.codex_app_server_press.CodexApiKeyRealm =>
       gunbc.provider_standing.EntitlementRejected {
         reason: "codex account is an apiKey platform credential, not the personal ChatGPT subscription this profile requires" as std.types.NonEmptyStr,
       }
-    CodexAmazonBedrockRealm =>
+    gunbc.codex_app_server_press.CodexAmazonBedrockRealm =>
       gunbc.provider_standing.EntitlementRejected {
         reason: "codex account is an amazonBedrock contract credential, not the personal ChatGPT subscription this profile requires" as std.types.NonEmptyStr,
       }
-    CodexAccountRealmAbsent =>
+    gunbc.codex_app_server_press.CodexAccountRealmAbsent =>
       gunbc.provider_standing.EntitlementObservationUnobserved {
         reason: "codex account/read reported no account; entitlement is unread until the credential authenticates" as std.types.NonEmptyStr,
       }
-    CodexAccountRealmUnrecognizedType { native: n } =>
+    gunbc.codex_app_server_press.CodexAccountRealmUnrecognizedType { native: n } =>
       gunbc.provider_standing.EntitlementObservationUnobserved {
         reason: join([
           "codex account type ",
@@ -196,7 +196,7 @@ fn provider_entitlement_from_codex_realm(
           " is outside the cited 0.146.0 Account union; this pin is stale",
         ], "") as std.types.NonEmptyStr,
       }
-    CodexAccountRealmUnobserved { reason: r } =>
+    gunbc.codex_app_server_press.CodexAccountRealmUnobserved { reason: r } =>
       gunbc.provider_standing.EntitlementObservationUnobserved { reason: r }
   }
 }
@@ -215,10 +215,10 @@ fn provider_authentication_from_codex_credential_liveness(
   liveness: gunbc.codex_app_server_press.CodexCredentialLiveness,
 ) -> gunbc.provider_standing.ProviderAuthenticationStanding {
   match liveness {
-    CodexCredentialLive { bucket_count: _ } => AuthenticationAuthenticated
-    CodexCredentialDead { reason: r } =>
+    gunbc.codex_app_server_press.CodexCredentialLive { bucket_count: _ } => gunbc.provider_standing.AuthenticationAuthenticated
+    gunbc.codex_app_server_press.CodexCredentialDead { reason: r } =>
       gunbc.provider_standing.AuthenticationRefreshFailed { reason: r }
-    CodexCredentialLivenessUnobserved { reason: r } =>
+    gunbc.codex_app_server_press.CodexCredentialLivenessUnobserved { reason: r } =>
       gunbc.provider_standing.AuthenticationStandingUnobserved { reason: r }
   }
 }
@@ -245,7 +245,7 @@ fn provider_standing_bundle_from_codex_press_receipt(
     authentication: provider_authentication_from_codex_press_receipt(receipt: receipt),
     entitlement: provider_entitlement_from_codex_press_receipt(receipt: receipt),
     limits: provider_limit_observations_from_codex_press_receipt(receipt: receipt),
-    turn: TurnNotStarted,
+    turn: gunbc.provider_standing.TurnNotStarted,
     tool_environment: provider_standing_bundle_unobserved_tool_environment(
       reason: codex_press_standing_bundle_tool_environment_unobserved_reason,
     ),
@@ -262,7 +262,7 @@ fn provider_standing_bundle_from_codex_dashboard_probes(
         authentication: provider_standing_bundle_unobserved_authentication(reason: reason),
         entitlement: provider_standing_bundle_honest_entitlement_unobserved(),
         limits: provider_standing_bundle_honest_limit_unobserved(),
-        turn: TurnNotStarted,
+        turn: gunbc.provider_standing.TurnNotStarted,
         tool_environment: provider_standing_bundle_unobserved_tool_environment(
           reason: provider_standing_probe_bridge_tool_environment_unobserved_reason,
         ),
@@ -272,10 +272,10 @@ fn provider_standing_bundle_from_codex_dashboard_probes(
         installation: provider_standing_bundle_unobserved_installation(
           reason: provider_standing_probe_bridge_state_root_absent_installation_reason,
         ),
-        authentication: AuthenticationCredentialsAbsent,
+        authentication: gunbc.provider_standing.AuthenticationCredentialsAbsent,
         entitlement: provider_standing_bundle_honest_entitlement_unobserved(),
         limits: provider_standing_bundle_honest_limit_unobserved(),
-        turn: TurnNotStarted,
+        turn: gunbc.provider_standing.TurnNotStarted,
         tool_environment: gunbc.provider_standing.ToolEnvironmentUnavailable {
           reason: "provider state root absent" as std.types.NonEmptyStr,
         },
@@ -286,9 +286,9 @@ fn provider_standing_bundle_from_codex_dashboard_probes(
           provider_standing_bundle_unobserved_installation(reason: detail)
         ProviderDashboardExecProbeReported { succeeded, stdout: _, stderr: _ } =>
           if succeeded {
-            InstallationReady
+            gunbc.provider_standing.InstallationReady
           } else {
-            InstallationExecutableMissing
+            gunbc.provider_standing.InstallationExecutableMissing
           }
       }
       let tool_environment = match observation.runtime {
@@ -296,7 +296,7 @@ fn provider_standing_bundle_from_codex_dashboard_probes(
           provider_standing_bundle_unobserved_tool_environment(reason: detail)
         ProviderDashboardExecProbeReported { succeeded, stdout: _, stderr: _ } =>
           if succeeded {
-            ToolEnvironmentReady
+            gunbc.provider_standing.ToolEnvironmentReady
           } else {
             gunbc.provider_standing.ToolEnvironmentUnavailable {
               reason: "provider runtime probe failed" as std.types.NonEmptyStr,
@@ -308,9 +308,9 @@ fn provider_standing_bundle_from_codex_dashboard_probes(
           provider_standing_bundle_unobserved_authentication(reason: detail)
         ProviderDashboardExecProbeReported { succeeded, stdout: _, stderr: _ } =>
           if succeeded {
-            AuthenticationAuthenticated
+            gunbc.provider_standing.AuthenticationAuthenticated
           } else {
-            AuthenticationCredentialsAbsent
+            gunbc.provider_standing.AuthenticationCredentialsAbsent
           }
       }
       gunbc.provider_standing.ProviderStandingBundle {
@@ -318,7 +318,7 @@ fn provider_standing_bundle_from_codex_dashboard_probes(
         authentication: authentication,
         entitlement: provider_standing_bundle_honest_entitlement_unobserved(),
         limits: provider_standing_bundle_honest_limit_unobserved(),
-        turn: TurnNotStarted,
+        turn: gunbc.provider_standing.TurnNotStarted,
         tool_environment: tool_environment,
       }
     }
@@ -330,7 +330,7 @@ fn provider_standing_bundle_from_claude_credential_control_probe(
 ) -> gunbc.provider_standing.ProviderStandingBundle {
   let authentication = if observation.token_source == ("none" as std.types.NonEmptyStr) {
       if observation.subscription_tier == ("none" as std.types.NonEmptyStr) {
-        AuthenticationCredentialsAbsent
+        gunbc.provider_standing.AuthenticationCredentialsAbsent
       } else {
         gunbc.provider_standing.AuthenticationProfilePresentTokenAbsent {
           subscription_tier: observation.subscription_tier,
@@ -338,7 +338,7 @@ fn provider_standing_bundle_from_claude_credential_control_probe(
         }
       }
     } else {
-      AuthenticationAuthenticated
+      gunbc.provider_standing.AuthenticationAuthenticated
     }
   gunbc.provider_standing.ProviderStandingBundle {
     installation: provider_standing_bundle_unobserved_installation(
@@ -347,7 +347,7 @@ fn provider_standing_bundle_from_claude_credential_control_probe(
     authentication: authentication,
     entitlement: provider_standing_bundle_honest_entitlement_unobserved(),
     limits: provider_standing_bundle_honest_limit_unobserved(),
-    turn: TurnNotStarted,
+    turn: gunbc.provider_standing.TurnNotStarted,
     tool_environment: provider_standing_bundle_unobserved_tool_environment(
       reason: provider_standing_probe_bridge_claude_tool_environment_unobserved_reason,
     ),
@@ -361,24 +361,24 @@ fn provider_limit_observation_from_codex_bucket(
   verdict: gunbc.codex_app_server_press.CodexRateLimitBucketVerdict,
 ) -> gunbc.provider_standing.ProviderLimitObservation {
   match verdict {
-    CodexBucketCapacityAvailable { limit_id: id } =>
+    gunbc.codex_app_server_press.CodexBucketCapacityAvailable { limit_id: id } =>
       gunbc.provider_standing.LimitObservedAvailable {
         subject: gunbc.provider_standing.ProviderNativeLimitBucket { credential: credential, native_key: id },
       }
-    CodexBucketUnavailableUntilReset { limit_id: id, reached_type: rt, resets_at: ra } =>
+    gunbc.codex_app_server_press.CodexBucketUnavailableUntilReset { limit_id: id, reached_type: rt, resets_at: ra } =>
       gunbc.provider_standing.LimitUnavailableUntilReset {
         subject: gunbc.provider_standing.ProviderNativeLimitBucket { credential: credential, native_key: id },
         cause: match rt {
           Present { value: t } => gunbc.provider_standing.NativeCauseReported { token: t }
-          Absent => NativeCauseUnreported
+          Absent => gunbc.provider_standing.NativeCauseUnreported
         },
         reset: match ra {
           Present { value: at } => gunbc.provider_standing.LimitResetAt { at: at }
-          Absent => LimitResetInstantUnobserved
+          Absent => gunbc.provider_standing.LimitResetInstantUnobserved
         },
         reason: codex_press_bucket_unavailable_reason,
       }
-    CodexBucketCapacityUnknown { limit_id: id } =>
+    gunbc.codex_app_server_press.CodexBucketCapacityUnknown { limit_id: id } =>
       gunbc.provider_standing.LimitSubjectUnobserved {
         subject: gunbc.provider_standing.ProviderNativeLimitBucket { credential: credential, native_key: id },
         native_token: id,

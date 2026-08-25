@@ -10,7 +10,7 @@ fn spark_serving_parse_nvidia_driver_version(stdout: String) -> gunbc.spark.serv
       cause: "nvidia-smi driver_version query returned empty output" as std.types.NonEmptyStr,
     }
   } else {
-    match ollama_nvidia_driver_version_from_wire_text(raw: trimmed) {
+    match extdeps.ollama.gpu_support.ollama_nvidia_driver_version_from_wire_text(raw: trimmed) {
       Present { value: driver } =>
         gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: to_string(driver.major) }
       Absent =>
@@ -25,26 +25,26 @@ fn spark_serving_observed_nvidia_driver_from_field(
   field: gunbc.spark.serving_readback_parse.SparkServingReadbackField,
 ) -> extdeps.ollama.gpu_support.OllamaNvidiaDriverVersion? {
   match field {
-    SparkServingReadbackPresent { value: v } =>
-      ollama_nvidia_driver_version_from_wire_text(raw: v)
-    SparkServingReadbackAbsent => none
-    SparkServingReadbackRefused { cause: _ } => none
+    gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: v } =>
+      extdeps.ollama.gpu_support.ollama_nvidia_driver_version_from_wire_text(raw: v)
+    gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent => none
+    gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: _ } => none
   }
 }
 
 fn spark_serving_runtime_admission_refusal_cause(
   nvidia_driver: gunbc.spark.serving_readback_parse.SparkServingReadbackField,
 ) -> std.types.NonEmptyStr? {
-  match ollama_runtime_admission_verdict(
-    binary_release: ollama_required_release,
-    platform: OllamaNvidiaGb10Spark,
-    architecture: OllamaLinuxArm64,
-    model: spark_serving_desired_model_ref,
+  match extdeps.ollama.capability.ollama_runtime_admission_verdict(
+    binary_release: extdeps.ollama.binary_release.ollama_required_release,
+    platform: extdeps.ollama.capability.OllamaNvidiaGb10Spark,
+    architecture: extdeps.ollama.binary_release.OllamaLinuxArm64,
+    model: gunbc.spark.serving_desired.spark_serving_desired_model_ref,
     observed_nvidia_driver: spark_serving_observed_nvidia_driver_from_field(field: nvidia_driver),
   ) {
-    OllamaRuntimeAdmissionApplicable => none
-    OllamaRuntimeAdmissionUnmet { cause: c } => Present { value: c }
-    OllamaRuntimeAdmissionUnobserved { cause: c } => Present { value: c }
-    OllamaRuntimeAdmissionUncatalogued { cause: c } => Present { value: c }
+    extdeps.ollama.capability.OllamaRuntimeAdmissionApplicable => none
+    extdeps.ollama.capability.OllamaRuntimeAdmissionUnmet { cause: c } => Present { value: c }
+    extdeps.ollama.capability.OllamaRuntimeAdmissionUnobserved { cause: c } => Present { value: c }
+    extdeps.ollama.capability.OllamaRuntimeAdmissionUncatalogued { cause: c } => Present { value: c }
   }
 }

@@ -10,14 +10,14 @@ test fn scaffold_note_declares_scaffold_not_live_instrument() -> Bool {
 
 test fn scaffold_manifest_state_verdict_query_is_scaffold_disposition() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict_query_scaffold {
-    Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn scaffold_lifecycle_row_well_formed_query_is_scaffold_disposition() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.lifecycle_row_well_formed_query_scaffold {
-    Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
@@ -29,7 +29,7 @@ test fn scaffold_note_cites_zero_hand_maintained_rust_roadmap_row() -> Bool {
 
 
 test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
-  let refs = gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.hand_authored_declarations
+  let refs = stage0_rust_observation_seed_growth_justification.hand_authored_declarations
   let named = refs |> map(r => r.decl_name)
   let expected = [
     "Stage0CargoManifestBinParse",
@@ -41,20 +41,20 @@ test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
   ]
   v2.std.algebra.length(xs: refs) == 6
     && string_contains(
-      s: gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.reason,
+      s: stage0_rust_observation_seed_growth_justification.reason,
       pattern: "impl std::fmt::Display for Stage0CargoBinManifestParseRefusal"
     )
     && (refs |> all(r => !(r.module_path == "") && !(r.decl_name == "")))
-    && (expected |> all(e => named |> any(n => n == e)))
-    && gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.owning_dissolution_lane as String == "v1-hand-queue-drain"
+    && (expected |> all(e => named |> v2.std.algebra.any(n => n == e)))
+    && stage0_rust_observation_seed_growth_justification.owning_dissolution_lane as String == "v1-hand-queue-drain"
     && match gunbc.stage0_rust_host_observation.stage0_cargo_manifest_parser_seed_scaffold {
-      Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
+      std.disposition.Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
         bind.module_path == "v1_compiler.cli_run"
           && bind.decl_name == "parse_stage0_cargo_manifest_bin_paths"
       _ => false
     }
     && match gunbc.stage0_rust_host_observation.stage0_cargo_manifest_projection_seed_scaffold {
-      Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
+      std.disposition.Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
         bind.module_path == "v1_compiler.v1_interpreter"
           && bind.decl_name == "eval_builtin_inner"
       _ => false
@@ -83,12 +83,12 @@ test fn scaffold_file_grain_avoids_discovery_prefix_holds() -> Bool {
 }
 
 test fn scaffold_cargo_manifest_ref_points_at_host_observation_boundary() -> Bool {
-  gunbc.stage0_rust_source_lifecycle_scaffold.stage0_cargo_bin_manifest_authority_ref.module_path == "gunbc.stage0_rust_host_observation"
-    && gunbc.stage0_rust_source_lifecycle_scaffold.stage0_cargo_bin_manifest_authority_ref.decl_name == "current_stage0_rust_source_observation"
+  stage0_cargo_bin_manifest_authority_ref.module_path == "gunbc.stage0_rust_host_observation"
+    && stage0_cargo_bin_manifest_authority_ref.decl_name == "current_stage0_rust_source_observation"
 }
 
 test fn scaffold_authority_refs_populated_holds() -> Bool {
-  gunbc.stage0_rust_source_lifecycle_scaffold.behavioral_oracle_carrier_ref.decl_name == "compiler_module_behavioral_transport_roster"
+  behavioral_oracle_carrier_ref.decl_name == "compiler_module_behavioral_transport_roster"
 }
 
 // #8674'S DECLARED RUNG DROP IS DISSOLVED HERE, AND THE BLOCK THAT DECLARED IT IS DELETED RATHER
@@ -118,10 +118,10 @@ test fn scaffold_authority_refs_populated_holds() -> Bool {
 // fire on anything else.
 data emit_evidence_probe_tracked: List<String> = ["src/v1/stage0/src/cli_run.rs"]
 
-fn emit_evidence_probe_observation(evidence: EmitPopulationEvidence) -> RustSourceHostObservation {
-  RustManifestObserved {
+fn emit_evidence_probe_observation(evidence: gunbc.stage0_rust_host_observation.EmitPopulationEvidence) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
+  gunbc.stage0_rust_host_observation.RustManifestObserved {
     repository_revision: "deadbeef",
-    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: emit_evidence_probe_tracked,
     prior_tracked_rust_repo_paths: emit_evidence_probe_tracked,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
@@ -130,24 +130,24 @@ fn emit_evidence_probe_observation(evidence: EmitPopulationEvidence) -> RustSour
 }
 
 test fn scaffold_unobserved_emit_population_refuses_rather_than_falling_back() -> Bool {
-  match rust_source_manifest_state_verdict(
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
     observation: emit_evidence_probe_observation(
-      evidence: EmitPopulationUnobserved { detail: "probe: manifest unreadable at revision" }
+      evidence: gunbc.stage0_rust_host_observation.EmitPopulationUnobserved { detail: "probe: manifest unreadable at revision" }
     )
   ) {
-    ManifestStateScaffoldRefused { cause: EmitPopulationUnobservedEvidence { detail: detail } } =>
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.EmitPopulationUnobservedEvidence { detail: detail } } =>
       detail == "probe: manifest unreadable at revision"
     _ => false
   }
 }
 
 test fn scaffold_confirmed_emit_population_does_not_take_the_unobserved_arm() -> Bool {
-  match rust_source_manifest_state_verdict(
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
     observation: emit_evidence_probe_observation(
-      evidence: EmitPopulationConfirmed { emitted_stage0_repo_paths: emit_evidence_probe_tracked }
+      evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed { emitted_stage0_repo_paths: emit_evidence_probe_tracked }
     )
   ) {
-    ManifestStateScaffoldRefused { cause: EmitPopulationUnobservedEvidence { detail: _ } } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.EmitPopulationUnobservedEvidence { detail: _ } } => false
     _ => true
   }
 }
@@ -167,30 +167,30 @@ test fn scaffold_observed_ratchet_red_control_newly_unclassified_reds() -> Bool 
         "src/v1/stage0/src/main.rs"
       ],
       cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
-      emit_population_evidence: EmitPopulationConfirmed {
+      emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
         emitted_stage0_repo_paths: []
       }
     }
   ) {
-    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: _ } } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: _ } } => true
     _ => false
   }
 }
 
 test fn scaffold_observed_ratchet_red_control_hand_maintained_growth_reds() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_source_lifecycle_scaffold.witness_hand_maintained_growth_observation()) {
-    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedHandMaintainedGrew { prior: _, current: _ } } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedHandMaintainedGrew { prior: _, current: _ } } => true
     _ => false
   }
 }
 
 test fn scaffold_observed_derives_newly_unclassified_from_path_evidence_red_control() -> Bool {
-  match rust_source_manifest_state_verdict(
-    observation: witness_observation_covering_lifecycle_plus_extra(
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
+    observation: gunbc.stage0_rust_source_lifecycle_scaffold.witness_observation_covering_lifecycle_plus_extra(
       extra_path: "src/v1/stage0/src/synthetic_untracked.rs"
     )
   ) {
-    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: _ } } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: _ } } => true
     _ => false
   }
 }
@@ -203,19 +203,19 @@ test fn scaffold_observed_refuses_missing_host_evidence_fields() -> Bool {
       tracked_rust_repo_paths: [],
       prior_tracked_rust_repo_paths: [],
       cargo_bin_repo_paths: [],
-      emit_population_evidence: EmitPopulationConfirmed {
+      emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
         emitted_stage0_repo_paths: []
       }
     }
   ) {
-    ManifestStateScaffoldRefused { cause: _ } => true
-    ManifestStateScaffoldOk => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: _ } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldOk => false
   }
 }
 
 test fn scaffold_observed_honest_minimal_observation_ok() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_source_lifecycle_scaffold.witness_honest_minimal_observation_ok()) {
-    ManifestStateScaffoldOk => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldOk => true
     _ => false
   }
 }
@@ -228,12 +228,12 @@ test fn scaffold_observed_cargo_path_untracked_reds() -> Bool {
       tracked_rust_repo_paths: ["src/v1/stage0/src/cli_run.rs"],
       prior_tracked_rust_repo_paths: ["src/v1/stage0/src/cli_run.rs"],
       cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
-      emit_population_evidence: EmitPopulationConfirmed {
+      emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
         emitted_stage0_repo_paths: []
       }
     }
   ) {
-    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.ObservedCargoPathUntracked { path: _ } } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.ObservedCargoPathUntracked { path: _ } } => true
     _ => false
   }
 }
@@ -246,12 +246,12 @@ test fn scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition() -> 
       tracked_rust_repo_paths: ["src/v1/stage0/src/synthetic_cargo_bin.rs"],
       prior_tracked_rust_repo_paths: ["src/v1/stage0/src/synthetic_cargo_bin.rs"],
       cargo_bin_repo_paths: ["src/v1/stage0/src/synthetic_cargo_bin.rs"],
-      emit_population_evidence: EmitPopulationConfirmed {
+      emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
         emitted_stage0_repo_paths: []
       }
     }
   ) {
-    ManifestStateScaffoldRefused {
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused {
       cause: gunbc.stage0_rust_source_lifecycle_scaffold.CargoTargetMissingLifecycleDisposition { path: path }
     } => path == "src/v1/stage0/src/synthetic_cargo_bin.rs"
     _ => false
@@ -260,7 +260,7 @@ test fn scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition() -> 
 
 test fn scaffold_observed_git_refusal_surfaces_typed_cause() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observation.GitObservationRefused { detail: "git unavailable" }) {
-    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostGitObservationRefused { detail: detail } } => detail == "git unavailable"
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostGitObservationRefused { detail: detail } } => detail == "git unavailable"
     _ => false
   }
 }
@@ -269,7 +269,7 @@ test fn scaffold_observed_manifest_read_refusal_surfaces_typed_cause() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
     observation: gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: "manifest unreadable" }
   ) {
-    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostManifestReadRefused { detail: detail } } => detail == "manifest unreadable"
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostManifestReadRefused { detail: detail } } => detail == "manifest unreadable"
     _ => false
   }
 }
@@ -278,7 +278,7 @@ test fn scaffold_observed_manifest_parse_refusal_surfaces_typed_cause() -> Bool 
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
     observation: gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: "manifest malformed" }
   ) {
-    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostManifestParseRefused { detail: detail } } => detail == "manifest malformed"
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostManifestParseRefused { detail: detail } } => detail == "manifest malformed"
     _ => false
   }
 }
@@ -310,7 +310,7 @@ test fn scaffold_residue_red_control_empty_dissolve_on_reds() -> Bool {
 
 test fn scaffold_observed_duplicate_tracked_paths_reds() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_source_lifecycle_scaffold.witness_duplicate_tracked_observation()) {
-    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedDuplicateExactPaths { count: _ } } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedDuplicateExactPaths { count: _ } } => true
     _ => false
   }
 }
@@ -358,7 +358,7 @@ test fn scaffold_v1_interpreter_dispatch_generated_disposition_is_emit_from_gene
           xs: row.maintenance_dispositions,
           predicate: fn(disposition) {
             match disposition {
-              EmitFrom { authority: authority } =>
+              gunbc.stage0_rust_source_lifecycle_scaffold.EmitFrom { authority: authority } =>
                 authority.module_path == "gunbc.generated_artifact_emit"
                   && authority.decl_name == "artifact_generate"
               _ => false
@@ -385,7 +385,7 @@ test fn scaffold_bootstrap_stage0_crate_layout_generated_disposition_is_emit_fro
           xs: row.maintenance_dispositions,
           predicate: fn(disposition) {
             match disposition {
-              EmitFrom { authority: authority } =>
+              gunbc.stage0_rust_source_lifecycle_scaffold.EmitFrom { authority: authority } =>
                 authority.module_path == "gunbc.generated_artifact_emit"
                   && authority.decl_name == "artifact_generate"
               _ => false
@@ -404,8 +404,8 @@ test fn scaffold_bootstrap_stage0_crate_layout_generated_not_residue() -> Bool {
 }
 
 test fn scaffold_generated_artifact_emit_authority_ref_populated() -> Bool {
-  gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_emit_authority_ref.module_path == "gunbc.generated_artifact_emit"
-    && gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_emit_authority_ref.decl_name == "artifact_generate"
+  generated_artifact_emit_authority_ref.module_path == "gunbc.generated_artifact_emit"
+    && generated_artifact_emit_authority_ref.decl_name == "artifact_generate"
 }
 
 // ORDER UPDATED, NOT WEAKENED. This is a list equality, so it asserts the derived ORDER as well
@@ -418,7 +418,7 @@ test fn scaffold_generated_artifact_emit_authority_ref_populated() -> Bool {
 // the ordering IS derived and deterministic, so asserting it catches strictly more; a set
 // comparison here would be a quieter assertion bought with no fact.
 test fn scaffold_generated_artifact_layout_overlap_repo_paths_is_exactly_v1_interpreter_dispatch() -> Bool {
-  generated_artifact_layout_overlap_repo_paths() == [bootstrap_stage0_crate_layout_generated_repo_path, v1_interpreter_dispatch_generated_repo_path]
+  gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_layout_overlap_repo_paths() == [gunbc.stage0_rust_source_lifecycle_scaffold.bootstrap_stage0_crate_layout_generated_repo_path, gunbc.stage0_rust_source_lifecycle_scaffold.v1_interpreter_dispatch_generated_repo_path]
 }
 
 test fn scaffold_generated_artifact_layout_overlap_subset_of_hand_maintained_holds_green() -> Bool {
@@ -465,7 +465,7 @@ test fn scaffold_standing_unclassified_reds_on_derived_unclassified_tracked() ->
       planted_path: standing_unclassified_planted_path
     )
   ) {
-    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedUnclassifiedTracked { count: count } } => count == 1
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedUnclassifiedTracked { count: count } } => count == 1
     _ => false
   }
 }
@@ -476,7 +476,7 @@ test fn scaffold_same_planted_path_when_new_reaches_the_newly_arm_instead() -> B
       extra_path: standing_unclassified_planted_path
     )
   ) {
-    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: count } } => count == 1
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: count } } => count == 1
     _ => false
   }
 }
@@ -520,21 +520,21 @@ data w_generated_derivation_probe_declared: List<String> = [
 ]
 
 test fn scaffold_generated_population_is_the_declaration_intersected_with_the_observed_tree() -> Bool {
-  derived_generated_stage0_repo_paths(
+  gunbc.stage0_rust_source_lifecycle_scaffold.derived_generated_stage0_repo_paths(
     emitted_stage0_repo_paths: w_generated_derivation_probe_declared,
     tracked_paths: w_generated_derivation_probe_tracked
   ) == ["src/v1/stage0/src/w_probe_emitted_module.rs"]
 }
 
 test fn scaffold_generated_population_responds_to_the_declaration_not_to_path_shape() -> Bool {
-  length(
-    xs: derived_generated_stage0_repo_paths(
+  v2.std.algebra.length(
+    xs: gunbc.stage0_rust_source_lifecycle_scaffold.derived_generated_stage0_repo_paths(
       emitted_stage0_repo_paths: [],
       tracked_paths: w_generated_derivation_probe_tracked
     )
   ) == 0
-    && length(
-      xs: derived_generated_stage0_repo_paths(
+    && v2.std.algebra.length(
+      xs: gunbc.stage0_rust_source_lifecycle_scaffold.derived_generated_stage0_repo_paths(
         emitted_stage0_repo_paths: w_generated_derivation_probe_declared,
         tracked_paths: w_generated_derivation_probe_tracked
       )
@@ -548,9 +548,9 @@ test fn scaffold_generated_population_responds_to_the_declaration_not_to_path_sh
 // child again. The probe is the same tracked list as above, so a regression that reinstated the
 // complement would turn this red while leaving the two tests above green.
 test fn scaffold_unregistered_direct_child_is_not_generated_under_the_declaration() -> Bool {
-  !path_in_list(
+  !gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(
     path: "src/v1/stage0/src/w_probe_unregistered_hand_file.rs",
-    paths: derived_generated_stage0_repo_paths(
+    paths: gunbc.stage0_rust_source_lifecycle_scaffold.derived_generated_stage0_repo_paths(
       emitted_stage0_repo_paths: w_generated_derivation_probe_declared,
       tracked_paths: w_generated_derivation_probe_tracked
     )

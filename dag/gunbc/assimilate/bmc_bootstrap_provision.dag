@@ -5,7 +5,7 @@ module gunbc.assimilate.bmc_bootstrap_provision
 // when some unrelated module in the closure happened to drag that definer into the pool.
 
 
-data bmc_assimilate_service_deps: List<extdeps.cloud.gcp.gcp.GcpService> = [
+data bmc_assimilate_service_deps: List<GcpService> = [
   GcpServiceUsage,
   GcpIam,
   GcpIamCredentials,
@@ -18,7 +18,7 @@ data bmc_required_gcp_apis: List<String> = map(bmc_assimilate_service_deps, s =>
 fn bmc_secret_iam_bindings() -> List<extdeps.cloud.gcp.iam.GcpBinding> {
   [
     extdeps.cloud.gcp.iam.GcpBinding {
-      role: extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor,
+      role: role_secretmanager_secret_accessor,
       members: [bmc_assimilator_sa_member()]
     },
     extdeps.cloud.gcp.iam.GcpBinding {
@@ -31,12 +31,12 @@ fn bmc_secret_iam_bindings() -> List<extdeps.cloud.gcp.iam.GcpBinding> {
 data bmc_bootstrap_provision_eager_auth_print_access_token_fork: String = "🟡 dissolve-on: node auth calls shell.GCloud.AuthPrintAccessToken() directly instead of gunbc.auth.access_token_source.ensure_access_token(source: GcloudPrintToken). DISSOLVES WHEN this pattern routes token acquisition through ensure_access_token and deletes the shell.GCloud node. Authority: gunbc.auth.access_token_source ensure_access_token."
 
 pattern bmc_bootstrap_provision_srv3() -> {
-  sa_email: extdeps.cloud.gcp.gcp.ServiceAccountEmail,
+  sa_email: ServiceAccountEmail,
   secret_binding_etag: String,
   pool_op: String,
   provider_op: String
 }
-  uses net: std.resources.Network
+  uses net: Network
 {
   node auth: shell.GCloud.AuthPrintAccessToken()
 
@@ -98,8 +98,8 @@ pattern bmc_bootstrap_provision_srv3() -> {
 // universe is what lets reconcile_gcp_policy preserve those members while still retiring cells this
 // caller genuinely owns and no longer desires.
 fn bmc_secret_iam_bindings_owned_cells() -> List<extdeps.cloud.gcp.iam.GcpIamBindingCell> {
-  fold(bmc_secret_iam_bindings(), init: no_gcp_cells, f: (acc, b) =>
-    fold(gcp_binding_cells(b: b), init: acc, f: (inner, c) => inner |> list_push(c)))
+  fold(bmc_secret_iam_bindings(), init: extdeps.cloud.gcp.iam.no_gcp_cells, f: (acc, b) =>
+    fold(extdeps.cloud.gcp.iam.gcp_binding_cells(b: b), init: acc, f: (inner, c) => inner |> list_push(c)))
 }
 
 // KNOWN BYPASS, named rather than hidden. Both arms below return the policy, so a CONVERGED
@@ -115,12 +115,12 @@ fn bmc_secret_iam_bindings_owned_cells() -> List<extdeps.cloud.gcp.iam.GcpIamBin
 // verdict selects whether the SetSecretIamPolicy step is present at all, and this wrapper is
 // deleted rather than returning a policy the caller was never meant to write.
 fn bmc_secret_iam_bindings_reconciled_policy(observed: extdeps.cloud.gcp.iam.GcpPolicy) -> extdeps.cloud.gcp.iam.GcpPolicy {
-  match reconcile_gcp_policy(
+  match extdeps.cloud.gcp.iam.reconcile_gcp_policy(
     observed: observed,
     desired_owned: bmc_secret_iam_bindings_owned_cells(),
     owned_universe: extdeps.cloud.gcp.iam.GcpIamOwnedCellUniverse { cells: bmc_secret_iam_bindings_owned_cells() }
   ) {
-    GcpPolicyAlreadyConverged { policy: p } => p
-    GcpPolicyDeltaRequired { policy: p, added: _, removed: _, preserved: _ } => p
+    extdeps.cloud.gcp.iam.GcpPolicyAlreadyConverged { policy: p } => p
+    extdeps.cloud.gcp.iam.GcpPolicyDeltaRequired { policy: p, added: _, removed: _, preserved: _ } => p
   }
 }

@@ -1,5 +1,6 @@
 module v2.test.manual.target_model_atom_lookup_dissolution
 
+
 fn atom_lookup_dissolution_probe_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^atom_lookup_dissolution_probe } },
@@ -8,56 +9,56 @@ fn atom_lookup_dissolution_probe_node() -> v2.std.node.Node {
 }
 }
 
-test fn passing_candidate_fold_duplicate_produces_many() -> v2.std.logic.Bool {
+test fn passing_candidate_fold_duplicate_produces_many() -> Bool {
   match v2.std.algebra.fold_list(
     xs: [atom_lookup_dissolution_probe_node(), atom_lookup_dissolution_probe_node()],
     empty: v2.std.passing_candidate_fold.NoPassingCandidate,
     cons: fn(acc, n) {
       match acc {
-        NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: n }
-        OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
-        ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
+        v2.std.passing_candidate_fold.NoPassingCandidate => v2.std.passing_candidate_fold.OnePassingCandidate { candidate: n }
+        v2.std.passing_candidate_fold.OnePassingCandidate { candidate: _ } => v2.std.passing_candidate_fold.ManyPassingCandidates
+        v2.std.passing_candidate_fold.ManyPassingCandidates => v2.std.passing_candidate_fold.ManyPassingCandidates
       }
     }
   ) {
-    NoPassingCandidate => false
-    OnePassingCandidate { candidate: _ } => false
-    ManyPassingCandidates => true
+    v2.std.passing_candidate_fold.NoPassingCandidate => false
+    v2.std.passing_candidate_fold.OnePassingCandidate { candidate: _ } => false
+    v2.std.passing_candidate_fold.ManyPassingCandidates => true
   }
 }
 
-test fn atom_lookup_in_catalog_known_carrier_accepts() -> v2.std.logic.Bool {
+test fn atom_lookup_in_catalog_known_carrier_accepts() -> Bool {
   match v2.std.compilers.target_model.target_atom_realization_lookup_in_catalog(
     catalog: v2.extdeps.languages.typescript.ts_target_atom_realization_catalog,
     source_carrier: v2.std.compilers.target_model.symbol_kernel_type_node()
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn atom_lookup_in_catalog_unknown_carrier_rejects_miss() -> v2.std.logic.Bool {
+test fn atom_lookup_in_catalog_unknown_carrier_rejects_miss() -> Bool {
   match v2.std.compilers.target_model.target_atom_realization_lookup_in_catalog(
     catalog: v2.extdeps.languages.typescript.ts_target_atom_realization_catalog,
     source_carrier: atom_lookup_dissolution_probe_node()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_lookup_miss
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_lookup_miss
   }
 }
 
-test fn atom_lookup_in_catalog_node_non_conj_rejects_decode_invalid() -> v2.std.logic.Bool {
+test fn atom_lookup_in_catalog_node_non_conj_rejects_decode_invalid() -> Bool {
   match v2.std.compilers.target_model.target_atom_realization_lookup_in_catalog_node(
     catalog: atom_lookup_dissolution_probe_node(),
     source_carrier: atom_lookup_dissolution_probe_node(),
     host_target_model: v2.extdeps.languages.typescript.ts_sg2_type_expr_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
   }
 }
 
-test fn atom_catalog_with_malformed_row_skips_accepts_valid() -> v2.std.logic.Bool {
+test fn atom_catalog_with_malformed_row_skips_accepts_valid() -> Bool {
   match v2.std.compilers.target_model.target_atom_realization_lookup_in_catalog_node(
     catalog: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -76,8 +77,8 @@ test fn atom_catalog_with_malformed_row_skips_accepts_valid() -> v2.std.logic.Bo
     source_carrier: v2.std.logic.bool_node(),
     host_target_model: v2.extdeps.languages.typescript.ts_sg2_type_expr_target_model()
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

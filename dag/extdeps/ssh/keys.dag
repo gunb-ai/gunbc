@@ -3,7 +3,7 @@ module extdeps.ssh
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "man.openbsd.org/sshd.8#AUTHORIZED_KEYS_FILE_FORMAT"
   }
 }
@@ -15,7 +15,7 @@ type SshKeyAlgorithm
 
 data ssh_key_algorithm_token_registry_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.iana.org/assignments/ssh-parameters/ssh-parameters.xhtml#ssh-parameters-19"
   }
 }
@@ -23,7 +23,7 @@ data ssh_key_algorithm_token_registry_authority: extdeps.external_authority.Exte
 // ssh_key_algorithm_token emits registered wire tokens: the token SET is owned by the IANA SSH Protocol Parameters public-key-algorithm-names registry (anchor above); each variant's cryptosystem and token carry their own upstream authorities in the per-variant rows below — a referenced entity carries ITS authority, never its consumer's (the Vendor<Domain> precedent).
 data ed25519_cryptosystem_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "ed25519.cr.yp.to/"
   }
 }
@@ -32,7 +32,7 @@ data ed25519_authority_note: String = "Ed25519: design authority ed25519.cr.yp.t
 
 data rsa_cryptosystem_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.rfc-editor.org/rfc/rfc8017"
   }
 }
@@ -41,7 +41,7 @@ data rsa_authority_note: String = "Rsa: PKCS #1 v2.2 (RFC 8017); the ssh-rsa wir
 
 data ecdsa_p256_cryptosystem_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.rfc-editor.org/rfc/rfc5656"
   }
 }

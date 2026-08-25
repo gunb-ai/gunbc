@@ -2131,7 +2131,7 @@ fn emit_rust_init_block_stmts(remaining: List<v1.std.core.Node>, text: List<Stri
         Present { value: _ } =>
           let raw_line = emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           let is_let = match stmt.expr_data {
-            ExprLet => true
+            v1.std.core.ExprLet => true
             _ => false
           }
           let line = if is_let { raw_line } else { concat(raw_line, ";") }
@@ -2238,7 +2238,7 @@ fn is_type_constant(summary: v1.compiler.infer_emit_info.TypeSummary, recursive_
   match summary.repr {
     v1.compiler.infer_emit_info.EnumRepr { unit_only: unit_only } =>
       unit_only && !is_recursive && !has_generics && !summary.has_fn_fields
-    StructRepr =>
+    v1.compiler.infer_emit_info.StructRepr =>
       if is_recursive || has_generics || summary.has_fn_fields { false }
       else {
         let field_count = sorted_map_keys(summary.field_summaries) |> count
@@ -2251,7 +2251,7 @@ fn is_type_constant(summary: v1.compiler.infer_emit_info.TypeSummary, recursive_
 
 fn maybe_mark_shared_type(acc: Set<String>, summary: v1.compiler.infer_emit_info.TypeSummary, recursive_type_set: Set<String>, target_needs_sharing: Bool) -> Set<String> {
   let needs_sharing = target_needs_sharing && match summary.repr {
-    StructRepr => true
+    v1.compiler.infer_emit_info.StructRepr => true
     v1.compiler.infer_emit_info.EnumRepr { unit_only: unit_only } => unit_only == false
   }
   if is_grounded_coproduct_native_alias(name: summary.name) {
@@ -2733,7 +2733,7 @@ fn record_lit_variant_payload_struct_surfaces(n: v1.std.core.Node, source_indice
             ft != "" && match map_get(type_summaries, ft) {
               Present { value: fts } =>
                 match fts.repr {
-                  StructRepr => true
+                  v1.compiler.infer_emit_info.StructRepr => true
                   _ => false
                 }
               Absent => false
@@ -2859,7 +2859,7 @@ fn collect_items_field_import_surface_names(items: List<v1.std.core.Node>, emit_
               field_type != "" && match map_get(type_summaries, field_type) {
                 Present { value: ft } =>
                   match ft.repr {
-                    StructRepr => true
+                    v1.compiler.infer_emit_info.StructRepr => true
                     _ => false
                   }
                 Absent => false
@@ -2991,7 +2991,7 @@ fn collect_rc_pattern_prelude_parent_enums(pattern: v1.std.core.MatchPattern, rc
 
 fn collect_match_pattern_parent_enums(expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> List<String> {
   match expr.expr_data {
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut = v1.std.core.match_scrutinee(texpr: expr)
       let scrut_type = emit_scrutinee_type_name(scrutinee: scrut, source_indices: source_indices)
       let from_scrut = if scrut_type != "" { [scrut_type] } else { [] }
@@ -3048,7 +3048,7 @@ fn collect_record_lit_field_struct_surfaces(parent: v1.std.core.Node, field_init
                   if ft != "" && match map_get(type_summaries, ft) {
                     Present { value: fts } =>
                       match fts.repr {
-                        StructRepr => true
+                        v1.compiler.infer_emit_info.StructRepr => true
                         _ => false
                       }
                     Absent => false
@@ -3069,7 +3069,7 @@ fn collect_value_emit_type_surface_names(n: v1.std.core.Node, source_indices: Ma
   let self_names = match n.expr_data {
     v1.std.core.ExprRecordLit { parent_enum: _ } =>
       record_lit_ref_names(n: n, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
-    ExprMatch => collect_match_pattern_parent_enums(expr: n, source_indices: source_indices, emit_info: emit_info)
+    v1.std.core.ExprMatch => collect_match_pattern_parent_enums(expr: n, source_indices: source_indices, emit_info: emit_info)
     _ =>
       let from_inferred_list = match n.inferred {
         Present { value: v1.std.core.Resolved { node: rt } } =>
@@ -3152,7 +3152,7 @@ fn expand_variant_payload_struct_imports(names: List<String>, type_summaries: Ma
                 ft != "" && match map_get(type_summaries, ft) {
                   Present { value: fts } =>
                     match fts.repr {
-                      StructRepr => true
+                      v1.compiler.infer_emit_info.StructRepr => true
                       _ => false
                     }
                   Absent => false
@@ -4814,7 +4814,7 @@ fn module_data_field_struct_import_names(items: List<v1.std.core.Node>, type_sum
               && match map_get(type_summaries, field_type) {
                 Present { value: ft } =>
                   match ft.repr {
-                    StructRepr => true
+                    v1.compiler.infer_emit_info.StructRepr => true
                     _ => false
                   }
                 Absent => false
@@ -5952,7 +5952,7 @@ fn v1_fn_body_derived_clone_param_names(params: List<v1.std.core.Node>, inferred
     source_indices: si
   )
   let rc_match_clone_param_names = match body.expr_data {
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrutinee = v1.std.core.match_scrutinee(texpr: body)
       match scrutinee.inferred {
         Present { value: v1.std.core.Resolved { node: rt } } =>
@@ -6118,11 +6118,11 @@ fn v1_call_forwarding_clone_bound_param_names(
 ) -> List<String> {
   let si = source_indices
   let call_node = match body.expr_data {
-    ExprCall => Present { value: body }
-    ExprLambda =>
+    v1.std.core.ExprCall => Present { value: body }
+    v1.std.core.ExprLambda =>
       let lb = v1.std.core.lambda_body(texpr: body)
       match lb.expr_data {
-        ExprCall => Present { value: lb }
+        v1.std.core.ExprCall => Present { value: lb }
         _ => none
       }
     _ => none
@@ -6206,7 +6206,7 @@ fn v1_call_forwarding_equality_bound_param_names(
     return []
   }
   let here = match body.expr_data {
-    ExprCall => v1_call_site_equality_forwarded_param_names(
+    v1.std.core.ExprCall => v1_call_site_equality_forwarded_param_names(
       call: body,
       generic_param_names: generic_param_names,
       fn_decl_items: fn_decl_items,
@@ -6396,7 +6396,7 @@ fn rust_declared_return_is_callable(emit_info: v1.compiler.infer_emit_info.EmitG
 
 fn rust_callable_return_wrap(body_str: String, texpr: v1.std.core.Node, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   let is_lambda_body = match texpr.expr_data {
-    ExprLambda => true
+    v1.std.core.ExprLambda => true
     _ => false
   }
   let wrap_template = v1.compiler.emit_core_support.language_spec(target: v1.compiler.artifact.Rust).callable_value_wrap_template
@@ -6453,7 +6453,7 @@ fn emit_rust_unit_discarding_optional_typed(texpr: v1.std.core.Node, registry: M
 fn emit_rust_unit_discarding_stmt(texpr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   match texpr.expr_data {
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let v = v1.std.core.let_value(texpr: texpr)
       let inner = v1.std.core.let_body(texpr: texpr)
       if inferred_expr_is_optional(texpr: v) {
@@ -6472,11 +6472,11 @@ fn emit_rust_unit_discarding_stmt(texpr: v1.std.core.Node, registry: Map<String,
           Absent => let_line
         }
       }
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       texpr.children
         |> map(child => emit_rust_unit_discarding_stmt(texpr: child, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
         |> join(separator: "\n")
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let c = v1.std.core.if_condition(texpr: texpr)
       let t = v1.std.core.if_then_branch(texpr: texpr)
       let e = v1.std.core.if_else_branch(texpr: texpr)
@@ -6561,7 +6561,7 @@ fn emit_func_def(
 fn emit_func_body(body: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   match body.expr_data {
-    ExprLet => {
+    v1.std.core.ExprLet => {
       let n = v1.std.core.let_binding_name_at(texpr: body, source_indices: si)
       let v = v1.std.core.let_value(texpr: body)
       let inner = v1.std.core.let_body(texpr: body)
@@ -6574,7 +6574,7 @@ fn emit_func_body(body: v1.std.core.Node, registry: Map<String, v1.compiler.infe
         Absent => let_line
       }
     }
-    ExprBlock => {
+    v1.std.core.ExprBlock => {
       let ss = body.children
       if ss |> count == 0 {
         "Ok(())"
@@ -6585,7 +6585,7 @@ fn emit_func_body(body: v1.std.core.Node, registry: Map<String, v1.compiler.infe
         let last_str = match last_stmt {
           Present { value: s } =>
             match s.expr_data {
-              ExprReturn => concat("return Ok(", emit_typed_expr(texpr: v1.std.core.return_value(texpr: s), registry: registry, scope: init_state.scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ")")
+              v1.std.core.ExprReturn => concat("return Ok(", emit_typed_expr(texpr: v1.std.core.return_value(texpr: s), registry: registry, scope: init_state.scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ")")
               _ => concat("Ok(", emit_typed_expr(texpr: s, registry: registry, scope: init_state.scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ")")
             }
           Absent => "Ok(())"
@@ -6593,7 +6593,7 @@ fn emit_func_body(body: v1.std.core.Node, registry: Map<String, v1.compiler.infe
         if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
       }
     }
-    ExprReturn => concat("return Ok(", emit_typed_expr(texpr: v1.std.core.return_value(texpr: body), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ")")
+    v1.std.core.ExprReturn => concat("return Ok(", emit_typed_expr(texpr: v1.std.core.return_value(texpr: body), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ")")
     _ => concat("Ok(", emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ")")
   }
 }
@@ -7474,7 +7474,7 @@ fn effective_variant_parent_from_enum_lookup(leaf_name: String, rt: v1.std.core.
 
 fn effective_variant_parent_from_resolved(leaf_name: String, rt: v1.std.core.Node, binding_kind: v1.std.core.VarBindingKind?, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   match rt.return_cardinality {
-    CardOptional =>
+    v1.std.core.CardOptional =>
       if is_optional_variant_name(name: leaf_name) { Present { value: "Optional" } } else { effective_variant_parent_from_enum_lookup(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices) }
     _ => effective_variant_parent_from_enum_lookup(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices)
   }
@@ -7536,7 +7536,7 @@ fn emit_none_keyword_for_resolved_type(resolved_type: v1.std.core.InferredNode?)
   match resolved_type {
     Present { value: v1.std.core.Resolved { node: rt } } =>
       match rt.return_cardinality {
-        CardOptional => v1.compiler.emit.emit_keyword(key: "null", target: v1.compiler.artifact.Rust)
+        v1.std.core.CardOptional => v1.compiler.emit.emit_keyword(key: "null", target: v1.compiler.artifact.Rust)
         _ => v1.compiler.emit.emit_error_expr(message: "none/None with non-optional resolved carrier — refuse fail-open null default", target: v1.compiler.artifact.Rust)
       }
     _ => v1.compiler.emit.emit_error_expr(message: "none/None with undetermined carrier — refuse fail-open null default", target: v1.compiler.artifact.Rust)
@@ -7693,11 +7693,11 @@ fn emit_typed_field_access(base: v1.std.core.Node, field: String, summary: v1.st
     match summary {
       Present { value: field_summary } =>
         match field_summary.access_style {
-          TupleFirst => v1.compiler.emit_core_support.apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".0"))
-          TupleSecond => v1.compiler.emit_core_support.apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".1"))
-          OptionalUnwrap => concat(v1.compiler.emit_core_support.apply_type_template1(template: sharing.clone_value, arg0: base_str), ".unwrap()")
-          EnumAccessor => concat(base_str, ".", v1.compiler.emit.emit_ident(name: field, target: v1.compiler.artifact.Rust), "()")
-          StoredField =>
+          v1.std.core.TupleFirst => v1.compiler.emit_core_support.apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".0"))
+          v1.std.core.TupleSecond => v1.compiler.emit_core_support.apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".1"))
+          v1.std.core.OptionalUnwrap => concat(v1.compiler.emit_core_support.apply_type_template1(template: sharing.clone_value, arg0: base_str), ".unwrap()")
+          v1.std.core.EnumAccessor => concat(base_str, ".", v1.compiler.emit.emit_ident(name: field, target: v1.compiler.artifact.Rust), "()")
+          v1.std.core.StoredField =>
             let base_is_owned = match base.expr_data {
               v1.std.core.ExprVar { binding_kind: _ } =>
                 let base_name = v1.std.core.expr_var_name_at(texpr: base, source_indices: scope.type_env.source_indices)
@@ -7929,7 +7929,7 @@ fn emit_rust_expr_method_call(expr: v1.std.core.Node, registry: Map<String, v1.c
 
 fn emit_rust_expr_match(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let s = v1.std.core.match_scrutinee(texpr: expr)
       let arm_list = v1.std.core.match_arm_nodes(texpr: expr)
       emit_typed_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -7939,7 +7939,7 @@ fn emit_rust_expr_match(expr: v1.std.core.Node, registry: Map<String, v1.compile
 
 fn emit_rust_expr_if(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let c = v1.std.core.if_condition(texpr: expr)
       let t = v1.std.core.if_then_branch(texpr: expr)
       let e = v1.std.core.if_else_branch(texpr: expr)
@@ -7950,7 +7950,7 @@ fn emit_rust_expr_if(expr: v1.std.core.Node, registry: Map<String, v1.compiler.i
 
 fn emit_rust_expr_let(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let n = v1.std.core.let_binding_name_at(texpr: expr, source_indices: scope.type_env.source_indices)
       let v = v1.std.core.let_value(texpr: expr)
       let bd = v1.std.core.let_body(texpr: expr)
@@ -8005,7 +8005,7 @@ fn emit_rust_expr_record_lit(expr: v1.std.core.Node, registry: Map<String, v1.co
 
 fn emit_rust_expr_string_interp(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprStringInterp =>
+    v1.std.core.ExprStringInterp =>
       let ps = expr.children |> map(child => match child.expr_data {
         v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
@@ -8017,7 +8017,7 @@ fn emit_rust_expr_string_interp(expr: v1.std.core.Node, registry: Map<String, v1
 
 fn emit_rust_expr_block(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       emit_typed_block(stmts: expr.children, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => v1.compiler.emit.emit_error_expr(message: "emit_rust_expr_block expected ExprBlock", target: v1.compiler.artifact.Rust)
   }
@@ -8025,7 +8025,7 @@ fn emit_rust_expr_block(expr: v1.std.core.Node, registry: Map<String, v1.compile
 
 fn emit_rust_expr_cast(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprCast =>
+    v1.std.core.ExprCast =>
       v1.compiler.emit.emit_typed_cast_shared(
         expr: v1.std.core.cast_expr(texpr: expr),
         cast_target_node: v1.std.core.cast_target(texpr: expr),
@@ -8038,7 +8038,7 @@ fn emit_rust_expr_cast(expr: v1.std.core.Node, registry: Map<String, v1.compiler
 
 fn emit_rust_expr_for_each(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprForEach =>
+    v1.std.core.ExprForEach =>
       let v = v1.std.core.foreach_variable_at(texpr: expr, source_indices: scope.type_env.source_indices)
       let c = v1.std.core.foreach_collection(texpr: expr)
       let bd = v1.std.core.foreach_body(texpr: expr)
@@ -8049,7 +8049,7 @@ fn emit_rust_expr_for_each(expr: v1.std.core.Node, registry: Map<String, v1.comp
 
 fn emit_rust_expr_index(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprIndex =>
+    v1.std.core.ExprIndex =>
       let b = v1.std.core.index_base(texpr: expr)
       let i = v1.std.core.index_expr(texpr: expr)
       emit_typed_index(base: b, index: i, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -8059,7 +8059,7 @@ fn emit_rust_expr_index(expr: v1.std.core.Node, registry: Map<String, v1.compile
 
 fn emit_rust_expr_slice(expr: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprSlice =>
+    v1.std.core.ExprSlice =>
       let b = v1.std.core.slice_base(texpr: expr)
       let s = v1.std.core.slice_start(texpr: expr)
       let e = v1.std.core.slice_end(texpr: expr)
@@ -8119,7 +8119,7 @@ fn contextual_variant_parent_from_type_name(variant_name: String, resolved_type:
 
 fn contextual_variant_parent_absent(variant_name: String, resolved_type: v1.std.core.Node, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   match resolved_type.return_cardinality {
-    CardOptional =>
+    v1.std.core.CardOptional =>
       if is_optional_variant_name(name: variant_name) { Present { value: "Optional" } } else { contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices) }
     _ => contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
   }
@@ -8362,7 +8362,7 @@ fn emit_typed_function_value_call(func: String, args: List<v1.std.core.Node>, re
 // observed -- and it stays unearned as a repair until some fixture makes it observable.
 fn lambda_argument_scope(arg: v1.std.core.Node, scope: v1.compiler.infer.InferScope) -> v1.compiler.infer.InferScope {
   match arg.expr_data {
-    ExprLambda =>
+    v1.std.core.ExprLambda =>
       lambda_scope_from_children(
         scope: scope,
         params: v1.std.core.lambda_param_names_at(texpr: arg, source_indices: scope.type_env.source_indices),
@@ -8708,7 +8708,7 @@ fn lambda_param_type_strs(params: List<String>, param_nodes: List<v1.std.core.No
 
 fn emit_typed_collection_lambda(lambda_expr: v1.std.core.Node, elem_type_str: String, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
-    ExprLambda =>
+    v1.std.core.ExprLambda =>
       let ps = v1.std.core.lambda_param_names_at(texpr: lambda_expr, source_indices: scope.type_env.source_indices)
       let bd = v1.std.core.lambda_body(texpr: lambda_expr)
       let pn = lambda_expr.children |> skip(1)
@@ -8723,7 +8723,7 @@ fn emit_typed_collection_lambda(lambda_expr: v1.std.core.Node, elem_type_str: St
 
 fn emit_typed_fold_lambda(lambda_expr: v1.std.core.Node, acc_type_str: String, elem_type_str: String, elem_borrowed: Bool, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
-    ExprLambda =>
+    v1.std.core.ExprLambda =>
       let ps = v1.std.core.lambda_param_names_at(texpr: lambda_expr, source_indices: scope.type_env.source_indices)
       let bd = v1.std.core.lambda_body(texpr: lambda_expr)
       let pn = lambda_expr.children |> skip(1)
@@ -8811,7 +8811,7 @@ fn emit_rust_fold_method_call(method_call_node: v1.std.core.Node, fold_accumulat
     Absent => type_variable_node(id: "")
   }
   let acc_param_name = match fold_lambda_node.expr_data {
-    ExprLambda => match v1.std.core.lambda_param_names_at(texpr: fold_lambda_node, source_indices: scope.type_env.source_indices) |> first {
+    v1.std.core.ExprLambda => match v1.std.core.lambda_param_names_at(texpr: fold_lambda_node, source_indices: scope.type_env.source_indices) |> first {
       Present { value: n } => n
       Absent => ""
     }
@@ -8823,7 +8823,7 @@ fn emit_rust_fold_method_call(method_call_node: v1.std.core.Node, fold_accumulat
   let acc_unwrap = structural_unwrap && set_contains(shared_types, acc_type_name)
   let fold_emit_info = if acc_unwrap {
     match fold_lambda_node.expr_data {
-      ExprLambda =>
+      v1.std.core.ExprLambda =>
         let ps = v1.std.core.lambda_param_names_at(texpr: fold_lambda_node, source_indices: scope.type_env.source_indices)
         match ps |> first {
           Present { value: acc_name } =>
@@ -8854,7 +8854,7 @@ fn emit_rust_fold_method_call(method_call_node: v1.std.core.Node, fold_accumulat
     }
   } else if structural_move {
     match fold_lambda_node.expr_data {
-      ExprLambda =>
+      v1.std.core.ExprLambda =>
         let ps = v1.std.core.lambda_param_names_at(texpr: fold_lambda_node, source_indices: scope.type_env.source_indices)
         match ps |> first {
           Present { value: acc_name } =>
@@ -8936,7 +8936,7 @@ fn emit_rust_fold_method_call(method_call_node: v1.std.core.Node, fold_accumulat
 
 fn fold_lambda_element_unused(lambda_expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match lambda_expr.expr_data {
-    ExprLambda =>
+    v1.std.core.ExprLambda =>
       let ps = v1.std.core.lambda_param_names_at(texpr: lambda_expr, source_indices: source_indices)
       match ps |> skip(1) |> first {
         Present { value: elem_name } => elem_name == "_"
@@ -8986,7 +8986,7 @@ fn emit_rust_map_method_call(receiver: v1.std.core.Node, args: List<v1.std.core.
     match args |> first {
       Present { value: a } =>
         match v1.std.core.arg_value(n: a).expr_data {
-          ExprLambda =>
+          v1.std.core.ExprLambda =>
             let bd = match v1.std.core.arg_value(n: a).children |> first { Present { value: v } => v  Absent => v1.std.core.arg_value(n: a) }
             let ps = v1.std.core.lambda_param_names_at(texpr: v1.std.core.arg_value(n: a), source_indices: scope.type_env.source_indices)
             let dag_name = match ps |> first { Present { value: n } => n  Absent => "__x" }
@@ -9005,7 +9005,7 @@ fn emit_rust_map_method_call(receiver: v1.std.core.Node, args: List<v1.std.core.
     match args |> first {
       Present { value: a } =>
         match v1.std.core.arg_value(n: a).expr_data {
-          ExprLambda =>
+          v1.std.core.ExprLambda =>
             let bd = match v1.std.core.arg_value(n: a).children |> first { Present { value: v } => v  Absent => v1.std.core.arg_value(n: a) }
             let ps = v1.std.core.lambda_param_names_at(texpr: v1.std.core.arg_value(n: a), source_indices: scope.type_env.source_indices)
             let dag_name = match ps |> first { Present { value: n } => n  Absent => "__x" }
@@ -9028,7 +9028,7 @@ fn emit_rust_higher_order_method(ho_spec: extdeps.languages.rust.emit.HigherOrde
   match args |> first {
     Present { value: a } =>
       match v1.std.core.arg_value(n: a).expr_data {
-        ExprLambda =>
+        v1.std.core.ExprLambda =>
           let bd = match v1.std.core.arg_value(n: a).children |> first { Present { value: v } => v  Absent => v1.std.core.arg_value(n: a) }
           let ps = v1.std.core.lambda_param_names_at(texpr: v1.std.core.arg_value(n: a), source_indices: scope.type_env.source_indices)
           let dag_name = match ps |> first { Present { value: n } => n  Absent => "__x" }
@@ -9222,7 +9222,7 @@ fn emit_typed_method_call(method_call_node: v1.std.core.Node, receiver: v1.std.c
     }
     }
     }
-    PlainMethodSemantics =>
+    v1.std.core.PlainMethodSemantics =>
       if method == "get" && is_collection_typed_expr(texpr: receiver, source_indices: scope.type_env.source_indices) {
         emit_rust_get_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else {
@@ -9646,7 +9646,7 @@ fn is_optional_struct_field(emit_info: v1.compiler.infer_emit_info.EmitGraphInfo
       match map_get(summary.field_summaries, field_name) {
         Present { value: field_summary } =>
           match field_summary.value_shape {
-            OptionalValue => true
+            v1.std.core.OptionalValue => true
             _ => false
           }
         Absent => false
@@ -9727,7 +9727,7 @@ fn rust_callable_capture_preamble(lambda_node: v1.std.core.Node, scope: v1.compi
 fn rust_callable_field_value_wrap(raw: String, value_node: v1.std.core.Node?, scope: v1.compiler.infer.InferScope) -> String {
   let lambda = match value_node {
     Present { value: vn } => match vn.expr_data {
-      ExprLambda => Present { value: vn }
+      v1.std.core.ExprLambda => Present { value: vn }
       _ => none
     }
     Absent => none
@@ -9855,7 +9855,7 @@ fn is_already_optional(texpr: v1.std.core.Node, emit_info: v1.compiler.infer_emi
     v1.std.core.ExprFieldAccess { summary: fa_summary } =>
       let b = v1.std.core.field_access_base(texpr: texpr)
       let summary_says_optional = match fa_summary {
-        Present { value: fs } => match fs.value_shape { OptionalValue => true, _ => false }
+        Present { value: fs } => match fs.value_shape { v1.std.core.OptionalValue => true, _ => false }
         Absent => false
       }
       if summary_says_optional { true }
@@ -9969,7 +9969,7 @@ fn struct_candidates_by_field_names(field_names: List<String>, type_summaries: M
   if n_fields == 0 { return [] }
   map_values(type_summaries) |> filter(summary =>
     match summary.repr {
-      StructRepr =>
+      v1.compiler.infer_emit_info.StructRepr =>
         let ftm_keys = sorted_map_keys(summary.field_type_map)
         if ftm_keys |> count == n_fields {
           field_names |> all(fn_name => map_contains_key(summary.field_type_map, fn_name))
@@ -10422,7 +10422,7 @@ fn emit_tco_init_block_stmts(remaining: List<v1.std.core.Node>, text: List<Strin
 
 fn emit_tco_init_stmt(stmt: v1.std.core.Node, params: List<v1.std.core.Node>, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match stmt.expr_data {
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let n = v1.std.core.let_binding_name_at(texpr: stmt, source_indices: scope.type_env.source_indices)
       let v = v1.std.core.let_value(texpr: stmt)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -10452,7 +10452,7 @@ fn emit_rust_tco_non_self_call(frame: v1.compiler.emit.TcoFrame, registry: Map<S
 
 fn emit_rust_tco_if(frame: v1.compiler.emit.TcoFrame, fn_name: String, params: List<v1.std.core.Node>, registry: Map<String, v1.compiler.infer_items.ItemInfo>, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match frame.expr.expr_data {
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let c = v1.std.core.if_condition(texpr: frame.expr)
       let t = v1.std.core.if_then_branch(texpr: frame.expr)
       let e = v1.std.core.if_else_branch(texpr: frame.expr)
@@ -10517,7 +10517,7 @@ fn emit_native_freemonoid_tco_match(scrut_str: String, arms: List<v1.std.core.No
 
 fn emit_rust_tco_match(frame: v1.compiler.emit.TcoFrame, fn_name: String, params: List<v1.std.core.Node>, registry: Map<String, v1.compiler.infer_items.ItemInfo>, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match frame.expr.expr_data {
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let s = v1.std.core.match_scrutinee(texpr: frame.expr)
       let arm_list = v1.std.core.match_arm_nodes(texpr: frame.expr)
       let scrut_str = emit_typed_expr(texpr: s, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -10557,7 +10557,7 @@ fn emit_rust_tco_match(frame: v1.compiler.emit.TcoFrame, fn_name: String, params
 
 fn emit_rust_tco_let(frame: v1.compiler.emit.TcoFrame, fn_name: String, params: List<v1.std.core.Node>, registry: Map<String, v1.compiler.infer_items.ItemInfo>, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match frame.expr.expr_data {
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let n = v1.std.core.let_binding_name_at(texpr: frame.expr, source_indices: frame.scope.type_env.source_indices)
       let v = v1.std.core.let_value(texpr: frame.expr)
       let bd = v1.std.core.let_body(texpr: frame.expr)
@@ -10576,7 +10576,7 @@ fn emit_rust_tco_let(frame: v1.compiler.emit.TcoFrame, fn_name: String, params: 
 
 fn emit_rust_tco_block(frame: v1.compiler.emit.TcoFrame, fn_name: String, params: List<v1.std.core.Node>, registry: Map<String, v1.compiler.infer_items.ItemInfo>, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match frame.expr.expr_data {
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       let ss = frame.expr.children
       if ss |> count == 0 {
         "break;"
@@ -10770,7 +10770,7 @@ fn emit_service_new_method(name: String, fallback_transport: v1.std.core.Node, o
 
 fn emit_auth_source_ctor(source_expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   match source_expr.expr_data {
-    ExprRecordLit => match v1.std.core.record_lit_type_name_at(texpr: source_expr, source_indices: source_indices) {
+    v1.std.core.ExprRecordLit => match v1.std.core.record_lit_type_name_at(texpr: source_expr, source_indices: source_indices) {
       Present { value: variant } =>
       if variant == "EnvVar" {
         match source_expr.children |> first {
@@ -10886,7 +10886,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: v1.std.core.Node, m
                   concat("let ", field_name, " = compile_error!(\"unresolved type for mock field: ", ch_name, "\");")
               }
               match ch.return_cardinality {
-                CardOptional => concat(raw, "\nlet ", field_name, " = Some(", field_name, ");")
+                v1.std.core.CardOptional => concat(raw, "\nlet ", field_name, " = Some(", field_name, ");")
                 _ => raw
               }
             )
@@ -10918,7 +10918,7 @@ fn emit_transport_call(bound: v1.compiler.emit.BoundOperation, op_name: String, 
     v1.compiler.emit.ShellBound { transport: t } => emit_shell_call(op_name: op_name, transport: t, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices)
     v1.compiler.emit.FileBound { verb: v, path_template: pt, result_fields: fs } =>
       emit_file_call(verb: v, path_template: pt, result_fields: fs, source_indices: source_indices)
-    LocalBound => emit_local_call(op_name: op_name)
+    v1.compiler.emit.LocalBound => emit_local_call(op_name: op_name)
     v1.compiler.emit.BindingRefused { cause: cz } =>
       v1.compiler.emit.emit_error_expr(
         message: concat("transport binding refused for operation '", op_name, "': ", v1.compiler.emit.transport_binding_refusal_fact(cause: cz)),
@@ -11008,7 +11008,7 @@ fn emit_rest_url_line(transport: v1.std.core.Node, op_name: String, source_indic
     Present { value: path_node } => match path_node.expr_data {
       v1.std.core.ExprLiteral { value: LitStr { value: path_str } } =>
         concat("let url = format!(\"{}", v1.compiler.emit_core_support.escape_string_literal_body(s: path_str), "\", self.base_url);")
-      ExprStringInterp => {
+      v1.std.core.ExprStringInterp => {
         let parts = path_node.children |> map(child => match child.expr_data {
           v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
           _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
@@ -11113,7 +11113,7 @@ fn emit_rest_query_line(transport: v1.std.core.Node, source_indices: Map<String,
 fn emit_rest_body_line(transport: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   match v1.std.core.transport_request_body(t: transport, source_indices: source_indices) {
     Present { value: b } => match b.expr_data {
-      ExprRecordLit => {
+      v1.std.core.ExprRecordLit => {
         let required_fields = b.children |> filter(fi => !is_optional_typed_expr(e: v1.std.core.field_init_node_value(n: fi)))
         let optional_fields = b.children |> filter(fi => is_optional_typed_expr(e: v1.std.core.field_init_node_value(n: fi)))
         let req_strs = required_fields |> map(fi =>
@@ -11486,7 +11486,7 @@ fn emit_shell_argv_element(arg: v1.std.core.Node, optional_params: Map<String, B
   match arg.expr_data {
     v1.std.core.ExprLiteral { value: LitStr { value: s } } =>
       concat("\"", v1.compiler.emit_core_support.escape_string_literal_body(s: s), "\"")
-    ExprStringInterp => {
+    v1.std.core.ExprStringInterp => {
       let parts = arg.children |> map(child => match child.expr_data {
         v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
@@ -11616,11 +11616,11 @@ fn emit_file_call(verb: v1.compiler.emit.FileVerb, path_template: v1.std.core.No
 // because an unmodeled verb can no longer be represented at this point.
 fn file_verb_action_expr(verb: v1.compiler.emit.FileVerb) -> String {
   match verb {
-    FileRead           => file_read_match_expr
-    FileWrite          => file_write_expr
-    FileWriteOwnerOnly => file_write_owner_only_expr
-    FileDelete         => file_delete_match_expr
-    FileList           => file_list_match_expr
+    v1.compiler.emit.FileRead           => file_read_match_expr
+    v1.compiler.emit.FileWrite          => file_write_expr
+    v1.compiler.emit.FileWriteOwnerOnly => file_write_owner_only_expr
+    v1.compiler.emit.FileDelete         => file_delete_match_expr
+    v1.compiler.emit.FileList           => file_list_match_expr
   }
 }
 
@@ -11632,7 +11632,7 @@ fn emit_file_path_line(path_template: v1.std.core.Node, source_indices: Map<Stri
   match path_node.expr_data {
       v1.std.core.ExprLiteral { value: LitStr { value: path_str } } =>
         concat("let file_path: String = \"", v1.compiler.emit_core_support.escape_string_literal_body(s: path_str), "\".to_string();")
-      ExprStringInterp => {
+      v1.std.core.ExprStringInterp => {
         let parts = path_node.children |> map(child => match child.expr_data {
           v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
           _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
@@ -11694,11 +11694,11 @@ data file_write_owner_only_expr: String = "{\n    let payload_bytes = content.le
 // 4b(4): the machinery goes, the discriminating rows do not.
 fn emit_file_channel_expr(channel: v1.compiler.emit.FileResultChannel, is_optional: Bool) -> String {
   let base = match channel {
-    FileChanSuccess   => "file_success"
-    FileChanByteCount => "file_byte_count"
-    FileChanPath      => "file_path.clone()"
-    FileChanError     => "file_error.clone()"
-    FileChanContent   => "file_content.clone()"
+    v1.compiler.emit.FileChanSuccess   => "file_success"
+    v1.compiler.emit.FileChanByteCount => "file_byte_count"
+    v1.compiler.emit.FileChanPath      => "file_path.clone()"
+    v1.compiler.emit.FileChanError     => "file_error.clone()"
+    v1.compiler.emit.FileChanContent   => "file_content.clone()"
   }
   if is_optional { concat("Some(", base, ")") } else { base }
 }
@@ -11777,7 +11777,7 @@ fn data_value_has_cross_refs(value: v1.std.core.Node) -> Bool {
   match value.expr_data {
     v1.std.core.ExprVar { binding_kind: _ } => true
     v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } => true
-    ExprListLit => value.children |> any(c => data_value_has_cross_refs(value: c))
+    v1.std.core.ExprListLit => value.children |> any(c => data_value_has_cross_refs(value: c))
     v1.std.core.ExprRecordLit { parent_enum: _ } =>
       value.children |> any(f => data_value_has_cross_refs(value: v1.std.core.field_init_node_value(n: f)))
     _ => false
@@ -11955,7 +11955,7 @@ fn emit_data_def_body(type_node: v1.std.core.Node, value: v1.std.core.Node, regi
       let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       let is_already_wrapped = match value.expr_data {
         v1.std.core.ExprRecordLit { parent_enum: _ } => true
-        ExprListLit => true
+        v1.std.core.ExprListLit => true
         v1.std.core.ExprVar { binding_kind: bk } =>
           let vname = v1.std.core.expr_var_name_at(texpr: value, source_indices: scope.type_env.source_indices)
           match effective_variant_parent(name: vname, binding_kind: bk, resolved_type: value.inferred, emit_info: emit_info, source_indices: scope.type_env.source_indices) {
@@ -12124,7 +12124,7 @@ fn fold_constant_default_expr(expr: v1.std.core.Node, registry: Map<String, v1.c
         let var_name = v1.std.core.authored_name_at(source_indices: source_indices, node: expr)
         match v1.compiler.emit.lookup_item(registry: registry, name: var_name) {
           Present { value: info } => match info.kind {
-            DataItem =>
+            v1.compiler.infer_items.DataItem =>
               match map_get(data_body_index, var_name) {
                 Present { value: body } => fold_constant_default_expr(expr: body, registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: depth + 1)
                 Absent => none

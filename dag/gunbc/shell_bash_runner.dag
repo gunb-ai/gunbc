@@ -5,15 +5,15 @@ module gunbc.shell_bash_runner
 data gunbc_bash_heredoc_delimiter: String = "GUNBC_BASH_EOF"
 
 data shell_bash_runner_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.shell_bash_runner",
     decl_name: "shell_bash_runner_dissolution_trigger",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }
 
-data shell_bash_runner_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: shell_exec_via_bash — bash heredoc wrapper built with concat (medium-as-string) so multiline scripts run under shell.Exec.Run without sh -c first-line truncation; heredoc delimiter GUNBC_BASH_EOF is a fixed literal — wrapped body must not contain it or the outer shell terminates the heredoc early (nonce delimiter or BashVarRef transport when bash_fold lands); shell_printf_line emits printf '%s\\n' with bash-double-quote escaping (not naive echo single-quote concat); DISSOLVES WHEN host_effect_apply / bash_fold emit binds multiline shell transport without concat heredoc framing and dag/gunbc/shell_bash_runner.dag retires its concat-built transport")
+data shell_bash_runner_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: shell_exec_via_bash — bash heredoc wrapper built with concat (medium-as-string) so multiline scripts run under shell.Exec.Run without sh -c first-line truncation; heredoc delimiter GUNBC_BASH_EOF is a fixed literal — wrapped body must not contain it or the outer shell terminates the heredoc early (nonce delimiter or BashVarRef transport when bash_fold lands); shell_printf_line emits printf '%s\\n' with bash-double-quote escaping (not naive echo single-quote concat); DISSOLVES WHEN host_effect_apply / bash_fold emit binds multiline shell transport without concat heredoc framing and dag/gunbc/shell_bash_runner.dag retires its concat-built transport")
 
 fn bash_escape_for_double_quotes(s: String) -> String {
   let s1 = join(split(s: s, delimiter: "\\"), "\\\\")

@@ -90,7 +90,7 @@ fn trcb_module_exposure(occurrence: std.occurrence_identity.OccurrenceId, module
 fn trcb_root_exposure(occurrence: std.occurrence_identity.OccurrenceId) -> std.occurrence_binding_candidates.DeclarationExposureRow {
   std.occurrence_binding_candidates.DeclarationExposureRow {
     occurrence: occurrence,
-    exposure: RootExposure,
+    exposure: std.occurrence_binding_candidates.RootExposure,
   }
 }
 
@@ -102,7 +102,7 @@ test fn control_one_containment_bind_holds() -> Bool {
   let type_path = trcb_fixture_path(ancestors: [], terminal: type_decl)
   let fn_path = trcb_fixture_path(ancestors: [], terminal: fn_body)
   let ref_path = trcb_fixture_path(ancestors: [fn_body], terminal: type_ref)
-  match resolve_type_reference_containment_binding(
+  match std.occurrence_binding_candidates.resolve_type_reference_containment_binding(
     transport: std.occurrence_identity.OccurrenceTransport {
       index: std.occurrence_identity.OccurrenceIndex {
         entries: [
@@ -112,11 +112,11 @@ test fn control_one_containment_bind_holds() -> Bool {
         ],
       },
       declarations: [
-        trcb_fixture_declaration(occurrence: type_decl, containment: type_path, category: TypeOccurrence),
-        trcb_fixture_declaration(occurrence: fn_body, containment: fn_path, category: CallableOccurrence),
+        trcb_fixture_declaration(occurrence: type_decl, containment: type_path, category: std.occurrence_identity.TypeOccurrence),
+        trcb_fixture_declaration(occurrence: fn_body, containment: fn_path, category: std.occurrence_identity.CallableOccurrence),
       ],
       references: [
-        trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+        trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: std.occurrence_identity.TypeOccurrence),
       ],
     },
     inputs: trcb_fixture_inputs(
@@ -135,9 +135,9 @@ test fn control_one_containment_bind_holds() -> Bool {
         trcb_authored_order(occurrence: type_ref, ordinal: 3),
       ],
     ),
-    reference: trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+    reference: trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: std.occurrence_identity.TypeOccurrence),
   ) {
-    ReferenceBindingProjectionBound { provider: provider } =>
+    std.occurrence_binding_candidates.ReferenceBindingProjectionBound { provider: provider } =>
       provider.declaration_occurrence.value == 10
         && provider.reference_occurrence.value == 30
         && provider.provider_module == trcb_module_path(dotted: "std.content_hash")
@@ -152,7 +152,7 @@ test fn control_two_absent_must_refuse_holds() -> Bool {
   let type_ref = std.occurrence_identity.OccurrenceId { value: 30 }
   let fn_path = trcb_fixture_path(ancestors: [], terminal: fn_body)
   let ref_path = trcb_fixture_path(ancestors: [fn_body], terminal: type_ref)
-  match resolve_type_reference_containment_binding(
+  match std.occurrence_binding_candidates.resolve_type_reference_containment_binding(
     transport: std.occurrence_identity.OccurrenceTransport {
       index: std.occurrence_identity.OccurrenceIndex {
         entries: [
@@ -161,10 +161,10 @@ test fn control_two_absent_must_refuse_holds() -> Bool {
         ],
       },
       declarations: [
-        trcb_fixture_declaration(occurrence: fn_body, containment: fn_path, category: CallableOccurrence),
+        trcb_fixture_declaration(occurrence: fn_body, containment: fn_path, category: std.occurrence_identity.CallableOccurrence),
       ],
       references: [
-        trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+        trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: std.occurrence_identity.TypeOccurrence),
       ],
     },
     inputs: trcb_fixture_inputs(
@@ -180,9 +180,9 @@ test fn control_two_absent_must_refuse_holds() -> Bool {
         trcb_authored_order(occurrence: type_ref, ordinal: 2),
       ],
     ),
-    reference: trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+    reference: trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: std.occurrence_identity.TypeOccurrence),
   ) {
-    ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 30
+    std.occurrence_binding_candidates.ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 30
     _ => false
   }
 }
@@ -195,7 +195,7 @@ test fn control_three_pool_coincidence_must_not_bind_holds() -> Bool {
   let type_path = trcb_fixture_path(ancestors: [], terminal: type_decl)
   let fn_path = trcb_fixture_path(ancestors: [], terminal: fn_body)
   let ref_path = trcb_fixture_path(ancestors: [fn_body], terminal: type_ref)
-  match resolve_type_reference_containment_binding(
+  match std.occurrence_binding_candidates.resolve_type_reference_containment_binding(
     transport: std.occurrence_identity.OccurrenceTransport {
       index: std.occurrence_identity.OccurrenceIndex {
         entries: [
@@ -205,11 +205,11 @@ test fn control_three_pool_coincidence_must_not_bind_holds() -> Bool {
         ],
       },
       declarations: [
-        trcb_fixture_declaration(occurrence: type_decl, containment: type_path, category: TypeOccurrence),
-        trcb_fixture_declaration(occurrence: fn_body, containment: fn_path, category: CallableOccurrence),
+        trcb_fixture_declaration(occurrence: type_decl, containment: type_path, category: std.occurrence_identity.TypeOccurrence),
+        trcb_fixture_declaration(occurrence: fn_body, containment: fn_path, category: std.occurrence_identity.CallableOccurrence),
       ],
       references: [
-        trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+        trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: std.occurrence_identity.TypeOccurrence),
       ],
     },
     inputs: trcb_fixture_inputs(
@@ -228,9 +228,9 @@ test fn control_three_pool_coincidence_must_not_bind_holds() -> Bool {
         trcb_authored_order(occurrence: type_ref, ordinal: 3),
       ],
     ),
-    reference: trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: TypeOccurrence),
+    reference: trcb_fixture_reference(occurrence: type_ref, containment: ref_path, category: std.occurrence_identity.TypeOccurrence),
   ) {
-    ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 30
+    std.occurrence_binding_candidates.ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 30
     _ => false
   }
 }
@@ -239,7 +239,7 @@ test fn control_three_pool_coincidence_must_not_bind_holds() -> Bool {
 test fn control_api_non_type_occurrence_refuses_wrong_category_holds() -> Bool {
   let call_ref = std.occurrence_identity.OccurrenceId { value: 30 }
   let ref_path = trcb_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: call_ref)
-  match resolve_type_reference_containment_binding(
+  match std.occurrence_binding_candidates.resolve_type_reference_containment_binding(
     transport: std.occurrence_identity.OccurrenceTransport {
       index: std.occurrence_identity.OccurrenceIndex {
         entries: [
@@ -248,7 +248,7 @@ test fn control_api_non_type_occurrence_refuses_wrong_category_holds() -> Bool {
       },
       declarations: [],
       references: [
-        trcb_fixture_reference(occurrence: call_ref, containment: ref_path, category: CallableOccurrence),
+        trcb_fixture_reference(occurrence: call_ref, containment: ref_path, category: std.occurrence_identity.CallableOccurrence),
       ],
     },
     inputs: trcb_fixture_inputs(
@@ -260,10 +260,10 @@ test fn control_api_non_type_occurrence_refuses_wrong_category_holds() -> Bool {
         trcb_authored_order(occurrence: call_ref, ordinal: 1),
       ],
     ),
-    reference: trcb_fixture_reference(occurrence: call_ref, containment: ref_path, category: CallableOccurrence),
+    reference: trcb_fixture_reference(occurrence: call_ref, containment: ref_path, category: std.occurrence_identity.CallableOccurrence),
   ) {
-    ReferenceBindingProjectionWrongCategory { occurrence: occurrence, observed: observed } =>
-      occurrence.value == 30 && observed == CallableOccurrence
+    std.occurrence_binding_candidates.ReferenceBindingProjectionWrongCategory { occurrence: occurrence, observed: observed } =>
+      occurrence.value == 30 && observed == std.occurrence_identity.CallableOccurrence
     _ => false
   }
 }
@@ -271,5 +271,5 @@ test fn control_api_non_type_occurrence_refuses_wrong_category_holds() -> Bool {
 test fn authority_note_names_single_kernel_fold() -> Bool {
   string_contains(s: gunbc.type_reference_containment_binding.type_reference_containment_binding_authority_note, pattern: "occurrence_binding_from_candidates")
     && string_contains(s: gunbc.type_reference_containment_binding.type_reference_containment_binding_authority_note, pattern: "lookup_type_by_name are NOT binding")
-    && string_contains(s: type_reference_containment_binding_slice1_scope_note, pattern: "OUT OF SLICE")
+    && string_contains(s: gunbc.type_reference_containment_binding.type_reference_containment_binding_slice1_scope_note, pattern: "OUT OF SLICE")
 }

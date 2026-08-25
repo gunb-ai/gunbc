@@ -3,7 +3,7 @@ module extdeps.render.glyphs
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.unicode.org/versions/latest/"
   }
 }
@@ -16,71 +16,71 @@ type SymbolEntry {
 
 data standard_symbols: List<SymbolEntry> = [
 
-  { id: NodePending,      glyphs: glyphs_for_tiers(emoji: glyph(text: "⏳"), unicode: glyph(text: "○"),  ascii: glyph(text: "[ ]")), color: Dim     },
-  { id: NodeRunning,      glyphs: glyphs_for_tiers(emoji: glyph(text: "🔄"), unicode: glyph(text: "◐"),  ascii: glyph(text: "[~]")), color: std.symbols.Active  },
-  { id: NodeCompleted,    glyphs: glyphs_for_tiers(emoji: glyph(text: "✅"), unicode: glyph(text: "✓"),  ascii: glyph(text: "[x]")), color: std.symbols.Success },
-  { id: NodeFailed,       glyphs: glyphs_for_tiers(emoji: glyph(text: "❌"), unicode: glyph(text: "✗"),  ascii: glyph(text: "[!]")), color: Error   },
-  { id: NodeSkipped,      glyphs: glyphs_for_tiers(emoji: glyph(text: "⏭️"), unicode: glyph(text: "⊘"),  ascii: glyph(text: "[-]")), color: Dim     },
-  { id: NodeIntercepted,  glyphs: glyphs_for_tiers(emoji: glyph(text: "🔍"), unicode: glyph(text: "◆"),  ascii: glyph(text: "[m]")), color: std.symbols.Info    },
+  { id: NodePending,      glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⏳"), unicode: extdeps.render.glyph.glyph(text: "○"),  ascii: extdeps.render.glyph.glyph(text: "[ ]")), color: Dim     },
+  { id: NodeRunning,      glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "🔄"), unicode: extdeps.render.glyph.glyph(text: "◐"),  ascii: extdeps.render.glyph.glyph(text: "[~]")), color: Active  },
+  { id: NodeCompleted,    glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "✅"), unicode: extdeps.render.glyph.glyph(text: "✓"),  ascii: extdeps.render.glyph.glyph(text: "[x]")), color: Success },
+  { id: NodeFailed,       glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "❌"), unicode: extdeps.render.glyph.glyph(text: "✗"),  ascii: extdeps.render.glyph.glyph(text: "[!]")), color: Error   },
+  { id: NodeSkipped,      glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⏭️"), unicode: extdeps.render.glyph.glyph(text: "⊘"),  ascii: extdeps.render.glyph.glyph(text: "[-]")), color: Dim     },
+  { id: NodeIntercepted,  glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "🔍"), unicode: extdeps.render.glyph.glyph(text: "◆"),  ascii: extdeps.render.glyph.glyph(text: "[m]")), color: Info    },
 
-  { id: EdgeIdle,         glyphs: glyphs_for_tiers(emoji: glyph(text: "┄"),   unicode: glyph(text: "┄"),   ascii: glyph(text: "-")),   color: Dim     },
-  { id: EdgeFlowing,      glyphs: glyphs_for_tiers(emoji: glyph(text: "━"),   unicode: glyph(text: "━"),   ascii: glyph(text: "=")),   color: Accent  },
-  { id: EdgeDone,         glyphs: glyphs_for_tiers(emoji: glyph(text: "─"),   unicode: glyph(text: "─"),   ascii: glyph(text: "-")),   color: std.symbols.Success },
-  { id: EdgeDead,         glyphs: glyphs_for_tiers(emoji: glyph(text: "╌"),   unicode: glyph(text: "╌"),   ascii: glyph(text: ".")),   color: Dim     },
+  { id: EdgeIdle,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "┄"),   unicode: extdeps.render.glyph.glyph(text: "┄"),   ascii: extdeps.render.glyph.glyph(text: "-")),   color: Dim     },
+  { id: EdgeFlowing,      glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "━"),   unicode: extdeps.render.glyph.glyph(text: "━"),   ascii: extdeps.render.glyph.glyph(text: "=")),   color: Accent  },
+  { id: EdgeDone,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "─"),   unicode: extdeps.render.glyph.glyph(text: "─"),   ascii: extdeps.render.glyph.glyph(text: "-")),   color: Success },
+  { id: EdgeDead,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "╌"),   unicode: extdeps.render.glyph.glyph(text: "╌"),   ascii: extdeps.render.glyph.glyph(text: ".")),   color: Dim     },
 
-  { id: DagNotStarted,    glyphs: glyphs_for_tiers(emoji: glyph(text: "○"),  unicode: glyph(text: "○"),  ascii: glyph(text: "[ ]")), color: Dim     },
-  { id: DagRunning,       glyphs: glyphs_for_tiers(emoji: glyph(text: "▶"),  unicode: glyph(text: "▶"),  ascii: glyph(text: "[>]")), color: std.symbols.Active  },
-  { id: DagCompleted,     glyphs: glyphs_for_tiers(emoji: glyph(text: "✦"),  unicode: glyph(text: "✓"),  ascii: glyph(text: "[X]")), color: std.symbols.Success },
-  { id: DagFailed,        glyphs: glyphs_for_tiers(emoji: glyph(text: "✖"),  unicode: glyph(text: "✗"),  ascii: glyph(text: "[!]")), color: Error   },
+  { id: DagNotStarted,    glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "○"),  unicode: extdeps.render.glyph.glyph(text: "○"),  ascii: extdeps.render.glyph.glyph(text: "[ ]")), color: Dim     },
+  { id: DagRunning,       glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "▶"),  unicode: extdeps.render.glyph.glyph(text: "▶"),  ascii: extdeps.render.glyph.glyph(text: "[>]")), color: Active  },
+  { id: DagCompleted,     glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "✦"),  unicode: extdeps.render.glyph.glyph(text: "✓"),  ascii: extdeps.render.glyph.glyph(text: "[X]")), color: Success },
+  { id: DagFailed,        glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "✖"),  unicode: extdeps.render.glyph.glyph(text: "✗"),  ascii: extdeps.render.glyph.glyph(text: "[!]")), color: Error   },
 
-  { id: BoundaryMarker,   glyphs: glyphs_for_tiers(emoji: glyph(text: "◆"),  unicode: glyph(text: "◆"),  ascii: glyph(text: "[B]")), color: std.symbols.Info    },
+  { id: BoundaryMarker,   glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "◆"),  unicode: extdeps.render.glyph.glyph(text: "◆"),  ascii: extdeps.render.glyph.glyph(text: "[B]")), color: Info    },
 
-  { id: Spinner0,         glyphs: glyphs_for_tiers(emoji: glyph(text: "⠋"),   unicode: glyph(text: "⠋"),   ascii: glyph(text: "|")),   color: std.symbols.Active  },
-  { id: Spinner1,         glyphs: glyphs_for_tiers(emoji: glyph(text: "⠙"),   unicode: glyph(text: "⠙"),   ascii: glyph(text: "/")),   color: std.symbols.Active  },
-  { id: Spinner2,         glyphs: glyphs_for_tiers(emoji: glyph(text: "⠹"),   unicode: glyph(text: "⠹"),   ascii: glyph(text: "-")),   color: std.symbols.Active  },
-  { id: Spinner3,         glyphs: glyphs_for_tiers(emoji: glyph(text: "⠸"),   unicode: glyph(text: "⠸"),   ascii: glyph(text: "\\")),  color: std.symbols.Active  },
-  { id: Spinner4,         glyphs: glyphs_for_tiers(emoji: glyph(text: "⠼"),   unicode: glyph(text: "⠼"),   ascii: glyph(text: "|")),   color: std.symbols.Active  },
-  { id: Spinner5,         glyphs: glyphs_for_tiers(emoji: glyph(text: "⠴"),   unicode: glyph(text: "⠴"),   ascii: glyph(text: "/")),   color: std.symbols.Active  },
-  { id: Spinner6,         glyphs: glyphs_for_tiers(emoji: glyph(text: "⠦"),   unicode: glyph(text: "⠦"),   ascii: glyph(text: "-")),   color: std.symbols.Active  },
-  { id: Spinner7,         glyphs: glyphs_for_tiers(emoji: glyph(text: "⠧"),   unicode: glyph(text: "⠧"),   ascii: glyph(text: "\\")),  color: std.symbols.Active  },
-  { id: Spinner8,         glyphs: glyphs_for_tiers(emoji: glyph(text: "⠇"),   unicode: glyph(text: "⠇"),   ascii: glyph(text: "|")),   color: std.symbols.Active  },
-  { id: Spinner9,         glyphs: glyphs_for_tiers(emoji: glyph(text: "⠏"),   unicode: glyph(text: "⠏"),   ascii: glyph(text: "/")),   color: std.symbols.Active  },
+  { id: Spinner0,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⠋"),   unicode: extdeps.render.glyph.glyph(text: "⠋"),   ascii: extdeps.render.glyph.glyph(text: "|")),   color: Active  },
+  { id: Spinner1,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⠙"),   unicode: extdeps.render.glyph.glyph(text: "⠙"),   ascii: extdeps.render.glyph.glyph(text: "/")),   color: Active  },
+  { id: Spinner2,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⠹"),   unicode: extdeps.render.glyph.glyph(text: "⠹"),   ascii: extdeps.render.glyph.glyph(text: "-")),   color: Active  },
+  { id: Spinner3,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⠸"),   unicode: extdeps.render.glyph.glyph(text: "⠸"),   ascii: extdeps.render.glyph.glyph(text: "\\")),  color: Active  },
+  { id: Spinner4,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⠼"),   unicode: extdeps.render.glyph.glyph(text: "⠼"),   ascii: extdeps.render.glyph.glyph(text: "|")),   color: Active  },
+  { id: Spinner5,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⠴"),   unicode: extdeps.render.glyph.glyph(text: "⠴"),   ascii: extdeps.render.glyph.glyph(text: "/")),   color: Active  },
+  { id: Spinner6,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⠦"),   unicode: extdeps.render.glyph.glyph(text: "⠦"),   ascii: extdeps.render.glyph.glyph(text: "-")),   color: Active  },
+  { id: Spinner7,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⠧"),   unicode: extdeps.render.glyph.glyph(text: "⠧"),   ascii: extdeps.render.glyph.glyph(text: "\\")),  color: Active  },
+  { id: Spinner8,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⠇"),   unicode: extdeps.render.glyph.glyph(text: "⠇"),   ascii: extdeps.render.glyph.glyph(text: "|")),   color: Active  },
+  { id: Spinner9,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⠏"),   unicode: extdeps.render.glyph.glyph(text: "⠏"),   ascii: extdeps.render.glyph.glyph(text: "/")),   color: Active  },
 
-  { id: StatusSuccess,    glyphs: glyphs_for_tiers(emoji: glyph(text: "✅"),   unicode: glyph(text: "✓"),    ascii: glyph(text: "OK")),   color: std.symbols.Success },
-  { id: StatusFailure,    glyphs: glyphs_for_tiers(emoji: glyph(text: "❌"), unicode: glyph(text: "✗"),    ascii: glyph(text: "FAIL")), color: Error   },
-  { id: std.symbols.StatusWarning,    glyphs: glyphs_for_tiers(emoji: glyph(text: "⚠"), unicode: glyph(text: "⚠"),    ascii: glyph(text: "WARN")), color: Warning },
-  { id: StatusInfo,       glyphs: glyphs_for_tiers(emoji: glyph(text: "💡"), unicode: glyph(text: "ℹ"),    ascii: glyph(text: "INFO")), color: std.symbols.Info    },
+  { id: StatusSuccess,    glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "✅"),   unicode: extdeps.render.glyph.glyph(text: "✓"),    ascii: extdeps.render.glyph.glyph(text: "OK")),   color: Success },
+  { id: StatusFailure,    glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "❌"), unicode: extdeps.render.glyph.glyph(text: "✗"),    ascii: extdeps.render.glyph.glyph(text: "FAIL")), color: Error   },
+  { id: StatusWarning,    glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⚠"), unicode: extdeps.render.glyph.glyph(text: "⚠"),    ascii: extdeps.render.glyph.glyph(text: "WARN")), color: Warning },
+  { id: StatusInfo,       glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "💡"), unicode: extdeps.render.glyph.glyph(text: "ℹ"),    ascii: extdeps.render.glyph.glyph(text: "INFO")), color: Info    },
 
-  { id: StatusRefused,    glyphs: glyphs_for_tiers(emoji: glyph(text: "🚫"), unicode: glyph(text: "⛔"),  ascii: glyph(text: "REFUSED")), color: Error   },
-  { id: StatusBlocked,    glyphs: glyphs_for_tiers(emoji: glyph(text: "⏳"), unicode: glyph(text: "◷"),  ascii: glyph(text: "BLOCKED")), color: Warning },
-  { id: StatusTimedOut,   glyphs: glyphs_for_tiers(emoji: glyph(text: "⌛"), unicode: glyph(text: "⏱"),  ascii: glyph(text: "TIMEOUT")), color: Error   },
-  { id: StatusDwell,      glyphs: glyphs_for_tiers(emoji: glyph(text: "⏱"), unicode: glyph(text: "◴"),  ascii: glyph(text: "DWELL")),   color: Warning },
-  { id: StatusFinal,      glyphs: glyphs_for_tiers(emoji: glyph(text: "✦"), unicode: glyph(text: "✦"),  ascii: glyph(text: "DONE")),    color: std.symbols.Success },
-  { id: StatusPulse,      glyphs: glyphs_for_tiers(emoji: glyph(text: "🕐"), unicode: glyph(text: "◷"),  ascii: glyph(text: "STATUS")),  color: Dim     },
+  { id: StatusRefused,    glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "🚫"), unicode: extdeps.render.glyph.glyph(text: "⛔"),  ascii: extdeps.render.glyph.glyph(text: "REFUSED")), color: Error   },
+  { id: StatusBlocked,    glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⏳"), unicode: extdeps.render.glyph.glyph(text: "◷"),  ascii: extdeps.render.glyph.glyph(text: "BLOCKED")), color: Warning },
+  { id: StatusTimedOut,   glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⌛"), unicode: extdeps.render.glyph.glyph(text: "⏱"),  ascii: extdeps.render.glyph.glyph(text: "TIMEOUT")), color: Error   },
+  { id: StatusDwell,      glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⏱"), unicode: extdeps.render.glyph.glyph(text: "◴"),  ascii: extdeps.render.glyph.glyph(text: "DWELL")),   color: Warning },
+  { id: StatusFinal,      glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "✦"), unicode: extdeps.render.glyph.glyph(text: "✦"),  ascii: extdeps.render.glyph.glyph(text: "DONE")),    color: Success },
+  { id: StatusPulse,      glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "🕐"), unicode: extdeps.render.glyph.glyph(text: "◷"),  ascii: extdeps.render.glyph.glyph(text: "STATUS")),  color: Dim     },
 
-  { id: ChangeAdded,      glyphs: glyphs_for_tiers(emoji: glyph(text: "+"), unicode: glyph(text: "+"),   ascii: glyph(text: "+")),       color: std.symbols.Success },
-  { id: ChangeModified,   glyphs: glyphs_for_tiers(emoji: glyph(text: "~"), unicode: glyph(text: "~"),   ascii: glyph(text: "~")),       color: Warning },
-  { id: ChangeRemoved,    glyphs: glyphs_for_tiers(emoji: glyph(text: "-"), unicode: glyph(text: "-"),   ascii: glyph(text: "-")),       color: Error   },
+  { id: ChangeAdded,      glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "+"), unicode: extdeps.render.glyph.glyph(text: "+"),   ascii: extdeps.render.glyph.glyph(text: "+")),       color: Success },
+  { id: ChangeModified,   glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "~"), unicode: extdeps.render.glyph.glyph(text: "~"),   ascii: extdeps.render.glyph.glyph(text: "~")),       color: Warning },
+  { id: ChangeRemoved,    glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "-"), unicode: extdeps.render.glyph.glyph(text: "-"),   ascii: extdeps.render.glyph.glyph(text: "-")),       color: Error   },
 
-  { id: DataList,         glyphs: glyphs_for_tiers(emoji: glyph(text: "☰"),  unicode: glyph(text: "☰"),    ascii: glyph(text: "[L]")),  color: Default },
-  { id: DataMap,          glyphs: glyphs_for_tiers(emoji: glyph(text: "⊞"),  unicode: glyph(text: "⊞"),  ascii: glyph(text: "[M]")),  color: Default },
-  { id: DataSecret,       glyphs: glyphs_for_tiers(emoji: glyph(text: "🔒"),  unicode: glyph(text: "✱"),    ascii: glyph(text: "[*]")),  color: Warning },
-  { id: DataUrl,          glyphs: glyphs_for_tiers(emoji: glyph(text: "🔗"),  unicode: glyph(text: "↗"),    ascii: glyph(text: "[U]")),  color: std.symbols.Info    },
-  { id: DataTimer,        glyphs: glyphs_for_tiers(emoji: glyph(text: "⏱"),  unicode: glyph(text: "◷"),  ascii: glyph(text: "[T]")),  color: Dim     },
+  { id: DataList,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "☰"),  unicode: extdeps.render.glyph.glyph(text: "☰"),    ascii: extdeps.render.glyph.glyph(text: "[L]")),  color: Default },
+  { id: DataMap,          glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⊞"),  unicode: extdeps.render.glyph.glyph(text: "⊞"),  ascii: extdeps.render.glyph.glyph(text: "[M]")),  color: Default },
+  { id: DataSecret,       glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "🔒"),  unicode: extdeps.render.glyph.glyph(text: "✱"),    ascii: extdeps.render.glyph.glyph(text: "[*]")),  color: Warning },
+  { id: DataUrl,          glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "🔗"),  unicode: extdeps.render.glyph.glyph(text: "↗"),    ascii: extdeps.render.glyph.glyph(text: "[U]")),  color: Info    },
+  { id: DataTimer,        glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "⏱"),  unicode: extdeps.render.glyph.glyph(text: "◷"),  ascii: extdeps.render.glyph.glyph(text: "[T]")),  color: Dim     },
 
-  { id: ConnectorHorizontal,      glyphs: glyphs_for_tiers(emoji: glyph(text: "─"), unicode: glyph(text: "─"), ascii: glyph(text: "--")), color: Dim },
-  { id: ConnectorVertical,        glyphs: glyphs_for_tiers(emoji: glyph(text: "│"),  unicode: glyph(text: "│"),  ascii: glyph(text: "|")),  color: Dim },
-  { id: ConnectorTeeDown,         glyphs: glyphs_for_tiers(emoji: glyph(text: "┬"),  unicode: glyph(text: "┬"),  ascii: glyph(text: "+")),  color: Dim },
-  { id: ConnectorTeeUp,           glyphs: glyphs_for_tiers(emoji: glyph(text: "┴"),  unicode: glyph(text: "┴"),  ascii: glyph(text: "+")),  color: Dim },
-  { id: ConnectorCornerBottomLeft, glyphs: glyphs_for_tiers(emoji: glyph(text: "╰"),  unicode: glyph(text: "╰"),  ascii: glyph(text: "+")), color: Dim },
-  { id: ConnectorCornerTopLeft,    glyphs: glyphs_for_tiers(emoji: glyph(text: "╭"),  unicode: glyph(text: "╭"),  ascii: glyph(text: "+")), color: Dim },
+  { id: ConnectorHorizontal,      glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "─"), unicode: extdeps.render.glyph.glyph(text: "─"), ascii: extdeps.render.glyph.glyph(text: "--")), color: Dim },
+  { id: ConnectorVertical,        glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "│"),  unicode: extdeps.render.glyph.glyph(text: "│"),  ascii: extdeps.render.glyph.glyph(text: "|")),  color: Dim },
+  { id: ConnectorTeeDown,         glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "┬"),  unicode: extdeps.render.glyph.glyph(text: "┬"),  ascii: extdeps.render.glyph.glyph(text: "+")),  color: Dim },
+  { id: ConnectorTeeUp,           glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "┴"),  unicode: extdeps.render.glyph.glyph(text: "┴"),  ascii: extdeps.render.glyph.glyph(text: "+")),  color: Dim },
+  { id: ConnectorCornerBottomLeft, glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "╰"),  unicode: extdeps.render.glyph.glyph(text: "╰"),  ascii: extdeps.render.glyph.glyph(text: "+")), color: Dim },
+  { id: ConnectorCornerTopLeft,    glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "╭"),  unicode: extdeps.render.glyph.glyph(text: "╭"),  ascii: extdeps.render.glyph.glyph(text: "+")), color: Dim },
 
-  { id: BoxHorizontal,          glyphs: glyphs_for_tiers(emoji: glyph(text: "─"), unicode: glyph(text: "─"), ascii: glyph(text: "-")), color: Dim },
-  { id: BoxVertical,            glyphs: glyphs_for_tiers(emoji: glyph(text: "│"), unicode: glyph(text: "│"), ascii: glyph(text: "|")), color: Dim },
-  { id: BoxCornerTopLeft,       glyphs: glyphs_for_tiers(emoji: glyph(text: "┌"), unicode: glyph(text: "┌"), ascii: glyph(text: "+")), color: Dim },
-  { id: BoxCornerTopRight,      glyphs: glyphs_for_tiers(emoji: glyph(text: "┐"), unicode: glyph(text: "┐"), ascii: glyph(text: "+")), color: Dim },
-  { id: BoxCornerBottomLeft,    glyphs: glyphs_for_tiers(emoji: glyph(text: "└"), unicode: glyph(text: "└"), ascii: glyph(text: "+")), color: Dim },
-  { id: BoxCornerBottomRight,   glyphs: glyphs_for_tiers(emoji: glyph(text: "┘"), unicode: glyph(text: "┘"), ascii: glyph(text: "+")), color: Dim }
+  { id: BoxHorizontal,          glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "─"), unicode: extdeps.render.glyph.glyph(text: "─"), ascii: extdeps.render.glyph.glyph(text: "-")), color: Dim },
+  { id: BoxVertical,            glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "│"), unicode: extdeps.render.glyph.glyph(text: "│"), ascii: extdeps.render.glyph.glyph(text: "|")), color: Dim },
+  { id: BoxCornerTopLeft,       glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "┌"), unicode: extdeps.render.glyph.glyph(text: "┌"), ascii: extdeps.render.glyph.glyph(text: "+")), color: Dim },
+  { id: BoxCornerTopRight,      glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "┐"), unicode: extdeps.render.glyph.glyph(text: "┐"), ascii: extdeps.render.glyph.glyph(text: "+")), color: Dim },
+  { id: BoxCornerBottomLeft,    glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "└"), unicode: extdeps.render.glyph.glyph(text: "└"), ascii: extdeps.render.glyph.glyph(text: "+")), color: Dim },
+  { id: BoxCornerBottomRight,   glyphs: extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "┘"), unicode: extdeps.render.glyph.glyph(text: "┘"), ascii: extdeps.render.glyph.glyph(text: "+")), color: Dim }
 ]
 
 fn lookup_symbol_entry(id: std.symbols.SymbolId) -> SymbolEntry? {
@@ -100,7 +100,7 @@ fn lookup_symbol_entry(id: std.symbols.SymbolId) -> SymbolEntry? {
 
 fn resolve_symbol(id: std.symbols.SymbolId, tier: std.symbols.Tier) -> String? {
   match lookup_symbol_entry(id: id) {
-    Present { value: entry } => Present { value: glyph_at(glyphs: entry.glyphs, tier: tier) }
+    Present { value: entry } => Present { value: extdeps.render.tier_glyphs.glyph_at(glyphs: entry.glyphs, tier: tier) }
     Absent => none
   }
 }
@@ -115,12 +115,12 @@ fn symbol_color(id: std.symbols.SymbolId) -> std.symbols.SemanticColor? {
 data reward_animal_note: String = "The reward animal shown on a terminal success lands as ROWS in the one glyph authority, never as a hardcoded function in a renderer — the reference implementation studied for this lane keeps its emoji table mirrored by hand between Go and shell, which is the maintained dual representation we are here to not have. Selection is DETERMINISTIC: the index is derived from the run's own identity, so replaying a captured run reproduces its animal exactly and the event stream stays replayable by construction. A random draw would make the stream unreplayable and would be a non-determinism root of precisely the kind the determinism gate walls."
 
 data reward_animals: List<extdeps.render.tier_glyphs.TierGlyphs> = [
-  glyphs_for_tiers(emoji: glyph(text: "🦦"), unicode: glyph(text: "✦"), ascii: glyph(text: "otter")),
-  glyphs_for_tiers(emoji: glyph(text: "🦊"), unicode: glyph(text: "✦"), ascii: glyph(text: "fox")),
-  glyphs_for_tiers(emoji: glyph(text: "🦉"), unicode: glyph(text: "✦"), ascii: glyph(text: "owl")),
-  glyphs_for_tiers(emoji: glyph(text: "🐢"), unicode: glyph(text: "✦"), ascii: glyph(text: "turtle")),
-  glyphs_for_tiers(emoji: glyph(text: "🦫"), unicode: glyph(text: "✦"), ascii: glyph(text: "beaver")),
-  glyphs_for_tiers(emoji: glyph(text: "🐋"), unicode: glyph(text: "✦"), ascii: glyph(text: "whale"))
+  extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "🦦"), unicode: extdeps.render.glyph.glyph(text: "✦"), ascii: extdeps.render.glyph.glyph(text: "otter")),
+  extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "🦊"), unicode: extdeps.render.glyph.glyph(text: "✦"), ascii: extdeps.render.glyph.glyph(text: "fox")),
+  extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "🦉"), unicode: extdeps.render.glyph.glyph(text: "✦"), ascii: extdeps.render.glyph.glyph(text: "owl")),
+  extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "🐢"), unicode: extdeps.render.glyph.glyph(text: "✦"), ascii: extdeps.render.glyph.glyph(text: "turtle")),
+  extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "🦫"), unicode: extdeps.render.glyph.glyph(text: "✦"), ascii: extdeps.render.glyph.glyph(text: "beaver")),
+  extdeps.render.tier_glyphs.glyphs_for_tiers(emoji: extdeps.render.glyph.glyph(text: "🐋"), unicode: extdeps.render.glyph.glyph(text: "✦"), ascii: extdeps.render.glyph.glyph(text: "whale"))
 ]
 
 type RewardPick {
@@ -144,7 +144,7 @@ fn reward_animal_at(index: Int, tier: std.symbols.Tier) -> String? {
         }
     )
     match picked.found {
-      Present { value: g } => Present { value: glyph_at(glyphs: g, tier: tier) }
+      Present { value: g } => Present { value: extdeps.render.tier_glyphs.glyph_at(glyphs: g, tier: tier) }
       Absent => none
     }
   }

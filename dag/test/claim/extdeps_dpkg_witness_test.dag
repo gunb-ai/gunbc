@@ -1,7 +1,7 @@
 module test.claim.extdeps_dpkg_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data dpkg_status_path: String = "dag/extdeps/package_managers/dpkg.dag"
 data dpkg_status_service: String = "dpkg.Package"
@@ -12,16 +12,16 @@ fn argv_join(argv: List<String>) -> String {
 }
 
 fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
-  let helper = dpkg_status_argv(package: package_tailscale)
+  let helper = extdeps.dpkg.dpkg_status_argv(package: extdeps.apt.package_tailscale)
   let transport = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       dpkg_status_path,
       dpkg_status_service,
       dpkg_status_operation,
-      [v2.std.operation_argv.operation_argv_bind_text(name: "package", text: package_tailscale as String)]
+      [v2.std.operation_argv.operation_argv_bind_text(name: "package", text: extdeps.apt.package_tailscale as String)]
     )
   )
-  test.claim.extdeps_dpkg_witness.argv_join(argv: helper) == test.claim.extdeps_dpkg_witness.argv_join(argv: transport)
+  argv_join(argv: helper) == argv_join(argv: transport)
 }
 
 test fn extdeps_dpkg_status_argv_holds() -> Bool {
@@ -29,5 +29,5 @@ test fn extdeps_dpkg_status_argv_holds() -> Bool {
 }
 
 test fn extdeps_dpkg_status_argv_RED_wrong_package_golden() -> Bool {
-  test.claim.extdeps_dpkg_witness.argv_join(argv: dpkg_status_argv(package: package_tailscale)) != "dpkg -s nodejs"
+  argv_join(argv: extdeps.dpkg.dpkg_status_argv(package: extdeps.apt.package_tailscale)) != "dpkg -s nodejs"
 }

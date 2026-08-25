@@ -12,8 +12,8 @@ fn fold_iteration_measure_atom() -> v2.std.node.Node {
 
 fn fold_call_head_symbol(fold_call: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match v2.std.node_query.find_named_child(root: fold_call, name: ^grammar_sequence_left_node_projection) {
-    Accepted { value: head, diagnostics: _ } => v2.std.grammar.node_atom_identity_optional(node: head)
-    Rejected { diagnostics: _ } => v2.std.optional.Absent
+    v2.std.diagnostic.Accepted { value: head, diagnostics: _ } => v2.std.grammar.node_atom_identity_optional(node: head)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
@@ -23,8 +23,8 @@ fn fold_family_head(sym: v2.std.node.Symbol) -> Bool {
 
 fn fold_call_step_fn(fold_call: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match v2.extdeps.languages.dag.parse_subtree_find_production_captured(root: fold_call, emitted: ^dag_surface_fn_literal) {
-    ParseSubtreeFound { captured: fn_literal } => v2.std.optional.Present { value: fn_literal }
-    ParseSubtreeAbsent => v2.std.optional.Absent
+    v2.extdeps.languages.dag.ParseSubtreeFound { captured: fn_literal } => v2.std.optional.Present { value: fn_literal }
+    v2.extdeps.languages.dag.ParseSubtreeAbsent => v2.std.optional.Absent
   }
 }
 
@@ -33,15 +33,15 @@ fn step_fn_iteration_body(fn_literal: v2.std.node.Node) -> v2.std.optional.Optio
     root: fn_literal,
     emitted: ^dag_surface_fn_body
   ) {
-    ParseSubtreeAbsent => v2.std.optional.Absent
-    ParseSubtreeFound { captured: body } => v2.std.optional.Present { value: body }
+    v2.extdeps.languages.dag.ParseSubtreeAbsent => v2.std.optional.Absent
+    v2.extdeps.languages.dag.ParseSubtreeFound { captured: body } => v2.std.optional.Present { value: body }
   }
 }
 
 fn fold_seq_child(node: v2.std.node.Node, name: v2.std.node.Symbol) -> v2.std.optional.Optional<v2.std.node.Node> {
   match v2.std.node_query.find_named_child(root: node, name: name) {
-    Accepted { value: child, diagnostics: _ } => v2.std.optional.Present { value: child }
-    Rejected { diagnostics: _ } => v2.std.optional.Absent
+    v2.std.diagnostic.Accepted { value: child, diagnostics: _ } => v2.std.optional.Present { value: child }
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
@@ -49,17 +49,17 @@ data step_fn_carrier_binder_note: String = "The step fn's FIRST param is the fol
 
 fn step_fn_carrier_binder_symbol(fn_literal: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match fold_seq_child(node: fn_literal, name: ^grammar_sequence_right_node_projection) {
-    Absent => v2.std.optional.Absent
-    Present { value: after_kw_fn } =>
+    v2.std.optional.Absent => v2.std.optional.Absent
+    v2.std.optional.Present { value: after_kw_fn } =>
       match fold_seq_child(node: after_kw_fn, name: ^grammar_sequence_right_node_projection) {
-        Absent => v2.std.optional.Absent
-        Present { value: after_lparen } =>
+        v2.std.optional.Absent => v2.std.optional.Absent
+        v2.std.optional.Present { value: after_lparen } =>
           match fold_seq_child(node: after_lparen, name: ^grammar_sequence_left_node_projection) {
-            Absent => v2.std.optional.Absent
-            Present { value: params } =>
+            v2.std.optional.Absent => v2.std.optional.Absent
+            v2.std.optional.Present { value: params } =>
               match fold_seq_child(node: params, name: ^grammar_sequence_left_node_projection) {
-                Absent => v2.std.optional.Absent
-                Present { value: first_param } => v2.std.grammar.node_atom_identity_optional(node: first_param)
+                v2.std.optional.Absent => v2.std.optional.Absent
+                v2.std.optional.Present { value: first_param } => v2.std.grammar.node_atom_identity_optional(node: first_param)
               }
           }
       }
@@ -85,14 +85,14 @@ fn fold_lowering_shape_invalid_diagnostic(n: v2.std.node.Node) -> v2.std.diagnos
 fn fold_lowering_step_form_unresolved_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^fold_lowering_step_form_unresolved,
-    at: node_locus(node: n),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: n),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
-fn fold_carrier_binder_atom(binder: Symbol) -> v2.std.node.Node {
-  node_synthetic(
-    kind: TypeNode { connective: Atom { identity: binder } },
+fn fold_carrier_binder_atom(binder: v2.std.node.Symbol) -> v2.std.node.Node {
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binder } },
     children: []
   )
 }
@@ -137,28 +137,28 @@ type FoldCallLowering
 // that does so is v2.compiler.body_lowering_fold body_lower_try_fold_loop.
 fn fold_call_lowering(fold_call: v2.std.node.Node) -> FoldCallLowering {
   match fold_call_head_symbol(fold_call: fold_call) {
-    Absent =>
+    v2.std.optional.Absent =>
       FoldCallNotAFold { diagnostic: fold_lowering_not_a_fold_call_diagnostic(n: fold_call) }
-    Present { value: head } =>
+    v2.std.optional.Present { value: head } =>
       if fold_family_head(sym: head) {
         match fold_call_step_fn(fold_call: fold_call) {
-          Absent =>
+          v2.std.optional.Absent =>
             FoldCallStepFormUnresolved {
               diagnostic: fold_lowering_step_form_unresolved_diagnostic(n: fold_call)
             }
-          Present { value: fn_literal } =>
+          v2.std.optional.Present { value: fn_literal } =>
             match step_fn_iteration_body(fn_literal: fn_literal) {
-              Absent =>
+              v2.std.optional.Absent =>
                 FoldCallStepShapeInvalid {
                   diagnostic: fold_lowering_shape_invalid_diagnostic(n: fold_call)
                 }
-              Present { value: body } =>
+              v2.std.optional.Present { value: body } =>
                 match step_fn_carrier_binder_symbol(fn_literal: fn_literal) {
-                  Absent =>
+                  v2.std.optional.Absent =>
                     FoldCallStepShapeInvalid {
                       diagnostic: fold_lowering_shape_invalid_diagnostic(n: fold_call)
                     }
-                  Present { value: carrier } =>
+                  v2.std.optional.Present { value: carrier } =>
                     FoldCallLowered {
                       seam_loop: fold_call_seam_loop(body: body, carrier: carrier)
                     }
@@ -175,11 +175,11 @@ fn fold_call_lowering(fold_call: v2.std.node.Node) -> FoldCallLowering {
 // old semantics: every non-lowered arm is still a refusal here. Consumers that
 // only ask "did it lower" -- the accumulator-copy lens -- keep asking exactly
 // that and are unaffected by the split.
-fn fold_call_to_loop(fold_call: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
+fn fold_call_to_loop(fold_call: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match fold_call_lowering(fold_call: fold_call) {
-    FoldCallLowered { seam_loop: seam_loop } => outcome_accepted(value: seam_loop)
-    FoldCallNotAFold { diagnostic: d } => outcome_rejected(d: d)
-    FoldCallStepFormUnresolved { diagnostic: d } => outcome_rejected(d: d)
-    FoldCallStepShapeInvalid { diagnostic: d } => outcome_rejected(d: d)
+    FoldCallLowered { seam_loop: seam_loop } => v2.std.diagnostic.outcome_accepted(value: seam_loop)
+    FoldCallNotAFold { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
+    FoldCallStepFormUnresolved { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
+    FoldCallStepShapeInvalid { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)
   }
 }

@@ -5,13 +5,13 @@ data fleet_automation_sa_email: extdeps.cloud.gcp.gcp.ServiceAccountEmail = "fle
 
 
 data operator_macbook_ssh_key: extdeps.ssh.SshPublicKey = extdeps.ssh.SshPublicKey {
-  algorithm: extdeps.ssh.keys.Ed25519,
+  algorithm: extdeps.ssh.Ed25519,
   material: "AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF",
   comment: "macbook-m4",
 }
 
 data fleet_automation_ssh_key: extdeps.ssh.SshPublicKey = extdeps.ssh.SshPublicKey {
-  algorithm: extdeps.ssh.keys.Ed25519,
+  algorithm: extdeps.ssh.Ed25519,
   material: "AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN",
   comment: "fleet-automation@gunbc",
 }
@@ -45,7 +45,7 @@ fn fleet_automation_privkey_version_segment() -> String {
 // secret, and version all come from the one authority, so the CI fetch cannot drift from
 // the modeled reference.
 fn fleet_automation_privkey_sm_access_url() -> String {
-  secret_ref_access_url(ref: fleet_automation_ssh_privkey_secret)
+  extdeps.cloud.gcp.secret_ref.secret_ref_access_url(ref: fleet_automation_ssh_privkey_secret)
 }
 
 type SecretOwner {

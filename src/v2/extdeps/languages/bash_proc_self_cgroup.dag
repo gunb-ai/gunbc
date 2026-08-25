@@ -15,16 +15,16 @@ fn bash_membership_assign_from_record(
   mount_root: std.types.FilePathParts,
 ) -> String {
   match record {
-    CurrentCgroupObserved { relative_path: rel } =>
+    extdeps.linux.proc_self_cgroup.CurrentCgroupObserved { relative_path: rel } =>
       concat(
         walk_var as String,
         "=\"",
         extdeps.linux.proc_self_cgroup.proc_self_cgroup_absolute_path_from_relative(relative_path: rel, mount_root: mount_root),
         "\"",
       )
-    MembershipMissing => bash_membership_refuse_missing_body
-    MembershipAmbiguous { first: _, second: _ } => bash_membership_refuse_ambiguous_body
-    MembershipMalformed { cause: _ } => bash_membership_refuse_malformed_body
+    extdeps.linux.proc_self_cgroup.MembershipMissing => bash_membership_refuse_missing_body
+    extdeps.linux.proc_self_cgroup.MembershipAmbiguous { first: _, second: _ } => bash_membership_refuse_ambiguous_body
+    extdeps.linux.proc_self_cgroup.MembershipMalformed { cause: _ } => bash_membership_refuse_malformed_body
   }
 }
 
@@ -60,11 +60,11 @@ fn bash_membership_outcome_tag_from_execution(
   mount_root: std.types.FilePathParts,
 ) -> extdeps.linux.proc_self_cgroup.UnifiedMembershipOutcomeTag {
   if !success && string_contains(s: stderr, pattern: "cgroup_membership=malformed") {
-    OutcomeTagMalformed
+    extdeps.linux.proc_self_cgroup.OutcomeTagMalformed
   } else if !success && string_contains(s: stderr, pattern: "cgroup_membership=missing") {
-    OutcomeTagMissing
+    extdeps.linux.proc_self_cgroup.OutcomeTagMissing
   } else if !success && string_contains(s: stderr, pattern: "cgroup_membership=ambiguous") {
-    OutcomeTagAmbiguous
+    extdeps.linux.proc_self_cgroup.OutcomeTagAmbiguous
   } else if success {
     let abs = std.algebra.trim(s: stdout)
     let root = extdeps.linux.proc_self_cgroup.proc_self_cgroup_mount_root_text(mount_root: mount_root)
@@ -79,10 +79,10 @@ fn bash_membership_outcome_tag_from_execution(
         ) as std.types.NonEmptyStr,
       }
     } else {
-      OutcomeTagMalformed
+      extdeps.linux.proc_self_cgroup.OutcomeTagMalformed
     }
   } else {
-    OutcomeTagMalformed
+    extdeps.linux.proc_self_cgroup.OutcomeTagMalformed
   }
 }
 

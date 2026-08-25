@@ -16,25 +16,25 @@ type PartitionUserSemanticType {
 
 fn partition_user_semantic_type_shape(node: v2.std.node.Node) -> Bool {
   match node.kind {
-    TypeNode { connective: Disj } => true
-    TypeNode { connective: Conj } => true
+    v2.std.node.TypeNode { connective: v2.std.node.Disj } => true
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } => true
     _ => false
   }
 }
 
 fn partition_semantic_type_search_subtree(root: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   if partition_user_semantic_type_shape(node: root) {
-    optional_present(value: root)
+    v2.std.optional.optional_present(value: root)
   } else {
     match root.kind {
-      TypeNode { connective: Conj } =>
+      v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
         fold(
           root.children,
           init: v2.std.optional.Absent,
           f: fn(acc, edge) {
             match acc {
-              Present { value: _ } => acc
-              Absent => partition_semantic_type_search_subtree(root: edge.target)
+              v2.std.optional.Present { value: _ } => acc
+              v2.std.optional.Absent => partition_semantic_type_search_subtree(root: edge.target)
             }
           }
         )
@@ -45,7 +45,7 @@ fn partition_semantic_type_search_subtree(root: v2.std.node.Node) -> v2.std.opti
 
 fn partition_semantic_type_from_decl_target(target: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   if partition_user_semantic_type_shape(node: target) {
-    optional_present(value: target)
+    v2.std.optional.optional_present(value: target)
   } else {
     partition_semantic_type_search_subtree(root: target)
   }
@@ -55,10 +55,10 @@ fn partition_snoc_user_semantic_type_unique(
   acc: List<PartitionUserSemanticType>,
   item: PartitionUserSemanticType
 ) -> List<PartitionUserSemanticType> {
-  if any(xs: acc, predicate: fn(d) { d.name == item.name }) {
+  if v2.std.algebra.any(xs: acc, predicate: fn(d) { d.name == item.name }) {
     acc
   } else {
-    list_snoc_item(xs: acc, item: item)
+    v2.std.algebra.list_snoc_item(xs: acc, item: item)
   }
 }
 
@@ -67,14 +67,14 @@ fn partition_collect_user_semantic_type_edge(
   edge: v2.std.node.Edge
 ) -> List<PartitionUserSemanticType> {
   match edge.label {
-    Named { name: sym } =>
+    v2.std.node.Named { name: sym } =>
       match partition_semantic_type_from_decl_target(target: edge.target) {
-        Present { value: semantic } =>
+        v2.std.optional.Present { value: semantic } =>
           partition_snoc_user_semantic_type_unique(
             acc: acc,
             item: PartitionUserSemanticType { name: sym, semantic: semantic }
           )
-        Absent => acc
+        v2.std.optional.Absent => acc
       }
     _ => acc
   }
@@ -85,8 +85,8 @@ fn partition_collect_user_semantic_types_from_module(
   acc: List<PartitionUserSemanticType>
 ) -> List<PartitionUserSemanticType> {
   match module.kind {
-    TypeNode { connective: Conj } =>
-      fold_list(
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
+      v2.std.algebra.fold_list(
         xs: module.children,
         empty: acc,
         cons: fn(a, edge) {
@@ -108,9 +108,9 @@ fn partition_user_type_ownership_realization(
 ) -> v2.std.compilers.target_model.TargetUseSiteOwnershipRealization {
   v2.std.compilers.target_model.TargetUseSiteOwnershipRealization {
     source_carrier: source_carrier,
-    source_projection: UseSiteOwnershipExactCarrier,
+    source_projection: v2.std.compilers.target_model.UseSiteOwnershipExactCarrier,
     use_site: use_site,
-    reference_layer: ReferenceLayerOwned,
+    reference_layer: v2.std.compilers.target_model.ReferenceLayerOwned,
     display_name: display_name
   }
 }
@@ -122,22 +122,22 @@ fn partition_user_type_ownership_realizations_for_carrier(
   [
     partition_user_type_ownership_realization(
       source_carrier: source_carrier,
-      use_site: OwnershipAtFunctionReturn,
+      use_site: v2.std.compilers.target_model.OwnershipAtFunctionReturn,
       display_name: display_name
     ),
     partition_user_type_ownership_realization(
       source_carrier: source_carrier,
-      use_site: OwnershipAtFunctionParameter,
+      use_site: v2.std.compilers.target_model.OwnershipAtFunctionParameter,
       display_name: display_name
     ),
     partition_user_type_ownership_realization(
       source_carrier: source_carrier,
-      use_site: OwnershipAtBindingProjection,
+      use_site: v2.std.compilers.target_model.OwnershipAtBindingProjection,
       display_name: display_name
     ),
     partition_user_type_ownership_realization(
       source_carrier: source_carrier,
-      use_site: OwnershipAtStructField,
+      use_site: v2.std.compilers.target_model.OwnershipAtStructField,
       display_name: display_name
     )
   ]
@@ -146,9 +146,9 @@ fn partition_user_type_ownership_realizations_for_carrier(
 fn partition_user_type_ownership_realizations_for_decl(
   decl: PartitionUserSemanticType
 ) -> List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization> {
-  list_append(
+  v2.std.algebra.list_append(
     left: partition_user_type_ownership_realizations_for_carrier(
-      source_carrier: target_carrier_type_node(identity: decl.name),
+      source_carrier: v2.std.compilers.target_model.target_carrier_type_node(identity: decl.name),
       display_name: decl.name
     ),
     right: partition_user_type_ownership_realizations_for_carrier(
@@ -161,11 +161,11 @@ fn partition_user_type_ownership_realizations_for_decl(
 fn partition_user_type_ownership_realizations_from_decls(
   decls: List<PartitionUserSemanticType>
 ) -> List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: decls,
     empty: std.algebra.Empty,
     cons: fn(acc, decl) {
-      list_append(
+      v2.std.algebra.list_append(
         left: acc,
         right: partition_user_type_ownership_realizations_for_decl(decl: decl)
       )
@@ -176,34 +176,34 @@ fn partition_user_type_ownership_realizations_from_decls(
 fn partition_user_type_atom_names_from_decls(
   decls: List<PartitionUserSemanticType>
 ) -> List<v2.std.node.Symbol> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: decls,
     empty: std.algebra.Empty,
     cons: fn(acc, decl) {
-      list_snoc_item(xs: acc, item: decl.name)
+      v2.std.algebra.list_snoc_item(xs: acc, item: decl.name)
     }
   )
 }
 
 fn partition_symbol_snoc_unique(acc: List<v2.std.node.Symbol>, sym: v2.std.node.Symbol) -> List<v2.std.node.Symbol> {
-  if any(xs: acc, predicate: fn(s) { s == sym }) {
+  if v2.std.algebra.any(xs: acc, predicate: fn(s) { s == sym }) {
     acc
   } else {
-    list_snoc_item(xs: acc, item: sym)
+    v2.std.algebra.list_snoc_item(xs: acc, item: sym)
   }
 }
 
 fn partition_carrier_identity_snoc(acc: List<v2.std.node.Symbol>, node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   match node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
       partition_symbol_snoc_unique(acc: acc, sym: id)
     _ => acc
   }
 }
 
 fn partition_carrier_identities_in_semantic(semantic: v2.std.node.Node) -> List<v2.std.node.Symbol> {
-  fold_list(
-    xs: node_subtree_nodes(root: semantic),
+  v2.std.algebra.fold_list(
+    xs: v2.std.node.node_subtree_nodes(root: semantic),
     empty: std.algebra.Empty,
     cons: fn(acc, node) {
       partition_carrier_identity_snoc(acc: acc, node: node)
@@ -220,11 +220,11 @@ fn partition_program_structural_value_carriers() -> List<v2.std.node.Symbol> {
 fn partition_user_type_carrier_identities_from_decls(
   decls: List<PartitionUserSemanticType>
 ) -> List<v2.std.node.Symbol> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: decls,
     empty: std.algebra.Empty,
     cons: fn(acc, decl) {
-      fold_list(
+      v2.std.algebra.fold_list(
         xs: partition_carrier_identities_in_semantic(semantic: decl.semantic),
         empty: acc,
         cons: fn(inner, sym) {
@@ -238,23 +238,23 @@ fn partition_user_type_carrier_identities_from_decls(
 fn partition_derive_target_for_emit(
   partition: ProgramPartition,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<v2.std.compilers.target_model.TargetModel> {
+) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   let decls = partition_user_semantic_types_from_root(root: partition.ambient.root)
   let ownership_rows = partition_user_type_ownership_realizations_from_decls(decls: decls)
-  let atom_names = list_append(
-    left: list_append(
+  let atom_names = v2.std.algebra.list_append(
+    left: v2.std.algebra.list_append(
       left: partition_user_type_atom_names_from_decls(decls: decls),
       right: partition_user_type_carrier_identities_from_decls(decls: decls)
     ),
     right: partition_program_structural_value_carriers()
   )
-  bind_outcome(
-    o: target_model_augment_use_site_ownership_catalog(
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.target_model_augment_use_site_ownership_catalog(
       target: target,
       derived_rows: ownership_rows
     ),
     f: fn(ownership_target) {
-      target_model_augment_value_semantics_carriers(
+      v2.std.compilers.target_model.target_model_augment_value_semantics_carriers(
         target: ownership_target,
         extra_atoms: atom_names
       )
@@ -265,32 +265,32 @@ fn partition_derive_target_for_emit(
 fn partition_root_not_in_ambient_diagnostic(segment_root: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^partition_root_not_in_ambient,
-    at: node_locus(node: segment_root),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: segment_root),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn partition_facts_miss_diagnostic(key: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^partition_facts_miss,
-    at: node_locus(node: key),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: key),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn partition_boundary_free_ref_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^partition_boundary_free_ref,
-    at: node_locus(node: node),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: node),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn partition_empty_segment_diagnostic(root: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^partition_empty_segment,
-    at: node_locus(node: root),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: root),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -299,16 +299,16 @@ fn partition_subtree_root_contained_in_ambient(
   segment_root: v2.std.node.Node
 ) -> Bool {
   (segment_root == ambient_root)
-    || node_in_subtree_by_identity(root: ambient_root, needle: segment_root)
+    || v2.std.verification.node_in_subtree_by_identity(root: ambient_root, needle: segment_root)
 }
 
 fn partition_grounding_subject_in_segment(
   segment_root: v2.std.node.Node,
   facts: v2.compiler.inferred_tree.InferredFacts
 ) -> Bool {
-  node_in_subtree_by_identity(
+  v2.std.verification.node_in_subtree_by_identity(
     root: segment_root,
-    needle: inferred_facts_subject_node(facts: facts)
+    needle: v2.compiler.infer.inferred_facts_subject_node(facts: facts)
   )
 }
 
@@ -319,8 +319,8 @@ fn partition_fail_closed_boundary_admits(
   facts: v2.compiler.inferred_tree.InferredFacts
 ) -> Bool {
   match boundary {
-    AmbientContextAvailable => true
-    FailClosedOnFreeRefs =>
+    v2.std.program_segment.AmbientContextAvailable => true
+    v2.std.program_segment.FailClosedOnFreeRefs =>
       partition_grounding_subject_in_segment(segment_root: segment_root, facts: facts)
   }
 }
@@ -330,21 +330,21 @@ fn partition_closure_entry_for_node(
   segment_root: v2.std.node.Node,
   boundary: v2.std.program_segment.PartitionBoundaryPolicy,
   node: v2.std.node.Node
-) -> Outcome<v2.compiler.inferred_tree.InferredFactsEntry> {
+) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredFactsEntry> {
   match ambient.facts.lookup(node) {
-    Present { value: facts } =>
+    v2.std.optional.Present { value: facts } =>
       if partition_fail_closed_boundary_admits(
         segment_root: segment_root,
         boundary: boundary,
         node: node,
         facts: facts
       ) {
-        admitted_inferred_facts_entry(node: node, facts: facts)
+        v2.compiler.infer.admitted_inferred_facts_entry(node: node, facts: facts)
       } else {
-        outcome_rejected(d: partition_boundary_free_ref_diagnostic(node: node))
+        v2.std.diagnostic.outcome_rejected(d: partition_boundary_free_ref_diagnostic(node: node))
       }
-    Absent =>
-      outcome_rejected(d: partition_facts_miss_diagnostic(key: node))
+    v2.std.optional.Absent =>
+      v2.std.diagnostic.outcome_rejected(d: partition_facts_miss_diagnostic(key: node))
   }
 }
 
@@ -357,15 +357,15 @@ fn facts_closure_entries_fold(
   segment_root: v2.std.node.Node,
   boundary: v2.std.program_segment.PartitionBoundaryPolicy,
   nodes: List<v2.std.node.Node>
-) -> Outcome<List<v2.compiler.inferred_tree.InferredFactsEntry>> {
-  fold_list(
+) -> v2.std.diagnostic.Outcome<List<v2.compiler.inferred_tree.InferredFactsEntry>> {
+  v2.std.algebra.fold_list(
     xs: nodes,
-    empty: outcome_accepted(value: partition_empty_inferred_facts_entries()),
+    empty: v2.std.diagnostic.outcome_accepted(value: partition_empty_inferred_facts_entries()),
     cons: fn(acc, node) {
       match acc {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-        Accepted { value: entries, diagnostics: _ } =>
-          bind_outcome(
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Accepted { value: entries, diagnostics: _ } =>
+          v2.std.diagnostic.bind_outcome(
             o: partition_closure_entry_for_node(
               ambient: ambient,
               segment_root: segment_root,
@@ -373,8 +373,8 @@ fn facts_closure_entries_fold(
               node: node
             ),
             f: fn(entry) {
-              outcome_accepted(
-                value: list_snoc_item(xs: entries, item: entry)
+              v2.std.diagnostic.outcome_accepted(
+                value: v2.std.algebra.list_snoc_item(xs: entries, item: entry)
               )
             }
           )
@@ -383,20 +383,20 @@ fn facts_closure_entries_fold(
   )
 }
 
-fn facts_closure_fold(partition: ProgramPartition) -> Outcome<std.algebra.PartialFunction<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts>> {
+fn facts_closure_fold(partition: ProgramPartition) -> v2.std.diagnostic.Outcome<PartialFunction<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts>> {
   match partition.boundary {
-    AmbientContextAvailable =>
-      outcome_accepted(value: partition.ambient.facts)
-    FailClosedOnFreeRefs =>
-      bind_outcome(
+    v2.std.program_segment.AmbientContextAvailable =>
+      v2.std.diagnostic.outcome_accepted(value: partition.ambient.facts)
+    v2.std.program_segment.FailClosedOnFreeRefs =>
+      v2.std.diagnostic.bind_outcome(
         o: facts_closure_entries_fold(
           ambient: partition.ambient,
           segment_root: partition.root,
           boundary: partition.boundary,
-          nodes: node_subtree_nodes(root: partition.root)
+          nodes: v2.std.node.node_subtree_nodes(root: partition.root)
         ),
         f: fn(entries) {
-          facts_map_from_entries(entries: entries)
+          v2.compiler.infer.facts_map_from_entries(entries: entries)
         }
       )
   }
@@ -405,31 +405,31 @@ fn facts_closure_fold(partition: ProgramPartition) -> Outcome<std.algebra.Partia
 fn resolve_program_segment_root(
   program: v2.compiler.inferred_tree.InferredTree,
   segment: v2.std.program_segment.ProgramSegment
-) -> Outcome<v2.std.node.Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match segment {
-    WholeProgram => outcome_accepted(value: program.root)
-    SubtreeAtPath { path: path } =>
-      subterm_at(root: program.root, path: path)
-    SubtreeRoot { root: root } =>
+    v2.std.program_segment.WholeProgram => v2.std.diagnostic.outcome_accepted(value: program.root)
+    v2.std.program_segment.SubtreeAtPath { path: path } =>
+      v2.lens.application.subterm_at(root: program.root, path: path)
+    v2.std.program_segment.SubtreeRoot { root: root } =>
       if partition_subtree_root_contained_in_ambient(
         ambient_root: program.root,
         segment_root: root
       ) {
-        outcome_accepted(value: root)
+        v2.std.diagnostic.outcome_accepted(value: root)
       } else {
-        outcome_rejected(d: partition_root_not_in_ambient_diagnostic(segment_root: root))
+        v2.std.diagnostic.outcome_rejected(d: partition_root_not_in_ambient_diagnostic(segment_root: root))
       }
   }
 }
 
-fn partition_inferred_tree(partition: ProgramPartition) -> Outcome<v2.compiler.inferred_tree.InferredTree> {
-  if !well_formed(n: partition.root) {
-    outcome_rejected(d: partition_empty_segment_diagnostic(root: partition.root))
+fn partition_inferred_tree(partition: ProgramPartition) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
+  if !v2.std.node.well_formed(n: partition.root) {
+    v2.std.diagnostic.outcome_rejected(d: partition_empty_segment_diagnostic(root: partition.root))
   } else {
-    bind_outcome(
+    v2.std.diagnostic.bind_outcome(
       o: facts_closure_fold(partition: partition),
       f: fn(facts) {
-        outcome_accepted(
+        v2.std.diagnostic.outcome_accepted(
           value: v2.compiler.inferred_tree.InferredTree {
             root: partition.root,
             facts: facts
@@ -444,11 +444,11 @@ fn resolve_program_partition(
   program: v2.compiler.inferred_tree.InferredTree,
   segment: v2.std.program_segment.ProgramSegment,
   boundary: v2.std.program_segment.PartitionBoundaryPolicy
-) -> Outcome<ProgramPartition> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<ProgramPartition> {
+  v2.std.diagnostic.bind_outcome(
     o: resolve_program_segment_root(program: program, segment: segment),
     f: fn(root) {
-      outcome_accepted(value: ProgramPartition {
+      v2.std.diagnostic.outcome_accepted(value: ProgramPartition {
         ambient: program,
         segment: segment,
         root: root,
@@ -460,7 +460,7 @@ fn resolve_program_partition(
 
 fn partition_segment_root_is_transform_computation(root: v2.std.node.Node) -> Bool {
   match root.kind {
-    ComputationNode { behavior: v2.std.node.Transform } => true
+    v2.std.node.ComputationNode { behavior: v2.std.node.Transform } => true
     _ => false
   }
 }
@@ -469,10 +469,10 @@ fn partition_segment_is_ambient_arrow_body_behavior(
   partition: ProgramPartition
 ) -> Bool {
   match partition.segment {
-    SubtreeRoot { root: segment_root } =>
+    v2.std.program_segment.SubtreeRoot { root: segment_root } =>
       (segment_root != partition.ambient.root)
-        && target_value_expr_arrow_has_value_expression_body(arrow: partition.ambient.root)
-        && node_in_subtree_by_identity(
+        && v2.std.compilers.target_model.target_value_expr_arrow_has_value_expression_body(arrow: partition.ambient.root)
+        && v2.std.verification.node_in_subtree_by_identity(
           root: partition.ambient.root,
           needle: segment_root
         )
@@ -484,28 +484,28 @@ fn partition_segment_is_ambient_arrow_body_behavior(
 fn emit_partition_arrow_body_behavior_source(
   partition: ProgramPartition,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Medium<String>> {
-  bind_outcome(
-    o: target_project_arrow_body_to_value_expression(
+) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.compilers.target_model.target_project_arrow_body_to_value_expression(
       arrow: partition.ambient.root,
       target: target,
-      source_bool_form: dag_value_expression_projection().bool_literal_form,
+      source_bool_form: v2.extdeps.languages.dag.dag_value_expression_projection().bool_literal_form,
       handle_transform: fn(a, b, t) {
-        translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+        v2.compiler.translate.translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
       }
     ),
     f: fn(expr) {
-      bind_outcome(
-        o: target_value_expression_projection_from_target(target: target),
+      v2.std.diagnostic.bind_outcome(
+        o: v2.std.compilers.target_model.target_value_expression_projection_from_target(target: target),
         f: fn(projection) {
-          bind_outcome(
-            o: target_value_expression_tokens_from_target(
+          v2.std.diagnostic.bind_outcome(
+            o: v2.std.compilers.target_model.target_value_expression_tokens_from_target(
               expr: expr,
               target: target,
               projection: projection
             ),
             f: fn(tokens) {
-              serialize_concrete_syntax_tokens_to_source(
+              v2.compiler.translate.serialize_concrete_syntax_tokens_to_source(
                 target: target,
                 tokens: tokens
               )
@@ -520,9 +520,9 @@ fn emit_partition_arrow_body_behavior_source(
 fn emit_partition_with_target(
   partition: ProgramPartition,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Medium<String>> {
+) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   if partition_segment_is_ambient_arrow_body_behavior(partition: partition) {
-    bind_outcome(
+    v2.std.diagnostic.bind_outcome(
       o: partition_inferred_tree(partition: partition),
       f: fn(_tree) {
         emit_partition_arrow_body_behavior_source(
@@ -532,7 +532,7 @@ fn emit_partition_with_target(
       }
     )
   } else {
-    bind_outcome(
+    v2.std.diagnostic.bind_outcome(
       o: partition_inferred_tree(partition: partition),
       f: fn(tree) {
         v2.compiler.emit.emit(tree: tree, target: target)
@@ -544,8 +544,8 @@ fn emit_partition_with_target(
 fn emit_partition(
   partition: ProgramPartition,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Medium<String>> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
+  v2.std.diagnostic.bind_outcome(
     o: partition_derive_target_for_emit(partition: partition, target: target),
     f: fn(derived_target) {
       emit_partition_with_target(partition: partition, target: derived_target)
@@ -558,8 +558,8 @@ fn emit_for_target(
   segment: v2.std.program_segment.ProgramSegment,
   target: v2.std.compilers.target_model.TargetModel,
   boundary: v2.std.program_segment.PartitionBoundaryPolicy
-) -> Outcome<Medium<String>> {
-  bind_outcome(
+) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
+  v2.std.diagnostic.bind_outcome(
     o: resolve_program_partition(
       program: program,
       segment: segment,
@@ -571,12 +571,12 @@ fn emit_for_target(
   )
 }
 
-fn program_segment_from_section_unavailable() -> Outcome<v2.std.program_segment.ProgramSegment> {
-  outcome_rejected(
+fn program_segment_from_section_unavailable() -> v2.std.diagnostic.Outcome<v2.std.program_segment.ProgramSegment> {
+  v2.std.diagnostic.outcome_rejected(
     d: v2.std.diagnostic.Diagnostic {
       reason: ^partition_section_adapter_unavailable,
-      at: port_locus(port: ^program_segment_from_section_port),
-      correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+      at: v2.std.diagnostic.port_locus(port: ^program_segment_from_section_port),
+      correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
     }
   )
 }

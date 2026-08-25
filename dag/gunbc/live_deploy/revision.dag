@@ -107,8 +107,8 @@ fn revision_relation_from_ancestry_facts(
 }
 
 fn deploy_revision_relation_from_probes(
-  deployed: CommitSha,
-  candidate: CommitSha,
+  deployed: std.types.CommitSha,
+  candidate: std.types.CommitSha,
   deployed_is_ancestor_of_candidate: Bool,
   candidate_is_ancestor_of_deployed: Bool,
 ) -> DeployRevisionRelation {

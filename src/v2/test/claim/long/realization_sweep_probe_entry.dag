@@ -1,38 +1,38 @@
 module v2.test.long.realization_sweep_probe_entry
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data realization_sweep_entry_note: String = "CI2-0 Commit B sweep probe entry (the same overlay transport the frontier probe survey rides): the host bin discovers one roster entry's import closure with the executor's own discover_source_root_reads_for_entry, writes the host_source_root_ingest_manifest overlay (SourceRef rows + entry admission + entry path), and this entry drives sweep_rows_from_refs over it — one canonical assembly, one typed standing per authored test-fn identity, exactly once. The receipt fns below are what the host bin evaluates and aggregates into the phase-and-cause census; this is a PROBE ANCHOR (no test fn, not a floor witness — the executing consumer is the realization_sweep_survey bin, a local recipe): the structural-law fn below is host-evaluated beside the receipt, and the per-PR mechanism witnesses live in test.claim.long.realization_sweep_test."
 
 fn sweep_entry_rows() -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
-  sweep_rows_from_refs(
-    refs: host_source_root_closure_refs,
-    admission: host_compiler_closure_admission,
-    entry: frontier_probe_entry_module_path,
-    identities: realization_sweep_entry_identities
+  v2.workflow.realization_sweep.sweep_rows_from_refs(
+    refs: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs,
+    admission: v2.test.workflow.host_source_root_ingest_manifest.host_compiler_closure_admission,
+    entry: v2.test.workflow.host_source_root_ingest_manifest.frontier_probe_entry_module_path,
+    identities: v2.test.workflow.host_source_root_ingest_manifest.realization_sweep_entry_identities
   )
 }
 
 fn realization_sweep_entry_receipt() -> String {
-  sweep_receipt_tsv(rows: sweep_entry_rows())
+  v2.workflow.realization_sweep.sweep_receipt_tsv(rows: sweep_entry_rows())
 }
 
 fn realization_sweep_member_scan_receipt() -> String {
-  sweep_receipt_tsv(rows: member_parse_rows_from_refs(refs: host_source_root_closure_refs))
+  v2.workflow.realization_sweep.sweep_receipt_tsv(rows: v2.workflow.realization_sweep.member_parse_rows_from_refs(refs: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs))
 }
 
 fn realization_sweep_entry_histogram() -> String {
-  sweep_histogram_tsv(rows: sweep_entry_rows())
+  v2.workflow.realization_sweep.sweep_histogram_tsv(rows: sweep_entry_rows())
 }
 
-fn realization_sweep_entry_rows_typed() -> v2.std.logic.Bool {
-  if frontier_probe_entry_module_path == "" {
+fn realization_sweep_entry_rows_typed() -> Bool {
+  if v2.test.workflow.host_source_root_ingest_manifest.frontier_probe_entry_module_path == "" {
     true
   } else {
     let rows = sweep_entry_rows()
-    length(xs: rows) > 0
-      && fold_list(xs: rows, empty: true, cons: fn(acc, r) {
+    v2.std.algebra.length(xs: rows) > 0
+      && v2.std.algebra.fold_list(xs: rows, empty: true, cons: fn(acc, r) {
         acc && (r.phase_label != "")
       })
   }

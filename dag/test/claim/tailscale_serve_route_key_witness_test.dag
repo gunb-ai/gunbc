@@ -14,15 +14,15 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 data tailscale_route_key_witness_note: String = "Step-1 discriminating controls for extdeps.tailscale.serve TailscaleServeRouteKey. The load-bearing law: same listener x mount + different backend is a re-point (Modified), never Remove+Add. A key that embeds backend classifies that drift as different keys and produces teardown+reinstall — the membership_reconcile failure mode the design note names."
 
 fn tailscale_route_subject(endpoint: extdeps.tailscale.serve.TailscaleServeEndpoint) -> extdeps.tailscale.serve.TailscaleServeRouteSubject {
-  tailscale_serve_route_subject(
-    scope: tailscale_serve_scope(node: srv1_tailscale_endpoint),
+  extdeps.tailscale.serve.tailscale_serve_route_subject(
+    scope: extdeps.tailscale.serve.tailscale_serve_scope(node: gunbc.fleet_intent_network.srv1_tailscale_endpoint),
     endpoint: endpoint,
   )
 }
 
 fn tailscale_endpoint_value_eq(a: extdeps.tailscale.serve.TailscaleServeRouteSubject, b: extdeps.tailscale.serve.TailscaleServeRouteSubject) -> Bool {
   a.endpoint.https_port == b.endpoint.https_port
-    && tailscale_serve_mount_eq(a: a.endpoint.mount, b: b.endpoint.mount)
+    && extdeps.tailscale.serve.tailscale_serve_mount_eq(a: a.endpoint.mount, b: b.endpoint.mount)
     && a.endpoint.backend as String == b.endpoint.backend as String
 }
 
@@ -31,27 +31,27 @@ fn tailscale_endpoint_ownership(_: extdeps.tailscale.serve.TailscaleServeRouteSu
 }
 
 fn retired_flattened_serve_flags_key(subject: extdeps.tailscale.serve.TailscaleServeRouteSubject) -> std.types.NonEmptyStr {
-  join(tailscale_serve_endpoint_flags(endpoint: subject.endpoint), " ") as std.types.NonEmptyStr
+  join(extdeps.tailscale.serve.tailscale_serve_endpoint_flags(endpoint: subject.endpoint), " ") as std.types.NonEmptyStr
 }
 
 fn retired_flattened_serve_flags_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
   a as String == b as String
 }
 
-data retired_flattened_serve_flags_key_relation: KeyRelation<RetiredFlattenedServeFlagsKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, std.types.NonEmptyStr> = key_relation_global(
+data retired_flattened_serve_flags_key_relation: std.key_relation.KeyRelation<RetiredFlattenedServeFlagsKeyRelation, extdeps.tailscale.serve.TailscaleServeRouteSubject, std.key_relation.GlobalKeyScope, std.types.NonEmptyStr> = std.key_relation.key_relation_global(
   key_of: retired_flattened_serve_flags_key,
   key_eq: retired_flattened_serve_flags_key_eq,
 )
 
 fn tailscale_enable_argv_identity_key(subject: extdeps.tailscale.serve.TailscaleServeRouteSubject) -> std.types.NonEmptyStr {
-  join(tailscale_serve_enable_argv(endpoint: subject.endpoint), " ") as std.types.NonEmptyStr
+  join(extdeps.tailscale.serve.tailscale_serve_enable_argv(endpoint: subject.endpoint), " ") as std.types.NonEmptyStr
 }
 
 fn tailscale_enable_argv_identity_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
   a as String == b as String
 }
 
-data tailscale_enable_argv_identity_key_relation: KeyRelation<TailscaleEnableArgvIdentityKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, std.types.NonEmptyStr> = key_relation_global(
+data tailscale_enable_argv_identity_key_relation: std.key_relation.KeyRelation<TailscaleEnableArgvIdentityKeyRelation, extdeps.tailscale.serve.TailscaleServeRouteSubject, std.key_relation.GlobalKeyScope, std.types.NonEmptyStr> = std.key_relation.key_relation_global(
   key_of: tailscale_enable_argv_identity_key,
   key_eq: tailscale_enable_argv_identity_key_eq,
 )
@@ -63,7 +63,7 @@ fn plan_has_change_between_backends(
 ) -> Bool {
   any(plan.actions, a =>
     match a {
-      MemberChanged { at: _, from: f, to: t } =>
+      gunbc.membership_reconcile.MemberChanged { at: _, from: f, to: t } =>
         f.endpoint.backend as String == from_backend && t.endpoint.backend as String == to_backend
       _ => false
     }
@@ -71,9 +71,9 @@ fn plan_has_change_between_backends(
 }
 
 fn plan_has_remove_add_not_change(plan: gunbc.membership_reconcile.MembershipPlan<extdeps.tailscale.serve.TailscaleServeRouteSubject, TailscaleEnableArgvMemberAt>) -> Bool {
-  let has_remove = any(plan.actions, a => match a { MemberRemoved { at: _, from: _ } => true  _ => false })
-  let has_add = any(plan.actions, a => match a { MemberAdded { at: _, to: _ } => true  _ => false })
-  let has_change = any(plan.actions, a => match a { MemberChanged { at: _, from: _, to: _ } => true  _ => false })
+  let has_remove = any(plan.actions, a => match a { gunbc.membership_reconcile.MemberRemoved { at: _, from: _ } => true  _ => false })
+  let has_add = any(plan.actions, a => match a { gunbc.membership_reconcile.MemberAdded { at: _, to: _ } => true  _ => false })
+  let has_change = any(plan.actions, a => match a { gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => true  _ => false })
   has_remove && has_add && !has_change
 }
 
@@ -90,8 +90,8 @@ data w_route_key_backend_repoint_note: String = "THE STEP-1 POSITIVE CONTROL. Sa
 test fn w_route_key_backend_repoint_is_modified_not_remove_add() -> Bool {
   let observed = [tailscale_route_subject(endpoint: root_endpoint(backend: "8080"))]
   let desired = [tailscale_route_subject(endpoint: root_endpoint(backend: "18081"))]
-  let plan = membership_plan_admitting_scoped_outcome(
-    outcome: membership_reconcile_scoped(
+  let plan = gunbc.membership_reconcile.membership_plan_admitting_scoped_outcome(
+    outcome: gunbc.membership_reconcile.membership_reconcile_scoped(
       desired: desired,
       observed: observed,
       resource: extdeps.tailscale.serve.tailscale_serve_resource_relation,
@@ -112,7 +112,7 @@ fn tailscale_enable_argv_endpoint_state_eq(a: std.types.NonEmptyStr, b: std.type
   a == b
 }
 
-data tailscale_enable_argv_resource_relation: KeyedResourceRelation<TailscaleEnableArgvIdentityKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, std.types.NonEmptyStr, std.types.NonEmptyStr> = std.key_relation.KeyedResourceRelation {
+data tailscale_enable_argv_resource_relation: std.key_relation.KeyedResourceRelation<TailscaleEnableArgvIdentityKeyRelation, extdeps.tailscale.serve.TailscaleServeRouteSubject, std.key_relation.GlobalKeyScope, std.types.NonEmptyStr, std.types.NonEmptyStr> = std.key_relation.KeyedResourceRelation {
   key: tailscale_enable_argv_identity_key_relation,
   state: std.key_relation.StateRelation {
     state_of: tailscale_enable_argv_endpoint_state_of,
@@ -125,8 +125,8 @@ data w_enable_argv_key_backend_repoint_red_note: String = "RED CONTROL for the R
 test fn w_enable_argv_key_backend_repoint_is_remove_add_not_modified() -> Bool {
   let observed = [tailscale_route_subject(endpoint: root_endpoint(backend: "8080"))]
   let desired = [tailscale_route_subject(endpoint: root_endpoint(backend: "18081"))]
-  let plan = membership_plan_admitting_scoped_outcome(
-    outcome: membership_reconcile_scoped(
+  let plan = gunbc.membership_reconcile.membership_plan_admitting_scoped_outcome(
+    outcome: gunbc.membership_reconcile.membership_reconcile_scoped(
       desired: desired,
       observed: observed,
       resource: tailscale_enable_argv_resource_relation,
@@ -181,36 +181,36 @@ test fn membership_label_is_not_rendered_argv() -> Bool {
 data w_per_device_scope_preserves_distinct_nodes_note: String = "THE SCOPE DEFECT NO EXISTING WITNESS COULD SEE. Two tailnet devices may each own the same listener×mount route; GlobalKeyScope collapses them into one ScopedKey — the identity-collapse class the twin witnesses name when one deployment's teardown deletes another's live resource. This control must go red against GlobalKeyScope and green only after TailscaleServeScope lands."
 
 fn srv1_root_route_subject() -> extdeps.tailscale.serve.TailscaleServeRouteSubject {
-  tailscale_serve_route_subject(
-    scope: tailscale_serve_scope(node: srv1_tailscale_endpoint),
+  extdeps.tailscale.serve.tailscale_serve_route_subject(
+    scope: extdeps.tailscale.serve.tailscale_serve_scope(node: gunbc.fleet_intent_network.srv1_tailscale_endpoint),
     endpoint: root_endpoint(backend: "8080"),
   )
 }
 
 fn srv2_root_route_subject() -> extdeps.tailscale.serve.TailscaleServeRouteSubject {
-  tailscale_serve_route_subject(
-    scope: tailscale_serve_scope(node: srv2_tailscale_endpoint),
+  extdeps.tailscale.serve.tailscale_serve_route_subject(
+    scope: extdeps.tailscale.serve.tailscale_serve_scope(node: gunbc.fleet_intent_network.srv2_tailscale_endpoint),
     endpoint: root_endpoint(backend: "8080"),
   )
 }
 
 test fn w_per_device_scope_preserves_distinct_nodes_same_route() -> Bool {
-  let key_a = key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: srv1_root_route_subject())
-  let key_b = key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: srv2_root_route_subject())
-  !key_relation_scoped_key_eq(relation: tailscale_serve_route_key_relation, a: key_a, b: key_b)
+  let key_a = std.key_relation.key_relation_scoped_key(relation: extdeps.tailscale.serve.tailscale_serve_route_key_relation, subject: srv1_root_route_subject())
+  let key_b = std.key_relation.key_relation_scoped_key(relation: extdeps.tailscale.serve.tailscale_serve_route_key_relation, subject: srv2_root_route_subject())
+  !std.key_relation.key_relation_scoped_key_eq(relation: extdeps.tailscale.serve.tailscale_serve_route_key_relation, a: key_a, b: key_b)
 }
 
 fn global_collapse_route_key_of(subject: extdeps.tailscale.serve.TailscaleServeRouteSubject) -> extdeps.tailscale.serve.TailscaleServeRouteKey {
-  tailscale_serve_route_key(endpoint: subject.endpoint)
+  extdeps.tailscale.serve.tailscale_serve_route_key(endpoint: subject.endpoint)
 }
 
-data global_collapse_demonstration_relation: KeyRelation<GlobalCollapseDemonstrationRelation, TailscaleServeRouteSubject, GlobalKeyScope, TailscaleServeRouteKey> = key_relation_global(
+data global_collapse_demonstration_relation: std.key_relation.KeyRelation<GlobalCollapseDemonstrationRelation, extdeps.tailscale.serve.TailscaleServeRouteSubject, std.key_relation.GlobalKeyScope, extdeps.tailscale.serve.TailscaleServeRouteKey> = std.key_relation.key_relation_global(
   key_of: global_collapse_route_key_of,
-  key_eq: tailscale_serve_route_key_eq,
+  key_eq: extdeps.tailscale.serve.tailscale_serve_route_key_eq,
 )
 
 test fn w_global_scope_collapses_distinct_nodes_same_route() -> Bool {
-  let key_a = key_relation_scoped_key(relation: global_collapse_demonstration_relation, subject: srv1_root_route_subject())
-  let key_b = key_relation_scoped_key(relation: global_collapse_demonstration_relation, subject: srv2_root_route_subject())
-  key_relation_scoped_key_eq(relation: global_collapse_demonstration_relation, a: key_a, b: key_b)
+  let key_a = std.key_relation.key_relation_scoped_key(relation: global_collapse_demonstration_relation, subject: srv1_root_route_subject())
+  let key_b = std.key_relation.key_relation_scoped_key(relation: global_collapse_demonstration_relation, subject: srv2_root_route_subject())
+  std.key_relation.key_relation_scoped_key_eq(relation: global_collapse_demonstration_relation, a: key_a, b: key_b)
 }

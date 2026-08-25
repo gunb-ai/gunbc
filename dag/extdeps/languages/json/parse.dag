@@ -5,7 +5,7 @@ data json_parse_note: String = "parse_json is the FORWARD reading of RFC 8259: t
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.rfc-editor.org/rfc/rfc8259"
   }
 }
@@ -92,9 +92,9 @@ fn json_unescape(s: String) -> String {
 }
 
 fn parse_json_string_at(s: String, i: Int) -> JsonParse {
-  match json_text_parse_string(s: s, i: i) {
-    JsonTextParseFail { end: e } => JsonParseFail { at: e }
-    JsonTextParseOk { end: e } =>
+  match extdeps.languages.json.grammar.json_text_parse_string(s: s, i: i) {
+    extdeps.languages.json.grammar.JsonTextParseFail { end: e } => JsonParseFail { at: e }
+    extdeps.languages.json.grammar.JsonTextParseOk { end: e } =>
       JsonParsed {
         value: extdeps.languages.json.emit.JsonString { value: json_unescape(s: substring(s: s, start: i + 1, end: e - 1)) },
         next: e,
@@ -103,11 +103,11 @@ fn parse_json_string_at(s: String, i: Int) -> JsonParse {
 }
 
 fn parse_json_number_at(s: String, i: Int) -> JsonParse {
-  match json_text_parse_number(s: s, i: i) {
-    JsonTextParseFail { end: e } => JsonParseFail { at: e }
-    JsonTextParseOk { end: e } =>
+  match extdeps.languages.json.grammar.json_text_parse_number(s: s, i: i) {
+    extdeps.languages.json.grammar.JsonTextParseFail { end: e } => JsonParseFail { at: e }
+    extdeps.languages.json.grammar.JsonTextParseOk { end: e } =>
       JsonParsed {
-        value: extdeps.languages.json.emit.JsonNumber { lexeme: json_number_lexeme_unchecked(s: substring(s: s, start: i, end: e)) },
+        value: extdeps.languages.json.emit.JsonNumber { lexeme: extdeps.languages.json.grammar.json_number_lexeme_unchecked(s: substring(s: s, start: i, end: e)) },
         next: e,
       }
   }
@@ -125,12 +125,12 @@ data json_exhaustive_match_note: String = "The matches over JsonValue below name
 
 fn json_string_value_or_empty(v: extdeps.languages.json.emit.JsonValue) -> String {
   match v {
-    JsonString { value: sv } => sv
-    JsonNull => ""
-    JsonBool { value: _ } => ""
-    JsonNumber { lexeme: _ } => ""
-    JsonArray { elements: _ } => ""
-    JsonObject { members: _ } => ""
+    extdeps.languages.json.emit.JsonString { value: sv } => sv
+    extdeps.languages.json.emit.JsonNull => ""
+    extdeps.languages.json.emit.JsonBool { value: _ } => ""
+    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => ""
+    extdeps.languages.json.emit.JsonArray { elements: _ } => ""
+    extdeps.languages.json.emit.JsonObject { members: _ } => ""
   }
 }
 
@@ -148,7 +148,7 @@ fn json_object_members_named(members: List<extdeps.languages.json.emit.JsonKeyVa
 
 fn json_object_unique_member(v: extdeps.languages.json.emit.JsonValue, key: String) -> JsonMemberLookup {
   match v {
-    JsonObject { members: ms } => {
+    extdeps.languages.json.emit.JsonObject { members: ms } => {
       let hits = json_object_members_named(members: ms, key: key)
       let n = count(hits)
       if n == 0 {
@@ -159,11 +159,11 @@ fn json_object_unique_member(v: extdeps.languages.json.emit.JsonValue, key: Stri
         JsonMemberDuplicated { count: n }
       }
     }
-    JsonNull => JsonMemberNotAnObject
-    JsonBool { value: _ } => JsonMemberNotAnObject
-    JsonNumber { lexeme: _ } => JsonMemberNotAnObject
-    JsonString { value: _ } => JsonMemberNotAnObject
-    JsonArray { elements: _ } => JsonMemberNotAnObject
+    extdeps.languages.json.emit.JsonNull => JsonMemberNotAnObject
+    extdeps.languages.json.emit.JsonBool { value: _ } => JsonMemberNotAnObject
+    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => JsonMemberNotAnObject
+    extdeps.languages.json.emit.JsonString { value: _ } => JsonMemberNotAnObject
+    extdeps.languages.json.emit.JsonArray { elements: _ } => JsonMemberNotAnObject
   }
 }
 
@@ -178,7 +178,7 @@ fn parse_json_array_elements(s: String, i: Int, acc: List<extdeps.languages.json
     JsonParseFail { at: a } => JsonArrayAccFail { at: a }
     JsonParsed { value: v, next: n } => {
       let acc2 = acc |> list_push(v)
-      let q = json_text_skip_ws(s: s, i: n)
+      let q = extdeps.languages.json.grammar.json_text_skip_ws(s: s, i: n)
       if char_at(s: s, i: q) == "]" {
         JsonArrayAccOk { elements: acc2, next: q + 1 }
       } else if char_at(s: s, i: q) == "," {
@@ -191,7 +191,7 @@ fn parse_json_array_elements(s: String, i: Int, acc: List<extdeps.languages.json
 }
 
 fn parse_json_array_at(s: String, i: Int) -> JsonParse {
-  let p = json_text_skip_ws(s: s, i: i + 1)
+  let p = extdeps.languages.json.grammar.json_text_skip_ws(s: s, i: i + 1)
   if char_at(s: s, i: p) == "]" {
     JsonParsed { value: extdeps.languages.json.emit.JsonArray { elements: [] }, next: p + 1 }
   } else {
@@ -207,19 +207,19 @@ type JsonObjectAcc =
   | JsonObjectAccFail { at: Int }
 
 fn parse_json_object_members(s: String, i: Int, acc: List<extdeps.languages.json.emit.JsonKeyValue>) -> JsonObjectAcc {
-  let p = json_text_skip_ws(s: s, i: i)
+  let p = extdeps.languages.json.grammar.json_text_skip_ws(s: s, i: i)
   match parse_json_string_at(s: s, i: p) {
     JsonParseFail { at: a } => JsonObjectAccFail { at: a }
     JsonParsed { value: keyval, next: key_end } => {
-      let c = json_text_skip_ws(s: s, i: key_end)
+      let c = extdeps.languages.json.grammar.json_text_skip_ws(s: s, i: key_end)
       if char_at(s: s, i: c) != ":" {
         JsonObjectAccFail { at: c }
       } else {
         match parse_json_value_at(s: s, i: c + 1) {
           JsonParseFail { at: a } => JsonObjectAccFail { at: a }
           JsonParsed { value: v, next: val_end } => {
-            let acc2 = acc |> list_push(json_kv(key: json_string_value_or_empty(v: keyval), value: v))
-            let q = json_text_skip_ws(s: s, i: val_end)
+            let acc2 = acc |> list_push(extdeps.languages.json.emit.json_kv(key: json_string_value_or_empty(v: keyval), value: v))
+            let q = extdeps.languages.json.grammar.json_text_skip_ws(s: s, i: val_end)
             if char_at(s: s, i: q) == "}" {
               JsonObjectAccOk { members: acc2, next: q + 1 }
             } else if char_at(s: s, i: q) == "," {
@@ -235,7 +235,7 @@ fn parse_json_object_members(s: String, i: Int, acc: List<extdeps.languages.json
 }
 
 fn parse_json_object_at(s: String, i: Int) -> JsonParse {
-  let p = json_text_skip_ws(s: s, i: i + 1)
+  let p = extdeps.languages.json.grammar.json_text_skip_ws(s: s, i: i + 1)
   if char_at(s: s, i: p) == "}" {
     JsonParsed { value: extdeps.languages.json.emit.JsonObject { members: [] }, next: p + 1 }
   } else {
@@ -247,7 +247,7 @@ fn parse_json_object_at(s: String, i: Int) -> JsonParse {
 }
 
 fn parse_json_value_at(s: String, i: Int) -> JsonParse {
-  let p = json_text_skip_ws(s: s, i: i)
+  let p = extdeps.languages.json.grammar.json_text_skip_ws(s: s, i: i)
   if p >= s.length() {
     JsonParseFail { at: p }
   } else {
@@ -258,7 +258,7 @@ fn parse_json_value_at(s: String, i: Int) -> JsonParse {
     else if c == "t" { parse_json_literal_at(s: s, i: p, lit: "true", v: extdeps.languages.json.emit.JsonBool { value: true }) }
     else if c == "f" { parse_json_literal_at(s: s, i: p, lit: "false", v: extdeps.languages.json.emit.JsonBool { value: false }) }
     else if c == "n" { parse_json_literal_at(s: s, i: p, lit: "null", v: extdeps.languages.json.emit.JsonNull) }
-    else if c == "-" || is_json_digit_char(c: c) { parse_json_number_at(s: s, i: p) }
+    else if c == "-" || extdeps.languages.json.grammar.is_json_digit_char(c: c) { parse_json_number_at(s: s, i: p) }
     else { JsonParseFail { at: p } }
   }
 }
@@ -268,7 +268,7 @@ fn some_json_value(v: extdeps.languages.json.emit.JsonValue) -> extdeps.language
 }
 
 fn parse_json_fully_consumed(s: String, v: extdeps.languages.json.emit.JsonValue, n: Int) -> extdeps.languages.json.emit.JsonValue? {
-  if json_text_skip_ws(s: s, i: n) == s.length() {
+  if extdeps.languages.json.grammar.json_text_skip_ws(s: s, i: n) == s.length() {
     some_json_value(v: v)
   } else {
     none

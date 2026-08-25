@@ -39,57 +39,57 @@ type LandingGuaranteeProposition {
 }
 
 type LandingEvidenceFact {
-  proposal: gunbc.source_integration_landing_spine.LandingProposalOccurrenceId
-  observation: gunbc.source_integration_landing_spine.LandingFactHandle
-  claim: gunbc.source_integration_landing_spine.LandingRequiredClaim
+  proposal: LandingProposalOccurrenceId
+  observation: LandingFactHandle
+  claim: LandingRequiredClaim
 }
 
-type LandingRequiredClaim = std.claim_evidence.Claim<gunbc.source_integration_landing_spine.LandingTransformationHandle, gunbc.source_integration_landing_spine.LandingTargetHandle, gunbc.source_integration_landing_spine.LandingGuaranteeProposition, gunbc.source_integration_landing_spine.LandingScopeHandle, gunbc.source_integration_landing_spine.LandingClaimBound>
+type LandingRequiredClaim = std.claim_evidence.Claim<LandingTransformationHandle, LandingTargetHandle, LandingGuaranteeProposition, LandingScopeHandle, LandingClaimBound>
 
-type LandingEvidenceLink = std.claim_evidence.EvidenceLink<gunbc.source_integration_landing_spine.LandingEvidenceFact, gunbc.source_integration_landing_spine.LandingRequiredClaim, gunbc.source_integration_landing_spine.LandingEvidenceAuthorityHandle, gunbc.source_integration_landing_spine.LandingFidelityBoundaryHandle, gunbc.source_integration_landing_spine.LandingEvidenceIndependenceHandle>
+type LandingEvidenceLink = std.claim_evidence.EvidenceLink<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
 
-type LandingEvidenceAdmissionPolicy = std.claim_evidence.EvidenceAdmissionPolicy<gunbc.source_integration_landing_spine.LandingEvidenceFact, gunbc.source_integration_landing_spine.LandingRequiredClaim, gunbc.source_integration_landing_spine.LandingEvidenceAuthorityHandle, gunbc.source_integration_landing_spine.LandingFidelityBoundaryHandle, gunbc.source_integration_landing_spine.LandingEvidenceIndependenceHandle>
+type LandingEvidenceAdmissionPolicy = std.claim_evidence.EvidenceAdmissionPolicy<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
 
-type LandingClaimReadinessReceipt = std.claim_evidence.ClaimReadinessReceipt<gunbc.source_integration_landing_spine.LandingEvidenceFact, gunbc.source_integration_landing_spine.LandingRequiredClaim, gunbc.source_integration_landing_spine.LandingEvidenceAuthorityHandle, gunbc.source_integration_landing_spine.LandingFidelityBoundaryHandle, gunbc.source_integration_landing_spine.LandingEvidenceIndependenceHandle>
+type LandingClaimReadinessReceipt = std.claim_evidence.ClaimReadinessReceipt<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
 
-type LandingClaimRequirementReadiness = std.claim_evidence.ClaimRequirementReadiness<gunbc.source_integration_landing_spine.LandingEvidenceFact, gunbc.source_integration_landing_spine.LandingRequiredClaim, gunbc.source_integration_landing_spine.LandingEvidenceAuthorityHandle, gunbc.source_integration_landing_spine.LandingFidelityBoundaryHandle, gunbc.source_integration_landing_spine.LandingEvidenceIndependenceHandle>
+type LandingClaimRequirementReadiness = std.claim_evidence.ClaimRequirementReadiness<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
 
 type LandingRequiredClaims {
-  first: gunbc.source_integration_landing_spine.LandingRequiredClaim
-  remaining: List<gunbc.source_integration_landing_spine.LandingRequiredClaim>
+  first: LandingRequiredClaim
+  remaining: List<LandingRequiredClaim>
 }
 
 type LandingAtomicGroup {
-  identity: gunbc.source_integration_landing_spine.LandingAtomicGroupHandle
-  scopes: List<gunbc.source_integration_landing_spine.LandingScopeHandle>
+  identity: LandingAtomicGroupHandle
+  scopes: List<LandingScopeHandle>
 }
 
 type LandingAtomicity
   = LandingWholeProposalAtomic
   | LandingIndependentGroupsAllowed {
-      first_group: gunbc.source_integration_landing_spine.LandingAtomicGroup,
-      second_group: gunbc.source_integration_landing_spine.LandingAtomicGroup,
-      additional_groups: List<gunbc.source_integration_landing_spine.LandingAtomicGroup>,
-      independence: gunbc.source_integration_landing_spine.LandingAtomicIndependenceReceipt,
+      first_group: LandingAtomicGroup,
+      second_group: LandingAtomicGroup,
+      additional_groups: List<LandingAtomicGroup>,
+      independence: LandingAtomicIndependenceReceipt,
     }
 
 type LandingProposalContract {
-  occurrence: gunbc.source_integration_landing_spine.LandingProposalOccurrenceId
-  attempt: gunbc.source_integration_landing_spine.LandingAttemptId
-  target: gunbc.source_integration_landing_spine.LandingTargetHandle
-  authored_parent: gunbc.source_integration_landing_spine.LandingAcceptedStateHandle
-  transformation: gunbc.source_integration_landing_spine.LandingTransformationHandle
-  reads_relies: List<gunbc.source_integration_landing_spine.LandingFactHandle>
-  modifies_frame: List<gunbc.source_integration_landing_spine.LandingScopeHandle>
-  ensures_guarantees: gunbc.source_integration_landing_spine.LandingRequiredClaims
-  dependencies: List<gunbc.source_integration_landing_spine.LandingProposalOccurrenceId>
-  atomicity: gunbc.source_integration_landing_spine.LandingAtomicity
-  submit_authority: gunbc.source_integration_landing_spine.LandingActorAuthorityHandle
+  occurrence: LandingProposalOccurrenceId
+  attempt: LandingAttemptId
+  target: LandingTargetHandle
+  authored_parent: LandingAcceptedStateHandle
+  transformation: LandingTransformationHandle
+  reads_relies: List<LandingFactHandle>
+  modifies_frame: List<LandingScopeHandle>
+  ensures_guarantees: LandingRequiredClaims
+  dependencies: List<LandingProposalOccurrenceId>
+  atomicity: LandingAtomicity
+  submit_authority: LandingActorAuthorityHandle
   submitted_at: std.types.Timestamp
 }
 
 fn landing_native_identity(
-  proposal: gunbc.source_integration_landing_spine.LandingProposalContract,
+  proposal: LandingProposalContract,
 ) -> gunbc.native_scm_interaction_contract.NativeScmProposalIdentity {
   gunbc.native_scm_interaction_contract.NativeScmProposalIdentity {
     name: proposal.occurrence as String,
@@ -103,54 +103,54 @@ type LandingStressProfile {
   validation_path: std.measure.Minute
 }
 
-data gunbc_landing_stress_profile: gunbc.source_integration_landing_spine.LandingStressProfile = LandingStressProfile {
+data gunbc_landing_stress_profile: LandingStressProfile = LandingStressProfile {
   agents_per_developer: 50,
   overlapping_proposals: 10,
   validation_path: std.measure.minute(count: 30),
 }
 
 type LandingReadyEvidenceReceipt {
-  proposal: gunbc.source_integration_landing_spine.LandingProposalContract
-  policy: gunbc.source_integration_landing_spine.LandingEvidencePolicyHandle
-  readiness: gunbc.source_integration_landing_spine.LandingClaimReadinessReceipt
+  proposal: LandingProposalContract
+  policy: LandingEvidencePolicyHandle
+  readiness: LandingClaimReadinessReceipt
 }
 
 type LandingEvidenceBlock
   = LandingDuplicateRequirement {
-      claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
+      claim: LandingRequiredClaim,
     }
   | LandingMissingEvidence {
-      claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
+      claim: LandingRequiredClaim,
     }
   | LandingClaimChallenged {
-      claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
-      challenging: List<gunbc.source_integration_landing_spine.LandingEvidenceLink>,
+      claim: LandingRequiredClaim,
+      challenging: List<LandingEvidenceLink>,
     }
   | LandingEvidenceConflicted {
-      claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
-      supporting: List<gunbc.source_integration_landing_spine.LandingEvidenceLink>,
-      challenging: List<gunbc.source_integration_landing_spine.LandingEvidenceLink>,
+      claim: LandingRequiredClaim,
+      supporting: List<LandingEvidenceLink>,
+      challenging: List<LandingEvidenceLink>,
     }
   | LandingEvidenceRefused {
-      claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
+      claim: LandingRequiredClaim,
       refusals: List<std.claim_evidence.EvidenceAdmissionRefusal>,
     }
 
 type LandingEvidenceReadiness
   = LandingEvidenceReady {
-      receipt: gunbc.source_integration_landing_spine.LandingReadyEvidenceReceipt,
+      receipt: LandingReadyEvidenceReceipt,
     }
   | LandingEvidenceBlocking {
-      proposal: gunbc.source_integration_landing_spine.LandingProposalContract,
-      policy: gunbc.source_integration_landing_spine.LandingEvidencePolicyHandle,
-      readiness: gunbc.source_integration_landing_spine.LandingClaimReadinessReceipt,
-      first_blocking: gunbc.source_integration_landing_spine.LandingEvidenceBlock,
-      remaining_blocking: List<gunbc.source_integration_landing_spine.LandingEvidenceBlock>,
+      proposal: LandingProposalContract,
+      policy: LandingEvidencePolicyHandle,
+      readiness: LandingClaimReadinessReceipt,
+      first_blocking: LandingEvidenceBlock,
+      remaining_blocking: List<LandingEvidenceBlock>,
     }
 
 fn landing_required_claims(
-  proposal: gunbc.source_integration_landing_spine.LandingProposalContract,
-) -> List<gunbc.source_integration_landing_spine.LandingRequiredClaim> {
+  proposal: LandingProposalContract,
+) -> List<LandingRequiredClaim> {
   append(
     [proposal.ensures_guarantees.first],
     items: proposal.ensures_guarantees.remaining,
@@ -158,8 +158,8 @@ fn landing_required_claims(
 }
 
 fn landing_requirement_is_duplicated(
-  proposal: gunbc.source_integration_landing_spine.LandingProposalContract,
-  claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
+  proposal: LandingProposalContract,
+  claim: LandingRequiredClaim,
 ) -> Bool {
   count(
     landing_required_claims(proposal: proposal)
@@ -168,9 +168,9 @@ fn landing_requirement_is_duplicated(
 }
 
 fn landing_requirement_block(
-  proposal: gunbc.source_integration_landing_spine.LandingProposalContract,
-  readiness: gunbc.source_integration_landing_spine.LandingClaimRequirementReadiness,
-) -> List<gunbc.source_integration_landing_spine.LandingEvidenceBlock> {
+  proposal: LandingProposalContract,
+  readiness: LandingClaimRequirementReadiness,
+) -> List<LandingEvidenceBlock> {
   std.claim_evidence.claim_requirement_readiness_fold(
     readiness: readiness,
     fold: std.claim_evidence.ClaimRequirementReadinessFold {
@@ -211,11 +211,11 @@ fn landing_requirement_block(
 }
 
 fn landing_evidence_readiness(
-  proposal: gunbc.source_integration_landing_spine.LandingProposalContract,
-  policy: gunbc.source_integration_landing_spine.LandingEvidencePolicyHandle,
-  admission: gunbc.source_integration_landing_spine.LandingEvidenceAdmissionPolicy,
-  links: List<gunbc.source_integration_landing_spine.LandingEvidenceLink>,
-) -> gunbc.source_integration_landing_spine.LandingEvidenceReadiness {
+  proposal: LandingProposalContract,
+  policy: LandingEvidencePolicyHandle,
+  admission: LandingEvidenceAdmissionPolicy,
+  links: List<LandingEvidenceLink>,
+) -> LandingEvidenceReadiness {
   let readiness = std.claim_evidence.claim_readiness_receipt(
     policy: std.claim_evidence.ClaimReadinessPolicy {
       first_required: proposal.ensures_guarantees.first,
@@ -237,15 +237,15 @@ fn landing_evidence_readiness(
     ),
   )
   match v2.std.algebra.list_head(xs: blocks) {
-    HeadAbsent =>
+    v2.std.algebra.HeadAbsent =>
       LandingEvidenceReady {
-        receipt: gunbc.source_integration_landing_spine.LandingReadyEvidenceReceipt {
+        receipt: LandingReadyEvidenceReceipt {
           proposal: proposal,
           policy: policy,
           readiness: readiness,
         },
       }
-    HeadFound { value } =>
+    v2.std.algebra.HeadFound { value } =>
       LandingEvidenceBlocking {
         proposal: proposal,
         policy: policy,
@@ -257,34 +257,34 @@ fn landing_evidence_readiness(
 }
 
 type LandingResultClass {
-  result: gunbc.source_integration_landing_spine.LandingResultHandle
-  preview: gunbc.source_integration_landing_spine.LandingAudiencePreview
+  result: LandingResultHandle
+  preview: LandingAudiencePreview
 }
 
 type LandingProposalAmendment {
-  transformation: gunbc.source_integration_landing_spine.LandingTransformationHandle
-  preview: gunbc.source_integration_landing_spine.LandingAudiencePreview
+  transformation: LandingTransformationHandle
+  preview: LandingAudiencePreview
 }
 
 type LandingNormativeAlternative
   = LandingSelectResult {
-      result: gunbc.source_integration_landing_spine.LandingResultClass,
+      result: LandingResultClass,
     }
   | LandingSelectProposalAmendment {
-      amendment: gunbc.source_integration_landing_spine.LandingProposalAmendment,
+      amendment: LandingProposalAmendment,
     }
 
 type LandingNormativeOption {
-  label: gunbc.source_integration_landing_spine.LandingAudienceLabel
-  preview: gunbc.source_integration_landing_spine.LandingAudiencePreview
+  label: LandingAudienceLabel
+  preview: LandingAudiencePreview
   resume_hint: std.types.NonEmptyStr
-  alternative: gunbc.source_integration_landing_spine.LandingNormativeAlternative
+  alternative: LandingNormativeAlternative
 }
 
 type LandingNormativeOptions {
-  first_option: gunbc.source_integration_landing_spine.LandingNormativeOption
-  second_option: gunbc.source_integration_landing_spine.LandingNormativeOption
-  additional_options: List<gunbc.source_integration_landing_spine.LandingNormativeOption>
+  first_option: LandingNormativeOption
+  second_option: LandingNormativeOption
+  additional_options: List<LandingNormativeOption>
 }
 
 type LandingCandidateSpace
@@ -293,26 +293,26 @@ type LandingCandidateSpace
       counterexample: std.types.NonEmptyStr,
     }
   | LandingOneResultClass {
-      result: gunbc.source_integration_landing_spine.LandingResultClass,
+      result: LandingResultClass,
     }
   | LandingManyResultClasses {
-      question: gunbc.source_integration_landing_spine.LandingAudienceQuestion,
-      options: gunbc.source_integration_landing_spine.LandingNormativeOptions,
+      question: LandingAudienceQuestion,
+      options: LandingNormativeOptions,
     }
 
 type LandingIndependentReadBackAuthorityReceipt {
-  observer: gunbc.source_integration_landing_spine.LandingObservationAuthorityHandle
-  admission_contract: gunbc.source_integration_landing_spine.LandingAdmissionContractHandle
-  established_by: gunbc.source_integration_landing_spine.LandingActorAuthorityHandle
+  observer: LandingObservationAuthorityHandle
+  admission_contract: LandingAdmissionContractHandle
+  established_by: LandingActorAuthorityHandle
   receipt: std.content_hash.ContentHash
 }
 
 type LandingClosureSubject {
-  ready_evidence: gunbc.source_integration_landing_spine.LandingReadyEvidenceReceipt
-  admission_contract: gunbc.source_integration_landing_spine.LandingAdmissionContractHandle
-  read_back_authority: gunbc.source_integration_landing_spine.LandingIndependentReadBackAuthorityReceipt
-  equivalence: gunbc.source_integration_landing_spine.LandingEquivalenceHandle
-  candidates: gunbc.source_integration_landing_spine.LandingCandidateSpace
+  ready_evidence: LandingReadyEvidenceReceipt
+  admission_contract: LandingAdmissionContractHandle
+  read_back_authority: LandingIndependentReadBackAuthorityReceipt
+  equivalence: LandingEquivalenceHandle
+  candidates: LandingCandidateSpace
 }
 
 type LandingCaptureCompletenessReceipt { receipt: std.content_hash.ContentHash }
@@ -324,18 +324,18 @@ type LandingEquivalenceQuotientReceipt { receipt: std.content_hash.ContentHash }
 type LandingMultiplicityReceipt { receipt: std.content_hash.ContentHash }
 
 type LandingClosureEvidence {
-  capture_completeness: gunbc.source_integration_landing_spine.LandingCaptureCompletenessReceipt
-  affected_scope: gunbc.source_integration_landing_spine.LandingAffectedScopeReceipt
-  rule_closure: gunbc.source_integration_landing_spine.LandingRuleClosureReceipt
-  candidate_generation: gunbc.source_integration_landing_spine.LandingCandidateGenerationReceipt
-  admissibility: gunbc.source_integration_landing_spine.LandingAdmissibilityReceipt
-  equivalence_quotient: gunbc.source_integration_landing_spine.LandingEquivalenceQuotientReceipt
-  multiplicity: gunbc.source_integration_landing_spine.LandingMultiplicityReceipt
+  capture_completeness: LandingCaptureCompletenessReceipt
+  affected_scope: LandingAffectedScopeReceipt
+  rule_closure: LandingRuleClosureReceipt
+  candidate_generation: LandingCandidateGenerationReceipt
+  admissibility: LandingAdmissibilityReceipt
+  equivalence_quotient: LandingEquivalenceQuotientReceipt
+  multiplicity: LandingMultiplicityReceipt
 }
 
 type LandingClosedResultSpaceReceipt {
-  subject: gunbc.source_integration_landing_spine.LandingClosureSubject
-  closure: gunbc.source_integration_landing_spine.LandingClosureEvidence
+  subject: LandingClosureSubject
+  closure: LandingClosureEvidence
 }
 
 type LandingClosureCertificateKind
@@ -349,11 +349,11 @@ type LandingClosureCertificateKind
 
 type LandingClosureAttempt
   = LandingClosureComplete {
-      receipt: gunbc.source_integration_landing_spine.LandingClosedResultSpaceReceipt,
+      receipt: LandingClosedResultSpaceReceipt,
     }
   | LandingClosureIncomplete {
-      subject: gunbc.source_integration_landing_spine.LandingClosureSubject,
-      missing: gunbc.source_integration_landing_spine.LandingClosureCertificateKind,
+      subject: LandingClosureSubject,
+      missing: LandingClosureCertificateKind,
       cause: std.types.NonEmptyStr,
     }
 
@@ -368,18 +368,18 @@ type LandingRefusalKind
   | LandingEvidenceAdmissionDenied
 
 type LandingRefusal {
-  kind: gunbc.source_integration_landing_spine.LandingRefusalKind
+  kind: LandingRefusalKind
   locus: std.types.NonEmptyStr
   occurrences: std.integer.PositiveInt
   internal_cause: std.types.NonEmptyStr
-  plain_reason: gunbc.source_integration_landing_spine.LandingAudienceReason
-  responsible_party: gunbc.source_integration_landing_spine.LandingAudienceParty
-  next_action: gunbc.source_integration_landing_spine.LandingAudienceAction
+  plain_reason: LandingAudienceReason
+  responsible_party: LandingAudienceParty
+  next_action: LandingAudienceAction
   receipt: std.content_hash.ContentHash
 }
 
 fn landing_native_refusal(
-  refusal: gunbc.source_integration_landing_spine.LandingRefusal,
+  refusal: LandingRefusal,
 ) -> gunbc.native_scm_interaction_contract.NativeScmRefusal {
   gunbc.native_scm_interaction_contract.NativeScmRefusal {
     plain_reason: refusal.plain_reason as String,
@@ -399,19 +399,19 @@ type LandingMachineContinuationKind
   | LandingPrepareTransition
 
 type LandingMachineContinuation {
-  handle: gunbc.source_integration_landing_spine.LandingContinuationHandle
-  kind: gunbc.source_integration_landing_spine.LandingMachineContinuationKind
-  status: gunbc.source_integration_landing_spine.LandingAudienceStatus
+  handle: LandingContinuationHandle
+  kind: LandingMachineContinuationKind
+  status: LandingAudienceStatus
 }
 
 type LandingNormativeQuestion {
-  proposal: gunbc.source_integration_landing_spine.LandingProposalContract
-  question: gunbc.source_integration_landing_spine.LandingAudienceQuestion
-  options: gunbc.source_integration_landing_spine.LandingNormativeOptions
+  proposal: LandingProposalContract
+  question: LandingAudienceQuestion
+  options: LandingNormativeOptions
 }
 
 fn landing_native_option(
-  option: gunbc.source_integration_landing_spine.LandingNormativeOption,
+  option: LandingNormativeOption,
 ) -> gunbc.native_scm_interaction_contract.NativeScmContinuationOption {
   gunbc.native_scm_interaction_contract.NativeScmContinuationOption {
     label: option.label as std.types.NonEmptyStr,
@@ -421,7 +421,7 @@ fn landing_native_option(
 }
 
 fn landing_question_continuation(
-  question: gunbc.source_integration_landing_spine.LandingNormativeQuestion,
+  question: LandingNormativeQuestion,
 ) -> gunbc.native_scm_interaction_contract.NativeScmContinuation {
   gunbc.native_scm_interaction_contract.NativeScmContinuation {
     proposal: landing_native_identity(proposal: question.proposal),
@@ -439,27 +439,27 @@ fn landing_question_continuation(
 }
 
 type LandingClosedManyReceipt {
-  closed_space: gunbc.source_integration_landing_spine.LandingClosedResultSpaceReceipt
-  question: gunbc.source_integration_landing_spine.LandingNormativeQuestion
+  closed_space: LandingClosedResultSpaceReceipt
+  question: LandingNormativeQuestion
 }
 
 type LandingChoiceContinuation {
-  prior: gunbc.source_integration_landing_spine.LandingClosedManyReceipt
+  prior: LandingClosedManyReceipt
   selected: gunbc.native_scm_interaction_contract.NativeScmSelectedContinuationOption
-  processing: gunbc.source_integration_landing_spine.LandingResumedSemanticProcessing
+  processing: LandingResumedSemanticProcessing
 }
 
 type LandingResumedSemanticProcessing
   = LandingSelectedResultProcessing {
-      result: gunbc.source_integration_landing_spine.LandingResultClass,
+      result: LandingResultClass,
     }
   | LandingProposalAmendmentProcessing {
-      amendment: gunbc.source_integration_landing_spine.LandingProposalAmendment,
+      amendment: LandingProposalAmendment,
     }
 
 fn landing_resume_alternative(
-  alternative: gunbc.source_integration_landing_spine.LandingNormativeAlternative,
-) -> gunbc.source_integration_landing_spine.LandingResumedSemanticProcessing {
+  alternative: LandingNormativeAlternative,
+) -> LandingResumedSemanticProcessing {
   match alternative {
     LandingSelectResult { result } =>
       LandingSelectedResultProcessing { result: result }
@@ -470,53 +470,49 @@ fn landing_resume_alternative(
 
 type LandingChoiceResolution
   = LandingChoiceAdvanced {
-      continuation: gunbc.source_integration_landing_spine.LandingChoiceContinuation,
+      continuation: LandingChoiceContinuation,
     }
   | LandingChoiceNotOffered {
-      prior: gunbc.source_integration_landing_spine.LandingClosedManyReceipt,
+      prior: LandingClosedManyReceipt,
       choice: gunbc.native_scm_interaction_contract.NativeScmContinuationChoice,
     }
 
 fn landing_alternative_for_choice(
-  options: gunbc.source_integration_landing_spine.LandingNormativeOptions,
+  options: LandingNormativeOptions,
   choice: gunbc.native_scm_interaction_contract.NativeScmContinuationChoice,
-) -> v2.std.optional.Optional<gunbc.source_integration_landing_spine.LandingNormativeAlternative> {
+) -> v2.std.optional.Optional<LandingNormativeAlternative> {
   match choice {
-    NativeScmFirstContinuationOption =>
+    gunbc.native_scm_interaction_contract.NativeScmFirstContinuationOption =>
       v2.std.optional.Present { value: options.first_option.alternative }
-    NativeScmSecondContinuationOption =>
+    gunbc.native_scm_interaction_contract.NativeScmSecondContinuationOption =>
       v2.std.optional.Present { value: options.second_option.alternative }
-    NativeScmAdditionalContinuationOption { index } =>
-      match v2.std.collection.list_at_optional(
+    gunbc.native_scm_interaction_contract.NativeScmAdditionalContinuationOption { index } =>
+      v2.std.collection.list_at_optional(
         xs: options.additional_options,
         index: index,
-      ) {
-        Present { value: option } =>
-          v2.std.optional.Present { value: option.alternative }
-        Absent => v2.std.optional.Absent
-      }
+      ) |> map(option => option.alternative)
   }
 }
 
 fn landing_resolve_question(
-  prior: gunbc.source_integration_landing_spine.LandingClosedManyReceipt,
+  prior: LandingClosedManyReceipt,
   choice: gunbc.native_scm_interaction_contract.NativeScmContinuationChoice,
-) -> gunbc.source_integration_landing_spine.LandingChoiceResolution {
+) -> LandingChoiceResolution {
   let question = prior.question
   let continuation = landing_question_continuation(question: question)
   match gunbc.native_scm_interaction_contract.native_scm_resolve_choice(
     continuation: continuation,
     choice: choice,
   ) {
-    NativeScmContinuationChoiceMatched { selected } => {
+    gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceMatched { selected } => {
       let alternative = landing_alternative_for_choice(
         options: question.options,
         choice: selected.identity.choice,
       )
       match alternative {
-        Present { value } =>
+        v2.std.optional.Present { value } =>
           LandingChoiceAdvanced {
-            continuation: gunbc.source_integration_landing_spine.LandingChoiceContinuation {
+            continuation: LandingChoiceContinuation {
               prior: prior,
               selected: selected,
               processing: landing_resume_alternative(
@@ -524,14 +520,14 @@ fn landing_resolve_question(
               ),
             },
           }
-        Absent =>
+        v2.std.optional.Absent =>
           LandingChoiceNotOffered {
             prior: prior,
             choice: selected.identity.choice,
           }
       }
     }
-    NativeScmContinuationChoiceNotOffered { choice: not_offered } =>
+    gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceNotOffered { choice: not_offered } =>
       LandingChoiceNotOffered {
         prior: prior,
         choice: not_offered,
@@ -541,16 +537,16 @@ fn landing_resolve_question(
 
 type LandingClosedZeroDisposition
   = LandingZeroTerminal {
-      refusal: gunbc.source_integration_landing_spine.LandingRefusal,
+      refusal: LandingRefusal,
     }
 
 type LandingUnclosedCause
   = LandingEvidenceNotReady {
-      first: gunbc.source_integration_landing_spine.LandingEvidenceBlock,
-      remaining: List<gunbc.source_integration_landing_spine.LandingEvidenceBlock>,
+      first: LandingEvidenceBlock,
+      remaining: List<LandingEvidenceBlock>,
     }
   | LandingClosureCertificateMissing {
-      certificate: gunbc.source_integration_landing_spine.LandingClosureCertificateKind,
+      certificate: LandingClosureCertificateKind,
       cause: std.types.NonEmptyStr,
     }
   | LandingSearchBoundExhausted {
@@ -559,45 +555,45 @@ type LandingUnclosedCause
 
 type LandingUnclosedDisposition
   = LandingInvestigationContinues {
-      continuation: gunbc.source_integration_landing_spine.LandingMachineContinuation,
+      continuation: LandingMachineContinuation,
     }
   | LandingEvidenceConflictContinues {
-      continuation: gunbc.source_integration_landing_spine.LandingMachineContinuation,
+      continuation: LandingMachineContinuation,
     }
   | LandingUnclosedTerminal {
-      refusal: gunbc.source_integration_landing_spine.LandingRefusal,
+      refusal: LandingRefusal,
     }
 
 type LandingClosedOneReceipt {
-  closed_space: gunbc.source_integration_landing_spine.LandingClosedResultSpaceReceipt
-  unique: gunbc.source_integration_landing_spine.LandingResultClass
+  closed_space: LandingClosedResultSpaceReceipt
+  unique: LandingResultClass
 }
 
 type LandingSemanticResultSpace
   = LandingClosedZero {
-      closed_space: gunbc.source_integration_landing_spine.LandingClosedResultSpaceReceipt,
+      closed_space: LandingClosedResultSpaceReceipt,
       incompatible_core: std.types.NonEmptyStr,
       counterexample: std.types.NonEmptyStr,
-      disposition: gunbc.source_integration_landing_spine.LandingClosedZeroDisposition,
+      disposition: LandingClosedZeroDisposition,
     }
   | LandingClosedOne {
-      receipt: gunbc.source_integration_landing_spine.LandingClosedOneReceipt,
+      receipt: LandingClosedOneReceipt,
     }
   | LandingClosedMany {
-      receipt: gunbc.source_integration_landing_spine.LandingClosedManyReceipt,
+      receipt: LandingClosedManyReceipt,
     }
   | LandingUnclosed {
-      proposal: gunbc.source_integration_landing_spine.LandingProposalContract,
-      cause: gunbc.source_integration_landing_spine.LandingUnclosedCause,
-      partial_results: List<gunbc.source_integration_landing_spine.LandingResultHandle>,
-      disposition: gunbc.source_integration_landing_spine.LandingUnclosedDisposition,
+      proposal: LandingProposalContract,
+      cause: LandingUnclosedCause,
+      partial_results: List<LandingResultHandle>,
+      disposition: LandingUnclosedDisposition,
     }
 
 fn landing_closed_result_space(
-  attempt: gunbc.source_integration_landing_spine.LandingClosureAttempt,
-  zero_refusal: gunbc.source_integration_landing_spine.LandingRefusal,
-  continuation: gunbc.source_integration_landing_spine.LandingMachineContinuation,
-) -> gunbc.source_integration_landing_spine.LandingSemanticResultSpace {
+  attempt: LandingClosureAttempt,
+  zero_refusal: LandingRefusal,
+  continuation: LandingMachineContinuation,
+) -> LandingSemanticResultSpace {
   match attempt {
     LandingClosureComplete { receipt } =>
       match receipt.subject.candidates {
@@ -612,16 +608,16 @@ fn landing_closed_result_space(
           }
         LandingOneResultClass { result } =>
           LandingClosedOne {
-            receipt: gunbc.source_integration_landing_spine.LandingClosedOneReceipt {
+            receipt: LandingClosedOneReceipt {
               closed_space: receipt,
               unique: result,
             },
           }
         LandingManyResultClasses { question, options } =>
           LandingClosedMany {
-            receipt: gunbc.source_integration_landing_spine.LandingClosedManyReceipt {
+            receipt: LandingClosedManyReceipt {
               closed_space: receipt,
-              question: gunbc.source_integration_landing_spine.LandingNormativeQuestion {
+              question: LandingNormativeQuestion {
                 proposal: receipt.subject.ready_evidence.proposal,
                 question: question,
                 options: options,
@@ -645,12 +641,12 @@ fn landing_closed_result_space(
 }
 
 fn landing_blocked_evidence_result(
-  readiness: gunbc.source_integration_landing_spine.LandingEvidenceReadiness,
-  partial_results: List<gunbc.source_integration_landing_spine.LandingResultHandle>,
-  continuation: gunbc.source_integration_landing_spine.LandingMachineContinuation,
-  conflict_continuation: gunbc.source_integration_landing_spine.LandingMachineContinuation,
-  terminal_refusal: gunbc.source_integration_landing_spine.LandingRefusal,
-) -> gunbc.source_integration_landing_spine.LandingSemanticResultSpace {
+  readiness: LandingEvidenceReadiness,
+  partial_results: List<LandingResultHandle>,
+  continuation: LandingMachineContinuation,
+  conflict_continuation: LandingMachineContinuation,
+  terminal_refusal: LandingRefusal,
+) -> LandingSemanticResultSpace {
   match readiness {
     LandingEvidenceReady { receipt } =>
       LandingUnclosed {
@@ -740,51 +736,51 @@ fn landing_blocked_evidence_result(
 }
 
 type LandingAdmissionReceipt {
-  semantic: gunbc.source_integration_landing_spine.LandingClosedOneReceipt
-  authority: gunbc.source_integration_landing_spine.LandingActorAuthorityHandle
+  semantic: LandingClosedOneReceipt
+  authority: LandingActorAuthorityHandle
   receipt: std.content_hash.ContentHash
 }
 
 type LandingAdmissionDecision
   = LandingAdmitted {
-      receipt: gunbc.source_integration_landing_spine.LandingAdmissionReceipt,
+      receipt: LandingAdmissionReceipt,
     }
   | LandingApprovalRequired {
-      semantic: gunbc.source_integration_landing_spine.LandingClosedOneReceipt,
-      continuation: gunbc.source_integration_landing_spine.LandingMachineContinuation,
+      semantic: LandingClosedOneReceipt,
+      continuation: LandingMachineContinuation,
     }
   | LandingUnauthorized {
-      semantic: gunbc.source_integration_landing_spine.LandingClosedOneReceipt,
-      refusal: gunbc.source_integration_landing_spine.LandingRefusal,
+      semantic: LandingClosedOneReceipt,
+      refusal: LandingRefusal,
     }
   | LandingPolicyRefused {
-      semantic: gunbc.source_integration_landing_spine.LandingClosedOneReceipt,
-      refusal: gunbc.source_integration_landing_spine.LandingRefusal,
+      semantic: LandingClosedOneReceipt,
+      refusal: LandingRefusal,
     }
   | LandingSelfAmendmentRefused {
-      semantic: gunbc.source_integration_landing_spine.LandingClosedOneReceipt,
-      refusal: gunbc.source_integration_landing_spine.LandingRefusal,
+      semantic: LandingClosedOneReceipt,
+      refusal: LandingRefusal,
     }
 
 type LandingAdmittedResult {
-  admission: gunbc.source_integration_landing_spine.LandingAdmissionReceipt
+  admission: LandingAdmissionReceipt
 }
 
 type LandingAdmissionAdvance
   = LandingAdmissionAdvanced {
-      admitted: gunbc.source_integration_landing_spine.LandingAdmittedResult,
+      admitted: LandingAdmittedResult,
     }
   | LandingAdmissionNotAdvanced {
-      decision: gunbc.source_integration_landing_spine.LandingAdmissionDecision,
+      decision: LandingAdmissionDecision,
     }
 
 fn landing_admitted_result(
-  admission: gunbc.source_integration_landing_spine.LandingAdmissionDecision,
-) -> gunbc.source_integration_landing_spine.LandingAdmissionAdvance {
+  admission: LandingAdmissionDecision,
+) -> LandingAdmissionAdvance {
   match admission {
     LandingAdmitted { receipt } =>
       LandingAdmissionAdvanced {
-        admitted: gunbc.source_integration_landing_spine.LandingAdmittedResult {
+        admitted: LandingAdmittedResult {
           admission: receipt,
         },
       }
@@ -820,36 +816,36 @@ fn landing_admitted_result(
 }
 
 type LandingTransitionReceipt {
-  admitted: gunbc.source_integration_landing_spine.LandingAdmittedResult
-  identity: gunbc.source_integration_landing_spine.LandingTransitionIdentity
-  resulting_state: gunbc.source_integration_landing_spine.LandingResultingStateHandle
-  transition_authority: gunbc.source_integration_landing_spine.LandingActorAuthorityHandle
+  admitted: LandingAdmittedResult
+  identity: LandingTransitionIdentity
+  resulting_state: LandingResultingStateHandle
+  transition_authority: LandingActorAuthorityHandle
 }
 
 type LandingReadBackObservation {
-  transition: gunbc.source_integration_landing_spine.LandingTransitionReceipt
-  observed_state: gunbc.source_integration_landing_spine.LandingResultingStateHandle
-  authority: gunbc.source_integration_landing_spine.LandingObservationAuthorityHandle
+  transition: LandingTransitionReceipt
+  observed_state: LandingResultingStateHandle
+  authority: LandingObservationAuthorityHandle
 }
 
 type LandingIndependentReadBackReceipt {
-  observation: gunbc.source_integration_landing_spine.LandingReadBackObservation
+  observation: LandingReadBackObservation
 }
 
 type LandingReadBackAssessment
   = LandingReadBackMatched {
-      receipt: gunbc.source_integration_landing_spine.LandingIndependentReadBackReceipt,
+      receipt: LandingIndependentReadBackReceipt,
     }
   | LandingReadBackMismatched {
-      observation: gunbc.source_integration_landing_spine.LandingReadBackObservation,
+      observation: LandingReadBackObservation,
     }
   | LandingReadBackAuthorityRefused {
-      observation: gunbc.source_integration_landing_spine.LandingReadBackObservation,
+      observation: LandingReadBackObservation,
     }
 
 fn landing_independent_read_back(
-  observation: gunbc.source_integration_landing_spine.LandingReadBackObservation,
-) -> gunbc.source_integration_landing_spine.LandingReadBackAssessment {
+  observation: LandingReadBackObservation,
+) -> LandingReadBackAssessment {
   let subject = observation.transition.admitted.admission.semantic.closed_space.subject
   let authority = subject.read_back_authority
   if authority.admission_contract != subject.admission_contract
@@ -860,7 +856,7 @@ fn landing_independent_read_back(
     }
   } else if observation.observed_state == observation.transition.resulting_state {
     LandingReadBackMatched {
-      receipt: gunbc.source_integration_landing_spine.LandingIndependentReadBackReceipt {
+      receipt: LandingIndependentReadBackReceipt {
         observation: observation,
       },
     }
@@ -872,30 +868,30 @@ fn landing_independent_read_back(
 }
 
 type LandingCompatibilityTargetBinding {
-  semantic_target: gunbc.source_integration_landing_spine.LandingTargetHandle
+  semantic_target: LandingTargetHandle
   native_target: gunbc.scm_compatibility_shape.CompatibilityTargetHandle
-  receipt: gunbc.source_integration_landing_spine.LandingTargetBindingReceipt
+  receipt: LandingTargetBindingReceipt
 }
 
 type LandingProjectionOfAcceptedTransition {
-  transition: gunbc.source_integration_landing_spine.LandingTransitionReceipt
-  binding: gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding
+  transition: LandingTransitionReceipt
+  binding: LandingCompatibilityTargetBinding
   projection: gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt
 }
 
 type LandingProjectionRelation
   = LandingProjectionBound {
-      receipt: gunbc.source_integration_landing_spine.LandingProjectionOfAcceptedTransition,
+      receipt: LandingProjectionOfAcceptedTransition,
     }
   | LandingProjectionBindingRefused {
       cause: std.types.NonEmptyStr,
     }
 
 fn landing_projection_of_transition(
-  transition: gunbc.source_integration_landing_spine.LandingTransitionReceipt,
-  binding: gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding,
+  transition: LandingTransitionReceipt,
+  binding: LandingCompatibilityTargetBinding,
   projection: gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt,
-) -> gunbc.source_integration_landing_spine.LandingProjectionRelation {
+) -> LandingProjectionRelation {
   let semantic_target = transition.admitted.admission.semantic.closed_space.subject.ready_evidence.proposal.target
   if binding.semantic_target != semantic_target {
     LandingProjectionBindingRefused {
@@ -907,7 +903,7 @@ fn landing_projection_of_transition(
     }
   } else {
     LandingProjectionBound {
-      receipt: gunbc.source_integration_landing_spine.LandingProjectionOfAcceptedTransition {
+      receipt: LandingProjectionOfAcceptedTransition {
         transition: transition,
         binding: binding,
         projection: projection,
@@ -918,40 +914,40 @@ fn landing_projection_of_transition(
 
 type LandingProjectionStatus
   = LandingProjected {
-      receipt: gunbc.source_integration_landing_spine.LandingProjectionOfAcceptedTransition,
+      receipt: LandingProjectionOfAcceptedTransition,
     }
   | LandingProjectionPending {
-      transition: gunbc.source_integration_landing_spine.LandingTransitionReceipt,
+      transition: LandingTransitionReceipt,
       realization: gunbc.scm_compatibility_shape.CompatibilityRealizationHandle,
-      target: gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding,
+      target: LandingCompatibilityTargetBinding,
       cause: std.types.NonEmptyStr,
     }
   | LandingProjectionFailed {
-      transition: gunbc.source_integration_landing_spine.LandingTransitionReceipt,
+      transition: LandingTransitionReceipt,
       realization: gunbc.scm_compatibility_shape.CompatibilityRealizationHandle,
-      target: gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding,
+      target: LandingCompatibilityTargetBinding,
       cause: std.types.NonEmptyStr,
     }
 
 type LandingProjectionStatusFold<R> {
-  projected: fn(gunbc.source_integration_landing_spine.LandingProjectionOfAcceptedTransition) -> R
+  projected: fn(LandingProjectionOfAcceptedTransition) -> R
   pending: fn(
     LandingTransitionReceipt,
     gunbc.scm_compatibility_shape.CompatibilityRealizationHandle,
-    gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding,
+    LandingCompatibilityTargetBinding,
     std.types.NonEmptyStr,
   ) -> R
   failed: fn(
     LandingTransitionReceipt,
     gunbc.scm_compatibility_shape.CompatibilityRealizationHandle,
-    gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding,
+    LandingCompatibilityTargetBinding,
     std.types.NonEmptyStr,
   ) -> R
 }
 
 fn landing_projection_status_fold<R>(
-  status: gunbc.source_integration_landing_spine.LandingProjectionStatus,
-  fold: gunbc.source_integration_landing_spine.LandingProjectionStatusFold<R>,
+  status: LandingProjectionStatus,
+  fold: LandingProjectionStatusFold<R>,
 ) -> R {
   match status {
     LandingProjected { receipt } =>
@@ -974,12 +970,12 @@ fn landing_projection_status_fold<R>(
 }
 
 fn landing_projection_status_matches(
-  status: gunbc.source_integration_landing_spine.LandingProjectionStatus,
-  transition: gunbc.source_integration_landing_spine.LandingTransitionReceipt,
+  status: LandingProjectionStatus,
+  transition: LandingTransitionReceipt,
 ) -> Bool {
   landing_projection_status_fold(
     status: status,
-    fold: gunbc.source_integration_landing_spine.LandingProjectionStatusFold {
+    fold: LandingProjectionStatusFold {
       projected: fn(receipt) {
         receipt.transition == transition
       },
@@ -994,22 +990,22 @@ fn landing_projection_status_matches(
 }
 
 type LandingCommittedTransition {
-  read_back: gunbc.source_integration_landing_spine.LandingIndependentReadBackReceipt
-  projections: List<gunbc.source_integration_landing_spine.LandingProjectionStatus>
+  read_back: LandingIndependentReadBackReceipt
+  projections: List<LandingProjectionStatus>
 }
 
 type LandingCommitAssembly
   = LandingCommitAssembled {
-      committed: gunbc.source_integration_landing_spine.LandingCommittedTransition,
+      committed: LandingCommittedTransition,
     }
   | LandingCommitRelationRefused {
       cause: std.types.NonEmptyStr,
     }
 
 fn landing_committed_transition(
-  observation: gunbc.source_integration_landing_spine.LandingReadBackObservation,
-  projections: List<gunbc.source_integration_landing_spine.LandingProjectionStatus>,
-) -> gunbc.source_integration_landing_spine.LandingCommitAssembly {
+  observation: LandingReadBackObservation,
+  projections: List<LandingProjectionStatus>,
+) -> LandingCommitAssembly {
   let read_back = landing_independent_read_back(observation: observation)
   match read_back {
     LandingReadBackAuthorityRefused { observation: _ } =>
@@ -1028,7 +1024,7 @@ fn landing_committed_transition(
         )
       ) {
         LandingCommitAssembled {
-          committed: gunbc.source_integration_landing_spine.LandingCommittedTransition {
+          committed: LandingCommittedTransition {
             read_back: receipt,
             projections: projections,
           },
@@ -1043,32 +1039,32 @@ fn landing_committed_transition(
 
 type LandingTransitionOutcome
   = LandingCommitObserved {
-      observation: gunbc.source_integration_landing_spine.LandingReadBackObservation,
-      projections: List<gunbc.source_integration_landing_spine.LandingProjectionStatus>,
-      continuation: gunbc.source_integration_landing_spine.LandingMachineContinuation,
+      observation: LandingReadBackObservation,
+      projections: List<LandingProjectionStatus>,
+      continuation: LandingMachineContinuation,
     }
   | LandingRetryStaleParent {
-      admitted: gunbc.source_integration_landing_spine.LandingAdmittedResult,
-      continuation: gunbc.source_integration_landing_spine.LandingMachineContinuation,
+      admitted: LandingAdmittedResult,
+      continuation: LandingMachineContinuation,
     }
   | LandingEffectRetryPending {
-      admitted: gunbc.source_integration_landing_spine.LandingAdmittedResult,
-      continuation: gunbc.source_integration_landing_spine.LandingMachineContinuation,
+      admitted: LandingAdmittedResult,
+      continuation: LandingMachineContinuation,
     }
   | LandingEffectFailed {
-      admitted: gunbc.source_integration_landing_spine.LandingAdmittedResult,
-      refusal: gunbc.source_integration_landing_spine.LandingRefusal,
+      admitted: LandingAdmittedResult,
+      refusal: LandingRefusal,
     }
 
 type LandingSpineReceipt
   = LandingSemanticSpine {
-      result: gunbc.source_integration_landing_spine.LandingSemanticResultSpace,
+      result: LandingSemanticResultSpace,
     }
   | LandingAdmissionSpine {
-      admission: gunbc.source_integration_landing_spine.LandingAdmissionDecision,
+      admission: LandingAdmissionDecision,
     }
   | LandingTransitionSpine {
-      transition: gunbc.source_integration_landing_spine.LandingTransitionOutcome,
+      transition: LandingTransitionOutcome,
     }
 
 type LandingUserBoundary
@@ -1076,13 +1072,13 @@ type LandingUserBoundary
       outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalOutcome,
     }
   | LandingMachineOwned {
-      status: gunbc.source_integration_landing_spine.LandingAudienceStatus,
-      continuation: gunbc.source_integration_landing_spine.LandingMachineContinuation,
+      status: LandingAudienceStatus,
+      continuation: LandingMachineContinuation,
     }
 
 fn landing_machine_owned(
-  continuation: gunbc.source_integration_landing_spine.LandingMachineContinuation,
-) -> gunbc.source_integration_landing_spine.LandingUserBoundary {
+  continuation: LandingMachineContinuation,
+) -> LandingUserBoundary {
   LandingMachineOwned {
     status: continuation.status,
     continuation: continuation,
@@ -1090,8 +1086,8 @@ fn landing_machine_owned(
 }
 
 fn landing_user_refusal(
-  refusal: gunbc.source_integration_landing_spine.LandingRefusal,
-) -> gunbc.source_integration_landing_spine.LandingUserBoundary {
+  refusal: LandingRefusal,
+) -> LandingUserBoundary {
   LandingTerminal {
     outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalCouldNotLand {
       refusal: landing_native_refusal(refusal: refusal),
@@ -1100,8 +1096,8 @@ fn landing_user_refusal(
 }
 
 fn landing_user_question(
-  question: gunbc.source_integration_landing_spine.LandingNormativeQuestion,
-) -> gunbc.source_integration_landing_spine.LandingUserBoundary {
+  question: LandingNormativeQuestion,
+) -> LandingUserBoundary {
   LandingTerminal {
     outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalChoiceRequired {
       question: question.question as String,
@@ -1111,8 +1107,8 @@ fn landing_user_question(
 }
 
 fn landing_semantic_user_boundary(
-  semantic: gunbc.source_integration_landing_spine.LandingSemanticResultSpace,
-) -> gunbc.source_integration_landing_spine.LandingUserBoundary {
+  semantic: LandingSemanticResultSpace,
+) -> LandingUserBoundary {
   match semantic {
     LandingClosedZero {
       closed_space: _,
@@ -1123,7 +1119,7 @@ fn landing_semantic_user_boundary(
       landing_user_refusal(refusal: refusal)
     LandingClosedOne { receipt: _ } =>
       landing_machine_owned(
-        continuation: gunbc.source_integration_landing_spine.LandingMachineContinuation {
+        continuation: LandingMachineContinuation {
           handle: "landing-prepare-admission",
           kind: LandingPrepareTransition,
           status: "checking whether the change may land",
@@ -1149,12 +1145,12 @@ fn landing_semantic_user_boundary(
 }
 
 fn landing_admission_user_boundary(
-  admission: gunbc.source_integration_landing_spine.LandingAdmissionDecision,
-) -> gunbc.source_integration_landing_spine.LandingUserBoundary {
+  admission: LandingAdmissionDecision,
+) -> LandingUserBoundary {
   match admission {
     LandingAdmitted { receipt: _ } =>
       landing_machine_owned(
-        continuation: gunbc.source_integration_landing_spine.LandingMachineContinuation {
+        continuation: LandingMachineContinuation {
           handle: "landing-prepare-transition",
           kind: LandingPrepareTransition,
           status: "preparing the accepted change to land",
@@ -1172,8 +1168,8 @@ fn landing_admission_user_boundary(
 }
 
 fn landing_transition_user_boundary(
-  transition: gunbc.source_integration_landing_spine.LandingTransitionOutcome,
-) -> gunbc.source_integration_landing_spine.LandingUserBoundary {
+  transition: LandingTransitionOutcome,
+) -> LandingUserBoundary {
   match transition {
     LandingCommitObserved {
       observation,
@@ -1205,8 +1201,8 @@ fn landing_transition_user_boundary(
 }
 
 fn landing_user_boundary(
-  receipt: gunbc.source_integration_landing_spine.LandingSpineReceipt,
-) -> gunbc.source_integration_landing_spine.LandingUserBoundary {
+  receipt: LandingSpineReceipt,
+) -> LandingUserBoundary {
   match receipt {
     LandingSemanticSpine { result } =>
       landing_semantic_user_boundary(semantic: result)

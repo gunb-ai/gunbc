@@ -9,56 +9,56 @@ data walk_plan_stage_recursion_refusal_barrier_recipe: String = "RED recursion-r
 
 data walk_plan_stage_receipt_refusal_barrier_recipe: String = "RED receipt-write refusal barrier: GUNBC_WALK_ATTEMPT_ID=walk-plan-stage-fixture same invocation with --plan-function walk_plan_stage_receipt_refusal_barrier_plan. Stage-1 receipt write must fail closed after the poison claim; stage 2 must not run; target/walk_plan_stage_stage2_ran must stay absent."
 
-fn walk_plan_stage_overlap_barrier_plan() -> WalkPlan<std.realization_schedule.NoWalkFinalization> {
+fn walk_plan_stage_overlap_barrier_plan() -> std.realization_schedule.WalkPlan<std.realization_schedule.NoWalkFinalization> {
   std.realization_schedule.WalkPlan {
     pre_walk_execution: std.realization_schedule.NoPreWalkExecution {},
-    batches: [[walk_plan_stage_green_floor_claim(), walk_plan_stage_cleanup_claim()]],
+    batches: [[v2.test.fixture.walk_plan_stage.common.walk_plan_stage_green_floor_claim(), v2.test.fixture.walk_plan_stage.common.walk_plan_stage_cleanup_claim()]],
     finalization: std.realization_schedule.NoFinalizationDeclared {},
     on_success_stages: [
-      [walk_plan_stage_overlap_peer_a_claim(), walk_plan_stage_overlap_peer_b_claim()],
-      [walk_plan_stage_barrier_witness_claim()],
+      [v2.test.fixture.walk_plan_stage.common.walk_plan_stage_overlap_peer_a_claim(), v2.test.fixture.walk_plan_stage.common.walk_plan_stage_overlap_peer_b_claim()],
+      [v2.test.fixture.walk_plan_stage.common.walk_plan_stage_barrier_witness_claim()],
     ],
     ordinary_budget: none,
     on_success_budget: none,
   }
 }
 
-fn walk_plan_stage_failure_barrier_plan() -> WalkPlan<std.realization_schedule.NoWalkFinalization> {
+fn walk_plan_stage_failure_barrier_plan() -> std.realization_schedule.WalkPlan<std.realization_schedule.NoWalkFinalization> {
   std.realization_schedule.WalkPlan {
     pre_walk_execution: std.realization_schedule.NoPreWalkExecution {},
-    batches: [[walk_plan_stage_green_floor_claim(), walk_plan_stage_cleanup_claim()]],
+    batches: [[v2.test.fixture.walk_plan_stage.common.walk_plan_stage_green_floor_claim(), v2.test.fixture.walk_plan_stage.common.walk_plan_stage_cleanup_claim()]],
     finalization: std.realization_schedule.NoFinalizationDeclared {},
     on_success_stages: [
-      [walk_plan_stage_failure_red_member_claim()],
-      [walk_plan_stage_stage2_marker_claim()],
+      [v2.test.fixture.walk_plan_stage.common.walk_plan_stage_failure_red_member_claim()],
+      [v2.test.fixture.walk_plan_stage.common.walk_plan_stage_stage2_marker_claim()],
     ],
     ordinary_budget: none,
     on_success_budget: none,
   }
 }
 
-fn walk_plan_stage_recursion_refusal_barrier_plan() -> WalkPlan<std.realization_schedule.NoWalkFinalization> {
+fn walk_plan_stage_recursion_refusal_barrier_plan() -> std.realization_schedule.WalkPlan<std.realization_schedule.NoWalkFinalization> {
   std.realization_schedule.WalkPlan {
     pre_walk_execution: std.realization_schedule.NoPreWalkExecution {},
-    batches: [[walk_plan_stage_green_floor_claim(), walk_plan_stage_cleanup_claim()]],
+    batches: [[v2.test.fixture.walk_plan_stage.common.walk_plan_stage_green_floor_claim(), v2.test.fixture.walk_plan_stage.common.walk_plan_stage_cleanup_claim()]],
     finalization: std.realization_schedule.NoFinalizationDeclared {},
     on_success_stages: [
-      [walk_plan_stage_recursion_refusal_member_claim()],
-      [walk_plan_stage_stage2_marker_claim()],
+      [v2.test.fixture.walk_plan_stage.common.walk_plan_stage_recursion_refusal_member_claim()],
+      [v2.test.fixture.walk_plan_stage.common.walk_plan_stage_stage2_marker_claim()],
     ],
     ordinary_budget: none,
     on_success_budget: none,
   }
 }
 
-fn walk_plan_stage_receipt_refusal_barrier_plan() -> WalkPlan<std.realization_schedule.NoWalkFinalization> {
+fn walk_plan_stage_receipt_refusal_barrier_plan() -> std.realization_schedule.WalkPlan<std.realization_schedule.NoWalkFinalization> {
   std.realization_schedule.WalkPlan {
     pre_walk_execution: std.realization_schedule.NoPreWalkExecution {},
-    batches: [[walk_plan_stage_green_floor_claim(), walk_plan_stage_cleanup_claim()]],
+    batches: [[v2.test.fixture.walk_plan_stage.common.walk_plan_stage_green_floor_claim(), v2.test.fixture.walk_plan_stage.common.walk_plan_stage_cleanup_claim()]],
     finalization: std.realization_schedule.NoFinalizationDeclared {},
     on_success_stages: [
-      [walk_plan_stage_receipt_refusal_poison_claim()],
-      [walk_plan_stage_stage2_marker_claim()],
+      [v2.test.fixture.walk_plan_stage.common.walk_plan_stage_receipt_refusal_poison_claim()],
+      [v2.test.fixture.walk_plan_stage.common.walk_plan_stage_stage2_marker_claim()],
     ],
     ordinary_budget: none,
     on_success_budget: none,

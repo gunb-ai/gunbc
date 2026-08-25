@@ -1,15 +1,15 @@
 module test.claim.served_surface_browser_artifact_integrity_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 fn screenshot_artifact_matches_live_bytes(artifact: gunbc.served_surface_browser_observation.ScreenshotArtifact) -> Bool {
-  let digest = sha256sum_verify_via_shell(
+  let digest = extdeps.tools.sha256sum.sha256sum_verify_via_shell(
     path: artifact.path as std.types.NonEmptyStr,
     expected_digest: artifact.digest.hex)
-  let bytes = file_byte_count_via_wc(path: artifact.path as String as std.types.FilePath)
-  digest == Sha256Matches
-    && verify_file_byte_count(read: bytes, expected: artifact.bytes) == FileByteCountMatches
+  let bytes = extdeps.tools.wc.file_byte_count_via_wc(path: artifact.path as String as std.types.FilePath)
+  digest == extdeps.tools.sha256sum.Sha256Matches
+    && extdeps.tools.wc.verify_file_byte_count(read: bytes, expected: artifact.bytes) == extdeps.tools.wc.FileByteCountMatches
 }
 
 test fn witness_checked_in_screenshots_match_receipts() -> Bool {

@@ -136,7 +136,7 @@ fn focus_subject_key(f: FocusSubject) -> String {
 }
 
 fn focus_finish_line(l: gunbc.v1_deletion_plan.V1FinishLine) -> FocusSubject {
-  FinishLineFocused { line_key: v1_finish_line_key(l: l) }
+  FinishLineFocused { line_key: gunbc.v1_deletion_plan.v1_finish_line_key(l: l) }
 }
 
 fn focus_subject_eq(a: FocusSubject, b: FocusSubject) -> Bool {
@@ -172,7 +172,7 @@ fn camera_seek_depth(c: ProgramCamera, target: ProgramDepth) -> ProgramCamera {
 }
 
 data wheel_detent_threshold_px: Int = 80
-data wheel_gesture_reset_interval: std.measure.Millisecond = millisecond(count: 120)
+data wheel_gesture_reset_interval: std.measure.Millisecond = std.measure.millisecond(count: 120)
 
 type WheelIntegrator {
   travel_px: Int
@@ -344,7 +344,7 @@ fn mode_key_valid(k: String) -> Bool {
 
 fn focus_key_valid(k: String) -> Bool {
   k == focus_subject_key(f: NoSubjectSelected)
-    || (v1_exit_finish_lines() |> any(s => v1_finish_line_key(l: s.line) == k))
+    || (gunbc.v1_deletion_plan.v1_exit_finish_lines() |> any(s => gunbc.v1_deletion_plan.v1_finish_line_key(l: s.line) == k))
 }
 
 fn camera_from_wire(w: String) -> ProgramCamera {

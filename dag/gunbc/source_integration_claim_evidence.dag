@@ -4,7 +4,7 @@ module gunbc.source_integration_claim_evidence
 type SourceBindingFact {
   bound: std.types.RunKey
   source_read: v2.compiler.source_authority.DagSourceReadWitness
-  binding: OccurrenceBinding<std.occurrence_identity.OccurrenceId>
+  binding: std.occurrence_binding.OccurrenceBinding<std.occurrence_identity.OccurrenceId>
 }
 
 type SourceIntegrationProposition
@@ -20,7 +20,7 @@ type SourceIntegrationEvidenceInference = std.claim_evidence.EvidenceInference<S
 data source_binding_capture_probe: gunbc.readback_independence.ReadBackProbe = gunbc.readback_independence.ReadBackProbe {
   label: "decode one authored source binding",
   subject: "the binding captured for one proposal occurrence",
-  effect_on_subject: ProbeInert,
+  effect_on_subject: gunbc.readback_independence.ProbeInert,
 }
 
 fn source_binding_captured_claim(
@@ -56,12 +56,12 @@ fn source_binding_capture_inference(
   let claim = source_binding_captured_claim(
     fact: fact,
   )
-  infer_probe_evidence(
+  gunbc.claim_evidence_probe_rule.infer_probe_evidence(
     fact: std.claim_evidence.RecordedFact {
       id: fact_id,
       value: fact,
     },
-    direction: EvidenceSupports,
+    direction: std.claim_evidence.EvidenceSupports,
     inference_rule: "decoded-binding-supports-capture-only",
     authority: extdeps.languages.dag.syntax.dag_syntax_spec,
     provenance: std.claim_evidence.EvidenceProvenance {

@@ -1,15 +1,16 @@
 module test.claim.host_codex_runtime_provision_design
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn design_witness_realize_carries_scaffold() -> Bool {
   match gunbc.host_codex_runtime_provision.host_codex_runtime_provision_realize_scaffold {
-    Scaffold {
+    std.disposition.Scaffold {
       dissolves_to: std.disposition.RealizationDispatch,
       bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
       m == "gunbc.host_effect_realize" && n == "realize_provision_codex_runtime"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
@@ -39,14 +40,14 @@ test fn design_witness_routes_through_host_effect_apply() -> Bool {
 
 test fn design_witness_default_effect_is_codex_runtime() -> Bool {
   match gunbc.host_codex_runtime_provision.provision_codex_runtime_effect() {
-    ProvisionCodexRuntime {} => true
+    gunbc.host_effect.ProvisionCodexRuntime {} => true
     _ => false
   }
 }
 
 test fn design_witness_toolchain_kind_maps_to_effect() -> Bool {
-  match host_toolchain_ensure_effect(kind: CodexRuntime, host: "srv1" as product.placement_supply.HostIdentity) {
-    ProvisionCodexRuntime {} => true
+  match gunbc.host_toolchain_ensure.host_toolchain_ensure_effect(kind: gunbc.host_toolchain_ensure.CodexRuntime, host: "srv1" as HostIdentity) {
+    gunbc.host_effect.ProvisionCodexRuntime {} => true
     _ => false
   }
 }

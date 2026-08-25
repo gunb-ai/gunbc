@@ -1,5 +1,7 @@
 module v2.test.lens_fact_density.hollow_alias_nested_rejected
 
+
+
 data hollow_alias_nested_child: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^hollow_alias_nested_el_subject } },
   children: [],
@@ -19,14 +21,14 @@ data hollow_alias_nested_root: v2.std.node.Node = v2.std.node.Node {
 
 data hollow_alias_nested_authority: v2.std.node.Node = v2.test.lens_common.infer_fixture.claim_atom_node(s: ^hollow_alias_nested_el_symbol)
 
-test fn hollow_alias_nested_rejected_holds() -> v2.std.logic.Bool {
-  match validate_then_compile(
+test fn hollow_alias_nested_rejected_holds() -> Bool {
+  match v2.compiler.compile.validate_then_compile(
     source: hollow_alias_nested_root,
     lenses: [],
     mode: v2.compiler.compile.Eval { runtime: hollow_alias_nested_root }
   ) {
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       v2.test.lens_application.empty_required_lenses_skip_gate.non_empty_diagnostics_contain_reason(d: r, reason: ^fact_density_hollow_alias_locus)
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }

@@ -41,24 +41,24 @@ data workflow_progress_projection_note: String = "The row progress bar is a pure
 data admission_receipt_decode_note: String = "review 44094. This consumer used to ask a Bool of the receipt text and give ONE message to two different states: a receipt that records a refusal, and a document this reader cannot decode at all. They have different remedies — read the refusal's own reason versus find out who wrote a foreign document at the attempt path — so each gets its own located arm, decoded through the emitter's own rows rather than re-spelled here."
 
 fn receipt_records_admission(receipt: String) -> Bool {
-  match dispatch_environment_receipt_decode(receipt: receipt) {
-    ReceiptDecoded { status } =>
+  match gunbc.roadmap_dispatch_environment.dispatch_environment_receipt_decode(receipt: receipt) {
+    gunbc.roadmap_dispatch_environment.ReceiptDecoded { status } =>
       match status {
-        ReceiptAdmitted => true
-        ReceiptRefused => false
+        gunbc.roadmap_dispatch_environment.ReceiptAdmitted => true
+        gunbc.roadmap_dispatch_environment.ReceiptRefused => false
       }
-    ReceiptUndecodable { reason: _ } => false
+    gunbc.roadmap_dispatch_environment.ReceiptUndecodable { reason: _ } => false
   }
 }
 
 fn admission_receipt_refusal(receipt: String) -> gunbc.roadmap_provider_events.ProviderExecutionState {
-  match dispatch_environment_receipt_decode(receipt: receipt) {
-    ReceiptDecoded { status: _ } =>
+  match gunbc.roadmap_dispatch_environment.dispatch_environment_receipt_decode(receipt: receipt) {
+    gunbc.roadmap_dispatch_environment.ReceiptDecoded { status: _ } =>
       gunbc.roadmap_provider_events.ProviderEventsRefused {
         activity: "environment admission refused",
         detail: "admission receipt records a refused environment admission; its own reason field carries the cause",
       }
-    ReceiptUndecodable { reason } =>
+    gunbc.roadmap_dispatch_environment.ReceiptUndecodable { reason } =>
       gunbc.roadmap_provider_events.ProviderEventsRefused {
         activity: "admission receipt undecodable",
         detail: reason,
@@ -71,11 +71,11 @@ fn provider_execution_reconcile_process(
   process: gunbc.worker_lifecycle.WorkerProcessEvidence,
 ) -> gunbc.roadmap_provider_events.ProviderExecutionState {
   match provider {
-    ProviderFailed { activity: _, detail: _ } => provider
-    ProviderEventsRefused { activity: _, detail: _ } => provider
-    ProviderCompleted { activity } =>
+    gunbc.roadmap_provider_events.ProviderFailed { activity: _, detail: _ } => provider
+    gunbc.roadmap_provider_events.ProviderEventsRefused { activity: _, detail: _ } => provider
+    gunbc.roadmap_provider_events.ProviderCompleted { activity } =>
       match process {
-        WorkerProcessExited { exit_code, last_command: _ } =>
+        gunbc.worker_lifecycle.WorkerProcessExited { exit_code, last_command: _ } =>
           if exit_code == 0 {
             provider
           } else {
@@ -88,19 +88,19 @@ fn provider_execution_reconcile_process(
               ], ""),
             }
           }
-        WorkerProcessRunning { command: _ } =>
+        gunbc.worker_lifecycle.WorkerProcessRunning { command: _ } =>
           gunbc.roadmap_provider_events.ProviderRunning {
             activity: join([
               activity,
               "; awaiting process exit",
             ], ""),
           }
-        WorkerProcessAbsent =>
+        gunbc.worker_lifecycle.WorkerProcessAbsent =>
           gunbc.roadmap_provider_events.ProviderEventsRefused {
             activity: activity,
             detail: "Codex emitted turn.completed but no process exit was observed; the pane is absent, so the compatible exit the Agent obligation requires cannot be established",
           }
-        WorkerProcessUnobserved { reason } =>
+        gunbc.worker_lifecycle.WorkerProcessUnobserved { reason } =>
           gunbc.roadmap_provider_events.ProviderEventsRefused {
             activity: activity,
             detail: join([
@@ -112,13 +112,13 @@ fn provider_execution_reconcile_process(
       }
     _ =>
       match process {
-        WorkerProcessRunning { command: _ } =>
+        gunbc.worker_lifecycle.WorkerProcessRunning { command: _ } =>
           match provider {
-            ProviderNotStarted =>
+            gunbc.roadmap_provider_events.ProviderNotStarted =>
               gunbc.roadmap_provider_events.ProviderStarting { activity: "waiting for first provider event" }
             _ => provider
           }
-        WorkerProcessExited { exit_code, last_command: _ } =>
+        gunbc.worker_lifecycle.WorkerProcessExited { exit_code, last_command: _ } =>
           if exit_code == 0 {
             gunbc.roadmap_provider_events.ProviderEventsRefused {
               activity: "provider process exited",
@@ -134,12 +134,12 @@ fn provider_execution_reconcile_process(
               ], ""),
             }
           }
-        WorkerProcessAbsent =>
+        gunbc.worker_lifecycle.WorkerProcessAbsent =>
           gunbc.roadmap_provider_events.ProviderEventsRefused {
             activity: "provider process absent",
             detail: "no retained provider pane and no terminal provider event",
           }
-        WorkerProcessUnobserved { reason } =>
+        gunbc.worker_lifecycle.WorkerProcessUnobserved { reason } =>
           gunbc.roadmap_provider_events.ProviderEventsRefused {
             activity: "process observation refused",
             detail: reason as String,
@@ -153,8 +153,8 @@ fn workflow_provider_from_evidence(
 ) -> gunbc.roadmap_provider_events.ProviderExecutionState {
   if !evidence.modeled_state_present {
     gunbc.roadmap_provider_events.ProviderEventsRefused {
-      activity: legacy_attempt_supersedable_label,
-      detail: legacy_attempt_supersedable_detail,
+      activity: gunbc.roadmap_workflow_command.legacy_attempt_supersedable_label,
+      detail: gunbc.roadmap_workflow_command.legacy_attempt_supersedable_detail,
     }
   } else if !evidence.admission_receipt_readable {
     gunbc.roadmap_provider_events.ProviderEventsRefused {
@@ -178,8 +178,8 @@ fn workflow_provider_from_evidence(
     }
   } else {
     provider_execution_reconcile_process(
-      provider: provider_execution_state(
-        parsed: parse_codex_jsonl(text: evidence.provider_events),
+      provider: gunbc.roadmap_provider_events.provider_execution_state(
+        parsed: gunbc.roadmap_provider_events.parse_codex_jsonl(text: evidence.provider_events),
       ),
       process: evidence.process,
     )
@@ -190,40 +190,40 @@ fn provider_workflow_segment(
   provider: gunbc.roadmap_provider_events.ProviderExecutionState,
 ) -> gunbc.roadmap_workflow_stage.WorkflowSegment {
   match provider {
-    ProviderNotStarted =>
+    gunbc.roadmap_provider_events.ProviderNotStarted =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: AgentWorkflowSegment,
-        state: WorkflowSegmentPending,
+        kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending,
         detail: "provider has not emitted an event",
       }
-    ProviderStarting { activity } =>
+    gunbc.roadmap_provider_events.ProviderStarting { activity } =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: AgentWorkflowSegment,
-        state: WorkflowSegmentActive,
+        kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentActive,
         detail: activity,
       }
-    ProviderRunning { activity } =>
+    gunbc.roadmap_provider_events.ProviderRunning { activity } =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: AgentWorkflowSegment,
-        state: WorkflowSegmentActive,
+        kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentActive,
         detail: activity,
       }
-    ProviderCompleted { activity } =>
+    gunbc.roadmap_provider_events.ProviderCompleted { activity } =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: AgentWorkflowSegment,
-        state: WorkflowSegmentComplete,
+        kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete,
         detail: activity,
       }
-    ProviderFailed { activity, detail } =>
+    gunbc.roadmap_provider_events.ProviderFailed { activity, detail } =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: AgentWorkflowSegment,
-        state: WorkflowSegmentFailed,
+        kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentFailed,
         detail: join([activity, ": ", detail], ""),
       }
-    ProviderEventsRefused { activity, detail } =>
+    gunbc.roadmap_provider_events.ProviderEventsRefused { activity, detail } =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: AgentWorkflowSegment,
-        state: WorkflowSegmentRefused,
+        kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused,
         detail: join([activity, ": ", detail], ""),
       }
   }
@@ -237,64 +237,64 @@ fn publication_outcome_segment_state(
   outcome: gunbc.roadmap_publish.PublicationReceiptOutcome,
 ) -> gunbc.roadmap_workflow_stage.WorkflowSegmentState {
   match outcome {
-    ReceiptBound { pr_number: _, url: _, draft: _ } => WorkflowSegmentComplete
-    ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => WorkflowSegmentFailed
-    ReceiptRemoteBranchHeadDiverged { remote_head: _ } => WorkflowSegmentFailed
-    ReceiptBranchNotPublished { remote_branches_seen: _ } => WorkflowSegmentPending
-    ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => WorkflowSegmentPending
-    ReceiptBindingAmbiguous { pr_numbers: _ } => WorkflowSegmentRefused
-    ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => WorkflowSegmentRefused
-    ReceiptObservationRefused { detail: _ } => WorkflowSegmentRefused
+    gunbc.roadmap_publish.ReceiptBound { pr_number: _, url: _, draft: _ } => gunbc.roadmap_workflow_stage.WorkflowSegmentComplete
+    gunbc.roadmap_publish.ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => gunbc.roadmap_workflow_stage.WorkflowSegmentFailed
+    gunbc.roadmap_publish.ReceiptRemoteBranchHeadDiverged { remote_head: _ } => gunbc.roadmap_workflow_stage.WorkflowSegmentFailed
+    gunbc.roadmap_publish.ReceiptBranchNotPublished { remote_branches_seen: _ } => gunbc.roadmap_workflow_stage.WorkflowSegmentPending
+    gunbc.roadmap_publish.ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => gunbc.roadmap_workflow_stage.WorkflowSegmentPending
+    gunbc.roadmap_publish.ReceiptBindingAmbiguous { pr_numbers: _ } => gunbc.roadmap_workflow_stage.WorkflowSegmentRefused
+    gunbc.roadmap_publish.ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => gunbc.roadmap_workflow_stage.WorkflowSegmentRefused
+    gunbc.roadmap_publish.ReceiptObservationRefused { detail: _ } => gunbc.roadmap_workflow_stage.WorkflowSegmentRefused
   }
 }
 
 // THE HEAD IN THE BOUND SENTENCE COMES FROM THE SUBJECT, NOT FROM THE OUTCOME. ReceiptBound carries no head of its own - see roadmap_publish's receipt_bound_carries_no_head_note - because the head it offers is the subject's expected_head by the meaning of the variant. So this projection takes that head as a parameter and renders the one copy that exists, which is why the sentence cannot disagree with the judgment it describes.
 fn publication_outcome_segment_detail(
   outcome: gunbc.roadmap_publish.PublicationReceiptOutcome,
-  expected_head: std.types.CommitSha,
+  expected_head: CommitSha,
 ) -> String {
   match outcome {
-    ReceiptBound { pr_number, url, draft } =>
+    gunbc.roadmap_publish.ReceiptBound { pr_number, url, draft } =>
       join([
         "published as pull request #", to_string(pr_number),
         " at the expected head ", expected_head as String,
         if draft { " (draft)" } else { "" },
         ": ", url as String,
       ], "")
-    ReceiptHeadDiverged { pr_number, pr_head, url } =>
+    gunbc.roadmap_publish.ReceiptHeadDiverged { pr_number, pr_head, url } =>
       join([
         "pull request #", to_string(pr_number),
         " exists for this branch but offers ", pr_head as String,
         ", which is not the commit under judgment: ", url as String,
       ], "")
-    ReceiptBindingAmbiguous { pr_numbers } =>
+    gunbc.roadmap_publish.ReceiptBindingAmbiguous { pr_numbers } =>
       join([
         "two or more pull requests match this branch and base (",
         to_string(pr_numbers.count()),
         " of them), so no single one is the publication",
       ], "")
-    ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha } =>
+    gunbc.roadmap_publish.ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha } =>
       join([
         "the branch is pushed at the expected head ", head_sha as String,
         " and no pull request offers it, so there is nothing to review yet",
       ], "")
-    ReceiptRemoteBranchHeadDiverged { remote_head } =>
+    gunbc.roadmap_publish.ReceiptRemoteBranchHeadDiverged { remote_head } =>
       join([
         "the branch is pushed at ", remote_head as String,
         ", which is not the commit under judgment, and no pull request offers either",
       ], "")
-    ReceiptRemoteBranchBindingAmbiguous { refs_matched } =>
+    gunbc.roadmap_publish.ReceiptRemoteBranchBindingAmbiguous { refs_matched } =>
       join([
         "the remote advertised ", to_string(refs_matched),
         " refs for this branch name, so its head was not established",
       ], "")
-    ReceiptBranchNotPublished { remote_branches_seen } =>
+    gunbc.roadmap_publish.ReceiptBranchNotPublished { remote_branches_seen } =>
       join([
         "the branch is not on the remote (",
         to_string(remote_branches_seen),
         " branches advertised), so nothing has been published for this attempt",
       ], "")
-    ReceiptObservationRefused { detail } =>
+    gunbc.roadmap_publish.ReceiptObservationRefused { detail } =>
       join(["publication could not be observed: ", detail], "")
   }
 }
@@ -303,33 +303,33 @@ fn publication_evidence_segment(
   evidence: gunbc.roadmap_publish.PublicationEvidence,
 ) -> gunbc.roadmap_workflow_stage.WorkflowSegment {
   match evidence {
-    EvidenceAbsent =>
+    gunbc.roadmap_publish.EvidenceAbsent =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: PublicationWorkflowSegment,
-        state: WorkflowSegmentPending,
+        kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending,
         detail: "publication has not been adjudicated for this attempt's head: no receipt exists yet. This is an absent observation, not a judgment that the branch is unpublished",
       }
-    EvidenceUnreadable { reason } =>
+    gunbc.roadmap_publish.EvidenceUnreadable { reason } =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: PublicationWorkflowSegment,
-        state: WorkflowSegmentRefused,
+        kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused,
         detail: join([
           "a publication receipt exists for this attempt's head and this reader cannot decode it: ",
           reason,
         ], ""),
       }
-    EvidenceForAnotherSubject { field, expected, found } =>
+    gunbc.roadmap_publish.EvidenceForAnotherSubject { field, expected, found } =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: PublicationWorkflowSegment,
-        state: WorkflowSegmentRefused,
+        kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused,
         detail: join([
           "a publication receipt was read for this attempt and it answers a different question: ",
           field as String, " should be ", expected, " and the receipt records ", found,
         ], ""),
       }
-    EvidenceForSubject { receipt } =>
+    gunbc.roadmap_publish.EvidenceForSubject { receipt } =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: PublicationWorkflowSegment,
+        kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment,
         state: publication_outcome_segment_state(outcome: receipt.outcome),
         detail: join([
           publication_outcome_segment_detail(
@@ -349,18 +349,18 @@ fn publication_segment(
   publication_source: gunbc.roadmap_publish.PublicationReceiptSource,
 ) -> gunbc.roadmap_workflow_stage.WorkflowSegment {
   match publication_subject {
-    PublicationSubjectUnobserved { reason } =>
+    gunbc.roadmap_publish.PublicationSubjectUnobserved { reason } =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: PublicationWorkflowSegment,
-        state: WorkflowSegmentRefused,
+        kind: gunbc.roadmap_workflow_stage.PublicationWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused,
         detail: join([
           "this attempt has no exact head to adjudicate publication against, so no receipt can be checked for it: ",
           reason,
         ], ""),
       }
-    PublicationSubjectObserved { subject } =>
+    gunbc.roadmap_publish.PublicationSubjectObserved { subject } =>
       publication_evidence_segment(
-        evidence: publication_evidence_for(
+        evidence: gunbc.roadmap_publish.publication_evidence_for(
           expected: subject,
           source: publication_source,
         ),
@@ -372,37 +372,37 @@ fn verification_evidence_segment(
   evidence: gunbc.roadmap_verification_receipt.VerificationFileEvidence,
 ) -> gunbc.roadmap_workflow_stage.WorkflowSegment {
   match evidence {
-    VerificationFileAbsent =>
+    gunbc.roadmap_verification_receipt.VerificationFileAbsent =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: VerificationWorkflowSegment,
-        state: WorkflowSegmentPending,
+        kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending,
         detail: "the declared validation has not run yet for this attempt's head: no exact-head verification receipt exists yet. This is an absent observation, not a judgment that validation passed",
       }
-    VerificationFileUnreadable { reason } =>
+    gunbc.roadmap_verification_receipt.VerificationFileUnreadable { reason } =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: VerificationWorkflowSegment,
-        state: WorkflowSegmentRefused,
+        kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused,
         detail: join([
           "a verification receipt exists for this attempt's head and this reader cannot decode it: ",
           reason,
         ], ""),
       }
-    VerificationFileDecoded { evidence: decoded } =>
+    gunbc.roadmap_verification_receipt.VerificationFileDecoded { evidence: decoded } =>
       match decoded {
-        VerificationEvidenceForSubject { receipt } =>
+        gunbc.roadmap_verification_receipt.VerificationEvidenceForSubject { receipt } =>
           gunbc.roadmap_workflow_stage.WorkflowSegment {
-            kind: VerificationWorkflowSegment,
-            state: if verification_evidence_moves_lamp(evidence: decoded) {
-              WorkflowSegmentComplete
-            } else if validation_verdict_key(verdict: receipt.verdict) == "failed" {
-              WorkflowSegmentFailed
-            } else if validation_verdict_key(verdict: receipt.verdict) == "not_run" {
-              WorkflowSegmentPending
+            kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment,
+            state: if gunbc.roadmap_verification_receipt.verification_evidence_moves_lamp(evidence: decoded) {
+              gunbc.roadmap_workflow_stage.WorkflowSegmentComplete
+            } else if gunbc.roadmap_validation_oracle.validation_verdict_key(verdict: receipt.verdict) == "failed" {
+              gunbc.roadmap_workflow_stage.WorkflowSegmentFailed
+            } else if gunbc.roadmap_validation_oracle.validation_verdict_key(verdict: receipt.verdict) == "not_run" {
+              gunbc.roadmap_workflow_stage.WorkflowSegmentPending
             } else {
-              WorkflowSegmentRefused
+              gunbc.roadmap_workflow_stage.WorkflowSegmentRefused
             },
             detail: join([
-              validation_verdict_detail(verdict: receipt.verdict),
+              gunbc.roadmap_validation_oracle.validation_verdict_detail(verdict: receipt.verdict),
               " (",
               receipt.subject.branch as String,
               " at ",
@@ -410,39 +410,39 @@ fn verification_evidence_segment(
               ")",
             ], ""),
           }
-        VerificationEvidenceForAnotherSubject { field, expected, found } =>
+        gunbc.roadmap_verification_receipt.VerificationEvidenceForAnotherSubject { field, expected, found } =>
           gunbc.roadmap_workflow_stage.WorkflowSegment {
-            kind: VerificationWorkflowSegment,
-            state: WorkflowSegmentRefused,
+            kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment,
+            state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused,
             detail: join([
               "a verification receipt was read for this attempt and it answers a different question: ",
               field as String, " should be ", expected, " and the receipt records ", found,
             ], ""),
           }
-        VerificationEvidenceLegacyAttemptLevel { verdict_key } =>
+        gunbc.roadmap_verification_receipt.VerificationEvidenceLegacyAttemptLevel { verdict_key } =>
           gunbc.roadmap_workflow_stage.WorkflowSegment {
-            kind: VerificationWorkflowSegment,
-            state: WorkflowSegmentPending,
+            kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment,
+            state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending,
             detail: join([
-              legacy_validation_receipt_detail,
+              gunbc.roadmap_verification_receipt.legacy_validation_receipt_detail,
               " (verdict key: ",
               verdict_key,
               ")",
             ], ""),
           }
-        VerificationEvidenceUnreadable { reason } =>
+        gunbc.roadmap_verification_receipt.VerificationEvidenceUnreadable { reason } =>
           gunbc.roadmap_workflow_stage.WorkflowSegment {
-            kind: VerificationWorkflowSegment,
-            state: WorkflowSegmentRefused,
+            kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment,
+            state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused,
             detail: join([
               "a verification receipt exists for this attempt's head and this reader cannot decode it: ",
               reason,
             ], ""),
           }
-        VerificationEvidenceV1LegacyExactHead { legacy: _ } =>
+        gunbc.roadmap_verification_receipt.VerificationEvidenceV1LegacyExactHead { legacy: _ } =>
           gunbc.roadmap_workflow_stage.WorkflowSegment {
-            kind: VerificationWorkflowSegment,
-            state: WorkflowSegmentRefused,
+            kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment,
+            state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused,
             detail: "a v1 exact-head receipt at the exact path lacks change_window_identity and cannot satisfy the selected v2 subject",
           }
       }
@@ -457,62 +457,62 @@ fn verification_segment(
   verification_source: gunbc.roadmap_verification_receipt.VerificationReceiptFileSource,
 ) -> gunbc.roadmap_workflow_stage.WorkflowSegment {
   match verification_selection {
-    SelectionUnaddressable { cause } =>
+    gunbc.roadmap_verification_receipt.SelectionUnaddressable { cause } =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: VerificationWorkflowSegment,
-        state: WorkflowSegmentRefused,
+        kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused,
         detail: join([
           "the worktree head could not be observed, so the verification question cannot be addressed: ",
           cause,
         ], ""),
       }
-    SelectionAbsent =>
+    gunbc.roadmap_verification_receipt.SelectionAbsent =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: VerificationWorkflowSegment,
-        state: WorkflowSegmentPending,
+        kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending,
         detail: "the belt has not selected a verification window for this head yet",
       }
-    SelectionUnreadable { cause } =>
+    gunbc.roadmap_verification_receipt.SelectionUnreadable { cause } =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: VerificationWorkflowSegment,
-        state: WorkflowSegmentRefused,
+        kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused,
         detail: join([
           "the current verification selection could not be read: ",
           cause,
         ], ""),
       }
-    SelectionMalformed { cause } =>
+    gunbc.roadmap_verification_receipt.SelectionMalformed { cause } =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
-        kind: VerificationWorkflowSegment,
-        state: WorkflowSegmentRefused,
+        kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused,
         detail: join([
           "the current verification selection is malformed: ",
           cause,
         ], ""),
       }
-    SelectionObserved { head: _, window_identity: _ } =>
+    gunbc.roadmap_verification_receipt.SelectionObserved { head: _, window_identity: _ } =>
       match verification_subject {
-        VerificationSubjectUnobserved { reason } =>
+        gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved { reason } =>
           gunbc.roadmap_workflow_stage.WorkflowSegment {
-            kind: VerificationWorkflowSegment,
-            state: WorkflowSegmentRefused,
+            kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment,
+            state: gunbc.roadmap_workflow_stage.WorkflowSegmentRefused,
             detail: join([
               "this attempt has no exact head to adjudicate verification against, so no receipt can be checked for it: ",
               reason,
             ], ""),
           }
-        VerificationSubjectObserved { subject } =>
+        gunbc.roadmap_verification_receipt.VerificationSubjectObserved { subject } =>
           if match verification_source {
             VerificationReceiptAbsent => true
             VerificationReceiptUnreadable { detail: _ } => false
             VerificationReceiptPresent { text: _ } => false
           } && match provider {
-            ProviderCompleted { activity: _ } => true
+            gunbc.roadmap_provider_events.ProviderCompleted { activity: _ } => true
             _ => false
           } {
             gunbc.roadmap_workflow_stage.WorkflowSegment {
-              kind: VerificationWorkflowSegment,
-              state: WorkflowSegmentPending,
+              kind: gunbc.roadmap_workflow_stage.VerificationWorkflowSegment,
+              state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending,
               detail: join([
                 "awaiting independent exact-head validation receipt",
                 if validation_summary == "" {
@@ -524,7 +524,7 @@ fn verification_segment(
             }
           } else {
             verification_evidence_segment(
-              evidence: verification_file_evidence_for(
+              evidence: gunbc.roadmap_verification_receipt.verification_file_evidence_for(
                 expected: subject,
                 source: verification_source,
               ),
@@ -541,13 +541,13 @@ fn workflow_segment_from_evidence(
   admitted: Bool,
 ) -> gunbc.roadmap_workflow_stage.WorkflowSegment {
   match kind {
-    EnvironmentWorkflowSegment =>
+    gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
         kind: kind,
         state: if admitted {
-          WorkflowSegmentComplete
+          gunbc.roadmap_workflow_stage.WorkflowSegmentComplete
         } else {
-          WorkflowSegmentRefused
+          gunbc.roadmap_workflow_stage.WorkflowSegmentRefused
         },
         detail: if admitted {
           "dispatch environment admitted with grounded Ensure receipts"
@@ -557,13 +557,13 @@ fn workflow_segment_from_evidence(
           "environment admission receipt unavailable"
         },
       }
-    WorkspaceWorkflowSegment =>
+    gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
         kind: kind,
         state: if evidence.modeled_state_present {
-          WorkflowSegmentComplete
+          gunbc.roadmap_workflow_stage.WorkflowSegmentComplete
         } else {
-          WorkflowSegmentRefused
+          gunbc.roadmap_workflow_stage.WorkflowSegmentRefused
         },
         detail: if evidence.modeled_state_present {
           "attempt branch and worktree preceded state publication"
@@ -571,9 +571,9 @@ fn workflow_segment_from_evidence(
           "legacy branch has no modeled workspace publication receipt"
         },
       }
-    AgentWorkflowSegment =>
+    gunbc.roadmap_workflow_stage.AgentWorkflowSegment =>
       provider_workflow_segment(provider: provider)
-    VerificationWorkflowSegment =>
+    gunbc.roadmap_workflow_stage.VerificationWorkflowSegment =>
       verification_segment(
         provider: provider,
         validation_summary: evidence.validation_summary,
@@ -581,21 +581,21 @@ fn workflow_segment_from_evidence(
         verification_selection: evidence.verification_selection,
         verification_source: evidence.verification_source,
       )
-    PublicationWorkflowSegment =>
+    gunbc.roadmap_workflow_stage.PublicationWorkflowSegment =>
       publication_segment(
         publication_subject: evidence.publication_subject,
         publication_source: evidence.publication_source,
       )
-    ReviewWorkflowSegment =>
+    gunbc.roadmap_workflow_stage.ReviewWorkflowSegment =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
         kind: kind,
-        state: WorkflowSegmentPending,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending,
         detail: "awaiting an exact-head pull-request binding and review verdict",
       }
-    GoalAuditWorkflowSegment =>
+    gunbc.roadmap_workflow_stage.GoalAuditWorkflowSegment =>
       gunbc.roadmap_workflow_stage.WorkflowSegment {
         kind: kind,
-        state: WorkflowSegmentPending,
+        state: gunbc.roadmap_workflow_stage.WorkflowSegmentPending,
         detail: "awaiting an independent audit of the exact candidate against the current approved goal",
       }
   }
@@ -605,11 +605,11 @@ fn workflow_fact_state_from_segment_state(
   state: gunbc.roadmap_workflow_stage.WorkflowSegmentState,
 ) -> gunbc.workflow_reconcile.WorkflowFactState {
   match state {
-    WorkflowSegmentPending => WorkflowFactPending
-    WorkflowSegmentActive => WorkflowFactActive
-    WorkflowSegmentComplete => WorkflowFactSatisfied
-    WorkflowSegmentFailed => WorkflowFactFailed
-    WorkflowSegmentRefused => WorkflowFactRefused
+    gunbc.roadmap_workflow_stage.WorkflowSegmentPending => gunbc.workflow_reconcile.WorkflowFactPending
+    gunbc.roadmap_workflow_stage.WorkflowSegmentActive => gunbc.workflow_reconcile.WorkflowFactActive
+    gunbc.roadmap_workflow_stage.WorkflowSegmentComplete => gunbc.workflow_reconcile.WorkflowFactSatisfied
+    gunbc.roadmap_workflow_stage.WorkflowSegmentFailed => gunbc.workflow_reconcile.WorkflowFactFailed
+    gunbc.roadmap_workflow_stage.WorkflowSegmentRefused => gunbc.workflow_reconcile.WorkflowFactRefused
   }
 }
 
@@ -627,11 +627,11 @@ fn workflow_desired_fact(
   gunbc.workflow_reconcile.WorkflowFact {
     key: gunbc.workflow_reconcile.WorkflowFactKey {
       workflow_id: workflow_id,
-      obligation_id: workflow_segment_kind_key(kind: kind),
+      obligation_id: gunbc.roadmap_workflow_stage.workflow_segment_kind_key(kind: kind),
     },
-    intent_revision: workflow_segment_intent_revision(kind: kind),
-    state: WorkflowFactSatisfied,
-    detail: workflow_segment_kind_label(kind: kind),
+    intent_revision: gunbc.roadmap_workflow_stage.workflow_segment_intent_revision(kind: kind),
+    state: gunbc.workflow_reconcile.WorkflowFactSatisfied,
+    detail: gunbc.roadmap_workflow_stage.workflow_segment_kind_label(kind: kind),
   }
 }
 
@@ -642,9 +642,9 @@ fn workflow_observed_fact(
   gunbc.workflow_reconcile.WorkflowFact {
     key: gunbc.workflow_reconcile.WorkflowFactKey {
       workflow_id: workflow_id,
-      obligation_id: workflow_segment_kind_key(kind: segment.kind),
+      obligation_id: gunbc.roadmap_workflow_stage.workflow_segment_kind_key(kind: segment.kind),
     },
-    intent_revision: workflow_segment_intent_revision(kind: segment.kind),
+    intent_revision: gunbc.roadmap_workflow_stage.workflow_segment_intent_revision(kind: segment.kind),
     state: workflow_fact_state_from_segment_state(state: segment.state),
     detail: segment.detail,
   }
@@ -654,7 +654,7 @@ fn workflow_desired_fact_forest(
   workflow_id: String,
 ) -> List<gunbc.workflow_reconcile.WorkflowFactTree> {
   map(
-    roadmap_attempt_workflow_segment_kinds,
+    gunbc.roadmap_workflow_stage.roadmap_attempt_workflow_segment_kinds,
     kind => gunbc.workflow_reconcile.WorkflowFactLeaf {
       fact: workflow_desired_fact(
         workflow_id: workflow_id,
@@ -671,7 +671,7 @@ fn workflow_observed_fact_forest(
   flat_map(
     segments,
     segment => match segment.state {
-      WorkflowSegmentPending => []
+      gunbc.roadmap_workflow_stage.WorkflowSegmentPending => []
       _ => [
         gunbc.workflow_reconcile.WorkflowFactLeaf {
           fact: workflow_observed_fact(
@@ -692,7 +692,7 @@ fn workflow_attempt_reconciliation(
     node_id: evidence.node_id,
     attempt_key: evidence.attempt_key,
   )
-  workflow_reconcile_report(
+  gunbc.workflow_reconcile.workflow_reconcile_report(
     desired: workflow_desired_fact_forest(workflow_id: workflow_id),
     observed: workflow_observed_fact_forest(
       workflow_id: workflow_id,
@@ -709,7 +709,7 @@ fn workflow_attempt_progress(
     && evidence.admission_receipt_readable
     && receipt_records_admission(receipt: evidence.admission_receipt)
   let segments = map(
-    roadmap_attempt_workflow_segment_kinds,
+    gunbc.roadmap_workflow_stage.roadmap_attempt_workflow_segment_kinds,
     kind => workflow_segment_from_evidence(
       kind: kind,
       evidence: evidence,
@@ -734,24 +734,24 @@ fn workflow_attempt_progress(
 }
 
 fn workflow_segment_json_value(segment: gunbc.roadmap_workflow_stage.WorkflowSegment) -> extdeps.languages.json.emit.JsonValue {
-  json_object(members: [
-    json_kv(
+  extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(
       key: "kind",
-      value: json_string(s: workflow_segment_kind_key(kind: segment.kind)),
+      value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_workflow_stage.workflow_segment_kind_key(kind: segment.kind)),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "label",
-      value: json_string(s: workflow_segment_kind_label(kind: segment.kind)),
+      value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_workflow_stage.workflow_segment_kind_label(kind: segment.kind)),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "short_label",
-      value: json_string(s: workflow_segment_kind_short_label(kind: segment.kind)),
+      value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_workflow_stage.workflow_segment_kind_short_label(kind: segment.kind)),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "state",
-      value: json_string(s: workflow_segment_state_key(state: segment.state)),
+      value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_workflow_stage.workflow_segment_state_key(state: segment.state)),
     ),
-    json_kv(key: "detail", value: json_string(s: segment.detail)),
+    extdeps.languages.json.emit.json_kv(key: "detail", value: extdeps.languages.json.emit.json_string(s: segment.detail)),
   ])
 }
 
@@ -760,62 +760,62 @@ fn workflow_attempt_progress_json_members(
   progress: WorkflowAttemptProgress,
 ) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   [
-    json_kv(key: "node_id", value: json_string(s: progress.node_id)),
-    json_kv(key: "attempt_key", value: json_string(s: progress.attempt_key)),
-    json_kv(key: "branch", value: json_string(s: progress.branch)),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(key: "node_id", value: extdeps.languages.json.emit.json_string(s: progress.node_id)),
+    extdeps.languages.json.emit.json_kv(key: "attempt_key", value: extdeps.languages.json.emit.json_string(s: progress.attempt_key)),
+    extdeps.languages.json.emit.json_kv(key: "branch", value: extdeps.languages.json.emit.json_string(s: progress.branch)),
+    extdeps.languages.json.emit.json_kv(
       key: "provider_status",
-      value: json_string(s: provider_execution_state_label(state: progress.provider)),
+      value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_provider_events.provider_execution_state_label(state: progress.provider)),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "provider_activity",
-      value: json_string(s: provider_execution_activity(state: progress.provider)),
+      value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_provider_events.provider_execution_activity(state: progress.provider)),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "provider_detail",
-      value: json_string(s: provider_execution_detail(state: progress.provider)),
+      value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_provider_events.provider_execution_detail(state: progress.provider)),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "validation_summary",
-      value: json_string(s: progress.validation_summary),
+      value: extdeps.languages.json.emit.json_string(s: progress.validation_summary),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "admission_receipt",
-      value: json_string(s: progress.admission_receipt),
+      value: extdeps.languages.json.emit.json_string(s: progress.admission_receipt),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "workflow_status",
-      value: json_string(s: workflow_reconcile_status_key(
+      value: extdeps.languages.json.emit.json_string(s: gunbc.workflow_reconcile.workflow_reconcile_status_key(
         report: progress.reconciliation,
       )),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "desired_obligations",
-      value: json_int(n: progress.reconciliation.desired_count),
+      value: extdeps.languages.json.emit.json_int(n: progress.reconciliation.desired_count),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "observed_obligations",
-      value: json_int(n: progress.reconciliation.observed_count),
+      value: extdeps.languages.json.emit.json_int(n: progress.reconciliation.observed_count),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "remaining_obligations",
-      value: json_int(n: progress.reconciliation.remaining_count),
+      value: extdeps.languages.json.emit.json_int(n: progress.reconciliation.remaining_count),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "failed_obligations",
-      value: json_int(n: progress.reconciliation.observed_failure_count),
+      value: extdeps.languages.json.emit.json_int(n: progress.reconciliation.observed_failure_count),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "refused_obligations",
-      value: json_int(n: progress.reconciliation.observed_refusal_count),
+      value: extdeps.languages.json.emit.json_int(n: progress.reconciliation.observed_refusal_count),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "reconciliation_refusals",
-      value: json_int(n: progress.reconciliation.plan_refusal_count),
+      value: extdeps.languages.json.emit.json_int(n: progress.reconciliation.plan_refusal_count),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "segments",
-      value: json_array(elements: map(
+      value: extdeps.languages.json.emit.json_array(elements: map(
         progress.segments,
         segment => workflow_segment_json_value(segment: segment),
       )),
@@ -826,7 +826,7 @@ fn workflow_attempt_progress_json_members(
 fn workflow_attempt_progress_json_value(
   progress: WorkflowAttemptProgress,
 ) -> extdeps.languages.json.emit.JsonValue {
-  json_object(members: workflow_attempt_progress_json_members(
+  extdeps.languages.json.emit.json_object(members: workflow_attempt_progress_json_members(
     progress: progress,
   ))
 }

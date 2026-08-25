@@ -2,7 +2,7 @@ module test.claim.type_ref_hit_ne_bind_measure_witness
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 // N1a discriminator probes (import-strip §14.1 matrix, measurement mode). compile_dag_diagnostic_census arms type_ref_hit_ne_bind_measure_active for the nested compile. Row1 GREEN: bare import. Row3 RED: absent-from-pool UnresolvedType. Row4 RED: pool-present bare unreachable. Row5 RED: pool-present qualified unreachable. Row7 GREEN: same-module qualified local type (self/ancestor containment arm — NOT the deleted same-leaf×span cross-tree authorizer).
 fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosticCensus {
@@ -10,15 +10,15 @@ fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosti
 }
 
 fn unresolved_blocking_count(source: String) -> Int {
-  match test.claim.type_ref_hit_ne_bind_measure_witness.census_of(source: source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(
-        rows: census_rows_of_class(
-          rows: census_blocking_rows(rows: rows),
+  match census_of(source: source) {
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } =>
+      gunbc.compile_diagnostic_census.census_total_count(
+        rows: gunbc.compile_diagnostic_census.census_rows_of_class(
+          rows: gunbc.compile_diagnostic_census.census_blocking_rows(rows: rows),
           wanted: "UnresolvedType"
         )
       )
-    CensusNotRunnable { cause: _ } => 0 - 1
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
@@ -33,40 +33,40 @@ data row5_qualified_pool_present_source: String = "module type_ref_row5\nfn f(x:
 data row7_self_module_qualified_source: String = "module type_ref_row7\ntype LocalT = Int\nfn f(x: type_ref_row7.LocalT) -> type_ref_row7.LocalT { x }\n"
 
 test fn row1_own_import_stays_green() -> Bool {
-  test.claim.type_ref_hit_ne_bind_measure_witness.unresolved_blocking_count(source: row1_own_import_source) == 0
+  unresolved_blocking_count(source: row1_own_import_source) == 0
 }
 
 test fn row3_absent_is_blocking_unresolved_type() -> Bool {
-  test.claim.type_ref_hit_ne_bind_measure_witness.unresolved_blocking_count(source: row3_absent_source) >= 1
+  unresolved_blocking_count(source: row3_absent_source) >= 1
 }
 
 test fn row4_bare_pool_present_unreachable_matches_row3_shape() -> Bool {
-  test.claim.type_ref_hit_ne_bind_measure_witness.unresolved_blocking_count(source: row4_bare_pool_present_source) >= 1
+  unresolved_blocking_count(source: row4_bare_pool_present_source) >= 1
 }
 
 test fn row5_qualified_pool_present_unreachable_matches_row3_shape() -> Bool {
-  test.claim.type_ref_hit_ne_bind_measure_witness.unresolved_blocking_count(source: row5_qualified_pool_present_source) >= 1
+  unresolved_blocking_count(source: row5_qualified_pool_present_source) >= 1
 }
 
 test fn row7_self_module_qualified_stays_green() -> Bool {
-  test.claim.type_ref_hit_ne_bind_measure_witness.unresolved_blocking_count(source: row7_self_module_qualified_source) == 0
+  unresolved_blocking_count(source: row7_self_module_qualified_source) == 0
 }
 
 test fn charter_is_measurement_not_corpus_refusal() -> Bool {
-  string_contains(s: type_ref_hit_ne_bind_measure_charter_note, pattern: "EXECUTING DISCRIMINATOR")
-    && string_contains(s: type_ref_hit_ne_bind_measure_charter_note, pattern: "NOT a corpus refusal wall")
-    && string_contains(s: type_ref_hit_ne_bind_measure_rung_note, pattern: "not a guarantee ladder climb")
+  string_contains(s: gunbc.type_ref_hit_ne_bind_measure.type_ref_hit_ne_bind_measure_charter_note, pattern: "EXECUTING DISCRIMINATOR")
+    && string_contains(s: gunbc.type_ref_hit_ne_bind_measure.type_ref_hit_ne_bind_measure_charter_note, pattern: "NOT a corpus refusal wall")
+    && string_contains(s: gunbc.type_ref_hit_ne_bind_measure.type_ref_hit_ne_bind_measure_rung_note, pattern: "not a guarantee ladder climb")
 }
 
 test fn measure_predicate_two_arms_only() -> Bool {
-  string_contains(s: type_ref_measure_binding_authority_note, pattern: "MEASUREMENT-ONLY")
-    && string_contains(s: type_ref_measure_binding_authority_note, pattern: "Zero production consumers")
-    && string_contains(s: type_ref_measure_binding_authority_note, pattern: "Same-authored-leaf")
-    && string_contains(s: type_ref_measure_binding_authority_note, pattern: "OR-arm is dead")
+  string_contains(s: gunbc.type_ref_hit_ne_bind_measure.type_ref_measure_binding_authority_note, pattern: "MEASUREMENT-ONLY")
+    && string_contains(s: gunbc.type_ref_hit_ne_bind_measure.type_ref_measure_binding_authority_note, pattern: "Zero production consumers")
+    && string_contains(s: gunbc.type_ref_hit_ne_bind_measure.type_ref_measure_binding_authority_note, pattern: "Same-authored-leaf")
+    && string_contains(s: gunbc.type_ref_hit_ne_bind_measure.type_ref_measure_binding_authority_note, pattern: "OR-arm is dead")
 }
 
 test fn dissolve_trigger_names_n2_canonical_fold() -> Bool {
-  string_contains(s: dissolution_description(condition: type_ref_hit_ne_bind_measure_dissolve_trigger), pattern: "occurrence_binding_from_candidates")
-    && string_contains(s: dissolution_description(condition: type_ref_hit_ne_bind_measure_dissolve_trigger), pattern: "OccurrenceBindingResult")
-    && string_contains(s: dissolution_description(condition: type_ref_hit_ne_bind_measure_dissolve_trigger), pattern: "containment-binding-cross-module-type-references-design.md")
+  string_contains(s: std.dissolution.dissolution_description(condition: gunbc.type_ref_hit_ne_bind_measure.type_ref_hit_ne_bind_measure_dissolve_trigger), pattern: "occurrence_binding_from_candidates")
+    && string_contains(s: std.dissolution.dissolution_description(condition: gunbc.type_ref_hit_ne_bind_measure.type_ref_hit_ne_bind_measure_dissolve_trigger), pattern: "OccurrenceBindingResult")
+    && string_contains(s: std.dissolution.dissolution_description(condition: gunbc.type_ref_hit_ne_bind_measure.type_ref_hit_ne_bind_measure_dissolve_trigger), pattern: "containment-binding-cross-module-type-references-design.md")
 }

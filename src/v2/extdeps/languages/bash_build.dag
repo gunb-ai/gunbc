@@ -3,26 +3,26 @@ module v2.extdeps.languages.bash_build
 
 fn bash_build_word_kinded(kind: v2.std.node.Symbol, value: String) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: kind } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       },
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: value } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -36,19 +36,19 @@ fn bash_build_word_var(name: String) -> v2.std.node.Node {
 
 fn bash_build_word_compound(kind: v2.std.node.Symbol, payload: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: kind } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       },
-      v2.std.node.Edge { label: Positional, target: payload }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: payload }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -64,42 +64,42 @@ fn bash_build_stmt_tag(binding: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn bash_build_command_words_single(word: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: word }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: word }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn bash_build_command_words_pair(left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: left },
-      v2.std.node.Edge { label: Positional, target: right }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: left },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: right }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn bash_build_command(words: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_command)
       },
-      v2.std.node.Edge { label: Positional, target: words }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: words }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -108,8 +108,8 @@ fn bash_build_command_words_from_lits_suffix(
   accumulated: v2.std.node.Node,
   index: Int
 ) -> v2.std.node.Node {
-  match list_at_optional(xs: lits, index: index) {
-    Present { value: lit } =>
+  match v2.std.collection.list_at_optional(xs: lits, index: index) {
+    v2.std.collection.Present { value: lit } =>
       bash_build_command_words_from_lits_suffix(
         lits: lits,
         accumulated: bash_build_command_words_pair(
@@ -123,8 +123,8 @@ fn bash_build_command_words_from_lits_suffix(
 }
 
 fn bash_build_command_from_lits(lits: List<String>) -> v2.std.node.Node {
-  match list_head(xs: lits) {
-    HeadFound { value: first } =>
+  match v2.std.algebra.list_head(xs: lits) {
+    v2.std.algebra.HeadFound { value: first } =>
       bash_build_command(
         words: bash_build_command_words_from_lits_suffix(
           lits: lits,
@@ -132,7 +132,7 @@ fn bash_build_command_from_lits(lits: List<String>) -> v2.std.node.Node {
           index: 1
         )
       )
-    HeadAbsent =>
+    v2.std.algebra.HeadAbsent =>
       bash_build_command(
         words: bash_build_command_words_single(word: bash_build_word_lit(text: ""))
       )
@@ -150,44 +150,44 @@ fn bash_build_command_lit_var(lit: String, var_name: String) -> v2.std.node.Node
 
 fn bash_build_exit(code: String) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_exit)
       },
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: code } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn bash_build_assign(name: String, value: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_assign)
       },
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       },
-      v2.std.node.Edge { label: Positional, target: value }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: value }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -201,13 +201,13 @@ fn bash_build_assign_var(name: String, var_name: String) -> v2.std.node.Node {
 
 fn bash_build_binary_stmt(binding: v2.std.node.Symbol, left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: bash_build_stmt_tag(binding: binding) },
-      v2.std.node.Edge { label: Positional, target: left },
-      v2.std.node.Edge { label: Positional, target: right }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: bash_build_stmt_tag(binding: binding) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: left },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: right }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -237,99 +237,99 @@ fn bash_build_pipe(left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.no
 
 fn bash_build_stmt_list_single(stmt: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: stmt }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: stmt }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn bash_build_stmt_list_pair(left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: left },
-      v2.std.node.Edge { label: Positional, target: right }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: left },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: right }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn bash_build_subshell(body: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_subshell)
       },
-      v2.std.node.Edge { label: Positional, target: body }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: body }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn bash_build_if(cond: v2.std.node.Node, body: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_if)
       },
-      v2.std.node.Edge { label: Positional, target: cond },
-      v2.std.node.Edge { label: Positional, target: body }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: cond },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: body }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn bash_build_with_redir(inner: v2.std.node.Node, redir: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_with_redir)
       },
-      v2.std.node.Edge { label: Positional, target: inner },
-      v2.std.node.Edge { label: Positional, target: bash_build_stmt_tag(binding: redir) }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: inner },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: bash_build_stmt_tag(binding: redir) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn bash_build_with_redir_to_file(inner: v2.std.node.Node, path: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_with_redir)
       },
-      v2.std.node.Edge { label: Positional, target: inner },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: inner },
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_redir_to_file)
       },
-      v2.std.node.Edge { label: Positional, target: path }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: path }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn bash_build_negation(inner: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: bash_build_stmt_tag(binding: ^bash_build_stmt_negation)
       },
-      v2.std.node.Edge { label: Positional, target: inner }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: inner }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -338,8 +338,8 @@ fn bash_build_word_list_from_nodes_suffix(
   accumulated: v2.std.node.Node,
   index: Int
 ) -> v2.std.node.Node {
-  match list_at_optional(xs: words, index: index) {
-    Present { value: word } =>
+  match v2.std.collection.list_at_optional(xs: words, index: index) {
+    v2.std.collection.Present { value: word } =>
       bash_build_word_list_from_nodes_suffix(
         words: words,
         accumulated: bash_build_command_words_pair(left: accumulated, right: word),
@@ -350,14 +350,14 @@ fn bash_build_word_list_from_nodes_suffix(
 }
 
 fn bash_build_word_list_from_nodes(words: List<v2.std.node.Node>) -> v2.std.node.Node {
-  match list_head(xs: words) {
-    HeadFound { value: first } =>
+  match v2.std.algebra.list_head(xs: words) {
+    v2.std.algebra.HeadFound { value: first } =>
       bash_build_word_list_from_nodes_suffix(
         words: words,
         accumulated: bash_build_command_words_single(word: first),
         index: 1
       )
-    HeadAbsent =>
+    v2.std.algebra.HeadAbsent =>
       bash_build_command_words_single(
         word: bash_build_word_kinded(kind: ^bash_build_refused_empty_word_list, value: "")
       )
@@ -390,8 +390,8 @@ fn bash_build_stmt_list_from_nodes_suffix(
   accumulated: v2.std.node.Node,
   index: Int
 ) -> v2.std.node.Node {
-  match list_at_optional(xs: stmts, index: index) {
-    Present { value: stmt } =>
+  match v2.std.collection.list_at_optional(xs: stmts, index: index) {
+    v2.std.collection.Present { value: stmt } =>
       bash_build_stmt_list_from_nodes_suffix(
         stmts: stmts,
         accumulated: bash_build_stmt_list_pair(left: accumulated, right: stmt),
@@ -402,23 +402,23 @@ fn bash_build_stmt_list_from_nodes_suffix(
 }
 
 fn bash_build_stmt_list_from_nodes(stmts: List<v2.std.node.Node>) -> v2.std.node.Node {
-  match list_head(xs: stmts) {
-    HeadFound { value: first } =>
+  match v2.std.algebra.list_head(xs: stmts) {
+    v2.std.algebra.HeadFound { value: first } =>
       bash_build_stmt_list_from_nodes_suffix(
         stmts: stmts,
         accumulated: bash_build_stmt_list_single(stmt: first),
         index: 1
       )
-    HeadAbsent =>
+    v2.std.algebra.HeadAbsent =>
       v2.std.node.Node {
-        kind: v2.std.node.TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: [
           v2.std.node.Edge {
-            label: Positional,
+            label: v2.std.node.Positional,
             target: bash_build_stmt_tag(binding: ^bash_build_refused_empty_stmt_list)
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
       }
   }
 }

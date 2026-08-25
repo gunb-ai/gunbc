@@ -13,7 +13,7 @@ data ice40_configuration_note: String = "THE CONFIGURATION PORT, from Table 4.28
 // extdeps.programmable_logic.ice40.subject.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/iCE/FPGA-DS-02029-4-3-iCE40-LP-HX-Family-Data-Sheet.ashx?document_id=49312"
   }
 }
@@ -48,7 +48,7 @@ fn scope_admits(s: TimingScope, m: extdeps.programmable_logic.ice40.supply.Ice40
   match s {
     AllConfigurationModes => true
     OnlyUnderMode { mode: only } =>
-      configuration_modes_equal(a: only, b: m)
+      extdeps.programmable_logic.ice40.supply.configuration_modes_equal(a: only, b: m)
   }
 }
 
@@ -63,7 +63,7 @@ type SpecColumn
   | MaximumColumn
 
 // THE QUANTITY IS TYPED, and the heterogeneity is what makes it a coproduct rather than a number
-// beside a unit string. An earlier revision of this module carried value: std.integer.Int with unit:
+// beside a unit string. An earlier revision of this module carried value: Int with unit:
 // NonEmptyStr holding "ns", "us", "MHz" and "clock cycles" - a unit written in a name, which is a
 // unit no consumer can read, so a nanosecond and a megahertz became the same type and comparing
 // them typechecked. This module's sibling says exactly that about package dimensions; the excuse
@@ -93,7 +93,7 @@ type ConfigurationTiming {
 data ice40_creset_b_low_pulse: ConfigurationTiming = ConfigurationTiming {
   symbol: "tCRESET_B",
   scope: AllConfigurationModes,
-  bound: TimingBound { quantity: BoundInNanoseconds { value: nanosecond(count: 200) }, column: MinimumColumn },
+  bound: TimingBound { quantity: BoundInNanoseconds { value: std.measure.nanosecond(count: 200) }, column: MinimumColumn },
 }
 
 data ice40_done_to_io_active: ConfigurationTiming = ConfigurationTiming {
@@ -104,20 +104,20 @@ data ice40_done_to_io_active: ConfigurationTiming = ConfigurationTiming {
 
 data ice40_hx1k_creset_to_first_sck: ConfigurationTiming = ConfigurationTiming {
   symbol: "tCR_SCK",
-  scope: OnlyUnderMode { mode: SlaveSpiConfiguration },
-  bound: TimingBound { quantity: BoundInMicroseconds { value: microsecond(count: 800) }, column: MinimumColumn },
+  scope: OnlyUnderMode { mode: extdeps.programmable_logic.ice40.supply.SlaveSpiConfiguration },
+  bound: TimingBound { quantity: BoundInMicroseconds { value: std.measure.microsecond(count: 800) }, column: MinimumColumn },
 }
 
 data ice40_cclk_write_minimum: ConfigurationTiming = ConfigurationTiming {
   symbol: "fMAX write",
-  scope: OnlyUnderMode { mode: SlaveSpiConfiguration },
-  bound: TimingBound { quantity: BoundInHertz { value: hertz(count: 1000000) }, column: MinimumColumn },
+  scope: OnlyUnderMode { mode: extdeps.programmable_logic.ice40.supply.SlaveSpiConfiguration },
+  bound: TimingBound { quantity: BoundInHertz { value: std.measure.hertz(count: 1000000) }, column: MinimumColumn },
 }
 
 data ice40_cclk_write_maximum: ConfigurationTiming = ConfigurationTiming {
   symbol: "fMAX write",
-  scope: OnlyUnderMode { mode: SlaveSpiConfiguration },
-  bound: TimingBound { quantity: BoundInHertz { value: hertz(count: 25000000) }, column: MaximumColumn },
+  scope: OnlyUnderMode { mode: extdeps.programmable_logic.ice40.supply.SlaveSpiConfiguration },
+  bound: TimingBound { quantity: BoundInHertz { value: std.measure.hertz(count: 25000000) }, column: MaximumColumn },
 }
 
 data ice40_configuration_timings: List<ConfigurationTiming> = [
@@ -151,8 +151,8 @@ type ConfigurationTimeStanding
 
 fn hx1k_configuration_time(c: ConfigurationClockSelection) -> ConfigurationTimeStanding {
   match c {
-    LowFrequencyDefault => ConfigurationTimeTypical { elapsed: millisecond(count: 53) }
-    MediumFrequency => ConfigurationTimeTypical { elapsed: millisecond(count: 25) }
+    LowFrequencyDefault => ConfigurationTimeTypical { elapsed: std.measure.millisecond(count: 53) }
+    MediumFrequency => ConfigurationTimeTypical { elapsed: std.measure.millisecond(count: 25) }
     HighFrequency =>
       ConfigurationTimeWithdrawnByVendor {
         note: "the revision history records deleting the iCE40LP/HX1K high-frequency value; note 3 states high frequency is supported only on SPI Master",
@@ -165,10 +165,10 @@ data ice40_configuration_model_scope: extdeps.external_authority.ExternalModelSc
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.programmable_logic.ice40.configuration",
       decl_name: "ice40_configuration_timings",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.programmable_logic.ice40.configuration.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 

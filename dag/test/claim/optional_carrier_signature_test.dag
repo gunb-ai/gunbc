@@ -1,7 +1,7 @@
 module test.claim.optional_carrier_signature_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data optional_carrier_signature_witness_note: String = "THE SIGNATURE HALF OF THE v1-EMITTER OPTIONAL-RENDERING FAMILY, migrated from src/v1/tests/src/optional_carrier_signature_test.rs (v1-test-migration). The behavior: a declared optional return renders its Rust signature wrapped — `-> String?` becomes `-> Option<String>` and, on a shared (recursive) type, `-> Node?` becomes `-> Option<Rc<Node>>` — and the wrap is CARDINALITY-DERIVED rather than blanket, so a non-optional return of the same carrier stays bare. The defect this family exists to catch was the text-carrier early return short-circuiting the Optional template, which emitted a bare `String` while the body already produced Some/None: the dominant E0308 cluster in the faithful Route-A seed.\\n\\nEACH WITNESS PINS THE WHOLE SIGNATURE, NOT A SUBSTRING OF IT. The Rust module had to slice the emitted text from `fn <name>` to the body opener before asserting `contains(\\\"Option<\\\")`, because the runtime's own types legitimately mention Option and a whole-file scan would pass on them. Naming the entire expected signature removes the need for that scoping and is strictly stronger: it fixes parameter spelling and carrier rendering too, so a change that kept `Option<` while altering the rest still reds. The negative controls exclude the SPECIFIC wrapped signature rather than the bare token `Option<`, for the same reason — an unscoped exclusion would red on unrelated runtime code and would be a guard that fires for the wrong reason."
 

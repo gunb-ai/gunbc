@@ -4,7 +4,7 @@ module extdeps.apt
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "manpages.debian.org/testing/apt/apt.8.en.html"
   }
 }

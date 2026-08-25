@@ -5,7 +5,7 @@ data fabric_control_plane_charge_authority: std.disposition.Disposition = std.di
   reason: "Single authority for what a statically pinned fabric control-plane resident COSTS on a host. It owns the placement row, the resource envelope, and the per-host claim that gunbc.fleet_host_budget charges. It does not own the control plane's lifecycle, its supervision, or its liveness promise -- those are separate facts and belong with whatever eventually deploys it. It is deliberately HOST-PARAMETRIC: it answers what the resident costs on host H rather than what it costs on srv1, because a hardcoded host is how a placement gets decided by which machine was named first."
 }
 
-// THE THREE ARMS ARE THE POINT AND A std.measure.ByteSize? WOULD HAVE MERGED TWO OF THEM. "Not placed on this
+// THE THREE ARMS ARE THE POINT AND A ByteSize? WOULD HAVE MERGED TWO OF THEM. "Not placed on this
 // host" and "placed on this host, size unknown" have OPPOSITE conservation consequences: the first
 // is genuinely a zero charge, the second must refuse the host plan. An optional byte size with
 // Absent meaning zero cannot tell them apart, and the arm that gets silently chosen is the one that
@@ -48,17 +48,17 @@ type FabricControlPlanePlacement
 // whole difference is whether anyone is scheduled to make it true.
 data fabric_control_plane_placement: FabricControlPlanePlacement = ControlPlaneUnplaced
 
-// AND THE FIRST VERSION OF THIS MODULE SHIPPED A std.types.Bool PREDICATE THAT UNDERCUT THE PARAGRAPH ABOVE.
+// AND THE FIRST VERSION OF THIS MODULE SHIPPED A Bool PREDICATE THAT UNDERCUT THE PARAGRAPH ABOVE.
 // control_plane_claim_is_unmeasured returned true for one arm and false for the others, had zero
 // call sites anywhere in the tree, and existed three lines below a comment explaining why no such
 // projection should exist. The point of having no projection is that the coproduct must be matched;
-// shipping an unconsumed std.types.Bool view of it reopens exactly the spelling the paragraph forbids, and
+// shipping an unconsumed Bool view of it reopens exactly the spelling the paragraph forbids, and
 // leaves a reader unsure which of the two the module actually means. Deleted (review 54686).
-// THERE IS NO claim -> std.measure.ByteSize PROJECTION, AND ITS ABSENCE IS THE DESIGN. An earlier revision of
+// THERE IS NO claim -> ByteSize PROJECTION, AND ITS ABSENCE IS THE DESIGN. An earlier revision of
 // this module had one, with an annotation saying the unmeasured arm was deliberately absent from it
 // -- and a body mapping that arm to zero. The prose and the code disagreed inside one declaration,
 // and the code was doing the thing the prose forbade: charging nothing for a resident whose size
-// nobody knows. A total function from this coproduct to std.measure.ByteSize CANNOT exist honestly, because one
+// nobody knows. A total function from this coproduct to ByteSize CANNOT exist honestly, because one
 // arm has no bytes to return and every value it could return is a lie about a different arm.
 //
 // So the consumer matches the claim itself and refuses on the unmeasured arm. That is construction

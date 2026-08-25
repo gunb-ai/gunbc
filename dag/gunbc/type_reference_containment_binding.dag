@@ -10,8 +10,8 @@ data type_reference_containment_binding_scaffold: std.disposition.Disposition = 
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.occurrence_binding_candidates" as std.types.NonEmptyStr,
     decl_name: "resolve_type_reference_containment_binding" as std.types.NonEmptyStr,
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data type_reference_containment_binding_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: v1 type positions consume std.occurrence_binding_candidates.resolve_type_reference_containment_binding by execution (not a parallel lookup), N1a measure predicate deletes per gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger, and flat lookup-as-binding paths retain only migration-oracle status until census parity. This authority module deletes when the d")
+data type_reference_containment_binding_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: v1 type positions consume std.occurrence_binding_candidates.resolve_type_reference_containment_binding by execution (not a parallel lookup), N1a measure predicate deletes per gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger, and flat lookup-as-binding paths retain only migration-oracle status until census parity. This authority module deletes when the d")

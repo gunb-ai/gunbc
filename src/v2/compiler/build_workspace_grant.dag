@@ -14,28 +14,28 @@ fn build_workspace_grant_envelope(
     frame: frame,
     grants: [
       std.effect_grant.Grant {
-        verb: Read,
+        verb: std.effect_grant.Read,
         root: substrate_closure_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConstruction
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConstruction
       },
       std.effect_grant.Grant {
-        verb: Read,
+        verb: std.effect_grant.Read,
         root: toolchain_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConstruction
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConstruction
       },
       std.effect_grant.Grant {
-        verb: Read,
+        verb: std.effect_grant.Read,
         root: workspace_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConvention
       },
       std.effect_grant.Grant {
-        verb: Write,
+        verb: std.effect_grant.Write,
         root: workspace_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConvention
       },
     ]
   }

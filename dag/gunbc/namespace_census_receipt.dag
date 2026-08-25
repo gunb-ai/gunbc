@@ -57,13 +57,13 @@ data namespace_census_compile_invocation: NamespaceCensusCompileInvocation = Nam
 
 data namespace_census_reproduction_note: String = "The ordered reproduction workflow authority for the pinned namespace census receipt. CompileSyntheticRoot carries namespace_census_compile_invocation, including the receipt-verified compiler binding, subcommand, source roots, entry, output directory, target, and stdout/stderr captures; none of those process facts is authority in the shell projection. The remaining steps name intent consumed by the pinned Python handlers. Measurement values and pinned identities remain single-authority in that receipt's summary.json and are checked by VerifyReceipt."
 
-data namespace_census_shell_projection_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: namespace_census_reproduction_steps rendered through the canonical orchestration-to-bash emitter (bash-emit #5828), replacing the hand-authored shell projection in docs/probes/namespace_census_2026-07-31.md without changing the typed step authority")
+data namespace_census_shell_projection_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: namespace_census_reproduction_steps rendered through the canonical orchestration-to-bash emitter (bash-emit #5828), replacing the hand-authored shell projection in docs/probes/namespace_census_2026-07-31.md without changing the typed step authority")
 
 data namespace_census_shell_projection_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.namespace_census_receipt",
     decl_name: "namespace_census_shell_projection_dissolution_trigger",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }

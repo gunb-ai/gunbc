@@ -1,5 +1,6 @@
 module gunbc.host_memory_qualification
 
+
 // FOUR INDEPENDENT STANDINGS. None derives another, and that independence is
 // the whole content of this module.
 //
@@ -24,38 +25,38 @@ type DimmClassSupport
 // materially weaker and differently-actionable fact.
 type SpecificPartQualification
   = ListedInVendorAvl {
-      avl_authority: ExternalAuthority
-      avl_issue: NonEmptyStr
+      avl_authority: extdeps.external_authority.ExternalAuthority
+      avl_issue: std.types.NonEmptyStr
     }
   | NotListedInVendorAvl {
-      avl_authority: ExternalAuthority
-      avl_issue: NonEmptyStr
+      avl_authority: extdeps.external_authority.ExternalAuthority
+      avl_issue: std.types.NonEmptyStr
     }
   | PartQualificationUnobserved
 
 // Did DDR training complete? This is the ONLY axis the 2026-08-11 BIOS
 // upgrade moved.
 type DdrTrainingOutcome
-  = TrainingOperational { dimm_mask: NonEmptyStr }
-  | TrainingFailed { detail: NonEmptyStr }
+  = TrainingOperational { dimm_mask: std.types.NonEmptyStr }
+  | TrainingFailed { detail: std.types.NonEmptyStr }
   | TrainingOutcomeUnobserved
 
 // Did the HOST actually boot? Downstream of training and independent of it.
 type HostBootOutcome
   = BootReachedOperatingSystem
-  | RepeatingFirmwareReset { token: NonEmptyStr, cycles: std.nat.Nat }
+  | RepeatingFirmwareReset { token: std.types.NonEmptyStr, cycles: std.nat.Nat }
   | BootStalledWithoutReset
   | BootOutcomeUnobserved
 
 type HostMemoryStanding {
-  host: HostIdentity
-  part_number: NonEmptyStr
-  population: List<NonEmptyStr>
+  host: product.placement_supply.HostIdentity
+  part_number: std.types.NonEmptyStr
+  population: List<std.types.NonEmptyStr>
   class_support: DimmClassSupport
   part_qualification: SpecificPartQualification
   training: DdrTrainingOutcome
   boot: HostBootOutcome
-  observed_at: EpochMs
+  observed_at: std.types.EpochMs
 }
 
 // The load-bearing negative. There is deliberately NO function deriving boot
@@ -84,15 +85,15 @@ data host_memory_qualification_note: String = "Written after the 2026-08-11 srv3
 type ExperimentVerdict
   = HypothesisSupported
   | HypothesisRefuted
-  | HypothesisWeakenedByIntervention { performed: NonEmptyStr, required: NonEmptyStr }
-  | ExperimentInconclusive { reason: NonEmptyStr }
+  | HypothesisWeakenedByIntervention { performed: std.types.NonEmptyStr, required: std.types.NonEmptyStr }
+  | ExperimentInconclusive { reason: std.types.NonEmptyStr }
 
 type CausalExperimentReceipt {
-  hypothesis: NonEmptyStr
-  intervention: NonEmptyStr
-  observation: NonEmptyStr
+  hypothesis: std.types.NonEmptyStr
+  intervention: std.types.NonEmptyStr
+  observation: std.types.NonEmptyStr
   verdict: ExperimentVerdict
-  observed_at: EpochMs
+  observed_at: std.types.EpochMs
 }
 
 data srv3_incident_experiments: List<CausalExperimentReceipt> = [
@@ -129,6 +130,7 @@ data srv3_incident_experiments: List<CausalExperimentReceipt> = [
   },
 ]
 
+
 // --- PLATFORM TRAINING FAILURES AND WHAT THEY IMPLICATE ------------------------------------------
 //
 // RELOCATED HERE 2026-08-19 (operator ruling) when gunbc.memory_part_selection
@@ -152,8 +154,8 @@ data srv3_incident_experiments: List<CausalExperimentReceipt> = [
 // On InferredFromSequencePosition:
 // The step is inferred from position in the boot sequence only.
 type TrainingEvidenceStanding
-  = DecodedFromPlatformSyndrome { register: NonEmptyStr }
-  | AssociatedByIdenticalSignature { signature: NonEmptyStr, source: ExternalAuthority }
+  = DecodedFromPlatformSyndrome { register: std.types.NonEmptyStr }
+  | AssociatedByIdenticalSignature { signature: std.types.NonEmptyStr, source: extdeps.external_authority.ExternalAuthority }
   | InferredFromSequencePosition
   | EvidenceUnobserved
 
@@ -162,11 +164,11 @@ type TrainingEvidenceStanding
 // only in a sparse population is weaker support for rejecting a part in a
 // full population, so the observation carries its own conditions.
 type PlatformTrainingFailure {
-  board: BaseboardModel
-  step: MemoryTrainingStep
+  board: extdeps.boards.types.BaseboardModel
+  step: extdeps.memory.training.MemoryTrainingStep
   standing: TrainingEvidenceStanding
-  observed_population: List<NonEmptyStr>
-  observed_at: EpochMs
+  observed_population: List<std.types.NonEmptyStr>
+  observed_at: std.types.EpochMs
 }
 
 // WHAT AN OBSERVED STEP FAILURE LICENSES, graded by evidence and scoped to
@@ -186,16 +188,16 @@ type PlatformTrainingFailure {
 type PartImplication
   = PartNotImplicated
   | PartSampleQualificationRequired {
-      step: MemoryTrainingStep
+      step: extdeps.memory.training.MemoryTrainingStep
       standing: TrainingEvidenceStanding
     }
   | PartImplicatedByFailingStep {
-      step: MemoryTrainingStep
+      step: extdeps.memory.training.MemoryTrainingStep
       standing: TrainingEvidenceStanding
     }
 
 fn implication_severity(
-  step: MemoryTrainingStep,
+  step: extdeps.memory.training.MemoryTrainingStep,
   standing: TrainingEvidenceStanding,
 ) -> PartImplication {
   match standing {
@@ -210,13 +212,13 @@ fn implication_severity(
 }
 
 fn implication_for_step(
-  candidate: DramModuleCatalogRow,
+  candidate: extdeps.memory.types.DramModuleCatalogRow,
   failure: PlatformTrainingFailure,
-  target_board: BaseboardModel,
+  target_board: extdeps.boards.types.BaseboardModel,
 ) -> PartImplication {
   if failure.board != target_board {
     PartNotImplicated
-  } else if module_executes_step(module: candidate, step: failure.step) {
+  } else if extdeps.memory.training.module_executes_step(module: candidate, step: failure.step) {
     implication_severity(step: failure.step, standing: failure.standing)
   } else {
     PartNotImplicated
@@ -224,9 +226,9 @@ fn implication_for_step(
 }
 
 fn part_implication(
-  candidate: DramModuleCatalogRow,
+  candidate: extdeps.memory.types.DramModuleCatalogRow,
   failures: List<PlatformTrainingFailure>,
-  target_board: BaseboardModel,
+  target_board: extdeps.boards.types.BaseboardModel,
 ) -> PartImplication {
   fold(
     failures,
@@ -262,29 +264,31 @@ fn part_implication(
 // This is derived from JEDEC die density, not from price observation.
 type TopologyPressure
   = CapacityReachableConventionally
-  | CapacityForcesExoticTopology { capacity_bytes: ByteSize }
+  | CapacityForcesExoticTopology { capacity_bytes: std.measure.ByteSize }
 
 fn topology_pressure(
-  candidate: DramModuleCatalogRow,
-  jedec: JedecDdrGenerationCatalogRow,
+  candidate: extdeps.memory.types.DramModuleCatalogRow,
+  jedec: extdeps.memory.types.JedecDdrGenerationCatalogRow,
 ) -> TopologyPressure {
-  if capacity_reachable_as_dual_rank_registered(module: candidate, jedec: jedec) {
+  if extdeps.memory.training.capacity_reachable_as_dual_rank_registered(module: candidate, jedec: jedec) {
     CapacityReachableConventionally
   } else {
     CapacityForcesExoticTopology { capacity_bytes: candidate.capacity_bytes }
   }
 }
 
+
 data altrad8ud_mrep_failure_observation: PlatformTrainingFailure = PlatformTrainingFailure {
-  board: AsrockRackAltrad8ud1l2t,
-  step: LrdimmDataBufferMrep,
+  board: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
+  step: extdeps.memory.training.LrdimmDataBufferMrep,
   standing: AssociatedByIdenticalSignature {
     signature: "SK[0]: 00120001 / MC[0]: 00f100b4",
-    source: asrock_altrad8ud_download_authority,
+    source: extdeps.boards.asrock_rack.asrock_altrad8ud_download_authority,
   },
   observed_population: ["A1"],
   observed_at: 1786590000000,
 }
+
 
 // --- THE 2026-08-22 REPLACEMENT, GRADED ON THE SAME FOUR AXES -----------------------------------
 //
@@ -325,13 +329,13 @@ data altrad8ud_mrep_failure_observation: PlatformTrainingFailure = PlatformTrain
 // to keep the four axes apart -- the module's own defect, committed inside the module. Boot is
 // established by direct observation and says so; training waits for a console read.
 data srv3_new_population_standing: HostMemoryStanding = HostMemoryStanding {
-  host: operator_host_srv3,
+  host: gunbc.fleet_intent_network.operator_host_srv3,
   part_number: "M393A8G40D40-CRB0Q",
   population: ["DDR4_A1", "DDR4_B1", "DDR4_C1", "DDR4_D1", "DDR4_E1", "DDR4_F1", "DDR4_G1", "DDR4_H1"],
   class_support: ClassSupportedByBoard,
   part_qualification: NotListedInVendorAvl {
-    avl_authority: ampere_altra_avl_authority,
-    avl_issue: ampere_altra_avl_current_issue,
+    avl_authority: extdeps.cpu.ampere.ampere_altra_avl_authority,
+    avl_issue: extdeps.cpu.ampere.ampere_altra_avl_current_issue,
   },
   training: TrainingOutcomeUnobserved,
   boot: BootReachedOperatingSystem,
@@ -339,13 +343,13 @@ data srv3_new_population_standing: HostMemoryStanding = HostMemoryStanding {
 }
 
 data srv4_new_population_standing: HostMemoryStanding = HostMemoryStanding {
-  host: operator_host_srv4,
+  host: gunbc.fleet_intent_network.operator_host_srv4,
   part_number: "M393A8G40D40-CRB0Q",
   population: ["DDR4_A1", "DDR4_B1", "DDR4_C1", "DDR4_D1", "DDR4_E1", "DDR4_F1", "DDR4_G1", "DDR4_H1"],
   class_support: ClassSupportedByBoard,
   part_qualification: NotListedInVendorAvl {
-    avl_authority: ampere_altra_avl_authority,
-    avl_issue: ampere_altra_avl_current_issue,
+    avl_authority: extdeps.cpu.ampere.ampere_altra_avl_authority,
+    avl_issue: extdeps.cpu.ampere.ampere_altra_avl_current_issue,
   },
   training: TrainingOutcomeUnobserved,
   boot: BootReachedOperatingSystem,
@@ -386,13 +390,13 @@ data srv4_observed_at_is_a_window_lower_bound_note: String = "srv4's observed_at
 // part_qualification axis below stays NotListedInVendorAvl and this host's standing stays a
 // failure rather than being softened by the three siblings that worked.
 data srv2_failed_64gib_population_standing: HostMemoryStanding = HostMemoryStanding {
-  host: operator_host_srv2,
+  host: gunbc.fleet_intent_network.operator_host_srv2,
   part_number: "M393A8G40D40-CRB0Q",
   population: ["DDR4_A1", "DDR4_B1", "DDR4_C1", "DDR4_D1", "DDR4_E1", "DDR4_F1", "DDR4_G1", "DDR4_H1"],
   class_support: ClassSupportedByBoard,
   part_qualification: NotListedInVendorAvl {
-    avl_authority: ampere_altra_avl_authority,
-    avl_issue: ampere_altra_avl_current_issue,
+    avl_authority: extdeps.cpu.ampere.ampere_altra_avl_authority,
+    avl_issue: extdeps.cpu.ampere.ampere_altra_avl_current_issue,
   },
   training: TrainingOutcomeUnobserved,
   boot: RepeatingFirmwareReset { token: "Power.Error.Blackout (no firmware POST token reached; BootProgress remained Unspecified at epoch zero)", cycles: 3 },

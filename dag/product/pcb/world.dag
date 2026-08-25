@@ -96,8 +96,8 @@ type PcbCapabilityStanding
 // either population.
 type PcbBodyLayoutStanding
   = PcbBodyLayoutAdmittedOverEveryRequiredPart
-  | PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: std.integer.Int }
-  | PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: std.integer.Int, causes: product.pcb.physical.PhysicalRefusalSet }
+  | PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: Int }
+  | PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: Int, causes: product.pcb.physical.PhysicalRefusalSet }
   | PcbBodyLayoutRefusedOverCompletePopulation { causes: product.pcb.physical.PhysicalRefusalSet }
 
 type EstablishedEnvelopeRead {
@@ -150,7 +150,7 @@ type PcbWorldConstruction<T>
 
 fn pcb_world_design(w: PcbWorld) -> std.decl_ref.DeclarationRef { w.design }
 fn pcb_worlds_share_design(a: PcbWorld, b: PcbWorld) -> Bool {
-  declaration_ref_eq(a: a.design, b: b.design)
+  std.decl_ref.declaration_ref_eq(a: a.design, b: b.design)
 }
 fn pcb_world_physical(w: PcbWorld) -> PcbPhysicalWorld { w.physical }
 fn pcb_envelope_reads(p: PcbPhysicalWorld) -> List<EstablishedEnvelopeRead> { p.envelope_reads }
@@ -198,30 +198,30 @@ fn first_present_refusal(a: PcbWorldRefusal?, b: PcbWorldRefusal?) -> PcbWorldRe
   }
 }
 
-fn pcb_component_count(p: PcbPhysicalWorld) -> std.integer.Int {
+fn pcb_component_count(p: PcbPhysicalWorld) -> Int {
   fold(p.components, init: 0, f: fn(acc, _c) { acc + 1 })
 }
 
-fn pcb_obligation_count(p: PcbPhysicalWorld) -> std.integer.Int {
+fn pcb_obligation_count(p: PcbPhysicalWorld) -> Int {
   fold(p.obligations, init: 0, f: fn(acc, _o) { acc + 1 })
 }
 
-fn pcb_functional_obligation_count(p: PcbPhysicalWorld) -> std.integer.Int {
+fn pcb_functional_obligation_count(p: PcbPhysicalWorld) -> Int {
   fold(p.functional_obligations, init: 0, f: fn(acc, _f) { acc + 1 })
 }
 
-fn pcb_attachment_obligation_count(p: PcbPhysicalWorld) -> std.integer.Int {
+fn pcb_attachment_obligation_count(p: PcbPhysicalWorld) -> Int {
   fold(p.attachment_obligations, init: 0, f: fn(acc, _o) { acc + 1 })
 }
 
 type PcbCauseCounts {
-  missing_document: std.integer.Int
-  commercial_access: std.integer.Int
-  legal_carriage: std.integer.Int
-  unselected_part: std.integer.Int
-  drawing_must_be_read: std.integer.Int
-  standing_self_contradictory: std.integer.Int
-  named_attachment_part_unresolved: std.integer.Int
+  missing_document: Int
+  commercial_access: Int
+  legal_carriage: Int
+  unselected_part: Int
+  drawing_must_be_read: Int
+  standing_self_contradictory: Int
+  named_attachment_part_unresolved: Int
 }
 
 fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
@@ -314,35 +314,35 @@ fn obligation_cause_tag(c: PcbObligationCause) -> std.types.NonEmptyStr {
   }
 }
 
-fn pcb_missing_document_count(p: PcbPhysicalWorld) -> std.integer.Int {
+fn pcb_missing_document_count(p: PcbPhysicalWorld) -> Int {
   pcb_cause_counts(p: p).missing_document
 }
 
-fn pcb_commercial_access_count(p: PcbPhysicalWorld) -> std.integer.Int {
+fn pcb_commercial_access_count(p: PcbPhysicalWorld) -> Int {
   pcb_cause_counts(p: p).commercial_access
 }
 
-fn pcb_legal_carriage_count(p: PcbPhysicalWorld) -> std.integer.Int {
+fn pcb_legal_carriage_count(p: PcbPhysicalWorld) -> Int {
   pcb_cause_counts(p: p).legal_carriage
 }
 
-fn pcb_unselected_part_count(p: PcbPhysicalWorld) -> std.integer.Int {
+fn pcb_unselected_part_count(p: PcbPhysicalWorld) -> Int {
   pcb_cause_counts(p: p).unselected_part
 }
 
-fn pcb_drawing_must_be_read_count(p: PcbPhysicalWorld) -> std.integer.Int {
+fn pcb_drawing_must_be_read_count(p: PcbPhysicalWorld) -> Int {
   pcb_cause_counts(p: p).drawing_must_be_read
 }
 
-fn pcb_standing_self_contradictory_count(p: PcbPhysicalWorld) -> std.integer.Int {
+fn pcb_standing_self_contradictory_count(p: PcbPhysicalWorld) -> Int {
   pcb_cause_counts(p: p).standing_self_contradictory
 }
 
-fn pcb_named_attachment_part_unresolved_count(p: PcbPhysicalWorld) -> std.integer.Int {
+fn pcb_named_attachment_part_unresolved_count(p: PcbPhysicalWorld) -> Int {
   pcb_cause_counts(p: p).named_attachment_part_unresolved
 }
 
-fn pcb_population_count(p: PcbPhysicalWorld) -> std.integer.Int {
+fn pcb_population_count(p: PcbPhysicalWorld) -> Int {
   pcb_component_count(p: p) + pcb_obligation_count(p: p)
 }
 

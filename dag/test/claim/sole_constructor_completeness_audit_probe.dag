@@ -1,5 +1,6 @@
 module test.claim.sole_constructor_completeness_audit_probe
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosticCensus {
@@ -8,8 +9,8 @@ fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosti
 
 fn violation_count(source: String, wanted: String) -> Int {
   match census_of(source: source) {
-    CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: wanted))
-    CensusNotRunnable { cause: _ } => 0 - 1
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: wanted))
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
@@ -208,8 +209,8 @@ fn always_true_le(a: Int, b: Int) -> Bool { true }
 
 test fn f12_caller_supplied_validator_defeats_ordering_invariant() -> Bool {
   match std.interval.closed_interval(low: 10, high: 1, le: always_true_le) {
-    IntervalReady { interval: iv } => true
-    IntervalRefused { reason: _ } => false
+    std.interval.IntervalReady { interval: iv } => true
+    std.interval.IntervalRefused { reason: _ } => false
   }
 }
 
@@ -220,8 +221,8 @@ fn honest_le(a: Int, b: Int) -> Bool { a <= b }
 
 test fn f12b_honest_validator_control_refuses_reversed_bounds() -> Bool {
   match std.interval.closed_interval(low: 10, high: 1, le: honest_le) {
-    IntervalReady { interval: _ } => false
-    IntervalRefused { reason: _ } => true
+    std.interval.IntervalReady { interval: _ } => false
+    std.interval.IntervalRefused { reason: _ } => true
   }
 }
 
@@ -256,8 +257,8 @@ fn f13_diag_notrunnable_sentinel() -> Int {
 
 fn f13_diag_total_row_count() -> Int {
   match census_of(source: f13_variant_construction_source) {
-    CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
-    CensusNotRunnable { cause: _ } => 0 - 1
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
@@ -277,8 +278,8 @@ data f14_deserialize_attempt_source: String = "module probe_f14_deserialize_atte
 
 fn f14_diag_total_row_count() -> Int {
   match census_of(source: f14_deserialize_attempt_source) {
-    CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
-    CensusNotRunnable { cause: _ } => 0 - 1
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
@@ -317,8 +318,8 @@ data f17_unadmitted_caller_source: String = "module probe_f17_unadmitted_caller\
 
 fn f17_diag_total_row_count() -> Int {
   match census_of(source: f17_unadmitted_caller_source) {
-    CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
-    CensusNotRunnable { cause: _ } => 0 - 1
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
@@ -342,8 +343,8 @@ data f18_admitted_caller_accept_source: String = "module probe_f18_admitted_call
 
 fn f18_diag_total_row_count() -> Int {
   match census_of(source: f18_admitted_caller_accept_source) {
-    CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
-    CensusNotRunnable { cause: _ } => 0 - 1
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
@@ -366,8 +367,8 @@ data f19_default_value_source: String = "module probe_f19_default_value\nimport 
 
 fn f19_diag_total_row_count() -> Int {
   match census_of(source: f19_default_value_source) {
-    CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
-    CensusNotRunnable { cause: _ } => 0 - 1
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: rows)
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 

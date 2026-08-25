@@ -3,7 +3,7 @@ module extdeps.boot.linux_x86_boot
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.kernel.org/doc/html/latest/arch/x86/boot.html"
   }
 }
@@ -24,9 +24,9 @@ type BootImageRejectReason
 
 fn accept_linux_x86_boot_image(img: LinuxX86BootImage) -> BootImageOutcome {
   match img.init {
-    HollowPrebuiltInit { digest: _, entry: _ } =>
+    extdeps.boot.freestanding_payload.HollowPrebuiltInit { digest: _, entry: _ } =>
       BootImageRejected { reason: HollowInitNotEmitProof }
     EmittedPayload { digest: _, entry: _ } => BootImageAccepted { value: img }
-    PrebuiltPayload { digest: _, entry: _ } => BootImageAccepted { value: img }
+    extdeps.boot.freestanding_payload.PrebuiltPayload { digest: _, entry: _ } => BootImageAccepted { value: img }
   }
 }

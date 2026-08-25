@@ -16,7 +16,7 @@ fn reduce_verdict_combine(a: ReduceVerdict, b: ReduceVerdict) -> ReduceVerdict {
   }
 }
 
-fn reduce_verdict_semigroup() -> Semigroup<ReduceVerdict> {
+fn reduce_verdict_semigroup() -> std.algebra.Semigroup<ReduceVerdict> {
   std.algebra.Semigroup { op: reduce_verdict_combine }
 }
 

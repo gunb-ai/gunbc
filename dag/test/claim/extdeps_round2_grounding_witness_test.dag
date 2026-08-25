@@ -1,72 +1,72 @@
 module test.claim.extdeps_round2_grounding_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn w_sql_dialect_postgres_label() -> Bool {
-  sql_dialect_wire_label(Postgres) == "postgres"
+  extdeps.sql.migration.sql_dialect_wire_label(extdeps.sql.migration.Postgres) == "postgres"
 }
 
 test fn w_sql_dialect_mysql_not_postgres() -> Bool {
-  sql_dialect_wire_label(Mysql) == "mysql"
-    && sql_dialect_wire_label(Mysql) != sql_dialect_wire_label(Postgres)
+  extdeps.sql.migration.sql_dialect_wire_label(extdeps.sql.migration.Mysql) == "mysql"
+    && extdeps.sql.migration.sql_dialect_wire_label(extdeps.sql.migration.Mysql) != extdeps.sql.migration.sql_dialect_wire_label(extdeps.sql.migration.Postgres)
 }
 
 test fn w_sql_migration_step_carries_dialect_enum() -> Bool {
   let step = extdeps.sql.migration.SqlMigrationStep {
     name: "init",
-    operation: CreateTable,
-    dialect: Sqlite,
+    operation: extdeps.sql.migration.CreateTable,
+    dialect: extdeps.sql.migration.Sqlite,
     statement: "CREATE TABLE t(id INT);",
     reversible: false,
   }
-  step.dialect == Sqlite
+  step.dialect == extdeps.sql.migration.Sqlite
 }
 
 test fn w_http_content_type_html_label() -> Bool {
-  media_type_wire_label(m: text_html_utf8) == "text/html; charset=utf-8"
+  extdeps.http.server.media_type_wire_label(m: extdeps.http.server.text_html_utf8) == "text/html; charset=utf-8"
 }
 
 test fn w_http_content_type_plain_not_html() -> Bool {
-  media_type_wire_label(m: text_plain_utf8) == "text/plain; charset=utf-8"
-    && media_type_wire_label(m: text_plain_utf8) != media_type_wire_label(m: text_html_utf8)
+  extdeps.http.server.media_type_wire_label(m: extdeps.http.server.text_plain_utf8) == "text/plain; charset=utf-8"
+    && extdeps.http.server.media_type_wire_label(m: extdeps.http.server.text_plain_utf8) != extdeps.http.server.media_type_wire_label(m: extdeps.http.server.text_html_utf8)
 }
 
 test fn w_served_static_route_content_type_media_type() -> Bool {
   let row = extdeps.http.server.ServedStaticRoute {
-    method: GET,
+    method: extdeps.http.server.GET,
     path_pattern: std.http_path.PathTemplate { tokens: [] },
     body: "<html></html>",
-    content_type: text_html_utf8,
+    content_type: extdeps.http.server.text_html_utf8,
     status_on_hit: 200,
   }
-  row.content_type.top_level == TopLevelText
+  row.content_type.top_level == extdeps.http.server.TopLevelText
     && row.content_type.subtype == "html"
-    && media_type_wire_label(m: row.content_type) == "text/html; charset=utf-8"
+    && extdeps.http.server.media_type_wire_label(m: row.content_type) == "text/html; charset=utf-8"
 }
 
 test fn w_sigv4_grounded_region_service() -> Bool {
-  aws_region_wire_label(UsEast1) == "us-east-1"
-    && aws_service_wire_label(S3) == "s3"
+  extdeps.cloud.cloud.aws_region_wire_label(extdeps.cloud.cloud.UsEast1) == "us-east-1"
+    && extdeps.cloud.cloud.aws_service_wire_label(extdeps.cloud.cloud.S3) == "s3"
 }
 
 test fn w_sigv4_auth_scheme_carries_enums() -> Bool {
-  match (extdeps.cloud.cloud.SigV4 { region: UsEast1, service: S3 }) {
-    SigV4 => true
-    Protocol => false
-    OidcToken => false
+  match extdeps.cloud.cloud.SigV4 { region: extdeps.cloud.cloud.UsEast1, service: extdeps.cloud.cloud.S3 } {
+    extdeps.cloud.cloud.SigV4 => true
+    extdeps.cloud.cloud.Protocol => false
+    extdeps.cloud.cloud.OidcToken => false
   }
 }
 
 test fn w_gcp_api_endpoint_service_enum() -> Bool {
   let endpoint = extdeps.cloud.gcp.gcp.GcpApiEndpoint {
-    service: GcpStorage,
+    service: extdeps.cloud.gcp.gcp.GcpStorage,
     base_url: "https://storage.googleapis.com/storage/v1",
     version: "v1",
   }
-  endpoint.service == GcpStorage
-    && gcp_service_wire_label(GcpStorage) == "storage"
-    && gcp_service_wire_label(GcpSts) == "sts"
+  endpoint.service == extdeps.cloud.gcp.gcp.GcpStorage
+    && extdeps.cloud.gcp.gcp.gcp_service_wire_label(extdeps.cloud.gcp.gcp.GcpStorage) == "storage"
+    && extdeps.cloud.gcp.gcp.gcp_service_wire_label(extdeps.cloud.gcp.gcp.GcpSts) == "sts"
 }
 
 test fn w_gcp_project_id_refinement() -> Bool {
@@ -80,17 +80,17 @@ test fn w_gcp_project_id_refinement() -> Bool {
 
 test fn w_gcp_rpc_code_grounded_and_other() -> Bool {
   let example_ok = match gcp_error_example.error.status {
-    Present { value: c } => c == GcpRpcCodePermissionDenied
+    Present { value: c } => c == extdeps.cloud.gcp.errors.GcpRpcCodePermissionDenied
     Absent => false
   }
-  let label_ok = gcp_rpc_code_label(GcpRpcCodePermissionDenied) == "PERMISSION_DENIED"
-  let known_routes_to_known = match parse_gcp_rpc_code("NOT_FOUND") {
-    GcpRpcCodeNotFound => true
-    GcpRpcCodeOther { raw: _ } => false
+  let label_ok = extdeps.cloud.gcp.errors.gcp_rpc_code_label(extdeps.cloud.gcp.errors.GcpRpcCodePermissionDenied) == "PERMISSION_DENIED"
+  let known_routes_to_known = match extdeps.cloud.gcp.errors.parse_gcp_rpc_code("NOT_FOUND") {
+    extdeps.cloud.gcp.errors.GcpRpcCodeNotFound => true
+    extdeps.cloud.gcp.errors.GcpRpcCodeOther { raw: _ } => false
     _ => false
   }
-  let unknown_routes_to_other = match parse_gcp_rpc_code("FUTURE_CODE_X") {
-    GcpRpcCodeOther { raw: r } => r == "FUTURE_CODE_X"
+  let unknown_routes_to_other = match extdeps.cloud.gcp.errors.parse_gcp_rpc_code("FUTURE_CODE_X") {
+    extdeps.cloud.gcp.errors.GcpRpcCodeOther { raw: r } => r == "FUTURE_CODE_X"
     _ => false
   }
   example_ok && label_ok && known_routes_to_known && unknown_routes_to_other
@@ -107,60 +107,60 @@ test fn w_service_account_email_grounded() -> Bool {
 }
 
 test fn w_gpu_compute_capability_sm_label() -> Bool {
-  let cap = extdeps.gpu.types.GpuComputeCapability { vendor: nvidia, major: 8, minor: 9 }
-  match gpu_compute_capability_sm_label(cap) {
-    GpuCapabilityLabelOk { label: label } => label == "sm_8_9"
-    GpuCapabilityLabelRejected { reason: _ } => false
+  let cap = extdeps.gpu.types.GpuComputeCapability { vendor: extdeps.vendor.nvidia.nvidia, major: 8, minor: 9 }
+  match extdeps.gpu.types.gpu_compute_capability_sm_label(cap) {
+    extdeps.gpu.types.GpuCapabilityLabelOk { label: label } => label == "sm_8_9"
+    extdeps.gpu.types.GpuCapabilityLabelRejected { reason: _ } => false
   }
 }
 
 test fn w_gpu_amd_label_distinct_from_nvidia() -> Bool {
-  let cap = extdeps.gpu.types.GpuComputeCapability { vendor: amd, major: 11, minor: 0 }
-  match gpu_compute_capability_sm_label(cap) {
-    GpuCapabilityLabelOk { label: label } => label == "gfx110"
-    GpuCapabilityLabelRejected { reason: _ } => false
+  let cap = extdeps.gpu.types.GpuComputeCapability { vendor: extdeps.vendor.amd.amd, major: 11, minor: 0 }
+  match extdeps.gpu.types.gpu_compute_capability_sm_label(cap) {
+    extdeps.gpu.types.GpuCapabilityLabelOk { label: label } => label == "gfx110"
+    extdeps.gpu.types.GpuCapabilityLabelRejected { reason: _ } => false
   }
 }
 
 test fn w_intel_capability_label_refuses_fail_closed() -> Bool {
   let cap = extdeps.gpu.types.GpuComputeCapability { vendor: extdeps.vendor.intel.intel, major: 1, minor: 0 }
-  match gpu_compute_capability_sm_label(cap) {
-    GpuCapabilityLabelOk { label: _ } => false
-    GpuCapabilityLabelRejected { reason: r } => r.vendor == extdeps.vendor.intel.intel
+  match extdeps.gpu.types.gpu_compute_capability_sm_label(cap) {
+    extdeps.gpu.types.GpuCapabilityLabelOk { label: _ } => false
+    extdeps.gpu.types.GpuCapabilityLabelRejected { reason: r } => r.vendor == extdeps.vendor.intel.intel
   }
 }
 
 test fn w_gpu_facts_structured_compute_capability() -> Bool {
   let gpu = extdeps.gpu.types.GpuFacts {
-    vendor: nvidia,
+    vendor: extdeps.vendor.nvidia.nvidia,
     model: "H100",
-    compute_capability: extdeps.gpu.types.GpuComputeCapability { vendor: nvidia, major: 9, minor: 0 },
+    compute_capability: extdeps.gpu.types.GpuComputeCapability { vendor: extdeps.vendor.nvidia.nvidia, major: 9, minor: 0 },
     memory: extdeps.memory.types.MemoryFacts {
-      capacity: byte_size(80),
-      memory_kind: Hbm,
+      capacity: std.measure.byte_size(80),
+      memory_kind: extdeps.memory.types.Hbm,
     },
     supported_runtimes: [],
   }
-  gpu.vendor == nvidia
-    && match gpu_compute_capability_sm_label(
-      extdeps.gpu.types.GpuComputeCapability { vendor: nvidia, major: 9, minor: 0 }
+  gpu.vendor == extdeps.vendor.nvidia.nvidia
+    && match extdeps.gpu.types.gpu_compute_capability_sm_label(
+      extdeps.gpu.types.GpuComputeCapability { vendor: extdeps.vendor.nvidia.nvidia, major: 9, minor: 0 }
     ) {
-      GpuCapabilityLabelOk { label: label } => label == "sm_9_0"
-      GpuCapabilityLabelRejected { reason: _ } => false
+      extdeps.gpu.types.GpuCapabilityLabelOk { label: label } => label == "sm_9_0"
+      extdeps.gpu.types.GpuCapabilityLabelRejected { reason: _ } => false
     }
 }
 
 test fn w_ampere_capability_label_refuses_fail_closed() -> Bool {
-  let cap = extdeps.gpu.types.GpuComputeCapability { vendor: ampere_vendor, major: 1, minor: 0 }
-  match gpu_compute_capability_sm_label(cap) {
-    GpuCapabilityLabelOk { label: _ } => false
-    GpuCapabilityLabelRejected { reason: r } => r.vendor == ampere_vendor
+  let cap = extdeps.gpu.types.GpuComputeCapability { vendor: extdeps.vendor.ampere.ampere_vendor, major: 1, minor: 0 }
+  match extdeps.gpu.types.gpu_compute_capability_sm_label(cap) {
+    extdeps.gpu.types.GpuCapabilityLabelOk { label: _ } => false
+    extdeps.gpu.types.GpuCapabilityLabelRejected { reason: r } => r.vendor == extdeps.vendor.ampere.ampere_vendor
   }
 }
 
 test fn w_hardware_vendor_single_authority() -> Bool {
-  let accel = extdeps.gpu.types.AcceleratorFacts { vendor: amd, model: "MI300X" }
-  let gpu_cap = extdeps.gpu.types.GpuComputeCapability { vendor: amd, major: 11, minor: 0 }
+  let accel = extdeps.gpu.types.AcceleratorFacts { vendor: extdeps.vendor.amd.amd, model: "MI300X" }
+  let gpu_cap = extdeps.gpu.types.GpuComputeCapability { vendor: extdeps.vendor.amd.amd, major: 11, minor: 0 }
   accel.vendor == gpu_cap.vendor
 }
 

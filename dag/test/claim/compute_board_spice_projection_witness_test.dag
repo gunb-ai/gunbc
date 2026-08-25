@@ -3,20 +3,19 @@ module test.claim.compute_board_spice_projection_witness
 
 data fixture_design: product.electrical.connectivity.ElectricalDesignIdentity = "test.compute_board_spice_projection.fixture" as product.electrical.connectivity.ElectricalDesignIdentity
 
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // SYNTHETIC FIXTURES, sized to the boundaries they cross and no larger. Nothing here is a
 // realistic-looking circuit chosen for verisimilitude: each fixture is the smallest one that
 // crosses exactly one modelled boundary, per the witness-cost rule.
 data fixture_identity: std.types.NonEmptyStr = "synthetic fixture rev 0"
 
-data rail_net: product.electrical.connectivity.NetIdentity = net_identity(design: test.claim.compute_board_spice_projection_witness.fixture_design, local_identity: "rail")
+data rail_net: product.electrical.connectivity.NetIdentity = product.electrical.connectivity.net_identity(design: fixture_design, local_identity: "rail")
 
-data return_net: product.electrical.connectivity.NetIdentity = net_identity(design: test.claim.compute_board_spice_projection_witness.fixture_design, local_identity: "rtn")
+data return_net: product.electrical.connectivity.NetIdentity = product.electrical.connectivity.net_identity(design: fixture_design, local_identity: "rtn")
 
 data sense_resistor: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.ResistorInstance {
-  identity: component_instance_identity(design: test.claim.compute_board_spice_projection_witness.fixture_design, local_identity: "sense"),
+  identity: product.electrical.connectivity.component_instance_identity(design: fixture_design, local_identity: "sense"),
   part: "series sense resistor",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
   negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
@@ -24,7 +23,7 @@ data sense_resistor: product.compute_board.analog.ElectricalComponentInstance = 
 }
 
 data decoupling_capacitor: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.CapacitorInstance {
-  identity: component_instance_identity(design: test.claim.compute_board_spice_projection_witness.fixture_design, local_identity: "decap"),
+  identity: product.electrical.connectivity.component_instance_identity(design: fixture_design, local_identity: "decap"),
   part: "bulk decoupling capacitor",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
   negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
@@ -32,7 +31,7 @@ data decoupling_capacitor: product.compute_board.analog.ElectricalComponentInsta
 }
 
 data rail_supply: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.IndependentVoltageSourceInstance {
-  identity: component_instance_identity(design: test.claim.compute_board_spice_projection_witness.fixture_design, local_identity: "rail_src"),
+  identity: product.electrical.connectivity.component_instance_identity(design: fixture_design, local_identity: "rail_src"),
   part: "standby rail source",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
   negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
@@ -44,13 +43,13 @@ fn nets_for(components: List<product.compute_board.analog.ElectricalComponentIns
     product.electrical.connectivity.ElectricalNet {
       identity: rail_net,
       members: fold(components, init: [], f: fn(acc, c) {
-        append(acc, items: [terminal_ref(component: c.identity, terminal: c.positive_terminal)])
+        append(acc, items: [product.electrical.connectivity.terminal_ref(component: c.identity, terminal: c.positive_terminal)])
       }),
     },
     product.electrical.connectivity.ElectricalNet {
       identity: return_net,
       members: fold(components, init: [], f: fn(acc, c) {
-        append(acc, items: [terminal_ref(component: c.identity, terminal: c.negative_terminal)])
+        append(acc, items: [product.electrical.connectivity.terminal_ref(component: c.identity, terminal: c.negative_terminal)])
       }),
     },
   ]
@@ -67,18 +66,18 @@ fn circuit_with(components: List<product.compute_board.analog.ElectricalComponen
 fn ideal_binding(c: product.compute_board.analog.ElectricalComponentInstance) -> product.compute_board.analog.ComponentModelBinding {
   product.compute_board.analog.ComponentModelBinding {
     component: c.identity,
-    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
+    standing: product.compute_board.analog.ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: product.compute_board.analog.IdealLumped },
   }
 }
 
 fn absent_binding(c: product.compute_board.analog.ElectricalComponentInstance) -> product.compute_board.analog.ComponentModelBinding {
-  product.compute_board.analog.ComponentModelBinding { component: c.identity, standing: ElectricalModelAbsent }
+  product.compute_board.analog.ComponentModelBinding { component: c.identity, standing: product.compute_board.analog.ElectricalModelAbsent }
 }
 
 fn subcircuit_binding(c: product.compute_board.analog.ElectricalComponentInstance) -> product.compute_board.analog.ComponentModelBinding {
   product.compute_board.analog.ComponentModelBinding {
     component: c.identity,
-    standing: product.compute_board.analog.ElectricalModelCited { model_card: "vendor ESR/ESL subcircuit", fidelity: VendorSubcircuit },
+    standing: product.compute_board.analog.ElectricalModelCited { model_card: "vendor ESR/ESL subcircuit", fidelity: product.compute_board.analog.VendorSubcircuit },
   }
 }
 
@@ -86,8 +85,8 @@ fn project(
   components: List<product.compute_board.analog.ElectricalComponentInstance>,
   bindings: List<product.compute_board.analog.ComponentModelBinding>
 ) -> product.compute_board.spice_projection.SpiceProjection {
-  project_analog_to_spice(
-    article_identity: test.claim.compute_board_spice_projection_witness.fixture_identity,
+  product.compute_board.spice_projection.project_analog_to_spice(
+    article_identity: fixture_identity,
     intent: circuit_with(components: components),
     bindings: bindings,
     reference: return_net
@@ -105,21 +104,21 @@ fn project(
 // cause. (3) "the seam is cross-module." Also wrong. The actual cause was two lines:
 // spice_text_concat was defined as list_append, the FREE MONOID append, applied to String.
 test fn w_modelled_circuit_emits_expected_deck_bytes() -> Bool {
-  match test.claim.compute_board_spice_projection_witness.project(
+  match project(
     components: [rail_supply, sense_resistor, decoupling_capacitor],
     bindings: [ideal_binding(c: rail_supply), ideal_binding(c: sense_resistor), ideal_binding(c: decoupling_capacitor)]
   ) {
-    SpiceSliceProjected { receipt: r } =>
+    product.compute_board.spice_projection.SpiceSliceProjected { receipt: r } =>
       r.source == "standby rail slice\nVrail_src rail 0 12\nRsense rail 0 10k\nCdecap rail 0 100n"
         && (r.source_article as String) == "synthetic fixture rev 0"
-    SpiceSliceRefused { cause: _ } => false
+    product.compute_board.spice_projection.SpiceSliceRefused { cause: _ } => false
   }
 }
 
 // PERTURB EXACTLY ONE TYPED VALUE and the deck must change. This is what makes the byte equality
 // above an oracle rather than a pinned constant: the emission is a function of the model.
 data perturbed_resistor: product.compute_board.analog.ElectricalComponentInstance = product.compute_board.analog.ResistorInstance {
-  identity: component_instance_identity(design: test.claim.compute_board_spice_projection_witness.fixture_design, local_identity: "sense"),
+  identity: product.electrical.connectivity.component_instance_identity(design: fixture_design, local_identity: "sense"),
   part: "series sense resistor",
   positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
   negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
@@ -127,11 +126,11 @@ data perturbed_resistor: product.compute_board.analog.ElectricalComponentInstanc
 }
 
 test fn w_one_perturbed_value_changes_the_deck() -> Bool {
-  match test.claim.compute_board_spice_projection_witness.project(components: [perturbed_resistor], bindings: [ideal_binding(c: perturbed_resistor)]) {
-    SpiceSliceProjected { receipt: r } =>
+  match project(components: [perturbed_resistor], bindings: [ideal_binding(c: perturbed_resistor)]) {
+    product.compute_board.spice_projection.SpiceSliceProjected { receipt: r } =>
       r.source == "standby rail slice\nRsense rail 0 47k"
         && r.source != "standby rail slice\nRsense rail 0 10k"
-    SpiceSliceRefused { cause: _ } => false
+    product.compute_board.spice_projection.SpiceSliceRefused { cause: _ } => false
   }
 }
 
@@ -139,35 +138,35 @@ test fn w_one_perturbed_value_changes_the_deck() -> Bool {
 // forbidden behaviour is not a missing error message — it is a deck that still emits, with an
 // ideal part quietly standing in for the one we could not model.
 test fn w_unmodelled_element_refuses_and_emits_nothing() -> Bool {
-  match test.claim.compute_board_spice_projection_witness.project(
+  match project(
     components: [sense_resistor, decoupling_capacitor],
     bindings: [ideal_binding(c: sense_resistor), absent_binding(c: decoupling_capacitor)]
   ) {
-    SpiceSliceRefused { cause: c } =>
+    product.compute_board.spice_projection.SpiceSliceRefused { cause: c } =>
       match c {
-        ElectricalModelUnavailable { part: p } => (p as String) == "bulk decoupling capacitor"
-        ModelFidelityNotEmittable { part: _, model_card: _ } => false
-        ComponentModelBindingMissing { part: _ } => false
-        TerminalOnNoNet { part: _ } => false
-        TerminalOnMultipleNets { part: _ } => false
-        DuplicateModelBinding { component: _ } => false
-        IdentityNotSpellableInTarget { component: _ } => false
-        NetNotSpellableInTarget { net: _ } => false
+        product.compute_board.spice_projection.ElectricalModelUnavailable { part: p } => (p as String) == "bulk decoupling capacitor"
+        product.compute_board.spice_projection.ModelFidelityNotEmittable { part: _, model_card: _ } => false
+        product.compute_board.spice_projection.ComponentModelBindingMissing { part: _ } => false
+        product.compute_board.spice_projection.TerminalOnNoNet { part: _ } => false
+        product.compute_board.spice_projection.TerminalOnMultipleNets { part: _ } => false
+        product.compute_board.spice_projection.DuplicateModelBinding { component: _ } => false
+        product.compute_board.spice_projection.IdentityNotSpellableInTarget { component: _ } => false
+        product.compute_board.spice_projection.NetNotSpellableInTarget { net: _ } => false
       }
-    SpiceSliceProjected { receipt: _ } => false
+    product.compute_board.spice_projection.SpiceSliceProjected { receipt: _ } => false
   }
 }
 
 // The discriminating pair: the SAME circuit differing only in model standing lands on opposite
 // arms. Without this, the refusal above is satisfied by a projection that refuses everything.
 test fn w_model_standing_alone_decides_the_arm() -> Bool {
-  match test.claim.compute_board_spice_projection_witness.project(components: [decoupling_capacitor], bindings: [ideal_binding(c: decoupling_capacitor)]) {
-    SpiceSliceProjected { receipt: _ } =>
-      match test.claim.compute_board_spice_projection_witness.project(components: [decoupling_capacitor], bindings: [absent_binding(c: decoupling_capacitor)]) {
-        SpiceSliceRefused { cause: _ } => true
-        SpiceSliceProjected { receipt: _ } => false
+  match project(components: [decoupling_capacitor], bindings: [ideal_binding(c: decoupling_capacitor)]) {
+    product.compute_board.spice_projection.SpiceSliceProjected { receipt: _ } =>
+      match project(components: [decoupling_capacitor], bindings: [absent_binding(c: decoupling_capacitor)]) {
+        product.compute_board.spice_projection.SpiceSliceRefused { cause: _ } => true
+        product.compute_board.spice_projection.SpiceSliceProjected { receipt: _ } => false
       }
-    SpiceSliceRefused { cause: _ } => false
+    product.compute_board.spice_projection.SpiceSliceRefused { cause: _ } => false
   }
 }
 
@@ -177,20 +176,20 @@ test fn w_model_standing_alone_decides_the_arm() -> Bool {
 // forbids, and an earlier revision performed it: admission checked only that a model card was
 // PRESENT, and every admitted element emitted as an ideal lumped part regardless.
 test fn w_vendor_subcircuit_refuses_rather_than_emitting_an_ideal_part() -> Bool {
-  match test.claim.compute_board_spice_projection_witness.project(components: [decoupling_capacitor], bindings: [subcircuit_binding(c: decoupling_capacitor)]) {
-    SpiceSliceRefused { cause: c } =>
+  match project(components: [decoupling_capacitor], bindings: [subcircuit_binding(c: decoupling_capacitor)]) {
+    product.compute_board.spice_projection.SpiceSliceRefused { cause: c } =>
       match c {
-        ModelFidelityNotEmittable { part: p, model_card: mc } =>
+        product.compute_board.spice_projection.ModelFidelityNotEmittable { part: p, model_card: mc } =>
           (p as String) == "bulk decoupling capacitor" && (mc as String) == "vendor ESR/ESL subcircuit"
-        ElectricalModelUnavailable { part: _ } => false
-        ComponentModelBindingMissing { part: _ } => false
-        TerminalOnNoNet { part: _ } => false
-        TerminalOnMultipleNets { part: _ } => false
-        DuplicateModelBinding { component: _ } => false
-        IdentityNotSpellableInTarget { component: _ } => false
-        NetNotSpellableInTarget { net: _ } => false
+        product.compute_board.spice_projection.ElectricalModelUnavailable { part: _ } => false
+        product.compute_board.spice_projection.ComponentModelBindingMissing { part: _ } => false
+        product.compute_board.spice_projection.TerminalOnNoNet { part: _ } => false
+        product.compute_board.spice_projection.TerminalOnMultipleNets { part: _ } => false
+        product.compute_board.spice_projection.DuplicateModelBinding { component: _ } => false
+        product.compute_board.spice_projection.IdentityNotSpellableInTarget { component: _ } => false
+        product.compute_board.spice_projection.NetNotSpellableInTarget { net: _ } => false
       }
-    SpiceSliceProjected { receipt: _ } => false
+    product.compute_board.spice_projection.SpiceSliceProjected { receipt: _ } => false
   }
 }
 
@@ -198,19 +197,19 @@ test fn w_vendor_subcircuit_refuses_rather_than_emitting_an_ideal_part() -> Bool
 // first means nobody asked; the second means someone looked and there is none. Collapsing them
 // would make an omitted row read as a recorded negative result.
 test fn w_missing_binding_is_not_an_absent_model() -> Bool {
-  match test.claim.compute_board_spice_projection_witness.project(components: [decoupling_capacitor], bindings: []) {
-    SpiceSliceRefused { cause: c } =>
+  match project(components: [decoupling_capacitor], bindings: []) {
+    product.compute_board.spice_projection.SpiceSliceRefused { cause: c } =>
       match c {
-        ComponentModelBindingMissing { part: p } => (p as String) == "bulk decoupling capacitor"
-        ElectricalModelUnavailable { part: _ } => false
-        ModelFidelityNotEmittable { part: _, model_card: _ } => false
-        TerminalOnNoNet { part: _ } => false
-        TerminalOnMultipleNets { part: _ } => false
-        DuplicateModelBinding { component: _ } => false
-        IdentityNotSpellableInTarget { component: _ } => false
-        NetNotSpellableInTarget { net: _ } => false
+        product.compute_board.spice_projection.ComponentModelBindingMissing { part: p } => (p as String) == "bulk decoupling capacitor"
+        product.compute_board.spice_projection.ElectricalModelUnavailable { part: _ } => false
+        product.compute_board.spice_projection.ModelFidelityNotEmittable { part: _, model_card: _ } => false
+        product.compute_board.spice_projection.TerminalOnNoNet { part: _ } => false
+        product.compute_board.spice_projection.TerminalOnMultipleNets { part: _ } => false
+        product.compute_board.spice_projection.DuplicateModelBinding { component: _ } => false
+        product.compute_board.spice_projection.IdentityNotSpellableInTarget { component: _ } => false
+        product.compute_board.spice_projection.NetNotSpellableInTarget { net: _ } => false
       }
-    SpiceSliceProjected { receipt: _ } => false
+    product.compute_board.spice_projection.SpiceSliceProjected { receipt: _ } => false
   }
 }
 
@@ -224,30 +223,30 @@ data floating_circuit: product.compute_board.analog.AnalogCircuitIntent = produc
   nets: [
     product.electrical.connectivity.ElectricalNet {
       identity: rail_net,
-      members: [terminal_ref(component: sense_resistor.identity, terminal: sense_resistor.positive_terminal)],
+      members: [product.electrical.connectivity.terminal_ref(component: sense_resistor.identity, terminal: sense_resistor.positive_terminal)],
     },
   ],
 }
 
 test fn w_terminal_on_no_net_refuses_rather_than_defaulting_to_reference() -> Bool {
-  match project_analog_to_spice(
-    article_identity: test.claim.compute_board_spice_projection_witness.fixture_identity,
+  match product.compute_board.spice_projection.project_analog_to_spice(
+    article_identity: fixture_identity,
     intent: floating_circuit,
     bindings: [ideal_binding(c: sense_resistor)],
     reference: return_net
   ) {
-    SpiceSliceRefused { cause: c } =>
+    product.compute_board.spice_projection.SpiceSliceRefused { cause: c } =>
       match c {
-        TerminalOnNoNet { part: p } => (p as String) == "series sense resistor"
-        ElectricalModelUnavailable { part: _ } => false
-        ModelFidelityNotEmittable { part: _, model_card: _ } => false
-        ComponentModelBindingMissing { part: _ } => false
-        TerminalOnMultipleNets { part: _ } => false
-        DuplicateModelBinding { component: _ } => false
-        IdentityNotSpellableInTarget { component: _ } => false
-        NetNotSpellableInTarget { net: _ } => false
+        product.compute_board.spice_projection.TerminalOnNoNet { part: p } => (p as String) == "series sense resistor"
+        product.compute_board.spice_projection.ElectricalModelUnavailable { part: _ } => false
+        product.compute_board.spice_projection.ModelFidelityNotEmittable { part: _, model_card: _ } => false
+        product.compute_board.spice_projection.ComponentModelBindingMissing { part: _ } => false
+        product.compute_board.spice_projection.TerminalOnMultipleNets { part: _ } => false
+        product.compute_board.spice_projection.DuplicateModelBinding { component: _ } => false
+        product.compute_board.spice_projection.IdentityNotSpellableInTarget { component: _ } => false
+        product.compute_board.spice_projection.NetNotSpellableInTarget { net: _ } => false
       }
-    SpiceSliceProjected { receipt: _ } => false
+    product.compute_board.spice_projection.SpiceSliceProjected { receipt: _ } => false
   }
 }
 
@@ -257,25 +256,25 @@ test fn w_terminal_on_no_net_refuses_rather_than_defaulting_to_reference() -> Bo
 // because a check that only tried one would pass on a lookup that still silently prefers a
 // position — the wall has to hold regardless of which row an editor happened to type first.
 test fn w_duplicate_model_binding_refuses_in_either_order() -> Bool {
-  match test.claim.compute_board_spice_projection_witness.project(
+  match project(
     components: [sense_resistor],
     bindings: [ideal_binding(c: sense_resistor), subcircuit_binding(c: sense_resistor)]
   ) {
-    SpiceSliceRefused { cause: c } =>
+    product.compute_board.spice_projection.SpiceSliceRefused { cause: c } =>
       match c {
-        DuplicateModelBinding { component: id } =>
+        product.compute_board.spice_projection.DuplicateModelBinding { component: id } =>
           (id as String) == "sense"
-            && match test.claim.compute_board_spice_projection_witness.project(
+            && match project(
               components: [sense_resistor],
               bindings: [subcircuit_binding(c: sense_resistor), ideal_binding(c: sense_resistor)]
             ) {
-              SpiceSliceRefused { cause: c2 } =>
-                match c2 { DuplicateModelBinding { component: _ } => true, _ => false }
-              SpiceSliceProjected { receipt: _ } => false
+              product.compute_board.spice_projection.SpiceSliceRefused { cause: c2 } =>
+                match c2 { product.compute_board.spice_projection.DuplicateModelBinding { component: _ } => true, _ => false }
+              product.compute_board.spice_projection.SpiceSliceProjected { receipt: _ } => false
             }
         _ => false
       }
-    SpiceSliceProjected { receipt: _ } => false
+    product.compute_board.spice_projection.SpiceSliceProjected { receipt: _ } => false
   }
 }
 
@@ -291,26 +290,26 @@ fn shorted_circuit() -> product.compute_board.analog.AnalogCircuitIntent {
     components: [sense_resistor],
     nets: append(nets_for(components: [sense_resistor]), items: [
       product.electrical.connectivity.ElectricalNet {
-        identity: net_identity(design: test.claim.compute_board_spice_projection_witness.fixture_design, local_identity: "shorting_net"),
-        members: [terminal_ref(component: sense_resistor.identity, terminal: sense_resistor.positive_terminal)],
+        identity: product.electrical.connectivity.net_identity(design: fixture_design, local_identity: "shorting_net"),
+        members: [product.electrical.connectivity.terminal_ref(component: sense_resistor.identity, terminal: sense_resistor.positive_terminal)],
       },
     ]),
   }
 }
 
 test fn w_terminal_on_two_nets_refuses_as_a_short() -> Bool {
-  match project_analog_to_spice(
-    article_identity: test.claim.compute_board_spice_projection_witness.fixture_identity,
+  match product.compute_board.spice_projection.project_analog_to_spice(
+    article_identity: fixture_identity,
     intent: shorted_circuit(),
     bindings: [ideal_binding(c: sense_resistor)],
     reference: return_net
   ) {
-    SpiceSliceRefused { cause: c } =>
+    product.compute_board.spice_projection.SpiceSliceRefused { cause: c } =>
       match c {
-        TerminalOnMultipleNets { part: p } => (p as String) == "series sense resistor"
+        product.compute_board.spice_projection.TerminalOnMultipleNets { part: p } => (p as String) == "series sense resistor"
         _ => false
       }
-    SpiceSliceProjected { receipt: _ } => false
+    product.compute_board.spice_projection.SpiceSliceProjected { receipt: _ } => false
   }
 }
 
@@ -318,8 +317,8 @@ test fn w_terminal_on_two_nets_refuses_as_a_short() -> Bool {
 // only the extra net removed. Without this, a refusal arm that fired on every one-resistor
 // circuit would satisfy the test above and prove nothing about shorts.
 test fn w_same_circuit_without_the_extra_net_emits() -> Bool {
-  match test.claim.compute_board_spice_projection_witness.project(components: [sense_resistor], bindings: [ideal_binding(c: sense_resistor)]) {
-    SpiceSliceProjected { receipt: r } => r.source == "standby rail slice\nRsense rail 0 10k"
-    SpiceSliceRefused { cause: _ } => false
+  match project(components: [sense_resistor], bindings: [ideal_binding(c: sense_resistor)]) {
+    product.compute_board.spice_projection.SpiceSliceProjected { receipt: r } => r.source == "standby rail slice\nRsense rail 0 10k"
+    product.compute_board.spice_projection.SpiceSliceRefused { cause: _ } => false
   }
 }

@@ -4,22 +4,22 @@ module extdeps.gpu.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities"
   }
 }
 
-data cuda_compute_capabilities_authority: extdeps.external_authority.ExternalAuthority = extdeps.gpu.types.extdeps_external_authority_anchor
+data cuda_compute_capabilities_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
 
 type GpuRuntime = Cuda | Rocm | Metal | OpenCl
 
 type GpuComputeCapability {
-  vendor: Vendor<extdeps.hardware.Hardware>
+  vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   major: Int
   minor: Int
 }
 
-type UnsubstantiatedGpuCapabilityLabel { vendor: Vendor<extdeps.hardware.Hardware> }
+type UnsubstantiatedGpuCapabilityLabel { vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware> }
 
 type GpuCapabilityLabelOutcome
   = GpuCapabilityLabelOk { label: String }
@@ -44,7 +44,7 @@ fn gpu_compute_capability_sm_label(cap: GpuComputeCapability) -> GpuCapabilityLa
 }
 
 type GpuFacts {
-  vendor: Vendor<extdeps.hardware.Hardware>
+  vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   model: std.types.NonEmptyStr
   compute_capability: GpuComputeCapability?
   memory: extdeps.memory.types.MemoryFacts
@@ -52,7 +52,7 @@ type GpuFacts {
 }
 
 type AcceleratorFacts {
-  vendor: Vendor<extdeps.hardware.Hardware>
+  vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   model: std.types.NonEmptyStr
 }
 
@@ -62,7 +62,7 @@ type GpuSmCacheGeometry {
 }
 
 type GpuModelCatalogRow {
-  vendor: Vendor<extdeps.hardware.Hardware>
+  vendor: extdeps.vendor.Vendor<extdeps.hardware.Hardware>
   model: std.types.NonEmptyStr
   microarchitecture: std.types.NonEmptyStr
   execution_lane_count: std.measure.HardwareThreadCount

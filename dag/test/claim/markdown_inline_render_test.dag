@@ -1,29 +1,29 @@
 module test.claim.markdown_inline_render
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn parse_and_render(text: String) -> List<std.markup.Fragment> {
-  markdown_inlines_to_fragments(
-    inlines: parse_inline_markdown_minimal(text: text)
+  std.markdown.markdown_inlines_to_fragments(
+    inlines: extdeps.languages.markdown.parse_inline_markdown_minimal(text: text)
   )
 }
 
 test fn witness_bold_renders_to_strong_node() -> Bool {
   parse_and_render(text: "**bold text**") ==
-    [ extdeps.browser.Element { tag: "strong", attributes: [], children: [ std.markup.FragmentText { content: "bold text" } ] } ]
+    [ std.markup.Element { tag: "strong", attributes: [], children: [ std.markup.FragmentText { content: "bold text" } ] } ]
 }
 
 test fn witness_code_renders_to_code_node() -> Bool {
   parse_and_render(text: "`inline code`") ==
-    [ extdeps.browser.Element { tag: "code", attributes: [], children: [ std.markup.FragmentText { content: "inline code" } ] } ]
+    [ std.markup.Element { tag: "code", attributes: [], children: [ std.markup.FragmentText { content: "inline code" } ] } ]
 }
 
 test fn witness_link_renders_to_anchor_node() -> Bool {
   parse_and_render(text: "[label](/docs/plan.md)") ==
-    [ extdeps.browser.Element {
+    [ std.markup.Element {
         tag: "a",
-        attributes: [ attr(name: "href", value: "/docs/plan.md" ) ],
+        attributes: [ std.markup.attr(name: "href", value: "/docs/plan.md" ) ],
         children: [ std.markup.FragmentText { content: "label" } ],
       }
     ]
@@ -31,15 +31,15 @@ test fn witness_link_renders_to_anchor_node() -> Bool {
 
 test fn witness_em_renders_to_em_node() -> Bool {
   parse_and_render(text: "*emphasis*") ==
-    [ extdeps.browser.Element { tag: "em", attributes: [], children: [ std.markup.FragmentText { content: "emphasis" } ] } ]
+    [ std.markup.Element { tag: "em", attributes: [], children: [ std.markup.FragmentText { content: "emphasis" } ] } ]
 }
 
 test fn witness_mixed_inline_renders_to_nodes() -> Bool {
   parse_and_render(text: "**bold** and `code`") ==
     [
-      extdeps.browser.Element { tag: "strong", attributes: [], children: [ std.markup.FragmentText { content: "bold" } ] },
+      std.markup.Element { tag: "strong", attributes: [], children: [ std.markup.FragmentText { content: "bold" } ] },
       std.markup.FragmentText { content: " and " },
-      extdeps.browser.Element { tag: "code", attributes: [], children: [ std.markup.FragmentText { content: "code" } ] },
+      std.markup.Element { tag: "code", attributes: [], children: [ std.markup.FragmentText { content: "code" } ] },
     ]
 }
 
@@ -52,12 +52,12 @@ test fn witness_markup_bold_differs_from_plain() -> Bool {
 }
 
 test fn witness_image_inline_renders_to_img_node() -> Bool {
-  markdown_inline_to_fragments(inline: std.markdown.ImageInline { alt: "description", url: "/img.png" }) ==
-    [ extdeps.browser.Element {
+  std.markdown.markdown_inline_to_fragments(inline: std.markdown.ImageInline { alt: "description", url: "/img.png" }) ==
+    [ std.markup.Element {
         tag: "img",
         attributes: [
-          attr(name: "src", value: "/img.png" ),
-          attr(name: "alt", value: "description" ),
+          std.markup.attr(name: "src", value: "/img.png" ),
+          std.markup.attr(name: "alt", value: "description" ),
         ],
         children: [],
       }

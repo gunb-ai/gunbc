@@ -3,14 +3,14 @@ module extdeps.network.ipv4
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.rfc-editor.org/rfc/rfc791",
   }
 }
 
 data ipv4_dotted_decimal_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.rfc-editor.org/rfc/rfc790",
   }
 }

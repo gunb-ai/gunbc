@@ -14,15 +14,15 @@ fn emitted_content_has_merge_row_for(content: String, path: String) -> Bool {
 
 fn expected_gitattributes_has_merge_row_for(path: String) -> Bool {
   match gunbc.gitattributes_emit.expected_gitattributes() {
-    GitattributesGenerationRefused => false
-    GitattributesGenerated { content } => emitted_content_has_merge_row_for(content: content, path: path)
+    gunbc.gitattributes_emit.GitattributesGenerationRefused => false
+    gunbc.gitattributes_emit.GitattributesGenerated { content } => emitted_content_has_merge_row_for(content: content, path: path)
   }
 }
 
 fn all_generated_projection_paths_have_merge_rows() -> Bool {
   match gunbc.generated_projection_paths.deterministic_generated_projection_paths() {
-    GeneratedProjectionPathsRefused { cause: _ } => false
-    GeneratedProjectionPathsAccepted { paths } => all(paths, p => expected_gitattributes_has_merge_row_for(path: p))
+    gunbc.generated_projection_paths.GeneratedProjectionPathsRefused { cause: _ } => false
+    gunbc.generated_projection_paths.GeneratedProjectionPathsAccepted { paths } => all(paths, p => expected_gitattributes_has_merge_row_for(path: p))
   }
 }
 
@@ -35,8 +35,8 @@ test fn witness_all_committed_paths_have_merge_rows_holds() -> Bool {
 
 test fn witness_projection_population_contains_dispatch_generated() -> Bool {
   match gunbc.generated_projection_paths.deterministic_generated_projection_paths() {
-    GeneratedProjectionPathsRefused { cause: _ } => false
-    GeneratedProjectionPathsAccepted { paths } =>
+    gunbc.generated_projection_paths.GeneratedProjectionPathsRefused { cause: _ } => false
+    gunbc.generated_projection_paths.GeneratedProjectionPathsAccepted { paths } =>
       paths |> any(path => path == "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs")
   }
 }
@@ -46,16 +46,16 @@ test fn witness_duplicate_projection_path_refuses_before_emission() -> Bool {
     gunbc.generated_projection_paths.GeneratedProjectionPathRow { path: "same/path.rs" },
     gunbc.generated_projection_paths.GeneratedProjectionPathRow { path: "same/path.rs" }
   ]) {
-    GeneratedProjectionPathsRefused { cause: gunbc.generated_projection_paths.GeneratedProjectionPathCollision { path } } =>
+    gunbc.generated_projection_paths.GeneratedProjectionPathsRefused { cause: gunbc.generated_projection_paths.GeneratedProjectionPathCollision { path } } =>
       path == "same/path.rs"
-    GeneratedProjectionPathsAccepted { paths: _ } => false
+    gunbc.generated_projection_paths.GeneratedProjectionPathsAccepted { paths: _ } => false
   }
 }
 
 test fn witness_presentation_policy_row_present_holds() -> Bool {
   match gunbc.gitattributes_emit.expected_gitattributes() {
-    GitattributesGenerationRefused => false
-    GitattributesGenerated { content } => string_contains(
+    gunbc.gitattributes_emit.GitattributesGenerationRefused => false
+    gunbc.gitattributes_emit.GitattributesGenerated { content } => string_contains(
       s: content,
       pattern: concat(concat(gunbc.gitattributes_emit.dag_linguist_presentation_policy_pattern, " "), gunbc.gitattributes_emit.dag_linguist_presentation_policy_attribute)
     )
@@ -63,10 +63,10 @@ test fn witness_presentation_policy_row_present_holds() -> Bool {
 }
 
 test fn witness_committed_matches_emit_holds() -> Bool {
-  let committed = Filesystem.Read(path: gunbc.generated_artifact.artifact_path(a: gunbc.generated_artifact.GitattributesArtifact))
+  let committed = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.generated_artifact.artifact_path(a: gunbc.generated_artifact.GitattributesArtifact))
   match gunbc.gitattributes_emit.expected_gitattributes() {
-    GitattributesGenerationRefused => false
-    GitattributesGenerated { content } => committed.success && committed.content == content
+    gunbc.gitattributes_emit.GitattributesGenerationRefused => false
+    gunbc.gitattributes_emit.GitattributesGenerated { content } => committed.success && committed.content == content
   }
 }
 
@@ -75,10 +75,10 @@ test fn witness_red_missing_merge_row_fails() -> Bool {
 }
 
 test fn witness_red_perturbed_emit_drifts() -> Bool {
-  let committed = Filesystem.Read(path: gunbc.generated_artifact.artifact_path(a: gunbc.generated_artifact.GitattributesArtifact))
+  let committed = extdeps.filesystem.filesystem_io.Filesystem.Read(path: gunbc.generated_artifact.artifact_path(a: gunbc.generated_artifact.GitattributesArtifact))
   match gunbc.gitattributes_emit.expected_gitattributes() {
-    GitattributesGenerationRefused => false
-    GitattributesGenerated { content } => committed.success && !(concat(committed.content, "\n# perturb") == content)
+    gunbc.gitattributes_emit.GitattributesGenerationRefused => false
+    gunbc.gitattributes_emit.GitattributesGenerated { content } => committed.success && !(concat(committed.content, "\n# perturb") == content)
   }
 }
 

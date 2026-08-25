@@ -1,24 +1,24 @@
 module test.claim.build_cache_ensure
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ensure_acceptance_doc: String = "THE ACCEPTANCE SET FOR UNIT GENERATION AND THE ENSURE ADMISSION. Two of these are grounded on a live sudo capture of srv1 taken 2026-08-01 rather than on invented fixtures: the rendered unit is asserted against the environment the running CI server actually carries, and the two hosts' real observed states are asserted to reach opposite admissions. The capture also independently confirmed the model: BuildCacheInstance already declared intended_principal ghrunner for CI and briansrls for the session instance, and the live servers run as exactly those users."
 
-fn ci() -> gunbc.build_cache_instance.BuildCacheInstance { ci_cache_instance(host: "srv1") }
-fn session() -> gunbc.build_cache_instance.BuildCacheInstance { session_cache_instance(host: "srv1") }
+fn ci() -> BuildCacheInstance { ci_cache_instance(host: "srv1") }
+fn session() -> BuildCacheInstance { session_cache_instance(host: "srv1") }
 
 fn ci_unit() -> List<String> { render_build_cache_unit(instance: ci()) }
 
-fn current() -> gunbc.build_cache_endpoint_path.ObservationCurrency {
-  gunbc.build_cache_endpoint_path.ObservationCurrent { observed_at_boot: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr }
+fn current() -> ObservationCurrency {
+  ObservationCurrent { observed_at_boot: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr }
 }
 
-fn srv1_stranded_owner() -> gunbc.build_cache_instance.ProcessIdentity {
-  gunbc.build_cache_instance.ProcessIdentity {
-    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr,
+fn srv1_stranded_owner() -> ProcessIdentity {
+  ProcessIdentity {
+    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
     pid: 3975946,
-    start_time: "79870020" as std.types.NonEmptyStr,
+    start_time: "79870020" as NonEmptyStr,
   }
 }
 
@@ -110,49 +110,49 @@ test fn witness_the_runner_dropin_orders_after_the_cache_unit() -> Bool {
 
 data ensure_admission_doc: String = "The ensure admission over the four states the fleet was actually in on 2026-08-01. srv1: a live server in RETIRED slot srv1-10 holding the endpoint -- refuses, because evicting a live wrong owner strands the in-flight compiles that are its children and is a different operation from ensuring a unit exists. srv4: a stale socket with no listener -- admitted, with the unlink required first. Neither is a constructed example."
 
-fn ensure_for(placement: gunbc.build_cache_instance.BuildCacheServerPlacement, path: gunbc.build_cache_endpoint_path.EndpointPathState) -> gunbc.build_cache_ensure.EnsureBuildCacheAdmission {
+fn ensure_for(placement: BuildCacheServerPlacement, path: EndpointPathState) -> EnsureBuildCacheAdmission {
   admit_ensure_build_cache_instance(
     desired: ci(),
     placement: placement,
     observed_path: path,
-    currency: test.claim.build_cache_ensure.current(),
+    currency: current(),
   )
 }
 
 test fn witness_srv1_live_wrong_owner_refuses_rather_than_evicting() -> Bool {
-  let a = test.claim.build_cache_ensure.ensure_for(
-    placement: gunbc.build_cache_instance.ServerRunnerOwned {
-      slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 },
+  let a = ensure_for(
+    placement: ServerRunnerOwned {
+      slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 },
       lifecycle: RetiredRunnerSlot,
     },
-    path: gunbc.build_cache_endpoint_path.EndpointListening { owner: srv1_stranded_owner() },
+    path: EndpointListening { owner: srv1_stranded_owner() },
   )
-  (ensure_yields_unit(admission: a) == false) && (build_cache_ensure_is_converged(admission: a) == false)
+  (ensure_yields_unit(admission: a) == false) && (gunbc.build_cache_ensure.build_cache_ensure_is_converged(admission: a) == false)
 }
 
 test fn witness_srv4_stale_socket_is_admitted_with_unlink_first() -> Bool {
-  let a = test.claim.build_cache_ensure.ensure_for(
+  let a = ensure_for(
     placement: ServerPlacementAbsent,
-    path: gunbc.build_cache_endpoint_path.EndpointStaleSocket {
-      detail: "server.sock present, no listener, no fd owner; error log reads Address in use (os error 98)" as std.types.NonEmptyStr,
+    path: EndpointStaleSocket {
+      detail: "server.sock present, no listener, no fd owner; error log reads Address in use (os error 98)" as NonEmptyStr,
     },
   )
   ensure_yields_unit(admission: a) && ensure_requires_unlink_first(admission: a)
 }
 
 test fn witness_a_clear_path_is_admitted_without_an_unlink() -> Bool {
-  let a = test.claim.build_cache_ensure.ensure_for(placement: ServerPlacementAbsent, path: EndpointPathAbsent)
+  let a = ensure_for(placement: ServerPlacementAbsent, path: EndpointPathAbsent)
   ensure_yields_unit(admission: a) && (ensure_requires_unlink_first(admission: a) == false)
 }
 
 data idempotence_doc: String = "The reconcile property. If the intended unit already owns the endpoint there is no hunk, and re-rendering plus restarting would tear down a healthy cache and re-cold every compile on the host to reach the state it was already in -- the most expensive possible no-op, firing on every convergence pass. Asserted as BOTH converged AND not-yields-unit, because an arm that reported converged while still emitting a unit would read as idempotent and behave destructively."
 
 test fn witness_an_already_managed_endpoint_is_converged_and_emits_nothing() -> Bool {
-  let a = test.claim.build_cache_ensure.ensure_for(
-    placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: "gunbc-build-cache-ci.service" as std.types.NonEmptyStr },
-    path: gunbc.build_cache_endpoint_path.EndpointListening { owner: srv1_stranded_owner() },
+  let a = ensure_for(
+    placement: ServerManagedUnitOwned { unit: "gunbc-build-cache-ci.service" as NonEmptyStr },
+    path: EndpointListening { owner: srv1_stranded_owner() },
   )
-  build_cache_ensure_is_converged(admission: a) && (ensure_yields_unit(admission: a) == false)
+  gunbc.build_cache_ensure.build_cache_ensure_is_converged(admission: a) && (ensure_yields_unit(admission: a) == false)
 }
 
 data converged_means_serving_doc: String = "THE DISCRIMINATING PAIR FOR THE CONTRACT DECISION. witness_an_already_managed_endpoint_is_converged_and_emits_nothing above and witness_our_unit_holding_a_dead_socket_is_not_converged below differ in exactly ONE input -- the path state under an identical ServerManagedUnitOwned placement -- and must land on opposite arms. That is the whole content of the decision: ownership answers WHO holds the endpoint, the path answers WHETHER IT IS SERVED, and a converged verdict needs both. Under the placement-first short-circuit that preceded this, the second witness went green on the CONVERGED arm, which is a host with a wedged server and an unreachable cache reported as needing nothing done. The specimen is not hypothetical: gunbc.build_cache_endpoint_observe socket_owner_path_state produces exactly this state -- a socket held open by a live fd-holder with no listen entry at the path -- and test.claim.build_cache_endpoint_observe held_without_listening_fixture_note recorded that its own fixture had to name a FOREIGN owner to reach the path-conflict arm at all, because the ownership of our own unit swallowed it.\n\nThe pair is stated as three assertions rather than one because an arm that refused while still emitting a unit, or that named no unit in its reason, would satisfy a bare not-converged check while being useless to the operator who has to act on it."
@@ -164,10 +164,10 @@ test fn witness_our_unit_holding_a_dead_socket_is_not_converged() -> Bool {
       detail: "the socket at the endpoint path is held open by a live process but has no listen entry" as NonEmptyStr,
     },
   )
-  (build_cache_ensure_is_converged(admission: a) == false)
+  (gunbc.build_cache_ensure.build_cache_ensure_is_converged(admission: a) == false)
     && (ensure_yields_unit(admission: a) == false)
     && string_contains(
-      s: gunbc.build_cache_ensure.ensure_admission_refusal_reason(admission: a),
+      s: ensure_admission_refusal_reason(admission: a),
       pattern: "gunbc-build-cache-ci.service",
     )
 }
@@ -181,33 +181,33 @@ test fn witness_an_unreadable_path_under_our_own_unit_is_not_converged() -> Bool
       reason: EndpointPathUnreadable { detail: "stat on the endpoint path was denied" as NonEmptyStr },
     },
   )
-  (build_cache_ensure_is_converged(admission: a) == false) && (ensure_yields_unit(admission: a) == false)
+  (gunbc.build_cache_ensure.build_cache_ensure_is_converged(admission: a) == false) && (ensure_yields_unit(admission: a) == false)
 }
 
 test fn witness_a_managed_unit_that_is_not_ours_is_not_converged() -> Bool {
-  let a = test.claim.build_cache_ensure.ensure_for(
-    placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: "ctrl-sccache.service" as std.types.NonEmptyStr },
-    path: gunbc.build_cache_endpoint_path.EndpointListening { owner: srv1_stranded_owner() },
+  let a = ensure_for(
+    placement: ServerManagedUnitOwned { unit: "ctrl-sccache.service" as NonEmptyStr },
+    path: EndpointListening { owner: srv1_stranded_owner() },
   )
-  build_cache_ensure_is_converged(admission: a) == false
+  gunbc.build_cache_ensure.build_cache_ensure_is_converged(admission: a) == false
 }
 
 data wrong_managed_unit_doc: String = "ctrl-sccache.service is the real specimen and not a hypothetical: it exists on srv1 and srv2 today, managing the SESSION instance. A convergence check that accepted any managed unit as satisfying the CI instance would report srv1 converged on the strength of a unit serving a different cache directory, a different uid and a different socket."
 
 test fn witness_unknown_placement_refuses_before_reading_the_path() -> Bool {
-  let a = test.claim.build_cache_ensure.ensure_for(
-    placement: gunbc.build_cache_instance.ServerPlacementUnknown { detail: "owner cgroup unclassifiable" as std.types.NonEmptyStr },
+  let a = ensure_for(
+    placement: ServerPlacementUnknown { detail: "owner cgroup unclassifiable" as NonEmptyStr },
     path: EndpointPathAbsent,
   )
-  (ensure_yields_unit(admission: a) == false) && (build_cache_ensure_is_converged(admission: a) == false)
+  (ensure_yields_unit(admission: a) == false) && (gunbc.build_cache_ensure.build_cache_ensure_is_converged(admission: a) == false)
 }
 
 data unknown_before_path_doc: String = "The discriminating case for the ordering. The path here is ABSENT -- the one state that would otherwise be admitted immediately -- so this witness fails if placement is consulted after the path rather than before. Unknown means the observer could not classify the owner, and proceeding would mean writing and starting a unit on a host whose current state we failed to read: an absorbing fallback whose widen is a host mutation rather than a rerun."
 
 test fn witness_a_path_conflict_is_never_admitted() -> Bool {
-  let a = test.claim.build_cache_ensure.ensure_for(
+  let a = ensure_for(
     placement: ServerPlacementAbsent,
-    path: gunbc.build_cache_endpoint_path.EndpointPathConflict { detail: "path exists and is a regular file" as std.types.NonEmptyStr },
+    path: EndpointPathConflict { detail: "path exists and is a regular file" as NonEmptyStr },
   )
   ensure_yields_unit(admission: a) == false
 }
@@ -216,8 +216,8 @@ test fn witness_a_stale_read_cannot_license_the_ensure() -> Bool {
   let a = admit_ensure_build_cache_instance(
     desired: ci(),
     placement: ServerPlacementAbsent,
-    observed_path: gunbc.build_cache_endpoint_path.EndpointStaleSocket { detail: "stale" as std.types.NonEmptyStr },
-    currency: gunbc.build_cache_endpoint_path.ObservationCurrencyUnknown { detail: "boot id unreadable" as std.types.NonEmptyStr },
+    observed_path: EndpointStaleSocket { detail: "stale" as NonEmptyStr },
+    currency: ObservationCurrencyUnknown { detail: "boot id unreadable" as NonEmptyStr },
   )
   ensure_yields_unit(admission: a) == false
 }

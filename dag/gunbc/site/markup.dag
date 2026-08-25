@@ -12,7 +12,7 @@ fn el(tag: String, children: List<std.markup.Fragment>) -> std.markup.Fragment {
 fn el_class(tag: String, cls: String, children: List<std.markup.Fragment>) -> std.markup.Fragment {
   std.markup.Element {
     tag: tag,
-    attributes: [ attr(name: "class", value: cls ) ],
+    attributes: [ std.markup.attr(name: "class", value: cls ) ],
     children: children,
   }
 }

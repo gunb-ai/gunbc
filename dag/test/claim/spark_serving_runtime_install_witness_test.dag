@@ -7,25 +7,25 @@ module test.claim.spark_serving_runtime_install_witness
 // exists to prevent, and it is invisible to a set comparison.
 
 fn install_steps() -> List<std.types.NonEmptyStr> {
-  match realize_spark_serving_install_effect_command(
+  match gunbc.spark.serving_converge_realize.realize_spark_serving_install_effect_command(
     effect: gunbc.spark.serving_realization.InstallOwnedRuntimeClosure,
-    executor_login: spark_serving_default_executor_login(),
+    executor_login: gunbc.spark.serving_converge_realize.spark_serving_default_executor_login(),
   ) {
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => []
-    SparkServingInstallRemoteCommandsPresent { steps: sts } => map(sts, st => st.identity)
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => []
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: sts } => map(sts, st => st.identity)
   }
 }
 
 fn step_argv(identity: String) -> List<String> {
-  match realize_spark_serving_install_effect_command(
+  match gunbc.spark.serving_converge_realize.realize_spark_serving_install_effect_command(
     effect: gunbc.spark.serving_realization.InstallOwnedRuntimeClosure,
-    executor_login: spark_serving_default_executor_login(),
+    executor_login: gunbc.spark.serving_converge_realize.spark_serving_default_executor_login(),
   ) {
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => []
-    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => []
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       fold(sts, init: [], f: fn(acc, st) {
         if (st.identity as String) == identity {
-          match remote_operation_argv(operation: st.operation) {
+          match gunbc.remote_operation.remote_operation_argv(operation: st.operation) {
             Present { value: words } => words
             Absent => acc
           }
@@ -49,27 +49,27 @@ fn step_argv(identity: String) -> List<String> {
 type IndexScan { found: Bool, idx: Int }
 
 fn pull_steps() -> List<std.types.NonEmptyStr> {
-  match realize_spark_serving_install_effect_command(
+  match gunbc.spark.serving_converge_realize.realize_spark_serving_install_effect_command(
     effect: gunbc.spark.serving_realization.MaterializeModelArtifact,
-    executor_login: spark_serving_default_executor_login(),
+    executor_login: gunbc.spark.serving_converge_realize.spark_serving_default_executor_login(),
   ) {
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => []
-    SparkServingInstallRemoteCommandsPresent { steps: sts } => map(sts, st => st.identity)
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => []
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: sts } => map(sts, st => st.identity)
   }
 }
 
 // Returns Absent when the step is not present at all, so a claim over a missing step refuses rather
 // than reading an empty argv as a satisfied condition.
 fn pull_step_argv(identity: String) -> List<String>? {
-  match realize_spark_serving_install_effect_command(
+  match gunbc.spark.serving_converge_realize.realize_spark_serving_install_effect_command(
     effect: gunbc.spark.serving_realization.MaterializeModelArtifact,
-    executor_login: spark_serving_default_executor_login(),
+    executor_login: gunbc.spark.serving_converge_realize.spark_serving_default_executor_login(),
   ) {
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => none
-    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => none
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       fold(sts, init: none, f: fn(acc, st) {
         if (st.identity as String) == identity {
-          remote_operation_argv(operation: st.operation)
+          gunbc.remote_operation.remote_operation_argv(operation: st.operation)
         } else {
           acc
         }
@@ -116,7 +116,7 @@ fn index_of(identity: String) -> Int {
 // -1 and fails the assertion for a reason that has nothing to do with the helper under test. The
 // compiler now refuses the cast; the absent arm keeps that failure mode visible by name rather than
 // disguising it as a position mismatch.
-fn install_step_at(steps: List<NonEmptyStr>, index: Int) -> String {
+fn install_step_at(steps: List<std.types.NonEmptyStr>, index: Int) -> String {
   match steps[index] {
     Present { value: step } => step as String
     Absent => "install-step-index-out-of-range"

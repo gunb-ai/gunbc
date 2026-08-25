@@ -1,5 +1,6 @@
 module gunbc.witness_floor_workflow
 
+
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
 //
 // Authored fresh on 2026-08-15 as re-add #1 after the CI wipe, deliberately NOT by reviving
@@ -100,13 +101,13 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // implementation. What it no longer is, is CI's business.
 data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 
-fn witness_floor_checkout_step() -> Step {
-  UsesStep {
+fn witness_floor_checkout_step() -> extdeps.github.actions.Step {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Checkout" },
     id: none,
-    uses: checkout_action,
+    uses: extdeps.github.actions.checkout_action,
     with: Present {
-      value: [kv(key: "fetch-depth", value: yaml_int(n: 0))]
+      value: [extdeps.languages.yaml.types.kv(key: "fetch-depth", value: extdeps.languages.yaml.types.yaml_int(n: 0))]
     },
     env: none,
     if_condition: none,
@@ -175,15 +176,15 @@ fn witness_floor_checkout_step() -> Step {
 //
 // `gunbc.fleet_workflow_steps` `ci_setup_rust_step` already passes this same key to this same
 // action; this step was the one that did not.
-fn witness_floor_toolchain_step() -> Step {
-  UsesStep {
+fn witness_floor_toolchain_step() -> extdeps.github.actions.Step {
+  extdeps.github.actions.UsesStep {
     name: Present { value: "Install Rust toolchain" },
     id: none,
-    uses: setup_rust_action,
+    uses: extdeps.github.actions.setup_rust_action,
     with: Present {
       value: [
-        kv(key: "components", value: yaml_string(s: "rustfmt")),
-        kv(key: "cache", value: yaml_bool(b: false)),
+        extdeps.languages.yaml.types.kv(key: "components", value: extdeps.languages.yaml.types.yaml_string(s: "rustfmt")),
+        extdeps.languages.yaml.types.kv(key: "cache", value: extdeps.languages.yaml.types.yaml_bool(b: false)),
       ]
     },
     env: none,
@@ -201,8 +202,8 @@ fn witness_floor_build_script() -> String {
   gunbc.repo_self_build.repo_self_build_command(bins: witness_floor_required_bins)
 }
 
-fn witness_floor_build_step() -> Step {
-  RunStep {
+fn witness_floor_build_step() -> extdeps.github.actions.Step {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Build the witness fold" },
     id: Present { value: "build_witness_fold" },
     run: concat(witness_floor_build_script(), "\n"),
@@ -275,10 +276,10 @@ fn witness_floor_build_step() -> Step {
 // reader will reuse, and the justification expired before the thing did.
 fn witness_floor_run_script() -> String {
   concat(
-    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat("ROOT=", concat(gunbc.merge_admission_produce.ci_repo_root_shell(), "\n")),
     concat(
       "cd \"$ROOT\"\n",
-      concat(shell_command_render(command: floor_run_command()), "\n")
+      concat(extdeps.exec.command.shell_command_render(command: gunbc.fabric_witness_run.floor_run_command()), "\n")
     )
   )
 }
@@ -386,8 +387,8 @@ fn witness_toolchain_environment_probe_script() -> String {
   )
 }
 
-fn witness_toolchain_environment_probe_step() -> Step {
-  RunStep {
+fn witness_toolchain_environment_probe_step() -> extdeps.github.actions.Step {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Record the toolchain environment" },
     id: none,
     run: witness_toolchain_environment_probe_script(),
@@ -400,8 +401,8 @@ fn witness_toolchain_environment_probe_step() -> Step {
   }
 }
 
-fn witness_floor_run_step() -> Step {
-  RunStep {
+fn witness_floor_run_step() -> extdeps.github.actions.Step {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Required CI: parse, regen, witness floor" },
     id: none,
     run: witness_floor_run_script(),
@@ -445,8 +446,8 @@ fn witness_floor_run_step() -> Step {
 // roles beside the step list would be the §3 fork this closure exists to close, reintroduced as
 // its own fix.
 type WitnessFloorBoundStep {
-  step: Step
-  role: StepCapabilityRole
+  step: extdeps.github.actions.Step
+  role: gunbc.workflow_capability_closure.StepCapabilityRole
   step_name: String
 }
 
@@ -540,17 +541,17 @@ data long_home_storage_agreement_artifact_name: String = "long-home-storage-agre
 // CANCELLATION IS EXCLUDED, and that is a separate fact from the build guard below: a cancelled
 // run's TSVs are partial by construction, and a partial receipt read as a complete one is the
 // fabricated-output failure.
-fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path: String) -> Step {
-  UsesStep {
+fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path: String) -> extdeps.github.actions.Step {
+  extdeps.github.actions.UsesStep {
     name: Present { value: step_name },
     id: none,
-    uses: upload_artifact_action,
+    uses: extdeps.github.actions.upload_artifact_action,
     with: Present {
       value: [
-        kv(key: "name", value: yaml_string(s: artifact_name)),
-        kv(key: "path", value: yaml_string(s: path)),
-        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-        kv(key: "retention-days", value: yaml_int(n: 14)),
+        extdeps.languages.yaml.types.kv(key: "name", value: extdeps.languages.yaml.types.yaml_string(s: artifact_name)),
+        extdeps.languages.yaml.types.kv(key: "path", value: extdeps.languages.yaml.types.yaml_string(s: path)),
+        extdeps.languages.yaml.types.kv(key: "if-no-files-found", value: extdeps.languages.yaml.types.yaml_string(s: "error")),
+        extdeps.languages.yaml.types.kv(key: "retention-days", value: extdeps.languages.yaml.types.yaml_int(n: 14)),
       ]
     },
     env: none,
@@ -568,17 +569,17 @@ fn prepared_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
-      role: capability_neutral,
+      role: gunbc.workflow_capability_closure.capability_neutral,
       step_name: "Checkout",
     },
     WitnessFloorBoundStep {
       step: witness_floor_toolchain_step(),
-      role: provides_only(capabilities: [CargoCapability, RustfmtCapability]),
+      role: gunbc.workflow_capability_closure.provides_only(capabilities: [gunbc.roadmap_execution_contract.CargoCapability, gunbc.roadmap_execution_contract.RustfmtCapability]),
       step_name: "Install Rust toolchain",
     },
     WitnessFloorBoundStep {
       step: witness_floor_build_step(),
-      role: consumes_only(capabilities: [CargoCapability]),
+      role: gunbc.workflow_capability_closure.consumes_only(capabilities: [gunbc.roadmap_execution_contract.CargoCapability]),
       step_name: "Build the witness fold",
     },
   ]
@@ -600,12 +601,12 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
     items: [
       WitnessFloorBoundStep {
         step: witness_toolchain_environment_probe_step(),
-        role: capability_neutral,
+        role: gunbc.workflow_capability_closure.capability_neutral,
         step_name: "Record the toolchain environment",
       },
       WitnessFloorBoundStep {
         step: witness_floor_run_step(),
-        role: consumes_only(capabilities: [RustfmtCapability]),
+        role: gunbc.workflow_capability_closure.consumes_only(capabilities: [gunbc.roadmap_execution_contract.RustfmtCapability]),
         step_name: "All witnesses (one prepared subject, one fold)",
       },
       WitnessFloorBoundStep {
@@ -614,7 +615,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
           artifact_name: required_floor_disposition_artifact_name,
           path: required_floor_disposition_path
         ),
-        role: capability_neutral,
+        role: gunbc.workflow_capability_closure.capability_neutral,
         step_name: "Upload the floor's admission roster",
       },
       WitnessFloorBoundStep {
@@ -623,7 +624,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
           artifact_name: expected_red_roster_join_artifact_name,
           path: expected_red_roster_join_path
         ),
-        role: capability_neutral,
+        role: gunbc.workflow_capability_closure.capability_neutral,
         step_name: "Upload the expected-red roster join",
       },
       WitnessFloorBoundStep {
@@ -632,27 +633,27 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
           artifact_name: long_home_storage_agreement_artifact_name,
           path: long_home_storage_agreement_path
         ),
-        role: capability_neutral,
+        role: gunbc.workflow_capability_closure.capability_neutral,
         step_name: "Upload the long-home storage agreement",
       },
     ],
   )
 }
 
-fn witness_floor_steps() -> List<Step> {
-  list_map(xs: witness_floor_bound_steps(), f: fn(b) { b.step })
+fn witness_floor_steps() -> List<extdeps.github.actions.Step> {
+  v2.std.algebra.list_map(xs: witness_floor_bound_steps(), f: fn(b) { b.step })
 }
 
-fn witness_floor_step_annotations() -> List<CapabilityAnnotatedStep> {
-  list_map(
+fn witness_floor_step_annotations() -> List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> {
+  v2.std.algebra.list_map(
     xs: witness_floor_bound_steps(),
-    f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+    f: fn(b) { gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
   )
 }
 
 fn witness_floor_capability_closure_holds() -> Bool {
-  capability_closure_is_closed(
-    v: workflow_job_capability_closure(steps: witness_floor_step_annotations()),
+  gunbc.workflow_capability_closure.capability_closure_is_closed(
+    v: gunbc.workflow_capability_closure.workflow_job_capability_closure(steps: witness_floor_step_annotations()),
   )
 }
 
@@ -670,11 +671,11 @@ fn witness_floor_capability_closure_holds() -> Bool {
 // which have no automated consumer, so it is run deliberately or not at all. That is a declared
 // scope narrowing rather than a climb, and naming it here is what keeps its absence from
 // reading as coverage.
-fn witness_floor_job() -> Job {
-  Job {
+fn witness_floor_job() -> extdeps.github.actions.Job {
+  extdeps.github.actions.Job {
     id: witness_floor_workflow_job_id,
     name: none,
-    runner: gunbc_ci_selected_runner_spec(),
+    runner: gunbc.ci_runner_target.gunbc_ci_selected_runner_spec(),
     steps: witness_floor_steps(),
     needs: [],
     env: none,
@@ -687,21 +688,21 @@ fn witness_floor_job() -> Job {
   }
 }
 
-data witness_floor_workflow: Workflow = {
+data witness_floor_workflow: extdeps.github.actions.Workflow = {
   name: witness_floor_workflow_name,
   on: [
-    WorkflowDispatch { inputs: [] },
-    extdeps.github.actions.Push { branches: [gunbc_default_branch_name], paths: [] },
-    PullRequest {
-      branches: [gunbc_default_branch_name],
-      types: [Opened, Synchronize, Reopened, ReadyForReview]
+    extdeps.github.actions.WorkflowDispatch { inputs: [] },
+    extdeps.github.actions.Push { branches: [gunbc.repo_identity.gunbc_default_branch_name], paths: [] },
+    extdeps.github.actions.PullRequest {
+      branches: [gunbc.repo_identity.gunbc_default_branch_name],
+      types: [extdeps.github.actions.Opened, extdeps.github.actions.Synchronize, extdeps.github.actions.Reopened, extdeps.github.actions.ReadyForReview]
     }
   ],
   concurrency: Present {
-    value: ConcurrencyMappingQueueNotMax {
+    value: extdeps.github.actions.ConcurrencyMappingQueueNotMax {
       group: witness_floor_concurrency_group,
       cancel_in_progress: Present {
-        value: CancelInProgressExpression {
+        value: extdeps.github.actions.CancelInProgressExpression {
           expression: "${{ github.event_name == 'pull_request' }}"
         }
       },
@@ -710,14 +711,14 @@ data witness_floor_workflow: Workflow = {
   },
   env: Present {
     value: [
-      kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
-      kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: yaml_string(s: expected_red_roster_join_path)),
-      kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: required_floor_disposition_path)),
-      kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path))
+      extdeps.languages.yaml.types.kv(key: "CARGO_TERM_COLOR", value: extdeps.languages.yaml.types.yaml_string(s: "always")),
+      extdeps.languages.yaml.types.kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: extdeps.languages.yaml.types.yaml_string(s: expected_red_roster_join_path)),
+      extdeps.languages.yaml.types.kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: extdeps.languages.yaml.types.yaml_string(s: required_floor_disposition_path)),
+      extdeps.languages.yaml.types.kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: extdeps.languages.yaml.types.yaml_string(s: long_home_storage_agreement_path))
     ]
   },
   permissions: Present {
-    value: WorkflowPermissions {
+    value: extdeps.github.actions.WorkflowPermissions {
       contents: Present { value: extdeps.github.actions.PermRead },
       pull_requests: none,
       issues: none,
@@ -746,7 +747,7 @@ type WitnessFloorGenerationOutcome
 
 fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
   if witness_floor_capability_closure_holds() {
-    WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
+    WitnessFloorGenerated { content: extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.gha_workflow.project_workflow_to_yaml(workflow: witness_floor_workflow)) }
   } else {
     WitnessFloorGenerationRefused
   }

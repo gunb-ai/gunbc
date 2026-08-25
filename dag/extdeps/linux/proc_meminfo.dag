@@ -3,7 +3,7 @@ module extdeps.linux.proc_meminfo
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "man7.org/linux/man-pages/man5/proc.5.html#/proc/meminfo"
   }
 }

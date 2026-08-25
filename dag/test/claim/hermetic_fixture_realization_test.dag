@@ -7,55 +7,55 @@ module test.claim.hermetic_fixture_realization
 // a module that names some of its dependencies and leans on coincidence for the rest is in the
 // worst of both states.
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data shared_input_digest: std.content_hash.ContentHash = content_hash_of_value(value: "hermetic-fixture-witness-shared-input-digest")
+data shared_input_digest: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "hermetic-fixture-witness-shared-input-digest")
 
 test fn witness_file_handler_is_content_addressed_reference() -> Bool {
-  let f = cache_interface_facts_from_catalog(row: extdeps.realization.hermetic_fixture.hermetic_fixture_file_facts)
-  (catalog_key_derivation_classification(kd: extdeps.realization.hermetic_fixture.hermetic_fixture_file_facts.key_derivation) == ContentAddressedByValue)
+  let f = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.hermetic_fixture.hermetic_fixture_file_facts)
+  (extdeps.cache.types.catalog_key_derivation_classification(kd: hermetic_fixture_file_facts.key_derivation) == std.cache_interface.ContentAddressedByValue)
     && f.key_derivation.content_verified_on_read
-    && (f.locality == PerHostFilesystem)
-    && (f.value_shape == StructuredArtifact)
+    && (f.locality == std.cache_interface.PerHostFilesystem)
+    && (f.value_shape == std.cache_interface.StructuredArtifact)
 }
 
 test fn witness_in_process_handler_is_content_addressed_converged() -> Bool {
-  let m = cache_interface_facts_from_catalog(row: extdeps.realization.hermetic_fixture.hermetic_fixture_in_process_facts)
-  (catalog_key_derivation_classification(kd: extdeps.realization.hermetic_fixture.hermetic_fixture_in_process_facts.key_derivation) == ContentAddressedByValue)
+  let m = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.hermetic_fixture.hermetic_fixture_in_process_facts)
+  (extdeps.cache.types.catalog_key_derivation_classification(kd: hermetic_fixture_in_process_facts.key_derivation) == std.cache_interface.ContentAddressedByValue)
     && m.key_derivation.content_verified_on_read
-    && (m.locality == InProcess)
-    && (m.value_shape == StructuredArtifact)
+    && (m.locality == std.cache_interface.InProcess)
+    && (m.value_shape == std.cache_interface.StructuredArtifact)
 }
 
 test fn witness_handlers_converged_on_key_derivation() -> Bool {
-  let f = cache_interface_facts_from_catalog(row: extdeps.realization.hermetic_fixture.hermetic_fixture_file_facts)
-  let m = cache_interface_facts_from_catalog(row: extdeps.realization.hermetic_fixture.hermetic_fixture_in_process_facts)
-  let f_class = catalog_key_derivation_classification(kd: extdeps.realization.hermetic_fixture.hermetic_fixture_file_facts.key_derivation)
-  let m_class = catalog_key_derivation_classification(kd: extdeps.realization.hermetic_fixture.hermetic_fixture_in_process_facts.key_derivation)
+  let f = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.hermetic_fixture.hermetic_fixture_file_facts)
+  let m = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.hermetic_fixture.hermetic_fixture_in_process_facts)
+  let f_class = extdeps.cache.types.catalog_key_derivation_classification(kd: hermetic_fixture_file_facts.key_derivation)
+  let m_class = extdeps.cache.types.catalog_key_derivation_classification(kd: hermetic_fixture_in_process_facts.key_derivation)
   (f_class == m_class)
-    && (f_class == ContentAddressedByValue)
+    && (f_class == std.cache_interface.ContentAddressedByValue)
     && f.key_derivation.content_verified_on_read
     && m.key_derivation.content_verified_on_read
     && !(f.locality == m.locality)
 }
 
 test fn witness_handlers_share_kernel_invariants() -> Bool {
-  let f = cache_interface_facts_from_catalog(row: extdeps.realization.hermetic_fixture.hermetic_fixture_file_facts)
-  let m = cache_interface_facts_from_catalog(row: extdeps.realization.hermetic_fixture.hermetic_fixture_in_process_facts)
+  let f = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.hermetic_fixture.hermetic_fixture_file_facts)
+  let m = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.hermetic_fixture.hermetic_fixture_in_process_facts)
   (f.value_shape == m.value_shape)
-    && (f.miss_semantics == MissIsDiagnostic)
-    && (m.miss_semantics == MissIsDiagnostic)
+    && (f.miss_semantics == std.cache_interface.MissIsDiagnostic)
+    && (m.miss_semantics == std.cache_interface.MissIsDiagnostic)
 }
 
 test fn witness_one_artifact_routes_to_both_backends() -> Bool {
   let id = std.cache_interface.ArtifactIdentity {
     subject_digest: shared_input_digest,
-    artifact_kind: hermetic_fixture_artifact_kind,
+    artifact_kind: std.cache_identity.hermetic_fixture_artifact_kind,
   }
-  let file_key = cache_key_projection_transport(artifact: id, backend: extdeps.realization.hermetic_fixture.hermetic_fixture_file_facts)
-  let mem_key = cache_key_projection_transport(artifact: id, backend: extdeps.realization.hermetic_fixture.hermetic_fixture_in_process_facts)
-  (file_key.store == hermetic_fixture_file_store_id)
-    && (mem_key.store == hermetic_fixture_in_process_id)
+  let file_key = extdeps.cache.cache_key_projection_transport(artifact: id, backend: extdeps.realization.hermetic_fixture.hermetic_fixture_file_facts)
+  let mem_key = extdeps.cache.cache_key_projection_transport(artifact: id, backend: extdeps.realization.hermetic_fixture.hermetic_fixture_in_process_facts)
+  (file_key.store == extdeps.realization.hermetic_fixture.hermetic_fixture_file_store_id)
+    && (mem_key.store == extdeps.realization.hermetic_fixture.hermetic_fixture_in_process_id)
     && !(file_key.store == mem_key.store)
 }
 

@@ -3,19 +3,19 @@ module extdeps.vendor.the_wand_company
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/The_Wand_Company"
   }
 }
 
 data issuing_party_compliance_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.thewandcompany.com/pip-boy-3000-manual/"
   }
 }
 
-data the_wand_company: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "The Wand Company Limited" }
+data the_wand_company: extdeps.vendor.Vendor<extdeps.hardware.Hardware> = extdeps.vendor.Vendor { legal_name: "The Wand Company Limited" }
 
 // The registered form is grounded, and the grounding arrived by fixing a read path rather than by finding a new source. An earlier revision carried the bare trading name and declared that no source stated a suffix — true only because the manuals were unreadable to a refused fetcher. Both product manuals carry the same compliance block: 'Issuing Party: The Wand Company Limited, 3 Laundress Lane, Cambridge CB2 1SD, UK'. The address is deliberately not modeled: no consumer needs it, and a registered office is a fact with its own lifecycle.
 data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
@@ -23,9 +23,9 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.vendor.the_wand_company",
       decl_name: "the_wand_company",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.vendor.the_wand_company.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [issuing_party_compliance_authority]
 }

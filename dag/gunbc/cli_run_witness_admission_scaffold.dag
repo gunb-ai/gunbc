@@ -3,15 +3,15 @@ module gunbc.cli_run_witness_admission_scaffold
 
 
 data cli_run_witness_admission_source_scan_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.cli_run",
     decl_name: "witness_admission_explicit_consumer_keys",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data cli_run_witness_admission_source_scan_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: witness_admission_explicit_consumer_keys + witness_admission_entry_function_keys_from_source — Phase 0(b) host text scan over dag/gunbc/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and the cycle-free leaf src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag (review 44441/44487: wet_receipt aliases the leaf without parseable seed_emitter_behavioral_wet_known_red_entry( heads, so the leaf must be scanned until v2.workflow.witness_admission.witness_admission_explicit_consumer_manifest is host-consumed). NOT a census shrink — counted interim HAND-Rust growth until module-identity-storage-binding Phase 1(b). DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md → host reads emitted manifest rows; file-grain expansion lives in the .dag authority) OR ROADMAP 5-dissolve-patches retires HAND witness-admission scan entirely.")
+data cli_run_witness_admission_source_scan_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: witness_admission_explicit_consumer_keys + witness_admission_entry_function_keys_from_source — Phase 0(b) host text scan over dag/gunbc/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and the cycle-free leaf src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag (review 44441/44487: wet_receipt aliases the leaf without parseable seed_emitter_behavioral_wet_known_red_entry( heads, so the leaf must be scanned until v2.workflow.witness_admission.witness_admission_explicit_consumer_manifest is host-consumed). NOT a census shrink — counted interim HAND-Rust growth until module-identity-storage-binding Phase 1(b). DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md → host reads emitted manifest rows; file-grain expansion lives in the .dag authority) OR ROADMAP 5-dissolve-patches retires HAND witness-admission scan entirely.")
 
 data cli_run_witness_admission_hand_rust_receipt_plan_anchor: String = "docs/plans/module-identity-storage-binding-design.md#phase-0-enrollment"
 

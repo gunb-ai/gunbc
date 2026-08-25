@@ -72,19 +72,19 @@ type GitDiffWindowPrepareOutcome
 
 fn git_diff_window_required_string(doc: extdeps.languages.json.emit.JsonValue, key: String) -> String? {
   match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
-    JsonMemberAbsent => none
-    JsonMemberDuplicated { count: _ } => none
-    JsonMemberNotAnObject => none
-    JsonMemberFound { value: v } =>
+    extdeps.languages.json.parse.JsonMemberAbsent => none
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => none
+    extdeps.languages.json.parse.JsonMemberNotAnObject => none
+    extdeps.languages.json.parse.JsonMemberFound { value: v } =>
       match v {
-        JsonString { value: raw } =>
+        extdeps.languages.json.emit.JsonString { value: raw } =>
           let line = std.algebra.trim(raw)
           if line == "" { none } else { Present { value: line } }
-        JsonNull => none
-        JsonBool { value: _ } => none
-        JsonNumber { lexeme: _ } => none
-        JsonArray { elements: _ } => none
-        JsonObject { members: _ } => none
+        extdeps.languages.json.emit.JsonNull => none
+        extdeps.languages.json.emit.JsonBool { value: _ } => none
+        extdeps.languages.json.emit.JsonNumber { lexeme: _ } => none
+        extdeps.languages.json.emit.JsonArray { elements: _ } => none
+        extdeps.languages.json.emit.JsonObject { members: _ } => none
       }
   }
 }
@@ -92,7 +92,7 @@ fn git_diff_window_required_string(doc: extdeps.languages.json.emit.JsonValue, k
 fn git_diff_window_git_object_id_from_member(doc: extdeps.languages.json.emit.JsonValue, key: String) -> extdeps.git.object_store.GitObjectId? {
   match git_diff_window_required_string(doc: doc, key: key) {
     Absent => none
-    Present { value: hex } => git_object_id_from_untagged_hex(hex: hex)
+    Present { value: hex } => extdeps.git.object_store.git_object_id_from_untagged_hex(hex: hex)
   }
 }
 
@@ -102,25 +102,25 @@ fn git_diff_window_identity_of(
   base: extdeps.git.object_store.GitObjectId,
   head: extdeps.git.object_store.GitObjectId,
 ) -> std.content_hash.Fnv1a64Structural {
-  content_hash_combine_structural(
-    left: content_hash_combine_structural(
-      left: content_hash_combine_structural(
-        left: content_hash_atom(value: target as std.types.NonEmptyStr),
-        right: content_hash_atom(
-          value: git_object_id_wire_hex(oid: target_generation) as std.types.NonEmptyStr
+  std.content_hash.content_hash_combine_structural(
+    left: std.content_hash.content_hash_combine_structural(
+      left: std.content_hash.content_hash_combine_structural(
+        left: std.content_hash.content_hash_atom(value: target as std.types.NonEmptyStr),
+        right: std.content_hash.content_hash_atom(
+          value: extdeps.git.object_store.git_object_id_wire_hex(oid: target_generation) as std.types.NonEmptyStr
         ),
       ),
-      right: content_hash_combine_structural(
-        left: content_hash_atom(value: git_object_id_wire_hex(oid: base) as std.types.NonEmptyStr),
-        right: content_hash_atom(value: git_object_id_wire_hex(oid: head) as std.types.NonEmptyStr),
+      right: std.content_hash.content_hash_combine_structural(
+        left: std.content_hash.content_hash_atom(value: extdeps.git.object_store.git_object_id_wire_hex(oid: base) as std.types.NonEmptyStr),
+        right: std.content_hash.content_hash_atom(value: extdeps.git.object_store.git_object_id_wire_hex(oid: head) as std.types.NonEmptyStr),
       ),
     ),
-    right: content_hash_atom(value: git_diff_window_relation_observed as std.types.NonEmptyStr),
+    right: std.content_hash.content_hash_atom(value: git_diff_window_relation_observed as std.types.NonEmptyStr),
   )
 }
 
 fn git_diff_window_absent_identity() -> std.content_hash.Fnv1a64Structural {
-  content_hash_atom(value: git_diff_window_absent_identity_label as std.types.NonEmptyStr)
+  std.content_hash.content_hash_atom(value: git_diff_window_absent_identity_label as std.types.NonEmptyStr)
 }
 
 fn git_diff_window_identity_hex(identity: std.content_hash.Fnv1a64Structural) -> String {
@@ -131,7 +131,7 @@ fn git_diff_window_identities_equal(
   left: std.content_hash.Fnv1a64Structural,
   right: std.content_hash.Fnv1a64Structural,
 ) -> Bool {
-  content_hash_eq_structural(left: left, right: right)
+  std.content_hash.content_hash_eq_structural(left: left, right: right)
 }
 
 fn git_exact_diff_window_for_verification(
@@ -157,30 +157,30 @@ fn git_exact_diff_window_for_verification(
 }
 
 fn git_diff_window_json(window: GitExactDiffWindow) -> String {
-  serialize_json(
-    v: json_object(
+  extdeps.languages.json.emit.serialize_json(
+    v: extdeps.languages.json.emit.json_object(
       members: [
-        json_kv(key: "schema", value: json_string(s: git_diff_window_schema)),
-        json_kv(key: git_diff_window_target_member, value: json_string(s: window.target as String)),
-        json_kv(
+        extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: git_diff_window_schema)),
+        extdeps.languages.json.emit.json_kv(key: git_diff_window_target_member, value: extdeps.languages.json.emit.json_string(s: window.target as String)),
+        extdeps.languages.json.emit.json_kv(
           key: git_diff_window_target_generation_member,
-          value: json_string(s: git_object_id_wire_hex(oid: window.target_generation) as String)
+          value: extdeps.languages.json.emit.json_string(s: extdeps.git.object_store.git_object_id_wire_hex(oid: window.target_generation) as String)
         ),
-        json_kv(
+        extdeps.languages.json.emit.json_kv(
           key: git_diff_window_base_member,
-          value: json_string(s: git_object_id_wire_hex(oid: window.base) as String)
+          value: extdeps.languages.json.emit.json_string(s: extdeps.git.object_store.git_object_id_wire_hex(oid: window.base) as String)
         ),
-        json_kv(
+        extdeps.languages.json.emit.json_kv(
           key: git_diff_window_head_member,
-          value: json_string(s: git_object_id_wire_hex(oid: window.head) as String)
+          value: extdeps.languages.json.emit.json_string(s: extdeps.git.object_store.git_object_id_wire_hex(oid: window.head) as String)
         ),
-        json_kv(
+        extdeps.languages.json.emit.json_kv(
           key: git_diff_window_identity_member,
-          value: json_string(s: git_diff_window_identity_hex(identity: window.window_identity))
+          value: extdeps.languages.json.emit.json_string(s: git_diff_window_identity_hex(identity: window.window_identity))
         ),
-        json_kv(
+        extdeps.languages.json.emit.json_kv(
           key: git_diff_window_relation_member,
-          value: json_string(s: git_diff_window_relation_observed)
+          value: extdeps.languages.json.emit.json_string(s: git_diff_window_relation_observed)
         ),
       ]
     )
@@ -245,7 +245,7 @@ fn git_diff_window_from_json(text: String) -> GitDiffWindowObservation {
                                   GitDiffWindowMalformed {
                                     detail: "git diff window relation must be observed_merge_base"
                                   }
-                                } else if git_object_id_wire_hex(oid: base) == git_object_id_wire_hex(oid: head) {
+                                } else if extdeps.git.object_store.git_object_id_wire_hex(oid: base) == extdeps.git.object_store.git_object_id_wire_hex(oid: head) {
                                   GitDiffWindowMalformed {
                                     detail: "git diff window base_object_id equals head_object_id — self-compare refused"
                                   }

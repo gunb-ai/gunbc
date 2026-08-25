@@ -3,7 +3,7 @@ module extdeps.color.srgb
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.w3.org/TR/css-color-4/#numeric-srgb"
   }
 }
@@ -30,14 +30,14 @@ fn srgb8_admissible_for_max(c: Srgb8, maxv: Int) -> Bool {
 }
 
 fn srgb8_admissible(c: Srgb8) -> Bool {
-  match uint8_channel_inclusive_max_value_derived() {
+  match std.integer.uint8_channel_inclusive_max_value_derived() {
     Present { value: maxv } => srgb8_admissible_for_max(c: c, maxv: maxv)
     Absent => false
   }
 }
 
 fn srgb8_hex(c: Srgb8) -> String {
-  join(["#", byte_hex_lower(v: c.r), byte_hex_lower(v: c.g), byte_hex_lower(v: c.b)], "")
+  join(["#", extdeps.numeric.base16.byte_hex_lower(v: c.r), extdeps.numeric.base16.byte_hex_lower(v: c.g), extdeps.numeric.base16.byte_hex_lower(v: c.b)], "")
 }
 
 type RgbScaled {
@@ -47,7 +47,7 @@ type RgbScaled {
 }
 
 fn srgb8_to_scaled_for_max(c: Srgb8, maxv: Int) -> RgbScaled {
-  let denom = basis_point_unity_count()
+  let denom = std.measure.basis_point_unity_count()
   RgbScaled {
     r: (c.r * denom) / maxv,
     g: (c.g * denom) / maxv,
@@ -56,7 +56,7 @@ fn srgb8_to_scaled_for_max(c: Srgb8, maxv: Int) -> RgbScaled {
 }
 
 fn srgb8_to_scaled(c: Srgb8) -> RgbScaled? {
-  match uint8_channel_inclusive_max_value_derived() {
+  match std.integer.uint8_channel_inclusive_max_value_derived() {
     Present { value: maxv } => Present { value: srgb8_to_scaled_for_max(c: c, maxv: maxv) }
     Absent => none
   }
@@ -77,7 +77,7 @@ fn imin(a: Int, b: Int) -> Int {
 // Consumes the plane-angle authority rather than re-minting it: "360 degrees per turn" is one
 // definitional fact, and a second copy here could drift from the spatial lane's independently.
 // ISO 80000-3 owns plane angle, so extdeps.units.iso_80000_3 is the surviving anchor.
-data full_turn_degrees: Int = degrees_per_turn()
+data full_turn_degrees: Int = extdeps.units.iso_80000_3.degrees_per_turn()
 
 data hexcone_sextant_count: Int = 6
 
@@ -103,7 +103,7 @@ fn full_turn_millidegrees() -> Int {
   hue_milli_per_sextant() * hexcone_sextant_count
 }
 
-// HslProjection: chromatic rows carry h in degrees [0, 360); Achromatic rows omit hue per CSS Color 4 hue-is-none (delta=0). s_pct and l_pct are bounded Int percent counts [0, 100] from the CSS Color 4 integer algorithm. extdeps.languages.css.values.Percent carrier at register binding is deferred — see std.measure.percent_from_computed_int_frontier. OKLCH reground: design-register-library.md sect 10 Class 2.
+// HslProjection: chromatic rows carry h in degrees [0, 360); Achromatic rows omit hue per CSS Color 4 hue-is-none (delta=0). s_pct and l_pct are bounded Int percent counts [0, 100] from the CSS Color 4 integer algorithm. Percent carrier at register binding is deferred — see std.measure.percent_from_computed_int_frontier. OKLCH reground: design-register-library.md sect 10 Class 2.
 type ColorConversionFrontier
   = HslLive
   | OklchStaged { trigger: String }
@@ -131,17 +131,17 @@ fn hsl_projection_l_pct(p: HslProjection) -> Int {
 }
 
 fn pct_round_from_scaled(v_scaled: Int) -> Int {
-  let denom = basis_point_unity_count()
-  (v_scaled * percent_scale_hundred() + permyriad_half_for_round_half_up()) / denom
+  let denom = std.measure.basis_point_unity_count()
+  (v_scaled * std.measure.percent_scale_hundred() + std.measure.permyriad_half_for_round_half_up()) / denom
 }
 
 fn srgb8_to_hsl_projection(c: Srgb8) -> HslProjection? {
-  match uint8_channel_inclusive_max_value_derived() {
+  match std.integer.uint8_channel_inclusive_max_value_derived() {
     Present { value: maxv } => Present {
       value: srgb8_to_hsl_projection_for_max(
         c: c,
         maxv: maxv,
-        denom: basis_point_unity_count(),
+        denom: std.measure.basis_point_unity_count(),
       )
     }
     Absent => none
@@ -152,8 +152,8 @@ fn srgb8_to_hsl_projection_for_max(c: Srgb8, maxv: Int, denom: Int) -> HslProjec
   let rs = (c.r * denom) / maxv
   let gs = (c.g * denom) / maxv
   let bs = (c.b * denom) / maxv
-  let maxc = extdeps.color.srgb.imax(a: extdeps.color.srgb.imax(a: rs, b: gs), b: bs)
-  let minc = extdeps.color.srgb.imin(a: extdeps.color.srgb.imin(a: rs, b: gs), b: bs)
+  let maxc = imax(a: imax(a: rs, b: gs), b: bs)
+  let minc = imin(a: imin(a: rs, b: gs), b: bs)
   let delta = maxc - minc
   let l_scaled = (maxc + minc) / 2
   let light_pct = pct_round_from_scaled(v_scaled: l_scaled)
@@ -176,9 +176,9 @@ fn srgb8_to_hsl_projection_for_max(c: Srgb8, maxv: Int, denom: Int) -> HslProjec
 }
 
 fn hsl_to_rgb_scaled(hue: Int, sat_pct: Int, light_pct: Int) -> RgbScaled {
-  let denom = basis_point_unity_count()
-  let l = light_pct * percent_scale_hundred()
-  let s = sat_pct * percent_scale_hundred()
+  let denom = std.measure.basis_point_unity_count()
+  let l = light_pct * std.measure.percent_scale_hundred()
+  let s = sat_pct * std.measure.percent_scale_hundred()
   let c = ((denom - iabs(v: 2 * l - denom)) * s) / denom
   let h2 = ((hue % full_turn_degrees) + full_turn_degrees) % full_turn_degrees
   let two_sextant_deg = sextant_arc_degrees() * 2

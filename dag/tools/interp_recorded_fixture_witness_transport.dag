@@ -2,9 +2,9 @@ module tools.interp_recorded_fixture_witness_transport
 
 
 fn run_interp_recorded_fixture_witness() -> Bool {
-  run_witness_bin_program(
-    invoke: witness_bin(var_name: "INTERP_RECORDED_FIXTURE_WITNESS", bin_name: "interp_recorded_fixture_witness"),
-    prereqs: [witness_bin(var_name: "CLAIM_BATCH", bin_name: "claim_batch")],
+  tools.host_prelude.run_witness_bin_program(
+    invoke: tools.host_prelude.witness_bin(var_name: "INTERP_RECORDED_FIXTURE_WITNESS", bin_name: "interp_recorded_fixture_witness"),
+    prereqs: [tools.host_prelude.witness_bin(var_name: "CLAIM_BATCH", bin_name: "claim_batch")],
     args: []
   )
 }

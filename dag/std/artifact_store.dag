@@ -15,19 +15,19 @@ type ArtifactRealizationInput {
   content_digest: std.content_hash.Fnv1a64Structural
 }
 
-fn artifact_realization_input_digest(realization_input: std.artifact_store.ArtifactRealizationInput) -> std.content_hash.Fnv1a64Structural {
-  content_hash_tagged_structural(
+fn artifact_realization_input_digest(realization_input: ArtifactRealizationInput) -> std.content_hash.Fnv1a64Structural {
+  std.content_hash.content_hash_tagged_structural(
     tag: realization_input.identity,
     payload: realization_input.content_digest
   )
 }
 
-fn artifact_realization_digest(inputs: List<std.artifact_store.ArtifactRealizationInput>) -> std.content_hash.ContentHash {
-  as_content_hash_structural(
+fn artifact_realization_digest(inputs: List<ArtifactRealizationInput>) -> std.content_hash.ContentHash {
+  std.content_hash.as_content_hash_structural(
     structural: fold(
       inputs,
-      init: content_hash_atom(value: "artifact_store.realization"),
-      f: (acc, realization_input) => content_hash_combine_structural(
+      init: std.content_hash.content_hash_atom(value: "artifact_store.realization"),
+      f: (acc, realization_input) => std.content_hash.content_hash_combine_structural(
         left: acc,
         right: artifact_realization_input_digest(realization_input: realization_input)
       )
@@ -35,16 +35,16 @@ fn artifact_realization_digest(inputs: List<std.artifact_store.ArtifactRealizati
   )
 }
 
-fn artifact_key_hash(key: std.artifact_store.ArtifactKey) -> std.content_hash.ContentHash {
-  content_hash_tagged(
+fn artifact_key_hash(key: ArtifactKey) -> std.content_hash.ContentHash {
+  std.content_hash.content_hash_tagged(
     tag: "artifact_store.key",
-    payload: content_hash_combine_structural(
+    payload: std.content_hash.content_hash_combine_structural(
       left: key.closure_digest,
-      right: content_hash_combine_structural(
-        left: content_hash_atom(value: key.emitter_identity),
-        right: content_hash_combine_structural(
-          left: content_hash_atom(value: key.target_language),
-          right: content_hash_atom(value: key.toolchain)
+      right: std.content_hash.content_hash_combine_structural(
+        left: std.content_hash.content_hash_atom(value: key.emitter_identity),
+        right: std.content_hash.content_hash_combine_structural(
+          left: std.content_hash.content_hash_atom(value: key.target_language),
+          right: std.content_hash.content_hash_atom(value: key.toolchain)
         )
       )
     )
@@ -60,7 +60,7 @@ type ArtifactRow {
 type ArtifactStore {
   budget: std.measure.ByteSize
   next_ordinal: Int
-  rows: List<std.artifact_store.ArtifactRow>
+  rows: List<ArtifactRow>
 }
 
 // EXACT CAUSES, not one carrier the caller must re-read. The remedies differ:
@@ -80,26 +80,26 @@ type StoreRefusalCause
   | ReplacementStrategyUnsupported
 
 type StoreConstruction
-  = StoreReady { store: std.artifact_store.ArtifactStore }
+  = StoreReady { store: ArtifactStore }
   | StoreRefusedRetention {
       provider_id: String,
       declared: std.cache_interface.ProviderRetention,
-      cause: std.artifact_store.StoreRefusalCause
+      cause: StoreRefusalCause
     }
 
 // A persistent store needs BOTH halves: storage that outlives the provider's
 // scope, AND a byte ceiling whose value is in hand. The budget is no longer a
 // parameter, so a store cannot be built over a provider that never established
 // the number it is being sized by.
-fn store_over_provider(provider: std.materialization_ladder.CacheProvider) -> std.artifact_store.StoreConstruction {
+fn store_over_provider(provider: std.materialization_ladder.CacheProvider) -> StoreConstruction {
   match provider.retention.release_policy {
-    ReleasedAtProviderScopeExit => store_refused(provider: provider, cause: ProviderScopeReleased)
-    ReleasedNever => store_from_capacity(provider: provider, c: provider.retention.capacity)
-    ReleasedManually => store_from_capacity(provider: provider, c: provider.retention.capacity)
+    std.cache_interface.ReleasedAtProviderScopeExit => store_refused(provider: provider, cause: ProviderScopeReleased)
+    std.cache_interface.ReleasedNever => store_from_capacity(provider: provider, c: provider.retention.capacity)
+    std.cache_interface.ReleasedManually => store_from_capacity(provider: provider, c: provider.retention.capacity)
   }
 }
 
-fn store_refused(provider: std.materialization_ladder.CacheProvider, cause: std.artifact_store.StoreRefusalCause) -> std.artifact_store.StoreConstruction {
+fn store_refused(provider: std.materialization_ladder.CacheProvider, cause: StoreRefusalCause) -> StoreConstruction {
   StoreRefusedRetention {
     provider_id: provider.id,
     declared: provider.retention,
@@ -107,11 +107,11 @@ fn store_refused(provider: std.materialization_ladder.CacheProvider, cause: std.
   }
 }
 
-fn store_from_capacity(provider: std.materialization_ladder.CacheProvider, c: std.cache_interface.CapacityPolicy) -> std.artifact_store.StoreConstruction {
+fn store_from_capacity(provider: std.materialization_ladder.CacheProvider, c: std.cache_interface.CapacityPolicy) -> StoreConstruction {
   match c {
-    CapacityUnbounded => store_refused(provider: provider, cause: ProviderCapacityUnbounded)
-    CapacityUnobserved => store_refused(provider: provider, cause: ProviderCapacityUnobserved)
-    CapacityBounded { limit: l, at_capacity: action } =>
+    std.cache_interface.CapacityUnbounded => store_refused(provider: provider, cause: ProviderCapacityUnbounded)
+    std.cache_interface.CapacityUnobserved => store_refused(provider: provider, cause: ProviderCapacityUnobserved)
+    std.cache_interface.CapacityBounded { limit: l, at_capacity: action } =>
       match store_replacement_supported(action: action) {
         Present { value: cause } => store_refused(provider: provider, cause: cause)
         Absent => store_from_limit(provider: provider, l: l)
@@ -122,45 +122,45 @@ fn store_from_capacity(provider: std.materialization_ladder.CacheProvider, c: st
 // THE REALIZATION BELOW IS LEAST-RECENTLY-USED, so it may only be built over a
 // provider that says so. The former shape read at_capacity not at all and
 // packed by LRU whatever the row declared.
-fn store_replacement_supported(action: std.cache_interface.AtCapacityDisposition) -> std.artifact_store.StoreRefusalCause? {
+fn store_replacement_supported(action: std.cache_interface.AtCapacityDisposition) -> StoreRefusalCause? {
   match action {
-    AtCapacityUnobserved => Present { value: StoreAtCapacityUnobserved }
-    RefuseNewStore => Present { value: RefuseNewStoreUnsupported }
-    ReplaceExisting { strategy: s } => match s {
-      LeastRecentlyUsed => none
-      ProviderNativeReplacement => Present { value: ReplacementStrategyUnsupported }
+    std.cache_interface.AtCapacityUnobserved => Present { value: StoreAtCapacityUnobserved }
+    std.cache_interface.RefuseNewStore => Present { value: RefuseNewStoreUnsupported }
+    std.cache_interface.ReplaceExisting { strategy: s } => match s {
+      std.cache_interface.LeastRecentlyUsed => none
+      std.cache_interface.ProviderNativeReplacement => Present { value: ReplacementStrategyUnsupported }
     }
   }
 }
 
-fn store_from_limit(provider: std.materialization_ladder.CacheProvider, l: std.cache_interface.CapacityLimit) -> std.artifact_store.StoreConstruction {
+fn store_from_limit(provider: std.materialization_ladder.CacheProvider, l: std.cache_interface.CapacityLimit) -> StoreConstruction {
   match l {
-    EntryCountCapacity { limit: _ } => store_refused(provider: provider, cause: CapacityUnitMismatch)
-    ByteCapacity { limit: v } => match v {
-      ExactLimit { value: bytes } =>
-        StoreReady { store: std.artifact_store.ArtifactStore { budget: bytes, next_ordinal: 1, rows: [] } }
-      RuntimeDerivedLimit { authority: _ } =>
+    std.cache_interface.EntryCountCapacity { limit: _ } => store_refused(provider: provider, cause: CapacityUnitMismatch)
+    std.cache_interface.ByteCapacity { limit: v } => match v {
+      std.cache_interface.ExactLimit { value: bytes } =>
+        StoreReady { store: ArtifactStore { budget: bytes, next_ordinal: 1, rows: [] } }
+      std.cache_interface.RuntimeDerivedLimit { authority: _ } =>
         store_refused(provider: provider, cause: CapacityValueUnresolved)
-      EffectiveLimitUnobserved =>
+      std.cache_interface.EffectiveLimitUnobserved =>
         store_refused(provider: provider, cause: CapacityValueUnobserved)
     }
   }
 }
 
 type StoreLookup
-  = StoreHit { store: std.artifact_store.ArtifactStore, row: std.artifact_store.ArtifactRow }
-  | StoreMiss { store: std.artifact_store.ArtifactStore }
+  = StoreHit { store: ArtifactStore, row: ArtifactRow }
+  | StoreMiss { store: ArtifactStore }
 
-fn store_bytes_used(store: std.artifact_store.ArtifactStore) -> Int {
-  fold(store.rows, init: 0, f: (acc, r) => acc + measure_count(m: r.artifact_bytes))
+fn store_bytes_used(store: ArtifactStore) -> Int {
+  fold(store.rows, init: 0, f: (acc, r) => acc + std.measure.measure_count(m: r.artifact_bytes))
 }
 
-fn store_get(store: std.artifact_store.ArtifactStore, key: std.content_hash.ContentHash) -> std.artifact_store.StoreLookup {
+fn store_get(store: ArtifactStore, key: std.content_hash.ContentHash) -> StoreLookup {
   match store.rows |> filter(r => r.key == key) |> first {
     Present { value: row } =>
       let bumped = ArtifactRow { key: row.key, artifact_bytes: row.artifact_bytes, last_use_ordinal: store.next_ordinal }
       StoreHit {
-        store: std.artifact_store.ArtifactStore {
+        store: ArtifactStore {
           budget: store.budget,
           next_ordinal: store.next_ordinal + 1,
           rows: concat(store.rows |> filter(r => (r.key == key) == false), [bumped])
@@ -174,11 +174,11 @@ fn store_get(store: std.artifact_store.ArtifactStore, key: std.content_hash.Cont
 data no_evicted_keys: List<std.content_hash.ContentHash> = []
 
 type StorePutReceipt {
-  store: std.artifact_store.ArtifactStore
+  store: ArtifactStore
   evicted: List<std.content_hash.ContentHash>
 }
 
-fn least_recent_row(rows: List<std.artifact_store.ArtifactRow>) -> std.artifact_store.ArtifactRow? {
+fn least_recent_row(rows: List<ArtifactRow>) -> ArtifactRow? {
   match rows |> first {
     Present { value: seed } =>
       Present { value: fold(rows, init: seed, f: (best, r) => if r.last_use_ordinal < best.last_use_ordinal { r } else { best }) }
@@ -186,14 +186,14 @@ fn least_recent_row(rows: List<std.artifact_store.ArtifactRow>) -> std.artifact_
   }
 }
 
-fn evict_until_within_budget(store: std.artifact_store.ArtifactStore, evicted: List<std.content_hash.ContentHash>) -> std.artifact_store.StorePutReceipt {
-  if store_bytes_used(store: store) <= measure_count(m: store.budget) {
+fn evict_until_within_budget(store: ArtifactStore, evicted: List<std.content_hash.ContentHash>) -> StorePutReceipt {
+  if store_bytes_used(store: store) <= std.measure.measure_count(m: store.budget) {
     StorePutReceipt { store: store, evicted: evicted }
   } else {
     match least_recent_row(rows: store.rows) {
       Present { value: victim } =>
         evict_until_within_budget(
-          store: std.artifact_store.ArtifactStore {
+          store: ArtifactStore {
             budget: store.budget,
             next_ordinal: store.next_ordinal,
             rows: store.rows |> filter(r => (r.key == victim.key) == false)
@@ -208,11 +208,11 @@ fn evict_until_within_budget(store: std.artifact_store.ArtifactStore, evicted: L
 data store_put_totality_note: String = "store_put is TOTAL over its two real outcomes, and the fit test runs BEFORE any eviction (operator scope call, 2026-07-29; reproduction receipt on PR 7385). The prior signature returned a StorePutReceipt unconditionally, which conflated two states that need opposite remedies: an artifact LARGER than the whole budget fell into the eviction loop, evicted every legitimate row, then evicted ITSELF (the fresh row carries the highest ordinal, so it is the last victim), and returned a receipt whose evicted list contained the key the caller had just put — indistinguishable at the type level from 'stored, and these older ones were evicted'. Measured: 500 bytes into a 100-byte budget holding one valid 40-byte row returned TWO evictions and an empty store, so an oversized put was not merely mislabelled, it was DESTRUCTIVE — it discarded valid cached entries and stored nothing while reporting success. The repair is construction, not a louder report (DESIGN section 5): the fit test precedes eviction, so the destructive path is unwritable rather than detected after the damage, and the two outcomes are distinct VALUES rather than one value whose fields the caller must interpret. Because artifact_bytes <= budget is established before the loop runs, the fresh row can never be its own victim — the self-eviction is gone by construction, not by a guard inside the loop."
 
 type StorePutOutcome
-  = StorePutAdmitted { store: std.artifact_store.ArtifactStore, evicted: List<std.content_hash.ContentHash> }
+  = StorePutAdmitted { store: ArtifactStore, evicted: List<std.content_hash.ContentHash> }
   | StorePutDidNotFit { artifact_bytes: std.measure.ByteSize, budget: std.measure.ByteSize }
 
-fn store_put(store: std.artifact_store.ArtifactStore, key: std.content_hash.ContentHash, artifact_bytes: std.measure.ByteSize) -> std.artifact_store.StorePutOutcome {
-  if measure_count(m: artifact_bytes) > measure_count(m: store.budget) {
+fn store_put(store: ArtifactStore, key: std.content_hash.ContentHash, artifact_bytes: std.measure.ByteSize) -> StorePutOutcome {
+  if std.measure.measure_count(m: artifact_bytes) > std.measure.measure_count(m: store.budget) {
     StorePutDidNotFit { artifact_bytes: artifact_bytes, budget: store.budget }
   } else {
     let fresh = ArtifactRow { key: key, artifact_bytes: artifact_bytes, last_use_ordinal: store.next_ordinal }
@@ -231,9 +231,9 @@ data store_put_reader_contract: std.disposition.Disposition = std.disposition.Te
 }
 
 fn store_put_fold<T>(
-  outcome: std.artifact_store.StorePutOutcome,
-  admitted: fn(std.artifact_store.ArtifactStore, List<ContentHash>) -> T,
-  did_not_fit: fn(ByteSize, ByteSize) -> T
+  outcome: StorePutOutcome,
+  admitted: fn(ArtifactStore, List<std.content_hash.ContentHash>) -> T,
+  did_not_fit: fn(std.measure.ByteSize, std.measure.ByteSize) -> T
 ) -> T {
   match outcome {
     StorePutAdmitted { store: s, evicted: e } => admitted(s, e)
@@ -241,10 +241,10 @@ fn store_put_fold<T>(
   }
 }
 
-fn store_put_is_admitted(outcome: std.artifact_store.StorePutOutcome) -> Bool {
+fn store_put_is_admitted(outcome: StorePutOutcome) -> Bool {
   store_put_fold(outcome: outcome, admitted: (s, e) => true, did_not_fit: (a, b) => false)
 }
 
-fn store_put_evicted_keys(outcome: std.artifact_store.StorePutOutcome) -> List<std.content_hash.ContentHash> {
-  store_put_fold(outcome: outcome, admitted: (s, e) => e, did_not_fit: (a, b) => std.artifact_store.no_evicted_keys)
+fn store_put_evicted_keys(outcome: StorePutOutcome) -> List<std.content_hash.ContentHash> {
+  store_put_fold(outcome: outcome, admitted: (s, e) => e, did_not_fit: (a, b) => no_evicted_keys)
 }

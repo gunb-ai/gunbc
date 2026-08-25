@@ -6,34 +6,34 @@ module v2.test.claim.body_lowering_well_formed_wall
 // (DirectAtomBody); UnsupportedArrowBody Disj remains the negative control.
 
 fn well_formed_wall_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
-  node_synthetic(
+  v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: []
   )
 }
 
 fn well_formed_wall_malformed_arrow() -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Arrow },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
-      v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_domain) },
-      v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
-      v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_domain) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^arrow_body_edge },
-        target: node_synthetic(kind: v2.std.node.TypeNode { connective: Disj }, children: [])
+        target: v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Disj }, children: [])
       }
     ]
   )
 }
 
 fn well_formed_wall_atom_body_arrow() -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Arrow },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
-      v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_domain) },
-      v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
-      v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_domain) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^arrow_body_edge },
         target: well_formed_wall_atom(identity: ^well_formed_wall_bare_body)
@@ -43,28 +43,28 @@ fn well_formed_wall_atom_body_arrow() -> v2.std.node.Node {
 }
 
 fn well_formed_wall_valid_arrow() -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Arrow },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
-      v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_domain) },
-      v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
-      v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_domain) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
       v2.std.node.Edge {
         label: v2.std.node.Named { name: ^arrow_body_edge },
-        target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: Value }, children: [])
+        target: v2.std.node.node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Value }, children: [])
       }
     ]
   )
 }
 
 test fn body_lowering_well_formed_wall_rejects_malformed_body() -> Bool {
-  !well_formed(n: well_formed_wall_malformed_arrow())
+  !v2.std.node.well_formed(n: well_formed_wall_malformed_arrow())
 }
 
 test fn body_lowering_well_formed_wall_accepts_atom_body() -> Bool {
-  well_formed(n: well_formed_wall_atom_body_arrow())
+  v2.std.node.well_formed(n: well_formed_wall_atom_body_arrow())
 }
 
 test fn body_lowering_well_formed_wall_accepts_valid_body() -> Bool {
-  well_formed(n: well_formed_wall_valid_arrow())
+  v2.std.node.well_formed(n: well_formed_wall_valid_arrow())
 }

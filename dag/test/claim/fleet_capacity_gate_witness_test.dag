@@ -1,24 +1,26 @@
 module test.claim.fleet_capacity_gate_witness_test
 
-fn live_instance() -> HostDashboardInstance {
-  srv1_live_dashboard_instance()
+
+
+fn live_instance() -> gunbc.roadmap_dashboard_instance.HostDashboardInstance {
+  gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()
 }
 
-fn declared_offers() -> List<ProviderOffer> {
-  declared_provider_inventory_for_instance(instance: live_instance()).offers
+fn declared_offers() -> List<gunbc.dispatch_selection.ProviderOffer> {
+  gunbc.dispatch_selection.declared_provider_inventory_for_instance(instance: live_instance()).offers
 }
 
-fn withdraw_this_host() -> List<HostCapacityWithdrawal> {
-  [HostCapacityWithdrawal {
-    host: live_instance().host_identity as HostIdentity,
-    cause: WithdrawnForMaintenance { detail: "memory upgrade" as NonEmptyStr },
+fn withdraw_this_host() -> List<gunbc.fleet_capacity_control.HostCapacityWithdrawal> {
+  [gunbc.fleet_capacity_control.HostCapacityWithdrawal {
+    host: live_instance().host_identity as product.placement_supply.HostIdentity,
+    cause: gunbc.fleet_capacity_control.WithdrawnForMaintenance { detail: "memory upgrade" as std.types.NonEmptyStr },
   }]
 }
 
-fn withdraw_codex() -> List<ProviderCapacityWithdrawal> {
-  [ProviderCapacityWithdrawal {
-    provider: CodexCliProvider,
-    cause: WithdrawnToReduceSpend { detail: "quota exhausted" as NonEmptyStr },
+fn withdraw_codex() -> List<gunbc.fleet_capacity_control.ProviderCapacityWithdrawal> {
+  [gunbc.fleet_capacity_control.ProviderCapacityWithdrawal {
+    provider: extdeps.llm.cli_lifecycle.CodexCliProvider,
+    cause: gunbc.fleet_capacity_control.WithdrawnToReduceSpend { detail: "quota exhausted" as std.types.NonEmptyStr },
   }]
 }
 
@@ -30,7 +32,7 @@ fn withdraw_codex() -> List<ProviderCapacityWithdrawal> {
 // filter would stay green forever.
 test fn withdrawing_this_host_removes_every_offer_it_had() -> Bool {
   let before = declared_offers()
-  let after = capacity_admitted_offers_in(
+  let after = gunbc.dispatch_selection.capacity_admitted_offers_in(
     host_rows: withdraw_this_host(), provider_rows: [],
     instance: live_instance(), offers: before,
   )
@@ -45,11 +47,11 @@ test fn withdrawing_this_host_removes_every_offer_it_had() -> Bool {
 // offers went away because someone cut them.
 test fn a_withdrawn_empty_inventory_is_not_an_unfilled_one() -> Bool {
   let offers = declared_offers()
-  let admitted = capacity_admitted_offers_in(
+  let admitted = gunbc.dispatch_selection.capacity_admitted_offers_in(
     host_rows: withdraw_this_host(), provider_rows: [],
     instance: live_instance(), offers: offers,
   )
-  let withdrawn = capacity_withdrawn_offers_in(
+  let withdrawn = gunbc.dispatch_selection.capacity_withdrawn_offers_in(
     host_rows: withdraw_this_host(), provider_rows: [],
     instance: live_instance(), offers: offers,
   )
@@ -65,11 +67,11 @@ test fn a_withdrawn_empty_inventory_is_not_an_unfilled_one() -> Bool {
 // why this asserts the sum against the denominator rather than just that something was removed.
 test fn the_gate_partitions_offers_without_losing_any() -> Bool {
   let offers = declared_offers()
-  let admitted = capacity_admitted_offers_in(
+  let admitted = gunbc.dispatch_selection.capacity_admitted_offers_in(
     host_rows: [], provider_rows: withdraw_codex(),
     instance: live_instance(), offers: offers,
   )
-  let withdrawn = capacity_withdrawn_offers_in(
+  let withdrawn = gunbc.dispatch_selection.capacity_withdrawn_offers_in(
     host_rows: [], provider_rows: withdraw_codex(),
     instance: live_instance(), offers: offers,
   )
@@ -83,9 +85,9 @@ test fn the_gate_partitions_offers_without_losing_any() -> Bool {
 // no-op control: it goes red if the gate ever starts removing production capacity that no operator
 // asked to remove, which is the failure this change could plausibly introduce.
 test fn the_live_inventory_loses_nothing_to_the_gate() -> Bool {
-  let declared = declared_provider_inventory_for_instance(instance: live_instance())
-  let gated = provider_inventory_for_instance(instance: live_instance())
-  let withdrawn = provider_inventory_withdrawn_for_instance(instance: live_instance())
+  let declared = gunbc.dispatch_selection.declared_provider_inventory_for_instance(instance: live_instance())
+  let gated = gunbc.dispatch_selection.provider_inventory_for_instance(instance: live_instance())
+  let withdrawn = gunbc.dispatch_selection.provider_inventory_withdrawn_for_instance(instance: live_instance())
   (gated.offers |> count) == (declared.offers |> count)
     && (withdrawn |> count) == 0
     && (declared.offers |> count) > 0

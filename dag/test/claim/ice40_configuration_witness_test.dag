@@ -1,9 +1,9 @@
 module test.claim.ice40_configuration_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn count_of(xs: List<extdeps.programmable_logic.ice40.configuration.ConfigurationTiming>) -> std.integer.Int {
+fn count_of(xs: List<extdeps.programmable_logic.ice40.configuration.ConfigurationTiming>) -> Int {
   fold(xs, init: 0, f: fn(acc, _t) { acc + 1 })
 }
 
@@ -12,18 +12,18 @@ fn count_of(xs: List<extdeps.programmable_logic.ice40.configuration.Configuratio
 // write tCR_SCK bounds, so the row is absent from its timing set rather than sitting there as a
 // constraint nothing on the board can violate.
 test fn w_a_slave_spi_row_is_out_of_scope_for_a_master_spi_board() -> Bool {
-  !scope_admits(s: ice40_hx1k_creset_to_first_sck.scope, m: MasterSpiConfiguration)
-    && scope_admits(s: ice40_hx1k_creset_to_first_sck.scope, m: SlaveSpiConfiguration)
-    && scope_admits(s: ice40_creset_b_low_pulse.scope, m: MasterSpiConfiguration)
+  !extdeps.programmable_logic.ice40.configuration.scope_admits(s: ice40_hx1k_creset_to_first_sck.scope, m: extdeps.programmable_logic.ice40.supply.MasterSpiConfiguration)
+    && extdeps.programmable_logic.ice40.configuration.scope_admits(s: ice40_hx1k_creset_to_first_sck.scope, m: extdeps.programmable_logic.ice40.supply.SlaveSpiConfiguration)
+    && extdeps.programmable_logic.ice40.configuration.scope_admits(s: ice40_creset_b_low_pulse.scope, m: extdeps.programmable_logic.ice40.supply.MasterSpiConfiguration)
 }
 
 // AND THE SCOPE ACTUALLY SHRINKS THE SET. Without this the scope field is decorative: it could be
 // carried, checked by nothing, and every consumer would still see every row. Slave SPI sees more
 // rows than master SPI, and both see the all-modes rows.
 test fn w_the_mode_selects_which_timings_apply() -> Bool {
-  let under_master = test.claim.ice40_configuration_witness.count_of(xs: timings_for_mode(m: MasterSpiConfiguration))
-  let under_slave = test.claim.ice40_configuration_witness.count_of(xs: timings_for_mode(m: SlaveSpiConfiguration))
-  let total = test.claim.ice40_configuration_witness.count_of(xs: ice40_configuration_timings)
+  let under_master = count_of(xs: extdeps.programmable_logic.ice40.configuration.timings_for_mode(m: extdeps.programmable_logic.ice40.supply.MasterSpiConfiguration))
+  let under_slave = count_of(xs: extdeps.programmable_logic.ice40.configuration.timings_for_mode(m: extdeps.programmable_logic.ice40.supply.SlaveSpiConfiguration))
+  let total = count_of(xs: extdeps.programmable_logic.ice40.configuration.ice40_configuration_timings)
   under_master == 2 && under_slave == total && under_slave > under_master
 }
 
@@ -33,42 +33,42 @@ test fn w_the_mode_selects_which_timings_apply() -> Bool {
 // intermittently. The column is carried so a consumer can tell the difference.
 test fn w_the_pulse_width_is_a_minimum_and_says_so() -> Bool {
   let is_two_hundred_nanoseconds = match ice40_creset_b_low_pulse.bound.quantity {
-    BoundInNanoseconds { value: ns } => nanosecond_count(n: ns) == 200
-    BoundInMicroseconds { value: _ } => false
-    BoundInHertz { value: _ } => false
-    BoundInClockCycles { count: _ } => false
+    extdeps.programmable_logic.ice40.configuration.BoundInNanoseconds { value: ns } => std.measure.nanosecond_count(n: ns) == 200
+    extdeps.programmable_logic.ice40.configuration.BoundInMicroseconds { value: _ } => false
+    extdeps.programmable_logic.ice40.configuration.BoundInHertz { value: _ } => false
+    extdeps.programmable_logic.ice40.configuration.BoundInClockCycles { count: _ } => false
   }
   is_two_hundred_nanoseconds
     && match ice40_creset_b_low_pulse.bound.column {
-      MinimumColumn => true
-      TypicalColumn => false
-      MaximumColumn => false
+      extdeps.programmable_logic.ice40.configuration.MinimumColumn => true
+      extdeps.programmable_logic.ice40.configuration.TypicalColumn => false
+      extdeps.programmable_logic.ice40.configuration.MaximumColumn => false
     }
 }
 
 // THE QUANTITY IS TYPED, so a duration and a frequency are not the same thing wearing different
-// prose. An earlier revision carried an std.integer.Int beside a unit string, which made 200 nanoseconds and
+// prose. An earlier revision carried an Int beside a unit string, which made 200 nanoseconds and
 // 200 megahertz one type; this asserts each row lands on the arm its kind requires, and that a
 // cycle count is a cardinality rather than a duration - the table names no clock, so how long
 // forty-nine cycles take is not a fact this document states.
 test fn w_each_bound_carries_the_quantity_its_kind_requires() -> Bool {
   let sck_is_microseconds = match ice40_hx1k_creset_to_first_sck.bound.quantity {
-    BoundInMicroseconds { value: us } => microsecond_count(m: us) == 800
-    BoundInNanoseconds { value: _ } => false
-    BoundInHertz { value: _ } => false
-    BoundInClockCycles { count: _ } => false
+    extdeps.programmable_logic.ice40.configuration.BoundInMicroseconds { value: us } => std.measure.microsecond_count(m: us) == 800
+    extdeps.programmable_logic.ice40.configuration.BoundInNanoseconds { value: _ } => false
+    extdeps.programmable_logic.ice40.configuration.BoundInHertz { value: _ } => false
+    extdeps.programmable_logic.ice40.configuration.BoundInClockCycles { count: _ } => false
   }
   let cclk_is_frequency = match ice40_cclk_write_maximum.bound.quantity {
-    BoundInHertz { value: hz } => hertz_count(h: hz) == 25000000
-    BoundInNanoseconds { value: _ } => false
-    BoundInMicroseconds { value: _ } => false
-    BoundInClockCycles { count: _ } => false
+    extdeps.programmable_logic.ice40.configuration.BoundInHertz { value: hz } => std.measure.hertz_count(h: hz) == 25000000
+    extdeps.programmable_logic.ice40.configuration.BoundInNanoseconds { value: _ } => false
+    extdeps.programmable_logic.ice40.configuration.BoundInMicroseconds { value: _ } => false
+    extdeps.programmable_logic.ice40.configuration.BoundInClockCycles { count: _ } => false
   }
   let done_is_a_count = match ice40_done_to_io_active.bound.quantity {
-    BoundInClockCycles { count: c } => c == 49
-    BoundInNanoseconds { value: _ } => false
-    BoundInMicroseconds { value: _ } => false
-    BoundInHertz { value: _ } => false
+    extdeps.programmable_logic.ice40.configuration.BoundInClockCycles { count: c } => c == 49
+    extdeps.programmable_logic.ice40.configuration.BoundInNanoseconds { value: _ } => false
+    extdeps.programmable_logic.ice40.configuration.BoundInMicroseconds { value: _ } => false
+    extdeps.programmable_logic.ice40.configuration.BoundInHertz { value: _ } => false
   }
   sck_is_microseconds && cclk_is_frequency && done_is_a_count
 }
@@ -78,18 +78,18 @@ test fn w_each_bound_carries_the_quantity_its_kind_requires() -> Bool {
 // assert a specification that has been retracted, and reporting it as merely unknown would invite
 // someone to go and find it in an older revision - which is exactly the wrong remedy.
 test fn w_the_withdrawn_configuration_time_is_not_a_missing_one() -> Bool {
-  let low = match hx1k_configuration_time(c: LowFrequencyDefault) {
-    ConfigurationTimeTypical { elapsed: ms } => millisecond_count(m: ms)
-    ConfigurationTimeWithdrawnByVendor { note: _ } => 0
+  let low = match extdeps.programmable_logic.ice40.configuration.hx1k_configuration_time(c: extdeps.programmable_logic.ice40.configuration.LowFrequencyDefault) {
+    extdeps.programmable_logic.ice40.configuration.ConfigurationTimeTypical { elapsed: ms } => std.measure.millisecond_count(m: ms)
+    extdeps.programmable_logic.ice40.configuration.ConfigurationTimeWithdrawnByVendor { note: _ } => 0
   }
-  let medium = match hx1k_configuration_time(c: MediumFrequency) {
-    ConfigurationTimeTypical { elapsed: ms } => millisecond_count(m: ms)
-    ConfigurationTimeWithdrawnByVendor { note: _ } => 0
+  let medium = match extdeps.programmable_logic.ice40.configuration.hx1k_configuration_time(c: extdeps.programmable_logic.ice40.configuration.MediumFrequency) {
+    extdeps.programmable_logic.ice40.configuration.ConfigurationTimeTypical { elapsed: ms } => std.measure.millisecond_count(m: ms)
+    extdeps.programmable_logic.ice40.configuration.ConfigurationTimeWithdrawnByVendor { note: _ } => 0
   }
-  let high_is_withdrawn = match hx1k_configuration_time(c: HighFrequency) {
-    ConfigurationTimeWithdrawnByVendor { note: n } =>
+  let high_is_withdrawn = match extdeps.programmable_logic.ice40.configuration.hx1k_configuration_time(c: extdeps.programmable_logic.ice40.configuration.HighFrequency) {
+    extdeps.programmable_logic.ice40.configuration.ConfigurationTimeWithdrawnByVendor { note: n } =>
       list_length(items: split(s: n as String, delimiter: "deleting")) > 1
-    ConfigurationTimeTypical { elapsed: _ } => false
+    extdeps.programmable_logic.ice40.configuration.ConfigurationTimeTypical { elapsed: _ } => false
   }
   low == 53 && medium == 25 && high_is_withdrawn
 }
@@ -98,7 +98,7 @@ test fn w_the_withdrawn_configuration_time_is_not_a_missing_one() -> Bool {
 // module cites, so the old spelling names a signal in a document that has been superseded - the
 // same staleness class as citing the retired document number.
 test fn w_the_slave_select_uses_the_current_signal_name() -> Bool {
-  (configuration_signal_name(s: SpiSlaveSelect) as String) == "SPI_SS"
-    && (configuration_signal_name(s: ConfigurationReset) as String) == "CRESET_B"
-    && (configuration_signal_name(s: ConfigurationDone) as String) == "CDONE"
+  (extdeps.programmable_logic.ice40.configuration.configuration_signal_name(s: extdeps.programmable_logic.ice40.configuration.SpiSlaveSelect) as String) == "SPI_SS"
+    && (extdeps.programmable_logic.ice40.configuration.configuration_signal_name(s: extdeps.programmable_logic.ice40.configuration.ConfigurationReset) as String) == "CRESET_B"
+    && (extdeps.programmable_logic.ice40.configuration.configuration_signal_name(s: extdeps.programmable_logic.ice40.configuration.ConfigurationDone) as String) == "CDONE"
 }

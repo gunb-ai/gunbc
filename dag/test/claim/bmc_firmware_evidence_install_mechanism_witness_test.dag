@@ -12,7 +12,7 @@ fn control_network_boot_axis(requirement: gunbc.os_install_mechanism.NetworkBoot
     observation: std.decl_ref.DeclarationRef {
       module_path: "test.claim.bmc_firmware_evidence_install_mechanism",
       decl_name: "established_network_boot_for_control",
-      field: WholeDeclaration,
+      field: std.decl_ref.WholeDeclaration,
     },
     observed_at: 1786320000000,
   }
@@ -20,10 +20,10 @@ fn control_network_boot_axis(requirement: gunbc.os_install_mechanism.NetworkBoot
 
 data established_network_boot_for_control: gunbc.os_install_mechanism.NetworkBootDeliveryStanding = gunbc.os_install_mechanism.NetworkBootDeliveryEstablished {
   evidence: gunbc.os_install_mechanism.NetworkBootDeliveryEstablishment {
-    boot_source_override: control_network_boot_axis(requirement: NetworkBootBootSourceOverride),
-    client_boot_mode: control_network_boot_axis(requirement: NetworkBootClientBootMode),
-    serving_infrastructure: control_network_boot_axis(requirement: NetworkBootServingInfrastructure),
-    boot_artifacts: control_network_boot_axis(requirement: NetworkBootBootArtifacts),
+    boot_source_override: control_network_boot_axis(requirement: gunbc.os_install_mechanism.NetworkBootBootSourceOverride),
+    client_boot_mode: control_network_boot_axis(requirement: gunbc.os_install_mechanism.NetworkBootClientBootMode),
+    serving_infrastructure: control_network_boot_axis(requirement: gunbc.os_install_mechanism.NetworkBootServingInfrastructure),
+    boot_artifacts: control_network_boot_axis(requirement: gunbc.os_install_mechanism.NetworkBootBootArtifacts),
   },
 }
 
@@ -33,15 +33,15 @@ data established_firmware_transition_for_control: gunbc.os_install_mechanism.Fir
   artifact: std.decl_ref.DeclarationRef {
     module_path: "test.claim.bmc_firmware_evidence_install_mechanism",
     decl_name: "established_firmware_transition_for_control",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
 }
 
-data unknown_endpoint: std.bmc.BmcEndpoint = std.bmc.BmcEndpoint { host: "192.168.1.254", protocol: Redfish }
+data unknown_endpoint: std.bmc.BmcEndpoint = std.bmc.BmcEndpoint { host: "192.168.1.254", protocol: std.bmc.Redfish }
 
 data uncatalogued_firmware: extdeps.bmc.capability.BmcFirmwareVersion = extdeps.bmc.capability.BmcFirmwareVersion {
-  family: OpenBmc,
-  version: firmware_semantic_version(major: 2, minor: 7, patch: 1),
+  family: std.bmc.OpenBmc,
+  version: extdeps.firmware.types.firmware_semantic_version(major: 2, minor: 7, patch: 1),
 }
 
 // THE FINDING, made executable, at its honest strength. srv4's observed firmware (OpenBMC
@@ -51,29 +51,29 @@ data uncatalogued_firmware: extdeps.bmc.capability.BmcFirmwareVersion = extdeps.
 // firmware does not implement. The claim is the DISAGREEMENT between a refusal and a fabricated
 // selection, not either value alone.
 test fn srv4_evidence_derived_refuses_while_board_default_selects_nbd_proxy() -> Bool {
-  let board_default = solve_install_mechanism(
-    current: asrock_altrad8ud_shipped_bmc_firmware_capabilities,
-    catalog: srv3_firmware_catalog,
+  let board_default = gunbc.os_install_mechanism.solve_install_mechanism(
+    current: extdeps.boards.asrock_rack.asrock_altrad8ud_shipped_bmc_firmware_capabilities,
+    catalog: gunbc.os_install_mechanism.srv3_firmware_catalog,
   )
-  match srv4_install_mechanism_solution {
-    OsInstallMechanismRefused { cause: c } =>
+  match gunbc.os_install_mechanism.srv4_install_mechanism_solution {
+    gunbc.os_install_mechanism.OsInstallMechanismRefused { cause: c } =>
       match c {
-        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: m } =>
-          list_length(items: m) == 4
+        gunbc.os_install_mechanism.InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: m } =>
+          std.types.list_length(items: m) == 4
             && match board_default {
-                 NbdProxyVirtualMediaInstall => true
-                 PxeHttpInstall => false
-                 VirtualMediaInstall => false
-                 FirmwareUpdateThenVirtualMedia => false
+                 gunbc.os_install_mechanism.NbdProxyVirtualMediaInstall => true
+                 gunbc.os_install_mechanism.PxeHttpInstall => false
+                 gunbc.os_install_mechanism.VirtualMediaInstall => false
+                 gunbc.os_install_mechanism.FirmwareUpdateThenVirtualMedia => false
                }
-        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
-        InstallFirmwareVersionUncatalogued { firmware: _ } => false
-        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
-        InstallNoBootSourceOverride { firmware: _ } => false
-        InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
-        InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareVersionUncatalogued { firmware: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+        gunbc.os_install_mechanism.InstallNoBootSourceOverride { firmware: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
       }
-    OsInstallMechanismSelected { mechanism: _ } => false
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: _ } => false
   }
 }
 
@@ -93,14 +93,14 @@ test fn srv4_evidence_derived_refuses_while_board_default_selects_nbd_proxy() ->
 // VirtualMediaTransport is the INSTALL-0 repair; an omitted capability read as an
 // observed absence is the defect, not the hardware.
 test fn srv3_reinstall_path_is_unestablished_on_3_22_00() -> Bool {
-  match srv3_install_mechanism_solution {
-    OsInstallMechanismRefused { cause: c } =>
+  match gunbc.os_install_mechanism.srv3_install_mechanism_solution {
+    gunbc.os_install_mechanism.OsInstallMechanismRefused { cause: c } =>
       match c {
-        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: fw, missing: _ } =>
+        gunbc.os_install_mechanism.InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: fw, missing: _ } =>
           fw.version.major == 3 && fw.version.minor == 22
         _ => false
       }
-    OsInstallMechanismSelected { mechanism: _ } => false
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: _ } => false
   }
 }
 
@@ -112,61 +112,61 @@ test fn srv3_reinstall_path_is_unestablished_on_3_22_00() -> Bool {
 // board-default row being read as a current plan — the failure its predecessor
 // existed to catch, now caught and held rather than re-greened.
 test fn legacy_board_default_row_no_longer_agrees_with_evidence() -> Bool {
-  match srv3_install_mechanism_solution {
-    OsInstallMechanismRefused { cause: _ } =>
-      match srv3_install_mechanism {
-        NbdProxyVirtualMediaInstall => true
+  match gunbc.os_install_mechanism.srv3_install_mechanism_solution {
+    gunbc.os_install_mechanism.OsInstallMechanismRefused { cause: _ } =>
+      match gunbc.os_install_mechanism.srv3_install_mechanism {
+        gunbc.os_install_mechanism.NbdProxyVirtualMediaInstall => true
         _ => false
       }
-    OsInstallMechanismSelected { mechanism: _ } => false
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: _ } => false
   }
 }
 
 test fn attested_srv1_srv2_resolve_to_nbd_proxy() -> Bool {
-  match srv1_install_mechanism_solution {
-    OsInstallMechanismSelected { mechanism: a } =>
-      match srv2_install_mechanism_solution {
-        OsInstallMechanismSelected { mechanism: b } =>
+  match gunbc.os_install_mechanism.srv1_install_mechanism_solution {
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: a } =>
+      match gunbc.os_install_mechanism.srv2_install_mechanism_solution {
+        gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: b } =>
           match a {
-            NbdProxyVirtualMediaInstall =>
+            gunbc.os_install_mechanism.NbdProxyVirtualMediaInstall =>
               match b {
-                NbdProxyVirtualMediaInstall => true
-                PxeHttpInstall => false
-                VirtualMediaInstall => false
-                FirmwareUpdateThenVirtualMedia => false
+                gunbc.os_install_mechanism.NbdProxyVirtualMediaInstall => true
+                gunbc.os_install_mechanism.PxeHttpInstall => false
+                gunbc.os_install_mechanism.VirtualMediaInstall => false
+                gunbc.os_install_mechanism.FirmwareUpdateThenVirtualMedia => false
               }
-            PxeHttpInstall => false
-            VirtualMediaInstall => false
-            FirmwareUpdateThenVirtualMedia => false
+            gunbc.os_install_mechanism.PxeHttpInstall => false
+            gunbc.os_install_mechanism.VirtualMediaInstall => false
+            gunbc.os_install_mechanism.FirmwareUpdateThenVirtualMedia => false
           }
-        OsInstallMechanismRefused { cause: _ } => false
+        gunbc.os_install_mechanism.OsInstallMechanismRefused { cause: _ } => false
       }
-    OsInstallMechanismRefused { cause: _ } => false
+    gunbc.os_install_mechanism.OsInstallMechanismRefused { cause: _ } => false
   }
 }
 
 // Provenance is carried structurally, not by a comment: srv1/srv2 inhabit the attested arm and
 // srv3/srv4 the observed arm, so a recollection cannot be read back as a Redfish observation.
 test fn srv1_srv2_are_attested_and_srv3_srv4_are_observed() -> Bool {
-  match srv1_bmc_firmware_evidence {
-    BmcFirmwareEvidenceAttested { attestation: _ } =>
-      match srv2_bmc_firmware_evidence {
-        BmcFirmwareEvidenceAttested { attestation: _ } =>
-          match srv3_bmc_firmware_evidence {
-            BmcFirmwareEvidenceObserved { observation: _ } =>
-              match srv4_bmc_firmware_evidence {
-                BmcFirmwareEvidenceObserved { observation: _ } => true
-                BmcFirmwareEvidenceAttested { attestation: _ } => false
-                BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
+  match gunbc.fleet_bmc_firmware_evidence.srv1_bmc_firmware_evidence {
+    gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceAttested { attestation: _ } =>
+      match gunbc.fleet_bmc_firmware_evidence.srv2_bmc_firmware_evidence {
+        gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceAttested { attestation: _ } =>
+          match gunbc.fleet_bmc_firmware_evidence.srv3_bmc_firmware_evidence {
+            gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceObserved { observation: _ } =>
+              match gunbc.fleet_bmc_firmware_evidence.srv4_bmc_firmware_evidence {
+                gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceObserved { observation: _ } => true
+                gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceAttested { attestation: _ } => false
+                gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
               }
-            BmcFirmwareEvidenceAttested { attestation: _ } => false
-            BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
+            gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceAttested { attestation: _ } => false
+            gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
           }
-        BmcFirmwareEvidenceObserved { observation: _ } => false
-        BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
+        gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceObserved { observation: _ } => false
+        gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
       }
-    BmcFirmwareEvidenceObserved { observation: _ } => false
-    BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
+    gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceObserved { observation: _ } => false
+    gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
   }
 }
 
@@ -175,23 +175,23 @@ test fn srv1_srv2_are_attested_and_srv3_srv4_are_observed() -> Bool {
 // what solve_install_mechanism's else-arm would answer for an empty capability row) and NOT
 // substitute the board's shipped roster.
 test fn unobserved_endpoint_refuses_rather_than_defaulting_to_pxe() -> Bool {
-  match solve_install_mechanism_from_evidence(
+  match gunbc.os_install_mechanism.solve_install_mechanism_from_evidence(
     evidence: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
-    catalog: srv3_firmware_catalog,
+    catalog: gunbc.os_install_mechanism.srv3_firmware_catalog,
     network_boot: established_network_boot_for_control,
-    firmware_transition: fleet_firmware_transition_standing,
+    firmware_transition: gunbc.os_install_mechanism.fleet_firmware_transition_standing,
   ) {
-    OsInstallMechanismRefused { cause: c } =>
+    gunbc.os_install_mechanism.OsInstallMechanismRefused { cause: c } =>
       match c {
-        InstallFirmwareEvidenceAbsent { endpoint: e } => e == unknown_endpoint
-        InstallFirmwareVersionUncatalogued { firmware: _ } => false
-        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
-        InstallNoBootSourceOverride { firmware: _ } => false
-        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
-        InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
-        InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareEvidenceAbsent { endpoint: e } => e == unknown_endpoint
+        gunbc.os_install_mechanism.InstallFirmwareVersionUncatalogued { firmware: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+        gunbc.os_install_mechanism.InstallNoBootSourceOverride { firmware: _ } => false
+        gunbc.os_install_mechanism.InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
       }
-    OsInstallMechanismSelected { mechanism: _ } => false
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: _ } => false
   }
 }
 
@@ -199,7 +199,7 @@ test fn unobserved_endpoint_refuses_rather_than_defaulting_to_pxe() -> Bool {
 // nearest row. 2.07.00 is the only version carrying CapabilityNbdProxyVirtualMedia; answering
 // for 2.07.01 from that row would grant a capability nobody observed.
 test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
-  match solve_install_mechanism_from_evidence(
+  match gunbc.os_install_mechanism.solve_install_mechanism_from_evidence(
     evidence: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceAttested {
       attestation: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareAttestation {
         endpoint: unknown_endpoint,
@@ -208,22 +208,22 @@ test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
         attested_at: 1786320000000,
       },
     },
-    catalog: srv3_firmware_catalog,
+    catalog: gunbc.os_install_mechanism.srv3_firmware_catalog,
     network_boot: established_network_boot_for_control,
-    firmware_transition: fleet_firmware_transition_standing,
+    firmware_transition: gunbc.os_install_mechanism.fleet_firmware_transition_standing,
   ) {
-    OsInstallMechanismRefused { cause: c } =>
+    gunbc.os_install_mechanism.OsInstallMechanismRefused { cause: c } =>
       match c {
-        InstallFirmwareVersionUncatalogued { firmware: f } =>
-          bmc_firmware_version_eq(a: f, b: uncatalogued_firmware)
-        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
-        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
-        InstallNoBootSourceOverride { firmware: _ } => false
-        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
-        InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
-        InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareVersionUncatalogued { firmware: f } =>
+          extdeps.bmc.capability.bmc_firmware_version_eq(a: f, b: uncatalogued_firmware)
+        gunbc.os_install_mechanism.InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+        gunbc.os_install_mechanism.InstallNoBootSourceOverride { firmware: _ } => false
+        gunbc.os_install_mechanism.InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
       }
-    OsInstallMechanismSelected { mechanism: _ } => false
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: _ } => false
   }
 }
 
@@ -231,60 +231,60 @@ test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
 // capabilities the fleet actually depends on, so the refusals above are discriminating rather
 // than the function refusing everything.
 test fn catalogued_version_resolves_to_its_own_row() -> Bool {
-  match bmc_firmware_capability_row_for(
+  match extdeps.bmc.capability.bmc_firmware_capability_row_for(
     firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
-    catalog: srv3_firmware_catalog,
+    catalog: gunbc.os_install_mechanism.srv3_firmware_catalog,
   ) {
-    BmcFirmwareCapabilityKnown { row: r } =>
-      firmware_has_capability(row: r, cap: CapabilityNbdProxyVirtualMedia)
-        && firmware_has_capability(row: r, cap: CapabilityVirtualMedia) == false
-    BmcFirmwareCapabilityUncatalogued { firmware: _ } => false
-    BmcFirmwareCapabilityAmbiguous { firmware: _, count: _ } => false
+    extdeps.bmc.capability.BmcFirmwareCapabilityKnown { row: r } =>
+      extdeps.bmc.capability.firmware_has_capability(row: r, cap: extdeps.bmc.capability.CapabilityNbdProxyVirtualMedia)
+        && extdeps.bmc.capability.firmware_has_capability(row: r, cap: extdeps.bmc.capability.CapabilityVirtualMedia) == false
+    extdeps.bmc.capability.BmcFirmwareCapabilityUncatalogued { firmware: _ } => false
+    extdeps.bmc.capability.BmcFirmwareCapabilityAmbiguous { firmware: _, count: _ } => false
   }
 }
 
 test fn catalogued_3_22_00_row_carries_no_virtual_media_of_either_kind() -> Bool {
-  match bmc_firmware_capability_row_for(
+  match extdeps.bmc.capability.bmc_firmware_capability_row_for(
     firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
-    catalog: srv3_firmware_catalog,
+    catalog: gunbc.os_install_mechanism.srv3_firmware_catalog,
   ) {
-    BmcFirmwareCapabilityKnown { row: r } =>
-      firmware_has_capability(row: r, cap: CapabilityVirtualMedia) == false
-        && firmware_has_capability(row: r, cap: CapabilityNbdProxyVirtualMedia) == false
-    BmcFirmwareCapabilityUncatalogued { firmware: _ } => false
-    BmcFirmwareCapabilityAmbiguous { firmware: _, count: _ } => false
+    extdeps.bmc.capability.BmcFirmwareCapabilityKnown { row: r } =>
+      extdeps.bmc.capability.firmware_has_capability(row: r, cap: extdeps.bmc.capability.CapabilityVirtualMedia) == false
+        && extdeps.bmc.capability.firmware_has_capability(row: r, cap: extdeps.bmc.capability.CapabilityNbdProxyVirtualMedia) == false
+    extdeps.bmc.capability.BmcFirmwareCapabilityUncatalogued { firmware: _ } => false
+    extdeps.bmc.capability.BmcFirmwareCapabilityAmbiguous { firmware: _, count: _ } => false
   }
 }
 
 test fn unobserved_evidence_establishes_no_version() -> Bool {
-  match bmc_firmware_evidence_version(
+  match gunbc.fleet_bmc_firmware_evidence.bmc_firmware_evidence_version(
     evidence: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
   ) {
-    BmcFirmwareVersionUnestablished { endpoint: e } => e == unknown_endpoint
-    BmcFirmwareVersionEstablished { firmware: _ } => false
+    gunbc.fleet_bmc_firmware_evidence.BmcFirmwareVersionUnestablished { endpoint: e } => e == unknown_endpoint
+    gunbc.fleet_bmc_firmware_evidence.BmcFirmwareVersionEstablished { firmware: _ } => false
   }
 }
 
 test fn capability_standing_refuses_on_absent_evidence() -> Bool {
-  match bmc_firmware_capability_standing(
+  match gunbc.fleet_bmc_firmware_evidence.bmc_firmware_capability_standing(
     evidence: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
-    catalog: srv3_firmware_catalog,
+    catalog: gunbc.os_install_mechanism.srv3_firmware_catalog,
   ) {
-    BmcFirmwareCapabilityEvidenceAbsent { endpoint: e } => e == unknown_endpoint
-    BmcFirmwareCapabilityResolved { row: _ } => false
-    BmcFirmwareCapabilityVersionUncatalogued { firmware: _ } => false
-    BmcFirmwareCapabilityVersionAmbiguous { firmware: _, count: _ } => false
+    gunbc.fleet_bmc_firmware_evidence.BmcFirmwareCapabilityEvidenceAbsent { endpoint: e } => e == unknown_endpoint
+    gunbc.fleet_bmc_firmware_evidence.BmcFirmwareCapabilityResolved { row: _ } => false
+    gunbc.fleet_bmc_firmware_evidence.BmcFirmwareCapabilityVersionUncatalogued { firmware: _ } => false
+    gunbc.fleet_bmc_firmware_evidence.BmcFirmwareCapabilityVersionAmbiguous { firmware: _, count: _ } => false
   }
 }
 
 data no_boot_override_row: extdeps.bmc.capability.BmcFirmwareCapabilityRow = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
   firmware: uncatalogued_firmware,
-  capabilities: [CapabilityPowerControl],
+  capabilities: [extdeps.bmc.capability.CapabilityPowerControl],
 }
 
 data duplicated_version_catalog: List<extdeps.bmc.capability.BmcFirmwareCapabilityRow> = [
-  asrock_altrad8ud_openbmc_2_07_00_capabilities,
-  asrock_altrad8ud_openbmc_2_07_00_capabilities,
+  extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_capabilities,
+  extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_capabilities,
 ]
 
 data attested_2_07_00_evidence: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidence = gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvidenceAttested {
@@ -302,97 +302,97 @@ data attested_2_07_00_evidence: gunbc.fleet_bmc_firmware_evidence.BmcFirmwareEvi
 // selects PXE from the SAME row once a delivery is declared, so the refusal is discriminating
 // rather than the function refusing everything.
 test fn no_virtual_media_without_declared_network_boot_refuses_instead_of_inferring_pxe() -> Bool {
-  match solve_install_mechanism_from_evidence(
-    evidence: srv4_bmc_firmware_evidence,
-    catalog: srv3_firmware_catalog,
+  match gunbc.os_install_mechanism.solve_install_mechanism_from_evidence(
+    evidence: gunbc.fleet_bmc_firmware_evidence.srv4_bmc_firmware_evidence,
+    catalog: gunbc.os_install_mechanism.srv3_firmware_catalog,
     network_boot: gunbc.os_install_mechanism.NetworkBootDeliveryUnestablished { missing: [] },
-    firmware_transition: fleet_firmware_transition_standing,
+    firmware_transition: gunbc.os_install_mechanism.fleet_firmware_transition_standing,
   ) {
-    OsInstallMechanismRefused { cause: c } =>
+    gunbc.os_install_mechanism.OsInstallMechanismRefused { cause: c } =>
       match c {
-        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => true
-        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
-        InstallFirmwareVersionUncatalogued { firmware: _ } => false
-        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
-        InstallNoBootSourceOverride { firmware: _ } => false
-        InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
-        InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+        gunbc.os_install_mechanism.InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => true
+        gunbc.os_install_mechanism.InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareVersionUncatalogued { firmware: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+        gunbc.os_install_mechanism.InstallNoBootSourceOverride { firmware: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
       }
-    OsInstallMechanismSelected { mechanism: _ } => false
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: _ } => false
   }
 }
 
 test fn same_row_selects_pxe_once_a_network_boot_delivery_is_established() -> Bool {
-  match solve_install_mechanism_from_evidence(
-    evidence: srv4_bmc_firmware_evidence,
-    catalog: srv3_firmware_catalog,
+  match gunbc.os_install_mechanism.solve_install_mechanism_from_evidence(
+    evidence: gunbc.fleet_bmc_firmware_evidence.srv4_bmc_firmware_evidence,
+    catalog: gunbc.os_install_mechanism.srv3_firmware_catalog,
     network_boot: established_network_boot_for_control,
-    firmware_transition: fleet_firmware_transition_standing,
+    firmware_transition: gunbc.os_install_mechanism.fleet_firmware_transition_standing,
   ) {
-    OsInstallMechanismSelected { mechanism: m } =>
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: m } =>
       match m {
-        PxeHttpInstall => true
-        NbdProxyVirtualMediaInstall => false
-        VirtualMediaInstall => false
-        FirmwareUpdateThenVirtualMedia => false
+        gunbc.os_install_mechanism.PxeHttpInstall => true
+        gunbc.os_install_mechanism.NbdProxyVirtualMediaInstall => false
+        gunbc.os_install_mechanism.VirtualMediaInstall => false
+        gunbc.os_install_mechanism.FirmwareUpdateThenVirtualMedia => false
       }
-    OsInstallMechanismRefused { cause: _ } => false
+    gunbc.os_install_mechanism.OsInstallMechanismRefused { cause: _ } => false
   }
 }
 
 // RED CONTROL — boot-source-override gates every delivery arm, so a row without it refuses
 // rather than reaching the network-boot arm on a declared standing.
 test fn row_without_boot_source_override_refuses_even_with_declared_network_boot() -> Bool {
-  match solve_delivery_from_capability_row(
+  match gunbc.os_install_mechanism.solve_delivery_from_capability_row(
     row: no_boot_override_row,
-    catalog: srv3_firmware_catalog,
+    catalog: gunbc.os_install_mechanism.srv3_firmware_catalog,
     network_boot: established_network_boot_for_control,
-    firmware_transition: fleet_firmware_transition_standing,
+    firmware_transition: gunbc.os_install_mechanism.fleet_firmware_transition_standing,
   ) {
-    OsInstallMechanismRefused { cause: c } =>
+    gunbc.os_install_mechanism.OsInstallMechanismRefused { cause: c } =>
       match c {
-        InstallNoBootSourceOverride { firmware: _ } => true
-        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
-        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
-        InstallFirmwareVersionUncatalogued { firmware: _ } => false
-        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
-        InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
-        InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+        gunbc.os_install_mechanism.InstallNoBootSourceOverride { firmware: _ } => true
+        gunbc.os_install_mechanism.InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareVersionUncatalogued { firmware: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
       }
-    OsInstallMechanismSelected { mechanism: _ } => false
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: _ } => false
   }
 }
 
 // RED CONTROL for the manager-flagged duplicate-match defect. Two catalog rows for one version
 // is a contradiction; answering from whichever was authored first would render it as a verdict.
 test fn duplicate_catalog_rows_for_one_version_refuse_as_ambiguous() -> Bool {
-  match bmc_firmware_capability_row_for(
+  match extdeps.bmc.capability.bmc_firmware_capability_row_for(
     firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
     catalog: duplicated_version_catalog,
   ) {
-    BmcFirmwareCapabilityAmbiguous { firmware: _, count: n } => n == 2
-    BmcFirmwareCapabilityKnown { row: _ } => false
-    BmcFirmwareCapabilityUncatalogued { firmware: _ } => false
+    extdeps.bmc.capability.BmcFirmwareCapabilityAmbiguous { firmware: _, count: n } => n == 2
+    extdeps.bmc.capability.BmcFirmwareCapabilityKnown { row: _ } => false
+    extdeps.bmc.capability.BmcFirmwareCapabilityUncatalogued { firmware: _ } => false
   }
 }
 
 test fn ambiguous_catalog_propagates_to_a_mechanism_refusal() -> Bool {
-  match solve_install_mechanism_from_evidence(
+  match gunbc.os_install_mechanism.solve_install_mechanism_from_evidence(
     evidence: attested_2_07_00_evidence,
     catalog: duplicated_version_catalog,
     network_boot: established_network_boot_for_control,
-    firmware_transition: fleet_firmware_transition_standing,
+    firmware_transition: gunbc.os_install_mechanism.fleet_firmware_transition_standing,
   ) {
-    OsInstallMechanismRefused { cause: c } =>
+    gunbc.os_install_mechanism.OsInstallMechanismRefused { cause: c } =>
       match c {
-        InstallFirmwareVersionAmbiguous { firmware: _, count: n } => n == 2
-        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
-        InstallFirmwareVersionUncatalogued { firmware: _ } => false
-        InstallNoBootSourceOverride { firmware: _ } => false
-        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
-        InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
-        InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareVersionAmbiguous { firmware: _, count: n } => n == 2
+        gunbc.os_install_mechanism.InstallFirmwareEvidenceAbsent { endpoint: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareVersionUncatalogued { firmware: _ } => false
+        gunbc.os_install_mechanism.InstallNoBootSourceOverride { firmware: _ } => false
+        gunbc.os_install_mechanism.InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
+        gunbc.os_install_mechanism.InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
       }
-    OsInstallMechanismSelected { mechanism: _ } => false
+    gunbc.os_install_mechanism.OsInstallMechanismSelected { mechanism: _ } => false
   }
 }

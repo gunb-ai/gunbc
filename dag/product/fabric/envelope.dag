@@ -1,5 +1,6 @@
 module product.fabric.envelope
 
+
 // WHAT A UNIT OF WORK NEEDS FROM A MACHINE, AS GENERAL VOCABULARY RATHER THAN CONTAINER VOCABULARY.
 //
 // These five requirement types and the envelope over them were authored inside
@@ -15,15 +16,15 @@ module product.fabric.envelope
 // comparing against git history should find the definitions byte-identical.
 data fabric_envelope_note: String = "General resource-requirement vocabulary for brokered compute. Moved verbatim from gunbc.fleet_container, which now consumes it: the questions are machine questions, not container questions."
 
-type CpuRequirement { min_threads: HardwareThreadCount, architecture: Architecture? }
+type CpuRequirement { min_threads: std.measure.HardwareThreadCount, architecture: extdeps.toolchain.types.Architecture? }
 
-type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }
+type GpuRequirement { min_vram: std.measure.ByteSize, runtimes: List<extdeps.gpu.types.GpuRuntime> }
 
-type MemoryRequirement { min_bytes: ByteSize }
+type MemoryRequirement { min_bytes: std.measure.ByteSize }
 
-type StorageRequirement { min_bytes: ByteSize, persistence: PersistenceKind }
+type StorageRequirement { min_bytes: std.measure.ByteSize, persistence: extdeps.storage.types.PersistenceKind }
 
-type NetworkRequirement { egress: NetworkEgressClass?, ambient_allowed: Bool }
+type NetworkRequirement { egress: product.network_topology.NetworkEgressClass?, ambient_allowed: Bool }
 
 // EVERY AXIS IS OPTIONAL, AND THE OPTIONALITY MEANS UNSTATED RATHER THAN UNCONSTRAINED.
 //
@@ -52,9 +53,9 @@ fn unstated_envelope() -> ResourceEnvelope {
 
 // THE TWO AXES FUNGIBILITY ACTUALLY COMPARES, FOR CALLERS THAT STATE A REAL REQUIREMENT.
 fn cpu_memory_envelope(
-  min_threads: HardwareThreadCount,
-  architecture: Architecture?,
-  min_bytes: ByteSize,
+  min_threads: std.measure.HardwareThreadCount,
+  architecture: extdeps.toolchain.types.Architecture?,
+  min_bytes: std.measure.ByteSize,
 ) -> ResourceEnvelope {
   ResourceEnvelope {
     cpu: Present {

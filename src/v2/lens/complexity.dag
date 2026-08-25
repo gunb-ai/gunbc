@@ -1,4 +1,6 @@
 module v2.lens.complexity
+
+
 data complexity_variables_list_carrier_note: String = "ComplexityVariables is List<SizeVariable> with no Refined/Witness carrier. The admits predicate is vacuous, so refine+Holds rewrap added no admission fact and under discovery (PR 7765) Witness peels left Holds-wrapped lists that concat rejected as Record. complexity_lens returns ComplexityBound directly (UnknownComplexity on cost Violates) so discovery cannot nest an extra Holds around the bound. dissolve-on: root-cause the discovery shared-index path that injected the extra Holds layer."
 
 fn complexity_variables_admits(xs: List<v2.lens.cost.SizeVariable>) -> Bool {
@@ -91,24 +93,24 @@ fn unknown_complexity_with_diagnostic(diagnostic: v2.std.diagnostic.Diagnostic) 
 
 fn complexity_variables_from_cost(cost: v2.lens.cost.SymbolicCost) -> ComplexityVariables {
   match cost {
-    ConstantCost { value: _ } => std.algebra.Empty
-    LogCost { variable: v } => [v]
-    LinearCost { variable: v } => [v]
-    PolynomialCost { variable: v, degree: _ } => [v]
-    PolyLogCost { variable: v, exponent: _ } => [v]
-    ExponentialCost { variable: v, base: _ } => [v]
-    FactorialCost { variable: v } => [v]
-    SumCost { lhs: lhs, rhs: rhs } =>
+    v2.lens.cost.ConstantCost { value: _ } => std.algebra.Empty
+    v2.lens.cost.LogCost { variable: v } => [v]
+    v2.lens.cost.LinearCost { variable: v } => [v]
+    v2.lens.cost.PolynomialCost { variable: v, degree: _ } => [v]
+    v2.lens.cost.PolyLogCost { variable: v, exponent: _ } => [v]
+    v2.lens.cost.ExponentialCost { variable: v, base: _ } => [v]
+    v2.lens.cost.FactorialCost { variable: v } => [v]
+    v2.lens.cost.SumCost { lhs: lhs, rhs: rhs } =>
       concat(
         complexity_variables_from_cost(cost: lhs),
         complexity_variables_from_cost(cost: rhs)
       )
-    ProductCost { lhs: lhs, rhs: rhs } =>
+    v2.lens.cost.ProductCost { lhs: lhs, rhs: rhs } =>
       concat(
         complexity_variables_from_cost(cost: lhs),
         complexity_variables_from_cost(cost: rhs)
       )
-    UnknownCost { diagnostic: _ } => std.algebra.Empty
+    v2.lens.cost.UnknownCost { diagnostic: _ } => std.algebra.Empty
   }
 }
 
@@ -117,23 +119,23 @@ fn complexity_bound_from_sized_class(
   variables: ComplexityVariables
 ) -> ComplexityBound {
   match class {
-    ClassConstant => ConstantComplexity
-    ClassLog => SizedComplexity { class: SizedLogClass, variables: variables }
-    ClassLinear => SizedComplexity { class: SizedLinearClass, variables: variables }
-    ClassLinearithmic => SizedComplexity { class: SizedLinearithmicClass, variables: variables }
-    ClassPolynomial { degree: d } =>
+    v2.lens.cost.ClassConstant => ConstantComplexity
+    v2.lens.cost.ClassLog => SizedComplexity { class: SizedLogClass, variables: variables }
+    v2.lens.cost.ClassLinear => SizedComplexity { class: SizedLinearClass, variables: variables }
+    v2.lens.cost.ClassLinearithmic => SizedComplexity { class: SizedLinearithmicClass, variables: variables }
+    v2.lens.cost.ClassPolynomial { degree: d } =>
       SizedComplexity { class: SizedPolynomialClass { degree: d }, variables: variables }
-    ClassPolyLog { exponent: e } =>
+    v2.lens.cost.ClassPolyLog { exponent: e } =>
       SizedComplexity { class: SizedPolyLogClass { exponent: e }, variables: variables }
-    ClassExponential => SizedComplexity { class: SizedExponentialClass, variables: variables }
-    ClassFactorial => SizedComplexity { class: SizedFactorialClass, variables: variables }
-    ClassUnknown => unknown_complexity()
+    v2.lens.cost.ClassExponential => SizedComplexity { class: SizedExponentialClass, variables: variables }
+    v2.lens.cost.ClassFactorial => SizedComplexity { class: SizedFactorialClass, variables: variables }
+    v2.lens.cost.ClassUnknown => unknown_complexity()
   }
 }
 
 fn complexity_bound_from_cost(cost: v2.lens.cost.SymbolicCost) -> ComplexityBound {
   match cost {
-    UnknownCost { diagnostic: d } =>
+    v2.lens.cost.UnknownCost { diagnostic: d } =>
       unknown_complexity_with_diagnostic(diagnostic: d)
     _ =>
       complexity_bound_from_sized_class(
@@ -153,9 +155,9 @@ fn complexity_projection_diagnostic() -> v2.std.diagnostic.Diagnostic {
 
 fn asymptotic_projection(cost_witness: Witness<v2.lens.cost.SymbolicCost>) -> ComplexityBound {
   match cost_witness {
-    Holds { value: cost } =>
+    v2.std.witness.Holds { value: cost } =>
       complexity_bound_from_cost(cost: cost)
-    Violates { diagnostic: d } =>
+    v2.std.witness.Violates { diagnostic: d } =>
       unknown_complexity_with_diagnostic(diagnostic: d)
   }
 }

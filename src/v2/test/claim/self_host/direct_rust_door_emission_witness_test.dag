@@ -3,12 +3,12 @@ module v2.test.claim.self_host.direct_rust_door_emission_witness_test
 
 data direct_rust_door_emission_witness_note: String = "Fast per-PR witnesses over the emitter-closure construction wall: a V2 producer minted against a seed-reachable closure must refuse, and the declared v2 closure must exclude v1.compiler.emit_rust. The long sibling this note used to point at is DELETED --- src/v2/test/claim/long/direct_rust_door_emission_witness_test.dag was one of four duplicate production walks consolidated into the single canonical root src/v2/test/claim/long/direct_rust_door_production_group_test.dag, whose leaf semantics are discriminated at sub-millisecond cost in direct_rust_door_group_algebra_test.dag."
 
-test fn witness_seed_closure_poison_refuses_v2_producer_reds() -> v2.std.logic.Bool {
-  mint_v2_interpreted_receipt_with_seed_closure_refuses(
+test fn witness_seed_closure_poison_refuses_v2_producer_reds() -> Bool {
+  v2.compiler.self_host.emitter_producer_provenance.mint_v2_interpreted_receipt_with_seed_closure_refuses(
     module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path
   )
 }
 
-test fn witness_v2_closure_excludes_seed_emit_rust_holds() -> v2.std.logic.Bool {
-  v2_interpreted_emitter_closure_seed_free_holds()
+test fn witness_v2_closure_excludes_seed_emit_rust_holds() -> Bool {
+  v2.compiler.self_host.emitter_producer_provenance.v2_interpreted_emitter_closure_seed_free_holds()
 }

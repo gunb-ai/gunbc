@@ -1,25 +1,25 @@
 module v2.compiler.self_host.frontier_probe
 
 
-data frontier_probe_closure_duplicate_ref_reason: v2.std.node.Symbol = ^frontier_probe_closure_duplicate_ref
+data frontier_probe_closure_duplicate_ref_reason: Symbol = ^frontier_probe_closure_duplicate_ref
 
-data frontier_probe_closure_storage_duplicate_reason: v2.std.node.Symbol = ^frontier_probe_closure_storage_duplicate
+data frontier_probe_closure_storage_duplicate_reason: Symbol = ^frontier_probe_closure_storage_duplicate
 
-data frontier_probe_closure_storage_hash_conflict_reason: v2.std.node.Symbol = ^frontier_probe_closure_storage_hash_conflict
+data frontier_probe_closure_storage_hash_conflict_reason: Symbol = ^frontier_probe_closure_storage_hash_conflict
 
-data frontier_probe_closure_refs_digest_mismatch_reason: v2.std.node.Symbol = ^frontier_probe_closure_refs_digest_mismatch
+data frontier_probe_closure_refs_digest_mismatch_reason: Symbol = ^frontier_probe_closure_refs_digest_mismatch
 
-data frontier_probe_closure_refs_digest_unavailable_reason: v2.std.node.Symbol = ^frontier_probe_closure_refs_digest_unavailable
+data frontier_probe_closure_refs_digest_unavailable_reason: Symbol = ^frontier_probe_closure_refs_digest_unavailable
 
-data frontier_probe_closure_non_structural_hash_reason: v2.std.node.Symbol = ^frontier_probe_closure_non_structural_hash
+data frontier_probe_closure_non_structural_hash_reason: Symbol = ^frontier_probe_closure_non_structural_hash
 
-data frontier_probe_closure_count_mismatch_reason: v2.std.node.Symbol = ^frontier_probe_closure_count_mismatch
+data frontier_probe_closure_count_mismatch_reason: Symbol = ^frontier_probe_closure_count_mismatch
 
-data frontier_probe_entry_binding_refused_reason: v2.std.node.Symbol = ^frontier_probe_entry_binding_refused
+data frontier_probe_entry_binding_refused_reason: Symbol = ^frontier_probe_entry_binding_refused
 
-data frontier_probe_coverage_refused_reason: v2.std.node.Symbol = ^frontier_probe_coverage_refused
+data frontier_probe_coverage_refused_reason: Symbol = ^frontier_probe_coverage_refused
 
-data frontier_probe_empty_ingest_reason: v2.std.node.Symbol = ^frontier_probe_empty_ingest
+data frontier_probe_empty_ingest_reason: Symbol = ^frontier_probe_empty_ingest
 
 data frontier_probe_empty_ingest_refusal_note: String = "An empty ingest is the absence of a closure, never a closure containing nothing, and the two have different remedies. MEASURED, not hypothesised: an over-cap manifest emits SourceRootManifestElided with produced_row_count 0 and host_source_root_ingest = Empty, and this entry answered ^resolve_module_not_found with cause MissingModuleIdentityUnavailable — a survey row asserting the module is missing when what actually happened is that its sources were never supplied. Executed against src/v2/compiler/03_resolve.dag at 71 reads against the 64 cap. The gate that already classifies this correctly, frontier_probe_coverage_gate, guards only the discovery path; this entry receives the ingest directly and never consults coverage, so the conflation was reachable from every from_ingest caller. RESIDUE, stated rather than closed: emptiness is decidable here and coverage is not, because this entry is not given the SourceRootCoverage — so a PARTIAL closure still answers, and a wrong-but-populated ingest is outside this wall. Dissolve-on: the entry takes the coverage receipt beside the ingest and routes it through frontier_probe_coverage_gate, at which point this refusal becomes one arm of that gate rather than a separate check."
 
@@ -27,7 +27,7 @@ type FrontierProbeCoverageGate
   = FrontierProbeCoveragePermitted
   | FrontierProbeCoverageBlocked { coverage: v2.compiler.source_authority.SourceRootCoverage }
 
-data frontier_probe_subject_digest_mismatch_reason: v2.std.node.Symbol = ^frontier_probe_subject_digest_mismatch
+data frontier_probe_subject_digest_mismatch_reason: Symbol = ^frontier_probe_subject_digest_mismatch
 
 data frontier_probe_ingest_subject_note: String = "Single ingest authority for frontier probe (operator ruling 2026-08-04): FrontierProbeDiscoveredClosureSubject carries ONE sealed closure (refs + population_digest + entry bound at seal). Host manifest consumption verifies receipt digest matches the sealed population before probe execution. Population gates run read-through with content-hash verification. FrontierProbeFixture is explicit hermetic harness ingest."
 
@@ -45,8 +45,8 @@ type FrontierProbeIngestSubject
 fn frontier_probe_subject_digest_mismatch_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: frontier_probe_subject_digest_mismatch_reason,
-    at: port_locus(port: frontier_probe_subject_digest_mismatch_reason),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.port_locus(port: frontier_probe_subject_digest_mismatch_reason),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
@@ -57,12 +57,12 @@ fn frontier_probe_discovered_closure_subject_from_host_manifest(
   ingest_read_count: Int,
   host_discovered_digest: v2.compiler.source_authority.DiscoveredSourceRefsDigest
 ) -> v2.std.diagnostic.Outcome<FrontierProbeIngestSubject> {
-  let closure = frontier_probe_discovered_closure_seal(refs: refs, entry: entry)
-  if discovered_source_refs_digest_eq(
+  let closure = v2.compiler.source_authority.frontier_probe_discovered_closure_seal(refs: refs, entry: entry)
+  if v2.compiler.source_authority.discovered_source_refs_digest_eq(
     left: closure.population_digest,
     right: host_discovered_digest
   ) {
-    outcome_accepted(
+    v2.std.diagnostic.outcome_accepted(
       value: FrontierProbeDiscoveredClosureSubject {
         closure: closure,
         coverage: coverage,
@@ -70,7 +70,7 @@ fn frontier_probe_discovered_closure_subject_from_host_manifest(
       }
     )
   } else {
-    outcome_rejected(
+    v2.std.diagnostic.outcome_rejected(
       d: frontier_probe_subject_digest_mismatch_diagnostic()
     )
   }
@@ -92,17 +92,17 @@ fn frontier_probe_source_ref_for_path(
   refs: List<v2.compiler.source_authority.SourceRef>,
   path: String
 ) -> v2.std.optional.Optional<v2.compiler.source_authority.SourceRef> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: refs,
-    empty: optional_absent(),
+    empty: v2.std.optional.optional_absent(),
     cons: fn(acc, ref) {
       match acc {
-        Present { value: _ } => acc
-        Absent =>
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent =>
           if ref.path == path {
-            optional_present(value: ref)
+            v2.std.optional.optional_present(value: ref)
           } else {
-            optional_absent()
+            v2.std.optional.optional_absent()
           }
       }
     }
@@ -114,17 +114,17 @@ fn frontier_probe_source_ref_for_read_diagnostic(
   d: v2.std.diagnostic.NonEmptyDiagnostics
 ) -> v2.std.optional.Optional<v2.compiler.source_authority.SourceRef> {
   match d.head.at {
-    Textual { file: module_file, extent: _ } =>
+    v2.std.diagnostic.Textual { file: module_file, extent: _ } =>
       frontier_probe_source_ref_for_path(
         refs: refs,
-        path: symbol_lexeme(sym: module_file)
+        path: v2.std.compilers.lexing.symbol_lexeme(sym: module_file)
       )
-    _ => optional_absent()
+    _ => v2.std.optional.optional_absent()
   }
 }
 
 fn frontier_probe_diagnostic_tail_port_lexeme(d: v2.std.diagnostic.NonEmptyDiagnostics) -> String {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: d.tail,
     empty: "",
     cons: fn(acc, diag) {
@@ -132,8 +132,8 @@ fn frontier_probe_diagnostic_tail_port_lexeme(d: v2.std.diagnostic.NonEmptyDiagn
         acc
       } else {
         match diag.at {
-          PortLocus { anchor: LocusAnchor { at: port } } =>
-            symbol_lexeme(sym: port)
+          v2.std.diagnostic.PortLocus { anchor: v2.std.diagnostic.LocusAnchor { at: port } } =>
+            v2.std.compilers.lexing.symbol_lexeme(sym: port)
           _ => ""
         }
       }
@@ -143,10 +143,10 @@ fn frontier_probe_diagnostic_tail_port_lexeme(d: v2.std.diagnostic.NonEmptyDiagn
 
 fn frontier_probe_detail_from_read_result(result: v2.compiler.source_authority.SourceRefReadResult) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeDetail {
   match result {
-    SourceRefReadAccepted { witness: _, observed_hash: _ } => FrontierProbeDetailAbsent
-    SourceRefFilesystemReadRefused { ref: ref, error: error } =>
+    v2.compiler.source_authority.SourceRefReadAccepted { witness: _, observed_hash: _ } => v2.compiler.self_host.frontier_probe_types.FrontierProbeDetailAbsent
+    v2.compiler.source_authority.SourceRefFilesystemReadRefused { ref: ref, error: error } =>
       v2.compiler.self_host.frontier_probe_types.SourceRefReadRefused { source_ref: ref, error: error }
-    SourceRefReadHashMismatch { ref: ref, expected: expected, observed: observed } =>
+    v2.compiler.source_authority.SourceRefReadHashMismatch { ref: ref, expected: expected, observed: observed } =>
       v2.compiler.self_host.frontier_probe_types.SourceRefContentHashMismatch {
         source_ref: ref,
         expected: expected,
@@ -155,30 +155,30 @@ fn frontier_probe_detail_from_read_result(result: v2.compiler.source_authority.S
   }
 }
 
-fn frontier_probe_read_failure_reason(result: v2.compiler.source_authority.SourceRefReadResult) -> v2.std.node.Symbol {
+fn frontier_probe_read_failure_reason(result: v2.compiler.source_authority.SourceRefReadResult) -> Symbol {
   match result {
-    SourceRefFilesystemReadRefused { ref: _, error: _ } => source_ref_read_refused
-    SourceRefReadHashMismatch { ref: _, expected: _, observed: _ } =>
-      source_ref_content_hash_mismatch
-    SourceRefReadAccepted { witness: _, observed_hash: _ } =>
+    v2.compiler.source_authority.SourceRefFilesystemReadRefused { ref: _, error: _ } => v2.compiler.source_authority.source_ref_read_refused
+    v2.compiler.source_authority.SourceRefReadHashMismatch { ref: _, expected: _, observed: _ } =>
+      v2.compiler.source_authority.source_ref_content_hash_mismatch
+    v2.compiler.source_authority.SourceRefReadAccepted { witness: _, observed_hash: _ } =>
       ^frontier_probe_read_accepted_impossible
   }
 }
 
 fn frontier_probe_first_missing_import_lookup(
-  roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
-  imports: FreeMonoid<v2.compiler.name_resolve.Import>
+  roots: std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
+  imports: std.algebra.FreeMonoid<v2.compiler.name_resolve.Import>
 ) -> v2.std.optional.Optional<v2.std.qualified_name.QualifiedName> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: imports,
-    empty: optional_absent(),
+    empty: v2.std.optional.optional_absent(),
     cons: fn(acc, import_edge) {
       match acc {
-        Present { value: _ } => acc
-        Absent =>
-          match module_root_lookup(roots: roots, name: import_edge.target) {
-            ModuleRootMissing { requested: qn } => optional_present(value: qn)
-            _ => optional_absent()
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent =>
+          match v2.compiler.name_resolve.module_root_lookup(roots: roots, name: import_edge.target) {
+            v2.compiler.name_resolve.ModuleRootMissing { requested: qn } => v2.std.optional.optional_present(value: qn)
+            _ => v2.std.optional.optional_absent()
           }
       }
     }
@@ -189,17 +189,17 @@ fn frontier_probe_missing_module_from_assemble_context(
   ingest: v2.compiler.source_authority.SourceRootIngest,
   admission: v2.compiler.name_resolve.Admission,
   d: v2.std.diagnostic.NonEmptyDiagnostics,
-  reason: v2.std.node.Symbol
+  reason: Symbol
 ) -> v2.std.optional.Optional<v2.std.qualified_name.QualifiedName> {
   if reason != ^resolve_module_not_found {
-    optional_absent()
+    v2.std.optional.optional_absent()
   } else {
-    match program_assembly_fold_ingest(ingest: ingest, lm: dag_language_model()) {
-      ProgramAssemblyFoldFailed { diagnostics: _ } => optional_absent()
-      ProgramAssemblyFoldOk { roots: roots, index: _ } =>
-        match validate_module_roots(roots: roots) {
-          Rejected { diagnostics: _ } => optional_absent()
-          Accepted { value: validated_roots, diagnostics: _ } =>
+    match v2.compiler.program_assembly.program_assembly_fold_ingest(ingest: ingest, lm: v2.extdeps.languages.dag.dag_language_model()) {
+      v2.compiler.program_assembly.ProgramAssemblyFoldFailed { diagnostics: _ } => v2.std.optional.optional_absent()
+      v2.compiler.program_assembly.ProgramAssemblyFoldOk { roots: roots, index: _ } =>
+        match v2.compiler.name_resolve.validate_module_roots(roots: roots) {
+          v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.optional_absent()
+          v2.std.diagnostic.Accepted { value: validated_roots, diagnostics: _ } =>
             frontier_probe_first_missing_import_lookup(
               roots: validated_roots,
               imports: admission.imports
@@ -210,7 +210,7 @@ fn frontier_probe_missing_module_from_assemble_context(
 }
 
 fn frontier_probe_detail_from_diagnostic(
-  reason: v2.std.node.Symbol,
+  reason: Symbol,
   d: v2.std.diagnostic.NonEmptyDiagnostics,
   ingest: v2.compiler.source_authority.SourceRootIngest,
   admission: v2.compiler.name_resolve.Admission
@@ -222,27 +222,27 @@ fn frontier_probe_detail_from_diagnostic(
       d: d,
       reason: reason
     ) {
-      Present { value: qn } => v2.compiler.self_host.frontier_probe_types.MissingModule { requested: qn }
-      Absent => FrontierProbeDetailAbsent
+      v2.std.optional.Present { value: qn } => v2.compiler.self_host.frontier_probe_types.MissingModule { requested: qn }
+      v2.std.optional.Absent => v2.compiler.self_host.frontier_probe_types.FrontierProbeDetailAbsent
     }
   } else {
-    FrontierProbeDetailAbsent
+    v2.compiler.self_host.frontier_probe_types.FrontierProbeDetailAbsent
   }
 }
 
 fn frontier_probe_receipt_from_reason_only(
   module_path: String,
-  reason: v2.std.node.Symbol,
+  reason: Symbol,
   detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeDetail
 ) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
-  let blocker = frontier_classify_rejection_reason(reason: reason)
+  let blocker = v2.compiler.self_host.frontier_probe_types.frontier_classify_rejection_reason(reason: reason)
   v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
     module_path: module_path,
     blocker_class: blocker,
-    located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
+    located_stage: v2.compiler.self_host.frontier_probe_types.frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
     located_reason: reason,
     detail: detail,
-    assemble_detail: NoFrontierProbeDetail
+    assemble_detail: v2.compiler.self_host.frontier_probe_types.NoFrontierProbeDetail
   }
 }
 
@@ -251,20 +251,20 @@ fn frontier_probe_receipt_from_read_failed(
   result: v2.compiler.source_authority.SourceRefReadResult
 ) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
   let reason = frontier_probe_read_failure_reason(result: result)
-  let blocker = frontier_classify_rejection_reason(reason: reason)
+  let blocker = v2.compiler.self_host.frontier_probe_types.frontier_classify_rejection_reason(reason: reason)
   v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
     module_path: module_path,
     blocker_class: blocker,
     located_stage: ProbeStageAssemble,
     located_reason: reason,
     detail: frontier_probe_detail_from_read_result(result: result),
-    assemble_detail: NoFrontierProbeDetail
+    assemble_detail: v2.compiler.self_host.frontier_probe_types.NoFrontierProbeDetail
   }
 }
 
 fn frontier_probe_receipt_from_population_refused(
   module_path: String,
-  cause: v2.std.node.Symbol
+  cause: Symbol
 ) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
   v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
     module_path: module_path,
@@ -272,7 +272,7 @@ fn frontier_probe_receipt_from_population_refused(
     located_stage: ProbeStageAssemble,
     located_reason: cause,
     detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeClosurePopulationRefused { cause: cause },
-    assemble_detail: NoFrontierProbeDetail
+    assemble_detail: v2.compiler.self_host.frontier_probe_types.NoFrontierProbeDetail
   }
 }
 
@@ -286,7 +286,7 @@ fn frontier_probe_receipt_from_coverage_refused(
     located_stage: ProbeStageAssemble,
     located_reason: frontier_probe_coverage_refused_reason,
     detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeCoverageRefused { coverage: coverage },
-    assemble_detail: NoFrontierProbeDetail
+    assemble_detail: v2.compiler.self_host.frontier_probe_types.NoFrontierProbeDetail
   }
 }
 
@@ -294,17 +294,17 @@ fn frontier_probe_entry_read_witness(
   ingest: v2.compiler.source_authority.SourceRootIngest,
   module_path: String
 ) -> v2.std.optional.Optional<v2.compiler.source_authority.DagSourceReadWitness> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: ingest,
-    empty: optional_absent(),
+    empty: v2.std.optional.optional_absent(),
     cons: fn(acc, read) {
       match acc {
-        Present { value: _ } => acc
-        Absent =>
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent =>
           if read.artifact.file_path == module_path {
-            optional_present(value: read)
+            v2.std.optional.optional_present(value: read)
           } else {
-            optional_absent()
+            v2.std.optional.optional_absent()
           }
       }
     }
@@ -316,17 +316,17 @@ fn frontier_probe_admission_from_ingest(
   module_path: String
 ) -> v2.std.diagnostic.Outcome<v2.compiler.name_resolve.Admission> {
   match frontier_probe_entry_read_witness(ingest: ingest, module_path: module_path) {
-    Present { value: read } =>
-      match reference_deps_ingest_source_text(
+    v2.std.optional.Present { value: read } =>
+      match v2.lens.reference_deps.reference_deps_ingest_source_text(
         source_text: read.source.carried,
-        file: symbol_intern_lexeme(lexeme: module_path)
+        file: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: module_path)
       ) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-        Accepted { value: parse_root, diagnostics: _ } =>
-          admission_from_module_root(root: parse_root)
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Accepted { value: parse_root, diagnostics: _ } =>
+          v2.compiler.name_resolve.admission_from_module_root(root: parse_root)
       }
-    Absent =>
-      v2.std.diagnostic.Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_module_not_found) }
+    v2.std.optional.Absent =>
+      v2.std.diagnostic.Rejected { diagnostics: v2.compiler.name_resolve.resolve_diagnostics(reason: ^resolve_module_not_found) }
   }
 }
 
@@ -336,21 +336,21 @@ fn frontier_probe_coverage_gate(
   ingest_read_count: Int
 ) -> FrontierProbeCoverageGate {
   match coverage {
-    SourceRootCoverageComplete =>
-      if length(xs: refs) == ingest_read_count {
+    v2.compiler.source_authority.SourceRootCoverageComplete =>
+      if v2.std.algebra.length(xs: refs) == ingest_read_count {
         FrontierProbeCoveragePermitted
       } else {
         FrontierProbeCoverageBlocked { coverage: coverage }
       }
-    SourceRootManifestElided { read_count: elided_reads, cap: _ } =>
-      if length(xs: refs) == elided_reads && elided_reads == ingest_read_count {
+    v2.compiler.source_authority.SourceRootManifestElided { read_count: elided_reads, cap: _ } =>
+      if v2.std.algebra.length(xs: refs) == elided_reads && elided_reads == ingest_read_count {
         FrontierProbeCoveragePermitted
       } else {
         FrontierProbeCoverageBlocked { coverage: coverage }
       }
-    SourceRootRowsMissing { read_count: _, produced_row_count: _ } =>
+    v2.compiler.source_authority.SourceRootRowsMissing { read_count: _, produced_row_count: _ } =>
       FrontierProbeCoverageBlocked { coverage: coverage }
-    SourceRootManifestAbsent =>
+    v2.compiler.source_authority.SourceRootManifestAbsent =>
       FrontierProbeCoverageBlocked { coverage: coverage }
   }
 }
@@ -363,41 +363,41 @@ fn frontier_probe_receipt_from_discovered_closure(
   let refs = closure.refs
   let entry = closure.entry
   let module_path = entry.path
-  if source_ref_count_in_list(refs: refs, target: entry) != 1 {
+  if v2.compiler.source_authority.source_ref_count_in_list(refs: refs, target: entry) != 1 {
     frontier_probe_receipt_from_population_refused(
       module_path: module_path,
       cause: frontier_probe_entry_binding_refused_reason
     )
-  } else if source_storage_hash_conflict_in_list(refs: refs) {
+  } else if v2.compiler.source_authority.source_storage_hash_conflict_in_list(refs: refs) {
     frontier_probe_receipt_from_population_refused(
       module_path: module_path,
       cause: frontier_probe_closure_storage_hash_conflict_reason
     )
-  } else if source_storage_list_has_duplicate_storage(refs: refs) {
+  } else if v2.compiler.source_authority.source_storage_list_has_duplicate_storage(refs: refs) {
     frontier_probe_receipt_from_population_refused(
       module_path: module_path,
       cause: frontier_probe_closure_storage_duplicate_reason
     )
-  } else if length(xs: refs) != ingest_read_count {
+  } else if v2.std.algebra.length(xs: refs) != ingest_read_count {
     frontier_probe_receipt_from_population_refused(
       module_path: module_path,
       cause: frontier_probe_closure_count_mismatch_reason
     )
   } else {
     match closure.population_digest {
-      DiscoveredSourceRefsDigestUnavailable { cause: _ } =>
+      v2.compiler.source_authority.DiscoveredSourceRefsDigestUnavailable { cause: _ } =>
         frontier_probe_receipt_from_population_refused(
           module_path: module_path,
           cause: frontier_probe_closure_refs_digest_unavailable_reason
         )
-      DiscoveredSourceRefsDigestFromList { digest: sealed_digest } =>
-        match source_ref_list_digest_build(refs: refs) {
-          SourceRefListDigestNonStructuralRefused { path: _ } =>
+      v2.compiler.source_authority.DiscoveredSourceRefsDigestFromList { digest: sealed_digest } =>
+        match v2.compiler.source_authority.source_ref_list_digest_build(refs: refs) {
+          v2.compiler.source_authority.SourceRefListDigestNonStructuralRefused { path: _ } =>
             frontier_probe_receipt_from_population_refused(
               module_path: module_path,
               cause: frontier_probe_closure_non_structural_hash_reason
             )
-          SourceRefListDigestOk { digest: computed_digest } =>
+          v2.compiler.source_authority.SourceRefListDigestOk { digest: computed_digest } =>
             if !std.content_hash.content_hash_eq_structural(
               left: computed_digest,
               right: sealed_digest
@@ -418,30 +418,30 @@ fn frontier_probe_receipt_from_discovered_closure(
                     coverage: blocked
                   )
                 FrontierProbeCoveragePermitted =>
-                  match source_root_ingest_build_from_source_refs(refs: refs) {
-                    SourceRootIngestBuildReadFailed { result: r } =>
+                  match v2.compiler.source_authority.source_root_ingest_build_from_source_refs(refs: refs) {
+                    v2.compiler.source_authority.SourceRootIngestBuildReadFailed { result: r } =>
                       frontier_probe_receipt_from_read_failed(
                         module_path: module_path,
                         result: r
                       )
-                    SourceRootIngestBuildOk { ingest: ingest } =>
+                    v2.compiler.source_authority.SourceRootIngestBuildOk { ingest: ingest } =>
                       match frontier_probe_admission_from_ingest(
                         ingest: ingest,
                         module_path: module_path
                       ) {
-                        Rejected { diagnostics: d } => {
+                        v2.std.diagnostic.Rejected { diagnostics: d } => {
                           let reason = d.head.reason
-                          let blocker = frontier_classify_rejection_reason(reason: reason)
+                          let blocker = v2.compiler.self_host.frontier_probe_types.frontier_classify_rejection_reason(reason: reason)
                           v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
                             module_path: module_path,
                             blocker_class: blocker,
-                            located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
+                            located_stage: v2.compiler.self_host.frontier_probe_types.frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
                             located_reason: reason,
-                            detail: FrontierProbeDetailAbsent,
-                            assemble_detail: NoFrontierProbeDetail
+                            detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeDetailAbsent,
+                            assemble_detail: v2.compiler.self_host.frontier_probe_types.NoFrontierProbeDetail
                           }
                         }
-                        Accepted { value: admission, diagnostics: _ } =>
+                        v2.std.diagnostic.Accepted { value: admission, diagnostics: _ } =>
                           frontier_probe_emit_from_ingest(
                             module_path: module_path,
                             ingest: ingest,
@@ -463,11 +463,11 @@ fn frontier_probe_receipt_from_admission_diagnostic_rejected(
   d: v2.std.diagnostic.NonEmptyDiagnostics
 ) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
   let reason = d.head.reason
-  let blocker = frontier_classify_rejection_reason(reason: reason)
+  let blocker = v2.compiler.self_host.frontier_probe_types.frontier_classify_rejection_reason(reason: reason)
   v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
     module_path: module_path,
     blocker_class: blocker,
-    located_stage: frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
+    located_stage: v2.compiler.self_host.frontier_probe_types.frontier_probe_located_stage_for_assemble_outcome(blocker: blocker),
     located_reason: reason,
     detail: frontier_probe_detail_from_diagnostic(
       reason: reason,
@@ -475,7 +475,7 @@ fn frontier_probe_receipt_from_admission_diagnostic_rejected(
       ingest: ingest,
       admission: admission
     ),
-    assemble_detail: NoFrontierProbeDetail
+    assemble_detail: v2.compiler.self_host.frontier_probe_types.NoFrontierProbeDetail
   }
 }
 
@@ -508,16 +508,16 @@ fn frontier_probe_receipt_for_subject_outcome(
   fixture_module_path: String
 ) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
   match subject_outcome {
-    Accepted { value: subject, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: subject, diagnostics: _ } =>
       frontier_probe_receipt_for_subject(
         subject: subject,
         fixture_module_path: fixture_module_path
       )
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       frontier_probe_receipt_from_reason_only(
         module_path: fixture_module_path,
         reason: frontier_probe_subject_digest_mismatch_reason,
-        detail: FrontierProbeDetailAbsent
+        detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeDetailAbsent
       )
   }
 }
@@ -547,7 +547,7 @@ fn frontier_probe_emit_from_ingest(
   ingest: v2.compiler.source_authority.SourceRootIngest,
   admission: v2.compiler.name_resolve.Admission
 ) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
-  if length(xs: ingest) == 0 {
+  if v2.std.algebra.length(xs: ingest) == 0 {
     frontier_probe_receipt_from_population_refused(
       module_path: module_path,
       cause: frontier_probe_empty_ingest_reason
@@ -566,51 +566,51 @@ fn frontier_probe_emit_from_populated_ingest(
   ingest: v2.compiler.source_authority.SourceRootIngest,
   admission: v2.compiler.name_resolve.Admission
 ) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
-  match assemble_program_from_ingest(
+  match v2.compiler.program_assembly.assemble_program_from_ingest(
     ingest: ingest,
     admission: admission,
-    lm: dag_language_model()
+    lm: v2.extdeps.languages.dag.dag_language_model()
   ) {
-    Rejected { diagnostics: d } =>
-      frontier_probe_receipt_from_assemble_rejection(
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
+      v2.compiler.self_host.frontier_probe_assemble_detail.frontier_probe_receipt_from_assemble_rejection(
         module_path: module_path,
         diagnostics: d,
         detail: frontier_probe_detail_from_diagnostic(
-          reason: frontier_probe_assemble_located_reason_from_diagnostics(d: d),
+          reason: v2.compiler.self_host.frontier_probe_assemble_detail.frontier_probe_assemble_located_reason_from_diagnostics(d: d),
           d: d,
           ingest: ingest,
           admission: admission
         ),
-        overlap_residue_stage: overlap_residue_stage_from_parse_grammar(
-          grammar: dag_language_model().grammar
+        overlap_residue_stage: v2.compiler.parse.overlap_residue_stage_from_parse_grammar(
+          grammar: v2.extdeps.languages.dag.dag_language_model().grammar
         )
       )
-    Accepted { value: _, diagnostics: _ } =>
-      match emit_compiler_import_closure_from_ingest(
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
+      match v2.compiler.self_host.compiler_closure_emit.emit_compiler_import_closure_from_ingest(
         ingest: ingest,
         admission: admission,
-        target: rust_target_model()
+        target: v2.extdeps.languages.rust.rust_target_model()
       ) {
-        Accepted { value: _, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
           v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
             module_path: module_path,
             blocker_class: v2.compiler.self_host.frontier_probe_types.UnknownProbeCause {
               reason: ^probe_emit_accept_self_host_bar_unbound
             },
-            located_stage: ProbeStageEmit,
+            located_stage: v2.compiler.self_host.frontier_probe_types.ProbeStageEmit,
             located_reason: ^probe_emit_accept_self_host_bar_unbound,
-            detail: FrontierProbeDetailAbsent,
-            assemble_detail: NoFrontierProbeDetail
+            detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeDetailAbsent,
+            assemble_detail: v2.compiler.self_host.frontier_probe_types.NoFrontierProbeDetail
           }
-        Rejected { diagnostics: d } => {
-          let blocker = frontier_classify_rejection_reason(reason: d.head.reason)
+        v2.std.diagnostic.Rejected { diagnostics: d } => {
+          let blocker = v2.compiler.self_host.frontier_probe_types.frontier_classify_rejection_reason(reason: d.head.reason)
           v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
             module_path: module_path,
             blocker_class: blocker,
-            located_stage: frontier_probe_located_stage_for_emit_outcome(blocker: blocker),
+            located_stage: v2.compiler.self_host.frontier_probe_types.frontier_probe_located_stage_for_emit_outcome(blocker: blocker),
             located_reason: d.head.reason,
-            detail: FrontierProbeDetailAbsent,
-            assemble_detail: NoFrontierProbeDetail
+            detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeDetailAbsent,
+            assemble_detail: v2.compiler.self_host.frontier_probe_types.NoFrontierProbeDetail
           }
         }
       }

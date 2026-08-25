@@ -3,7 +3,7 @@ module extdeps.bmc.os_install_actuator_toolchain
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/openbmc/docs/blob/master/designs/virtual-media.md"
   }
 }
@@ -14,10 +14,10 @@ type ActuatorToolchainRequirement {
 
 data os_install_actuator_toolchain_requirement: ActuatorToolchainRequirement = ActuatorToolchainRequirement {
   required_tools: [
-    curl_cli_tool,
-    websocat_cli_tool,
-    nbdkit_cli_tool,
-    socat_cli_tool,
+    extdeps.tools.curl.curl_cli_tool,
+    extdeps.tools.websocat.websocat_cli_tool,
+    extdeps.tools.nbdkit.nbdkit_cli_tool,
+    extdeps.tools.socat.socat_cli_tool,
   ],
 }
 
@@ -65,8 +65,8 @@ fn srv3_os_install_actuator_toolchain_is_complete() -> Bool {
 
 data bmc_credential_actuator_toolchain_requirement: ActuatorToolchainRequirement = ActuatorToolchainRequirement {
   required_tools: [
-    curl_cli_tool,
-    gcloud_cli_tool,
+    extdeps.tools.curl.curl_cli_tool,
+    extdeps.tools.gcloud.gcloud_cli_tool,
   ],
 }
 

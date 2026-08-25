@@ -1,8 +1,9 @@
 module extdeps.exec.command
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "man7.org/linux/man-pages/man1/ssh.1.html"
   }
 }
@@ -28,7 +29,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // `HeadAbsent => empty argv` refusal arms in gunbc.command_runner dissolve with this shape; there is
 // always a program, so there is nothing left to refuse.
 type ArgvCommand sole_constructor {
-  program: NonEmptyStr
+  program: std.types.NonEmptyStr
   arguments: List<String>
 }
 
@@ -51,7 +52,7 @@ type ArgvCommand sole_constructor {
 //
 // No test declaration is admitted. A witness obtains an ArgvCommand through a production builder,
 // the same way production does -- the rule extdeps.shell.exec transport_script_seal already sets.
-fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
+fn argv_command(program: std.types.NonEmptyStr, arguments: List<String>) -> ArgvCommand
   admit_callers: [
     decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
@@ -107,11 +108,11 @@ data ssh_exec_interpretation_note: String = "SshExec now carries the target's Re
 
 type CommandTransport
   = LocalExec
-  | SshExec { ssh_target: NonEmptyStr, interpretation: RemoteExecCommandInterpretation }
+  | SshExec { ssh_target: std.types.NonEmptyStr, interpretation: gunbc.remote_shell_command.RemoteExecCommandInterpretation }
 
-data sshpass_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data sshpass_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "sourceforge.net/projects/sshpass/"
   }
 }
@@ -120,13 +121,13 @@ data ssh_host_key_verification_posture: String = "🟡 dissolve-on: ssh_host_key
 
 // The transport's own program, split from its flags for the same reason ArgvCommand splits them:
 // sshpass is what gets executed, `-e` is what it is told.
-data sshpass_binary_name: NonEmptyStr = "sshpass"
+data sshpass_binary_name: std.types.NonEmptyStr = "sshpass"
 
 fn ssh_host_key_override_opts() -> List<String> {
   ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
 }
 
-fn scp_command(local_path: NonEmptyStr, remote_target: NonEmptyStr) -> ArgvCommand {
+fn scp_command(local_path: std.types.NonEmptyStr, remote_target: std.types.NonEmptyStr) -> ArgvCommand {
   argv_command(
     program: sshpass_binary_name,
     arguments: append(
@@ -143,15 +144,15 @@ data command_over_transport_composition_note: String = "The SshExec arm no longe
 
 type CommandOverTransportOutcome
   = CommandOverTransportBuilt { command: ArgvCommand }
-  | CommandOverTransportRefused { cause: RemoteExecCommandRefusalCause }
+  | CommandOverTransportRefused { cause: gunbc.remote_shell_command.RemoteExecCommandRefusalCause }
 
 fn command_over_transport(command: ArgvCommand, transport: CommandTransport) -> CommandOverTransportOutcome {
   match transport {
     LocalExec => CommandOverTransportBuilt { command: command }
     SshExec { ssh_target: t, interpretation: interp } =>
-      match remote_exec_command_string(argv: map(argv_words(command: command), a => a as NonEmptyStr), interpretation: interp) {
-        RemoteExecCommandRefused { cause: c } => CommandOverTransportRefused { cause: c }
-        RemoteExecCommandBuilt { command: s } =>
+      match gunbc.remote_shell_command.remote_exec_command_string(argv: map(argv_words(command: command), a => a as std.types.NonEmptyStr), interpretation: interp) {
+        gunbc.remote_shell_command.RemoteExecCommandRefused { cause: c } => CommandOverTransportRefused { cause: c }
+        gunbc.remote_shell_command.RemoteExecCommandBuilt { command: s } =>
           CommandOverTransportBuilt {
             command: argv_command(
               program: sshpass_binary_name,
@@ -168,7 +169,7 @@ fn command_over_transport(command: ArgvCommand, transport: CommandTransport) -> 
 data shell_quote_provenance_note: String = "shell_quote delegates to extdeps.posix.shell_command_language posix_single_quote (operator finding, 2026-08-19): this was an independently hand-rolled THIRD copy of the single-quote wrap-and-escape encoding already consolidated once from v2.extdeps.languages.bash into the POSIX authority, and cited there against IEEE 1003.1-2017 section 2.2.2 -- split(s, delimiter: \"'\") then join with \"'\\''\" is the same operation as replace(s, \"'\", \"'\\''\"), so this is a pure internal-implementation swap: byte-identical output, unchanged signature, no diff for any of shell_command_render's 13+ existing consumers. DESIGN §2/§3: one escaping fact, one authority."
 
 fn shell_quote(arg: String) -> String {
-  posix_single_quote(spelling: arg)
+  extdeps.posix.shell_command_language.posix_single_quote(spelling: arg)
 }
 
 fn shell_command_render(command: ArgvCommand) -> String {
@@ -196,9 +197,9 @@ data argv_builder_note: String = "Typed ArgvCommand builders (§2): each derives
 // read -- a runner image and a machine reached over ssh. Writing /usr/bin/env for them would trade a
 // vague spelling for a confident false host fact (DESIGN section 5). A caller whose target IS
 // observed wants the absolute row, and that is a different builder when one is needed, not a flag.
-fn env_prefixed_command(bindings: List<EnvBinding>, command: ArgvCommand) -> ArgvCommand {
+fn env_prefixed_command(bindings: List<v2.std.orchestration.EnvBinding>, command: ArgvCommand) -> ArgvCommand {
   argv_command(
-    program: env_path_resolved_program,
-    arguments: env_prefixed_args(bindings: bindings, command_argv: argv_words(command: command)),
+    program: extdeps.tools.env.env_path_resolved_program,
+    arguments: extdeps.tools.env.env_prefixed_args(bindings: bindings, command_argv: argv_words(command: command)),
   )
 }

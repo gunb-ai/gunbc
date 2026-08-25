@@ -17,15 +17,15 @@ fn witness_toolchain() -> extdeps.toolchain.types.ToolchainRequirement {
 
 fn witness_target(gnu_abi: Bool) -> extdeps.toolchain.types.TargetTriple {
   extdeps.toolchain.types.TargetTriple {
-    arch: X86_64,
-    vendor: UnknownVendor,
-    os: Linux,
-    env: if gnu_abi { Present { value: Gnu } } else { Present { value: Musl } },
+    arch: extdeps.toolchain.types.X86_64,
+    vendor: extdeps.toolchain.types.UnknownVendor,
+    os: extdeps.toolchain.types.Linux,
+    env: if gnu_abi { Present { value: extdeps.toolchain.types.Gnu } } else { Present { value: extdeps.toolchain.types.Musl } },
   }
 }
 
 fn witness_oid(hex: String) -> extdeps.git.object_store.GitObjectId? {
-  git_object_id_from_untagged_hex(hex: hex)
+  extdeps.git.object_store.git_object_id_from_untagged_hex(hex: hex)
 }
 
 data witness_subject_builder_doc: String = "One builder every row goes through, so a test that means to vary ONE axis cannot accidentally vary another. Each parameter is an axis of the subject identity, and the defaults are the same on both sides of every comparison below."
@@ -42,7 +42,7 @@ fn witness_subject_full(
   match witness_oid(hex: tree_hex) {
     Absent => none
     Present { value: oid } =>
-      match admit_build_subject(
+      match gunbc.devboot.subject.admit_build_subject(
         tree_oid: oid,
         package: package,
         cargo_target: cargo_target,
@@ -56,8 +56,8 @@ fn witness_subject_full(
         cargo_config: [],
         platform_c_library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
-        SubjectRefused { cause } => none
-        SubjectAdmitted { subject } => Present { value: subject }
+        gunbc.devboot.subject.SubjectRefused { cause } => none
+        gunbc.devboot.subject.SubjectAdmitted { subject } => Present { value: subject }
       }
   }
 }
@@ -77,7 +77,7 @@ fn witness_subject(tree_hex: String, gnu_abi: Bool, features: List<String>) -> g
 fn witness_subject_digest(tree_hex: String, gnu_abi: Bool, features: List<String>) -> std.content_hash.ContentHash? {
   match witness_subject(tree_hex: tree_hex, gnu_abi: gnu_abi, features: features) {
     Absent => none
-    Present { value: subject } => Present { value: build_subject_digest(subject: subject) }
+    Present { value: subject } => Present { value: gunbc.devboot.subject.build_subject_digest(subject: subject) }
   }
 }
 
@@ -95,10 +95,10 @@ fn compare_optional_digests(left: std.content_hash.ContentHash?, right: std.cont
       match right {
         Absent => ComparisonUnavailable
         Present { value: r } =>
-          match compare_content_hash(left: l, right: r) {
-            ContentHashEqual => BothPresentEqual
-            ContentHashDifferent => BothPresentDifferent
-            ContentHashCrossFamilyIncomparable => ComparisonUnavailable
+          match std.content_hash.compare_content_hash(left: l, right: r) {
+            std.content_hash.ContentHashEqual => BothPresentEqual
+            std.content_hash.ContentHashDifferent => BothPresentDifferent
+            std.content_hash.ContentHashCrossFamilyIncomparable => ComparisonUnavailable
           }
       }
   }
@@ -190,7 +190,7 @@ test fn the_product_being_built_participates_in_identity() -> Bool {
     gnu_abi: true,
     features: [],
     package: "gunbc",
-    cargo_target: Lib,
+    cargo_target: extdeps.cargo.Lib,
     profile: "release",
     rustflags: [],
   )
@@ -207,7 +207,7 @@ test fn the_product_being_built_participates_in_identity() -> Bool {
 fn optional_digest(subject: gunbc.devboot.subject.BuildSubject?) -> std.content_hash.ContentHash? {
   match subject {
     Absent => none
-    Present { value: s } => Present { value: build_subject_digest(subject: s) }
+    Present { value: s } => Present { value: gunbc.devboot.subject.build_subject_digest(subject: s) }
   }
 }
 
@@ -261,7 +261,7 @@ test fn duplicate_feature_refuses() -> Bool {
   match witness_oid(hex: clean_tree_hex) {
     Absent => false
     Present { value: oid } =>
-      match admit_build_subject(
+      match gunbc.devboot.subject.admit_build_subject(
         tree_oid: oid,
         package: "gunbc",
         cargo_target: extdeps.cargo.Bin { name: "gunbc" },
@@ -275,10 +275,10 @@ test fn duplicate_feature_refuses() -> Bool {
         cargo_config: [],
         platform_c_library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
-        SubjectAdmitted { subject } => false
-        SubjectRefused { cause } =>
+        gunbc.devboot.subject.SubjectAdmitted { subject } => false
+        gunbc.devboot.subject.SubjectRefused { cause } =>
           match cause {
-            DuplicateFeature { name } => name == "tracing"
+            gunbc.devboot.subject.DuplicateFeature { name } => name == "tracing"
             _ => false
           }
       }
@@ -289,7 +289,7 @@ test fn empty_feature_name_refuses() -> Bool {
   match witness_oid(hex: clean_tree_hex) {
     Absent => false
     Present { value: oid } =>
-      match admit_build_subject(
+      match gunbc.devboot.subject.admit_build_subject(
         tree_oid: oid,
         package: "gunbc",
         cargo_target: extdeps.cargo.Bin { name: "gunbc" },
@@ -303,10 +303,10 @@ test fn empty_feature_name_refuses() -> Bool {
         cargo_config: [],
         platform_c_library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
-        SubjectAdmitted { subject } => false
-        SubjectRefused { cause } =>
+        gunbc.devboot.subject.SubjectAdmitted { subject } => false
+        gunbc.devboot.subject.SubjectRefused { cause } =>
           match cause {
-            FeatureNameEmpty => true
+            gunbc.devboot.subject.FeatureNameEmpty => true
             _ => false
           }
       }
@@ -323,7 +323,7 @@ fn empty_profile_refuses() -> Bool {
   match witness_oid(hex: clean_tree_hex) {
     Absent => false
     Present { value: oid } =>
-      match admit_build_subject(
+      match gunbc.devboot.subject.admit_build_subject(
         tree_oid: oid,
         package: "gunbc",
         cargo_target: extdeps.cargo.Bin { name: "gunbc" },
@@ -337,10 +337,10 @@ fn empty_profile_refuses() -> Bool {
         cargo_config: [],
         platform_c_library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
-        SubjectAdmitted { subject } => false
-        SubjectRefused { cause } =>
+        gunbc.devboot.subject.SubjectAdmitted { subject } => false
+        gunbc.devboot.subject.SubjectRefused { cause } =>
           match cause {
-            ProfileNameEmpty => true
+            gunbc.devboot.subject.ProfileNameEmpty => true
             _ => false
           }
       }
@@ -351,7 +351,7 @@ fn empty_rustflag_refuses() -> Bool {
   match witness_oid(hex: clean_tree_hex) {
     Absent => false
     Present { value: oid } =>
-      match admit_build_subject(
+      match gunbc.devboot.subject.admit_build_subject(
         tree_oid: oid,
         package: "gunbc",
         cargo_target: extdeps.cargo.Bin { name: "gunbc" },
@@ -365,10 +365,10 @@ fn empty_rustflag_refuses() -> Bool {
         cargo_config: [],
         platform_c_library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
-        SubjectAdmitted { subject } => false
-        SubjectRefused { cause } =>
+        gunbc.devboot.subject.SubjectAdmitted { subject } => false
+        gunbc.devboot.subject.SubjectRefused { cause } =>
           match cause {
-            RustflagEmpty => true
+            gunbc.devboot.subject.RustflagEmpty => true
             _ => false
           }
       }
@@ -379,15 +379,15 @@ fn witness_artifact(for_subject: gunbc.devboot.subject.BuildSubject) -> gunbc.de
   match witness_oid(hex: blob_hex) {
     Absent => none
     Present { value: blob } =>
-      match sha256_hex_digest(hex: pack_sha256_hex) {
+      match std.content_hash.sha256_hex_digest(hex: pack_sha256_hex) {
         Absent => none
         Present { value: digest } =>
           Present {
             value: gunbc.devboot.outcome.StoredArtifact {
-              subject_digest: build_subject_digest(subject: for_subject),
+              subject_digest: gunbc.devboot.subject.build_subject_digest(subject: for_subject),
               blob_oid: blob,
               sha256: digest,
-              bytes: byte_size(count: 97371648),
+              bytes: std.measure.byte_size(count: 97371648),
             },
           }
       }
@@ -414,11 +414,11 @@ test fn a_record_built_for_another_subject_is_refused_even_when_bytes_are_availa
           match witness_record(for_subject: built_for) {
             Absent => false
             Present { value: record } =>
-              match record_matches_request(record: record, requested: requested) {
-                SubjectMatches => false
-                SubjectDiffers =>
-                  !reuse_grants_artifact(
-                    decision: reuse_decision(
+              match gunbc.devboot.outcome.record_matches_request(record: record, requested: requested) {
+                gunbc.devboot.outcome.SubjectMatches => false
+                gunbc.devboot.outcome.SubjectDiffers =>
+                  !gunbc.devboot.outcome.reuse_grants_artifact(
+                    decision: gunbc.devboot.outcome.reuse_decision(
                       candidate: Present { value: record },
                       requested: requested,
                       availability: gunbc.devboot.outcome.ArtifactAvailable { artifact: record.artifact },
@@ -437,8 +437,8 @@ test fn a_record_built_for_the_request_reuses_when_bytes_are_available() -> Bool
       match witness_record(for_subject: subject) {
         Absent => false
         Present { value: record } =>
-          reuse_grants_artifact(
-            decision: reuse_decision(
+          gunbc.devboot.outcome.reuse_grants_artifact(
+            decision: gunbc.devboot.outcome.reuse_decision(
               candidate: Present { value: record },
               requested: subject,
               availability: gunbc.devboot.outcome.ArtifactAvailable { artifact: record.artifact },
@@ -457,15 +457,15 @@ test fn a_matching_record_without_bytes_does_not_reuse() -> Bool {
       match witness_record(for_subject: subject) {
         Absent => false
         Present { value: record } =>
-          !reuse_grants_artifact(
-            decision: reuse_decision(
+          !gunbc.devboot.outcome.reuse_grants_artifact(
+            decision: gunbc.devboot.outcome.reuse_decision(
               candidate: Present { value: record },
               requested: subject,
-              availability: ArtifactMissing,
+              availability: gunbc.devboot.outcome.ArtifactMissing,
             ),
           )
-            && !reuse_grants_artifact(
-              decision: reuse_decision(
+            && !gunbc.devboot.outcome.reuse_grants_artifact(
+              decision: gunbc.devboot.outcome.reuse_decision(
                 candidate: none,
                 requested: subject,
                 availability: gunbc.devboot.outcome.ArtifactAvailable { artifact: record.artifact },
@@ -495,11 +495,11 @@ fn produced_but_missing_status_holds(subject: gunbc.devboot.subject.BuildSubject
   let status = witness_status(
     subject: subject,
     id: "w-1",
-    execution: ExecutionProduced,
-    availability: ArtifactMissing,
+    execution: gunbc.devboot.outcome.ExecutionProduced,
+    availability: gunbc.devboot.outcome.ArtifactMissing,
   )
-  execution_is_settled(execution: status.execution)
-    && !status_reports_retrievable_artifact(status: status)
+  gunbc.devboot.outcome.execution_is_settled(execution: status.execution)
+    && !gunbc.devboot.outcome.status_reports_retrievable_artifact(status: status)
 }
 
 test fn produced_yesterday_with_missing_bytes_today_is_representable() -> Bool {
@@ -518,17 +518,17 @@ test fn only_observed_available_bytes_permit_retrieval() -> Bool {
       match witness_artifact(for_subject: subject) {
         Absent => false
         Present { value: artifact } =>
-          match sha256_hex_digest(hex: pack_sha256_hex) {
+          match std.content_hash.sha256_hex_digest(hex: pack_sha256_hex) {
             Absent => false
             Present { value: digest } =>
-              availability_permits_retrieval(
+              gunbc.devboot.outcome.availability_permits_retrieval(
                 availability: gunbc.devboot.outcome.ArtifactAvailable { artifact: artifact },
               )
-                && !availability_permits_retrieval(availability: ArtifactMissing)
-                && !availability_permits_retrieval(
+                && !gunbc.devboot.outcome.availability_permits_retrieval(availability: gunbc.devboot.outcome.ArtifactMissing)
+                && !gunbc.devboot.outcome.availability_permits_retrieval(
                   availability: gunbc.devboot.outcome.ArtifactCorrupt { expected: digest, observed: digest },
                 )
-                && !availability_permits_retrieval(
+                && !gunbc.devboot.outcome.availability_permits_retrieval(
                   availability: gunbc.devboot.outcome.ArtifactUnreadable { detail: "store unreadable" },
                 )
           }
@@ -541,10 +541,10 @@ fn failed_build_status_holds(subject: gunbc.devboot.subject.BuildSubject) -> Boo
     subject: subject,
     id: "w-2",
     execution: gunbc.devboot.outcome.ExecutionFailed { cause: gunbc.devboot.outcome.CompilationFailed { detail: "type error" } },
-    availability: ArtifactMissing,
+    availability: gunbc.devboot.outcome.ArtifactMissing,
   )
-  !status_reports_retrievable_artifact(status: status)
-    && execution_is_settled(execution: status.execution)
+  !gunbc.devboot.outcome.status_reports_retrievable_artifact(status: status)
+    && gunbc.devboot.outcome.execution_is_settled(execution: status.execution)
 }
 
 test fn a_failed_build_never_reports_retrievable() -> Bool {
@@ -555,22 +555,22 @@ test fn a_failed_build_never_reports_retrievable() -> Bool {
 }
 
 test fn an_interrupted_build_is_not_settled() -> Bool {
-  !execution_is_settled(execution: gunbc.devboot.outcome.ExecutionInterrupted { detail: "producer died" })
+  !gunbc.devboot.outcome.execution_is_settled(execution: gunbc.devboot.outcome.ExecutionInterrupted { detail: "producer died" })
 }
 
 data devboot_membership_witness_doc: String = "THE STORE ROOT IS ENSURED, AND THESE ROWS SAY WHAT THAT BUYS. It projects the gunbc.host_layout authority rather than respelling the path; it reaches the apply order, so a deploy converges it; and its teardown REFUSES, so no retract can remove it.\\n\\nThe third row is the one the incident earned. Wiring this root into the OWNED roster made a lab twin's retract remove the production artifact store -- caught by the twin disjointness claims, which is why those claims were left exactly as they were. A hazard caught once by a claim about something else deserves a control of its own, so the refusal is asserted directly here rather than left to depend on two tests that are really about twins."
 
 fn devboot_ensured_step_projects_layout(acc: Int, step: gunbc.live_deploy.spec.DeploymentDependencyStep) -> Int {
   match step.subject {
-    EnsuredHostDirectory { path, owner } =>
-      if (path as String) == (srv1_devboot_artifact_store_root as String) { acc + 1 } else { acc }
-    EnsuredPackage { package } => acc
+    gunbc.live_deploy.spec.EnsuredHostDirectory { path, owner } =>
+      if (path as String) == (gunbc.host_layout.srv1_devboot_artifact_store_root as String) { acc + 1 } else { acc }
+    gunbc.live_deploy.spec.EnsuredPackage { package } => acc
   }
 }
 
 test fn the_devboot_store_root_is_an_ensured_host_resource_projecting_the_layout_row() -> Bool {
   fold(
-    deployment_ensured_steps(),
+    gunbc.live_deploy.spec.deployment_ensured_steps(),
     init: 0,
     f: (acc, step) => devboot_ensured_step_projects_layout(acc: acc, step: step),
   ) == 1
@@ -580,29 +580,29 @@ fn same_path(a: String, b: String) -> Bool { a == b }
 
 fn step_is_devboot_root(step: gunbc.live_deploy.spec.DeploymentStep) -> Bool {
   match step {
-    Dependency { step: dep } =>
-      same_path(a: ensured_subject_identity(subject: dep.subject) as String, b: srv1_devboot_artifact_store_root as String)
-    ArtifactStep { step: art } => false
+    gunbc.live_deploy.spec.Dependency { step: dep } =>
+      same_path(a: gunbc.live_deploy.spec.ensured_subject_identity(subject: dep.subject) as String, b: gunbc.host_layout.srv1_devboot_artifact_store_root as String)
+    gunbc.live_deploy.spec.ArtifactStep { step: art } => false
   }
 }
 
 test fn the_devboot_store_root_reaches_the_deploy_apply_path() -> Bool {
-  let spec = deployment_spec_srv1()
+  let spec = gunbc.live_deploy.spec.deployment_spec_srv1()
   fold(spec.steps, init: false, f: (acc, step) => acc || step_is_devboot_root(step: step))
 }
 
 data devboot_teardown_refusal_red_doc: String = "THE CONTROL FOR THE HAZARD THAT WAS ACTUALLY HIT. A retract must not be able to remove the artifact store, and this asserts it at the step level: the devboot root's teardown disposition refuses with TeardownOutsideOwnership. If someone moves this root back into the owned roster, TeardownActs replaces the refusal and this row goes red -- which is exactly the edit that, last time, would have let a lab twin's retract delete production's artifacts."
 
 test fn no_retract_can_remove_the_devboot_store_root() -> Bool {
-  let spec = deployment_spec_srv1()
+  let spec = gunbc.live_deploy.spec.deployment_spec_srv1()
   fold(
     spec.steps,
     init: false,
     f: (acc, step) =>
       if step_is_devboot_root(step: step) {
-        match deployment_step_teardown_disposition(step: step) {
-          TeardownRefuses { cause } => true
-          TeardownActs => false
+        match gunbc.live_deploy.spec.deployment_step_teardown_disposition(step: step) {
+          gunbc.live_deploy.spec.TeardownRefuses { cause } => true
+          gunbc.live_deploy.spec.TeardownActs => false
         }
       } else {
         acc

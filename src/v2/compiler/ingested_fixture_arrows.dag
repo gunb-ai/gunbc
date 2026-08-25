@@ -25,19 +25,19 @@ data ingested_zero_module_source: String = "module m\n\nfn zero() -> Int { 0 }\n
 fn ingested_fixture_diagnostic(reason: v2.std.node.Symbol, n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
-    at: node_locus(node: n),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.node_locus(node: n),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn ingested_find_arrow_in_module(root: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match root.kind {
-    TypeNode { connective: Arrow } => v2.std.optional.Present { value: root }
+    v2.std.node.TypeNode { connective: v2.std.node.Arrow } => v2.std.optional.Present { value: root }
     _ =>
       fold(root.children, init: v2.std.optional.Absent, f: fn(acc, e) {
         match acc {
-          Present { value: _ } => acc
-          Absent => v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: e.target)
+          v2.std.optional.Present { value: _ } => acc
+          v2.std.optional.Absent => ingested_find_arrow_in_module(root: e.target)
         }
       })
   }
@@ -45,28 +45,28 @@ fn ingested_find_arrow_in_module(root: v2.std.node.Node) -> v2.std.optional.Opti
 
 data ingested_resolved_module_projection_note: String = "THIS IS NOW A PROJECTION, NOT AN IMPLEMENTATION. The tokenize -> parse -> normalize -> resolve order it used to spell as a nest of bind_outcome lives in v2.compiler.staged_front_end, which mints per-stage evidence; this arrow folds that staged run back to the single Outcome<Node> its callers have always received. It does not re-run a stage, does not re-derive the answer by a second route, and has no order of its own to drift from the one it projects — which is the whole reason the front end moved rather than being copied (DESIGN section 3)."
 
-fn ingested_resolved_module_from_source(source: String, file: Symbol) -> Outcome<v2.std.node.Node> {
-  front_end_run_outcome(run: run_front_end(source: source, file: file))
+fn ingested_resolved_module_from_source(source: String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  v2.compiler.staged_front_end.front_end_run_outcome(run: v2.compiler.staged_front_end.run_front_end(source: source, file: file))
 }
 
-fn ingested_arrow_from_source(source: String, file: v2.std.node.Symbol) -> Outcome<v2.std.node.Node> {
-  bind_outcome(
-    o: v2.compiler.ingested_fixture_arrows.ingested_resolved_module_from_source(source: source, file: file),
+fn ingested_arrow_from_source(source: String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  v2.std.diagnostic.bind_outcome(
+    o: ingested_resolved_module_from_source(source: source, file: file),
     f: fn(resolved) {
-      match v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: resolved) {
-        Present { value: arrow } =>
-          if well_formed(n: arrow) {
-            outcome_accepted(value: arrow)
+      match ingested_find_arrow_in_module(root: resolved) {
+        v2.std.optional.Present { value: arrow } =>
+          if v2.std.node.well_formed(n: arrow) {
+            v2.std.diagnostic.outcome_accepted(value: arrow)
           } else {
-            outcome_rejected(
+            v2.std.diagnostic.outcome_rejected(
               d: ingested_fixture_diagnostic(
                 reason: ^ingested_fixture_reason_arrow_not_well_formed,
                 n: arrow
               )
             )
           }
-        Absent =>
-          outcome_rejected(
+        v2.std.optional.Absent =>
+          v2.std.diagnostic.outcome_rejected(
             d: ingested_fixture_diagnostic(
               reason: ^ingested_fixture_reason_arrow_missing,
               n: resolved
@@ -77,104 +77,104 @@ fn ingested_arrow_from_source(source: String, file: v2.std.node.Symbol) -> Outco
   )
 }
 
-fn ingested_add_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
+fn ingested_add_arrow_with_body() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  ingested_arrow_from_source(
     source: ingested_add_module_source,
     file: ^ingested_fixture_add_file
   )
 }
 
-fn ingested_add_arrow_with_body_swapped_operands() -> Outcome<v2.std.node.Node> {
-  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
+fn ingested_add_arrow_with_body_swapped_operands() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  ingested_arrow_from_source(
     source: ingested_add_swapped_operands_module_source,
     file: ^ingested_fixture_add_swapped_file
   )
 }
 
-fn ingested_pick_if_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
+fn ingested_pick_if_arrow_with_body() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  ingested_arrow_from_source(
     source: ingested_pick_module_source,
     file: ^ingested_fixture_pick_file
   )
 }
 
-fn ingested_pick_if_arrow_with_body_swapped_arms() -> Outcome<v2.std.node.Node> {
-  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
+fn ingested_pick_if_arrow_with_body_swapped_arms() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  ingested_arrow_from_source(
     source: ingested_pick_swapped_arms_module_source,
     file: ^ingested_fixture_pick_swapped_file
   )
 }
 
-fn ingested_pick_if_arrow_with_body_false_condition() -> Outcome<v2.std.node.Node> {
-  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
+fn ingested_pick_if_arrow_with_body_false_condition() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  ingested_arrow_from_source(
     source: ingested_pick_false_module_source,
     file: ^ingested_fixture_pick_false_file
   )
 }
 
-fn ingested_loop_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
+fn ingested_loop_arrow_with_body() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  ingested_arrow_from_source(
     source: ingested_loop_module_source,
     file: ^ingested_fixture_loop_file
   )
 }
 
-fn ingested_loop_arrow_with_body_wrong_value() -> Outcome<v2.std.node.Node> {
-  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
+fn ingested_loop_arrow_with_body_wrong_value() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  ingested_arrow_from_source(
     source: ingested_loop_wrong_value_module_source,
     file: ^ingested_fixture_loop_wrong_file
   )
 }
 
-fn ingested_bind_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
+fn ingested_bind_arrow_with_body() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  ingested_arrow_from_source(
     source: ingested_bind_module_source,
     file: ^ingested_fixture_bind_file
   )
 }
 
-fn ingested_bind_arrow_with_body_wrong_value() -> Outcome<v2.std.node.Node> {
-  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
+fn ingested_bind_arrow_with_body_wrong_value() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  ingested_arrow_from_source(
     source: ingested_bind_wrong_value_module_source,
     file: ^ingested_fixture_bind_wrong_file
   )
 }
 
-fn ingested_match_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
+fn ingested_match_arrow_with_body() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  ingested_arrow_from_source(
     source: ingested_match_module_source,
     file: ^ingested_fixture_match_file
   )
 }
 
-fn ingested_match_arrow_with_body_swapped_arms() -> Outcome<v2.std.node.Node> {
-  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
+fn ingested_match_arrow_with_body_swapped_arms() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  ingested_arrow_from_source(
     source: ingested_match_swapped_arms_module_source,
     file: ^ingested_fixture_match_swapped_file
   )
 }
 
-fn ingested_id_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
+fn ingested_id_arrow_with_body() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  ingested_arrow_from_source(
     source: ingested_id_module_source,
     file: ^ingested_fixture_id_file
   )
 }
 
-fn ingested_zero_arrow_with_body() -> Outcome<v2.std.node.Node> {
-  v2.compiler.ingested_fixture_arrows.ingested_arrow_from_source(
+fn ingested_zero_arrow_with_body() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  ingested_arrow_from_source(
     source: ingested_zero_module_source,
     file: ^ingested_fixture_zero_file
   )
 }
 
-fn ingested_add_decl_node(fn_name: v2.std.node.Symbol) -> Outcome<v2.std.node.Node> {
-  bind_outcome(
+fn ingested_add_decl_node(fn_name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+  v2.std.diagnostic.bind_outcome(
     o: ingested_add_arrow_with_body(),
     f: fn(arrow_with_body) {
-      outcome_accepted(
-        value: node_synthetic(
-          kind: v2.std.node.TypeNode { connective: Conj },
+      v2.std.diagnostic.outcome_accepted(
+        value: v2.std.node.node_synthetic(
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
           children: [
             v2.std.node.Edge {
               label: v2.std.node.Named { name: fn_name },

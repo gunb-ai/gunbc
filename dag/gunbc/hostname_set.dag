@@ -50,11 +50,11 @@ fn hostname_set_local(desired: extdeps.dns.domain_name.DnsLabel) -> HostnameSetC
 // render as HostnameSetCasApplyFailed with an empty stderr, because "we refused to try" and "the
 // host rejected it" call for different responses. It carries the refusal reason as the stderr so the
 // distinction survives into whatever reads it -- the field is the only channel this type has.
-fn hostname_set_cas_from_outcome(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> HostnameSetCasOutcome {
+fn hostname_set_cas_from_outcome(outcome: TypedArgvExecOutcome) -> HostnameSetCasOutcome {
   match outcome {
-    TypedArgvExecConverged { result: r } =>
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
       if r.success { HostnameSetCasApplied } else { HostnameSetCasApplyFailed { stderr: r.stderr } }
-    TypedArgvExecRefused { reason: why } =>
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } =>
       HostnameSetCasApplyFailed { stderr: concat("leg NOT attempted: ", why) }
   }
 }
@@ -66,7 +66,7 @@ fn hostname_set_fleet_ssh(
   desired: extdeps.dns.domain_name.DnsLabel,
 ) -> HostnameSetCasOutcome {
   hostname_set_cas_from_outcome(
-    outcome: typed_argv_exec_over_fleet_ssh(
+    outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(
       target: target,
       context: context,
       argv: hostname_set_privileged_operation_argv(hostnamectl_path: hostnamectl_path, desired: desired),
@@ -80,17 +80,17 @@ fn hostname_set_ssh(
   desired: extdeps.dns.domain_name.DnsLabel,
 ) -> HostnameSetCasOutcome {
   let argv = hostname_set_privileged_operation_argv(hostnamectl_path: hostnamectl_path, desired: desired)
-  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+  match gunbc.typed_argv_exec.typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: _ } => HostnameSetCasApplyFailed { stderr: "typed argv shell-safe refusal" }
     Absent =>
-      match typed_argv_exec_over_ssh(host: host, argv: argv) {
-        TypedArgvExecConverged { result: r } =>
+      match gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: host, argv: argv) {
+        gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
           if r.success {
             HostnameSetCasApplied
           } else {
             HostnameSetCasApplyFailed { stderr: r.stderr }
           }
-        TypedArgvExecRefused { reason: why } => HostnameSetCasApplyFailed { stderr: why }
+        gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => HostnameSetCasApplyFailed { stderr: why }
       }
   }
 }
@@ -101,10 +101,10 @@ fn hostname_set_apply(
   desired: extdeps.dns.domain_name.DnsLabel,
 ) -> HostnameSetCasOutcome {
   match transport {
-    LocalShell => hostname_set_local(desired: desired)
-    SshShell { ssh_host: h } => hostname_set_ssh(hostnamectl_path: hostnamectl_path, host: h, desired: desired)
+    gunbc.host_effect.LocalShell => hostname_set_local(desired: desired)
+    gunbc.host_effect.SshShell { ssh_host: h } => hostname_set_ssh(hostnamectl_path: hostnamectl_path, host: h, desired: desired)
     FleetSsh { target: t, context: c } => hostname_set_fleet_ssh(hostnamectl_path: hostnamectl_path, target: t, context: c, desired: desired)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostnameSetCasApplyFailed { stderr: "EmitArtifactThenThinRun unsupported for hostname set" }
   }
 }
@@ -115,13 +115,13 @@ fn hostname_set_cas(
   base: extdeps.dns.domain_name.DnsLabel,
   desired: extdeps.dns.domain_name.DnsLabel,
 ) -> HostnameSetCasOutcome {
-  match hostname_short_read(transport: transport) {
-    HostnameShortCaptured { value: observed } =>
+  match gunbc.hostname_read.hostname_short_read(transport: transport) {
+    gunbc.hostname_read.HostnameShortCaptured { value: observed } =>
       if observed == (base as String) {
         hostname_set_apply(hostnamectl_path: hostnamectl_path, transport: transport, desired: desired)
       } else {
         HostnameSetCasBaseMismatch { observed: observed, base: base }
       }
-    HostnameShortCaptureRefused { reason: why } => HostnameSetCasReadRefused { reason: why }
+    gunbc.hostname_read.HostnameShortCaptureRefused { reason: why } => HostnameSetCasReadRefused { reason: why }
   }
 }

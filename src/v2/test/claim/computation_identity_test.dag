@@ -1,13 +1,13 @@
 module v2.test.claim.computation_identity_test
 
 
-test fn witness_known_grades_permit_share() -> v2.std.logic.Bool {
+test fn witness_known_grades_permit_share() -> Bool {
   std.computation_identity.identity_permits_share(ci: std.computation_identity.StructurallyIdentical)
     && std.computation_identity.identity_permits_share(ci: std.computation_identity.NormalizedIdentical { normalizer: "alpha-rename" })
     && std.computation_identity.identity_permits_share(ci: std.computation_identity.ExtensionallyIdentical { bound: "declared-input-domain" })
 }
 
-test fn witness_unknown_never_permits_share() -> v2.std.logic.Bool {
+test fn witness_unknown_never_permits_share() -> Bool {
   let unknown = std.computation_identity.IdentityUnknown {
     cause: std.computation_identity.MissingEnforcement { detail: "no lens covers this producer" }
   }
@@ -15,22 +15,22 @@ test fn witness_unknown_never_permits_share() -> v2.std.logic.Bool {
     && (std.computation_identity.identity_grade_is_known(ci: unknown) == false)
 }
 
-test fn witness_unknown_cause_arms_construct() -> v2.std.logic.Bool {
+test fn witness_unknown_cause_arms_construct() -> Bool {
   let a = std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: "x" } }
   let b = std.computation_identity.IdentityUnknown { cause: std.computation_identity.BoundUnmodeled { detail: "y" } }
   (std.computation_identity.identity_grade_is_known(ci: a) == false) && (std.computation_identity.identity_grade_is_known(ci: b) == false)
 }
 
-test fn witness_materialize_share_is_structural() -> v2.std.logic.Bool {
-  match materialize_share_identity_grade() {
-    StructurallyIdentical => materialize_share_grade_permits_share()
-    NormalizedIdentical { normalizer: _ } => false
-    ExtensionallyIdentical { bound: _ } => false
-    IdentityUnknown { cause: _ } => false
+test fn witness_materialize_share_is_structural() -> Bool {
+  match v2.std.materialize.materialize_share_identity_grade() {
+    std.computation_identity.StructurallyIdentical => v2.std.materialize.materialize_share_grade_permits_share()
+    std.computation_identity.NormalizedIdentical { normalizer: _ } => false
+    std.computation_identity.ExtensionallyIdentical { bound: _ } => false
+    std.computation_identity.IdentityUnknown { cause: _ } => false
   }
 }
 
-test fn witness_materialize_ungrounded_refuses_share() -> v2.std.logic.Bool {
-  std.computation_identity.identity_permits_share(ci: materialize_ungrounded_identity(detail: "normalized peer")) == false
+test fn witness_materialize_ungrounded_refuses_share() -> Bool {
+  std.computation_identity.identity_permits_share(ci: v2.std.materialize.materialize_ungrounded_identity(detail: "normalized peer")) == false
 }
 

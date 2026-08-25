@@ -1,6 +1,7 @@
 module v2.std.host_transport
 
-type ByteString = List<v2.test.claim.byte_cardinality_grounding.Byte>
+
+type ByteString = List<v2.std.machine.Byte>
 
 type RelPath = String
 
@@ -34,7 +35,7 @@ type ProcessInvocation {
 }
 
 type RuntimeValueCodec
-  = FixedWidthBytes { width: v2.std.integer.Int }
+  = FixedWidthBytes { width: Int }
   | SignedI32Le
 
 type HostTransportDescriptor {
@@ -72,7 +73,7 @@ fn emit_host_runtime_row_parse_byte_width_mismatch_diagnostic() -> v2.std.diagno
   }
 }
 
-fn runtime_value_codec_expected_byte_count(codec: RuntimeValueCodec) -> v2.std.integer.Int {
+fn runtime_value_codec_expected_byte_count(codec: RuntimeValueCodec) -> Int {
   match codec {
     FixedWidthBytes { width: w } => w
     SignedI32Le => 4

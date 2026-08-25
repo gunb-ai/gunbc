@@ -17,17 +17,17 @@ data effect_io_host_replay_fixture: String = "effect-io-host-replay"
 
 fn effect_io_host_backend_root(backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend) -> std.effect_grant.NamespacePosition {
   match backend {
-    FileResourceBackend =>
+    v2.extdeps.runtimes.v2_effect_io_pure.FileResourceBackend =>
       std.effect_grant.NamespacePosition {
-        tree: CodeNameTree,
+        tree: std.effect_grant.CodeNameTree,
         path: ["effect-io", "file"]
       }
-    HttpResourceBackend =>
+    v2.extdeps.runtimes.v2_effect_io_pure.HttpResourceBackend =>
       std.effect_grant.NamespacePosition {
-        tree: UriTree,
+        tree: std.effect_grant.UriTree,
         path: [effect_io_host_http_authority]
       }
-    StorageResourceBackend =>
+    v2.extdeps.runtimes.v2_effect_io_pure.StorageResourceBackend =>
       std.effect_grant.NamespacePosition {
         tree: std.effect_grant.ServiceOpTree { service: effect_io_host_storage_service },
         path: [effect_io_host_storage_service]
@@ -40,17 +40,17 @@ fn effect_io_host_locator_position(
   locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator
 ) -> std.effect_grant.NamespacePosition {
   match backend {
-    FileResourceBackend =>
+    v2.extdeps.runtimes.v2_effect_io_pure.FileResourceBackend =>
       std.effect_grant.NamespacePosition {
-        tree: CodeNameTree,
+        tree: std.effect_grant.CodeNameTree,
         path: ["effect-io", "file", locator.identity]
       }
-    HttpResourceBackend =>
+    v2.extdeps.runtimes.v2_effect_io_pure.HttpResourceBackend =>
       std.effect_grant.NamespacePosition {
-        tree: UriTree,
+        tree: std.effect_grant.UriTree,
         path: [effect_io_host_http_authority, locator.identity]
       }
-    StorageResourceBackend =>
+    v2.extdeps.runtimes.v2_effect_io_pure.StorageResourceBackend =>
       std.effect_grant.NamespacePosition {
         tree: std.effect_grant.ServiceOpTree { service: effect_io_host_storage_service },
         path: [effect_io_host_storage_service, locator.identity]
@@ -63,10 +63,10 @@ fn effect_io_host_hermetic_envelope(backend: v2.extdeps.runtimes.v2_effect_io_pu
     frame: effect_io_host_frame,
     grants: [
       std.effect_grant.Grant {
-        verb: Read,
+        verb: std.effect_grant.Read,
         root: effect_io_host_backend_root(backend: backend),
         binding: std.effect_grant.Replay { fixture_store: effect_io_host_replay_fixture },
-        lifecycle: LifecycleByConvention
+        lifecycle: std.effect_grant.LifecycleByConvention
       },
     ]
   }
@@ -77,16 +77,16 @@ fn effect_io_host_wet_envelope(backend: v2.extdeps.runtimes.v2_effect_io_pure.Ef
     frame: effect_io_host_frame,
     grants: [
       std.effect_grant.Grant {
-        verb: Read,
+        verb: std.effect_grant.Read,
         root: effect_io_host_backend_root(backend: backend),
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConvention
       },
       std.effect_grant.Grant {
         verb: std.effect_grant.Write,
         root: effect_io_host_backend_root(backend: backend),
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
+        binding: std.effect_grant.RealTransport,
+        lifecycle: std.effect_grant.LifecycleByConvention
       },
     ]
   }

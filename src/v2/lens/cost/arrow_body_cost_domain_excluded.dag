@@ -7,46 +7,46 @@ data arrow_body_cost_domain_param: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
   children: [
     v2.std.node.Edge {
-      label: Positional,
+      label: v2.std.node.Positional,
       target: v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^arrow_body_cost_domain_param_atom } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
       }
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data arrow_body_cost_body: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data arrow_body_cost_arrow: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Arrow },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
   children: [
-    v2.std.node.Edge { label: Positional, target: arrow_body_cost_domain_param },
+    v2.std.node.Edge { label: v2.std.node.Positional, target: arrow_body_cost_domain_param },
     v2.std.node.Edge {
-      label: Positional,
+      label: v2.std.node.Positional,
       target: v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^arrow_body_cost_return_type } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
       }
     },
     v2.std.node.Edge { label: v2.std.node.Named { name: ^arrow_body_edge }, target: arrow_body_cost_body }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-fn arrow_body_cost_domain_excluded_holds() -> v2.std.logic.Bool {
-  match cost_lens(n: arrow_body_cost_arrow) {
-    Holds { value: actual } =>
+fn arrow_body_cost_domain_excluded_holds() -> Bool {
+  match v2.lens.cost.cost_lens(n: arrow_body_cost_arrow) {
+    v2.std.witness.Holds { value: actual } =>
       actual == v2.lens.cost.SumCost {
-        lhs: unit_cost(),
-        rhs: unit_cost()
+        lhs: v2.lens.cost.unit_cost(),
+        rhs: v2.lens.cost.unit_cost()
       }
     _ => false
   }

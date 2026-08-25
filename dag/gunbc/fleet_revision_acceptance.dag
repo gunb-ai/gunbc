@@ -1,7 +1,7 @@
 module gunbc.fleet_revision_acceptance
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // WHAT MAKES A REVISION ELIGIBLE TO BECOME THE FLEET'S DESIRED STATE.
 //
@@ -50,7 +50,7 @@ type RequiredCiContractIdentity {
 
 fn required_ci_contract() -> RequiredCiContractIdentity {
   RequiredCiContractIdentity {
-    workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
+    workflow_path: gunbc.generated_artifact.artifact_path(a: gunbc.generated_artifact.WitnessFloorYamlArtifact),
     repository_full_name: fleet_repository_full_name(),
   }
 }
@@ -76,7 +76,7 @@ fn fleet_repository_full_name() -> String {
 }
 
 fn fleet_default_branch() -> String {
-  gunbc_default_branch_name
+  gunbc.repo_identity.gunbc_default_branch_name
 }
 
 // THESE TWO ARE AN UNDECLARED SUM AND THE CLASS IS THE ONE THIS BRANCH CLOSED ONE LAYER DOWN,
@@ -117,13 +117,13 @@ data default_branch_originating_event: String = "push"
 // provider an edit to the admission carrier. Two provider bindings constructing the SAME type is
 // the §2 move: one concept, N realizations, dispatch at the periphery.
 type RequiredCiSucceeded<E> {
-  revision: GitObjectId
+  revision: extdeps.git.object_store.GitObjectId
   contract: RequiredCiContractIdentity
   evidence: E
 }
 
 type DefaultBranchRevisionObserved<M> {
-  revision: GitObjectId
+  revision: extdeps.git.object_store.GitObjectId
   branch: String
   evidence: M
 }
@@ -133,7 +133,7 @@ type RequiredCiRefusal
   | CiRepositoryNotThisRepository { observed: String, required: String }
   | CiHeadRepositoryNotThisRepository { observed: String, required: String }
   | CiActivityNotCompleted { observed: String }
-  | CiConclusionNotSuccess { observed: WorkflowRunConclusion }
+  | CiConclusionNotSuccess { observed: extdeps.github.workflow_runs.WorkflowRunConclusion }
   | CiHeadShaUndecodable { observed: String }
 
 type RequiredCiAdmission<E>
@@ -158,11 +158,11 @@ type DefaultBranchAdmission<M>
 // Carrying both an authored CommitSha and a decoded GitObjectId downstream would be two writable
 // names for one fact -- the §3 fork -- and the two could then disagree.
 type RevisionDecode
-  = RevisionDecoded { revision: GitObjectId }
+  = RevisionDecoded { revision: extdeps.git.object_store.GitObjectId }
   | RevisionUndecodable { observed: String }
 
-fn decode_event_revision(event: WorkflowRunEvent) -> RevisionDecode {
-  match git_object_id_from_untagged_hex(hex: event.head_sha as String) {
+fn decode_event_revision(event: extdeps.github.workflow_run_event.WorkflowRunEvent) -> RevisionDecode {
+  match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: event.head_sha as String) {
     Present { value: oid } => RevisionDecoded { revision: oid }
     none => RevisionUndecodable { observed: event.head_sha as String }
   }
@@ -176,12 +176,12 @@ fn decode_event_revision(event: WorkflowRunEvent) -> RevisionDecode {
 // NOTE WHAT IS NOT CHECKED HERE: the branch and the originating event. This producer answers only
 // "did the Required CI contract succeed for this revision", which is true of a PR's merge-subject
 // run. The branch facts belong to the other proposition and are checked by its own producer.
-fn accept_required_ci_workflow_run<E>(event: WorkflowRunEvent, evidence: E) -> RequiredCiAdmission<E> {
-  if event.workflow_path != artifact_path(a: WitnessFloorYamlArtifact) {
+fn accept_required_ci_workflow_run<E>(event: extdeps.github.workflow_run_event.WorkflowRunEvent, evidence: E) -> RequiredCiAdmission<E> {
+  if event.workflow_path != gunbc.generated_artifact.artifact_path(a: gunbc.generated_artifact.WitnessFloorYamlArtifact) {
     RequiredCiRefused {
       cause: CiWorkflowNotTheRequiredFloor {
         observed_path: event.workflow_path,
-        required_path: artifact_path(a: WitnessFloorYamlArtifact),
+        required_path: gunbc.generated_artifact.artifact_path(a: gunbc.generated_artifact.WitnessFloorYamlArtifact),
       },
     }
   } else {
@@ -205,7 +205,7 @@ fn accept_required_ci_workflow_run<E>(event: WorkflowRunEvent, evidence: E) -> R
           RequiredCiRefused { cause: CiActivityNotCompleted { observed: event.activity } }
         } else {
           match event.conclusion {
-            Success =>
+            extdeps.github.workflow_runs.Success =>
               match decode_event_revision(event: event) {
                 RevisionDecoded { revision: oid } =>
                   RequiredCiAdmitted {
@@ -231,7 +231,7 @@ fn accept_required_ci_workflow_run<E>(event: WorkflowRunEvent, evidence: E) -> R
 // construction and a producer that trusted its sibling's checks would silently couple them -- the
 // pair would then be as strong as whichever was called first, which is not a property anyone
 // declared.
-fn observe_default_branch_revision<M>(event: WorkflowRunEvent, evidence: M) -> DefaultBranchAdmission<M> {
+fn observe_default_branch_revision<M>(event: extdeps.github.workflow_run_event.WorkflowRunEvent, evidence: M) -> DefaultBranchAdmission<M> {
   if event.repository_full_name != fleet_repository_full_name() {
     DefaultBranchRefused {
       cause: BranchRepositoryNotThisRepository {
@@ -327,7 +327,7 @@ fn default_branch_refusal_message(cause: DefaultBranchRefusal) -> String {
 // false is the CONJUNCTION anyone would infer from holding both. It refuses, carrying both
 // revisions, because "which two" is the entire content of the finding.
 type AcceptedFleetRevision<E, M> {
-  revision: GitObjectId
+  revision: extdeps.git.object_store.GitObjectId
   required_ci_contract: RequiredCiContractIdentity
   required_ci_evidence: E
   default_branch_evidence: M
@@ -336,15 +336,15 @@ type AcceptedFleetRevision<E, M> {
 type FleetRevisionAdmission<E, M>
   = FleetRevisionAccepted { accepted: AcceptedFleetRevision<E, M> }
   | RequiredCiAndDefaultBranchRevisionMismatch {
-      required_ci_revision: GitObjectId,
-      default_branch_revision: GitObjectId,
+      required_ci_revision: extdeps.git.object_store.GitObjectId,
+      default_branch_revision: extdeps.git.object_store.GitObjectId,
     }
 
 fn admit_fleet_revision<E, M>(
   required_ci: RequiredCiSucceeded<E>,
   default_branch: DefaultBranchRevisionObserved<M>,
 ) -> FleetRevisionAdmission<E, M> {
-  if git_object_id_eq(left: required_ci.revision, right: default_branch.revision) {
+  if extdeps.git.object_store.git_object_id_eq(left: required_ci.revision, right: default_branch.revision) {
     FleetRevisionAccepted {
       accepted: AcceptedFleetRevision {
         revision: required_ci.revision,

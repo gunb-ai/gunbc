@@ -9,13 +9,13 @@ data census_resolution_pool_note: String = "The pool must contain the seed, beca
 
 data census_resolution_pool_roots: List<String> = ["dag", "src/v2", "src/v1"]
 
-data census_resolution_facts: List<v2.std.decl_index.DeclFact> = decl_facts(pool_roots: census_resolution_pool_roots)
+data census_resolution_facts: List<v2.std.decl_index.DeclFact> = v2.std.decl_index.decl_facts(pool_roots: census_resolution_pool_roots)
 
 data census_resolution_modules: List<v2.lens.module_graph.ModuleDeclarationFact> = v2.lens.module_graph.module_declaration_facts_live(pool_roots: census_resolution_pool_roots)
 
 test fn census_every_declaration_ref_resolves_exactly() -> Bool {
   v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
-    refs: capability_all_declaration_refs(rows: v1_complexity_inventory_roster),
+    refs: gunbc.v1_complexity_capability_census.capability_all_declaration_refs(rows: gunbc.v1_complexity_capability_census.v1_complexity_inventory_roster),
     facts: census_resolution_facts,
     modules: census_resolution_modules
   ) == 0
@@ -25,22 +25,22 @@ data census_resolution_red_controls_note: String = "Three planted refusals, one 
 
 test fn census_absent_declaration_refuses() -> Bool {
   match v2.std.decl_ref_resolution.resolve_declaration_ref(
-    ref: decl_ref(module_path: "v1.compiler.complexity", decl_name: "this_declaration_does_not_exist_in_the_seed"),
+    ref: std.decl_ref.decl_ref(module_path: "v1.compiler.complexity", decl_name: "this_declaration_does_not_exist_in_the_seed"),
     facts: census_resolution_facts,
     modules: census_resolution_modules
   ) {
-    DeclarationRefDeclarationAbsent { reference: _ } => true
+    v2.std.decl_ref_resolution.DeclarationRefDeclarationAbsent { reference: _ } => true
     _ => false
   }
 }
 
 test fn census_absent_module_refuses() -> Bool {
   match v2.std.decl_ref_resolution.resolve_declaration_ref(
-    ref: decl_ref(module_path: "v1.compiler.this_module_does_not_exist", decl_name: "classify_complexity"),
+    ref: std.decl_ref.decl_ref(module_path: "v1.compiler.this_module_does_not_exist", decl_name: "classify_complexity"),
     facts: census_resolution_facts,
     modules: census_resolution_modules
   ) {
-    DeclarationRefModuleAbsent { reference: _ } => true
+    v2.std.decl_ref_resolution.DeclarationRefModuleAbsent { reference: _ } => true
     _ => false
   }
 }
@@ -48,14 +48,14 @@ test fn census_absent_module_refuses() -> Bool {
 // The discriminating control for the exact defect the operator named: a name that survives only inside a note string must NOT resolve. 'basis Derived' appears verbatim in the seed's cost_account_space_from_summary note, so a substring check finds it; as a DeclarationRef it is not a declaration and resolution refuses. This is the difference between the old check and this one, executed.
 test fn census_prose_only_name_does_not_resolve() -> Bool {
   !v2.std.decl_ref_resolution.declaration_ref_resolves(
-    ref: decl_ref(module_path: "v1.compiler.complexity", decl_name: "Derived"),
+    ref: std.decl_ref.decl_ref(module_path: "v1.compiler.complexity", decl_name: "Derived"),
     facts: census_resolution_facts,
     modules: census_resolution_modules
   )
 }
 
 test fn census_resolved_identity_carries_observed_path() -> Bool {
-  match capability_cited_carrier(c: asymptotic_class_and_dominance) {
+  match gunbc.v1_complexity_capability_census.capability_cited_carrier(c: gunbc.v1_complexity_capability_census.asymptotic_class_and_dominance) {
     Absent => false
     Present { value: r } =>
       match v2.std.decl_ref_resolution.resolve_declaration_ref(
@@ -63,7 +63,7 @@ test fn census_resolved_identity_carries_observed_path() -> Bool {
         facts: census_resolution_facts,
         modules: census_resolution_modules
       ) {
-        DeclarationRefResolved { declaration_identity: id } =>
+        v2.std.decl_ref_resolution.DeclarationRefResolved { declaration_identity: id } =>
           string_contains(s: id.rel_path, pattern: "lens/cost.dag") &&
           id.name == "asymptotic_class_of_cost"
         _ => false
@@ -73,7 +73,7 @@ test fn census_resolved_identity_carries_observed_path() -> Bool {
 
 // The integration finding's citation, resolved exactly rather than matched: std.graph really declares graph_multi_node_scc_members, so the claim that the SCC capability already lives in shared substrate rests on a resolved declaration identity and not on a name appearing in a file.
 test fn census_shared_substrate_carrier_resolves() -> Bool {
-  match capability_cited_carrier(c: call_graph_and_scc) {
+  match gunbc.v1_complexity_capability_census.capability_cited_carrier(c: gunbc.v1_complexity_capability_census.call_graph_and_scc) {
     Absent => false
     Present { value: r } =>
       match v2.std.decl_ref_resolution.resolve_declaration_ref(
@@ -81,7 +81,7 @@ test fn census_shared_substrate_carrier_resolves() -> Bool {
         facts: census_resolution_facts,
         modules: census_resolution_modules
       ) {
-        DeclarationRefResolved { declaration_identity: id } =>
+        v2.std.decl_ref_resolution.DeclarationRefResolved { declaration_identity: id } =>
           id.name == "graph_multi_node_scc_members" &&
           string_contains(s: id.rel_path, pattern: "graph.dag")
         _ => false
@@ -93,5 +93,5 @@ data w_admission_predicate_is_vacuous_note: String = "CENSUS FINDING, moved here
 
 test fn census_complexity_admission_predicate_is_vacuous_by_execution() -> Bool {
   v2.lens.complexity.complexity_variables_admits(xs: []) &&
-  v2.lens.complexity.complexity_variables_vacuous_validation.vacuous == v2.std.refinement.vacuous_admits_marker
+  complexity_variables_vacuous_validation.vacuous == v2.std.refinement.vacuous_admits_marker
 }

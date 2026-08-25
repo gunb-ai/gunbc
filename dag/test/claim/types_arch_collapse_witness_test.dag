@@ -1,7 +1,7 @@
 module test.claim.types_arch_collapse
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data std_types_path: String = "dag/std/types.dag"
 data cpu_types_path: String = "dag/extdeps/cpu/types.dag"
@@ -29,30 +29,30 @@ test fn witness_single_architecture_authority_present() -> Bool {
 }
 
 test fn witness_goarch_parses_arm64_wire() -> Bool {
-  match parse_image_config_goarch("arm64") {
-    ImageConfigGoarchKnown { value: Aarch64 } => true
-    ImageConfigGoarchUnknown { wire: _ } => false
+  match extdeps.container.oci.types.parse_image_config_goarch("arm64") {
+    extdeps.container.oci.types.ImageConfigGoarchKnown { value: extdeps.container.oci.types.Aarch64 } => true
+    extdeps.container.oci.types.ImageConfigGoarchUnknown { wire: _ } => false
   }
 }
 
 test fn witness_goarch_rejects_unknown_wire() -> Bool {
-  match parse_image_config_goarch("plan9") {
-    ImageConfigGoarchUnknown { wire: _ } => true
-    ImageConfigGoarchKnown { value: _ } => false
+  match extdeps.container.oci.types.parse_image_config_goarch("plan9") {
+    extdeps.container.oci.types.ImageConfigGoarchUnknown { wire: _ } => true
+    extdeps.container.oci.types.ImageConfigGoarchKnown { value: _ } => false
   }
 }
 
 test fn witness_goarch_label_roundtrips_known() -> Bool {
-  match image_config_goarch_label(Aarch64) {
-    ImageConfigGoarchWireLabel { wire: w } => w == "arm64"
-    ImageConfigGoarchUnrepresentable => false
+  match extdeps.container.oci.types.image_config_goarch_label(extdeps.container.oci.types.Aarch64) {
+    extdeps.container.oci.types.ImageConfigGoarchWireLabel { wire: w } => w == "arm64"
+    extdeps.container.oci.types.ImageConfigGoarchUnrepresentable => false
   }
 }
 
 test fn witness_goarch_label_unrepresentable_armv7() -> Bool {
-  match image_config_goarch_label(Armv7) {
-    ImageConfigGoarchUnrepresentable => true
-    ImageConfigGoarchWireLabel { wire: _ } => false
+  match extdeps.container.oci.types.image_config_goarch_label(extdeps.toolchain.types.Armv7) {
+    extdeps.container.oci.types.ImageConfigGoarchUnrepresentable => true
+    extdeps.container.oci.types.ImageConfigGoarchWireLabel { wire: _ } => false
   }
 }
 

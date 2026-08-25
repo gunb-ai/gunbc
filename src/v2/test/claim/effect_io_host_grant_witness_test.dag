@@ -1,80 +1,80 @@
 module v2.test.claim.effect_io_host_grant_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data effect_io_host_grant_witness_note: String = "P-B discriminating witnesses for v2.extdeps.runtimes.effect_io_host_grant (docs/plans/effect-namespace-grants.md 6). Write admission consults the construction-time Envelope only (never re-reads ExecutionMode). Hermetic envelopes refuse every write through a located std.access.Deny; wet envelopes permit writes on the declared backend subtree. Backend/locator mismatch is a typed evidence refusal before admit_effect (review 40162)."
 
 data sample_locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator = v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator {
-  backend: HttpResourceBackend,
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.HttpResourceBackend,
   identity: std.content_hash.content_hash_atom(value: "effect-io-grant-witness")
 }
 
 data mismatched_backend_locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator = v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator {
-  backend: FileResourceBackend,
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.FileResourceBackend,
   identity: std.content_hash.content_hash_atom(value: "effect-io-grant-witness-mismatch")
 }
 
 fn is_refused(a: std.access.AccessDecision) -> Bool {
   match a {
-    Permit => false
-    Deny { refusal: refusal } => true
+    std.access.Permit => false
+    std.access.Deny { refusal: refusal } => true
   }
 }
 
 fn is_admitted(a: std.access.AccessDecision) -> Bool {
   match a {
-    Permit => true
-    Deny { refusal: refusal } => false
+    std.access.Permit => true
+    std.access.Deny { refusal: refusal } => false
   }
 }
 
 data sample_locator_b: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator = v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator {
-  backend: HttpResourceBackend,
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.HttpResourceBackend,
   identity: std.content_hash.content_hash_atom(value: "effect-io-grant-witness-b")
 }
 
 test fn effect_io_host_locator_position_uses_hash_identity_holds() -> Bool {
-  let a = effect_io_host_locator_position(backend: HttpResourceBackend, locator: sample_locator)
-  let b = effect_io_host_locator_position(backend: HttpResourceBackend, locator: sample_locator_b)
+  let a = v2.extdeps.runtimes.effect_io_host_grant.effect_io_host_locator_position(backend: v2.extdeps.runtimes.v2_effect_io_pure.HttpResourceBackend, locator: sample_locator)
+  let b = v2.extdeps.runtimes.effect_io_host_grant.effect_io_host_locator_position(backend: v2.extdeps.runtimes.v2_effect_io_pure.HttpResourceBackend, locator: sample_locator_b)
   (a.path == b.path) == false
 }
 
 test fn effect_io_host_hermetic_write_outside_grant_holds() -> Bool {
-  v2.test.claim.effect_io_host_grant_witness.is_refused(
-    a: effect_io_host_write_admissible(
-      env: effect_io_host_envelope(mode: std.execution_mode.Hermetic, backend: HttpResourceBackend),
+  is_refused(
+    a: v2.extdeps.runtimes.effect_io_host_grant.effect_io_host_write_admissible(
+      env: v2.extdeps.runtimes.effect_io_host_grant.effect_io_host_envelope(mode: std.execution_mode.Hermetic, backend: v2.extdeps.runtimes.v2_effect_io_pure.HttpResourceBackend),
       locator: sample_locator
     )
   )
 }
 
 test fn effect_io_host_wet_write_admitted_holds() -> Bool {
-  v2.test.claim.effect_io_host_grant_witness.is_admitted(
-    a: effect_io_host_write_admissible(
-      env: effect_io_host_envelope(mode: Wet, backend: HttpResourceBackend),
+  is_admitted(
+    a: v2.extdeps.runtimes.effect_io_host_grant.effect_io_host_write_admissible(
+      env: v2.extdeps.runtimes.effect_io_host_grant.effect_io_host_envelope(mode: std.execution_mode.Wet, backend: v2.extdeps.runtimes.v2_effect_io_pure.HttpResourceBackend),
       locator: sample_locator
     )
   )
 }
 
 test fn effect_io_host_hermetic_refusal_is_located() -> Bool {
-  match effect_io_host_write_admissible(
-    env: effect_io_host_envelope(mode: std.execution_mode.Hermetic, backend: HttpResourceBackend),
+  match v2.extdeps.runtimes.effect_io_host_grant.effect_io_host_write_admissible(
+    env: v2.extdeps.runtimes.effect_io_host_grant.effect_io_host_envelope(mode: std.execution_mode.Hermetic, backend: v2.extdeps.runtimes.v2_effect_io_pure.HttpResourceBackend),
     locator: sample_locator
   ) {
-    Deny { refusal: refusal } =>
+    std.access.Deny { refusal: refusal } =>
       refusal.location.profile == "EffectRequest"
         && refusal.location.subject == effect_io_host_frame.name
         && refusal.location.action == "write"
-    Permit => false
+    std.access.Permit => false
   }
 }
 
 test fn effect_io_host_write_refuses_backend_mismatch_holds() -> Bool {
-  v2.test.claim.effect_io_host_grant_witness.is_refused(
-    a: effect_io_host_write_admissible(
-      env: effect_io_host_envelope(mode: Wet, backend: HttpResourceBackend),
+  is_refused(
+    a: v2.extdeps.runtimes.effect_io_host_grant.effect_io_host_write_admissible(
+      env: v2.extdeps.runtimes.effect_io_host_grant.effect_io_host_envelope(mode: std.execution_mode.Wet, backend: v2.extdeps.runtimes.v2_effect_io_pure.HttpResourceBackend),
       locator: mismatched_backend_locator
     )
   )

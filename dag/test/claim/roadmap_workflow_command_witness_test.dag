@@ -1,53 +1,53 @@
 module test.claim.roadmap_workflow_command_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // P3 retry-model carriers: the three command shapes admit or refuse by construction, legacy attempts project as supersedable rather than belt faults, and lineage/turn rows render human-readable history without parsing branch names.
 test fn start_new_attempt_superseding_missing_attempt_refuses() -> Bool {
-  match admit_start_new_attempt(
+  match gunbc.roadmap_workflow_command.admit_start_new_attempt(
     supersedes: Present { value: "missingkey000000" },
     superseded_exists: false,
   ) {
-    WorkflowCommandRefused { reason } =>
+    gunbc.roadmap_workflow_command.WorkflowCommandRefused { reason } =>
       string_contains(s: reason, pattern: "does not exist")
-    WorkflowCommandAdmitted => false
+    gunbc.roadmap_workflow_command.WorkflowCommandAdmitted => false
   }
 }
 
 test fn start_new_attempt_without_supersedes_admits() -> Bool {
-  match admit_start_new_attempt(supersedes: Absent, superseded_exists: false) {
-    WorkflowCommandAdmitted => true
-    WorkflowCommandRefused { reason: _ } => false
+  match gunbc.roadmap_workflow_command.admit_start_new_attempt(supersedes: Absent, superseded_exists: false) {
+    gunbc.roadmap_workflow_command.WorkflowCommandAdmitted => true
+    gunbc.roadmap_workflow_command.WorkflowCommandRefused { reason: _ } => false
   }
 }
 
 test fn resume_attempt_on_missing_worktree_refuses() -> Bool {
-  match admit_resume_attempt(
+  match gunbc.roadmap_workflow_command.admit_resume_attempt(
     attempt_key: "feedfacefeedface",
     worktree_exists: false,
   ) {
-    WorkflowCommandRefused { reason } =>
+    gunbc.roadmap_workflow_command.WorkflowCommandRefused { reason } =>
       string_contains(s: reason, pattern: "worktree")
-    WorkflowCommandAdmitted => false
+    gunbc.roadmap_workflow_command.WorkflowCommandAdmitted => false
   }
 }
 
 test fn retry_mechanism_cannot_mint_attempt() -> Bool {
-  match admit_retry_mechanism(mints_attempt: true) {
-    WorkflowCommandRefused { reason } =>
+  match gunbc.roadmap_workflow_command.admit_retry_mechanism(mints_attempt: true) {
+    gunbc.roadmap_workflow_command.WorkflowCommandRefused { reason } =>
       string_contains(s: reason, pattern: "cannot mint")
-    WorkflowCommandAdmitted => false
+    gunbc.roadmap_workflow_command.WorkflowCommandAdmitted => false
   }
 }
 
 test fn witness_legacy_attempt_cannot_satisfy_obligations() -> Bool {
-  legacy_attempt_cannot_satisfy_obligations(modeled_state_present: false)
-    && !legacy_attempt_cannot_satisfy_obligations(modeled_state_present: true)
+  gunbc.roadmap_workflow_command.legacy_attempt_cannot_satisfy_obligations(modeled_state_present: false)
+    && !gunbc.roadmap_workflow_command.legacy_attempt_cannot_satisfy_obligations(modeled_state_present: true)
 }
 
 test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
-  let progress = workflow_attempt_progress(evidence: gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
+  let progress = gunbc.roadmap_workflow_progress.workflow_attempt_progress(evidence: gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
     node_id: "legacy-node",
     attempt_key: "",
     branch: "dispatch/legacy-node",
@@ -59,40 +59,40 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
     provider_events_readable: false,
     provider_events: "",
     provider_events_error: "not found",
-    process: WorkerProcessAbsent,
+    process: gunbc.worker_lifecycle.WorkerProcessAbsent,
     validation_summary: "",
     verification_subject: gunbc.roadmap_verification_receipt.VerificationSubjectUnobserved {
       reason: "legacy attempt has no modeled verification subject",
     },
-    verification_selection: SelectionAbsent,
-    verification_source: VerificationReceiptAbsent,
+    verification_selection: gunbc.roadmap_verification_receipt.SelectionAbsent,
+    verification_source: gunbc.roadmap_verification_receipt.VerificationReceiptAbsent,
     publication_subject: gunbc.roadmap_publish.PublicationSubjectUnobserved {
       reason: "legacy attempt has no observed head",
     },
-    publication_source: ReceiptSourceAbsent,
+    publication_source: gunbc.roadmap_publish.ReceiptSourceAbsent,
   })
-  match activity_view_from_progress(progress: progress) {
-    LegacySupersedableAttempt { summary, located_reason: _, attempt_key: _, evidence: _ } =>
-      summary == legacy_attempt_supersedable_label
+  match gunbc.roadmap_presentation.activity_view_from_progress(progress: progress) {
+    gunbc.roadmap_presentation.LegacySupersedableAttempt { summary, located_reason: _, attempt_key: _, evidence: _ } =>
+      summary == gunbc.roadmap_workflow_command.legacy_attempt_supersedable_label
         && match progress.provider {
-          ProviderEventsRefused { activity, detail: _ } => activity == legacy_attempt_supersedable_label
+          gunbc.roadmap_provider_events.ProviderEventsRefused { activity, detail: _ } => activity == gunbc.roadmap_workflow_command.legacy_attempt_supersedable_label
           _ => false
         }
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    gunbc.roadmap_presentation.ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
     _ => false
   }
 }
 
 test fn lineage_and_turn_labels_are_human_readable() -> Bool {
-  attempt_lineage_row_label(lineage: gunbc.roadmap_workflow_command.Supersedes {
+  gunbc.roadmap_workflow_command.attempt_lineage_row_label(lineage: gunbc.roadmap_workflow_command.Supersedes {
     attempt_key: "feedfacefeedface",
     reason: "pre-receipt attempt",
   }, ordinal: 2) == "Attempt 2 — started fresh; supersedes feedface… (pre-receipt attempt)"
-    && worker_turn_row_label(turn: gunbc.roadmap_workflow_command.WorkerTurn {
+    && gunbc.roadmap_workflow_command.worker_turn_row_label(turn: gunbc.roadmap_workflow_command.WorkerTurn {
       turn_key: "turn0001",
       attempt_key: "feedfacefeedface",
       consumed_feedback: "F-1",
       resulting_head: Present { value: "deadbeefdeadbeef" },
     }) == "turn turn0001 on feedface… → deadbeef…"
-    && attempt_key_short_form(key: "abcd") == "abcd"
+    && gunbc.roadmap_workflow_command.attempt_key_short_form(key: "abcd") == "abcd"
 }

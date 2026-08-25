@@ -1,19 +1,19 @@
 module test.claim.host_effect_plan_real_execution
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data real_execution_home_doc: String = "Wet execution witnesses for Wave A2 Do-effect leaves: real shell.Exec.Run (LocalShell true/exit-1) through host_effect_plan_apply. Split out of host_effect_plan_witness_test.dag so hermetic per-PR discovery keeps the pure refusal poles; excluded from discovery (gunbc.ci_layer_roots witness_exclusion_substrings) and re-enrolled in bin_witness_wet_entries, same lane as host_build_cache_provision_real_execution_witness_test.dag."
 
 fn witness_host_os_target() -> gunbc.host_effect.NodeControlPlane {
-  gunbc.host_effect.HostOs { node: srv1_host }
+  gunbc.host_effect.HostOs { node: gunbc.fleet_intent.srv1_host }
 }
 
 fn witness_plan_ctx() -> gunbc.host_effect_plan.HostEffectPlanContext {
   gunbc.host_effect_plan.HostEffectPlanContext {
-    target: test.claim.host_effect_plan_real_execution.witness_host_os_target(),
-    evidence: host_effect_identity_evidence,
-    transport: LocalShell,
+    target: witness_host_os_target(),
+    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    transport: gunbc.host_effect.LocalShell,
   }
 }
 
@@ -42,9 +42,9 @@ fn witness_sequential_do_plan() -> gunbc.host_effect_plan.HostEffectPlan {
 }
 
 test fn host_effect_plan_shell_failure_reason_carries_exit_code_by_real_execution() -> Bool {
-  match host_effect_plan_apply(
+  match gunbc.host_effect_plan.host_effect_plan_apply(
     plan: witness_single_do_false_plan(),
-    ctx: test.claim.host_effect_plan_real_execution.witness_plan_ctx(),
+    ctx: witness_plan_ctx(),
   ) {
     Converged { evidence: _, applied: _ } => false
     NotConverged { reason: r, applied: _ } => string_contains(s: r, pattern: "exit=1")
@@ -52,16 +52,16 @@ test fn host_effect_plan_shell_failure_reason_carries_exit_code_by_real_executio
 }
 
 test fn host_effect_plan_shell_witness_holds_by_real_execution() -> Bool {
-  reconciliation_converged(r: host_effect_plan_apply(
+  std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_plan.host_effect_plan_apply(
     plan: witness_single_do_true_plan(),
-    ctx: test.claim.host_effect_plan_real_execution.witness_plan_ctx(),
+    ctx: witness_plan_ctx(),
   ))
-    && !reconciliation_converged(r: host_effect_plan_apply(
+    && !std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_plan.host_effect_plan_apply(
       plan: witness_single_do_false_plan(),
-      ctx: test.claim.host_effect_plan_real_execution.witness_plan_ctx(),
+      ctx: witness_plan_ctx(),
     ))
-    && reconciliation_converged(r: host_effect_plan_apply(
+    && std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_plan.host_effect_plan_apply(
       plan: witness_sequential_do_plan(),
-      ctx: test.claim.host_effect_plan_real_execution.witness_plan_ctx(),
+      ctx: witness_plan_ctx(),
     ))
 }

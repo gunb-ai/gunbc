@@ -11,9 +11,9 @@ module gunbc.test.claim.body_lowering_refusal_scope_test
 
 fn cause_of(s: gunbc.tools.body_lowering_population_probe.BodyLoweringObservationStanding) -> v2.std.node.Symbol {
   match s {
-    SubjectUnmeasured { cause: c } => c
-    SubjectObserved { stage: _ } => ^unexpected_observed
-    SubjectInterrupted { receipt: _ } => ^unexpected_interrupted
+    gunbc.tools.body_lowering_population_probe.SubjectUnmeasured { cause: c } => c
+    gunbc.tools.body_lowering_population_probe.SubjectObserved { stage: _ } => ^unexpected_observed
+    gunbc.tools.body_lowering_population_probe.SubjectInterrupted { receipt: _ } => ^unexpected_interrupted
   }
 }
 
@@ -21,40 +21,40 @@ data non_batch_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringS
 
 data batch_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringSubject = gunbc.tools.body_lowering_population_probe.BodyLoweringSubject { label: ^optional, realization: gunbc.tools.body_lowering_population_probe.LiveFileSubject { path: "src/v2/std/optional.dag" } }
 
-data specimen_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringSubject = gunbc.tools.body_lowering_population_probe.BodyLoweringSubject { label: ^vacuity_bare_expression_specimens, realization: UnauthoredSpecimenClass }
+data specimen_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringSubject = gunbc.tools.body_lowering_population_probe.BodyLoweringSubject { label: ^vacuity_bare_expression_specimens, realization: gunbc.tools.body_lowering_population_probe.UnauthoredSpecimenClass }
 
-test fn census_refusal_does_not_reach_a_non_batch_subject_RED() -> v2.std.logic.Bool {
-  cause_of(s: refusal_standing_of(s: non_batch_subject, cause: ^census_refused_at_world)) == ^not_selected_into_execution_batch
+test fn census_refusal_does_not_reach_a_non_batch_subject_RED() -> Bool {
+  cause_of(s: gunbc.tools.body_lowering_population_probe.refusal_standing_of(s: non_batch_subject, cause: ^census_refused_at_world)) == ^not_selected_into_execution_batch
 }
 
-test fn census_refusal_reaches_a_batch_subject() -> v2.std.logic.Bool {
-  cause_of(s: refusal_standing_of(s: gunbc.test.claim.body_lowering_refusal_scope_test.batch_subject, cause: ^census_refused_at_world)) == ^census_refused_at_world
+test fn census_refusal_reaches_a_batch_subject() -> Bool {
+  cause_of(s: gunbc.tools.body_lowering_population_probe.refusal_standing_of(s: batch_subject, cause: ^census_refused_at_world)) == ^census_refused_at_world
 }
 
-test fn census_refusal_cause_is_carried_not_fixed() -> v2.std.logic.Bool {
-  cause_of(s: refusal_standing_of(s: gunbc.test.claim.body_lowering_refusal_scope_test.batch_subject, cause: ^census_refused_at_reconciliation)) == ^census_refused_at_reconciliation
+test fn census_refusal_cause_is_carried_not_fixed() -> Bool {
+  cause_of(s: gunbc.tools.body_lowering_population_probe.refusal_standing_of(s: batch_subject, cause: ^census_refused_at_reconciliation)) == ^census_refused_at_reconciliation
 }
 
-test fn specimen_class_keeps_its_own_cause_under_refusal() -> v2.std.logic.Bool {
-  cause_of(s: refusal_standing_of(s: specimen_subject, cause: ^census_refused_at_world)) == ^no_committed_specimen_identity
+test fn specimen_class_keeps_its_own_cause_under_refusal() -> Bool {
+  cause_of(s: gunbc.tools.body_lowering_population_probe.refusal_standing_of(s: specimen_subject, cause: ^census_refused_at_world)) == ^no_committed_specimen_identity
 }
 
 // An observed stage is not a verdict. These pin the reading a stage licenses, and the RED is the
 // one that matters: NormalizeOther must not read as clean merely because it is no longer retention.
 
-test fn accepted_reads_clean() -> v2.std.logic.Bool { reading_of_stage(s: NormalizeAccepted) == ObservedClean }
+test fn accepted_reads_clean() -> Bool { gunbc.tools.body_lowering_population_probe.reading_of_stage(s: gunbc.tools.frontier_ingestion_probe.NormalizeAccepted) == gunbc.tools.body_lowering_population_probe.ObservedClean }
 
-test fn normalize_other_does_not_read_clean_RED() -> v2.std.logic.Bool { reading_of_stage(s: NormalizeOther) == ObservedRefusedCauseUnclassified }
+test fn normalize_other_does_not_read_clean_RED() -> Bool { gunbc.tools.body_lowering_population_probe.reading_of_stage(s: gunbc.tools.frontier_ingestion_probe.NormalizeOther) == gunbc.tools.body_lowering_population_probe.ObservedRefusedCauseUnclassified }
 
-test fn retained_reads_as_a_named_cause() -> v2.std.logic.Bool { reading_of_stage(s: NormalizeRetained) == ObservedRefusedCauseNamed }
+test fn retained_reads_as_a_named_cause() -> Bool { gunbc.tools.body_lowering_population_probe.reading_of_stage(s: gunbc.tools.frontier_ingestion_probe.NormalizeRetained) == gunbc.tools.body_lowering_population_probe.ObservedRefusedCauseNamed }
 
 // An unmeasured subject has no reading at all. This is the distinction a first draft of
 // reading_of_standing collapsed by mapping unmeasured onto the unclassified-refusal arm.
 
-test fn an_unmeasured_subject_has_no_reading_RED() -> v2.std.logic.Bool {
-  reading_of_standing(st: gunbc.tools.body_lowering_population_probe.SubjectUnmeasured { cause: ^not_selected_into_execution_batch }) == StandingNotObserved
+test fn an_unmeasured_subject_has_no_reading_RED() -> Bool {
+  gunbc.tools.body_lowering_population_probe.reading_of_standing(st: gunbc.tools.body_lowering_population_probe.SubjectUnmeasured { cause: ^not_selected_into_execution_batch }) == gunbc.tools.body_lowering_population_probe.StandingNotObserved
 }
 
-test fn an_observed_subject_carries_its_reading() -> v2.std.logic.Bool {
-  reading_of_standing(st: gunbc.tools.body_lowering_population_probe.SubjectObserved { stage: NormalizeAccepted }) == gunbc.tools.body_lowering_population_probe.StandingObserved { reading: ObservedClean }
+test fn an_observed_subject_carries_its_reading() -> Bool {
+  gunbc.tools.body_lowering_population_probe.reading_of_standing(st: gunbc.tools.body_lowering_population_probe.SubjectObserved { stage: gunbc.tools.frontier_ingestion_probe.NormalizeAccepted }) == gunbc.tools.body_lowering_population_probe.StandingObserved { reading: gunbc.tools.body_lowering_population_probe.ObservedClean }
 }

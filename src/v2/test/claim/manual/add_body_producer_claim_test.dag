@@ -1,18 +1,19 @@
 module v2.test.manual.add_body_producer_claim
 
-test fn add_body_table_fixture_arrow_accepts() -> v2.std.logic.Bool {
+
+test fn add_body_table_fixture_arrow_accepts() -> Bool {
   match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       v2.std.node.well_formed(n: arrow)
         && match v2.std.node_query.find_arrow_body_child(root: arrow) {
-          Accepted { value: body, diagnostics: _ } =>
+          v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
             match body.kind {
-              ComputationNode { behavior: _ } => true
+              v2.std.node.ComputationNode { behavior: _ } => true
               _ => false
             }
-          Rejected { diagnostics: _ } => false
+          v2.std.diagnostic.Rejected { diagnostics: _ } => false
         }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -45,13 +46,13 @@ fn add_arrow_swapped_operand_body() -> v2.std.node.Node {
   )
 }
 
-test fn add_body_operand_order_differs() -> v2.std.logic.Bool {
+test fn add_body_operand_order_differs() -> Bool {
   let canonical = v2.extdeps.languages.dag.dag_add_binary_body_fixture
-  let swapped = v2.test.manual.add_body_producer_claim.add_arrow_swapped_operand_body()
+  let swapped = add_arrow_swapped_operand_body()
   canonical != swapped
 }
 
-fn add_body_arrow_with_atom_body_rejects() -> v2.std.logic.Bool {
+fn add_body_arrow_with_atom_body_rejects() -> Bool {
   let arrow = v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
@@ -88,18 +89,18 @@ fn add_body_arrow_with_atom_body_rejects() -> v2.std.logic.Bool {
   !v2.std.node.well_formed(n: arrow)
 }
 
-test fn add_body_edge_targets_binary_transform() -> v2.std.logic.Bool {
+test fn add_body_edge_targets_binary_transform() -> Bool {
   match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: arrow, diagnostics: _ } =>
       match v2.std.node_query.find_arrow_body_child(root: arrow) {
-        Accepted { value: body, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: body, diagnostics: _ } =>
           match body.kind {
-            ComputationNode { behavior: v2.std.node.Transform } => true
+            v2.std.node.ComputationNode { behavior: v2.std.node.Transform } => true
             _ => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

@@ -2,7 +2,7 @@ module v2.test.claim.cargo_build_run_argv_witness
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data cargo_build_run_path: String = "dag/extdeps/rust/cargo_build.dag"
 data cargo_build_run_service: String = "cargo.Build"
@@ -16,15 +16,15 @@ fn argv_token_at(argv: List<String>, index: Int) -> String {
 }
 
 fn witness_cargo_build_run_argv_materializes() -> Bool {
-  let argv = operation_argv_tokens_or_refusal_label(
+  let argv = v2.std.operation_argv.operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
       cargo_build_run_path,
       cargo_build_run_service,
       cargo_build_run_operation,
       [
-        operation_argv_bind_text(name: "package", text: cargo_build_run_package),
-        operation_argv_bind_text(name: "bin", text: cargo_build_run_bin),
-        operation_argv_bind_text_list(name: "args", items: cargo_build_run_args)
+        v2.std.operation_argv.operation_argv_bind_text(name: "package", text: cargo_build_run_package),
+        v2.std.operation_argv.operation_argv_bind_text(name: "bin", text: cargo_build_run_bin),
+        v2.std.operation_argv.operation_argv_bind_text_list(name: "args", items: cargo_build_run_args)
       ]
     )
   )

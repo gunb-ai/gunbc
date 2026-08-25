@@ -3,73 +3,73 @@ module v2.test.impossible_bug.unenumerated_effects
 
 fn atom_node(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn effect_subject(signature: v2.std.node.Node, body: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Arrow },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
-      v2.std.node.Edge { label: Positional, target: signature },
-      v2.std.node.Edge { label: Positional, target: body },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: signature },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: body },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 data effect_derived_from_signature_input: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
     v2.std.node.Edge {
       label: v2.std.node.Named { name: ^effect_read_subject_field },
-      target: effect_subject(signature: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol), body: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol))
+      target: effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^read_signature_symbol))
     },
     v2.std.node.Edge {
       label: v2.std.node.Named { name: ^effect_write_subject_field },
-      target: effect_subject(signature: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^write_signature_symbol), body: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^write_signature_symbol))
+      target: effect_subject(signature: atom_node(s: ^write_signature_symbol), body: atom_node(s: ^write_signature_symbol))
     },
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data explicit_reread_input: v2.std.node.Node = effect_subject(signature: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol), body: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^explicit_reread_symbol))
+data explicit_reread_input: v2.std.node.Node = effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^explicit_reread_symbol))
 
 data falsification_redundant_read: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
-    v2.std.node.Edge { label: v2.std.node.Named { name: ^effect_signature_field }, target: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol) },
-    v2.std.node.Edge { label: v2.std.node.Named { name: ^effect_body_field }, target: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol) },
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^effect_signature_field }, target: atom_node(s: ^read_signature_symbol) },
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^effect_body_field }, target: atom_node(s: ^read_signature_symbol) },
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data claim_effect_derived_from_signature: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "effect lens derives read write shape from signature",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: effect_derived_from_signature_input,
   expected_value: effect_derived_from_signature_input,
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier2, layer: Unit }
 }
 
 data claim_explicit_reread_passes: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "explicit reread primitive records intent without effect side taxonomy",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: explicit_reread_input,
   expected_value: explicit_reread_input,
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier2, layer: Unit }
 }
 
 data claim_redundant_read_caught: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {
   label: "redundant read without intervening write is rejected by effect lens",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
   input: falsification_redundant_read,
-  expected_rejection: diagnostics_singleton(
+  expected_rejection: v2.std.diagnostic.diagnostics_singleton(
       d: v2.std.diagnostic.Diagnostic {
         reason: ^impossible_bug_reason_redundant_read,
-        at: node_locus(node: falsification_redundant_read),
+        at: v2.std.diagnostic.node_locus(node: falsification_redundant_read),
         correction: v2.std.diagnostic.Suggested { node: explicit_reread_input }
       }
     ),
-  classification: v2.std.verification.TestClassification { tier: Tier2, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier2, layer: Unit }
 }

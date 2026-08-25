@@ -1,7 +1,7 @@
 module test.claim.recorded_observation_envelope_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn a_subject() -> std.observation.ObservationSubject {
   std.observation.ObservationSubject { segments: [
@@ -15,7 +15,7 @@ fn an_event() -> std.observation.ObservationEvent {
   std.observation.ObservationEvent {
     subject: a_subject(),
     transition: std.observation.Concluded { outcome: std.observation.Done },
-    durations: observation_durations_wall(elapsed: nanosecond(count: 1000)),
+    durations: std.observation.observation_durations_wall(elapsed: std.measure.nanosecond(count: 1000)),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
 }
@@ -31,22 +31,22 @@ fn rec(p: std.observation.ObservationProducer, seq: std.nat.Nat, occ: std.observ
     occurrence: occ,
     origin: origin,
     at: std.measure.ObservationInstant {
-      domain: std.measure.ProcessMonotonic { process: observation_producer_key(p: p) as std.types.NonEmptyStr },
-      basis: CpuClock,
-      since_origin: nanosecond(count: seq * 1000)
+      domain: std.measure.ProcessMonotonic { process: std.observation.observation_producer_key(p: p) as std.types.NonEmptyStr },
+      basis: std.measure.CpuClock,
+      since_origin: std.measure.nanosecond(count: seq * 1000)
     },
     event: an_event()
   }
 }
 
 fn w(seq: std.nat.Nat) -> std.observation.RecordedObservation {
-  rec(p: std.observation.OrdinaryWorkerProducer { worker_index: 3 }, seq: seq, occ: occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: "occ" as std.types.NonEmptyStr), origin: RootOccurrence)
+  rec(p: std.observation.OrdinaryWorkerProducer { worker_index: 3 }, seq: seq, occ: occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: "occ" as std.types.NonEmptyStr), origin: std.observation.RootOccurrence)
 }
 
 // One file per producer, sequences dense and increasing — the append protocol's promise.
 test fn w_a_dense_increasing_file_is_intact() -> Bool {
-  match classify_producer_file(records: [w(seq: 0), w(seq: 1), w(seq: 2), w(seq: 3)]) {
-    SequenceIntact => true
+  match std.observation.classify_producer_file(records: [w(seq: 0), w(seq: 1), w(seq: 2), w(seq: 3)]) {
+    std.observation.SequenceIntact => true
     _ => false
   }
 }
@@ -59,13 +59,13 @@ test fn w_a_dense_increasing_file_is_intact() -> Bool {
 // first defect wins. A discriminating reorder fixture must therefore be clean up to the step it
 // means to exercise — which is itself the property under test, and is why this one starts at 3.
 test fn w_RED_a_gap_and_a_reorder_are_distinct_verdicts_carrying_their_operands() -> Bool {
-  let gap = classify_producer_file(records: [w(seq: 0), w(seq: 1), w(seq: 7)])
-  let reorder = classify_producer_file(records: [w(seq: 3), w(seq: 4), w(seq: 2)])
+  let gap = std.observation.classify_producer_file(records: [w(seq: 0), w(seq: 1), w(seq: 7)])
+  let reorder = std.observation.classify_producer_file(records: [w(seq: 3), w(seq: 4), w(seq: 2)])
   match gap {
-    SequenceGap { after: a, before: b } => a == 1 && b == 7
+    std.observation.SequenceGap { after: a, before: b } => a == 1 && b == 7
     _ => false
   } && match reorder {
-    SequenceReordered { at_index: _, previous: p, observed: o } => p == 4 && o == 2
+    std.observation.SequenceReordered { at_index: _, previous: p, observed: o } => p == 4 && o == 2
     _ => false
   }
 }
@@ -73,8 +73,8 @@ test fn w_RED_a_gap_and_a_reorder_are_distinct_verdicts_carrying_their_operands(
 // A defect cannot be greened by the records that follow it: the reduction is incomplete no matter
 // how clean the tail reads. The absorbing shape would be a last-wins fold answering Intact here.
 test fn w_RED_a_clean_tail_does_not_green_an_earlier_gap() -> Bool {
-  match classify_producer_file(records: [w(seq: 0), w(seq: 9), w(seq: 10), w(seq: 11), w(seq: 12)]) {
-    SequenceGap { after: _, before: _ } => true
+  match std.observation.classify_producer_file(records: [w(seq: 0), w(seq: 9), w(seq: 10), w(seq: 11), w(seq: 12)]) {
+    std.observation.SequenceGap { after: _, before: _ } => true
     _ => false
   }
 }
@@ -83,11 +83,11 @@ test fn w_RED_a_clean_tail_does_not_green_an_earlier_gap() -> Bool {
 // ordering question — not a gap, not a reorder.
 test fn w_RED_records_from_two_producers_in_one_file_is_its_own_verdict() -> Bool {
   let mixed = [
-    rec(p: CoordinatorProducer, seq: 0, occ: occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: "a" as std.types.NonEmptyStr), origin: RootOccurrence),
-    rec(p: std.observation.ScopedWorkerProducer { scope_id: "7" as std.types.NonEmptyStr }, seq: 1, occ: occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: "b" as std.types.NonEmptyStr), origin: RootOccurrence),
+    rec(p: std.observation.CoordinatorProducer, seq: 0, occ: occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: "a" as std.types.NonEmptyStr), origin: std.observation.RootOccurrence),
+    rec(p: std.observation.ScopedWorkerProducer { scope_id: "7" as std.types.NonEmptyStr }, seq: 1, occ: occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: "b" as std.types.NonEmptyStr), origin: std.observation.RootOccurrence),
   ]
-  match classify_producer_file(records: mixed) {
-    SequenceForeignProducer { expected: e, observed: o } => e == "coordinator" && o == "scoped-7"
+  match std.observation.classify_producer_file(records: mixed) {
+    std.observation.SequenceForeignProducer { expected: e, observed: o } => e == "coordinator" && o == "scoped-7"
     _ => false
   }
 }
@@ -95,16 +95,16 @@ test fn w_RED_records_from_two_producers_in_one_file_is_its_own_verdict() -> Boo
 // An empty file is not an intact one. Nothing was appended, so the producer may never have started;
 // answering Intact would let a reduction over zero records report a clean run.
 test fn w_RED_an_empty_file_is_not_an_intact_file() -> Bool {
-  match classify_producer_file(records: []) {
-    SequenceEmpty => true
+  match std.observation.classify_producer_file(records: []) {
+    std.observation.SequenceEmpty => true
     _ => false
   }
 }
 
 // A single record has no step to check, and that is not the same fact as a verified file.
 test fn w_a_single_record_reads_intact_because_there_is_no_step_to_violate() -> Bool {
-  match classify_producer_file(records: [w(seq: 0)]) {
-    SequenceIntact => true
+  match std.observation.classify_producer_file(records: [w(seq: 0)]) {
+    std.observation.SequenceIntact => true
     _ => false
   }
 }
@@ -114,22 +114,22 @@ test fn w_a_single_record_reads_intact_because_there_is_no_step_to_violate() -> 
 // exactly the edge a torn tail's active stack is walked along.
 test fn w_the_causal_parent_is_carried_beside_the_containment_path_not_derived_from_it() -> Bool {
   let child = rec(
-    p: CoordinatorProducer, seq: 4,
+    p: std.observation.CoordinatorProducer, seq: 4,
     occ: occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: "occ-child" as std.types.NonEmptyStr),
     origin: std.observation.ChildOf { parent_id: "occ-parent" as std.types.NonEmptyStr }
   )
   let same_path = length(child.event.subject.segments) == 3
   same_path && match child.origin {
-    ChildOf { parent_id: p } => p == "occ-parent"
-    RootOccurrence => false
+    std.observation.ChildOf { parent_id: p } => p == "occ-parent"
+    std.observation.RootOccurrence => false
   }
 }
 
 test fn w_producer_identity_distinguishes_workers_by_index() -> Bool {
-  !observation_producer_eq(
+  !std.observation.observation_producer_eq(
     a: std.observation.OrdinaryWorkerProducer { worker_index: 3 },
     b: std.observation.OrdinaryWorkerProducer { worker_index: 4 }
-  ) && observation_producer_key(p: std.observation.ScopedWorkerProducer { scope_id: "7" as std.types.NonEmptyStr }) == "scoped-7"
+  ) && std.observation.observation_producer_key(p: std.observation.ScopedWorkerProducer { scope_id: "7" as std.types.NonEmptyStr }) == "scoped-7"
 }
 
 // THE JOIN THE FALSIFIER ACTUALLY MAKES. It compares a prediction receipt against a full-execution
@@ -137,11 +137,11 @@ test fn w_producer_identity_distinguishes_workers_by_index() -> Bool {
 // independently minted attempt-local coordinates. Equality between them is a coincidence — and under
 // the bare-string form it TYPECHECKED and answered. Now it refuses, naming both attempts.
 test fn w_RED_comparing_occurrences_across_two_attempts_refuses_instead_of_answering() -> Bool {
-  match compare_occurrences(
+  match std.observation.compare_occurrences(
     a: occ_in(attempt: "attempt-predict" as std.types.NonEmptyStr, id: "occ-9" as std.types.NonEmptyStr),
     b: occ_in(attempt: "attempt-execute" as std.types.NonEmptyStr, id: "occ-9" as std.types.NonEmptyStr)
   ) {
-    OccurrenceCrossAttempt { left: l, right: r } => l == "attempt-predict" && r == "attempt-execute"
+    std.observation.OccurrenceCrossAttempt { left: l, right: r } => l == "attempt-predict" && r == "attempt-execute"
     _ => false
   }
 }
@@ -149,42 +149,42 @@ test fn w_RED_comparing_occurrences_across_two_attempts_refuses_instead_of_answe
 // Cross-attempt is not "different" — a caller reading it as inequality has been told the answer is
 // no when the truth is that the question was wrong.
 test fn w_RED_cross_attempt_is_its_own_verdict_not_a_difference() -> Bool {
-  let cross = compare_occurrences(
+  let cross = std.observation.compare_occurrences(
     a: occ_in(attempt: "attempt-predict" as std.types.NonEmptyStr, id: "occ-9" as std.types.NonEmptyStr),
     b: occ_in(attempt: "attempt-execute" as std.types.NonEmptyStr, id: "occ-4" as std.types.NonEmptyStr)
   )
-  match cross { DifferentOccurrence => false, SameOccurrence => false, OccurrenceCrossAttempt { left: _, right: _ } => true }
+  match cross { std.observation.DifferentOccurrence => false, std.observation.SameOccurrence => false, std.observation.OccurrenceCrossAttempt { left: _, right: _ } => true }
 }
 
 test fn w_within_one_attempt_occurrences_compare_normally() -> Bool {
   let a = occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: "occ-9" as std.types.NonEmptyStr)
   let b = occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: "occ-4" as std.types.NonEmptyStr)
-  match compare_occurrences(a: a, b: a) { SameOccurrence => true, _ => false }
-    && match compare_occurrences(a: a, b: b) { DifferentOccurrence => true, _ => false }
+  match std.observation.compare_occurrences(a: a, b: a) { std.observation.SameOccurrence => true, _ => false }
+    && match std.observation.compare_occurrences(a: a, b: b) { std.observation.DifferentOccurrence => true, _ => false }
 }
 
 // The attempt has ONE home. A record's attempt is read through its occurrence rather than from a
 // second field that could disagree with it.
 test fn w_a_records_attempt_is_read_through_its_occurrence() -> Bool {
-  recorded_attempt(r: w(seq: 0)) == "attempt-1"
+  std.observation.recorded_attempt(r: w(seq: 0)) == "attempt-1"
 }
 
 // A spawn edge cannot cross attempts, so the parent carries only its id and the attempt comes from
 // the child. There is no way to author a parent in another attempt.
 test fn w_a_reconstructed_parent_inherits_the_childs_attempt() -> Bool {
   let child = rec(
-    p: CoordinatorProducer, seq: 4,
+    p: std.observation.CoordinatorProducer, seq: 4,
     occ: occ_in(attempt: "attempt-7" as std.types.NonEmptyStr, id: "occ-child" as std.types.NonEmptyStr),
     origin: std.observation.ChildOf { parent_id: "occ-parent" as std.types.NonEmptyStr }
   )
-  match parent_occurrence(r: child) {
+  match std.observation.parent_occurrence(r: child) {
     Present { value: p } => p.attempt == "attempt-7" && p.id == "occ-parent"
     Absent => false
   }
 }
 
 test fn w_RED_a_root_occurrence_has_no_parent_rather_than_a_placeholder_one() -> Bool {
-  match parent_occurrence(r: w(seq: 0)) { Absent => true, Present { value: _ } => false }
+  match std.observation.parent_occurrence(r: w(seq: 0)) { Absent => true, Present { value: _ } => false }
 }
 
 // A worker occurrence is ChildOf an occurrence the COORDINATOR recorded, so the edge crosses files.
@@ -193,30 +193,30 @@ test fn w_RED_a_root_occurrence_has_no_parent_rather_than_a_placeholder_one() ->
 // lost parent silently re-roots the stack to a shallower, plausible, wrong answer.
 test fn w_RED_the_same_spawn_edge_resolves_over_the_union_and_is_out_of_scope_in_one_file() -> Bool {
   let coordinator_record = rec(
-    p: CoordinatorProducer, seq: 0,
+    p: std.observation.CoordinatorProducer, seq: 0,
     occ: occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: "occ-coord" as std.types.NonEmptyStr),
-    origin: RootOccurrence
+    origin: std.observation.RootOccurrence
   )
   let worker_record = rec(
     p: std.observation.OrdinaryWorkerProducer { worker_index: 3 }, seq: 0,
     occ: occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: "occ-worker" as std.types.NonEmptyStr),
     origin: std.observation.ChildOf { parent_id: "occ-coord" as std.types.NonEmptyStr }
   )
-  let over_union = resolve_parent(
+  let over_union = std.observation.resolve_parent(
     child: worker_record,
     records: [coordinator_record, worker_record],
-    scope: AttemptUnionRead
+    scope: std.observation.AttemptUnionRead
   )
-  let one_file = resolve_parent(
+  let one_file = std.observation.resolve_parent(
     child: worker_record,
     records: [worker_record],
     scope: std.observation.SingleProducerRead { producer: std.observation.OrdinaryWorkerProducer { worker_index: 3 } }
   )
   match over_union {
-    ParentResolved { parent: p } => p.id == "occ-coord" && p.attempt == "attempt-1"
+    std.observation.ParentResolved { parent: p } => p.id == "occ-coord" && p.attempt == "attempt-1"
     _ => false
   } && match one_file {
-    ParentOutsideReadScope { scope: _, parent_id: id } => id == "occ-coord"
+    std.observation.ParentOutsideReadScope { scope: _, parent_id: id } => id == "occ-coord"
     _ => false
   }
 }
@@ -228,17 +228,17 @@ test fn w_RED_a_parent_absent_from_the_whole_union_is_an_integrity_failure() -> 
     occ: occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: "occ-worker" as std.types.NonEmptyStr),
     origin: std.observation.ChildOf { parent_id: "occ-never-written" as std.types.NonEmptyStr }
   )
-  match resolve_parent(child: orphan, records: [orphan], scope: AttemptUnionRead) {
-    ParentMissingFromAttempt { parent_id: id } => id == "occ-never-written"
+  match std.observation.resolve_parent(child: orphan, records: [orphan], scope: std.observation.AttemptUnionRead) {
+    std.observation.ParentMissingFromAttempt { parent_id: id } => id == "occ-never-written"
     _ => false
   }
 }
 
 test fn w_a_root_occurrence_resolves_as_root_under_either_scope() -> Bool {
   let r = w(seq: 0)
-  match resolve_parent(child: r, records: [], scope: AttemptUnionRead) { OccurrenceIsRoot => true, _ => false }
-    && match resolve_parent(child: r, records: [], scope: std.observation.SingleProducerRead { producer: CoordinatorProducer }) {
-      OccurrenceIsRoot => true
+  match std.observation.resolve_parent(child: r, records: [], scope: std.observation.AttemptUnionRead) { std.observation.OccurrenceIsRoot => true, _ => false }
+    && match std.observation.resolve_parent(child: r, records: [], scope: std.observation.SingleProducerRead { producer: std.observation.CoordinatorProducer }) {
+      std.observation.OccurrenceIsRoot => true
       _ => false
     }
 }
@@ -253,7 +253,7 @@ fn began(p: std.observation.ObservationProducer, seq: std.nat.Nat, id: std.types
     at: base.at,
     event: std.observation.ObservationEvent {
       subject: a_subject(),
-      transition: Begin,
+      transition: std.observation.Begin,
       durations: base.event.durations,
       rss: base.event.rss
     }
@@ -261,7 +261,7 @@ fn began(p: std.observation.ObservationProducer, seq: std.nat.Nat, id: std.types
 }
 
 fn concluded(p: std.observation.ObservationProducer, seq: std.nat.Nat, id: std.types.NonEmptyStr) -> std.observation.RecordedObservation {
-  rec(p: p, seq: seq, occ: occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: id), origin: RootOccurrence)
+  rec(p: p, seq: seq, occ: occ_in(attempt: "attempt-1" as std.types.NonEmptyStr, id: id), origin: std.observation.RootOccurrence)
 }
 
 fn active_ids(a: std.observation.ActiveOccurrences) -> List<String> {
@@ -275,13 +275,13 @@ fn active_ids(a: std.observation.ActiveOccurrences) -> List<String> {
 test fn w_RED_a_killed_attempt_names_every_unfinished_occurrence_not_the_last_record() -> Bool {
   let coord = std.observation.OrdinaryWorkerProducer { worker_index: 0 }
   let recs = [
-    began(p: CoordinatorProducer, seq: 0, id: "occ-coord" as std.types.NonEmptyStr, origin: RootOccurrence),
+    began(p: std.observation.CoordinatorProducer, seq: 0, id: "occ-coord" as std.types.NonEmptyStr, origin: std.observation.RootOccurrence),
     began(p: coord, seq: 0, id: "occ-worker" as std.types.NonEmptyStr, origin: std.observation.ChildOf { parent_id: "occ-coord" as std.types.NonEmptyStr }),
     began(p: coord, seq: 1, id: "occ-gate" as std.types.NonEmptyStr, origin: std.observation.ChildOf { parent_id: "occ-worker" as std.types.NonEmptyStr }),
     began(p: coord, seq: 2, id: "occ-sibling" as std.types.NonEmptyStr, origin: std.observation.ChildOf { parent_id: "occ-worker" as std.types.NonEmptyStr }),
     concluded(p: coord, seq: 3, id: "occ-sibling" as std.types.NonEmptyStr),
   ]
-  let a = active_occurrences(records: recs, scope: AttemptUnionRead)
+  let a = std.observation.active_occurrences(records: recs, scope: std.observation.AttemptUnionRead)
   let ids = active_ids(a: a)
   length(ids) == 3
     && contains(ids, "occ-coord")
@@ -297,21 +297,21 @@ test fn w_RED_the_active_stack_crosses_a_producer_boundary() -> Bool {
   let coord = std.observation.OrdinaryWorkerProducer { worker_index: 0 }
   let gate = began(p: coord, seq: 1, id: "occ-gate" as std.types.NonEmptyStr, origin: std.observation.ChildOf { parent_id: "occ-worker" as std.types.NonEmptyStr })
   let worker = began(p: coord, seq: 0, id: "occ-worker" as std.types.NonEmptyStr, origin: std.observation.ChildOf { parent_id: "occ-coord" as std.types.NonEmptyStr })
-  let coordinator = began(p: CoordinatorProducer, seq: 0, id: "occ-coord" as std.types.NonEmptyStr, origin: RootOccurrence)
+  let coordinator = began(p: std.observation.CoordinatorProducer, seq: 0, id: "occ-coord" as std.types.NonEmptyStr, origin: std.observation.RootOccurrence)
   let union = [coordinator, worker, gate]
   let worker_file = [worker, gate]
-  let up_one = match resolve_parent(child: worker, records: union, scope: AttemptUnionRead) {
-    ParentResolved { parent: p } => p.id == "occ-coord"
+  let up_one = match std.observation.resolve_parent(child: worker, records: union, scope: std.observation.AttemptUnionRead) {
+    std.observation.ParentResolved { parent: p } => p.id == "occ-coord"
     _ => false
   }
-  let same_edge_in_one_file = match resolve_parent(
+  let same_edge_in_one_file = match std.observation.resolve_parent(
     child: worker, records: worker_file, scope: std.observation.SingleProducerRead { producer: coord }
   ) {
-    ParentOutsideReadScope { scope: _, parent_id: _ } => true
+    std.observation.ParentOutsideReadScope { scope: _, parent_id: _ } => true
     _ => false
   }
-  let root_terminates = match resolve_parent(child: coordinator, records: union, scope: AttemptUnionRead) {
-    OccurrenceIsRoot => true
+  let root_terminates = match std.observation.resolve_parent(child: coordinator, records: union, scope: std.observation.AttemptUnionRead) {
+    std.observation.OccurrenceIsRoot => true
     _ => false
   }
   up_one && same_edge_in_one_file && root_terminates
@@ -320,9 +320,9 @@ test fn w_RED_the_active_stack_crosses_a_producer_boundary() -> Bool {
 // The active set is only as complete as the read, so the scope travels WITH it rather than being
 // remembered by the caller.
 test fn w_the_active_set_carries_the_scope_it_was_derived_under() -> Bool {
-  let a = active_occurrences(records: [], scope: std.observation.SingleProducerRead { producer: CoordinatorProducer })
+  let a = std.observation.active_occurrences(records: [], scope: std.observation.SingleProducerRead { producer: std.observation.CoordinatorProducer })
   length(a.occurrences) == 0 && match a.scope {
-    SingleProducerRead { producer: p } => observation_producer_key(p: p) == "coordinator"
-    AttemptUnionRead => false
+    std.observation.SingleProducerRead { producer: p } => std.observation.observation_producer_key(p: p) == "coordinator"
+    std.observation.AttemptUnionRead => false
   }
 }

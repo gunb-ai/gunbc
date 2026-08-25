@@ -6,26 +6,26 @@ data gunbc_network_identity_subsumption_scope_disposition: std.disposition.Dispo
 }
 
 data srv3_os_lan_mac_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.network_identity_subsumption",
     decl_name: "srv3_os_up_dynamic_lease_row",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data srv3_os_lan_ipv4_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.network_identity_subsumption",
     decl_name: "srv3_os_up_dynamic_lease_row",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data srv3_fleet_slot_host_name: extdeps.dns.domain_name.HostName = extdeps.dns.domain_name.HostName {
   name: extdeps.dns.domain_name.DomainName { labels: ["srv3" as extdeps.dns.domain_name.DnsLabel] },
-  qualification: PartiallyQualified,
+  qualification: extdeps.dns.domain_name.PartiallyQualified,
 }
 
 fn network_identity_subsumes_fleet_slot(
@@ -33,16 +33,16 @@ fn network_identity_subsumes_fleet_slot(
   lease: extdeps.dhcp.v4.DhcpLeaseObservation,
 ) -> Bool {
   match lease {
-    DynamicDhcpLease { client_hostname: Present { value: reported }, lease_time_remaining: _, status: extdeps.dhcp.v4.Active } =>
-      match canonical_hostname_for_fleet_slot(fleet_slot: fleet_slot) {
+    extdeps.dhcp.v4.DynamicDhcpLease { client_hostname: Present { value: reported }, lease_time_remaining: _, status: extdeps.dhcp.v4.Active } =>
+      match gunbc.hostname_allocation.canonical_hostname_for_fleet_slot(fleet_slot: fleet_slot) {
         Present { value: desired } =>
-          domain_name_wire(name: reported.name) == (desired as String)
+          extdeps.dns.domain_name.domain_name_wire(name: reported.name) == (desired as String)
         Absent => false
       }
-    DynamicDhcpLease { client_hostname: Absent, lease_time_remaining: _, status: _ } => false
-    DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: extdeps.dhcp.v4.Inactive } => false
-    DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: Expired } => false
-    StaticDhcpReservation { reservation_label: _, status: _ } => false
+    extdeps.dhcp.v4.DynamicDhcpLease { client_hostname: Absent, lease_time_remaining: _, status: _ } => false
+    extdeps.dhcp.v4.DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: extdeps.dhcp.v4.Inactive } => false
+    extdeps.dhcp.v4.DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: extdeps.dhcp.v4.Expired } => false
+    extdeps.dhcp.v4.StaticDhcpReservation { reservation_label: _, status: _ } => false
   }
 }
 
@@ -60,7 +60,7 @@ fn lease_table_has_os_up_subsumption(
 
 data srv3_bmc_static_lease_row: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow = extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow {
   mac_address: "48:21:0B:81:C5:14" as extdeps.dhcp.v4.MacAddress,
-  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 192),
+  ipv4_address: extdeps.network.ipv4.ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 192),
   lease: extdeps.dhcp.v4.StaticDhcpReservation {
     reservation_label: "bmc-altrad8ud-1l2t-3" as std.types.NonEmptyStr,
     status: extdeps.dhcp.v4.Active,
@@ -69,10 +69,10 @@ data srv3_bmc_static_lease_row: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseR
 
 data srv3_os_up_dynamic_lease_row: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow = extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow {
   mac_address: "00:00:00:00:00:00" as extdeps.dhcp.v4.MacAddress,
-  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 193),
+  ipv4_address: extdeps.network.ipv4.ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 193),
   lease: extdeps.dhcp.v4.DynamicDhcpLease {
     client_hostname: Present { value: srv3_fleet_slot_host_name },
-    lease_time_remaining: dhcp_lease_remaining_from_cited_minutes(minutes: 120),
+    lease_time_remaining: extdeps.dhcp.v4.dhcp_lease_remaining_from_cited_minutes(minutes: 120),
     status: extdeps.dhcp.v4.Active,
   },
 }
@@ -88,20 +88,20 @@ data srv3_post_install_lease_table_fixture: extdeps.router.verizon_cr1000a.Cr100
 fn srv3_pre_install_has_no_os_up_subsumption() -> Bool {
   !lease_table_has_os_up_subsumption(
     table: srv3_pre_install_lease_table,
-    fleet_slot: operator_host_srv3,
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv3,
   )
 }
 
 fn srv3_post_install_fixture_subsumes_fleet_slot() -> Bool {
   lease_table_has_os_up_subsumption(
     table: srv3_post_install_lease_table_fixture,
-    fleet_slot: operator_host_srv3,
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv3,
   )
 }
 
 fn bmc_static_reservation_does_not_subsume_os_fleet_slot() -> Bool {
   !network_identity_subsumes_fleet_slot(
-    fleet_slot: operator_host_srv3,
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv3,
     lease: srv3_bmc_static_lease_row.lease,
   )
 }

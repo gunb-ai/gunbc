@@ -1,11 +1,11 @@
 module v2.test.lens_structural_resolution.facts_lookup_miss
 
 
-data sr_lookup_claim_hash: v2.std.node.Hash = sr_lookup_claim_hash
+data sr_lookup_claim_hash: Hash = sr_lookup_claim_hash
 
-fn sr_lookup_claim_atom(s: v2.std.node.Symbol) -> Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
+fn sr_lookup_claim_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -13,22 +13,22 @@ fn sr_lookup_claim_atom(s: v2.std.node.Symbol) -> Node {
 
 data sr_lookup_use: Node = sr_lookup_claim_atom(s: ^sr_lookup_use_symbol)
 
-data sr_lookup_decl: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+data sr_lookup_decl: Node = Node {
+  kind: TypeNode { connective: Conj },
   children: [
-    v2.std.node.Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_lookup_use }
+    Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_lookup_use }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data sr_lookup_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
+data sr_lookup_dependency: DependencyView = DependencyView {
   source: sr_lookup_decl,
   dependent: sr_lookup_use,
   kind: BindsTo,
   usage_site: sr_lookup_use
 }
 
-fn sr_lookup_resolved_facts() -> v2.compiler.inferred_tree.InferredFacts {
+fn sr_lookup_resolved_facts() -> InferredFacts {
   claim_inferred_facts(
     type_symbol: ^sr_lookup_type_symbol,
     algebra_symbol: ^sr_lookup_algebra_symbol,
@@ -36,35 +36,35 @@ fn sr_lookup_resolved_facts() -> v2.compiler.inferred_tree.InferredFacts {
   )
 }
 
-fn sr_lookup_usage_site_witness() -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_absent()
+fn sr_lookup_usage_site_witness() -> v2.std.optional.Optional<InferredFacts> {
+  v2.std.optional.optional_absent()
 }
 
-fn sr_lookup_claim_fact_map() -> std.algebra.PartialFunction<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts> {
+fn sr_lookup_claim_fact_map() -> PartialFunction<Node, InferredFacts> {
   let resolved = sr_lookup_resolved_facts()
-  std.algebra.PartialFunction {
+  PartialFunction {
     lookup: fn(key) {
       if key == sr_lookup_use {
-        optional_absent()
+        v2.std.optional.optional_absent()
       } else {
-        optional_present(value: resolved)
+        v2.std.optional.optional_present(value: resolved)
       }
     }
   }
 }
 
-fn sr_lookup_claim_tree() -> v2.compiler.inferred_tree.InferredTree {
-  v2.compiler.inferred_tree.InferredTree {
+fn sr_lookup_claim_tree() -> InferredTree {
+  InferredTree {
     root: sr_lookup_decl,
     facts: sr_lookup_claim_fact_map()
   }
 }
 
-data facts_lookup_miss_claim: v2.test.lens_structural_resolution.claim_carrier.LensStructuralResolutionClaim = v2.test.lens_structural_resolution.claim_carrier.LensStructuralResolutionClaim {
+data facts_lookup_miss_claim: LensStructuralResolutionClaim = LensStructuralResolutionClaim {
   input: sr_lookup_claim_tree(),
-  expected: v2.lens.structural_resolution.StructuralResolutionFact {
+  expected: StructuralResolutionFact {
     dependencies: [
-      v2.std.dependency.ClassifiedDependencyView {
+      ClassifiedDependencyView {
         dependency: sr_lookup_dependency,
         classification: FactsLookupMiss
       }

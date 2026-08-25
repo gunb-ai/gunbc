@@ -1,13 +1,13 @@
 module v2.test.lens_wiring_liveness.wiring_liveness_preflight_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn wlp_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -24,7 +24,7 @@ fn wlp_edge(source: v2.std.node.Node, dependent: v2.std.node.Node) -> v2.lens.af
       kind: v2.std.dependency.Contains,
       usage_site: dependent
     },
-    target: DependencyDependent
+    target: v2.std.change.DependencyDependent
   }
 }
 
@@ -43,43 +43,43 @@ fn wlp_dead_obligation() -> v2.lens.wiring_liveness_preflight.FrontierWiringObli
   v2.lens.wiring_liveness_preflight.FrontierWiringObligation { output: wlp_out(), declared_input: wlp_dangling() }
 }
 
-fn wlp_is_failclosed(frontier: v2.lens.affected_set.ReExecFrontier) -> v2.std.logic.Bool {
+fn wlp_is_failclosed(frontier: v2.lens.affected_set.ReExecFrontier) -> Bool {
   match frontier {
-    FailClosed { reason: _ } => true
-    ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } => false
+    v2.lens.affected_set.FailClosed { reason: _ } => true
+    v2.lens.affected_set.ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } => false
   }
 }
 
-test fn preflight_wired_slice_runs() -> v2.std.logic.Bool {
-  let result = preflight_reexec_frontier(
-    frontier: empty_frontier(),
+test fn preflight_wired_slice_runs() -> Bool {
+  let result = v2.lens.wiring_liveness_preflight.preflight_reexec_frontier(
+    frontier: v2.lens.affected_set.empty_frontier(),
     dependencies: wlp_slice(),
     obligations: [wlp_live_obligation()]
   )
   return wlp_is_failclosed(frontier: result) == false
 }
 
-test fn preflight_dead_wire_failcloses() -> v2.std.logic.Bool {
-  let result = preflight_reexec_frontier(
-    frontier: empty_frontier(),
+test fn preflight_dead_wire_failcloses() -> Bool {
+  let result = v2.lens.wiring_liveness_preflight.preflight_reexec_frontier(
+    frontier: v2.lens.affected_set.empty_frontier(),
     dependencies: wlp_slice(),
     obligations: [wlp_dead_obligation()]
   )
   return wlp_is_failclosed(frontier: result)
 }
 
-test fn preflight_mixed_slice_failcloses_on_dead() -> v2.std.logic.Bool {
-  let result = preflight_reexec_frontier(
-    frontier: empty_frontier(),
+test fn preflight_mixed_slice_failcloses_on_dead() -> Bool {
+  let result = v2.lens.wiring_liveness_preflight.preflight_reexec_frontier(
+    frontier: v2.lens.affected_set.empty_frontier(),
     dependencies: wlp_slice(),
     obligations: [wlp_live_obligation(), wlp_dead_obligation()]
   )
   return wlp_is_failclosed(frontier: result)
 }
 
-test fn preflight_preserves_prior_failclosed() -> v2.std.logic.Bool {
+test fn preflight_preserves_prior_failclosed() -> Bool {
   let prior = v2.lens.affected_set.FailClosed { reason: v2.lens.affected_set.ReasonSymbol { reason: ^wlp_prior_failure } }
-  let result = preflight_reexec_frontier(
+  let result = v2.lens.wiring_liveness_preflight.preflight_reexec_frontier(
     frontier: prior,
     dependencies: wlp_slice(),
     obligations: [wlp_live_obligation()]
@@ -87,25 +87,25 @@ test fn preflight_preserves_prior_failclosed() -> v2.std.logic.Bool {
   return wlp_is_failclosed(frontier: result)
 }
 
-test fn preflight_dead_wire_suggests_wiring_correction() -> v2.std.logic.Bool {
+test fn preflight_dead_wire_suggests_wiring_correction() -> Bool {
   let obligation = wlp_dead_obligation()
-  match dead_wire_reason(
+  match v2.lens.wiring_liveness_preflight.dead_wire_reason(
     obligation: obligation,
     dependence: [
       wlp_edge(source: wlp_out(), dependent: wlp_mid()).dependency,
       wlp_edge(source: wlp_mid(), dependent: wlp_in()).dependency
     ]
   ) {
-    ReasonDiagnostics { diagnostics: d } =>
-      correction_eq(
+    v2.lens.affected_set.ReasonDiagnostics { diagnostics: d } =>
+      v2.std.diagnostic.correction_eq(
         a: d.head.correction,
         b: v2.std.diagnostic.Suggested {
-          node: graph_reach_add_edge_repair(
+          node: v2.lens.common.graph_invariant.graph_reach_add_edge_repair(
             root: obligation.output,
             edge_target: obligation.declared_input
           )
         }
       )
-    ReasonSymbol { reason: _ } => false
+    v2.lens.affected_set.ReasonSymbol { reason: _ } => false
   }
 }

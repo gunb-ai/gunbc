@@ -3,15 +3,15 @@ module extdeps.tools.npm
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.npmjs.com/cli/v10/commands/npm-ci"
   }
 }
 
-data npm_cli_tool: CliTool = CliTool {
+data npm_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "npm",
   min_version: none,
-  installable_via: [SourceApt { package: package_npm }],
+  installable_via: [extdeps.tools.SourceApt { package: extdeps.apt.package_npm }],
 }
 
 data npm_cli_version_observation_note: String = "min_version = none is NOT a materialization receipt. Observed npm --version is recorded on CodexRuntimeBundleReceipt so the toolchain that performed offline ci is attributable."
@@ -38,10 +38,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.tools.npm",
       decl_name: "npm_cli_tool",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.tools.npm.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 

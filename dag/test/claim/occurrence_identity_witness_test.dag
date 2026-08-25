@@ -2,28 +2,28 @@ module test.claim.occurrence_identity_witness_test
 
 
 test fn occurrence_identity_initial_allocator_starts_at_zero_holds() -> Bool {
-  occurrence_id_allocator_initial().next_id == 0
+  std.occurrence_identity.occurrence_id_allocator_initial().next_id == 0
 }
 
 test fn occurrence_identity_allocates_distinct_ordered_ids_holds() -> Bool {
-  let first = alloc_occurrence_id(alloc: occurrence_id_allocator_initial())
-  let second = alloc_occurrence_id(alloc: first.alloc)
+  let first = std.occurrence_identity.alloc_occurrence_id(alloc: std.occurrence_identity.occurrence_id_allocator_initial())
+  let second = std.occurrence_identity.alloc_occurrence_id(alloc: first.alloc)
   first.id.value == 0
     && second.id.value == 1
-    && !occurrence_id_eq(left: first.id, right: second.id)
+    && !std.occurrence_identity.occurrence_id_eq(left: first.id, right: second.id)
 }
 
 test fn occurrence_identity_advance_is_monotonic_holds() -> Bool {
-  let initial = occurrence_id_allocator_initial()
-  let advanced = occurrence_id_allocator_advance_to(
+  let initial = std.occurrence_identity.occurrence_id_allocator_initial()
+  let advanced = std.occurrence_identity.occurrence_id_allocator_advance_to(
     alloc: initial,
-    min_next: authored_token_ordinal_space_from_allocator(
+    min_next: std.occurrence_identity.authored_token_ordinal_space_from_allocator(
       alloc: std.occurrence_identity.OccurrenceIdAllocator { next_id: 7 }
     ),
   )
-  let unchanged = occurrence_id_allocator_advance_to(
+  let unchanged = std.occurrence_identity.occurrence_id_allocator_advance_to(
     alloc: advanced,
-    min_next: authored_token_ordinal_space_from_allocator(
+    min_next: std.occurrence_identity.authored_token_ordinal_space_from_allocator(
       alloc: std.occurrence_identity.OccurrenceIdAllocator { next_id: 3 }
     ),
   )
@@ -58,24 +58,24 @@ test fn occurrence_identity_minted_and_synthetic_are_distinct_holds() -> Bool {
     id: std.occurrence_identity.OccurrenceId { value: 4 }
   )
   let minted_holds = match minted {
-    OccurrenceMinted { id: id } =>
+    std.occurrence_identity.OccurrenceMinted { id: id } =>
       id.value == 4
     _ => false
   }
-  let synthetic: std.occurrence_identity.NodeOccurrenceIdentity = OccurrenceSynthetic
+  let synthetic: std.occurrence_identity.NodeOccurrenceIdentity = std.occurrence_identity.OccurrenceSynthetic
   let synthetic_holds = match synthetic {
-    OccurrenceSynthetic => true
+    std.occurrence_identity.OccurrenceSynthetic => true
     _ => false
   }
   minted_holds && synthetic_holds
 }
 
 test fn occurrence_identity_v2_synthetic_facade_round_trip_holds() -> Bool {
-  let facade: v2.std.node.NodeOccurrenceId = SyntheticOccurrence
+  let facade: v2.std.node.NodeOccurrenceId = v2.std.node.SyntheticOccurrence
   match v2.std.node.node_occurrence_id_from_shared(
     occurrence: v2.std.node.node_occurrence_id_to_shared(occurrence: facade)
   ) {
-    SyntheticOccurrence => true
+    v2.std.node.SyntheticOccurrence => true
     _ => false
   }
 }
@@ -87,7 +87,7 @@ test fn occurrence_identity_v2_minted_facade_round_trip_holds() -> Bool {
   match v2.std.node.node_occurrence_id_from_shared(
     occurrence: v2.std.node.node_occurrence_id_to_shared(occurrence: facade)
   ) {
-    MintedOccurrence { id: id } => id.value == 11
+    v2.std.node.MintedOccurrence { id: id } => id.value == 11
     _ => false
   }
 }
@@ -99,17 +99,17 @@ test fn occurrence_identity_v2_shared_constructor_equivalence_holds() -> Bool {
   match v2.std.node.node_occurrence_id_to_shared(
     occurrence: v2.std.node.node_occurrence_id_from_shared(occurrence: shared)
   ) {
-    OccurrenceMinted { id: id } => id.value == 12
+    std.occurrence_identity.OccurrenceMinted { id: id } => id.value == 12
     _ => false
   }
 }
 
 test fn occurrence_identity_acceptance_law_denominator_is_exact_holds() -> Bool {
-  occurrence_identity_acceptance_laws == [
-    occurrence_identity_acceptance_law_rebuilt_reference,
-    occurrence_identity_acceptance_law_collector_dedupe,
-    occurrence_identity_acceptance_law_distinct_occurrences,
-    occurrence_identity_acceptance_law_pattern_reachability,
-    occurrence_identity_acceptance_law_parser_isolation,
+  std.occurrence_identity.occurrence_identity_acceptance_laws == [
+    std.occurrence_identity.occurrence_identity_acceptance_law_rebuilt_reference,
+    std.occurrence_identity.occurrence_identity_acceptance_law_collector_dedupe,
+    std.occurrence_identity.occurrence_identity_acceptance_law_distinct_occurrences,
+    std.occurrence_identity.occurrence_identity_acceptance_law_pattern_reachability,
+    std.occurrence_identity.occurrence_identity_acceptance_law_parser_isolation,
   ]
 }

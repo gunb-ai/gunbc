@@ -2,50 +2,50 @@ module v2.test.claim.lean_bit_width_admissibility_witness
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data lean_bit_width_admissibility_witness_note: String = "P3b cluster-1 receipt (lean end-to-end): lean_admit_bit_width is the admission boundary; LeanAdmittedBitWidth is sole_constructor. Honest rung: accepted refinement with executing refusal — not structural impossibility. RED: width 128 refuses at admission and catalog construction yields LeanWidthAdmissionRefused, not LeanIntegerScalar."
 
-test fn lean_admit_accepts_catalog_fixed_widths() -> v2.std.logic.Bool {
-  match lean_admit_bit_width(width: std.measure.bit_width(count: 8)) {
-    LeanBitWidthAccepted { width: w8 } =>
-      match lean_admit_bit_width(width: std.measure.bit_width(count: 16)) {
-        LeanBitWidthAccepted { width: w16 } =>
-          match lean_admit_bit_width(width: std.measure.bit_width(count: 32)) {
-            LeanBitWidthAccepted { width: w32 } =>
-              match lean_admit_bit_width(width: std.measure.bit_width(count: 64)) {
-                LeanBitWidthAccepted { width: w64 } =>
+test fn lean_admit_accepts_catalog_fixed_widths() -> Bool {
+  match v2.extdeps.languages.lean.lean_admit_bit_width(width: std.measure.bit_width(count: 8)) {
+    v2.extdeps.languages.lean.LeanBitWidthAccepted { width: w8 } =>
+      match v2.extdeps.languages.lean.lean_admit_bit_width(width: std.measure.bit_width(count: 16)) {
+        v2.extdeps.languages.lean.LeanBitWidthAccepted { width: w16 } =>
+          match v2.extdeps.languages.lean.lean_admit_bit_width(width: std.measure.bit_width(count: 32)) {
+            v2.extdeps.languages.lean.LeanBitWidthAccepted { width: w32 } =>
+              match v2.extdeps.languages.lean.lean_admit_bit_width(width: std.measure.bit_width(count: 64)) {
+                v2.extdeps.languages.lean.LeanBitWidthAccepted { width: w64 } =>
                   std.measure.bit_width_count(w8.width) == 8 &&
                     std.measure.bit_width_count(w16.width) == 16 &&
                     std.measure.bit_width_count(w32.width) == 32 &&
                     std.measure.bit_width_count(w64.width) == 64
-                LeanBitWidthRefused { width: _ } => false
+                v2.extdeps.languages.lean.LeanBitWidthRefused { width: _ } => false
               }
-            LeanBitWidthRefused { width: _ } => false
+            v2.extdeps.languages.lean.LeanBitWidthRefused { width: _ } => false
           }
-        LeanBitWidthRefused { width: _ } => false
+        v2.extdeps.languages.lean.LeanBitWidthRefused { width: _ } => false
       }
-    LeanBitWidthRefused { width: _ } => false
+    v2.extdeps.languages.lean.LeanBitWidthRefused { width: _ } => false
   }
 }
 
-test fn lean_admit_refuses_bits128() -> v2.std.logic.Bool {
+test fn lean_admit_refuses_bits128() -> Bool {
   let w128: std.measure.BitWidth = std.measure.bit_width(count: 128)
-  match lean_admit_bit_width(width: w128) {
-    LeanBitWidthRefused { width: refused } => std.measure.bit_width_count(refused) == 128
-    LeanBitWidthAccepted { width: _ } => false
+  match v2.extdeps.languages.lean.lean_admit_bit_width(width: w128) {
+    v2.extdeps.languages.lean.LeanBitWidthRefused { width: refused } => std.measure.bit_width_count(refused) == 128
+    v2.extdeps.languages.lean.LeanBitWidthAccepted { width: _ } => false
   }
 }
 
-test fn lean_catalog_width_admission_refuses_bits128_not_integer_scalar() -> v2.std.logic.Bool {
-  match lean_primitive_facts_for_catalog_width(
+test fn lean_catalog_width_admission_refuses_bits128_not_integer_scalar() -> Bool {
+  match v2.extdeps.languages.lean.lean_primitive_facts_for_catalog_width(
     surface_spelling: ^lean_surface_spelling_int32,
     signedness: Signed,
     count: 128,
     representation: ^lean_repr_fixed_precision_integer
   ).scalar {
-    LeanWidthAdmissionRefused { width: refused } => std.measure.bit_width_count(refused) == 128
-    LeanIntegerScalar { signedness: _, width: _, overflow: _ } => false
+    v2.extdeps.languages.lean.LeanWidthAdmissionRefused { width: refused } => std.measure.bit_width_count(refused) == 128
+    v2.extdeps.languages.lean.LeanIntegerScalar { signedness: _, width: _, overflow: _ } => false
     _ => false
   }
 }

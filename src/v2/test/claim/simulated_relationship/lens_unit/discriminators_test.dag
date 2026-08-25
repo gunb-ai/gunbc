@@ -1,123 +1,123 @@
 module v2.test.simulated_relationship.lens_unit.discriminators
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } }, children: [])
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } }, children: [])
 }
 fn conj2(a: v2.std.node.Node, b: v2.std.node.Node) -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Conj },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: a },
-      v2.std.node.Edge { label: Positional, target: b }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: a },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: b }
     ]
   )
 }
 fn conj3(a: v2.std.node.Node, b: v2.std.node.Node, c: v2.std.node.Node) -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Conj },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      v2.std.node.Edge { label: Positional, target: a },
-      v2.std.node.Edge { label: Positional, target: b },
-      v2.std.node.Edge { label: Positional, target: c }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: a },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: b },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: c }
     ]
   )
 }
 
 data red_gate_chain: List<v2.std.node.Node> = [
-  v2.test.simulated_relationship.lens_unit.discriminators.conj3(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^run), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^gate_rust),  c: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^acc0)),
-  v2.test.simulated_relationship.lens_unit.discriminators.conj3(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^run), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^gate_emit),  c: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^acc1)),
-  v2.test.simulated_relationship.lens_unit.discriminators.conj3(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^run), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^gate_layer), c: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^acc2))
+  conj3(a: atom(id: ^run), b: atom(id: ^gate_rust),  c: atom(id: ^acc0)),
+  conj3(a: atom(id: ^run), b: atom(id: ^gate_emit),  c: atom(id: ^acc1)),
+  conj3(a: atom(id: ^run), b: atom(id: ^gate_layer), c: atom(id: ^acc2))
 ]
 
 data red_positional_typecheck: List<v2.std.node.Node> = [
-  v2.test.simulated_relationship.lens_unit.discriminators.conj3(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^eq), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^skip0), c: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^demand_isolation)),
-  v2.test.simulated_relationship.lens_unit.discriminators.conj3(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^eq), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^skip1), c: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^demand_cpu)),
-  v2.test.simulated_relationship.lens_unit.discriminators.conj3(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^eq), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^skip2), c: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^demand_memory))
+  conj3(a: atom(id: ^eq), b: atom(id: ^skip0), c: atom(id: ^demand_isolation)),
+  conj3(a: atom(id: ^eq), b: atom(id: ^skip1), c: atom(id: ^demand_cpu)),
+  conj3(a: atom(id: ^eq), b: atom(id: ^skip2), c: atom(id: ^demand_memory))
 ]
 
 data green_divergent_op: List<v2.std.node.Node> = [
-  v2.test.simulated_relationship.lens_unit.discriminators.conj2(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^is_if),     b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^stmt_first)),
-  v2.test.simulated_relationship.lens_unit.discriminators.conj2(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^is_assign), b: v2.test.simulated_relationship.lens_unit.discriminators.conj2(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^skip), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^stmt_first))),
-  v2.test.simulated_relationship.lens_unit.discriminators.conj2(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^is_loop),   b: v2.test.simulated_relationship.lens_unit.discriminators.conj2(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^skip), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^stmt_first)))
+  conj2(a: atom(id: ^is_if),     b: atom(id: ^stmt_first)),
+  conj2(a: atom(id: ^is_assign), b: conj2(a: atom(id: ^skip), b: atom(id: ^stmt_first))),
+  conj2(a: atom(id: ^is_loop),   b: conj2(a: atom(id: ^skip), b: atom(id: ^stmt_first)))
 ]
 
 data green_distinct_input: List<v2.std.node.Node> = [
-  v2.test.simulated_relationship.lens_unit.discriminators.conj2(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^label), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^v_nullary)),
-  v2.test.simulated_relationship.lens_unit.discriminators.conj2(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^label), b: v2.test.simulated_relationship.lens_unit.discriminators.conj2(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^record_ctor), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^field_a))),
-  v2.test.simulated_relationship.lens_unit.discriminators.conj2(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^label), b: v2.test.simulated_relationship.lens_unit.discriminators.conj2(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^record_ctor), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^field_b)))
+  conj2(a: atom(id: ^label), b: atom(id: ^v_nullary)),
+  conj2(a: atom(id: ^label), b: conj2(a: atom(id: ^record_ctor), b: atom(id: ^field_a))),
+  conj2(a: atom(id: ^label), b: conj2(a: atom(id: ^record_ctor), b: atom(id: ^field_b)))
 ]
 
 data green_too_short: List<v2.std.node.Node> = [
-  v2.test.simulated_relationship.lens_unit.discriminators.conj3(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^run), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^gate_rust), c: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^acc0)),
-  v2.test.simulated_relationship.lens_unit.discriminators.conj3(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^run), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^gate_emit), c: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^acc1))
+  conj3(a: atom(id: ^run), b: atom(id: ^gate_rust), c: atom(id: ^acc0)),
+  conj3(a: atom(id: ^run), b: atom(id: ^gate_emit), c: atom(id: ^acc1))
 ]
 
 data green_pure_duplication: List<v2.std.node.Node> = [
-  v2.test.simulated_relationship.lens_unit.discriminators.conj2(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^x), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^y)),
-  v2.test.simulated_relationship.lens_unit.discriminators.conj2(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^x), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^y)),
-  v2.test.simulated_relationship.lens_unit.discriminators.conj2(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^x), b: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^y))
+  conj2(a: atom(id: ^x), b: atom(id: ^y)),
+  conj2(a: atom(id: ^x), b: atom(id: ^y)),
+  conj2(a: atom(id: ^x), b: atom(id: ^y))
 ]
 
-test fn gate_chain_is_simulated() -> v2.std.logic.Bool {
-  chain_is_simulated(steps: red_gate_chain)
+test fn gate_chain_is_simulated() -> Bool {
+  v2.lens.simulated_relationship.chain_is_simulated(steps: red_gate_chain)
 }
-test fn positional_typecheck_is_simulated() -> v2.std.logic.Bool {
-  chain_is_simulated(steps: red_positional_typecheck)
+test fn positional_typecheck_is_simulated() -> Bool {
+  v2.lens.simulated_relationship.chain_is_simulated(steps: red_positional_typecheck)
 }
-test fn divergent_operation_is_not_simulated() -> v2.std.logic.Bool {
-  !chain_is_simulated(steps: green_divergent_op)
+test fn divergent_operation_is_not_simulated() -> Bool {
+  !v2.lens.simulated_relationship.chain_is_simulated(steps: green_divergent_op)
 }
-test fn distinct_input_is_not_simulated() -> v2.std.logic.Bool {
-  !chain_is_simulated(steps: green_distinct_input)
+test fn distinct_input_is_not_simulated() -> Bool {
+  !v2.lens.simulated_relationship.chain_is_simulated(steps: green_distinct_input)
 }
-test fn too_short_chain_is_not_simulated() -> v2.std.logic.Bool {
-  !chain_is_simulated(steps: green_too_short)
+test fn too_short_chain_is_not_simulated() -> Bool {
+  !v2.lens.simulated_relationship.chain_is_simulated(steps: green_too_short)
 }
-test fn pure_duplication_is_not_simulated() -> v2.std.logic.Bool {
-  !chain_is_simulated(steps: green_pure_duplication)
+test fn pure_duplication_is_not_simulated() -> Bool {
+  !v2.lens.simulated_relationship.chain_is_simulated(steps: green_pure_duplication)
 }
 
-fn node_eq(a: v2.std.node.Node, b: v2.std.node.Node) -> v2.std.logic.Bool {
-  exact_structural_equality_zip_fold(source_facts: a, candidate: b)
+fn node_eq(a: v2.std.node.Node, b: v2.std.node.Node) -> Bool {
+  v2.std.exact_structural_equality_zip_fold_predicate.exact_structural_equality_zip_fold(source_facts: a, candidate: b)
 }
-fn fillings_eq(a: FreeMonoid<v2.std.node.Node>, b: FreeMonoid<v2.std.node.Node>) -> v2.std.logic.Bool {
-  zip_eq(a: a, b: b, eq: fn(x, y) { v2.test.simulated_relationship.lens_unit.discriminators.node_eq(a: x, b: y) })
+fn fillings_eq(a: std.algebra.FreeMonoid<v2.std.node.Node>, b: std.algebra.FreeMonoid<v2.std.node.Node>) -> Bool {
+  v2.std.algebra.zip_eq(a: a, b: b, eq: fn(x, y) { node_eq(a: x, b: y) })
 }
 fn per_element_eq(
-  a: FreeMonoid<FreeMonoid<v2.std.node.Node>>,
-  b: FreeMonoid<FreeMonoid<v2.std.node.Node>>
-) -> v2.std.logic.Bool {
-  zip_eq(a: a, b: b, eq: fn(x, y) { fillings_eq(a: x, b: y) })
+  a: std.algebra.FreeMonoid<std.algebra.FreeMonoid<v2.std.node.Node>>,
+  b: std.algebra.FreeMonoid<std.algebra.FreeMonoid<v2.std.node.Node>>
+) -> Bool {
+  v2.std.algebra.zip_eq(a: a, b: b, eq: fn(x, y) { fillings_eq(a: x, b: y) })
 }
 
 fn expected_gate_template() -> v2.std.node.Node {
-  v2.test.simulated_relationship.lens_unit.discriminators.conj3(a: v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^run), b: hole_node(), c: hole_node())
+  conj3(a: atom(id: ^run), b: v2.std.anti_unification.hole_node(), c: v2.std.anti_unification.hole_node())
 }
 data expected_gate_fillings: List<List<v2.std.node.Node>> = [
-  [v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^gate_rust),  v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^acc0)],
-  [v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^gate_emit),  v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^acc1)],
-  [v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^gate_layer), v2.test.simulated_relationship.lens_unit.discriminators.atom(id: ^acc2)]
+  [atom(id: ^gate_rust),  atom(id: ^acc0)],
+  [atom(id: ^gate_emit),  atom(id: ^acc1)],
+  [atom(id: ^gate_layer), atom(id: ^acc2)]
 ]
 
-test fn gate_template_is_the_minimal_form() -> v2.std.logic.Bool {
-  v2.test.simulated_relationship.lens_unit.discriminators.node_eq(a: anti_unify_chain(steps: red_gate_chain).template, b: expected_gate_template())
+test fn gate_template_is_the_minimal_form() -> Bool {
+  node_eq(a: v2.std.anti_unification.anti_unify_chain(steps: red_gate_chain).template, b: expected_gate_template())
 }
-test fn gate_fillings_are_the_substitution_list() -> v2.std.logic.Bool {
-  v2.test.simulated_relationship.lens_unit.discriminators.per_element_eq(
-    a: anti_unify_chain(steps: red_gate_chain).per_element,
+test fn gate_fillings_are_the_substitution_list() -> Bool {
+  per_element_eq(
+    a: v2.std.anti_unification.anti_unify_chain(steps: red_gate_chain).per_element,
     b: expected_gate_fillings
   )
 }
 
-test fn divergent_op_fillings_are_not_all_leaves() -> v2.std.logic.Bool {
-  !fillings_all_leaves(per_element: anti_unify_chain(steps: green_divergent_op).per_element)
+test fn divergent_op_fillings_are_not_all_leaves() -> Bool {
+  !v2.std.anti_unification.fillings_all_leaves(per_element: v2.std.anti_unification.anti_unify_chain(steps: green_divergent_op).per_element)
 }
-test fn divergent_op_template_still_has_a_hole() -> v2.std.logic.Bool {
-  template_has_hole(template: anti_unify_chain(steps: green_divergent_op).template)
+test fn divergent_op_template_still_has_a_hole() -> Bool {
+  v2.std.anti_unification.template_has_hole(template: v2.std.anti_unification.anti_unify_chain(steps: green_divergent_op).template)
 }
-test fn pure_duplication_template_has_no_hole() -> v2.std.logic.Bool {
-  !template_has_hole(template: anti_unify_chain(steps: green_pure_duplication).template)
+test fn pure_duplication_template_has_no_hole() -> Bool {
+  !v2.std.anti_unification.template_has_hole(template: v2.std.anti_unification.anti_unify_chain(steps: green_pure_duplication).template)
 }

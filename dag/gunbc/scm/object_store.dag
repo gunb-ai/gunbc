@@ -1,5 +1,6 @@
 module gunbc.scm.object_store
 
+
 // WHY A NODE IS STORED DECOMPOSED RATHER THAN WHOLE, which is the whole point of the slice and not
 // an implementation preference. Storing each node as (kind, [(label, child identity)]) is what makes
 // a commit a CLOSURE: checkout follows exact identities and can therefore refuse when one is absent,
@@ -73,11 +74,11 @@ type ObjectStore sole_constructor {
 // It is a named function rather than an inline lambda because a lambda whose parameter type must be
 // inferred from a field access has refused in this corpus with `no field ... on type 'T'`; routing
 // the element through a typed parameter is the spelling that resolves.
-fn labeled_child_of_stored(stored: StoredEdge) -> LabeledChildHash {
-  LabeledChildHash { label: stored.label, hash: stored.target }
+fn labeled_child_of_stored(stored: StoredEdge) -> v2.std.node.LabeledChildHash {
+  v2.std.node.LabeledChildHash { label: stored.label, hash: stored.target }
 }
 
-fn labeled_children_of_stored(children: List<StoredEdge>) -> List<LabeledChildHash> {
+fn labeled_children_of_stored(children: List<StoredEdge>) -> List<v2.std.node.LabeledChildHash> {
   map(children, s => labeled_child_of_stored(stored: s))
 }
 
@@ -239,7 +240,7 @@ type StoreEdgeAcc {
 //
 // Storing the canonical form makes that unrepresentable rather than checked. The consequence is a
 // real semantic commitment and not an implementation detail: CHECKOUT RETURNS THE CANONICAL PROGRAM,
-// not the authored one. v2.std.node.Named-edge order is not a fact this store preserves, because it is not a
+// not the authored one. Named-edge order is not a fact this store preserves, because it is not a
 // fact the substrate's own identity preserves.
 //
 // The canonicalization is applied at EVERY node, not once at the root -- the recursion below
@@ -305,7 +306,7 @@ fn store_node(store: ObjectStore, n: v2.std.node.Node) -> StoreOutcome {
 
 // THE SECOND PRODUCER, AND WHY IT DERIVES RATHER THAN TRUSTS.
 //
-// store_node is the producer for a v2.std.node.Node in hand. A DECODER has no v2.std.node.Node -- materializing one would
+// store_node is the producer for a Node in hand. A DECODER has no Node -- materializing one would
 // expand every shared subgraph once per reference, which is the exponential blowup content
 // addressing exists to avoid -- but it does have a kind and the already-derived identities of the
 // children it references. That is exactly the input content_hash_of_children consumes, so the
@@ -318,23 +319,23 @@ fn store_node(store: ObjectStore, n: v2.std.node.Node) -> StoreOutcome {
 // forgery -- it names a different program, honestly identified.
 //
 // WHAT IS DELIBERATELY NOT DONE HERE: this does not re-canonicalize the child order. store_node
-// canonicalizes its v2.std.node.Node first, so every record this store ever emitted is already canonical and a
+// canonicalizes its Node first, so every record this store ever emitted is already canonical and a
 // well-formed image round-trips exactly. An image whose named edges were hand-permuted therefore
 // decodes to a DIFFERENT identity rather than being normalized back. That is honest -- the identity
 // still describes what the image presents -- but it is a real boundary, and closing it by sorting
 // labeled children here would mint a second canonicalization authority beside
 // canonicalize_node_for_content_hash, which is the fork the identity comment above refuses.
 // dissolve-on: canonicalization exposed over labeled children in v2.std.node, callable without a
-// v2.std.node.Node in hand; this function then routes through it.
+// Node in hand; this function then routes through it.
 fn insert_from_structure(
   store: ObjectStore,
-  kind: NodeKind,
+  kind: v2.std.node.NodeKind,
   children: List<StoredEdge>
 ) -> StoreOutcome {
   insert_derived(
     store: store,
     record: ObjectRecord {
-      identity: content_hash_of_children(
+      identity: v2.std.node.content_hash_of_children(
         kind: kind,
         children: labeled_children_of_stored(children: children),
       ),

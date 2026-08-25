@@ -26,7 +26,7 @@ type RetainedProduction {
 // artifact was applicable because this run produced no diagnostics to write
 // one from", and "it could not be written" are different facts with different
 // remedies,
-// and a v2.std.logic.Bool spelled them as two. The middle one is the common case on every
+// and a Bool spelled them as two. The middle one is the common case on every
 // non-refused path, so a true there was reporting a write that never
 // happened -- harmless as a gate today and a lie the moment anything reads
 // the field for what it says. Splitting it is the repository's own
@@ -40,7 +40,7 @@ type B4EvidenceOutcome
   | EvidenceNotApplicable
   | EvidenceWriteFailed
 
-fn b4_evidence_outcome_admits(outcome: B4EvidenceOutcome) -> v2.std.logic.Bool {
+fn b4_evidence_outcome_admits(outcome: B4EvidenceOutcome) -> Bool {
   match outcome {
     EvidenceWritten => true
     EvidenceNotApplicable => true
@@ -56,30 +56,30 @@ type RetentionFamily {
 
 fn connective_label(c: v2.std.node.Connective) -> String {
   match c {
-    Atom { identity: identity } => concat("Atom:", symbol_lexeme(sym: identity))
-    Conj => "Conj"
-    Disj => "Disj"
-    Arrow => "Arrow"
-    Cardinality => "Cardinality"
-    Instantiation => "Instantiation"
+    v2.std.node.Atom { identity: identity } => concat("Atom:", v2.std.compilers.lexing.symbol_lexeme(sym: identity))
+    v2.std.node.Conj => "Conj"
+    v2.std.node.Disj => "Disj"
+    v2.std.node.Arrow => "Arrow"
+    v2.std.node.Cardinality => "Cardinality"
+    v2.std.node.Instantiation => "Instantiation"
   }
 }
 
 fn behavior_label(b: v2.std.node.Behavior) -> String {
   match b {
-    Value => "Value"
-    Transform => "Transform"
-    Branch => "Branch"
-    Loop => "Loop"
-    Bind => "Bind"
-    Match => "Match"
+    v2.std.node.Value => "Value"
+    v2.std.node.Transform => "Transform"
+    v2.std.node.Branch => "Branch"
+    v2.std.node.Loop => "Loop"
+    v2.std.node.Bind => "Bind"
+    v2.std.node.Match => "Match"
   }
 }
 
 fn node_shape_label(kind: v2.std.node.NodeKind) -> String {
   match kind {
-    TypeNode { connective: c } => concat("Type/", connective_label(c: c))
-    ComputationNode { behavior: b } => concat("Computation/", behavior_label(b: b))
+    v2.std.node.TypeNode { connective: c } => concat("Type/", connective_label(c: c))
+    v2.std.node.ComputationNode { behavior: b } => concat("Computation/", behavior_label(b: b))
   }
 }
 
@@ -88,16 +88,16 @@ fn node_shape_label(kind: v2.std.node.NodeKind) -> String {
 // different deficit from a retained node whose producer is simply unwritten,
 // and collapsing them would hide the first inside the second.
 fn emitted_production_label(node: v2.std.node.Node) -> String {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: sym } => symbol_lexeme(sym: sym)
-    Absent => "<no production identity on the retained node>"
+  match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: node) {
+    v2.std.optional.Present { value: sym } => v2.std.compilers.lexing.symbol_lexeme(sym: sym)
+    v2.std.optional.Absent => "<no production identity on the retained node>"
   }
 }
 
 fn occurrence_label(occurrence: v2.std.node.NodeOccurrenceId) -> String {
   match occurrence {
-    SyntheticOccurrence => "synthetic"
-    MintedOccurrence { id: _ } => "minted"
+    v2.std.node.SyntheticOccurrence => "synthetic"
+    v2.std.node.MintedOccurrence { id: _ } => "minted"
   }
 }
 
@@ -105,7 +105,7 @@ fn retained_production_of(node: v2.std.node.Node) -> RetainedProduction {
   RetainedProduction {
     emitted_production: emitted_production_label(node: node),
     node_shape: node_shape_label(kind: node.kind),
-    child_count: length(xs: node.children),
+    child_count: v2.std.algebra.length(xs: node.children),
     occurrence: occurrence_label(occurrence: node.occurrence_id)
   }
 }
@@ -124,14 +124,14 @@ fn retained_production_key(observation: RetainedProduction) -> String {
 // it exists to size.
 fn retained_node_optional(d: v2.std.diagnostic.Diagnostic) -> v2.std.optional.Optional<v2.std.node.Node> {
   match d.at {
-    NodeLocus { anchor: anchor } => v2.std.optional.Present { value: anchor.at }
-    Textual { file: _, extent: _ } => v2.std.optional.Absent
-    PortLocus { anchor: _ } => v2.std.optional.Absent
+    v2.std.diagnostic.NodeLocus { anchor: anchor } => v2.std.optional.Present { value: anchor.at }
+    v2.std.diagnostic.Textual { file: _, extent: _ } => v2.std.optional.Absent
+    v2.std.diagnostic.PortLocus { anchor: _ } => v2.std.optional.Absent
   }
 }
 
-fn retention_family_holds(families: List<RetentionFamily>, key: String) -> v2.std.logic.Bool {
-  fold_list(
+fn retention_family_holds(families: List<RetentionFamily>, key: String) -> Bool {
+  v2.std.algebra.fold_list(
     xs: families,
     empty: false,
     cons: fn(found, row) { found || (row.key == key) }
@@ -144,11 +144,11 @@ fn retention_family_bump(
 ) -> List<RetentionFamily> {
   let key = retained_production_key(observation: observation)
   if retention_family_holds(families: families, key: key) {
-    fold_list(
+    v2.std.algebra.fold_list(
       xs: families,
       empty: v2.std.algebra.Empty,
       cons: fn(acc, row) {
-        list_snoc_item(
+        v2.std.algebra.list_snoc_item(
           xs: acc,
           item: if row.key == key {
             RetentionFamily {
@@ -163,7 +163,7 @@ fn retention_family_bump(
       }
     )
   } else {
-    list_snoc_item(
+    v2.std.algebra.list_snoc_item(
       xs: families,
       item: RetentionFamily {
         key: key,
@@ -175,10 +175,10 @@ fn retention_family_bump(
 }
 
 fn retention_families_total(families: List<RetentionFamily>) -> Int {
-  fold_list(xs: families, empty: 0, cons: fn(total, row) { total + row.count })
+  v2.std.algebra.fold_list(xs: families, empty: 0, cons: fn(total, row) { total + row.count })
 }
 
-fn diagnostic_is_wrapper_retained(d: v2.std.diagnostic.Diagnostic) -> v2.std.logic.Bool {
+fn diagnostic_is_wrapper_retained(d: v2.std.diagnostic.Diagnostic) -> Bool {
   d.reason == ^body_lowering_reason_wrapper_retained_emitted
 }
 
@@ -188,12 +188,12 @@ fn retention_census_step(
 ) -> List<RetentionFamily> {
   if diagnostic_is_wrapper_retained(d: d) {
     match retained_node_optional(d: d) {
-      Present { value: node } =>
+      v2.std.optional.Present { value: node } =>
         retention_family_bump(
           families: families,
           observation: retained_production_of(node: node)
         )
-      Absent =>
+      v2.std.optional.Absent =>
         retention_family_bump(
           families: families,
           observation: RetainedProduction {
@@ -210,7 +210,7 @@ fn retention_census_step(
 }
 
 fn retention_census(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> List<RetentionFamily> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: ds.tail,
     empty: retention_census_step(families: v2.std.algebra.Empty, d: ds.head),
     cons: fn(acc, d) { retention_census_step(families: acc, d: d) }
@@ -237,7 +237,7 @@ fn retention_census_render(families: List<RetentionFamily>) -> String {
   concat(
     "body-lowering wrapper-retained census\n\nfamilies: ",
     concat(
-      to_string(length(xs: families)),
+      to_string(v2.std.algebra.length(xs: families)),
       concat(
         "\nobservations: ",
         concat(
@@ -245,7 +245,7 @@ fn retention_census_render(families: List<RetentionFamily>) -> String {
           concat(
             "\n",
             concat(
-              fold_list(
+              v2.std.algebra.fold_list(
                 xs: families,
                 empty: "",
                 cons: fn(text, row) {
@@ -279,7 +279,7 @@ fn retention_census_render(families: List<RetentionFamily>) -> String {
 // carries them, each attributed through the same locus channel and the same
 // production-identity vocabulary the census already uses. It is the minimum
 // that makes a door-holder addressable, and it reuses the attribution rather
-// than re-deriving it, so there is one place that decides how a v2.std.node.Node is
+// than re-deriving it, so there is one place that decides how a Node is
 // named in this transaction's artifacts.
 //
 // WHAT IT DOES NOT DO: it does not decide which line is causal. That
@@ -291,7 +291,7 @@ fn retention_census_render(families: List<RetentionFamily>) -> String {
 // door.
 // WHY THE LEXEMES AND NOT JUST THE PRODUCTION IDENTITY. The production
 // identity names the SHAPE the emitter refused (dag_surface_let_expr); it
-// does not name WHICH one, and a v2.std.node.Node carries no module and no file. On the
+// does not name WHICH one, and a Node carries no module and no file. On the
 // compiler's own closure that left the door-holder identified as "a let
 // somewhere in 107 modules", which is not an addressable subject. The atoms
 // in the refused subtree are the only channel the node itself carries that
@@ -311,16 +311,16 @@ data diagnostic_ledger_atom_cap: Int = 48
 
 fn atom_lexeme_optional(node: v2.std.node.Node) -> v2.std.optional.Optional<String> {
   match node.kind {
-    TypeNode { connective: c } =>
+    v2.std.node.TypeNode { connective: c } =>
       match c {
-        Atom { identity: identity } => v2.std.optional.Present { value: symbol_lexeme(sym: identity) }
-        Conj => v2.std.optional.Absent
-        Disj => v2.std.optional.Absent
-        Arrow => v2.std.optional.Absent
-        Cardinality => v2.std.optional.Absent
-        Instantiation => v2.std.optional.Absent
+        v2.std.node.Atom { identity: identity } => v2.std.optional.Present { value: v2.std.compilers.lexing.symbol_lexeme(sym: identity) }
+        v2.std.node.Conj => v2.std.optional.Absent
+        v2.std.node.Disj => v2.std.optional.Absent
+        v2.std.node.Arrow => v2.std.optional.Absent
+        v2.std.node.Cardinality => v2.std.optional.Absent
+        v2.std.node.Instantiation => v2.std.optional.Absent
       }
-    ComputationNode { behavior: _ } => v2.std.optional.Absent
+    v2.std.node.ComputationNode { behavior: _ } => v2.std.optional.Absent
   }
 }
 
@@ -329,8 +329,8 @@ fn atom_lexeme_step(
   node: v2.std.node.Node
 ) -> AtomLexemeAccumulator {
   match atom_lexeme_optional(node: node) {
-    Absent => acc
-    Present { value: lexeme } =>
+    v2.std.optional.Absent => acc
+    v2.std.optional.Present { value: lexeme } =>
       if acc.taken < diagnostic_ledger_atom_cap {
         AtomLexemeAccumulator {
           taken: acc.taken + 1,
@@ -348,8 +348,8 @@ fn atom_lexeme_step(
 }
 
 fn diagnostic_subtree_atoms(node: v2.std.node.Node) -> String {
-  let acc = fold_list(
-    xs: node_subtree_nodes(root: node),
+  let acc = v2.std.algebra.fold_list(
+    xs: v2.std.node.node_subtree_nodes(root: node),
     empty: AtomLexemeAccumulator { taken: 0, total: 0, text: "" },
     cons: fn(a, n) { atom_lexeme_step(acc: a, node: n) }
   )
@@ -369,23 +369,23 @@ fn diagnostic_subtree_atoms(node: v2.std.node.Node) -> String {
   }
 }
 
-fn diagnostic_extent_label(extent: Extent) -> String {
+fn diagnostic_extent_label(extent: v2.std.diagnostic.Extent) -> String {
   match extent {
-    WholeFile => "whole-file"
-    ByteRange { start: start, end: end } =>
+    v2.std.diagnostic.WholeFile => "whole-file"
+    v2.std.diagnostic.ByteRange { start: start, end: end } =>
       concat("bytes ", concat(to_string(start), concat("..", to_string(end))))
   }
 }
 
-fn diagnostic_attribution(d: Diagnostic) -> String {
+fn diagnostic_attribution(d: v2.std.diagnostic.Diagnostic) -> String {
   match d.at {
-    NodeLocus { anchor: anchor } =>
+    v2.std.diagnostic.NodeLocus { anchor: anchor } =>
       concat(
         retained_production_key(observation: retained_production_of(node: anchor.at)),
         concat(
           "  arity ",
           concat(
-            to_string(length(xs: anchor.at.children)),
+            to_string(v2.std.algebra.length(xs: anchor.at.children)),
             concat(
               "  occurrence ",
               concat(
@@ -399,16 +399,16 @@ fn diagnostic_attribution(d: Diagnostic) -> String {
           )
         )
       )
-    Textual { file: file, extent: extent } =>
+    v2.std.diagnostic.Textual { file: file, extent: extent } =>
       concat(
         "textual ",
-        concat(symbol_lexeme(sym: file), concat("  ", diagnostic_extent_label(extent: extent)))
+        concat(v2.std.compilers.lexing.symbol_lexeme(sym: file), concat("  ", diagnostic_extent_label(extent: extent)))
       )
-    PortLocus { anchor: anchor } => concat("port ", symbol_lexeme(sym: anchor.at))
+    v2.std.diagnostic.PortLocus { anchor: anchor } => concat("port ", v2.std.compilers.lexing.symbol_lexeme(sym: anchor.at))
   }
 }
 
-fn diagnostic_ledger_line(index: Int, d: Diagnostic) -> String {
+fn diagnostic_ledger_line(index: Int, d: v2.std.diagnostic.Diagnostic) -> String {
   concat(
     "\n  ",
     concat(
@@ -416,7 +416,7 @@ fn diagnostic_ledger_line(index: Int, d: Diagnostic) -> String {
       concat(
         "  ",
         concat(
-          symbol_lexeme(sym: d.reason),
+          v2.std.compilers.lexing.symbol_lexeme(sym: d.reason),
           concat("\n      ", diagnostic_attribution(d: d))
         )
       )
@@ -431,7 +431,7 @@ type DiagnosticLedgerAccumulator {
 
 fn diagnostic_ledger_step(
   acc: DiagnosticLedgerAccumulator,
-  d: Diagnostic
+  d: v2.std.diagnostic.Diagnostic
 ) -> DiagnosticLedgerAccumulator {
   DiagnosticLedgerAccumulator {
     next_index: acc.next_index + 1,
@@ -439,8 +439,8 @@ fn diagnostic_ledger_step(
   }
 }
 
-fn diagnostic_ledger_render(ds: NonEmptyDiagnostics) -> String {
-  let folded = fold_list(
+fn diagnostic_ledger_render(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> String {
+  let folded = v2.std.algebra.fold_list(
     xs: ds.tail,
     empty: diagnostic_ledger_step(
       acc: DiagnosticLedgerAccumulator { next_index: 1, text: "" },

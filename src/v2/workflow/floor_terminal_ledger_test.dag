@@ -1,35 +1,36 @@
 module v2.workflow.floor_terminal_ledger_test
 
-fn ident(f: String) -> WitnessIdentity {
-  WitnessIdentity { module_path: "test.claim.example", function: f }
+
+fn ident(f: String) -> v2.workflow.floor2_prepared_subject.WitnessIdentity {
+  v2.workflow.floor2_prepared_subject.WitnessIdentity { module_path: "test.claim.example", function: f }
 }
 
-fn row(f: String, expectation: ClaimExpectation, holds: Bool) -> ClaimTerminalRow {
-  ClaimTerminalRow {
+fn row(f: String, expectation: v2.workflow.floor_terminal_ledger.ClaimExpectation, holds: Bool) -> v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
+  v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
     identity: ident(f: f),
     expectation: expectation,
-    terminal: Returned { observation: ObservedVerdict { holds: holds } }
+    terminal: v2.workflow.floor_terminal_ledger.Returned { observation: v2.workflow.floor_terminal_ledger.ObservedVerdict { holds: holds } }
   }
 }
 
-fn hash(h: String) -> Fnv1a64Structural {
-  Fnv1a64Structural { digest: h as Fnv1a64StructuralDigestHex }
+fn hash(h: String) -> std.content_hash.Fnv1a64Structural {
+  std.content_hash.Fnv1a64Structural { digest: h as std.content_hash.Fnv1a64StructuralDigestHex }
 }
 
 // A TOTAL FIXTURE: an invalid hex answers `UnpublishedWorkingTree`, which
 // `the_fixture_binding_is_candidate_bound` catches, rather than being cast out of an Optional.
 // A cast on the absent arm type-checks and renders the WRAPPER into the binding -- I wrote exactly
 // that in the sibling module's fixture before catching it, so this one has no arm that can.
-fn fixture_snapshot(hex: String) -> RepositorySnapshot {
-  match git_object_id_from_untagged_hex(hex: hex) {
-    Present { value: oid } => PublishedCommit { commit: oid }
-    Absent => UnpublishedWorkingTree
+fn fixture_snapshot(hex: String) -> v2.workflow.floor_terminal_ledger.RepositorySnapshot {
+  match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: hex) {
+    Present { value: oid } => v2.workflow.floor_terminal_ledger.PublishedCommit { commit: oid }
+    Absent => v2.workflow.floor_terminal_ledger.UnpublishedWorkingTree
   }
 }
 
-fn ledger_with(publication: LedgerPublication) -> TerminalLedger {
-  TerminalLedger {
-    binding: LedgerBinding {
+fn ledger_with(publication: v2.workflow.floor_terminal_ledger.LedgerPublication) -> v2.workflow.floor_terminal_ledger.TerminalLedger {
+  v2.workflow.floor_terminal_ledger.TerminalLedger {
+    binding: v2.workflow.floor_terminal_ledger.LedgerBinding {
       repository_snapshot: fixture_snapshot(hex: "1234567890abcdef1234567890abcdef12345678"),
       prepared_subject: hash(h: "fedcba9876543210")
     },
@@ -40,16 +41,16 @@ fn ledger_with(publication: LedgerPublication) -> TerminalLedger {
 
 // A ONE-ROW FINALIZED LEDGER over the same fixture binding, so the admission tests below differ
 // in the ROW and in nothing else.
-fn ledger_of(row: ClaimTerminalRow) -> TerminalLedger {
-  TerminalLedger {
-    binding: ledger_with(publication: LedgerPartial { reason: "unused" }).binding,
+fn ledger_of(row: v2.workflow.floor_terminal_ledger.ClaimTerminalRow) -> v2.workflow.floor_terminal_ledger.TerminalLedger {
+  v2.workflow.floor_terminal_ledger.TerminalLedger {
+    binding: ledger_with(publication: v2.workflow.floor_terminal_ledger.LedgerPartial { reason: "unused" }).binding,
     rows: [row],
-    publication: LedgerFinalized { row_count: 1, digest: hash(h: "aaaabbbbccccdddd") }
+    publication: v2.workflow.floor_terminal_ledger.LedgerFinalized { row_count: 1, digest: hash(h: "aaaabbbbccccdddd") }
   }
 }
 
-fn empty_reconciliation() -> LedgerReconciliation {
-  LedgerReconciliation {
+fn empty_reconciliation() -> v2.workflow.floor_terminal_ledger.LedgerReconciliation {
+  v2.workflow.floor_terminal_ledger.LedgerReconciliation {
     planned_without_terminal: [],
     terminal_without_planned: [],
     terminal_duplicated: []
@@ -61,10 +62,10 @@ fn empty_reconciliation() -> LedgerReconciliation {
 // different wrong mappings; naming the constructor each cell must produce is what makes the test
 // able to fail for the right reason.
 test fn the_four_verdict_cells_project_to_four_distinct_dispositions() -> Bool {
-  claim_disposition(row: row(f: "a", expectation: ExpectedToHold, holds: 0 == 0)) == Passed
-    && claim_disposition(row: row(f: "b", expectation: ExpectedToHold, holds: 0 == 1)) == v2.workflow.floor_terminal_ledger.Failed
-    && claim_disposition(row: row(f: "c", expectation: ExpectedRed, holds: 0 == 1)) == KnownRedHeld
-    && claim_disposition(row: row(f: "d", expectation: ExpectedRed, holds: 0 == 0)) == KnownRedNowPassing
+  v2.workflow.floor_terminal_ledger.claim_disposition(row: row(f: "a", expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold, holds: 0 == 0)) == v2.workflow.floor_terminal_ledger.Passed
+    && v2.workflow.floor_terminal_ledger.claim_disposition(row: row(f: "b", expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold, holds: 0 == 1)) == v2.workflow.floor_terminal_ledger.Failed
+    && v2.workflow.floor_terminal_ledger.claim_disposition(row: row(f: "c", expectation: v2.workflow.floor_terminal_ledger.ExpectedRed, holds: 0 == 1)) == v2.workflow.floor_terminal_ledger.KnownRedHeld
+    && v2.workflow.floor_terminal_ledger.claim_disposition(row: row(f: "d", expectation: v2.workflow.floor_terminal_ledger.ExpectedRed, holds: 0 == 0)) == v2.workflow.floor_terminal_ledger.KnownRedNowPassing
 }
 
 // AN ATTEMPT THAT RETURNED WITHOUT A READABLE VERDICT IS NOT A FAILING WITNESS. Collapsing
@@ -72,11 +73,11 @@ test fn the_four_verdict_cells_project_to_four_distinct_dispositions() -> Bool {
 // witness that answered wrongly where the truth is a witness whose answer was never in a shape the
 // floor could read, and the two have different remedies.
 test fn an_unreadable_observation_is_refused_not_failed() -> Bool {
-  claim_disposition(row: ClaimTerminalRow {
+  v2.workflow.floor_terminal_ledger.claim_disposition(row: v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
     identity: ident(f: "e"),
-    expectation: ExpectedToHold,
-    terminal: Returned { observation: ObservationUnrepresentable { reason: "not-a-process-exit" } }
-  }) == ObservationUnreadableBeforeVerdict
+    expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+    terminal: v2.workflow.floor_terminal_ledger.Returned { observation: v2.workflow.floor_terminal_ledger.ObservationUnrepresentable { reason: "not-a-process-exit" } }
+  }) == v2.workflow.floor_terminal_ledger.ObservationUnreadableBeforeVerdict
 }
 
 // A CLAIM REFUSED BEFORE ANY VERDICT EXISTED IS NOT A FAILING CLAIM EITHER, and this arm is
@@ -85,17 +86,17 @@ test fn an_unreadable_observation_is_refused_not_failed() -> Bool {
 // raise. Collapsing them would leave `budget_refused` underivable from the rows, which is the
 // counter dual-authority this whole change exists to remove.
 test fn a_budget_refusal_is_a_pre_verdict_disposition_not_a_failure() -> Bool {
-  claim_disposition(row: ClaimTerminalRow {
+  v2.workflow.floor_terminal_ledger.claim_disposition(row: v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
     identity: ident(f: "f"),
-    expectation: ExpectedToHold,
-    terminal: BudgetRefused {
-      safety: SafetyInterrupted {
+    expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+    terminal: v2.workflow.floor_terminal_ledger.BudgetRefused {
+      safety: v2.workflow.required_floor.SafetyInterrupted {
         raised_by: "wall",
         elapsed_cpu_at_least: 0,
         elapsed_wall_at_least: 0
       }
     }
-  }) == BudgetRefusedBeforeVerdict
+  }) == v2.workflow.floor_terminal_ledger.BudgetRefusedBeforeVerdict
 }
 
 // THE LOAD-BEARING TEST: A DUPLICATE REPLACING AN OMISSION, WITH EVERY COUNT UNCHANGED.
@@ -107,44 +108,44 @@ test fn a_budget_refusal_is_a_pre_verdict_disposition_not_a_failure() -> Bool {
 // This is the discriminating RED for the whole reconciliation: replace the identity join with
 // `terminal_rows.length() == planned.length()` and this test goes green while the ledger is wrong.
 test fn a_duplicate_replacing_an_omission_is_caught_though_no_count_moves() -> Bool {
-  let swapped = LedgerReconciliation {
+  let swapped = v2.workflow.floor_terminal_ledger.LedgerReconciliation {
     planned_without_terminal: [ident(f: "lost")],
     terminal_without_planned: [],
     terminal_duplicated: [ident(f: "written_twice")]
   }
-  !ledger_is_complete(r: swapped)
-    && ledger_is_complete(r: empty_reconciliation())
-    && ledger_green_admission(
-         ledger: ledger_with(publication: LedgerFinalized { row_count: 2, digest: hash(h: "aaaabbbbccccdddd") }),
+  !v2.workflow.floor_terminal_ledger.ledger_is_complete(r: swapped)
+    && v2.workflow.floor_terminal_ledger.ledger_is_complete(r: empty_reconciliation())
+    && v2.workflow.floor_terminal_ledger.ledger_green_admission(
+         ledger: ledger_with(publication: v2.workflow.floor_terminal_ledger.LedgerFinalized { row_count: 2, digest: hash(h: "aaaabbbbccccdddd") }),
          reconciliation: swapped,
          planned: [ident(f: "lost"), ident(f: "written_twice")]
-       ) == EvidenceReconciliationFailed { reconciliation: swapped }
+       ) == v2.workflow.floor_terminal_ledger.EvidenceReconciliationFailed { reconciliation: swapped }
 }
 
 // A FAILED PUBLICATION IS NOT GREEN EVEN WHEN EVERY WITNESS PASSED. Otherwise the instrumentation
 // is optional exactly when it fails, which is the failure arm that widens instead of refusing.
 test fn a_partial_ledger_is_not_green_over_a_perfect_reconciliation() -> Bool {
-  ledger_green_admission(
-    ledger: ledger_with(publication: LedgerPartial { reason: "killed-before-finalize" }),
+  v2.workflow.floor_terminal_ledger.ledger_green_admission(
+    ledger: ledger_with(publication: v2.workflow.floor_terminal_ledger.LedgerPartial { reason: "killed-before-finalize" }),
     reconciliation: empty_reconciliation(),
     planned: [ident(f: "a")]
-  ) == EvidenceUnfinalized { reason: "killed-before-finalize" }
+  ) == v2.workflow.floor_terminal_ledger.EvidenceUnfinalized { reason: "killed-before-finalize" }
 }
 
 // THE FOOTER COUNT IS CHECKED AGAINST THE PLANNED POPULATION, not against itself. A truncation
 // that dropped rows and rewrote the footer to match would agree with itself; it cannot agree with
 // the planned population the caller independently holds.
 test fn a_footer_count_below_the_planned_population_is_not_green() -> Bool {
-  ledger_green_admission(
-    ledger: ledger_with(publication: LedgerFinalized { row_count: 1, digest: hash(h: "aaaabbbbccccdddd") }),
+  v2.workflow.floor_terminal_ledger.ledger_green_admission(
+    ledger: ledger_with(publication: v2.workflow.floor_terminal_ledger.LedgerFinalized { row_count: 1, digest: hash(h: "aaaabbbbccccdddd") }),
     reconciliation: empty_reconciliation(),
     planned: [ident(f: "a"), ident(f: "b")]
-  ) == EvidenceFooterCountDisagrees { footer_rows: 1, planned_rows: 2 }
-    && ledger_green_admission(
-         ledger: ledger_with(publication: LedgerFinalized { row_count: 2, digest: hash(h: "aaaabbbbccccdddd") }),
+  ) == v2.workflow.floor_terminal_ledger.EvidenceFooterCountDisagrees { footer_rows: 1, planned_rows: 2 }
+    && v2.workflow.floor_terminal_ledger.ledger_green_admission(
+         ledger: ledger_with(publication: v2.workflow.floor_terminal_ledger.LedgerFinalized { row_count: 2, digest: hash(h: "aaaabbbbccccdddd") }),
          reconciliation: empty_reconciliation(),
          planned: [ident(f: "a"), ident(f: "b")]
-       ) == EvidenceComplete
+       ) == v2.workflow.floor_terminal_ledger.EvidenceComplete
 }
 
 // A ROW THAT CONTRADICTS ITSELF REFUSES THE LEDGER, AND THE CONTROL BESIDE IT IS THE POINT.
@@ -160,37 +161,37 @@ test fn a_footer_count_below_the_planned_population_is_not_green() -> Bool {
 // ledger with a coherent row IS complete -- without which an admission that refused everything
 // would also pass.
 test fn a_row_carrying_a_contradictory_budget_terminal_refuses_the_ledger() -> Bool {
-  let incoherent = ClaimTerminalRow {
+  let incoherent = v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
     identity: ident(f: "contradictory"),
-    expectation: ExpectedToHold,
-    terminal: BudgetRefused { safety: CompletedWithinSafetyLimits }
+    expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+    terminal: v2.workflow.floor_terminal_ledger.BudgetRefused { safety: v2.workflow.required_floor.CompletedWithinSafetyLimits }
   }
-  let coherent = ClaimTerminalRow {
+  let coherent = v2.workflow.floor_terminal_ledger.ClaimTerminalRow {
     identity: ident(f: "contradictory"),
-    expectation: ExpectedToHold,
-    terminal: BudgetRefused {
-      safety: SafetyInterrupted {
+    expectation: v2.workflow.floor_terminal_ledger.ExpectedToHold,
+    terminal: v2.workflow.floor_terminal_ledger.BudgetRefused {
+      safety: v2.workflow.required_floor.SafetyInterrupted {
         raised_by: "cpu",
         elapsed_cpu_at_least: 5001,
         elapsed_wall_at_least: 5001
       }
     }
   }
-  claim_disposition(row: incoherent) == BudgetTerminalWithoutSafetyCause
-    && ledger_green_admission(
+  v2.workflow.floor_terminal_ledger.claim_disposition(row: incoherent) == v2.workflow.floor_terminal_ledger.BudgetTerminalWithoutSafetyCause
+    && v2.workflow.floor_terminal_ledger.ledger_green_admission(
          ledger: ledger_of(row: incoherent),
          reconciliation: empty_reconciliation(),
          planned: [ident(f: "contradictory")]
-       ) == EvidenceCarriesIncoherentRow { rows: [ident(f: "contradictory")] }
-    && ledger_green_admission(
+       ) == v2.workflow.floor_terminal_ledger.EvidenceCarriesIncoherentRow { rows: [ident(f: "contradictory")] }
+    && v2.workflow.floor_terminal_ledger.ledger_green_admission(
          ledger: ledger_of(row: coherent),
          reconciliation: empty_reconciliation(),
          planned: [ident(f: "contradictory")]
-       ) == EvidenceComplete
+       ) == v2.workflow.floor_terminal_ledger.EvidenceComplete
 }
 
 // THE FIXTURE ITSELF IS ASSERTED BOUND, so a bad commit hex above fails a test instead of quietly
 // producing an unbound ledger that every other test then happily exercises.
 test fn the_fixture_binding_is_candidate_bound() -> Bool {
-  ledger_is_candidate_bound(binding: ledger_with(publication: LedgerPartial { reason: "probe" }).binding)
+  v2.workflow.floor_terminal_ledger.ledger_is_candidate_bound(binding: ledger_with(publication: v2.workflow.floor_terminal_ledger.LedgerPartial { reason: "probe" }).binding)
 }

@@ -1,6 +1,7 @@
 module v2.workflow.required_regen
 
-// ONE FOLD OVER EMITTED SURFACES — no roster, no skip arm, no bare v2.std.logic.Bool at the seam.
+
+// ONE FOLD OVER EMITTED SURFACES — no roster, no skip arm, no bare Bool at the seam.
 // The host derives the compared populations from emit output and a directory read;
 // this module owns the verdict, and the ORDER of production against adjudication.
 //
@@ -219,7 +220,7 @@ fn collect_committed_not_emitted_paths(
   }
 }
 
-fn hand_is_unverifiable(o: HandMaintainedOutcome) -> v2.std.logic.Bool {
+fn hand_is_unverifiable(o: HandMaintainedOutcome) -> Bool {
   match o {
     HandUnverifiable { filename: _, reason: _ } => true
     HandMatches { filename: _ } => false
@@ -259,13 +260,13 @@ fn collect_shadowing_entries(
     EmittedNotCommittedShadowsHandMaintained {
       relative_path: path,
       hand_maintained_homes: homes
-    } => Cons {
+    } => std.algebra.Cons {
       head: concat(
         path,
         concat(
           " (hand-maintained under ",
           concat(
-            fold_list(xs: homes, empty: "", cons: fn(a, h) { render_homes(acc: a, home: h) }),
+            v2.std.algebra.fold_list(xs: homes, empty: "", cons: fn(a, h) { render_homes(acc: a, home: h) }),
             ")"
           )
         )

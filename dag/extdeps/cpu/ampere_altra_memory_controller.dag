@@ -1,7 +1,7 @@
 module extdeps.cpu.ampere_altra_memory_controller
 
 
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = ampere_altra_classic_rev_a1_datasheet_authority
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.cpu.ampere.ampere_altra_classic_rev_a1_datasheet_authority
 
 // THE MODEL SCOPE, naming what this module is the authority FOR. The subject is the admitted
 // module classes rather than any single scalar, because that is the fact the rest of the module
@@ -12,10 +12,10 @@ data ampere_altra_memory_controller_model_scope: extdeps.external_authority.Exte
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cpu.ampere_altra_memory_controller",
       decl_name: "altra_admitted_module_classes",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: ampere_altra_classic_rev_a1_datasheet_authority,
+  first_citation: extdeps.cpu.ampere.ampere_altra_classic_rev_a1_datasheet_authority,
   further_citations: []
 }
 
@@ -36,29 +36,29 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = ampere
 // the UDIMM withdrawal below, which is a fact about THIS document's revision history.
 data altra_memory_controller_ingestion_note: String = "Section 2.10 only. Deliberately NOT carried: the DDR electrical specifications, the training sequence, the RAS feature list beyond its existence, and the signal tables — an ingestion-scope boundary, not a carriage refusal. The document is publicly reachable at the cited locator without a login, so gunbc.upstream_document_carriage permits its facts; the proprietary page footer is a recorded attribute that decides nothing. Also deliberately NOT carried: the maximum transfer rate the section states as DDR4-3200. It has no consumer here, and the corpus has no carrier for it — transfer rate is a bare Int named data_rate_mts at 30 references across 11 files, so authoring it would mint a 31st instance of a representation that is already forked rather than ground the fact. MT/s is not Hertz: DDR4-3200 transfers 3200 megatransfers per second on a 1600 MHz clock, so the existing Hertz carrier is the wrong grounding and a correct one is a std.measure dimension plus the migration of the whole existing population, at that grain and not this one."
 
-data altra_memory_generation: extdeps.memory.types.DramGeneration = dram_generation_ddr4
+data altra_memory_generation: extdeps.memory.types.DramGeneration = extdeps.memory.types.dram_generation_ddr4
 
-data altra_memory_channel_width: std.measure.BitWidth = bit_width(count: 72)
+data altra_memory_channel_width: std.measure.BitWidth = std.measure.bit_width(count: 72)
 
 // DPC IS CONSUMED AS THE CLOSED TOPOLOGY, not as a bare 2. The platform authority already models
 // this as a coproduct rather than a count, which is the stronger shape: "up to 2 DPC" names an
-// admitted set of arrangements, and an std.integer.Int lets a 3 be written that no authority admits.
-data altra_memory_max_dimms_per_channel_topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmsPerChannelTopology = TwoDimmsPerChannel
+// admitted set of arrangements, and an Int lets a 3 be written that no authority admits.
+data altra_memory_max_dimms_per_channel_topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmsPerChannelTopology = extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel
 
 // Four terabytes, as the datasheet states it for the whole processor rather than per channel.
-data altra_memory_max_capacity: std.measure.ByteSize = byte_size(count: 4398046511104)
+data altra_memory_max_capacity: std.measure.ByteSize = std.measure.byte_size(count: 4398046511104)
 
-// DEVICE ORGANIZATION. Both admitted widths, as BitWidth rather than a bare std.integer.Int, because the
+// DEVICE ORGANIZATION. Both admitted widths, as BitWidth rather than a bare Int, because the
 // datasheet's "x4 and x8" names the device's data width and the corpus already grounds widths on
 // that carrier.
-data altra_admitted_device_widths: List<std.measure.BitWidth> = [bit_width(count: 4), bit_width(count: 8)]
+data altra_admitted_device_widths: List<std.measure.BitWidth> = [std.measure.bit_width(count: 4), std.measure.bit_width(count: 8)]
 
 // DENSITY AS ByteSize, WHICH IS THE CORPUS CONVENTION FOR DRAM DIE DENSITY. The datasheet quotes
 // "8 Gb and 16 Gb" -- gigaBITS -- and an earlier revision of this module made the gigabit figure
-// primary as a List<std.integer.Int> with a derived byte value, on the reasoning that the source unit should
+// primary as a List<Int> with a derived byte value, on the reasoning that the source unit should
 // lead. That was wrong for a reason worth recording: extdeps.memory.jedec already carries DRAM
 // die density as ByteSize (JedecDdrGenerationCatalogRow max_monolithic_die_density), so a bare
-// std.integer.Int gigabit row here was not carrying the source unit faithfully, it was forking the carrier an
+// Int gigabit row here was not carrying the source unit faithfully, it was forking the carrier an
 // existing authority had already chosen for this exact quantity.
 //
 // The quoted unit is not lost by this. It is recorded below as the conversion basis, and the
@@ -67,21 +67,21 @@ data altra_admitted_device_widths: List<std.measure.BitWidth> = [bit_width(count
 data altra_device_density_conversion_basis: std.types.NonEmptyStr = "Datasheet quotes 8 Gb and 16 Gb (gigabits). JEDEC DRAM density convention: 1 Gb = 2^30 bits, so 8 Gb = 2^30 bytes and 16 Gb = 2^31 bytes. Carried as ByteSize to match extdeps.memory.jedec, which is the existing authority for DRAM die density."
 
 data altra_admitted_device_densities: List<std.measure.ByteSize> = [
-  byte_size(count: 1073741824),
-  byte_size(count: 2147483648),
+  std.measure.byte_size(count: 1073741824),
+  std.measure.byte_size(count: 2147483648),
 ]
 
 // THE ADMITTED MODULE CLASSES, AND THE ONE THAT WAS TAKEN AWAY. All three admitted classes carry
 // a register or a buffer; none is unbuffered. That is the fact a board-down DRAM proposal must
 // confront, so it is carried as data a consumer can fold rather than as a sentence.
 data altra_admitted_module_classes: List<extdeps.memory.types.DramModuleClass> = [
-  extdeps.memory.types.DramModuleClass { buffering: Registered, stacking: MonolithicDie },
-  extdeps.memory.types.DramModuleClass { buffering: LoadReduced, stacking: MonolithicDie },
-  extdeps.memory.types.DramModuleClass { buffering: Registered, stacking: ThreeDimensionalStacked },
+  extdeps.memory.types.DramModuleClass { buffering: extdeps.memory.types.Registered, stacking: extdeps.memory.types.MonolithicDie },
+  extdeps.memory.types.DramModuleClass { buffering: extdeps.memory.types.LoadReduced, stacking: extdeps.memory.types.MonolithicDie },
+  extdeps.memory.types.DramModuleClass { buffering: extdeps.memory.types.Registered, stacking: extdeps.memory.types.ThreeDimensionalStacked },
 ]
 
 fn altra_admits_module_class(c: extdeps.memory.types.DramModuleClass) -> Bool {
-  any(altra_admitted_module_classes, k => dram_module_class_eq(a: k, b: c))
+  any(altra_admitted_module_classes, k => extdeps.memory.types.dram_module_class_eq(a: k, b: c))
 }
 
 // A WITHDRAWAL IS NOT AN ABSENCE, and collapsing the two would lose the strongest signal this
@@ -101,7 +101,7 @@ type ModuleClassWithdrawal {
 }
 
 data altra_udimm_withdrawal: ModuleClassWithdrawal = ModuleClassWithdrawal {
-  buffering: Unbuffered,
+  buffering: extdeps.memory.types.Unbuffered,
   withdrawn_in_issue: "1.50",
   withdrawn_on: "2024-01-30",
   revision_history_text: "Deleted unbuffered DIMM (UDIMM) from Eight DDR4-3200 SDRAM Memory Controllers on page 10",
@@ -114,11 +114,11 @@ data altra_udimm_withdrawal: ModuleClassWithdrawal = ModuleClassWithdrawal {
 // authored first. It is a cited vendor fact -- section 2.10's admitted populations and its
 // parenthetical qualifier -- so its home is the authority that cites the datasheet, and the
 // product layer consumes it. An earlier revision of this module authored a SECOND representation
-// of the same contract as two std.integer.Int lists plus a three-state standing, which is the parallel
+// of the same contract as two Int lists plus a three-state standing, which is the parallel
 // authority §3 forbids: two rows free to drift on the next datasheet edit, each with its own
 // witness and no join between them.
 //
-// The coproduct is kept and the std.integer.Int lists deleted rather than the reverse, because it is the
+// The coproduct is kept and the Int lists deleted rather than the reverse, because it is the
 // stronger shape. Three, five and seven active channels are not slow configurations, they are
 // unsupported ones -- and here they are UNREPRESENTABLE rather than classified. That is why the
 // deleted standing needed a NotSupported arm at all: it existed only to carry a state this type
@@ -130,7 +130,7 @@ type ActiveDdrChannelCount
   | SixChannels
   | EightChannels
 
-fn active_channel_count(c: ActiveDdrChannelCount) -> std.integer.Int {
+fn active_channel_count(c: ActiveDdrChannelCount) -> Int {
   match c {
     OneChannel => 1
     TwoChannels => 2
@@ -171,7 +171,7 @@ data altra_memory_interleave_note: String = "Section 2.10 states hashed memory i
 // on is about facts the two documents state DIFFERENTLY -- the UDIMM withdrawal -- not about
 // every number they happen to share.
 fn altra_total_memory_data_width() -> std.measure.BitWidth {
-  bit_width(count: altra_ddr4_channel_count * bit_width_count(b: altra_memory_channel_width))
+  std.measure.bit_width(count: extdeps.cpu.ampere_altra_package.altra_ddr4_channel_count * std.measure.bit_width_count(b: altra_memory_channel_width))
 }
 
 // WHETHER THIS CONTROLLER ADMITS DRAM SOLDERED DIRECTLY TO THE BOARD, answered from the admitted
@@ -203,7 +203,7 @@ type BoardDownDramStanding
 fn altra_board_down_dram_standing(topology: BoardDownBuffering) -> BoardDownDramStanding {
   match topology {
     BoardProvidesNoRegisterOrBuffer => BoardDownNearestClassWithdrawn {
-      authority: ampere_altra_classic_rev_a1_datasheet_authority,
+      authority: extdeps.cpu.ampere.ampere_altra_classic_rev_a1_datasheet_authority,
       withdrawal: altra_udimm_withdrawal,
     }
     BoardProvidesRegisterOrBuffer => BoardDownSupportUnestablished {

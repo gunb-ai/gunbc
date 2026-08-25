@@ -51,11 +51,11 @@ test fn w_review_comment_path_grounded() -> Bool {
 }
 
 test fn w_digest_subject_survives_grounded_pull_request_ref() -> Bool {
-  let pr = extdeps.github.pulls.PullRequest {
+  let pr = PullRequest {
     number: 42,
     title: "Ground extdeps git/github fields",
     body: none,
-    state: extdeps.github.pulls.Open,
+    state: Open,
     html_url: "https://github.com/mock/pull/42",
     user: extdeps.github.github.GitHubUser { login: "mock-user", id: 1, type: extdeps.github.github.User },
     head: extdeps.github.pulls.PullRequestRef {
@@ -79,7 +79,7 @@ test fn w_digest_subject_survives_grounded_pull_request_ref() -> Bool {
 }
 
 test fn w_cpu_tdp_watts_power_dimension() -> Bool {
-  std.measure.watt_count(extdeps.cpu.ampere.altra_max_m12830_catalog.tdp_watts) == 183
+  std.measure.watt_count(altra_max_m12830_catalog.tdp_watts) == 183
 }
 
 test fn w_cpu_catalog_row_tdp_not_bare_int() -> Bool {

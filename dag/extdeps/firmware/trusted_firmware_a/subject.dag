@@ -3,7 +3,7 @@ module extdeps.firmware.trusted_firmware_a.subject
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.trustedfirmware.org/projects/tf-a/"
   }
 }
@@ -20,10 +20,10 @@ data trusted_firmware_a_model_scope: extdeps.external_authority.ExternalModelSco
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.firmware.trusted_firmware_a.subject",
       decl_name: "trusted_firmware_a_secure_world",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.firmware.trusted_firmware_a.subject.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 

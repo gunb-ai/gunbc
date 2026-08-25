@@ -1,5 +1,6 @@
 module gunbc.live_deploy.readiness
 
+
 type ServiceReadyEvidence {
   body: String
 }
@@ -41,15 +42,15 @@ fn live_deploy_healthz_get_local(port: Int) -> gunbc.roadmap_site_surface_types.
   )
 }
 
-fn healthz_effective_read_from_outcome(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
+fn healthz_effective_read_from_outcome(outcome: TypedArgvExecOutcome) -> gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
   match outcome {
-    TypedArgvExecConverged { result: r } =>
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
       healthz_effective_read_from_get(
         success: r.success,
         body: r.stdout,
         error: "http client GET over ssh failed"
       )
-    TypedArgvExecRefused { reason: why } => gunbc.roadmap_site_surface_types.HealthzProbeRefused { probe_error: why }
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => gunbc.roadmap_site_surface_types.HealthzProbeRefused { probe_error: why }
   }
 }
 
@@ -74,13 +75,13 @@ fn live_deploy_healthz_get_ssh(port: Int, host: std.types.NonEmptyStr) -> gunbc.
     Present { value: why } => gunbc.roadmap_site_surface_types.HealthzProbeRefused { probe_error: why }
     Absent =>
       match gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: host, argv: argv) {
-        TypedArgvExecConverged { result: r } =>
+        gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
           healthz_effective_read_from_get(
             success: r.success,
             body: r.stdout,
             error: "http client GET over ssh failed"
           )
-        TypedArgvExecRefused { reason: why } =>
+        gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } =>
           gunbc.roadmap_site_surface_types.HealthzProbeRefused { probe_error: why }
       }
   }
@@ -88,10 +89,10 @@ fn live_deploy_healthz_get_ssh(port: Int, host: std.types.NonEmptyStr) -> gunbc.
 
 fn live_deploy_healthz_get_for_port(port: Int, transport: gunbc.host_effect.HostEffectTransport) -> gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
   match transport {
-    LocalShell => live_deploy_healthz_get_local(port: port)
-    SshShell { ssh_host: h } => live_deploy_healthz_get_ssh(port: port, host: h)
+    gunbc.host_effect.LocalShell => live_deploy_healthz_get_local(port: port)
+    gunbc.host_effect.SshShell { ssh_host: h } => live_deploy_healthz_get_ssh(port: port, host: h)
     FleetSsh { target: t, context: c } => live_deploy_healthz_get_fleet_ssh(port: port, target: t, context: c)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       gunbc.roadmap_site_surface_types.HealthzProbeRefused {
         probe_error: "health probe refused EmitArtifactThenThinRun transport",
       }
@@ -119,20 +120,20 @@ type HealthzRefusalCause
 
 fn running_release_unidentified_detail(cause: gunbc.running_release_identity.RunningReleaseUnidentifiedCause) -> String {
   match cause {
-    ReleaseIdentityBodyUnparseable => "the healthz body did not parse as JSON"
-    ReleaseRevisionAbsent =>
+    gunbc.running_release_identity.ReleaseIdentityBodyUnparseable => "the healthz body did not parse as JSON"
+    gunbc.running_release_identity.ReleaseRevisionAbsent =>
       "the unit answered without a release identity: it is a process launched before the identity channel existed, so which release it serves is not readable and no advance from it is ordered"
-    ReleaseRevisionDuplicated { count: n } =>
+    gunbc.running_release_identity.ReleaseRevisionDuplicated { count: n } =>
       join(["the healthz body carried ", to_string(n), " revision members, so no single release identity is stated"], "")
-    HealthzBodyNotAnObject => "the healthz body is not a JSON object"
-    ReleaseRevisionNotAString => "the healthz revision member is not a string"
-    ReleaseRevisionMalformed { text: t } =>
+    gunbc.running_release_identity.HealthzBodyNotAnObject => "the healthz body is not a JSON object"
+    gunbc.running_release_identity.ReleaseRevisionNotAString => "the healthz revision member is not a string"
+    gunbc.running_release_identity.ReleaseRevisionMalformed { text: t } =>
       join(["the healthz revision member is '", t, "', which is not a 40-digit lowercase object name"], "")
-    SurfaceBundleIdentityAbsent => "the healthz body states a revision but no surface bundle identity"
-    SurfaceBundleIdentityDuplicated { count: m } =>
+    gunbc.running_release_identity.SurfaceBundleIdentityAbsent => "the healthz body states a revision but no surface bundle identity"
+    gunbc.running_release_identity.SurfaceBundleIdentityDuplicated { count: m } =>
       join(["the healthz body carried ", to_string(m), " surface bundle identity members"], "")
-    SurfaceBundleIdentityNotAString => "the healthz surface bundle identity member is not a string"
-    SurfaceBundleIdentityMalformed { text: t } =>
+    gunbc.running_release_identity.SurfaceBundleIdentityNotAString => "the healthz surface bundle identity member is not a string"
+    gunbc.running_release_identity.SurfaceBundleIdentityMalformed { text: t } =>
       join(["the healthz surface bundle identity member is '", t, "', which is not a 16-digit lowercase fnv1a64 structural digest"], "")
   }
 }
@@ -140,7 +141,7 @@ fn running_release_unidentified_detail(cause: gunbc.running_release_identity.Run
 fn healthz_release_identity_refusal(body: String, cause: gunbc.running_release_identity.RunningReleaseUnidentifiedCause) -> HealthzRefusalCause {
   let detail = running_release_unidentified_detail(cause: cause)
   match cause {
-    ReleaseRevisionAbsent => ProcessIdentityAbsent { body: body }
+    gunbc.running_release_identity.ReleaseRevisionAbsent => ProcessIdentityAbsent { body: body }
     _ => ProcessIdentityMalformed { detail: detail, body: body }
   }
 }
@@ -189,9 +190,9 @@ fn ground_service_ready_from_healthz_with_bundle(
   expected_surface_identity: std.content_hash.Fnv1a64Structural,
 ) -> std.realization_reconcile.Grounding<ServiceReadyEvidence> {
   match read {
-    HealthzProbeRefused { probe_error: detail } =>
+    gunbc.roadmap_site_surface_types.HealthzProbeRefused { probe_error: detail } =>
       std.realization_reconcile.DoesNotGround { reason: healthz_refusal_reason(cause: HealthzProbeFailed { detail: detail }) }
-    HealthzBodyRead { body: observed_body } =>
+    gunbc.roadmap_site_surface_types.HealthzBodyRead { body: observed_body } =>
       ground_service_ready_from_healthz_body(
         body: observed_body,
         bundle: bundle,
@@ -215,13 +216,13 @@ fn ground_service_ready_from_healthz_body(
     std.realization_reconcile.DoesNotGround { reason: healthz_refusal_reason(cause: HealthzBodyUnparseable { body: body }) }
   } else {
     match gunbc.running_release_identity.observe_running_release_identity(healthz_body: body) {
-      RunningReleaseUnidentified { cause: why } =>
+      gunbc.running_release_identity.RunningReleaseUnidentified { cause: why } =>
         std.realization_reconcile.DoesNotGround {
           reason: healthz_refusal_reason(
             cause: healthz_release_identity_refusal(body: body, cause: why)
           )
         }
-      RunningReleaseIdentified { observation: obs } =>
+      gunbc.running_release_identity.RunningReleaseIdentified { observation: obs } =>
         if (obs.revision as String) != (expected_revision as String) {
           std.realization_reconcile.DoesNotGround {
             reason: healthz_refusal_reason(cause: ProcessRevisionMismatch {
@@ -272,13 +273,13 @@ fn show_healthz_read_for_deploy(
 ) -> std.realization_reconcile.ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead> {
   let verdict = gunbc.host_effect_realize.host_effect_privilege_verdict(access: access, fixture_actor: Absent)
   match verdict {
-    Deny { refusal: _ } =>
+    std.access.Deny { refusal: _ } =>
       std.realization_reconcile.ReadObserved {
         value: gunbc.roadmap_site_surface_types.HealthzProbeRefused {
           probe_error: gunbc.ci_deploy_access.deploy_access_decision_reason(d: verdict),
         }
       }
-    Permit =>
+    std.access.Permit =>
       std.realization_reconcile.ReadObserved {
         value: live_deploy_healthz_get_for_port(
           port: gunbc.live_deploy.spec.deployment_plan_listen_port(spec: spec),
@@ -328,13 +329,13 @@ fn reconcile_service_ready_read_for_bundle(
   expected_surface_identity: std.content_hash.Fnv1a64Structural,
 ) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match read {
-    ReadAbsent { reason: why } =>
+    std.realization_reconcile.ReadAbsent { reason: why } =>
       std.realization_reconcile.reconcile_grounded(
         apply_effect: effect,
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    ReadObserved { value: observed } =>
+    std.realization_reconcile.ReadObserved { value: observed } =>
       std.realization_reconcile.reconcile_grounded(
         apply_effect: effect,
         show_read: read,
@@ -369,13 +370,13 @@ fn reconcile_service_ready_read_for_effect(
   expected_surface_identity: std.content_hash.Fnv1a64Structural,
 ) -> std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   match read {
-    ReadAbsent { reason: why } =>
+    std.realization_reconcile.ReadAbsent { reason: why } =>
       std.realization_reconcile.reconcile_grounded(
         apply_effect: effect,
         show_read: read,
         grounding: std.realization_reconcile.DoesNotGround { reason: why }
       )
-    ReadObserved { value: observed } =>
+    std.realization_reconcile.ReadObserved { value: observed } =>
       std.realization_reconcile.reconcile_grounded(
         apply_effect: effect,
         show_read: read,
@@ -436,9 +437,9 @@ fn capture_unit_diagnosis(
 ) -> String {
   let verdict = gunbc.host_effect_realize.host_effect_privilege_verdict(access: access, fixture_actor: Absent)
   match verdict {
-    Deny { refusal: _ } =>
+    std.access.Deny { refusal: _ } =>
       concat("unit diagnosis capture failed: ", gunbc.ci_deploy_access.deploy_access_decision_reason(d: verdict))
-    Permit =>
+    std.access.Permit =>
       gunbc.systemctl_status_read.unit_status_capture_text(
         capture: gunbc.systemctl_status_read.systemctl_status_read(
           transport: transport,
@@ -458,7 +459,7 @@ fn poll_bound_refusal(spec: gunbc.live_deploy.spec.DeploymentSpec, last_probe: S
     endpoint: gunbc.live_deploy.service_ready.live_deploy_service_ready_endpoint_authority,
     waited: gunbc.live_deploy.service_ready.live_deploy_service_ready_poll_bound,
     last_probe: last_probe,
-    unit_diagnosis: UnitDiagnosisUnavailable,
+    unit_diagnosis: gunbc.live_deploy.service_ready.UnitDiagnosisUnavailable,
   }
 }
 
@@ -534,8 +535,8 @@ fn last_probe_from_attempt(
   attempt: std.realization_reconcile.Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence>
 ) -> String {
   match attempt {
-    NotConverged { reason: why, applied: _ } => why
-    Converged { evidence: _, applied: _ } => "converged"
+    std.realization_reconcile.NotConverged { reason: why, applied: _ } => why
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => "converged"
   }
 }
 
@@ -574,7 +575,7 @@ fn live_deploy_poll_until_service_ready(
   live_deploy_poll_until_service_ready_for_deploy(
     spec: gunbc.live_deploy.spec.deployment_spec_srv1(),
     candidate: candidate,
-    transport: gunbc.ci_deploy_access.ci_deploy_srv1_access.transport,
+    transport: ci_deploy_srv1_access.transport,
     access: gunbc.ci_deploy_access.ci_deploy_srv1_access,
   )
 }

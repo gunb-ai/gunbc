@@ -1,5 +1,6 @@
 module gunbc.workflow_capability_closure
 
+
 // WHY THIS SITS ABOVE extdeps.github.actions AND NOT INSIDE IT.
 //
 // RunStep { run: String } is a FAITHFUL model of the GitHub wire format -- a step really is an
@@ -30,17 +31,17 @@ module gunbc.workflow_capability_closure
 // happened to need exactly one capability, and a model that fits one specimen is not yet a model.
 // A neutral step is the empty relation, not a distinct variant.
 type StepCapabilityRole {
-  provides: List<ExecutionCapability>
-  consumes: List<ExecutionCapability>
+  provides: List<gunbc.roadmap_execution_contract.ExecutionCapability>
+  consumes: List<gunbc.roadmap_execution_contract.ExecutionCapability>
 }
 
 data capability_neutral: StepCapabilityRole = StepCapabilityRole { provides: [], consumes: [] }
 
-fn provides_only(capabilities: List<ExecutionCapability>) -> StepCapabilityRole {
+fn provides_only(capabilities: List<gunbc.roadmap_execution_contract.ExecutionCapability>) -> StepCapabilityRole {
   StepCapabilityRole { provides: capabilities, consumes: [] }
 }
 
-fn consumes_only(capabilities: List<ExecutionCapability>) -> StepCapabilityRole {
+fn consumes_only(capabilities: List<gunbc.roadmap_execution_contract.ExecutionCapability>) -> StepCapabilityRole {
   StepCapabilityRole { provides: [], consumes: capabilities }
 }
 
@@ -76,11 +77,11 @@ fn capability_label_present(labels: List<String>, wanted: String) -> Bool {
 // invocation still resolves nothing. So the fold consumes the step list in order and a capability
 // counts as available only once a preceding step has provided it.
 fn first_unprovided(
-  wanted: List<ExecutionCapability>,
+  wanted: List<gunbc.roadmap_execution_contract.ExecutionCapability>,
   provided: List<String>,
   step_name: String,
 ) -> CapabilityClosureVerdict {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: wanted,
     empty: CapabilityClosureClosed,
     cons: fn(acc, c) {
@@ -89,13 +90,13 @@ fn first_unprovided(
         CapabilityClosureClosed =>
           if capability_label_present(
             labels: provided,
-            wanted: execution_capability_label(capability: c),
+            wanted: gunbc.roadmap_execution_contract.execution_capability_label(capability: c),
           ) {
             acc
           } else {
             CapabilityClosureUnprovided {
               step_name: step_name,
-              capability_label: execution_capability_label(capability: c),
+              capability_label: gunbc.roadmap_execution_contract.execution_capability_label(capability: c),
             }
           }
       }
@@ -103,12 +104,12 @@ fn first_unprovided(
   )
 }
 
-fn add_provided(provided: List<String>, granted: List<ExecutionCapability>) -> List<String> {
-  fold_list(
+fn add_provided(provided: List<String>, granted: List<gunbc.roadmap_execution_contract.ExecutionCapability>) -> List<String> {
+  v2.std.algebra.fold_list(
     xs: granted,
     empty: provided,
     cons: fn(acc, c) {
-      list_snoc_item(xs: acc, item: execution_capability_label(capability: c))
+      v2.std.algebra.list_snoc_item(xs: acc, item: gunbc.roadmap_execution_contract.execution_capability_label(capability: c))
     },
   )
 }
@@ -121,7 +122,7 @@ fn add_provided(provided: List<String>, granted: List<ExecutionCapability>) -> L
 // Within one step, consumes is checked BEFORE provides is granted. A step cannot satisfy its own
 // requirement -- otherwise a step declaring both would always close, which is the vacuous answer.
 fn workflow_job_capability_closure(steps: List<CapabilityAnnotatedStep>) -> CapabilityClosureVerdict {
-  let scanned = fold_list(
+  let scanned = v2.std.algebra.fold_list(
     xs: steps,
     empty: CapabilityClosureScan { provided: [], verdict: CapabilityClosureClosed },
     cons: fn(acc, s) {

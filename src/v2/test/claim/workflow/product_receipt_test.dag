@@ -1,5 +1,6 @@
 module v2.test.workflow.product_receipt
 
+
 // Every fixture below is CONSTRUCTED, never a live run, because this file
 // tests the receipt ALGEBRA -- the question "does this shape of evidence
 // mean the product built?" -- and a live population would make the answer a
@@ -47,7 +48,7 @@ fn green_receipt() -> v2.workflow.product_receipt.ProductReceipt {
   }
 }
 
-test fn product_receipt_green_on_seven_chained_completed_boundaries() -> v2.std.logic.Bool {
+test fn product_receipt_green_on_seven_chained_completed_boundaries() -> Bool {
   v2.workflow.product_receipt.product_receipt_green(receipt: green_receipt())
 }
 
@@ -79,7 +80,7 @@ fn independently_green_components_receipt() -> v2.workflow.product_receipt.Produ
   }
 }
 
-test fn every_boundary_completed_yet_receipt_refuses_when_identity_is_not_carried() -> v2.std.logic.Bool {
+test fn every_boundary_completed_yet_receipt_refuses_when_identity_is_not_carried() -> Bool {
   let receipt = independently_green_components_receipt()
   v2.workflow.product_receipt.product_receipt_covers_every_boundary_once(receipt: receipt)
     && v2.workflow.product_receipt.product_receipt_every_boundary_completed(receipt: receipt)
@@ -112,7 +113,7 @@ fn refused_tail_receipt() -> v2.workflow.product_receipt.ProductReceipt {
   }
 }
 
-test fn a_refused_boundary_refuses_the_receipt_even_with_an_intact_prefix() -> v2.std.logic.Bool {
+test fn a_refused_boundary_refuses_the_receipt_even_with_an_intact_prefix() -> Bool {
   let receipt = refused_tail_receipt()
   v2.workflow.product_receipt.product_receipt_covers_every_boundary_once(receipt: receipt)
     && !v2.workflow.product_receipt.product_receipt_every_boundary_completed(receipt: receipt)
@@ -141,7 +142,7 @@ fn six_boundary_receipt() -> v2.workflow.product_receipt.ProductReceipt {
   }
 }
 
-test fn a_receipt_missing_its_last_boundary_refuses_on_coverage() -> v2.std.logic.Bool {
+test fn a_receipt_missing_its_last_boundary_refuses_on_coverage() -> Bool {
   let receipt = six_boundary_receipt()
   !v2.workflow.product_receipt.product_receipt_covers_every_boundary_once(receipt: receipt)
     && v2.workflow.product_receipt.product_receipt_every_boundary_completed(receipt: receipt)
@@ -152,7 +153,7 @@ test fn a_receipt_missing_its_last_boundary_refuses_on_coverage() -> v2.std.logi
 // be distinguishable from both, because the remedies differ: a refusal is
 // analysed, an unexercised boundary is SCHEDULED. Five of seven were
 // unexercised when this lane opened.
-test fn an_unexercised_boundary_is_neither_completed_nor_green() -> v2.std.logic.Bool {
+test fn an_unexercised_boundary_is_neither_completed_nor_green() -> Bool {
   let receipt = v2.workflow.product_receipt.ProductReceipt {
     subject: fixture_subject,
     observations: [
@@ -174,7 +175,7 @@ test fn an_unexercised_boundary_is_neither_completed_nor_green() -> v2.std.logic
 // measures a many-file candidate from a second producer over the same subject.
 // If carriage compared digests alone, a receipt could report a hand-off
 // between two producers' artifacts as intact.
-test fn identity_carriage_refuses_a_matching_digest_carried_at_a_different_shape() -> v2.std.logic.Bool {
+test fn identity_carriage_refuses_a_matching_digest_carried_at_a_different_shape() -> Bool {
   let receipt = v2.workflow.product_receipt.ProductReceipt {
     subject: fixture_subject,
     observations: [
@@ -207,10 +208,10 @@ test fn identity_carriage_refuses_a_matching_digest_carried_at_a_different_shape
 // into the bare total it exists to replace, while still looking partitioned.
 // The total is asserted alongside so a broken bump cannot green by losing
 // rows in the other direction.
-test fn repeated_reasons_collapse_into_one_row_and_the_total_is_preserved() -> v2.std.logic.Bool {
+test fn repeated_reasons_collapse_into_one_row_and_the_total_is_preserved() -> Bool {
   let tally = v2.workflow.product_receipt.diagnostic_tally_bump(
     tally: v2.workflow.product_receipt.diagnostic_tally_bump(
-      tally: v2.workflow.product_receipt.diagnostic_tally_bump(tally: std.algebra.Empty, reason: "unsupported_mock_expression"),
+      tally: v2.workflow.product_receipt.diagnostic_tally_bump(tally: v2.std.algebra.Empty, reason: "unsupported_mock_expression"),
       reason: "grounding_not_derived"
     ),
     reason: "unsupported_mock_expression"

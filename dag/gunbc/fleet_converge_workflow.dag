@@ -12,29 +12,29 @@ data fleet_converge_mode_options: List<String> = ["plan", "apply", "spark_linger
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
 fn gunbc_fleet_converge_build_job_backstop_timeout_minutes() -> Int {
-  gunbc.fleet_workflow_steps.gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc.fleet_workflow_steps.gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc.fleet_workflow_steps.gunbc_ci_prelude_allowance_minutes
+  gunbc.fleet_workflow_steps.gunbc_ci_release_build_step_timeout_minutes + gunbc.fleet_workflow_steps.gunbc_ci_aux_step_timeout_minutes + gunbc.fleet_workflow_steps.gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc.fleet_workflow_steps.gunbc_ci_prelude_allowance_minutes
 }
 
 // The build job is the prelude plus three steps of its own. The release build CONSUMES cargo; the
 // pack and upload steps handle files the build produced and need no toolchain. Annotated here
 // rather than in fleet_workflow_steps because these are this job's steps, not the shared prelude's.
-fn fleet_converge_build_job_annotations() -> List<CapabilityAnnotatedStep> {
+fn fleet_converge_build_job_annotations() -> List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> {
   concat(
-    ci_prelude_annotations(),
+    gunbc.fleet_workflow_steps.ci_prelude_annotations(),
     [
-      CapabilityAnnotatedStep {
+      gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
         step_name: "Build release binaries",
-        role: consumes_only(capabilities: [CargoCapability]),
+        role: gunbc.workflow_capability_closure.consumes_only(capabilities: [gunbc.roadmap_execution_contract.CargoCapability]),
       },
-      CapabilityAnnotatedStep { step_name: "Pack release bins", role: capability_neutral },
-      CapabilityAnnotatedStep { step_name: "Upload release bins", role: capability_neutral },
+      gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Pack release bins", role: gunbc.workflow_capability_closure.capability_neutral },
+      gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Upload release bins", role: gunbc.workflow_capability_closure.capability_neutral },
     ],
   )
 }
 
 fn fleet_converge_build_job_capability_closure_holds() -> Bool {
-  capability_closure_is_closed(
-    v: workflow_job_capability_closure(steps: fleet_converge_build_job_annotations()),
+  gunbc.workflow_capability_closure.capability_closure_is_closed(
+    v: gunbc.workflow_capability_closure.workflow_job_capability_closure(steps: fleet_converge_build_job_annotations()),
   )
 }
 
@@ -42,10 +42,10 @@ fn fleet_converge_build_job() -> extdeps.github.actions.Job {
   extdeps.github.actions.Job {
     id: "build",
     name: none,
-    runner: gunbc_ci_runner_spec(),
+    runner: gunbc.runner_spec_from_offer.gunbc_ci_runner_spec(),
     steps: concat(
-      ci_prelude_steps(),
-      [ci_release_build_step(), gunbc.fleet_workflow_steps.ci_release_bins_pack_step(), ci_release_bins_upload_step()],
+      gunbc.fleet_workflow_steps.ci_prelude_steps(),
+      [gunbc.fleet_workflow_steps.ci_release_build_step(), gunbc.fleet_workflow_steps.ci_release_bins_pack_step(), gunbc.fleet_workflow_steps.ci_release_bins_upload_step()],
     ),
     needs: [],
     env: none,
@@ -78,14 +78,14 @@ fn fleet_converge_plan_upload_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.UsesStep {
     name: Present { value: "Upload fleet converge plan artifact" },
     id: Present { value: "plan_upload" },
-    uses: upload_artifact_action,
+    uses: extdeps.github.actions.upload_artifact_action,
     with: Present {
       value: [
-        kv(key: "name", value: yaml_string(s: gunbc_fleet_converge_plan_artifact_name)),
-        kv(key: "path", value: yaml_string(s: fleet_converge_plan_artifact_dir)),
-        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-        kv(key: "retention-days", value: yaml_int(n: 30)),
-        kv(key: "compression-level", value: yaml_int(n: 0)),
+        extdeps.languages.yaml.types.kv(key: "name", value: extdeps.languages.yaml.types.yaml_string(s: gunbc.ci_spec.gunbc_fleet_converge_plan_artifact_name)),
+        extdeps.languages.yaml.types.kv(key: "path", value: extdeps.languages.yaml.types.yaml_string(s: gunbc.fleet_converge_plan.fleet_converge_plan_artifact_dir)),
+        extdeps.languages.yaml.types.kv(key: "if-no-files-found", value: extdeps.languages.yaml.types.yaml_string(s: "error")),
+        extdeps.languages.yaml.types.kv(key: "retention-days", value: extdeps.languages.yaml.types.yaml_int(n: 30)),
+        extdeps.languages.yaml.types.kv(key: "compression-level", value: extdeps.languages.yaml.types.yaml_int(n: 0)),
       ]
     },
     env: none,
@@ -99,13 +99,13 @@ fn fleet_converge_plan_download_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.UsesStep {
     name: Present { value: "Download fleet converge plan artifact" },
     id: Present { value: "plan_download" },
-    uses: download_artifact_action,
+    uses: extdeps.github.actions.download_artifact_action,
     with: Present {
       value: [
-        kv(key: "name", value: yaml_string(s: gunbc_fleet_converge_plan_artifact_name)),
-        kv(key: "path", value: yaml_string(s: fleet_converge_plan_artifact_dir)),
-        kv(key: "github-token", value: yaml_string(s: "${{ secrets.GITHUB_TOKEN }}")),
-        kv(key: "run-id", value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+        extdeps.languages.yaml.types.kv(key: "name", value: extdeps.languages.yaml.types.yaml_string(s: gunbc.ci_spec.gunbc_fleet_converge_plan_artifact_name)),
+        extdeps.languages.yaml.types.kv(key: "path", value: extdeps.languages.yaml.types.yaml_string(s: gunbc.fleet_converge_plan.fleet_converge_plan_artifact_dir)),
+        extdeps.languages.yaml.types.kv(key: "github-token", value: extdeps.languages.yaml.types.yaml_string(s: "${{ secrets.GITHUB_TOKEN }}")),
+        extdeps.languages.yaml.types.kv(key: "run-id", value: extdeps.languages.yaml.types.yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
       ]
     },
     env: none,
@@ -119,13 +119,13 @@ fn fleet_converge_plan_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: Present { value: "Fleet converge plan (membership_reconcile → artifact)" },
     id: Present { value: "plan" },
-    run: gunbc_ci_fleet_converge_plan_invoke(),
+    run: gunbc.ci_spec.gunbc_ci_fleet_converge_plan_invoke(),
     shell: none,
     env: none,
     working_directory: none,
     if_condition: Present { value: fleet_converge_plan_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc.fleet_workflow_steps.gunbc_ci_aux_step_timeout_minutes }
   }
 }
 
@@ -133,20 +133,20 @@ fn fleet_converge_apply_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: Present { value: "Fleet converge apply (CAS + generated apply.sh)" },
     id: Present { value: "apply" },
-    run: gunbc_ci_fleet_converge_apply_invoke(),
+    run: gunbc.ci_spec.gunbc_ci_fleet_converge_apply_invoke(),
     shell: none,
     env: Present {
       value: [
-        kv(
-          key: gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
-          value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}"),
+        extdeps.languages.yaml.types.kv(
+          key: gunbc.ci_spec.gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
+          value: extdeps.languages.yaml.types.yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}"),
         ),
       ]
     },
     working_directory: none,
     if_condition: Present { value: fleet_converge_apply_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc.fleet_workflow_steps.gunbc_ci_aux_step_timeout_minutes }
   }
 }
 
@@ -154,18 +154,18 @@ fn fleet_converge_spark_linger_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: Present { value: "Spark serving linger converge (executor→target FleetSsh typed argv)" },
     id: Present { value: "spark_linger" },
-    run: gunbc_ci_spark_serving_converge_slice_invoke(),
+    run: gunbc.ci_spec.gunbc_ci_spark_serving_converge_slice_invoke(),
     shell: none,
     env: Present {
       value: [
-        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
-        kv(key: "SPARK_CONVERGE_EXECUTE", value: yaml_string(s: "1")),
+        extdeps.languages.yaml.types.kv(key: "SPARK_CONVERGE_TARGET", value: extdeps.languages.yaml.types.yaml_string(s: "${{ github.event.inputs.target }}")),
+        extdeps.languages.yaml.types.kv(key: "SPARK_CONVERGE_EXECUTE", value: extdeps.languages.yaml.types.yaml_string(s: "1")),
       ]
     },
     working_directory: none,
     if_condition: Present { value: fleet_converge_spark_linger_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc.fleet_workflow_steps.gunbc_ci_spark_serving_step_timeout_minutes }
   }
 }
 
@@ -176,17 +176,17 @@ fn fleet_converge_spark_reboot_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: Present { value: "Spark serving reboot (durability probe: the receipt is the converge that follows)" },
     id: Present { value: "spark_reboot" },
-    run: gunbc_ci_spark_serving_reboot_invoke(),
+    run: gunbc.ci_spec.gunbc_ci_spark_serving_reboot_invoke(),
     shell: none,
     env: Present {
       value: [
-        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+        extdeps.languages.yaml.types.kv(key: "SPARK_CONVERGE_TARGET", value: extdeps.languages.yaml.types.yaml_string(s: "${{ github.event.inputs.target }}")),
       ]
     },
     working_directory: none,
     if_condition: Present { value: fleet_converge_spark_reboot_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc.fleet_workflow_steps.gunbc_ci_spark_serving_step_timeout_minutes }
   }
 }
 
@@ -199,36 +199,36 @@ fn fleet_converge_spark_durability_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: Present { value: "Spark serving durability transaction (boot identity before and after, in one run)" },
     id: Present { value: "spark_durability" },
-    run: gunbc_ci_spark_serving_durability_invoke(),
+    run: gunbc.ci_spec.gunbc_ci_spark_serving_durability_invoke(),
     shell: none,
     env: Present {
       value: [
-        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+        extdeps.languages.yaml.types.kv(key: "SPARK_CONVERGE_TARGET", value: extdeps.languages.yaml.types.yaml_string(s: "${{ github.event.inputs.target }}")),
       ]
     },
     working_directory: none,
     if_condition: Present { value: fleet_converge_spark_durability_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc.fleet_workflow_steps.gunbc_ci_spark_serving_step_timeout_minutes }
   }
 }
 
 fn fleet_converge_spark_grants_step() -> extdeps.github.actions.Step {
-  RunStep {
+  extdeps.github.actions.RunStep {
     name: Present { value: "Spark managed grant reconcile (materializes its own administrator credential in-run, installs only the grants measured missing at the named target, removes the credential within this same step)" },
     id: Present { value: "spark_grants" },
-    run: gunbc_ci_spark_grant_install_invoke(),
+    run: gunbc.ci_spec.gunbc_ci_spark_grant_install_invoke(),
     shell: none,
     env: Present {
       value: [
-        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
-        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+        extdeps.languages.yaml.types.kv(key: "SPARK_CONVERGE_TARGET", value: extdeps.languages.yaml.types.yaml_string(s: "${{ github.event.inputs.target }}")),
+        extdeps.languages.yaml.types.kv(key: "WIF_ACCESS_TOKEN", value: extdeps.languages.yaml.types.yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       ]
     },
     working_directory: none,
     if_condition: Present { value: fleet_converge_spark_grants_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc.fleet_workflow_steps.gunbc_ci_spark_serving_step_timeout_minutes }
   }
 }
 
@@ -236,20 +236,20 @@ fn fleet_converge_spark_observe_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: Present { value: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)" },
     id: Present { value: "spark_observe" },
-    run: gunbc_ci_spark_serving_observe_invoke(),
+    run: gunbc.ci_spec.gunbc_ci_spark_serving_observe_invoke(),
     shell: none,
     env: none,
     working_directory: none,
     if_condition: Present { value: fleet_converge_spark_observe_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc.fleet_workflow_steps.gunbc_ci_spark_serving_step_timeout_minutes }
   }
 }
 
 data fleet_converge_consumer_prelude_note: String = "Plain fetch-depth-0 checkout only — this workflow has no workflow_dispatch expected_healed_sha input (unlike ci.yml heal revalidation). ci_artifact_consumer_prelude_steps paste-through would reference an undeclared input and emit a dormant preflight guard."
 
 fn fleet_converge_consumer_prelude_steps() -> List<extdeps.github.actions.Step> {
-  [ci_checkout_step()]
+  [gunbc.fleet_workflow_steps.ci_checkout_step()]
 }
 
 fn fleet_converge_job() -> extdeps.github.actions.Job {
@@ -261,10 +261,10 @@ fn fleet_converge_job() -> extdeps.github.actions.Job {
       concat(
         fleet_converge_consumer_prelude_steps(),
         [
-          ci_release_bins_download_step(),
-          ci_release_bins_unpack_verify_step(),
-          ci_fleet_wif_auth_step(),
-          ci_fleet_key_agent_step(),
+          gunbc.fleet_workflow_steps.ci_release_bins_download_step(),
+          gunbc.fleet_workflow_steps.ci_release_bins_unpack_verify_step(),
+          gunbc.fleet_workflow_steps.ci_fleet_wif_auth_step(),
+          gunbc.fleet_workflow_steps.ci_fleet_key_agent_step(),
         ]
       ),
       [
@@ -277,14 +277,14 @@ fn fleet_converge_job() -> extdeps.github.actions.Job {
         fleet_converge_spark_observe_step(),
         fleet_converge_spark_reboot_step(),
         fleet_converge_spark_durability_step(),
-        ci_fleet_key_agent_cleanup_step(),
+        gunbc.fleet_workflow_steps.ci_fleet_key_agent_cleanup_step(),
       ]
     ),
     needs: ["build"],
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: Present { value: gunbc_ci_fleet_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: gunbc.fleet_workflow_steps.gunbc_ci_fleet_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,
     permissions: Present {
@@ -366,11 +366,11 @@ data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet_co
 
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
   if fleet_converge_build_job_capability_closure_holds() {
-    match checked_job_timeout_minutes(computed: gunbc_ci_fleet_job_backstop_timeout_minutes()) {
-      JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>
+    match gunbc.fleet_workflow_steps.checked_job_timeout_minutes(computed: gunbc.fleet_workflow_steps.gunbc_ci_fleet_job_backstop_timeout_minutes()) {
+      gunbc.fleet_workflow_steps.JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>
         FleetConvergeYamlGenerationRefused { reason: "fleet-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — split the job or reduce a tier's per-step budget, do not raise past the platform ceiling (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet_workflow_steps)" }
-      JobTimeoutWithinCeiling { minutes: _ } =>
-        FleetConvergeYamlGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow)) }
+      gunbc.fleet_workflow_steps.JobTimeoutWithinCeiling { minutes: _ } =>
+        FleetConvergeYamlGenerated { content: extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.gha_workflow.project_workflow_to_yaml(workflow: fleet_converge_workflow)) }
     }
   } else {
     FleetConvergeYamlGenerationRefused { reason: fleet_converge_capability_closure_refusal }

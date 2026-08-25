@@ -3,21 +3,21 @@ module extdeps.bmc.webui.nbd_proxy
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/openbmc/jsnbd"
   }
 }
 
 data nbd_protocol_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md"
   }
 }
 
 data openbmc_virtual_media_design_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/openbmc/docs/blob/master/designs/virtual-media.md"
   }
 }
@@ -158,16 +158,16 @@ type BmcwebNbdProxyEndpointVariant =
 
 data nbd_slot_endpoint_path_template: std.http_path.PathTemplate = std.http_path.PathTemplate {
   tokens: [
-    std.http_path.LiteralToken { text: "/nbd/" },
+    LiteralToken { text: "/nbd/" },
     std.http_path.ParamToken { name: "slot" },
   ],
 }
 
 data vm_slot_index_endpoint_path_template: std.http_path.PathTemplate = std.http_path.PathTemplate {
   tokens: [
-    std.http_path.LiteralToken { text: "/vm/" },
+    LiteralToken { text: "/vm/" },
     std.http_path.ParamToken { name: "slot" },
-    std.http_path.LiteralToken { text: "/" },
+    LiteralToken { text: "/" },
     std.http_path.ParamToken { name: "index" },
   ],
 }
@@ -196,7 +196,7 @@ fn bmcweb_nbd_proxy_path_params(
 }
 
 fn bmcweb_nbd_proxy_ws_path(variant: BmcwebNbdProxyEndpointVariant, slot: Int, index: Int) -> std.types.NonEmptyStr {
-  render_path_template(
+  std.http_path.render_path_template(
     template: bmcweb_nbd_proxy_endpoint_path_template(variant: variant),
     params: bmcweb_nbd_proxy_path_params(variant: variant, slot: slot, index: index),
   ) as std.types.NonEmptyStr

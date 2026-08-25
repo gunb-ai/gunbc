@@ -3,7 +3,7 @@ module extdeps.llm.codex_auth
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/openai/codex"
   }
 }
@@ -110,7 +110,7 @@ data codex_id_token_issuer: std.types.NonEmptyStr = "https://auth.openai.com" as
 
 data codex_id_token_lifetime_carrier_note: String = "THE OBSERVED LIFETIME IS A std.measure.Second (review 45056). It was a bare Int named ..._seconds, which puts the unit in the identifier where no consumer can check it — the same flat-scalar duration fork the tree grounds everywhere else. The number is what decides how often a long-running host must refresh, so it is read by things that also handle milliseconds, and the name was the only thing keeping the two apart."
 
-data codex_id_token_observed_lifetime: std.measure.Second = second(count: 3600)
+data codex_id_token_observed_lifetime: std.measure.Second = std.measure.second(count: 3600)
 
 data codex_observed_profile_note: String = "WHAT ONE TOKEN CARRIED IS NOT WHAT THE STANDARD REQUIRES, and separating the two is the whole point of this row. The extdeps.auth.jwt and extdeps.auth.oidc types were first written by reading the codex id_token observed on srv2 on 2026-07-30 and marking every claim it contained as mandatory. That produced two modules that named IETF and OIDF documents as their authority while actually encoding one sample from one provider on one day — the precise failure the extdeps citation duty exists to prevent, because a reader would take this vendor's grant as the specification's demand.\\n\\nThe specs now say what they say: RFC 7519's registered claims are all optional, OIDC Core requires five in an ID Token and makes auth_time, acr, amr, azp, nonce and sid optional, and the standard claims arrive only with the scope that asks for them. This profile records, separately and as an OBSERVATION, which of those optional claims this provider's token was seen to carry.\\n\\nWHY IT IS WORTH KEEPING RATHER THAN DELETING: a consumer reading a codex credential needs to know whether acr is reliably there before writing code that depends on it, and the answer is a fact about OpenAI's issuer rather than about OIDC. Recording it as an observation with its date and version means a later reader can tell that it was measured rather than promised, and can re-measure it. It is the same distinction CodexPersistenceObservedLoginOnly draws for refresh behaviour: an observation that survived one workload is not a contract, and it must not be spelled like one."
 

@@ -3,12 +3,12 @@ module extdeps.languages.typescript.types
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.typescriptlang.org/docs/handbook/2/types-from-types.html"
   }
 }
 
-data ts_type_checkpoints: List<TypeCheckpoint> = [
+data ts_type_checkpoints: List<std.coercion.TypeCheckpoint> = [
   { dag_name: "Int",    target_type: "number", grounding_type: "number",     default_expr: "0",               is_copy: true,  literal_suffix: none },
   { dag_name: "Float",  target_type: "number", grounding_type: "number",     default_expr: "0.0",             is_copy: true,  literal_suffix: none },
   { dag_name: "Bool",   target_type: "boolean", grounding_type: "boolean",    default_expr: "false",           is_copy: true,  literal_suffix: none },

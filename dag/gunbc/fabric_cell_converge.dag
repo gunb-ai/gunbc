@@ -79,16 +79,16 @@ fn fabric_cell_resource_addresses() -> List<FabricCellResourceAddress> {
 type FabricCellMember {
   slot: gunbc.build_cache_instance.RunnerSlotIdentity
   address: FabricCellResourceAddress
-  state_digest: NonEmptyStr
+  state_digest: std.types.NonEmptyStr
 }
 
 fn fabric_cell_member_key(member: FabricCellMember) -> String {
   join([
-    test.claim.deployed_tree_remote_witness.member.slot.host as String,
+    member.slot.host as String,
     "|",
-    gunbc.build_cache_instance.runner_slot_instance_name(slot: test.claim.deployed_tree_remote_witness.member.slot),
+    gunbc.build_cache_instance.runner_slot_instance_name(slot: member.slot),
     "|",
-    fabric_cell_resource_address_wire(address: test.claim.deployed_tree_remote_witness.member.address),
+    fabric_cell_resource_address_wire(address: member.address),
   ], "")
 }
 
@@ -112,34 +112,34 @@ fn fabric_cell_member_value_eq(a: FabricCellMember, b: FabricCellMember) -> Bool
 // is Owned by construction and the field was a writable restatement of a fact the identity already
 // settles. If ownership ever depends on provenance, that provenance is separately admitted
 // evidence, not a field the observed side fills in.
-fn fabric_cell_member_ownership(member: FabricCellMember) -> Optional<Ownership> {
-  Present { value: gunbc.ownership.Owned }
+fn fabric_cell_member_ownership(member: FabricCellMember) -> v2.std.optional.Optional<gunbc.ownership.Ownership> {
+  v2.std.optional.Present { value: gunbc.ownership.Owned }
 }
 
 // THE BOUNDARY'S DESIRED STATE CONSUMES THE EXISTING SLOT AUTHORITY RATHER THAN RE-SPELLING IT, so
 // a change to the fleet's per-slot resource row shows up here as MemberChanged at exactly one
 // address instead of drifting silently. The digest is over the values the boundary will carry.
-fn fabric_cell_resource_boundary_state_digest() -> NonEmptyStr {
+fn fabric_cell_resource_boundary_state_digest() -> std.types.NonEmptyStr {
   let desired = gunbc.runner_slot_allocation.gunbc_runner_slot_desired()
   join([
-    "memory_max=", v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: desired.memory_max)),
-    ";memory_high=", v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: desired.memory_high)),
-    ";memory_swap_max=", v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: desired.memory_swap_max)),
-    ";tasks_max=", v1.compiler.emit_core_support.to_string(desired.tasks_max),
-    ";cpu_weight=", v1.compiler.emit_core_support.to_string(desired.cpu_weight),
-  ], "") as NonEmptyStr
+    "memory_max=", to_string(std.measure.byte_size_count(b: desired.memory_max)),
+    ";memory_high=", to_string(std.measure.byte_size_count(b: desired.memory_high)),
+    ";memory_swap_max=", to_string(std.measure.byte_size_count(b: desired.memory_swap_max)),
+    ";tasks_max=", to_string(desired.tasks_max),
+    ";cpu_weight=", to_string(desired.cpu_weight),
+  ], "") as std.types.NonEmptyStr
 }
 
-fn fabric_cell_desired_state_digest(slot: gunbc.build_cache_instance.RunnerSlotIdentity, address: FabricCellResourceAddress) -> NonEmptyStr {
+fn fabric_cell_desired_state_digest(slot: gunbc.build_cache_instance.RunnerSlotIdentity, address: FabricCellResourceAddress) -> std.types.NonEmptyStr {
   match address {
-    FabricCellRootAddress => fabric_cell_root_path(slot: slot) as NonEmptyStr
-    FabricCellAttemptRootAddress => fabric_cell_attempt_root_path(slot: slot) as NonEmptyStr
+    FabricCellRootAddress => fabric_cell_root_path(slot: slot) as std.types.NonEmptyStr
+    FabricCellAttemptRootAddress => fabric_cell_attempt_root_path(slot: slot) as std.types.NonEmptyStr
     FabricCellResourceBoundaryAddress =>
       join([
         fabric_cell_slice_name(slot: slot),
         ";",
         fabric_cell_resource_boundary_state_digest() as String,
-      ], "") as NonEmptyStr
+      ], "") as std.types.NonEmptyStr
   }
 }
 
@@ -186,8 +186,8 @@ fn fabric_cell_family_membership(host: product.placement_supply.HostIdentity, sl
       SlotIsNotACommittedMemberOfItsHost {
         reason: "slot index is outside the host committed population derived by gunbc.runner_slot_allocation: a cell cannot be provisioned onto a slot the host was never admitted to carry"
       }
-    gunbc.runner_slot_allocation.CommittedSlotMember { identity: id, purpose: gunbc.plans.md_helpers.p } =>
-      match gunbc.plans.md_helpers.p {
+    gunbc.runner_slot_allocation.CommittedSlotMember { identity: id, purpose: p } =>
+      match p {
         gunbc.runner_slot_allocation.SlotServesGitHubActions =>
           SlotIsNotAFabricExecutionMember {
             reason: "slot serves GitHub Actions: its lifecycle is gunbc.runner_lifecycle, and answering with fabric cell resources would place a fabric cell on a slot the planner registers with GitHub"

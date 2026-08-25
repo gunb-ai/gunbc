@@ -27,18 +27,18 @@ data capture_spec_tee_cmdsubst_finding: String = "FINDING (filed, unowned, not f
 
 type Run {
   command: String
-  env: FreeMonoid<EnvBinding>
+  env: std.algebra.FreeMonoid<EnvBinding>
   redirect: v2.std.optional.Optional<RedirectSpec>
   capture: v2.std.optional.Optional<CaptureSpec>
 }
 
 type ValueSource
-  = CmdSubstLines { run: v2.std.orchestration.Run }
+  = CmdSubstLines { run: Run }
   | Glob { pattern: String }
   | ModeledList { items: std.algebra.FreeMonoid<String> }
 
 type Predicate
-  = ExitZero { run: v2.std.orchestration.Run }
+  = ExitZero { run: Run }
   | LogMatches { source: String, pattern: String }
   | StrEq { lhs: String, rhs: String }
   | StrEmpty { operand: String }
@@ -55,7 +55,7 @@ data predicate_int_ne_note: String = "IntNe \{ lhs, rhs \} is the integer inequa
 type EscalationLevel {
   detect: Predicate
   warning: v2.std.diagnostic.EmitDirective
-  env: FreeMonoid<EnvBinding>
+  env: std.algebra.FreeMonoid<EnvBinding>
 }
 
 type FailurePolicy = FailFast | Continue
@@ -71,7 +71,7 @@ type Procedure {
 }
 
 type PipelineStep
-  = Do { run: v2.std.orchestration.Run }
+  = Do { run: Run }
   | Comment { text: String }
   | Exit { status: String }
   | If { cond: Predicate, then_: Pipeline, else_: v2.std.optional.Optional<Pipeline> }
@@ -79,7 +79,7 @@ type PipelineStep
   | While { cond: Predicate, body: Pipeline }
   | Retry {
       body: Pipeline,
-      escalations: FreeMonoid<EscalationLevel>,
+      escalations: std.algebra.FreeMonoid<EscalationLevel>,
       on_exhausted: Pipeline
     }
   | Let { name: String, value: Expr }
@@ -90,7 +90,7 @@ data pipeline_step_comment_note: String = "Comment \{ text \} is a non-command P
 data pipeline_step_exit_note: String = "Exit \{ status \} emits exit <status> via bash_stmt_exit_* grammar rows (not opaque Run.command). status is the operand spelling. Refuse empty / newline / shell metacharacters (^orch_emit_exit_status_operand_invalid). The former merge-admission propagate/final-exit consumer deleted when success became derivable from WalkPlan stage reachability. Retry body with Exit → Absent → ^orch_emit_retry_body_not_run (no silent drop)."
 
 type Pipeline {
-  steps: FreeMonoid<PipelineStep>
+  steps: std.algebra.FreeMonoid<PipelineStep>
   on_failure: FailurePolicy
 }
 

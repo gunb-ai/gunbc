@@ -14,14 +14,14 @@ fn decl_fact_is_v1_complexity(fact: v2.std.decl_index.DeclFact) -> Bool {
 }
 
 fn v1_complexity_decl_population(pool_roots: List<String>) -> List<v2.std.decl_index.DeclFact> {
-  filter(
-    xs: decl_facts(pool_roots: pool_roots),
+  v2.std.algebra.filter(
+    xs: v2.std.decl_index.decl_facts(pool_roots: pool_roots),
     predicate: decl_fact_is_v1_complexity
   )
 }
 
 fn v1_complexity_decl_population_count(pool_roots: List<String>) -> std.nat.Nat {
-  length(xs: v1_complexity_decl_population(pool_roots: pool_roots))
+  v2.std.algebra.length(xs: v1_complexity_decl_population(pool_roots: pool_roots))
 }
 
 fn roster_contains_decl_name(roster: List<gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification>, name: String) -> Bool {
@@ -29,7 +29,7 @@ fn roster_contains_decl_name(roster: List<gunbc.v1_complexity_decl_classificatio
     if found {
       true
     } else {
-      gunbc.v1_complexity_decl_classification.string_eq(a: row.decl_name, b: name)
+      string_eq(a: row.decl_name, b: name)
     }
   })
 }
@@ -48,7 +48,7 @@ fn every_population_fact_classified(
 }
 
 fn classification_matches_fact(c: gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification, fact: v2.std.decl_index.DeclFact) -> Bool {
-  gunbc.v1_complexity_decl_classification.string_eq(a: c.decl_name, b: fact.name)
+  string_eq(a: c.decl_name, b: fact.name)
 }
 
 fn roster_name_in_population(
@@ -71,7 +71,7 @@ fn every_roster_row_matches_population(
 
 fn name_already_seen(names: List<String>, name: String) -> Bool {
   fold(names, init: false, f: fn(found, n) {
-    found || gunbc.v1_complexity_decl_classification.string_eq(a: n, b: name)
+    found || string_eq(a: n, b: name)
   })
 }
 
@@ -86,7 +86,7 @@ fn roster_distinct_decl_names(roster: List<gunbc.v1_complexity_decl_classificati
 }
 
 fn roster_names_distinct(roster: List<gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification>) -> Bool {
-  length(xs: roster_distinct_decl_names(roster: roster)) == length(xs: roster)
+  v2.std.algebra.length(xs: roster_distinct_decl_names(roster: roster)) == v2.std.algebra.length(xs: roster)
 }
 
 data population_name_key_precondition_note: String = "classification_matches_fact joins a roster row to a DeclFact on BARE NAME, while DeclFact carries qualified_name and kind and could key exactly. That join is correct only while every top-level declaration of v1.compiler.complexity has a distinct name, and NOTHING HERE MAKES THAT TRUE — it is a property of the subject module, not a wall this carrier erects. Measured 2026-08-06: 201 top-level declarations (171 fn, 26 type, 4 data, 0 let), zero duplicate names. A measurement of the current tree is not an oracle (DESIGN §5), so the precondition is EXECUTED by population_names_distinct rather than assumed: if a duplicate top-level name ever appears, the witness reds instead of the join silently matching two declarations for one row. Note the existing roster_names_distinct does NOT cover this — it checks the AUTHORED side, and a duplicate on the DERIVED side is invisible to it, which is exactly the gap this closes. Dissolve-on: the roster carries exact DeclFact identity (qualified_name, or name plus kind) so the join is exact by construction and no precondition remains to check; that is a 201-row re-authoring and is deliberately not bundled here."
@@ -102,7 +102,7 @@ fn population_distinct_decl_names(facts: List<v2.std.decl_index.DeclFact>) -> Li
 }
 
 fn population_names_distinct(facts: List<v2.std.decl_index.DeclFact>) -> Bool {
-  length(xs: population_distinct_decl_names(facts: facts)) == length(xs: facts)
+  v2.std.algebra.length(xs: population_distinct_decl_names(facts: facts)) == v2.std.algebra.length(xs: facts)
 }
 
 fn classification_is_authority_for_capability(
@@ -110,7 +110,7 @@ fn classification_is_authority_for_capability(
   capability: gunbc.v1_complexity_capability_census.ComplexityCapabilityId
 ) -> Bool {
   match c.role {
-    AuthorityOf { capability: cap } => cap == capability
+    gunbc.v1_complexity_decl_classification_types.AuthorityOf { capability: cap } => cap == capability
     _ => false
   }
 }
@@ -125,7 +125,7 @@ fn capability_has_authority_declaration(
 }
 
 fn inventory_row_capability(row: gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow) -> gunbc.v1_complexity_capability_census.ComplexityCapabilityId? {
-  inventory_row_semantic_capability(row: row)
+  gunbc.v1_complexity_capability_census.inventory_row_semantic_capability(row: row)
 }
 
 fn inventory_authority_carrier_matches_classification(
@@ -137,7 +137,7 @@ fn inventory_authority_carrier_matches_classification(
       fold(roster, init: false, f: fn(found, c) {
         found || (
           classification_is_authority_for_capability(c: c, capability: cap_id)
-            && gunbc.v1_complexity_decl_classification.string_eq(a: c.decl_name, b: row.v1_carrier.decl_name as String)
+            && string_eq(a: c.decl_name, b: row.v1_carrier.decl_name as String)
         )
       })
     Absent => true
@@ -170,9 +170,9 @@ fn population_matches_roster_count(
   facts: List<v2.std.decl_index.DeclFact>,
   roster: List<gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification>
 ) -> Bool {
-  length(xs: facts) == length(xs: roster)
+  v2.std.algebra.length(xs: facts) == v2.std.algebra.length(xs: roster)
 }
 
 fn v1_complexity_decl_classification_roster_count(roster: List<gunbc.v1_complexity_decl_classification_types.V1ComplexityDeclClassification>) -> std.nat.Nat {
-  length(xs: roster)
+  v2.std.algebra.length(xs: roster)
 }

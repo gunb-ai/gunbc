@@ -1,7 +1,7 @@
 module test.claim.access_authorization_profile_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn string_set(a: String, b: String) -> Set<String> {
   set_insert(set_insert(empty_set(), a), b)
@@ -10,32 +10,32 @@ fn string_set(a: String, b: String) -> Set<String> {
 test fn overlapping_audiences_are_not_forced_into_a_chain() -> Bool {
   let left = std.authorization_profile.EnumeratedAudience { members: string_set(a: "alice", b: "bob") }
   let right = std.authorization_profile.EnumeratedAudience { members: string_set(a: "bob", b: "carol") }
-  !audience_subset(left: left, right: right)
-    && !audience_subset(left: right, right: left)
-    && match audience_join(left: left, right: right) {
-      EnumeratedAudience { members: members } =>
+  !std.authorization_profile.audience_subset(left: left, right: right)
+    && !std.authorization_profile.audience_subset(left: right, right: left)
+    && match std.authorization_profile.audience_join(left: left, right: right) {
+      std.authorization_profile.EnumeratedAudience { members: members } =>
         members == set_insert(string_set(a: "alice", b: "bob"), "carol")
-      UniversalAudience => false
+      std.authorization_profile.UniversalAudience => false
     }
 }
 
 test fn every_profile_projects_context_and_evidence_into_the_kernel() -> Bool {
-  let effect = effect_access_request(request: std.authorization_profile.EffectRequest {
+  let effect = std.authorization_profile.effect_access_request(request: std.authorization_profile.EffectRequest {
     subject: "actor", effect: "write", target: "file", context: "frame", evidence: "grant",
   })
-  let reference = reference_access_request(request: std.authorization_profile.ReferenceRequest {
+  let reference = std.authorization_profile.reference_access_request(request: std.authorization_profile.ReferenceRequest {
     referrer: "caller", referenced: "callee", context: "module", evidence: "visibility-proof",
   })
-  let publication = publication_access_request(request: std.authorization_profile.PublicationAdmissionRequest {
+  let publication = std.authorization_profile.publication_access_request(request: std.authorization_profile.PublicationAdmissionRequest {
     subject: "session", source: "head-sha", resource: "public-root",
-    audience: UniversalAudience, context: "cutover", evidence: "coverage-receipt",
+    audience: std.authorization_profile.UniversalAudience, context: "cutover", evidence: "coverage-receipt",
   })
-  let disclosure = disclosure_access_request(request: std.authorization_profile.DisclosureRequest {
+  let disclosure = std.authorization_profile.disclosure_access_request(request: std.authorization_profile.DisclosureRequest {
     principal: "principal", resource: "record", fields: ["email"],
     audience: std.authorization_profile.EnumeratedAudience { members: set_insert(empty_set(), "principal") },
     context: "purpose", evidence: "consent",
   })
-  let sealed = sealed_execution_access_request(request: std.authorization_profile.SealedExecutionRequest {
+  let sealed = std.authorization_profile.sealed_execution_access_request(request: std.authorization_profile.SealedExecutionRequest {
     principal: "principal", operation: "evaluate", sealed_resource: "sealed-model",
     execution_context: "enclave", evidence: "attestation",
   })
@@ -49,17 +49,17 @@ test fn every_profile_projects_context_and_evidence_into_the_kernel() -> Bool {
 }
 
 test fn denial_is_typed_located_and_left_biased_under_meet() -> Bool {
-  let first = access_policy_refusal(
+  let first = std.access.access_policy_refusal(
     profile: "PublicationAdmissionRequest", subject: "session-a", action: "publication",
     object: "public-root", reason: "evidence rejected",
   )
-  let second = access_policy_refusal(
+  let second = std.access.access_policy_refusal(
     profile: "SealedExecutionRequest", subject: "session-a", action: "execute",
     object: "sealed-model", reason: "attestation absent",
   )
-  match decision_meet(a: first, b: second) {
-    Permit => false
-    Deny { refusal: refusal } =>
+  match std.access.decision_meet(a: first, b: second) {
+    std.access.Permit => false
+    std.access.Deny { refusal: refusal } =>
       refusal.location.profile == "PublicationAdmissionRequest"
         && refusal.location.object == "public-root"
   }

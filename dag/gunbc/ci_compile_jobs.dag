@@ -19,18 +19,18 @@ fn ci_compile_jobs_for(
     CompileJobs { count: 1 }
   } else {
     match measurement {
-      CompileJobUnmeasured => CompileJobsRefuse {
+      gunbc.ci_compile_measurement.CompileJobUnmeasured => CompileJobsRefuse {
         reason: "ci_compile_jobs: gunbc.ci_compile_measurement is Unmeasured — no committed per-rustc peak / procs-per-job / pids budget. Refusing to guess a job count (DESIGN §5); stamp a real fleet measurement first."
       }
-      CompileJobMeasured { per_rustc_peak: peak, procs_per_job: ppj, pids_budget: pids } => CompileJobs {
-        count: hardware_thread_count_value(
-          t: process_memory_aware_spawn_width(
+      gunbc.ci_compile_measurement.CompileJobMeasured { per_rustc_peak: peak, procs_per_job: ppj, pids_budget: pids } => CompileJobs {
+        count: std.measure.hardware_thread_count_value(
+          t: std.realization_width.process_memory_aware_spawn_width(
             hardware_threads: hardware_threads,
             memory_budget: memory_budget,
             per_job_peak: peak,
             pids_budget: pids,
             procs_per_job: ppj,
-            conservative_fallback_width: gunbc_ci_compile_conservative_fallback_jobs
+            conservative_fallback_width: gunbc.ci_compile_measurement.gunbc_ci_compile_conservative_fallback_jobs
           )
         )
       }
@@ -40,7 +40,7 @@ fn ci_compile_jobs_for(
 
 fn ci_compile_jobs(memory_budget: std.measure.ByteSize, force_serial: Bool) -> DerivedCompileJobs {
   ci_compile_jobs_for(
-    measurement: gunbc_ci_compile_measurement,
+    measurement: gunbc.ci_compile_measurement.gunbc_ci_compile_measurement,
     hardware_threads: gunbc_ci_compile_hardware_threads(),
     memory_budget: memory_budget,
     force_serial: force_serial

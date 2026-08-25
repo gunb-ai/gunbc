@@ -6,13 +6,13 @@ data build_artifact_corruption_probe_doc: String = "Wet bin-witness execution pr
 data witness_bin_readiness_claim_doc: String = "Discriminating controls for the typed witness-binary readiness carrier (tools.host_prelude). Each arm is asserted against a distinct real on-disk state AND against the path it must carry, so the carrier cannot regress to a single constant verdict — the arm-by-arm equivalent of the comparator controls that closed review 39735. Enrolled here rather than in a new file because these are wet bin-witness probes with the same effects and cadence as the corruption probes above them."
 
 test fn build_artifact_corruption_probe_holds() -> Bool {
-  witness_zero_byte_artifact_rejected_by_execution()
-    && witness_nonempty_executable_accepted_by_execution()
+  tools.build_step_transport.witness_zero_byte_artifact_rejected_by_execution()
+    && tools.build_step_transport.witness_nonempty_executable_accepted_by_execution()
 }
 
 test fn witness_bin_readiness_arms_are_discriminating() -> Bool {
-  witness_readiness_absent_refuses_located()
-    && witness_readiness_not_executable_refuses_located()
-    && witness_readiness_empty_artifact_refuses_located()
-    && witness_readiness_nonempty_executable_is_ready()
+  tools.build_step_transport.witness_readiness_absent_refuses_located()
+    && tools.build_step_transport.witness_readiness_not_executable_refuses_located()
+    && tools.build_step_transport.witness_readiness_empty_artifact_refuses_located()
+    && tools.build_step_transport.witness_readiness_nonempty_executable_is_ready()
 }

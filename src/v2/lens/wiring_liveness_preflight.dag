@@ -8,7 +8,7 @@ type FrontierWiringObligation {
 
 fn frontier_slice_dependence(dependencies: List<v2.lens.affected_set.FrontierDependency>) -> List<v2.std.dependency.DependencyView> {
   fold(dependencies, init: [], f: fn(acc, fd) {
-    list_snoc_item(xs: acc, item: fd.dependency)
+    v2.std.algebra.list_snoc_item(xs: acc, item: fd.dependency)
   })
 }
 
@@ -22,10 +22,10 @@ fn obligation_projection(
   }
 }
 
-fn obligation_is_wired(dependence: List<v2.std.dependency.DependencyView>, obligation: FrontierWiringObligation) -> v2.std.logic.Bool {
+fn obligation_is_wired(dependence: List<v2.std.dependency.DependencyView>, obligation: FrontierWiringObligation) -> Bool {
   std.perturbation.perturbation_consistent(
     reading: std.perturbation.BackwardDiffInDiffOut,
-    output_responded: graph_invariant_reaches(
+    output_responded: v2.lens.common.graph_invariant.graph_invariant_reaches(
       projection: obligation_projection(dependence: dependence, obligation: obligation),
       target: obligation.declared_input
     )
@@ -36,14 +36,14 @@ fn first_dead_wire(
   dependence: List<v2.std.dependency.DependencyView>,
   obligations: List<FrontierWiringObligation>
 ) -> v2.std.optional.Optional<FrontierWiringObligation> {
-  fold(obligations, init: optional_absent(), f: fn(acc, obligation) {
+  fold(obligations, init: v2.std.optional.optional_absent(), f: fn(acc, obligation) {
     match acc {
-      Present { value: v } => optional_present(value: v)
-      Absent =>
+      v2.std.optional.Present { value: v } => v2.std.optional.optional_present(value: v)
+      v2.std.optional.Absent =>
         if obligation_is_wired(dependence: dependence, obligation: obligation) {
-          optional_absent()
+          v2.std.optional.optional_absent()
         } else {
-          optional_present(value: obligation)
+          v2.std.optional.optional_present(value: obligation)
         }
     }
   })
@@ -51,8 +51,8 @@ fn first_dead_wire(
 
 fn dead_wire_reason(obligation: FrontierWiringObligation, dependence: List<v2.std.dependency.DependencyView>) -> v2.lens.affected_set.FailClosedReason {
   v2.lens.affected_set.ReasonDiagnostics {
-    diagnostics: diagnostics_singleton(
-      d: graph_reach_unreachable_diagnostic(
+    diagnostics: v2.std.diagnostic.diagnostics_singleton(
+      d: v2.lens.common.graph_invariant.graph_reach_unreachable_diagnostic(
         reason: ^wiring_liveness_dead_wire,
         root: obligation.output,
         unreachable: obligation.declared_input,
@@ -69,16 +69,16 @@ fn preflight_reexec_frontier(
 ) -> v2.lens.affected_set.ReExecFrontier {
   let dependence = frontier_slice_dependence(dependencies: dependencies)
   match frontier {
-    FailClosed { reason: reason } => v2.lens.affected_set.FailClosed { reason: reason }
-    ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
+    v2.lens.affected_set.FailClosed { reason: reason } => v2.lens.affected_set.FailClosed { reason: reason }
+    v2.lens.affected_set.ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
       match first_dead_wire(dependence: dependence, obligations: obligations) {
-        Absent => frontier
-        Present { value: dead } =>
+        v2.std.optional.Absent => frontier
+        v2.std.optional.Present { value: dead } =>
           v2.lens.affected_set.FailClosed { reason: dead_wire_reason(obligation: dead, dependence: dependence) }
       }
   }
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: RealizationDispatch }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.RealizationDispatch }
 }

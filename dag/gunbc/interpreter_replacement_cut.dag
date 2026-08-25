@@ -8,7 +8,7 @@ data interpreter_cut_identity: gunbc.replacement_cut.ReplacementCutId = "cut-v1-
 fn nes(s: String) -> std.types.NonEmptyStr { s as std.types.NonEmptyStr }
 
 fn consumer(name: String, disposition: gunbc.replacement_cut.ConsumerDisposition) -> gunbc.replacement_cut.BoundaryConsumer {
-  gunbc.replacement_cut.BoundaryConsumer { consumer: gunbc.interpreter_replacement_cut.nes(s: name), disposition: disposition }
+  gunbc.replacement_cut.BoundaryConsumer { consumer: nes(s: name), disposition: disposition }
 }
 
 // Retired: every row whose ONLY subject is X itself. These are not losses --
@@ -16,17 +16,17 @@ fn consumer(name: String, disposition: gunbc.replacement_cut.ConsumerDisposition
 // about a thing that no longer exists.
 fn retired_with_x() -> List<gunbc.replacement_cut.BoundaryConsumer> {
   [
-    gunbc.interpreter_replacement_cut.consumer(
+    consumer(
       name: "gunbc.v1_interpreter_primitive_surface",
-      disposition: gunbc.replacement_cut.Retire { reason: gunbc.interpreter_replacement_cut.nes(s: "its entire subject is X's primitive dispatch arms") },
+      disposition: gunbc.replacement_cut.Retire { reason: nes(s: "its entire subject is X's primitive dispatch arms") },
     ),
-    gunbc.interpreter_replacement_cut.consumer(
+    consumer(
       name: "v1_compiler.v1_interpreter_dispatch_generated",
-      disposition: gunbc.replacement_cut.Retire { reason: gunbc.interpreter_replacement_cut.nes(s: "generated projection of X's dispatch table; no authority survives it") },
+      disposition: gunbc.replacement_cut.Retire { reason: nes(s: "generated projection of X's dispatch table; no authority survives it") },
     ),
-    gunbc.interpreter_replacement_cut.consumer(
+    consumer(
       name: "gunbc.v1_interpreter_dispatch_emit",
-      disposition: gunbc.replacement_cut.Retire { reason: gunbc.interpreter_replacement_cut.nes(s: "the emitter whose only output is X's dispatch table") },
+      disposition: gunbc.replacement_cut.Retire { reason: nes(s: "the emitter whose only output is X's dispatch table") },
     ),
   ]
 }
@@ -38,13 +38,13 @@ fn retired_with_x() -> List<gunbc.replacement_cut.BoundaryConsumer> {
 // the same stale-claim defect this carrier was just corrected for.
 fn retired_by_deletion_on_the_measured_branch() -> List<gunbc.replacement_cut.BoundaryConsumer> {
   [
-    gunbc.interpreter_replacement_cut.consumer(
+    consumer(
       name: "v1_compiler.coproduct_reflection",
-      disposition: gunbc.replacement_cut.Retire { reason: gunbc.interpreter_replacement_cut.nes(s: "deleted by the measured cut; the deletion is the disposition, not a finding that the behavior had no surviving subject") },
+      disposition: gunbc.replacement_cut.Retire { reason: nes(s: "deleted by the measured cut; the deletion is the disposition, not a finding that the behavior had no surviving subject") },
     ),
-    gunbc.interpreter_replacement_cut.consumer(
+    consumer(
       name: "v1_compiler.pre_push",
-      disposition: gunbc.replacement_cut.Retire { reason: gunbc.interpreter_replacement_cut.nes(s: "deleted by the measured cut; the deletion is the disposition, not a finding that the behavior had no surviving subject") },
+      disposition: gunbc.replacement_cut.Retire { reason: nes(s: "deleted by the measured cut; the deletion is the disposition, not a finding that the behavior had no surviving subject") },
     ),
   ]
 }
@@ -61,7 +61,7 @@ fn retired_by_deletion_on_the_measured_branch() -> List<gunbc.replacement_cut.Bo
 // region genuinely belongs to another lane and parking it is not an error.
 fn undecided_at_the_parent_boundary() -> List<gunbc.replacement_cut.BoundaryConsumer> {
   [
-    gunbc.interpreter_replacement_cut.consumer(name: "v1_compiler.cli_run", disposition: gunbc.replacement_cut.Undecided),
+    consumer(name: "v1_compiler.cli_run", disposition: gunbc.replacement_cut.Undecided),
   ]
 }
 
@@ -69,24 +69,24 @@ fn undecided_at_the_parent_boundary() -> List<gunbc.replacement_cut.BoundaryCons
 // saying otherwise is the whole class this carrier exists to refuse.
 fn surviving_without_coverage() -> List<gunbc.replacement_cut.BoundaryConsumer> {
   [
-    gunbc.interpreter_replacement_cut.consumer(
+    consumer(
       name: "v1_compiler.bin.claim_executor",
       disposition: gunbc.replacement_cut.RetainSameContract {
-        justification: gunbc.interpreter_replacement_cut.nes(s: "the floor executor must keep executing every enrolled witness"),
+        justification: nes(s: "the floor executor must keep executing every enrolled witness"),
         coverage: gunbc.replacement_cut.CoverageOpen,
       },
     ),
-    gunbc.interpreter_replacement_cut.consumer(
+    consumer(
       name: "v1_compiler.bin.interp_recorded_fixture_witness",
       disposition: gunbc.replacement_cut.RetainSameContract {
-        justification: gunbc.interpreter_replacement_cut.nes(s: "recorded-fixture replay has no native route"),
+        justification: nes(s: "recorded-fixture replay has no native route"),
         coverage: gunbc.replacement_cut.CoverageOpen,
       },
     ),
-    gunbc.interpreter_replacement_cut.consumer(
+    consumer(
       name: "v1_compiler.bin.auth_declared_but_unwired_witness",
       disposition: gunbc.replacement_cut.RetainSameContract {
-        justification: gunbc.interpreter_replacement_cut.nes(s: "probe binary still reached through X's evaluation entry"),
+        justification: nes(s: "probe binary still reached through X's evaluation entry"),
         coverage: gunbc.replacement_cut.CoverageOpen,
       },
     ),
@@ -97,9 +97,9 @@ fn surviving_without_coverage() -> List<gunbc.replacement_cut.BoundaryConsumer> 
 // re-grounded on its four surviving surfaces when X's roster left.
 fn regrounded_on_y() -> List<gunbc.replacement_cut.BoundaryConsumer> {
   [
-    gunbc.interpreter_replacement_cut.consumer(
+    consumer(
       name: "std.primitive_identity",
-      disposition: gunbc.replacement_cut.ReplacedByY { new_authority: gunbc.interpreter_replacement_cut.nes(s: "std.primitive_identity four-surface derived census") },
+      disposition: gunbc.replacement_cut.ReplacedByY { new_authority: nes(s: "std.primitive_identity four-surface derived census") },
     ),
   ]
 }
@@ -116,10 +116,10 @@ fn interpreter_cut_consumers() -> List<gunbc.replacement_cut.BoundaryConsumer> {
 
 fn interpreter_cut_region() -> List<std.types.NonEmptyStr> {
   [
-    gunbc.interpreter_replacement_cut.nes(s: "v1_compiler.v1_interpreter"),
-    gunbc.interpreter_replacement_cut.nes(s: "v1_compiler.v1_interpreter_dispatch_generated"),
-    gunbc.interpreter_replacement_cut.nes(s: "gunbc.v1_interpreter_primitive_surface"),
-    gunbc.interpreter_replacement_cut.nes(s: "gunbc.v1_interpreter_dispatch_emit"),
+    nes(s: "v1_compiler.v1_interpreter"),
+    nes(s: "v1_compiler.v1_interpreter_dispatch_generated"),
+    nes(s: "gunbc.v1_interpreter_primitive_surface"),
+    nes(s: "gunbc.v1_interpreter_dispatch_emit"),
   ]
 }
 
@@ -135,31 +135,31 @@ fn interpreter_cut_external_x() -> gunbc.replacement_cut.ExternalXAnswer {
 fn interpreter_cut_evidence() -> List<gunbc.replacement_cut.EvidenceDisposition> {
   [
     gunbc.replacement_cut.ReenrollAgainstY {
-      evidence: gunbc.interpreter_replacement_cut.nes(s: "cross_representation_equality guard witness"),
-      surviving_claim: gunbc.interpreter_replacement_cut.nes(s: "a cross-representation equality straddle refuses rather than answering false"),
+      evidence: nes(s: "cross_representation_equality guard witness"),
+      surviving_claim: nes(s: "a cross-representation equality straddle refuses rather than answering false"),
     },
     gunbc.replacement_cut.RetireEvidence {
-      evidence: gunbc.interpreter_replacement_cut.nes(s: "interpreter_dispatch_bijection_real_roster_red"),
-      retired_subject: gunbc.interpreter_replacement_cut.nes(s: "bijection between X's dispatch arms and its declared roster"),
-      retirement_reason: gunbc.interpreter_replacement_cut.nes(s: "the bijection's two sides both leave with X") ,
+      evidence: nes(s: "interpreter_dispatch_bijection_real_roster_red"),
+      retired_subject: nes(s: "bijection between X's dispatch arms and its declared roster"),
+      retirement_reason: nes(s: "the bijection's two sides both leave with X") ,
     },
   ]
 }
 
 fn interpreter_cut_why_not_higher() -> gunbc.replacement_cut.HigherBoundaryAnswer {
   gunbc.replacement_cut.DescentParentUnauthored {
-    intended_parent_boundary: gunbc.interpreter_replacement_cut.nes(s: "the engine cut through the v1 driver region"),
-    basis: gunbc.interpreter_replacement_cut.nes(s: "no cut is authored at that boundary by any lane: the cli_run lane's ruled scope is the driver verbs and it places this region explicitly outside its own, so both lanes descend from one unauthored parent"),
+    intended_parent_boundary: nes(s: "the engine cut through the v1 driver region"),
+    basis: nes(s: "no cut is authored at that boundary by any lane: the cli_run lane's ruled scope is the driver verbs and it places this region explicitly outside its own, so both lanes descend from one unauthored parent"),
   }
 }
 
 fn interpreter_replacement_cut() -> gunbc.replacement_cut.ReplacementCut {
   gunbc.replacement_cut.ReplacementCut {
     identity: interpreter_cut_identity,
-    old_root_consumer: gunbc.interpreter_replacement_cut.nes(s: "v1 .dag evaluation entry"),
-    subject: gunbc.interpreter_replacement_cut.nes(s: "every .dag subject executed by the v1 tree-walking interpreter: enrolled witnesses, plan evaluation, and lens execution"),
-    contract: gunbc.interpreter_replacement_cut.nes(s: "evaluate a resolved .dag declaration to a value, or refuse with a typed located diagnostic; no fabricated plausible output"),
-    new_root: gunbc.interpreter_replacement_cut.nes(s: "the DagExecution boundary: evaluate(resolved_graph, entry, arguments, execution_mode, capabilities) -> Value | LocatedDiagnostic | UnsupportedFeature"),
+    old_root_consumer: nes(s: "v1 .dag evaluation entry"),
+    subject: nes(s: "every .dag subject executed by the v1 tree-walking interpreter: enrolled witnesses, plan evaluation, and lens execution"),
+    contract: nes(s: "evaluate a resolved .dag declaration to a value, or refuse with a typed located diagnostic; no fabricated plausible output"),
+    new_root: nes(s: "the DagExecution boundary: evaluate(resolved_graph, entry, arguments, execution_mode, capabilities) -> Value | LocatedDiagnostic | UnsupportedFeature"),
     why_not_higher: interpreter_cut_why_not_higher(),
     covered_region: interpreter_cut_region(),
     boundary_census: gunbc.replacement_cut.ConsumersEnumerated { consumers: interpreter_cut_consumers() },

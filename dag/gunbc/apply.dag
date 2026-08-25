@@ -41,8 +41,8 @@ fn parse_apply_mode(value: String) -> ApplyModeParse {
 
 fn runner_capacity_plan_exit(plan: gunbc.runner_capacity_plan.RunnerCapacityPlan) -> std.process.ProcessExit {
   match plan {
-    PlanReady { hosts: _ } => std.process.ExitSuccess
-    PlanRefused { reason: r } => exit_failure(reason: r)
+    gunbc.runner_capacity_plan.PlanReady { hosts: _ } => std.process.ExitSuccess
+    gunbc.runner_capacity_plan.PlanRefused { reason: r } => std.process.exit_failure(reason: r)
   }
 }
 
@@ -52,28 +52,28 @@ fn apply_runner_capacity_plan(
   mode: String,
 ) -> std.process.ProcessExit {
   match parse_apply_mode(value: mode) {
-    ModeParseRefused { reason: r } => exit_failure(reason: r)
+    ModeParseRefused { reason: r } => std.process.exit_failure(reason: r)
     ModeParsed { mode: Apply } =>
-      match parse_positive_width(value: srv3_width) {
-        Absent => exit_failure(reason: "srv3_width must be a positive integer")
+      match gunbc.runner_capacity_plan.parse_positive_width(value: srv3_width) {
+        Absent => std.process.exit_failure(reason: "srv3_width must be a positive integer")
         Present { value: w3 } =>
-          match parse_positive_width(value: srv4_width) {
-            Absent => exit_failure(reason: "srv4_width must be a positive integer")
-            Present { value: w4 } => runner_capacity_apply_wet_exit(srv3_width: w3, srv4_width: w4)
+          match gunbc.runner_capacity_plan.parse_positive_width(value: srv4_width) {
+            Absent => std.process.exit_failure(reason: "srv4_width must be a positive integer")
+            Present { value: w4 } => gunbc.runner_capacity_realize.runner_capacity_apply_wet_exit(srv3_width: w3, srv4_width: w4)
           }
       }
     ModeParsed { mode: Plan } =>
-      match parse_positive_width(value: srv3_width) {
-        Absent => exit_failure(reason: "srv3_width must be a positive integer")
+      match gunbc.runner_capacity_plan.parse_positive_width(value: srv3_width) {
+        Absent => std.process.exit_failure(reason: "srv3_width must be a positive integer")
         Present { value: w3 } =>
-          match parse_positive_width(value: srv4_width) {
-            Absent => exit_failure(reason: "srv4_width must be a positive integer")
+          match gunbc.runner_capacity_plan.parse_positive_width(value: srv4_width) {
+            Absent => std.process.exit_failure(reason: "srv4_width must be a positive integer")
             Present { value: w4 } =>
               runner_capacity_plan_exit(
-                plan: runner_capacity_plan(
+                plan: gunbc.runner_capacity_plan.runner_capacity_plan(
                   srv3_width: w3,
                   srv4_width: w4,
-                  roster: organization_runner_roster_evidence(),
+                  roster: gunbc.fleet_runner_connectivity.organization_runner_roster_evidence(),
                 )
               )
           }
@@ -88,12 +88,12 @@ fn apply_dispatch(
   mode: String,
 ) -> std.process.ProcessExit {
   match parse_apply_workflow(value: workflow) {
-    WorkflowParseRefused { reason: r } => exit_failure(reason: r)
+    WorkflowParseRefused { reason: r } => std.process.exit_failure(reason: r)
     WorkflowParsed { workflow: DashboardSrv1 } =>
       if mode == "apply" {
-        live_deploy_apply_srv1_wet()
+        gunbc.live_deploy.apply.live_deploy_apply_srv1_wet()
       } else {
-        exit_failure(reason: "dashboard-srv1 supports mode=apply only in this increment")
+        std.process.exit_failure(reason: "dashboard-srv1 supports mode=apply only in this increment")
       }
     WorkflowParsed { workflow: RunnerCapacity } =>
       apply_runner_capacity_plan(srv3_width: srv3_width, srv4_width: srv4_width, mode: mode)

@@ -23,7 +23,7 @@ fn atlas_ring_radius(ring: Int) -> Int {
 
 fn atlas_ring_slot_count(ring: Int) -> Int {
   fold(
-    atlas_ring_slot_counts,
+    gunbc.repo_atlas_projection.atlas_ring_slot_counts,
     init: AtlasRingSlotProbe { index: 0, found: 1 },
     f: (acc, n) => if acc.index == ring {
       AtlasRingSlotProbe { index: acc.index + 1, found: n }
@@ -67,7 +67,7 @@ fn atlas_cell_transform(address: gunbc.repo_atlas_projection.AtlasAddress) -> St
 }
 
 fn sattr(name: String, value: String) -> std.markup.Attribute {
-  attr(name: name, value: value)
+  std.markup.attr(name: name, value: value)
 }
 
 data repo_atlas_role_note: String = "THE FOUR ROLES ARE SEPARATE VISUAL CHANNELS AND MUST STAY DISTINGUISHABLE AT A GLANCE. A dim dot is structure. A bright crisp dot is a real SCM observation. A thin outer ring is a real impact reading. Glow belongs to selection and is not used on this page at all, because there is no selection yet and an unused channel is better than a channel that collides with occupancy.
@@ -75,11 +75,11 @@ data repo_atlas_role_note: String = "THE FOUR ROLES ARE SEPARATE VISUAL CHANNELS
 Density, not brightness, carries a cell's occupant count: brightness is the change channel, and reusing it for population would make a crowded structural cell read as a change."
 
 fn atlas_cell_class(cell: gunbc.repo_atlas_projection.RepoAtlasCell) -> String {
-  if atlas_cell_occupant_count(cell: cell) > 1 { "atlas-dot atlas-dot-shared" } else { "atlas-dot" }
+  if gunbc.repo_atlas_projection.atlas_cell_occupant_count(cell: cell) > 1 { "atlas-dot atlas-dot-shared" } else { "atlas-dot" }
 }
 
 fn atlas_cell_any_impacted(cell: gunbc.repo_atlas_projection.RepoAtlasCell, impact: gunbc.repo_atlas_projection.AtlasImpactOverlay) -> Bool {
-  any(cell.occupants, o => atlas_module_is_impacted(overlay: impact, identity: o))
+  any(cell.occupants, o => gunbc.repo_atlas_projection.atlas_module_is_impacted(overlay: impact, identity: o))
 }
 
 fn atlas_cell_title(cell: gunbc.repo_atlas_projection.RepoAtlasCell) -> String {
@@ -92,20 +92,20 @@ data repo_atlas_plane_independence_note: String = "THE CHANGE PLANE IS ITS OWN G
 A SECOND DEFECT DISSOLVED WITH IT. Marking the structural dot marked the CELL, so in a shared cell every occupant appeared changed when only one of them was. The change plane emits one mark per changed OCCUPANT and titles it with the changed occupants alone, so a cell holding a changed module beside an untouched one no longer reports both as changed."
 
 fn atlas_structure_dot(cell: gunbc.repo_atlas_projection.RepoAtlasCell) -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "g", attributes: [
-    gunbc.roadmap_repo_atlas_sandbox.sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
+  std.markup.Element { tag: "g", attributes: [
+    sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
   ], children: [
-    extdeps.browser.Element { tag: "circle", attributes: [
-      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "r", value: to_string(atlas_dot_radius)),
-      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: atlas_cell_class(cell: cell)),
+    std.markup.Element { tag: "circle", attributes: [
+      sattr(name: "r", value: to_string(atlas_dot_radius)),
+      sattr(name: "class", value: atlas_cell_class(cell: cell)),
     ], children: [
-      extdeps.browser.Element { tag: "title", attributes: [], children: [ txt(atlas_cell_title(cell: cell)) ] },
+      std.markup.Element { tag: "title", attributes: [], children: [ gunbc.site.markup.txt(atlas_cell_title(cell: cell)) ] },
     ] },
   ] }
 }
 
 fn atlas_changed_occupants(cell: gunbc.repo_atlas_projection.RepoAtlasCell, marks: List<gunbc.repo_atlas_projection.AtlasChangeMark>) -> List<v2.lens.module_impact_query.ModuleIdentity> {
-  filter(cell.occupants, o => atlas_module_is_marked(marks: marks, identity: o))
+  filter(cell.occupants, o => gunbc.repo_atlas_projection.atlas_module_is_marked(marks: marks, identity: o))
 }
 
 fn atlas_identity_list_text(identities: List<v2.lens.module_impact_query.ModuleIdentity>) -> String {
@@ -114,15 +114,15 @@ fn atlas_identity_list_text(identities: List<v2.lens.module_impact_query.ModuleI
 }
 
 fn atlas_change_dot(cell: gunbc.repo_atlas_projection.RepoAtlasCell, changed: List<v2.lens.module_impact_query.ModuleIdentity>) -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "g", attributes: [
-    gunbc.roadmap_repo_atlas_sandbox.sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
+  std.markup.Element { tag: "g", attributes: [
+    sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
   ], children: [
-    extdeps.browser.Element { tag: "circle", attributes: [
-      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "r", value: to_string(atlas_dot_radius)),
-      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-dot atlas-dot-changed"),
+    std.markup.Element { tag: "circle", attributes: [
+      sattr(name: "r", value: to_string(atlas_dot_radius)),
+      sattr(name: "class", value: "atlas-dot atlas-dot-changed"),
     ], children: [
-      extdeps.browser.Element { tag: "title", attributes: [], children: [
-        txt(concat("changed — ", atlas_identity_list_text(identities: changed))),
+      std.markup.Element { tag: "title", attributes: [], children: [
+        gunbc.site.markup.txt(concat("changed — ", atlas_identity_list_text(identities: changed))),
       ] },
     ] },
   ] }
@@ -131,27 +131,27 @@ fn atlas_change_dot(cell: gunbc.repo_atlas_projection.RepoAtlasCell, changed: Li
 data repo_atlas_plane_note: String = "Each plane is its own SVG group so a register or a motion realization can transform one without the others. They are emitted in one document and share the coordinate frame — co-registered, not composited after the fact — which is what lets a future impulse desynchronize them the way a CRT loses hold, using the planes that already exist rather than new machinery."
 
 fn atlas_structure_plane(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "g", attributes: [ gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-plane atlas-plane-structure") ],
+  std.markup.Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-structure") ],
     children: map(snapshot.cells, c => atlas_structure_dot(cell: c)) }
 }
 
 fn atlas_change_plane(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot, marks: List<gunbc.repo_atlas_projection.AtlasChangeMark>) -> List<std.markup.Fragment> {
   let changed_cells = filter(snapshot.cells, c => atlas_changed_occupants(cell: c, marks: marks).length() > 0)
   if changed_cells.length() == 0 { [] } else {
-    [ el_class("g", "atlas-plane atlas-plane-changes",
+    [ gunbc.site.markup.el_class("g", "atlas-plane atlas-plane-changes",
         map(changed_cells, c =>
           atlas_change_dot(cell: c, changed: atlas_changed_occupants(cell: c, marks: marks)))) ]
   }
 }
 
 fn atlas_impact_ring(cell: gunbc.repo_atlas_projection.RepoAtlasCell) -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "g", attributes: [
-    gunbc.roadmap_repo_atlas_sandbox.sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
+  std.markup.Element { tag: "g", attributes: [
+    sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
   ], children: [
-    extdeps.browser.Element { tag: "circle", attributes: [
-      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "r", value: to_string(atlas_dot_radius + 4)),
-      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-impact-ring"),
-      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "fill", value: "none"),
+    std.markup.Element { tag: "circle", attributes: [
+      sattr(name: "r", value: to_string(atlas_dot_radius + 4)),
+      sattr(name: "class", value: "atlas-impact-ring"),
+      sattr(name: "fill", value: "none"),
     ], children: [] },
   ] }
 }
@@ -160,9 +160,9 @@ data repo_atlas_impact_plane_note: String = "The impact plane renders ONLY from 
 
 fn atlas_impact_plane(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> List<std.markup.Fragment> {
   match snapshot.impact {
-    AtlasImpactNotComputed => []
-    AtlasImpactComputed { reached: _, standing: _ } => [
-      extdeps.browser.Element { tag: "g", attributes: [ gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-plane atlas-plane-impact") ],
+    gunbc.repo_atlas_projection.AtlasImpactNotComputed => []
+    gunbc.repo_atlas_projection.AtlasImpactComputed { reached: _, standing: _ } => [
+      std.markup.Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-impact") ],
         children: map(
           filter(snapshot.cells, c => atlas_cell_any_impacted(cell: c, impact: snapshot.impact)),
           c => atlas_impact_ring(cell: c)) }
@@ -171,33 +171,33 @@ fn atlas_impact_plane(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -
 }
 
 fn atlas_glass_plane() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "g", attributes: [ gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-plane atlas-plane-glass") ],
+  std.markup.Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-glass") ],
     children: [
-      extdeps.browser.Element { tag: "circle", attributes: [
-        gunbc.roadmap_repo_atlas_sandbox.sattr(name: "cx", value: to_string(atlas_svg_center)),
-        gunbc.roadmap_repo_atlas_sandbox.sattr(name: "cy", value: to_string(atlas_svg_center)),
-        gunbc.roadmap_repo_atlas_sandbox.sattr(name: "r", value: to_string(atlas_ring_radius(ring: 15) + 16)),
-        gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-glass-edge"),
-        gunbc.roadmap_repo_atlas_sandbox.sattr(name: "fill", value: "none"),
+      std.markup.Element { tag: "circle", attributes: [
+        sattr(name: "cx", value: to_string(atlas_svg_center)),
+        sattr(name: "cy", value: to_string(atlas_svg_center)),
+        sattr(name: "r", value: to_string(atlas_ring_radius(ring: 15) + 16)),
+        sattr(name: "class", value: "atlas-glass-edge"),
+        sattr(name: "fill", value: "none"),
       ], children: [] },
     ] }
 }
 
 fn atlas_marks_of(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> List<gunbc.repo_atlas_projection.AtlasChangeMark> {
-  atlas_overlay_marks(overlay: snapshot.changes)
+  gunbc.repo_atlas_projection.atlas_overlay_marks(overlay: snapshot.changes)
 }
 
 fn atlas_svg(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> std.markup.Fragment {
   let marks = atlas_marks_of(snapshot: snapshot)
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "svg",
     attributes: [
-      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "viewBox", value: concat("0 0 ", concat(to_string(atlas_svg_extent),
+      sattr(name: "viewBox", value: concat("0 0 ", concat(to_string(atlas_svg_extent),
         concat(" ", to_string(atlas_svg_extent))))),
-      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas"),
-      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "role", value: "img"),
-      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "aria-label", value: "the .dag module population as a ring atlas"),
-      gunbc.roadmap_repo_atlas_sandbox.sattr(name: "tabindex", value: "0"),
+      sattr(name: "class", value: "atlas"),
+      sattr(name: "role", value: "img"),
+      sattr(name: "aria-label", value: "the .dag module population as a ring atlas"),
+      sattr(name: "tabindex", value: "0"),
     ],
     children: concat(
       concat(
@@ -211,56 +211,56 @@ fn atlas_svg(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> std.mar
 data repo_atlas_readout_note: String = "THE READOUT IS THE HONEST HALF OF THE PAGE AND IS NOT OPTIONAL GARNISH. Everything the atlas cannot draw truthfully is stated here in words: the refusal cause when the change overlay refused, the departed paths that have no head identity, the paths declaring no module, and whether an impact reading exists and at what standing. A viewer who reads only the picture must not be able to conclude more than the model knows."
 
 fn atlas_comparison_text(c: gunbc.repo_atlas_projection.AtlasComparison) -> String {
-  let rel = match c.relation { TwoDot => ".." ThreeDot => "..." }
+  let rel = match c.relation { extdeps.git.TwoDot => ".." extdeps.git.ThreeDot => "..." }
   concat("comparison — ", concat(c.base, concat(rel, c.head)))
 }
 
 fn atlas_refusal_text(cause: gunbc.repo_atlas_projection.AtlasOverlayRefusalCause) -> String {
   match cause {
-    ComparisonHeadUnbound { detail: d } =>
+    gunbc.repo_atlas_projection.ComparisonHeadUnbound { detail: d } =>
       concat("comparison not bound to this tree — ", d)
-    ComparisonReadFailed { detail: d } =>
+    gunbc.repo_atlas_projection.ComparisonReadFailed { detail: d } =>
       concat("comparison could not be read — ", d)
-    UnmergedEntryPresent { path: p } =>
+    gunbc.repo_atlas_projection.UnmergedEntryPresent { path: p } =>
       concat("change overlay refused — unmerged entry at ", p)
-    PairingBrokenEntryPresent { path: p } =>
+    gunbc.repo_atlas_projection.PairingBrokenEntryPresent { path: p } =>
       concat("change overlay refused — broken rename pairing at ", p)
-    UnknownGitStatusPresent { path: p, raw: raw } =>
+    gunbc.repo_atlas_projection.UnknownGitStatusPresent { path: p, raw: raw } =>
       concat("change overlay refused — unknown git status ", concat(raw, concat(" at ", p)))
-    DiffObservationTruncated =>
+    gunbc.repo_atlas_projection.DiffObservationTruncated =>
       "change overlay refused — the diff observation was truncated, so entries are missing"
   }
 }
 
 fn atlas_unprojected_text(change: gunbc.repo_atlas_projection.UnprojectedChange) -> String {
   match change {
-    DepartedPathPriorIdentityUnavailable { path: p, status: _ } =>
+    gunbc.repo_atlas_projection.DepartedPathPriorIdentityUnavailable { path: p, status: _ } =>
       concat(p, " — departed; prior semantic identity is not recoverable from the head")
-    PathDeclaresNoModule { path: p, status: _ } =>
+    gunbc.repo_atlas_projection.PathDeclaresNoModule { path: p, status: _ } =>
       concat(p, " — changed, but the pool declares no module at this path")
   }
 }
 
 fn atlas_standing_text(standing: v2.lens.module_impact_query.ImpactStanding) -> String {
   match standing {
-    ExactForGraphSubject => "exact for the graph subject"
-    ProvisionalForObservedPool => "provisional — relative to the observed pool"
-    Incomplete { causes: causes } =>
+    v2.lens.module_impact_query.ExactForGraphSubject => "exact for the graph subject"
+    v2.lens.module_impact_query.ProvisionalForObservedPool => "provisional — relative to the observed pool"
+    v2.lens.module_impact_query.Incomplete { causes: causes } =>
       concat("incomplete — ", concat(to_string(causes.length()), " cause(s) recorded"))
-    PoolIndependentProjectionUnavailable { trigger: _ } =>
+    v2.lens.module_impact_query.PoolIndependentProjectionUnavailable { trigger: _ } =>
       "pool-independent projection unavailable"
   }
 }
 
 fn atlas_impact_readout(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> std.markup.Fragment {
   match snapshot.impact {
-    AtlasImpactNotComputed =>
-      el_class("p", "atlas-readout atlas-readout-absent", [
-        txt("impact not computed — no reverse-dependency reading was supplied, so no ring is drawn. This is not a claim that nothing is affected."),
+    gunbc.repo_atlas_projection.AtlasImpactNotComputed =>
+      gunbc.site.markup.el_class("p", "atlas-readout atlas-readout-absent", [
+        gunbc.site.markup.txt("impact not computed — no reverse-dependency reading was supplied, so no ring is drawn. This is not a claim that nothing is affected."),
       ])
-    AtlasImpactComputed { reached: reached, standing: standing } =>
-      el_class("p", "atlas-readout", [
-        txt(concat("impact — ", concat(to_string(reached.length()),
+    gunbc.repo_atlas_projection.AtlasImpactComputed { reached: reached, standing: standing } =>
+      gunbc.site.markup.el_class("p", "atlas-readout", [
+        gunbc.site.markup.txt(concat("impact — ", concat(to_string(reached.length()),
           concat(" module(s) reached, standing: ", atlas_standing_text(standing: standing))))),
       ])
   }
@@ -270,27 +270,27 @@ data repo_atlas_not_observed_readout_note: String = "The not-observed arm reads 
 
 fn atlas_changes_readout(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> List<std.markup.Fragment> {
   match snapshot.changes {
-    AtlasChangeNotObserved => [
-      el_class("p", "atlas-readout atlas-readout-absent", [
-        txt("changes not observed — no comparison was run for this snapshot, so no dot is marked. This is not a claim that nothing changed."),
+    gunbc.repo_atlas_projection.AtlasChangeNotObserved => [
+      gunbc.site.markup.el_class("p", "atlas-readout atlas-readout-absent", [
+        gunbc.site.markup.txt("changes not observed — no comparison was run for this snapshot, so no dot is marked. This is not a claim that nothing changed."),
       ]),
     ]
-    AtlasChangeOverlayRefused { cause: cause } => [
-      el_class("p", "atlas-readout atlas-readout-refused", [ txt(atlas_refusal_text(cause: cause)) ]),
+    gunbc.repo_atlas_projection.AtlasChangeOverlayRefused { cause: cause } => [
+      gunbc.site.markup.el_class("p", "atlas-readout atlas-readout-refused", [ gunbc.site.markup.txt(atlas_refusal_text(cause: cause)) ]),
     ]
-    AtlasChangesProjected { comparison: comparison, marks: marks, unprojected: unprojected } => concat(
-      [ el_class("p", "atlas-readout", [ txt(atlas_comparison_text(c: comparison)) ]),
-        el_class("p", "atlas-readout", [
-          txt(concat("direct changes — ", concat(to_string(marks.length()), " module(s) marked"))),
+    gunbc.repo_atlas_projection.AtlasChangesProjected { comparison: comparison, marks: marks, unprojected: unprojected } => concat(
+      [ gunbc.site.markup.el_class("p", "atlas-readout", [ gunbc.site.markup.txt(atlas_comparison_text(c: comparison)) ]),
+        gunbc.site.markup.el_class("p", "atlas-readout", [
+          gunbc.site.markup.txt(concat("direct changes — ", concat(to_string(marks.length()), " module(s) marked"))),
         ]) ],
       if unprojected.length() == 0 { [] } else {
-        [ el_class("div", "atlas-unprojected", [
-            el_class("p", "atlas-readout", [
-              txt(concat("unprojected changes — ", concat(to_string(unprojected.length()),
+        [ gunbc.site.markup.el_class("div", "atlas-unprojected", [
+            gunbc.site.markup.el_class("p", "atlas-readout", [
+              gunbc.site.markup.txt(concat("unprojected changes — ", concat(to_string(unprojected.length()),
                 " path(s) carry a change this snapshot cannot place"))),
             ]),
-            std.markup.Element { tag: "ul", attributes: [ gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-unprojected-list") ],
-              children: map(unprojected, u => el("li", [ txt(atlas_unprojected_text(change: u)) ])) },
+            std.markup.Element { tag: "ul", attributes: [ sattr(name: "class", value: "atlas-unprojected-list") ],
+              children: map(unprojected, u => gunbc.site.markup.el("li", [ gunbc.site.markup.txt(atlas_unprojected_text(change: u)) ])) },
           ]) ]
       })
   }
@@ -298,16 +298,16 @@ fn atlas_changes_readout(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot
 
 fn atlas_object_id_text(id: extdeps.git.object_store.GitObjectId) -> String {
   match id {
-    GitSha1ObjectId { digest: d } => d.hex
-    GitSha256ObjectId { digest: d } => d.hex
+    extdeps.git.object_store.GitSha1ObjectId { digest: d } => d.hex
+    extdeps.git.object_store.GitSha256ObjectId { digest: d } => d.hex
   }
 }
 
 fn atlas_subject_text(subject: gunbc.repo_atlas_projection.AtlasSubject) -> String {
   match subject {
-    AtlasSubjectUnobserved =>
+    gunbc.repo_atlas_projection.AtlasSubjectUnobserved =>
       "subject — unobserved; this snapshot names no revision"
-    AtlasSubjectRevision { revision: rev } =>
+    gunbc.repo_atlas_projection.AtlasSubjectRevision { revision: rev } =>
       concat("subject — working tree observed clean at ", atlas_object_id_text(id: rev))
   }
 }
@@ -315,23 +315,23 @@ fn atlas_subject_text(subject: gunbc.repo_atlas_projection.AtlasSubject) -> Stri
 data repo_atlas_occupancy_absent_note: String = "The page states the absence of agent occupancy out loud rather than simply omitting it. A viewer arriving at a repo atlas expecting to see where agents are working must not read 'no dots lit' as 'nobody is working' — the honest statement is that the channel does not exist yet."
 
 fn atlas_legend() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "ul", attributes: [ gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-legend") ], children: [
-    el("li", [ txt("dim dot — a structural module cell") ]),
-    el("li", [ txt("denser dot — several modules share this cell; neither displaces the other") ]),
-    el("li", [ txt("bright dot — directly changed, from a real SCM comparison") ]),
-    el("li", [ txt("outer ring — reached by a real reverse-dependency reading") ]),
-    el("li", [ txt("no channel — agent occupancy; it is not modeled yet and nothing here stands in for it") ]),
+  std.markup.Element { tag: "ul", attributes: [ sattr(name: "class", value: "atlas-legend") ], children: [
+    gunbc.site.markup.el("li", [ gunbc.site.markup.txt("dim dot — a structural module cell") ]),
+    gunbc.site.markup.el("li", [ gunbc.site.markup.txt("denser dot — several modules share this cell; neither displaces the other") ]),
+    gunbc.site.markup.el("li", [ gunbc.site.markup.txt("bright dot — directly changed, from a real SCM comparison") ]),
+    gunbc.site.markup.el("li", [ gunbc.site.markup.txt("outer ring — reached by a real reverse-dependency reading") ]),
+    gunbc.site.markup.el("li", [ gunbc.site.markup.txt("no channel — agent occupancy; it is not modeled yet and nothing here stands in for it") ]),
   ] }
 }
 
 fn repo_atlas_section(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> std.markup.Fragment {
-  el_class("section", "atlas-section", concat(
+  gunbc.site.markup.el_class("section", "atlas-section", concat(
     concat(
       [
-        el("h2", [ txt("repo atlas") ]),
-        el_class("p", "atlas-readout", [ txt(atlas_subject_text(subject: snapshot.subject)) ]),
-        el_class("p", "atlas-readout", [
-          txt(concat("structure — ", concat(to_string(snapshot.cells.length()), " occupied cell(s)"))),
+        gunbc.site.markup.el("h2", [ gunbc.site.markup.txt("repo atlas") ]),
+        gunbc.site.markup.el_class("p", "atlas-readout", [ gunbc.site.markup.txt(atlas_subject_text(subject: snapshot.subject)) ]),
+        gunbc.site.markup.el_class("p", "atlas-readout", [
+          gunbc.site.markup.txt(concat("structure — ", concat(to_string(snapshot.cells.length()), " occupied cell(s)"))),
         ]),
       ],
       atlas_changes_readout(snapshot: snapshot)),
@@ -344,9 +344,9 @@ fn repo_atlas_section(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -
 
 data repo_atlas_inspection_authority_note: String = "CLEANLINESS AND HEAD COME FROM git.Inspect, WHICH ALREADY OWNS THEM. An earlier revision minted StatusPorcelain and RevParse on git.Core — a second inspection surface beside the one that exists, in a module whose own note says no second Git inspection surface remains in extdeps.git. That is the DESIGN 3 fork this carrier's header claims not to commit, committed two files away from the claim (review 50800).
 
-THE ARGV DIFFERENCE WAS NOT COSMETIC. WorkingTreeStatus pins --porcelain=v1, -z and --untracked-files=all, each for a reason its module records. The one that mattered here is --untracked-files=all: plain --porcelain honours a repository-local status.showUntrackedFiles=no, so a tree carrying untracked files could have reported EMPTY while module_declaration_facts_live still read them — a clean-looking observation binding a subject to a tree that does not match it. That is a fail-open on the exact head-binding wall this slice adds, and the fix was to stop re-deriving an argv the authority had already gotten right.
+THE ARGV DIFFERENCE WAS NOT COSMETIC. WorkingTreeStatus pins --porcelain=v1, -z and --untracked-files=all, each for a reason its module records. The one that mattered here is --untracked-files=all: plain --porcelain honours a repository-local status.showUntrackedFiles=no, so a tree carrying untracked files could have reported EMPTY while v2.lens.module_graph.module_declaration_facts_live still read them — a clean-looking observation binding a subject to a tree that does not match it. That is a fail-open on the exact head-binding wall this slice adds, and the fix was to stop re-deriving an argv the authority had already gotten right.
 
-ONE OBSERVATION FUNCTION HOLDS BOTH WET READS, and that is the correction rather than a tidy-up. The page was ALREADY wet — module_declaration_facts_live reads the working tree — so moving only the Git read to a handler would not have made repo_atlas_document pure; it would have split one observation across two seams and left the correspondence between them unstated. Both reads happen here, together, and the pure document receives a completed snapshot.
+ONE OBSERVATION FUNCTION HOLDS BOTH WET READS, and that is the correction rather than a tidy-up. The page was ALREADY wet — v2.lens.module_graph.module_declaration_facts_live reads the working tree — so moving only the Git read to a handler would not have made repo_atlas_document pure; it would have split one observation across two seams and left the correspondence between them unstated. Both reads happen here, together, and the pure document receives a completed snapshot.
 
 THE BINDING IS CHECKED, NOT ASSUMED. The module facts describe the WORKING TREE and the comparison describes COMMITS. A subject is claimed only when git status --porcelain is observed empty at the resolved head, because a dirty tree means the two halves describe different worlds and marking one against the other would fabricate a correspondence. A dirty or unreadable tree keeps the structure plane and refuses the subject with a located cause; it never quietly draws marks anyway.
 
@@ -380,7 +380,7 @@ fn repo_atlas_observe_changes() -> gunbc.repo_atlas_projection.AtlasChangeObserv
         let diff = git.Core.DiffNameStatus(
           base: repo_atlas_comparison_base,
           head: repo_atlas_comparison_head,
-          range: TwoDot)
+          range: extdeps.git.TwoDot)
         if diff.success == false {
           gunbc.repo_atlas_projection.AtlasComparisonUnavailable {
             cause: gunbc.repo_atlas_projection.ComparisonReadFailed { detail: "git diff --name-status did not succeed" }
@@ -390,9 +390,9 @@ fn repo_atlas_observe_changes() -> gunbc.repo_atlas_projection.AtlasChangeObserv
             comparison: gunbc.repo_atlas_projection.AtlasComparison {
               base: repo_atlas_comparison_base,
               head: head.sha,
-              relation: TwoDot
+              relation: extdeps.git.TwoDot
             },
-            diff: git_diff_name_status_parse(raw: diff.raw)
+            diff: extdeps.git.git_diff_name_status_parse(raw: diff.raw)
           }
         }
       }
@@ -402,23 +402,23 @@ fn repo_atlas_observe_changes() -> gunbc.repo_atlas_projection.AtlasChangeObserv
 
 fn repo_atlas_observed_subject(observation: gunbc.repo_atlas_projection.AtlasChangeObservation) -> gunbc.repo_atlas_projection.AtlasSubject {
   match observation {
-    AtlasChangesNotObserved => AtlasSubjectUnobserved
-    AtlasComparisonUnavailable { cause: _ } => AtlasSubjectUnobserved
-    AtlasComparisonObserved { comparison: comparison, diff: _ } =>
-      match git_sha1_object_id(hex: comparison.head) {
-        Present { value: id } => gunbc.repo_atlas_projection.AtlasSubjectRevision { revision: id }
-        Absent => AtlasSubjectUnobserved
+    gunbc.repo_atlas_projection.AtlasChangesNotObserved => gunbc.repo_atlas_projection.AtlasSubjectUnobserved
+    gunbc.repo_atlas_projection.AtlasComparisonUnavailable { cause: _ } => gunbc.repo_atlas_projection.AtlasSubjectUnobserved
+    gunbc.repo_atlas_projection.AtlasComparisonObserved { comparison: comparison, diff: _ } =>
+      match extdeps.git.object_store.git_sha1_object_id(hex: comparison.head) {
+        v2.std.optional.Present { value: id } => gunbc.repo_atlas_projection.AtlasSubjectRevision { revision: id }
+        v2.std.optional.Absent => gunbc.repo_atlas_projection.AtlasSubjectUnobserved
       }
   }
 }
 
 fn repo_atlas_live_snapshot() -> gunbc.repo_atlas_projection.RepoAtlasSnapshot {
   let observation = repo_atlas_observe_changes()
-  repo_atlas_snapshot(
+  gunbc.repo_atlas_projection.repo_atlas_snapshot(
     subject: repo_atlas_observed_subject(observation: observation),
     nodes: v2.lens.module_graph.module_declaration_facts_live(pool_roots: repo_atlas_pool_roots),
     observation: observation,
-    impact: AtlasImpactNotComputed)
+    impact: gunbc.repo_atlas_projection.AtlasImpactNotComputed)
 }
 
 data repo_atlas_stylesheet_note: String = "THE ROLES ARE MADE DISTINGUISHABLE HERE, NOT ASSERTED IN A NOTE. An earlier revision of this module carried a note saying the four channels must stay distinguishable at a glance and then emitted class names with NO rules behind them, so on the live route a real SCM change mark rendered identically to an ordinary structural cell. That is rung inflation in its plainest form — the carrier described a property the artifact did not have — and it was caught by review 50752 rather than by any claim here, because every page claim served a fragment the route does not serve.
@@ -434,89 +434,89 @@ fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
 fn atlas_rules() -> List<gunbc.design.material.BuildRule> {
   [
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas"),
+      selector: cls(name: "atlas"),
       decls: [
-        decl(prop: Display, value: "block"),
-        decl(prop: Width, value: "100%"),
-        decl(prop: MaxWidth, value: scale_var(t: measure_page)),
-        decl(prop: Margin, value: "0 auto"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Display, value: "block"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Width, value: "100%"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.MaxWidth, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.measure_page)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Margin, value: "0 auto"),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-dot"),
+      selector: cls(name: "atlas-dot"),
       decls: [
-        decl(prop: Fill, value: role_var(r: FigureRole)),
-        decl(prop: Opacity, value: "0.45"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Fill, value: gunbc.design.theme.role_var(r: gunbc.design.theme.FigureRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Opacity, value: "0.45"),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-dot-shared"),
+      selector: cls(name: "atlas-dot-shared"),
       decls: [
-        decl(prop: Stroke, value: role_var(r: FigureRole)),
-        decl(prop: extdeps.languages.css.properties.RawProperty { name: "stroke-width" }, value: "1"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Stroke, value: gunbc.design.theme.role_var(r: gunbc.design.theme.FigureRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.RawProperty { name: "stroke-width" }, value: "1"),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-dot-changed"),
+      selector: cls(name: "atlas-dot-changed"),
       decls: [
-        decl(prop: Fill, value: role_var(r: FigureLitRole)),
-        decl(prop: Opacity, value: "1"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Fill, value: gunbc.design.theme.role_var(r: gunbc.design.theme.FigureLitRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Opacity, value: "1"),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-impact-ring"),
+      selector: cls(name: "atlas-impact-ring"),
       decls: [
-        decl(prop: Stroke, value: role_var(r: FigureEdgeRole)),
-        decl(prop: extdeps.languages.css.properties.RawProperty { name: "stroke-width" }, value: "1"),
-        decl(prop: Opacity, value: "0.8"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Stroke, value: gunbc.design.theme.role_var(r: gunbc.design.theme.FigureEdgeRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.RawProperty { name: "stroke-width" }, value: "1"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Opacity, value: "0.8"),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-glass-edge"),
+      selector: cls(name: "atlas-glass-edge"),
       decls: [
-        decl(prop: Stroke, value: role_var(r: BorderRole)),
-        decl(prop: extdeps.languages.css.properties.RawProperty { name: "stroke-width" }, value: "1"),
-        decl(prop: Opacity, value: "0.5"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Stroke, value: gunbc.design.theme.role_var(r: gunbc.design.theme.BorderRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.RawProperty { name: "stroke-width" }, value: "1"),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Opacity, value: "0.5"),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-readout"),
+      selector: cls(name: "atlas-readout"),
       decls: [
-        decl(prop: FontFamily, value: scale_var(t: font_mono)),
-        decl(prop: FontSize, value: scale_var(t: text_12)),
-        decl(prop: Color, value: role_var(r: TextDimRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontSize, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.text_12)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Color, value: gunbc.design.theme.role_var(r: gunbc.design.theme.TextDimRole)),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-readout-refused"),
-      decls: [ decl(prop: Color, value: role_var(r: TextRole)) ],
+      selector: cls(name: "atlas-readout-refused"),
+      decls: [ gunbc.design.material.decl(prop: extdeps.languages.css.properties.Color, value: gunbc.design.theme.role_var(r: gunbc.design.theme.TextRole)) ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-readout-absent"),
-      decls: [ decl(prop: Color, value: role_var(r: TextRole)) ],
+      selector: cls(name: "atlas-readout-absent"),
+      decls: [ gunbc.design.material.decl(prop: extdeps.languages.css.properties.Color, value: gunbc.design.theme.role_var(r: gunbc.design.theme.TextRole)) ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-legend"),
+      selector: cls(name: "atlas-legend"),
       decls: [
-        decl(prop: FontFamily, value: scale_var(t: font_mono)),
-        decl(prop: FontSize, value: scale_var(t: text_12)),
-        decl(prop: Color, value: role_var(r: TextDimRole)),
-        decl(prop: Margin, value: scale_var(t: space_4)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontSize, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.text_12)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Color, value: gunbc.design.theme.role_var(r: gunbc.design.theme.TextDimRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Margin, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.space_4)),
       ],
     },
     gunbc.design.material.StaticRule {
-      selector: gunbc.roadmap_repo_atlas_sandbox.cls(name: "atlas-unprojected-list"),
+      selector: cls(name: "atlas-unprojected-list"),
       decls: [
-        decl(prop: FontFamily, value: scale_var(t: font_mono)),
-        decl(prop: FontSize, value: scale_var(t: text_12)),
-        decl(prop: Color, value: role_var(r: TextDimRole)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontFamily, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.font_mono)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.FontSize, value: gunbc.design.scale.scale_var(t: gunbc.design.scale.text_12)),
+        gunbc.design.material.decl(prop: extdeps.languages.css.properties.Color, value: gunbc.design.theme.role_var(r: gunbc.design.theme.TextDimRole)),
       ],
     },
   ]
 }
 
 fn repo_atlas_css() -> String {
-  join([roadmap_css(), serialize_rules(rules: atlas_rules())], "\n")
+  join([gunbc.roadmap_style.roadmap_css(), gunbc.design.material.serialize_rules(rules: atlas_rules())], "\n")
 }
 
 data repo_atlas_page_title: String = "gunbc — repo atlas"
@@ -524,26 +524,26 @@ data repo_atlas_page_title: String = "gunbc — repo atlas"
 data repo_atlas_document_note: String = "A FULL DOCUMENT, matching every sibling route on the same serve table. The route previously returned a bare main fragment, so the browser received markup with no charset, no viewport, no title, no stylesheet and no header — an incomplete document that the sibling pages all get right (review 50752). The page witnesses now serialize THIS function rather than the section beneath it, because the shape the route serves is the shape a claim has to cover."
 
 fn repo_atlas_document(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "html",
-    attributes: [ attr(name: "lang", value: "en") ],
+    attributes: [ std.markup.attr(name: "lang", value: "en") ],
     children: [
-      el("head", [
-        std.markup.Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8") ], children: [] },
+      gunbc.site.markup.el("head", [
+        std.markup.Element { tag: "meta", attributes: [ std.markup.attr(name: "charset", value: "utf-8") ], children: [] },
         std.markup.Element {
           tag: "meta",
           attributes: [
-            attr(name: "name", value: "viewport"),
-            attr(name: "content", value: "width=device-width, initial-scale=1"),
+            std.markup.attr(name: "name", value: "viewport"),
+            std.markup.attr(name: "content", value: "width=device-width, initial-scale=1"),
           ],
           children: [],
         },
-        el("style", [ txt(repo_atlas_css()) ]),
-        el("title", [ txt(repo_atlas_page_title) ]),
+        gunbc.site.markup.el("style", [ gunbc.site.markup.txt(repo_atlas_css()) ]),
+        gunbc.site.markup.el("title", [ gunbc.site.markup.txt(repo_atlas_page_title) ]),
       ]),
-      el("body", [
-        roadmap_header(page: "repo atlas"),
-        el_class("main", "atlas-page", [
+      gunbc.site.markup.el("body", [
+        gunbc.roadmap_page.roadmap_header(page: "repo atlas"),
+        gunbc.site.markup.el_class("main", "atlas-page", [
           repo_atlas_section(snapshot: snapshot),
         ]),
       ]),
@@ -558,8 +558,8 @@ fn repo_atlas_page() -> std.markup.Fragment {
 }
 
 fn repo_atlas_html() -> String {
-  match try_serialize_html_source(node: repo_atlas_page()) {
-    EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
-    EmitRejected { reason: r } => concat("EMIT REJECTED: ", r)
+  match extdeps.languages.html.try_serialize_html_source(node: repo_atlas_page()) {
+    extdeps.languages.html.EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
+    extdeps.languages.html.EmitRejected { reason: r } => concat("EMIT REJECTED: ", r)
   }
 }

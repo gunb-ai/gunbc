@@ -164,8 +164,8 @@ fn e0599_root_family_label(family: E0599RootFamily) -> String {
 
 fn e0599_root_family_label_for_row(shape_str: String, method: String, receiver: String) -> std.error_primitives.Result<String, E0599LogShapeParseError> {
   match e0599_failure_shape_from_log_shape(shape_str: shape_str) {
-    Err { value: e } => std.error_primitives.Err { value: e }
-    Ok { value: shape } =>
+    std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
+    std.error_primitives.Ok { value: shape } =>
       std.error_primitives.Ok {
         value: e0599_root_family_label(
           family: e0599_root_family_for(shape: shape, method: method, receiver: receiver)
@@ -176,7 +176,7 @@ fn e0599_root_family_label_for_row(shape_str: String, method: String, receiver: 
 
 fn e0599_root_family_label_for_tuple_line(line: String) -> std.error_primitives.Result<String, E0599LogShapeParseError> {
   let parts = line |> split(delimiter: "\t")
-  let field_count = list_length(items: parts)
+  let field_count = std.types.list_length(items: parts)
   if field_count != 3 {
     std.error_primitives.Err { value: MalformedTupleLine { line: line, field_count: field_count } }
   } else {
@@ -201,11 +201,11 @@ fn e0599_root_family_labels_from_blob(blob: String) -> std.error_primitives.Resu
   let lines = if blob == "" { [] } else { blob |> split(delimiter: "\n") }
   fold(lines, init: std.error_primitives.Ok { value: "" }, f: fn(acc, line) {
     match acc {
-      Err { value: e } => std.error_primitives.Err { value: e }
-      Ok { value: prior } =>
+      std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
+      std.error_primitives.Ok { value: prior } =>
         match e0599_root_family_label_for_tuple_line(line: line) {
-          Err { value: e } => std.error_primitives.Err { value: e }
-          Ok { value: label } =>
+          std.error_primitives.Err { value: e } => std.error_primitives.Err { value: e }
+          std.error_primitives.Ok { value: label } =>
             if prior == "" {
               std.error_primitives.Ok { value: label }
             } else {
@@ -280,13 +280,13 @@ fn e0599_canonical_seven_module_log_labels_blob() -> String {
 
 fn e0599_write_blob(path: String, content: String, label: String) -> std.process.ProcessExit {
   if content == "" {
-    exit_failure(reason: concat(label, ": refused empty export"))
+    std.process.exit_failure(reason: concat(label, ": refused empty export"))
   }
-  let w = Filesystem.Write(path: path, content: content)
+  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: path, content: content)
   if w.success {
     std.process.ExitSuccess
   } else {
-    exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
+    std.process.exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
   }
 }
 
@@ -300,11 +300,11 @@ fn e0599_write_message_pattern_rows_blob(out_path: String) -> std.process.Proces
 
 fn e0599_write_root_family_labels_from_blob(blob: String, out_path: String) -> std.process.ProcessExit {
   if blob == "" {
-    exit_failure(reason: "e0599_root_family_labels_from_blob: refused empty input blob")
+    std.process.exit_failure(reason: "e0599_root_family_labels_from_blob: refused empty input blob")
   }
   match e0599_root_family_labels_from_blob(blob: blob) {
-    Err { value: e } => exit_failure(reason: e0599_log_shape_parse_error_message(err: e))
-    Ok { value: labels } =>
+    std.error_primitives.Err { value: e } => std.process.exit_failure(reason: e0599_log_shape_parse_error_message(err: e))
+    std.error_primitives.Ok { value: labels } =>
       e0599_write_blob(
         path: out_path,
         content: labels,

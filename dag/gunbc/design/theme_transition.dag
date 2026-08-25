@@ -37,7 +37,7 @@ fn color_transition_prop(prop: String) -> String {
 }
 
 fn decl_is_color(d: gunbc.design.material.CssDecl) -> Bool {
-  color_transition_prop(prop: css_property_wire(p: d.prop)).length() > 0
+  color_transition_prop(prop: extdeps.languages.css.properties.css_property_wire(p: d.prop)).length() > 0
 }
 
 fn decl_is_role_themed(d: gunbc.design.material.CssDecl) -> Bool {
@@ -55,7 +55,7 @@ fn contains_prop(props: List<String>, prop: String) -> Bool {
 fn themed_props_of(decls: List<gunbc.design.material.CssDecl>) -> List<String> {
   fold(decls, init: [], f: (acc, d) =>
     if decl_is_role_themed(d: d) {
-      let tp = color_transition_prop(prop: css_property_wire(p: d.prop))
+      let tp = color_transition_prop(prop: extdeps.languages.css.properties.css_property_wire(p: d.prop))
       if contains_prop(props: acc, prop: tp) { acc } else { concat(acc, [tp]) }
     } else {
       acc
@@ -66,16 +66,16 @@ data state_class_census_reach_note: String = "Both censuses reach state-class re
 
 fn rule_selector(rule: gunbc.design.material.BuildRule) -> String {
   match rule {
-    StaticRule { selector, decls: _ } => selector_subject_wire(s: selector)
-    ResponseRule { subject, shape, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } =>
-      response_base_selector(subject: subject, shape: shape)
+    gunbc.design.material.StaticRule { selector, decls: _ } => extdeps.languages.css.selectors.selector_subject_wire(s: selector)
+    gunbc.design.material.ResponseRule { subject, shape, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } =>
+      gunbc.design.material.response_base_selector(subject: subject, shape: shape)
   }
 }
 
 fn rule_decls(rule: gunbc.design.material.BuildRule) -> List<gunbc.design.material.CssDecl> {
   match rule {
-    StaticRule { selector: _, decls } => decls
-    ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls, response_decls } =>
+    gunbc.design.material.StaticRule { selector: _, decls } => decls
+    gunbc.design.material.ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls, response_decls } =>
       concat(base_decls, response_decls)
   }
 }
@@ -113,7 +113,7 @@ fn unthemed_color_decls(rules: List<gunbc.design.material.BuildRule>) -> List<Un
   fold(rules, init: [], f: (acc, r) =>
     fold(rule_decls(rule: r), init: acc, f: (inner, d) =>
       if decl_is_literal_color(d: d) {
-        concat(inner, [UnthemedColorDecl { selector: rule_selector(rule: r), prop: css_property_wire(p: d.prop), value: d.value }])
+        concat(inner, [UnthemedColorDecl { selector: rule_selector(rule: r), prop: extdeps.languages.css.properties.css_property_wire(p: d.prop), value: d.value }])
       } else {
         inner
       }))
@@ -135,7 +135,7 @@ fn untokened_length_decls(rules: List<gunbc.design.material.BuildRule>) -> List<
   fold(rules, init: [], f: (acc, r) =>
     fold(rule_decls(rule: r), init: acc, f: (inner, d) =>
       if value_has_raw_length(value: d.value) {
-        concat(inner, [UntokenedLengthDecl { selector: rule_selector(rule: r), prop: css_property_wire(p: d.prop), value: d.value }])
+        concat(inner, [UntokenedLengthDecl { selector: rule_selector(rule: r), prop: extdeps.languages.css.properties.css_property_wire(p: d.prop), value: d.value }])
       } else {
         inner
       }))
@@ -156,15 +156,15 @@ fn reframe_css(rules: List<gunbc.design.material.BuildRule>) -> String {
   } else {
     join([
       join(map(pairs, p =>
-        css_block(
+        gunbc.design.material.css_block(
           selector: reframe_selector(selector: p.selector),
-          decls: [decl(prop: Transition, value: reframe_transition_value(props: p.props, t: reframe_page))])), "\n"),
+          decls: [gunbc.design.material.decl(prop: Transition, value: reframe_transition_value(props: p.props, t: gunbc.design.material.reframe_page))])), "\n"),
       join([
         "@media (prefers-reduced-motion: reduce) { ",
         join(map(pairs, p =>
-          css_block(
+          gunbc.design.material.css_block(
             selector: reframe_selector(selector: p.selector),
-            decls: [decl(prop: Transition, value: "none")])), " "),
+            decls: [gunbc.design.material.decl(prop: Transition, value: "none")])), " "),
         " }",
       ], ""),
     ], "\n")
@@ -185,48 +185,48 @@ fn reframe_watcher_program() -> extdeps.languages.typescript.program.TsProgram {
       "so every flip is our mutation, set in the same turn as html.reframing (no race)",
     ],
     statements: [
-      ts_const(name: "mql", value: ts_call(
-        callee: ts_member(object: ts_ident(name: "window"), property: "matchMedia"),
-        args: [ts_lit_str(value: alternate_scheme_query())])),
-      ts_const(name: "root", value: ts_member(object: ts_ident(name: "document"), property: "documentElement")),
-      ts_const(name: "applyTheme", value: ts_arrow(params: [], body: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_call(
-          callee: ts_member(object: ts_ident(name: "root"), property: "setAttribute"),
+      extdeps.languages.typescript.program.ts_const(name: "mql", value: extdeps.languages.typescript.program.ts_call(
+        callee: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "window"), property: "matchMedia"),
+        args: [extdeps.languages.typescript.program.ts_lit_str(value: alternate_scheme_query())])),
+      extdeps.languages.typescript.program.ts_const(name: "root", value: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "document"), property: "documentElement")),
+      extdeps.languages.typescript.program.ts_const(name: "applyTheme", value: extdeps.languages.typescript.program.ts_arrow(params: [], body: extdeps.languages.typescript.program.ts_block(stmts: [
+        extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(
+          callee: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "root"), property: "setAttribute"),
           args: [
-            ts_lit_str(value: "data-theme"),
-            ts_cond(
-              test: ts_member(object: ts_ident(name: "mql"), property: "matches"),
-              consequent: ts_lit_str(value: day_theme.name),
-              alternate: ts_lit_str(value: night_theme.name)),
+            extdeps.languages.typescript.program.ts_lit_str(value: "data-theme"),
+            extdeps.languages.typescript.program.ts_cond(
+              test: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "mql"), property: "matches"),
+              consequent: extdeps.languages.typescript.program.ts_lit_str(value: day_theme.name),
+              alternate: extdeps.languages.typescript.program.ts_lit_str(value: night_theme.name)),
           ])),
       ]))),
-      ts_let(name: "reframeTimer", value: ts_lit_num(text: "0")),
-      ts_const(name: "pulse", value: ts_arrow(params: [], body: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_call(
-          callee: ts_member(object: ts_member(object: ts_ident(name: "root"), property: "classList"), property: "add"),
-          args: [ts_lit_str(value: "reframing")])),
-        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "applyTheme"), args: [])),
-        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearTimeout"), args: [ts_ident(name: "reframeTimer")])),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_ident(name: "reframeTimer"),
+      extdeps.languages.typescript.program.ts_let(name: "reframeTimer", value: extdeps.languages.typescript.program.ts_lit_num(text: "0")),
+      extdeps.languages.typescript.program.ts_const(name: "pulse", value: extdeps.languages.typescript.program.ts_arrow(params: [], body: extdeps.languages.typescript.program.ts_block(stmts: [
+        extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(
+          callee: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "root"), property: "classList"), property: "add"),
+          args: [extdeps.languages.typescript.program.ts_lit_str(value: "reframing")])),
+        extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(callee: extdeps.languages.typescript.program.ts_ident(name: "applyTheme"), args: [])),
+        extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(callee: extdeps.languages.typescript.program.ts_ident(name: "clearTimeout"), args: [extdeps.languages.typescript.program.ts_ident(name: "reframeTimer")])),
+        extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_binop(
+          left: extdeps.languages.typescript.program.ts_ident(name: "reframeTimer"),
           op: "=",
-          right: ts_call(callee: ts_ident(name: "setTimeout"), args: [
-            ts_arrow(params: [], body: ts_block(stmts: [
-              ts_expr_stmt(expr: ts_call(
-                callee: ts_member(object: ts_member(object: ts_ident(name: "root"), property: "classList"), property: "remove"),
-                args: [ts_lit_str(value: "reframing")])),
+          right: extdeps.languages.typescript.program.ts_call(callee: extdeps.languages.typescript.program.ts_ident(name: "setTimeout"), args: [
+            extdeps.languages.typescript.program.ts_arrow(params: [], body: extdeps.languages.typescript.program.ts_block(stmts: [
+              extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(
+                callee: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "root"), property: "classList"), property: "remove"),
+                args: [extdeps.languages.typescript.program.ts_lit_str(value: "reframing")])),
             ])),
-            ts_lit_num(text: to_string(reframe_page.duration_ms)),
+            extdeps.languages.typescript.program.ts_lit_num(text: to_string(reframe_page.duration_ms)),
           ]))),
       ]))),
-      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "applyTheme"), args: [])),
-      ts_expr_stmt(expr: ts_call(
-        callee: ts_member(object: ts_ident(name: "mql"), property: "addEventListener"),
-        args: [ts_lit_str(value: "change"), ts_ident(name: "pulse")])),
+      extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(callee: extdeps.languages.typescript.program.ts_ident(name: "applyTheme"), args: [])),
+      extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(
+        callee: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "mql"), property: "addEventListener"),
+        args: [extdeps.languages.typescript.program.ts_lit_str(value: "change"), extdeps.languages.typescript.program.ts_ident(name: "pulse")])),
     ],
   }
 }
 
 fn reframe_watcher_js() -> String {
-  serialize_typescript_program(p: reframe_watcher_program())
+  extdeps.languages.typescript.program.serialize_typescript_program(p: reframe_watcher_program())
 }

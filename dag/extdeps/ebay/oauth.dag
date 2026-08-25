@@ -3,7 +3,7 @@ module extdeps.ebay.oauth
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "developer.ebay.com/api-docs/static/oauth-tokens.html"
   }
 }
@@ -75,7 +75,7 @@ service ebay.OAuth {
       method: POST,
       path: "/identity/v1/oauth2/token",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: { grant_type: extdeps.ebay.oauth.client_credentials_grant_type, scope: scope }
+      body: { grant_type: client_credentials_grant_type, scope: scope }
     }
     response {
       200 => EbayOAuthTokenResponse

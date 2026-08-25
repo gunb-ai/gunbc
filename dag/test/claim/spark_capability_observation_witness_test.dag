@@ -2,7 +2,7 @@ module test.claim.spark_capability_observation_witness_test
 
 
 fn cred() -> std.content_hash.ContentHash {
-  content_hash_of_value(value: "fleet-key" as std.types.NonEmptyStr)
+  std.content_hash.content_hash_of_value(value: "fleet-key" as std.types.NonEmptyStr)
 }
 
 fn subject(host: String, principal: String) -> gunbc.spark.capability_observation.SparkCapabilitySubject {
@@ -17,7 +17,7 @@ fn observation(
   effect: gunbc.readback_independence.ProbeEffectOnSubject,
 ) -> gunbc.spark.capability_observation.SparkCapabilityObservation {
   gunbc.spark.capability_observation.SparkCapabilityObservation {
-    subject: test.claim.spark_capability_observation_witness_test.subject(host: host, principal: principal),
+    subject: subject(host: host, principal: principal),
     capability: capability,
     outcome: outcome,
     probe_effect: effect,
@@ -31,7 +31,7 @@ fn observation(
 // nobody asked it -- rather than inheriting the human account's answer.
 test fn w_evidence_from_one_principal_does_not_answer_for_another() -> Bool {
   let observations = [
-    test.claim.spark_capability_observation_witness_test.observation(
+    observation(
       host: "srv5", principal: "briansrls", capability: gunbc.spark.capability_observation.AcceleratorAccessible,
       outcome: gunbc.spark.capability_observation.CapabilityPresent { evidence: "nvidia-smi listed GB10" as std.types.NonEmptyStr },
       effect: gunbc.readback_independence.ProbeInert,
@@ -41,10 +41,10 @@ test fn w_evidence_from_one_principal_does_not_answer_for_another() -> Bool {
     observations: observations, host: "srv5" as product.placement_supply.HostIdentity,
     principal: "gunbc-automation" as std.types.NonEmptyStr, capability: gunbc.spark.capability_observation.AcceleratorAccessible,
   ) {
-    CapabilityUnobserved => true
-    CapabilityPresent { evidence: _ } => false
-    CapabilityAbsent { evidence: _ } => false
-    CapabilityObservationRefused { first: _, more: _ } => false
+    gunbc.spark.capability_observation.CapabilityUnobserved => true
+    gunbc.spark.capability_observation.CapabilityPresent { evidence: _ } => false
+    gunbc.spark.capability_observation.CapabilityAbsent { evidence: _ } => false
+    gunbc.spark.capability_observation.CapabilityObservationRefused { first: _, more: _ } => false
   }
 }
 
@@ -52,7 +52,7 @@ test fn w_evidence_from_one_principal_does_not_answer_for_another() -> Bool {
 // found and admitted.
 test fn w_the_exact_principal_gets_its_own_answer() -> Bool {
   let observations = [
-    test.claim.spark_capability_observation_witness_test.observation(
+    observation(
       host: "srv5", principal: "gunbc-automation", capability: gunbc.spark.capability_observation.AcceleratorAccessible,
       outcome: gunbc.spark.capability_observation.CapabilityPresent { evidence: "nvidia-smi listed GB10" as std.types.NonEmptyStr },
       effect: gunbc.readback_independence.ProbeInert,
@@ -62,10 +62,10 @@ test fn w_the_exact_principal_gets_its_own_answer() -> Bool {
     observations: observations, host: "srv5" as product.placement_supply.HostIdentity,
     principal: "gunbc-automation" as std.types.NonEmptyStr, capability: gunbc.spark.capability_observation.AcceleratorAccessible,
   ) {
-    CapabilityPresent { evidence: _ } => true
-    CapabilityUnobserved => false
-    CapabilityAbsent { evidence: _ } => false
-    CapabilityObservationRefused { first: _, more: _ } => false
+    gunbc.spark.capability_observation.CapabilityPresent { evidence: _ } => true
+    gunbc.spark.capability_observation.CapabilityUnobserved => false
+    gunbc.spark.capability_observation.CapabilityAbsent { evidence: _ } => false
+    gunbc.spark.capability_observation.CapabilityObservationRefused { first: _, more: _ } => false
   }
 }
 
@@ -74,30 +74,30 @@ test fn w_the_exact_principal_gets_its_own_answer() -> Bool {
 // there is not evidence, and the carrier downgrades it to a NAMED refusal rather than accepting it
 // or silently dropping it -- the refusal's frequency is the signal that the probe needs redesigning.
 test fn w_a_probe_that_may_have_established_the_subject_is_not_evidence() -> Bool {
-  match admitted_capability_outcome(observation: test.claim.spark_capability_observation_witness_test.observation(
+  match gunbc.spark.capability_observation.admitted_capability_outcome(observation: observation(
     host: "srv5", principal: "gunbc-automation", capability: gunbc.spark.capability_observation.UserManagerAvailable,
     outcome: gunbc.spark.capability_observation.CapabilityPresent { evidence: "systemd --user is running" as std.types.NonEmptyStr },
-    effect: user_manager_over_ssh_probe_effect,
+    effect: gunbc.spark.capability_observation.user_manager_over_ssh_probe_effect,
   )) {
-    CapabilityObservationRefused { first: _, more: _ } => true
-    CapabilityPresent { evidence: _ } => false
-    CapabilityAbsent { evidence: _ } => false
-    CapabilityUnobserved => false
+    gunbc.spark.capability_observation.CapabilityObservationRefused { first: _, more: _ } => true
+    gunbc.spark.capability_observation.CapabilityPresent { evidence: _ } => false
+    gunbc.spark.capability_observation.CapabilityAbsent { evidence: _ } => false
+    gunbc.spark.capability_observation.CapabilityUnobserved => false
   }
 }
 
 // THE INERT COUNTERPART, and it is why lingering is read from the durable property instead of being
 // inferred from a running manager: Linger survives logout, so reading it cannot have set it.
 test fn w_an_inert_probe_of_durable_state_is_evidence() -> Bool {
-  match admitted_capability_outcome(observation: test.claim.spark_capability_observation_witness_test.observation(
+  match gunbc.spark.capability_observation.admitted_capability_outcome(observation: observation(
     host: "srv5", principal: "gunbc-automation", capability: gunbc.spark.capability_observation.LingerEnabled,
     outcome: gunbc.spark.capability_observation.CapabilityPresent { evidence: "loginctl show-user reported Linger=yes" as std.types.NonEmptyStr },
-    effect: linger_probe_effect,
+    effect: gunbc.spark.capability_observation.linger_probe_effect,
   )) {
-    CapabilityPresent { evidence: _ } => true
-    CapabilityObservationRefused { first: _, more: _ } => false
-    CapabilityAbsent { evidence: _ } => false
-    CapabilityUnobserved => false
+    gunbc.spark.capability_observation.CapabilityPresent { evidence: _ } => true
+    gunbc.spark.capability_observation.CapabilityObservationRefused { first: _, more: _ } => false
+    gunbc.spark.capability_observation.CapabilityAbsent { evidence: _ } => false
+    gunbc.spark.capability_observation.CapabilityUnobserved => false
   }
 }
 
@@ -107,29 +107,29 @@ test fn w_an_inert_probe_of_durable_state_is_evidence() -> Bool {
 // and discarding that would throw away the finding that produced the whole bootstrap plan, since the
 // managed account being absent is exactly such an observation.
 test fn w_an_absence_survives_a_self_establishing_probe() -> Bool {
-  match admitted_capability_outcome(observation: test.claim.spark_capability_observation_witness_test.observation(
+  match gunbc.spark.capability_observation.admitted_capability_outcome(observation: observation(
     host: "srv5", principal: "gunbc-automation", capability: gunbc.spark.capability_observation.ManagedExecutorReachable,
     outcome: gunbc.spark.capability_observation.CapabilityAbsent { evidence: "no such account" as std.types.NonEmptyStr },
-    effect: user_manager_over_ssh_probe_effect,
+    effect: gunbc.spark.capability_observation.user_manager_over_ssh_probe_effect,
   )) {
-    CapabilityAbsent { evidence: _ } => true
-    CapabilityObservationRefused { first: _, more: _ } => false
-    CapabilityPresent { evidence: _ } => false
-    CapabilityUnobserved => false
+    gunbc.spark.capability_observation.CapabilityAbsent { evidence: _ } => true
+    gunbc.spark.capability_observation.CapabilityObservationRefused { first: _, more: _ } => false
+    gunbc.spark.capability_observation.CapabilityPresent { evidence: _ } => false
+    gunbc.spark.capability_observation.CapabilityUnobserved => false
   }
 }
 
 // AN UNCLASSIFIED PROBE IS REFUSED, not assumed inert. A probe author who never thought about the
 // question must not get the benefit of the doubt, because that is the state most probes start in.
 test fn red_control_unclassified_probe_effect_refuses() -> Bool {
-  match admitted_capability_outcome(observation: test.claim.spark_capability_observation_witness_test.observation(
+  match gunbc.spark.capability_observation.admitted_capability_outcome(observation: observation(
     host: "srv5", principal: "gunbc-automation", capability: gunbc.spark.capability_observation.AcceleratorAccessible,
     outcome: gunbc.spark.capability_observation.CapabilityPresent { evidence: "looked fine" as std.types.NonEmptyStr },
     effect: gunbc.readback_independence.ProbeEffectUnknown { reason: "nobody classified this probe" as std.types.NonEmptyStr },
   )) {
-    CapabilityObservationRefused { first: _, more: _ } => true
-    CapabilityPresent { evidence: _ } => false
-    CapabilityAbsent { evidence: _ } => false
-    CapabilityUnobserved => false
+    gunbc.spark.capability_observation.CapabilityObservationRefused { first: _, more: _ } => true
+    gunbc.spark.capability_observation.CapabilityPresent { evidence: _ } => false
+    gunbc.spark.capability_observation.CapabilityAbsent { evidence: _ } => false
+    gunbc.spark.capability_observation.CapabilityUnobserved => false
   }
 }

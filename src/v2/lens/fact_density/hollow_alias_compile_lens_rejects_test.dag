@@ -1,5 +1,7 @@
 module v2.test.lens_fact_density.hollow_alias_compile_lens_rejects
 
+
+
 data hollow_alias_cl_root: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^hollow_alias_cl_subject } },
   children: [],
@@ -19,13 +21,13 @@ fn hollow_alias_cl_tree() -> v2.compiler.inferred_tree.InferredTree {
   )
 }
 
-test fn hollow_alias_compile_lens_rejects_holds() -> v2.std.logic.Bool {
-  match apply_compile_lens(
-    lens: fact_density_lens,
+test fn hollow_alias_compile_lens_rejects_holds() -> Bool {
+  match v2.compiler.compile.apply_compile_lens(
+    lens: v2.compiler.compile.fact_density_lens,
     inferred: hollow_alias_cl_tree(),
-    mode: CompileLensEnforce
+    mode: v2.compiler.compile.CompileLensEnforce
   ) {
-    Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }

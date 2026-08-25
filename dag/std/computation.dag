@@ -1,5 +1,7 @@
 module std.computation
 
+
+
 type SizeBound
   = CollectionSize { param: String }
   | ParserStreamSize { witness: String }
@@ -134,15 +136,15 @@ type IterationDimension
 // not: there is nothing to walk. The two open profiles now agree, and the two finite ones do.
 fn algebra_profile_to_dimension(profile: std.algebra.AlgebraProfile) -> IterationDimension? {
   match profile {
-    FreeMonoidCollectionProfile        => Present { value: CollectionFold }
-    FreeMonoidScalarProfile            => Present { value: CollectionFold }
-    FinitePowerSetProfile              => Present { value: CollectionFold }
-    FinitelySupportedFunctionProfile   => Present { value: CollectionFold }
-    PointwisePowerCollectionProfile    => none
-    PartialFunctionProfile             => none
-    OrderedRingProfile                 => Present { value: ArithmeticRepeat }
-    ApproximateFieldProfile            => Present { value: ArithmeticRepeat }
-    BooleanAlgebraProfile              => none
+    std.algebra.FreeMonoidCollectionProfile        => Present { value: CollectionFold }
+    std.algebra.FreeMonoidScalarProfile            => Present { value: CollectionFold }
+    std.algebra.FinitePowerSetProfile              => Present { value: CollectionFold }
+    std.algebra.FinitelySupportedFunctionProfile   => Present { value: CollectionFold }
+    std.algebra.PointwisePowerCollectionProfile    => none
+    std.algebra.PartialFunctionProfile             => none
+    std.algebra.OrderedRingProfile                 => Present { value: ArithmeticRepeat }
+    std.algebra.ApproximateFieldProfile            => Present { value: ArithmeticRepeat }
+    std.algebra.BooleanAlgebraProfile              => none
   }
 }
 

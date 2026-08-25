@@ -3,7 +3,7 @@ module extdeps.github.workflow_run_event
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/webhooks/webhook-events-and-payloads#workflow_run"
   }
 }
@@ -19,10 +19,10 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.workflow_run_event",
       decl_name: "workflow_run_event_member",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.github.workflow_run_event.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -58,18 +58,18 @@ type WorkflowRunEventMember
   | WorkflowRunEventMemberFailed { observation: WorkflowRunEventObservation }
 
 fn workflow_run_event_member_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> WorkflowRunEventMember {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberAbsent =>
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
+    extdeps.languages.json.parse.JsonMemberAbsent =>
       WorkflowRunEventMemberFailed { observation: WorkflowRunEventMemberAbsent { member: key } }
-    JsonMemberDuplicated { count: _ } =>
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
       WorkflowRunEventMemberFailed {
         observation: WorkflowRunEventMemberMalformed { member: key, detail: "member is duplicated" }
       }
-    JsonMemberNotAnObject =>
+    extdeps.languages.json.parse.JsonMemberNotAnObject =>
       WorkflowRunEventMemberFailed {
         observation: WorkflowRunEventMemberMalformed { member: key, detail: "enclosing value is not a JSON object" }
       }
-    JsonMemberFound { value: found } =>
+    extdeps.languages.json.parse.JsonMemberFound { value: found } =>
       WorkflowRunEventMemberFound { value: found }
   }
 }
@@ -86,7 +86,7 @@ fn workflow_run_event_required_string_at(v: extdeps.languages.json.emit.JsonValu
       WorkflowRunEventTextFailed { observation: o }
     WorkflowRunEventMemberFound { value: found } =>
       match found {
-        JsonString { value: s } =>
+        extdeps.languages.json.emit.JsonString { value: s } =>
           if s == "" {
             WorkflowRunEventTextFailed {
               observation: WorkflowRunEventMemberMalformed { member: key, detail: "member is the empty string" }
@@ -94,7 +94,7 @@ fn workflow_run_event_required_string_at(v: extdeps.languages.json.emit.JsonValu
           } else {
             WorkflowRunEventTextFound { text: s }
           }
-        JsonNumber { lexeme: _ } =>
+        extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
           WorkflowRunEventTextFailed {
             observation: WorkflowRunEventMemberMalformed { member: key, detail: "member is a number, expected a string" }
           }
@@ -126,9 +126,9 @@ fn workflow_run_event_numeric_identity_at(v: extdeps.languages.json.emit.JsonVal
       WorkflowRunEventTextFailed { observation: o }
     WorkflowRunEventMemberFound { value: found } =>
       match found {
-        JsonNumber { lexeme: l } =>
+        extdeps.languages.json.emit.JsonNumber { lexeme: l } =>
           WorkflowRunEventTextFound { text: l as String }
-        JsonString { value: s } =>
+        extdeps.languages.json.emit.JsonString { value: s } =>
           if s == "" {
             WorkflowRunEventTextFailed {
               observation: WorkflowRunEventMemberMalformed { member: key, detail: "run id is the empty string" }
@@ -209,7 +209,7 @@ fn workflow_run_event_assemble(
 }
 
 fn workflow_run_event_from_json(text: String) -> WorkflowRunEventObservation {
-  match parse_json(s: text) {
+  match extdeps.languages.json.parse.parse_json(s: text) {
     Absent =>
       WorkflowRunEventMalformed { detail: "GITHUB_EVENT_PATH payload is not valid JSON" }
     Present { value: doc } =>
@@ -237,7 +237,7 @@ fn workflow_run_event_from_json(text: String) -> WorkflowRunEventObservation {
                       match workflow_run_event_required_string_at(v: run, key: "conclusion") {
                             WorkflowRunEventTextFailed { observation: o } => o
                             WorkflowRunEventTextFound { text: raw_conclusion } =>
-                              match parse_workflow_run_conclusion(raw: raw_conclusion) {
+                              match extdeps.github.workflow_runs.parse_workflow_run_conclusion(raw: raw_conclusion) {
                                 Absent =>
                                   WorkflowRunEventMemberMalformed {
                                     member: "workflow_run.conclusion",
@@ -296,7 +296,7 @@ fn workflow_run_event_from_json(text: String) -> WorkflowRunEventObservation {
 }
 
 fn workflow_run_event_from_event_path(path: String) -> WorkflowRunEventObservation {
-  let read = Filesystem.Read(path: path)
+  let read = extdeps.filesystem.filesystem_io.Filesystem.Read(path: path)
   if read.success {
     workflow_run_event_from_json(text: read.content)
   } else {

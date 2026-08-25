@@ -580,7 +580,7 @@ fn verilog_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.G
 }
 
 fn verilog_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  v2.std.grammar.Sequence { left: left, right: right }
+  Sequence { left: left, right: right }
 }
 
 fn verilog_identifier_pattern() -> v2.std.compilers.lexing.LexPattern {
@@ -1020,7 +1020,7 @@ fn verilog_relation_row_for_productions(
         productions: productions,
         emitted: emitted
       )
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 
@@ -1040,7 +1040,7 @@ fn verilog_relation_row_for(lhs: v2.std.node.Symbol, emitted: v2.std.node.Node) 
         productions: productions,
         emitted: emitted
       )
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 
@@ -1227,7 +1227,7 @@ fn verilog_identifier_is_reserved(spelling: String) -> Bool {
 
 fn verilog_identifier_contains_forbidden(spelling: String) -> Bool {
   fold(verilog_forbidden_identifier_characters, init: false, f: fn(acc, ch) {
-    acc || std.types.list_length(items: split(s: spelling, delimiter: ch)) > 1
+    acc || list_length(items: split(s: spelling, delimiter: ch)) > 1
   })
 }
 
@@ -1317,8 +1317,8 @@ fn verilog_emit_module(module_node: v2.std.node.Node, spellings: Map<v2.std.node
         verilog_target_model_for(row: row, spellings: spellings),
         module_node
       ) {
-        Accepted { value: text, diagnostics: _ } => VerilogEmitted { source: v2.std.compilers.target_model.render_target_text(t: text) }
-        Rejected { diagnostics: d } => VerilogEmissionRefused { reason: d.head.reason }
+        v2.std.diagnostic.Accepted { value: text, diagnostics: _ } => VerilogEmitted { source: v2.std.compilers.target_model.render_target_text(t: text) }
+        v2.std.diagnostic.Rejected { diagnostics: d } => VerilogEmissionRefused { reason: d.head.reason }
       }
     Violates { diagnostic: d } => VerilogEmissionRefused { reason: d.reason }
   }

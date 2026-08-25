@@ -4,10 +4,10 @@ module test.claim.devboot_build_product_witness
 
 // WHAT THE PRODUCT PROMISES, PINNED. The operation's promise is that a caller receives an exact executable or a reason, and the decisions that keep that promise are ordinary functions over ordinary values -- so they are witnessed here rather than being demonstrated once by a live run against one producer on one afternoon. The live run proves the vertical exists; these prove the arms that keep it honest still discriminate.
 
-// A REFUSAL IS NEVER AN EXECUTABLE. This is the contract law of the vertical stated at the product boundary: no arm of gunbc.devboot.build.BuildOutcome reports a delivered binary without bytes bound to a digest. The predicate is what downstream callers branch on, and a version of it that answered true unconditionally would restore precisely the behaviour this lane was opened to delete -- a success report with an empty artifact.
+// A REFUSAL IS NEVER AN EXECUTABLE. This is the contract law of the vertical stated at the product boundary: no arm of BuildOutcome reports a delivered binary without bytes bound to a digest. The predicate is what downstream callers branch on, and a version of it that answered true unconditionally would restore precisely the behaviour this lane was opened to delete -- a success report with an empty artifact.
 test fn a_refusal_never_reports_a_delivered_executable() -> Bool {
-  !outcome_delivers_executable(
-    outcome: gunbc.devboot.build.BuildRefused { cause: gunbc.devboot.build.ProducerDidNotAnswer { waited: second(count: 300) } },
+  !gunbc.devboot.build.outcome_delivers_executable(
+    outcome: gunbc.devboot.build.BuildRefused { cause: gunbc.devboot.build.ProducerDidNotAnswer { waited: std.measure.second(count: 300) } },
   )
 }
 
@@ -16,7 +16,7 @@ data witness_fixture_digest_hex: String = "5af0bd8e00000000000000000000000000000
 data witness_other_digest_hex: String = "0000000000000000000000000000000000000000000000000000000000000000"
 
 fn witness_fixture_digest() -> std.content_hash.Sha256Digest {
-  match sha256_hex_digest(hex: witness_fixture_digest_hex) {
+  match std.content_hash.sha256_hex_digest(hex: witness_fixture_digest_hex) {
     Present { value: digest } => digest
     Absent => std.content_hash.Sha256Digest { hex: witness_fixture_digest_hex as std.content_hash.Sha256DigestHex }
   }
@@ -24,7 +24,7 @@ fn witness_fixture_digest() -> std.content_hash.Sha256Digest {
 
 // AND THE POSITIVE CONTROL, without which the witness above passes on a predicate that is false for everything.
 test fn a_built_outcome_carrying_a_digest_reports_an_executable() -> Bool {
-  outcome_delivers_executable(
+  gunbc.devboot.build.outcome_delivers_executable(
     outcome: gunbc.devboot.build.Built {
       program_subject: "program=gunbc\n",
       artifact: gunbc.devboot.build.BuiltArtifact { path: "/tmp/gunbc", sha256: witness_fixture_digest() },
@@ -35,7 +35,7 @@ test fn a_built_outcome_carrying_a_digest_reports_an_executable() -> Bool {
 
 // AN INVALID DIGEST HEX IS NOT ADMITTED. The construction wall on Sha256Digest means an empty or truncated hex cannot inhabit BuiltArtifact; this witness pins the admission gate the product path routes through.
 test fn an_invalid_digest_hex_is_not_admitted() -> Bool {
-  match sha256_hex_digest(hex: "5af0bd8e") {
+  match std.content_hash.sha256_hex_digest(hex: "5af0bd8e") {
     Present { value: _ } => false
     Absent => true
   }
@@ -43,11 +43,11 @@ test fn an_invalid_digest_hex_is_not_admitted() -> Bool {
 
 // EVERY REFUSAL SAYS SOMETHING, and the match that renders them is total, so a refusal added later cannot inherit a generic sentence by omission. A digest mismatch in particular must name BOTH digests: a report that the bytes are wrong without saying what was expected and what arrived cannot be acted on, and this is the arm that fires when a store has been tampered with rather than merely being slow.
 test fn a_digest_mismatch_names_both_digests() -> Bool {
-  match sha256_hex_digest(hex: witness_fixture_digest_hex) {
+  match std.content_hash.sha256_hex_digest(hex: witness_fixture_digest_hex) {
     Present { value: expected } =>
-      match sha256_hex_digest(hex: witness_other_digest_hex) {
+      match std.content_hash.sha256_hex_digest(hex: witness_other_digest_hex) {
         Present { value: observed } =>
-          let sentence = build_refusal_sentence(
+          let sentence = gunbc.devboot.build.build_refusal_sentence(
             cause: gunbc.devboot.build.ArtifactDigestMismatch { expected: expected, observed: observed },
           )
           string_contains(s: sentence, pattern: "5af0bd8e") && string_contains(s: sentence, pattern: "00000000")
@@ -59,7 +59,7 @@ test fn a_digest_mismatch_names_both_digests() -> Bool {
 
 // A SUBJECT MISMATCH CARRIES BOTH SUBJECTS for the same reason, and this refusal is the cross-host wall: the producer derives its subject from its OWN toolchain and never echoes the caller's, so this arm is what stands between a caller and a binary built by a compiler it did not ask for.
 test fn a_subject_mismatch_names_both_subjects() -> Bool {
-  let sentence = build_refusal_sentence(
+  let sentence = gunbc.devboot.build.build_refusal_sentence(
     cause: gunbc.devboot.build.SubjectMismatch { requested: "toolchain=1.93.0", produced: "toolchain=1.90.0" },
   )
   string_contains(s: sentence, pattern: "1.93.0") && string_contains(s: sentence, pattern: "1.90.0")
@@ -67,47 +67,47 @@ test fn a_subject_mismatch_names_both_subjects() -> Bool {
 
 // THE POLL ABSORBS ONCE IT HAS AN ANSWER. A later tick that looked again could overwrite a settled result with a transient one, so a caller holding a verified artifact could report a refusal produced by a hiccup after the fact.
 test fn a_poll_that_was_answered_is_settled() -> Bool {
-  poll_settled(acc: gunbc.devboot.build.PollAnswered { ref_name: "refs/devboot/produced/fnv1a64-deadbeef" })
+  gunbc.devboot.build.poll_settled(acc: gunbc.devboot.build.PollAnswered { ref_name: "refs/devboot/produced/fnv1a64-deadbeef" })
 }
 
 // AND ABSORBS ON AN UNREACHABLE PRODUCER, because a host that could not be reached is a terminal answer for this attempt rather than an invitation to keep dialling for the remainder of the budget.
 test fn a_poll_that_could_not_reach_the_producer_is_settled() -> Bool {
-  poll_settled(acc: gunbc.devboot.build.PollUnreachable { detail: "connection refused" })
+  gunbc.devboot.build.poll_settled(acc: gunbc.devboot.build.PollUnreachable { detail: "connection refused" })
 }
 
 // THE DISCRIMINATING NEGATIVE. Waiting is NOT settled, so the fold keeps polling. Without this the two witnesses above would pass on a function that answered true unconditionally -- and a poll that is always settled never waits, which turns every request that is not instantly ready into a refusal.
 test fn a_poll_still_waiting_is_not_settled() -> Bool {
-  !poll_settled(acc: PollWaiting)
+  !gunbc.devboot.build.poll_settled(acc: gunbc.devboot.build.PollWaiting)
 }
 
 // THE REF NAMES ARE DERIVED FROM THE SINGLE AUTHORITY. Both namespaces live in gunbc.devboot.lease beside the other four; these witnesses fail if either is respelled here, which is the drift that would otherwise be silent -- a producer writing where no caller looks does not error, it simply never answers, and every individual run still looks correct.
 test fn the_request_ref_is_built_from_the_declared_namespace() -> Bool {
-  request_ref_of(token: "fnv1a64-deadbeef") == concat(request_ref_namespace, "fnv1a64-deadbeef")
+  gunbc.devboot.build.request_ref_of(token: "fnv1a64-deadbeef") == concat(gunbc.devboot.lease.request_ref_namespace, "fnv1a64-deadbeef")
 }
 
 test fn the_produced_ref_is_built_from_the_declared_namespace() -> Bool {
-  produced_ref_of(token: "fnv1a64-deadbeef") == concat(produced_ref_namespace, "fnv1a64-deadbeef")
+  gunbc.devboot.build.produced_ref_of(token: "fnv1a64-deadbeef") == concat(gunbc.devboot.lease.produced_ref_namespace, "fnv1a64-deadbeef")
 }
 
 // THE TWO NAMESPACES ARE DISTINCT, which is the property that keeps a request from ever being mistaken for an answer. If they collided, a caller's own pushed request would satisfy its poll immediately and the caller would then try to read an artifact out of the tree it had just sent.
 test fn a_request_and_an_answer_never_share_a_ref() -> Bool {
-  !(request_ref_of(token: "fnv1a64-deadbeef") == produced_ref_of(token: "fnv1a64-deadbeef"))
+  !(gunbc.devboot.build.request_ref_of(token: "fnv1a64-deadbeef") == gunbc.devboot.build.produced_ref_of(token: "fnv1a64-deadbeef"))
 }
 
 // AN OFFERED PROGRAM IS SELECTED, and it names the bin it selected rather than assuming the caller's string reaches cargo unchanged.
 test fn an_offered_program_selects_its_bin() -> Bool {
-  match select_program(program: "gunbc") {
-    ProgramNotOffered { program } => false
-    ProgramSelected { package, cargo_target, bin_name } => bin_name == "gunbc" && package == "v1-compiler"
+  match gunbc.devboot.program.select_program(program: "gunbc") {
+    gunbc.devboot.program.ProgramNotOffered { program } => false
+    gunbc.devboot.program.ProgramSelected { package, cargo_target, bin_name } => bin_name == "gunbc" && package == "v1-compiler"
   }
 }
 
 // AND AN UNOFFERED ONE REFUSES LOCALLY, before a snapshot, before a push, before another host materializes a tree. The refusal names what IS offered, because a caller who mistyped a program name needs the list more than the rejection.
 test fn an_unoffered_program_refuses_and_lists_what_is_offered() -> Bool {
-  match select_program(program: "not-a-real-program") {
-    ProgramSelected { package, cargo_target, bin_name } => false
-    ProgramNotOffered { program } =>
-      program == "not-a-real-program" && string_contains(s: offered_programs_rendering(), pattern: "gunbc")
+  match gunbc.devboot.program.select_program(program: "not-a-real-program") {
+    gunbc.devboot.program.ProgramSelected { package, cargo_target, bin_name } => false
+    gunbc.devboot.program.ProgramNotOffered { program } =>
+      program == "not-a-real-program" && string_contains(s: gunbc.devboot.program.offered_programs_rendering(), pattern: "gunbc")
   }
 }
 
@@ -116,21 +116,21 @@ test fn an_unoffered_program_refuses_and_lists_what_is_offered() -> Bool {
 
 // TWO C LIBRARIES ARE TWO IDENTITIES. If these tags collided, the digests built from them would collide, and an artifact linked against one library would be served to a host expecting the other -- which is precisely the incident, restored.
 test fn two_c_library_versions_have_distinct_identities() -> Bool {
-  let newer = platform_c_library_identity_tag(library: extdeps.gnu.libc.GnuLibc { version: "2.39" as std.types.NonEmptyStr })
-  let older = platform_c_library_identity_tag(library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr })
+  let newer = extdeps.gnu.libc.platform_c_library_identity_tag(library: extdeps.gnu.libc.GnuLibc { version: "2.39" as std.types.NonEmptyStr })
+  let older = extdeps.gnu.libc.platform_c_library_identity_tag(library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr })
   !(newer == older)
 }
 
 // AND THE SAME VERSION IS THE SAME IDENTITY, the positive control without which the witness above passes on a tag function that returns something different every call -- which would make every environment unique and destroy the reuse this service exists to provide.
 test fn one_c_library_version_has_a_stable_identity() -> Bool {
-  let once = platform_c_library_identity_tag(library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr })
-  let again = platform_c_library_identity_tag(library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr })
+  let once = extdeps.gnu.libc.platform_c_library_identity_tag(library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr })
+  let again = extdeps.gnu.libc.platform_c_library_identity_tag(library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr })
   once == again
 }
 
 // AN UNOBSERVED LIBRARY IS NOT AN OBSERVED ONE, and never shares an identity with a measured version. Absent this, every host whose C library could not be read would collapse into a single environment identity and serve each other's artifacts.
 test fn an_unobserved_c_library_is_distinct_from_every_observed_one() -> Bool {
-  let unobserved = platform_c_library_identity_tag(library: LibcUnobserved)
-  let observed = platform_c_library_identity_tag(library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr })
+  let unobserved = extdeps.gnu.libc.platform_c_library_identity_tag(library: extdeps.gnu.libc.LibcUnobserved)
+  let observed = extdeps.gnu.libc.platform_c_library_identity_tag(library: extdeps.gnu.libc.GnuLibc { version: "2.36" as std.types.NonEmptyStr })
   !(unobserved == observed)
 }

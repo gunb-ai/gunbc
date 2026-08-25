@@ -12,7 +12,7 @@ data qn_uses_param_only: String = "test.fixture.decl_facts_reflection.specimens.
 data qn_uses_local: String = "test.fixture.decl_facts_reflection.specimens.uses_local"
 
 test fn w_fixture_pool_decl_facts_nonempty() -> Bool {
-  length(xs: test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_witness_support_facts()) > 0
+  v2.std.algebra.length(xs: test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_witness_support_facts()) > 0
 }
 
 test fn w_outer_record_constructor_scaffold_lexeme_surfaces() -> Bool {

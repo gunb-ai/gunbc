@@ -97,19 +97,19 @@ type RustfmtRequiredVersion
 
 type RustfmtConfig {
   indent_style: RustfmtIndentStyle
-  tab_spaces: Outcome<v2.std.refinement.PositiveInt>
+  tab_spaces: v2.std.diagnostic.Outcome<v2.std.refinement.PositiveInt>
   hard_tabs: Bool
-  max_width: Outcome<v2.std.refinement.PositiveInt>
-  comment_width: Outcome<v2.std.refinement.NonNegativeInt>
-  chain_width: Outcome<v2.std.refinement.PositiveInt>
-  single_line_if_else_max_width: Outcome<v2.std.refinement.NonNegativeInt>
-  single_line_let_else_max_width: Outcome<v2.std.refinement.NonNegativeInt>
-  fn_call_width: Outcome<v2.std.refinement.PositiveInt>
-  attr_fn_like_width: Outcome<v2.std.refinement.PositiveInt>
-  struct_lit_width: Outcome<v2.std.refinement.NonNegativeInt>
-  struct_variant_width: Outcome<v2.std.refinement.NonNegativeInt>
-  array_width: Outcome<v2.std.refinement.PositiveInt>
-  short_array_element_width_threshold: Outcome<v2.std.refinement.PositiveInt>
+  max_width: v2.std.diagnostic.Outcome<v2.std.refinement.PositiveInt>
+  comment_width: v2.std.diagnostic.Outcome<v2.std.refinement.NonNegativeInt>
+  chain_width: v2.std.diagnostic.Outcome<v2.std.refinement.PositiveInt>
+  single_line_if_else_max_width: v2.std.diagnostic.Outcome<v2.std.refinement.NonNegativeInt>
+  single_line_let_else_max_width: v2.std.diagnostic.Outcome<v2.std.refinement.NonNegativeInt>
+  fn_call_width: v2.std.diagnostic.Outcome<v2.std.refinement.PositiveInt>
+  attr_fn_like_width: v2.std.diagnostic.Outcome<v2.std.refinement.PositiveInt>
+  struct_lit_width: v2.std.diagnostic.Outcome<v2.std.refinement.NonNegativeInt>
+  struct_variant_width: v2.std.diagnostic.Outcome<v2.std.refinement.NonNegativeInt>
+  array_width: v2.std.diagnostic.Outcome<v2.std.refinement.PositiveInt>
+  short_array_element_width_threshold: v2.std.diagnostic.Outcome<v2.std.refinement.PositiveInt>
   brace_style: RustfmtBraceStyle
   control_brace_style: RustfmtControlBraceStyle
   where_single_line: Bool
@@ -127,18 +127,18 @@ type RustfmtConfig {
   fn_params_layout: RustfmtFnParamsLayout
   fn_args_layout: RustfmtFnParamsLayout
   fn_single_line: Bool
-  inline_attribute_width: Outcome<v2.std.refinement.NonNegativeInt>
+  inline_attribute_width: v2.std.diagnostic.Outcome<v2.std.refinement.NonNegativeInt>
   reorder_modules: Bool
   reorder_impl_items: Bool
   newline_style: RustfmtNewlineStyle
-  blank_lines_upper_bound: Outcome<v2.std.refinement.NonNegativeInt>
-  blank_lines_lower_bound: Outcome<v2.std.refinement.NonNegativeInt>
+  blank_lines_upper_bound: v2.std.diagnostic.Outcome<v2.std.refinement.NonNegativeInt>
+  blank_lines_lower_bound: v2.std.diagnostic.Outcome<v2.std.refinement.NonNegativeInt>
   wrap_comments: Bool
   normalize_comments: Bool
   normalize_doc_attributes: Bool
   format_strings: Bool
   format_code_in_doc_comments: Bool
-  doc_comment_code_block_width: Outcome<v2.std.refinement.PositiveInt>
+  doc_comment_code_block_width: v2.std.diagnostic.Outcome<v2.std.refinement.PositiveInt>
   format_generated_files: Bool
   hide_parse_errors: Bool
   merge_derives: Bool
@@ -153,8 +153,8 @@ type RustfmtConfig {
   remove_nested_parens: Bool
   combine_control_expr: Bool
   hex_literal_case: RustfmtHexLiteralCase
-  enum_discrim_align_threshold: Outcome<v2.std.refinement.NonNegativeInt>
-  struct_field_align_threshold: Outcome<v2.std.refinement.NonNegativeInt>
+  enum_discrim_align_threshold: v2.std.diagnostic.Outcome<v2.std.refinement.NonNegativeInt>
+  struct_field_align_threshold: v2.std.diagnostic.Outcome<v2.std.refinement.NonNegativeInt>
   spaces_around_ranges: Bool
   space_after_colon: Bool
   space_before_colon: Bool
@@ -178,20 +178,20 @@ type RustfmtConfig {
 
 data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   indent_style: RustfmtIndentBlock,
-  tab_spaces: positive_int_authoritative_literal(value: 4),
+  tab_spaces: v2.std.refinement.positive_int_authoritative_literal(value: 4),
   hard_tabs: false,
 
-  max_width: positive_int_authoritative_literal(value: 100),
-  comment_width: non_negative_int_authoritative_literal(value: 80),
-  chain_width: positive_int_authoritative_literal(value: 60),
-  single_line_if_else_max_width: non_negative_int_authoritative_literal(value: 50),
-  single_line_let_else_max_width: non_negative_int_authoritative_literal(value: 50),
-  fn_call_width: positive_int_authoritative_literal(value: 60),
-  attr_fn_like_width: positive_int_authoritative_literal(value: 70),
-  struct_lit_width: non_negative_int_authoritative_literal(value: 18),
-  struct_variant_width: non_negative_int_authoritative_literal(value: 35),
-  array_width: positive_int_authoritative_literal(value: 60),
-  short_array_element_width_threshold: positive_int_authoritative_literal(value: 10),
+  max_width: v2.std.refinement.positive_int_authoritative_literal(value: 100),
+  comment_width: v2.std.refinement.non_negative_int_authoritative_literal(value: 80),
+  chain_width: v2.std.refinement.positive_int_authoritative_literal(value: 60),
+  single_line_if_else_max_width: v2.std.refinement.non_negative_int_authoritative_literal(value: 50),
+  single_line_let_else_max_width: v2.std.refinement.non_negative_int_authoritative_literal(value: 50),
+  fn_call_width: v2.std.refinement.positive_int_authoritative_literal(value: 60),
+  attr_fn_like_width: v2.std.refinement.positive_int_authoritative_literal(value: 70),
+  struct_lit_width: v2.std.refinement.non_negative_int_authoritative_literal(value: 18),
+  struct_variant_width: v2.std.refinement.non_negative_int_authoritative_literal(value: 35),
+  array_width: v2.std.refinement.positive_int_authoritative_literal(value: 60),
+  short_array_element_width_threshold: v2.std.refinement.positive_int_authoritative_literal(value: 10),
 
   brace_style: RustfmtBraceSameLineWhere,
   control_brace_style: RustfmtControlBraceAlwaysSameLine,
@@ -213,21 +213,21 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   fn_params_layout: RustfmtFnParamsTall,
   fn_args_layout: RustfmtFnParamsTall,
   fn_single_line: false,
-  inline_attribute_width: non_negative_int_authoritative_literal(value: 0),
+  inline_attribute_width: v2.std.refinement.non_negative_int_authoritative_literal(value: 0),
 
   reorder_modules: true,
   reorder_impl_items: false,
 
   newline_style: RustfmtNewlineAuto,
-  blank_lines_upper_bound: non_negative_int_authoritative_literal(value: 1),
-  blank_lines_lower_bound: non_negative_int_authoritative_literal(value: 0),
+  blank_lines_upper_bound: v2.std.refinement.non_negative_int_authoritative_literal(value: 1),
+  blank_lines_lower_bound: v2.std.refinement.non_negative_int_authoritative_literal(value: 0),
 
   wrap_comments: false,
   normalize_comments: false,
   normalize_doc_attributes: false,
   format_strings: false,
   format_code_in_doc_comments: false,
-  doc_comment_code_block_width: positive_int_authoritative_literal(value: 100),
+  doc_comment_code_block_width: v2.std.refinement.positive_int_authoritative_literal(value: 100),
   format_generated_files: true,
   hide_parse_errors: false,
 
@@ -246,8 +246,8 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   remove_nested_parens: true,
   combine_control_expr: true,
   hex_literal_case: RustfmtHexPreserve,
-  enum_discrim_align_threshold: non_negative_int_authoritative_literal(value: 0),
-  struct_field_align_threshold: non_negative_int_authoritative_literal(value: 0),
+  enum_discrim_align_threshold: v2.std.refinement.non_negative_int_authoritative_literal(value: 0),
+  struct_field_align_threshold: v2.std.refinement.non_negative_int_authoritative_literal(value: 0),
   spaces_around_ranges: false,
   space_after_colon: true,
   space_before_colon: false,
@@ -272,5 +272,5 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
 type RustfmtConfigPatch = v2.std.patch.ConfigPatchRecord<RustfmtConfig>
 
 fn rustfmt_layer(base: RustfmtConfig, patch: RustfmtConfigPatch) -> RustfmtConfig {
-  config_patch_layer(base: base, patch: patch)
+  v2.std.patch.config_patch_layer(base: base, patch: patch)
 }

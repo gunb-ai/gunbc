@@ -1,5 +1,6 @@
 module v2.test.execution.native_selected_witness_bundle
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 // First executable SelectedWitnessPlan slice: meet, join, and complement are emitted into one content-addressed Rust artifact. Its generated main directly invokes all three functions and one run_emit_host_cached call launches one process for the whole selected population. The interpreter is executed beside both the correct bundle and the deliberately all-wrong bundle; verdict equality admits failure==failure as the family's live discriminating RED. A second host invocation proves compile_skipped=true against the same content address.
@@ -84,14 +85,14 @@ type SelectedLogicVerdicts {
   complement: std.selected_witness_bundle.SelectedWitnessVerdict
 }
 
-fn selected_verdict_for_byte(actual: v2.std.optional.Optional<std.bit.Byte>, expected_octet: Int) -> std.selected_witness_bundle.SelectedWitnessVerdict {
+fn selected_verdict_for_byte(actual: v2.std.optional.Optional<v2.std.machine.Byte>, expected_octet: Int) -> std.selected_witness_bundle.SelectedWitnessVerdict {
   match actual {
-    Present { value: value } => if value == v2.compiler.emit_host.emit_host_byte_from_octet(octet: expected_octet) {
+    v2.std.optional.Present { value: value } => if value == v2.compiler.emit_host.emit_host_byte_from_octet(octet: expected_octet) {
       std.selected_witness_bundle.SelectedWitnessPassed
     } else {
       std.selected_witness_bundle.SelectedWitnessFailed
     }
-    Absent => std.selected_witness_bundle.SelectedWitnessFailed
+    v2.std.optional.Absent => std.selected_witness_bundle.SelectedWitnessFailed
   }
 }
 
@@ -109,14 +110,14 @@ fn interpreted_meet_join_verdict(
   expected_true: Bool
 ) -> std.selected_witness_bundle.SelectedWitnessVerdict {
   match interpreted_value(tree: tree, context: v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_context(), root: root) {
-    Accepted { value: value, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: value, diagnostics: _ } =>
       if (expected_true && v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_bool_true(value: value))
         || (!expected_true && v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_bool_false(value: value)) {
         std.selected_witness_bundle.SelectedWitnessPassed
       } else {
         std.selected_witness_bundle.SelectedWitnessFailed
       }
-    Rejected { diagnostics: _ } => std.selected_witness_bundle.SelectedWitnessFailed
+    v2.std.diagnostic.Rejected { diagnostics: _ } => std.selected_witness_bundle.SelectedWitnessFailed
   }
 }
 
@@ -129,14 +130,14 @@ fn interpreted_complement_verdict(
     context: v2.test.execution.emit_host_complement_equals_eval.emit_complement_eval_context(),
     root: v2.extdeps.languages.dag.dag_complement_eval_subgraph_fixture
   ) {
-    Accepted { value: value, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: value, diagnostics: _ } =>
       if (expected_true && v2.test.execution.emit_host_complement_equals_eval.emit_complement_eval_bool_true(value: value))
         || (!expected_true && v2.test.execution.emit_host_complement_equals_eval.emit_complement_eval_bool_false(value: value)) {
         std.selected_witness_bundle.SelectedWitnessPassed
       } else {
         std.selected_witness_bundle.SelectedWitnessFailed
       }
-    Rejected { diagnostics: _ } => std.selected_witness_bundle.SelectedWitnessFailed
+    v2.std.diagnostic.Rejected { diagnostics: _ } => std.selected_witness_bundle.SelectedWitnessFailed
   }
 }
 
@@ -146,13 +147,13 @@ fn interpreted_value_meet_join_equals(
   expected_true: Bool
 ) -> Bool {
   match interpreted_value(tree: tree, context: v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_context(), root: root) {
-    Accepted { value: value, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: value, diagnostics: _ } =>
       if expected_true {
         v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_bool_true(value: value)
       } else {
         v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_bool_false(value: value)
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -162,13 +163,13 @@ fn interpreted_value_complement_equals(tree: v2.compiler.inferred_tree.InferredT
     context: v2.test.execution.emit_host_complement_equals_eval.emit_complement_eval_context(),
     root: v2.extdeps.languages.dag.dag_complement_eval_subgraph_fixture
   ) {
-    Accepted { value: value, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: value, diagnostics: _ } =>
       if expected_true {
         v2.test.execution.emit_host_complement_equals_eval.emit_complement_eval_bool_true(value: value)
       } else {
         v2.test.execution.emit_host_complement_equals_eval.emit_complement_eval_bool_false(value: value)
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -264,15 +265,15 @@ fn selected_logic_equivalence_rows(
   native: SelectedLogicVerdicts
 ) -> List<std.selected_witness_bundle.NativeBundleMemberEquivalence> {
   let meet_tree = match plan.members {
-    Cons { head: std.selected_witness_bundle.NativeSelected { witness: witness, realization: _ }, tail: _ } => witness
+    std.algebra.Cons { head: std.selected_witness_bundle.NativeSelected { witness: witness, realization: _ }, tail: _ } => witness
     _ => selected_logic_identity(function_name: "meet", tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_meet_tree())
   }
   let join_tree = match plan.members {
-    Cons { head: _, tail: std.algebra.Cons { head: std.selected_witness_bundle.NativeSelected { witness: witness, realization: _ }, tail: _ } } => witness
+    std.algebra.Cons { head: _, tail: std.algebra.Cons { head: std.selected_witness_bundle.NativeSelected { witness: witness, realization: _ }, tail: _ } } => witness
     _ => selected_logic_identity(function_name: "join", tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_join_tree())
   }
   let complement_tree = match plan.members {
-    Cons { head: _, tail: std.algebra.Cons { head: _, tail: std.algebra.Cons { head: std.selected_witness_bundle.NativeSelected { witness: witness, realization: _ }, tail: _ } } } => witness
+    std.algebra.Cons { head: _, tail: std.algebra.Cons { head: _, tail: std.algebra.Cons { head: std.selected_witness_bundle.NativeSelected { witness: witness, realization: _ }, tail: _ } } } => witness
     _ => selected_logic_identity(function_name: "complement", tree: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_complement_tree())
   }
   [
@@ -313,7 +314,7 @@ fn observe_selected_bundle_native(
     source: source,
     fixture_inputs: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_fixture_inputs()
   ) {
-    Accepted { value: cold, diagnostics: _ } => {
+    v2.std.diagnostic.Accepted { value: cold, diagnostics: _ } => {
       let start = observed_monotonic_nanos("selected-bundle-native-warm-start")
       match v2.compiler.emit_host.run_emit_host_cached(
         workspace_dir: workspace,
@@ -321,7 +322,7 @@ fn observe_selected_bundle_native(
         source: source,
         fixture_inputs: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_fixture_inputs()
       ) {
-        Accepted { value: warm, diagnostics: _ } => {
+        v2.std.diagnostic.Accepted { value: warm, diagnostics: _ } => {
           let finish = observed_monotonic_nanos("selected-bundle-native-warm-finish")
           v2.std.diagnostic.Accepted {
             value: SelectedBundleNativeObservation {
@@ -332,16 +333,16 @@ fn observe_selected_bundle_native(
             diagnostics: v2.std.diagnostic.None
           }
         }
-        Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
       }
     }
-    Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
 fn selected_logic_stdout(receipt: v2.std.host_run.EmitHostRunReceipt) -> v2.std.optional.Optional<v2.std.host_transport.ByteString> {
   match receipt.logical_run {
-    Accepted {
+    v2.std.diagnostic.Accepted {
       value: v2.std.host_run.HostLogicalRun { stdout: stdout },
       diagnostics: v2.std.diagnostic.None
     } => v2.std.optional.Present { value: stdout.bytes }
@@ -496,7 +497,7 @@ test fn native_selected_witness_bundle_primary_typed_admission_holds() -> Bool {
     receipt: receipt,
     family_evidence: selected_logic_sample_cutover_evidence()
   ) {
-    NativeBundleExecutionAccepted { receipt: _ } => true
+    std.selected_witness_bundle.NativeBundleExecutionAccepted { receipt: _ } => true
     _ => false
   }
 }
@@ -515,7 +516,7 @@ test fn native_selected_witness_bundle_primary_rows_holds() -> Bool {
       stdout: selected_logic_expected_stdout(primary: true)
     )
   ) {
-    Cons {
+    std.algebra.Cons {
       head: std.selected_witness_bundle.NativeBundleMemberEquivalence {
         witness: _, family: _, interpreted: std.selected_witness_bundle.SelectedWitnessPassed, native: std.selected_witness_bundle.SelectedWitnessPassed
       },
@@ -587,13 +588,13 @@ fn selected_logic_execution_holds(
     members: members,
     transport_target: v2.extdeps.languages.rust_test.rust_logic_selected_bundle_target_model_staging()
   ) {
-    Accepted { value: source, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
       match observe_selected_bundle_native(workspace: workspace, source: source) {
-        Accepted { value: observation, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: observation, diagnostics: _ } =>
           match selected_logic_stdout(receipt: observation.cold) {
-            Present { value: cold_stdout } =>
+            v2.std.optional.Present { value: cold_stdout } =>
               match selected_logic_stdout(receipt: observation.warm) {
-                Present { value: warm_stdout } => {
+                v2.std.optional.Present { value: warm_stdout } => {
                   let receipt = selected_logic_receipt(
                     plan: plan,
                     observation: observation,
@@ -625,20 +626,20 @@ fn selected_logic_execution_holds(
                       receipt: receipt,
                       family_evidence: family_evidence
                     ) {
-                      NativeBundleExecutionAccepted { receipt: accepted } =>
+                      std.selected_witness_bundle.NativeBundleExecutionAccepted { receipt: accepted } =>
                         accepted.process_count == 1
                           && accepted.compile_skipped
                           && accepted.interpreter_frontier_count == 0
                       _ => false
                     })
                 }
-                Absent => false
+                v2.std.optional.Absent => false
               }
-            Absent => false
+            v2.std.optional.Absent => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -670,13 +671,13 @@ fn selected_logic_discriminating_red_evidence() -> List<std.selected_witness_bun
     members: v2.test.execution.emit_on_demand_family_crate_witness.family_crate_alt_members(),
     transport_target: v2.extdeps.languages.rust_test.rust_logic_selected_bundle_target_model_staging()
   ) {
-    Accepted { value: source, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: _ } =>
       match observe_selected_bundle_native(workspace: workspace, source: source) {
-        Accepted { value: observation, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: observation, diagnostics: _ } =>
           match selected_logic_stdout(receipt: observation.cold) {
-            Present { value: cold_stdout } =>
+            v2.std.optional.Present { value: cold_stdout } =>
               match selected_logic_stdout(receipt: observation.warm) {
-                Present { value: warm_stdout } => {
+                v2.std.optional.Present { value: warm_stdout } => {
                   let receipt = selected_logic_receipt(
                     plan: plan,
                     observation: observation,
@@ -710,13 +711,13 @@ fn selected_logic_discriminating_red_evidence() -> List<std.selected_witness_bun
                     []
                   }
                 }
-                Absent => []
+                v2.std.optional.Absent => []
               }
-            Absent => []
+            v2.std.optional.Absent => []
           }
-        Rejected { diagnostics: _ } => []
+        v2.std.diagnostic.Rejected { diagnostics: _ } => []
       }
-    Rejected { diagnostics: _ } => []
+    v2.std.diagnostic.Rejected { diagnostics: _ } => []
   }
 }
 
@@ -789,7 +790,7 @@ test fn native_selected_witness_bundle_divergence_hard_red_holds() -> Bool {
     receipt: divergent,
     family_evidence: selected_logic_sample_cutover_evidence()
   ) {
-    NativeBundleExecutionRefusedDivergence {
+    std.selected_witness_bundle.NativeBundleExecutionRefusedDivergence {
       witness: witness,
       interpreted: std.selected_witness_bundle.SelectedWitnessFailed,
       native: std.selected_witness_bundle.SelectedWitnessPassed
@@ -805,7 +806,7 @@ test fn native_selected_witness_bundle_missing_red_refuses_holds() -> Bool {
     receipt: selected_logic_sample_receipt(),
     family_evidence: []
   ) {
-    NativeBundleExecutionRefusedMissingDiscriminatingRed { family: family } => family == "logic"
+    std.selected_witness_bundle.NativeBundleExecutionRefusedMissingDiscriminatingRed { family: family } => family == "logic"
     _ => false
   }
 }
@@ -819,7 +820,7 @@ test fn native_selected_witness_bundle_non_discriminating_red_refuses_holds() ->
       native_verdict: std.selected_witness_bundle.SelectedWitnessPassed
     )
   ) {
-    NativeBundleExecutionRefusedMissingDiscriminatingRed { family: family } => family == "logic"
+    std.selected_witness_bundle.NativeBundleExecutionRefusedMissingDiscriminatingRed { family: family } => family == "logic"
     _ => false
   }
 }
@@ -834,7 +835,7 @@ test fn native_selected_witness_bundle_unplanted_subject_red_refuses_holds() -> 
       native_verdict: std.selected_witness_bundle.SelectedWitnessFailed
     )
   ) {
-    NativeBundleExecutionRefusedMissingDiscriminatingRed { family: family } => family == "logic"
+    std.selected_witness_bundle.NativeBundleExecutionRefusedMissingDiscriminatingRed { family: family } => family == "logic"
     _ => false
   }
 }
@@ -857,7 +858,7 @@ test fn native_selected_witness_bundle_process_count_refuses_holds() -> Bool {
     receipt: invalid,
     family_evidence: selected_logic_sample_cutover_evidence()
   ) {
-    NativeBundleExecutionRefusedProcessCount { observed: count } => count == 3
+    std.selected_witness_bundle.NativeBundleExecutionRefusedProcessCount { observed: count } => count == 3
     _ => false
   }
 }
@@ -880,7 +881,7 @@ test fn native_selected_witness_bundle_empty_coverage_refuses_holds() -> Bool {
     receipt: empty,
     family_evidence: selected_logic_sample_cutover_evidence()
   ) {
-    NativeBundleExecutionRefusedMemberCoverage { observed: observed, required: required } =>
+    std.selected_witness_bundle.NativeBundleExecutionRefusedMemberCoverage { observed: observed, required: required } =>
       !std.content_hash.content_hash_eq_structural(left: observed, right: required)
     _ => false
   }
@@ -909,7 +910,7 @@ test fn native_selected_witness_bundle_no_native_members_refuses_holds() -> Bool
     receipt: receipt,
     family_evidence: []
   ) {
-    NativeBundleExecutionRefusedNoNativeMembers => true
+    std.selected_witness_bundle.NativeBundleExecutionRefusedNoNativeMembers => true
     _ => false
   }
 }
@@ -921,7 +922,7 @@ test fn native_selected_witness_bundle_execution_plan_identity_refuses_holds() -
     receipt: selected_logic_sample_receipt(),
     family_evidence: selected_logic_sample_cutover_evidence()
   ) {
-    NativeBundleExecutionRefusedPlanIdentity { observed: observed, required: required } =>
+    std.selected_witness_bundle.NativeBundleExecutionRefusedPlanIdentity { observed: observed, required: required } =>
       !std.content_hash.content_hash_eq_structural(
         left: observed.structural_fingerprint,
         right: required.structural_fingerprint
@@ -938,7 +939,7 @@ test fn native_selected_witness_bundle_execution_stale_compiler_refuses_holds() 
     receipt: selected_logic_sample_receipt(),
     family_evidence: selected_logic_sample_cutover_evidence()
   ) {
-    NativeBundleExecutionRefusedStaleCompiler {
+    std.selected_witness_bundle.NativeBundleExecutionRefusedStaleCompiler {
       receipt_compiler_identity: observed,
       current_compiler_identity: current
     } => !std.content_hash.content_hash_eq_structural(left: observed, right: current)
@@ -966,7 +967,7 @@ test fn native_selected_witness_bundle_execution_stale_plan_compiler_refuses_hol
     receipt: forged_current_receipt,
     family_evidence: selected_logic_sample_cutover_evidence()
   ) {
-    NativeBundleExecutionRefusedStalePlanCompiler {
+    std.selected_witness_bundle.NativeBundleExecutionRefusedStalePlanCompiler {
       plan_compiler_identity: observed,
       current_compiler_identity: required
     } => !std.content_hash.content_hash_eq_structural(left: observed, right: required)
@@ -992,7 +993,7 @@ test fn native_selected_witness_bundle_warm_artifact_miss_refuses_holds() -> Boo
     receipt: cold,
     family_evidence: selected_logic_sample_cutover_evidence()
   ) {
-    NativeBundleExecutionRefusedWarmArtifactMiss => true
+    std.selected_witness_bundle.NativeBundleExecutionRefusedWarmArtifactMiss => true
     _ => false
   }
 }
@@ -1015,7 +1016,7 @@ test fn native_selected_witness_bundle_frontier_count_refuses_holds() -> Bool {
     receipt: invalid,
     family_evidence: selected_logic_sample_cutover_evidence()
   ) {
-    NativeBundleExecutionRefusedFrontierCount { observed: observed, required: required } =>
+    std.selected_witness_bundle.NativeBundleExecutionRefusedFrontierCount { observed: observed, required: required } =>
       observed == 1 && required == 0
     _ => false
   }
@@ -1029,7 +1030,7 @@ test fn native_selected_witness_bundle_stale_compiler_refuses_holds() -> Bool {
     bundle: bundle,
     current_compiler_identity: std.content_hash.content_hash_atom(value: "different-compiler")
   ) {
-    NativeBundleRefusedStaleCompiler {
+    std.selected_witness_bundle.NativeBundleRefusedStaleCompiler {
       bundle_compiler_identity: observed,
       current_compiler_identity: current
     } => !std.content_hash.content_hash_eq_structural(left: observed, right: current)
@@ -1051,7 +1052,7 @@ test fn native_selected_witness_bundle_stale_plan_compiler_refuses_holds() -> Bo
     bundle: forged_current_bundle,
     current_compiler_identity: current
   ) {
-    NativeBundleRefusedStalePlanCompiler {
+    std.selected_witness_bundle.NativeBundleRefusedStalePlanCompiler {
       plan_compiler_identity: observed,
       current_compiler_identity: required_identity
     } => !std.content_hash.content_hash_eq_structural(left: observed, right: required_identity)
@@ -1072,7 +1073,7 @@ test fn native_selected_witness_bundle_member_drift_refuses_holds() -> Bool {
     bundle: drifted,
     current_compiler_identity: plan.compiler_identity
   ) {
-    NativeBundleRefusedMemberCoverage { observed: observed, required: required_members } =>
+    std.selected_witness_bundle.NativeBundleRefusedMemberCoverage { observed: observed, required: required_members } =>
       observed.count() == 0 && required_members.count() == 3
     _ => false
   }

@@ -52,7 +52,7 @@ fn derive_module_imports(items: List<v1.std.core.Node>, import_rules: List<v1.co
       v1.compiler.languages.TraitImplTrigger { trait_name: _ } => false
       v1.compiler.languages.DeriveMacroTrigger { macro_name: _ } => false
       v1.compiler.languages.ContainerUsageTrigger { container: c } => type_names |> any(n => n == c)
-      AsyncUsageTrigger => has_async
+      v1.compiler.languages.AsyncUsageTrigger => has_async
     }
   ) |> map(rule => rule.import_path)
   |> filter(path => path != "")
@@ -101,25 +101,25 @@ fn emit_simple_expr(expr: v1.std.core.Node, target: v1.compiler.artifact.RenderT
         let base_call = if base_is_fn { concat(base_str, "()") } else { base_str }
 
         let field_str = concat(base_call, ".", emit_ident(name: f, target: target))
-        let needs_clone = base_is_fn && match target { Rust => true  _ => false }
+        let needs_clone = base_is_fn && match target { v1.compiler.artifact.Rust => true  _ => false }
         if needs_clone { concat(field_str, ".clone()") } else { field_str }
       }
-    ExprStringInterp =>
+    v1.std.core.ExprStringInterp =>
       let ps = expr.children |> map(child => match child.expr_data {
         v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
       })
       emit_simple_string_interp(parts: ps, target: target, source_indices: source_indices)
-    ExprListLit =>
+    v1.std.core.ExprListLit =>
       match target {
-        Go => emit_error_expr(message: "list literal in simple expr not yet supported for Go", target: target)
+        v1.compiler.artifact.Go => emit_error_expr(message: "list literal in simple expr not yet supported for Go", target: target)
         _ =>
           let el_strs = expr.children |> map(e => emit_simple_expr(expr: e, target: target, source_indices: source_indices))
           concat("[", el_strs |> join(separator: ", "), "]")
       }
     v1.std.core.ExprRecordLit { parent_enum: _ } =>
       match target {
-        Go => emit_error_expr(message: "record literal in simple expr not yet supported for Go", target: target)
+        v1.compiler.artifact.Go => emit_error_expr(message: "record literal in simple expr not yet supported for Go", target: target)
         _ =>
           let field_strs = expr.children |> map(f =>
             concat("\"", v1.std.core.field_init_node_name_at(n: f, source_indices: source_indices), "\": ",
@@ -154,7 +154,7 @@ fn emit_simple_string_interp(parts: List<v1.std.core.StringPart>, target: v1.com
         let args_str = args |> join(separator: ", ")
         v1.compiler.emit_core_support.apply_type_template2(template: interp.format_template, arg0: fmt_str, arg1: args_str)
       }
-    InlineExpr =>
+    v1.compiler.languages.InlineExpr =>
       let segments = parts |> map(p => match p {
         v1.std.core.Text { value: v } =>
           let base = v1.compiler.emit_core_support.escape_string_literal_body(s: v)
@@ -198,7 +198,7 @@ fn module_emit_scope(typed_module: v1.compiler.infer_items.TypedModule) -> v1.co
 
 fn scope_after_expr(texpr: v1.std.core.Node, scope: v1.compiler.infer.InferScope) -> v1.compiler.infer.InferScope {
   match texpr.expr_data {
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let ch = texpr.children
       let has_body = (ch |> count) > 1
       if has_body == false {
@@ -344,7 +344,7 @@ fn emit_data_value_json(value: v1.std.core.Node, source_indices: Map<String, v1.
       LitBool { value: b } => Emitted { json: if b { "true" } else { "false" } }
       LitNull => Emitted { json: "null" }
     }
-    ExprListLit => {
+    v1.std.core.ExprListLit => {
       let accum = value.children |> fold(init: FragmentsAccumulated { pieces: [] }, f: (acc, e) =>
         accumulate_json_fragment(acc: acc, outcome: emit_data_value_json(value: e, source_indices: source_indices))
       )
@@ -392,14 +392,14 @@ fn to_camel(name: String) -> String {
 
 fn apply_naming_case(name: String, case_style: v1.compiler.languages.NamingCase) -> String {
   match case_style {
-    PascalCase => {
+    v1.compiler.languages.PascalCase => {
       let parts = name |> split(delimiter: "_")
       let pascal_parts = parts |> map(p => v1.compiler.emit_core_support.capitalize_first(s: p))
       pascal_parts |> join(separator: "")
     }
-    SnakeCase => v1.compiler.emit_core_support.to_snake(name: name)
-    CamelCase => to_camel(name: name)
-    AsAuthored => name
+    v1.compiler.languages.SnakeCase => v1.compiler.emit_core_support.to_snake(name: name)
+    v1.compiler.languages.CamelCase => to_camel(name: name)
+    v1.compiler.languages.AsAuthored => name
   }
 }
 
@@ -456,7 +456,7 @@ fn emit_string_literal(s: String, suffix: String) -> String {
 
 fn is_null_coalesce(op: std.syntax.BinOp) -> Bool {
   match op {
-    NullCoalesce => true
+    std.syntax.NullCoalesce => true
     _ => false
   }
 }
@@ -1181,21 +1181,21 @@ fn classify_expr(texpr: v1.std.core.Node) -> ExprCategory {
     v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } => ExprCatCompound
     v1.std.core.ExprMethodCall { method_semantics: _ } => ExprCatCompound
     v1.std.core.ExprRecordLit { parent_enum: _ } => ExprCatCompound
-    ExprListLit => ExprCatCompound
+    v1.std.core.ExprListLit => ExprCatCompound
     v1.std.core.ExprBinOp { op: _, algebra_field: _ } => ExprCatCompound
     v1.std.core.ExprUnaryOp { op: _ } => ExprCatCompound
-    ExprLambda => ExprCatCompound
-    ExprStringInterp => ExprCatCompound
-    ExprCast => ExprCatCompound
-    ExprIndex => ExprCatCompound
-    ExprSlice => ExprCatCompound
-    ExprMatch => ExprCatControlFlow
-    ExprIf => ExprCatControlFlow
-    ExprForEach => ExprCatControlFlow
-    ExprBlock => ExprCatControlFlow
-    ExprLet => ExprCatBinding
-    ExprReturn => ExprCatControlFlow
-    NoExprData => ExprCatNone
+    v1.std.core.ExprLambda => ExprCatCompound
+    v1.std.core.ExprStringInterp => ExprCatCompound
+    v1.std.core.ExprCast => ExprCatCompound
+    v1.std.core.ExprIndex => ExprCatCompound
+    v1.std.core.ExprSlice => ExprCatCompound
+    v1.std.core.ExprMatch => ExprCatControlFlow
+    v1.std.core.ExprIf => ExprCatControlFlow
+    v1.std.core.ExprForEach => ExprCatControlFlow
+    v1.std.core.ExprBlock => ExprCatControlFlow
+    v1.std.core.ExprLet => ExprCatBinding
+    v1.std.core.ExprReturn => ExprCatControlFlow
+    v1.std.core.NoExprData => ExprCatNone
   }
 }
 
@@ -1206,12 +1206,12 @@ type FuncBodyShape
 
 fn classify_func_body(body: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> FuncBodyShape {
   match body.expr_data {
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let n = v1.std.core.let_binding_name_at(texpr: body, source_indices: source_indices)
       let v = v1.std.core.let_value(texpr: body)
       let rest = v1.std.core.let_body(texpr: body)
       FuncBodyLet { name: n, value: v, rest: rest }
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       FuncBodyBlock { stmts: body.children }
     _ =>
       FuncBodyExpr { expr: body }
@@ -1230,21 +1230,21 @@ fn classify_tco_expr(texpr: v1.std.core.Node, source_indices: Map<String, v1.std
   match texpr.expr_data {
     v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
       TcoCall { func: v1.std.core.expr_call_func_at(texpr: texpr, source_indices: source_indices), args: texpr.children }
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let c = v1.std.core.if_condition(texpr: texpr)
       let t = v1.std.core.if_then_branch(texpr: texpr)
       let e = v1.std.core.if_else_branch(texpr: texpr)
       TcoIf { condition: c, then_branch: t, else_branch: e }
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let scrut = v1.std.core.match_scrutinee(texpr: texpr)
       let arm_list = v1.std.core.match_arm_nodes(texpr: texpr)
       TcoMatch { scrutinee: scrut, arms: arm_list }
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let n = v1.std.core.let_binding_name_at(texpr: texpr, source_indices: source_indices)
       let v = v1.std.core.let_value(texpr: texpr)
       let bd = v1.std.core.let_body(texpr: texpr)
       TcoLet { name: n, value: v, body: bd }
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       TcoBlock { stmts: texpr.children }
     _ =>
       TcoOther { expr: texpr }
@@ -1309,7 +1309,7 @@ fn emit_shared_tco_expr(
       } else {
         emit_non_self_call(frame)
       }
-    ExprReturn =>
+    v1.std.core.ExprReturn =>
       let inner = v1.std.core.return_value(texpr: frame.expr)
       emit_shared_tco_expr(
         frame: TcoFrame { expr: inner, scope: frame.scope, depth: frame.depth },
@@ -1321,13 +1321,13 @@ fn emit_shared_tco_expr(
         emit_let: emit_let,
         emit_block: emit_block,
         emit_default_return: emit_default_return)
-    ExprIf =>
+    v1.std.core.ExprIf =>
       emit_if(frame)
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       emit_match(frame)
-    ExprLet =>
+    v1.std.core.ExprLet =>
       emit_let(frame)
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       emit_block(frame)
     _ =>
       emit_default_return(frame)
@@ -1379,7 +1379,7 @@ fn shared_tco_if(
 ) -> String {
   let syntax = spec.block_syntax
   match frame.expr.expr_data {
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let c = v1.std.core.if_condition(texpr: frame.expr)
       let t = v1.std.core.if_then_branch(texpr: frame.expr)
       let e = v1.std.core.if_else_branch(texpr: frame.expr)
@@ -1424,7 +1424,7 @@ fn shared_tco_let(
   recurse_tco: fn(v1.std.core.Node, v1.compiler.infer.InferScope, Int) -> String
 ) -> String {
   match frame.expr.expr_data {
-    ExprLet =>
+    v1.std.core.ExprLet =>
       let n = v1.std.core.let_binding_name_at(texpr: frame.expr, source_indices: frame.scope.type_env.source_indices)
       let v = v1.std.core.let_value(texpr: frame.expr)
       let bd = v1.std.core.let_body(texpr: frame.expr)
@@ -1450,7 +1450,7 @@ fn shared_tco_block(
   recurse_tco: fn(v1.std.core.Node, v1.compiler.infer.InferScope, Int) -> String
 ) -> String {
   match frame.expr.expr_data {
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       let ss = frame.expr.children
       if ss |> count == 0 {
         spec.tco.break_return
@@ -1599,12 +1599,12 @@ fn emit_unified_tco_match(
     render_pattern: fn(v1.std.core.MatchPattern) -> String,
     render_init_stmts: fn(List<v1.std.core.Node>, v1.compiler.infer.InferScope, Int) -> BlockEmitState) -> String {
   match frame.expr.expr_data {
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       let s = v1.std.core.match_scrutinee(texpr: frame.expr)
       let arm_list = v1.std.core.match_arm_nodes(texpr: frame.expr)
       let scrut_str = emit_unified_typed_expr(texpr: s, target: target, registry: registry, scope: frame.scope, depth: frame.depth, fuel: 1024, render_pattern: render_pattern)
       match target {
-        Go => emit_tco_match_go(scrutinee_str: scrut_str, arms: arm_list, depth: frame.depth, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, render_pattern: render_pattern, render_init_stmts: render_init_stmts)
+        v1.compiler.artifact.Go => emit_tco_match_go(scrutinee_str: scrut_str, arms: arm_list, depth: frame.depth, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, render_pattern: render_pattern, render_init_stmts: render_init_stmts)
         _ =>
           let arm_strs = arm_list |> map(arm =>
             emit_unified_tco_match_arm(arm: arm, fn_name: fn_name, params: params,
@@ -1662,7 +1662,7 @@ fn emit_unified_typed_func_body(body: v1.std.core.Node, target: v1.compiler.arti
   let si = scope.type_env.source_indices
   let prefix = if bs.significant_whitespace { "" } else { v1.compiler.emit_core_support.make_indent(level: depth) }
   match body.expr_data {
-    ExprLet => {
+    v1.std.core.ExprLet => {
       let n = v1.std.core.let_binding_name_at(texpr: body, source_indices: si)
       let ch = body.children
       let v = v1.std.core.let_value(texpr: body)
@@ -1677,7 +1677,7 @@ fn emit_unified_typed_func_body(body: v1.std.core.Node, target: v1.compiler.arti
         Absent => let_line
       }
     }
-    ExprBlock => {
+    v1.std.core.ExprBlock => {
       let ss = body.children
       if ss |> count == 0 {
         concat(prefix, "return ", es.empty_return_value)
@@ -1695,12 +1695,12 @@ fn emit_unified_typed_func_body(body: v1.std.core.Node, target: v1.compiler.arti
         if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
       }
     }
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       match es.match_value_form {
-        MatchStatementArmReturn =>
+        v1.compiler.languages.MatchStatementArmReturn =>
           emit_unified_typed_expr(texpr: body, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024,
             render_pattern: pat => emit_unified_pattern(pattern: pat, target: target, source_indices: si))
-        MatchExpression =>
+        v1.compiler.languages.MatchExpression =>
           concat(prefix, "return ", emit_unified_typed_expr(texpr: body, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024,
             render_pattern: pat => emit_unified_pattern(pattern: pat, target: target, source_indices: si)), es.return_suffix)
       }
@@ -1712,19 +1712,19 @@ fn emit_unified_typed_func_body(body: v1.std.core.Node, target: v1.compiler.arti
 fn is_tco_candidate(texpr: v1.std.core.Node, func_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match texpr.expr_data {
     v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } => v1.std.core.expr_call_func_at(texpr: texpr, source_indices: source_indices) == func_name
-    ExprReturn =>
+    v1.std.core.ExprReturn =>
       is_tco_candidate(texpr: v1.std.core.return_value(texpr: texpr), func_name: func_name, source_indices: source_indices)
-    ExprIf =>
+    v1.std.core.ExprIf =>
       let then_cand = is_tco_candidate(texpr: v1.std.core.if_then_branch(texpr: texpr), func_name: func_name, source_indices: source_indices)
       let else_cand = match v1.std.core.if_else_branch(texpr: texpr) { Present { value: e } => is_tco_candidate(texpr: e, func_name: func_name, source_indices: source_indices)  Absent => false }
       then_cand || else_cand
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       v1.std.core.match_arm_nodes(texpr: texpr) |> any(arm_node => is_tco_candidate(texpr: v1.std.core.arm_body(n: arm_node), func_name: func_name, source_indices: source_indices))
-    ExprLet =>
+    v1.std.core.ExprLet =>
       match v1.std.core.let_body(texpr: texpr) { Present { value: b } => is_tco_candidate(texpr: b, func_name: func_name, source_indices: source_indices)  Absent => false }
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       texpr.children |> any(s => is_tco_candidate(texpr: s, func_name: func_name, source_indices: source_indices))
-    NoExprData =>
+    v1.std.core.NoExprData =>
       texpr.children |> any(child => is_tco_candidate(texpr: child, func_name: func_name, source_indices: source_indices))
     _ => false
   }
@@ -1792,18 +1792,18 @@ fn escape_emoji_codepoints(name: String, prefix: String, suffix: String) -> Stri
 fn apply_char_sanitization(name: String, rule: v1.compiler.languages.CharSanitization) -> String {
   let esc = v1.compiler.languages.canonical_emoji_char_escape()
   match rule {
-    NoCharSanitization => name
-    EmojiEscape => escape_emoji_codepoints(name: name, prefix: esc.prefix, suffix: esc.suffix)
+    v1.compiler.languages.NoCharSanitization => name
+    v1.compiler.languages.EmojiEscape => escape_emoji_codepoints(name: name, prefix: esc.prefix, suffix: esc.suffix)
   }
 }
 
 fn emit_ident(name: String, target: v1.compiler.artifact.RenderTarget) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let converted = match spec.naming_case {
-    SnakeCase => v1.compiler.emit_core_support.to_snake(name: name)
-    CamelCase => to_camel(name: name)
-    PascalCase => v1.compiler.emit_core_support.capitalize_first(s: to_camel(name: name))
-    AsAuthored => name
+    v1.compiler.languages.SnakeCase => v1.compiler.emit_core_support.to_snake(name: name)
+    v1.compiler.languages.CamelCase => to_camel(name: name)
+    v1.compiler.languages.PascalCase => v1.compiler.emit_core_support.capitalize_first(s: to_camel(name: name))
+    v1.compiler.languages.AsAuthored => name
   }
   let sanitized = apply_char_sanitization(name: converted, rule: spec.char_sanitization)
   let is_reserved = spec.reserved_words.keywords |> any(r => r == sanitized)
@@ -1811,7 +1811,7 @@ fn emit_ident(name: String, target: v1.compiler.artifact.RenderTarget) -> String
     match spec.reserved_words.strategy {
       v1.compiler.languages.PrefixEscape { prefix: p } => concat(p, sanitized)
       v1.compiler.languages.SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: sanitized, suffix: s, keywords: spec.reserved_words.keywords)
-      NoEscape => sanitized
+      v1.compiler.languages.NoEscape => sanitized
     }
   } else {
     match spec.reserved_words.strategy {
@@ -1831,7 +1831,7 @@ fn emit_export_ident(name: String, target: v1.compiler.artifact.RenderTarget) ->
         match spec.reserved_words.strategy {
           v1.compiler.languages.SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: result, suffix: s, keywords: spec.reserved_words.keywords)
           v1.compiler.languages.PrefixEscape { prefix: p } => concat(p, result)
-          NoEscape => result
+          v1.compiler.languages.NoEscape => result
         }
       } else {
         match spec.reserved_words.strategy {
@@ -1874,7 +1874,7 @@ fn emit_unary_op(op: v1.std.core.UnaryOpKind, operand_str: String, target: v1.co
 
 fn go_lambda_emits_statement_body(body: v1.std.core.Node) -> Bool {
   match body.expr_data {
-    ExprMatch => true
+    v1.std.core.ExprMatch => true
     _ => false
   }
 }
@@ -1949,10 +1949,10 @@ fn emit_error_expr(message: String, target: v1.compiler.artifact.RenderTarget) -
 // `verb`. Nothing here changes an interpreted effect.
 fn render_target_name(target: v1.compiler.artifact.RenderTarget) -> String {
   match target {
-    Rust   => "rust"
-    Python => "python"
-    Go     => "go"
-    Dag    => "dag"
+    v1.compiler.artifact.Rust   => "rust"
+    v1.compiler.artifact.Python => "python"
+    v1.compiler.artifact.Go     => "go"
+    v1.compiler.artifact.Dag    => "dag"
   }
 }
 
@@ -2084,7 +2084,7 @@ fn file_transport_path_is_renderable(t: v1.std.core.Node, source_indices: Map<St
   match v1.std.core.transport_base_path(t: t, source_indices: source_indices) {
     Present { value: p } => match p.expr_data {
       v1.std.core.ExprLiteral { value: LitStr { value: _ } } => true
-      ExprStringInterp => true
+      v1.std.core.ExprStringInterp => true
       _ => false
     }
     Absent => false
@@ -2114,10 +2114,10 @@ fn file_emission_verb_refusal(op_node: v1.std.core.Node, verb: String?, source_i
 // rather than falling back to the renderers #8858 deleted.
 fn target_renders_file_transport(target: v1.compiler.artifact.RenderTarget) -> Bool {
   match target {
-    Rust   => true
-    Python => false
-    Go     => false
-    Dag    => false
+    v1.compiler.artifact.Rust   => true
+    v1.compiler.artifact.Python => false
+    v1.compiler.artifact.Go     => false
+    v1.compiler.artifact.Dag    => false
   }
 }
 
@@ -2360,11 +2360,11 @@ fn emit_shared_expr(
       emit_call(texpr)
     v1.std.core.ExprMethodCall { method_semantics: _ } =>
       emit_method_call(texpr)
-    ExprMatch =>
+    v1.std.core.ExprMatch =>
       emit_match(texpr)
-    ExprIf =>
+    v1.std.core.ExprIf =>
       emit_if(texpr)
-    ExprLet =>
+    v1.std.core.ExprLet =>
       emit_let(texpr)
     v1.std.core.ExprRecordLit { parent_enum: _ } =>
       emit_record_lit(texpr)
@@ -2373,33 +2373,33 @@ fn emit_shared_expr(
     v1.std.core.ExprUnaryOp { op: op } =>
       let operand = v1.std.core.unaryop_operand(texpr: texpr)
       wrap_result(emit_unary_op(op: op, operand_str: recurse(operand), target: target))
-    ExprLambda =>
+    v1.std.core.ExprLambda =>
       let body = v1.std.core.lambda_body(texpr: texpr)
       let raw_body = recurse(body)
       let final_body = match target {
-        Go =>
+        v1.compiler.artifact.Go =>
           if go_lambda_emits_statement_body(body: body) { raw_body } else { concat("return ", raw_body) }
         _ => raw_body
       }
       wrap_result(emit_lambda(params_str: emit_lambda_params(param_names: v1.std.core.lambda_param_names_at(texpr: texpr, source_indices: source_indices), target: target), body_str: final_body, target: target))
-    ExprStringInterp =>
+    v1.std.core.ExprStringInterp =>
       emit_string_interp(texpr)
-    ExprBlock =>
+    v1.std.core.ExprBlock =>
       emit_block(texpr)
-    ExprCast =>
+    v1.std.core.ExprCast =>
       emit_cast(texpr)
-    ExprForEach =>
+    v1.std.core.ExprForEach =>
       emit_for_each(texpr)
-    ExprIndex =>
+    v1.std.core.ExprIndex =>
       emit_index(texpr)
-    ExprSlice =>
+    v1.std.core.ExprSlice =>
       emit_slice(texpr)
-    ExprListLit =>
+    v1.std.core.ExprListLit =>
       wrap_result(emit_list_lit_expr(element_strs: texpr.children |> map(el => recurse(el)), target: target))
-    ExprReturn =>
+    v1.std.core.ExprReturn =>
       let ret_val = v1.std.core.return_value(texpr: texpr)
       wrap_result(emit_return(value: recurse(ret_val), target: target))
-    NoExprData => wrap_result("")
+    v1.std.core.NoExprData => wrap_result("")
   }
 }
 
@@ -2488,7 +2488,7 @@ fn emit_typed_if_shared(
   match else_branch {
     Present { value: eb } =>
       match es.if_value_form {
-        IfExpression => {
+        v1.compiler.languages.IfExpression => {
           let then_str = recurse(then_branch, depth + 1)
           let else_str = recurse(eb, depth + 1)
           concat("if ", cond_str, bs.block_open,
@@ -2497,12 +2497,12 @@ fn emit_typed_if_shared(
             v1.compiler.emit_core_support.make_indent(level: depth + 1), else_str, "\n",
             v1.compiler.emit_core_support.make_indent(level: depth), bs.block_close)
         }
-        ConditionalTernary => {
+        v1.compiler.languages.ConditionalTernary => {
           let then_str = recurse(then_branch, depth)
           let else_str = recurse(eb, depth)
           concat("(", then_str, ") if (", cond_str, ") else (", else_str, ")")
         }
-        IfStatement => {
+        v1.compiler.languages.IfStatement => {
           let result_type = match if_result_type {
             Present { value: rt } => emit_node_type(n: rt, target: target, source_indices: source_indices)
             Absent => emit_node_type(n: v1.compiler.infer_types.resolved_type(n: then_branch), target: target, source_indices: source_indices)
@@ -2558,10 +2558,10 @@ fn emit_typed_block_join(
 
 fn method_template_emit_for_target(target: v1.compiler.artifact.RenderTarget) -> Map<String, String>? {
   match target {
-    Rust => Present { value: extdeps.languages.rust.emit.rust_method_templates() }
-    Python => Present { value: extdeps.languages.python.emit.python_method_templates_flat() }
-    Go => Present { value: extdeps.languages.go.emit.go_method_templates_flat() }
-    Dag => none
+    v1.compiler.artifact.Rust => Present { value: extdeps.languages.rust.emit.rust_method_templates() }
+    v1.compiler.artifact.Python => Present { value: extdeps.languages.python.emit.python_method_templates_flat() }
+    v1.compiler.artifact.Go => Present { value: extdeps.languages.go.emit.go_method_templates_flat() }
+    v1.compiler.artifact.Dag => none
   }
 }
 
@@ -2607,7 +2607,7 @@ fn emit_typed_string_interp_unified(parts: List<v1.std.core.StringPart>, target:
         let args_str = args |> join(separator: ", ")
         v1.compiler.emit_core_support.apply_type_template2(template: interp.format_template, arg0: fmt_str, arg1: args_str)
       }
-    InlineExpr =>
+    v1.compiler.languages.InlineExpr =>
       let segments = parts |> map(p => match p {
         v1.std.core.Text { value: v } =>
           let base = v1.compiler.emit_core_support.escape_string_literal_body(s: v)
@@ -2677,7 +2677,7 @@ fn emit_typed_call_unified(func: String, args: List<v1.std.core.Node>, target: v
   let all_args = concat(arg_strs, extra_args)
   let args_str = all_args |> join(separator: ", ")
   let call_str = match target {
-    Go =>
+    v1.compiler.artifact.Go =>
       if is_go_v2rt_free_function(name: func) { emit_go_v2rt_free_call(func: func, arg_strs: all_args) }
       else { concat(emit_export_ident(name: func, target: target), "(", args_str, ")") }
     _ => concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
@@ -2730,7 +2730,7 @@ fn emit_typed_method_call_unified(receiver: v1.std.core.Node, method: String, ar
       let mn = v1.std.core.authored_name_at(source_indices: source_indices, node: method_def)
       let first_arg_str = emit_typed_first_arg_shared(args: args, target: target, recurse: recurse)
       emit_algebra_method_call_unified(method_name: mn, receiver: receiver, args: args, target: target, first_arg_str: first_arg_str, recurse: recurse)
-    PlainMethodSemantics =>
+    v1.std.core.PlainMethodSemantics =>
       emit_plain_method_call_unified(receiver: receiver, method: method, args: args, target: target, recurse: recurse)
   } }
   else {
@@ -2755,7 +2755,7 @@ fn emit_unified_pattern(pattern: v1.std.core.MatchPattern, target: v1.compiler.a
     v1.std.core.LitPattern { value: v } => emit_literal(value: v, target: target)
     v1.std.core.VariantPattern { name: n, parent_enum: pe, field_bindings: fbs } =>
       emit_unified_variant_pattern(name: n, parent_enum: pe, field_bindings: fbs, target: target, source_indices: source_indices)
-    Wildcard => "_"
+    v1.std.core.Wildcard => "_"
   }
 }
 
@@ -2781,7 +2781,7 @@ fn emit_unified_variant_pattern(name: String, parent_enum: String?, field_bindin
       }
     Absent =>
       match target {
-        Go => go_variant_case_type(name: name, parent_enum: parent_enum)
+        v1.compiler.artifact.Go => go_variant_case_type(name: name, parent_enum: parent_enum)
         _ =>
           if field_bindings |> count > 0 {
             emit_error_expr(message: "variant patterns with field bindings are not supported for this target", target: target)
@@ -2794,8 +2794,8 @@ fn emit_unified_variant_pattern(name: String, parent_enum: String?, field_bindin
 
 fn emit_match_arm_body_stmt(target: v1.compiler.artifact.RenderTarget, body_str: String) -> String {
   match v1.compiler.emit_core_support.language_spec(target: target).expression_semantics.match_value_form {
-    MatchStatementArmReturn => concat("return ", body_str)
-    MatchExpression => body_str
+    v1.compiler.languages.MatchStatementArmReturn => concat("return ", body_str)
+    v1.compiler.languages.MatchExpression => body_str
   }
 }
 
@@ -2808,7 +2808,7 @@ fn emit_match_arm_line(
   let es = spec.expression_semantics
   let pat = v1.std.core.arm_pattern(n: arm)
   let case_kw = match pat {
-    Wildcard => match es.wildcard_case {
+    v1.std.core.Wildcard => match es.wildcard_case {
       Present { value: wc } => wc
       Absent => concat(bs.case_keyword, render_pattern(pat))
     }
@@ -2854,7 +2854,7 @@ fn emit_typed_match_go(scrutinee_str: String, arms: List<v1.std.core.Node>, dept
 
 fn emit_typed_match_unified(scrutinee_str: String, arms: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, depth: Int, recurse: fn(v1.std.core.Node, Int) -> String, render_pattern: fn(v1.std.core.MatchPattern) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   match target {
-    Go => emit_typed_match_go(scrutinee_str: scrutinee_str, arms: arms, depth: depth, recurse: recurse, render_pattern: render_pattern, source_indices: source_indices)
+    v1.compiler.artifact.Go => emit_typed_match_go(scrutinee_str: scrutinee_str, arms: arms, depth: depth, recurse: recurse, render_pattern: render_pattern, source_indices: source_indices)
     _ =>
       let bs = v1.compiler.emit_core_support.language_spec(target: target).block_syntax
       let case_depth = if bs.significant_whitespace { depth + 1 } else { depth }
@@ -2878,8 +2878,8 @@ fn emit_field_access_unified(base_str: String, field: String, summary: v1.std.co
   match summary {
     Present { value: fs } =>
       match fs.access_style {
-        TupleFirst => concat(base_str, ts.first_accessor)
-        TupleSecond => concat(base_str, ts.second_accessor)
+        v1.std.core.TupleFirst => concat(base_str, ts.first_accessor)
+        v1.std.core.TupleSecond => concat(base_str, ts.second_accessor)
         _ => concat(base_str, ".", emit_export_ident(name: field, target: target))
       }
     Absent => concat(base_str, ".", emit_export_ident(name: field, target: target))
@@ -2925,7 +2925,7 @@ fn emit_unified_typed_expr(texpr: v1.std.core.Node, target: v1.compiler.artifact
     emit_if: expr => {
       let cond_str = emit_unified_typed_expr(texpr: v1.std.core.if_condition(texpr: expr), target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)
       let if_result_type = match spec.expression_semantics.if_value_form {
-        IfStatement => Present { value: v1.compiler.infer_types.resolved_type(n: expr) }
+        v1.compiler.languages.IfStatement => Present { value: v1.compiler.infer_types.resolved_type(n: expr) }
         _ => none
       }
       emit_typed_if_shared(cond_str: cond_str, then_branch: v1.std.core.if_then_branch(texpr: expr), else_branch: v1.std.core.if_else_branch(texpr: expr),

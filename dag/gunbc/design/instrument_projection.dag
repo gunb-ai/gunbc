@@ -33,18 +33,18 @@ data focal_region_note: String = "With nothing selected there is no focal region
 
 fn focal_region(camera: gunbc.design.instrument_camera.ProgramCamera, placements: List<SubjectPlacement>) -> String {
   match camera.focus {
-    NoSubjectSelected => ""
-    FinishLineFocused { line_key } => subject_region(placements: placements, key: line_key)
+    gunbc.design.instrument_camera.NoSubjectSelected => ""
+    gunbc.design.instrument_camera.FinishLineFocused { line_key } => subject_region(placements: placements, key: line_key)
   }
 }
 
 fn placement_role(p: SubjectPlacement, focus_key: String, focus_region: String) -> gunbc.design.salience.SalienceRole {
   if p.key == focus_key {
-    SalienceFocal
+    gunbc.design.salience.SalienceFocal
   } else if focus_region != "" && p.region == focus_region {
-    SalienceSupporting
+    gunbc.design.salience.SalienceSupporting
   } else {
-    SalienceGround
+    gunbc.design.salience.SalienceGround
   }
 }
 
@@ -52,7 +52,7 @@ fn refusal_assignments(refusal: RefusalAggregate) -> List<gunbc.design.salience.
   match refusal {
     NoActiveRefusal => []
     ActiveRefusals { refused_count } => [
-      gunbc.design.salience.SalienceAssignment { subject: refusal_subject_key, role: SalienceCritical },
+      gunbc.design.salience.SalienceAssignment { subject: refusal_subject_key, role: gunbc.design.salience.SalienceCritical },
     ]
   }
 }
@@ -62,7 +62,7 @@ fn project_salience(
   placements: List<SubjectPlacement>,
   refusal: RefusalAggregate,
 ) -> List<gunbc.design.salience.SalienceAssignment> {
-  let focus_key = focus_subject_key(f: camera.focus)
+  let focus_key = gunbc.design.instrument_camera.focus_subject_key(f: camera.focus)
   let region = focal_region(camera: camera, placements: placements)
   (placements |> map(p => gunbc.design.salience.SalienceAssignment {
     subject: p.key,
@@ -78,7 +78,7 @@ fn project_admission(
   placements: List<SubjectPlacement>,
   refusal: RefusalAggregate,
 ) -> gunbc.design.salience.FocalAdmission {
-  region_focal_admission(
+  gunbc.design.salience.region_focal_admission(
     region: focal_region(camera: camera, placements: placements),
     assignments: project_salience(camera: camera, placements: placements, refusal: refusal),
   )
@@ -89,8 +89,8 @@ data finish_line_region: String = "v1-finish-lines"
 data finish_line_placements_note: String = "The instrument's subjects are V0's four v1-deletion finish lines, read from gunbc.v1_deletion_plan rather than restated — so a fifth finish line appears in the instrument by being declared once, and a renamed one cannot drift out of alignment with the roadmap node it binds to. They share one region because they are one field of peers: selecting any of them makes the other three its siblings."
 
 fn finish_line_placements() -> List<SubjectPlacement> {
-  v1_exit_finish_lines() |> map(s => SubjectPlacement {
-    key: v1_finish_line_key(l: s.line),
+  gunbc.v1_deletion_plan.v1_exit_finish_lines() |> map(s => SubjectPlacement {
+    key: gunbc.v1_deletion_plan.v1_finish_line_key(l: s.line),
     region: finish_line_region,
   })
 }
@@ -100,5 +100,5 @@ fn project_finish_line_salience(camera: gunbc.design.instrument_camera.ProgramCa
 }
 
 fn assignment_role_for(assignments: List<gunbc.design.salience.SalienceAssignment>, subject: String) -> gunbc.design.salience.SalienceRole {
-  fold(assignments, init: SalienceGround, f: (acc, a) => if a.subject == subject { a.role } else { acc })
+  fold(assignments, init: gunbc.design.salience.SalienceGround, f: (acc, a) => if a.subject == subject { a.role } else { acc })
 }

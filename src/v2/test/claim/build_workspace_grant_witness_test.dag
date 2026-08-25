@@ -1,27 +1,27 @@
 module v2.test.claim.build_workspace_grant_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-// Discriminating witnesses for the build-envelope authority (v2.compiler.build_workspace_grant, docs/plans/effect-namespace-grants.md 6). The claim is fail-closed build admissibility (DESIGN 5): a build's WRITES are scoped to its own workspace, its READS to the content-addressed closure + pinned toolchain + its own workspace (the emitted sources and intermediates it reads back), and network is refused BY CONSTRUCTION (no UriTree grant, so no arm to widen). Every positive arm is paired with a RED control that goes red if a scope is dropped: writing the repo tree admits, writing the read-only toolchain/closure admits, reading the LIVE repo tree (instead of the content-addressed closure) admits, or any network target admits. The workspace std.effect_grant.Read grant resolves the ownership-implies-read question this row initially deferred: P-B (build_transport_admission) decided a build reads its own workspace, so it is asserted here (build_workspace_grant_admits_workspace_read).
+// Discriminating witnesses for the build-envelope authority (v2.compiler.build_workspace_grant, docs/plans/effect-namespace-grants.md 6). The claim is fail-closed build admissibility (DESIGN 5): a build's WRITES are scoped to its own workspace, its READS to the content-addressed closure + pinned toolchain + its own workspace (the emitted sources and intermediates it reads back), and network is refused BY CONSTRUCTION (no UriTree grant, so no arm to widen). Every positive arm is paired with a RED control that goes red if a scope is dropped: writing the repo tree admits, writing the read-only toolchain/closure admits, reading the LIVE repo tree (instead of the content-addressed closure) admits, or any network target admits. The workspace Read grant resolves the ownership-implies-read question this row initially deferred: P-B (build_transport_admission) decided a build reads its own workspace, so it is asserted here (build_workspace_grant_admits_workspace_read).
 data build_frame: std.materialization_ladder.Frame = std.materialization_ladder.Frame { name: "build", kind: std.materialization_ladder.SharedStateFrame }
 
 data ws_root: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: FilesystemPathTree,
+  tree: std.effect_grant.FilesystemPathTree,
   path: ["build", "ws"]
 }
 
 data closure_root: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: FilesystemPathTree,
+  tree: std.effect_grant.FilesystemPathTree,
   path: ["substrate", "closure"]
 }
 
 data toolchain_root: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: FilesystemPathTree,
+  tree: std.effect_grant.FilesystemPathTree,
   path: ["toolchain", "rustc-pinned"]
 }
 
-data build_env: std.effect_grant.Envelope = build_workspace_grant_envelope(
+data build_env: std.effect_grant.Envelope = v2.compiler.build_workspace_grant.build_workspace_grant_envelope(
   workspace_root: ws_root,
   substrate_closure_root: closure_root,
   toolchain_root: toolchain_root,
@@ -29,78 +29,78 @@ data build_env: std.effect_grant.Envelope = build_workspace_grant_envelope(
 )
 
 data ws_write_target: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: FilesystemPathTree,
+  tree: std.effect_grant.FilesystemPathTree,
   path: ["build", "ws", "target", "obj.o"]
 }
 
 data closure_read_target: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: FilesystemPathTree,
+  tree: std.effect_grant.FilesystemPathTree,
   path: ["substrate", "closure", "cafe1234", "mod.dag"]
 }
 
 data toolchain_read_target: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: FilesystemPathTree,
+  tree: std.effect_grant.FilesystemPathTree,
   path: ["toolchain", "rustc-pinned", "bin", "rustc"]
 }
 
 data repo_tree_target: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: FilesystemPathTree,
+  tree: std.effect_grant.FilesystemPathTree,
   path: ["repo", "src", "main.rs"]
 }
 
 data network_target: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
-  tree: UriTree,
+  tree: std.effect_grant.UriTree,
   path: ["https://crates.io", "api", "download"]
 }
 
 fn is_admitted(a: std.access.AccessDecision) -> Bool {
   match a {
-    Permit => true
-    Deny { refusal: refusal } => false
+    std.access.Permit => true
+    std.access.Deny { refusal: refusal } => false
   }
 }
 
 fn is_refused(a: std.access.AccessDecision) -> Bool {
   match a {
-    Permit => false
-    Deny { refusal: refusal } => true
+    std.access.Permit => false
+    std.access.Deny { refusal: refusal } => true
   }
 }
 
 test fn build_workspace_grant_admits_declared_reach() -> Bool {
-  v2.test.claim.build_workspace_grant_witness.is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: ws_write_target))
-    && v2.test.claim.build_workspace_grant_witness.is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: closure_read_target))
-    && v2.test.claim.build_workspace_grant_witness.is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: toolchain_read_target))
+  is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: ws_write_target))
+    && is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: closure_read_target))
+    && is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: toolchain_read_target))
 }
 
 test fn build_workspace_grant_admits_workspace_read() -> Bool {
-  v2.test.claim.build_workspace_grant_witness.is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: ws_write_target))
-    && v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: repo_tree_target))
+  is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: ws_write_target))
+    && is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: repo_tree_target))
 }
 
 test fn build_workspace_grant_refuses_undeclared_write() -> Bool {
-  v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: repo_tree_target))
-    && v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: toolchain_read_target))
-    && v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: closure_read_target))
+  is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: repo_tree_target))
+    && is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: toolchain_read_target))
+    && is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: closure_read_target))
 }
 
 test fn build_workspace_grant_refuses_live_repo_read() -> Bool {
-  v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: repo_tree_target))
-    && v2.test.claim.build_workspace_grant_witness.is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: closure_read_target))
+  is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: repo_tree_target))
+    && is_admitted(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: closure_read_target))
 }
 
 test fn build_workspace_grant_refuses_network_by_construction() -> Bool {
-  v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: network_target))
-    && v2.test.claim.build_workspace_grant_witness.is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: network_target))
+  is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Read, target: network_target))
+    && is_refused(a: std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: network_target))
 }
 
 test fn build_workspace_grant_refusal_is_located() -> Bool {
   match std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: repo_tree_target) {
-    Deny { refusal: refusal } =>
+    std.access.Deny { refusal: refusal } =>
       refusal.location.profile == "EffectRequest"
         && refusal.location.subject == "build"
         && refusal.location.action == "write"
         && refusal.location.object == "repo/src/main.rs"
-    Permit => false
+    std.access.Permit => false
   }
 }

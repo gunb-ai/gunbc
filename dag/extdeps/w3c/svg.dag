@@ -3,12 +3,12 @@ module extdeps.w3c.svg
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.w3.org/TR/SVG2/"
   }
 }
 
-// Cited upstream: W3C Scalable Vector Graphics (SVG) 2, Recommendation-track. std.markup.Element names, the
+// Cited upstream: W3C Scalable Vector Graphics (SVG) 2, Recommendation-track. Element names, the
 // SVG namespace, and the XML serialization medium live here so a product projection cites this
 // authority rather than minting a second SVG vocabulary. Serialization uses std.markup's generic
 // fragment algebra with an SVG medium; it does not route through HTML, which is a separately
@@ -25,10 +25,10 @@ data svg_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.ex
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.w3c.svg",
       decl_name: "svg_language",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
-  first_citation: extdeps.w3c.svg.extdeps_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
@@ -57,26 +57,26 @@ fn svg_markup_medium() -> std.markup.MarkupMedium {
   std.markup.MarkupMedium {
     tag_overrides: [],
     bracket: svg_xml_brackets,
-    text_escape: EscapeHtml,
+    text_escape: std.markup.EscapeHtml,
     void_tags: [svg_rect_tag, svg_circle_tag],
-    void_rendering: SelfClose,
+    void_rendering: std.markup.SelfClose,
     raw_text_tags: [],
   }
 }
 
 fn svg_element(tag: String, attributes: List<std.markup.Attribute>, children: List<std.markup.Fragment>) -> std.markup.Fragment {
-  extdeps.browser.Element { tag: tag, attributes: attributes, children: children }
+  std.markup.Element { tag: tag, attributes: attributes, children: children }
 }
 
 fn svg_document(view_box: String, class_name: String, aria_label: String, children: List<std.markup.Fragment>) -> std.markup.Fragment {
   svg_element(
     tag: svg_root_tag,
     attributes: [
-      attr(name: "viewBox", value: view_box),
-      attr(name: "class", value: class_name),
-      attr(name: "xmlns", value: svg_xmlns),
-      attr(name: "role", value: svg_role_img),
-      attr(name: "aria-label", value: aria_label),
+      std.markup.attr(name: "viewBox", value: view_box),
+      std.markup.attr(name: "class", value: class_name),
+      std.markup.attr(name: "xmlns", value: svg_xmlns),
+      std.markup.attr(name: "role", value: svg_role_img),
+      std.markup.attr(name: "aria-label", value: aria_label),
     ],
     children: children
   )
@@ -93,30 +93,30 @@ fn svg_style(css: String) -> std.markup.Fragment {
 }
 
 fn svg_group(class_name: String, children: List<std.markup.Fragment>) -> std.markup.Fragment {
-  svg_element(tag: svg_g_tag, attributes: [attr(name: "class", value: class_name)], children: children)
+  svg_element(tag: svg_g_tag, attributes: [std.markup.attr(name: "class", value: class_name)], children: children)
 }
 
 fn svg_rect(x: Int, y: Int, width: Int, height: Int, class_name: String, fill: String, stroke: String, stroke_width: String) -> std.markup.Fragment {
   svg_element(tag: svg_rect_tag, attributes: [
-    attr(name: "x", value: to_string(x)),
-    attr(name: "y", value: to_string(y)),
-    attr(name: "width", value: to_string(width)),
-    attr(name: "height", value: to_string(height)),
-    attr(name: "class", value: class_name),
-    attr(name: "fill", value: fill),
-    attr(name: "stroke", value: stroke),
-    attr(name: "stroke-width", value: stroke_width),
+    std.markup.attr(name: "x", value: to_string(x)),
+    std.markup.attr(name: "y", value: to_string(y)),
+    std.markup.attr(name: "width", value: to_string(width)),
+    std.markup.attr(name: "height", value: to_string(height)),
+    std.markup.attr(name: "class", value: class_name),
+    std.markup.attr(name: "fill", value: fill),
+    std.markup.attr(name: "stroke", value: stroke),
+    std.markup.attr(name: "stroke-width", value: stroke_width),
   ], children: [])
 }
 
 fn svg_text(x: Int, y: Int, label: String, class_name: String) -> std.markup.Fragment {
   svg_element(tag: svg_text_tag, attributes: [
-    attr(name: "x", value: to_string(x)),
-    attr(name: "y", value: to_string(y)),
-    attr(name: "class", value: class_name),
+    std.markup.attr(name: "x", value: to_string(x)),
+    std.markup.attr(name: "y", value: to_string(y)),
+    std.markup.attr(name: "class", value: class_name),
   ], children: [std.markup.FragmentText { content: label }])
 }
 
 fn serialize_svg_document(doc: std.markup.Fragment) -> String {
-  serialize_fragment_with(frag: doc, medium: svg_markup_medium())
+  std.markup.serialize_fragment_with(frag: doc, medium: svg_markup_medium())
 }

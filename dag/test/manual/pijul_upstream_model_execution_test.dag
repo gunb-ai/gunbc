@@ -2,7 +2,7 @@ module test.manual.pijul_upstream_model_execution
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data pijul_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Pijul R0 fixture. The typed effect graph creates an isolated PIJUL_CONFIG_DIR and ephemeral SSH agent/key, observes the implicit Root add change introduced with Pijul's first record, records one authored base and two concurrent signed changes with Pijul 1.0.0-beta.20, applies the changes in both orders, and independently decodes each real `pijul log --state`/`--hash-only` read-back through extdeps.pijul. The receipt proves channel state and change-set invariance, duplicate-delivery idempotence, channel-independent change identity, an observed dependency section, a clean pristine-to-working-copy projection, and a retained rendered order conflict. It does not infer the conflict's unobserved internal vertex and does not promote Pijul conditional advance. Local recipe: put `pijul` 1.0.0-beta.20 on PATH, then run claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/pijul_upstream_model_execution_test.dag --function witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict."
 
@@ -80,11 +80,11 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
     let file_path = concat(repo_dir, "/file.txt")
 
     let config_created = shell.Mkdir.Parents(path: config_dir)
-    let agent_started = gunbc.WitnessBin.Run(
+    let agent_started = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "/usr/bin/ssh-agent",
       args: ["-s", "-a", agent_socket],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
     match ssh_agent_assignment(
       stdout: agent_started.stdout,
@@ -101,13 +101,13 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
         }
       Present { value: agent_assignment } =>
         let agent_pid = agent_assignment.value
-        let key_generated = gunbc.WitnessBin.Run(
+        let key_generated = WitnessBin.Run(
           workdir: fixture.path,
           bin_path: "/usr/bin/ssh-keygen",
           args: ["-q", "-t", "ed25519", "-N", "", "-f", private_key],
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let key_added = gunbc.WitnessBin.Run(
+        let key_added = WitnessBin.Run(
           workdir: fixture.path,
           bin_path: "/usr/bin/env",
           args: [
@@ -115,9 +115,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             "ssh-add",
             private_key,
           ],
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let version = gunbc.WitnessBin.Run(
+        let version = WitnessBin.Run(
           workdir: fixture.path,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -125,9 +125,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["--version"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let identity_created = gunbc.WitnessBin.Run(
+        let identity_created = WitnessBin.Run(
           workdir: fixture.path,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -146,9 +146,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
               "fixture",
             ],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let initialized = gunbc.WitnessBin.Run(
+        let initialized = WitnessBin.Run(
           workdir: fixture.path,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -156,13 +156,13 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["init", repo_dir],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
         let base_written = Filesystem.Write(
           path: file_path,
           content: "base version\n",
         )
-        let base_added = gunbc.WitnessBin.Run(
+        let base_added = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -170,9 +170,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["add", "file.txt"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let base_recorded = gunbc.WitnessBin.Run(
+        let base_recorded = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -189,9 +189,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
               "2000-01-01T00:00:00Z",
             ],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let base_hash = gunbc.WitnessBin.Run(
+        let base_hash = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -199,9 +199,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["log", "--channel", "main", "--hash-only", "--limit", "1"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let root_hash = gunbc.WitnessBin.Run(
+        let root_hash = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -218,10 +218,10 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
               "1",
             ],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
 
-        let left_created = gunbc.WitnessBin.Run(
+        let left_created = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -229,9 +229,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["channel", "new", "left"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let right_created = gunbc.WitnessBin.Run(
+        let right_created = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -239,9 +239,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["channel", "new", "right"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let base_applied_left = gunbc.WitnessBin.Run(
+        let base_applied_left = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -249,9 +249,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["apply", "--channel", "left", std.algebra.trim(s: base_hash.stdout)],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let base_applied_right = gunbc.WitnessBin.Run(
+        let base_applied_right = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -259,9 +259,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["apply", "--channel", "right", std.algebra.trim(s: base_hash.stdout)],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let left_switched = gunbc.WitnessBin.Run(
+        let left_switched = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -269,13 +269,13 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["channel", "switch", "left"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
         let left_written = Filesystem.Write(
           path: file_path,
           content: "left version is longer\n",
         )
-        let left_recorded = gunbc.WitnessBin.Run(
+        let left_recorded = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -292,9 +292,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
               "2000-01-02T00:00:00Z",
             ],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let left_hash = gunbc.WitnessBin.Run(
+        let left_hash = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -302,10 +302,10 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["log", "--channel", "left", "--hash-only", "--limit", "1"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
 
-        let right_switched = gunbc.WitnessBin.Run(
+        let right_switched = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -313,13 +313,13 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["channel", "switch", "right"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
         let right_written = Filesystem.Write(
           path: file_path,
           content: "right version is different and longest\n",
         )
-        let right_recorded = gunbc.WitnessBin.Run(
+        let right_recorded = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -336,9 +336,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
               "2000-01-03T00:00:00Z",
             ],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let right_hash = gunbc.WitnessBin.Run(
+        let right_hash = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -346,10 +346,10 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["log", "--channel", "right", "--hash-only", "--limit", "1"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
 
-        let main_switched = gunbc.WitnessBin.Run(
+        let main_switched = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -357,9 +357,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["channel", "switch", "main"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let forward_created = gunbc.WitnessBin.Run(
+        let forward_created = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -367,9 +367,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["channel", "new", "left-right"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let reverse_created = gunbc.WitnessBin.Run(
+        let reverse_created = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -377,9 +377,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["channel", "new", "right-left"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let forward_base = gunbc.WitnessBin.Run(
+        let forward_base = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -387,9 +387,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["apply", "--channel", "left-right", std.algebra.trim(s: base_hash.stdout)],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let forward_left = gunbc.WitnessBin.Run(
+        let forward_left = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -397,9 +397,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["apply", "--channel", "left-right", std.algebra.trim(s: left_hash.stdout)],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let forward_right = gunbc.WitnessBin.Run(
+        let forward_right = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -407,9 +407,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["apply", "--channel", "left-right", std.algebra.trim(s: right_hash.stdout)],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let forward_duplicate = gunbc.WitnessBin.Run(
+        let forward_duplicate = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -417,9 +417,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["apply", "--channel", "left-right", std.algebra.trim(s: left_hash.stdout)],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let reverse_base = gunbc.WitnessBin.Run(
+        let reverse_base = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -427,9 +427,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["apply", "--channel", "right-left", std.algebra.trim(s: base_hash.stdout)],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let reverse_right = gunbc.WitnessBin.Run(
+        let reverse_right = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -437,9 +437,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["apply", "--channel", "right-left", std.algebra.trim(s: right_hash.stdout)],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let reverse_left = gunbc.WitnessBin.Run(
+        let reverse_left = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -447,10 +447,10 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["apply", "--channel", "right-left", std.algebra.trim(s: left_hash.stdout)],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
 
-        let forward_head = gunbc.WitnessBin.Run(
+        let forward_head = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -465,9 +465,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
               "1",
             ],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let forward_hashes = gunbc.WitnessBin.Run(
+        let forward_hashes = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -475,9 +475,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["log", "--channel", "left-right", "--hash-only"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let reverse_head = gunbc.WitnessBin.Run(
+        let reverse_head = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -492,9 +492,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
               "1",
             ],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let reverse_hashes = gunbc.WitnessBin.Run(
+        let reverse_hashes = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -502,9 +502,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["log", "--channel", "right-left", "--hash-only"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let left_change = gunbc.WitnessBin.Run(
+        let left_change = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -512,9 +512,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["change", std.algebra.trim(s: left_hash.stdout)],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let forward_switched = gunbc.WitnessBin.Run(
+        let forward_switched = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -522,10 +522,10 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["channel", "switch", "left-right"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
         let rendered_conflict = Filesystem.Read(path: file_path)
-        let pristine_diff = gunbc.WitnessBin.Run(
+        let pristine_diff = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -533,9 +533,9 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["diff", "--short"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
-        let channels = gunbc.WitnessBin.Run(
+        let channels = WitnessBin.Run(
           workdir: repo_dir,
           bin_path: "/usr/bin/env",
           args: pijul_env_args(
@@ -543,14 +543,14 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             agent_socket: agent_socket,
             args: ["channel"],
           ),
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
 
-        let agent_stopped = gunbc.WitnessBin.Run(
+        let agent_stopped = WitnessBin.Run(
           workdir: fixture.path,
           bin_path: "/bin/kill",
           args: [agent_pid],
-          expect: ExpectSuccess,
+          expect: gunbc.output_policy.ExpectSuccess,
         )
         let cleaned = shell.Remove.RecursiveForce(path: fixture.path)
 
@@ -621,7 +621,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             ),
           }
         } else if std.algebra.trim(s: pristine_diff.stdout) != ""
-          || std.algebra.trim(s: version.stdout) != pijul_upstream_cli_version
+          || std.algebra.trim(s: version.stdout) != extdeps.pijul.pijul_upstream_cli_version
           || !string_contains(s: channels.stdout, pattern: "left-right")
           || !string_contains(s: channels.stdout, pattern: "right-left") {
           PijulR0LiveRefused {
@@ -635,26 +635,26 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             ),
           }
         } else {
-          match pijul_decode_channel_log_observation(
-            pijul_version: pijul_upstream_version,
+          match extdeps.pijul.pijul_decode_channel_log_observation(
+            pijul_version: extdeps.pijul.pijul_upstream_version,
             channel: "left-right",
             head_plaintext: forward_head.stdout,
             hash_only: forward_hashes.stdout,
           ) {
-            PijulChannelLogInvalid { cause: _ } =>
+            extdeps.pijul.PijulChannelLogInvalid { cause: _ } =>
               PijulR0LiveRefused { diagnostic: "forward-log-decode-refused" }
-            PijulChannelLogObserved { observation: forward } =>
-              match pijul_decode_channel_log_observation(
-                pijul_version: pijul_upstream_version,
+            extdeps.pijul.PijulChannelLogObserved { observation: forward } =>
+              match extdeps.pijul.pijul_decode_channel_log_observation(
+                pijul_version: extdeps.pijul.pijul_upstream_version,
                 channel: "right-left",
                 head_plaintext: reverse_head.stdout,
                 hash_only: reverse_hashes.stdout,
               ) {
-                PijulChannelLogInvalid { cause: _ } =>
+                extdeps.pijul.PijulChannelLogInvalid { cause: _ } =>
                   PijulR0LiveRefused {
                     diagnostic: "reverse-log-decode-refused",
                   }
-                PijulChannelLogObserved { observation: reverse } =>
+                extdeps.pijul.PijulChannelLogObserved { observation: reverse } =>
                   let root = std.algebra.trim(s: root_hash.stdout) as extdeps.pijul.PijulChangeHash
                   let base = std.algebra.trim(s: base_hash.stdout) as extdeps.pijul.PijulChangeHash
                   let left = std.algebra.trim(s: left_hash.stdout) as extdeps.pijul.PijulChangeHash
@@ -663,34 +663,34 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
                     state: forward.head.state,
                     changes: forward.changes,
                     producer: extdeps.pijul.PijulLogStateObserved {
-                      pijul_version: pijul_upstream_version,
+                      pijul_version: extdeps.pijul.pijul_upstream_version,
                     },
                   }
-                  match pijul_assess_channel_log_read_back(
+                  match extdeps.pijul.pijul_assess_channel_log_read_back(
                     expected: expected,
                     observation: reverse,
                   ) {
-                    PijulChannelLogReadBackMismatch { axis: _ } =>
+                    extdeps.pijul.PijulChannelLogReadBackMismatch { axis: _ } =>
                       PijulR0LiveRefused {
                         diagnostic: "opposite-order-readback-mismatch",
                       }
-                    PijulChannelLogReadBackMatches { observation: _ } =>
-                      match pijul_assess_dependency_text(
+                    extdeps.pijul.PijulChannelLogReadBackMatches { observation: _ } =>
+                      match extdeps.pijul.pijul_assess_dependency_text(
                         observation: extdeps.pijul.PijulDependencyTextObservation {
                           change: left,
                           dependency: base,
                           change_text: left_change.stdout,
                         },
                       ) {
-                        PijulDependencyMentionNotGrounded =>
+                        extdeps.pijul.PijulDependencyMentionNotGrounded =>
                           PijulR0LiveRefused {
                             diagnostic: "dependency-readback-not-grounded",
                           }
-                        PijulDependencyMentionGrounded {
+                        extdeps.pijul.PijulDependencyMentionGrounded {
                           change: _,
                           dependency: _,
                         } =>
-                          match pijul_assess_rendered_order_conflict(
+                          match extdeps.pijul.pijul_assess_rendered_order_conflict(
                             observation: extdeps.pijul.PijulRenderedOrderConflictObservation {
                               path: pijul_fixture_path(),
                               left: left,
@@ -698,28 +698,28 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
                               rendered_working_copy: rendered_conflict.content,
                             },
                           ) {
-                            PijulRenderedConflictNotGrounded =>
+                            extdeps.pijul.PijulRenderedConflictNotGrounded =>
                               PijulR0LiveRefused {
                                 diagnostic: "rendered-conflict-not-grounded",
                               }
-                            PijulRenderedOrderConflictGrounded {
+                            extdeps.pijul.PijulRenderedOrderConflictGrounded {
                               path: _,
                               left: _,
                               right: _,
                             } =>
-                              if pijul_hash_count(
+                              if extdeps.pijul.pijul_hash_count(
                                 changes: forward.changes,
                                 target: root,
                               ) == 1
-                                && pijul_hash_count(
+                                && extdeps.pijul.pijul_hash_count(
                                   changes: forward.changes,
                                 target: base,
                               ) == 1
-                                && pijul_hash_count(
+                                && extdeps.pijul.pijul_hash_count(
                                   changes: forward.changes,
                                   target: left,
                                 ) == 1
-                                && pijul_hash_count(
+                                && extdeps.pijul.pijul_hash_count(
                                   changes: forward.changes,
                                   target: right,
                                 ) == 1 {
@@ -753,7 +753,7 @@ test fn witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict() -> 
     PijulR0LiveRefused { diagnostic: _ } => false
     PijulR0LiveVerified { receipt } =>
       count(receipt.changes) == 4
-        && pijul_hash_count(
+        && extdeps.pijul.pijul_hash_count(
           changes: receipt.changes,
           target: receipt.root,
         ) == 1
@@ -763,11 +763,11 @@ test fn witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict() -> 
         && !(receipt.base == receipt.left)
         && !(receipt.base == receipt.right)
         && !(receipt.left == receipt.right)
-        && pijul_hash_count(
+        && extdeps.pijul.pijul_hash_count(
           changes: receipt.changes,
           target: receipt.left,
         ) == 1
-        && pijul_hash_count(
+        && extdeps.pijul.pijul_hash_count(
           changes: receipt.changes,
           target: receipt.right,
         ) == 1

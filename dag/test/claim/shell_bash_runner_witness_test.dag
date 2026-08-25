@@ -2,30 +2,30 @@ module test.claim.shell_bash_runner
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn shell_bash_runner_carries_dissolution_trigger() -> Bool {
-  string_contains(s: dissolution_description(condition: shell_bash_runner_dissolution_trigger), pattern: "dissolve-on:")
-    && string_contains(s: dissolution_description(condition: shell_bash_runner_dissolution_trigger), pattern: "bash_fold")
-    && string_contains(s: dissolution_description(condition: shell_bash_runner_dissolution_trigger), pattern: "shell_exec_via_bash")
+  string_contains(s: std.dissolution.dissolution_description(condition: gunbc.shell_bash_runner.shell_bash_runner_dissolution_trigger), pattern: "dissolve-on:")
+    && string_contains(s: std.dissolution.dissolution_description(condition: gunbc.shell_bash_runner.shell_bash_runner_dissolution_trigger), pattern: "bash_fold")
+    && string_contains(s: std.dissolution.dissolution_description(condition: gunbc.shell_bash_runner.shell_bash_runner_dissolution_trigger), pattern: "shell_exec_via_bash")
 }
 
 test fn shell_exec_via_bash_wraps_body_in_heredoc() -> Bool {
-  let wrapped = shell_exec_via_bash(body: "set -e\necho ok")
+  let wrapped = gunbc.shell_bash_runner.shell_exec_via_bash(body: "set -e\necho ok")
   string_contains(s: wrapped, pattern: "bash <<'")
-    && string_contains(s: wrapped, pattern: gunbc_bash_heredoc_delimiter)
+    && string_contains(s: wrapped, pattern: gunbc.shell_bash_runner.gunbc_bash_heredoc_delimiter)
     && string_contains(s: wrapped, pattern: "set -e")
 }
 
 test fn shell_printf_line_uses_printf_not_single_quote_echo() -> Bool {
-  let line = shell_printf_line(line: "can't refuse: operator's call")
+  let line = gunbc.shell_bash_runner.shell_printf_line(line: "can't refuse: operator's call")
   string_contains(s: line, pattern: "printf '%s\\n'")
     && !string_contains(s: line, pattern: "echo '")
 }
 
 test fn shell_printf_line_escapes_embedded_double_quote() -> Bool {
   string_contains(
-    s: shell_printf_line(line: "say \"hi\""),
+    s: gunbc.shell_bash_runner.shell_printf_line(line: "say \"hi\""),
     pattern: "\\\"",
   )
 }

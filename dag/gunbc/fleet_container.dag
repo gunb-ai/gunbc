@@ -1,5 +1,6 @@
 module gunbc.fleet_container
 
+
 // THE REQUIREMENT VOCABULARY MOVED TO product.fabric.envelope AND IS CONSUMED HERE.
 //
 // These are machine questions, not container questions -- a bare-metal host and a rented VM answer
@@ -7,33 +8,34 @@ module gunbc.fleet_container
 // a specific home. Consumed, not redeclared (DESIGN section 3).
 
 type ContainerBaseline
-  = ContainerBaselineMeasured { idle: ResourceEnvelope }
+  = ContainerBaselineMeasured { idle: product.fabric.envelope.ResourceEnvelope }
   | ContainerBaselineUnmeasured
 
 type FleetContainerType
   = GhaRunnerContainer { baseline: ContainerBaseline }
   | AgentSessionContainer { baseline: ContainerBaseline }
 
-fn idle_memory_envelope(min_bytes: ByteSize) -> ResourceEnvelope {
-  ResourceEnvelope {
+fn idle_memory_envelope(min_bytes: std.measure.ByteSize) -> product.fabric.envelope.ResourceEnvelope {
+  product.fabric.envelope.ResourceEnvelope {
     cpu: none,
     gpu: none,
-    memory: Present { value: MemoryRequirement { min_bytes: min_bytes } },
+    memory: Present { value: product.fabric.envelope.MemoryRequirement { min_bytes: min_bytes } },
     storage: none,
     network: none,
   }
 }
 
 data gha_runner_container: FleetContainerType = GhaRunnerContainer {
-  baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: byte_size(314572800)) }
+  baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: std.measure.byte_size(314572800)) }
 }
 
 data agent_session_container: FleetContainerType = AgentSessionContainer {
-  baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: byte_size(471859200)) }
+  baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: std.measure.byte_size(471859200)) }
 }
 
+
 type BaselineResolution
-  = BaselineResolved { bytes: ByteSize }
+  = BaselineResolved { bytes: std.measure.ByteSize }
   | BaselineUnmeasured { reason: String }
 
 fn container_baseline(c: FleetContainerType) -> ContainerBaseline {
@@ -43,7 +45,7 @@ fn container_baseline(c: FleetContainerType) -> ContainerBaseline {
   }
 }
 
-fn baseline_memory_min_bytes(env: ResourceEnvelope) -> BaselineResolution {
+fn baseline_memory_min_bytes(env: product.fabric.envelope.ResourceEnvelope) -> BaselineResolution {
   match env.memory {
     Present { value: m } => BaselineResolved { bytes: m.min_bytes }
     Absent => BaselineUnmeasured { reason: "container baseline ResourceEnvelope carries no MemoryRequirement: refuse to reserve a zero idle baseline" }
@@ -58,20 +60,20 @@ fn container_baseline_bytes(c: FleetContainerType) -> BaselineResolution {
   }
 }
 
-fn memory_bytes_honor_demand(supply: ByteSize, demand: ByteSize) -> Bool {
-  byte_size_count(supply) >= byte_size_count(demand)
+fn memory_bytes_honor_demand(supply: std.measure.ByteSize, demand: std.measure.ByteSize) -> Bool {
+  std.measure.byte_size_count(supply) >= std.measure.byte_size_count(demand)
 }
 
-fn projected_concurrent_peak(width: HardwareThreadCount, per_shard_peak: ByteSize) -> ByteSize {
-  measure_scale_fraction_ceil(m: per_shard_peak, num: hardware_thread_count_value(width), den: 1)
+fn projected_concurrent_peak(width: std.measure.HardwareThreadCount, per_shard_peak: std.measure.ByteSize) -> std.measure.ByteSize {
+  std.measure.measure_scale_fraction_ceil(m: per_shard_peak, num: std.measure.hardware_thread_count_value(width), den: 1)
 }
 
-fn parallel_run_demand_envelope(width: HardwareThreadCount, per_shard_peak: ByteSize) -> ResourceEnvelope {
-  ResourceEnvelope {
-    cpu: Present { value: CpuRequirement { min_threads: width, architecture: none } },
+fn parallel_run_demand_envelope(width: std.measure.HardwareThreadCount, per_shard_peak: std.measure.ByteSize) -> product.fabric.envelope.ResourceEnvelope {
+  product.fabric.envelope.ResourceEnvelope {
+    cpu: Present { value: product.fabric.envelope.CpuRequirement { min_threads: width, architecture: none } },
     gpu: none,
     memory: Present {
-      value: MemoryRequirement {
+      value: product.fabric.envelope.MemoryRequirement {
         min_bytes: projected_concurrent_peak(width: width, per_shard_peak: per_shard_peak)
       }
     },
@@ -82,13 +84,13 @@ fn parallel_run_demand_envelope(width: HardwareThreadCount, per_shard_peak: Byte
 
 fn parallel_run_demand_envelope_from_budget(
   shard_count: Int,
-  hardware_threads: HardwareThreadCount,
-  memory_budget: ByteSize,
-  per_shard_peak: ByteSize,
+  hardware_threads: std.measure.HardwareThreadCount,
+  memory_budget: std.measure.ByteSize,
+  per_shard_peak: std.measure.ByteSize,
   conservative_fallback_width: Int
-) -> ResourceEnvelope {
+) -> product.fabric.envelope.ResourceEnvelope {
   parallel_run_demand_envelope(
-    width: memory_aware_spawn_width(
+    width: std.realization_width.memory_aware_spawn_width(
       shard_count: shard_count,
       hardware_threads: hardware_threads,
       memory_budget: memory_budget,
@@ -99,66 +101,66 @@ fn parallel_run_demand_envelope_from_budget(
   )
 }
 
-fn demand_envelope_memory(envelope: ResourceEnvelope) -> ByteSize {
+fn demand_envelope_memory(envelope: product.fabric.envelope.ResourceEnvelope) -> std.measure.ByteSize {
   match envelope.memory {
-    Absent => byte_size(0)
+    Absent => std.measure.byte_size(0)
     Present { value: req } => req.min_bytes
   }
 }
 
-fn demand_envelope_thread_count(envelope: ResourceEnvelope) -> std.nat.Nat {
+fn demand_envelope_thread_count(envelope: product.fabric.envelope.ResourceEnvelope) -> std.nat.Nat {
   match envelope.cpu {
     Absent => 0
-    Present { value: req } => hardware_thread_count_value(req.min_threads)
+    Present { value: req } => std.measure.hardware_thread_count_value(req.min_threads)
   }
 }
 
-fn demand_envelope_fits_budget(envelope: ResourceEnvelope, budget: ByteSize) -> Bool {
+fn demand_envelope_fits_budget(envelope: product.fabric.envelope.ResourceEnvelope, budget: std.measure.ByteSize) -> Bool {
   memory_bytes_honor_demand(supply: budget, demand: demand_envelope_memory(envelope: envelope))
 }
 
 fn witness_run_demand_envelope_fits_budget() -> Bool {
   let envelope = parallel_run_demand_envelope_from_budget(
     shard_count: 7,
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(67108864000),
-    per_shard_peak: byte_size(2100028416),
+    hardware_threads: std.measure.hardware_thread_count(128),
+    memory_budget: std.measure.byte_size(67108864000),
+    per_shard_peak: std.measure.byte_size(2100028416),
     conservative_fallback_width: 4
   )
   demand_envelope_thread_count(envelope: envelope) == 7
-    && demand_envelope_fits_budget(envelope: envelope, budget: byte_size(67108864000))
+    && demand_envelope_fits_budget(envelope: envelope, budget: std.measure.byte_size(67108864000))
 }
 
 fn witness_high_demand_shrinks_envelope_and_fits() -> Bool {
   let envelope = parallel_run_demand_envelope_from_budget(
     shard_count: 7,
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(67108864000),
-    per_shard_peak: byte_size(20000000000),
+    hardware_threads: std.measure.hardware_thread_count(128),
+    memory_budget: std.measure.byte_size(67108864000),
+    per_shard_peak: std.measure.byte_size(20000000000),
     conservative_fallback_width: 4
   )
   demand_envelope_thread_count(envelope: envelope) == 2
-    && demand_envelope_fits_budget(envelope: envelope, budget: byte_size(67108864000))
+    && demand_envelope_fits_budget(envelope: envelope, budget: std.measure.byte_size(67108864000))
 }
 
 fn witness_fail_open_memory_blind_demand_exceeds_budget() -> Bool {
-  let blind_width = bounded_host_spawn_width(
+  let blind_width = std.realization_width.bounded_host_spawn_width(
     shard_count: 7,
-    hardware_threads: hardware_thread_count(128)
+    hardware_threads: std.measure.hardware_thread_count(128)
   )
   let blind_envelope = parallel_run_demand_envelope(
     width: blind_width,
-    per_shard_peak: byte_size(20000000000)
+    per_shard_peak: std.measure.byte_size(20000000000)
   )
-  demand_envelope_fits_budget(envelope: blind_envelope, budget: byte_size(67108864000)) == false
+  demand_envelope_fits_budget(envelope: blind_envelope, budget: std.measure.byte_size(67108864000)) == false
 }
 
 fn witness_unreadable_budget_uses_conservative_demand() -> Bool {
   let envelope = parallel_run_demand_envelope_from_budget(
     shard_count: 7,
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(0),
-    per_shard_peak: byte_size(2100028416),
+    hardware_threads: std.measure.hardware_thread_count(128),
+    memory_budget: std.measure.byte_size(0),
+    per_shard_peak: std.measure.byte_size(2100028416),
     conservative_fallback_width: 4
   )
   demand_envelope_thread_count(envelope: envelope) == 4

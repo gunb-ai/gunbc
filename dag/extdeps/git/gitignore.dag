@@ -3,7 +3,7 @@ module extdeps.gitignore
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "git-scm.com/docs/gitignore"
   }
 }
@@ -23,9 +23,9 @@ type GitignoreFile {
 }
 
 fn filter_categories(categories: List<GitignoreCategory>, build_system: String) -> List<GitignoreCategory> {
-  let by_build = filter(categories, c => match c.when_build_system {
+  let by_build = v2.std.algebra.filter(categories, c => match c.when_build_system {
     Absent => true
     _ => c.when_build_system == build_system
   })
-  filter(by_build, c => c.items |> count > 0)
+  v2.std.algebra.filter(by_build, c => c.items |> count > 0)
 }

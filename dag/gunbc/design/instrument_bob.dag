@@ -3,7 +3,7 @@ module gunbc.design.instrument_bob
 
 data instrument_bob_note: String = "THE FISHING-BOBBER RESPONSE: the inner display takes a knock, rides up and down, and settles. Three properties make it a modelled behaviour rather than an animation, and each is checkable rather than asserted. It is BOUNDED — the envelope can never carry the plate past the register's existing attraction travel, so instrument character still cannot move a subject as far as a real response does. It SETTLES — the amplitude decays geometrically, so the return to rest carries Strict descent evidence and a derived finite settle time instead of a hope. And it is INERT — the bob is a renderer-local displacement that changes no roadmap fact, no acceptance, no focus and no operation state, which is the same law every other instrument channel already obeys.
 
-It is a CAUSED response, which is what makes it admissible at all: this register has no ambient-motion constructor by design, and the plate is still until something knocks it. A knock is a PhysicalImpulse, and the impulse does not say where it came from — a hand on a chassis, a phone's accelerometer, a Windows sensor, or the deterministic synthetic tap all arrive here identically, so the physics is written once and never learns which platform is underneath it."
+It is a CAUSED response, which is what makes it admissible at all: this register has no ambient-motion constructor by design, and the plate is still until something knocks it. A knock is a gunbc.capability_binding.PhysicalImpulse, and the impulse does not say where it came from — a hand on a chassis, a phone's accelerometer, a Windows sensor, or the deterministic synthetic tap all arrive here identically, so the physics is written once and never learns which platform is underneath it."
 
 data envelope_model_note: String = "WHY AN ENVELOPE RATHER THAN AN INTEGRATED SPRING. A discrete spring integration in integer arithmetic has to be argued into stability — a step size and a stiffness can be chosen that make it grow rather than decay, and the argument that they were not is exactly the kind of claim that holds until someone retunes a constant. A geometric envelope makes the decay STRUCTURAL: the amplitude at any time is the initial amplitude scaled by a factor strictly below one raised to the number of elapsed half-lives, so it cannot grow, and no choice of constants makes it grow. The oscillation rides inside that envelope and can never exceed it. So boundedness and settling are properties of the shape rather than of the tuning, which is the difference between a construction and a check (DESIGN §5)."
 
@@ -132,21 +132,21 @@ fn advance(s: BobState, dt_ms: std.types.Milliseconds) -> BobState {
 
 data descent_note: String = "The settle claim, carried as evidence rather than as prose — and MEASURED rather than inferred from the step size. The previous version read the evidence off dt alone: any advance shorter than a half-life was declared NonIncreasing without ever comparing two amplitudes. That is a claim about the envelope derived from something other than the envelope, and it stayed green through the whole period in which the envelope did not fall at all.
 
-Comparing the two amplitudes makes the evidence a fact about what happened. Strict when the envelope actually decreased, NonIncreasing when integer arithmetic left it equal near the floor, and DescentUnknown — which is the fail-closed bottom of the lattice — if it ever GREW. A model that started growing would surface here as lost evidence rather than as a bob that looked wrong."
+Comparing the two amplitudes makes the evidence a fact about what happened. std.termination.Strict when the envelope actually decreased, std.termination.NonIncreasing when integer arithmetic left it equal near the floor, and std.termination.DescentUnknown — which is the fail-closed bottom of the lattice — if it ever GREW. A model that started growing would surface here as lost evidence rather than as a bob that looked wrong."
 
 fn advance_descent_evidence(s: BobState, dt_ms: std.types.Milliseconds) -> std.termination.DescentEvidence {
   match s.phase {
-    BobAtRest => Strict
-    BobSettled => Strict
+    BobAtRest => std.termination.Strict
+    BobSettled => std.termination.Strict
     BobRinging => {
       let before = bob_amplitude_milli(s: s)
-      let after = bob_amplitude_milli(s: gunbc.design.instrument_bob.advance(s: s, dt_ms: dt_ms))
+      let after = bob_amplitude_milli(s: advance(s: s, dt_ms: dt_ms))
       if after < before {
-        Strict
+        std.termination.Strict
       } else if after == before {
-        NonIncreasing
+        std.termination.NonIncreasing
       } else {
-        DescentUnknown
+        std.termination.DescentUnknown
       }
     }
   }
@@ -176,13 +176,13 @@ fn bob_is_within_register_bound(s: BobState) -> Bool {
   bob_amplitude_milli(s: s) <= bob_max_travel_px * 1000
     && s.initial_milli_px <= bob_max_travel_px * 1000
     && bob_max_travel_px < gunbc.design.salience.attraction_travel_max_px
-    && bob_max_travel_px <= instrument_displacement_max_px
+    && bob_max_travel_px <= gunbc.design.instrument_physical.instrument_displacement_max_px
 }
 
 data inertness_note: String = "The bob rides the existing impulse-glitch channel, so it inherits that channel's law without restating it: no instrument channel may carry a domain fact. The predicate is re-asserted here as a claim rather than re-implemented, which is the difference between citing an authority and forking one."
 
 fn bob_carries_no_domain_fact() -> Bool {
-  !channel_may_carry_domain_fact(c: ChannelImpulseGlitch)
+  !gunbc.design.instrument_physical.channel_may_carry_domain_fact(c: gunbc.design.instrument_physical.ChannelImpulseGlitch)
 }
 
 data displacement_projection_note: String = "The renderer receives whole pixels; the model keeps milli-pixels so the decay does not quantise to zero prematurely. Rounding happens once, at the boundary, which is where the target's own units demand it."
@@ -246,7 +246,7 @@ type BobFrame {
 
 data frame_budget_is_a_count_not_a_duration_note: String = "A FRAME COUNT IS NOT A DURATION, AND THE SUBSTRATE CAUGHT IT TWICE. Dividing the settle time by a frame interval is arithmetic on two Milliseconds values, and the branded carrier propagates through the quotient — so a branch returning a bare zero disagreed with a branch returning a duration, and the typechecker refused rather than handing back a count wearing a time unit.
 
-The first repair reached for a cast and was refused in turn, which was the more instructive answer: Milliseconds is a REFINEMENT of Int rather than a separate representation, so 'as Int' is a cast from Int to Int and means nothing. The brand is not something a value carries and can shed on request; it is something a POSITION requires. So the honest move is to let the brand fall away at a boundary that asks for a plain Int — frame_budget takes counts and durations as bare magnitudes and returns a count, and max_settle_time_ms flows into it because a Milliseconds is admissible wherever an Int is. No conversion happens because none is needed; what changes is which type the position demands."
+The first repair reached for a cast and was refused in turn, which was the more instructive answer: std.types.Milliseconds is a REFINEMENT of Int rather than a separate representation, so 'as Int' is a cast from Int to Int and means nothing. The brand is not something a value carries and can shed on request; it is something a POSITION requires. So the honest move is to let the brand fall away at a boundary that asks for a plain Int — frame_budget takes counts and durations as bare magnitudes and returns a count, and max_settle_time_ms flows into it because a std.types.Milliseconds is admissible wherever an Int is. No conversion happens because none is needed; what changes is which type the position demands."
 
 fn frame_budget(settle_ms: Int, interval: Int) -> Int {
   if interval <= 0 {
@@ -297,7 +297,7 @@ fn bob_frames_from(s: BobState, interval_ms: std.types.Milliseconds, budget: Int
       budget_allowed: budget_allowed,
     }
   } else {
-    let next = gunbc.design.instrument_bob.advance(s: s, dt_ms: interval_ms)
+    let next = advance(s: s, dt_ms: interval_ms)
     let frame = bob_frame_of(s: next)
     match next.phase {
       BobSettled => BobSequenceSettled { frames: [frame] }

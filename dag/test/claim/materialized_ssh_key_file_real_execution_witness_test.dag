@@ -1,17 +1,17 @@
 module test.claim.materialized_ssh_key_file_real_execution_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data real_execution_home_doc: String = "Wet execution witnesses for SECRETREF-WIRE-0 ssh key materialization: with_materialized_ssh_key_file (private scoped root, Filesystem.WriteOwnerOnly mode 0600 at creation via create_new/O_EXCL, post-bracket shred) and WriteOwnerOnly refusal when the path already exists. shell.Mktemp.Dir, shell.Mkdir, shell.Chmod, shell.Remove, Filesystem.Write/WriteOwnerOnly, and shell.Exec.Run(stat) have no mock_response on the file-effect path (WriteOwnerOnly uses the v1 file transport, not shell.Exec mock), so hermetic discovery refuses this file; it is excluded from discovery (gunbc.ci_layer_roots witness_exclusion_frontier) and enrolled in bin_witness_wet_entries. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/materialized_ssh_key_file_real_execution_witness_test.dag --functions witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target"
 
 fn stat_octal_mode(path: String) -> String {
   let result = shell.Exec.Run(
-    script: retained_runtime(
+    script: gunbc.retained_shell_script.retained_runtime(
       body: concat("stat -c %a ", path),
       reason: "materialized ssh key bracket witness octal mode stat" as std.types.NonEmptyStr,
     ),
-    expect: OutcomeIsData,
+    expect: gunbc.output_policy.OutcomeIsData,
   )
   std.algebra.trim(result.stdout)
 }
@@ -19,7 +19,7 @@ fn stat_octal_mode(path: String) -> String {
 test fn witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target() -> Bool {
   let identity = "witness-bracket-key" as std.types.NonEmptyStr
   let secret = "synthetic-ssh-private-key-material" as Secret
-  let outcome = with_materialized_ssh_key_file(
+  let outcome = gunbc.auth.materialized_secret.with_materialized_ssh_key_file(
     identity_file_name: identity,
     secret_bytes: secret,
     use: fn(key_path) {
@@ -34,10 +34,10 @@ test fn witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target() -
     },
   )
   match outcome {
-    MaterializedSshKeyFileBracketCompleted { value: key_path } =>
+    gunbc.auth.materialized_secret.MaterializedSshKeyFileBracketCompleted { value: key_path } =>
       key_path != ""
         && !shell.Test.IsFile(path: key_path as std.types.FilePath).is_file
-    MaterializedSshKeyFileBracketRefused { cause: _ } => false
+    gunbc.auth.materialized_secret.MaterializedSshKeyFileBracketRefused { cause: _ } => false
   }
 }
 
@@ -47,10 +47,10 @@ test fn witness_write_owner_only_refuses_when_path_already_exists() -> Bool {
     false
   } else {
     let root = dir.path as std.types.FilePath
-    if !ensure_gunbc_private_materialization_dir(root: root) {
+    if !gunbc.auth.materialized_secret.ensure_gunbc_private_materialization_dir(root: root) {
       false
     } else {
-      let private_dir = gunbc_private_materialization_dir(root: root)
+      let private_dir = gunbc.auth.materialized_secret.gunbc_private_materialization_dir(root: root)
       let key_path = concat(
         concat(private_dir as String, "/"),
         "witness-preexist-key",

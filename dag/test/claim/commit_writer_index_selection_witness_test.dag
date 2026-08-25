@@ -1,7 +1,7 @@
 module test.claim.commit_writer_index_selection_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data commit_writer_index_selection_note: String = "BEHAVIOURAL CONTROL for gunbc.commit_workflow commit_writer_index_entries_for_path, owed by the operator verdict on gunbc#7480 (2026-08-02). That function selects index entries by path, and its body is a DECLARED SCAFFOLD: it spells the selection with flat_map because the bare name filter is captured in that module by v2.std.algebra's filter<T> over FreeMonoid<T>, which enters the resolution population through the semantically-required v2.compiler.source_authority import and cannot reconcile with List<GitIndexEntry>. The scaffold's own note in commit_workflow carries the root cause and the dissolve-on. THIS file is the other half: the whole-tree compile is the discriminating red for the CAPTURE, while these rows prove the interim spelling did not change commit-writer SEMANTICS. They must therefore keep executing after the resolver fix restores the filter spelling -- a control that proves the two spellings agree is exactly what makes that restoration safe, so it does not retire with the scaffold. The closure is deliberately live rather than synthetic: importing gunbc.commit_workflow pulls v2.compiler.source_authority, and therefore v2.std.algebra, into this test's population too, so these rows execute under the same capture conditions as production rather than in a closure where the defect could not arise. Coverage is the verdict's list: two or more entries, matching AND nonmatching paths, and preservation of both the ORDER and the STAGE of matching entries -- order and stage are asserted rather than counted because a selection that returned the right NUMBER of entries while reordering them, dropping a duplicate-path stage, or rewriting a stage would still be wrong, and a count alone cannot see any of that."
 
@@ -27,28 +27,28 @@ fn fallback_path() -> extdeps.git.object_store.GitPath {
 }
 
 fn path_of(octets: List<std.integer.UInt8>) -> extdeps.git.object_store.GitPath {
-  match git_decode_path_octets(octets: octets) {
-    GitPathDecoded { path } => path
-    GitPathDecodeRefused { cause: _ } => test.claim.commit_writer_index_selection_witness.fallback_path()
+  match extdeps.git.object_store.git_decode_path_octets(octets: octets) {
+    extdeps.git.object_store.GitPathDecoded { path } => path
+    extdeps.git.object_store.GitPathDecodeRefused { cause: _ } => fallback_path()
   }
 }
 
 fn path_a() -> extdeps.git.object_store.GitPath {
-  test.claim.commit_writer_index_selection_witness.path_of(octets: [97, 47, 97, 46, 100, 97, 103])
+  path_of(octets: [97, 47, 97, 46, 100, 97, 103])
 }
 
 fn path_b() -> extdeps.git.object_store.GitPath {
-  test.claim.commit_writer_index_selection_witness.path_of(octets: [98, 47, 98, 46, 100, 97, 103])
+  path_of(octets: [98, 47, 98, 46, 100, 97, 103])
 }
 
 fn path_absent() -> extdeps.git.object_store.GitPath {
-  test.claim.commit_writer_index_selection_witness.path_of(octets: [122, 47, 122, 46, 100, 97, 103])
+  path_of(octets: [122, 47, 122, 46, 100, 97, 103])
 }
 
 fn entry_of(path: extdeps.git.object_store.GitPath, oid_hex: String, stage: extdeps.git.object_store.GitIndexStage) -> extdeps.git.object_store.GitIndexEntry {
   extdeps.git.object_store.GitIndexEntry {
     path: path,
-    mode: GitRegularBlobMode,
+    mode: extdeps.git.object_store.GitRegularBlobMode,
     oid: oid_of(hex: oid_hex),
     stage: stage
   }
@@ -56,10 +56,10 @@ fn entry_of(path: extdeps.git.object_store.GitPath, oid_hex: String, stage: extd
 
 fn stage_tag(entry: extdeps.git.object_store.GitIndexEntry) -> String {
   match entry.stage {
-    GitIndexStageNormal => "N"
-    GitIndexStageBase => "B"
-    GitIndexStageOurs => "O"
-    GitIndexStageTheirs => "T"
+    extdeps.git.object_store.GitIndexStageNormal => "N"
+    extdeps.git.object_store.GitIndexStageBase => "B"
+    extdeps.git.object_store.GitIndexStageOurs => "O"
+    extdeps.git.object_store.GitIndexStageTheirs => "T"
   }
 }
 
@@ -68,43 +68,43 @@ fn stage_trace(entries: List<extdeps.git.object_store.GitIndexEntry>) -> String 
 }
 
 fn oid_trace(entries: List<extdeps.git.object_store.GitIndexEntry>) -> String {
-  fold(entries, init: "", f: (acc, e) => concat(acc, git_object_id_wire_hex(oid: e.oid) as String))
+  fold(entries, init: "", f: (acc, e) => concat(acc, extdeps.git.object_store.git_object_id_wire_hex(oid: e.oid) as String))
 }
 
 fn mixed_index() -> List<extdeps.git.object_store.GitIndexEntry> {
   [
-    entry_of(path: path_a(), oid_hex: oid_a1, stage: GitIndexStageNormal),
-    entry_of(path: path_b(), oid_hex: oid_b1, stage: GitIndexStageBase),
-    entry_of(path: path_a(), oid_hex: oid_a2, stage: GitIndexStageOurs),
-    entry_of(path: path_b(), oid_hex: oid_b2, stage: GitIndexStageNormal)
+    entry_of(path: path_a(), oid_hex: oid_a1, stage: extdeps.git.object_store.GitIndexStageNormal),
+    entry_of(path: path_b(), oid_hex: oid_b1, stage: extdeps.git.object_store.GitIndexStageBase),
+    entry_of(path: path_a(), oid_hex: oid_a2, stage: extdeps.git.object_store.GitIndexStageOurs),
+    entry_of(path: path_b(), oid_hex: oid_b2, stage: extdeps.git.object_store.GitIndexStageNormal)
   ]
 }
 
 test fn selection_keeps_only_the_matching_path() -> Bool {
-  count(commit_writer_index_entries_for_path(index: mixed_index(), path: path_a())) == 2
-    && count(commit_writer_index_entries_for_path(index: mixed_index(), path: path_b())) == 2
+  count(gunbc.commit_workflow.commit_writer_index_entries_for_path(index: mixed_index(), path: path_a())) == 2
+    && count(gunbc.commit_workflow.commit_writer_index_entries_for_path(index: mixed_index(), path: path_b())) == 2
 }
 
 test fn selection_preserves_matching_order_and_identity() -> Bool {
-  let selected = commit_writer_index_entries_for_path(index: mixed_index(), path: path_a())
+  let selected = gunbc.commit_workflow.commit_writer_index_entries_for_path(index: mixed_index(), path: path_a())
   oid_trace(entries: selected) == concat(oid_a1, oid_a2)
 }
 
 test fn selection_preserves_matching_stage() -> Bool {
-  stage_trace(entries: commit_writer_index_entries_for_path(index: mixed_index(), path: path_a())) == "NO"
-    && stage_trace(entries: commit_writer_index_entries_for_path(index: mixed_index(), path: path_b())) == "BN"
+  stage_trace(entries: gunbc.commit_workflow.commit_writer_index_entries_for_path(index: mixed_index(), path: path_a())) == "NO"
+    && stage_trace(entries: gunbc.commit_workflow.commit_writer_index_entries_for_path(index: mixed_index(), path: path_b())) == "BN"
 }
 
 test fn selection_of_a_nonmatching_path_is_empty() -> Bool {
-  count(commit_writer_index_entries_for_path(index: mixed_index(), path: path_absent())) == 0
+  count(gunbc.commit_workflow.commit_writer_index_entries_for_path(index: mixed_index(), path: path_absent())) == 0
 }
 
 test fn selection_of_an_empty_index_is_empty() -> Bool {
-  count(commit_writer_index_entries_for_path(index: [], path: path_a())) == 0
+  count(gunbc.commit_workflow.commit_writer_index_entries_for_path(index: [], path: path_a())) == 0
 }
 
 test fn the_two_paths_select_disjoint_entries() -> Bool {
-  let from_a = oid_trace(entries: commit_writer_index_entries_for_path(index: mixed_index(), path: path_a()))
-  let from_b = oid_trace(entries: commit_writer_index_entries_for_path(index: mixed_index(), path: path_b()))
+  let from_a = oid_trace(entries: gunbc.commit_workflow.commit_writer_index_entries_for_path(index: mixed_index(), path: path_a()))
+  let from_b = oid_trace(entries: gunbc.commit_workflow.commit_writer_index_entries_for_path(index: mixed_index(), path: path_b()))
   from_a != from_b
 }

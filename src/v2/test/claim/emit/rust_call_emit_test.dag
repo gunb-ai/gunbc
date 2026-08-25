@@ -1,14 +1,14 @@
 module v2.test.emit.rust_call_emit
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data rust_call_fold_canonical_source_text: String = "fn add(x: i32, y: i32) -> i32 { fold_call(x, y, |acc, h| { acc + h }) }"
 
 data rust_call_fold_swapped_source_text: String = "fn add(x: i32, y: i32) -> i32 { fold_call(x, y, |acc, h| { h + acc }) }"
 
 fn rust_call_type_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
-  node_synthetic(
+  v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: []
   )
@@ -19,12 +19,12 @@ fn rust_call_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v
 }
 
 fn rust_call_positional(target: v2.std.node.Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Positional, target: target }
+  v2.std.node.Edge { label: v2.std.node.Positional, target: target }
 }
 
 fn rust_call_add_domain_conj() -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Conj },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       rust_call_named_edge(
         name: ^dag_binding_param_x,
@@ -39,12 +39,12 @@ fn rust_call_add_domain_conj() -> v2.std.node.Node {
 }
 
 fn rust_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.std.node.Symbol) -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Arrow },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
       rust_call_positional(
-        target: node_synthetic(
-          kind: v2.std.node.TypeNode { connective: Conj },
+        target: v2.std.node.node_synthetic(
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
           children: [
             rust_call_named_edge(
               name: ^rust_call_closure_acc,
@@ -60,7 +60,7 @@ fn rust_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.s
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
       rust_call_named_edge(
         name: ^arrow_body_edge,
-        target: node_synthetic(
+        target: v2.std.node.node_synthetic(
           kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
           children: [
             rust_call_positional(target: rust_call_type_atom(id: ^dag_token_plus)),
@@ -74,7 +74,7 @@ fn rust_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.s
 }
 
 fn rust_call_fold_body(closure: v2.std.node.Node) -> v2.std.node.Node {
-  node_synthetic(
+  v2.std.node.node_synthetic(
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
       rust_call_positional(target: rust_call_type_atom(id: ^rust_call_callee_fold)),
@@ -86,8 +86,8 @@ fn rust_call_fold_body(closure: v2.std.node.Node) -> v2.std.node.Node {
 }
 
 fn rust_call_fold_arrow(closure: v2.std.node.Node) -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Arrow },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
       rust_call_positional(target: rust_call_add_domain_conj()),
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
@@ -119,7 +119,7 @@ fn rust_call_fold_swapped_arrow() -> v2.std.node.Node {
 }
 
 fn rust_call_helper_body() -> v2.std.node.Node {
-  node_synthetic(
+  v2.std.node.node_synthetic(
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
       rust_call_positional(target: rust_call_type_atom(id: ^rust_call_callee_helper)),
@@ -130,8 +130,8 @@ fn rust_call_helper_body() -> v2.std.node.Node {
 }
 
 fn rust_call_helper_arrow() -> v2.std.node.Node {
-  node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Arrow },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
       rust_call_positional(target: rust_call_add_domain_conj()),
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_type_int)),
@@ -147,29 +147,29 @@ fn rust_call_helper_arrow() -> v2.std.node.Node {
 data rust_call_helper_body_fixture: v2.std.node.Node = rust_call_helper_body()
 
 data rust_call_eval_arg_literal: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Value },
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Value },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data rust_call_helper_eval_subgraph: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
   children: [
-    v2.std.node.Edge { label: Positional, target: rust_call_eval_arg_literal },
-    v2.std.node.Edge { label: Positional, target: rust_call_eval_arg_literal }
+    v2.std.node.Edge { label: v2.std.node.Positional, target: rust_call_eval_arg_literal },
+    v2.std.node.Edge { label: v2.std.node.Positional, target: rust_call_eval_arg_literal }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 fn rust_call_target_model(authority_source_text: String) -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
-    bundle: rust_target_model_bundle_core(),
-    lex: rust_call_lex(),
-    binding_spellings: rust_call_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
+    bundle: v2.extdeps.languages.rust.rust_target_model_bundle_core(),
+    lex: v2.extdeps.languages.rust_test.rust_call_lex(),
+    binding_spellings: v2.extdeps.languages.rust_test.rust_call_binding_spellings(),
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
     authority_source_text: authority_source_text,
-    runtime_row: target_emit_host_runtime_row_unconfigured
+    runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -180,7 +180,7 @@ fn rust_call_facts_miss(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.co
 fn rust_call_inferred_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.algebra.PartialFunction { lookup: rust_call_facts_miss }
+    facts: PartialFunction { lookup: rust_call_facts_miss }
   }
 }
 
@@ -191,22 +191,22 @@ fn rust_call_emit_from_arrow(arrow: v2.std.node.Node, authority: String) -> v2.s
   )
 }
 
-fn rust_call_emit_matches(arrow: v2.std.node.Node, authority: String) -> v2.std.logic.Bool {
+fn rust_call_emit_matches(arrow: v2.std.node.Node, authority: String) -> Bool {
   match rust_call_emit_from_arrow(arrow: arrow, authority: authority) {
-    Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
       (source.carried == authority) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_call_fold_closure_emit_holds() -> v2.std.logic.Bool {
+test fn rust_call_fold_closure_emit_holds() -> Bool {
   rust_call_emit_matches(
     arrow: rust_call_fold_canonical_arrow(),
     authority: rust_call_fold_canonical_source_text
   )
 }
 
-test fn rust_call_fold_closure_swap_discriminates() -> v2.std.logic.Bool {
+test fn rust_call_fold_closure_swap_discriminates() -> Bool {
   !rust_call_emit_matches(
     arrow: rust_call_fold_swapped_arrow(),
     authority: rust_call_fold_canonical_source_text
@@ -217,10 +217,10 @@ test fn rust_call_fold_closure_swap_discriminates() -> v2.std.logic.Bool {
   )
 }
 
-test fn rust_call_helper_emit_holds() -> v2.std.logic.Bool {
+test fn rust_call_helper_emit_holds() -> Bool {
   rust_call_emit_matches(
     arrow: rust_call_helper_arrow(),
-    authority: rust_call_host_source_text
+    authority: v2.extdeps.languages.rust_test.rust_call_host_source_text
   )
 }
 

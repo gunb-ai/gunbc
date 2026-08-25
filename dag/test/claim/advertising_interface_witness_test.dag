@@ -1,68 +1,68 @@
 module test.claim.advertising_interface_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data synthetic_unavailable_rate: extdeps.advertising.types.AdPriceDetermination = extdeps.advertising.types.RateUnavailable {
   cause: "witness-fixture -- synthetic unavailability, not a vendor fact",
 }
 
 test fn w_google_billable_unit_catalog_is_total_and_wire_labeled() -> Bool {
-  (list_length(items: google_ads_billable_unit_catalog()) == 4)
+  (std.types.list_length(items: extdeps.advertising.google_ads.google_ads_billable_unit_catalog()) == 4)
     && ((google_cpc_unit.unit_wire_label as String) == "CPC")
     && ((google_vcpm_unit.unit_wire_label as String) == "vCPM")
 }
 
 test fn w_google_media_rate_is_auction_determined_with_mechanism_citation() -> Bool {
-  match google_ads_media_rate {
-    AuctionDetermined { mechanism_citation: c } =>
+  match extdeps.advertising.google_ads.google_ads_media_rate {
+    extdeps.advertising.types.AuctionDetermined { mechanism_citation: c } =>
       (c as String) == "support.google.com/google-ads/answer/142918"
-    RateUnavailable { cause: _ } => false
+    extdeps.advertising.types.RateUnavailable { cause: _ } => false
   }
 }
 
 test fn w_google_strategy_roster_is_the_verbatim_thirteen() -> Bool {
-  list_length(items: google_ads_bid_strategy_wire_labels) == 13
+  std.types.list_length(items: extdeps.advertising.google_ads.google_ads_bid_strategy_wire_labels) == 13
 }
 
 test fn w_meta_billing_event_catalog_is_total_with_verbatim_wire_values() -> Bool {
-  (list_length(items: meta_billing_event_catalog()) == 11)
+  (std.types.list_length(items: extdeps.advertising.meta_ads.meta_billing_event_catalog()) == 11)
     && ((meta_bill_clicks.wire_value as String) == "CLICKS")
     && ((meta_bill_thruplay.wire_value as String) == "THRUPLAY")
 }
 
 test fn w_meta_bid_strategy_catalog_is_total_with_verbatim_wire_values() -> Bool {
-  (list_length(items: meta_bid_strategy_catalog()) == 4)
+  (std.types.list_length(items: extdeps.advertising.meta_ads.meta_bid_strategy_catalog()) == 4)
     && ((meta_strategy_cost_cap.wire_value as String) == "COST_CAP")
 }
 
 test fn w_meta_optimization_goal_axis_is_distinct_and_transcribed() -> Bool {
-  list_length(items: meta_optimization_goal_wire_values) == 33
+  std.types.list_length(items: extdeps.advertising.meta_ads.meta_optimization_goal_wire_values) == 33
 }
 
 test fn w_meta_media_rate_is_auction_determined() -> Bool {
-  match meta_ads_media_rate {
-    AuctionDetermined { mechanism_citation: c } =>
+  match extdeps.advertising.meta_ads.meta_ads_media_rate {
+    extdeps.advertising.types.AuctionDetermined { mechanism_citation: c } =>
       (c as String) == "developers.facebook.com/docs/marketing-api/bidding"
-    RateUnavailable { cause: _ } => false
+    extdeps.advertising.types.RateUnavailable { cause: _ } => false
   }
 }
 
 test fn w_red_meta_minimum_budget_rate_refuses_with_cause() -> Bool {
-  match meta_ads_minimum_daily_budget_rate {
-    AuctionDetermined { mechanism_citation: _ } => false
-    RateUnavailable { cause: _ } => true
+  match extdeps.advertising.meta_ads.meta_ads_minimum_daily_budget_rate {
+    extdeps.advertising.types.AuctionDetermined { mechanism_citation: _ } => false
+    extdeps.advertising.types.RateUnavailable { cause: _ } => true
   }
 }
 
 test fn w_red_answer_arm_and_ignorance_arm_stay_distinct() -> Bool {
   let ignorance_discriminates = match synthetic_unavailable_rate {
-    AuctionDetermined { mechanism_citation: _ } => false
-    RateUnavailable { cause: _ } => true
+    extdeps.advertising.types.AuctionDetermined { mechanism_citation: _ } => false
+    extdeps.advertising.types.RateUnavailable { cause: _ } => true
   }
-  let answer_discriminates = match google_ads_media_rate {
-    AuctionDetermined { mechanism_citation: _ } => true
-    RateUnavailable { cause: _ } => false
+  let answer_discriminates = match extdeps.advertising.google_ads.google_ads_media_rate {
+    extdeps.advertising.types.AuctionDetermined { mechanism_citation: _ } => true
+    extdeps.advertising.types.RateUnavailable { cause: _ } => false
   }
   ignorance_discriminates && answer_discriminates
 }

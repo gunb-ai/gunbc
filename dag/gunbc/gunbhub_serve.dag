@@ -24,22 +24,22 @@ type GunbhubRenderResult
   | RenderRejected { reason: String }
 
 fn gunbhub_header() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "header",
     attributes: [],
     children: [
-      extdeps.browser.Element {
+      std.markup.Element {
         tag: "h1",
         attributes: [],
         children: [ std.markup.FragmentText { content: "gunbc" } ],
       },
-      extdeps.browser.Element {
+      std.markup.Element {
         tag: "nav",
         attributes: [],
         children: [
-          extdeps.browser.Element {
+          std.markup.Element {
             tag: "a",
-            attributes: [ attr(name: "href", value: "/" ) ],
+            attributes: [ std.markup.attr(name: "href", value: "/" ) ],
             children: [ std.markup.FragmentText { content: "Browse" } ],
           },
         ],
@@ -49,13 +49,13 @@ fn gunbhub_header() -> std.markup.Fragment {
 }
 
 fn gunbhub_browse_entry(name: String, path: String) -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "li",
     attributes: [],
     children: [
-      extdeps.browser.Element {
+      std.markup.Element {
         tag: "a",
-        attributes: [ attr(name: "href", value: path ) ],
+        attributes: [ std.markup.attr(name: "href", value: path ) ],
         children: [ std.markup.FragmentText { content: name } ],
       },
     ],
@@ -63,31 +63,31 @@ fn gunbhub_browse_entry(name: String, path: String) -> std.markup.Fragment {
 }
 
 fn gunbhub_browse_page() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "html",
     attributes: [],
     children: [
-      extdeps.browser.Element {
+      std.markup.Element {
         tag: "head",
         attributes: [],
         children: [
-          extdeps.browser.Element {
+          std.markup.Element {
             tag: "title",
             attributes: [],
             children: [ std.markup.FragmentText { content: "gunbc" } ],
           },
         ],
       },
-      extdeps.browser.Element {
+      std.markup.Element {
         tag: "body",
         attributes: [],
         children: [
           gunbhub_header(),
-          extdeps.browser.Element {
+          std.markup.Element {
             tag: "main",
             attributes: [],
             children: [
-              extdeps.browser.Element {
+              std.markup.Element {
                 tag: "ul",
                 attributes: [],
                 children: [
@@ -105,43 +105,43 @@ fn gunbhub_browse_page() -> std.markup.Fragment {
 }
 
 fn gunbhub_hostile_page() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "a",
-    attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
+    attributes: [ std.markup.attr(name: "href", value: "javascript:alert(1)" ) ],
     children: [ std.markup.FragmentText { content: "x" } ],
   }
 }
 
 fn gunbhub_readme_page() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "html",
     attributes: [],
     children: [
-      extdeps.browser.Element {
+      std.markup.Element {
         tag: "head",
         attributes: [],
         children: [
-          extdeps.browser.Element {
+          std.markup.Element {
             tag: "title",
             attributes: [],
             children: [ std.markup.FragmentText { content: "gunbc — README" } ],
           },
         ],
       },
-      extdeps.browser.Element {
+      std.markup.Element {
         tag: "body",
         attributes: [],
         children: [
           gunbhub_header(),
-          extdeps.browser.Element {
+          std.markup.Element {
             tag: "main",
             attributes: [],
             children: [
-              extdeps.browser.Element {
+              std.markup.Element {
                 tag: "article",
                 attributes: [],
                 children: [
-                  extdeps.browser.Element {
+                  std.markup.Element {
                     tag: "p",
                     attributes: [],
                     children: [
@@ -164,26 +164,26 @@ type GunbhubComposeResult
   | ComposeRejected { reason: String }
 
 fn gunbhub_compose_body(node: std.markup.Fragment) -> GunbhubComposeResult {
-  match try_serialize_html_source(node: node) {
-    EmitOk { html: h } => ComposedOk { html: h }
-    EmitRejected { reason: r } => ComposeRejected { reason: r }
+  match extdeps.languages.html.try_serialize_html_source(node: node) {
+    extdeps.languages.html.EmitOk { html: h } => ComposedOk { html: h }
+    extdeps.languages.html.EmitRejected { reason: r } => ComposeRejected { reason: r }
   }
 }
 
 fn gunbhub_html_content_type() -> extdeps.http.server.MediaType {
-  text_html_utf8
+  extdeps.http.server.text_html_utf8
 }
 
 fn gunbhub_browse_path_template() -> std.http_path.PathTemplate {
-  match parse_path_template(raw: "/") {
-    ParsedPathTemplate { template: t } => t
-    MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
+  match extdeps.uri_path.parse_path_template(raw: "/") {
+    extdeps.uri_path.ParsedPathTemplate { template: t } => t
+    extdeps.uri_path.MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
       std.http_path.PathTemplate { tokens: [] }
   }
 }
 
 fn gunbhub_repo_path_template() -> std.http_path.PathTemplate {
-  std.http_path.PathTemplate { tokens: [std.http_path.ParamToken { name: "repo-path" }] }
+  std.http_path.PathTemplate { tokens: [ParamToken { name: "repo-path" }] }
 }
 
 fn normalize_request_path(path: String) -> String {
@@ -248,9 +248,9 @@ fn path_matches_template(template: std.http_path.PathTemplate, path: String) -> 
 fn render_gunbhub_page(source: GunbhubPageSource) -> GunbhubRenderResult {
   match source {
     ReactPage { node } =>
-      match try_serialize_html_source(node: node) {
-        EmitOk { html: h } => RenderedHtml { html: h }
-        EmitRejected { reason: r } => RenderRejected { reason: r }
+      match extdeps.languages.html.try_serialize_html_source(node: node) {
+        extdeps.languages.html.EmitOk { html: h } => RenderedHtml { html: h }
+        extdeps.languages.html.EmitRejected { reason: r } => RenderRejected { reason: r }
       }
   }
 }
@@ -276,12 +276,12 @@ type GunbhubRouteRow {
 fn gunbhub_browse_route() -> extdeps.http.server.HttpServerRoute {
   extdeps.http.server.HttpServerRoute {
     operation_name: "browseRoot",
-    method: GET,
+    method: std.types.GET,
     path_template: gunbhub_browse_path_template(),
-    request_body: NoRequestBody,
+    request_body: extdeps.http.server.NoRequestBody,
     parameters: [],
     responses: [
-      extdeps.http.server.HttpStatusResponse { status: 200, body_kind: TextRequestBody },
+      extdeps.http.server.HttpStatusResponse { status: 200, body_kind: extdeps.http.server.TextRequestBody },
     ],
   }
 }
@@ -289,12 +289,12 @@ fn gunbhub_browse_route() -> extdeps.http.server.HttpServerRoute {
 fn gunbhub_repo_path_route() -> extdeps.http.server.HttpServerRoute {
   extdeps.http.server.HttpServerRoute {
     operation_name: "repoPathDoc",
-    method: GET,
+    method: std.types.GET,
     path_template: gunbhub_repo_path_template(),
-    request_body: NoRequestBody,
+    request_body: extdeps.http.server.NoRequestBody,
     parameters: [],
     responses: [
-      extdeps.http.server.HttpStatusResponse { status: 200, body_kind: TextRequestBody },
+      extdeps.http.server.HttpStatusResponse { status: 200, body_kind: extdeps.http.server.TextRequestBody },
     ],
   }
 }
@@ -317,10 +317,10 @@ fn gunbhub_served_static_route_table() -> extdeps.http.server.ServedStaticRouteT
     xs: gunbhub_route_table(),
     init: [],
     f: (acc, row) =>
-      match try_serialize_html_source(
+      match extdeps.languages.html.try_serialize_html_source(
         node: match row.page { ReactPage { node: n } => n }
       ) {
-        EmitOk { html: h } =>
+        extdeps.languages.html.EmitOk { html: h } =>
           concat(
             acc,
             [
@@ -333,7 +333,7 @@ fn gunbhub_served_static_route_table() -> extdeps.http.server.ServedStaticRouteT
               },
             ]
           )
-        EmitRejected { reason: _ } => acc
+        extdeps.languages.html.EmitRejected { reason: _ } => acc
       }
   )
   extdeps.http.server.ServedStaticRouteTable { routes: routes }

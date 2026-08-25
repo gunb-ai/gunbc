@@ -27,8 +27,8 @@ fn margin_envelope_from_whole_dollar_counts(revenue: std.nat.Nat, profit: std.na
     let high_count = ((profit * 10000) + revenue - 1) / revenue
     Present {
       value: MarginEnvelope {
-        margin_low_bp: basis_point(count: low_count),
-        margin_high_bp: basis_point(count: high_count),
+        margin_low_bp: std.measure.basis_point(count: low_count),
+        margin_high_bp: std.measure.basis_point(count: high_count),
       }
     }
   }
@@ -39,12 +39,12 @@ fn derive_margin_envelope_from_filed_facts(
   profit: extdeps.sec.facts.FiledMonetaryFact,
   margin_kind: MarginKind,
 ) -> MarginEnvelopeResult {
-  match filed_amount(fact: revenue) {
+  match extdeps.sec.facts.filed_amount(fact: revenue) {
     Present { value: rev } =>
-      match filed_amount(fact: profit) {
+      match extdeps.sec.facts.filed_amount(fact: profit) {
         Present { value: prf } => {
-          let rev_count = usd_whole_dollars_count(m: rev)
-          let prf_count = usd_whole_dollars_count(m: prf)
+          let rev_count = extdeps.sec.facts.usd_whole_dollars_count(m: rev)
+          let prf_count = extdeps.sec.facts.usd_whole_dollars_count(m: prf)
           if rev_count <= 0 {
             MarginEnvelopeRefused { cause: RevenueNonPositive }
           } else {
@@ -62,7 +62,7 @@ fn derive_margin_envelope_from_filed_facts(
 }
 
 fn margin_envelope_in_band(envelope: MarginEnvelope, low_bp: std.measure.BasisPoint, high_bp: std.measure.BasisPoint) -> Bool {
-  (basis_point_count(bp: envelope.margin_low_bp) >= basis_point_count(bp: low_bp))
-    && (basis_point_count(bp: envelope.margin_high_bp) <= basis_point_count(bp: high_bp))
-    && (basis_point_count(bp: envelope.margin_low_bp) <= basis_point_count(bp: envelope.margin_high_bp))
+  (std.measure.basis_point_count(bp: envelope.margin_low_bp) >= std.measure.basis_point_count(bp: low_bp))
+    && (std.measure.basis_point_count(bp: envelope.margin_high_bp) <= std.measure.basis_point_count(bp: high_bp))
+    && (std.measure.basis_point_count(bp: envelope.margin_low_bp) <= std.measure.basis_point_count(bp: envelope.margin_high_bp))
 }

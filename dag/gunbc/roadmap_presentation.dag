@@ -94,11 +94,11 @@ type WorkLifecycle
   | SupersededLifecycle
 
 fn work_lifecycle(rn: gunbc.roadmap_model.RoadmapNode, merged: List<Int>) -> WorkLifecycle {
-  if item_superseded_by(item: rn.line) == "" {
-    if signoff_accepts(s: rn.signoff) {
+  if gunbc.roadmap_status.item_superseded_by(item: rn.line) == "" {
+    if gunbc.roadmap_status.signoff_accepts(s: rn.signoff) {
       DoneLifecycle
     } else {
-      if item_is_done(item: rn.line, merged: merged) { ReviewLifecycle } else { OpenLifecycle }
+      if gunbc.roadmap_status.item_is_done(item: rn.line, merged: merged) { ReviewLifecycle } else { OpenLifecycle }
     }
   } else {
     SupersededLifecycle
@@ -134,23 +134,23 @@ type WorkScheduling
   | SchedulingUnplanned
 
 fn scheduling_blockers(rn: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> List<String> {
-  let parents = roadmap_parent_ids(edges: edges, node: rn.node)
+  let parents = gunbc.roadmap_model.roadmap_parent_ids(edges: edges, node: rn.node)
   let unmet = filter(xs: parents, predicate: pid =>
-    !any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
+    !any(nodes, n => n.node == pid && gunbc.roadmap_spawner.node_closes_dependency(n: n)))
   map(unmet, p => p as String)
 }
 
 fn work_scheduling(rn: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> WorkScheduling {
-  if !(item_superseded_by(item: rn.line) == "") {
+  if !(gunbc.roadmap_status.item_superseded_by(item: rn.line) == "") {
     SchedulingSuperseded
   } else {
-    if node_is_frontier_done(n: rn) {
+    if gunbc.roadmap_spawner.node_is_frontier_done(n: rn) {
       SchedulingDone
     } else {
-      if node_is_spawnable(n: rn, nodes: nodes, edges: edges) {
+      if gunbc.roadmap_spawner.node_is_spawnable(n: rn, nodes: nodes, edges: edges) {
         SchedulingReady
       } else {
-        if node_is_upcoming(n: rn, nodes: nodes, edges: edges) {
+        if gunbc.roadmap_spawner.node_is_upcoming(n: rn, nodes: nodes, edges: edges) {
           SchedulingUpcoming { blockers: scheduling_blockers(rn: rn, nodes: nodes, edges: edges) }
         } else {
           SchedulingUnplanned
@@ -229,24 +229,24 @@ type WorkRowView {
 
 fn intricacy_code(i: gunbc.roadmap_model.Intricacy) -> String {
   match i {
-    IntricacyLow => "i:low"
-    IntricacyMedium => "i:med"
-    IntricacyHigh => "i:high"
+    gunbc.roadmap_model.IntricacyLow => "i:low"
+    gunbc.roadmap_model.IntricacyMedium => "i:med"
+    gunbc.roadmap_model.IntricacyHigh => "i:high"
   }
 }
 
 fn volume_code(v: gunbc.roadmap_model.Volume) -> String {
   match v {
-    VolumeSmall => "v:small"
-    VolumeMedium => "v:med"
-    VolumeLarge => "v:large"
+    gunbc.roadmap_model.VolumeSmall => "v:small"
+    gunbc.roadmap_model.VolumeMedium => "v:med"
+    gunbc.roadmap_model.VolumeLarge => "v:large"
   }
 }
 
 fn sizing_fact(s: gunbc.roadmap_model.NodeSizing) -> List<SupportingFact> {
   match s {
-    Unsized => []
-    Sized { intricacy, volume, repo, acceptance } =>
+    gunbc.roadmap_model.Unsized => []
+    gunbc.roadmap_model.Sized { intricacy, volume, repo, acceptance } =>
       [ SupportingFact {
           label: "sizing",
           value: join([intricacy_code(i: intricacy), " ", volume_code(v: volume), " ", repo], ""),
@@ -293,11 +293,11 @@ fn legacy_lead(full: String) -> String {
 
 fn row_headline(line: gunbc.roadmap_status.RoadmapItem) -> String {
   match line {
-    TicketLine { done: _, ticket } => ticket.headline
-    DerivableLine { prs: _, title, description: _ } => legacy_lead(full: title)
-    AuthoredLine { done: _, content } => legacy_lead(full: content)
-    PlainLine { content } => legacy_lead(full: content)
-    SupersededLine { by: _, content } => legacy_lead(full: content)
+    gunbc.roadmap_status.TicketLine { done: _, ticket } => ticket.headline
+    gunbc.roadmap_status.DerivableLine { prs: _, title, description: _ } => legacy_lead(full: title)
+    gunbc.roadmap_status.AuthoredLine { done: _, content } => legacy_lead(full: content)
+    gunbc.roadmap_status.PlainLine { content } => legacy_lead(full: content)
+    gunbc.roadmap_status.SupersededLine { by: _, content } => legacy_lead(full: content)
   }
 }
 
@@ -320,7 +320,7 @@ fn ticket_disclosure_fields(t: gunbc.roadmap_status.TicketFields) -> List<Disclo
 }
 
 fn row_disclosure(line: gunbc.roadmap_status.RoadmapItem) -> DisclosureView {
-  match line_ticket(item: line) {
+  match gunbc.roadmap_status.line_ticket(item: line) {
     Present { value: t } => TicketDisclosure {
       brief: t.brief,
       fields: ticket_disclosure_fields(t: t),
@@ -328,11 +328,11 @@ fn row_disclosure(line: gunbc.roadmap_status.RoadmapItem) -> DisclosureView {
     }
     Absent => {
       let full = match line {
-        DerivableLine { prs: _, title, description: _ } => title
-        AuthoredLine { done: _, content } => content
-        PlainLine { content } => content
-        SupersededLine { by: _, content } => content
-        TicketLine { done: _, ticket } => ""
+        gunbc.roadmap_status.DerivableLine { prs: _, title, description: _ } => title
+        gunbc.roadmap_status.AuthoredLine { done: _, content } => content
+        gunbc.roadmap_status.PlainLine { content } => content
+        gunbc.roadmap_status.SupersededLine { by: _, content } => content
+        gunbc.roadmap_status.TicketLine { done: _, ticket } => ""
       }
       if full == row_headline(line: line) {
         NoDisclosure
@@ -387,11 +387,11 @@ fn first_non_complete(segments: List<gunbc.roadmap_workflow_stage.WorkflowSegmen
   fold(segments, init: none, f: (acc, s) => match acc {
     Present { value: v } => Present { value: v }
     Absent => match s.state {
-      WorkflowSegmentComplete => none
-      WorkflowSegmentPending => Present { value: s }
-      WorkflowSegmentActive => Present { value: s }
-      WorkflowSegmentFailed => Present { value: s }
-      WorkflowSegmentRefused => Present { value: s }
+      gunbc.roadmap_workflow_stage.WorkflowSegmentComplete => none
+      gunbc.roadmap_workflow_stage.WorkflowSegmentPending => Present { value: s }
+      gunbc.roadmap_workflow_stage.WorkflowSegmentActive => Present { value: s }
+      gunbc.roadmap_workflow_stage.WorkflowSegmentFailed => Present { value: s }
+      gunbc.roadmap_workflow_stage.WorkflowSegmentRefused => Present { value: s }
     }
   })
 }
@@ -400,11 +400,11 @@ fn first_refused(segments: List<gunbc.roadmap_workflow_stage.WorkflowSegment>) -
   fold(segments, init: none, f: (acc, s) => match acc {
     Present { value: v } => Present { value: v }
     Absent => match s.state {
-      WorkflowSegmentRefused => Present { value: s }
-      WorkflowSegmentFailed => none
-      WorkflowSegmentComplete => none
-      WorkflowSegmentPending => none
-      WorkflowSegmentActive => none
+      gunbc.roadmap_workflow_stage.WorkflowSegmentRefused => Present { value: s }
+      gunbc.roadmap_workflow_stage.WorkflowSegmentFailed => none
+      gunbc.roadmap_workflow_stage.WorkflowSegmentComplete => none
+      gunbc.roadmap_workflow_stage.WorkflowSegmentPending => none
+      gunbc.roadmap_workflow_stage.WorkflowSegmentActive => none
     }
   })
 }
@@ -413,29 +413,29 @@ fn first_failed(segments: List<gunbc.roadmap_workflow_stage.WorkflowSegment>) ->
   fold(segments, init: none, f: (acc, s) => match acc {
     Present { value: v } => Present { value: v }
     Absent => match s.state {
-      WorkflowSegmentFailed => Present { value: s }
-      WorkflowSegmentRefused => none
-      WorkflowSegmentComplete => none
-      WorkflowSegmentPending => none
-      WorkflowSegmentActive => none
+      gunbc.roadmap_workflow_stage.WorkflowSegmentFailed => Present { value: s }
+      gunbc.roadmap_workflow_stage.WorkflowSegmentRefused => none
+      gunbc.roadmap_workflow_stage.WorkflowSegmentComplete => none
+      gunbc.roadmap_workflow_stage.WorkflowSegmentPending => none
+      gunbc.roadmap_workflow_stage.WorkflowSegmentActive => none
     }
   })
 }
 
 fn segment_kind_is_agent(kind: gunbc.roadmap_workflow_stage.WorkflowSegmentKind) -> Bool {
   match kind {
-    EnvironmentWorkflowSegment => false
-    WorkspaceWorkflowSegment => false
-    AgentWorkflowSegment => true
-    VerificationWorkflowSegment => false
-    PublicationWorkflowSegment => false
-    ReviewWorkflowSegment => false
-    GoalAuditWorkflowSegment => false
+    gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment => false
+    gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment => false
+    gunbc.roadmap_workflow_stage.AgentWorkflowSegment => true
+    gunbc.roadmap_workflow_stage.VerificationWorkflowSegment => false
+    gunbc.roadmap_workflow_stage.PublicationWorkflowSegment => false
+    gunbc.roadmap_workflow_stage.ReviewWorkflowSegment => false
+    gunbc.roadmap_workflow_stage.GoalAuditWorkflowSegment => false
   }
 }
 
 fn agent_segment_state(segments: List<gunbc.roadmap_workflow_stage.WorkflowSegment>) -> gunbc.roadmap_workflow_stage.WorkflowSegmentState {
-  fold(segments, init: WorkflowSegmentPending, f: (acc, s) =>
+  fold(segments, init: gunbc.roadmap_workflow_stage.WorkflowSegmentPending, f: (acc, s) =>
     if segment_kind_is_agent(kind: s.kind) { s.state } else { acc })
 }
 
@@ -443,11 +443,11 @@ data completion_consequence_note: String = "The operator's worked example: 'sess
 
 fn agent_completion_claim(process: gunbc.worker_lifecycle.WorkerProcessEvidence) -> String {
   match process {
-    WorkerProcessExited { exit_code: _, last_command: _ } =>
+    gunbc.worker_lifecycle.WorkerProcessExited { exit_code: _, last_command: _ } =>
       "Agent turn completed; the retained session is no longer running"
-    WorkerProcessRunning { command: _ } => "Agent turn completed"
-    WorkerProcessAbsent => "Agent turn completed; the worker session is gone"
-    WorkerProcessUnobserved { reason: _ } =>
+    gunbc.worker_lifecycle.WorkerProcessRunning { command: _ } => "Agent turn completed"
+    gunbc.worker_lifecycle.WorkerProcessAbsent => "Agent turn completed; the worker session is gone"
+    gunbc.worker_lifecycle.WorkerProcessUnobserved { reason: _ } =>
       "Agent turn completed; the worker process could not be observed"
   }
 }
@@ -456,10 +456,10 @@ data evidence_rows_one_authority_note: String = "Both evidence rows derive from 
 
 fn session_container_value(process: gunbc.worker_lifecycle.WorkerProcessEvidence) -> String {
   match process {
-    WorkerProcessRunning { command: _ } => "present"
-    WorkerProcessExited { exit_code: _, last_command: _ } => "present"
-    WorkerProcessUnobserved { reason: _ } => "present"
-    WorkerProcessAbsent => "absent"
+    gunbc.worker_lifecycle.WorkerProcessRunning { command: _ } => "present"
+    gunbc.worker_lifecycle.WorkerProcessExited { exit_code: _, last_command: _ } => "present"
+    gunbc.worker_lifecycle.WorkerProcessUnobserved { reason: _ } => "present"
+    gunbc.worker_lifecycle.WorkerProcessAbsent => "absent"
   }
 }
 
@@ -471,30 +471,30 @@ fn activity_evidence_rows(process: gunbc.worker_lifecycle.WorkerProcessEvidence)
     },
     ActivityEvidenceRow {
       label: "worker process",
-      value: worker_process_evidence_label(evidence: process),
+      value: gunbc.worker_lifecycle.worker_process_evidence_label(evidence: process),
     },
   ]
 }
 
 fn activity_summary(segments: List<gunbc.roadmap_workflow_stage.WorkflowSegment>, remaining: Int, process: gunbc.worker_lifecycle.WorkerProcessEvidence) -> String {
   match agent_segment_state(segments: segments) {
-    WorkflowSegmentActive => "Agent working"
-    WorkflowSegmentComplete =>
+    gunbc.roadmap_workflow_stage.WorkflowSegmentActive => "Agent working"
+    gunbc.roadmap_workflow_stage.WorkflowSegmentComplete =>
       match first_non_complete(segments: segments) {
         Absent => "All obligations complete"
         Present { value: next } =>
           join([
             agent_completion_claim(process: process),
             " · ",
-            workflow_segment_kind_label(kind: next.kind),
+            gunbc.roadmap_workflow_stage.workflow_segment_kind_label(kind: next.kind),
             " next · ",
             to_string(remaining),
             " remaining",
           ], "")
       }
-    WorkflowSegmentPending => "Attempt admitted · agent not yet started"
-    WorkflowSegmentFailed => "Agent run failed"
-    WorkflowSegmentRefused => "Agent evidence refused"
+    gunbc.roadmap_workflow_stage.WorkflowSegmentPending => "Attempt admitted · agent not yet started"
+    gunbc.roadmap_workflow_stage.WorkflowSegmentFailed => "Agent run failed"
+    gunbc.roadmap_workflow_stage.WorkflowSegmentRefused => "Agent evidence refused"
   }
 }
 
@@ -507,14 +507,14 @@ fn activity_view_from_parts(
   let evidence = activity_evidence_rows(process: process)
   match first_refused(segments: segments) {
     Present { value: refused } => ActiveWorkRefused {
-      summary: join([workflow_segment_kind_label(kind: refused.kind), " evidence refused"], ""),
+      summary: join([gunbc.roadmap_workflow_stage.workflow_segment_kind_label(kind: refused.kind), " evidence refused"], ""),
       located_reason: refused.detail,
       evidence: evidence,
     }
     Absent =>
       match first_failed(segments: segments) {
         Present { value: failed } => ActiveWork {
-          summary: join([workflow_segment_kind_label(kind: failed.kind), " failed"], ""),
+          summary: join([gunbc.roadmap_workflow_stage.workflow_segment_kind_label(kind: failed.kind), " failed"], ""),
           obligations: segments,
           remaining_obligation_count: remaining,
           current_activity: current_activity,
@@ -542,12 +542,12 @@ fn activity_view_from_parts(
 
 fn activity_view_from_progress(progress: gunbc.roadmap_workflow_progress.WorkflowAttemptProgress) -> ActivityView {
   match progress.provider {
-    ProviderEventsRefused { activity, detail } =>
-      if activity == legacy_attempt_supersedable_label {
+    gunbc.roadmap_provider_events.ProviderEventsRefused { activity, detail } =>
+      if activity == gunbc.roadmap_workflow_command.legacy_attempt_supersedable_label {
         LegacySupersedableAttempt {
-          summary: legacy_attempt_supersedable_label,
+          summary: gunbc.roadmap_workflow_command.legacy_attempt_supersedable_label,
           located_reason: detail,
-          attempt_key: attempt_key_short_form(key: progress.attempt_key),
+          attempt_key: gunbc.roadmap_workflow_command.attempt_key_short_form(key: progress.attempt_key),
           evidence: activity_evidence_rows(process: progress.process),
         }
       } else {
@@ -555,7 +555,7 @@ fn activity_view_from_progress(progress: gunbc.roadmap_workflow_progress.Workflo
           segments: progress.segments,
           remaining: progress.reconciliation.remaining_count,
           process: progress.process,
-          current_activity: provider_execution_activity(state: progress.provider),
+          current_activity: gunbc.roadmap_provider_events.provider_execution_activity(state: progress.provider),
         )
       }
     _ =>
@@ -563,7 +563,7 @@ fn activity_view_from_progress(progress: gunbc.roadmap_workflow_progress.Workflo
         segments: progress.segments,
         remaining: progress.reconciliation.remaining_count,
         process: progress.process,
-        current_activity: provider_execution_activity(state: progress.provider),
+        current_activity: gunbc.roadmap_provider_events.provider_execution_activity(state: progress.provider),
       )
   }
 }
@@ -591,7 +591,7 @@ fn work_row_view(
     summary: row_summary(line: rn.line),
     lifecycle: lifecycle,
     scheduling: scheduling,
-    superseded_by: item_superseded_by(item: rn.line),
+    superseded_by: gunbc.roadmap_status.item_superseded_by(item: rn.line),
     activity: activity,
     action: action_view(scheduling: scheduling, lifecycle: lifecycle),
     supporting_facts: row_supporting_facts(rn: rn),
@@ -638,52 +638,52 @@ fn activity_summary_line(a: ActivityView) -> String {
 }
 
 fn activity_evidence_row_json_value(row: ActivityEvidenceRow) -> extdeps.languages.json.emit.JsonValue {
-  json_object(members: [
-    json_kv(key: "label", value: json_string(s: row.label)),
-    json_kv(key: "value", value: json_string(s: row.value)),
+  extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "label", value: extdeps.languages.json.emit.json_string(s: row.label)),
+    extdeps.languages.json.emit.json_kv(key: "value", value: extdeps.languages.json.emit.json_string(s: row.value)),
   ])
 }
 
 // The wire realization of the DECIDED view — what makes the single projection authority real rather than aspirational: /workflow.json carries these fields and the client program paints them verbatim (arm selects the container's presence and material, summary/outcome/reason are final strings, attention is the expansion key, evidence rows are label/value pairs). The obligation ledger is NOT duplicated here — the attempt payload already carries the canonical segments and the client renders the ledger from those rows; a second segments copy under activity would be the dual representation §3 forbids.
 fn activity_view_json_value(view: ActivityView) -> extdeps.languages.json.emit.JsonValue {
   match view {
-    NoActiveWork => json_object(members: [
-      json_kv(key: "arm", value: json_string(s: "none")),
+    NoActiveWork => extdeps.languages.json.emit.json_object(members: [
+      extdeps.languages.json.emit.json_kv(key: "arm", value: extdeps.languages.json.emit.json_string(s: "none")),
     ])
     ActiveWork { summary, obligations: _, remaining_obligation_count, current_activity, attention, evidence } =>
-      json_object(members: [
-        json_kv(key: "arm", value: json_string(s: "active")),
-        json_kv(key: "summary", value: json_string(s: summary)),
-        json_kv(key: "remaining_obligation_count", value: json_int(n: remaining_obligation_count)),
-        json_kv(key: "current_activity", value: json_string(s: current_activity)),
-        json_kv(key: "attention", value: json_string(s: activity_attention_key(a: attention))),
-        json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "arm", value: extdeps.languages.json.emit.json_string(s: "active")),
+        extdeps.languages.json.emit.json_kv(key: "summary", value: extdeps.languages.json.emit.json_string(s: summary)),
+        extdeps.languages.json.emit.json_kv(key: "remaining_obligation_count", value: extdeps.languages.json.emit.json_int(n: remaining_obligation_count)),
+        extdeps.languages.json.emit.json_kv(key: "current_activity", value: extdeps.languages.json.emit.json_string(s: current_activity)),
+        extdeps.languages.json.emit.json_kv(key: "attention", value: extdeps.languages.json.emit.json_string(s: activity_attention_key(a: attention))),
+        extdeps.languages.json.emit.json_kv(key: "evidence", value: extdeps.languages.json.emit.json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
       ])
     ActiveWorkRefused { summary, located_reason, evidence } =>
-      json_object(members: [
-        json_kv(key: "arm", value: json_string(s: "refused")),
-        json_kv(key: "summary", value: json_string(s: summary)),
-        json_kv(key: "located_reason", value: json_string(s: located_reason)),
-        json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "arm", value: extdeps.languages.json.emit.json_string(s: "refused")),
+        extdeps.languages.json.emit.json_kv(key: "summary", value: extdeps.languages.json.emit.json_string(s: summary)),
+        extdeps.languages.json.emit.json_kv(key: "located_reason", value: extdeps.languages.json.emit.json_string(s: located_reason)),
+        extdeps.languages.json.emit.json_kv(key: "evidence", value: extdeps.languages.json.emit.json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
       ])
     LegacySupersedableAttempt { summary, located_reason, attempt_key, evidence } =>
-      json_object(members: [
-        json_kv(key: "arm", value: json_string(s: "legacy_supersedable")),
-        json_kv(key: "summary", value: json_string(s: summary)),
-        json_kv(key: "located_reason", value: json_string(s: located_reason)),
-        json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
-        json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "arm", value: extdeps.languages.json.emit.json_string(s: "legacy_supersedable")),
+        extdeps.languages.json.emit.json_kv(key: "summary", value: extdeps.languages.json.emit.json_string(s: summary)),
+        extdeps.languages.json.emit.json_kv(key: "located_reason", value: extdeps.languages.json.emit.json_string(s: located_reason)),
+        extdeps.languages.json.emit.json_kv(key: "attempt_key", value: extdeps.languages.json.emit.json_string(s: attempt_key)),
+        extdeps.languages.json.emit.json_kv(key: "evidence", value: extdeps.languages.json.emit.json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
       ])
     CompletedWork { outcome, evidence } =>
-      json_object(members: [
-        json_kv(key: "arm", value: json_string(s: "completed")),
-        json_kv(key: "outcome", value: json_string(s: outcome)),
-        json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "arm", value: extdeps.languages.json.emit.json_string(s: "completed")),
+        extdeps.languages.json.emit.json_kv(key: "outcome", value: extdeps.languages.json.emit.json_string(s: outcome)),
+        extdeps.languages.json.emit.json_kv(key: "evidence", value: extdeps.languages.json.emit.json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
       ])
     ActivityUnobservable { reason } =>
-      json_object(members: [
-        json_kv(key: "arm", value: json_string(s: "unobservable")),
-        json_kv(key: "reason", value: json_string(s: reason)),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "arm", value: extdeps.languages.json.emit.json_string(s: "unobservable")),
+        extdeps.languages.json.emit.json_kv(key: "reason", value: extdeps.languages.json.emit.json_string(s: reason)),
       ])
   }
 }
@@ -755,7 +755,7 @@ fn session_facts_view(
   cleanup_detail: String,
 ) -> SessionFactsView {
   SessionFactsView {
-    line: join(["session · present — ", worker_process_evidence_label(evidence: process)], ""),
+    line: join(["session · present — ", gunbc.worker_lifecycle.worker_process_evidence_label(evidence: process)], ""),
     detail: join([
       "provider ", provider,
       " (configured ", configured_provider,
@@ -772,25 +772,25 @@ fn session_facts_view(
 
 fn session_action_json_value(a: SessionActionView) -> extdeps.languages.json.emit.JsonValue {
   match a {
-    NoSessionAction => json_object(members: [
-      json_kv(key: "kind", value: json_string(s: "none")),
+    NoSessionAction => extdeps.languages.json.emit.json_object(members: [
+      extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "none")),
     ])
     SessionAction { kind, availability, priority, label, detail } =>
-      json_object(members: [
-        json_kv(key: "kind", value: json_string(s: work_action_kind_key(k: kind))),
-        json_kv(key: "availability", value: json_string(s: action_availability_key(a: availability))),
-        json_kv(key: "priority", value: json_string(s: action_priority_key(p: priority))),
-        json_kv(key: "label", value: json_string(s: label)),
-        json_kv(key: "detail", value: json_string(s: detail)),
+      extdeps.languages.json.emit.json_object(members: [
+        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: work_action_kind_key(k: kind))),
+        extdeps.languages.json.emit.json_kv(key: "availability", value: extdeps.languages.json.emit.json_string(s: action_availability_key(a: availability))),
+        extdeps.languages.json.emit.json_kv(key: "priority", value: extdeps.languages.json.emit.json_string(s: action_priority_key(p: priority))),
+        extdeps.languages.json.emit.json_kv(key: "label", value: extdeps.languages.json.emit.json_string(s: label)),
+        extdeps.languages.json.emit.json_kv(key: "detail", value: extdeps.languages.json.emit.json_string(s: detail)),
       ])
   }
 }
 
 fn session_facts_json_value(v: SessionFactsView) -> extdeps.languages.json.emit.JsonValue {
-  json_object(members: [
-    json_kv(key: "line", value: json_string(s: v.line)),
-    json_kv(key: "detail", value: json_string(s: v.detail)),
-    json_kv(key: "action", value: session_action_json_value(a: v.action)),
+  extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "line", value: extdeps.languages.json.emit.json_string(s: v.line)),
+    extdeps.languages.json.emit.json_kv(key: "detail", value: extdeps.languages.json.emit.json_string(s: v.detail)),
+    extdeps.languages.json.emit.json_kv(key: "action", value: session_action_json_value(a: v.action)),
   ])
 }
 

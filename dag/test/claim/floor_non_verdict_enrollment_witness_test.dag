@@ -1,9 +1,9 @@
 module test.claim.floor_non_verdict_enrollment_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn census_total(rows: List<NonVerdictCauseCount>) -> Int {
+fn census_total(rows: List<gunbc.floor_non_verdict_enrollment.NonVerdictCauseCount>) -> Int {
   v2.std.algebra.fold_list(xs: rows, empty: 0, cons: fn(acc, r) { acc + r.identities })
 }
 
@@ -12,22 +12,22 @@ fn census_total(rows: List<NonVerdictCauseCount>) -> Int {
 // run and leaves the total alone -- the ordinary way a two-place figure rots -- reds here rather
 // than shipping a census that sums to something the receipt never printed.
 test fn non_verdict_cause_census_sums_to_the_measured_total() -> Bool {
-  census_total(rows: floor_non_verdict_cause_census) == floor_non_verdict_measured_total
+  census_total(rows: gunbc.floor_non_verdict_enrollment.floor_non_verdict_cause_census) == gunbc.floor_non_verdict_enrollment.floor_non_verdict_measured_total
 }
 
 // EVERY CAUSE CARRIES A POSITIVE COUNT. A zero row is a cause nothing measured, and DESIGN's rule
 // against speculative vocabulary applies to the row as much as to the variant: an arm kept at zero
 // claims coverage of a cause this population does not exhibit.
 test fn every_declared_cause_was_actually_measured() -> Bool {
-  v2.std.algebra.fold_list(xs: floor_non_verdict_cause_census, empty: true, cons: fn(acc, r) { acc && r.identities > 0 })
+  v2.std.algebra.fold_list(xs: gunbc.floor_non_verdict_enrollment.floor_non_verdict_cause_census, empty: true, cons: fn(acc, r) { acc && r.identities > 0 })
 }
 
 // THE POPULATION IS DECLARED AS A SNAPSHOT AND NOT AS A BOUND. This reds the day someone rewrites
 // the basis to BoundedByRefusal without a refusal existing -- which is exactly the next-rung
 // transition, and it should not be assertable by editing this row alone.
 test fn population_basis_is_a_measured_snapshot_not_a_bound() -> Bool {
-  match floor_non_verdict_population_basis {
-    MeasuredOnOneRun { run: _, head_commit: _ } => true
-    BoundedByRefusal { refusal: _ } => false
+  match gunbc.floor_non_verdict_enrollment.floor_non_verdict_population_basis {
+    gunbc.floor_non_verdict_enrollment.MeasuredOnOneRun { run: _, head_commit: _ } => true
+    gunbc.floor_non_verdict_enrollment.BoundedByRefusal { refusal: _ } => false
   }
 }

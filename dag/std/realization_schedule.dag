@@ -1,11 +1,12 @@
 module std.realization_schedule
 
+
 type CostBasis
   = Predicted
   | Measured
 
 type CostAccount<S> {
-  time: Measure<Time, S, std.nat.Nat>
+  time: std.measure.Measure<std.measure.Time, S, std.nat.Nat>
   space: std.measure.ByteSize
   power: std.measure.Watt
   basis: CostBasis
@@ -13,24 +14,24 @@ type CostAccount<S> {
 
 fn cost_account_predicted_zero<S>() -> CostAccount<S> {
   CostAccount {
-    time: time_measure(count: 0)
-    space: byte_size(count: 0)
-    power: watt(count: 0)
+    time: std.measure.time_measure(count: 0)
+    space: std.measure.byte_size(count: 0)
+    power: std.measure.watt(count: 0)
     basis: Predicted
   }
 }
 
-fn cost_account_measured<S>(time: Measure<Time, S, std.nat.Nat>) -> CostAccount<S> {
+fn cost_account_measured<S>(time: std.measure.Measure<std.measure.Time, S, std.nat.Nat>) -> CostAccount<S> {
   CostAccount {
     time: time
-    space: byte_size(count: 0)
-    power: watt(count: 0)
+    space: std.measure.byte_size(count: 0)
+    power: std.measure.watt(count: 0)
     basis: Measured
   }
 }
 
 fn cost_account_time_count<S>(account: CostAccount<S>) -> std.nat.Nat {
-  measure_count(m: account.time)
+  std.measure.measure_count(m: account.time)
 }
 
 type RealizationObjective {
@@ -148,7 +149,7 @@ type RunnableBatchClamp {
 // identically" against the same expression the executor evaluates, rather than against a second
 // spelling of it.
 fn runnable_batch_clamp_ms(clamp: RunnableBatchClamp, units: Int) -> Int {
-  (second_count(s: clamp.overhead) * 1000) + (units * millisecond_count(m: clamp.per_unit))
+  (std.measure.second_count(s: clamp.overhead) * 1000) + (units * std.measure.millisecond_count(m: clamp.per_unit))
 }
 
 type RunnableBatchClampSource
@@ -190,7 +191,7 @@ fn floor_worker_observation_outcome(observation: FloorWorkerObservation) -> Floo
       detail: "worker termination had no terminal report"
     }
     FloorWorkerTerminalReceiptObserved { report: report } => match observation.termination {
-      ProcessExited { code: 0 } => match report {
+      std.process_termination.ProcessExited { code: 0 } => match report {
         FloorWorkerReportedCompleted { detail: _ } => FloorWorkerCompleted
         FloorWorkerReportedRefused { detail: detail } => FloorWorkerFailed {
           detail: "refusal report contradicted exit code 0: " + detail
@@ -198,7 +199,7 @@ fn floor_worker_observation_outcome(observation: FloorWorkerObservation) -> Floo
         FloorWorkerReportedFailed { detail: detail } => FloorWorkerFailed { detail: detail }
         FloorWorkerTerminalReportMalformed { detail: detail } => FloorWorkerFailed { detail: detail }
       }
-      ProcessExited { code: _ } => match report {
+      std.process_termination.ProcessExited { code: _ } => match report {
         FloorWorkerReportedCompleted { detail: _ } => FloorWorkerFailed {
           detail: "completion report contradicted nonzero exit"
         }
@@ -206,10 +207,10 @@ fn floor_worker_observation_outcome(observation: FloorWorkerObservation) -> Floo
         FloorWorkerReportedFailed { detail: detail } => FloorWorkerFailed { detail: detail }
         FloorWorkerTerminalReportMalformed { detail: detail } => FloorWorkerFailed { detail: detail }
       }
-      ProcessSignaled { signal: _ } => FloorWorkerFailed {
+      std.process_termination.ProcessSignaled { signal: _ } => FloorWorkerFailed {
         detail: "terminal report contradicted signal death"
       }
-      ProcessTerminationUnobserved => FloorWorkerFailed {
+      std.process_termination.ProcessTerminationUnobserved => FloorWorkerFailed {
         detail: "terminal report exists but process termination was unobserved"
       }
     }
@@ -247,7 +248,7 @@ fn runnable_resource_profile_eq(left: RunnableResourceProfile, right: RunnableRe
   (left.heavy_whole_tree_resolve == right.heavy_whole_tree_resolve)
     && (left.spawns_host_compiler == right.spawns_host_compiler)
     && runnable_memory_class_eq(left: left.memory, right: right.memory)
-    && execution_mode_eq(left: left.execution_mode, right: right.execution_mode)
+    && std.execution_mode.execution_mode_eq(left: left.execution_mode, right: right.execution_mode)
 }
 
 fn runnable_resource_profile_negligible() -> RunnableResourceProfile {

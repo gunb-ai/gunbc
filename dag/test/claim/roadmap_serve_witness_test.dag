@@ -3,58 +3,58 @@ module test.claim.roadmap_serve_witness
 
 data live_table_or_empty_note: String = "Test-local extraction: a Refused build yields the EMPTY table, so every selection witness below goes RED (nothing selects) — the discriminating direction; the production path never does this (roadmap_serve_respond answers 500 on Refused)."
 
-fn live_table_or_empty() -> ServedRouteTable<gunbc.roadmap_serve.RoadmapServeHandler> {
-  match roadmap_serve_route_table_build() {
-    RoadmapServeTable { table: t } => t
-    RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => extdeps.http.server.ServedRouteTable { routes: [] }
+fn live_table_or_empty() -> extdeps.http.server.ServedRouteTable<gunbc.roadmap_serve.RoadmapServeHandler> {
+  match gunbc.roadmap_serve.roadmap_serve_route_table_build() {
+    gunbc.roadmap_serve.RoadmapServeTable { table: t } => t
+    gunbc.roadmap_serve.RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => extdeps.http.server.ServedRouteTable { routes: [] }
   }
 }
 
 fn selects(method: std.types.HttpMethod, path: String, want: gunbc.roadmap_serve.RoadmapServeHandler) -> Bool {
-  match serve_select_route(table: live_table_or_empty(), method: method, path: path) {
-    SelectedDynamic { handler: h, params: _ } => h == want
-    SelectedStatic { route: _ } => false
-    MethodNotAllowed { allowed: _ } => false
-    NoRouteMatched => false
+  match extdeps.http.server.serve_select_route(table: live_table_or_empty(), method: method, path: path) {
+    extdeps.http.server.SelectedDynamic { handler: h, params: _ } => h == want
+    extdeps.http.server.SelectedStatic { route: _ } => false
+    extdeps.http.server.MethodNotAllowed { allowed: _ } => false
+    extdeps.http.server.NoRouteMatched => false
   }
 }
 
 test fn witness_serve_table_selection() -> Bool {
-  selects(method: GET, path: "/", want: RoadmapDailyPageHandler)
-    && selects(method: GET, path: "/roadmap", want: RoadmapFullPageHandler)
-    && selects(method: GET, path: "/ROADMAP.md", want: RoadmapMdHandler)
-    && selects(method: GET, path: "/target/roadmap-dispatch.json", want: DispatchJsonHandler)
-    && selects(method: GET, path: "/healthz", want: HealthzHandler)
-    && selects(method: GET, path: "/instance.json", want: DashboardInstanceHandler)
-    && selects(method: GET, path: "/sessions.json", want: SessionsJsonHandler)
-    && selects(method: GET, path: "/attempts.json", want: AttemptsJsonHandler)
-    && selects(method: GET, path: "/workflow.json", want: WorkflowJsonHandler)
-    && selects(method: GET, path: roadmap_dispatch_asset_path, want: DispatchAssetHandler)
-    && selects(method: GET, path: "/sandbox", want: SandboxPageHandler)
-    && selects(method: GET, path: "/sandbox/instrument", want: InstrumentSandboxPageHandler)
-    && selects(method: GET, path: "/sandbox/instrument/tuner", want: InstrumentTunerPageHandler)
-    && selects(method: GET, path: instrument_tuner_asset_path, want: InstrumentTunerAssetHandler)
-    && selects(method: GET, path: instrument_motion_page_path, want: InstrumentMotionPageHandler)
-    && selects(method: GET, path: instrument_motion_asset_path, want: InstrumentMotionAssetHandler)
-    && selects(method: GET, path: sandbox_asset_path, want: SandboxAssetHandler)
-    && selects(method: POST, path: "/sandbox/echo", want: SandboxEchoHandler)
-    && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
-    && selects(method: POST, path: "/cleanup/some-node", want: BeltStopHandler)
-    && selects(method: POST, path: "/stop/some-node", want: BeltStopHandler)
-    && selects(method: POST, path: "/publish/some-node", want: BeltPublishHandler)
+  selects(method: std.types.GET, path: "/", want: gunbc.roadmap_serve.RoadmapDailyPageHandler)
+    && selects(method: std.types.GET, path: "/roadmap", want: gunbc.roadmap_serve.RoadmapFullPageHandler)
+    && selects(method: std.types.GET, path: "/ROADMAP.md", want: gunbc.roadmap_serve.RoadmapMdHandler)
+    && selects(method: std.types.GET, path: "/target/roadmap-dispatch.json", want: gunbc.roadmap_serve.DispatchJsonHandler)
+    && selects(method: std.types.GET, path: "/healthz", want: gunbc.roadmap_serve.HealthzHandler)
+    && selects(method: std.types.GET, path: "/instance.json", want: gunbc.roadmap_serve.DashboardInstanceHandler)
+    && selects(method: std.types.GET, path: "/sessions.json", want: gunbc.roadmap_serve.SessionsJsonHandler)
+    && selects(method: std.types.GET, path: "/attempts.json", want: gunbc.roadmap_serve.AttemptsJsonHandler)
+    && selects(method: std.types.GET, path: "/workflow.json", want: gunbc.roadmap_serve.WorkflowJsonHandler)
+    && selects(method: std.types.GET, path: gunbc.roadmap_component.roadmap_dispatch_asset_path, want: gunbc.roadmap_serve.DispatchAssetHandler)
+    && selects(method: std.types.GET, path: "/sandbox", want: gunbc.roadmap_serve.SandboxPageHandler)
+    && selects(method: std.types.GET, path: "/sandbox/instrument", want: gunbc.roadmap_serve.InstrumentSandboxPageHandler)
+    && selects(method: std.types.GET, path: "/sandbox/instrument/tuner", want: gunbc.roadmap_serve.InstrumentTunerPageHandler)
+    && selects(method: std.types.GET, path: gunbc.roadmap_component.instrument_tuner_asset_path, want: gunbc.roadmap_serve.InstrumentTunerAssetHandler)
+    && selects(method: std.types.GET, path: gunbc.roadmap_component.instrument_motion_page_path, want: gunbc.roadmap_serve.InstrumentMotionPageHandler)
+    && selects(method: std.types.GET, path: gunbc.roadmap_component.instrument_motion_asset_path, want: gunbc.roadmap_serve.InstrumentMotionAssetHandler)
+    && selects(method: std.types.GET, path: gunbc.roadmap_component.sandbox_asset_path, want: gunbc.roadmap_serve.SandboxAssetHandler)
+    && selects(method: std.types.POST, path: "/sandbox/echo", want: gunbc.roadmap_serve.SandboxEchoHandler)
+    && selects(method: std.types.POST, path: "/dispatch/some-node", want: gunbc.roadmap_serve.BeltDispatchHandler)
+    && selects(method: std.types.POST, path: "/cleanup/some-node", want: gunbc.roadmap_serve.BeltStopHandler)
+    && selects(method: std.types.POST, path: "/stop/some-node", want: gunbc.roadmap_serve.BeltStopHandler)
+    && selects(method: std.types.POST, path: "/publish/some-node", want: gunbc.roadmap_serve.BeltPublishHandler)
 }
 
 
 test fn witness_asset_route_serves_modeled_js() -> Bool {
-  let r = roadmap_serve_invoke(
-    handler: DispatchAssetHandler,
+  let r = gunbc.roadmap_serve.roadmap_serve_invoke(
+    handler: gunbc.roadmap_serve.DispatchAssetHandler,
     params: [],
-    request: test.claim.roadmap_serve_witness.fixture_request(method: GET, path: roadmap_dispatch_asset_path),
+    request: fixture_request(method: std.types.GET, path: gunbc.roadmap_component.roadmap_dispatch_asset_path),
     release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   )
   r.status == 200
-    && media_type_wire_label(m: r.content_type) == "text/javascript; charset=utf-8"
-    && r.body == dispatch_client_js_source()
+    && extdeps.http.server.media_type_wire_label(m: r.content_type) == "text/javascript; charset=utf-8"
+    && r.body == gunbc.roadmap_component.dispatch_client_js_source()
     && string_contains(s: r.body, pattern: "s === 'spawned' ? 'ok'")
     && string_contains(s: r.body, pattern: "fetch('/instance.json')")
     && string_contains(s: r.body, pattern: "fetch('/workflow.json')")
@@ -66,35 +66,35 @@ test fn witness_asset_route_serves_modeled_js() -> Bool {
 data lab_nav_resolves_note: String = "The shared header renders its links from instrument_lab_links, and the route table builds its specs from the same declarations. This claim is what makes that ONE authority rather than two that happen to agree: every rendered link is required to select a route, so a roster row without a route reds here rather than shipping a header link to a 404. The RED direction is a row added to the roster with no matching route spec."
 
 fn lab_link_selects_something(path: String) -> Bool {
-  match serve_select_route(table: live_table_or_empty(), method: GET, path: path) {
-    SelectedDynamic { handler: _, params: _ } => true
-    SelectedStatic { route: _ } => true
-    MethodNotAllowed { allowed: _ } => false
-    NoRouteMatched => false
+  match extdeps.http.server.serve_select_route(table: live_table_or_empty(), method: std.types.GET, path: path) {
+    extdeps.http.server.SelectedDynamic { handler: _, params: _ } => true
+    extdeps.http.server.SelectedStatic { route: _ } => true
+    extdeps.http.server.MethodNotAllowed { allowed: _ } => false
+    extdeps.http.server.NoRouteMatched => false
   }
 }
 
 test fn witness_every_lab_nav_link_resolves() -> Bool {
-  count(instrument_lab_links) == 4
-    && all(instrument_lab_links, l => lab_link_selects_something(path: l.path))
+  count(gunbc.roadmap_component.instrument_lab_links) == 4
+    && all(gunbc.roadmap_component.instrument_lab_links, l => lab_link_selects_something(path: l.path))
 }
 
 test fn witness_dispatch_param_bound() -> Bool {
-  match serve_select_route(table: live_table_or_empty(), method: POST, path: "/dispatch/2-cd-transport") {
-    SelectedDynamic { handler: _, params: ps } =>
-      path_param_value(params: ps, name: "node_id") == "2-cd-transport"
-    SelectedStatic { route: _ } => false
-    MethodNotAllowed { allowed: _ } => false
-    NoRouteMatched => false
+  match extdeps.http.server.serve_select_route(table: live_table_or_empty(), method: std.types.POST, path: "/dispatch/2-cd-transport") {
+    extdeps.http.server.SelectedDynamic { handler: _, params: ps } =>
+      std.http_path.path_param_value(params: ps, name: "node_id") == "2-cd-transport"
+    extdeps.http.server.SelectedStatic { route: _ } => false
+    extdeps.http.server.MethodNotAllowed { allowed: _ } => false
+    extdeps.http.server.NoRouteMatched => false
   }
 }
 
 test fn witness_dispatch_get_folds_405() -> Bool {
-  match serve_select_route(table: live_table_or_empty(), method: GET, path: "/dispatch/x") {
-    MethodNotAllowed { allowed: ms } => count(ms) == 1 && any(ms, m => m == std.types.POST)
-    SelectedStatic { route: _ } => false
-    SelectedDynamic { handler: _, params: _ } => false
-    NoRouteMatched => false
+  match extdeps.http.server.serve_select_route(table: live_table_or_empty(), method: std.types.GET, path: "/dispatch/x") {
+    extdeps.http.server.MethodNotAllowed { allowed: ms } => count(ms) == 1 && any(ms, m => m == std.types.POST)
+    extdeps.http.server.SelectedStatic { route: _ } => false
+    extdeps.http.server.SelectedDynamic { handler: _, params: _ } => false
+    extdeps.http.server.NoRouteMatched => false
   }
 }
 
@@ -103,37 +103,37 @@ fn fixture_request(method: std.types.HttpMethod, path: String) -> extdeps.http.s
 }
 
 test fn witness_unknown_path_folds_404_response() -> Bool {
-  let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: test.claim.roadmap_serve_witness.fixture_request(method: GET, path: "/nope"), release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
+  let r = gunbc.roadmap_serve.roadmap_serve_selection_response(sel: extdeps.http.server.NoRouteMatched, request: fixture_request(method: std.types.GET, path: "/nope"), release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   r.status == 404
 }
 
 test fn witness_405_response_carries_allowed() -> Bool {
-  let r = roadmap_serve_selection_response(sel: extdeps.http.server.MethodNotAllowed { allowed: [std.types.POST] }, request: test.claim.roadmap_serve_witness.fixture_request(method: GET, path: "/dispatch/x"), release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
+  let r = gunbc.roadmap_serve.roadmap_serve_selection_response(sel: extdeps.http.server.MethodNotAllowed { allowed: [std.types.POST] }, request: fixture_request(method: std.types.GET, path: "/dispatch/x"), release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   r.status == 405 && string_contains(s: r.body, pattern: "POST")
 }
 
 data status_map_red_note: String = "The 404/409/503/502 rows are the REDs a lazy 200-or-500 collapse would fail (parent review 2026-07-20): each refusal variant must map to ITS status, so a collapse of any arm reds exactly one witness row below.\n\nTHIS PIN WENT STALE WHILE THE PROTECTION IT DESCRIBES READ AS INTACT (review artifact 51368). Five arms were added with explicit status mappings — stale session, revision drift, multiplicity conflict, liveness unobserved, revision unobserved — and this witness still pinned the original eight, so a regression mapping any new arm to 200 would have stayed green. The note claimed a total protection the assertion no longer provided, which is worse than an absent pin: a reader checking whether the mapping is guarded finds a sentence saying yes.\n\nThe label, band, exemplar and button rosters were all swept when those arms landed. This one was missed because it lives in a different witness module and is keyed by CONSTRUCTED variants rather than by a roster the compiler counts — nothing here goes non-exhaustive when an arm appears. That asymmetry is the actual defect; until belt_dispatch_status_total is derived from the exemplar roster the way the label set is, this assertion has to be swept by hand alongside it."
 
 test fn witness_dispatch_status_total() -> Bool {
-  belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchSpawned { node_id: "n", session_name: "s", provider: "codex" }) == 200
-    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchAlreadyLive { node_id: "n", session_name: "s" }) == 200
-    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchDisabled { node_id: "n", instance_id: "i", reason: "r" }) == 403
-    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchNodeNotFound { node_id: "n" }) == 404
-    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchNodeAlreadyDone { node_id: "n" }) == 409
-    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchObserveRefused { node_id: "n", reason: "r" }) == 503
-    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchAuthorityRefused { node_id: "n", detail: "d" }) == 503
-    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchSpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex" }) == 502
-    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchStaleSession { node_id: "n", session_name: "s", detail: "d" }) == 409
-    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchRevisionDrifted { node_id: "n", desired: "a", local: "b" }) == 409
-    && belt_dispatch_status(
+  gunbc.roadmap_serve.belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchSpawned { node_id: "n", session_name: "s", provider: "codex" }) == 200
+    && gunbc.roadmap_serve.belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchAlreadyLive { node_id: "n", session_name: "s" }) == 200
+    && gunbc.roadmap_serve.belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchDisabled { node_id: "n", instance_id: "i", reason: "r" }) == 403
+    && gunbc.roadmap_serve.belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchNodeNotFound { node_id: "n" }) == 404
+    && gunbc.roadmap_serve.belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchNodeAlreadyDone { node_id: "n" }) == 409
+    && gunbc.roadmap_serve.belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchObserveRefused { node_id: "n", reason: "r" }) == 503
+    && gunbc.roadmap_serve.belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchAuthorityRefused { node_id: "n", detail: "d" }) == 503
+    && gunbc.roadmap_serve.belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchSpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex" }) == 502
+    && gunbc.roadmap_serve.belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchStaleSession { node_id: "n", session_name: "s", detail: "d" }) == 409
+    && gunbc.roadmap_serve.belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchRevisionDrifted { node_id: "n", desired: "a", local: "b" }) == 409
+    && gunbc.roadmap_serve.belt_dispatch_status(
       r: gunbc.roadmap_belt_actuate.DispatchSessionMultiplicityConflict { node_id: "n", session_names: "s1, s2", session_count: 2 }) == 409
-    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchSessionLivenessUnobserved { node_id: "n", session_name: "s", reason: "r" }) == 503
-    && belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchRevisionUnobserved { node_id: "n", cause: "c" }) == 503
+    && gunbc.roadmap_serve.belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchSessionLivenessUnobserved { node_id: "n", session_name: "s", reason: "r" }) == 503
+    && gunbc.roadmap_serve.belt_dispatch_status(r: gunbc.roadmap_belt_actuate.DispatchRevisionUnobserved { node_id: "n", cause: "c" }) == 503
 }
 
 test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
-  let r = roadmap_serve_respond_for_instance(
-    instance: srv2_preview_dashboard_instance(),
+  let r = gunbc.roadmap_serve.roadmap_serve_respond_for_instance(
+    instance: gunbc.roadmap_dashboard_instance.srv2_preview_dashboard_instance(),
     method_label: "POST",
     path: "/dispatch/ts-dispatch-provider-events",
     body: "",
@@ -147,8 +147,8 @@ test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
 
 
 test fn witness_instance_route_names_posture_and_paths() -> Bool {
-  let r = roadmap_serve_respond_for_instance(
-    instance: srv2_preview_dashboard_instance(),
+  let r = gunbc.roadmap_serve.roadmap_serve_respond_for_instance(
+    instance: gunbc.roadmap_dashboard_instance.srv2_preview_dashboard_instance(),
     method_label: "GET",
     path: "/instance.json",
     body: "",
@@ -170,10 +170,10 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
 data route_table_drops_nothing_note: String = "THE ROUTE COUNT STOPPED BEING A LITERAL, and what replaces it is the claim the literal was standing in for. Sixteen was read off the live route roster, so adding /provider.json — a correct route this PR needed — reds a witness that has nothing to say about which routes exist. That is the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464, and this was a third instance of it (review, 2026-07-30, found by the full floor rather than by any targeted run).\\n\\nThe replacement is strictly stronger, not weaker. What this witness is actually for is that the live table BUILDS — the refusing arm below is the other half — and the interesting failure is a build that silently drops a route rather than refusing. serve_page_response_note in this module names exactly that hazard: the EmitRejected => [] route-drop in node_http_server_emit is a silent widen this path deliberately does not copy. A literal count cannot tell a dropped route from a roster that legitimately grew; comparing against the roster can, and it never needs editing again.\\n\\nThe non-emptiness conjunct stays because equality between two empty lists would hold vacuously."
 
 test fn witness_live_table_builds_ready_routes() -> Bool {
-  match roadmap_serve_route_table_build() {
-    RoadmapServeTable { table: t } =>
-      count(t.routes) > 0 && count(t.routes) == count(roadmap_serve_route_specs())
-    RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => false
+  match gunbc.roadmap_serve.roadmap_serve_route_table_build() {
+    gunbc.roadmap_serve.RoadmapServeTable { table: t } =>
+      count(t.routes) > 0 && count(t.routes) == count(gunbc.roadmap_serve.roadmap_serve_route_specs())
+    gunbc.roadmap_serve.RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => false
   }
 }
 
@@ -181,37 +181,37 @@ data malformed_literal_red_note: String = "The RED control for review 40286's se
 
 test fn witness_malformed_route_literal_refuses_table() -> Bool {
   let specs = [
-    gunbc.roadmap_serve.RoadmapServeRouteSpec { method: GET, raw: "/ok", handler: HealthzHandler },
-    gunbc.roadmap_serve.RoadmapServeRouteSpec { method: GET, raw: "/dispatch/\{node_id", handler: BeltDispatchHandler },
+    gunbc.roadmap_serve.RoadmapServeRouteSpec { method: std.types.GET, raw: "/ok", handler: gunbc.roadmap_serve.HealthzHandler },
+    gunbc.roadmap_serve.RoadmapServeRouteSpec { method: std.types.GET, raw: "/dispatch/\{node_id", handler: gunbc.roadmap_serve.BeltDispatchHandler },
   ]
-  match roadmap_serve_build_from_specs(specs: specs) {
-    RoadmapServeTableRefused { raw: r, segment: _, reason: _ } => r == "/dispatch/\{node_id"
-    RoadmapServeTable { table: _ } => false
+  match gunbc.roadmap_serve.roadmap_serve_build_from_specs(specs: specs) {
+    gunbc.roadmap_serve.RoadmapServeTableRefused { raw: r, segment: _, reason: _ } => r == "/dispatch/\{node_id"
+    gunbc.roadmap_serve.RoadmapServeTable { table: _ } => false
   }
 }
 
 test fn witness_unknown_method_refuses() -> Bool {
-  match parse_http_method_label(label: "BREW") {
-    UnknownMethod { label: l } => l == "BREW"
-    KnownMethod { method: _ } => false
+  match extdeps.http.server.parse_http_method_label(label: "BREW") {
+    extdeps.http.server.UnknownMethod { label: l } => l == "BREW"
+    extdeps.http.server.KnownMethod { method: _ } => false
   }
 }
 
 data unknown_method_501_note: String = "review 40359: an unrecognized method label is 501 Not Implemented (RFC 9110 section 15.6.2 — the server does not implement the method at all), NEVER 405 (405 means the ROUTE exists but this method is not in its allowed set, and carries the allowed set — the MethodNotAllowed arm). The two arms must stay distinct statuses; collapsing them reds this row."
 
 test fn witness_unknown_method_folds_501_response() -> Bool {
-  let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "", release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
+  let r = gunbc.roadmap_serve.roadmap_serve_respond(method_label: "BREW", path: "/", body: "", release_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
   r.status == 501 && string_contains(s: r.body, pattern: "BREW")
 }
 
 test fn witness_known_methods_parse() -> Bool {
-  match parse_http_method_label(label: "GET") {
-    KnownMethod { method: m } => m == std.types.GET
-    UnknownMethod { label: _ } => false
+  match extdeps.http.server.parse_http_method_label(label: "GET") {
+    extdeps.http.server.KnownMethod { method: m } => m == std.types.GET
+    extdeps.http.server.UnknownMethod { label: _ } => false
   }
-  && match parse_http_method_label(label: "POST") {
-    KnownMethod { method: m } => m == std.types.POST
-    UnknownMethod { label: _ } => false
+  && match extdeps.http.server.parse_http_method_label(label: "POST") {
+    extdeps.http.server.KnownMethod { method: m } => m == std.types.POST
+    extdeps.http.server.UnknownMethod { label: _ } => false
   }
 }
 

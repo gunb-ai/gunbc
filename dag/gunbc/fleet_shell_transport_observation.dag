@@ -1,7 +1,7 @@
 module gunbc.fleet_shell_transport_observation
 
 
-data fleet_shell_transport_authority_disposition: std.disposition.Disposition = SingleAuthority
+data fleet_shell_transport_authority_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 data fleet_shell_transport_scope_note: String = "SHELL TRANSPORT IS NOT NETWORK REACH. gunbc.fleet_reach answers whether packets can route to a host; this module answers whether an SSH session from the executing environment can authenticate and run a command. Both must be modeled separately (operator rule 2026-07-24). A ReachRefused or Permission-denied transport observation is a RECEIPT — not EndpointAbsent, swap Absent, or SessionsObservedAbsent. THE PRODUCER returns ShellTransportUnobserved until host_effect_apply can run the probe; it does not hand-enter host facts. still_ram_738_session_* rows below are dated execution receipts for one environment (2026-08-06 ssh BatchMode probes), not fabrication of swap, disk, or session counts. Review 49656: interim only — downstream modules must not treat these as permanent authority; fleet_shell_transport_observed_producer_dissolve_on names HostEffectTransport as the successor."
 
@@ -56,13 +56,13 @@ data still_ram_738_srv4_shell_transport: HostShellTransportObservation = ShellTr
 }
 
 fn still_ram_738_session_shell_transport(host: product.placement_supply.HostIdentity) -> HostShellTransportObservation {
-  if (host as String) == (operator_host_srv1 as String) {
+  if (host as String) == (gunbc.fleet_intent_network.operator_host_srv1 as String) {
     still_ram_738_srv1_shell_transport
-  } else if (host as String) == (operator_host_srv2 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv2 as String) {
     still_ram_738_srv2_shell_transport
-  } else if (host as String) == (operator_host_srv3 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv3 as String) {
     still_ram_738_srv3_shell_transport
-  } else if (host as String) == (operator_host_srv4 as String) {
+  } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv4 as String) {
     still_ram_738_srv4_shell_transport
   } else {
     ShellTransportUnobserved {
@@ -74,7 +74,7 @@ fn still_ram_738_session_shell_transport(host: product.placement_supply.HostIden
 data fleet_shell_transport_observed_producer_note: String = "SUCCESSOR IS A HOST-EFFECT PROBE, not a session receipt table. fleet_shell_transport_observed_producer will run ssh (or nested ssh for srv3_reach) through host_effect_apply. Until it lands, enrolled hosts fall through to the session receipt when the producer returns ShellTransportUnobserved."
 
 fn fleet_shell_transport_observed_producer(host: product.placement_supply.HostIdentity) -> HostShellTransportObservation {
-  if (host as String) == (operator_host_srv3 as String) {
+  if (host as String) == (gunbc.fleet_intent_network.operator_host_srv3 as String) {
     parent_probe_2026_08_07_srv3_shell_transport
   } else {
     ShellTransportUnobserved {
@@ -119,14 +119,14 @@ fn fleet_shell_transport_observation(host: product.placement_supply.HostIdentity
 
 
 fn srv3_network_reach_realizable() -> Bool {
-  srv3_reach_is_realizable()
+  gunbc.fleet_reach.srv3_reach_is_realizable()
 }
 
 data fleet_shell_transport_observed_producer_dissolve_on: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   }
 }

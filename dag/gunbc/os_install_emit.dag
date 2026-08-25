@@ -3,28 +3,28 @@ module gunbc.os_install_emit
 
 fn identity_entries(id: extdeps.os.ubuntu_autoinstall.AutoinstallIdentity) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   [
-    kv(key: "hostname", value: yaml_string(s: id.hostname)),
-    kv(key: "username", value: yaml_string(s: id.username)),
-    kv(key: "realname", value: yaml_string(s: id.realname)),
-    kv(key: "password", value: yaml_string(s: id.hashed_password)),
+    extdeps.languages.yaml.types.kv(key: "hostname", value: extdeps.languages.yaml.types.yaml_string(s: id.hostname)),
+    extdeps.languages.yaml.types.kv(key: "username", value: extdeps.languages.yaml.types.yaml_string(s: id.username)),
+    extdeps.languages.yaml.types.kv(key: "realname", value: extdeps.languages.yaml.types.yaml_string(s: id.realname)),
+    extdeps.languages.yaml.types.kv(key: "password", value: extdeps.languages.yaml.types.yaml_string(s: id.hashed_password)),
   ]
 }
 
 fn autoinstall_inner_entries(payload: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   let base = [
-    kv(key: "version", value: yaml_int(n: payload.autoinstall_version)),
-    kv(key: "locale", value: yaml_string(s: payload.locale)),
-    kv(key: "keyboard", value: yaml_mapping(entries: [
-      kv(key: "layout", value: yaml_string(s: payload.keyboard_layout)),
+    extdeps.languages.yaml.types.kv(key: "version", value: extdeps.languages.yaml.types.yaml_int(n: payload.autoinstall_version)),
+    extdeps.languages.yaml.types.kv(key: "locale", value: extdeps.languages.yaml.types.yaml_string(s: payload.locale)),
+    extdeps.languages.yaml.types.kv(key: "keyboard", value: extdeps.languages.yaml.types.yaml_mapping(entries: [
+      extdeps.languages.yaml.types.kv(key: "layout", value: extdeps.languages.yaml.types.yaml_string(s: payload.keyboard_layout)),
     ])),
-    kv(key: "identity", value: yaml_mapping(entries: identity_entries(id: payload.identity))),
+    extdeps.languages.yaml.types.kv(key: "identity", value: extdeps.languages.yaml.types.yaml_mapping(entries: identity_entries(id: payload.identity))),
   ]
   let with_ssh = if payload.install_openssh_server {
     append(base, items: [
-      kv(key: "ssh", value: yaml_mapping(entries: [
-        kv(key: "install-server", value: yaml_bool(b: true)),
-        kv(key: "authorized-keys", value: yaml_sequence(elements: map(payload.ssh_authorized_keys, k => yaml_string(s: ssh_public_key_line(k: k))))),
-        kv(key: "allow-pw", value: yaml_bool(b: payload.ssh_password_auth)),
+      extdeps.languages.yaml.types.kv(key: "ssh", value: extdeps.languages.yaml.types.yaml_mapping(entries: [
+        extdeps.languages.yaml.types.kv(key: "install-server", value: extdeps.languages.yaml.types.yaml_bool(b: true)),
+        extdeps.languages.yaml.types.kv(key: "authorized-keys", value: extdeps.languages.yaml.types.yaml_sequence(elements: map(payload.ssh_authorized_keys, k => extdeps.languages.yaml.types.yaml_string(s: extdeps.ssh.ssh_public_key_line(k: k))))),
+        extdeps.languages.yaml.types.kv(key: "allow-pw", value: extdeps.languages.yaml.types.yaml_bool(b: payload.ssh_password_auth)),
       ])),
     ])
   } else {
@@ -32,14 +32,14 @@ fn autoinstall_inner_entries(payload: extdeps.os.ubuntu_autoinstall.UbuntuAutoin
   }
   if payload.fully_automated {
     let automated = append(with_ssh, items: [
-      kv(key: "interactive-sections", value: yaml_sequence(elements: empty_yaml_values)),
+      extdeps.languages.yaml.types.kv(key: "interactive-sections", value: extdeps.languages.yaml.types.yaml_sequence(elements: extdeps.languages.yaml.types.empty_yaml_values)),
     ])
     match payload.storage_policy {
-      StoragePolicyAbsent => automated
-      StoragePolicyDirectLayout => append(automated, items: [
-        kv(key: "storage", value: yaml_mapping(entries: [
-          kv(key: "layout", value: yaml_mapping(entries: [
-            kv(key: "name", value: yaml_string(s: "direct")),
+      extdeps.os.ubuntu_autoinstall.StoragePolicyAbsent => automated
+      extdeps.os.ubuntu_autoinstall.StoragePolicyDirectLayout => append(automated, items: [
+        extdeps.languages.yaml.types.kv(key: "storage", value: extdeps.languages.yaml.types.yaml_mapping(entries: [
+          extdeps.languages.yaml.types.kv(key: "layout", value: extdeps.languages.yaml.types.yaml_mapping(entries: [
+            extdeps.languages.yaml.types.kv(key: "name", value: extdeps.languages.yaml.types.yaml_string(s: "direct")),
           ])),
         ])),
       ])
@@ -50,8 +50,8 @@ fn autoinstall_inner_entries(payload: extdeps.os.ubuntu_autoinstall.UbuntuAutoin
 }
 
 fn autoinstall_user_data(payload: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload) -> String {
-  let top = yaml_mapping(entries: [
-    kv(key: "autoinstall", value: yaml_mapping(entries: autoinstall_inner_entries(payload: payload))),
+  let top = extdeps.languages.yaml.types.yaml_mapping(entries: [
+    extdeps.languages.yaml.types.kv(key: "autoinstall", value: extdeps.languages.yaml.types.yaml_mapping(entries: autoinstall_inner_entries(payload: payload))),
   ])
-  concat("#cloud-config\n", serialize_yaml(v: top))
+  concat("#cloud-config\n", extdeps.languages.yaml.emit.serialize_yaml(v: top))
 }

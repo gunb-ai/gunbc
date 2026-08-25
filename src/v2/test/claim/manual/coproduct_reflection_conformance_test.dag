@@ -1,11 +1,11 @@
 module v2.test.manual.coproduct_reflection_conformance
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior
-data reflect_imported_derive_trait_type: Symbol = ^RustCapability
+data reflect_imported_derive_trait_type: Symbol = ^extdeps.languages.rust.capabilities.RustCapability
 
 type NullaryReflectionRequestedA
   = NullaryReflectionRequestedAFirst
@@ -15,30 +15,30 @@ type NullaryReflectionContextB
   = NullaryReflectionContextBFirst
   | NullaryReflectionContextBSecond
 
-fn symbol_eq(a: v2.std.node.Symbol, b: v2.std.node.Symbol) -> Bool {
+fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
 }
 
-fn behavior_discriminant(value: v2.std.node.Behavior) -> v2.std.node.Symbol {
+fn behavior_discriminant(value: Behavior) -> Symbol {
   discriminant(v: value)
 }
 
-fn connective_discriminant(value: v2.std.node.Connective) -> v2.std.node.Symbol {
+fn connective_discriminant(value: Connective) -> Symbol {
   discriminant(v: value)
 }
 
 fn imported_derive_trait_discriminant(
-  value: RustCapability
+  value: extdeps.languages.rust.capabilities.RustCapability
 ) -> Symbol {
   discriminant(v: value)
 }
 
 fn imported_derive_trait_discriminants(
-  inhabitants: List<RustCapability>
+  inhabitants: List<extdeps.languages.rust.capabilities.RustCapability>
 ) -> List<Symbol> {
   fold_list(
     xs: inhabitants,
-    empty: std.algebra.Empty,
+    empty: Empty,
     cons: fn(acc, value) {
       list_snoc_item(
         xs: acc,
@@ -49,15 +49,15 @@ fn imported_derive_trait_discriminants(
 }
 
 test fn witness_nullary_reflection_accepts_imported_named_coproduct_through_generic_wrapper() -> Bool {
-  match nullary_reflection_through_generic_wrapper(
+  match v2.test.fixture.coproduct_reflection_generic_wrapper.nullary_reflection_through_generic_wrapper(
     type_name: reflect_imported_derive_trait_type,
     discriminant_of: imported_derive_trait_discriminant
   ) {
     Accepted { value: inhabitants, diagnostics: _ } =>
       bag_eq(
         xs: imported_derive_trait_discriminants(inhabitants: inhabitants),
-        ys: coproduct_arm_keys(type_name: reflect_imported_derive_trait_type),
-        eq: v2.test.manual.coproduct_reflection_conformance.symbol_eq
+        ys: v2.std.node_query.coproduct_arm_keys(type_name: reflect_imported_derive_trait_type),
+        eq: symbol_eq
       )
     Rejected { diagnostics: _ } => false
   }
@@ -65,12 +65,12 @@ test fn witness_nullary_reflection_accepts_imported_named_coproduct_through_gene
 
 fn nullary_reflection_context_b_discriminant(
   value: NullaryReflectionContextB
-) -> v2.std.node.Symbol {
+) -> Symbol {
   discriminant(v: value)
 }
 
 fn nullary_reflection_context_b_outcome_is_rejected(
-  result: v2.std.diagnostic.Outcome<List<NullaryReflectionContextB>>
+  result: Outcome<List<NullaryReflectionContextB>>
 ) -> Bool {
   match result {
     Accepted { value: _, diagnostics: _ } => false
@@ -80,7 +80,7 @@ fn nullary_reflection_context_b_outcome_is_rejected(
 
 test fn witness_nullary_reflection_rejects_requested_a_with_context_b() -> Bool {
   nullary_reflection_context_b_outcome_is_rejected(
-    result: coproduct_nullary_inhabitants(
+    result: v2.std.node_query.coproduct_nullary_inhabitants(
       type_name: ^NullaryReflectionRequestedA,
       discriminant_of: nullary_reflection_context_b_discriminant
     )
@@ -89,27 +89,27 @@ test fn witness_nullary_reflection_rejects_requested_a_with_context_b() -> Bool 
 
 test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
   !bag_eq(
-    xs: coproduct_arm_keys(type_name: v2.test.manual.coproduct_reflection_conformance.reflect_connective_type),
-    ys: coproduct_arm_keys(type_name: v2.test.manual.coproduct_reflection_conformance.reflect_behavior_type),
-    eq: v2.test.manual.coproduct_reflection_conformance.symbol_eq
+    xs: v2.std.node_query.coproduct_arm_keys(type_name: reflect_connective_type),
+    ys: v2.std.node_query.coproduct_arm_keys(type_name: reflect_behavior_type),
+    eq: symbol_eq
   )
 }
 
-fn nullary_inhabitant_discriminants(inhabitants: List<v2.std.node.Behavior>) -> List<v2.std.node.Symbol> {
+fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol> {
   fold_list(
     xs: inhabitants,
-    empty: std.algebra.Empty,
+    empty: Empty,
     cons: fn(acc, v) { list_snoc_item(xs: acc, item: discriminant(v: v)) }
   )
 }
 
-fn symbol_in_list(sym: v2.std.node.Symbol, xs: List<v2.std.node.Symbol>) -> Bool {
-  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || v2.test.manual.coproduct_reflection_conformance.symbol_eq(a: x, b: sym) })
+fn symbol_in_list(sym: Symbol, xs: List<Symbol>) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || symbol_eq(a: x, b: sym) })
 }
 
 fn all_inhabitant_discriminants_are_reflected_arms(
-  inhabitants: List<v2.std.node.Behavior>,
-  arm_keys: List<v2.std.node.Symbol>
+  inhabitants: List<Behavior>,
+  arm_keys: List<Symbol>
 ) -> Bool {
   fold_list(xs: inhabitants, empty: true, cons: fn(acc, v) {
     acc && symbol_in_list(sym: discriminant(v: v), xs: arm_keys)
@@ -117,16 +117,16 @@ fn all_inhabitant_discriminants_are_reflected_arms(
 }
 
 test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
-  match coproduct_nullary_inhabitants(
-    type_name: v2.test.manual.coproduct_reflection_conformance.reflect_behavior_type,
+  match v2.std.node_query.coproduct_nullary_inhabitants(
+    type_name: reflect_behavior_type,
     discriminant_of: behavior_discriminant
   ) {
     Accepted { value: inhabitants, diagnostics: _ } =>
-      let keys = coproduct_arm_keys(type_name: v2.test.manual.coproduct_reflection_conformance.reflect_behavior_type)
+      let keys = v2.std.node_query.coproduct_arm_keys(type_name: reflect_behavior_type)
       bag_eq(
         xs: nullary_inhabitant_discriminants(inhabitants: inhabitants),
         ys: keys,
-        eq: v2.test.manual.coproduct_reflection_conformance.symbol_eq
+        eq: symbol_eq
       ) && all_inhabitant_discriminants_are_reflected_arms(
         inhabitants: inhabitants,
         arm_keys: keys
@@ -136,8 +136,8 @@ test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
 }
 
 test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
-  match coproduct_nullary_inhabitants(
-    type_name: v2.test.manual.coproduct_reflection_conformance.reflect_connective_type,
+  match v2.std.node_query.coproduct_nullary_inhabitants(
+    type_name: reflect_connective_type,
     discriminant_of: connective_discriminant
   ) {
     Accepted { value: _, diagnostics: _ } => false

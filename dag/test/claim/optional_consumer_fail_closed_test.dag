@@ -1,7 +1,7 @@
 module test.claim.optional_consumer_fail_closed_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data optional_consumer_fail_closed_witness_note: String = "THE CALL-SITE HALF OF THE v1-EMITTER OPTIONAL-RENDERING FAMILY, migrated from src/v1/tests/src/optional_consumer_fail_closed_test.rs (v1-test-migration). The behavior: an optional value flowing into a NON-optional parameter is the model hole the signature repair exposed rather than hid, and the emitter closes it by construction at exactly those call sites with a located `.expect(\\\"fail-closed: ...\\\")` naming the consumer. The choice is the whole point (DESIGN 5): on an empty Optional the emitted code must ABORT loudly, never fabricate, so `unwrap_or_default` and `unwrap_or_else(<fabricated>)` are the rejected shapes, not merely unused ones.\\n\\nTHE EXCLUSION IS THE LOAD-BEARING ASSERTION, and it is why the fabricating alternative is named here rather than assumed absent: emitting the located expect AND a fabricating fallback elsewhere on the same path would satisfy an inclusion-only witness while re-opening the fail-open arm. The unwrap being TYPE-DERIVED is proven by the discriminating control: the same required parameter fed a non-optional argument must emit no unwrap at all, so a blanket unwrap-every-argument implementation passes the first witness and fails the second."
 

@@ -1,6 +1,7 @@
 module v2.test.long.cwc_resolution_probe
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
 data cwc_src_type_three: String = "module probe\ntype T = A | B | C\n"
@@ -12,7 +13,7 @@ data cwc_src_type_malformed_coproduct: String = "module probe\ntype T = { x: Int
 
 data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
-fn cwc_norm_of(src: String) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
+fn cwc_norm_of(src: String) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: src, file: ^cwc_probe_file, rules: lm.lex),
@@ -39,11 +40,13 @@ test fn cwc_norm_three_variant_accepts() -> Bool {
   cwc_norm_accepts(src: cwc_src_type_three)
 }
 
-fn cwc_tree_has_disj(n: v2.std.node.Node) -> Bool {
-  let alg: v2.std.node.NodeFold<Bool> = v2.std.node.NodeFold {
+fn cwc_tree_has_disj(n: Node) -> Bool {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
       init: fn(node) {
         match node.kind {
-          TypeNode { connective: v2.std.node.Disj } => true
+          TypeNode { connective: Disj } => true
           _ => false
         }
       },
@@ -55,14 +58,16 @@ fn cwc_tree_has_disj(n: v2.std.node.Node) -> Bool {
         }
       }
     }
-  fold_node(n: n, algebra: alg)
+  )
 }
 
-fn cwc_disj_arm_count(n: v2.std.node.Node) -> Int {
-  let alg: v2.std.node.NodeFold<Int> = v2.std.node.NodeFold {
+fn cwc_disj_arm_count(n: Node) -> Int {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
       init: fn(node) {
         match node.kind {
-          TypeNode { connective: v2.std.node.Disj } => count(node.children)
+          TypeNode { connective: Disj } => count(node.children)
           _ => 0
         }
       },
@@ -74,7 +79,7 @@ fn cwc_disj_arm_count(n: v2.std.node.Node) -> Int {
         }
       }
     }
-  fold_node(n: n, algebra: alg)
+  )
 }
 
 fn cwc_norm_rejects(src: String) -> Bool {
@@ -108,7 +113,7 @@ fn cwc_resolve_accepts(src: String) -> Bool {
   let lm = dag_language_model()
   match cwc_norm_of(src: src) {
     Accepted { value: tree, diagnostics: _ } =>
-      match v2.compiler.resolve.resolve(tree: tree, lm: lm) {
+      match resolve(tree: tree, lm: lm) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }

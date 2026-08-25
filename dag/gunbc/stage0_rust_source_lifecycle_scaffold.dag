@@ -187,15 +187,15 @@ fn count_observed_manifest_duplicate_excess(
 // back to the crate-layout complement in that arm would restore the deficit while still reporting
 // a verdict, with its own firing rate zeroed by construction -- the absorbing fallback DESIGN 5
 // forbids. So the arm refuses, typed and located, and the degradation is countable.
-fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) -> RustSourceManifestStateVerdict {
+fn rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation) -> RustSourceManifestStateVerdict {
   match observation {
-    RustManifestReadRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: detail } }
-    RustManifestParseRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: detail } }
-    GitObservationRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.GitObservationRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostGitObservationRefused { detail: detail } }
-    RustManifestObserved {
+    gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: repository_revision,
       manifest_content_identity: manifest_content_identity,
       tracked_rust_repo_paths: tracked_paths,
@@ -207,9 +207,9 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
         ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision" } }
       } else {
         match emit_population_evidence {
-          EmitPopulationUnobserved { detail: detail } =>
+          gunbc.stage0_rust_host_observation.EmitPopulationUnobserved { detail: detail } =>
             ManifestStateScaffoldRefused { cause: EmitPopulationUnobservedEvidence { detail: detail } }
-          EmitPopulationConfirmed { emitted_stage0_repo_paths: emitted_stage0_repo_paths } =>
+          gunbc.stage0_rust_host_observation.EmitPopulationConfirmed { emitted_stage0_repo_paths: emitted_stage0_repo_paths } =>
             let file_grain_paths = file_grain_lifecycle_repo_paths(
               emitted_stage0_repo_paths: emitted_stage0_repo_paths,
               tracked_paths: tracked_paths
@@ -238,7 +238,7 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
               cargo_bin_repo_paths: cargo_bin_repo_paths,
               tracked_paths: non_generated_classified_repo_paths()
             )
-            if length(xs: cargo_bin_repo_paths) == 0 {
+            if v2.std.algebra.length(xs: cargo_bin_repo_paths) == 0 {
               ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: "observed manifest missing cargo_bin_repo_paths evidence" } }
             } else if untracked_cargo != "" {
               ManifestStateScaffoldRefused { cause: ObservedCargoPathUntracked { path: untracked_cargo } }
@@ -313,7 +313,7 @@ type RustMaintenanceDisposition
   | EmitFrom { authority: std.decl_ref.DeclarationRef }
   | DeleteWith { roadmap_node: gunbc.roadmap_model.RoadmapNodeId }
   | RetainedKernel { reason: String }
-  | HandScaffold { reason: std.types.NonEmptyStr, dissolution: std.dissolution.DissolutionCondition }
+  | HandScaffold { reason: NonEmptyStr, dissolution: std.dissolution.DissolutionCondition }
 
 type RustSourceLifecycleRow {
   path: String
@@ -356,7 +356,7 @@ fn derived_generated_stage0_repo_paths(
   emitted_stage0_repo_paths: List<String>,
   tracked_paths: List<String>
 ) -> List<String> {
-  filter(
+  v2.std.algebra.filter(
     xs: tracked_paths,
     predicate: fn(path) { path_in_list(path: path, paths: emitted_stage0_repo_paths) }
   )
@@ -517,7 +517,7 @@ fn residue_row(path: String, reason: String, dissolution: std.dissolution.Dissol
     path: path,
     roles: [],
     maintenance_dispositions: [
-      HandScaffold { reason: reason as std.types.NonEmptyStr, dissolution: dissolution }
+      HandScaffold { reason: reason as NonEmptyStr, dissolution: dissolution }
     ]
   }
 }
@@ -599,7 +599,7 @@ fn witness_fixture_tracked_paths() -> List<String> {
   )
 }
 
-fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
+fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> gunbc.stage0_rust_host_observation.RustManifestObserved {
   let classified = witness_fixture_tracked_paths()
   gunbc.stage0_rust_host_observation.RustManifestObserved {
     repository_revision: "witness-deadbeef",
@@ -607,13 +607,13 @@ fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> gunb
     tracked_rust_repo_paths: list_concat_unique(acc: classified, items: [extra_path]),
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
-    emit_population_evidence: EmitPopulationConfirmed {
+    emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
       emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
     }
   }
 }
 
-fn witness_hand_maintained_growth_observation() -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
+fn witness_hand_maintained_growth_observation() -> gunbc.stage0_rust_host_observation.RustManifestObserved {
   let prior_file_grain = list_concat_unique(
     acc: witness_generated_stage0_fixture_paths,
     items: residue_lifecycle_repo_paths()
@@ -626,13 +626,13 @@ fn witness_hand_maintained_growth_observation() -> gunbc.stage0_rust_host_observ
     tracked_rust_repo_paths: classified,
     prior_tracked_rust_repo_paths: prior_classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
-    emit_population_evidence: EmitPopulationConfirmed {
+    emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
       emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
     }
   }
 }
 
-fn witness_honest_minimal_observation_ok() -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
+fn witness_honest_minimal_observation_ok() -> gunbc.stage0_rust_host_observation.RustManifestObserved {
   let classified = witness_fixture_tracked_paths()
   gunbc.stage0_rust_host_observation.RustManifestObserved {
     repository_revision: "witness-deadbeef",
@@ -640,7 +640,7 @@ fn witness_honest_minimal_observation_ok() -> gunbc.stage0_rust_host_observation
     tracked_rust_repo_paths: classified,
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
-    emit_population_evidence: EmitPopulationConfirmed {
+    emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
       emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
     }
   }
@@ -662,7 +662,7 @@ fn witness_honest_minimal_observation_ok() -> gunbc.stage0_rust_host_observation
 // Controlled fixture, not a tree-copied pin: the input population and the expected population are
 // authored independently here (one planted path in, exactly one counted out), so automating the
 // expected value would not collapse the assertion to measure() == measure().
-fn witness_standing_unclassified_observation(planted_path: String) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
+fn witness_standing_unclassified_observation(planted_path: String) -> gunbc.stage0_rust_host_observation.RustManifestObserved {
   let classified = witness_fixture_tracked_paths()
   let tracked = list_concat_unique(acc: classified, items: [planted_path])
   gunbc.stage0_rust_host_observation.RustManifestObserved {
@@ -671,7 +671,7 @@ fn witness_standing_unclassified_observation(planted_path: String) -> gunbc.stag
     tracked_rust_repo_paths: tracked,
     prior_tracked_rust_repo_paths: tracked,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
-    emit_population_evidence: EmitPopulationConfirmed {
+    emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
       emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
     }
   }
@@ -691,7 +691,7 @@ fn first_classified_repo_path(classified: List<String>) -> String {
   )
 }
 
-fn witness_duplicate_tracked_observation() -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
+fn witness_duplicate_tracked_observation() -> gunbc.stage0_rust_host_observation.RustManifestObserved {
   let classified = witness_fixture_tracked_paths()
   let dup_path = first_classified_repo_path(classified: classified)
   let tracked_with_dup = v2.std.algebra.list_snoc_item(xs: classified, item: dup_path)
@@ -701,7 +701,7 @@ fn witness_duplicate_tracked_observation() -> gunbc.stage0_rust_host_observation
     tracked_rust_repo_paths: tracked_with_dup,
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
-    emit_population_evidence: EmitPopulationConfirmed {
+    emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
       emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
     }
   }

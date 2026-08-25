@@ -5,12 +5,12 @@ data ingest_module_note: String = "Gate-A flip wave lane: v2.compiler.ingest is 
 
 fn parse_atom_frontier_class(atom_identity: v2.std.node.Symbol, binding_to_class: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> v2.std.node.Symbol {
   match v2.std.collection.map_get(binding_to_class, atom_identity) {
-    Accepted { value: opt, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } =>
       match opt {
-        Present { value: token_class } => token_class
-        Absent => atom_identity
+        v2.std.collection.Present { value: token_class } => token_class
+        v2.std.collection.Absent => atom_identity
       }
-    Rejected { diagnostics: _ } => atom_identity
+    v2.std.diagnostic.Rejected { diagnostics: _ } => atom_identity
   }
 }
 
@@ -23,8 +23,8 @@ fn binding_class_map_merge_tokens(
     init: acc,
     f: fn(a, t) {
       match t {
-        BoundToken { token_class: c, binding: b } => v2.std.collection.map_insert(m: a, key: b, value: c)
-        FixedToken { token_class: _ } => a
+        v2.std.compilers.target_model.BoundToken { token_class: c, binding: b } => v2.std.collection.map_insert(m: a, key: b, value: c)
+        v2.std.compilers.target_model.FixedToken { token_class: _ } => a
       }
     }
   )
@@ -32,22 +32,22 @@ fn binding_class_map_merge_tokens(
 
 fn binding_class_map_merge_row(acc: Map<v2.std.node.Symbol, v2.std.node.Symbol>, row: v2.std.node.Node) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   match row_token_spine_tokens(row: row) {
-    Rejected { diagnostics: _ } => acc
-    Accepted { value: tokens, diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } => acc
+    v2.std.diagnostic.Accepted { value: tokens, diagnostics: _ } =>
       binding_class_map_merge_tokens(acc: acc, tokens: tokens)
   }
 }
 
 fn grammar_relation_binding_to_token_class_map(rules: v2.std.node.Node) -> Map<v2.std.node.Symbol, v2.std.node.Symbol> {
   match rules.kind {
-    TypeNode { connective: v2.std.node.Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       fold(
         rules.children,
         init: v2.std.collection.empty_map(),
         f: fn(acc, e) {
           match e.label {
-            Named { name: _ } => binding_class_map_merge_row(acc: acc, row: e.target)
-            Positional => acc
+            v2.std.node.Named { name: _ } => binding_class_map_merge_row(acc: acc, row: e.target)
+            v2.std.node.Positional => acc
           }
         }
       )
@@ -69,18 +69,18 @@ fn operational_parse_tree_project_to_formal_captures(
   binding_to_class: Map<v2.std.node.Symbol, v2.std.node.Symbol>
 ) -> List<v2.std.node.Symbol> {
   match v2.std.grammar.node_atom_identity_optional(node: captured) {
-    Present { value: id } =>
+    v2.std.collection.Present { value: id } =>
       v2.std.algebra.list_append(
         left: std.algebra.Empty,
         right: [parse_atom_frontier_class(atom_identity: id, binding_to_class: binding_to_class)]
       )
-    Absent =>
+    v2.std.collection.Absent =>
       fold(
         captured.children,
         init: std.algebra.Empty,
         f: fn(acc, edge) {
           match edge.label {
-            Named { name: n } =>
+            v2.std.node.Named { name: n } =>
               if n == ^grammar_production_identity_node_projection {
                 acc
               } else {
@@ -92,7 +92,7 @@ fn operational_parse_tree_project_to_formal_captures(
                   )
                 )
               }
-            Positional =>
+            v2.std.node.Positional =>
               v2.std.algebra.list_append(
                 left: acc,
                 right: operational_parse_tree_project_to_formal_captures(
@@ -127,9 +127,9 @@ fn grammar_relation_row_forward_token_selection(
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let frontier = concrete_syntax_token_spine_classes(tokens: tokens)
   match grammar_relation_row_forward_selection(frontier: frontier, rules: rules) {
-    Accepted { value: emitted, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: emitted, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: emitted, diagnostics: d }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       v2.std.diagnostic.bind_outcome(
         o: v2.std.grammar.grammar_relation_rules_formal_productions(rules: rules),
         f: fn(productions) {
@@ -138,8 +138,8 @@ fn grammar_relation_row_forward_token_selection(
             lhs: start_lhs,
             tokens: tokens
           ) {
-            Holds { value: emitted } => v2.std.diagnostic.outcome_accepted(value: emitted)
-            Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d)
+            v2.std.witness.Holds { value: emitted } => v2.std.diagnostic.outcome_accepted(value: emitted)
+            v2.std.witness.Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d)
           }
         }
       )

@@ -1,8 +1,9 @@
 module extdeps.tools.findutils
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.gnu.org/software/findutils/manual/html_mono/find.html"
   }
 }
@@ -11,7 +12,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data find_program: NonEmptyStr = "find"
+data find_program: std.types.NonEmptyStr = "find"
 
 // -lname IS A GNU EXTENSION and it matches the TARGET of a symbolic link, not the link's own name --
 // which is the whole reason this operation exists rather than a plain -name walk. Its pattern is a
@@ -29,8 +30,8 @@ fn find_symlink_target_glob_command(
   max_depth: Int,
   path_glob: String,
   link_target_glob: String,
-) -> ArgvCommand {
-  argv_command(
+) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(
     program: find_program,
     arguments: [
       search_root,

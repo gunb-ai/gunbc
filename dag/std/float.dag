@@ -3,7 +3,7 @@ module std.float
 
 type Ieee754Float
 
-type Real = std.approximate_field.ApproximateField<FieldOfFractions<std.integer.Int>>
+type Real = std.approximate_field.ApproximateField<std.algebra.FieldOfFractions<Int>>
 
 type Real32 = std.machine_constraints.Compose<Real, std.machine_constraints.MachineWidth<32>>
 type Real64 = std.machine_constraints.Compose<Real, std.machine_constraints.MachineWidth<64>>

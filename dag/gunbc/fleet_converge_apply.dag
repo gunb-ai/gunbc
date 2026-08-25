@@ -2,7 +2,7 @@ module gunbc.fleet_converge_apply
 
 
 fn fleet_compute_host_for_identity(identity: product.placement_supply.HostIdentity) -> gunbc.fleet_intent.ComputeHost? {
-  find_by_identity(fleet_intent_known_hosts, identity: identity, key: fn(host) { host.identity })
+  gunbc.host_converge.find_by_identity(gunbc.fleet_intent.fleet_intent_known_hosts, identity: identity, key: fn(host) { host.identity })
 }
 
 fn converge_plan_effect(host_converge: gunbc.host_converge.HostConverge) -> gunbc.host_effect.HostEffect {
@@ -12,14 +12,14 @@ fn converge_plan_effect(host_converge: gunbc.host_converge.HostConverge) -> gunb
 fn converge_apply_for_host(
   host_converge: gunbc.host_converge.HostConverge,
   transport: gunbc.host_effect.HostEffectTransport,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence>? {
+) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>? {
   match fleet_compute_host_for_identity(identity: host_converge.identity) {
     Present { value: host } =>
       Present {
-        value: host_effect_apply(
+        value: gunbc.host_effect_realize.host_effect_apply(
           target: gunbc.host_effect.HostOs { node: host },
           effect: converge_plan_effect(host_converge: host_converge),
-          evidence: host_effect_converge_loop_evidence,
+          evidence: gunbc.host_effect.host_effect_converge_loop_evidence,
           transport: transport,
         )
       }
@@ -33,9 +33,9 @@ type FleetConvergeApplyResult =
 
 fn converge_apply(policy: gunbc.host_converge.ConvergePolicy, transport: gunbc.host_effect.HostEffectTransport) -> FleetConvergeApplyResult {
   match policy {
-    ConvergePolicyUnsound { reason: reason } =>
+    gunbc.host_converge.ConvergePolicyUnsound { reason: reason } =>
       FleetConvergeApplyRefused { reason: concat("fleet_converge_apply: policy unsound — ", reason) }
-    ConvergePolicyDerived { hosts: hosts } => {
+    gunbc.host_converge.ConvergePolicyDerived { hosts: hosts } => {
       let folded = fold(
         hosts,
         init: FleetConvergeApplied { host_count: 0, all_converged: true },
@@ -47,7 +47,7 @@ fn converge_apply(policy: gunbc.host_converge.ConvergePolicy, transport: gunbc.h
                 Present { value: r } =>
                   FleetConvergeApplied {
                     host_count: n + 1,
-                    all_converged: ok && reconciliation_converged(r: r),
+                    all_converged: ok && std.realization_reconcile.reconciliation_converged(r: r),
                   }
                 Absent =>
                   FleetConvergeApplyRefused {
@@ -66,7 +66,7 @@ fn converge_apply(policy: gunbc.host_converge.ConvergePolicy, transport: gunbc.h
 }
 
 fn converge_apply_fleet(transport: gunbc.host_effect.HostEffectTransport) -> FleetConvergeApplyResult {
-  converge_apply(policy: fleet_converge_policy(), transport: transport)
+  converge_apply(policy: gunbc.host_converge.fleet_converge_policy(), transport: transport)
 }
 
 fn fleet_converge_thin_invocation(host: product.placement_supply.HostIdentity) -> gunbc.host_effect.ThinInvocation {

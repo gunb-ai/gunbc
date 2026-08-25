@@ -1,76 +1,76 @@
 module v2.test.lens_registry.sg_claims
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data lens_registry_v0_required_ids: List<v2.lens.registry.LensIdV0> = [
-  ComplexityDerivedKernel,
-  ComplexityOptimality,
-  Cost,
-  Parallelism,
-  EffectEnumeration,
-  EffectReach,
-  Idempotency,
-  Provenance,
-  ProductionQualificationOriginProbe,
-  UnusedParameters,
-  StructuralResolution,
-  CitedSymbolResolution,
-  TableDecisionTree,
+  v2.lens.registry.ComplexityDerivedKernel,
+  v2.lens.registry.ComplexityOptimality,
+  v2.lens.registry.Cost,
+  v2.lens.registry.Parallelism,
+  v2.lens.registry.EffectEnumeration,
+  v2.lens.registry.EffectReach,
+  v2.lens.registry.Idempotency,
+  v2.lens.registry.Provenance,
+  v2.lens.registry.ProductionQualificationOriginProbe,
+  v2.lens.registry.UnusedParameters,
+  v2.lens.registry.StructuralResolution,
+  v2.lens.registry.CitedSymbolResolution,
+  v2.lens.registry.TableDecisionTree,
   v2.lens.registry.Determinism,
-  ComplexityAccumulatorCopy,
-  ComplexityLinearityAudit,
-  FallbackArmCensus,
+  v2.lens.registry.ComplexityAccumulatorCopy,
+  v2.lens.registry.ComplexityLinearityAudit,
+  v2.lens.registry.FallbackArmCensus,
   v2.lens.registry.ComplexityLowering,
   v2.lens.registry.Coverage,
-  DependencyFidelity,
-  Discrimination,
-  DispositionRedundancy,
-  DocReachability,
-  DuplicateComputation,
-  MandatoryTag,
-  ExtdepsShapeTransportPolicy,
-  FactCardinality,
-  FactDensity,
-  FnFamily,
+  v2.lens.registry.DependencyFidelity,
+  v2.lens.registry.Discrimination,
+  v2.lens.registry.DispositionRedundancy,
+  v2.lens.registry.DocReachability,
+  v2.lens.registry.DuplicateComputation,
+  v2.lens.registry.MandatoryTag,
+  v2.lens.registry.ExtdepsShapeTransportPolicy,
+  v2.lens.registry.FactCardinality,
+  v2.lens.registry.FactDensity,
+  v2.lens.registry.FnFamily,
   v2.lens.registry.Grounding,
-  HostLanguageTransportScript,
+  v2.lens.registry.HostLanguageTransportScript,
   v2.lens.registry.IdenticalVariantPayload,
-  InertCarrier,
-  IntentLinearity,
+  v2.lens.registry.InertCarrier,
+  v2.lens.registry.IntentLinearity,
   v2.lens.registry.InterfaceSummary,
-  LanguagesConsumerCensus,
-  LeafModelVerification,
-  LifecycleCarrier,
+  v2.lens.registry.LanguagesConsumerCensus,
+  v2.lens.registry.LeafModelVerification,
+  v2.lens.registry.LifecycleCarrier,
   v2.lens.registry.LiveReadClassification,
   v2.lens.registry.MachineShape,
-  MetaExecConfinement,
-  MockTotality,
-  MutationAdequacy,
-  NonFoldResidue,
-  RealizationVocabularyContainment,
-  RosterRegistry,
-  ScheduleLens,
-  SimulatedRelationship,
-  StructuralSimilarity,
-  Subsumption,
-  Synthesis,
-  TestMigrationDebt,
-  UnitModeling,
-  Vacuity,
-  Visibility,
-  WiringLiveness,
+  v2.lens.registry.MetaExecConfinement,
+  v2.lens.registry.MockTotality,
+  v2.lens.registry.MutationAdequacy,
+  v2.lens.registry.NonFoldResidue,
+  v2.lens.registry.RealizationVocabularyContainment,
+  v2.lens.registry.RosterRegistry,
+  v2.lens.registry.ScheduleLens,
+  v2.lens.registry.SimulatedRelationship,
+  v2.lens.registry.StructuralSimilarity,
+  v2.lens.registry.Subsumption,
+  v2.lens.registry.Synthesis,
+  v2.lens.registry.TestMigrationDebt,
+  v2.lens.registry.UnitModeling,
+  v2.lens.registry.Vacuity,
+  v2.lens.registry.Visibility,
+  v2.lens.registry.WiringLiveness,
   v2.lens.registry.WitnessCostLocality
 ]
 
-test fn lens_registry_required_ids_resolve_holds() -> v2.std.logic.Bool {
-  lens_registry_ids_resolve(lens_ids: lens_registry_v0_required_ids)
+test fn lens_registry_required_ids_resolve_holds() -> Bool {
+  v2.lens.registry.lens_registry_ids_resolve(lens_ids: lens_registry_v0_required_ids)
 }
 
-test fn lens_registry_singleton_row_counts_holds() -> v2.std.logic.Bool {
-  lens_registry_row_count(lens_id: ComplexityDerivedKernel) == 1
-    && lens_registry_bound_row_count(lens_id: ComplexityDerivedKernel) == 1
-    && lens_registry_row_count(lens_id: ComplexityOptimality) == 1
-    && lens_registry_bound_row_count(lens_id: ComplexityOptimality) == 1
-    && lens_registry_id_resolves(lens_id: StructuralResolution)
-    && lens_registry_id_resolves(lens_id: TableDecisionTree)
+test fn lens_registry_singleton_row_counts_holds() -> Bool {
+  v2.lens.registry.lens_registry_row_count(lens_id: v2.lens.registry.ComplexityDerivedKernel) == 1
+    && v2.lens.registry.lens_registry_bound_row_count(lens_id: v2.lens.registry.ComplexityDerivedKernel) == 1
+    && v2.lens.registry.lens_registry_row_count(lens_id: v2.lens.registry.ComplexityOptimality) == 1
+    && v2.lens.registry.lens_registry_bound_row_count(lens_id: v2.lens.registry.ComplexityOptimality) == 1
+    && v2.lens.registry.lens_registry_id_resolves(lens_id: v2.lens.registry.StructuralResolution)
+    && v2.lens.registry.lens_registry_id_resolves(lens_id: v2.lens.registry.TableDecisionTree)
 }

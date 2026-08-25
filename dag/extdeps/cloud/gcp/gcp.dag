@@ -3,7 +3,7 @@ module extdeps.cloud.gcp.gcp
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "cloud.google.com/apis/design"
   }
 }
@@ -197,7 +197,7 @@ service oauth2.Google {
     }
 
     idempotent
-    transport rest { method: POST, path: "/token" }
+    transport rest { method: v2.std.network.POST, path: "/token" }
     response {
       200 => GoogleOAuth2Refresh200Body
       400 => GcpOAuth2ErrorShape

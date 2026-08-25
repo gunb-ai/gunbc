@@ -1,8 +1,9 @@
 module extdeps.posix.sh_invocation
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/sh.html"
   }
 }
@@ -38,12 +39,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // point this builder loses its last caller and is deleted with them. It is NOT an escape hatch for a
 // new argv: a caller reaching for it to run a single program with flags is spelling that program's
 // argv inside a string, which review must refuse exactly as it refuses the record literal.
-fn posix_sh_program_command(script: String) -> ArgvCommand {
-  argv_command(program: posix_sh_program, arguments: ["-c", script])
+fn posix_sh_program_command(script: String) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.argv_command(program: posix_sh_program, arguments: ["-c", script])
 }
 
 // PATH-resolved program name, deliberately: this repository has made no filesystem observation of
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data posix_sh_program: NonEmptyStr = "sh"
+data posix_sh_program: std.types.NonEmptyStr = "sh"

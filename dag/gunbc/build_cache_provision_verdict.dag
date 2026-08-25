@@ -1,7 +1,7 @@
 module gunbc.build_cache_provision_verdict
 
 
-data build_cache_provision_verdict_scope_disposition: Disposition = SingleAuthority
+data build_cache_provision_verdict_scope_disposition: std.disposition.Disposition = std.disposition.SingleAuthority
 
 data verdict_variant_rename_note: String = "THE ARMS ARE BuildCacheProvisionConverged / BuildCacheProvisionRefused BECAUSE THE BARE SPELLING WAS A HOMONYM, and it refused the moment the fold entered a closure that already held the other one. gunbc.host_codex_runtime_provision_verdict's CodexRuntimeProvisionVerdict declares ProvisionConverged and ProvisionRefused; this fold declared the same two names over a different type, which was invisible while nothing imported both and became four refusals in gunbc.host_effect_realize the moment the wiring made it import both. Neither pair is generic across the two verdicts -- one carries an executable and a version line, the other a catalog id and a stats line -- so the shared spelling was never carrying a shared concept (DESIGN section 3). gunbc.build_cache_ensure build_cache_ensure_is_converged carries the same repair for the same reason and records the larger defect it exposes: reference binding that changes as a function of which unrelated modules a build happens to load. Renaming the declarations removes the class where disambiguating each reference would only treat the occurrence."
 
@@ -16,10 +16,10 @@ data build_cache_server_placement_doc: String = "WHY PLACEMENT IS A VERDICT AXIS
 data build_cache_placement_authority_is_elsewhere_note: String = "BuildCacheServerPlacement is IMPORTED from gunbc.build_cache_instance, not declared here. It used to be declared in this module with three arms (ServerUnitOwned | ServerLazySpawned | ServerPlacementUnknown). It moved because placement is derived from an observation of a DEPLOYED INSTANCE and this fold is a consumer of it; leaving a copy here would be two definitions of 'correctly placed' that can drift (DESIGN section 3). The arms also changed shape with the move, and the renames are honesty rather than churn: ServerLazySpawned named an INFERRED CAUSE (that the server was lazily auto-spawned) while what an observer can actually see is the current owner, so it is now ServerRunnerOwned carrying the slot and its lifecycle; and ServerUnitOwned became ServerManagedUnitOwned to say WHICH unit, since 'a unit owns it' is satisfied by any unit including the wrong one."
 
 type BuildCacheDaemonObservation
-  = DaemonStatsOk { stats_line: String, placement: BuildCacheServerPlacement }
+  = DaemonStatsOk { stats_line: String, placement: gunbc.build_cache_instance.BuildCacheServerPlacement }
   | DaemonAbsent
-  | DaemonUnresponsive { detail: NonEmptyStr }
-  | DaemonMisconfigured { matched_fragment: String, detail: NonEmptyStr }
+  | DaemonUnresponsive { detail: std.types.NonEmptyStr }
+  | DaemonMisconfigured { matched_fragment: String, detail: std.types.NonEmptyStr }
   | DaemonPathShadowed { resolved: String, expected: String }
   | DaemonUnsupervised { unit: String, unit_state: String }
 
@@ -35,11 +35,11 @@ type BuildCacheProvisionRefusal
   | RefusalPlacementUnknown
 
 type BuildCacheProvisionVerdict
-  = BuildCacheProvisionConverged { catalog_id: CacheInterfaceId, stats_line: String }
-  | BuildCacheProvisionRefused { cause: BuildCacheProvisionRefusal, reason: NonEmptyStr }
+  = BuildCacheProvisionConverged { catalog_id: std.cache_identity.CacheInterfaceId, stats_line: String }
+  | BuildCacheProvisionRefused { cause: BuildCacheProvisionRefusal, reason: std.types.NonEmptyStr }
 
 fn provision_build_cache_absorbing_fallback_widen_sketch(
-  catalog_id: CacheInterfaceId,
+  catalog_id: std.cache_identity.CacheInterfaceId,
   observed: BuildCacheDaemonObservation,
 ) -> BuildCacheProvisionVerdict {
   match observed {
@@ -55,7 +55,7 @@ fn provision_build_cache_absorbing_fallback_widen_sketch(
     DaemonMisconfigured { matched_fragment: frag, detail: d } =>
       BuildCacheProvisionRefused {
         cause: RefusalDaemonMisconfigured,
-        reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
+        reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as std.types.NonEmptyStr,
       }
     DaemonPathShadowed { resolved: r, expected: e } =>
       BuildCacheProvisionConverged {
@@ -92,7 +92,7 @@ fn verdict_shape_matches(
 }
 
 fn build_cache_provision_gate_accepts(
-  catalog_id: CacheInterfaceId,
+  catalog_id: std.cache_identity.CacheInterfaceId,
   verdict: BuildCacheProvisionVerdict,
   observed: BuildCacheDaemonObservation,
 ) -> Bool {
@@ -103,73 +103,73 @@ fn build_cache_provision_gate_accepts(
 }
 
 fn placement_verdict(
-  catalog_id: CacheInterfaceId,
+  catalog_id: std.cache_identity.CacheInterfaceId,
   stats_line: String,
-  placement: BuildCacheServerPlacement,
+  placement: gunbc.build_cache_instance.BuildCacheServerPlacement,
 ) -> BuildCacheProvisionVerdict {
   match placement {
-    ServerManagedUnitOwned { unit: _ } =>
+    gunbc.build_cache_instance.ServerManagedUnitOwned { unit: _ } =>
       BuildCacheProvisionConverged { catalog_id: catalog_id, stats_line: stats_line }
-    ServerRunnerOwned { slot: s, lifecycle: lc } =>
+    gunbc.build_cache_instance.ServerRunnerOwned { slot: s, lifecycle: lc } =>
       BuildCacheProvisionRefused {
         cause: RefusalServerRunnerOwned,
         reason: concat(
           concat("host_build_cache_provision: the configured cache endpoint is owned by a RUNNER-SLOT process, not by the managed unit. Slot index ", to_string(s.slot_index)),
           concat(runner_slot_lifecycle_refusal_clause(lifecycle: lc), " Cache-miss compiles execute as children of the endpoint owner, so that slot's memory ceiling bounds every compile on this host. Refusing: responsive is not placed."),
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       }
-    ServerUnsupervised { cgroup: cg } =>
+    gunbc.build_cache_instance.ServerUnsupervised { cgroup: cg } =>
       BuildCacheProvisionRefused {
         cause: RefusalDaemonUnsupervised,
-        reason: concat("host_build_cache_provision: the endpoint owner is not the intended managed unit; observed cgroup ", concat(cg as String, ". Refusing rather than accepting an out-of-band supervisor.")) as NonEmptyStr,
+        reason: concat("host_build_cache_provision: the endpoint owner is not the intended managed unit; observed cgroup ", concat(cg as String, ". Refusing rather than accepting an out-of-band supervisor.")) as std.types.NonEmptyStr,
       }
-    ServerPlacementAbsent =>
+    gunbc.build_cache_instance.ServerPlacementAbsent =>
       BuildCacheProvisionRefused {
         cause: RefusalDaemonAbsent,
-        reason: "host_build_cache_provision: no process holds the LISTEN on the configured endpoint; the instance is not running." as NonEmptyStr,
+        reason: "host_build_cache_provision: no process holds the LISTEN on the configured endpoint; the instance is not running." as std.types.NonEmptyStr,
       }
-    ServerPlacementUnknown { detail: d } =>
+    gunbc.build_cache_instance.ServerPlacementUnknown { detail: d } =>
       BuildCacheProvisionRefused {
         cause: RefusalPlacementUnknown,
-        reason: concat("host_build_cache_provision: sccache server placement could not be observed; refusing rather than assuming unit-owned: ", d as String) as NonEmptyStr,
+        reason: concat("host_build_cache_provision: sccache server placement could not be observed; refusing rather than assuming unit-owned: ", d as String) as std.types.NonEmptyStr,
       }
   }
 }
 
-fn runner_slot_lifecycle_refusal_clause(lifecycle: RunnerSlotLifecycle) -> String {
+fn runner_slot_lifecycle_refusal_clause(lifecycle: gunbc.build_cache_instance.RunnerSlotLifecycle) -> String {
   match lifecycle {
-    DesiredRunnerSlot =>
+    gunbc.build_cache_instance.DesiredRunnerSlot =>
       " on a slot the fleet still desires, so BIRTH ORDERING failed: a runner was able to run before a managed cache endpoint existed, and its client created the server inside its own cgroup."
-    RetiredRunnerSlot =>
+    gunbc.build_cache_instance.RetiredRunnerSlot =>
       " on a RETIRED slot, so birth ordering AND retirement both failed: the slot's unit was disabled while its cgroup stayed computationally alive, still owning the endpoint and still parenting new compiler children under a ceiling nothing recycles."
   }
 }
 
 fn provision_build_cache_verdict(
-  catalog_id: CacheInterfaceId,
+  catalog_id: std.cache_identity.CacheInterfaceId,
   observed: BuildCacheDaemonObservation,
 ) -> BuildCacheProvisionVerdict {
-  match provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
-    ProvisionBuildCacheCatalogRefused { reason: reason } =>
+  match gunbc.host_build_cache_catalog_gate.provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
+    gunbc.host_build_cache_catalog_gate.ProvisionBuildCacheCatalogRefused { reason: reason } =>
       BuildCacheProvisionRefused {
         cause: RefusalCatalogUnknown,
         reason: reason,
       }
-    ProvisionBuildCacheCatalogRealizable =>
+    gunbc.host_build_cache_catalog_gate.ProvisionBuildCacheCatalogRealizable =>
       match observed {
         DaemonStatsOk { stats_line: line, placement: p } =>
           placement_verdict(catalog_id: catalog_id, stats_line: line, placement: p)
         DaemonAbsent =>
           BuildCacheProvisionRefused {
             cause: RefusalDaemonAbsent,
-            reason: "host_build_cache_provision: sccache daemon absent; fail-closed, no local-build fallback" as NonEmptyStr,
+            reason: "host_build_cache_provision: sccache daemon absent; fail-closed, no local-build fallback" as std.types.NonEmptyStr,
           }
         DaemonUnresponsive { detail: d } =>
           BuildCacheProvisionRefused { cause: RefusalDaemonUnresponsive, reason: d }
         DaemonMisconfigured { matched_fragment: frag, detail: d } =>
           BuildCacheProvisionRefused {
             cause: RefusalDaemonMisconfigured,
-            reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
+            reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as std.types.NonEmptyStr,
           }
         DaemonPathShadowed { resolved: r, expected: e } =>
           BuildCacheProvisionRefused {
@@ -180,7 +180,7 @@ fn provision_build_cache_verdict(
                 concat(" but the modeled install authority is ", e),
                 "; the compiler would call a binary this lane never provisioned. Fail-closed, no local-build fallback.",
               ),
-            ) as NonEmptyStr,
+            ) as std.types.NonEmptyStr,
           }
         DaemonUnsupervised { unit: u, unit_state: s } =>
           BuildCacheProvisionRefused {
@@ -191,20 +191,20 @@ fn provision_build_cache_verdict(
                 concat(" is ", s),
                 "; the daemon is only alive because an invocation auto-started it, so it exits on its own idle timeout and nothing restarts it. Fail-closed, no local-build fallback.",
               ),
-            ) as NonEmptyStr,
+            ) as std.types.NonEmptyStr,
           }
       }
   }
 }
 
-data managed_compile_pool_slice_fixture: NonEmptyStr = gunbc_managed_compile_pool_slice
+data managed_compile_pool_slice_fixture: std.types.NonEmptyStr = gunbc.host_layout.gunbc_managed_compile_pool_slice
 
 fn stats_ok_lazy_spawned_refuses() -> Bool {
   match provision_build_cache_verdict(
-    catalog_id: sccache_local_id,
+    catalog_id: extdeps.cache.sccache.sccache_local_id,
     observed: DaemonStatsOk {
       stats_line: "compile_requests=42",
-      placement: ServerRunnerOwned { slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
+      placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: gunbc.build_cache_instance.RetiredRunnerSlot },
     },
   ) {
     BuildCacheProvisionRefused { cause: RefusalServerRunnerOwned, reason: _ } => true
@@ -215,10 +215,10 @@ fn stats_ok_lazy_spawned_refuses() -> Bool {
 
 fn stats_ok_placement_unknown_refuses() -> Bool {
   match provision_build_cache_verdict(
-    catalog_id: sccache_local_id,
+    catalog_id: extdeps.cache.sccache.sccache_local_id,
     observed: DaemonStatsOk {
       stats_line: "compile_requests=42",
-      placement: ServerPlacementUnknown { detail: "cgroup read unavailable" },
+      placement: gunbc.build_cache_instance.ServerPlacementUnknown { detail: "cgroup read unavailable" },
     },
   ) {
     BuildCacheProvisionRefused { cause: RefusalPlacementUnknown, reason: _ } => true
@@ -229,27 +229,27 @@ fn stats_ok_placement_unknown_refuses() -> Bool {
 
 fn stats_ok_unit_owned_converges() -> Bool {
   match provision_build_cache_verdict(
-    catalog_id: sccache_local_id,
+    catalog_id: extdeps.cache.sccache.sccache_local_id,
     observed: DaemonStatsOk {
       stats_line: "compile_requests=42",
-      placement: ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
+      placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
     },
   ) {
-    BuildCacheProvisionConverged { catalog_id: id, stats_line: _ } => id == sccache_local_id
+    BuildCacheProvisionConverged { catalog_id: id, stats_line: _ } => id == extdeps.cache.sccache.sccache_local_id
     BuildCacheProvisionRefused { cause: _, reason: _ } => false
   }
 }
 
 fn misconfigured_matches_cited_fragment() -> Bool {
   string_contains(
-    s: sccache_fatal_error_log_fragment,
+    s: extdeps.cache.sccache.sccache_fatal_error_log_fragment,
     pattern: "fatal error",
   )
 }
 
 fn daemon_absent_refuses_fail_closed() -> Bool {
   match provision_build_cache_verdict(
-    catalog_id: sccache_local_id,
+    catalog_id: extdeps.cache.sccache.sccache_local_id,
     observed: DaemonAbsent,
   ) {
     BuildCacheProvisionRefused { cause: RefusalDaemonAbsent, reason: _ } => true

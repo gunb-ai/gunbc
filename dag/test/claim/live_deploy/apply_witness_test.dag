@@ -1,5 +1,6 @@
 module test.claim.live_deploy.apply
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // ── RETIRED WITH THE SECOND SLOT ───────────────────────────────────────────────────────────────
@@ -68,10 +69,10 @@ test fn witness_red_control_service_not_ready_reason_surfaces_on_blocked_apply()
     mutation: fixture_converged_mutation(),
     readiness: fixture_service_not_ready_readiness(),
   ) {
-    NotConverged { reason: why, applied: _ } =>
+    std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "ServiceNotReady")
         && string_contains(s: why, pattern: "health probe never succeeded")
-    Converged { evidence: _, applied: _ } => false
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => false
   }
 }
 

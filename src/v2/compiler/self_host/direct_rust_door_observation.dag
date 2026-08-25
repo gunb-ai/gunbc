@@ -20,23 +20,23 @@ fn project_direct_rust_door_observation(
   group: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorProductionGroup
 ) -> DirectRustDoorObservation {
   match group.emission {
-    AssemblyRejected { diagnostics: ds } => AssemblyRefused { reason: ds.head.reason }
-    InferenceRejected { diagnostics: ds } => InferenceRefused { reason: ds.head.reason }
-    EmissionRejected { diagnostics: ds } => CandidateRejected { reason: ds.head.reason }
-    ProducerReceiptRejected { diagnostics: ds } => ReceiptRefused { reason: ds.head.reason }
-    ArtifactProduced { artifact: a } =>
-      match direct_rust_door_source_fidelity_assessment(artifact: a) {
-        ArtifactLeafRefused { cause: _ } => EmittedSourceMismatch
-        ArtifactLeafEstablished =>
-          match direct_rust_door_producer_identity_assessment(artifact: a) {
-            ArtifactLeafRefused { cause: _ } => WrongProducer
-            ArtifactLeafEstablished =>
-              match direct_rust_door_seed_emitter_absence_assessment(artifact: a) {
-                ArtifactLeafRefused { cause: _ } => SeedEmitterReachable
-                ArtifactLeafEstablished =>
-                  match direct_rust_door_source_produced_assessment(artifact: a) {
-                    ArtifactLeafRefused { cause: _ } => SourceProducedQualificationMissing
-                    ArtifactLeafEstablished => DirectRustDoorSourceProduced
+    v2.compiler.self_host.candidate_generation.AssemblyRejected { diagnostics: ds } => AssemblyRefused { reason: ds.head.reason }
+    v2.compiler.self_host.candidate_generation.InferenceRejected { diagnostics: ds } => InferenceRefused { reason: ds.head.reason }
+    v2.compiler.self_host.candidate_generation.EmissionRejected { diagnostics: ds } => CandidateRejected { reason: ds.head.reason }
+    v2.compiler.self_host.candidate_generation.ProducerReceiptRejected { diagnostics: ds } => ReceiptRefused { reason: ds.head.reason }
+    v2.compiler.self_host.candidate_generation.ArtifactProduced { artifact: a } =>
+      match v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_source_fidelity_assessment(artifact: a) {
+        v2.compiler.self_host.v2_emitter_direct_rust_door_contract.ArtifactLeafRefused { cause: _ } => EmittedSourceMismatch
+        v2.compiler.self_host.v2_emitter_direct_rust_door_contract.ArtifactLeafEstablished =>
+          match v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_producer_identity_assessment(artifact: a) {
+            v2.compiler.self_host.v2_emitter_direct_rust_door_contract.ArtifactLeafRefused { cause: _ } => WrongProducer
+            v2.compiler.self_host.v2_emitter_direct_rust_door_contract.ArtifactLeafEstablished =>
+              match v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_seed_emitter_absence_assessment(artifact: a) {
+                v2.compiler.self_host.v2_emitter_direct_rust_door_contract.ArtifactLeafRefused { cause: _ } => SeedEmitterReachable
+                v2.compiler.self_host.v2_emitter_direct_rust_door_contract.ArtifactLeafEstablished =>
+                  match v2.compiler.self_host.v2_emitter_direct_rust_door_contract.direct_rust_door_source_produced_assessment(artifact: a) {
+                    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.ArtifactLeafRefused { cause: _ } => SourceProducedQualificationMissing
+                    v2.compiler.self_host.v2_emitter_direct_rust_door_contract.ArtifactLeafEstablished => DirectRustDoorSourceProduced
                   }
               }
           }
@@ -45,7 +45,7 @@ fn project_direct_rust_door_observation(
 }
 
 // Total over DirectRustDoorObservation with no wildcard arm (DESIGN 6 non-fold residue). A `_ => false` arm here would make the coproduct grow in silence: a tenth observation variant would land as false and read as an honest negative rather than an unhandled case.
-fn direct_rust_door_observation_establishes(o: DirectRustDoorObservation) -> v2.std.logic.Bool {
+fn direct_rust_door_observation_establishes(o: DirectRustDoorObservation) -> Bool {
   match o {
     AssemblyRefused { reason: _ } => false
     InferenceRefused { reason: _ } => false
@@ -59,7 +59,7 @@ fn direct_rust_door_observation_establishes(o: DirectRustDoorObservation) -> v2.
   }
 }
 
-fn direct_rust_door_observation_is_candidate_rejection(o: DirectRustDoorObservation) -> v2.std.logic.Bool {
+fn direct_rust_door_observation_is_candidate_rejection(o: DirectRustDoorObservation) -> Bool {
   match o {
     AssemblyRefused { reason: _ } => false
     InferenceRefused { reason: _ } => false

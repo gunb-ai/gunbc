@@ -230,21 +230,21 @@ fn resolve_additivity_inputs(
   let left_resolution = resolve_arrival_count_at(
     rows: rows,
     fixture: fixture,
-    arrangement: SlitOneOpen,
+    arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitOneOpen,
     band: band,
     exposure: exposure,
   )
   let right_resolution = resolve_arrival_count_at(
     rows: rows,
     fixture: fixture,
-    arrangement: SlitTwoOpen,
+    arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitTwoOpen,
     band: band,
     exposure: exposure,
   )
   let both_resolution = resolve_arrival_count_at(
     rows: rows,
     fixture: fixture,
-    arrangement: BothSlitsOpen,
+    arrangement: extdeps.physics.bach_et_al_2013_double_slit.BothSlitsOpen,
     band: band,
     exposure: exposure,
   )
@@ -311,12 +311,12 @@ fn path_additivity_compare_observed_to_prediction(
   prediction: std.integer.NonNegativeInt,
 ) -> std.algebra.Ordering {
   if observed_both < prediction {
-    Less
+    std.algebra.Less
   } else {
     if observed_both > prediction {
-      Greater
+      std.algebra.Greater
     } else {
-      Equal
+      std.algebra.Equal
     }
   }
 }
@@ -342,7 +342,7 @@ fn path_additivity_witness_observed_vs_prediction(
 fn path_additivity_witness_is_counterexample(
   witness: PathAdditivityCounterexampleWitness,
 ) -> Bool {
-  path_additivity_witness_observed_vs_prediction(witness: witness) != Equal
+  path_additivity_witness_observed_vs_prediction(witness: witness) != std.algebra.Equal
 }
 
 fn path_additivity_refutation_holds_for_synthetic_fixture(
@@ -391,14 +391,14 @@ fn path_additivity_refutation_receipt_resolution_from_resolved_counts(
     prediction: prediction,
   )
   match ordering {
-    Equal =>
+    std.algebra.Equal =>
       RefutationNotEstablished {
         reason: AdditivityHeld {
           band: band,
           exposure: exposure,
         },
       }
-    Less =>
+    std.algebra.Less =>
       RefutationReceiptResolved {
         receipt: path_additivity_refutation_receipt_from_resolved_counts(
           left: left,
@@ -408,7 +408,7 @@ fn path_additivity_refutation_receipt_resolution_from_resolved_counts(
           exposure: exposure,
         ),
       }
-    Greater =>
+    std.algebra.Greater =>
       RefutationReceiptResolved {
         receipt: path_additivity_refutation_receipt_from_resolved_counts(
           left: left,

@@ -5,27 +5,27 @@ data host_run_boundary_admission_witness_note: String = "Discriminating witnesse
 
 fn construction_network_boundary() -> std.frame_boundary.BoundaryMaterialization {
   std.frame_boundary.BoundaryMaterialization {
-    closures: [std.frame_boundary.BoundaryClosure { tree: UriTree, grade: LifecycleByConstruction }]
+    closures: [std.frame_boundary.BoundaryClosure { tree: std.effect_grant.UriTree, grade: std.effect_grant.LifecycleByConstruction }]
   }
 }
 
 fn is_under_constructed_convention(a: v2.compiler.host_run_boundary_admission.HostRunBoundaryAdmission) -> Bool {
   match a {
-    HostRunBoundaryUnderConstructed { grade: g } =>
+    v2.compiler.host_run_boundary_admission.HostRunBoundaryUnderConstructed { grade: g } =>
       match g {
-        LifecycleByConvention => true
-        LifecycleByConstruction => false
+        std.effect_grant.LifecycleByConvention => true
+        std.effect_grant.LifecycleByConstruction => false
       }
-    HostRunBoundaryAdmitted => false
-    HostRunBoundaryRefused { tree: t } => false
+    v2.compiler.host_run_boundary_admission.HostRunBoundaryAdmitted => false
+    v2.compiler.host_run_boundary_admission.HostRunBoundaryRefused { tree: t } => false
   }
 }
 
 fn is_refused_for(a: v2.compiler.host_run_boundary_admission.HostRunBoundaryAdmission, tree: std.effect_grant.NamespaceTree) -> Bool {
   match a {
-    HostRunBoundaryRefused { tree: t } => namespace_tree_eq(a: t, b: tree)
-    HostRunBoundaryAdmitted => false
-    HostRunBoundaryUnderConstructed { grade: g } => false
+    v2.compiler.host_run_boundary_admission.HostRunBoundaryRefused { tree: t } => std.effect_grant.namespace_tree_eq(a: t, b: tree)
+    v2.compiler.host_run_boundary_admission.HostRunBoundaryAdmitted => false
+    v2.compiler.host_run_boundary_admission.HostRunBoundaryUnderConstructed { grade: g } => false
   }
 }
 
@@ -37,15 +37,15 @@ test fn host_run_admits_construction_only() -> Bool {
 
 test fn host_run_refuses_convention_boundary() -> Bool {
   is_under_constructed_convention(
-    a: v2.compiler.host_run_boundary_admission.host_run_network_boundary_admits(provided: simulated_boundary(trees: [UriTree]))
+    a: v2.compiler.host_run_boundary_admission.host_run_network_boundary_admits(provided: extdeps.realization.frame_boundary_simulated.simulated_boundary(trees: [std.effect_grant.UriTree]))
   )
 }
 
 test fn host_run_refuses_missing_network_layer() -> Bool {
   is_refused_for(
     a: v2.compiler.host_run_boundary_admission.host_run_network_boundary_admits(
-      provided: simulated_boundary(trees: [FilesystemPathTree])
+      provided: extdeps.realization.frame_boundary_simulated.simulated_boundary(trees: [std.effect_grant.FilesystemPathTree])
     ),
-    tree: UriTree
+    tree: std.effect_grant.UriTree
   )
 }

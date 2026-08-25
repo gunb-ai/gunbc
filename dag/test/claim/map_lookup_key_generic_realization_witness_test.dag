@@ -1,7 +1,7 @@
 module test.claim.map_lookup_key_generic_realization_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 // The modeled row is `std.algebra` `partial_function_templates` `lookup`, whose key parameter is
 // `ReceiverKey` — the map's own key type, whatever it is. Every sibling realization of that same

@@ -1,5 +1,6 @@
 module v2.workflow.product_receipt_transport
 
+
 // ONE TRANSACTION, and the two things that make it one.
 //
 // The transaction directory is FIXED and is not cleaned between boundaries.
@@ -51,14 +52,14 @@ fn product_receipt_stage_args(
   ]
 }
 
-func run_seven_boundary_product_receipt_ready(root: String, entry: String) -> v2.std.logic.Bool {
+func run_seven_boundary_product_receipt_ready(root: String, entry: String) -> Bool {
   let txn = concat(root, product_receipt_txn_rel)
   let manifest_dir = concat(root, product_receipt_manifest_dir_rel)
 
   let cleared = shell.Remove.RecursiveForce(path: txn)
   let made = shell.Mkdir.Parents(path: manifest_dir)
 
-  let derived = gunbc.WitnessBin.Run(
+  let derived = WitnessBin.Run(
     workdir: root,
     bin_path: tools.host_prelude.witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
     args: product_receipt_ingest_args(manifest_dir: manifest_dir, entry: entry)
@@ -70,7 +71,7 @@ func run_seven_boundary_product_receipt_ready(root: String, entry: String) -> v2
 
   if cleared.success && made.success && derived.success && manifest_read.success {
     let identity = std.content_hash.content_hash_atom(value: manifest_read.content as std.types.NonEmptyStr)
-    let staged = gunbc.WitnessBin.Run(
+    let staged = WitnessBin.Run(
       workdir: root,
       bin_path: tools.host_prelude.witness_bin_release_path(root: root, bin_name: "gunbc"),
       args: product_receipt_stage_args(
@@ -94,9 +95,9 @@ func run_product_receipt_for_entry(entry: String) -> std.process.ProcessExit {
     bin_name: "discover_source_root_ingest"
   )
   match tools.host_prelude.witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
-    WitnessBinRefused { bin_name: _, path: _, reason: _ } =>
+    tools.host_prelude.WitnessBinRefused { bin_name: _, path: _, reason: _ } =>
       std.process.exit_failure(reason: "discover_source_root_ingest is not built")
-    WitnessBinReady { path: _ } =>
+    tools.host_prelude.WitnessBinReady { path: _ } =>
       if run_seven_boundary_product_receipt_ready(root: root.path, entry: entry) {
         std.process.ExitSuccess
       } else {

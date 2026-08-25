@@ -3,7 +3,7 @@ module extdeps.uri_validation
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "url.spec.whatwg.org/"
   }
 }
@@ -22,21 +22,21 @@ type HrefValidation
   | RejectedHref { reason: RejectedUrlScheme }
 
 fn validate_href(url: String) -> HrefValidation {
-  match parse_href_scheme(url: url) {
-    RelativeHref => SafeHref { url: url }
-    HrefScheme { scheme } =>
+  match extdeps.uri.parse_href_scheme(url: url) {
+    extdeps.uri.RelativeHref => SafeHref { url: url }
+    extdeps.uri.HrefScheme { scheme } =>
       match scheme {
-        Http => SafeHref { url: url }
-        Https => SafeHref { url: url }
-        Mailto => SafeHref { url: url }
-        Javascript => RejectedHref { reason: DangerousScheme { scheme: JavascriptScheme } }
-        Data => RejectedHref { reason: DangerousScheme { scheme: DataScheme } }
-        Vbscript => RejectedHref { reason: DangerousScheme { scheme: VbscriptScheme } }
-        File => RejectedHref { reason: SchemeNotAllowlisted }
-        Ftp => RejectedHref { reason: SchemeNotAllowlisted }
-        Tftp => RejectedHref { reason: SchemeNotAllowlisted }
+        extdeps.uri.Http => SafeHref { url: url }
+        extdeps.uri.Https => SafeHref { url: url }
+        extdeps.uri.Mailto => SafeHref { url: url }
+        extdeps.uri.Javascript => RejectedHref { reason: DangerousScheme { scheme: JavascriptScheme } }
+        extdeps.uri.Data => RejectedHref { reason: DangerousScheme { scheme: DataScheme } }
+        extdeps.uri.Vbscript => RejectedHref { reason: DangerousScheme { scheme: VbscriptScheme } }
+        extdeps.uri.File => RejectedHref { reason: SchemeNotAllowlisted }
+        extdeps.uri.Ftp => RejectedHref { reason: SchemeNotAllowlisted }
+        extdeps.uri.Tftp => RejectedHref { reason: SchemeNotAllowlisted }
       }
-    UnknownHref => RejectedHref { reason: SchemeNotAllowlisted }
+    extdeps.uri.UnknownHref => RejectedHref { reason: SchemeNotAllowlisted }
   }
 }
 
@@ -47,15 +47,15 @@ type RejectedUrl {
 
 fn find_first_rejected_url(node: std.markup.Fragment) -> RejectedUrl? {
   match node {
-    FragmentText { content: _ } => Absent
-    RawNode { content: _ } => Absent
-    Element { tag: _, attributes, children } => {
+    std.markup.FragmentText { content: _ } => Absent
+    std.markup.RawNode { content: _ } => Absent
+    std.markup.Element { tag: _, attributes, children } => {
       let from_attr = fold(attributes,
         init: Absent,
         f: (acc, a) => match acc {
           Present { value: r } => Present { value: r }
           Absent =>
-            if attr_is_url_attr(name: a.name) {
+            if std.markup.attr_is_url_attr(name: a.name) {
               match validate_href(url: a.value) {
                 SafeHref { url: _ } => Absent
                 RejectedHref { reason: rs } =>

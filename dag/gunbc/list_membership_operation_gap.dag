@@ -31,8 +31,8 @@ module gunbc.list_membership_operation_gap
 // measurement established.
 
 type ListMembershipGapSite {
-  collection_producer: DeclarationRef
-  index_coverage: CitationIndexCoverage
+  collection_producer: std.decl_ref.DeclarationRef
+  index_coverage: std.decl_ref.CitationIndexCoverage
   element_type: String
   occurrences: Int
   argument_shape: MembershipArgumentShape
@@ -70,36 +70,36 @@ type MembershipArgumentShape
 // the enclosing function — the parameter has no declaration of its own to cite.
 data list_membership_gap_sites: List<ListMembershipGapSite> = [
   {
-    collection_producer: decl_ref(module_path: "gunbc.publication_policy", decl_name: "known_publication_roots"),
-    index_coverage: CitableThroughDeclIndex,
+    collection_producer: std.decl_ref.decl_ref(module_path: "gunbc.publication_policy", decl_name: "known_publication_roots"),
+    index_coverage: std.decl_ref.CitableThroughDeclIndex,
     element_type: "String",
     occurrences: 1,
     argument_shape: PositionalPair,
   },
   {
-    collection_producer: decl_ref(module_path: "gunbc.session_auto_publish", decl_name: "write_set_refusals"),
-    index_coverage: CitableThroughDeclIndex,
+    collection_producer: std.decl_ref.decl_ref(module_path: "gunbc.session_auto_publish", decl_name: "write_set_refusals"),
+    index_coverage: std.decl_ref.CitableThroughDeclIndex,
     element_type: "String",
     occurrences: 1,
     argument_shape: PositionalPair,
   },
   {
-    collection_producer: decl_ref(module_path: "extdeps.unicode.blocks", decl_name: "zero_width_codepoints"),
-    index_coverage: CitableThroughDeclIndex,
+    collection_producer: std.decl_ref.decl_ref(module_path: "extdeps.unicode.blocks", decl_name: "zero_width_codepoints"),
+    index_coverage: std.decl_ref.CitableThroughDeclIndex,
     element_type: "Int",
     occurrences: 1,
     argument_shape: NamedItemWithoutEquality,
   },
   {
-    collection_producer: decl_ref(module_path: "test.claim.attribution_span_witness", decl_name: "unattributed_widths"),
-    index_coverage: OutsideDeclIndexTestWitnessModule,
+    collection_producer: std.decl_ref.decl_ref(module_path: "test.claim.attribution_span_witness", decl_name: "unattributed_widths"),
+    index_coverage: std.decl_ref.OutsideDeclIndexTestWitnessModule,
     element_type: "Nat",
     occurrences: 3,
     argument_shape: PositionalPair,
   },
   {
-    collection_producer: decl_ref(module_path: "test.claim.recorded_observation_envelope_witness", decl_name: "active_ids"),
-    index_coverage: OutsideDeclIndexTestWitnessModule,
+    collection_producer: std.decl_ref.decl_ref(module_path: "test.claim.recorded_observation_envelope_witness", decl_name: "active_ids"),
+    index_coverage: std.decl_ref.OutsideDeclIndexTestWitnessModule,
     element_type: "String",
     occurrences: 4,
     argument_shape: PositionalPair,
@@ -121,11 +121,11 @@ data list_membership_gap_sites: List<ListMembershipGapSite> = [
 // instance carrier `gunbc.lambda_argument_typing_gate`, and not after it: two carriers of one shape
 // where only one is enrolled is the exact asymmetry that lens's own widening note was written
 // against — one class of reference enforced and an adjacent one silently exempt.
-data list_membership_gap_empty_declaration_refs: List<DeclarationRef> = []
+data list_membership_gap_empty_declaration_refs: List<std.decl_ref.DeclarationRef> = []
 
 fn list_membership_gap_declaration_refs_from(
   sites: List<ListMembershipGapSite>
-) -> List<DeclarationRef> {
+) -> List<std.decl_ref.DeclarationRef> {
   fold_list(
     xs: sites,
     empty: list_membership_gap_empty_declaration_refs,
@@ -134,18 +134,18 @@ fn list_membership_gap_declaration_refs_from(
 }
 
 fn list_membership_gap_citable_sites() -> List<ListMembershipGapSite> {
-  filter(list_membership_gap_sites, s => citation_is_outside_index(coverage: s.index_coverage) == false)
+  filter(list_membership_gap_sites, s => std.decl_ref.citation_is_outside_index(coverage: s.index_coverage) == false)
 }
 
 fn list_membership_gap_outside_index_sites() -> List<ListMembershipGapSite> {
-  filter(list_membership_gap_sites, s => citation_is_outside_index(coverage: s.index_coverage))
+  filter(list_membership_gap_sites, s => std.decl_ref.citation_is_outside_index(coverage: s.index_coverage))
 }
 
-fn list_membership_gap_declaration_refs() -> List<DeclarationRef> {
+fn list_membership_gap_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
   list_membership_gap_declaration_refs_from(sites: list_membership_gap_citable_sites())
 }
 
-fn list_membership_gap_outside_index_refs() -> List<DeclarationRef> {
+fn list_membership_gap_outside_index_refs() -> List<std.decl_ref.DeclarationRef> {
   list_membership_gap_declaration_refs_from(sites: list_membership_gap_outside_index_sites())
 }
 

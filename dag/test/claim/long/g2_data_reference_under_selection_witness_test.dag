@@ -25,9 +25,9 @@ module test.claim.long.g2_data_reference_under_selection_witness_test
 
 data g2_data_reference_under_selection_note: String = "Asserts the DESIRED classification: the specimen is a runtime/live read because its body reaches decl_facts through a data initializer. Observed on 341d3203bc2 (includes #8140): LiveReadSelectionClassified { LocalRead } via live_read_selection_manifest_live — not Refused. That LocalRead licenses a skip today; this witness therefore fails until the traversal repair lands, and is admitted QuarantineProbeExpectRed / ExpectAssertionFalse so the red is agreement rather than ambient discovery failure.
 
-POOL NARROWING (cost, stated rather than silent): specimen_pool_roots is [dag/test/claim, dag/test/fixture/scaffold_disposition_census], not the production whole pool [dag, src/v2]. live_read_selection_manifest_live still mints WholeTreeFactSubject nullarily — this call does not author a completeness label beside a chosen fact list (whole_tree_subject_mint_site_law). The roots are narrowed for cost: measured eval wall for this specimen at the narrow pool is about 14s (~13953ms wall on release claim_batch), which already exceeds the 5s FastLaneEvalBudget thread-CPU lane and is why the admission row declares SubstrateLongLaneEvalBudget. The claim under test is TRAVERSAL (data declarations absent from the FnArrowDecl walk population), not pool breadth — the specimen entry, its data hop, and the decl_facts callee all live inside the narrowed roots, and carriers match by callee text rather than by home-module membership in the pool. A future reader must treat the narrowing as a stated bound: if a repair ever turns out to be pool-sensitive, re-measure at full pool rather than reading a green here as whole-tree evidence.
+POOL NARROWING (cost, stated rather than silent): specimen_pool_roots is [dag/test/claim, dag/test/fixture/scaffold_disposition_census], not the production whole pool [dag, src/v2]. v2.lens.live_read_classification.live_read_selection_manifest_live still mints WholeTreeFactSubject nullarily — this call does not author a completeness label beside a chosen fact list (whole_tree_subject_mint_site_law). The roots are narrowed for cost: measured eval wall for this specimen at the narrow pool is about 14s (~13953ms wall on release claim_batch), which already exceeds the 5s FastLaneEvalBudget thread-CPU lane and is why the admission row declares SubstrateLongLaneEvalBudget. The claim under test is TRAVERSAL (data declarations absent from the FnArrowDecl walk population), not pool breadth — the specimen entry, its data hop, and the decl_facts callee all live inside the narrowed roots, and carriers match by callee text rather than by home-module membership in the pool. A future reader must treat the narrowing as a stated bound: if a repair ever turns out to be pool-sensitive, re-measure at full pool rather than reading a green here as whole-tree evidence.
 
-FULL-POOL CONFIRMATION (one-shot, not enrolled): the same specimen with pool_roots=[dag, src/v2] also returned LiveReadSelectionClassified { LocalRead } (probe classification_is_local PASS; wall≈214304ms). So the under-selection is not an artifact of the narrow roots. The enrolled witness keeps the narrow pool because ~14s vs ~214s is the cost of what the permanent control needs to prove."
+FULL-POOL CONFIRMATION (one-shot, not enrolled): the same specimen with pool_roots=[dag, src/v2] also returned v2.std.live_read.LiveReadSelectionClassified { v2.std.live_read.LocalRead } (probe classification_is_local PASS; wall≈214304ms). So the under-selection is not an artifact of the narrow roots. The enrolled witness keeps the narrow pool because ~14s vs ~214s is the cost of what the permanent control needs to prove."
 
 data specimen_entry_path: String = "dag/test/claim/scaffold_disposition_census_fixture_witness_test.dag"
 
@@ -68,19 +68,19 @@ fn specimen_projection() -> v2.std.live_read.LiveReadSelectionProjection {
       exclude_substrings: []
     )
   ) {
-    HeadFound { value: row } => row.projection
-    HeadAbsent =>
+    v2.std.algebra.HeadFound { value: row } => row.projection
+    v2.std.algebra.HeadAbsent =>
       v2.std.live_read.LiveReadSelectionRefused {
         cause: "manifest produced no rows for the specimen request"
       }
   }
 }
 
-test fn specimen_classifies_as_runtime_read() -> v2.std.logic.Bool {
+test fn specimen_classifies_as_runtime_read() -> Bool {
   match specimen_projection() {
-    LiveReadSelectionClassified { classification: c } =>
+    v2.std.live_read.LiveReadSelectionClassified { classification: c } =>
       v2.lens.live_read_classification.classification_has_runtime_read(classification: c)
-    LiveReadSelectionRefused { cause: _ } => false
+    v2.std.live_read.LiveReadSelectionRefused { cause: _ } => false
   }
 }
 
@@ -88,7 +88,7 @@ test fn specimen_classifies_as_runtime_read() -> v2.std.logic.Bool {
 // specimen_classifies_as_runtime_read is false in TWO states that are opposites on
 // the safety axis: Classified{LocalRead}, which is the strongest safe-to-skip verdict
 // the selection seam has and is therefore the harm, and Refused, which is fail-closed
-// and licenses nothing. A single v2.std.logic.Bool cannot separate them, so on its own the
+// and licenses nothing. A single Bool cannot separate them, so on its own the
 // UNDER-selection claim would rest on the note beside it — and no Accepted program can
 // read a note (DESIGN 4c). This claim carries the other bit, so the pair has a unique
 // signature per reachable state:
@@ -108,13 +108,13 @@ test fn specimen_classifies_as_runtime_read() -> v2.std.logic.Bool {
 // to expected-red across today's population (exact_witness_admission_witness_test
 // every_declared_long_budget_row_is_also_expected_red_today). Asserting the desired
 // state keeps this inside that population instead of retiring that claim.
-test fn specimen_does_not_classify_as_local_read() -> v2.std.logic.Bool {
+test fn specimen_does_not_classify_as_local_read() -> Bool {
   match specimen_projection() {
-    LiveReadSelectionClassified { classification: c } =>
+    v2.std.live_read.LiveReadSelectionClassified { classification: c } =>
       match c {
-        LocalRead => false
-        RuntimeRead { carriers: _ } => true
+        v2.std.live_read.LocalRead => false
+        v2.std.live_read.RuntimeRead { carriers: _ } => true
       }
-    LiveReadSelectionRefused { cause: _ } => true
+    v2.std.live_read.LiveReadSelectionRefused { cause: _ } => true
   }
 }

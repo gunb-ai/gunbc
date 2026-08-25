@@ -11,13 +11,13 @@ data slb_logic_source_rel: String = "dag/std/logic.dag"
 
 data slb_driver_main_source: String = "use v1_compiled::std_logic as emitted;\nuse v1_compiler::std_logic as seed;\n\nfn eq(e: emitted::Classical, s: seed::Classical) -> bool {\n    matches!(\n        (e, s),\n        (emitted::Classical::True, seed::Classical::True)\n            | (emitted::Classical::False, seed::Classical::False)\n    )\n}\n\nfn main() {\n    let inject_fault = std::env::args().any(|a| a == \"--inject-fault\");\n    let vals = [emitted::Classical::True, emitted::Classical::False];\n    let svals = [seed::Classical::True, seed::Classical::False];\n    let mut all_pass = true;\n    let mut cases = 0;\n\n    for i in 0..2 {\n        let call_on = if inject_fault && i == 0 { vals[1] } else { vals[i] };\n        let er = emitted::classical_not(call_on);\n        let sr = seed::classical_not(svals[i]);\n        let ok = eq(er, sr);\n        println!(\"not({:?}) emitted={:?} seed={:?} eq={}\", vals[i], er, sr, ok);\n        all_pass = all_pass && ok;\n        cases += 1;\n    }\n\n    for i in 0..2 {\n        for j in 0..2 {\n            let er = emitted::classical_and(vals[i], vals[j]);\n            let sr = seed::classical_and(svals[i], svals[j]);\n            let ok = eq(er, sr);\n            println!(\"and({:?},{:?}) emitted={:?} seed={:?} eq={}\", vals[i], vals[j], er, sr, ok);\n            all_pass = all_pass && ok;\n            cases += 1;\n\n            let er2 = emitted::classical_or(vals[i], vals[j]);\n            let sr2 = seed::classical_or(svals[i], svals[j]);\n            let ok2 = eq(er2, sr2);\n            println!(\"or({:?},{:?}) emitted={:?} seed={:?} eq={}\", vals[i], vals[j], er2, sr2, ok2);\n            all_pass = all_pass && ok2;\n            cases += 1;\n        }\n    }\n\n    println!(\"SELF_HOST_LOGIC_CASES_COMPARED: {}\", cases);\n\n    if all_pass {\n        println!(\"SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: PASS\");\n        std::process::exit(0);\n    } else {\n        println!(\"SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: FAIL\");\n        std::process::exit(1);\n    }\n}\n"
 
-data slb_scaffold_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: slb_driver_main_source + slb_cargo_toml — the hand-written Rust equivalence-comparison driver (imports emitted v1_compiled::std_logic and seed v1_compiler::std_logic, walks the Classical truth table, --inject-fault RED control) and its driver-crate manifest, both String carriers. These are the meta-harness scaffold for the weak self-host receipt, not a forked emit path: the module content under test (dag/std/logic.dag) is read live and emitted by the real gunbc binary; only the seed-vs-emitted oracle around it is authored by hand. Static config/driver strings handed to typed host ops (not modeled-emit-fn output spliced through string ops). DISSOLVES WHEN a modeled self-host behavioral-equivalence harness producer emits the comparison driver + manifest (parallel to emit_host_transport's typed-op migration) — retire these two string carriers then.")
+data slb_scaffold_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: slb_driver_main_source + slb_cargo_toml — the hand-written Rust equivalence-comparison driver (imports emitted v1_compiled::std_logic and seed v1_compiler::std_logic, walks the Classical truth table, --inject-fault RED control) and its driver-crate manifest, both String carriers. These are the meta-harness scaffold for the weak self-host receipt, not a forked emit path: the module content under test (dag/std/logic.dag) is read live and emitted by the real gunbc binary; only the seed-vs-emitted oracle around it is authored by hand. Static config/driver strings handed to typed host ops (not modeled-emit-fn output spliced through string ops). DISSOLVES WHEN a modeled self-host behavioral-equivalence harness producer emits the comparison driver + manifest (parallel to emit_host_transport's typed-op migration) — retire these two string carriers then.")
 
 data slb_receipt_pass_marker: String = "SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: PASS"
 
 data slb_receipt_fail_marker: String = "SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: FAIL"
 
-// std.logic.classical_not over 2 inputs, plus std.logic.classical_and and std.logic.classical_or over 4 input pairs
+// classical_not over 2 inputs, plus classical_and and classical_or over 4 input pairs
 // each: 2 + 4 + 4. This is the DECLARED population; the driver reports the count it
 // actually walked, and slb_cases_marker joins the two. Before that join the driver could
 // compare any subset and still print PASS, because PASS reported agreement over whatever
@@ -27,7 +27,7 @@ data slb_receipt_fail_marker: String = "SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: FAIL
 // the driver was measured walking 10 — a count sitting beside a description, joined to
 // nothing, which is the same defect the join exists to close. It was caught by compiling
 // the driver and reading its own reported count, not by re-reading either.
-data slb_corpus_cases: std.integer.Int = 10
+data slb_corpus_cases: Int = 10
 
 data slb_corpus_identity: String = "std-logic-classical-truth-table"
 
@@ -90,9 +90,9 @@ fn slb_comparison_observation() -> v2.compiler.self_host.promotion_admission.Beh
   let logic_written = Filesystem.Write(path: concat(scratch_src.path, "/std/logic.dag"), content: logic_read.content)
 
   let out_dir = shell.Mktemp.Dir()
-  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
-  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
-  let emit = gunbc.WitnessBin.Run(
+  let gunbc_built = tools.host_prelude.witness_bin_ready(root: root.path, bin: tools.host_prelude.witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let gunbc_bin = tools.host_prelude.witness_bin_release_path(root: root.path, bin_name: "gunbc")
+  let emit = WitnessBin.Run(
     workdir: root.path,
     bin_path: gunbc_bin,
     args: [
@@ -115,8 +115,8 @@ fn slb_comparison_observation() -> v2.compiler.self_host.promotion_admission.Beh
   )
 
   let witness_bin_path = concat(out_dir.path, "/target/release/witness")
-  let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
-  let fault_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
+  let pass_run = WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
+  let fault_run = WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
 
   let cleanup_src = shell.Remove.RecursiveForce(path: scratch_src.path)
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
@@ -185,27 +185,27 @@ fn slb_comparison_observation() -> v2.compiler.self_host.promotion_admission.Beh
 fn slb_behavioral_receipt_holds() -> Bool {
   let o = slb_comparison_observation()
   match o.build {
-    Observed { value: b } =>
+    v2.compiler.self_host.promotion_admission.Observed { value: b } =>
       match b {
-        BuildGreen =>
+        v2.compiler.self_host.promotion_admission.BuildGreen =>
           match o.equivalence {
-            Observed { value: e } =>
+            v2.compiler.self_host.promotion_admission.Observed { value: e } =>
               match e {
-                BehaviorAgrees =>
+                v2.compiler.self_host.promotion_admission.BehaviorAgrees =>
                   match o.fault {
-                    Observed { value: f } =>
+                    v2.compiler.self_host.promotion_admission.Observed { value: f } =>
                       match f {
-                        FaultCaught => true
-                        FaultNotCaught { at_case: _ } => false
+                        v2.compiler.self_host.promotion_admission.FaultCaught => true
+                        v2.compiler.self_host.promotion_admission.FaultNotCaught { at_case: _ } => false
                       }
-                    ObservationUnavailable { cause: _ } => false
+                    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: _ } => false
                   }
-                BehaviorDiverges { at_case: _ } => false
+                v2.compiler.self_host.promotion_admission.BehaviorDiverges { at_case: _ } => false
               }
-            ObservationUnavailable { cause: _ } => false
+            v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: _ } => false
           }
-        BuildFailed { cause: _ } => false
+        v2.compiler.self_host.promotion_admission.BuildFailed { cause: _ } => false
       }
-    ObservationUnavailable { cause: _ } => false
+    v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: _ } => false
   }
 }

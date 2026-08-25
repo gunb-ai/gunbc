@@ -68,7 +68,7 @@ fn diff_baseline_ref(b: DiffBaseline) -> std.types.GitRef {
   match b {
     MergeTarget { ref: r } => r
     ExactReplayBoundary { base: oid, head: _, observed_relation: _ } =>
-      git_object_id_wire_hex(oid: oid) as std.types.GitRef
+      extdeps.git.object_store.git_object_id_wire_hex(oid: oid) as std.types.GitRef
     PushBefore { ref: r } => r
     PushParent { ref: r } => r
     OperatorOverride { ref: r } => r
@@ -78,7 +78,7 @@ fn diff_baseline_ref(b: DiffBaseline) -> std.types.GitRef {
 fn diff_baseline_diff_base(b: DiffBaseline) -> String {
   match b {
     ExactReplayBoundary { base: oid, head: _, observed_relation: _ } =>
-      git_object_id_wire_hex(oid: oid) as String
+      extdeps.git.object_store.git_object_id_wire_hex(oid: oid) as String
     MergeTarget { ref: r } => r as String
     PushBefore { ref: r } => r as String
     PushParent { ref: r } => r as String
@@ -89,7 +89,7 @@ fn diff_baseline_diff_base(b: DiffBaseline) -> String {
 fn diff_baseline_diff_head(b: DiffBaseline, default_head: String) -> String {
   match b {
     ExactReplayBoundary { base: _, head: oid, observed_relation: _ } =>
-      git_object_id_wire_hex(oid: oid) as String
+      extdeps.git.object_store.git_object_id_wire_hex(oid: oid) as String
     MergeTarget { ref: _ } => default_head
     PushBefore { ref: _ } => default_head
     PushParent { ref: _ } => default_head
@@ -110,7 +110,7 @@ fn diff_baseline_is_exact_replay(b: DiffBaseline) -> Bool {
 fn resolve_diff_window(observation: gunbc.git_diff_change_window.GitDiffWindowObservation?) -> DiffBaselineResolution? {
   match observation {
     Absent => none
-    Present { value: GitDiffWindowObserved { window: window } } =>
+    Present { value: gunbc.git_diff_change_window.GitDiffWindowObserved { window: window } } =>
       Present {
         value: BaselineSelected {
           baseline: ExactReplayBoundary {
@@ -120,13 +120,13 @@ fn resolve_diff_window(observation: gunbc.git_diff_change_window.GitDiffWindowOb
           }
         }
       }
-    Present { value: GitDiffWindowMalformed { detail: detail } } =>
+    Present { value: gunbc.git_diff_change_window.GitDiffWindowMalformed { detail: detail } } =>
       Present {
         value: BaselineRefused {
           reason: concat("exact diff window malformed — ", concat(detail, "; halting the floor (AFFECTED-SET REFUSAL)"))
         }
       }
-    Present { value: GitDiffWindowReadRefused { path: path, cause: cause } } =>
+    Present { value: gunbc.git_diff_change_window.GitDiffWindowReadRefused { path: path, cause: cause } } =>
       Present {
         value: BaselineRefused {
           reason: concat(
@@ -161,7 +161,7 @@ fn resolve_merge_target(base_ref: String?, default_remote_name: String) -> DiffB
       } else {
         BaselineSelected {
           baseline: MergeTarget {
-            ref: git_remote_ref(parts: extdeps.git.GitRemoteRefParts { remote: default_remote_name, ref_name: b })
+            ref: extdeps.git.git_remote_ref(parts: extdeps.git.GitRemoteRefParts { remote: default_remote_name, ref_name: b })
           }
         }
       }

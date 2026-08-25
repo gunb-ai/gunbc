@@ -2,7 +2,7 @@ module test.manual.mercurial_upstream_model_execution
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data mercurial_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Mercurial R0 fixture. This is a runtime-present typed effect graph: shell.Mktemp/Mkdir/Test/Remove, Filesystem.Write, and individual gunbc.WitnessBin.Run argv invocations. No shell program is serialized. A real Mercurial CLI creates three changesets on two heads, observes portable node identities separately from clone-local revision numbers, reads a bookmark and local tag, checks public/draft/secret phases, copy metadata, manifest executable/symlink flags, repository requirements, and runs `hg verify`. Changeset identities are computed by Mercurial and checked as distinct 40-character upstream identities rather than embedded constants. Local recipe: put a real `hg` on PATH, then run claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/mercurial_upstream_model_execution_test.dag --function witness_mercurial_cli_fixture_projects_and_independently_reads_back."
 
@@ -14,13 +14,13 @@ fn mercurial_decode_live_node_ids_step(
   match state {
     Absent => none
     Present { value: nodes } =>
-      match mercurial_decode_node_identity(
+      match extdeps.mercurial.mercurial_decode_node_identity(
         observation: extdeps.mercurial.MercurialNodeIdentityObservation {
           role: role,
           text: std.algebra.trim(s: text),
         },
       ) {
-        MercurialNodeIdentityDecoded { node } =>
+        extdeps.mercurial.MercurialNodeIdentityDecoded { node } =>
           Present { value: append(nodes, items: [node]) }
         _ => none
       }
@@ -68,19 +68,19 @@ fn mercurial_live_projection_decodes(
 ) -> Bool {
   match mercurial_decode_live_node_ids(
     texts: changeset_texts,
-    role: MercurialChangesetNodeIdentity,
+    role: extdeps.mercurial.MercurialChangesetNodeIdentity,
   ) {
     Absent => false
     Present { value: changesets } =>
       match mercurial_decode_live_node_ids(
         texts: manifest_texts,
-        role: MercurialManifestNodeIdentity,
+        role: extdeps.mercurial.MercurialManifestNodeIdentity,
       ) {
         Absent => false
         Present { value: manifests } =>
           match mercurial_decode_live_node_ids(
             texts: file_revision_texts,
-            role: MercurialFileRevisionNodeIdentity,
+            role: extdeps.mercurial.MercurialFileRevisionNodeIdentity,
           ) {
             Absent => false
             Present { value: files } =>
@@ -104,15 +104,15 @@ fn mercurial_live_projection_decodes(
                   file_revisions: [
                     extdeps.mercurial.MercurialFileRevision {
                       node: f0,
-                      parents: MercurialNoParents,
-                      copy: MercurialNotCopied,
-                      content: octets_bytes(o: [109, 97, 105, 110]),
+                      parents: extdeps.mercurial.MercurialNoParents,
+                      copy: extdeps.mercurial.MercurialNotCopied,
+                      content: std.bytes.octets_bytes(o: [109, 97, 105, 110]),
                     },
                     extdeps.mercurial.MercurialFileRevision {
                       node: fl,
-                      parents: MercurialNoParents,
-                      copy: MercurialNotCopied,
-                      content: octets_bytes(
+                      parents: extdeps.mercurial.MercurialNoParents,
+                      copy: extdeps.mercurial.MercurialNotCopied,
+                      content: std.bytes.octets_bytes(
                         o: [115, 114, 99, 47, 109, 97, 105, 110, 46, 100, 97, 103],
                       ),
                     },
@@ -123,13 +123,13 @@ fn mercurial_live_projection_decodes(
                         path: live_path_source,
                         file_revision: f0,
                       },
-                      content: octets_bytes(o: [114, 117, 110]),
+                      content: std.bytes.octets_bytes(o: [114, 117, 110]),
                     },
                     extdeps.mercurial.MercurialFileRevision {
                       node: f2,
                       parents: extdeps.mercurial.MercurialOneParent { parent: f0 },
-                      copy: MercurialNotCopied,
-                      content: octets_bytes(
+                      copy: extdeps.mercurial.MercurialNotCopied,
+                      content: std.bytes.octets_bytes(
                         o: [109, 97, 105, 110, 115, 105, 100, 101],
                       ),
                     },
@@ -190,9 +190,9 @@ fn mercurial_live_projection_decodes(
                     extdeps.mercurial.MercurialChangeset {
                       node: c0,
                       manifest: m0,
-                      parents: MercurialNoParents,
+                      parents: extdeps.mercurial.MercurialNoParents,
                       branch: "default",
-                      branch_closure: MercurialBranchRemainsOpen,
+                      branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
                       user: "author@example.invalid",
                       authored_at: "0 0",
                       description: "root",
@@ -202,7 +202,7 @@ fn mercurial_live_projection_decodes(
                       manifest: m1,
                       parents: extdeps.mercurial.MercurialOneParent { parent: c0 },
                       branch: "default",
-                      branch_closure: MercurialBranchRemainsOpen,
+                      branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
                       user: "author@example.invalid",
                       authored_at: "1 0",
                       description: "left",
@@ -212,7 +212,7 @@ fn mercurial_live_projection_decodes(
                       manifest: m2,
                       parents: extdeps.mercurial.MercurialOneParent { parent: c0 },
                       branch: "default",
-                      branch_closure: MercurialBranchRemainsOpen,
+                      branch_closure: extdeps.mercurial.MercurialBranchRemainsOpen,
                       user: "author@example.invalid",
                       authored_at: "2 0",
                       description: "right",
@@ -243,7 +243,7 @@ fn mercurial_live_projection_decodes(
                     extdeps.mercurial.MercurialTag {
                       name: "scratch",
                       target: c2,
-                      source: MercurialLocalTag,
+                      source: extdeps.mercurial.MercurialLocalTag,
                     },
                   ],
                   phases: [
@@ -260,13 +260,13 @@ fn mercurial_live_projection_decodes(
                       phase: "secret",
                     },
                   ],
-                  publishing: MercurialNonPublishingServer,
+                  publishing: extdeps.mercurial.MercurialNonPublishingServer,
                   subrepositories: [],
-                  evolution: MercurialEvolutionNotEnabled,
+                  evolution: extdeps.mercurial.MercurialEvolutionNotEnabled,
                 }
               }
-              match mercurial_decode_projection(projection: projection) {
-                MercurialDecoded { repository: _ } =>
+              match extdeps.mercurial.mercurial_decode_projection(projection: projection) {
+                extdeps.mercurial.MercurialDecoded { repository: _ } =>
                   count(changesets) == 3
                     && count(manifests) == 3
                     && count(files) == 4
@@ -289,28 +289,28 @@ fn mercurial_r0_typed_execution_read_back() -> String {
     let run_path = concat(bin_dir, "/run")
     let requires_path = concat(fixture.path, "/.hg/requires")
 
-    let initialized = gunbc.WitnessBin.Run(
+    let initialized = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["init", "."],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
     let src_created = shell.Mkdir.Parents(path: src_dir)
     let bin_created = shell.Mkdir.Parents(path: bin_dir)
     let source_written = Filesystem.Write(path: source_path, content: "main")
-    let link_created = gunbc.WitnessBin.Run(
+    let link_created = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "/bin/ln",
       args: ["-s", "src/main.dag", "link"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let root_added = gunbc.WitnessBin.Run(
+    let root_added = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["add", "src/main.dag", "link"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let root_committed = gunbc.WitnessBin.Run(
+    let root_committed = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: [
@@ -322,36 +322,36 @@ fn mercurial_r0_typed_execution_read_back() -> String {
         "-m",
         "root",
       ],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let c0 = gunbc.WitnessBin.Run(
+    let c0 = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["log", "-r", ".", "-T", "\{node}"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let root_published = gunbc.WitnessBin.Run(
+    let root_published = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["phase", "--force", "--public", "-r", std.algebra.trim(s: c0.stdout)],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
 
-    let copied = gunbc.WitnessBin.Run(
+    let copied = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["copy", "src/main.dag", "bin/run"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
     let run_written = Filesystem.Write(path: run_path, content: "run")
-    let run_executable = gunbc.WitnessBin.Run(
+    let run_executable = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "/bin/chmod",
       args: ["+x", "bin/run"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
     let executable_recorded = shell.Test.IsExecutable(path: run_path)
-    let left_committed = gunbc.WitnessBin.Run(
+    let left_committed = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: [
@@ -363,29 +363,29 @@ fn mercurial_r0_typed_execution_read_back() -> String {
         "-m",
         "left",
       ],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let c1 = gunbc.WitnessBin.Run(
+    let c1 = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["log", "-r", ".", "-T", "\{node}"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let bookmark_created = gunbc.WitnessBin.Run(
+    let bookmark_created = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["bookmark", "-r", std.algebra.trim(s: c1.stdout), "main"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
 
-    let root_updated = gunbc.WitnessBin.Run(
+    let root_updated = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["update", "-q", "-r", std.algebra.trim(s: c0.stdout)],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
     let source_changed = Filesystem.Write(path: source_path, content: "mainside")
-    let right_committed = gunbc.WitnessBin.Run(
+    let right_committed = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: [
@@ -397,46 +397,46 @@ fn mercurial_r0_typed_execution_read_back() -> String {
         "-m",
         "right",
       ],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let c2 = gunbc.WitnessBin.Run(
+    let c2 = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["log", "-r", ".", "-T", "\{node}"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let right_secret = gunbc.WitnessBin.Run(
+    let right_secret = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["phase", "--force", "--secret", "-r", std.algebra.trim(s: c2.stdout)],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let local_tag_created = gunbc.WitnessBin.Run(
+    let local_tag_created = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["tag", "--local", "-r", std.algebra.trim(s: c2.stdout), "scratch"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
 
-    let m0 = gunbc.WitnessBin.Run(
+    let m0 = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["log", "-r", std.algebra.trim(s: c0.stdout), "-T", "\{manifest.node}"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let m1 = gunbc.WitnessBin.Run(
+    let m1 = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["log", "-r", std.algebra.trim(s: c1.stdout), "-T", "\{manifest.node}"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let m2 = gunbc.WitnessBin.Run(
+    let m2 = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["log", "-r", std.algebra.trim(s: c2.stdout), "-T", "\{manifest.node}"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let f0 = gunbc.WitnessBin.Run(
+    let f0 = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: [
@@ -446,9 +446,9 @@ fn mercurial_r0_typed_execution_read_back() -> String {
         "-T",
         "\{ifeq(path, 'src/main.dag', hash)}",
       ],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let fl = gunbc.WitnessBin.Run(
+    let fl = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: [
@@ -458,9 +458,9 @@ fn mercurial_r0_typed_execution_read_back() -> String {
         "-T",
         "\{ifeq(path, 'link', hash)}",
       ],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let fbin = gunbc.WitnessBin.Run(
+    let fbin = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: [
@@ -470,9 +470,9 @@ fn mercurial_r0_typed_execution_read_back() -> String {
         "-T",
         "\{ifeq(path, 'bin/run', hash)}",
       ],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let f2 = gunbc.WitnessBin.Run(
+    let f2 = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: [
@@ -482,70 +482,70 @@ fn mercurial_r0_typed_execution_read_back() -> String {
         "-T",
         "\{ifeq(path, 'src/main.dag', hash)}",
       ],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
 
-    let local_revisions = gunbc.WitnessBin.Run(
+    let local_revisions = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["log", "-r", "all()", "-T", "\{rev},"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let heads = gunbc.WitnessBin.Run(
+    let heads = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["heads", "-T", "\{node}\n"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let bookmark = gunbc.WitnessBin.Run(
+    let bookmark = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["log", "-r", "bookmark(main)", "-T", "\{node}"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let local_tag = gunbc.WitnessBin.Run(
+    let local_tag = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["log", "-r", "tag(scratch)", "-T", "\{node}"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let branches = gunbc.WitnessBin.Run(
+    let branches = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["log", "-r", "all()", "-T", "\{branch},"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let phases = gunbc.WitnessBin.Run(
+    let phases = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["log", "-r", "all()", "-T", "\{phase},"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let copy_metadata = gunbc.WitnessBin.Run(
+    let copy_metadata = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["log", "-r", std.algebra.trim(s: c1.stdout), "-T", "\{file_copies}"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let manifest = gunbc.WitnessBin.Run(
+    let manifest = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["manifest", "-v", "-r", std.algebra.trim(s: c1.stdout)],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
-    let verified = gunbc.WitnessBin.Run(
+    let verified = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
       args: ["verify"],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
     let requires_present = shell.Test.IsNonEmpty(path: requires_path)
     let requires_read = Filesystem.Read(path: requires_path)
-    let symlink_present = gunbc.WitnessBin.Run(
+    let symlink_present = WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "/usr/bin/test",
       args: ["-L", link_path],
-      expect: ExpectSuccess,
+      expect: gunbc.output_policy.ExpectSuccess,
     )
 
     let cleaned = shell.Remove.RecursiveForce(path: fixture.path)
@@ -619,7 +619,7 @@ fn mercurial_r0_typed_execution_read_back() -> String {
       && identities_grounded
       && topology_grounded
       && file_facts_grounded {
-      mercurial_r0_fixture_expected_execution_receipt()
+      test.claim.mercurial_upstream_model_witness.mercurial_r0_fixture_expected_execution_receipt()
     } else {
       join(
         [
@@ -643,5 +643,5 @@ fn mercurial_r0_typed_execution_read_back() -> String {
 }
 
 test fn witness_mercurial_cli_fixture_projects_and_independently_reads_back() -> Bool {
-  mercurial_r0_typed_execution_read_back() == mercurial_r0_fixture_expected_execution_receipt()
+  mercurial_r0_typed_execution_read_back() == test.claim.mercurial_upstream_model_witness.mercurial_r0_fixture_expected_execution_receipt()
 }

@@ -3,7 +3,7 @@ module extdeps.llm.openai_rest
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "platform.openai.com/docs/api-reference/introduction"
   }
 }
@@ -38,13 +38,13 @@ service llm.OpenAI {
       body: { model: model, messages: messages, temperature: temperature, max_tokens: max_tokens }
     }
     response {
-      200 => OpenAiChatCompletion200Body
-      400 => OpenAiErrorShape
-      401 => OpenAiErrorShape
-      403 => OpenAiErrorShape
-      404 => OpenAiErrorShape
-      429 => OpenAiErrorShape
-      5xx => OpenAiErrorShape
+      200 => extdeps.llm.openai.OpenAiChatCompletion200Body
+      400 => extdeps.llm.openai_errors.OpenAiErrorShape
+      401 => extdeps.llm.openai_errors.OpenAiErrorShape
+      403 => extdeps.llm.openai_errors.OpenAiErrorShape
+      404 => extdeps.llm.openai_errors.OpenAiErrorShape
+      429 => extdeps.llm.openai_errors.OpenAiErrorShape
+      5xx => extdeps.llm.openai_errors.OpenAiErrorShape
     }
   }
 
@@ -68,13 +68,13 @@ service llm.OpenAI {
       body: { model: model, input: input, instructions: instructions, max_output_tokens: max_output_tokens }
     }
     response {
-      200 => OpenAiResponses200Body
-      400 => OpenAiErrorShape
-      401 => OpenAiErrorShape
-      403 => OpenAiErrorShape
-      404 => OpenAiErrorShape
-      429 => OpenAiErrorShape
-      5xx => OpenAiErrorShape
+      200 => extdeps.llm.openai.OpenAiResponses200Body
+      400 => extdeps.llm.openai_errors.OpenAiErrorShape
+      401 => extdeps.llm.openai_errors.OpenAiErrorShape
+      403 => extdeps.llm.openai_errors.OpenAiErrorShape
+      404 => extdeps.llm.openai_errors.OpenAiErrorShape
+      429 => extdeps.llm.openai_errors.OpenAiErrorShape
+      5xx => extdeps.llm.openai_errors.OpenAiErrorShape
     }
   }
 }

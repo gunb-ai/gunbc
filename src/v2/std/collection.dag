@@ -1,21 +1,22 @@
 module v2.std.collection
 
-fn optional_absent_unwrap_diagnostic() -> Diagnostic {
-  Diagnostic {
+
+fn optional_absent_unwrap_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^optional_absent_unwrap,
-    at: port_locus(port: ^optional_present_witness_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.port_locus(port: ^optional_present_witness_port),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
-fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
-  witness_from_optional(opt: opt, absent: optional_absent_unwrap_diagnostic())
+fn optional_present_witness<T>(opt: v2.std.optional.Optional<T>) -> Witness<T> {
+  v2.std.witness.witness_from_optional(opt: opt, absent: optional_absent_unwrap_diagnostic())
 }
 
 type List<T> = std.algebra.FreeMonoid<T>
 
-data empty_map_host_binding: PrimitiveContract = empty_map_contract
-data map_insert_host_binding: PrimitiveContract = map_insert_contract
+data empty_map_host_binding: std.primitives.PrimitiveContract = std.primitives.empty_map_contract
+data map_insert_host_binding: std.primitives.PrimitiveContract = std.primitives.map_insert_contract
 
 type IndexedLookup<T> {
   index: Int
@@ -35,7 +36,7 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
   Map {
     lookup: fn(candidate) {
       match candidate == key {
-        true => Present { value: value }
+        true => v2.std.optional.Present { value: value }
         false => m.lookup(candidate)
       }
     }
@@ -51,25 +52,25 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 // caller's own domain answers — so the unreachable arm gets bound to whichever domain answer is
 // nearest, and a substrate failure would report as a domain fact. Exposing the total lookup
 // removes the arm rather than asking every caller to dispose of it honestly.
-fn map_lookup<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+fn map_lookup<K, V>(m: Map<K, V>, key: K) -> v2.std.optional.Optional<V> {
   m.lookup(key)
 }
 
-fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
-  outcome_accepted(value: map_lookup(m: m, key: key))
+fn map_get<K, V>(m: Map<K, V>, key: K) -> v2.std.diagnostic.Outcome<v2.std.optional.Optional<V>> {
+  v2.std.diagnostic.outcome_accepted(value: map_lookup(m: m, key: key))
 }
-fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
-  fold_list(
+fn list_nth<T>(xs: List<T>, wanted: Int, absent: v2.std.diagnostic.Diagnostic) -> Witness<T> {
+  v2.std.algebra.fold_list(
     xs: xs,
     empty: IndexedLookup {
       index: 0,
-      value: Violates { diagnostic: absent }
+      value: v2.std.witness.Violates { diagnostic: absent }
     },
     cons: fn(acc, item) {
       IndexedLookup {
         index: acc.index + 1,
         value: if acc.index == wanted {
-          Holds { value: item }
+          v2.std.witness.Holds { value: item }
         } else {
           acc.value
         }
@@ -77,8 +78,8 @@ fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
     }
   ).value
 }
-fn list_at_optional<T>(xs: List<T>, index: Int) -> Optional<T> {
-  match fold_list(
+fn list_at_optional<T>(xs: List<T>, index: Int) -> v2.std.optional.Optional<T> {
+  match v2.std.algebra.fold_list(
     xs: xs,
     empty: ListAtMissing { remaining: index },
     cons: fn(acc, item) {
@@ -93,8 +94,8 @@ fn list_at_optional<T>(xs: List<T>, index: Int) -> Optional<T> {
       }
     }
   ) {
-    ListAtFound { value: v } => optional_present(value: v)
-    ListAtMissing { remaining: _ } => optional_absent()
+    ListAtFound { value: v } => v2.std.optional.optional_present(value: v)
+    ListAtMissing { remaining: _ } => v2.std.optional.optional_absent()
   }
 }
 

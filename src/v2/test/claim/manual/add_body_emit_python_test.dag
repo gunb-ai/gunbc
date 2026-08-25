@@ -1,14 +1,14 @@
 module v2.test.manual.add_body_emit_python
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data python_add_emit_perturbed_source_text: String = "def add(a, b): return a + b"
 
 fn python_add_emit_perturbed_binding_spellings() -> Map<v2.std.node.Symbol, String> {
-  map_insert(
-    map_insert(
-      map_insert(empty_map(), ^python_binding_fn_add, "add"),
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.map_insert(v2.std.collection.empty_map(), ^python_binding_fn_add, "add"),
       ^python_binding_param_x,
       "a"
     ),
@@ -19,13 +19,13 @@ fn python_add_emit_perturbed_binding_spellings() -> Map<v2.std.node.Symbol, Stri
 
 fn python_add_emit_perturbed_target_model() -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
-    bundle: python_target_model_node(),
-    lex: python_lex(),
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
+    bundle: v2.extdeps.languages.python.python_target_model_node(),
+    lex: v2.extdeps.languages.python.python_lex(),
     binding_spellings: python_add_emit_perturbed_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: python_source_text,
-    runtime_row: target_emit_host_runtime_row_unconfigured
+    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
+    authority_source_text: v2.extdeps.languages.python.python_source_text,
+    runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
   }
 }
 
@@ -33,35 +33,35 @@ fn python_add_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) 
   v2.compiler.emit.emit(tree: v2.test.manual.python_add_emit_translate.python_add_inferred_tree, target: target)
 }
 
-test fn python_add_emit_holds() -> v2.std.logic.Bool {
-  match target_serialize_source_from_model(
-    target: python_target_model(),
-    emitted: python_emitted_add_fn_node()
+test fn python_add_emit_holds() -> Bool {
+  match v2.compiler.translate.target_serialize_source_from_model(
+    target: v2.extdeps.languages.python.python_target_model(),
+    emitted: v2.extdeps.languages.python.python_emitted_add_fn_node()
   ) {
-    Accepted { value: authority, diagnostics: ad } =>
-      match python_add_emit_from_tree(target: python_target_model()) {
-        Accepted { value: source, diagnostics: d } =>
+    v2.std.diagnostic.Accepted { value: authority, diagnostics: ad } =>
+      match python_add_emit_from_tree(target: v2.extdeps.languages.python.python_target_model()) {
+        v2.std.diagnostic.Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn python_add_emit_perturbed_spellings_discriminates() -> v2.std.logic.Bool {
-  match python_add_emit_from_tree(target: python_target_model()) {
-    Accepted { value: canonical, diagnostics: dc } =>
+test fn python_add_emit_perturbed_spellings_discriminates() -> Bool {
+  match python_add_emit_from_tree(target: v2.extdeps.languages.python.python_target_model()) {
+    v2.std.diagnostic.Accepted { value: canonical, diagnostics: dc } =>
       match python_add_emit_from_tree(
         target: python_add_emit_perturbed_target_model()
       ) {
-        Accepted { value: perturbed, diagnostics: dp } =>
+        v2.std.diagnostic.Accepted { value: perturbed, diagnostics: dp } =>
           (perturbed != canonical)
             && (perturbed.carried == python_add_emit_perturbed_source_text)
             && (dc == v2.std.diagnostic.None)
             && (dp == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

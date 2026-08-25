@@ -1,14 +1,14 @@
 module test.claim.native_scm_interaction_contract_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.NativeScmScenario) -> gunbc.native_scm_interaction_contract.NativeScmReceipt {
-  native_scm_receipt_for(scenario: scenario)
+  test.claim.native_scm_interaction_scenario_fixture.native_scm_receipt_for(scenario: scenario)
 }
 
 fn primary_label(receipt: gunbc.native_scm_interaction_contract.NativeScmReceipt) -> String {
-  native_scm_primary_label(primary: receipt.primary)
+  gunbc.native_scm_interaction_contract.native_scm_primary_label(primary: receipt.primary)
 }
 
 fn fixture_compatibility_projection() -> gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
@@ -22,7 +22,7 @@ fn fixture_compatibility_projection() -> gunbc.scm_compatibility_shape.Compatibi
       cause: "C0 witness does not establish an executing transition",
     },
     fidelity: gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
-      endpoint_state: CompatibilityFidelityPreserved,
+      endpoint_state: gunbc.scm_compatibility_shape.CompatibilityFidelityPreserved,
       upstream_change_evidence: gunbc.scm_compatibility_shape.CompatibilityFidelityUnavailable {
         cause: "C0 fixture does not carry authored-change evidence",
       },
@@ -52,7 +52,7 @@ fn fixture_compatibility_projection() -> gunbc.scm_compatibility_shape.Compatibi
 }
 
 test fn witness_two_independent_changes_both_land() -> Bool {
-  let r = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: TwoIndependentChangesLand)
+  let r = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.TwoIndependentChangesLand)
   primary_label(receipt: r) == "Landed"
     && match r.primary {
       Landed { result_preview } =>
@@ -62,11 +62,11 @@ test fn witness_two_independent_changes_both_land() -> Bool {
 }
 
 test fn witness_stale_target_auto_resynchronizes() -> Bool {
-  let r = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: StaleTargetAutoResync)
+  let r = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.StaleTargetAutoResync)
   primary_label(receipt: r) == "Landed"
     && match r.projections.target {
-      Present { value: t } => t == "main"
-      Absent => false
+      v2.std.optional.Present { value: t } => t == "main"
+      v2.std.optional.Absent => false
     }
     && match r.primary {
       Landed { result_preview } =>
@@ -76,28 +76,28 @@ test fn witness_stale_target_auto_resynchronizes() -> Bool {
 }
 
 test fn witness_duplicate_submission_applies_once() -> Bool {
-  let receipt = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: DuplicateSubmissionAppliesOnce)
-  let ledger0 = native_scm_submission_ledger()
-  let ledger1 = native_scm_apply_once(ledger: ledger0, receipt: receipt)
-  let ledger2 = native_scm_apply_once(ledger: ledger1, receipt: receipt)
-  native_scm_applied_count(ledger: ledger1) == 1
-    && native_scm_applied_count(ledger: ledger2) == 1
+  let receipt = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.DuplicateSubmissionAppliesOnce)
+  let ledger0 = test.claim.native_scm_interaction_scenario_fixture.native_scm_submission_ledger()
+  let ledger1 = test.claim.native_scm_interaction_scenario_fixture.native_scm_apply_once(ledger: ledger0, receipt: receipt)
+  let ledger2 = test.claim.native_scm_interaction_scenario_fixture.native_scm_apply_once(ledger: ledger1, receipt: receipt)
+  test.claim.native_scm_interaction_scenario_fixture.native_scm_applied_count(ledger: ledger1) == 1
+    && test.claim.native_scm_interaction_scenario_fixture.native_scm_applied_count(ledger: ledger2) == 1
 }
 
 test fn witness_same_name_distinct_attempts_apply_separately() -> Bool {
-  let receipt_a = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: DuplicateSubmissionAppliesOnce)
-  let receipt_b = native_scm_rekey_receipt(
+  let receipt_a = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.DuplicateSubmissionAppliesOnce)
+  let receipt_b = test.claim.native_scm_interaction_scenario_fixture.native_scm_rekey_receipt(
     receipt: receipt_a,
     attempt_key: "attempt-duplicate-submission-second",
   )
-  let ledger0 = native_scm_submission_ledger()
-  let ledger1 = native_scm_apply_once(ledger: ledger0, receipt: receipt_a)
-  let ledger2 = native_scm_apply_once(ledger: ledger1, receipt: receipt_b)
-  native_scm_applied_count(ledger: ledger2) == 2
+  let ledger0 = test.claim.native_scm_interaction_scenario_fixture.native_scm_submission_ledger()
+  let ledger1 = test.claim.native_scm_interaction_scenario_fixture.native_scm_apply_once(ledger: ledger0, receipt: receipt_a)
+  let ledger2 = test.claim.native_scm_interaction_scenario_fixture.native_scm_apply_once(ledger: ledger1, receipt: receipt_b)
+  test.claim.native_scm_interaction_scenario_fixture.native_scm_applied_count(ledger: ledger2) == 2
 }
 
 test fn witness_rename_and_reference_unique_meaning_lands() -> Bool {
-  let r = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: RenameReferenceUniqueMeaning)
+  let r = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.RenameReferenceUniqueMeaning)
   primary_label(receipt: r) == "Landed"
     && match r.primary {
       Landed { result_preview } =>
@@ -107,46 +107,46 @@ test fn witness_rename_and_reference_unique_meaning_lands() -> Bool {
 }
 
 test fn witness_two_legitimate_meanings_ask_local_choice() -> Bool {
-  let r = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: TwoLegitimateMeaningsNeedChoice)
+  let r = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.TwoLegitimateMeaningsNeedChoice)
   primary_label(receipt: r) == "ChoiceRequired"
     && match r.primary {
       ChoiceRequired { question, continuation } =>
         string_contains(s: question, pattern: "rename")
-          && count(native_scm_choice_previews(continuation: continuation)) == 2
+          && count(gunbc.native_scm_interaction_contract.native_scm_choice_previews(continuation: continuation)) == 2
           && continuation.options.first_option.label == "follow the rename"
           && continuation.options.second_option.label == "keep a separate name"
-          && match native_scm_resolve_choice(
+          && match gunbc.native_scm_interaction_contract.native_scm_resolve_choice(
             continuation: continuation,
-            choice: NativeScmFirstContinuationOption,
+            choice: gunbc.native_scm_interaction_contract.NativeScmFirstContinuationOption,
           ) {
-            NativeScmContinuationChoiceMatched { selected } =>
-              selected.identity.choice == NativeScmFirstContinuationOption
+            gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceMatched { selected } =>
+              selected.identity.choice == gunbc.native_scm_interaction_contract.NativeScmFirstContinuationOption
                 && selected.option.resume_token == "resume-follow-the-rename"
                 && string_contains(
                   s: selected.option.result_preview,
                   pattern: "follow the rename",
                 )
-            NativeScmContinuationChoiceNotOffered { choice: _ } => false
+            gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceNotOffered { choice: _ } => false
           }
-          && match native_scm_resolve_choice(
+          && match gunbc.native_scm_interaction_contract.native_scm_resolve_choice(
             continuation: continuation,
-            choice: NativeScmSecondContinuationOption,
+            choice: gunbc.native_scm_interaction_contract.NativeScmSecondContinuationOption,
           ) {
-            NativeScmContinuationChoiceMatched { selected } =>
-              selected.identity.choice == NativeScmSecondContinuationOption
+            gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceMatched { selected } =>
+              selected.identity.choice == gunbc.native_scm_interaction_contract.NativeScmSecondContinuationOption
                 && selected.option.resume_token == "resume-keep-separate-name"
                 && string_contains(
                   s: selected.option.result_preview,
                   pattern: "keep a separate name",
                 )
-            NativeScmContinuationChoiceNotOffered { choice: _ } => false
+            gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceNotOffered { choice: _ } => false
           }
       _ => false
     }
 }
 
 test fn witness_equal_labels_keep_structurally_distinct_choices() -> Bool {
-  let receipt = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: TwoLegitimateMeaningsNeedChoice)
+  let receipt = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.TwoLegitimateMeaningsNeedChoice)
   let duplicate = match receipt.primary {
     ChoiceRequired { question, continuation } =>
       gunbc.native_scm_interaction_contract.NativeScmReceipt {
@@ -157,7 +157,7 @@ test fn witness_equal_labels_keep_structurally_distinct_choices() -> Bool {
         check: receipt.check,
         operational: receipt.operational,
         projections: receipt.projections,
-        primary: gunbc.native_scm_interaction_contract.ChoiceRequired {
+        primary: ChoiceRequired {
           question: question,
           continuation: gunbc.native_scm_interaction_contract.NativeScmContinuation {
             proposal: continuation.proposal,
@@ -178,73 +178,73 @@ test fn witness_equal_labels_keep_structurally_distinct_choices() -> Bool {
   }
   match duplicate.primary {
     ChoiceRequired { question: _, continuation } =>
-      match native_scm_resolve_choice(
+      match gunbc.native_scm_interaction_contract.native_scm_resolve_choice(
         continuation: continuation,
-        choice: NativeScmSecondContinuationOption,
+        choice: gunbc.native_scm_interaction_contract.NativeScmSecondContinuationOption,
       ) {
-        NativeScmContinuationChoiceMatched { selected } =>
-          selected.identity.choice == NativeScmSecondContinuationOption
+        gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceMatched { selected } =>
+          selected.identity.choice == gunbc.native_scm_interaction_contract.NativeScmSecondContinuationOption
             && selected.option.resume_token == "resume-duplicate-choice"
             && string_contains(
               s: selected.option.result_preview,
               pattern: "different result",
             )
-        NativeScmContinuationChoiceNotOffered { choice: _ } => false
+        gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceNotOffered { choice: _ } => false
       }
     _ => false
   }
 }
 
 test fn witness_incompatible_goals_ask_authorized_decider() -> Bool {
-  let r = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: IncompatibleGoalsNeedAuthorizedDecider)
+  let r = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.IncompatibleGoalsNeedAuthorizedDecider)
   primary_label(receipt: r) == "ChoiceRequired"
     && match r.primary {
       ChoiceRequired { question, continuation } =>
         string_contains(s: question, pattern: "authorized decider")
-          && count(native_scm_choice_previews(continuation: continuation)) == 2
+          && count(gunbc.native_scm_interaction_contract.native_scm_choice_previews(continuation: continuation)) == 2
           && continuation.options.first_option.label == "retain goal A"
           && continuation.options.second_option.label == "retain goal B"
-          && match native_scm_resolve_choice(
+          && match gunbc.native_scm_interaction_contract.native_scm_resolve_choice(
             continuation: continuation,
-            choice: NativeScmFirstContinuationOption,
+            choice: gunbc.native_scm_interaction_contract.NativeScmFirstContinuationOption,
           ) {
-            NativeScmContinuationChoiceMatched { selected } =>
-              selected.identity.choice == NativeScmFirstContinuationOption
+            gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceMatched { selected } =>
+              selected.identity.choice == gunbc.native_scm_interaction_contract.NativeScmFirstContinuationOption
                 && selected.option.resume_token == "resume-retain-goal-a"
                 && string_contains(
                   s: selected.option.result_preview,
                   pattern: "retain goal A",
                 )
-            NativeScmContinuationChoiceNotOffered { choice: _ } => false
+            gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceNotOffered { choice: _ } => false
           }
-          && match native_scm_resolve_choice(
+          && match gunbc.native_scm_interaction_contract.native_scm_resolve_choice(
             continuation: continuation,
-            choice: NativeScmSecondContinuationOption,
+            choice: gunbc.native_scm_interaction_contract.NativeScmSecondContinuationOption,
           ) {
-            NativeScmContinuationChoiceMatched { selected } =>
-              selected.identity.choice == NativeScmSecondContinuationOption
+            gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceMatched { selected } =>
+              selected.identity.choice == gunbc.native_scm_interaction_contract.NativeScmSecondContinuationOption
                 && selected.option.resume_token == "resume-retain-goal-b"
                 && string_contains(
                   s: selected.option.result_preview,
                   pattern: "retain goal B",
                 )
-            NativeScmContinuationChoiceNotOffered { choice: _ } => false
+            gunbc.native_scm_interaction_contract.NativeScmContinuationChoiceNotOffered { choice: _ } => false
           }
       _ => false
     }
 }
 
 test fn witness_obtainable_evidence_is_gathered_internally() -> Bool {
-  let r = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: EvidenceGatheredInternally)
+  let r = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.EvidenceGatheredInternally)
   primary_label(receipt: r) == "Landed"
     && match r.receipt_details {
-      Present { value: d } => string_contains(s: d, pattern: "obtainable evidence")
-      Absent => false
+      v2.std.optional.Present { value: d } => string_contains(s: d, pattern: "obtainable evidence")
+      v2.std.optional.Absent => false
     }
 }
 
 test fn witness_tool_model_proof_deficits_stay_internal() -> Bool {
-  let r = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: ToolModelProofDeficitRoutesInternally)
+  let r = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.ToolModelProofDeficitRoutesInternally)
   primary_label(receipt: r) == "InProgress"
     && match r.transition {
       NativeScmCommitTransitionUncommitted => true
@@ -255,22 +255,22 @@ test fn witness_tool_model_proof_deficits_stay_internal() -> Bool {
         string_contains(s: progress_preview, pattern: "internal")
       _ => false
     }
-    && match native_scm_inspect_receipt(receipt: r, authorized: false) {
-      Absent => true
-      Present { value: _ } => false
+    && match gunbc.native_scm_interaction_contract.native_scm_inspect_receipt(receipt: r, authorized: false) {
+      v2.std.optional.Absent => true
+      v2.std.optional.Present { value: _ } => false
     }
 }
 
 test fn witness_projection_failure_repairs_without_reinterpretation() -> Bool {
-  let r = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: ProjectionFailureRepairsWithoutReinterpretation)
-  let outcome = native_scm_record_repaired_projection(
+  let r = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.ProjectionFailureRepairsWithoutReinterpretation)
+  let outcome = gunbc.native_scm_interaction_contract.native_scm_record_repaired_projection(
     receipt: r,
     projection: fixture_compatibility_projection(),
   )
   primary_label(receipt: r) == "Landed"
     && count(r.projections.realizations) == 0
     && match outcome {
-      NativeScmProjectionRepaired { receipt: repaired } =>
+      gunbc.native_scm_interaction_contract.NativeScmProjectionRepaired { receipt: repaired } =>
         primary_label(receipt: repaired) == "Landed"
           && count(repaired.projections.realizations) == 1
           && repaired.projections.realizations
@@ -279,7 +279,7 @@ test fn witness_projection_failure_repairs_without_reinterpretation() -> Bool {
                 && row.target == "refs/heads/main"
             )
           && match repaired.operational {
-            NativeScmOperationalReady => true
+            gunbc.native_scm_interaction_contract.NativeScmOperationalReady => true
             _ => false
           }
       _ => false
@@ -287,21 +287,21 @@ test fn witness_projection_failure_repairs_without_reinterpretation() -> Bool {
 }
 
 test fn witness_projection_repair_cannot_clear_internal_deficit() -> Bool {
-  let r = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: ToolModelProofDeficitRoutesInternally)
-  let outcome = native_scm_record_repaired_projection(
+  let r = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.ToolModelProofDeficitRoutesInternally)
+  let outcome = gunbc.native_scm_interaction_contract.native_scm_record_repaired_projection(
     receipt: r,
     projection: fixture_compatibility_projection(),
   )
   match outcome {
-    NativeScmProjectionRepairBlockedByInternalWork { receipt: unchanged } =>
+    gunbc.native_scm_interaction_contract.NativeScmProjectionRepairBlockedByInternalWork { receipt: unchanged } =>
       primary_label(receipt: unchanged) == "InProgress"
         && count(unchanged.projections.realizations) == 0
         && match unchanged.operational {
-          NativeScmInternalWorkPending => true
+          gunbc.native_scm_interaction_contract.NativeScmInternalWorkPending => true
           _ => false
         }
         && match unchanged.check {
-          NativeScmLifecyclePending => true
+          gunbc.native_scm_interaction_contract.NativeScmLifecyclePending => true
           _ => false
         }
     _ => false
@@ -309,7 +309,7 @@ test fn witness_projection_repair_cannot_clear_internal_deficit() -> Bool {
 }
 
 test fn witness_conventional_scm_import_without_manual_rewrite() -> Bool {
-  let r = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: ConventionalScmImportWithoutManualRewrite)
+  let r = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.ConventionalScmImportWithoutManualRewrite)
   primary_label(receipt: r) == "Landed"
     && match r.primary {
       Landed { result_preview } =>
@@ -320,14 +320,14 @@ test fn witness_conventional_scm_import_without_manual_rewrite() -> Bool {
 }
 
 test fn witness_visibility_authorized_details_only_when_allowed() -> Bool {
-  let r = test.claim.native_scm_interaction_contract_witness.receipt_for(scenario: VisibilityAuthorizedDetails)
-  match native_scm_inspect_receipt(receipt: r, authorized: false) {
-    Absent => true
-    Present { value: _ } => false
+  let r = receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.VisibilityAuthorizedDetails)
+  match gunbc.native_scm_interaction_contract.native_scm_inspect_receipt(receipt: r, authorized: false) {
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
-    && match native_scm_inspect_receipt(receipt: r, authorized: true) {
-      Present { value: details } =>
+    && match gunbc.native_scm_interaction_contract.native_scm_inspect_receipt(receipt: r, authorized: true) {
+      v2.std.optional.Present { value: details } =>
         string_contains(s: details, pattern: "visibility-authorized-details")
-      Absent => false
+      v2.std.optional.Absent => false
     }
 }

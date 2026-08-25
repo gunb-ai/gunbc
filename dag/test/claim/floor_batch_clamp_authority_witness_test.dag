@@ -1,6 +1,7 @@
 module test.claim.floor_batch_clamp_authority_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // ONE POPULATION NOW FEEDS THE CLAMP LIST, and that is why this file shrank rather than being
 // deleted. The defect it was written for (gunbc#7869: a refusal reporting clamp_ms=360000 while
@@ -14,7 +15,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // unit-rate arithmetic is still the thing a future clamp row will be read through.
 fn positional_clamp_row_zero() -> std.realization_schedule.RunnableBatchClamp {
   match gunbc.ci_spec.gunbc_ci_floor_batch_clamp_params {
-    Empty => gunbc_ci_compile_clean_clamp
+    Empty => gunbc.ci_spec.gunbc_ci_compile_clean_clamp
     Cons { head: h, tail: _ } => h
   }
 }
@@ -23,20 +24,20 @@ test fn positional_clamp_row_zero_cites_the_ci_spec_list_it_lives_in() -> Bool {
   let c = positional_clamp_row_zero()
   (c.authority.module_path as String == "gunbc.ci_spec")
     && (c.authority.decl_name as String == "gunbc_ci_floor_batch_clamp_params")
-    && (second_count(s: c.overhead) == 240)
+    && (std.measure.second_count(s: c.overhead) == 240)
 }
 
 // THE FORMULA CONTROL. A row whose rate is NONZERO must move with the unit count, or nothing in
 // this file distinguishes runnable_batch_clamp_ms from a constant.
 test fn a_nonzero_rate_clamp_does_move_with_the_unit_count() -> Bool {
   let priced = std.realization_schedule.RunnableBatchClamp {
-    overhead: second(count: 300),
-    per_unit: millisecond(count: 1000),
-    authority: decl_ref(
+    overhead: std.measure.second(count: 300),
+    per_unit: std.measure.millisecond(count: 1000),
+    authority: std.decl_ref.decl_ref(
       module_path: "test.claim.floor_batch_clamp_authority_witness",
       decl_name: "a_nonzero_rate_clamp_does_move_with_the_unit_count",
     ),
   }
-  (runnable_batch_clamp_ms(clamp: priced, units: 1) == 301000)
-    && (runnable_batch_clamp_ms(clamp: priced, units: 27) == 327000)
+  (std.realization_schedule.runnable_batch_clamp_ms(clamp: priced, units: 1) == 301000)
+    && (std.realization_schedule.runnable_batch_clamp_ms(clamp: priced, units: 27) == 327000)
 }

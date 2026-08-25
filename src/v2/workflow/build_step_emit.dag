@@ -3,8 +3,8 @@ module v2.workflow.build_step_emit
 
 data build_step_emit_authority_note: String = "Build-artifact verification shell text emits through v2.workflow.bash_command_fold_serialize.bash_fold_serialize_program (grammar rows), not extdeps.languages.bash.program serialize_bash. Node stmt construction stays in tools.build_step; this module is the realization-edge serializer. Byte-identity vs v1 is witnessed in v2.test.claim.build_artifact_verification_witness."
 
-fn verifications_script(produces: List<tools.build_step.BuildArtifact>) -> Outcome<String> {
-  bash_fold_serialize_program(
+fn verifications_script(produces: List<tools.build_step.BuildArtifact>) -> v2.std.diagnostic.Outcome<String> {
+  v2.workflow.bash_command_fold_serialize.bash_fold_serialize_program(
     stmts: tools.build_step.emit_verifications(produces: produces),
     set_e: false
   )

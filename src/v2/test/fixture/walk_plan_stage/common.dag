@@ -117,7 +117,7 @@ fn walk_plan_stage_harness_authority_content() -> String {
 }
 
 test fn walk_plan_stage_materialize_harness_authority_holds() -> Bool {
-  Filesystem.Write(
+  extdeps.filesystem.filesystem_io.Filesystem.Write(
     path: walk_plan_stage_harness_authority_path,
     content: walk_plan_stage_harness_authority_content()
   ).success

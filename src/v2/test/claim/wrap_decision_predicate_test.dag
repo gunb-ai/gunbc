@@ -4,16 +4,16 @@ module v2.test.claim.wrap_decision_predicate
 data wrap_decision_predicate_note: String = "Derisk witnesses for rc-ownership-wrap-decision-design.md: wrap_decision_gate is the single authority for Rc/Box/owned type wrapping at ONE emit position, and wrap_decision_flow_gate is the single authority over a producer/consumer PAIR, refusing disagreement. UseSiteVerdict enrolled (owned-at-all-sites). RED, position surface: omit Diagnostics param row -> param witness rejects; add silent default wrap on WrapGateInapplicable -> bundle_absent witness fails. RED, flow surface (measured, non-uniform): force wrap_decision_gates_agree to true -> over_wrap, under_wrap and distinct_reference_layers witnesses red while missing_row and both accept controls stay green; make wrap_decisions_equal layer-blind -> distinct_reference_layers alone reds. A witness set that reds together says less than one whose profile names which witness guards which arm."
 
 fn wrap_decision_sg_rc_target() -> v2.std.compilers.target_model.TargetModel {
-  rust_sg2_type_expr_target_model()
+  v2.extdeps.languages.rust.rust_sg2_type_expr_target_model()
 }
 
 fn wrap_decision_bundle_absent_target() -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
     bundle: v2.std.node.Node {
-      kind: v2.std.node.TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
     },
     lex: wrap_decision_sg_rc_target().lex,
     binding_spellings: wrap_decision_sg_rc_target().binding_spellings,
@@ -25,18 +25,18 @@ fn wrap_decision_bundle_absent_target() -> v2.std.compilers.target_model.TargetM
 
 fn wrap_decision_partial_bundle_target() -> v2.std.compilers.target_model.TargetModel {
   v2.std.compilers.target_model.TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
     bundle: v2.std.node.Node {
-      kind: v2.std.node.TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
       children: [
-        rust_named_edge(
+        v2.extdeps.languages.rust.rust_named_edge(
           name: ^target_model_edge_use_site_ownership_realizations,
-          target: target_use_site_ownership_catalog_node(
-            rows: rust_sg_rc_use_site_ownership_catalog()
+          target: v2.std.compilers.target_model.target_use_site_ownership_catalog_node(
+            rows: v2.extdeps.languages.rust.rust_sg_rc_use_site_ownership_catalog()
           )
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
     },
     lex: wrap_decision_sg_rc_target().lex,
     binding_spellings: wrap_decision_sg_rc_target().binding_spellings,
@@ -50,14 +50,14 @@ fn wrap_decision_gate_is_by_value(
   target: v2.std.compilers.target_model.TargetModel,
   source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> v2.std.logic.Bool {
-  match wrap_decision_gate(
+) -> Bool {
+  match v2.compiler.wrap_decision.wrap_decision_gate(
     target: target,
     source_carrier: source_carrier,
     use_site: use_site
   ) {
-    Accepted {
-      value: WrapGateDecided { decision: WrapByValue },
+    v2.std.diagnostic.Accepted {
+      value: v2.std.compilers.target_model.WrapGateDecided { decision: v2.std.compilers.target_model.WrapByValue },
       diagnostics: _
     } => true
     _ => false
@@ -68,12 +68,12 @@ fn wrap_decision_gate_is_rc_reference(
   target: v2.std.compilers.target_model.TargetModel,
   source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> v2.std.logic.Bool {
+) -> Bool {
   wrap_decision_gate_is_reference_layer(
     target: target,
     source_carrier: source_carrier,
     use_site: use_site,
-    layer: ReferenceLayerRc
+    layer: v2.std.compilers.target_model.ReferenceLayerRc
   )
 }
 
@@ -81,12 +81,12 @@ fn wrap_decision_gate_is_box_reference(
   target: v2.std.compilers.target_model.TargetModel,
   source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> v2.std.logic.Bool {
+) -> Bool {
   wrap_decision_gate_is_reference_layer(
     target: target,
     source_carrier: source_carrier,
     use_site: use_site,
-    layer: ReferenceLayerBox
+    layer: v2.std.compilers.target_model.ReferenceLayerBox
   )
 }
 
@@ -95,14 +95,14 @@ fn wrap_decision_gate_is_reference_layer(
   source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
   layer: v2.std.compilers.target_model.TargetReferenceLayer
-) -> v2.std.logic.Bool {
-  match wrap_decision_gate(
+) -> Bool {
+  match v2.compiler.wrap_decision.wrap_decision_gate(
     target: target,
     source_carrier: source_carrier,
     use_site: use_site
   ) {
-    Accepted {
-      value: WrapGateDecided { decision: WrapByReference { layer: decided } },
+    v2.std.diagnostic.Accepted {
+      value: v2.std.compilers.target_model.WrapGateDecided { decision: v2.std.compilers.target_model.WrapByReference { layer: decided } },
       diagnostics: _
     } => decided == layer
     _ => false
@@ -113,13 +113,13 @@ fn wrap_decision_gate_rejects(
   target: v2.std.compilers.target_model.TargetModel,
   source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> v2.std.logic.Bool {
-  match wrap_decision_gate(
+) -> Bool {
+  match v2.compiler.wrap_decision.wrap_decision_gate(
     target: target,
     source_carrier: source_carrier,
     use_site: use_site
   ) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     _ => false
   }
 }
@@ -128,78 +128,78 @@ fn wrap_decision_gate_is_inapplicable(
   target: v2.std.compilers.target_model.TargetModel,
   source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> v2.std.logic.Bool {
-  match wrap_decision_gate(
+) -> Bool {
+  match v2.compiler.wrap_decision.wrap_decision_gate(
     target: target,
     source_carrier: source_carrier,
     use_site: use_site
   ) {
-    Accepted { value: WrapGateInapplicable, diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: v2.std.compilers.target_model.WrapGateInapplicable, diagnostics: _ } => true
     _ => false
   }
 }
 
-test fn wrap_decision_diagnostics_return_is_rc() -> v2.std.logic.Bool {
+test fn wrap_decision_diagnostics_return_is_rc() -> Bool {
   wrap_decision_gate_is_rc_reference(
     target: wrap_decision_sg_rc_target(),
-    source_carrier: target_carrier_diagnostics_node(),
-    use_site: OwnershipAtFunctionReturn
+    source_carrier: v2.std.compilers.target_model.target_carrier_diagnostics_node(),
+    use_site: v2.std.compilers.target_model.OwnershipAtFunctionReturn
   )
 }
 
-test fn wrap_decision_diagnostics_param_is_owned() -> v2.std.logic.Bool {
+test fn wrap_decision_diagnostics_param_is_owned() -> Bool {
   wrap_decision_gate_is_by_value(
     target: wrap_decision_sg_rc_target(),
-    source_carrier: target_carrier_diagnostics_node(),
-    use_site: OwnershipAtFunctionParameter
+    source_carrier: v2.std.compilers.target_model.target_carrier_diagnostics_node(),
+    use_site: v2.std.compilers.target_model.OwnershipAtFunctionParameter
   )
 }
 
-test fn wrap_decision_probe_heap_param_miss_rejects() -> v2.std.logic.Bool {
+test fn wrap_decision_probe_heap_param_miss_rejects() -> Bool {
   wrap_decision_gate_rejects(
     target: wrap_decision_sg_rc_target(),
-    source_carrier: target_carrier_probe_heap_node(),
-    use_site: OwnershipAtFunctionParameter
+    source_carrier: v2.std.compilers.target_model.target_carrier_probe_heap_node(),
+    use_site: v2.std.compilers.target_model.OwnershipAtFunctionParameter
   )
 }
 
-test fn wrap_decision_bundle_absent_inapplicable() -> v2.std.logic.Bool {
+test fn wrap_decision_bundle_absent_inapplicable() -> Bool {
   wrap_decision_gate_is_inapplicable(
     target: wrap_decision_bundle_absent_target(),
-    source_carrier: target_carrier_diagnostics_node(),
-    use_site: OwnershipAtFunctionReturn
+    source_carrier: v2.std.compilers.target_model.target_carrier_diagnostics_node(),
+    use_site: v2.std.compilers.target_model.OwnershipAtFunctionReturn
   )
 }
 
-test fn wrap_decision_bundle_partial_rejects() -> v2.std.logic.Bool {
+test fn wrap_decision_bundle_partial_rejects() -> Bool {
   wrap_decision_gate_rejects(
     target: wrap_decision_partial_bundle_target(),
-    source_carrier: target_carrier_diagnostics_node(),
-    use_site: OwnershipAtFunctionReturn
+    source_carrier: v2.std.compilers.target_model.target_carrier_diagnostics_node(),
+    use_site: v2.std.compilers.target_model.OwnershipAtFunctionReturn
   )
 }
 
-test fn wrap_decision_use_site_verdict_param_is_owned() -> v2.std.logic.Bool {
+test fn wrap_decision_use_site_verdict_param_is_owned() -> Bool {
   wrap_decision_gate_is_by_value(
     target: wrap_decision_sg_rc_target(),
-    source_carrier: target_carrier_use_site_verdict_node(),
-    use_site: OwnershipAtFunctionParameter
+    source_carrier: v2.std.compilers.target_model.target_carrier_use_site_verdict_node(),
+    use_site: v2.std.compilers.target_model.OwnershipAtFunctionParameter
   )
 }
 
-test fn wrap_decision_use_site_verdict_return_is_owned() -> v2.std.logic.Bool {
+test fn wrap_decision_use_site_verdict_return_is_owned() -> Bool {
   wrap_decision_gate_is_by_value(
     target: wrap_decision_sg_rc_target(),
-    source_carrier: target_carrier_use_site_verdict_node(),
-    use_site: OwnershipAtFunctionReturn
+    source_carrier: v2.std.compilers.target_model.target_carrier_use_site_verdict_node(),
+    use_site: v2.std.compilers.target_model.OwnershipAtFunctionReturn
   )
 }
 
-test fn wrap_decision_node_struct_field_is_box() -> v2.std.logic.Bool {
+test fn wrap_decision_node_struct_field_is_box() -> Bool {
   wrap_decision_gate_is_box_reference(
     target: wrap_decision_sg_rc_target(),
-    source_carrier: target_carrier_node_node(),
-    use_site: OwnershipAtStructField
+    source_carrier: v2.std.compilers.target_model.target_carrier_node_node(),
+    use_site: v2.std.compilers.target_model.OwnershipAtStructField
   )
 }
 
@@ -215,7 +215,7 @@ test fn wrap_decision_node_struct_field_is_box() -> v2.std.logic.Bool {
 // OwnershipAtFunctionParameter, so binding-to-param is the over shape and param-to-binding is the
 // under shape. wrap_decision_flow_gate must refuse BOTH; today's per-position gate accepts both
 // and emits the producer's layer, which is the silent wrongness. The layer-discrimination control
-// is the one that keeps wrap_decisions_equal honest: v2.std.node.Node is ReferenceLayerRc at binding and
+// is the one that keeps wrap_decisions_equal honest: Node is ReferenceLayerRc at binding and
 // ReferenceLayerBox at struct field, two DIFFERENT reference layers, and an implementation
 // comparing only by-value against by-reference would call that agreement and pass every other
 // control here. RED, executed rather than asserted, and the profile is reported exactly as
@@ -235,15 +235,15 @@ fn wrap_decision_flow_rejects(
   source_carrier: v2.std.node.Node,
   producer_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
   consumer_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> v2.std.logic.Bool {
-  match wrap_decision_flow_gate(
+) -> Bool {
+  match v2.compiler.wrap_decision.wrap_decision_flow_gate(
     target: target,
     source_carrier: source_carrier,
     producer_site: producer_site,
     consumer_site: consumer_site
   ) {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
   }
 }
 
@@ -252,14 +252,14 @@ fn wrap_decision_flow_is_by_value(
   source_carrier: v2.std.node.Node,
   producer_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
   consumer_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> v2.std.logic.Bool {
-  match wrap_decision_flow_gate(
+) -> Bool {
+  match v2.compiler.wrap_decision.wrap_decision_flow_gate(
     target: target,
     source_carrier: source_carrier,
     producer_site: producer_site,
     consumer_site: consumer_site
   ) {
-    Accepted { value: WrapGateDecided { decision: WrapByValue }, diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: v2.std.compilers.target_model.WrapGateDecided { decision: v2.std.compilers.target_model.WrapByValue }, diagnostics: _ } => true
     _ => false
   }
 }
@@ -269,86 +269,86 @@ fn wrap_decision_flow_is_inapplicable(
   source_carrier: v2.std.node.Node,
   producer_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
   consumer_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> v2.std.logic.Bool {
-  match wrap_decision_flow_gate(
+) -> Bool {
+  match v2.compiler.wrap_decision.wrap_decision_flow_gate(
     target: target,
     source_carrier: source_carrier,
     producer_site: producer_site,
     consumer_site: consumer_site
   ) {
-    Accepted { value: WrapGateInapplicable, diagnostics: _ } => true
+    v2.std.diagnostic.Accepted { value: v2.std.compilers.target_model.WrapGateInapplicable, diagnostics: _ } => true
     _ => false
   }
 }
 
-test fn wrap_decision_flow_over_wrap_direction_refuses() -> v2.std.logic.Bool {
+test fn wrap_decision_flow_over_wrap_direction_refuses() -> Bool {
   wrap_decision_flow_rejects(
     target: wrap_decision_sg_rc_target(),
-    source_carrier: target_carrier_diagnostics_node(),
-    producer_site: OwnershipAtBindingProjection,
-    consumer_site: OwnershipAtFunctionParameter
+    source_carrier: v2.std.compilers.target_model.target_carrier_diagnostics_node(),
+    producer_site: v2.std.compilers.target_model.OwnershipAtBindingProjection,
+    consumer_site: v2.std.compilers.target_model.OwnershipAtFunctionParameter
   )
 }
 
-test fn wrap_decision_flow_under_wrap_direction_refuses() -> v2.std.logic.Bool {
+test fn wrap_decision_flow_under_wrap_direction_refuses() -> Bool {
   wrap_decision_flow_rejects(
     target: wrap_decision_sg_rc_target(),
-    source_carrier: target_carrier_diagnostics_node(),
-    producer_site: OwnershipAtFunctionParameter,
-    consumer_site: OwnershipAtBindingProjection
+    source_carrier: v2.std.compilers.target_model.target_carrier_diagnostics_node(),
+    producer_site: v2.std.compilers.target_model.OwnershipAtFunctionParameter,
+    consumer_site: v2.std.compilers.target_model.OwnershipAtBindingProjection
   )
 }
 
-test fn wrap_decision_flow_distinct_reference_layers_refuse() -> v2.std.logic.Bool {
+test fn wrap_decision_flow_distinct_reference_layers_refuse() -> Bool {
   wrap_decision_flow_rejects(
     target: wrap_decision_sg_rc_target(),
-    source_carrier: target_carrier_node_node(),
-    producer_site: OwnershipAtBindingProjection,
-    consumer_site: OwnershipAtStructField
+    source_carrier: v2.std.compilers.target_model.target_carrier_node_node(),
+    producer_site: v2.std.compilers.target_model.OwnershipAtBindingProjection,
+    consumer_site: v2.std.compilers.target_model.OwnershipAtStructField
   )
 }
 
-test fn wrap_decision_flow_missing_row_refuses() -> v2.std.logic.Bool {
+test fn wrap_decision_flow_missing_row_refuses() -> Bool {
   wrap_decision_flow_rejects(
     target: wrap_decision_sg_rc_target(),
-    source_carrier: target_carrier_probe_heap_node(),
-    producer_site: OwnershipAtFunctionReturn,
-    consumer_site: OwnershipAtFunctionParameter
+    source_carrier: v2.std.compilers.target_model.target_carrier_probe_heap_node(),
+    producer_site: v2.std.compilers.target_model.OwnershipAtFunctionReturn,
+    consumer_site: v2.std.compilers.target_model.OwnershipAtFunctionParameter
   )
 }
 
-test fn wrap_decision_flow_agreeing_sites_accept() -> v2.std.logic.Bool {
+test fn wrap_decision_flow_agreeing_sites_accept() -> Bool {
   wrap_decision_flow_is_by_value(
     target: wrap_decision_sg_rc_target(),
-    source_carrier: target_carrier_use_site_verdict_node(),
-    producer_site: OwnershipAtFunctionReturn,
-    consumer_site: OwnershipAtFunctionParameter
+    source_carrier: v2.std.compilers.target_model.target_carrier_use_site_verdict_node(),
+    producer_site: v2.std.compilers.target_model.OwnershipAtFunctionReturn,
+    consumer_site: v2.std.compilers.target_model.OwnershipAtFunctionParameter
   )
 }
 
-test fn wrap_decision_flow_bundle_absent_inapplicable() -> v2.std.logic.Bool {
+test fn wrap_decision_flow_bundle_absent_inapplicable() -> Bool {
   wrap_decision_flow_is_inapplicable(
     target: wrap_decision_bundle_absent_target(),
-    source_carrier: target_carrier_diagnostics_node(),
-    producer_site: OwnershipAtBindingProjection,
-    consumer_site: OwnershipAtFunctionParameter
+    source_carrier: v2.std.compilers.target_model.target_carrier_diagnostics_node(),
+    producer_site: v2.std.compilers.target_model.OwnershipAtBindingProjection,
+    consumer_site: v2.std.compilers.target_model.OwnershipAtFunctionParameter
   )
 }
 
 data wrap_decision_composite_note: String = "Discriminates the wrap_decision_predicate caller-side bypass (v1_deletion_plan.dag ^wrap_decision_predicate, RE-OPENED 2026-07-24): translate_apply_use_site_ownership_to_projected_boundary must recurse ownership-wrap into TargetTypeExprInstantiation-kind wires (Option<T>/Rc<T>/List<T> shapes) instead of returning the composite unwrapped via the _ => outcome_accepted(projected) arm."
 
 fn wrap_decision_composite_projected_arg() -> v2.std.node.Node {
-  target_type_expr_atom_emitted(
-    form: rust_type_expression_projection().atom_form,
+  v2.std.compilers.target_model.target_type_expr_atom_emitted(
+    form: v2.extdeps.languages.rust.rust_type_expression_projection().atom_form,
     identity: ^wrap_decision_composite_leaf_binding
   )
 }
 
 fn wrap_decision_composite_projected() -> v2.std.node.Node {
-  target_type_expr_instantiation_emitted(
-    form: rust_type_expression_projection().instantiation_form,
-    head: target_type_expr_atom_emitted(
-      form: rust_type_expression_projection().atom_form,
+  v2.std.compilers.target_model.target_type_expr_instantiation_emitted(
+    form: v2.extdeps.languages.rust.rust_type_expression_projection().instantiation_form,
+    head: v2.std.compilers.target_model.target_type_expr_atom_emitted(
+      form: v2.extdeps.languages.rust.rust_type_expression_projection().atom_form,
       identity: ^wrap_decision_composite_outer_binding
     ),
     args: [wrap_decision_composite_projected_arg()]
@@ -356,45 +356,45 @@ fn wrap_decision_composite_projected() -> v2.std.node.Node {
 }
 
 fn wrap_decision_composite_source() -> v2.std.node.Node {
-  target_type_expr_instantiation_emitted(
-    form: rust_type_expression_projection().instantiation_form,
-    head: target_type_expr_atom_emitted(
-      form: rust_type_expression_projection().atom_form,
+  v2.std.compilers.target_model.target_type_expr_instantiation_emitted(
+    form: v2.extdeps.languages.rust.rust_type_expression_projection().instantiation_form,
+    head: v2.std.compilers.target_model.target_type_expr_atom_emitted(
+      form: v2.extdeps.languages.rust.rust_type_expression_projection().atom_form,
       identity: ^wrap_decision_composite_outer_binding
     ),
-    args: [target_carrier_node_node()]
+    args: [v2.std.compilers.target_model.target_carrier_node_node()]
   )
 }
 
 fn wrap_decision_composite_boundary_result() -> v2.std.node.Node {
-  match translate_apply_use_site_ownership_to_projected_boundary(
+  match v2.compiler.translate.translate_apply_use_site_ownership_to_projected_boundary(
     projected: wrap_decision_composite_projected(),
     source_for_binding: wrap_decision_composite_source(),
     target: wrap_decision_sg_rc_target(),
-    projection: rust_type_expression_projection(),
-    use_site: OwnershipAtStructField
+    projection: v2.extdeps.languages.rust.rust_type_expression_projection(),
+    use_site: v2.std.compilers.target_model.OwnershipAtStructField
   ) {
-    Accepted { value: node, diagnostics: _ } => node
-    Rejected { diagnostics: _ } => wrap_decision_composite_projected()
+    v2.std.diagnostic.Accepted { value: node, diagnostics: _ } => node
+    v2.std.diagnostic.Rejected { diagnostics: _ } => wrap_decision_composite_projected()
   }
 }
 
 fn wrap_decision_composite_result_arg() -> v2.std.node.Node {
-  match list_at_optional(
-    xs: node_positional_child_targets(node: wrap_decision_composite_boundary_result()),
+  match v2.std.collection.list_at_optional(
+    xs: v2.std.node_query.node_positional_child_targets(node: wrap_decision_composite_boundary_result()),
     index: 1
   ) {
-    Present { value: arg } => arg
-    Absent => wrap_decision_composite_projected_arg()
+    v2.std.optional.Present { value: arg } => arg
+    v2.std.optional.Absent => wrap_decision_composite_projected_arg()
   }
 }
 
-test fn wrap_decision_instantiation_arg_is_wrapped() -> v2.std.logic.Bool {
-  match target_type_expr_emitted_wire_decode(
+test fn wrap_decision_instantiation_arg_is_wrapped() -> Bool {
+  match v2.std.compilers.target_model.target_type_expr_emitted_wire_decode(
     node: wrap_decision_composite_result_arg(),
-    projection: rust_type_expression_projection()
+    projection: v2.extdeps.languages.rust.rust_type_expression_projection()
   ) {
-    Accepted { value: wire, diagnostics: _ } => wire.kind == TargetTypeExprInstantiation
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Accepted { value: wire, diagnostics: _ } => wire.kind == v2.std.compilers.target_model.TargetTypeExprInstantiation
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

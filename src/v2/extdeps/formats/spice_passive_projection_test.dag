@@ -1,56 +1,56 @@
 module v2.test.extdeps.formats.spice_passive_projection
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-test fn spice_resistor_projects_resistor_passive_topology_holds() -> v2.std.logic.Bool {
+test fn spice_resistor_projects_resistor_passive_topology_holds() -> Bool {
   let component = v2.extdeps.formats.spice.Resistor {
     name: "1",
     n_plus: v2.extdeps.formats.spice.Named { node: v2.extdeps.formats.spice.NamedNode { name: "n1" } },
-    n_minus: Ground,
+    n_minus: v2.extdeps.formats.spice.Ground,
     value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1000" }
   }
-  match passive_spec_from_component(component: component) {
-    Present { value: ResistorPassive { topology: topo } } => topo.name == "1"
+  match v2.extdeps.formats.spice_passive_projection.passive_spec_from_component(component: component) {
+    v2.std.collection.Present { value: v2.std.timeseries_signal.ResistorPassive { topology: topo } } => topo.name == "1"
     _ => false
   }
 }
 
-test fn spice_capacitor_projects_capacitor_passive_arm_holds() -> v2.std.logic.Bool {
+test fn spice_capacitor_projects_capacitor_passive_arm_holds() -> Bool {
   let component = v2.extdeps.formats.spice.Capacitor {
     name: "1",
     n_plus: v2.extdeps.formats.spice.Named { node: v2.extdeps.formats.spice.NamedNode { name: "n2" } },
-    n_minus: Ground,
+    n_minus: v2.extdeps.formats.spice.Ground,
     value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1e-6" }
   }
-  match passive_spec_from_component(component: component) {
-    Present { value: CapacitorPassive { topology: _ } } => true
+  match v2.extdeps.formats.spice_passive_projection.passive_spec_from_component(component: component) {
+    v2.std.collection.Present { value: v2.std.timeseries_signal.CapacitorPassive { topology: _ } } => true
     _ => false
   }
 }
 
-test fn spice_inductor_projects_inductor_passive_arm_holds() -> v2.std.logic.Bool {
+test fn spice_inductor_projects_inductor_passive_arm_holds() -> Bool {
   let component = v2.extdeps.formats.spice.Inductor {
     name: "l1",
     n_plus: v2.extdeps.formats.spice.Named { node: v2.extdeps.formats.spice.NamedNode { name: "n3" } },
-    n_minus: Ground,
+    n_minus: v2.extdeps.formats.spice.Ground,
     value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1e-3" }
   }
-  match passive_spec_from_component(component: component) {
-    Present { value: InductorPassive { topology: _ } } => true
+  match v2.extdeps.formats.spice_passive_projection.passive_spec_from_component(component: component) {
+    v2.std.collection.Present { value: v2.std.timeseries_signal.InductorPassive { topology: _ } } => true
     _ => false
   }
 }
 
-test fn passive_topology_preserves_component_name_holds() -> v2.std.logic.Bool {
+test fn passive_topology_preserves_component_name_holds() -> Bool {
   let component = v2.extdeps.formats.spice.Resistor {
     name: "r9",
     n_plus: v2.extdeps.formats.spice.Named { node: v2.extdeps.formats.spice.NamedNode { name: "n9" } },
-    n_minus: Ground,
+    n_minus: v2.extdeps.formats.spice.Ground,
     value: v2.extdeps.formats.spice.SpiceValue { lexeme: "47" }
   }
-  match passive_topology_from_component(component: component) {
-    Present { value: topo } => topo.name == "r9"
-    Absent => false
+  match v2.extdeps.formats.spice_passive_projection.passive_topology_from_component(component: component) {
+    v2.std.collection.Present { value: topo } => topo.name == "r9"
+    v2.std.collection.Absent => false
   }
 }

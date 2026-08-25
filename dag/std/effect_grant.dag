@@ -9,14 +9,14 @@ data verb_set_note: String = "Q1 AMENDED (dissolve-on fired 2026-07-19, deploy-p
 
 data execute_verb_note: String = "Execute grant reach for process/binary invocation: target is a NamespacePosition in FilesystemPathTree naming the executable. The verb is shape-grounded: verb_of_effect_shape(ExecuteEffect) = Execute. Deploy-preflight sudo probes materialize via PosixSudoGrant -> Grant projection (gunbc.fleet_posix_accounts). WHO may execute stays GroundedPosixPrincipal/std.access. dissolve-on = deploy-preflight envelope admits via admit_effect (shell-intent Wave A follow-on)."
 
-fn verb_of_effect_shape(shape: std.effects.EffectShape<std.effects.KeySource>) -> std.effect_grant.Verb {
+fn verb_of_effect_shape(shape: std.effects.EffectShape<KeySource>) -> Verb {
   match shape {
-    ReadEffect => Read
-    UpsertEffect { key_source: key_source } => Write
-    DeleteEffect { key_source: key_source } => Write
-    CreateEffect { cause: cause } => Write
-    AppendEffect => Write
-    ExecuteEffect => Execute
+    std.effects.ReadEffect => Read
+    std.effects.UpsertEffect { key_source: key_source } => Write
+    std.effects.DeleteEffect { key_source: key_source } => Write
+    std.effects.CreateEffect { cause: cause } => Write
+    std.effects.AppendEffect => Write
+    std.effects.ExecuteEffect => Execute
   }
 }
 
@@ -30,11 +30,11 @@ type NamespaceTree
 data namespace_tree_note: String = "Q2 (PROVISIONAL, pending operator ruling): grant targets are positions in CITED trees (DESIGN 3, not minted): the OS filesystem namespace (extdeps/filesystem), URIs (extdeps/uri), /proc/self introspection, REST/Redfish service-operation hierarchies (ServiceOpTree per service), and the code-name containment tree the namespace-resolution lane makes the single naming authority (CodeNameTree). INTERIM realization: path-string prefixes (position_under below). Publication audiences are sets in std.authorization_profile, not positions in this tree; the frozen AudienceScopeTree from gunbc#7541 dissolved. CONVERGENCE -- the anti-fork commitment: NamespacePosition and its prefix relation become PROJECTIONS of the ONE containment-tree walk when SymbolIndex lands (the same relation the resolver walks, content-addressing hashes, termination reads). dissolve-on = SymbolIndex-backed position supersedes the path-string interim."
 
 type NamespacePosition {
-  tree: std.effect_grant.NamespaceTree
+  tree: NamespaceTree
   path: List<String>
 }
 
-fn namespace_tree_eq(a: std.effect_grant.NamespaceTree, b: std.effect_grant.NamespaceTree) -> Bool {
+fn namespace_tree_eq(a: NamespaceTree, b: NamespaceTree) -> Bool {
   match a {
     FilesystemPathTree => match b { FilesystemPathTree => true, _ => false }
     UriTree => match b { UriTree => true, _ => false }
@@ -55,7 +55,7 @@ fn path_is_prefix(prefix: List<String>, path: List<String>) -> Bool {
   }
 }
 
-fn position_under(target: std.effect_grant.NamespacePosition, root: std.effect_grant.NamespacePosition) -> Bool {
+fn position_under(target: NamespacePosition, root: NamespacePosition) -> Bool {
   namespace_tree_eq(a: target.tree, b: root.tree)
     && path_is_prefix(prefix: root.path, path: target.path)
 }
@@ -71,18 +71,18 @@ type LifecycleGrade
 data lifecycle_grade_note: String = "The containment law (operator, 2026-07-16): a write is frame-contained iff (target under a namespace the frame controls) AND (target lifecycle under frame lifecycle). LifecycleByConstruction = persistence unwritable past the frame (ephemeral container fs, netns loopback receiver -- teardown erases it). LifecycleByConvention = a cleanup that can fail or be forgotten (/tmp scratch + trap). The grade is CARRIED on the grant, an honest weaker grade, never conflated with the strong one."
 
 type Grant {
-  verb: std.effect_grant.Verb
-  root: std.effect_grant.NamespacePosition
-  binding: std.effect_grant.HandlerBinding
-  lifecycle: std.effect_grant.LifecycleGrade
+  verb: Verb
+  root: NamespacePosition
+  binding: HandlerBinding
+  lifecycle: LifecycleGrade
 }
 
 type Envelope {
   frame: std.materialization_ladder.Frame
-  grants: List<std.effect_grant.Grant>
+  grants: List<Grant>
 }
 
-fn verb_eq(a: std.effect_grant.Verb, b: std.effect_grant.Verb) -> Bool {
+fn verb_eq(a: Verb, b: Verb) -> Bool {
   match a {
     Read => match b { Read => true, Write => false, Execute => false }
     Write => match b { Write => true, Read => false, Execute => false }
@@ -90,37 +90,37 @@ fn verb_eq(a: std.effect_grant.Verb, b: std.effect_grant.Verb) -> Bool {
   }
 }
 
-fn filesystem_position(path: List<String>) -> std.effect_grant.NamespacePosition {
+fn filesystem_position(path: List<String>) -> NamespacePosition {
   NamespacePosition {
     tree: FilesystemPathTree,
     path: path
   }
 }
 
-fn grant_verb(g: std.effect_grant.Grant) -> std.effect_grant.Verb {
+fn grant_verb(g: Grant) -> Verb {
   g.verb
 }
 
-fn grant_root(g: std.effect_grant.Grant) -> std.effect_grant.NamespacePosition {
+fn grant_root(g: Grant) -> NamespacePosition {
   g.root
 }
 
-fn grant_covers(grant: std.effect_grant.Grant, verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition) -> Bool {
+fn grant_covers(grant: Grant, verb: Verb, target: NamespacePosition) -> Bool {
   verb_eq(a: grant.verb, b: verb) && position_under(target: target, root: grant.root)
 }
 
 type CoveringGrant
-  = CoveredBy { grant: std.effect_grant.Grant }
-  | NoCoveringGrant { verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition, frame: std.materialization_ladder.Frame }
+  = CoveredBy { grant: Grant }
+  | NoCoveringGrant { verb: Verb, target: NamespacePosition, frame: std.materialization_ladder.Frame }
 
 type GrantCoverage
-  = GrantCoveredBy { grant: std.effect_grant.Grant }
-  | GrantNotCovered { verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition }
+  = GrantCoveredBy { grant: Grant }
+  | GrantNotCovered { verb: Verb, target: NamespacePosition }
 
 fn grant_coverage_fold<T>(
-  coverage: std.effect_grant.GrantCoverage,
-  on_covered: fn(std.effect_grant.Grant) -> T,
-  on_not_covered: fn(std.effect_grant.Verb, std.effect_grant.NamespacePosition) -> T,
+  coverage: GrantCoverage,
+  on_covered: fn(Grant) -> T,
+  on_not_covered: fn(Verb, NamespacePosition) -> T,
 ) -> T {
   match coverage {
     GrantCoveredBy { grant: grant } => on_covered(grant)
@@ -130,7 +130,7 @@ fn grant_coverage_fold<T>(
 
 data covering_grant_note: String = "The grant that covers (verb, target) in an envelope -- the P-C primitive both reach-admission AND per-grant binding selection read (docs/plans/effect-namespace-grants.md P-C: 'claim runners select handler bindings per grant instead of per-process mode'). The covering Grant is the single reach authority: its root is the reach and its HandlerBinding is the transport-vs-replay selector at dispatch. effect_grant_policy projects this relation into the one std.access decision kernel; it does not mint another admitted/refused carrier. Dispatch sites that currently branch on the per-process ExecutionMode (execution_mode_is_wet_dispatch) select instead on covering_grant(...).grant.binding -- the per-grant fixture_store supplanting the process-global ctx.fixture_store. NoCoveringGrant is typed coverage evidence consumed by that policy, fail-closed."
 
-fn grant_coverage_go(grants: List<std.effect_grant.Grant>, verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition) -> std.effect_grant.GrantCoverage {
+fn grant_coverage_go(grants: List<Grant>, verb: Verb, target: NamespacePosition) -> GrantCoverage {
   if grants.count() == 0 {
     GrantNotCovered { verb: verb, target: target }
   } else {
@@ -143,11 +143,11 @@ fn grant_coverage_go(grants: List<std.effect_grant.Grant>, verb: std.effect_gran
   }
 }
 
-fn grant_coverage(grants: List<std.effect_grant.Grant>, verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition) -> std.effect_grant.GrantCoverage {
+fn grant_coverage(grants: List<Grant>, verb: Verb, target: NamespacePosition) -> GrantCoverage {
   grant_coverage_go(grants: grants, verb: verb, target: target)
 }
 
-fn covering_grant_go(grants: List<std.effect_grant.Grant>, verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition, frame: std.materialization_ladder.Frame) -> std.effect_grant.CoveringGrant {
+fn covering_grant_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: std.materialization_ladder.Frame) -> CoveringGrant {
   grant_coverage_fold(
     coverage: grant_coverage(grants: grants, verb: verb, target: target),
     on_covered: fn(grant) { CoveredBy { grant: grant } },
@@ -155,11 +155,11 @@ fn covering_grant_go(grants: List<std.effect_grant.Grant>, verb: std.effect_gran
   )
 }
 
-fn covering_grant(env: std.effect_grant.Envelope, verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition) -> std.effect_grant.CoveringGrant {
+fn covering_grant(env: Envelope, verb: Verb, target: NamespacePosition) -> CoveringGrant {
   covering_grant_go(grants: env.grants, verb: verb, target: target, frame: env.frame)
 }
 
-fn effect_verb_label(verb: std.effect_grant.Verb) -> String {
+fn effect_verb_label(verb: Verb) -> String {
   match verb {
     Read => "read"
     Write => "write"
@@ -167,12 +167,12 @@ fn effect_verb_label(verb: std.effect_grant.Verb) -> String {
   }
 }
 
-fn effect_target_label(target: std.effect_grant.NamespacePosition) -> String {
+fn effect_target_label(target: NamespacePosition) -> String {
   join(target.path, "/")
 }
 
 fn effect_grant_decide(
-  request: std.access.AccessRequest<std.materialization_ladder.Frame, std.authorization_profile.EffectAuthorizationAction<std.effect_grant.Verb>, std.effect_grant.NamespacePosition, std.materialization_ladder.Frame, std.effect_grant.Envelope>,
+  request: std.access.AccessRequest<std.materialization_ladder.Frame, std.authorization_profile.EffectAuthorizationAction<Verb>, NamespacePosition, std.materialization_ladder.Frame, Envelope>,
 ) -> std.access.AccessDecision {
   match covering_grant(
     env: request.evidence.value,
@@ -194,9 +194,9 @@ fn effect_grant_decide(
   }
 }
 
-data effect_grant_policy: std.access.AccessPolicy<std.materialization_ladder.Frame, std.authorization_profile.EffectAuthorizationAction<std.effect_grant.Verb>, std.effect_grant.NamespacePosition, std.materialization_ladder.Frame, std.effect_grant.Envelope> = std.access.AccessPolicy { decide: effect_grant_decide }
+data effect_grant_policy: std.access.AccessPolicy<std.materialization_ladder.Frame, std.authorization_profile.EffectAuthorizationAction<Verb>, NamespacePosition, std.materialization_ladder.Frame, Envelope> = std.access.AccessPolicy { decide: effect_grant_decide }
 
-fn admit_effect(env: std.effect_grant.Envelope, verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition) -> std.access.AccessDecision {
+fn admit_effect(env: Envelope, verb: Verb, target: NamespacePosition) -> std.access.AccessDecision {
   effect_grant_policy.decide(std.authorization_profile.effect_access_request(request: std.authorization_profile.EffectRequest {
     subject: env.frame,
     effect: verb,
@@ -206,7 +206,7 @@ fn admit_effect(env: std.effect_grant.Envelope, verb: std.effect_grant.Verb, tar
   }))
 }
 
-fn parent_covers_grant(parent_grants: List<std.effect_grant.Grant>, child_grant: std.effect_grant.Grant) -> Bool {
+fn parent_covers_grant(parent_grants: List<Grant>, child_grant: Grant) -> Bool {
   if parent_grants.count() == 0 {
     false
   } else {
@@ -216,7 +216,7 @@ fn parent_covers_grant(parent_grants: List<std.effect_grant.Grant>, child_grant:
   }
 }
 
-fn all_child_grants_bounded(child_grants: List<std.effect_grant.Grant>, parent_grants: List<std.effect_grant.Grant>) -> Bool {
+fn all_child_grants_bounded(child_grants: List<Grant>, parent_grants: List<Grant>) -> Bool {
   if child_grants.count() == 0 {
     true
   } else {
@@ -226,6 +226,6 @@ fn all_child_grants_bounded(child_grants: List<std.effect_grant.Grant>, parent_g
   }
 }
 
-fn envelope_bounded_by(child: std.effect_grant.Envelope, parent: std.effect_grant.Envelope) -> Bool {
+fn envelope_bounded_by(child: Envelope, parent: Envelope) -> Bool {
   all_child_grants_bounded(child_grants: child.grants, parent_grants: parent.grants)
 }

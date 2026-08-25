@@ -1,17 +1,17 @@
 module test.claim.fleet_host_key_enrollment_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // Acceptance item 4: an empty registry answers none for every host (nothing enrolled
 // means no expectation — the probe stays on the Unenrolled arm, never a fabricated
 // Mismatch), and a known_hosts line renders exactly "endpoint keytype key".
 test fn witness_empty_registry_yields_no_expectation_and_line_shape_is_exact() -> Bool {
-  match enrolled_fingerprint_for(host: "srv5") {
-    Present { value: _ } => length(fleet_host_key_enrollments) > 0
-    Absent => length(fleet_host_key_enrollments) == 0
+  match gunbc.fleet_host_key_enrollment.enrolled_fingerprint_for(host: "srv5") {
+    Present { value: _ } => length(gunbc.fleet_host_key_enrollment.fleet_host_key_enrollments) > 0
+    Absent => length(gunbc.fleet_host_key_enrollment.fleet_host_key_enrollments) == 0
   }
-    && known_hosts_line(k: gunbc.fleet_host_key_enrollment.KnownHostKeyRow {
+    && gunbc.fleet_host_key_enrollment.known_hosts_line(k: gunbc.fleet_host_key_enrollment.KnownHostKeyRow {
       host: "srv5" as product.placement_supply.HostIdentity,
       endpoint: "192.168.1.222",
       key_type: "ssh-ed25519",
@@ -26,23 +26,23 @@ test fn witness_empty_registry_yields_no_expectation_and_line_shape_is_exact() -
 // expected fingerprint; without it, the same wire stays Unenrolled — the enrollment is
 // what moves a host between the two remedies.
 test fn witness_enrolled_expectation_moves_wire_from_unenrolled_to_mismatch() -> Bool {
-  match classify_reach_probe_wire_with_expectation(
+  match gunbc.host_reach_identity_probe.classify_reach_probe_wire_with_expectation(
     success: false,
     stdout: "",
     stderr: "Host key verification failed.",
-    expected_fingerprint: enrolled_fingerprint_for(host: "srv5"),
+    expected_fingerprint: gunbc.fleet_host_key_enrollment.enrolled_fingerprint_for(host: "srv5"),
   ) {
-    ProbeHostKeyUnenrolled { transport_diagnostic: _ } => length(fleet_host_key_enrollments) == 0
-    ProbeHostKeyMismatch { expected_fingerprint: _, observed_fingerprint: _ } => length(fleet_host_key_enrollments) > 0
+    gunbc.host_reach_identity_probe.ProbeHostKeyUnenrolled { transport_diagnostic: _ } => length(gunbc.fleet_host_key_enrollment.fleet_host_key_enrollments) == 0
+    gunbc.host_reach_identity_probe.ProbeHostKeyMismatch { expected_fingerprint: _, observed_fingerprint: _ } => length(gunbc.fleet_host_key_enrollment.fleet_host_key_enrollments) > 0
     _ => false
   }
-    && match classify_reach_probe_wire_with_expectation(
+    && match gunbc.host_reach_identity_probe.classify_reach_probe_wire_with_expectation(
       success: false,
       stdout: "",
       stderr: "Host key verification failed.",
       expected_fingerprint: Present { value: "SHA256:enrolled" },
     ) {
-      ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: _ } => e == "SHA256:enrolled"
+      gunbc.host_reach_identity_probe.ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: _ } => e == "SHA256:enrolled"
       _ => false
     }
 }

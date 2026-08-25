@@ -45,7 +45,7 @@ fn obc_lexical_exposure(
 fn obc_root_exposure(occurrence: std.occurrence_identity.OccurrenceId) -> std.occurrence_binding_candidates.DeclarationExposureRow {
   std.occurrence_binding_candidates.DeclarationExposureRow {
     occurrence: occurrence,
-    exposure: RootExposure,
+    exposure: std.occurrence_binding_candidates.RootExposure,
   }
 }
 
@@ -134,11 +134,11 @@ fn obc_module_sibling_transport() -> std.occurrence_identity.OccurrenceTransport
       ],
     },
     declarations: [
-      obc_fixture_declaration(occurrence: fn_a, containment: fn_a_path, category: CallableOccurrence),
-      obc_fixture_declaration(occurrence: fn_b, containment: fn_b_path, category: CallableOccurrence),
+      obc_fixture_declaration(occurrence: fn_a, containment: fn_a_path, category: std.occurrence_identity.CallableOccurrence),
+      obc_fixture_declaration(occurrence: fn_b, containment: fn_b_path, category: std.occurrence_identity.CallableOccurrence),
     ],
     references: [
-      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: CallableOccurrence),
+      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: std.occurrence_identity.CallableOccurrence),
     ],
   }
 }
@@ -167,16 +167,16 @@ fn obc_module_sibling_inputs() -> std.occurrence_binding_candidates.OccurrenceBi
 }
 
 test fn module_scope_sibling_is_visible_holds() -> Bool {
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_module_sibling_inputs(),
     reference: obc_fixture_reference(
       occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
       containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: std.occurrence_identity.OccurrenceId { value: 30 }),
-      category: CallableOccurrence,
+      category: std.occurrence_identity.CallableOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionBound { provider: provider } =>
+    std.occurrence_binding_candidates.ReferenceBindingProjectionBound { provider: provider } =>
       provider.declaration_occurrence.value == 10
         && provider.reference_occurrence.value == 30
         && obc_same_module(left: provider.consumer_module, right: obc_module_path(dotted: "app.sibling_module"))
@@ -206,11 +206,11 @@ fn obc_sibling_arm_transport() -> std.occurrence_identity.OccurrenceTransport {
       ],
     },
     declarations: [
-      obc_fixture_declaration(occurrence: arm1_y, containment: arm1_y_path, category: LexicalValueOccurrence),
-      obc_fixture_declaration(occurrence: arm2_y, containment: arm2_y_path, category: LexicalValueOccurrence),
+      obc_fixture_declaration(occurrence: arm1_y, containment: arm1_y_path, category: std.occurrence_identity.LexicalValueOccurrence),
+      obc_fixture_declaration(occurrence: arm2_y, containment: arm2_y_path, category: std.occurrence_identity.LexicalValueOccurrence),
     ],
     references: [
-      obc_fixture_reference(occurrence: arm2_ref, containment: arm2_ref_path, category: LexicalValueOccurrence),
+      obc_fixture_reference(occurrence: arm2_ref, containment: arm2_ref_path, category: std.occurrence_identity.LexicalValueOccurrence),
     ],
   }
 }
@@ -247,7 +247,7 @@ fn obc_sibling_arm_inputs() -> std.occurrence_binding_candidates.OccurrenceBindi
 }
 
 test fn sibling_match_arm_not_visible_holds() -> Bool {
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: obc_sibling_arm_transport(),
     inputs: obc_sibling_arm_inputs(),
     reference: obc_fixture_reference(
@@ -256,10 +256,10 @@ test fn sibling_match_arm_not_visible_holds() -> Bool {
         ancestors: [std.occurrence_identity.OccurrenceId { value: 1 }, std.occurrence_identity.OccurrenceId { value: 3 }, std.occurrence_identity.OccurrenceId { value: 12 }],
         terminal: std.occurrence_identity.OccurrenceId { value: 21 },
       ),
-      category: LexicalValueOccurrence,
+      category: std.occurrence_identity.LexicalValueOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionBound { provider: provider } =>
+    std.occurrence_binding_candidates.ReferenceBindingProjectionBound { provider: provider } =>
       provider.declaration_occurrence.value == 12
     _ => false
   }
@@ -281,10 +281,10 @@ fn obc_nested_lexical_transport() -> std.occurrence_identity.OccurrenceTransport
       ],
     },
     declarations: [
-      obc_fixture_declaration(occurrence: let_x, containment: let_x_path, category: LexicalValueOccurrence),
+      obc_fixture_declaration(occurrence: let_x, containment: let_x_path, category: std.occurrence_identity.LexicalValueOccurrence),
     ],
     references: [
-      obc_fixture_reference(occurrence: outside_ref, containment: outside_ref_path, category: LexicalValueOccurrence),
+      obc_fixture_reference(occurrence: outside_ref, containment: outside_ref_path, category: std.occurrence_identity.LexicalValueOccurrence),
     ],
   }
 }
@@ -314,16 +314,16 @@ fn obc_nested_lexical_inputs() -> std.occurrence_binding_candidates.OccurrenceBi
 }
 
 test fn nested_lexical_only_inside_scope_holds() -> Bool {
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: obc_nested_lexical_transport(),
     inputs: obc_nested_lexical_inputs(),
     reference: obc_fixture_reference(
       occurrence: std.occurrence_identity.OccurrenceId { value: 51 },
       containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 4 }], terminal: std.occurrence_identity.OccurrenceId { value: 51 }),
-      category: LexicalValueOccurrence,
+      category: std.occurrence_identity.LexicalValueOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 51
+    std.occurrence_binding_candidates.ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 51
     _ => false
   }
 }
@@ -356,10 +356,10 @@ fn obc_source_order_transport() -> std.occurrence_identity.OccurrenceTransport {
       ],
     },
     declarations: [
-      obc_fixture_declaration(occurrence: fn_later, containment: fn_later_path, category: CallableOccurrence),
+      obc_fixture_declaration(occurrence: fn_later, containment: fn_later_path, category: std.occurrence_identity.CallableOccurrence),
     ],
     references: [
-      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: CallableOccurrence),
+      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: std.occurrence_identity.CallableOccurrence),
     ],
   }
 }
@@ -372,16 +372,16 @@ fn obc_source_order_module_paths() -> List<std.occurrence_binding_candidates.Occ
 }
 
 test fn declaration_below_occurrence_not_visible_holds() -> Bool {
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: obc_source_order_transport(),
     inputs: obc_source_order_inputs(),
     reference: obc_fixture_reference(
       occurrence: std.occurrence_identity.OccurrenceId { value: 60 },
       containment: obc_fixture_path(ancestors: [], terminal: std.occurrence_identity.OccurrenceId { value: 60 }),
-      category: CallableOccurrence,
+      category: std.occurrence_identity.CallableOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 60
+    std.occurrence_binding_candidates.ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 60
     _ => false
   }
 }
@@ -404,11 +404,11 @@ fn obc_ambiguous_transport() -> std.occurrence_identity.OccurrenceTransport {
       ],
     },
     declarations: [
-      obc_fixture_declaration(occurrence: helper_a, containment: helper_a_path, category: CallableOccurrence),
-      obc_fixture_declaration(occurrence: helper_b, containment: helper_b_path, category: CallableOccurrence),
+      obc_fixture_declaration(occurrence: helper_a, containment: helper_a_path, category: std.occurrence_identity.CallableOccurrence),
+      obc_fixture_declaration(occurrence: helper_b, containment: helper_b_path, category: std.occurrence_identity.CallableOccurrence),
     ],
     references: [
-      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: CallableOccurrence),
+      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: std.occurrence_identity.CallableOccurrence),
     ],
   }
 }
@@ -437,16 +437,16 @@ fn obc_ambiguous_inputs() -> std.occurrence_binding_candidates.OccurrenceBinding
 }
 
 test fn same_text_distinct_identities_is_ambiguous_holds() -> Bool {
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: obc_ambiguous_transport(),
     inputs: obc_ambiguous_inputs(),
     reference: obc_fixture_reference(
       occurrence: std.occurrence_identity.OccurrenceId { value: 90 },
       containment: obc_fixture_path(ancestors: [], terminal: std.occurrence_identity.OccurrenceId { value: 90 }),
-      category: CallableOccurrence,
+      category: std.occurrence_identity.CallableOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionAmbiguous { occurrence: ambiguous } => ambiguous.value == 90
+    std.occurrence_binding_candidates.ReferenceBindingProjectionAmbiguous { occurrence: ambiguous } => ambiguous.value == 90
     _ => false
   }
 }
@@ -469,11 +469,11 @@ fn obc_production_transport() -> std.occurrence_identity.OccurrenceTransport {
       ],
     },
     declarations: [
-      obc_fixture_declaration(occurrence: format_greeting, containment: format_greeting_path, category: CallableOccurrence),
-      obc_fixture_declaration(occurrence: greet, containment: greet_path, category: CallableOccurrence),
+      obc_fixture_declaration(occurrence: format_greeting, containment: format_greeting_path, category: std.occurrence_identity.CallableOccurrence),
+      obc_fixture_declaration(occurrence: greet, containment: greet_path, category: std.occurrence_identity.CallableOccurrence),
     ],
     references: [
-      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: CallableOccurrence),
+      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: std.occurrence_identity.CallableOccurrence),
     ],
   }
 }
@@ -502,16 +502,16 @@ fn obc_production_inputs() -> std.occurrence_binding_candidates.OccurrenceBindin
 }
 
 test fn production_module_call_to_earlier_sibling_binds_holds() -> Bool {
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: obc_production_transport(),
     inputs: obc_production_inputs(),
     reference: obc_fixture_reference(
       occurrence: std.occurrence_identity.OccurrenceId { value: 110 },
       containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 101 }], terminal: std.occurrence_identity.OccurrenceId { value: 110 }),
-      category: CallableOccurrence,
+      category: std.occurrence_identity.CallableOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionBound { provider: provider } =>
+    std.occurrence_binding_candidates.ReferenceBindingProjectionBound { provider: provider } =>
       provider.reference_occurrence.value == 110
         && provider.declaration_occurrence.value == 100
         && obc_same_module(left: provider.consumer_module, right: obc_module_path(dotted: "gunbc.example.greeter"))
@@ -541,12 +541,12 @@ test fn direct_module_dependency_dedupes_by_module_pair_holds() -> Bool {
     consumer_module: obc_module_path(dotted: "app.consumer"),
     provider_module: obc_module_path(dotted: "app.provider"),
   }
-  let edges = match direct_module_dependencies_from_bound_population(
+  let edges = match std.occurrence_binding_candidates.direct_module_dependencies_from_bound_population(
     population: std.occurrence_binding_candidates.AllReferencesBound {
       providers: [same_module_provider, cross_module_provider_one, cross_module_provider_two],
     },
   ) {
-    DirectModuleDependencyListReady { edges: edges } => edges
+    std.occurrence_binding_candidates.DirectModuleDependencyListReady { edges: edges } => edges
     _ => []
   }
   (edges |> count) == 1
@@ -559,7 +559,7 @@ test fn direct_module_dependency_dedupes_by_module_pair_holds() -> Bool {
 data occurrence_binding_candidates_witness_refused_population_never_empty_edges_note: String = "Blocker-3 residual RED (PR 7515): a ReferencePopulationRefused population must project as DirectModuleDependencyPopulationRefused — never DirectModuleDependencyListReady with an empty edge list. Empty edges are reachable only from AllReferencesBound with zero cross-module providers."
 
 test fn refused_population_never_projects_empty_edge_list_holds() -> Bool {
-  match direct_module_dependencies_from_bound_population(
+  match std.occurrence_binding_candidates.direct_module_dependencies_from_bound_population(
     population: std.occurrence_binding_candidates.ReferencePopulationRefused {
       first_failure: std.occurrence_binding_candidates.ReferenceBindingProjectionUnbound {
         occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
@@ -567,8 +567,8 @@ test fn refused_population_never_projects_empty_edge_list_holds() -> Bool {
       more_failures: [],
     },
   ) {
-    DirectModuleDependencyPopulationRefused { population: _ } => true
-    DirectModuleDependencyListReady { edges: _ } => false
+    std.occurrence_binding_candidates.DirectModuleDependencyPopulationRefused { population: _ } => true
+    std.occurrence_binding_candidates.DirectModuleDependencyListReady { edges: _ } => false
   }
 }
 
@@ -587,7 +587,7 @@ test fn repeated_cross_file_mentions_collapse_provider_file_holds() -> Bool {
     consumer_module: obc_module_path(dotted: "app.consumer"),
     provider_module: obc_module_path(dotted: "app.provider"),
   }
-  let module_file_index = module_path_file_index_from_rows(rows: [
+  let module_file_index = std.occurrence_binding_candidates.module_path_file_index_from_rows(rows: [
     std.occurrence_binding_candidates.ModulePathFileRow {
       module_path: obc_module_path(dotted: "app.consumer"),
       file_path: "dag/app/consumer.dag",
@@ -598,13 +598,13 @@ test fn repeated_cross_file_mentions_collapse_provider_file_holds() -> Bool {
     },
   ])
   match module_file_index {
-    ModulePathFileIndexReady { entries: module_files } =>
-      match reference_derived_provider_files_for_consumer(
+    std.occurrence_binding_candidates.ModulePathFileIndexReady { entries: module_files } =>
+      match std.occurrence_binding_candidates.reference_derived_provider_files_for_consumer(
         population: std.occurrence_binding_candidates.AllReferencesBound { providers: [provider_one, provider_two] },
         module_files: module_files,
         consumer_file: "dag/app/consumer.dag",
       ) {
-        ReferenceDerivedProviderFileProjectionReady { provider_files: provider_files } =>
+        std.occurrence_binding_candidates.ReferenceDerivedProviderFileProjectionReady { provider_files: provider_files } =>
           (provider_files |> count) == 1
             && match provider_files |> first {
               Present { value: provider_file } => provider_file == "dag/app/provider.dag"
@@ -612,41 +612,41 @@ test fn repeated_cross_file_mentions_collapse_provider_file_holds() -> Bool {
             }
         _ => false
       }
-    ModulePathFileIndexRefused { refusal: _ } => false
+    std.occurrence_binding_candidates.ModulePathFileIndexRefused { refusal: _ } => false
   }
 }
 
 test fn cross_file_clause_e_fixture_collapses_provider_file_holds() -> Bool {
-  match reference_derived_provider_files_for_assembled_closure(
-    closure: cross_file_clause_e_fixture_assembled_closure(),
+  match std.occurrence_binding_candidates.reference_derived_provider_files_for_assembled_closure(
+    closure: test.fixture.cross_file_clause_e_fixture.cross_file_clause_e_fixture_assembled_closure(),
   ) {
-    ReferenceDerivedProviderFilesForAssembledClosureReady { provider_files: provider_files } =>
+    std.occurrence_binding_candidates.ReferenceDerivedProviderFilesForAssembledClosureReady { provider_files: provider_files } =>
       (provider_files |> count) == 1
         && match provider_files |> first {
-          Present { value: provider_file } => provider_file == cross_file_clause_e_fixture_provider_file()
+          Present { value: provider_file } => provider_file == test.fixture.cross_file_clause_e_fixture.cross_file_clause_e_fixture_provider_file()
           Absent => false
         }
-    ReferenceDerivedProviderFilesForAssembledClosureRefused { refusal: _ } => false
+    std.occurrence_binding_candidates.ReferenceDerivedProviderFilesForAssembledClosureRefused { refusal: _ } => false
   }
 }
 
 test fn reference_derived_dependency_projection_preserves_provenance_and_collapses_files_holds() -> Bool {
-  match cross_file_clause_e_fixture_assembled_closure() {
-    AssembledCrossFileBindingClosureReady {
+  match test.fixture.cross_file_clause_e_fixture.cross_file_clause_e_fixture_assembled_closure() {
+    std.occurrence_binding_candidates.AssembledCrossFileBindingClosureReady {
       transport: transport,
       inputs: inputs,
       module_files: module_file_rows,
       consumer_file: _,
     } =>
-      match structural_binding_walk(transport: transport, inputs: inputs) {
-        StructuralBindingWalkReady { population: population } =>
-      match module_path_file_index_from_rows(rows: module_file_rows) {
-        ModulePathFileIndexReady { entries: module_files } =>
-          match reference_derived_dependency_projection(
+      match std.occurrence_binding_candidates.structural_binding_walk(transport: transport, inputs: inputs) {
+        std.occurrence_binding_candidates.StructuralBindingWalkReady { population: population } =>
+      match std.occurrence_binding_candidates.module_path_file_index_from_rows(rows: module_file_rows) {
+        std.occurrence_binding_candidates.ModulePathFileIndexReady { entries: module_files } =>
+          match std.occurrence_binding_candidates.reference_derived_dependency_projection(
             population: population,
             module_files: module_files,
           ) {
-            ReferenceDerivedDependencyProjectionReady {
+            std.occurrence_binding_candidates.ReferenceDerivedDependencyProjectionReady {
               binding_provenance: provenances,
               file_dependencies: file_dependencies,
               bound_population: _,
@@ -654,18 +654,18 @@ test fn reference_derived_dependency_projection_preserves_provenance_and_collaps
               (provenances |> count) == 2 && (file_dependencies |> count) == 1
             _ => false
           }
-        ModulePathFileIndexRefused { refusal: _ } => false
+        std.occurrence_binding_candidates.ModulePathFileIndexRefused { refusal: _ } => false
       }
         _ => false
       }
-    AssembledCrossFileBindingClosureRefused { refusal: _ } => false
+    std.occurrence_binding_candidates.AssembledCrossFileBindingClosureRefused { refusal: _ } => false
   }
 }
 
 data occurrence_binding_candidates_witness_missing_module_path_note: String = "Fail-closed RED: a ModuleExposure declaration without an OccurrenceModulePathRow must refuse at index build — never silently drop from the sibling-exposure population and masquerade as OccurrenceUnbound."
 
 test fn module_scope_declaration_missing_module_path_refuses_holds() -> Bool {
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
       module_paths: [
@@ -684,11 +684,11 @@ test fn module_scope_declaration_missing_module_path_refuses_holds() -> Bool {
     reference: obc_fixture_reference(
       occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
       containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: std.occurrence_identity.OccurrenceId { value: 30 }),
-      category: CallableOccurrence,
+      category: std.occurrence_identity.CallableOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionModulePathRefused {
-      refusal: MissingOccurrenceModulePathRow { occurrence: occurrence },
+    std.occurrence_binding_candidates.ReferenceBindingProjectionModulePathRefused {
+      refusal: std.occurrence_binding_candidates.MissingOccurrenceModulePathRow { occurrence: occurrence },
     } => occurrence.value == 10
     _ => false
   }
@@ -697,7 +697,7 @@ test fn module_scope_declaration_missing_module_path_refuses_holds() -> Bool {
 data occurrence_binding_candidates_witness_duplicate_module_path_note: String = "Fail-closed RED: conflicting OccurrenceModulePathRow values for the same occurrence must refuse at index build — never pick the last row and change exposure."
 
 test fn duplicate_module_path_row_refuses_holds() -> Bool {
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
       module_paths: [
@@ -719,11 +719,11 @@ test fn duplicate_module_path_row_refuses_holds() -> Bool {
     reference: obc_fixture_reference(
       occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
       containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: std.occurrence_identity.OccurrenceId { value: 30 }),
-      category: CallableOccurrence,
+      category: std.occurrence_identity.CallableOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionModulePathRefused {
-      refusal: DuplicateOccurrenceModulePathRow {
+    std.occurrence_binding_candidates.ReferenceBindingProjectionModulePathRefused {
+      refusal: std.occurrence_binding_candidates.DuplicateOccurrenceModulePathRow {
         occurrence: occurrence,
         first_module_path: first_module_path,
         conflicting_module_path: conflicting_module_path,
@@ -739,7 +739,7 @@ test fn duplicate_module_path_row_refuses_holds() -> Bool {
 data occurrence_binding_candidates_witness_duplicate_exposure_note: String = "Fail-closed RED: conflicting DeclarationExposureRow values for the same occurrence must refuse at index build — never pick the last row and change visibility."
 
 test fn duplicate_declaration_exposure_row_refuses_holds() -> Bool {
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
       module_paths: obc_module_sibling_module_paths(),
@@ -757,11 +757,11 @@ test fn duplicate_declaration_exposure_row_refuses_holds() -> Bool {
     reference: obc_fixture_reference(
       occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
       containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: std.occurrence_identity.OccurrenceId { value: 30 }),
-      category: CallableOccurrence,
+      category: std.occurrence_identity.CallableOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionExposureRefused {
-      refusal: ConflictingDeclarationExposure {
+    std.occurrence_binding_candidates.ReferenceBindingProjectionExposureRefused {
+      refusal: std.occurrence_binding_candidates.ConflictingDeclarationExposure {
         occurrence: occurrence,
         first_exposure: first_exposure,
         conflicting_exposure: conflicting_exposure,
@@ -769,12 +769,12 @@ test fn duplicate_declaration_exposure_row_refuses_holds() -> Bool {
     } =>
       occurrence.value == 10
         && match first_exposure {
-          ModuleExposure { module: first_module } =>
+          std.occurrence_binding_candidates.ModuleExposure { module: first_module } =>
             obc_same_module(left: first_module, right: obc_module_path(dotted: "app.sibling_module"))
           _ => false
         }
         && match conflicting_exposure {
-          ModuleExposure { module: conflicting_module } =>
+          std.occurrence_binding_candidates.ModuleExposure { module: conflicting_module } =>
             obc_same_module(left: conflicting_module, right: obc_module_path(dotted: "app.other_module"))
           _ => false
         }
@@ -785,7 +785,7 @@ test fn duplicate_declaration_exposure_row_refuses_holds() -> Bool {
 data occurrence_binding_candidates_witness_duplicate_authored_order_note: String = "Fail-closed RED: conflicting AuthoredOrderRow values for the same occurrence must refuse at index build — never pick the last row and change source-order gating."
 
 test fn duplicate_authored_order_row_refuses_holds() -> Bool {
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
       module_paths: obc_module_sibling_module_paths(),
@@ -806,11 +806,11 @@ test fn duplicate_authored_order_row_refuses_holds() -> Bool {
     reference: obc_fixture_reference(
       occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
       containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: std.occurrence_identity.OccurrenceId { value: 30 }),
-      category: CallableOccurrence,
+      category: std.occurrence_identity.CallableOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionAuthoredOrderRefused {
-      refusal: ConflictingAuthoredOrderRow {
+    std.occurrence_binding_candidates.ReferenceBindingProjectionAuthoredOrderRefused {
+      refusal: std.occurrence_binding_candidates.ConflictingAuthoredOrderRow {
         occurrence: occurrence,
         first_ordinal: first_ordinal,
         conflicting_ordinal: conflicting_ordinal,
@@ -826,7 +826,7 @@ test fn duplicate_authored_order_row_refuses_holds() -> Bool {
 data occurrence_binding_candidates_witness_missing_exposure_note: String = "Fail-closed RED (PR 7515 blocker 2): a declaration with no DeclarationExposureRow must refuse MissingDeclarationExposure at index build — never silently fail the Bool visibility predicate and masquerade as OccurrenceUnbound."
 
 test fn missing_declaration_exposure_refuses_holds() -> Bool {
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
       module_paths: obc_module_sibling_module_paths(),
@@ -842,11 +842,11 @@ test fn missing_declaration_exposure_refuses_holds() -> Bool {
     reference: obc_fixture_reference(
       occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
       containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: std.occurrence_identity.OccurrenceId { value: 30 }),
-      category: CallableOccurrence,
+      category: std.occurrence_identity.CallableOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionExposureRefused {
-      refusal: MissingDeclarationExposure { occurrence: occurrence },
+    std.occurrence_binding_candidates.ReferenceBindingProjectionExposureRefused {
+      refusal: std.occurrence_binding_candidates.MissingDeclarationExposure { occurrence: occurrence },
     } => occurrence.value == 10
     _ => false
   }
@@ -855,7 +855,7 @@ test fn missing_declaration_exposure_refuses_holds() -> Bool {
 data occurrence_binding_candidates_witness_missing_authored_order_note: String = "Fail-closed RED (PR 7515 blocker 2): a reference (or declaration) with no AuthoredOrderRow must refuse MissingAuthoredOrderRow at index build — never treat missing ordinal as ordinary Unbound."
 
 test fn missing_authored_order_row_refuses_holds() -> Bool {
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
       module_paths: obc_module_sibling_module_paths(),
@@ -871,11 +871,11 @@ test fn missing_authored_order_row_refuses_holds() -> Bool {
     reference: obc_fixture_reference(
       occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
       containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: std.occurrence_identity.OccurrenceId { value: 30 }),
-      category: CallableOccurrence,
+      category: std.occurrence_identity.CallableOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionAuthoredOrderRefused {
-      refusal: MissingAuthoredOrderRow { occurrence: occurrence },
+    std.occurrence_binding_candidates.ReferenceBindingProjectionAuthoredOrderRefused {
+      refusal: std.occurrence_binding_candidates.MissingAuthoredOrderRow { occurrence: occurrence },
     } => occurrence.value == 30
     _ => false
   }
@@ -898,14 +898,14 @@ test fn raw_containment_without_matching_exposure_does_not_bind_holds() -> Bool 
       ],
     },
     declarations: [
-      obc_fixture_declaration(occurrence: nested_decl, containment: nested_path, category: CallableOccurrence),
-      obc_fixture_declaration(occurrence: outer_fn, containment: obc_fixture_path(ancestors: [nested_decl], terminal: outer_fn), category: CallableOccurrence),
+      obc_fixture_declaration(occurrence: nested_decl, containment: nested_path, category: std.occurrence_identity.CallableOccurrence),
+      obc_fixture_declaration(occurrence: outer_fn, containment: obc_fixture_path(ancestors: [nested_decl], terminal: outer_fn), category: std.occurrence_identity.CallableOccurrence),
     ],
     references: [
-      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: CallableOccurrence),
+      obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: std.occurrence_identity.CallableOccurrence),
     ],
   }
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: transport,
     inputs: obc_fixture_inputs(
       module_paths: [
@@ -926,10 +926,10 @@ test fn raw_containment_without_matching_exposure_does_not_bind_holds() -> Bool 
     reference: obc_fixture_reference(
       occurrence: call_ref,
       containment: call_ref_path,
-      category: CallableOccurrence,
+      category: std.occurrence_identity.CallableOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 30
+    std.occurrence_binding_candidates.ReferenceBindingProjectionUnbound { occurrence: unbound } => unbound.value == 30
     _ => false
   }
 }
@@ -941,7 +941,7 @@ test fn root_exposure_is_visible_holds() -> Bool {
   let call_ref = std.occurrence_identity.OccurrenceId { value: 30 }
   let root_path = obc_fixture_path(ancestors: [], terminal: root_decl)
   let call_ref_path = obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: call_ref)
-  match resolve_reference_binding_via_structural_candidates(
+  match std.occurrence_binding_candidates.resolve_reference_binding_via_structural_candidates(
     transport: std.occurrence_identity.OccurrenceTransport {
       index: std.occurrence_identity.OccurrenceIndex {
         entries: [
@@ -950,10 +950,10 @@ test fn root_exposure_is_visible_holds() -> Bool {
         ],
       },
       declarations: [
-        obc_fixture_declaration(occurrence: root_decl, containment: root_path, category: CallableOccurrence),
+        obc_fixture_declaration(occurrence: root_decl, containment: root_path, category: std.occurrence_identity.CallableOccurrence),
       ],
       references: [
-        obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: CallableOccurrence),
+        obc_fixture_reference(occurrence: call_ref, containment: call_ref_path, category: std.occurrence_identity.CallableOccurrence),
       ],
     },
     inputs: obc_fixture_inputs(
@@ -972,10 +972,10 @@ test fn root_exposure_is_visible_holds() -> Bool {
     reference: obc_fixture_reference(
       occurrence: call_ref,
       containment: call_ref_path,
-      category: CallableOccurrence,
+      category: std.occurrence_identity.CallableOccurrence,
     ),
   ) {
-    ReferenceBindingProjectionBound { provider: provider } =>
+    std.occurrence_binding_candidates.ReferenceBindingProjectionBound { provider: provider } =>
       provider.declaration_occurrence.value == 10
         && provider.reference_occurrence.value == 30
     _ => false
@@ -987,14 +987,14 @@ data occurrence_binding_candidates_witness_declarations_by_name_refuse_note: Str
 test fn declarations_by_name_missing_index_entry_refuses_holds() -> Bool {
   let decl = std.occurrence_identity.OccurrenceId { value: 10 }
   let decl_path = obc_fixture_path(ancestors: [], terminal: decl)
-  match declarations_by_name_build(
+  match std.occurrence_binding_candidates.declarations_by_name_build(
     entries_by_id: empty_map(),
     declarations: [
-      obc_fixture_declaration(occurrence: decl, containment: decl_path, category: CallableOccurrence),
+      obc_fixture_declaration(occurrence: decl, containment: decl_path, category: std.occurrence_identity.CallableOccurrence),
     ],
   ) {
-    DeclarationsByNameMissingIndexEntry { occurrence: missing } => missing.value == 10
-    DeclarationsByNameReady { by_name: _ } => false
+    std.occurrence_binding_candidates.DeclarationsByNameMissingIndexEntry { occurrence: missing } => missing.value == 10
+    std.occurrence_binding_candidates.DeclarationsByNameReady { by_name: _ } => false
   }
 }
 
@@ -1003,8 +1003,8 @@ data section13_fixture_head: std.types.CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaa
 fn obc_section13_observation(decl_name: String, passed: Bool) -> std.occurrence_binding_candidates.Section13ExactHeadExecutionObservation {
   std.occurrence_binding_candidates.Section13ExactHeadExecutionObservation {
     head: section13_fixture_head,
-    declaration: section13_executing_receipt(
-      module_path: section13_witness_module_path(),
+    declaration: std.occurrence_binding_candidates.section13_executing_receipt(
+      module_path: std.occurrence_binding_candidates.section13_witness_module_path(),
       decl_name: decl_name as std.types.NonEmptyStr,
     ),
     passed: passed,
@@ -1024,14 +1024,14 @@ fn obc_section13_joined_observations() -> List<std.occurrence_binding_candidates
 data occurrence_binding_candidates_witness_section13_join_note: String = "Section-13 denominator: Executing rows join to exact-head observations (symbolic DeclarationRef module paths). GREEN supplies passed=true observations for every Executing receipt. RED controls: missing observation and failed observation refuse — inhabiting Section13PopulationLawExecuting alone never greens."
 
 test fn witness_section13_population_law_roster_denominator_holds() -> Bool {
-  section13_population_law_roster_denominator_holds(
+  std.occurrence_binding_candidates.section13_population_law_roster_denominator_holds(
     observations: obc_section13_joined_observations(),
     required_head: section13_fixture_head,
   )
 }
 
 test fn section13_missing_observation_refuses_holds() -> Bool {
-  match section13_population_law_roster_adjudicate(
+  match std.occurrence_binding_candidates.section13_population_law_roster_adjudicate(
     observations: [
       obc_section13_observation(decl_name: "module_scope_sibling_is_visible_holds", passed: true),
       obc_section13_observation(decl_name: "sibling_match_arm_not_visible_holds", passed: true),
@@ -1040,14 +1040,14 @@ test fn section13_missing_observation_refuses_holds() -> Bool {
     ],
     required_head: section13_fixture_head,
   ) {
-    Section13PopulationLawRosterRefusedMissingObservation { receipt: receipt } =>
+    std.occurrence_binding_candidates.Section13PopulationLawRosterRefusedMissingObservation { receipt: receipt } =>
       receipt.decl_name == ("same_text_distinct_identities_is_ambiguous_holds" as std.types.NonEmptyStr)
     _ => false
   }
 }
 
 test fn section13_failed_observation_refuses_holds() -> Bool {
-  match section13_population_law_roster_adjudicate(
+  match std.occurrence_binding_candidates.section13_population_law_roster_adjudicate(
     observations: [
       obc_section13_observation(decl_name: "module_scope_sibling_is_visible_holds", passed: true),
       obc_section13_observation(decl_name: "sibling_match_arm_not_visible_holds", passed: true),
@@ -1057,9 +1057,9 @@ test fn section13_failed_observation_refuses_holds() -> Bool {
     ],
     required_head: section13_fixture_head,
   ) {
-    Section13PopulationLawRosterRefusedFailedOrStaleObservation { receipt: receipt } =>
+    std.occurrence_binding_candidates.Section13PopulationLawRosterRefusedFailedOrStaleObservation { receipt: receipt } =>
       receipt.decl_name == ("same_text_distinct_identities_is_ambiguous_holds" as std.types.NonEmptyStr)
-    Section13PopulationLawRosterHolds => false
+    std.occurrence_binding_candidates.Section13PopulationLawRosterHolds => false
     _ => false
   }
 }

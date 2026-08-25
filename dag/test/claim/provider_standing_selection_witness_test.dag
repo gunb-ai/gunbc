@@ -2,11 +2,11 @@ module test.claim.provider_standing_selection_witness_test
 
 
 test fn model_rejection_does_not_erase_account_eligibility() -> Bool {
-  limit_observations_are_selection_eligible(
+  gunbc.provider_standing.limit_observations_are_selection_eligible(
     observations: [
       gunbc.provider_standing.LimitRejected {
         subject: gunbc.provider_standing.ProviderModelLimit {
-          credential: LimitCredentialUnspecified,
+          credential: gunbc.provider_standing.LimitCredentialUnspecified,
           model: "fable" as std.types.NonEmptyStr,
         },
         native_token: "model_rejected" as std.types.NonEmptyStr,
@@ -14,53 +14,53 @@ test fn model_rejection_does_not_erase_account_eligibility() -> Bool {
       },
       gunbc.provider_standing.LimitObservedAvailable {
         subject: gunbc.provider_standing.ProviderAccountLimit {
-          credential: LimitCredentialUnspecified,
+          credential: gunbc.provider_standing.LimitCredentialUnspecified,
         },
       },
     ],
-    draw: LimitDispatchDrawUnspecified,
+    draw: gunbc.provider_standing.LimitDispatchDrawUnspecified,
   )
 }
 
 test fn model_rejection_blocks_dispatch_under_unspecified_draw() -> Bool {
-  !limit_observation_blocks_dispatch(
+  !gunbc.provider_standing.limit_observation_blocks_dispatch(
     observation: gunbc.provider_standing.LimitRejected {
       subject: gunbc.provider_standing.ProviderModelLimit {
-        credential: LimitCredentialUnspecified,
+        credential: gunbc.provider_standing.LimitCredentialUnspecified,
         model: "fable" as std.types.NonEmptyStr,
       },
       native_token: "model_rejected" as std.types.NonEmptyStr,
       reason: "model not entitled" as std.types.NonEmptyStr,
     },
-    draw: LimitDispatchDrawUnspecified,
+    draw: gunbc.provider_standing.LimitDispatchDrawUnspecified,
   )
 }
 
 test fn authenticated_available_bundle_is_selection_eligible() -> Bool {
-  provider_standing_bundle_is_selection_eligible(
-    bundle: fixture_standing_bundle_authenticated_available(),
-    draw: LimitDispatchDrawAutomatic,
+  gunbc.provider_standing.provider_standing_bundle_is_selection_eligible(
+    bundle: gunbc.provider_standing.fixture_standing_bundle_authenticated_available(),
+    draw: gunbc.provider_standing.LimitDispatchDrawAutomatic,
   )
 }
 
 test fn weekly_cap_blocks_automatic_draw() -> Bool {
-  !provider_standing_bundle_is_selection_eligible(
-    bundle: fixture_standing_bundle_authenticated_unavailable_until_reset(),
-    draw: LimitDispatchDrawAutomatic,
+  !gunbc.provider_standing.provider_standing_bundle_is_selection_eligible(
+    bundle: gunbc.provider_standing.fixture_standing_bundle_authenticated_unavailable_until_reset(),
+    draw: gunbc.provider_standing.LimitDispatchDrawAutomatic,
   )
 }
 
 test fn cursor_capability_gap_does_not_block_selection() -> Bool {
-  provider_standing_bundle_is_selection_eligible(
-    bundle: fixture_standing_bundle_cursor_capability_gap(),
-    draw: LimitDispatchDrawAutomatic,
+  gunbc.provider_standing.provider_standing_bundle_is_selection_eligible(
+    bundle: gunbc.provider_standing.fixture_standing_bundle_cursor_capability_gap(),
+    draw: gunbc.provider_standing.LimitDispatchDrawAutomatic,
   )
 }
 
 test fn claude_profile_present_token_absent_is_ineligible() -> Bool {
-  !provider_standing_bundle_is_selection_eligible(
-    bundle: fixture_standing_bundle_claude_profile_present_token_absent(),
-    draw: LimitDispatchDrawAutomatic,
+  !gunbc.provider_standing.provider_standing_bundle_is_selection_eligible(
+    bundle: gunbc.provider_standing.fixture_standing_bundle_claude_profile_present_token_absent(),
+    draw: gunbc.provider_standing.LimitDispatchDrawAutomatic,
   )
 }
 

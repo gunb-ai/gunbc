@@ -14,67 +14,67 @@ data manifest_record_knobs: std.languages.SerializationKnobs = {
 
 fn runner_labels_text(spec: extdeps.github.actions.RunnerSpec) -> String {
   match spec {
-    SelfHosted { labels: labels } =>
+    extdeps.github.actions.SelfHosted { labels: labels } =>
       fold(labels, init: "", f: (acc, l) => if acc == "" { l } else { concat(concat(acc, ","), l) })
-    HostedRunner { label: _ } => "hosted"
-    RunsOnExpression { expression: e } => e
+    extdeps.github.actions.HostedRunner { label: _ } => "hosted"
+    extdeps.github.actions.RunsOnExpression { expression: e } => e
   }
 }
 
 fn manifest_host_fields(h: gunbc.ci_runner_placement.RunnerHostDeployment) -> List<std.languages.SerialField> {
   [
-    serial_field(key: "host", value: serial_scalar(text: h.identity)),
-    serial_field(key: "runner_count", value: serial_scalar(text: to_string(h.runner_count))),
-    serial_field(key: "runner_slice_cap_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.runner_slice_cap)))),
-    serial_field(key: "per_slot_memory_max_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.per_runner_memory_cap)))),
-    serial_field(key: "build_tokens", value: serial_scalar(text: to_string(hardware_thread_count_value(t: h.build_tokens)))),
-    serial_field(key: "labels", value: serial_scalar(text: runner_labels_text(spec: h.runner))),
-    serial_field(key: "cpu_weight", value: serial_scalar(text: to_string(workload_class_cpu_weight(wc: h.workload_class))))
+    std.serialize.serial_field(key: "host", value: std.serialize.serial_scalar(text: h.identity)),
+    std.serialize.serial_field(key: "runner_count", value: std.serialize.serial_scalar(text: to_string(h.runner_count))),
+    std.serialize.serial_field(key: "runner_slice_cap_bytes", value: std.serialize.serial_scalar(text: to_string(std.measure.byte_size_count(b: h.runner_slice_cap)))),
+    std.serialize.serial_field(key: "per_slot_memory_max_bytes", value: std.serialize.serial_scalar(text: to_string(std.measure.byte_size_count(b: h.per_runner_memory_cap)))),
+    std.serialize.serial_field(key: "build_tokens", value: std.serialize.serial_scalar(text: to_string(std.measure.hardware_thread_count_value(t: h.build_tokens)))),
+    std.serialize.serial_field(key: "labels", value: std.serialize.serial_scalar(text: runner_labels_text(spec: h.runner))),
+    std.serialize.serial_field(key: "cpu_weight", value: std.serialize.serial_scalar(text: to_string(gunbc.ci_runner_placement.workload_class_cpu_weight(wc: h.workload_class))))
   ]
 }
 
 fn manifest_host_doc(h: gunbc.ci_runner_placement.RunnerHostDeployment) -> std.layout.Doc {
-  serialize_fields_doc(knobs: manifest_record_knobs, fields: manifest_host_fields(h: h))
+  std.serialize.serialize_fields_doc(knobs: manifest_record_knobs, fields: manifest_host_fields(h: h))
 }
 
 fn runner_plan_doc() -> std.layout.Doc {
-  match runner_deployment_plan() {
-    PlanUnsound { reason: reason } =>
-      doc_line_of(text: concat("runner-deploy UNSOUND: ", reason))
-    PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
-      doc_concat(parts: append(
-        map(hosts, h => doc_concat(parts: [doc_text(text: "runner-deploy "), manifest_host_doc(h: h), DocLine])),
-        items: [doc_line_of(text: concat("runner-deploy fleet_concurrent_runs=", to_string(total)))]
+  match gunbc.ci_runner_placement.runner_deployment_plan() {
+    gunbc.ci_runner_placement.PlanUnsound { reason: reason } =>
+      std.layout.doc_line_of(text: concat("runner-deploy UNSOUND: ", reason))
+    gunbc.ci_runner_placement.PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
+      std.layout.doc_concat(parts: append(
+        map(hosts, h => std.layout.doc_concat(parts: [std.layout.doc_text(text: "runner-deploy "), manifest_host_doc(h: h), std.layout.DocLine])),
+        items: [std.layout.doc_line_of(text: concat("runner-deploy fleet_concurrent_runs=", to_string(total)))]
       ))
   }
 }
 
 fn session_host_fields(h: gunbc.ci_runner_placement.SessionHostReservation) -> List<std.languages.SerialField> {
   [
-    serial_field(key: "host", value: serial_scalar(text: h.identity)),
-    serial_field(key: "sessions", value: serial_scalar(text: to_string(h.session_count))),
-    serial_field(key: "per_session_cap_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.per_session_reservation))))
+    std.serialize.serial_field(key: "host", value: std.serialize.serial_scalar(text: h.identity)),
+    std.serialize.serial_field(key: "sessions", value: std.serialize.serial_scalar(text: to_string(h.session_count))),
+    std.serialize.serial_field(key: "per_session_cap_bytes", value: std.serialize.serial_scalar(text: to_string(std.measure.byte_size_count(b: h.per_session_reservation))))
   ]
 }
 
 fn session_host_doc(h: gunbc.ci_runner_placement.SessionHostReservation) -> std.layout.Doc {
-  serialize_fields_doc(knobs: manifest_record_knobs, fields: session_host_fields(h: h))
+  std.serialize.serialize_fields_doc(knobs: manifest_record_knobs, fields: session_host_fields(h: h))
 }
 
 fn session_plan_doc() -> std.layout.Doc {
-  match session_reservation_plan() {
-    SessionReservationUnsound { reason: reason } =>
-      doc_line_of(text: concat("session-reservation UNSOUND: ", reason))
-    SessionReservationDerived {
+  match gunbc.ci_runner_placement.session_reservation_plan() {
+    gunbc.ci_runner_placement.SessionReservationUnsound { reason: reason } =>
+      std.layout.doc_line_of(text: concat("session-reservation UNSOUND: ", reason))
+    gunbc.ci_runner_placement.SessionReservationDerived {
       hosts: hosts,
       fleet_concurrent_sessions: total,
       per_session_reservation: _,
       coverage_count: covered,
       sample_count: samples
     } =>
-      doc_concat(parts: append(
-        map(hosts, h => doc_concat(parts: [doc_text(text: "session-reservation "), session_host_doc(h: h), DocLine])),
-        items: [doc_line_of(text: concat(
+      std.layout.doc_concat(parts: append(
+        map(hosts, h => std.layout.doc_concat(parts: [std.layout.doc_text(text: "session-reservation "), session_host_doc(h: h), std.layout.DocLine])),
+        items: [std.layout.doc_line_of(text: concat(
           concat("session-reservation fleet_concurrent_sessions=", to_string(total)),
           concat(" measured_peak_coverage=", concat(to_string(covered), concat("/", to_string(samples))))
         ))]
@@ -84,53 +84,53 @@ fn session_plan_doc() -> std.layout.Doc {
 
 fn operating_row_fields(r: gunbc.ci_runner_placement.OperatingPointRow) -> List<std.languages.SerialField> {
   [
-    serial_field(key: "per_session_cap_bytes", value: serial_scalar(text: to_string(byte_size_count(b: r.per_session_cap)))),
-    serial_field(key: "concurrency", value: serial_scalar(text: to_string(r.session_concurrency))),
-    serial_field(key: "sessions_slice_bytes", value: serial_scalar(text: to_string(byte_size_count(b: r.sessions_slice)))),
-    serial_field(key: "peak_coverage", value: serial_scalar(text: concat(concat(to_string(r.coverage_count), "/"), to_string(r.sample_count))))
+    std.serialize.serial_field(key: "per_session_cap_bytes", value: std.serialize.serial_scalar(text: to_string(std.measure.byte_size_count(b: r.per_session_cap)))),
+    std.serialize.serial_field(key: "concurrency", value: std.serialize.serial_scalar(text: to_string(r.session_concurrency))),
+    std.serialize.serial_field(key: "sessions_slice_bytes", value: std.serialize.serial_scalar(text: to_string(std.measure.byte_size_count(b: r.sessions_slice)))),
+    std.serialize.serial_field(key: "peak_coverage", value: std.serialize.serial_scalar(text: concat(concat(to_string(r.coverage_count), "/"), to_string(r.sample_count))))
   ]
 }
 
 fn operating_row_doc(r: gunbc.ci_runner_placement.OperatingPointRow) -> std.layout.Doc {
-  doc_concat(parts: [
-    doc_text(text: "  "),
-    serialize_fields_doc(knobs: manifest_record_knobs, fields: operating_row_fields(r: r)),
-    DocLine
+  std.layout.doc_concat(parts: [
+    std.layout.doc_text(text: "  "),
+    std.serialize.serialize_fields_doc(knobs: manifest_record_knobs, fields: operating_row_fields(r: r)),
+    std.layout.DocLine
   ])
 }
 
 fn operating_curve_doc() -> std.layout.Doc {
-  doc_concat(parts: concat(
-    [doc_line_of(text: "operating-curve (SESSION-side coverage only: operator selects one per-session operating point grounded in measured per-session peaks min 0.28 / median ~2.06 / max 8.27 GiB; sessions_slice = per_session_cap*concurrency. The per-host runner_count is budget-derived from runner_slice_cap and reported on the runner-deploy lines above, independent of this curve):")],
-    map(operating_curve(), r => operating_row_doc(r: r))
+  std.layout.doc_concat(parts: concat(
+    [std.layout.doc_line_of(text: "operating-curve (SESSION-side coverage only: operator selects one per-session operating point grounded in measured per-session peaks min 0.28 / median ~2.06 / max 8.27 GiB; sessions_slice = per_session_cap*concurrency. The per-host runner_count is budget-derived from runner_slice_cap and reported on the runner-deploy lines above, independent of this curve):")],
+    map(gunbc.ci_runner_placement.operating_curve(), r => operating_row_doc(r: r))
   ))
 }
 
 fn session_slice_doc() -> std.layout.Doc {
-  match gunbc_ci_session_reservation_mode {
-    SessionReservationModeUnset =>
-      doc_line_of(text: "session-slice UNSOUND: session reservation mode unset")
-    Regime1WorstCase { point: _ } =>
-      doc_line_of(text: "session-slice UNSOUND: REGIME-1 mode has no aggregate reservation; session-slice apply requires REGIME-2")
-    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg } =>
+  match gunbc.ci_floor_measurement.gunbc_ci_session_reservation_mode {
+    gunbc.ci_floor_measurement.SessionReservationModeUnset =>
+      std.layout.doc_line_of(text: "session-slice UNSOUND: session reservation mode unset")
+    gunbc.ci_floor_measurement.Regime1WorstCase { point: _ } =>
+      std.layout.doc_line_of(text: "session-slice UNSOUND: REGIME-1 mode has no aggregate reservation; session-slice apply requires REGIME-2")
+    gunbc.ci_floor_measurement.Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg } =>
       match agg {
-        SessionAggregateUnmeasured =>
-          doc_line_of(text: "session-slice UNSOUND: aggregate_reservation is unmeasured; commit a measured concurrent peak before wiring the apply")
-        SessionAggregateMeasured { bytes: agg_bytes } =>
-          doc_concat(parts: map(fleet_intent_offers, o => doc_line_of(text: concat(
+        gunbc.ci_floor_measurement.SessionAggregateUnmeasured =>
+          std.layout.doc_line_of(text: "session-slice UNSOUND: aggregate_reservation is unmeasured; commit a measured concurrent peak before wiring the apply")
+        gunbc.ci_floor_measurement.SessionAggregateMeasured { bytes: agg_bytes } =>
+          std.layout.doc_concat(parts: map(gunbc.ci_fleet.fleet_intent_offers, o => std.layout.doc_line_of(text: concat(
             "session-slice ",
             concat(
               concat(
                 concat(
                   concat(
-                    concat(concat("host=", o.supply.physical.identity), concat(" slice_max_bytes=", to_string(byte_size_count(b: agg_bytes)))),
-                    concat(" per_session_max_bytes=", to_string(byte_size_count(b: ceiling)))
+                    concat(concat("host=", o.supply.physical.identity), concat(" slice_max_bytes=", to_string(std.measure.byte_size_count(b: agg_bytes)))),
+                    concat(" per_session_max_bytes=", to_string(std.measure.byte_size_count(b: ceiling)))
                   ),
                   " oom_pressure_kill=true"
                 ),
-                concat(" oom_pressure_limit_pct=", to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)))
+                concat(" oom_pressure_limit_pct=", to_string(std.measure.percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)))
               ),
-              concat(" cpu_weight=", to_string(workload_class_cpu_weight(wc: InteractiveLatencySensitive)))
+              concat(" cpu_weight=", to_string(gunbc.ci_runner_placement.workload_class_cpu_weight(wc: gunbc.ci_runner_placement.InteractiveLatencySensitive)))
             )
           ))))
       }
@@ -138,7 +138,7 @@ fn session_slice_doc() -> std.layout.Doc {
 }
 
 fn project_runner_deploy_to_doc() -> std.layout.Doc {
-  doc_concat(parts: [
+  std.layout.doc_concat(parts: [
     runner_plan_doc(),
     session_slice_doc(),
     session_plan_doc(),
@@ -155,16 +155,16 @@ fn runner_deploy_drifted(committed: String) -> Bool {
 }
 
 fn expected_runner_deploy_manifest_json() -> String {
-  match runner_deployment_plan() {
-    PlanUnsound { reason: reason } =>
-      std.layout.render(doc: doc_line_of(text: concat("runner-deploy UNSOUND: ", reason)), proto: runner_deploy_protocol)
-    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+  match gunbc.ci_runner_placement.runner_deployment_plan() {
+    gunbc.ci_runner_placement.PlanUnsound { reason: reason } =>
+      std.layout.render(doc: std.layout.doc_line_of(text: concat("runner-deploy UNSOUND: ", reason)), proto: runner_deploy_protocol)
+    gunbc.ci_runner_placement.PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
       std.layout.render(
-        doc: doc_concat(parts: map(hosts, h =>
-          doc_concat(parts: [
-            doc_text(text: "runner-deploy "),
-            serialize_record_doc(knobs: json_record_knobs, fields: manifest_host_fields(h: h)),
-            DocLine
+        doc: std.layout.doc_concat(parts: map(hosts, h =>
+          std.layout.doc_concat(parts: [
+            std.layout.doc_text(text: "runner-deploy "),
+            std.serialize.serialize_record_doc(knobs: std.languages.json_record_knobs, fields: manifest_host_fields(h: h)),
+            std.layout.DocLine
           ])
         )),
         proto: runner_deploy_protocol

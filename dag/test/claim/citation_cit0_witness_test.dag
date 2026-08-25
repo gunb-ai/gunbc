@@ -3,27 +3,27 @@ module test.claim.citation_cit0_witness
 
 data witness_fragment_spec_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.rfc-editor.org/rfc/rfc8118#section-3",
   },
 }
 
 data witness_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "example.test/cit0-fixture",
   },
 }
 
 data witness_other_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "example.test/other-source",
   },
 }
 
 data witness_mirror_access_route: extdeps.uri.Uri = extdeps.uri.Uri {
-  scheme: Https,
+  scheme: extdeps.uri.Https,
   locator: "mirror.example.test/cit0-fixture",
 }
 
@@ -31,7 +31,7 @@ data witness_subject_ref: extdeps.external_authority.ExternalSubjectRef = extdep
   declaration: std.decl_ref.DeclarationRef {
     module_path: "test.claim.citation_cit0_witness",
     decl_name: "witness_authority",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
 }
 
@@ -39,30 +39,30 @@ data witness_other_subject_ref: extdeps.external_authority.ExternalSubjectRef = 
   declaration: std.decl_ref.DeclarationRef {
     module_path: "test.claim.citation_cit0_witness",
     decl_name: "witness_other_authority",
-    field: WholeDeclaration,
+    field: std.decl_ref.WholeDeclaration,
   },
 }
 
-data witness_fixture_identity: std.citation.CitedRepresentationIdentity = cited_representation_identity(
+data witness_fixture_identity: std.citation.CitedRepresentationIdentity = std.citation.cited_representation_identity(
   source: witness_subject_ref,
-  access_route: test.claim.citation_cit0_witness.witness_authority.uri,
-  byte_domain: RawResponseBody,
+  access_route: witness_authority.uri,
+  byte_domain: std.citation.RawResponseBody,
 )
 
-data witness_mirror_identity: std.citation.CitedRepresentationIdentity = cited_representation_identity(
+data witness_mirror_identity: std.citation.CitedRepresentationIdentity = std.citation.cited_representation_identity(
   source: witness_subject_ref,
   access_route: witness_mirror_access_route,
-  byte_domain: RawResponseBody,
+  byte_domain: std.citation.RawResponseBody,
 )
 
-data witness_other_identity: std.citation.CitedRepresentationIdentity = cited_representation_identity(
+data witness_other_identity: std.citation.CitedRepresentationIdentity = std.citation.cited_representation_identity(
   source: witness_other_subject_ref,
   access_route: witness_other_authority.uri,
-  byte_domain: RawResponseBody,
+  byte_domain: std.citation.RawResponseBody,
 )
 
 data witness_application_pdf: extdeps.http.server.MediaType = extdeps.http.server.MediaType {
-  top_level: TopLevelApplication,
+  top_level: extdeps.http.server.TopLevelApplication,
   subtype: "pdf",
   parameters: [],
 }
@@ -75,43 +75,43 @@ data witness_other_sha256_hex: std.types.NonEmptyStr = "cafebabecafebabecafebabe
 
 data witness_other_sha256_digest: std.content_hash.Sha256Digest = std.content_hash.Sha256Digest { hex: witness_other_sha256_hex }
 
-data witness_citation_pin: extdeps.pin.Pin<std.citation.CitedRepresentationIdentity> = citation_exact_pin(
+data witness_citation_pin: extdeps.pin.Pin<std.citation.CitedRepresentationIdentity> = std.citation.citation_exact_pin(
   source: witness_subject_ref,
-  access_route: test.claim.citation_cit0_witness.witness_authority.uri,
-  byte_domain: RawResponseBody,
+  access_route: witness_authority.uri,
+  byte_domain: std.citation.RawResponseBody,
   version: "witness-fixture-v1" as extdeps.version.VersionIdentity,
   expected_identity: witness_synthetic_sha256_digest,
 )
 
-data witness_mirror_route_pin: extdeps.pin.Pin<std.citation.CitedRepresentationIdentity> = citation_exact_pin(
+data witness_mirror_route_pin: extdeps.pin.Pin<std.citation.CitedRepresentationIdentity> = std.citation.citation_exact_pin(
   source: witness_subject_ref,
   access_route: witness_mirror_access_route,
-  byte_domain: RawResponseBody,
+  byte_domain: std.citation.RawResponseBody,
   version: "witness-fixture-v1" as extdeps.version.VersionIdentity,
   expected_identity: witness_synthetic_sha256_digest,
 )
 
-data witness_other_source_pin: extdeps.pin.Pin<std.citation.CitedRepresentationIdentity> = citation_exact_pin(
+data witness_other_source_pin: extdeps.pin.Pin<std.citation.CitedRepresentationIdentity> = std.citation.citation_exact_pin(
   source: witness_other_subject_ref,
   access_route: witness_other_authority.uri,
-  byte_domain: RawResponseBody,
+  byte_domain: std.citation.RawResponseBody,
   version: "witness-fixture-v1" as extdeps.version.VersionIdentity,
   expected_identity: witness_synthetic_sha256_digest,
 )
 
-data witness_observed_matching: std.citation.ObservedCitedRepresentation = observed_cited_representation(
+data witness_observed_matching: std.citation.ObservedCitedRepresentation = std.citation.observed_cited_representation(
   identity: witness_fixture_identity,
   media_type: witness_application_pdf,
   observed_identity: witness_synthetic_sha256_digest,
 )
 
-data witness_observed_mismatching: std.citation.ObservedCitedRepresentation = observed_cited_representation(
+data witness_observed_mismatching: std.citation.ObservedCitedRepresentation = std.citation.observed_cited_representation(
   identity: witness_fixture_identity,
   media_type: witness_application_pdf,
   observed_identity: witness_other_sha256_digest,
 )
 
-data witness_observed_wrong_source: std.citation.ObservedCitedRepresentation = observed_cited_representation(
+data witness_observed_wrong_source: std.citation.ObservedCitedRepresentation = std.citation.observed_cited_representation(
   identity: witness_other_identity,
   media_type: witness_application_pdf,
   observed_identity: witness_synthetic_sha256_digest,
@@ -122,30 +122,30 @@ data witness_http_access_route: extdeps.uri.Uri = extdeps.uri.Uri {
   locator: "example.test/cit0-fixture",
 }
 
-data witness_text_quote: std.citation.CitationSelector = std.citation.TextQuoteSelectorVariant(std.citation.TextQuoteSelector {
+data witness_text_quote: std.citation.CitationSelector = std.citation.TextQuoteSelectorVariant(TextQuoteSelector {
   exact: "grounded selector text" as std.types.NonEmptyStr,
   prefix: none,
   suffix: none,
 })
 
-data witness_citation_target: std.citation.CitationTarget<std.citation.CitationSelector> = citation_target(
+data witness_citation_target: std.citation.CitationTarget<std.citation.CitationSelector> = std.citation.citation_target(
   expected_pin: witness_citation_pin,
   selector: witness_text_quote,
 )
 
 data witness_pdf_fragment_wire: std.types.NonEmptyStr = "page=1" as std.types.NonEmptyStr
 
-data witness_pdf_fragment_selector: std.citation.CitationSelector = std.citation.FragmentSelectorVariant(std.citation.FragmentSelector {
+data witness_pdf_fragment_selector: std.citation.CitationSelector = std.citation.FragmentSelectorVariant(FragmentSelector {
   conforms_to: witness_fragment_spec_authority,
   value: witness_pdf_fragment_wire,
 })
 
-data witness_false_web_annotation_fragment_selector: std.citation.CitationSelector = std.citation.FragmentSelectorVariant(std.citation.FragmentSelector {
-  conforms_to: web_annotation_authority,
+data witness_false_web_annotation_fragment_selector: std.citation.CitationSelector = std.citation.FragmentSelectorVariant(FragmentSelector {
+  conforms_to: extdeps.standards.web_annotation.web_annotation_authority,
   value: witness_pdf_fragment_wire,
 })
 
-data witness_citation_recorded_fact: std.claim_evidence.RecordedFact<std.citation.CitationRecordedFact<std.citation.CitationSelector>> = citation_recorded_fact(
+data witness_citation_recorded_fact: std.claim_evidence.RecordedFact<std.citation.CitationRecordedFact<std.citation.CitationSelector>> = std.citation.citation_recorded_fact(
   id: "cit0-fixture-fact" as std.claim_evidence.RecordedFactId,
   cited: witness_citation_target,
 )
@@ -156,15 +156,15 @@ data witness_observed_at_noon_utc: std.types.EpochMs = 1785844800000
 
 data witness_upstream_unreachable_observation: std.citation.CitationRetrievalObservation = std.citation.CitationUnreachable {
   request: std.citation.CitationRetrievalRequest {
-    locator: test.claim.citation_cit0_witness.witness_authority.uri,
+    locator: witness_authority.uri,
   },
   observed_at: witness_observed_at_midnight_utc,
-  cause: DnsResolutionFailed,
+  cause: std.citation.DnsResolutionFailed,
 }
 
 data witness_access_refused_observation: std.citation.CitationRetrievalObservation = std.citation.CitationAccessRefused {
   request: std.citation.CitationRetrievalRequest {
-    locator: test.claim.citation_cit0_witness.witness_authority.uri,
+    locator: witness_authority.uri,
   },
   observed_at: witness_observed_at_midnight_utc,
   cause: std.citation.HttpAccessRefused { status: 403 },
@@ -172,7 +172,7 @@ data witness_access_refused_observation: std.citation.CitationRetrievalObservati
 
 data witness_representation_retrieved_observation: std.citation.CitationRetrievalObservation = std.citation.RepresentationRetrieved {
   request: std.citation.CitationRetrievalRequest {
-    locator: test.claim.citation_cit0_witness.witness_authority.uri,
+    locator: witness_authority.uri,
   },
   observed_at: witness_observed_at_noon_utc,
   http_status: 200,
@@ -180,24 +180,24 @@ data witness_representation_retrieved_observation: std.citation.CitationRetrieva
 }
 
 test fn citation_target_carries_pin_and_selector_not_observation() -> Bool {
-  cited_representation_identity_eq(
+  std.citation.cited_representation_identity_eq(
     left: witness_citation_target.expected_pin.subject,
     right: witness_citation_pin.subject,
   )
     && match witness_citation_target.selector {
       std.citation.TextQuoteSelectorVariant(_) => true
       std.citation.FragmentSelectorVariant(_) => false
-      TextPositionSelectorVariant(_) => false
+      std.citation.TextPositionSelectorVariant(_) => false
     }
 }
 
 test fn citation_pin_pairs_symbolic_source_access_route_and_byte_domain() -> Bool {
-  external_subject_ref_eq(a: witness_citation_pin.subject.source, b: witness_subject_ref)
+  extdeps.external_authority.external_subject_ref_eq(a: witness_citation_pin.subject.source, b: witness_subject_ref)
     && witness_citation_pin.subject.access_route.locator == "example.test/cit0-fixture"
-    && witness_citation_pin.subject.byte_domain == RawResponseBody
-    && witness_citation_pin.selection == ExactPin
+    && witness_citation_pin.subject.byte_domain == std.citation.RawResponseBody
+    && witness_citation_pin.selection == extdeps.pin.ExactPin
     && witness_citation_pin.version == ("witness-fixture-v1" as extdeps.version.VersionIdentity)
-    && match citation_pin_expected_sha256(pin: witness_citation_pin) {
+    && match std.citation.citation_pin_expected_sha256(pin: witness_citation_pin) {
       Present { value: d } => d == witness_synthetic_sha256_digest
       Absent => false
     }
@@ -205,14 +205,14 @@ test fn citation_pin_pairs_symbolic_source_access_route_and_byte_domain() -> Boo
 
 test fn citation_pin_subject_identifies_source_not_byte_domain_alone() -> Bool {
   witness_citation_pin.subject.byte_domain == witness_other_source_pin.subject.byte_domain
-    && !external_subject_ref_eq(
+    && !extdeps.external_authority.external_subject_ref_eq(
       a: witness_citation_pin.subject.source,
       b: witness_other_source_pin.subject.source,
     )
 }
 
 test fn different_access_routes_share_symbolic_subject() -> Bool {
-  external_subject_ref_eq(
+  extdeps.external_authority.external_subject_ref_eq(
     a: witness_citation_pin.subject.source,
     b: witness_mirror_route_pin.subject.source,
   )
@@ -222,15 +222,15 @@ test fn different_access_routes_share_symbolic_subject() -> Bool {
 }
 
 test fn verification_receipt_binds_request_locator_to_target_access_route() -> Bool {
-  match verify_citation_representation(
+  match std.citation.verify_citation_representation(
     target: witness_citation_target,
     observation: witness_representation_retrieved_observation,
   ) {
-    CitationRepresentationVerified { receipt: r } =>
+    std.citation.CitationRepresentationVerified { receipt: r } =>
       match r.reconciliation {
-        RepresentationMatch =>
+        std.citation.RepresentationMatch =>
           match r.observation {
-            RepresentationRetrieved { request: req, observed_at: _, http_status: _, observed: _ } =>
+            std.citation.RepresentationRetrieved { request: req, observed_at: _, http_status: _, observed: _ } =>
               r.target.expected_pin.subject.access_route == req.locator
             _ => false
           }
@@ -249,12 +249,12 @@ test fn verification_refuses_request_locator_mismatch() -> Bool {
     http_status: 200,
     observed: witness_observed_matching,
   }
-  match verify_citation_representation(
+  match std.citation.verify_citation_representation(
     target: witness_citation_target,
     observation: wrong_route_observation,
   ) {
-    CitationVerificationRefused {
-      cause: RequestLocatorMismatch { expected: e, observed: o },
+    std.citation.CitationVerificationRefused {
+      cause: std.citation.RequestLocatorMismatch { expected: e, observed: o },
     } =>
       e.locator == "example.test/cit0-fixture"
         && o.locator == "mirror.example.test/cit0-fixture"
@@ -271,14 +271,14 @@ test fn verification_refuses_scheme_mismatch_on_same_locator() -> Bool {
     http_status: 200,
     observed: witness_observed_matching,
   }
-  match verify_citation_representation(
+  match std.citation.verify_citation_representation(
     target: witness_citation_target,
     observation: http_observation,
   ) {
-    CitationVerificationRefused {
-      cause: RequestLocatorMismatch { expected: e, observed: o },
+    std.citation.CitationVerificationRefused {
+      cause: std.citation.RequestLocatorMismatch { expected: e, observed: o },
     } =>
-      e.scheme == Https && o.scheme == extdeps.uri.Http
+      e.scheme == extdeps.uri.Https && o.scheme == extdeps.uri.Http
     _ => false
   }
 }
@@ -286,70 +286,70 @@ test fn verification_refuses_scheme_mismatch_on_same_locator() -> Bool {
 test fn verification_refuses_non_success_http_status() -> Bool {
   let not_found_observation = std.citation.RepresentationRetrieved {
     request: std.citation.CitationRetrievalRequest {
-      locator: test.claim.citation_cit0_witness.witness_authority.uri,
+      locator: witness_authority.uri,
     },
     observed_at: witness_observed_at_noon_utc,
     http_status: 404,
     observed: witness_observed_matching,
   }
-  match verify_citation_representation(
+  match std.citation.verify_citation_representation(
     target: witness_citation_target,
     observation: not_found_observation,
   ) {
-    CitationVerificationRefused { cause: HttpStatusNotSuccessful { status: 404 } } => true
+    std.citation.CitationVerificationRefused { cause: std.citation.HttpStatusNotSuccessful { status: 404 } } => true
     _ => false
   }
 }
 
 test fn verification_mismatch_is_not_named_verified() -> Bool {
-  match verify_citation_representation(
+  match std.citation.verify_citation_representation(
     target: witness_citation_target,
     observation: std.citation.RepresentationRetrieved {
-      request: std.citation.CitationRetrievalRequest { locator: test.claim.citation_cit0_witness.witness_authority.uri },
+      request: std.citation.CitationRetrievalRequest { locator: witness_authority.uri },
       observed_at: witness_observed_at_noon_utc,
       http_status: 200,
       observed: witness_observed_mismatching,
     },
   ) {
-    CitationRepresentationMismatch { receipt: r } =>
+    std.citation.CitationRepresentationMismatch { receipt: r } =>
       match r.reconciliation {
-        RepresentationMismatch { expected: _, observed: _ } => true
+        std.citation.RepresentationMismatch { expected: _, observed: _ } => true
         _ => false
       }
-    CitationRepresentationVerified { receipt: _ } => false
+    std.citation.CitationRepresentationVerified { receipt: _ } => false
     _ => false
   }
 }
 
 test fn verification_refuses_unreachable_observation_with_typed_cause() -> Bool {
-  match verify_citation_representation(
+  match std.citation.verify_citation_representation(
     target: witness_citation_target,
     observation: witness_upstream_unreachable_observation,
   ) {
-    CitationVerificationRefused { cause: CitationUnreachableObservation { observation: _ } } => true
+    std.citation.CitationVerificationRefused { cause: std.citation.CitationUnreachableObservation { observation: _ } } => true
     _ => false
   }
 }
 
 test fn retrieval_observation_admitted_in_observing_layer() -> Bool {
-  match admit_citation_retrieval_observation(
-    layer: ObservingProductLayer,
+  match std.citation.admit_citation_retrieval_observation(
+    layer: std.citation.ObservingProductLayer,
     observation: witness_upstream_unreachable_observation,
   ) {
-    CitationLayerAdmitted => true
-    CitationLayerRefusedUpstreamObservation => false
+    std.citation.CitationLayerAdmitted => true
+    std.citation.CitationLayerRefusedUpstreamObservation => false
   }
 }
 
 test fn retrieval_observation_refused_in_upstream_module_layer() -> Bool {
-  match admit_citation_retrieval_observation(
+  match std.citation.admit_citation_retrieval_observation(
     layer: std.citation.UpstreamModuleLayer {
       module_path: "extdeps.router.verizon_cr1000a" as std.types.NonEmptyStr,
     },
     observation: witness_upstream_unreachable_observation,
   ) {
-    CitationLayerRefusedUpstreamObservation => true
-    CitationLayerAdmitted => false
+    std.citation.CitationLayerRefusedUpstreamObservation => true
+    std.citation.CitationLayerAdmitted => false
   }
 }
 
@@ -359,49 +359,49 @@ test fn citation_recorded_fact_feeds_claim_evidence_interface() -> Bool {
 }
 
 test fn web_annotation_authority_is_cited_for_selectors() -> Bool {
-  web_annotation_authority.uri.locator == extdeps.standards.web_annotation.extdeps_external_authority_anchor.uri.locator
+  web_annotation_authority.uri.locator == extdeps_external_authority_anchor.uri.locator
 }
 
 test fn text_position_selector_refuses_end_before_start() -> Bool {
-  match text_position_selector(start: 10, end: 2) {
-    CitationSelectorRefused { cause: TextPositionEndBeforeStart { start: s, end: e } } =>
+  match std.citation.text_position_selector(start: 10, end: 2) {
+    std.citation.CitationSelectorRefused { cause: std.citation.TextPositionEndBeforeStart { start: s, end: e } } =>
       s == 10 && e == 2
     _ => false
   }
 }
 
 test fn text_position_selector_admits_non_negative_range() -> Bool {
-  match text_position_selector(start: 0, end: 12) {
-    CitationSelectorConstructed(TextPositionSelectorVariant(_)) => true
+  match std.citation.text_position_selector(start: 0, end: 12) {
+    std.citation.CitationSelectorConstructed(TextPositionSelectorVariant(_)) => true
     _ => false
   }
 }
 
 test fn citation_unreachable_carries_typed_cause_not_prose() -> Bool {
   match witness_upstream_unreachable_observation {
-    CitationUnreachable { cause: DnsResolutionFailed, request: _, observed_at: _ } => true
+    std.citation.CitationUnreachable { cause: std.citation.DnsResolutionFailed, request: _, observed_at: _ } => true
     _ => false
   }
 }
 
 test fn citation_access_refused_carries_http_status() -> Bool {
   match witness_access_refused_observation {
-    CitationAccessRefused { cause: HttpAccessRefused { status: s }, request: _, observed_at: _ } =>
+    std.citation.CitationAccessRefused { cause: std.citation.HttpAccessRefused { status: s }, request: _, observed_at: _ } =>
       s == 403
     _ => false
   }
 }
 
 test fn exact_citation_pin_currency_is_an_unfilled_gap() -> Bool {
-  match pin_currency_gap(pin: witness_citation_pin) {
-    AuthoredPinHasNoReviewDate => true
+  match extdeps.pin.pin_currency_gap(pin: witness_citation_pin) {
+    extdeps.pin.AuthoredPinHasNoReviewDate => true
     _ => false
   }
 }
 
 test fn representation_retrieved_requires_http_status_and_observed_representation() -> Bool {
   match witness_representation_retrieved_observation {
-    RepresentationRetrieved {
+    std.citation.RepresentationRetrieved {
       request: r,
       observed_at: t,
       http_status: s,
@@ -411,93 +411,93 @@ test fn representation_retrieved_requires_http_status_and_observed_representatio
         && t == witness_observed_at_noon_utc
         && s == 200
         && o.observed_identity == witness_synthetic_sha256_digest
-        && cited_representation_identity_eq(left: o.identity, right: witness_fixture_identity)
+        && std.citation.cited_representation_identity_eq(left: o.identity, right: witness_fixture_identity)
     _ => false
   }
 }
 
 test fn response_observed_without_representation_is_separate_arm() -> Bool {
-  match (std.citation.ResponseObservedWithoutRepresentation {
-    request: std.citation.CitationRetrievalRequest { locator: test.claim.citation_cit0_witness.witness_authority.uri },
+  match std.citation.ResponseObservedWithoutRepresentation {
+    request: std.citation.CitationRetrievalRequest { locator: witness_authority.uri },
     observed_at: witness_observed_at_noon_utc,
     http_status: 204,
-  }) {
-    ResponseObservedWithoutRepresentation { http_status: s, request: _, observed_at: _ } => s == 204
+  } {
+    std.citation.ResponseObservedWithoutRepresentation { http_status: s, request: _, observed_at: _ } => s == 204
     _ => false
   }
 }
 
 test fn citation_target_pin_subject_is_symbolic_not_bare_uri() -> Bool {
   witness_citation_target.expected_pin.subject.access_route.locator == "example.test/cit0-fixture"
-    && external_subject_ref_eq(
+    && extdeps.external_authority.external_subject_ref_eq(
       a: witness_citation_target.expected_pin.subject.source,
       b: witness_subject_ref,
     )
 }
 
 test fn reconcile_mismatch_when_observed_differs_from_expected_red_echo() -> Bool {
-  match reconcile_citation_representation(
+  match std.citation.reconcile_citation_representation(
     expected_pin: witness_citation_pin,
     observed: Present { value: witness_observed_mismatching },
   ) {
-    RepresentationMismatch { expected: e, observed: o } =>
+    std.citation.RepresentationMismatch { expected: e, observed: o } =>
       e == witness_synthetic_sha256_digest && o == witness_other_sha256_digest
     _ => false
   }
 }
 
 test fn reconcile_match_when_observed_equals_expected() -> Bool {
-  match reconcile_citation_representation(
+  match std.citation.reconcile_citation_representation(
     expected_pin: witness_citation_pin,
     observed: Present { value: witness_observed_matching },
   ) {
-    RepresentationMatch => true
+    std.citation.RepresentationMatch => true
     _ => false
   }
 }
 
 test fn reconcile_observation_missing_when_no_observed() -> Bool {
-  match reconcile_citation_representation(
+  match std.citation.reconcile_citation_representation(
     expected_pin: witness_citation_pin,
     observed: none,
   ) {
-    ObservationMissing => true
+    std.citation.ObservationMissing => true
     _ => false
   }
 }
 
 test fn reconcile_incomparable_on_identity_mismatch() -> Bool {
-  match reconcile_citation_representation(
+  match std.citation.reconcile_citation_representation(
     expected_pin: witness_citation_pin,
     observed: Present { value: witness_observed_wrong_source },
   ) {
-    RepresentationIdentityIncomparable { expected: e, observed: o } =>
-      external_subject_ref_eq(a: e.source, b: witness_subject_ref)
-        && external_subject_ref_eq(a: o.source, b: witness_other_subject_ref)
+    std.citation.RepresentationIdentityIncomparable { expected: e, observed: o } =>
+      extdeps.external_authority.external_subject_ref_eq(a: e.source, b: witness_subject_ref)
+        && extdeps.external_authority.external_subject_ref_eq(a: o.source, b: witness_other_subject_ref)
     _ => false
   }
 }
 
 test fn reconcile_incomparable_on_byte_domain_mismatch() -> Bool {
-  let wrong_domain_identity = cited_representation_identity(
+  let wrong_domain_identity = std.citation.cited_representation_identity(
     source: witness_subject_ref,
-    access_route: test.claim.citation_cit0_witness.witness_authority.uri,
-    byte_domain: RenderedText,
+    access_route: witness_authority.uri,
+    byte_domain: std.citation.RenderedText,
   )
-  let wrong_domain_observed = observed_cited_representation(
+  let wrong_domain_observed = std.citation.observed_cited_representation(
     identity: wrong_domain_identity,
     media_type: witness_application_pdf,
     observed_identity: witness_synthetic_sha256_digest,
   )
-  match reconcile_citation_representation(
+  match std.citation.reconcile_citation_representation(
     expected_pin: witness_citation_pin,
     observed: Present { value: wrong_domain_observed },
   ) {
-    RepresentationIdentityIncomparable {
+    std.citation.RepresentationIdentityIncomparable {
       expected: e,
       observed: o,
     } =>
-      e.byte_domain == RawResponseBody && o.byte_domain == RenderedText
+      e.byte_domain == std.citation.RawResponseBody && o.byte_domain == std.citation.RenderedText
     _ => false
   }
 }
@@ -505,11 +505,11 @@ test fn reconcile_incomparable_on_byte_domain_mismatch() -> Bool {
 test fn pdf_fragment_selector_conforms_to_rfc_8118_not_web_annotation() -> Bool {
   match witness_pdf_fragment_selector {
     std.citation.FragmentSelectorVariant(got) =>
-      match fragment_selector(
+      match std.citation.fragment_selector(
         conforms_to: witness_fragment_spec_authority,
         value: witness_pdf_fragment_wire,
       ) {
-        CitationSelectorConstructed(std.citation.FragmentSelectorVariant(want)) =>
+        std.citation.CitationSelectorConstructed(FragmentSelectorVariant(want)) =>
           got.value == want.value
             && got.conforms_to.uri.locator == want.conforms_to.uri.locator
             && got.conforms_to.uri.locator == witness_fragment_spec_authority.uri.locator
@@ -523,11 +523,11 @@ test fn pdf_fragment_selector_conforms_to_rfc_8118_not_web_annotation() -> Bool 
 test fn pdf_fragment_selector_red_wrong_conforms_to_web_annotation() -> Bool {
   match witness_false_web_annotation_fragment_selector {
     std.citation.FragmentSelectorVariant(got) =>
-      match fragment_selector(
-        conforms_to: web_annotation_authority,
+      match std.citation.fragment_selector(
+        conforms_to: extdeps.standards.web_annotation.web_annotation_authority,
         value: witness_pdf_fragment_wire,
       ) {
-        CitationSelectorConstructed(std.citation.FragmentSelectorVariant(want)) =>
+        std.citation.CitationSelectorConstructed(FragmentSelectorVariant(want)) =>
           got.value == want.value
             && got.conforms_to.uri.locator == want.conforms_to.uri.locator
             && got.conforms_to.uri.locator == web_annotation_authority.uri.locator
@@ -539,14 +539,14 @@ test fn pdf_fragment_selector_red_wrong_conforms_to_web_annotation() -> Bool {
 }
 
 test fn citation_exact_pin_sha256_mint_is_validating_path() -> Bool {
-  match sha256_hex_digest(hex: witness_synthetic_sha256_hex as String) {
+  match std.content_hash.sha256_hex_digest(hex: witness_synthetic_sha256_hex as String) {
     Present { value: d } => d == witness_synthetic_sha256_digest
     Absent => false
   }
 }
 
 test fn structural_fnv_is_not_citation_representation_pin_red() -> Bool {
-  match content_hash_from_structural_digest(digest: "0123456789abcdef") {
+  match std.content_hash.content_hash_from_structural_digest(digest: "0123456789abcdef") {
     Present { value: structural_union } =>
       match structural_union {
         std.content_hash.Fnv1a64(_) => true

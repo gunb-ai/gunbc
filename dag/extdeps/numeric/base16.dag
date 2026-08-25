@@ -3,7 +3,7 @@ module extdeps.numeric.base16
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.rfc-editor.org/rfc/rfc4648#section-3"
   }
 }
@@ -63,10 +63,10 @@ fn byte_hex_lower(v: Int) -> String {
 
 fn int_to_upper_hex_inner(n: Int, acc: String) -> String {
   if n == 0 { acc }
-  else { extdeps.numeric.base16.int_to_upper_hex_inner(n: n / 16, acc: concat(hex_digit_char_upper(d: n % 16), acc)) }
+  else { int_to_upper_hex_inner(n: n / 16, acc: concat(hex_digit_char_upper(d: n % 16), acc)) }
 }
 
 fn int_to_upper_hex(n: Int) -> String {
   if n == 0 { "0" }
-  else { extdeps.numeric.base16.int_to_upper_hex_inner(n: n, acc: "") }
+  else { int_to_upper_hex_inner(n: n, acc: "") }
 }

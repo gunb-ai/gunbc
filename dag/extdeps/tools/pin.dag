@@ -3,7 +3,7 @@ module extdeps.tools.pin
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "www.gnu.org/prep/standards/standards.html#Command_002dLine-Interfaces"
   }
 }
@@ -14,7 +14,7 @@ data cli_tool_pin_instantiation_note: String = "THE INSTANTIATION, and the whole
 
 data cli_tool_pin_subject_by_value_note: String = "The subject is carried BY VALUE, which is the defect the operator caught in the first shape (2026-07-29). That version declared tool_name: NonEmptyStr and joined to the tool through string equality — the single site in extdeps.tools doing so, against that module's own established convention: resolve(tool: CliTool), ResolvedTool { tool: CliTool }, NotFound { tool: CliTool } all pass the modeled row. A string foreign key into a type that is sitting right there is the anemic-leaf failure of DESIGN section 2, and it put tool identity in two places. Pin<CliTool> carries the CliTool itself, so cli_tool_pin_key_of PROJECTS the name from the row rather than trusting a copy of it."
 
-fn cli_tool_pin_key_of(pin: extdeps.pin.Pin<CliTool>) -> std.types.NonEmptyStr {
+fn cli_tool_pin_key_of(pin: extdeps.pin.Pin<extdeps.tools.CliTool>) -> std.types.NonEmptyStr {
   pin.subject.name
 }
 
@@ -24,7 +24,7 @@ data legacy_ingest_none_spelling_blocker_note: String = "DISCOVERED BY EXECUTION
 
 data legacy_cli_tool_ingest_note: String = "The discriminating RED, and the migration frontier made countable. EVERY CliTool row in the corpus today refuses conversion to a pin, and that is the correct answer rather than a gap: min_version is a RANGE brand ('>= 7.68') and a range is not an identity. Two hosts satisfying one range run two different binaries, which is precisely the variance a pin exists to remove, so widening the range into a fabricated identity here would be the absorbing fallback DESIGN section 5 forbids. Absent refuses for the same reason with a DISTINCT cause: no version stated at all is a different deficit from a stated range, and collapsing the two would be a state-space conflation. Each refusal names its subject and is countable, so the migration burns down visibly instead of being silently assumed complete. Note what this fn does NOT do: it does not invent a digest. A pin also requires expected_identity, and there is no real upstream digest anywhere in the corpus today, so ingest cannot be completed by this fn alone even for a row that stated an exact version — sourcing genuine upstream checksums is separate, deliberate work, and fabricating them would make a fail-closed carrier assert something false."
 
-fn admit_legacy_cli_tool(tool: CliTool) -> PinAdmission<CliTool> {
+fn admit_legacy_cli_tool(tool: extdeps.tools.CliTool) -> extdeps.pin.PinAdmission<extdeps.tools.CliTool> {
   match tool.min_version {
     Present { value: c } =>
       extdeps.pin.PinRefused {
@@ -32,6 +32,6 @@ fn admit_legacy_cli_tool(tool: CliTool) -> PinAdmission<CliTool> {
         cause: extdeps.pin.ConstraintIsNotIdentity { constraint: c }
       }
     Absent =>
-      extdeps.pin.PinRefused { subject: tool, cause: PinAbsent }
+      extdeps.pin.PinRefused { subject: tool, cause: extdeps.pin.PinAbsent }
   }
 }

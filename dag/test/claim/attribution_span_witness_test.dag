@@ -1,7 +1,7 @@
 module test.claim.attribution_span_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn worker_domain() -> std.measure.ClockDomain { std.measure.ProcessMonotonic { process: "ordinary-worker" as std.types.NonEmptyStr } }
 
@@ -9,7 +9,7 @@ fn occ(id: std.types.NonEmptyStr) -> std.observation.OccurrenceId {
   std.observation.OccurrenceId { attempt: "attempt-1" as std.types.NonEmptyStr, id: id }
 }
 
-fn frame() -> std.attribution.ClockFrame { std.attribution.ClockFrame { domain: worker_domain(), basis: CpuClock } }
+fn frame() -> std.attribution.ClockFrame { std.attribution.ClockFrame { domain: worker_domain(), basis: std.measure.CpuClock } }
 
 fn span_of(id: std.types.NonEmptyStr, low: std.nat.Nat, high: std.nat.Nat) -> std.attribution.ExtentSpec {
   std.attribution.ExtentSpec { occurrence: occ(id: id), frame: frame(), start_ns: low, width_ns: high - low }
@@ -17,12 +17,12 @@ fn span_of(id: std.types.NonEmptyStr, low: std.nat.Nat, high: std.nat.Nat) -> st
 
 fn unattributed_widths(r: std.attribution.AttributionResult) -> List<std.nat.Nat> {
   match r {
-    AttributionComputed { spans: ss } =>
+    std.attribution.AttributionComputed { spans: ss } =>
       map(
         filter(ss, s => match s { std.attribution.Unattributed { parent: _, interval: _ } => true, _ => false }),
         s => match s {
-          Unattributed { parent: _, interval: i } =>
-            nanosecond_count(n: interval_high(interval: i)) - nanosecond_count(n: interval_low(interval: i))
+          std.attribution.Unattributed { parent: _, interval: i } =>
+            std.measure.nanosecond_count(n: std.interval.interval_high(interval: i)) - std.measure.nanosecond_count(n: std.interval.interval_low(interval: i))
           _ => 0
         }
       )
@@ -32,8 +32,8 @@ fn unattributed_widths(r: std.attribution.AttributionResult) -> List<std.nat.Nat
 
 fn attributed_count(r: std.attribution.AttributionResult) -> std.nat.Nat {
   match r {
-    AttributionComputed { spans: ss } =>
-      length(filter(ss, s => match s { Attributed { occurrence: _, interval: _ } => true, _ => false }))
+    std.attribution.AttributionComputed { spans: ss } =>
+      length(filter(ss, s => match s { std.attribution.Attributed { occurrence: _, interval: _ } => true, _ => false }))
     _ => 0
   }
 }
@@ -46,7 +46,7 @@ test fn w_RED_overlapping_children_do_not_double_count_against_the_parent() -> B
   let parent = span_of(id: "occ-batch" as std.types.NonEmptyStr, low: 0, high: 100)
   let a = span_of(id: "occ-a" as std.types.NonEmptyStr, low: 20, high: 80)
   let b = span_of(id: "occ-b" as std.types.NonEmptyStr, low: 30, high: 70)
-  let r = attribute_specs(parent: parent, children: [a, b])
+  let r = std.attribution.attribute_specs(parent: parent, children: [a, b])
   let gaps = unattributed_widths(r: r)
   attributed_count(r: r) == 2 && length(gaps) == 2 && contains(gaps, 20) && contains(gaps, 20)
 }
@@ -57,7 +57,7 @@ test fn w_RED_two_separate_silences_are_two_located_spans_not_one_total() -> Boo
   let parent = span_of(id: "occ-batch" as std.types.NonEmptyStr, low: 0, high: 100)
   let a = span_of(id: "occ-a" as std.types.NonEmptyStr, low: 10, high: 40)
   let b = span_of(id: "occ-b" as std.types.NonEmptyStr, low: 50, high: 90)
-  let gaps = unattributed_widths(r: attribute_specs(parent: parent, children: [a, b]))
+  let gaps = unattributed_widths(r: std.attribution.attribute_specs(parent: parent, children: [a, b]))
   length(gaps) == 3 && contains(gaps, 10)
 }
 
@@ -66,8 +66,8 @@ test fn w_the_result_is_independent_of_the_order_children_were_read() -> Bool {
   let parent = span_of(id: "occ-batch" as std.types.NonEmptyStr, low: 0, high: 100)
   let a = span_of(id: "occ-a" as std.types.NonEmptyStr, low: 10, high: 40)
   let b = span_of(id: "occ-b" as std.types.NonEmptyStr, low: 50, high: 90)
-  let forward = unattributed_widths(r: attribute_specs(parent: parent, children: [a, b]))
-  let backward = unattributed_widths(r: attribute_specs(parent: parent, children: [b, a]))
+  let forward = unattributed_widths(r: std.attribution.attribute_specs(parent: parent, children: [a, b]))
+  let backward = unattributed_widths(r: std.attribution.attribute_specs(parent: parent, children: [b, a]))
   forward == backward
 }
 
@@ -77,12 +77,12 @@ test fn w_RED_a_child_on_a_foreign_clock_refuses_rather_than_being_summed() -> B
   let parent = span_of(id: "occ-batch" as std.types.NonEmptyStr, low: 0, high: 100)
   let foreign = std.attribution.ExtentSpec {
     occurrence: occ(id: "occ-wall" as std.types.NonEmptyStr),
-    frame: std.attribution.ClockFrame { domain: worker_domain(), basis: WallClock },
+    frame: std.attribution.ClockFrame { domain: worker_domain(), basis: std.measure.WallClock },
     start_ns: 10,
     width_ns: 30
   }
-  match attribute_specs(parent: parent, children: [foreign]) {
-    AttributionRefusedForeignClock { child: c } => c.id == "occ-wall"
+  match std.attribution.attribute_specs(parent: parent, children: [foreign]) {
+    std.attribution.AttributionRefusedForeignClock { child: c } => c.id == "occ-wall"
     _ => false
   }
 }
@@ -92,8 +92,8 @@ test fn w_RED_a_child_on_a_foreign_clock_refuses_rather_than_being_summed() -> B
 test fn w_RED_a_child_outside_its_parent_refuses_rather_than_stealing_from_a_sibling() -> Bool {
   let parent = span_of(id: "occ-batch" as std.types.NonEmptyStr, low: 0, high: 100)
   let overrun = span_of(id: "occ-overrun" as std.types.NonEmptyStr, low: 90, high: 140)
-  match attribute_specs(parent: parent, children: [overrun]) {
-    AttributionRefusedChildOutsideParent { child: c } => c.id == "occ-overrun"
+  match std.attribution.attribute_specs(parent: parent, children: [overrun]) {
+    std.attribution.AttributionRefusedChildOutsideParent { child: c } => c.id == "occ-overrun"
     _ => false
   }
 }
@@ -102,7 +102,7 @@ test fn w_RED_a_child_outside_its_parent_refuses_rather_than_stealing_from_a_sib
 // result that reads as "fully accounted for".
 test fn w_RED_a_parent_with_no_children_is_wholly_unattributed_not_silently_accounted() -> Bool {
   let parent = span_of(id: "occ-batch" as std.types.NonEmptyStr, low: 0, high: 100)
-  let gaps = unattributed_widths(r: attribute_specs(parent: parent, children: []))
+  let gaps = unattributed_widths(r: std.attribution.attribute_specs(parent: parent, children: []))
   length(gaps) == 1 && contains(gaps, 100)
 }
 
@@ -111,25 +111,25 @@ test fn w_RED_a_parent_with_no_children_is_wholly_unattributed_not_silently_acco
 test fn w_a_fully_covered_parent_reports_no_unattributed_span() -> Bool {
   let parent = span_of(id: "occ-batch" as std.types.NonEmptyStr, low: 0, high: 100)
   let whole = span_of(id: "occ-a" as std.types.NonEmptyStr, low: 0, high: 100)
-  length(unattributed_widths(r: attribute_specs(parent: parent, children: [whole]))) == 0
+  length(unattributed_widths(r: std.attribution.attribute_specs(parent: parent, children: [whole]))) == 0
 }
 
 // An extent cannot be assembled from endpoints on different clocks: the width would describe no
 // timeline, so it refuses at construction rather than at attribution.
 test fn w_RED_an_extent_from_two_clocks_refuses_at_construction() -> Bool {
-  let begin = std.measure.ObservationInstant { domain: worker_domain(), basis: CpuClock, since_origin: nanosecond(count: 10) }
-  let end = std.measure.ObservationInstant { domain: worker_domain(), basis: WallClock, since_origin: nanosecond(count: 90) }
-  match occurrence_extent(occurrence: occ(id: "occ-a" as std.types.NonEmptyStr), begin: begin, end: end) {
-    ExtentRefused { cause: _ } => true
-    ExtentReady { frame: _, extent: _ } => false
+  let begin = std.measure.ObservationInstant { domain: worker_domain(), basis: std.measure.CpuClock, since_origin: std.measure.nanosecond(count: 10) }
+  let end = std.measure.ObservationInstant { domain: worker_domain(), basis: std.measure.WallClock, since_origin: std.measure.nanosecond(count: 90) }
+  match std.attribution.occurrence_extent(occurrence: occ(id: "occ-a" as std.types.NonEmptyStr), begin: begin, end: end) {
+    std.attribution.ExtentRefused { cause: _ } => true
+    std.attribution.ExtentReady { frame: _, extent: _ } => false
   }
 }
 
 test fn w_RED_an_extent_whose_end_precedes_its_begin_refuses() -> Bool {
-  let begin = std.measure.ObservationInstant { domain: worker_domain(), basis: CpuClock, since_origin: nanosecond(count: 90) }
-  let end = std.measure.ObservationInstant { domain: worker_domain(), basis: CpuClock, since_origin: nanosecond(count: 10) }
-  match occurrence_extent(occurrence: occ(id: "occ-a" as std.types.NonEmptyStr), begin: begin, end: end) {
-    ExtentRefused { cause: _ } => true
-    ExtentReady { frame: _, extent: _ } => false
+  let begin = std.measure.ObservationInstant { domain: worker_domain(), basis: std.measure.CpuClock, since_origin: std.measure.nanosecond(count: 90) }
+  let end = std.measure.ObservationInstant { domain: worker_domain(), basis: std.measure.CpuClock, since_origin: std.measure.nanosecond(count: 10) }
+  match std.attribution.occurrence_extent(occurrence: occ(id: "occ-a" as std.types.NonEmptyStr), begin: begin, end: end) {
+    std.attribution.ExtentRefused { cause: _ } => true
+    std.attribution.ExtentReady { frame: _, extent: _ } => false
   }
 }

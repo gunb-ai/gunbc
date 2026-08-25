@@ -3,7 +3,7 @@ module extdeps.ebay.inventory
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "developer.ebay.com/api-docs/sell/inventory/resources/methods"
   }
 }
@@ -131,18 +131,18 @@ type InventoryItem {
 data structural_coverage_gap_inventory_item_response_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "InventoryItem" },
-      extdeps.coverage.JsonPending { field: "packageWeightAndSize" },
-      extdeps.coverage.JsonPending { field: "conditionDescriptors" },
-      extdeps.coverage.JsonPending { field: "availability/pickupAtLocationAvailability" },
-      extdeps.coverage.JsonPending { field: "product/brand" },
-      extdeps.coverage.JsonPending { field: "product/mpn" },
-      extdeps.coverage.JsonPending { field: "product/upc" },
-      extdeps.coverage.JsonPending { field: "product/isbn" },
-      extdeps.coverage.JsonPending { field: "product/ean" },
-      extdeps.coverage.JsonPending { field: "product/epid" },
-      extdeps.coverage.JsonPending { field: "product/subtitle" },
-      extdeps.coverage.JsonPending { field: "product/videoIds" }
+      Subject { path: "InventoryItem" },
+      JsonPending { field: "packageWeightAndSize" },
+      JsonPending { field: "conditionDescriptors" },
+      JsonPending { field: "availability/pickupAtLocationAvailability" },
+      JsonPending { field: "product/brand" },
+      JsonPending { field: "product/mpn" },
+      JsonPending { field: "product/upc" },
+      JsonPending { field: "product/isbn" },
+      JsonPending { field: "product/ean" },
+      JsonPending { field: "product/epid" },
+      JsonPending { field: "product/subtitle" },
+      JsonPending { field: "product/videoIds" }
     ],
     trigger: "eBay inventory consumer needs full item fidelity (package dimensions, pickup availability, product identifiers)"
   }
@@ -159,9 +159,9 @@ type InventoryItemWithSkuLocaleGroupid {
 data structural_coverage_gap_inventory_item_row_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "InventoryItemWithSkuLocaleGroupid" },
-      extdeps.coverage.JsonPending { field: "groupIds" },
-      extdeps.coverage.JsonPending { field: "inventoryItemGroupKeys" }
+      Subject { path: "InventoryItemWithSkuLocaleGroupid" },
+      JsonPending { field: "groupIds" },
+      JsonPending { field: "inventoryItemGroupKeys" }
     ],
     trigger: "eBay inventory consumer needs item-group (multi-variation listing) fidelity"
   }
@@ -188,13 +188,13 @@ type PricingSummary {
 data structural_coverage_gap_pricing_summary_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "PricingSummary" },
-      extdeps.coverage.JsonPending { field: "auctionReservePrice" },
-      extdeps.coverage.JsonPending { field: "auctionStartPrice" },
-      extdeps.coverage.JsonPending { field: "minimumAdvertisedPrice" },
-      extdeps.coverage.JsonPending { field: "originallySoldForRetailPriceOn" },
-      extdeps.coverage.JsonPending { field: "originalRetailPrice" },
-      extdeps.coverage.JsonPending { field: "pricingVisibility" }
+      Subject { path: "PricingSummary" },
+      JsonPending { field: "auctionReservePrice" },
+      JsonPending { field: "auctionStartPrice" },
+      JsonPending { field: "minimumAdvertisedPrice" },
+      JsonPending { field: "originallySoldForRetailPriceOn" },
+      JsonPending { field: "originalRetailPrice" },
+      JsonPending { field: "pricingVisibility" }
     ],
     trigger: "eBay offer consumer needs auction or strike-through pricing fidelity"
   }
@@ -209,12 +209,12 @@ type ListingPolicies {
 data structural_coverage_gap_listing_policies_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "ListingPolicies" },
-      extdeps.coverage.JsonPending { field: "bestOfferTerms" },
-      extdeps.coverage.JsonPending { field: "eBayPlusIfEligible" },
-      extdeps.coverage.JsonPending { field: "shippingCostOverrides" },
-      extdeps.coverage.JsonPending { field: "productCompliancePolicyIds" },
-      extdeps.coverage.JsonPending { field: "takeBackPolicyId" }
+      Subject { path: "ListingPolicies" },
+      JsonPending { field: "bestOfferTerms" },
+      JsonPending { field: "eBayPlusIfEligible" },
+      JsonPending { field: "shippingCostOverrides" },
+      JsonPending { field: "productCompliancePolicyIds" },
+      JsonPending { field: "takeBackPolicyId" }
     ],
     trigger: "eBay offer consumer needs best-offer or shipping-override policy fidelity"
   }
@@ -236,18 +236,18 @@ type EbayOfferDetailsWithKeys {
 data structural_coverage_gap_offer_details_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "EbayOfferDetailsWithKeys" },
-      extdeps.coverage.JsonPending { field: "tax" },
-      extdeps.coverage.JsonPending { field: "charity" },
-      extdeps.coverage.JsonPending { field: "extendedProducerResponsibility" },
-      extdeps.coverage.JsonPending { field: "regulatory" },
-      extdeps.coverage.JsonPending { field: "lotSize" },
-      extdeps.coverage.JsonPending { field: "quantityLimitPerBuyer" },
-      extdeps.coverage.JsonPending { field: "secondaryCategoryId" },
-      extdeps.coverage.JsonPending { field: "storeCategoryNames" },
-      extdeps.coverage.JsonPending { field: "hideBuyerDetails" },
-      extdeps.coverage.JsonPending { field: "includeCatalogProductDetails" },
-      extdeps.coverage.JsonPending { field: "listingStartDate" }
+      Subject { path: "EbayOfferDetailsWithKeys" },
+      JsonPending { field: "tax" },
+      JsonPending { field: "charity" },
+      JsonPending { field: "extendedProducerResponsibility" },
+      JsonPending { field: "regulatory" },
+      JsonPending { field: "lotSize" },
+      JsonPending { field: "quantityLimitPerBuyer" },
+      JsonPending { field: "secondaryCategoryId" },
+      JsonPending { field: "storeCategoryNames" },
+      JsonPending { field: "hideBuyerDetails" },
+      JsonPending { field: "includeCatalogProductDetails" },
+      JsonPending { field: "listingStartDate" }
     ],
     trigger: "eBay offer consumer needs tax, charity, regulatory, or scheduled-listing fidelity"
   }
@@ -276,11 +276,11 @@ type EbayOfferDetailsWithAll {
 data structural_coverage_gap_offer_row_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
-      extdeps.coverage.Subject { path: "EbayOfferDetailsWithAll" },
-      extdeps.coverage.JsonPending { field: "listing/listingStatus" },
-      extdeps.coverage.JsonPending { field: "listing/soldQuantity" },
-      extdeps.coverage.JsonPending { field: "status" },
-      extdeps.coverage.JsonPending { field: "statusReason" }
+      Subject { path: "EbayOfferDetailsWithAll" },
+      JsonPending { field: "listing/listingStatus" },
+      JsonPending { field: "listing/soldQuantity" },
+      JsonPending { field: "status" },
+      JsonPending { field: "statusReason" }
     ],
     trigger: "eBay offer consumer needs published-listing status fidelity"
   }
@@ -333,11 +333,11 @@ service ebay.Inventory {
     response {
       200 => BaseResponse
       201 => BaseResponse
-      400 => EbayErrorShape
-      401 => EbayErrorShape
-      403 => EbayErrorShape
-      429 => EbayErrorShape
-      5xx => EbayErrorShape
+      400 => extdeps.ebay.errors.EbayErrorShape
+      401 => extdeps.ebay.errors.EbayErrorShape
+      403 => extdeps.ebay.errors.EbayErrorShape
+      429 => extdeps.ebay.errors.EbayErrorShape
+      5xx => extdeps.ebay.errors.EbayErrorShape
     }
   }
 
@@ -356,9 +356,9 @@ service ebay.Inventory {
     }
     response {
       200 => InventoryItemWithSkuLocaleGroupid
-      401 => EbayErrorShape
-      404 => EbayErrorShape
-      5xx => EbayErrorShape
+      401 => extdeps.ebay.errors.EbayErrorShape
+      404 => extdeps.ebay.errors.EbayErrorShape
+      5xx => extdeps.ebay.errors.EbayErrorShape
     }
   }
 
@@ -380,9 +380,9 @@ service ebay.Inventory {
     }
     response {
       200 => InventoryItemsWithTotal
-      400 => EbayErrorShape
-      401 => EbayErrorShape
-      5xx => EbayErrorShape
+      400 => extdeps.ebay.errors.EbayErrorShape
+      401 => extdeps.ebay.errors.EbayErrorShape
+      5xx => extdeps.ebay.errors.EbayErrorShape
     }
   }
 
@@ -403,11 +403,11 @@ service ebay.Inventory {
     }
     response {
       201 => OfferResponse
-      400 => EbayErrorShape
-      401 => EbayErrorShape
-      403 => EbayErrorShape
-      409 => EbayErrorShape
-      5xx => EbayErrorShape
+      400 => extdeps.ebay.errors.EbayErrorShape
+      401 => extdeps.ebay.errors.EbayErrorShape
+      403 => extdeps.ebay.errors.EbayErrorShape
+      409 => extdeps.ebay.errors.EbayErrorShape
+      5xx => extdeps.ebay.errors.EbayErrorShape
     }
   }
 
@@ -427,10 +427,10 @@ service ebay.Inventory {
     }
     response {
       200 => Offers
-      400 => EbayErrorShape
-      401 => EbayErrorShape
-      404 => EbayErrorShape
-      5xx => EbayErrorShape
+      400 => extdeps.ebay.errors.EbayErrorShape
+      401 => extdeps.ebay.errors.EbayErrorShape
+      404 => extdeps.ebay.errors.EbayErrorShape
+      5xx => extdeps.ebay.errors.EbayErrorShape
     }
   }
 
@@ -448,10 +448,10 @@ service ebay.Inventory {
     }
     response {
       200 => PublishResponse
-      400 => EbayErrorShape
-      401 => EbayErrorShape
-      404 => EbayErrorShape
-      5xx => EbayErrorShape
+      400 => extdeps.ebay.errors.EbayErrorShape
+      401 => extdeps.ebay.errors.EbayErrorShape
+      404 => extdeps.ebay.errors.EbayErrorShape
+      5xx => extdeps.ebay.errors.EbayErrorShape
     }
   }
 }

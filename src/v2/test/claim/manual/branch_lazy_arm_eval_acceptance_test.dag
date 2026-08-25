@@ -1,18 +1,18 @@
 module v2.test.manual.branch_lazy_arm_eval_acceptance
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn lazy_arm_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: v2.std.node.SyntheticOccurrence,
     children: []
   }
 }
 
-fn lazy_arm_byte() -> std.bit.Byte {
-  std.bit.Byte { bits: [true] }
+fn lazy_arm_byte() -> v2.std.machine.Byte {
+  v2.std.machine.Byte { bits: [true] }
 }
 
 fn lazy_arm_bool_type() -> v2.std.node.Node {
@@ -23,7 +23,7 @@ fn lazy_arm_i64() -> v2.std.node.Node {
   lazy_arm_atom(s: ^lazy_arm_i64_sym)
 }
 
-fn lazy_arm_bool_value(is_true: v2.std.logic.Bool) -> v2.std.runtime.RuntimeValue {
+fn lazy_arm_bool_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
   if is_true {
     v2.std.runtime.RuntimePrimitive {
       value: v2.std.runtime.RuntimePrimitiveValue {
@@ -35,7 +35,7 @@ fn lazy_arm_bool_value(is_true: v2.std.logic.Bool) -> v2.std.runtime.RuntimeValu
     v2.std.runtime.RuntimePrimitive {
       value: v2.std.runtime.RuntimePrimitiveValue {
         primitive_type: lazy_arm_bool_type(),
-        bytes: std.algebra.Empty
+        bytes: Empty
       }
     }
   }
@@ -68,12 +68,12 @@ fn lazy_arm_kw_false() -> v2.std.node.Node {
 }
 
 fn lazy_arm_int_literal_from_lexeme(lexeme: String) -> v2.std.node.Node {
-  match v2.extdeps.languages.dag.dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
-    Accepted { value: n, diagnostics: _ } => n
-    Rejected { diagnostics: _ } =>
+  match v2.extdeps.languages.dag.dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: v2.std.node.SyntheticOccurrence) {
+    v2.std.diagnostic.Accepted { value: n, diagnostics: _ } => n
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lazy_arm_lit_lexeme_invalid } },
-        occurrence_id: SyntheticOccurrence,
+        occurrence_id: v2.std.node.SyntheticOccurrence,
         children: []
       }
   }
@@ -84,14 +84,14 @@ fn lazy_arm_lit_one() -> v2.std.node.Node {
 }
 
 data lazy_arm_divergent_value_node: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Value },
-  occurrence_id: SyntheticOccurrence,
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Value },
+  occurrence_id: v2.std.node.SyntheticOccurrence,
   children: []
 }
 
 data lazy_arm_counted_value_node: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Value },
-  occurrence_id: SyntheticOccurrence,
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Value },
+  occurrence_id: v2.std.node.SyntheticOccurrence,
   children: []
 }
 
@@ -118,25 +118,25 @@ fn lazy_arm_touch_key() -> v2.std.runtime.EnvironmentBindingKey {
 fn lazy_arm_binding_keys_equal(
   a: v2.std.runtime.EnvironmentBindingKey,
   b: v2.std.runtime.EnvironmentBindingKey
-) -> v2.std.logic.Bool {
+) -> Bool {
   a.identity == b.identity
 }
 
 fn lazy_arm_int_from_runtime(value: v2.std.runtime.RuntimeValue) -> Int {
   match value {
-    RuntimePrimitive { value: p } => count(p.bytes)
+    v2.std.runtime.RuntimePrimitive { value: p } => count(p.bytes)
     _ => 0
   }
 }
 
 fn lazy_arm_touch_from_env(env: v2.std.runtime.EvaluationEnvironment) -> Int {
   match v2.std.collection.map_get(m: env.bindings, key: lazy_arm_touch_key()) {
-    Accepted { value: opt, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } =>
       match opt {
-        Present { value: v } => lazy_arm_int_from_runtime(value: v)
-        Absent => 0
+        v2.std.optional.Present { value: v } => lazy_arm_int_from_runtime(value: v)
+        v2.std.optional.Absent => 0
       }
-    Rejected { diagnostics: _ } => 0
+    v2.std.diagnostic.Rejected { diagnostics: _ } => 0
   }
 }
 
@@ -145,7 +145,7 @@ fn lazy_arm_int_bytes(n: Int) -> v2.std.runtime.RuntimeValue {
     v2.std.runtime.RuntimePrimitive {
       value: v2.std.runtime.RuntimePrimitiveValue {
         primitive_type: lazy_arm_i64(),
-        bytes: std.algebra.Empty
+        bytes: Empty
       }
     }
   } else if n == 1 {
@@ -161,14 +161,14 @@ fn lazy_arm_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^lazy_arm_runtime_rejected,
     at: v2.std.diagnostic.node_locus(node: n),
-    correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn lazy_arm_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.EvaluationEnvironment) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if v2.extdeps.languages.dag.dag_node_is_int_literal_atom(node: node) {
     match v2.extdeps.languages.dag.dag_int_literal_magnitude_int_from_node(node: node) {
-      Accepted { value: mag, diagnostics: _ } =>
+      v2.std.diagnostic.Accepted { value: mag, diagnostics: _ } =>
         if mag == 1 {
           v2.std.diagnostic.outcome_accepted(value: lazy_arm_one_value())
         } else if mag == 2 {
@@ -176,11 +176,11 @@ fn lazy_arm_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.Evaluat
         } else {
           v2.std.diagnostic.outcome_rejected(d: lazy_arm_diagnostic(n: node))
         }
-      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
     match node.kind {
-      TypeNode { connective: Atom { identity: id } } =>
+      v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
         if id == ^dag_token_kw_true {
           v2.std.diagnostic.outcome_accepted(value: lazy_arm_bool_value(is_true: true))
         } else if id == ^dag_token_kw_false {
@@ -188,7 +188,7 @@ fn lazy_arm_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.Evaluat
         } else {
           v2.std.diagnostic.outcome_rejected(d: lazy_arm_diagnostic(n: node))
         }
-      ComputationNode { behavior: Value } =>
+      v2.std.node.ComputationNode { behavior: v2.std.node.Value } =>
         if node == lazy_arm_counted_value_node {
           if lazy_arm_touch_from_env(env: env) >= 1 {
             v2.std.diagnostic.outcome_rejected(d: lazy_arm_diagnostic(n: node))
@@ -205,17 +205,17 @@ fn lazy_arm_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.Evaluat
   }
 }
 
-fn lazy_arm_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
+fn lazy_arm_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: p } =>
+    v2.std.runtime.RuntimePrimitive { value: p } =>
       (p.primitive_type == lazy_arm_bool_type()) && (count(p.bytes) == 1)
     _ => false
   }
 }
 
-fn lazy_arm_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
+fn lazy_arm_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
-    RuntimePrimitive { value: p } =>
+    v2.std.runtime.RuntimePrimitive { value: p } =>
       (p.primitive_type == lazy_arm_bool_type()) && (count(p.bytes) == 0)
     _ => false
   }
@@ -223,11 +223,11 @@ fn lazy_arm_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> v2.std.log
 
 fn lazy_arm_nth_child_target(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
-    Present { value: child } =>
+    v2.std.optional.Present { value: child } =>
       match child {
-        Edge { label: _, target: arm } => v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
+        v2.std.node.Edge { label: _, target: arm } => v2.std.diagnostic.outcome_accepted(value: arm)
       }
-    Absent => v2.std.diagnostic.outcome_rejected(d: lazy_arm_diagnostic(n: node))
+    v2.std.optional.Absent => v2.std.diagnostic.outcome_rejected(d: lazy_arm_diagnostic(n: node))
   }
 }
 
@@ -286,7 +286,7 @@ fn lazy_arm_bind_value(
   }
   v2.std.diagnostic.Accepted {
     value: touched,
-    diagnostics: v2.std.diagnostic.None
+    diagnostics: None
   }
 }
 
@@ -297,7 +297,7 @@ fn lazy_arm_interpretation() -> v2.std.runtime.InterpretationAlgebra {
     branch: v2.std.runtime.BranchInterpreter { choose_branch: lazy_arm_choose_branch, identity: ^lazy_arm_choose_branch },
     loop: v2.std.runtime.LoopInterpreter { step_loop: lazy_arm_step_loop, identity: ^lazy_arm_step_loop },
     bind: v2.std.runtime.BindInterpreter { bind_value: lazy_arm_bind_value, identity: ^lazy_arm_bind_value },
-    match: v2.std.runtime.MatchInterpreter { choose_arm: v2.std.runtime.runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
@@ -307,7 +307,8 @@ fn lazy_arm_interpretation_structure_witness() -> v2.std.runtime.InterpretationS
     call_primitive: ^lazy_arm_call_primitive,
     choose_branch: ^lazy_arm_choose_branch,
     step_loop: ^lazy_arm_step_loop,
-    bind_value: ^lazy_arm_bind_value,    choose_arm: ^runtime_reject_match_arm
+    bind_value: ^lazy_arm_bind_value,
+    choose_arm: ^runtime_reject_match_arm
   }
 }
 
@@ -326,11 +327,11 @@ fn lazy_arm_bind_node(
 ) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Bind },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: v2.std.node.SyntheticOccurrence,
     children: [
-      v2.std.node.Edge { label: Positional, target: key_decl },
-      v2.std.node.Edge { label: Positional, target: value },
-      v2.std.node.Edge { label: Positional, target: body }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: key_decl },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: value },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: body }
     ]
   }
 }
@@ -349,12 +350,12 @@ fn lazy_arm_branch_body(
   else_arm: v2.std.node.Node
 ) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.ComputationNode { behavior: Branch },
-    occurrence_id: SyntheticOccurrence,
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Branch },
+    occurrence_id: v2.std.node.SyntheticOccurrence,
     children: [
-      v2.std.node.Edge { label: Positional, target: condition },
-      v2.std.node.Edge { label: Positional, target: then_arm },
-      v2.std.node.Edge { label: Positional, target: else_arm }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: condition },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: then_arm },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: else_arm }
     ]
   }
 }
@@ -362,26 +363,26 @@ fn lazy_arm_branch_body(
 fn lazy_arm_pick_call(callee: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
-    occurrence_id: SyntheticOccurrence,
-    children: [v2.std.node.Edge { label: Positional, target: callee }]
+    occurrence_id: v2.std.node.SyntheticOccurrence,
+    children: [v2.std.node.Edge { label: v2.std.node.Positional, target: callee }]
   }
 }
 
 fn lazy_arm_arrow_with_body(body: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Arrow },
-    occurrence_id: SyntheticOccurrence,
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
+    occurrence_id: v2.std.node.SyntheticOccurrence,
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
-          kind: v2.std.node.TypeNode { connective: Conj },
-          occurrence_id: SyntheticOccurrence,
+          kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+          occurrence_id: v2.std.node.SyntheticOccurrence,
           children: []
         }
       },
-      v2.std.node.Edge { label: Positional, target: lazy_arm_i64() },
-      v2.std.node.Edge { label: Positional, target: lazy_arm_i64() },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: lazy_arm_i64() },
+      v2.std.node.Edge { label: v2.std.node.Positional, target: lazy_arm_i64() },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^arrow_body_edge }, target: body }
     ]
   }
@@ -389,8 +390,8 @@ fn lazy_arm_arrow_with_body(body: v2.std.node.Node) -> v2.std.node.Node {
 
 fn lazy_arm_tree_root(call: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
-    occurrence_id: SyntheticOccurrence,
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    occurrence_id: v2.std.node.SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: v2.std.node.Named { name: ^lazy_arm_actual }, target: call },
       v2.std.node.Edge { label: v2.std.node.Named { name: ^lazy_arm_expected }, target: expected }
@@ -409,7 +410,7 @@ fn lazy_arm_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.c
 fn lazy_arm_admitted_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.algebra.PartialFunction { lookup: lazy_arm_facts_lookup }
+    facts: PartialFunction { lookup: lazy_arm_facts_lookup }
   }
 }
 
@@ -426,10 +427,10 @@ fn lazy_arm_run_branch(
       subject: v2.compiler.eval.TestClaimEvalSubject {
         claim: v2.std.verification.CompilesClaim {
           label: "manual/branch_lazy_arm: demand-driven Branch eval acceptance",
-          anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
+          anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
           input: call,
           expected_value: expected,
-          classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+          classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
         },
         context: lazy_arm_context(),
         tree: tree,
@@ -442,18 +443,18 @@ fn lazy_arm_run_branch(
   )
 }
 
-fn lazy_arm_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>) -> v2.std.logic.Bool {
+fn lazy_arm_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>) -> Bool {
   match run {
-    Accepted { value: r, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: r, diagnostics: _ } =>
       match v2.compiler.eval.test_claim_run_verdict(run: r) {
-        Pass => true
+        v2.std.verdict.Pass => true
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn lazy_arm_true_then_counted_else_divergent_holds() -> v2.std.logic.Bool {
+test fn lazy_arm_true_then_counted_else_divergent_holds() -> Bool {
   lazy_arm_run_passes(
     run: lazy_arm_run_branch(
       body: lazy_arm_branch_body(
@@ -466,7 +467,7 @@ test fn lazy_arm_true_then_counted_else_divergent_holds() -> v2.std.logic.Bool {
   )
 }
 
-test fn lazy_arm_false_then_divergent_else_counted_holds() -> v2.std.logic.Bool {
+test fn lazy_arm_false_then_divergent_else_counted_holds() -> Bool {
   lazy_arm_run_passes(
     run: lazy_arm_run_branch(
       body: lazy_arm_branch_body(
@@ -479,19 +480,19 @@ test fn lazy_arm_false_then_divergent_else_counted_holds() -> v2.std.logic.Bool 
   )
 }
 
-test fn lazy_arm_counted_literal_rejects_second_touch_holds() -> v2.std.logic.Bool {
+test fn lazy_arm_counted_literal_rejects_second_touch_holds() -> Bool {
   let env = v2.compiler.eval.empty_evaluation_environment()
   match lazy_arm_allocate_literal(node: lazy_arm_counted(), env: env) {
-    Accepted { value: v, diagnostics: _ } =>
+    v2.std.diagnostic.Accepted { value: v, diagnostics: _ } =>
       match lazy_arm_bind_value(key: lazy_arm_counted_slot_key(), value: v, env: env) {
-        Accepted { value: touched, diagnostics: _ } =>
+        v2.std.diagnostic.Accepted { value: touched, diagnostics: _ } =>
           match lazy_arm_allocate_literal(node: lazy_arm_counted(), env: touched) {
-            Rejected { diagnostics: _ } => true
-            Accepted { value: _, diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => true
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

@@ -1,18 +1,18 @@
 module test.claim.roadmap_frontier_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn roadmap_frontier_nid(s: String) -> gunbc.roadmap_model.RoadmapNodeId { s }
 
 fn sized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
-    identity: "rnfx_JAGJGPTHTYSG1GEDN9BA" as gunbc.roadmap_model.RoadmapNodeIdentity,
+    identity: "rnfx_JAGJGPTHTYSG1GEDN9BA" as RoadmapNodeIdentity,
     node: roadmap_frontier_nid(s: id),
     line: gunbc.roadmap_status.DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
-    sizing: gunbc.roadmap_model.Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
-    execution: ExecutionContractUnspecified,
+    sizing: gunbc.roadmap_model.Sized { intricacy: gunbc.roadmap_model.IntricacyHigh, volume: gunbc.roadmap_model.VolumeMedium, repo: "gunbc", acceptance: gunbc.roadmap_model.PrsMerged },
+    execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
     signoff: gunbc.roadmap_status.Unsigned,
   }
@@ -20,7 +20,7 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap_m
 
 fn accepted_node(base: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
-    identity: "rnfx_QBNJEXMAX2KQWS838BE3" as gunbc.roadmap_model.RoadmapNodeIdentity,
+    identity: "rnfx_QBNJEXMAX2KQWS838BE3" as RoadmapNodeIdentity,
     node: base.node,
     line: base.line,
     carriers: base.carriers,
@@ -33,12 +33,12 @@ fn accepted_node(base: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_model.R
 
 fn unsized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
-    identity: "rnfx_CMY81J4ZCKAVZFQEAEFV" as gunbc.roadmap_model.RoadmapNodeIdentity,
+    identity: "rnfx_CMY81J4ZCKAVZFQEAEFV" as RoadmapNodeIdentity,
     node: roadmap_frontier_nid(s: id),
     line: gunbc.roadmap_status.DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
-    sizing: Unsized,
-    execution: ExecutionContractUnspecified,
+    sizing: gunbc.roadmap_model.Unsized,
+    execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
     signoff: gunbc.roadmap_status.Unsigned,
   }
@@ -47,7 +47,7 @@ fn unsized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap
 fn fixture_section(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> gunbc.roadmap_document.RoadmapSection {
   gunbc.roadmap_document.RoadmapSection {
     title: "Test",
-    elements: [std.algebra.Group { group: gunbc.roadmap_model.SectionGroup { label: "test", nodes: nodes, edges: edges } }],
+    elements: [gunbc.roadmap_model.Group { group: gunbc.roadmap_model.SectionGroup { label: "test", nodes: nodes, edges: edges } }],
   }
 }
 
@@ -55,46 +55,46 @@ fn fixture_doc(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.r
   gunbc.roadmap_document.RoadmapDocument {
     preamble: [],
     lead_lanes: [],
-    sections: [test.claim.roadmap_frontier_witness.fixture_section(nodes: nodes, edges: edges)],
+    sections: [fixture_section(nodes: nodes, edges: edges)],
   }
 }
 
 test fn witness_ready_matches_next_spawnable() -> Bool {
-  let node_a = test.claim.roadmap_frontier_witness.accepted_node(base: test.claim.roadmap_frontier_witness.sized_derivable(id: "parent-done", prs: [100], title: "Parent"))
-  let node_b = test.claim.roadmap_frontier_witness.sized_derivable(id: "child-ready", prs: [200], title: "Child Ready")
+  let node_a = accepted_node(base: sized_derivable(id: "parent-done", prs: [100], title: "Parent"))
+  let node_b = sized_derivable(id: "child-ready", prs: [200], title: "Child Ready")
   let edges = [gunbc.roadmap_model.RoadmapEdge { child: roadmap_frontier_nid(s: "child-ready"), parent: roadmap_frontier_nid(s: "parent-done") }]
-  let doc = test.claim.roadmap_frontier_witness.fixture_doc(nodes: [node_a, node_b], edges: edges)
-  let frontier = spawn_frontier(doc: doc, merged: [100])
-  let spawnable = next_spawnable(doc: doc, merged: [100])
+  let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
+  let frontier = gunbc.roadmap_spawner.spawn_frontier(doc: doc, merged: [100])
+  let spawnable = gunbc.roadmap_spawner.next_spawnable(doc: doc, merged: [100])
   count(frontier.ready) == count(spawnable)
     && any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "child-ready"))
 }
 
 test fn witness_upcoming_is_blocked_sized_node() -> Bool {
-  let node_a = test.claim.roadmap_frontier_witness.sized_derivable(id: "parent-open", prs: [100], title: "Parent Open")
-  let node_b = test.claim.roadmap_frontier_witness.sized_derivable(id: "child-blocked", prs: [200], title: "Child Blocked")
+  let node_a = sized_derivable(id: "parent-open", prs: [100], title: "Parent Open")
+  let node_b = sized_derivable(id: "child-blocked", prs: [200], title: "Child Blocked")
   let edges = [gunbc.roadmap_model.RoadmapEdge { child: roadmap_frontier_nid(s: "child-blocked"), parent: roadmap_frontier_nid(s: "parent-open") }]
-  let doc = test.claim.roadmap_frontier_witness.fixture_doc(nodes: [node_a, node_b], edges: edges)
-  let frontier = spawn_frontier(doc: doc, merged: [])
+  let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
+  let frontier = gunbc.roadmap_spawner.spawn_frontier(doc: doc, merged: [])
   any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "child-blocked"))
     && !any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "child-blocked"))
 }
 
 test fn witness_merged_unsigned_node_stays_ready_for_acceptance() -> Bool {
-  let node = test.claim.roadmap_frontier_witness.sized_derivable(id: "review-node", prs: [999], title: "Review Node")
-  let doc = test.claim.roadmap_frontier_witness.fixture_doc(nodes: [node], edges: [])
-  let frontier = spawn_frontier(doc: doc, merged: [999])
+  let node = sized_derivable(id: "review-node", prs: [999], title: "Review Node")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let frontier = gunbc.roadmap_spawner.spawn_frontier(doc: doc, merged: [999])
   !any(frontier.done, n => n.node == roadmap_frontier_nid(s: "review-node"))
     && any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "review-node"))
     && !any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "review-node"))
 }
 
 test fn witness_merged_unsigned_parent_does_not_unblock_child() -> Bool {
-  let parent = test.claim.roadmap_frontier_witness.sized_derivable(id: "review-parent", prs: [999], title: "Review Parent")
-  let child = test.claim.roadmap_frontier_witness.sized_derivable(id: "after-review", prs: [1000], title: "After Review")
+  let parent = sized_derivable(id: "review-parent", prs: [999], title: "Review Parent")
+  let child = sized_derivable(id: "after-review", prs: [1000], title: "After Review")
   let edge = gunbc.roadmap_model.RoadmapEdge { child: child.node, parent: parent.node }
-  let frontier = spawn_frontier(
-    doc: test.claim.roadmap_frontier_witness.fixture_doc(nodes: [parent, child], edges: [edge]),
+  let frontier = gunbc.roadmap_spawner.spawn_frontier(
+    doc: fixture_doc(nodes: [parent, child], edges: [edge]),
     merged: [999])
   any(frontier.ready, n => n.node == parent.node)
     && any(frontier.upcoming, n => n.node == child.node)
@@ -102,11 +102,11 @@ test fn witness_merged_unsigned_parent_does_not_unblock_child() -> Bool {
 }
 
 test fn witness_signed_node_is_done_and_unblocks_child() -> Bool {
-  let parent = test.claim.roadmap_frontier_witness.accepted_node(base: test.claim.roadmap_frontier_witness.sized_derivable(id: "signed-parent", prs: [700], title: "Signed Parent"))
-  let child = test.claim.roadmap_frontier_witness.sized_derivable(id: "after-signoff", prs: [701], title: "After Signoff")
+  let parent = accepted_node(base: sized_derivable(id: "signed-parent", prs: [700], title: "Signed Parent"))
+  let child = sized_derivable(id: "after-signoff", prs: [701], title: "After Signoff")
   let edge = gunbc.roadmap_model.RoadmapEdge { child: child.node, parent: parent.node }
-  let frontier = spawn_frontier(
-    doc: test.claim.roadmap_frontier_witness.fixture_doc(nodes: [parent, child], edges: [edge]),
+  let frontier = gunbc.roadmap_spawner.spawn_frontier(
+    doc: fixture_doc(nodes: [parent, child], edges: [edge]),
     merged: [])
   any(frontier.done, n => n.node == parent.node)
     && !any(frontier.ready, n => n.node == parent.node)
@@ -114,21 +114,21 @@ test fn witness_signed_node_is_done_and_unblocks_child() -> Bool {
 }
 
 test fn witness_unsized_excluded_from_frontier() -> Bool {
-  let node = test.claim.roadmap_frontier_witness.unsized_derivable(id: "unsized-open", prs: [], title: "Unsized")
-  let doc = test.claim.roadmap_frontier_witness.fixture_doc(nodes: [node], edges: [])
-  let frontier = spawn_frontier(doc: doc, merged: [])
+  let node = unsized_derivable(id: "unsized-open", prs: [], title: "Unsized")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let frontier = gunbc.roadmap_spawner.spawn_frontier(doc: doc, merged: [])
   count(frontier.ready) == 0
     && count(frontier.upcoming) == 0
     && count(frontier.done) == 0
 }
 
 test fn witness_buckets_are_disjoint() -> Bool {
-  let node_a = test.claim.roadmap_frontier_witness.sized_derivable(id: "a-open", prs: [100], title: "A")
-  let node_b = test.claim.roadmap_frontier_witness.sized_derivable(id: "b-blocked", prs: [200], title: "B")
-  let node_c = test.claim.roadmap_frontier_witness.accepted_node(base: test.claim.roadmap_frontier_witness.sized_derivable(id: "c-done", prs: [300], title: "C"))
+  let node_a = sized_derivable(id: "a-open", prs: [100], title: "A")
+  let node_b = sized_derivable(id: "b-blocked", prs: [200], title: "B")
+  let node_c = accepted_node(base: sized_derivable(id: "c-done", prs: [300], title: "C"))
   let edges = [gunbc.roadmap_model.RoadmapEdge { child: roadmap_frontier_nid(s: "b-blocked"), parent: roadmap_frontier_nid(s: "a-open") }]
-  let doc = test.claim.roadmap_frontier_witness.fixture_doc(nodes: [node_a, node_b, node_c], edges: edges)
-  let frontier = spawn_frontier(doc: doc, merged: [300])
+  let doc = fixture_doc(nodes: [node_a, node_b, node_c], edges: edges)
+  let frontier = gunbc.roadmap_spawner.spawn_frontier(doc: doc, merged: [300])
   any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "a-open"))
     && any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "b-blocked"))
     && any(frontier.done, n => n.node == roadmap_frontier_nid(s: "c-done"))
@@ -137,15 +137,15 @@ test fn witness_buckets_are_disjoint() -> Bool {
 }
 
 fn daily_workspace_html(doc: gunbc.roadmap_document.RoadmapDocument, merged: List<Int>) -> String {
-  match try_serialize_html_source(node: roadmap_daily_workspace_page(doc: doc, merged: merged)) {
-    EmitOk { html: h } => h
-    EmitRejected { reason: _ } => ""
+  match extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page(doc: doc, merged: merged)) {
+    extdeps.languages.html.EmitOk { html: h } => h
+    extdeps.languages.html.EmitRejected { reason: _ } => ""
   }
 }
 
 test fn witness_page_renders_four_buckets() -> Bool {
-  let node_a = test.claim.roadmap_frontier_witness.sized_derivable(id: "ready-node", prs: [10], title: "Ready Title")
-  let doc = test.claim.roadmap_frontier_witness.fixture_doc(nodes: [node_a], edges: [])
+  let node_a = sized_derivable(id: "ready-node", prs: [10], title: "Ready Title")
+  let doc = fixture_doc(nodes: [node_a], edges: [])
   let h = daily_workspace_html(doc: doc, merged: [])
   string_contains(s: h, pattern: "<h1>daily workspace</h1>")
     && string_contains(s: h, pattern: "class=\"roadmap-frontier\"")
@@ -161,12 +161,12 @@ test fn witness_page_renders_four_buckets() -> Bool {
 
 fn superseded_node_fixture(id: String, by: String) -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
-    identity: "rnfx_7WGSEGZK2FRN2VY0DWFC" as gunbc.roadmap_model.RoadmapNodeIdentity,
+    identity: "rnfx_7WGSEGZK2FRN2VY0DWFC" as RoadmapNodeIdentity,
     node: roadmap_frontier_nid(s: id),
     line: gunbc.roadmap_status.SupersededLine { by: by, content: "Old Row" },
     carriers: [],
-    sizing: Unsized,
-    execution: ExecutionContractUnspecified,
+    sizing: gunbc.roadmap_model.Unsized,
+    execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
     signoff: gunbc.roadmap_status.Unsigned,
   }
@@ -174,12 +174,12 @@ fn superseded_node_fixture(id: String, by: String) -> gunbc.roadmap_model.Roadma
 
 fn signed_sized_superseded_node_fixture(id: String, by: String) -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_model.RoadmapNode {
-    identity: "rnfx_2M0H9GXC2H0A5CZ9V7HW" as gunbc.roadmap_model.RoadmapNodeIdentity,
+    identity: "rnfx_2M0H9GXC2H0A5CZ9V7HW" as RoadmapNodeIdentity,
     node: roadmap_frontier_nid(s: id),
     line: gunbc.roadmap_status.SupersededLine { by: by, content: "Accepted Old Row" },
     carriers: [],
-    sizing: gunbc.roadmap_model.Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
-    execution: ExecutionContractUnspecified,
+    sizing: gunbc.roadmap_model.Sized { intricacy: gunbc.roadmap_model.IntricacyHigh, volume: gunbc.roadmap_model.VolumeMedium, repo: "gunbc", acceptance: gunbc.roadmap_model.PrsMerged },
+    execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
     signoff: gunbc.roadmap_status.SignedOff { by: "operator", works: gunbc.roadmap_status.RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: gunbc.roadmap_status.HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
   }
@@ -187,9 +187,9 @@ fn signed_sized_superseded_node_fixture(id: String, by: String) -> gunbc.roadmap
 
 test fn witness_superseded_bucket_holds_superseded_only() -> Bool {
   let node_old = superseded_node_fixture(id: "old-row", by: "successor-lane")
-  let node_open = test.claim.roadmap_frontier_witness.sized_derivable(id: "open-row", prs: [10], title: "Open Row")
-  let doc = test.claim.roadmap_frontier_witness.fixture_doc(nodes: [node_old, node_open], edges: [])
-  let frontier = spawn_frontier(doc: doc, merged: [])
+  let node_open = sized_derivable(id: "open-row", prs: [10], title: "Open Row")
+  let doc = fixture_doc(nodes: [node_old, node_open], edges: [])
+  let frontier = gunbc.roadmap_spawner.spawn_frontier(doc: doc, merged: [])
   any(frontier.superseded, n => n.node == roadmap_frontier_nid(s: "old-row"))
     && !any(frontier.superseded, n => n.node == roadmap_frontier_nid(s: "open-row"))
     && !any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "old-row"))
@@ -199,8 +199,8 @@ test fn witness_superseded_bucket_holds_superseded_only() -> Bool {
 
 test fn witness_signed_superseded_node_is_not_also_done() -> Bool {
   let node_old = signed_sized_superseded_node_fixture(id: "accepted-old-row", by: "successor-lane")
-  let frontier = spawn_frontier(
-    doc: test.claim.roadmap_frontier_witness.fixture_doc(nodes: [node_old], edges: []),
+  let frontier = gunbc.roadmap_spawner.spawn_frontier(
+    doc: fixture_doc(nodes: [node_old], edges: []),
     merged: [])
   any(frontier.superseded, n => n.node == roadmap_frontier_nid(s: "accepted-old-row"))
     && !any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "accepted-old-row"))
@@ -210,7 +210,7 @@ test fn witness_signed_superseded_node_is_not_also_done() -> Bool {
 
 test fn witness_page_places_superseded_node_in_superseded_bucket() -> Bool {
   let node_old = superseded_node_fixture(id: "old-row", by: "successor-lane")
-  let doc = test.claim.roadmap_frontier_witness.fixture_doc(nodes: [node_old], edges: [])
+  let doc = fixture_doc(nodes: [node_old], edges: [])
   let h = daily_workspace_html(doc: doc, merged: [])
   string_contains(s: h, pattern: "Old Row")
     && string_contains(s: h, pattern: "class=\"status status-superseded\"")
@@ -219,8 +219,8 @@ test fn witness_page_places_superseded_node_in_superseded_bucket() -> Bool {
 }
 
 test fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
-  let node = test.claim.roadmap_frontier_witness.sized_derivable(id: "spawn-me", prs: [42], title: "Spawn Me Now")
-  let doc = test.claim.roadmap_frontier_witness.fixture_doc(nodes: [node], edges: [])
+  let node = sized_derivable(id: "spawn-me", prs: [42], title: "Spawn Me Now")
+  let doc = fixture_doc(nodes: [node], edges: [])
   let h = daily_workspace_html(doc: doc, merged: [])
   string_contains(s: h, pattern: "Spawn Me Now")
     && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
@@ -229,10 +229,10 @@ test fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
 }
 
 test fn witness_authority_daily_workspace_serializes() -> Bool {
-  match try_serialize_html_source(node: roadmap_daily_workspace_page_for_authority()) {
-    EmitOk { html: h } =>
+  match extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_for_authority()) {
+    extdeps.languages.html.EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
         && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-done\"")
-    EmitRejected { reason: _ } => false
+    extdeps.languages.html.EmitRejected { reason: _ } => false
   }
 }

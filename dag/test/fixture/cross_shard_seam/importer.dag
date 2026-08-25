@@ -2,5 +2,5 @@ module test.fixture.cross_shard_seam.importer
 
 
 fn importer_uses_seam_marker() -> String {
-  seam_marker_id(m: SeamAlpha)
+  test.fixture.cross_shard_seam.importee.seam_marker_id(m: test.fixture.cross_shard_seam.importee.SeamAlpha)
 }

@@ -1,158 +1,158 @@
 module test.claim.runner_broker_progress_watchdog_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn remote_offline() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
   gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
-    registration: RunnerRemoteOffline,
+    registration: gunbc.runner_broker_progress_watchdog.RunnerRemoteOffline,
     registration_id: "",
-    grade: ObservedEvidence,
+    grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
   }
 }
 
 fn remote_online() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
   gunbc.runner_broker_progress_watchdog.RemoteRegistrationObserved {
     registration: gunbc.runner_broker_progress_watchdog.RunnerRemoteOnline {
-      runner_name: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
+      runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
       labels: ["self-hosted"],
     },
     registration_id: "reg-1",
-    grade: ObservedEvidence,
+    grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
   }
 }
 
 test fn remote_online_is_healthy_noop_state() -> Bool {
-  match classify_runner_watchdog_verdict(
+  match gunbc.runner_broker_progress_watchdog.classify_runner_watchdog_verdict(
     remote: remote_online(),
-    broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent { silence_seconds: 0, grade: ObservedEvidence },
-    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
+    broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent { silence_seconds: 0, grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence },
+    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence },
   ) {
-    WatchdogHealthy => true
-    WatchdogRetrying { silence_seconds: _ } => false
-    WatchdogWedged { silence_seconds: _ } => false
-    WatchdogBusy => false
-    WatchdogRefused { reason: _ } => false
+    gunbc.runner_broker_progress_watchdog.WatchdogHealthy => true
+    gunbc.runner_broker_progress_watchdog.WatchdogRetrying { silence_seconds: _ } => false
+    gunbc.runner_broker_progress_watchdog.WatchdogWedged { silence_seconds: _ } => false
+    gunbc.runner_broker_progress_watchdog.WatchdogBusy => false
+    gunbc.runner_broker_progress_watchdog.WatchdogRefused { reason: _ } => false
   }
 }
 
 test fn offline_with_recent_broker_progress_is_retrying() -> Bool {
-  match classify_runner_watchdog_verdict(
+  match gunbc.runner_broker_progress_watchdog.classify_runner_watchdog_verdict(
     remote: remote_offline(),
     broker: gunbc.runner_broker_progress_watchdog.BrokerProgressObserved {
-      last_event: AcquireAttempt,
+      last_event: gunbc.runner_broker_progress_watchdog.AcquireAttempt,
       last_at: "2026-08-06T20:00:00Z" as std.types.Timestamp,
-      grade: ObservedEvidence,
+      grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
     },
-    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
+    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence },
   ) {
-    WatchdogRetrying { silence_seconds: _ } => true
-    WatchdogWedged { silence_seconds: _ } => false
-    WatchdogHealthy => false
-    WatchdogBusy => false
-    WatchdogRefused { reason: _ } => false
+    gunbc.runner_broker_progress_watchdog.WatchdogRetrying { silence_seconds: _ } => true
+    gunbc.runner_broker_progress_watchdog.WatchdogWedged { silence_seconds: _ } => false
+    gunbc.runner_broker_progress_watchdog.WatchdogHealthy => false
+    gunbc.runner_broker_progress_watchdog.WatchdogBusy => false
+    gunbc.runner_broker_progress_watchdog.WatchdogRefused { reason: _ } => false
   }
 }
 
 test fn offline_stale_broker_progress_is_wedged() -> Bool {
-  match classify_runner_watchdog_verdict(
+  match gunbc.runner_broker_progress_watchdog.classify_runner_watchdog_verdict(
     remote: remote_offline(),
     broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
-      silence_seconds: runner_broker_progress_silence_bound_seconds,
-      grade: ObservedEvidence,
+      silence_seconds: gunbc.runner_broker_progress_watchdog.runner_broker_progress_silence_bound_seconds,
+      grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
     },
-    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
+    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence },
   ) {
-    WatchdogWedged { silence_seconds: s } => s == runner_broker_progress_silence_bound_seconds
-    WatchdogRetrying { silence_seconds: _ } => false
-    WatchdogHealthy => false
-    WatchdogBusy => false
-    WatchdogRefused { reason: _ } => false
+    gunbc.runner_broker_progress_watchdog.WatchdogWedged { silence_seconds: s } => s == gunbc.runner_broker_progress_watchdog.runner_broker_progress_silence_bound_seconds
+    gunbc.runner_broker_progress_watchdog.WatchdogRetrying { silence_seconds: _ } => false
+    gunbc.runner_broker_progress_watchdog.WatchdogHealthy => false
+    gunbc.runner_broker_progress_watchdog.WatchdogBusy => false
+    gunbc.runner_broker_progress_watchdog.WatchdogRefused { reason: _ } => false
   }
 }
 
 test fn worker_alive_is_busy_noop_state() -> Bool {
-  match classify_runner_watchdog_verdict(
+  match gunbc.runner_broker_progress_watchdog.classify_runner_watchdog_verdict(
     remote: remote_offline(),
     broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
-      silence_seconds: runner_broker_progress_silence_bound_seconds,
-      grade: ObservedEvidence,
+      silence_seconds: gunbc.runner_broker_progress_watchdog.runner_broker_progress_silence_bound_seconds,
+      grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
     },
     worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAlive {
-      detail: "Runner.Worker executing job" as std.types.NonEmptyStr,
-      grade: ObservedEvidence,
+      detail: "Runner.Worker executing job" as NonEmptyStr,
+      grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
     },
   ) {
-    WatchdogBusy => true
-    WatchdogWedged { silence_seconds: _ } => false
-    WatchdogHealthy => false
-    WatchdogRetrying { silence_seconds: _ } => false
-    WatchdogRefused { reason: _ } => false
+    gunbc.runner_broker_progress_watchdog.WatchdogBusy => true
+    gunbc.runner_broker_progress_watchdog.WatchdogWedged { silence_seconds: _ } => false
+    gunbc.runner_broker_progress_watchdog.WatchdogHealthy => false
+    gunbc.runner_broker_progress_watchdog.WatchdogRetrying { silence_seconds: _ } => false
+    gunbc.runner_broker_progress_watchdog.WatchdogRefused { reason: _ } => false
   }
 }
 
 test fn unreadable_remote_evidence_refuses() -> Bool {
-  match classify_runner_watchdog_verdict(
+  match gunbc.runner_broker_progress_watchdog.classify_runner_watchdog_verdict(
     remote: gunbc.runner_broker_progress_watchdog.RemoteRegistrationRefused {
-      reason: "org runner roster credential unreadable" as std.types.NonEmptyStr,
+      reason: "org runner roster credential unreadable" as NonEmptyStr,
     },
-    broker: gunbc.runner_broker_progress_watchdog.BrokerProgressUnobserved { reason: "n/a" as std.types.NonEmptyStr },
-    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerUnobserved { reason: "n/a" as std.types.NonEmptyStr },
+    broker: gunbc.runner_broker_progress_watchdog.BrokerProgressUnobserved { reason: "n/a" as NonEmptyStr },
+    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerUnobserved { reason: "n/a" as NonEmptyStr },
   ) {
-    WatchdogRefused { reason: _ } => true
-    WatchdogHealthy => false
-    WatchdogRetrying { silence_seconds: _ } => false
-    WatchdogWedged { silence_seconds: _ } => false
-    WatchdogBusy => false
+    gunbc.runner_broker_progress_watchdog.WatchdogRefused { reason: _ } => true
+    gunbc.runner_broker_progress_watchdog.WatchdogHealthy => false
+    gunbc.runner_broker_progress_watchdog.WatchdogRetrying { silence_seconds: _ } => false
+    gunbc.runner_broker_progress_watchdog.WatchdogWedged { silence_seconds: _ } => false
+    gunbc.runner_broker_progress_watchdog.WatchdogBusy => false
   }
 }
 
 test fn incident_wedge_41_minutes_exceeds_semantic_bound() -> Bool {
-  runner_watchdog_incident_wedge_41_minutes_seconds > runner_broker_progress_silence_bound_seconds
+  gunbc.runner_broker_progress_watchdog.runner_watchdog_incident_wedge_41_minutes_seconds > gunbc.runner_broker_progress_watchdog.runner_broker_progress_silence_bound_seconds
 }
 
 test fn incident_wedge_77_minutes_exceeds_semantic_bound() -> Bool {
-  runner_watchdog_incident_wedge_77_minutes_seconds > runner_broker_progress_silence_bound_seconds
+  gunbc.runner_broker_progress_watchdog.runner_watchdog_incident_wedge_77_minutes_seconds > gunbc.runner_broker_progress_watchdog.runner_broker_progress_silence_bound_seconds
 }
 
 test fn arm_reachability_stale_seconds_is_not_semantic_bound() -> Bool {
-  runner_watchdog_arm_reachability_stale_seconds < runner_broker_progress_silence_bound_seconds
+  gunbc.runner_broker_progress_watchdog.runner_watchdog_arm_reachability_stale_seconds < gunbc.runner_broker_progress_watchdog.runner_broker_progress_silence_bound_seconds
 }
 
 test fn closed_set_broker_events_all_reset_silence() -> Bool {
-  broker_progress_event_resets_silence(event: AcquireAttempt)
-    && broker_progress_event_resets_silence(event: ConnectionError)
-    && broker_progress_event_resets_silence(event: Reconnection)
-    && broker_progress_event_resets_silence(event: MessageReceived)
-    && broker_progress_event_resets_silence(event: SessionCreation)
+  gunbc.runner_broker_progress_watchdog.broker_progress_event_resets_silence(event: gunbc.runner_broker_progress_watchdog.AcquireAttempt)
+    && gunbc.runner_broker_progress_watchdog.broker_progress_event_resets_silence(event: gunbc.runner_broker_progress_watchdog.ConnectionError)
+    && gunbc.runner_broker_progress_watchdog.broker_progress_event_resets_silence(event: gunbc.runner_broker_progress_watchdog.Reconnection)
+    && gunbc.runner_broker_progress_watchdog.broker_progress_event_resets_silence(event: gunbc.runner_broker_progress_watchdog.MessageReceived)
+    && gunbc.runner_broker_progress_watchdog.broker_progress_event_resets_silence(event: gunbc.runner_broker_progress_watchdog.SessionCreation)
 }
 
 test fn wedged_predicate_requires_grace_and_no_worker() -> Bool {
-  watchdog_replace_predicate_holds(
+  gunbc.runner_broker_progress_watchdog.watchdog_replace_predicate_holds(
     remote: remote_offline(),
     broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
-      silence_seconds: runner_broker_progress_silence_bound_seconds,
-      grade: ObservedEvidence,
+      silence_seconds: gunbc.runner_broker_progress_watchdog.runner_broker_progress_silence_bound_seconds,
+      grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
     },
-    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
+    worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence },
     registration_grace_elapsed: true,
   )
-    && !watchdog_replace_predicate_holds(
+    && !gunbc.runner_broker_progress_watchdog.watchdog_replace_predicate_holds(
          remote: remote_offline(),
          broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
-           silence_seconds: runner_broker_progress_silence_bound_seconds,
-           grade: ObservedEvidence,
+           silence_seconds: gunbc.runner_broker_progress_watchdog.runner_broker_progress_silence_bound_seconds,
+           grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
          },
-         worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
+         worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence },
          registration_grace_elapsed: false,
        )
 }
 
 test fn shell_pipeline_diagnostic_read_refuses_sigpipe_class() -> Bool {
-  match refuses_shell_pipeline_diagnostic_read(
-    attempted: "ls /var/log/actions-runner | head -1" as std.types.NonEmptyStr,
+  match gunbc.runner_broker_progress_watchdog.refuses_shell_pipeline_diagnostic_read(
+    attempted: "ls /var/log/actions-runner | head -1" as NonEmptyStr,
   ) {
-    DiagnosticShellPipelineRefused { attempted: _, reason: _ } => true
+    gunbc.runner_broker_progress_watchdog.DiagnosticShellPipelineRefused { attempted: _, reason: _ } => true
     _ => false
   }
 }
@@ -160,27 +160,27 @@ test fn shell_pipeline_diagnostic_read_refuses_sigpipe_class() -> Bool {
 test fn reobservation_refuses_when_local_process_changed() -> Bool {
   let act = "2026-08-06T20:00:00Z" as std.types.Timestamp
   let receipt = gunbc.runner_broker_progress_watchdog.RunnerRepairDecisionReceipt {
-    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
+    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv1, slot_index: 1 },
     local_process: gunbc.build_cache_instance.ProcessIdentity {
-      boot_id: "boot-a" as std.types.NonEmptyStr,
+      boot_id: "boot-a" as NonEmptyStr,
       pid: 4242,
-      start_time: "80000000" as std.types.NonEmptyStr,
+      start_time: "80000000" as NonEmptyStr,
     },
     remote_registration_id: "reg-1",
     act_at: act,
   }
-  reobservation_refuses_mutation(
+  gunbc.runner_broker_progress_watchdog.reobservation_refuses_mutation(
     receipt: receipt,
     fresh_local_process: gunbc.build_cache_instance.ProcessIdentity {
-      boot_id: "boot-a" as std.types.NonEmptyStr,
+      boot_id: "boot-a" as NonEmptyStr,
       pid: 5151,
-      start_time: "91000000" as std.types.NonEmptyStr,
+      start_time: "91000000" as NonEmptyStr,
     },
     fresh_remote: remote_offline(),
-    fresh_worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
+    fresh_worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence },
     fresh_broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
-      silence_seconds: runner_broker_progress_silence_bound_seconds,
-      grade: ObservedEvidence,
+      silence_seconds: gunbc.runner_broker_progress_watchdog.runner_broker_progress_silence_bound_seconds,
+      grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
     },
     act_at: act,
   )
@@ -189,23 +189,23 @@ test fn reobservation_refuses_when_local_process_changed() -> Bool {
 test fn reobservation_refuses_when_remote_recovered() -> Bool {
   let act = "2026-08-06T20:00:00Z" as std.types.Timestamp
   let receipt = gunbc.runner_broker_progress_watchdog.RunnerRepairDecisionReceipt {
-    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
+    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: gunbc.fleet_intent_network.operator_host_srv1, slot_index: 1 },
     local_process: gunbc.build_cache_instance.ProcessIdentity {
-      boot_id: "boot-a" as std.types.NonEmptyStr,
+      boot_id: "boot-a" as NonEmptyStr,
       pid: 4242,
-      start_time: "80000000" as std.types.NonEmptyStr,
+      start_time: "80000000" as NonEmptyStr,
     },
     remote_registration_id: "reg-1",
     act_at: act,
   }
-  reobservation_refuses_mutation(
+  gunbc.runner_broker_progress_watchdog.reobservation_refuses_mutation(
     receipt: receipt,
     fresh_local_process: receipt.local_process,
     fresh_remote: remote_online(),
-    fresh_worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: ObservedEvidence },
+    fresh_worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerAbsent { grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence },
     fresh_broker: gunbc.runner_broker_progress_watchdog.BrokerProgressSilent {
-      silence_seconds: runner_broker_progress_silence_bound_seconds,
-      grade: ObservedEvidence,
+      silence_seconds: gunbc.runner_broker_progress_watchdog.runner_broker_progress_silence_bound_seconds,
+      grade: gunbc.runner_broker_progress_watchdog.ObservedEvidence,
     },
     act_at: act,
   )

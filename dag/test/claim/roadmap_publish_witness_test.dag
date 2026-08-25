@@ -24,7 +24,7 @@ fn fixture_pull(
     number: number,
     title: "a change",
     body: Absent,
-    state: Open,
+    state: extdeps.github.pulls.Open,
     html_url: "https://github.com/gunb-ai/gunbc/pull/1" as std.types.NonEmptyStr,
     user: fixture_user(),
     head: extdeps.github.pulls.PullRequestRef { ref: branch, sha: sha, label: branch },
@@ -49,7 +49,7 @@ fn adjudicate_with(
   pulls: gunbc.roadmap_publish.PullRequestObservation,
   remotes: gunbc.roadmap_publish.RemoteBranchObservation,
 ) -> gunbc.roadmap_publish.PublicationOutcome {
-  adjudicate_publication(
+  gunbc.roadmap_publish.adjudicate_publication(
     pulls: pulls,
     remotes: remotes,
     remote: fixture_remote,
@@ -79,15 +79,15 @@ fn one_pull(sha: std.types.CommitSha, draft: Bool) -> gunbc.roadmap_publish.Pull
 
 test fn a_pull_request_at_the_expected_head_is_bound() -> Bool {
   match adjudicate_with(pulls: one_pull(sha: fixture_expected, draft: true), remotes: remotes_deliberately_unreadable()) {
-    PublicationBound { branch: _, pr_number, pr_head, url: _, draft } =>
+    gunbc.roadmap_publish.PublicationBound { branch: _, pr_number, pr_head, url: _, draft } =>
       pr_number == 22 && (pr_head as String) == (fixture_expected as String) && draft
-    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
-    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
-    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
-    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
-    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
-    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
-    PublicationObservationRefused { detail: _ } => false
+    gunbc.roadmap_publish.PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    gunbc.roadmap_publish.PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    gunbc.roadmap_publish.RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    gunbc.roadmap_publish.RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    gunbc.roadmap_publish.BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    gunbc.roadmap_publish.RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    gunbc.roadmap_publish.PublicationObservationRefused { detail: _ } => false
   }
 }
 
@@ -95,17 +95,17 @@ data divergence_is_the_point_note: String = "A pull request exists, its branch a
 
 test fn a_pull_request_at_another_head_diverges_and_names_both() -> Bool {
   match adjudicate_with(pulls: one_pull(sha: fixture_older, draft: false), remotes: remotes_deliberately_unreadable()) {
-    PublicationHeadDiverged { branch: _, pr_number, pr_head, expected_head, url: _ } =>
+    gunbc.roadmap_publish.PublicationHeadDiverged { branch: _, pr_number, pr_head, expected_head, url: _ } =>
       pr_number == 22
         && (pr_head as String) == (fixture_older as String)
         && (expected_head as String) == (fixture_expected as String)
-    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
-    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
-    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
-    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
-    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
-    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
-    PublicationObservationRefused { detail: _ } => false
+    gunbc.roadmap_publish.PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    gunbc.roadmap_publish.PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    gunbc.roadmap_publish.RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    gunbc.roadmap_publish.RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    gunbc.roadmap_publish.BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    gunbc.roadmap_publish.RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    gunbc.roadmap_publish.PublicationObservationRefused { detail: _ } => false
   }
 }
 
@@ -122,18 +122,18 @@ test fn two_pull_requests_for_one_target_are_ambiguous_not_a_pick() -> Bool {
     remotes: remotes_deliberately_unreadable(),
   )
   match outcome {
-    PublicationBindingAmbiguous { branch: _, base_ref, pr_numbers } =>
+    gunbc.roadmap_publish.PublicationBindingAmbiguous { branch: _, base_ref, pr_numbers } =>
       (base_ref as String) == (fixture_base as String)
         && count(pr_numbers) == 2
         && any(pr_numbers, n => n == 22)
         && any(pr_numbers, n => n == 23)
-    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
-    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
-    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
-    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
-    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
-    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
-    PublicationObservationRefused { detail: _ } => false
+    gunbc.roadmap_publish.PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    gunbc.roadmap_publish.PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    gunbc.roadmap_publish.RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    gunbc.roadmap_publish.RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    gunbc.roadmap_publish.BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    gunbc.roadmap_publish.RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    gunbc.roadmap_publish.PublicationObservationRefused { detail: _ } => false
   }
 }
 
@@ -148,14 +148,14 @@ test fn a_pull_request_against_another_base_does_not_bind() -> Bool {
     remotes: gunbc.roadmap_publish.RemoteBranchesRead { branches: [] },
   )
   match outcome {
-    BranchNotPublished { branch: _, remote_branches_seen } => remote_branches_seen == 0
-    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
-    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
-    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
-    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
-    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
-    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
-    PublicationObservationRefused { detail: _ } => false
+    gunbc.roadmap_publish.BranchNotPublished { branch: _, remote_branches_seen } => remote_branches_seen == 0
+    gunbc.roadmap_publish.PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    gunbc.roadmap_publish.PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    gunbc.roadmap_publish.PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    gunbc.roadmap_publish.RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    gunbc.roadmap_publish.RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    gunbc.roadmap_publish.RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    gunbc.roadmap_publish.PublicationObservationRefused { detail: _ } => false
   }
 }
 
@@ -171,16 +171,16 @@ test fn a_remote_branch_at_the_expected_head_without_a_pull_request_is_its_own_a
     },
   )
   match outcome {
-    RemoteBranchAtExpectedHeadWithoutPullRequest { branch, head_sha } =>
+    gunbc.roadmap_publish.RemoteBranchAtExpectedHeadWithoutPullRequest { branch, head_sha } =>
       (branch as String) == (fixture_branch as String)
         && (head_sha as String) == (fixture_expected as String)
-    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
-    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
-    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
-    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
-    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
-    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
-    PublicationObservationRefused { detail: _ } => false
+    gunbc.roadmap_publish.RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    gunbc.roadmap_publish.BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    gunbc.roadmap_publish.PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    gunbc.roadmap_publish.PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    gunbc.roadmap_publish.PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    gunbc.roadmap_publish.RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    gunbc.roadmap_publish.PublicationObservationRefused { detail: _ } => false
   }
 }
 
@@ -192,23 +192,23 @@ test fn a_stale_remote_branch_diverges_rather_than_counting_as_published() -> Bo
     },
   )
   match outcome {
-    RemoteBranchHeadDiverged { branch: _, remote_head, expected_head } =>
+    gunbc.roadmap_publish.RemoteBranchHeadDiverged { branch: _, remote_head, expected_head } =>
       (remote_head as String) == (fixture_older as String)
         && (expected_head as String) == (fixture_expected as String)
-    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
-    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
-    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
-    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
-    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
-    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
-    PublicationObservationRefused { detail: _ } => false
+    gunbc.roadmap_publish.RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    gunbc.roadmap_publish.BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    gunbc.roadmap_publish.PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    gunbc.roadmap_publish.PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    gunbc.roadmap_publish.PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    gunbc.roadmap_publish.RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    gunbc.roadmap_publish.PublicationObservationRefused { detail: _ } => false
   }
 }
 
 // The pull-request fold got 0/1/many in the first cut of that correction and the remote-ref fold beside it did not - it handled zero and then took the first of the rest, which is the same silent pick one screen below the note forbidding it. This is stated in BOTH orders on purpose: with the expected head first, the old code answered RemoteBranchAtExpectedHeadWithoutPullRequest, and with the stale ref first it answered RemoteBranchHeadDiverged, so a single-order claim would have been satisfied by list position rather than by a decision. Two orders over one observation make the answer order-independent, which is the property that was actually missing.
 fn ambiguous_over_two_refs(outcome: gunbc.roadmap_publish.PublicationOutcome) -> Bool {
   match outcome {
-    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched } =>
+    gunbc.roadmap_publish.RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched } =>
       refs_matched == 2
     _ => false
   }
@@ -235,7 +235,7 @@ test fn two_remote_refs_for_one_branch_are_ambiguous_not_a_pick() -> Bool {
   )
   ambiguous_over_two_refs(outcome: expected_first)
     && ambiguous_over_two_refs(outcome: stale_first)
-    && !publication_offers_the_expected_head(outcome: expected_first)
+    && !gunbc.roadmap_publish.publication_offers_the_expected_head(outcome: expected_first)
 }
 
 test fn one_remote_ref_still_binds_and_a_sibling_branch_does_not_count() -> Bool {
@@ -249,7 +249,7 @@ test fn one_remote_ref_still_binds_and_a_sibling_branch_does_not_count() -> Bool
     },
   )
   match outcome {
-    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha } =>
+    gunbc.roadmap_publish.RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha } =>
       (head_sha as String) == (fixture_expected as String)
     _ => false
   }
@@ -266,15 +266,15 @@ test fn an_unpushed_branch_reports_how_many_refs_it_read() -> Bool {
     },
   )
   match outcome {
-    BranchNotPublished { branch, remote_branches_seen } =>
+    gunbc.roadmap_publish.BranchNotPublished { branch, remote_branches_seen } =>
       (branch as String) == (fixture_branch as String) && remote_branches_seen == 2
-    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
-    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
-    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
-    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
-    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
-    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
-    PublicationObservationRefused { detail: _ } => false
+    gunbc.roadmap_publish.RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    gunbc.roadmap_publish.RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    gunbc.roadmap_publish.PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    gunbc.roadmap_publish.PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    gunbc.roadmap_publish.PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    gunbc.roadmap_publish.RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    gunbc.roadmap_publish.PublicationObservationRefused { detail: _ } => false
   }
 }
 
@@ -290,17 +290,17 @@ test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool
     },
     remotes: gunbc.roadmap_publish.RemoteBranchesRead { branches: [] },
   ) {
-    PublicationObservationRefused { detail } =>
+    gunbc.roadmap_publish.PublicationObservationRefused { detail } =>
       string_contains(s: detail, pattern: "401")
         && string_contains(s: detail, pattern: "Bad credentials")
         && string_contains(s: detail, pattern: "gunb-ai/gunbc")
-    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
-    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
-    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
-    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
-    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
-    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
-    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    gunbc.roadmap_publish.BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    gunbc.roadmap_publish.RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    gunbc.roadmap_publish.RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    gunbc.roadmap_publish.RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    gunbc.roadmap_publish.PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    gunbc.roadmap_publish.PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    gunbc.roadmap_publish.PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
   }
 }
 
@@ -309,15 +309,15 @@ test fn unreadable_remotes_with_no_pull_request_refuse_rather_than_report_unpubl
     pulls: gunbc.roadmap_publish.PullRequestsRead { pulls: [] },
     remotes: gunbc.roadmap_publish.RemoteBranchesUnreadable { cause: gunbc.roadmap_publish.RefAdvertisementRefused { remote: "origin" as std.types.NonEmptyStr, exit_code: 124, stderr: "ls-remote timed out" } },
   ) {
-    PublicationObservationRefused { detail } =>
+    gunbc.roadmap_publish.PublicationObservationRefused { detail } =>
       string_contains(s: detail, pattern: "ls-remote timed out")
-    BranchNotPublished { branch: _, remote_branches_seen: _ } => false
-    RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
-    RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
-    RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
-    PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
-    PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
-    PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+    gunbc.roadmap_publish.BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+    gunbc.roadmap_publish.RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+    gunbc.roadmap_publish.RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+    gunbc.roadmap_publish.RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+    gunbc.roadmap_publish.PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+    gunbc.roadmap_publish.PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+    gunbc.roadmap_publish.PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
   }
 }
 
@@ -340,14 +340,14 @@ test fn only_a_bound_pull_request_offers_the_expected_head() -> Bool {
     },
     remotes: gunbc.roadmap_publish.RemoteBranchesRead { branches: [] },
   )
-  publication_offers_the_expected_head(outcome: bound)
-    && !publication_offers_the_expected_head(outcome: diverged)
-    && !publication_offers_the_expected_head(outcome: ref_only)
-    && !publication_offers_the_expected_head(outcome: refused)
+  gunbc.roadmap_publish.publication_offers_the_expected_head(outcome: bound)
+    && !gunbc.roadmap_publish.publication_offers_the_expected_head(outcome: diverged)
+    && !gunbc.roadmap_publish.publication_offers_the_expected_head(outcome: ref_only)
+    && !gunbc.roadmap_publish.publication_offers_the_expected_head(outcome: refused)
 }
 
 test fn the_diverged_detail_names_both_commits() -> Bool {
-  let diverged = publication_detail(outcome: adjudicate_with(
+  let diverged = gunbc.roadmap_publish.publication_detail(outcome: adjudicate_with(
     pulls: one_pull(sha: fixture_older, draft: false),
     remotes: remotes_deliberately_unreadable(),
   ))
@@ -357,11 +357,11 @@ test fn the_diverged_detail_names_both_commits() -> Bool {
 }
 
 test fn the_bound_detail_distinguishes_draft_from_ready() -> Bool {
-  let as_draft = publication_detail(outcome: adjudicate_with(
+  let as_draft = gunbc.roadmap_publish.publication_detail(outcome: adjudicate_with(
     pulls: one_pull(sha: fixture_expected, draft: true),
     remotes: remotes_deliberately_unreadable(),
   ))
-  let as_ready = publication_detail(outcome: adjudicate_with(
+  let as_ready = gunbc.roadmap_publish.publication_detail(outcome: adjudicate_with(
     pulls: one_pull(sha: fixture_expected, draft: false),
     remotes: remotes_deliberately_unreadable(),
   ))
@@ -401,8 +401,8 @@ fn subject_for(head: std.types.CommitSha) -> gunbc.roadmap_publish.RoadmapPublic
 }
 
 fn receipt_for(outcome: gunbc.roadmap_publish.PublicationOutcome, head: std.types.CommitSha) -> String {
-  publication_receipt_json(
-    receipt: publication_receipt_of(subject: subject_for(head: head), outcome: outcome),
+  gunbc.roadmap_publish.publication_receipt_json(
+    receipt: gunbc.roadmap_publish.publication_receipt_of(subject: subject_for(head: head), outcome: outcome),
   )
 }
 
@@ -421,16 +421,16 @@ fn diverged_outcome() -> gunbc.roadmap_publish.PublicationOutcome {
 }
 
 test fn the_clone_url_names_the_repository_not_a_local_alias() -> Bool {
-  let url = github_https_clone_url(repo: fixture_repository) as String
+  let url = extdeps.github.github.github_https_clone_url(repo: fixture_repository) as String
   url == "https://github.com/gunb-ai/gunbc.git" && url != "origin"
 }
 
 test fn a_receipt_round_trips_its_outcome_and_its_subject() -> Bool {
-  match publication_receipt_decode(
-    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  match gunbc.roadmap_publish.publication_receipt_decode(
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
   ) {
-    ReceiptUndecodable { reason: _ } => false
-    ReceiptDecoded { receipt } =>
+    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
+    gunbc.roadmap_publish.ReceiptDecoded { receipt } =>
       receipt.subject.node_id == "some-node"
         && receipt.subject.attempt_key == "a7"
         && receipt.subject.repository.owner == "gunb-ai"
@@ -438,69 +438,69 @@ test fn a_receipt_round_trips_its_outcome_and_its_subject() -> Bool {
         && receipt.subject.branch == fixture_branch
         && receipt.subject.expected_base == fixture_base
         && (receipt.subject.expected_head as String) == (fixture_expected as String)
-        && (publication_receipt_outcome_key(outcome: receipt.outcome) as String) == "publication-bound"
+        && (gunbc.roadmap_publish.publication_receipt_outcome_key(outcome: receipt.outcome) as String) == "publication-bound"
   }
 }
 
 data receipt_preserves_the_binding_note: String = "THIS IS THE CLAIM THE EARLIER RECEIPT FORMAT COULD NOT MAKE, and the reason the schema went to v2. Review's entire input is the pull-request binding publication established: a number and a head. The previous format serialized an outcome key and a rendered English sentence, so a Review producer could recover the number only by parsing prose or by asking GitHub a second time - and a second query can disagree with the first, which is the divergence this lane exists to catch, reintroduced by the carrier meant to record it.\\n\\nSo this asserts the FIELDS survive the round trip, not that a string mentions them."
 
 test fn a_bound_receipt_preserves_the_pull_request_binding() -> Bool {
-  match publication_receipt_decode(
-    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  match gunbc.roadmap_publish.publication_receipt_decode(
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
   ) {
-    ReceiptUndecodable { reason: _ } => false
-    ReceiptDecoded { receipt } =>
+    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
+    gunbc.roadmap_publish.ReceiptDecoded { receipt } =>
       match receipt.outcome {
-        ReceiptBound { pr_number, url, draft } =>
+        gunbc.roadmap_publish.ReceiptBound { pr_number, url, draft } =>
           pr_number == 22
             && (receipt.subject.expected_head as String) == (fixture_expected as String)
             && (url as String) == "https://github.com/gunb-ai/gunbc/pull/1"
             && !draft
-        ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => false
-        ReceiptBindingAmbiguous { pr_numbers: _ } => false
-        ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
-        ReceiptRemoteBranchHeadDiverged { remote_head: _ } => false
-        ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => false
-        ReceiptBranchNotPublished { remote_branches_seen: _ } => false
-        ReceiptObservationRefused { detail: _ } => false
+        gunbc.roadmap_publish.ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => false
+        gunbc.roadmap_publish.ReceiptBindingAmbiguous { pr_numbers: _ } => false
+        gunbc.roadmap_publish.ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
+        gunbc.roadmap_publish.ReceiptRemoteBranchHeadDiverged { remote_head: _ } => false
+        gunbc.roadmap_publish.ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => false
+        gunbc.roadmap_publish.ReceiptBranchNotPublished { remote_branches_seen: _ } => false
+        gunbc.roadmap_publish.ReceiptObservationRefused { detail: _ } => false
       }
   }
 }
 
 test fn a_diverged_receipt_preserves_the_head_that_was_offered() -> Bool {
-  match publication_receipt_decode(
-    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: diverged_outcome(), head: fixture_expected),
+  match gunbc.roadmap_publish.publication_receipt_decode(
+    receipt: receipt_for(outcome: diverged_outcome(), head: fixture_expected),
   ) {
-    ReceiptUndecodable { reason: _ } => false
-    ReceiptDecoded { receipt } =>
+    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
+    gunbc.roadmap_publish.ReceiptDecoded { receipt } =>
       match receipt.outcome {
-        ReceiptHeadDiverged { pr_number, pr_head, url: _ } =>
+        gunbc.roadmap_publish.ReceiptHeadDiverged { pr_number, pr_head, url: _ } =>
           pr_number == 22
             && (pr_head as String) == (fixture_older as String)
             && (pr_head as String) != (receipt.subject.expected_head as String)
-        ReceiptBound { pr_number: _, url: _, draft: _ } => false
-        ReceiptBindingAmbiguous { pr_numbers: _ } => false
-        ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
-        ReceiptRemoteBranchHeadDiverged { remote_head: _ } => false
-        ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => false
-        ReceiptBranchNotPublished { remote_branches_seen: _ } => false
-        ReceiptObservationRefused { detail: _ } => false
+        gunbc.roadmap_publish.ReceiptBound { pr_number: _, url: _, draft: _ } => false
+        gunbc.roadmap_publish.ReceiptBindingAmbiguous { pr_numbers: _ } => false
+        gunbc.roadmap_publish.ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
+        gunbc.roadmap_publish.ReceiptRemoteBranchHeadDiverged { remote_head: _ } => false
+        gunbc.roadmap_publish.ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => false
+        gunbc.roadmap_publish.ReceiptBranchNotPublished { remote_branches_seen: _ } => false
+        gunbc.roadmap_publish.ReceiptObservationRefused { detail: _ } => false
       }
   }
 }
 
 test fn a_receipt_records_the_head_that_was_asked_about() -> Bool {
-  match publication_receipt_decode(
-    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
+  match gunbc.roadmap_publish.publication_receipt_decode(
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
   ) {
-    ReceiptUndecodable { reason: _ } => false
-    ReceiptDecoded { receipt: r1 } =>
-      match publication_receipt_decode(
-        receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_older),
+    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
+    gunbc.roadmap_publish.ReceiptDecoded { receipt: r1 } =>
+      match gunbc.roadmap_publish.publication_receipt_decode(
+        receipt: receipt_for(outcome: bound_outcome(), head: fixture_older),
       ) {
-        ReceiptUndecodable { reason: _ } => false
-        ReceiptDecoded { receipt: r2 } =>
-          publication_receipt_outcome_key(outcome: r1.outcome) == publication_receipt_outcome_key(outcome: r2.outcome)
+        gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
+        gunbc.roadmap_publish.ReceiptDecoded { receipt: r2 } =>
+          gunbc.roadmap_publish.publication_receipt_outcome_key(outcome: r1.outcome) == gunbc.roadmap_publish.publication_receipt_outcome_key(outcome: r2.outcome)
             && (r1.subject.expected_head as String) != (r2.subject.expected_head as String)
       }
   }
@@ -509,79 +509,79 @@ test fn a_receipt_records_the_head_that_was_asked_about() -> Bool {
 data one_head_per_bound_receipt_note: String = "THE DEFECT THIS REFUSES, stated as the shape of the document rather than as a rule: a receipt that names THIS subject and simultaneously binds a DIFFERENT pull-request head. Under the earlier cut ReceiptBound carried its own pr_head and the decoder read it independently of the subject, so such a document decoded cleanly, matched the subject on all six subject fields, and completed publication for a head no pull request offered - the exact class this lane exists to catch, walked in through the carrier meant to record it. Reported by review 46116.\\n\\nWHY THERE IS NO CHECK TO TEST: the field is gone. A bound receipt has exactly one head, subject.expected_head, so the contradictory document cannot be constructed in this language at all - the fix is DESIGN section 5 construction, not validation, and the state is unwritable rather than rejected.\\n\\nWHAT THIS CLAIM THEREFORE ASSERTS, since an unwritable state cannot be handed to a decoder: a document carrying a STRAY pr_head inside its bound outcome - the doctored shape the old encoder would have produced - answers with the SUBJECT's head and never the stray one. Under the old code this returned the stray head; under this one the stray member has no meaning to read. The stray sha here is deliberately the other fixture, so the claim goes red if any reading of the outcome's head is ever restored."
 
 fn doctored_bound_receipt_carrying_a_stray_head() -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: publication_receipt_schema as String)),
-    json_kv(key: "subject", value: publication_subject_json(subject: subject_for(head: fixture_expected))),
-    json_kv(key: "outcome", value: json_object(members: [
-      json_kv(key: "kind", value: json_string(s: "publication-bound")),
-      json_kv(key: "pr_number", value: json_int(n: 22)),
-      json_kv(key: "pr_head", value: json_string(s: fixture_older as String)),
-      json_kv(key: "url", value: json_string(s: "https://github.com/gunb-ai/gunbc/pull/1")),
-      json_kv(key: "draft", value: extdeps.languages.json.emit.json_bool(b: false)),
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: gunbc.roadmap_publish.publication_receipt_schema as String)),
+    extdeps.languages.json.emit.json_kv(key: "subject", value: gunbc.roadmap_publish.publication_subject_json(subject: subject_for(head: fixture_expected))),
+    extdeps.languages.json.emit.json_kv(key: "outcome", value: extdeps.languages.json.emit.json_object(members: [
+      extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "publication-bound")),
+      extdeps.languages.json.emit.json_kv(key: "pr_number", value: extdeps.languages.json.emit.json_int(n: 22)),
+      extdeps.languages.json.emit.json_kv(key: "pr_head", value: extdeps.languages.json.emit.json_string(s: fixture_older as String)),
+      extdeps.languages.json.emit.json_kv(key: "url", value: extdeps.languages.json.emit.json_string(s: "https://github.com/gunb-ai/gunbc/pull/1")),
+      extdeps.languages.json.emit.json_kv(key: "draft", value: extdeps.languages.json.emit.json_bool(b: false)),
     ])),
   ]))
 }
 
 test fn a_bound_receipt_binds_the_subject_head_and_no_other() -> Bool {
-  match publication_receipt_decode(receipt: doctored_bound_receipt_carrying_a_stray_head()) {
-    ReceiptUndecodable { reason: _ } => false
-    ReceiptDecoded { receipt } =>
+  match gunbc.roadmap_publish.publication_receipt_decode(receipt: doctored_bound_receipt_carrying_a_stray_head()) {
+    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
+    gunbc.roadmap_publish.ReceiptDecoded { receipt } =>
       (receipt.subject.expected_head as String) == (fixture_expected as String)
         && (receipt.subject.expected_head as String) != (fixture_older as String)
-        && publication_receipt_outcome_key(outcome: receipt.outcome) == "publication-bound"
+        && gunbc.roadmap_publish.publication_receipt_outcome_key(outcome: receipt.outcome) == "publication-bound"
   }
 }
 
 test fn a_stray_head_cannot_make_a_receipt_evidence_for_the_head_it_names() -> Bool {
-  match publication_evidence_for(
+  match gunbc.roadmap_publish.publication_evidence_for(
     expected: subject_for(head: fixture_older),
     source: gunbc.roadmap_publish.ReceiptSourcePresent { text: doctored_bound_receipt_carrying_a_stray_head() },
   ) {
-    EvidenceForSubject { receipt: _ } => false
-    EvidenceAbsent => false
-    EvidenceUnreadable { reason: _ } => false
-    EvidenceForAnotherSubject { field, expected: _, found: _ } =>
+    gunbc.roadmap_publish.EvidenceForSubject { receipt: _ } => false
+    gunbc.roadmap_publish.EvidenceAbsent => false
+    gunbc.roadmap_publish.EvidenceUnreadable { reason: _ } => false
+    gunbc.roadmap_publish.EvidenceForAnotherSubject { field, expected: _, found: _ } =>
       (field as String) == "expected_head"
   }
 }
 
 test fn a_foreign_schema_refuses_rather_than_decoding() -> Bool {
-  match publication_receipt_decode(
+  match gunbc.roadmap_publish.publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"outcome\": \{\"kind\": \"publication-bound\"\}\}",
   ) {
-    ReceiptDecoded { receipt: _ } => false
-    ReceiptUndecodable { reason: r } =>
-      string_contains(s: r, pattern: publication_receipt_schema as String)
+    gunbc.roadmap_publish.ReceiptDecoded { receipt: _ } => false
+    gunbc.roadmap_publish.ReceiptUndecodable { reason: r } =>
+      string_contains(s: r, pattern: gunbc.roadmap_publish.publication_receipt_schema as String)
   }
 }
 
 data v1_receipt_is_refused_note: String = "THE VERSION IS A WALL, NOT A HINT, and this is the claim that makes it one. A v1 document carries an outcome key and a rendered sentence; the fields Review needs were never written into it, so there is no reading of a v1 receipt as a v2 receipt with absent optional members. Accepting one would hand a consumer a receipt whose pull-request binding does not exist while looking entirely well-formed.\\n\\nThe schema string in the fixture below is the real v1 spelling, so this claim goes red the moment the decoder is loosened to accept it."
 
 test fn a_v1_receipt_refuses_rather_than_decoding_without_its_binding() -> Bool {
-  match publication_receipt_decode(
+  match gunbc.roadmap_publish.publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-publication-receipt/v1\", \"outcome\": \"publication-bound\", \"detail\": \"d\", \"repository\": \"r\", \"branch\": \"b\", \"expected_head\": \"h\"\}",
   ) {
-    ReceiptDecoded { receipt: _ } => false
-    ReceiptUndecodable { reason: r } =>
-      string_contains(s: r, pattern: publication_receipt_schema as String)
+    gunbc.roadmap_publish.ReceiptDecoded { receipt: _ } => false
+    gunbc.roadmap_publish.ReceiptUndecodable { reason: r } =>
+      string_contains(s: r, pattern: gunbc.roadmap_publish.publication_receipt_schema as String)
   }
 }
 
 test fn an_outcome_kind_this_emitter_never_writes_refuses() -> Bool {
-  match publication_receipt_decode(
+  match gunbc.roadmap_publish.publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"subject\": \{\"node_id\": \"n\", \"attempt_key\": \"a\", \"repository\": \{\"owner\": \"o\", \"name\": \"r\", \"full_name\": \"o/r\", \"private\": false, \"default_branch\": \"main\"\}, \"branch\": \"b\", \"expected_base\": \"main\", \"expected_head\": \"h\"\}, \"outcome\": \{\"kind\": \"published-ok\"\}\}",
   ) {
-    ReceiptDecoded { receipt: _ } => false
-    ReceiptUndecodable { reason: r } => string_contains(s: r, pattern: "published-ok")
+    gunbc.roadmap_publish.ReceiptDecoded { receipt: _ } => false
+    gunbc.roadmap_publish.ReceiptUndecodable { reason: r } => string_contains(s: r, pattern: "published-ok")
   }
 }
 
 test fn a_bound_outcome_missing_its_pull_request_number_refuses() -> Bool {
-  match publication_receipt_decode(
+  match gunbc.roadmap_publish.publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"subject\": \{\"node_id\": \"n\", \"attempt_key\": \"a\", \"repository\": \{\"owner\": \"o\", \"name\": \"r\", \"full_name\": \"o/r\", \"private\": false, \"default_branch\": \"main\"\}, \"branch\": \"b\", \"expected_base\": \"main\", \"expected_head\": \"h\"\}, \"outcome\": \{\"kind\": \"publication-bound\", \"pr_head\": \"h\", \"url\": \"u\", \"draft\": false\}\}",
   ) {
-    ReceiptDecoded { receipt: _ } => false
-    ReceiptUndecodable { reason: r } =>
+    gunbc.roadmap_publish.ReceiptDecoded { receipt: _ } => false
+    gunbc.roadmap_publish.ReceiptUndecodable { reason: r } =>
       string_contains(s: r, pattern: "publication-bound")
         && string_contains(s: r, pattern: "pr_number")
   }
@@ -590,9 +590,9 @@ test fn a_bound_outcome_missing_its_pull_request_number_refuses() -> Bool {
 data ambiguous_set_round_trips_note: String = "AN AMBIGUITY WHOSE MEMBERS ARE GONE IS NOT AN AMBIGUITY ANYONE CAN RESOLVE, and the decoder used to answer this arm with an empty list - discarding the very numbers the encoder had written. A receipt recording that two pull requests matched decoded to one recording that none did, reporting the same outcome kind, and every claim that checked only the kind stayed green."
 
 test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool {
-  match publication_receipt_decode(
-    receipt: publication_receipt_json(
-      receipt: publication_receipt_of(
+  match gunbc.roadmap_publish.publication_receipt_decode(
+    receipt: gunbc.roadmap_publish.publication_receipt_json(
+      receipt: gunbc.roadmap_publish.publication_receipt_of(
         subject: subject_for(head: fixture_expected),
         outcome: adjudicate_with(
           pulls: gunbc.roadmap_publish.PullRequestsRead {
@@ -618,19 +618,19 @@ test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool {
       ),
     ),
   ) {
-    ReceiptUndecodable { reason: _ } => false
-    ReceiptDecoded { receipt } =>
+    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
+    gunbc.roadmap_publish.ReceiptDecoded { receipt } =>
       match receipt.outcome {
-        ReceiptBindingAmbiguous { pr_numbers } =>
+        gunbc.roadmap_publish.ReceiptBindingAmbiguous { pr_numbers } =>
           count(pr_numbers) == 2
             && pr_numbers.first() == 11
-        ReceiptBound { pr_number: _, url: _, draft: _ } => false
-        ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => false
-        ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
-        ReceiptRemoteBranchHeadDiverged { remote_head: _ } => false
-        ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => false
-        ReceiptBranchNotPublished { remote_branches_seen: _ } => false
-        ReceiptObservationRefused { detail: _ } => false
+        gunbc.roadmap_publish.ReceiptBound { pr_number: _, url: _, draft: _ } => false
+        gunbc.roadmap_publish.ReceiptHeadDiverged { pr_number: _, pr_head: _, url: _ } => false
+        gunbc.roadmap_publish.ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: _ } => false
+        gunbc.roadmap_publish.ReceiptRemoteBranchHeadDiverged { remote_head: _ } => false
+        gunbc.roadmap_publish.ReceiptRemoteBranchBindingAmbiguous { refs_matched: _ } => false
+        gunbc.roadmap_publish.ReceiptBranchNotPublished { remote_branches_seen: _ } => false
+        gunbc.roadmap_publish.ReceiptObservationRefused { detail: _ } => false
       }
   }
 }
@@ -645,40 +645,40 @@ test fn a_subject_against_a_non_default_base_still_round_trips_its_repository() 
     expected_base: "release-2026-08" as std.types.NonEmptyStr,
     expected_head: fixture_expected,
   }
-  let text = publication_receipt_json(
-    receipt: publication_receipt_of(subject: subject, outcome: bound_outcome()),
+  let text = gunbc.roadmap_publish.publication_receipt_json(
+    receipt: gunbc.roadmap_publish.publication_receipt_of(subject: subject, outcome: bound_outcome()),
   )
-  match publication_receipt_decode(receipt: text) {
-    ReceiptUndecodable { reason: _ } => false
-    ReceiptDecoded { receipt } =>
+  match gunbc.roadmap_publish.publication_receipt_decode(receipt: text) {
+    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
+    gunbc.roadmap_publish.ReceiptDecoded { receipt } =>
       receipt.subject.repository.default_branch == "main"
         && (receipt.subject.expected_base as String) == "release-2026-08"
         && receipt.subject.repository.full_name == "gunb-ai/gunbc"
-        && match publication_evidence_for(
+        && match gunbc.roadmap_publish.publication_evidence_for(
              expected: subject,
              source: gunbc.roadmap_publish.ReceiptSourcePresent { text: text },
            ) {
-             EvidenceForSubject { receipt: _ } => true
-             EvidenceAbsent => false
-             EvidenceUnreadable { reason: _ } => false
-             EvidenceForAnotherSubject { field: _, expected: _, found: _ } => false
+             gunbc.roadmap_publish.EvidenceForSubject { receipt: _ } => true
+             gunbc.roadmap_publish.EvidenceAbsent => false
+             gunbc.roadmap_publish.EvidenceUnreadable { reason: _ } => false
+             gunbc.roadmap_publish.EvidenceForAnotherSubject { field: _, expected: _, found: _ } => false
            }
   }
 }
 
 test fn a_receipt_missing_its_subject_refuses() -> Bool {
-  match publication_receipt_decode(
+  match gunbc.roadmap_publish.publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"outcome\": \{\"kind\": \"branch-not-published\", \"remote_branches_seen\": 0\}\}",
   ) {
-    ReceiptDecoded { receipt: _ } => false
-    ReceiptUndecodable { reason: r } => string_contains(s: r, pattern: "subject")
+    gunbc.roadmap_publish.ReceiptDecoded { receipt: _ } => false
+    gunbc.roadmap_publish.ReceiptUndecodable { reason: r } => string_contains(s: r, pattern: "subject")
   }
 }
 
 test fn a_receipt_that_is_not_json_refuses() -> Bool {
-  match publication_receipt_decode(receipt: "not a receipt") {
-    ReceiptDecoded { receipt: _ } => false
-    ReceiptUndecodable { reason: r } =>
+  match gunbc.roadmap_publish.publication_receipt_decode(receipt: "not a receipt") {
+    gunbc.roadmap_publish.ReceiptDecoded { receipt: _ } => false
+    gunbc.roadmap_publish.ReceiptUndecodable { reason: r } =>
       string_contains(s: r, pattern: "complete JSON value")
   }
 }
@@ -686,7 +686,7 @@ test fn a_receipt_that_is_not_json_refuses() -> Bool {
 data subject_check_witness_note: String = "THE NEGATIVE HALF IS THE POINT. A claim that a bound receipt paints the lamp green proves only that the happy path works; it would stay green under the exact defect this rewrite exists to remove, which is a consumer that finds a receipt at a path and trusts it.\\n\\nSo each claim below pairs one receipt with TWO expectations - the subject it was written for, and a subject differing in exactly one field - and asserts that the first is evidence and the second is not. Six fields, six ways to be about the wrong question, and heads are only one of them: attempt keys and node ids collide far more readily than shas do, so a head-only comparison would pass these claims and still be wrong."
 
 fn evidence_for_subject_of(expected: gunbc.roadmap_publish.RoadmapPublicationSubject, receipt: String) -> gunbc.roadmap_publish.PublicationEvidence {
-  publication_evidence_for(
+  gunbc.roadmap_publish.publication_evidence_for(
     expected: expected,
     source: gunbc.roadmap_publish.ReceiptSourcePresent { text: receipt },
   )
@@ -694,19 +694,19 @@ fn evidence_for_subject_of(expected: gunbc.roadmap_publish.RoadmapPublicationSub
 
 fn is_evidence(e: gunbc.roadmap_publish.PublicationEvidence) -> Bool {
   match e {
-    EvidenceForSubject { receipt: _ } => true
-    EvidenceAbsent => false
-    EvidenceUnreadable { reason: _ } => false
-    EvidenceForAnotherSubject { field: _, expected: _, found: _ } => false
+    gunbc.roadmap_publish.EvidenceForSubject { receipt: _ } => true
+    gunbc.roadmap_publish.EvidenceAbsent => false
+    gunbc.roadmap_publish.EvidenceUnreadable { reason: _ } => false
+    gunbc.roadmap_publish.EvidenceForAnotherSubject { field: _, expected: _, found: _ } => false
   }
 }
 
 fn differing_field(e: gunbc.roadmap_publish.PublicationEvidence) -> String {
   match e {
-    EvidenceForAnotherSubject { field, expected: _, found: _ } => field as String
-    EvidenceForSubject { receipt: _ } => ""
-    EvidenceAbsent => ""
-    EvidenceUnreadable { reason: _ } => ""
+    gunbc.roadmap_publish.EvidenceForAnotherSubject { field, expected: _, found: _ } => field as String
+    gunbc.roadmap_publish.EvidenceForSubject { receipt: _ } => ""
+    gunbc.roadmap_publish.EvidenceAbsent => ""
+    gunbc.roadmap_publish.EvidenceUnreadable { reason: _ } => ""
   }
 }
 
@@ -714,7 +714,7 @@ test fn a_receipt_is_evidence_for_the_subject_it_was_written_for() -> Bool {
   is_evidence(
     e: evidence_for_subject_of(
       expected: subject_for(head: fixture_expected),
-      receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
+      receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
     ),
   )
 }
@@ -722,7 +722,7 @@ test fn a_receipt_is_evidence_for_the_subject_it_was_written_for() -> Bool {
 test fn a_receipt_for_another_head_is_not_evidence_for_this_one() -> Bool {
   let e = evidence_for_subject_of(
     expected: subject_for(head: fixture_older),
-    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
   )
   !is_evidence(e: e) && differing_field(e: e) == "expected_head"
 }
@@ -738,7 +738,7 @@ test fn a_receipt_for_another_node_is_not_evidence_for_this_one() -> Bool {
   }
   let e = evidence_for_subject_of(
     expected: expected,
-    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
   )
   !is_evidence(e: e) && differing_field(e: e) == "node_id"
 }
@@ -754,7 +754,7 @@ test fn a_receipt_for_another_attempt_of_this_node_is_not_evidence() -> Bool {
   }
   let e = evidence_for_subject_of(
     expected: expected,
-    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
   )
   !is_evidence(e: e) && differing_field(e: e) == "attempt_key"
 }
@@ -772,7 +772,7 @@ test fn a_receipt_about_a_repository_of_another_name_is_not_evidence() -> Bool {
   }
   let e = evidence_for_subject_of(
     expected: expected,
-    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
   )
   !is_evidence(e: e) && differing_field(e: e) == "repository_name"
 }
@@ -794,7 +794,7 @@ test fn a_receipt_about_another_owners_repository_is_not_evidence() -> Bool {
   }
   let e = evidence_for_subject_of(
     expected: expected,
-    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
   )
   !is_evidence(e: e) && differing_field(e: e) == "repository_owner"
 }
@@ -810,7 +810,7 @@ test fn a_receipt_against_another_base_is_not_evidence() -> Bool {
   }
   let e = evidence_for_subject_of(
     expected: expected,
-    receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
+    receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
   )
   !is_evidence(e: e) && differing_field(e: e) == "expected_base"
 }
@@ -818,34 +818,34 @@ test fn a_receipt_against_another_base_is_not_evidence() -> Bool {
 data three_worlds_note: String = "Three inputs that a Bool carrier collapsed into one answer, and the correct answers are not the same. Absent means nothing was ever written for this head - go observe. Present-and-empty means somebody wrote a file and its content is gone, which is a fault, not a report that nothing was published. Present-and-garbage is the same fault with different bytes. Only the first permits the producer to write, so this claim asserts the FIRST is absent and the other two are refusals - it is the discriminator for review 46148 at the pure layer, and it goes red if empty ever reads as absent again."
 
 test fn an_absent_receipt_is_absent_and_present_but_unusable_ones_refuse() -> Bool {
-  let absent = publication_evidence_for(
+  let absent = gunbc.roadmap_publish.publication_evidence_for(
     expected: subject_for(head: fixture_expected),
-    source: ReceiptSourceAbsent,
+    source: gunbc.roadmap_publish.ReceiptSourceAbsent,
   )
-  let empty = publication_evidence_for(
+  let empty = gunbc.roadmap_publish.publication_evidence_for(
     expected: subject_for(head: fixture_expected),
     source: gunbc.roadmap_publish.ReceiptSourcePresent { text: "   " },
   )
-  let garbage = publication_evidence_for(
+  let garbage = gunbc.roadmap_publish.publication_evidence_for(
     expected: subject_for(head: fixture_expected),
     source: gunbc.roadmap_publish.ReceiptSourcePresent { text: "not a receipt" },
   )
-  let faulted = publication_evidence_for(
+  let faulted = gunbc.roadmap_publish.publication_evidence_for(
     expected: subject_for(head: fixture_expected),
     source: gunbc.roadmap_publish.ReceiptSourceUnreadable { detail: "input/output error" },
   )
-  test.claim.roadmap_publish_witness_test.evidence_key(e: absent) == "absent"
-    && test.claim.roadmap_publish_witness_test.evidence_key(e: empty) == "unreadable"
-    && test.claim.roadmap_publish_witness_test.evidence_key(e: garbage) == "unreadable"
-    && test.claim.roadmap_publish_witness_test.evidence_key(e: faulted) == "unreadable"
+  evidence_key(e: absent) == "absent"
+    && evidence_key(e: empty) == "unreadable"
+    && evidence_key(e: garbage) == "unreadable"
+    && evidence_key(e: faulted) == "unreadable"
 }
 
 fn evidence_key(e: gunbc.roadmap_publish.PublicationEvidence) -> String {
   match e {
-    EvidenceAbsent => "absent"
-    EvidenceUnreadable { reason: _ } => "unreadable"
-    EvidenceForSubject { receipt: _ } => "for-subject"
-    EvidenceForAnotherSubject { field: _, expected: _, found: _ } => "another-subject"
+    gunbc.roadmap_publish.EvidenceAbsent => "absent"
+    gunbc.roadmap_publish.EvidenceUnreadable { reason: _ } => "unreadable"
+    gunbc.roadmap_publish.EvidenceForSubject { receipt: _ } => "for-subject"
+    gunbc.roadmap_publish.EvidenceForAnotherSubject { field: _, expected: _, found: _ } => "another-subject"
   }
 }
 
@@ -853,10 +853,10 @@ data four_causes_stay_four_note: String = "THE COLLAPSE THIS FILE MUST KEEP FAIL
 
 fn pull_request_failure_key(cause: gunbc.roadmap_publish.PullRequestReadFailure) -> String {
   match cause {
-    PullRequestCredentialUnavailable { repository: _, reason: _ } => "credential"
-    PullRequestStatusRefused { repository: _, status: _, body: _ } => "status"
-    PullRequestTransportRefused { repository: _, cause: _ } => "transport"
-    PullRequestBodyUndecodable { repository: _, status: _, cause: _ } => "body"
+    gunbc.roadmap_publish.PullRequestCredentialUnavailable { repository: _, reason: _ } => "credential"
+    gunbc.roadmap_publish.PullRequestStatusRefused { repository: _, status: _, body: _ } => "status"
+    gunbc.roadmap_publish.PullRequestTransportRefused { repository: _, cause: _ } => "transport"
+    gunbc.roadmap_publish.PullRequestBodyUndecodable { repository: _, status: _, cause: _ } => "body"
   }
 }
 
@@ -896,7 +896,7 @@ test fn four_pull_request_read_failures_stay_four_distinct_causes() -> Bool {
 
 // THE RENDERER NAMES github.Pulls.List THROUGH ITS OperationRef, following the discipline ls_remote_operation_ref_note derives for the sibling reader: a path-and-query spelling is ONE realization of an operation and changes when the invocation is derived, while the operation identity does not. So a refusal that quoted /repos/OWNER/REPO/pulls would carry a fact with a shorter shelf life than the failure it describes.\n\nEACH ARM MUST ALSO CARRY WHAT ITS OWN REMEDY NEEDS, which is why this asserts fields rather than just the operation label. A status refusal is actionable only with the status AND the body - the body is usually the only place the remote says why, and 401 alone does not distinguish a missing scope from a revoked token. A transport refusal has no status to carry, and asserting its absence is the point: a sentinel zero would be a plausible-looking value standing where the honest answer is that the question does not apply.
 test fn a_status_refusal_renders_operation_repository_status_and_body() -> Bool {
-  let rendered = render_pull_request_read_failure(
+  let rendered = gunbc.roadmap_publish.render_pull_request_read_failure(
     cause: gunbc.roadmap_publish.PullRequestStatusRefused {
       repository: fixture_repository_name(),
       status: 401,
@@ -911,7 +911,7 @@ test fn a_status_refusal_renders_operation_repository_status_and_body() -> Bool 
 }
 
 test fn a_transport_refusal_carries_no_status_at_all() -> Bool {
-  let rendered = render_pull_request_read_failure(
+  let rendered = gunbc.roadmap_publish.render_pull_request_read_failure(
     cause: gunbc.roadmap_publish.PullRequestTransportRefused {
       repository: fixture_repository_name(),
       cause: "connection refused" as std.types.NonEmptyStr,
@@ -932,15 +932,15 @@ test fn every_pull_request_read_failure_refuses_rather_than_reporting_unpublishe
       pulls: gunbc.roadmap_publish.PullRequestsUnreadable { cause: c },
       remotes: gunbc.roadmap_publish.RemoteBranchesRead { branches: [] },
     ) {
-      PublicationObservationRefused { detail } =>
+      gunbc.roadmap_publish.PublicationObservationRefused { detail } =>
         string_contains(s: detail, pattern: "github.Pulls.List")
-      BranchNotPublished { branch: _, remote_branches_seen: _ } => false
-      RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
-      RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
-      RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
-      PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
-      PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
-      PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
+      gunbc.roadmap_publish.BranchNotPublished { branch: _, remote_branches_seen: _ } => false
+      gunbc.roadmap_publish.RemoteBranchAtExpectedHeadWithoutPullRequest { branch: _, head_sha: _ } => false
+      gunbc.roadmap_publish.RemoteBranchHeadDiverged { branch: _, remote_head: _, expected_head: _ } => false
+      gunbc.roadmap_publish.RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched: _ } => false
+      gunbc.roadmap_publish.PublicationBound { branch: _, pr_number: _, pr_head: _, url: _, draft: _ } => false
+      gunbc.roadmap_publish.PublicationHeadDiverged { branch: _, pr_number: _, pr_head: _, expected_head: _, url: _ } => false
+      gunbc.roadmap_publish.PublicationBindingAmbiguous { branch: _, base_ref: _, pr_numbers: _ } => false
     },
   )
 }

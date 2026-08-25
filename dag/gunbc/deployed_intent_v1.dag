@@ -15,7 +15,7 @@ fn deployed_intent_v1_from_fleet_slot(
   fleet_slot: product.placement_supply.HostIdentity,
   target_host: gunbc.fleet_intent.ComputeHost,
 ) -> DeployedIntentV1? {
-  match canonical_hostname_for_fleet_slot(fleet_slot: fleet_slot) {
+  match gunbc.hostname_allocation.canonical_hostname_for_fleet_slot(fleet_slot: fleet_slot) {
     Present { value: label } =>
       Present {
         value: DeployedIntentV1 {
@@ -30,29 +30,29 @@ fn deployed_intent_v1_from_fleet_slot(
 
 fn deployed_intent_v1_srv1() -> DeployedIntentV1? {
   deployed_intent_v1_from_fleet_slot(
-    fleet_slot: operator_host_srv1,
-    target_host: srv1_host,
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv1,
+    target_host: gunbc.fleet_intent.srv1_host,
   )
 }
 
 fn deployed_intent_v1_srv2() -> DeployedIntentV1? {
   deployed_intent_v1_from_fleet_slot(
-    fleet_slot: operator_host_srv2,
-    target_host: srv2_host,
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv2,
+    target_host: gunbc.fleet_intent.srv2_host,
   )
 }
 
 fn deployed_intent_v1_srv3() -> DeployedIntentV1? {
   deployed_intent_v1_from_fleet_slot(
-    fleet_slot: operator_host_srv3,
-    target_host: srv3_host,
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv3,
+    target_host: gunbc.fleet_intent.srv3_host,
   )
 }
 
 fn deployed_intent_v1_srv4() -> DeployedIntentV1? {
   deployed_intent_v1_from_fleet_slot(
-    fleet_slot: operator_host_srv4,
-    target_host: srv4_host,
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv4,
+    target_host: gunbc.fleet_intent.srv4_host,
   )
 }
 

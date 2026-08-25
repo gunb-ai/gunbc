@@ -30,7 +30,7 @@ type BankUse
 // The supplying net is common to both uses: an unused bank's VCCIO pin is still a pin that must
 // be connected to something, and saying which is the whole content of the vendor constraint.
 type BankAssignment {
-  bank: std.integer.Int
+  bank: Int
   use: BankUse
   supplied_by: product.electrical.connectivity.NetIdentity
 }
@@ -59,18 +59,18 @@ type PowerRefusal
   = RailOutsideDeviceWindow { rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, supplied: std.measure.Millivolt, minimum: std.measure.Millivolt, maximum: std.measure.Millivolt }
   | RailBuiltForAnUnconnectedPin { rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, supplied: std.measure.Millivolt }
   | RequiredRailNotBuilt { rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail }
-  | BankStandardOutsideRailWindow { bank: std.integer.Int, standard_name: std.types.NonEmptyStr, supplied: std.measure.Millivolt, minimum: std.measure.Millivolt, maximum: std.measure.Millivolt }
-  | BankSuppliedByNoDeclaredRail { bank: std.integer.Int, net: product.electrical.connectivity.NetIdentity }
+  | BankStandardOutsideRailWindow { bank: Int, standard_name: std.types.NonEmptyStr, supplied: std.measure.Millivolt, minimum: std.measure.Millivolt, maximum: std.measure.Millivolt }
+  | BankSuppliedByNoDeclaredRail { bank: Int, net: product.electrical.connectivity.NetIdentity }
   | LikeVoltageRailsOnSeparateSupplies { left: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, right: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, voltage: std.measure.Millivolt }
-  | UnusedBankNotTiedToCore { bank: std.integer.Int, net: product.electrical.connectivity.NetIdentity, core_net: product.electrical.connectivity.NetIdentity }
-  | UnusedBankCoreRailNotBuilt { bank: std.integer.Int, core_rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail }
+  | UnusedBankNotTiedToCore { bank: Int, net: product.electrical.connectivity.NetIdentity, core_net: product.electrical.connectivity.NetIdentity }
+  | UnusedBankCoreRailNotBuilt { bank: Int, core_rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail }
 
 type PowerAdmission
   = PowerIntentAdmitted { intent: BoardPowerIntent }
   | PowerIntentRefused { causes: List<PowerRefusal> }
 
 fn rail_is(a: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, b: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail) -> Bool {
-  supply_rails_equal(a: a, b: b)
+  extdeps.programmable_logic.ice40.supply.supply_rails_equal(a: a, b: b)
 }
 
 fn built_rail(intent: BoardPowerIntent, r: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail) -> BoardSupplyRail? {
@@ -91,10 +91,10 @@ fn is_deliberately_unconnected(intent: BoardPowerIntent, r: extdeps.programmable
 // absent requirement and could check nothing — this routes the one mode-dependent rail through
 // the function that takes a mode, rather than treating its absence as "no requirement".
 fn requirement_for(intent: BoardPowerIntent, r: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail) -> extdeps.programmable_logic.ice40.supply.RailRequirement? {
-  if rail_is(a: r, b: NvcmProgrammingSupply) {
-    Present { value: nvcm_supply_requirement(m: intent.configuration_mode) }
+  if rail_is(a: r, b: extdeps.programmable_logic.ice40.supply.NvcmProgrammingSupply) {
+    Present { value: extdeps.programmable_logic.ice40.supply.nvcm_supply_requirement(m: intent.configuration_mode) }
   } else {
-    rail_requirement(r: r)
+    extdeps.programmable_logic.ice40.supply.rail_requirement(r: r)
   }
 }
 
@@ -111,9 +111,9 @@ fn rail_causes(intent: BoardPowerIntent, r: extdeps.programmable_logic.ice40.sup
           if is_deliberately_unconnected(intent: intent, r: r) { [] } else { [RequiredRailNotBuilt { rail: r }] }
         Present { value: br } =>
           match req {
-            MustBeLeftUnconnected => [RailBuiltForAnUnconnectedPin { rail: r, supplied: br.nominal }]
-            OperatingWindow { minimum: lo, maximum: hi } =>
-              if requirement_admits(r: req, v: br.nominal) {
+            extdeps.programmable_logic.ice40.supply.MustBeLeftUnconnected => [RailBuiltForAnUnconnectedPin { rail: r, supplied: br.nominal }]
+            extdeps.programmable_logic.ice40.supply.OperatingWindow { minimum: lo, maximum: hi } =>
+              if extdeps.programmable_logic.ice40.supply.requirement_admits(r: req, v: br.nominal) {
                 []
               } else {
                 [RailOutsideDeviceWindow { rail: r, supplied: br.nominal, minimum: lo, maximum: hi }]
@@ -127,7 +127,7 @@ fn supplying_rail(intent: BoardPowerIntent, net: product.electrical.connectivity
   fold(intent.rails, init: none, f: fn(acc, br) {
     match acc {
       Present { value: found } => Present { value: found }
-      Absent => if net_identity_eq(a: br.net, b: net) { Present { value: br } } else { none }
+      Absent => if product.electrical.connectivity.net_identity_eq(a: br.net, b: net) { Present { value: br } } else { none }
     }
   })
 }
@@ -146,8 +146,8 @@ fn bank_causes(intent: BoardPowerIntent, b: BankAssignment) -> List<PowerRefusal
       match b.use {
         BankUnused => []
         BankDrivesStandard { standard: st } =>
-          if millivolt_count(v: br.nominal) >= millivolt_count(v: st.minimum)
-            && millivolt_count(v: br.nominal) <= millivolt_count(v: st.maximum) {
+          if std.measure.millivolt_count(v: br.nominal) >= std.measure.millivolt_count(v: st.minimum)
+            && std.measure.millivolt_count(v: br.nominal) <= std.measure.millivolt_count(v: st.maximum) {
             []
           } else {
             [BankStandardOutsideRailWindow {
@@ -176,7 +176,7 @@ fn bank_causes(intent: BoardPowerIntent, b: BankAssignment) -> List<PowerRefusal
 // it here would be a second authority for one constraint, not a second check.
 fn inter_rail_causes(intent: BoardPowerIntent, c: extdeps.programmable_logic.ice40.supply.Ice40InterRailConstraint) -> List<PowerRefusal> {
   match c {
-    UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: cr } =>
+    extdeps.programmable_logic.ice40.supply.UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: cr } =>
       fold(intent.banks, init: [], f: fn(acc, b) {
         match b.use {
           BankDrivesStandard { standard: _ } => acc
@@ -184,7 +184,7 @@ fn inter_rail_causes(intent: BoardPowerIntent, c: extdeps.programmable_logic.ice
             match built_rail(intent: intent, r: cr) {
               Absent => concat(acc, [UnusedBankCoreRailNotBuilt { bank: b.bank, core_rail: cr }])
               Present { value: core } =>
-                if net_identity_eq(a: b.supplied_by, b: core.net) {
+                if product.electrical.connectivity.net_identity_eq(a: b.supplied_by, b: core.net) {
                   acc
                 } else {
                   concat(acc, [UnusedBankNotTiedToCore {
@@ -196,16 +196,16 @@ fn inter_rail_causes(intent: BoardPowerIntent, c: extdeps.programmable_logic.ice
             }
         }
       })
-    PinLeftUnconnected { rail: _ } => []
-    LikeVoltageRailsShareOneSupply { left: l, right: r } =>
+    extdeps.programmable_logic.ice40.supply.PinLeftUnconnected { rail: _ } => []
+    extdeps.programmable_logic.ice40.supply.LikeVoltageRailsShareOneSupply { left: l, right: r } =>
       match built_rail(intent: intent, r: l) {
         Absent => []
         Present { value: lb } =>
           match built_rail(intent: intent, r: r) {
             Absent => []
             Present { value: rb } =>
-              if millivolt_count(v: lb.nominal) == millivolt_count(v: rb.nominal)
-                && !net_identity_eq(a: lb.net, b: rb.net) {
+              if std.measure.millivolt_count(v: lb.nominal) == std.measure.millivolt_count(v: rb.nominal)
+                && !product.electrical.connectivity.net_identity_eq(a: lb.net, b: rb.net) {
                 [LikeVoltageRailsOnSeparateSupplies { left: l, right: r, voltage: lb.nominal }]
               } else {
                 []
@@ -216,12 +216,12 @@ fn inter_rail_causes(intent: BoardPowerIntent, c: extdeps.programmable_logic.ice
 }
 
 data required_rails: List<extdeps.programmable_logic.ice40.supply.Ice40SupplyRail> = [
-  CoreSupply,
-  PllSupply,
-  BankIoSupply,
-  ConfigurationBankSupply,
-  NvcmProgrammingSupply,
-  FastProgrammingSupply,
+  extdeps.programmable_logic.ice40.supply.CoreSupply,
+  extdeps.programmable_logic.ice40.supply.PllSupply,
+  extdeps.programmable_logic.ice40.supply.BankIoSupply,
+  extdeps.programmable_logic.ice40.supply.ConfigurationBankSupply,
+  extdeps.programmable_logic.ice40.supply.NvcmProgrammingSupply,
+  extdeps.programmable_logic.ice40.supply.FastProgrammingSupply,
 ]
 
 // CAUSES ACCUMULATE. A board with an out-of-window core rail and a bank driving a standard its
@@ -234,13 +234,13 @@ fn power_causes(intent: BoardPowerIntent) -> List<PowerRefusal> {
   let bank_side = fold(intent.banks, init: [], f: fn(acc, b) {
     concat(acc, bank_causes(intent: intent, b: b))
   })
-  let cross_side = fold(ice40_inter_rail_constraints, init: [], f: fn(acc, c) {
+  let cross_side = fold(extdeps.programmable_logic.ice40.supply.ice40_inter_rail_constraints, init: [], f: fn(acc, c) {
     concat(acc, inter_rail_causes(intent: intent, c: c))
   })
   concat(concat(rail_side, bank_side), cross_side)
 }
 
-fn power_refusal_count(cs: List<PowerRefusal>) -> std.integer.Int {
+fn power_refusal_count(cs: List<PowerRefusal>) -> Int {
   fold(cs, init: 0, f: fn(acc, _c) { acc + 1 })
 }
 
@@ -264,19 +264,19 @@ fn admit_power_intent(intent: BoardPowerIntent) -> PowerAdmission {
 data reference_power_design: product.electrical.connectivity.ElectricalDesignIdentity = "compute_board.reference_power" as product.electrical.connectivity.ElectricalDesignIdentity
 
 data reference_power_intent: BoardPowerIntent = BoardPowerIntent {
-  configuration_mode: MasterSpiConfiguration,
+  configuration_mode: extdeps.programmable_logic.ice40.supply.MasterSpiConfiguration,
   rails: [
-    BoardSupplyRail { rail: CoreSupply, net: net_identity(design: reference_power_design, local_identity: "vcc_core"), nominal: millivolt(count: 1200) },
-    BoardSupplyRail { rail: PllSupply, net: net_identity(design: reference_power_design, local_identity: "vcc_pll"), nominal: millivolt(count: 1200) },
-    BoardSupplyRail { rail: BankIoSupply, net: net_identity(design: reference_power_design, local_identity: "vccio_3v3"), nominal: millivolt(count: 3300) },
-    BoardSupplyRail { rail: ConfigurationBankSupply, net: net_identity(design: reference_power_design, local_identity: "vccio_3v3"), nominal: millivolt(count: 3300) },
-    BoardSupplyRail { rail: NvcmProgrammingSupply, net: net_identity(design: reference_power_design, local_identity: "vccio_3v3"), nominal: millivolt(count: 3300) },
+    BoardSupplyRail { rail: extdeps.programmable_logic.ice40.supply.CoreSupply, net: product.electrical.connectivity.net_identity(design: reference_power_design, local_identity: "vcc_core"), nominal: std.measure.millivolt(count: 1200) },
+    BoardSupplyRail { rail: extdeps.programmable_logic.ice40.supply.PllSupply, net: product.electrical.connectivity.net_identity(design: reference_power_design, local_identity: "vcc_pll"), nominal: std.measure.millivolt(count: 1200) },
+    BoardSupplyRail { rail: extdeps.programmable_logic.ice40.supply.BankIoSupply, net: product.electrical.connectivity.net_identity(design: reference_power_design, local_identity: "vccio_3v3"), nominal: std.measure.millivolt(count: 3300) },
+    BoardSupplyRail { rail: extdeps.programmable_logic.ice40.supply.ConfigurationBankSupply, net: product.electrical.connectivity.net_identity(design: reference_power_design, local_identity: "vccio_3v3"), nominal: std.measure.millivolt(count: 3300) },
+    BoardSupplyRail { rail: extdeps.programmable_logic.ice40.supply.NvcmProgrammingSupply, net: product.electrical.connectivity.net_identity(design: reference_power_design, local_identity: "vccio_3v3"), nominal: std.measure.millivolt(count: 3300) },
   ],
   banks: [
-    BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: reference_power_design, local_identity: "vccio_3v3") },
-    BankAssignment { bank: 1, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: reference_power_design, local_identity: "vccio_3v3") },
-    BankAssignment { bank: 2, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: reference_power_design, local_identity: "vccio_3v3") },
-    BankAssignment { bank: 3, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: net_identity(design: reference_power_design, local_identity: "vccio_3v3") },
+    BankAssignment { bank: 0, use: BankDrivesStandard { standard: extdeps.programmable_logic.ice40.supply.ice40_lvcmos33_supply }, supplied_by: product.electrical.connectivity.net_identity(design: reference_power_design, local_identity: "vccio_3v3") },
+    BankAssignment { bank: 1, use: BankDrivesStandard { standard: extdeps.programmable_logic.ice40.supply.ice40_lvcmos33_supply }, supplied_by: product.electrical.connectivity.net_identity(design: reference_power_design, local_identity: "vccio_3v3") },
+    BankAssignment { bank: 2, use: BankDrivesStandard { standard: extdeps.programmable_logic.ice40.supply.ice40_lvcmos33_supply }, supplied_by: product.electrical.connectivity.net_identity(design: reference_power_design, local_identity: "vccio_3v3") },
+    BankAssignment { bank: 3, use: BankDrivesStandard { standard: extdeps.programmable_logic.ice40.supply.ice40_lvcmos33_supply }, supplied_by: product.electrical.connectivity.net_identity(design: reference_power_design, local_identity: "vccio_3v3") },
   ],
-  deliberately_unconnected: [FastProgrammingSupply],
+  deliberately_unconnected: [extdeps.programmable_logic.ice40.supply.FastProgrammingSupply],
 }

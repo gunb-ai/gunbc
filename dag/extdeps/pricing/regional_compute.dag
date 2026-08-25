@@ -4,7 +4,7 @@ module extdeps.pricing.regional_compute
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "prices.azure.com/api/retail/prices"
   }
 }
@@ -80,16 +80,16 @@ type RegionalComputeRow {
 
 fn usd_per_hour(micros: std.nat.Nat) -> HourlyRateAvailability {
   HourlyCited {
-    hourly: std.measure.MoneyPerHour { amount: money_amount_micro(count: micros), currency: Usd },
+    hourly: std.measure.MoneyPerHour { amount: std.measure.money_amount_micro(count: micros), currency: std.currency.Usd },
   }
 }
 
 fn two_vcpu() -> std.measure.HardwareThreadCount {
-  hardware_thread_count(2)
+  std.measure.hardware_thread_count(2)
 }
 
 fn eight_gibibytes() -> std.measure.ByteSize {
-  byte_size(count: 8589934592)
+  std.measure.byte_size(count: 8589934592)
 }
 
 data aws_us_east_1: RegionalComputeRow = RegionalComputeRow {
@@ -364,8 +364,8 @@ data sakura_japan_vps: RegionalComputeRow = RegionalComputeRow {
   region_label: "Japan (Tokyo / Ishikari / Osaka)",
   geography: EastAsia,
   instance_label: "VPS 2 GB (3 virtual cores, 100 GB SSD)",
-  vcpus: hardware_thread_count(3),
-  memory_bytes: byte_size(count: 2147483648),
+  vcpus: std.measure.hardware_thread_count(3),
+  memory_bytes: std.measure.byte_size(count: 2147483648),
   hourly: HourlyUnrepresentable {
     observed: "1594 JPY per month (annual 19118 JPY), 3 virtual cores / 2 GB / 100 GB SSD, from the published VPS specification table",
     cause: "std.currency CurrencyCode admits only Eur and Usd, so a JPY-quoted rate cannot be written into MoneyPerHour without either inventing a currency code or folding an undeclared FX rate into the amount. Both are refused. dissolve-on: Jpy added to std.currency (a legitimate std addition -- ISO 4217 is universal-framework vocabulary, unlike a vendor billing unit), after which this row carries the quoted monthly rate and cross-currency comparison takes a DECLARED FX assumption the way gunbc.econ.knowable_wedge already declares eur_to_usd.",
@@ -458,7 +458,7 @@ fn regional_compute_catalog() -> List<RegionalComputeRow> {
 
 fn hourly_micros(row: RegionalComputeRow) -> std.nat.Nat? {
   match row.hourly {
-    HourlyCited { hourly: h } => Present { value: money_rate_micros(q: h) }
+    HourlyCited { hourly: h } => Present { value: std.measure.money_rate_micros(q: h) }
     HourlyUnavailable { cause: _ } => none
     HourlyUnrepresentable { observed: _, cause: _ } => none
   }

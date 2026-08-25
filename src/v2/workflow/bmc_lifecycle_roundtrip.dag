@@ -1,15 +1,15 @@
 module v2.workflow.bmc_lifecycle_roundtrip
 
 
-fn bmc_lifecycle_roundtrip_fidelity() -> Outcome<extdeps.communication.medium.DecodeFidelity> {
-  decode_fidelity_from_target(target: bmc_lifecycle_inverse_target_model())
+fn bmc_lifecycle_roundtrip_fidelity() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.DecodeFidelity> {
+  v2.compiler.target_carriers.decode_fidelity_from_target(target: extdeps.bmc.lifecycle_fidelity.bmc_lifecycle_inverse_target_model())
 }
 
-fn bmc_lifecycle_roundtrip(s: gunbc.bmc_onboarding.BmcLifecycleState) -> Outcome<Medium<gunbc.bmc_onboarding.BmcRecoverableInvariant>> {
-  bind_outcome(
+fn bmc_lifecycle_roundtrip(s: gunbc.bmc_onboarding.BmcLifecycleState) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<gunbc.bmc_onboarding.BmcRecoverableInvariant>> {
+  v2.std.diagnostic.bind_outcome(
     o: bmc_lifecycle_roundtrip_fidelity(),
     f: fn(fidelity) {
-      outcome_accepted(
+      v2.std.diagnostic.outcome_accepted(
         extdeps.communication.medium.Medium {
           carried: gunbc.bmc_onboarding.bmc_recoverable_quotient(
             s: gunbc.bmc_onboarding.bmc_decom_to_factory_state(s: gunbc.bmc_onboarding.bmc_onboard_to_steady_state(s: s))

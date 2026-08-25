@@ -3,7 +3,7 @@ module extdeps.realization.artifact_store_fs
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
@@ -35,13 +35,13 @@ type ArtifactFsListResult
   | ArtifactFsListFailed { path: String }
 
 func artifact_fs_put(store_root: String, key: std.content_hash.ContentHash, payload: String) -> ArtifactFsPutResult {
-  match artifact_store_scratch_write_admissible(store_root: store_root) {
-    Deny { refusal: refusal } => ArtifactFsPutRefused {
-      verb: Write,
-      target: absolute_path_position(path: store_root),
-      frame: artifact_store_scratch_frame,
+  match std.artifact_store_scratch_grant.artifact_store_scratch_write_admissible(store_root: store_root) {
+    std.access.Deny { refusal: refusal } => ArtifactFsPutRefused {
+      verb: std.effect_grant.Write,
+      target: std.filesystem_path_grant.absolute_path_position(path: store_root),
+      frame: std.artifact_store_scratch_grant.artifact_store_scratch_frame,
     }
-    Permit => {
+    std.access.Permit => {
       let path = artifact_fs_path(store_root: store_root, key: key)
       let w = Filesystem.Write(path: path, content: payload)
       if w.success {
@@ -53,13 +53,13 @@ func artifact_fs_put(store_root: String, key: std.content_hash.ContentHash, payl
 }
 
 func artifact_fs_get(store_root: String, key: std.content_hash.ContentHash) -> ArtifactFsLookup {
-  match artifact_store_scratch_read_admissible(store_root: store_root) {
-    Deny { refusal: refusal } => ArtifactFsRefused {
-      verb: Read,
-      target: absolute_path_position(path: store_root),
-      frame: artifact_store_scratch_frame,
+  match std.artifact_store_scratch_grant.artifact_store_scratch_read_admissible(store_root: store_root) {
+    std.access.Deny { refusal: refusal } => ArtifactFsRefused {
+      verb: std.effect_grant.Read,
+      target: std.filesystem_path_grant.absolute_path_position(path: store_root),
+      frame: std.artifact_store_scratch_grant.artifact_store_scratch_frame,
     }
-    Permit => {
+    std.access.Permit => {
       let path = artifact_fs_path(store_root: store_root, key: key)
       let read_out = Filesystem.Read(path: path)
       if read_out.success {
@@ -71,13 +71,13 @@ func artifact_fs_get(store_root: String, key: std.content_hash.ContentHash) -> A
 }
 
 func artifact_fs_delete(store_root: String, key: std.content_hash.ContentHash) -> ArtifactFsDeleteResult {
-  match artifact_store_scratch_write_admissible(store_root: store_root) {
-    Deny { refusal: refusal } => ArtifactFsDeleteRefused {
-      verb: Write,
-      target: absolute_path_position(path: store_root),
-      frame: artifact_store_scratch_frame,
+  match std.artifact_store_scratch_grant.artifact_store_scratch_write_admissible(store_root: store_root) {
+    std.access.Deny { refusal: refusal } => ArtifactFsDeleteRefused {
+      verb: std.effect_grant.Write,
+      target: std.filesystem_path_grant.absolute_path_position(path: store_root),
+      frame: std.artifact_store_scratch_grant.artifact_store_scratch_frame,
     }
-    Permit => {
+    std.access.Permit => {
       let path = artifact_fs_path(store_root: store_root, key: key)
       let d = Filesystem.Delete(path: path)
       if d.success {
@@ -89,13 +89,13 @@ func artifact_fs_delete(store_root: String, key: std.content_hash.ContentHash) -
 }
 
 func artifact_fs_list(store_root: String) -> ArtifactFsListResult {
-  match artifact_store_scratch_read_admissible(store_root: store_root) {
-    Deny { refusal: refusal } => ArtifactFsListRefused {
-      verb: Read,
-      target: absolute_path_position(path: store_root),
-      frame: artifact_store_scratch_frame,
+  match std.artifact_store_scratch_grant.artifact_store_scratch_read_admissible(store_root: store_root) {
+    std.access.Deny { refusal: refusal } => ArtifactFsListRefused {
+      verb: std.effect_grant.Read,
+      target: std.filesystem_path_grant.absolute_path_position(path: store_root),
+      frame: std.artifact_store_scratch_grant.artifact_store_scratch_frame,
     }
-    Permit => {
+    std.access.Permit => {
       let l = Filesystem.List(path: store_root)
       if l.success {
         if l.entries == "" {
@@ -136,9 +136,9 @@ data eviction_step_reader_contract: std.disposition.Disposition = std.dispositio
 
 fn eviction_step_fold<T>(
   step: ArtifactEvictionStep,
-  deleted: fn(ContentHash) -> T,
-  refused: fn(ContentHash, Verb, NamespacePosition, Frame) -> T,
-  failed: fn(ContentHash, String) -> T
+  deleted: fn(std.content_hash.ContentHash) -> T,
+  refused: fn(std.content_hash.ContentHash, std.effect_grant.Verb, std.effect_grant.NamespacePosition, std.materialization_ladder.Frame) -> T,
+  failed: fn(std.content_hash.ContentHash, String) -> T
 ) -> T {
   match step {
     EvictionDeleted { key: k } => deleted(k)

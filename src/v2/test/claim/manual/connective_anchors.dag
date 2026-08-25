@@ -2,150 +2,150 @@ module v2.test.manual.connective_anchors
 
 
 data stub_empty_conj: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data stub_arrow_pair: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Arrow },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
   children: [
     v2.std.node.Edge { label: Positional, target: stub_empty_conj },
     v2.std.node.Edge { label: Positional, target: stub_empty_conj }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data stub_empty_disj: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Disj },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Disj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data stub_empty_cardinality: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data stub_empty_instantiation: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Instantiation },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Instantiation },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data stub_empty_arrow: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Arrow },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data stub_empty_transform: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data stub_empty_branch: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Branch },
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Branch },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data stub_empty_loop: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Loop },
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Loop },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data stub_bind_zero_children: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: v2.std.node.Bind },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 fn arity_rejection_claim(label: String, input: v2.std.node.Node, anchor: v2.std.verification.ManualAnchorKey) -> v2.std.verification.TestClaim {
   v2.std.verification.DiagnosticClaim {
     label: label,
-    anchor: manual_claim_anchor(anchor: anchor),
+    anchor: v2.std.verification.manual_claim_anchor(anchor: anchor),
     input: input,
-    expected_rejection: diagnostics_singleton(
-      d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: input)
+    expected_rejection: v2.std.diagnostic.diagnostics_singleton(
+      d: v2.compiler.eval.eval_diagnostic(reason: ^eval_rejected_invalid_node, node: input)
     ),
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
   }
 }
 
 data claim_conj_empty_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/connective: empty Conj type-node is structurally inhabitable",
-  anchor: manual_claim_anchor(anchor: ManualTcConjEmpty),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualTcConjEmpty),
   input: stub_empty_conj,
   expected_value: stub_empty_conj,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
 data claim_disj_empty_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/connective: empty Disj type-node is structurally inhabitable",
-  anchor: manual_claim_anchor(anchor: ManualTcDisjEmpty),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualTcDisjEmpty),
   input: stub_empty_disj,
   expected_value: stub_empty_disj,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
 data claim_arrow_two_conj_compiles: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "manual/connective: Arrow with two positional Conj leaves (no Atom)",
-  anchor: manual_claim_anchor(anchor: ManualTcArrowTwoConj),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualTcArrowTwoConj),
   input: stub_arrow_pair,
   expected_value: stub_arrow_pair,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }
 
 data claim_cardinality_empty_rejected: v2.std.verification.TestClaim = arity_rejection_claim(
   label: "manual/connective: empty Cardinality type-node fails well-formedness (A1 arity)",
   input: stub_empty_cardinality,
-  anchor: ManualTcCardinalityEmpty
+  anchor: v2.std.verification.ManualTcCardinalityEmpty
 )
 
 data claim_instantiation_empty_rejected: v2.std.verification.TestClaim = arity_rejection_claim(
   label: "manual/connective: empty Instantiation type-node fails well-formedness (A1 arity)",
   input: stub_empty_instantiation,
-  anchor: ManualTcInstantiationEmpty
+  anchor: v2.std.verification.ManualTcInstantiationEmpty
 )
 
 data claim_arrow_empty_rejected: v2.std.verification.TestClaim = arity_rejection_claim(
   label: "manual/connective: empty Arrow type-node fails well-formedness (A1 arity)",
   input: stub_empty_arrow,
-  anchor: ManualTcArrowEmpty
+  anchor: v2.std.verification.ManualTcArrowEmpty
 )
 
 data claim_transform_empty_rejected: v2.std.verification.TestClaim = arity_rejection_claim(
   label: "manual/connective: empty Transform computation-node fails well-formedness (A1 arity)",
   input: stub_empty_transform,
-  anchor: ManualTcTransformEmpty
+  anchor: v2.std.verification.ManualTcTransformEmpty
 )
 
 data claim_branch_empty_rejected: v2.std.verification.TestClaim = arity_rejection_claim(
   label: "manual/connective: empty Branch computation-node fails well-formedness (A1 arity)",
   input: stub_empty_branch,
-  anchor: ManualTcBranchEmpty
+  anchor: v2.std.verification.ManualTcBranchEmpty
 )
 
 data claim_loop_empty_rejected: v2.std.verification.TestClaim = arity_rejection_claim(
   label: "manual/connective: empty Loop computation-node fails well-formedness (A1 arity)",
   input: stub_empty_loop,
-  anchor: ManualTcLoopEmpty
+  anchor: v2.std.verification.ManualTcLoopEmpty
 )
 
 data claim_bind_zero_children_rejected: v2.std.verification.TestClaim = arity_rejection_claim(
   label: "manual/connective: Bind with zero children fails well-formedness (A1 arity == 3)",
   input: stub_bind_zero_children,
-  anchor: ManualTcBindZeroChildren
+  anchor: v2.std.verification.ManualTcBindZeroChildren
 )
 
 data claim_conj_equals_refl: v2.std.verification.TestClaim = v2.std.verification.EqualsClaim {
   label: "manual/connective: Equals reflexivity on empty Conj stub",
-  anchor: manual_claim_anchor(anchor: ManualTcConjEqualsRefl),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualTcConjEqualsRefl),
   lhs: stub_empty_conj,
   rhs: stub_empty_conj,
-  classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+  classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: Unit }
 }

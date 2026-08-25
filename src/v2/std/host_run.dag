@@ -36,7 +36,7 @@ fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: v2.std.host_transpor
   match exit.outcome {
     v2.std.diagnostic.Accepted { value: exit_witness, diagnostics: ds } =>
       match exit_witness {
-        Holds { value: _ } =>
+        v2.std.witness.Holds { value: _ } =>
           v2.std.diagnostic.Accepted {
             value: HostLogicalRun {
               stdout: HostRunStdout { bytes: stdout_bytes }

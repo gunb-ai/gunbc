@@ -1,8 +1,9 @@
 module test.claim.realization_reconcile_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn is_share(m: std.realization.Materialization) -> Bool {
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn is_share(m: Materialization) -> Bool {
   match m {
     Share => true
     Recompute => false
@@ -10,34 +11,34 @@ fn is_share(m: std.realization.Materialization) -> Bool {
   }
 }
 
-fn step_create_if_absent(field: String) -> std.realization.RealizedStep {
-  std.realization.RealizedStep {
-    shape: std.effects.CreateEffect { cause: std.effects.CreateIfAbsent { key_source: std.effects.InputField { field: field } } },
-    placement: LocalInProcess,
+fn step_create_if_absent(field: String) -> RealizedStep {
+  RealizedStep {
+    shape: CreateEffect { cause: CreateIfAbsent { key_source: InputField { field: field } } },
+    placement: std.realization.LocalInProcess,
     materialization: Recompute,
     cost: cost_account_predicted_zero()
   }
 }
 
-fn step_post_always() -> std.realization.RealizedStep {
-  std.realization.RealizedStep {
-    shape: std.effects.CreateEffect { cause: PostAlways },
-    placement: LocalInProcess,
+fn step_post_always() -> RealizedStep {
+  RealizedStep {
+    shape: CreateEffect { cause: PostAlways },
+    placement: std.realization.LocalInProcess,
     materialization: Recompute,
     cost: cost_account_predicted_zero()
   }
 }
 
-fn has_exactly_one_share<S>(steps: List<std.realization.RealizedStep<S>>) -> Bool {
+fn has_exactly_one_share<S>(steps: List<RealizedStep<S>>) -> Bool {
   (steps |> filter(e => is_share(m: e.materialization)) |> length) == 1
 }
 
-fn has_no_share<S>(steps: List<std.realization.RealizedStep<S>>) -> Bool {
+fn has_no_share<S>(steps: List<RealizedStep<S>>) -> Bool {
   (steps |> filter(e => is_share(m: e.materialization)) |> length) == 0
 }
 
 test fn witness_same_keysource_collapses_to_share() -> Bool {
-  let out = std.realization.reconcile(steps: [
+  let out = reconcile(steps: [
     step_create_if_absent(field: "id"),
     step_create_if_absent(field: "id")
   ])
@@ -45,7 +46,7 @@ test fn witness_same_keysource_collapses_to_share() -> Bool {
 }
 
 test fn witness_different_keysource_does_not_collapse() -> Bool {
-  let out = std.realization.reconcile(steps: [
+  let out = reconcile(steps: [
     step_create_if_absent(field: "id"),
     step_create_if_absent(field: "other")
   ])
@@ -53,7 +54,7 @@ test fn witness_different_keysource_does_not_collapse() -> Bool {
 }
 
 test fn witness_post_always_never_collapses() -> Bool {
-  let out = std.realization.reconcile(steps: [ step_post_always(), step_post_always() ])
+  let out = reconcile(steps: [ step_post_always(), step_post_always() ])
   (out |> length) == 2 && has_no_share(steps: out)
 }
 

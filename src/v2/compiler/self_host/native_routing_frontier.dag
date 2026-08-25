@@ -157,16 +157,16 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   )
 ]
 
-fn routing_frontier_total_holds() -> v2.std.logic.Bool {
-  let roster_len = length(xs: native_routing_frontier_roster)
-  let split_total = length(xs: native_routed_rows()) + length(xs: interpreted_retained_rows())
+fn routing_frontier_total_holds() -> Bool {
+  let roster_len = v2.std.algebra.length(xs: native_routing_frontier_roster)
+  let split_total = v2.std.algebra.length(xs: native_routed_rows()) + v2.std.algebra.length(xs: interpreted_retained_rows())
   split_total == roster_len
 }
 
-fn routing_row_is_native(row: NativeRoutingFrontierRow) -> v2.std.logic.Bool {
+fn routing_row_is_native(row: NativeRoutingFrontierRow) -> Bool {
   match row.disposition {
     NativeRouted { observation_family: f, observations: obs } =>
-      parity_routing_admitted(family: f, observations: obs)
+      v2.compiler.self_host.parity_window.parity_routing_admitted(family: f, observations: obs)
     InterpretedRetained { reason: _, dissolution: _ } => false
   }
 }
@@ -199,7 +199,7 @@ fn interpreted_retained_rows() -> List<NativeRoutingFrontierRow> {
   )
 }
 
-fn subject_eq(a: std.decl_ref.DeclarationRef, b: std.decl_ref.DeclarationRef) -> v2.std.logic.Bool {
+fn subject_eq(a: std.decl_ref.DeclarationRef, b: std.decl_ref.DeclarationRef) -> Bool {
   (a.module_path == b.module_path) && (a.decl_name == b.decl_name)
 }
 
@@ -217,7 +217,7 @@ fn routing_frontier_row_for_subject(subject: std.decl_ref.DeclarationRef) -> Lis
   )
 }
 
-fn string_eq_native_routing(a: String, b: String) -> v2.std.logic.Bool {
+fn string_eq_native_routing(a: String, b: String) -> Bool {
   a == b
 }
 
@@ -226,7 +226,7 @@ fn routing_frontier_agreement_entries_distinct() -> List<String> {
     native_routing_frontier_roster,
     init: [],
     f: fn(acc, row) {
-      if contains(xs: acc, item: row.agreement_entry, eq: string_eq_native_routing) {
+      if v2.std.algebra.contains(xs: acc, item: row.agreement_entry, eq: string_eq_native_routing) {
         acc
       } else {
         concat(acc, [row.agreement_entry])
@@ -261,13 +261,13 @@ fn native_routing_pool_closures(
   pool_entries: List<String>,
   pool_roots: List<String>
 ) -> List<NativeRoutingEntryClosure> {
-  let edges = dependency_resolution_facts_live(
+  let edges = v2.lens.module_graph.dependency_resolution_facts_live(
     pool_roots: pool_roots,
     importer_roots: pool_roots,
     exclude_substrings: []
   )
-  let nodes = module_declaration_facts_live(pool_roots: pool_roots)
-  let adjacency = build_dependency_adjacency(
+  let nodes = v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool_roots)
+  let adjacency = v2.lens.module_graph.build_dependency_adjacency(
     edges: edges,
     nodes: nodes
   )
@@ -280,7 +280,7 @@ fn native_routing_pool_closures(
         [
           NativeRoutingEntryClosure {
             entry: entry,
-            closure: import_closure_bfs_walk(
+            closure: v2.lens.module_graph.import_closure_bfs_walk(
               state: v2.lens.module_graph.ImportClosureBfsState { reached: [entry], queue: [entry] },
               adjacency: adjacency
             )
@@ -295,11 +295,11 @@ fn native_routing_closure_reaches_subject(
   closure: List<String>,
   subject: std.decl_ref.DeclarationRef,
   facts: List<v2.lens.module_graph.ModuleDeclarationFact>
-) -> v2.std.logic.Bool {
-  any(
+) -> Bool {
+  v2.std.algebra.any(
     xs: subject_module_source_paths(subject: subject, facts: facts),
     predicate: fn(p) {
-      contains(xs: closure, item: p, eq: string_eq_native_routing)
+      v2.std.algebra.contains(xs: closure, item: p, eq: string_eq_native_routing)
     }
   )
 }
@@ -327,5 +327,5 @@ fn native_routing_row_membership_derived(
 }
 
 fn native_routing_membership_facts_live(pool_roots: List<String>) -> List<v2.lens.module_graph.ModuleDeclarationFact> {
-  module_declaration_facts_live(pool_roots: pool_roots)
+  v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool_roots)
 }

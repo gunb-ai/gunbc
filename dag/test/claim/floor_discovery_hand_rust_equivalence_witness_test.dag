@@ -1,21 +1,23 @@
 module test.claim.floor_discovery_hand_rust_equivalence_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data floor_discovery_hand_rust_equivalence_note: String = "Executes floor_discovery_producer.dag on fixtures (owned-data transport projection, filename hygiene, test-decl scan, wire-contract scan/sidecar, sidecar placement) with RED perturbation controls. Producer authority is exercised here; Rust bridge cross-checks (discover_floor_witness_roster, scan_wire_contract_decl_names) are named in gunbc.floor_discovery_scaffold and proven by cargo test sidecar_placement_hygiene_tests in cli_run.rs on the same fixture spellings."
 
 test fn floor_entry_resolution_host_boundary_is_declared() -> Bool {
-  floor_entry_resolution_host_boundary_discriminator == "resolve_workspace_entry"
+  gunbc.floor_discovery_scaffold.floor_entry_resolution_host_boundary_discriminator == "resolve_workspace_entry"
     && string_contains(
-      s: floor_entry_resolution_host_boundary_note,
+      s: gunbc.floor_discovery_scaffold.floor_entry_resolution_host_boundary_note,
       pattern: "WorkspaceRootRelativeEntry",
     )
     && string_contains(
-      s: floor_entry_resolution_host_boundary_note,
+      s: gunbc.floor_discovery_scaffold.floor_entry_resolution_host_boundary_note,
       pattern: "FLOOR_DISCOVERY_PRODUCER_ENTRY",
     )
     && string_contains(
-      s: floor_entry_resolution_host_boundary_note,
+      s: gunbc.floor_discovery_scaffold.floor_entry_resolution_host_boundary_note,
       pattern: "v1-hand-queue-drain",
     )
 }
@@ -67,24 +69,24 @@ fn fixture_live_tree_trailing_comment_content() -> String {
   )
 }
 
-fn fixture_bool_witness_record() -> OwnedDataDeclRecord {
-  OwnedDataDeclRecord {
+fn fixture_bool_witness_record() -> v2.compiler.discovery_enumeration.OwnedDataDeclRecord {
+  v2.compiler.discovery_enumeration.OwnedDataDeclRecord {
     entry: "dag/gunbc/floor_discovery_scaffold.dag",
     module: "gunbc.floor_discovery_scaffold",
     decl_name: "unified_claim_floor_discovery_fixture",
-    initializer: OwnedBoolWitnessClaimInit {
+    initializer: v2.compiler.discovery_enumeration.OwnedBoolWitnessClaimInit {
       witness_entry: fixture_witness_entry,
       witness_function: fixture_witness_function
     }
   }
 }
 
-fn fixture_bool_witness_record_empty_transport() -> OwnedDataDeclRecord {
-  OwnedDataDeclRecord {
+fn fixture_bool_witness_record_empty_transport() -> v2.compiler.discovery_enumeration.OwnedDataDeclRecord {
+  v2.compiler.discovery_enumeration.OwnedDataDeclRecord {
     entry: "dag/gunbc/floor_discovery_scaffold.dag",
     module: "gunbc.floor_discovery_scaffold",
     decl_name: "unified_claim_floor_discovery_fixture_empty",
-    initializer: OwnedBoolWitnessClaimInit {
+    initializer: v2.compiler.discovery_enumeration.OwnedBoolWitnessClaimInit {
       witness_entry: "",
       witness_function: ""
     }
@@ -92,7 +94,7 @@ fn fixture_bool_witness_record_empty_transport() -> OwnedDataDeclRecord {
 }
 
 fn list_contains_string(xs: List<String>, needle: String) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: xs,
     empty: false,
     cons: fn(found, x) {
@@ -106,11 +108,11 @@ fn list_contains_string(xs: List<String>, needle: String) -> Bool {
 }
 
 fn floor_discovery_rows_contain_entry_function(
-  rows: List<FloorDiscoveryRow>,
+  rows: List<v2.workflow.floor_discovery.FloorDiscoveryRow>,
   entry: String,
   function: String
 ) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: rows,
     empty: false,
     cons: fn(found, row) {
@@ -123,58 +125,59 @@ fn floor_discovery_rows_contain_entry_function(
   )
 }
 
-fn floor_discovery_first_row_label(rows: List<FloorDiscoveryRow>) -> String {
-  match list_head(xs: rows) {
-    HeadFound { value: row } => row.label
-    HeadAbsent => ""
+fn floor_discovery_first_row_label(rows: List<v2.workflow.floor_discovery.FloorDiscoveryRow>) -> String {
+  match v2.std.algebra.list_head(xs: rows) {
+    v2.std.algebra.HeadFound { value: row } => row.label
+    v2.std.algebra.HeadAbsent => ""
   }
 }
 
-fn floor_discovery_first_row_reads_substrate_only(rows: List<FloorDiscoveryRow>) -> Bool {
-  match list_head(xs: rows) {
-    HeadFound { value: row } => row.reads_live_tree == SubstrateInputsOnly
-    HeadAbsent => false
+fn floor_discovery_first_row_reads_substrate_only(rows: List<v2.workflow.floor_discovery.FloorDiscoveryRow>) -> Bool {
+  match v2.std.algebra.list_head(xs: rows) {
+    v2.std.algebra.HeadFound { value: row } => row.reads_live_tree == v2.std.live_tree.SubstrateInputsOnly
+    v2.std.algebra.HeadAbsent => false
   }
 }
 
 test fn floor_discovery_hand_rust_scaffold_binds_producer_authority() -> Bool {
-  match floor_discovery_hand_rust_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+  match gunbc.floor_discovery_scaffold.floor_discovery_hand_rust_scaffold {
+    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn floor_discovery_dissolve_trigger_names_producer_authority() -> Bool {
-  string_contains(s: dissolution_description(condition: floor_discovery_dissolve_trigger), pattern: "floor_discovery_producer")
-    && string_contains(s: dissolution_description(condition: floor_discovery_dissolve_trigger), pattern: "dissolve-on")
+  string_contains(s: std.dissolution.dissolution_description(condition: gunbc.floor_discovery_scaffold.floor_discovery_dissolve_trigger), pattern: "floor_discovery_producer")
+    && string_contains(s: std.dissolution.dissolution_description(condition: gunbc.floor_discovery_scaffold.floor_discovery_dissolve_trigger), pattern: "dissolve-on")
 }
 
 test fn floor_discovery_surface_text_scan_scaffold_on_carrier() -> Bool {
-  match floor_discovery_surface_text_scan_scaffold {
-    Scaffold {
-      dissolves_to: SingleAuthority,
-      bind: DeclarationRef {
+  match v2.workflow.floor_discovery_producer.floor_discovery_surface_text_scan_scaffold {
+    std.disposition.Scaffold {
+      dissolves_to: std.disposition.SingleAuthority,
+      bind: std.decl_ref.DeclarationRef {
         module_path: "v2.workflow.floor_naming_hygiene",
         decl_name: "floor_discovery_scan_test_decl_names",
-        field: WholeDeclaration
+        field: std.decl_ref.WholeDeclaration
       }
     } => true
     _ => false
   }
 }
 
+
 test fn floor_discovery_producer_entry_is_canonical() -> Bool {
-  floor_discovery_producer_entry == "src/v2/workflow/floor_discovery_producer.dag"
+  gunbc.floor_discovery_scaffold.floor_discovery_producer_entry == "src/v2/workflow/floor_discovery_producer.dag"
 }
 
 test fn floor_discovery_producer_owned_data_row_holds() -> Bool {
-  match discover_floor_corpus_rows_from_host_facts(
+  match v2.workflow.floor_discovery_producer.discover_floor_corpus_rows_from_host_facts(
     source_roots: [],
     exclude_substrings: [],
     owned_data_records: [fixture_bool_witness_record()]
   ) {
-    FloorDiscoveryAccepted { rows: rows } =>
-      (length(xs: rows) == 1)
+    v2.workflow.floor_discovery_producer.FloorDiscoveryAccepted { rows: rows } =>
+      (v2.std.algebra.length(xs: rows) == 1)
         && floor_discovery_rows_contain_entry_function(
           rows: rows,
           entry: fixture_witness_entry,
@@ -182,74 +185,74 @@ test fn floor_discovery_producer_owned_data_row_holds() -> Bool {
         )
         && (floor_discovery_first_row_label(rows: rows) == "floor_discovery_fixture")
         && floor_discovery_first_row_reads_substrate_only(rows: rows)
-    FloorDiscoveryRefused { reason: _ } => false
+    v2.workflow.floor_discovery_producer.FloorDiscoveryRefused { reason: _ } => false
   }
 }
 
 test fn floor_discovery_producer_empty_transport_red_control() -> Bool {
-  match discover_floor_corpus_rows_from_host_facts(
+  match v2.workflow.floor_discovery_producer.discover_floor_corpus_rows_from_host_facts(
     source_roots: [],
     exclude_substrings: [],
     owned_data_records: [fixture_bool_witness_record_empty_transport()]
   ) {
-    FloorDiscoveryAccepted { rows: _ } => false
-    FloorDiscoveryRefused { reason: msg } =>
+    v2.workflow.floor_discovery_producer.FloorDiscoveryAccepted { rows: _ } => false
+    v2.workflow.floor_discovery_producer.FloorDiscoveryRefused { reason: msg } =>
       string_contains(s: msg, pattern: "malformed BoolWitnessClaim witness")
   }
 }
 
 test fn floor_discovery_scan_test_fn_decl_holds() -> Bool {
   list_contains_string(
-    xs: floor_discovery_scan_test_decl_names(content: fixture_test_fn_content),
+    xs: v2.workflow.floor_naming_hygiene.floor_discovery_scan_test_decl_names(content: fixture_test_fn_content),
     needle: fixture_witness_function
   )
 }
 
 test fn floor_discovery_scan_test_data_decl_holds() -> Bool {
   list_contains_string(
-    xs: floor_discovery_scan_test_decl_names(content: fixture_test_data_content),
+    xs: v2.workflow.floor_naming_hygiene.floor_discovery_scan_test_decl_names(content: fixture_test_data_content),
     needle: "floor_discovery_data_fixture"
   )
 }
 
 test fn floor_discovery_sidecar_test_decl_misplaced_red_control() -> Bool {
-  match floor_discovery_test_decl_sidecar_violation(entry_path: fixture_misplaced_entry) {
-    Present { value: v } =>
+  match v2.workflow.floor_discovery.floor_discovery_test_decl_sidecar_violation(entry_path: fixture_misplaced_entry) {
+    v2.std.optional.Present { value: v } =>
       (v.entry_path == fixture_misplaced_entry)
         && string_contains(s: v.required_suffix, pattern: "_test.dag")
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
 test fn floor_discovery_sidecar_test_decl_allowed_holds() -> Bool {
-  match floor_discovery_test_decl_sidecar_violation(
+  match v2.workflow.floor_discovery.floor_discovery_test_decl_sidecar_violation(
     entry_path: "dag/test/claim/floor_discovery_roster_fixture_test.dag"
   ) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }
 
 test fn floor_discovery_equivalence_wire_contract_coproduct_scan_holds() -> Bool {
-  floor_discovery_content_has_wire_contract_decl(
+  v2.workflow.floor_discovery_producer.floor_discovery_content_has_wire_contract_decl(
     content: fixture_wire_contract_coproduct_content()
   )
 }
 
 test fn floor_discovery_equivalence_wire_contract_variant_scan_holds() -> Bool {
-  floor_discovery_content_has_wire_contract_decl(content: fixture_wire_contract_variant_content())
+  v2.workflow.floor_discovery_producer.floor_discovery_content_has_wire_contract_decl(content: fixture_wire_contract_variant_content())
 }
 
 test fn floor_discovery_equivalence_misplaced_wire_contract_refuses_holds() -> Bool {
-  match floor_discovery_wire_contract_sidecar_refusal_for_content(
+  match v2.workflow.floor_discovery_producer.floor_discovery_wire_contract_sidecar_refusal_for_content(
     repo_path: fixture_misplaced_wire_contract_entry,
     content: fixture_misplaced_wire_contract_content()
   ) {
-    Present { value: msg } =>
+    v2.std.optional.Present { value: msg } =>
       string_contains(s: msg, pattern: "wire-contract decls")
         && string_contains(s: msg, pattern: "_contracts.dag")
         && string_contains(s: msg, pattern: fixture_misplaced_wire_contract_entry)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
@@ -259,47 +262,47 @@ test fn floor_discovery_equivalence_misplaced_wire_contract_refuses_holds() -> B
 // nothing missing -- discovery cannot distinguish "no witnesses here" from "no witnesses
 // authored yet", so the file is silently uncovered. Nine such files stood in tree.
 test fn floor_discovery_barren_test_sidecar_refuses_red_control() -> Bool {
-  match floor_discovery_barren_test_sidecar_refusal_for_content(
+  match v2.workflow.floor_discovery_producer.floor_discovery_barren_test_sidecar_refusal_for_content(
     repo_path: fixture_barren_test_entry,
     content: fixture_barren_test_content
   ) {
-    Present { value: msg } =>
+    v2.std.optional.Present { value: msg } =>
       string_contains(s: msg, pattern: "test fn")
         && string_contains(s: msg, pattern: fixture_barren_test_entry)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
 // The positive control: the SAME path with one authored test decl must be admitted, so the
 // row above discriminates on the decl scan rather than on the filename.
 test fn floor_discovery_populated_test_sidecar_admitted_holds() -> Bool {
-  match floor_discovery_barren_test_sidecar_refusal_for_content(
+  match v2.workflow.floor_discovery_producer.floor_discovery_barren_test_sidecar_refusal_for_content(
     repo_path: fixture_barren_test_entry,
     content: fixture_test_fn_content
   ) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }
 
 // The other direction: an ordinary module declaring no test decls is not barren -- the rule
 // is scoped to entries the sidecar suffix claims, never to the corpus at large.
 test fn floor_discovery_non_test_entry_is_never_barren_holds() -> Bool {
-  match floor_discovery_barren_test_sidecar_refusal_for_content(
+  match v2.workflow.floor_discovery_producer.floor_discovery_barren_test_sidecar_refusal_for_content(
     repo_path: fixture_misplaced_entry,
     content: fixture_barren_test_content
   ) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }
 
 test fn floor_discovery_barren_refusal_reason_carries_its_path_holds() -> Bool {
-  let msg = floor_discovery_sidecar_refusal_reason(violations: [
-    FloorDiscoverySidecarViolation {
+  let msg = v2.workflow.floor_discovery_producer.floor_discovery_sidecar_refusal_reason(violations: [
+    v2.workflow.floor_discovery.FloorDiscoverySidecarViolation {
       entry_path: fixture_barren_test_entry,
-      kind: BarrenTestSidecar,
-      required_suffix: floor_test_sidecar_suffix
+      kind: v2.workflow.floor_discovery.BarrenTestSidecar,
+      required_suffix: v2.workflow.floor_naming_hygiene.floor_test_sidecar_suffix
     }
   ])
   string_contains(s: msg, pattern: fixture_barren_test_entry)
@@ -307,16 +310,16 @@ test fn floor_discovery_barren_refusal_reason_carries_its_path_holds() -> Bool {
 }
 
 test fn floor_discovery_sidecar_combined_refusal_reports_both_holds() -> Bool {
-  let msg = floor_discovery_sidecar_refusal_reason(violations: [
-    FloorDiscoverySidecarViolation {
+  let msg = v2.workflow.floor_discovery_producer.floor_discovery_sidecar_refusal_reason(violations: [
+    v2.workflow.floor_discovery.FloorDiscoverySidecarViolation {
       entry_path: fixture_misplaced_entry,
-      kind: TestMarkedDecl,
-      required_suffix: floor_test_sidecar_suffix
+      kind: v2.workflow.floor_discovery.TestMarkedDecl,
+      required_suffix: v2.workflow.floor_naming_hygiene.floor_test_sidecar_suffix
     },
-    FloorDiscoverySidecarViolation {
+    v2.workflow.floor_discovery.FloorDiscoverySidecarViolation {
       entry_path: fixture_misplaced_wire_contract_entry,
-      kind: WireContractDecl,
-      required_suffix: floor_wire_contract_sidecar_suffix
+      kind: v2.workflow.floor_discovery.WireContractDecl,
+      required_suffix: v2.workflow.floor_naming_hygiene.floor_wire_contract_sidecar_suffix
     }
   ])
   string_contains(s: msg, pattern: "`test`-marked")
@@ -326,54 +329,54 @@ test fn floor_discovery_sidecar_combined_refusal_reports_both_holds() -> Bool {
 }
 
 test fn floor_discovery_live_tree_malformed_variant_refuses_red_control() -> Bool {
-  match floor_discovery_entry_live_tree_disposition_refusal_for_content(
+  match v2.workflow.floor_discovery_producer.floor_discovery_entry_live_tree_disposition_refusal_for_content(
     entry_path: fixture_live_tree_entry,
     content: fixture_live_tree_malformed_variant_content()
   ) {
-    Present { value: msg } => string_contains(s: msg, pattern: "unknown variant")
-    Absent => false
+    v2.std.optional.Present { value: msg } => string_contains(s: msg, pattern: "unknown variant")
+    v2.std.optional.Absent => false
   }
 }
 
 test fn floor_discovery_live_tree_duplicate_decl_refuses_red_control() -> Bool {
-  match floor_discovery_entry_live_tree_disposition_refusal_for_content(
+  match v2.workflow.floor_discovery_producer.floor_discovery_entry_live_tree_disposition_refusal_for_content(
     entry_path: fixture_live_tree_entry,
     content: fixture_live_tree_duplicate_decl_content()
   ) {
-    Present { value: msg } => string_contains(s: msg, pattern: "more than once")
-    Absent => false
+    v2.std.optional.Present { value: msg } => string_contains(s: msg, pattern: "more than once")
+    v2.std.optional.Absent => false
   }
 }
 
 test fn floor_discovery_live_tree_trailing_comment_refuses_red_control() -> Bool {
-  match floor_discovery_entry_live_tree_disposition_refusal_for_content(
+  match v2.workflow.floor_discovery_producer.floor_discovery_entry_live_tree_disposition_refusal_for_content(
     entry_path: fixture_live_tree_entry,
     content: fixture_live_tree_trailing_comment_content()
   ) {
-    Present { value: msg } => string_contains(s: msg, pattern: "unknown variant")
-    Absent => false
+    v2.std.optional.Present { value: msg } => string_contains(s: msg, pattern: "unknown variant")
+    v2.std.optional.Absent => false
   }
 }
 
 test fn floor_discovery_live_tree_disposition_note_sibling_not_declaration_holds() -> Bool {
-  match floor_discovery_entry_live_tree_disposition_refusal_for_content(
+  match v2.workflow.floor_discovery_producer.floor_discovery_entry_live_tree_disposition_refusal_for_content(
     entry_path: fixture_live_tree_entry,
     content: "module m\n\ndata live_tree_disposition_note: String = \"doc row\"\n"
   ) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }
 
 test fn floor_discovery_equivalence_rust_tests_named() -> Bool {
   string_contains(
-    s: floor_discovery_equivalence_test_sidecar_misplaced,
+    s: gunbc.floor_discovery_scaffold.floor_discovery_equivalence_test_sidecar_misplaced,
     pattern: "misplaced_wire_contract_decl_drives_discover_to_err"
   ) && string_contains(
-    s: floor_discovery_equivalence_test_scan_wire_contract,
+    s: gunbc.floor_discovery_scaffold.floor_discovery_equivalence_test_scan_wire_contract,
     pattern: "scan_detects_coproduct_wire_contract_data"
   ) && string_contains(
-    s: floor_discovery_equivalence_test_narrowed_corpus_control,
+    s: gunbc.floor_discovery_scaffold.floor_discovery_equivalence_test_narrowed_corpus_control,
     pattern: "clean_dag_file_leaves_narrowed_discovery_ok"
   )
 }

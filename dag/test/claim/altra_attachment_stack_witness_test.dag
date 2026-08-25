@@ -1,15 +1,15 @@
 module test.claim.altra_attachment_stack_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn blocker_kind(b: product.altra_motherboard.attachment_stack.LayerBlocker) -> String {
   match b.blocker {
-    NeedsSomeoneToFindTheDocument { what_is_missing: _ } => "find-document"
-    NeedsARedistributionDecision { reason: _ } => "redistribution"
-    NeedsCommercialAccess { subject: _, access_route: _ } => "commercial"
-    NeedsAHumanToReadTheDrawing { figure: _, what_is_drawn: _ } => "read-drawing"
-    NeedsTheStandingItselfRepaired { refusal: _ } => "standing-self-contradictory"
+    product.altra_motherboard.attachment_stack.NeedsSomeoneToFindTheDocument { what_is_missing: _ } => "find-document"
+    product.altra_motherboard.attachment_stack.NeedsARedistributionDecision { reason: _ } => "redistribution"
+    product.altra_motherboard.attachment_stack.NeedsCommercialAccess { subject: _, access_route: _ } => "commercial"
+    product.altra_motherboard.attachment_stack.NeedsAHumanToReadTheDrawing { figure: _, what_is_drawn: _ } => "read-drawing"
+    product.altra_motherboard.attachment_stack.NeedsTheStandingItselfRepaired { refusal: _ } => "standing-self-contradictory"
   }
 }
 
@@ -17,7 +17,7 @@ fn blocker_layer(b: product.altra_motherboard.attachment_stack.LayerBlocker) -> 
   b.layer
 }
 
-fn count_of(xs: List<product.altra_motherboard.attachment_stack.LayerBlocker>) -> std.integer.Int {
+fn count_of(xs: List<product.altra_motherboard.attachment_stack.LayerBlocker>) -> Int {
   fold(xs, init: 0, f: fn(acc, _b) { acc + 1 })
 }
 
@@ -26,16 +26,16 @@ fn count_of(xs: List<product.altra_motherboard.attachment_stack.LayerBlocker>) -
 // different path — the CPU catalog row. Two independent routes to one population is what makes
 // this a join rather than a number someone typed twice.
 test fn w_the_contact_population_cross_foots_at_4926() -> Bool {
-  altra_pin_summary_total() == 4926
-    && altra_declared_contact_count() == 4926
-    && altra_signal_pin_count + altra_power_and_ground_pin_count + altra_reserved_pin_count == altra_declared_contact_count()
+  extdeps.cpu.ampere_altra_package.altra_pin_summary_total() == 4926
+    && extdeps.cpu.ampere_altra_package.altra_declared_contact_count() == 4926
+    && extdeps.cpu.ampere_altra_package.altra_signal_pin_count + extdeps.cpu.ampere_altra_package.altra_power_and_ground_pin_count + extdeps.cpu.ampere_altra_package.altra_reserved_pin_count == extdeps.cpu.ampere_altra_package.altra_declared_contact_count()
 }
 
 // The population is the ONE fact that crosses the socket boundary: however the socket terminates,
 // a 4926-contact processor needs 4926 board-side terminations. The geometry does not cross, which
 // is the next test.
 test fn w_the_board_side_termination_population_follows_the_package() -> Bool {
-  board_side_termination_population() == 4926
+  product.altra_motherboard.attachment_stack.board_side_termination_population() == 4926
 }
 
 // THE CENTRAL CLAIM, AND THE SPLIT MADE IT SHARPER RATHER THAN WEAKER. It used to read that
@@ -53,19 +53,19 @@ test fn w_the_board_side_termination_population_follows_the_package() -> Bool {
 // this module's header exists to make unwritable -- collapses those two authorities into one and
 // fails here.
 test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
-  fact_is_established(f: processor_package_standing.fact)
-    && fact_is_established(f: board_land_pattern_standing.fact)
+  product.altra_motherboard.attachment_stack.fact_is_established(f: processor_package_standing.fact)
+    && product.altra_motherboard.attachment_stack.fact_is_established(f: board_land_pattern_standing.fact)
     && match board_land_pattern_standing.fact {
-      FactEstablished { authority: land_auth, subject: _ } =>
+      product.altra_motherboard.attachment_stack.FactEstablished { authority: land_auth, subject: _ } =>
         match processor_package_standing.fact {
-          FactEstablished { authority: pkg_auth, subject: _ } => land_auth != pkg_auth
-          FactAccessGated { subject: _, access_route: _ } => false
-          FactUnresolved { what_is_missing: _ } => false
-          FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
+          product.altra_motherboard.attachment_stack.FactEstablished { authority: pkg_auth, subject: _ } => land_auth != pkg_auth
+          product.altra_motherboard.attachment_stack.FactAccessGated { subject: _, access_route: _ } => false
+          product.altra_motherboard.attachment_stack.FactUnresolved { what_is_missing: _ } => false
+          product.altra_motherboard.attachment_stack.FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
         }
-      FactAccessGated { subject: _, access_route: _ } => false
-      FactUnresolved { what_is_missing: _ } => false
-      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
+      product.altra_motherboard.attachment_stack.FactAccessGated { subject: _, access_route: _ } => false
+      product.altra_motherboard.attachment_stack.FactUnresolved { what_is_missing: _ } => false
+      product.altra_motherboard.attachment_stack.FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
     }
 }
 
@@ -75,11 +75,11 @@ test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
 // undecided". This is the regression control for the fusion: if the axes are ever collapsed
 // again, one of these two conjuncts becomes unsayable.
 test fn w_an_established_fact_and_a_decided_carriage_coexist() -> Bool {
-  fact_is_established(f: processor_package_standing.fact)
+  product.altra_motherboard.attachment_stack.fact_is_established(f: processor_package_standing.fact)
     && match processor_package_standing.carriage {
-      NormalizedFactsMayBeCarried => true
-      CarriageNotApplicable { because: _ } => false
-      CarriageDecisionRequired { reason: _ } => false
+      product.altra_motherboard.attachment_stack.NormalizedFactsMayBeCarried => true
+      product.altra_motherboard.attachment_stack.CarriageNotApplicable { because: _ } => false
+      product.altra_motherboard.attachment_stack.CarriageDecisionRequired { reason: _ } => false
     }
 }
 
@@ -87,17 +87,17 @@ test fn w_an_established_fact_and_a_decided_carriage_coexist() -> Bool {
 // nothing established there is nothing to copy, so the arm says so rather than defaulting to a
 // permission or a prohibition nobody decided.
 test fn w_an_unresolved_fact_carries_no_carriage_decision() -> Bool {
-  !fact_is_established(f: socket_standing.fact)
+  !product.altra_motherboard.attachment_stack.fact_is_established(f: socket_standing.fact)
     && match socket_standing.fact {
-      FactUnresolved { what_is_missing: _ } => true
-      FactAccessGated { subject: _, access_route: _ } => false
-      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
-      FactEstablished { authority: _, subject: _ } => false
+      product.altra_motherboard.attachment_stack.FactUnresolved { what_is_missing: _ } => true
+      product.altra_motherboard.attachment_stack.FactAccessGated { subject: _, access_route: _ } => false
+      product.altra_motherboard.attachment_stack.FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
+      product.altra_motherboard.attachment_stack.FactEstablished { authority: _, subject: _ } => false
     }
     && match socket_standing.carriage {
-      CarriageNotApplicable { because: _ } => true
-      NormalizedFactsMayBeCarried => false
-      CarriageDecisionRequired { reason: _ } => false
+      product.altra_motherboard.attachment_stack.CarriageNotApplicable { because: _ } => true
+      product.altra_motherboard.attachment_stack.NormalizedFactsMayBeCarried => false
+      product.altra_motherboard.attachment_stack.CarriageDecisionRequired { reason: _ } => false
     }
 }
 
@@ -117,24 +117,24 @@ test fn w_an_unresolved_fact_carries_no_carriage_decision() -> Bool {
 // is named for -- and the reference-board collateral below still carries the commercial one, so
 // no arm of blocker_kind lost its coverage when this layer stopped being blocked.
 test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
-  let package_blocker = match layer_blocker(row: processor_package_standing) {
+  let package_blocker = match product.altra_motherboard.attachment_stack.layer_blocker(row: product.altra_motherboard.attachment_stack.processor_package_standing) {
     Absent => "none"
     Present { value: b } => blocker_kind(b: b)
   }
-  let land_blocker = match layer_blocker(row: board_land_pattern_standing) {
+  let land_blocker = match product.altra_motherboard.attachment_stack.layer_blocker(row: product.altra_motherboard.attachment_stack.board_land_pattern_standing) {
     Absent => "none"
     Present { value: b } => blocker_kind(b: b)
   }
   package_blocker == "none"
     && land_blocker == "none"
     && undecided_carriage_blocker() == "redistribution"
-    && match reference_board_collateral_standing() {
-      FactAccessGated { subject: sub, access_route: route } =>
+    && match product.altra_motherboard.attachment_stack.reference_board_collateral_standing() {
+      product.altra_motherboard.attachment_stack.FactAccessGated { subject: sub, access_route: route } =>
         list_length(items: split(s: sub as String, delimiter: "Mt. Jade")) > 1
           && (route.uri.locator as String) == "amperecomputing.com/home/customer-reference-boards"
-      FactEstablished { authority: _, subject: _ } => false
-      FactUnresolved { what_is_missing: _ } => false
-      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
+      product.altra_motherboard.attachment_stack.FactEstablished { authority: _, subject: _ } => false
+      product.altra_motherboard.attachment_stack.FactUnresolved { what_is_missing: _ } => false
+      product.altra_motherboard.attachment_stack.FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
     }
 }
 
@@ -149,7 +149,7 @@ fn undecided_carriage_blocker() -> String {
     fact: processor_package_standing.fact,
     carriage: product.altra_motherboard.attachment_stack.CarriageDecisionRequired { reason: "planted: carriage undecided for this subject" },
   }
-  match layer_blocker(row: planted) {
+  match product.altra_motherboard.attachment_stack.layer_blocker(row: planted) {
     Absent => "none"
     Present { value: b } => blocker_kind(b: b)
   }
@@ -168,20 +168,20 @@ fn undecided_carriage_blocker() -> String {
 // geometry sits behind Customer Connect -- the count goes non-zero and this fails, which is
 // exactly the alarm the original witness existed to raise.
 test fn w_no_attachment_layer_is_behind_the_nda_boundary() -> Bool {
-  let nda_layers = fold(attachment_stack, init: 0, f: fn(acc, row) {
+  let nda_layers = fold(product.altra_motherboard.attachment_stack.attachment_stack, init: 0, f: fn(acc, row) {
     match row.fact {
-      FactAccessGated { subject: _, access_route: _ } => acc + 1
-      FactEstablished { authority: _, subject: _ } => acc
-      FactUnresolved { what_is_missing: _ } => acc
-      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => acc
+      product.altra_motherboard.attachment_stack.FactAccessGated { subject: _, access_route: _ } => acc + 1
+      product.altra_motherboard.attachment_stack.FactEstablished { authority: _, subject: _ } => acc
+      product.altra_motherboard.attachment_stack.FactUnresolved { what_is_missing: _ } => acc
+      product.altra_motherboard.attachment_stack.FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => acc
     }
   })
   nda_layers == 0
     && match board_land_pattern_standing.fact {
-      FactEstablished { authority: _, subject: _ } => true
-      FactAccessGated { subject: _, access_route: _ } => false
-      FactUnresolved { what_is_missing: _ } => false
-      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
+      product.altra_motherboard.attachment_stack.FactEstablished { authority: _, subject: _ } => true
+      product.altra_motherboard.attachment_stack.FactAccessGated { subject: _, access_route: _ } => false
+      product.altra_motherboard.attachment_stack.FactUnresolved { what_is_missing: _ } => false
+      product.altra_motherboard.attachment_stack.FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
     }
 }
 
@@ -189,16 +189,16 @@ test fn w_no_attachment_layer_is_behind_the_nda_boundary() -> Bool {
 // stack today rather than a target. It is asserted by count so that establishing one layer moves
 // the number instead of silently satisfying a name.
 test fn w_every_attachment_layer_is_open_and_says_why() -> Bool {
-  let layers = fold(attachment_stack, init: 0, f: fn(acc, _r) { acc + 1 })
-  let package_resolved = match layer_blocker(row: processor_package_standing) {
+  let layers = fold(product.altra_motherboard.attachment_stack.attachment_stack, init: 0, f: fn(acc, _r) { acc + 1 })
+  let package_resolved = match product.altra_motherboard.attachment_stack.layer_blocker(row: product.altra_motherboard.attachment_stack.processor_package_standing) {
     Absent => true
     Present { value: _ } => false
   }
-  let others_blocked = fold(attachment_stack, init: true, f: fn(acc, row) {
-    if fact_is_established(f: row.fact) {
+  let others_blocked = fold(product.altra_motherboard.attachment_stack.attachment_stack, init: true, f: fn(acc, row) {
+    if product.altra_motherboard.attachment_stack.fact_is_established(f: row.fact) {
       acc
     } else {
-      acc && match layer_blocker(row: row) {
+      acc && match product.altra_motherboard.attachment_stack.layer_blocker(row: row) {
         Present { value: _ } => true
         Absent => false
       }
@@ -209,10 +209,10 @@ test fn w_every_attachment_layer_is_open_and_says_why() -> Bool {
 
 // The layers are distinguishable rather than six spellings of one thing.
 test fn w_the_layers_are_named_distinctly() -> Bool {
-  (attachment_layer_name(l: ProcessorPackageLayer) as String) == "processor package"
-    && (attachment_layer_name(l: SocketLayer) as String) == "socket"
-    && (attachment_layer_name(l: BoardLandPatternLayer) as String) == "board land pattern"
-    && (attachment_layer_name(l: ProcessorPackageLayer) as String) != (attachment_layer_name(l: BoardLandPatternLayer) as String)
+  (product.altra_motherboard.attachment_stack.attachment_layer_name(l: product.altra_motherboard.attachment_stack.ProcessorPackageLayer) as String) == "processor package"
+    && (product.altra_motherboard.attachment_stack.attachment_layer_name(l: product.altra_motherboard.attachment_stack.SocketLayer) as String) == "socket"
+    && (product.altra_motherboard.attachment_stack.attachment_layer_name(l: product.altra_motherboard.attachment_stack.BoardLandPatternLayer) as String) == "board land pattern"
+    && (product.altra_motherboard.attachment_stack.attachment_layer_name(l: product.altra_motherboard.attachment_stack.ProcessorPackageLayer) as String) != (product.altra_motherboard.attachment_stack.attachment_layer_name(l: product.altra_motherboard.attachment_stack.BoardLandPatternLayer) as String)
 }
 
 // EVERY LAYER THIS BOARD CARRIES IS A COHERENT PAIR. This runs over the live population rather than
@@ -220,8 +220,8 @@ test fn w_the_layers_are_named_distinctly() -> Bool {
 // something -- and it is the one that would have caught the defect if it had existed when the axes
 // were split.
 test fn w_every_layer_standing_is_a_coherent_pair() -> Bool {
-  fold(attachment_stack, init: true, f: fn(acc, st) {
-    acc && standing_pair_is_admitted(fact: st.fact, carriage: st.carriage)
+  fold(product.altra_motherboard.attachment_stack.attachment_stack, init: true, f: fn(acc, st) {
+    acc && product.altra_motherboard.attachment_stack.standing_pair_is_admitted(fact: st.fact, carriage: st.carriage)
   })
 }
 
@@ -230,33 +230,33 @@ test fn w_every_layer_standing_is_a_coherent_pair() -> Bool {
 // fires -- which is exactly what subject_blocker was doing before this change: answering an
 // established fact with inapplicable carriage as though nothing blocked it.
 test fn w_an_established_fact_cannot_have_inapplicable_carriage() -> Bool {
-  match authority_standing_refusal(
+  match product.altra_motherboard.attachment_stack.authority_standing_refusal(
     fact: processor_package_standing.fact,
     carriage: product.altra_motherboard.attachment_stack.CarriageNotApplicable { because: "planted: carriage moot for a fact that exists" }
   ) {
-    Present { value: EstablishedFactHasInapplicableCarriage } => true
+    Present { value: product.altra_motherboard.attachment_stack.EstablishedFactHasInapplicableCarriage } => true
     Present { value: _ } => false
     Absent => false
   }
 }
 
 test fn w_an_unestablished_fact_cannot_claim_carriage_permission() -> Bool {
-  match authority_standing_refusal(
+  match product.altra_motherboard.attachment_stack.authority_standing_refusal(
     fact: product.altra_motherboard.attachment_stack.FactUnresolved { what_is_missing: "planted: nobody has found this document" },
-    carriage: NormalizedFactsMayBeCarried
+    carriage: product.altra_motherboard.attachment_stack.NormalizedFactsMayBeCarried
   ) {
-    Present { value: UnestablishedFactClaimsNormalizedCarriage } => true
+    Present { value: product.altra_motherboard.attachment_stack.UnestablishedFactClaimsNormalizedCarriage } => true
     Present { value: _ } => false
     Absent => false
   }
 }
 
 test fn w_an_access_gated_fact_gets_no_independent_carriage_decision() -> Bool {
-  match authority_standing_refusal(
-    fact: reference_board_collateral_standing(),
+  match product.altra_motherboard.attachment_stack.authority_standing_refusal(
+    fact: product.altra_motherboard.attachment_stack.reference_board_collateral_standing(),
     carriage: product.altra_motherboard.attachment_stack.CarriageDecisionRequired { reason: "planted: decided separately from the access terms" }
   ) {
-    Present { value: AccessGatedFactHasIndependentCarriageDecision } => true
+    Present { value: product.altra_motherboard.attachment_stack.AccessGatedFactHasIndependentCarriageDecision } => true
     Present { value: _ } => false
     Absent => false
   }
@@ -265,11 +265,11 @@ test fn w_an_access_gated_fact_gets_no_independent_carriage_decision() -> Bool {
 // AND THE COHERENT PAIRS ARE NOT REFUSED, so the admission is not simply rejecting everything --
 // a refusal function that never admits passes every red above and blocks the whole board.
 test fn w_the_coherent_pairs_are_admitted() -> Bool {
-  standing_pair_is_admitted(
+  product.altra_motherboard.attachment_stack.standing_pair_is_admitted(
     fact: processor_package_standing.fact,
-    carriage: NormalizedFactsMayBeCarried
+    carriage: product.altra_motherboard.attachment_stack.NormalizedFactsMayBeCarried
   )
-    && standing_pair_is_admitted(
+    && product.altra_motherboard.attachment_stack.standing_pair_is_admitted(
       fact: product.altra_motherboard.attachment_stack.FactUnresolved { what_is_missing: "planted" },
       carriage: product.altra_motherboard.attachment_stack.CarriageNotApplicable { because: "planted" }
     )
@@ -284,7 +284,7 @@ test fn w_the_coherent_pairs_are_admitted() -> Bool {
 // are asserted here so neither half can quietly stop firing.
 fn incoherent_row() -> product.altra_motherboard.attachment_stack.AttachmentLayerStanding {
   product.altra_motherboard.attachment_stack.AttachmentLayerStanding {
-    layer: BoardLandPatternLayer,
+    layer: product.altra_motherboard.attachment_stack.BoardLandPatternLayer,
     fact: processor_package_standing.fact,
     carriage: product.altra_motherboard.attachment_stack.CarriageNotApplicable {
       because: "planted: an established fact may not also declare carriage inapplicable",
@@ -293,8 +293,8 @@ fn incoherent_row() -> product.altra_motherboard.attachment_stack.AttachmentLaye
 }
 
 test fn w_an_incoherent_standing_is_reported_as_a_blocker_not_as_settled() -> Bool {
-  !standing_pair_is_admitted(fact: incoherent_row().fact, carriage: incoherent_row().carriage)
-    && match layer_blocker(row: incoherent_row()) {
+  !product.altra_motherboard.attachment_stack.standing_pair_is_admitted(fact: incoherent_row().fact, carriage: incoherent_row().carriage)
+    && match product.altra_motherboard.attachment_stack.layer_blocker(row: incoherent_row()) {
          Absent => false
          Present { value: b } => blocker_kind(b: b) == "standing-self-contradictory"
        }

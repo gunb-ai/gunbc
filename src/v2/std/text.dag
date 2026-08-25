@@ -24,27 +24,27 @@ type CharResult
   = CharFound { value: std.types.Char }
   | CharAbsent
 
-fn string_is_empty(s: String) -> v2.std.logic.Bool {
-  is_empty(xs: s)
+fn string_is_empty(s: String) -> Bool {
+  v2.std.algebra.is_empty(xs: s)
 }
 fn string_head(s: String) -> CharResult {
-  match list_head(xs: s) {
-    HeadFound { value: c } => CharFound { value: c }
-    HeadAbsent => CharAbsent
+  match v2.std.algebra.list_head(xs: s) {
+    v2.std.algebra.HeadFound { value: c } => CharFound { value: c }
+    v2.std.algebra.HeadAbsent => CharAbsent
   }
 }
-fn string_tail(s: String) -> ListTailResult<std.types.Char> {
-  list_tail(xs: s)
+fn string_tail(s: String) -> v2.std.algebra.ListTailResult<std.types.Char> {
+  v2.std.algebra.list_tail(xs: s)
 }
 
 type SourceFold<R> {
   init: fn(String) -> R
   step: fn(R) -> R
-  is_done: fn(R) -> v2.std.logic.Bool
+  is_done: fn(R) -> Bool
 }
 
 fn fold_source<R>(src: String, algebra: SourceFold<R>) -> R {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: src,
     empty: algebra.init(src),
     cons: fn(acc, _) {

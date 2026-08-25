@@ -1,30 +1,30 @@
 module test.claim.econ_wedge_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data gitlab_fy2026_gross_margin_bp_low: std.measure.BasisPoint = basis_point(8735)
+data gitlab_fy2026_gross_margin_bp_low: std.measure.BasisPoint = std.measure.basis_point(8735)
 
-data gitlab_fy2026_gross_margin_bp_high: std.measure.BasisPoint = basis_point(8737)
+data gitlab_fy2026_gross_margin_bp_high: std.measure.BasisPoint = std.measure.basis_point(8737)
 
-data rollins_fy2025_operating_margin_bp_low: std.measure.BasisPoint = basis_point(1930)
+data rollins_fy2025_operating_margin_bp_low: std.measure.BasisPoint = std.measure.basis_point(1930)
 
-data rollins_fy2025_operating_margin_bp_high: std.measure.BasisPoint = basis_point(1931)
+data rollins_fy2025_operating_margin_bp_high: std.measure.BasisPoint = std.measure.basis_point(1931)
 
-data chemed_fy2025_operating_margin_bp_low: std.measure.BasisPoint = basis_point(1336)
+data chemed_fy2025_operating_margin_bp_low: std.measure.BasisPoint = std.measure.basis_point(1336)
 
-data chemed_fy2025_operating_margin_bp_high: std.measure.BasisPoint = basis_point(1337)
+data chemed_fy2025_operating_margin_bp_high: std.measure.BasisPoint = std.measure.basis_point(1337)
 
 data github_hetzner_wedge_assumptions: gunbc.econ.knowable_wedge.WedgeAssumptions = gunbc.econ.knowable_wedge.WedgeAssumptions {
-  runner_utilization_bp: basis_point(10000),
-  amortization_months: amortization_months(60),
+  runner_utilization_bp: std.measure.basis_point(10000),
+  amortization_months: std.measure.amortization_months(60),
   eur_to_usd_numerator: 109,
   eur_to_usd_denominator: 100,
 }
 
 data github_hetzner_zero_utilization_assumptions: gunbc.econ.knowable_wedge.WedgeAssumptions = gunbc.econ.knowable_wedge.WedgeAssumptions {
-  runner_utilization_bp: basis_point(0),
-  amortization_months: amortization_months(60),
+  runner_utilization_bp: std.measure.basis_point(0),
+  amortization_months: std.measure.amortization_months(60),
   eur_to_usd_numerator: 109,
   eur_to_usd_denominator: 100,
 }
@@ -38,51 +38,51 @@ data hetzner_ax41_usd_floor_fixture: extdeps.pricing.hetzner_dedicated.HetznerDe
   storage_bytes: hetzner_ax41_1_ltd_price.storage_bytes,
   monthly: std.measure.MoneyPerMonth {
     amount: hetzner_ax41_1_ltd_price.monthly.amount,
-    currency: Usd,
+    currency: std.currency.Usd,
   },
   setup_fee: hetzner_ax41_1_ltd_price.setup_fee,
   pricing_citation: "witness-fixture#usd-floor-currency-mismatch",
 }
 
 data github_hetzner_wedge_floor_usd_per_minute: std.measure.MoneyPerMinute = std.measure.MoneyPerMinute {
-  amount: money_amount_micro(count: 237),
-  currency: Usd,
+  amount: std.measure.money_amount_micro(count: 237),
+  currency: std.currency.Usd,
 }
 
 data github_hetzner_wedge_spread_usd_per_minute: std.measure.MoneyPerMinute = std.measure.MoneyPerMinute {
-  amount: money_amount_micro(count: 5763),
-  currency: Usd,
+  amount: std.measure.money_amount_micro(count: 5763),
+  currency: std.currency.Usd,
 }
 
 data github_tiny_umbrella_fixture: extdeps.pricing.github_actions.GithubActionsRunnerPriceRow = extdeps.pricing.github_actions.GithubActionsRunnerPriceRow {
-  billing_sku: extdeps.pricing.github_actions.github_actions_linux_2core_price.billing_sku,
-  sku_wire_label: extdeps.pricing.github_actions.github_actions_linux_2core_price.sku_wire_label,
-  vcpus: extdeps.pricing.github_actions.github_actions_linux_2core_price.vcpus,
-  cpu_architecture: extdeps.pricing.github_actions.github_actions_linux_2core_price.cpu_architecture,
+  billing_sku: github_actions_linux_2core_price.billing_sku,
+  sku_wire_label: github_actions_linux_2core_price.sku_wire_label,
+  vcpus: github_actions_linux_2core_price.vcpus,
+  cpu_architecture: github_actions_linux_2core_price.cpu_architecture,
   per_minute: std.measure.MoneyPerMinute {
-    amount: money_amount_micro(count: 1),
-    currency: Usd,
+    amount: std.measure.money_amount_micro(count: 1),
+    currency: std.currency.Usd,
   },
   pricing_citation: "witness-fixture#floor-exceeds-umbrella",
 }
 
 data github_zero_vcpu_runner_fixture: extdeps.pricing.github_actions.GithubActionsRunnerPriceRow = extdeps.pricing.github_actions.GithubActionsRunnerPriceRow {
-  billing_sku: extdeps.pricing.github_actions.github_actions_linux_2core_price.billing_sku,
-  sku_wire_label: extdeps.pricing.github_actions.github_actions_linux_2core_price.sku_wire_label,
-  vcpus: hardware_thread_count(0),
-  cpu_architecture: extdeps.pricing.github_actions.github_actions_linux_2core_price.cpu_architecture,
-  per_minute: extdeps.pricing.github_actions.github_actions_linux_2core_price.per_minute,
+  billing_sku: github_actions_linux_2core_price.billing_sku,
+  sku_wire_label: github_actions_linux_2core_price.sku_wire_label,
+  vcpus: std.measure.hardware_thread_count(0),
+  cpu_architecture: github_actions_linux_2core_price.cpu_architecture,
+  per_minute: github_actions_linux_2core_price.per_minute,
   pricing_citation: "witness-fixture#runner-thread-count-unknown",
 }
 
 test fn w_gitlab_gross_margin_envelope_derived_from_filed_components() -> Bool {
-  match derive_margin_envelope_from_filed_facts(
+  match gunbc.econ.margin_envelope.derive_margin_envelope_from_filed_facts(
     revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue,
     profit: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_gross_profit,
-    margin_kind: GrossMargin,
+    margin_kind: gunbc.econ.margin_envelope.GrossMargin,
   ) {
-    MarginEnvelopeDerived { envelope: env, margin_kind: GrossMargin } =>
-      margin_envelope_in_band(
+    gunbc.econ.margin_envelope.MarginEnvelopeDerived { envelope: env, margin_kind: gunbc.econ.margin_envelope.GrossMargin } =>
+      gunbc.econ.margin_envelope.margin_envelope_in_band(
         envelope: env,
         low_bp: gitlab_fy2026_gross_margin_bp_low,
         high_bp: gitlab_fy2026_gross_margin_bp_high,
@@ -92,22 +92,22 @@ test fn w_gitlab_gross_margin_envelope_derived_from_filed_components() -> Bool {
 }
 
 test fn w_gitlab_gross_margin_envelope_red_on_perturbed_gross_profit() -> Bool {
-  match filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_gross_profit) {
+  match extdeps.sec.facts.filed_amount(fact: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_gross_profit) {
     Present { value: gross_profit } => {
-      let perturbed = usd_whole_dollars(
-        count: usd_whole_dollars_count(gross_profit) + 10000000
+      let perturbed = extdeps.sec.facts.usd_whole_dollars(
+        count: extdeps.sec.facts.usd_whole_dollars_count(gross_profit) + 10000000
       )
-      match derive_margin_envelope_from_filed_facts(
+      match gunbc.econ.margin_envelope.derive_margin_envelope_from_filed_facts(
         revenue: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_revenue,
         profit: extdeps.sec.facts.FiledMonetaryFact {
-          element: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_gross_profit.element,
+          element: gitlab_fy2026_gross_profit.element,
           amount: Filed { amount: perturbed },
-          citation: extdeps.sec.issuer.gitlab_facts.gitlab_fy2026_gross_profit.citation,
+          citation: gitlab_fy2026_gross_profit.citation,
         },
-        margin_kind: GrossMargin,
+        margin_kind: gunbc.econ.margin_envelope.GrossMargin,
       ) {
-        MarginEnvelopeDerived { envelope: env, margin_kind: GrossMargin } =>
-          !margin_envelope_in_band(
+        gunbc.econ.margin_envelope.MarginEnvelopeDerived { envelope: env, margin_kind: gunbc.econ.margin_envelope.GrossMargin } =>
+          !gunbc.econ.margin_envelope.margin_envelope_in_band(
             envelope: env,
             low_bp: gitlab_fy2026_gross_margin_bp_low,
             high_bp: gitlab_fy2026_gross_margin_bp_high,
@@ -120,13 +120,13 @@ test fn w_gitlab_gross_margin_envelope_red_on_perturbed_gross_profit() -> Bool {
 }
 
 test fn w_rollins_operating_margin_envelope_derived() -> Bool {
-  match derive_margin_envelope_from_filed_facts(
+  match gunbc.econ.margin_envelope.derive_margin_envelope_from_filed_facts(
     revenue: extdeps.sec.issuer.rollins_facts.rollins_fy2025_revenue,
     profit: extdeps.sec.issuer.rollins_facts.rollins_fy2025_operating_income,
-    margin_kind: OperatingMargin,
+    margin_kind: gunbc.econ.margin_envelope.OperatingMargin,
   ) {
-    MarginEnvelopeDerived { envelope: env, margin_kind: OperatingMargin } =>
-      margin_envelope_in_band(
+    gunbc.econ.margin_envelope.MarginEnvelopeDerived { envelope: env, margin_kind: gunbc.econ.margin_envelope.OperatingMargin } =>
+      gunbc.econ.margin_envelope.margin_envelope_in_band(
         envelope: env,
         low_bp: rollins_fy2025_operating_margin_bp_low,
         high_bp: rollins_fy2025_operating_margin_bp_high,
@@ -136,13 +136,13 @@ test fn w_rollins_operating_margin_envelope_derived() -> Bool {
 }
 
 test fn w_chemed_operating_margin_envelope_derived() -> Bool {
-  match derive_margin_envelope_from_filed_facts(
+  match gunbc.econ.margin_envelope.derive_margin_envelope_from_filed_facts(
     revenue: extdeps.sec.issuer.chemed_facts.chemed_fy2025_revenue,
     profit: extdeps.sec.issuer.chemed_facts.chemed_fy2025_operating_income,
-    margin_kind: OperatingMargin,
+    margin_kind: gunbc.econ.margin_envelope.OperatingMargin,
   ) {
-    MarginEnvelopeDerived { envelope: env, margin_kind: OperatingMargin } =>
-      margin_envelope_in_band(
+    gunbc.econ.margin_envelope.MarginEnvelopeDerived { envelope: env, margin_kind: gunbc.econ.margin_envelope.OperatingMargin } =>
+      gunbc.econ.margin_envelope.margin_envelope_in_band(
         envelope: env,
         low_bp: chemed_fy2025_operating_margin_bp_low,
         high_bp: chemed_fy2025_operating_margin_bp_high,
@@ -152,85 +152,85 @@ test fn w_chemed_operating_margin_envelope_derived() -> Bool {
 }
 
 test fn w_hetzner_ax41_threads_cited_from_amd_catalog() -> Bool {
-  hardware_thread_count_value(t: hetzner_dedicated_server_threads(row: hetzner_ax41_1_ltd_price)) == hardware_thread_count_value(t: ryzen_5_3600_catalog.threads)
-    && hardware_thread_count_value(t: ryzen_5_3600_catalog.threads) == 12
+  std.measure.hardware_thread_count_value(t: extdeps.pricing.hetzner_dedicated.hetzner_dedicated_server_threads(row: extdeps.pricing.hetzner_dedicated.hetzner_ax41_1_ltd_price)) == std.measure.hardware_thread_count_value(t: ryzen_5_3600_catalog.threads)
+    && std.measure.hardware_thread_count_value(t: ryzen_5_3600_catalog.threads) == 12
 }
 
 test fn w_github_hetzner_knowable_wedge_derived_with_declared_assumptions() -> Bool {
-  match derive_github_hetzner_ci_minute_wedge(
+  match gunbc.econ.knowable_wedge.derive_github_hetzner_ci_minute_wedge(
     umbrella_row: extdeps.pricing.github_actions.github_actions_linux_2core_price,
-    floor_row: hetzner_ax41_1_ltd_price,
+    floor_row: extdeps.pricing.hetzner_dedicated.hetzner_ax41_1_ltd_price,
     assumptions_input: gunbc.econ.knowable_wedge.WedgeAssumptionsDeclared {
       assumptions: github_hetzner_wedge_assumptions,
     },
   ) {
-    KnowableWedgeComputed { wedge: w } =>
-      money_per_minute_micros(q: w.umbrella_per_minute) == 6000
-        && money_per_minute_micros(q: w.cost_floor_per_minute) == money_per_minute_micros(q: github_hetzner_wedge_floor_usd_per_minute)
-        && money_per_minute_micros(q: w.wedge_per_minute) == money_per_minute_micros(q: github_hetzner_wedge_spread_usd_per_minute)
+    gunbc.econ.knowable_wedge.KnowableWedgeComputed { wedge: w } =>
+      std.measure.money_per_minute_micros(q: w.umbrella_per_minute) == 6000
+        && std.measure.money_per_minute_micros(q: w.cost_floor_per_minute) == std.measure.money_per_minute_micros(q: github_hetzner_wedge_floor_usd_per_minute)
+        && std.measure.money_per_minute_micros(q: w.wedge_per_minute) == std.measure.money_per_minute_micros(q: github_hetzner_wedge_spread_usd_per_minute)
     _ => false
   }
 }
 
 test fn w_github_hetzner_knowable_wedge_red_on_unknown_assumptions() -> Bool {
-  match derive_github_hetzner_ci_minute_wedge(
+  match gunbc.econ.knowable_wedge.derive_github_hetzner_ci_minute_wedge(
     umbrella_row: extdeps.pricing.github_actions.github_actions_linux_2core_price,
-    floor_row: hetzner_ax41_1_ltd_price,
-    assumptions_input: WedgeAssumptionsUnknown,
+    floor_row: extdeps.pricing.hetzner_dedicated.hetzner_ax41_1_ltd_price,
+    assumptions_input: gunbc.econ.knowable_wedge.WedgeAssumptionsUnknown,
   ) {
-    KnowableWedgeRefused { cause: AssumptionsUnknown } => true
+    gunbc.econ.knowable_wedge.KnowableWedgeRefused { cause: gunbc.econ.knowable_wedge.AssumptionsUnknown } => true
     _ => false
   }
 }
 
 test fn w_github_hetzner_knowable_wedge_red_on_zero_utilization() -> Bool {
-  match derive_github_hetzner_ci_minute_wedge(
+  match gunbc.econ.knowable_wedge.derive_github_hetzner_ci_minute_wedge(
     umbrella_row: extdeps.pricing.github_actions.github_actions_linux_2core_price,
-    floor_row: hetzner_ax41_1_ltd_price,
+    floor_row: extdeps.pricing.hetzner_dedicated.hetzner_ax41_1_ltd_price,
     assumptions_input: gunbc.econ.knowable_wedge.WedgeAssumptionsDeclared {
       assumptions: github_hetzner_zero_utilization_assumptions,
     },
   ) {
-    KnowableWedgeRefused { cause: UtilizationUnknown } => true
+    gunbc.econ.knowable_wedge.KnowableWedgeRefused { cause: gunbc.econ.knowable_wedge.UtilizationUnknown } => true
     _ => false
   }
 }
 
 test fn w_github_hetzner_knowable_wedge_red_on_floor_currency_mismatch() -> Bool {
-  match derive_github_hetzner_ci_minute_wedge(
+  match gunbc.econ.knowable_wedge.derive_github_hetzner_ci_minute_wedge(
     umbrella_row: extdeps.pricing.github_actions.github_actions_linux_2core_price,
     floor_row: hetzner_ax41_usd_floor_fixture,
     assumptions_input: gunbc.econ.knowable_wedge.WedgeAssumptionsDeclared {
       assumptions: github_hetzner_wedge_assumptions,
     },
   ) {
-    KnowableWedgeRefused { cause: FloorCurrencyMismatch } => true
+    gunbc.econ.knowable_wedge.KnowableWedgeRefused { cause: gunbc.econ.knowable_wedge.FloorCurrencyMismatch } => true
     _ => false
   }
 }
 
 test fn w_github_hetzner_knowable_wedge_red_on_floor_exceeds_umbrella() -> Bool {
-  match derive_github_hetzner_ci_minute_wedge(
+  match gunbc.econ.knowable_wedge.derive_github_hetzner_ci_minute_wedge(
     umbrella_row: github_tiny_umbrella_fixture,
-    floor_row: hetzner_ax41_1_ltd_price,
+    floor_row: extdeps.pricing.hetzner_dedicated.hetzner_ax41_1_ltd_price,
     assumptions_input: gunbc.econ.knowable_wedge.WedgeAssumptionsDeclared {
       assumptions: github_hetzner_wedge_assumptions,
     },
   ) {
-    KnowableWedgeRefused { cause: FloorExceedsUmbrella } => true
+    gunbc.econ.knowable_wedge.KnowableWedgeRefused { cause: gunbc.econ.knowable_wedge.FloorExceedsUmbrella } => true
     _ => false
   }
 }
 
 test fn w_github_hetzner_knowable_wedge_red_on_zero_runner_threads() -> Bool {
-  match derive_github_hetzner_ci_minute_wedge(
+  match gunbc.econ.knowable_wedge.derive_github_hetzner_ci_minute_wedge(
     umbrella_row: github_zero_vcpu_runner_fixture,
-    floor_row: hetzner_ax41_1_ltd_price,
+    floor_row: extdeps.pricing.hetzner_dedicated.hetzner_ax41_1_ltd_price,
     assumptions_input: gunbc.econ.knowable_wedge.WedgeAssumptionsDeclared {
       assumptions: github_hetzner_wedge_assumptions,
     },
   ) {
-    KnowableWedgeRefused { cause: RunnerThreadCountUnknown } => true
+    gunbc.econ.knowable_wedge.KnowableWedgeRefused { cause: gunbc.econ.knowable_wedge.RunnerThreadCountUnknown } => true
     _ => false
   }
 }

@@ -8,23 +8,27 @@ module test.claim.scm_repository_envelope_witness
 // identity, re-derived from structure on load -- so the round-trip claims assert on the derived
 // commit id, not on bytes and not on a stored field, because there is no stored field to assert on.
 
-fn scm_env_atom(identity: v2.std.node.Symbol) -> Node {
+
+
+
+
+fn scm_env_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } }, children: [])
 }
 
-fn scm_env_named(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: target }
+fn scm_env_named(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
 // Two programs SHARING a subtree. The shared-population claim is meaningless without real sharing.
-fn scm_env_program_one() -> Node {
+fn scm_env_program_one() -> v2.std.node.Node {
   v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [scm_env_named(name: ^shared, target: scm_env_atom(identity: ^SHARED))],
   )
 }
 
-fn scm_env_program_two() -> Node {
+fn scm_env_program_two() -> v2.std.node.Node {
   v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
@@ -36,9 +40,9 @@ fn scm_env_program_two() -> Node {
 
 type ScmEnvPut { store: gunbc.scm.object_store.ObjectStore, identity: gunbc.scm.object_store.ObjectId }
 
-fn scm_env_put(store: gunbc.scm.object_store.ObjectStore, n: Node) -> ScmEnvPut {
+fn scm_env_put(store: gunbc.scm.object_store.ObjectStore, n: v2.std.node.Node) -> ScmEnvPut {
   match gunbc.scm.object_store.store_node(store: store, n: n) {
-    Stored { store: s, identity: i } => ScmEnvPut { store: s, identity: i }
+    gunbc.scm.object_store.Stored { store: s, identity: i } => ScmEnvPut { store: s, identity: i }
     gunbc.scm.object_store.LocatorCollision { identity: i, existing: _, incoming: _ } => ScmEnvPut { store: store, identity: i }
   }
 }
@@ -57,7 +61,7 @@ fn scm_env_two_commit_repository() -> gunbc.scm.repository_envelope.RepositoryEn
 }
 
 fn scm_env_reloaded(repo: gunbc.scm.repository_envelope.RepositoryEnvelope) -> gunbc.scm.repository_envelope.RepositoryDecodeOutcome {
-  gunbc.scm.repository_envelope.decode_repository(v: gunbc.scm.repository_envelope.encode_repository(repo: gunbc.tools.review_codex.repo))
+  gunbc.scm.repository_envelope.decode_repository(v: gunbc.scm.repository_envelope.encode_repository(repo: repo))
 }
 
 fn scm_env_refused(outcome: gunbc.scm.repository_envelope.RepositoryDecodeOutcome) -> Bool {
@@ -159,7 +163,7 @@ fn scm_env_count_named_array(members: List<extdeps.languages.json.emit.JsonKeyVa
 fn scm_env_array_len_if_key(acc: Int, m: extdeps.languages.json.emit.JsonKeyValue, key: String) -> Int {
   if m.key == key {
     match m.value {
-      JsonArray { elements: es } => count(es)
+      extdeps.languages.json.emit.JsonArray { elements: es } => count(es)
       _ => acc
     }
   } else {
@@ -192,7 +196,7 @@ test fn scm_env_the_encoded_counter_distinguishes_a_smaller_repository() -> Bool
 // ------------------------------------------------------------------------------------------------
 
 fn scm_env_members(v: extdeps.languages.json.emit.JsonValue) -> List<extdeps.languages.json.emit.JsonKeyValue> {
-  match v { JsonObject { members: ms } => ms, _ => [] }
+  match v { extdeps.languages.json.emit.JsonObject { members: ms } => ms, _ => [] }
 }
 
 fn scm_env_key_differs(m: extdeps.languages.json.emit.JsonKeyValue, key: String) -> Bool {
@@ -200,7 +204,7 @@ fn scm_env_key_differs(m: extdeps.languages.json.emit.JsonKeyValue, key: String)
 }
 
 fn scm_env_drop_key(members: List<extdeps.languages.json.emit.JsonKeyValue>, key: String) -> List<extdeps.languages.json.emit.JsonKeyValue> {
-  v2.std.algebra.filter(members, m => scm_env_key_differs(m: m, key: key))
+  filter(members, m => scm_env_key_differs(m: m, key: key))
 }
 
 fn scm_env_with(v: extdeps.languages.json.emit.JsonValue, key: String, value: extdeps.languages.json.emit.JsonValue) -> extdeps.languages.json.emit.JsonValue {
@@ -279,7 +283,7 @@ test fn scm_env_an_absent_checkout_is_valid_not_a_refusal() -> Bool {
     v: scm_env_with(
       v: gunbc.scm.repository_envelope.encode_repository(repo: scm_env_two_commit_repository()),
       key: "checked_out",
-      value: JsonNull
+      value: extdeps.languages.json.emit.JsonNull
     )
   ) {
     gunbc.scm.repository_envelope.RepositoryDecodeRefused { cause: _ } => false
@@ -380,6 +384,7 @@ fn scm_env_second_root_is(identity: gunbc.scm.object_store.ObjectId) -> Bool {
   gunbc.scm.object_store.object_id_eq(left: identity, right: second.identity)
 }
 
+
 // ------------------------------------------------------------------------------------------------
 // THE CHECKED ENCODER, with one claim per cause rather than one claim that "it refuses". The three
 // causes have different remedies -- an incomplete object table, a commit naming a missing object, a
@@ -443,7 +448,7 @@ test fn scm_env_an_uncontained_target_refuses_to_encode_and_names_it() -> Bool {
     commits: [gunbc.scm.repository_envelope.RepositoryCommit { root: full.identity, message: "grafted" }],
     checked_out: none,
   }
-  let outcome = gunbc.scm.repository_envelope.encode_repository_checked(repo: gunbc.tools.review_codex.repo)
+  let outcome = gunbc.scm.repository_envelope.encode_repository_checked(repo: repo)
   (scm_env_encode_cause_tag(outcome: outcome) == "uncontained_target")
     && scm_env_named_target_is_uncontained(outcome: outcome, store: grafted)
 }
@@ -453,9 +458,9 @@ fn scm_env_named_target_is_uncontained(outcome: gunbc.scm.repository_envelope.Re
     gunbc.scm.repository_envelope.RepositoryEncoded { value: _ } => false
     gunbc.scm.repository_envelope.RepositoryEncodeRefused { cause: c } =>
       match c {
-        gunbc.scm.repository_envelope.RepositoryEncodeUncontainedTarget { target: test.claim.pcb_footprint_witness.t } =>
+        gunbc.scm.repository_envelope.RepositoryEncodeUncontainedTarget { target: t } =>
           fold(gunbc.scm.commit_closure.uncontained_targets(store: store), init: false, f: fn(acc, id) {
-            acc || gunbc.scm.object_store.object_id_eq(left: id, right: test.claim.pcb_footprint_witness.t)
+            acc || gunbc.scm.object_store.object_id_eq(left: id, right: t)
           })
         gunbc.scm.repository_envelope.RepositoryCommitRootNotInStore { root: _ } => false
         gunbc.scm.repository_envelope.RepositoryCheckoutNotInCommits { selected: _ } => false
@@ -475,18 +480,19 @@ test fn scm_env_a_checkout_naming_a_non_commit_refuses_to_encode() -> Bool {
 // accepted the right repositories while emitting something else would satisfy an arm-only claim.
 test fn scm_env_a_complete_repository_encodes() -> Bool {
   let repo = scm_env_two_commit_repository()
-  match gunbc.scm.repository_envelope.encode_repository_checked(repo: gunbc.tools.review_codex.repo) {
-    gunbc.scm.repository_envelope.RepositoryEncoded { value: v } => extdeps.languages.json.emit.serialize_json(v: v) == extdeps.languages.json.emit.serialize_json(v: gunbc.scm.repository_envelope.encode_repository(repo: gunbc.tools.review_codex.repo))
+  match gunbc.scm.repository_envelope.encode_repository_checked(repo: repo) {
+    gunbc.scm.repository_envelope.RepositoryEncoded { value: v } => extdeps.languages.json.emit.serialize_json(v: v) == extdeps.languages.json.emit.serialize_json(v: gunbc.scm.repository_envelope.encode_repository(repo: repo))
     gunbc.scm.repository_envelope.RepositoryEncodeRefused { cause: _ } => false
   }
 }
+
 
 // ------------------------------------------------------------------------------------------------
 // THE CLOSED MEMBER SET AT THE ENVELOPE LAYER. Same rule, this layer's vocabulary.
 // ------------------------------------------------------------------------------------------------
 
 fn scm_env_wire_of(repo: gunbc.scm.repository_envelope.RepositoryEnvelope) -> List<extdeps.languages.json.emit.JsonKeyValue> {
-  scm_env_members(v: gunbc.scm.repository_envelope.encode_repository(repo: gunbc.tools.review_codex.repo))
+  scm_env_members(v: gunbc.scm.repository_envelope.encode_repository(repo: repo))
 }
 
 fn scm_env_decode_members(members: List<extdeps.languages.json.emit.JsonKeyValue>) -> gunbc.scm.repository_envelope.RepositoryDecodeOutcome {
@@ -536,7 +542,7 @@ test fn scm_env_the_unmodified_wire_still_loads() -> Bool {
 fn scm_env_commit_with_extra(m: extdeps.languages.json.emit.JsonKeyValue) -> extdeps.languages.json.emit.JsonKeyValue {
   if m.key == "commits" {
     match m.value {
-      JsonArray { elements: es } =>
+      extdeps.languages.json.emit.JsonArray { elements: es } =>
         extdeps.languages.json.emit.json_kv(key: "commits", value: extdeps.languages.json.emit.json_array(elements: map(es, e => scm_env_widen_commit(v: e))))
       _ => m
     }
@@ -547,7 +553,7 @@ fn scm_env_commit_with_extra(m: extdeps.languages.json.emit.JsonKeyValue) -> ext
 
 fn scm_env_widen_commit(v: extdeps.languages.json.emit.JsonValue) -> extdeps.languages.json.emit.JsonValue {
   match v {
-    JsonObject { members: ms } =>
+    extdeps.languages.json.emit.JsonObject { members: ms } =>
       extdeps.languages.json.emit.json_object(members: concat(ms, [extdeps.languages.json.emit.json_kv(key: "author", value: extdeps.languages.json.emit.json_string(s: "unmodeled"))]))
     _ => v
   }

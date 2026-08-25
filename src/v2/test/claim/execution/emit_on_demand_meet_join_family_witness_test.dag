@@ -1,7 +1,7 @@
 module v2.test.execution.emit_on_demand_meet_join_family_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data emit_on_demand_meet_join_family_note: String = "Witness-realization fan-out lane 4 (meet_join): PURE receipts only — grain/closure key sensitivity, store hit/miss materialization, interpreter role bound, packed-width budget refusal. Native execution for meet/join MIGRATED to family grain (merry-pike-487 follow-on, std.emit_on_demand witness_family_build_grain_ruling): the executing consumer is emit_on_demand_family_crate_witness_test (one-build members-warm, eval-anchored member agreements, all-alt wrong-fixture octet flips) — the per-witness cold/warm/wrong-fixture crate builds formerly here are deleted, never rebuilt per witness. Residue is pure; the LiveTreeDisposition flip to SubstrateInputsOnly is a named follow-on (not flipped in the migration PR to keep the selection-safety change separately reviewable)."
 
@@ -16,7 +16,7 @@ data meet_join_family_provider: std.materialization_ladder.CacheProvider = std.m
 
 fn meet_join_family_native_key_for(tree: v2.compiler.inferred_tree.InferredTree) -> std.content_hash.ContentHash {
   std.emit_on_demand.emit_on_demand_key(
-    closure_digest: inferred_tree_digest(tree: tree),
+    closure_digest: v2.compiler.eval.inferred_tree_digest(tree: tree),
     emitter_identity: meet_join_family_emitter,
     target_language: "rust",
     grain: std.emit_on_demand.NativeArtifact
@@ -25,30 +25,30 @@ fn meet_join_family_native_key_for(tree: v2.compiler.inferred_tree.InferredTree)
 
 fn meet_join_family_test_store() -> std.artifact_store.ArtifactStore {
   match std.artifact_store.store_over_provider(provider: meet_join_family_provider) {
-    StoreReady { store: s } => s
-    StoreRefusedRetention { provider_id: _, declared: _ } =>
+    std.artifact_store.StoreReady { store: s } => s
+    std.artifact_store.StoreRefusedRetention { provider_id: _, declared: _ } =>
       std.artifact_store.ArtifactStore { budget: std.measure.byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
 }
 
 fn meet_family_tree() -> v2.compiler.inferred_tree.InferredTree {
-  meet_join_eval_tree_for(root: dag_meet_arrow_with_body_fixture)
+  v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_tree_for(root: v2.extdeps.languages.dag.dag_meet_arrow_with_body_fixture)
 }
 
 fn meet_family_alt_tree() -> v2.compiler.inferred_tree.InferredTree {
-  meet_join_eval_tree_for(root: dag_meet_arrow_with_body_swapped_arms_fixture)
+  v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_tree_for(root: v2.extdeps.languages.dag.dag_meet_arrow_with_body_swapped_arms_fixture)
 }
 
 fn join_family_tree() -> v2.compiler.inferred_tree.InferredTree {
-  meet_join_eval_tree_for(root: dag_join_arrow_with_body_fixture)
+  v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_tree_for(root: v2.extdeps.languages.dag.dag_join_arrow_with_body_fixture)
 }
 
 fn join_family_alt_tree() -> v2.compiler.inferred_tree.InferredTree {
-  meet_join_eval_tree_for(root: dag_join_arrow_with_body_swapped_arms_fixture)
+  v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_tree_for(root: v2.extdeps.languages.dag.dag_join_arrow_with_body_swapped_arms_fixture)
 }
 
 test fn emit_on_demand_meet_join_grain_keys_differ_holds() -> Bool {
-  let digest = inferred_tree_digest(tree: meet_family_tree())
+  let digest = v2.compiler.eval.inferred_tree_digest(tree: meet_family_tree())
   let source = std.emit_on_demand.emit_on_demand_key(
     closure_digest: digest,
     emitter_identity: meet_join_family_emitter,
@@ -71,10 +71,10 @@ test fn emit_on_demand_meet_join_materialize_share_on_hit_holds() -> Bool {
     admitted: fn(put_store, evicted) {
       let lookup = std.emit_on_demand.emit_on_demand_lookup(store: put_store, key: key)
       match lookup {
-        EmitOnDemandHit { receipt: r } =>
+        std.emit_on_demand.EmitOnDemandHit { receipt: r } =>
           r.compile_skipped
             && std.emit_on_demand.materialization_for_lookup(lookup: lookup) == std.realization.Share
-        EmitOnDemandMiss => false
+        std.emit_on_demand.EmitOnDemandMiss => false
       }
     },
     did_not_fit: (a, b) => false
@@ -87,8 +87,8 @@ test fn emit_on_demand_meet_join_materialize_recompute_on_miss_holds() -> Bool {
     key: meet_join_family_native_key_for(tree: meet_family_tree())
   )
   match lookup {
-    EmitOnDemandMiss => std.emit_on_demand.materialization_for_lookup(lookup: lookup) == std.realization.Recompute
-    EmitOnDemandHit { receipt: _ } => false
+    std.emit_on_demand.EmitOnDemandMiss => std.emit_on_demand.materialization_for_lookup(lookup: lookup) == std.realization.Recompute
+    std.emit_on_demand.EmitOnDemandHit { receipt: _ } => false
   }
 }
 
@@ -97,15 +97,15 @@ test fn emit_on_demand_meet_join_interpreter_roles_bounded_holds() -> Bool {
 }
 
 test fn emit_on_demand_meet_join_schedule_refuses_unreadable_budget_holds() -> Bool {
-  match witness_family_realize_width(
+  match v2.std.emit_on_demand.witness_family_realize_width(
     bound_bytes: std.measure.byte_size(count: 25),
-    budget: BudgetUnreadable,
+    budget: std.realize_pack.BudgetUnreadable,
     witness_root: meet_family_tree().root,
     independence_override: 4
   ) {
-    BudgetRefused => true
-    PackedWidth { width: _ } => false
-    MaturationReserve { width: _ } => false
+    std.realize_pack.BudgetRefused => true
+    std.realize_pack.PackedWidth { width: _ } => false
+    std.realize_pack.MaturationReserve { width: _ } => false
   }
 }
 

@@ -43,7 +43,7 @@ type OccurrenceId {
 data occurrence_containment_storage_projection_note: String = "OccurrenceContainmentPath is the concrete compact storage projection of std.occurrence_binding.ContainmentPath<OccurrenceId>. Generic stage0 emission of ContainmentPath<N> with #[derive] carriers needed v1.compiler.trait_derive_emit item-level Clone bounds (PR #7570); that emitter work is prerequisite but does not by itself dissolve this projection — std_occurrence_binding is not on the stage0 roster until PR #7515 lands and proves ContainmentPath<OccurrenceId> compiles there."
 
 type OccurrenceContainmentPath {
-  ancestors: FreeMonoid<OccurrenceId>
+  ancestors: std.algebra.FreeMonoid<OccurrenceId>
   terminal: OccurrenceId
 }
 
@@ -218,8 +218,8 @@ fn occurrence_id_allocator_initial() -> OccurrenceIdAllocator {
   OccurrenceIdAllocator { next_id: 0 }
 }
 
-fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> std.occurrence_identity.OccurrenceIdAllocResult {
-  std.occurrence_identity.OccurrenceIdAllocResult {
+fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceIdAllocResult {
+  OccurrenceIdAllocResult {
     id: OccurrenceId { value: alloc.next_id },
     alloc: OccurrenceIdAllocator { next_id: alloc.next_id + 1 },
   }
@@ -273,7 +273,7 @@ fn occurrence_containment_paths_equal(
 data occurrence_containment_path_prefix_note: String = "Canonical containment-prefix predicates for structural exposure (review 45716 single-authority; review 47424 fold surface): declaration containment is exposed to a reference when prefix is a prefix of path. Ancestors are compared by projecting each FreeMonoid through fold (never a local Empty/Cons recursive match — DESIGN predicate/walker dissolution). Consumers import these from std.occurrence_identity — never reproduce locally."
 
 fn occurrence_containment_path_contains_ancestor(
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: std.algebra.FreeMonoid<OccurrenceId>,
   target: OccurrenceId
 ) -> Bool {
   fold(
@@ -284,7 +284,7 @@ fn occurrence_containment_path_contains_ancestor(
 }
 
 fn occurrence_containment_ancestors_as_list(
-  ancestors: FreeMonoid<OccurrenceId>
+  ancestors: std.algebra.FreeMonoid<OccurrenceId>
 ) -> List<OccurrenceId> {
   reverse(fold(
     ancestors,
@@ -334,8 +334,8 @@ fn occurrence_id_list_is_prefix_of(
 }
 
 fn occurrence_containment_ancestors_are_prefix_of(
-  prefix_ancestors: FreeMonoid<OccurrenceId>,
-  path_ancestors: FreeMonoid<OccurrenceId>
+  prefix_ancestors: std.algebra.FreeMonoid<OccurrenceId>,
+  path_ancestors: std.algebra.FreeMonoid<OccurrenceId>
 ) -> Bool {
   occurrence_id_list_is_prefix_of(
     prefix: occurrence_containment_ancestors_as_list(ancestors: prefix_ancestors),
@@ -678,8 +678,8 @@ fn occurrence_transport_refusal(
   }
 }
 
-data authored_token_ordinal_typed_bridge_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows.")
+data authored_token_ordinal_typed_bridge_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows.")
 
-data authored_token_ordinal_value_bridge_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: same trigger as authored_token_ordinal_typed_bridge_dissolve_on; replace AuthoredTokenOrdinal.value with Measure<Count, One, Nat> (or the converged Nat inhabitant) and delete both value-bridge rows with the space-bridge rows.")
+data authored_token_ordinal_value_bridge_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: same trigger as authored_token_ordinal_typed_bridge_dissolve_on; replace AuthoredTokenOrdinal.value with Measure<Count, One, Nat> (or the converged Nat inhabitant) and delete both value-bridge rows with the space-bridge rows.")
 
-data occurrence_containment_storage_projection_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: PR #7515 lands std_occurrence_binding on the stage0 roster and proves ContainmentPath<OccurrenceId> compiles without supplemental derive bounds; then replace OccurrenceContainmentPath with std.occurrence_binding.ContainmentPath<OccurrenceId> across consumers and delete both storage-projection rows.")
+data occurrence_containment_storage_projection_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "DISSOLVE-ON: PR #7515 lands std_occurrence_binding on the stage0 roster and proves ContainmentPath<OccurrenceId> compiles without supplemental derive bounds; then replace OccurrenceContainmentPath with std.occurrence_binding.ContainmentPath<OccurrenceId> across consumers and delete both storage-projection rows.")

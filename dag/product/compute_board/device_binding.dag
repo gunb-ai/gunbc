@@ -47,7 +47,7 @@ type PinConstraintProjection
 
 fn assignment_count_for_signal(assignments: List<DevicePinAssignment>, name: product.compute_board.digital_control.SignalName) -> std.nat.Nat {
   fold(assignments, init: 0, f: fn(acc, a) {
-    if signal_names_equal(a: a.signal, b: name) { acc + 1 } else { acc }
+    if product.compute_board.digital_control.signal_names_equal(a: a.signal, b: name) { acc + 1 } else { acc }
   })
 }
 
@@ -61,7 +61,7 @@ fn pin_for_signal(assignments: List<DevicePinAssignment>, name: product.compute_
   fold(assignments, init: none, f: fn(acc, a) {
     match acc {
       Present { value: v } => Present { value: v }
-      Absent => if signal_names_equal(a: a.signal, b: name) { Present { value: a.pin } } else { none }
+      Absent => if product.compute_board.digital_control.signal_names_equal(a: a.signal, b: name) { Present { value: a.pin } } else { none }
     }
   })
 }
@@ -72,7 +72,7 @@ fn target_spelling_for(bindings: List<product.compute_board.verilog_projection.V
   fold(bindings, init: none, f: fn(acc, b) {
     match acc {
       Present { value: v } => Present { value: v }
-      Absent => if signal_names_equal(a: b.signal, b: name) { Present { value: b.spelling } } else { none }
+      Absent => if product.compute_board.digital_control.signal_names_equal(a: b.signal, b: name) { Present { value: b.spelling } } else { none }
     }
   })
 }
@@ -84,12 +84,12 @@ fn assignment_refusals(
   assignments: List<DevicePinAssignment>
 ) -> List<PinChainRefusal> {
   fold(assignments, init: [], f: fn(acc, a) {
-    let on_package = if roster_admits_pin(r: realization.roster, pin: a.pin) {
+    let on_package = if extdeps.toolchain.icestorm.subject.roster_admits_pin(r: realization.roster, pin: a.pin) {
       []
     } else {
       [PinNotOnPackage { signal: a.signal as std.types.NonEmptyStr, pin: a.pin }]
     }
-    let declared = if intent_declares_signal(intent: control, name: a.signal) {
+    let declared = if product.compute_board.digital_control.intent_declares_signal(intent: control, name: a.signal) {
       []
     } else {
       [AssignedSignalNotDeclared { signal: a.signal as std.types.NonEmptyStr }]
@@ -222,7 +222,7 @@ fn project_article_to_pin_constraints(
       match v2.extdeps.formats.icestorm_pcf.pcf_emit(c: v2.extdeps.formats.icestorm_pcf.PcfConstraints {
         statements: constraint_statements(control: control, bindings: bindings, assignments: assignments),
       }) {
-        PcfEmitted { source: src } =>
+        v2.extdeps.formats.icestorm_pcf.PcfEmitted { source: src } =>
           PinConstraintsEmitted {
             receipt: PinConstraintReceipt {
               source_article: article.identity,
@@ -231,7 +231,7 @@ fn project_article_to_pin_constraints(
               source: src,
             },
           }
-        PcfEmissionRefused { reason: why } =>
+        v2.extdeps.formats.icestorm_pcf.PcfEmissionRefused { reason: why } =>
           PinConstraintsRefused {
             causes: PinChainRefusalSet { first: ConstraintNotEmittable { reason: why as std.types.NonEmptyStr }, rest: [] },
           }
@@ -253,15 +253,15 @@ fn project_article_to_pin_constraints(
 // is a declared claim a later document can refute.
 fn vendor_general_purpose_population(realization: ProgrammableDeviceRealization) -> product.compute_board.contact_population.ContactPopulation {
   product.compute_board.contact_population.ContactPopulation {
-    kind: VendorGeneralPurposeIo,
-    count: bank_population_general_purpose(p: realization.banks),
+    kind: product.compute_board.contact_population.VendorGeneralPurposeIo,
+    count: extdeps.programmable_logic.ice40.subject.bank_population_general_purpose(p: realization.banks),
     authority: "iCE40 LP/HX family data sheet per-bank I/O table",
   }
 }
 
 fn configuration_population(realization: ProgrammableDeviceRealization) -> product.compute_board.contact_population.ContactPopulation {
   product.compute_board.contact_population.ContactPopulation {
-    kind: ConfigurationContacts,
+    kind: product.compute_board.contact_population.ConfigurationContacts,
     count: realization.banks.configuration,
     authority: "iCE40 LP/HX family data sheet per-bank I/O table",
   }
@@ -269,29 +269,29 @@ fn configuration_population(realization: ProgrammableDeviceRealization) -> produ
 
 fn toolchain_placeable_population(realization: ProgrammableDeviceRealization) -> product.compute_board.contact_population.ContactPopulation {
   product.compute_board.contact_population.ContactPopulation {
-    kind: PlaceableLogicPins,
-    count: roster_pin_count(r: realization.roster),
+    kind: product.compute_board.contact_population.PlaceableLogicPins,
+    count: extdeps.toolchain.icestorm.subject.roster_pin_count(r: realization.roster),
     authority: "Project IceStorm package pin roster",
   }
 }
 
 fn realization_population_comparison(realization: ProgrammableDeviceRealization) -> product.compute_board.contact_population.PopulationComparison {
-  match project_population(
-    p: placeable_from_vendor_categories,
+  match product.compute_board.contact_population.project_population(
+    p: product.compute_board.contact_population.placeable_from_vendor_categories,
     parts: [vendor_general_purpose_population(realization: realization), configuration_population(realization: realization)]
   ) {
     Absent =>
-      product.compute_board.contact_population.PopulationsNotComparable { left: VendorGeneralPurposeIo, right: PlaceableLogicPins }
+      product.compute_board.contact_population.PopulationsNotComparable { left: product.compute_board.contact_population.VendorGeneralPurposeIo, right: product.compute_board.contact_population.PlaceableLogicPins }
     Present { value: projected } =>
-      compare_populations(a: projected, b: toolchain_placeable_population(realization: realization))
+      product.compute_board.contact_population.compare_populations(a: projected, b: toolchain_placeable_population(realization: realization))
   }
 }
 
 fn realization_populations_agree(realization: ProgrammableDeviceRealization) -> Bool {
   match realization_population_comparison(realization: realization) {
-    PopulationsAgree { kind: _, count: _ } => true
-    PopulationsDisagree { kind: _, left: _, right: _ } => false
-    PopulationsNotComparable { left: _, right: _ } => false
+    product.compute_board.contact_population.PopulationsAgree { kind: _, count: _ } => true
+    product.compute_board.contact_population.PopulationsDisagree { kind: _, left: _, right: _ } => false
+    product.compute_board.contact_population.PopulationsNotComparable { left: _, right: _ } => false
   }
 }
 
@@ -299,10 +299,10 @@ fn realization_populations_agree(realization: ProgrammableDeviceRealization) -> 
 // toolchain's pin roster arrive as one value, so a binding cannot be checked against a roster
 // belonging to a different package.
 data interlock_device_realization: ProgrammableDeviceRealization = ProgrammableDeviceRealization {
-  device: ice40_hx1k,
-  package_carrier: ice40_tq144_package,
-  banks: ice40_hx1k_tq144_banks,
-  roster: icestorm_hx1k_tq144_roster,
+  device: extdeps.programmable_logic.ice40.subject.ice40_hx1k,
+  package_carrier: extdeps.programmable_logic.ice40.subject.ice40_tq144_package,
+  banks: extdeps.programmable_logic.ice40.subject.ice40_hx1k_tq144_banks,
+  roster: extdeps.toolchain.icestorm.subject.icestorm_hx1k_tq144_roster,
 }
 
 // WHAT THE ROSTER DOES AND DOES NOT DECIDE, stated because the gap is invisible otherwise. It
@@ -315,8 +315,8 @@ data interlock_device_realization: ProgrammableDeviceRealization = ProgrammableD
 // on the wall, not a defect in it, and closing it needs per-pin function facts rather than a
 // stricter predicate over the facts already here.
 data interlock_pin_assignments: List<DevicePinAssignment> = [
-  DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
-  DevicePinAssignment { signal: fault_signal, pin: "2" },
-  DevicePinAssignment { signal: power_permit_signal, pin: "3" },
-  DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+  DevicePinAssignment { signal: product.compute_board.digital_control.conditioned_good_signal, pin: "1" },
+  DevicePinAssignment { signal: product.compute_board.digital_control.fault_signal, pin: "2" },
+  DevicePinAssignment { signal: product.compute_board.digital_control.power_permit_signal, pin: "3" },
+  DevicePinAssignment { signal: product.compute_board.digital_control.reset_release_signal, pin: "4" },
 ]

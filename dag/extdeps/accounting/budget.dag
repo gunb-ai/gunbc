@@ -3,7 +3,7 @@ module extdeps.accounting.budget
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Budget"
   }
 }
@@ -11,29 +11,29 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 type BudgetingMethod = ZeroBased | Incremental | ActivityBased
 
 type Appropriation<Q, S> {
-  ceiling: Measure<Q, S, std.nat.Nat>
+  ceiling: std.measure.Measure<Q, S, std.nat.Nat>
 }
 
 type LineItem<Q, S> {
   purpose: String
-  amount: Measure<Q, S, std.nat.Nat>
+  amount: std.measure.Measure<Q, S, std.nat.Nat>
 }
 
 type BudgetBalance = Surplus | Balanced | Deficit
 
-fn line_items_total<Q, S>(items: List<LineItem<Q, S>>) -> Measure<Q, S, std.nat.Nat> {
-  fold(items, init: std.measure.Measure { count: 0 }, f: (acc, it) => measure_add(a: acc, b: it.amount))
+fn line_items_total<Q, S>(items: List<LineItem<Q, S>>) -> std.measure.Measure<Q, S, std.nat.Nat> {
+  fold(items, init: std.measure.Measure { count: 0 }, f: (acc, it) => std.measure.measure_add(a: acc, b: it.amount))
 }
 
 fn within_appropriation<Q, S>(appropriation: Appropriation<Q, S>, items: List<LineItem<Q, S>>) -> Bool {
-  measure_le(a: line_items_total(items: items), b: appropriation.ceiling)
+  std.measure.measure_le(a: line_items_total(items: items), b: appropriation.ceiling)
 }
 
 fn budget_balance<Q, S>(appropriation: Appropriation<Q, S>, items: List<LineItem<Q, S>>) -> BudgetBalance {
   let spent = line_items_total(items: items)
   let ceiling = appropriation.ceiling
-  return if measure_le(a: spent, b: ceiling) {
-    if measure_le(a: ceiling, b: spent) { Balanced } else { Surplus }
+  return if std.measure.measure_le(a: spent, b: ceiling) {
+    if std.measure.measure_le(a: ceiling, b: spent) { Balanced } else { Surplus }
   } else {
     Deficit
   }
@@ -42,13 +42,13 @@ fn budget_balance<Q, S>(appropriation: Appropriation<Q, S>, items: List<LineItem
 type AdmissionState<Q, S> {
   appropriation: Appropriation<Q, S>
   committed: List<LineItem<Q, S>>
-  used: Measure<Q, S, std.nat.Nat>
+  used: std.measure.Measure<Q, S, std.nat.Nat>
   refused: List<LineItem<Q, S>>
 }
 
 fn admit_line_item<Q, S>(st: AdmissionState<Q, S>, candidate: LineItem<Q, S>) -> AdmissionState<Q, S> {
-  let next_used = measure_add(a: st.used, b: candidate.amount)
-  return if measure_le(a: next_used, b: st.appropriation.ceiling) {
+  let next_used = std.measure.measure_add(a: st.used, b: candidate.amount)
+  return if std.measure.measure_le(a: next_used, b: st.appropriation.ceiling) {
     AdmissionState {
       appropriation: st.appropriation,
       committed: concat(st.committed, [candidate]),

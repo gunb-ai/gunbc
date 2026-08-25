@@ -1,64 +1,64 @@
 module v2.test.claim.dag_acceptance
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data dag_acceptance_test_note: String = "The candidates are real source strings run through the real compile chain, not hand-built trees: the harness's whole claim is about what happens to a STRING, and a fixture tree would prove the fold and skip the subject. The target-toolchain executor IS a fixture here, deliberately — it is the seam where a host effect would enter, and the hermetic envelope refuses host effects, so the arms are exercised against declared observations. What that establishes is the MAPPING from observation to execution row; that the real toolchain produces those observations is a separate, wet claim and is not asserted by this file."
 
 data candidate_dies_at_resolve_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { undefined_name }\n"
 data candidate_reaches_resolve_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 
-fn candidate(source: String) -> DagCandidate {
-  DagCandidate { file: ^candidate_module, source: source }
+fn candidate(source: String) -> v2.workflow.dag_acceptance.DagCandidate {
+  v2.workflow.dag_acceptance.DagCandidate { file: ^candidate_module, source: source }
 }
 
-fn fixture_executor(observation: TargetCompileObservation) -> TargetCompileExecutor {
-  TargetCompileExecutor { compile_target_source: fn(_source) { observation } }
+fn fixture_executor(observation: v2.workflow.dag_acceptance.TargetCompileObservation) -> v2.workflow.dag_acceptance.TargetCompileExecutor {
+  v2.workflow.dag_acceptance.TargetCompileExecutor { compile_target_source: fn(_source) { observation } }
 }
 
-fn unbounded_env() -> AcceptanceEnvironment {
-  AcceptanceEnvironment {
-    target_compile: fixture_executor(observation: TargetCompileDecided { verdict: TargetCompileAccepted }),
-    budget: VerifierBudgetUnbounded
+fn unbounded_env() -> v2.workflow.dag_acceptance.AcceptanceEnvironment {
+  v2.workflow.dag_acceptance.AcceptanceEnvironment {
+    target_compile: fixture_executor(observation: v2.workflow.dag_acceptance.TargetCompileDecided { verdict: v2.std.leaf_model_verification.TargetCompileAccepted }),
+    budget: v2.workflow.dag_acceptance.VerifierBudgetUnbounded
   }
 }
 
 fn contract(
-  name: Symbol,
-  head: DagStageObligation,
-  tail: List<DagStageObligation>,
-  costs: List<StageCostRow>
-) -> DagAcceptanceContract {
-  DagAcceptanceContract {
+  name: v2.std.node.Symbol,
+  head: v2.workflow.dag_acceptance.DagStageObligation,
+  tail: List<v2.workflow.dag_acceptance.DagStageObligation>,
+  costs: List<v2.workflow.dag_acceptance.StageCostRow>
+) -> v2.workflow.dag_acceptance.DagAcceptanceContract {
+  v2.workflow.dag_acceptance.DagAcceptanceContract {
     name: name,
-    obligations: NonEmptyObligations { head: head, tail: tail },
-    policy: InteractiveFailFast,
+    obligations: v2.workflow.dag_acceptance.NonEmptyObligations { head: head, tail: tail },
+    policy: v2.workflow.dag_acceptance.InteractiveFailFast,
     stage_costs: costs
   }
 }
 
-fn row_for(receipt: DagAcceptanceReceipt, label: Symbol) -> v2.std.optional.Optional<StageExecution> {
-  fold(receipt.rows, init: optional_absent(), f: fn(acc, row) {
+fn row_for(receipt: v2.workflow.dag_acceptance.DagAcceptanceReceipt, label: v2.std.node.Symbol) -> v2.std.optional.Optional<v2.workflow.dag_acceptance.StageExecution> {
+  fold(receipt.rows, init: v2.std.optional.optional_absent(), f: fn(acc, row) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if obligation_label(obligation: row_obligation(row: row)) == label {
-          optional_present(value: row)
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent =>
+        if v2.workflow.dag_acceptance.obligation_label(obligation: v2.workflow.dag_acceptance.row_obligation(row: row)) == label {
+          v2.std.optional.optional_present(value: row)
         } else {
-          optional_absent()
+          v2.std.optional.optional_absent()
         }
     }
   })
 }
 
-fn row_is_blocked_by(receipt: DagAcceptanceReceipt, label: Symbol, prerequisite: Symbol) -> v2.std.logic.Bool {
+fn row_is_blocked_by(receipt: v2.workflow.dag_acceptance.DagAcceptanceReceipt, label: v2.std.node.Symbol, prerequisite: v2.std.node.Symbol) -> Bool {
   match row_for(receipt: receipt, label: label) {
-    Absent => false
-    Present { value: row } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: row } =>
       match row {
-        StageNotRun { obligation: _, reason: reason } =>
+        v2.workflow.dag_acceptance.StageNotRun { obligation: _, reason: reason } =>
           match reason {
-            BlockedByPrerequisite { prerequisite: p } => p == prerequisite
+            v2.workflow.dag_acceptance.BlockedByPrerequisite { prerequisite: p } => p == prerequisite
             _ => false
           }
         _ => false
@@ -66,14 +66,14 @@ fn row_is_blocked_by(receipt: DagAcceptanceReceipt, label: Symbol, prerequisite:
   }
 }
 
-fn row_is_budget_unavailable(receipt: DagAcceptanceReceipt, label: Symbol) -> v2.std.logic.Bool {
+fn row_is_budget_unavailable(receipt: v2.workflow.dag_acceptance.DagAcceptanceReceipt, label: v2.std.node.Symbol) -> Bool {
   match row_for(receipt: receipt, label: label) {
-    Absent => false
-    Present { value: row } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: row } =>
       match row {
-        StageNotRun { obligation: _, reason: reason } =>
+        v2.workflow.dag_acceptance.StageNotRun { obligation: _, reason: reason } =>
           match reason {
-            VerifierBudgetUnavailable { required: _, budget_total: _, already_spent: _ } => true
+            v2.workflow.dag_acceptance.VerifierBudgetUnavailable { required: _, budget_total: _, already_spent: _ } => true
             _ => false
           }
         _ => false
@@ -81,41 +81,41 @@ fn row_is_budget_unavailable(receipt: DagAcceptanceReceipt, label: Symbol) -> v2
   }
 }
 
-fn verdict_is_rejected_at(receipt: DagAcceptanceReceipt, label: Symbol) -> v2.std.logic.Bool {
-  match acceptance_verdict(receipt: receipt) {
-    AcceptanceContractRejected { first_rejection: first, further_rejections: _ } => first == label
+fn verdict_is_rejected_at(receipt: v2.workflow.dag_acceptance.DagAcceptanceReceipt, label: v2.std.node.Symbol) -> Bool {
+  match v2.workflow.dag_acceptance.acceptance_verdict(receipt: receipt) {
+    v2.workflow.dag_acceptance.AcceptanceContractRejected { first_rejection: first, further_rejections: _ } => first == label
     _ => false
   }
 }
 
-fn verdict_is_incomplete(receipt: DagAcceptanceReceipt) -> v2.std.logic.Bool {
-  match acceptance_verdict(receipt: receipt) {
-    AcceptanceContractIncomplete { first_unfinished: _, further_unfinished: _ } => true
+fn verdict_is_incomplete(receipt: v2.workflow.dag_acceptance.DagAcceptanceReceipt) -> Bool {
+  match v2.workflow.dag_acceptance.acceptance_verdict(receipt: receipt) {
+    v2.workflow.dag_acceptance.AcceptanceContractIncomplete { first_unfinished: _, further_unfinished: _ } => true
     _ => false
   }
 }
 
-fn verdict_is_satisfied(receipt: DagAcceptanceReceipt) -> v2.std.logic.Bool {
-  match acceptance_verdict(receipt: receipt) {
-    AcceptanceContractSatisfied { frontier_stages: _ } => true
+fn verdict_is_satisfied(receipt: v2.workflow.dag_acceptance.DagAcceptanceReceipt) -> Bool {
+  match v2.workflow.dag_acceptance.acceptance_verdict(receipt: receipt) {
+    v2.workflow.dag_acceptance.AcceptanceContractSatisfied { frontier_stages: _ } => true
     _ => false
   }
 }
 
-test fn acceptance_resolve_contract_accepts_a_resolvable_candidate() -> v2.std.logic.Bool {
+test fn acceptance_resolve_contract_accepts_a_resolvable_candidate() -> Bool {
   verdict_is_satisfied(
-    receipt: run_acceptance(
-      contract: contract(name: ^resolve_only, head: ResolveStage, tail: [], costs: []),
+    receipt: v2.workflow.dag_acceptance.run_acceptance(
+      contract: contract(name: ^resolve_only, head: v2.workflow.dag_acceptance.ResolveStage, tail: [], costs: []),
       candidate: candidate(source: candidate_reaches_resolve_source),
       env: unbounded_env()
     )
   )
 }
 
-test fn acceptance_locates_a_resolve_death_at_resolve() -> v2.std.logic.Bool {
+test fn acceptance_locates_a_resolve_death_at_resolve() -> Bool {
   verdict_is_rejected_at(
-    receipt: run_acceptance(
-      contract: contract(name: ^resolve_only, head: ResolveStage, tail: [], costs: []),
+    receipt: v2.workflow.dag_acceptance.run_acceptance(
+      contract: contract(name: ^resolve_only, head: v2.workflow.dag_acceptance.ResolveStage, tail: [], costs: []),
       candidate: candidate(source: candidate_dies_at_resolve_source),
       env: unbounded_env()
     ),
@@ -123,9 +123,9 @@ test fn acceptance_locates_a_resolve_death_at_resolve() -> v2.std.logic.Bool {
   )
 }
 
-test fn acceptance_blocks_infer_behind_a_failed_resolve() -> v2.std.logic.Bool {
-  let receipt = run_acceptance(
-    contract: contract(name: ^through_infer, head: InferStage, tail: [], costs: []),
+test fn acceptance_blocks_infer_behind_a_failed_resolve() -> Bool {
+  let receipt = v2.workflow.dag_acceptance.run_acceptance(
+    contract: contract(name: ^through_infer, head: v2.workflow.dag_acceptance.InferStage, tail: [], costs: []),
     candidate: candidate(source: candidate_dies_at_resolve_source),
     env: unbounded_env()
   )
@@ -133,21 +133,21 @@ test fn acceptance_blocks_infer_behind_a_failed_resolve() -> v2.std.logic.Bool {
     && verdict_is_rejected_at(receipt: receipt, label: ^obligation_resolve)
 }
 
-test fn acceptance_accounts_for_a_stage_the_contract_never_asked_for() -> v2.std.logic.Bool {
+test fn acceptance_accounts_for_a_stage_the_contract_never_asked_for() -> Bool {
   match row_for(
-    receipt: run_acceptance(
-      contract: contract(name: ^tokenize_only, head: TokenizeStage, tail: [], costs: []),
+    receipt: v2.workflow.dag_acceptance.run_acceptance(
+      contract: contract(name: ^tokenize_only, head: v2.workflow.dag_acceptance.TokenizeStage, tail: [], costs: []),
       candidate: candidate(source: candidate_reaches_resolve_source),
       env: unbounded_env()
     ),
     label: ^obligation_infer
   ) {
-    Absent => false
-    Present { value: row } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: row } =>
       match row {
-        StageNotRun { obligation: _, reason: reason } =>
+        v2.workflow.dag_acceptance.StageNotRun { obligation: _, reason: reason } =>
           match reason {
-            NotRequiredByContract => true
+            v2.workflow.dag_acceptance.NotRequiredByContract => true
             _ => false
           }
         _ => false
@@ -157,18 +157,18 @@ test fn acceptance_accounts_for_a_stage_the_contract_never_asked_for() -> v2.std
 
 data budget_red_note: String = "THE VERIFIER-BUDGET RED. A harness that cannot afford to look must not report that it looked and disliked what it saw. This contract declares a cost the ledger cannot meet, and the assertion is TWO-SIDED: the rows say VerifierBudgetUnavailable, and the verdict is Incomplete rather than Rejected. Dropping the second half would let the very conflation this exists to prevent — a slow machine reading as a bad candidate — pass the test."
 
-test fn acceptance_budget_exhaustion_is_incomplete_never_rejected() -> v2.std.logic.Bool {
-  let receipt = run_acceptance(
+test fn acceptance_budget_exhaustion_is_incomplete_never_rejected() -> Bool {
+  let receipt = v2.workflow.dag_acceptance.run_acceptance(
     contract: contract(
       name: ^expensive_resolve,
-      head: ResolveStage,
+      head: v2.workflow.dag_acceptance.ResolveStage,
       tail: [],
-      costs: [StageCostRow { obligation: ResolveStage, required: millisecond(count: 1000) }]
+      costs: [v2.workflow.dag_acceptance.StageCostRow { obligation: v2.workflow.dag_acceptance.ResolveStage, required: std.measure.millisecond(count: 1000) }]
     ),
     candidate: candidate(source: candidate_dies_at_resolve_source),
-    env: AcceptanceEnvironment {
-      target_compile: fixture_executor(observation: TargetCompileDecided { verdict: TargetCompileAccepted }),
-      budget: VerifierBudgetTotal { total: millisecond(count: 1) }
+    env: v2.workflow.dag_acceptance.AcceptanceEnvironment {
+      target_compile: fixture_executor(observation: v2.workflow.dag_acceptance.TargetCompileDecided { verdict: v2.std.leaf_model_verification.TargetCompileAccepted }),
+      budget: v2.workflow.dag_acceptance.VerifierBudgetTotal { total: std.measure.millisecond(count: 1) }
     }
   )
   row_is_budget_unavailable(receipt: receipt, label: ^obligation_resolve)
@@ -177,107 +177,107 @@ test fn acceptance_budget_exhaustion_is_incomplete_never_rejected() -> v2.std.lo
 
 data target_compile_prerequisite_note: String = "The prerequisite is DERIVED from the claim the obligation already carries, which is why 'target-compile an emission nobody requested' cannot be written down. This asserts the derivation, not a hand-authored edge: the prerequisite of a TargetCompile obligation is exactly the Translate obligation over ITS OWN translation claim, and the assertion compares the translation IDENTITY rather than the discriminant, so a prerequisite pointing at some other target would fail here."
 
-fn rust_translation_claim() -> TranslationClaim {
-  TranslationClaim {
-    target: rust_target_model(),
+fn rust_translation_claim() -> v2.workflow.dag_acceptance.TranslationClaim {
+  v2.workflow.dag_acceptance.TranslationClaim {
+    target: v2.extdeps.languages.rust.rust_target_model(),
     target_identity: ^target_rust,
     emitter_identity: ^emitter_v2_emit
   }
 }
 
-fn rustc_target_compile_claim() -> TargetCompileClaim {
-  TargetCompileClaim {
+fn rustc_target_compile_claim() -> v2.workflow.dag_acceptance.TargetCompileClaim {
+  v2.workflow.dag_acceptance.TargetCompileClaim {
     translation: rust_translation_claim(),
     toolchain_identity: ^toolchain_rustc
   }
 }
 
-test fn acceptance_target_compile_prerequisite_is_its_own_translation() -> v2.std.logic.Bool {
+test fn acceptance_target_compile_prerequisite_is_its_own_translation() -> Bool {
   fold(
-    obligation_prerequisites(
-      obligation: TargetCompileStage { claim: rustc_target_compile_claim() }
+    v2.workflow.dag_acceptance.obligation_prerequisites(
+      obligation: v2.workflow.dag_acceptance.TargetCompileStage { claim: rustc_target_compile_claim() }
     ),
     init: false,
     f: fn(acc, p) {
-      acc || obligation_eq(a: p, b: TranslateStage { claim: rust_translation_claim() })
+      acc || v2.workflow.dag_acceptance.obligation_eq(a: p, b: v2.workflow.dag_acceptance.TranslateStage { claim: rust_translation_claim() })
     }
   )
 }
 
 data target_compile_mapping_note: String = "The four observation arms are exercised at the mapping itself, and this is scoped honestly: it proves that an accepted observation passes, a diagnosed one REJECTS, an unparseable failure lands UNDECIDED rather than rejected, and an unavailable toolchain lands NOT RUN rather than rejected. It does NOT prove that a real toolchain produces those observations — that is a wet claim about v2.workflow.dag_acceptance_rustc and it is not asserted here."
 
-fn row_kind(row: StageExecution) -> Symbol {
+fn row_kind(row: v2.workflow.dag_acceptance.StageExecution) -> v2.std.node.Symbol {
   match row {
-    StagePassed { obligation: _, receipt: _ } => ^row_passed
-    StagePassedWithFrontier { obligation: _, receipt: _, diagnostics: _ } => ^row_passed_with_frontier
-    StageRejected { obligation: _, refusal: _ } => ^row_rejected
-    StageNotRun { obligation: _, reason: _ } => ^row_not_run
-    StageUndecided { obligation: _, cause: _ } => ^row_undecided
+    v2.workflow.dag_acceptance.StagePassed { obligation: _, receipt: _ } => ^row_passed
+    v2.workflow.dag_acceptance.StagePassedWithFrontier { obligation: _, receipt: _, diagnostics: _ } => ^row_passed_with_frontier
+    v2.workflow.dag_acceptance.StageRejected { obligation: _, refusal: _ } => ^row_rejected
+    v2.workflow.dag_acceptance.StageNotRun { obligation: _, reason: _ } => ^row_not_run
+    v2.workflow.dag_acceptance.StageUndecided { obligation: _, cause: _ } => ^row_undecided
   }
 }
 
-fn observation_row_kind(observation: TargetCompileObservation) -> Symbol {
-  row_kind(row: target_compile_row(claim: rustc_target_compile_claim(), observation: observation))
+fn observation_row_kind(observation: v2.workflow.dag_acceptance.TargetCompileObservation) -> v2.std.node.Symbol {
+  row_kind(row: v2.workflow.dag_acceptance.target_compile_row(claim: rustc_target_compile_claim(), observation: observation))
 }
 
-test fn acceptance_target_compile_observations_partition_by_subject() -> v2.std.logic.Bool {
-  (observation_row_kind(observation: TargetCompileDecided { verdict: TargetCompileAccepted }) == ^row_passed)
+test fn acceptance_target_compile_observations_partition_by_subject() -> Bool {
+  (observation_row_kind(observation: v2.workflow.dag_acceptance.TargetCompileDecided { verdict: v2.std.leaf_model_verification.TargetCompileAccepted }) == ^row_passed)
     && (observation_row_kind(
-          observation: TargetCompileDecided {
-            verdict: TargetCompileRejected { diagnostic_code: ^some_target_diagnostic }
+          observation: v2.workflow.dag_acceptance.TargetCompileDecided {
+            verdict: v2.std.leaf_model_verification.TargetCompileRejected { diagnostic_code: ^some_target_diagnostic }
           }
         ) == ^row_rejected)
     && (observation_row_kind(
-          observation: TargetCompileFailedUnparsed { exit_code: 4, stderr_length: 0 }
+          observation: v2.workflow.dag_acceptance.TargetCompileFailedUnparsed { exit_code: 4, stderr_length: 0 }
         ) == ^row_undecided)
     && (observation_row_kind(
-          observation: TargetCompilerUnavailable { cause: "absent" }
+          observation: v2.workflow.dag_acceptance.TargetCompilerUnavailable { cause: "absent" }
         ) == ^row_not_run)
 }
 
-test fn acceptance_infer_row_for_a_resolvable_candidate_is_determinate() -> v2.std.logic.Bool {
+test fn acceptance_infer_row_for_a_resolvable_candidate_is_determinate() -> Bool {
   match row_for(
-    receipt: run_acceptance(
-      contract: contract(name: ^through_infer, head: InferStage, tail: [], costs: []),
+    receipt: v2.workflow.dag_acceptance.run_acceptance(
+      contract: contract(name: ^through_infer, head: v2.workflow.dag_acceptance.InferStage, tail: [], costs: []),
       candidate: candidate(source: candidate_reaches_resolve_source),
       env: unbounded_env()
     ),
     label: ^obligation_infer
   ) {
-    Absent => false
-    Present { value: row } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: row } =>
       (row_kind(row: row) == ^row_passed)
         || (row_kind(row: row) == ^row_passed_with_frontier)
         || (row_kind(row: row) == ^row_rejected)
   }
 }
 
-test fn acceptance_fail_fast_skip_is_not_a_block() -> v2.std.logic.Bool {
-  let rejected_state = AcceptanceRunState {
+test fn acceptance_fail_fast_skip_is_not_a_block() -> Bool {
+  let rejected_state = v2.workflow.dag_acceptance.AcceptanceRunState {
     rows: [],
-    resolved: optional_absent(),
-    inferred: optional_absent(),
+    resolved: v2.std.optional.optional_absent(),
+    inferred: v2.std.optional.optional_absent(),
     translations: [],
-    spent: millisecond(count: 0),
-    first_rejection: optional_present(value: ^obligation_eval)
+    spent: std.measure.millisecond(count: 0),
+    first_rejection: v2.std.optional.optional_present(value: ^obligation_eval)
   }
-  let fail_fast = contract(name: ^ff, head: InferStage, tail: [], costs: [])
-  let full_ledger = DagAcceptanceContract {
+  let fail_fast = contract(name: ^ff, head: v2.workflow.dag_acceptance.InferStage, tail: [], costs: [])
+  let full_ledger = v2.workflow.dag_acceptance.DagAcceptanceContract {
     name: ^fl,
-    obligations: NonEmptyObligations { head: InferStage, tail: [] },
-    policy: FullLedger,
+    obligations: v2.workflow.dag_acceptance.NonEmptyObligations { head: v2.workflow.dag_acceptance.InferStage, tail: [] },
+    policy: v2.workflow.dag_acceptance.FullLedger,
     stage_costs: []
   }
   skip_reason_is_decisive(contract: fail_fast, state: rejected_state)
     && !skip_reason_is_decisive(contract: full_ledger, state: rejected_state)
 }
 
-fn skip_reason_is_decisive(contract: DagAcceptanceContract, state: AcceptanceRunState) -> v2.std.logic.Bool {
-  match fail_fast_skip_reason(contract: contract, state: state) {
-    Absent => false
-    Present { value: reason } =>
+fn skip_reason_is_decisive(contract: v2.workflow.dag_acceptance.DagAcceptanceContract, state: v2.workflow.dag_acceptance.AcceptanceRunState) -> Bool {
+  match v2.workflow.dag_acceptance.fail_fast_skip_reason(contract: contract, state: state) {
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: reason } =>
       match reason {
-        SkippedAfterDecisiveRejection { rejected_obligation: _ } => true
+        v2.workflow.dag_acceptance.SkippedAfterDecisiveRejection { rejected_obligation: _ } => true
         _ => false
       }
   }
@@ -285,12 +285,12 @@ fn skip_reason_is_decisive(contract: DagAcceptanceContract, state: AcceptanceRun
 
 data translate_row_note: String = "The sibling branch, exercised end to end through the real compiler rather than at the fold. What is asserted is that the row is DETERMINATE — passed or rejected, never missing and never a not-run standing in for an answer — because whether v2 can emit Rust for this candidate today is a fact the compiler states and this harness reports. The probe beside it records which of the two it currently is."
 
-test fn acceptance_translate_row_is_determinate() -> v2.std.logic.Bool {
+test fn acceptance_translate_row_is_determinate() -> Bool {
   match row_for(
-    receipt: run_acceptance(
+    receipt: v2.workflow.dag_acceptance.run_acceptance(
       contract: contract(
         name: ^through_translate,
-        head: TranslateStage { claim: rust_translation_claim() },
+        head: v2.workflow.dag_acceptance.TranslateStage { claim: rust_translation_claim() },
         tail: [],
         costs: []
       ),
@@ -299,8 +299,8 @@ test fn acceptance_translate_row_is_determinate() -> v2.std.logic.Bool {
     ),
     label: ^target_rust
   ) {
-    Absent => false
-    Present { value: row } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: row } =>
       (row_kind(row: row) == ^row_passed)
         || (row_kind(row: row) == ^row_passed_with_frontier)
         || (row_kind(row: row) == ^row_rejected)
@@ -311,22 +311,22 @@ data measured_chain_depth_note: String = "MEASURED 2026-08-21 ON THIS TREE, and 
 
 data frontier_arm_note: String = "MEASURED PER PATH, 2026-08-21, ON THE HARNESS'S FIRST REAL SUBJECT. Subject: a call to a name no declaration provides — `fn caller() -> Int { undefined_callee_zzz(a: 1) }` and its .dag-source twin inside this file. Reported per path because DESIGN section 4b requires it: source-to-v1-acceptance and source-to-v2-acceptance are different paths with independently different rungs, and a class's rung is the MINIMUM across them. Citing the strong path while the other stays quiet is the inflation that section names.\n\nV1 SEED PATH — REFUSES, typed and located: `resolve failed ... error: function 'undefined_callee_zzz' not found in scope`. The floor property holds there. CONTROL, because a refusal alone proves nothing: the same file shape with the callee DEFINED resolves, infers and EVALUATES to 1 through the same runner in the same session, refused only at the host return-type boundary. So the refusal is the treatment, not the setup.\n\nV2 PATH — the same property is answered two different ways depending on POSITION, and that asymmetry is inside v2's resolve. An undeclared BARE VALUE name refuses at resolve carrying `resolve_reason_unbound_symbol`, so the vocabulary exists and fires. An undeclared CALLEE passes resolve with no diagnostic of any severity, and then passes infer carrying `infer_grounding_not_derived` — a true statement about GROUNDING, which is a different property than the one that failed. Nothing on the v2 path reports the missing declaration itself.\n\nSO THE CLASS RUNG IS THE V2 PATH'S, and the grounding half is the declared FrontierAccepted state — a typed, located, counted diagnostic on an Accepted path, whose own carrier says so. The same reason symbol also drives outright REJECTIONS elsewhere, which is by design rather than a contradiction: infer emits it as a counted frontier row while every consumer demanding the derived fact turns it into a Violates witness. Severity is the consumer's, not the symbol's.\n\nWHAT IS NOT CONCLUDED HERE, deliberately: whether v2's resolve SHOULD refuse an undeclared callee, or whether deferring callee resolution past resolve is a considered design — method existence can be genuinely undecidable before types are known. This file files the MEASUREMENT, not a defect. What it establishes is that the question is now COUNTABLE per candidate, which is what a frontier row being its own constructor buys: a receipt that folded it into StagePassed would have reported this candidate as a clean pass through the entire chain."
 
-fn frontier_diagnostics() -> Diagnostics {
-  Some {
-    diagnostics: diagnostics_singleton(
-      d: Diagnostic {
+fn frontier_diagnostics() -> v2.std.diagnostic.Diagnostics {
+  v2.std.diagnostic.Some {
+    diagnostics: v2.std.diagnostic.diagnostics_singleton(
+      d: v2.std.diagnostic.Diagnostic {
         reason: ^some_advisory,
-        at: port_locus(port: ^acceptance_test_locus_port),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        at: v2.std.diagnostic.port_locus(port: ^acceptance_test_locus_port),
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       }
     )
   }
 }
 
-test fn acceptance_frontier_pass_is_not_a_clean_pass() -> v2.std.logic.Bool {
-  let receipt = InferReceiptRow { node_count: 1 }
-  (row_kind(row: passed_row(obligation: InferStage, receipt: receipt, diagnostics: None)) == ^row_passed)
+test fn acceptance_frontier_pass_is_not_a_clean_pass() -> Bool {
+  let receipt = v2.workflow.dag_acceptance.InferReceiptRow { node_count: 1 }
+  (row_kind(row: v2.workflow.dag_acceptance.passed_row(obligation: v2.workflow.dag_acceptance.InferStage, receipt: receipt, diagnostics: v2.std.diagnostic.None)) == ^row_passed)
     && (row_kind(
-          row: passed_row(obligation: InferStage, receipt: receipt, diagnostics: frontier_diagnostics())
+          row: v2.workflow.dag_acceptance.passed_row(obligation: v2.workflow.dag_acceptance.InferStage, receipt: receipt, diagnostics: frontier_diagnostics())
         ) == ^row_passed_with_frontier)
 }

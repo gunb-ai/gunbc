@@ -11,7 +11,7 @@ module test.claim.compile_pool_ensure_wiring_witness
 // `gunbc run` before this import was added, while the same witness passed under the floor, which
 // prepares one subject over all 3873 modules and therefore loads it anyway.
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // WHAT THIS MODULE IS FOR: gunbc.compile_pool_ensure was proven over fixtures and computed by nothing --
 // its only caller was its own test module -- so an admission named as the wall between a host and an
@@ -22,8 +22,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 // and the effect must resolve to a cell that dispatches to the realizer. Asserting the arm exists on the
 // coproduct would prove nothing -- it existed before this change too, with nothing routing to it.
 test fn witness_compile_pool_kind_produces_the_effect() -> Bool {
-  match gunbc.host_toolchain_ensure.host_toolchain_ensure_effect(kind: gunbc.host_toolchain_ensure.CompilePool, host: "srv1" as product.placement_supply.HostIdentity) {
-    gunbc.host_effect.EnsureCompilePoolSlice {} => true
+  match gunbc.host_toolchain_ensure.host_toolchain_ensure_effect(kind: gunbc.host_toolchain_ensure.CompilePool, host: "srv1" as HostIdentity) {
+    EnsureCompilePoolSlice {} => true
     _ => false
   }
 }
@@ -33,8 +33,8 @@ test fn witness_compile_pool_kind_produces_the_effect() -> Bool {
 // exists to close, moved one layer out. It asserts the production func's own effect selection rather
 // than re-asserting the dispatcher's, so deleting provision_compile_pool reds here.
 test fn witness_production_entry_point_selects_the_compile_pool_effect() -> Bool {
-  match provision_compile_pool_effect_for_host(host: "srv1" as product.placement_supply.HostIdentity) {
-    gunbc.host_effect.EnsureCompilePoolSlice {} => provision_compile_pool_routes_through_host_effect_apply()
+  match gunbc.host_compile_pool_provision.provision_compile_pool_effect_for_host(host: "srv1" as HostIdentity) {
+    EnsureCompilePoolSlice {} => gunbc.host_compile_pool_provision.provision_compile_pool_routes_through_host_effect_apply()
     _ => false
   }
 }
@@ -46,10 +46,10 @@ test fn witness_production_entry_point_selects_the_compile_pool_effect() -> Bool
 // reds here. RED is authorable: the first draft of this function contained exactly those two.
 test fn witness_install_body_delegates_to_the_deploy_staging_authority() -> Bool {
   let body = compile_pool_slice_install_body(
-    slice_unit: gunbc.host_layout.gunbc_managed_compile_pool_slice,
-    slice_unit_file: gunbc.build_cache_unit.compile_pool_slice_unit_file(
-      slice_unit: gunbc.host_layout.gunbc_managed_compile_pool_slice,
-      sized: std.measure.byte_size(17179869184),
+    slice_unit: gunbc_managed_compile_pool_slice,
+    slice_unit_file: compile_pool_slice_unit_file(
+      slice_unit: gunbc_managed_compile_pool_slice,
+      sized: byte_size(17179869184),
     ),
   )
   (string_contains(s: body, pattern: "<<") == false)
@@ -62,10 +62,10 @@ test fn witness_install_body_delegates_to_the_deploy_staging_authority() -> Bool
 // compilers the pool exists to hold.
 test fn witness_install_body_starts_and_never_restarts_the_slice() -> Bool {
   let body = compile_pool_slice_install_body(
-    slice_unit: gunbc.host_layout.gunbc_managed_compile_pool_slice,
-    slice_unit_file: gunbc.build_cache_unit.compile_pool_slice_unit_file(
-      slice_unit: gunbc.host_layout.gunbc_managed_compile_pool_slice,
-      sized: std.measure.byte_size(17179869184),
+    slice_unit: gunbc_managed_compile_pool_slice,
+    slice_unit_file: compile_pool_slice_unit_file(
+      slice_unit: gunbc_managed_compile_pool_slice,
+      sized: byte_size(17179869184),
     ),
   )
   string_contains(s: body, pattern: "systemctl")
@@ -73,7 +73,7 @@ test fn witness_install_body_starts_and_never_restarts_the_slice() -> Bool {
 }
 
 test fn witness_compile_pool_effect_routes_to_the_host_cell() -> Bool {
-  match gunbc.host_effect_realize.resolve_host_effect_cell(target: gunbc.host_effect.HostOs { node: gunbc.fleet_intent.srv1_host }, effect: gunbc.host_effect.EnsureCompilePoolSlice {}) {
+  match resolve_host_effect_cell(target: HostOs { node: srv1_host }, effect: EnsureCompilePoolSlice {}) {
     EnsureCompilePoolSliceOnHost { node: _ } => true
     _ => false
   }
@@ -83,8 +83,8 @@ test fn witness_compile_pool_effect_routes_to_the_host_cell() -> Bool {
 // refuse rather than resolve. Without it the routing witness above would pass on a fold that resolved
 // everything to the same cell.
 test fn witness_compile_pool_effect_refuses_a_bmc_target() -> Bool {
-  match gunbc.host_effect_realize.resolve_host_effect_cell(target: BmcController { node: gunbc.fleet_intent.srv1_host }, effect: gunbc.host_effect.EnsureCompilePoolSlice {}) {
-    gunbc.host_effect_realize.IncompatibleCell { reason: why } => string_contains(s: why, pattern: "EnsureCompilePoolSlice")
+  match resolve_host_effect_cell(target: BmcController { node: srv1_host }, effect: EnsureCompilePoolSlice {}) {
+    IncompatibleCell { reason: why } => string_contains(s: why, pattern: "EnsureCompilePoolSlice")
     _ => false
   }
 }
@@ -95,21 +95,21 @@ test fn witness_compile_pool_effect_refuses_a_bmc_target() -> Bool {
 // CompilePoolSliceDeclared this witness reds -- deliberately, in the same change that shrinks runner_pool --
 // and at that point it becomes an assertion that the pool converges rather than being deleted.
 test fn witness_live_topology_refuses_the_slice_ensure() -> Bool {
-  let a = gunbc.compile_pool_ensure.admit_ensure_compile_pool_slice(
-    topology: gunbc.host_layout.gunbc_compile_pool_placement,
-    sizing: gunbc.fleet_host_budget.compile_pool_bytes_for(
-      placement: gunbc.host_layout.gunbc_compile_pool_placement,
-      nproc: std.measure.hardware_thread_count(count: 128),
-      host: std.measure.byte_size(134317047808),
-      citation: extdeps.jobserver.jobserver_config,
+  let a = admit_ensure_compile_pool_slice(
+    topology: gunbc_compile_pool_placement,
+    sizing: compile_pool_bytes_for(
+      placement: gunbc_compile_pool_placement,
+      nproc: hardware_thread_count(count: 128),
+      host: byte_size(134317047808),
+      citation: jobserver_config,
     ),
-    cache_placement: gunbc.build_cache_instance.ServerPlacementAbsent,
-    observed: gunbc.host_compile_pool.CompilePoolSliceAbsent { slice_unit: gunbc.host_layout.gunbc_managed_compile_pool_slice },
+    cache_placement: ServerPlacementAbsent,
+    observed: CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
   )
   match a {
-    gunbc.compile_pool_ensure.EnsureCompilePoolRefused { reason: r } =>
+    EnsureCompilePoolRefused { reason: r } =>
       match r {
-        gunbc.compile_pool_ensure.EnsurePoolTopologyUndeclared { detail: d } =>
+        EnsurePoolTopologyUndeclared { detail: d } =>
           string_contains(s: d as String, pattern: "gunbc_compile_pool_placement")
         _ => false
       }
@@ -124,13 +124,13 @@ test fn witness_live_topology_refuses_the_slice_ensure() -> Bool {
 // remedy. The refusal is what keeps the two apart.
 test fn witness_unbounded_memory_max_is_not_read_as_a_size() -> Bool {
   match compile_pool_limit_of_capture(
-    slice_unit: gunbc.host_layout.gunbc_managed_compile_pool_slice,
+    slice_unit: gunbc_managed_compile_pool_slice,
     property_name: "MemoryMax",
-    capture: gunbc.systemctl_show_read.SystemdPropertyCaptured { value: "infinity" },
+    capture: SystemdPropertyCaptured { value: "infinity" },
   ) {
     CompilePoolLimitRefused { observation: o } =>
       match o {
-        gunbc.host_compile_pool.CompilePoolObservationUnavailable { reason: _ } => true
+        CompilePoolObservationUnavailable { reason: _ } => true
         _ => false
       }
     CompilePoolLimitBytes { bytes: _ } => false
@@ -141,11 +141,11 @@ test fn witness_unbounded_memory_max_is_not_read_as_a_size() -> Bool {
 // decoder that refuses everything.
 test fn witness_numeric_memory_max_decodes_to_bytes() -> Bool {
   match compile_pool_limit_of_capture(
-    slice_unit: gunbc.host_layout.gunbc_managed_compile_pool_slice,
+    slice_unit: gunbc_managed_compile_pool_slice,
     property_name: "MemoryMax",
-    capture: gunbc.systemctl_show_read.SystemdPropertyCaptured { value: "17179869184" },
+    capture: SystemdPropertyCaptured { value: "17179869184" },
   ) {
-    CompilePoolLimitBytes { bytes: b } => std.measure.byte_size_count(b: b) == 17179869184
+    CompilePoolLimitBytes { bytes: b } => byte_size_count(b: b) == 17179869184
     CompilePoolLimitRefused { observation: _ } => false
   }
 }
@@ -155,15 +155,15 @@ test fn witness_numeric_memory_max_decodes_to_bytes() -> Bool {
 // converger to write a unit on a host it cannot see.
 test fn witness_unreadable_property_is_unavailable_not_absent() -> Bool {
   match compile_pool_limit_of_capture(
-    slice_unit: gunbc.host_layout.gunbc_managed_compile_pool_slice,
+    slice_unit: gunbc_managed_compile_pool_slice,
     property_name: "MemoryMax",
-    capture: gunbc.systemctl_show_read.SystemdPropertyCaptureRefused { reason: "systemctl show exited unsuccessfully" },
+    capture: SystemdPropertyCaptureRefused { reason: "systemctl show exited unsuccessfully" },
   ) {
     CompilePoolLimitRefused { observation: o } =>
       match o {
-        gunbc.host_compile_pool.CompilePoolObservationUnavailable { reason: _ } => true
-        gunbc.host_compile_pool.CompilePoolSliceAbsent { slice_unit: _ } => false
-        gunbc.host_compile_pool.CompilePoolSliceObserved { slice_unit: _, limits: _ } => false
+        CompilePoolObservationUnavailable { reason: _ } => true
+        CompilePoolSliceAbsent { slice_unit: _ } => false
+        CompilePoolSliceObserved { slice_unit: _, limits: _ } => false
       }
     CompilePoolLimitBytes { bytes: _ } => false
   }
@@ -172,5 +172,5 @@ test fn witness_unreadable_property_is_unavailable_not_absent() -> Bool {
 // The load-state argv the transport materializes must be the argv extdeps.systemd.systemctl declares. Without
 // this the operation could drift from its own authority and every reading above would be of the wrong unit.
 test fn witness_load_state_operation_argv_matches_its_authority() -> Bool {
-  systemctl_show_load_state_operation_argv_matches_transport(unit: gunbc.host_layout.gunbc_managed_compile_pool_slice)
+  systemctl_show_load_state_operation_argv_matches_transport(unit: gunbc_managed_compile_pool_slice)
 }

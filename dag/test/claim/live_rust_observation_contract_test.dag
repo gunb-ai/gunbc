@@ -21,7 +21,7 @@ fn observation_at(
     tracked_rust_repo_paths: tracked,
     prior_tracked_rust_repo_paths: prior,
     cargo_bin_repo_paths: cargo,
-    emit_population_evidence: EmitPopulationConfirmed {
+    emit_population_evidence: gunbc.stage0_rust_host_observation.EmitPopulationConfirmed {
       emitted_stage0_repo_paths: []
     }
   }
@@ -41,96 +41,96 @@ fn request_for(revision: std.types.CommitSha) -> gunbc.live_rust_observation.Liv
 }
 
 test fn control_matching_revision_admits_with_exact_counts() -> Bool {
-  match admit_live_rust_observation(
+  match gunbc.live_rust_observation.admit_live_rust_observation(
     request: request_for(revision: test_revision),
     observation: populated_observation(revision: test_revision)
   ) {
-    LiveObservationAdmitted { receipt: receipt } =>
+    gunbc.live_rust_observation.LiveObservationAdmitted { receipt: receipt } =>
       receipt.observed_repository_revision == test_revision
         && receipt.expected_repository_revision == test_revision
         && receipt.tracked_path_count == 2
         && receipt.prior_path_count == 1
         && receipt.cargo_target_count == 1
-    LiveObservationRefused { cause: _ } => false
+    gunbc.live_rust_observation.LiveObservationRefused { cause: _ } => false
   }
 }
 
 test fn control_2_wrong_expected_sha_refuses() -> Bool {
-  match admit_live_rust_observation(
+  match gunbc.live_rust_observation.admit_live_rust_observation(
     request: request_for(revision: other_revision),
     observation: populated_observation(revision: test_revision)
   ) {
-    LiveObservationRefused { cause: LiveRevisionMismatch { expected: expected, observed: observed } } =>
+    gunbc.live_rust_observation.LiveObservationRefused { cause: gunbc.live_rust_observation.LiveRevisionMismatch { expected: expected, observed: observed } } =>
       expected == other_revision && observed == test_revision
     _ => false
   }
 }
 
 test fn control_2_absent_expectation_refuses_rather_than_passes() -> Bool {
-  match admit_live_rust_observation(
+  match gunbc.live_rust_observation.admit_live_rust_observation(
     request: request_for(revision: ""),
     observation: populated_observation(revision: test_revision)
   ) {
-    LiveObservationRefused { cause: LiveExpectationEmpty { detail: detail } } => !(detail == "")
+    gunbc.live_rust_observation.LiveObservationRefused { cause: gunbc.live_rust_observation.LiveExpectationEmpty { detail: detail } } => !(detail == "")
     _ => false
   }
 }
 
 test fn control_missing_runner_sha_is_distinct_typed_refusal() -> Bool {
-  match admit_current_actions_rust_observation(
+  match gunbc.live_rust_observation.admit_current_actions_rust_observation(
     actions: extdeps.github.actions_environment.ActionsShaMissing { detail: "GITHUB_SHA was not set" },
     observation: populated_observation(revision: test_revision)
   ) {
-    LiveObservationRefused { cause: LiveExpectationMissing { detail: detail } } =>
+    gunbc.live_rust_observation.LiveObservationRefused { cause: gunbc.live_rust_observation.LiveExpectationMissing { detail: detail } } =>
       detail == "GITHUB_SHA was not set"
     _ => false
   }
 }
 
 test fn control_empty_runner_sha_is_distinct_typed_refusal() -> Bool {
-  match admit_current_actions_rust_observation(
+  match gunbc.live_rust_observation.admit_current_actions_rust_observation(
     actions: extdeps.github.actions_environment.ActionsShaEmpty { detail: "GITHUB_SHA was present but empty" },
     observation: populated_observation(revision: test_revision)
   ) {
-    LiveObservationRefused { cause: LiveExpectationEmpty { detail: detail } } =>
+    gunbc.live_rust_observation.LiveObservationRefused { cause: gunbc.live_rust_observation.LiveExpectationEmpty { detail: detail } } =>
       detail == "GITHUB_SHA was present but empty"
     _ => false
   }
 }
 
 test fn control_3_git_refusal_stays_typed_and_distinct() -> Bool {
-  match admit_live_rust_observation(
+  match gunbc.live_rust_observation.admit_live_rust_observation(
     request: request_for(revision: test_revision),
     observation: gunbc.stage0_rust_host_observation.GitObservationRefused { detail: "git rev-parse refused" }
   ) {
-    LiveObservationRefused { cause: LiveGitRefused { detail: detail } } => detail == "git rev-parse refused"
+    gunbc.live_rust_observation.LiveObservationRefused { cause: gunbc.live_rust_observation.LiveGitRefused { detail: detail } } => detail == "git rev-parse refused"
     _ => false
   }
 }
 
 test fn control_4_manifest_read_refusal_stays_typed_and_distinct() -> Bool {
-  match admit_live_rust_observation(
+  match gunbc.live_rust_observation.admit_live_rust_observation(
     request: request_for(revision: test_revision),
     observation: gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: "manifest object unreadable" }
   ) {
-    LiveObservationRefused { cause: LiveManifestReadRefused { detail: detail } } =>
+    gunbc.live_rust_observation.LiveObservationRefused { cause: gunbc.live_rust_observation.LiveManifestReadRefused { detail: detail } } =>
       detail == "manifest object unreadable"
     _ => false
   }
 }
 
 test fn control_5_toml_parse_refusal_stays_typed_and_distinct() -> Bool {
-  match admit_live_rust_observation(
+  match gunbc.live_rust_observation.admit_live_rust_observation(
     request: request_for(revision: test_revision),
     observation: gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: "not valid TOML" }
   ) {
-    LiveObservationRefused { cause: LiveManifestParseRefused { detail: detail } } => detail == "not valid TOML"
+    gunbc.live_rust_observation.LiveObservationRefused { cause: gunbc.live_rust_observation.LiveManifestParseRefused { detail: detail } } => detail == "not valid TOML"
     _ => false
   }
 }
 
 test fn control_6_empty_tracked_population_cannot_be_success() -> Bool {
-  match admit_live_rust_observation(
+  match gunbc.live_rust_observation.admit_live_rust_observation(
     request: request_for(revision: test_revision),
     observation: observation_at(
       revision: test_revision,
@@ -139,13 +139,13 @@ test fn control_6_empty_tracked_population_cannot_be_success() -> Bool {
       cargo: ["src/v1/stage0/src/main.rs"]
     )
   ) {
-    LiveObservationRefused { cause: LiveTrackedPopulationEmpty } => true
+    gunbc.live_rust_observation.LiveObservationRefused { cause: gunbc.live_rust_observation.LiveTrackedPopulationEmpty } => true
     _ => false
   }
 }
 
 test fn control_6_empty_prior_population_cannot_be_success() -> Bool {
-  match admit_live_rust_observation(
+  match gunbc.live_rust_observation.admit_live_rust_observation(
     request: request_for(revision: test_revision),
     observation: observation_at(
       revision: test_revision,
@@ -154,13 +154,13 @@ test fn control_6_empty_prior_population_cannot_be_success() -> Bool {
       cargo: ["src/v1/stage0/src/main.rs"]
     )
   ) {
-    LiveObservationRefused { cause: LivePriorPopulationEmpty } => true
+    gunbc.live_rust_observation.LiveObservationRefused { cause: gunbc.live_rust_observation.LivePriorPopulationEmpty } => true
     _ => false
   }
 }
 
 test fn control_6_empty_cargo_targets_cannot_be_success() -> Bool {
-  match admit_live_rust_observation(
+  match gunbc.live_rust_observation.admit_live_rust_observation(
     request: request_for(revision: test_revision),
     observation: observation_at(
       revision: test_revision,
@@ -169,30 +169,30 @@ test fn control_6_empty_cargo_targets_cannot_be_success() -> Bool {
       cargo: []
     )
   ) {
-    LiveObservationRefused { cause: LiveCargoTargetsEmpty } => true
+    gunbc.live_rust_observation.LiveObservationRefused { cause: gunbc.live_rust_observation.LiveCargoTargetsEmpty } => true
     _ => false
   }
 }
 
 test fn control_7_receipt_verdict_is_the_fold_of_the_same_observation() -> Bool {
   let observation = populated_observation(revision: test_revision)
-  match admit_live_rust_observation(
+  match gunbc.live_rust_observation.admit_live_rust_observation(
     request: request_for(revision: test_revision),
     observation: observation
   ) {
-    LiveObservationAdmitted { receipt: receipt } =>
+    gunbc.live_rust_observation.LiveObservationAdmitted { receipt: receipt } =>
       match receipt.verdict {
-        ManifestStateScaffoldOk =>
-          match rust_source_manifest_state_verdict(observation: observation) {
-            ManifestStateScaffoldOk => true
-            ManifestStateScaffoldRefused { cause: _ } => false
+        gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldOk =>
+          match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: observation) {
+            gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldOk => true
+            gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: _ } => false
           }
-        ManifestStateScaffoldRefused { cause: _ } =>
-          match rust_source_manifest_state_verdict(observation: observation) {
-            ManifestStateScaffoldOk => false
-            ManifestStateScaffoldRefused { cause: _ } => true
+        gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: _ } =>
+          match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: observation) {
+            gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldOk => false
+            gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: _ } => true
           }
       }
-    LiveObservationRefused { cause: _ } => false
+    gunbc.live_rust_observation.LiveObservationRefused { cause: _ } => false
   }
 }

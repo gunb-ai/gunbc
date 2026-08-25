@@ -2,8 +2,8 @@ module test.claim.busybox_bmc_build
 
 
 test fn busybox_build_is_modeled_and_grounded() -> Bool {
-  let cmds = busybox_build_commands(plan: bmc_busybox_build_plan)
-  let all = fold(cmds, init: "", f: (acc, c) => join([acc, shell_command_render(command: c), "\n"], ""))
+  let cmds = gunbc.busybox_bmc_build.busybox_build_commands(plan: gunbc.busybox_bmc_build.bmc_busybox_build_plan)
+  let all = fold(cmds, init: "", f: (acc, c) => join([acc, extdeps.exec.command.shell_command_render(command: c), "\n"], ""))
   string_contains(s: all, pattern: "busybox.net/downloads/busybox-1.36.1.tar.bz2")
     && string_contains(s: all, pattern: "'CROSS_COMPILE=arm-linux-gnueabi-'")
     && string_contains(s: all, pattern: "'EXTRA_CFLAGS=-march=armv5te -mfloat-abi=soft'")
@@ -12,5 +12,5 @@ test fn busybox_build_is_modeled_and_grounded() -> Bool {
     && string_contains(s: all, pattern: "'-fsL'")
     && string_contains(s: all, pattern: "'--strip-components=1'")
     && string_contains(s: all, pattern: "'mkdir' '-p'")
-    && list_length(items: cmds) == 8
+    && std.types.list_length(items: cmds) == 8
 }

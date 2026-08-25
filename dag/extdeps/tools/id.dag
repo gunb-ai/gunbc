@@ -3,7 +3,7 @@ module extdeps.tools.id
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "man7.org/linux/man-pages/man1/id.1.html"
   }
 }
@@ -12,7 +12,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 // through PATH, which is right for a remote shell. A sudoers NOPASSWD rule matches on the command
 // PATH, so a privileged invocation that names the binary bare is a different subject from the one
 // the grant authorizes -- and gunbc.host_effect_realize needs both spellings for the same tool.
-data id_binary_path: NonEmptyStr = "/usr/bin/id"
+data id_binary_path: std.types.NonEmptyStr = "/usr/bin/id"
 
 fn id_uid_argv() -> List<String> {
   ["id", "-u"]
